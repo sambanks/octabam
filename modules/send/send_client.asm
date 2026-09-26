@@ -104,11 +104,11 @@ init:
 ; seed is the rotation as read, before or after a flip, so the label runs
 ; exact or one behind for the life of the instance; both are inside the
 ; eight buffers' margin (docs/effects/XBUS.md).
-        clr     a
-        move    a,x:(r7+$15)            ; both level ramps start from 0
-        move    a,x:(r7+$16)            ; (r7 = this slot's block at init)
-        move    a,x:(r7+$17)
-        move    a,x:(r7+$18)
+        move    #>$ffffff,a             ; -1: both level ramps start AT the knob
+        move    a,x:(r7+$15)            ; on their first block (a level is never
+        move    a,x:(r7+$16)            ; negative; the steps are rewritten
+        move    a,x:(r7+$17)            ; before the loop reads them)
+        move    a,x:(r7+$18)            ; (r7 = this slot's block at init)
 ; ROTINIT
         rts
 
@@ -316,19 +316,42 @@ send_ok:
 cnt_done:
 
 ; ---- per-sample: mono dry sum, scaled into both accumulators -------------
-; The level is ramped across the block from where last block's ramp ended
-; to this block's knob word: the level stepped once per block until 23 Sep
-; 2026, and a turn on a loud source clicked once per block (dsp_host census
-; on a 0.3 FS tone: steps to 0.25 FS in the delay's print).
-        move    x:(r6),a                 ; DEL level: the target
-        move    x:(r7+$15),x0            ; the ramp's current value
+; The level is ramped from where last block's ramp ended toward this
+; block's knob word, 1/64 of the way per sample (15/64 per block: linear
+; inside a block, a glide across them): the level stepped once per block
+; until 23 Sep 2026, and a turn on a loud source clicked once per block
+; (dsp_host census on a 0.3 FS tone: steps to 0.25 FS in the delay's
+; print); 1/16 per sample until 26 Sep 2026 left a jump's one-block ramp
+; at the edge (tools/verify/verify_knob_clicks.py).
+        move    x:(r6),y1                ; DEL level: the target
+        move    x:(r7+$15),b             ; the ramp's current value: -1 (init)
+        tst     b                        ; on the first block, so it starts
+        tmi     y1,b                     ; AT the knob (26 Sep 2026)
+        move    b,x0
+        move    y1,a
         sub     x0,a
-        asr     #$4,a,a
+        asr     #$6,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        move    x0,b
+        teq     y1,b                     ; a step of 0: on the target
+        move    b,x:(r7+$15)
         move    a,x:(r7+$16)             ; the per-sample step
-        move    x:(r6+$1),a              ; REV level, ramped the same way
-        move    x:(r7+$17),x0
+        move    x:(r6+$1),y1             ; REV level, ramped the same way
+        move    x:(r7+$17),b
+        tst     b
+        tmi     y1,b
+        move    b,x0
+        move    y1,a
         sub     x0,a
-        asr     #$4,a,a
+        asr     #$6,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        move    x0,b
+        teq     y1,b
+        move    b,x:(r7+$17)
         move    a,x:(r7+$18)
         do      n7,>send_end
         move    x:(r7+$15),a

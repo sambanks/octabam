@@ -52,7 +52,10 @@ sample per block toward the target and never past it, so the state lands
 exactly and the fraction is 0 at rest (a standing fraction is a two-sample
 average on every pass, which dulled the repeats after a TIME increase in
 image 33; images 34-39 snapped from 4 samples out instead). FDBK, TONE,
-PING and WET move an eighth of the way to their knob per block. All of it
+PING and WET move an eighth of the way to their knob per block, and the
+loop steps FDBK, TONE and PING toward that per sample, 1/16 of the gap
+(26 Sep 2026; GRAIN's makeup and read step the same way, and the host's
+DEL and REV sends 1/64 per sample, `make verify-knobs`). All of it
 runs on the first call of a block only (21 Sep 2026): a trig splits the
 block into two dispatcher calls, and a glide that ran on both restarted
 the ramp at the trig -- a click at every trig while TIME moved. The glide

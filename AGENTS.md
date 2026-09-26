@@ -154,6 +154,17 @@ to exactly 1, so **DC in must come back flat** — it came back with 2×-DC
 ripple, and went flat (−122 dB) when the multiplier was halved. If you use
 a0 for anything, pin it with a test whose arithmetic you can predict exactly.
 
+**`asr #n,a,a` SHIFTS THE LOW BITS INTO a0, AND Z IS SET ONLY WHEN ALL 56
+BITS ARE ZERO.** A ramp step written as `sub x0,a / asr #6,a,a / teq y1,b`
+("a step that rounds to 0 snaps the run value onto its target") never
+snapped: a1 was 0, a0 held the shifted-out remainder, Z stayed clear, and
+every ramp sat up to 63 LSB under its knob for good (26 Sep 2026, found
+by `make verify-onebus`: a host's send at 100 was not bit-identical to a
+SEND's at 100). The same a0 remainder breaks `add x0,a / cmp x0,a / teq`
+(a 56-bit compare). Reload the step clean before testing it — `move a,x1 /
+move x1,a / tst a` — the one-word `move a,x1` drops a0. Sister of the
+"reading a0" trap above: the low word carries what a1 hides.
+
 **A logical op (`and`/`or`/`not`/`asr`-as-mask) on an accumulator leaves the
 extension byte (A2/B2) STALE, and the next `move a,x:` SATURATES to full
 scale.** Building a sign mask with `move a,b / asr #$17,b,b / not b` and
@@ -198,6 +209,14 @@ source is known to fit.
 accumulator, never a register.** `tpl b,a` and `clr x0` are both
 InvalidInstruction — caught at assembly, which is the cheap case, but they
 look plausible enough to write repeatedly. Move the value through `x0`.
+
+**`lua (rN+d),rM` TAKES d IN −64..63, AND `dsp_asm` WRAPS ANYTHING LARGER
+SILENTLY.** `lua (r7+$46),r5` assembled to `0x042765`, the same word as
+`lua (r7-$3a),r5`, and the round-trip disassembly cannot object (a `lua`
+is a `lua`): Modulation's TONE glide read and wrote 58 words BELOW its
+block for one build (26 Sep 2026, caught by `verify_modulation`'s
+reference gates, not by the build). Past ±63 use `move r7,r5 / move
+#$46,n5 / move (r5)+n5`, the form the streams already use.
 
 **`dsp_asm` resolves labels by PREFIX, so no new label may have an existing
 label as its prefix.** Adding a loop labelled `warmz2` next to the existing

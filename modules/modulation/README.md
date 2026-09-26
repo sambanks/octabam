@@ -56,8 +56,9 @@ its three sites per channel (L advances the shared counter and latches on
 its compare, R latches on the counter reading 0; the mask keeps bit 23 so
 the extension byte stays consistent and the store does not saturate), as
 are the LFO and the MIX. Straight-line callees: `mo_tap` (the linear read,
-blending toward the older sample; `mo_itap` enters it with the split done
-per block, for the fixed taps), `mo_herm` (the 4-point Hermite read, scaled
+blending toward the older sample; the fixed taps use it too since 26 Sep
+2026, split per sample from the centre's run value; `mo_itap` is its
+second entry), `mo_herm` (the 4-point Hermite read, scaled
 1/16 inside), `mo_apst` (one allpass stage, x in and y out in x0 so a chain
 passes it straight through), `mo_para` (the parabola sine), `mo_tab` (the
 table read, per block). The PHSR chain runs at half scale for headroom (an
@@ -74,7 +75,9 @@ lines persist.
 
 ## Measured
 
-- **1,383 words** (`make bus`, 23 Sep 2026; 1,352 on 22 Sep, 1,128 on 20
+- **1,480 words** with the knob ramps (26 Sep 2026; payload A FREE 61 in
+  the rig; pricer per loop LINE 404, PHSR 397, COMB 339 words/sample).
+  Before them: 1,383 words (`make bus`, 23 Sep 2026; 1,352 on 22 Sep, 1,128 on 20
   Sep, LOFI added 16 Sep 2026: 1,044 before, 1,199 with ENS), payload A FREE
   673 in the rig; pricer per loop PHSR 393, LINE 372, COMB 321 words/sample
   (489 / 423 / 361 on 22 Sep; 525 / 446 / 359 before the pointer rewrite).

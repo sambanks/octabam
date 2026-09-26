@@ -70,16 +70,19 @@
 ;   r7+$26              TIME, Q8: the ramp's running value at a call's start
 ;                       and end (the loop walks it in n4); the glide state
 ;                       itself is the core-private TIME word
-;   r7+$27/$28, $2e     free (the tape wow's LFO phases and flutter depth
-;                       until 26 Sep 2026)
+;   r7+$27/$28          free (the tape wow's LFO phases until 26 Sep 2026)
+;   r7+$2e/$30          GRAIN rstep's run value (the readers') / its
+;                       per-sample step (26 Sep 2026)
 ;   r7+$29              REV, this block's level (per block)
 ;   r7+$2b/$2c          REV ramped per sample / its per-sample step
 ;   r7+$2d              this call's REV ACC write pointer (walked per sample)
-;   r7+$2f/$30          free
+;   r7+$2f              PING's per-sample step
 ;   r7+$31              LineL base
 ;   r7+$32              GRAIN base age, Q11.12 (persistent, masked on load
 ;                       and save); each grain is a fixed quarter cycle off it
-;   r7+$33..$37         free
+;   r7+$33/$34/$35      FDBK, TONE, PING glided (per block; the loop reads
+;                       run values at $73/$72/$74/$80)
+;   r7+$36/$37          FDBK / TONE per-sample steps
 ;   r7+$38/$39/$3a      GRAIN mask G-1, G/4 (grain-to-grain phase offset),
 ;                       window multiplier 2^(23-k) (per block, from SIZE)
 ;   r7+$3b              GRAIN read distance base lag + G + 2 (the block
@@ -97,7 +100,7 @@
 ;                       decode wrote the REVERSE lag cap to raw $56 (grain
 ;                       3's window multiplier) every block, in every mode
 ;   r7+$58/$59          this sample's scatter / window-multiplier candidates
-;   r7+$5a/$5b          free
+;   r7+$5a/$5b          GRAIN makeup's run value / its per-sample step
 ;   r7+$5c              SCTR, knob<<16 (per block)
 ;   r7+$5d              free (the GRAIN phase cursor is r6 in the loop)
 ;   r7+$5e              REVERSE segment phase, 23-bit (persistent, masked on
@@ -128,7 +131,8 @@
 ;   r7+$70/$71          LineL/LineR write-pointer phase (persistent, masked
 ;                       on load and save: garbage with bit 23 set saturates
 ;                       the AGU and hangs the bus)
-;   r7+$72/$73/$74/$75  TONE coefficient, FDBK coefficient, PING, TIME (per block)
+;   r7+$72/$73/$74/$75  TONE coefficient, FDBK coefficient, PING (run values,
+;                       stepped per sample), TIME (per block)
 ;   r7+$76              SEND, this host's own send level (per block)
 ;   r7+$77/$78          TONE filter state, line L / R (persistent)
 ;   r7+$79              free
@@ -139,7 +143,7 @@
 ;   r7+$7d              GRAIN: x_in parked while n6 holds the wet sum
 ;   r7+$7e, $81         free
 ;   r7+$7f              bus auto-gain 1/sqrt(N) (per block; read per sample)
-;   r7+$80              1 - PING (per block)
+;   r7+$80              1 - PING, from PING's run value per sample
 ;   r7+$82              warm-up tagged counter
 ;   $84..$8a            NEVER WRITTEN (21 Sep 2026). Until then the chain write
 ;                       address, the WET glide state, the write offset, the
@@ -542,6 +546,9 @@ dwarmq:                                                                    ; @B
         do      #56,>dwarmc
         move    b,x:(r5)+
 dwarmc:
+        move    #>$ffffff,x0            ; the SEND and REV level ramps (raw $19,
+        move    x0,x:(r7-$30)           ; $2b): -1, so each starts AT its knob
+        move    x0,x:(r7-$1e)           ; on the first block after the warm-up
 ; ---- THE GRAIN COUNT IS A BUILD-TIME LEVER (4 Sep 2026) -------------------
 ; Four grains per line is what this source assembles to. A remix that
 ; declares `grains=2` (schema.Remix) has build_bus.py substitute three
@@ -759,37 +766,72 @@ stpdn:
 ; FDBK, TONE, PING and WET glide too (20 Sep 2026): each coefficient
 ; moves an eighth of the way to its knob per block (~130 samples to settle)
 ; instead of stepping -- a step on the recirculating signal was a click a
-; block while a knob turned. The state is the slot itself.
+; block while a knob turned. FDBK, TONE and PING also RAMP per sample (26
+; Sep 2026; tools/verify/verify_knob_clicks.py): the glide lives in raw
+; $33/$34/$35, the slots the loop reads ($73/$72/$74, and $80 = 1 - PING)
+; are run values the loop's head steps once per sample, 1/16 of the way
+; from where they stand to the glide (raw $36/$37/$2f), which lands on it
+; in the unit's 16-frame block.
         move    x:(r6+$2),x0            ; FDBK: slot 2 (one-aux re-slot)
         move    #$70,y1  
         mpy     x0,y1,a                 ; target, 0 .. ~0.87
-        move    x:(r7+$2a),b            ; last block's coefficient
+        move    x:(r7-$16),b            ; last block's glide
         sub     b,a
         asr     #$3,a,a
         add     b,a
-        move    a,x:(r7+$2a)            ; FDBK, glided
+        move    a,x:(r7-$16)            ; FDBK, glided
+        move    a,y1
+        move    x:(r7+$2a),b            ; the run value
+        sub     b,a
+        asr     #$4,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        teq     y1,b                    ; a step of 0: on the glide
+        move    b,x:(r7+$2a)
+        move    a,x:(r7-$13)            ; its step per sample
 
         move    x:(r6+$3),x0            ; TONE: slot 3 (one-aux re-slot)
         move    #$70,y1  
         mpy     x0,y1,a
         add     #>$100000,a             ; target, 0.125 (dark) .. 0.99 (bright)
-        move    x:(r7+$29),b
+        move    x:(r7-$15),b
         sub     b,a
         asr     #$3,a,a
         add     b,a
-        move    a,x:(r7+$29)            ; TONE, glided
+        move    a,x:(r7-$15)            ; TONE, glided
+        move    a,y1
+        move    x:(r7+$29),b
+        sub     b,a
+        asr     #$4,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        teq     y1,b
+        move    b,x:(r7+$29)
+        move    a,x:(r7-$12)
 
         move    x:(r6+$4),x0            ; PING: slot 4 (one-aux re-slot)
         move    x0,a                    ; target, 0 .. ~0.99
-        move    x:(r7+$2b),b
+        move    x:(r7-$14),b
         sub     b,a
         asr     #$3,a,a
         add     b,a
-        move    a,x:(r7+$2b)            ; PING, glided
-        move    a,x0
+        move    a,x:(r7-$14)            ; PING, glided
+        move    a,y1
+        move    x:(r7+$2b),b
+        sub     b,a
+        asr     #$4,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        teq     y1,b
+        move    b,x:(r7+$2b)
+        move    a,x:(r7-$1a)            ; PING's step per sample
+        move    b,x0
         move    #>$7fffff,a
         sub     x0,a
-        move    a,x:(r7+$37)            ; 1 - PING
+        move    a,x:(r7+$37)            ; 1 - PING, from the run value
 
         move    x:(r6+$5),x0            ; WET, slot 5
         move    x0,a                    ; target
@@ -831,13 +873,24 @@ slewdn:
 ; ---- SEND: this host's own send level into the aux --------------------------
         move    x:(r6),a                ; SEND, slot 0
         and     #>$7f0000,a
-        move    x:(r7+$2d),x0           ; last block's level: where this
-        move    x0,x:(r7-$30)           ; block's per-sample ramp starts ($19)
-        move    a,x:(r7+$2d)            ; SEND, this block: where it ends
-        sub     x0,a                    ; the change, spread over 16 frames
-        asr     #$4,a,a                 ; ($1b): the level stepped once per
-        move    a,x:(r7-$2e)            ; block until 23 Sep 2026, a click per
-                                        ; block while the knob turned
+        move    a,x:(r7+$2d)            ; SEND, this block
+        move    a,y1
+        move    x:(r7-$30),b            ; the ramp's running value ($19): -1
+        tst     b                       ; from the warm-up, so the first block
+        tmi     y1,b                    ; starts AT the knob (SEND's seed)
+        move    b,x0
+        sub     x0,a                    ; 1/64 of the gap per sample ($1b):
+        asr     #$6,a,a                 ; the level stepped once per block
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        move    x0,b
+        teq     y1,b                    ; (a step of 0: on the knob)
+        move    b,x:(r7-$30)
+        move    a,x:(r7-$2e)            ; until 23 Sep 2026, a click per block
+                                        ; while the knob turned; a one-block
+                                        ; ramp from last block's level until
+                                        ; 26 Sep 2026 (send_client.asm's law)
 
 ; ---- REV: this host's own send into the reverb (26 Sep 2026) -------------
 ; Page-1 slot 1's KNOB field; its bits 8-15 carry the held MIDI note
@@ -854,9 +907,19 @@ slewdn:
         move    x:(r6+$1),a             ; REV, slot 1
         and     #>$7f0000,a             ; knob field only
         move    a,x:(r7-$20)            ; REV, this block
-        move    x:(r7-$1e),x0           ; the ramp's running value
-        sub     x0,a                    ; the gap, a sixteenth per sample
-        asr     #$4,a,a
+        move    a,y1
+        move    x:(r7-$1e),b            ; the ramp's running value: -1 from
+        tst     b                       ; the warm-up, so the first block
+        tmi     y1,b                    ; starts AT the knob (SEND's seed)
+        move    b,x0
+        sub     x0,a                    ; the gap, 1/64 per sample
+        asr     #$6,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        move    x0,b
+        teq     y1,b                    ; a step of 0: on the knob
+        move    b,x:(r7-$1e)
         move    a,x:(r7-$1d)
         move    #>$9d8,a                ; the REV accumulator: the chain's
         add     #>$80,a                 ; base plus its length
@@ -930,6 +993,10 @@ drevcnt:
         move    #>$7fffff,x0
         teq     x0,a
         move    a,x:(r7+$37)            ; 1 - PING = 1 in REVERSE
+        move    x:(r7-$1a),a
+        move    #$0,x0
+        teq     x0,a
+        move    a,x:(r7-$1a)            ; and PING's ramp stands
 
 ; ---- SIZE select (the PTCH slot until v5): the raw index for GRAIN and ----
 ; REVERSE, both of which read it as a SIZE. Page-2 slot 9's companion field,
@@ -1187,6 +1254,17 @@ gvrdone:
         cmp     x0,a
         tgt     x0,a                    ; rstep = min(rstep, rmax)
         move    a,x:(r7-$b)
+        move    a,y1
+        move    x:(r7-$1b),x0           ; the readers' rstep is a run value (raw
+        sub     x0,a                    ; $2e) stepped 1/16 of the gap per
+        asr     #$4,a,a                 ; sample (raw $30, 26 Sep 2026): a PTCH
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        move    x0,b                    ; jump was a speed step at a block edge;
+        teq     y1,b                    ; a step of 0 lands it on the target
+        move    b,x:(r7-$1b)
+        move    a,x:(r7-$19)
         move    x:(r6+$d),a             ; DENS, slot 8's knob field
         and     #>$7f0000,a
         asr     #$14,a,a                ; knob >> 4 = dens3, 0..7
@@ -1205,7 +1283,17 @@ gvrdone:
         add     x0,b                    ; + 1/2
         move    b1,x0
         move    x0,b
-        move    b,x:(r7-$c)            ; GRAIN makeup coeff, this block
+        move    b,y1                    ; GRAIN makeup coeff, this block's target:
+        move    x:(r7+$11),x0           ; the loop's run value (raw $5a) steps
+        sub     x0,b                    ; 1/16 of the gap per sample (raw $5b)
+        asr     #$4,b,b
+        move    b,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,b                    ; clean reload, so Z reads a1 alone
+        tst     b
+        move    x0,a
+        teq     y1,a                    ; a step of 0: on the target
+        move    a,x:(r7+$11)
+        move    b,x:(r7+$12)
 
 ; ---- rebuild both line pointers from saved phase --------------------------
 ; Same A2-clean discipline as dsp/reverb89.asm's phase reload: garbage with
@@ -1259,6 +1347,24 @@ gvrdone:
         move    x:(r7-$23),a
         move    a,n4                    ; the TIME ramp, Q8, walked per sample
         do      n7,>dlyend
+; ---- the coefficient ramps: FDBK TONE PING (1 - PING) one step each -------
+        move    x:(r7+$2a),a
+        move    x:(r7-$13),x0
+        add     x0,a
+        move    a,x:(r7+$2a)            ; FDBK
+        move    x:(r7+$29),a
+        move    x:(r7-$12),x0
+        add     x0,a
+        move    a,x:(r7+$29)            ; TONE
+        move    x:(r7+$2b),a
+        move    x:(r7-$1a),x0
+        add     x0,a
+        move    a,x:(r7+$2b)            ; PING
+        move    a,x0
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,x:(r7+$37)            ; 1 - PING, from the run (a running
+                                        ; difference drifted a few LSB)
 
 ; ---- input: own dry mono sum + shared DELAY bus accumulator --------------
         move    x:(r0),a
@@ -1494,6 +1600,10 @@ gmode:
         move    x0,a
         move    a,x:(r7-$17)
         move    a,r6                    ; the phase cursor = age (grain 0's)
+        move    x:(r7-$1b),a            ; rstep, one step
+        move    x:(r7-$19),x0
+        add     x0,a
+        move    a,x:(r7-$1b)
 ; ---- READER, line L: four grains, rolled -----------------------------------
 ; Records of THREE words at raw $40: s (latched scatter), w (window
 ; multiplier, 0 = muted), acc (read advance, Q14.9). Every latch is a Tcc
@@ -1525,7 +1635,7 @@ gmode:
         move    #$0,x0 
         move    x:(r4),b
         teq     x0,b                    ; acc restarts at the wrap
-        move    x:(r7-$b),x0           ; rstep
+        move    x:(r7-$1b),x0           ; rstep, this sample's
         add     x0,b                    ; acc += rstep
         move    b,x:(r4)+               ; -> the next record
         move    a,x0                    ; phase
@@ -1598,7 +1708,11 @@ gvlz:
 ; gate.
         move    n6,a
         move    a,x0
-        move    x:(r7-$c),y1           ; makeup coeff
+        move    x:(r7+$11),a            ; makeup coeff, stepped per sample
+        move    x:(r7+$12),y1
+        add     y1,a
+        move    a,x:(r7+$11)
+        move    a,y1
         mpy     x0,y1,b
 ; GRAINMK
         move    b,x:(r7+$32)            ; wet L
@@ -1629,7 +1743,7 @@ gvlz:
         move    #$0,x0 
         move    x:(r4),b
         teq     x0,b                    ; acc restarts at the wrap
-        move    x:(r7-$b),x0           ; rstep
+        move    x:(r7-$1b),x0           ; rstep, this sample's
         add     x0,b                    ; acc += rstep
         move    b,x:(r4)+               ; -> the next record
         move    a,x0                    ; phase
@@ -1699,7 +1813,7 @@ gvrz:
 ; ---- wet R -------------------------------------------------------------
         move    n6,a
         move    a,x0
-        move    x:(r7-$c),y1
+        move    x:(r7+$11),y1           ; makeup coeff, this sample's
         mpy     x0,y1,b
 ; GRAINMK
         move    b,x:(r7+$33)            ; wet R

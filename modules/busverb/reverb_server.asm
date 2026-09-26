@@ -94,7 +94,8 @@
 ;   r7+$82        warm-up counter, $2c0000 | blocks, capped at 0x100
 ;   r7+$83        write phase (persistent, masked on load as well as save)
 ;   $71 WET ramped per sample, $7c its per-sample step (per block)
-;   free: $10..$13, $25..$27, $39, $66, $68, $69, $6e, $7d
+;   r7+$10        TIME's t, glided (per block, 26 Sep 2026)
+;   free: $11..$13, $25..$27, $39, $66, $68, $69, $6e, $7d
 ;   (fourteen; $25/$26 and $39 went to registers 23 Sep 2026)
 ;
 ; Parameters (page 1 slots 0-5, page 2 slots 6-11):
@@ -137,9 +138,11 @@ init:
         move    a,x:(r7+$40)            ; TONE's LO
         move    a,x:(r7+$6d)            ; DIFF's g
         move    a,x:(r7+$70)            ; WET
+        move    a,x:(r7+$10)            ; TIME's t (the glide state)
         move    a,y:>$09f3              ; SIZE's f (the glide state)
-        move    a,y:>$09f4              ; DEL's ramp (the per-sample level)
-        rts
+        move    #>$ffffff,a
+        move    a,y:>$09f4              ; DEL's ramp (the per-sample level): -1,
+        rts                             ; so it starts AT the knob (SEND's seed)
 
 proc:
 ; ---- HOSTGUARD: a remix that hides or locks this engine has the build put
@@ -439,9 +442,19 @@ bus_mine:
 ; before the tank: T5's own wet never reaches the delay.
         move    x:(r6),a                ; DEL (slot 0), the knob field
         and     #>$7f0000,a
-        move    y:>$09f4,b              ; the ramp's running value
-        sub     b,a
-        asr     #$4,a,a                 ; the change, spread over 16 frames
+        move    a,y1
+        move    y:>$09f4,b              ; the ramp's running value: -1 on the
+        tst     b                       ; first block, so it starts AT the knob
+        tmi     y1,b
+        move    b,x0
+        sub     x0,a                    ; 1/64 of the gap per sample (SEND's
+        asr     #$6,a,a                 ; law since 26 Sep 2026)
+        move    a,y0                    ; a0 holds the shifted-out bits: a
+        move    y0,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        move    x0,b
+        teq     y1,b                    ; a step of 0: on the knob
+        move    b,y:>$09f4
         move    a,y:>$09f5              ; ... its per-sample step
         move    #>$901,a                ; the AUX accumulator
         add     x1,a                    ; + this block's write offset
@@ -843,7 +856,24 @@ mdcpy:
         move    x:(r6+$e),a             ; TIME: page-2 slot 11, $e's companion
         and     #>$7f00,a               ; field (page-1 slot 1 until 26 Sep
         asl     #$8,a,a                 ; 2026) -> value<<16, t
-        move    a1,x0
+; t GLIDES (26 Sep 2026): 1/32 of the way to the knob per block in $10,
+; snapping to it when the step rounds to nothing; 0 (init) starts at the
+; knob. The line gains below are per block, and a TIME jump stepped them.
+        move    a1,y1                   ; t, the knob
+        move    x:(r7+$10),b
+        tst     b
+        teq     y1,b                    ; the first block: at the knob
+        move    y1,a
+        move    b,x0
+        sub     x0,a
+        asr     #$5,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        add     x0,a
+        cmp     x0,a                    ; no progress: at the knob
+        teq     y1,a
+        move    a,x:(r7+$10)
+        move    a,x0
         move    #>$3bbbbb,y1            ; the bloom's g: 0.40 + 0.467 t
         mpy     x0,y1,a
         add     #>$333333,a
@@ -1056,10 +1086,10 @@ shfst:
         add     x0,a                    ; PLATE overflowed $7fffff at DIFF=127
         move    x:(r7+$3f),x0           ; and g read NEGATIVE; the others sat at
         add     x0,a                    ; 0.88-0.97, where an allpass is a
-        move    x:(r7+$6d),x0           ; g, for every allpass -- glided
-        sub     x0,a
-        asr     #$3,a,a
-        add     x0,a
+        move    x:(r7+$6d),x0           ; g, for every allpass -- glided, 1/64
+        sub     x0,a                    ; per block (1/8 until 26 Sep 2026:
+        asr     #$6,a,a                 ; a jump stepped the allpasses,
+        add     x0,a                    ; tools/verify/verify_knob_clicks.py)
         move    a,x:(r7+$6d)
 
 ; ---- SHMR: page-1 slot 3 ------------------------------------------------

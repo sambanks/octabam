@@ -52,8 +52,12 @@
 ; The loop's state pointers all go through n3 = $41: TapeHead's L y2 at
 ; r7 + n3, TUBE's L pair at r7 + n3 + 1, the tilt block at r4 + n3 (an
 ; address register steps only by its own N).
-; free: $15..$18, $1b, $1c, $2c, $34..$36, $3c/$3d, $46/$47, $49..$4b,
-; $4e..$59, $5d..$5f
+; knob glides and ramps (26 Sep 2026):
+;   $4e..$53 page-1 slots 0..5 glided; $54 1 once they started at the
+;   knobs, $55 1 once the ring's run values started at their targets (both
+;   zeroed at init); $15..$17, $34..$36 the per-sample steps of gq trim t,
+;   a makeup m (per block), whose run values are their main-ring words
+; free: $18, $1b, $1c, $2c, $3c/$3d, $46/$47, $49..$4b, $56..$59, $5d..$5f
 ;
 ; ---- the master, by position ---------------------------------------------
 ; On the master (dispatch position 3 on payload A, track 8) COMP runs the
@@ -107,19 +111,52 @@ init:
         move    a,x:(r7+$5b)            ; compressor's level_s, the master flag:
         move    a,x:(r7+$5c)            ; every slot read before written
         move    a,x:(r7+$25)            ; (verify_dirtystate)
+        move    a,x:(r7+$54)            ; the glides start at the knobs,
+        move    a,x:(r7+$55)            ; the ramps at their targets
         rts
 
 proc:
         move    x:(r7+$23),a            ; an FX2 slot: dry, nothing written
         tst     a
         bne     ch_end
+; ---- KNOB GLIDES (26 Sep 2026): page-1 slots 0..5 (DRV FOLD WDTH COMP
+; TONE MIX) move 1/128 of the way to the knob per block into $4e..$53 and
+; snap to it when the step rounds to nothing; the decode reads those. The
+; first block after init ($54 = 0) starts them AT the knobs, so a knob at
+; rest renders as before (tools/verify/verify_knob_clicks.py).
+        move    r6,r4
+        move    #>$ffffff,m4
+        move    r7,r5
+        move    #$4e,n5
+        move    (r5)+n5
+        move    #>$ffffff,m5
+        move    x:(r7+$54),b
+        do      #6,>ch_glz
+        move    x:(r4)+,y1              ; the knob
+        tst     b
+        move    x:(r5),a                ; the glide (moves keep the flags)
+        teq     y1,a                    ; the first block: at the knob
+        move    a,x0
+        move    y1,a
+        sub     x0,a
+        asr     #$7,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        add     x0,a
+        cmp     x0,a                    ; no progress: at the knob
+        teq     y1,a
+        move    a,x:(r5)+
+ch_glz:
+        nop
+        move    #>$1,x0
+        move    x0,x:(r7+$54)
 ; ===========================================================================
 ; PER-BLOCK KNOB DECODE
 ; ===========================================================================
 ; MIX: page-1 slot 5 since 16 Sep 2026; TONE page-1 slot 4 since 20 Sep
-        move    x:(r6+$5),a             ; a knob word: bit 23 clear, a2 = 0
+        move    x:(r7+$53),a             ; a knob word: bit 23 clear, a2 = 0
         move    a1,x:(r7+$20)           ; m (a1 straight to memory)
-        move    x:(r6+$1),x0            ; the knob word IS FOLD/128 in Q23
+        move    x:(r7+$4f),x0            ; the knob word IS FOLD/128 in Q23
         move    #$5e,y1                 ; 47/64 (short immediate: bits 23-16)
         mpy     x0,y1,a                 ; (47/64)*(FOLD/128)
         add     #>$020000,a             ; + 1/64 -> gain/64, 0.016 .. 0.75
@@ -134,18 +171,18 @@ proc:
 ; DRV 0 skips the saturation stage (a per-block flag, $4d; a forward skip
 ; per sample), so DRV 0 is bit-exact in every mode. The saturators' states
 ; are not cleared while skipped: a later DRV resumes from them.
-        move    x:(r6+$0),a             ; DRV
+        move    x:(r7+$4e),a             ; DRV
         clr     b                       ; b = 0 BEFORE the tst (the flag trap)
         move    #>$1,x0
         tst     a
         teq     x0,b                    ; DRV == 0 -> skip flag 1
         move    b,x:(r7+$4d)
-        move    x:(r6+$4),a             ; TONE, page-1 slot 4
+        move    x:(r7+$52),a             ; TONE, page-1 slot 4
         and     #>$7f0000,a             ; a knob word, TONE << 16
         sub     #>$400000,a
         move    a,x:(r7+$24)            ; t/2, -0.5 .. +0.49
 ; COMP amount, straight from the knob
-        move    x:(r6+$3),x0
+        move    x:(r7+$51),x0
         move    x0,x:(r7+$26)
         move    x:(r7+$25),a
         tst     a
@@ -199,7 +236,7 @@ ch_cset:
 ch_stube:
         move    #>$1,x0
         move    x0,x:(r7+$29)           ; sat mode 1: TUBE
-        move    x:(r6+$0),a             ; d = DRV/128
+        move    x:(r7+$4e),a             ; d = DRV/128
         move    a,x:(r7+$38)            ; the negative half: d
         asr     #$1,a,a
         move    a,x:(r7+$37)            ; the positive half: d/2
@@ -210,7 +247,7 @@ ch_stube:
 ch_sinfd:
         move    #>$2,x0
         move    x0,x:(r7+$29)           ; sat mode 2: INFL
-        move    x:(r6+$0),a             ; e = DRV/128
+        move    x:(r7+$4e),a             ; e = DRV/128
         move    a,x0
         asr     #$1,a,a
         move    a,x:(r7+$3a)            ; e/2
@@ -244,7 +281,7 @@ ch_master:
         move    #>$1,x0
         move    x0,x:(r7+$25)           ; the master: GLUE
 ch_pos3:
-        move    x:(r6+$0),a             ; d = DRV/128
+        move    x:(r7+$4e),a             ; d = DRV/128
         move    a,x1                    ; (x1 = DRV/128 for TapeHead's words below)
         move    a,x0
         move    #>$37445f,y1            ; 0.43175 = 1.727/4
@@ -315,7 +352,7 @@ ch_pos3:
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
 ; so a mono source is untouched at every setting.
-        move    x:(r6+$2),a             ; WDTH, page-1 slot 2 -> WDTH << 16
+        move    x:(r7+$50),a             ; WDTH, page-1 slot 2 -> WDTH << 16
 ; ⚠️ STORED HALVED. A y1 operand is a FRACTION, and a side gain of WDTH/64
 ; tops out near 2.0, which would wrap the word. The knob's own value IS
 ; WDTH/128, so it is stored as-is and the product is doubled back in the
@@ -325,16 +362,16 @@ ch_pos3:
 ; DRV 0, FOLD 0, TONE 64, COMP 0, MIX 127, WDTH 64. Every part that
 ; ever chose LO-FI runs this after the flash, so the neutral block does
 ; nothing at all.
-        move    x:(r6+$0),a             ; DRV
+        move    x:(r7+$4e),a             ; DRV
         tst     a
         bne     ch_live
-        move    x:(r6+$1),a             ; FOLD
+        move    x:(r7+$4f),a             ; FOLD
         tst     a
         bne     ch_live
         move    x:(r7+$24),a            ; the tilt's t/2 (TONE 64 = 0)
         tst     a
         bne     ch_live
-        move    x:(r6+$3),a             ; COMP
+        move    x:(r7+$51),a             ; COMP
         tst     a
         bne     ch_live
         move    x:(r7+$2b),a            ; side gain/2: 64 -> exactly 0.5
@@ -360,23 +397,27 @@ ch_live:
         move    #$60,n5
         move    (r5)+n5
         move    #>$ffffff,m5
+; ---- THE RAMPS (26 Sep 2026): gq trim t a makeup m are RUN values in the
+; ring, stepped once per sample by the loop's head (ch_rset), steps at
+; $15..$17 and $34..$36
         move    r5,r3
-        move    x:(r7+$21),x0           ; gq (FOLD L)
-        move    x0,x:(r3)+
-        move    x:(r7+$1d),x0           ; trim/2
-        move    x0,x:(r3)+
-        move    x:(r7+$21),x0           ; gq (FOLD R)
-        move    x0,x:(r3)+
-        move    x:(r7+$1d),x0
-        move    x0,x:(r3)+
+        move    r7,r6                   ; (the page is read: r6 is free)
+        move    #$15,n6
+        move    (r6)+n6
+        move    x:(r7+$21),y1           ; gq (FOLD L)
+        bsr     ch_rset
+        move    b,x1
+        move    x:(r7+$1d),y1           ; trim/2
+        bsr     ch_rset
+        move    x1,x:(r3)+              ; gq (FOLD R), the same run
+        move    b,x:(r3)+               ; trim/2 (R)
         move    x:(r7+$4d),x0           ; DRV 0: skip the saturator
         move    x0,x:(r3)+
         move    x:(r7+$29),x0           ; sat mode
         move    x0,x:(r3)+
-        move    x:(r7+$24),x0           ; t/2 (TONE L)
-        move    x0,x:(r3)+
-        move    x:(r7+$24),x0           ; t/2 (TONE R)
-        move    x0,x:(r3)+
+        move    x:(r7+$24),y1           ; t/2 (TONE L)
+        bsr     ch_rset
+        move    b,x:(r3)+               ; t/2 (TONE R), the same run
         move    #$0f,m5                 ; sixteen words, one turn per sample
         move    x:(r7+$26),a            ; COMP; off: the sample steps over its
         move    a,x:(r3)+               ; five words (n5 = 5 at ch_capd)
@@ -391,21 +432,26 @@ ch_live:
         move    x0,x:(r3)+
         move    x:(r7+$22),x0           ; K/4
         move    x0,x:(r3)+
-        move    x:(r7+$28),x0           ; the dip's a
-        move    x0,x:(r3)+
-        move    x:(r7+$27),x0           ; makeup/4
-        move    x0,x:(r3)+
+        move    r7,r6
+        move    #$34,n6
+        move    (r6)+n6
+        move    x:(r7+$28),y1           ; the dip's a
+        bsr     ch_rset
+        move    x:(r7+$27),y1           ; makeup/4
+        bsr     ch_rset
         move    x:(r7+$2b),x0           ; side gain / 2
         move    x0,x:(r3)+
-        move    x:(r7+$20),x0           ; m
-        move    x0,x:(r3)+
+        move    x:(r7+$20),y1           ; m
+        bsr     ch_rset
+        move    #>$1,x0
+        move    x0,x:(r7+$55)
 ; DRV's drive into the curve: the saturator's input is x*G with G = 1 + 3d
 ; (DRV 127 = +12 dB) and its output is scaled back per mode -- INFL by 1/G
 ; (unity small signal), TUBE by (1+d)/G, TAPE by 1 (TapeHead's own trim
 ; holds its small signal at unity and its smoothstep compresses the rest;
 ; with 1/G on top a loop sat 18 dB under dry at DRV 127). G/8 at $32, the
 ; output scale at $33 (the ring words around each callee).
-        move    x:(r6+$0),a             ; d = DRV/128
+        move    x:(r7+$4e),a             ; d = DRV/128
         move    a,x0
         move    #>$300000,y1            ; 0.375
         mpy     x0,y1,a
@@ -426,7 +472,7 @@ ch_live:
         cmp     #>$1,b
         bne     ch_gdone                ; INFL: 1/G
         move    a,x0                    ; TUBE: (1/G)(1+d)
-        move    x:(r6+$0),a
+        move    x:(r7+$4e),a
         asr     #$1,a,a
         add     #>$400000,a             ; (1 + d)/2
         move    a,y1
@@ -533,6 +579,40 @@ ch_rinfl:
         move    #$8,n6                  ; 16 - 8
 ch_rdone:
         do      n7,>ch_end
+; ---- the ramps' step: r5 walks the ring once (one turn per sample), r3
+; the steps ($15..$17, then $34..$36)
+        lua     (r7+$15),r3
+        move    x:(r3)+,x0
+        move    x:(r5),a
+        add     x0,a    x:(r3)+,x0
+        move    a,x:(r5)+               ; gq L
+        move    x:(r5),b
+        add     x0,b    x:(r3)+,x0
+        move    b,x:(r5)+               ; trim/2 L
+        move    a,x:(r5)+               ; gq R
+        move    b,x:(r5)+               ; trim/2 R
+        move    (r5)+
+        move    (r5)+
+        move    x:(r5),a
+        add     x0,a
+        move    a,x:(r5)+               ; t/2 L
+        move    a,x:(r5)+               ; t/2 R
+        lua     (r7+$34),r3
+        move    (r5)+
+        move    (r5)+
+        move    (r5)+
+        move    (r5)+
+        move    x:(r3)+,x0
+        move    x:(r5),a
+        add     x0,a    x:(r3)+,x0
+        move    a,x:(r5)+               ; the dip's a
+        move    x:(r5),a
+        add     x0,a    x:(r3)+,x0
+        move    a,x:(r5)+               ; makeup/4
+        move    (r5)+
+        move    x:(r5),a
+        add     x0,a
+        move    a,x:(r5)+               ; m, and r5 is back at the ring's head
 ; ---- FOLD: WarpFold's wrap-and-reflect, both channels --------------------
         move    x:(r0),x0
         move    x:(r5)+,y1              ; gq = gain/64
@@ -867,6 +947,32 @@ ch_end:
 ; BYPASS: frames untouched -- nothing to do at all (Spectrum's shape)
 ; ===========================================================================
 ch_bypass:
+        rts
+
+; ---------------------------------------------------------------------------
+; ch_rset -- one ramped ring word, per block (26 Sep 2026). The word is a
+; RUN value the loop's head steps once per sample, 1/16 of the way from
+; where the last block ended to this block's target (Spectrum's cutoff
+; ramp form); a step that rounds to 0 puts it on the target, and the first
+; block after init ($55 = 0) starts it there.
+; In: y1 = the target, r3 -> the word, r6 -> its step. Out: b = the run
+; value, r3 and r6 each one on. Clobbers a, x0, y0.
+; ---------------------------------------------------------------------------
+ch_rset:
+        move    x:(r7+$55),b
+        tst     b
+        move    x:(r3),b                ; the run value (moves keep the flags)
+        teq     y1,b                    ; the first block: at the target
+        move    b,x0
+        move    y1,a
+        sub     x0,a
+        asr     #$4,a,a                 ; the step per sample
+        move    a,y0                    ; a0 holds the shifted-out bits: a
+        move    y0,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        teq     y1,b                    ; a step of 0: at the target
+        move    a,x:(r6)+
+        move    b,x:(r3)+
         rts
 
 ; ---------------------------------------------------------------------------

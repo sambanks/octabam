@@ -31,6 +31,14 @@ flashed image was built from.
   `rig-kits` with the SCENES P2 KITS bridge over Octakit's editor
   wrappers. Refused beside MIDI SCENES (same Part bytes). Port only.
 
+- Knob click census (26 Sep 2026, `make verify-knobs`, in `make check`):
+  every continuous knob of the DSP modules moved mid-render; 55 of 134
+  cases stepped per block on main, 0 after. Fixed with per-sample ramps
+  (Character, Spectrum, Modulation, BusDelay, SEND, BusVerb DEL/DIFF/TIME).
+  Known: BusVerb SIZE still steps (integer tank taps). Worst core priced
+  2,792 -> 2,836 of 3,120; payload A FREE 415 -> 35 words. Spectrum's
+  ENV/LFO-driven cutoff now moves through the same 1/128-per-sample ramp.
+
 - `usb-audio` (26 Sep 2026) follows `bamsep26` again: TEMPO BUS added and
   the host pages draw DEL/REV (`host_slots`) where it had all twelve knobs.
 
