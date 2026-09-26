@@ -31,7 +31,8 @@ REMIX = Remix(
     doc="The rig: bus (BusVerb on T5 + BusDelay on T1) + three stations.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "CC MAP", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS"),
+             "TEMPO SYNC", "CC MAP", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
+             "SCENES P2"),
     fallback="SEND",
     # 22 Sep 2026: the engines have NO chooser row (hidden) and run on their
     # host slots only (BusDelay on T1, BusVerb on T5; the HOSTGUARD body: a

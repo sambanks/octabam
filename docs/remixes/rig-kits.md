@@ -15,23 +15,5 @@
 - **CC MAP** (Sam Banks) — MIDI CC 62–67 reach the FX2 effect's page-2 knobs (slots 6–11) and CC 68–73 the FX1 effect's; stock reaches only page 1 over MIDI. One ColdFire cave. Confirmed on hardware 13 Sep 2026.
 - **OCTAKIT** (Em, [ems-octakit](https://github.com/emuyia/ems-octakit) ot-26914) — 256 Kits per Project in place of 64 bank-tied Parts. MKII: PART opens LOAD KIT, FUNC+PART opens SAVE KIT; MKI: FUNC+MIDI opens LOAD KIT, FUNC+BANK opens SAVE KIT. FUNC+CUE reloads the assigned Kit; Kits have 7-character names; the LOAD/SAVE KIT menus copy/paste/clear/undo, LOAD KIT > UNDO KIT reloads the last loaded Kit; FUNC+PASTE+PART (MKI: FUNC+PASTE+MIDI) on a pasted Pattern also saves its Kit to the next free slot; PTN+FUNC+RIGHT saves the current Kit, copies it and the Pattern to the next free slots and loads the pair; PTN+FUNC+TRIG copies/pastes/clears/undoes inactive Patterns (BANK+TRIG, then BANK+FUNC+TRIG for other Banks). Costs 3.6 % of the flex pool (18.4 s at 16-bit). Old projects migrate their Parts into the first 64 Kit slots on load. A 154,718-byte runtime in DRAM, carried by octabam's loader.
 - **SCENES KITS** (Sam Banks) — the bridge that lets CC MAP and Octakit share the MIDI CC dispatch entry: CCs 62–73 CC MAP's, then Octakit's, then stock's. Nothing of its own to use.
-
-FX2 chooser: BusVerb, BusDelay, Send, DELAY. FX1 chooser: NONE, Spectrum, Character, Modulation. The stations are FX1-only and default to a bit-exact passthrough, so a saved part that chose FILTER, LO-FI or CHORUS still plays.
-
-## Status
-
-Builds and passes every gate. Not flashed. Unmeasured: whether the part bytes `stamp-defaults` writes survive Octakit's Parts→Kits migration.
-
-## Build
-
-```bash
-make image REMIX=rig-kits BUILD=1     # -> out/OCTATRACK_OCTABAM1.bin
-```
-
-[BUILDING.md](BUILDING.md) is the walk-through from a fresh machine to a flashed unit. `make check REMIX=rig-kits` runs every gate first.
-
-## Before you flash
-
-- **Octakit migrates Parts into Kits on project load.** Back up projects first; going back to stock can lose Kit data.
-- After flashing, stamp every project you will play before pressing play: `python3 tools/hw/ot_project.py stamp-defaults <project> rig-kits`. A part saved under another layout feeds the stations its old bytes and the sequencer stalls.
-- Judge BusVerb on track 5 (payload A serves tracks 5–8), BusDelay on track 1.
+- **SCENES P2** (Sam Banks) — scene locks and the crossfader on page 2 of FX1 and FX2: hold a scene and turn a page-2 knob to lock it in that scene (FUNC + turn removes the lock); the fader lerps locked page-2 slots into the DSP frame every frame, a select snapping at the midpoint; locks follow scene copy / paste / clear / undo and travel in the Part (a 144-byte pool at `+0x90522`, midisc's offset, so the ledger refuses SCENES P2 beside MIDI SCENES). One DRAM unit, nine detours. Measured under the port (`verify_scenesp2`); not on hardware (26 Sep 2026, `modules/scenes-p2/README.md`).
+- **SCENES P2 KITS** (Sam Banks) — the bridge that lets SCENES P2 and Octakit share the two page-2 editor entries: a held-scene turn writes the lock pool and never enters her wrapper; every other turn reaches her wrapper whole. Nothing of its own to use.

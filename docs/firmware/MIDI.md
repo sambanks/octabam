@@ -711,6 +711,13 @@ Two spare bytes per track could host **one** extra halfword, not three, and
 the DSP-side companion packing would still be lost at every intermediate
 position. Not worth it.
 
+**Done another way (26 Sep 2026, `modules/scenes-p2`):** the page-2 locks
+live in a 144-byte pool inside the Part window (`+0x90522`, 3 bytes a lock),
+and one detour at the frame builder's join after the morph (`0x4000cf40`)
+lerps them byte-wise into the voice record's page-2 halfwords with the same
+weight table, a select snapping at the midpoint. None of the five stock
+extents above changes.
+
 The tempo cave (`modules/tempo-sync/tempo_cave.s`, hooked at `0x40004d40`,
 `a2` = this track's record) publishes `0x460d16c8` + 1 at `+0x28` → `r6+$8`
 every frame for the two servers; both the hardware fader and CC 48 feed
