@@ -22,12 +22,20 @@ hides the row.
   and ×12 put it on the rails.
 - **SEM / BP** — a driven Oberheim SEM zero-delay SVF (Zavalishin's
   trapezoidal form, audiojs/filter oberheim, MIT); the cutoff ramps per
-  sample across the block. SEM carries SHPE (page 2, slot 7; `---` in every
-  other mode): the SEM's mode pot, 0 lowpass, 64 notch (LP + HP), 127
-  highpass, as weights on the SVF's taps computed once per block (kHP =
-  min(1, k/64), kLP =
-  min(1, (127 − k)/63), both exactly 1 at 64), nothing in the loop. BP is its
-  own MODE. (23 Sep 2026; HP had been a sixth MODE for a day.)
+  sample, 1/128 of the way to the block's cutoff per sample. SEM carries
+  SHPE (page 2, slot 7; `---` in every other mode): the SEM's mode pot, 0
+  lowpass, 64 notch (LP + HP), 127 highpass, as weights on the SVF's taps
+  (kHP = min(1, k/64), kLP = min(1, (127 − k)/63), both exactly 1 at 64).
+  BP is its own MODE. (23 Sep 2026; HP had been a sixth MODE for a day.)
+- **Ramps** (26 Sep 2026): every coefficient a knob moves (the SVF's c4 d
+  kLP kHP, LADR's k/4 d/2 M/4, VOWL's b0 m1 a2 per formant and vg, ISO's
+  gn lpBase trim) is a run value the loop steps once per sample, 1/128 of
+  the way to the block's target (`fs_rset`, `fs_r3`); a step that rounds to
+  0 lands it on the target, and the first block of a mode starts it there.
+  VOWL's morph fraction is 21 bits (5 until then). `make verify-knobs`
+  measures every knob moved mid-render; a knob at rest renders as before,
+  except the cutoff under ENV or the LFO, which now follows them through
+  the 1/128 ramp.
 - **ISO** — an isolator (Airwindows Capacitor2; `capacitor2_ref.py` is the
   float reference). In ISO FREQ is LOW and RES is COLR, the dielectric colour.
 - **VOWL** — a three-formant bank (constant-peak-gain resonators) morphed
