@@ -1,6 +1,6 @@
 """recfix -- the recorder loop click fix, and nothing else.
 
-Four ColdFire caves, no DSP code of ours, the 14 stock effects listed so
+Five ColdFire caves, no DSP code of ours, the 14 stock effects listed so
 the chooser is stock's:
 
   FLEX SEEK BIND      a same-buffer re-bind is a SEEK for the DSP, not a new
@@ -14,6 +14,9 @@ the chooser is stock's:
                       recording repeats the last sample instead of reading
                       zero (sound-on-sound, SRC3 = the track, at tempos
                       whose bar is not a whole number of samples)
+  RLEN PLEN           RLEN value PLEN (past MAX): one loop of the track's
+                      pattern on its own scale, so TRIG ONE + QREC PLEN
+                      records the next pass and stops
 
 docs/firmware/RECORDER_CLICK.md has the reproduction. Measured on hardware
 as OCTABAM83 (the first three plus the bus) and OCTABAM84 (the first
@@ -28,7 +31,7 @@ REMIX = Remix(
     doc="The recorder loop click: the four ColdFire fixes beside the stock FX2 "
         "chooser, no DSP code of our own.",
     modules=("FLEX SEEK BIND", "FLEX SEEK BIND CTR", "RECORDER SPACING",
-             "RECORDER HOLD",
+             "RECORDER HOLD", "RLEN PLEN",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),

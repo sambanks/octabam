@@ -7,6 +7,13 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- RLEN PLEN in `recfix` (26 Sep 2026): RLEN value 65, drawn PLEN, past
+  MAX: one loop of the track's pattern on its own scale, so TRIG ONE +
+  QREC PLEN records the next pass and stops (RLEN counts master-clock
+  16ths and stops at 64 = four bars on a 1/4X track). One cave on the arm
+  converter, the setup screen draws PLEN, the part validator's hard-coded
+  64 raised to 65. Saved parts keep their meaning. Port-gated only.
+
 - `bottleservice` (26 Sep 2026): the rig + USB MIDI + USB AUDIO + Octakit
   (SCENES KITS bridged). TEMPO BUS and MODE DEFAULTS push Octakit's token
   above the page-1 writer's arguments: her rewrite of the writer's dirty

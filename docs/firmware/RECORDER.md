@@ -156,6 +156,40 @@ pool cursor, `0x461053a8/e8`):
   stop, and whether the grown buffer is released on a fixed RLEN or a
   project reload.
 
+### 2b. RLEN PLEN (`modules/rlen-plen`, port, 26 Sep 2026) ✅
+
+The fixed-length path, read for the module: the per-frame converter
+`0x40006da6..0x40006e12` runs while the record's length word (`fp@(32)`)
+is zero, `raw + 1 ≤ 64` takes the tempo product, anything above takes the
+MAX branch; the end of a fixed-length recording is posted at `0x40005e8e`
+(LIMIT `0x46c7fe24[track]` := the length), which a MAX recording never
+does. The stored byte is validated on every bank load at `0x40002c6e`
+with a hard-coded 64 (the file parser `0x400165dc` had stored 65; the
+validator wrote 64 over it), and the setup editor clamps with the
+descriptor's `min + count − 1` (`0x4002efd2`). The RECORDING SETUP screen
+pushes the RLEN formatter itself (`pea 0x4002f224` at `0x4002fb12`; the
+descriptor's slot-2 formatter word is 0). The sequencer's pattern length
+and scale, from its step function `0x4009da20`: bank `0x800065bd`, pattern
+`0x800065be`, record `0x400eb034 + p × 0x8ed8 + b × 0x9b340` (scale at +0,
+length at −1, a flag at +1 selecting the track record `0x400e21e0 + t ×
+0x91a + the same offset`, length +0x50, scale +0x51), ticks per step from
+`0x400aba50` = `3 4 6 8 12 24 48`; the blob pointer `[0x46c82456]` read
+`0x400e21e0`.
+
+Measured with the module (recfix image, one REC1 + PLAY trig on step 1,
+RLEN raw 65, DYNAMIC on), watches as §2a:
+
+| fixture | length | evidence |
+|---|---|---|
+| 64 steps 1/4X, 120 | 1,411,200 = 16 bars | end post at `0x40005e8e` each pass; cave rejoin with d4 = 0x158880 twice per frame |
+| 48 steps 1/2X, 128 | 496,125 = 6 bars, 3 passes | end post each pass |
+| 64 steps 1/4X, 120, program change to a trig-less A02 after start | 1,411,200, then **stops** | END froze at 1,411,200 (88,201 writes in 100,000 frames), one end post, no re-arm |
+| flag +1 set, T1 32 steps 1/8X, pattern pair 16 / 1X, 120 | the cave read the track pair (no end post before the next arm at 88,200) | the sequencer restarted T1 every 16 master steps — PER TRACK mode's master length is not modelled by the module; open |
+
+On stock and on the module image without the validator pokes the byte
+published to `0x80000cf4` was 64 and the MAX branch ran (`d0 = 0x41` at
+`0x40006db2`).
+
 ## 3. The primer and the spreadsheet (Bryan T, 6 Sep 2026)
 
 *Sound-on-Sound Looping with the Octatrack* (PDF) and
