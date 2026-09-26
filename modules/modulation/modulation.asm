@@ -127,6 +127,8 @@ proc:
         move    y1,a
         sub     x0,a
         asr     #$5,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
         add     x0,a
         cmp     x0,a                    ; no progress: at the knob
         teq     y1,a
@@ -155,6 +157,8 @@ proc:
         move    y1,a
         sub     x0,a
         asr     #$7,a,a                 ; 1/128 per block
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
         add     x0,a
         cmp     x0,a
         teq     y1,a
@@ -1306,7 +1310,7 @@ mo_dry:
 
 ; ---------------------------------------------------------------------------
 ; mo_mset -- MIX's run value ($22) into the stream at r1 and its step after
-; it (mo_rset). Out: r1 two on. Clobbers a, b, x0, y1, r3.
+; it (mo_rset). Out: r1 two on. Clobbers a, b, x0, x1, y1, r3.
 ; ---------------------------------------------------------------------------
 mo_mset:
         move    x:(r7+$22),x0
@@ -1324,7 +1328,7 @@ mo_mset:
 ; them); a step that rounds to 0 puts the word on the target, and the first
 ; block after init or a MODE change ($43 = 0) starts it there.
 ; In: y1 = the target, r1 -> the word, r3 -> its step. Out: r1, r3 each one
-; on. Clobbers a, b, x0.
+; on. Clobbers a, b, x0, x1.
 ; ---------------------------------------------------------------------------
 mo_rset:
         move    x:(r7+$43),b
@@ -1335,6 +1339,9 @@ mo_rset:
         move    y1,a
         sub     x0,a
         asr     #$a,a,a                 ; the step per sample
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         teq     y1,b                    ; a step of 0: at the target
         move    a,x:(r3)+
         move    b,x:(r1)+

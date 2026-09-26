@@ -139,8 +139,9 @@ init:
         move    a,x:(r7+$6d)            ; DIFF's g
         move    a,x:(r7+$70)            ; WET
         move    a,y:>$09f3              ; SIZE's f (the glide state)
-        move    a,y:>$09f4              ; DEL's ramp (the per-sample level)
-        rts
+        move    #>$ffffff,a
+        move    a,y:>$09f4              ; DEL's ramp (the per-sample level): -1,
+        rts                             ; so it starts AT the knob (SEND's seed)
 
 proc:
 ; ---- HOSTGUARD: a remix that hides or locks this engine has the build put
@@ -440,9 +441,19 @@ bus_mine:
 ; before the tank: T5's own wet never reaches the delay.
         move    x:(r6),a                ; DEL (slot 0), the knob field
         and     #>$7f0000,a
-        move    y:>$09f4,b              ; the ramp's running value
-        sub     b,a
-        asr     #$4,a,a                 ; the change, spread over 16 frames
+        move    a,y1
+        move    y:>$09f4,b              ; the ramp's running value: -1 on the
+        tst     b                       ; first block, so it starts AT the knob
+        tmi     y1,b
+        move    b,x0
+        sub     x0,a                    ; 1/64 of the gap per sample (SEND's
+        asr     #$6,a,a                 ; law since 26 Sep 2026)
+        move    a,y0                    ; a0 holds the shifted-out bits: a
+        move    y0,a                    ; clean reload, so Z reads a1 alone
+        tst     a
+        move    x0,b
+        teq     y1,b                    ; a step of 0: on the knob
+        move    b,y:>$09f4
         move    a,y:>$09f5              ; ... its per-sample step
         move    #>$901,a                ; the AUX accumulator
         add     x1,a                    ; + this block's write offset
@@ -855,6 +866,8 @@ mdcpy:
         move    b,x0
         sub     x0,a
         asr     #$5,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
         add     x0,a
         cmp     x0,a                    ; no progress: at the knob
         teq     y1,a

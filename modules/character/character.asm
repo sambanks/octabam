@@ -140,6 +140,8 @@ proc:
         move    y1,a
         sub     x0,a
         asr     #$7,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
         add     x0,a
         cmp     x0,a                    ; no progress: at the knob
         teq     y1,a
@@ -954,7 +956,7 @@ ch_bypass:
 ; ramp form); a step that rounds to 0 puts it on the target, and the first
 ; block after init ($55 = 0) starts it there.
 ; In: y1 = the target, r3 -> the word, r6 -> its step. Out: b = the run
-; value, r3 and r6 each one on. Clobbers a, x0.
+; value, r3 and r6 each one on. Clobbers a, x0, y0.
 ; ---------------------------------------------------------------------------
 ch_rset:
         move    x:(r7+$55),b
@@ -965,6 +967,9 @@ ch_rset:
         move    y1,a
         sub     x0,a
         asr     #$4,a,a                 ; the step per sample
+        move    a,y0                    ; a0 holds the shifted-out bits: a
+        move    y0,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         teq     y1,b                    ; a step of 0: at the target
         move    a,x:(r6)+
         move    b,x:(r3)+

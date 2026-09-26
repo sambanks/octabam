@@ -546,6 +546,9 @@ dwarmq:                                                                    ; @B
         do      #56,>dwarmc
         move    b,x:(r5)+
 dwarmc:
+        move    #>$ffffff,x0            ; the SEND and REV level ramps (raw $19,
+        move    x0,x:(r7-$30)           ; $2b): -1, so each starts AT its knob
+        move    x0,x:(r7-$1e)           ; on the first block after the warm-up
 ; ---- THE GRAIN COUNT IS A BUILD-TIME LEVER (4 Sep 2026) -------------------
 ; Four grains per line is what this source assembles to. A remix that
 ; declares `grains=2` (schema.Remix) has build_bus.py substitute three
@@ -781,6 +784,9 @@ stpdn:
         move    x:(r7+$2a),b            ; the run value
         sub     b,a
         asr     #$4,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         teq     y1,b                    ; a step of 0: on the glide
         move    b,x:(r7+$2a)
         move    a,x:(r7-$13)            ; its step per sample
@@ -798,6 +804,9 @@ stpdn:
         move    x:(r7+$29),b
         sub     b,a
         asr     #$4,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         teq     y1,b
         move    b,x:(r7+$29)
         move    a,x:(r7-$12)
@@ -813,6 +822,9 @@ stpdn:
         move    x:(r7+$2b),b
         sub     b,a
         asr     #$4,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         teq     y1,b
         move    b,x:(r7+$2b)
         move    a,x:(r7-$1a)            ; +step for PING, -step for 1 - PING
@@ -863,9 +875,15 @@ slewdn:
         and     #>$7f0000,a
         move    a,x:(r7+$2d)            ; SEND, this block
         move    a,y1
-        move    x:(r7-$30),x0           ; the ramp's running value ($19)
+        move    x:(r7-$30),b            ; the ramp's running value ($19): -1
+        tst     b                       ; from the warm-up, so the first block
+        tmi     y1,b                    ; starts AT the knob (SEND's seed)
+        move    b,x0
         sub     x0,a                    ; 1/64 of the gap per sample ($1b):
         asr     #$6,a,a                 ; the level stepped once per block
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         move    x0,b
         teq     y1,b                    ; (a step of 0: on the knob)
         move    b,x:(r7-$30)
@@ -890,9 +908,15 @@ slewdn:
         and     #>$7f0000,a             ; knob field only
         move    a,x:(r7-$20)            ; REV, this block
         move    a,y1
-        move    x:(r7-$1e),x0           ; the ramp's running value
+        move    x:(r7-$1e),b            ; the ramp's running value: -1 from
+        tst     b                       ; the warm-up, so the first block
+        tmi     y1,b                    ; starts AT the knob (SEND's seed)
+        move    b,x0
         sub     x0,a                    ; the gap, 1/64 per sample
         asr     #$6,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         move    x0,b
         teq     y1,b                    ; a step of 0: on the knob
         move    b,x:(r7-$1e)
@@ -1234,6 +1258,9 @@ gvrdone:
         move    x:(r7-$1b),x0           ; the readers' rstep is a run value (raw
         sub     x0,a                    ; $2e) stepped 1/16 of the gap per
         asr     #$4,a,a                 ; sample (raw $30, 26 Sep 2026): a PTCH
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         move    x0,b                    ; jump was a speed step at a block edge;
         teq     y1,b                    ; a step of 0 lands it on the target
         move    b,x:(r7-$1b)
@@ -1260,6 +1287,9 @@ gvrdone:
         move    x:(r7+$11),x0           ; the loop's run value (raw $5a) steps
         sub     x0,b                    ; 1/16 of the gap per sample (raw $5b)
         asr     #$4,b,b
+        move    b,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,b                    ; clean reload, so Z reads a1 alone
+        tst     b
         move    x0,a
         teq     y1,a                    ; a step of 0: on the target
         move    a,x:(r7+$11)

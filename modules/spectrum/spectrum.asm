@@ -214,6 +214,9 @@ proc:
         move    b,x0
         sub     x0,a
         asr     #$7,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         teq     y1,b                    ; a step of 0: on g2
         move    b,x:(r7+$2e)
         move    a,x:(r7+$2f)            ; dg
@@ -503,6 +506,9 @@ fs_mladr:
         move    b,x0
         sub     x0,a
         asr     #$7,a,a                 ; 1/128 per sample (g2run's law)
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         teq     y1,b                    ; a step of 0: on G
         move    b,x:(r7+$16)
         move    a,x:(r7+$15)            ; dG
@@ -1271,7 +1277,7 @@ fs_r3:
 ; the target. The first block of a mode ($2b = 0) starts the word AT the
 ; target, so a knob at rest renders exactly as the rebuilt stream did.
 ; In: y1 = the target, r1 -> the word, r3 -> its step. Out: r1, r3 each one
-; on. Clobbers a, b, x0.
+; on. Clobbers a, b, x0, x1.
 ; ---------------------------------------------------------------------------
 fs_rset:
         move    x:(r7+$2b),b
@@ -1282,6 +1288,9 @@ fs_rset:
         move    y1,a
         sub     x0,a
         asr     #$7,a,a                 ; the step per sample
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         teq     y1,b                    ; a step of 0: at the target
         move    a,x:(r3)+
         move    b,x:(r1)+

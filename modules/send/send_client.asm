@@ -104,11 +104,11 @@ init:
 ; seed is the rotation as read, before or after a flip, so the label runs
 ; exact or one behind for the life of the instance; both are inside the
 ; eight buffers' margin (docs/effects/XBUS.md).
-        clr     a
-        move    a,x:(r7+$15)            ; both level ramps start from 0
-        move    a,x:(r7+$16)            ; (r7 = this slot's block at init)
-        move    a,x:(r7+$17)
-        move    a,x:(r7+$18)
+        move    #>$ffffff,a             ; -1: both level ramps start AT the knob
+        move    a,x:(r7+$15)            ; on their first block (a level is never
+        move    a,x:(r7+$16)            ; negative; the steps are rewritten
+        move    a,x:(r7+$17)            ; before the loop reads them)
+        move    a,x:(r7+$18)            ; (r7 = this slot's block at init)
 ; ROTINIT
         rts
 
@@ -324,19 +324,31 @@ cnt_done:
 ; print); 1/16 per sample until 26 Sep 2026 left a jump's one-block ramp
 ; at the edge (tools/verify/verify_knob_clicks.py).
         move    x:(r6),y1                ; DEL level: the target
-        move    x:(r7+$15),x0            ; the ramp's current value
+        move    x:(r7+$15),b             ; the ramp's current value: -1 (init)
+        tst     b                        ; on the first block, so it starts
+        tmi     y1,b                     ; AT the knob (26 Sep 2026)
+        move    b,x0
         move    y1,a
         sub     x0,a
         asr     #$6,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         move    x0,b
         teq     y1,b                     ; a step of 0: on the target
         move    b,x:(r7+$15)
         move    a,x:(r7+$16)             ; the per-sample step
         move    x:(r6+$1),y1             ; REV level, ramped the same way
-        move    x:(r7+$17),x0
+        move    x:(r7+$17),b
+        tst     b
+        tmi     y1,b
+        move    b,x0
         move    y1,a
         sub     x0,a
         asr     #$6,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so Z reads a1 alone
+        tst     a
         move    x0,b
         teq     y1,b
         move    b,x:(r7+$17)
