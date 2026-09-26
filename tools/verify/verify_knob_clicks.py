@@ -59,7 +59,7 @@ import verify_onebus as vo  # noqa: E402
 from remix import registry  # noqa: E402
 
 SCRATCH = ROOT / "out/dsp/_knobs"
-FRAMES = send_probe.FRAMES
+FRAMES = 16                 # the unit's block (docs/remixer/HARNESS.md "Blocks")
 PAD = send_probe.WARMUP_BLOCKS * FRAMES
 J1, J2, S0, END = 1500, 2000, 2500, 3000       # blocks after PAD
 LO, HI = 20, 110
@@ -227,6 +227,13 @@ def render(mems, case, at, sched, tag):
     return res
 
 
+def tone_file(path, blocks, amp=0.3):
+    """the steady tone, from sample PAD on"""
+    i = np.arange(blocks * FRAMES)
+    v = np.where(i >= PAD, amp * np.sin(2 * math.pi * vo.TONE_HZ / vo.SR * (i - PAD)), 0.0)
+    path.write_bytes((v * 8388607).astype("<i4").tobytes())
+
+
 def d3(x):
     return x[3:] - 3 * x[2:-1] + 3 * x[1:-2] - x[:-3]
 
@@ -325,7 +332,7 @@ def main():
     ap.add_argument("--report", help="write the table (markdown) here")
     a = ap.parse_args()
     mems = ({0: SCRATCH / "spec_A.mem", 1: SCRATCH / "spec_B.mem"} if a.no_build else build())
-    vo.tone_file(SCRATCH / "tone.raw", END + 2 + send_probe.WARMUP_BLOCKS, amp=0.3)
+    tone_file(SCRATCH / "tone.raw", END + 2 + send_probe.WARMUP_BLOCKS)
     ok = self_test()
     todo = cases(set(a.only) if a.only else None)
     with cf.ThreadPoolExecutor(max_workers=8) as ex:

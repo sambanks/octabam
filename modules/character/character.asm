@@ -120,7 +120,7 @@ proc:
         tst     a
         bne     ch_end
 ; ---- KNOB GLIDES (26 Sep 2026): page-1 slots 0..5 (DRV FOLD WDTH COMP
-; TONE MIX) move 1/32 of the way to the knob per block into $4e..$53 and
+; TONE MIX) move 1/128 of the way to the knob per block into $4e..$53 and
 ; snap to it when the step rounds to nothing; the decode reads those. The
 ; first block after init ($54 = 0) starts them AT the knobs, so a knob at
 ; rest renders as before (tools/verify/verify_knob_clicks.py).
@@ -139,7 +139,7 @@ proc:
         move    a,x0
         move    y1,a
         sub     x0,a
-        asr     #$5,a,a
+        asr     #$7,a,a
         add     x0,a
         cmp     x0,a                    ; no progress: at the knob
         teq     y1,a
