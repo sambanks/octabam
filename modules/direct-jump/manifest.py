@@ -5,7 +5,7 @@ default: the value is an existing, unused position of an existing project
 setting, so a project that never selects it plays exactly as stock.
 
 Source: `upstream/` is Tim Hastie's repository (timhastie/octatrick-modules,
-submodule, pinned to v9 = OCTATRICK9). The declaration is
+submodule, pinned to v9.1 = OCTATRICK9 + the runtime page clone, hardware-confirmed as OCTATRIK10 on an MKI). The declaration is
 `upstream/direct-jump/manifest.py`: one floating ROM cave (`direct_jump.s`,
 ratified bytes re-linked and compared every build) on the pattern-queue
 setter and the tick handler, four fixed pokes. Its source paths are derived from its own directory, so

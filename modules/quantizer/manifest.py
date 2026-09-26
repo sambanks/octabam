@@ -5,7 +5,7 @@ chromatic keys 303-style legato; polyphonic chromatic keys on a synth track
 whose VOIC is 2..4.
 
 Source: `upstream/` is Tim Hastie's repository (timhastie/octatrick-modules,
-submodule, pinned to v9 = OCTATRICK9). The declaration is
+submodule, pinned to v9.1 = OCTATRICK9 + the runtime page clone, hardware-confirmed as OCTATRIK10 on an MKI). The declaration is
 `upstream/quantizer/manifest.py`: four ROM units (`glide.s`, `keys.s`,
 `quantizer.s`, `scale.s`; the glide byte, the key trampoline and the scale
 trampoline at pinned addresses the synth's engine reads), detours, pokes

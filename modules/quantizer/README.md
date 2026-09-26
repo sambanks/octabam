@@ -2,7 +2,7 @@
 
 A SCALE row and a GLIDE row in PROJECT > CONTROL > SEQUENCER, built from
 [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules)
-(submodule `upstream/`, pinned to `v9`). `Kind.CF_PATCH`: four ROM units
+(submodule `upstream/`, pinned to `v9.1`). `Kind.CF_PATCH`: four ROM units
 (`glide.s`, `keys.s`, `quantizer.s`, `scale.s`), detours, pokes and a
 `TableGrow` for the menu rows. No DSP code, no FX2 row.
 
@@ -20,7 +20,7 @@ description, with what was measured and what was inferred.
 
 ## How it is built
 
-Source: `upstream/` is Tim's repository (submodule, pinned to `v9`).
+Source: `upstream/` is Tim's repository (submodule, pinned to `v9.1`).
 Nothing inside `upstream/` is edited here. The manifest here
 (`manifest.py`) executes `upstream/quantizer/manifest.py` from the source on
 disk and re-exports its `MODULE`; that manifest derives its source paths

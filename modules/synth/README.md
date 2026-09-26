@@ -2,10 +2,11 @@
 
 A two-operator FM synth machine for FLEX tracks, built from
 [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules)
-(submodule `upstream/`, pinned to `v9`). `Kind.CF_PATCH`: the voice engine as
-a DRAM unit (`poly.s`), the page as a pinned ROM cave (`page.s`), a
-`SymbolRef` on the kind table's FLEX renderer entry, detours and pokes. No
-DSP code, no FX2 row.
+(submodule `upstream/`, pinned to `v9.1`). `Kind.CF_PATCH`: the voice engine as
+a DRAM unit (`poly.s`), the page code as a pinned ROM cave (`page.s`; the
+page descriptor itself is cloned from the unit's own ROM at first use, so no
+stock bytes ship in the repo), a `SymbolRef` on the kind table's FLEX
+renderer entry, detours and pokes. No DSP code, no FX2 row.
 
 ## What it does
 
@@ -19,7 +20,7 @@ five phases, the voice model, what was measured and what was inferred).
 
 ## How it is built
 
-Source: `upstream/` is Tim's repository (submodule, pinned to `v9`).
+Source: `upstream/` is Tim's repository (submodule, pinned to `v9.1`).
 Nothing inside `upstream/` is edited here. The manifest here
 (`manifest.py`) executes `upstream/synth/manifest.py` from the source on
 disk and re-exports its `MODULE`; that manifest derives its source paths

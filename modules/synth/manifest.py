@@ -5,7 +5,7 @@ own PLAYBACK page (PTCH RATO INDX RATE FDBK DEC) and, on the LFO page, VOIC
 snapped onto SCALE QUANTIZER's scale).
 
 Source: `upstream/` is Tim Hastie's repository (timhastie/octatrick-modules,
-submodule, pinned to v9 = OCTATRICK9). The declaration is
+submodule, pinned to v9.1 = OCTATRICK9 + the runtime page clone, hardware-confirmed as OCTATRIK10 on an MKI). The declaration is
 `upstream/synth/manifest.py`: the voice engine as a DRAM unit (`poly.s`,
 `Linked(dram=True)`, in the platform reserve with the other DRAM modules),
 the page as a pinned ROM cave (`page.s` at 0x400d24d0, the start of the
