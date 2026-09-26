@@ -37,8 +37,8 @@ same glide ramped per sample must not.
 
 The garbage start: every module and mode is also rendered with its instance
 block pre-filled (0x7fffff, 0x5a5a5a) and the tone from block 0; the first
-256 blocks' peak may not exceed the same render's from a zero block by more
-than 1 dB (the settled peak, blocks 1000 on, is reported beside).
+256 blocks' peak must be within 1 dB of the same render's from a zero block
+(the settled peak, blocks 1000 on, is reported beside).
 verify_dirtystate's silence cannot see a garbage gain or coefficient state.
 
 What this cannot see: the chip's cycle overrun (a block that misses its
@@ -336,10 +336,12 @@ def run_case(mems, case):
 # init does not seed gives garbage gains for the blocks it takes to glide
 # in, and silence in is silence out either way. Here each module and mode is
 # rendered from a garbage block on the tone from block 0, and the first 256
-# blocks' peak must not exceed the same render's from a ZERO block (the
-# port's and dsp_host's start) by more than GARBAGE_DB: an onset transient
-# the effect makes on its own (a resonance ringing up, a compressor's
-# attack) is in both. The settled peak (blocks 1000 on) is reported beside.
+# blocks' peak must be within GARBAGE_DB of the same render's from a ZERO
+# block (the port's and dsp_host's start): an onset transient the effect
+# makes on its own (a resonance ringing up, a compressor's attack) is in
+# both. The settled peak (blocks 1000 on) is reported beside. Proven on
+# Character with its glide seed disabled (the knobs gliding in from the
+# block's content): -3.8 to -8.5 dB, flagged.
 GARBAGE_FILLS = (0x7fffff, 0x5a5a5a)
 GARBAGE_BLOCKS = 256
 GARBAGE_DB = 1.0
@@ -367,7 +369,7 @@ def garbage_case(mems, key, mode, fill):
     fills = {0: [], 1: []}
     for o in obs:
         i = insts[o]
-        fills[i.core].append(0x6100 + 0x100 * (1 + 3 * i.pos + (i.fx - 1)))
+        fills[i.core].append(0x6000 + 0x100 * (1 + 3 * i.pos + (i.fx - 1)))   # dsp_host: -r7 n sits at X:0x6000 + 0x100 n
     gm = {c: mem_with_fill(mems[c], fill, SCRATCH / f"garb_{case.tag}_{fill:06x}_{'AB'[c]}.mem", fills[c]) for c in mems}
     x = render(gm, case, at, None, f"garb_{case.tag}_{fill:06x}", tone="tone0.raw", pad=0, epmems=mems)
     peaks = [max(max(abs(v) for v in ch[b * FRAMES:(b + 1) * FRAMES]) for ch in x) for b in range(END)]
@@ -390,7 +392,7 @@ def garbage_census(mems, only):
         if fill == 0:
             continue
         over = ratio_db(first, zero[(key, mode)])
-        bad = over > GARBAGE_DB
+        bad = abs(over) > GARBAGE_DB
         rows.append(f"| {key} | {'' if mode is None else mode} | {fill:06x} | "
                     f"{20 * math.log10(max(first, 1e-9)):.1f} | {20 * math.log10(max(zero[(key, mode)], 1e-9)):.1f} | "
                     f"{20 * math.log10(max(settled, 1e-9)):.1f} | {over:+.1f}{' FLAG' if bad else ''} |")
