@@ -843,7 +843,22 @@ mdcpy:
         move    x:(r6+$e),a             ; TIME: page-2 slot 11, $e's companion
         and     #>$7f00,a               ; field (page-1 slot 1 until 26 Sep
         asl     #$8,a,a                 ; 2026) -> value<<16, t
-        move    a1,x0
+; t GLIDES (26 Sep 2026): 1/32 of the way to the knob per block in $10,
+; snapping to it when the step rounds to nothing; 0 (init) starts at the
+; knob. The line gains below are per block, and a TIME jump stepped them.
+        move    a1,y1                   ; t, the knob
+        move    x:(r7+$10),b
+        tst     b
+        teq     y1,b                    ; the first block: at the knob
+        move    y1,a
+        move    b,x0
+        sub     x0,a
+        asr     #$5,a,a
+        add     x0,a
+        cmp     x0,a                    ; no progress: at the knob
+        teq     y1,a
+        move    a,x:(r7+$10)
+        move    a,x0
         move    #>$3bbbbb,y1            ; the bloom's g: 0.40 + 0.467 t
         mpy     x0,y1,a
         add     #>$333333,a
@@ -1056,10 +1071,10 @@ shfst:
         add     x0,a                    ; PLATE overflowed $7fffff at DIFF=127
         move    x:(r7+$3f),x0           ; and g read NEGATIVE; the others sat at
         add     x0,a                    ; 0.88-0.97, where an allpass is a
-        move    x:(r7+$6d),x0           ; g, for every allpass -- glided
-        sub     x0,a
-        asr     #$3,a,a
-        add     x0,a
+        move    x:(r7+$6d),x0           ; g, for every allpass -- glided, 1/64
+        sub     x0,a                    ; per block (1/8 until 26 Sep 2026:
+        asr     #$6,a,a                 ; a jump stepped the allpasses,
+        add     x0,a                    ; tools/verify/verify_knob_clicks.py)
         move    a,x:(r7+$6d)
 
 ; ---- SHMR: page-1 slot 3 ------------------------------------------------
