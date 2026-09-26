@@ -40,6 +40,7 @@ WEIGHTS, FADER, SCENE_HELD = 0x80003c60, 0x460d16c8, 0x460d169c
 TRACK_CUR, PART_DISP = 0x80000000, 0x100b14cf
 FX2_EDITOR = 0x4003a9dc
 LANES = 0x80000810
+T1_P2 = 0x8f084                 # T1's FX2 page-2 bytes in a bank's part 0; slot 0 = MODE
 
 
 def pokes_bytes(addr, data):
@@ -122,10 +123,15 @@ def main():
     # scene 1 / T1 / slot 5 = 20, scene 0 / T1 / slot 0 (MODE) = 1 -- in part
     # 0 of every bank (the playing bank is the saved one, not bank 0)
     pool = [0x50, 0x32, 3, 0x00, 0x05, 100, 0x08, 0x05, 20, 0x00, 0x00, 1]
+    # T1's FX2 MODE knob is poked to 0 in every bank's part 0 and in the
+    # live lane: the fader-0 case expects the knob, and the project's own
+    # value is the fixture's (the STRESS project sets part 0's to 1).
     common = []
     for bank in range(16):
         common += pokes_bytes(BLOB + bank * BANK_STRIDE + POOL_OFF, pool)
         common += pokes_bytes(BLOB + bank * BANK_STRIDE + SEL_OFF, [0, 1])
+        common += pokes_bytes(BLOB + bank * BANK_STRIDE + T1_P2, [0])
+    common += pokes_bytes(LANES + 0x38, [0])
     common += ["0x80000006=0", "0x80000007=0"]
     for xf, want_mode, want_time in ((64, 1, 60), (0, 0, 20)):
         dump, log = OUT / f"rec_{xf}.bin", OUT / f"frames_{xf}.txt"
@@ -145,7 +151,7 @@ def main():
     early = f"{TRACK_CUR:#x}=0;{SCENE_HELD + 3:#x}=1;{PART_DISP:#x}=0"
     dumps = ";".join([f"{DBPTR:#x},4={OUT / 'dbptr.bin'}"]
                      + [f"{BLOB + b * BANK_STRIDE + POOL_OFF:#x},12={OUT / f'pool_{b}.bin'}" for b in range(16)]
-                     + [f"{BLOB + b * BANK_STRIDE + 0x8f084:#x},6={OUT / f'p2_{b}.bin'}" for b in range(16)]
+                     + [f"{BLOB + b * BANK_STRIDE + T1_P2:#x},6={OUT / f'p2_{b}.bin'}" for b in range(16)]
                      + [f"{SRAM_PART + POOL_OFF - 0x8ed80:#x},12={OUT / 'pool_sram.bin'}",
                         f"{LANES + 0x38:#x},6={OUT / 'lane.bin'}"])
     for seed in (None, 50):
