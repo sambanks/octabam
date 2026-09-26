@@ -163,7 +163,7 @@ by `make verify-onebus`: a host's send at 100 was not bit-identical to a
 SEND's at 100). The same a0 remainder breaks `add x0,a / cmp x0,a / teq`
 (a 56-bit compare). Reload the step clean before testing it — `move a,x1 /
 move x1,a / tst a` — the one-word `move a,x1` drops a0. Sister of the
-"reading a0" trap below: the low word carries what a1 hides.
+"reading a0" trap above: the low word carries what a1 hides.
 
 **A logical op (`and`/`or`/`not`/`asr`-as-mask) on an accumulator leaves the
 extension byte (A2/B2) STALE, and the next `move a,x:` SATURATES to full
