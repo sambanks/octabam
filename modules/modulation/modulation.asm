@@ -107,11 +107,27 @@ proc:
 ; coefficient 0.25 + 0.75 * k/128; 127 = 1.0, an exact bypass (the
 ; flanger's through-zero null needs the blend and the wet alike). The knob
 ; word is parked in $46 (COMB's FIR reads it below).
+; TONE GLIDES (26 Sep 2026): the parked word moves 1/32 of the way to the
+; knob per block and snaps to it when the step rounds to nothing, so c
+; and COMB's FIR glide with it (tools/verify/verify_knob_clicks.py); the
+; first block after init ($43 = 0) starts it at the knob.
+        move    x:(r7+$43),b            ; 0 until the first block is done
         move    x:(r6+$c),a
         and     #>$7f00,a
         asl     #$8,a,a
-        move    a1,x:(r7+$46)           ; TONE << 16
-        move    a1,x0
+        move    a1,y1                   ; TONE << 16, the knob
+        tst     b
+        move    x:(r7+$46),a            ; the glide (moves keep the flags)
+        teq     y1,a                    ; the first block: at the knob
+        move    a,x0
+        move    y1,a
+        sub     x0,a
+        asr     #$5,a,a
+        add     x0,a
+        cmp     x0,a                    ; no progress: at the knob
+        teq     y1,a
+        move    a,x:(r7+$46)            ; TONE << 16, glided
+        move    a,x0
         move    #$60,y1                 ; 0.75 (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$200000,a             ; + 0.25
@@ -121,10 +137,23 @@ proc:
         move    #>$7fffff,x0
         tge     x0,a                    ; k >= 127: open
         move    a,x:(r7+$05)
-; FDBK (page-1 slot 3) -> bipolar, (k - 64)/64: -1 .. +0.984
+; FDBK (page-1 slot 3) -> bipolar, (k - 64)/64: -1 .. +0.984, glided as
+; TONE is, 1/128 per block ($04 is the glide)
         move    x:(r6+$3),a
         sub     #>$400000,a             ; k/128 - 0.5
         asl     #$1,a,a
+        move    a,y1
+        move    x:(r7+$43),b
+        tst     b
+        move    x:(r7+$04),a
+        teq     y1,a
+        move    a,x0
+        move    y1,a
+        sub     x0,a
+        asr     #$7,a,a                 ; 1/128 per block
+        add     x0,a
+        cmp     x0,a
+        teq     y1,a
         move    a,x:(r7+$04)
 ; DLY (page-1 slot 2) -> the centre delay in Q11.12 samples, 8 .. 1,000
         move    x:(r6+$2),a
@@ -197,6 +226,7 @@ proc:
         move    a,x:(r5)+
 mo_mclr:
         nop
+        move    a,x:(r7+$43)            ; the new mode's run words at their targets
 mo_msame:
         move    x:(r7+$40),a
         asr     #$10,a,a
@@ -207,8 +237,22 @@ mo_msame:
         move    x:(r7+$0d),a            ; the FX2 flag from init
         tst     a
         bne     mo_dry
-        move    x:(r7+$00),a            ; MIX
-        tst     a
+; MIX RAMPS (26 Sep 2026): the loops mix at a run value ($22) stepped once
+; per sample 1/1024 of the way to MIX (mo_rset; the step is each stream's
+; last word, parked in $44), so the dry path waits for the run to land on 0
+        move    r7,r1
+        move    #$22,n1
+        move    (r1)+n1
+        move    r7,r3
+        move    #$44,n3
+        move    (r3)+n3
+        move    #>$ffffff,m1
+        move    #>$ffffff,m3
+        move    x:(r7+$00),y1           ; MIX
+        bsr     mo_rset
+        move    x:(r7+$00),a
+        move    x:(r7+$22),x0
+        or      x0,a                    ; MIX 0 and the run on it
         beq     mo_dry
 ; ---- dispatch, once per block ---------------------------------------------
         move    x:(r7+$0c),a
@@ -279,13 +323,21 @@ mo_line:
         move    r4,r1
         move    #>$ffffff,m1
         move    x:(r7+$01),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$06),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$03),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$02),x0
-        move    x0,x:(r1)+
+        move    x0,x:(r1)+              ; inc
+; wid, depth and centre are RUN values stepped once per sample (the loop's
+; head) 1/1024 of the way to this block's WDTH, DPTH and DLY (26 Sep 2026;
+; steps at $10..$12); the R tap reads L's depth and centre, and both fixed
+; taps read the centre and split it per sample (mo_tap), so no tap moves
+; in one step at a block edge
+        move    r7,r3
+        move    #$10,n3
+        move    (r3)+n3
+        move    x:(r7+$06),y1
+        bsr     mo_rset                 ; wid
+        move    x:(r7+$03),y1
+        bsr     mo_rset                 ; depth
+        move    x:(r7+$02),y1
+        bsr     mo_rset                 ; centre
         move    x:(r7+$05),x0
         move    x0,x:(r1)+
         move    x:(r7+$04),x0
@@ -296,10 +348,6 @@ mo_line:
         move    x0,x:(r1)+
         move    x:(r7+$05),x0
         move    x0,x:(r1)+
-        move    x:(r7+$03),x0
-        move    x0,x:(r1)+
-        move    x:(r7+$02),x0
-        move    x0,x:(r1)+
         move    x:(r7+$05),x0
         move    x0,x:(r1)+
         move    x:(r7+$04),x0
@@ -308,18 +356,7 @@ mo_line:
         move    x0,x:(r1)+
         move    x:(r7+$05),x0
         move    x0,x:(r1)+
-; the fixed tap's centre split once here (mo_tap's split) into i and f
-        move    x:(r7+$02),a
-        move    a,x0
-        and     #>$fff,a
-        asl     #$b,a,a
-        move    a1,y1                   ; f, Q23
-        move    x0,a
-        asr     #$c,a,a
-        move    a1,x1                   ; i
         move    #>$039912,y0            ; c200 = 0.0281
-        move    x1,x:(r1)+
-        move    y1,x:(r1)+
         move    x:(r7+$07),x0
         move    x0,x:(r1)+
         move    x:(r7+$08),x0
@@ -332,8 +369,6 @@ mo_line:
         move    y0,x:(r1)+
         move    x:(r7+$0b),x0
         move    x0,x:(r1)+
-        move    x1,x:(r1)+
-        move    y1,x:(r1)+
         move    x:(r7+$07),x0
         move    x0,x:(r1)+
         move    x:(r7+$08),x0
@@ -346,8 +381,10 @@ mo_line:
         move    y0,x:(r1)+
         move    x:(r7+$0b),x0
         move    x0,x:(r1)+
-        move    x:(r7+$00),x0
+        move    x:(r7+$44),x0           ; MIX's step
         move    x0,x:(r1)+
+        move    #>$1,x0
+        move    x0,x:(r7+$43)           ; primed
         move    x:(r7+$0e),r2
         move    #>$ffffff,m2
         move    x:(r7+$0e),r6
@@ -361,6 +398,20 @@ mo_line:
         move    x:(r7+$41),a
         move    a1,n1
         do      n7,>molinz
+        move    r4,r1
+        move    (r1)+                   ; inc
+        move    x:(r7+$10),x0
+        move    x:(r1),a
+        add     x0,a
+        move    a,x:(r1)+               ; wid
+        move    x:(r7+$11),x0
+        move    x:(r1),a
+        add     x0,a
+        move    a,x:(r1)+               ; depth
+        move    x:(r7+$12),x0
+        move    x:(r1),a
+        add     x0,a
+        move    a,x:(r1)+               ; centre
         move    r4,r1
         move    r7,r3
         move    #$23,n3
@@ -453,8 +504,9 @@ mo_line:
         move    a,n2                    ; wo L
 ; ---- R: the swept tap ----------------------------------------------------
         move    x1,x0                   ; lfo R
-        move    x:(r1)+,y1              ; depth, Q11.12
-        mpy     x0,y1,a x:(r1)+,x0      ; the sweep, Q11.12 signed; centre
+        move    x:(r4+$2),y1            ; depth, Q11.12 (L's run value)
+        mpy     x0,y1,a                 ; the sweep, Q11.12 signed
+        move    x:(r4+$3),x0            ; centre (L's run value)
         add     x0,a
         move    r6,r5                   ; line R
         bsr     mo_tap
@@ -505,10 +557,9 @@ mo_line:
         move    a,x:(r3)+
         move    a,n6                    ; wo R
 ; ---- wet L = bl*fixed + bd*dry + ff*wo + kc*HP(wo of the other side) + kb*LPb(dry)
-        move    x:(r1)+,x0              ; the fixed tap at the centre, split per
-        move    x:(r1)+,y1              ; block into i and f (read after this
-        move    r2,r5                   ; sample's write: a delay >= 8 never
-        bsr     mo_itap                 ; sees it)
+        move    x:(r4+$3),a             ; the fixed tap at the centre's run
+        move    r2,r5                   ; value (read after this sample's
+        bsr     mo_tap                  ; write: a delay >= 8 never sees it)
         move    a,x0                    ; fixed L
         move    x:(r1)+,y1              ; bl
         mpy     x0,y1,a x:(r0),x0       ; dry L
@@ -553,10 +604,9 @@ mo_line:
         add     x1,a
         move    a,x:(r3)+               ; wet L (limited)
 ; ---- wet R = bl*fixed + bd*dry + ff*wo + kc*HP(wo of the other side) + kb*LPb(dry)
-        move    x:(r1)+,x0              ; the fixed tap: i, f
-        move    x:(r1)+,y1
+        move    x:(r4+$3),a             ; the fixed tap at the centre
         move    r6,r5
-        bsr     mo_itap
+        bsr     mo_tap
         move    a,x0                    ; fixed R
         move    x:(r1)+,y1              ; bl
         mpy     x0,y1,a x:(r0+n0),x0    ; dry R
@@ -608,7 +658,11 @@ mo_line:
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r1)+,y1              ; m
+        move    x:(r7+$22),a            ; m, the run value
+        move    x:(r1)+,y1              ; its step
+        add     y1,a
+        move    a,x:(r7+$22)
+        move    a,y1
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
@@ -772,8 +826,10 @@ mo_padv:
         move    x0,x:(r1)+
         move    x:(r7+$45),x0
         move    x0,x:(r1)+
-        move    x:(r7+$00),x0
+        move    x:(r7+$44),x0           ; MIX's step
         move    x0,x:(r1)+
+        move    #>$1,x0
+        move    x0,x:(r7+$43)           ; primed
         move    #>$ffffff,m3
         move    x:(r7+$11),x0           ; bm L
         move    x0,x:(r7+$25)
@@ -933,7 +989,11 @@ mo_padv:
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r1)+,y1              ; m
+        move    x:(r7+$22),a            ; m, the run value
+        move    x:(r1)+,y1              ; its step
+        add     y1,a
+        move    a,x:(r7+$22)
+        move    a,y1
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
@@ -1038,38 +1098,41 @@ mo_bcomb:
         move    #>$ffffff,m4
         move    r4,r1
         move    #>$ffffff,m1
+; period - 1 and the gain are RUN values stepped once per sample (the loop's
+; head) 1/1024 of the way to this block's (26 Sep 2026; steps at $10..$12);
+; the R string reads L's
+        move    r7,r3
+        move    #$10,n3
+        move    (r3)+n3
         move    x:(r7+$1e),a
         sub     #>$1000,a               ; period - 1 (the FIR's own delay)
-        move    a,x1
-        move    #>$2026f3,y1            ; 0.251, the -12 dB output trim
-        move    x1,x:(r1)+
-        move    x:(r7+$1d),x0
-        move    x0,x:(r1)+
+        move    a,y1
+        bsr     mo_rset                 ; period - 1
+        move    x:(r7+$1d),y1
+        bsr     mo_rset                 ; the polarity: through 0, not a flip
+        move    #>$2026f3,y0            ; 0.251, the -12 dB output trim
         move    x:(r7+$1c),x0
         move    x0,x:(r1)+
         move    x:(r7+$1b),x0
         move    x0,x:(r1)+
-        move    x:(r7+$1a),x0
-        move    x0,x:(r1)+
+        move    x:(r7+$1a),y1
+        bsr     mo_rset                 ; the gain
         move    x:(r7+$42),x0
         move    x0,x:(r1)+
         move    x:(r7+$45),x0
         move    x0,x:(r1)+
-        move    y1,x:(r1)+
-        move    x1,x:(r1)+
-        move    x:(r7+$1d),x0
-        move    x0,x:(r1)+
+        move    y0,x:(r1)+
         move    x:(r7+$1c),x0
         move    x0,x:(r1)+
         move    x:(r7+$1b),x0
         move    x0,x:(r1)+
-        move    x:(r7+$1a),x0
-        move    x0,x:(r1)+
         move    x:(r7+$45),x0
         move    x0,x:(r1)+
-        move    y1,x:(r1)+
-        move    x:(r7+$00),x0
+        move    y0,x:(r1)+
+        move    x:(r7+$44),x0           ; MIX's step
         move    x0,x:(r1)+
+        move    #>$1,x0
+        move    x0,x:(r7+$43)           ; primed
         move    x:(r7+$0e),r2
         move    #>$ffffff,m2
         move    x:(r7+$0e),r6
@@ -1081,6 +1144,21 @@ mo_bcomb:
         move    x:(r7+$41),a
         move    a1,n1
         do      n7,>mocmbz
+        move    r4,r1
+        move    x:(r7+$10),x0
+        move    x:(r1),a
+        add     x0,a
+        move    a,x:(r1)+               ; period - 1
+        move    x:(r7+$11),x0
+        move    x:(r1),a
+        add     x0,a
+        move    a,x:(r1)+               ; the polarity
+        move    (r1)+
+        move    (r1)+
+        move    x:(r7+$12),x0
+        move    x:(r1),a
+        add     x0,a
+        move    a,x:(r1)                ; the gain
         move    r4,r1
         move    r7,r3
         move    #$23,n3
@@ -1141,13 +1219,13 @@ mo_bcomb:
         mpy     x0,y1,a
         move    a,x:(r3)+               ; wet L, trimmed
 ; ===== channel R =====
-        move    x:(r1)+,a               ; period - 1 (the FIR's own delay)
+        move    x:(r4),a                ; period - 1 (L's run value)
         move    r6,r5
         bsr     mo_herm                 ; r3 -> the third word of its scratch
         move    #$6,n3
         move    (r3)+n3                 ; -> x1 R
         move    a,x0
-        move    x:(r1)+,y1              ; the polarity
+        move    x:(r4+$1),y1            ; the polarity (L's run value)
         mpy     x0,y1,a x:(r0+n0),x0
         add     x0,a                    ; s = +-read + x
         move    a,x1                    ; (limited)
@@ -1164,7 +1242,7 @@ mo_bcomb:
         mac     x0,y1,a x1,x:(r3)+      ; x1 <- s
         move    x0,x:(r3)+              ; x2 <- x1
         move    a,x0                    ; the FIR's output (limited)
-        move    x:(r1)+,y1              ; gain
+        move    x:(r4+$4),y1            ; gain (L's run value)
         mpy     x0,y1,a
 ; ---- mo_lofr, inline (23 Sep 2026; three sites each, FREE allows it) ----
         move    a,y1
@@ -1194,7 +1272,11 @@ mo_bcomb:
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r1)+,y1              ; m
+        move    x:(r7+$22),a            ; m, the run value
+        move    x:(r1)+,y1              ; its step
+        add     y1,a
+        move    a,x:(r7+$22)
+        move    a,y1
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
@@ -1222,6 +1304,29 @@ mocmbz:
 ; THE DRY PATH: an FX2 slot, or MIX at zero. Frames untouched.
 ; ===========================================================================
 mo_dry:
+        rts
+
+; ---------------------------------------------------------------------------
+; mo_rset -- one ramped word, per block (26 Sep 2026). The word is a RUN
+; value a loop steps once per sample, 1/1024 of the way from where the last
+; block ended to this block's target (linear inside a block, a glide across
+; them); a step that rounds to 0 puts the word on the target, and the first
+; block after init or a MODE change ($43 = 0) starts it there.
+; In: y1 = the target, r1 -> the word, r3 -> its step. Out: r1, r3 each one
+; on. Clobbers a, b, x0.
+; ---------------------------------------------------------------------------
+mo_rset:
+        move    x:(r7+$43),b
+        tst     b
+        move    x:(r1),b                ; the run value (moves keep the flags)
+        teq     y1,b                    ; the first block: at the target
+        move    b,x0
+        move    y1,a
+        sub     x0,a
+        asr     #$a,a,a                 ; the step per sample
+        teq     y1,b                    ; a step of 0: at the target
+        move    a,x:(r3)+
+        move    b,x:(r1)+
         rts
 
 ; ---------------------------------------------------------------------------

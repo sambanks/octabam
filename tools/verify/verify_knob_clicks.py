@@ -76,6 +76,12 @@ CONTEXT = {
     "MODULATION": dict(),
 }
 BUS = ("DELAY SERVER", "REVERB SERVER", "SEND")
+# continuous knobs whose values select discrete things: listed with the
+# selects, not flagged
+STEPPED = {
+    ("MODULATION", "LOFI"): "hold length and bit mask are integers",
+    ("MODULATION", "STGS"): "PHSR's stage count, 2/4/6/8 by quarters of DLY",
+}
 STATIONS = ("SPECTRUM", "CHARACTER", "MODULATION")
 
 
@@ -342,7 +348,7 @@ def main():
         mode = "" if c.mode is None else str(c.mode)
         cells = " | ".join(f"{r[w][0]:.0f} / {r[w][1]:.0f}" for w, _, _ in WINDOWS)
         line = f"| {c.key} | {mode} | {c.label} | {cells} |"
-        if c.count is not None and c.count < 128:
+        if (c.count is not None and c.count < 128) or (c.key, c.label) in STEPPED:
             sel.append(line)
         else:
             rows.append(line + (" FLAG |" if flagged(r) else " |"))
