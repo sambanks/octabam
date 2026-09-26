@@ -233,6 +233,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_character.py
 	python3 tools/verify/verify_spectrum.py
 	python3 tools/verify/verify_modulation.py
+	@# The knob click census: every continuous knob moved mid-render, plus
+	@# the garbage-start gate (a tone from block 0 on a garbage block).
+	$(PY) tools/verify/verify_knob_clicks.py
 	python3 tools/verify/verify_nimbus.py
 	python3 tools/verify/verify_hello.py
 	@# The isolated DSP gates build their own remixes over mainos_bus.bin.
