@@ -316,19 +316,22 @@ send_ok:
 cnt_done:
 
 ; ---- per-sample: mono dry sum, scaled into both accumulators -------------
-; The level is ramped across the block from where last block's ramp ended
-; to this block's knob word: the level stepped once per block until 23 Sep
-; 2026, and a turn on a loud source clicked once per block (dsp_host census
-; on a 0.3 FS tone: steps to 0.25 FS in the delay's print).
+; The level is ramped from where last block's ramp ended toward this
+; block's knob word, 1/64 of the way per sample (15/64 per block: linear
+; inside a block, a glide across them): the level stepped once per block
+; until 23 Sep 2026, and a turn on a loud source clicked once per block
+; (dsp_host census on a 0.3 FS tone: steps to 0.25 FS in the delay's
+; print); 1/16 per sample until 26 Sep 2026 left a jump's one-block ramp
+; at the edge (tools/verify/verify_knob_clicks.py).
         move    x:(r6),a                 ; DEL level: the target
         move    x:(r7+$15),x0            ; the ramp's current value
         sub     x0,a
-        asr     #$4,a,a
+        asr     #$6,a,a
         move    a,x:(r7+$16)             ; the per-sample step
         move    x:(r6+$1),a              ; REV level, ramped the same way
         move    x:(r7+$17),x0
         sub     x0,a
-        asr     #$4,a,a
+        asr     #$6,a,a
         move    a,x:(r7+$18)
         do      n7,>send_end
         move    x:(r7+$15),a
