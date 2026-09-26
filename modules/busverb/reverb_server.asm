@@ -138,6 +138,7 @@ init:
         move    a,x:(r7+$40)            ; TONE's LO
         move    a,x:(r7+$6d)            ; DIFF's g
         move    a,x:(r7+$70)            ; WET
+        move    a,x:(r7+$10)            ; TIME's t (the glide state)
         move    a,y:>$09f3              ; SIZE's f (the glide state)
         move    #>$ffffff,a
         move    a,y:>$09f4              ; DEL's ramp (the per-sample level): -1,

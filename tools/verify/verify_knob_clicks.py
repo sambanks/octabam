@@ -35,13 +35,19 @@ The instrument is checked before any module is judged: a 0.3 FS tone
 under a gain glided an eighth of the way per block must flag, and the
 same glide ramped per sample must not.
 
+The garbage start: every module and mode is also rendered with its instance
+block pre-filled (0x7fffff, 0x5a5a5a) and the tone from block 0; the first
+256 blocks' peak may not exceed the same render's from a zero block by more
+than 1 dB (the settled peak, blocks 1000 on, is reported beside).
+verify_dirtystate's silence cannot see a garbage gain or coefficient state.
+
 What this cannot see: the chip's cycle overrun (a block that misses its
 deadline crackles on the unit and renders clean here), anything the
 ColdFire does between a panel turn and r6 (knobs are poked into r6 once
 per block, as -sched does), a trig-split block (the dispatcher's two calls
 per block; dsp_host makes one), and a step under the tone's own d3 floor.
 
-    make verify-knobs                 # the census (~1 min)
+    make verify-knobs                 # the census + the garbage start (~1.5 min)
     python3 tools/verify/verify_knob_clicks.py --only SPECTRUM --report out/k.md
 """
 import argparse
@@ -202,13 +208,16 @@ def sched_for(case, moving):
     return ",".join(f"{b + send_probe.WARMUP_BLOCKS}:{i}:{case.slot}={v}" for b, i, v in ev)
 
 
-def render(mems, case, at, sched, tag):
-    """vo.run's command, with -sched; returns the observed tracks' L and R"""
+def render(mems, case, at, sched, tag, tone="tone.raw", pad=PAD, epmems=None):
+    """vo.run's command, with -sched; returns the observed tracks' L and R.
+    `epmems`: the dumps the entry points are read from (a filled dump's
+    appended runs confuse send_probe's reader)"""
     insts, moving, obs = case.layout(at)
+    epmems = epmems or mems
     ep = {c: {} for c in mems}
     for i in insts:
-        ep[i.core][i.key] = send_probe.entry_points(mems[i.core], registry.by_key(i.key).menu.fx2_id)
-    for c, m in mems.items():
+        ep[i.core][i.key] = send_probe.entry_points(epmems[i.core], registry.by_key(i.key).menu.fx2_id)
+    for c, m in epmems.items():
         sid = send_probe.entry_points(m, send_probe.SERVER_ID["S"])
         for i in insts:
             if i.core == c and i.key != "SEND" and ep[c][i.key] == sid:
@@ -225,7 +234,7 @@ def render(mems, case, at, sched, tag):
            "-audio", "9000",
            "-inmask", str(sum(1 << k for k, i in enumerate(insts) if i.fed)),
            "-frames", str(FRAMES), "-blocks", str(END + 2 + send_probe.WARMUP_BLOCKS),
-           "-in", str(SCRATCH / "tone.raw"), "-out", str(out)]
+           "-in", str(SCRATCH / tone), "-out", str(out)]
     for i in insts:
         cmd += ["-params", ",".join(map(str, i.params))]
     if sched:
@@ -238,14 +247,14 @@ def render(mems, case, at, sched, tag):
         p = out if o == 0 else pathlib.Path(f"{out}.i{o}")
         raw = p.read_bytes()
         a = [v / 8388607.0 for v in struct.unpack(f"<{len(raw) // 4}i", raw)]
-        res += [a[0::2][PAD:], a[1::2][PAD:]]
+        res += [a[0::2][pad:], a[1::2][pad:]]
     return res
 
 
-def tone_file(path, blocks, amp=0.3):
-    """the steady tone, from sample PAD on"""
+def tone_file(path, blocks, amp=0.3, pad=PAD):
+    """the steady tone, from sample `pad` on"""
     w = 2 * math.pi * vo.TONE_HZ / vo.SR
-    v = [int(amp * 8388607 * math.sin(w * (i - PAD))) if i >= PAD else 0
+    v = [int(amp * 8388607 * math.sin(w * (i - pad))) if i >= pad else 0
          for i in range(blocks * FRAMES)]
     path.write_bytes(struct.pack(f"<{len(v)}i", *v))
 
@@ -321,6 +330,77 @@ def run_case(mems, case):
     return case, measure(mv, lo, hi)
 
 
+# ---- the garbage start ---------------------------------------------------
+# verify_dirtystate renders from a garbage instance block on SILENCE, which
+# cannot see a garbage gain or coefficient: a run value or glide state that
+# init does not seed gives garbage gains for the blocks it takes to glide
+# in, and silence in is silence out either way. Here each module and mode is
+# rendered from a garbage block on the tone from block 0, and the first 256
+# blocks' peak must not exceed the same render's from a ZERO block (the
+# port's and dsp_host's start) by more than GARBAGE_DB: an onset transient
+# the effect makes on its own (a resonance ringing up, a compressor's
+# attack) is in both. The settled peak (blocks 1000 on) is reported beside.
+GARBAGE_FILLS = (0x7fffff, 0x5a5a5a)
+GARBAGE_BLOCKS = 256
+GARBAGE_DB = 1.0
+SETTLED_FROM = 1000
+
+
+def mem_with_fill(base, fill, out, r7s):
+    """the .mem with the instance blocks at `r7s` (X, 0x100 words each)
+    filled (verify_dirtystate's run format)"""
+    blob = base.read_bytes()
+    body, term = blob[:-9], blob[-9:]
+    assert term[0] == 0xff, "not a .mem dump"
+    runs = b"".join(struct.pack("<BII", 1, r7, 0x100) + struct.pack("<I", fill) * 0x100 for r7 in r7s)
+    out.write_bytes(body + runs + term)
+    return out
+
+
+def garbage_case(mems, key, mode, fill):
+    m = registry.by_key(key)
+    knobs = mode_knobs(key, mode)
+    name, label, slot, count = next(k for k in knobs if k[2] != m.mode_slot)
+    case = Case(key, mode, name, label, slot, count)
+    at = base_knobs(key, mode).get(name, (m.params[slot].default or 0))
+    insts, _, obs = case.layout(at)
+    fills = {0: [], 1: []}
+    for o in obs:
+        i = insts[o]
+        fills[i.core].append(0x6100 + 0x100 * (1 + 3 * i.pos + (i.fx - 1)))
+    gm = {c: mem_with_fill(mems[c], fill, SCRATCH / f"garb_{case.tag}_{fill:06x}_{'AB'[c]}.mem", fills[c]) for c in mems}
+    x = render(gm, case, at, None, f"garb_{case.tag}_{fill:06x}", tone="tone0.raw", pad=0, epmems=mems)
+    peaks = [max(max(abs(v) for v in ch[b * FRAMES:(b + 1) * FRAMES]) for ch in x) for b in range(END)]
+    return case, max(peaks[:GARBAGE_BLOCKS]), max(peaks[SETTLED_FROM:])
+
+
+def ratio_db(a, b):
+    return 20 * math.log10(a / b) if a > 0 and b > 0 else (0.0 if a == 0 else 99.0)
+
+
+def garbage_census(mems, only):
+    tone_file(SCRATCH / "tone0.raw", END + 2, pad=0)
+    todo = [(key, mode, fill) for key in BUS + STATIONS if not only or key in only
+            for mode in modes(key) for fill in (0,) + GARBAGE_FILLS]
+    with cf.ThreadPoolExecutor(max_workers=8) as ex:
+        results = list(ex.map(lambda t: garbage_case(mems, *t), todo))
+    zero = {(key, mode): first for (key, mode, fill), (c, first, settled) in zip(todo, results) if fill == 0}
+    rows, flags = [], []
+    for (key, mode, fill), (c, first, settled) in zip(todo, results):
+        if fill == 0:
+            continue
+        over = ratio_db(first, zero[(key, mode)])
+        bad = over > GARBAGE_DB
+        rows.append(f"| {key} | {'' if mode is None else mode} | {fill:06x} | "
+                    f"{20 * math.log10(max(first, 1e-9)):.1f} | {20 * math.log10(max(zero[(key, mode)], 1e-9)):.1f} | "
+                    f"{20 * math.log10(max(settled, 1e-9)):.1f} | {over:+.1f}{' FLAG' if bad else ''} |")
+        if bad:
+            flags.append(f"{key} mode {mode} fill {fill:06x}: first {GARBAGE_BLOCKS} blocks {over:+.1f} dB over the zero start")
+    head = ("| module | mode | fill | first 256 blocks peak dBFS | from a zero block | settled | over zero |\n"
+            "|---|---|---|---|---|---|---|")
+    return "\n".join([head, *rows]), flags
+
+
 def cases(only):
     out = []
     for key in BUS + STATIONS:
@@ -340,6 +420,7 @@ def main():
     ap.add_argument("--only", nargs="*", help="module keys, e.g. SPECTRUM 'DELAY SERVER'")
     ap.add_argument("--no-build", action="store_true", help="reuse out/dsp/_knobs/spec_*.mem")
     ap.add_argument("--report", help="write the table (markdown) here")
+    ap.add_argument("--no-garbage", action="store_true", help="skip the garbage-start renders")
     a = ap.parse_args()
     mems = ({0: SCRATCH / "spec_A.mem", 1: SCRATCH / "spec_B.mem"} if a.no_build else build())
     tone_file(SCRATCH / "tone.raw", END + 2 + send_probe.WARMUP_BLOCKS)
@@ -369,12 +450,19 @@ def main():
     text = "\n".join([head, *rows, "", "selects (not flagged):", "",
                       "| module | mode | knob | jump up | jump down | turn |", "|---|---|---|---|---|---|", *sel])
     print(text)
-    if a.report:
-        pathlib.Path(a.report).write_text(text + "\n")
     print(f"\n{len(rows)} continuous knob cases, {len(flags)} flagged:")
     for f in flags:
         print("  FLAG", f)
-    if not ok or flags:
+    gtext, gflags = ("", []) if a.no_garbage else garbage_census(mems, set(a.only) if a.only else None)
+    if gtext:
+        print("\ngarbage start (the instance block pre-filled, the tone from block 0):\n")
+        print(gtext)
+        print(f"\n{len(gflags)} garbage-start cases flagged:")
+        for f in gflags:
+            print("  FLAG", f)
+    if a.report:
+        pathlib.Path(a.report).write_text(text + "\n\n" + gtext + "\n")
+    if not ok or flags or gflags:
         sys.exit(1)
 
 

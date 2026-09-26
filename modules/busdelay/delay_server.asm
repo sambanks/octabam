@@ -76,7 +76,7 @@
 ;   r7+$29              REV, this block's level (per block)
 ;   r7+$2b/$2c          REV ramped per sample / its per-sample step
 ;   r7+$2d              this call's REV ACC write pointer (walked per sample)
-;   r7+$2f              PING's per-sample step (+ PING, - 1-PING)
+;   r7+$2f              PING's per-sample step
 ;   r7+$31              LineL base
 ;   r7+$32              GRAIN base age, Q11.12 (persistent, masked on load
 ;                       and save); each grain is a fixed quarter cycle off it
@@ -143,7 +143,7 @@
 ;   r7+$7d              GRAIN: x_in parked while n6 holds the wet sum
 ;   r7+$7e, $81         free
 ;   r7+$7f              bus auto-gain 1/sqrt(N) (per block; read per sample)
-;   r7+$80              1 - PING (from PING per block, stepped per sample)
+;   r7+$80              1 - PING, from PING's run value per sample
 ;   r7+$82              warm-up tagged counter
 ;   $84..$8a            NEVER WRITTEN (21 Sep 2026). Until then the chain write
 ;                       address, the WET glide state, the write offset, the
@@ -827,7 +827,7 @@ stpdn:
         tst     a
         teq     y1,b
         move    b,x:(r7+$2b)
-        move    a,x:(r7-$1a)            ; +step for PING, -step for 1 - PING
+        move    a,x:(r7-$1a)            ; PING's step per sample
         move    b,x0
         move    #>$7fffff,a
         sub     x0,a
@@ -1360,9 +1360,11 @@ gvrdone:
         move    x:(r7-$1a),x0
         add     x0,a
         move    a,x:(r7+$2b)            ; PING
-        move    x:(r7+$37),a
+        move    a,x0
+        move    #>$7fffff,a
         sub     x0,a
-        move    a,x:(r7+$37)            ; 1 - PING
+        move    a,x:(r7+$37)            ; 1 - PING, from the run (a running
+                                        ; difference drifted a few LSB)
 
 ; ---- input: own dry mono sum + shared DELAY bus accumulator --------------
         move    x:(r0),a

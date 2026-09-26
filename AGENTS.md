@@ -210,6 +210,14 @@ accumulator, never a register.** `tpl b,a` and `clr x0` are both
 InvalidInstruction — caught at assembly, which is the cheap case, but they
 look plausible enough to write repeatedly. Move the value through `x0`.
 
+**`lua (rN+d),rM` TAKES d IN −64..63, AND `dsp_asm` WRAPS ANYTHING LARGER
+SILENTLY.** `lua (r7+$46),r5` assembled to `0x042765`, the same word as
+`lua (r7-$3a),r5`, and the round-trip disassembly cannot object (a `lua`
+is a `lua`): Modulation's TONE glide read and wrote 58 words BELOW its
+block for one build (26 Sep 2026, caught by `verify_modulation`'s
+reference gates, not by the build). Past ±63 use `move r7,r5 / move
+#$46,n5 / move (r5)+n5`, the form the streams already use.
+
 **`dsp_asm` resolves labels by PREFIX, so no new label may have an existing
 label as its prefix.** Adding a loop labelled `warmz2` next to the existing
 `warmz` assembled to

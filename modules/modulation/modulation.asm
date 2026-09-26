@@ -111,28 +111,20 @@ proc:
 ; coefficient 0.25 + 0.75 * k/128; 127 = 1.0, an exact bypass (the
 ; flanger's through-zero null needs the blend and the wet alike). The knob
 ; word is parked in $46 (COMB's FIR reads it below).
-; TONE GLIDES (26 Sep 2026): the parked word moves 1/32 of the way to the
-; knob per block and snaps to it when the step rounds to nothing, so c
-; and COMB's FIR glide with it (tools/verify/verify_knob_clicks.py); the
-; first block after init ($43 = 0) starts it at the knob.
+; TONE GLIDES (26 Sep 2026): the parked word moves 1/128 of the way to
+; the knob per block and snaps to it when the step rounds to nothing
+; (mo_glide), so c and COMB's FIR glide with it
+; (tools/verify/verify_knob_clicks.py); the first block after init ($43 =
+; 0) starts it at the knob.
         move    x:(r7+$43),b            ; 0 until the first block is done
         move    x:(r6+$c),a
         and     #>$7f00,a
         asl     #$8,a,a
         move    a1,y1                   ; TONE << 16, the knob
-        tst     b
-        move    x:(r7+$46),a            ; the glide (moves keep the flags)
-        teq     y1,a                    ; the first block: at the knob
-        move    a,x0
-        move    y1,a
-        sub     x0,a
-        asr     #$5,a,a
-        move    a,x1                    ; a0 holds the shifted-out bits: a
-        move    x1,a                    ; clean reload, so Z reads a1 alone
-        add     x0,a
-        cmp     x0,a                    ; no progress: at the knob
-        teq     y1,a
-        move    a,x:(r7+$46)            ; TONE << 16, glided
+        move    r7,r5                   ; ($46 is past lua's +-63 displacement:
+        move    #$46,n5                 ; the assembler wraps it, AGENTS.md)
+        move    (r5)+n5
+        bsr     mo_glide                ; TONE << 16, glided (in a and $46)
         move    a,x0
         move    #$60,y1                 ; 0.75 (short immediate: bits 23-16)
         mpy     x0,y1,a
@@ -150,19 +142,8 @@ proc:
         asl     #$1,a,a
         move    a,y1
         move    x:(r7+$43),b
-        tst     b
-        move    x:(r7+$04),a
-        teq     y1,a
-        move    a,x0
-        move    y1,a
-        sub     x0,a
-        asr     #$7,a,a                 ; 1/128 per block
-        move    a,x1                    ; a0 holds the shifted-out bits: a
-        move    x1,a                    ; clean reload, so Z reads a1 alone
-        add     x0,a
-        cmp     x0,a
-        teq     y1,a
-        move    a,x:(r7+$04)
+        lua     (r7+$4),r5
+        bsr     mo_glide
 ; DLY (page-1 slot 2) -> the centre delay in Q11.12 samples, 8 .. 1,000
         move    x:(r6+$2),a
         and     #>$7f0000,a
@@ -1306,6 +1287,28 @@ mocmbz:
 ; THE DRY PATH: an FX2 slot, or MIX at zero. Frames untouched.
 ; ===========================================================================
 mo_dry:
+        rts
+
+; ---------------------------------------------------------------------------
+; mo_glide -- one knob glide, per block: the word at r5 moves 1/128 of the
+; way to y1 and lands on it when the step rounds to nothing; b = 0 (the
+; first block after init or a MODE change) puts it AT y1. Out: a = the
+; glided word. Clobbers x0, x1.
+; ---------------------------------------------------------------------------
+mo_glide:
+        tst     b
+        move    x:(r5),a                ; the glide (moves keep the flags)
+        teq     y1,a                    ; the first block: at the knob
+        move    a,x0
+        move    y1,a
+        sub     x0,a
+        asr     #$7,a,a
+        move    a,x1                    ; a0 holds the shifted-out bits: a
+        move    x1,a                    ; clean reload, so the compare below
+        add     x0,a                    ; reads a1 alone
+        cmp     x0,a                    ; no progress: at the knob
+        teq     y1,a
+        move    a,x:(r5)
         rts
 
 ; ---------------------------------------------------------------------------

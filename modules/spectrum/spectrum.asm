@@ -206,20 +206,10 @@ proc:
 ; until 26 Sep 2026: a FREQ jump was a one-block ramp,
 ; tools/verify/verify_knob_clicks.py). The first block after init or a MODE
 ; change ($2b = 0) starts g2run AT g2.
-        move    a,y1                    ; g2
-        move    x:(r7+$2b),b
-        tst     b
-        move    x:(r7+$2e),b            ; g2run, where the last block ended
-        teq     y1,b
-        move    b,x0
-        sub     x0,a
-        asr     #$7,a,a
-        move    a,x1                    ; a0 holds the shifted-out bits: a
-        move    x1,a                    ; clean reload, so Z reads a1 alone
-        tst     a
-        teq     y1,b                    ; a step of 0: on g2
-        move    b,x:(r7+$2e)
-        move    a,x:(r7+$2f)            ; dg
+        move    a,y1                    ; g2: g2run ($2e) steps toward it by
+        lua     (r7+$2e),r1             ; dg ($2f), fs_rset's law (the post-
+        lua     (r7+$2f),r3             ; increments' results are not used, so
+        bsr     fs_rset                 ; m1/m3 do not matter here)
 ; ---- the SEM core's per-block words: c4 = (R + g2)/2 (so 4*c4 = 2R + g),
 ; d = 1/(1 + 2Rg + g^2) = (1/8) / (1/8 + R*g2/2 + g2^2/2) -- the one real
 ; division per block; den/8 <= 0.86 at every knob, d <= 1. Both frozen for
@@ -498,20 +488,10 @@ fs_mladr:
         mpy     x0,y1,a
         move    a,x:(r7+$17)            ; G^3(1-G)
         move    x:(r7+$10),a            ; G
-        move    a,y1
-        move    x:(r7+$2b),b
-        tst     b
-        move    x:(r7+$16),b            ; Grun, where the last block ended
-        teq     y1,b                    ; a new mode: at G
-        move    b,x0
-        sub     x0,a
-        asr     #$7,a,a                 ; 1/128 per sample (g2run's law)
-        move    a,x1                    ; a0 holds the shifted-out bits: a
-        move    x1,a                    ; clean reload, so Z reads a1 alone
-        tst     a
-        teq     y1,b                    ; a step of 0: on G
-        move    b,x:(r7+$16)
-        move    a,x:(r7+$15)            ; dG
+        move    a,y1                    ; G: Grun ($16) steps toward it by dG
+        lua     (r7+$16),r1             ; ($15), fs_rset's law
+        lua     (r7+$15),r3
+        bsr     fs_rset
 fs_mdone:
 ; ---- WDTH (slot 5): stereo width of the output, Character's mid/side,
 ; drawn -64..+63; the knob word IS WDTH/128 = the side gain HALVED (64 ->
