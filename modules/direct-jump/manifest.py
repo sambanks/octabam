@@ -8,7 +8,7 @@ Source: `upstream/` is Tim Hastie's repository (timhastie/octatrick-modules,
 submodule, pinned to v9 = OCTATRICK9). The declaration is
 `upstream/direct-jump/manifest.py`: one floating ROM cave (`direct_jump.s`,
 ratified bytes re-linked and compared every build) on the pattern-queue
-setter, two pokes. Its source paths are derived from its own directory, so
+setter and the tick handler, four fixed pokes. Its source paths are derived from its own directory, so
 it is executed here from the source on disk, as the registry does for every
 manifest, and this file only re-exports its MODULE. Nothing inside
 `upstream/` is edited here.

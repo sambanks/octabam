@@ -3,7 +3,7 @@
 CHAIN AFTER's unused value 1 becomes DIRECT, built from
 [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules)
 (submodule `upstream/`, pinned to `v9`). `Kind.CF_PATCH`: one floating ROM
-cave on the pattern-queue setter, two pokes. No DSP code, no menu row of its
+cave on the pattern-queue setter and the tick handler, four fixed pokes (step and label table entries, the menu setter, the project loader). No DSP code, no menu row of its
 own (the option appears in PROJECT > CONTROL > SEQUENCER > CHAIN AFTER as
 option 2, between PAT.LEN and 2/16).
 
