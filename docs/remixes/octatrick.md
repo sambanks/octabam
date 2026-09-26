@@ -1,17 +1,17 @@
 # `octatrick` and `octatrick-usb` — Tim Hastie's three modules on the stock effects
 
-Two remixes built from [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) (the submodule under `modules/direct-jump`, `modules/quantizer` and `modules/synth`, pinned to `v9`). No octabam DSP code: the fourteen stock effects are listed with fallback NONE, the `usb-lean` pattern, so both DSP payloads, their dispatch and the effect chooser's rows stay stock and every existing project plays as it did.
+Two remixes built from [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) (the submodule under `modules/synth`, `modules/quantizer` and `modules/direct-jump`, pinned to `v9`). No octabam DSP code: the fourteen stock effects are listed with fallback NONE, the `usb-lean` pattern, so both DSP payloads, their dispatch and the effect chooser's rows stay stock and every existing project plays as it did.
 
 | remix | adds | on hardware |
 |---|---|---|
-| `octatrick` | DIRECT JUMP, SCALE QUANTIZER, SYNTH MACHINE | no (emulator-verified, same modules as below) |
+| `octatrick` | SYNTH MACHINE, SCALE QUANTIZER, DIRECT JUMP | no (emulator-verified, same modules as below) |
 | `octatrick-usb` | the above + USB MIDI + USB AUDIO (markandrus, [octemu](https://github.com/markandrus/octemu)) | ✅ 26 Sep 2026, OCTATRICK9 on Tim's Octatrack MKI |
 
 ## What is in it
 
-- **DIRECT JUMP** — CHAIN AFTER's unused value 1 becomes DIRECT (option 2 of the list in PROJECT > CONTROL > SEQUENCER): a pattern chosen while the sequencer runs takes over at the next step boundary, at the step count the old pattern had reached, the Analog Four / Rytm direct jump. One ROM cave on the pattern-queue setter and the tick handler, four fixed pokes. [`modules/direct-jump/README.md`](../../modules/direct-jump/README.md).
-- **SCALE QUANTIZER** — a SCALE row (OFF, then 24 scales) and a GLIDE row (OFF, 1..127) in the same menu: the PTCH knob, its parameter locks and the CHROMATIC trig keys snap to the scale; GLIDE is the synth's glide time and 303-style legato on the keys. Four ROM units, detours, pokes and a `TableGrow` for the menu rows. [`modules/quantizer/README.md`](../../modules/quantizer/README.md).
 - **SYNTH MACHINE** — any FLEX track whose sample is named SYNTH*.wav (a silent 4 s marker file will do) plays a two-operator FM voice instead of the sample: PLAYBACK page PTCH RATO INDX RATE FDBK DEC, on the LFO page VOIC (1 = mono, 2..4 = paraphonic) and CHRD (32 chord shapes, lockable per step, snapped onto SCALE). The engine is a DRAM unit in the platform reserve; the page is a pinned ROM cave at the start of the second free gap. [`modules/synth/README.md`](../../modules/synth/README.md).
+- **SCALE QUANTIZER** — a SCALE row (OFF, then 24 scales) and a GLIDE row (OFF, 1..127) in the same menu: the PTCH knob, its parameter locks and the CHROMATIC trig keys snap to the scale; GLIDE is the synth's glide time and 303-style legato on the keys. Four ROM units, detours, pokes and a `TableGrow` for the menu rows. [`modules/quantizer/README.md`](../../modules/quantizer/README.md).
+- **DIRECT JUMP** — CHAIN AFTER's unused value 1 becomes DIRECT (option 2 of the list in PROJECT > CONTROL > SEQUENCER): a pattern chosen while the sequencer runs takes over at the next step boundary, at the step count the old pattern had reached, the Analog Four / Rytm direct jump. One ROM cave on the pattern-queue setter and the tick handler, four fixed pokes. [`modules/direct-jump/README.md`](../../modules/direct-jump/README.md).
 - `octatrick-usb` only: **USB MIDI** and **USB AUDIO**, as in [`usb`](usb.md); the synth's engine and the USB units share one runtime.
 
 ## Status

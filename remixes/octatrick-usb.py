@@ -1,6 +1,6 @@
 """octatrick-usb -- octatrick plus USB MIDI and USB AUDIO.
 
-Tim Hastie's DIRECT JUMP, SCALE QUANTIZER and SYNTH MACHINE (remixes/
+Tim Hastie's SYNTH MACHINE, SCALE QUANTIZER and DIRECT JUMP (remixes/
 octatrick.py) with markandrus's USB MIDI and USB AUDIO on the same DRAM
 platform: the unit appears to a host as card storage + a class-compliant
 MIDI port + a 20-channel 44.1 kHz 24-bit audio input (tracks 1-16, MAIN
@@ -15,7 +15,7 @@ from remix.schema import Remix
 
 REMIX = Remix(
     name="octatrick-usb",
-    doc="DIRECT JUMP + SCALE QUANTIZER + SYNTH MACHINE + USB MIDI + USB AUDIO on the stock effects.",
+    doc="SYNTH MACHINE + SCALE QUANTIZER + DIRECT JUMP + USB MIDI + USB AUDIO on the stock effects.",
     modules=("DIRECT JUMP", "SCALE QUANTIZER", "SYNTH MACHINE",
              "USB MIDI", "USB AUDIO",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
