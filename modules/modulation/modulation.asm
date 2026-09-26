@@ -29,15 +29,13 @@
 ;   $41        the LOFI hold counter (persistent)
 ;   $42        the LOFI hold length; $45 its mask; $46 the TONE knob word;
 ;              $47 mo_para's park (per block)
-;   $48..$69   the block's constant stream on r4/r1: LINE 28 words, PHSR 18,
-;              COMB 13 (each loop's header lists the order)
-;   $22        MIX's run value, stepped per sample by the loops (26 Sep 2026)
+;   $48..$69   the block's constant stream on r4/r1: LINE 32 words, PHSR 19,
+;              COMB 17 (each loop's header lists the order); each ends in
+;              MIX's run value and step, then the mode's other steps
+;   $22        MIX's run value between blocks (26 Sep 2026)
 ;   $43        1 once the run values started at their targets (0 at init and
-;              on a MODE change; mo_rset); $44 MIX's per-sample step (per
-;              block); $10..$12 LINE's wid/depth/centre steps, COMB's
-;              period/polarity/gain steps (per block, in the modes that do
-;              not use $10..$12 otherwise)
-;   $6a..$83 free
+;              on a MODE change; mo_rset)
+;   $44, $6a..$83 free
 ; init zeroes $11..$46 and, on FX1, the lines.
 ; ---------------------------------------------------------------------------
 
@@ -243,19 +241,10 @@ mo_msame:
         move    x:(r7+$0d),a            ; the FX2 flag from init
         tst     a
         bne     mo_dry
-; MIX RAMPS (26 Sep 2026): the loops mix at a run value ($22) stepped once
-; per sample 1/1024 of the way to MIX (mo_rset; the step is each stream's
-; last word, parked in $44), so the dry path waits for the run to land on 0
-        move    r7,r1
-        move    #$22,n1
-        move    (r1)+n1
-        move    r7,r3
-        move    #$44,n3
-        move    (r3)+n3
-        move    #>$ffffff,m1
-        move    #>$ffffff,m3
-        move    x:(r7+$00),y1           ; MIX
-        bsr     mo_rset
+; MIX RAMPS (26 Sep 2026): the loops mix at a run value stepped once per
+; sample 1/1024 of the way to MIX (mo_rset), kept in each stream after its
+; last word and in $22 between blocks, so the dry path waits for the run to
+; land on 0
         move    x:(r7+$00),a
         move    x:(r7+$22),x0
         or      x0,a                    ; MIX 0 and the run on it
@@ -317,8 +306,8 @@ mo_line:
 ; Pointer-addressed (22 Sep 2026). The block's constants in a stream at $48
 ; (r4), in the order the sample reads them: inc wid | depth centre c fb hold
 ; mask c | c fb mask c | bl bd ff c200 kc c200 kb | the same for R | MIX's
-; step (wid, depth and centre are run values; R and both fixed taps read
-; L's depth and centre at r4 + 2/3). The states walk from $23 on r3: lpi L, latch L, lpo L, lpi R,
+; run and step | the steps of wid depth centre (run values; R and both
+; fixed taps read L's depth and centre at r4 + 2/3). The states walk from $23 on r3: lpi L, latch L, lpo L, lpi R,
 ; latch R, lpo R, hp L, lpb L, wet L, hp R, lpb R. r2/r6 = the lines' bases,
 ; y0 = the write phase, n4 = the LFO phase, n1 = the LOFI counter, n2/n6 =
 ; the taps and then the LPo outputs. r6 (the page pointer) is not read past
@@ -333,12 +322,11 @@ mo_line:
         move    x0,x:(r1)+              ; inc
 ; wid, depth and centre are RUN values stepped once per sample (the loop's
 ; head) 1/1024 of the way to this block's WDTH, DPTH and DLY (26 Sep 2026;
-; steps at $10..$12); the R tap reads L's depth and centre, and both fixed
+; steps after MIX's); the R tap reads L's depth and centre, and both fixed
 ; taps read the centre and split it per sample (mo_tap), so no tap moves
 ; in one step at a block edge
-        move    r7,r3
-        move    #$10,n3
-        move    (r3)+n3
+        lua     (r4+$1d),r3         ; the steps, the stream's last three words
+        move    #>$ffffff,m3
         move    x:(r7+$06),y1
         bsr     mo_rset                 ; wid
         move    x:(r7+$03),y1
@@ -388,8 +376,7 @@ mo_line:
         move    y0,x:(r1)+
         move    x:(r7+$0b),x0
         move    x0,x:(r1)+
-        move    x:(r7+$44),x0           ; MIX's step
-        move    x0,x:(r1)+
+        bsr     mo_mset                 ; MIX's run and step
         move    #>$1,x0
         move    x0,x:(r7+$43)           ; primed
         move    x:(r7+$0e),r2
@@ -406,16 +393,15 @@ mo_line:
         move    a1,n1
         do      n7,>molinz
         move    r4,r1
+        lua     (r4+$1d),r3             ; the steps
         move    (r1)+                   ; inc
-        move    x:(r7+$10),x0
+        move    x:(r3)+,x0
         move    x:(r1),a
-        add     x0,a
+        add     x0,a    x:(r3)+,x0
         move    a,x:(r1)+               ; wid
-        move    x:(r7+$11),x0
         move    x:(r1),a
-        add     x0,a
+        add     x0,a    x:(r3)+,x0
         move    a,x:(r1)+               ; depth
-        move    x:(r7+$12),x0
         move    x:(r1),a
         add     x0,a
         move    a,x:(r1)+               ; centre
@@ -665,10 +651,10 @@ mo_line:
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$22),a            ; m, the run value
-        move    x:(r1)+,y1              ; its step
+        move    x:(r1)+,a               ; m, the run value
+        move    x:(r1)-,y1              ; its step
         add     y1,a
-        move    a,x:(r7+$22)
+        move    a,x:(r1)
         move    a,y1
         mpy     x0,y1,a
         asl     #$1,a,a
@@ -687,6 +673,8 @@ mo_line:
         move    (r0)+n0                 ; whole loop, so two steps, no reload
 molinz:
         nop
+        move    x:(r4+$1b),x0           ; MIX's run value, for the next block
+        move    x0,x:(r7+$22)
         move    y0,a
         move    a1,x:(r7+$20)           ; the write phase
         move    n4,a
@@ -787,7 +775,8 @@ mo_padv:
         move    x0,x:(r5)
 ; ---- the loop --------------------------------------------------------------
 ; Pointer-addressed (22 Sep 2026). The stream at $48 (r4): dbm dbf fb w2 w4
-; w6 w8 hold mask | dbm dbf fb w2 w4 w6 w8 mask | MIX's step. The walk from $25 on
+; w6 w8 hold mask | dbm dbf fb w2 w4 w6 w8 mask | MIX's run and step. The
+; walk from $25 on
 ; r3, per channel: bm bf, the two feedback stages, the eight mod stages, the
 ; LOFI latch, then (L only) the wet. The ramps' states are copied into the
 ; walk for the block and back after it; y previous in n2/n6 (their slots
@@ -833,8 +822,7 @@ mo_padv:
         move    x0,x:(r1)+
         move    x:(r7+$45),x0
         move    x0,x:(r1)+
-        move    x:(r7+$44),x0           ; MIX's step
-        move    x0,x:(r1)+
+        bsr     mo_mset                 ; MIX's run and step
         move    #>$1,x0
         move    x0,x:(r7+$43)           ; primed
         move    #>$ffffff,m3
@@ -996,10 +984,10 @@ mo_padv:
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$22),a            ; m, the run value
-        move    x:(r1)+,y1              ; its step
+        move    x:(r1)+,a               ; m, the run value
+        move    x:(r1)-,y1              ; its step
         add     y1,a
-        move    a,x:(r7+$22)
+        move    a,x:(r1)
         move    a,y1
         mpy     x0,y1,a
         asl     #$1,a,a
@@ -1018,6 +1006,8 @@ mo_padv:
         move    (r0)+n0
 mophsz:
         nop
+        move    x:(r4+$11),x0           ; MIX's run value, for the next block
+        move    x0,x:(r7+$22)
         move    x:(r7+$25),x0
         move    x0,x:(r7+$11)
         move    x:(r7+$26),x0
@@ -1093,8 +1083,9 @@ mo_bcomb:
         move    a,x:(r7+$1c)
 ; ---- the loop --------------------------------------------------------------
 ; Pointer-addressed (22 Sep 2026). The stream at $48 (r4): period-1 polarity
-; h1 h0 gain hold mask trim | h1 h0 mask trim | MIX's step (period-1,
-; polarity and gain are run values the R string reads at r4 + 0/1/4). The
+; h1 h0 gain hold mask trim | h1 h0 mask trim | MIX's run and step | the
+; steps of period-1, polarity, gain (run values the R string reads at r4 +
+; 0/1/4). The
 ; walk from
 ; $23 on r3, per channel: mo_herm's eight scratch words, x1, x2, the LOFI
 ; latch, then (L only) the wet. r2/r6 = the lines' bases, y0 = the write
@@ -1107,11 +1098,10 @@ mo_bcomb:
         move    r4,r1
         move    #>$ffffff,m1
 ; period - 1 and the gain are RUN values stepped once per sample (the loop's
-; head) 1/1024 of the way to this block's (26 Sep 2026; steps at $10..$12);
+; head) 1/1024 of the way to this block's (26 Sep 2026; steps after MIX's);
 ; the R string reads L's
-        move    r7,r3
-        move    #$10,n3
-        move    (r3)+n3
+        lua     (r4+$e),r3          ; the steps, the stream's last three words
+        move    #>$ffffff,m3
         move    x:(r7+$1e),a
         sub     #>$1000,a               ; period - 1 (the FIR's own delay)
         move    a,y1
@@ -1137,8 +1127,7 @@ mo_bcomb:
         move    x:(r7+$45),x0
         move    x0,x:(r1)+
         move    y0,x:(r1)+
-        move    x:(r7+$44),x0           ; MIX's step
-        move    x0,x:(r1)+
+        bsr     mo_mset                 ; MIX's run and step
         move    #>$1,x0
         move    x0,x:(r7+$43)           ; primed
         move    x:(r7+$0e),r2
@@ -1153,17 +1142,16 @@ mo_bcomb:
         move    a1,n1
         do      n7,>mocmbz
         move    r4,r1
-        move    x:(r7+$10),x0
+        lua     (r4+$e),r3              ; the steps
+        move    x:(r3)+,x0
         move    x:(r1),a
-        add     x0,a
+        add     x0,a    x:(r3)+,x0
         move    a,x:(r1)+               ; period - 1
-        move    x:(r7+$11),x0
         move    x:(r1),a
-        add     x0,a
+        add     x0,a    x:(r3)+,x0
         move    a,x:(r1)+               ; the polarity
         move    (r1)+
         move    (r1)+
-        move    x:(r7+$12),x0
         move    x:(r1),a
         add     x0,a
         move    a,x:(r1)                ; the gain
@@ -1280,10 +1268,10 @@ mo_bcomb:
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$22),a            ; m, the run value
-        move    x:(r1)+,y1              ; its step
+        move    x:(r1)+,a               ; m, the run value
+        move    x:(r1)-,y1              ; its step
         add     y1,a
-        move    a,x:(r7+$22)
+        move    a,x:(r1)
         move    a,y1
         mpy     x0,y1,a
         asl     #$1,a,a
@@ -1302,6 +1290,8 @@ mo_bcomb:
         move    (r0)+n0
 mocmbz:
         nop
+        move    x:(r4+$c),x0            ; MIX's run value, for the next block
+        move    x0,x:(r7+$22)
         move    y0,a
         move    a1,x:(r7+$20)
         move    n1,a
@@ -1312,6 +1302,19 @@ mocmbz:
 ; THE DRY PATH: an FX2 slot, or MIX at zero. Frames untouched.
 ; ===========================================================================
 mo_dry:
+        rts
+
+; ---------------------------------------------------------------------------
+; mo_mset -- MIX's run value ($22) into the stream at r1 and its step after
+; it (mo_rset). Out: r1 two on. Clobbers a, b, x0, y1, r3.
+; ---------------------------------------------------------------------------
+mo_mset:
+        move    x:(r7+$22),x0
+        move    x0,x:(r1)
+        lua     (r1+$1),r3
+        move    x:(r7+$00),y1           ; MIX
+        bsr     mo_rset
+        move    (r1)+
         rts
 
 ; ---------------------------------------------------------------------------
