@@ -22,10 +22,17 @@ adds RLEN PLEN, so a fault on the second is RLEN PLEN's.
 
 ## Where it has run
 
-Not flashed. `make check` with a real project under the port (see the
-remix's proof note). What is new on a unit: the three fixes beside Octakit,
-USB and the DRAM runtime (on hardware they ran in `seekE`/`recfix`, OCTABAM83/84,
-without those), and twenty channels out beside USB AUDIO IN.
+- **Hardware:** an MKII, OCTABAM1 (this remix at `074a4ff`, BUILD=1),
+  28-29 Sep 2026, flashed over stock 1.40C, with a project converted by
+  `ot_project.py host`. Reported working by its owner: the bus (DEL/REV
+  sends, delay and reverb returns, the TEMPO window), a FLEX take
+  re-trigged every bar on its own recorder buffer at 128 BPM with no
+  bar-line click, an ordinary FLEX loop with slices / STRT locks as stock,
+  twenty USB channels into macOS, and a Kit save plus FUNC + CUE reload.
+  The USB counters were not read.
+- `make check` with a stress_project.py project under the port: every gate
+  passes except verify_set's stray MIDI CC (0, 0), which unmodified
+  bottleservice fails identically on the same project.
 
 ## On the unit
 
