@@ -105,6 +105,17 @@ follows it page-aligned; the ceiling is the reserve's end. The reserve is
 always the first 1,707 pages, so a remix without Octakit boots the same
 bytes to the same places.
 
+**OS SWITCH's stage** (`modules/os-switch`, 29 Sep 2026) is the top of this
+reserve, `0x41200000..0x41495de0`: a 64-byte mailbox, a 40-byte copy stub
+at `+0x100`, the staged image from `+0x1000` (2,706,400 B). It is written
+by the running OS just before a reset and read by the next boot's OS
+entry, before anything else runs; nothing between a reset and the OS
+entry writes SDRAM outside the image the bootstrap unpacks
+(`docs/firmware/ARCHITECTURE.md` §3a). In a remix carrying the module its
+gate refuses a runtime and stage that reach the mailbox (`os-switch`'s
+own end at `0x40a9788d`, measured from its build's
+`layout.json`).
+
 The OS never touches a reservation again: the arena clear starts at the
 new base, the boot-time copies follow the literal, and the page allocator
 hands out only indexes below the new count. The cost is 10 MB of an

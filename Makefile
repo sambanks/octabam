@@ -68,6 +68,16 @@ bus-plain: ## Build without specialization (both servers on both cores)
 	$(need-remix)
 	REMIX=$(REMIX) python3 tools/build/build_bus.py
 
+.PHONY: obi
+obi: bus ## OS SWITCH: the build as a raw OS image for the card root -> out/<OBI>.OBI (OBI=NAME, 8 chars; default the remix name)
+	$(need-remix)
+	python3 tools/build/make_obi.py out/mainos_bus.bin "$(if $(OBI),$(OBI),$(notdir $(REMIX)))"
+
+.PHONY: obi-stock
+obi-stock: ## OS SWITCH: your stock 1.40C MAIN OS as out/STOCK140.OBI (switch back to stock without flashing)
+	@test -f out/raw/section_3_MAIN_OS.bin || { echo "missing out/raw/section_3_MAIN_OS.bin -- run 'make os' then 'make recon'"; exit 1; }
+	python3 tools/build/make_obi.py out/raw/section_3_MAIN_OS.bin STOCK140
+
 .PHONY: image
 image: bus ## Repack the build into a card-flashable .bin (see docs/guide/BUILDING.md); BUILD=N is required
 	$(need-remix)

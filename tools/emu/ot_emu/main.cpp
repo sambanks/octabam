@@ -1247,6 +1247,8 @@ int main(int _argc, char** _argv)
 	double dspLazy = ot::DspPair::g_lazyDefault;	// O16c: --dsp-lazy N -- the pair's ticks are booked and replayed in chunks of up to N DSP instructions at the ColdFire's touch points (0 = the per-tick path); the default in every mode, byte-identical to it
 	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
 	std::string pokeEarly;		// the same, written before --call (the current-track byte 0x80000000 an editor call reads)
+	std::string preload;		// "addr=path[;...]": a file's bytes into memory BEFORE the boot runs -- what a reset leaves
+								// in SDRAM (modules/os-switch's stage) or in NOR (the bootstrap version word at 0x3ffc)
 	std::string callSpec;		// "addr[,arg,...]": a firmware routine called AS MAIN after the load (a menu action the port has no panel for -- Part Reload, 14 Sep 2026)
 	int callAt = -1;			// with --sequencer: make that call this many frames AFTER the transport start instead (a panel edit while playing: the transport start re-applies the part over the live lane, so an edit made before it is gone)
 	std::vector<std::string> scenarios;	// 29 Sep 2026: --scenario "LOG ARGS...", repeatable: after the load the port forks one child per scenario; each starts from the same loaded machine (the snapshot is the fork), writes its stdout to LOG and takes ARGS as its post-load options (--sequencer, --frames, --step, --poke, --call, --midi, --mem-dump, --live-script, ...). One LOAD PROJECT instead of one per run
@@ -1337,6 +1339,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--card-out" && i + 1 < _argc)	cardOut = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
 		else if(a == "--poke-early" && i + 1 < _argc)	pokeEarly = _argv[++i];
+		else if(a == "--preload" && i + 1 < _argc)	preload = _argv[++i];
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
 		else if(a == "--call-at" && i + 1 < _argc)	callAt = std::atoi(_argv[++i]);
 		else if(a == "--step" && i + 1 < _argc)		steps.emplace_back(_argv[++i]);
@@ -1416,6 +1419,30 @@ int main(int _argc, char** _argv)
 	std::printf("image      : %s (%zu bytes) at %#x\n", image.c_str(), img.size(), ot::Machine::g_imageBase);
 
 	ot::Machine m(img);
+	// --preload: memory as a reset finds it. The port boots every image into
+	// zeroed RAM with NOR unmodelled (0x3ffc reads 0, so the entry takes the
+	// bootstrap-upgrade branch); a file here stands in for what the hardware
+	// would hold before the OS entry runs.
+	for(size_t q = 0; q < preload.size();)
+	{
+		auto e = preload.find(';', q);
+		if(e == std::string::npos) e = preload.size();
+		const auto spec = preload.substr(q, e - q);
+		q = e + 1;
+		const auto eq = spec.find('=');
+		if(eq == std::string::npos)
+			continue;
+		const auto addr = static_cast<uint32_t>(std::strtoul(spec.substr(0, eq).c_str(), nullptr, 0));
+		const auto bytes = readFile(spec.substr(eq + 1));
+		if(bytes.empty())
+		{
+			std::printf("--preload: cannot read %s\n", spec.substr(eq + 1).c_str());
+			return 2;
+		}
+		for(size_t k = 0; k < bytes.size(); ++k)
+			m.write8(addr + static_cast<uint32_t>(k), bytes[k]);
+		std::printf("preload    : %s (%zu bytes) at %#x\n", spec.substr(eq + 1).c_str(), bytes.size(), addr);
+	}
 	// --mkii: boot as an MKII. The boot probe at 0x4001f8a0 sets the MKII flag
 	// 0x46c8d18c, then ten times drives GPIO 0xfc0a403a bit 5 high and low
 	// and reads bit 6: on the MKII the two pins are tied, bit 6 follows bit 5

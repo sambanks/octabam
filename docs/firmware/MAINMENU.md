@@ -108,7 +108,9 @@ The root row array `0x400cc698` has one reference in the image, the rows
 pointer `0x400cbda4`; live data follows the array. Copy the rows to a cave,
 append, repoint the rows pointer, bump the count in the descriptor. The
 menu widget reads the count at open time. Same move for a submenu
-(CONTROL: rows pointer `0x400cbd6c`, count `0x400cbd54`). Hardware
+(CONTROL: rows pointer `0x400cbd6c`, count `0x400cbd54`; `modules/os-switch`
+grows it to seven with its rows in DRAM, stock's six `.incbin`'d from the
+user's image, drawn and driven under the port 29 Sep 2026). Hardware
 precedent: PERSONALIZE extended by two items (`git show
 40a1f19:tools/patch_menu.s`, `git show 3ceba41:docs/history/NOTES.md`); CONTROL > REVERB /
 DELAY rows on tags 85–90. Two modules that both grow one submenu cannot
