@@ -14,7 +14,7 @@ from remix.schema import Proof, Remix
 
 REMIX = Remix(
     name="bottleservice-rec-plen",
-    family="rig", proof=Proof.CHECK, proof_note="make check, 28 Sep 2026; not flashed",
+    family="rig", proof=Proof.HARDWARE, proof_note="an MKII, OCTABAM2, 29 Sep 2026",
     doc="bottleservice-rec + RLEN PLEN (RLEN value PLEN: one pattern loop per take).",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",

@@ -16,7 +16,15 @@ not been seen to work on a unit (`docs/firmware/RECORDER_CLICK.md`).
 
 ## Where it has run
 
-Not flashed. Flash `bottleservice-rec` first.
+- **Hardware:** an MKII, OCTABAM2 (this remix at `074a4ff`, BUILD=2),
+  29 Sep 2026, flashed over OCTABAM1. Reported working by its owner: RLEN
+  reads PLEN past MAX; with TRIG ONE + QREC PLEN one REC press records
+  exactly one pattern loop and stops, at 1/4X and at 1/8X; PLEN survives a
+  Kit save, a load of another Kit and a FUNC + CUE reload with no fault; the
+  128 BPM recorder loop still has no bar-line click.
+- Under the port, the DRAM unit and the ROM cave it replaced give the same
+  lengths (1,411,200 at 64 steps 1/4X 120 BPM; 496,125 at 48 steps 1/2X
+  128 BPM) and the stored 65 survives the load.
 
 ## On the unit
 
