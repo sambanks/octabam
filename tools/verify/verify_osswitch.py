@@ -209,7 +209,8 @@ def main():
     ui_watch = [rt["osw_scan"], rt["osw_pick"], rt["osw_answer"], rt["osw_load"], rt["osw_reset"],
                 rt["putpanel"]]
     out, hits, d = boot("ui", [(0x3FFC, norver)], ui_watch,
-                        {"mbox": (MBOX, 72), "stage": (IMG, len(stock)), "body": (BODY, len(body))},
+                        {"mbox": (MBOX, 72), "stage": (IMG, len(stock)), "body": (BODY, len(body)),
+                         "scanext": (0x460F77B0, 4)},
                         extra=["--card", str(card), "--live-script", str(script), "--mkii"],
                         max_instr=4_000_000_000)
     ran = [s for s, a in zip(("osw_scan", "osw_pick", "osw_answer", "osw_load", "osw_reset"), ui_watch)
@@ -221,6 +222,11 @@ def main():
     mb, stage = d.get("mbox", b""), d.get("stage", b"")
     check("ui: the stage reads back equal to STOCK140.OBI", stage == stock,
           f"{len(stage):,} B")
+    # MAIN MENU's rescan borrows the stock dir scan's global name pool and
+    # cache and puts them back: the cache's extension is not ours after it
+    # (build 15 on the unit left the browsers' listing state rewritten)
+    check("ui: the rescan left the stock dir scan's cache as it found it (not \"OBI\")",
+          d.get("scanext", b"")[:4] != b"OBI\0", (d.get("scanext") or b"").hex())
     check("ui: the chainloader's body sits in the stage page, its length and sum in the mailbox",
           d.get("body") == body and len(mb) == 72
           and struct.unpack(">II", mb[C["MB_BODYLEN"]:C["MB_BODYLEN"] + 8]) == (len(body) // 4, body_sum),

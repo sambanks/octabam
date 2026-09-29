@@ -17,6 +17,7 @@ DSP_ASM := vendor/dsp56300/build/source/dsp_host/dsp_asm
 # make keeps the spaces before a `#` and `make image` then splits its recipe.
 BUILD   ?= 79
 VERSION ?= OCTABAM$(BUILD)
+export VERSION                  # OS SWITCH names the image it is built into after it
 
 # Which modules the image carries. `make modules` lists what is available;
 # remixes/<name>/remix.py is the selection. There is no default: a target

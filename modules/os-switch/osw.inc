@@ -32,6 +32,7 @@
         .set    MB_PARK,     56             | the DSP cores that took the park command: bit 0 core 0, bit 1 core 1
         .set    MB_BODYLEN,  60             | the body's length in longs
         .set    MB_BODYSUM,  64             | the sum of its longs: the gate runs it only whole
+        .set    MB_FLASH,    68             | the FLASHED image's name, 16 bytes: written by a switch from it, carried by a switch from a switched image
 
 | status words (MB_STATUS)
         .set    ST_BOOT,     0x424f4f54     | "BOOT" handed over to the staged image

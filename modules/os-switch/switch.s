@@ -38,7 +38,9 @@
         .include "remix.inc"
 
         .set    DIRSCAN,   0x4007f598   | (dir, table, ext, 0, 0) -> count; OS UPGRADE's
-        .set    DIRTAB,    0x46c8d1b8   | its table: 12-byte records {name*, is_dir, -}
+        .set    SCAN_STATE, 0x460e76ac  | its name pool (64 KB) and its cache, to 0x460f77ff
+        .set    SCAN_STATE_LEN, 0x10154
+        .set    SCAN_MAX,  1024         | its table's capacity (0x4007f35e), 12-byte records {name*, is_dir, -}
         .set    DIALOG,    0x4006d57c   | (title, nlines, lines*, 3, callback(answer: 0 = YES))
         .set    MESSAGE,   0x4005a2b8   | (text, 0x60): the popup OS UPGRADE reports errors with
         .set    DEFER,     0x40000c3c   | (queue, record {byte 21, long fn}): run fn in the UI task
@@ -102,6 +104,12 @@ osw_list:
 
 str_os:
         .asciz  "OS"
+str_self:
+        OSW_SELF                        | remix.inc: this image's own name (make's VERSION)
+str_flash:
+        .asciz  "FLASH "
+str_unknown:
+        .asciz  "?"
 str_title:
         .asciz  "OS SWITCH"
 str_obi:
@@ -160,15 +168,32 @@ osw_menu:
 osw_scan:
         lea     (-12,%sp),%sp
         movem.l %d2-%d3/%a2,(%sp)
+        | BORROW THE SCAN'S STATE AND GIVE IT BACK. The stock dir scan keeps
+        | every listing's names in ONE global 64 KB pool (0x460e76ac) and its
+        | last directory, extension and count in a cache after it (0x460f76ac..
+        | 0x460f77ff); the project, set and sample browsers list through the
+        | same scan (0x4006a4c0, 0x4006aee8, 0x4006465a) and keep pointing into
+        | that pool. OS UPGRADE, the only other root scan, reboots after it;
+        | this runs at every MAIN MENU opening, so it saves the pool and the
+        | cache first, lists into its own table, and puts both back byte for
+        | byte. Build 15 on the unit listed through the browsers' table and
+        | pool and threw VEC:04 (PC 0x2007e788) on a later file load
+        | (29 Sep 2026; the port did not reproduce it).
+        lea     (SCAN_STATE).l,%a0
+        lea     osw_save,%a1
+        move.l  #SCAN_STATE_LEN/4,%d0
+1:      move.l  (%a0)+,(%a1)+
+        subq.l  #1,%d0
+        bne.s   1b
         clr.l   -(%sp)
         clr.l   -(%sp)
         pea     str_obi
-        pea     (DIRTAB).l
+        pea     osw_tab
         pea     (STR_SLASH).l
         jsr     (DIRSCAN).l
         lea     (20,%sp),%sp
         | keep the files, drop the directories
-        lea     (DIRTAB).l,%a2
+        lea     osw_tab,%a2
         moveq   #0,%d2                  | files kept
         move.l  %d0,%d3
         ble.s   2f
@@ -189,6 +214,13 @@ osw_scan:
         subq.l  #1,%d3
         bne.s   1b
 2:      move.l  %d2,count
+        | the names are ours now: the scan's state back as it was
+        lea     osw_save,%a0
+        lea     (SCAN_STATE).l,%a1
+        move.l  #SCAN_STATE_LEN/4,%d0
+3:      move.l  (%a0)+,(%a1)+
+        subq.l  #1,%d0
+        bne.s   3b
         bsr.w   sortnames
         bsr.w   buildrows
         movem.l (%sp),%d2-%d3/%a2
@@ -243,29 +275,20 @@ buildrows:
         lea     (-16,%sp),%sp
         movem.l %d2-%d3/%a2-%a3,(%sp)
         lea     osw_rows,%a2
-        | heading 0: "\x17\x17NOW <name>\x17..."
+        | heading 0: "\x17\x17NOW <this image>\x17..."
         lea     head0,%a3
-        moveq   #0x17,%d0
-        move.b  %d0,(%a3)
-        move.b  %d0,(1,%a3)
-        clr.b   (2,%a3)
-        pea     str_now
-        move.l  %a3,-(%sp)
-        bsr.w   strcat
-        addq.l  #8,%sp
-        bsr.w   runname                 | a0 = what is running
-        move.l  %a0,-(%sp)
-        move.l  %a3,-(%sp)
-        bsr.w   strcat
-        addq.l  #8,%sp
-        move.l  %a3,%a0
-        bsr.w   stripobi
-        move.l  %a3,%a0
-        moveq   #22,%d0
-        bsr.w   padsep
-        move.l  %a3,%a0
-        bsr.w   inert
-        moveq   #1,%d3                  | headings
+        lea     str_now,%a0
+        bsr.w   heading
+        lea     str_self,%a0
+        bsr.w   headtail
+        | heading 1: "\x17\x17FLASH <the flashed image>\x17...": this one
+        | after a power-on; after a switch, the name the switch carried
+        lea     head1,%a3
+        lea     str_flash,%a0
+        bsr.w   heading
+        bsr.w   flashname
+        bsr.w   headtail
+        moveq   #2,%d3                  | headings
         | a failed last switch: its reason, inert
         lea     (OSW_MBOX).l,%a1
         move.l  (MB_STATUS,%a1),%d0
@@ -338,15 +361,44 @@ inert:
         clr.l   (%a2)+
         rts
 
-| a0 = the name of the running image: the mailbox's after a switch, else
-| the flashed one
-runname:
-        lea     str_flashed,%a0
+| heading: start the heading at a3 -- two 0x17 glyphs, then the text at a0
+heading:
+        moveq   #0x17,%d0
+        move.b  %d0,(%a3)
+        move.b  %d0,(1,%a3)
+        clr.b   (2,%a3)
+        move.l  %a0,-(%sp)
+        move.l  %a3,-(%sp)
+        bsr.w   strcat
+        addq.l  #8,%sp
+        rts
+
+| headtail: append the name at a0, pad with 0x17 to 22, and emit the row
+headtail:
+        move.l  %a0,-(%sp)
+        move.l  %a3,-(%sp)
+        bsr.w   strcat
+        addq.l  #8,%sp
+        move.l  %a3,%a0
+        bsr.w   stripobi
+        move.l  %a3,%a0
+        moveq   #22,%d0
+        bsr.w   padsep
+        move.l  %a3,%a0
+        bra.w   inert
+
+| a0 = the flashed image's name: this image's, unless this boot came from a
+| switch (status RUN), then the one the switch carried in the mailbox
+flashname:
+        lea     str_self,%a0
         lea     (OSW_MBOX).l,%a1
         move.l  (MB_STATUS,%a1),%d0
         cmpi.l  #ST_RUN,%d0
         bne.s   1f
-        lea     (OSW_MBOX+MB_NAME).l,%a0
+        lea     (OSW_MBOX+MB_FLASH).l,%a0
+        tst.b   (%a0)
+        bne.s   1f
+        lea     str_unknown,%a0
 1:      rts
 
 | stripobi: cut a trailing ".OBI" (any case) off the string at a0
@@ -680,6 +732,19 @@ osw_load:
         subq.l  #1,%d0
         bne.s   7b
         move.l  %d1,(MB_BODYSUM,%a1)
+        | the flashed image's name, for the next image's FLASH line: ours
+        | after a power-on, carried on when this boot is itself a switch
+        move.l  (MB_STATUS,%a1),%d0
+        cmpi.l  #ST_RUN,%d0
+        beq.s   8f
+        lea     str_self,%a0
+        lea     (OSW_MBOX+MB_FLASH).l,%a2
+        moveq   #15,%d0
+6:      move.b  (%a0)+,(%a2)+
+        subq.l  #1,%d0
+        bne.s   6b
+        clr.b   (%a2)
+8:      lea     (OSW_MBOX).l,%a1
         move.l  #RS_SPIN,%d0
         move.l  %d0,(MB_RESET,%a1)
         move.l  #OSW_MAGIC,%d0
@@ -914,8 +979,14 @@ lines:  .long   line1, str_stops, str_home
 line1:  .space  32
 path:   .space  32
 head0:  .space  32
+head1:  .space  32
 names:  .space  NMAX*NLEN
 labels: .space  NMAX*NLEN
+        .align  4
+osw_tab:
+        .space  SCAN_MAX*12
+osw_save:
+        .space  SCAN_STATE_LEN
         .align  4
 osw_rows:
         .long   str_none, 0, 0, 0, 0, 0

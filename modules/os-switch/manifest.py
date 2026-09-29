@@ -54,6 +54,13 @@ def _include(_modules):
     at build time (never a stock byte in the repo), and the icon."""
     off = ROOT_ROWS - 0x40000400
     ink = ", ".join(f"0x{v:08x}" for v in _icon_longs(ICON))
+    # the image's own name, what MAIN MENU > OS shows it as: make's VERSION
+    # (exported by the Makefile, the name make image gives the .bin and the
+    # .OBI), else OCTABAM<BUILD>; A-Z 0-9 _ - and 12 characters, as make_obi
+    import os
+    import re
+    name = os.environ.get("VERSION") or f"OCTABAM{os.environ.get('BUILD', '')}"
+    name = re.sub(r"[^A-Z0-9_-]", "", name.upper())[:12] or "OCTABAM"
     return ((HERE / "osw.inc").read_text()
             + f"        .set    TRACE, {1 if 'BOOT TRACE' in _modules else 0}\n"
             + "        .macro  ROOT_ROWS\n"
@@ -61,6 +68,9 @@ def _include(_modules):
             + "        .endm\n"
             + "        .macro  ICON_INK\n"
             + f"        .long   {ink}\n"
+            + "        .endm\n"
+            + "        .macro  OSW_SELF\n"
+            + f"        .asciz  \"{name}\"\n"
             + "        .endm\n"
             + "        .macro  ICON_MASK\n"
             + "        .rept   19\n        .long   0xff800000\n        .endr\n"
