@@ -12,6 +12,7 @@ out/
 
 # --- Third party, cloned and built by scripts/setup.sh ---
 vendor/
+/vendor
 
 # --- Local ---
 .claude/
@@ -20,6 +21,7 @@ vendor/
 .playwright-mcp/
 __pycache__/
 .venv/
+/.venv
 *.pyc
 tools/hw/rec
 tools/hw/tone
