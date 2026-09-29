@@ -63,11 +63,15 @@ def main():
             chain_bytes += 1
     notes = [n for n, _ in seq]
     want = [9, 2, 3, 4, 5, 6, 7, 8]
+    ups = [(n, v) for n, v in seq if n in (14, 15)]
+    notes = [n for n in notes if n not in (14, 15)]
     ok = (sorted(notes) == sorted(want) and notes[:5] == want[:5] and "HANDOFF" in out
+          and ups == [(14, 0), (15, 0), (14, 1), (15, 1)]
           and dict(seq).get(9) == 22 and 10 not in notes and 11 not in notes
           and chain_bytes == (6 if chain else 0))
     print(f"  [{'PASS' if ok else 'FAIL'}] verify_boottrace: a normal MKII boot sends notes "
-          f"{'1, 12 (the chainloader), ' if chain else ''}{want}, clock 22, never 10/11  "
+          f"{'1, 12 (the chainloader), ' if chain else ''}{want}, clock 22, never 10/11, "
+          f"uploads 14/15 on core 0 then core 1  "
           f"(saw {seq}, {chain_bytes} chainloader byte(s))")
     return 0 if ok else 1
 

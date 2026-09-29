@@ -435,6 +435,16 @@ osw_reset:
         bsr.w   osw_park
         lea     (OSW_MBOX).l,%a1
         move.l  %d0,(MB_PARK,%a1)
+        .if     TRACE
+        | BOOT TRACE's note 13: velocity = the cores that took the park command
+        move.l  %d0,%d3
+        move.l  #0x90,%d1
+        bsr.w   txmidi
+        moveq   #13,%d1
+        bsr.w   txmidi
+        move.l  %d3,%d1
+        bsr.w   txmidi
+        .endif
         | MKII: the panel back to its start-up state, `60 02`, so the
         | bootstrap's `60 00` after the reset gets its key report
         tst.l   (MKII_FLAG).l
@@ -504,6 +514,19 @@ parkcore:
         rts
 2:      moveq   #1,%d0                  | Z clear: taken
         rts
+
+        .if     TRACE
+| one byte on MIDI OUT (UART0), polled, ~200k polls at most (BOOT TRACE)
+txmidi:
+        move.l  #200000,%d2
+1:      move.b  (0xfc060004).l,%d0
+        btst    #2,%d0
+        bne.s   2f
+        subq.l  #1,%d2
+        bne.s   1b
+2:      move.b  %d1,(0xfc06000c).l
+        rts
+        .endif
 
 | one byte to the panel, polled as the bootstrap's putc does (0x20)
         .global putpanel

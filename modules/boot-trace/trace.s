@@ -18,6 +18,12 @@
 |      bootstrap version low byte (must never appear)   0x40000450
 |  11  the bootstrap reprogram itself entered   0x4000f9b4
 |  12  (OS SWITCH's chainloader) no switch pending: back to the entry
+|  13  (OS SWITCH's switcher) just before the reset, velocity = the DSP
+|      cores that took the park command (bit 0 core 0, bit 1 core 1)
+|  14  a DSP bootstrap upload starts, velocity = its index (0 = core 0)
+|                                                  0x40001d4c
+|  15  a DSP payload's records start, velocity = its index (0 = core 0)
+|                                                  0x40001b18
 |
 | UART0 is MIDI (its RX is MIDI IN, docs/remixer/EMU.md); the bootstrap
 | sets it up for its own SysEx upgrade and enables its transmitter
@@ -137,6 +143,8 @@ tr_frame_end:
 
 seen7:  .byte   0
 seen8:  .byte   0
+nboot:  .byte   0
+nrec:   .byte   0
         .even
 
         .global tr_clock
@@ -174,3 +182,37 @@ tr_reprog:
         lea     (-16,%sp),%sp
         movem.l %d2/%a2-%a4,(%sp)
         jmp     (0x4000f9bc).l
+
+        .global tr_bootup
+tr_bootup:
+        move.l  %d0,-(%sp)
+        move.l  %d1,-(%sp)
+        moveq   #0,%d1
+        move.b  nboot,%d1               | the call's index: 0 = core 0, 1 = core 1 at a boot
+        addq.l  #1,%d1
+        move.b  %d1,nboot
+        subq.l  #1,%d1
+        moveq   #14,%d0
+        bsr.w   tracev
+        move.l  (%sp)+,%d1
+        move.l  (%sp)+,%d0
+        lea     (-16,%sp),%sp
+        movem.l %d2-%d4/%a2,(%sp)
+        jmp     (0x40001d54).l
+
+        .global tr_records
+tr_records:
+        move.l  %d0,-(%sp)
+        move.l  %d1,-(%sp)
+        moveq   #0,%d1
+        move.b  nrec,%d1               | the call's index: 0 = core 0, 1 = core 1 at a boot
+        addq.l  #1,%d1
+        move.b  %d1,nrec
+        subq.l  #1,%d1
+        moveq   #15,%d0
+        bsr.w   tracev
+        move.l  (%sp)+,%d1
+        move.l  (%sp)+,%d0
+        lea     (-12,%sp),%sp
+        movem.l %d2-%d3/%a2,(%sp)
+        jmp     (0x40001b20).l
