@@ -565,7 +565,13 @@ def assemble_syms(src_text, org, label=""):
     # target's ABSOLUTE address where the chip takes a displacement, and the
     # round-trip listing prints it back unchanged (29 Sep 2026, AGENTS.md):
     # refuse them; btst + bcs/bcc, or jset/jclr (absolute), instead.
-    _bad = re.findall(r"^[^;\n]*\b(brset|brclr|bsset|bsclr)\b", src_text, re.M | re.I)
+    # ONE form is exempt: a literal 0 target, the branch-to-itself wait the
+    # stock bootstraps use (`brclr #0,x:<<$ffffc3,0` = 0cc300 000000, the
+    # displacement written as the number the chip takes; OS SWITCH's DSP
+    # park, dsp_park.asm, run on the unit 29 Sep 2026).
+    _bad = [m.group(1) for m in re.finditer(
+        r"^[^;\n]*\b(brset|brclr|bsset|bsclr)\b([^;\n]*)", src_text, re.M | re.I)
+        if not re.search(r",\s*0\s*$", m.group(2))]
     if _bad:
         sys.exit(f"{label or 'DSP source'}: {sorted(set(_bad))} -- dsp_asm encodes these "
                  f"with an absolute target; use btst + bcs/bcc (AGENTS.md)")
