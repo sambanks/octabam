@@ -337,6 +337,27 @@ class DspSection:
     # with hooks and no MenuEntry is placed on `payloads` only and takes no
     # dispatch entry; one with a menu may carry hooks as well.
     hooks: tuple[DspHook, ...] = ()
+    # PINNED PLACEMENT -- put the section's code at a FIXED P address instead
+    # of packing it into the harvested region, and take the words from what
+    # is already there. The one place that has words to give is the interrupt
+    # vector table: stock leaves whole runs of slots as `jmp *` (a self-jump
+    # plus a zero word), which would freeze the core if that interrupt ever
+    # fired, so they are dead -- `tools/verify/verify_dspvectors.py` proves
+    # nothing arms one, on every build, and that gate is the licence for this
+    # field. The build walks forward from `pin` while the stock pattern
+    # holds, refuses if what it finds is not that pattern, and claims every
+    # word it takes so a second module is refused by name.
+    #
+    # The run is rarely long enough for a whole section, so `pin_split_label`
+    # names the ONE label where the code may be cut: everything before it is
+    # pinned, everything from it goes in the harvested region as usual. The
+    # two halves are assembled at their real addresses (never moved after
+    # assembly -- a `do` loop's end address is absolute), and the head's
+    # single reference to the tail, written `#>LABEL` in the source, is
+    # rewritten to where the tail landed. A section whose head references the
+    # tail any other way will not survive the split.
+    pin: int | None = None
+    pin_split_label: str | None = None
 
 
 @dataclass(frozen=True)

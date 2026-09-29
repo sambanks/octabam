@@ -2736,6 +2736,33 @@ hostquit:
             # has been burned by.
             _fit, _last = None, None
             _xa = _xt_layout.get(name)          # (X address, words) or None
+            # PINNED (schema.DspSection.pin): the head of this section goes
+            # at a fixed P address -- the dead interrupt vectors -- and only
+            # the tail is packed into the harvested region. The head is
+            # assembled at the pin and the tail at its own cursor: neither is
+            # moved after assembly, because a `do` loop's end address is
+            # absolute. `_split` is the tail's offset in words.
+            _sec = remix_modules()[name].dsp
+            _pin = _sec.pin if _sec is not None else None
+            _split = 0
+            if _pin is not None:
+                _w0, _s0 = assemble_syms(src, _pin, label=name)
+                if _sec.pin_split_label not in _s0:
+                    sys.exit(f"payload {tag}: {name} is pinned at P:0x{_pin:05x} but its "
+                             f"source defines no label {_sec.pin_split_label!r} to split at")
+                _split = _s0[_sec.pin_split_label] - _pin
+                # the run: forward from the pin while the stock self-jump
+                # pattern holds (an even word is `jmp *`, the odd one zero)
+                _avail = 0
+                while True:
+                    _a = _pin + _avail
+                    if rdw_p_at(_a) != ((0x0C0000 | _a) if _a % 2 == 0 else 0):
+                        break
+                    _avail += 1
+                if _split > _avail:
+                    sys.exit(f"payload {tag}: {name}'s head is {_split} words but the free "
+                             f"vector run at P:0x{_pin:05x} is {_avail} -- the stock words "
+                             f"stop there. Split it earlier or pin it elsewhere")
             for _r in runs:
                 _c, _end = _r["cursor"], _r["base"] + _r["words"]
                 _tab, _s2, _lfo = None, src, "$facade" in src
@@ -2756,9 +2783,12 @@ hostquit:
                         _s2, _xt_sites[name] = _p2x(_s2, name)
                     else:
                         _c += len(_tab)
-                _w, _syms = assemble_syms(_s2, _c, label=name)
-                _last = (_c, len(_w))
-                if _c + len(_w) <= _end:
+                # A pinned section is assembled at `_c - _split`, so its TAIL
+                # lands at `_c` with every absolute address inside it right;
+                # only those words are placed here.
+                _w, _syms = assemble_syms(_s2, _c - _split, label=name)
+                _last = (_c, len(_w) - _split)
+                if _c + len(_w) - _split <= _end:
                     _fit = (_r, _tab, _s2, _c, _w, _syms)
                     break
             if _fit is None:
@@ -2814,8 +2844,35 @@ hostquit:
                     print(f"  PTABLE        P:0x{_r['cursor']:05x}.."
                           f"0x{_r['cursor'] + len(tab):05x} "
                           f"({len(tab):4d} words)  {name}'s table")
-            place(words, cursor)
-            _r["cursor"] = cursor + len(words)
+            if _pin is None:
+                place(words, cursor)
+                _r["cursor"] = cursor + len(words)
+            else:
+                # the tail, at the cursor it was assembled for
+                place(words[_split:], cursor)
+                _r["cursor"] = cursor + len(words) - _split
+                # the head, at the pin, with its one reference to the tail
+                # rewritten to where the tail actually landed
+                _ref = f"#>{_sec.pin_split_label}"
+                if src.count(_ref) != 1:
+                    sys.exit(f"payload {tag}: {name} is pinned, so its head must reference "
+                             f"the tail exactly once as `{_ref}`; found {src.count(_ref)}")
+                _hw, _syms = assemble_syms(src.replace(_ref, f"#>${cursor:x}"), _pin, label=name)
+                if len(_hw) != len(words):
+                    sys.exit(f"payload {tag}: {name} assembles to {len(_hw)} words at its pin "
+                             f"and {len(words)} at its cursor -- the encoding is not "
+                             f"origin-invariant, so it cannot be split")
+                for _i, _word in enumerate(_hw[:_split]):
+                    _a = _pin + _i
+                    _got = rdw_p_at(_a)
+                    if _got != ((0x0C0000 | _a) if _a % 2 == 0 else 0):
+                        sys.exit(f"payload {tag}: {name} would write P:0x{_a:05x}, which holds "
+                                 f"{_got:06x}, not the stock self-jump it was audited as; "
+                                 f"refusing")
+                    wrw_p_at(_a, _word)
+                print(f"  {'PINNED':13} P:0x{_pin:05x}..0x{_pin + _split:05x} "
+                      f"({_split:4d} words)  {name}'s head, in the dead vector run "
+                      f"(verify_dspvectors); its tail is below")
             for _h in _hooks:
                 # the two stock words become `jsr >label`; the section
                 # replays the displaced instruction (schema.DspHook)
@@ -2829,9 +2886,12 @@ hostquit:
                 print(f"  {'HOOK':13} P:0x{_h.site:05x} -> {name} {_h.label} "
                       f"P:0x{_syms[_h.label]:05x}  {_h.note}")
             if name in HOOKED:
-                print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + len(words):05x} "
-                      f"({len(words):4} words)  no dispatch entry: reached by its hook(s)")
-                cursor += len(words)
+                # a pinned section left its head at the pin: only the tail is here
+                _n = len(words) - _split
+                print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + _n:05x} "
+                      f"({_n:4} words)  no dispatch entry: reached by its hook(s)"
+                      + (f" -- its tail; {_split} more at the pin" if _split else ""))
+                cursor += _n
                 continue
             wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
             wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)

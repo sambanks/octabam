@@ -98,8 +98,15 @@ MODULE = Module(
         asm="modules/os-switch/dsp_park.asm",
         priority=20,
         payloads=frozenset({"A", "B"}),
-        hooks=(DspHook(0x24, (0x0C0024, 0x000000), "osw_dsp",
-                       "host command $12 (stock's unused reserved24 vector): park in a loader"),),
+        hooks=(DspHook(0x1E, (0x0C001E, 0x000000), "osw_dsp",
+                       "host command $0F (the DMA3 vector, dead in both payloads): "
+                       "park in a loader"),),
+        # The handler's 22 words live in the dead vector run that starts at
+        # the entry, so only its 18-word loader tail costs the region: 40
+        # words down to 18 in both payloads. verify_dspvectors proves nothing
+        # arms an interrupt in that run, on every build.
+        pin=0x20,
+        pin_split_label="osw_ldr",
     ),
     detours=(
         Detour(0x40000412, H("2e7c48000000"), "osw_chain", "osw_chain",

@@ -66,7 +66,9 @@
         .set    HI08_ISR,  0x20000008   | the host-side status: bit 0 RXDF (the upload's own poll)
         .set    HI08_RXL,  0x2000001c   | RXM:RXL; reading it takes the word (0x40001ce0)
         .set    DSP_SELECT, 0xfc0a400c  | which core's host port the window shows (0, 1): the upload's own
-        .set    PARK_HC,   0x0092       | HC | $12: vector P:$24, dsp_park.asm's osw_dsp
+        .set    PARK_HC,   0x008f       | HC | $0f: vector P:$1e, dsp_park.asm's osw_dsp
+                                        | (was $12/P:$24 until the park moved
+                                        | into the dead vector run, 29 Sep 2026)
         .set    NMAX, 32                | .OBI files listed
         .set    NLEN, 24                | bytes kept of each name
 
