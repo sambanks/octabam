@@ -114,5 +114,12 @@ MODULE = Module(
     pokes=(
         Poke(0x400CBD8C, H("00000004"), H("00000005"), "root row count 4 -> 5"),
     ),
-    gates=(Gate("tools/verify/verify_osswitch.py", venv=True),),
+    gates=(Gate("tools/verify/verify_osswitch.py", venv=True),
+           # The park's 40 words could come out of the DSP's unused
+           # interrupt vectors instead of the effect region. That is only
+           # safe while nothing arms an interrupt in those runs, and once
+           # code lives there the freeze that would announce one is gone --
+           # so the audit runs on every build, not in a session nobody
+           # repeats.
+           Gate("tools/verify/verify_dspvectors.py"),),
 )
