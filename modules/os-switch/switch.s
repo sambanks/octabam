@@ -444,6 +444,13 @@ osw_reset:
         bsr.w   txmidi
         move.l  %d3,%d1
         bsr.w   txmidi
+        move.l  #200000,%d2             | let the last byte leave before the reset: TXEMP
+3:      move.b  (0xfc060004).l,%d0
+        btst    #3,%d0
+        bne.s   4f
+        subq.l  #1,%d2
+        bne.s   3b
+4:
         .endif
         | MKII: the panel back to its start-up state, `60 02`, so the
         | bootstrap's `60 00` after the reset gets its key report
