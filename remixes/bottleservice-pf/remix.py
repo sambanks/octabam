@@ -19,6 +19,11 @@ REMIX = Remix(
              "SCENES P2", "SCENES P2 KITS",
              "FLEX SEEK BIND", "FLEX SEEK BIND CTR", "RECORDER SPACING", "RLEN PLEN",
              "RETURNS", "POST FADER"),
+    # OS SWITCH (40 words in each payload) does not fit beside RETURNS'
+    # stage B: payload A has 23 words left. This image is a switch TARGET --
+    # booted from the home image's MAIN MENU > OS as its .OBI -- which needs
+    # no OS SWITCH of its own (modules/os-switch/README.md).
+    os_switch=False,
     fallback="SEND",
     hidden=("REVERB SERVER", "DELAY SERVER", "RETURNS"),
     named=("RETURNS",),
