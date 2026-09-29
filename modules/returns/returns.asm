@@ -18,8 +18,10 @@
 ; under the port, 29 Sep 2026, LEVEL 55: 0x17a180 on, 0xd4ad0 off).
 ;
 ; Private Y, core 0 (claimed by BusVerb, which owns the print buffer):
-;   x:$3e00..$3e1f  the reverb's buffer, 16 x (L, R) BusVerb -> mixhook
-;                 (private X, 0x2900-0x3eff measured never written)
+;   y:$e00..$e1f  the reverb's buffer, 16 x (L, R)  BusVerb -> mixhook
+;                 (private Y; a private X:$3e00 buffer beside the delay
+;                 return crackled and stopped the DSP on the unit,
+;                 29 Sep 2026, FAILURE_MODES.md)
 ;   y:$e20        ALIVE, magic while RETURNS runs    RETURNS -> BusVerb
 ;   y:$e21        VRB, the knob word as published    RETURNS -> mixhook
 ;   y:$e22        FRESH, magic once the buffer is new BusVerb -> mixhook
@@ -57,8 +59,7 @@ init:
 
 proc:
         move    r7,a
-        move    #>$6b00,x0
-        cmp     x0,a
+        cmp     #>$6b00,a
         bne     rtn_skip                ; not T8's FX2 on core 0
         move    x:(r6),a                ; DLY, page-1 slot 0
         move    a,y:>$e25
@@ -94,11 +95,9 @@ mixhook:
         asr     #$4,a,a                 ; the buffer's index
         add     #>$36300,a
         move    a,r1                    ; its stamp word
-        move    y0,a
-        add     #>$5a0000,a             ; the stamp it must carry
-        move    a,x0
-        move    y:(r1),b
-        cmp     x0,b
+        move    y:(r1),a
+        sub     y0,a                    ; the stamp less the offset it must
+        cmp     #>$5a0000,a             ; carry: the tag alone if it matches
         beq     mh_dok
         move    #0,x1                   ; not written for this read: adds 0
 mh_dok:
@@ -119,7 +118,7 @@ mh_rev:
 mh_rf:
         clr     a
         move    a,y:>$e22               ; consumed
-        move    #>$3e00,r0              ; the reverb's buffer (private X)
+        move    #>$e00,r0               ; the reverb's buffer (private Y)
 ; ---- where: T8's record (MASTER TRACK on: bit 10 of T8's word $7e, raw
 ; scale, before T8's chain) or MAIN, ring words 2/3 of x:>$203 at 8 a frame
 ; (off: x 0.5618, the plain mode's track gain, then the mixdown's x4)
@@ -140,7 +139,7 @@ mh_rf:
         add     #>$2,a
         move    a,r1
         do      #<$10,>mh_plain
-        move    x:(r0)+,y0              ; reverb L
+        move    y:(r0)+,y0              ; reverb L
         move    x:(r4)+,y1              ; delay L
         mpy     y0,x0,b
         mac     y1,x1,b
@@ -148,7 +147,7 @@ mh_rf:
         move    x:(r1),a
         add     b,a
         move    a,x:(r1)+               ; MAIN L (the store limits)
-        move    x:(r0)+,y0              ; reverb R
+        move    y:(r0)+,y0              ; reverb R
         move    x:(r4)+,y1              ; delay R
         mpy     y0,x0,b
         mac     y1,x1,b
@@ -164,7 +163,7 @@ mh_master:
         add     #>$1f8,a
         move    a,r1                    ; T8's record: 16 x (L, R)
         do      #<$20,>mh_rec
-        move    x:(r0)+,y0              ; reverb
+        move    y:(r0)+,y0              ; reverb
         move    x:(r4)+,y1              ; delay
         move    x:(r1),a
         mac     y0,x0,a

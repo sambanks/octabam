@@ -258,6 +258,14 @@ def remix(name: str | None):
     if (r.os_switch and OS_SWITCH not in r.modules and OS_SWITCH in known
             and not os.environ.get("OCTABAM_NO_OS_SWITCH")):
         r = dataclasses.replace(r, modules=r.modules + (OS_SWITCH,))
+    # verify_burn's pair only: OCTABAM_NO_USB_IN leaves USB AUDIO IN out of
+    # both of its builds, as OCTABAM_NO_OS_SWITCH leaves OS SWITCH out. Its
+    # DSP inject runs once a frame at the frame head (no per-sample cycles),
+    # and it and the burn splice do not both fit a full payload A beside
+    # RETURNS (bottleservice-pf: 5 words free, the splice takes 21).
+    if os.environ.get("OCTABAM_NO_USB_IN"):
+        r = dataclasses.replace(r, modules=tuple(
+            k for k in r.modules if not k.startswith("USB AUDIO IN")))
     return r
 
 

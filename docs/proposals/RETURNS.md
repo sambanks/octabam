@@ -49,7 +49,7 @@ on the return as well as on the track's own sound. With RETURNS:
 
 | word | writer | reader | meaning |
 |---|---|---|---|
-| `X:0x3e00-0x3e1f` | BusVerb | hook | the return buffer: 16 x (L, R), returns mode only (private X; `0x2900-0x3eff` measured never written by `--dsp-writes`, boot included) |
+| `0x0e00-0x0e1f` | BusVerb | BusVerb (normal) / hook (returns) | the print buffer: 16 x (L, R). A private X:$3e00 buffer (30 Sep 2026, `a0f10ca`) crackled and stopped the DSP on the unit beside the delay return: FAILURE_MODES.md |
 | `0x0e20` | RETURNS | BusVerb | ALIVE: RETURNS ran on T8 last frame (set by RETURNS, cleared by BusVerb) |
 | `0x0e21` | RETURNS | hook | VRB target, the knob as published |
 | `0x0e22` | BusVerb | hook | FRESH: the buffer holds this frame's wet (set by BusVerb, cleared by the hook) |
@@ -68,19 +68,17 @@ Proc: audio untouched. If `r7 == $6b00` (T8's FX2 on core 0): store
 named (its page draws VRB), placed on T8 by the rig's host command. Init
 writes nothing and preserves r1 (`verify_initregs`).
 
-### BusVerb: print through r4
+### BusVerb: print into the buffer
 
 Per block, on its first call: read and clear ALIVE into the mode (y:$e24).
-The print writes through r4, loaded from n4 each sample, and r0 advances by
-an explicit `lua (r0+2),r0`.
+The print writes through r4, loaded from n4 each sample, into
+`Y:0x0e00 + 2 x the frame offset`, and r0 advances by `lua (r0+2),r0`.
 
-- Normal: n4 = r0, so the print is in place, `dry + wet*2`, bit-identical.
-- Returns: n4 = `X:0x3e00 + 2 x the frame offset`, that range zeroed before
-  the loop, so it ends as `wet*2` and the block keeps its dry; FRESH is set.
-
-(The first build put the buffer in private Y with the dry copied in and
-back: correct, but 34 words heavier, and payload A had none to spare once
-stage B landed.)
+- Normal: the range is prefilled with the dry (one loop; a Tcc off one
+  compare zeroes it instead in returns mode) and copied back after the
+  loop, so the block ends as `dry + wet*2`, bit-identical.
+- Returns: the range starts at zero, the block keeps its dry, the buffer
+  ends as `wet*2`, and FRESH is set.
 
 The dispatcher may split a block into two calls (`r0 = 2 x split` on the
 second); both halves land in their own range of the one buffer.
@@ -94,8 +92,8 @@ set) or into MAIN ring words 2/3 of `X:$203` (x4, saturating, otherwise).
 The frame after BusVerb wrote it: about 2 blocks earlier than the dry's
 forwarded path, inaudible on a reverb return 🟡.
 
-The hook reads both returns' buffers with `x:` (the shared window aliases
-X and Y, measured on hardware).
+The hook reads the reverb's buffer with `y:` and the delay's (in the shared
+window, which aliases X and Y) with `x:`.
 
 Gain law: the track mix gains (`Y:0x4a...`) differ between master and plain
 mode ✅; the hook maps VRB onto the same law so VRB 100 sounds like a track
@@ -151,8 +149,11 @@ window. Implemented 29 Sep 2026; under the port it passes `verify_returns`.
   phase shows as a missing return, not a torn one).
 - The delay warms up dry for longer than the reverb (~frame 584 after load
   under the port, measured), so the gate compares from frame 650.
-- RETURNS' code grew to 141 words, the last word of payload A's donor
-  region.
+- RETURNS' code is 149 words and REVERB SERVER 2,064. With USB AUDIO IN CD
+  in the rig, payload A's donor region has 5 words free (6,153 of 6,158).
+  To fit, `verify_burn` builds without USB IN (`OCTABAM_NO_USB_IN`, read by
+  the registry): it measures the engines' cycles, and USB IN's DSP half is
+  a separate budget.
 
 ## Risks
 

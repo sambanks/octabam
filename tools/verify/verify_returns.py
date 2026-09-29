@@ -8,7 +8,7 @@ say (docs/proposals/RETURNS.md).
 Stages six cards from the project (hosted for the remix: T1 BusDelay, T5
 BusVerb, T8 RETURNS; every SEND's DEL and REV at 100; T8's FX2 slots 0-1
 unlocked and off the LFOs), runs each under `ot_emu` for FRAMES frames with
-a block dump and peeks of y:$e20..$e26 and x:$3e00.. (core 0) and the shared
+a block dump and peeks of y:$e00..$e26 (core 0) and the shared
 y:$36300..$36308, and checks:
 
   flags    RETURNS on T8: ALIVE, the latched mode and FRESH carry the magic,
@@ -106,7 +106,7 @@ def run(image, tag):
     cmd = [str(EMU), "--image", str(image), "--card", str(d / "card.img"), "--set", "OCTABAM",
            "--project", "RET", "--sequencer", "--internal-clock", "--frames", str(FRAMES),
            "--load-ms", "90000", "--dsp", "--main-level", "64",
-           "--block-dump", str(d / "blocks.dump"), "--dsp-peek", "0:Y:e20,7;0:X:3e00,32;0:Y:36300,9"]
+           "--block-dump", str(d / "blocks.dump"), "--dsp-peek", "0:Y:e00,39;0:Y:36300,9"]
     with open(d / "run.txt", "w") as f:
         r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
     return tag, r.returncode
@@ -194,11 +194,10 @@ def main():
     if fails:
         print(f"verify_returns: FAIL ({fails})"); return 1
     for tag, t8, knobs, master in FIXTURES:
-        f, buf, sh = words(tag, "Y:0x00e20"), words(tag, "X:0x03e00"), words(tag, "Y:0x36300")
-        if f is None or buf is None or sh is None:
-            check(f"{tag}: y:$e20.., x:$3e00.. and y:$36300.. peeked", False); continue
-        w = [0] * 32 + f                   # w[32..38] = y:$e20..$e26, as before
-        alive, fresh, gain, mode = w[32], w[34], w[35], w[36]
+        w, sh = words(tag, "Y:0x00e00"), words(tag, "Y:0x36300")
+        if w is None or sh is None:
+            check(f"{tag}: y:$e00.. and y:$36300.. peeked", False); continue
+        buf, alive, fresh, gain, mode = w[:32], w[32], w[34], w[35], w[36]
         stamps, alive_d = sh[:8], sh[8]
         if t8 == "RETURNS":
             check(f"{tag}: ALIVE / mode / FRESH carry the magic "
