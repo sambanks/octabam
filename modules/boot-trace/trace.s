@@ -27,6 +27,7 @@
 |      first 6 per core)                      0x40001bb4
 |  19  ... when that echo is not a record type (> 3) and the upload is
 |      abandoned: bits 13..7, then bits 20..14
+|  20..25  the record sender stalled on a transmit wait (see tr_tx1)
 |  18  the payload's final record (type 3, the jump): its echo, low 7
 |      bits; anything but 3 abandons the upload     0x40001cf4
 |  16  the records' first echo is late: every 2^20 polls of the host
@@ -157,8 +158,11 @@ nboot:  .byte   0
 nrec:   .byte   0
 nlate:  .byte   0
 necho:  .byte   0
+nslow:  .byte   0
         .even
 npoll:  .long   0
+npollt: .long   0
+nrecs:  .long   0
         .even
 
         .global tr_clock
@@ -226,6 +230,7 @@ tr_records:
         moveq   #15,%d0
         bsr.w   tracev
         clr.b   necho                  | each core reports its own first echoes
+        clr.l   nrecs
         move.l  (%sp)+,%d1
         move.l  (%sp)+,%d0
         lea     (-12,%sp),%sp
@@ -256,6 +261,7 @@ tr_echo:
 | a record's echo, d0; replays `moveq #3,d2 / cmp.l d0,d2 / blt 0x40001d40`
         .global tr_rececho
 tr_rececho:
+        addq.l  #1,nrecs
         move.l  %d0,-(%sp)
         move.l  %d1,-(%sp)
         moveq   #0,%d1
@@ -288,7 +294,7 @@ tr_rececho:
 2:      move.l  (%sp)+,%d1
         move.l  (%sp)+,%d0
         moveq   #3,%d2
-        jmp     (0x40001bbc).l
+        bra.w   tr_tx2
 
 | the final record's echo, d0; replays `moveq #3,d2 / cmp.l d0,d2 / bne 0x40001d40`
         .global tr_lastecho
@@ -305,3 +311,80 @@ tr_lastecho:
         beq.s   1f
         jmp     (0x40001d40).l
 1:      jmp     (0x40001cfa).l
+
+| The record sender's three transmit waits (TXDE|TRDY, ISR bits 1..2): the
+| DSP stopped taking words. Each wait polls as stock does; every 2^20 polls
+| (all sites together), at most three times per boot, txslow reports:
+|   20  the site: 1 before a record's type (0x40001b46), 2 before its
+|       address (0x40001bbc), 3 before a data word (0x40001c4c)
+|   21  records echoed so far on this core, bits 6..0; 22 bits 13..7
+|   23  the data word's index in its record (d3), bits 6..0; 24 bits 13..7
+|   25  the host-side ISR (bit 0 RXDF, 1 TXDE, 2 TRDY, 3 HF2, 4 HF3)
+| d2 is live at site 1 (the record's type) and d2/d3 at site 3: kept.
+        .global tr_tx1
+tr_tx1:
+        move.w  (0x20000008).l,%d0
+        moveq   #6,%d1
+        and.l   %d1,%d0
+        bne.s   1f
+        moveq   #1,%d1
+        bsr.s   txslow
+        bra.s   tr_tx1
+1:      jmp     (0x40001b52).l
+
+tr_tx2:
+        move.w  (0x20000008).l,%d0
+        moveq   #6,%d1
+        and.l   %d1,%d0
+        bne.s   1f
+        moveq   #2,%d1
+        bsr.s   txslow
+        bra.s   tr_tx2
+1:      jmp     (0x40001bc8).l
+
+        .global tr_tx3
+tr_tx3:
+        move.w  (0x20000008).l,%d0
+        moveq   #6,%d1
+        and.l   %d1,%d0
+        bne.s   1f
+        moveq   #3,%d1
+        bsr.s   txslow
+        bra.s   tr_tx3
+1:      jmp     (0x40001c58).l
+
+| d1 = the site; everything preserved
+txslow:
+        lea     (-8,%sp),%sp
+        movem.l %d0-%d1,(%sp)
+        move.l  npollt,%d0
+        addq.l  #1,%d0
+        move.l  %d0,npollt
+        andi.l  #0xfffff,%d0
+        bne.s   9f
+        moveq   #0,%d0
+        move.b  nslow,%d0
+        cmpi.l  #3,%d0
+        bcc.s   9f
+        addq.l  #1,%d0
+        move.b  %d0,nslow
+        moveq   #20,%d0
+        bsr.w   tracev                  | the site, in d1
+        move.l  nrecs,%d1
+        moveq   #21,%d0
+        bsr.w   tracev
+        lsr.l   #7,%d1
+        moveq   #22,%d0
+        bsr.w   tracev
+        move.l  %d3,%d1
+        moveq   #23,%d0
+        bsr.w   tracev
+        lsr.l   #7,%d1
+        moveq   #24,%d0
+        bsr.w   tracev
+        move.w  (0x20000008).l,%d1
+        moveq   #25,%d0
+        bsr.w   tracev
+9:      movem.l (%sp),%d0-%d1
+        lea     (8,%sp),%sp
+        rts

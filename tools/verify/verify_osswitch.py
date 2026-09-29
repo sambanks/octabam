@@ -308,7 +308,7 @@ def main():
     check("dsp: both cores took the park command, every upload step returned, both record walks completed",
           len(oks) == 5 and park & 3 == 3 and all(o.startswith("ok") for o in oks)
           and oks[2] == "ok d0=0x1" and oks[4] == "ok d0=0x1", "; ".join(oks))
-    check("dsp: through the loaders' record service each core entered its payload's start again (P:$30000, P:$38000)",
+    check("dsp: through the parked loaders and the stock bootstraps each core entered its payload's start again (P:$30000, P:$38000)",
           all(res[pc][1] >= 2 for pc in res),
           ", ".join(f"{pc} x{res[pc][1]}" for pc in res))
 

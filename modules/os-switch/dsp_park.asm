@@ -110,12 +110,8 @@ osw_pload:
         brclr   #0,x:<<$ffffc3,0        ; wait: a word, into P
         movep   x:<<$ffffc6,p:(r0)+
 osw_pend:
-; The jump goes through a stub the loader writes into the window through X,
-; X:$31040 (past bootstrap A, before B; the payload's start zeroes the
-; window later): `movep #>$18,x:<<$ffffc2 / jmp (r1)`. HF3 in the host's
-; ISR (BOOT TRACE's note 16) therefore proves that code written into the
-; window through X runs; the stub's words are the ones this file assembles
-; for those two instructions (08f482 000018, 0ae180).
+; (Build 10 jumped through a stub written into the window through X, and
+; HF3 in the host's ISR showed that code written there through X runs.)
 osw_stub:
 ; Build 9 on the unit: the stub below ran (HF3) and bootstrap A still never
 ; read its first record. Bootstrap A's only instructions before that read
@@ -130,62 +126,16 @@ osw_stub:
         bclr    #$e,y:<<$fffffe
         bset    #$12,y:<<$fffff9
         bset    #$12,y:<<$fffffa
-        movep   #>$10,x:<<$ffffc2       ; HCR: HF3 alone -- the record loader runs
-; Build 10 on the unit: past these writes, through a stub that runs from
-; the window (HF2|HF3 each time), stock bootstrap A still never read its
-; first record. So the loader no longer jumps into it: having taken the
-; bootstrap's words, it serves the records itself, as bootstrap A does
-; (P:$31004..$31031, read from the image): a type word, echoed; an
-; address; type 3 = jump there; else a count and that many words into P
-; (0), X (1) or Y (2). A P record into the shared window goes through X,
-; as above. Every form is bootstrap A's own; backward flow is `jmp (r5)`
-; (dsp_asm encodes no backward branch). This runs from the module's own P,
-; which the payload's P records rewrite as they land: with the image the
-; switch staged being this one (HOME.OBI), every word lands on its own
-; value. HF2|HF3 once a record is echoed.
-        move    #>osw_rec,r5
-osw_rec:
-        brclr   #0,x:<<$ffffc3,0        ; wait: the record's type
-        movep   x:<<$ffffc6,a
-        brclr   #1,x:<<$ffffc3,0        ; wait: HTDE
-        movep   a,x:<<$ffffc7           ; echo the type, as the bootstrap does
-        movep   #>$18,x:<<$ffffc2       ; HCR: HF2|HF3 -- a record echoed
-        brclr   #0,x:<<$ffffc3,0        ; wait: the address
-        movep   x:<<$ffffc6,r0
-        cmp     #<$3,a
-        beq     osw_go
-        brclr   #0,x:<<$ffffc3,0        ; wait: the count
-        movep   x:<<$ffffc6,b1
-        move    b1,x0
-        cmp     #<$2,a
-        beq     osw_by
-        cmp     #<$1,a
-        beq     osw_bx
-        move    r0,b
-        cmp     #>$30000,b
-        bge     osw_bw
-        do      x0,osw_e1               ; P
-        brclr   #0,x:<<$ffffc3,0
-        movep   x:<<$ffffc6,p:(r0)+
-osw_e1:
-        jmp     (r5)
-osw_bw:
-        do      x0,osw_e2               ; P in the shared window: through X
-        brclr   #0,x:<<$ffffc3,0
-        movep   x:<<$ffffc6,x:(r0)+
-osw_e2:
-        jmp     (r5)
-osw_bx:
-        do      x0,osw_e3               ; X
-        brclr   #0,x:<<$ffffc3,0
-        movep   x:<<$ffffc6,x:(r0)+
-osw_e3:
-        jmp     (r5)
-osw_by:
-        do      x0,osw_e4               ; Y
-        brclr   #0,x:<<$ffffc3,0
-        movep   x:<<$ffffc6,y:(r0)+
-osw_e4:
-        jmp     (r5)
-osw_go:
-        jmp     (r0)                    ; type 3: the payload's start
+        movep   #>$10,x:<<$ffffc2       ; HCR: HF3 alone -- into the bootstrap
+; Builds 10-12 served the records here instead of jumping (a clone of
+; bootstrap A's loop, run from this module's own P), because builds 8-10
+; looked as if stock bootstrap A never read its first record. Build 12's
+; BOOT TRACE showed what the ColdFire saw instead: the bootstrap's echo, read
+; back as $010101 in the host port mode the payload had left (HPCR bit 7,
+; undone above since build 13) -- so the record sender gave up after the
+; first type word, whoever served it. The clone then hung part-way through
+; the records on build 13 (after at least six), cause not located; it ran
+; from P the payload's own records rewrite, and was only ever safe for a
+; target identical to this image. So: the ROM's exit, into the stock
+; bootstrap the OS just sent, with r0/r1 as the ROM leaves them.
+        jmp     (r1)
