@@ -23,6 +23,10 @@
 |  14  a DSP bootstrap upload starts, velocity = its index (0 = core 0)
 |                                                  0x40001d4c
 |  15  a DSP payload's records start, velocity = its index (0 = core 0)
+|  16  the records' first echo is late: every 2^20 polls of the host
+|      port's ISR, at most six times, velocity = the ISR (bit 0 RXDF,
+|      1 TXDE, 2 TRDY, 3 HF2, 4 HF3; OS SWITCH's loader raises HF2 when
+|      it runs and HF3 when it jumps)          0x40001b82
 |                                                  0x40001b18
 |
 | UART0 is MIDI (its RX is MIDI IN, docs/remixer/EMU.md); the bootstrap
@@ -145,6 +149,9 @@ seen7:  .byte   0
 seen8:  .byte   0
 nboot:  .byte   0
 nrec:   .byte   0
+nlate:  .byte   0
+        .even
+npoll:  .long   0
         .even
 
         .global tr_clock
@@ -216,3 +223,24 @@ tr_records:
         lea     (-12,%sp),%sp
         movem.l %d2-%d3/%a2,(%sp)
         jmp     (0x40001b20).l
+
+        .global tr_echo
+tr_echo:
+        move.l  npoll,%d0
+        addq.l  #1,%d0
+        move.l  %d0,npoll
+        andi.l  #0xfffff,%d0
+        bne.s   1f
+        moveq   #0,%d0
+        move.b  nlate,%d0
+        cmpi.l  #6,%d0
+        bcc.s   1f
+        addq.l  #1,%d0
+        move.b  %d0,nlate
+        move.l  %d1,-(%sp)
+        move.w  (0x20000008).l,%d1
+        moveq   #16,%d0
+        bsr.w   tracev
+        move.l  (%sp)+,%d1
+1:      move.w  (0x20000008).l,%d0
+        jmp     (0x40001b88).l

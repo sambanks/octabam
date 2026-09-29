@@ -44,6 +44,8 @@ MODULE = Module(
                "a DSP bootstrap upload: note 14, velocity = the core", pad_to=8),
         Detour(0x40001B18, H("4feffff448d7040c"), "boot_trace", "tr_records",
                "a DSP payload's records: note 15, velocity = the core", pad_to=8),
+        Detour(0x40001B82, H("303920000008"), "boot_trace", "tr_echo",
+               "the records' echo wait: note 16 with the ISR, when late"),
         Detour(0x4000D9A6, H("4cd77fff4fef00fc4e73"), "boot_trace", "tr_frame_end",
                "the audio frame interrupt's return: note 8, once", pad_to=10),
     ),

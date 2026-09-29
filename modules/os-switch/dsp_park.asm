@@ -62,6 +62,7 @@ osw_dsp:
         rti
 osw_ldr:
         move    #>$300,sr               ; IPL 3, no mode bits, outside any interrupt
+        movep   #>$8,x:<<$ffffc2        ; HCR: HF2 -- the host sees "the loader runs" in its ISR (bit 3)
 ; The HRDF waits are written `brclr #0,x:<<$ffffc3,0`: a displacement of 0,
 ; a branch to itself -- the stock bootstraps' exact word pair (0cc300
 ; 000000). dsp_asm encodes a LABEL there as an absolute address in the
@@ -81,5 +82,6 @@ osw_ldr:
         movep   x:<<$ffffc6,p:(r0)+
 osw_end:
 osw_jmp:
+        movep   #>$18,x:<<$ffffc2       ; HCR: HF2|HF3 -- "the loader jumps" (the payload's start rewrites HCR)
         move    #>$300,sr               ; CCR clear, as the ROM leaves it
         jmp     (r1)
