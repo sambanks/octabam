@@ -22,4 +22,14 @@ scene locks, the crossfader, LFOs and CC reach it).
 
 ## Where it has run
 
-Not flashed.
+- **Hardware:** an MKII, BSRET3 (this remix at `702651c`, BUILD=3,
+  VERSION=BSRET3), 29 Sep 2026, flashed over OCTABAM2, with the original
+  project converted by `ot_project.py host` + `master-track on` and SPECTRUM
+  on T8's FX1. Reported by its owner: T8's FX2 page draws VRB alone; the
+  reverb return does not follow T5's LEVEL or mute; SPECTRUM on T8 filters
+  the mix with the return in it; VRB takes modulation; the delay still
+  prints on T1. Not yet reported: a long session (the Sept 2026 T8 return's
+  wedge came after ~15 minutes), T8's fader on the return, a scene lock on
+  VRB through the crossfader.
+- Under the port: `make check` (the stray MIDI CC aside, as on main) and
+  `verify_returns`.

@@ -14,7 +14,7 @@ from remix.schema import Proof, Remix
 
 REMIX = Remix(
     name="bottleservice-ret",
-    family="rig", proof=Proof.CHECK, proof_note="make check, 29 Sep 2026; not flashed",
+    family="rig", proof=Proof.HARDWARE, proof_note="an MKII, BSRET3, 29 Sep 2026",
     doc="bottleservice-rec-plen + RETURNS: the reverb return on T8's FX2 (VRB), into T8's input or MAIN, not onto T5.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",

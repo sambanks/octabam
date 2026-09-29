@@ -13,7 +13,8 @@ Clones FILTER's descriptor, as SEND does: VRB is page-1 slot 0, so stock
 scene locks, the crossfader, LFOs and CC reach it. Slot 1 is kept blank for
 stage B's DLY.
 
-Not measured on a unit. Under the port: see the proposal's gates.
+On a unit: BSRET3, 29 Sep 2026 (remixes/bottleservice-ret). Under the port:
+tools/verify/verify_returns.py.
 """
 
 from remix.schema import (Category, DspHook, DspSection, Gate, Harness, Kind, MenuEntry,
@@ -26,7 +27,7 @@ MODULE = Module(
     key="RETURNS",
     kind=Kind.DSP_CLIENT,
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.CHECK, proof_note="make check, 29 Sep 2026; not flashed",
+    proof=Proof.HARDWARE, proof_note="an MKII, BSRET3 (bottleservice-ret), 29 Sep 2026: the reverb return off T5, through T8's FX1",
     doc="T8's FX2 carries the reverb return's level (VRB); the return goes into T8's input "
         "(MASTER TRACK) or MAIN, not onto T5.",
     menu=MenuEntry(
