@@ -140,8 +140,16 @@ str_bootver:
 osw_menu:
         lea     (-60,%sp),%sp
         movem.l %d0-%d7/%a0-%a6,(%sp)
+        | the scan calls through the file system's vector table
+        | (0x46c8240e, FS_OPEN): with it not yet set up -- a warm harness
+        | that opens the menu with no card behind it (emu_bringup,
+        | verify_hidden) -- keep the last list rather than jump through 0
+        tst.l   (0x46c8240e).l
+        beq.s   1f
+        tst.l   (FS_OPEN).l
+        beq.s   1f
         bsr.w   osw_scan
-        movem.l (%sp),%d0-%d7/%a0-%a6
+1:      movem.l (%sp),%d0-%d7/%a0-%a6
         lea     (60,%sp),%sp
         move.l  (0x400cbf6c).l,-(%sp)
         jmp     (0x40064c38).l
