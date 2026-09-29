@@ -2900,6 +2900,28 @@ hostquit:
                           f"({len(tab):4d} words)  {name}'s table")
             place(words, cursor)
             _r["cursor"] = cursor + len(words)
+            # ⚠️ THE HOOKS OF A NON-PINNED SECTION. This loop was deleted on
+            # 29 Sep 2026 by the edit that gave the PINNED path its own copy
+            # (52df014): the build then exited 0, printed no HOOK line and
+            # left the stock words in place, so USB AUDIO IN's RX inject
+            # (P:$88) and RETURNS' mixdown hook (P:$2d5) simply never
+            # existed in any image built from it. refhash cannot see it --
+            # none of its 24 configurations carries a DSP-hooked module --
+            # and every gate that does see it lives in a remix those
+            # configurations do not build. Found by a peer session running
+            # verify_usb_in on the merged tree.
+            for _h in _hooks:
+                # the two stock words become `jsr >label`; the section
+                # replays the displaced instruction (schema.DspHook)
+                _got = (rdw_p_at(_h.site), rdw_p_at(_h.site + 1))
+                if _got != tuple(_h.stock):
+                    sys.exit(f"payload {tag}: {name}'s hook site P:0x{_h.site:05x} holds "
+                             f"{_got[0]:06x} {_got[1]:06x}, not stock "
+                             f"{_h.stock[0]:06x} {_h.stock[1]:06x}; refusing")
+                wrw_p_at(_h.site, 0x0BF080)
+                wrw_p_at(_h.site + 1, _syms[_h.label])
+                print(f"  {'HOOK':13} P:0x{_h.site:05x} -> {name} {_h.label} "
+                      f"P:0x{_syms[_h.label]:05x}  {_h.note}")
             if name in HOOKED:
                 print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + len(words):05x} "
                       f"({len(words):4} words)  no dispatch entry: reached by its hook(s)")
