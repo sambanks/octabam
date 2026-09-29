@@ -38,10 +38,11 @@ Builds the remix (the HOME image: what NOR would hold), then:
            command $12 (both must take it), then the stock upload's own
            steps (0x40001d4c, 0x40001b18: bootstrap and payload, core 0 then
            core 1, from copies of the blobs -- the running OS has reused the
-           image's copy) go through the parked loaders. Each core enters its
-           stock bootstrap a SECOND time (P:$31000, P:$32000) and core 0 its
-           payload's start (P:$30000): the loader handed over exactly as the
-           boot ROM does
+           image's copy) go through the parked loaders, which take the
+           bootstrap's words and then serve its records themselves (the unit
+           never read a record in stock bootstrap A after a park, builds
+           8-10). Each core enters its payload's start a SECOND time (core 0
+           P:$30000, core 1 P:$38000)
 
 What this cannot see (docs/proposals/FIRMWARE_SWITCHER.md): the reset
 itself (the port does not reset; the ui case stops at the reset sequence),
@@ -297,11 +298,11 @@ def main():
         arrivals = len(w[-1].split()) - 2 if w else 0
         return oks, arrivals
 
-    res = {pc: interactive(pc) for pc in ("0:0x31000", "0:0x30000", "1:0x32000")}
-    oks = res["0:0x31000"][0]
+    res = {pc: interactive(pc) for pc in ("0:0x30000", "1:0x38000")}
+    oks = res["0:0x30000"][0]
     check("dsp: both cores took the park command, every upload step returned",
           len(oks) == 5 and oks[0] == "ok d0=0x3" and all(o.startswith("ok") for o in oks), "; ".join(oks))
-    check("dsp: core 0 entered bootstrap A and its payload's start again, core 1 bootstrap B",
+    check("dsp: through the loaders' record service each core entered its payload's start again (P:$30000, P:$38000)",
           all(res[pc][1] >= 2 for pc in res),
           ", ".join(f"{pc} x{res[pc][1]}" for pc in res))
 

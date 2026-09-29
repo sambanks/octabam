@@ -117,13 +117,62 @@ osw_stub:
         bclr    #$e,y:<<$fffffe
         bset    #$12,y:<<$fffff9
         bset    #$12,y:<<$fffffa
-        movep   #>$10,x:<<$ffffc2       ; HCR: HF3 alone -- past the chip-state writes
-        move    #>$08f482,x0
-        move    x0,x:>$31040
-        move    #>$000018,x0
-        move    x0,x:>$31041
-        move    #>$0ae180,x0
-        move    x0,x:>$31042
-        move    #>$31040,r2
-        move    #>$300,sr               ; CCR clear, as the ROM leaves it
-        jmp     (r2)                    ; dsp_asm has no absolute jmp >expr; jmp (rN) is the bootstraps' form
+        movep   #>$10,x:<<$ffffc2       ; HCR: HF3 alone -- the record loader runs
+; Build 10 on the unit: past these writes, through a stub that runs from
+; the window (HF2|HF3 each time), stock bootstrap A still never read its
+; first record. So the loader no longer jumps into it: having taken the
+; bootstrap's words, it serves the records itself, as bootstrap A does
+; (P:$31004..$31031, read from the image): a type word, echoed; an
+; address; type 3 = jump there; else a count and that many words into P
+; (0), X (1) or Y (2). A P record into the shared window goes through X,
+; as above. Every form is bootstrap A's own; backward flow is `jmp (r5)`
+; (dsp_asm encodes no backward branch). This runs from the module's own P,
+; which the payload's P records rewrite as they land: with the image the
+; switch staged being this one (HOME.OBI), every word lands on its own
+; value. HF2|HF3 once a record is echoed.
+        move    #>osw_rec,r5
+osw_rec:
+        brclr   #0,x:<<$ffffc3,0        ; wait: the record's type
+        movep   x:<<$ffffc6,a
+        brclr   #1,x:<<$ffffc3,0        ; wait: HTDE
+        movep   a,x:<<$ffffc7           ; echo the type, as the bootstrap does
+        movep   #>$18,x:<<$ffffc2       ; HCR: HF2|HF3 -- a record echoed
+        brclr   #0,x:<<$ffffc3,0        ; wait: the address
+        movep   x:<<$ffffc6,r0
+        cmp     #<$3,a
+        beq     osw_go
+        brclr   #0,x:<<$ffffc3,0        ; wait: the count
+        movep   x:<<$ffffc6,b1
+        move    b1,x0
+        cmp     #<$2,a
+        beq     osw_by
+        cmp     #<$1,a
+        beq     osw_bx
+        move    r0,b
+        cmp     #>$30000,b
+        bge     osw_bw
+        do      x0,osw_e1               ; P
+        brclr   #0,x:<<$ffffc3,0
+        movep   x:<<$ffffc6,p:(r0)+
+osw_e1:
+        jmp     (r5)
+osw_bw:
+        do      x0,osw_e2               ; P in the shared window: through X
+        brclr   #0,x:<<$ffffc3,0
+        movep   x:<<$ffffc6,x:(r0)+
+osw_e2:
+        jmp     (r5)
+osw_bx:
+        do      x0,osw_e3               ; X
+        brclr   #0,x:<<$ffffc3,0
+        movep   x:<<$ffffc6,x:(r0)+
+osw_e3:
+        jmp     (r5)
+osw_by:
+        do      x0,osw_e4               ; Y
+        brclr   #0,x:<<$ffffc3,0
+        movep   x:<<$ffffc6,y:(r0)+
+osw_e4:
+        jmp     (r5)
+osw_go:
+        jmp     (r0)                    ; type 3: the payload's start
