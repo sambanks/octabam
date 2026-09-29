@@ -75,13 +75,41 @@ osw_ldr:
         movep   x:<<$ffffc6,r0
         move    r0,r1
         tst     a
-        beq     osw_jmp
+        beq     osw_stub
         move    a1,x0
-        do      x0,osw_end
+; A load into the shared window (the stock bootstraps: P:$31000, $32000)
+; goes through the X view: the window is one memory in P, X and Y
+; (CHIP.md: a word written through Y read back through X and P, on the
+; unit), and build 8 on the unit showed the loader take every word and
+; jump while the stock bootstrap never read its first record -- as if the
+; words written through P were not there. movep HORX,x:(r0)+ is the stock
+; bootstrap's own form (P:$31024). Anywhere else, through P as before.
+        move    r0,a
+        cmp     #>$30000,a
+        blt     osw_pload
+        do      x0,osw_xend
+        brclr   #0,x:<<$ffffc3,0        ; wait: a word, into the window through X
+        movep   x:<<$ffffc6,x:(r0)+
+osw_xend:
+        bra     osw_stub
+osw_pload:
+        do      x0,osw_pend
         brclr   #0,x:<<$ffffc3,0        ; wait: a word, into P
         movep   x:<<$ffffc6,p:(r0)+
-osw_end:
-osw_jmp:
-        movep   #>$18,x:<<$ffffc2       ; HCR: HF2|HF3 -- "the loader jumps" (the payload's start rewrites HCR)
+osw_pend:
+; The jump goes through a stub the loader writes into the window through X,
+; X:$31040 (past bootstrap A, before B; the payload's start zeroes the
+; window later): `movep #>$18,x:<<$ffffc2 / jmp (r1)`. HF3 in the host's
+; ISR (BOOT TRACE's note 16) therefore proves that code written into the
+; window through X runs; the stub's words are the ones this file assembles
+; for those two instructions (08f482 000018, 0ae180).
+osw_stub:
+        move    #>$08f482,x0
+        move    x0,x:>$31040
+        move    #>$000018,x0
+        move    x0,x:>$31041
+        move    #>$0ae180,x0
+        move    x0,x:>$31042
+        move    #>$31040,r2
         move    #>$300,sr               ; CCR clear, as the ROM leaves it
-        jmp     (r1)
+        jmp     (r2)                    ; dsp_asm has no absolute jmp >expr; jmp (rN) is the bootstraps' form
