@@ -1,7 +1,7 @@
 # RETURNS: bus returns independent of the host tracks
 
-Draft, 29 Sep 2026. Stage A (the reverb return) is being prototyped on branch
-`bottleservice-rec`; nothing here has run on a unit. Status markers as
+29 Sep 2026, branch `bottleservice-rec`. Stage A (the reverb return) ran on an
+MKII as BSRET3; stage B (the delay return) passes under the port. Status markers as
 `docs/firmware/CHIP.md`: ✅ measured (port or unit) · 🟡 inferred · ❓ open.
 
 ## What changes for the player
@@ -49,7 +49,7 @@ on the return as well as on the track's own sound. With RETURNS:
 
 | word | writer | reader | meaning |
 |---|---|---|---|
-| `0x0e00-0x0e1f` | BusVerb | BusVerb (normal) / hook (returns) | the print buffer: 16 x (L, R) |
+| `X:0x3e00-0x3e1f` | BusVerb | hook | the return buffer: 16 x (L, R), returns mode only (private X; `0x2900-0x3eff` measured never written by `--dsp-writes`, boot included) |
 | `0x0e20` | RETURNS | BusVerb | ALIVE: RETURNS ran on T8 last frame (set by RETURNS, cleared by BusVerb) |
 | `0x0e21` | RETURNS | hook | VRB target, the knob as published |
 | `0x0e22` | BusVerb | hook | FRESH: the buffer holds this frame's wet (set by BusVerb, cleared by the hook) |
@@ -68,18 +68,19 @@ Proc: audio untouched. If `r7 == $6b00` (T8's FX2 on core 0): store
 named (its page draws VRB), placed on T8 by the rig's host command. Init
 writes nothing and preserves r1 (`verify_initregs`).
 
-### BusVerb: print into the buffer
+### BusVerb: print through r4
 
-Per call, before the sample loop: read and clear ALIVE. The print writes
-through r4 (loaded from n4 each sample) into `Y:0x0e00 + r0_start` instead
-of in place, and r0 advances by an explicit `lua (r0+2),r0`.
+Per block, on its first call: read and clear ALIVE into the mode (y:$e24).
+The print writes through r4, loaded from n4 each sample, and r0 advances by
+an explicit `lua (r0+2),r0`.
 
-- Normal (ALIVE was 0): the buffer range is prefilled with this call's dry
-  (X -> Y copy) before the loop and copied back to the block after it, so
-  the block ends as `dry + wet*2`, bit-identical to today.
-- Returns (ALIVE was 1): the range is prefilled with zeros, the block is
-  left alone (the host keeps its dry), the buffer ends as `wet*2`, and
-  FRESH is set.
+- Normal: n4 = r0, so the print is in place, `dry + wet*2`, bit-identical.
+- Returns: n4 = `X:0x3e00 + 2 x the frame offset`, that range zeroed before
+  the loop, so it ends as `wet*2` and the block keeps its dry; FRESH is set.
+
+(The first build put the buffer in private Y with the dry copied in and
+back: correct, but 34 words heavier, and payload A had none to spare once
+stage B landed.)
 
 The dispatcher may split a block into two calls (`r0 = 2 x split` on the
 second); both halves land in their own range of the one buffer.
@@ -93,9 +94,15 @@ set) or into MAIN ring words 2/3 of `X:$203` (x4, saturating, otherwise).
 The frame after BusVerb wrote it: about 2 blocks earlier than the dry's
 forwarded path, inaudible on a reverb return 🟡.
 
+The hook reads both returns' buffers with `x:` (the shared window aliases
+X and Y, measured on hardware).
+
 Gain law: the track mix gains (`Y:0x4a...`) differ between master and plain
 mode ✅; the hook maps VRB onto the same law so VRB 100 sounds like a track
-at LEVEL 100. The two constants are measured under the port ❓.
+at LEVEL 100. Master mode is exactly `(L/128)^2` (✅ `0x17a180` at LEVEL 55);
+plain mode is 0.5618 of that before the `x4` (✅ `0xd4ad0` at LEVEL 55, one
+point only 🟡). `verify_returns` checks the glided gain lands on
+`(knob/128)^2` exactly.
 
 ### Tools
 
@@ -115,11 +122,37 @@ at LEVEL 100. The two constants are measured under the port ❓.
 - `verify_dirtystate`, `verify_initregs`, `dsp_host -guard` on the claimed
   words.
 
-## Stage B (the delay return), not designed yet
+## Stage B: the delay return
 
-BusDelay runs on core 1; its stereo wet must reach core 0's hook through a
-new rotating buffer in the shared window, with the XBUS rotation and its
-race lessons. Separate image.
+BusDelay runs on core 1; its wet reaches core 0's hook through the shared
+window. Implemented 29 Sep 2026; under the port it passes `verify_returns`.
+
+| word | writer | reader | meaning |
+|---|---|---|---|
+| `0x36200-0x362ff` | BusDelay (core 1) | mixhook (core 0) | 8 buffers x 16 x (L, R): the wet, every block, at BusDelay's write rotation |
+| `0x36300-0x36307` | BusDelay | mixhook (clears) | per buffer, `$5a0000 | write offset` once written in returns mode |
+| `0x36308` | RETURNS (core 0) | BusDelay (clears) | ALIVE_D, stamped every block RETURNS runs |
+| `y:$e25` / `$e26` | RETURNS / mixhook | mixhook | DLY as published / its glided gain (core 0) |
+
+- ✅ `0x36200-0x363ff` is written by nothing else: `--dsp-writes` over 500
+  frames of a rig project on the stage A image, both cores (29 Sep 2026).
+- BusDelay (`delay_server.asm`, spelled `bus+$200/$300/$308` and relocated
+  by the build) reads ALIVE_D on the block's first call with the reverb's
+  clear-on-read pattern (3 blocks of grace, raw $62) and latches the mode in
+  raw $65. Every sample it stores `wet x WET` into the buffer (pointer
+  parked in raw $66: no register survives a sample); in returns mode it
+  skips the in-place print, so T1 keeps its dry. After the loop it stamps
+  the buffer. Normal mode is bit-identical (`verify_onebus`, `verify_twocore`).
+- The hook reads the rotation word before this frame's flip and takes the
+  buffer three back (`+$50 & $70`, as the servers read), adds it only if its
+  stamp matches, and clears the stamp. Arithmetic: 3-4 blocks after it was
+  written with the ROTLATCH label exact or one behind, and never the buffer
+  core 1 is writing (🟡: the flip's phase on the unit is unmeasured; a wrong
+  phase shows as a missing return, not a torn one).
+- The delay warms up dry for longer than the reverb (~frame 584 after load
+  under the port, measured), so the gate compares from frame 650.
+- RETURNS' code grew to 141 words, the last word of payload A's donor
+  region.
 
 ## Risks
 

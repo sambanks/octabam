@@ -1986,6 +1986,9 @@ mkgo:""",
     if os.environ.get("XBUS") == "1":
         # Overridable so the next round is a one-liner, not a code edit.
         XBUS_BASE = int(os.environ.get("XBUS_BASE", "36000"), 16)
+        if "RETURNS" in REMIX.modules and XBUS_BASE != 0x36000:
+            sys.exit("RETURNS names the delay's return buffers at 0x36200.. absolutely "
+                     "(modules/returns/returns.asm): it needs the bus at 0x36000")
 
         def xbus(src, name, label):
             n = len(re.findall(r"\$9[0-9a-f]{2}\b", src))

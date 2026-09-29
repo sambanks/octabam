@@ -10,8 +10,9 @@ T5 keeps only its own sound. Without RETURNS on T8, BusVerb prints on T5 as
 before: an unconverted project plays as it did.
 
 Clones FILTER's descriptor, as SEND does: VRB is page-1 slot 0, so stock
-scene locks, the crossfader, LFOs and CC reach it. Slot 1 is kept blank for
-stage B's DLY.
+scene locks, the crossfader, LFOs and CC reach it. DLY (slot 1, stage B) is
+the delay's: BusDelay on core 1 hands its wet to core 0 through the shared
+window (y:$36200..$36308, stamped buffers three back of the rotation).
 
 On a unit: BSRET3, 29 Sep 2026 (remixes/bottleservice-ret). Under the port:
 tools/verify/verify_returns.py.
@@ -28,8 +29,8 @@ MODULE = Module(
     kind=Kind.DSP_CLIENT,
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
     proof=Proof.HARDWARE, proof_note="an MKII, BSRET3 (bottleservice-ret), 29 Sep 2026: the reverb return off T5, through T8's FX1",
-    doc="T8's FX2 carries the reverb return's level (VRB); the return goes into T8's input "
-        "(MASTER TRACK) or MAIN, not onto T5.",
+    doc="T8's FX2 carries the bus returns' levels (VRB, DLY); the returns go into T8's input "
+        "(MASTER TRACK) or MAIN, not onto T5 and T1.",
     menu=MenuEntry(
         fx2_id=0x1e,
         donor_desc=0x400d4772,        # FILTER, as SEND
@@ -40,7 +41,9 @@ MODULE = Module(
     params=(
         Param(b"VRB", 108, active=True,
               doc="the reverb's return level, as a track LEVEL: into T8's input or MAIN"),
-        _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
+        Param(b"DLY", 108, active=True,
+              doc="the delay's return level, as a track LEVEL: into T8's input or MAIN"),
+        _BLANK, _BLANK, _BLANK, _BLANK,
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     dsp=DspSection(
@@ -49,7 +52,7 @@ MODULE = Module(
         payloads=frozenset({"A"}),          # core 0: T8, BusVerb and the mixdown
         ybase=YBase.NEVER,
         hooks=(DspHook(0x2d5, (0x60f000, 0x000206), "mixhook",
-                       "mixdown end: the reverb return into T8's input (MASTER TRACK) or MAIN"),),
+                       "mixdown end: the returns into T8's input (MASTER TRACK) or MAIN"),),
     ),
     harness=Harness(layout_char=None, is_server=False),
     requires=("REVERB SERVER",),

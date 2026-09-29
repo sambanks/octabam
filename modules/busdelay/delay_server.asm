@@ -438,6 +438,50 @@ bus_mine:
         move    a,n3                    ; CHAIN write - ACC read - 1: the loop
                                         ; reads the ACC at y:(r3)+ and writes
                                         ; the CHAIN at y:(r3+n3)
+; ---- RETURNS (docs/proposals/RETURNS.md, stage B) --------------------------
+; RETURNS on T8's FX2 (core 0) stamps the shared word bus+$308 every block
+; it runs. The block's first call reads and clears it, the reverb's DELAY
+; LIVE pattern (stampgr: 3 blocks of grace in raw $62, masked: r7 slots
+; start as garbage), and keeps the result for the whole block in raw $65:
+; nonzero = returns, print the dry only and hand the wet to core 0. Every
+; call parks its pointer into the wet buffers, bus+$200 + 2 x (write offset
+; + frame offset), in raw $66: 8 buffers x 16 x (L, R), written at the
+; write rotation like the CHAIN, read by core 0's mixdown hook three
+; buffers back.
+        move    x:(r7+$1e),a            ; this call's frame offset
+        tst     a
+        bne     rtd_latched             ; not the block's first call
+        move    x:(r7+$19),b            ; the grace (raw $62)
+        and     #>$3,b                  ; boot garbage masked ...
+        move    b1,x0
+        move    x0,b                    ; ... and B2 clean
+        move    #>$1,x0
+        sub     x0,b
+        move    #0,x0
+        tmi     x0,b                    ; floored at 0
+        move    #>$900,a
+        add     #>$308,a
+        move    a,r5                    ; ALIVE_D
+        move    #>$3,x1                 ; (spaces the r5 write)
+        move    y:(r5),a                ; the stamp
+        move    x0,y:(r5)               ; clear-on-read (x0 is 0)
+        tst     a
+        tne     x1,b                    ; stamped: 3 blocks of grace
+        move    b,x:(r7+$19)
+        move    b,x:(r7+$1c)            ; the mode (raw $65): grace left = returns
+rtd_latched:
+        move    x:(r7-$29),a            ; write offset (0..112)
+        move    x:(r7+$1e),x0           ; + this call's frame offset
+        add     x0,a
+        asl     a                       ; stereo: 2 words a frame
+        move    #>$900,x0
+        add     x0,a
+        add     #>$200,a
+        move    a,x:(r7+$1d)            ; the wet pointer (raw $66)
+        move    x:(r7-$29),x1           ; x1 = the write offset AGAIN: the
+                                        ; auto-gain block below reads it as
+                                        ; "still valid from the address block
+                                        ; above", and the latch used x1
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer --------
 ; N clients summing into one accumulator word drive the delay N x as hard as
@@ -1959,9 +2003,15 @@ pdone:
         move    a,y1
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET: what the host prints
+        move    x:(r7+$1d),r4           ; RETURNS: the wet pointer (r4 is free
+        move    x:(r7+$1c),a            ; here: GRAIN rebuilds it per sample)
+        move    x0,y:(r4)+              ; wet L for core 0, in every mode
+        tst     a                       ; the block's mode
+        bne     rtd_pl                  ; returns: the host keeps its dry
         move    x:(r0),b                ; dry L, still in place
         add     x0,b                    ; + dry at unity
         move    b,x:(r0)                ; L in place -- dry + wet*WET
+rtd_pl:
         move    x:(r7+$33),x0           ; wet R = fR
         move    x0,a
         move    x0,b
@@ -1980,9 +2030,15 @@ pdone:
         move    x:(r7-$2d),y1           ; WET, this sample's
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET
+        move    x0,y:(r4)+              ; wet R for core 0
+        move    r4,x:(r7+$1d)
+        move    x:(r7+$1c),a
+        tst     a
+        bne     rtd_pr
         move    x:(r0+n0),a             ; dry R
         add     x0,a                    ; + dry at unity
         move    a,x:(r0+n0)             ; R in place -- dry + wet*WET
+rtd_pr:
 ; ---- the CHAIN buffer: mono average of wet*DLY ---------------------------
         move    x1,a                    ; out L
         add     b,a                     ; + out R
@@ -2006,6 +2062,24 @@ dlyend:
         and     x0,a                    ; masked into a clean positive a
         add     #>$1,a
         move    a,y:>$991               ; the call counter
+; ---- RETURNS: stamp this buffer for core 0's hook, $5a0000 | write offset,
+; in returns mode (every call: the hook reads it three buffers on, when both
+; halves of a split block are long in). One writer (here), one clearer (the
+; hook), three buffers apart.
+        move    x:(r7+$1c),a
+        tst     a
+        beq     rtd_nost
+        move    x:(r7-$29),a            ; write offset (0..112)
+        move    a,x0
+        asr     #$4,a,a                 ; the buffer's index
+        move    #>$900,b
+        add     #>$300,b
+        add     a,b
+        move    b,r5                    ; its stamp word
+        move    #>$5a0000,a
+        add     x0,a                    ; | the write offset
+        move    a,y:(r5)
+rtd_nost:
 
 ; ---- save both phases, restore the M registers ----------------------------
         move    r1,a

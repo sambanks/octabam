@@ -207,6 +207,13 @@ condition codes** — the dependency is invisible at the point you edit, and
 as the A2-staleness trap: legal instructions, correct-looking source, wrong
 machine behaviour.
 
+The same holds for REGISTERS a comment says survive: BusDelay's auto-gain
+block reads x1 as "still valid from the address block above"; RETURNS'
+per-block latch, inserted between the two, used x1 for a constant, and the
+send count looked up the wrong buffer on every block's first call. Nothing
+failed but `verify_knob_clicks` (GRAIN's PING/TIME at -38 dB where they
+were -95; 29 Sep 2026): the fix reloads x1 at the end of the insertion.
+
 **AN ACCUMULATOR-TO-ACCUMULATOR `move a,b` LIMITS; `tfr a,b` MOVES ALL 56
 BITS.** A parallel `tfr x1,a  a,x:(r3)+` written to replace `move a,x:(r3)+ /
 move a,b` differed on the bit-identity gate whenever `a` exceeded 24 bits
@@ -458,13 +465,19 @@ DELAY entry equals SEND's. The general rule: before believing a *negative*
 result, check which code the dispatch entry actually points at — same
 family as "disassemble what you assemble".
 
-**IN THE SHIPPING REMIX, payload A's half of the shared window is FULLY
-OWNED** (a remix without the reverb frees it, which is how the insert
-collection has room to stack): BusVerb's
-relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x36157`
-(grew 12 Aug for the DELAY send counts + reciprocal table, 17 Aug when the
+**IN THE SHIPPING REMIX, payload A's half of the shared window has no room
+for delay lines** (a remix without the reverb frees it, which is how the
+insert collection has room to stack): BusVerb's relocated buffers
+(`0x30800-0x357ff` as its warm-up clears them), bus scratch at
+`0x36000-0x361d7` -- the REV accumulator `0x36158-0x361d7` included (grew 12
+Aug for the DELAY send counts + reciprocal table, 17 Aug when the
 accumulators went to FOUR buffers for the cross-core race fix, and 22 Sep
-2026 to EIGHT buffers plus the chain at `0x360d8..`).
+2026 to EIGHT buffers plus the chain at `0x360d8..`) -- and since 29 Sep
+2026 RETURNS' delay-return buffers and stamps at `0x36200-0x36308`
+(docs/proposals/RETURNS.md). Not "fully owned": a source census found
+`0x361da-0x37fff` unreferenced, and `--dsp-writes` measured `0x36200-0x37fff`
+unwritten over 500 frames of a rig project before RETURNS took its words;
+`0x30048-0x307ff` and `0x35800-0x35fff` are unreferenced too (census only).
 There is no free ground in it for delay lines — the DEV build places the
 delay at its shipping base `0x38000` (payload B's half) for exactly this
 reason. A delay based at `0x30000` sweeps the rotation word, all four ACC
