@@ -33,3 +33,10 @@ scene locks, the crossfader, LFOs and CC reach it).
   VRB through the crossfader.
 - Under the port: `make check` (the stray MIDI CC aside, as on main) and
   `verify_returns`.
+- **BSRET3OS** (branch `home-osw`: this remix at `7af5687` + OS SWITCH,
+  BUILD=3, VERSION=BSRET3OS; 29 Sep 2026): the home image, built to be
+  flashed once and to boot every other build from the card (MAIN MENU >
+  OS). Payload A 6156 of 6158 words with OS SWITCH's 40-word park. Under the
+  port: `make check REMIX=bottleservice-ret` 587 PASS, 0 FAIL (5 SKIPs, all
+  project-dependent); `verify_osswitch` 21/21 on this remix; the OS pane
+  and dialog rendered from this image's LCD. Not yet flashed.
