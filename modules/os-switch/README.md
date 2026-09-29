@@ -34,6 +34,40 @@ make obi REMIX=<any remix> OBI=NAME       # out/NAME.OBI: any build, 12-characte
    does), loads the file and resets the unit.
 4. A power-cycle boots the flashed image again.
 
+### At power-on: the boot picker
+
+When the unit powers on with a project named, the card mounted and at
+least one `.OBI` in the root that is not this image, the stock confirm
+dialog comes up **before the project loads**:
+
+```
+        OS SWITCH
+  BOOT <NAME>?
+  NO: STAY <THIS IMAGE>
+  <> MORE  AUTO 3
+       [YES]   [NO]
+```
+
+- **Arrows** (any of the four) step through the other images. The image's
+  own `.OBI` is skipped, and the countdown stops.
+- **YES** switches to the image shown, exactly as the pane does. Nothing
+  has been loaded yet, so the switch does not wait behind the project.
+- **NO**, or **3 s untouched**, boots this image: the project load is posted
+  as stock would have posted it.
+
+The picker does not open, and the boot is stock's, when this boot is itself
+a switch (the choice was made already), when no project is named, when a
+stock dialog is already up, when the last set or project would not mount
+(stock's own NO SET / missing-project dialog comes instead: the stock
+dialog drops a request while another is open, so the picker steps aside),
+or when there is no other image on the card. It opens once per power-on;
+the USB-disk exit and a card re-insert reload the project as stock does.
+
+Why here: the project load (and, on a real card, its samples) is the
+longest part of a boot, and a switch made from the pane throws it away.
+The picker holds the load back instead. See **How** for the mechanism,
+and `docs/proposals/BOOT_DEFAULT.md` for the designs it was chosen over.
+
 An `.OBI` is the raw image the bootstrap would unpack to `0x40000400`. It is
 Elektron's OS with your changes, so like the `.bin` it never leaves your
 machine and your card. `make obi` makes the same three checks the unit
@@ -64,6 +98,7 @@ unmeasured.)
 | `chain.s` | the loader (`Linked(loader=True)`: assembled into `tools/remix/loader.S`, appended after the OS unpacked), detour at `0x40000412` | the gate, at the OS entry after it parks the bootstrap's argument. Without a mailbox it records the boot (`NONE`, or `RUN` right after a handover) and resumes. With one it spends it first, checks that the chainloader's body at `0x49200400` is whole (its longs sum to the mailbox's), and runs it. It lives in the loader because ROM caves are what full remixes run out of (bottleservice: 274 B of chainloader cost MODULATION's label formatter its place) |
 | `switch.s`: `osw_body` | copied to `0x49200400` by the switcher | the chainloader's body, position-independent: the check word, the length, the bootstrap version against NOR's word at `0x3ffc`, the hash over the stage; then a 40-byte stub at `0x49200100` copies the stage over `0x40000400` with the caches off and invalidated, restores the bootstrap's exit `CACR` (`0x0008c000`) and calls the entry with the bootstrap's argument. A refusal writes why and returns to the gate |
 | `switch.s` | the platform runtime (DRAM) | MAIN MENU > OS: the root's four stock rows from your image (`.incbin`), then OS (rows pointer `0x400cbda4`, count `0x400cbd8c` 4 → 5, a swap-arrows icon in stock's 19×9 form); the scan at MAIN MENU's opening (detour `0x40064c32`, the stock dir scan `0x4007f598`); the dialog (`0x4006d57c`); the load, the reset and the DSP park |
+| `switch.s`: the boot picker | detours `0x4002574c` and `0x4002573e` (a `jsr`) | `0x4002574c` is stock's "if a project is named, post LOAD PROJECT"; sys's media case calls it once the card is mounted at power-on (`0x4006204a`). The boot's first call opens the dialog there and returns without posting. The set mount that follows (`0x400256b8`) posts the engine's LOADING FILES job at `0x4002573e`, which stock queues right after the load; the picker holds that too, and NO posts both in stock's order, so the boot after NO is stock's boot. The arrows are an input layer on top of the dialog's (TEMPO BUS's form), which keeps YES and NO. The countdown is a soft timer on the 60 Hz sys tick (`0x40031a0c`, 6 ticks, DJ DECKS' form); at zero it cancels itself by clearing its slot's function word, which the timer service checks before re-linking the node (`0x40031994`), and answers NO through the dialog's own close (`0x4006d4a8`, the USB-disk exit's). Before it opens it runs the set mount's two checks (`0x40025650`: the set and its `AUDIO`; `0x400255ec`: the project), as the USB-disk exit does before it posts |
 | `dsp_park.asm` | both DSP payloads, WHOLLY in stock's dead interrupt vectors: entry on `P:$1E`, 31 words at `P:$20..$3E`, a one-word bridge, 8 words at `P:$06..$0D` | the park (below). It costs the effect region nothing, so a remix that harvests nothing can carry the switcher (`remixes/base/`) |
 | `osw.inc` | all of them | the stage layout and the status words; the gate parses it |
 
@@ -168,6 +203,19 @@ is sent nothing (untested on an MKI).
   mailbox `NONE`, one flipped byte in the stage `HASH` (the mailbox still
   spent), one flipped byte in the body `HASH` (spent before the body is
   checked), NOR's version absent `BVER`, a length past the stage `SIZE`.
+- **The boot picker** (30 Sep 2026; `ot_emu --boot-load`, a power-on
+  whose only LOAD PROJECT is the firmware's own). On a real project
+  (a set with its `AUDIO`, three `.OBI` files, one named as this image) and
+  on the gate's synthetic card: the dialog opens after the card mount and
+  before anything is posted; untouched, it counts exactly 30 ticks, answers
+  NO, and LOAD PROJECT then LOADING FILES are posted and the load runs; NO
+  does the same at once; RIGHT skips this image's own name and YES stages
+  the image shown (`STOCK140.OBI`, 1,112,560 B) with nothing loaded; a set
+  without `AUDIO` gets no picker and stock's own dialogs. Rendered from the
+  LCD: `BOOT BSRET4B?` / `NO: STAY OCTABAM0` / `<> MORE  AUTO 3`, then
+  `BOOT STOCK140?` without the countdown after RIGHT. Before the files job
+  was held too, it ran during the countdown and its LOADING FILES window
+  covered the dialog, and the load waited behind it (~2.3 s).
 - **The screens,** rendered from the port's LCD (29 Sep 2026): MAIN MENU
   with OS and its icon, the pane (`NOW FLASHED`, five files sorted, the
   cursor on the first), the dialog.
@@ -196,6 +244,14 @@ is sent nothing (untested on an MKI).
 3. **The version string** after a switch to stock (which the flash header
    probably keeps; see Use).
 4. **An MKI.**
+5. **The boot picker on the unit:** that the dialog draws and takes keys
+   at that point of a real boot, and the time from power-on to the picker
+   and from NO to the loaded project. The BOOT TRACE build
+   (`remixes/test/os-switch-trace`) sends note 26 when the picker is
+   reached (velocity 0: it opened; 1 no project, 2 this boot is a switch,
+   3 no file system yet, 4 a dialog is up, 5 the set or project would not
+   mount, 6 no other image, 7 the dialog did not open) and note 27 with
+   the answer (0 YES, 1 NO, 2 the countdown).
 
 Every failure above ends in the flashed image after a power-cycle: the
 flash is never written, and the mailbox is spent before the staged image

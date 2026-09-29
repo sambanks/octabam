@@ -33,6 +33,15 @@ Builds the remix (the HOME image: what NOR would hold), then:
            unless preloaded): status BVER, the normal boot -- a staged image
            that would reprogram the bootstrap never runs
   size     a length past the stage: status SIZE, the normal boot
+  boot     the picker before the project loads (a power-on: --boot-load,
+           the firmware's own LOAD PROJECT through 0x4002574c), on a card
+           with a set, an empty project and three images, one named as this
+           one: untouched, it opens before anything is posted, counts 30
+           ticks and answers NO, then LOAD PROJECT and LOADING FILES are
+           posted in stock's order and the load runs; NO does the same at
+           once; RIGHT skips this image's own name and YES stages the one
+           picked with nothing loaded; a set without AUDIO (stock's own
+           dialog to come) gets no picker and the stock post
   dsp      the DSP across a switch, without the reset the port cannot do:
            with the cores running their payloads, osw_park sends each host
            command $12 (both must take it), then the stock upload's own
@@ -68,7 +77,7 @@ EMU = ROOT / "out/emu/ot_emu"
 STOCK = ROOT / "out/raw/section_3_MAIN_OS.bin"
 INC = ROOT / "modules/os-switch/osw.inc"
 OUT = ROOT / "out/osswitch"
-KEY_YES, KEY_NO, KEY_DOWN, KEY_PROJ = 0x31, 0x32, 0x20, 0x1c
+KEY_YES, KEY_NO, KEY_DOWN, KEY_PROJ, KEY_RIGHT = 0x31, 0x32, 0x20, 0x1c, 0x21
 
 
 def consts():
@@ -308,6 +317,87 @@ def main():
     mb = refused("body", [(0x3FFC, norver), (MBOX, mailbox(stock)), (BODY, body_bad),
                           (IMG, stage_stock)], "ST_HASH")
     check("body: the mailbox is spent before the body is checked", magic(mb) == 0, f"{magic(mb):#x}")
+    # ---- boot: the picker before the project loads ------------------------
+    # A power-on as the unit has it (--boot-load): the names in battery
+    # SRAM before the mount, the harness posts nothing, so the one LOAD
+    # PROJECT is the firmware's own through 0x4002574c. The card: a set
+    # with its AUDIO folder and an empty project (enough for the load to be
+    # handled), and three images in the root, one of them this image's own
+    # name, which the picker skips.
+    import re as _re
+    self_name = (_re.sub(r"[^A-Z0-9_-]", "", (os.environ.get("VERSION")
+                 or f"OCTABAM{env['BUILD']}").upper())[:12] or "OCTABAM")
+    btree = work / "bootcard"
+    (btree / "OSW" / "AUDIO").mkdir(parents=True)
+    (btree / "OSW" / "P").mkdir()
+    (btree / f"{self_name}.OBI").write_bytes(homeb)
+    (btree / "OTHER.OBI").write_bytes(homeb)
+    (btree / "STOCK140.OBI").write_bytes(stock)
+    bcard = work / "bootcard.img"
+    bcard.write_bytes(emu_card.build_image(str(btree), size_mb=64))
+    nosets = work / "noaudio"
+    (nosets / "OSW" / "P").mkdir(parents=True)
+    (nosets / "STOCK140.OBI").write_bytes(stock)
+    ncard = work / "noaudio.img"
+    ncard.write_bytes(emu_card.build_image(str(nosets), size_mb=64))
+    POST, FILES, HANDLER = 0x40023c7c, 0x400228dc, 0x40085336
+    bw = {k: rt[k] for k in ("osw_bootpick", "bp_tick", "bp_key", "bp_answer", "osw_load", "osw_reset")}
+    bw["dialog"], bw["post"], bw["files"], bw["handler"] = 0x4006D57C, POST, FILES, HANDLER
+    name_of = {a: k for k, a in bw.items()}
+
+    def bootcase(tag, card, script=None, load_ms=20000, dumps=None):
+        extra = ["--card", str(card), "--mount", "--boot-load", "--set", "/OSW", "--project", "P",
+                 "--mkii", "--load-ms", str(load_ms)]
+        if script:
+            s = work / f"{tag}.txt"
+            s.write_text("\n".join(script) + "\n")
+            extra += ["--live-script", str(s)]
+        out, hits, d = boot(tag, [(0x3FFC, norver)], list(bw.values()), dumps or {}, extra=extra,
+                            max_instr=3_000_000_000)
+        seq = [name_of.get(int(m.group(1), 16)) for m in
+               re.finditer(r"^\s*\[\s*\d+\] at 0x([0-9a-f]+)", out, re.M)]
+        return out, [s for s in seq if s], d
+
+    def first(seq, k):
+        return seq.index(k) if k in seq else -1
+
+    from concurrent.futures import ThreadPoolExecutor
+    kd = lambda code, t: [f"{t} key {code:#x} down", f"{t + 20} key {code:#x} up"]
+    with ThreadPoolExecutor(4) as ex:
+        f_auto = ex.submit(bootcase, "boot_auto", bcard)
+        f_no = ex.submit(bootcase, "boot_no", bcard, kd(KEY_NO, 500) + ["3000 quit"], 300)
+        f_yes = ex.submit(bootcase, "boot_yes", bcard, kd(KEY_RIGHT, 300) + kd(KEY_YES, 900) + ["6000 quit"],
+                          300, {"mbox": (MBOX, 72), "stage": (IMG, len(stock))})
+        f_skip = ex.submit(bootcase, "boot_noaudio", ncard)
+    _, seq, _ = f_auto.result()
+    check("boot: the picker opens before anything is posted, counts 3 s down (30 ticks) and answers NO itself",
+          first(seq, "dialog") > first(seq, "osw_bootpick") >= 0 and seq.count("bp_tick") == 30
+          and first(seq, "post") > first(seq, "bp_answer") > first(seq, "dialog")
+          and first(seq, "files") > first(seq, "post"),
+          " ".join(k for k in seq if k != "bp_tick") + f"; {seq.count('bp_tick')} ticks")
+    check("boot: after the countdown the stock load runs, LOAD PROJECT then LOADING FILES, and no switch",
+          first(seq, "handler") > first(seq, "post") and "osw_load" not in seq,
+          f"handler at {first(seq, 'handler')}, osw_load {'ran' if 'osw_load' in seq else 'not run'}")
+    _, seq, _ = f_no.result()
+    check("boot: NO answers before the countdown ends and posts the load, then the files, and no switch",
+          0 <= first(seq, "bp_answer") < first(seq, "post") < first(seq, "files")
+          and seq.count("bp_tick") < 30 and "osw_load" not in seq,
+          " ".join(k for k in seq if k != "bp_tick") + f"; {seq.count('bp_tick')} ticks")
+    _, seq, d = f_yes.result()
+    mb = d.get("mbox", b"")
+    check("boot: RIGHT past this image's own name, YES: the switch runs and nothing is loaded",
+          0 <= first(seq, "bp_key") < first(seq, "bp_answer") < first(seq, "osw_load") < first(seq, "osw_reset")
+          and "post" not in seq and "files" not in seq,
+          " ".join(k for k in seq if k != "bp_tick"))
+    check("boot: the stage holds the image picked (OTHER, then RIGHT: STOCK140)",
+          len(mb) == 72 and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.OBI" and d.get("stage") == stock,
+          (mb[C["MB_NAME"]:C["MB_NAME"] + 16] if len(mb) == 72 else b"").decode("latin1"))
+    _, seq, _ = f_skip.result()
+    check("boot: a set without AUDIO: no picker, the stock post, and stock's own dialogs are shown",
+          "osw_bootpick" in seq and "bp_tick" not in seq
+          and first(seq, "dialog") > first(seq, "post") > first(seq, "osw_bootpick"),
+          " ".join(seq))
+
     # ---- dsp: park the running cores, boot them through the loaders --------
     B = 0x40000400
     blobs = {"bootA": (0x400E21E0, 0x96), "payA": (0x400E2324, 0x136CB),

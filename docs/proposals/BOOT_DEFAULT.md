@@ -10,6 +10,19 @@ where it says so, else under the ColdFire port or read from the user's own
 image by disassembly), 🟡 inferred, with what would falsify it, ❓ open,
 with what would answer it, ❌ retracted.
 
+**Status, 30 Sep 2026: a variant of §7 is built** (`modules/os-switch`,
+"At power-on: the boot picker"), measured under the port, not yet on the
+unit. It is §7 without the held key: every power-on with another image on
+the card opens the picker at the point §4 asked for -- the boot's own
+LOAD PROJECT post (`0x4002574c`, sys's media case, after the card is
+mounted and before the project loads) -- with a 3 s countdown that answers
+NO. So it keeps §7's properties (nothing boots unless chosen this boot, no
+file, no flag, no loop) and costs at most 3 s on a boot that stays. §4's
+first ❓ is answered ✅ under the port: there is such a point, and it is
+the post itself; the load, and the LOADING FILES job the set mount queues
+behind it, are held and posted in stock's order on NO. The escape hatch of
+§5 is not needed by this variant; the full default of §6 is still not built.
+
 ---
 
 ## 1. The wish, and the passage that refused it

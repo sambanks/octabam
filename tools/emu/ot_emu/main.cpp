@@ -1247,6 +1247,7 @@ int main(int _argc, char** _argv)
 	std::string watchRead;		// ADDR,LEN -- log the first 64 data READS of that range, with the reading PC
 	std::string watchPc;		// comma-separated addresses -- log registers there (route A's own flag)
 	bool namesEarly = false;	// write the SET/PROJECT names BEFORE the mount -- see O7b
+	bool bootLoad = false;		// a power-on: names before the mount, the firmware's own LOAD PROJECT only
 	std::string hostPortLog;	// every write into the DSP host-port window -> FILE (O8)
 	bool dsp = false;			// O8: put the two real DSP cores behind the host port
 	bool dspRt = false;			// O17: --dsp-rt -- the cores under the JIT on worker threads, on the lockstep schedule (dsp.cpp, THE REAL-TIME MODE); --interactive only
@@ -1335,6 +1336,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--watch-read" && i + 1 < _argc)	watchRead = _argv[++i];
 		else if(a == "--watch-pc" && i + 1 < _argc)	watchPc = _argv[++i];
 		else if(a == "--names-early")			namesEarly = true;
+		else if(a == "--boot-load")				bootLoad = true;
 		else if(a == "--hostport-log" && i + 1 < _argc)	hostPortLog = _argv[++i];
 		else if(a == "--dsp")					dsp = true;
 		else if(a == "--dsp-rt")				{ dsp = true; dspRt = true; }
@@ -1897,7 +1899,7 @@ int main(int _argc, char** _argv)
 				m.setPeriphTrace(!periphTrace.empty());
 				if(ataLatency >= 0.0)
 					rtos.setAtaLatency(ataLatency);
-				load = rtos.loadProjectLive(setName, projectName, loadMs, 3000.0, namesEarly);
+				load = rtos.loadProjectLive(setName, projectName, loadMs, 3000.0, namesEarly, bootLoad);
 				const auto& r = load;
 				m.setPeriphTrace(false);
 				std::printf("             card ready: %#x, LOAD PROJECT posted: %s, "

@@ -88,7 +88,8 @@ MODULE = Module(
                "moved into the dead vector run (BSRETVEC) booted, played and switched "
                "away again -- 40 region words down to 18; `verify_osswitch`",
     doc="MAIN MENU > OS lists the card root's raw OS images (.OBI) and boots the one "
-        "picked without writing the flash; a power-cycle returns to the flashed image.",
+        "picked without writing the flash; a power-cycle returns to the flashed image. "
+        "At power-on a picker offers them before the project loads (3 s, then NO).",
     linked=(
         Linked("osw_chain", "modules/os-switch/chain.s", loader=True, include=_include),
         Linked("osw_switch", "modules/os-switch/switch.s", dram=True, include=_include),
@@ -120,6 +121,12 @@ MODULE = Module(
                "the OS entry, after it parks the bootstrap's argument: a staged image first"),
         Detour(0x40064C32, H("2f39400cbf6c"), "osw_switch", "osw_menu",
                "MAIN MENU opening: the OS list rescanned from the card"),
+        Detour(0x4002574C, H("4879100f8378"), "osw_switch", "osw_bootpick",
+               "the named project's (re)load post: the boot's first offers the card's "
+               "images before the project loads"),
+        Detour(0x4002573E, H("4eb9400228dc"), "osw_switch", "osw_bootfiles",
+               "the last-set mount's LOADING FILES post: held with the load while the "
+               "boot picker is up, posted after it in stock's order", kind="jsr"),
     ),
     symbol_refs=(
         SymbolRef(0x400CBDA4, ROOT_ROWS, "osw_switch", "osw_root",

@@ -138,6 +138,13 @@ str_size:
         .asciz  "LAST SWITCH: TOO BIG"
 str_bootver:
         .asciz  "OTHER BOOTSTRAP VERSION"
+str_stay:
+        .asciz  "NO: STAY "
+str_more:
+        .asciz  "\x13\x14 MORE"
+str_auto:
+        .asciz  "  AUTO 3"
+        .set    AUTO_DIGIT, 7
         .align  2
 
 | ---- the list, rebuilt each time MAIN MENU opens -----------------------------
@@ -936,6 +943,396 @@ msg:    move.l  (%sp)+,%a0
         lea     (24,%sp),%sp
         rts
 
+| ---- the boot picker ---------------------------------------------------------
+| Detour at 0x4002574c, stock's "if a project is named, post LOAD PROJECT"
+| (`strlen(0x100f8378) > 0` -> 0x40023c7c). Sys's media case calls it at
+| power-on once the card is mounted (0x4006204a); the USB-disk exit and a
+| card re-insert reach it too, as tail jumps (0x4007ec32, 0x4006bae4). The
+| FIRST call of a boot, when a project is named, the file system is up and
+| no dialog is open, offers the card's other images in the stock confirm
+| dialog BEFORE the project loads -- the load is the long part of a boot,
+| and a switch after it throws it away:
+|
+|   BOOT <NAME>?          LEFT/RIGHT/UP/DOWN: the next image
+|   NO: STAY <THIS>       YES: switch (the pane's own path)
+|   <> MORE  AUTO 3       NO, or 3 s untouched: post the load as stock does
+|
+| An arrow stops the countdown. The countdown is a soft timer on the sys
+| tick (0x40031a0c, DJ DECKS' form), which answers NO itself at zero. A
+| boot that is itself a
+| switch (MB_STATUS RUN) was already chosen and loads at once.
+        .set    PROJNAME,  0x100f8378   | the current project's folder (battery SRAM)
+        .set    SETNAME,   0x100f8480   | the current set's, an absolute path
+        .set    SETOK,     0x40025650   | (set): the set and "%s/AUDIO" exist
+        .set    PROJOK,    0x400255ec   | (): the project's folder exists and is named
+        .set    LOADQ,     0x40025752   | 0x4002574c past the displaced `pea PROJNAME`
+        .set    DLG_OPEN,  0x460e5cd0   | the dialog's window, 0 = none
+        .set    DLG_LINES, 0x460e5d28   | its copies of the lines, 31 bytes apart (0x4006d5da)
+        .set    DLG_DRAW,  0x4006d128   | its redraw from those copies
+        .set    DLG_NO,    0x4006d4a8   | if open: close it and answer NO (the USB exit's, 0x4007eb2a)
+        .set    TIMER,     0x40031a0c   | (period, fn) -> handle
+        .set    UNTIMER,   0x40031abc   | (handle)
+        .set    TIMERS,    0x460d5a28   | the 32 soft-timer slots, 16 B: {period, due, fn, next}
+        .set    LPUSH,     0x40031494   | (layer)
+        .set    LPOP,      0x4003146c   | (layer)
+        .set    BP_TICKS,  6            | the timer's period: 100 ms of the 60 Hz sys tick
+        .set    BP_COUNT,  30           | 3 s
+
+        .global osw_bootpick
+osw_bootpick:
+        | d1 = why it steps aside (BOOT TRACE's note 26 velocity; 0 = opened)
+        moveq   #1,%d1
+        tst.b   bp_done
+        bne.w   bp_stock                | not the boot's first: no note
+        moveq   #1,%d0
+        move.b  %d0,bp_done
+        tst.b   (PROJNAME).l
+        beq.w   bp_skip
+        moveq   #2,%d1
+        lea     (OSW_MBOX).l,%a0
+        move.l  (MB_STATUS,%a0),%d0
+        cmpi.l  #ST_RUN,%d0
+        beq.w   bp_skip
+        moveq   #3,%d1
+        tst.l   (0x46c8240e).l
+        beq.w   bp_skip
+        tst.l   (FS_OPEN).l
+        beq.w   bp_skip
+        moveq   #4,%d1
+        tst.l   (DLG_OPEN).l
+        bne.w   bp_skip
+        lea     (-44,%sp),%sp
+        movem.l %d2-%d7/%a2-%a6,(%sp)
+        | the last set's mount (0x400256b8, sys's next media case) must go
+        | through without a dialog of its own: the stock dialog drops a
+        | request while one is open, so a NO SET or a missing project would
+        | never be shown. Its two checks, as the USB-disk exit makes them
+        | before it posts (0x4007ec28): the set and its AUDIO, the project.
+        pea     (SETNAME).l
+        jsr     (SETOK).l
+        addq.l  #4,%sp
+        moveq   #5,%d1
+        tst.l   %d0
+        beq.w   bp_none
+        jsr     (PROJOK).l
+        moveq   #5,%d1
+        tst.l   %d0
+        beq.w   bp_none
+        bsr.w   osw_scan
+        | the first image that is not this one
+        moveq   #-1,%d0
+        move.l  %d0,idx
+        moveq   #1,%d0
+        bsr.w   bp_step
+        moveq   #6,%d1
+        tst.l   idx
+        bmi.w   bp_none
+        | open it sized for its widest line: the longest label, the countdown
+        bsr.w   bp_widest
+        move.l  idx,-(%sp)
+        move.l  %d0,idx
+        moveq   #BP_COUNT,%d0
+        move.l  %d0,bp_left
+        bsr.w   bp_text
+        move.l  (%sp)+,idx
+        pea     bp_answer
+        pea     (3).w
+        pea     bp_lines
+        pea     (3).w
+        pea     str_title
+        jsr     (DIALOG).l
+        lea     (20,%sp),%sp
+        moveq   #7,%d1
+        tst.l   (DLG_OPEN).l
+        beq.w   bp_none
+        moveq   #26,%d0
+        moveq   #0,%d1
+        bsr.w   bp_note
+        moveq   #1,%d0
+        move.b  %d0,bp_active
+        pea     bp_layer
+        jsr     (LPUSH).l
+        addq.l  #4,%sp
+        pea     bp_tick
+        pea     (BP_TICKS).w
+        jsr     (TIMER).l
+        addq.l  #8,%sp
+        move.l  %d0,bp_timer
+        bpl.s   1f
+        jsr     (DLG_NO).l              | no free timer slot, so no countdown: NO now
+        bra.s   2f
+1:      bsr.w   bp_show
+2:      movem.l (%sp),%d2-%d7/%a2-%a6
+        lea     (44,%sp),%sp
+        rts                             | no load yet: the answer posts it
+bp_none:
+        movem.l (%sp),%d2-%d7/%a2-%a6
+        lea     (44,%sp),%sp
+bp_skip:
+        moveq   #26,%d0
+        bsr.w   bp_note
+bp_stock:
+        pea     (PROJNAME).l
+        jmp     (LOADQ).l
+
+| bp_step: idx to the next image in direction d0 (+1/-1) whose label is not
+| this image's own name, wrapping; idx = -1 when there is none
+bp_step:
+        lea     (-12,%sp),%sp
+        movem.l %d2-%d4,(%sp)
+        move.l  %d0,%d3
+        move.l  count,%d4
+        ble.s   8f
+        move.l  %d4,%d2                 | tries left
+        move.l  idx,%d0
+        bpl.s   1f
+        moveq   #-1,%d0                 | from -1: +1 lands on 0
+        tst.l   %d3
+        bpl.s   1f
+        move.l  %d4,%d0
+1:      add.l   %d3,%d0
+        bpl.s   2f
+        add.l   %d4,%d0
+2:      cmp.l   %d4,%d0
+        bcs.s   3f
+        sub.l   %d4,%d0
+3:      move.l  %d0,-(%sp)
+        bsr.w   bp_isself
+        move.l  (%sp)+,%d0
+        tst.l   %d1
+        beq.s   9f
+        subq.l  #1,%d2
+        bne.s   1b
+8:      moveq   #-1,%d0
+9:      move.l  %d0,idx
+        movem.l (%sp),%d2-%d4
+        lea     (12,%sp),%sp
+        rts
+
+| bp_isself: d1 = 1 if labels[d0] is this image's name, else 0
+bp_isself:
+        mulu.w  #NLEN,%d0
+        lea     labels,%a0
+        add.l   %d0,%a0
+        lea     str_self,%a1
+        moveq   #0,%d1
+1:      move.b  (%a0)+,%d0
+        cmp.b   (%a1)+,%d0
+        bne.s   2f
+        tst.b   %d0
+        bne.s   1b
+        moveq   #1,%d1
+2:      rts
+
+| bp_widest: d0 = the index of the longest label
+bp_widest:
+        lea     (-12,%sp),%sp
+        movem.l %d2-%d4,(%sp)
+        moveq   #0,%d0
+        moveq   #-1,%d4                 | the longest so far
+        moveq   #0,%d2
+        lea     labels,%a0
+1:      cmp.l   count,%d2
+        bcc.s   9f
+        move.l  %a0,%a1
+        moveq   #0,%d3
+2:      tst.b   (%a1)+
+        beq.s   3f
+        addq.l  #1,%d3
+        bra.s   2b
+3:      cmp.l   %d4,%d3
+        ble.s   4f
+        move.l  %d3,%d4
+        move.l  %d2,%d0
+4:      lea     (NLEN,%a0),%a0
+        addq.l  #1,%d2
+        bra.s   1b
+9:      movem.l (%sp),%d2-%d4
+        lea     (12,%sp),%sp
+        rts
+
+| bp_text: the three lines for idx and the countdown, into bp_l1..bp_l3
+bp_text:
+        lea     bp_l1,%a0
+        clr.b   (%a0)
+        pea     str_boot
+        move.l  %a0,-(%sp)
+        bsr.w   strcat
+        addq.l  #8,%sp
+        move.l  idx,%d0
+        mulu.w  #NLEN,%d0
+        lea     labels,%a0
+        add.l   %d0,%a0
+        move.l  %a0,-(%sp)
+        pea     bp_l1
+        bsr.w   strcat
+        addq.l  #8,%sp
+        pea     str_q
+        pea     bp_l1
+        bsr.w   strcat
+        addq.l  #8,%sp
+        lea     bp_l2,%a0
+        clr.b   (%a0)
+        pea     str_stay
+        move.l  %a0,-(%sp)
+        bsr.w   strcat
+        addq.l  #8,%sp
+        pea     str_self
+        pea     bp_l2
+        bsr.w   strcat
+        addq.l  #8,%sp
+        lea     bp_l3,%a0
+        clr.b   (%a0)
+        pea     str_more
+        move.l  %a0,-(%sp)
+        bsr.w   strcat
+        addq.l  #8,%sp
+        move.l  bp_left,%d0
+        ble.s   1f
+        addq.l  #8,%d0                  | whole seconds, rounded up: 30..21 -> 3
+        addq.l  #1,%d0
+        divu.w  #10,%d0
+        andi.l  #0xffff,%d0
+        addi.l  #'0',%d0
+        lea     str_auto,%a0
+        move.b  %d0,(AUTO_DIGIT,%a0)
+        pea     str_auto
+        pea     bp_l3
+        bsr.w   strcat
+        addq.l  #8,%sp
+1:      rts
+
+| bp_show: the lines into the open dialog's own copies, and its redraw
+bp_show:
+        lea     (-12,%sp),%sp
+        movem.l %d2/%a2-%a3,(%sp)
+        bsr.w   bp_text
+        lea     bp_lines,%a3
+        lea     (DLG_LINES).l,%a2
+        moveq   #2,%d2
+1:      move.l  (%a3)+,-(%sp)
+        move.l  %a2,-(%sp)
+        clr.b   (%a2)
+        bsr.w   strcat
+        addq.l  #8,%sp
+        lea     (31,%a2),%a2
+        subq.l  #1,%d2
+        bpl.s   1b
+        movem.l (%sp),%d2/%a2-%a3
+        lea     (12,%sp),%sp
+        jmp     (DLG_DRAW).l
+
+| the arrows: the next or previous image, and the countdown stops
+bp_key:
+        tst.b   bp_active
+        beq.s   9f
+        clr.l   bp_left
+        moveq   #1,%d0
+        move.l  (4,%sp),%d1
+        cmpi.l  #0x34,%d1               | LEFT
+        beq.s   1f
+        cmpi.l  #0x33,%d1               | UP
+        bne.s   2f
+1:      moveq   #-1,%d0
+2:      bsr.w   bp_step
+        bra.w   bp_show
+9:      rts
+
+| the timer, in the sys task every 100 ms: the countdown, redrawn; at zero
+| the dialog answers NO from here. The timer cancels itself by clearing
+| its slot's function: the service (0x40031970) calls it, then re-links
+| the node only while that word is nonzero (0x40031994), which is also
+| the first thing UNTIMER does. UNTIMER itself unlinks the node the
+| service still holds, so it is only called from outside the tick.
+bp_tick:
+        tst.b   bp_active
+        beq.s   9f
+        move.l  bp_left,%d0
+        ble.s   9f
+        subq.l  #1,%d0
+        move.l  %d0,bp_left
+        bne.w   bp_show
+        move.l  bp_timer,%d0
+        bmi.s   1f
+        lsl.l   #4,%d0
+        lea     (TIMERS).l,%a0
+        clr.l   (8,%a0,%d0.l)
+        moveq   #-1,%d0
+        move.l  %d0,bp_timer
+1:      jmp     (DLG_NO).l              | closes it, answers NO: bp_answer(1)
+9:      rts
+
+| Detour (a jsr) at 0x4002573e: the last-set mount's (0x400256b8) post
+| of the engine's LOADING FILES job (0x400228dc, its only caller). Stock
+| queues it right AFTER the boot's LOAD PROJECT, on the same queue; while
+| the picker holds that load back this holds the files job too, and NO
+| posts both in stock's order -- the boot after NO is stock's boot, and
+| a YES leaves the queue idle for the switch's own load.
+        .set    LOADFILES, 0x400228dc
+        .global osw_bootfiles
+osw_bootfiles:
+        tst.b   bp_active
+        beq.s   1f
+        moveq   #1,%d0
+        move.b  %d0,bp_files
+        rts
+1:      jmp     (LOADFILES).l
+
+| the dialog's answer (0 = YES): our layer and timer off, then YES is the
+| pane's own switch and NO posts what stock would have posted
+bp_answer:
+        tst.b   bp_active
+        beq.s   9f
+        clr.b   bp_active
+        clr.l   bp_left
+        pea     bp_layer
+        jsr     (LPOP).l
+        addq.l  #4,%sp
+        | BOOT TRACE's note 27: 0 YES, 1 NO, 2 the countdown's NO (the
+        | tick has spent the timer already)
+        move.l  (4,%sp),%d1
+        tst.l   bp_timer
+        bpl.s   3f
+        tst.l   %d1
+        beq.s   3f
+        moveq   #2,%d1
+3:      moveq   #27,%d0
+        bsr.w   bp_note
+        move.l  bp_timer,%d0
+        bmi.s   1f
+        move.l  %d0,-(%sp)
+        jsr     (UNTIMER).l
+        addq.l  #4,%sp
+        moveq   #-1,%d0
+        move.l  %d0,bp_timer
+1:      tst.l   (4,%sp)
+        beq.w   osw_answer              | YES: idx is the image; osw_answer reads the same 0
+        bsr.w   bp_stock
+        tst.b   bp_files
+        beq.s   9f
+        clr.b   bp_files
+        jmp     (LOADFILES).l
+9:      rts
+
+| bp_note: BOOT TRACE's note d0 with velocity d1 on MIDI OUT; nothing
+| without BOOT TRACE. Every register preserved.
+bp_note:
+        .if     TRACE
+        lea     (-16,%sp),%sp
+        movem.l %d0-%d3,(%sp)
+        move.l  %d1,%d3
+        move.l  %d0,-(%sp)
+        move.l  #0x90,%d1
+        bsr.w   txmidi
+        move.l  (%sp)+,%d1
+        bsr.w   txmidi
+        move.l  %d3,%d1
+        bsr.w   txmidi
+        movem.l (%sp),%d0-%d3
+        lea     (16,%sp),%sp
+        .endif
+        rts
+
 | ---- strings -----------------------------------------------------------------
 | strcat(dst, src): append, bounded to 30 bytes in all (the dialog's line)
 strcat:
@@ -973,6 +1370,40 @@ strcpy24:
 rec_load:
         .byte   21, 0
         .long   osw_load
+        .align  4
+bp_timer:
+        .long   -1
+bp_left:
+        .long   0
+bp_lines:
+        .long   bp_l1, bp_l2, bp_l3
+bp_l1:  .space  32
+bp_l2:  .space  32
+bp_l3:  .space  32
+bp_done:
+        .byte   0
+bp_active:
+        .byte   0
+bp_files:
+        .byte   0
+        .align  4
+| the arrows' layer, on top of the dialog's (which keeps YES and NO):
+| {0, keys, encoders, 0, 0, -1, -1}; key records {code, 0, press, release,
+| repeat, aux, 0, delay, rate} (TEMPO BUS's form)
+bp_layer:
+        .long   0, bp_keys, bp_encs, 0, 0, -1, -1
+bp_keys:
+        .irp    k, 0x34, 0x21, 0x33, 0x20
+        .byte   \k, 0
+        .long   bp_key, 0, bp_key, 0, 0
+        .word   15, 5
+        .endr
+        .byte   0xff, 0
+        .long   0, 0, 0, 0, 0
+        .word   0, 0
+bp_encs:
+        .byte   0xff, 0
+        .long   0, 0, 0, 0, 0
         .align  4
 count:  .long   0
 idx:    .long   0
