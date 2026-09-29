@@ -48,5 +48,8 @@ scene locks, the crossfader, LFOs and CC reach it).
   pane's `NOW <image>` / `HOME <flashed image>` headings; BUILD=3,
   VERSION=BSRET3OS2): `make check` 588 PASS, 0 FAIL; `verify_osswitch`
   22/22 on this image; under the port a set change, a project load, the
-  menu, the browsers again and a second project load ran clean. Not yet
-  flashed.
+  menu, the browsers again and a second project load ran clean. Flashed on
+  the MKII (29 Sep 2026): the pane reads NOW / HOME BSRET3OS2; the sequence
+  that threw on BSRET3OS (a switch to itself, a power-cycle, a file load)
+  ran without an exception; switches to BSRET4B and BSPF5B (no OS SWITCH:
+  no DSP words beside RETURNS stage B) boot, and a power-cycle comes home.
