@@ -125,7 +125,10 @@ BURN_INJECT = [
 
 MARKER = "__cyc_body"
 INNER_MARKER = "__cyc_inner"
-SAMPLE_LOOP = re.compile(r"^\s*do\s+n7\s*,\s*>?(\w+)\s*(?:;.*)?$", re.I)
+# `do n7`, or `do x0` marked `; SAMPLE LOOP` (BusDelay carries RETURNS' print
+# target in n7 through its loop and hands the count to the do in x0; its NOP
+# pad is also a `do x0` and must not match).
+SAMPLE_LOOP = re.compile(r"^\s*do\s+(?:n7\s*,\s*>?(\w+)\s*(?:;.*)?|x0\s*,\s*>?(\w+)\s*;\s*SAMPLE LOOP.*)$", re.I)
 # A COUNTED inner loop: `do #4,>tankend`. The tank is rolled over its lines,
 # so words != cycles for its body -- but the count is a literal, so the cycles
 # are still exactly computable: the body simply runs N times. Anything else in
@@ -230,7 +233,8 @@ def measure(name):
 
 
 def _measure_loop(name, src, lines, i):
-    end_label = SAMPLE_LOOP.match(lines[i]).group(1)
+    _m = SAMPLE_LOOP.match(lines[i])
+    end_label = _m.group(1) or _m.group(2)
 
     # The body is everything between the `do` and its end label. Refuse to
     # report a number if it contains anything that breaks words==cycles.

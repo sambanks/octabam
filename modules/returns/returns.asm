@@ -37,10 +37,11 @@
 ;   y:$36308          ALIVE_D: RETURNS stamps it every block; BusDelay
 ;                     reads and clears it with 3 blocks of grace
 ;
-; At P:$2d5 the stock code that follows reloads r0, n0, r1, n1 and every data
-; ALU register before it reads them (func P:$55a, then P:$2ec..); m0 is
-; linear (P:$28f / P:$2d3), m1 is linear by convention. mixhook uses r0,
-; r1, n0 and the data ALU only. Every form has a stock site in payload A.
+; At P:$2d5 the stock code that follows reloads r0, n0, r1, n1, r4 and every
+; data ALU register before it reads them (func P:$55a, then P:$2ec..; r4 at
+; P:$2f2); m0 is linear (P:$28f / P:$2d3), m1 and m4 are linear by
+; convention. mixhook uses r0, r1, r4 and the data ALU. Every form has a
+; stock site in payload A.
 ; ---------------------------------------------------------------------------
 
 ; The proc has no per-sample loop: it publishes the knob once per call
@@ -69,51 +70,113 @@ rtn_skip:
         rts
 
 mixhook:
-; ---- the reverb: the buffer BusVerb marked fresh (y:$e22) ------------------
-        move    y:>$e22,a               ; FRESH?
-        cmp     #>$5a5a5a,a
-        bne     mh_dly
-        clr     a
-        move    a,y:>$e22               ; consumed
-        move    y:>$e21,a               ; VRB
-        move    #>$e23,r1               ; its glided gain
-        bsr     mh_gain
-        move    #>$3e00,r0              ; the reverb's buffer (private X)
-        bsr     mh_add
+; ---- both returns in one pass: each gain glides toward (knob/128)^2, and a
+; return with nothing new this block (the reverb: FRESH unset; the delay:
+; its buffer's stamp absent) adds nothing -- its gain is taken as 0 and its
+; pointer aims at a valid buffer. Neither: nothing to add at all.
 ; ---- the delay: the buffer three back of the rotation core 0 sees, if its
-; stamp says BusDelay wrote it (y:$36300 + index = $5a0000 | offset) -------
-mh_dly:
-        move    y:>$36000,a             ; the rotation (the housekeeper flips
-        add     #>$50,a                 ; it later in this frame): three
-        and     #>$70,a                 ; buffers back, as the servers read
-        move    a,x1                    ; x1 = the offset, 0..112 (the word is
-                                        ; always stored masked: A2 is clean)
-        asr     #$4,a,a                 ; the buffer's index
-        add     #>$36300,a
-        move    a,r1                    ; its stamp word
-        move    #>$5a0000,a
-        add     x1,a                    ; the stamp it must carry
-        move    a,x0
-        move    y:(r1),a
-        cmp     x0,a
-        bne     mh_end                  ; not written for this read: nothing
-        clr     a
-        move    a,y:(r1)                ; consumed
-        move    x1,a
-        asl     a                       ; stereo: 2 words a frame
-        add     #>$36200,a
-        move    a,r0                    ; the buffer
+; stamp says BusDelay wrote it (y:$36300 + index = $5a0000 | offset)
         move    y:>$e25,a               ; DLY
         move    #>$e26,r1               ; its glided gain
         bsr     mh_gain
-        bsr     mh_add
+        move    x0,x1                   ; x1 = the delay's gain
+        move    y:>$36000,a             ; the rotation (the housekeeper flips
+        add     #>$50,a                 ; it later in this frame): three
+        and     #>$70,a                 ; buffers back, as the servers read
+        move    a,y0                    ; the offset, 0..112 (the word is
+                                        ; always stored masked: A2 is clean)
+        asl     a                       ; stereo: 2 words a frame
+        add     #>$36200,a
+        move    a,r4                    ; the delay's buffer (m4: stock's own,
+                                        ; linear, as it walks x:(r4)+ below)
+        move    y0,a
+        asr     #$4,a,a                 ; the buffer's index
+        add     #>$36300,a
+        move    a,r1                    ; its stamp word
+        move    y0,a
+        add     #>$5a0000,a             ; the stamp it must carry
+        move    a,x0
+        move    y:(r1),b
+        cmp     x0,b
+        beq     mh_dok
+        move    #0,x1                   ; not written for this read: adds 0
+mh_dok:
+        clr     b                       ; consumed (a stale label cleared
+        move    b,y:(r1)                ; too: harmless)
+; ---- the reverb: the buffer BusVerb marked fresh (y:$e22)
+mh_rev:
+        move    y:>$e21,a               ; VRB
+        move    #>$e23,r1               ; its glided gain
+        bsr     mh_gain                 ; x0 = the reverb's gain (x1 kept)
+        move    y:>$e22,a               ; FRESH?
+        cmp     #>$5a5a5a,a
+        beq     mh_rf
+        move    #0,x0                   ; not fresh: the reverb adds 0
+        move    x1,a
+        tst     a
+        beq     mh_end                  ; neither return has anything
+mh_rf:
+        clr     a
+        move    a,y:>$e22               ; consumed
+        move    #>$3e00,r0              ; the reverb's buffer (private X)
+; ---- where: T8's record (MASTER TRACK on: bit 10 of T8's word $7e, raw
+; scale, before T8's chain) or MAIN, ring words 2/3 of x:>$203 at 8 a frame
+; (off: x 0.5618, the plain mode's track gain, then the mixdown's x4)
+        move    x:>$207,a               ; this bank's record base
+        add     #>$7e,a
+        move    a,r1
+        move    x:(r1),a                ; T8's record word $7e
+        btst    #$a,a                   ; MASTER TRACK -> C (stock tests the
+        bcs     mh_master               ; same bit with brset at P:$257; the
+                                        ; assembler encodes brset/brclr with
+                                        ; an ABSOLUTE target, AGENTS.md)
+        move    #>$47e9ff,y1            ; 0.5618
+        mpy     x0,y1,a                 ; both gains x 0.5618 (positive)
+        move    a,x0
+        mpy     y1,x1,a
+        move    a,x1
+        move    x:>$203,a
+        add     #>$2,a
+        move    a,r1
+        do      #<$10,>mh_plain
+        move    x:(r0)+,y0              ; reverb L
+        move    x:(r4)+,y1              ; delay L
+        mpy     y0,x0,b
+        mac     y1,x1,b
+        asl     #$2,b,b                 ; the mixdown's x4
+        move    x:(r1),a
+        add     b,a
+        move    a,x:(r1)+               ; MAIN L (the store limits)
+        move    x:(r0)+,y0              ; reverb R
+        move    x:(r4)+,y1              ; delay R
+        mpy     y0,x0,b
+        mac     y1,x1,b
+        asl     #$2,b,b
+        move    x:(r1),a
+        add     b,a
+        move    a,x:(r1)+               ; MAIN R
+        lua     (r1+$6),r1              ; the next frame's words 2/3
+mh_plain:
+        bra     mh_end
+mh_master:
+        move    x:>$209,a
+        add     #>$1f8,a
+        move    a,r1                    ; T8's record: 16 x (L, R)
+        do      #<$20,>mh_rec
+        move    x:(r0)+,y0              ; reverb
+        move    x:(r4)+,y1              ; delay
+        move    x:(r1),a
+        mac     y0,x0,a
+        mac     y1,x1,a
+        move    a,x:(r1)+
+mh_rec:
 mh_end:
         move    x:>$206,r0              ; the displaced instruction
         rts
 
 ; ---- mh_gain: a = the knob word, r1 -> the glided gain; out x0 = this
 ; block's gain, (knob/128)^2 approached a quarter of the way per block.
-; Clobbers a, b, x0, y1. r0 untouched.
+; Clobbers a, b, x0, y1. x1, r0, r4 untouched.
 mh_gain:
         and     #>$7f0000,a             ; the knob: bits 16-22, value/128
         move    a1,x0
@@ -126,52 +189,4 @@ mh_gain:
         add     y1,a
         move    a,y:(r1)
         move    a,x0
-        rts
-
-; ---- mh_add: add x0 x the 16 stereo frames at x:(r0) where MASTER TRACK
-; says: T8's record (on: bit 10 of T8's word $7e, raw scale, before T8's
-; chain) or MAIN, ring words 2/3 of x:>$203 at 8 a frame (off: x 0.5618,
-; the plain mode's track gain, then the mixdown's x4). Clobbers a, b, x0,
-; y0, y1, r0, r1.
-mh_add:
-        move    x:>$207,a               ; this bank's record base
-        add     #>$7e,a
-        move    a,r1
-        move    x:(r1),a                ; T8's record word $7e
-        btst    #$a,a                   ; MASTER TRACK -> C (stock tests the
-        bcs     mh_master               ; same bit with brset at P:$257; the
-                                        ; assembler encodes brset/brclr with
-                                        ; an ABSOLUTE target, AGENTS.md)
-        move    #>$47e9ff,y1            ; 0.5618
-        mpy     x0,y1,a                 ; gain x 0.5618 (both positive)
-        move    a,x0
-        move    x:>$203,a
-        add     #>$2,a
-        move    a,r1
-        do      #<$10,>mh_plain
-        move    x:(r0)+,y0              ; wet L
-        mpy     y0,x0,b
-        asl     #$2,b,b                 ; the mixdown's x4
-        move    x:(r1),a
-        add     b,a
-        move    a,x:(r1)+               ; MAIN L (the store limits)
-        move    x:(r0)+,y0              ; wet R
-        mpy     y0,x0,b
-        asl     #$2,b,b
-        move    x:(r1),a
-        add     b,a
-        move    a,x:(r1)+               ; MAIN R
-        lua     (r1+$6),r1              ; the next frame's words 2/3
-mh_plain:
-        rts
-mh_master:
-        move    x:>$209,a
-        add     #>$1f8,a
-        move    a,r1                    ; T8's record: 16 x (L, R)
-        do      #<$20,>mh_rec
-        move    x:(r0)+,y0              ; wet
-        move    x:(r1),a
-        mac     y0,x0,a
-        move    a,x:(r1)+
-mh_rec:
         rts
