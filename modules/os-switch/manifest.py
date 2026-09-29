@@ -103,12 +103,17 @@ MODULE = Module(
         hooks=(DspHook(0x1E, (0x0C001E, 0x000000), "osw_dsp",
                        "host command $0F (the DMA3 vector, dead in both payloads): "
                        "park in a loader"),),
-        # The handler's 22 words live in the dead vector run that starts at
-        # the entry, so only its 18-word loader tail costs the region: 40
-        # words down to 18 in both payloads. verify_dspvectors proves nothing
-        # arms an interrupt in that run, on every build.
-        pin=0x20,
-        pin_split_label="osw_ldr",
+        # WHOLLY in stock's dead interrupt vectors, so the park costs the
+        # effect region NOTHING and a remix that harvests nothing can still
+        # carry it. 31 words at P:$20..$3E (the DMA3..ESAI run, entered by
+        # the hook above) and 8 at P:$06..$0D (debug, trap, NMI and the two
+        # reserved slots) with a one-word bridge between them. $02 (stack
+        # error) and $04 (illegal instruction) are deliberately left as
+        # stock's freeze-traps: those two fire when something is already
+        # wrong, and a frozen core is more diagnosable than one running park
+        # words. verify_dspvectors audits every slot on every build.
+        pins=(0x20, 0x06),
+        pin_split_label="osw_tail",
     ),
     detours=(
         Detour(0x40000412, H("2e7c48000000"), "osw_chain", "osw_chain",

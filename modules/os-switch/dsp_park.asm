@@ -44,8 +44,11 @@ osw_dsp:
         movep   r3,x:<<$ffffe8          ; DMA1 off: the host-port transmit DMA
         movep   r3,x:<<$ffffe4          ; DMA2 off: the ESAI feed
         movep   r3,x:<<$ffffe0          ; DMA3 off
-        movep   r3,x:<<$ffffdc          ; DMA4 off
-        movep   r3,x:<<$ffffd8          ; DMA5 off
+; DMA4 and DMA5 are NOT stopped: ✅ measured from the user's own image (29
+; Sep 2026, tools/build/dsp_disasm_all.py), neither payload writes M_DCR4 or
+; M_DCR5 anywhere, so 1.40C never enables them and the two stores were two
+; words spent on nothing. verify_dspvectors' peripheral allowlist refuses a
+; payload that starts writing either, which is what keeps this true.
         movep   r3,x:<<$ffffb5          ; ESAI transmitter off
         movep   r3,x:<<$ffffb7          ; ESAI receiver off
         movep   #>$0,y:<<$ffff95        ; ESAI_1 transmitter off (the immediate: a
@@ -97,6 +100,19 @@ osw_ldr:
         movep   x:<<$ffffc6,r0
         move    r0,r1
         move    a1,x0
+; ---- the bridge -------------------------------------------------------------
+; The park lives in stock's dead interrupt vectors, and they come in runs
+; that are not long enough for it whole: the rest of this loader runs in the
+; second run. A ONE-word short jump ($0c00xx) is the only jmp form dsp_asm
+; encodes, which is lucky -- the bridge costs a word, not two -- and the
+; build rewrites its placeholder target to wherever it put the second piece
+; (schema.DspSection.pins, build_bus.PIN_BRIDGE -- do not spell that literal
+; here, the census counts it in comments too). The cut is HERE, before the
+; `do`: a hardware DO
+; loop cannot be entered or left by a jump, so the whole loop stays in one
+; piece.
+        jmp     $fab
+osw_tail:
         do      x0,osw_xend
         brclr   #0,x:<<$ffffc3,0        ; wait: a word
         movep   x:<<$ffffc6,x:(r0)+

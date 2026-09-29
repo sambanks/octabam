@@ -494,6 +494,12 @@ _LISTLINE = re.compile(r"^([0-9a-f]{6}): (\S+)(?:\s+(.*?))?\s*; "
 # build whose count differs from this table stops with the site list: a new
 # site needs its operand audited and this table updated; a vanished site
 # needs the table updated so the count stays exact.
+# The placeholder a pinned section's bridge jump carries until the build
+# knows where the second piece went (schema.DspSection.pins). A 12-bit
+# short-jump target, because that one-word form is the only jmp dsp_asm
+# encodes.
+PIN_BRIDGE = "$fab"
+
 MPYSU_AUDITED = {
     "REVERB SERVER": {"x0,y0,a": 12, "x0,x1,a": 9, "x1,y1,a": 4},
     "CHARACTER":     {"x1,y1,b": 1},
@@ -2155,7 +2161,13 @@ mkgo:""",
             # Nothing harvested is the honest default for a stock chooser --
             # every word belongs to a stock effect that is using it -- but a
             # module of ours has to go somewhere.
-            _need = [m for m in _SEL if m.dsp is not None] + [_MODS[k] for k in HOOKED]
+            # A FULLY PINNED section needs no region at all: its words come
+            # out of stock's dead interrupt vectors (schema.DspSection.pins),
+            # which is what lets an image that keeps every stock effect carry
+            # OS SWITCH. Only sections that still want region words count.
+            _need = [m for m in ([m for m in _SEL if m.dsp is not None]
+                                 + [_MODS[k] for k in HOOKED])
+                     if not m.dsp.pins]
             if _need:
                 sys.exit(f"payload {tag}: nothing is harvested, so there is "
                          f"nowhere to place "
@@ -2723,6 +2735,78 @@ hostquit:
                       f"  id 0x{NEW_IDS[name]:02x}  Y base 0x38000  "
                       f"(DEV: OUT OF REGION, code lives in the .mem dump)")
                 continue
+            # ---- FULLY PINNED: the dead interrupt vectors ----------------
+            # A section whose pieces are all pinned (schema.DspSection.pins)
+            # takes no words from the harvested region at all -- which is
+            # what lets a remix that harvests NOTHING carry one. Stock leaves
+            # runs of vector slots as `jmp *`, a self-jump that would freeze
+            # the core if that interrupt ever fired, so they are dead words;
+            # tools/verify/verify_dspvectors.py proves nothing arms one, on
+            # every build, and is the licence for this.
+            #
+            # The runs are not long enough for a section whole, so the source
+            # carries ONE cut (`pin_split_label`) with a one-word short jump
+            # in front of it that the build points at the second piece. Each
+            # piece is ASSEMBLED at its own address and never moved: a `do`
+            # loop's end address is absolute.
+            _sec = remix_modules()[name].dsp
+            _pins = _sec.pins if _sec is not None else ()
+            if _pins:
+                _w0, _s0 = assemble_syms(src, _pins[0], label=name)
+                _split = len(_w0)
+                if len(_pins) > 1:
+                    if _sec.pin_split_label not in _s0:
+                        sys.exit(f"payload {tag}: {name} is pinned in {len(_pins)} pieces "
+                                 f"but its source defines no label "
+                                 f"{_sec.pin_split_label!r} to cut at")
+                    _split = _s0[_sec.pin_split_label] - _pins[0]
+                _cuts = [(_pins[0], 0, _split)] + \
+                        ([(_pins[1], _split, len(_w0))] if len(_pins) > 1 else [])
+                # every word this would take must still be the stock self-jump
+                # pattern it was audited as (an even word is `jmp *`, the odd
+                # one zero) -- the same assertion DspHook makes at its site
+                for _at, _lo, _hi in _cuts:
+                    for _k in range(_hi - _lo):
+                        _a, _got = _at + _k, rdw_p_at(_at + _k)
+                        if _got != ((0x0C0000 | _a) if _a % 2 == 0 else 0):
+                            sys.exit(f"payload {tag}: {name} would write P:0x{_a:05x}, which "
+                                     f"holds {_got:06x}, not the stock self-jump it was "
+                                     f"audited as; refusing")
+                _sym = {}
+                for _n, (_at, _lo, _hi) in enumerate(_cuts):
+                    # assembled so that THIS piece lands where it is pinned;
+                    # the bridge's placeholder becomes the next piece's address
+                    _s2 = src.replace(PIN_BRIDGE, f"${_pins[1]:x}") if len(_pins) > 1 else src
+                    if len(_pins) > 1 and src.count(PIN_BRIDGE) != 1:
+                        sys.exit(f"payload {tag}: {name} is cut in two, so its source must "
+                                 f"carry the bridge `jmp {PIN_BRIDGE}` exactly once; "
+                                 f"found {src.count(PIN_BRIDGE)}")
+                    _w, _syms = assemble_syms(_s2, _at - _lo, label=name)
+                    if len(_w) != len(_w0):
+                        sys.exit(f"payload {tag}: {name} assembles to {len(_w)} words at "
+                                 f"P:0x{_at - _lo:05x} and {len(_w0)} at P:0x{_pins[0]:05x} "
+                                 f"-- the encoding is not origin-invariant, so it cannot "
+                                 f"be pinned")
+                    for _k in range(_hi - _lo):
+                        wrw_p_at(_at + _k, _w[_lo + _k])
+                    if _n == 0:
+                        _sym = _syms
+                    print(f"  {'PINNED':13} P:0x{_at:05x}..0x{_at + _hi - _lo:05x} "
+                          f"({_hi - _lo:4d} words)  {name}"
+                          f"{', piece ' + str(_n + 1) if len(_cuts) > 1 else ''}"
+                          f", in stock's dead vectors (verify_dspvectors)")
+                for _h in (_sec.hooks or ()):
+                    _got = (rdw_p_at(_h.site), rdw_p_at(_h.site + 1))
+                    if _got != tuple(_h.stock):
+                        sys.exit(f"payload {tag}: {name}'s hook site P:0x{_h.site:05x} holds "
+                                 f"{_got[0]:06x} {_got[1]:06x}, not stock "
+                                 f"{_h.stock[0]:06x} {_h.stock[1]:06x}; refusing")
+                    wrw_p_at(_h.site, 0x0BF080)
+                    wrw_p_at(_h.site + 1, _sym[_h.label])
+                    print(f"  {'HOOK':13} P:0x{_h.site:05x} -> {name} {_h.label} "
+                          f"P:0x{_sym[_h.label]:05x}  {_h.note}")
+                continue
+
             # ---- pick a RUN that fits, lowest address first --------------
             # A module is one code stream, so it goes wholly inside one run.
             # First-fit in address order: with a single run this is exactly
@@ -2736,33 +2820,6 @@ hostquit:
             # has been burned by.
             _fit, _last = None, None
             _xa = _xt_layout.get(name)          # (X address, words) or None
-            # PINNED (schema.DspSection.pin): the head of this section goes
-            # at a fixed P address -- the dead interrupt vectors -- and only
-            # the tail is packed into the harvested region. The head is
-            # assembled at the pin and the tail at its own cursor: neither is
-            # moved after assembly, because a `do` loop's end address is
-            # absolute. `_split` is the tail's offset in words.
-            _sec = remix_modules()[name].dsp
-            _pin = _sec.pin if _sec is not None else None
-            _split = 0
-            if _pin is not None:
-                _w0, _s0 = assemble_syms(src, _pin, label=name)
-                if _sec.pin_split_label not in _s0:
-                    sys.exit(f"payload {tag}: {name} is pinned at P:0x{_pin:05x} but its "
-                             f"source defines no label {_sec.pin_split_label!r} to split at")
-                _split = _s0[_sec.pin_split_label] - _pin
-                # the run: forward from the pin while the stock self-jump
-                # pattern holds (an even word is `jmp *`, the odd one zero)
-                _avail = 0
-                while True:
-                    _a = _pin + _avail
-                    if rdw_p_at(_a) != ((0x0C0000 | _a) if _a % 2 == 0 else 0):
-                        break
-                    _avail += 1
-                if _split > _avail:
-                    sys.exit(f"payload {tag}: {name}'s head is {_split} words but the free "
-                             f"vector run at P:0x{_pin:05x} is {_avail} -- the stock words "
-                             f"stop there. Split it earlier or pin it elsewhere")
             for _r in runs:
                 _c, _end = _r["cursor"], _r["base"] + _r["words"]
                 _tab, _s2, _lfo = None, src, "$facade" in src
@@ -2783,12 +2840,9 @@ hostquit:
                         _s2, _xt_sites[name] = _p2x(_s2, name)
                     else:
                         _c += len(_tab)
-                # A pinned section is assembled at `_c - _split`, so its TAIL
-                # lands at `_c` with every absolute address inside it right;
-                # only those words are placed here.
-                _w, _syms = assemble_syms(_s2, _c - _split, label=name)
-                _last = (_c, len(_w) - _split)
-                if _c + len(_w) - _split <= _end:
+                _w, _syms = assemble_syms(_s2, _c, label=name)
+                _last = (_c, len(_w))
+                if _c + len(_w) <= _end:
                     _fit = (_r, _tab, _s2, _c, _w, _syms)
                     break
             if _fit is None:
@@ -2844,54 +2898,12 @@ hostquit:
                     print(f"  PTABLE        P:0x{_r['cursor']:05x}.."
                           f"0x{_r['cursor'] + len(tab):05x} "
                           f"({len(tab):4d} words)  {name}'s table")
-            if _pin is None:
-                place(words, cursor)
-                _r["cursor"] = cursor + len(words)
-            else:
-                # the tail, at the cursor it was assembled for
-                place(words[_split:], cursor)
-                _r["cursor"] = cursor + len(words) - _split
-                # the head, at the pin, with its one reference to the tail
-                # rewritten to where the tail actually landed
-                _ref = f"#>{_sec.pin_split_label}"
-                if src.count(_ref) != 1:
-                    sys.exit(f"payload {tag}: {name} is pinned, so its head must reference "
-                             f"the tail exactly once as `{_ref}`; found {src.count(_ref)}")
-                _hw, _syms = assemble_syms(src.replace(_ref, f"#>${cursor:x}"), _pin, label=name)
-                if len(_hw) != len(words):
-                    sys.exit(f"payload {tag}: {name} assembles to {len(_hw)} words at its pin "
-                             f"and {len(words)} at its cursor -- the encoding is not "
-                             f"origin-invariant, so it cannot be split")
-                for _i, _word in enumerate(_hw[:_split]):
-                    _a = _pin + _i
-                    _got = rdw_p_at(_a)
-                    if _got != ((0x0C0000 | _a) if _a % 2 == 0 else 0):
-                        sys.exit(f"payload {tag}: {name} would write P:0x{_a:05x}, which holds "
-                                 f"{_got:06x}, not the stock self-jump it was audited as; "
-                                 f"refusing")
-                    wrw_p_at(_a, _word)
-                print(f"  {'PINNED':13} P:0x{_pin:05x}..0x{_pin + _split:05x} "
-                      f"({_split:4d} words)  {name}'s head, in the dead vector run "
-                      f"(verify_dspvectors); its tail is below")
-            for _h in _hooks:
-                # the two stock words become `jsr >label`; the section
-                # replays the displaced instruction (schema.DspHook)
-                _got = (rdw_p_at(_h.site), rdw_p_at(_h.site + 1))
-                if _got != tuple(_h.stock):
-                    sys.exit(f"payload {tag}: {name}'s hook site P:0x{_h.site:05x} holds "
-                             f"{_got[0]:06x} {_got[1]:06x}, not stock "
-                             f"{_h.stock[0]:06x} {_h.stock[1]:06x}; refusing")
-                wrw_p_at(_h.site, 0x0BF080)
-                wrw_p_at(_h.site + 1, _syms[_h.label])
-                print(f"  {'HOOK':13} P:0x{_h.site:05x} -> {name} {_h.label} "
-                      f"P:0x{_syms[_h.label]:05x}  {_h.note}")
+            place(words, cursor)
+            _r["cursor"] = cursor + len(words)
             if name in HOOKED:
-                # a pinned section left its head at the pin: only the tail is here
-                _n = len(words) - _split
-                print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + _n:05x} "
-                      f"({_n:4} words)  no dispatch entry: reached by its hook(s)"
-                      + (f" -- its tail; {_split} more at the pin" if _split else ""))
-                cursor += _n
+                print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + len(words):05x} "
+                      f"({len(words):4} words)  no dispatch entry: reached by its hook(s)")
+                cursor += len(words)
                 continue
             wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
             wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)

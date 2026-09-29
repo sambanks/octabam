@@ -15,7 +15,7 @@ A fourth class exists on the DSP side, for one kind of code only:
 
 | class | declared as | where it lands | budget |
 |---|---|---|---|
-| **Pinned DSP section** | `DspSection(pin=..., pin_split_label=...)` | a fixed P address instead of the harvested effect region: the interrupt vectors stock leaves as `jmp *`. What does not fit before the run ends is split at one label and packed into the region as usual | payload A `P:$1E..$3F` = 34 words, payload B `P:$14..$3F` = 44 ✅ read from the image |
+| **Pinned DSP section** | `DspSection(pins=(...), pin_split_label=...)` | fixed P addresses instead of the harvested effect region: the interrupt vectors stock leaves as `jmp *`. One address per piece, cut at one label with a one-word bridge jump, so a section can span two runs and cost the region **nothing** | ✅ read from the image: payload A 50 dead words (`$02..$0F`, `$1A..$1B`, `$1E..$3F`), payload B 58 (`$02..$0F`, `$14..$3F`) |
 
 Stock's unused vectors are self-jumps -- an interrupt that fired there
 would spin the core inside it for good, which is how you know stock never
@@ -28,13 +28,24 @@ stock pattern, refuses a head that does not fit, and asserts that both
 halves assemble to the same length at either origin rather than assuming
 it. The ledger claims the pin by name.
 
-✅ **On an MKII, 29 Sep 2026.** OS SWITCH's DSP park is the first user: its
-22-word handler at `P:$20..$35`, entered by `jsr` at `P:$1E` (host command
-`$0F`), and its 18-word loader tail in the region -- 40 region words down
-to 18 in both payloads. `bottleservice-ret` built that way booted from a
-switch, played a session with the park resident in the vector table, and
-switched away again with audio working, which is the park itself running
-from the vectors. Payload A's free region went from 2 words to 24.
+OS SWITCH's DSP park is the first user, and it now costs the region
+**zero**: 31 words at `P:$20..$3E` (entered by `jsr` at `P:$1E`, host
+command `$0F`), a one-word bridge, and 8 words at `P:$06..$0D`. `$02`
+(stack error) and `$04` (illegal instruction) are deliberately left as
+stock's freeze-traps -- those fire when something is already wrong, and a
+frozen core is easier to diagnose than one running park words.
+
+✅ **On an MKII, 29 Sep 2026**, in its first form (22 words pinned, an
+18-word tail in the region): `bottleservice-ret` booted from a switch,
+played a session with the park resident in the vector table, and switched
+away again with audio working -- the park itself running from the vectors.
+🟡 The two-run form that costs nothing has passed every port gate but has
+not been on a unit.
+
+**What this buys.** An image that harvests nothing can carry the switcher:
+`remixes/base/` is stock's fourteen effects, whole, plus MAIN MENU > OS.
+Harvesting an effect is now something you do to get words for a MODULE, not
+to afford the switcher.
 
 **Why the vectors and not the top of P.** ✅ Measured 29 Sep 2026: the
 core's default memory map gives 8K words of P (`0x2000`), and stock's code

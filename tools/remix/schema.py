@@ -348,15 +348,18 @@ class DspSection:
     # holds, refuses if what it finds is not that pattern, and claims every
     # word it takes so a second module is refused by name.
     #
-    # The run is rarely long enough for a whole section, so `pin_split_label`
-    # names the ONE label where the code may be cut: everything before it is
-    # pinned, everything from it goes in the harvested region as usual. The
-    # two halves are assembled at their real addresses (never moved after
-    # assembly -- a `do` loop's end address is absolute), and the head's
-    # single reference to the tail, written `#>LABEL` in the source, is
-    # rewritten to where the tail landed. A section whose head references the
-    # tail any other way will not survive the split.
-    pin: int | None = None
+    # `pins` is one address per PIECE, and a section that is fully pinned
+    # takes nothing from the harvested region at all -- which is what lets a
+    # remix that harvests nothing (every stock effect kept) carry one. The
+    # runs are rarely long enough for a section whole, so `pin_split_label`
+    # names the ONE label where it may be cut, and the source carries a
+    # one-word short jump (`jmp $fab`, build_bus.PIN_BRIDGE) immediately
+    # before that label which the build points at the second piece. Each
+    # piece is assembled at its own address and never moved after assembly:
+    # a `do` loop's end address is absolute, so a memcpy would be wrong in a
+    # way no local gate would catch. The cut may not fall inside a DO loop --
+    # the chip cannot enter or leave one by a jump.
+    pins: tuple[int, ...] = ()
     pin_split_label: str | None = None
 
 

@@ -46,9 +46,15 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import too
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 ASM = ROOT / "out/dsp"
 
-# The contiguous self-jump runs, per payload: (first vector, last vector).
-# Read from the user's image 29 Sep 2026; the gate re-derives and compares.
-RUNS = {"A": (0x1E, 0x3F), "B": (0x14, 0x3F)}
+# The contiguous self-jump runs the park may live in, per payload: (first
+# vector, last vector). Read from the user's image 29 Sep 2026; the gate
+# re-derives and compares. The LOW run is the processor exceptions -- stack
+# error, illegal, debug, trap, NMI and two reserved slots -- and OS SWITCH
+# deliberately takes only $06 upward, leaving $02 (stack error) and $04
+# (illegal instruction) as stock's freeze-traps: those two fire when
+# something is already wrong, and a frozen core is easier to diagnose than
+# one running park words.
+RUNS = {"A": [(0x02, 0x0F), (0x1E, 0x3F)], "B": [(0x02, 0x0F), (0x14, 0x3F)]}
 
 # Which vector each interrupt source lands on (DSP56300 / DSP5636x).
 DMA_VECTOR = {0: 0x18, 1: 0x1A, 2: 0x1C, 3: 0x1E, 4: 0x20, 5: 0x22}
@@ -95,45 +101,46 @@ def main():
     if "--selftest" in sys.argv:
         return selftest()
     fails, notes = [], []
-    for tag, (lo, hi) in RUNS.items():
-        text = listing(tag)
-        vec = vectors(tag)
+    for tag, runs in RUNS.items():
+      text = listing(tag)
+      vec = vectors(tag)
+      for lo, hi in runs:
 
-        # 1. the run is a run: every slot a self-jump plus a zero word
-        free = [v for v, (a, b) in vec.items() if a == 0x0C0000 | v and b == 0]
-        run = [v for v in free if lo <= v <= hi]
-        if len(run) * 2 != hi - lo + 1:
-            fails.append(f"payload {tag}: P:${lo:02X}..${hi:02X} is not all self-jumps -- "
-                         f"free slots there: {[hex(v) for v in run]}")
-        used = sorted(v for v in vec if v not in free)
-        notes.append(f"payload {tag}: free run P:${lo:02X}..${hi:02X} "
-                     f"({hi - lo + 1} words), live vectors {[hex(v) for v in used]}")
+          # 1. the run is a run: every slot a self-jump plus a zero word
+          free = [v for v, (a, b) in vec.items() if a == 0x0C0000 | v and b == 0]
+          run = [v for v in free if lo <= v <= hi]
+          if len(run) * 2 != hi - lo + 1:
+              fails.append(f"payload {tag}: P:${lo:02X}..${hi:02X} is not all self-jumps -- "
+                           f"free slots there: {[hex(v) for v in run]}")
+          used = sorted(v for v in vec if v not in free)
+          notes.append(f"payload {tag}: free run P:${lo:02X}..${hi:02X} "
+                       f"({hi - lo + 1} words), live vectors {[hex(v) for v in used]}")
 
-        # 2. nothing arms an interrupt whose vector is in the run
-        armed = []
-        for imm, reg, bits in MOVEP.findall(text):
-            val = int(imm, 16)
-            m = re.fullmatch(r"M_DCR(\d)", reg)
-            if m and val & (1 << DIE):
-                armed.append((DMA_VECTOR[int(m.group(1))], f"{reg} = ${val:06x} (DIE set)"))
-            if reg.startswith(("M_TCR", "M_RCR")):
-                on = [e for e in ESAI_ENABLES if e in bits.split()]
-                if on:
-                    for v in ESAI_VECTORS:
-                        armed.append((v, f"{reg} = ${val:06x} ({', '.join(on)})"))
-        # 3. no peripheral this audit has never seen is configured
-        new = set(ANY_WRITE.findall(text)) - PERIPHERALS
-        if new:
-            fails.append(f"payload {tag}: peripheral(s) {sorted(new)} are configured and were "
-                         f"not in the audit. Which vector can each interrupt into? If it is "
-                         f"in P:${lo:02X}..${hi:02X}, the park cannot live there")
-        for v, why in armed:
-            if lo <= v <= hi:
-                fails.append(f"payload {tag}: vector P:${v:02X} IS ARMED -- {why}. The park "
-                             f"cannot live in the run while that is so")
-        if armed:
-            notes.append(f"payload {tag}: armed vectors outside the run: "
-                         f"{sorted({hex(v) for v, _ in armed})}")
+          # 2. nothing arms an interrupt whose vector is in the run
+          armed = []
+          for imm, reg, bits in MOVEP.findall(text):
+              val = int(imm, 16)
+              m = re.fullmatch(r"M_DCR(\d)", reg)
+              if m and val & (1 << DIE):
+                  armed.append((DMA_VECTOR[int(m.group(1))], f"{reg} = ${val:06x} (DIE set)"))
+              if reg.startswith(("M_TCR", "M_RCR")):
+                  on = [e for e in ESAI_ENABLES if e in bits.split()]
+                  if on:
+                      for v in ESAI_VECTORS:
+                          armed.append((v, f"{reg} = ${val:06x} ({', '.join(on)})"))
+          # 3. no peripheral this audit has never seen is configured
+          new = set(ANY_WRITE.findall(text)) - PERIPHERALS
+          if new:
+              fails.append(f"payload {tag}: peripheral(s) {sorted(new)} are configured and were "
+                           f"not in the audit. Which vector can each interrupt into? If it is "
+                           f"in P:${lo:02X}..${hi:02X}, the park cannot live there")
+          for v, why in armed:
+              if lo <= v <= hi:
+                  fails.append(f"payload {tag}: vector P:${v:02X} IS ARMED -- {why}. The park "
+                               f"cannot live in the run while that is so")
+          if armed:
+              notes.append(f"payload {tag}: armed vectors outside the run: "
+                           f"{sorted({hex(v) for v, _ in armed})}")
 
     ok = not fails
     print(f"  [{'PASS' if ok else 'FAIL'}] verify_dspvectors: the free vector runs are "
@@ -161,7 +168,6 @@ def selftest():
     ]
     bad = []
     for why, doctored in cases:
-        lo, hi = RUNS["A"]
         armed, new = [], set(ANY_WRITE.findall(doctored)) - PERIPHERALS
         for imm, reg, bits in MOVEP.findall(doctored):
             val = int(imm, 16)
@@ -170,7 +176,8 @@ def selftest():
                 armed.append(DMA_VECTOR[int(m.group(1))])
             if reg.startswith(("M_TCR", "M_RCR")) and any(e in bits.split() for e in ESAI_ENABLES):
                 armed += list(ESAI_VECTORS)
-        caught = new or any(lo <= v <= hi for v in armed)
+        caught = bool(new) or any(lo <= v <= hi for v in armed
+                                  for lo, hi in RUNS["A"])
         print(f"  [{'ok  ' if caught else 'BLIND'}] {why}")
         if not caught:
             bad.append(why)

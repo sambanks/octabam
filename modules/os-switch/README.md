@@ -60,7 +60,7 @@ unmeasured.)
 | `chain.s` | the loader (`Linked(loader=True)`: assembled into `tools/remix/loader.S`, appended after the OS unpacked), detour at `0x40000412` | the gate, at the OS entry after it parks the bootstrap's argument. Without a mailbox it records the boot (`NONE`, or `RUN` right after a handover) and resumes. With one it spends it first, checks that the chainloader's body at `0x49200400` is whole (its longs sum to the mailbox's), and runs it. It lives in the loader because ROM caves are what full remixes run out of (bottleservice: 274 B of chainloader cost MODULATION's label formatter its place) |
 | `switch.s`: `osw_body` | copied to `0x49200400` by the switcher | the chainloader's body, position-independent: the check word, the length, the bootstrap version against NOR's word at `0x3ffc`, the hash over the stage; then a 40-byte stub at `0x49200100` copies the stage over `0x40000400` with the caches off and invalidated, restores the bootstrap's exit `CACR` (`0x0008c000`) and calls the entry with the bootstrap's argument. A refusal writes why and returns to the gate |
 | `switch.s` | the platform runtime (DRAM) | MAIN MENU > OS: the root's four stock rows from your image (`.incbin`), then OS (rows pointer `0x400cbda4`, count `0x400cbd8c` 4 → 5, a swap-arrows icon in stock's 19×9 form); the scan at MAIN MENU's opening (detour `0x40064c32`, the stock dir scan `0x4007f598`); the dialog (`0x4006d57c`); the load, the reset and the DSP park |
-| `dsp_park.asm` | both DSP payloads: the entry on vector `P:$1E`, the handler PINNED at `P:$20..$35`, the loader tail in the harvested region | the park (below). 22 of its 40 words come out of stock's dead vector run, so it costs the region 18 |
+| `dsp_park.asm` | both DSP payloads, WHOLLY in stock's dead interrupt vectors: entry on `P:$1E`, 31 words at `P:$20..$3E`, a one-word bridge, 8 words at `P:$06..$0D` | the park (below). It costs the effect region nothing, so a remix that harvests nothing can carry the switcher (`remixes/base/`) |
 | `osw.inc` | all of them | the stage layout and the status words; the gate parses it |
 
 **The stage** is the top of the platform reserve: mailbox `0x49200000`,
@@ -82,8 +82,8 @@ version the image carries (`0x400dea48`, `0x0408` in 1.40C) with NOR's
 chainloader runs only an image whose word equals NOR's. `make obi` refuses
 any other.
 
-**Where the park's words come from.** 18 region words per payload, not 40
-(29 Sep 2026). Stock leaves a run of interrupt vectors as `jmp *` -- a
+**Where the park's words come from.** None (29 Sep 2026). Not one word of
+the effect region, where it used to cost 40. Stock leaves a run of interrupt vectors as `jmp *` -- a
 self-jump that would freeze the core if that interrupt ever fired, which is
 how you know it never does -- so the handler's 22 words live there
 (`P:$20..$35`, entered by `jsr` at `P:$1E`, host command `$0F`) and only
