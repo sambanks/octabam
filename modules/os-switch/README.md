@@ -77,38 +77,41 @@ version the image carries (`0x400dea48`, `0x0408` in 1.40C) with NOR's
 chainloader runs only an image whose word equals NOR's. `make obi` refuses
 any other.
 
-**The DSP.** ✅ Measured on the unit (BOOT TRACE, build 4): after the
-soft reset the staged OS runs and its DSP upload (`0x40001e50`) never
-returns. The DSP is not reset with the ColdFire, and its HI08 bootstrap
-ROM only listens after a chip reset. So before the reset `osw_park` sends
+**The DSP.** The soft reset restarts the ColdFire, not the DSP, and the
+next OS's upload (`0x40001e50`) assumes a chip reset: each core in its
+HI08 boot ROM, the host port in the ROM's mode and empty. ✅ Measured on
+the unit (BOOT TRACE, builds 4-14; the whole story is
+`docs/remixer/FAILURE_MODES.md`). So before the reset `osw_park` sends
 each core host command `$12` (vector `P:$24`, stock's unused
-`reserved24`, a `DspHook` in both payloads), and `dsp_park.asm` masks
-interrupts, stops DMA 0-5 and both ESAI ports, leaves the interrupt
-(`move ssh,x0` / `move x0,ssh` / `rti`: the vendored emulator runs no
-peripheral inside a long interrupt, and the chip does not care), and
-loops as a boot-ROM loader: a count, an address, that many words into
-P, then `jmp (r1)` with r0/r1 and CCR as the ROM leaves them. Every
-instruction form has a stock site; the HRDF waits are written with a
-numeric displacement because `dsp_asm` encodes a label there as an
-absolute address. ✅ Under the port: both cores take the command, the
-stock upload's own steps go through the loaders, and each core enters
-its stock bootstrap and payload start again.
+`reserved24`, a `DspHook` in both payloads), and `dsp_park.asm`:
+- masks interrupts, stops DMA 0-5 and both ESAI ports;
+- clears HPCR bit 7, which the payload's start set (`P:$30016..$30018`):
+  in that mode the ColdFire read every record echo as `0x010101`, and the
+  record sender (`0x40001b18`) silently abandoned the upload (build 12);
+- leaves the interrupt (`move ssh,x0` / `move x0,ssh` / `rti`: the
+  vendored emulator runs no peripheral inside a long interrupt, and the
+  chip does not care);
+- loads as the boot ROM does: a count, an address, that many words (into
+  the shared window through X), then `jmp (r1)` into the stock bootstrap
+  the OS sent, which loads the payload as at power-on.
+`osw_park` then drains each core's host-side receive register (build 12
+found two stale words on core 0). Every instruction form has a stock site
+except `bclr #7` on HPCR (the payload's own `bset #7` and `bclr #5`/`#6`
+there are); the HRDF waits are written with a numeric displacement because
+`dsp_asm` encodes a label there as an absolute address.
 
 **The reset.** Stock never resets the unit after OS UPGRADE: it shows
 `UPGRADE DONE` / `PLEASE REBOOT!` and waits for a power-cycle. So the
 switcher masks interrupts, drains the panel's UART queue (OS UPGRADE's
 first two steps), and requests a soft reset (RCR SOFTRST, `0xfc0a0000`
-bit 7, MCF54455 RM). ✅ Measured on an MKII (build 1, 29 Sep 2026): a bare
-soft reset brings the bootstrap back, but the panel controller is not
-reset with the ColdFire. The bootstrap's first panel exchange (`0x128`:
-`60 00`, then wait with no timeout for key rows `0x25..0x27`) never
-completes, and the unit sits on the OCTABAM screen with the keys dimmer
-than at power-on. So on an MKII the switcher first sends the panel
-`60 02`, the byte pair the OS's own loader handshake (`0x4001f4dc`) opens
-with at every boot. 🟡 That puts the panel back in its start-up state, so
-the bootstrap's `60 00` finds it as a power-on does. Build 3 tests this;
-it is falsified by the same hang. An MKI's panel gets no handshake from
-the OS and is sent nothing (untested on an MKI).
+bit 7, MCF54455 RM). ✅ Measured on an MKII (builds 1-14, 29 Sep 2026):
+the unit resets at once and the bootstrap runs again. On an MKII the
+switcher first sends the panel `60 02`, the byte pair the OS's own loader
+handshake (`0x4001f4dc`) opens with. ❌ Retracted: build 1's "the panel
+controller is not reset and the bootstrap blocks in its first panel
+exchange"; the hang was the DSP (above). Whether `60 02` is needed at all
+is not measured; it is harmless (the OS sends it at boot). An MKI's panel
+is sent nothing (untested on an MKI).
 
 ## Measured ✅ (under the ColdFire port, `tools/verify/verify_osswitch.py`)
 
@@ -131,24 +134,26 @@ the OS and is sent nothing (untested on an MKI).
 - **The screens,** rendered from the port's LCD: the CONTROL menu with the
   seventh row, and the dialog.
 
-## Inferred 🟡 / not measured: the hardware checks
+## Measured ✅ on the unit (an MKII, 29 Sep 2026, build 14 with BOOT TRACE)
 
-1. **SDRAM keeps the stage across the reset.** The bootstrap re-initialises
-   the SDRAM controller (`0x288e`: precharge, refresh, mode register) and
-   unpacks the OS; nothing in it clears or tests RAM outside TESTMODE.
-   Falsified by `NOW: THE FLASHED OS` or `LAST: STAGE LOST (HASH)` right
-   after a switch to an image that carries this module.
-2. **The DSP comes back after the soft reset.** ✅ Builds 1-4 hung in
-   the DSP upload: the soft reset does not reset the DSP (BOOT TRACE on
-   the unit, `docs/remixer/FAILURE_MODES.md`). Build 6 parks each core in
-   a boot-ROM loader of its own before the reset (`dsp_park.asm`, below).
-   Falsified by the same hang, or by BOOT TRACE stopping after note 2.
-3. **The DSP runs normally after a chainloaded boot.** Its payload is
-   loaded and started through the parked loader, not the ROM. Falsified by
-   silence or wrong audio after a switch that otherwise boots.
-4. **The caches.** The port has none. The stub invalidates the I-cache
-   and branch cache and restores the bootstrap's exit `CACR`. A stale line
-   would show as a crash straight after the switch. Power-cycle.
+1. **SDRAM keeps the stage across the reset,** and the chainload runs:
+   the staged image's entry runs ~190 ms after the flashed image's, and
+   the dialog reports the switch.
+2. **The DSP comes back:** after a switch to `HOME.OBI` both payload
+   uploads complete in ~60 ms (final echo 3 on each core, as at
+   power-on) and audio frames run.
+3. **The OS runs normally after it:** audio and play work. A switch to
+   `STOCK140.OBI` boots stock 1.40C.
+
+## Not yet measured 🟡
+
+1. **Endurance:** a project load and five minutes of play after a switch,
+   and several switches each way between two different remixes.
+2. **The caches.** The stub invalidates the I-cache and branch cache and
+   restores the bootstrap's exit `CACR`; nothing has shown a stale line.
+3. **The version string** after a switch to stock (which the flash header
+   probably keeps; see Use).
+4. **An MKI.**
 
 Every failure above ends in the flashed image after a power-cycle: the
 flash is never written, and the mailbox is spent before the staged image

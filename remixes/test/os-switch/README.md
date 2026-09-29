@@ -9,7 +9,7 @@ One ColdFire module and the stock effects. For anyone who wants to move between 
 
 ## Status
 
-Measured under the ColdFire port (`python3 tools/verify/verify_osswitch.py os-switch`): the menu row, the load, the reset sequence, the chainload of the staged image, every refusal. Not yet run on a unit. The reset, SDRAM across it and the DSP after it are the hardware checks, listed in the module README.
+Measured under the ColdFire port (`python3 tools/verify/verify_osswitch.py os-switch`): the menu row, the load, the reset sequence, the chainload of the staged image, every refusal, the DSP park and re-upload. On a unit: the same modules plus BOOT TRACE (`os-switch-trace`, OCTABAM14, an MKII, 29 Sep 2026) switched to its own image and to stock 1.40C, audio and play working. This remix without the trace has not run on a unit; the two differ only by BOOT TRACE's detours.
 
 ## Build
 

@@ -18,8 +18,9 @@ MODULE = Module(
     key="BOOT TRACE",
     kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="sanderlegit", author_url="https://github.com/sanderlegit",
-    proof=Proof.PORT, proof_note="the notes on the port's MIDI OUT (`verify_boottrace`)",
-    doc="Probe: a MIDI note on MIDI OUT at each boot stage (1..8), for finding where a boot hangs.",
+    proof=Proof.HARDWARE, proof_note="an MKII, 29 Sep 2026 (OCTABAM4-14); `verify_boottrace`",
+    doc="Probe: a MIDI note on MIDI OUT at each boot stage, the DSP upload's record "
+        "echoes and any stall, for finding where a boot hangs.",
     linked=(Linked("boot_trace", "modules/boot-trace/trace.s", cpu="5475"),),
     detours=(
         Detour(0x40001E50, H("420013c0fc0a400c"), "boot_trace", "tr_dsp",

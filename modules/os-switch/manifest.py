@@ -45,9 +45,9 @@ MODULE = Module(
     key="OS SWITCH",
     kind=Kind.HYBRID,
     category=Category.REFERENCE, author="sanderlegit", author_url="https://github.com/sanderlegit",
-    proof=Proof.PORT,
-    proof_note="the chainload under the port (`verify_osswitch`); the reset, SDRAM "
-               "retention across it and the UI need the unit",
+    proof=Proof.HARDWARE,
+    proof_note="an MKII, 29 Sep 2026 (OCTABAM14 with BOOT TRACE): switched to its own "
+               "image and to stock 1.40C, audio and play working; `verify_osswitch`",
     doc="CONTROL > OS SWITCH boots a raw OS image (.OBI) from the card root "
         "without writing the flash; a power-cycle returns to the flashed image.",
     linked=(

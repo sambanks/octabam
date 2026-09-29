@@ -3,11 +3,14 @@
 A technical proposition, with a working prototype. It says what the
 firmware already does, what the prototype does with it, what the ColdFire
 port has measured, and what only the unit can answer, in the order to ask
-it. The prototype is `modules/os-switch` and the remix `os-switch`. Nothing
-in it has run on hardware yet.
+it. The prototype is `modules/os-switch` and the remix `os-switch`. It has
+run on an MKII (29 Sep 2026, build 14): a switch to the flashed image's
+own `.OBI` and to stock 1.40C, each with audio and play working, the flash
+never written (§5).
 
-Confidence markers as in `docs/firmware/CHIP.md`: ✅ measured (under the
-port, or read from the image by disassembly), 🟡 inferred, with what would
+Confidence markers as in `docs/firmware/CHIP.md`: ✅ measured (on the unit
+where §5 says so, else under the port or read from the image by
+disassembly), 🟡 inferred, with what would
 falsify it, and ❌ retracted.
 
 ---
@@ -192,7 +195,8 @@ reset and the chainload works on the unit), the DSP upload started and
 never returned. ✅ The soft reset does not reset the DSP; its HI08
 bootstrap ROM only listens after a chip reset. ❌ Retracted: "the MKII
 panel is not reset" (this unit is flagged an MKI; build 3's panel bytes
-were never sent).
+were never sent). ❌ Also retracted: "flagged an MKI" (the handshake note
+appears on only some boots, power-on included).
 
 **Build 6**: before the reset each core is parked in a boot-ROM loader of
 its own (`dsp_park.asm`: host command `$12` on stock's unused vector
@@ -201,6 +205,25 @@ jump). Under the port both cores take it, the stock upload completes
 through the loaders, and each core enters its stock bootstrap and payload
 start again (`verify_osswitch`'s `dsp` case). The steps below stand, for
 build 6 (with BOOT TRACE: `os-switch-trace`):
+
+**Builds 7-14, on the unit** (BOOT TRACE throughout; the whole story is
+`docs/remixer/FAILURE_MODES.md`'s OS SWITCH entry):
+- ✅ Builds 7-10: both cores take the park command (note 13 = 3), the
+  loaders take the bootstraps and jump, and the upload still stalls.
+- ✅ Build 12: two stale words in core 0's host-side receive register
+  (drained since), and every first record echo read `0x010101` where a
+  power-on reads `0x000001`: the payload's host-port mode (HPCR bit 7).
+  The record sender abandons an upload on a bad echo and its caller
+  ignores it, so builds 11-12 came up with no DSP program and hung on
+  play.
+- ✅ Build 13 (bit 7 cleared): the echoes are right.
+- ✅ **Build 14** (the parked loader hands the upload to the stock
+  bootstrap, as the ROM does): after a switch to `HOME.OBI` both uploads
+  complete in ~60 ms (final echo 3 on each core, as at power-on), audio
+  frames run, the dialog reports the switch, audio and play work. A
+  switch to `STOCK140.OBI` boots stock 1.40C. Steps 1-3 below pass for
+  that much; step 3's five minutes and a project load, step 4 and step 5
+  are not yet run.
 
 Each step is one flash of the `os-switch` image, or none. Every failure
 ends in the flashed image after a power-cycle.
