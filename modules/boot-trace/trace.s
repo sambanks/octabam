@@ -23,6 +23,12 @@
 |  14  a DSP bootstrap upload starts, velocity = its index (0 = core 0)
 |                                                  0x40001d4c
 |  15  a DSP payload's records start, velocity = its index (0 = core 0)
+|  17  a DSP record's echo as the ColdFire reads it (low 7 bits; the
+|      first 6 per core)                      0x40001bb4
+|  19  ... when that echo is not a record type (> 3) and the upload is
+|      abandoned: bits 13..7, then bits 20..14
+|  18  the payload's final record (type 3, the jump): its echo, low 7
+|      bits; anything but 3 abandons the upload     0x40001cf4
 |  16  the records' first echo is late: every 2^20 polls of the host
 |      port's ISR, at most six times, velocity = the ISR (bit 0 RXDF,
 |      1 TXDE, 2 TRDY, 3 HF2, 4 HF3; OS SWITCH's loader raises HF2 when
@@ -150,6 +156,7 @@ seen8:  .byte   0
 nboot:  .byte   0
 nrec:   .byte   0
 nlate:  .byte   0
+necho:  .byte   0
         .even
 npoll:  .long   0
         .even
@@ -218,6 +225,7 @@ tr_records:
         subq.l  #1,%d1
         moveq   #15,%d0
         bsr.w   tracev
+        clr.b   necho                  | each core reports its own first echoes
         move.l  (%sp)+,%d1
         move.l  (%sp)+,%d0
         lea     (-12,%sp),%sp
@@ -244,3 +252,56 @@ tr_echo:
         move.l  (%sp)+,%d1
 1:      move.w  (0x20000008).l,%d0
         jmp     (0x40001b88).l
+
+| a record's echo, d0; replays `moveq #3,d2 / cmp.l d0,d2 / blt 0x40001d40`
+        .global tr_rececho
+tr_rececho:
+        move.l  %d0,-(%sp)
+        move.l  %d1,-(%sp)
+        moveq   #0,%d1
+        move.b  necho,%d1
+        cmpi.l  #6,%d1
+        bcc.s   1f
+        addq.l  #1,%d1
+        move.b  %d1,necho
+        move.l  4(%sp),%d1
+        moveq   #17,%d0
+        bsr.w   tracev
+1:      move.l  4(%sp),%d0
+        moveq   #3,%d1
+        cmp.l   %d0,%d1
+        bge.s   2f
+        | not a type: report the rest of the word, then the stock error exit
+        move.l  %d0,%d1
+        lsr.l   #7,%d1
+        moveq   #19,%d0
+        bsr.w   tracev
+        move.l  4(%sp),%d1
+        moveq   #14,%d0
+        lsr.l   %d0,%d1
+        moveq   #19,%d0
+        bsr.w   tracev
+        move.l  (%sp)+,%d1
+        move.l  (%sp)+,%d0
+        moveq   #3,%d2
+        jmp     (0x40001d40).l
+2:      move.l  (%sp)+,%d1
+        move.l  (%sp)+,%d0
+        moveq   #3,%d2
+        jmp     (0x40001bbc).l
+
+| the final record's echo, d0; replays `moveq #3,d2 / cmp.l d0,d2 / bne 0x40001d40`
+        .global tr_lastecho
+tr_lastecho:
+        move.l  %d0,-(%sp)
+        move.l  %d1,-(%sp)
+        move.l  %d0,%d1
+        moveq   #18,%d0
+        bsr.w   tracev
+        move.l  (%sp)+,%d1
+        move.l  (%sp)+,%d0
+        moveq   #3,%d2
+        cmp.l   %d0,%d2
+        beq.s   1f
+        jmp     (0x40001d40).l
+1:      jmp     (0x40001cfa).l

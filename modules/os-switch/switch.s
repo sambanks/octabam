@@ -61,6 +61,8 @@
         .set    UART1_UTB, 0xfc06400c
         .set    MKII_FLAG, 0x46c8d18c   | 1 on an MKII (docs/firmware/PANEL.md 4c)
         .set    HI08_CVR,  0x20000004   | the host command register: bit 7 HC, bits 6..0 the vector / 2
+        .set    HI08_ISR,  0x20000008   | the host-side status: bit 0 RXDF (the upload's own poll)
+        .set    HI08_RXL,  0x2000001c   | RXM:RXL; reading it takes the word (0x40001ce0)
         .set    DSP_SELECT, 0xfc0a400c  | which core's host port the window shows (0, 1): the upload's own
         .set    PARK_HC,   0x0092       | HC | $12: vector P:$24, dsp_park.asm's osw_dsp
         .set    NMAX, 32                | .OBI files listed
@@ -437,6 +439,7 @@ osw_reset:
         move.l  %d0,(MB_PARK,%a1)
         .if     TRACE
         | BOOT TRACE's note 13: velocity = the cores that took the park command
+        | (bits 1..0) and the words drained from each (bits 3..2 core 0, 5..4 core 1)
         move.l  %d0,%d3
         move.l  #0x90,%d1
         bsr.w   txmidi
@@ -475,15 +478,17 @@ osw_softreset:
 8:      bra.s   8b
 
 | osw_park: send both DSP cores host command $12 (dsp_park.asm) with the
-| ColdFire's interrupts masked; d0 = a bit per core that took it. First a
+| ColdFire's interrupts masked, and drain each one's host-side receive
+| register (below); d0 = a bit per core that took it (bits 0, 1), then the
+| words drained from core 0 (bits 3..2) and core 1 (bits 5..4). First a
 | pause for a frame's host transfers to finish (the frame ISR's eDMA runs
 | on without the CPU; ~5 ms at 266 MHz, cycle count INFERRED): a word still
 | on its way would be read as the loader's count -- and the OS's upload
 | INITs the host interface before its first word in any case (0x40001e5a).
         .global osw_park
 osw_park:
-        lea     (-8,%sp),%sp
-        movem.l %d2-%d3,(%sp)
+        lea     (-12,%sp),%sp
+        movem.l %d2-%d4,(%sp)
         move.l  #0x00100000,%d0
 1:      subq.l  #1,%d0
         bne.s   1b
@@ -492,16 +497,52 @@ osw_park:
         bsr.s   parkcore
         beq.s   2f
         moveq   #1,%d3
-2:      moveq   #1,%d1
+2:      bsr.s   drain
+        lsl.l   #2,%d0
+        or.l    %d0,%d3
+        moveq   #1,%d1
         bsr.s   parkcore
         beq.s   3f
         addq.l  #2,%d3
-3:      moveq   #0,%d0
+3:      bsr.s   drain
+        lsl.l   #4,%d0
+        or.l    %d0,%d3
+        moveq   #0,%d0
         move.b  %d0,(DSP_SELECT).l      | core 0, as the upload starts
         move.l  %d3,%d0
-        movem.l (%sp),%d2-%d3
-        lea     (8,%sp),%sp
+        movem.l (%sp),%d2-%d4
+        lea     (12,%sp),%sp
         rts
+
+| drain: the selected core's host-side receive register. A chip reset
+| clears it; the soft reset does not (the HI08 is the DSP's), so a word the
+| payload sent before the park would still be there, RXDF set, and the next
+| OS's record sender (0x40001b18) reads it as its first record's echo -- and
+| abandons the upload, silently (its caller ignores the result), on
+| anything above 3. INFERRED from build 11 on the unit (the upload returned
+| in ~1 ms, no audio frame followed); BOOT TRACE's notes 17/19 measure it.
+| Reads the word out while RXDF is set, a pause before each look for the
+| DSP side to move a queued word over; d0 = the words read, 0..3 (3 = 3 or
+| more, at most 15).
+drain:
+        moveq   #0,%d4
+1:      move.l  #20000,%d2
+2:      subq.l  #1,%d2
+        bne.s   2b
+        move.w  (HI08_ISR).l,%d0
+        btst    #0,%d0
+        beq.s   3f
+        move.w  (HI08_RXL).l,%d0        | the low lanes: the read that takes the word
+        addq.l  #1,%d4
+        moveq   #15,%d0
+        cmp.l   %d4,%d0
+        bne.s   1b
+3:      move.l  %d4,%d0
+        moveq   #3,%d2
+        cmp.l   %d0,%d2
+        bge.s   4f
+        move.l  %d2,%d0
+4:      rts
 
 | the core in d1: select it, raise the host command, wait for HC to clear
 | (the frame handler's own poll, 0x4000ab1a: bit 7 of the low byte).

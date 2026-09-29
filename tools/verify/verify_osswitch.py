@@ -300,8 +300,14 @@ def main():
 
     res = {pc: interactive(pc) for pc in ("0:0x30000", "1:0x38000")}
     oks = res["0:0x30000"][0]
-    check("dsp: both cores took the park command, every upload step returned",
-          len(oks) == 5 and oks[0] == "ok d0=0x3" and all(o.startswith("ok") for o in oks), "; ".join(oks))
+    # osw_park's d0: bits 1..0 the cores that took the command, 3..2 / 5..4
+    # the words drained from each one's host-side receive register. The
+    # record sender (0x40001b18) returns 1 when its final echo was 3 and 0
+    # when it abandoned the upload -- which its caller never checks.
+    park = int(oks[0].split("=")[1], 16) if oks and oks[0].startswith("ok d0=") else 0
+    check("dsp: both cores took the park command, every upload step returned, both record walks completed",
+          len(oks) == 5 and park & 3 == 3 and all(o.startswith("ok") for o in oks)
+          and oks[2] == "ok d0=0x1" and oks[4] == "ok d0=0x1", "; ".join(oks))
     check("dsp: through the loaders' record service each core entered its payload's start again (P:$30000, P:$38000)",
           all(res[pc][1] >= 2 for pc in res),
           ", ".join(f"{pc} x{res[pc][1]}" for pc in res))
