@@ -70,47 +70,88 @@
 
         .text
 
-| ---- the CONTROL rows: stock's six, from the user's own image, then ours ----
-        .global osw_rows
+| ---- MAIN MENU > OS: a fifth root category ----------------------------------
+| The root list holds five rows from boot (its window is five tall, the
+| init at 0x40064c70 is given 5, and stock fills four; docs/firmware/
+| MAINMENU.md section 1). Stock's four rows come from the user's own image,
+| then ours: the label, the category icon, and the child list below.
+        .global osw_root
         .align  4
-osw_rows:
-        CONTROL_ROWS                    | remix.inc: .incbin of 0x400cc5a8, 6 x 0x18
-        .long   osw_label, 0, osw_action, 0, 0, 0
-osw_label:
-        .asciz  "OS SWITCH"
+osw_root:
+        ROOT_ROWS                       | remix.inc: .incbin of 0x400cc698, 4 x 0x18
+        .long   str_os, osw_icon, 0, 0, osw_list, 0
+
+| the category icon: a window descriptor {19, 9, 1, ink, mask} as stock's
+| (0x400cbc34..0x400cbc70), each plane 19 words, one column per word, the
+| column's pixels in the high byte, bit 0 the top row
+        .align  4
+osw_icon:
+        .long   0x13, 0x09, 0x01, osw_ink, osw_mask
+osw_ink:
+        ICON_INK
+osw_mask:
+        ICON_MASK
+
+| the child list: shipped initialised (stock inits only its own descriptors,
+| docs/firmware/MAINMENU.md section 1): count, scroll, cursor, selection,
+| visible rows, count again, the rows. osw_scan rewrites both counts.
+        .align  4
+        .global osw_list
+osw_list:
+        .long   1, 0, 0, 0, 7, 1, osw_rows
+
+str_os:
+        .asciz  "OS"
 str_title:
         .asciz  "OS SWITCH"
 str_obi:
         .asciz  "OBI"
 str_none:
-        .asciz  "NO .OBI FILES ON THE CARD"
+        .asciz  "NO .OBI FILES ON CARD"
 str_boot:
         .asciz  "BOOT "
-str_next:
-        .asciz  "NO: NEXT FILE  "
+str_q:
+        .asciz  "?"
+str_stops:
+        .asciz  "PLAYBACK WILL STOP"
+str_home:
+        .asciz  "POWER-CYCLE: FLASHED OS"
 str_now:
-        .asciz  "NOW: "
+        .asciz  "NOW "
 str_flashed:
-        .asciz  "NOW: THE FLASHED OS"
+        .asciz  "FLASHED"
 str_hash:
-        .asciz  "LAST: STAGE LOST (HASH)"
+        .asciz  "LAST SWITCH: HASH ERROR"
 str_bver:
-        .asciz  "LAST: WRONG BOOTSTRAP"
+        .asciz  "LAST SWITCH: BOOTSTRAP"
 str_size:
-        .asciz  "LAST: BAD SIZE"
+        .asciz  "LAST SWITCH: TOO BIG"
 str_bootver:
         .asciz  "OTHER BOOTSTRAP VERSION"
-str_spin:
-        .asciz  " (SPIN)"
-str_rcr:
-        .asciz  " (RCR)"
         .align  2
 
-| ---- row action: scan, offer the first ----------------------------------
-        .global osw_action
-osw_action:
-        lea     (-8,%sp),%sp
-        movem.l %d2/%a2,(%sp)
+| ---- the list, rebuilt each time MAIN MENU opens -----------------------------
+| Detour at 0x40064c32: the opener's "no menu window yet" path, before the
+| window is created and the list drawn. The scan is the stock one OS
+| UPGRADE uses for `/*.BIN` (0x4007f598), from the UI task as a row
+| action's is; stock's own file browsers read the card during playback.
+| Replays `move.l (0x400cbf6c).l,-(%sp)`.
+        .global osw_menu
+osw_menu:
+        lea     (-60,%sp),%sp
+        movem.l %d0-%d7/%a0-%a6,(%sp)
+        bsr.w   osw_scan
+        movem.l (%sp),%d0-%d7/%a0-%a6
+        lea     (60,%sp),%sp
+        move.l  (0x400cbf6c).l,-(%sp)
+        jmp     (0x40064c38).l
+
+| osw_scan: names[] = the card root's .OBI files, sorted; rows[] = the
+| heading(s), then one row per file (label = the name without .OBI)
+        .global osw_scan
+osw_scan:
+        lea     (-12,%sp),%sp
+        movem.l %d2-%d3/%a2,(%sp)
         clr.l   -(%sp)
         clr.l   -(%sp)
         pea     str_obi
@@ -118,55 +159,249 @@ osw_action:
         pea     (STR_SLASH).l
         jsr     (DIRSCAN).l
         lea     (20,%sp),%sp
-        | keep the files, drop the directories: names into our own list
+        | keep the files, drop the directories
         lea     (DIRTAB).l,%a2
-        lea     names,%a1
         moveq   #0,%d2                  | files kept
-        move.l  %d0,%d1
+        move.l  %d0,%d3
         ble.s   2f
 1:      tst.l   (4,%a2)
         bne.s   3f
         cmpi.l  #NMAX,%d2
         bcc.s   3f
-        move.l  (%a2),%a0
         move.l  %d2,%d0
         mulu.w  #NLEN,%d0
-        lea     (%a1,%d0.l),%a0
+        lea     names,%a0
+        add.l   %d0,%a0
         move.l  (%a2),-(%sp)
         move.l  %a0,-(%sp)
         bsr.w   strcpy24
         addq.l  #8,%sp
-        lea     names,%a1
         addq.l  #1,%d2
 3:      lea     (12,%a2),%a2
-        subq.l  #1,%d1
+        subq.l  #1,%d3
         bne.s   1b
 2:      move.l  %d2,count
-        clr.l   idx
-        tst.l   %d2
-        bne.s   4f
-        pea     (0x60).w
-        pea     str_none
-        jsr     (MESSAGE).l
-        addq.l  #8,%sp
-        bra.s   5f
-4:      bsr.w   offer
-5:      movem.l (%sp),%d2/%a2
-        lea     (8,%sp),%sp
+        bsr.w   sortnames
+        bsr.w   buildrows
+        movem.l (%sp),%d2-%d3/%a2
+        lea     (12,%sp),%sp
         rts
 
-| ---- the dialog for names[idx] --------------------------------------------
-offer:
+| sortnames: names[0..count) in ascending byte order (count <= 32: a
+| bubble sort, NLEN-byte swaps through `tmp`)
+sortnames:
+        lea     (-20,%sp),%sp
+        movem.l %d2-%d4/%a2-%a3,(%sp)
+        move.l  count,%d4
+1:      subq.l  #1,%d4
+        ble.s   9f
+        moveq   #0,%d2                  | i
+        lea     names,%a2
+2:      cmp.l   %d4,%d2
+        bcc.s   1b
+        lea     (NLEN,%a2),%a3
+        | compare names[i] (a2) with names[i+1] (a3)
+        move.l  %a2,%a0
+        move.l  %a3,%a1
+3:      move.b  (%a0)+,%d0
+        move.b  (%a1)+,%d1
+        cmp.b   %d1,%d0
+        bhi.s   4f                      | out of order: swap
+        bcs.s   5f
+        tst.b   %d0
+        bne.s   3b
+        bra.s   5f
+4:      moveq   #NLEN-1,%d3
+        move.l  %a2,%a0
+        move.l  %a3,%a1
+6:      move.b  (%a0),%d0
+        move.b  (%a1),%d1
+        move.b  %d1,(%a0)+
+        move.b  %d0,(%a1)+
+        subq.l  #1,%d3
+        bpl.s   6b
+5:      move.l  %a3,%a2
+        addq.l  #1,%d2
+        bra.s   2b
+9:      movem.l (%sp),%d2-%d4/%a2-%a3
+        lea     (20,%sp),%sp
+        rts
+
+| buildrows: the rows and the counts. Row 0 is a heading in stock's
+| separator form (two 0x17 glyphs, the text, 0x17 to 22 wide; the cursor
+| skips a row whose action is 0): NOW <running>. A failed last switch adds
+| a plain heading. Then a row per file, or one inert NO .OBI FILES row.
+buildrows:
+        lea     (-16,%sp),%sp
+        movem.l %d2-%d3/%a2-%a3,(%sp)
+        lea     osw_rows,%a2
+        | heading 0: "\x17\x17NOW <name>\x17..."
+        lea     head0,%a3
+        moveq   #0x17,%d0
+        move.b  %d0,(%a3)
+        move.b  %d0,(1,%a3)
+        clr.b   (2,%a3)
+        pea     str_now
+        move.l  %a3,-(%sp)
+        bsr.w   strcat
+        addq.l  #8,%sp
+        bsr.w   runname                 | a0 = what is running
+        move.l  %a0,-(%sp)
+        move.l  %a3,-(%sp)
+        bsr.w   strcat
+        addq.l  #8,%sp
+        move.l  %a3,%a0
+        bsr.w   stripobi
+        move.l  %a3,%a0
+        moveq   #22,%d0
+        bsr.w   padsep
+        move.l  %a3,%a0
+        bsr.w   inert
+        moveq   #1,%d3                  | headings
+        | a failed last switch: its reason, inert
+        lea     (OSW_MBOX).l,%a1
+        move.l  (MB_STATUS,%a1),%d0
+        lea     str_hash,%a0
+        cmpi.l  #ST_HASH,%d0
+        beq.s   1f
+        lea     str_bver,%a0
+        cmpi.l  #ST_BVER,%d0
+        beq.s   1f
+        lea     str_size,%a0
+        cmpi.l  #ST_SIZE,%d0
+        bne.s   2f
+1:      bsr.w   inert
+        addq.l  #1,%d3
+2:      move.l  %d3,nhead
+        | the files
+        move.l  count,%d2
+        bne.s   3f
+        lea     str_none,%a0
+        bsr.w   inert
+        moveq   #1,%d2                  | rows after the headings
+        bra.s   6f
+3:      moveq   #0,%d1
+        lea     names,%a0
+        lea     labels,%a1
+4:      move.l  %a1,(%a2)+              | label
+        clr.l   (%a2)+                  | no window
+        move.l  #osw_pick,%d0
+        move.l  %d0,(%a2)+              | action
+        clr.l   (%a2)+
+        clr.l   (%a2)+
+        clr.l   (%a2)+
+        | label = the name, without .OBI
+        move.l  %a0,-(%sp)
+        move.l  %a1,-(%sp)
+        move.l  %d1,-(%sp)
+        move.l  %a0,-(%sp)
+        move.l  %a1,-(%sp)
+        bsr.w   strcpy24
+        addq.l  #8,%sp
+        move.l  (4,%sp),%a0
+        bsr.w   stripobi
+        move.l  (%sp)+,%d1
+        move.l  (%sp)+,%a1
+        move.l  (%sp)+,%a0
+        lea     (NLEN,%a0),%a0
+        lea     (NLEN,%a1),%a1
+        addq.l  #1,%d1
+        cmp.l   %d2,%d1
+        bcs.s   4b
+6:      add.l   %d3,%d2                 | every row
+        lea     osw_list,%a0
+        move.l  %d2,(%a0)
+        move.l  %d2,(0x14,%a0)
+        | the cursor back on the first file, the window at the top
+        clr.l   (4,%a0)
+        move.l  %d3,(8,%a0)
+        move.l  %d3,(0xc,%a0)
+        movem.l (%sp),%d2-%d3/%a2-%a3
+        lea     (16,%sp),%sp
+        rts
+
+| inert: a row at (a2)+ with label a0 and no action
+inert:
+        move.l  %a0,(%a2)+
+        clr.l   (%a2)+
+        clr.l   (%a2)+
+        clr.l   (%a2)+
+        clr.l   (%a2)+
+        clr.l   (%a2)+
+        rts
+
+| a0 = the name of the running image: the mailbox's after a switch, else
+| the flashed one
+runname:
+        lea     str_flashed,%a0
+        lea     (OSW_MBOX).l,%a1
+        move.l  (MB_STATUS,%a1),%d0
+        cmpi.l  #ST_RUN,%d0
+        bne.s   1f
+        lea     (OSW_MBOX+MB_NAME).l,%a0
+1:      rts
+
+| stripobi: cut a trailing ".OBI" (any case) off the string at a0
+stripobi:
+        move.l  %a0,%a1
+1:      tst.b   (%a1)+
+        bne.s   1b
+        subq.l  #1,%a1                  | the NUL
+        move.l  %a1,%d0
+        sub.l   %a0,%d0
+        moveq   #4,%d1
+        cmp.l   %d1,%d0
+        bcs.s   9f
+        lea     (-4,%a1),%a1
+        move.b  (%a1),%d1
+        cmpi.b  #'.',%d1
+        bne.s   9f
+        clr.b   (%a1)
+9:      rts
+
+| padsep: 0x17 after the string at a0 up to d0 characters
+padsep:
+1:      tst.b   (%a0)
+        beq.s   2f
+        addq.l  #1,%a0
+        subq.l  #1,%d0
+        bgt.s   1b
+        rts
+2:      tst.l   %d0
+        ble.s   3f
+        moveq   #0x17,%d1
+        move.b  %d1,(%a0)+
+        subq.l  #1,%d0
+        bra.s   2b
+3:      clr.b   (%a0)
+        rts
+
+| ---- a file picked: the confirm dialog -----------------------------------
+| The row action is called with 0 (docs/firmware/MAINMENU.md section 3); the
+| file is the list's selection (scroll + cursor) past the headings.
+        .global osw_pick
+osw_pick:
         lea     (-8,%sp),%sp
         movem.l %d2/%a2,(%sp)
-        | line 1: "BOOT <name>?"
+        lea     osw_list,%a0
+        move.l  (4,%a0),%d0
+        add.l   (8,%a0),%d0
+        sub.l   nhead,%d0
+        bmi.s   9f
+        cmp.l   count,%d0
+        bcc.s   9f
+        move.l  %d0,idx
+        | line 1: "BOOT <label>?"
         lea     line1,%a2
         clr.b   (%a2)
         pea     str_boot
         move.l  %a2,-(%sp)
         bsr.w   strcat
         addq.l  #8,%sp
-        bsr.w   curname
+        move.l  idx,%d0
+        mulu.w  #NLEN,%d0
+        lea     labels,%a0
+        add.l   %d0,%a0
         move.l  %a0,-(%sp)
         move.l  %a2,-(%sp)
         bsr.w   strcat
@@ -175,23 +410,6 @@ offer:
         move.l  %a2,-(%sp)
         bsr.w   strcat
         addq.l  #8,%sp
-        | line 2: "NO: NEXT FILE  i/N"
-        lea     line2,%a2
-        clr.b   (%a2)
-        pea     str_next
-        move.l  %a2,-(%sp)
-        bsr.w   strcat
-        addq.l  #8,%sp
-        move.l  idx,%d0
-        addq.l  #1,%d0
-        bsr.w   putnum
-        move.b  #'/',(%a0)+
-        clr.b   (%a0)
-        move.l  count,%d0
-        lea     line2,%a2
-        bsr.w   putnum
-        | line 3: what is running, from the chainloader's status word
-        bsr.w   statusline
         pea     osw_answer
         pea     (3).w
         pea     lines
@@ -199,14 +417,11 @@ offer:
         pea     str_title
         jsr     (DIALOG).l
         lea     (20,%sp),%sp
-        movem.l (%sp),%d2/%a2
+9:      movem.l (%sp),%d2/%a2
         lea     (8,%sp),%sp
         rts
-str_q:
-        .asciz  "?"
-        .align  2
 
-| a0 = names[idx]
+| a0 = names[idx], the file name
 curname:
         move.l  idx,%d0
         mulu.w  #NLEN,%d0
@@ -214,72 +429,11 @@ curname:
         lea     (%a0,%d0.l),%a0
         rts
 
-| append the decimal d0 (0..99) to the string at a2; returns a0 = its end
-putnum:
-        move.l  %a2,%a0
-1:      tst.b   (%a0)+
-        bne.s   1b
-        subq.l  #1,%a0
-        divu.w  #10,%d0
-        tst.w   %d0
-        beq.s   2f
-        move.l  %d0,%d1
-        addi.l  #'0',%d1
-        move.b  %d1,(%a0)+
-2:      swap    %d0
-        addi.l  #'0',%d0
-        move.b  %d0,(%a0)+
-        clr.b   (%a0)
-        rts
-
-statusline:
-        move.l  %a2,-(%sp)
-        lea     line3,%a2
-        clr.b   (%a2)
-        lea     (OSW_MBOX).l,%a1
-        move.l  (MB_STATUS,%a1),%d0
-        lea     str_hash,%a0
-        cmpi.l  #ST_HASH,%d0
-        beq.s   9f
-        lea     str_bver,%a0
-        cmpi.l  #ST_BVER,%d0
-        beq.s   9f
-        lea     str_size,%a0
-        cmpi.l  #ST_SIZE,%d0
-        beq.s   9f
-        lea     str_flashed,%a0
-        cmpi.l  #ST_RUN,%d0
-        bne.s   9f
-        pea     str_now
-        move.l  %a2,-(%sp)
-        bsr.w   strcat
-        addq.l  #8,%sp
-        pea     (OSW_MBOX+MB_NAME).l
-        move.l  %a2,-(%sp)
-        bsr.w   strcat
-        addq.l  #8,%sp
-        | which reset brought it here: OS UPGRADE's spin, or the RCR request
-        lea     (OSW_MBOX).l,%a1
-        move.l  (MB_RESET,%a1),%d0
-        lea     str_rcr,%a0
-        cmpi.l  #RS_RCR,%d0
-        beq.s   9f
-        lea     str_spin,%a0
-        cmpi.l  #RS_SPIN,%d0
-        beq.s   9f
-        lea     str_q,%a0
-9:      move.l  %a0,-(%sp)
-        move.l  %a2,-(%sp)
-        bsr.w   strcat
-        addq.l  #8,%sp
-        move.l  (%sp)+,%a2
-        rts
-
 | ---- the dialog's answer ----------------------------------------------------
         .global osw_answer
 osw_answer:
         tst.l   (4,%sp)
-        bne.s   no
+        bne.s   1f
         | YES: OS UPGRADE's own stop (0x40063660), then the load in the UI task
         jsr     (0x400a10c8).l
         pea     (-1).w
@@ -294,23 +448,7 @@ osw_answer:
         pea     (STR_WAIT).l
         jsr     (MESSAGE).l
         lea     (12,%sp),%sp
-        rts
-no:     move.l  idx,%d0
-        addq.l  #1,%d0
-        cmp.l   count,%d0
-        bcc.s   1f
-        move.l  %d0,idx
-        pea     rec_offer
-        pea     (UIQUEUE).l
-        jsr     (DEFER).l
-        addq.l  #8,%sp
-        rts
-1:      clr.l   idx
-        rts
-
-        .global osw_reoffer
-osw_reoffer:
-        bra.w   offer
+1:      rts
 
 | ---- the load, in the UI task ----------------------------------------------
         .global osw_load
@@ -649,15 +787,16 @@ rec_load:
         .byte   21, 0
         .long   osw_load
         .align  4
-rec_offer:
-        .byte   21, 0
-        .long   osw_reoffer
-        .align  4
 count:  .long   0
 idx:    .long   0
-lines:  .long   line1, line2, line3
+nhead:  .long   1
+lines:  .long   line1, str_stops, str_home
 line1:  .space  32
-line2:  .space  32
-line3:  .space  32
 path:   .space  32
+head0:  .space  32
 names:  .space  NMAX*NLEN
+labels: .space  NMAX*NLEN
+        .align  4
+osw_rows:
+        .long   str_none, 0, 0, 0, 0, 0
+        .space  (NMAX+1)*0x18

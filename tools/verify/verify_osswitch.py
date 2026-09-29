@@ -11,7 +11,7 @@ Builds the remix (the HOME image: what NOR would hold), then:
            top of the reserve is the switch's, in every remix carrying it
   ui       an MKII (`--mkii`: the reset sends the panel `60 02` first) with a
            card holding STOCK140.OBI (the user's own stock MAIN OS, copied
-           at run time); PROJ opens MAIN MENU > CONTROL > OS SWITCH,
+           at run time); PROJ opens MAIN MENU > OS (the list, scanned),
            YES on the row, YES in the dialog. The row's action, the dialog's
            answer, the deferred load and the reset sequence each run; the
            stage reads back equal to the file and the mailbox carries its
@@ -189,23 +189,24 @@ def main():
 
     key(KEY_NO, 250)                                   # the boot's date prompt
     key(KEY_PROJ, 400)                                 # an MKII: the reset sends the panel `60 02`
-    key(KEY_DOWN); key(KEY_DOWN); key(KEY_YES, 300)    # root: PROJECT SYSTEM [CONTROL] MIDI
-    for _ in range(6):
-        key(KEY_DOWN)                                  # AUDIO .. METRONOME, OS SWITCH
-    key(KEY_YES, 600)                                  # the row: STOCK140.OBI offered
+    for _ in range(4):
+        key(KEY_DOWN)                                  # root: PROJECT SYSTEM CONTROL MIDI [OS]
+    key(KEY_YES, 300)                                  # into OS: the cursor on the first file
+    key(KEY_YES, 600)                                  # STOCK140 picked: the dialog
     key(KEY_YES, 3000)                                 # the dialog: boot it
     send("quit")
     script = work / "panel.txt"
     script.write_text("\n".join(lines) + "\n")
-    ui_watch = [rt["osw_action"], rt["osw_answer"], rt["osw_load"], rt["osw_reset"], rt["putpanel"]]
+    ui_watch = [rt["osw_scan"], rt["osw_pick"], rt["osw_answer"], rt["osw_load"], rt["osw_reset"],
+                rt["putpanel"]]
     out, hits, d = boot("ui", [(0x3FFC, norver)], ui_watch,
                         {"mbox": (MBOX, 64), "stage": (IMG, len(stock))},
                         extra=["--card", str(card), "--live-script", str(script), "--mkii"],
                         max_instr=4_000_000_000)
-    ran = [s for s, a in zip(("osw_action", "osw_answer", "osw_load", "osw_reset"), ui_watch)
+    ran = [s for s, a in zip(("osw_scan", "osw_pick", "osw_answer", "osw_load", "osw_reset"), ui_watch)
            if hits.get(a)]
-    check("ui: the row, the dialog's YES, the deferred load and the reset sequence ran",
-          len(ran) == 4, "ran: " + ", ".join(ran))
+    check("ui: MAIN MENU's scan, OS's row, the dialog's YES, the deferred load and the reset ran",
+          len(ran) == 5, "ran: " + ", ".join(ran))
     check("ui: an MKII sends the panel its two start-up bytes (`60 02`) before the reset",
           hits.get(rt["putpanel"]) == 2, f"{hits.get(rt['putpanel'], 0)} byte(s)")
     mb, stage = d.get("mbox", b""), d.get("stage", b"")

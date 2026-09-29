@@ -1,6 +1,6 @@
 """OS SWITCH -- boot an OS image from the card without writing the flash.
 
-A seventh CONTROL row lists the card root's `.OBI` files (raw OS images:
+A fifth MAIN MENU category, OS, lists the card root's `.OBI` files (raw OS images:
 `make obi`), stages the chosen one at the top of the platform's arena
 reserve with a mailbox, and resets the unit the way OS UPGRADE does after
 it flashes. On the way back up, a chainloader in the OS entry (a ROM cave,
@@ -26,17 +26,44 @@ H = bytes.fromhex
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 STOCK = ROOT / "out/raw/section_3_MAIN_OS.bin"
-CONTROL_ROWS, CONTROL_COUNT = 0x400CC5A8, 6        # docs/firmware/MAINMENU.md section 2
+ROOT_ROWS, ROOT_COUNT = 0x400CC698, 4              # docs/firmware/MAINMENU.md section 2
+
+# The OS category's icon, as stock draws its four (19 x 9, a long per
+# column, row r at bit 23 + r: the top row is the low bit, measured from
+# PROJECT's folded corner): two arrows, one each way.
+ICON = (
+    "...................",
+    "...................",
+    "...........##......",
+    "....##########.....",
+    "...........##......",
+    ".....##............",
+    "....##########.....",
+    ".....##............",
+    "...................",
+)
+
+
+def _icon_longs(rows):
+    return [sum(1 << (23 + r) for r, row in enumerate(rows) if row[c] == "#")
+            for c in range(19)]
 
 
 def _include(_modules):
-    """osw.inc, and CONTROL's six stock rows taken from the user's own image
-    at build time (never a stock byte in the repo)."""
-    off = CONTROL_ROWS - 0x40000400
+    """osw.inc, the root's four stock rows taken from the user's own image
+    at build time (never a stock byte in the repo), and the icon."""
+    off = ROOT_ROWS - 0x40000400
+    ink = ", ".join(f"0x{v:08x}" for v in _icon_longs(ICON))
     return ((HERE / "osw.inc").read_text()
             + f"        .set    TRACE, {1 if 'BOOT TRACE' in _modules else 0}\n"
-            + "        .macro  CONTROL_ROWS\n"
-            + f"        .incbin \"{STOCK}\", 0x{off:x}, {CONTROL_COUNT * 0x18}\n"
+            + "        .macro  ROOT_ROWS\n"
+            + f"        .incbin \"{STOCK}\", 0x{off:x}, {ROOT_COUNT * 0x18}\n"
+            + "        .endm\n"
+            + "        .macro  ICON_INK\n"
+            + f"        .long   {ink}\n"
+            + "        .endm\n"
+            + "        .macro  ICON_MASK\n"
+            + "        .rept   19\n        .long   0xff800000\n        .endr\n"
             + "        .endm\n")
 
 
@@ -48,8 +75,8 @@ MODULE = Module(
     proof=Proof.HARDWARE,
     proof_note="an MKII, 29 Sep 2026 (OCTABAM14 with BOOT TRACE): switched to its own "
                "image and to stock 1.40C, audio and play working; `verify_osswitch`",
-    doc="CONTROL > OS SWITCH boots a raw OS image (.OBI) from the card root "
-        "without writing the flash; a power-cycle returns to the flashed image.",
+    doc="MAIN MENU > OS lists the card root's raw OS images (.OBI) and boots the one "
+        "picked without writing the flash; a power-cycle returns to the flashed image.",
     linked=(
         Linked("osw_chain", "modules/os-switch/chain.s", cpu="5475", include=_include),
         Linked("osw_switch", "modules/os-switch/switch.s", dram=True, include=_include),
@@ -67,13 +94,15 @@ MODULE = Module(
     detours=(
         Detour(0x40000412, H("2e7c48000000"), "osw_chain", "osw_chain",
                "the OS entry, after it parks the bootstrap's argument: a staged image first"),
+        Detour(0x40064C32, H("2f39400cbf6c"), "osw_switch", "osw_menu",
+               "MAIN MENU opening: the OS list rescanned from the card"),
     ),
     symbol_refs=(
-        SymbolRef(0x400CBD6C, CONTROL_ROWS, "osw_switch", "osw_rows",
-                  "CONTROL's rows: stock's six, then OS SWITCH"),
+        SymbolRef(0x400CBDA4, ROOT_ROWS, "osw_switch", "osw_root",
+                  "the root's rows: stock's four, then OS"),
     ),
     pokes=(
-        Poke(0x400CBD54, H("00000006"), H("00000007"), "CONTROL row count 6 -> 7"),
+        Poke(0x400CBD8C, H("00000004"), H("00000005"), "root row count 4 -> 5"),
     ),
     gates=(Gate("tools/verify/verify_osswitch.py", venv=True),),
 )
