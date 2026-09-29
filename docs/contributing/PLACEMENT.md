@@ -39,8 +39,11 @@ frozen core is easier to diagnose than one running park words.
 18-word tail in the region): `bottleservice-ret` booted from a switch,
 played a session with the park resident in the vector table, and switched
 away again with audio working -- the park itself running from the vectors.
-🟡 The two-run form that costs nothing has passed every port gate but has
-not been on a unit.
+✅ **And the two-run form, the same day**: `base` -- stock's fourteen
+effects plus the switcher, the park wholly in dead vectors -- booted from a
+switch with the stock chooser intact, played, and switched away again. So
+the chip runs code in the exception-vector slots and takes the one-word
+bridge jump between two runs.
 
 **What this buys.** An image that harvests nothing can carry the switcher:
 `remixes/base/` is stock's fourteen effects, whole, plus MAIN MENU > OS.

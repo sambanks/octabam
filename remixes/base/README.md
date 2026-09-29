@@ -25,11 +25,11 @@ something you do to afford the switcher.
 
 ## Status
 
-Port-gated: `python3 tools/verify/verify_osswitch.py base` and
-`verify_dspvectors`. The identical park ran on an MKII on 29 Sep 2026 inside
-`bottleservice-ret` — booted, played a session with the park resident in the
-vector table, and switched away — but in its two-run form this exact image
-has not been on a unit yet.
+✅ **On an MKII, 29 Sep 2026**: booted from a switch with the stock chooser
+intact — all fourteen effects — played, and switched away again. That last
+step is the park running from the vectors, so the chip both executes code in
+the exception slots and takes the one-word bridge between the two runs.
+Port-gated as well: `verify_osswitch` and `verify_dspvectors`.
 
 ## Build
 
