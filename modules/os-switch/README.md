@@ -1,29 +1,34 @@
 # OS SWITCH
 
 Boot another OS image from the card without writing the flash.
-**MAIN MENU > CONTROL > OS SWITCH** lists the `.OBI` files in the card
-root. [YES] boots the one offered and [NO] offers the next. A power-cycle
-always comes back to the image in the flash.
+**MAIN MENU > OS** lists the `.OBI` files in the card root; [YES] on one
+asks `BOOT <NAME>?` and boots it. A power-cycle always comes back to the
+image in the flash. Every image built in this repo carries it
+(`schema.Remix.os_switch`), and `make image` writes the `.OBI` beside the
+`.bin`, so any build can be tried by switching to it instead of flashing it.
 
 The design, and the firmware facts it rests on, are in
 [`docs/proposals/FIRMWARE_SWITCHER.md`](../../docs/proposals/FIRMWARE_SWITCHER.md).
-Markers as in `docs/firmware/CHIP.md`: ✅ measured (here: under the ColdFire
-port, or read from the image), 🟡 inferred, with what would falsify it.
+Markers as in `docs/firmware/CHIP.md`: ✅ measured (on the unit where it
+says so, else under the ColdFire port or read from the image), 🟡 inferred,
+with what would falsify it.
 
 ## Use
 
 ```bash
-make image REMIX=os-switch BUILD=<nn>     # the HOME image: flash it once (FLASHING.md)
+make image REMIX=<name> BUILD=<nn>        # out/OCTATRACK_OCTABAM<nn>.bin AND out/OCTABAM<nn>.OBI
 make obi-stock                            # out/STOCK140.OBI: your stock 1.40C
-make obi REMIX=<any remix> OBI=NAME       # out/NAME.OBI: any build, 8-character name
+make obi REMIX=<any remix> OBI=NAME       # out/NAME.OBI: any build, 12-character name
 ```
 
 1. Copy the `.OBI` files to the card root.
-2. MAIN MENU > CONTROL > OS SWITCH, then [YES]. The dialog reads
-   `BOOT NAME.OBI?`, `NO: NEXT FILE i/N`, and a line that says what is
-   running (see below).
-3. [YES] stops playback, syncs the project (as OS UPGRADE does), loads
-   the file and resets the unit.
+2. MAIN MENU > OS. The pane shows what is running (`NOW FLASHED`, or
+   `NOW <NAME>` after a switch), a line if the last switch was refused, then
+   every `.OBI`, sorted, without the extension. It is read again each time
+   MAIN MENU opens.
+3. [YES] on a file: `BOOT <NAME>?` / `PLAYBACK WILL STOP` / `POWER-CYCLE:
+   FLASHED OS`. [YES] stops playback, syncs the project (as OS UPGRADE
+   does), loads the file and resets the unit.
 4. A power-cycle boots the flashed image again.
 
 An `.OBI` is the raw image the bootstrap would unpack to `0x40000400`. It is
@@ -31,35 +36,30 @@ Elektron's OS with your changes, so like the `.bin` it never leaves your
 machine and your card. `make obi` makes the same three checks the unit
 makes: the OS entry's first instruction, a length that fits the stage
 (2,706,400 B), and the bootstrap version (below). A target does not need
-this module. Stock 1.40C is a valid target, but it has no OS SWITCH row:
-from stock, power-cycle to come back.
+this module: stock 1.40C is a valid target, but it has no OS category, so
+from stock you power-cycle to come back.
 
-The dialog's third line:
-
-| line | means |
-|---|---|
-| `NOW: THE FLASHED OS` | no switch reached this boot (a power-on, or the stage did not survive the reset) |
-| `NOW: NAME.OBI (RCR)` | this image came from the card, through the reset controller's soft reset |
-| `NOW: NAME.OBI (SPIN)` | the same, but the soft reset was never recorded as requested (not expected) |
-| `LAST: STAGE LOST (HASH)` | the stage changed across the reset; the flashed image booted |
-| `LAST: WRONG BOOTSTRAP` / `LAST: BAD SIZE` | the chainloader refused the stage |
+A remix that keeps every stock DSP effect has no DSP words for the park
+code (below) and sets `os_switch=False`; its `.OBI` is still a valid
+target. `OCTABAM_NO_OS_SWITCH=1` builds without it everywhere.
 
 The version string on the boot screen and in SYSTEM STATUS is probably the
 flashed image's, whichever OS runs. 🟡 Neither `1.40C` nor the `-V`
 string is in the MAIN OS image, so it is read from the flash header.
-Falsified if a switch to `STOCK140.OBI` shows `1.40C`. Trust the dialog's
-third line instead.
+Trust the pane's `NOW` line instead.
 
 ## How
 
 | piece | where | what |
 |---|---|---|
-| `chain.s` | a ROM cave, detour at `0x40000412` | the OS entry, after it parks the bootstrap's argument in `0x400b9650`. If the mailbox holds a switch, it spends the mailbox, then checks the length, the bootstrap version against NOR's word at `0x3ffc`, and the hash over the stage. It then copies a 40-byte stub to `0x49200100`; the stub copies the stage over `0x40000400` with the caches off and invalidated, restores the bootstrap's exit `CACR` (`0x0008c000`) and calls the entry with the bootstrap's argument. Any refusal replays the displaced `movea.l #0x48000000,%sp` and boots on |
-| `switch.s` | the platform runtime (DRAM) | the CONTROL row. Stock's six rows come from your image at build time (`.incbin`); `osw_rows` is `SymbolRef`'d into `0x400cbd6c` and the count at `0x400cbd54` poked 6 → 7. It also has the picker (the stock dir scan `0x4007f598` for `OBI`, the stock confirm dialog `0x4006d57c`), the load and the reset |
-| `osw.inc` | both | the stage layout and the status words; the gate parses it |
+| `chain.s` | the loader (`Linked(loader=True)`: assembled into `tools/remix/loader.S`, appended after the OS unpacked), detour at `0x40000412` | the gate, at the OS entry after it parks the bootstrap's argument. Without a mailbox it records the boot (`NONE`, or `RUN` right after a handover) and resumes. With one it spends it first, checks that the chainloader's body at `0x49200400` is whole (its longs sum to the mailbox's), and runs it. It lives in the loader because ROM caves are what full remixes run out of (bottleservice: 274 B of chainloader cost MODULATION's label formatter its place) |
+| `switch.s`: `osw_body` | copied to `0x49200400` by the switcher | the chainloader's body, position-independent: the check word, the length, the bootstrap version against NOR's word at `0x3ffc`, the hash over the stage; then a 40-byte stub at `0x49200100` copies the stage over `0x40000400` with the caches off and invalidated, restores the bootstrap's exit `CACR` (`0x0008c000`) and calls the entry with the bootstrap's argument. A refusal writes why and returns to the gate |
+| `switch.s` | the platform runtime (DRAM) | MAIN MENU > OS: the root's four stock rows from your image (`.incbin`), then OS (rows pointer `0x400cbda4`, count `0x400cbd8c` 4 → 5, a swap-arrows icon in stock's 19×9 form); the scan at MAIN MENU's opening (detour `0x40064c32`, the stock dir scan `0x4007f598`); the dialog (`0x4006d57c`); the load, the reset and the DSP park |
+| `dsp_park.asm` | both DSP payloads, on the vector `P:$24` | the park (below) |
+| `osw.inc` | all of them | the stage layout and the status words; the gate parses it |
 
 **The stage** is the top of the platform reserve: mailbox `0x49200000`,
-stub `0x49200100`, image `0x49201000..0x49495de0` (uncached aliases). Stock
+stub `0x49200100`, the chainloader's body `0x49200400`, image `0x49201000..0x49495de0` (uncached aliases). Stock
 never touches the reserve, and nothing between a reset and the OS entry
 writes it (the bootstrap only unpacks the image). The gate checks that the
 remix's own runtime ends below the mailbox.
@@ -115,24 +115,32 @@ is sent nothing (untested on an MKI).
 
 ## Measured ✅ (under the ColdFire port, `tools/verify/verify_osswitch.py`)
 
-- **The row, the picker, the load and the reset sequence run from the
-  panel.** Keys NO, FUNC+MIXER, DOWN ×2, YES, DOWN ×6, YES, YES on a card
-  holding `STOCK140.OBI`. The stage reads back equal to the file
-  (1,112,560 B). The mailbox holds its length, hash `0xb2fc346b`, check
-  word and name. The port does not reset, so the switcher reaches the RCR
-  fallback and records `RCR `.
-- **The chainload, fed exactly the memory the switcher left.** The
-  chainloader runs, the stub runs from the stage, and stock's entry runs a
+- **The menu, the load and the reset sequence run from the panel.** Keys
+  NO, PROJ (the MKII's MAIN MENU), DOWN ×4 (OS), YES, YES, YES on a card
+  holding `STOCK140.OBI`: MAIN MENU's scan, the row's pick, the dialog's
+  answer, the deferred load and the reset all run. The stage reads back
+  equal to the file (1,112,560 B); the chainloader's body sits at
+  `0x49200400` with its length and sum in the mailbox, beside the image's
+  length, hash `0xb2fc346b`, check word and name. The port does not reset,
+  so the switcher reaches the RCR fallback and records `RCR `.
+- **The chainload, fed exactly the memory the switcher left.** The gate
+  and the body run, the stub runs from the stage, and stock's entry runs a
   second time. The home image's loader never runs, `0x40000412` holds
   stock's instruction again, and stock 1.40C reaches the RTOS handoff.
   The hash over 1.1 MB costs about 8.9 M instructions.
 - **An image that carries OS SWITCH, staged as its own target,** reports
   `RUN `. The mailbox is spent and its loader runs once.
-- **Refusals.** Each one boots the flashed image and names its reason:
-  no mailbox `NONE`, one flipped byte `HASH` (the mailbox is still
-  spent), NOR's version absent `BVER`, a length past the stage `SIZE`.
-- **The screens,** rendered from the port's LCD: the CONTROL menu with the
-  seventh row, and the dialog.
+- **Refusals.** Each one boots the flashed image and names its reason: no
+  mailbox `NONE`, one flipped byte in the stage `HASH` (the mailbox still
+  spent), one flipped byte in the body `HASH` (spent before the body is
+  checked), NOR's version absent `BVER`, a length past the stage `SIZE`.
+- **The screens,** rendered from the port's LCD (29 Sep 2026): MAIN MENU
+  with OS and its icon, the pane (`NOW FLASHED`, five files sorted, the
+  cursor on the first), the dialog.
+- **Every remix builds with it** (26 of 37; the other 11 keep every stock
+  DSP effect and opt out), and with `OCTABAM_NO_OS_SWITCH=1` all 24
+  `scripts/refhash.sh` configurations are bit-identical to the tree before
+  it (the loader-unit machinery changes nothing on its own).
 
 ## Measured ✅ on the unit (an MKII, 29 Sep 2026, build 14 with BOOT TRACE)
 

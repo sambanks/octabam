@@ -26,6 +26,18 @@ runs on any track; a **server** pays for the rotation, the housekeeping
 election, the auto-gain and the payload asymmetry, and most of the DSP
 traps are a server's.
 
+**Every image carries OS SWITCH by default** (`modules/os-switch`, since 29
+Sep 2026): `registry.remix()` adds it to any remix that does not set
+`os_switch=False`, and `make image` writes `out/<VERSION>.OBI` beside the
+`.bin`. Copy the `.OBI` to the card root and MAIN MENU > OS boots it from
+the running image without flashing; a power-cycle returns to the flashed one.
+So a risky build is tried by switching to it, not by flashing it. A remix
+that keeps every stock DSP effect has no words for the park code and sets
+`os_switch=False` (its `.OBI` is still a valid target). `OCTABAM_NO_OS_SWITCH=1`
+builds without it everywhere (refhash compares that way). BOOT TRACE
+(`modules/boot-trace`) is the probe for a boot that hangs: a MIDI note per
+stage on MIDI OUT.
+
 **A port is a proof.** The author's own build is the oracle: `pinned`,
 `reference(addr)`, `Linked.reference` and a `Runtime` recipe's identities
 are four forms of one rule, and the build refuses on drift. Never "port" by

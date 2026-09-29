@@ -450,6 +450,106 @@ osw_answer:
         lea     (12,%sp),%sp
 1:      rts
 
+
+| ---- the chainloader's body -------------------------------------------------
+| Copied to OSW_BODY by osw_load, its length and the sum of its longs in the
+| mailbox; the ROM gate (chain.s) runs it after spending the mailbox, with
+| a1 = the mailbox and a2 = the gate's resume. Position-independent: it
+| runs from the stage page, not from here. It checks the stage and hands
+| over, or writes why not and goes back to the gate.
+        .align  4
+        .global osw_body
+osw_body:
+        move.l  (MB_LEN,%a1),%d2
+        move.l  (MB_HASH,%a1),%d3
+        move.l  #OSW_MAGIC,%d0
+        eor.l   %d2,%d0
+        eor.l   %d3,%d0
+        cmp.l   (MB_CHECK,%a1),%d0
+        bne.w   b_none
+        tst.l   %d2
+        beq.w   b_size
+        cmpi.l  #OSW_MAXLEN,%d2
+        bhi.w   b_size
+        cmpi.l  #OS_VEROFF+2,%d2
+        bcs.w   b_size
+        | The entry of the staged image would compare its bootstrap version
+        | with NOR's and, if newer, REPROGRAM THE BOOTSTRAP (0x4000f9b4) --
+        | the recovery path. Only a staged image whose version is NOR's own
+        | may run.
+        lea     (OSW_IMG+OS_VEROFF).l,%a0
+        mvz.w   (%a0),%d0
+        mvz.w   (NOR_BOOTVER).w,%d1
+        cmp.l   %d1,%d0
+        bne.w   b_ver
+        lea     (OSW_IMG).l,%a0
+        move.l  %d2,%d0
+        moveq   #0,%d1
+b_hash1:
+        move.l  %d1,%d4
+        lsl.l   #5,%d1
+        add.l   %d4,%d1
+        moveq   #0,%d4
+        move.b  (%a0)+,%d4
+        add.l   %d4,%d1
+        subq.l  #1,%d0
+        bne.s   b_hash1
+        cmp.l   %d3,%d1
+        bne.w   b_hash
+        move.l  #ST_BOOT,%d0
+        move.l  %d0,(MB_STATUS,%a1)
+        | the stub, out of the way of the copy
+        lea     b_stub(%pc),%a0
+        lea     (OSW_STUB).l,%a2
+        moveq   #(b_stub_end-b_stub)/2,%d0
+b_copy:
+        move.w  (%a0)+,(%a2)+
+        subq.l  #1,%d0
+        bne.s   b_copy
+        move.l  (OS_ARGCELL).l,%d1      | the bootstrap's argument, read before it is overwritten
+        lea     (OSW_IMG).l,%a0
+        lea     (OS_ENTRY).l,%a2
+        move.l  %d2,%d0
+        jmp     (OSW_STUB).l
+b_none:
+        move.l  #ST_NONE,%d0
+        bra.s   1f
+b_size:
+        move.l  #ST_SIZE,%d0
+        bra.s   1f
+b_ver:
+        move.l  #ST_BVER,%d0
+        bra.s   1f
+b_hash:
+        move.l  #ST_HASH,%d0
+1:      move.l  %d0,(MB_STATUS,%a1)
+        jmp     (%a2)
+
+| The stub: a0 = stage, a2 = OS_ENTRY, d0 = length, d1 = the argument.
+| Caches off and invalidated for the copy, then the bootstrap's own exit
+| state, then the entry as the bootstrap calls it (bootstrap 0x2d3c:
+| `move.l 0x8000050a,-(%sp) ; jsr 0x40000400`). Position-independent.
+        .align  2
+b_stub:
+        move.l  #CACR_OFF,%d4
+        movec   %d4,%cacr
+        nop
+b_stub1:
+        move.l  (%a0)+,(%a2)+
+        subq.l  #4,%d0
+        bgt.s   b_stub1
+        move.l  #CACR_BOOT,%d4
+        movec   %d4,%cacr
+        nop
+        move.l  %d1,-(%sp)
+        jsr     (OS_ENTRY).l
+b_halt:
+        bra.s   b_halt
+b_stub_end:
+        .align  4
+        .global osw_body_end
+osw_body_end:
+
 | ---- the load, in the UI task ----------------------------------------------
         .global osw_load
 osw_load:
@@ -559,7 +659,19 @@ osw_load:
         clr.b   (OSW_MBOX+MB_NAME).l
         bsr.w   strcat
         addq.l  #8,%sp
+        | the chainloader's body into the stage page, and its sum
+        lea     osw_body,%a0
+        lea     (OSW_BODY).l,%a2
+        move.l  #(osw_body_end-osw_body)/4,%d0
         lea     (OSW_MBOX).l,%a1
+        move.l  %d0,(MB_BODYLEN,%a1)
+        moveq   #0,%d1
+7:      move.l  (%a0)+,%d2
+        move.l  %d2,(%a2)+
+        add.l   %d2,%d1
+        subq.l  #1,%d0
+        bne.s   7b
+        move.l  %d1,(MB_BODYSUM,%a1)
         move.l  #RS_SPIN,%d0
         move.l  %d0,(MB_RESET,%a1)
         move.l  #OSW_MAGIC,%d0

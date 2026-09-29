@@ -109,22 +109,23 @@ moves. Its top 2.6 MB is room for an image.
 ```
 running OS                                   next boot
 ----------                                   ---------
-CONTROL > OS SWITCH                          bootstrap unpacks NOR -> 0x40000400
-  list /*.OBI (stock dir scan)               OS entry parks its argument
-  dialog: BOOT X.OBI? (stock dialog)         0x40000412 -> chainloader (ROM cave)
-  YES: stop playback (stock)                   mailbox? spend it
-  deferred: sync, wait card (stock)            length, NOR version, hash
-  read X.OBI -> stage (reserve top)            stub -> 0x49200100
-  mailbox: len, hash, check, name              stub: caches off, copy stage -> 0x40000400,
-  reset: MKII panel `60 02`, RCR SOFTRST             CACR = 0x0008c000, jsr 0x40000400
-                                             staged OS boots from the start
+MAIN MENU > OS (a list of /*.OBI)           bootstrap unpacks NOR -> 0x40000400
+  (stock dir scan, at each menu opening)     OS entry parks its argument
+  dialog: BOOT X? (stock dialog)             0x40000412 -> gate (in the loader)
+  YES: stop playback (stock)                   mailbox? spend it; body whole?
+  deferred: sync, wait card (stock)          body (copied to the stage page):
+  read X.OBI -> stage (reserve top)            length, NOR version, hash
+  mailbox: len, hash, check, name,             stub -> 0x49200100
+    the body's length and sum                stub: caches off, copy stage -> 0x40000400,
+  DSP: park both cores (host command $12)          CACR = 0x0008c000, jsr 0x40000400
+  reset: MKII panel `60 02`, RCR SOFTRST     staged OS boots from the start
 ```
 
 - **An `.OBI`** is the raw image the bootstrap would unpack: the build's
   `out/mainos_bus.bin` (`make obi`) or stock's MAIN OS (`make
   obi-stock`). A target needs nothing from this module. Stock 1.40C is a
-  valid target; it just has no row to switch back with, and a power-cycle
-  does that.
+  valid target; it just has no OS category to switch back with, and a
+  power-cycle does that.
 - **One-shot.** The mailbox is cleared before the staged image runs, so a
   target that hangs costs one reset, never a loop.
 - **Every refusal boots the flashed image** and leaves a status word
@@ -132,13 +133,17 @@ CONTROL > OS SWITCH                          bootstrap unpacks NOR -> 0x40000400
   reports `RUN` plus the reset path that brought it (`RCR`) on its
   dialog's third line. That line doubles as the hardware probe.
 - **What it costs:**
-  - 274 B of ROM cave;
-  - a 5.3 KB DRAM unit (1.3 KB packed in the image);
-  - one detour (`0x40000412`), one row pointer (`0x400cbd6c`), one count
-    poke (`0x400cbd54`);
+  - no ROM cave: the gate is ~110 B in octabam's loader (a new
+    `Linked(loader=True)` form), the body ~230 B in the runtime;
+  - a DRAM unit of a few KB, packed in the image;
+  - ~60 DSP words in each payload for the park (so a remix that keeps
+    every stock effect cannot carry it);
+  - two detours (`0x40000412`, `0x40064c32`), one row pointer
+    (`0x400cbda4`), one count poke (`0x400cbd8c`, the root 4 → 5);
   - the top 2.6 MB of the platform reserve, which the gate keeps clear.
-  CONTROL grows to seven rows, so another module that grows CONTROL
-  cannot share an image with it (MAINMENU.md §5).
+  (❌ The first prototype was a seventh CONTROL row with a one-file-at-a-
+  time dialog and a 274 B ROM cave; the cave did not fit beside
+  bottleservice's label formatters.)
 
 Why the OS entry, and not octabam's boot detour at `0x4000050c`? The
 detour's first act is the DSP upload (2.2). At `0x40000412` nothing has
@@ -228,7 +233,7 @@ build 6 (with BOOT TRACE: `os-switch-trace`):
 Each step is one flash of the `os-switch` image, or none. Every failure
 ends in the flashed image after a power-cycle.
 
-1. **The reset comes back up.** CONTROL > OS SWITCH > `STOCK140.OBI` >
+1. **The reset comes back up.** MAIN MENU > OS > `STOCK140` >
    YES. Expect a reboot within a second or two of `WAIT`, into stock.
    Falsified by build 1's hang (OCTABAM screen, dim keys): power-cycle
    and report.
@@ -264,8 +269,11 @@ ends in the flashed image after a power-cycle.
 
 ## 7. Questions back
 
-- Is CONTROL the right home for the row, or should it take OS UPGRADE's
-  place in SYSTEM (MAINMENU.md warns against growing SYSTEM)?
+- Is a fifth MAIN MENU category the right home (the root window was built
+  five tall), or should it sit in SYSTEM beside OS UPGRADE (MAINMENU.md
+  warns against growing SYSTEM)?
+- OS SWITCH in every image by default (`schema.Remix.os_switch`): is that
+  the maintainer's call to make upstream, or a local build option?
 - Should the platform reserve's top 2.6 MB be reserved for the switch in
   every remix (a platform guard in `platform_build.py`), rather than
   checked by this module's gate only? Today no runtime comes near it.

@@ -78,7 +78,7 @@ MODULE = Module(
     doc="MAIN MENU > OS lists the card root's raw OS images (.OBI) and boots the one "
         "picked without writing the flash; a power-cycle returns to the flashed image.",
     linked=(
-        Linked("osw_chain", "modules/os-switch/chain.s", cpu="5475", include=_include),
+        Linked("osw_chain", "modules/os-switch/chain.s", loader=True, include=_include),
         Linked("osw_switch", "modules/os-switch/switch.s", dram=True, include=_include),
     ),
     # Each DSP core, told by host command $12 before the reset, parks in a

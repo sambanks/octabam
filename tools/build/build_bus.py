@@ -985,8 +985,12 @@ def main():
     # the caves, which is why no cave could reach one.
     _all_units = [(remix_modules()[_k], _u) for _k in REMIX.modules
                   for _u in getattr(remix_modules()[_k], "linked", ())]
-    _units = [(m, u) for m, u in _all_units if not u.dram]      # ROM-placed
+    _units = [(m, u) for m, u in _all_units if not u.dram and not u.loader]  # ROM-placed
     _dram = [(m, u) for m, u in _all_units if u.dram]           # platform runtime (1e)
+    _early = [(m, u) for m, u in _all_units if u.loader]        # in the loader itself (1e)
+    if _early and not _dram:
+        sys.exit(f"{', '.join(m.key for m, _ in _early)}: a loader unit needs the platform "
+                 f"(a DRAM unit in the remix); there is none")
     if _all_units and not _toolchain:
         sys.exit("linked units need m68k-elf-as/ld/objcopy/nm -- run `make setup` "
                  "(Homebrew: brew install m68k-elf-gcc)")
@@ -1287,7 +1291,11 @@ def main():
             [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
             reserve=_reserve, defsyms=_defsym_ovr,
             includes={_u.label: _u.include({_k: remix_modules()[_k] for _k in REMIX.modules})
-                      for _m, _u in _dram if _u.include is not None})
+                      for _m, _u in _dram + _early if _u.include is not None},
+            early=[_u for _m, _u in _early])
+        for _m, _u in _early:
+            _sym[_u.label] = _psyms
+            print(f"  {_m.key}: {_u.label} in the loader at 0x{_psyms.get(_u.label, 0):08x}")
         for _m, _u in _dram:
             _sym[_u.label] = _psyms          # detours name units; one table serves all
             if _u.reference is not None:
@@ -2148,7 +2156,12 @@ mkgo:""",
                          f"{', '.join(sorted(m.key for m in _need))}. Name "
                          f"the stock effects whose words this remix may take "
                          f"Take one off both choosers to give up "
-                         f"its words.")
+                         f"its words."
+                         + (" OS SWITCH is added to every remix by default "
+                            "(schema.Remix.os_switch): set os_switch=False in "
+                            "this remix to leave it out; its image stays a "
+                            "valid switch target." if any(m.key == "OS SWITCH" for m in _need)
+                            else ""))
         _sp = stock_mod.p_spans(tag)
         for _k in _harvest:
             if _k not in _sp:

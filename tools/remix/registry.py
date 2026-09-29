@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pathlib
 import dataclasses
+import os
 import sys
 import types
 
@@ -201,6 +202,9 @@ def remix_path(name: str) -> pathlib.Path:
     return d / "remix.py" if d is not None else REMIXES_DIR / f"{name}.py"
 
 
+OS_SWITCH = "OS SWITCH"
+
+
 def remix(name: str | None):
     """Load the remix's remix.py (remix_path) and return its REMIX. None refuses."""
     if not name:
@@ -247,6 +251,13 @@ def remix(name: str | None):
                  and known[k].claims is not None and known[k].claims.fx1_only)
     if auto:
         r = dataclasses.replace(r, hidden=r.hidden + auto)
+    # OS SWITCH IN EVERY IMAGE (schema.Remix.os_switch): the fleet of images
+    # built here can boot one another from the card. Appended last, so no
+    # remix's chooser order moves; a ColdFire module and a DSP park hook,
+    # it takes no FX2 id.
+    if (r.os_switch and OS_SWITCH not in r.modules and OS_SWITCH in known
+            and not os.environ.get("OCTABAM_NO_OS_SWITCH")):
+        r = dataclasses.replace(r, modules=r.modules + (OS_SWITCH,))
     return r
 
 

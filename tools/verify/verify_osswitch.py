@@ -51,6 +51,7 @@ the DSP after a chainload (the port boots from reset state either way).
 SKIPs without the port (make emu-cf) or when the remix does not carry OS
 SWITCH.
 """
+import json
 import os
 import pathlib
 import re
@@ -110,8 +111,16 @@ def main():
     work = pathlib.Path(tempfile.mkdtemp(prefix="osswitch."))
     home = work / "home.bin"
     home.write_bytes((ROOT / "out/mainos_bus.bin").read_bytes())
-    chain = nm(ROOT / "out/linked/os-switch/osw_chain/u.elf")
+    chain = nm(ROOT / "out/platform/loader.elf")      # the gate is a loader unit
     rt = nm(ROOT / "out/platform/runtime/runtime.elf")
+    # the chainloader's body, as osw_load places it: the runtime's own bytes
+    lay0 = json.loads((ROOT / "out/platform/layout.json").read_text())
+    raw = (ROOT / "out/platform/runtime.raw").read_bytes()
+    body = raw[rt["osw_body"] - lay0["base"]:rt["osw_body_end"] - lay0["base"]]
+    BODY = cached(C["OSW_BODY"])
+    body_f = work / "body.bin"
+    body_f.write_bytes(body)
+    body_sum = sum(struct.unpack(f">{len(body) // 4}I", body)) & 0xFFFFFFFF
     loader = nm(ROOT / "out/platform/loader.elf")["octabam_bootstrap"]
     stub = C["OSW_STUB"]
     norver = work / "norver.bin"
@@ -155,7 +164,8 @@ def main():
             chk ^= 1
         p = work / f"mbox_{len(list(work.glob('mbox_*')))}.bin"
         p.write_bytes(struct.pack(">IIIII", C["OSW_MAGIC"], n, h, chk, status)
-                      + b"\0" * 4 + name.ljust(32, b"\0"))
+                      + b"\0" * 4 + name.ljust(32, b"\0")
+                      + struct.pack(">III", 0, len(body) // 4, body_sum))
         return p
 
     status = lambda mb: mb[C["MB_STATUS"]:C["MB_STATUS"] + 4].decode("latin1")
@@ -164,7 +174,6 @@ def main():
                                                          "ST_BVER", "ST_HASH")}
 
     # ---- layout: the runtime stays below the switch's pages ---------------
-    import json
     lay = json.loads((ROOT / "out/platform/layout.json").read_text())
     check("layout: the platform runtime and its stage end below the mailbox",
           lay.get("stage_end", 0) <= MBOX,
@@ -200,7 +209,7 @@ def main():
     ui_watch = [rt["osw_scan"], rt["osw_pick"], rt["osw_answer"], rt["osw_load"], rt["osw_reset"],
                 rt["putpanel"]]
     out, hits, d = boot("ui", [(0x3FFC, norver)], ui_watch,
-                        {"mbox": (MBOX, 64), "stage": (IMG, len(stock))},
+                        {"mbox": (MBOX, 72), "stage": (IMG, len(stock)), "body": (BODY, len(body))},
                         extra=["--card", str(card), "--live-script", str(script), "--mkii"],
                         max_instr=4_000_000_000)
     ran = [s for s, a in zip(("osw_scan", "osw_pick", "osw_answer", "osw_load", "osw_reset"), ui_watch)
@@ -212,7 +221,11 @@ def main():
     mb, stage = d.get("mbox", b""), d.get("stage", b"")
     check("ui: the stage reads back equal to STOCK140.OBI", stage == stock,
           f"{len(stage):,} B")
-    ok = (len(mb) == 64 and magic(mb) == C["OSW_MAGIC"]
+    check("ui: the chainloader's body sits in the stage page, its length and sum in the mailbox",
+          d.get("body") == body and len(mb) == 72
+          and struct.unpack(">II", mb[C["MB_BODYLEN"]:C["MB_BODYLEN"] + 8]) == (len(body) // 4, body_sum),
+          f"{len(body)} B, sum 0x{body_sum:08x}")
+    ok = (len(mb) == 72 and magic(mb) == C["OSW_MAGIC"]
           and struct.unpack(">III", mb[4:16]) == (len(stock), roll(stock),
                                                    C["OSW_MAGIC"] ^ len(stock) ^ roll(stock))
           and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.OBI")
@@ -225,9 +238,9 @@ def main():
 
     # ---- chain: the memory the ui run left, booted ------------------------
     watch = [0x40000400, chain["osw_chain"], stub, loader]
-    out, hits, d = boot("chain", [(0x3FFC, norver), (MBOX, work / "ui_mbox.bin"),
+    out, hits, d = boot("chain", [(0x3FFC, norver), (MBOX, work / "ui_mbox.bin"), (BODY, body_f),
                                   (IMG, work / "ui_stage.bin")],
-                        watch, {"site": (0x40000412, 6), "mbox": (MBOX, 64)})
+                        watch, {"site": (0x40000412, 6), "mbox": (MBOX, 72)})
     check("chain: the chainloader ran, the stub ran from the stage, stock's entry ran again",
           hits.get(chain["osw_chain"]) == 1 and hits.get(stub) == 1 and hits.get(0x40000400) == 2,
           f"chain {hits.get(chain['osw_chain'], 0)}, stub {hits.get(stub, 0)}, entry {hits.get(0x40000400, 0)}")
@@ -241,9 +254,9 @@ def main():
     homeb = home.read_bytes()
     stage_self = work / "stage_self.bin"
     stage_self.write_bytes(homeb)
-    out, hits, d = boot("self", [(0x3FFC, norver), (MBOX, mailbox(homeb, name=b"HOME.OBI")),
-                                 (IMG, stage_self)], watch, {"mbox": (MBOX, 64)})
-    mb = d.get("mbox", b"\0" * 64)
+    out, hits, d = boot("self", [(0x3FFC, norver), (MBOX, mailbox(homeb, name=b"HOME.OBI")), (BODY, body_f),
+                                 (IMG, stage_self)], watch, {"mbox": (MBOX, 72)})
+    mb = d.get("mbox", b"\0" * 72)
     check("self: status RUN after the handover, the mailbox spent, the loader ran once",
           status(mb) == ST["ST_RUN"] and magic(mb) == 0 and hits.get(loader) == 1
           and hits.get(chain["osw_chain"]) == 2 and "HANDOFF" in out,
@@ -252,8 +265,8 @@ def main():
 
     # ---- the refusals: each boots the home image -------------------------
     def refused(tag, preload, want):
-        out, hits, d = boot(tag, preload, watch, {"mbox": (MBOX, 64)})
-        mb = d.get("mbox", b"\0" * 64)
+        out, hits, d = boot(tag, preload, watch, {"mbox": (MBOX, 72)})
+        mb = d.get("mbox", b"\0" * 72)
         check(f"{tag}: status {want.strip()}, the normal boot, no stub",
               status(mb) == ST[want] and not hits.get(stub) and hits.get(loader) == 1
               and "HANDOFF" in out,
@@ -267,11 +280,19 @@ def main():
     bad[len(bad) // 2] ^= 0x01
     stage_bad = work / "stage_bad.bin"
     stage_bad.write_bytes(bytes(bad))
-    mb = refused("hash", [(0x3FFC, norver), (MBOX, mailbox(stock)), (IMG, stage_bad)], "ST_HASH")
+    mb = refused("hash", [(0x3FFC, norver), (MBOX, mailbox(stock)), (BODY, body_f), (IMG, stage_bad)], "ST_HASH")
     check("hash: the mailbox is spent (one-shot)", magic(mb) == 0, f"{magic(mb):#x}")
-    refused("bver", [(MBOX, mailbox(stock)), (IMG, stage_stock)], "ST_BVER")
-    refused("size", [(0x3FFC, norver), (MBOX, mailbox(stock, length=C["OSW_MAXLEN"] + 4)),
+    refused("bver", [(MBOX, mailbox(stock)), (BODY, body_f), (IMG, stage_stock)], "ST_BVER")
+    refused("size", [(0x3FFC, norver), (MBOX, mailbox(stock, length=C["OSW_MAXLEN"] + 4)), (BODY, body_f),
                      (IMG, stage_stock)], "ST_SIZE")
+    # the ROM gate runs the body only whole: one flipped byte and it boots on
+    body_bad = work / "body_bad.bin"
+    bb = bytearray(body)
+    bb[len(bb) // 2] ^= 0x01
+    body_bad.write_bytes(bytes(bb))
+    mb = refused("body", [(0x3FFC, norver), (MBOX, mailbox(stock)), (BODY, body_bad),
+                          (IMG, stage_stock)], "ST_HASH")
+    check("body: the mailbox is spent before the body is checked", magic(mb) == 0, f"{magic(mb):#x}")
     # ---- dsp: park the running cores, boot them through the loaders --------
     B = 0x40000400
     blobs = {"bootA": (0x400E21E0, 0x96), "payA": (0x400E2324, 0x136CB),

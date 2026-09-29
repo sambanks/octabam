@@ -14,6 +14,8 @@
 
         .set    OSW_MBOX,    0x49200000     | the mailbox, 64 bytes
         .set    OSW_STUB,    0x49200100     | the copy stub runs here, outside the image it overwrites
+        .set    OSW_BODY,    0x49200400     | the chainloader's body, placed by the switcher (chain.s is the ROM gate)
+        .set    OSW_BODYMAX, 0x00000200     | its length in longs, at most (2 KB, below OSW_IMG)
         .set    OSW_IMG,     0x49201000     | the staged image
         .set    OSW_END,     0x49495de0     | the reserve's end
         .set    OSW_MAXLEN,  0x00294be0     | OSW_END - OSW_IMG - 512: a last partial sector reads whole
@@ -28,6 +30,8 @@
         .set    MB_RESET,    20             | written by the switcher: the last reset path it reached
         .set    MB_NAME,     24             | the file's name, NUL-terminated, 32 bytes
         .set    MB_PARK,     56             | the DSP cores that took the park command: bit 0 core 0, bit 1 core 1
+        .set    MB_BODYLEN,  60             | the body's length in longs
+        .set    MB_BODYSUM,  64             | the sum of its longs: the gate runs it only whole
 
 | status words (MB_STATUS)
         .set    ST_BOOT,     0x424f4f54     | "BOOT" handed over to the staged image

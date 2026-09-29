@@ -636,6 +636,16 @@ class Linked:
     # belongs; the ~8 KB of zero runs inside the OS image are for what
     # must be ROM.
     dram: bool = False
+    # LOADER: the unit is assembled INTO octabam's loader (tools/remix/
+    # loader.S), which the build appends after the OS image unpacked, so it
+    # runs from its link address from the first instruction of the OS on --
+    # before the runtime is depacked, and without taking a byte of the ROM
+    # caves full remixes run out of. For code the OS entry must reach before
+    # anything else runs (OS SWITCH's chainloader gate). It links in the
+    # loader's one link (its globals are the platform's symbols, as a DRAM
+    # unit's), under the loader's labels: prefix every label. Needs the
+    # platform (a remix with at least one DRAM unit).
+    loader: bool = False
     # Assembler text generated PER REMIX -- include(modules) -> str, given
     # the remix's modules by key -- written beside the unit as `remix.inc`
     # and reachable by `.include "remix.inc"`. A unit whose data depends
@@ -1186,6 +1196,13 @@ class Remix:
     family: str = ""             # "rig", "effects", "mods", "reference"
     proof: Proof | None = None   # schema.Proof; as a module's
     proof_note: str = ""
+    # ---- OS SWITCH in every image ------------------------------------------
+    # registry.remix() adds OS SWITCH (modules/os-switch) to every remix that
+    # does not list it, so any image built here can boot any other from the
+    # card (MAIN MENU > OS) and be booted by one. False leaves it out (a
+    # remix it does not fit); OCTABAM_NO_OS_SWITCH=1 leaves it out of every
+    # build (scripts/refhash.sh compares against a tree without it).
+    os_switch: bool = True
     # ---- which of them ALSO get a row on FX1 ------------------------------
     # THE OTHER HALF OF "BOTH SLOTS", and it belongs to the REMIX rather than
     # to the module: which menu an effect appears on is a composition choice,

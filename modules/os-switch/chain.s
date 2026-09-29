@@ -1,23 +1,20 @@
-| OS SWITCH, the chainloader -- a ROM cave the OS entry detours into, at the
-| first instruction after it parks the bootstrap's argument:
+| OS SWITCH, the chainloader's gate -- a ROM cave the OS entry detours into,
+| at the first instruction after it parks the bootstrap's argument:
 |
 |   0x40000412  movea.l #0x48000000,%sp   ->  jmp osw_chain
 |
 | Nothing has run yet: no DSP upload (0x40001e50, the boot site), no cache
-| set-up, no interrupts. If the mailbox at OSW_MBOX holds a switch the
-| running image staged before it reset (switch.s), this copies the staged
-| image over OS_ENTRY and calls it exactly as the bootstrap called us: the
-| same argument on the stack, the same CACR. Otherwise it resumes the
-| entry. Every refusal falls through to the normal boot -- never a hang --
-| and leaves a status word for the next image's OS SWITCH row to show.
-|
-| The mailbox is cleared BEFORE the staged image runs: an image that hangs
-| costs one reset, never a loop (a reset keeps SDRAM; the next boot finds
-| no mailbox and boots this image).
-|
-| Runs from ROM (this cave is inside the image) until the copy, so the copy
-| itself runs from a stub it places at OSW_STUB, outside the range it
-| overwrites.
+| set-up, no interrupts. The gate is as small as it can be, because ROM
+| caves are what full remixes run out of (bottleservice-ret: MODULATION's
+| label formatters did not fit beside the whole chainloader, 29 Sep 2026).
+| It only decides: with a mailbox, it spends it -- BEFORE anything else,
+| so an image that hangs costs one reset, never a loop (a reset, even a
+| quick power-cycle, keeps SDRAM) -- checks that the chainloader's body
+| the switcher placed at OSW_BODY is whole (its longs sum to MB_BODYSUM),
+| and runs it; the body (osw_body in switch.s) checks the stage and hands
+| over, or comes back to `resume`. Without one it records the boot for OS
+| SWITCH's list and resumes the entry. Every refusal falls through to the
+| normal boot -- never a hang.
 
         .include "remix.inc"
 
@@ -37,59 +34,24 @@ osw_chain:
         lea     (OSW_MBOX).l,%a1
         move.l  (MB_MAGIC,%a1),%d0
         cmpi.l  #OSW_MAGIC,%d0
-        bne.w   nombox
-        move.l  (MB_LEN,%a1),%d2
-        move.l  (MB_HASH,%a1),%d3
-        eor.l   %d2,%d0
-        eor.l   %d3,%d0
-        cmp.l   (MB_CHECK,%a1),%d0
-        bne.w   nombox
+        bne.s   nombox
         clr.l   (MB_MAGIC,%a1)          | one-shot, before anything below can fail
-        tst.l   %d2
-        beq.w   badsize
-        cmpi.l  #OSW_MAXLEN,%d2
-        bhi.w   badsize
-        cmpi.l  #OS_VEROFF+2,%d2
-        bcs.w   badsize
-        | The entry of the staged image would compare its bootstrap version
-        | with NOR's and, if newer, REPROGRAM THE BOOTSTRAP (0x4000f9b4) --
-        | the recovery path. Only a staged image whose version is NOR's own
-        | may run.
-        lea     (OSW_IMG+OS_VEROFF).l,%a0
-        mvz.w   (%a0),%d0
-        mvz.w   (NOR_BOOTVER).w,%d1
-        cmp.l   %d1,%d0
-        bne.w   badver
-        lea     (OSW_IMG).l,%a0
-        move.l  %d2,%d0
-        moveq   #0,%d1
-hashloop:
-        move.l  %d1,%d4
-        lsl.l   #5,%d1
-        add.l   %d4,%d1
-        moveq   #0,%d4
-        move.b  (%a0)+,%d4
-        add.l   %d4,%d1
-        subq.l  #1,%d0
-        bne.s   hashloop
-        cmp.l   %d3,%d1
-        bne.w   badhash
-        move.l  #ST_BOOT,%d0
-        move.l  %d0,(MB_STATUS,%a1)
-        | the stub, out of the way of the copy
-        lea     stub(%pc),%a0
-        lea     (OSW_STUB).l,%a2
-        moveq   #(stub_end-stub)/2,%d0
-stubcopy:
-        move.w  (%a0)+,(%a2)+
-        subq.l  #1,%d0
-        bne.s   stubcopy
-        move.l  (OS_ARGCELL).l,%d1      | the bootstrap's argument, read before it is overwritten
-        lea     (OSW_IMG).l,%a0
-        lea     (OS_ENTRY).l,%a2
-        move.l  %d2,%d0
-        jmp     (OSW_STUB).l
-
+        move.l  (MB_BODYLEN,%a1),%d1
+        beq.s   badbody
+        cmpi.l  #OSW_BODYMAX,%d1
+        bhi.s   badbody
+        lea     (OSW_BODY).l,%a0
+        moveq   #0,%d2
+1:      add.l   (%a0)+,%d2
+        subq.l  #1,%d1
+        bne.s   1b
+        cmp.l   (MB_BODYSUM,%a1),%d2
+        bne.s   badbody
+        lea     osw_resume(%pc),%a2     | where the body comes back to on a refusal
+        jmp     (OSW_BODY).l            | a1 = the mailbox
+badbody:
+        move.l  #ST_HASH,%d0
+        bra.s   2f
 nombox:
         | "BOOT" in the status means the chainloader handed over on this
         | boot and this image is the one it handed to (a staged image that
@@ -97,21 +59,14 @@ nombox:
         move.l  (MB_STATUS,%a1),%d1
         move.l  #ST_NONE,%d0
         cmpi.l  #ST_BOOT,%d1
-        bne.s   1f
+        bne.s   2f
         move.l  #ST_RUN,%d0
-        bra.s   1f
-badsize:
-        move.l  #ST_SIZE,%d0
-        bra.s   1f
-badver:
-        move.l  #ST_BVER,%d0
-        bra.s   1f
-badhash:
-        move.l  #ST_HASH,%d0
-1:      move.l  %d0,(MB_STATUS,%a1)
-resume:
+2:      move.l  %d0,(MB_STATUS,%a1)
+        .global osw_resume
+osw_resume:
         .if     TRACE
         | BOOT TRACE's note 12: back to the entry (velocity: the status's last byte)
+        lea     (OSW_MBOX).l,%a1
         move.l  #0x90,%d1
         bsr.w   txmidi
         moveq   #12,%d1
@@ -134,25 +89,3 @@ txmidi:
 2:      move.b  %d1,(0xfc06000c).l
         rts
         .endif
-
-| The stub: a0 = stage, a2 = OS_ENTRY, d0 = length, d1 = the argument.
-| Caches off and invalidated for the copy, then the bootstrap's own exit
-| state, then the entry as the bootstrap calls it (bootstrap 0x2d3c:
-| `move.l 0x8000050a,-(%sp) ; jsr 0x40000400`). Position-independent.
-        .align  2
-stub:
-        move.l  #CACR_OFF,%d4
-        movec   %d4,%cacr
-        nop
-copy:
-        move.l  (%a0)+,(%a2)+
-        subq.l  #4,%d0
-        bgt.s   copy
-        move.l  #CACR_BOOT,%d4
-        movec   %d4,%cacr
-        nop
-        move.l  %d1,-(%sp)
-        jsr     (OS_ENTRY).l
-halt:
-        bra.s   halt
-stub_end:

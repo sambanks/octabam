@@ -15,6 +15,11 @@ from remix.schema import Proof, Remix
 
 REMIX = Remix(
     name="ok-ms",
+    # OS SWITCH needs DSP words for its park code (modules/os-switch/
+    # dsp_park.asm), and this remix keeps every stock effect, so none are
+    # free: it is left out. The image is still a valid switch TARGET (its
+    # .OBI boots from any image that carries OS SWITCH).
+    os_switch=False,
     family="mods", proof=Proof.HARDWARE, proof_note="midisc's author's unit, 14 Sep 2026 (OKMS2)",
     doc="Octakit + MIDI SCENES on the stock effects: the two mods alone.",
     modules=("MIDI SCENES", "OCTAKIT", "KITS RELOAD",

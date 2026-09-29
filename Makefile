@@ -69,7 +69,7 @@ bus-plain: ## Build without specialization (both servers on both cores)
 	REMIX=$(REMIX) python3 tools/build/build_bus.py
 
 .PHONY: obi
-obi: bus ## OS SWITCH: the build as a raw OS image for the card root -> out/<OBI>.OBI (OBI=NAME, 8 chars; default the remix name)
+obi: bus ## OS SWITCH: the build as a raw OS image for the card root -> out/<OBI>.OBI (OBI=NAME, 12 chars; default the remix name). make image writes one too
 	$(need-remix)
 	python3 tools/build/make_obi.py out/mainos_bus.bin "$(if $(OBI),$(OBI),$(notdir $(REMIX)))"
 
@@ -93,9 +93,11 @@ image: bus ## Repack the build into a card-flashable .bin (see docs/guide/BUILDI
 	  echo "  Fix: rm -rf vendor/elektron-firmware-tool; make setup; make image REMIX=$(REMIX) BUILD=$(BUILD)"; exit 1; }
 	python3 tools/build/make_bin.py out/elek_$(BUILD).bin \
 	  -o out/OCTATRACK_$(VERSION).bin
+	python3 tools/build/make_obi.py out/mainos_bus.bin "$(VERSION)"
 	@echo
 	@echo "  card image: out/OCTATRACK_$(VERSION).bin"
 	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(VERSION).syx"
+	@echo "  OS SWITCH:  out/$(VERSION).OBI (card root; MAIN MENU > OS boots it without flashing)"
 	@echo "  -> docs/guide/BUILDING.md before you write either to hardware."
 
 # ------------------------------------------------- audition without flashing --

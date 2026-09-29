@@ -44,7 +44,7 @@ def main():
     watch = [trace]
     chain = None
     if "OS SWITCH" in mods:
-        chain = nm(ROOT / "out/linked/os-switch/osw_chain/u.elf")["txmidi"]
+        chain = nm(ROOT / "out/platform/loader.elf")["txmidi"]
         watch.append(chain)
     work = pathlib.Path(tempfile.mkdtemp(prefix="boottrace."))
     ver = work / "norver.bin"
