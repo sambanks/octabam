@@ -60,6 +60,9 @@
         .set    UART1_USR, 0xfc064004   | the panel link: bit 3 = TXEMP (the bootstrap's putc, 0x20)
         .set    UART1_UTB, 0xfc06400c
         .set    MKII_FLAG, 0x46c8d18c   | 1 on an MKII (docs/firmware/PANEL.md 4c)
+        .set    HI08_CVR,  0x20000004   | the host command register: bit 7 HC, bits 6..0 the vector / 2
+        .set    DSP_SELECT, 0xfc0a400c  | which core's host port the window shows (0, 1): the upload's own
+        .set    PARK_HC,   0x0092       | HC | $12: vector P:$24, dsp_park.asm's osw_dsp
         .set    NMAX, 32                | .OBI files listed
         .set    NLEN, 24                | bytes kept of each name
 
@@ -427,15 +430,20 @@ osw_reset:
         | first two steps, 0x4007fe6c..0x4007fe78)
         move.w  #0x2700,%sr
         jsr     (UART1_FLUSH).l
+        | both DSP cores into their parked loaders: the soft reset below
+        | does not reset the DSP, and the next OS's upload needs a ROM
+        bsr.w   osw_park
+        lea     (OSW_MBOX).l,%a1
+        move.l  %d0,(MB_PARK,%a1)
         | MKII: the panel back to its start-up state, `60 02`, so the
         | bootstrap's `60 00` after the reset gets its key report
         tst.l   (MKII_FLAG).l
         beq.s   9f
         moveq   #0x60,%d1
-        bsr.s   putpanel
+        bsr.w   putpanel
         moveq   #0x02,%d1
-        bsr.s   putpanel
-        bsr.s   txempty
+        bsr.w   putpanel
+        bsr.w   txempty
         move.l  #0x00400000,%d0         | ~20 ms for the panel to act on it (cycle count INFERRED)
 7:      subq.l  #1,%d0
         bne.s   7b
@@ -449,10 +457,58 @@ osw_softreset:
         move.b  %d0,(RCR).l
 8:      bra.s   8b
 
+| osw_park: send both DSP cores host command $12 (dsp_park.asm) with the
+| ColdFire's interrupts masked; d0 = a bit per core that took it. First a
+| pause for a frame's host transfers to finish (the frame ISR's eDMA runs
+| on without the CPU; ~5 ms at 266 MHz, cycle count INFERRED): a word still
+| on its way would be read as the loader's count -- and the OS's upload
+| INITs the host interface before its first word in any case (0x40001e5a).
+        .global osw_park
+osw_park:
+        lea     (-8,%sp),%sp
+        movem.l %d2-%d3,(%sp)
+        move.l  #0x00100000,%d0
+1:      subq.l  #1,%d0
+        bne.s   1b
+        moveq   #0,%d3
+        moveq   #0,%d1
+        bsr.s   parkcore
+        beq.s   2f
+        moveq   #1,%d3
+2:      moveq   #1,%d1
+        bsr.s   parkcore
+        beq.s   3f
+        addq.l  #2,%d3
+3:      moveq   #0,%d0
+        move.b  %d0,(DSP_SELECT).l      | core 0, as the upload starts
+        move.l  %d3,%d0
+        movem.l (%sp),%d2-%d3
+        lea     (8,%sp),%sp
+        rts
+
+| the core in d1: select it, raise the host command, wait for HC to clear
+| (the frame handler's own poll, 0x4000ab1a: bit 7 of the low byte).
+| Z clear (ne) if the core took it within ~2 M polls.
+parkcore:
+        move.b  %d1,(DSP_SELECT).l
+        nop
+        move.l  #PARK_HC,%d0
+        move.w  %d0,(HI08_CVR).l
+        move.l  #2000000,%d2
+1:      move.w  (HI08_CVR).l,%d0
+        tst.b   %d0
+        bpl.s   2f
+        subq.l  #1,%d2
+        bne.s   1b
+        moveq   #0,%d0                  | Z set: not taken
+        rts
+2:      moveq   #1,%d0                  | Z clear: taken
+        rts
+
 | one byte to the panel, polled as the bootstrap's putc does (0x20)
         .global putpanel
 putpanel:
-        bsr.s   txempty
+        bsr.w   txempty
         move.b  %d1,(UART1_UTB).l
         rts
         .global txempty

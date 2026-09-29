@@ -33,6 +33,15 @@ Builds the remix (the HOME image: what NOR would hold), then:
            unless preloaded): status BVER, the normal boot -- a staged image
            that would reprogram the bootstrap never runs
   size     a length past the stage: status SIZE, the normal boot
+  dsp      the DSP across a switch, without the reset the port cannot do:
+           with the cores running their payloads, osw_park sends each host
+           command $12 (both must take it), then the stock upload's own
+           steps (0x40001d4c, 0x40001b18: bootstrap and payload, core 0 then
+           core 1, from copies of the blobs -- the running OS has reused the
+           image's copy) go through the parked loaders. Each core enters its
+           stock bootstrap a SECOND time (P:$31000, P:$32000) and core 0 its
+           payload's start (P:$30000): the loader handed over exactly as the
+           boot ROM does
 
 What this cannot see (docs/proposals/FIRMWARE_SWITCHER.md): the reset
 itself (the port does not reset; the ui case stops at the reset sequence),
@@ -261,6 +270,41 @@ def main():
     refused("bver", [(MBOX, mailbox(stock)), (IMG, stage_stock)], "ST_BVER")
     refused("size", [(0x3FFC, norver), (MBOX, mailbox(stock, length=C["OSW_MAXLEN"] + 4)),
                      (IMG, stage_stock)], "ST_SIZE")
+    # ---- dsp: park the running cores, boot them through the loaders --------
+    B = 0x40000400
+    blobs = {"bootA": (0x400E21E0, 0x96), "payA": (0x400E2324, 0x136CB),
+             "bootB": (0x400E2276, 0xAE), "payB": (0x400F59EF, 0x12D05)}   # dsp_modmap
+    at, where, cmds = 0x41300000, {}, ["frame on", "run 300", "frame off", "run 20"]
+    for k, (a, n) in blobs.items():
+        where[k] = at
+        for o in range(0, n, 4096):
+            m = min(4096, n - o)
+            cmds.append(f"poke {at + o:#x} " + homeb[a - B + o:a - B + o + m].hex())
+        at = (at + n + 0xFF) & ~0xFF
+    cmds += [f"call {rt['osw_park']:#x}",
+             "poke 0xfc0a400c 00", "poke 0x20000000 0081",
+             f"call 0x40001d4c {where['bootA']:#x} 0x96 0x31000", f"call 0x40001b18 {where['payA']:#x}",
+             "poke 0xfc0a400c 01", "poke 0x20000000 0081",
+             f"call 0x40001d4c {where['bootB']:#x} 0xae 0x32000", f"call 0x40001b18 {where['payB']:#x}",
+             "run 5", "dsp pcwatch", "quit"]
+
+    def interactive(pcwatch):
+        r = subprocess.run([str(EMU), "--image", str(home), "--preload", f"0x3ffc={norver}", "--dsp",
+                            "--dsp-pcwatch", pcwatch, "--interactive"],
+                           input="\n".join(cmds) + "\n", capture_output=True, text=True, cwd=ROOT)
+        oks = [l for l in r.stdout.splitlines() if l.startswith(("ok d0=", "err"))]
+        w = [l for l in r.stdout.splitlines() if l.startswith("dsp n=")]
+        arrivals = len(w[-1].split()) - 2 if w else 0
+        return oks, arrivals
+
+    res = {pc: interactive(pc) for pc in ("0:0x31000", "0:0x30000", "1:0x32000")}
+    oks = res["0:0x31000"][0]
+    check("dsp: both cores took the park command, every upload step returned",
+          len(oks) == 5 and oks[0] == "ok d0=0x3" and all(o.startswith("ok") for o in oks), "; ".join(oks))
+    check("dsp: core 0 entered bootstrap A and its payload's start again, core 1 bootstrap B",
+          all(res[pc][1] >= 2 for pc in res),
+          ", ".join(f"{pc} x{res[pc][1]}" for pc in res))
+
     if fails:
         print(f"  verify_osswitch: logs in {work}")
     else:

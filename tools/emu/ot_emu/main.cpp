@@ -79,6 +79,7 @@ namespace
 	//   tx                -> tx <hex>      UART A's transmit bytes since the last tx
 	//   peek <addr> <len> -> peek <hex>    len <= 4096; unmapped -> err
 	//   poke <addr> <hex> -> ok
+	//   call <addr> [<arg>...] -> ok d0=<hex>   a firmware routine run as main (--call's callAsMain)
 	//   frame on|off      -> ok            Rtos::setFrame
 	//   status            -> status sample= ms= frames= frame=on|off idle= wall=
 	//   quit              -> ok            then exit 0
@@ -823,6 +824,34 @@ namespace
 				for(size_t i = 0; i < bytes.size(); ++i)
 					_m.write8(static_cast<uint32_t>(addr + i), bytes[i]);
 				reply("ok");
+				continue;
+			}
+			if(cmd == "call")
+			{
+				// `call <addr> [<arg>...]` -> ok d0=<hex> | err <why>: a firmware
+				// routine run as main (Rtos::callAsMain, --call's), for a routine
+				// that cannot genuinely block. modules/os-switch's osw_reupload
+				// (verify_osswitch: park the DSP, then the stock upload).
+				uint64_t addr = 0;
+				std::vector<uint32_t> args;
+				bool okArgs = w.size() >= 2 && parseNumber(w[1], addr) && addr <= 0xffffffffull;
+				for(size_t i = 2; okArgs && i < w.size(); ++i)
+				{
+					uint64_t v = 0;
+					okArgs = parseNumber(w[i], v) && v <= 0xffffffffull;
+					args.push_back(static_cast<uint32_t>(v));
+				}
+				if(!okArgs)
+				{
+					reply("err usage: call <addr> [<arg>...]");
+					continue;
+				}
+				uint32_t d0 = 0;
+				if(_rtos.callAsMain(static_cast<uint32_t>(addr), args, d0, 400000000))
+					std::snprintf(buf, sizeof buf, "ok d0=%#x", d0);
+				else
+					std::snprintf(buf, sizeof buf, "err did not return: %s", _rtos.why().c_str());
+				reply(buf);
 				continue;
 			}
 			if(cmd == "frame")

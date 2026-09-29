@@ -77,6 +77,23 @@ version the image carries (`0x400dea48`, `0x0408` in 1.40C) with NOR's
 chainloader runs only an image whose word equals NOR's. `make obi` refuses
 any other.
 
+**The DSP.** ✅ Measured on the unit (BOOT TRACE, build 4): after the
+soft reset the staged OS runs and its DSP upload (`0x40001e50`) never
+returns. The DSP is not reset with the ColdFire, and its HI08 bootstrap
+ROM only listens after a chip reset. So before the reset `osw_park` sends
+each core host command `$12` (vector `P:$24`, stock's unused
+`reserved24`, a `DspHook` in both payloads), and `dsp_park.asm` masks
+interrupts, stops DMA 0-5 and both ESAI ports, leaves the interrupt
+(`move ssh,x0` / `move x0,ssh` / `rti`: the vendored emulator runs no
+peripheral inside a long interrupt, and the chip does not care), and
+loops as a boot-ROM loader: a count, an address, that many words into
+P, then `jmp (r1)` with r0/r1 and CCR as the ROM leaves them. Every
+instruction form has a stock site; the HRDF waits are written with a
+numeric displacement because `dsp_asm` encodes a label there as an
+absolute address. ✅ Under the port: both cores take the command, the
+stock upload's own steps go through the loaders, and each core enters
+its stock bootstrap and payload start again.
+
 **The reset.** Stock never resets the unit after OS UPGRADE: it shows
 `UPGRADE DONE` / `PLEASE REBOOT!` and waits for a power-cycle. So the
 switcher masks interrupts, drains the panel's UART queue (OS UPGRADE's
@@ -121,13 +138,14 @@ the OS and is sent nothing (untested on an MKI).
    unpacks the OS; nothing in it clears or tests RAM outside TESTMODE.
    Falsified by `NOW: THE FLASHED OS` or `LAST: STAGE LOST (HASH)` right
    after a switch to an image that carries this module.
-2. **The unit comes back after the soft reset.** ❌ Build 1: it hung in
-   the bootstrap (the panel was not reset; above). Build 3 sends the
-   panel `60 02` first. Falsified by the same hang: the OCTABAM screen,
-   dim keys. Power-cycle; nothing was written.
-3. **The DSP comes up after a chainloaded boot.** The upload needs both
-   cores in their boot ROM, so the reset must reach the DSP. Falsified by a
-   unit that boots with no audio, or hangs at the boot logo. Power-cycle.
+2. **The DSP comes back after the soft reset.** ✅ Builds 1-4 hung in
+   the DSP upload: the soft reset does not reset the DSP (BOOT TRACE on
+   the unit, `docs/remixer/FAILURE_MODES.md`). Build 6 parks each core in
+   a boot-ROM loader of its own before the reset (`dsp_park.asm`, below).
+   Falsified by the same hang, or by BOOT TRACE stopping after note 2.
+3. **The DSP runs normally after a chainloaded boot.** Its payload is
+   loaded and started through the parked loader, not the ROM. Falsified by
+   silence or wrong audio after a switch that otherwise boots.
 4. **The caches.** The port has none. The stub invalidates the I-cache
    and branch cache and restores the bootstrap's exit `CACR`. A stale line
    would show as a crash straight after the switch. Power-cycle.

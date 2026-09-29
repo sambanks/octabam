@@ -27,6 +27,7 @@
         .set    MB_STATUS,   16             | written by the chainloader at every boot (below)
         .set    MB_RESET,    20             | written by the switcher: the last reset path it reached
         .set    MB_NAME,     24             | the file's name, NUL-terminated, 32 bytes
+        .set    MB_PARK,     56             | the DSP cores that took the park command: bit 0 core 0, bit 1 core 1
 
 | status words (MB_STATUS)
         .set    ST_BOOT,     0x424f4f54     | "BOOT" handed over to the staged image

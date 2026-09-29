@@ -19,7 +19,8 @@ README.md beside this file is the procedure.
 
 import pathlib
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, SymbolRef
+from remix.schema import (Category, Detour, DspHook, DspSection, Gate, Kind, Linked, Module,
+                          Poke, Proof, SymbolRef)
 
 H = bytes.fromhex
 HERE = pathlib.Path(__file__).resolve().parent
@@ -42,7 +43,7 @@ def _include(_modules):
 MODULE = Module(
     name="os-switch",
     key="OS SWITCH",
-    kind=Kind.CF_PATCH,
+    kind=Kind.HYBRID,
     category=Category.REFERENCE, author="sanderlegit", author_url="https://github.com/sanderlegit",
     proof=Proof.PORT,
     proof_note="the chainload under the port (`verify_osswitch`); the reset, SDRAM "
@@ -52,6 +53,16 @@ MODULE = Module(
     linked=(
         Linked("osw_chain", "modules/os-switch/chain.s", cpu="5475", include=_include),
         Linked("osw_switch", "modules/os-switch/switch.s", dram=True, include=_include),
+    ),
+    # Each DSP core, told by host command $12 before the reset, parks in a
+    # boot-ROM loader of its own (dsp_park.asm): the soft reset restarts the
+    # ColdFire but not the DSP, whose ROM only listens after a chip reset.
+    dsp=DspSection(
+        asm="modules/os-switch/dsp_park.asm",
+        priority=20,
+        payloads=frozenset({"A", "B"}),
+        hooks=(DspHook(0x24, (0x0C0024, 0x000000), "osw_dsp",
+                       "host command $12 (stock's unused reserved24 vector): park in a loader"),),
     ),
     detours=(
         Detour(0x40000412, H("2e7c48000000"), "osw_chain", "osw_chain",

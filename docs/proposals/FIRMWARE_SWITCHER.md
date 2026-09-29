@@ -184,8 +184,23 @@ the same for `STOCK140.OBI` and `HOME.OBI`. ✅ Two facts from it:
 - a soft reset does not reset the MKII panel controller, and the
   bootstrap blocks in its first panel exchange (`0x128`, no timeout).
 
-Build 3 sends the panel `60 02` before the reset (3; the module README).
-The steps below stand, for build 3:
+**Build 3** (the MKII panel's `60 02` before the reset): the same hang.
+**Build 4** (BOOT TRACE, a MIDI note per boot stage off MIDI OUT, recorded
+on the Mac): ✅ after the switch the flashed image's entry ran, the
+staged image's own entry ran 103 ms later (the stage SURVIVES the soft
+reset and the chainload works on the unit), the DSP upload started and
+never returned. ✅ The soft reset does not reset the DSP; its HI08
+bootstrap ROM only listens after a chip reset. ❌ Retracted: "the MKII
+panel is not reset" (this unit is flagged an MKI; build 3's panel bytes
+were never sent).
+
+**Build 6**: before the reset each core is parked in a boot-ROM loader of
+its own (`dsp_park.asm`: host command `$12` on stock's unused vector
+`P:$24`; DMA and ESAI stopped; the interrupt left; count, address, words,
+jump). Under the port both cores take it, the stock upload completes
+through the loaders, and each core enters its stock bootstrap and payload
+start again (`verify_osswitch`'s `dsp` case). The steps below stand, for
+build 6 (with BOOT TRACE: `os-switch-trace`):
 
 Each step is one flash of the `os-switch` image, or none. Every failure
 ends in the flashed image after a power-cycle.
