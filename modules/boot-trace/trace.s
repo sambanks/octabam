@@ -12,6 +12,12 @@
 |   6  the UI's panel report check    0x40061c94
 |   7  the first audio frame interrupt entered   0x4000aad0
 |   8  ... and returned                          0x4000d9a6
+|   9  the entry's clock check reached, velocity = the PLL multiplier byte
+|      (0xfc0c4000 >> 24; 22 = 264 MHz)          0x40000432
+|  10  the entry's bootstrap-REPROGRAM branch taken, velocity = NOR's
+|      bootstrap version low byte (must never appear)   0x40000450
+|  11  the bootstrap reprogram itself entered   0x4000f9b4
+|  12  (OS SWITCH's chainloader) no switch pending: back to the entry
 |
 | UART0 is MIDI (its RX is MIDI IN, docs/remixer/EMU.md); the bootstrap
 | sets it up for its own SysEx upgrade and enables its transmitter
@@ -24,19 +30,29 @@
 
         .text
 
-| trace: the note in d0.b; everything preserved
+| trace: the note in d0.b, velocity 127; tracev: velocity in d1.b (0..127).
+| Everything preserved.
         .global trace
 trace:
-        lea     (-12,%sp),%sp
-        movem.l %d0-%d2,(%sp)
+        move.l  %d1,-(%sp)
+        moveq   #0x7f,%d1
+        bsr.s   tracev
+        move.l  (%sp)+,%d1
+        rts
+        .global tracev
+tracev:
+        lea     (-16,%sp),%sp
+        movem.l %d0-%d3,(%sp)
+        move.l  %d1,%d3
         move.l  #0x90,%d1
         bsr.s   tx
         move.l  (%sp),%d1
         bsr.s   tx
-        moveq   #0x7f,%d1
+        move.l  %d3,%d1
+        andi.l  #0x7f,%d1
         bsr.s   tx
-        movem.l (%sp),%d0-%d2
-        lea     (12,%sp),%sp
+        movem.l (%sp),%d0-%d3
+        lea     (16,%sp),%sp
         rts
 tx:
         move.l  #200000,%d2
@@ -122,3 +138,39 @@ tr_frame_end:
 seen7:  .byte   0
 seen8:  .byte   0
         .even
+
+        .global tr_clock
+tr_clock:
+        move.l  %d0,-(%sp)
+        move.l  %d1,-(%sp)
+        move.l  (0xfc0c4000).l,%d1
+        moveq   #24,%d0
+        lsr.l   %d0,%d1
+        moveq   #9,%d0
+        bsr.w   tracev
+        move.l  (%sp)+,%d1
+        move.l  (%sp)+,%d0
+        move.w  (0x400dea48).l,%d1
+        jmp     (0x40000438).l
+
+        .global tr_reprog_branch
+tr_reprog_branch:
+        move.l  %d0,-(%sp)
+        move.l  %d1,-(%sp)
+        mvz.w   (0x3ffc).w,%d1
+        moveq   #10,%d0
+        bsr.w   tracev
+        move.l  (%sp)+,%d1
+        move.l  (%sp)+,%d0
+        pea     (0x96).w
+        jmp     (0x40000456).l
+
+        .global tr_reprog
+tr_reprog:
+        move.l  %d0,-(%sp)
+        moveq   #11,%d0
+        bsr.w   trace
+        move.l  (%sp)+,%d0
+        lea     (-16,%sp),%sp
+        movem.l %d2/%a2-%a4,(%sp)
+        jmp     (0x4000f9bc).l

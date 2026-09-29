@@ -40,7 +40,7 @@ def main():
                        capture_output=True, text=True, cwd=ROOT)
     if r.returncode:
         sys.exit(f"verify_boottrace: building {remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
-    trace = nm(ROOT / "out/linked/boot-trace/boot_trace/u.elf")["trace"]
+    trace = nm(ROOT / "out/linked/boot-trace/boot_trace/u.elf")["tracev"]
     watch = [trace]
     chain = None
     if "OS SWITCH" in mods:
@@ -54,17 +54,21 @@ def main():
                           "--preload", f"0x3ffc={ver}", "--max", "150000000", "--frame", "--frames", "20",
                           "--watch-pc", ",".join(f"0x{a:x}" for a in watch)],
                          capture_output=True, text=True, cwd=ROOT).stdout
-    seq = []
-    for m in re.finditer(r"^\s*\[\s*\d+\] at 0x([0-9a-f]+) d0=(0x[0-9a-f]+|0)", out, re.M):
-        a, d0 = int(m.group(1), 16), int(m.group(2), 16)
+    seq, chain_bytes = [], 0
+    for m in re.finditer(r"^\s*\[\s*\d+\] at 0x([0-9a-f]+) d0=(0x[0-9a-f]+|0) d1=(0x[0-9a-f]+|0)", out, re.M):
+        a, d0, d1 = int(m.group(1), 16), int(m.group(2), 16), int(m.group(3), 16)
         if a == trace:
-            seq.append(d0 & 0xFF)
-        elif a == chain and 1 not in seq:
-            seq.append(1)
-    want = ([1] if chain else []) + [2, 3, 4, 5, 6, 7, 8]
-    ok = sorted(seq) == want and seq[:len(want) - 3] == want[:len(want) - 3]
+            seq.append((d0 & 0xFF, d1 & 0x7F))
+        elif a == chain:
+            chain_bytes += 1
+    notes = [n for n, _ in seq]
+    want = [9, 2, 3, 4, 5, 6, 7, 8]
+    ok = (sorted(notes) == sorted(want) and notes[:5] == want[:5] and "HANDOFF" in out
+          and dict(seq).get(9) == 22 and 10 not in notes and 11 not in notes
+          and chain_bytes == (6 if chain else 0))
     print(f"  [{'PASS' if ok else 'FAIL'}] verify_boottrace: a normal MKII boot sends notes "
-          f"{want} in order  (saw {seq})")
+          f"{'1, 12 (the chainloader), ' if chain else ''}{want}, clock 22, never 10/11  "
+          f"(saw {seq}, {chain_bytes} chainloader byte(s))")
     return 0 if ok else 1
 
 

@@ -110,6 +110,16 @@ badhash:
         move.l  #ST_HASH,%d0
 1:      move.l  %d0,(MB_STATUS,%a1)
 resume:
+        .if     TRACE
+        | BOOT TRACE's note 12: back to the entry (velocity: the status's last byte)
+        move.l  #0x90,%d1
+        bsr.w   txmidi
+        moveq   #12,%d1
+        bsr.w   txmidi
+        move.l  (MB_STATUS,%a1),%d1
+        andi.l  #0x7f,%d1
+        bsr.w   txmidi
+        .endif
         movea.l #0x48000000,%sp         | the displaced instruction
         jmp     (OS_RESUME).l
 
