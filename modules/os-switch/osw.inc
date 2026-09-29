@@ -37,8 +37,8 @@
         .set    ST_HASH,     0x48415348     | "HASH" the stage changed between the switch and the boot
 
 | reset paths (MB_RESET): which one the switcher reached before the unit reset
-        .set    RS_SPIN,     0x5350494e     | "SPIN" OS UPGRADE's own: interrupts masked, spinning
-        .set    RS_RCR,      0x52435220     | "RCR " ~4 s of spinning later: the reset controller's soft reset
+        .set    RS_SPIN,     0x5350494e     | "SPIN" armed: interrupts masked, the panel being reset (build 1: a stock spin)
+        .set    RS_RCR,      0x52435220     | "RCR " the reset controller's soft reset requested
 
 | the stock facts (docs/proposals/FIRMWARE_SWITCHER.md, read from the 1.40C image)
         .set    OS_ENTRY,    0x40000400     | where the bootstrap depacks the OS and what it calls

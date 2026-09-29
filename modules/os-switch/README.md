@@ -39,8 +39,8 @@ The dialog's third line:
 | line | means |
 |---|---|
 | `NOW: THE FLASHED OS` | no switch reached this boot (a power-on, or the stage did not survive the reset) |
-| `NOW: NAME.OBI (SPIN)` | this image came from the card; stock's own post-upgrade spin reset the unit |
-| `NOW: NAME.OBI (RCR)` | the same, but the reset came from the ~4 s fallback, the reset controller's soft reset |
+| `NOW: NAME.OBI (RCR)` | this image came from the card, through the reset controller's soft reset |
+| `NOW: NAME.OBI (SPIN)` | the same, but the soft reset was never recorded as requested (not expected) |
 | `LAST: STAGE LOST (HASH)` | the stage changed across the reset; the flashed image booted |
 | `LAST: WRONG BOOTSTRAP` / `LAST: BAD SIZE` | the chainloader refused the stage |
 
@@ -77,14 +77,21 @@ version the image carries (`0x400dea48`, `0x0408` in 1.40C) with NOR's
 chainloader runs only an image whose word equals NOR's. `make obi` refuses
 any other.
 
-**The reset.** It copies OS UPGRADE's own after-flash sequence
-(`0x4007fe6c..0x4007fe7c`: interrupts masked, the panel's UART queue
-flushed, then spinning). Something resets the unit from there; the image
-does not show what. 🟡 Probably a watchdog that the masked interrupts stop
-feeding: neither the OS nor the bootstrap writes the reset controller or
-the core watchdog. After about 4 s the switcher requests a soft reset
-(RCR SOFTRST, `0xfc0a0000` bit 7). 🟡 From the MCF54455 reference manual;
-no site in the image. The mailbox records which one it reached.
+**The reset.** Stock never resets the unit after OS UPGRADE: it shows
+`UPGRADE DONE` / `PLEASE REBOOT!` and waits for a power-cycle. So the
+switcher masks interrupts, drains the panel's UART queue (OS UPGRADE's
+first two steps), and requests a soft reset (RCR SOFTRST, `0xfc0a0000`
+bit 7, MCF54455 RM). ✅ Measured on an MKII (build 1, 29 Sep 2026): a bare
+soft reset brings the bootstrap back, but the panel controller is not
+reset with the ColdFire. The bootstrap's first panel exchange (`0x128`:
+`60 00`, then wait with no timeout for key rows `0x25..0x27`) never
+completes, and the unit sits on the OCTABAM screen with the keys dimmer
+than at power-on. So on an MKII the switcher first sends the panel
+`60 02`, the byte pair the OS's own loader handshake (`0x4001f4dc`) opens
+with at every boot. 🟡 That puts the panel back in its start-up state, so
+the bootstrap's `60 00` finds it as a power-on does. Build 3 tests this;
+it is falsified by the same hang. An MKI's panel gets no handshake from
+the OS and is sent nothing (untested on an MKI).
 
 ## Measured ✅ (under the ColdFire port, `tools/verify/verify_osswitch.py`)
 
@@ -114,9 +121,10 @@ no site in the image. The mailbox records which one it reached.
    unpacks the OS; nothing in it clears or tests RAM outside TESTMODE.
    Falsified by `NOW: THE FLASHED OS` or `LAST: STAGE LOST (HASH)` right
    after a switch to an image that carries this module.
-2. **Something resets the unit.** Falsified by a unit that stays on the
-   dialog's `WAIT` for more than about 10 s. Power-cycle; nothing was
-   written.
+2. **The unit comes back after the soft reset.** ❌ Build 1: it hung in
+   the bootstrap (the panel was not reset; above). Build 3 sends the
+   panel `60 02` first. Falsified by the same hang: the OCTABAM screen,
+   dim keys. Power-cycle; nothing was written.
 3. **The DSP comes up after a chainloaded boot.** The upload needs both
    cores in their boot ROM, so the reset must reach the DSP. Falsified by a
    unit that boots with no audio, or hangs at the boot logo. Power-cycle.

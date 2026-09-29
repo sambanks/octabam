@@ -20,13 +20,20 @@
 | the OS entry's first instruction, a length that fits the stage, and the
 | bootstrap version word equal to NOR's.
 |
-| The reset: stock's post-flash spin is what reboots the unit after OS
-| UPGRADE, by a mechanism not identified in the image (no write to the
-| reset controller or the core watchdog in either the OS or the
-| bootstrap; INFERRED to be a watchdog the masked interrupts stop
-| feeding). If nothing has reset the unit after ~4 s of spinning, this
-| requests a soft reset through the reset controller (RCR SOFTRST,
-| 0xfc0a0000 bit 7, MCF54455 RM -- INFERRED, not seen in the image).
+| The reset: stock never resets itself after OS UPGRADE (its last screen
+| is "UPGRADE DONE / PLEASE REBOOT!", then it spins until a power-cycle),
+| so this requests a soft reset through the reset controller (RCR
+| SOFTRST, 0xfc0a0000 bit 7, MCF54455 RM). MEASURED on an MKII, 29 Sep
+| 2026 (build 1): a bare soft reset brings the bootstrap back, and the
+| boot then hangs on the OCTABAM screen with the keys dimmer than at
+| power-on. The panel controller is not reset with the ColdFire, and the
+| bootstrap's first exchange (0x128: send `60 00`, then block with no
+| timeout until the panel reports key rows 0x25..0x27) never completes.
+| So on an MKII the panel is first sent `60 02`, the command the OS's own
+| loader handshake (0x4001f4dc) opens with at every boot, which puts it in
+| its start-up state; the bootstrap's `60 00` then finds it as a power-on
+| does (INFERRED from the bootstrap and the OS's handshake; build 3 tests
+| it). An MKI's panel gets no handshake from the OS and is left alone.
 
         .include "remix.inc"
 
@@ -50,6 +57,9 @@
         .set    OS_FIRST,  0x4fefffe4   | the entry's `lea (-28,%sp),%sp`
         .set    UART1_FLUSH, 0x40010a4c
         .set    RCR,       0xfc0a0000
+        .set    UART1_USR, 0xfc064004   | the panel link: bit 3 = TXEMP (the bootstrap's putc, 0x20)
+        .set    UART1_UTB, 0xfc06400c
+        .set    MKII_FLAG, 0x46c8d18c   | 1 on an MKII (docs/firmware/PANEL.md 4c)
         .set    NMAX, 32                | .OBI files listed
         .set    NLEN, 24                | bytes kept of each name
 
@@ -413,12 +423,23 @@ osw_load:
         move.l  %d0,(MB_MAGIC,%a1)
         .global osw_reset
 osw_reset:
-        | OS UPGRADE's reboot after the flash (0x4007fe6c..0x4007fe7c)
+        | interrupts off, the panel's queue drained (OS UPGRADE's own
+        | first two steps, 0x4007fe6c..0x4007fe78)
         move.w  #0x2700,%sr
         jsr     (UART1_FLUSH).l
-        move.l  #0x20000000,%d0         | ~4 s at 266 MHz (two-instruction loop, cycle count INFERRED)
+        | MKII: the panel back to its start-up state, `60 02`, so the
+        | bootstrap's `60 00` after the reset gets its key report
+        tst.l   (MKII_FLAG).l
+        beq.s   9f
+        moveq   #0x60,%d1
+        bsr.s   putpanel
+        moveq   #0x02,%d1
+        bsr.s   putpanel
+        bsr.s   txempty
+        move.l  #0x00400000,%d0         | ~20 ms for the panel to act on it (cycle count INFERRED)
 7:      subq.l  #1,%d0
         bne.s   7b
+9:
         .global osw_softreset
 osw_softreset:
         lea     (OSW_MBOX).l,%a1
@@ -427,6 +448,19 @@ osw_softreset:
         move.b  #0x80,%d0
         move.b  %d0,(RCR).l
 8:      bra.s   8b
+
+| one byte to the panel, polled as the bootstrap's putc does (0x20)
+        .global putpanel
+putpanel:
+        bsr.s   txempty
+        move.b  %d1,(UART1_UTB).l
+        rts
+        .global txempty
+txempty:
+        move.b  (UART1_USR).l,%d0
+        btst    #3,%d0
+        beq.s   txempty
+        rts
 
 notos_close:
         move.l  %d5,-(%sp)

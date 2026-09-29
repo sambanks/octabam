@@ -84,9 +84,13 @@ queue (`0x40000c3c`) → `0x40080640`. From there:
   size, `0x46c82426` read in 8-sector chunks, `0x46c82422` close);
 - it programs NOR from `0x4000` and verifies it word by word
   (`0x4007fcb2`);
-- it reboots: `move.w #0x2700,%sr ; jsr 0x40010a4c ; bra .`.
+- it ends on `UPGRADE DONE` / `PLEASE REBOOT!` and `move.w #0x2700,%sr ;
+  jsr 0x40010a4c ; bra .`: stock never resets the unit; the user
+  power-cycles.
 
-A switcher reuses all of it except the programming.
+A switcher reuses all of it except the programming, and has to bring its
+own reset (5).
+
 
 ### 2.4 Memory the OS never touches ✅
 
@@ -109,7 +113,7 @@ CONTROL > OS SWITCH                          bootstrap unpacks NOR -> 0x40000400
   deferred: sync, wait card (stock)            length, NOR version, hash
   read X.OBI -> stage (reserve top)            stub -> 0x49200100
   mailbox: len, hash, check, name              stub: caches off, copy stage -> 0x40000400,
-  reset: OS UPGRADE's spin; ~4 s, RCR                CACR = 0x0008c000, jsr 0x40000400
+  reset: MKII panel `60 02`, RCR SOFTRST             CACR = 0x0008c000, jsr 0x40000400
                                              staged OS boots from the start
 ```
 
@@ -122,7 +126,7 @@ CONTROL > OS SWITCH                          bootstrap unpacks NOR -> 0x40000400
   target that hangs costs one reset, never a loop.
 - **Every refusal boots the flashed image** and leaves a status word
   (`NONE`, `HASH`, `BVER`, `SIZE`). A target that carries OS SWITCH
-  reports `RUN` plus which reset path brought it (`SPIN` or `RCR`) on its
+  reports `RUN` plus the reset path that brought it (`RCR`) on its
   dialog's third line. That line doubles as the hardware probe.
 - **What it costs:**
   - 274 B of ROM cave;
@@ -141,7 +145,7 @@ from the state the bootstrap hands over, minus one parked argument and the
 
 ---
 
-## 4. What is measured ✅ (the port, `tools/verify/verify_osswitch.py`, 15 checks)
+## 4. What is measured ✅ (the port, `tools/verify/verify_osswitch.py`, 16 checks)
 
 - The panel drives the row, the dialog, the deferred load and the reset
   sequence on a card holding `STOCK140.OBI`. The stage reads back equal
@@ -171,16 +175,28 @@ Two changes to the port came with it (`docs/remixer/EMU.md`):
 
 ## 5. What must be measured on the unit, in order
 
+**Build 1 (29 Sep 2026, an MKII).** The switch ran, the load ran, and
+after ~4 s the RCR soft reset restarted the unit: the bootstrap drew the
+OCTABAM1 screen (the version string is NOR's, as predicted in step 4 of
+the list below), then hung with every key a dimmer white than at power-on,
+the same for `STOCK140.OBI` and `HOME.OBI`. ✅ Two facts from it:
+- stock's spin never resets the unit; `PLEASE REBOOT!` means it;
+- a soft reset does not reset the MKII panel controller, and the
+  bootstrap blocks in its first panel exchange (`0x128`, no timeout).
+
+Build 3 sends the panel `60 02` before the reset (3; the module README).
+The steps below stand, for build 3:
+
 Each step is one flash of the `os-switch` image, or none. Every failure
 ends in the flashed image after a power-cycle.
 
-1. **The reset happens.** CONTROL > OS SWITCH > `STOCK140.OBI` > YES.
-   Expect a reboot within ~5 s. Falsified by the `WAIT` popup staying up
-   (neither stock's spin nor RCR resets the unit): power-cycle and
-   report.
+1. **The reset comes back up.** CONTROL > OS SWITCH > `STOCK140.OBI` >
+   YES. Expect a reboot within a second or two of `WAIT`, into stock.
+   Falsified by build 1's hang (OCTABAM screen, dim keys): power-cycle
+   and report.
 2. **SDRAM keeps the stage.** Switch to `HOME.OBI` (`make obi
    REMIX=os-switch OBI=HOME`, the flashed image itself). After the reboot,
-   OS SWITCH's dialog should read `NOW: HOME.OBI (SPIN)` or `(RCR)`.
+   OS SWITCH's dialog should read `NOW: HOME.OBI (RCR)`.
    `NOW: THE FLASHED OS` means the mailbox was lost; `LAST: STAGE LOST
    (HASH)` means part of the stage was.
 3. **The DSP and the caches.** After step 2, and after a switch to
