@@ -107,7 +107,7 @@ str_os:
 str_self:
         OSW_SELF                        | remix.inc: this image's own name (make's VERSION)
 str_flash:
-        .asciz  "FLASH "
+        .asciz  "HOME "
 str_unknown:
         .asciz  "?"
 str_title:
@@ -123,7 +123,7 @@ str_q:
 str_stops:
         .asciz  "PLAYBACK WILL STOP"
 str_home:
-        .asciz  "POWER-CYCLE: FLASHED OS"
+        .asciz  "POWER-CYCLE: BACK HOME"
 str_now:
         .asciz  "NOW "
 str_flashed:
@@ -275,13 +275,13 @@ buildrows:
         lea     (-16,%sp),%sp
         movem.l %d2-%d3/%a2-%a3,(%sp)
         lea     osw_rows,%a2
-        | heading 0: "\x17\x17NOW <this image>\x17..."
+        | heading 0: "\x17NOW <this image>\x17..."
         lea     head0,%a3
         lea     str_now,%a0
         bsr.w   heading
         lea     str_self,%a0
         bsr.w   headtail
-        | heading 1: "\x17\x17FLASH <the flashed image>\x17...": this one
+        | heading 1: "\x17HOME <the flashed image>\x17...": this one
         | after a power-on; after a switch, the name the switch carried
         lea     head1,%a3
         lea     str_flash,%a0
@@ -361,12 +361,12 @@ inert:
         clr.l   (%a2)+
         rts
 
-| heading: start the heading at a3 -- two 0x17 glyphs, then the text at a0
+| heading: start the heading at a3 -- one 0x17 glyph (the pane is 15
+| characters wide: HOME + a 9-character name fills it), then the text at a0
 heading:
         moveq   #0x17,%d0
         move.b  %d0,(%a3)
-        move.b  %d0,(1,%a3)
-        clr.b   (2,%a3)
+        clr.b   (1,%a3)
         move.l  %a0,-(%sp)
         move.l  %a3,-(%sp)
         bsr.w   strcat
@@ -732,7 +732,7 @@ osw_load:
         subq.l  #1,%d0
         bne.s   7b
         move.l  %d1,(MB_BODYSUM,%a1)
-        | the flashed image's name, for the next image's FLASH line: ours
+        | the flashed image's name, for the next image's HOME line: ours
         | after a power-on, carried on when this boot is itself a switch
         move.l  (MB_STATUS,%a1),%d0
         cmpi.l  #ST_RUN,%d0

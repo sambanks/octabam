@@ -22,12 +22,15 @@ make obi REMIX=<any remix> OBI=NAME       # out/NAME.OBI: any build, 12-characte
 ```
 
 1. Copy the `.OBI` files to the card root.
-2. MAIN MENU > OS. The pane shows what is running (`NOW FLASHED`, or
-   `NOW <NAME>` after a switch), a line if the last switch was refused, then
-   every `.OBI`, sorted, without the extension. It is read again each time
-   MAIN MENU opens.
+2. MAIN MENU > OS. The pane's two headings: `NOW <NAME>`, the image
+   running (its build's VERSION), and `HOME <NAME>`, the flashed one a
+   power-cycle returns to (carried in the mailbox across a switch). Then a
+   line if the last switch was refused, then every `.OBI`, sorted, without
+   the extension. It is read again each time MAIN MENU opens, without
+   disturbing the stock browsers' listing (the scan's global name pool and
+   cache are saved and restored around it, `docs/remixer/FAILURE_MODES.md`).
 3. [YES] on a file: `BOOT <NAME>?` / `PLAYBACK WILL STOP` / `POWER-CYCLE:
-   FLASHED OS`. [YES] stops playback, syncs the project (as OS UPGRADE
+   BACK HOME`. [YES] stops playback, syncs the project (as OS UPGRADE
    does), loads the file and resets the unit.
 4. A power-cycle boots the flashed image again.
 
