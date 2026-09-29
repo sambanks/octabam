@@ -71,6 +71,7 @@ def part_of(pdir, bank, part):
     return dict(fx1=list(c[otp.FX1_OFF:otp.FX1_OFF + 8]), fx2=list(c[otp.FX2_OFF:otp.FX2_OFF + 8]),
                 mtype=list(c[otp.MTYPE_OFF:otp.MTYPE_OFF + 8]),
                 static=[c[0x2d3 + t * 5] for t in range(8)], flex=[c[0x2d3 + t * 5 + 1] for t in range(8)],
+                levels=list(c[0x01b:0x02b:2]),
                 pat_part=pat_part)
 
 
@@ -325,11 +326,24 @@ def main():
         check(f"page 2: T{t + 1} record halfwords 18-26 == the lane", not bad, "; ".join(bad))
 
     # midi
+    def sent(knob, t):
+        """The DSP-bound halfword of a send knob on track t: the knob << 8, or
+        with POST FADER in the remix the knob << 8 x (LEVEL/128)^2 from the
+        Part's LEVEL (modules/post-fader; no track these checks use is muted)."""
+        hw = knob << 8
+        return hw * part["levels"][t] ** 2 >> 14 if "POST FADER" in mods else hw
+
+    def word(knob, t):                     # as the engines read it: masked, << 8
+        return f"{(sent(knob, t) & 0x7f00) << 8:06x}"
+
     aux = recs[64 + 24] << 8 | recs[64 + 25]                     # T2 halfword 12
     t2_fx2 = registry.by_id(part["fx2"][1])
     if t2_fx2 is not None and t2_fx2.key in mods:
-        check("midi: CC 40 = 100 on T2's channel reached T2's AUX halfword", (aux >> 8) == 100,
-              f"halfword 12 = {aux:#06x} (knob {aux >> 8}; the lane's slew takes ~30 frames)")
+        want = sent(100, 1)
+        check("midi: CC 40 = 100 on T2's channel reached T2's AUX halfword"
+              + (" (post-fader)" if "POST FADER" in mods else ""),
+              (aux >> 8) == 100 if "POST FADER" not in mods else aux == want,
+              f"halfword 12 = {aux:#06x} (want {want:#06x}; the lane's slew takes ~30 frames)")
     else:
         # an unimplemented id runs the fallback, whose page publishes no slot 0
         print(f"  [skip] midi: CC 40 -> T2 slot 0: the part's T2 FX2 id 0x{part['fx2'][1]:02x} "
@@ -361,7 +375,8 @@ def main():
     if del_host is not None:
         v = peek.get(("1", "X", 0x6229))
         check(f"midi: CC 41 = 50 on T{del_host + 1}'s channel reached BusDelay's REV "
-              f"(raw $29 of its block, X:0x6229 on core 1)", v == "320000", f"{v}")
+              f"(raw $29 of its block, X:0x6229 on core 1)", v == word(50, del_host),
+              f"{v} (want {word(50, del_host)})")
         if "CC MAP" in mods:
             v = peek.get(("1", "X", 0x6275))
             n = int(v, 16) if v else -1
@@ -372,10 +387,10 @@ def main():
     if verb_host is not None:
         v = peek.get(("0", "Y", 0x36081))
         check(f"midi: CC 41 = 30 on T{verb_host + 1}'s channel reached BusVerb's REV flag "
-              f"(Y:0x36081 on core 0)", v == "1e0000", f"{v}")
+              f"(Y:0x36081 on core 0)", v == word(30, verb_host), f"{v} (want {word(30, verb_host)})")
         v = peek.get(("0", "Y", 0x9f4))
         check(f"midi: CC 40 = 70 on T{verb_host + 1}'s channel reached BusVerb's DEL ramp "
-              f"(Y:0x09f4 on core 0)", v == "460000", f"{v}")
+              f"(Y:0x09f4 on core 0)", v == word(70, verb_host), f"{v} (want {word(70, verb_host)})")
     m = re.search(r"midi in    : (\d+) byte\(s\) still queued", text)
     check("midi: the firmware took every byte", m is not None and m.group(1) == "0",
           f"{m.group(1) if m else '?'} queued at the end")
