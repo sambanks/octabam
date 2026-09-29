@@ -208,6 +208,13 @@ def measure(name):
 
     hits = [i for i, l in enumerate(lines) if SAMPLE_LOOP.match(l)]
     if not hits:
+        # A module whose proc does per-block work only (RETURNS publishes a
+        # knob) says so with the marker; anything else without a loop is a
+        # mistake and still refuses.
+        if "; NO SAMPLE LOOP\n" in src:
+            return dict(name=name, words=0, cycles=0,
+                        inner="no sample loop: per-block work only", loop_end=None,
+                        total_words=0, marked=False, modes=[])
         sys.exit(f"{name}: no `do n7,>...` sample loop found")
     if len(hits) > 1:
         alts = [_measure_loop(name, src, lines, i) for i in hits]

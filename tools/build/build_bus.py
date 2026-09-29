@@ -561,6 +561,14 @@ def assemble_syms(src_text, org, label=""):
         import tempfile
         _SCRATCH = pathlib.Path(tempfile.mkdtemp(prefix="build_bus."))
     tmp, binf, symf = (_SCRATCH / n for n in ("src.asm", "out.bin", "out.sym"))
+    # dsp_asm encodes the bit-test BRANCHES (brset/brclr/bsset/bsclr) with the
+    # target's ABSOLUTE address where the chip takes a displacement, and the
+    # round-trip listing prints it back unchanged (29 Sep 2026, AGENTS.md):
+    # refuse them; btst + bcs/bcc, or jset/jclr (absolute), instead.
+    _bad = re.findall(r"^[^;\n]*\b(brset|brclr|bsset|bsclr)\b", src_text, re.M | re.I)
+    if _bad:
+        sys.exit(f"{label or 'DSP source'}: {sorted(set(_bad))} -- dsp_asm encodes these "
+                 f"with an absolute target; use btst + bcs/bcc (AGENTS.md)")
     tmp.write_text(src_text)
     r = subprocess.run([str(DIS), "-in", str(tmp), "-org", f"{org:x}",
                         "-out", str(binf), "-sym", str(symf), "-list"],
@@ -2513,6 +2521,14 @@ hostquit:
             # away, and its id is already handled by the omitted-id alias.
             if absent not in NEW_IDS:
                 absent = None
+        # Any OTHER menu module whose DspSection.payloads leaves this core out
+        # (RETURNS: core 0 only) is not placed here either and is aliased to
+        # the fallback the same way. The two servers keep the SPEC rule above
+        # exactly (a non-SPEC build places both on both cores).
+        _one_core = [n for n, _t in plan
+                     if n in NEW_IDS and n not in ("DELAY SERVER", "REVERB SERVER")
+                     and tag not in remix_modules()[n].dsp.payloads]
+        plan = tuple(p for p in plan if p[0] not in _one_core)
         if NO_FB:
             # The DSP half of the NONE fallback, and it needs no new code:
             # the per-payload null stub is already in the image and is what
@@ -2814,6 +2830,12 @@ hostquit:
             # entry points rather than to whatever occupies its dispatch slot.
             wrw_p(pp["xtab"] + _m.menu.fx2_id * 3, fb_init)
             wrw_p(pp["xtab"] + (32 + _m.menu.fx2_id) * 3, fb_proc)
+
+        for _n in _one_core:
+            wrw_p(pp["xtab"] + NEW_IDS[_n] * 3, fb_init)
+            wrw_p(pp["xtab"] + (32 + NEW_IDS[_n]) * 3, fb_proc)
+            print(f"  {_n:13} NOT PLACED on this core (its payloads) -- id "
+                  f"0x{NEW_IDS[_n]:02x} aliased to SEND P:0x{fb_init:05x}")
 
         if absent is not None:
             # The absent engine's id must still dispatch to something on this

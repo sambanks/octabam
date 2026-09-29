@@ -181,6 +181,18 @@ proc:
         move    a1,x0
         move    x0,a                    ; A2-clean
         move    a,x:(r7+$5d)            ; this call's frame offset
+; ---- RETURNS (docs/proposals/RETURNS.md): this block's print mode --------
+; RETURNS on T8's FX2 writes the magic word to y:$e20 every block it runs;
+; this call reads it on the block's first call, keeps it for the block in
+; y:$e24 and clears it, so RETURNS gone for one block is normal print again.
+; One writer (RETURNS), one clearer (here), both on core 0.
+        tst     a                       ; a = this call's frame offset
+        bne     rt_latched              ; not the block's first call
+        move    y:>$e20,a
+        move    a,y:>$e24               ; the mode: magic = returns
+        clr     a
+        move    a,y:>$e20
+rt_latched:
 bus_off_done:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
@@ -1520,6 +1532,46 @@ lfrol:
         move    x:(r7+$63),n3           ; read address: the loop walks them
                                         ; through n2/n3 (free: the priming's
                                         ; use of n2/n3 is over)
+; ---- RETURNS: the print goes through the buffer y:$e00.. -----------------
+; n4 = this call's range of the buffer, y:$e00 + 2 x the frame offset (the
+; offset, not r0: the block's base is X:0 on the unit and X:$80 in dsp_host,
+; AGENTS.md). Normal print: the range is prefilled with this call's dry and
+; copied back to the block after the loop, so the block ends as dry + wet
+; exactly as before. Returns: the range is prefilled with zero, the block
+; keeps its dry, and the buffer ends as the wet alone for the mixdown hook.
+; r4 (m4 = $fff) addresses the buffer: y:$e00..$e1f never crosses a 4096
+; boundary, so the modulo never wraps it. r0 is left on the call's first
+; sample.
+        move    x:(r7+$5d),a            ; this call's frame offset
+        asl     a                       ; frames -> words
+        move    #>$e00,x0
+        add     x0,a
+        move    a,n4
+        move    a,r4
+        move    y:>$e24,a
+        move    #>$5a5a5a,x0
+        cmp     x0,a
+        beq     rt_pfz
+        do      n7,>rt_pfd
+        move    x:(r0)+,a               ; dry L
+        move    a,y:(r4)+
+        move    x:(r0)+,a               ; dry R
+        move    a,y:(r4)+
+rt_pfd:
+        move    n7,a                    ; r0 back by the 2 x n7 words it walked
+        asl     a
+        move    a,x0
+        move    r0,a
+        sub     x0,a
+        move    a,r0
+        bra     rt_pfe
+rt_pfz:
+        clr     a
+        do      n7,>rt_pfy
+        move    a,y:(r4)+
+        move    a,y:(r4)+
+rt_pfy:
+rt_pfe:
 
         do      n7,>rvend
 
@@ -2380,9 +2432,15 @@ fbB:
         move    x:(r7+$27),y0           ; GLVL (0..1)
         mpy     y0,x0,a                 ; signed (y0,x0): wet * gate
         move    a,x0                    ; gated wet L
-; THE HOST PRINT: dry + wet*WET, in place. The chain input (the aux, or
-; the delay's output while it is live) feeds the tank only; the dry the
-; host hears is its own.
+; THE HOST PRINT: dry + wet*WET. The chain input (the aux, or the delay's
+; output while it is live) feeds the tank only; the dry the host hears is
+; its own. Since RETURNS the print goes through the buffer at n4 (dry
+; prefilled, copied back after the loop; or zero, for the mixdown hook), so
+; r0 no longer walks the block here: it steps by lua, and r4 (free since the
+; tank's last lua) walks the buffer.
+        move    n4,r4                   ; this sample's buffer pair
+        lua     (r0+$2),r0              ; r0 on to the next sample (read at
+                                        ; the loop's top only)
         move    x:(r7+$09),a            ; WET, ramped per sample: + this
         move    x:(r7+$7c),y0           ; block's step
         add     y0,a
@@ -2427,9 +2485,9 @@ fbB:
         move    x:(r7+$12),a            ; y, on to the makeup
         asl     #$1,a,a                 ; x2: WET 127 = +6 dB (the stores
                                         ; below limit)
-        move    x:(r0),x0               ; dry L, still in place
+        move    y:(r4),x0               ; the prefill: dry L, or zero
         add     x0,a                    ; + dry at unity
-        move    a,x:(r0)+               ; L in place -- dry + wet; r0 on to R
+        move    a,y:(r4)+               ; dry + wet, or the wet alone
         move    y1,a
         sub     x1,a
         move    a,x0
@@ -2451,17 +2509,43 @@ fbB:
         abs     b
         move    b,x:(r7+$13)            ; |yR|
         asl     #$1,a,a                 ; x2, as on L
-        move    x:(r0),x0               ; dry R, still in place
+        move    y:(r4),x0               ; the prefill: dry R, or zero
         add     x0,a                    ; + dry at unity
-        move    a,x:(r0)+               ; R in place -- dry + wet; r0 on to
-                                        ; the next frame (n0 is not used)
+        move    a,y:(r4)+               ; dry + wet, or the wet alone
+        move    r4,n4                   ; the next sample's pair
         move    (r1)+                   ; the three line pointers advance
         move    (r2)+                   ; together and each wraps inside its
         move    (r3)+                   ; own line under m1..m3 = $fff (r4 is
                                         ; the feedback walker now, rebuilt by
                                         ; lua every sample)
 rvend:
-
+; ---- RETURNS: the normal print copies the buffer back into the block; the
+; returns print leaves the block its dry and marks the buffer fresh for the
+; mixdown hook (y:$e22, cleared by the hook: one writer, one reader).
+        move    y:>$e24,a
+        move    #>$5a5a5a,x0
+        cmp     x0,a
+        beq     rt_fresh
+        move    n7,a                    ; r0 stepped 2 x n7 words in the loop:
+        asl     a                       ; back on the call's first sample
+        move    a,x0
+        move    r0,a
+        sub     x0,a
+        move    a,r0
+        move    x:(r7+$5d),a            ; the buffer range, as the prefill
+        asl     a
+        move    #>$e00,x0
+        add     x0,a
+        move    a,r4
+        do      n7,>rt_cbd
+        move    y:(r4)+,a
+        move    a,x:(r0)+               ; dry + wet into the block, as before
+        move    y:(r4)+,a
+        move    a,x:(r0)+
+rt_cbd:
+        bra     noloop
+rt_fresh:
+        move    x0,y:>$e22              ; FRESH (x0 holds the magic)
 noloop:
 
 ; ---- save the phase, restore the M registers ---------------------------

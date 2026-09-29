@@ -26,14 +26,16 @@ H = bytes.fromhex
 def ids_inc(modules):
     """The four ids the unit writes, from the manifests. The stock DELAY
     need not be in the remix (its dispatch stays stock either way), so its
-    id comes from the registry."""
+    id comes from the registry. T8 takes RETURNS in a remix that carries it
+    (docs/proposals/RETURNS.md), the stock DELAY otherwise."""
     from remix import registry
     every = dict(registry.modules()); every.update(modules)
     return "".join(f"        .set    {name}, {every[key].menu.fx2_id}\n"
                    for name, key in (("ID_DELAY", "DELAY SERVER"),
                                      ("ID_VERB", "REVERB SERVER"),
                                      ("ID_SEND", "SEND"),
-                                     ("ID_ECHO", "DELAY")))
+                                     ("ID_ECHO", "RETURNS" if "RETURNS" in modules
+                                      else "DELAY")))
 
 
 MODULE = Module(

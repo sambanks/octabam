@@ -575,7 +575,7 @@ def main():
              "sos-capture": ("SPATIALIZER",),   # usb-io-tracks-ab + the recorder fixes
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",),   # the readout insert's words
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
-             "rig": _rig, "bottleservice": _rig, "bottleservice-rec": _rig, "bottleservice-rec-plen": _rig}
+             "rig": _rig, "bottleservice": _rig, "bottleservice-rec": _rig, "bottleservice-rec-plen": _rig, "bottleservice-ret": _rig}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         _hv = stock.region_of(stock.harvested(

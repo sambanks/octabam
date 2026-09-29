@@ -227,6 +227,19 @@ block for one build (26 Sep 2026, caught by `verify_modulation`'s
 reference gates, not by the build). Past ±63 use `move r7,r5 / move
 #$46,n5 / move (r5)+n5`, the form the streams already use.
 
+**`dsp_asm` ENCODES THE BIT-TEST BRANCHES WITH AN ABSOLUTE TARGET.**
+`brset #$a,a,label` at P:$1f81 assembled to `0cceaa 001f9d` -- the label's
+address in a field the chip reads as a DISPLACEMENT (stock's own `brset` at
+P:$257 carries `00003b`), so the branch landed at $1f81 + $1f9d and core 0
+fetched from nothing (29 Sep 2026, RETURNS' mixdown hook: the port crashed
+in `op_ResolveCache` ~250 frames in, when BusVerb first came out of warm-up
+and the branch first ran). `brclr` does the same; `bne`/`bcs`/`bra` and the
+absolute `jset` encode correctly. The round-trip disassembly prints the
+wrong word back as the same label, so it cannot object. No shipped module
+used the forms; `build_bus.assemble_syms` now refuses `brset`, `brclr`,
+`bsset` and `bsclr` in any source. Use `btst #n,S` then `bcs`/`bcc` (stock
+has both).
+
 **`dsp_asm` resolves labels by PREFIX, so no new label may have an existing
 label as its prefix.** Adding a loop labelled `warmz2` next to the existing
 `warmz` assembled to
