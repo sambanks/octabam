@@ -400,12 +400,24 @@ def boot(image=None, count=BUDGET, on_draw=None):
         r.instrs += BURST
         if 0x40000000 < pc < 0x40200000 and pc > r.maxpc:
             r.maxpc = pc
-        window.append((pc, st["wc"]))
+        window.append((pc, st["wc"], mu.reg_read(UC_M68K_REG_A0)))
         pcs = [w[0] for w in window]
         if len(window) == STALL_BURSTS and max(pcs) - min(pcs) <= 64:
             writes = window[-1][1] - window[0][1]
+            walked = abs(window[-1][2] - window[0][2])
             if writes > 2000:
                 window.clear()               # a memset making progress, not a spin
+            elif walked >= 4096:
+                # A WALK, NOT A POLL. octabam's loader hashes each payload
+                # with a rolling x33 over a moving a0 -- a tiny PC window, no
+                # stores at all, and long: ~10 instructions a byte, so a
+                # 200 KB payload spans four bursts and used to be abandoned
+                # here as a spin, which read downstream as "every page render
+                # drew nothing" (29 Sep 2026: a one-character VERSION change
+                # crossed the threshold and cost a day between two sessions).
+                # ot_emu's detector already keeps this rule for the same loop
+                # in the chainloader; this is the same rule, same reason.
+                window.clear()
             elif try_auto_poke(pc):
                 window.clear()
             else:
