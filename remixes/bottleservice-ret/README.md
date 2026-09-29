@@ -39,4 +39,14 @@ scene locks, the crossfader, LFOs and CC reach it).
   OS). Payload A 6156 of 6158 words with OS SWITCH's 40-word park. Under the
   port: `make check REMIX=bottleservice-ret` 587 PASS, 0 FAIL (5 SKIPs, all
   project-dependent); `verify_osswitch` 21/21 on this remix; the OS pane
-  and dialog rendered from this image's LCD. Not yet flashed.
+  and dialog rendered from this image's LCD. Flashed on the MKII (29 Sep
+  2026): MAIN MENU > OS listed the card, a switch to itself ran; after a
+  power-cycle, a file load threw VEC:04 at 0x2007E788 once
+  (`docs/remixer/FAILURE_MODES.md`: MAIN MENU's rescan rewrote the stock
+  browsers' listing state).
+- **BSRET3OS2** (the same + the rescan's save/restore of that state, and the
+  pane's `NOW <image>` / `HOME <flashed image>` headings; BUILD=3,
+  VERSION=BSRET3OS2): `make check` 588 PASS, 0 FAIL; `verify_osswitch`
+  22/22 on this image; under the port a set change, a project load, the
+  menu, the browsers again and a second project load ran clean. Not yet
+  flashed.
