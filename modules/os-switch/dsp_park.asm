@@ -18,44 +18,47 @@
 ; (P:$31000 on core 0, P:$32000 on core 1) mask interrupts and reset the
 ; stack themselves, then load the payload over everything, this included.
 ;
-; Every instruction form here has a stock site that has run on the chip:
-; the HRDF wait, movep from HORX into a / r0 / p:(r0)+ and
-; jmp (rN) are the stock bootstraps' own (P:$31000..); movep #>imm into the
-; DMA and ESAI registers is the payloads' (P:$99, P:$30026, P:$30067);
-; move #>$300,sr is the payload's start (P:$30000); sub #<n,a / cmp as
-; there. The registers are the DSP56300 map the payloads address:
+; Every instruction form here has a stock site, except `bclr #7` on HPCR
+; (the payload's `bset #7` and `bclr #5`/`#6` there are): the HRDF wait,
+; movep from HORX into a / r0 / x:(r0)+ and jmp (rN) are the stock
+; bootstraps' own (P:$31000..); movep from a register into a peripheral,
+; is the payloads' (`movep r3,x:<<pp`, `movep a,x:<<qq`), movep #>imm into
+; y:qq too (ESAI_1, P:$30067);
+; move #>$300,sr is the payload's start (P:$30000); move ssh / rti are the
+; frame handler's. The registers are the DSP56300 map the payloads address:
 ; DCR0-5 x:$ffffec/e8/e4/e0/dc/d8, ESAI TCR/RCR x:$ffffb5/b7, ESAI_1
 ; TCR/RCR y:$ffff95/97, HSR x:$ffffc3 (bit 0 HRDF), HORX x:$ffffc6.
 
-; The whole SR first, not only the interrupt mask: the handler inherits
-; the payload's mode bits (it sets SR bit $14 at P:$77f, and runs its
-; arithmetic in the modes it chose), and under them `movep x:HORX,a`
-; landed the word count shifted left by 8 -- the loader read a count of 2
-; as $200 under the port (29 Sep 2026) and took the payload stream for
-; program words. The stock bootstraps run from a chip reset with those bits
-; clear; $300 is the payload's own start (P:$30000): IPL 3, every mode off.
+; COMPACT (29 Sep 2026, build 15): 40 words, because bottleservice-ret's
+; payload A had 42 to spare. Build 14's hardware-proven sequence, minus what
+; the unit showed was only diagnosis (HF2/HF3 in HCR), minus the paths the
+; stock upload never takes (a zero count; a bootstrap outside the shared
+; window: 1.40C's load at P:$31000 and P:$32000), minus the two bsets
+; bootstrap A makes itself; the ten peripheral stores through one cleared
+; register where the stock payloads have that form (`movep r3,x:<<M_HOTX`
+; 08d307 for the DMA registers; `movep a,x:<<M_TX0` 04cec0 for ESAI's in
+; x:qq), ESAI_1's in y:qq as immediates still.
 osw_dsp:
-        move    #>$300,sr               ; nothing interrupts the loader; no mode bits
-        movep   #>$0,x:<<$ffffec        ; DMA0 off: the host-port receive DMA
-        movep   #>$0,x:<<$ffffe8        ; DMA1 off: the host-port transmit DMA
-        movep   #>$0,x:<<$ffffe4        ; DMA2 off: the ESAI feed
-        movep   #>$0,x:<<$ffffe0        ; DMA3 off
-        movep   #>$0,x:<<$ffffdc        ; DMA4 off
-        movep   #>$0,x:<<$ffffd8        ; DMA5 off
-        movep   #>$0,x:<<$ffffb5        ; ESAI transmitter off
-        movep   #>$0,x:<<$ffffb7        ; ESAI receiver off
-        movep   #>$0,y:<<$ffff95        ; ESAI_1 transmitter off
-        movep   #>$0,y:<<$ffff97        ; ESAI_1 receiver off
+        move    #0,r3
+        movep   r3,x:<<$ffffec          ; DMA0 off: the host-port receive DMA
+        movep   r3,x:<<$ffffe8          ; DMA1 off: the host-port transmit DMA
+        movep   r3,x:<<$ffffe4          ; DMA2 off: the ESAI feed
+        movep   r3,x:<<$ffffe0          ; DMA3 off
+        movep   r3,x:<<$ffffdc          ; DMA4 off
+        movep   r3,x:<<$ffffd8          ; DMA5 off
+        movep   r3,x:<<$ffffb5          ; ESAI transmitter off
+        movep   r3,x:<<$ffffb7          ; ESAI receiver off
+        movep   #>$0,y:<<$ffff95        ; ESAI_1 transmitter off (the immediate: a
+        movep   #>$0,y:<<$ffff97        ; register into y:qq has no stock site; build 14's form)
 ; The host port back into the mode the boot ROM leaves it in. The payload's
 ; start (P:$30016..$30018, both payloads) disables it, sets HPCR bit 7 and
 ; enables it again; the stock upload's reads assume the ROM's mode. MEASURED
 ; on the unit (build 12, BOOT TRACE notes 17/19): after a switch the first
 ; record's echo read back $010101 on both cores where a power-on boot reads
 ; $000001 -- the low byte right, repeated in every lane -- and the record
-; sender abandoned both uploads. That bit 7 is the lane mode is INFERRED
-; (it is the one host-port bit the payload changes before its first
-; transfer; bit 5, cleared at P:$3001b, is left as the payload has it).
-; The same three instructions, in the payload's own forms, reversed.
+; sender abandoned both uploads; with this, build 14's switch completed both
+; (final echo 3 on each core). That bit 7 is the lane mode is INFERRED
+; (bit 5, cleared at P:$3001b, is left as the payload has it).
         bclr    #6,x:<<$ffffc4          ; HPCR: HEN off
         bclr    #7,x:<<$ffffc4
         bset    #6,x:<<$ffffc4          ; HEN on
@@ -64,7 +67,7 @@ osw_dsp:
 ; peripheral until that interrupt's rti -- its HI08 then never raised HTDE
 ; for the stock bootstrap's first echo, and the upload stalled there under
 ; the port (29 Sep 2026). The chip has no such state (the DSP56300 nests by
-; the IPL in SR alone), but a clean exit costs three words: pop the return
+; the IPL in SR alone), but a clean exit costs a few words: pop the return
 ; address the interrupt stacked, push the loader's in its place -- the
 ; slot's SSL still holds the interrupted SR -- and rti into the loader.
 ; move ssh,x0 / move x0,ssh are the stock frame handler's (P:$5c8, $5c1).
@@ -73,69 +76,36 @@ osw_dsp:
         move    x0,ssh                  ; the loader, as the return address
         nop
         rti
+; The whole SR, not only the interrupt mask: rti restored the payload's mode
+; bits (it sets SR bit $14 at P:$77f), and under them `movep x:HORX,a`
+; landed the word count shifted left by 8 under the port (29 Sep 2026).
+; $300 is the payload's own start (P:$30000): IPL 3, every mode off.
 osw_ldr:
-        move    #>$300,sr               ; IPL 3, no mode bits, outside any interrupt
-        movep   #>$8,x:<<$ffffc2        ; HCR: HF2 -- the host sees "the loader runs" in its ISR (bit 3)
-; The HRDF waits are written `brclr #0,x:<<$ffffc3,0`: a displacement of 0,
-; a branch to itself -- the stock bootstraps' exact word pair (0cc300
-; 000000). dsp_asm encodes a LABEL there as an absolute address in the
-; displacement word (0cc300 001015 for a loop at P:$1015, which would
-; branch $1015 words away), and it cannot encode a backward Bcc at all; the
-; copy is a DO loop for the same reason (do x0 as the modules' pad loops).
+        move    #>$300,sr
+; The ROM's protocol, as the firmware's upload (FUN_40001d4c) drives it: a
+; word count, a load address, that many words, then the jump. The HRDF
+; waits are `brclr #0,x:<<$ffffc3,0`: a displacement of 0, a branch to
+; itself -- the stock bootstraps' exact word pair (0cc300 000000); dsp_asm
+; encodes a LABEL there as an absolute address, and the build refuses every
+; other bit-test branch. The copy is a DO loop (dsp_asm encodes no backward
+; Bcc). The bootstrap lands in the shared window, written through X: the
+; window is one memory in P, X and Y (CHIP.md), and movep HORX,x:(r0)+ is
+; the stock bootstrap's own form (P:$31024).
         brclr   #0,x:<<$ffffc3,0        ; wait: the word count
         movep   x:<<$ffffc6,a
         brclr   #0,x:<<$ffffc3,0        ; wait: the load address
         movep   x:<<$ffffc6,r0
         move    r0,r1
-        tst     a
-        beq     osw_stub
         move    a1,x0
-; A load into the shared window (the stock bootstraps: P:$31000, $32000)
-; goes through the X view: the window is one memory in P, X and Y
-; (CHIP.md: a word written through Y read back through X and P, on the
-; unit), and build 8 on the unit showed the loader take every word and
-; jump while the stock bootstrap never read its first record -- as if the
-; words written through P were not there. movep HORX,x:(r0)+ is the stock
-; bootstrap's own form (P:$31024). Anywhere else, through P as before.
-        move    r0,a
-        cmp     #>$30000,a
-        blt     osw_pload
         do      x0,osw_xend
-        brclr   #0,x:<<$ffffc3,0        ; wait: a word, into the window through X
+        brclr   #0,x:<<$ffffc3,0        ; wait: a word
         movep   x:<<$ffffc6,x:(r0)+
 osw_xend:
-        bra     osw_stub
-osw_pload:
-        do      x0,osw_pend
-        brclr   #0,x:<<$ffffc3,0        ; wait: a word, into P
-        movep   x:<<$ffffc6,p:(r0)+
-osw_pend:
-; (Build 10 jumped through a stub written into the window through X, and
-; HF3 in the host's ISR showed that code written there through X runs.)
-osw_stub:
-; Build 9 on the unit: the stub below ran (HF3) and bootstrap A still never
-; read its first record. Bootstrap A's only instructions before that read
-; are `ori #3,mr / move #0,sp / bset #18,y:$fffff9 / bset #18,y:$fffffa`;
-; the payload's start (P:$30019/$3001a) sets bit 14 of y:$fffffd and
-; y:$fffffe, which a power-on leaves clear. Undo those, then run the
-; bootstrap's two bsets here, then HF3 alone: the host's ISR says which of
-; these the chip got past (0x0a: stuck on them; 0x12: past them, the stub
-; not reached; 0x1a: past them and the stub ran). Forms: the payload's and
-; bootstrap A's own bset/bclr on these words.
+; The payload's start (P:$30019/$3001a) sets bit 14 of y:$fffffd and
+; y:$fffffe, which a power-on leaves clear; bootstrap A's own first
+; instructions set the rest it needs. Then the ROM's exit: jump to the
+; address the bootstrap was loaded at, with r1 = that address (bootstrap A
+; then loads the payload over everything, this included).
         bclr    #$e,y:<<$fffffd
         bclr    #$e,y:<<$fffffe
-        bset    #$12,y:<<$fffff9
-        bset    #$12,y:<<$fffffa
-        movep   #>$10,x:<<$ffffc2       ; HCR: HF3 alone -- into the bootstrap
-; Builds 10-12 served the records here instead of jumping (a clone of
-; bootstrap A's loop, run from this module's own P), because builds 8-10
-; looked as if stock bootstrap A never read its first record. Build 12's
-; BOOT TRACE showed what the ColdFire saw instead: the bootstrap's echo, read
-; back as $010101 in the host port mode the payload had left (HPCR bit 7,
-; undone above since build 13) -- so the record sender gave up after the
-; first type word, whoever served it. The clone then hung part-way through
-; the records on build 13 (after at least six), cause not located; it ran
-; from P the payload's own records rewrite, and was only ever safe for a
-; target identical to this image. So: the ROM's exit, into the stock
-; bootstrap the OS just sent, with r0/r1 as the ROM leaves them.
         jmp     (r1)
