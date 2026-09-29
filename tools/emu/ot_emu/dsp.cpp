@@ -3338,6 +3338,39 @@ namespace ot
 	uint64_t DspPair::pullShort(const int _core) const { return m_cores[_core & 1]->pullShort; }
 	uint64_t DspPair::mailboxWords(const int _from) const { return m_mail[_from & 1].words; }
 	bool DspPair::bootFinished(const int _core) const { return m_cores[_core & 1]->boot->finished(); }
+	// --dsp-reset-on (dsp.h): the MODEL of a reset line, not a claim that one
+	// exists. Both cores go back to the state the ColdFire's upload expects
+	// at a power-on: the boot state machine at Length, the host port's
+	// registers reset with HTDE set and its RECEIVE ring empty, HPCR back to
+	// the mode the ROM leaves it in (HEN alone -- the payload's start sets
+	// bit 7 on top of it, which is what OS SWITCH's park has to undo), and
+	// the core not stepped until a program has been loaded again.
+	//
+	// The receive ring matters, and cost a debug: the probe's control pass
+	// sends words into the RUNNING payload's host port, which does not read
+	// them. Without the clear they survived the modelled reset, and the
+	// stock bootstrap that the re-upload loads read them as its first
+	// record -- type 7, a garbage count, a `dor` waiting for words no one
+	// was sending, while the ColdFire waited for its echo. A chip reset
+	// empties the interface; so does this.
+	//
+	// What is NOT modelled: the cores' X/Y/P keep the payload's bytes, as
+	// they do on the chip; the transmit ring is left as it is (no API, and
+	// the probe reads its one word back); and ICR INIT, which on the chip
+	// also resets the interface, still does nothing here.
+	void DspPair::bootReset()
+	{
+		++m_bootResets;
+		for(int i = 0; i < 2; ++i)
+		{
+			Core& c = *m_cores[i];
+			c.boot->reset();
+			c.hdi().reset();
+			c.hdi().clearRX();
+			c.hdi().writePortControlRegister(1 << dsp56k::HDI08::HPCR_HEN);
+			m_bootDone[i].store(false, std::memory_order_release);
+		}
+	}
 	uint64_t DspPair::executed(const int _core) const
 	{
 		if(m_rt) { const_cast<DspPair*>(this)->rtRefresh(); return m_cores[_core & 1]->executed; }

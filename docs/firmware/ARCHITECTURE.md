@@ -26,6 +26,32 @@ pipeline.
 | NOR flash | CS0 at `0x00000000`, 8 MB decode; Spansion S29GL-N ID check, size not read (section 3a) | ~ |
 | Expansion bus | FlexBus (chip selects for ATA, DSP, RAM) | ✓ |
 
+### 2a. The GPIO block at `0xfc0a4000` (29 Sep 2026)
+
+One register per port, five blocks **0x18 apart**, so a register's address
+says which block and which port it is: port `p`'s output data is `+0x00+p`
+(PODR), its direction `+0x18+p` (PDDR), the set register `+0x30+p`
+(PPDSDR — a 1 drives a pin high, and a READ returns the pin states), the
+clear register `+0x48+p` (PCLRR — a 0 drives a pin low) and pin assignment
+`+0x60+p` (PAR). 🟡 Inferred from three sites that only make sense under it,
+not from the MCF54455 manual (which would settle it):
+
+- the MKII panel probe writes `0x20` to `0xfc0a403a` and `0xdf` to
+  `0xfc0a4052` to raise and drop **one pin, bit 5** (✅ measured, `PANEL.md`
+  4c) — the same port `0x0a` in the set and clear blocks, 0x18 apart;
+- `0x40016100` and `0x400e1012` set port 9 bit 2 as an output (`+0x21`) and
+  then drive it (`+0x09`) — the direction/data pair of one port;
+- the bootstrap at `0x400e0dc4` clears `0xfc0a400c` and writes 1 to
+  `0xfc0a4024` — likewise, and `0xfc0a400c` is the DSP core select.
+
+**So `0xfc0a4024` is the DSP core-select pin's own direction bit.** ❌ It had
+been read as a candidate DSP reset line the bootstrap releases once ("drives
+a GPIO pin high, right after selecting core 0, and the OS never touches it
+again"); under the map it is the PDDR of the port whose PODR is the select,
+and the two writes are one act: drive the select low, then make it an
+output. The only reset-line candidate left for the ColdFire → DSP direction
+is RSTOUT (RCR bit 6), which `modules/dsp-reset-probe` asks the unit about.
+
 ## 3. OS format and update chain ✓
 
 Elektron distributes a ZIP with two transports of the same OS, a `.bin`

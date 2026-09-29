@@ -1269,6 +1269,7 @@ int main(int _argc, char** _argv)
 	std::string dspPcWatch;		// O9b: core:pc -- registers at the last 24 arrivals at that DSP PC
 	std::string dspStopwatch;	// O12: core:startpc:stoppc -- instructions between the two, per pair (the cycle meter)
 	std::string dspWatch;		// O9b: core:space:addr -- the last 16 writers of one DSP word
+	std::string dspResetOn;		// --dsp-reset-on addr[:bit] -- MODEL a DSP reset line the ColdFire can pull: a write to that byte with that bit set (default 6, RCR FRCRSTOUT) puts both cores back in their boot ROM. For DSP RESET PROBE's gate, which needs the probe to report a reset when there IS one; it says nothing about the hardware
 	std::string dspMap;		// O9: per-frame non-zero counts per 4K chunk of both cores' X and Y -> FILE
 	std::string dspWrites;		// O9: per-frame NON-ZERO WRITE counts per 256-word region of both cores' X and Y -> FILE
 	std::string coverage;		// O9b: every ColdFire PC executed from the transport start on, with its count -> FILE (diff two runs)
@@ -1358,6 +1359,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--pre-roll" && i + 1 < _argc)	preRoll = std::atoi(_argv[++i]);
 		else if(a == "--dsp-map" && i + 1 < _argc)	dspMap = _argv[++i];
 		else if(a == "--dsp-watch" && i + 1 < _argc)	dspWatch = _argv[++i];
+		else if(a == "--dsp-reset-on" && i + 1 < _argc)	dspResetOn = _argv[++i];
 		else if(a == "--dsp-pcwatch" && i + 1 < _argc)	dspPcWatch = _argv[++i];
 		else if(a == "--dsp-stopwatch" && i + 1 < _argc)	dspStopwatch = _argv[++i];
 		else if(a == "--dsp-writes" && i + 1 < _argc)	dspWrites = _argv[++i];
@@ -1557,6 +1559,29 @@ int main(int _argc, char** _argv)
 			int core = 0; char space = 'X'; unsigned addr = 0;
 			if(std::sscanf(dspWatch.c_str(), "%d:%c:%x", &core, &space, &addr) == 3)
 				dspPair->setWriteWatch(core, space, addr);
+		}
+		if(!dspResetOn.empty())
+		{
+			unsigned addr = 0; int bit = 6;
+			const auto colon = dspResetOn.find(':');
+			addr = static_cast<unsigned>(std::strtoul(dspResetOn.substr(0, colon).c_str(), nullptr, 0));
+			if(colon != std::string::npos)
+				bit = std::atoi(dspResetOn.substr(colon + 1).c_str());
+			if(!addr || bit < 0 || bit > 31)
+			{
+				std::printf("--dsp-reset-on: expected addr[:bit], got %s\n", dspResetOn.c_str());
+				return 2;
+			}
+			if(dspRt)
+			{
+				std::printf("--dsp-reset-on: lockstep only (the rt cores run on their own threads)\n");
+				return 2;
+			}
+			ot::DspPair* dp = dspPair.get();
+			const uint32_t mask = 1u << bit;
+			m.addWriteWatch(addr, addr, [dp, mask](uint32_t, uint8_t, uint32_t _val, uint32_t)
+				{ if(_val & mask) dp->bootReset(); });
+			std::printf("dsp-reset  : MODELLED -- a write to %#x with bit %d set puts both cores back in their boot ROM (not a hardware claim; dsp.h bootReset)\n", addr, bit);
 		}
 		if(dspDirty)
 		{
