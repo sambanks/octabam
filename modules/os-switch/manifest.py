@@ -33,6 +33,7 @@ def _include(_modules):
     at build time (never a stock byte in the repo)."""
     off = CONTROL_ROWS - 0x40000400
     return ((HERE / "osw.inc").read_text()
+            + f"        .set    TRACE, {1 if 'BOOT TRACE' in _modules else 0}\n"
             + "        .macro  CONTROL_ROWS\n"
             + f"        .incbin \"{STOCK}\", 0x{off:x}, {CONTROL_COUNT * 0x18}\n"
             + "        .endm\n")

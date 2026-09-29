@@ -24,6 +24,16 @@
         .text
         .global osw_chain
 osw_chain:
+        .if     TRACE
+        | BOOT TRACE's note 1 (modules/boot-trace), inline: this cave
+        | cannot rely on another cave's symbols
+        move.l  #0x90,%d1
+        bsr.w   txmidi
+        moveq   #1,%d1
+        bsr.w   txmidi
+        moveq   #0x7f,%d1
+        bsr.w   txmidi
+        .endif
         lea     (OSW_MBOX).l,%a1
         move.l  (MB_MAGIC,%a1),%d0
         cmpi.l  #OSW_MAGIC,%d0
@@ -102,6 +112,18 @@ badhash:
 resume:
         movea.l #0x48000000,%sp         | the displaced instruction
         jmp     (OS_RESUME).l
+
+        .if     TRACE
+txmidi:
+        move.l  #200000,%d2
+1:      move.b  (0xfc060004).l,%d0
+        btst    #2,%d0
+        bne.s   2f
+        subq.l  #1,%d2
+        bne.s   1b
+2:      move.b  %d1,(0xfc06000c).l
+        rts
+        .endif
 
 | The stub: a0 = stage, a2 = OS_ENTRY, d0 = length, d1 = the argument.
 | Caches off and invalidated for the copy, then the bootstrap's own exit
