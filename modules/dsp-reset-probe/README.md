@@ -26,13 +26,20 @@ A reset line would remove the park, the words, and the asymmetry.
 | A | **RSTOUT**, the reset controller's output to the board: RCR bit 6, FRCRSTOUT, `0xfc0a0000` | ❌ **refused by the unit**, 29 Sep 2026 (below) |
 | B | the GPIO pin the bootstrap drives once at `0x400e0dce`, right after it selects DSP core 0 | ❌ **retracted** (the register map) |
 
-**The answer is no.** On an MKII, 29 Sep 2026 ✅: forcing RSTOUT leaves both
-DSP cores running their payloads. Neither a bare write/clear pair nor a
+**The answer is no, and the instrument was proven on the machine before it
+was believed.** On an MKII, 29 Sep 2026 ✅: forcing RSTOUT leaves both DSP
+cores running their payloads. Neither a bare write/clear pair nor a
 ~1 ms hold put either core in a listening boot ROM, and the control pass was
 clean. So the park code stays, and the words for it come from the payload's
 unused interrupt vectors. The notes, in order: 40/1, 41/3, 42/1, 43/3, 44/3,
 42/2, 43/3, 44/3, 47/0 -- the same sequence, code for code, that the plain
 port produces.
+
+**The positive control ran on the same unit** ✅ (`dsp-reset-pc`, 29 Sep
+2026): core 1 took OS SWITCH's park command and then answered the same
+seven words with its own magic -- notes 50/1, 51/1, bitmap 0x40. So the
+probe says yes to a core in a boot-ROM loader and no to one running a
+payload, on hardware, in the same boot. The no above is a real no.
 
 What that does NOT say: that the board has no DSP reset line at all, only
 that RSTOUT at those two pulse widths is not one. Most likely the DSP's
@@ -147,10 +154,7 @@ from the unit means "no", and not "the probe cannot see a yes".
 
 ## Not measured ❓
 
-1. **The positive control on the unit.** Built (`dsp-reset-pc`) and
-   port-gated: under the port the parked core answers with its own magic.
-   It has not run on a unit, so "no answer" on hardware still rests on the
-   port for its other half until it does. One switch, no flash.
+1. ~~The positive control on the unit.~~ ✅ Ran 29 Sep 2026 (above).
 2. **Whether RSTOUT is asserted by the soft reset already** (above).
 3. **What else is on RSTOUT.** The probe runs before the panel link, the
    card and the RTOS precisely so that a reset of the panel or the

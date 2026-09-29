@@ -30,8 +30,12 @@ jumped into it and answered nothing.
 
 ## Status
 
-Port-gated, not yet run on a unit. `python3 tools/verify/verify_dspreset.py
-dsp-reset-pc` boots it twice: plain, the parked core answers with its own
+✅ **Ran on an MKII, 29 Sep 2026**: notes 40/1, **50/1, 51/1**, 41/3, 42/1,
+43/3, 42/2, 43/3, 47/0x40 -- the parked core answered, the running payload
+did not, and RSTOUT did nothing at either pulse width. The probe's negative
+result is two-sided on hardware now.
+
+`python3 tools/verify/verify_dspreset.py dsp-reset-pc` boots it twice: plain, the parked core answers with its own
 magic (`0x5a3c61`) and nothing else does; with the port modelling a reset
 line, core 0 answers too and both payloads are uploaded again.
 

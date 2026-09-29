@@ -45,9 +45,9 @@ MODULE = Module(
     category=Category.REFERENCE, author="sanderlegit", author_url="https://github.com/sanderlegit",
     proof=Proof.HARDWARE,
     proof_note="an MKII, 29 Sep 2026: RSTOUT (RCR bit 6) does NOT reset either DSP core "
-               "-- both pulse widths reported no boot ROM, control pass clean, the same "
-               "codes the plain port gives; `verify_dspreset` shows the instrument "
-               "reporting the other answer when the port models a reset line",
+               "-- both pulse widths reported no boot ROM, with BOTH controls clean on "
+               "the same unit: a parked core answered (`dsp-reset-pc`, notes 50/1 51/1) "
+               "and a running payload did not; `verify_dspreset` gates both remixes",
     doc="Probe: does RSTOUT (RCR bit 6) reset the DSP? A boot-time report on MIDI OUT, "
         "so OS SWITCH could drop its 40 words of DSP park code.",
     linked=(Linked("dsp_reset_probe", "modules/dsp-reset-probe/probe.s", cpu="5475",

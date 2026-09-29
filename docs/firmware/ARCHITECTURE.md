@@ -53,8 +53,11 @@ output. The only reset-line candidate left for the ColdFire → DSP direction
 was RSTOUT (RCR bit 6), and ✅ the unit says no (an MKII, 29 Sep 2026,
 `modules/dsp-reset-probe`): forcing RSTOUT, as a bare write/clear pair and
 held ~1 ms, leaves both DSP cores running their payloads rather than in
-their boot ROM. **No way for the ColdFire to reset the DSP is known**,
-which is why OS SWITCH parks each core in software before its reset.
+their boot ROM. The probe's own instrument was proven on the same unit in
+the same boot (`dsp-reset-pc`): a core parked in a boot-ROM loader answers
+it, a core running a payload does not. **No way for the ColdFire to reset
+the DSP is known**, which is why OS SWITCH parks each core in software
+before its reset.
 
 ## 3. OS format and update chain ✓
 
