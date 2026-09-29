@@ -27,6 +27,17 @@ from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 
 H = bytes.fromhex
 
+
+def _include(modules):
+    """PARK: whether this remix carries OS SWITCH, whose DSP park (host
+    command $12 on vector P:$24) is the only way to turn a running core
+    into a boot-ROM loader. With it the probe can run a POSITIVE control on
+    the unit -- park a core, ask it the same question, and it must answer
+    -- which is what makes the negative result worth anything. Without it
+    that step is assembled out."""
+    return f"        .set    PARK, {1 if 'OS SWITCH' in modules else 0}\n"
+
+
 MODULE = Module(
     name="dsp-reset-probe",
     key="DSP RESET PROBE",
@@ -39,7 +50,8 @@ MODULE = Module(
                "reporting the other answer when the port models a reset line",
     doc="Probe: does RSTOUT (RCR bit 6) reset the DSP? A boot-time report on MIDI OUT, "
         "so OS SWITCH could drop its 40 words of DSP park code.",
-    linked=(Linked("dsp_reset_probe", "modules/dsp-reset-probe/probe.s", cpu="5475"),),
+    linked=(Linked("dsp_reset_probe", "modules/dsp-reset-probe/probe.s", cpu="5475",
+                   include=_include),),
     detours=(
         Detour(0x40000518, H("207c46025de0"), "dsp_reset_probe", "dr_entry",
                "the boot after the DSP upload returned, before the panel link, the card "

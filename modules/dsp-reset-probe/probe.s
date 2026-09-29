@@ -47,12 +47,17 @@
 |   41  the control pass                             velocity = a code below
 |   42  about to pulse                               velocity = the pass (1, 2)
 |   43  the test, core 0                             velocity = a code below
-|   44  the test, core 1                             velocity = a code below
+|   44  the test, core 1 (not in a PARK build: core 1 is the positive
+|       control's, and parked)                       velocity = a code below
 |   45  a core answered: re-pulsing, then re-uploading both payloads
 |   46  the stock upload returned -- audio should be back
 |   47  done                                         velocity = the bitmap below
 |   48  the control pass answered: the instrument is not trustworthy, so no
 |       conclusion is drawn                          velocity = its code
+|   50  (PARK only, FIRST) core 1 sent OS SWITCH's park command: velocity 1
+|       if the core took it, 0 if it never did
+|   51  (PARK only, FIRST) the POSITIVE CONTROL: the parked core's answer,
+|       same codes. 1 is the one that matters -- see below
 |   49  the word an unexpected answer carried, three notes: bits 6..0,
 |       13..7, 20..14
 |
@@ -63,7 +68,7 @@
 |   3  the host port would not take a word (the send timed out)
 | the bitmap (note 47): bit 0 core 0 answered, bit 1 core 1, bits 3..2 the
 | pass it answered in, bit 4 the stock upload was re-run, bit 5 the control
-| pass answered.
+| pass answered, bit 6 the POSITIVE CONTROL answered.
 |
 | THE CELL (`dr_cell`, seven longs in this unit's own bytes, so it exists
 | in any remix and needs no claim on DRAM) carries the same results for a
@@ -74,6 +79,19 @@
 |   +8   the pass a core answered    +24  that pass's RSTOUT hold
 |   +12  core 0's word
 |
+| THE POSITIVE CONTROL (PARK, i.e. a remix with OS SWITCH). Everything
+| above is a NEGATIVE result: no core answered. A negative from an
+| instrument that has never been seen to say yes ON THIS MACHINE is worth
+| little -- the port's model is not the machine (AGENTS.md). So when
+| nothing answered, the probe finishes by making a listening ROM itself:
+| OS SWITCH's park command turns core 0's running payload into a boot-ROM
+| loader (dsp_park.asm), and the same seven words are sent to it again.
+| That core MUST answer. If it does, "no answer" earlier means there was
+| no ROM; if it does not, the probe cannot see a ROM on hardware at all
+| and every no above is void. It runs last because a parked core cannot be
+| given back its payload -- there is no way into a boot ROM from a park,
+| which is the whole reason this module exists.
+|
 | THE RISK, stated: the control pass sends nine words into a RUNNING
 | payload's host port, and a payload that is handed a partial frame never
 | gets back in step. That is the price of the control, and without the
@@ -82,6 +100,11 @@
 | with a DSP in the state the boot left it in. What is not repaired that
 | way is a pulse that takes the unit down: a power-cycle, and the flash is
 | never written.
+
+| PARK: 1 when the remix carries OS SWITCH, whose DSP park (host command
+| $12 on vector P:$24) is what the positive control needs. manifest.py
+| writes it (schema.Linked.include).
+        .include "remix.inc"
 
         .set    DSP_SELECT,  0xfc0a400c | which core's host port the window shows
         .set    HI08_ICR,    0x20000000 | host side: 0x81 = INIT|RREQ
@@ -93,6 +116,8 @@
         .set    RCR,         0xfc0a0000 | the reset controller (MCF54455 RM)
         .set    FRCRSTOUT,   0x40       | bit 6: force RSTOUT
         .set    DSP_UPLOAD,  0x40001e50 | the stock DSP boot sequence, re-run
+        .set    PARK_HC,     0x0092     | HC | $12: OS SWITCH's park (switch.s
+                                        | parkcore sends the same word)
         .set    UART0_USR,   0xfc060004 | MIDI OUT (docs/remixer/EMU.md)
         .set    UART0_UTB,   0xfc06000c
         .set    POLL,        200000     | polls before a MIDI byte gives up
@@ -123,6 +148,7 @@
         .set    C_C1,        16
         .set    C_BITS,      20
         .set    C_HOLD,      24
+        .set    C_PC,        28         | the positive control's word
 
         .text
 
@@ -153,10 +179,63 @@ dr_run:
         move.l  %d0,(C_C1,%a2)
         move.l  %d0,(C_BITS,%a2)
         move.l  %d0,(C_HOLD,%a2)
+        move.l  %d0,(C_PC,%a2)
         moveq   #0,%d7
         moveq   #40,%d0
         moveq   #1,%d1
         bsr.w   dr_note
+
+        .if     PARK
+| ---- the positive control, FIRST and on CORE 1 ------------------------------
+| Everything below this is a negative result, and a negative from an
+| instrument never seen to say yes ON THIS MACHINE is worth little (the
+| port's model is not the machine). So before anything else, make a
+| listening boot ROM and ask it: OS SWITCH's park command turns core 1's
+| running payload into a boot-ROM loader (dsp_park.asm), and the same seven
+| words go to it. It MUST answer.
+|
+| FIRST, and on the other core, for a measured reason: a probe leaves its
+| words unread in the host port of a core that has no ROM, and a loader
+| parked afterwards reads THOSE as its count and address (under the port,
+| 29 Sep 2026: the parked core loaded [7, $31000, ...] over itself and
+| jumped into it, answering nothing). So the positive control gets a clean
+| port, and core 1 -- which is then parked for good -- is not probed again.
+        moveq   #1,%d3
+        bsr.w   dr_parkcore             | -> d0 = 1 taken, 0 timed out
+        move.l  %d0,%d1
+        moveq   #50,%d0
+        bsr.w   dr_note
+        moveq   #1,%d3
+        bsr.w   dr_romprobe             | -> d0 = the code, d1 = the word
+        move.l  %d1,(C_PC,%a2)
+        move.l  %d0,%d4
+        moveq   #51,%d0
+        move.l  %d4,%d1
+        bsr.w   dr_note
+        cmpi.l  #1,%d4
+        bne.s   1f
+        bset    #6,%d7
+1:
+| dr_parkcore: OS SWITCH's park command to the core in d3, the switcher's
+| own sequence (switch.s parkcore). out: d0 = 1 taken, 0 not.
+        bra.s   2f
+dr_parkcore:
+        move.b  %d3,(DSP_SELECT).l
+        nop
+        move.l  #PARK_HC,%d0
+        move.w  %d0,(HI08_CVR).l
+        move.l  #HPOLL,%d2
+3:      move.w  (HI08_CVR).l,%d0
+        tst.b   %d0
+        bpl.s   4f
+        subq.l  #1,%d2
+        bne.s   3b
+        moveq   #0,%d0
+        rts
+4:      moveq   #1,%d0
+        rts
+2:
+        .endif
 
 | the control pass: core 0, no pulse. Nothing may answer.
         moveq   #0,%d3
@@ -186,8 +265,8 @@ dr_pass1:
         move.l  %d3,(C_HOLD,%a2)
         bsr.w   dr_pulse
         bsr.w   dr_test
-        tst.l   %d7
-        bne.s   dr_restore
+        bsr.w   dr_answered             | the CORE bits alone, not the whole bitmap
+        bne.w   dr_restore
 
 | pass 2: RSTOUT held ~1 ms.
         moveq   #42,%d0
@@ -198,7 +277,7 @@ dr_pass1:
         move.l  %d3,(C_HOLD,%a2)
         bsr.w   dr_pulse
         bsr.w   dr_test
-        tst.l   %d7
+        bsr.w   dr_answered
         beq.w   dr_done
 
 | ---- the restore --------------------------------------------------------
@@ -244,6 +323,17 @@ dr_done:
         bsr.w   dr_note
         rts
 
+| dr_answered: Z clear when a CORE answered (bits 0, 1). The bitmap also
+| carries the positive control (bit 6), the control pass (bit 5) and the
+| pass number, so a plain `tst` on it reads "a core answered" from the
+| positive control alone -- which it did under the port on 29 Sep 2026, and
+| sent the boot into an upload to cores still running their payloads.
+| clobbers d0.
+dr_answered:
+        move.l  %d7,%d0
+        andi.l  #3,%d0
+        rts
+
 | ---- one test pass: both cores ----------------------------------------------
 | out: d7 |= bit 0 / bit 1 for a core that answered with its own magic
 dr_test:
@@ -257,7 +347,9 @@ dr_test:
         cmpi.l  #1,%d4
         bne.s   1f
         bset    #0,%d7
-1:      moveq   #1,%d3
+1:
+        .if     PARK == 0
+        moveq   #1,%d3
         bsr.w   dr_romprobe
         move.l  %d1,(C_C1,%a2)
         move.l  %d0,%d5
@@ -267,7 +359,9 @@ dr_test:
         cmpi.l  #1,%d5
         bne.s   2f
         bset    #1,%d7
-2:      rts
+2:
+        .endif
+        rts
 
 | ---- the candidate ----------------------------------------------------------
 | RSTOUT asserted through the reset controller, held for d3 loop iterations
@@ -470,7 +564,7 @@ dr_note:
         .align  4
         .global dr_cell
 dr_cell:
-        .long   0, 0, 0, 0, 0, 0, 0
+        .long   0, 0, 0, 0, 0, 0, 0, 0
 
         .align  4
         .global dr_micro

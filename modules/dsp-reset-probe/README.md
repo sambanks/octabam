@@ -62,6 +62,14 @@ that answer with a magic **only if a ROM is listening**. `probe.s` has the
 full procedure, the note table and the risk; in short, at `0x40000518` (the
 boot, after the DSP upload, before the panel link, the card and the RTOS):
 
+0. **the positive control**, in a remix that carries OS SWITCH
+   (`dsp-reset-pc`): park core 1 with its host command `$12` — which turns
+   a running core into a boot-ROM loader — and ask it the same question.
+   It must answer. Without this the whole result rests on the port's model
+   for its other half: an instrument never seen to say yes on the machine
+   cannot be trusted when it says no. It runs first, and on the other
+   core, because a probe leaves words unread in a port with no ROM and a
+   loader parked afterwards reads those as its count and address.
 1. **the control** — probe core 0 with no pulse. A running payload must not
    answer. If it does, the probe says so (note 48) and stops: an instrument
    that answers when nothing happened cannot report that something did.
@@ -79,7 +87,8 @@ The probe image is a **switch target**, so an already-flashed image with OS
 SWITCH boots it without writing the flash, and a power-cycle comes home.
 
 ```bash
-make obi REMIX=dsp-reset OBI=DSPRESET      # -> out/DSPRESET.OBI
+make obi REMIX=dsp-reset OBI=DSPRESET      # -> out/DSPRESET.OBI (the answer)
+make obi REMIX=dsp-reset-pc OBI=DSPRESETPC # -> with the positive control
 # copy it to the card root, then on the unit: MAIN MENU > OS > DSPRESET > YES
 python3 tools/hw/ot_midi.py listen 60      # MIDI OUT, while it boots
 ```
@@ -138,11 +147,10 @@ from the unit means "no", and not "the probe cannot see a yes".
 
 ## Not measured ❓
 
-1. **A positive control on the unit.** The probe has shown a listening ROM
-   only under the port's model. An image carrying OS SWITCH could park a
-   core with its host command ($12) and then probe it: a park is a
-   boot-ROM loader, so it must answer. Until that runs, "no answer" on
-   hardware rests on the port for its other half.
+1. **The positive control on the unit.** Built (`dsp-reset-pc`) and
+   port-gated: under the port the parked core answers with its own magic.
+   It has not run on a unit, so "no answer" on hardware still rests on the
+   port for its other half until it does. One switch, no flash.
 2. **Whether RSTOUT is asserted by the soft reset already** (above).
 3. **What else is on RSTOUT.** The probe runs before the panel link, the
    card and the RTOS precisely so that a reset of the panel or the

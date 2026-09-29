@@ -22,6 +22,12 @@ the instrument physically cannot see), so the same image is booted twice:
                       boot must still reach the handoff with both cores
                       back in a finished boot.
 
+And with OS SWITCH in the remix (`dsp-reset-pc`) the plain run must also
+show the POSITIVE CONTROL: the probe parks core 0 with host command $12,
+and the parked core -- a boot-ROM loader -- must answer the same seven
+words. That step is what makes a "no answer" on the unit mean anything, so
+it is gated here before it is trusted there.
+
 Plus: the seven words the ColdFire sends are assembled from micro.asm on
 every run and compared with the longs in probe.s, and disassembled back
 (AGENTS.md: disassemble what you assemble).
@@ -58,8 +64,21 @@ NONE = (0, 3)
 # back in a boot ROM and no upload to re-run (probe.s, "the restore").
 PLAIN = [(40, 1), (41, NONE), (42, 1), (43, NONE), (44, NONE),
          (42, 2), (43, NONE), (44, NONE), (47, 0)]
+# With OS SWITCH in the remix the probe MAKES a listening boot ROM: core 1
+# takes the park command (50/1) and then answers the same seven words
+# (51/1). That is the positive control, the half of the argument the
+# modelled run cannot give on a unit -- it must hold under the port too, or
+# the step is not doing what it says.
+# ... and it runs FIRST, on core 1, so the parked loader gets a clean port;
+# core 1 is then not probed again (no note 44).
+PLAIN_PC = [(40, 1), (50, 1), (51, 1), (41, NONE), (42, 1), (43, NONE),
+            (42, 2), (43, NONE), (47, 0x40)]
 # bit 0 core 0 answered | bit 1 core 1 | pass 1 in bits 3..2 | bit 4 re-uploaded
 RESET = [(40, 1), (41, NONE), (42, 1), (43, 1), (44, 1), (45, 1), (46, 1), (47, 0x17)]
+# the modelled run with the park build: the positive control first, then the
+# reset answers on core 0 alone (core 1 is the control's, and parked)
+RESET_PC = [(40, 1), (50, 1), (51, 1), (41, NONE), (42, 1), (43, 1),
+            (45, 1), (46, 1), (47, 0x55)]
 
 
 def matches(seq, want):
@@ -120,7 +139,7 @@ def boot(image, at, cell, work, tag, extra=()):
     out = subprocess.run([str(EMU), "--image", str(image), "--mkii", "--dsp",
                           "--preload", f"0x3ffc={ver}", "--max", "200000000",
                           "--frame", "--frames", "20",
-                          "--mem-dump", f"{cell:#x},28={dump}",
+                          "--mem-dump", f"{cell:#x},32={dump}",
                           "--watch-pc", f"0x{at:x}", *extra],
                          capture_output=True, text=True, cwd=ROOT).stdout
     cell = dump.read_bytes() if dump.exists() else b""
@@ -162,25 +181,34 @@ def main():
 
     # 2. plain: nothing answers, nothing is re-uploaded, the boot goes on
     image = ROOT / "out/mainos_bus.bin"
+    park = "OS SWITCH" in registry.remix(remix).modules
+    want = PLAIN_PC if park else PLAIN
     out, seq, rec = boot(image, at, cell, work, "plain")
-    if not matches(seq, PLAIN):
-        fails.append(f"plain: notes {seq} != {PLAIN}")
+    if not matches(seq, want):
+        fails.append(f"plain: notes {seq} != {want}")
     if "HANDOFF" not in out:
         fails.append("plain: the boot did not reach the RTOS handoff")
-    if not rec or rec[0] != CELL_MAGIC or rec[5] != 0:
+    if not rec or rec[0] != CELL_MAGIC or rec[5] != (0x40 if park else 0):
         fails.append(f"plain: the cell reads {[hex(v) for v in rec]}")
+    # core 1's magic: the probe ORs the core number into it
+    if park and (len(rec) < 8 or rec[7] != 0x5A3C61):
+        fails.append(f"plain: the parked core answered {[hex(v) for v in rec]}, not 0x5a3c61")
 
     # 3. modelled: both cores answer, the probe restores them, the boot goes on
     out, seq, rec = boot(image, at, cell, work, "reset", ("--dsp-reset-on", RCR_BIT))
+    want = RESET_PC if park else RESET
     if "dsp-reset  : MODELLED" not in out:
         fails.append("--dsp-reset-on was not accepted by the port")
-    if not matches(seq, RESET):
-        fails.append(f"modelled: notes {seq} != {RESET}")
+    if not matches(seq, want):
+        fails.append(f"modelled: notes {seq} != {want}")
     if "HANDOFF" not in out:
         fails.append("modelled: the boot did not reach the RTOS handoff after the re-upload")
     if "core 0: boot ROM done" not in out or "core 1: boot ROM done" not in out:
         fails.append("modelled: a core did not come back from the re-upload")
-    if not rec or rec[0] != CELL_MAGIC or rec[3] != 0x5A3C60 or rec[4] != 0x5A3C61 or rec[5] != 0x17:
+    ok_cell = (rec and rec[0] == CELL_MAGIC and rec[3] == 0x5A3C60
+               and rec[5] == (0x55 if park else 0x17)
+               and (park or rec[4] == 0x5A3C61))
+    if not ok_cell:
         fails.append(f"modelled: the cell reads {[hex(v) for v in rec]}")
 
     ok = not fails
