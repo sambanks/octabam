@@ -36,6 +36,20 @@ switch, played a session with the park resident in the vector table, and
 switched away again with audio working, which is the park itself running
 from the vectors. Payload A's free region went from 2 words to 24.
 
+**Why the vectors and not the top of P.** ✅ Measured 29 Sep 2026: the
+core's default memory map gives 8K words of P (`0x2000`), and stock's code
+stops short of it -- payload A ends at `0x01fdf` (33 words spare), payload
+B at `0x01d9f` (609). That space is real RAM and it is UNREACHABLE by the
+build: code is placed by rewriting words inside the payload's existing load
+records, and no record covers it. Creating one means growing payload A's
+blob, and payload B's begins at `0x400f59ef` -- the exact byte A's ends on,
+zero slack -- so it would shift B, the `FUN_40001b18(0x400f59ef)` call site
+and the boot copy, and every DSP bit-identity baseline with them. Stock's
+low P is otherwise full to the word: A loads all 8,159 of it in 66 records,
+B all 7,583 in 46, with no holes between them. So the free-but-loaded
+vector slots are the only P words a module can take without an effect
+giving up its own.
+
 The OS-image edits every class needs (a detour at a stock instruction, a
 poke, a grown table) are `Detour`, `Poke`, `TableGrow`, wired by symbol.
 `tools/remix/ledger.py` refuses two modules that claim one address before
