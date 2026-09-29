@@ -50,7 +50,11 @@ a GPIO pin high, right after selecting core 0, and the OS never touches it
 again"); under the map it is the PDDR of the port whose PODR is the select,
 and the two writes are one act: drive the select low, then make it an
 output. The only reset-line candidate left for the ColdFire → DSP direction
-is RSTOUT (RCR bit 6), which `modules/dsp-reset-probe` asks the unit about.
+was RSTOUT (RCR bit 6), and ✅ the unit says no (an MKII, 29 Sep 2026,
+`modules/dsp-reset-probe`): forcing RSTOUT, as a bare write/clear pair and
+held ~1 ms, leaves both DSP cores running their payloads rather than in
+their boot ROM. **No way for the ColdFire to reset the DSP is known**,
+which is why OS SWITCH parks each core in software before its reset.
 
 ## 3. OS format and update chain ✓
 

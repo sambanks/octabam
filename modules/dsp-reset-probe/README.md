@@ -23,8 +23,22 @@ A reset line would remove the park, the words, and the asymmetry.
 
 | # | candidate | status |
 |---|---|---|
-| A | **RSTOUT**, the reset controller's output to the board: RCR bit 6, FRCRSTOUT, `0xfc0a0000` | ❓ what this probe asks |
-| B | the GPIO pin the bootstrap drives once at `0x400e0dce`, right after it selects DSP core 0 | ❌ **retracted** |
+| A | **RSTOUT**, the reset controller's output to the board: RCR bit 6, FRCRSTOUT, `0xfc0a0000` | ❌ **refused by the unit**, 29 Sep 2026 (below) |
+| B | the GPIO pin the bootstrap drives once at `0x400e0dce`, right after it selects DSP core 0 | ❌ **retracted** (the register map) |
+
+**The answer is no.** On an MKII, 29 Sep 2026 ✅: forcing RSTOUT leaves both
+DSP cores running their payloads. Neither a bare write/clear pair nor a
+~1 ms hold put either core in a listening boot ROM, and the control pass was
+clean. So the park code stays, and the words for it come from the payload's
+unused interrupt vectors. The notes, in order: 40/1, 41/3, 42/1, 43/3, 44/3,
+42/2, 43/3, 44/3, 47/0 -- the same sequence, code for code, that the plain
+port produces.
+
+What that does NOT say: that the board has no DSP reset line at all, only
+that RSTOUT at those two pulse widths is not one. Most likely the DSP's
+reset is simply not on RSTOUT; an assertion far longer than 1 ms is
+untested, and so is the question of whether `SOFTRST` asserts RSTOUT in the
+first place (the MCF54455 manual would say).
 
 **Why B is retracted.** The write is `moveq #1,%d0 / move.b %d0,(0xfc0a4024)`
 and `0xfc0a4024` is the **data direction** register of the port whose output
@@ -80,14 +94,26 @@ Read the notes with `probe.s`'s table. The short version:
 | 45 then 46 | a core answered and both payloads were uploaded again — audio should work |
 | nothing after 42 | the pulse took the unit down. Power-cycle; that pass's candidate is dangerous, not viable |
 
-**After a "no" the image may have no audio until a power-cycle.** The
-control pass leaves the probe's first words unread in a running payload's
-receive register, which is enough to put its frame protocol out of step,
-and the only way back into a boot ROM is the very reset the probe is
-asking about (`probe.s`, "the restore", says why the alternative -- OS
-SWITCH's park command -- is worse: a park that does not take leaves the
-stock uploader waiting forever, a boot that never ends). After a "yes"
-both payloads are uploaded again and the boot ends as it started.
+**After a "no" THE BOOT DOES NOT FINISH** ✅ (an MKII, 29 Sep 2026): the
+unit shows the logo with the FLASHED image's name under it and stops --
+by eye, the pre-build-14 OS SWITCH hang, which is the first thing it will
+be mistaken for. It is not that: the probe's own
+words, unread in a running payload's receive register, put its frame
+protocol out of step. Every note is sent before that happens, so the
+measurement always survives it. **Power-cycle; the flash is untouched and
+the flashed image boots normally.**
+
+Both instruments agree on it: the port never reaches the UI's panel check
+or the frame interrupt (`verify_boottrace` on this remix), and on the unit
+the project-load MIDI that every completed boot sends comes only after a
+power-cycle. `docs/remixer/FAILURE_MODES.md` has the timeline. The reason `probe.s`'s "the restore" gives for not attempting
+the OS SWITCH park rescue -- that a park which does not take hangs the
+boot, "worse than the wedge it was meant to repair" -- no longer stands on
+its own: the wedge is no better, so a probe image that must survive a "no"
+should carry OS SWITCH and try the park.
+
+After a "yes" both payloads are uploaded again and the boot ends as it
+started.
 
 A `.bin` build (`make image REMIX=dsp-reset BUILD=<nn>`) works the same way
 if you would rather flash it.
@@ -112,7 +138,11 @@ from the unit means "no", and not "the probe cannot see a yes".
 
 ## Not measured ❓
 
-1. **The unit.** Nobody has run this yet. That is the point of it.
+1. **A positive control on the unit.** The probe has shown a listening ROM
+   only under the port's model. An image carrying OS SWITCH could park a
+   core with its host command ($12) and then probe it: a park is a
+   boot-ROM loader, so it must answer. Until that runs, "no answer" on
+   hardware rests on the port for its other half.
 2. **Whether RSTOUT is asserted by the soft reset already** (above).
 3. **What else is on RSTOUT.** The probe runs before the panel link, the
    card and the RTOS precisely so that a reset of the panel or the

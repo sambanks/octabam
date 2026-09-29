@@ -46,10 +46,12 @@ A remix that keeps every stock DSP effect has no DSP words for the park
 code (below) and sets `os_switch=False`; its `.OBI` is still a valid
 target. `OCTABAM_NO_OS_SWITCH=1` builds without it everywhere.
 
-The version string on the boot screen and in SYSTEM STATUS is probably the
-flashed image's, whichever OS runs. 🟡 Neither `1.40C` nor the `-V`
-string is in the MAIN OS image, so it is read from the flash header.
-Trust the pane's `NOW` line instead.
+The version string on the boot screen is the FLASHED image's, whichever OS
+runs. ✅ Measured on an MKII, 29 Sep 2026: a switch to `DSPRESET.OBI` came
+up with `BSRET3OS2` under the logo. Neither `1.40C` nor the `-V` string is
+in the MAIN OS image, so it is read from the flash header 🟡. Trust the
+pane's `NOW` line instead. (SYSTEM STATUS after a switch is still
+unmeasured.)
 
 ## How
 

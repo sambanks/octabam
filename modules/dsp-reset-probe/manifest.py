@@ -10,7 +10,8 @@ you can switch INTO them, never out of them.
 If the ColdFire can reset the DSP the park disappears -- no DSP words, no
 per-payload budget, every image switchable both ways. One candidate is
 left: RSTOUT, the reset controller's output to the board (RCR bit 6,
-FRCRSTOUT). The other, the pin the bootstrap drives once at 0x400e0dce, is
+FRCRSTOUT) -- ANSWERED NO on an MKII, 29 Sep 2026 (README.md). The other,
+the pin the bootstrap drives once at 0x400e0dce, is
 retracted -- 0xfc0a4024 is the data DIRECTION register of the port whose
 output register 0xfc0a400c is the DSP core select, so that write makes the
 select pin an output (docs/firmware/ARCHITECTURE.md, the GPIO block map).
@@ -31,10 +32,11 @@ MODULE = Module(
     key="DSP RESET PROBE",
     kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="sanderlegit", author_url="https://github.com/sanderlegit",
-    proof=Proof.PORT,
-    proof_note="`verify_dspreset`: the probe reports no reset on the plain port and both "
-               "cores in their ROM when the port models the pin -- the instrument fires "
-               "both ways. The candidate itself is unmeasured: only a unit can answer it",
+    proof=Proof.HARDWARE,
+    proof_note="an MKII, 29 Sep 2026: RSTOUT (RCR bit 6) does NOT reset either DSP core "
+               "-- both pulse widths reported no boot ROM, control pass clean, the same "
+               "codes the plain port gives; `verify_dspreset` shows the instrument "
+               "reporting the other answer when the port models a reset line",
     doc="Probe: does RSTOUT (RCR bit 6) reset the DSP? A boot-time report on MIDI OUT, "
         "so OS SWITCH could drop its 40 words of DSP park code.",
     linked=(Linked("dsp_reset_probe", "modules/dsp-reset-probe/probe.s", cpu="5475"),),
