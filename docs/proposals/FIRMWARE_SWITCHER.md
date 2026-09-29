@@ -136,7 +136,8 @@ MAIN MENU > OS (a list of /*.OBI)           bootstrap unpacks NOR -> 0x40000400
   - no ROM cave: the gate is ~110 B in octabam's loader (a new
     `Linked(loader=True)` form), the body ~230 B in the runtime;
   - a DRAM unit of a few KB, packed in the image;
-  - ~60 DSP words in each payload for the park (so a remix that keeps
+  - 40 DSP words in each payload for the park (70 until the build-15
+    compaction, 29 Sep 2026; so a remix that keeps
     every stock effect cannot carry it);
   - two detours (`0x40000412`, `0x40064c32`), one row pointer
     (`0x400cbda4`), one count poke (`0x400cbd8c`, the root 4 → 5);

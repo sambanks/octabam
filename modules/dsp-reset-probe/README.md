@@ -14,8 +14,15 @@ OS SWITCH's soft reset restarts the ColdFire and **not** the DSP ✅ (on the
 unit, BOOT TRACE build 4, 29 Sep 2026: the staged OS starts its upload at
 `0x40001e50` and never returns from it). So each core is told to park itself
 in a boot-ROM loader of its own first — `modules/os-switch/dsp_park.asm`,
-40 words in **both** payloads. Payload A of a full remix cannot spare them:
-`bottleservice-ret`'s stage-B builds are switch TARGETS only.
+40 words in **both** payloads, taken out of the region modules place
+effects in. The remixes that opt out (`os_switch=False`) are the ones that
+keep every stock DSP effect and so place nothing: `restock`, `mods`,
+`octatrick`, `octatrick-usb`, `ok-ms` and the single-module test builds.
+`bottleservice-ret`, the full rig, does carry it — the compaction from 70
+words to 40 was done for exactly that, its payload A having 42 to spare
+(`dsp_park.asm` header). What is left with no room are individual builds
+that fill payload A further; the stage-B images BSRET4B and BSPF5B were
+reported as boot-only targets for that reason (not verified in this tree).
 
 A reset line would remove the park, the words, and the asymmetry.
 

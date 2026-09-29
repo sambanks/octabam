@@ -3,9 +3,9 @@
 OS SWITCH's cost is 40 DSP words in BOTH payloads: the soft reset restarts
 the ColdFire and not the DSP, so each core has to park itself in a loader
 before the reset or the next OS's upload finds no boot ROM (measured on the
-unit, BOOT TRACE build 4). Payload A of a full remix has no room for them,
-which is why `bottleservice-ret`'s stage-B builds are boot-only targets:
-you can switch INTO them, never out of them.
+unit, BOOT TRACE build 4). They come out of the region modules place their
+effects in, so a build that fills payload A has to give the switcher up and
+becomes a target you can switch INTO but never out of.
 
 If the ColdFire can reset the DSP the park disappears -- no DSP words, no
 per-payload budget, every image switchable both ways. One candidate is
