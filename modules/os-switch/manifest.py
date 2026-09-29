@@ -84,7 +84,9 @@ MODULE = Module(
     category=Category.REFERENCE, author="sanderlegit", author_url="https://github.com/sanderlegit",
     proof=Proof.HARDWARE,
     proof_note="an MKII, 29 Sep 2026 (OCTABAM14 with BOOT TRACE): switched to its own "
-               "image and to stock 1.40C, audio and play working; `verify_osswitch`",
+               "image and to stock 1.40C, audio and play working; and with the park "
+               "moved into the dead vector run (BSRETVEC) booted, played and switched "
+               "away again -- 40 region words down to 18; `verify_osswitch`",
     doc="MAIN MENU > OS lists the card root's raw OS images (.OBI) and boots the one "
         "picked without writing the flash; a power-cycle returns to the flashed image.",
     linked=(

@@ -11,6 +11,31 @@ it is, not an address; the build decides which bytes land where.
 | **DRAM unit** | `Linked(..., dram=True)` | linked with every other DRAM unit in the remix as one image, packed, appended after the OS behind octabam's loader, depacked at boot into the platform's arena reserve | 10 MiB, off the unit's sample/recorder pool |
 | **Appended runtime** | `Runtime` (a recipe: Octakit's `firmware.json`) + `ArenaReserve` | its own pages of the same arena, as a payload of the same loader | the author's (Octakit: 528 pages) |
 
+A fourth class exists on the DSP side, for one kind of code only:
+
+| class | declared as | where it lands | budget |
+|---|---|---|---|
+| **Pinned DSP section** | `DspSection(pin=..., pin_split_label=...)` | a fixed P address instead of the harvested effect region: the interrupt vectors stock leaves as `jmp *`. What does not fit before the run ends is split at one label and packed into the region as usual | payload A `P:$1E..$3F` = 34 words, payload B `P:$14..$3F` = 44 ✅ read from the image |
+
+Stock's unused vectors are self-jumps -- an interrupt that fired there
+would spin the core inside it for good, which is how you know stock never
+enables them. `tools/verify/verify_dspvectors.py` proves that on every
+build (the runs are all self-jumps; no DMA whose vector is in one has DIE
+set; no ESAI control word has an interrupt enable; the set of peripherals
+either payload configures is the audited one), and that gate is the licence
+for the class. The build refuses to pin over anything that is not still the
+stock pattern, refuses a head that does not fit, and asserts that both
+halves assemble to the same length at either origin rather than assuming
+it. The ledger claims the pin by name.
+
+✅ **On an MKII, 29 Sep 2026.** OS SWITCH's DSP park is the first user: its
+22-word handler at `P:$20..$35`, entered by `jsr` at `P:$1E` (host command
+`$0F`), and its 18-word loader tail in the region -- 40 region words down
+to 18 in both payloads. `bottleservice-ret` built that way booted from a
+switch, played a session with the park resident in the vector table, and
+switched away again with audio working, which is the park itself running
+from the vectors. Payload A's free region went from 2 words to 24.
+
 The OS-image edits every class needs (a detour at a stock instruction, a
 poke, a grown table) are `Detour`, `Poke`, `TableGrow`, wired by symbol.
 `tools/remix/ledger.py` refuses two modules that claim one address before

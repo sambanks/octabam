@@ -99,8 +99,13 @@ all self-jumps, no DMA whose vector is in one has DIE set, no ESAI control
 word has an interrupt enable, and the set of peripherals either payload
 configures is the audited one. ✅ Under the port every OS SWITCH check
 passes with the park in the vectors, including both cores taking the park
-command at `$1E` and re-entering their payload starts. ❓ Not yet run on a
-unit; it costs no flash to try, since you switch to it.
+command at `$1E` and re-entering their payload starts. ✅ **On an MKII, 29
+Sep 2026**: `bottleservice-ret` built this way (`BSRETVEC`, reached by a
+switch, no flash) booted, played a session with the park resident in the
+vector table, and switched away to the flashed image with audio working --
+which is the park running from the vectors, and the chip taking a host
+command at a vector stock never uses. Its payload A went from 2 free words
+to 24.
 
 **The DSP.** The soft reset restarts the ColdFire, not the DSP, and the
 next OS's upload (`0x40001e50`) assumes a chip reset: each core in its
