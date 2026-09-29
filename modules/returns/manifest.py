@@ -9,9 +9,9 @@ fader then process the returns with the mix) or into MAIN when it is off.
 T5 keeps only its own sound. Without RETURNS on T8, BusVerb prints on T5 as
 before: an unconverted project plays as it did.
 
-Clones FILTER's descriptor, as SEND does: VRB is page-1 slot 0, so stock
-scene locks, the crossfader, LFOs and CC reach it. DLY (slot 1, stage B) is
-the delay's: BusDelay on core 1 hands its wet to core 0 through the shared
+Clones FILTER's descriptor, as SEND does: DLY and VRB are page-1 slots 0
+and 1 (the delay's first, as on the SEND page, since 30 Sep 2026), so stock
+scene locks, the crossfader, LFOs and CC reach them. DLY is the delay's: BusDelay on core 1 hands its wet to core 0 through the shared
 window (y:$36200..$36308, stamped buffers three back of the rotation).
 
 On a unit: BSRET3, 29 Sep 2026 (remixes/bottleservice-ret). Under the port:
@@ -39,10 +39,10 @@ MODULE = Module(
         build_tag=False,
     ),
     params=(
-        Param(b"VRB", 108, active=True,
-              doc="the reverb's return level, as a track LEVEL: into T8's input or MAIN"),
         Param(b"DLY", 108, active=True,
               doc="the delay's return level, as a track LEVEL: into T8's input or MAIN"),
+        Param(b"VRB", 108, active=True,
+              doc="the reverb's return level, as a track LEVEL: into T8's input or MAIN"),
         _BLANK, _BLANK, _BLANK, _BLANK,
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),

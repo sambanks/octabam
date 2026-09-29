@@ -4,8 +4,9 @@
 ; delay). Payload A (core 0) only.
 ;
 ; proc, on T8's FX2 (r7 == $6b00): the audio block is left alone; page-1
-; slot 0 (VRB) is published to y:$e21 and the magic word to y:$e20, which
-; tells BusVerb to print into the buffer instead of onto T5. Anywhere else
+; slot 0 (DLY) is published to y:$e25 and slot 1 (VRB) to y:$e21, and the
+; magic words to y:$e20 and the shared ALIVE_D, which tell BusVerb and
+; BusDelay to print into their return buffers instead of onto T5 and T1. Anywhere else
 ; RETURNS does nothing at all.
 ;
 ; mixhook, at P:$2d5 (`move x:>$206,r0`, replayed): if BusVerb marked the
@@ -59,10 +60,10 @@ proc:
         move    #>$6b00,x0
         cmp     x0,a
         bne     rtn_skip                ; not T8's FX2 on core 0
-        move    x:(r6),a                ; VRB, page-1 slot 0
-        move    a,y:>$e21
-        move    x:(r6+$1),a             ; DLY, page-1 slot 1
+        move    x:(r6),a                ; DLY, page-1 slot 0
         move    a,y:>$e25
+        move    x:(r6+$1),a             ; VRB, page-1 slot 1
+        move    a,y:>$e21
         move    #>$5a5a5a,x0
         move    x0,y:>$e20              ; ALIVE (BusVerb, core 0)
         move    x0,y:>$36308            ; ALIVE_D (BusDelay, core 1)
