@@ -46,6 +46,19 @@ osw_dsp:
         movep   #>$0,x:<<$ffffb7        ; ESAI receiver off
         movep   #>$0,y:<<$ffff95        ; ESAI_1 transmitter off
         movep   #>$0,y:<<$ffff97        ; ESAI_1 receiver off
+; The host port back into the mode the boot ROM leaves it in. The payload's
+; start (P:$30016..$30018, both payloads) disables it, sets HPCR bit 7 and
+; enables it again; the stock upload's reads assume the ROM's mode. MEASURED
+; on the unit (build 12, BOOT TRACE notes 17/19): after a switch the first
+; record's echo read back $010101 on both cores where a power-on boot reads
+; $000001 -- the low byte right, repeated in every lane -- and the record
+; sender abandoned both uploads. That bit 7 is the lane mode is INFERRED
+; (it is the one host-port bit the payload changes before its first
+; transfer; bit 5, cleared at P:$3001b, is left as the payload has it).
+; The same three instructions, in the payload's own forms, reversed.
+        bclr    #6,x:<<$ffffc4          ; HPCR: HEN off
+        bclr    #7,x:<<$ffffc4
+        bset    #6,x:<<$ffffc4          ; HEN on
 ; Leave the interrupt before loading: the host command made this a LONG
 ; interrupt (the vector's jsr), and the vendored emulator runs no
 ; peripheral until that interrupt's rti -- its HI08 then never raised HTDE
