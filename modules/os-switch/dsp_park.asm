@@ -104,6 +104,20 @@ osw_pend:
 ; window through X runs; the stub's words are the ones this file assembles
 ; for those two instructions (08f482 000018, 0ae180).
 osw_stub:
+; Build 9 on the unit: the stub below ran (HF3) and bootstrap A still never
+; read its first record. Bootstrap A's only instructions before that read
+; are `ori #3,mr / move #0,sp / bset #18,y:$fffff9 / bset #18,y:$fffffa`;
+; the payload's start (P:$30019/$3001a) sets bit 14 of y:$fffffd and
+; y:$fffffe, which a power-on leaves clear. Undo those, then run the
+; bootstrap's two bsets here, then HF3 alone: the host's ISR says which of
+; these the chip got past (0x0a: stuck on them; 0x12: past them, the stub
+; not reached; 0x1a: past them and the stub ran). Forms: the payload's and
+; bootstrap A's own bset/bclr on these words.
+        bclr    #$e,y:<<$fffffd
+        bclr    #$e,y:<<$fffffe
+        bset    #$12,y:<<$fffff9
+        bset    #$12,y:<<$fffffa
+        movep   #>$10,x:<<$ffffc2       ; HCR: HF3 alone -- past the chip-state writes
         move    #>$08f482,x0
         move    x0,x:>$31040
         move    #>$000018,x0
