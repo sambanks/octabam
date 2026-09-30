@@ -203,6 +203,7 @@ def remix_path(name: str) -> pathlib.Path:
 
 
 OS_SWITCH = "OS SWITCH"
+OCTAKIT_MIRROR = "OCTAKIT MIRROR"
 
 
 def remix(name: str | None):
@@ -258,6 +259,13 @@ def remix(name: str | None):
     if (r.os_switch and OS_SWITCH not in r.modules and OS_SWITCH in known
             and not os.environ.get("OCTABAM_NO_OS_SWITCH")):
         r = dataclasses.replace(r, modules=r.modules + (OS_SWITCH,))
+    # OCTAKIT MIRROR WITH EVERY OCTAKIT: her page-clipboard check halts on a
+    # page-key + CLEAR unless stock's SRAM part mirror equals the working
+    # part, which her own load path leaves unequal (modules/octakit-mirror,
+    # docs/remixer/FAILURE_MODES.md). Appended last, like OS SWITCH.
+    if ("OCTAKIT" in r.modules and OCTAKIT_MIRROR not in r.modules and OCTAKIT_MIRROR in known
+            and not os.environ.get("OCTABAM_NO_OCTAKIT_MIRROR")):
+        r = dataclasses.replace(r, modules=r.modules + (OCTAKIT_MIRROR,))
     # verify_burn's pair only: OCTABAM_NO_USB_IN leaves USB AUDIO IN out of
     # both of its builds, as OCTABAM_NO_OS_SWITCH leaves OS SWITCH out. Its
     # DSP inject runs once a frame at the frame head (no per-sample cycles),
