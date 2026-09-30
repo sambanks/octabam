@@ -2,12 +2,12 @@
 
 T8's FX2 is RETURNS: VRB, the reverb's return level, into T8's input with
 MASTER TRACK on (T8's FX1 and fader process it) or into MAIN with it off;
-T5 keeps its own sound only. docs/proposals/RETURNS.md. Not flashed.
+T5 keeps its own sound only. docs/proposals/RETURNS.md.
 
-MODE DEFAULTS is left out: RETURNS' descriptor clone takes the ROM its
-linked unit held (~400 B short otherwise; the unit cannot move to DRAM while
-CC MAP's cave links against it before the platform). It returns when the
-ROM is freed (a build change, next).
+RETURNS is on the FX2 chooser beside SEND (it runs on T8 only; on T5-T7 it
+passes audio untouched and on T1-T4 its id is the payload's null stub), and
+MODE DEFAULTS is back: its unit runs from DRAM, and the one-word branches
+(`bra <label`, AGENTS.md) gave payload A the words Character KEY took.
 """
 
 from remix.schema import Proof, Remix
@@ -23,10 +23,9 @@ REMIX = Remix(
              "OCTAKIT", "SCENES KITS",
              "SCENES P2", "SCENES P2 KITS",
              "FLEX SEEK BIND", "FLEX SEEK BIND CTR", "RECORDER SPACING", "RLEN PLEN",
-             "RETURNS"),
+             "RETURNS", "MODE DEFAULTS"),
     fallback="SEND",
-    hidden=("REVERB SERVER", "DELAY SERVER", "RETURNS"),
-    named=("RETURNS",),
+    hidden=("REVERB SERVER", "DELAY SERVER"),
     host_slots=(("DELAY SERVER", 2), ("REVERB SERVER", 2)),
     locked=("REVERB SERVER", "DELAY SERVER"),
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),

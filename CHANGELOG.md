@@ -11,6 +11,21 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- The rig on current main (30 Sep 2026, `bottleservice-pf`, RIGPF5BP to
+  RIGPF7BP on an MKII): Character KEY had left payload A 52 words over.
+  `dsp_asm` emits the one-word `bra`/`bsr`/`bcc` when the operand says `<`
+  (`tools/patches/dsp56300.patch`; an unprefixed branch keeps its two words,
+  `refhash.sh check` 24/24 bit-identical with and without the patch), and 42
+  branches in REVERB SERVER and RETURNS took it; REVERB SERVER's return path
+  (-10) and RETURNS' record bases (-4) did the rest, output bit-identical
+  on `verify_returns`' ten fixtures. Payload A: 1 word free. MODE DEFAULTS
+  is back, its unit in DRAM. RETURNS is on the FX2 chooser, on id 0x1b:
+  on 0x1e every FX2 switch halted in Octakit's selection wrapper, which
+  refuses an id past 28 (RIGPF6BP; the registry now refuses it), and on
+  core 1 its id is the null stub rather than SEND, so a pick on T1-T4 does
+  nothing. Projects that stored RETURNS as 0x1e need the id rewritten.
+  Confirmed on the unit: boot, RETURNS, MODE DEFAULTS, page CLEAR, FX2
+  switching. Open: a switch on T1 or T5 removes that track's server.
 - OS SWITCH's boot picker (30 Sep 2026, `modules/os-switch`): at power-on,
   before the project's loading is posted, the stock dialog offers the card's
   other `.OBI` images. Untouched it stays on this image after 3 s (`STAY IN

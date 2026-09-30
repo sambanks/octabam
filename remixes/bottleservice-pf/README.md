@@ -29,3 +29,16 @@ A scene or the crossfader on a track's LEVEL moves its sends too.
   `docs/contributing/FAILURE_MODES.md`); later in the day it read clean. Cause
   open; suspected: the USB audio state (a DAW holding the unit as its audio
   device) when disk mode starts.
+- **RIGPF5BP** (on current main, Character KEY included, + MODE DEFAULTS,
+  BUILD=13): flashed on the MKII, 30 Sep 2026; boot, RETURNS, MODE turns
+  re-defaulting their knobs (FX1 and FX2) and page CLEAR confirmed. Payload A
+  1 word free: REVERB SERVER's return path lost 10 words, RETURNS 4, and 42
+  branches in the two took the one-word form.
+- **RIGPF6BP** (RETURNS listed on the FX2 chooser, BUILD=14): any FX2 switch
+  halted with VEC:04 at 0x45D222B0, Octakit's `gk_machine_selection_fatal`:
+  her chooser wrapper refuses an effect id above 28 and RETURNS was 0x1e.
+- **RIGPF7BP** (RETURNS on 0x1b, a no-op on T1-T4, BUILD=15): flashed on the
+  MKII, 30 Sep 2026; FX2 switching works. Projects that stored RETURNS as
+  0x1e were rewritten to 0x1b on the card (they need RIGPF7BP or later).
+  Open: a switch on T1 or T5 removes that track's server, and the chooser
+  has no row to put it back (`ot_project.py host` does).

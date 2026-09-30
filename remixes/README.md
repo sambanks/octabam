@@ -11,7 +11,7 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 | remix | contains | proof |
 |---|---|---|
 | [`bottleservice`](bottleservice/README.md) | The rig + USB MIDI + USB AUDIO OUT MASTER (T8 to the computer) + USB AUDIO IN CD (the computer onto inputs C/D) + Octakit. | on hardware: Sam's MKII, image 88, 27 Sep 2026 |
-| [`bottleservice-pf`](bottleservice-pf/README.md) | bottleservice-ret + POST FADER: the bus sends follow each track's fader, mute and solo. | `make check`: make check, 29 Sep 2026; not flashed |
+| [`bottleservice-pf`](bottleservice-pf/README.md) | bottleservice-ret + POST FADER: the bus sends follow each track's fader, mute and solo. | on hardware: an MKII, RIGPF7BP, 30 Sep 2026 |
 | [`bottleservice-rec`](bottleservice-rec/README.md) | bottleservice with 20-channel USB AUDIO OUT (tracks, MAIN, CUE) and the recorder click fixes. | on hardware: an MKII, OCTABAM1, 29 Sep 2026 |
 | [`bottleservice-rec-plen`](bottleservice-rec-plen/README.md) | bottleservice-rec + RLEN PLEN (RLEN value PLEN: one pattern loop per take). | on hardware: an MKII, OCTABAM2, 29 Sep 2026 |
 | [`bottleservice-ret`](bottleservice-ret/README.md) | bottleservice-rec-plen + RETURNS: the reverb return on T8's FX2 (VRB), into T8's input or MAIN, not onto T5. | on hardware: an MKII, BSRET3, 29 Sep 2026 |
