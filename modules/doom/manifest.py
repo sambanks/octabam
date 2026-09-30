@@ -24,6 +24,7 @@ was built against.
 README.md beside this file: controls, the memory map, what is measured.
 """
 
+import os
 import pathlib
 
 from remix import arena
@@ -47,6 +48,10 @@ if f"DOOM_RAM_BASE  0x{_base:08x}u" not in _h or f"DOOM_RAM_END   0x{_end:08x}u"
     raise SystemExit(f"modules/doom: octa/octa.h's DOOM_RAM_BASE/END must be "
                      f"0x{_base:08x}/0x{_end:08x} (tools/remix/arena.py)")
 
+# DOOM_NOHOOKS=1: a bisect build without the sound path (no state-7 detour,
+# no DSP hook); with DOOM_CFLAGS=-DOCTA_NOSOUND the C side is silent too
+NOHOOKS = os.environ.get("DOOM_NOHOOKS") == "1"
+
 MODULE = Module(
     name="doom",
     key="DOOM",
@@ -67,13 +72,13 @@ MODULE = Module(
         Detour(0x4002573E, H("4eb9400228dc"), "doom", "doom_files",
                "the last-set mount's LOADING FILES post: the same, for a unit whose SRAM "
                "knows the card", kind="jsr"),
+    ) + (() if NOHOOKS else (
         # USB AUDIO IN's site (modules/usb-audio-in-ab): a remix carries one
         Detour(0x40004BC0, H("720113c1fc04801d"), "doom", "doom_state7",
                "frame transfer state 7: Doom's 16 stereo samples to core 0 at $6320",
-               pad_to=8),
-    ),
+               pad_to=8),)),
     # Doom's sound into MAIN L/R, right after the mixdown (doom_mix.asm)
-    dsp=DspSection(
+    dsp=None if NOHOOKS else DspSection(
         asm="modules/doom/doom_mix.asm",
         priority=20,
         payloads=frozenset({"A"}),          # core 0 runs the mixdown

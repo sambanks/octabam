@@ -12,7 +12,7 @@ CFLAGS  = -mcpu=54455 -O2 -fno-common -ffreestanding -fno-builtin-printf \
           -fomit-frame-pointer -nostdinc -isystem octa/include \
           -isystem $(shell $(CC) -print-file-name=include) \
           -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 -DCMAP256 -DFEATURE_SOUND \
-          -w
+          -w $(DOOM_CFLAGS)
 DOOM    = dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop \
           d_main d_mode d_net f_finale f_wipe g_game hu_lib hu_stuff info i_cdmus \
           i_endoom i_joystick i_scale i_sound i_system i_timer memio m_argv m_bbox \

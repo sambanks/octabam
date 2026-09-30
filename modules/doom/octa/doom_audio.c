@@ -90,7 +90,9 @@ static boolean snd_init(boolean use_sfx_prefix)
 {
     sfx_prefix = use_sfx_prefix;
     memset(ch, 0, sizeof ch);
+#ifndef OCTA_NOSOUND                 /* the bisect builds (Makefile DOOM_CFLAGS) */
     running = 1;
+#endif
     return true;
 }
 
@@ -365,6 +367,9 @@ static void mus_play(void *h, boolean looping)
     char name[9];
     int i;
     m.playing = 0;
+#if defined(OCTA_NOSOUND) || defined(OCTA_NOMUSIC)
+    l = NULL;
+#endif
     if (!l)
         return;
     for (i = 0; i < 8 && l->name[i]; i++)
