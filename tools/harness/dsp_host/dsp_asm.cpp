@@ -109,8 +109,11 @@ int main(int argc, char** argv) {
         for (auto& [name, addr] : labels) {
             char buf[32];
             if (!real) {
-                // pass 1: a high dummy so the LONG form is sized, matching pass 2
-                std::snprintf(buf, sizeof buf, "$%x", 0x7ff000);
+                // pass 1: a high dummy so the LONG form is sized, matching pass 2;
+                // a '<' branch operand asks for the one-word form, sized with 0
+                const auto at = t.find(name);
+                const bool shortForm = relative && at != std::string::npos && at > 0 && t[at - 1] == '<';
+                std::snprintf(buf, sizeof buf, "$%x", shortForm ? 0 : 0x7ff000);
             } else if (relative) {
                 const int32_t disp = static_cast<int32_t>(addr) - static_cast<int32_t>(here);
                 std::snprintf(buf, sizeof buf, "%s$%x", disp < 0 ? "-" : "",

@@ -259,6 +259,19 @@ used the forms; `build_bus.assemble_syms` now refuses `brset`, `brclr`,
 `bsset` and `bsclr` in any source. Use `btst #n,S` then `bcs`/`bcc` (stock
 has both).
 
+**`bra`/`bsr`/`bcc` ARE TWO WORDS UNLESS THE OPERAND SAYS `<`.** Stock uses
+the one-word forms (`050c10` bra, `05a416` beq) wherever the target is
+within −256..255 words; `dsp_asm` emitted only the two-word form until 30
+Sep 2026, when `tools/patches/dsp56300.patch` added `bra <label` (and
+`bsr`, `bcc`, `bscc`): a `<` operand takes the one-word form or is refused
+out of range, and an unprefixed branch keeps the two-word form, so no
+existing byte moved (`refhash.sh check`, 24 cases, with and without the
+patch). RETURNS and REVERB SERVER took it for 42 words of payload A, which
+is how `bottleservice-pf` fits on top of Character KEY. Rebuild `dsp_asm`
+after pulling it (`scripts/setup.sh`), then assemble a `bra <label` and
+expect one `050c..` word; a stale binary refuses the `<` form as
+InvalidInstruction, loudly.
+
 **`dsp_asm` resolves labels by PREFIX, so no new label may have an existing
 label as its prefix.** Adding a loop labelled `warmz2` next to the existing
 `warmz` assembled to

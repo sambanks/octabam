@@ -52,13 +52,41 @@ index ac3853c..5acf878 100644
  				if constexpr(add)
  				{
 diff --git a/source/dsp56kEmu/assembler.cpp b/source/dsp56kEmu/assembler.cpp
-index 1a22ced..c3202cf 100644
 --- a/source/dsp56kEmu/assembler.cpp
 +++ b/source/dsp56kEmu/assembler.cpp
-@@ -2289,6 +2289,36 @@ namespace dsp56k
+@@ -413,6 +413,27 @@
+ 			text = text.substr(1);
+ 
+ 		return parseNumber(text, _value);
++	}
++
++
++	/*	The one-word branches (Bcc/BScc/BRA/BSR xxx) carry a 9-bit signed
++		displacement split aaaa0aaaaa. A '<' operand selects them, and only
++		a '<' operand, so every unprefixed branch keeps the two-word form it
++		always had (octabam: bytes of every existing image unchanged). */
++	bool Assembler::encodeShortBranch(const std::string& _op, TWord& _word, Instruction _inst)
++	{
++		if (_op.empty() || _op[0] != '<') return false;
++		auto text = _op.substr(1);
++		const bool neg = !text.empty() && text[0] == '-';
++		if (neg) text = text.substr(1);
++		TWord v;
++		if (!parseNumber(text, v) || v > 0x1000) return false;
++		const int d = neg ? -static_cast<int>(v) : static_cast<int>(v);
++		if (d < -256 || d > 255) return false;
++		const TWord u = static_cast<TWord>(d) & 0x1ff;
++		setFieldValue(_word, _inst, Field_aaaa, u >> 5);
++		setFieldValue(_word, _inst, Field_aaaaa, u & 0x1f);
++		return true;
+ 	}
+ 
+ 	bool Assembler::parseNumber(const std::string& _text, TWord& _value)
+@@ -2288,6 +2309,36 @@
+ 
  				TWord dd;
  				if (!parseRegister_dddddd(regOp, dd)) continue;
- 
++
 +				// One-word form, Movex_Rnxxx / Movey_Rnxxx ("0000001aaaaaaRRR1a0WDDDD"):
 +				// a 7-bit signed displacement (-64..63, aaaaaa the high six bits and
 +				// a the low bit) and a data-ALU register (DDDD: X0 X1 Y0 Y1 A0 B0 A2
@@ -88,10 +116,55 @@ index 1a22ced..c3202cf 100644
 +						return result;
 +					}
 +				}
-+
+ 
  				setFieldValue(word, inst, Field_RRR, r);
  				setFieldValue(word, inst, Field_DDDDDD, dd);
- 				setFieldValue(word, inst, Field_W, write ? 1 : 0);
+@@ -2363,6 +2414,17 @@
+ 				return result;
+ 			}
+ 
++			// BRA/BSR: one-word form, '<' operand only
++			case Bra_xxx: case Bsr_xxx:
++			{
++				if (ops.size() != 1) continue;
++				if (!encodeShortBranch(ops[0], word, inst)) continue;
++				result.word[0] = word;
++				result.wordCount = 1;
++				result.error = AssembleError::OK;
++				return result;
++			}
++
+ 			// BRA: PC-relative branch with extension word
+ 			case Bra_xxxx:
+ 			{
+@@ -3187,6 +3249,16 @@
+ 					return result;
+ 				}
+ 
++				// Bcc/BScc: one-word form, '<' operand only
++				case Bcc_xxx: case BScc_xxx:
++				{
++					if (!encodeShortBranch(operands, word, inst)) continue;
++					result.word[0] = word;
++					result.wordCount = 1;
++					result.error = AssembleError::OK;
++					return result;
++				}
++
+ 				// Bcc with register
+ 				case Bcc_Rn: case BScc_Rn:
+ 				{
+diff --git a/source/dsp56kEmu/assembler.h b/source/dsp56kEmu/assembler.h
+--- a/source/dsp56kEmu/assembler.h
++++ b/source/dsp56kEmu/assembler.h
+@@ -91,6 +91,7 @@
+ 		// Value parsing
+ 		static bool parseImmediate(const std::string& _text, TWord& _value);
+ 		static bool parseNumber(const std::string& _text, TWord& _value);
++		static bool encodeShortBranch(const std::string& _op, TWord& _word, Instruction _inst);
+ 		static bool parseConditionCode(const std::string& _cc, TWord& _value);
+ 		static bool parseMemoryArea(const std::string& _area, EMemArea& _result);
+ 
 diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
 index 44fca43..2ee6696 100644
 --- a/source/dsp56kEmu/dma.cpp
