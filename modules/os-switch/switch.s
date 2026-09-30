@@ -978,36 +978,88 @@ msg:    move.l  (%sp)+,%a0
         .set    BP_TICKS,  6            | the timer's period: 100 ms of the 60 Hz sys tick
         .set    BP_COUNT,  30           | 3 s
 
+| Either hook may be a boot's first, and which one it is depends on the
+| battery SRAM. The media case asks 0x4004abcc whether this is the card
+| the SRAM last saw (its 20-byte id at 0x100f8584): the same card answers
+| 1 -- the project is still in SRAM, only the last set is mounted
+| (0x400256b8) and its LOADING FILES job posted (0x4002573e); an empty id
+| (fresh SRAM, and the port, which boots it zeroed) answers 2 and the
+| project is reloaded through 0x4002574c first. The unit took the first
+| way on 30 Sep 2026 (BSRET6BP: notes 1 and 12, no 26 -- the picker had
+| hooked only the second). So whichever comes first opens the picker, the
+| other is held while it is up, and NO posts what was held in the order
+| stock posted it.
         .global osw_bootpick
 osw_bootpick:
-        | d1 = why it steps aside (BOOT TRACE's note 26 velocity; 0 = opened)
-        moveq   #1,%d1
+        tst.b   bp_active
+        beq.s   1f
+        moveq   #1,%d0                  | the picker is up: hold the load too
+        move.b  %d0,bp_load
+        rts
+1:      tst.b   bp_done
+        bne.w   bp_stock
+        bsr.w   bp_open
+        tst.l   %d0
+        bne.w   bp_stock
+        moveq   #1,%d0
+        move.b  %d0,bp_load
+        rts                             | no load yet: the answer posts it
+bp_stock:
+        pea     (PROJNAME).l
+        jmp     (LOADQ).l
+
+| Detour (a jsr) at 0x4002573e: the last-set mount's (0x400256b8) post
+| of the engine's LOADING FILES job (0x400228dc, its only caller) -- on a
+| unit whose SRAM knows the card, the boot's only post (above).
+        .set    LOADFILES, 0x400228dc
+        .global osw_bootfiles
+osw_bootfiles:
+        tst.b   bp_active
+        bne.s   1f                      | the picker is up: hold the files job
         tst.b   bp_done
-        bne.w   bp_stock                | not the boot's first: no note
+        bne.s   2f
+        bsr.w   bp_open
+        tst.l   %d0
+        bne.s   2f
+        | counted: stock mounts the last set once per media-case pass, and a
+        | boot that knows its card runs two (each posts the job), 30 Sep 2026
+1:      move.l  bp_files,%d0
+        addq.l  #1,%d0
+        move.l  %d0,bp_files
+        rts
+2:      jmp     (LOADFILES).l
+
+| bp_open: the boot's first hook, once: open the picker. d0 = 0 when it
+| opened, else why it did not (BOOT TRACE's note 26 velocity; 0 = opened):
+| 1 no project named, 2 this boot is a switch, 3 no file system, 4 a
+| dialog is up, 5 the set or project would not mount, 6 no other image,
+| 7 the dialog did not open. The C registers are preserved.
+bp_open:
         moveq   #1,%d0
         move.b  %d0,bp_done
+        moveq   #1,%d1
         tst.b   (PROJNAME).l
-        beq.w   bp_skip
+        beq.w   bp_no
         moveq   #2,%d1
         lea     (OSW_MBOX).l,%a0
         move.l  (MB_STATUS,%a0),%d0
         cmpi.l  #ST_RUN,%d0
-        beq.w   bp_skip
+        beq.w   bp_no
         moveq   #3,%d1
         tst.l   (0x46c8240e).l
-        beq.w   bp_skip
+        beq.w   bp_no
         tst.l   (FS_OPEN).l
-        beq.w   bp_skip
+        beq.w   bp_no
         moveq   #4,%d1
         tst.l   (DLG_OPEN).l
-        bne.w   bp_skip
+        bne.w   bp_no
         lea     (-44,%sp),%sp
         movem.l %d2-%d7/%a2-%a6,(%sp)
-        | the last set's mount (0x400256b8, sys's next media case) must go
-        | through without a dialog of its own: the stock dialog drops a
-        | request while one is open, so a NO SET or a missing project would
-        | never be shown. Its two checks, as the USB-disk exit makes them
-        | before it posts (0x4007ec28): the set and its AUDIO, the project.
+        | the last set's mount (0x400256b8) must go through without a
+        | dialog of its own: the stock dialog drops a request while one is
+        | open, so a NO SET or a missing project would never be shown. Its
+        | two checks, as the USB-disk exit makes them before it posts
+        | (0x4007ec28): the set and its AUDIO, the project.
         pea     (SETNAME).l
         jsr     (SETOK).l
         addq.l  #4,%sp
@@ -1059,21 +1111,28 @@ osw_bootpick:
         addq.l  #8,%sp
         move.l  %d0,bp_timer
         bpl.s   1f
-        jsr     (DLG_NO).l              | no free timer slot, so no countdown: NO now
-        bra.s   2f
+        | no free timer slot, so no countdown: NO at once, from the
+        | caller's post (the hold below is what that NO replays)
+        clr.b   bp_active
+        pea     bp_layer
+        jsr     (LPOP).l
+        addq.l  #4,%sp
+        jsr     (0x4006d47c).l          | the dialog's own close, no answer
+        moveq   #8,%d1
+        bra.s   bp_none
 1:      bsr.w   bp_show
-2:      movem.l (%sp),%d2-%d7/%a2-%a6
+        movem.l (%sp),%d2-%d7/%a2-%a6
         lea     (44,%sp),%sp
-        rts                             | no load yet: the answer posts it
+        moveq   #0,%d0
+        rts
 bp_none:
         movem.l (%sp),%d2-%d7/%a2-%a6
         lea     (44,%sp),%sp
-bp_skip:
+bp_no:
         moveq   #26,%d0
         bsr.w   bp_note
-bp_stock:
-        pea     (PROJNAME).l
-        jmp     (LOADQ).l
+        move.l  %d1,%d0
+        rts
 
 | bp_step: idx to the next image in direction d0 (+1/-1) whose label is not
 | this image's own name, wrapping; idx = -1 when there is none
@@ -1262,22 +1321,6 @@ bp_tick:
 1:      jmp     (DLG_NO).l              | closes it, answers NO: bp_answer(1)
 9:      rts
 
-| Detour (a jsr) at 0x4002573e: the last-set mount's (0x400256b8) post
-| of the engine's LOADING FILES job (0x400228dc, its only caller). Stock
-| queues it right AFTER the boot's LOAD PROJECT, on the same queue; while
-| the picker holds that load back this holds the files job too, and NO
-| posts both in stock's order -- the boot after NO is stock's boot, and
-| a YES leaves the queue idle for the switch's own load.
-        .set    LOADFILES, 0x400228dc
-        .global osw_bootfiles
-osw_bootfiles:
-        tst.b   bp_active
-        beq.s   1f
-        moveq   #1,%d0
-        move.b  %d0,bp_files
-        rts
-1:      jmp     (LOADFILES).l
-
 | the dialog's answer (0 = YES): our layer and timer off, then YES is the
 | pane's own switch and NO posts what stock would have posted
 bp_answer:
@@ -1307,11 +1350,17 @@ bp_answer:
         move.l  %d0,bp_timer
 1:      tst.l   (4,%sp)
         beq.w   osw_answer              | YES: idx is the image; osw_answer reads the same 0
+        | NO: what was held, in stock's order -- the load, then the files
+        tst.b   bp_load
+        beq.s   2f
+        clr.b   bp_load
         bsr.w   bp_stock
-        tst.b   bp_files
-        beq.s   9f
-        clr.b   bp_files
-        jmp     (LOADFILES).l
+2:      move.l  bp_files,%d0
+        ble.s   9f
+        subq.l  #1,%d0
+        move.l  %d0,bp_files
+        jsr     (LOADFILES).l
+        bra.s   2b
 9:      rts
 
 | bp_note: BOOT TRACE's note d0 with velocity d1 on MIDI OUT; nothing
@@ -1384,8 +1433,11 @@ bp_done:
         .byte   0
 bp_active:
         .byte   0
-bp_files:
+bp_load:
         .byte   0
+        .align  4
+bp_files:
+        .long   0
         .align  4
 | the arrows' layer, on top of the dialog's (which keeps YES and NO):
 | {0, keys, encoders, 0, 0, -1, -1}; key records {code, 0, press, release,

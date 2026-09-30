@@ -57,12 +57,16 @@ def _include(_modules):
     # the image's own name, what MAIN MENU > OS shows it as: make's VERSION
     # (exported by the Makefile, the name make image gives the .bin and the
     # .OBI), else OCTABAM<BUILD>; A-Z 0-9 _ - and 12 characters, as make_obi
+    # OSW_TRACE=1: this module's own BOOT TRACE notes (1 and 12 from the
+    # chainloader, 13 before a switch's reset, 26/27 from the boot picker)
+    # without the BOOT TRACE module, whose ROM-cave detours a full rig has
+    # no room for (bottleservice-ret: CC MAP's page-2 cave, 30 Sep 2026)
     import os
     import re
     name = os.environ.get("VERSION") or f"OCTABAM{os.environ.get('BUILD', '')}"
     name = re.sub(r"[^A-Z0-9_-]", "", name.upper())[:12] or "OCTABAM"
     return ((HERE / "osw.inc").read_text()
-            + f"        .set    TRACE, {1 if 'BOOT TRACE' in _modules else 0}\n"
+            + f"        .set    TRACE, {1 if 'BOOT TRACE' in _modules or os.environ.get('OSW_TRACE') == '1' else 0}\n"
             + "        .macro  ROOT_ROWS\n"
             + f"        .incbin \"{STOCK}\", 0x{off:x}, {ROOT_COUNT * 0x18}\n"
             + "        .endm\n"

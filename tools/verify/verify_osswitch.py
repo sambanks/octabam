@@ -41,7 +41,10 @@ Builds the remix (the HOME image: what NOR would hold), then:
            posted in stock's order and the load runs; NO does the same at
            once; RIGHT skips this image's own name and YES stages the one
            picked with nothing loaded; a set without AUDIO (stock's own
-           dialog to come) gets no picker and the stock post
+           dialog to come) gets no picker and the stock post; and a boot
+           from battery SRAM that knows the card (a first boot's, dumped)
+           opens it from the set mount's LOADING FILES post, posts no LOAD
+           PROJECT, and replays each files post it held
   dsp      the DSP across a switch, without the reset the port cannot do:
            with the cores running their payloads, osw_park sends each host
            command $12 (both must take it), then the stock upload's own
@@ -341,18 +344,19 @@ def main():
     ncard = work / "noaudio.img"
     ncard.write_bytes(emu_card.build_image(str(nosets), size_mb=64))
     POST, FILES, HANDLER = 0x40023c7c, 0x400228dc, 0x40085336
-    bw = {k: rt[k] for k in ("osw_bootpick", "bp_tick", "bp_key", "bp_answer", "osw_load", "osw_reset")}
+    bw = {k: rt[k] for k in ("osw_bootpick", "osw_bootfiles", "bp_tick", "bp_key", "bp_answer", "osw_load",
+                              "osw_reset")}
     bw["dialog"], bw["post"], bw["files"], bw["handler"] = 0x4006D57C, POST, FILES, HANDLER
     name_of = {a: k for k, a in bw.items()}
 
-    def bootcase(tag, card, script=None, load_ms=20000, dumps=None):
+    def bootcase(tag, card, script=None, load_ms=20000, dumps=None, preload=()):
         extra = ["--card", str(card), "--mount", "--boot-load", "--set", "/OSW", "--project", "P",
                  "--mkii", "--load-ms", str(load_ms)]
         if script:
             s = work / f"{tag}.txt"
             s.write_text("\n".join(script) + "\n")
             extra += ["--live-script", str(s)]
-        out, hits, d = boot(tag, [(0x3FFC, norver)], list(bw.values()), dumps or {}, extra=extra,
+        out, hits, d = boot(tag, [(0x3FFC, norver), *preload], list(bw.values()), dumps or {}, extra=extra,
                             max_instr=3_000_000_000)
         seq = [name_of.get(int(m.group(1), 16)) for m in
                re.finditer(r"^\s*\[\s*\d+\] at 0x([0-9a-f]+)", out, re.M)]
@@ -361,9 +365,26 @@ def main():
     def first(seq, k):
         return seq.index(k) if k in seq else -1
 
+    # A unit whose battery SRAM knows the card (every power-on after the
+    # first): the media case's 0x4004abcc answers 1, the project stays in
+    # SRAM and only the last set is mounted -- the LOADING FILES hook is the
+    # boot's first, and no LOAD PROJECT is posted at all. The port boots
+    # SRAM zeroed, so a first boot leaves it as the unit would (the card's
+    # id at 0x100f8584, the names, the checksum over 0x100fff04..) and a
+    # second boots from it. The unit took this way on 30 Sep 2026 (BSRET6BP
+    # hooked only the reload and never opened).
+    def known():
+        _, _, d1 = boot("boot_known_sram", [(0x3FFC, norver)], [0x40000400], {"sram": (0x10000000, 0x100000)},
+                        extra=["--card", str(bcard), "--mount", "--set", "/OSW", "--project", "P",
+                               "--mkii", "--load-ms", "20000"], max_instr=3_000_000_000)
+        sram = work / "sram.bin"
+        sram.write_bytes(d1.get("sram", b""))
+        return bootcase("boot_known", bcard, preload=[(0x10000000, sram)])
+
     from concurrent.futures import ThreadPoolExecutor
     kd = lambda code, t: [f"{t} key {code:#x} down", f"{t + 20} key {code:#x} up"]
-    with ThreadPoolExecutor(4) as ex:
+    with ThreadPoolExecutor(5) as ex:
+        f_known = ex.submit(known)
         f_auto = ex.submit(bootcase, "boot_auto", bcard)
         f_no = ex.submit(bootcase, "boot_no", bcard, kd(KEY_NO, 500) + ["3000 quit"], 300)
         f_yes = ex.submit(bootcase, "boot_yes", bcard, kd(KEY_RIGHT, 300) + kd(KEY_YES, 900) + ["6000 quit"],
@@ -392,6 +413,14 @@ def main():
     check("boot: the stage holds the image picked (OTHER, then RIGHT: STOCK140)",
           len(mb) == 72 and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.OBI" and d.get("stage") == stock,
           (mb[C["MB_NAME"]:C["MB_NAME"] + 16] if len(mb) == 72 else b"").decode("latin1"))
+    _, seq, _ = f_known.result()
+    check("boot: SRAM that knows the card: the set mount's files post opens it, no LOAD PROJECT, "
+          "and NO replays every files post it held",
+          0 <= first(seq, "osw_bootfiles") < first(seq, "dialog") and "osw_bootpick" not in seq
+          and "post" not in seq and "handler" not in seq and seq.count("bp_tick") == 30
+          and first(seq, "files") > first(seq, "bp_answer")
+          and seq.count("files") == seq.count("osw_bootfiles") >= 1,
+          " ".join(k for k in seq if k != "bp_tick") + f"; {seq.count('bp_tick')} ticks")
     _, seq, _ = f_skip.result()
     check("boot: a set without AUDIO: no picker, the stock post, and stock's own dialogs are shown",
           "osw_bootpick" in seq and "bp_tick" not in seq
