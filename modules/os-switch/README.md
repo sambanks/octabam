@@ -50,8 +50,10 @@ dialog comes up **before the project loads**:
 
 - **Arrows** (any of the four) step through the other images. The image's
   own `.OBI` is skipped, and the countdown stops.
-- **YES** switches to the image shown, exactly as the pane does. Nothing
-  has been loaded yet, so the switch does not wait behind the project.
+- **YES** switches to the image shown, as the pane does but without the
+  project sync (nothing is loaded yet, and the next image boots from the
+  same battery SRAM; syncing there made the engine report `INVALID STATE`
+  on the unit, `docs/remixer/FAILURE_MODES.md`).
 - **NO**, or **3 s untouched**, boots this image: the project load is posted
   as stock would have posted it.
 

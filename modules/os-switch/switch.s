@@ -507,10 +507,18 @@ osw_answer:
         jsr     (0x400a10c8).l
         pea     (-1).w
         jsr     (0x40008fe4).l
+        addq.l  #4,%sp
+        | SYNC TO CARD (0x40022cd4(1) posts the engine's sync job) -- not
+        | from the boot picker: nothing is loaded yet (its files job is held)
+        | and SRAM is as the last session left it, which the next image
+        | boots from. Synced there, the unit said "SOME ERRORS OCCURED
+        | DURING CARD SYNC. 'INVALID STATE'" (BSRET8BP, 30 Sep 2026)
+        tst.b   bp_nosync
+        bne.s   2f
         pea     (1).w
         jsr     (0x40022cd4).l
-        addq.l  #8,%sp
-        pea     rec_load
+        addq.l  #4,%sp
+2:      pea     rec_load
         pea     (UIQUEUE).l
         jsr     (DEFER).l
         clr.l   (%sp)
@@ -1349,7 +1357,11 @@ bp_answer:
         moveq   #-1,%d0
         move.l  %d0,bp_timer
 1:      tst.l   (4,%sp)
-        beq.w   osw_answer              | YES: idx is the image; osw_answer reads the same 0
+        bne.s   5f
+        moveq   #1,%d0                  | YES: no sync (osw_answer)
+        move.b  %d0,bp_nosync
+        bra.w   osw_answer              | idx is the image; osw_answer reads the same 0
+5:
         | NO: what was held, in stock's order -- the load, then the files
         tst.b   bp_load
         beq.s   2f
@@ -1434,6 +1446,8 @@ bp_done:
 bp_active:
         .byte   0
 bp_load:
+        .byte   0
+bp_nosync:
         .byte   0
         .align  4
 bp_files:

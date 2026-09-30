@@ -228,7 +228,7 @@ def main():
     script = work / "panel.txt"
     script.write_text("\n".join(lines) + "\n")
     ui_watch = [rt["osw_scan"], rt["osw_pick"], rt["osw_answer"], rt["osw_load"], rt["osw_reset"],
-                rt["putpanel"]]
+                rt["putpanel"], 0x40022CD4]
     out, hits, d = boot("ui", [(0x3FFC, norver)], ui_watch,
                         {"mbox": (MBOX, 72), "stage": (IMG, len(stock)), "body": (BODY, len(body)),
                          "scanext": (0x460F77B0, 4)},
@@ -238,6 +238,8 @@ def main():
            if hits.get(a)]
     check("ui: MAIN MENU's scan, OS's row, the dialog's YES, the deferred load and the reset ran",
           len(ran) == 5, "ran: " + ", ".join(ran))
+    check("ui: the pane's switch syncs the project first (SYNC TO CARD posted), as OS UPGRADE does",
+          hits.get(0x40022CD4, 0) >= 1, f"{hits.get(0x40022CD4, 0)}x")
     check("ui: an MKII sends the panel its two start-up bytes (`60 02`) before the reset",
           hits.get(rt["putpanel"]) == 2, f"{hits.get(rt['putpanel'], 0)} byte(s)")
     mb, stage = d.get("mbox", b""), d.get("stage", b"")
@@ -347,6 +349,7 @@ def main():
     bw = {k: rt[k] for k in ("osw_bootpick", "osw_bootfiles", "bp_tick", "bp_key", "bp_answer", "osw_load",
                               "osw_reset")}
     bw["dialog"], bw["post"], bw["files"], bw["handler"] = 0x4006D57C, POST, FILES, HANDLER
+    bw["sync"] = 0x40022CD4                            # posts SYNC TO CARD (osw_answer's third call)
     name_of = {a: k for k, a in bw.items()}
 
     def bootcase(tag, card, script=None, load_ms=20000, dumps=None, preload=()):
@@ -406,9 +409,10 @@ def main():
           " ".join(k for k in seq if k != "bp_tick") + f"; {seq.count('bp_tick')} ticks")
     _, seq, d = f_yes.result()
     mb = d.get("mbox", b"")
-    check("boot: RIGHT past this image's own name, YES: the switch runs and nothing is loaded",
+    check("boot: RIGHT past this image's own name, YES: the switch runs, nothing is loaded and nothing "
+          "synced (on the unit a sync there said 'INVALID STATE')",
           0 <= first(seq, "bp_key") < first(seq, "bp_answer") < first(seq, "osw_load") < first(seq, "osw_reset")
-          and "post" not in seq and "files" not in seq,
+          and "post" not in seq and "files" not in seq and "sync" not in seq,
           " ".join(k for k in seq if k != "bp_tick"))
     check("boot: the stage holds the image picked (OTHER, then RIGHT: STOCK140)",
           len(mb) == 72 and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.OBI" and d.get("stage") == stock,
