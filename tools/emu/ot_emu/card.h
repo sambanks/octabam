@@ -84,6 +84,10 @@ namespace ot
 		uint64_t sectorsWritten() const { return m_writes; }
 		// The image as the firmware left it: every WRITE landed here (--card-out).
 		const std::vector<uint8_t>& image() const { return m_img; }
+		// --card-fail-after N: once N sectors are written, every WRITE
+		// SECTORS ends in ERR + ABRT with no DRQ, the way a failing card
+		// refuses one.
+		void failWritesAfter(const int64_t _n) { m_failAfter = _n; }
 
 		// The INTRQ rules live in `Rtos::attachCard` and need these three.
 		uint32_t status() const { return m_status; }
@@ -120,6 +124,7 @@ namespace ot
 				++m_logDropped;
 		}
 		uint64_t m_reads = 0, m_writes = 0;
+		int64_t m_failAfter = -1;
 		int m_fd = -1;					// O19: the image file, when write-back is on
 		std::string m_wbPath;
 		uint64_t m_wbSectors = 0, m_wbErrors = 0;

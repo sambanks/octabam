@@ -1273,13 +1273,16 @@ def main():
                 img[_ca - BASE + _o:_ca - BASE + _o + 4] = _pbase.to_bytes(4, "big")
             print(f"  arena: {_lbl}: {_want} arena-base literal(s) -> 0x{_pbase:08x}")
 
+    _regions = [(_r.symbol, _r.size, _r.align) for _k in REMIX.modules
+                for _r in getattr(remix_modules()[_k], "dram_regions", ())]
     if _dram or _payloads:
         from remix import platform_build
         _pappend, _psyms, _boot, _pnames = platform_build.build(
             [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
             reserve=_reserve, defsyms=_defsym_ovr,
             includes={_u.label: _u.include({_k: remix_modules()[_k] for _k in REMIX.modules})
-                      for _m, _u in _dram if _u.include is not None})
+                      for _m, _u in _dram if _u.include is not None},
+            regions=_regions)
         for _m, _u in _dram:
             _sym[_u.label] = _psyms          # detours name units; one table serves all
             if _u.reference is not None:
@@ -1318,6 +1321,8 @@ def main():
               if _reserve else
               f"  platform loader: payloads {', '.join(_pnames)}, "
               f"append {len(_pappend):,} B at 0x{platform_build.LOADER_AT:08x}")
+        for _s, _n, _al in _regions:
+            print(f"  dram region: {_s} {_n:,} B at 0x{_psyms[_s]:08x}")
 
     for _m, _t in [(remix_modules()[_k], _t) for _k in REMIX.modules
                    for _t in getattr(remix_modules()[_k], "tables", ())]:
@@ -3022,7 +3027,8 @@ hostquit:
             [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
             reserve=_reserve, defsyms=_defsym_ovr, preboot=_pres,
             includes={_u.label: _u.include({_k: remix_modules()[_k] for _k in REMIX.modules})
-                      for _m, _u in _dram if _u.include is not None})
+                      for _m, _u in _dram if _u.include is not None},
+            regions=_regions)       # the same regions as the first link, or its symbols differ
         if _psyms2 != _psyms or _platform_at is None:
             sys.exit("analog bd: the platform runtime linked differently the second time")
         _appends[_platform_at] = (

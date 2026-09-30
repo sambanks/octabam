@@ -83,6 +83,10 @@ def preboot_layout(layout, entries):
         raise ValueError('pre-boot payloads require a declared platform arena layout')
     occupied = [('runtime', layout['base'], layout['runtime_end']),
                 ('runtime stage', layout['stage'], layout['stage_end'])]
+    # A module's DRAM regions (schema.DramRegion, STEM REC's ring and stack)
+    # are claims on the same arena: a pre-boot payload may not land on them.
+    occupied += [(f'DRAM region {sym}', a, a + n)
+                 for sym, (a, n) in layout.get('regions', {}).items()]
     result = []
     for entry in entries:
         for role, length in (('dst', entry['rawlen']), ('stage', len(entry['blob']))):
@@ -101,7 +105,8 @@ def preboot_layout(layout, entries):
     return result
 
 
-def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, preboot=(), includes=None):
+def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, preboot=(), includes=None,
+          regions=()):
     """units: [(module key, Linked)] with dram=True, in link order.
     payloads: [dict(name, blob, stage, dst, rawlen, rhash, backup)] for
     payloads built elsewhere (Octakit): `blob` = signature + GKA3 stream.
@@ -110,9 +115,11 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, prebo
     link (a bridge's continuation targets, schema.Override). preboot:
     [dict(name, blob, stage, dst, rawlen, rhash)] depacked BEFORE the
     boot-continue call (Analog BD's DSP uploads); the loader
-    carries that section only when there is one. Returns
-    (append bytes, symbols of the octabam runtime, boot poke, payload
-    names) and writes LAYOUT."""
+    carries that section only when there is one. regions:
+    [(symbol, size, align)] of uninitialised DRAM (schema.DramRegion),
+    stacked down from the reserve's ceiling and handed to the link as
+    --defsym symbol=address. Returns (append bytes, symbols of the
+    octabam runtime, boot poke, payload names) and writes LAYOUT."""
     import json
     work = work.resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -128,6 +135,13 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, prebo
         for p in payloads:
             defs.update(p.get("symbols", {}))
         defs.update(defsyms or {})
+        # DramRegions: stacked down from the ceiling, named to the link.
+        placed = {}
+        top = ceiling
+        for r_sym, r_size, r_align in regions:
+            top = (top - r_size) & ~(r_align - 1)
+            placed[r_sym] = (top, r_size)
+        defs.update({s: a for s, (a, _) in placed.items()})
         raw, symbols = link_runtime(units, work / "runtime", defs, base, includes)
         packed = runtime_build.PACKED_MAGIC + len(raw).to_bytes(4, "big") + \
             runtime_build.pack(raw, MAX_CANDIDATES)
@@ -138,12 +152,20 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, prebo
                      f"{len(raw):,} B at 0x{base:08x}, stage 0x{stage:08x}..0x{stage_end:08x}, "
                      f"ceiling 0x{ceiling:08x} ({size:,} B). Reserve more pages "
                      f"(tools/remix/arena.py PLATFORM_PAGES).")
+        if placed:
+            floor_sym, (floor, _) = min(placed.items(), key=lambda kv: kv[1][0])
+            if stage_end > floor:
+                sys.exit(f"platform build: the runtime and its stage end at 0x{stage_end:08x}, "
+                         f"above DRAM region {floor_sym} at 0x{floor:08x} -- shrink the regions "
+                         f"or reserve more pages (tools/remix/arena.py PLATFORM_PAGES).")
         entries.append(dict(name="octabam", blob=SIGNATURE + packed,
                             stage=stage + UNCACHED, dst=base + UNCACHED,
                             rawlen=len(raw), rhash=roll(raw), backup=0))
         (work / "runtime.raw").write_bytes(raw)
         layout.update(base=base, runtime_end=base + len(raw), stage=stage,
                       stage_end=stage_end, ceiling=ceiling, size=size)
+        if placed:
+            layout["regions"] = {s: [a, n] for s, (a, n) in placed.items()}
     if preboot:
         try:
             layout['preboot'] = preboot_layout(layout, preboot)

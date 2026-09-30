@@ -1094,6 +1094,36 @@ namespace
 	}
 }
 
+// "FRAME:ADDR:ARG,..." (FRAME omitted for --call-before-play). ARG defaults to 0.
+struct Call { uint64_t frame = 0; uint32_t addr = 0, arg = 0; };
+static std::vector<Call> parseCalls(const std::string& _s, const bool _withFrame)
+{
+	std::vector<Call> out;
+	size_t q = 0;
+	while(q < _s.size())
+	{
+		auto e = _s.find(',', q); if(e == std::string::npos) e = _s.size();
+		std::string one = _s.substr(q, e - q); q = e + 1;
+		if(one.empty())
+			continue;
+		Call c;
+		std::vector<std::string> f;
+		size_t r = 0;
+		while(r <= one.size()) { auto k = one.find(':', r); if(k == std::string::npos) k = one.size(); f.push_back(one.substr(r, k - r)); r = k + 1; }
+		if(f.size() < (_withFrame ? 2u : 1u))
+		{
+			std::fprintf(stderr, "ot_emu: bad call spec '%s'\n", one.c_str());
+			std::exit(2);
+		}
+		size_t n = 0;
+		if(_withFrame) c.frame = std::strtoull(f[n++].c_str(), nullptr, 0);
+		c.addr = static_cast<uint32_t>(std::strtoul(f[n++].c_str(), nullptr, 0));
+		if(n < f.size()) c.arg = static_cast<uint32_t>(std::strtoul(f[n].c_str(), nullptr, 0));
+		out.push_back(c);
+	}
+	return out;
+}
+
 // After a fork: the vendored DSP memory is a shm object mapped MAP_SHARED
 // several times over (the bridged X/Y/P views, dsp56kBase/mmuhelper.cpp),
 // so a forked child would write its parent's and its siblings' DSP memory
@@ -1260,6 +1290,10 @@ int main(int _argc, char** _argv)
 	std::string lcd;			// the panel's 1-bpp plane (0x46c7e0ea, 1024 B) plus the popup windows (table + planes) to FILE whenever they have changed, at most once per 2M instructions; tools/emu/lcd_view.py composites and draws it
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
 	std::string cardOut;		// the card image as the firmware left it, to FILE at the very end (the load's WRITEs: emu_card.extract_image reads it back)
+	std::string pokeBeforePlay;	// --poke-before-play: "addr=byte;..." written after the --call-before-play calls and before the transport start, so a take's first frame sees it
+	std::string callBeforePlay;	// --call-before-play ADDR[:ARG][,...]: each called AS MAIN from main's spin, after --pre-roll, before the transport start (STEM REC arms a take here)
+	std::string atFrames;		// --at FRAME:ADDR[:ARG][,...]: each called AS MAIN that many frames after the transport start (several, where --call-at makes one)
+	long long cardFailAfter = -1;	// --card-fail-after N: once N sectors are written, every WRITE SECTORS ends in ERR + ABRT, no DRQ
 	bool mainLevelGiven = false;	// 12 Sep 2026: --interactive defaults it to 64 (the panel wants sound); `--main-level off` keeps the -1. The batch default stays -1.
 	bool interactive = false;	// 11 Sep 2026: after the boot (and load), serve the line protocol on stdin/stdout (serveInteractive above)
 	bool mkii = false;			// boot as an MKII: the GPIO loopback the boot probe tests, the MKII panel's replies (docs/firmware/PANEL.md)
@@ -1339,6 +1373,10 @@ int main(int _argc, char** _argv)
 		else if(a == "--poke-early" && i + 1 < _argc)	pokeEarly = _argv[++i];
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
 		else if(a == "--call-at" && i + 1 < _argc)	callAt = std::atoi(_argv[++i]);
+		else if(a == "--poke-before-play" && i + 1 < _argc)	pokeBeforePlay = _argv[++i];
+		else if(a == "--call-before-play" && i + 1 < _argc)	callBeforePlay = _argv[++i];
+		else if(a == "--at" && i + 1 < _argc)			atFrames = _argv[++i];
+		else if(a == "--card-fail-after" && i + 1 < _argc)	cardFailAfter = std::atoll(_argv[++i]);
 		else if(a == "--step" && i + 1 < _argc)		steps.emplace_back(_argv[++i]);
 		else if(a == "--live-script" && i + 1 < _argc)	liveScript = _argv[++i];
 		else if(a == "--scenario" && i + 1 < _argc)	scenarios.emplace_back(_argv[++i]);
@@ -1659,6 +1697,7 @@ int main(int _argc, char** _argv)
 			std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(cf)),
 				std::istreambuf_iterator<char>());
 			card = std::make_unique<ot::AtaCard>(std::move(bytes));
+			if(cardFailAfter >= 0) card->failWritesAfter(cardFailAfter);
 			rtos.attachCard(*card);
 			rtos.setAtaTrace(!ataTrace.empty());
 			std::printf("card       : %s, %u sectors\n", cardImage.c_str(), card->totalSectors());
@@ -2396,6 +2435,21 @@ int main(int _argc, char** _argv)
 						static_cast<unsigned long long>(rtos.frameCount() - f0),
 						rsp == ot::Rtos::Stop::Gate ? "REACHED" : rtos.why().c_str());
 				}
+				for(const auto& c : parseCalls(callBeforePlay, false))
+				{
+					// The pre-roll stops the instant the last frame's
+					// interrupt is taken, never at main's spin, so
+					// callAsMain's own guard refused every call here
+					// whenever --pre-roll was given (measured 12 Sep 2026 on
+					// crosscheck). Run to the spin first; a no-op when the
+					// PC is already there.
+					rtos.runToMainSpin(1000.0);
+					uint32_t d0 = 0;
+					const bool ok = rtos.callAsMain(c.addr, {c.arg}, d0, 200000000);
+					std::printf("call       : %#x(%#x) before play -> %s, d0 %#x\n", c.addr, c.arg,
+						ok ? "returned" : rtos.why().c_str(), d0);
+				}
+				pokeBytes(pokeBeforePlay, "before play");
 				if(!rtos.startTransportLive())
 					std::printf("transport  : FAILED -- %s\n", rtos.why().c_str());
 				if(pokeTrig)
@@ -2419,7 +2473,7 @@ int main(int _argc, char** _argv)
 				// Timed actions while the sequencer runs -- a panel edit
 				// (--call-at) or MIDI IN bytes (--midi): the frame engine
 				// keeps going underneath them, as on the unit.
-				struct Action { uint64_t frame; bool call; std::vector<uint8_t> bytes; int step = -1; };
+				struct Action { uint64_t frame; bool call; std::vector<uint8_t> bytes; int step = -1; uint32_t addr = 0, arg = 0; bool at = false; };
 				std::vector<Action> actions;
 				if(!callSpec.empty() && callAt >= 0)
 					actions.push_back({static_cast<uint64_t>(callAt), true, {}});
@@ -2429,12 +2483,23 @@ int main(int _argc, char** _argv)
 				for(const auto& ev : midiEvents)
 					if(!ev.pre)
 						actions.push_back({ev.frame, false, ev.bytes});
+				for(const auto& c : parseCalls(atFrames, true))
+					actions.push_back({c.frame, false, {}, -1, c.addr, c.arg, true});
 				std::stable_sort(actions.begin(), actions.end(), [](const Action& x, const Action& y) { return x.frame < y.frame; });
 				for(const auto& act : actions)
 				{
 					const auto at = frame0 + act.frame;
 					rtos.runUntil(budgetMs, [&] { return rtos.frameCount() >= at; }, ot::Rtos::Changes::OnEvent);	// O15e: the ack hook wakes
-					if(act.step >= 0)
+					if(act.at)
+					{
+						const bool spun = rtos.runToMainSpin(1000.0) == ot::Rtos::Stop::Gate;
+						uint32_t d0 = 0;
+						const bool ok = spun && rtos.callAsMain(act.addr, {act.arg}, d0, 200000000);
+						std::printf("call       : %#x(%#x) at frame %llu -> %s, d0 %#x\n", act.addr, act.arg,
+							static_cast<unsigned long long>(rtos.frameCount() - frame0),
+							ok ? "returned" : rtos.why().c_str(), d0);
+					}
+					else if(act.step >= 0)
 					{
 						const auto& s = parsedSteps[static_cast<size_t>(act.step)];
 						char when[64];

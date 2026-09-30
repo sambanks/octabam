@@ -39,10 +39,15 @@ pages, stride 0x1c" for the 16 × 0x14 menu-state table was dumped under
 both strides here: 0x14 holds (id 12's draw = `0x40068e00`).
 
 Root window descriptors (`0x400cbc34/48/5c/70`) are 20-byte records
-`{0x13, 0x09, 0x01, ptr, ptr}`: the category icon, 19 wide × 9 tall, `ptr`
-a plane of 19 words each holding one column byte in the high byte (bit 0 at
-the top); the second plane is `0xff80` in all four. 🟡 from octalab's fifth
-category, which draws its own icon on a MKI.
+`{0x13, 0x09, 0x01, ptr, ptr}`: the category icon, 19 wide × 9 tall. ✅ Each
+`ptr` is a plane of 19 LONGS, one per column, with the column in the long's
+top byte: a plane is `0x4c` bytes, and in all four stock icons the second
+plane starts `0x4c` after the first. The second plane is `0xff800000` in
+every column of all four (read from the image, 28 Sep 2026). Which bit of
+the column is the top row isn't settled here: STEMS's icon is symmetric top
+to bottom. ❌ Retracted: "a plane of 19 words", and "the second plane is
+`0xff80`" (the high word of the long only). 🟡 The rest from octalab's
+fifth category, which draws its own icon on a MKI.
 
 ## 2. The tree ✅
 
@@ -102,6 +107,28 @@ menu close). PROJECT's and SYSTEM's descriptor addresses are hard-compared
 at `0x40064fa0..c2` for an alternate-list swap keyed on `0x80000088`
 (semantics unknown); add rows to CONTROL or the root, not those two.
 
+Driven under the port with real keys, the MKII (PROJ) and the MKI
+(FUNC+MIXER) alike (`tools/verify/stems_menu_probe.py`, 29 Sep 2026;
+`STEM_REC.md` 16.1):
+
+- ✅ YES and RIGHT move the focus from the root into the selected
+  category's list; LEFT moves it back. NO inside a list closes the whole
+  menu, and the focus pointer keeps the list.
+- ✅ **The menu redraws on keys, not by itself.** A row's label pointer
+  changed while the menu shows it stays off the screen (3 s, no key); the
+  next key that redraws the menu draws the new label. A module that
+  changes a label from outside a key handler is seen at the next key.
+- ✅ A row whose action is 0 draws as plain text, and the cursor skips it:
+  DOWN from AUDIO lands on SEQUENCER when INPUT's action is 0. ✅ It skips
+  ONE such row, not two in a row: with two together, DOWN stops on the
+  second, where ENTER calls address 0 (STEMS's first layout). ✅ It never
+  moves onto a last such row: DOWN from the row above stays put. So rows
+  without an action must never be adjacent; one may be the last.
+- ✅ With the firmware's own font, the list pane clips a label at
+  x = 118 and the root column at x = 56 (the right edge of 24 Ws). `WRITE
+  FAILED` ends at 105 and `STEMS` at 45.
+- ✅ PLAY and STOP work with the menu open, and it stays open.
+
 ## 5. Adding a row ✅
 
 The root row array `0x400cc698` has one reference in the image, the rows
@@ -121,6 +148,12 @@ there passed a static zero-check and a no-project boot and faulted on
 added: a null-action row is a heading the cursor skips; a row inside a
 pane cannot descend (`+0x10` read on the root only); the descriptor must
 ship initialised. `RANDOMIZE PAGE` = `0x4005b9c0`, via `0x400bab22`.
+STEMS (`modules/stems`, 29 Sep 2026) is a fifth category run under the
+port on the MKII and the MKI by real keys (`verify_stems_menu`): the root
+grown by a `TableGrow` of the four stock rows plus its own and a `Poke` of
+the count; the list, its eleven rows and the icon in DRAM; labels switched
+by one aligned pointer write, from the actions and from an RTOS task.
+Unflashed; `STEM_REC.md` section 16.
 
 ## 6. Opening a parameter page from a handler ✅
 

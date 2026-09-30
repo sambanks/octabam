@@ -176,14 +176,24 @@ def check(selected) -> list[str]:
     hooks: dict[int, str] = {}
     for m in selected:
         for c in m.cf_patches:
-            if c.cave_addr is None:      # floating: the build allocates
-                continue                 # it after everything pinned
-            for start, length, owner, label in caves:
-                if _overlap(start, length, c.cave_addr, len(c.pinned)):
-                    clash("ColdFire cave", f"{owner}'s {label}",
-                          f"{m.name}'s {c.label}",
-                          f"0x{max(start, c.cave_addr):08x}")
-            caves.append((c.cave_addr, len(c.pinned), m.name, c.label))
+            if c.cave_addr is not None:  # pinned: check for overlap against
+                for start, length, owner, label in caves:  # every pinned cave
+                    if _overlap(start, length, c.cave_addr, len(c.pinned)):
+                        clash("ColdFire cave", f"{owner}'s {label}",
+                              f"{m.name}'s {c.label}",
+                              f"0x{max(start, c.cave_addr):08x}")
+                caves.append((c.cave_addr, len(c.pinned), m.name, c.label))
+            # A hook site is a fixed address whether or not the CAVE that
+            # receives the jsr floats. Until this fix a `continue` for a
+            # floating cave returned before this check too, so its hook_addr
+            # was never registered -- and every hook-based CavePatch floats
+            # (27 Sep 2026: flex-seekbind, flex-seekbind-ctr, recorder-hold,
+            # recorder-spacing, rlen-plen, tempo-sync), so NO hook site was
+            # ever checked against anything. Found on branch crosscheck (12
+            # Sep 2026) demonstrating STEM REC beside CF PROBE, a module of
+            # that branch: both hook the frame site 0x40004b12 (a Detour and
+            # a CavePatch hook naming the same address) and composed silently
+            # -- the exact "two hooks, one site" hazard this dict catches.
             if c.hook_addr is not None:
                 if c.hook_addr in hooks:
                     clash("hook site", hooks[c.hook_addr], m.name,
@@ -460,5 +470,16 @@ def check(selected) -> list[str]:
                       f"y:$0{w:03x} -- low Y is per core, so effects sharing "
                       f"a core share this word")
             owner[w] = m.name
+
+    # ---- DRAM regions (schema.DramRegion) ---------------------------------
+    # A region is a linker symbol; two modules defining the same one would
+    # both link against whichever --defsym came last, silently sharing it.
+    dram_owner: dict[str, str] = {}
+    for m in selected:
+        for r in getattr(m, "dram_regions", ()):
+            if r.symbol in dram_owner:
+                clash("DRAM region", dram_owner[r.symbol], m.name,
+                      f"the symbol {r.symbol}")
+            dram_owner[r.symbol] = m.name
 
     return problems

@@ -3,11 +3,13 @@
 
 Three pieces:
 
-  1. A pure-Python FAT16 image builder (`build_image`) that turns a directory
-     tree — a SET folder holding a PROJECT folder — into an MBR + FAT16 card
-     image the firmware's own mount code accepts (`0x400168e8`: MBR signature,
-     partition type 4/6/0x0e, 512-byte sectors; `0x40017ad4`: BPB, FAT size
-     <= 16384 sectors). Long names are written as VFAT LFN entries.
+  1. A pure-Python FAT16 image builder (`build_image`; FAT32 with `fat=32`)
+     that turns a directory tree — a SET folder holding a PROJECT folder —
+     into an MBR + FAT card image the firmware's own mount code accepts
+     (`0x400168e8`: MBR signature, partition type 4/6/0x0e or FAT32's
+     0x0b/0x0c, 512-byte sectors; `0x40017ad4`: BPB, FAT size <= 16384
+     sectors for both; docs/firmware/STEM_REC.md 14.1). Long names are
+     written as VFAT LFN entries.
   2. An ATA task-file model (`AtaCard`) mapped at the FlexBus window
      0x90000000 (data 0xa0, features/error 0xa4, count 0xa8, LBA 0xac/b0/b4,
      device 0xb8, command/status 0xbc, alt status 0xd8 — docs/firmware/ARCHITECTURE.md
@@ -112,6 +114,8 @@ def _dir_entry(basis11, attr, first_cluster, size):
 
 
 class _Fat16:
+    EOC = 0xFFFF            # the end-of-chain mark this builder writes
+
     def __init__(self, total_sectors, sectors_per_cluster, part_start):
         self.spc = sectors_per_cluster
         self.cluster_bytes = SECTOR * self.spc
@@ -147,7 +151,7 @@ class _Fat16:
         first = self.next_free
         for i in range(n):
             c = first + i
-            self.fat[c] = c + 1 if i < n - 1 else 0xFFFF
+            self.fat[c] = c + 1 if i < n - 1 else self.EOC
             off = (c - 2) * self.cluster_bytes
             self.data[off:off + self.cluster_bytes] = payload[i * self.cluster_bytes:(i + 1) * self.cluster_bytes].ljust(self.cluster_bytes, b"\x00")
         self.next_free += n
@@ -187,6 +191,7 @@ class _Fat16:
             my_cluster = self.alloc_chain(b"\x00" * est)
             # fix '.' entry cluster (we guessed next_free; alloc_chain confirms it)
             entries[26:28] = struct.pack("<H", my_cluster & 0xFFFF)
+            entries[20:22] = struct.pack("<H", my_cluster >> 16)     # FAT32's high word
         for name, basis, lfn, _ in placeholder:
             sub_entries, sub_first = self.build_dir(os.path.join(path, name), my_cluster, False, log)
             if lfn:
@@ -195,10 +200,7 @@ class _Fat16:
             entries += _dir_entry(basis, 0x10, sub_first, 0)
             log.append((name + "/", basis, sub_first, 0))
         if is_root:
-            if len(entries) > len(self.root):
-                raise ValueError("too many root entries")
-            self.root[:len(entries)] = entries
-            return bytes(entries), 0
+            return self._store_root(entries)
         off = (my_cluster - 2) * self.cluster_bytes
         cap = self.cluster_bytes * self._chain_len(my_cluster)
         if len(entries) > cap:
@@ -206,9 +208,15 @@ class _Fat16:
         self.data[off:off + len(entries)] = entries
         return bytes(entries), my_cluster
 
+    def _store_root(self, entries):
+        if len(entries) > len(self.root):
+            raise ValueError("too many root entries")
+        self.root[:len(entries)] = entries
+        return bytes(entries), 0
+
     def _chain_len(self, c):
         n = 0
-        while c != 0xFFFF and c != 0 and n < 100000:
+        while c != self.EOC and c != 0 and n < 100000:
             n += 1
             c = self.fat[c]
         return n
@@ -232,17 +240,98 @@ class _Fat16:
         return bytes(bpb) + bytes(fat) * self.nfats + bytes(self.root) + bytes(self.data)
 
 
-def build_image(tree_dir, size_mb=64, label="OCTABAM", part_start=2048, log=None):
-    """MBR + one FAT16 partition holding the directory tree at `tree_dir`."""
+class _Fat32(_Fat16):
+    """The same builder, FAT32 as a formatter lays it out: 32 reserved
+    sectors (the boot sector, FSInfo at 1, the backup boot sector at 6),
+    32-bit FAT entries, and the root directory as a cluster chain from
+    cluster 2, with FAT16's capacity of 512 entries. The firmware takes this
+    path above 65,524 clusters and reads RootClus (docs/firmware/STEM_REC.md
+    14.1)."""
+
+    EOC = 0x0FFFFFFF
+
+    def __init__(self, total_sectors, sectors_per_cluster, part_start):
+        self.spc = sectors_per_cluster
+        self.cluster_bytes = SECTOR * self.spc
+        self.reserved = 32
+        self.nfats = 2
+        self.root_entries = 0
+        self.root_sectors = 0
+        self.total = total_sectors
+        clusters = (self.total - self.reserved) // self.spc
+        self.spf = ((clusters + 2) * 4 + SECTOR - 1) // SECTOR
+        self.data_start = self.reserved + self.nfats * self.spf
+        self.nclusters = (self.total - self.data_start) // self.spc
+        if self.nclusters < 65525:
+            raise ValueError(f"{self.nclusters} clusters is not FAT32 (65525 or more); "
+                             "make the image larger or the clusters smaller")
+        if self.spf > 16384:
+            raise ValueError("firmware refuses FAT larger than 16384 sectors")
+        self.fat = [0] * (self.nclusters + 2)
+        self.fat[0] = 0x0FFFFFF8
+        self.fat[1] = 0x0FFFFFFF
+        self.next_free = 2
+        self.data = bytearray(self.nclusters * self.cluster_bytes)
+        self.root = bytearray()
+        self.part_start = part_start
+        self.root_cluster = self.alloc_chain(b"\x00" * (512 * 32))
+
+    def _store_root(self, entries):
+        if len(entries) > self.cluster_bytes * self._chain_len(self.root_cluster):
+            raise ValueError("too many root entries")
+        off = (self.root_cluster - 2) * self.cluster_bytes
+        self.data[off:off + len(entries)] = entries
+        return bytes(entries), 0
+
+    def volume(self, label):
+        bpb = bytearray(SECTOR)
+        bpb[0:3] = b"\xEB\x58\x90"
+        bpb[3:11] = b"MSWIN4.1"
+        struct.pack_into("<HBHBHHBHHHII", bpb, 11, SECTOR, self.spc, self.reserved,
+                         self.nfats, 0, 0, 0xF8, 0, 63, 255, self.part_start, self.total)
+        struct.pack_into("<IHHIHH", bpb, 36, self.spf, 0, 0, self.root_cluster, 1, 6)
+        bpb[64] = 0x80
+        bpb[66] = 0x29
+        struct.pack_into("<I", bpb, 67, 0x0C7A0BA8)          # volume serial
+        bpb[71:82] = label.upper().ljust(11)[:11].encode("ascii")
+        bpb[82:90] = b"FAT32   "
+        bpb[510:512] = b"\x55\xAA"
+        info = bytearray(SECTOR)
+        struct.pack_into("<I", info, 0, 0x41615252)
+        struct.pack_into("<III", info, 484, 0x61417272,
+                         self.nclusters + 2 - self.next_free, self.next_free)
+        struct.pack_into("<I", info, 508, 0xAA550000)
+        head = bytearray(self.reserved * SECTOR)
+        head[0:SECTOR] = bpb
+        head[SECTOR:2 * SECTOR] = info
+        head[6 * SECTOR:7 * SECTOR] = bpb
+        head[7 * SECTOR:8 * SECTOR] = info
+        fat = bytearray(self.spf * SECTOR)
+        struct.pack_into(f"<{len(self.fat)}I", fat, 0, *self.fat)
+        return bytes(head) + bytes(fat) * self.nfats + bytes(self.data)
+
+
+def build_image(tree_dir, size_mb=64, label="OCTABAM", part_start=2048, log=None, fat=16,
+                part_type=None):
+    """MBR + one FAT16 partition holding the directory tree at `tree_dir`;
+    fat=32 builds FAT32 instead (512-byte clusters, partition type 0x0c
+    unless `part_type` says otherwise)."""
     total = size_mb * 1024 * 1024 // SECTOR
     part_sectors = total - part_start
-    spc = 4 if size_mb <= 128 else (8 if size_mb <= 256 else 16)
-    fs = _Fat16(part_sectors, spc, part_start)
+    if fat == 32:
+        fs = _Fat32(part_sectors, 1, part_start)
+        ptype = 0x0C if part_type is None else part_type
+    elif fat == 16:
+        spc = 4 if size_mb <= 128 else (8 if size_mb <= 256 else 16)
+        fs = _Fat16(part_sectors, spc, part_start)
+        ptype = 0x06 if part_type is None else part_type
+    else:
+        raise ValueError(f"fat={fat}: 16 or 32")
     log = log if log is not None else []
     fs.build_dir(tree_dir, 0, True, log)
     vol = fs.volume(label)
     mbr = bytearray(SECTOR)
-    struct.pack_into("<BBBBBBBBII", mbr, 446, 0x00, 0xFE, 0xFF, 0xFF, 0x06, 0xFE, 0xFF, 0xFF,
+    struct.pack_into("<BBBBBBBBII", mbr, 446, 0x00, 0xFE, 0xFF, 0xFF, ptype, 0xFE, 0xFF, 0xFF,
                      part_start, part_sectors)
     mbr[510:512] = b"\x55\xAA"
     img = bytearray(total * SECTOR)
@@ -253,7 +342,7 @@ def build_image(tree_dir, size_mb=64, label="OCTABAM", part_start=2048, log=None
 
 
 def stage_project(project, set_name, name, tree="out/_stage_tree",
-                  audio=(), image_mb=64):
+                  audio=(), image_mb=64, fat=16):
     """Copy a project directory into <tree>/<SET>/<NAME> and build a card
     image from it -- the same staging emu_frames does.
 
@@ -280,28 +369,34 @@ def stage_project(project, set_name, name, tree="out/_stage_tree",
         out = tree / set_name / rel
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(f, out)
-    return build_image(str(tree), image_mb), name
+    return build_image(str(tree), image_mb, fat=fat), name
 
-def extract_image(img, out_dir=None):
+def extract_image(img, out_dir=None, clusters=None):
     """Read a card image back (the one `ot_emu --card-out` writes after a
     run): {path: bytes} for every file, long names reconstructed from the
     VFAT entries, and the tree written under `out_dir` when given. Reads
-    the BPB, so an image the firmware re-formatted still parses."""
+    the BPB, so an image the firmware re-formatted still parses. `clusters`,
+    when a dict, gets every file's first cluster by path."""
     part_start = struct.unpack_from("<I", img, 446 + 8)[0]
     bpb = img[part_start * SECTOR:part_start * SECTOR + SECTOR]
     bps, spc, reserved, nfats, root_entries, total16, _, spf = struct.unpack_from("<HBHBHHBH", bpb, 11)
+    fat32 = spf == 0 and root_entries == 0
+    if fat32:
+        spf = struct.unpack_from("<I", bpb, 36)[0]
+        root_cluster = struct.unpack_from("<I", bpb, 44)[0]
     root_sectors = root_entries * 32 // bps
     fat_off = (part_start + reserved) * bps
-    fat = struct.unpack_from(f"<{spf * bps // 2}H", img, fat_off)
+    fat = struct.unpack_from(f"<{spf * bps // (4 if fat32 else 2)}{'I' if fat32 else 'H'}", img, fat_off)
     root_off = (part_start + reserved + nfats * spf) * bps
     data_off = root_off + root_sectors * bps
     cb = spc * bps
+    eoc = 0x0FFFFFF8 if fat32 else 0xFFF8
 
     def chain(c):
         out = []
-        while 2 <= c < 0xFFF8 and len(out) < 100000:
+        while 2 <= c < eoc and len(out) < 100000:
             out.append(c)
-            c = fat[c]
+            c = fat[c] & 0x0FFFFFFF if fat32 else fat[c]
         return out
 
     def cluster_bytes(c):
@@ -340,8 +435,10 @@ def extract_image(img, out_dir=None):
                 continue                                   # the volume label
             else:
                 files[path] = cluster_bytes(first)[:size] if first else b""
+                if clusters is not None:
+                    clusters[path] = first
 
-    walk(img[root_off:data_off], "")
+    walk(cluster_bytes(root_cluster) if fat32 else img[root_off:data_off], "")
     if out_dir is not None:
         for path, data in files.items():
             f = pathlib.Path(out_dir) / path

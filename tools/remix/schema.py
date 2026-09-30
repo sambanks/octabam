@@ -786,6 +786,30 @@ class ArenaReserve:
 
 
 @dataclass(frozen=True)
+class DramRegion:
+    """Uninitialised DRAM a module's DRAM units name by `symbol`.
+
+    Placed by the platform build at the TOP of the platform's arena reserve
+    (arena.PLATFORM_PAGES, which any remix with DRAM units already pays
+    for), stacked downward in declaration order, and handed to the link as
+    `--defsym symbol=address`. The build refuses when the runtime and its
+    loader stage reach the lowest region. The loader never writes these
+    bytes and nothing clears them: a region must not need initial contents.
+    STEM REC's 4 MiB ring and its task's stack are the first users (docs/
+    superpowers/specs/2026-09-10-stem-rec-poc-design.md, section 5)."""
+
+    symbol: str
+    size: int
+    align: int = 16
+
+    def __post_init__(self):
+        if self.size <= 0:
+            raise ValueError(f"DramRegion {self.symbol}: size must be positive")
+        if self.align <= 0 or self.align & (self.align - 1):
+            raise ValueError(f"DramRegion {self.symbol}: align must be a power of two")
+
+
+@dataclass(frozen=True)
 class Override:
     """This module's own claim at `site` stands in for another module's --
     the way two mods that hook one stock instruction get to share it.
@@ -834,6 +858,10 @@ class Module:
     # and links where it places them, wired in by symbol (Detour), plus
     # relocated-and-grown stock tables and plain asserted pokes.
     linked: tuple[Linked, ...] = ()
+    # Uninitialised DRAM this module's linked units name by symbol
+    # (schema.DramRegion) -- requires at least one dram=True Linked unit,
+    # since a region with no unit to name it can never be referenced.
+    dram_regions: tuple[DramRegion, ...] = ()
     detours: tuple[Detour, ...] = ()
     tables: tuple[TableGrow, ...] = ()
     symbol_refs: tuple[SymbolRef, ...] = ()
@@ -964,6 +992,9 @@ class Module:
                              f"caves -- they are already in the image (its "
                              f"params are READ from the stock descriptor, "
                              f"never written)")
+        if self.dram_regions and not any(u.dram for u in self.linked):
+            raise ValueError(f"{self.name}: declares DRAM regions but has no "
+                             f"DRAM unit to name them")
         # A stepped select on page 1 was refused until 16 Sep 2026 (no module
         # had drawn one there; stock's selects are all on page 2). BusVerb's
         # SHFT is the first (page-1 slot 4, linked to SHMR); image 29 drew it
