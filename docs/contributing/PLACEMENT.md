@@ -164,7 +164,7 @@ at `+0x100`, the staged image from `+0x1000` (2,706,400 B). It is written
 by the running OS just before a reset and read by the next boot's OS
 entry, before anything else runs; nothing between a reset and the OS
 entry writes SDRAM outside the image the bootstrap unpacks
-(`docs/firmware/ARCHITECTURE.md` §3a). In a remix carrying the module its
+(`docs/firmware/ARCHITECTURE.md` section 3a). In a remix carrying the module its
 gate refuses a runtime and stage that reach the mailbox (`os-switch`'s
 own end at `0x40a9788d`, measured from its build's
 `layout.json`).

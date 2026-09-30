@@ -11,6 +11,59 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- OS SWITCH's boot picker (30 Sep 2026, `modules/os-switch`): at power-on,
+  before the project's loading is posted, the stock dialog offers the card's
+  other `.OBI` images. Untouched it stays on this image after 3 s (`STAY IN
+  3`); an arrow restarts the countdown for the image shown (`BOOT IN 3`);
+  YES switches at once without the project sync, NO stays at once. It hooks
+  whichever of the boot's two posts comes first -- the LOAD PROJECT post
+  (`0x4002574c`, empty SRAM) or the set mount's LOADING FILES post
+  (`0x4002573e`, SRAM that knows the card, every power-on after the first) --
+  holds the other and replays both in stock's order on NO. Countdown on the
+  ~120 Hz sys tick (12 ticks a step). `ot_emu --boot-load` models the
+  power-on; `verify_osswitch` gains nine boot cases, one booting from a
+  dumped SRAM. `OSW_TRACE=1` turns on OS SWITCH's own BOOT TRACE notes
+  (1, 12, 13, 26, 27) without the BOOT TRACE module. On an MKII from
+  BSRET7BP to BSRET10BP and RIGPF3BP/RIGPF4BP: every mode works.
+- OCTAKIT MIRROR (30 Sep 2026, `modules/octakit-mirror`, appended by the
+  registry to every remix carrying OCTAKIT): page-key + CLEAR/PASTE no longer
+  halt with VEC:04 in Octakit's page-clipboard check. Her load path stages a
+  Kit into the working part and leaves stock's SRAM part mirror as the file
+  had it; a detour at the input layer's key dispatch (`0x4003191c`) syncs the
+  mirror just before her CLEAR/PASTE wrapper runs. Her runtime is untouched;
+  the source fix is hers (issue drafted). `verify_octakit_mirror` runs a
+  control build that must halt. On an MKII (RIGPF4BP): CLEAR works.
+- Hardware findings, 30 Sep 2026 (`docs/contributing/FAILURE_MODES.md`): USB disk
+  mode returned corrupted reads on RIGPF3BP (about one in four; clean under
+  stock and later the same day; three 29 Sep backups each hold one corrupt
+  file) -- until the cause is known, card work from STOCK140 and copies
+  verified with uncached reads (`tools/hw/card_verify.py`). With RETURNS on
+  T8, T1 and T5 play samples with trigs and no click: bottleservice's
+  THRU-only rule for them applies to builds without RETURNS.
+- Flashed from branches (not tagged; VERSION names), 30 Sep 2026, on an
+  MKII: BSRET6BP..BSRET10BP (bottleservice-ret + the boot picker as it was
+  fixed), RIGPF3BP (bottleservice-pf) and RIGPF4BP (+ OCTAKIT MIRROR) -- the
+  home image.
+
+- Every image carries OS SWITCH (29 Sep 2026): MAIN MENU > OS lists the card
+  root's `.OBI` files (a fifth root category, the stock list engine, rescanned
+  at each MAIN MENU opening) and boots one without flashing; `make image`
+  writes `out/<VERSION>.OBI` beside the `.bin`. `registry.remix()` adds the
+  module unless a remix sets `os_switch=False` (the 11 that keep every stock
+  DSP effect: no words for the park code). The chainloader's ROM part is a
+  gate in octabam's loader (`Linked(loader=True)`, new), its body copied into
+  the stage page by the switcher: no cave bytes, which bottleservice has
+  none of. `OCTABAM_NO_OS_SWITCH=1`: refhash's 24 cases bit-identical.
+- OS SWITCH (29 Sep 2026, `modules/os-switch`, a proposal:
+  `docs/proposals/FIRMWARE_SWITCHER.md`): MAIN MENU > CONTROL > OS SWITCH
+  boots a raw OS image (`.OBI`, `make obi`) from the card without writing
+  the flash, through a soft reset and a chainloader in the OS entry. On an
+  MKII (OCTABAM14 with BOOT TRACE): to its own image and to stock 1.40C,
+  audio and play working. The DSP is not reset with the ColdFire; each
+  core is parked in a boot-ROM loader, its host port put back in the ROM's
+  mode and drained (`FAILURE_MODES.md`). BOOT TRACE (`modules/boot-trace`)
+  sends a MIDI note per boot stage.
+
 - Analog BD: engine selection now lives only in the pool-style browser; the
   former SRC SETUP MODEL control and its encoder editing path are removed.
   Both source outputs are 12.04 dB louder than the 29 September revision,

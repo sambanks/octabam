@@ -10,7 +10,11 @@ decompilation or direct disassembly; ~ = inferred. The DSP side is
 An 8-track sampler/sequencer. The firmware runs on a Freescale ColdFire
 CPU (68k family, big-endian, 266 MHz) with a two-core Freescale DSP56xxx
 for real-time audio, under a proprietary preemptive microkernel. The OS
-is loaded from CompactFlash via the ColdFire's on-chip ATA controller. The
+lives in NOR flash, packed, and the bootstrap unpacks it into SDRAM at
+every reset (section 3a); the CompactFlash carries projects, samples and the
+`.bin` an OS UPGRADE reads. (❌ Retracted 29 Sep 2026: "the OS is loaded
+from CompactFlash via the ColdFire's on-chip ATA controller" -- the unit
+boots to DEMO without a card, and the bootstrap's load reads NOR.) The
 architecture is producer/consumer decoupled by buffers in RAM: the same
 kernel message-queue pattern appears in storage I/O and in the audio
 pipeline.
@@ -87,7 +91,22 @@ MK1-era files (inferred); octabam images keep code 0178.
 
 UI → write flow: OS UPGRADE menu → confirm → `os_upgrade` (stops audio,
 "WORKING PLEASE WAIT", enqueues a task) → scans the CF, validates →
-`os_apply_flash` (critical section) → writes the CF via ATA → reboot.
+`os_apply_flash` (critical section) → writes NOR → reboot. ✓ Read 29 Sep
+2026 (`docs/proposals/FIRMWARE_SWITCHER.md`): the menu handler
+`0x400636bc` stops playback (`0x40063660`) and defers `0x4006370c` →
+`0x40080640`, which lists `/*.BIN` (`0x4007f598`) and keeps the best
+validation result; the file is read in 8-sector chunks through the
+uncached bounce buffer `0x4f4ede10` into `0x46949e80` (the task stacks,
+which is why the flow never returns), decoded in place, programmed and
+verified word by word against NOR from `0x4000` (`0x4007fcb2..`). A file
+over 1 MB + 12 B is refused (`-3`, `0x4007f796`). The reboot is
+`move.w #0x2700,%sr ; jsr 0x40010a4c` (flush the panel's UART1 queue) `;
+bra .` (`0x4007fe6c..0x4007fe7c`), after the screen `UPGRADE DONE` /
+`PLEASE REBOOT!` (`0x4007fab4`): stock never resets the unit, the user
+power-cycles. (❌ Retracted: "writes the CF via ATA"; and, the same day,
+this doc's "something resets the unit from there, probably a watchdog":
+an MKII sat in that kind of spin until a power-cycle, OS SWITCH build 1,
+29 Sep 2026.)
 
 ## 3a. NOR flash ~
 
@@ -119,20 +138,38 @@ image.
 
 | Flash range | Contents | Source |
 |---|---|---|
-| `0x000000..0x003fff` | bootstrap, linked at 0; its copy sits in the OS image at `~0x400de7dc..0x400e21e0` and carries the "BOOTSTRAP UPGRADE" string and the SysEx OS upgrade path | ~ |
+| `0x000000..0x003fff` | bootstrap, linked at 0; its copy sits in the OS image at `~0x400de7dc..0x400e21e0` and carries the "BOOTSTRAP UPGRADE" string and the SysEx OS upgrade path. ✓ The OS entry programs `0x400dea4c..0x400e1ec4` into it from `0` when NOR's version word `0x3ffc` is below the image's `0x400dea48` (`0x0408` in 1.40C), or the PLL reads other than 264 MHz (`0x40000432..0x4000044c` → `0x4000f9b4`) | ~ / ✓ |
 | `0x004000..0x1fffff` | the OS region: the OS's sector table at `0x400a91c0` has 37 entries, `0x4000`, `0x6000..0xe000` (6 × 8 KB), `0x10000..0x1f0000` (31 × 64 KB) = 2,080,768 B. The bootstrap's SysEx path programs the OS from `0x4000` (`0x400e011a..`, `pea %a0@(16384)`, +2 per word). The table is followed by "ELFU" and the `.bin` cipher constants (section 3) | ~ |
 | `0x1ffffa..0x1fffff` | three words: magic `0x1234` at `0x1ffffa`, two words after it; the bootstrap also programs `0xabcd`/`0xdcba` markers here | ~ |
 | `0x200000..` | magic "EFGH", a count n, then n × 28-byte records, copied to `0x46ceb400` by `0x4001b9b4`; contents unidentified | ~ |
 | above the EFGH table | no reference in the OS image | ~ |
 
-The current MAIN OS is 1,112,560 B, 53% of the 2,080,768 B window;
-968,208 B of the window is unused by 1.40C.
+~ The window holds the OS PACKED: the bootstrap unpacks it from NOR `0x4012`
+(its depacker at `0x207e` skips an 8-byte header; the OS image carries the
+same routine at `0x400e0aca`, which `tools/remix/loader.S` calls) into
+`0x40000400`, and stock 1.40C's `.bin` is 470 KB. Roughly 1.6 MB of the
+window is unused by 1.40C, and OS UPGRADE refuses a file over 1 MB + 12 B.
+(❌ Retracted 29 Sep 2026: "the current MAIN OS is 1,112,560 B, 53% of the
+2,080,768 B window; 968,208 B of the window is unused" -- it measured the
+unpacked image against the window that holds the packed one.)
+
+✓ **The reset path** (the bootstrap, read at its copy in the image, 29 Sep
+2026): reset vector `0x2d4a` → PLL, RAMBAR1 → `0x2920` (GPIO, the SDRAM
+controller at `0x288e`: precharge, two refreshes, mode register; the panel
+link; the Startup Menu on a held key) → `0x22a2` (caches on, unpack NOR
+`0x4012` → `0x40000400`, ACR0/ACR1 = 0, `CACR = 0x0008c000`) → `move.l
+0x8000050a,-(%sp) ; jsr 0x40000400`. Nothing on it clears or tests SDRAM
+outside the Startup Menu's TESTMODE (`0x784`, `0x834`), so what the OS
+image does not cover keeps its contents across a reset if the refresh gap
+is short enough (~, unmeasured). A second entry at `0x22ea` unpacks from
+RAM `0x40200000` instead, behind a `halt` (a debugger path; `0x10adc0de`).
+`modules/os-switch` builds on this path.
 
 **Constraints on using it.**
 
 - The OS executes from SDRAM (load base `0x40000400`, section 7), not in place
   from flash. Code stored in flash runs only after something copies it to
-  RAM: the bootstrap does this for the OS region (inferred: the copy loop is not located); anything above
+  RAM: the bootstrap does this for the OS region (✓ `0x22a2` → `0x207e`, above); anything above
   `0x200000` needs its own loader (the DRAM platform's boot detour is
   where one would sit, `docs/contributing/PLACEMENT.md`).
 - An image up to 2,080,768 B fits the region the OS already erases and
@@ -161,9 +198,25 @@ The current MAIN OS is 1,112,560 B, 53% of the 2,080,768 B window;
 - The bootstrap's own erase loop runs 21 entries from a table at flash
   `0x2e38`, which the image copy does not carry. 21 sectors from `0x4000`
   would end at `0xfffff`, below the end of the current OS.
-- section 3's write flow says `os_apply_flash` writes via ATA; the OS carries
-  this NOR driver and sector table. Which device `os_apply_flash` writes
-  is not traced.
+- ~~Which device `os_apply_flash` writes~~: NOR, verified word by word
+  from `0x4000` (section 3, 29 Sep 2026).
+- ~~What resets the unit after OS UPGRADE's final spin~~: nothing; it asks
+  for a power-cycle (section 3).
+- ✅ A soft reset (RCR SOFTRST) restarts the ColdFire and the bootstrap,
+  and keeps SDRAM, but does not reset the DSP: the next OS's DSP upload
+  (`0x40001e50`) starts and never returns (BOOT TRACE on the unit, OS
+  SWITCH build 4, 29 Sep 2026; `docs/contributing/FAILURE_MODES.md`). ❌ Retracted the same
+  day: "does not reset the MKII's panel controller" (the panel was never
+  the hang; ❌ also retracted: "the unit is flagged an MKI", read from a
+  handshake note that appears on only some boots). ✅ What the DSP needs
+  after it, measured on the unit (OS SWITCH builds 12-14): the host-side
+  receive register drained, HPCR bit 7 cleared, and each core parked in a
+  loader that hands the upload to the stock bootstrap
+  (`docs/contributing/FAILURE_MODES.md`).
+- ~~Whether SDRAM keeps its contents across that reset~~: it does. OS
+  SWITCH's 1.1 MB stage passed its hash after the reset and the staged
+  image ran (BOOT TRACE, builds 4-14; the dialog reported the switch,
+  build 14, 29 Sep 2026).
 
 ## 4. Kernel: a proprietary preemptive microkernel ✓
 

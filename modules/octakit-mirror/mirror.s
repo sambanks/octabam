@@ -10,7 +10,7 @@
 | file had it; her page-clipboard check (gk_page_clipboard_validate_result
 | -> compare_payloads) then requires the two byte-equal after the clear and
 | halts on `illegal` when they are not: VEC:04 at gk_page_clipboard_fatal
-| on every page-key + CLEAR (docs/remixer/FAILURE_MODES.md).
+| on every page-key + CLEAR (docs/contributing/FAILURE_MODES.md).
 |
 | Detour at the input layer's key dispatch (0x4003191c: `move.l d4,-(sp) /
 | move.l d2,-(sp) / jsr (a0)`, the call her wrappers are reached through,

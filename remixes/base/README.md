@@ -16,7 +16,7 @@ Nothing that plays. The switcher's ColdFire code lives in the OS image's
 free zero runs and the DRAM platform, and its DSP park — the 39 words that
 put both cores in a boot ROM before the reset — lives **entirely in stock's
 dead interrupt vectors**, the slots 1.40C leaves as `jmp *`
-(`docs/remixer/PLACEMENT.md`, "Pinned DSP section"). So the effect region is
+(`docs/contributing/PLACEMENT.md`, "Pinned DSP section"). So the effect region is
 untouched: `used 0`.
 
 That is what makes this a base rather than a compromise. Harvesting an

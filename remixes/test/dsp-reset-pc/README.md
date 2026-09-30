@@ -40,7 +40,7 @@ magic (`0x5a3c61`) and nothing else does; with the port modelling a reset
 line, core 0 answers too and both payloads are uploaded again.
 
 `verify_boottrace` and `verify_osswitch` skip any image carrying DSP RESET
-PROBE — it stops the boot on purpose (`docs/remixer/FAILURE_MODES.md`), so
+PROBE — it stops the boot on purpose (`docs/contributing/FAILURE_MODES.md`), so
 a gate that asserts a normal boot cannot be run on it.
 
 ## Build and run

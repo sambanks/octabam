@@ -28,7 +28,7 @@ With a card:
   refusal are the ones already on the unit.
 
 The end state is a two-panel pane: the file list on the left, the
-highlighted image's details on the right. The recommendation (§7) is to get
+highlighted image's details on the right. The recommendation (section 7) is to get
 there in two steps, because the two halves of the work have very different
 risk.
 
@@ -77,14 +77,14 @@ So the drawing is a solved problem with a working precedent in the tree.
 ### And the pane we already have has a right column ✅
 
 Read here from the user's image, 29 Sep 2026: the menu draw/nav body is
-`0x40064908..0x40064fb2` (`docs/firmware/MAINMENU.md` §4) and the child
+`0x40064908..0x40064fb2` (`docs/firmware/MAINMENU.md` section 4) and the child
 pane's row loop is `0x40064a76..0x40064af0`:
 
 - the **label** is `0x40012bd8(font 0x400ba876, surf, x = 0x37 = 55,
   y, limit = 0xf = 15, rows[i]+0x00)`;
 - then, **if `rows[i]+0x0c` is non-zero, it is called and its return is
   drawn** as `0x40012bd8(font, surf, x = *(surf) - 17, y, limit = 0xe = 14,
-  d0)` — the "right-column value getter" `MAINMENU.md` §1 names;
+  d0)` — the "right-column value getter" `MAINMENU.md` section 1 names;
 - `y` starts at 47 (`moveq #47,%d3`) and steps **−7 per row**;
 - the loop draws `min(descriptor+0x14 count, descriptor+0x10 visible)` rows.
 
@@ -119,7 +119,7 @@ embeds in every octabam image, at an offset the pane can find.
 ### The line budget, measured ✅
 
 The small UI font `0x400ba876` is a 20-byte metrics record: default advance
-3, height 6, yOffset 1 (`docs/firmware/PANEL.md` §2), width table
+3, height 6, yOffset 1 (`docs/firmware/PANEL.md` section 2), width table
 `0x400c246a`, per-glyph offsets `0x400c256a`, bitmaps `0x400c276a`. Read
 here 29 Sep 2026 from `out/raw/section_3_MAIN_OS.bin`: **every `A`–`Z` and
 `0`–`9` advances exactly 3 px**; space 2, `.` 1, `-` 3, and the separator
@@ -131,7 +131,7 @@ Hence:
 |---|---|---|
 | a tempo-bus box's text field (53 wide, text at +4, right edge −3) | 46 | **15** |
 | the existing pane's label (x 55, limit 15) | 45 | **15** (the limit and the pixels agree) |
-| the existing pane's right column (limit 14) | ❓ (§2) | 14 claimed |
+| the existing pane's right column (limit 14) | ❓ (section 2) | 14 claimed |
 
 **15 characters a line is the budget**, in the pane today and in either box
 of a two-panel version.
@@ -240,7 +240,7 @@ reading forward to `0x10f9f0` is out of the question (the chainloader's walk
 over 1.1 MB costs ✅ ~8.9 M instructions, `verify_osswitch`). The buffered
 file API has one: open `0x40016864`, **seek `0x4001660c`**, read
 `0x40016564`, close `0x4001677c` (✅ named independently by ems-octakit and
-octamax, `docs/firmware/SAMPLE_SAVE.md` §5). ❓ its signature and whether it
+octamax, `docs/firmware/SAMPLE_SAVE.md` section 5). ❓ its signature and whether it
 works on these files. What would answer it: call it under the port on a
 card file and read back a known byte at a known offset — one `--interactive`
 `call` line.
@@ -255,7 +255,7 @@ The pane lists the root's `.OBI` files with the stock dir scan
 name (`switch.s:41-42,72-73`).
 
 **Read every card once, inside `osw_scan`, into the module's own table.**
-Not per cursor move: §2 shows the right-column getter is called for every
+Not per cursor move: section 2 shows the right-column getter is called for every
 visible row on every draw, so a card read there is up to seven file reads a
 frame. A footer rebuilt at draw time has the same problem. Reading at scan
 time makes the getter and the footer pure formatting from RAM.
@@ -280,7 +280,7 @@ time makes the getter and the footer pure formatting from RAM.
 ## 7. The honest unknown states
 
 - **stock 1.40C has no card**, and neither does any image not built here,
-  nor a remix that appends nothing (§5). The pane must say `NO CARD`.
+  nor a remix that appends nothing (section 5). The pane must say `NO CARD`.
 - **do not print `STOCK` from a length match.** 1,112,560 B identifies
   stock's length, not stock; a foreign build can match it.
 - **a card is a claim the build makes, not a property of the code.** A
@@ -291,7 +291,7 @@ time makes the getter and the footer pure formatting from RAM.
   not do it, and the pane should not imply the card is verified.
 - three states, then: a card; a valid OS image with no card; and a file
   that is not an OS image at all, which `make_obi` and `osw_load` already
-  refuse on three grounds (§3) but the pane does not distinguish today.
+  refuse on three grounds (section 3) but the pane does not distinguish today.
 
 ---
 
@@ -303,13 +303,13 @@ menu-state table surgery.
 
 Two shapes for that one line, both needing no new drawing:
 
-- **(a) the row's own right column** (§2): 14 characters per row, drawn for
+- **(a) the row's own right column** (section 2): 14 characters per row, drawn for
   every visible row already, the getter formatting from the scan-time table.
   No cursor handling whatsoever. Blocked on the ❓ about its x.
 - **(b) a footer**: an inert row at the bottom of the pane (15 characters)
   whose label is rebuilt from the descriptor's selection before each draw,
   by one detour inside `0x40064908..0x40064fb2` guarded on the focus pointer
-  `0x400cbda8` (✅ `MAINMENU.md` §4) so no other category is touched.
+  `0x400cbda8` (✅ `MAINMENU.md` section 4) so no other category is touched.
   Costs one of the pane's visible rows: `osw_list` ships `+0x10 = 7`
   (`switch.s:105`), two headings and an optional refusal line already take
   2–3, so the files go from 4–5 visible to 3–4.
@@ -320,7 +320,7 @@ has earned a second panel.
 Why this order. The card is the risky half: a build format that a gate has
 to pin, a fixed image offset that a build change can move, and a card read
 per file at menu-open time on a path that has already thrown VEC:04 once on
-the unit (§6). The drawing is the half with a working precedent — tempo-bus
+the unit (section 6). The drawing is the half with a working precedent — tempo-bus
 runs it under the port. Staging puts the whole risk behind a change that
 costs one line of screen and can be abandoned without losing anything, and
 it produces the ❓ read-cost
@@ -339,7 +339,7 @@ measurement before any layout depends on it.
 - its own input layer (`0x40031494` / `0x4003146c`) and its own draw.
   ❓ **whether a menu category can hand its pane to an own draw.** The
   category's pane belongs to the menu engine; tempo-bus replaced a *window's*
-  draw, which is not the same thing. `MAINMENU.md` §3: the menu-state table
+  draw, which is not the same thing. `MAINMENU.md` section 3: the menu-state table
   `0x400cbdac` is 16 × 0x14 and all 15 usable states are occupied, and
   `busscreen` added a 17th by copying the table to a cave and patching three
   `lea` operands (tags 85–90 on the unit). What would answer it: try the
@@ -365,7 +365,7 @@ measurement before any layout depends on it.
   `AGENTS.md`);
 - the record is **byte-identical across two builds of the same remix with
   the same `BUILD`/`VERSION`**, which is the check that catches a clock-fed
-  date before `refhash` does (§4).
+  date before `refhash` does (section 4).
 - `make_obi.py` prints whether the `.OBI` it writes has a card, so a
   card-less file is named rather than silently blank.
 
@@ -385,7 +385,7 @@ files: an octabam image with a card, one without, and stock.
   eye. A pixel assertion is new work and needs no OCR: the plane is
   `0x46c7e0ea`, 1,024 bytes, 64 columns × 128 rows, 8 bytes per row, MSB
   left, and screen pixel (x, y) is column 63−y of row x
-  (`docs/remixer/EMU.md`, "The screen itself"); the expected string renders
+  (`tools/emu/README.md`, "The screen itself"); the expected string renders
   from the font's own width, offset and bitmap tables (`0x400c246a`,
   `0x400c256a`, `0x400c276a`) for a direct comparison.
 

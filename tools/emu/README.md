@@ -113,6 +113,27 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
     once and forks one child per scenario from the identical loaded
     machine. The DSP cores' shared memory is copied private in each child
     (`unshareRanges`, `main.cpp`).
+- **Memory as a reset leaves it.** `--preload ADDR=FILE[;...]` puts a file's
+  bytes in memory before the boot runs. The port boots zeroed RAM with NOR
+  unmodelled: `0x3ffc` (NOR's bootstrap version) reads 0, so every boot takes
+  the entry's bootstrap-upgrade branch where a flashed unit goes straight to
+  `0x4000050c`; `--preload 0x3ffc=<04 08>` gives the hardware's path. A
+  unit's power-on also finds battery SRAM from its last session: dump
+  `0x10000000..0x100fffff` after a boot (`--mem-dump`) and preload it, or the
+  port measures the first-ever power-on only (OS SWITCH's boot picker,
+  `docs/contributing/FAILURE_MODES.md`).
+- **A power-on's own load.** `--boot-load` writes the SET/PROJECT names
+  before the mount, as a unit that has run a project has them, and posts
+  nothing itself: the one LOAD PROJECT is the firmware's own (sys's media
+  case, through `0x4002574c`). With a short `--load-ms` the run goes on to
+  `--live-script` while the load is still held (`verify_osswitch`'s boot
+  cases).
+- **Three things the DSP emulator does that the chip does not** (found
+  bringing up OS SWITCH's DSP park, 29 Sep 2026): `dsp peek <core> P <addr>`
+  answers 0 for `0x30000..0x3ffff` (it reads the core's own array, not the
+  shared window); `--dsp-pcwatch`'s a1/b1 print the accumulator shifted left
+  by 8; and inside a long interrupt (a `jsr` vector) no peripheral runs until
+  the handler's `rti`, so HI08 flags such as HTDE freeze.
 - **MIDI IN.**
   - `--midi FILE` takes one event per line: `<frames after the transport
     start> <hex bytes>`, or `pre <hex bytes>` (before the transport start,

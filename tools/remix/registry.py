@@ -262,7 +262,7 @@ def remix(name: str | None):
     # OCTAKIT MIRROR WITH EVERY OCTAKIT: her page-clipboard check halts on a
     # page-key + CLEAR unless stock's SRAM part mirror equals the working
     # part, which her own load path leaves unequal (modules/octakit-mirror,
-    # docs/remixer/FAILURE_MODES.md). Appended last, like OS SWITCH.
+    # docs/contributing/FAILURE_MODES.md). Appended last, like OS SWITCH.
     if ("OCTAKIT" in r.modules and OCTAKIT_MIRROR not in r.modules and OCTAKIT_MIRROR in known
             and not os.environ.get("OCTABAM_NO_OCTAKIT_MIRROR")):
         r = dataclasses.replace(r, modules=r.modules + (OCTAKIT_MIRROR,))

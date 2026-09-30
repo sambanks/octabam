@@ -66,7 +66,10 @@ The watches are `docs/firmware/RECORDER.md` section 2a's.
 
 ## On the unit
 
-Not flashed.
+An MKII, OCTABAM2 = `bottleservice-rec-plen`, 29 Sep 2026, as a DRAM unit:
+PLEN drawn, one-press single-loop takes at 1/4X and 1/8X, PLEN kept through
+Octakit's Kit save / load / reload -- by ear and panel, not captured. PER
+TRACK mode not tried.
 
 ## Open
 

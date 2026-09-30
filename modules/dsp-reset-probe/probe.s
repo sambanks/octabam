@@ -118,7 +118,7 @@
         .set    DSP_UPLOAD,  0x40001e50 | the stock DSP boot sequence, re-run
         .set    PARK_HC,     0x0092     | HC | $12: OS SWITCH's park (switch.s
                                         | parkcore sends the same word)
-        .set    UART0_USR,   0xfc060004 | MIDI OUT (docs/remixer/EMU.md)
+        .set    UART0_USR,   0xfc060004 | MIDI OUT (tools/emu/README.md)
         .set    UART0_UTB,   0xfc06000c
         .set    POLL,        200000     | polls before a MIDI byte gives up
         .set    HPOLL,       4000       | ... and before a host-port wait does.

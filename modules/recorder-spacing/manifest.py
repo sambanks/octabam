@@ -78,7 +78,7 @@ MODULE = Module(
         CavePatch(
             label="spacing cave",
             # Pinned in the tail of the 338 B zero run 0x400c45b0..0x400c4702
-            # (docs/remixer/PLACEMENT.md), after SPECTRUM's SHPE formatter (89 B
+            # (docs/contributing/PLACEMENT.md), after SPECTRUM's SHPE formatter (89 B
             # at 0x400c45b0): seek-bind 0x400c460c, counter 0x400c4624, spacing
             # 0x400c4634..0x400c46c6. The floating clone window has no room
             # beside the rig's clones and label formatters. 28 Sep 2026.

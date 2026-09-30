@@ -31,7 +31,7 @@ def main():
     # DSP RESET PROBE wedges the DSP by design: its control pass sends the
     # boot ROM's protocol into a running payload, whose frame protocol never
     # gets back in step, and the boot does not finish (measured on an MKII,
-    # 29 Sep 2026, docs/remixer/FAILURE_MODES.md). A gate that asserts a
+    # 29 Sep 2026, docs/contributing/FAILURE_MODES.md). A gate that asserts a
     # normal boot cannot be run on that image.
     if "DSP RESET PROBE" in mods:
         print(f"  [SKIP] verify_boottrace: {remix} carries DSP RESET PROBE, which stops the "

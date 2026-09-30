@@ -12,7 +12,7 @@ ratified cave bytes (position-independent, re-linked alone and compared by
 sha256).
 
 RECORDER HOLD is not in it: 328 B of ROM the rig does not have, and it has
-not been seen to work on a unit (`docs/firmware/RECORDER_CLICK.md`).
+not been seen to work on a unit (`modules/recorder-hold/README.md`, "The loop click").
 
 ## Where it has run
 

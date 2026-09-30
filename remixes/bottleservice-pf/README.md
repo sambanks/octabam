@@ -26,6 +26,6 @@ A scene or the crossfader on a track's LEVEL moves its sends too.
   30 Sep 2026; page-key + CLEAR, which halted RIGPF3BP with VEC:04 in
   Octakit's page-clipboard check, works.
 - ⚠️ USB disk mode on it once returned corrupted reads (about one in four,
-  `docs/remixer/FAILURE_MODES.md`); later in the day it read clean. Cause
+  `docs/contributing/FAILURE_MODES.md`); later in the day it read clean. Cause
   open; suspected: the USB audio state (a DAW holding the unit as its audio
   device) when disk mode starts.

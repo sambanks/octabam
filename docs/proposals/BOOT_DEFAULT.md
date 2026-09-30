@@ -10,18 +10,18 @@ where it says so, else under the ColdFire port or read from the user's own
 image by disassembly), 🟡 inferred, with what would falsify it, ❓ open,
 with what would answer it, ❌ retracted.
 
-**Status, 30 Sep 2026: a variant of §7 is built** (`modules/os-switch`,
+**Status, 30 Sep 2026: a variant of section 7 is built** (`modules/os-switch`,
 "At power-on: the boot picker"), measured under the port, not yet on the
-unit. It is §7 without the held key: every power-on with another image on
-the card opens the picker at the point §4 asked for -- the boot's own
+unit. It is section 7 without the held key: every power-on with another image on
+the card opens the picker at the point section 4 asked for -- the boot's own
 LOAD PROJECT post (`0x4002574c`, sys's media case, after the card is
 mounted and before the project loads) -- with a 3 s countdown that answers
-NO. So it keeps §7's properties (nothing boots unless chosen this boot, no
-file, no flag, no loop) and costs at most 3 s on a boot that stays. §4's
+NO. So it keeps section 7's properties (nothing boots unless chosen this boot, no
+file, no flag, no loop) and costs at most 3 s on a boot that stays. section 4's
 first ❓ is answered ✅ under the port: there is such a point, and it is
 the post itself; the load, and the LOADING FILES job the set mount queues
 behind it, are held and posted in stock's order on NO. The escape hatch of
-§5 is not needed by this variant; the full default of §6 is still not built.
+section 5 is not needed by this variant; the full default of section 6 is still not built.
 
 ---
 
@@ -31,7 +31,7 @@ Today every power-on lands in the flashed image, and reaching another one
 is MAIN MENU > OS > `<NAME>` > YES. Four keypresses and a reboot, every
 time, even when you have not run the flashed image for a week.
 
-`FIRMWARE_SWITCHER.md` §6 rejected the automatic version:
+`FIRMWARE_SWITCHER.md` section 6 rejected the automatic version:
 
 > **Not persistent.** A power-cycle forgets the switch. A "boot X at
 > power-on" option would mean the flashed image reading a choice from the
@@ -55,7 +55,7 @@ given where it matters.
   detour at the OS entry's second instruction, `0x40000412`
   (`modules/os-switch/manifest.py:119`), and the OS entry's own path is
   `0x4000050c` the DSP upload → `0x40000518` the globals/heap zero-fill →
-  `0x4000053c jsr 0x40000db0` main (`FIRMWARE_SWITCHER.md` §2.2). At the
+  `0x4000053c jsr 0x40000db0` main (`FIRMWARE_SWITCHER.md` section 2.2). At the
   gate no DSP, no cache set-up, no interrupts and no ATA stack have run.
   The switcher's own load path needs the FS vtable
   (`modules/os-switch/switch.s:155-161` refuses to scan while
@@ -146,7 +146,7 @@ which falls through `0x2b4c`'s dispatch and boots normally. 🟡 `0x10` is
 EXIT's bit, inferred from the `0x1f` mask and the four cases the dispatch
 does handle; **falsified by** a probe that reads the byte after EXIT and
 finds something else. The gesture is two presses on a path the manual
-already documents for recovery (`docs/remixer/FAILURE_MODES.md`, "Z"
+already documents for recovery (`docs/contributing/FAILURE_MODES.md`, "Z"
 screen: hold [FUNC], power on, then a TRIG).
 
 ❓ Whether a *bare* held key could serve instead — one press, no menu. The
@@ -163,7 +163,7 @@ MENU byte is the escape hatch that already exists.
 ## 4. How early could the switch fire? ❓
 
 Somewhere after the FS vtable is installed (`0x40014524` / `0x40014636` /
-`0x40014750`, `docs/firmware/STORAGE.md` §1) and before the user has done
+`0x40014750`, `docs/firmware/STORAGE.md` section 1) and before the user has done
 anything. Everything the switch does after that point is already built and
 hardware-proven: the load path, the DSP park, the reset.
 
@@ -192,12 +192,12 @@ A default naming an image that hangs gives: power on → switch → hang →
 power-cycle → switch → hang. The flash is never written, so the unit is not
 bricked, but without a hatch it is unusable until the card is taken to a
 computer. **The flag cannot live in NOR**: OS SWITCH's whole claim is that
-the bootstrap and NOR are untouched (`FIRMWARE_SWITCHER.md` §6, "Not a
+the bootstrap and NOR are untouched (`FIRMWARE_SWITCHER.md` section 6, "Not a
 bootloader").
 
 Three candidates, and what each does and does not cover.
 
-**(a) A held key at power-on, read by the gate.** §3: STARTUP MENU > EXIT
+**(a) A held key at power-on, read by the gate.** section 3: STARTUP MENU > EXIT
 leaves `0x80000200 == 0x10`; the gate reads it and records "no default this
 boot" in a new mailbox field, so the switcher in the running OS never needs
 the SRAM cell again.
@@ -207,7 +207,7 @@ the target.** The flashed image writes `ATTEMPT <NAME>` somewhere
 persistent, switches, and the target clears it; a flag still set at the
 next power-on means the last attempt did not finish, so skip it.
 
-**(c) The narrow variant** (§7): no default, so nothing to escape from.
+**(c) The narrow variant** (section 7): no default, so nothing to escape from.
 
 | failure | (a) held key | (b) one-shot flag | (c) narrow |
 |---|---|---|---|
@@ -227,16 +227,16 @@ the flag were looked at:
 - the card, through the buffered file API (open `0x40016864`, write
   `0x400166b8`, close `0x4001677c`, seek `0x4001660c`; ✅ named
   independently by ems-octakit and octamax, `docs/firmware/SAMPLE_SAVE.md`
-  §5, and octamax reports working file-creating patches 🟡). It is a write
+  section 5, and octamax reports working file-creating patches 🟡). It is a write
   to the user's card at every power-on.
 - the battery-backed SRAM. 🟡 `0x10000000..0x100fffff` survives a
-  power-cycle (nordseele's MKI, `docs/firmware/STORAGE.md` §3, adopted
+  power-cycle (nordseele's MKI, `docs/firmware/STORAGE.md` section 3, adopted
   here). ✅ Only its last 252 bytes are checksummed: `0x4001fa48..0x4001fa6a`
   EORs `0x100fff04..0x100fffff` with a running index, adds 514 and
   compares with the long at `0x100fff00`; a mismatch clears the whole
   region and calls `0x4001f298`. So a flag below `0x100fff00` breaks no
   checksum. ❓ whether any long down there is never referenced — a sweep of
-  the kind `CHIP.md` §3 did for core-private Y would answer it — and ❓
+  the kind `CHIP.md` section 3 did for core-private Y would answer it — and ❓
   whether the region really survives on an MKII. EMPTY RESET wipes it, which
   is a feature here.
 
@@ -259,7 +259,7 @@ the only one whose read happens before anything can wedge.
   made, on a path where a half-written file must still leave a bootable
   unit — write to a temporary name and rename, or accept that an
   unparseable file means "no default" (which it should mean anyway).
-- **Not the mailbox** (§2) and **not NOR** (§5).
+- **Not the mailbox** (section 2) and **not NOR** (section 5).
 
 Either way `make_obi.py`'s checks stay the gate on what may be named: the
 OS entry's first instruction, a length inside `OSW_MAXLEN` (2,706,400 B),
@@ -286,21 +286,21 @@ in bottleservice".
 
 What it needs:
 
-- **the signal.** ✅ §3: `0x80000200 == 0x10` after STARTUP MENU > EXIT,
+- **the signal.** ✅ section 3: `0x80000200 == 0x10` after STARTUP MENU > EXIT,
   read at the gate and parked in the mailbox. The gesture is two presses
   and an existing, documented path. 🟡 the bit; ❓ the one-press variant.
 - **somewhere to put the pane.** ❓ Two shapes. (i) Open MAIN MENU > OS
   from code: the root descriptor's cursor and the focus pointer
-  `0x400cbda8` (✅ `docs/firmware/MAINMENU.md` §4) are writable and the
+  `0x400cbda8` (✅ `docs/firmware/MAINMENU.md` section 4) are writable and the
   module's rescan detour at `0x40064c32` already runs at every opening, but
   whether the menu can be *opened* from code rather than by [PROJ] is
   untested. (ii) Offer each `.OBI` in turn in the stock confirm dialog
   `0x4006d57c` — which is exactly the shape of the retired first prototype
-  (`FIRMWARE_SWITCHER.md` §3, "❌ a seventh CONTROL row with a
+  (`FIRMWARE_SWITCHER.md` section 3, "❌ a seventh CONTROL row with a
   one-file-at-a-time dialog"), and needs no menu at all. What would answer
   it: drive both under the port with `verify_osswitch`'s `--live-script`
   path and render the result with `--lcd`.
-- **a hook after the UI is up.** The same ❓ as §4, but far weaker: showing
+- **a hook after the UI is up.** The same ❓ as section 4, but far weaker: showing
   a pane stops no playback, syncs no project and reads no file beyond the
   dir scan the module already does. A hook that is merely *late* is
   harmless here, where for a default it is the whole cost.
@@ -320,7 +320,7 @@ New, for either design:
 - **the escape byte.** A gate case that preloads `0x80000200` with `0`,
   `0x10` and each of `1/2/4/8` and asserts what the gate recorded in the
   mailbox — `--preload ADDR=FILE` already exists for exactly this kind of
-  "memory as a reset leaves it" (`docs/remixer/EMU.md`). And a write-watch
+  "memory as a reset leaves it" (`tools/emu/README.md`). And a write-watch
   case: boot with a project and show `0x80000200` is not written by the OS,
   or stop relying on it past the gate.
 - **no boot loop, structurally.** With a default set and a target that
@@ -335,16 +335,16 @@ New, for either design:
 - **the unit.** Nothing here is believable from the port alone: the reset,
   SDRAM keeping the stage, and the doubled boot's real duration are all
   hardware. One flash of an `os-switch-trace` build gives the two missing
-  numbers in §2 and the escape byte at once.
+  numbers in section 2 and the escape byte at once.
 
 ---
 
 ## 9. Recommendation
 
-**Build the narrow variant (§7). Do not build the boot default yet.**
+**Build the narrow variant (section 7). Do not build the boot default yet.**
 
 Reasons, in order: the full default's two dominating costs are unmeasured
-(§2); its only sound escape hatch is a held key, which is the narrow
+(section 2); its only sound escape hatch is a held key, which is the narrow
 variant's entire mechanism, so the narrow variant is the *prerequisite*,
 not an alternative; and the failure it prevents — a card you have to take
 to a computer to recover — is the one failure mode OS SWITCH was built to
@@ -352,7 +352,7 @@ remove.
 
 **What would change it.** All three, together:
 
-1. the two ❓ numbers in §2 measured, and power-on → pane under about a
+1. the two ❓ numbers in section 2 measured, and power-on → pane under about a
    second, so that the doubled boot is a few seconds rather than a wait;
 2. `0x80000200 == 0x10` confirmed on the unit, and confirmed still intact
    at the point the switcher would read it (or read at the gate and parked,

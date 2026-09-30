@@ -42,7 +42,7 @@ scene locks, the crossfader, LFOs and CC reach it).
   and dialog rendered from this image's LCD. Flashed on the MKII (29 Sep
   2026): MAIN MENU > OS listed the card, a switch to itself ran; after a
   power-cycle, a file load threw VEC:04 at 0x2007E788 once
-  (`docs/remixer/FAILURE_MODES.md`: MAIN MENU's rescan rewrote the stock
+  (`docs/contributing/FAILURE_MODES.md`: MAIN MENU's rescan rewrote the stock
   browsers' listing state).
 - **BSRET3OS2** (the same + the rescan's save/restore of that state, and the
   pane's `NOW <image>` / `HOME <flashed image>` headings; BUILD=3,

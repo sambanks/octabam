@@ -4,7 +4,7 @@
 | The stage is the top of octabam's platform reserve (tools/remix/arena.py:
 | the first 1,707 pages of stock's audio page arena, 0x40a955e0..0x41495de0,
 | in every remix that carries a DRAM unit). Stock never touches the reserve
-| (docs/remixer/PLACEMENT.md), and nothing between a reset and the OS
+| (docs/contributing/PLACEMENT.md), and nothing between a reset and the OS
 | entry's `movea.l #0x48000000,%sp` writes SDRAM above the image the
 | bootstrap depacks (read from the bootstrap's copy in the image,
 | docs/proposals/FIRMWARE_SWITCHER.md). Every address is the UNCACHED

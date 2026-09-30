@@ -4,7 +4,7 @@
 
 ## Status
 
-On an MKII, 29 Sep 2026: builds 4-14 found why the boot stopped after a switch (the DSP, three layers: `docs/remixer/FAILURE_MODES.md`); OCTABAM14 switched to its own image and to stock 1.40C with audio and play working. The notes are checked under the port (`verify_boottrace`).
+On an MKII, 29 Sep 2026: builds 4-14 found why the boot stopped after a switch (the DSP, three layers: `docs/contributing/FAILURE_MODES.md`); OCTABAM14 switched to its own image and to stock 1.40C with audio and play working. The notes are checked under the port (`verify_boottrace`).
 
 ## Build
 

@@ -4,7 +4,7 @@ VEC:04 halt.
 Octakit's load path stages her Kit into the working part and leaves stock's
 SRAM mirror of it as the file had it; her page-clipboard check requires the
 two byte-equal and halts (`illegal`, gk_page_clipboard_fatal) on every
-page-key + CLEAR (docs/remixer/FAILURE_MODES.md). This brings the mirror
+page-key + CLEAR (docs/contributing/FAILURE_MODES.md). This brings the mirror
 level with the working part just before her CLEAR/PASTE wrapper runs, as a
 stock edit would have left it. Her runtime is not touched: the fix sits at a
 stock site she does not claim and reads her two layer records at run time.

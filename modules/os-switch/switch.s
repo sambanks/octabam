@@ -968,7 +968,7 @@ msg:    move.l  (%sp)+,%a0
 |   <> MORE  AUTO 3       NO, or 3 s untouched: post the load as stock does
 |
 | An arrow stops the countdown. The countdown is a soft timer on the sys
-| tick (0x40031a0c, DJ DECKS' form), which answers NO itself at zero. A
+| tick (0x40031a0c; stock's screens redraw this way), which answers at zero. A
 | boot that is itself a
 | switch (MB_STATUS RUN) was already chosen and loads at once.
         .set    PROJNAME,  0x100f8378   | the current project's folder (battery SRAM)

@@ -129,7 +129,7 @@ the flashed image boots normally.**
 Both instruments agree on it: the port never reaches the UI's panel check
 or the frame interrupt (`verify_boottrace` on this remix), and on the unit
 the project-load MIDI that every completed boot sends comes only after a
-power-cycle. `docs/remixer/FAILURE_MODES.md` has the timeline. The reason `probe.s`'s "the restore" gives for not attempting
+power-cycle. `docs/contributing/FAILURE_MODES.md` has the timeline. The reason `probe.s`'s "the restore" gives for not attempting
 the OS SWITCH park rescue -- that a park which does not take hangs the
 boot, "worse than the wedge it was meant to repair" -- no longer stands on
 its own: the wedge is no better, so a probe image that must survive a "no"

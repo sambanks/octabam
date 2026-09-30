@@ -6,7 +6,7 @@
 
 `cmp` straight after a copy reads macOS's page cache, not the card: on 30 Sep
 2026 it passed every corrupt copy made through USB disk mode on RIGPF3BP,
-which returned about one read in four wrong (docs/remixer/FAILURE_MODES.md).
+which returned about one read in four wrong (docs/contributing/FAILURE_MODES.md).
 Every read here sets F_NOCACHE, so each one goes to the card.
 
 stable   reads each file N times; a file whose hash changes between reads

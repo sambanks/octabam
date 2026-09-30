@@ -6,10 +6,10 @@ port has measured, and what only the unit can answer, in the order to ask
 it. The prototype is `modules/os-switch` and the remix `os-switch`. It has
 run on an MKII (29 Sep 2026, build 14): a switch to the flashed image's
 own `.OBI` and to stock 1.40C, each with audio and play working, the flash
-never written (§5).
+never written (section 5).
 
 Confidence markers as in `docs/firmware/CHIP.md`: ✅ measured (on the unit
-where §5 says so, else under the port or read from the image by
+where section 5 says so, else under the port or read from the image by
 disassembly), 🟡 inferred, with what would
 falsify it, and ❌ retracted.
 
@@ -97,7 +97,7 @@ own reset (5).
 
 ### 2.4 Memory the OS never touches ✅
 
-The platform reserve (`docs/remixer/PLACEMENT.md`) is the bottom 1,707
+The platform reserve (`docs/contributing/PLACEMENT.md`) is the bottom 1,707
 pages of the audio page arena, `0x40a955e0..0x41495de0`, in every remix
 that carries a DRAM unit. Stock never touches it once the base literal
 moves. Its top 2.6 MB is room for an image.
@@ -173,7 +173,7 @@ from the state the bootstrap hands over, minus one parked argument and the
   remix).
 - `make check REMIX=os-switch`.
 
-Two changes to the port came with it (`docs/remixer/EMU.md`):
+Two changes to the port came with it (`tools/emu/README.md`):
 - `--preload ADDR=FILE`, memory as a reset leaves it. It also gives NOR's
   version word, without which every port boot takes the
   bootstrap-reprogramming branch: an existing divergence from the unit,
@@ -213,7 +213,7 @@ start again (`verify_osswitch`'s `dsp` case). The steps below stand, for
 build 6 (with BOOT TRACE: `os-switch-trace`):
 
 **Builds 7-14, on the unit** (BOOT TRACE throughout; the whole story is
-`docs/remixer/FAILURE_MODES.md`'s OS SWITCH entry):
+`docs/contributing/FAILURE_MODES.md`'s OS SWITCH entry):
 - ✅ Builds 7-10: both cores take the park command (note 13 = 3), the
   loaders take the bootstraps and jump, and the upload still stalls.
 - ✅ Build 12: two stale words in core 0's host-side receive register

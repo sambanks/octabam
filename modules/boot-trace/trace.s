@@ -42,7 +42,7 @@
 |      it runs and HF3 when it jumps)          0x40001b82
 |                                                  0x40001b18
 |
-| UART0 is MIDI (its RX is MIDI IN, docs/remixer/EMU.md); the bootstrap
+| UART0 is MIDI (its RX is MIDI IN, tools/emu/README.md); the bootstrap
 | sets it up for its own SysEx upgrade and enables its transmitter
 | (0x202e), so this writes it polled, from the first instruction of the OS
 | on. Each byte waits for TXRDY (USR bit 2) at most ~200k polls, so a dead
