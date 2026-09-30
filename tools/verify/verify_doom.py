@@ -207,7 +207,9 @@ def main():
         _, _, d1 = boot("known_sram", wcard, ["6000 quit"], {"sram": (0x10000000, 0x100000)})
         sram = work / "sram.bin"
         sram.write_bytes(d1.get("sram", b""))
-        return boot("known", wcard, ["6000 quit"], dumps, preload=[(0x10000000, sram)], boot_load=False)
+        # --boot-load: without it the port posts LOAD PROJECT itself (from its idle
+        # loop), a reload the unit never does -- its dialog stalls Doom (1 Oct 2026)
+        return boot("known", wcard, ["6000 quit"], dumps, preload=[(0x10000000, sram)])
 
     # the switch: the mailbox, the body and the stage exactly as osw_load writes them
     body = raw[rt["osw_body"] - lay["base"]:rt["osw_body_end"] - lay["base"]]
@@ -285,7 +287,8 @@ def main():
 
     out, seq, d = f_known.result()
     check("known: with the card in SRAM the LOADING FILES post comes first and DOOM takes it",
-          seq[:2] == ["doom_files", "doom_boot"] and "doom_frame" in seq, " > ".join(seq[:3]))
+          seq[:2] == ["doom_files", "doom_boot"] and seq.count("doom_frame") > 100,
+          " > ".join(seq[:3]) + f", {seq.count('doom_frame')} tics")
 
     out, seq, d = f_nowad.result()
     check("nowad: no WAD, so DOOM hands the boot on to OS SWITCH's hook and never runs a tic",
