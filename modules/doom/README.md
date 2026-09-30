@@ -65,6 +65,12 @@ nothing visible is lost.
   bar itself is unreadable at 128 pixels wide.
 - **Everything else** (the title, menus, the automap, intermissions) is the
   whole 200 rows scaled to 64.
+- **A menu or a prompt** is drawn on black: d_main's calls to `M_Drawer`
+  go to `octa_M_Drawer` (an objcopy symbol redirect in the Makefile, so the
+  upstream stays untouched). It clears the frame first, and the luminance
+  table is tripled for that frame. Over the dithered scene the menu was
+  unreadable. On black, NEW GAME ... QUIT GAME and the skull cursor read
+  clearly (checked under the port).
 
 Chosen by eye against a 320 × 200 frame dumped from the port (E1M1's first
 room): error diffusion crawls from frame to frame, gamma ½ washes the walls

@@ -39,11 +39,18 @@ doom.o: $(OBJS)
 	@if m68k-elf-nm -u $@ | grep -v -E ' (osw_reset|osw_bootpick|osw_bootfiles)$$'; then \
 	  echo "doom.o: undefined symbols above"; rm -f $@; exit 1; fi
 
-$(B)/%.o: $(UP)/%.c | $(B)
+$(B)/%.o: $(UP)/%.c Makefile | $(B)
 	$(CC) $(CFLAGS) -c -o $@ $<
-$(B)/octa_%.o: octa/%.c octa/octa.h | $(B)
+# d_main's two calls to the menu drawer go to octa_M_Drawer (doom_octa.c),
+# which blacks the frame out behind a menu first: menu graphics are ~5
+# panel rows tall and unreadable over a dithered scene. The upstream stays
+# untouched.
+$(B)/d_main.o: $(UP)/d_main.c Makefile | $(B)
+	$(CC) $(CFLAGS) -c -o $@ $<
+	m68k-elf-objcopy --redefine-sym M_Drawer=octa_M_Drawer $@
+$(B)/octa_%.o: octa/%.c octa/octa.h Makefile | $(B)
 	$(CC) $(CFLAGS) -I$(UP) -c -o $@ $<
-$(B)/octa_entry.o: octa/entry.S | $(B)
+$(B)/octa_entry.o: octa/entry.S Makefile | $(B)
 	$(CC) -mcpu=54455 -c -o $@ $<
 $(B):
 	mkdir -p $(B)

@@ -225,9 +225,22 @@ void DG_Init(void)
     printf("DG_ScreenBuffer %p\n", (void *)DG_ScreenBuffer);   /* verify_doom reads it */
 }
 
+extern int messageToPrint;
+void M_Drawer(void);
+
+/* d_main.o calls this in place of M_Drawer (Makefile): a menu or a prompt
+ * is drawn on black, not over the scene -- at 128 x 64 it is only readable
+ * with nothing behind it. Palette entry 0 is black in every PLAYPAL. */
+void octa_M_Drawer(void)
+{
+    if (menuactive || messageToPrint)
+        memset(I_VideoBuffer, 0, SCREENWIDTH * SCREENHEIGHT);
+    M_Drawer();
+}
+
 void DG_DrawFrame(void)
 {
-    int view;
+    int view, menu;
     if (!win)
         return;
     /* the 3D view with the status bar under it: the view, and a HUD line
@@ -238,8 +251,13 @@ void DG_DrawFrame(void)
          * palettes, and 256 entries cost nothing beside the frame */
         static uint8_t lut[256];
         int i;
-        for (i = 0; i < 256; i++)
-            lut[i] = (uint8_t)((colors[i].r * 77u + colors[i].g * 151u + colors[i].b * 28u) >> 8);
+        menu = menuactive || messageToPrint;
+        for (i = 0; i < 256; i++) {
+            unsigned l = (colors[i].r * 77u + colors[i].g * 151u + colors[i].b * 28u) >> 8;
+            if (menu)
+                l = l * 3 > 255 ? 255 : l * 3;     /* the red menu font, lit solid */
+            lut[i] = (uint8_t)l;
+        }
         mono_frame(DG_ScreenBuffer, lut, plane(), view);
     }
     if (view) {
