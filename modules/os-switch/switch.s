@@ -986,7 +986,9 @@ msg:    move.l  (%sp)+,%a0
         .set    TIMERS,    0x460d5a28   | the 32 soft-timer slots, 16 B: {period, due, fn, next}
         .set    LPUSH,     0x40031494   | (layer)
         .set    LPOP,      0x4003146c   | (layer)
-        .set    BP_TICKS,  6            | the timer's period: 100 ms of the 60 Hz sys tick
+        .set    BP_TICKS,  12           | the timer's period, ~100 ms: the sys tick is DTIM1's
+                                        | ~120 Hz, not 60 -- 30 periods of 6 ran 1.54 s on an
+                                        | MKII (BSRET7BP, notes 26 -> 27, 30 Sep 2026)
         .set    BP_COUNT,  30           | 3 s
 
 | Either hook may be a boot's first, and which one it is depends on the
