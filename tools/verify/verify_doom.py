@@ -344,6 +344,10 @@ def main():
     check("sound: the music's first card open comes after Doom's first tic, not in the boot hook",
           "m_start" in seq and "doom_frame" in seq and seq.index("doom_frame") < seq.index("m_start"),
           " > ".join(x for x in seq[:8] if x != "doom_frame" or True)[:120])
+    # the card reads' destination must be sector-aligned: the port's card moves
+    # sectors with a CPU loop and cannot see it, the unit froze on a 4-aligned one
+    check("sound: the music's card-read buffer is sector-aligned (the port cannot see this; the unit can)",
+          rt.get("mring_mem", 1) % 512 == 0, f"0x{rt.get('mring_mem', 0):08x}")
     lg = log_of(d)
     if mcard is not wcard:
         check("sound: the music came from the card (no 'music: no' in Doom's log)",

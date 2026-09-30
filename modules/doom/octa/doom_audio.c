@@ -206,13 +206,23 @@ static struct {
     int32_t file_left;               /* data bytes not yet read from the file */
     uint32_t data_left;              /* data bytes not yet decoded */
     uint32_t block, spb;             /* block align, samples per block */
-    uint8_t ring[RINGSZ];
     uint32_t rd, wr;                 /* byte counters; wr - rd buffered */
     int16_t pcm[2048];               /* one decoded block */
     uint32_t ppos, plen;
     uint32_t half;                   /* 22.05 -> 44.1: each sample twice */
     int vol, paused, looping, playing, reopen;
 } m = { .fd = -1, .vol = 100 };
+
+/* The card reads' destination: SECTOR-aligned, and touched only through the
+ * uncached alias, like OS SWITCH's stage (0x49201000). The first ring sat
+ * in the struct above at a 4-byte boundary (0x40b0e9ac): the open went
+ * through and the first FS_READ never returned on the unit, where the WAD's
+ * 16-aligned buffer and the stage read fine (1 Oct 2026, DOOMMO ran, DOOMMH
+ * and DOOMMR froze). The port moves sectors with a CPU loop and cannot see
+ * alignment; the unit's driver evidently needs it -- 🟡 which transfer
+ * mechanism, and whether 16 would do, is not measured. */
+static uint8_t mring_mem[RINGSZ] __attribute__((aligned(512)));
+#define MRING ((uint8_t *)((uintptr_t)mring_mem + 0x08000000u))
 
 static long fs_open(const char *p)
 {
@@ -233,7 +243,7 @@ static uint16_t le16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); 
 /* the next 4 KB of the file into the ring (service only) */
 static void m_chunk(void)
 {
-    (*(fs_read_t *)FS_READ)(m.fd, m.ring + (m.wr % RINGSZ), CHUNK / 512);
+    (*(fs_read_t *)FS_READ)(m.fd, MRING + (m.wr % RINGSZ), CHUNK / 512);
     m.wr += CHUNK;
     m.file_left -= CHUNK;
 }
@@ -266,17 +276,18 @@ static int m_start(void)
     m_close();
     return 0;
 #endif
-    if (memcmp(m.ring, "RIFF", 4) || memcmp(m.ring + 8, "WAVE", 4))
+    const uint8_t *hd = MRING;
+    if (memcmp(hd, "RIFF", 4) || memcmp(hd + 8, "WAVE", 4))
         goto bad;
     m.block = 0;
     while (off + 8 <= CHUNK) {
-        uint32_t n = le32(m.ring + off + 4);
-        if (!memcmp(m.ring + off, "fmt ", 4) && n >= 20) {
-            if (le16(m.ring + off + 8) != 0x11 || le16(m.ring + off + 10) != 1)
+        uint32_t n = le32(hd + off + 4);
+        if (!memcmp(hd + off, "fmt ", 4) && n >= 20) {
+            if (le16(hd + off + 8) != 0x11 || le16(hd + off + 10) != 1)
                 goto bad;             /* not IMA ADPCM mono */
-            m.block = le16(m.ring + off + 20);
-            m.spb = le16(m.ring + off + 26);
-        } else if (!memcmp(m.ring + off, "data", 4)) {
+            m.block = le16(hd + off + 20);
+            m.spb = le16(hd + off + 26);
+        } else if (!memcmp(hd + off, "data", 4)) {
             data_off = off + 8;
             data_len = n;
             break;
@@ -325,7 +336,7 @@ void doom_audio_service(void)
  * buffered yet (the service is behind: silence, not the end) */
 static int m_block(void)
 {
-    const uint8_t *r = m.ring;
+    const uint8_t *r = MRING;
     int pred, idx;
     uint32_t n = 0, bytes, need;
     if (m.data_left < 4)
