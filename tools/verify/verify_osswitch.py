@@ -386,13 +386,15 @@ def main():
 
     from concurrent.futures import ThreadPoolExecutor
     kd = lambda code, t: [f"{t} key {code:#x} down", f"{t + 20} key {code:#x} up"]
-    with ThreadPoolExecutor(5) as ex:
+    with ThreadPoolExecutor(6) as ex:
         f_known = ex.submit(known)
         f_auto = ex.submit(bootcase, "boot_auto", bcard)
         f_no = ex.submit(bootcase, "boot_no", bcard, kd(KEY_NO, 500) + ["3000 quit"], 300)
         f_yes = ex.submit(bootcase, "boot_yes", bcard, kd(KEY_RIGHT, 300) + kd(KEY_YES, 900) + ["6000 quit"],
                           300, {"mbox": (MBOX, 72), "stage": (IMG, len(stock))})
         f_skip = ex.submit(bootcase, "boot_noaudio", ncard)
+        f_pick = ex.submit(bootcase, "boot_pick", bcard, kd(KEY_RIGHT, 300) + ["9000 quit"], 300,
+                           {"mbox": (MBOX, 72)})
     _, seq, _ = f_auto.result()
     check("boot: the picker opens before anything is posted, counts 3 s down (30 ticks) and answers NO itself",
           first(seq, "dialog") > first(seq, "osw_bootpick") >= 0 and seq.count("bp_tick") == 30
@@ -417,6 +419,16 @@ def main():
     check("boot: the stage holds the image picked (OTHER, then RIGHT: STOCK140)",
           len(mb) == 72 and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.OBI" and d.get("stage") == stock,
           (mb[C["MB_NAME"]:C["MB_NAME"] + 16] if len(mb) == 72 else b"").decode("latin1"))
+    _, seq, d = f_pick.result()
+    mb = d.get("mbox", b"")
+    after = seq[first(seq, "bp_key"):] if "bp_key" in seq else []
+    check("boot: RIGHT and let go: the countdown starts again and boots the image shown (STOCK140), "
+          "no sync, nothing loaded",
+          0 <= first(seq, "bp_key") < first(seq, "bp_answer") < first(seq, "osw_load") < first(seq, "osw_reset")
+          and after.count("bp_tick") >= 30 and "sync" not in seq and "post" not in seq and "files" not in seq
+          and len(mb) == 72 and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.OBI",
+          " ".join(k for k in seq if k != "bp_tick") + f"; {after.count('bp_tick')} ticks after the key; "
+          + (mb[C["MB_NAME"]:C["MB_NAME"] + 16] if len(mb) == 72 else b"").decode("latin1"))
     _, seq, _ = f_known.result()
     check("boot: SRAM that knows the card: the set mount's files post opens it, no LOAD PROJECT, "
           "and NO replays every files post it held",

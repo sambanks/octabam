@@ -142,9 +142,11 @@ str_stay:
         .asciz  "NO: STAY "
 str_more:
         .asciz  "\x13\x14 MORE"
-str_auto:
-        .asciz  "  AUTO 3"
-        .set    AUTO_DIGIT, 7
+str_stayin:
+        .asciz  "  STAY IN 3"
+str_bootin:
+        .asciz  "  BOOT IN 3"
+        .set    IN_DIGIT, 10
         .align  2
 
 | ---- the list, rebuilt each time MAIN MENU opens -----------------------------
@@ -978,6 +980,7 @@ msg:    move.l  (%sp)+,%a0
         .set    DLG_LINES, 0x460e5d28   | its copies of the lines, 31 bytes apart (0x4006d5da)
         .set    DLG_DRAW,  0x4006d128   | its redraw from those copies
         .set    DLG_NO,    0x4006d4a8   | if open: close it and answer NO (the USB exit's, 0x4007eb2a)
+        .set    DLG_CLOSE, 0x4006d47c   | close it, no answer (the YES and NO handlers' first call)
         .set    TIMER,     0x40031a0c   | (period, fn) -> handle
         .set    UNTIMER,   0x40031abc   | (handle)
         .set    TIMERS,    0x460d5a28   | the 32 soft-timer slots, 16 B: {period, due, fn, next}
@@ -1261,9 +1264,12 @@ bp_text:
         divu.w  #10,%d0
         andi.l  #0xffff,%d0
         addi.l  #'0',%d0
-        lea     str_auto,%a0
-        move.b  %d0,(AUTO_DIGIT,%a0)
-        pea     str_auto
+        lea     str_stayin,%a0          | untouched: the countdown stays
+        tst.b   bp_picked
+        beq.s   2f
+        lea     str_bootin,%a0          | after an arrow: it boots the image shown
+2:      move.b  %d0,(IN_DIGIT,%a0)
+        move.l  %a0,-(%sp)
         pea     bp_l3
         bsr.w   strcat
         addq.l  #8,%sp
@@ -1289,11 +1295,16 @@ bp_show:
         lea     (12,%sp),%sp
         jmp     (DLG_DRAW).l
 
-| the arrows: the next or previous image, and the countdown stops
+| the arrows: the next or previous image, and the countdown starts again
+| -- now for the image shown (the user's choice, 30 Sep 2026: a pick left
+| alone for 3 s boots)
 bp_key:
         tst.b   bp_active
         beq.s   9f
-        clr.l   bp_left
+        moveq   #BP_COUNT,%d0
+        move.l  %d0,bp_left
+        moveq   #1,%d0
+        move.b  %d0,bp_picked
         moveq   #1,%d0
         move.l  (4,%sp),%d1
         cmpi.l  #0x34,%d1               | LEFT
@@ -1326,27 +1337,34 @@ bp_tick:
         clr.l   (8,%a0,%d0.l)
         moveq   #-1,%d0
         move.l  %d0,bp_timer
-1:      jmp     (DLG_NO).l              | closes it, answers NO: bp_answer(1)
+1:      tst.b   bp_picked
+        bne.s   2f
+        jmp     (DLG_NO).l              | untouched: closes it, answers NO: bp_answer(1)
+2:      jsr     (DLG_CLOSE).l           | after an arrow: closed, and YES on the image shown
+        clr.l   -(%sp)
+        bsr.w   bp_answer
+        addq.l  #4,%sp
 9:      rts
 
 | the dialog's answer (0 = YES): our layer and timer off, then YES is the
 | pane's own switch and NO posts what stock would have posted
 bp_answer:
         tst.b   bp_active
-        beq.s   9f
+        beq.w   9f
         clr.b   bp_active
         clr.l   bp_left
         pea     bp_layer
         jsr     (LPOP).l
         addq.l  #4,%sp
-        | BOOT TRACE's note 27: 0 YES, 1 NO, 2 the countdown's NO (the
-        | tick has spent the timer already)
+        | BOOT TRACE's note 27: 0 YES, 1 NO, 2 the countdown's NO, 3 the
+        | countdown's YES on the image shown (the tick has spent the timer)
         move.l  (4,%sp),%d1
         tst.l   bp_timer
         bpl.s   3f
-        tst.l   %d1
-        beq.s   3f
         moveq   #2,%d1
+        tst.l   (4,%sp)
+        bne.s   3f
+        moveq   #3,%d1
 3:      moveq   #27,%d0
         bsr.w   bp_note
         move.l  bp_timer,%d0
@@ -1448,6 +1466,8 @@ bp_active:
 bp_load:
         .byte   0
 bp_nosync:
+        .byte   0
+bp_picked:
         .byte   0
         .align  4
 bp_files:

@@ -34,7 +34,8 @@
 |      post, velocity 0 = it opened, else why it stepped aside (1 no
 |      project, 2 a switch's boot, 3 no file system, 4 a dialog up, 5 the
 |      set or project would not mount, 6 no other image, 7 no dialog)
-|  27  (OS SWITCH's boot picker) answered: 0 YES, 1 NO, 2 the countdown
+|  27  (OS SWITCH's boot picker) answered: 0 YES, 1 NO, 2 the countdown's
+|      NO (untouched), 3 the countdown's YES (after an arrow)
 |  16  the records' first echo is late: every 2^20 polls of the host
 |      port's ISR, at most six times, velocity = the ISR (bit 0 RXDF,
 |      1 TXDE, 2 TRDY, 3 HF2, 4 HF3; OS SWITCH's loader raises HF2 when
