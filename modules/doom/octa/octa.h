@@ -41,7 +41,6 @@
 #define FS_SIZE     0x46c8241e  /* (fd) -> bytes                            */
 #define FS_READ     0x46c82426  /* (fd, buf, sectors)                       */
 #define FS_MOUNTED  0x46c8240e  /* nonzero once a file system is up (bp_open's test) */
-#define UNCACHED    0x08000000
 
 /* ---- DRAM: 2,728 pages off the top of the audio page arena (manifest.py
  * ArenaReserve), of which Doom uses the lower 2,200. The top 528 are

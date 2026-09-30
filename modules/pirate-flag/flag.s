@@ -23,13 +23,13 @@
 
         .set    FLUSH, 0x40013abc
         .text
-        .global pf_frame
-pf_frame:
+        .global pirate_frame
+pirate_frame:
         lea     (-20,%sp),%sp
         movem.l %d2-%d5/%a2,(%sp)
         movea.l %d6,%a0
         movea.l (12,%a0),%a1           | the plane
-        lea     pf_cols,%a2
+        lea     pirate_cols,%a2
         moveq   #0,%d3                 | x
 1:      move.l  (%a2)+,%d0             | the column: rows 0..31 in d0, 32..63 in d1
         move.l  (%a2)+,%d1
@@ -41,7 +41,7 @@ pf_frame:
         sub.l   %d2,%d4
         moveq   #63,%d5
         and.l   %d5,%d4
-        lea     pf_sin,%a0
+        lea     pirate_sin,%a0
         move.b  (%a0,%d4.l),%d4
         extb.l  %d4                    | -32..32
         move.l  %d3,%d5
@@ -80,7 +80,7 @@ pf_frame:
         bne.s   5f
         movea.l %d6,%a0
         movea.l (12,%a0),%a0
-        lea     pf_snap,%a1
+        lea     pirate_snap,%a1
         move.l  #256,%d0
 6:      move.l  (%a0)+,(%a1)+
         subq.l  #1,%d0
@@ -90,11 +90,11 @@ pf_frame:
         jmp     (FLUSH).l              | the flush stock called, returning to it
 
         .align  2
-pf_cols:
+pirate_cols:
         FLAG_COLUMNS
-pf_sin:
+pirate_sin:
         SIN64
         .align  2
-        .global pf_snap
-pf_snap:
+        .global pirate_snap
+pirate_snap:
         .space  1024

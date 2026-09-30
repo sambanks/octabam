@@ -30,8 +30,12 @@ doom.o: $(OBJS)
 	$(LD) -r -o $(B)/doom_r.o $(OBJS) $(shell $(CC) -mcpu=54455 -print-libgcc-file-name)
 	@# .bss as zeros IN the image: the platform loader depacks the raw
 	@# binary and nothing else zeroes memory past it (and a DRAM unit's
-	@# bss would sit on the runtime's own stage)
-	m68k-elf-objcopy --strip-debug --rename-section .bss=.data.zero,alloc,load,contents,data $(B)/doom_r.o $@
+	@# bss would sit on the runtime's own stage). Every global but the two
+	@# detour targets made local: every DRAM unit in a remix links in one
+	@# namespace, and Doom's memcpy/printf/players must never meet another
+	@# unit's (POST FADER's pf_frame met PIRATE FLAG's, 30 Sep 2026)
+	m68k-elf-objcopy --strip-debug --rename-section .bss=.data.zero,alloc,load,contents,data \
+	  --keep-global-symbol=doom_projpost --keep-global-symbol=doom_files $(B)/doom_r.o $@
 	@if m68k-elf-nm -u $@ | grep -v -E ' (osw_reset|osw_bootpick|osw_bootfiles)$$'; then \
 	  echo "doom.o: undefined symbols above"; rm -f $@; exit 1; fi
 

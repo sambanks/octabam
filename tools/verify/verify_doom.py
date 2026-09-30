@@ -80,7 +80,7 @@ def layout_of():
     up = ROOT / "modules/doom/upstream/doomgeneric"
     inc = ROOT / "modules/doom/octa/include"
     gi = subprocess.run(["m68k-elf-gcc", "-print-file-name=include"], capture_output=True, text=True).stdout.strip()
-    r = subprocess.run(["m68k-elf-gcc", "-mcpu=54455", "-O2", "-nostdinc", "-isystem", str(inc), "-isystem", gi,
+    r = subprocess.run(["m68k-elf-gcc", "-mcpu=54455", "-O2", "-ffreestanding", "-nostdinc", "-isystem", str(inc), "-isystem", gi,
                         "-I", str(up), "-w", "-S", "-o", str(d / "o.s"), str(d / "o.c")],
                        capture_output=True, text=True)
     if r.returncode:
@@ -144,10 +144,11 @@ def main():
         return p
 
     wcard, ncard = card("wad", True), card("nowad", False)
-    # where DG_ScreenBuffer lands: after the WAD's block in doom_octa.c's heap
-    # (octa.h DOOM_RAM_BASE; a block is its size + 8, rounded to 16)
+    # where DG_ScreenBuffer lands: the WAD sits at the heap's base (octa.h
+    # DOOM_RAM_BASE, sector-rounded, no header), then the first malloc's
+    # 8-byte header (doom_octa.c read_wad, libc.c malloc)
     wlen = (wad.stat().st_size + 511) & ~511
-    FB = 0x45029DE0 + ((wlen + 8 + 15) & ~15) + 8
+    FB = 0x45029DE0 + wlen + 8
     fails = 0
 
     def check(label, ok, detail=""):

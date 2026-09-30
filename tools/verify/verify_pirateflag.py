@@ -5,8 +5,8 @@
 
 Boots the image with the boot animation running (ot_emu --boot-logo: the
 2.8 s on DTIM3 the port otherwise skips) and checks that the per-frame
-detour ran every frame and that frame 280 -- which pf_frame keeps in
-pf_snap -- is art.py's flag with the cloth moved exactly as flag.s's
+detour ran every frame and that frame 280 -- which pirate_frame keeps in
+pirate_snap -- is art.py's flag with the cloth moved exactly as flag.s's
 integer wave says, bit for bit. The PNG goes to out/pirate-flag/frame280.png.
 
 What it cannot show: the panel itself (the port's plane is what the
@@ -97,8 +97,8 @@ def main():
     out = subprocess.run([str(EMU), "--image", str(image), "--max", "3000000000",
                           "--preload", f"0x3ffc={norver}", "--card", str(card), "--mount", "--boot-load",
                           "--set", "/OSW", "--project", "P", "--mkii", "--load-ms", "60000", "--boot-logo",
-                          "--live-script", str(script), "--watch-pc", f"0x{sym['pf_frame']:x}",
-                          "--mem-dump", f"0x{sym['pf_snap']:x},1024={snap}"],
+                          "--live-script", str(script), "--watch-pc", f"0x{sym['pirate_frame']:x}",
+                          "--mem-dump", f"0x{sym['pirate_snap']:x},1024={snap}"],
                          capture_output=True, text=True, cwd=ROOT).stdout
     (work / "run.log").write_text(out)
     fails = 0
@@ -108,9 +108,9 @@ def main():
         fails += 0 if ok else 1
         print(f"  [{'PASS' if ok else 'FAIL'}] verify_pirateflag: {label}{'  (' + detail + ')' if detail else ''}")
 
-    frames = re.findall(rf"\] at 0x{sym['pf_frame']:x} .*?d2-7 (0x[0-9a-f]+|\d+)", out)
+    frames = re.findall(rf"\] at 0x{sym['pirate_frame']:x} .*?d2-7 (0x[0-9a-f]+|\d+)", out)
     last = int(frames[-1], 0) if frames else -1
-    check("the animation's flush reached pf_frame every frame, to its last (559)",
+    check("the animation's flush reached pirate_frame every frame, to its last (559)",
           len(frames) > 0 and last == 559, f"{len(frames)} calls, last frame {last}")
     got = snap.read_bytes() if snap.exists() else b""
     want = expected(FRAME)

@@ -53,7 +53,7 @@ MODULE = Module(
         Linked("pirate_flag", "modules/pirate-flag/flag.s", dram=True, include=_include),
     ),
     detours=(
-        Detour(0x40055AA2, H("4eb940013abc"), "pirate_flag", "pf_frame",
+        Detour(0x40055AA2, H("4eb940013abc"), "pirate_flag", "pirate_frame",
                "the boot animation's per-frame flush: the flag first", kind="jsr"),
     ),
     gates=(Gate("tools/verify/verify_pirateflag.py", venv=True),),

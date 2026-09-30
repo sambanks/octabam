@@ -317,35 +317,41 @@ void doom_close(void)
 }
 
 /* ---- boot ------------------------------------------------------------- */
+/* The WAD, whole, at the bottom of Doom's heap: 16-byte aligned and with no
+ * block header, so no line of the copyback D-cache holds both a byte the
+ * CPU wrote and a byte of the WAD. Read through the CACHED address, as
+ * stock loads samples: the card driver moves sectors with the CPU (PIO, one
+ * sector per interrupt: docs/firmware/KERNEL.md), so the lines it fills are
+ * the lines Doom reads. (The first draft read through the uncached alias
+ * into a malloc'd block whose header shared a line with the WAD's first 8
+ * bytes: the port, which has no cache, could not have shown it.) */
 static int read_wad(void)
 {
     static const char path[] = "/DOOM1.WAD";
-    long fd, len, left, got = 0;
-    uint8_t *buf;
+    long fd, len, left, need;
+    uint8_t *buf, *p;
     if (!*(volatile long *)FS_MOUNTED || !*(volatile long *)FS_OPEN)
         return 0;
     fd = (*(fs_open_t *)FS_OPEN)(path, "r");
     if (fd < 0)
         return 0;
     len = (*(fw_1_t *)FS_SIZE)(fd);
-    buf = len > 12 ? malloc((size_t)((len + 511) & ~511L)) : NULL;
-    if (buf) {
-        uint8_t *p = buf + UNCACHED;     /* straight to DRAM: no stale lines */
-        left = (len + 511) >> 9;
-        while (left > 0) {
-            long n = left > 8 ? 8 : left;
-            (*(fs_read_t *)FS_READ)(fd, p, n);
-            p += n << 9;
-            left -= n;
-            got += n << 9;
-        }
-    }
-    (*(fw_1_t *)FS_CLOSE)(fd);
-    if (!buf || memcmp(buf, "IWAD", 4)) {
-        if (buf)
-            free(buf);
+    need = (len + 511) & ~511L;
+    buf = (uint8_t *)(((uintptr_t)octa_heap_next + 15) & ~(uintptr_t)15);
+    if (len < 12 || buf + need > (uint8_t *)octa_heap_end) {
+        (*(fw_1_t *)FS_CLOSE)(fd);
         return 0;
     }
+    for (p = buf, left = need >> 9; left > 0;) {
+        long n = left > 8 ? 8 : left;     /* eight sectors a call, as OS UPGRADE reads */
+        (*(fs_read_t *)FS_READ)(fd, p, n);
+        p += n << 9;
+        left -= n;
+    }
+    (*(fw_1_t *)FS_CLOSE)(fd);
+    if (memcmp(buf, "IWAD", 4))
+        return 0;
+    octa_heap_next = (char *)(buf + need);
     octa_wad = buf;
     octa_wad_len = len;
     printf("DOOM1.WAD: %ld bytes at %p\n", len, buf);

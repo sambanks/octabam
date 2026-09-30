@@ -567,7 +567,7 @@ def main():
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
     _want = {"mods": (), "ok-ms": (), "usb-out-tracks-main-cue": (), "usb-out-tracks": (), "usb-out-master": (),
-             "usb-out-main-cue": (), "usb-out-main": (), "usb-midi": (),     # stock effects + ColdFire modules, no DSP words
+             "usb-out-main-cue": (), "usb-out-main": (), "usb-midi": (), "doom": (), "pirate-flag": (),     # stock effects + ColdFire modules, no DSP words
              "repitch": (), "base": (), "dsp-reset-pc": ("DARK REV",), "dsp-reset": (), "os-switch-trace": ("DARK REV",), "os-switch": ("DARK REV",), "analog-bassdrum": ("SPRING REV",),
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
