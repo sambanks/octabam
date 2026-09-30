@@ -53,8 +53,11 @@ Every other key and knob is swallowed while Doom has the panel.
 
 The panel is 128 × 64 at one bit per pixel. It has a second plane nobody
 understands yet, so there are no greys (`docs/firmware/PANEL.md` §1).
-Doom's 320 × 200 frame is box-filtered to luminance, run through a 3 × 3
-unsharp mask, contrast-stretched ((v − 20) × 1.6) and ordered-dithered 4 × 4.
+Doom's 8-bit frame (doomgeneric built `CMAP256`) is box-filtered to
+luminance through a per-palette table, run through a 3 × 3 unsharp mask,
+contrast-stretched ((v − 20) × 1.6) and ordered-dithered 4 × 4. Doom
+renders at low detail (160 columns, each doubled): the panel shows 128, so
+nothing visible is lost.
 
 - **In a level**, with the status bar up (screen size 10, the default),
   only the 3D view's 168 rows are drawn, into the top 56 panel rows. The
@@ -117,15 +120,17 @@ out, and a plain stretch loses the pillars against their own textures.
 - ✅ FUNC + STOP reaches `osw_reset`.
 - ✅ Staged by OS SWITCH (the mailbox, body and stage as `osw_load` writes
   them), the image chainloads (status RUN) and goes straight into Doom.
-- ✅ A tic costs ~3.5 M ColdFire instructions (game, render and the
-  downscale), taken from the watch timestamps in the port.
+- ✅ A tic costs ~2.5 M ColdFire instructions, from the watch timestamps
+  in the port, median over 200 tics in E1M1, interrupts included: 1.6 M
+  for the game and render, 0.95 M for the downscale. The first draft (high
+  detail, 32-bit frame, a divide per pixel) cost 10 M: 5.5 M and 4.5 M.
 
 ## Not known until it runs on the unit
 
-- 🟡 **Frame rate.** 3.5 M instructions a tic is ~13 ms at one instruction
+- 🟡 **Frame rate.** 2.5 M instructions a tic is ~10 ms at one instruction
   a cycle at 264 MHz. Doom's renderer misses a 32 KB cache a lot, so
-  20–30 ms is likelier, which is at or just under 35 tics/s. A slow tic
-  slows the game; it never skips. Falsified by a visibly slow game.
+  15–20 ms is likelier, which is still inside 35 tics/s (28.6 ms). A slow
+  tic slows the game; it never skips. Falsified by a visibly slow game.
 - 🟡 **The panel.** The window's plane layout is the one `lcd_view.py`
   composites and PANEL.md measured for the page. Upside down or mirrored on
   the unit would falsify it (`mono.c` has one flag to flip).

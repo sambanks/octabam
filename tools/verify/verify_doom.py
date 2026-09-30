@@ -221,7 +221,8 @@ def main():
     with ThreadPoolExecutor(5) as ex:
         # DG_ScreenBuffer is the first malloc after the WAD's (doom_octa.c's heap
         # is deterministic); the log's own line says where, and the gate checks it
-        f_play = ex.submit(boot, "play", wcard, play, {**dumps, "fb": (FB, 320 * 200 * 4)}, lcd=True)
+        f_play = ex.submit(boot, "play", wcard, play,
+                           {**dumps, "fb": (FB, 320 * 200), "pal": (rt["colors"], 1024)}, lcd=True)
         f_known = ex.submit(sram_then_known)
         f_nowad = ex.submit(boot, "nowad", ncard, ["5000 quit"], dumps)
         f_exit = ex.submit(boot, "exit", wcard, kd(K_FUNC, 3000, 300)[:1] + kd(K_STOP, 3100)
@@ -256,10 +257,13 @@ def main():
     check("play: our own game, not the title demo, and YES fired the pistol (clip < 50)",
           demo == 0 and 0 <= clip < 50, f"clip {clip}, demoplayback {demo}")
     # the panel, and Doom's own frame beside it
-    fbd = d.get("fb", b"")
-    if len(fbd) == 320 * 200 * 4:
+    # Doom's 8-bit frame (CMAP256) through its palette: struct color's
+    # bitfields sit b, g, r, a from the MSB on this big-endian target
+    fbd, pal = d.get("fb", b""), d.get("pal", b"")
+    if len(fbd) == 320 * 200 and len(pal) == 1024:
+        rgb = [bytes((pal[i * 4 + 2], pal[i * 4 + 1], pal[i * 4])) for i in range(256)]
         png(OUT / "frame.png", 320, 200,
-            [b"".join(fbd[(y * 320 + x) * 4 + 1:(y * 320 + x) * 4 + 4] for x in range(320)) for y in range(200)])
+            [b"".join(rgb[fbd[y * 320 + x]] for x in range(320)) for y in range(200)])
     lcd = work / "play.lcd"
     if lcd.exists():
         r = subprocess.run([str(ROOT / ".venv/bin/python3"), str(ROOT / "tools/emu/lcd_view.py"), str(lcd),

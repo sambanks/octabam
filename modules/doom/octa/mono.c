@@ -16,11 +16,20 @@
  * leaves the bottom 8 for a line of text (doom_octa.c's HUD), since the
  * status bar at 128 pixels wide is unreadable.
  *
+ * The input is Doom's own 8-bit frame (doomgeneric built CMAP256) and a
+ * luminance per palette entry, so nothing converts 64,000 pixels to 32-bit
+ * colour and back. Every panel column covers 2 or 3 source columns in a
+ * fixed 2,3,2,3 pattern (320/128 = 2.5) and every panel row 3 or 4 source
+ * rows, so the averages are sums times a reciprocal; the blur is a padded
+ * separable 3x3. Measured under the port: the first draft (32-bit input,
+ * a divide per pixel, nine clamped reads per blur) cost 4.5 M
+ * instructions a frame, most of a tic.
+ *
  * The plane layout (PANEL.md section 1, and lcd_view.py's window planes):
  * stored a quarter turn round, 128 rows of 8 bytes, one row per screen
  * column, MSB first; screen pixel (x, y), y from the top, is bit 63 - y of
- * row x. The frame is built off-screen and copied whole, so a flush never
- * sends half a frame.
+ * row x counted from the MSB. The frame is built off-screen and copied
+ * whole, so a flush never sends half a frame.
  */
 #include <string.h>
 #include "octa.h"
@@ -29,74 +38,67 @@
 #define DW 128
 
 static const uint8_t bayer[4][4] = {
-    {  0,  8,  2, 10 },
-    { 12,  4, 14,  6 },
-    {  3, 11,  1,  9 },
-    { 15,  7, 13,  5 },
+    {  8, 136,  40, 168 },
+    { 200,  72, 232, 104 },
+    {  56, 184,  24, 152 },
+    { 248, 120, 216,  88 },
 };
 
-static uint8_t lum[64][DW];
+/* lum with a one-pixel border (replicated) for the blur */
+static uint16_t lum[64 + 2][DW + 2];
 static uint8_t work[DW * 8];
 
-/* src rows [0, sh) -> panel rows [0, dh) */
-static void box(const uint32_t *src, int sh, int dh)
+void mono_frame(const uint8_t *src, const uint8_t *lut, uint8_t *plane, int view)
 {
-    static uint16_t row[SW];
-    static uint32_t acc[DW];
-    int x, y, sx, sy;
-    for (y = 0; y < dh; y++) {
-        int ya = y * sh / dh, yb = (y + 1) * sh / dh;
-        for (x = 0; x < DW; x++)
-            acc[x] = 0;
-        for (sy = ya; sy < yb; sy++) {
-            const uint32_t *p = src + sy * SW;
-            for (sx = 0; sx < SW; sx++) {
-                uint32_t c = p[sx];
-                row[sx] = (uint16_t)((((c >> 16) & 0xff) * 77u + ((c >> 8) & 0xff) * 151u
-                                      + (c & 0xff) * 28u) >> 8);
-            }
-            for (x = 0; x < DW; x++) {
-                int xa = x * SW / DW, xb = (x + 1) * SW / DW;
-                uint32_t s = 0;
-                for (sx = xa; sx < xb; sx++)
-                    s += row[sx];
-                acc[x] += s;
-            }
-        }
-        for (x = 0; x < DW; x++) {
-            unsigned n = (unsigned)((x + 1) * SW / DW - x * SW / DW) * (unsigned)(yb - ya);
-            lum[y][x] = (uint8_t)(acc[x] / n);
-        }
-    }
-}
-
-static int at(int y, int x, int dh)
-{
-    if (y < 0) y = 0;
-    if (y >= dh) y = dh - 1;
-    if (x < 0) x = 0;
-    if (x >= DW) x = DW - 1;
-    return lum[y][x];
-}
-
-void mono_frame(const uint32_t *src, uint8_t *plane, int view)
-{
+    static uint16_t acc[DW];
+    static uint16_t hs[64 + 2][DW];            /* horizontal 3-sums of lum */
     int sh = view ? 168 : 200, dh = view ? 56 : 64;
-    int x, y;
-    box(src, sh, dh);
+    int x, y, sy;
+
+    /* box: panel row y = source rows [y*sh/dh, (y+1)*sh/dh) */
+    for (y = 0; y < dh; y++) {
+        int ya = y * sh / dh, yb = (y + 1) * sh / dh, rows = yb - ya;
+        /* 1/(2*rows) and 1/(3*rows) in 16.16 */
+        uint32_t r2 = 65536u / (2u * rows), r3 = 65536u / (3u * rows);
+        memset(acc, 0, sizeof acc);
+        for (sy = ya; sy < yb; sy++) {
+            const uint8_t *p = src + sy * SW;
+            uint16_t *a = acc;
+            for (x = 0; x < DW; x += 2, p += 5, a += 2) {
+                a[0] += lut[p[0]] + lut[p[1]];
+                a[1] += lut[p[2]] + lut[p[3]] + lut[p[4]];
+            }
+        }
+        for (x = 0; x < DW; x += 2) {
+            lum[y + 1][x + 1] = (uint16_t)((acc[x] * r2) >> 16);
+            lum[y + 1][x + 2] = (uint16_t)((acc[x + 1] * r3) >> 16);
+        }
+        lum[y + 1][0] = lum[y + 1][1];
+        lum[y + 1][DW + 1] = lum[y + 1][DW];
+    }
+    memcpy(lum[0], lum[1], sizeof lum[0]);
+    memcpy(lum[dh + 1], lum[dh], sizeof lum[0]);
+
+    /* the blur, separable: horizontal 3-sums, then vertical */
+    for (y = 0; y < dh + 2; y++) {
+        const uint16_t *l = lum[y];
+        uint16_t *h = hs[y];
+        for (x = 0; x < DW; x++)
+            h[x] = (uint16_t)(l[x] + l[x + 1] + l[x + 2]);
+    }
+
     memset(work, 0, sizeof work);
     for (y = 0; y < dh; y++) {
-        for (x = 0; x < DW; x++) {
-            int c = lum[y][x], s = 0, dy, dx, v;
-            for (dy = -1; dy <= 1; dy++)
-                for (dx = -1; dx <= 1; dx++)
-                    s += at(y + dy, x + dx, dh);
-            v = c + (c - s / 9);                   /* unsharp, k = 1 */
-            v = (v - 20) * 8 / 5;                  /* stretch: Doom is dark */
-            if (v > bayer[y & 3][x & 3] * 16 + 8) {
-                int b = 63 - y;
-                work[x * 8 + (b >> 3)] |= (uint8_t)(0x80u >> (b & 7));
-            }
+        const uint8_t *th = bayer[y & 3];
+        int b = 63 - y;
+        uint8_t *wp = work + (b >> 3), bit = (uint8_t)(0x80u >> (b & 7));
+        for (x = 0; x < DW; x++, wp += 8) {
+            int c = lum[y + 1][x + 1];
+            int s = hs[y][x] + hs[y + 1][x] + hs[y + 2][x];
+            int v = 2 * c - (s * 7282 >> 16);      /* c + (c - s/9): unsharp, k = 1 */
+            v = ((v - 20) * 104858) >> 16;         /* stretch x1.6: Doom is dark */
+            if (v > th[x & 3])
+                *wp |= bit;
         }
     }
     memcpy(plane, work, sizeof work);

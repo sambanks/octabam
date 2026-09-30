@@ -29,6 +29,7 @@
 #include "doomstat.h"
 #include "d_items.h"
 #include "m_menu.h"
+#include "i_video.h"
 
 #define CALL(addr, type) ((type)(addr))
 
@@ -232,7 +233,15 @@ void DG_DrawFrame(void)
     /* the 3D view with the status bar under it: the view, and a HUD line
      * of our own; everything else (title, menu, map, intermission) whole */
     view = gamestate == GS_LEVEL && !menuactive && !automapactive && screenblocks == 10;
-    mono_frame(DG_ScreenBuffer, plane(), view);
+    {
+        /* the palette's luminance, every frame: damage and pickups swap
+         * palettes, and 256 entries cost nothing beside the frame */
+        static uint8_t lut[256];
+        int i;
+        for (i = 0; i < 256; i++)
+            lut[i] = (uint8_t)((colors[i].r * 77u + colors[i].g * 151u + colors[i].b * 28u) >> 8);
+        mono_frame(DG_ScreenBuffer, lut, plane(), view);
+    }
     if (view) {
         static char hud[40];
         player_t *pl = &players[consoleplayer];
@@ -360,6 +369,10 @@ static int read_wad(void)
 
 static void doom_main(void)
 {
+    extern int detailLevel;
+    /* low detail: the renderer draws 160 columns, each doubled -- the panel
+     * shows 128, so nothing visible is lost and the column loops halve */
+    detailLevel = 1;
     static char *argv[] = { "doom", "-iwad", "doom1.wad", "-singletics", "-mb", "6", NULL };
     doomgeneric_Create(6, argv);
 }

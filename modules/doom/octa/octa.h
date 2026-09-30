@@ -79,8 +79,9 @@ extern void osw_reset(void) __attribute__((noreturn));  /* modules/os-switch: pa
 void octa_log(const char *s, size_t n);
 extern char *octa_heap_next, *octa_heap_end;
 
-/* mono.c: 320x200 XRGB -> 128x64, one bit a pixel, the panel's layout;
- * view = the 3D view's 168 rows into the top 56 (a HUD line below) */
-void mono_frame(const uint32_t *src, uint8_t *plane, int view);
+/* mono.c: Doom's 320x200 8-bit frame, lut = luminance per palette entry
+ * -> 128x64, one bit a pixel, the panel's layout; view = the 3D view's 168
+ * rows into the top 56 (a HUD line below) */
+void mono_frame(const uint8_t *src, const uint8_t *lut, uint8_t *plane, int view);
 
 #endif
