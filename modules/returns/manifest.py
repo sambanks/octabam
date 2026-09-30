@@ -32,7 +32,7 @@ MODULE = Module(
     doc="T8's FX2 carries the bus returns' levels (VRB, DLY); the returns go into T8's input "
         "(MASTER TRACK) or MAIN, not onto T5 and T1.",
     menu=MenuEntry(
-        fx2_id=0x1e,
+        fx2_id=0x1b,              # <= 28: Octakit halts on a pick past stock ids
         donor_desc=0x400d4772,        # FILTER, as SEND
         abbr=b"RETN",
         fullname=b"Returns",

@@ -266,6 +266,23 @@ def remix(name: str | None):
     if ("OCTAKIT" in r.modules and OCTAKIT_MIRROR not in r.modules and OCTAKIT_MIRROR in known
             and not os.environ.get("OCTABAM_NO_OCTAKIT_MIRROR")):
         r = dataclasses.replace(r, modules=r.modules + (OCTAKIT_MIRROR,))
+    # AN OCTAKIT CHOOSER PICK PAST ID 28 HALTS THE UNIT: her FX1/FX2 selection
+    # wrapper refuses an effect id above stock's last (`cmpi.l #28` ->
+    # gk_machine_selection_fatal, VEC:04 at 0x45D222B0), so a module on a
+    # chooser row beside OCTAKIT takes an id <= 0x1c (RETURNS on 0x1e did
+    # this on every FX2 switch, RIGPF6BP, 30 Sep 2026). Hidden modules have
+    # no row and are never picked.
+    if "OCTAKIT" in r.modules:
+        mods = modules()
+        bad = sorted(k for k in r.modules
+                     if k in mods and getattr(mods[k], "menu", None)
+                     and mods[k].menu.fx2_id > 0x1c
+                     and (k not in r.hidden or k in r.fx1))
+        if bad:
+            raise SystemExit(
+                f"remix {r.name!r}: {bad} sit on a chooser row with an id above 0x1c "
+                f"beside OCTAKIT, whose selection wrapper halts on it (VEC:04, "
+                f"gk_machine_selection_fatal) -- move the module to a free id <= 0x1c")
     # verify_burn's pair only: OCTABAM_NO_USB_IN leaves USB AUDIO IN out of
     # both of its builds, as OCTABAM_NO_OS_SWITCH leaves OS SWITCH out. Its
     # DSP inject runs once a frame at the frame head (no per-sample cycles),

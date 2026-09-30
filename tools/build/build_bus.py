@@ -2556,8 +2556,9 @@ hostquit:
             if absent not in NEW_IDS:
                 absent = None
         # Any OTHER menu module whose DspSection.payloads leaves this core out
-        # (RETURNS: core 0 only) is not placed here either and is aliased to
-        # the fallback the same way. The two servers keep the SPEC rule above
+        # (RETURNS: core 0 only) is not placed here either; its id goes to the
+        # payload's null stub (below), so a pick there does nothing. The two
+        # servers keep the SPEC rule above
         # exactly (a non-SPEC build places both on both cores).
         _one_core = [n for n, _t in plan
                      if n in NEW_IDS and n not in ("DELAY SERVER", "REVERB SERVER")
@@ -2948,10 +2949,14 @@ hostquit:
             wrw_p(pp["xtab"] + (32 + _m.menu.fx2_id) * 3, fb_proc)
 
         for _n in _one_core:
-            wrw_p(pp["xtab"] + NEW_IDS[_n] * 3, fb_init)
-            wrw_p(pp["xtab"] + (32 + NEW_IDS[_n]) * 3, fb_proc)
+            # To the payload's null stub, not the fallback: a SEND there
+            # would send on the module's own knobs (RETURNS' DLY/VRB on
+            # T1-T4, 30 Sep 2026), where the pick should do nothing.
+            wrw_p(pp["xtab"] + NEW_IDS[_n] * 3, pp["nul_i"])
+            wrw_p(pp["xtab"] + (32 + NEW_IDS[_n]) * 3, pp["nul_p"])
             print(f"  {_n:13} NOT PLACED on this core (its payloads) -- id "
-                  f"0x{NEW_IDS[_n]:02x} aliased to SEND P:0x{fb_init:05x}")
+                  f"0x{NEW_IDS[_n]:02x} -> null stub P:0x{pp['nul_i']:05x}/"
+                  f"0x{pp['nul_p']:05x} (picked here it does nothing)")
 
         if absent is not None:
             # The absent engine's id must still dispatch to something on this

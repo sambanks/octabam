@@ -64,8 +64,9 @@ only the hook clears it.
 ### RETURNS (new module, FX2, payload A)
 
 Proc: audio untouched. If `r7 == $6b00` (T8's FX2 on core 0): store
-`x:(r6+0)` to `0x0e21` and 1 to `0x0e20`. Anywhere else: nothing. Hidden,
-named (its page draws VRB), placed on T8 by the rig's host command. Init
+`x:(r6+0)` to `0x0e21` and 1 to `0x0e20`. Anywhere else: nothing. On the FX2
+chooser (since RIGPF7BP, 30 Sep 2026; hidden and placed by the host command
+before), id 0x1b: Octakit refuses a chooser pick past 28. Init
 writes nothing and preserves r1 (`verify_initregs`).
 
 ### BusVerb: print into the buffer

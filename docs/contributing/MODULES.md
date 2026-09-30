@@ -259,7 +259,11 @@ FX1 and FX2, so a module on a stock id replaces that effect's code wherever
 the id is selected, FX1 included, and a remix that omits the module then
 aliases the id to SEND, which takes the stock effect away from FX1 too.
 Free ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b 0x1d 0x1e
-0x1f`, of which `0x1d 0x1e 0x1f` are unclaimed.
+0x1f`, of which `0x0b 0x0f 0x17 0x1a 0x1e 0x1f` are unclaimed (`make
+modules` is the current word). Beside OCTAKIT a module on a chooser row
+takes one of `0x1c` or below: her selection wrapper halts the unit on an id
+past stock's last (RETURNS on `0x1e`, 30 Sep 2026), and the registry
+refuses it.
 
 The registry is the arbiter: `registry.modules()` refuses two modules on
 one id at import, whether or not any remix selects both. `make modules`
@@ -503,7 +507,11 @@ FX1 and FX2, so a module on a stock id replaces that effect's code wherever
 the id is selected, FX1 included, and a remix that omits the module then
 aliases the id to SEND, which takes the stock effect away from FX1 too.
 Free ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b 0x1d 0x1e
-0x1f`, of which `0x1d 0x1e 0x1f` are unclaimed.
+0x1f`, of which `0x0b 0x0f 0x17 0x1a 0x1e 0x1f` are unclaimed (`make
+modules` is the current word). Beside OCTAKIT a module on a chooser row
+takes one of `0x1c` or below: her selection wrapper halts the unit on an id
+past stock's last (RETURNS on `0x1e`, 30 Sep 2026), and the registry
+refuses it.
 
 The registry is the arbiter: `registry.modules()` refuses two modules on
 one id at import, whether or not any remix selects both. `make modules`
