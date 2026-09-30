@@ -48,6 +48,7 @@ from the card (section 5).
 |---|---|---|---|
 | [**DELAY SERVER**](modules/busdelay/README.md) | [sambanks](https://github.com/sambanks) | Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow. | on hardware: Sam's MKII |
 | [**REVERB SERVER**](modules/busverb/README.md) | [sambanks](https://github.com/sambanks) | Eight-line FDN reverb: ROOM/PLATE/BIG, shimmer, gate, mid/side width. | on hardware: Sam's MKII |
+| [**HOST LOCK**](modules/host-lock/README.md) | [sanderlegit](https://github.com/sanderlegit) | The FX2 chooser changes nothing on T1 and T5, the rig's host tracks: their bus server stays. | on hardware: an MKII, RIGPF8BP (bottleservice-pf), 30 Sep 2026: T1/T5 keep their server; verify_hostlock |
 | [**MODE DEFAULTS**](modules/mode-defaults/README.md) | [sambanks](https://github.com/sambanks) | A MODE turned on the panel re-defaults the knobs around it (the manifests' ModeViews), on FX1 and FX2. | on hardware: Sam's MKII (images 26/27, 15 Sep 2026) |
 | [**POST FADER**](modules/post-fader/) | [sambanks](https://github.com/sambanks) | The bus sends follow each track's fader, mute and solo: DEL/REV x (LEVEL/128)^2 in the DSP-bound record; a muted track sends nothing. | `make check`: make check, 29 Sep 2026; not flashed |
 | [**RETURNS**](modules/returns/) | [sambanks](https://github.com/sambanks) | T8's FX2 carries the bus returns' levels (VRB, DLY); the returns go into T8's input (MASTER TRACK) or MAIN, not onto T5 and T1. | on hardware: an MKII, BSRET3 (bottleservice-ret), 29 Sep 2026: the reverb return off T5, through T8's FX1 |

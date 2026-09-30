@@ -40,5 +40,7 @@ A scene or the crossfader on a track's LEVEL moves its sends too.
 - **RIGPF7BP** (RETURNS on 0x1b, a no-op on T1-T4, BUILD=15): flashed on the
   MKII, 30 Sep 2026; FX2 switching works. Projects that stored RETURNS as
   0x1e were rewritten to 0x1b on the card (they need RIGPF7BP or later).
-  Open: a switch on T1 or T5 removes that track's server, and the chooser
-  has no row to put it back (`ot_project.py host` does).
+  Open then: a switch on T1 or T5 removed that track's server, and the
+  chooser had no row to put it back.
+- **RIGPF8BP** (+ HOST LOCK, BUILD=16): flashed on the MKII, 30 Sep 2026;
+  on T1 and T5 the FX2 chooser changes nothing, the servers stay.

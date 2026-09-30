@@ -25,7 +25,9 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
   core 1 its id is the null stub rather than SEND, so a pick on T1-T4 does
   nothing. Projects that stored RETURNS as 0x1e need the id rewritten.
   Confirmed on the unit: boot, RETURNS, MODE DEFAULTS, page CLEAR, FX2
-  switching. Open: a switch on T1 or T5 removes that track's server.
+  switching. HOST LOCK (`modules/host-lock`, RIGPF8BP): on T1 and T5 the FX2
+  chooser's YES answers as NO, so the hidden servers there cannot be
+  replaced by a pick; confirmed on the unit.
 - OS SWITCH's boot picker (30 Sep 2026, `modules/os-switch`): at power-on,
   before the project's loading is posted, the stock dialog offers the card's
   other `.OBI` images. Untouched it stays on this image after 3 s (`STAY IN
