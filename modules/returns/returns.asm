@@ -60,7 +60,7 @@ init:
 proc:
         move    r7,a
         cmp     #>$6b00,a
-        bne     rtn_skip                ; not T8's FX2 on core 0
+        bne     <rtn_skip               ; not T8's FX2 on core 0
         move    x:(r6),a                ; DLY, page-1 slot 0
         move    a,y:>$e25
         move    x:(r6+$1),a             ; VRB, page-1 slot 1
@@ -80,7 +80,7 @@ mixhook:
 ; stamp says BusDelay wrote it (y:$36300 + index = $5a0000 | offset)
         move    y:>$e25,a               ; DLY
         move    #>$e26,r1               ; its glided gain
-        bsr     mh_gain
+        bsr     <mh_gain
         move    x0,x1                   ; x1 = the delay's gain
         move    y:>$36000,a             ; the rotation (the housekeeper flips
         add     #>$50,a                 ; it later in this frame): three
@@ -98,7 +98,7 @@ mixhook:
         move    y:(r1),a
         sub     y0,a                    ; the stamp less the offset it must
         cmp     #>$5a0000,a             ; carry: the tag alone if it matches
-        beq     mh_dok
+        beq     <mh_dok
         move    #0,x1                   ; not written for this read: adds 0
 mh_dok:
         clr     b                       ; consumed (a stale label cleared
@@ -107,14 +107,14 @@ mh_dok:
 mh_rev:
         move    y:>$e21,a               ; VRB
         move    #>$e23,r1               ; its glided gain
-        bsr     mh_gain                 ; x0 = the reverb's gain (x1 kept)
+        bsr     <mh_gain                ; x0 = the reverb's gain (x1 kept)
         move    y:>$e22,a               ; FRESH?
         cmp     #>$5a5a5a,a
-        beq     mh_rf
+        beq     <mh_rf
         move    #0,x0                   ; not fresh: the reverb adds 0
         move    x1,a
         tst     a
-        beq     mh_end                  ; neither return has anything
+        beq     <mh_end                 ; neither return has anything
 mh_rf:
         clr     a
         move    a,y:>$e22               ; consumed
@@ -122,12 +122,10 @@ mh_rf:
 ; ---- where: T8's record (MASTER TRACK on: bit 10 of T8's word $7e, raw
 ; scale, before T8's chain) or MAIN, ring words 2/3 of x:>$203 at 8 a frame
 ; (off: x 0.5618, the plain mode's track gain, then the mixdown's x4)
-        move    x:>$207,a               ; this bank's record base
-        add     #>$7e,a
-        move    a,r1
-        move    x:(r1),a                ; T8's record word $7e
+        move    x:>$207,r1              ; this bank's record base
+        move    x:(r1+$7e),a            ; T8's record word $7e
         btst    #$a,a                   ; MASTER TRACK -> C (stock tests the
-        bcs     mh_master               ; same bit with brset at P:$257; the
+        bcs     <mh_master              ; same bit with brset at P:$257; the
                                         ; assembler encodes brset/brclr with
                                         ; an ABSOLUTE target, AGENTS.md)
         move    #>$47e9ff,y1            ; 0.5618
@@ -135,9 +133,8 @@ mh_rf:
         move    a,x0
         mpy     y1,x1,a
         move    a,x1
-        move    x:>$203,a
-        add     #>$2,a
-        move    a,r1
+        move    x:>$203,r1
+        lua     (r1+$2),r1
         do      #<$10,>mh_plain
         move    y:(r0)+,y0              ; reverb L
         move    x:(r4)+,y1              ; delay L
@@ -157,7 +154,7 @@ mh_rf:
         move    a,x:(r1)+               ; MAIN R
         lua     (r1+$6),r1              ; the next frame's words 2/3
 mh_plain:
-        bra     mh_end
+        bra     <mh_end
 mh_master:
         move    x:>$209,a
         add     #>$1f8,a
