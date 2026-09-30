@@ -23,9 +23,9 @@ MODULE = Module(
     key="OCTAKIT MIRROR",
     kind=Kind.CF_PATCH,
     category=Category.FIXES, author="sanderlegit", author_url="https://github.com/sanderlegit",
-    proof=Proof.PORT,
-    proof_note="page-key + CLEAR under the port with OCTAKIT alone and with bottleservice-pf, "
-               "30 Sep 2026: her page-clipboard checks pass instead of halting",
+    proof=Proof.HARDWARE,
+    proof_note="an MKII, 30 Sep 2026 (RIGPF4BP, bottleservice-pf): page-key + CLEAR works where "
+               "RIGPF3BP halted with VEC:04; `verify_octakit_mirror` (a control without it halts)",
     doc="Octakit images: page-key + CLEAR/PASTE no longer halt (VEC:04); stock's SRAM part mirror "
         "is synced with the working part before her wrapper runs.",
     requires=("OCTAKIT",),

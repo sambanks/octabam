@@ -22,6 +22,9 @@ A scene or the crossfader on a track's LEVEL moves its sends too.
   samples with trigs and no click, their level and mute act on their own
   sound only, and the returns work on T8 -- the THRU-only rule for T1/T5
   does not apply with RETURNS. The boot picker ran in every mode.
+- **RIGPF4BP** (the same + OCTAKIT MIRROR, BUILD=12): flashed on the MKII,
+  30 Sep 2026; page-key + CLEAR, which halted RIGPF3BP with VEC:04 in
+  Octakit's page-clipboard check, works.
 - ⚠️ USB disk mode on it once returned corrupted reads (about one in four,
   `docs/remixer/FAILURE_MODES.md`); later in the day it read clean. Cause
   open; suspected: the USB audio state (a DAW holding the unit as its audio
