@@ -133,7 +133,7 @@ out, and a plain stretch loses the pillars against their own textures.
   tic slows the game; it never skips. Falsified by a visibly slow game.
 - 🟡 **The panel.** The window's plane layout is the one `lcd_view.py`
   composites and PANEL.md measured for the page. Upside down or mirrored on
-  the unit would falsify it (`mono.c` has one flag to flip).
+  the unit would falsify it (one line in `mono.c`, `b = 63 - y`, flips it).
 - 🟡 **Starvation.** A tic runs in the UI task (priority 3) for tens of
   milliseconds. Lower-priority tasks (the engine, idle) only run between
   tics. Nothing needs them while Doom plays, but that is inferred.
