@@ -318,6 +318,7 @@ void DG_SetWindowTitle(const char *title) { (void)title; }
 
 extern void doom_audio_update(void);
 extern void doom_audio_off(void);
+extern void doom_audio_service(void);
 
 static void tic(void)
 {
@@ -352,6 +353,8 @@ void doom_frame(void)
     r = doom_run(tic, stack_top);
     if (r)
         dead(r);
+    else
+        doom_audio_service();   /* the music's card reads: here, never in the tic */
 }
 
 /* the soft timer, every sys tick */

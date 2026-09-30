@@ -162,7 +162,8 @@ def main():
         print(f"  [{'PASS' if ok else 'FAIL'}] verify_doom: {label}{'  (' + detail + ')' if detail else ''}")
 
     W = {k: rt[k] for k in ("doom_boot", "doom_frame", "doom_projpost", "doom_files", "doom_home",
-                            "osw_reset", "osw_bootpick", "osw_bootfiles", "I_Error", "D_DoomMain")}
+                            "osw_reset", "osw_bootpick", "osw_bootfiles", "I_Error", "D_DoomMain",
+                            "m_start")}
     name_of = {a: k for k, a in W.items()}
 
     def boot(tag, crd, script, dumps=None, preload=(), boot_load=True, lcd=False, maxi=12_000_000_000,
@@ -337,6 +338,12 @@ def main():
             rms = 10 * math.log10(max(acc / cnt, 1) / (1 << 46))
     check("sound: MAIN L/R carry Doom (no project plays, so anything there is doomsnd's)",
           rms > -60, f"{rms:.1f} dBFS rms after the transport start")
+    # the music opens a card file only from doom_frame's service, after a tic
+    # has run -- never inside the boot hook, where the first build froze the
+    # unit at power-on (1 Oct 2026, the DOOMNM/DOOM bisect)
+    check("sound: the music's first card open comes after Doom's first tic, not in the boot hook",
+          "m_start" in seq and "doom_frame" in seq and seq.index("doom_frame") < seq.index("m_start"),
+          " > ".join(x for x in seq[:8] if x != "doom_frame" or True)[:120])
     lg = log_of(d)
     if mcard is not wcard:
         check("sound: the music came from the card (no 'music: no' in Doom's log)",

@@ -17,8 +17,9 @@
  * in 16.16 to 44,100, eight channels, Doom's own volume and separation.
  * Music: /DOOMMUS/<lump>.WAV, IMA ADPCM mono 22,050 Hz (modules/doom/
  * music.py renders them from the WAD's MUS with libADLMIDI's OPL3 and
- * Doom's DMX bank), read 4 KB at a time from the card in the UI task,
- * decoded a block at a time, each sample played twice. No file: no music.
+ * Doom's DMX bank), read 4 KB at a time from the card by doom_audio_service
+ * (outside the tic and the boot hook), decoded a block at a time, each
+ * sample played twice. No file: no music.
  */
 #include <stdio.h>
 #include <string.h>
@@ -186,19 +187,31 @@ static const int16_t ima_step[89] = {
 };
 static const int8_t ima_index[16] = { -1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8 };
 
-#define FILEBUF 4096                 /* 8 sectors: one FS_READ */
+/* Every card operation for the music happens in doom_audio_service(), which
+ * doom_frame calls AFTER doom_run returns: the UI task's own stack, a
+ * deferred call off the UI queue -- the context osw_load reads .OBIs from
+ * on the unit. Never inside a tic (Doom's stack) and never inside the boot
+ * hook: the first build opened the title song from S_ChangeMusic there,
+ * nested in the last-set mount's LOADING FILES post, and the unit froze at
+ * power-on before DOOM's window appeared (1 Oct 2026; DOOMNM, the same
+ * build without music, ran). The music module only records requests; the
+ * decoder only reads bytes the service has buffered. */
+#define CHUNK   4096                 /* 8 sectors: one FS_READ */
+#define NCHUNK  4
+#define RINGSZ  (CHUNK * NCHUNK)
 static struct {
     long fd;                         /* -1 = none */
-    char path[32];
-    uint32_t data_left;              /* bytes of the data chunk not yet taken */
-    uint32_t data_off, data_len;     /* where the data chunk sits in the file */
+    char path[32], req_path[32];
+    int req, req_loop;               /* 0 none, 1 play req_path, 2 stop */
+    int32_t file_left;               /* data bytes not yet read from the file */
+    uint32_t data_left;              /* data bytes not yet decoded */
     uint32_t block, spb;             /* block align, samples per block */
-    uint8_t buf[FILEBUF];
-    uint32_t bpos, blen;             /* in buf */
+    uint8_t ring[RINGSZ];
+    uint32_t rd, wr;                 /* byte counters; wr - rd buffered */
     int16_t pcm[2048];               /* one decoded block */
     uint32_t ppos, plen;
     uint32_t half;                   /* 22.05 -> 44.1: each sample twice */
-    int vol, paused, looping, playing;
+    int vol, paused, looping, playing, reopen;
 } m = { .fd = -1, .vol = 100 };
 
 static long fs_open(const char *p)
@@ -214,92 +227,115 @@ static void fs_close(long fd)
     (*(fs_1_t *)FS_CLOSE)(fd);
 }
 
-/* refill buf with the next sectors; 0 at the end of the file */
-static int m_fill(void)
-{
-    long n = (*(fs_read_t *)FS_READ)(m.fd, m.buf, FILEBUF / 512);
-    (void)n;
-    m.bpos = 0;
-    m.blen = FILEBUF;
-    return 1;
-}
-
-static int m_byte(uint8_t *b)
-{
-    if (m.bpos >= m.blen && !m_fill())
-        return 0;
-    *b = m.buf[m.bpos++];
-    return 1;
-}
-
 static uint32_t le32(const uint8_t *p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24); }
 static uint16_t le16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 
-/* open the file and walk its RIFF header to the data chunk */
-static int m_open(void)
+/* the next 4 KB of the file into the ring (service only) */
+static void m_chunk(void)
 {
-    uint8_t h[8];
-    uint32_t off = 12, i;
+    (*(fs_read_t *)FS_READ)(m.fd, m.ring + (m.wr % RINGSZ), CHUNK / 512);
+    m.wr += CHUNK;
+    m.file_left -= CHUNK;
+}
+
+static void m_close(void)
+{
     if (m.fd >= 0)
         fs_close(m.fd);
+    m.fd = -1;
+    m.playing = 0;
+}
+
+/* open m.path, read its first 4 KB and walk the RIFF header to the data
+ * chunk (service only) */
+static int m_start(void)
+{
+    uint32_t off = 12, data_off = 0, data_len = 0;
+    m_close();
     m.fd = fs_open(m.path);
     if (m.fd < 0)
         return 0;
-    m.bpos = m.blen = 0;
-    m_fill();
-    if (memcmp(m.buf, "RIFF", 4) || memcmp(m.buf + 8, "WAVE", 4))
+    m.rd = m.wr = 0;
+    m.file_left = 0x7fffffff;
+    m_chunk();
+    if (memcmp(m.ring, "RIFF", 4) || memcmp(m.ring + 8, "WAVE", 4))
         goto bad;
     m.block = 0;
-    while (off + 8 <= FILEBUF) {
-        uint32_t n = le32(m.buf + off + 4);
-        if (!memcmp(m.buf + off, "fmt ", 4) && n >= 20) {
-            if (le16(m.buf + off + 8) != 0x11 || le16(m.buf + off + 10) != 1)
+    while (off + 8 <= CHUNK) {
+        uint32_t n = le32(m.ring + off + 4);
+        if (!memcmp(m.ring + off, "fmt ", 4) && n >= 20) {
+            if (le16(m.ring + off + 8) != 0x11 || le16(m.ring + off + 10) != 1)
                 goto bad;             /* not IMA ADPCM mono */
-            m.block = le16(m.buf + off + 20);
-            m.spb = le16(m.buf + off + 26);
-        } else if (!memcmp(m.buf + off, "data", 4)) {
-            m.data_off = off + 8;
-            m.data_len = n;
+            m.block = le16(m.ring + off + 20);
+            m.spb = le16(m.ring + off + 26);
+        } else if (!memcmp(m.ring + off, "data", 4)) {
+            data_off = off + 8;
+            data_len = n;
             break;
         }
         off += 8 + n + (n & 1);
     }
-    if (!m.block || !m.data_off || m.spb > 2048 || m.data_off >= FILEBUF)
+    if (!m.block || !data_off || m.spb > 2048 || data_off >= CHUNK)
         goto bad;
-    m.bpos = m.data_off;
-    m.data_left = m.data_len;
+    m.rd = data_off;
+    m.data_left = data_len;
+    m.file_left = (int32_t)data_len - (int32_t)(CHUNK - data_off);
     m.ppos = m.plen = 0;
-    (void)h; (void)i;
+    m.half = 0;
+    m.playing = 1;
     return 1;
 bad:
-    fs_close(m.fd);
-    m.fd = -1;
+    m_close();
     return 0;
 }
 
-/* decode the next block into pcm; 0 at the end of the data */
+/* In doom_frame, after the tic, on the UI task's stack: the requests, the
+ * loop's reopen, and at most two 4 KB reads to keep the ring topped up. */
+void doom_audio_service(void)
+{
+    int k;
+    if (m.req == 2) {
+        m.req = 0;
+        m_close();
+    }
+    if (m.req == 1) {
+        m.req = 0;
+        memcpy(m.path, m.req_path, sizeof m.path);
+        m.looping = m.req_loop;
+        if (!m_start())
+            printf("music: no %s\n", m.path);
+    }
+    if (m.reopen) {
+        m.reopen = 0;
+        m_start();
+    }
+    for (k = 0; k < 2 && m.fd >= 0 && m.file_left > 0 && m.wr - m.rd <= RINGSZ - CHUNK; k++)
+        m_chunk();
+}
+
+/* decode the next block into pcm: 1 done, 0 the data is over, -1 not
+ * buffered yet (the service is behind: silence, not the end) */
 static int m_block(void)
 {
-    uint8_t b[4];
-    int pred, idx, i;
-    uint32_t n = 0, bytes;
+    const uint8_t *r = m.ring;
+    int pred, idx;
+    uint32_t n = 0, bytes, need;
     if (m.data_left < 4)
         return 0;
-    for (i = 0; i < 4; i++)
-        if (!m_byte(&b[i]))
-            return 0;
-    pred = (int16_t)le16(b);
-    idx = b[2] > 88 ? 88 : b[2];
+    need = m.data_left < m.block ? m.data_left : m.block;
+    if (m.wr - m.rd < need)
+        return -1;
+    pred = (int16_t)(r[m.rd % RINGSZ] | (r[(m.rd + 1) % RINGSZ] << 8));
+    idx = r[(m.rd + 2) % RINGSZ];
+    if (idx > 88)
+        idx = 88;
+    m.rd += 4;
     m.pcm[n++] = (int16_t)pred;
-    bytes = m.block - 4;
-    if (bytes > m.data_left - 4)
-        bytes = m.data_left - 4;
-    m.data_left -= 4 + bytes;
+    bytes = need - 4;
+    m.data_left -= need;
     while (bytes--) {
-        uint8_t v;
+        uint8_t v = r[m.rd++ % RINGSZ];
         int k;
-        if (!m_byte(&v))
-            break;
         for (k = 0; k < 2; k++) {
             int nib = k ? v >> 4 : v & 15, step = ima_step[idx], diff = step >> 3;
             if (nib & 4) diff += step;
@@ -317,21 +353,24 @@ static int m_block(void)
     }
     m.ppos = 0;
     m.plen = n;
-    return n > 0;
+    return 1;
 }
 
 /* the next 44.1 kHz music sample, or 0 */
 static int m_next(void)
 {
     int s;
-    if (!m.playing || m.paused || m.fd < 0)
+    if (!m.playing || m.paused)
         return 0;
     if (m.ppos >= m.plen) {
-        if (!m_block()) {
-            if (!m.looping || !m_open() || !m_block()) {
-                m.playing = 0;
-                return 0;
-            }
+        int r = m_block();
+        if (r < 0)
+            return 0;                 /* starved: the service catches up */
+        if (r == 0) {
+            m.playing = 0;
+            if (m.looping)
+                m.reopen = 1;         /* the service starts it again */
+            return 0;
         }
     }
     s = m.pcm[m.ppos];
@@ -343,7 +382,7 @@ static int m_next(void)
 }
 
 static boolean mus_init(void) { return true; }
-static void mus_shutdown(void) { if (m.fd >= 0) fs_close(m.fd); m.fd = -1; m.playing = 0; }
+static void mus_shutdown(void) { m.playing = 0; m.req = 2; }
 static void mus_volume(int v) { m.vol = v; }
 static void mus_pause(void) { m.paused = 1; }
 static void mus_resume(void) { m.paused = 0; }
@@ -367,33 +406,30 @@ static void mus_play(void *h, boolean looping)
     char name[9];
     int i;
     m.playing = 0;
+    m.reopen = 0;
 #if defined(OCTA_NOSOUND) || defined(OCTA_NOMUSIC)
     l = NULL;
 #endif
-    if (!l)
+    if (!l) {
+        m.req = 2;
         return;
+    }
     for (i = 0; i < 8 && l->name[i]; i++)
         name[i] = l->name[i];
     name[i] = 0;
-    snprintf(m.path, sizeof m.path, "/DOOMMUS/%s.WAV", name);
-    m.looping = looping;
-    m.half = 0;
-    if (!m_open()) {
-        printf("music: no %s\n", m.path);
-        return;
-    }
-    m.playing = 1;
+    snprintf(m.req_path, sizeof m.req_path, "/DOOMMUS/%s.WAV", name);
+    m.req_loop = looping;
+    m.req = 1;                        /* the service opens it */
 }
 
 static void mus_stop(void)
 {
     m.playing = 0;
-    if (m.fd >= 0)
-        fs_close(m.fd);
-    m.fd = -1;
+    m.reopen = 0;
+    m.req = 2;
 }
 
-static boolean mus_isplaying(void) { return m.playing; }
+static boolean mus_isplaying(void) { return m.playing || m.req == 1 || m.reopen; }
 static void mus_poll(void) {}
 
 music_module_t DG_music_module = {
