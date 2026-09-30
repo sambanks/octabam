@@ -6,4 +6,8 @@ REMIX=Remix(name="analog-bassdrum", family="mods", proof=Proof.PORT,
     modules=("ANALOG BD", "FILTER", "EQUALIZER", "DJ EQ", "PHASER",
              "FLANGER", "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR",
              "LO-FI", "DELAY", "PLATE REV", "DARK REV"),
-    fallback="NONE")
+    fallback="NONE",
+    # ANALOG BD composes with stock effects only (build_bus refuses any
+    # other DSP section) and OS SWITCH's DSP park is one: kept out until
+    # the two are shown to share the dead vectors (30 Sep 2026).
+    os_switch=False)
