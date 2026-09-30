@@ -1,0 +1,5 @@
+build/
+doom.o
+# the WAD is yours, never the repo's
+*.WAD
+*.wad

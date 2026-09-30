@@ -17,3 +17,6 @@
 [submodule "modules/tuner/upstream"]
 	path = modules/tuner/upstream
 	url = https://github.com/timhastie/octatrick-modules
+[submodule "modules/doom/upstream"]
+	path = modules/doom/upstream
+	url = https://github.com/ozkl/doomgeneric.git

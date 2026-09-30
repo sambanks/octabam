@@ -53,6 +53,14 @@ def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int, includes=N
     work.mkdir(parents=True, exist_ok=True)
     objs = []
     for i, (key, u) in enumerate(units):
+        if str(u.source).endswith(".o"):
+            # A unit compiled from C (modules/doom): the object is made by
+            # the Makefile beside it, then linked as is -- no include, no
+            # assembly. Every other unit's path below is unchanged.
+            src = ROOT / u.source
+            _run(["make", "-s", "-C", src.parent, src.name], work)
+            objs.append(src)
+            continue
         obj = work / f"{i:02d}_{u.label}.o"
         inc = []
         if includes and u.label in includes:
