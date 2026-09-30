@@ -255,9 +255,17 @@ static int m_start(void)
     m.fd = fs_open(m.path);
     if (m.fd < 0)
         return 0;
+#if OCTA_MUSTEST == 1                 /* bisect: the open alone */
+    m_close();
+    return 0;
+#endif
     m.rd = m.wr = 0;
     m.file_left = 0x7fffffff;
     m_chunk();
+#if OCTA_MUSTEST == 2                 /* bisect: the open and the first 4 KB */
+    m_close();
+    return 0;
+#endif
     if (memcmp(m.ring, "RIFF", 4) || memcmp(m.ring + 8, "WAVE", 4))
         goto bad;
     m.block = 0;
@@ -417,7 +425,11 @@ static void mus_play(void *h, boolean looping)
     for (i = 0; i < 8 && l->name[i]; i++)
         name[i] = l->name[i];
     name[i] = 0;
+#ifdef OCTA_MUSROOT                   /* bisect: the songs in the card root */
+    snprintf(m.req_path, sizeof m.req_path, "/%s.WAV", name);
+#else
     snprintf(m.req_path, sizeof m.req_path, "/DOOMMUS/%s.WAV", name);
+#endif
     m.req_loop = looping;
     m.req = 1;                        /* the service opens it */
 }
