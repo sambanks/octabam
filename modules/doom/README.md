@@ -5,7 +5,9 @@ own through OS SWITCH, and quit back to the flashed OS.
 
 Markers as in `docs/firmware/CHIP.md`: ✅ measured (under the ColdFire port
 unless it says the unit), 🟡 inferred, with what would falsify it.
-**Nothing here has run on a unit yet.**
+On an MKII (30 Sep 2026, the build before sound): boots into Doom from the
+picker, picture upright, Doom's speed. The sound and the faster turning
+have not run on a unit.
 
 ## Use
 
@@ -16,7 +18,8 @@ make obi REMIX=doom OBI=DOOM          # out/DOOM.OBI (1.3 MB)
 1. Copy `out/DOOM.OBI` **and your `DOOM1.WAD`** to the card root. The WAD
    is yours, like the stock image, and never goes in the repo. The
    shareware v1.9 `DOOM1.WAD` (4,196,020 B, sha1 `5b2e249b9c51...`) is the
-   one this was built and gated against. Name it `DOOM1.WAD`.
+   one this was built and gated against. Name it `DOOM1.WAD`. For music,
+   also copy `/DOOMMUS/` (below).
 2. On the flashed image (any build with OS SWITCH), either pick `DOOM` in
    the boot picker at power-on, or go to MAIN MENU > OS > `DOOM` > YES.
 3. The unit resets into the DOOM image. You'll see the Jolly Roger (PIRATE
@@ -34,7 +37,7 @@ With no `DOOM1.WAD` on the card, the DOOM image boots on as a normal OS
 | Octatrack | Doom |
 |---|---|
 | UP / DOWN | forward / back |
-| LEFT / RIGHT | turn |
+| LEFT / RIGHT | turn (~1.75x Doom's keyboard rate in a level) |
 | YES | fire; ENTER and `y` in menus and prompts |
 | NO | use / open; back and `n` in menus |
 | FUNC (held) | run |
@@ -44,10 +47,33 @@ With no `DOOM1.WAD` on the card, the DOOM image boots on as a normal OS
 | TEMPO | automap |
 | STOP or PROJ | menu (ESC) |
 | PLAY | ENTER |
-| knob A | turn, as a mouse would |
+| knob A | turn, ~3.5 degrees a detent |
 | **FUNC + STOP** | **leave Doom: back to the flashed OS** |
 
 Every other key and knob is swallowed while Doom has the panel.
+
+## Sound
+
+- **Effects** are mixed live on the ColdFire (`octa/doom_audio.c`): the
+  WAD's DMX lumps (8-bit, mostly 11,025 Hz), eight channels with Doom's own
+  volume and separation, stepped to 44.1 kHz into a 186 ms stereo ring kept
+  ~70 ms ahead.
+- **Music** is the WAD's own MUS, rendered once on your machine by
+  `modules/doom/music.py`: libADLMIDI's OPL3 emulator with bank 16, "DMX
+  (Bobby Prince v1)" (Doom's instrument set, the Sound Blaster sound),
+  then ffmpeg to IMA ADPCM, mono, 22,050 Hz (about 20 MB for the
+  shareware's 13 songs). Copy the folder to the card as `/DOOMMUS/`. Doom
+  streams each song from there in 4 KB reads and loops it. No folder, no
+  music; everything else is the same. The files are yours, like the WAD,
+  never the repo's.
+- **The path out.** Once per DSP frame, the frame interrupt's state 7
+  (`0x40004bc0`, USB AUDIO IN's site, so a remix carries one of the two)
+  takes 16 frames from the ring and sends them to core 0 by host-port DMA.
+  On the next frame, `doom_mix.asm` (33 words, hooked at `P:0x2d5`, right
+  after the mixdown) adds them into the ring words that are MAIN L/R, with
+  the store's limiter. So the sound is on MAIN and the cue (which is mixed
+  from MAIN) whatever the mixer says, with no project and no track.
+  Every DSP instruction form in it has a site in stock payload A.
 
 ## The screen
 
@@ -117,6 +143,11 @@ out, and a plain stretch loses the pillars against their own textures.
 
 ## Measured (verify_doom, under the port)
 
+- ✅ Sound: under `--dsp`, one block per DSP frame reaches core 0 (24,805 in
+  a 9 s session), with 3 % underruns (the start and the level load). MAIN
+  L/R carry -30 dBFS rms where no project plays, and the music opens from
+  the card.
+
 - ✅ Boots on fresh SRAM (the LOAD PROJECT post) and on SRAM that knows the
   card (the LOADING FILES post). Either way, DOOM takes the first post.
 - ✅ D_DoomMain runs to the game loop, and PLAY × 4 gets from the title to
@@ -132,6 +163,11 @@ out, and a plain stretch loses the pillars against their own textures.
   detail, 32-bit frame, a divide per pixel) cost 10 M: 5.5 M and 4.5 M.
 
 ## Not known until it runs on the unit
+
+- 🟡 **The sound on the unit.** The DSP hook's forms have stock sites, and
+  the host-port transfer is USB AUDIO IN's hardware-run one, but this
+  hook and this transfer have not run on a chip. Falsified by silence, or
+  by a click per frame (the ring's timing against the DMA).
 
 - 🟡 **Frame rate.** 2.5 M instructions a tic is ~10 ms at one instruction
   a cycle at 264 MHz. Doom's renderer misses a 32 KB cache a lot, so

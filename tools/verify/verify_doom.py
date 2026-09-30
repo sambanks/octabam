@@ -4,7 +4,7 @@
     python3 tools/verify/verify_doom.py [REMIX]          (default: doom)
 
 Needs DOOM1.WAD, which is the user's and never in the repo: $DOOM_WAD, else
-out/doom/DOOM1.WAD. Without it the gate SKIPs. Five boots of the built
+out/doom/DOOM1.WAD. Without it the gate SKIPs. Six boots of the built
 image, run side by side:
 
   play     fresh battery SRAM (the port's), the WAD on the card: DOOM takes
@@ -132,18 +132,23 @@ def main():
     norver.write_bytes(stock[C["OS_VEROFF"]:C["OS_VEROFF"] + 2])
     OUT.mkdir(parents=True, exist_ok=True)
 
-    def card(tag, with_wad):
+    musdir = ROOT / "out/doom/card/DOOMMUS"      # modules/doom/music.py's output, if made
+
+    def card(tag, with_wad, music=False):
         import emu_card
         t = work / f"{tag}_tree"
         (t / "OSW" / "AUDIO").mkdir(parents=True)
         (t / "OSW" / "P").mkdir()
         if with_wad:
             shutil.copy(wad, t / "DOOM1.WAD")
+        if music:
+            shutil.copytree(musdir, t / "DOOMMUS")
         p = work / f"{tag}.img"
         p.write_bytes(emu_card.build_image(str(t), size_mb=64))
         return p
 
     wcard, ncard = card("wad", True), card("nowad", False)
+    mcard = card("mus", True, music=True) if musdir.is_dir() else wcard
     # where DG_ScreenBuffer lands: the WAD sits at the heap's base (octa.h
     # DOOM_RAM_BASE, sector-rounded, no header), then the first malloc's
     # 8-byte header (doom_octa.c read_wad, libc.c malloc)
@@ -160,8 +165,9 @@ def main():
                             "osw_reset", "osw_bootpick", "osw_bootfiles", "I_Error", "D_DoomMain")}
     name_of = {a: k for k, a in W.items()}
 
-    def boot(tag, crd, script, dumps=None, preload=(), boot_load=True, lcd=False, maxi=12_000_000_000):
-        args = [str(EMU), "--image", str(image), "--max", str(maxi),
+    def boot(tag, crd, script, dumps=None, preload=(), boot_load=True, lcd=False, maxi=12_000_000_000,
+             extra=()):
+        args = [str(EMU), "--image", str(image), "--max", str(maxi), *extra,
                 "--preload", ";".join(f"0x{a:x}={p}" for a, p in [(0x3FFC, norver), *preload]),
                 "--card", str(crd), "--mount", "--set", "/OSW", "--project", "P", "--mkii",
                 "--load-ms", "60000", "--watch-pc", ",".join(f"0x{a:x}" for a in W.values())]
@@ -218,7 +224,13 @@ def main():
     W["osw_chain"] = chain["osw_chain"]
     name_of[chain["osw_chain"]] = "osw_chain"
 
-    with ThreadPoolExecutor(5) as ex:
+    with ThreadPoolExecutor(6) as ex:
+        # the DSP too: the frame transfer's blocks, and what doomsnd adds to MAIN
+        f_snd = ex.submit(boot, "sound", mcard, play,
+                          {"blocks": (rt["doom_audio_blocks"], 4), "under": (rt["doom_audio_underruns"], 4),
+                           "logpos": dumps["logpos"], "log": dumps["log"]},
+                          extra=("--dsp", "--main-level", "64", "--audio-out", str(work / "sound")),
+                          maxi=20_000_000_000)
         # DG_ScreenBuffer is the first malloc after the WAD's (doom_octa.c's heap
         # is deterministic); the log's own line says where, and the gate checks it
         f_play = ex.submit(boot, "play", wcard, play,
@@ -294,6 +306,40 @@ def main():
           seq.count("osw_chain") == 2 and st == "RUN " and u32(mb) == 0, f"status {st!r}")
     check("switch: the switched-to image went straight into Doom",
           "doom_boot" in seq and seq.count("doom_frame") > 50, f"{seq.count('doom_frame')} tics")
+
+    # ---- sound: the frame interrupt's blocks, and MAIN L/R after doomsnd ----
+    out, seq, d = f_snd.result()
+    blocks, under = u32(d.get("blocks", b"")), u32(d.get("under", b""))
+    check("sound: one block a DSP frame went to core 0, and the ring kept up (< 10 % underruns)",
+          blocks > 5000 and 0 <= under < blocks // 10, f"{blocks} blocks, {under} underruns")
+    m = re.search(r"sound_core0\.wav, (\d+) frames.*transport start at frame (\d+)", out)
+    rms = -999.0
+    wavp = work / "sound_core0.wav"
+    if m and wavp.exists():
+        import math
+        raw = wavp.read_bytes()
+        i = 12
+        while i < len(raw) and raw[i:i + 4] != b"data":
+            i += 8 + struct.unpack("<I", raw[i + 4:i + 8])[0]
+        pcm, start = raw[i + 8:], int(m.group(2))
+        n = len(pcm) // 24
+        acc = cnt = 0
+        for f in range(start, n, 13):
+            for c in (2, 3):                  # the ring's MAIN L/R words
+                o = f * 24 + c * 3
+                v = int.from_bytes(pcm[o:o + 3], "little", signed=True)
+                acc += v * v
+                cnt += 1
+        if cnt:
+            rms = 10 * math.log10(max(acc / cnt, 1) / (1 << 46))
+    check("sound: MAIN L/R carry Doom (no project plays, so anything there is doomsnd's)",
+          rms > -60, f"{rms:.1f} dBFS rms after the transport start")
+    lg = log_of(d)
+    if mcard is not wcard:
+        check("sound: the music came from the card (no 'music: no' in Doom's log)",
+              "music: no" not in lg, lg.strip().splitlines()[-1] if lg else "no log")
+    else:
+        print(f"  [SKIP] verify_doom: sound: music -- no {musdir} (modules/doom/music.py makes it)")
 
     print(f"  verify_doom: {'PASS' if not fails else f'{fails} FAIL'} (work {work})")
     return 1 if fails else 0

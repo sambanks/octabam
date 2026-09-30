@@ -126,7 +126,66 @@ doom_encs:
         .byte   0xff, 0
         .long   0, 0, 0, 0, 0
 
+| ---- sound: the frame transfer machine's state 7 (0x40004bc0) -----------
+| USB AUDIO IN's mechanism (modules/usb-audio-in-ab/usbaudio_in.s, whose
+| detour this is; a remix carries one of the two). The transfer IRQ saved
+| d0-d1/a0-a1. The first visit per frame builds the block (doom_audio.c)
+| and starts one more host-port transfer to core 0 at $6320 -- the idle
+| bank + $320 after the DSP's mask, read by doom_mix.asm next frame; that
+| transfer's completion is the second visit, which runs the displaced stock
+| state 7 (the frame IRQ unmask).
+        .set    STATE7_DONE,  0x40004bc8  | the transfer IRQ's movem restore + rte
+        .set    FRAME_UNMASK, 0xfc04801d  | stock state 7's write (INTC0 CIMR <- 1)
+        .set    EDMA_SADDR,   0xfc045000
+        .set    EDMA_NBYTES,  0xfc045008
+        .set    EDMA_CITER,   0xfc045014
+        .set    EDMA_BITER,   0xfc04501c
+        .set    EDMA_START,   0xfc04401e
+        .set    CORE_SEL,     0xfc0a400c
+        .set    HOST_ICR,     0x20000000
+        .set    HOST_CVR,     0x20000004
+        .set    HOST_DATA,    0x2000001c
+        .set    DSP_DEST,     0x6320
+        .set    TX_BYTES,     128         | word 0 + 32 halfwords + pad: two minor loops of 64
+        .global doom_state7
+doom_state7:
+        tst.b   doom_s7busy
+        bne.w   2f
+        moveq   #1,%d0
+        move.b  %d0,doom_s7busy
+        lea     (-44,%sp),%sp
+        movem.l %d2-%d7/%a2-%a6,(%sp)
+        jsr     doom_audio_block
+        movem.l (%sp),%d2-%d7/%a2-%a6
+        lea     (44,%sp),%sp
+        clr.b   %d0
+        move.b  %d0,(CORE_SEL).l          | core 0
+        moveq   #64,%d1
+        move.l  %d1,(EDMA_NBYTES).l
+        move.l  #(doom_tx+0x08000000),%d1
+        move.l  %d1,(EDMA_SADDR).l
+        move.w  #0x81,%d0
+        move.w  %d0,(HOST_ICR).l
+        move.w  #DSP_DEST,%d1
+        move.w  %d1,(HOST_DATA).l
+        move.w  #TX_BYTES/2-1,%d0
+        move.w  %d0,(HOST_DATA).l
+        move.w  #0x88,%d1
+        move.w  %d1,(HOST_CVR).l
+        move.w  #(0x8000+TX_BYTES/64),%d0 | E_LINK, TX_BYTES/64 minor loops
+        move.w  %d0,(EDMA_CITER).l
+        move.w  %d0,(EDMA_BITER).l
+        clr.b   %d1
+        move.b  %d1,(EDMA_START).l
+        jmp     (STATE7_DONE).l
+2:      clr.b   doom_s7busy
+        moveq   #1,%d1                    | stock state 7, displaced
+        move.b  %d1,(FRAME_UNMASK).l
+        jmp     (STATE7_DONE).l
+
         .data
         .align  2
 doom_saved_sp:
         .long   0
+doom_s7busy:
+        .byte   0

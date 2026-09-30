@@ -27,8 +27,8 @@ README.md beside this file: controls, the memory map, what is measured.
 import pathlib
 
 from remix import arena
-from remix.schema import (ArenaReserve, Category, Detour, Gate, Kind, Linked, Module,
-                          Override, Proof)
+from remix.schema import (ArenaReserve, Category, Detour, DspHook, DspSection, Gate, Kind,
+                          Linked, Module, Override, Proof)
 
 H = bytes.fromhex
 HERE = pathlib.Path(__file__).resolve().parent
@@ -50,7 +50,7 @@ if f"DOOM_RAM_BASE  0x{_base:08x}u" not in _h or f"DOOM_RAM_END   0x{_end:08x}u"
 MODULE = Module(
     name="doom",
     key="DOOM",
-    kind=Kind.CF_PATCH,
+    kind=Kind.HYBRID,
     category=Category.REFERENCE,
     author="sanderlegit", author_url="https://github.com/sanderlegit",
     proof=Proof.CHECK,
@@ -67,6 +67,18 @@ MODULE = Module(
         Detour(0x4002573E, H("4eb9400228dc"), "doom", "doom_files",
                "the last-set mount's LOADING FILES post: the same, for a unit whose SRAM "
                "knows the card", kind="jsr"),
+        # USB AUDIO IN's site (modules/usb-audio-in-ab): a remix carries one
+        Detour(0x40004BC0, H("720113c1fc04801d"), "doom", "doom_state7",
+               "frame transfer state 7: Doom's 16 stereo samples to core 0 at $6320",
+               pad_to=8),
+    ),
+    # Doom's sound into MAIN L/R, right after the mixdown (doom_mix.asm)
+    dsp=DspSection(
+        asm="modules/doom/doom_mix.asm",
+        priority=20,
+        payloads=frozenset({"A"}),          # core 0 runs the mixdown
+        hooks=(DspHook(0x2D5, (0x60F000, 0x000206), "doomsnd",
+                       "after the mixdown: Doom's pair added into MAIN L/R"),),
     ),
     overrides=(
         Override(0x4002574C, "OS SWITCH"),

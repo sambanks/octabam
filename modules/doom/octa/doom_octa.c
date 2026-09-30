@@ -54,6 +54,7 @@ static volatile uint32_t sys_ticks;
 static uint32_t slept_ms;
 static int state;                 /* 0 never tried, 1 running, 2 dead (error shown), 3 no WAD */
 static int func_held;
+static int turn_l, turn_r;        /* LEFT / RIGHT held: the turn boost (tic) */
 static char *stack_top;
 
 /* ---- the log: a ring a port dump can read, and the panel's error page -- */
@@ -179,6 +180,10 @@ void doom_kdown(long code)
     int i, n;
     if (code == K_FUNC)
         func_held = 1;
+    if (code == K_LEFT)
+        turn_l = 1;
+    if (code == K_RIGHT)
+        turn_r = 1;
     if (state != 1)
         return;
     n = keymap((int)code, out);
@@ -199,6 +204,10 @@ void doom_kup(long code)
     int i, n;
     if (code == K_FUNC)
         func_held = 0;
+    if (code == K_LEFT)
+        turn_l = 0;
+    if (code == K_RIGHT)
+        turn_r = 0;
     if (state != 1)
         return;
     n = keymap((int)code, out);
@@ -206,7 +215,9 @@ void doom_kup(long code)
         kq_put(0, out[i]);
 }
 
-/* knob A turns, as a mouse would; the rest are swallowed */
+/* knob A turns, as a mouse would; the rest are swallowed. 80 per detent is
+ * 640 angle units after Doom's x8, about 3.5 degrees (24 was ~1 degree:
+ * "a little slow" on the unit, 30 Sep 2026) */
 void doom_enc(long index, long delta)
 {
     event_t ev;
@@ -214,7 +225,7 @@ void doom_enc(long index, long delta)
         return;
     ev.type = ev_mouse;
     ev.data1 = 0;
-    ev.data2 = (int)(delta * 24);
+    ev.data2 = (int)(delta * 80);
     ev.data3 = 0;
     D_PostEvent(&ev);
 }
@@ -299,13 +310,32 @@ int DG_GetKey(int *pressed, unsigned char *key)
 void DG_SetWindowTitle(const char *title) { (void)title; }
 
 /* ---- the clock and the tic -------------------------------------------- */
+/* The arrows turn at Doom's keyboard rate (640 a tic, 320 for the first
+ * six), which was slow on the unit; while LEFT or RIGHT is held in a level
+ * a mouse turn of 60 (480 after the x8) rides along, ~1.75x. Not in the
+ * menu or the map, where a mouse event means something else. */
+#define TURN_BOOST 60
+
+extern void doom_audio_update(void);
+extern void doom_audio_off(void);
+
 static void tic(void)
 {
+    if ((turn_l ^ turn_r) && gamestate == GS_LEVEL && !menuactive && !automapactive) {
+        event_t ev;
+        ev.type = ev_mouse;
+        ev.data1 = 0;
+        ev.data2 = turn_r ? TURN_BOOST : -TURN_BOOST;
+        ev.data3 = 0;
+        D_PostEvent(&ev);
+    }
     doomgeneric_Tick();
+    doom_audio_update();
 }
 
 static void dead(int code)
 {
+    doom_audio_off();
     if (code == 0x10000)        /* exit(0): Doom's QUIT */
         go_home();
     state = 2;

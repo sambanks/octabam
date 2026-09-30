@@ -11,7 +11,7 @@ B       = build
 CFLAGS  = -mcpu=54455 -O2 -fno-common -ffreestanding -fno-builtin-printf \
           -fomit-frame-pointer -nostdinc -isystem octa/include \
           -isystem $(shell $(CC) -print-file-name=include) \
-          -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 -DCMAP256 \
+          -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 -DCMAP256 -DFEATURE_SOUND \
           -w
 DOOM    = dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop \
           d_main d_mode d_net f_finale f_wipe g_game hu_lib hu_stuff info i_cdmus \
@@ -22,7 +22,7 @@ DOOM    = dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop \
           r_bsp r_data r_draw r_main r_plane r_segs r_sky r_things sha1 sounds \
           statdump st_lib st_stuff s_sound tables v_video wi_stuff w_checksum \
           w_file w_main w_wad z_zone w_file_stdc i_input i_video doomgeneric
-OCTA    = doom_octa libc mono
+OCTA    = doom_octa libc mono doom_audio
 OBJS    = $(addprefix $(B)/,$(addsuffix .o,$(DOOM))) \
           $(addprefix $(B)/octa_,$(addsuffix .o,$(OCTA))) $(B)/octa_entry.o
 
@@ -35,7 +35,8 @@ doom.o: $(OBJS)
 	@# namespace, and Doom's memcpy/printf/players must never meet another
 	@# unit's (POST FADER's pf_frame met PIRATE FLAG's, 30 Sep 2026)
 	m68k-elf-objcopy --strip-debug --rename-section .bss=.data.zero,alloc,load,contents,data \
-	  --keep-global-symbol=doom_projpost --keep-global-symbol=doom_files $(B)/doom_r.o $@
+	  --keep-global-symbol=doom_projpost --keep-global-symbol=doom_files \
+	  --keep-global-symbol=doom_state7 $(B)/doom_r.o $@
 	@if m68k-elf-nm -u $@ | grep -v -E ' (osw_reset|osw_bootpick|osw_bootfiles)$$'; then \
 	  echo "doom.o: undefined symbols above"; rm -f $@; exit 1; fi
 
