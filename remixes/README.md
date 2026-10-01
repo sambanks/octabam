@@ -12,6 +12,7 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 |---|---|---|
 | [`bottleservice`](bottleservice/README.md) | The rig + USB MIDI + USB AUDIO OUT MASTER (T8 to the computer) + USB AUDIO IN CD (the computer onto inputs C/D) + Octakit. | on hardware: Sam's MKII, image 88, 27 Sep 2026 |
 | [`bottleservice-pf`](bottleservice-pf/README.md) | bottleservice-ret + POST FADER: the bus sends follow each track's fader, mute and solo. | on hardware: an MKII, RIGPF7BP, 30 Sep 2026 |
+| [`bottleservice-pf-flag`](bottleservice-pf-flag/README.md) | bottleservice-pf + PIRATE FLAG; bottleservice-ret + POST FADER: the bus sends follow each track's fader, mute and solo. | `make check`: make check, 29 Sep 2026; not flashed |
 | [`bottleservice-rec`](bottleservice-rec/README.md) | bottleservice with 20-channel USB AUDIO OUT (tracks, MAIN, CUE) and the recorder click fixes. | on hardware: an MKII, OCTABAM1, 29 Sep 2026 |
 | [`bottleservice-rec-plen`](bottleservice-rec-plen/README.md) | bottleservice-rec + RLEN PLEN (RLEN value PLEN: one pattern loop per take). | on hardware: an MKII, OCTABAM2, 29 Sep 2026 |
 | [`bottleservice-ret`](bottleservice-ret/README.md) | bottleservice-rec-plen + RETURNS: the reverb return on T8's FX2 (VRB), into T8's input or MAIN, not onto T5. | on hardware: an MKII, BSRET3, 29 Sep 2026 |
@@ -29,5 +30,6 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 | remix | contains | proof |
 |---|---|---|
 | [`base`](base/README.md) | stock's fourteen effects, whole, plus MAIN MENU > OS: the smallest image that can boot another one. | port-gated: verify_osswitch and verify_dspvectors; the same park ran on an MKII 29 Sep 2026 in bottleservice-ret |
+| [`doom`](doom/README.md) | Doom on the panel, with sound: an .OBI that the OS SWITCH boots into Doom; QUIT goes home. | on hardware: an MKII, 1 Oct 2026 (ffa6ff78): Doom with music, through OS SWITCH |
 
 Never share a built image: it contains Elektron's OS.

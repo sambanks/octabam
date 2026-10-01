@@ -5,7 +5,7 @@
 ; (schema.DspHook) and is replayed at the end. The mixdown (P:$238..$2d4,
 ; both the plain and the MASTER TRACK paths end here) has just written this
 ; frame's 16 samples into the ring half at x:>$203, eight words a sample:
-; words 0/1 the cue bus, 2/3 MAIN L/R (docs/firmware/COLDFIRE_PORT.md O23,
+; words 0/1 the cue bus, 2/3 MAIN L/R (git show 666b6154:docs/firmware/COLDFIRE_PORT.md O23,
 ; "the buffer map"). Doom's pair is added into words 2/3 with the store's
 ; limiter, so it is on MAIN whatever the mixer says, and in what the
 ; recorder's MAIN source and the cue mix read after this point.

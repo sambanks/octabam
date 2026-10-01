@@ -7,7 +7,7 @@ Markers as in `docs/firmware/CHIP.md`: ✅ measured (under the ColdFire port
 unless it says the unit), 🟡 inferred, with what would falsify it.
 On an MKII: boots into Doom from the picker, picture upright, Doom's speed
 (30 Sep 2026); the music from the card and the faster turning (1 Oct 2026,
-ffa6ff78, after two freezes found by bisect: `docs/remixer/FAILURE_MODES.md`).
+ffa6ff78, after two freezes found by bisect: `docs/contributing/FAILURE_MODES.md`).
 
 ## Use
 
@@ -78,7 +78,7 @@ Every other key and knob is swallowed while Doom has the panel.
 ## The screen
 
 The panel is 128 × 64 at one bit per pixel. It has a second plane nobody
-understands yet, so there are no greys (`docs/firmware/PANEL.md` §1).
+understands yet, so there are no greys (`docs/firmware/PANEL.md` section 1).
 Doom's 8-bit frame (doomgeneric built `CMAP256`) is box-filtered to
 luminance through a per-palette table, run through a 3 × 3 unsharp mask,
 contrast-stretched ((v − 20) × 1.6) and ordered-dithered 4 × 4. Doom
@@ -122,7 +122,7 @@ out, and a plain stretch loses the pillars against their own textures.
   (`0x45029de0..0x46025de0`). Doom uses the lower 2,200: the WAD at the base,
   then the heap (the 6 MB zone, the 256 KB frame), then a 256 KB stack at
   `0x45d0dde0`. The top 528 pages are left alone because stock zero-fills
-  them at every project load (Octakit's window, `docs/remixer/PLACEMENT.md`).
+  them at every project load (Octakit's window, `docs/contributing/PLACEMENT.md`).
   Code and data (740 KB) sit in the platform runtime at `0x40a955e0`, below
   OS SWITCH's mailbox. The arena keeps 59 MB for samples.
 - **Running.** A soft timer on the sys tick (~120 Hz on the unit, measured

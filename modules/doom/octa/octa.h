@@ -45,7 +45,7 @@
 /* ---- DRAM: 2,728 pages off the top of the audio page arena (manifest.py
  * ArenaReserve), of which Doom uses the lower 2,200. The top 528 are
  * Octakit's window, which stock zero-fills at every project load
- * (docs/remixer/PLACEMENT.md); DOOM holds the project load back, but it
+ * (docs/contributing/PLACEMENT.md); DOOM holds the project load back, but it
  * does not bet on that. manifest.py re-derives both ends from
  * tools/remix/arena.py and refuses on drift. ---------------------------- */
 #define DOOM_RAM_BASE  0x45029de0u
