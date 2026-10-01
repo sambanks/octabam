@@ -79,6 +79,7 @@ namespace
 	//   tx                -> tx <hex>      UART A's transmit bytes since the last tx
 	//   peek <addr> <len> -> peek <hex>    len <= 4096; unmapped -> err
 	//   poke <addr> <hex> -> ok
+	//   call <addr> [<arg>...] -> ok d0=<hex>   a firmware routine run as main (--call's callAsMain)
 	//   frame on|off      -> ok            Rtos::setFrame
 	//   status            -> status sample= ms= frames= frame=on|off idle= wall=
 	//   quit              -> ok            then exit 0
@@ -825,6 +826,34 @@ namespace
 				reply("ok");
 				continue;
 			}
+			if(cmd == "call")
+			{
+				// `call <addr> [<arg>...]` -> ok d0=<hex> | err <why>: a firmware
+				// routine run as main (Rtos::callAsMain, --call's), for a routine
+				// that cannot genuinely block. modules/os-switch's osw_reupload
+				// (verify_osswitch: park the DSP, then the stock upload).
+				uint64_t addr = 0;
+				std::vector<uint32_t> args;
+				bool okArgs = w.size() >= 2 && parseNumber(w[1], addr) && addr <= 0xffffffffull;
+				for(size_t i = 2; okArgs && i < w.size(); ++i)
+				{
+					uint64_t v = 0;
+					okArgs = parseNumber(w[i], v) && v <= 0xffffffffull;
+					args.push_back(static_cast<uint32_t>(v));
+				}
+				if(!okArgs)
+				{
+					reply("err usage: call <addr> [<arg>...]");
+					continue;
+				}
+				uint32_t d0 = 0;
+				if(_rtos.callAsMain(static_cast<uint32_t>(addr), args, d0, 400000000))
+					std::snprintf(buf, sizeof buf, "ok d0=%#x", d0);
+				else
+					std::snprintf(buf, sizeof buf, "err did not return: %s", _rtos.why().c_str());
+				reply(buf);
+				continue;
+			}
 			if(cmd == "frame")
 			{
 				if(w.size() != 2 || (w[1] != "on" && w[1] != "off"))
@@ -1218,6 +1247,7 @@ int main(int _argc, char** _argv)
 	std::string watchRead;		// ADDR,LEN -- log the first 64 data READS of that range, with the reading PC
 	std::string watchPc;		// comma-separated addresses -- log registers there (route A's own flag)
 	bool namesEarly = false;	// write the SET/PROJECT names BEFORE the mount -- see O7b
+	bool bootLoad = false;		// a power-on: names before the mount, the firmware's own LOAD PROJECT only
 	std::string hostPortLog;	// every write into the DSP host-port window -> FILE (O8)
 	bool dsp = false;			// O8: put the two real DSP cores behind the host port
 	bool dspRt = false;			// O17: --dsp-rt -- the cores under the JIT on worker threads, on the lockstep schedule (dsp.cpp, THE REAL-TIME MODE); --interactive only
@@ -1240,6 +1270,7 @@ int main(int _argc, char** _argv)
 	std::string dspPcWatch;		// O9b: core:pc -- registers at the last 24 arrivals at that DSP PC
 	std::string dspStopwatch;	// O12: core:startpc:stoppc -- instructions between the two, per pair (the cycle meter)
 	std::string dspWatch;		// O9b: core:space:addr -- the last 16 writers of one DSP word
+	std::string dspResetOn;		// --dsp-reset-on addr[:bit] -- MODEL a DSP reset line the ColdFire can pull: a write to that byte with that bit set (default 6, RCR FRCRSTOUT) puts both cores back in their boot ROM. For DSP RESET PROBE's gate, which needs the probe to report a reset when there IS one; it says nothing about the hardware
 	std::string dspMap;		// O9: per-frame non-zero counts per 4K chunk of both cores' X and Y -> FILE
 	std::string dspWrites;		// O9: per-frame NON-ZERO WRITE counts per 256-word region of both cores' X and Y -> FILE
 	std::string coverage;		// O9b: every ColdFire PC executed from the transport start on, with its count -> FILE (diff two runs)
@@ -1247,6 +1278,8 @@ int main(int _argc, char** _argv)
 	double dspLazy = ot::DspPair::g_lazyDefault;	// O16c: --dsp-lazy N -- the pair's ticks are booked and replayed in chunks of up to N DSP instructions at the ColdFire's touch points (0 = the per-tick path); the default in every mode, byte-identical to it
 	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
 	std::string pokeEarly;		// the same, written before --call (the current-track byte 0x80000000 an editor call reads)
+	std::string preload;		// "addr=path[;...]": a file's bytes into memory BEFORE the boot runs -- what a reset leaves
+								// in SDRAM (modules/os-switch's stage) or in NOR (the bootstrap version word at 0x3ffc)
 	std::string callSpec;		// "addr[,arg,...]": a firmware routine called AS MAIN after the load (a menu action the port has no panel for -- Part Reload, 14 Sep 2026)
 	int callAt = -1;			// with --sequencer: make that call this many frames AFTER the transport start instead (a panel edit while playing: the transport start re-applies the part over the live lane, so an edit made before it is gone)
 	std::vector<std::string> scenarios;	// 29 Sep 2026: --scenario "LOG ARGS...", repeatable: after the load the port forks one child per scenario; each starts from the same loaded machine (the snapshot is the fork), writes its stdout to LOG and takes ARGS as its post-load options (--sequencer, --frames, --step, --poke, --call, --midi, --mem-dump, --live-script, ...). One LOAD PROJECT instead of one per run
@@ -1303,6 +1336,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--watch-read" && i + 1 < _argc)	watchRead = _argv[++i];
 		else if(a == "--watch-pc" && i + 1 < _argc)	watchPc = _argv[++i];
 		else if(a == "--names-early")			namesEarly = true;
+		else if(a == "--boot-load")				bootLoad = true;
 		else if(a == "--hostport-log" && i + 1 < _argc)	hostPortLog = _argv[++i];
 		else if(a == "--dsp")					dsp = true;
 		else if(a == "--dsp-rt")				{ dsp = true; dspRt = true; }
@@ -1327,6 +1361,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--pre-roll" && i + 1 < _argc)	preRoll = std::atoi(_argv[++i]);
 		else if(a == "--dsp-map" && i + 1 < _argc)	dspMap = _argv[++i];
 		else if(a == "--dsp-watch" && i + 1 < _argc)	dspWatch = _argv[++i];
+		else if(a == "--dsp-reset-on" && i + 1 < _argc)	dspResetOn = _argv[++i];
 		else if(a == "--dsp-pcwatch" && i + 1 < _argc)	dspPcWatch = _argv[++i];
 		else if(a == "--dsp-stopwatch" && i + 1 < _argc)	dspStopwatch = _argv[++i];
 		else if(a == "--dsp-writes" && i + 1 < _argc)	dspWrites = _argv[++i];
@@ -1337,6 +1372,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--card-out" && i + 1 < _argc)	cardOut = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
 		else if(a == "--poke-early" && i + 1 < _argc)	pokeEarly = _argv[++i];
+		else if(a == "--preload" && i + 1 < _argc)	preload = _argv[++i];
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
 		else if(a == "--call-at" && i + 1 < _argc)	callAt = std::atoi(_argv[++i]);
 		else if(a == "--step" && i + 1 < _argc)		steps.emplace_back(_argv[++i]);
@@ -1416,6 +1452,30 @@ int main(int _argc, char** _argv)
 	std::printf("image      : %s (%zu bytes) at %#x\n", image.c_str(), img.size(), ot::Machine::g_imageBase);
 
 	ot::Machine m(img);
+	// --preload: memory as a reset finds it. The port boots every image into
+	// zeroed RAM with NOR unmodelled (0x3ffc reads 0, so the entry takes the
+	// bootstrap-upgrade branch); a file here stands in for what the hardware
+	// would hold before the OS entry runs.
+	for(size_t q = 0; q < preload.size();)
+	{
+		auto e = preload.find(';', q);
+		if(e == std::string::npos) e = preload.size();
+		const auto spec = preload.substr(q, e - q);
+		q = e + 1;
+		const auto eq = spec.find('=');
+		if(eq == std::string::npos)
+			continue;
+		const auto addr = static_cast<uint32_t>(std::strtoul(spec.substr(0, eq).c_str(), nullptr, 0));
+		const auto bytes = readFile(spec.substr(eq + 1));
+		if(bytes.empty())
+		{
+			std::printf("--preload: cannot read %s\n", spec.substr(eq + 1).c_str());
+			return 2;
+		}
+		for(size_t k = 0; k < bytes.size(); ++k)
+			m.write8(addr + static_cast<uint32_t>(k), bytes[k]);
+		std::printf("preload    : %s (%zu bytes) at %#x\n", spec.substr(eq + 1).c_str(), bytes.size(), addr);
+	}
 	// --mkii: boot as an MKII. The boot probe at 0x4001f8a0 sets the MKII flag
 	// 0x46c8d18c, then ten times drives GPIO 0xfc0a403a bit 5 high and low
 	// and reads bit 6: on the MKII the two pins are tied, bit 6 follows bit 5
@@ -1501,6 +1561,29 @@ int main(int _argc, char** _argv)
 			int core = 0; char space = 'X'; unsigned addr = 0;
 			if(std::sscanf(dspWatch.c_str(), "%d:%c:%x", &core, &space, &addr) == 3)
 				dspPair->setWriteWatch(core, space, addr);
+		}
+		if(!dspResetOn.empty())
+		{
+			unsigned addr = 0; int bit = 6;
+			const auto colon = dspResetOn.find(':');
+			addr = static_cast<unsigned>(std::strtoul(dspResetOn.substr(0, colon).c_str(), nullptr, 0));
+			if(colon != std::string::npos)
+				bit = std::atoi(dspResetOn.substr(colon + 1).c_str());
+			if(!addr || bit < 0 || bit > 31)
+			{
+				std::printf("--dsp-reset-on: expected addr[:bit], got %s\n", dspResetOn.c_str());
+				return 2;
+			}
+			if(dspRt)
+			{
+				std::printf("--dsp-reset-on: lockstep only (the rt cores run on their own threads)\n");
+				return 2;
+			}
+			ot::DspPair* dp = dspPair.get();
+			const uint32_t mask = 1u << bit;
+			m.addWriteWatch(addr, addr, [dp, mask](uint32_t, uint8_t, uint32_t _val, uint32_t)
+				{ if(_val & mask) dp->bootReset(); });
+			std::printf("dsp-reset  : MODELLED -- a write to %#x with bit %d set puts both cores back in their boot ROM (not a hardware claim; dsp.h bootReset)\n", addr, bit);
 		}
 		if(dspDirty)
 		{
@@ -1816,7 +1899,7 @@ int main(int _argc, char** _argv)
 				m.setPeriphTrace(!periphTrace.empty());
 				if(ataLatency >= 0.0)
 					rtos.setAtaLatency(ataLatency);
-				load = rtos.loadProjectLive(setName, projectName, loadMs, 3000.0, namesEarly);
+				load = rtos.loadProjectLive(setName, projectName, loadMs, 3000.0, namesEarly, bootLoad);
 				const auto& r = load;
 				m.setPeriphTrace(false);
 				std::printf("             card ready: %#x, LOAD PROJECT posted: %s, "

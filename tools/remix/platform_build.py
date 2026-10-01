@@ -53,6 +53,14 @@ def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int, includes=N
     work.mkdir(parents=True, exist_ok=True)
     objs = []
     for i, (key, u) in enumerate(units):
+        if str(u.source).endswith(".o"):
+            # A unit compiled from C (modules/doom): the object is made by
+            # the Makefile beside it, then linked as is -- no include, no
+            # assembly. Every other unit's path below is unchanged.
+            src = ROOT / u.source
+            _run(["make", "-s", "-C", src.parent, src.name], work)
+            objs.append(src)
+            continue
         obj = work / f"{i:02d}_{u.label}.o"
         inc = []
         if includes and u.label in includes:
@@ -101,7 +109,8 @@ def preboot_layout(layout, entries):
     return result
 
 
-def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, preboot=(), includes=None):
+def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, preboot=(), includes=None,
+          early=()):
     """units: [(module key, Linked)] with dram=True, in link order.
     payloads: [dict(name, blob, stage, dst, rawlen, rhash, backup)] for
     payloads built elsewhere (Octakit): `blob` = signature + GKA3 stream.
@@ -169,12 +178,29 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, prebo
         pre += [f"        .align 4", f"preblob{i}:", f"        .incbin \"preblob{i}.bin\""]
     if preboot:
         (work / "pretable.inc").write_text("\n".join(pre) + "\n")
+    # LOADER UNITS (schema.Linked.loader): their source, after their include
+    # text, inline in the loader's one assembly -- `.include "remix.inc"`
+    # is the include text itself here. Empty for every remix without one,
+    # so the loader's bytes do not move for them.
+    ear = []
+    for u in early:
+        src = (ROOT / u.source).read_text().replace('.include "remix.inc"', "")
+        ear += [f"| ---- {u.label} ({u.source})", (includes or {}).get(u.label, ""), src,
+                "        .text", "        .align  2"]
+    (work / "early.inc").write_text("\n".join(ear) + "\n")
     o, e, b = work / "loader.o", work / "loader.elf", work / "append.bin"
     _run(["m68k-elf-as", "-mcpu=5475", "-I", work, *(["--defsym", "PREBOOT=1"] if preboot else []),
           "-o", o, ROOT / "tools/remix/loader.S"], work)
     _run(["m68k-elf-ld", f"-Ttext=0x{LOADER_AT:x}", "-o", e, o], work)
     _run(["m68k-elf-objcopy", "-O", "binary", e, b], work)
     append = b.read_bytes()
+    if early:
+        # the loader units' globals, for the detours that name them
+        nm = subprocess.run(["m68k-elf-nm", e], capture_output=True, text=True, check=True).stdout
+        for line in nm.splitlines():
+            f = line.split()
+            if len(f) == 3 and f[1] == "T":
+                symbols.setdefault(f[2], int(f[0], 16))
     # the boot site's stock `jsr 0x40001e50`, redirected to the loader; only
     # needed when no other payload's own writes already route boot here
     boot_poke = (0x4000050C, bytes.fromhex("4eb940001e50"),

@@ -250,6 +250,33 @@ def _bank_write(pdir, banknum, mutate, guard=True):
         data[-2:] = ck.to_bytes(2, "big")
         path.write_bytes(bytes(data))
 
+def set_master_track(pdir, on):
+    """MASTER_TRACK=0|1 in project.work and project.strd, byte for byte
+    otherwise: the line's CRLF and every other byte are kept (a text
+    re-save of the file reads as PARSE ERROR on the unit). The project must
+    be closed on the unit (it auto-saves). RETURNS (docs/proposals/
+    RETURNS.md) sends the returns through T8 when this is on."""
+    n = 0
+    for name in ("project.work", "project.strd"):
+        path = pdir / name
+        if not path.exists():
+            continue
+        raw = path.read_bytes()
+        key = b"\r\nMASTER_TRACK="
+        i = raw.find(key)
+        if i < 0 or raw.find(key, i + 1) >= 0:
+            sys.exit(f"{path}: expected exactly one MASTER_TRACK line")
+        j = i + len(key)
+        if raw[j:j + 3] not in (b"0\r\n", b"1\r\n"):
+            sys.exit(f"{path}: MASTER_TRACK value is {raw[j:j + 3]!r}, not 0/1")
+        new = raw[:j] + (b"1" if on else b"0") + raw[j + 1:]
+        if new != raw:
+            path.write_bytes(new)
+            n += 1
+        print(f"{path}: MASTER_TRACK={1 if on else 0}")
+    return n
+
+
 def set_part_name(pdir, banknum, part, name):
     name = name.upper()[:6]
     def mut(data):
@@ -632,6 +659,10 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True, keep_mode=F
 # single-payload module on the other core runs as SEND under SPEC (the
 # absent server's id aliases to SEND): nothing hangs, no engine runs.
 PAYLOAD_TRACKS = {"A": range(4, 8), "B": range(0, 4)}
+# A one-core module runs on its core's first track (the bus engines, locked
+# there) unless named here: RETURNS runs on T8's FX2 (r7 == $6b00,
+# docs/proposals/RETURNS.md) and does nothing anywhere else.
+HOST_TRACK = {"RETURNS": 7}
 
 
 def wrong_core(pdir):
@@ -656,10 +687,11 @@ def wrong_core(pdir):
                     lo, hi = PAYLOAD_TRACKS[hit[1]][0] + 1, PAYLOAD_TRACKS[hit[1]][-1] + 1
                     out.append(f"{bank.name} part {p + 1} T{t + 1}: {hit[0]} runs as SEND "
                                f"there (payload {hit[1]} = T{lo}-T{hi})")
-                elif hit is not None and t != PAYLOAD_TRACKS[hit[1]][0]:
+                elif hit is not None and t != HOST_TRACK.get(hit[0], PAYLOAD_TRACKS[hit[1]][0]):
                     # locked to the host slot (schema.Remix.locked, 22 Sep 2026)
+                    host = HOST_TRACK.get(hit[0], PAYLOAD_TRACKS[hit[1]][0])
                     out.append(f"{bank.name} part {p + 1} T{t + 1}: {hit[0]} is a dry pass "
-                               f"there (locked to T{PAYLOAD_TRACKS[hit[1]][0] + 1})")
+                               f"there (locked to T{host + 1})")
     return out
 
 
@@ -783,8 +815,12 @@ def host_rig(pdir, remix_name, guard=True):
     engines' and stations' defaults (stamp-defaults --all --keep-mode). The
     engines have no chooser row since image 52 (22 Sep 2026), so this is
     how a project comes to host them."""
+    # T8: RETURNS in a remix that carries it (docs/proposals/RETURNS.md),
+    # else the stock DELAY for its beat repeat
+    from remix import registry
+    t8 = "RETURNS" if remix_name and "RETURNS" in registry.remix(remix_name).modules else "DELAY"
     for t in range(1, NTRACKS + 1):
-        set_fx(pdir, "fx2", t, {1: "DELAY SERVER", 5: "REVERB SERVER", 8: "DELAY"}.get(t, "SEND"), guard=guard)
+        set_fx(pdir, "fx2", t, {1: "DELAY SERVER", 5: "REVERB SERVER", 8: t8}.get(t, "SEND"), guard=guard)
     stamp_defaults(pdir, remix_name, replaced_only=False, guard=guard, keep_mode=True)
 
 
@@ -1281,6 +1317,8 @@ if __name__ == "__main__":
     elif cmd == "set-gain": apply_gains(pdir, {sys.argv[3]: sys.argv[4]})
     elif cmd == "apply": apply_gains(pdir, json.loads(pathlib.Path(sys.argv[3]).read_text()))
     elif cmd == "part-name": set_part_name(pdir, int(sys.argv[3]), int(sys.argv[4]), sys.argv[5])
+    elif cmd == "master-track":                                             # <project> on|off
+        set_master_track(pdir, {"on": True, "off": False}[sys.argv[3]])
     elif cmd == "track-slot":
         # <project> <bank> <part> <track> <slot_1based> [flex|static|pickup]  (default flex)
         set_track_slot(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]),

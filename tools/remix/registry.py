@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pathlib
 import dataclasses
+import os
 import sys
 import types
 
@@ -201,6 +202,10 @@ def remix_path(name: str) -> pathlib.Path:
     return d / "remix.py" if d is not None else REMIXES_DIR / f"{name}.py"
 
 
+OS_SWITCH = "OS SWITCH"
+OCTAKIT_MIRROR = "OCTAKIT MIRROR"
+
+
 def remix(name: str | None):
     """Load the remix's remix.py (remix_path) and return its REMIX. None refuses."""
     if not name:
@@ -247,6 +252,45 @@ def remix(name: str | None):
                  and known[k].claims is not None and known[k].claims.fx1_only)
     if auto:
         r = dataclasses.replace(r, hidden=r.hidden + auto)
+    # OS SWITCH IN EVERY IMAGE (schema.Remix.os_switch): the fleet of images
+    # built here can boot one another from the card. Appended last, so no
+    # remix's chooser order moves; a ColdFire module and a DSP park hook,
+    # it takes no FX2 id.
+    if (r.os_switch and OS_SWITCH not in r.modules and OS_SWITCH in known
+            and not os.environ.get("OCTABAM_NO_OS_SWITCH")):
+        r = dataclasses.replace(r, modules=r.modules + (OS_SWITCH,))
+    # OCTAKIT MIRROR WITH EVERY OCTAKIT: her page-clipboard check halts on a
+    # page-key + CLEAR unless stock's SRAM part mirror equals the working
+    # part, which her own load path leaves unequal (modules/octakit-mirror,
+    # docs/contributing/FAILURE_MODES.md). Appended last, like OS SWITCH.
+    if ("OCTAKIT" in r.modules and OCTAKIT_MIRROR not in r.modules and OCTAKIT_MIRROR in known
+            and not os.environ.get("OCTABAM_NO_OCTAKIT_MIRROR")):
+        r = dataclasses.replace(r, modules=r.modules + (OCTAKIT_MIRROR,))
+    # AN OCTAKIT CHOOSER PICK PAST ID 28 HALTS THE UNIT: her FX1/FX2 selection
+    # wrapper refuses an effect id above stock's last (`cmpi.l #28` ->
+    # gk_machine_selection_fatal, VEC:04 at 0x45D222B0), so a module on a
+    # chooser row beside OCTAKIT takes an id <= 0x1c (RETURNS on 0x1e did
+    # this on every FX2 switch, RIGPF6BP, 30 Sep 2026). Hidden modules have
+    # no row and are never picked.
+    if "OCTAKIT" in r.modules:
+        mods = modules()
+        bad = sorted(k for k in r.modules
+                     if k in mods and getattr(mods[k], "menu", None)
+                     and mods[k].menu.fx2_id > 0x1c
+                     and (k not in r.hidden or k in r.fx1))
+        if bad:
+            raise SystemExit(
+                f"remix {r.name!r}: {bad} sit on a chooser row with an id above 0x1c "
+                f"beside OCTAKIT, whose selection wrapper halts on it (VEC:04, "
+                f"gk_machine_selection_fatal) -- move the module to a free id <= 0x1c")
+    # verify_burn's pair only: OCTABAM_NO_USB_IN leaves USB AUDIO IN out of
+    # both of its builds, as OCTABAM_NO_OS_SWITCH leaves OS SWITCH out. Its
+    # DSP inject runs once a frame at the frame head (no per-sample cycles),
+    # and it and the burn splice do not both fit a full payload A beside
+    # RETURNS (bottleservice-pf: 5 words free, the splice takes 21).
+    if os.environ.get("OCTABAM_NO_USB_IN"):
+        r = dataclasses.replace(r, modules=tuple(
+            k for k in r.modules if not k.startswith("USB AUDIO IN")))
     return r
 
 

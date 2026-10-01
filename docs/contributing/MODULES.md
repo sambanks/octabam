@@ -259,7 +259,11 @@ FX1 and FX2, so a module on a stock id replaces that effect's code wherever
 the id is selected, FX1 included, and a remix that omits the module then
 aliases the id to SEND, which takes the stock effect away from FX1 too.
 Free ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b 0x1d 0x1e
-0x1f`, of which `0x1d 0x1e 0x1f` are unclaimed.
+0x1f`, of which `0x0b 0x0f 0x17 0x1a 0x1e 0x1f` are unclaimed (`make
+modules` is the current word). Beside OCTAKIT a module on a chooser row
+takes one of `0x1c` or below: her selection wrapper halts the unit on an id
+past stock's last (RETURNS on `0x1e`, 30 Sep 2026), and the registry
+refuses it.
 
 The registry is the arbiter: `registry.modules()` refuses two modules on
 one id at import, whether or not any remix selects both. `make modules`
@@ -503,7 +507,11 @@ FX1 and FX2, so a module on a stock id replaces that effect's code wherever
 the id is selected, FX1 included, and a remix that omits the module then
 aliases the id to SEND, which takes the stock effect away from FX1 too.
 Free ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b 0x1d 0x1e
-0x1f`, of which `0x1d 0x1e 0x1f` are unclaimed.
+0x1f`, of which `0x0b 0x0f 0x17 0x1a 0x1e 0x1f` are unclaimed (`make
+modules` is the current word). Beside OCTAKIT a module on a chooser row
+takes one of `0x1c` or below: her selection wrapper halts the unit on an id
+past stock's last (RETURNS on `0x1e`, 30 Sep 2026), and the registry
+refuses it.
 
 The registry is the arbiter: `registry.modules()` refuses two modules on
 one id at import, whether or not any remix selects both. `make modules`
@@ -761,7 +769,14 @@ behind octabam's loader and depacked there at boot. The cost is 10 MB of
 the unit's 85.5 MB sample/recorder pool. `dram=False` places the unit in
 one of the OS image's free zero runs (~8 KB, shared with everyone). Prefer
 DRAM unless the code has to run before the loader, or you are matching an
-author's ROM layout byte for byte. A module whose DRAM is its own (a
+author's ROM layout byte for byte. Code that must run before the loader
+has a third form since 29 Sep 2026: `loader=True` assembles the unit INTO
+octabam's loader (`tools/remix/loader.S`), which is appended after the OS
+unpacked, so it runs at its link address from the OS's first instruction
+and takes no cave bytes (OS SWITCH's chainloader gate, reached from the OS
+entry, `modules/os-switch/chain.s`). It shares the loader's labels (prefix
+yours) and needs the platform (a DRAM unit in the remix); the loader's
+bytes do not change for a remix without one. A module whose DRAM is its own (a
 `Runtime` with its own window) declares the pages it takes with
 `ArenaReserve` so the build stacks everyone's reservations.
 

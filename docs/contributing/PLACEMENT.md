@@ -11,6 +11,59 @@ it is, not an address; the build decides which bytes land where.
 | **DRAM unit** | `Linked(..., dram=True)` | linked with every other DRAM unit in the remix as one image, packed, appended after the OS behind octabam's loader, depacked at boot into the platform's arena reserve | 10 MiB, off the unit's sample/recorder pool |
 | **Appended runtime** | `Runtime` (a recipe: Octakit's `firmware.json`) + `ArenaReserve` | its own pages of the same arena, as a payload of the same loader | the author's (Octakit: 528 pages) |
 
+A fourth class exists on the DSP side, for one kind of code only:
+
+| class | declared as | where it lands | budget |
+|---|---|---|---|
+| **Pinned DSP section** | `DspSection(pins=(...), pin_split_label=...)` | fixed P addresses instead of the harvested effect region: the interrupt vectors stock leaves as `jmp *`. One address per piece, cut at one label with a one-word bridge jump, so a section can span two runs and cost the region **nothing** | ✅ read from the image: payload A 50 dead words (`$02..$0F`, `$1A..$1B`, `$1E..$3F`), payload B 58 (`$02..$0F`, `$14..$3F`) |
+
+Stock's unused vectors are self-jumps -- an interrupt that fired there
+would spin the core inside it for good, which is how you know stock never
+enables them. `tools/verify/verify_dspvectors.py` proves that on every
+build (the runs are all self-jumps; no DMA whose vector is in one has DIE
+set; no ESAI control word has an interrupt enable; the set of peripherals
+either payload configures is the audited one), and that gate is the licence
+for the class. The build refuses to pin over anything that is not still the
+stock pattern, refuses a head that does not fit, and asserts that both
+halves assemble to the same length at either origin rather than assuming
+it. The ledger claims the pin by name.
+
+OS SWITCH's DSP park is the first user, and it now costs the region
+**zero**: 31 words at `P:$20..$3E` (entered by `jsr` at `P:$1E`, host
+command `$0F`), a one-word bridge, and 8 words at `P:$06..$0D`. `$02`
+(stack error) and `$04` (illegal instruction) are deliberately left as
+stock's freeze-traps -- those fire when something is already wrong, and a
+frozen core is easier to diagnose than one running park words.
+
+✅ **On an MKII, 29 Sep 2026**, in its first form (22 words pinned, an
+18-word tail in the region): `bottleservice-ret` booted from a switch,
+played a session with the park resident in the vector table, and switched
+away again with audio working -- the park itself running from the vectors.
+✅ **And the two-run form, the same day**: `base` -- stock's fourteen
+effects plus the switcher, the park wholly in dead vectors -- booted from a
+switch with the stock chooser intact, played, and switched away again. So
+the chip runs code in the exception-vector slots and takes the one-word
+bridge jump between two runs.
+
+**What this buys.** An image that harvests nothing can carry the switcher:
+`remixes/base/` is stock's fourteen effects, whole, plus MAIN MENU > OS.
+Harvesting an effect is now something you do to get words for a MODULE, not
+to afford the switcher.
+
+**Why the vectors and not the top of P.** ✅ Measured 29 Sep 2026: the
+core's default memory map gives 8K words of P (`0x2000`), and stock's code
+stops short of it -- payload A ends at `0x01fdf` (33 words spare), payload
+B at `0x01d9f` (609). That space is real RAM and it is UNREACHABLE by the
+build: code is placed by rewriting words inside the payload's existing load
+records, and no record covers it. Creating one means growing payload A's
+blob, and payload B's begins at `0x400f59ef` -- the exact byte A's ends on,
+zero slack -- so it would shift B, the `FUN_40001b18(0x400f59ef)` call site
+and the boot copy, and every DSP bit-identity baseline with them. Stock's
+low P is otherwise full to the word: A loads all 8,159 of it in 66 records,
+B all 7,583 in 46, with no holes between them. So the free-but-loaded
+vector slots are the only P words a module can take without an effect
+giving up its own.
+
 The OS-image edits every class needs (a detour at a stock instruction, a
 poke, a grown table) are `Detour`, `Poke`, `TableGrow`, wired by symbol.
 `tools/remix/ledger.py` refuses two modules that claim one address before
@@ -104,6 +157,17 @@ recipe writes are skipped, and the build writes the combined values. The
 follows it page-aligned; the ceiling is the reserve's end. The reserve is
 always the first 1,707 pages, so a remix without Octakit boots the same
 bytes to the same places.
+
+**OS SWITCH's stage** (`modules/os-switch`, 29 Sep 2026) is the top of this
+reserve, `0x41200000..0x41495de0`: a 64-byte mailbox, a 40-byte copy stub
+at `+0x100`, the staged image from `+0x1000` (2,706,400 B). It is written
+by the running OS just before a reset and read by the next boot's OS
+entry, before anything else runs; nothing between a reset and the OS
+entry writes SDRAM outside the image the bootstrap unpacks
+(`docs/firmware/ARCHITECTURE.md` section 3a). In a remix carrying the module its
+gate refuses a runtime and stage that reach the mailbox (`os-switch`'s
+own end at `0x40a9788d`, measured from its build's
+`layout.json`).
 
 The OS never touches a reservation again: the arena clear starts at the
 new base, the boot-time copies follow the literal, and the page allocator

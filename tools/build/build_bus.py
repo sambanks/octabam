@@ -494,6 +494,12 @@ _LISTLINE = re.compile(r"^([0-9a-f]{6}): (\S+)(?:\s+(.*?))?\s*; "
 # build whose count differs from this table stops with the site list: a new
 # site needs its operand audited and this table updated; a vanished site
 # needs the table updated so the count stays exact.
+# The placeholder a pinned section's bridge jump carries until the build
+# knows where the second piece went (schema.DspSection.pins). A 12-bit
+# short-jump target, because that one-word form is the only jmp dsp_asm
+# encodes.
+PIN_BRIDGE = "$fab"
+
 MPYSU_AUDITED = {
     "REVERB SERVER": {"x0,y0,a": 12, "x0,x1,a": 9, "x1,y1,a": 4},
     "CHARACTER":     {"x1,y1,b": 1},
@@ -561,6 +567,20 @@ def assemble_syms(src_text, org, label=""):
         import tempfile
         _SCRATCH = pathlib.Path(tempfile.mkdtemp(prefix="build_bus."))
     tmp, binf, symf = (_SCRATCH / n for n in ("src.asm", "out.bin", "out.sym"))
+    # dsp_asm encodes the bit-test BRANCHES (brset/brclr/bsset/bsclr) with the
+    # target's ABSOLUTE address where the chip takes a displacement, and the
+    # round-trip listing prints it back unchanged (29 Sep 2026, AGENTS.md):
+    # refuse them; btst + bcs/bcc, or jset/jclr (absolute), instead.
+    # ONE form is exempt: a literal 0 target, the branch-to-itself wait the
+    # stock bootstraps use (`brclr #0,x:<<$ffffc3,0` = 0cc300 000000, the
+    # displacement written as the number the chip takes; OS SWITCH's DSP
+    # park, dsp_park.asm, run on the unit 29 Sep 2026).
+    _bad = [m.group(1) for m in re.finditer(
+        r"^[^;\n]*\b(brset|brclr|bsset|bsclr)\b([^;\n]*)", src_text, re.M | re.I)
+        if not re.search(r",\s*0\s*$", m.group(2))]
+    if _bad:
+        sys.exit(f"{label or 'DSP source'}: {sorted(set(_bad))} -- dsp_asm encodes these "
+                 f"with an absolute target; use btst + bcs/bcc (AGENTS.md)")
     tmp.write_text(src_text)
     r = subprocess.run([str(DIS), "-in", str(tmp), "-org", f"{org:x}",
                         "-out", str(binf), "-sym", str(symf), "-list"],
@@ -977,8 +997,12 @@ def main():
     # the caves, which is why no cave could reach one.
     _all_units = [(remix_modules()[_k], _u) for _k in REMIX.modules
                   for _u in getattr(remix_modules()[_k], "linked", ())]
-    _units = [(m, u) for m, u in _all_units if not u.dram]      # ROM-placed
+    _units = [(m, u) for m, u in _all_units if not u.dram and not u.loader]  # ROM-placed
     _dram = [(m, u) for m, u in _all_units if u.dram]           # platform runtime (1e)
+    _early = [(m, u) for m, u in _all_units if u.loader]        # in the loader itself (1e)
+    if _early and not _dram:
+        sys.exit(f"{', '.join(m.key for m, _ in _early)}: a loader unit needs the platform "
+                 f"(a DRAM unit in the remix); there is none")
     if _all_units and not _toolchain:
         sys.exit("linked units need m68k-elf-as/ld/objcopy/nm -- run `make setup` "
                  "(Homebrew: brew install m68k-elf-gcc)")
@@ -1279,7 +1303,11 @@ def main():
             [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
             reserve=_reserve, defsyms=_defsym_ovr,
             includes={_u.label: _u.include({_k: remix_modules()[_k] for _k in REMIX.modules})
-                      for _m, _u in _dram if _u.include is not None})
+                      for _m, _u in _dram + _early if _u.include is not None},
+            early=[_u for _m, _u in _early])
+        for _m, _u in _early:
+            _sym[_u.label] = _psyms
+            print(f"  {_m.key}: {_u.label} in the loader at 0x{_psyms.get(_u.label, 0):08x}")
         for _m, _u in _dram:
             _sym[_u.label] = _psyms          # detours name units; one table serves all
             if _u.reference is not None:
@@ -1978,6 +2006,9 @@ mkgo:""",
     if os.environ.get("XBUS") == "1":
         # Overridable so the next round is a one-liner, not a code edit.
         XBUS_BASE = int(os.environ.get("XBUS_BASE", "36000"), 16)
+        if "RETURNS" in REMIX.modules and XBUS_BASE != 0x36000:
+            sys.exit("RETURNS names the delay's return buffers at 0x36200.. absolutely "
+                     "(modules/returns/returns.asm): it needs the bus at 0x36000")
 
         def xbus(src, name, label):
             n = len(re.findall(r"\$9[0-9a-f]{2}\b", src))
@@ -2130,14 +2161,25 @@ mkgo:""",
             # Nothing harvested is the honest default for a stock chooser --
             # every word belongs to a stock effect that is using it -- but a
             # module of ours has to go somewhere.
-            _need = [m for m in _SEL if m.dsp is not None] + [_MODS[k] for k in HOOKED]
+            # A FULLY PINNED section needs no region at all: its words come
+            # out of stock's dead interrupt vectors (schema.DspSection.pins),
+            # which is what lets an image that keeps every stock effect carry
+            # OS SWITCH. Only sections that still want region words count.
+            _need = [m for m in ([m for m in _SEL if m.dsp is not None]
+                                 + [_MODS[k] for k in HOOKED])
+                     if not m.dsp.pins]
             if _need:
                 sys.exit(f"payload {tag}: nothing is harvested, so there is "
                          f"nowhere to place "
                          f"{', '.join(sorted(m.key for m in _need))}. Name "
                          f"the stock effects whose words this remix may take "
                          f"Take one off both choosers to give up "
-                         f"its words.")
+                         f"its words."
+                         + (" OS SWITCH is added to every remix by default "
+                            "(schema.Remix.os_switch): set os_switch=False in "
+                            "this remix to leave it out; its image stays a "
+                            "valid switch target." if any(m.key == "OS SWITCH" for m in _need)
+                            else ""))
         _sp = stock_mod.p_spans(tag)
         for _k in _harvest:
             if _k not in _sp:
@@ -2513,6 +2555,15 @@ hostquit:
             # away, and its id is already handled by the omitted-id alias.
             if absent not in NEW_IDS:
                 absent = None
+        # Any OTHER menu module whose DspSection.payloads leaves this core out
+        # (RETURNS: core 0 only) is not placed here either; its id goes to the
+        # payload's null stub (below), so a pick there does nothing. The two
+        # servers keep the SPEC rule above
+        # exactly (a non-SPEC build places both on both cores).
+        _one_core = [n for n, _t in plan
+                     if n in NEW_IDS and n not in ("DELAY SERVER", "REVERB SERVER")
+                     and tag not in remix_modules()[n].dsp.payloads]
+        plan = tuple(p for p in plan if p[0] not in _one_core)
         if NO_FB:
             # The DSP half of the NONE fallback, and it needs no new code:
             # the per-payload null stub is already in the image and is what
@@ -2685,6 +2736,78 @@ hostquit:
                       f"  id 0x{NEW_IDS[name]:02x}  Y base 0x38000  "
                       f"(DEV: OUT OF REGION, code lives in the .mem dump)")
                 continue
+            # ---- FULLY PINNED: the dead interrupt vectors ----------------
+            # A section whose pieces are all pinned (schema.DspSection.pins)
+            # takes no words from the harvested region at all -- which is
+            # what lets a remix that harvests NOTHING carry one. Stock leaves
+            # runs of vector slots as `jmp *`, a self-jump that would freeze
+            # the core if that interrupt ever fired, so they are dead words;
+            # tools/verify/verify_dspvectors.py proves nothing arms one, on
+            # every build, and is the licence for this.
+            #
+            # The runs are not long enough for a section whole, so the source
+            # carries ONE cut (`pin_split_label`) with a one-word short jump
+            # in front of it that the build points at the second piece. Each
+            # piece is ASSEMBLED at its own address and never moved: a `do`
+            # loop's end address is absolute.
+            _sec = remix_modules()[name].dsp
+            _pins = _sec.pins if _sec is not None else ()
+            if _pins:
+                _w0, _s0 = assemble_syms(src, _pins[0], label=name)
+                _split = len(_w0)
+                if len(_pins) > 1:
+                    if _sec.pin_split_label not in _s0:
+                        sys.exit(f"payload {tag}: {name} is pinned in {len(_pins)} pieces "
+                                 f"but its source defines no label "
+                                 f"{_sec.pin_split_label!r} to cut at")
+                    _split = _s0[_sec.pin_split_label] - _pins[0]
+                _cuts = [(_pins[0], 0, _split)] + \
+                        ([(_pins[1], _split, len(_w0))] if len(_pins) > 1 else [])
+                # every word this would take must still be the stock self-jump
+                # pattern it was audited as (an even word is `jmp *`, the odd
+                # one zero) -- the same assertion DspHook makes at its site
+                for _at, _lo, _hi in _cuts:
+                    for _k in range(_hi - _lo):
+                        _a, _got = _at + _k, rdw_p_at(_at + _k)
+                        if _got != ((0x0C0000 | _a) if _a % 2 == 0 else 0):
+                            sys.exit(f"payload {tag}: {name} would write P:0x{_a:05x}, which "
+                                     f"holds {_got:06x}, not the stock self-jump it was "
+                                     f"audited as; refusing")
+                _sym = {}
+                for _n, (_at, _lo, _hi) in enumerate(_cuts):
+                    # assembled so that THIS piece lands where it is pinned;
+                    # the bridge's placeholder becomes the next piece's address
+                    _s2 = src.replace(PIN_BRIDGE, f"${_pins[1]:x}") if len(_pins) > 1 else src
+                    if len(_pins) > 1 and src.count(PIN_BRIDGE) != 1:
+                        sys.exit(f"payload {tag}: {name} is cut in two, so its source must "
+                                 f"carry the bridge `jmp {PIN_BRIDGE}` exactly once; "
+                                 f"found {src.count(PIN_BRIDGE)}")
+                    _w, _syms = assemble_syms(_s2, _at - _lo, label=name)
+                    if len(_w) != len(_w0):
+                        sys.exit(f"payload {tag}: {name} assembles to {len(_w)} words at "
+                                 f"P:0x{_at - _lo:05x} and {len(_w0)} at P:0x{_pins[0]:05x} "
+                                 f"-- the encoding is not origin-invariant, so it cannot "
+                                 f"be pinned")
+                    for _k in range(_hi - _lo):
+                        wrw_p_at(_at + _k, _w[_lo + _k])
+                    if _n == 0:
+                        _sym = _syms
+                    print(f"  {'PINNED':13} P:0x{_at:05x}..0x{_at + _hi - _lo:05x} "
+                          f"({_hi - _lo:4d} words)  {name}"
+                          f"{', piece ' + str(_n + 1) if len(_cuts) > 1 else ''}"
+                          f", in stock's dead vectors (verify_dspvectors)")
+                for _h in (_sec.hooks or ()):
+                    _got = (rdw_p_at(_h.site), rdw_p_at(_h.site + 1))
+                    if _got != tuple(_h.stock):
+                        sys.exit(f"payload {tag}: {name}'s hook site P:0x{_h.site:05x} holds "
+                                 f"{_got[0]:06x} {_got[1]:06x}, not stock "
+                                 f"{_h.stock[0]:06x} {_h.stock[1]:06x}; refusing")
+                    wrw_p_at(_h.site, 0x0BF080)
+                    wrw_p_at(_h.site + 1, _sym[_h.label])
+                    print(f"  {'HOOK':13} P:0x{_h.site:05x} -> {name} {_h.label} "
+                          f"P:0x{_sym[_h.label]:05x}  {_h.note}")
+                continue
+
             # ---- pick a RUN that fits, lowest address first --------------
             # A module is one code stream, so it goes wholly inside one run.
             # First-fit in address order: with a single run this is exactly
@@ -2778,6 +2901,16 @@ hostquit:
                           f"({len(tab):4d} words)  {name}'s table")
             place(words, cursor)
             _r["cursor"] = cursor + len(words)
+            # ⚠️ THE HOOKS OF A NON-PINNED SECTION. This loop was deleted on
+            # 29 Sep 2026 by the edit that gave the PINNED path its own copy
+            # (52df014): the build then exited 0, printed no HOOK line and
+            # left the stock words in place, so USB AUDIO IN's RX inject
+            # (P:$88) and RETURNS' mixdown hook (P:$2d5) simply never
+            # existed in any image built from it. refhash cannot see it --
+            # none of its 24 configurations carries a DSP-hooked module --
+            # and every gate that does see it lives in a remix those
+            # configurations do not build. Found by a peer session running
+            # verify_usb_in on the merged tree.
             for _h in _hooks:
                 # the two stock words become `jsr >label`; the section
                 # replays the displaced instruction (schema.DspHook)
@@ -2814,6 +2947,16 @@ hostquit:
             # entry points rather than to whatever occupies its dispatch slot.
             wrw_p(pp["xtab"] + _m.menu.fx2_id * 3, fb_init)
             wrw_p(pp["xtab"] + (32 + _m.menu.fx2_id) * 3, fb_proc)
+
+        for _n in _one_core:
+            # To the payload's null stub, not the fallback: a SEND there
+            # would send on the module's own knobs (RETURNS' DLY/VRB on
+            # T1-T4, 30 Sep 2026), where the pick should do nothing.
+            wrw_p(pp["xtab"] + NEW_IDS[_n] * 3, pp["nul_i"])
+            wrw_p(pp["xtab"] + (32 + NEW_IDS[_n]) * 3, pp["nul_p"])
+            print(f"  {_n:13} NOT PLACED on this core (its payloads) -- id "
+                  f"0x{NEW_IDS[_n]:02x} -> null stub P:0x{pp['nul_i']:05x}/"
+                  f"0x{pp['nul_p']:05x} (picked here it does nothing)")
 
         if absent is not None:
             # The absent engine's id must still dispatch to something on this

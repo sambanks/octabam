@@ -39,10 +39,15 @@ pages, stride 0x1c" for the 16 × 0x14 menu-state table was dumped under
 both strides here: 0x14 holds (id 12's draw = `0x40068e00`).
 
 Root window descriptors (`0x400cbc34/48/5c/70`) are 20-byte records
-`{0x13, 0x09, 0x01, ptr, ptr}`: the category icon, 19 wide × 9 tall, `ptr`
-a plane of 19 words each holding one column byte in the high byte (bit 0 at
-the top); the second plane is `0xff80` in all four. 🟡 from octalab's fifth
-category, which draws its own icon on a MKI.
+`{0x13, 0x09, 0x01, ink, mask}` (three longs, two pointers): the category
+icon, 19 wide × 9 tall. ✅ Each plane is 19 LONGS, one per column, the
+column's nine pixels in bits 23..31 with the TOP row the LOW bit (bit 23);
+the mask is `0xff800000` in every column of all four (read from the image
+29 Sep 2026: PROJECT's page has its folded corner at bit 24's end, the top;
+drawn under the port with OS SWITCH's own icon). ❌ Retracted: "a plane of
+19 words each holding one column byte in the high byte (bit 0 at the top)"
+(from octalab's fifth category): the planes are 76 bytes apart, and read as
+words every other column comes out blank.
 
 ## 2. The tree ✅
 
@@ -53,6 +58,16 @@ category, which draws its own icon on a MKI.
 | `0x400cbd1c` | 6 | `0x400cc4e8` | SYSTEM: USB DISK MODE, OS UPGRADE, DATE/TIME, PERSONALIZE, CARD TOOLS, STATUS |
 | `0x400cbd54` | 6 | `0x400cc5a8` | CONTROL: AUDIO, INPUT, SEQUENCER, MIDI SEQUENCER, MEMORY, METRONOME |
 | `0x400cbd70` | 4 | `0x400cc638` | MIDI: CONTROL, SYNC, CHANNELS, TURBO STATUS |
+
+A fifth root category fits without touching the engine: the root window is
+five tall (`init(&0x400cbd90, 5, count)` at `0x40064c70`) and stock fills
+four. `modules/os-switch` adds OS (rows pointer `0x400cbda4` repointed to a
+five-row array in DRAM, stock's four `.incbin`'d, count `0x400cbd8c` 4 → 5;
+its child descriptor shipped initialised with 7 visible rows). The pane is
+rebuilt each time MAIN MENU opens from a detour at `0x40064c32`, the
+opener's new-window path (skipped while the menu is already up), before the
+window is created: its row count and cursor may change there. ✅ drawn and
+driven under the port, 29 Sep 2026.
 
 Root rows: window descriptor set, child set, action 0. Leaf rows: window 0,
 child 0, action or page id set.
@@ -108,7 +123,9 @@ The root row array `0x400cc698` has one reference in the image, the rows
 pointer `0x400cbda4`; live data follows the array. Copy the rows to a cave,
 append, repoint the rows pointer, bump the count in the descriptor. The
 menu widget reads the count at open time. Same move for a submenu
-(CONTROL: rows pointer `0x400cbd6c`, count `0x400cbd54`). Hardware
+(CONTROL: rows pointer `0x400cbd6c`, count `0x400cbd54`; `modules/os-switch`
+grows it to seven with its rows in DRAM, stock's six `.incbin`'d from the
+user's image, drawn and driven under the port 29 Sep 2026). Hardware
 precedent: PERSONALIZE extended by two items (`git show
 40a1f19:tools/patch_menu.s`, `git show 3ceba41:docs/history/NOTES.md`); CONTROL > REVERB /
 DELAY rows on tags 85–90. Two modules that both grow one submenu cannot

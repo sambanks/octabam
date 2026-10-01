@@ -5,10 +5,63 @@ a mode is seen on hardware.
 
 Each entry's full investigation: `git show 666b6154:docs/remixer/FAILURE_MODES.md`.
 
+## Page CLEAR (a page key + CLEAR) halts with VEC:04 on every image carrying OCTAKIT ✅ measured, worked around (OCTAKIT MIRROR, on the unit)
+
+- **Seen:** an MKII, 30 Sep 2026 (RIGPF2, RIGPF3BP, BSRET10BP): hold SRC, AMP, LFO, FX1 or FX2 and press CLEAR -> `VEC:04 ADDR:45D268FC`, any track, playing or stopped. FUNC + CLEAR (CLEAR PATTERN) is fine; BASE (no Octakit) is fine.
+- **Cause (measured under the port, OCTAKIT alone):** `0x45D268FC` is `gk_page_clipboard_fatal`, Octakit's deliberate `illegal`. Her page-clear wrapper validates every marker, then `gk_page_clipboard_validate_result` fails at `compare_payloads`: the working part (bank A part 1, `0x40170f60`) is not byte-equal to stock's SRAM working-part mirror (`0x100a4ece`). Her load path (`gk_stage_canonical`, `gk_workspace_prepare`) stages her Kit into the working part and leaves the mirror as the file had it; stock 1.40C leaves the two identical after the same load. Only a project carrying her Kit files (`kits3a`/`kits3b`) triggers it.
+- **Fix:** `modules/octakit-mirror` (appended by the registry to every remix carrying OCTAKIT): a detour at the input layer's key dispatch (`0x4003191c`) copies the current part's working bytes into the mirror just before the handler her layer records hold for CLEAR/PASTE runs. Her runtime is untouched. RIGPF4BP on the unit: CLEAR works. The source fix is Octakit's (upstream issue).
+- **Check:** `verify_octakit_mirror` -- a control build without the module must halt; SKIPs on a project without her Kit files.
+
+## USB disk mode returns corrupted reads on RIGPF3BP (bottleservice-pf) 🔴 measured, cause open
+
+- **Seen:** an MKII, 30 Sep 2026. A project copied in disk mode differed from its source in scattered 1-4-byte runs; uncached reads (`F_NOCACHE`) of the same file seconds apart returned different contents (3 of 4 files within four reads; the majority value was the true file). Later the same day, on the same image, 50 reads were clean. Three 29 Sep backups (OCTABAM12, BSRET3OS, BSRET3OS2 in disk mode) each hold one corrupt file.
+- **Not the card or cable:** under stock 1.40C (reached with OS SWITCH), 80 uncached reads over 12 files were stable and true.
+- **Cause:** open. Suspect: the USB modules' state when disk mode starts (a DAW holding the unit's USB audio). A low rate under earlier images is not ruled out for stock either.
+- **Until fixed:** card work from stock, copies verified with `tools/hw/card_verify.py` -- `cmp` right after a copy reads the Mac's page cache, not the card, and passed every corrupt copy.
+
+## OS SWITCH: "SOME ERRORS OCCURED DURING CARD SYNC. 'INVALID STATE'" on a boot picker YES ✅ measured, fixed
+
+- **Seen:** BSRET8BP, 30 Sep 2026: power-on, the boot picker, YES -> SYNCING PROJECT, then that message; the switch went through.
+- **Cause (measured):** the YES path reused the pane's OS UPGRADE stop sequence, whose `0x40022cd4(1)` posts SYNC TO CARD; at the boot picker nothing is loaded (the files job is held).
+- **Fix:** a boot-picker YES skips the sync (the next image boots from the same SRAM); the pane's YES keeps it. BSRET9BP on the unit: no message. **Check:** `verify_osswitch` (both paths).
+
+## OS SWITCH: the boot picker never opens on the unit ✅ measured, fixed
+
+- **Seen:** BSRET6BP, 30 Sep 2026: power-on went straight to the project; BOOT TRACE sent notes 1 and 12 and no 26 -- the hook was never called.
+- **Cause (measured):** the hook was the boot's LOAD PROJECT post (`0x4002574c`). A unit whose battery SRAM knows the card (id at `0x100f8584`, compared by `0x4004abcc`) never posts it: the project stays in SRAM and only the last set is mounted, which posts LOADING FILES (`0x4002573e`). The port boots SRAM zeroed, so every port boot took the reload path.
+- **Fix:** whichever of the two posts comes first opens the picker; the other is held and replayed in stock's order. BSRET7BP on the unit: it opens. **Check:** `verify_osswitch` boot case from a dumped SRAM.
+- **Lesson:** power-on behaviour is measured from SRAM a boot has left (`ot_emu --preload 0x10000000=sram.bin`), not from zeroed RAM.
+
+## RETURNS stage B: crackle, then the sequencer and the audio stop, shortly after play ✅ bisected on an MKII, cause 🟡 inferred, fixed
+
+- **Seen:** BSRET4, BSRET4B and RIGPF (29-30 Sep 2026) on MODLIIVE RET: a crackle, then the sequencer and audio stop seconds after play. Clean under the port.
+- **Bisect:** RIGT1 (no returns) fine; RIGT2 (BusVerb's return buffer in private X:$3e00, no delay return) fine; RIGT3 (buffer in private Y:$e00, delay return on) fine; RIGPF (X:$3e00 + the delay return) crashes. It needs both.
+- **Cause (🟡):** X:$3e00 was chosen from a port write census only; the unit evidently disagrees, or the combination costs something only the chip pays.
+- **Fix:** the return buffer back in private Y:$e00 (BSRET3's measured scheme). **Lesson:** a region the port calls free is a claim about the port.
+
+## DSP RESET PROBE: the boot does not finish after switching to `dsp-reset` ✅ measured, by design
+
+- **Seen:** 29 Sep 2026, a switch to DSPRESET: the probe's MIDI notes arrive, the logo stays -- indistinguishable by eye from the pre-build-14 OS SWITCH hang below.
+- **Cause:** the probe's control pass sends the boot ROM's protocol into a running payload's host port, which never gets back in step. The port agrees (`verify_boottrace`: no panel report check, no frame).
+- **Fix:** none wanted; a power-cycle boots the flashed image.
+
+## OS SWITCH: VEC:04 at PC 0x2007E788 on a file load after a switch 🟡 cause inferred, fixed
+
+- **Seen:** BSRET3OS, 29 Sep 2026, once: a switch to itself, a power-cycle, a file load -> `VEC:04 ADDR:2007E788`.
+- **Cause (🟡):** MAIN MENU's rescan listed the card through the stock dir scan (`0x4007f598`), whose one global name pool (`0x460e76ac`) and cache the project, set and sample browsers keep pointing into.
+- **Fix:** the rescan saves the pool and cache, lists into its own table and restores both. BSRET3OS2 ran the sequence clean. **Check:** `verify_osswitch` (the cache as found after the menu).
+
+## OS SWITCH: the unit hangs on the logo after a switch, keys dimmer than at power-on ✅ measured, fixed (build 14, on the unit)
+
+- **Seen:** builds 1-13, 29 Sep 2026: after the switch's reset the logo stays; builds 11-12 got to the UI and hung on play.
+- **Cause (measured with BOOT TRACE):** the soft reset restarts the ColdFire, not the DSP. (1) The next OS's upload assumes the cores in their boot ROM; they ran the old payload on. (2) Two stale words sat in core 0's host-side receive register. (3) The payload's start sets HPCR bit 7, in which the ColdFire read every record echo as `0x010101`; the record sender abandons the upload silently.
+- **Fix:** before the reset each core is sent a host command into a park (`modules/os-switch/dsp_park.asm`, in stock's dead vectors): DMA and ESAI stopped, HPCR bit 7 cleared, a boot-ROM-style loader; the ColdFire drains each receive register. Build 14 on the unit: uploads complete, audio and play work.
+
 ## Pops and clicks from T1 with BusDelay when T1 plays its own trigs 🔴 open
 
 - **Seen:** Discord, Arcdmd_, 29 Sep 2026. Image, unit model, T1's machine and trig pattern not stated.
 - **Cause:** open. The rig is tested with T1 and T5 as THRU tracks without trigs. The one earlier test with a trig on every T1 step (21 Sep 2026) gave clicks and no wash. A trig splits the host's block into two dispatcher calls; the delay's glides run on the first call only since 21 Sep 2026 (`modules/busdelay/README.md`).
+- **With RETURNS:** on RIGPF3BP (bottleservice-pf, both returns on T8) T1 and T5 play STATIC samples with a trig on step 1 of every pattern and give no click; their level and mute act on their own sound only (an MKII, 30 Sep 2026, test set RIGTEST).
 - **Fix:** open. To find out: the reporter's image, machine and trig pattern; whether the clicks land on T1's trigs; whether they follow the delay (FX2 = SEND on T1, same trigs) or the machine (a THRU host with a trig every step clicks from the THRU's re-open); the same test on T5 with BusVerb.
 
 ## Every FX1/FX2 page-2 knob turn halts under Octakit with SCENES P2 (bottleservice) ✅ measured under the port
@@ -278,3 +331,12 @@ Each entry's full investigation: `git show 666b6154:docs/remixer/FAILURE_MODES.m
 - **Seen:** image 64, 25 Sep 2026, macOS recording all sixteen USB channels: four of five takes have one cluster of sample-step events 0.75-1.5 s after stream open, on several channels, none after 2 s (60 s, 60 s, 300 s, and 120 s under a 7,170-message/s USB-MIDI flood with panel work). Device counters (vendor request 0xc0/0x55): 0 underruns, 0 overruns, no bank-duplicate movement. Image 69 (24-bit, four packets queued at a 250 µs poll): still present, 0.51-0.76 s after open, only on the right channel of each pair, in runs 124-380 frames off phase.
 - **Cause:** open. Measured: short runs out of order (−11.6, +10.3, −41 frames off the tone's phase), long-window phase agrees to 0.1 frame, so nothing is lost or repeated. Candidates: the device's packet queue on the first primes after alt 1 (the controller's add-dTD tripwire, not modelled by the port's bench), or the host's stream start. 🟡 Right-only on image 69 points at the host's stream assembly: each USB frame carries a track's L and R in one packet. Likely octemu's "some crackles" (sox opens a fresh stream per run).
 - **Fix:** none. Workaround: discard the first two seconds of every take, or hold the stream open in a DAW. A stream held open across two recordings, or a sequence counter in the packets, decides the cause.
+
+
+## DOOM with music: the unit froze, at power-on and then on the title as the music started ✅ bisected on an MKII (1 Oct 2026); cause 🟡 inferred (an unaligned FS_READ destination); fixed on the unit
+
+- **Seen:** DOOM.OBI with sound (`modules/doom`), switched to through OS SWITCH. First the stock track page showed and everything froze before `LOADING DOOM1.WAD`; with the music's card work moved out of the boot hook (`doom_audio_service()`, on the UI task's own stack), it froze on Doom's title as the music started.
+- **Bisect** (none flashed, each switched to through OS SWITCH): no sound hooks, the frame transfer alone, the DSP hook alone, both hooks silent, and effects without music all ran; music froze. Then: opening and closing the song ran; opening plus ONE 8-sector FS_READ froze, with the songs in the card root too. The first music read never returned.
+- **Cause (🟡 inferred):** the read's destination, a ring inside a struct at `0x40b0e9ac`, 4-byte aligned. Every read that works on the unit lands aligned (the WAD at `0x45029de0`, OS SWITCH's stage at `0x49201000`). The inference is that the card driver moves sectors by a mechanism (DMA or line bursts) that needs an aligned destination. The port copies sectors with the CPU, so nothing local showed it (`--ata-latency 64` included). Falsified if an aligned build froze.
+- **Fix:** ✅ on the unit (1 Oct 2026, `ffa6ff78`: the music plays): the ring is its own 512-byte-aligned block, read through the uncached alias as the stage is. That the alignment and not the alias did it is inferred, since both changed in one build. **Rule: give every stock FS_READ a sector-aligned destination.** `verify_doom` checks the alignment and refuses a music open before Doom's first tic.
+- **Port traps met on the way:** a known-SRAM boot without `--boot-load` has the port post LOAD PROJECT from its idle loop, a reload the unit never does (its error dialog stalled Doom at ~60 tics); and the DSP runs only under `--dsp`.

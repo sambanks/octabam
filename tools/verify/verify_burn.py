@@ -44,7 +44,15 @@ def run(cmd, env=None):
 
 
 def build(remix, burn):
-    env = {"REMIX": remix, "XBUS": "1", "SPEC": "1"}
+    # Both builds without OS SWITCH: its 40-word DSP park (host command
+    # only, no per-sample cycles) does not fit beside the burn splice in a
+    # full payload (bottleservice-ret: 6177 > 6158), and ship and burn must
+    # differ by the burn alone.
+    # ... and without USB AUDIO IN (its inject runs once a frame, no
+    # per-sample cycles), which does not fit beside the splice either once
+    # RETURNS fills payload A (bottleservice-pf: 5 words free).
+    env = {"REMIX": remix, "XBUS": "1", "SPEC": "1", "OCTABAM_NO_OS_SWITCH": "1",
+           "OCTABAM_NO_USB_IN": "1"}
     if burn:
         env["BURN"] = "1"
     run([sys.executable, "tools/build/build_bus.py"], env)

@@ -226,6 +226,7 @@ every map. Switching the map is an untested lever (`modules/send/README.md`).
 | `0x31000-0x31031` (50 words) | bootstrap A | `DSP.md` |
 | `0x32000-0x32039` (58 words) | bootstrap B | `DSP.md` |
 | `0x38000-0x38012` (19 words) | payload B's entry stub, `jsr`s into `0x30082`/`0x3008a` (stock cross-core code sharing) | module dump |
+| `0x38000-0x3800F` (16 words) | a per-frame mailbox: core 1's idle loop swaps it with its own `Y:0x1f0`/`0x280` (payload B `P:0x4b-0x56`), core 0 reads it (`P:0x9b-0xa2`), core 1 restores it before dispatch (`P:0x172`); it sits inside BusDelay's LineL, which survives because of the restore | disassembly, 29 Sep 2026 (🟡: not watched at runtime) |
 | `0x30000-0x37FFF` | zeroed at init | `P:0x040` |
 | `0x38000` | referenced in a DMA setup (`M_DCR2`) | `P:0x098` |
 | X data tables | ~20 lookup tables uploaded to both DSPs at boot | `TABLES.md` |

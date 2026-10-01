@@ -43,12 +43,25 @@ flowchart LR
     U["USB in<br/>the computer's L/R"] --> CD["inputs C/D"]
 ```
 
-| track | FX2 | knobs |
-|---|---|---|
-| 1 | **DELAY** (locked) | page 1: DEL · REV · FDBK · TONE · PING · WET; page 2: MODE · SCTR · DENS · SIZE · PTCH · TIME |
-| 5 | **REVERB** (locked) | page 1: DEL · REV · SIZE · SHMR · SHFT · WET; page 2: MODE · TONE · DIFF · GATE · DLY · TIME |
-| 2–4, 6–7 | **SEND** | DEL · REV |
-| 8 (master) | stock **DELAY** | stock's, for its beat repeat |
+| track | FX2 | on the track's FX2 page | in the TEMPO window |
+|---|---|---|---|
+| 1 | **DELAY** (BDLY, locked) | DEL · REV only: track 1's own sends | MODE · TIME · WET · TONE · FDBK · PING, and in GRAIN also SIZE · SCTR · DENS · PTCH |
+| 5 | **REVERB** (BVRB, locked) | DEL · REV only: track 5's own sends | MODE · TIME · WET · TONE · SIZE · DLY · SHMR · SHFT · DIFF · GATE |
+| 2–4, 6–7 | **SEND** | DEL · REV | |
+| 8 (master) | stock **DELAY** | stock's, for its beat repeat | |
+
+The host pages draw DEL and REV alone so every track's FX2 page looks the
+same (`host_slots` in `remix.py`); the engines' own knobs are on the TEMPO
+window, below (its rows follow the delay's MODE: a knob the mode does not
+use is not listed; [`tempo-bus`](../../modules/tempo-bus/README.md)). The
+two are separate controls sharing one output: tracks 1 and 5 play and
+process their own material as any track does, and the engine's wet is
+added to that track's output after its FX. So the host's LEVEL, mute,
+crossfader and cue act on the engine's return as well as on the track's
+own sound (AMP VOL and FX1 act on the track's own sound only). The
+Octatrack's mixer has eight track channels and no aux return, so the wet
+rides on one of them; a host with no material of its own is a plain return
+fader.
 
 - **DELAY** modes: CLEAN, GRAIN (a pitched granular cloud over the delay
   lines) and REVERSE, with tape wow on the loop in every mode. Up to 739 ms.
@@ -67,7 +80,10 @@ flowchart LR
 ### Three FX1 stations
 
 These sit in the FX1 chooser in place of stock's FILTER, LO-FI and CHORUS.
-The other stock FX1 effects are still there. At their default knobs all
+They are the whole chooser: FX1 lists NONE and these three, and the other
+stock effects are gone from both choosers (their DSP code is the room the
+bus and the stations are placed in; the build report lists each). Stock
+DELAY stays, on track 8. At their default knobs all
 three pass audio through unchanged.
 
 | station | in place of | modes | page 1 | page 2 |

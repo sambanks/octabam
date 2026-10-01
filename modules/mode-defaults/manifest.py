@@ -60,7 +60,7 @@ MODULE = Module(
     proof=Proof.HARDWARE, proof_note="Sam's MKII (images 26/27, 15 Sep 2026)",
     doc="A MODE turned on the panel re-defaults the knobs around it "
         "(the manifests' ModeViews), on FX1 and FX2.",
-    linked=(Linked("modedef", "modules/mode-defaults/modedef.s", include=table_inc),),
+    linked=(Linked("modedef", "modules/mode-defaults/modedef.s", include=table_inc, dram=True),),
     detours=(
         Detour(0x4003AAEA, H("4eb940027e00"), "modedef", "fx2_hook",
                "FX2 page-2 editor: after the Part store, apply the mode's view", kind="jsr"),

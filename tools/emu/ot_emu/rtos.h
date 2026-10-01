@@ -420,8 +420,14 @@ namespace ot
 		// what hardware does -- but only one of them is comparable with route
 		// A's own numbers, so `false` (the name written after the media case)
 		// is the default and is what the O7 gate measures.
+		// `_bootLoad` is a power-on as the unit has it: the names are in battery
+		// SRAM before the mount (implies `_namesEarly`) and the harness posts
+		// NOTHING -- the one LOAD PROJECT is the firmware's own, from sys's
+		// media case through 0x4002574c, which is where OS SWITCH's boot picker
+		// sits. The wait for the handler then counts from before the mount.
 		LoadResult loadProjectLive(const std::string& _set, const std::string& _project,
-			double _runMs = 6000.0, double _mountMs = 3000.0, bool _namesEarly = false);
+			double _runMs = 6000.0, double _mountMs = 3000.0, bool _namesEarly = false,
+			bool _bootLoad = false);
 		// Run until the PC reaches an address, or the budget runs out.
 		Stop runToPc(uint32_t _pc, double _ms);
 

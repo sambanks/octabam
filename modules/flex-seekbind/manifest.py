@@ -29,7 +29,12 @@ MODULE = Module(
     cf_patches=(
         CavePatch(
             label="seek-bind cave",
-            cave_addr=None,
+            # Pinned in the tail of the 338 B zero run 0x400c45b0..0x400c4702
+            # (docs/contributing/PLACEMENT.md), after SPECTRUM's SHPE formatter (89 B
+            # at 0x400c45b0): seek-bind 0x400c460c, counter 0x400c4624, spacing
+            # 0x400c4634..0x400c46c6. The floating clone window has no room
+            # beside the rig's clones and label formatters. 28 Sep 2026.
+            cave_addr=0x400c460c,
             pinned=bytes.fromhex("4a2f003b670a7001588f4ef94000f8ec588f4ef94000f8ea"),
             source="modules/flex-seekbind/seekbind.s",
             hook_addr=HOOK,

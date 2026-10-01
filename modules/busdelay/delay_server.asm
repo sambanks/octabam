@@ -438,6 +438,65 @@ bus_mine:
         move    a,n3                    ; CHAIN write - ACC read - 1: the loop
                                         ; reads the ACC at y:(r3)+ and writes
                                         ; the CHAIN at y:(r3+n3)
+; ---- RETURNS (docs/proposals/RETURNS.md, stage B) --------------------------
+; RETURNS on T8's FX2 (core 0) stamps the shared word bus+$308 every block
+; it runs. The block's first call reads and clears it, the reverb's DELAY
+; LIVE pattern (stampgr: 3 blocks of grace in raw $62, masked: r7 slots
+; start as garbage), and keeps the result for the whole block in raw $65:
+; nonzero = returns. Every call parks its PRINT TARGET in raw $66, carried
+; through the sample loop in n7 (the count goes to the `do` through x0; n7
+; is read by nothing else here, and is restored after the loop): normal, the
+; block itself, so the print is in place exactly as before; returns, this
+; call's range of the wet buffers, bus+$200 + 2 x (write offset + frame
+; offset), zeroed first, so the print leaves the wet alone there and T1
+; keeps its dry. 8 buffers x 16 x (L, R), written at the write rotation like
+; the CHAIN, read by core 0's mixdown hook three buffers back (through X:
+; the window aliases X and Y).
+        move    x:(r7+$1e),a            ; this call's frame offset
+        tst     a
+        bne     rtd_latched             ; not the block's first call
+        move    x:(r7+$19),b            ; the grace (raw $62)
+        and     #>$3,b                  ; boot garbage masked ...
+        move    b1,x0
+        move    x0,b                    ; ... and B2 clean
+        move    #>$1,x0
+        sub     x0,b
+        move    #0,x0
+        tmi     x0,b                    ; floored at 0
+        move    #>$900,a
+        add     #>$308,a
+        move    a,r5                    ; ALIVE_D
+        move    #>$3,x1                 ; (spaces the r5 write)
+        move    y:(r5),a                ; the stamp
+        move    x0,y:(r5)               ; clear-on-read (x0 is 0)
+        tst     a
+        tne     x1,b                    ; stamped: 3 blocks of grace
+        move    b,x:(r7+$19)
+        move    b,x:(r7+$1c)            ; the mode (raw $65): grace left = returns
+rtd_latched:
+        move    r0,a                    ; normal: the block, in place
+        move    x:(r7+$1c),b            ; the block's mode
+        tst     b
+        beq     rtd_ptr
+        move    x:(r7-$29),a            ; returns: write offset (0..112)
+        move    x:(r7+$1e),x0           ; + this call's frame offset
+        add     x0,a
+        asl     a                       ; stereo: 2 words a frame
+        move    #>$900,x0
+        add     x0,a
+        add     #>$200,a
+        move    a,r4                    ; the range, zeroed (m4 is linear: the
+        clr     b                       ; previous block's `dry:` left it so)
+        do      n7,>rtd_z
+        move    b,x:(r4)+
+        move    b,x:(r4)+
+rtd_z:
+rtd_ptr:
+        move    a,x:(r7+$1d)            ; the print target (raw $66)
+        move    x:(r7-$29),x1           ; x1 = the write offset AGAIN: the
+                                        ; auto-gain block below reads it as
+                                        ; "still valid from the address block
+                                        ; above", and the latch used x1
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer --------
 ; N clients summing into one accumulator word drive the delay N x as hard as
@@ -1355,7 +1414,11 @@ dkeyrun:
         move    #>$ffffff,m3
         move    x:(r7-$23),a
         move    a,n4                    ; the TIME ramp, Q8, walked per sample
-        do      n7,>dlyend
+        move    n7,x0                   ; RETURNS: the count, for the do
+        move    x0,x:(r7+$1f)           ; kept (raw $68): n7 comes back after
+        move    x:(r7+$1d),n7           ; n7 = the print target, per sample
+        do      x0,>dlyend              ; SAMPLE LOOP (the count in x0: n7
+                                        ; carries RETURNS' print target)
 ; ---- the coefficient ramps: FDBK TONE PING (1 - PING) one step each -------
         move    x:(r7+$2a),a
         move    x:(r7-$13),x0
@@ -1938,6 +2001,8 @@ pdone:
 ; goes to the CHAIN buffer, the reverb's view of the repeats (the sends
 ; themselves reach the reverb through REV, 25 Sep 2026). Every mpy
 ; is an audited-signed order: y0,x0 or x0,y1.
+        move    n7,r4                   ; RETURNS: this sample's print target
+                                        ; (r4 is free here: GRAIN is done)
         move    x:(r7+$32),x0           ; wet L = fL
         move    x0,a
         move    x0,b
@@ -1959,9 +2024,9 @@ pdone:
         move    a,y1
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET: what the host prints
-        move    x:(r0),b                ; dry L, still in place
+        move    x:(r4),b                ; dry L in place, or zero (RETURNS)
         add     x0,b                    ; + dry at unity
-        move    b,x:(r0)                ; L in place -- dry + wet*WET
+        move    b,x:(r4)+               ; dry + wet*WET, or the wet alone
         move    x:(r7+$33),x0           ; wet R = fR
         move    x0,a
         move    x0,b
@@ -1980,9 +2045,10 @@ pdone:
         move    x:(r7-$2d),y1           ; WET, this sample's
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET
-        move    x:(r0+n0),a             ; dry R
+        move    x:(r4),a                ; dry R in place, or zero (RETURNS)
         add     x0,a                    ; + dry at unity
-        move    a,x:(r0+n0)             ; R in place -- dry + wet*WET
+        move    a,x:(r4)+               ; dry + wet*WET, or the wet alone
+        move    r4,n7                   ; the next sample's target
 ; ---- the CHAIN buffer: mono average of wet*DLY ---------------------------
         move    x1,a                    ; out L
         add     b,a                     ; + out R
@@ -1994,6 +2060,7 @@ pdone:
         move    (r0)+n0                 ; advance one stereo frame: two
         move    (r0)+n0                 ; steps, n0 stays 1 (14 Sep 2026)
 dlyend:
+        move    x:(r7+$1f),n7           ; RETURNS: n7 as the dispatcher gave it
         move    n4,a
         move    a,x:(r7-$23)            ; the ramp, where the next call's
                                         ; per-block section rewrites it
@@ -2006,6 +2073,24 @@ dlyend:
         and     x0,a                    ; masked into a clean positive a
         add     #>$1,a
         move    a,y:>$991               ; the call counter
+; ---- RETURNS: stamp this buffer for core 0's hook, $5a0000 | write offset,
+; in returns mode (every call: the hook reads it three buffers on, when both
+; halves of a split block are long in). One writer (here), one clearer (the
+; hook), three buffers apart.
+        move    x:(r7+$1c),a
+        tst     a
+        beq     rtd_nost
+        move    x:(r7-$29),a            ; write offset (0..112)
+        move    a,x0
+        asr     #$4,a,a                 ; the buffer's index
+        move    #>$900,b
+        add     #>$300,b
+        add     a,b
+        move    b,r5                    ; its stamp word
+        move    #>$5a0000,a
+        add     x0,a                    ; | the write offset
+        move    a,y:(r5)
+rtd_nost:
 
 ; ---- save both phases, restore the M registers ----------------------------
         move    r1,a

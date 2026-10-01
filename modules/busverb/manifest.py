@@ -165,7 +165,11 @@ MODULE = Module(
     # The eight tank lines are hardcoded into Y:0x4000-0xBFFF, the per-core
     # FX2 instance buffer region; the ledger refuses anything else that owns
     # memory there on the same core.
-    claims=Claims(owns_fx2_buffers=True),
+    # y:$e00..$e26, core 0: the return buffer and RETURNS' flags and gains
+    # (docs/proposals/RETURNS.md). BusVerb owns them: it touches them in
+    # every remix, with or without RETURNS.
+    claims=Claims(owns_fx2_buffers=True,
+                  reserved_private_y=tuple(range(0x0e00, 0x0e27))),
     harness=Harness(layout_char="R", is_server=True),
     # the bus's two-core and one-aux gates (shared with BusDelay; run once)
     gates=(Gate('tools/verify/verify_twocore.py', remix_arg=False),

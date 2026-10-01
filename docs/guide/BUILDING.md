@@ -140,6 +140,7 @@ Output:
 
 ```
 out/OCTATRACK_OCTABAM1.bin            the card image
+out/OCTABAM1.OBI                      OS SWITCH: boots from the card root, no flash (MAIN MENU > OS)
 out/OCTATRACK_OS1.40C_OCTABAM1.syx    the MIDI image
 ```
 
@@ -185,7 +186,13 @@ warning).
 1. On the unit: **PROJECT → SYSTEM → USB DISK MODE → YES**. The card mounts
    on the computer.
 2. Copy `out/OCTATRACK_OCTABAM1.bin` to the **root** of the card, not
-   inside a folder.
+   inside a folder. Verify the copy with uncached reads:
+   `python3 tools/hw/card_verify.py compare out/OCTATRACK_OCTABAM1.bin /Volumes/<card>/OCTATRACK_OCTABAM1.bin`
+   (`cmp` right after a copy reads the computer's cache, not the card). USB
+   disk mode under some octabam images has returned corrupted reads
+   (`docs/contributing/FAILURE_MODES.md`): if `card_verify.py stable` shows
+   a file changing between reads, do the card work from stock (MAIN MENU >
+   OS > STOCK140, or the stock `.bin`).
 3. Eject the card on the computer, then leave USB DISK MODE on the unit.
    Without the eject the copy can still be in the computer's cache and the
    unit reads a truncated file.

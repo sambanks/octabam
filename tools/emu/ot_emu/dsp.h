@@ -168,6 +168,18 @@ namespace ot
 		uint64_t framesPerCommandSixteen(int _core) const;
 		uint32_t bootLength(int _core) const;		// what the ROM was told
 		uint32_t bootAddress(int _core) const;
+		// --dsp-reset-on: MODEL a DSP reset line the ColdFire can pull, for
+		// DSP RESET PROBE's gate. Both cores go back to waiting for a
+		// program: DspBoot::reset() (the vendored comment for it is "for a
+		// DSP whose reset line is asserted again while it is already running
+		// a program") and, in lockstep, a core whose boot has not finished is
+		// not stepped at all -- which is what a held reset looks like. This
+		// says NOTHING about whether the hardware has such a line; it exists
+		// so the gate can show the probe reporting a reset when there is one
+		// and none when there is not. Lockstep only (`--dsp-rt` refuses it:
+		// the cores are on their own threads).
+		void bootReset();
+		uint64_t bootResets() const { return m_bootResets; }
 		// Every host-side event, in order, when enabled: "sel", "icr", "cvr",
 		// "tx", "rx", "hc-taken". Cheap enough to leave on for a boot.
 		struct Event { uint64_t due; int core; char kind[8]; uint32_t val; };
@@ -479,6 +491,7 @@ namespace ot
 		double m_rtEdgeGateSum = 0.0;			// how far the ColdFire's clock was BEHIND an edge when it was raised (the DSP's lead at the edge), summed
 		uint64_t m_rtEdgeLateN = 0, m_rtIcrTreqDropped = 0, m_rtSkipEdges = 0, m_rtPulls = 0;
 		uint64_t m_gateCalls = 0, m_gateFalse = 0, m_gateBlocks = 0;	// the eDMA's drain gate (hostRingEmpty), both modes: a diagnostic on the OT_DSP_STATS line
+		uint64_t m_bootResets = 0;		// --dsp-reset-on: times a modelled reset line put both cores back in their ROM
 		double m_gateSpanSum = 0.0, m_gateOpenAt = -1.0, m_gateLateSum = 0.0;
 		double m_rtPullS = 0.0;
 		std::vector<std::string> m_rtShortLog;	// the first read-back words not in time, with both workers' state (a diagnostic in rtstatus)

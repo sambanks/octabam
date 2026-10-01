@@ -1441,15 +1441,17 @@ namespace ot
 	}
 
 	Rtos::LoadResult Rtos::loadProjectLive(const std::string& _set, const std::string& _project,
-		const double _runMs, const double _mountMs, const bool _namesEarly)
+		const double _runMs, const double _mountMs, const bool _namesEarly, const bool _bootLoad)
 	{
 		LoadResult out;
 		const double start = m_sample;
 
 		if(runToMainSpin() != Stop::Gate)
 			return out;
-		if(_namesEarly)
+		if(_namesEarly || _bootLoad)
 			setNames(_set, _project);
+		if(_bootLoad)
+			m_machine.countPc(g_loadHandler);
 		if(!requestCardMount())
 			return out;
 
@@ -1485,7 +1487,7 @@ namespace ot
 		// name first (`--names-early`), which is what turns this from a story
 		// into a measurement. Waiting for the join point makes the order a
 		// choice; `_namesEarly` takes the other one deliberately.
-		if(!_namesEarly)
+		if(!_namesEarly && !_bootLoad)
 		{
 			out.mediaCaseSeen = runToPc(g_mediaCaseJoin, 2000.0) == Stop::Gate;
 			// ⚠️ 12 Sep 2026, with the DMA timers modelled: the names go in AT
@@ -1542,10 +1544,18 @@ namespace ot
 		// A generous budget: with the card live the borrowed call is preempted
 		// constantly, so the step count is dominated by the OTHER tasks
 		// running underneath it, not by the call itself.
-		m_machine.countPc(g_loadHandler);
-		out.posted = callAsMain(g_postLoad, {g_projectName}, d0, 200000000);
-		if(!out.posted)
-			out.postWhy = m_why;
+		if(_bootLoad)
+		{
+			out.posted = true;	// the firmware's own post, not ours
+			out.postWhy = "the firmware's (--boot-load)";
+		}
+		else
+		{
+			m_machine.countPc(g_loadHandler);
+			out.posted = callAsMain(g_postLoad, {g_projectName}, d0, 200000000);
+			if(!out.posted)
+				out.postWhy = m_why;
+		}
 		// Run until the engine has taken LOAD PROJECT and is next at its
 		// queue receive with nothing queued (g_engineQueue), within the
 		// budget. The handler

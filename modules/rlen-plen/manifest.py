@@ -40,13 +40,18 @@ a manual REC press under the port (the key handler is not located; the
 length path is exercised by a sequencer recorder trig, which takes the same
 converter), and the PER TRACK branch on hardware.
 
-Assemble: `m68k-elf-as -mcpu=5475 -o plen.o plen_cave.s`; the build
-re-assembles, links at the resolved address and compares against the pinned
-bytes (the cave is position-independent: the one self-reference is a
-pc-relative pea).
+Placement: a DRAM unit in the platform runtime (28 Sep 2026; a floating ROM
+cave until then). The unit is position-independent (the one self-reference
+is a pc-relative pea), so the build's oracle links it alone at the old
+overflow-run address and holds it to the sha256 of the ratified bytes below;
+the two hooks are `jsr` detours to the same entries the cave hook and the
+screen poke reached. Moved because beside bottleservice's clones, label
+formatters and TEMPO BUS the ROM zero runs had no 298 B left.
 """
 
-from remix.schema import Category, Proof, CavePatch, Kind, Module
+import hashlib
+
+from remix.schema import Category, Proof, Detour, Kind, Linked, Module, Poke
 
 CONV_HOOK = 0x40006da6
 CONV_HOOK_STOCK = bytes.fromhex("712c0002" "5280")   # mvs.b 2(a4),d0; addq.l #1,d0
@@ -99,39 +104,35 @@ PLEN_CAVE_BYTES = bytes.fromhex(
 assert PLEN_CAVE_BYTES[SCREEN_OFF:SCREEN_OFF + 4] == bytes.fromhex("201f2f04")
 
 
-def emit(addr):
-    """No cave bytes (the linked source supplies them); the screen repoint
-    and the count."""
-    pokes = (
-        (SCREEN_SITE, SCREEN_STOCK,
-         bytes.fromhex("4eb9") + (addr + SCREEN_OFF).to_bytes(4, "big")),
-        (RLEN_COUNT, (65).to_bytes(4, "big"), (66).to_bytes(4, "big")),
-        (VALIDATOR_CMP, bytes.fromhex("7240"), bytes.fromhex("7241")),
-        (VALIDATOR_SET, bytes.fromhex("7640"), bytes.fromhex("7641")),
-    )
-    return b"", pokes
-
+PLEN_SHA256 = hashlib.sha256(PLEN_CAVE_BYTES).hexdigest()
 
 MODULE = Module(
     name="rlen-plen",
     key="RLEN PLEN",
     kind=Kind.CF_PATCH,
     category=Category.MACHINES, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.PORT, proof_note="26 Sep 2026",
+    proof=Proof.HARDWARE, proof_note="an MKII, OCTABAM2 (bottleservice-rec-plen, beside Octakit and the bus rig), 29 Sep 2026",
     doc="ColdFire cave: RLEN value PLEN (past MAX) = one loop of the track's "
         "pattern on its own scale, so TRIG ONE + QREC PLEN records the next "
         "pass and stops.",
-    cf_patches=(
-        CavePatch(
-            label="rlen plen cave",
-            cave_addr=None,
-            pinned=PLEN_CAVE_BYTES,
-            source="modules/rlen-plen/plen_cave.s",
-            hook_addr=CONV_HOOK,
-            hook_stock=CONV_HOOK_STOCK,
-            emit=emit,
-            report_note=" (RLEN 65 = PLEN: length := one pattern loop on the track's "
-                        "scale; setup screen draws PLEN; count 65 -> 66)",
-        ),
+    linked=(
+        # the ratified cave bytes, re-linked alone at the address the cave
+        # last floated to (position-independent, so any address would do)
+        Linked("plen", "modules/rlen-plen/plen_cave.s", cpu="5475", dram=True,
+               reference=(0x400d2998, PLEN_SHA256)),
+    ),
+    detours=(
+        Detour(CONV_HOOK, CONV_HOOK_STOCK, "plen", "cave", kind="jsr",
+               note="the arm converter's RLEN read: raw 65 = PLEN, length := one pattern loop"),
+        Detour(SCREEN_SITE, SCREEN_STOCK, "plen", "screen", kind="jsr",
+               note="RECORDING SETUP drawer: the RLEN formatter push, PLEN for 65"),
+    ),
+    pokes=(
+        Poke(RLEN_COUNT, (65).to_bytes(4, "big"), (66).to_bytes(4, "big"),
+             note="RLEN descriptor count 65 -> 66 (the editor clamps by it)"),
+        Poke(VALIDATOR_CMP, bytes.fromhex("7240"), bytes.fromhex("7241"),
+             note="part validator's RLEN max 64 -> 65 (compare)"),
+        Poke(VALIDATOR_SET, bytes.fromhex("7640"), bytes.fromhex("7641"),
+             note="part validator's RLEN max 64 -> 65 (clamp)"),
     ),
 )

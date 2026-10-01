@@ -181,6 +181,18 @@ proc:
         move    a1,x0
         move    x0,a                    ; A2-clean
         move    a,x:(r7+$5d)            ; this call's frame offset
+; ---- RETURNS (docs/proposals/RETURNS.md): this block's print mode --------
+; RETURNS on T8's FX2 writes the magic word to y:$e20 every block it runs;
+; this call reads it on the block's first call, keeps it for the block in
+; y:$e24 and clears it, so RETURNS gone for one block is normal print again.
+; One writer (RETURNS), one clearer (here), both on core 0.
+        tst     a                       ; a = this call's frame offset
+        bne     <rt_latched             ; not the block's first call
+        move    y:>$e20,a
+        move    a,y:>$e24               ; the mode: magic = returns
+        clr     a
+        move    a,y:>$e20
+rt_latched:
 bus_off_done:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
@@ -211,18 +223,18 @@ bus_off_done:
 ; Inert in a normal build: it is a comment.
         move    x:(r7+$5d),a
         tst     a
-        bne     bus_notfirst                ; not this block's first call
+        bne     <bus_notfirst               ; not this block's first call
         move    r7,a
         move    #>$6200,x0
         cmp     x0,a
-        beq     bus_dohk                ; position 0: always the housekeeper
+        beq     <bus_dohk               ; position 0: always the housekeeper
         move    y:>$900,a
         and     #>$70,a
         move    a1,x0
         move    x0,a                    ; offset now, A2-clean
         move    x:(r7+$6b),x0
         cmp     x0,a
-        bne     bus_seen                ; it moved: someone else housekept
+        bne     <bus_seen               ; it moved: someone else housekept
 bus_dohk:                               ; nobody did -- take over this block
 
 ; y:>$900 holds the WRITE OFFSET (0/16/32/48), not the bare buffer index --
@@ -317,10 +329,10 @@ bus_notfirst:
         move    a1,x0
         move    x0,a                    ; A2-clean before the compare
         tst     a
-        beq     bus_claim               ; free: take it
+        beq     <bus_claim              ; free: take it
         move    r7,x0
         cmp     x0,a
-        beq     bus_mine                ; already ours (split block's 2nd call)
+        beq     <bus_mine               ; already ours (split block's 2nd call)
         rts                             ; a duplicate: pass audio through
 bus_claim:
         move    r7,a
@@ -474,7 +486,7 @@ bus_mine:
         move    a,y:>$09f6              ; the AUX write pointer, for the loop
         move    x:(r7+$5d),a
         tst     a
-        bne     rvdelcnt                ; not this block's first call
+        bne     <rvdelcnt               ; not this block's first call
         move    x1,a                    ; the WRITE buffer's count, as a bare
         asr     #$4,a,a                 ; index
         move    a1,x0
@@ -512,9 +524,9 @@ rvdelcnt:
         move    x0,a                    ; A2-clean before the compare
         move    #$2c,x0
         cmp     x0,a
-        beq     warmtag
+        beq     <warmtag
         clr     a                       ; garbage tag: warm-up starts at 0
-        bra     warmrun
+        bra     <warmrun
 warmtag:
         move    x:(r7+$82),a
         and     #>$1ff,a                
@@ -522,7 +534,7 @@ warmtag:
         move    x0,a                    ; the count, A2-clean
         move    #>$100,x0
         cmp     x0,a
-        bge     warmdone                ; warmed: run the reverb
+        bge     <warmdone               ; warmed: run the reverb
 warmrun:
         move    a,x:(r7+$15)            ; count, for the save below
         asl     #$7,a,a                 ; count*128 -- clears the FULL private
@@ -1067,23 +1079,23 @@ mdcpy:
         move    x0,a                    ; SHFT index, A2-clean
         move    #>$400,b                ; -12
         tst     a
-        beq     shfst
+        beq     <shfst
         move    #>1,x0
         sub     x0,a
         move    #>$aab,b                ; +5
-        beq     shfst
+        beq     <shfst
         sub     x0,a
         move    #>$c00,b                ; +7
-        beq     shfst
+        beq     <shfst
         sub     x0,a
         move    #>$1000,b               ; +12
-        beq     shfst
+        beq     <shfst
         sub     x0,a
         move    #>$1800,b               ; +19
-        beq     shfst
+        beq     <shfst
         sub     x0,a
         move    #>$2000,b               ; +24
-        beq     shfst
+        beq     <shfst
         move    #>$400,b                ; past the table: -12
 shfst:
         move    b,x:(r7+$2c)            ; read-phase step (WIDTH's old slot)
@@ -1152,10 +1164,10 @@ shfst:
         move    x:(r6+$d),a             ; GATE: page-2 slot 9, $d's companion
         and     #>$7f00,a               ; field = val*256 samples as it stands
         tst     a
-        beq     g_off                   ; GATE=0 -> ungated
+        beq     <g_off                  ; GATE=0 -> ungated
         move    #>2048,x0
         add     x0,a                    ; 2048 + val*256
-        bra     g_st
+        bra     <g_st
 g_off:
         move    #>$7fffff,a
         move    a,x:(r7+$27)            ; GLVL: open now, not after an attack
@@ -1178,7 +1190,7 @@ g_st:                                   ; (g_off falls through with a still
         move    a1,x0                   ; extract without saturating on A2
         move    x:(r7+$14),b            ; call flag: advance once per block,
         tst     b                       ; but USE the advanced value on both
-        beq     lf3e
+        beq     <lf3e
         move    x0,x:(r7+$81)
 lf3e:
         move    x0,a
@@ -1225,7 +1237,7 @@ lf3e:
         move    a1,x0                   ; extract without saturating on A2
         move    x:(r7+$14),b            ; call flag: advance once per block,
         tst     b                       ; but USE the advanced value on both
-        beq     lf4f
+        beq     <lf4f
         move    x0,x:(r7+$4f)
 lf4f:
         move    x0,a
@@ -1276,7 +1288,7 @@ lf4f:
         move    a1,x0                   ; extract without saturating on A2
         move    x:(r7+$14),b            ; call flag: advance once per block,
         tst     b                       ; but USE the advanced value on both
-        beq     lfrsk
+        beq     <lfrsk
         move    x0,x:(r7+n7)
 lfrsk:
         move    x0,a
@@ -1520,6 +1532,37 @@ lfrol:
         move    x:(r7+$63),n3           ; read address: the loop walks them
                                         ; through n2/n3 (free: the priming's
                                         ; use of n2/n3 is over)
+; ---- RETURNS: the print goes through the buffer y:$e00.. -----------------
+; n4 = this call's range of the buffer, y:$e00 + 2 x the frame offset (the
+; offset, not r0: the block's base is X:0 on the unit and X:$80 in dsp_host,
+; AGENTS.md). Normal print: the range is prefilled with this call's dry and
+; copied back to the block after the loop, so the block ends as dry + wet
+; exactly as before. Returns: the range is prefilled with zero, the block
+; keeps its dry, and the buffer ends as the wet alone for the mixdown hook.
+; (29 Sep 2026: a return buffer in private X:$3e00 instead, beside the
+; cross-core delay return, crackled and stopped the DSP on the unit --
+; FAILURE_MODES.md; this Y form ran clean there as BSRET3 and RIGT3.)
+; r4 (m4 = $fff) addresses the buffer: y:$e00..$e1f never crosses a 4096
+; boundary, so the modulo never wraps it. r0 is left on the call's first
+; sample.
+        move    x:(r7+$5d),a            ; this call's frame offset
+        asl     a                       ; frames -> words
+        add     #>$e00,a
+        move    a,n4
+        move    a,r4
+        move    y:>$e24,a
+        cmp     #>$5a5a5a,a             ; Z = returns mode: one compare, the
+        move    #0,x0                   ; Tcc below read it (moves and the do
+        move    r0,x1                   ; r0 parked (the loop writes x1 first)
+        do      n7,>rt_pfd              ; leave the condition codes alone)
+        move    x:(r0)+,a               ; dry L ...
+        teq     x0,a                    ; ... or zero in returns mode
+        move    a,y:(r4)+
+        move    x:(r0)+,a               ; dry R ...
+        teq     x0,a
+        move    a,y:(r4)+
+rt_pfd:
+        move    x1,r0                   ; back on the call's first sample
 
         do      n7,>rvend
 
@@ -2077,15 +2120,15 @@ tankend:
         neg     a
         add     x0,a                    ; t = 640 - |age-640|
         tst     a
-        bgt     shp0                    ; t > 0 -> the LIVE half of the age
+        bgt     <shp0                   ; t > 0 -> the LIVE half of the age
         clr     a                       ; range. The upper half is silent, and
-        bra     shd0                    ; that zero is what turns 4 copies
+        bra     <shd0                   ; that zero is what turns 4 copies
 shp0:                                   ; into 2 -- the whole fix.
         move    #>256,x0
         sub     x0,a                    ; t - 256
-        blt     shr0                    ; still climbing the ramp
+        blt     <shr0                   ; still climbing the ramp
         move    #>$7fffff,a             ; past it -> full gain. The flat top is
-        bra     shd0                    ; what keeps the pair summing to ~1;
+        bra     <shd0                   ; what keeps the pair summing to ~1;
 shr0:                                   ; a pure triangle would dip to zero
         add     x0,a                    ; twice a lap.
         asl     #$f,a,a                 ; g = t/256 in Q23 (linear ramp)
@@ -2140,15 +2183,15 @@ shd0:
         neg     a
         add     x0,a
         tst     a
-        bgt     shp1                    ; t > 0 -> the LIVE half of the age
+        bgt     <shp1                   ; t > 0 -> the LIVE half of the age
         clr     a                       ; range. The upper half is silent, and
-        bra     shd1                    ; that zero is what turns 4 copies
+        bra     <shd1                   ; that zero is what turns 4 copies
 shp1:                                   ; into 2 -- the whole fix.
         move    #>256,x0
         sub     x0,a                    ; t - 256
-        blt     shr1                    ; still climbing the ramp
+        blt     <shr1                   ; still climbing the ramp
         move    #>$7fffff,a             ; past it -> full gain. The flat top is
-        bra     shd1                    ; what keeps the pair summing to ~1;
+        bra     <shd1                   ; what keeps the pair summing to ~1;
 shr1:                                   ; a pure triangle would dip to zero
         add     x0,a                    ; twice a lap.
         asl     #$f,a,a                 ; g = t/256 in Q23 (linear ramp)
@@ -2380,9 +2423,15 @@ fbB:
         move    x:(r7+$27),y0           ; GLVL (0..1)
         mpy     y0,x0,a                 ; signed (y0,x0): wet * gate
         move    a,x0                    ; gated wet L
-; THE HOST PRINT: dry + wet*WET, in place. The chain input (the aux, or
-; the delay's output while it is live) feeds the tank only; the dry the
-; host hears is its own.
+; THE HOST PRINT: dry + wet*WET. The chain input (the aux, or the delay's
+; output while it is live) feeds the tank only; the dry the host hears is
+; its own. Since RETURNS the print goes through the buffer at n4 (dry
+; prefilled, copied back after the loop; or zero, for the mixdown hook), so
+; r0 no longer walks the block here: it steps by lua, and r4 (free since the
+; tank's last lua) walks the buffer.
+        move    n4,r4                   ; this sample's buffer pair
+        lua     (r0+$2),r0              ; r0 on to the next sample (read at
+                                        ; the loop's top only)
         move    x:(r7+$09),a            ; WET, ramped per sample: + this
         move    x:(r7+$7c),y0           ; block's step
         add     y0,a
@@ -2427,9 +2476,9 @@ fbB:
         move    x:(r7+$12),a            ; y, on to the makeup
         asl     #$1,a,a                 ; x2: WET 127 = +6 dB (the stores
                                         ; below limit)
-        move    x:(r0),x0               ; dry L, still in place
+        move    y:(r4),x0               ; the prefill: dry L, or zero
         add     x0,a                    ; + dry at unity
-        move    a,x:(r0)+               ; L in place -- dry + wet; r0 on to R
+        move    a,y:(r4)+               ; dry + wet, or the wet alone
         move    y1,a
         sub     x1,a
         move    a,x0
@@ -2451,17 +2500,35 @@ fbB:
         abs     b
         move    b,x:(r7+$13)            ; |yR|
         asl     #$1,a,a                 ; x2, as on L
-        move    x:(r0),x0               ; dry R, still in place
+        move    y:(r4),x0               ; the prefill: dry R, or zero
         add     x0,a                    ; + dry at unity
-        move    a,x:(r0)+               ; R in place -- dry + wet; r0 on to
-                                        ; the next frame (n0 is not used)
+        move    a,y:(r4)+               ; dry + wet, or the wet alone
+        move    r4,n4                   ; the next sample's pair
         move    (r1)+                   ; the three line pointers advance
         move    (r2)+                   ; together and each wraps inside its
         move    (r3)+                   ; own line under m1..m3 = $fff (r4 is
                                         ; the feedback walker now, rebuilt by
                                         ; lua every sample)
 rvend:
-
+; ---- RETURNS: the normal print copies the buffer back into the block; the
+; returns print leaves the block its dry and marks the buffer fresh for the
+; mixdown hook (y:$e22, cleared by the hook: one writer, one reader).
+        move    y:>$e24,a
+        cmp     #>$5a5a5a,a
+        beq     <rt_fresh
+        move    n4,r4                   ; r0 and n4 stepped 2 x n7 words in the
+        move    r0,x1                   ; loop: copy back from the end down, R
+        do      n7,>rt_cbd              ; then L of each pair (the stock forms:
+        move    y:-(r4),a               ; y:-(r5),a and a1,x:-(r1)), dry + wet
+        move    a1,x:-(r0)              ; into the block as before
+        move    y:-(r4),a
+        move    a1,x:-(r0)
+rt_cbd:
+        move    x1,r0                   ; r0 leaves where it always has: past
+                                        ; the call's last sample
+        bra     <noloop
+rt_fresh:
+        move    a,y:>$e22               ; FRESH (a holds the magic)
 noloop:
 
 ; ---- save the phase, restore the M registers ---------------------------
