@@ -5,9 +5,9 @@ own through OS SWITCH, and quit back to the flashed OS.
 
 Markers as in `docs/firmware/CHIP.md`: ✅ measured (under the ColdFire port
 unless it says the unit), 🟡 inferred, with what would falsify it.
-On an MKII (30 Sep 2026, the build before sound): boots into Doom from the
-picker, picture upright, Doom's speed. The sound and the faster turning
-have not run on a unit.
+On an MKII: boots into Doom from the picker, picture upright, Doom's speed
+(30 Sep 2026); the music from the card and the faster turning (1 Oct 2026,
+ffa6ff78, after two freezes found by bisect: `docs/remixer/FAILURE_MODES.md`).
 
 ## Use
 
@@ -164,10 +164,9 @@ out, and a plain stretch loses the pillars against their own textures.
 
 ## Not known until it runs on the unit
 
-- 🟡 **The sound on the unit.** The DSP hook's forms have stock sites, and
-  the host-port transfer is USB AUDIO IN's hardware-run one, but this
-  hook and this transfer have not run on a chip. Falsified by silence, or
-  by a click per frame (the ring's timing against the DMA).
+- ✅ **The sound on the unit** (1 Oct 2026): the music plays through the
+  frame transfer and the DSP hook. Not yet reported: clicks or gaps over a
+  long session, and the effects' levels against the music.
 
 - 🟡 **Frame rate.** 2.5 M instructions a tic is ~10 ms at one instruction
   a cycle at 264 MHz. Doom's renderer misses a 32 KB cache a lot, so

@@ -60,11 +60,11 @@ MODULE = Module(
     kind=Kind.HYBRID,
     category=Category.REFERENCE,
     author="sanderlegit", author_url="https://github.com/sanderlegit",
-    proof=Proof.CHECK,
-    proof_note="boots under the port to the title screen and into E1M1 "
-               "(tools/verify/verify_doom.py); never on a unit",
-    doc="Doom on the panel, as an OS image of its own: boot DOOM.OBI through OS SWITCH, "
-        "quit (or FUNC+STOP) back to the flashed OS. Needs DOOM1.WAD on the card.",
+    proof=Proof.HARDWARE,
+    proof_note="an MKII, 1 Oct 2026 (ffa6ff78): booted through OS SWITCH's picker, the picture "
+               "upright, Doom's speed, the music from the card, the turning; verify_doom",
+    doc="Doom on the panel with its sound and music, as an OS image of its own: boot DOOM.OBI "
+        "through OS SWITCH, quit (or FUNC+STOP) back to the flashed OS. Needs DOOM1.WAD on the card.",
     linked=(
         Linked("doom", "modules/doom/doom.o", dram=True),
     ),

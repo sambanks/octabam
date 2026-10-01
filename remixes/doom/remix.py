@@ -14,8 +14,8 @@ from remix.schema import Proof, Remix
 
 REMIX = Remix(
     name="doom",
-    family="reference", proof=Proof.CHECK,
-    proof_note="boots into Doom under the port (tools/verify/verify_doom.py); never on a unit",
+    family="reference", proof=Proof.HARDWARE,
+    proof_note="an MKII, 1 Oct 2026 (ffa6ff78): Doom with music, through OS SWITCH",
     doc="Doom on the panel, with sound: an .OBI that the OS SWITCH boots into Doom; QUIT goes home.",
     # no stock effect: their DSP words are the region DOOM's sound hook is
     # placed in, and nothing in a Doom image plays a track
