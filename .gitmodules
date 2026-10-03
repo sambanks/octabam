@@ -35,3 +35,6 @@
 [submodule "modules/mute-modes/upstream"]
 	path = modules/mute-modes/upstream
 	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw
+[submodule "modules/repitch-repeat98-kyoti/upstream"]
+	path = modules/repitch-repeat98-kyoti/upstream
+	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw

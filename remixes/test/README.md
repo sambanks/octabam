@@ -23,6 +23,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`quantize-live-rec-toggle`](quantize-live-rec-toggle/README.md) | stock effects with QUANTIZE_LIVE_REC_TOGGLE: QUANTIZE LIVE REC from [REC] + [PLAY]. | `make check` |
 | [`reload-from-project`](reload-from-project/README.md) | stock effects with RELOAD_FROM_PROJECT: reload one track's sequence from the card while the transport runs. | `make check` |
 | [`repitch`](repitch/README.md) | stock effects with variable-speed REPITCH in the TSTR selector. | on hardware: repeat98's MKII, 16 Sep 2026 (OCTABAM81) |
+| [`repitch-repeat98-kyoti`](repitch-repeat98-kyoti/README.md) | stock effects with REPITCH_REPEAT98_KYOTI (ColdFire half, WIP): RPCH / RPS9 / RPSP and QUAN. | `make check` |
 | [`rig`](rig/README.md) | The rig without a ColdFire runtime: the fixture of the CC MAP, Character and one-aux gates. | `make check` |
 | [`sos-capture`](sos-capture/README.md) | recorder fixes + USB MIDI + USB AUDIO OUT TRACKS + USB CROSSBAR + USB AUDIO IN AB (stock effects minus SPATIALIZER). | port-gated: `make check` under the port; not on hardware in this form |
 | [`tapeecho`](tapeecho/README.md) | Tape Echo replacing Spring Reverb, alone. | on hardware: the author's unit (OCTACLID4): six instances; a seventh freezes it, open |
