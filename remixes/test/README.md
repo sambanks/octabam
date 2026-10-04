@@ -21,6 +21,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`octakit`](octakit/README.md) | Em's Octakit alone -- must reproduce her own build byte for byte. | `make check`: on hardware inside `ok-ms` |
 | [`plocks-p2`](plocks-p2/README.md) | Page-2 parameter locks (PLOCKS P2) and page-2 scene locks (SCENES P2), stock effects. | port-gated: verify_plocksp2 under the port |
 | [`quantize-live-rec-toggle`](quantize-live-rec-toggle/README.md) | stock effects with QUANTIZE_LIVE_REC_TOGGLE: QUANTIZE LIVE REC from [REC] + [PLAY]. | `make check` |
+| [`rec-trig-mute`](rec-trig-mute/README.md) | stock effects with REC_TRIG_MUTE: [TRACK]+[NO]/[YES] mute/unmute recorder trigs. | `make check` |
 | [`reload-from-project`](reload-from-project/README.md) | stock effects with RELOAD_FROM_PROJECT: reload one track's sequence from the card while the transport runs. | `make check` |
 | [`repitch`](repitch/README.md) | stock effects with variable-speed REPITCH in the TSTR selector. | on hardware: repeat98's MKII, 16 Sep 2026 (OCTABAM81) |
 | [`rig`](rig/README.md) | bottleservice's delay and reverb bus and FX1 stations, without USB, Octakit or the scene modules: the fixture of the CC MAP, Character and one-aux gates. | `make check` |
