@@ -92,11 +92,12 @@ MODULE = Module(
         report_note=" -- Em's Octakit (emuyia/ems-octakit), submodule "
                     "modules/octakit/upstream",
         pinned_returns=_pinned_returns(),
-        patches=("modules/octakit/patches/0001-banks-load-error-applies-current-bank.patch",),
+        patches=("modules/octakit/patches/0001-banks-load-error-applies-current-bank.patch",
+                 "modules/octakit/patches/0002-part-refresh-busy-runs-stock.patch"),
         patched={
-            "raw": {"size": 154878, "sha256": "1d08ca38deda63c164e78107ca03efe71914b542136fd1f627753ff266b5382a"},
-            "packed": {"size": 75688, "sha256": "9bf4b944e2b8de4c40bf8d29aeff6409b30c85b63d181f4327644cdb11da7c86"},
-            "append": {"size": 75852, "sha256": "9d3b0015db79546ba89c173f9b2f3daf25bb7f883a1c5b7b50f8c94171ac7e7a"},
+            "raw": {"size": 155062, "sha256": "6bcf51f7fbb60a333f6899cfea991fc5d56489483d4f9cb4f53a2da2cd1464bb"},
+            "packed": {"size": 75784, "sha256": "e6660ea2aac228cf23d0c34b55751f40168a305683ee0654f71504018fb2489e"},
+            "append": {"size": 75948, "sha256": "eb3e5d66a0e35abd797004bd474c7997a81e8ca12ff7b35701a661043b40c309"},
         },
     ),
     # Her runtime, Kit store and backup: the top 528 pages of the audio page

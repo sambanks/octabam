@@ -1,0 +1,193 @@
+A track button pressed while a queued pattern change is in flight (about
+250 ms around the change, a chain or a single switch) halted at
+gk_stock_part_refresh_writer_report_fatal_part_refresh_fatal_context:
+gk_stock_current_context_validate returns GK_ERR_BUSY while
+__gk_sequencer_latch_queue_handoff is set, and the Part-refresh writer
+wrapper took every negative return as the context fatal (measured under
+the ColdFire port, 5 Oct 2026, Octakit alone and bottleservice; Em's
+ems-octakit#5 setting; a Discord user's bottleservice image 88 halted in
+the same handoff at gk_pattern_queue_request_ipl_fatal).
+
+Her sibling wrappers (machine_selection.S, midi_bit_toggle.S) test BUSY
+before the fatal and return it. This writer wraps a stock call with no
+caller to return to, so on BUSY it runs the stock writer the way her
+QUIESCED path does, with no Kit lease: the writer's four validator calls
+and the marker's compare become same-length jsr swaps into
+octabam_part_refresh_busy.S (her layout and every stock slice offset
+kept; the unit is listed last). d7 carries a third token state through
+the stock body, UNWRAPPED ('FU' beside her ARMED 'FR' and WRITTEN 'FW';
+stock's writer saves and uses d2-d6/a2-a5 only), and the dirty-store
+marker replays stock's store for it. A BUSY from the post-write
+validation (a handoff that began during a wrapped write) releases the
+descriptor and returns. What the Kit workspace misses by not seeing an
+unwrapped run's dirty marks is not measured.
+
+diff -ruN '--exclude=.git' a/firmware.json b/firmware.json
+--- a/firmware.json
++++ b/firmware.json
+@@ -14032,7 +14032,8 @@
+     "queue_commit_deferral.S",
+     "pattern_kit_paste.S",
+     "persistence.c",
+-    "octabam_banks_load_fixup.S"
++    "octabam_banks_load_fixup.S",
++    "octabam_part_refresh_busy.S"
+   ],
+   "interface_version": 1,
+   "compiler": {
+diff -ruN '--exclude=.git' a/octabam_part_refresh_busy.S b/octabam_part_refresh_busy.S
+--- a/octabam_part_refresh_busy.S
++++ b/octabam_part_refresh_busy.S
+@@ -0,0 +1,109 @@
++/*
++ * A track button pressed while a queued pattern change is in flight
++ * (about 250 ms around the change, a chain or a single switch) halted at
++ * gk_stock_part_refresh_writer_report_fatal_part_refresh_fatal_context:
++ * gk_stock_current_context_validate returns GK_ERR_BUSY while
++ * __gk_sequencer_latch_queue_handoff is set, and the Part-refresh writer
++ * took every negative return as the context fatal (measured under the
++ * ColdFire port, 5 Oct 2026, Octakit alone and bottleservice).
++ *
++ * machine_selection.S and midi_bit_toggle.S test BUSY before their fatal
++ * and return it to a caller that handles it.  The Part-refresh writer
++ * wraps a stock call with nobody to return BUSY to, so these routines
++ * stand in for its four validator calls (same-length jsr swaps, her
++ * layout kept) and, on BUSY:
++ *   - before the write, run the stock writer the way her QUIESCED path
++ *     does, with no Kit lease, and return to the stock caller.  d7
++ *     carries UNWRAPPED through the stock body (stock's writer saves and
++ *     uses d2-d6/a2-a5 only), and the dirty-store marker replays stock's
++ *     store for it;
++ *   - after a wrapped write, release the descriptor and return, the
++ *     post-write compares skipped.
++ * Each routine is entered by jsr from inside her frame: 4(%sp) is her
++ * frame's 0(%sp).  What the Kit workspace misses by not seeing an
++ * unwrapped run's dirty marks is not measured.
++ */
++        .include "abi.inc"
++        .set    OB_PART_REFRESH_TOKEN_UNWRAPPED,0x46550000
++        .section .runtime.octabam,"ax"
++        .align  4
++
++        .global gk_octabam_part_refresh_pre_engine
++        .type   gk_octabam_part_refresh_pre_engine,@function
++gk_octabam_part_refresh_pre_engine:
++        jsr     gk_stock_latest_engine_context_validate
++        cmpi.l  #GK_ERR_BUSY,%d0
++        beq.s   .Lob_part_refresh_unwrapped
++        rts
++        .size   gk_octabam_part_refresh_pre_engine,.-gk_octabam_part_refresh_pre_engine
++
++        .global gk_octabam_part_refresh_pre_settled
++        .type   gk_octabam_part_refresh_pre_settled,@function
++gk_octabam_part_refresh_pre_settled:
++        jsr     gk_stock_current_context_validate
++        cmpi.l  #GK_ERR_BUSY,%d0
++        bne.s   .Lob_part_refresh_rts
++.Lob_part_refresh_unwrapped:
++        lea     4(%sp),%sp
++        move.l  #OB_PART_REFRESH_TOKEN_UNWRAPPED,%d7
++        jsr     gk_stock_part_refresh_writer_trampoline
++        movem.l (%sp),%d2-%d7/%a2-%a6
++        lea     68(%sp),%sp
++.Lob_part_refresh_rts:
++        rts
++        .size   gk_octabam_part_refresh_pre_settled,.-gk_octabam_part_refresh_pre_settled
++
++        .global gk_octabam_part_refresh_post_engine
++        .type   gk_octabam_part_refresh_post_engine,@function
++gk_octabam_part_refresh_post_engine:
++        jsr     gk_stock_latest_engine_context_validate
++        cmpi.l  #GK_ERR_BUSY,%d0
++        beq.s   .Lob_part_refresh_post_busy
++        rts
++        .size   gk_octabam_part_refresh_post_engine,.-gk_octabam_part_refresh_post_engine
++
++        .global gk_octabam_part_refresh_post_settled
++        .type   gk_octabam_part_refresh_post_settled,@function
++gk_octabam_part_refresh_post_settled:
++        jsr     gk_stock_current_context_validate
++        cmpi.l  #GK_ERR_BUSY,%d0
++        bne.s   .Lob_part_refresh_rts
++.Lob_part_refresh_post_busy:
++        lea     4(%sp),%sp
++        btst    #0,%d3
++        beq.s   .Lob_part_refresh_post_restore
++        move.l  %d6,%d0
++        jsr     gk_descriptor_release
++        tst.l   %d0
++        beq.s   .Lob_part_refresh_post_restore
++        jmp     gk_part_refresh_stock_call_report_fatal_part_refresh_fatal_release
++.Lob_part_refresh_post_restore:
++        move.l  44(%sp),%d0
++        move.l  48(%sp),%d1
++        movea.l 52(%sp),%a0
++        movea.l 56(%sp),%a1
++        move.w  60(%sp),%d2
++        move.w  %d2,%sr
++        movem.l (%sp),%d2-%d7/%a2-%a6
++        lea     68(%sp),%sp
++        rts
++        .size   gk_octabam_part_refresh_post_settled,.-gk_octabam_part_refresh_post_settled
++
++        /* In place of the marker's `cmpi.l #1,%d0`: the same compare's
++           condition codes come back through rts for her bne, unless d7
++           carries UNWRAPPED, which replays stock's dirty store the way
++           her QUIESCED branch does (d1 back from the marker's push). */
++        .global gk_octabam_part_refresh_marker_check
++        .type   gk_octabam_part_refresh_marker_check,@function
++gk_octabam_part_refresh_marker_check:
++        move.l  %d7,%d1
++        andi.l  #GK_PART_REFRESH_TOKEN_STATE_MASK,%d1
++        cmpi.l  #OB_PART_REFRESH_TOKEN_UNWRAPPED,%d1
++        beq.s   .Lob_part_refresh_marker_unwrapped
++        cmpi.l  #1,%d0
++        rts
++.Lob_part_refresh_marker_unwrapped:
++        lea     4(%sp),%sp
++        move.l  (%sp)+,%d1
++        jmp     gk_part_refresh_stock_dirty_store
++        .size   gk_octabam_part_refresh_marker_check,.-gk_octabam_part_refresh_marker_check
+diff -ruN '--exclude=.git' a/part_refresh_writer.S b/part_refresh_writer.S
+--- a/part_refresh_writer.S
++++ b/part_refresh_writer.S
+@@ -78,7 +78,7 @@
+         tst.l   %d3
+         beq.s   .Lgk_part_refresh_settled_context
+         move.l  %d6,%d0
+-        jsr     gk_stock_latest_engine_context_validate
++        jsr     gk_octabam_part_refresh_pre_engine
+         tst.l   %d0
+         bmi.w   gk_stock_part_refresh_writer_report_fatal_part_refresh_fatal_context
+         move.l  %d7,%d2
+@@ -89,7 +89,7 @@
+         bne.w   gk_stock_part_refresh_writer_report_fatal_part_refresh_fatal_context
+         bra.s   .Lgk_part_refresh_context_ok
+ .Lgk_part_refresh_settled_context:
+-        jsr     gk_stock_current_context_validate
++        jsr     gk_octabam_part_refresh_pre_settled
+         tst.l   %d0
+         bmi.w   gk_stock_part_refresh_writer_report_fatal_part_refresh_fatal_context
+ .Lgk_part_refresh_context_ok:
+@@ -180,10 +180,10 @@
+         btst    #1,%d3
+         beq.s   .Lgk_part_refresh_post_settled
+         move.l  %d6,%d0
+-        jsr     gk_stock_latest_engine_context_validate
++        jsr     gk_octabam_part_refresh_post_engine
+         bra.s   .Lgk_part_refresh_post_context_result
+ .Lgk_part_refresh_post_settled:
+-        jsr     gk_stock_current_context_validate
++        jsr     gk_octabam_part_refresh_post_settled
+ .Lgk_part_refresh_post_context_result:
+         tst.l   %d0
+         bmi.w   gk_part_refresh_stock_call_report_fatal_part_refresh_fatal_post_context
+@@ -258,7 +258,7 @@
+         move.l  (%sp)+,%d1
+         bra.s   gk_part_refresh_stock_dirty_store
+ .Lgk_part_refresh_marker_active:
+-        cmpi.l  #1,%d0
++        jsr     gk_octabam_part_refresh_marker_check
+         bne.w   gk_part_refresh_write_marker_report_fatal_part_refresh_fatal_marker
+         cmpi.l  #1,%d6
+         bne.w   gk_part_refresh_write_marker_report_fatal_part_refresh_fatal_marker
