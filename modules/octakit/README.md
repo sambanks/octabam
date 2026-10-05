@@ -167,6 +167,33 @@ code is a new unit listed LAST in the recipe's `sources`, in a
   budget ends 770 B above it). A project name with no directory on the
   card (stock −12 on every file) still strands: her work-pair create
   returns −10 with nowhere to write (`docs/contributing/FAILURE_MODES.md`).
+- `patches/0002-part-refresh-busy-runs-stock.patch` (5 Oct 2026, measured
+  under the port, unflashed): a track button pressed within about 250 ms
+  of a queued pattern change (a chain or a single [PTN] + [TRIG] switch)
+  halted at `gk_stock_part_refresh_writer_report_fatal_part_refresh_fatal_context`:
+  `gk_stock_current_context_validate` returns BUSY while
+  `__gk_sequencer_latch_queue_handoff` is set, and her Part-refresh
+  writer wrapper took every negative return as the context fatal. Her
+  `machine_selection.S` and `midi_bit_toggle.S` test BUSY before their
+  fatal and return it; this writer wraps a stock call with nobody to
+  return to, so on BUSY it runs the stock writer the way her QUIESCED
+  path does, with no Kit lease. The writer's four validator calls and the
+  dirty-store marker's compare are same-length `jsr` swaps into
+  `octabam_part_refresh_busy.S`; `d7` carries a third token state through
+  the stock body (UNWRAPPED, `0x4655` beside her ARMED `0x4652` and
+  WRITTEN `0x4657`; stock's writer saves and uses d2–d6/a2–a5 only) and
+  the marker replays stock's dirty store for it. A BUSY from the
+  post-write validation releases the descriptor and returns. Measured
+  under the port (Octakit alone and bottleservice): the press that halted
+  at 17.05–17.275 s, the single-switch and current-track controls, 250
+  presses at 180 ms over a three-pattern chain, and a run that goes on
+  through a knob turn, a second press at the next change and SAVE KIT all
+  end clean with the lifecycle word active; the unwrapped path ran at
+  both presses (PC watch, d0 = −3). Not exercised: the marker's unwrapped
+  replay (stock's writer found every track byte already `0x80`, so it
+  never reached its dirty store) and the post-write BUSY. What the Kit
+  workspace misses by not seeing an unwrapped run's dirty marks is not
+  measured. Raw runtime 155,062 B (586 B below her code budget's end).
 
 ## Updating
 
