@@ -559,7 +559,7 @@ AUTOSAVE and KEEP LEVELS in its own header.
 | 2 | further unreferenced runs in CS1 below `0x100f859c` | image census, then port |
 | 2 | the point in boot at which the card mounts, relative to USB enumeration | port |
 | 2 | a key combination free on FX, MIDI track and audio track pages | image keymaps, then unit |
-| 2 | whether stock lists the card-root `OCTABAM` directory as a set; a set named `OCTABAM` shares it (`modules/core/README.md`) | port, then unit |
+| 2 | the card-root `OCTABAM` directory on a unit's set list (📖 not listed: stock keeps a root directory as a set only when it holds `AUDIO`; `modules/core/README.md`), and a set named `OCTABAM` sharing it | unit |
 | 2 | the 4 Sep 2026 stale-part stall reproduced under the port, as the clamp gate's fixture | port |
 | 3 | template apply while the sequencer runs | port, then unit |
 | 4 | the writer for the MIDI track setup fields at `Part + 0x8f262 + t*0x24` | image, then port |

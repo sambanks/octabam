@@ -66,8 +66,15 @@ Not yet.
 
 ## Open
 
-- Whether stock lists the card-root `OCTABAM` directory as a set. A set
-  named `OCTABAM` shares the directory; the gate uses another set name.
+- A set named `OCTABAM` shares the directory: the store's files sit in
+  that set's folder beside its `AUDIO` and project folders. Whether the
+  project list then shows `templates/` is not checked. The gate uses
+  another set name. Stock lists a root directory as a set only when it has
+  an `AUDIO` folder (📖 the set list's filler `0x40080d0c` lists `/` and
+  keeps an entry when `0x40025650("/<name>")` returns nonzero: the
+  directory and `"%s/AUDIO"` both pass the file system's existence probe
+  `0x46c823fa`), so `/OCTABAM` holding only the store is not listed;
+  not measured on a unit.
 - Timing of the card read on the unit (one file, at most 16 KB).
 - A power-up with no LOAD PROJECT post: the bank-load hook, not run under
   the port.
