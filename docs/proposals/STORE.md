@@ -560,7 +560,7 @@ AUTOSAVE and KEEP LEVELS in its own header.
 | 2 | the point in boot at which the card mounts, relative to USB enumeration | port |
 | 2 | a key combination free on FX, MIDI track and audio track pages | image keymaps, then unit |
 | 2 | the card-root `OCTABAM` directory on a unit's set list (📖 not listed: stock keeps a root directory as a set only when it holds `AUDIO`; `modules/core/README.md`), and a set named `OCTABAM` sharing it | unit |
-| 2 | the 4 Sep 2026 stale-part stall reproduced under the port, as the clamp gate's fixture | port |
+| 2 | the 4 Sep 2026 stale-part stall reproduced under the port, as the clamp gate's fixture. Not reproduced (6 Oct 2026, bottleservice, sequencer on the internal clock): BusDelay's MODE byte (3 values) stamped to 64 on T1 in every part of every bank, and the play step (`0x800064d0[t]`) advances as on the clean project at 300 and 900 frames. The unit's stall had stale bytes on several tracks and slots, with the panel drawing them; the port ran without the panel | port, then unit |
 | 3 | template apply while the sequencer runs | port, then unit |
 | 4 | the writer for the MIDI track setup fields at `Part + 0x8f262 + t*0x24` | image, then port |
 | 4 | how the MIDI CTRL pages draw their labels | image, then port |
