@@ -3,8 +3,10 @@
 The settings store's run-time side on the unit ([`docs/proposals/STORE.md`](../../docs/proposals/STORE.md)).
 A remix lists it to give the card layer to its knob defaults.
 
-This increment applies card-wide knob defaults and is read-only on the
-unit. At each LOAD PROJECT, and at the bank load the power-up runs, the
+It applies card-wide knob defaults and writes them: SAVE AS DEFAULT
+(`core_post_save(track, fx)`) makes the current Part's page of that track's
+FX1 or FX2 the effect's default in `card.work`, and SAVE PROJECT copies
+`card.work` to `card.strd`. No panel gesture calls SAVE AS DEFAULT yet. At each LOAD PROJECT, and at the bank load the power-up runs, the
 core puts every effect's twelve descriptor defaults (`P+0x5e`) back to the
 image's values. It then reads `/OCTABAM/card.work`, or `card.strd` by the
 pair rule (STORE.md section 6.2), and writes each valid default record
@@ -19,6 +21,25 @@ python3 tools/hw/ot_store.py default /Volumes/CARD/OCTABAM/card.work bottleservi
 python3 tools/hw/ot_store.py default /Volumes/CARD/OCTABAM/card.work bottleservice DELAY --clear
 python3 tools/hw/ot_store.py dump /Volumes/CARD/OCTABAM/card.work
 ```
+
+## SAVE AS DEFAULT
+
+`core_post_save(track, fx)` posts a message of type `0x41` to the engine
+task's queue (`0x460d17ce`, through stock's `0x40000c3c`); stock's job
+switch ignores types above 45, and the detour at `0x4008485e` runs
+`core_job` for this one in the engine task, where stock writes the
+project's files. The job takes the twelve page bytes from the current
+Part, replaces that effect's default record (no mode) in `card.work` with
+them, keeps every other record's bytes, creates `/OCTABAM` on a card that
+has none (the file system's directory slot `0x46c8240a`, as stock's new
+set does), and writes the values onto the descriptor at once. A damaged
+`card.work` with no valid `card.strd` is not overwritten (error 2). One
+job is pending at a time.
+
+SAVE PROJECT's project store (`0x4008ee74`, KITS hooks its entry) is
+reached through its three call sites (`0x40085642`, `0x400856dc`,
+`0x40085780`); each copies a valid `card.work` to `card.strd` before the
+store runs, as PLOCKS P2 does at the load call sites.
 
 ## What it applies
 
@@ -56,6 +77,9 @@ with T2's FX2 chooser select (SEND -> stock DELAY) and FX1 select
 | a record with another layout | the image's defaults | card.work, 1 skipped |
 | two records for one effect | the image's defaults | card.work, both skipped |
 
+| SAVE AS DEFAULT for T1's FX2 and T2's FX1, then the store copy, on a card holding two other records | the two records hold the live pages; the others keep their bytes; `card.strd` = `card.work`; a second boot puts the saved page on BusDelay's descriptor | card.work |
+| SAVE AS DEFAULT on a card with no `OCTABAM` folder | the folder and `card.work` with one record | |
+| out-of-count bytes in every Part of every bank, no file | read count - 1 after the load: stock's Part validator `0x40002318`, so the core has no clamp | |
 | a GRAIN record for BusDelay (FDBK, SCTR, GLEN listed by the view; DEL not), then MODE CLEAN -> GRAIN through the FX2 page-2 editor on T1 | the view with the card's three values; DEL skipped and untouched | card.work |
 
 Both hooks run during one LOAD PROJECT under the port (2 calls a load).
@@ -78,8 +102,11 @@ Not yet.
 - Timing of the card read on the unit (one file, at most 16 KB).
 - A power-up with no LOAD PROJECT post: the bank-load hook, not run under
   the port.
-- The next increments (STORE.md section 12): SAVE AS DEFAULT on the unit,
-  the SETTINGS list, the project pair, the project record, the CS1 block.
+- A panel gesture for SAVE AS DEFAULT; the SETTINGS list, the project
+  pair, the project record, the CS1 block (STORE.md section 12).
+- `--step call` runs as main under the port, where file I/O does not
+  return (an unimplemented opcode at `0x4003b108`); the gate posts the job
+  instead. Whether a UI-task handler may post (the menu row) is to measure.
 
 ## Gates
 
@@ -92,6 +119,8 @@ Not yet.
 |---|---|---|
 | `0x40085342` | `moveq #27,%d1 / movel %d1,%fp@(-570)`, LOAD PROJECT before the empty-project init `0x400909d8` | `core_on_load`: `core_load`, then the two instructions |
 | `0x40084d4a` | `mvzb 0x80000002,%d1`, the bank load of every bank but the current (the power-up's path) | `core_on_bankload` |
+| `0x4008485e` | `mvzb %a2@,%d0 / moveq #45,%d1 / cmpl %d0,%d1`, the engine task's job switch | `core_on_job`: type `0x41` runs `core_job` and returns to the receive at `0x4008484e`; other types continue at `0x40084864` |
+| `0x40085642`, `0x400856dc`, `0x40085780` | `jsr 0x4008ee74`, the project store | `core_on_store`: `card.work` -> `card.strd`, then the store |
 
 `core.c` is compiled to `core.s` by `generate_core.py` (euclid's flags);
 `hooks.s` is appended. 21 KB of `.bss`: a 16 KB file buffer, the 4 KB

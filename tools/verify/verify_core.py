@@ -25,6 +25,12 @@ lane at the end:
                 MODE 64 and SIZE 100; SPECTRUM MODE 90 on FX1 of T2-4, T6, T7)
                 read count - 1 after the load: stock's Part validator does it,
                 which is why the core has no clamp
+  save          SAVE AS DEFAULT: core_save_default for T1's FX2 (BusDelay) and
+                T2's FX1 (SPECTRUM), then core_card_store, on a card whose
+                card.work holds other records: the two records carry the live
+                pages' bytes, the others keep their bytes, card.strd is
+                card.work; a second boot of that card puts the saved values
+                on both descriptors
   mode          a GRAIN record for BusDelay (T1): the FX2 page-2 editor moves
                 MODE CLEAN -> GRAIN (verify_modedefaults' call) and MODE
                 DEFAULTS lands GRAIN's view with the card's values for the
@@ -268,6 +274,91 @@ def main():
                 for bank in range(16) for part in range(8) for tr, fxo, s2, cnt in planted)
     check(f"stock clamps: {16 * 8 * len(planted)} planted out-of-count bytes (16 banks x 8 Parts) read "
           f"count - 1 after the load ({wrong} do not)", wrong == 0)
+
+    # ---- save: SAVE AS DEFAULT writes card.work, SAVE PROJECT card.strd ----
+    import emu_card
+    # the posts run the writes in the engine task (a --step call runs as main,
+    # where file I/O does not return under the port)
+    save_at, store_at, scounts_at = symbol("core_post_save"), symbol("core_post_store"), symbol("core_save_counts")
+    scard = OUT / "save.img"
+    swork = OUT / "save_card.work"
+    swork.write_bytes(work)
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+                        "--tree", str(OUT / "tree_save"), "--out", str(scard),
+                        "--root-file", f"{swork}:OCTABAM/card.work"], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_core: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    after, lanes_dump, sdump, log = OUT / "save_after.img", OUT / "save_lanes.bin", OUT / "save_counts.bin", OUT / "save.txt"
+    cmd = [EMU, "--image", image, "--card", scard, "--set", a.set_name, "--project", a.name,
+           "--mount", "--load-ms", "90000",
+           "--sequencer", "--internal-clock", "--frames", "600",
+           "--step", f"-:dump:{LANES:#x},576={lanes_dump}",
+           "--step", f"-:call:{save_at:#x},0,1",
+           "--step", f"150:call:{save_at:#x},1,0",
+           "--step", f"300:call:{store_at:#x}",
+           "--step", f"500:dump:{scounts_at:#x},16={sdump}",
+           "--card-out", after]
+    with open(log, "w") as fh:
+        fh.write(" ".join(map(str, cmd)) + "\n"); fh.flush()
+        r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+    if r.returncode or log.read_text().count("returned, d0") < 3 or not after.exists():
+        sys.exit(f"verify_core: the save run did not complete its calls -- {log}")
+    saves, err, strd, strd_err = struct.unpack(">4I", sdump.read_bytes())
+    check(f"save: two saves, last error {err}, card.strd written {strd} (errors {strd_err})",
+          (saves, err, strd, strd_err) == (2, 0, 1, 0))
+    files = emu_card.extract_image(after.read_bytes())
+    cw = next((v for k, v in files.items() if k.upper().endswith("OCTABAM/CARD.WORK")), None)
+    cs = next((v for k, v in files.items() if k.upper().endswith("OCTABAM/CARD.STRD")), None)
+    check(f"save: card.work and card.strd on the card ({sorted(k for k in files if 'OCTABAM' in k.upper())})",
+          cw is not None and cs is not None)
+    lanes = lanes_dump.read_bytes()
+    if cw is not None:
+        f = obam.parse(cw)
+        old_ids = {r.store_id: r.encode() for r in obam.parse(work).records}
+        for sid in (store.fx_store_id(delay), store.fx_store_id(character)):
+            rec = next((r for r in f.records if r.store_id == sid), None)
+            check(f"save: {sid}'s record kept byte for byte", rec is not None and rec.encode() == old_ids[sid])
+        for m, tr, lp1, lp2 in ((bd, 0, 0x18, 0x38), (sp, 1, 0x12, 0x32)):
+            page = lanes[tr * 72 + lp1:tr * 72 + lp1 + 6] + lanes[tr * 72 + lp2:tr * 72 + lp2 + 6]
+            rec = next((r for r in f.records if r.store_id == store.fx_store_id(m)), None)
+            keys = store.fx_keys(m)
+            want = {k: page[s] for s, k in enumerate(keys) if k}
+            got = {v.key: v.data[0] for v in rec.values()} if rec else {}
+            check(f"save: {m.key} T{tr + 1}: the record holds the live page {got == want}  (layout "
+                  f"{rec.layout() if rec else None} = {store.fx_layout(m)})",
+                  rec is not None and got == want and rec.layout() == store.fx_layout(m)
+                  and rec.target() == (0, obam.NO_MODE))
+        check("save: card.strd is card.work with the .strd kind",
+              cs is not None and cs[:8] == cw[:8] and cs[8] == obam.CARD_STRD and cs[9:] == cw[9:])
+        # a second boot of that card: the saved values on the descriptors
+        after2, ddump, log2 = OUT / "save_boot2.img", OUT / "save_desc.bin", OUT / "save2.txt"
+        shutil.copy2(after, after2)
+        pb, ps = (struct.unpack(">I", rd(FX2_TABLE + 4 * m.menu.fx2_id, 4))[0] for m in (bd, sp))
+        cmd = [EMU, "--image", image, "--card", after2, "--set", a.set_name, "--project", a.name,
+               "--mount", "--load-ms", "90000",
+               "--step", f"-:dump:{pb + 0x5e:#x},12={ddump}"]
+        with open(log2, "w") as fh:
+            r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+        d = ddump.read_bytes() if ddump.exists() else b""
+        page = lanes[0x18:0x1e] + lanes[0x38:0x3e]
+        check(f"save: the second boot puts T1's saved page on BusDelay's descriptor  {d.hex(' ')}", d == page)
+
+    # a card with no OCTABAM folder: the first save creates it
+    fcard, fafter, flog = OUT / "save_fresh.img", OUT / "save_fresh_after.img", OUT / "save_fresh.txt"
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+                        "--tree", str(OUT / "tree_fresh"), "--out", str(fcard)], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_core: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    cmd = [EMU, "--image", image, "--card", fcard, "--set", a.set_name, "--project", a.name,
+           "--mount", "--load-ms", "90000", "--sequencer", "--internal-clock", "--frames", "200",
+           "--step", f"-:call:{save_at:#x},0,1", "--card-out", fafter]
+    with open(flog, "w") as fh:
+        r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+    files = emu_card.extract_image(fafter.read_bytes()) if fafter.exists() else {}
+    fw = next((v for k, v in files.items() if k.upper().endswith("OCTABAM/CARD.WORK")), None)
+    recs = [r.store_id for r in obam.parse(fw).records] if fw else []
+    check(f"save: on a card with no OCTABAM folder the first save creates it and card.work  {recs}",
+          recs == [store.fx_store_id(bd)])
 
     # ---- mode: MODE DEFAULTS' view takes the card's values ------------------
     if "MODE DEFAULTS" in remix.modules and bd.mode_views:

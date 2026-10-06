@@ -53,6 +53,11 @@ MODULE = Module(
                "LOAD PROJECT, before the empty-project init: the card's defaults onto the descriptors", kind="jsr"),
         Detour(0x40084d4a, H("73b980000002"), "core", "core_on_bankload",
                "the bank load the power-up runs: the card's defaults onto the descriptors", kind="jsr"),
+        Detour(0x4008485e, H("7192722db280"), "core", "core_on_job",
+               "the engine task's job switch: type 0x41 runs SAVE AS DEFAULT"),
+        *(Detour(site, H("4eb94008ee74"), "core", "core_on_store",
+                 "SAVE PROJECT's project store: card.work copied to card.strd", kind="jsr")
+          for site in (0x40085642, 0x400856dc, 0x40085780)),
     ),
     gates=(Gate("tools/verify/verify_core.py", remix_arg=False, venv=True, stage="image"),),
 )

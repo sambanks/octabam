@@ -541,8 +541,11 @@ read-only on the unit; `tools/hw/ot_store.py default` writes the records;
 `tools/verify/verify_core.py` passes six card cases under the port (remix
 `core`), and a mode record writes into MODE DEFAULTS' view for the slots
 that view lists (seventh case: a MODE turn on T1 lands the card's values).
-SAVE AS DEFAULT, the SETTINGS list, the project pair, the project record
-and the CS1 block are not built yet. The project pair's write and copy
+SAVE AS DEFAULT is built as an engine-task job (`core_post_save`; type
+`0x41` on the engine queue, the job switch detoured at `0x4008485e`) and
+SAVE PROJECT copies `card.work` to `card.strd` at the project store's
+call sites; no panel gesture calls it yet. The SETTINGS list, the project
+pair, the project record and the CS1 block are not built yet. The project pair's write and copy
 points: every stock call site of the bank writer `0x400917c8` (5), the
 project store `0x4008ee74` (3) and the project reload `0x4008f180` (1) is
 unclaimed by any module (6 Oct 2026); KITS hooks the routines' entries, so

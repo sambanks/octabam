@@ -346,3 +346,211 @@ void core_load(void)
 	}
 	core_counts[C_STATE] = (work_present || n) ? 3 : 0;
 }
+
+/* ---- writing the card store ------------------------------------------------ */
+
+#define MKDIR    (*(int (**)(const char *))0x46c8240a)	/* FS vtable: create a directory */
+#define F_WRITE  ((int (*)(void *, const void *, u32))0x400166b8)
+#define DBPTR    (*(u8 **)0x46c82456)			/* the current bank */
+#define CUR_PART (*(volatile u8 *)0x80000003)
+#define PART_LEN 6322
+#define WORKING  0x8ed80
+
+enum { S_SAVES, S_SAVE_ERR, S_STRD, S_STRD_ERR, S_N };
+/* S_SAVE_ERR: last error of core_save_default (0 none, 1 no effect, 2 card
+ * store damaged, 3 too large, 4 write); S_STRD: card.strd copies written */
+u32 core_save_counts[S_N];
+
+static u8 out[BUF_LEN];
+
+static void put32(u8 *p, u32 v) { p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v; }
+static void put16(u8 *p, u32 v) { p[0] = v >> 8; p[1] = v; }
+
+static int write_file(const char *path, const u8 *data, u32 n)
+{
+	int ok = 0;
+	if (F_OPEN(fobj, path, "w", iob, sizeof iob) < 0) {
+		MKDIR("/OCTABAM");			/* the first write on this card */
+		if (F_OPEN(fobj, path, "w", iob, sizeof iob) < 0)
+			return -1;
+	}
+	ok = F_WRITE(fobj, data, n) == 1;
+	F_CLOSE(fobj);
+	return ok ? 0 : -1;
+}
+
+/* The card store's current content in buf (STORE.md section 6.2): its
+ * length, 0 when there is none, -1 when both copies are damaged (no
+ * automatic write). */
+static int current_store(void)
+{
+	u32 n = slurp("/OCTABAM/card.work");
+	if (n && valid(n))
+		return (int)n;
+	u32 work_present = n != 0;
+	n = slurp("/OCTABAM/card.strd");
+	if (n && valid(n))
+		return (int)n;
+	return (work_present || n) ? -1 : 0;
+}
+
+/* SAVE AS DEFAULT: track t's FX1 (fx 0) or FX2 (fx 1) page in the current
+ * Part becomes that effect's card-layer default. The record replaces the
+ * effect's default record (no mode) in card.work; every other record keeps
+ * its bytes. The descriptor takes the values at once. 0, or an error code
+ * (also in core_save_counts[S_SAVE_ERR]). */
+int core_save_default(u32 t, u32 fx)
+{
+	u8 *part = DBPTR + WORKING + (CUR_PART & 3) * PART_LEN;
+	u32 id = part[fx ? 0x8 + t : t];
+	int e = -1, err = 0;
+	core_save_counts[S_SAVES]++;
+	if (!snapped)
+		snapshot();
+	for (u32 i = 0; i < core_fx_n && i < MAX_FX; i++)
+		if (core_fx[i].fx_id == id && (desc[i][0] || desc[i][1]))
+			e = (int)i;
+	if (e < 0 || t > 7) {
+		err = 1;
+		goto done;
+	}
+	const struct fx_ent *f = &core_fx[e];
+	u8 vals[12];
+	for (int s = 0; s < 6; s++) {
+		vals[s] = part[0x11a + t * 24 + (fx ? 18 : 12) + s];
+		vals[6 + s] = part[0x2fe + t * 30 + (fx ? 6 : 0) + s];
+	}
+	int n = current_store();
+	if (n < 0) {
+		err = 2;
+		goto done;
+	}
+	/* the file: the kept records, then the new one */
+	u32 at = HDR, kept = 0;
+	for (u32 r = 0, i = HDR; n && r < be16(buf + 10); r++, i += be32(buf + i + 16)) {
+		const u8 *p = buf + i;
+		u32 size = be32(p + 16);
+		const u8 *pay = p + REC_HDR + align4(p[1]);
+		if (p[0] == K_DEFAULT && same_id(p + REC_HDR, p[1], f->id, f->id_len)
+		    && be32(p + 8) >= 4 && be16(pay) == 0 && be16(pay + 2) == NO_MODE)
+			continue;
+		if (at + size > BUF_LEN) {
+			err = 3;
+			goto done;
+		}
+		for (u32 k = 0; k < size; k++)
+			out[at + k] = p[k];
+		at += size;
+		kept++;
+	}
+	u32 nvals = 0;
+	for (int s = 0; s < 12; s++)
+		nvals += f->keys[s] != 0;
+	u32 plen = 8 + 8 * nvals, size = REC_HDR + align4(f->id_len) + plen;
+	if (at + size > BUF_LEN) {
+		err = 3;
+		goto done;
+	}
+	u8 *r = out + at;
+	for (u32 k = 0; k < size; k++)
+		r[k] = 0;
+	r[0] = K_DEFAULT;
+	r[1] = f->id_len;
+	put16(r + 2, 1);				/* schema major 1, minor 0 */
+	put32(r + 8, plen);
+	put32(r + 16, size);
+	for (u32 k = 0; k < f->id_len; k++)
+		r[REC_HDR + k] = f->id[k];
+	u8 *pay = r + REC_HDR + align4(f->id_len);
+	put16(pay + 2, NO_MODE);			/* target 0, no mode */
+	put32(pay + 4, f->layout);
+	u8 *v = pay + 8;
+	for (int s = 0; s < 12; s++)
+		if (f->keys[s]) {
+			put16(v, f->keys[s]);
+			v[2] = T_BYTE;
+			v[3] = 1;
+			v[4] = vals[s];
+			v += 8;
+		}
+	put32(r + 12, crc32(pay, plen));
+	at += size;
+	/* header */
+	for (u32 k = 0; k < HDR; k++)
+		out[k] = 0;
+	put32(out, 0x4f42414du);			/* "OBAM" */
+	put16(out + 4, HDR);
+	out[6] = 1;					/* container 1.0, card .work */
+	put16(out + 10, kept + 1);
+	put32(out + 12, at);
+	for (u32 k = 0; k < 8 && "CORE"[k]; k++)
+		out[20 + k] = "CORE"[k];
+	put32(out + 16, crc32(out + 20, at - 20));
+	if (write_file("/OCTABAM/card.work", out, at) < 0) {
+		err = 4;
+		goto done;
+	}
+	/* the descriptor takes the values now (the next load re-applies the file) */
+	for (int s = 0; s < 12; s++)
+		if (f->keys[s])
+			for (int k = 0; k < 2; k++) {
+				u8 *p = desc[e][k];
+				if (p && vals[s] < be32(p + 0x9a + 4 * s))
+					p[0x5e + s] = vals[s];
+			}
+done:
+	core_save_counts[S_SAVE_ERR] = (u32)err;
+	return -err;
+}
+
+/* SAVE PROJECT (the project store): card.work becomes card.strd, the
+ * recovery copy (STORE.md section 6.2). A damaged or absent card.work is
+ * not copied. */
+void core_card_store(void)
+{
+	u32 n = slurp("/OCTABAM/card.work");
+	if (!n || !valid(n))
+		return;
+	buf[8] = 1;					/* file kind: card .strd (outside the CRC) */
+	if (write_file("/OCTABAM/card.strd", buf, n) < 0)
+		core_save_counts[S_STRD_ERR]++;
+	else
+		core_save_counts[S_STRD]++;
+}
+
+/* ---- the engine job: SAVE AS DEFAULT off the UI task ----------------------- */
+
+#define Q_SEND   ((int (*)(void *, void *))0x40000c3c)	/* post a message to a queue */
+#define ENGINE_Q ((void *)0x460d17ce)			/* the engine task's queue */
+#define JOB_SAVE 0x41					/* above stock's 0..45 */
+
+static u32 job_msg[4];		/* type byte first, as stock's records */
+static u32 job_args;
+
+/* From any task: SAVE AS DEFAULT for track t's FX1 (0) or FX2 (1), run by
+ * the engine task, where the stock writes the project's files. One job is
+ * pending at a time; a second post before the engine runs replaces it. */
+void core_post_save(u32 t, u32 fx)
+{
+	job_args = (t & 7) | (fx ? 0x100 : 0);
+	((u8 *)job_msg)[0] = JOB_SAVE;
+	Q_SEND(ENGINE_Q, job_msg);
+}
+
+/* From any task: card.work copied to card.strd by the engine task (what
+ * SAVE PROJECT's project store does in that task through core_on_store). */
+void core_post_store(void)
+{
+	job_args = 0x10000;
+	((u8 *)job_msg)[0] = JOB_SAVE;
+	Q_SEND(ENGINE_Q, job_msg);
+}
+
+/* The engine task, at a JOB_SAVE message (hooks.s core_on_job). */
+void core_job(void)
+{
+	if (job_args & 0x10000)
+		core_card_store();
+	else
+		core_save_default(job_args & 7, (job_args >> 8) & 1);
+}

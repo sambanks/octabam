@@ -37,3 +37,36 @@ core_on_bankload:
         lea     %sp@(16),%sp
         mvz.b   0x80000002,%d1
         rts
+
+| ---- SAVE PROJECT: card.work -> card.strd --------------------------------------
+| The project store 0x4008ee74 is called from 0x40085642, 0x400856dc and
+| 0x40085780; KITS hooks its entry. Each call site jumps here: copy, then
+| tail-call the store with the caller's arguments (PLOCKS P2's form).
+        .globl  core_on_store
+core_on_store:
+        lea     %sp@(-16),%sp
+        movem.l %d0-%d1/%a0-%a1,%sp@
+        jsr     core_card_store
+        movem.l %sp@,%d0-%d1/%a0-%a1
+        lea     %sp@(16),%sp
+        jmp     0x4008ee74
+
+| ---- the engine task's job switch --------------------------------------------
+|   0x4008485e  `mvzb %a2@,%d0 / moveq #45,%d1 / cmpl %d0,%d1`, then bcss
+|               0x4008484e (a type above 45 goes back to the receive) and the
+|               jump table. Type 0x41 runs core_job and goes back to the
+|               receive; every other type takes the stock path.
+        .globl  core_on_job
+core_on_job:
+        mvz.b   %a2@,%d0
+        cmp.l   #0x41,%d0
+        bne.s   1f
+        lea     %sp@(-16),%sp
+        movem.l %d0-%d1/%a0-%a1,%sp@
+        jsr     core_job
+        movem.l %sp@,%d0-%d1/%a0-%a1
+        lea     %sp@(16),%sp
+        jmp     0x4008484e
+1:      moveq   #45,%d1
+        cmp.l   %d0,%d1
+        jmp     0x40084864

@@ -105,6 +105,7 @@ The two tables above.
 | `verify_burn` | SEND | per remix | the RIG BURN probe image is the shipping one plus an inert, exact knob | `dsp_host` |
 | `verify_character`, `verify_spectrum`, `verify_modulation` | the three stations | shared | each station against arithmetic you can predict or a float reference: bypass bit-exact, every mode, bounded resonance, the FX1-only promise | `dsp_host` |
 | `verify_miniverb` | MINIVERB | image | eight instances isolated, dirty memory, buffer guards, audio gates | `dsp_host` |
+| `verify_core` | CORE | image | the card store under the port: card-layer defaults land on a chooser select (none, card.work, recovered, damaged, wrong layout, duplicate), a mode record through MODE DEFAULTS, SAVE AS DEFAULT as an engine job (records, kept bytes, card.strd, a fresh card's folder, the second boot), stock's load-time clamp; `generate_core.py --check` | `.venv`, port, project |
 | `verify_euclid` | EUCLID | image | control math, the ColdFire hooks, DSP renders, playback under the port | `.venv`, port, project |
 | `verify_tapeecho_cpu` | TAPE ECHO | image | the C reference against the compiled ColdFire port, through the stock delay routine and its DMA protocol | `.venv`, `cc`, port |
 | `verify_modedefaults` | MODE DEFAULTS | per remix | a MODE turn through the panel's editor, and a MODE over CC MAP, lands that mode's view in the live lane (one boot, `--step`) | port, project |
