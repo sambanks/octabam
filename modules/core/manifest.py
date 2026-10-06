@@ -45,7 +45,9 @@ MODULE = Module(
     category=Category.SETTINGS, author="Sam Banks", author_url="https://github.com/sambanks",
     proof=Proof.PORT, proof_note="`verify_core` under the port (6 Oct 2026); not on hardware",
     doc="The settings store on the unit: card-wide knob defaults read from OCTABAM/card.work at each project load (docs/proposals/STORE.md).",
-    linked=(Linked("core", SOURCE, cpu="5475", dram=True, include=fx_inc),),
+    # MODEDEF_TABLE: MODE DEFAULTS' view table, 0 without that module.
+    linked=(Linked("core", SOURCE, cpu="5475", dram=True, include=fx_inc,
+                   defsyms=(("MODEDEF_TABLE", 0),)),),
     detours=(
         Detour(0x40085342, H("721b2d41fdc6"), "core", "core_on_load",
                "LOAD PROJECT, before the empty-project init: the card's defaults onto the descriptors", kind="jsr"),

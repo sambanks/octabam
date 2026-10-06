@@ -8,7 +8,9 @@
                                                         a card-layer default for MODULE's page in FILE
                                                         (a card .work, created when absent); KNOB by
                                                         the name the panel shows
-    python3 tools/hw/ot_store.py default FILE REMIX MODULE --clear
+    python3 tools/hw/ot_store.py default FILE REMIX MODULE --mode MODE KNOB=VALUE ...
+                                                        the same for one MODE's view (MODE by its label)
+    python3 tools/hw/ot_store.py default FILE REMIX MODULE [--mode MODE] --clear
 
 A record that does not parse, or whose kind this tool does not know, is
 shown as its exact bytes in hex and written back unchanged, so `dump` then
@@ -117,19 +119,29 @@ def build(j: dict) -> bytes:
                      j.get("build_tag", ""), j.get("minor", obam.MINOR)).encode()
 
 
-def set_default(data: bytes | None, m, knobs: dict[str, int] | None) -> bytes:
-    """A card .work with module m's default record replaced by `knobs`
+def set_default(data: bytes | None, m, knobs: dict[str, int] | None, mode=None) -> bytes:
+    """A card .work with module m's default record (for one MODE label or
+    value, or None for the knobs' own defaults) replaced by `knobs`
     ({panel name: byte}), or removed when `knobs` is None. Every other
     record keeps its bytes."""
     from remix import store
     f = obam.parse(data) if data else obam.File(obam.CARD_WORK, [], "HOST")
     sid = store.fx_store_id(m)
-    pre = obam.prefix_bytes(obam.DEFAULT, target=0, mode=obam.NO_MODE, layout=store.fx_layout(m))
+    mv = obam.NO_MODE
+    if mode is not None:
+        mv = store._mode_value(m, mode)
+        if mv is None:
+            raise SystemExit(f"{m.key} has no MODE {mode!r}")
+    pre = obam.prefix_bytes(obam.DEFAULT, target=0, mode=mv, layout=store.fx_layout(m))
     f.records = [r for r in f.records if not (r.kind == obam.DEFAULT and r.store_id == sid
-                                              and r.target() == (0, obam.NO_MODE))]
+                                              and r.target() == (0, mv))]
     if knobs is not None:
         keys = store.fx_keys(m)
         names = {p.name.decode("ascii"): i for i, p in enumerate(m.params) if p.name and keys[i]}
+        view = next((v for v in m.mode_views if v.mode == mv), None) if mode is not None else None
+        for i, nm in (view.names.items() if view else ()):
+            if keys[i]:
+                names[nm.decode("ascii")] = i
         vals = []
         for name, v in knobs.items():
             if name not in names:
@@ -153,10 +165,13 @@ def main(argv):
         if argv[4] not in mods:
             print(f"no module {argv[4]!r}")
             return 2
-        knobs = None if argv[5:] == ["--clear"] else \
-            {k: int(v, 0) for k, v in (a.split("=", 1) for a in argv[5:])}
+        rest, mode = argv[5:], None
+        if rest[:1] == ["--mode"] and len(rest) >= 2:
+            mode, rest = rest[1], rest[2:]
+        knobs = None if rest == ["--clear"] else \
+            {k: int(v, 0) for k, v in (a.split("=", 1) for a in rest)}
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(set_default(path.read_bytes() if path.exists() else None, mods[argv[4]], knobs))
+        path.write_bytes(set_default(path.read_bytes() if path.exists() else None, mods[argv[4]], knobs, mode))
         print(f"wrote {path}")
         return 0
     if len(argv) < 3 or argv[1] not in ("dump", "build", "pair"):

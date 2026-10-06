@@ -8,6 +8,11 @@
  * (P+0x5e). The choosers and the new-part initialiser read those bytes when
  * they run (tools/verify/verify_descdefaults.py).
  *
+ * A record with a mode writes into MODE DEFAULTS' view table (its
+ * MODEDEF_TABLE, 0 when that module is not in the remix): the values of the
+ * slots the mode's view already re-defaults. The table is sparse and keeps
+ * its size, so a slot the view does not list is skipped and counted.
+ *
  * The table core_fx[] (one entry per effect in the image: store id, fx id,
  * twelve keys, layout hash) is generated per remix (manifest.py fx_inc).
  */
@@ -27,6 +32,10 @@ struct fx_ent {			/* 36 bytes, as fx_inc() emits it */
 
 extern const struct fx_ent core_fx[];
 extern const u32 core_fx_n;
+/* id, mode slot, nviews, then per view: mode, npairs, (slot, value)*;
+ * 0xff ends it (modules/mode-defaults/manifest.py table_inc) */
+extern u8 *const core_modedef;		/* MODEDEF_TABLE or 0 (hooks.s) */
+#define MODEDEF_TABLE core_modedef
 
 #define F_OPEN   ((int (*)(void *, const char *, const char *, void *, u32))0x40016864)
 #define F_READ   ((int (*)(void *, void *, u32))0x40016564)
@@ -45,11 +54,16 @@ extern const u32 core_fx_n;
 /* counters, read by the gates (tools/verify/verify_core.py); all but
  * C_LOADS describe the last core_load() */
 enum { C_LOADS, C_STATE, C_RECORDS, C_APPLIED, C_VALUES, C_SKIP_ID, C_SKIP_LAYOUT,
-       C_SKIP_MODE, C_SKIP_CRC, C_SKIP_DUP, C_SKIP_VALUE, C_N };
+       C_SKIP_MODE, C_SKIP_CRC, C_SKIP_DUP, C_SKIP_VALUE, C_SKIP_SLOT, C_N };
+/* C_SKIP_MODE: a mode record with no MODE DEFAULTS or no view for the mode;
+ * C_SKIP_SLOT: a mode value for a slot the view does not list */
 /* C_STATE: 0 fresh, 1 card.work, 2 recovered from card.strd, 3 damaged */
 u32 core_counts[C_N];
 
 static u8 shadow[MAX_FX][2][12];
+#define MAX_TABLE 1024
+static u8 table_shadow[MAX_TABLE];
+static u32 table_len;
 static u8 *desc[MAX_FX][2];
 static u32 snapped;
 
@@ -92,7 +106,40 @@ static void snapshot(void)
 				for (int s = 0; s < 12; s++)
 					shadow[i][t][s] = desc[i][t][0x5e + s];
 	}
+	if (MODEDEF_TABLE) {
+		u32 at = 0;
+		while (at < MAX_TABLE && MODEDEF_TABLE[at] != 0xff) {
+			u32 nviews = MODEDEF_TABLE[at + 2];
+			at += 3;
+			for (u32 v = 0; v < nviews; v++)
+				at += 2 + 2 * MODEDEF_TABLE[at + 1];
+		}
+		table_len = at < MAX_TABLE ? at : 0;
+		for (u32 k = 0; k < table_len; k++)
+			table_shadow[k] = MODEDEF_TABLE[k];
+	}
 	snapped = 1;
+}
+
+/* The (slot, value) pairs of MODE DEFAULTS' view for (fx id, mode): a
+ * pointer to the first pair and its count, or 0. */
+static u8 *view_of(u32 fx_id, u32 mode, u32 *npairs)
+{
+	if (!MODEDEF_TABLE || !table_len)
+		return 0;
+	for (u32 at = 0; at < table_len;) {
+		u32 id = MODEDEF_TABLE[at], nviews = MODEDEF_TABLE[at + 2];
+		at += 3;
+		for (u32 v = 0; v < nviews; v++) {
+			u32 n = MODEDEF_TABLE[at + 1];
+			if (id == fx_id && MODEDEF_TABLE[at] == mode) {
+				*npairs = n;
+				return MODEDEF_TABLE + at + 2;
+			}
+			at += 2 + 2 * n;
+		}
+	}
+	return 0;
 }
 
 static void restore(void)
@@ -102,6 +149,8 @@ static void restore(void)
 			if (desc[i][t])
 				for (int s = 0; s < 12; s++)
 					desc[i][t][0x5e + s] = shadow[i][t][s];
+	for (u32 k = 0; k < table_len; k++)
+		MODEDEF_TABLE[k] = table_shadow[k];
 }
 
 /* Read one file whole into buf: its length; 0 when absent; 1 (never a
@@ -166,12 +215,18 @@ static void apply_record(const u8 *rec, int e)
 	const u8 *pay = rec + REC_HDR + align4(idlen);
 	if (be16(rec + 2) != 1 || plen < 8)		/* schema major 1 */
 		return;
-	if (be16(pay) != 0 || be16(pay + 2) != NO_MODE) {
+	u32 mode = be16(pay + 2), npairs = 0;
+	u8 *view = 0;
+	if (be16(pay) != 0) {
 		core_counts[C_SKIP_MODE]++;
 		return;
 	}
 	if (be32(pay + 4) != f->layout) {
 		core_counts[C_SKIP_LAYOUT]++;
+		return;
+	}
+	if (mode != NO_MODE && !(view = view_of(f->fx_id, mode, &npairs))) {
+		core_counts[C_SKIP_MODE]++;
 		return;
 	}
 	core_counts[C_APPLIED]++;
@@ -185,7 +240,25 @@ static void apply_record(const u8 *rec, int e)
 		}
 		if (at + head + align4(n) > plen)
 			break;
-		if (type == T_BYTE && n == 1 && key) {
+		if (type == T_BYTE && n == 1 && key && view) {
+			u8 v = pay[at + head];
+			for (int s = 0; s < 12; s++) {
+				if (f->keys[s] != key)
+					continue;
+				u8 *p = desc[e][0] ? desc[e][0] : desc[e][1];
+				u32 k = 0;
+				while (k < npairs && view[2 * k] != s)
+					k++;
+				if (k == npairs)
+					core_counts[C_SKIP_SLOT]++;
+				else if (!p || v >= be32(p + 0x9a + 4 * s))
+					core_counts[C_SKIP_VALUE]++;
+				else {
+					view[2 * k + 1] = v;
+					core_counts[C_VALUES]++;
+				}
+			}
+		} else if (type == T_BYTE && n == 1 && key) {
 			u8 v = pay[at + head];
 			for (int s = 0; s < 12; s++)
 				if (f->keys[s] == key)

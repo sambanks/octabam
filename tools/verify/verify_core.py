@@ -21,6 +21,10 @@ lane at the end:
                 state damaged
   layout        a record whose layout hash is not the image's: skipped
   duplicate     two records for DELAY: neither applied
+  mode          a GRAIN record for BusDelay (T1): the FX2 page-2 editor moves
+                MODE CLEAN -> GRAIN (verify_modedefaults' call) and MODE
+                DEFAULTS lands GRAIN's view with the card's values for the
+                slots the view lists; a slot it does not list is skipped
 
 What it cannot see: the unit's card I/O timing, a power-up with no LOAD
 PROJECT post (the bank-load hook), the new-part initialiser.
@@ -42,7 +46,8 @@ FX2_TABLE, FX1_TABLE = 0x400d5fdc, 0x400d5f58
 K = dict(no=0x32, fx1=0x25, fx2=0x26, down=0x20, yes=0x31, t2=0x11)
 PAGE = {"fx1": (0x12, 0x32, 0), "fx2": (0x18, 0x38, 8)}
 COUNTERS = ("loads", "state", "records", "applied", "values", "skip_id", "skip_layout",
-            "skip_mode", "skip_crc", "skip_dup", "skip_value")
+            "skip_mode", "skip_crc", "skip_dup", "skip_value", "skip_slot")
+FX2_EDITOR = 0x4003a9dc
 STATES = {0: "fresh", 1: "card.work", 2: "recovered", 3: "damaged"}
 
 
@@ -213,6 +218,50 @@ def main():
             check(f"{name}: the record with another layout skipped ({counts['skip_layout']})", counts["skip_layout"] == 1)
         if name == "duplicate":
             check(f"{name}: both copies refused ({counts['skip_dup']})", counts["skip_dup"] == 2)
+    # ---- mode: MODE DEFAULTS' view takes the card's values ------------------
+    bd = mods["DELAY SERVER"]
+    if "MODE DEFAULTS" in remix.modules and bd.mode_views:
+        mcopy = OUT / "project_mode"
+        shutil.rmtree(mcopy, ignore_errors=True)
+        shutil.copytree(copy, mcopy)
+        import ot_project
+        ot_project.set_fx(mcopy, "fx2", 1, "DELAY SERVER", page=[p.default for p in bd.params[:6]],
+                          page2=[p.default for p in bd.params[6:12]], guard=False)
+        card_vals = {"FDBK": 77, "SCTR": 33, "GLEN": 2, "DEL": 5}
+        mwork = OUT / "mode_card.work"
+        mwork.write_bytes(ot_store.set_default(None, bd, card_vals, mode="GRAIN"))
+        card = OUT / "mode.img"
+        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(mcopy), a.set_name, a.name,
+                            "--tree", str(OUT / "tree_mode"), "--out", str(card),
+                            "--root-file", f"{mwork}:OCTABAM/card.work"], cwd=ROOT, capture_output=True, text=True)
+        if r.returncode:
+            sys.exit(f"verify_core: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+        lanes_dump, cdump, log = OUT / "mode_lanes.bin", OUT / "mode_counts.bin", OUT / "mode.txt"
+        cmd = [EMU, "--image", image, "--card", card, "--set", a.set_name, "--project", a.name,
+               "--mount", "--load-ms", "90000",
+               "--step", f"-:dump:{counts_at:#x},{4 * len(COUNTERS)}={cdump}",
+               "--step", "-:poke:0x80000000=0;0x100b14cc=0",
+               "--step", f"-:call:{FX2_EDITOR:#x},{bd.mode_slot - 6},2",
+               "--step", f"-:dump:{LANES:#x},576={lanes_dump}"]
+        with open(log, "w") as fh:
+            fh.write(" ".join(map(str, cmd)) + "\n"); fh.flush()
+            r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+        if r.returncode or "returned, d0" not in log.read_text():
+            sys.exit(f"verify_core: the mode run did not complete its call -- {log}")
+        counts = dict(zip(COUNTERS, struct.unpack(f">{len(COUNTERS)}I", cdump.read_bytes())))
+        print(f"  mode: counters {counts}")
+        lane = lanes_dump.read_bytes()[:72]
+        got_mode = lane[0x38 + bd.mode_slot - 6]
+        view = next(v for v in bd.mode_views if v.mode == 1)
+        check(f"mode: T1 BusDelay MODE -> {got_mode} (GRAIN)", got_mode == 1)
+        slot_of = {"FDBK": 2, "SCTR": 7, "GLEN": 9, "DEL": 0}
+        for slot, val in sorted(view.defaults.items()):
+            want_v = next((card_vals[n] for n, s in slot_of.items() if s == slot and n in card_vals), val)
+            off = (0x18 + slot) if slot < 6 else (0x38 + slot - 6)
+            check(f"mode: slot {slot:2d} lane = {lane[off]:3d}  (view {val}, expected {want_v})", lane[off] == want_v)
+        check(f"mode: DEL, a slot GRAIN's view does not list, skipped ({counts['skip_slot']}) and untouched "
+              f"(lane {lane[0x18]}, default {bd.params[0].default})",
+              counts["skip_slot"] == 1 and lane[0x18] == bd.params[0].default)
     print(f"verify_core: {'ok' if not fails else 'FAILED'} ({fails} failure(s)) -- {OUT}")
     return 1 if fails else 0
 

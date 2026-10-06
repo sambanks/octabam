@@ -11,6 +11,13 @@
 
         .include "remix.inc"           | core_fx, core_fx_n (manifest.py fx_inc)
 
+| MODE DEFAULTS' view table, or 0 when that module is not in the remix
+| (Linked.defsyms resolves MODEDEF_TABLE).
+        .section .rodata
+        .balign 4
+        .globl  core_modedef
+core_modedef: .long MODEDEF_TABLE
+
         .text
         .globl  core_on_load, core_on_bankload
 core_on_load:

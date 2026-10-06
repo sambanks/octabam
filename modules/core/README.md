@@ -15,6 +15,7 @@ The file is written on a computer:
 
 ```bash
 python3 tools/hw/ot_store.py default /Volumes/CARD/OCTABAM/card.work bottleservice DELAY TIME=52 FB=5
+python3 tools/hw/ot_store.py default /Volumes/CARD/OCTABAM/card.work bottleservice "DELAY SERVER" --mode GRAIN SCTR=30
 python3 tools/hw/ot_store.py default /Volumes/CARD/OCTABAM/card.work bottleservice DELAY --clear
 python3 tools/hw/ot_store.py dump /Volumes/CARD/OCTABAM/card.work
 ```
@@ -27,6 +28,12 @@ python3 tools/hw/ot_store.py dump /Volumes/CARD/OCTABAM/card.work
   effects is generated per remix (`manifest.py` `fx_inc`).
 - Byte values by key; a value outside its slot's count (read from the
   descriptor) is skipped.
+- A record with a mode writes into MODE DEFAULTS' view table
+  (`MODEDEF_TABLE`, through `Linked.defsyms`; 0 without that module): the
+  values of the slots that mode's view already re-defaults. The table is
+  sparse and keeps its size, so a slot the view does not list is skipped
+  and counted (`skip_slot`), and a mode record without MODE DEFAULTS in the
+  remix is skipped (`skip_mode`).
 - A record with a bad payload CRC, an unknown store id, another layout, a
   mode, or a second copy (STORE.md section 7.7 rule 5) is skipped and
   counted.
@@ -48,6 +55,8 @@ with T2's FX2 chooser select (SEND -> stock DELAY) and FX1 select
 | `card.work` damaged, no `card.strd` | the image's defaults | damaged |
 | a record with another layout | the image's defaults | card.work, 1 skipped |
 | two records for one effect | the image's defaults | card.work, both skipped |
+
+| a GRAIN record for BusDelay (FDBK, SCTR, GLEN listed by the view; DEL not), then MODE CLEAN -> GRAIN through the FX2 page-2 editor on T1 | the view with the card's three values; DEL skipped and untouched | card.work |
 
 Both hooks run during one LOAD PROJECT under the port (2 calls a load).
 
@@ -79,4 +88,4 @@ Not yet.
 
 `core.c` is compiled to `core.s` by `generate_core.py` (euclid's flags);
 `hooks.s` is appended. 21 KB of `.bss`: a 16 KB file buffer, the 4 KB
-I/O buffer, the image's defaults (768 B).
+I/O buffer, the image's defaults (768 B), MODE DEFAULTS' table (up to 1 KB).
