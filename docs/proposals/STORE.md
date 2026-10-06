@@ -202,10 +202,20 @@ are unchanged: the stock effect select, the new-part initialiser
 `0x4003acf2`, whose table moves into the core's data when the core is in
 the image.
 
-🟡 Every reader of an FX-page default reads the SDRAM descriptor.
-Falsifier: a site that takes a default from anywhere else. The check is
-under the port: write a descriptor byte, create a part, select an effect,
-read the Part.
+Measured under the port (6 Oct 2026, bottleservice,
+`tools/verify/verify_descdefaults.py`): the FX2 chooser's select (T2 SEND
+-> stock DELAY) and the FX1 chooser's select (T2 SPECTRUM -> CHARACTER)
+land the descriptor's twelve defaults in the live lane, and with those
+twelve bytes poked in RAM after the load they land the poked bytes ✅. The
+new-part initialiser `0x40005638` reads the same bytes at execution time
+(📖 `lea P,%a1 / lea %a1@(5e,%d2:l)`, RIG HOSTS' sites); the read watch on
+stock DELAY's defaults shows it at `0x4000583c`/`0x4000584a` during the
+project load and no other reader in that window (the watch logs the first
+64 reads). 57 stock instructions read at `+0x5e`/`+0x64` through a
+register (`0x40005736..0x400058d2`, `0x4005aff8`, `0x4005b174`,
+`0x4005d180..0x4005db88`, `0x4008c912`); which gestures reach the last
+three groups is not traced. Falsifier for the design: one of them reading
+a copy taken before the core's write.
 
 A card value is checked against the slot's count before it is written: a
 default outside its count is used as an index (`AGENTS.md`).
@@ -528,7 +538,7 @@ AUTOSAVE and KEEP LEVELS in its own header.
 | phase | item | instrument |
 |---|---|---|
 | 1 | the merged USB module reproduces each variant artifact | build |
-| 2 | every reader of an FX-page default reads the SDRAM descriptor (5.1) | port |
+| 2 | which gestures reach the default readers at `0x4005aff8`, `0x4005b174`, `0x4005d180..0x4005db88`, `0x4008c912` (5.1; the choosers and the new-part initialiser are measured) | image, then port |
 | 2 | write latency of both pairs under playback and recording | port, then unit |
 | 2 | stock SAVE TO NEW, COLLECT SAMPLES and EXPORT carrying the project pair | port, then unit |
 | 2 | CS1 keeps its contents with the power off | unit |
