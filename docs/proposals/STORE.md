@@ -442,9 +442,13 @@ the effect has none).
   (`AGENTS.md`, "A part saved under an older slot layout"). At
   `project_saving` the core writes, per FX id in the image, the store id
   and layout hash. At `project_loaded` it compares them with the running
-  image, reports an id that now names another store or a changed layout,
-  and clamps every Part byte outside its slot's count before play. It
-  does not rewrite Parts to a new layout.
+  image, and reports an id that now names another store or a changed
+  layout. It does not rewrite Parts to a new layout, and needs no clamp:
+  stock's Part validator `0x40002318` rewrites every FX page byte outside
+  its descriptor's `[min, min + count - 1]` to the nearer end during the
+  load, in all 16 banks x 8 Parts (measured under the port, 6 Oct 2026,
+  `tools/verify/verify_core.py`; reached from the new-part initialiser's
+  tail `0x40005a44`, from `0x4002579e` and from the load at `0x4008cea0`).
 
 ## 9. Menu
 
@@ -506,7 +510,7 @@ with a name editor, copy, paste and clear (✅ on the unit, image A6).
 |---|---|---|---|
 | 0 | this document; `Param.key`, `Store`, `Setting`, `Pin` in the schema; `obam.py` and the format corpus; the lock file | no | no |
 | 1 | the build-time layer: the USB audio migration (five `usb-audio-out-*` and three `usb-audio-in-*` modules to two, 17 test remixes to pins); remix `defaults`; the resolved-value report | no | no |
-| 2 | the core: card store, SETTINGS, FX-page card defaults, SAVE AS DEFAULT, project pair, project record with clamp, CS1 block | yes | yes |
+| 2 | the core: card store, SETTINGS, FX-page card defaults, SAVE AS DEFAULT, project pair, project record (reported; stock clamps, section 8), CS1 block | yes | yes |
 | 3 | templates for FX pages: image, card, saved on the unit; the TEMPLATES lists | yes | yes |
 | 4 | the stock provider: MIDI track target, instrument templates with knob names, incoming CC map, controller presets; audio track pages; project-level stock settings | yes | yes |
 | from 2, in parallel | DSP run-time delivery: probe, route, first DSP setting | yes | yes |
@@ -560,7 +564,7 @@ AUTOSAVE and KEEP LEVELS in its own header.
 | 2 | the point in boot at which the card mounts, relative to USB enumeration | port |
 | 2 | a key combination free on FX, MIDI track and audio track pages | image keymaps, then unit |
 | 2 | the card-root `OCTABAM` directory on a unit's set list (📖 not listed: stock keeps a root directory as a set only when it holds `AUDIO`; `modules/core/README.md`), and a set named `OCTABAM` sharing it | unit |
-| 2 | the 4 Sep 2026 stale-part stall reproduced under the port, as the clamp gate's fixture. Not reproduced (6 Oct 2026, bottleservice, sequencer on the internal clock): BusDelay's MODE byte (3 values) stamped to 64 on T1 in every part of every bank, and the play step (`0x800064d0[t]`) advances as on the clean project at 300 and 900 frames. The unit's stall had stale bytes on several tracks and slots, with the panel drawing them; the port ran without the panel | port, then unit |
+| 2 | the 4 Sep 2026 stale-part stall reproduced under the port, as the clamp gate's fixture. Not reproduced (6 Oct 2026, bottleservice, sequencer on the internal clock): out-of-count bytes on T1's FX2 and five tracks' FX1 in every part of every bank, with the FX1 setup page drawn and with the DSPs running, and the play step (`0x800064d0[t]`) advances as on the clean project. Stock's Part validator rewrites those bytes to count - 1 during the load (section 8), so the clamp is stock's and the stall's cause is open | port, then unit |
 | 3 | template apply while the sequencer runs | port, then unit |
 | 4 | the writer for the MIDI track setup fields at `Part + 0x8f262 + t*0x24` | image, then port |
 | 4 | how the MIDI CTRL pages draw their labels | image, then port |

@@ -21,6 +21,10 @@ lane at the end:
                 state damaged
   layout        a record whose layout hash is not the image's: skipped
   duplicate     two records for DELAY: neither applied
+  stock clamps  out-of-count bytes in every Part of every bank (T1 BusDelay
+                MODE 64 and SIZE 100; SPECTRUM MODE 90 on FX1 of T2-4, T6, T7)
+                read count - 1 after the load: stock's Part validator does it,
+                which is why the core has no clamp
   mode          a GRAIN record for BusDelay (T1): the FX2 page-2 editor moves
                 MODE CLEAN -> GRAIN (verify_modedefaults' call) and MODE
                 DEFAULTS lands GRAIN's view with the card's values for the
@@ -218,13 +222,58 @@ def main():
             check(f"{name}: the record with another layout skipped ({counts['skip_layout']})", counts["skip_layout"] == 1)
         if name == "duplicate":
             check(f"{name}: both copies refused ({counts['skip_dup']})", counts["skip_dup"] == 2)
-    # ---- mode: MODE DEFAULTS' view takes the card's values ------------------
+    # ---- stock clamps: why the core has no clamp of its own ----------------
+    # The Part validator 0x40002318 rewrites every FX page byte outside its
+    # descriptor's [min, min + count - 1] to the nearer end during the load
+    # (STORE.md section 8). Planted out-of-count bytes in every Part of every
+    # bank must read count - 1 after the load.
+    import ot_project
+    sp = mods["SPECTRUM"]
     bd = mods["DELAY SERVER"]
+    ccopy = OUT / "project_clamp"
+    shutil.rmtree(ccopy, ignore_errors=True)
+    shutil.copytree(copy, ccopy)
+    b1 = [p.default for p in bd.params[:6]]; b2 = [p.default for p in bd.params[6:12]]
+    s1 = [p.default or 0 for p in sp.params[:6]]; s2 = [p.default or 0 for p in sp.params[6:12]]
+    b2[0], b2[3], s2[0] = 64, 100, 90
+    ot_project.set_fx(ccopy, "fx2", 1, "DELAY SERVER", page=b1, page2=b2, guard=False)
+    for tr in (2, 3, 4, 6, 7):
+        ot_project.set_fx(ccopy, "fx1", tr, "SPECTRUM", page=s1, page2=s2, guard=False)
+    card = OUT / "clamp.img"
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(ccopy), a.set_name, a.name,
+                        "--tree", str(OUT / "tree_clamp"), "--out", str(card)], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_core: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    # docs/firmware/PARTS.md section 1: working Parts, then the saved ones
+    # after the unsaved-bits byte
+    BANKS, STRIDE, PLEN = 0x400e21e0, 0x9b340, 6322
+
+    def part_base(p):
+        return (0x8ed80 + p * PLEN) if p < 4 else (0x9504a + (p - 4) * PLEN)
+    # (track, FX1 0 / FX2 6, page-2 slot, value count)
+    planted = [(1, 6, 0, 3), (1, 6, 3, 4)] + [(tr, 0, 0, 4) for tr in (2, 3, 4, 6, 7)]
+    c = OUT / "clamp_run.img"
+    shutil.copy2(card, c)
+    banks = OUT / "clamp_banks.bin"
+    cmd = [EMU, "--image", image, "--card", c, "--set", a.set_name, "--project", a.name,
+           "--mount", "--load-ms", "90000", "--step", f"-:dump:{BANKS:#x},{16 * STRIDE}={banks}"]
+    log = OUT / "clamp.txt"
+    with open(log, "w") as fh:
+        fh.write(" ".join(map(str, cmd)) + "\n"); fh.flush()
+        r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+    if r.returncode or not banks.exists():
+        sys.exit(f"verify_core: the clamp run did not finish -- {log}")
+    m = banks.read_bytes()
+    wrong = sum(m[bank * STRIDE + part_base(part) + 0x2fe + (tr - 1) * 30 + fxo + s2] != cnt - 1
+                for bank in range(16) for part in range(8) for tr, fxo, s2, cnt in planted)
+    check(f"stock clamps: {16 * 8 * len(planted)} planted out-of-count bytes (16 banks x 8 Parts) read "
+          f"count - 1 after the load ({wrong} do not)", wrong == 0)
+
+    # ---- mode: MODE DEFAULTS' view takes the card's values ------------------
     if "MODE DEFAULTS" in remix.modules and bd.mode_views:
         mcopy = OUT / "project_mode"
         shutil.rmtree(mcopy, ignore_errors=True)
         shutil.copytree(copy, mcopy)
-        import ot_project
         ot_project.set_fx(mcopy, "fx2", 1, "DELAY SERVER", page=[p.default for p in bd.params[:6]],
                           page2=[p.default for p in bd.params[6:12]], guard=False)
         card_vals = {"FDBK": 77, "SCTR": 33, "GLEN": 2, "DEL": 5}
