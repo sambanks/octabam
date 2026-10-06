@@ -197,6 +197,41 @@ def defaults_by_module(remix, mods) -> dict[str, list[tuple]]:
     return out
 
 
+# ---- FX pages as targets (STORE.md sections 3 and 7.6) -------------------
+
+def fx_store_id(m) -> str:
+    """The store id an effect's FX page defaults are filed under: its own
+    Store, else octabam.<module directory>, or stock.<name> for a stock
+    effect (spaces and punctuation to '-')."""
+    if m.store is not None:
+        return m.store.id
+    if m.is_stock:
+        return "stock." + "".join(c if c.isalnum() else "-" for c in m.key.lower()).strip("-")
+    return f"octabam.{m.name}"
+
+
+def fx_keys(m) -> list[int]:
+    """Twelve stored keys, 0 for a slot that is not drawn. An unkeyed
+    module's drawn slots are keyed by position (slot + 1), as stock's are."""
+    keyed = any(p.key is not None for p in m.params)
+    return [0 if p.active is not True else (p.key if keyed else i + 1)
+            for i, p in enumerate(m.params)]
+
+
+def fx_layout(m) -> int:
+    """The layout hash of an effect's page (obam.layout_hash): (key, the
+    declared count or 0) per slot, then the MODE slot."""
+    from remix import obam
+    keys = fx_keys(m)
+    return obam.layout_hash([(k, (p.count or 0) if k else 0) for k, p in zip(keys, m.params)],
+                            m.mode_slot)
+
+
+def fx_targets(remix, mods) -> list:
+    """The selected effects with knobs, as the core's table lists them."""
+    return [m for m in _selected(remix, mods) if m.menu is not None and len(m.params) == 12]
+
+
 # ---- refusals -------------------------------------------------------------
 
 def check_modules(mods) -> list[str]:

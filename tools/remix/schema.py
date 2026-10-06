@@ -46,6 +46,7 @@ class Category(Enum):
     PARTS = "parts"             # Parts, Kits and scenes, and the bridges between them
     MIDI_USB = "midi-usb"       # MIDI and USB
     FIXES = "fixes"             # a fix to stock behaviour
+    SETTINGS = "settings"       # the settings store and what it carries
     REFERENCE = "reference"     # the canaries
     STOCK = "stock"             # a stock effect kept in the chooser
 
@@ -57,6 +58,7 @@ CATEGORY_TITLE = {
     Category.PARTS: "Parts, Kits and scenes",
     Category.MIDI_USB: "MIDI and USB",
     Category.FIXES: "Fixes",
+    Category.SETTINGS: "Settings",
     Category.REFERENCE: "Reference",
     Category.STOCK: "Stock effects",
 }

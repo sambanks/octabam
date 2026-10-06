@@ -530,6 +530,14 @@ as well, at `modules/cfmeter/meter.s:91`);
 `Remix.defaults`; the build report's settings section
 (`store.report`).
 
+Phase 2, first increment (6 Oct 2026): the CORE module (`modules/core`)
+applies card-layer FX page defaults from `OCTABAM/card.work` /
+`card.strd` at each LOAD PROJECT and at the power-up's bank load,
+read-only on the unit; `tools/hw/ot_store.py default` writes the records;
+`tools/verify/verify_core.py` passes six card cases under the port (remix
+`core`). Mode defaults, SAVE AS DEFAULT, the SETTINGS list, the project
+pair, the project record and the CS1 block are not built yet.
+
 MODE DEFAULTS and RIG HOSTS keep working without the core. KITS keeps
 AUTOSAVE and KEEP LEVELS in its own header.
 
@@ -545,6 +553,7 @@ AUTOSAVE and KEEP LEVELS in its own header.
 | 2 | further unreferenced runs in CS1 below `0x100f859c` | image census, then port |
 | 2 | the point in boot at which the card mounts, relative to USB enumeration | port |
 | 2 | a key combination free on FX, MIDI track and audio track pages | image keymaps, then unit |
+| 2 | whether stock lists the card-root `OCTABAM` directory as a set; a set named `OCTABAM` shares it (`modules/core/README.md`) | port, then unit |
 | 2 | the 4 Sep 2026 stale-part stall reproduced under the port, as the clamp gate's fixture | port |
 | 3 | template apply while the sequencer runs | port, then unit |
 | 4 | the writer for the MIDI track setup fields at `Part + 0x8f262 + t*0x24` | image, then port |

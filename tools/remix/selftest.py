@@ -879,7 +879,8 @@ def main():
              "vocoder": ("PLATE REV", "DJ EQ"),   # VOCODER runs in PLATE's words; DJ EQ out so the tables sit in X
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "rig": _rig, "bottleservice": _rig,
-             "character-txtr": _rig}   # bottleservice with the TXTR station
+             "character-txtr": _rig,   # bottleservice with the TXTR station
+             "core": _rig}   # bottleservice with CORE (a ColdFire module)
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         _hv = stock.region_of(stock.harvested(

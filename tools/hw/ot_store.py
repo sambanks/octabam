@@ -4,6 +4,11 @@
     python3 tools/hw/ot_store.py dump FILE              a .work, .strd or .obt file as JSON
     python3 tools/hw/ot_store.py build JSON OUT         JSON back to a file
     python3 tools/hw/ot_store.py pair DIR [STEM]        what the core does with DIR/STEM.work + .strd
+    python3 tools/hw/ot_store.py default FILE REMIX MODULE KNOB=VALUE ...
+                                                        a card-layer default for MODULE's page in FILE
+                                                        (a card .work, created when absent); KNOB by
+                                                        the name the panel shows
+    python3 tools/hw/ot_store.py default FILE REMIX MODULE --clear
 
 A record that does not parse, or whose kind this tool does not know, is
 shown as its exact bytes in hex and written back unchanged, so `dump` then
@@ -112,7 +117,48 @@ def build(j: dict) -> bytes:
                      j.get("build_tag", ""), j.get("minor", obam.MINOR)).encode()
 
 
+def set_default(data: bytes | None, m, knobs: dict[str, int] | None) -> bytes:
+    """A card .work with module m's default record replaced by `knobs`
+    ({panel name: byte}), or removed when `knobs` is None. Every other
+    record keeps its bytes."""
+    from remix import store
+    f = obam.parse(data) if data else obam.File(obam.CARD_WORK, [], "HOST")
+    sid = store.fx_store_id(m)
+    pre = obam.prefix_bytes(obam.DEFAULT, target=0, mode=obam.NO_MODE, layout=store.fx_layout(m))
+    f.records = [r for r in f.records if not (r.kind == obam.DEFAULT and r.store_id == sid
+                                              and r.target() == (0, obam.NO_MODE))]
+    if knobs is not None:
+        keys = store.fx_keys(m)
+        names = {p.name.decode("ascii"): i for i, p in enumerate(m.params) if p.name and keys[i]}
+        vals = []
+        for name, v in knobs.items():
+            if name not in names:
+                raise SystemExit(f"{m.key} has no knob {name!r} (has {', '.join(names)})")
+            i = names[name]
+            count = m.params[i].count or 128
+            if not 0 <= v < count:
+                raise SystemExit(f"{m.key} {name}: {v} is outside its {count} values")
+            vals.append(obam.Value(keys[i], obam.BYTE, bytes([v])))
+        f.records.append(obam.Record(obam.DEFAULT, sid, payload=pre + b"".join(v.encode() for v in vals)))
+    return f.encode()
+
+
 def main(argv):
+    if len(argv) >= 2 and argv[1] == "default":
+        if len(argv) < 6:
+            print(__doc__.strip())
+            return 2
+        from remix import registry
+        path, mods = pathlib.Path(argv[2]), registry.bound(registry.remix(argv[3]))
+        if argv[4] not in mods:
+            print(f"no module {argv[4]!r}")
+            return 2
+        knobs = None if argv[5:] == ["--clear"] else \
+            {k: int(v, 0) for k, v in (a.split("=", 1) for a in argv[5:])}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(set_default(path.read_bytes() if path.exists() else None, mods[argv[4]], knobs))
+        print(f"wrote {path}")
+        return 0
     if len(argv) < 3 or argv[1] not in ("dump", "build", "pair"):
         print(__doc__.strip())
         return 2
