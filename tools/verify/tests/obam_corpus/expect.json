@@ -1,0 +1,165 @@
+{
+ "absent_module": {
+  "applicable": [
+   true,
+   true
+  ],
+  "carried": [
+   true,
+   false
+  ],
+  "outcome": "valid",
+  "records": 2
+ },
+ "bad_file_crc": {
+  "outcome": "invalid"
+ },
+ "bad_magic": {
+  "outcome": "invalid"
+ },
+ "bad_payload_crc": {
+  "applicable": [
+   false
+  ],
+  "outcome": "valid",
+  "records": 1
+ },
+ "bad_record_size": {
+  "outcome": "invalid"
+ },
+ "bad_total": {
+  "outcome": "invalid"
+ },
+ "duplicate_records": {
+  "applicable": [
+   true,
+   true
+  ],
+  "duplicates": 1,
+  "outcome": "valid",
+  "records": 2
+ },
+ "empty_card_work": {
+  "outcome": "valid",
+  "records": 0
+ },
+ "every_record_kind": {
+  "applicable": [
+   true,
+   true,
+   true,
+   true
+  ],
+  "outcome": "valid",
+  "records": 4,
+  "targets": [
+   [
+    0,
+    2
+   ],
+   [
+    0,
+    65535
+   ],
+   [
+    1,
+    9
+   ],
+   null
+  ],
+  "template_name": "RYTM"
+ },
+ "flags_and_reserved": {
+  "applicable": [
+   true
+  ],
+  "outcome": "valid",
+  "records": 1
+ },
+ "long_blob": {
+  "applicable": [
+   true
+  ],
+  "outcome": "valid",
+  "records": 1
+ },
+ "newer_container_major": {
+  "outcome": "unreadable"
+ },
+ "newer_minor_unknown_key": {
+  "applicable": [
+   true
+  ],
+  "outcome": "valid",
+  "records": 1,
+  "values": {
+   "0": {
+    "1": 1,
+    "2": 2,
+    "99": 4660
+   }
+  }
+ },
+ "settings_known": {
+  "applicable": [
+   true
+  ],
+  "outcome": "valid",
+  "records": 1,
+  "values": {
+   "0": {
+    "1": 1,
+    "2": 2,
+    "3": -300,
+    "4": "616263"
+   }
+  }
+ },
+ "template_file": {
+  "applicable": [
+   true
+  ],
+  "outcome": "valid",
+  "records": 1
+ },
+ "torn": {
+  "outcome": "invalid"
+ },
+ "unknown_record_kind": {
+  "applicable": [
+   false
+  ],
+  "outcome": "valid",
+  "records": 1
+ },
+ "unknown_value_type": {
+  "applicable": [
+   true
+  ],
+  "outcome": "valid",
+  "records": 1,
+  "values": {
+   "0": {
+    "1": 1,
+    "5": "type 9"
+   }
+  }
+ },
+ "unsupported_major": {
+  "applicable": [
+   true
+  ],
+  "carried": [
+   false
+  ],
+  "outcome": "valid",
+  "records": 1
+ },
+ "value_overrun": {
+  "applicable": [
+   false
+  ],
+  "outcome": "valid",
+  "records": 1
+ }
+}

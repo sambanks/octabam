@@ -11,7 +11,8 @@ a pull request signs; this page is how it is met.
 make check REMIX=<name>          one remix: build, cycles, the shared gates, the remix's own gates
 make reach [RUN=1] [FULL=1]      the gates this branch's diff reaches, in order; RUN=1 runs them; quick unless FULL=1
 make accept REMIXES="..." ...    the same gates under a strict runner that writes a JSON report
-make test-acceptance             the runner's, the classifier's and the shard runner's own tests (no firmware)
+make test-acceptance             the runner's, the classifier's and the shard runner's own tests, and the OBAM store's
+                                 (container corpus, settings, lock file, ot_store round trip; no firmware)
 make identity                    which remixes' images this branch moved, byte for byte
 scripts/refhash.sh check         a build change produced bit-identical artifacts and reports
 make ci                          what GitHub Actions runs (no firmware, so no remix)
@@ -60,6 +61,7 @@ on which remix is selected, so a run over several remixes does it once:
 | `verify_slots` | no dead store in BusVerb's per-instance state block |
 | `verify_replaces --static` | a declared replacement names a real stock effect and carries its id (the registry only) |
 | `verify_docs` | the README module table and the remix index match the manifests and selections (`make docs`); every remix has a README; every relative Markdown link and anchor, and every `docs/…`, `tools/…`, `modules/…` or `remixes/….md` path written in a tracked text file, resolves (`tools/verify/doclinks.py`); no section sign in a `.md` |
+| `store.py check` | no two modules share a store id; every module with a `Store` or a keyed `Param` has a current `store.lock` and breaks no released key; every remix's `settings` names a selected setting and a value inside its bounds, a module that `requires_core` has the core, early settings fit the remix's free CS1 run (`docs/proposals/STORE.md` section 4.3) |
 | `verify_remixer` (`Makefile` verify-shared) | the remixer (`make remix`) opens and draws headless under Textual's test pilot for stock and every remix (three panes, cursor in each); `k` moves the cursor up in AVAILABLE and `K` resets to stock. SKIPs without textual |
 | `tools/build/label_fmt.py` | the select formatter caves re-derive from their sources (with `m68k-elf-as` on PATH) |
 | `verify_knob_clicks` | the knob census: every continuous knob of the fixture remix's DSP modules moved mid-render, the block-rate step in dBFS; a garbage start stays quiet |

@@ -764,14 +764,16 @@ Three kinds of state, three homes:
 The design is [`docs/proposals/STORE.md`](../proposals/STORE.md) (6 Oct
 2026): settings, defaults and templates in one registry, resolved through
 four layers (manifest, remix, card, project), kept in a `.work` / `.strd`
-pair at the card root and one in the project. Nothing of it is implemented
-on 6 Oct 2026; its section 12 lists the phases. It starts from nordseele's
+pair at the card root and one in the project. Phase 0 is implemented (6 Oct
+2026): the declarations below, `tools/remix/store.py`, the container
+`tools/remix/obam.py`; no module declares a setting yet, and the card and
+project layers wait for the core (phase 2). Its section 12 lists the phases. It starts from nordseele's
 OTX proposal
 ([`OTX_PROJECT_PROPOSAL.md`](../proposals/OTX_PROJECT_PROPOSAL.md),
 [`OTX_MODULE_GUIDELINES.md`](../proposals/OTX_MODULE_GUIDELINES.md)), and
 its section 14 lists what is taken from OTX and what differs.
 
-What a module will declare (STORE.md section 4): a `Store` with a stable
+What a module declares (STORE.md section 4): a `Store` with a stable
 namespaced id; per setting a numeric `key` never reused, a kind (`Binary`,
 `Option` with append-only labels, `Number`, `Trigger`, `Blob`), a default,
 a scope (`CARD` or `PROJECT`) and an apply policy (`LIVE`, `CALLBACK`,
@@ -779,6 +781,23 @@ a scope (`CARD` or `PROJECT`) and an apply policy (`LIVE`, `CALLBACK`,
 template survives a renamed or moved knob. A remix pins or re-defaults a
 value in its `remix.py`. A module builds and runs without the core: a
 setting then resolves at build.
+
+```python
+from remix.schema import Apply, Option, Scope, Setting, Store
+
+MODULE = Module(...,
+    store=Store("octabam.<module directory>"),
+    settings=(Setting(1, "IN", Option("OFF", "AB", "CD", "ABCD"),
+                      scope=Scope.CARD, apply=Apply.NEXT_BOOT),),
+)
+```
+
+Then `python3 tools/remix/store.py lock <module>` writes
+`modules/<module>/store.lock`, committed with the manifest; `make
+verify-shared` refuses a stale lock and a change that breaks a released key
+(a removed key not retired, a changed type, a moved or removed label).
+`python3 tools/remix/store.py resolve <remix>` prints every setting's value
+and the layer it came from.
 
 Until the store exists a module does not invent a settings file, a save
 hook or a menu root of its own for these values (`MAINMENU.md` section 5:
