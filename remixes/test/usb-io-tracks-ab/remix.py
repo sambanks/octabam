@@ -7,17 +7,19 @@ effects minus SPATIALIZER, whose words on payload A hold the IN module's RX
 inject: listed on neither chooser, so neither menu offers it.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Pin, Proof, Remix
 
 REMIX = Remix(
     name="usb-io-tracks-ab",
     family="mods", proof=Proof.PORT, proof_note="`make check` (verify_usb, verify_usb_in) under the port, 28 Sep 2026; not on hardware in this form",
     doc="stock - SPATIALIZER + USB MIDI + USB AUDIO OUT TRACKS + USB CROSSBAR + USB AUDIO IN AB.",
-    modules=("USB MIDI", "USB AUDIO OUT TRACKS", "USB CROSSBAR", "USB AUDIO IN AB",
+    modules=("USB MIDI", "USB AUDIO OUT", "USB CROSSBAR", "USB AUDIO IN",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),
     fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
          "COMB FILTER", "COMPRESSOR", "LO-FI"),
     fallback="NONE",
+    settings={("octabam.usb-audio-out", "LAYOUT"): Pin("TRACKS"),
+              ("octabam.usb-audio-in", "INPUTS"): Pin("AB")},
 )

@@ -11,14 +11,15 @@ the CORE module.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import pathlib
 import sys
 from dataclasses import dataclass
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from remix.schema import (CORE_KEY, Apply, Binary, Blob, Number, Option, Pin,  # noqa: E402
-                          Trigger)
+from remix.schema import (CORE_KEY, Apply, Binary, Blob, ModeView, Number, Option,  # noqa: E402
+                          Pin, Trigger)
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LOCK = "store.lock"
@@ -91,6 +92,111 @@ def resolve(remix, mods) -> list[tuple[Resolved, object]]:
 _ABSENT = object()
 
 
+def build_values(remix, mods) -> dict[str, dict[str, object]]:
+    """{module key: {setting name: value}} of every Apply.BUILD setting of
+    the selected modules; an Option as its label."""
+    out: dict[str, dict[str, object]] = {}
+    for r, s in resolve(remix, mods):
+        if s.apply is Apply.BUILD:
+            v = s.kind.labels[r.value] if isinstance(s.kind, Option) else r.value
+            out.setdefault(r.module, {})[r.name] = v
+    return out
+
+
+def value(remix, mods, store_id: str, name: str):
+    """One setting's resolved value for the remix (an Option as its label),
+    or None when no selected module files it."""
+    for r, s in resolve(remix, mods):
+        if r.store_id == store_id and r.name == name:
+            return s.kind.labels[r.value] if isinstance(s.kind, Option) else r.value
+    return None
+
+
+# ---- knob defaults (Remix.defaults) ---------------------------------------
+
+def _knob_slot(m, mode, knob: str) -> int | None:
+    """The slot `knob` names on module m: its Param name, or the name the
+    mode's view gives the slot."""
+    for i, p in enumerate(m.params):
+        if p.name is not None and p.name.decode("ascii", "replace") == knob:
+            return i
+    if mode is not None:
+        v = next((v for v in m.mode_views if v.mode == mode), None)
+        for i, nm in (v.names.items() if v else ()):
+            if nm.decode("ascii", "replace") == knob:
+                return i
+    return None
+
+
+def _mode_value(m, mode):
+    """A mode label or value -> the MODE select's value, or None when it
+    names nothing."""
+    if m.mode_slot is None:
+        return None
+    p = m.params[m.mode_slot]
+    if isinstance(mode, str):
+        return p.labels.index(mode) if p.labels and mode in p.labels else None
+    if isinstance(mode, int) and not isinstance(mode, bool) and 0 <= mode < (p.count or 0):
+        return mode
+    return None
+
+
+def check_defaults(remix, mods) -> list[str]:
+    bad, sel = [], set(remix.modules)
+    for entry, v in remix.defaults.items():
+        if not (isinstance(entry, tuple) and len(entry) == 3):
+            bad.append(f"defaults entry {entry!r}: (module key, mode or None, knob name)")
+            continue
+        key, mode, knob = entry
+        m = mods.get(key) if key in sel else None
+        if m is None:
+            bad.append(f"defaults {entry!r}: {key!r} is not in the remix")
+            continue
+        if not m.params:
+            bad.append(f"defaults {entry!r}: {m.name} has no knobs")
+            continue
+        mv = None
+        if mode is not None:
+            mv = _mode_value(m, mode)
+            if mv is None:
+                bad.append(f"defaults {entry!r}: {m.name} has no MODE value {mode!r}")
+                continue
+        slot = _knob_slot(m, mv, knob)
+        if slot is None:
+            bad.append(f"defaults {entry!r}: {m.name} has no knob {knob!r}")
+            continue
+        if mv is not None and slot == m.mode_slot:
+            bad.append(f"defaults {entry!r}: a mode's view does not re-default MODE itself")
+            continue
+        count = m.params[slot].count or 128
+        if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v < count:
+            bad.append(f"defaults {entry!r}: {v!r} is outside the knob's {count} values")
+    return bad
+
+
+def apply_defaults(m, entries) -> dict:
+    """{field: value} that put a remix's knob defaults for module m into
+    its params and mode views; entries are (mode value or None, slot, byte)."""
+    params, views = list(m.params), {v.mode: v for v in m.mode_views}
+    for mode, slot, v in entries:
+        if mode is None:
+            params[slot] = dataclasses.replace(params[slot], default=v)
+        else:
+            old = views.get(mode) or ModeView(mode)
+            views[mode] = dataclasses.replace(old, defaults={**old.defaults, slot: v})
+    return {"params": tuple(params),
+            "mode_views": tuple(views[k] for k in sorted(views))}
+
+
+def defaults_by_module(remix, mods) -> dict[str, list[tuple]]:
+    out: dict[str, list[tuple]] = {}
+    for (key, mode, knob), v in remix.defaults.items():
+        m = mods[key]
+        mv = None if mode is None else _mode_value(m, mode)
+        out.setdefault(key, []).append((mv, _knob_slot(m, mv, knob), v))
+    return out
+
+
 # ---- refusals -------------------------------------------------------------
 
 def check_modules(mods) -> list[str]:
@@ -161,6 +267,7 @@ def check_remix(remix, mods) -> list[str]:
         why = s.kind.check(value)
         if why:
             bad.append(f"settings {entry!r}: {why}")
+    bad += check_defaults(remix, mods)
     if has_core(remix) and not bad:
         need = sum(s.size for _m, s in early_settings(remix, mods))
         room = early_budget(remix, mods)
@@ -168,6 +275,21 @@ def check_remix(remix, mods) -> list[str]:
             bad.append(f"early settings take {need} bytes; the free CS1 run of this "
                        f"remix holds {room} after the {EARLY_HEADER}-byte header")
     return bad
+
+
+def report(remix, mods) -> list[str]:
+    """The build report's settings section: every setting and remix knob
+    default with its value and layer. Empty when there is neither."""
+    rows = resolve(remix, mods)
+    if not rows and not remix.defaults:
+        return []
+    out = ["=== Settings: resolved at build (docs/proposals/STORE.md) ==="]
+    for r, s in rows:
+        where = "card/project at run time" if r.runtime else "fixed in the image"
+        out.append(f"  {r.store_id} {r.name} = {r.shown(s)}  ({r.layer}; {where})")
+    for (key, mode, knob), v in remix.defaults.items():
+        out.append(f"  {key} {knob}{'' if mode is None else ' in ' + str(mode)} default = {v}  (remix)")
+    return out
 
 
 # ---- the lock file (STORE.md section 4.4) ---------------------------------

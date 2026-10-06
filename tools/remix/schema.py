@@ -13,6 +13,7 @@ worse than none, so a field exists only where a check consumes it.
 from __future__ import annotations
 
 from collections.abc import Mapping
+import dataclasses
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from enum import Enum
@@ -1429,6 +1430,23 @@ class Module:
     # The module's function is stored state: the build refuses it in a
     # remix without the CORE module, by name.
     requires_core: bool = False
+    # CODE CHOSEN BY A SETTING: variant(values) -> {field: value}, given the
+    # module's Apply.BUILD settings resolved for the remix ({name: value},
+    # an Option as its label). registry.bound() applies it once per remix,
+    # so every reader of `linked`, `dsp`, `detours` or `gates` sees the
+    # chosen code without asking (modules/usb-audio-out is the first).
+    variant: object | None = None
+    # The values a bound module was built with ({name: value}); empty on an
+    # unbound one. An `include` callable reads them from the selection.
+    build_values: Mapping = field(default_factory=dict, hash=False, compare=False)
+
+    def bind(self, values: Mapping) -> "Module":
+        """This module with its Apply.BUILD settings fixed to `values`."""
+        over = self.variant(dict(values)) if self.variant is not None else {}
+        bad = set(over) - {f.name for f in dataclasses.fields(self)} | ({"key", "name", "store", "settings"} & set(over))
+        if bad:
+            raise ValueError(f"{self.name}: variant returns {sorted(bad)}, which a variant may not set")
+        return dataclasses.replace(self, build_values=MappingProxyType(dict(values)), **over)
 
     def write_spans(self):
         """Every fixed-address write this module declares, as (kind, start,
@@ -1470,6 +1488,8 @@ class Module:
                              f"got {len(self.params)}")
         if self.settings and self.store is None:
             raise ValueError(f"{self.name}: settings without a Store to file them under")
+        if self.variant is not None and not any(s.apply is Apply.BUILD for s in self.settings):
+            raise ValueError(f"{self.name}: a variant with no Apply.BUILD setting to choose it")
         for attr in ("key", "name"):
             seen = [getattr(s, attr) for s in self.settings]
             dup = sorted({v for v in seen if seen.count(v) > 1}, key=str)
@@ -1933,6 +1953,12 @@ class Remix:
     # An Option takes a label or an index. tools/remix/store.py checks every
     # entry against the selected modules.
     settings: Mapping = field(default_factory=dict, hash=False)
+    # LAYER 2 OF EACH KNOB DEFAULT (docs/proposals/STORE.md section 4.2):
+    # (module key, mode, knob) -> byte. `mode` is the MODE select's label or
+    # value, or None for the knob's own default (Param.default); `knob` is the
+    # Param's name, or the name the mode's view gives it. It replaces that
+    # default in this image's descriptor or MODE DEFAULTS table.
+    defaults: Mapping = field(default_factory=dict, hash=False)
 
     def __post_init__(self):
         if self.grains not in (2, 4):

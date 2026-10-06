@@ -4,12 +4,12 @@ The stock chooser plus USB MIDI, USB AUDIO OUT MAIN, USB CROSSBAR and USB AUDIO 
 
 - **USB MIDI** and **USB AUDIO OUT MAIN** (markandrus/octemu's source): USB-MIDI mirroring
   DIN; MAIN L/R (two channels) to the host, 24-bit, every 250 µs.
-  [`modules/usb-audio-out-main`](../../../modules/usb-audio-out-main/README.md).
+  [`modules/usb-audio-out`](../../../modules/usb-audio-out/README.md#main).
 - **USB CROSSBAR** (Bryan T): the USB controller bursts and goes first on the
   SDRAM and SRAM crossbar ports, set at boot. Without it the IN stream loses
   packet tails under a busy project. [`modules/usb-crossbar`](../../../modules/usb-crossbar/README.md).
 - **USB AUDIO IN CD** (Bryan T): a stereo pair into inputs C/D (A/B stay on the jacks), asynchronous with implicit feedback from the
-  out stream. [`modules/usb-audio-in-cd`](../../../modules/usb-audio-in-cd/README.md).
+  out stream. [`modules/usb-audio-in`](../../../modules/usb-audio-in/README.md#cd).
 - 13 of the 14 stock FX2 effects. SPATIALIZER is on neither menu: its words on
   payload A hold the IN module's RX inject, and a project that still selects
   it runs NONE.

@@ -9,9 +9,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from remix import store  # noqa: E402
-from remix.schema import (CORE_KEY, Apply, Binary, Blob, Claims, Kind, Module,  # noqa: E402
-                          Number, Option, Param, Pin, Remix, Scope, Setting, Store,
-                          Trigger)
+from remix.schema import (CORE_KEY, Apply, Binary, Blob, Claims, Kind, Linked,  # noqa: E402
+                          ModeView, Module, Number, Option, Param, Pin, Remix, Scope,
+                          Setting, Store, Trigger)
 
 OUT = Setting(1, "OUT", Option("MAIN", "MAIN+CUE", "MASTER", "TRACKS"), apply=Apply.BUILD)
 IN = Setting(2, "IN", Option("OFF", "AB", "CD", "ABCD"), apply=Apply.NEXT_BOOT, early=True)
@@ -216,6 +216,81 @@ class Lock(unittest.TestCase):
         gone = mod(params=keyed(n_drawn=11, keys=list(range(1, 12))))
         self.assertTrue(any("was removed" in b for b in store.check_lock(gone)))
         self.assertEqual(store.write_lock(gone, retire_param=[12]), [])
+
+
+def fx(**kw):
+    """An effect with a MODE select on slot 6 and a knob renamed in mode 1."""
+    params = tuple(Param(b"K%d" % i, 10, 128, active=True) for i in range(6)) + \
+        (Param(b"MODE", 0, 3, active=True, labels=("A", "B", "C")),) + \
+        tuple(Param(b"P%d" % i, 20, 128, active=True) for i in range(7, 12))
+    return Module(name="fx", key="FX", kind=Kind.CF_PATCH, doc="fixture", params=params,
+                  mode_slot=6, mode_views=(ModeView(1, names={0: b"RATE"}, defaults={7: 40}),), **kw)
+
+
+class Binding(unittest.TestCase):
+    def test_variant_sets_fields_and_values(self):
+        def variant(v):
+            return {"linked": (Linked("u", "u.s", cpu="5475", dram=True,
+                                      include=lambda mods, n=v["LAYOUT"]: n),)}
+        m = mod(settings=(OUT,), variant=variant)
+        b = m.bind({"LAYOUT": "MAIN"})
+        self.assertEqual(b.linked[0].include({}), "MAIN")
+        self.assertEqual(dict(b.build_values), {"LAYOUT": "MAIN"})
+        self.assertEqual(m.build_values, {})
+
+    def test_variant_may_not_rename(self):
+        m = mod(settings=(OUT,), variant=lambda v: {"key": "OTHER"})
+        self.assertRaises(ValueError, m.bind, {"LAYOUT": "MAIN"})
+
+    def test_variant_needs_a_build_setting(self):
+        self.assertRaises(ValueError, lambda: mod(settings=(IN,), variant=lambda v: {}))
+
+    def test_build_values_take_labels(self):
+        usb = mod()
+        r = remix(usb, settings={("octabam.usb", "OUT"): Pin(2)})
+        self.assertEqual(store.build_values(r, {usb.key: usb}), {"USB": {"OUT": "MASTER"}})
+        self.assertEqual(store.value(r, {usb.key: usb}, "octabam.usb", "OUT"), "MASTER")
+        self.assertIsNone(store.value(r, {usb.key: usb}, "octabam.none", "OUT"))
+
+
+class KnobDefaults(unittest.TestCase):
+    def setUp(self):
+        self.m = fx()
+        self.mods = {"FX": self.m}
+
+    def test_applied(self):
+        r = remix(self.m, defaults={("FX", None, "K0"): 64, ("FX", "B", "RATE"): 5,
+                                     ("FX", 2, "P7"): 90})
+        self.assertEqual(store.check_remix(r, self.mods), [])
+        over = store.apply_defaults(self.m, store.defaults_by_module(r, self.mods)["FX"])
+        self.assertEqual(over["params"][0].default, 64)
+        views = {v.mode: v for v in over["mode_views"]}
+        self.assertEqual(views[1].defaults, {7: 40, 0: 5})
+        self.assertEqual(views[1].names, {0: b"RATE"})
+        self.assertEqual(views[2].defaults, {7: 90})
+        self.assertEqual(self.m.params[0].default, 10)
+
+    def test_refusals(self):
+        for entry, v, words in ((("NOPE", None, "K0"), 1, "not in the remix"),
+                                (("FX", "Z", "K0"), 1, "no MODE value"),
+                                (("FX", None, "NOPE"), 1, "no knob"),
+                                (("FX", None, "MODE"), 3, "outside"),
+                                (("FX", "A", "MODE"), 1, "MODE itself"),
+                                (("FX", None, "K0"), 128, "outside")):
+            with self.subTest(words):
+                bad = store.check_remix(remix(self.m, defaults={entry: v}), self.mods)
+                self.assertTrue(bad and words in bad[0], bad)
+
+    def test_report(self):
+        usb = mod()
+        mods = {"FX": self.m, "USB": usb}
+        r = remix(self.m, usb, settings={("octabam.usb", "OUT"): Pin("MAIN")},
+                  defaults={("FX", None, "K0"): 64})
+        lines = store.report(r, mods)
+        self.assertEqual(lines[0][:12], "=== Settings")
+        self.assertIn("  octabam.usb OUT = MAIN  (pin; fixed in the image)", lines)
+        self.assertIn("  FX K0 default = 64  (remix)", lines)
+        self.assertEqual(store.report(remix(self.m), {"FX": self.m}), [])
 
 
 if __name__ == "__main__":

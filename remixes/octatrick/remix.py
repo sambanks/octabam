@@ -28,7 +28,7 @@ has the USB use steps. Until 29 Sep 2026 this selection was split three ways (oc
 octatrick-usb, octatrick-tuner).
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Pin, Proof, Remix
 
 REMIX = Remix(
     name="octatrick",
@@ -36,11 +36,13 @@ REMIX = Remix(
     proof_note="Tim's MKI, test build 3.0 b40 (this selection at BUILD 40), 29 Sep 2026: USB AUDIO IN brings the Mac's audio onto the inputs in a one-minute check (long runs not yet tested). The same four modules with the 26 Sep USB AUDIO (out only) ran on the same MKI through the 2.9 test builds; the tuner works on test build 3.0 b40 (UP + TEMPO); the last two 2.9 fixes are not yet confirmed on hardware",
     doc="SYNTH MACHINE + SCALE QUANTIZER + DIRECT JUMP + TUNER + USB MIDI + USB AUDIO (20 channels out, 4 in onto A-D) on the stock effects less SPATIALIZER.",
     modules=("DIRECT JUMP", "SCALE QUANTIZER", "SYNTH MACHINE", "TUNER",
-             "USB MIDI", "USB AUDIO OUT TRACKS MAIN CUE", "USB CROSSBAR", "USB AUDIO IN ABCD",
+             "USB MIDI", "USB AUDIO OUT", "USB CROSSBAR", "USB AUDIO IN",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),
     fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
          "COMB FILTER", "COMPRESSOR", "LO-FI"),
     fallback="NONE",
+    settings={("octabam.usb-audio-out", "LAYOUT"): Pin("TRACKS MAIN CUE"),
+              ("octabam.usb-audio-in", "INPUTS"): Pin("ABCD")},
 )

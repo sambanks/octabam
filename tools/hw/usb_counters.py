@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read USB AUDIO's counters from a unit over USB (the vendor request
-0xc0/0x55 the module answers on EP0; modules/usb-audio-out-tracks-main-cue/usbaudio.s).
+0xc0/0x55 the module answers on EP0; modules/usb-audio-out/usbaudio.s).
 
   tools/hw/usb_counters.py            # once
   tools/hw/usb_counters.py --watch 1  # every second, deltas beside the values

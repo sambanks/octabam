@@ -1,7 +1,24 @@
-# `usb-audio-out-tracks-main-cue` — USB AUDIO OUT TRACKS MAIN CUE
+# `usb-audio-out` — USB AUDIO OUT
 
-The unit as a USB audio input (UAC2, 44.1 kHz, 24-bit), twenty channels.
-Needs USB MIDI: the audio function is added to its composite device.
+The unit as a USB audio input (UAC2, 44.1 kHz, 24-bit), in one of five
+layouts chosen by the module's LAYOUT setting. LAYOUT is a build-time
+setting (`docs/proposals/STORE.md`): a remix pins it, for example
+`settings={("octabam.usb-audio-out", "LAYOUT"): Pin("MASTER")}`. Needs USB
+MIDI: the audio function is added to its composite device.
+
+| LAYOUT | `USB_LAYOUT` | high speed | full speed |
+|---|---|---|---|
+| TRACKS MAIN CUE (the default) | 0 | 20 channels: tracks 1–16, MAIN, CUE | the tracks' stereo sum |
+| TRACKS | 1 | 16 channels: the tracks | the tracks' stereo sum |
+| MASTER | 2 | 2 channels: track 8's L/R | track 8's L/R |
+| MAIN CUE | 3 | 4 channels: MAIN, CUE | MAIN |
+| MAIN | 4 | 2 channels: MAIN | MAIN |
+
+Until 6 Oct 2026 each layout was a module of its own (USB AUDIO OUT TRACKS
+MAIN CUE, OUT TRACKS, OUT MASTER, OUT MAIN CUE, OUT MAIN); each remix's
+image is byte-identical to the one it built with those modules. The
+sections from here to *Layouts* describe TRACKS MAIN CUE, the twenty
+channels; *Layouts* has the other four.
 
 | USB speed | channels | content |
 |---|---|---|
@@ -249,21 +266,278 @@ only (`verify_usb`).
 - `verify_usb` also resets the bus with the stream open: GET_INTERFACE(4) answers 0, the polls are empty, and SET_INTERFACE alt 1 brings the stream back.
 - `tools/verify/verify_usb_align.py` (the manifest's gate): MAIN/CUE against the tracks.
 
-## Variants
+## Layouts
 
-`usbaudio.s` is assembled once per module, one layout each; a remix carries one
-(they take the same hook sites, and the build refuses two by name):
+The layout is a `.set` in the `remix.inc` the `usbaudio` unit writes
+(`layout_inc` in the manifest). Every `USB_LAYOUT = 0` path is the source as
+it was before the layouts (27 Sep 2026). The four below take the same hook
+sites; the producer detour's note in the build report names the layout.
 
-| module | `USB_LAYOUT` | high speed | full speed |
+### TRACKS
+
+The unit as a USB audio input (UAC2, 44.1 kHz, 24-bit), sixteen channels:
+track N's L/R on channels 2N−1/2N, post-FX, pre-fader. MAIN and CUE are
+left out. Full speed: the stereo sum of the eight tracks. Needs USB MIDI.
+
+USB AUDIO OUT TRACKS MAIN CUE's source,
+`usbaudio.s` (markandrus/octemu, MIT), assembled with `USB_LAYOUT = 1`:
+the producer skips the MAIN/CUE reads and writes a 64-byte slot per frame;
+packets are 11/12 frames, at most 768 bytes, every 250 µs. Everything else
+(the shims, the rate servo, the counters, the descriptors' shape) is that
+module's. It takes the same hook sites, so a remix carries one of the three
+audio modules.
+
+#### Measured
+
+Under the port, `verify_usb` with `REMIX=usb-out-tracks` (27 Sep 2026):
+
+- EP `0x83` isochronous, 768 bytes, bInterval 2; AS_GENERAL 16 channels.
+- 704/768-byte packets, none empty after the first ten; every subslot's
+  low byte zero; counters: 0 overruns, 0 underruns.
+- Taps: with the read-back arena re-poked before every poll with words that
+  name their source, side and frame, channels 1–16 carry tracks 1–8 L/R,
+  each only its own.
+- Full speed: 1 ms packets of 44/45 8-byte frames.
+
+#### On the unit
+
+Image 69 (Sam's MKII, 25 Sep 2026) ran sixteen channels at 24 bits, every
+channel its track's tone, 0 underruns / overruns
+(USB AUDIO OUT TRACKS MAIN CUE "On the unit"). This build is not that one: it is the current source, which
+has since gained MAIN/CUE (#435) and lost dead diagnostic code (#446), with
+the MAIN/CUE reads assembled out. It has not run on a unit.
+
+#### Gates
+
+- `verify_usb` (`make check REMIX=usb-out-tracks`).
+
+#### Per block
+
+The producer runs 16 frames per frame interrupt. Instructions executed per
+block at high speed, counted from the source (not cycles):
+
+| module | per frame | per block | read-back words read per block |
 |---|---|---|---|
-| USB AUDIO OUT TRACKS MAIN CUE (this) | 0 | 20 channels: tracks 1–16, MAIN, CUE | the tracks' stereo sum |
-| [USB AUDIO OUT TRACKS](../usb-audio-out-tracks/README.md) | 1 | 16 channels: the tracks | the tracks' stereo sum |
-| [USB AUDIO OUT MASTER](../usb-audio-out-master/README.md) | 2 | 2 channels: track 8's L/R | track 8's L/R |
-| [USB AUDIO OUT TRACKS POST](../usb-audio-out-tracks-post/README.md) | 5 | 16 channels: the tracks after their own MAIN gain | the stems' stereo sum |
+| OUT TRACKS MAIN CUE | 167 | ~2,710 | 320 (256 track + 64 MAIN/CUE) |
+| OUT TRACKS | 146 | ~2,370 | 256 |
+| OUT MASTER | 10 | ~180 | 32 |
 
-The layout is a `.set` in the `remix.inc` each module's `Linked` unit
-writes. Every `USB_LAYOUT = 0` path is the source as it was; this module's
-image is byte-identical to the one built before the variants (27 Sep 2026).
+The port's `--profile` samples the PC every 64 instructions and gives no
+exact per-block count; cycles on the chip depend on memory timing the port
+does not model. `modules/cfmeter` (CF METER) measures the frame
+interrupt's duration and main's idle time on a unit.
+
+### MASTER
+
+The unit as a USB audio input (UAC2, 44.1 kHz, 24-bit), two channels:
+track 8's L/R, post-FX, pre-fader, on channels 1/2 at both USB speeds.
+With MASTER TRACK on, track 8 is the mix through T8's effects, before T8's
+LEVEL and MAIN volume. Needs USB MIDI.
+
+USB AUDIO OUT TRACKS MAIN CUE's source,
+`usbaudio.s` (markandrus/octemu, MIT), assembled with `USB_LAYOUT = 2`.
+The variant is Sam Banks's (27 Sep 2026):
+
+- **Producer.** Reads T8's two read-back words per frame (the same words
+  as OUT TRACKS MAIN CUE's channels 15/16, the same 24-bit format) and writes one
+  8-byte slot per frame into a 1,024-frame ring. No other track, no
+  MAIN/CUE, no stereo sum.
+- **Both speeds send the same ring.** High speed polls every 250 µs
+  (bInterval 2) like the other out layouts: 11/12 frames, at most 96 bytes;
+  full speed every 1 ms: 44/45 frames, at most 360 bytes. Until 28 Sep 2026
+  high speed polled every 1 ms too (360-byte packets, the form on Sam's MKII
+  as image 88); the 250 µs cadence is what lets a USB AUDIO IN module take
+  this stream as its implicit-feedback source. Not on a unit at 250 µs.
+- **Descriptors.** USB MIDI's descriptor unit declares a two-channel input
+  with bmChannelConfig front left + front right (`0x3`, the standard stereo
+  cluster) in the input terminal and AS_GENERAL, at both speeds; 24-bit
+  samples in 4-byte subslots, a fixed 44.1 kHz clock, as OUT TRACKS MAIN CUE.
+- It takes the same hook sites as OUT TRACKS MAIN CUE and OUT TRACKS, so a remix carries
+  one of the three.
+
+#### Measured
+
+Under the port, `verify_usb` with `REMIX=usb-out-master` and `REMIX=bottleservice`
+(27 Sep 2026):
+
+- EP `0x83` isochronous, 96 bytes, bInterval 2; AS_GENERAL 2 channels,
+  bmChannelConfig `0x3`.
+- 88/96-byte packets at high speed, none empty after the first ten;
+  every subslot's low byte zero; counters: 0 overruns, 0 underruns.
+- Taps: with the read-back arena re-poked before every poll with words that
+  name their source, side and frame, channel 1 carries T8 L and channel 2
+  T8 R, only those, at high speed and at full speed.
+
+#### On the unit
+
+Image 88 (Sam's MKII, 27 Sep 2026) carried the 1 ms high-speed form (above); nothing about the stream was
+measured there. The 250 µs form: not flashed.
+
+#### Open
+
+- Which channels an iOS app records by default. The descriptor declares a
+  plain two-channel front L/R input; an app that takes the first two
+  channels gets T8.
+- Full speed on a phone: whether an iPhone or its adapter connects at high
+  or full speed. Both carry T8.
+
+#### Gates
+
+- `verify_usb` (`make check REMIX=usb-out-master`, `REMIX=bottleservice`).
+
+#### Per block and per millisecond
+
+Counted from the source, instructions executed (not cycles):
+
+| | OUT TRACKS MAIN CUE | OUT MASTER |
+|---|---|---|
+| producer, per block (16 frames) | ~2,710 | ~180 |
+| read-back words read per block | 320 | 32 |
+| packets built per ms (high speed) | 4 | 4 |
+| bytes copied into packets per ms | ~3,530 | ~353 |
+| packet builder + copy per ms | ~750 | ~250 |
+
+`modules/cfmeter` (CF METER) measures the frame interrupt's duration and
+main's idle time on a unit; the port's `--profile` samples every 64
+instructions and gives no exact count.
+
+### MAIN CUE
+
+The unit as a USB audio input (UAC2, 44.1 kHz, 24-bit), four channels:
+MAIN L/R on channels 1/2 and CUE L/R on 3/4, the DAC feed itself, at high
+speed. Full speed carries MAIN alone. Needs USB MIDI.
+
+USB AUDIO OUT TRACKS MAIN CUE's source,
+`usbaudio.s` (markandrus/octemu, MIT), assembled with `USB_LAYOUT = 3`.
+The variant is Bryan T's (27 Sep 2026), from usbin-test's `AUD_IN4`:
+
+- **Producer.** Reads MAIN's and CUE's words straight from `MAIN_CUE_BASE`
+  (`0x80005e60`, the same buffer OUT TRACKS MAIN CUE's channels 17-20 read and the
+  stock recorder's MAIN/CUE sources read) and writes one 16-byte slot per
+  frame into a 1,024-frame ring. `MAIN_CUE_BASE` is not ping-ponged, so there is
+  no bank bookkeeping; no track is read and there is no stereo sum.
+- **CUE with MASTER TRACK on** is written two blocks later than MAIN, so
+  the two stay sample-aligned: the mixdown's master path gives CUE a
+  32-sample lead
+  ([OUT TRACKS MAIN CUE](#cue-against-main-with-master-track-on)).
+- **High speed polls every 250 µs**, as OUT TRACKS MAIN CUE and OUT TRACKS do (not
+  OUT MASTER's 1 ms): 11.025 frames × 16 bytes a packet, at most 12 frames =
+  192 bytes.
+- **Full speed carries MAIN alone**, two channels, 44/45 frames × 8 bytes
+  every 1 ms, into the same `aud_sum` ring OUT TRACKS MAIN CUE and OUT TRACKS use for their
+  stereo sum (skipped at high speed as theirs is). Every layout sends two
+  channels at full speed; MAIN is the natural pair here.
+- **Descriptors.** USB MIDI's descriptor unit (`HS_LAYOUT`) declares four
+  channels and 192-byte packets at bInterval 2; bmChannelConfig 0 as
+  OUT TRACKS MAIN CUE and OUT TRACKS; 24-bit samples in 4-byte subslots, a fixed 44.1 kHz
+  clock.
+- It takes the same hook sites as OUT TRACKS MAIN CUE, OUT TRACKS and OUT MASTER, so a remix
+  carries one of the four.
+
+#### Measured
+
+Under the port, `verify_usb` with `REMIX=usb-out-main-cue` (27 Sep 2026), all checks passing:
+
+- EP `0x83` isochronous, 192 bytes, bInterval 2; AS_GENERAL 4 channels.
+- Packets of 10-12 frames × 16 bytes at high speed, none empty after the
+  first ten; every subslot's low byte zero; the vendor counters read back
+  with no overrun.
+- Taps: with `MAIN_CUE_BASE` re-poked before every poll with words that name
+  their source, side and frame, channels 1-4 carry MAIN L, MAIN R, CUE L,
+  CUE R, each only its own source's words.
+- Full speed: 352/360-byte packets (44/45 two-channel frames), none empty
+  after the first ten.
+
+#### On the unit
+
+Build 16, `usb-io` (this layout beside USB AUDIO IN), Bryan T's MKII and
+Mac, 27 Sep 2026: macOS lists the four inputs; MAIN L/R and CUE L/R reach
+the Mac on channels 1-4; the vendor counters show no underrun while
+streaming. At the start of a session the ring's fill was above its band
+(884), and the servo had it back inside (632) within a second.
+Overruns were counted only when macOS closed the stream (USB AUDIO IN's
+README, *Latency*, has the trace).
+
+Frame-interrupt cost (Bryan T's MKII, 4 Oct 2026, beside IN ABCD, USB
+MIDI and USB CROSSBAR, host streaming, fresh-loaded FLEX projects): 93.8 µs
+with no voices, 110.3 with T1, 195.3 with T1–T7, 14.2 µs per voice; OUT
+TRACKS MAIN CUE in the same image reads 120.5 / 144.8 / 245.5 µs and 16.8
+per voice (`docs/firmware/ARCHITECTURE.md` "ColdFire time per frame on a
+unit"). Not measured with the cable out.
+
+#### Open
+
+- Full speed on a unit.
+- What the full-speed packets contain. The gate checks their size only
+  (it checks content for OUT MASTER alone, as for OUT TRACKS MAIN CUE and OUT TRACKS), so
+  "full speed carries MAIN" is from the source, not a measurement.
+- The producer's cost per block. It reads 64 words a block (4 per frame),
+  where OUT TRACKS MAIN CUE reads the same 64 plus 256 track words; instructions not
+  counted.
+- USB AUDIO IN beside OUT TRACKS or OUT TRACKS MAIN CUE's larger packets on one bus.
+
+#### Gates
+
+- `verify_usb` (`make check REMIX=usb-out-main-cue`).
+
+#### Why it exists
+
+usbin-test (Bryan T, 26 Sep 2026) put the host -> A-D
+stream (USB AUDIO IN) beside a MAIN+CUE-only input by forcing the
+twenty-channel build down to four channels with an `AUD_IN4` flag: the
+producer still made all twenty and the packet builder copied out the last
+16 bytes of each slot. This module is that four-channel input as a layout
+of its own, so USB AUDIO IN can be paired with it, or with OUT TRACKS or
+OUT TRACKS MAIN CUE, independently. Only the four-in/four-out combination has run on
+hardware, and there as the slice, not this producer.
+
+### MAIN
+
+MAIN L/R from the unit to the host (UAC2, 44.1 kHz, 24-bit), two channels,
+a front left / front right cluster. Needs USB MIDI.
+
+USB AUDIO OUT TRACKS MAIN CUE's
+source, `usbaudio.s` (markandrus/octemu, MIT), assembled with
+`USB_LAYOUT = 4`:
+
+- **Producer.** Reads MAIN's words from `MAIN_CUE_BASE` (`0x80005e60`, the
+  buffer the stock recorder's MAIN source reads; not ping-ponged, so no bank
+  bookkeeping) and writes one 8-byte slot per frame into a 1,024-frame ring.
+  Both speeds send that ring (the USB AUDIO OUT MASTER shape): no stereo sum,
+  no per-block speed test.
+- **High speed polls every 250 µs** (bInterval 2): 11.025 frames × 8 bytes a
+  packet, at most 12 frames = 96 bytes. That cadence is what lets USB AUDIO
+  IN use this stream as its implicit-feedback source; with USB AUDIO IN AB
+  the unit is a two-in, two-out interface (remix `usb-io-main-ab`).
+- **Full speed**: 44/45 frames × 8 bytes every 1 ms, at most 360 bytes.
+- **Descriptors.** USB MIDI's descriptor unit (`HS_LAYOUT`) declares two
+  channels, 96-byte packets at bInterval 2, `bmChannelConfig` front L/R,
+  24-bit samples in 4-byte subslots, a fixed 44.1 kHz clock.
+- It takes the same hook sites as the other out layouts, so a remix carries
+  one of the five.
+
+#### Measured
+
+Under the port: `verify_usb` (`make check REMIX=usb-out-main`): EP 0x83 isochronous, 96
+bytes, bInterval 2; AS_GENERAL two channels, front L/R; packets at the
+250 µs cadence; the counters after the stream.
+
+#### On the unit
+
+Not on a unit.
+
+#### Gates
+
+- `verify_usb` (`make check REMIX=usb-out-main`).
+
+#### Ground
+
+| what | where |
+|---|---|
+| code | DRAM unit `usbaudio` (`USB_LAYOUT = 4`) |
+| ring | 1,024 × 8 B, the unit's data |
+| source | `MAIN_CUE_BASE` `0x80005e60`, MAIN at +0 |
+| hooks | USB AUDIO OUT TRACKS MAIN CUE's six detours |
 
 ## How it works
 

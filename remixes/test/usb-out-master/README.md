@@ -4,7 +4,7 @@ The stock chooser plus USB MIDI and USB AUDIO OUT MASTER, for testing the two-ch
 
 ## What is in it
 
-- **USB MIDI** and **USB AUDIO OUT MASTER**: USB-MIDI mirroring DIN; track 8's L/R, post-FX, pre-fader, on channels 1/2 at both USB speeds. [`modules/usb-audio-out-master`](../../../modules/usb-audio-out-master/README.md).
+- **USB MIDI** and **USB AUDIO OUT MASTER**: USB-MIDI mirroring DIN; track 8's L/R, post-FX, pre-fader, on channels 1/2 at both USB speeds. [`modules/usb-audio-out`](../../../modules/usb-audio-out/README.md#master).
 - the 14 stock FX2 effects.
 
 ## Status

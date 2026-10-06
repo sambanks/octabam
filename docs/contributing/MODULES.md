@@ -792,6 +792,15 @@ MODULE = Module(...,
 )
 ```
 
+A setting declared `apply=Apply.BUILD` chooses code: the module's
+`variant(values)` returns the fields that differ (`linked`, `dsp`,
+`detours`, `claims`, `gates`, ...), given `{setting name: value}` with an
+Option as its label, and the build binds each selected module once per
+remix (`registry.bound`), so every reader of those fields sees the chosen
+code. An `include` callable reads the values from the bound module's
+`build_values`. `modules/usb-audio-out/manifest.py` is the worked example:
+one source, five layouts.
+
 Then `python3 tools/remix/store.py lock <module>` writes
 `modules/<module>/store.lock`, committed with the manifest; `make
 verify-shared` refuses a stale lock and a change that breaks a released key

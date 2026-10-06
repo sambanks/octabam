@@ -509,6 +509,17 @@ file; `store.py check` in `make verify-shared`), `tools/remix/obam.py`,
 `test_ot_store.py` under `make test-acceptance`). No module declares a
 setting yet. Remix `defaults` and `templates` are phase 1 and 3.
 
+Phase 1 is implemented (6 Oct 2026): `Module.variant` and `Module.bind`
+(an `Apply.BUILD` setting chooses code; `registry.bound` binds every
+selected module once per remix); USB AUDIO OUT (`LAYOUT`) and USB AUDIO IN
+(`INPUTS`) replace the eight variant modules, and every remix that carried
+one pins its value (`make identity`: the 25 such images that build are
+byte-identical to `origin/main`, the build reports differing only in the
+module keys; `waveload` and `waveload-port` fail to build on `origin/main`
+as well, at `modules/cfmeter/meter.s:91`);
+`Remix.defaults`; the build report's settings section
+(`store.report`).
+
 MODE DEFAULTS and RIG HOSTS keep working without the core. KITS keeps
 AUTOSAVE and KEEP LEVELS in its own header.
 

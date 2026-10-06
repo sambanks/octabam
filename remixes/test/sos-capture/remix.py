@@ -7,18 +7,20 @@ compared with the same input under the port
 (`tools/hw/sos_capture.py`).
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Pin, Proof, Remix
 
 REMIX = Remix(
     name="sos-capture",
     family="mods", proof=Proof.PORT, proof_note="`make check` under the port; not on hardware in this form",
     doc="recorder fixes + USB MIDI + USB AUDIO OUT TRACKS + USB CROSSBAR + USB AUDIO IN AB (stock effects minus SPATIALIZER).",
     modules=("RECORDER LOOP FIX",
-             "USB MIDI", "USB AUDIO OUT TRACKS", "USB CROSSBAR", "USB AUDIO IN AB",
+             "USB MIDI", "USB AUDIO OUT", "USB CROSSBAR", "USB AUDIO IN",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),
     fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
          "COMB FILTER", "COMPRESSOR", "LO-FI"),
     fallback="NONE",
+    settings={("octabam.usb-audio-out", "LAYOUT"): Pin("TRACKS"),
+              ("octabam.usb-audio-in", "INPUTS"): Pin("AB")},
 )

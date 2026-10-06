@@ -13,7 +13,7 @@ the USB port, PLAY halted the unit in Octakit's pattern-apply check (images
 95 and 97).
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Pin, Proof, Remix
 
 REMIX = Remix(
     name="bottleservice",
@@ -22,7 +22,7 @@ REMIX = Remix(
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "CC MAP", "CC FEEDBACK", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
-             "USB MIDI", "USB AUDIO OUT MASTER",
+             "USB MIDI", "USB AUDIO OUT",
              "STORE", "KITS",
              "SCENES P2", "PLOCKS P2",
              "DELAY",    # the stock DELAY keeps its chooser row: T8 hosts it (4 Oct 2026)
@@ -32,4 +32,5 @@ REMIX = Remix(
     host_slots=(("DELAY SERVER", 2), ("REVERB SERVER", 2)),
     locked=("REVERB SERVER", "DELAY SERVER"),
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
+    settings={("octabam.usb-audio-out", "LAYOUT"): Pin("MASTER")},
 )

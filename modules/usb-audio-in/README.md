@@ -1,4 +1,18 @@
-# `usb-audio-in-ab` — USB AUDIO IN AB
+# `usb-audio-in` — USB AUDIO IN
+
+The host's channels into the Octatrack's inputs, by the module's INPUTS
+setting, a build-time setting a remix pins (`docs/proposals/STORE.md`), for
+example `settings={("octabam.usb-audio-in", "INPUTS"): Pin("CD")}`:
+
+| INPUTS | host channels | DSP inject | packet |
+|---|---|---|---|
+| AB (the default) | 1/2 = inputs A/B; C/D stay on the jacks | `rx_inject_ab.asm`, RX slots 2/3 | 96 B |
+| CD | 1/2 = inputs C/D; A/B stay on the jacks | `rx_inject_cd.asm`, RX slots 0/1 | 96 B |
+| ABCD | 1–4 = inputs A–D | `rx_inject_abcd.asm`, all four slots | 192 B |
+
+Until 6 Oct 2026 each was a module of its own (USB AUDIO IN AB, IN CD, IN
+ABCD); each remix's image is byte-identical to the one it built with those
+modules. The sections below describe AB; *Inputs* has CD and ABCD.
 
 A stereo feed from the host into inputs A/B.
 
@@ -114,7 +128,7 @@ So `IN_TARGET` alone does not set the latency. Two levers, both in
   configuration's own `wTotalLength`, so the shorter tables' zero pad is
   never requested.
 
-**ColdFire** (`usbaudio_in.s`, a DRAM unit; `IN_CHANNELS` from `remix.inc`, shared with [IN CD](../usb-audio-in-cd/README.md) and [IN ABCD](../usb-audio-in-abcd/README.md)):
+**ColdFire** (`usbaudio_in.s`, a DRAM unit; `IN_CHANNELS` from `remix.inc`, shared with [IN CD](#cd) and [IN ABCD](#abcd)):
 - `in_setiface_shim`, a detour after usbaudio's SET_INTERFACE shim:
   interface 5 alt 0 or 1 records the alt setting and ACKs; any other alt
   STALLs. usbaudio.s answers GET_INTERFACE(5) from the same byte
@@ -173,6 +187,48 @@ So `IN_TARGET` alone does not set the latency. Two levers, both in
 **USB CROSSBAR** is required: without it the controller's 16-byte RX FIFO
 loses packet tails under a busy project (`modules/usb-crossbar/README.md`
 has the measurement).
+
+## Inputs
+
+### CD
+
+A stereo pair from the host into inputs C/D in place of the jacks
+(host channel 1 = C, 2 = D; A/B stay on the jacks). High speed only, 24-bit,
+96-byte packets every 250 µs.
+
+The same ColdFire unit as USB AUDIO IN AB
+(`usbaudio_in.s`, `IN_CHANNELS = 2`), the same hook sites, the same
+counters on vendor request `0x56`; only the DSP inject differs
+(`rx_inject_cd.asm`: slots 0/1 of the RX block instead of 2/3). The AB README has the design, the
+measurements and the open items; `verify_usb_in` checks this variant's
+slots (coded on its own, zero on the others) under the port.
+
+Requires USB MIDI, USB CROSSBAR and a 250 µs USB AUDIO OUT layout. One IN
+module per remix (shared detour sites).
+
+#### Gates
+
+- `tools/verify/verify_usb_in.py` (the manifest's gate, image stage).
+
+### ABCD
+
+Four channels from the host into inputs A-D in place of the jacks
+(host channels 1-4 = A, B, C, D). High speed only, 24-bit,
+192-byte packets every 250 µs.
+
+The same ColdFire unit as USB AUDIO IN AB
+(`usbaudio_in.s`, `IN_CHANNELS = 4`), the same hook sites, the same
+counters on vendor request `0x56`; only the DSP inject differs
+(`rx_inject_abcd.asm`: all four slots, 49 words; the four-channel form Bryan T's usbin-test ran on his MKII, build 16, 27 Sep 2026, there poked into SPATIALIZER's words). The AB README has the design, the
+measurements and the open items; `verify_usb_in` checks this variant's
+slots (coded on its own, zero on the others) under the port.
+
+Requires USB MIDI, USB CROSSBAR and a 250 µs USB AUDIO OUT layout. One IN
+module per remix (shared detour sites).
+
+#### Gates
+
+- `tools/verify/verify_usb_in.py` (the manifest's gate, image stage).
 
 ## SRAM
 

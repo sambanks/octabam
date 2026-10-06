@@ -5,15 +5,16 @@ that runs stock projects: no rig stations, no chooser changes, no project
 stamping. Local test remix (Bryan T, 25 Sep 2026).
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Pin, Proof, Remix
 
 REMIX = Remix(
     name="usb-out-tracks-main-cue",
     family="mods", proof=Proof.PORT, proof_note="",
     doc="stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE).",
-    modules=("USB MIDI", "USB AUDIO OUT TRACKS MAIN CUE",
+    modules=("USB MIDI", "USB AUDIO OUT",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),
     fallback="NONE",
+    settings={("octabam.usb-audio-out", "LAYOUT"): Pin("TRACKS MAIN CUE")},
 )

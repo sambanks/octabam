@@ -9,7 +9,7 @@ stations, no chooser changes, no project stamping.
 - **USB MIDI** and **USB AUDIO OUT MAIN** (markandrus/octemu's source; the
   MAIN layout ours): USB-MIDI mirroring DIN; MAIN L/R to the host, 24-bit,
   every 250 µs at high speed, every 1 ms at full speed.
-  [`modules/usb-audio-out-main`](../../../modules/usb-audio-out-main/README.md).
+  [`modules/usb-audio-out`](../../../modules/usb-audio-out/README.md#main).
 - the 14 stock FX2 effects.
 
 ## Status

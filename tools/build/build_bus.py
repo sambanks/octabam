@@ -31,7 +31,6 @@ import dataclasses, hashlib, json, os, pathlib, re, subprocess, sys
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
 from remix import registry as remix_registry  # noqa: E402
-from remix.registry import modules as remix_modules  # noqa: E402
 from remix.schema import (DEFAULT_HARVEST, NO_FALLBACK, BusRole,  # noqa: E402
                           Linked, YBase, enable_words)
 from remix.state import fx1_hazard  # noqa: E402
@@ -125,6 +124,15 @@ NONE_ID = 0x00                  # a fresh part's FX2 id -- aliased to SEND below
 # itself against (scripts/refhash.sh); there is no default. A module with no menu entry (a ColdFire patch) takes no chooser row,
 # so ORDER is the menu modules alone, in the remix's declared order.
 REMIX = remix_registry.remix(os.environ.get("REMIX"))
+# Every module, the selected ones bound to the remix's build-time settings
+# (schema.Module.bind): the build reads a module's code from here only.
+_BOUND = remix_registry.bound(REMIX)
+
+
+def remix_modules():
+    return _BOUND
+
+
 ORDER = [k for k in REMIX.modules
          if remix_modules()[k].menu is not None]
 # A HIDDEN module (schema.Remix.hidden) is placed, dispatched and cloned but
@@ -719,6 +727,9 @@ def main():
                      f"-- the field is 13 bytes NUL-terminated, so 12 is the "
                      f"maximum")
 
+    from remix import store as _store
+    for _line in _store.report(REMIX, remix_registry.modules()):
+        print(_line)
     clone_addr = {}
     print("=== ColdFire: three cloned descriptors (task 11) ===")
     for i, name in enumerate(CLONED_ORDER):
