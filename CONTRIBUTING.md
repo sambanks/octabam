@@ -81,8 +81,9 @@ the gate. A remix declares `family` (`rig`, `effects`, `mods`,
 `reference`, `probes`) and the same `proof` pair.
 
 Settings a module keeps on the card (a checkbox, a profile) go in the
-shared OTX store once it exists, not in a file of the module's own;
-`docs/contributing/MODULES.md` "Settings on the card".
+OBAM store once it exists (`docs/proposals/STORE.md`), and until then in no
+file of the module's own; `docs/contributing/MODULES.md` "Settings on the
+card".
 
 Two skeletons and two worked examples:
 

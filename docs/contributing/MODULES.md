@@ -759,63 +759,31 @@ Three kinds of state, three homes:
 |---|---|---|
 | an effect's twelve parameters | the Part (`docs/firmware/PARAM_PAGES.md`); a saved Part feeds a new layout its old bytes, and a value outside its count stalls the sequencer (`tools/hw/ot_project.py stamp-defaults`) | the descriptor |
 | personal material: Kits, grooves, presets, anything a musician would copy to another project on its own | files the module owns, beside the stock project files | the module |
-| the module's settings: how it behaves or looks (a checkbox, a menu option, a USB profile) | today: nowhere, or a private file (Octakit's Kits carry their own; octalab writes `octalab_grooves.map` and `octalab_generators.map`, "OTGM" v1). Proposed: one shared store per project, OTX | the shared core |
+| the module's settings: how it behaves or looks (a checkbox, a menu option, a USB profile) | today: nowhere, or a private file (KITS keeps two in its `kits.work` header; octalab writes `octalab_grooves.map` and `octalab_generators.map`, "OTGM" v1). Designed: the OBAM store | the core |
 
-OTX is specified in nordseele's
-[`docs/proposals/OTX_PROJECT_PROPOSAL.md`](../proposals/OTX_PROJECT_PROPOSAL.md)
-(draft 2, 26 Sep 2026; the format and the precedence) and
-[`docs/proposals/OTX_MODULE_GUIDELINES.md`](../proposals/OTX_MODULE_GUIDELINES.md)
-(what an author declares; the same texts are published in nordseele/octalab `docs/`). Nothing of it is implemented on 27 Sep 2026;
-the manifest API below is the proposal's illustration, not
-`tools/remix/schema.py`.
+The design is [`docs/proposals/STORE.md`](../proposals/STORE.md) (6 Oct
+2026): settings, defaults and templates in one registry, resolved through
+four layers (manifest, remix, card, project), kept in a `.work` / `.strd`
+pair at the card root and one in the project. Nothing of it is implemented
+on 6 Oct 2026; its section 12 lists the phases. It starts from nordseele's
+OTX proposal
+([`OTX_PROJECT_PROPOSAL.md`](../proposals/OTX_PROJECT_PROPOSAL.md),
+[`OTX_MODULE_GUIDELINES.md`](../proposals/OTX_MODULE_GUIDELINES.md)), and
+its section 14 lists what is taken from OTX and what differs.
 
-What it fixes: `<set>/<project>/otx.work` (working) and `otx.strd`
-(written by SAVE PROJECT, read by RELOAD) hold every module's record in
-one file, `OTX1` magic, big-endian, records of typed TLVs, CRC-32 over
-the file and each payload. A firmware without a module skips that
-module's record on load and writes it back byte for byte on save; a
-newer minor's unknown keys get the same. An optional card-root UNIT file
-takes card-wide settings (USB AUDIO's profile is the first). One
-generated MAIN MENU root category (working label MODULES, name open)
-lists a GENERAL module and the modules in the image. Writes run from the
-storage task, coalesced ~2 s after the last edit, deferred while a
-recorder, CAPTURE or tape capture writes; `open("w")`, write, close, as
-stock's `project.work`.
+What a module will declare (STORE.md section 4): a `Store` with a stable
+namespaced id; per setting a numeric `key` never reused, a kind (`Binary`,
+`Option` with append-only labels, `Number`, `Trigger`, `Blob`), a default,
+a scope (`CARD` or `PROJECT`) and an apply policy (`LIVE`, `CALLBACK`,
+`NEXT_BOOT`, `BUILD`); a `key` on each `Param`, so a stored default or
+template survives a renamed or moved knob. A remix pins or re-defaults a
+value in its `remix.py`. A module builds and runs without the core: a
+setting then resolves at build.
 
-What a module declares (the proposal's syntax):
-
-```python
-store=Store(id="org.octalab.usbaudio", scope=Scope.UNIT),
-settings=(
-    Setting(key=1, name="USB AUDIO", group="audio", values=("OFF", "LIGHT", "FULL"),
-            default=0, apply=Apply.NEXT_CONNECT),
-),
-```
-
-- a stable namespaced module `id` (the build refuses a duplicate; a menu
-  label may change, the id may not);
-- per setting a numeric `key` never reused for another meaning, a type
-  (`Binary` 0/1, `Option` an append-only index, `Number` signed 16-bit
-  with min/max/step/unit, `Trigger` never saved, `Blob` with a declared
-  byte maximum and its own editor), a default, a `scope` (PROJECT or
-  UNIT), an apply policy (`LIVE`, `CALLBACK`, `NEXT_CONNECT`,
-  `NEXT_BOOT`), optionally a group id for the menu;
-- idempotent callbacks: after every load the core hands each one the
-  validated value or the default, and again after an edit; no card I/O
-  from an audio interrupt; never another module's record;
-- a compatibility test: with the module removed from the image, editing
-  another module's setting and saving leaves this module's record byte
-  for byte.
-
-What a module does not do: invent a settings file, a save hook or a menu
-root of its own for these values (`MAINMENU.md` section 5: two modules that both
-grow one submenu cannot coexist). Its personal-material files stay its
-own.
-
-Open on 27 Sep 2026 (the proposal's section 5): the UNIT filename and recovery
-policy, size ceilings, the menu's name and row structure, whether the
-stock project-copy commands carry the pair, boot ordering for UNIT
-before USB enumeration, write latency under CAPTURE.
+Until the store exists a module does not invent a settings file, a save
+hook or a menu root of its own for these values (`MAINMENU.md` section 5:
+two modules that both grow one submenu cannot coexist). Its
+personal-material files stay its own.
 
 ## Declaring a ROM cave: `CavePatch`
 

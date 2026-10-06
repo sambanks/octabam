@@ -168,11 +168,11 @@ address and compares, and refuses on any drift.
 **Where a module's state lives.** An effect's twelve knobs are Part
 parameters and stay in the Part. Personal material (KITS's library,
 octalab's grooves) is in files the module owns and formats. A module's
-settings (menu options, a USB profile) have no shared home yet; the shared
-settings store for all modules, OTX, is specified in
-[docs/proposals/OTX_PROJECT_PROPOSAL.md](docs/proposals/OTX_PROJECT_PROPOSAL.md)
-(nordseele, draft 2, 26 Sep 2026) with author-facing
-[guidelines](docs/proposals/OTX_MODULE_GUIDELINES.md), and is not implemented.
+settings (menu options, a USB profile) have no shared home yet; the store
+for settings, defaults and templates is designed in
+[docs/proposals/STORE.md](docs/proposals/STORE.md) (6 Oct 2026, starting
+from nordseele's
+[OTX proposal](docs/proposals/OTX_PROJECT_PROPOSAL.md)), and is not implemented.
 
 ## Checking without a flash
 
