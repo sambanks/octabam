@@ -102,7 +102,10 @@ with T2's FX2 chooser select (SEND -> stock DELAY) and FX1 select
 | out-of-count bytes in every Part of every bank, no file | read count - 1 after the load: stock's Part validator `0x40002318`, so the core has no clamp | |
 | a GRAIN record for BusDelay (FDBK, SCTR, GLEN listed by the view; DEL not), then MODE CLEAN -> GRAIN through the FX2 page-2 editor on T1 | the view with the card's three values; DEL skipped and untouched | card.work |
 
-Both hooks run during one LOAD PROJECT under the port (2 calls a load).
+Both hooks run during one LOAD PROJECT under the port (2 calls a load). A power-up with no LOAD PROJECT post
+(`--no-post`, CS1 from an earlier boot) runs the bank-load hook alone and
+the card's DELAY default (TIME 52, FB 5) lands on T2's FX2 select (7 Oct
+2026, by hand; not in the gate).
 
 ## On the unit
 
@@ -120,8 +123,7 @@ Not yet.
   `0x46c823fa`), so `/OCTABAM` holding only the store is not listed;
   not measured on a unit.
 - Timing of the card read on the unit (one file, at most 16 KB).
-- A power-up with no LOAD PROJECT post: the bank-load hook, not run under
-  the port.
+
 - A shortcut on the FX page itself (a free key combination); the
   SETTINGS list, the project pair, the project record, the CS1 block
   (STORE.md section 12).
