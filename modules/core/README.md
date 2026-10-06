@@ -6,7 +6,26 @@ A remix lists it to give the card layer to its knob defaults.
 It applies card-wide knob defaults and writes them: SAVE AS DEFAULT
 (`core_post_save(track, fx)`) makes the current Part's page of that track's
 FX1 or FX2 the effect's default in `card.work`, and SAVE PROJECT copies
-`card.work` to `card.strd`. No panel gesture calls SAVE AS DEFAULT yet. At each LOAD PROJECT, and at the bank load the power-up runs, the
+`card.work` to `card.strd`.
+
+## On the panel
+
+PROJ (MAIN MENU), then OCTABAM, the fifth category:
+
+| row | does |
+|---|---|
+| `<REMIX> <BUILD>` | a heading the cursor skips: which image is flashed |
+| SAVE AS DEFAULT | the FX1 or FX2 page in view (of the current audio track, in the current Part) becomes that effect's default on this card; a popup names the page |
+| CLEAR DEFAULT | that effect's default leaves `card.work`; the descriptor goes back to the image's |
+
+Opened over any other page, or on a MIDI track, the popup says to open an
+FX page and nothing is written. The category is a fifth root row: the root
+list's rows pointer (`0x400cbda4`, a `SymbolRef`) points at a copy of the
+four stock rows (read from the stock image at build time) with OCTABAM
+appended, and the root count (`0x400cbd8c`, a `Poke`) is 5; a second
+module growing the root is refused by the ledger. The icon is one long
+per column (pixels in the high byte, bit 0 at the top) with the stock
+categories' shared second plane (`0x400cbfc4`). At each LOAD PROJECT, and at the bank load the power-up runs, the
 core puts every effect's twelve descriptor defaults (`P+0x5e`) back to the
 image's values. It then reads `/OCTABAM/card.work`, or `card.strd` by the
 pair rule (STORE.md section 6.2), and writes each valid default record
@@ -78,6 +97,7 @@ with T2's FX2 chooser select (SEND -> stock DELAY) and FX1 select
 | two records for one effect | the image's defaults | card.work, both skipped |
 
 | SAVE AS DEFAULT for T1's FX2 and T2's FX1, then the store copy, on a card holding two other records | the two records hold the live pages; the others keep their bytes; `card.strd` = `card.work`; a second boot puts the saved page on BusDelay's descriptor | card.work |
+| the panel: T1, FX2 page, PROJ, DOWN x4, RIGHT, YES on SAVE AS DEFAULT; then OK, DOWN, YES on CLEAR DEFAULT | `card.work` holds T1's FX2 page; after CLEAR no BusDelay record | |
 | SAVE AS DEFAULT on a card with no `OCTABAM` folder | the folder and `card.work` with one record | |
 | out-of-count bytes in every Part of every bank, no file | read count - 1 after the load: stock's Part validator `0x40002318`, so the core has no clamp | |
 | a GRAIN record for BusDelay (FDBK, SCTR, GLEN listed by the view; DEL not), then MODE CLEAN -> GRAIN through the FX2 page-2 editor on T1 | the view with the card's three values; DEL skipped and untouched | card.work |
@@ -102,11 +122,12 @@ Not yet.
 - Timing of the card read on the unit (one file, at most 16 KB).
 - A power-up with no LOAD PROJECT post: the bank-load hook, not run under
   the port.
-- A panel gesture for SAVE AS DEFAULT; the SETTINGS list, the project
-  pair, the project record, the CS1 block (STORE.md section 12).
+- A shortcut on the FX page itself (a free key combination); the
+  SETTINGS list, the project pair, the project record, the CS1 block
+  (STORE.md section 12).
 - `--step call` runs as main under the port, where file I/O does not
   return (an unimplemented opcode at `0x4003b108`); the gate posts the job
-  instead. Whether a UI-task handler may post (the menu row) is to measure.
+  instead. The menu rows post from the UI task (measured under the port).
 
 ## Gates
 

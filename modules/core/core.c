@@ -399,7 +399,21 @@ static int current_store(void)
  * effect's default record (no mode) in card.work; every other record keeps
  * its bytes. The descriptor takes the values at once. 0, or an error code
  * (also in core_save_counts[S_SAVE_ERR]). */
+static int write_default(u32 t, u32 fx, int clear);
+
 int core_save_default(u32 t, u32 fx)
+{
+	return write_default(t, fx, 0);
+}
+
+/* CLEAR DEFAULT: the effect's default record (no mode) leaves card.work and
+ * the descriptor goes back to the image's values. */
+int core_clear_default(u32 t, u32 fx)
+{
+	return write_default(t, fx, 1);
+}
+
+static int write_default(u32 t, u32 fx, int clear)
 {
 	u8 *part = DBPTR + WORKING + (CUR_PART & 3) * PART_LEN;
 	u32 id = part[fx ? 0x8 + t : t];
@@ -443,6 +457,8 @@ int core_save_default(u32 t, u32 fx)
 		at += size;
 		kept++;
 	}
+	if (clear)
+		goto header;
 	u32 nvals = 0;
 	for (int s = 0; s < 12; s++)
 		nvals += f->keys[s] != 0;
@@ -475,13 +491,14 @@ int core_save_default(u32 t, u32 fx)
 		}
 	put32(r + 12, crc32(pay, plen));
 	at += size;
-	/* header */
+	kept++;
+header:
 	for (u32 k = 0; k < HDR; k++)
 		out[k] = 0;
 	put32(out, 0x4f42414du);			/* "OBAM" */
 	put16(out + 4, HDR);
 	out[6] = 1;					/* container 1.0, card .work */
-	put16(out + 10, kept + 1);
+	put16(out + 10, kept);
 	put32(out + 12, at);
 	for (u32 k = 0; k < 8 && "CORE"[k]; k++)
 		out[20 + k] = "CORE"[k];
@@ -491,6 +508,13 @@ int core_save_default(u32 t, u32 fx)
 		goto done;
 	}
 	/* the descriptor takes the values now (the next load re-applies the file) */
+	if (clear) {
+		for (int k = 0; k < 2; k++)
+			if (desc[e][k])
+				for (int s = 0; s < 12; s++)
+					desc[e][k][0x5e + s] = shadow[e][k][s];
+		goto done;
+	}
 	for (int s = 0; s < 12; s++)
 		if (f->keys[s])
 			for (int k = 0; k < 2; k++) {
@@ -546,11 +570,83 @@ void core_post_store(void)
 	Q_SEND(ENGINE_Q, job_msg);
 }
 
+/* From any task: CLEAR DEFAULT for track t's FX1 (0) or FX2 (1). */
+void core_post_clear(u32 t, u32 fx)
+{
+	job_args = (t & 7) | (fx ? 0x100 : 0) | 0x200;
+	((u8 *)job_msg)[0] = JOB_SAVE;
+	Q_SEND(ENGINE_Q, job_msg);
+}
+
 /* The engine task, at a JOB_SAVE message (hooks.s core_on_job). */
 void core_job(void)
 {
 	if (job_args & 0x10000)
 		core_card_store();
 	else
-		core_save_default(job_args & 7, (job_args >> 8) & 1);
+		write_default(job_args & 7, (job_args >> 8) & 1, (job_args >> 9) & 1);
+}
+
+/* ---- the OCTABAM menu ------------------------------------------------------ */
+
+#define POPUP     ((void (*)(const char *, u32, const char *const *, u32, u32))0x4006d57c)
+#define CUR_TRACK (*(volatile u8 *)0x80000000)
+#define MIDI_MODE (*(volatile u8 *)0x80000012)
+#define PAGE_KIND (*(volatile u32 *)0x460d1684)	/* 3 = FX1, 4 = FX2 */
+
+static const char *msg[2];
+static char line1[16];
+
+/* The page the menu was opened over: 0 FX1, 1 FX2, or -1 with the reason
+ * in msg[1]. */
+static int menu_target(void)
+{
+	u32 kind = PAGE_KIND;
+	if (MIDI_MODE || (kind != 3 && kind != 4)) {
+		msg[0] = "OPEN AN FX PAGE";
+		msg[1] = "OF AN AUDIO TRACK";
+		return -1;
+	}
+	u32 fx = kind == 4, t = CUR_TRACK & 7;
+	u8 *part = DBPTR + WORKING + (CUR_PART & 3) * PART_LEN;
+	u32 id = part[fx ? 0x8 + t : t];
+	for (u32 i = 0; i < core_fx_n && i < MAX_FX; i++)
+		if (core_fx[i].fx_id == id) {
+			const char *s = fx ? "FX2 TRACK " : "FX1 TRACK ";
+			int k = 0;
+			while (s[k]) {
+				line1[k] = s[k];
+				k++;
+			}
+			line1[k++] = '1' + t;
+			line1[k] = 0;
+			msg[0] = line1;
+			return (int)fx;
+		}
+	msg[0] = "THIS EFFECT HAS";
+	msg[1] = "NO STORED DEFAULT";
+	return -1;
+}
+
+/* Row actions, called by the menu with one argument (0). */
+void core_menu_save(u32 unused)
+{
+	int fx = menu_target();
+	(void)unused;
+	if (fx >= 0) {
+		core_post_save(CUR_TRACK & 7, (u32)fx);
+		msg[1] = "SAVED AS DEFAULT";
+	}
+	POPUP("SAVE AS DEFAULT", 2, msg, 0, 0);
+}
+
+void core_menu_clear(u32 unused)
+{
+	int fx = menu_target();
+	(void)unused;
+	if (fx >= 0) {
+		core_post_clear(CUR_TRACK & 7, (u32)fx);
+		msg[1] = "DEFAULT CLEARED";
+	}
+	POPUP("CLEAR DEFAULT", 2, msg, 0, 0);
 }

@@ -1,8 +1,9 @@
-"""core -- bottleservice plus CORE: the card-layer knob defaults on the rig.
+"""core -- bottleservice plus CORE: the settings store on the rig.
 
-The rig's selection (remixes/bottleservice) with CORE, for CORE's gate
-(tools/verify/verify_core.py): a default record on the card for an effect
-the chooser offers lands when that effect is selected.
+bottleservice's selection (remixes/bottleservice) with CORE: card-wide knob
+defaults from OCTABAM/card.work, SAVE AS DEFAULT and CLEAR DEFAULT in the
+OCTABAM MAIN MENU category. CORE's gate (tools/verify/verify_core.py) runs
+on it, restoring the FX2 chooser's YES entry in RAM where it selects.
 """
 
 from remix.schema import Pin, Proof, Remix
@@ -10,7 +11,7 @@ from remix.schema import Pin, Proof, Remix
 REMIX = Remix(
     name="core",
     family="mods", proof=Proof.PORT, proof_note="`verify_core` under the port, 6 Oct 2026; not on hardware",
-    doc="bottleservice + CORE: card-wide knob defaults from OCTABAM/card.work.",
+    doc="bottleservice + CORE: card-wide knob defaults, SAVE AS DEFAULT in the OCTABAM menu.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "CC MAP", "CC FEEDBACK", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
@@ -18,6 +19,7 @@ REMIX = Remix(
              "KITS",
              "SCENES P2", "PLOCKS P2",
              "DELAY",
+             "FX2 LOCK",
              "CORE"),
     fallback="SEND",
     hidden=("REVERB SERVER", "DELAY SERVER"),

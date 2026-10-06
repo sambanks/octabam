@@ -31,6 +31,10 @@ lane at the end:
                 pages' bytes, the others keep their bytes, card.strd is
                 card.work; a second boot of that card puts the saved values
                 on both descriptors
+  menu          the OCTABAM category on the panel: T1, the FX2 page, PROJ,
+                DOWN x4, RIGHT, YES on SAVE AS DEFAULT: card.work holds T1's
+                FX2 page; then OK, DOWN, YES on CLEAR DEFAULT: no BusDelay
+                record left
   mode          a GRAIN record for BusDelay (T1): the FX2 page-2 editor moves
                 MODE CLEAN -> GRAIN (verify_modedefaults' call) and MODE
                 DEFAULTS lands GRAIN's view with the card's values for the
@@ -152,6 +156,9 @@ def main():
         "none": {}, "work": {"card.work": work}, "recover": {"card.work": damaged, "card.strd": strd},
         "damaged": {"card.work": damaged}, "layout": {"card.work": bad_layout}, "duplicate": {"card.work": dup},
     }
+    # FX2 LOCK's poke undone in RAM, so the FX2 chooser's YES selects
+    unlock = (["--poke", ";".join(f"{0x400bc374 + i:#x}={b:#x}" for i, b in enumerate(bytes.fromhex("40052474")))]
+              if "FX2 LOCK" in remix.modules else [])
     fails = 0
 
     def check(msg, ok):
@@ -179,7 +186,7 @@ def main():
             sp.write_text(script(page))
             shutil.copy2(card, c)
             cmd = [EMU, "--image", image, "--card", c, "--set", a.set_name, "--project", a.name,
-                   "--load-ms", "90000", "--mkii", "--live-script", sp,
+                   "--load-ms", "90000", "--mkii", "--live-script", sp, *unlock,
                    "--step", f"-:dump:{counts_at:#x},{4 * len(COUNTERS)}={cdump}",
                    "--mem-dump", f"{LANES:#x},{IDS + 16 - LANES}={dump}"]
             with open(log, "w") as fh:
@@ -359,6 +366,47 @@ def main():
     recs = [r.store_id for r in obam.parse(fw).records] if fw else []
     check(f"save: on a card with no OCTABAM folder the first save creates it and card.work  {recs}",
           recs == [store.fx_store_id(bd)])
+
+    # ---- menu: SAVE AS DEFAULT and CLEAR DEFAULT from the panel ------------
+    MK = dict(no=0x32, yes=0x31, t1=0x10, fx2=0x26, proj=0x1c, down=0x20, right=0x21)
+
+    def keys_script(keys):
+        tt, lines = 1500, []
+        for k, gap in keys:
+            lines.append(f"{tt} key {MK[k]:#x} down"); tt += 40
+            lines.append(f"{tt} key {MK[k]:#x} up"); tt += gap
+        lines.append(f"{tt} quit")
+        return "\n".join(lines) + "\n"
+    nav = [("no", 400), ("t1", 600), ("fx2", 1500), ("proj", 1200)] + [("down", 400)] * 4 + [("right", 800)]
+    runs = {"menu_save": nav + [("yes", 2500)],
+            "menu_clear": nav + [("yes", 2500), ("yes", 800), ("down", 400), ("yes", 2500)]}
+    for name, keys in runs.items():
+        mc, mafter, mlog, mlanes = OUT / f"{name}.img", OUT / f"{name}_after.img", OUT / f"{name}.txt", OUT / f"{name}_lanes.bin"
+        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+                            "--tree", str(OUT / f"tree_{name}"), "--out", str(mc)], cwd=ROOT, capture_output=True, text=True)
+        if r.returncode:
+            sys.exit(f"verify_core: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+        (OUT / f"{name}.script").write_text(keys_script(keys))
+        cmd = [EMU, "--image", image, "--card", mc, "--set", a.set_name, "--project", a.name, "--load-ms", "90000",
+               "--mkii", "--live-script", OUT / f"{name}.script", "--card-out", mafter,
+               "--step", f"-:dump:{LANES:#x},576={mlanes}"]
+        with open(mlog, "w") as fh:
+            r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+        if r.returncode or "ended on quit" not in mlog.read_text():
+            sys.exit(f"verify_core: the {name} run did not finish -- {mlog}")
+        files = emu_card.extract_image(mafter.read_bytes())
+        mw = next((v for k, v in files.items() if k.upper().endswith("OCTABAM/CARD.WORK")), None)
+        recs = {r.store_id: r for r in obam.parse(mw).records} if mw else {}
+        lanes = mlanes.read_bytes()
+        page = lanes[0x18:0x1e] + lanes[0x38:0x3e]
+        if name == "menu_save":
+            rec = recs.get(store.fx_store_id(bd))
+            got = {v.key: v.data[0] for v in rec.values()} if rec else {}
+            want = {k: page[i] for i, k in enumerate(store.fx_keys(bd)) if k}
+            check(f"menu: SAVE AS DEFAULT from the panel writes T1's FX2 page ({got == want})", rec is not None and got == want)
+        else:
+            check(f"menu: CLEAR DEFAULT leaves no BusDelay record ({sorted(recs)})",
+                  mw is not None and store.fx_store_id(bd) not in recs)
 
     # ---- mode: MODE DEFAULTS' view takes the card's values ------------------
     if "MODE DEFAULTS" in remix.modules and bd.mode_views:
