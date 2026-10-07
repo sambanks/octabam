@@ -288,7 +288,9 @@ decodes the official file, validates its checksum and round-trips ours.
 4. Send `out/OCTATRACK_OS1.40C_OCTABAM1.syx`: from a SysEx app, or
    `make midi-flash PORT=<port> SYX=<file.syx>` (`tools/hw/midi_flash.py`),
    which paces the ~7,460 messages at the DIN rate. Filter MIDI clock on
-   that port. If the unit loses sync, re-enter the Startup Menu and send
+   that port, and merge nothing else into it: through a Midihub, a blank
+   preset with one pipe (the computer's port to the Octatrack's MIDI IN)
+   flashed where a performance preset ended in CHECKSUM ERROR (7 Oct 2026). If the unit loses sync, re-enter the Startup Menu and send
    again slower (`--ms 60`, or 100–300 ms between messages in a SysEx app).
 5. Wait through PREPARING FLASH → UPDATING FLASH. Do not power off or
    disconnect during either.
