@@ -24,6 +24,8 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`miniverb`](miniverb/README.md) | Minimal allocator-owned FDN reverb. | local render: `make verify-miniverb` |
 | [`mods`](mods/README.md) | Every ColdFire mod in one image on the stock effects: MIDI SCENES, KITS, the recorder fixes, REPITCH, the KYOTI direct jump and reload, USB MIDI + AUDIO. | port-gated |
 | [`mute-modes`](mute-modes/README.md) | stock effects with MUTE_MODES: PERSONALIZE > MUTE MODE (OT, OTFX, OTFX-T, DT-T). | `make check` |
+| [`os-switch`](os-switch/README.md) | stock effects with BRAIN and OS SWITCH: MAIN MENU > BRAIN boots a .OBI from /BRAIN/OS/, no flash write. | port-gated: the chainload under the port (verify_osswitch) |
+| [`os-switch-trace`](os-switch-trace/README.md) | os-switch + BOOT TRACE: a MIDI note per boot stage, to find where a boot after a switch hangs. | port-gated: the notes under the port (verify_boottrace) |
 | [`plocks-p2`](plocks-p2/README.md) | Page-2 parameter locks (PLOCKS P2) and page-2 scene locks (SCENES P2), stock effects. | port-gated: verify_plocksp2 under the port |
 | [`quantize-live-rec-toggle`](quantize-live-rec-toggle/README.md) | stock effects with QUANTIZE_LIVE_REC_TOGGLE: QUANTIZE LIVE REC from [REC] + [PLAY]. | `make check` |
 | [`rec-trig-mute`](rec-trig-mute/README.md) | stock effects with REC_TRIG_MUTE: [TRACK]+[NO]/[YES] mute/unmute recorder trigs. | `make check` |

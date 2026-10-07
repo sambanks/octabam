@@ -1,15 +1,16 @@
 # `os-switch` — boot another OS image from the card
 
-One ColdFire module and the stock effects. For anyone who wants to move between builds, or back to stock, without reflashing.
+BRAIN, OS SWITCH and the stock effects. For anyone who wants to move between builds, or back to stock, without reflashing.
 
 ## What is in it
 
-- **OS SWITCH** — MAIN MENU > CONTROL > OS SWITCH boots a `.OBI` (a raw OS image: `make obi`, `make obi-stock`) from the card root. Nothing is written to the flash; a power-cycle comes back to this image. `modules/os-switch/README.md`.
-- the 14 stock FX2 effects, listed so the chooser is stock's.
+- **BRAIN** — the settings store; its MAIN MENU pane carries OS SWITCH's list. `modules/brain/README.md`.
+- **OS SWITCH** — MAIN MENU > BRAIN lists the `.OBI` files (raw OS images: `make obi`, `make obi-stock`) in `/BRAIN/OS/` and boots the one picked. Nothing is written to the flash; a power-cycle comes back to this image. `modules/os-switch/README.md`.
+- the 14 stock FX2 effects, listed so the chooser is stock's (OS SWITCH's DSP park is in dead interrupt vectors and takes no effect's words).
 
 ## Status
 
-Measured under the ColdFire port (`python3 tools/verify/verify_osswitch.py os-switch`): the menu row, the load, the reset sequence, the chainload of the staged image, every refusal, the DSP park and re-upload. On a unit: the same modules plus BOOT TRACE (`os-switch-trace`, OCTABAM14, an MKII, 29 Sep 2026) switched to its own image and to stock 1.40C, audio and play working. This remix without the trace has not run on a unit; the two differ only by BOOT TRACE's detours.
+Measured under the ColdFire port (`python3 tools/verify/verify_osswitch.py os-switch`): the menu row, the load, the reset sequence, the chainload of the staged image, every refusal, the DSP park and re-upload. On a unit (29 Sep 2026, as a root category of its own before it moved under BRAIN): the same modules plus BOOT TRACE (`os-switch-trace`, OCTABAM14, an MKII, 29 Sep 2026) switched to its own image and to stock 1.40C, audio and play working. Under BRAIN, with `/BRAIN/OS/`: under the port only.
 
 ## Build
 

@@ -11,7 +11,7 @@ Builds the remix (the HOME image: what NOR would hold), then:
            top of the reserve is the switch's, in every remix carrying it
   ui       an MKII (`--mkii`: the reset sends the panel `60 02` first) with a
            card holding STOCK140.OBI (the user's own stock MAIN OS, copied
-           at run time); PROJ opens MAIN MENU > OS (the list, scanned),
+           at run time); PROJ opens MAIN MENU > BRAIN (the list in /BRAIN/OS/, scanned),
            YES on the row, YES in the dialog. The row's action, the dialog's
            answer, the deferred load and the reset sequence each run; the
            stage reads back equal to the file and the mailbox carries its
@@ -202,8 +202,8 @@ def main():
 
     # ---- ui: the row, the dialog, the load, the reset sequence ------------
     tree = work / "card"
-    tree.mkdir()
-    (tree / "STOCK140.OBI").write_bytes(stock)
+    (tree / "BRAIN" / "OS").mkdir(parents=True)
+    (tree / "BRAIN" / "OS" / "STOCK140.OBI").write_bytes(stock)
     import emu_card
     card = work / "card.img"
     card.write_bytes(emu_card.build_image(str(tree), size_mb=64))
@@ -220,8 +220,10 @@ def main():
     key(KEY_NO, 250)                                   # the boot's date prompt
     key(KEY_PROJ, 400)                                 # an MKII: the reset sends the panel `60 02`
     for _ in range(4):
-        key(KEY_DOWN)                                  # root: PROJECT SYSTEM CONTROL MIDI [OS]
-    key(KEY_YES, 300)                                  # into OS: the cursor on the first file
+        key(KEY_DOWN)                                  # root: PROJECT SYSTEM CONTROL MIDI [BRAIN]
+    key(KEY_YES, 300)                                  # into BRAIN's pane: the cursor on its heading
+    for _ in range(5):
+        key(KEY_DOWN)                                  # SAVE, CLEAR, LOG, (NOW skipped) HOME, STOCK140
     key(KEY_YES, 600)                                  # STOCK140 picked: the dialog
     key(KEY_YES, 3000)                                 # the dialog: boot it
     send("quit")
@@ -231,13 +233,17 @@ def main():
                 rt["putpanel"], 0x40022CD4]
     out, hits, d = boot("ui", [(0x3FFC, norver)], ui_watch,
                         {"mbox": (MBOX, 72), "stage": (IMG, len(stock)), "body": (BODY, len(body)),
-                         "scanext": (0x460F77B0, 4)},
+                         "scanext": (0x460F77B0, 4), "list": (rt["brain_list"], 0x1c)},
                         extra=["--card", str(card), "--live-script", str(script), "--mkii"],
                         max_instr=4_000_000_000)
     ran = [s for s, a in zip(("osw_scan", "osw_pick", "osw_answer", "osw_load", "osw_reset"), ui_watch)
            if hits.get(a)]
-    check("ui: MAIN MENU's scan, OS's row, the dialog's YES, the deferred load and the reset ran",
+    check("ui: MAIN MENU's scan, the image's row, the dialog's YES, the deferred load and the reset ran",
           len(ran) == 5, "ran: " + ", ".join(ran))
+    bl = d.get("list", b"")
+    check("ui: BRAIN's list holds its 4 rows, NOW and HOME, and the one image (7 rows)",
+          len(bl) == 0x1c and struct.unpack(">I", bl[:4])[0] == 7 and struct.unpack(">I", bl[0x14:0x18])[0] == 7,
+          bl[:0x18].hex())
     check("ui: the pane's switch syncs the project first (SYNC TO CARD posted), as OS UPGRADE does",
           hits.get(0x40022CD4, 0) >= 1, f"{hits.get(0x40022CD4, 0)}x")
     check("ui: an MKII sends the panel its two start-up bytes (`60 02`) before the reset",
@@ -327,7 +333,7 @@ def main():
     # SRAM before the mount, the harness posts nothing, so the one LOAD
     # PROJECT is the firmware's own through 0x4002574c. The card: a set
     # with its AUDIO folder and an empty project (enough for the load to be
-    # handled), and three images in the root, one of them this image's own
+    # handled), and three images in /BRAIN/OS/, one of them this image's own
     # name, which the picker skips.
     import re as _re
     self_name = (_re.sub(r"[^A-Z0-9_-]", "", (os.environ.get("VERSION")
@@ -335,14 +341,16 @@ def main():
     btree = work / "bootcard"
     (btree / "OSW" / "AUDIO").mkdir(parents=True)
     (btree / "OSW" / "P").mkdir()
-    (btree / f"{self_name}.OBI").write_bytes(homeb)
-    (btree / "OTHER.OBI").write_bytes(homeb)
-    (btree / "STOCK140.OBI").write_bytes(stock)
+    (btree / "BRAIN" / "OS").mkdir(parents=True)
+    (btree / "BRAIN" / "OS" / f"{self_name}.OBI").write_bytes(homeb)
+    (btree / "BRAIN" / "OS" / "OTHER.OBI").write_bytes(homeb)
+    (btree / "BRAIN" / "OS" / "STOCK140.OBI").write_bytes(stock)
     bcard = work / "bootcard.img"
     bcard.write_bytes(emu_card.build_image(str(btree), size_mb=64))
     nosets = work / "noaudio"
     (nosets / "OSW" / "P").mkdir(parents=True)
-    (nosets / "STOCK140.OBI").write_bytes(stock)
+    (nosets / "BRAIN" / "OS").mkdir(parents=True)
+    (nosets / "BRAIN" / "OS" / "STOCK140.OBI").write_bytes(stock)
     ncard = work / "noaudio.img"
     ncard.write_bytes(emu_card.build_image(str(nosets), size_mb=64))
     POST, FILES, HANDLER = 0x40023c7c, 0x400228dc, 0x40085336

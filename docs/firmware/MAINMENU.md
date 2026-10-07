@@ -59,6 +59,18 @@ fifth category, which draws its own icon on a MKI.
 | `0x400cbd54` | 6 | `0x400cc5a8` | CONTROL: AUDIO, INPUT, SEQUENCER, MIDI SEQUENCER, MEMORY, METRONOME |
 | `0x400cbd70` | 4 | `0x400cc638` | MIDI: CONTROL, SYNC, CHANNELS, TURBO STATUS |
 
+A fifth root category fits without touching the engine: the root window is
+five tall (`init(&0x400cbd90, 5, count)` at `0x40064c70`) and stock fills
+four. BRAIN adds its category this way (rows pointer `0x400cbda4` repointed
+to a five-row array in DRAM, count `0x400cbd8c` 4 → 5, its child descriptor
+shipped initialised with 7 visible rows); STEMS does the same through a
+`TableGrow`, so the two are refused together. A pane can be rebuilt each
+time MAIN MENU opens from a detour at `0x40064c32`, the opener's new-window
+path (skipped while the menu is already up), before the window is created:
+its row count and cursor may change there (OS SWITCH's rows in BRAIN's
+pane, sanderlegit). ✅ drawn and driven under the port, 29 Sep 2026 (OS
+SWITCH's own category then) and 8 Oct 2026 (`verify_osswitch`, BRAIN).
+
 Root rows: window descriptor set, child set, action 0. Leaf rows: window 0,
 child 0, action or page id set.
 

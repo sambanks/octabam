@@ -14,10 +14,11 @@ PROJ (MAIN MENU), then BRAIN, the fifth category:
 
 | row | does |
 |---|---|
-| `<REMIX> <BUILD>` | a heading the cursor skips: which image is flashed |
+| `<REMIX> <BUILD>` | a heading the cursor skips: which image is running |
 | SAVE AS DEFAULT | the FX1 or FX2 page in view (of the current audio track, in the current Part) becomes that effect's default on this card; a popup names the page |
 | CLEAR DEFAULT | that effect's default leaves `card.work`; the descriptor goes back to the image's |
 | WRITE DEBUG LOG | the last 256 MIDI messages (clock and active sensing left out), each with the sync flags, the playing pattern and the next pattern after its handler ran, written to `/BRAIN/debug.txt` by the engine task |
+| (the images) | OS SWITCH's rows (`modules/os-switch`, sanderlegit): `NOW` and `HOME` headings, then each `.OBI` in `/BRAIN/OS/`; [YES] boots it without writing the flash. Every remix with BRAIN carries OS SWITCH |
 
 Opened over any other page, or on a MIDI track, the popup says to open an
 FX page and nothing is written. The category is a fifth root row: the root

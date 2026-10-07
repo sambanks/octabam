@@ -522,6 +522,22 @@ _LISTLINE = re.compile(r"^([0-9a-f]{6}): (\S+)(?:\s+(.*?))?\s*; "
                        r"[0-9a-f]{6}(?: [0-9a-f]{6})?$")
 _RT_NUM = re.compile(r"(-?)(\$[0-9a-f]+|[0-9]+)")
 _RT_LABEL = re.compile(r"^[a-z][a-z0-9]*_[a-z0-9_]+$")
+# The decoder prints peripheral registers and status bits by the names the
+# vendored emulator gives them (hdi08.h, esai.h, peripherals.h); the source
+# writes the number. Each name here is the value in those headers. A name
+# not in the table still fails the comparison, so a new peripheral use is
+# added here deliberately.
+_RT_SYMS = {
+    "m_hcr": "$ffffc2", "m_hsr": "$ffffc3", "m_hpcr": "$ffffc4", "m_hbar": "$ffffc5",
+    "m_horx": "$ffffc6", "m_hotx": "$ffffc7", "m_hddr": "$ffffc8", "m_hdr": "$ffffc9",
+    "hsr_hrdf": "0", "hsr_htde": "1", "hsr_hcp": "2", "hsr_hf0": "3", "hsr_hf1": "4", "hsr_dma": "7",
+    "hpcr_hen": "6",
+    "hcr_hrie": "0", "hcr_htie": "1", "hcr_hcie": "2", "hcr_hf2": "3", "hcr_hf3": "4",
+    "m_dcr0": "$ffffec", "m_dcr1": "$ffffe8", "m_dcr2": "$ffffe4",
+    "m_dcr3": "$ffffe0", "m_dcr4": "$ffffdc", "m_dcr5": "$ffffd8",
+    "m_tcr": "$ffffb5", "m_rcr": "$ffffb7", "m_tcr_1": "$ffff95", "m_rcr_1": "$ffff97",
+}
+_RT_SYM = re.compile(r"\b(" + "|".join(sorted(_RT_SYMS, key=len, reverse=True)) + r")\b")
 
 # The placeholder a pinned section's bridge jump carries until the build
 # knows where the second piece went (schema.DspSection.pins). A 12-bit
@@ -562,6 +578,7 @@ def _rt_fields(ops):
     fields, every field lower case with no size marks and its numbers hex."""
     def field(f):
         f = f.lower().replace("<", "").replace(">", "")
+        f = _RT_SYM.sub(lambda m: _RT_SYMS[m.group(1)], f)
         return _RT_NUM.sub(
             lambda m: m.group(1) + format(int(m.group(2)[1:], 16)
                                           if m.group(2)[0] == "$"
@@ -581,6 +598,11 @@ def _roundtrip(list_out, blob, org, label):
     src = _listing(list_out)
     if not src:
         return
+    if org < 0:
+        # a pinned section's second piece is assembled so that IT lands at
+        # its pin, which puts the words before it below P:0; they are never
+        # placed (build_bus's pinned path), so the check starts at P:0
+        blob, org = blob[-org * 3:], 0
     tmp = _SCRATCH / "roundtrip.bin"
     tmp.write_bytes(blob)
     r = subprocess.run([str(DISASM), "-in", str(tmp), "-pc", f"{org:x}", "-le"],

@@ -16,6 +16,40 @@ payload of the same loader in its own 528 pages of the arena. KITS
 (`modules/kits`) replaced it; the class went with it (`git show
 2063370f:tools/remix/schema.py`).
 
+A DSP-side class exists for one kind of code (sanderlegit, PR #542):
+
+| class | declared as | where it lands | budget |
+|---|---|---|---|
+| **Pinned DSP section** | `DspSection(pins=(...), pin_split_label=...)` | fixed P addresses instead of the harvested effect region: the interrupt vectors stock leaves as `jmp *`. One address per piece, cut at one label with a one-word bridge jump, so a section can span two runs and cost the region nothing | ✅ read from the image: payload A 50 dead words (`$02..$0F`, `$1A..$1B`, `$1E..$3F`), payload B 58 (`$02..$0F`, `$14..$3F`) |
+
+Stock's unused vectors are self-jumps: an interrupt that fired there would
+spin the core in it for good, so stock never enables them.
+`tools/verify/verify_dspvectors.py` checks that on every build (the runs
+are all self-jumps; no DMA whose vector is in one has DIE set; no ESAI
+control word has an interrupt enable; the set of peripherals either
+payload configures is the audited one), and that gate is the licence for
+the class. The build refuses to pin over anything that is not still the
+stock pattern and asserts that both pieces assemble to the same length at
+either origin. The ledger claims the pin by name.
+
+OS SWITCH's DSP park is the one user: 31 words at `P:$20..$3E` (entered by
+`jsr` at `P:$1E`, host command `$0F`), a one-word bridge, and 8 words at
+`P:$06..$0D`. `$02` (stack error) and `$04` (illegal instruction) stay
+stock's freeze-traps. ✅ On an MKII, 29 Sep 2026: an image with stock's
+fourteen effects and the park wholly in dead vectors booted from a switch,
+played, and switched away again, so the chip runs code in the
+exception-vector slots and takes the bridge jump between two runs.
+
+The top of P is free and unreachable. ✅ Measured 29 Sep 2026: the core's
+default map gives 8K words of P (`0x2000`); payload A's code ends at
+`0x01fdf` (33 words spare), payload B's at `0x01d9f` (609). Code is placed
+by rewriting words inside the payload's existing load records and no
+record covers that space; a new record grows payload A's blob, and payload
+B's begins on the byte A's ends, so it would shift B, the
+`FUN_40001b18(0x400f59ef)` call site and the boot copy. Stock's low P is
+full: A loads all 8,159 words in 66 records, B all 7,583 in 46, with no
+holes.
+
 The OS-image edits every class needs (a detour at a stock instruction, a
 poke, a grown table) are `Detour`, `Poke`, `TableGrow`, wired by symbol;
 stock bytes a module relies on without writing are a `Keep`.
@@ -110,6 +144,15 @@ left. The runtime is linked at the reserve's base; the stage follows it
 page-aligned; the ceiling is the reserve's end; a unit's `.bss` must end
 below it. KITS's library (1,622,944 B) and PLOCKS P2's table (1,572,864 B)
 are `.bss` there.
+
+**OS SWITCH's stage** (`modules/os-switch`) is the top of this reserve,
+`0x41200000..0x41495de0`: a 64-byte mailbox, a 40-byte copy stub at
+`+0x100`, the staged image from `+0x1000` (2,706,400 B). The running OS
+writes it just before a reset and the next boot's OS entry reads it before
+anything else runs; nothing between a reset and the OS entry writes SDRAM
+outside the image the bootstrap unpacks (`docs/firmware/ARCHITECTURE.md`
+section 3a). In a remix carrying the module, `verify_osswitch` refuses a
+runtime and stage that reach the mailbox.
 
 The OS never touches a reservation again: the arena clear starts at the
 new base, the boot-time copies follow the literal, and the page allocator

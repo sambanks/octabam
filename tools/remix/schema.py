@@ -688,6 +688,7 @@ class DspSection:
     # way no local gate would catch. The cut may not fall inside a DO loop --
     # the chip cannot enter or leave one by a jump.
     pins: tuple[int, ...] = ()
+    pin_split_label: str | None = None
     # Per-payload text substitutions applied to the source before anything
     # else the build does to it: {"A": {"@SBASE@": "$33e00"}, "B":
     # {"@SBASE@": "$3be00"}}. dsp_asm has no equ and no expressions, so a

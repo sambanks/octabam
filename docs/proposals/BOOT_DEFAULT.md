@@ -1,5 +1,9 @@
 # Landing in a chosen image at power-on
 
+> Written while the list was MAIN MENU > OS and the images sat in the card
+> root (sanderlegit, PR #542). Since 8 Oct 2026 the list is BRAIN's MAIN
+> MENU pane and the images are in `/BRAIN/OS/` (`modules/os-switch/README.md`).
+
 A follow-on to OS SWITCH (`modules/os-switch`, on an MKII 29 Sep 2026,
 `docs/proposals/FIRMWARE_SWITCHER.md`). It asks whether the thing that
 proposal deliberately left out can be had safely, and says what it would

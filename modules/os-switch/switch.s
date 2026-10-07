@@ -51,7 +51,7 @@
         .set    FS_SIZE,   0x46c8241e
         .set    FS_READ,   0x46c82426   | (fd, buf, sectors)
         .set    STR_R,     0x400b3289   | "r"
-        .set    STR_SLASH, 0x400b36a6   | "/"
+        .set    NOOP,      0x400648f8   | stock's shared row action, `rts` (docs/firmware/MAINMENU.md section 3)
         .set    STR_IOERR, 0x400b767e   | "IO ERROR"
         .set    STR_NOTOS, 0x400b7694   | "NOT A VALID OS FILE"
         .set    STR_WAIT,  0x400b68c2   | "WAIT"
@@ -74,38 +74,11 @@
 
         .text
 
-| ---- MAIN MENU > OS: a fifth root category ----------------------------------
-| The root list holds five rows from boot (its window is five tall, the
-| init at 0x40064c70 is given 5, and stock fills four; docs/firmware/
-| MAINMENU.md section 1). Stock's four rows come from the user's own image,
-| then ours: the label, the category icon, and the child list below.
-        .global osw_root
-        .align  4
-osw_root:
-        ROOT_ROWS                       | remix.inc: .incbin of 0x400cc698, 4 x 0x18
-        .long   str_os, osw_icon, 0, 0, osw_list, 0
-
-| the category icon: a window descriptor {19, 9, 1, ink, mask} as stock's
-| (0x400cbc34..0x400cbc70), each plane 19 words, one column per word, the
-| column's pixels in the high byte, bit 0 the top row
-        .align  4
-osw_icon:
-        .long   0x13, 0x09, 0x01, osw_ink, osw_mask
-osw_ink:
-        ICON_INK
-osw_mask:
-        ICON_MASK
-
-| the child list: shipped initialised (stock inits only its own descriptors,
-| docs/firmware/MAINMENU.md section 1): count, scroll, cursor, selection,
-| visible rows, count again, the rows. osw_scan rewrites both counts.
-        .align  4
-        .global osw_list
-osw_list:
-        .long   1, 0, 0, 0, 7, 1, osw_rows
-
-str_os:
-        .asciz  "OS"
+| ---- MAIN MENU > BRAIN: the images below BRAIN's own rows ----------------
+| BRAIN's list (brain_list, its rows at brain_rows) holds BRAIN's
+| brain_fixed rows; the rows from here on are written at brain_os_rows,
+| right after them, and both of brain_list's counts cover the two parts.
+| Until 8 Oct 2026 this was a fifth root category of its own, OS.
 str_self:
         OSW_SELF                        | remix.inc: this image's own name (make's VERSION)
 str_flash:
@@ -116,8 +89,12 @@ str_title:
         .asciz  "OS SWITCH"
 str_obi:
         .asciz  "OBI"
+str_osdir:
+        .asciz  "/BRAIN/OS"         | where the images are: the scan's directory
+str_ospath:
+        .asciz  "/BRAIN/OS/"        | and the load's path prefix
 str_none:
-        .asciz  "NO .OBI FILES ON CARD"
+        .asciz  "NO .OBI IN BRAIN/OS"
 str_boot:
         .asciz  "BOOT "
 str_q:
@@ -200,7 +177,7 @@ osw_scan:
         clr.l   -(%sp)
         pea     str_obi
         pea     osw_tab
-        pea     (STR_SLASH).l
+        pea     str_osdir
         jsr     (DIRSCAN).l
         lea     (20,%sp),%sp
         | keep the files, drop the directories
@@ -280,12 +257,15 @@ sortnames:
 
 | buildrows: the rows and the counts. Row 0 is a heading in stock's
 | separator form (two 0x17 glyphs, the text, 0x17 to 22 wide; the cursor
-| skips a row whose action is 0): NOW <running>. A failed last switch adds
-| a plain heading. Then a row per file, or one inert NO .OBI FILES row.
+| skips a row whose action is 0): NOW <running>. The rows after it that
+| are text only (HOME, a failed last switch's reason, NO .OBI) carry
+| stock's no-op action instead: the cursor skips ONE action-0 row, never
+| two in a row (docs/firmware/MAINMENU.md section 4), and BRAIN's pane
+| puts NOW straight after an action row. Then a row per file.
 buildrows:
         lea     (-16,%sp),%sp
         movem.l %d2-%d3/%a2-%a3,(%sp)
-        lea     osw_rows,%a2
+        lea     brain_os_rows,%a2
         | heading 0: "\x17NOW <this image>\x17..."
         lea     head0,%a3
         lea     str_now,%a0
@@ -298,9 +278,9 @@ buildrows:
         lea     str_flash,%a0
         bsr.w   heading
         bsr.w   flashname
-        bsr.w   headtail
+        bsr.w   headtailq
         moveq   #2,%d3                  | headings
-        | a failed last switch: its reason, inert
+        | a failed last switch: its reason, text only
         lea     (OSW_MBOX).l,%a1
         move.l  (MB_STATUS,%a1),%d0
         lea     str_hash,%a0
@@ -312,14 +292,15 @@ buildrows:
         lea     str_size,%a0
         cmpi.l  #ST_SIZE,%d0
         bne.s   2f
-1:      bsr.w   inert
+1:      bsr.w   quiet
         addq.l  #1,%d3
-2:      move.l  %d3,nhead
+2:      add.l   brain_fixed,%d3         | BRAIN's own rows come first
+        move.l  %d3,nhead
         | the files
         move.l  count,%d2
         bne.s   3f
         lea     str_none,%a0
-        bsr.w   inert
+        bsr.w   quiet
         moveq   #1,%d2                  | rows after the headings
         bra.s   6f
 3:      moveq   #0,%d1
@@ -351,13 +332,13 @@ buildrows:
         cmp.l   %d2,%d1
         bcs.s   4b
 6:      add.l   %d3,%d2                 | every row
-        lea     osw_list,%a0
+        lea     brain_list,%a0
         move.l  %d2,(%a0)
         move.l  %d2,(0x14,%a0)
-        | the cursor back on the first file, the window at the top
+        | the window at the top, the cursor on BRAIN's first row
         clr.l   (4,%a0)
-        move.l  %d3,(8,%a0)
-        move.l  %d3,(0xc,%a0)
+        clr.l   (8,%a0)
+        clr.l   (0xc,%a0)
         movem.l (%sp),%d2-%d3/%a2-%a3
         lea     (16,%sp),%sp
         rts
@@ -367,6 +348,16 @@ inert:
         move.l  %a0,(%a2)+
         clr.l   (%a2)+
         clr.l   (%a2)+
+        clr.l   (%a2)+
+        clr.l   (%a2)+
+        clr.l   (%a2)+
+        rts
+
+| quiet: a row at (a2)+ with label a0 and stock's no-op action
+quiet:
+        move.l  %a0,(%a2)+
+        clr.l   (%a2)+
+        move.l  #NOOP,(%a2)+
         clr.l   (%a2)+
         clr.l   (%a2)+
         clr.l   (%a2)+
@@ -385,7 +376,14 @@ heading:
         rts
 
 | headtail: append the name at a0, pad with 0x17 to 22, and emit the row
+| (headtailq: the same row with the no-op action)
+headtailq:
+        bsr.s   headtext
+        bra.w   quiet
 headtail:
+        bsr.s   headtext
+        bra.w   inert
+headtext:
         move.l  %a0,-(%sp)
         move.l  %a3,-(%sp)
         bsr.w   strcat
@@ -396,7 +394,7 @@ headtail:
         moveq   #22,%d0
         bsr.w   padsep
         move.l  %a3,%a0
-        bra.w   inert
+        rts
 
 | a0 = the flashed image's name: this image's, unless this boot came from a
 | switch (status RUN), then the one the switch carried in the mailbox
@@ -454,7 +452,7 @@ padsep:
 osw_pick:
         lea     (-8,%sp),%sp
         movem.l %d2/%a2,(%sp)
-        lea     osw_list,%a0
+        lea     brain_list,%a0
         move.l  (4,%a0),%d0
         add.l   (8,%a0),%d0
         sub.l   nhead,%d0
@@ -651,10 +649,13 @@ osw_load:
         jsr     (0x40020c7c).l
         addq.l  #8,%sp
         bra.s   1b
-        | "/" + name
+        | "/BRAIN/OS/" + name
 2:      lea     path,%a2
-        move.b  #'/',(%a2)
-        clr.b   (1,%a2)
+        clr.b   (%a2)
+        pea     str_ospath
+        move.l  %a2,-(%sp)
+        bsr.w   strcat
+        addq.l  #8,%sp
         bsr.w   curname
         move.l  %a0,-(%sp)
         move.l  %a2,-(%sp)
@@ -1498,7 +1499,7 @@ idx:    .long   0
 nhead:  .long   1
 lines:  .long   line1, str_stops, str_home
 line1:  .space  32
-path:   .space  32
+path:   .space  48                  | "/BRAIN/OS/" + a name of NLEN bytes
 head0:  .space  32
 head1:  .space  32
 names:  .space  NMAX*NLEN
@@ -1508,7 +1509,3 @@ osw_tab:
         .space  SCAN_MAX*12
 osw_save:
         .space  SCAN_STATE_LEN
-        .align  4
-osw_rows:
-        .long   str_none, 0, 0, 0, 0, 0
-        .space  (NMAX+1)*0x18

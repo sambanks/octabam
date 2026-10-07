@@ -1,5 +1,9 @@
 # Switching OS images from the card, without flashing
 
+> Written while the list was MAIN MENU > OS and the images sat in the card
+> root (sanderlegit, PR #542). Since 8 Oct 2026 the list is BRAIN's MAIN
+> MENU pane and the images are in `/BRAIN/OS/` (`modules/os-switch/README.md`).
+
 A technical proposition, with a working prototype. It says what the
 firmware already does, what the prototype does with it, what the ColdFire
 port has measured, and what only the unit can answer, in the order to ask
@@ -269,6 +273,10 @@ ends in the flashed image after a power-cycle.
   design.
 
 ## 7. Questions back
+
+Answered 8 Oct 2026 (Sam Banks): the list moved into BRAIN's MAIN MENU
+pane, the images into `/BRAIN/OS/`, and every image that carries BRAIN
+carries OS SWITCH (`schema.Remix.os_switch` was not taken).
 
 - Is a fifth MAIN MENU category the right home (the root window was built
   five tall), or should it sit in SYSTEM beside OS UPGRADE (MAINMENU.md
