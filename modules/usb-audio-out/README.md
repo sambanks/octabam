@@ -2,7 +2,7 @@
 
 The unit as a USB audio input (UAC2, 44.1 kHz, 24-bit), in one of five
 layouts chosen by the module's LAYOUT setting. LAYOUT is a build-time
-setting (`docs/proposals/STORE.md`): a remix pins it, for example
+setting (`docs/proposals/BRAIN.md`): a remix pins it, for example
 `settings={("octabam.usb-audio-out", "LAYOUT"): Pin("MASTER")}`. Needs USB
 MIDI: the audio function is added to its composite device.
 

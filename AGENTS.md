@@ -575,7 +575,7 @@ flash notes. (Cause inferred from the symptom and a refreshed project
 running clean; not measured.) Measured against it under the port (6 Oct
 2026): stock's Part validator `0x40002318` rewrites every FX page byte
 outside its descriptor's `[min, min + count - 1]` to the nearer end during
-the load, in all 16 banks x 8 Parts (`tools/verify/verify_core.py`, "stock
+the load, in all 16 banks x 8 Parts (`tools/verify/verify_brain.py`, "stock
 clamps"), so a stored byte loaded from the card does not reach play outside
 its count; and with such bytes stamped, the page drawn and the DSPs
 running, the sequencer advanced as on a clean project. What stalled the

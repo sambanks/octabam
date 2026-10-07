@@ -295,7 +295,7 @@ REMIX = Remix(
   setting chooses its code (USB AUDIO OUT's `LAYOUT`, USB AUDIO IN's
   `INPUTS`) builds that code:
   `settings={("octabam.usb-audio-out", "LAYOUT"): Pin("MASTER")}`.
-  `python3 tools/remix/store.py resolve mine` prints every setting and the
+  `python3 tools/remix/brain.py resolve mine` prints every setting and the
   layer its value came from; the build report prints the same.
 - `defaults` replaces a knob's default in this image:
   `(module key, mode, knob) -> byte`, with `mode` None for the knob's own

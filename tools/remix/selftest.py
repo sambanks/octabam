@@ -880,7 +880,7 @@ def main():
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "rig": _rig, "bottleservice": _rig,
              "character-txtr": _rig,   # bottleservice with the TXTR station
-             "core": _rig}   # bottleservice with CORE (a ColdFire module)
+             "brain": _rig}   # bottleservice with BRAIN (a ColdFire module)
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         _hv = stock.region_of(stock.harvested(

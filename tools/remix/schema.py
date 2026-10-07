@@ -188,9 +188,9 @@ class Param:
     widget_word: int | tuple[str, str] | None = None
     word_12a: int | tuple[str, str] | None = None
     # The knob's stable identity in a stored default or template
-    # (docs/proposals/STORE.md section 4.1): 1..65535, never reused, so a
+    # (docs/proposals/BRAIN.md section 4.1): 1..65535, never reused, so a
     # renamed or moved knob keeps its stored value. A module that keys one
-    # drawn slot keys every drawn slot; store.lock holds the released keys.
+    # drawn slot keys every drawn slot; brain.lock holds the released keys.
     key: int | None = None
 
     @property
@@ -274,13 +274,13 @@ def enable_words(active, linked=(), inherited=(), donor=(0, 0)):
     return lo, hi
 
 
-# ---- settings (docs/proposals/STORE.md section 4) -------------------------
+# ---- settings (docs/proposals/BRAIN.md section 4) -------------------------
 # A module's settings, resolved through four layers: the manifest's default,
 # the remix's (`Remix.settings`, a value or a Pin), the card's and the
-# project's. Without the CORE module in the remix only the first two exist
-# and every value is a build-time constant (tools/remix/store.py).
+# project's. Without the BRAIN module in the remix only the first two exist
+# and every value is a build-time constant (tools/remix/brain.py).
 
-CORE_KEY = "CORE"                # the module that carries the run-time layers
+BRAIN_KEY = "BRAIN"                # the module that carries the run-time layers
 STORE_ID_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789.-_")
 
 
@@ -298,7 +298,7 @@ class Apply(Enum):
 
 @dataclass(frozen=True)
 class Binary:
-    """0 or 1, stored as one byte (OBAM type 1)."""
+    """0 or 1, stored as one byte (brain file type 1)."""
 
     def check(self, v) -> str | None:
         return None if v in (0, 1) and not isinstance(v, float) else f"{v!r} is not 0 or 1"
@@ -309,8 +309,8 @@ class Binary:
 
 @dataclass(frozen=True, init=False)
 class Option:
-    """An index into append-only labels, stored as one byte (OBAM type 2).
-    A label is never removed, renamed or moved: store.lock refuses it."""
+    """An index into append-only labels, stored as one byte (brain file type 2).
+    A label is never removed, renamed or moved: brain.lock refuses it."""
     labels: tuple[str, ...]
 
     def __init__(self, *labels: str):
@@ -340,7 +340,7 @@ class Option:
 
 @dataclass(frozen=True)
 class Number:
-    """A signed 16-bit integer, stored as two bytes (OBAM type 3)."""
+    """A signed 16-bit integer, stored as two bytes (brain file type 3)."""
     min: int
     max: int
     step: int = 1
@@ -379,7 +379,7 @@ class Trigger:
 
 @dataclass(frozen=True)
 class Blob:
-    """Bytes the module packs and unpacks, at most `max_bytes` (OBAM type 4)."""
+    """Bytes the module packs and unpacks, at most `max_bytes` (brain file type 4)."""
     max_bytes: int
 
     def __post_init__(self):
@@ -419,7 +419,7 @@ class Store:
 
 @dataclass(frozen=True)
 class Setting:
-    """One setting of a module (docs/proposals/STORE.md section 4.1).
+    """One setting of a module (docs/proposals/BRAIN.md section 4.1).
 
     `default` None takes the kind's zero (0, the first label, b"" or, for a
     Number whose range excludes 0, its nearer bound). An Option takes a
@@ -1423,15 +1423,15 @@ class Module:
     # DSP work outside the FX pricer (for example a CF-registered source).
     # An explicit gap must block pressure qualification, never report N/A.
     pressure_blocker: str = ""
-    # ---- settings (docs/proposals/STORE.md section 4.1) --------------------
+    # ---- settings (docs/proposals/BRAIN.md section 4.1) --------------------
     # The id the module's settings and stored defaults are filed under, and
-    # the settings themselves. tools/remix/store.py resolves them for a
-    # remix; modules/<name>/store.lock holds the released keys.
+    # the settings themselves. tools/remix/brain.py resolves them for a
+    # remix; modules/<name>/brain.lock holds the released keys.
     store: Store | None = None
     settings: tuple[Setting, ...] = ()
     # The module's function is stored state: the build refuses it in a
-    # remix without the CORE module, by name.
-    requires_core: bool = False
+    # remix without the BRAIN module, by name.
+    requires_brain: bool = False
     # CODE CHOSEN BY A SETTING: variant(values) -> {field: value}, given the
     # module's Apply.BUILD settings resolved for the remix ({name: value},
     # an Option as its label). registry.bound() applies it once per remix,
@@ -1949,13 +1949,13 @@ class Remix:
     # offsets have no such exact identity.
     grains: int = 4
     fx1: tuple[str, ...] = ()
-    # LAYER 2 OF EACH SETTING (docs/proposals/STORE.md section 4.2):
+    # LAYER 2 OF EACH SETTING (docs/proposals/BRAIN.md section 4.2):
     # (store id, setting name) -> a value (a new default the card and the
     # project may still change) or Pin(value) (fixed: no row, nothing stored).
-    # An Option takes a label or an index. tools/remix/store.py checks every
+    # An Option takes a label or an index. tools/remix/brain.py checks every
     # entry against the selected modules.
     settings: Mapping = field(default_factory=dict, hash=False)
-    # LAYER 2 OF EACH KNOB DEFAULT (docs/proposals/STORE.md section 4.2):
+    # LAYER 2 OF EACH KNOB DEFAULT (docs/proposals/BRAIN.md section 4.2):
     # (module key, mode, knob) -> byte. `mode` is the MODE select's label or
     # value, or None for the knob's own default (Param.default); `knob` is the
     # Param's name, or the name the mode's view gives it. It replaces that

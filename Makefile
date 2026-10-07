@@ -233,7 +233,7 @@ verify-shared: ## The gates that do not depend on the remix: ledger selftest, sl
 	python3 tools/verify/verify_slots.py
 	python3 tools/verify/verify_replaces.py --static
 	python3 tools/verify/verify_docs.py
-	python3 tools/remix/store.py check
+	python3 tools/remix/brain.py check
 	$(PY) tools/verify/verify_remixer.py
 	python3 tools/build/label_fmt.py
 	@# The knob click census: every continuous knob of the rig fixture's DSP

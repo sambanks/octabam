@@ -11,8 +11,8 @@ a pull request signs; this page is how it is met.
 make check REMIX=<name>          one remix: build, cycles, the shared gates, the remix's own gates
 make reach [RUN=1] [FULL=1]      the gates this branch's diff reaches, in order; RUN=1 runs them; quick unless FULL=1
 make accept REMIXES="..." ...    the same gates under a strict runner that writes a JSON report
-make test-acceptance             the runner's, the classifier's and the shard runner's own tests, and the OBAM store's
-                                 (container corpus, settings, lock file, ot_store round trip; no firmware)
+make test-acceptance             the runner's, the classifier's and the shard runner's own tests, and the brain's
+                                 (container corpus, settings, lock file, ot_brain round trip; no firmware)
 make identity                    which remixes' images this branch moved, byte for byte
 scripts/refhash.sh check         a build change produced bit-identical artifacts and reports
 make ci                          what GitHub Actions runs (no firmware, so no remix)
@@ -61,8 +61,8 @@ on which remix is selected, so a run over several remixes does it once:
 | `verify_slots` | no dead store in BusVerb's per-instance state block |
 | `verify_replaces --static` | a declared replacement names a real stock effect and carries its id (the registry only) |
 | `verify_docs` | the README module table and the remix index match the manifests and selections (`make docs`); every remix has a README; every relative Markdown link and anchor, and every `docs/…`, `tools/…`, `modules/…` or `remixes/….md` path written in a tracked text file, resolves (`tools/verify/doclinks.py`); no section sign in a `.md` |
-| `verify_descdefaults` (on demand: `python3 tools/verify/verify_descdefaults.py [REMIX]`) | the FX2 and FX1 choosers' select lands the effect's descriptor defaults, and the poked bytes when those twelve are poked in RAM after the load: what the store's card-layer defaults rest on (`docs/proposals/STORE.md` section 5.1); port, project |
-| `store.py check` | no two modules share a store id; every module with a `Store` or a keyed `Param` has a current `store.lock` and breaks no released key; every remix's `settings` names a selected setting and a value inside its bounds, a module that `requires_core` has the core, early settings fit the remix's free CS1 run (`docs/proposals/STORE.md` section 4.3) |
+| `verify_descdefaults` (on demand: `python3 tools/verify/verify_descdefaults.py [REMIX]`) | the FX2 and FX1 choosers' select lands the effect's descriptor defaults, and the poked bytes when those twelve are poked in RAM after the load: what the store's card-layer defaults rest on (`docs/proposals/BRAIN.md` section 5.1); port, project |
+| `brain.py check` | no two modules share a store id; every module with a `Store` or a keyed `Param` has a current `brain.lock` and breaks no released key; every remix's `settings` names a selected setting and a value inside its bounds, a module that `requires_brain` has the core, early settings fit the remix's free CS1 run (`docs/proposals/BRAIN.md` section 4.3) |
 | `verify_remixer` (`Makefile` verify-shared) | the remixer (`make remix`) opens and draws headless under Textual's test pilot for stock and every remix (three panes, cursor in each); `k` moves the cursor up in AVAILABLE and `K` resets to stock. SKIPs without textual |
 | `tools/build/label_fmt.py` | the select formatter caves re-derive from their sources (with `m68k-elf-as` on PATH) |
 | `verify_knob_clicks` | the knob census: every continuous knob of the fixture remix's DSP modules moved mid-render, the block-rate step in dBFS; a garbage start stays quiet |
@@ -105,7 +105,7 @@ The two tables above.
 | `verify_burn` | SEND | per remix | the RIG BURN probe image is the shipping one plus an inert, exact knob | `dsp_host` |
 | `verify_character`, `verify_spectrum`, `verify_modulation` | the three stations | shared | each station against arithmetic you can predict or a float reference: bypass bit-exact, every mode, bounded resonance, the FX1-only promise | `dsp_host` |
 | `verify_miniverb` | MINIVERB | image | eight instances isolated, dirty memory, buffer guards, audio gates | `dsp_host` |
-| `verify_core` | CORE | image | the card store under the port: card-layer defaults land on a chooser select (none, card.work, recovered, damaged, wrong layout, duplicate), a mode record through MODE DEFAULTS, SAVE AS DEFAULT as an engine job (records, kept bytes, card.strd, a fresh card's folder, the second boot), stock's load-time clamp; `generate_core.py --check` | `.venv`, port, project |
+| `verify_brain` | CORE | image | the card store under the port: card-layer defaults land on a chooser select (none, card.work, recovered, damaged, wrong layout, duplicate), a mode record through MODE DEFAULTS, SAVE AS DEFAULT as an engine job (records, kept bytes, card.strd, a fresh card's folder, the second boot), stock's load-time clamp; `generate_brain.py --check` | `.venv`, port, project |
 | `verify_euclid` | EUCLID | image | control math, the ColdFire hooks, DSP renders, playback under the port | `.venv`, port, project |
 | `verify_tapeecho_cpu` | TAPE ECHO | image | the C reference against the compiled ColdFire port, through the stock delay routine and its DMA protocol | `.venv`, `cc`, port |
 | `verify_modedefaults` | MODE DEFAULTS | per remix | a MODE turn through the panel's editor, and a MODE over CC MAP, lands that mode's view in the live lane (one boot, `--step`) | port, project |

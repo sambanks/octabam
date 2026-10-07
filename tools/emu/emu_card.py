@@ -351,7 +351,7 @@ def stage_project(project, set_name, name, tree="out/_stage_tree",
     e.g. "~/octa/pool/x.wav:AUDIO/Loopmasters/x.wav" (relative to the SET
     folder, the way project.work's PATH=../AUDIO/... resolves). `root_files`
     is the same form relative to the card root (the store's
-    OCTABAM/card.work). The image grows to `image_mb`."""
+    BRAIN/card.work). The image grows to `image_mb`."""
     import shutil
     src = pathlib.Path(project)
     name = name or src.name

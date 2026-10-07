@@ -759,21 +759,21 @@ Three kinds of state, three homes:
 |---|---|---|
 | an effect's twelve parameters | the Part (`docs/firmware/PARAM_PAGES.md`); a saved Part feeds a new layout its old bytes, and a value outside its count stalls the sequencer (`tools/hw/ot_project.py stamp-defaults`) | the descriptor |
 | personal material: Kits, grooves, presets, anything a musician would copy to another project on its own | files the module owns, beside the stock project files | the module |
-| the module's settings: how it behaves or looks (a checkbox, a menu option, a USB profile) | today: nowhere, or a private file (KITS keeps two in its `kits.work` header; octalab writes `octalab_grooves.map` and `octalab_generators.map`, "OTGM" v1). Designed: the OBAM store | the core |
+| the module's settings: how it behaves or looks (a checkbox, a menu option, a USB profile) | today: nowhere, or a private file (KITS keeps two in its `kits.work` header; octalab writes `octalab_grooves.map` and `octalab_generators.map`, "OTGM" v1). Designed: the brain | the core |
 
-The design is [`docs/proposals/STORE.md`](../proposals/STORE.md) (6 Oct
+The design is [`docs/proposals/BRAIN.md`](../proposals/BRAIN.md) (6 Oct
 2026): settings, defaults and templates in one registry, resolved through
 four layers (manifest, remix, card, project), kept in a `.work` / `.strd`
 pair at the card root and one in the project. Phase 0 is implemented (6 Oct
-2026): the declarations below, `tools/remix/store.py`, the container
-`tools/remix/obam.py`; no module declares a setting yet, and the card and
+2026): the declarations below, `tools/remix/brain.py`, the container
+`tools/remix/brainfile.py`; no module declares a setting yet, and the card and
 project layers wait for the core (phase 2). Its section 12 lists the phases. It starts from nordseele's
 OTX proposal
 ([`OTX_PROJECT_PROPOSAL.md`](../proposals/OTX_PROJECT_PROPOSAL.md),
 [`OTX_MODULE_GUIDELINES.md`](../proposals/OTX_MODULE_GUIDELINES.md)), and
 its section 14 lists what is taken from OTX and what differs.
 
-What a module declares (STORE.md section 4): a `Store` with a stable
+What a module declares (BRAIN.md section 4): a `Store` with a stable
 namespaced id; per setting a numeric `key` never reused, a kind (`Binary`,
 `Option` with append-only labels, `Number`, `Trigger`, `Blob`), a default,
 a scope (`CARD` or `PROJECT`) and an apply policy (`LIVE`, `CALLBACK`,
@@ -801,11 +801,11 @@ code. An `include` callable reads the values from the bound module's
 `build_values`. `modules/usb-audio-out/manifest.py` is the worked example:
 one source, five layouts.
 
-Then `python3 tools/remix/store.py lock <module>` writes
-`modules/<module>/store.lock`, committed with the manifest; `make
+Then `python3 tools/remix/brain.py lock <module>` writes
+`modules/<module>/brain.lock`, committed with the manifest; `make
 verify-shared` refuses a stale lock and a change that breaks a released key
 (a removed key not retired, a changed type, a moved or removed label).
-`python3 tools/remix/store.py resolve <remix>` prints every setting's value
+`python3 tools/remix/brain.py resolve <remix>` prints every setting's value
 and the layer it came from.
 
 Until the store exists a module does not invent a settings file, a save

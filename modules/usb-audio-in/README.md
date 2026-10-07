@@ -1,7 +1,7 @@
 # `usb-audio-in` — USB AUDIO IN
 
 The host's channels into the Octatrack's inputs, by the module's INPUTS
-setting, a build-time setting a remix pins (`docs/proposals/STORE.md`), for
+setting, a build-time setting a remix pins (`docs/proposals/BRAIN.md`), for
 example `settings={("octabam.usb-audio-in", "INPUTS"): Pin("CD")}`:
 
 | INPUTS | host channels | DSP inject | packet |

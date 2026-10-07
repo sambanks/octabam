@@ -125,7 +125,7 @@ from the card (section 5).
 
 | module | author | what it does | proof |
 |---|---|---|---|
-| [**CORE**](modules/core/README.md) | [Sam Banks](https://github.com/sambanks) | The settings store on the unit: card-wide knob defaults read from OCTABAM/card.work at each project load (docs/proposals/STORE.md). | port-gated: `verify_core` under the port (6 Oct 2026); not on hardware |
+| [**BRAIN**](modules/brain/README.md) | [Sam Banks](https://github.com/sambanks) | The settings store on the unit: card-wide knob defaults read from BRAIN/card.work at each project load (docs/proposals/BRAIN.md). | port-gated: `verify_brain` under the port (6 Oct 2026); not on hardware |
 
 ### Reference
 
@@ -169,7 +169,7 @@ parameters and stay in the Part. Personal material (KITS's library,
 octalab's grooves) is in files the module owns and formats. A module's
 settings (menu options, a USB profile) have no shared home yet; the store
 for settings, defaults and templates is designed in
-[docs/proposals/STORE.md](docs/proposals/STORE.md) (6 Oct 2026, starting
+[docs/proposals/BRAIN.md](docs/proposals/BRAIN.md) (6 Oct 2026, starting
 from nordseele's
 [OTX proposal](docs/proposals/OTX_PROJECT_PROPOSAL.md)), and is not implemented.
 

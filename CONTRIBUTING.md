@@ -81,7 +81,7 @@ the gate. A remix declares `family` (`rig`, `effects`, `mods`,
 `reference`, `probes`) and the same `proof` pair.
 
 Settings a module keeps on the card (a checkbox, a profile) go in the
-OBAM store once it exists (`docs/proposals/STORE.md`), and until then in no
+brain once it exists (`docs/proposals/BRAIN.md`), and until then in no
 file of the module's own; `docs/contributing/MODULES.md` "Settings on the
 card".
 

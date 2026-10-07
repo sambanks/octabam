@@ -28,7 +28,7 @@ def main():
                          "empty and the DSP has nothing to play: O9); repeatable")
     ap.add_argument("--root-file", action="append", default=[],
                     help="'<src>:<card path relative to the card root>' -- a file outside the set "
-                         "(the settings store's OCTABAM/card.work); repeatable")
+                         "(the settings store's BRAIN/card.work); repeatable")
     a = ap.parse_args()
     img, staged = emu_card.stage_project(a.project, a.set_name, a.name,
                                          tree=a.tree, image_mb=a.image_mb, audio=a.audio,

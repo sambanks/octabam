@@ -29,7 +29,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 import usb_host  # noqa: E402  (tools/harness)
 
-from remix import registry, store  # noqa: E402
+from remix import registry, brain  # noqa: E402
 
 EMU = ROOT / "out/emu/ot_emu"
 IMAGE = ROOT / "out/mainos_bus.bin"
@@ -95,10 +95,10 @@ def main():
         return 1
     remix = registry.remix(os.environ.get("REMIX"))
     midi = "USB MIDI" in remix.modules
-    layout = store.value(remix, registry.modules(), "octabam.usb-audio-out", "LAYOUT")
+    layout = brain.value(remix, registry.modules(), "octabam.usb-audio-out", "LAYOUT")
     audio = None if layout is None else f"USB AUDIO OUT {layout}"
     IN_LAYOUT = {"USB AUDIO IN AB": 2, "USB AUDIO IN CD": 2, "USB AUDIO IN ABCD": 4}
-    inputs = store.value(remix, registry.modules(), "octabam.usb-audio-in", "INPUTS")
+    inputs = brain.value(remix, registry.modules(), "octabam.usb-audio-in", "INPUTS")
     ain = None if inputs is None else f"USB AUDIO IN {inputs}"   # + AudioStreaming 5, EP3 OUT (implicit feedback)
     in_ch = IN_LAYOUT[ain] if ain else 0
     sock = f"/tmp/ot-usb-{os.getpid()}.sock"     # sun_path is 104 bytes on macOS; the scratch dirs are longer

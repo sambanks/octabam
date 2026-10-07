@@ -727,8 +727,8 @@ def main():
                      f"-- the field is 13 bytes NUL-terminated, so 12 is the "
                      f"maximum")
 
-    from remix import store as _store
-    for _line in _store.report(REMIX, remix_registry.modules()):
+    from remix import brain as _brain
+    for _line in _brain.report(REMIX, remix_registry.modules()):
         print(_line)
     clone_addr = {}
     print("=== ColdFire: three cloned descriptors (task 11) ===")

@@ -4,8 +4,8 @@ from its descriptor in RAM at the moment of the select.
 
     python3 tools/verify/verify_descdefaults.py [REMIX] [--project DIR]
 
-The OBAM core's card-layer defaults rest on it (docs/proposals/STORE.md
-section 5.1): the core writes the card's values over the descriptor
+The BRAIN module's card-layer defaults rest on it (docs/proposals/BRAIN.md
+section 5.1): it writes the card's values over the descriptor
 bytes (P+0x5e, 12 bytes) after the boot, and nothing else is patched.
 
 Builds REMIX (default bottleservice), stages the project, and under the

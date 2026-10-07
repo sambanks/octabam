@@ -293,19 +293,19 @@ def bound(r) -> dict[str, object]:
     """Every module, with each selected one bound to the remix's
     Apply.BUILD settings (schema.Module.bind). The build and every check
     that reads a selected module's code take modules from here."""
-    from remix import store
+    from remix import brain
     mods = modules()
-    bad = store.check_remix(r, mods)
+    bad = brain.check_remix(r, mods)
     if bad:
         raise SystemExit(f"remix {r.name!r}: " + "; ".join(bad))
-    vals = store.build_values(r, mods)
-    knobs = store.defaults_by_module(r, mods)
+    vals = brain.build_values(r, mods)
+    knobs = brain.defaults_by_module(r, mods)
     out = {}
     for k, m in mods.items():
         if k in vals:
             m = m.bind(vals[k])
         if k in knobs:
-            m = dataclasses.replace(m, **store.apply_defaults(m, knobs[k]))
+            m = dataclasses.replace(m, **brain.apply_defaults(m, knobs[k]))
         out[k] = m
     return out
 

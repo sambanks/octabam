@@ -42,7 +42,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 import usb_host  # noqa: E402  (tools/harness)
-from remix import registry, store  # noqa: E402
+from remix import registry, brain  # noqa: E402
 from verify_usb import LAYOUTS  # noqa: E402  (the input layouts: channels, packet cap, bInterval, taps)
 
 EMU = ROOT / "out/emu/ot_emu"
@@ -222,7 +222,7 @@ def main():
         print("  [FAIL] verify_usb_in: the runtime has no USB AUDIO IN unit")
         return 1
     remix = registry.remix(os.environ.get("REMIX"))
-    inputs = store.value(remix, registry.modules(), "octabam.usb-audio-in", "INPUTS")
+    inputs = brain.value(remix, registry.modules(), "octabam.usb-audio-in", "INPUTS")
     ain = None if inputs is None else f"USB AUDIO IN {inputs}"
     if ain is None:
         print("  [FAIL] verify_usb_in: the remix carries no USB AUDIO IN module")
@@ -230,7 +230,7 @@ def main():
     SLOT_CH = IN_SLOTS[ain]
     CHANNELS = len(SLOT_CH)
     print(f"  {ain}: {CHANNELS} host channels -> RX slots {sorted(SLOT_CH)}")
-    layout = store.value(remix, registry.modules(), "octabam.usb-audio-out", "LAYOUT")
+    layout = brain.value(remix, registry.modules(), "octabam.usb-audio-out", "LAYOUT")
     audio = None if layout is None else f"USB AUDIO OUT {layout}"
     if audio is None or LAYOUTS[audio][2] != 2:
         print(f"  [FAIL] verify_usb_in: needs a 250 us USB AUDIO OUT layout (MAIN CUE, MAIN, TRACKS or TRACKS MAIN CUE) beside it, not {audio}")

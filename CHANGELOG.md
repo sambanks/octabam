@@ -27,7 +27,7 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
   three output instructions; the 909 adds four instructions per sample.
 
 Remixes
-- `remixes/test/core`: bottleservice + CORE (7 Oct, port only).
+- `remixes/test/brain`: bottleservice + BRAIN (7 Oct, port only).
 - Every remix that carried a USB AUDIO OUT or IN variant selects USB AUDIO OUT / USB AUDIO IN and pins LAYOUT / INPUTS; each image byte-identical to before (6 Oct, `make identity`).
 - KITS replaces OCTAKIT, SCENES KITS, SCENES P2 KITS and KITS RELOAD in bottleservice, ok-ms, mods and character-txtr; mods also carries DIRECT_JUMP_KYOTI and RELOAD_FROM_PROJECT; `remixes/test/octakit` removed, `remixes/test/kits` added (6 Oct, port only).
 - `usb-out-tracks-post`: stock + USB MIDI + USB AUDIO OUT TRACKS POST (5 Oct).
@@ -45,7 +45,7 @@ Modules
 - SCENES P2: page-2 scene locks move from the 144-byte pool at Part `+0x17a2` (stock's LFO designs of MIDI tracks 2–8) to bytes 30 and 31 of the stock scene block, eight a scene; stock scene copy, paste, undo and clear carry them; builds beside MIDI SCENES. Locks saved by earlier images are not read (10 Oct, port only).
 - STEM REC: MAIN MENU > STEMS records every track to the card while the sequencer plays, one 16-bit stereo file per track, streamed, up to 60 min (Yves Rosius, 26-30 Sep).
 - STEM REC, piece 5: every track after its fader (its share of MAIN, from core 0's own gain arithmetic redone in the frame hook), MAIN, CUE and the inputs AB/CD as sources (stereo or mono), 24-bit files, an 8 MiB ring; the menu's labels keep moving when the card falls behind (Yves Rosius, 1-4 Oct).
-- CORE (new): the settings store on the unit (`docs/proposals/STORE.md`): card-wide knob defaults from `OCTABAM/card.work` at each project load (MODE views through MODE DEFAULTS), SAVE AS DEFAULT and CLEAR DEFAULT in an OCTABAM MAIN MENU category as engine-task jobs, `card.strd` at SAVE PROJECT (6-7 Oct, port: `verify_core`).
+- BRAIN (new): the settings store on the unit (`docs/proposals/BRAIN.md`): card-wide knob defaults from `BRAIN/card.work` at each project load (MODE views through MODE DEFAULTS), SAVE AS DEFAULT and CLEAR DEFAULT in a BRAIN MAIN MENU category as engine-task jobs, `card.strd` at SAVE PROJECT (6-7 Oct, port: `verify_brain`).
 - USB AUDIO OUT (LAYOUT) and USB AUDIO IN (INPUTS) replace the five `usb-audio-out-*` and three `usb-audio-in-*` modules: a build-time setting chooses the code (`Module.variant`) (6 Oct).
 - KITS (new): 256 Kits per project through the stock Part slots: each pattern's Kit is copied into a slot nothing plays before the pattern is scheduled; LOAD/SAVE KIT on the stock list menu with Octakit's key map, UNDO KIT, list copy/paste/clear/undo, AUTOSAVE and KEEP LEVELS, the pattern clipboard carrying the Kit, FUNC+PASTE+PART, PTN+FUNC+RIGHT, PTN+FUNC+TRIG; kits.work/kits.strd, migration of the stock Parts, import of Octakit's kits3a/b.work; no `illegal` (6 Oct, port: `verify_kits`, 89 checks; on the unit in image A6).
 - OCTAKIT, SCENES KITS, SCENES P2 KITS, KITS RELOAD removed, with the build's Runtime/ArenaReserve machinery (every other remix's image and report bit-identical; refhash 24/24); TEMPO BUS and MODE DEFAULTS no longer push Octakit's token (6 Oct).
