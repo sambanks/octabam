@@ -646,7 +646,7 @@ namespace ot
 		std::vector<uint32_t> m_window;
 		std::vector<uint64_t> m_windowWrites;
 		// A0-A6 at each burst: a loop whose pointer WALKS (a read-only hash
-		// over a staged image, modules/os-switch's chainloader: ~8 M
+		// over a staged image, modules/remix-switch's chainloader: ~8 M
 		// instructions in 14 bytes, no stores) makes progress too; a poll
 		// re-reads one place.
 		std::vector<std::array<uint32_t, 7>> m_windowAregs;

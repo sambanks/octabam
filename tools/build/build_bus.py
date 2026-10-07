@@ -2345,7 +2345,7 @@ mkgo:""",
             # A FULLY PINNED section needs no region at all: its words come
             # out of stock's dead interrupt vectors (schema.DspSection.pins),
             # which is what lets an image that keeps every stock effect carry
-            # OS SWITCH. Only sections that still want region words count.
+            # REMIX SWITCH. Only sections that still want region words count.
             _need = [m for m in ([m for m in _SEL if m.dsp is not None]
                                  + [_MODS[k] for k in HOOKED])
                      if not m.dsp.pins]

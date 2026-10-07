@@ -1172,7 +1172,7 @@ class Linked:
     # runs from its link address from the first instruction of the OS on --
     # before the runtime is depacked, and without taking a byte of the ROM
     # caves full remixes run out of. For code the OS entry must reach before
-    # anything else runs (OS SWITCH's chainloader gate). It links in the
+    # anything else runs (REMIX SWITCH's chainloader gate). It links in the
     # loader's one link (its globals are the platform's symbols, as a DRAM
     # unit's), under the loader's labels: prefix every label. Needs the
     # platform (a remix with at least one DRAM unit).

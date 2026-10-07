@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """BOOT TRACE under the port: a normal MKII boot sends notes 1..6 in order.
 
-    python3 tools/verify/verify_boottrace.py os-switch-trace
+    python3 tools/verify/verify_boottrace.py remix-switch-trace
 
 Boots the remix (NOR's bootstrap version preloaded, so the entry takes the
 hardware's path) and watches the trace routine's entry: the note it is
 called with, in order, must be 2..6 then the frame interrupt's 7 and 8
-(the port takes frames with --frame; 6 and the first frame race), and OS SWITCH's inline note 1 (when
+(the port takes frames with --frame; 6 and the first frame race), and REMIX SWITCH's inline note 1 (when
 it is in the image) must run first. The port arms its UART write watch only
 after the boot, so the notes are read from the calls, not the wire; notes
 4..6 were also seen on UART0's transmit register (29 Sep 2026).
@@ -52,7 +52,7 @@ def main():
     trace = nm(ROOT / "out/linked/boot-trace/boot_trace/u.elf")["tracev"]
     watch = [trace]
     chain = None
-    if "OS SWITCH" in mods:
+    if "REMIX SWITCH" in mods:
         chain = nm(ROOT / "out/platform/loader.elf")["txmidi"]
         watch.append(chain)
     work = pathlib.Path(tempfile.mkdtemp(prefix="boottrace."))

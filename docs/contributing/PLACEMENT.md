@@ -32,7 +32,7 @@ the class. The build refuses to pin over anything that is not still the
 stock pattern and asserts that both pieces assemble to the same length at
 either origin. The ledger claims the pin by name.
 
-OS SWITCH's DSP park is the one user: 31 words at `P:$20..$3E` (entered by
+REMIX SWITCH's DSP park is the one user: 31 words at `P:$20..$3E` (entered by
 `jsr` at `P:$1E`, host command `$0F`), a one-word bridge, and 8 words at
 `P:$06..$0D`. `$02` (stack error) and `$04` (illegal instruction) stay
 stock's freeze-traps. ✅ On an MKII, 29 Sep 2026: an image with stock's
@@ -145,13 +145,13 @@ page-aligned; the ceiling is the reserve's end; a unit's `.bss` must end
 below it. KITS's library (1,622,944 B) and PLOCKS P2's table (1,572,864 B)
 are `.bss` there.
 
-**OS SWITCH's stage** (`modules/os-switch`) is the top of this reserve,
+**REMIX SWITCH's stage** (`modules/remix-switch`) is the top of this reserve,
 `0x41200000..0x41495de0`: a 64-byte mailbox, a 40-byte copy stub at
 `+0x100`, the staged image from `+0x1000` (2,706,400 B). The running OS
 writes it just before a reset and the next boot's OS entry reads it before
 anything else runs; nothing between a reset and the OS entry writes SDRAM
 outside the image the bootstrap unpacks (`docs/firmware/ARCHITECTURE.md`
-section 3a). In a remix carrying the module, `verify_osswitch` refuses a
+section 3a). In a remix carrying the module, `verify_remixswitch` refuses a
 runtime and stage that reach the mailbox.
 
 The OS never touches a reservation again: the arena clear starts at the

@@ -1,16 +1,18 @@
-# OS SWITCH
+# REMIX SWITCH
 
-Boot another OS image from the card without writing the flash.
-**MAIN MENU > BRAIN** lists the `.OBI` files in `/BRAIN/OS/` below
-BRAIN's own rows; [YES] on one asks `BOOT <NAME>?` and boots it. A
-power-cycle always comes back to the image in the flash. Every image that
-carries BRAIN carries it (`tools/remix/registry.py` appends it), and
-`make image` writes the `.OBI` beside the `.bin` for every remix, so any
+Switch the unit to another remix's image from the card, without writing
+the flash. An image (`.RMX`) is a whole OS: stock 1.40C with one remix's
+modules built in. **MAIN MENU > BRAIN > REMIXES** lists the `.RMX` files
+in `/BRAIN/REMIXES/`; [YES] on one asks `SWITCH TO <NAME>?` and boots it.
+A power-cycle always comes back to the image in the flash (FLASHED). Every
+image that carries BRAIN carries REMIX SWITCH (`tools/remix/registry.py`
+appends it), and `make image` writes the `.RMX` beside the `.bin`, so any
 build can be tried by switching to it instead of flashing it.
 
-By sanderlegit (PR #542). Until 8 Oct 2026 the list was a fifth MAIN MENU
-category of its own, OS, reading the card root, in every image; it moved
-under BRAIN, the settings store, which carries it.
+By sanderlegit (PR #542), as OS SWITCH. Until 8 Oct 2026 the list was a
+fifth MAIN MENU category of its own, OS, reading `.OBI` files in the card
+root, in every image; it moved under BRAIN, which carries it, and was
+renamed for what it switches between.
 
 The design, and the firmware facts it rests on, are in
 [`docs/proposals/FIRMWARE_SWITCHER.md`](../../docs/proposals/FIRMWARE_SWITCHER.md).
@@ -21,34 +23,40 @@ with what would falsify it.
 ## Use
 
 ```bash
-make image REMIX=<name> BUILD=<nn>        # out/OCTATRACK_OCTABAM<nn>.bin AND out/OCTABAM<nn>.OBI
-make obi-stock                            # out/STOCK140.OBI: your stock 1.40C
-make obi REMIX=<any remix> OBI=NAME       # out/NAME.OBI: any build, 12-character name
+make image REMIX=<name> BUILD=<nn>        # out/OCTATRACK_<VERSION>.bin AND "out/<NAME> <nn>.RMX"
+make rmx-stock                            # "out/STOCK 1.40C.RMX": your stock 1.40C
+make rmx REMIX=<any remix> [RMX=NAME]     # out/<NAME>.RMX: any build, 15-character name
 ```
 
-1. Copy the `.OBI` files to `/BRAIN/OS/` on the card.
-2. MAIN MENU > BRAIN. Below SAVE AS DEFAULT, CLEAR DEFAULT and WRITE DEBUG
-   LOG, two headings: `NOW <NAME>`, the image
-   running (its build's VERSION), and `HOME <NAME>`, the flashed one a
-   power-cycle returns to (carried in the mailbox across a switch). Then a
-   line if the last switch was refused, then every `.OBI`, sorted, without
-   the extension. It is read again each time MAIN MENU opens, without
-   disturbing the stock browsers' listing (the scan's global name pool and
-   cache are saved and restored around it, `docs/contributing/FAILURE_MODES.md`).
-3. [YES] on a file: `BOOT <NAME>?` / `PLAYBACK WILL STOP` / `POWER-CYCLE:
-   BACK HOME`. [YES] stops playback, syncs the project (as OS UPGRADE
-   does), loads the file and resets the unit.
+An image names itself `<REMIX> <BUILD>` (`remix.brain.image_name`: upper
+case, A-Z 0-9 space . _ -, 15 characters); BRAIN's heading shows it and
+`make image` gives the `.RMX` the same name, which is how the boot picker
+knows its own file.
+
+1. Copy the `.RMX` files to `/BRAIN/REMIXES/` on the card. A Mac writes a
+   `._<name>` file beside each copy; delete those, or they are listed too.
+2. MAIN MENU > BRAIN > REMIXES: `◄ REMIXES`, then every `.RMX`, sorted,
+   without the extension; after a switch, a `FLASHED` separator and the
+   name of the image a power-cycle returns to (carried in the mailbox
+   across the switch); a line if the last switch was refused. BRAIN's
+   heading names the running image. The list is read again each time MAIN
+   MENU opens, without disturbing the stock browsers' listing (the scan's
+   global name pool and cache are saved and restored around it,
+   `docs/contributing/FAILURE_MODES.md`).
+3. [YES] on an image: `SWITCH TO <NAME>?` / `PLAYBACK WILL STOP` /
+   `OFF/ON: BACK TO FLASHED`. [YES] stops playback, syncs the project (as
+   OS UPGRADE does), loads the file and resets the unit.
 4. A power-cycle boots the flashed image again.
 
 ### At power-on: the boot picker
 
 When the unit powers on with a project named, the card mounted and at
-least one `.OBI` in `/BRAIN/OS/` that is not this image, the stock confirm
+least one `.RMX` in `/BRAIN/REMIXES/` that is not this image, the stock confirm
 dialog comes up **before the project loads**:
 
 ```
-        OS SWITCH
-  BOOT <NAME>?
+        REMIX SWITCH
+  SWITCH TO <NAME>?
   NO: STAY <THIS IMAGE>
   <> MORE  STAY IN 3
        [YES]   [NO]
@@ -57,8 +65,8 @@ dialog comes up **before the project loads**:
 - **Untouched,** the countdown runs out in 3 s and this image boots
   (`STAY IN 3`).
 - **Arrows** (any of the four) step through the other images (the image's
-  own `.OBI` is skipped) and start the countdown again, now for the image
-  shown (`BOOT IN 3`): browse to one and let go, and 3 s after the last
+  own `.RMX` is skipped) and start the countdown again, now for the image
+  shown (`SWITCH IN 3`): browse to one and let go, and 3 s after the last
   press it switches to it.
 - **YES** switches to the image shown, as the pane does but without the
   project sync (nothing is loaded yet, and the next image boots from the
@@ -80,9 +88,9 @@ longest part of a boot, and a switch made from the pane throws it away.
 The picker holds the load back instead. See **How** for the mechanism,
 and `docs/proposals/BOOT_DEFAULT.md` for the designs it was chosen over.
 
-An `.OBI` is the raw image the bootstrap would unpack to `0x40000400`. It is
+An `.RMX` is the raw image the bootstrap would unpack to `0x40000400`. It is
 Elektron's OS with your changes, so like the `.bin` it never leaves your
-machine and your card. `make obi` makes the same three checks the unit
+machine and your card. `make rmx` makes the same three checks the unit
 makes: the OS entry's first instruction, a length that fits the stage
 (2,706,400 B), and the bootstrap version (below). A target does not need
 this module: stock 1.40C, or any image without BRAIN, is a valid target,
@@ -91,12 +99,11 @@ but has no list, so from it you power-cycle to come back.
 The version string on the boot screen is the FLASHED image's, whichever OS
 runs. ✅ Measured on an MKII, 29 Sep 2026: a switch to `DSPRESET.OBI` came
 up with `BSRET3OS2` under the logo, and a switch to `BASE1` did the same.
-The pane's `NOW` line is the one that names the running image -- and it
-names it after the build's `VERSION`, which is why `make obi OBI=NAME` now
-builds with `VERSION=NAME`: before that fix the file was `BASE1.OBI` and
-the pane said `OCTABAM79` (an MKII, 29 Sep 2026). Neither `1.40C` nor the `-V` string is
-in the MAIN OS image, so it is read from the flash header 🟡. Trust the
-pane's `NOW` line instead. (SYSTEM STATUS after a switch is still
+BRAIN's heading row names the running image (`<REMIX> <BUILD>`, built
+into the image). Before the image named itself, the pane read
+`OCTABAM79` on a switch to `BASE1.OBI` (an MKII, 29 Sep 2026). Neither
+`1.40C` nor the `-V` string is in the MAIN OS image, so the boot screen's
+version is read from the flash header 🟡. Trust BRAIN's heading instead. (SYSTEM STATUS after a switch is still
 unmeasured.)
 
 ## How
@@ -105,7 +112,7 @@ unmeasured.)
 |---|---|---|
 | `chain.s` | the loader (`Linked(loader=True)`: assembled into `tools/remix/loader.S`, appended after the OS unpacked), detour at `0x40000412` | the gate, at the OS entry after it parks the bootstrap's argument. Without a mailbox it records the boot (`NONE`, or `RUN` right after a handover) and resumes. With one it spends it first, checks that the chainloader's body at `0x49200400` is whole (its longs sum to the mailbox's), and runs it. It lives in the loader because ROM caves are what full remixes run out of (bottleservice: 274 B of chainloader cost MODULATION's label formatter its place) |
 | `switch.s`: `osw_body` | copied to `0x49200400` by the switcher | the chainloader's body, position-independent: the check word, the length, the bootstrap version against NOR's word at `0x3ffc`, the hash over the stage; then a 40-byte stub at `0x49200100` copies the stage over `0x40000400` with the caches off and invalidated, restores the bootstrap's exit `CACR` (`0x0008c000`) and calls the entry with the bootstrap's argument. A refusal writes why and returns to the gate |
-| `switch.s` | the platform runtime (DRAM) | MAIN MENU > BRAIN: the rows after BRAIN's own (`brain_os_rows`, both counts of `brain_list`); the scan of `/BRAIN/OS`  at MAIN MENU's opening (detour `0x40064c32`, the stock dir scan `0x4007f598`); the dialog (`0x4006d57c`); the load, the reset and the DSP park |
+| `switch.s` | the platform runtime (DRAM) | MAIN MENU > BRAIN: the rows after BRAIN's own (`brain_os_rows`, both counts of `brain_list`); the scan of `/BRAIN/REMIXES`  at MAIN MENU's opening (detour `0x40064c32`, the stock dir scan `0x4007f598`); the dialog (`0x4006d57c`); the load, the reset and the DSP park |
 | `switch.s`: the boot picker | detours `0x4002574c` and `0x4002573e` (a `jsr`) | Two posts can start a boot's loading, and which comes depends on the battery SRAM. Sys's media case asks `0x4004abcc` whether the card is the one the SRAM last saw (its id at `0x100f8584`): **the same card** (every power-on after the first) keeps the project in SRAM and only mounts the last set (`0x400256b8`), which posts the engine's LOADING FILES job at `0x4002573e`; **an empty id** (fresh SRAM) reloads the project through `0x4002574c` ("if a project is named, post LOAD PROJECT") first. Whichever hook is the boot's first opens the dialog and returns without posting; the other is held while it is up, and NO posts what was held in stock's order, the files job once per post held, so the boot after NO is stock's boot. The arrows are an input layer on top of the dialog's (TEMPO BUS's form), which keeps YES and NO. The countdown is a soft timer on the sys tick (`0x40031a0c(period, fn)`, cancelled with `0x40031abc(handle)`; stock's own screens redraw this way), 12 ticks per 100 ms step: ✅ the tick is ~117 Hz on an MKII (the first unit build used 6, assuming 60 Hz, and counted 3 s down in 1.54 s); at zero it cancels itself by clearing its slot's function word, which the timer service checks before re-linking the node (`0x40031994`), and answers through the dialog's own close: NO untouched (`0x4006d4a8`, the USB-disk exit's), YES on the image shown after an arrow (`0x4006d47c`, then the answer). Before it opens it runs the set mount's two checks (`0x40025650`: the set and its `AUDIO`; `0x400255ec`: the project), as the USB-disk exit does before it posts |
 | `dsp_park.asm` | both DSP payloads, WHOLLY in stock's dead interrupt vectors: entry on `P:$1E`, 31 words at `P:$20..$3E`, a one-word bridge, 8 words at `P:$06..$0D` | the park (below). It costs the effect region nothing, so a remix that harvests nothing can carry the switcher (`remixes/base/`) |
 | `osw.inc` | all of them | the stage layout and the status words; the gate parses it |
@@ -126,7 +133,7 @@ the state the bootstrap left.
 version the image carries (`0x400dea48`, `0x0408` in 1.40C) with NOR's
 `0x3ffc`. If the image's is newer, it reprograms the bootstrap sector
 (`0x4000f9b4`), which holds the Startup Menu and the MIDI recovery. The
-chainloader runs only an image whose word equals NOR's. `make obi` refuses
+chainloader runs only an image whose word equals NOR's. `make rmx` refuses
 any other.
 
 **Where the park's words come from.** None (29 Sep 2026). Not one word of
@@ -144,7 +151,7 @@ lives there the freeze that would announce one is gone -- so
 `tools/verify/verify_dspvectors.py` audits it on every build: the runs are
 all self-jumps, no DMA whose vector is in one has DIE set, no ESAI control
 word has an interrupt enable, and the set of peripherals either payload
-configures is the audited one. ✅ Under the port every OS SWITCH check
+configures is the audited one. ✅ Under the port every REMIX SWITCH check
 passes with the park in the vectors, including both cores taking the park
 command at `$1E` and re-entering their payload starts. ✅ **On an MKII, 29
 Sep 2026**: `bottleservice-ret` built this way (`BSRETVEC`, reached by a
@@ -190,11 +197,11 @@ exchange"; the hang was the DSP (above). Whether `60 02` is needed at all
 is not measured; it is harmless (the OS sends it at boot). An MKI's panel
 is sent nothing (untested on an MKI).
 
-## Measured ✅ (under the ColdFire port, `tools/verify/verify_osswitch.py`)
+## Measured ✅ (under the ColdFire port, `tools/verify/verify_remixswitch.py`)
 
 - **The menu, the load and the reset sequence run from the panel.** Keys
   NO, PROJ (the MKII's MAIN MENU), DOWN ×4 (OS), YES, YES, YES on a card
-  holding `STOCK140.OBI`: MAIN MENU's scan, the row's pick, the dialog's
+  holding `STOCK140.RMX`: MAIN MENU's scan, the row's pick, the dialog's
   answer, the deferred load and the reset all run. The stage reads back
   equal to the file (1,112,560 B); the chainloader's body sits at
   `0x49200400` with its length and sum in the mailbox, beside the image's
@@ -205,7 +212,7 @@ is sent nothing (untested on an MKI).
   second time. The home image's loader never runs, `0x40000412` holds
   stock's instruction again, and stock 1.40C reaches the RTOS handoff.
   The hash over 1.1 MB costs about 8.9 M instructions.
-- **An image that carries OS SWITCH, staged as its own target,** reports
+- **An image that carries REMIX SWITCH, staged as its own target,** reports
   `RUN `. The mailbox is spent and its loader runs once.
 - **Refusals.** Each one boots the flashed image and names its reason: no
   mailbox `NONE`, one flipped byte in the stage `HASH` (the mailbox still
@@ -218,12 +225,12 @@ is sent nothing (untested on an MKI).
   it held (the boot mounts the set twice) are posted.
 - **The boot picker** (30 Sep 2026; `ot_emu --boot-load`, a power-on
   whose only LOAD PROJECT is the firmware's own). On a real project
-  (a set with its `AUDIO`, three `.OBI` files, one named as this image) and
+  (a set with its `AUDIO`, three `.RMX` files, one named as this image) and
   on the gate's synthetic card: the dialog opens after the card mount and
   before anything is posted; untouched, it counts exactly 30 ticks, answers
   NO, and LOAD PROJECT then LOADING FILES are posted and the load runs; NO
   does the same at once; RIGHT skips this image's own name and YES stages
-  the image shown (`STOCK140.OBI`, 1,112,560 B) with nothing loaded; a set
+  the image shown (`STOCK140.RMX`, 1,112,560 B) with nothing loaded; a set
   without `AUDIO` gets no picker and stock's own dialogs. Rendered from the
   LCD: `BOOT BSRET4B?` / `NO: STAY OCTABAM0` / `<> MORE  AUTO 3`, then
   `BOOT STOCK140?` without the countdown after RIGHT. Before the files job
@@ -233,7 +240,7 @@ is sent nothing (untested on an MKI).
   with OS and its icon, the pane (`NOW FLASHED`, five files sorted, the
   cursor on the first), the dialog.
 - **Every remix builds with it** (26 of 37; the other 11 keep every stock
-  DSP effect and opt out), and with `OCTABAM_NO_OS_SWITCH=1` all 24
+  DSP effect and opt out), and with `OCTABAM_NO_REMIX_SWITCH=1` all 24
   `scripts/refhash.sh` configurations are bit-identical to the tree before
   it (the loader-unit machinery changes nothing on its own).
 
@@ -260,7 +267,7 @@ is sent nothing (untested on an MKI).
 5. **The boot picker on the unit:** that the dialog draws and takes keys
    at that point of a real boot, and the time from power-on to the picker
    and from NO to the loaded project. The BOOT TRACE build
-   (`remixes/test/os-switch-trace`) sends note 26 when the picker is
+   (`remixes/test/remix-switch-trace`) sends note 26 when the picker is
    reached (velocity 0: it opened; 1 no project, 2 this boot is a switch,
    3 no file system yet, 4 a dialog is up, 5 the set or project would not
    mount, 6 no other image, 7 the dialog did not open) and note 27 with

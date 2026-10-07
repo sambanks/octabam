@@ -77,30 +77,30 @@ sequencer and not the tempo", and every entry after the line "Entries from here 
 - **Cause:** inferred: a 16 KiB ATA write lost one 64-byte burst at its head and took a 64-byte block from another buffer (sector 0, read at mount) at its tail — a DMA/bus-arbitration fault, not a serialiser error. USB CROSSBAR raises the USB host's crossbar priority on SDRAM; it is the one module in the image that changes bus arbitration under card DMA. Not reproduced under the port (a project SAVE with PLOCKS P2 writes every bank intact; the port has no bus timing).
 - **Fix:** USB CROSSBAR and USB AUDIO IN CD removed from bottleservice (image 100). To find out: whether a bank written on image 100 ever fails again; the bad file is at `~/octa/backups/card_20261004_strand/`.
 
-## OS SWITCH: "SOME ERRORS OCCURED DURING CARD SYNC. 'INVALID STATE'" on a boot picker YES ✅ measured, fixed
+## REMIX SWITCH (OS SWITCH at the time): "SOME ERRORS OCCURED DURING CARD SYNC. 'INVALID STATE'" on a boot picker YES ✅ measured, fixed
 
 - **Seen:** BSRET8BP, 30 Sep 2026: power-on, the boot picker, YES -> SYNCING PROJECT, then that message; the switch went through.
 - **Cause (measured):** the YES path reused the pane's OS UPGRADE stop sequence, whose `0x40022cd4(1)` posts SYNC TO CARD; at the boot picker nothing is loaded (the files job is held).
-- **Fix:** a boot-picker YES skips the sync (the next image boots from the same SRAM); the pane's YES keeps it. BSRET9BP on the unit: no message. **Check:** `verify_osswitch` (both paths).
+- **Fix:** a boot-picker YES skips the sync (the next image boots from the same SRAM); the pane's YES keeps it. BSRET9BP on the unit: no message. **Check:** `verify_remixswitch` (both paths).
 
-## OS SWITCH: the boot picker never opens on the unit ✅ measured, fixed
+## REMIX SWITCH (OS SWITCH at the time): the boot picker never opens on the unit ✅ measured, fixed
 
 - **Seen:** BSRET6BP, 30 Sep 2026: power-on went straight to the project; BOOT TRACE sent notes 1 and 12 and no 26 -- the hook was never called.
 - **Cause (measured):** the hook was the boot's LOAD PROJECT post (`0x4002574c`). A unit whose battery SRAM knows the card (id at `0x100f8584`, compared by `0x4004abcc`) never posts it: the project stays in SRAM and only the last set is mounted, which posts LOADING FILES (`0x4002573e`). The port boots SRAM zeroed, so every port boot took the reload path.
-- **Fix:** whichever of the two posts comes first opens the picker; the other is held and replayed in stock's order. BSRET7BP on the unit: it opens. **Check:** `verify_osswitch` boot case from a dumped SRAM.
+- **Fix:** whichever of the two posts comes first opens the picker; the other is held and replayed in stock's order. BSRET7BP on the unit: it opens. **Check:** `verify_remixswitch` boot case from a dumped SRAM.
 - **Lesson:** power-on behaviour is measured from SRAM a boot has left (`ot_emu --preload 0x10000000=sram.bin`), not from zeroed RAM.
 
-## OS SWITCH: VEC:04 at PC 0x2007E788 on a file load after a switch 🟡 cause inferred, fixed
+## REMIX SWITCH (OS SWITCH at the time): VEC:04 at PC 0x2007E788 on a file load after a switch 🟡 cause inferred, fixed
 
 - **Seen:** BSRET3OS, 29 Sep 2026, once: a switch to itself, a power-cycle, a file load -> `VEC:04 ADDR:2007E788`.
 - **Cause (🟡):** MAIN MENU's rescan listed the card through the stock dir scan (`0x4007f598`), whose one global name pool (`0x460e76ac`) and cache the project, set and sample browsers keep pointing into.
-- **Fix:** the rescan saves the pool and cache, lists into its own table and restores both. BSRET3OS2 ran the sequence clean. **Check:** `verify_osswitch` (the cache as found after the menu).
+- **Fix:** the rescan saves the pool and cache, lists into its own table and restores both. BSRET3OS2 ran the sequence clean. **Check:** `verify_remixswitch` (the cache as found after the menu).
 
-## OS SWITCH: the unit hangs on the logo after a switch, keys dimmer than at power-on ✅ measured, fixed (build 14, on the unit)
+## REMIX SWITCH (OS SWITCH at the time): the unit hangs on the logo after a switch, keys dimmer than at power-on ✅ measured, fixed (build 14, on the unit)
 
 - **Seen:** builds 1-13, 29 Sep 2026: after the switch's reset the logo stays; builds 11-12 got to the UI and hung on play.
 - **Cause (measured with BOOT TRACE):** the soft reset restarts the ColdFire, not the DSP. (1) The next OS's upload assumes the cores in their boot ROM; they ran the old payload on. (2) Two stale words sat in core 0's host-side receive register. (3) The payload's start sets HPCR bit 7, in which the ColdFire read every record echo as `0x010101`; the record sender abandons the upload silently.
-- **Fix:** before the reset each core is sent a host command into a park (`modules/os-switch/dsp_park.asm`, in stock's dead vectors): DMA and ESAI stopped, HPCR bit 7 cleared, a boot-ROM-style loader; the ColdFire drains each receive register. Build 14 on the unit: uploads complete, audio and play work.
+- **Fix:** before the reset each core is sent a host command into a park (`modules/remix-switch/dsp_park.asm`, in stock's dead vectors): DMA and ESAI stopped, HPCR bit 7 cleared, a boot-ROM-style loader; the ColdFire drains each receive register. Build 14 on the unit: uploads complete, audio and play work.
 
 ## STEM REC: RING FULL ends a 24-bit take on a busy project 🔴 open
 

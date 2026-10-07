@@ -1,10 +1,10 @@
 | BOOT TRACE -- one MIDI note on MIDI OUT at each stage of the boot, so a
-| hang on the unit names its stage (modules/os-switch, build 3: the unit
+| hang on the unit names its stage (modules/remix-switch, build 3: the unit
 | stops on the OCTABAM screen after a soft reset, and neither the port nor
 | the image says where).
 |
 | Note On, channel 1, velocity 127, note = the stage:
-|   1  the OS entry ran (OS SWITCH's chainloader, when it is in the image)
+|   1  the OS entry ran (REMIX SWITCH's chainloader, when it is in the image)
 |   2  the DSP upload starts          0x40001e50
 |   3  the DSP upload returned        0x40000512
 |   4  the panel link's init          0x4001f834
@@ -17,8 +17,8 @@
 |  10  the entry's bootstrap-REPROGRAM branch taken, velocity = NOR's
 |      bootstrap version low byte (must never appear)   0x40000450
 |  11  the bootstrap reprogram itself entered   0x4000f9b4
-|  12  (OS SWITCH's chainloader) no switch pending: back to the entry
-|  13  (OS SWITCH's switcher) just before the reset, velocity = the DSP
+|  12  (REMIX SWITCH's chainloader) no switch pending: back to the entry
+|  13  (REMIX SWITCH's switcher) just before the reset, velocity = the DSP
 |      cores that took the park command (bit 0 core 0, bit 1 core 1)
 |  14  a DSP bootstrap upload starts, velocity = its index (0 = core 0)
 |                                                  0x40001d4c
@@ -30,15 +30,15 @@
 |  20..25  the record sender stalled on a transmit wait (see tr_tx1)
 |  18  the payload's final record (type 3, the jump): its echo, low 7
 |      bits; anything but 3 abandons the upload     0x40001cf4
-|  26  (OS SWITCH's boot picker) reached at the boot's first project-load
+|  26  (REMIX SWITCH's boot picker) reached at the boot's first project-load
 |      post, velocity 0 = it opened, else why it stepped aside (1 no
 |      project, 2 a switch's boot, 3 no file system, 4 a dialog up, 5 the
 |      set or project would not mount, 6 no other image, 7 no dialog)
-|  27  (OS SWITCH's boot picker) answered: 0 YES, 1 NO, 2 the countdown's
+|  27  (REMIX SWITCH's boot picker) answered: 0 YES, 1 NO, 2 the countdown's
 |      NO (untouched), 3 the countdown's YES (after an arrow)
 |  16  the records' first echo is late: every 2^20 polls of the host
 |      port's ISR, at most six times, velocity = the ISR (bit 0 RXDF,
-|      1 TXDE, 2 TRDY, 3 HF2, 4 HF3; OS SWITCH's loader raises HF2 when
+|      1 TXDE, 2 TRDY, 3 HF2, 4 HF3; REMIX SWITCH's loader raises HF2 when
 |      it runs and HF3 when it jumps)          0x40001b82
 |                                                  0x40001b18
 |

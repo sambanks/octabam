@@ -830,8 +830,8 @@ namespace
 			{
 				// `call <addr> [<arg>...]` -> ok d0=<hex> | err <why>: a firmware
 				// routine run as main (Rtos::callAsMain, --call's), for a routine
-				// that cannot genuinely block. modules/os-switch's osw_reupload
-				// (verify_osswitch: park the DSP, then the stock upload).
+				// that cannot genuinely block. modules/remix-switch's osw_reupload
+				// (verify_remixswitch: park the DSP, then the stock upload).
 				uint64_t addr = 0;
 				std::vector<uint32_t> args;
 				bool okArgs = w.size() >= 2 && parseNumber(w[1], addr) && addr <= 0xffffffffull;
@@ -1306,7 +1306,7 @@ int main(int _argc, char** _argv)
 	double dspLazy = ot::DspPair::g_lazyDefault;	// O16c: --dsp-lazy N -- the pair's ticks are booked and replayed in chunks of up to N DSP instructions at the ColdFire's touch points (0 = the per-tick path); the default in every mode, byte-identical to it
 	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
 	std::string preload;		// "addr=path[;...]": a file's bytes into memory BEFORE the boot runs -- what a reset leaves
-								// in SDRAM (modules/os-switch's stage) or in NOR (the bootstrap version word at 0x3ffc)
+								// in SDRAM (modules/remix-switch's stage) or in NOR (the bootstrap version word at 0x3ffc)
 	std::string pokeEarly;		// the same, written before --call (the current-track byte 0x80000000 an editor call reads)
 	bool noPost = false;		// 2 Oct 2026: --no-post: no LOAD PROJECT post; the firmware's own power-up load (with --cs1-in, a power cycle)
 	bool loadEarly = false;		// 4 Oct 2026: live phase from LOAD PROJECT's first handling, the background bank loads still queued
@@ -1408,7 +1408,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--preload" && i + 1 < _argc)	preload = _argv[++i];
 		else if(a == "--cs1-in" && i + 1 < _argc)	cs1In = _argv[++i];
 		else if(a == "--no-post")				noPost = true;
-		else if(a == "--boot-load")				namesEarly = noPost = true;	// a power-on as the unit has it: the names before the mount, the firmware's own LOAD PROJECT (modules/os-switch's boot picker sits on it)
+		else if(a == "--boot-load")				namesEarly = noPost = true;	// a power-on as the unit has it: the names before the mount, the firmware's own LOAD PROJECT (modules/remix-switch's boot picker sits on it)
 		else if(a == "--load-early")			loadEarly = true;
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
 		else if(a == "--call-at" && i + 1 < _argc)	callAt = std::atoi(_argv[++i]);

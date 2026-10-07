@@ -24,7 +24,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import too
 from remix import schema  # noqa: E402
 from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
 
-OS_SWITCH = "OS SWITCH"
+REMIX_SWITCH = "REMIX SWITCH"
 MODULES_DIR = ROOT / "modules"
 
 _cache: dict[str, object] | None = None
@@ -268,13 +268,13 @@ def remix(name: str | None):
                  and known[k].claims is not None and known[k].claims.fx1_only)
     if auto:
         r = dataclasses.replace(r, hidden=r.hidden + auto)
-    # OS SWITCH WITH EVERY BRAIN: the BRAIN pane lists the card's images in
-    # /BRAIN/OS/ and boots one without writing the flash (modules/os-switch,
+    # REMIX SWITCH WITH EVERY BRAIN: the BRAIN pane lists the card's images in
+    # /BRAIN/REMIXES/ and boots one without writing the flash (modules/remix-switch,
     # sanderlegit). Appended last, so no remix's chooser order moves; a
     # ColdFire module and a DSP park pinned in dead vectors, it takes no FX2
     # id and no region word.
-    if schema.BRAIN_KEY in r.modules and OS_SWITCH not in r.modules and OS_SWITCH in known:
-        r = dataclasses.replace(r, modules=r.modules + (OS_SWITCH,))
+    if schema.BRAIN_KEY in r.modules and REMIX_SWITCH not in r.modules and REMIX_SWITCH in known:
+        r = dataclasses.replace(r, modules=r.modules + (REMIX_SWITCH,))
     return r
 
 

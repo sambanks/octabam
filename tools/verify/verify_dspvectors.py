@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""The DSP interrupt vectors OS SWITCH's park could live in are unarmed.
+"""The DSP interrupt vectors REMIX SWITCH's park could live in are unarmed.
 
     python3 tools/verify/verify_dspvectors.py [remix]
 
-OS SWITCH costs 40 DSP words in both payloads, out of the region modules
+REMIX SWITCH costs 40 DSP words in both payloads, out of the region modules
 place their effects in. The words are there for the taking in the vector
 table: stock leaves a contiguous run of slots as `jmp *` -- a self-jump
 that would freeze the core for good if that interrupt ever fired, which is
@@ -49,7 +49,7 @@ ASM = ROOT / "out/dsp"
 # The contiguous self-jump runs the park may live in, per payload: (first
 # vector, last vector). Read from the user's image 29 Sep 2026; the gate
 # re-derives and compares. The LOW run is the processor exceptions -- stack
-# error, illegal, debug, trap, NMI and two reserved slots -- and OS SWITCH
+# error, illegal, debug, trap, NMI and two reserved slots -- and REMIX SWITCH
 # deliberately takes only $06 upward, leaving $02 (stack error) and $04
 # (illegal instruction) as stock's freeze-traps: those two fire when
 # something is already wrong, and a frozen core is easier to diagnose than

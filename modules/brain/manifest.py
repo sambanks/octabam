@@ -64,7 +64,8 @@ def menu_inc():
     img = (pathlib.Path(schema.__file__).resolve().parents[2] / "out/raw/section_3_MAIN_OS.bin").read_bytes()
     rows = img[ROOT_ROWS - 0x40000400:ROOT_ROWS - 0x40000400 + 4 * 24]
     words = struct.unpack(">24I", rows)
-    head = f"{os.environ.get('REMIX', '?').upper()} {os.environ.get('BUILD', '79')}"[:20]
+    from remix import brain as _brain
+    head = _brain.image_name()
     cols = [sum(1 << r for r in range(8) if ICON[r][c] == "#") << 24 for c in range(19)]
     out = ["        .data", "        .balign 4", "        .globl  brain_root_rows",
            "brain_root_rows:"]
@@ -75,20 +76,37 @@ def menu_inc():
             "brain_icon_plane: .long " + ", ".join(f"0x{c:08x}" for c in cols),
             "        .balign 4",
             "        .globl  brain_list",
-            "brain_list: .long 4, 0, 0, 0, 7, 4, brain_rows",
-            "brain_rows:",
+            # shipped at the top level; brain.c's show() repoints it
+            "brain_list: .long 4, 0, 1, 1, 7, 4, brain_top_rows",
+            "        .globl  brain_top_rows, brain_def_rows, brain_tool_rows, brain_rmx_rows, brain_rmx_n",
+            "brain_top_rows:",
             "        .long   brain_lbl_head, 0, 0, 0, 0, 0",
+            "        .long   brain_lbl_defaults, 0, brain_open_defaults, 0, 0, 0",
+            "        .long   brain_lbl_remixes, 0, brain_open_remixes, 0, 0, 0",
+            "        .long   brain_lbl_tools, 0, brain_open_tools, 0, 0, 0",
+            "brain_def_rows:",
+            "        .long   brain_lbl_bdefaults, 0, brain_menu_back, 0, 0, 0",
             "        .long   brain_lbl_save, 0, brain_menu_save, 0, 0, 0",
             "        .long   brain_lbl_clear, 0, brain_menu_clear, 0, 0, 0",
+            "brain_tool_rows:",
+            "        .long   brain_lbl_btools, 0, brain_menu_back, 0, 0, 0",
             "        .long   brain_lbl_log, 0, brain_menu_log, 0, 0, 0",
-            # OS SWITCH's rows follow BRAIN's (modules/os-switch/switch.s):
-            # up to three headings and NMAX (32) images
-            "        .globl  brain_os_rows",
-            "brain_os_rows: .space 35 * 0x18",
-            "        .globl  brain_fixed",
-            "brain_fixed: .long 4",
+            # REMIXES: the back row, then REMIX SWITCH's rows (modules/
+            # remix-switch/switch.s): up to NMAX (32) images and four text rows
+            "brain_rmx_rows:",
+            "        .long   brain_lbl_bremixes, 0, brain_menu_back, 0, 0, 0",
+            "        .space  36 * 0x18",
+            "brain_rmx_n: .long 1",
             'brain_lbl_root: .asciz "BRAIN"',
             f'brain_lbl_head: .asciz "{head}"',
+            # \x14 / \x13: the stock font's right and left arrows (REMIX
+            # SWITCH's picker draws "\x13\x14 MORE" with them)
+            'brain_lbl_defaults: .asciz "DEFAULTS    \\x14"',
+            'brain_lbl_remixes: .asciz "REMIXES     \\x14"',
+            'brain_lbl_tools: .asciz "TOOLS       \\x14"',
+            'brain_lbl_bdefaults: .asciz "\\x13 DEFAULTS"',
+            'brain_lbl_bremixes: .asciz "\\x13 REMIXES"',
+            'brain_lbl_btools: .asciz "\\x13 TOOLS"',
             'brain_lbl_save: .asciz "SAVE AS DEFAULT"',
             'brain_lbl_clear: .asciz "CLEAR DEFAULT"',
             'brain_lbl_log: .asciz "WRITE DEBUG LOG"']

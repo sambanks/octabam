@@ -130,7 +130,7 @@ outside the Startup Menu's TESTMODE (`0x784`, `0x834`), so what the OS
 image does not cover keeps its contents across a reset if the refresh gap
 is short enough (~, unmeasured). A second entry at `0x22ea` unpacks from
 RAM `0x40200000` instead, behind a `halt` (a debugger path; `0x10adc0de`).
-`modules/os-switch` builds on this path.
+`modules/remix-switch` builds on this path.
 
 **Constraints on using it.**
 

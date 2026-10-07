@@ -1,10 +1,11 @@
 # Landing in a chosen image at power-on
 
-> Written while the list was MAIN MENU > OS and the images sat in the card
-> root (sanderlegit, PR #542). Since 8 Oct 2026 the list is BRAIN's MAIN
-> MENU pane and the images are in `/BRAIN/OS/` (`modules/os-switch/README.md`).
+> Written while the module was OS SWITCH, its list MAIN MENU > OS and the
+> images `.OBI` files in the card root (sanderlegit, PR #542). Since 8 Oct
+> 2026 it is REMIX SWITCH: MAIN MENU > BRAIN > REMIXES, `.RMX` files in
+> `/BRAIN/REMIXES/` (`modules/remix-switch/README.md`).
 
-A follow-on to OS SWITCH (`modules/os-switch`, on an MKII 29 Sep 2026,
+A follow-on to OS SWITCH (`modules/remix-switch`, on an MKII 29 Sep 2026,
 `docs/proposals/FIRMWARE_SWITCHER.md`). It asks whether the thing that
 proposal deliberately left out can be had safely, and says what it would
 cost. Nothing here is built.
@@ -14,7 +15,7 @@ where it says so, else under the ColdFire port or read from the user's own
 image by disassembly), 🟡 inferred, with what would falsify it, ❓ open,
 with what would answer it, ❌ retracted.
 
-**Status, 30 Sep 2026: a variant of section 7 is built** (`modules/os-switch`,
+**Status, 30 Sep 2026: a variant of section 7 is built** (`modules/remix-switch`,
 "At power-on: the boot picker"), measured under the port, not yet on the
 unit. It is section 7 without the held key: every power-on with another image on
 the card opens the picker at the point section 4 asked for -- the boot's own
@@ -57,19 +58,19 @@ given where it matters.
 
 - **The chainloader runs before there is a filesystem.** Its gate is a
   detour at the OS entry's second instruction, `0x40000412`
-  (`modules/os-switch/manifest.py:119`), and the OS entry's own path is
+  (`modules/remix-switch/manifest.py:119`), and the OS entry's own path is
   `0x4000050c` the DSP upload → `0x40000518` the globals/heap zero-fill →
   `0x4000053c jsr 0x40000db0` main (`FIRMWARE_SWITCHER.md` section 2.2). At the
   gate no DSP, no cache set-up, no interrupts and no ATA stack have run.
   The switcher's own load path needs the FS vtable
-  (`modules/os-switch/switch.s:155-161` refuses to scan while
+  (`modules/remix-switch/switch.s:155-161` refuses to scan while
   `0x46c8240e` or `0x46c8242a` is still zero) and OS UPGRADE's
   stop/sync/wait-for-idle sequence `0x40080444..0x40080480`
   (`switch.s:621-633`). None of that exists at the gate. **Falsified by** a
   card read that succeeds from a detour at `0x40000412`.
 - **The mailbox is DRAM and a power-on is treated as having none.** The
   stage lives at the top of the platform reserve, `OSW_MBOX 0x49200000`
-  (`modules/os-switch/osw.inc`), and the gate's no-mailbox path records
+  (`modules/remix-switch/osw.inc`), and the gate's no-mailbox path records
   `ST_NONE` and resumes (`chain.s:55-64`). Whether a *quick* power-cycle
   keeps DRAM is unmeasured: `chain.s:11-12` says it does, and
   `docs/firmware/ARCHITECTURE.md:158-164` marks the refresh-gap question
@@ -87,8 +88,8 @@ anyway, unless the default can name it.
 
 | leg | cost | how |
 |---|---|---|
-| the chainload itself (gate, hash over the stage, copy, entry) | ✅ the staged image's entry runs ~190 ms after the flashed image's | the unit, build 14 (`modules/os-switch/README.md`); build 4 reported 103 ms for a 1.1 MB stage |
-| the hash over 1.1 MB | ✅ ~8.9 M instructions | the port, `verify_osswitch` chain case |
+| the chainload itself (gate, hash over the stage, copy, entry) | ✅ the staged image's entry runs ~190 ms after the flashed image's | the unit, build 14 (`modules/remix-switch/README.md`); build 4 reported 103 ms for a 1.1 MB stage |
+| the hash over 1.1 MB | ✅ ~8.9 M instructions | the port, `verify_remixswitch` chain case |
 | both DSP uploads after the switch | ✅ ~60 ms, final echo 3 on each core | the unit, build 14 |
 | power-on → a point where the card is mounted, in the flashed image | ❓ | BOOT TRACE (`modules/boot-trace`) note at the candidate hook, timed on the Mac against note 1 at the gate |
 | reading a 1.1–1.2 MB `.OBI` off the card | ❓ | the same trace, note before and after `osw_load`'s read loop (`switch.s:666-686`) |
@@ -96,7 +97,7 @@ anyway, unless the default can name it.
 Two of the five are unmeasured and they are the two that dominate. **No
 recommendation should be made about the full default until those two
 numbers exist**; the trace image that produces them already exists
-(`remixes/os-switch-trace`).
+(`remixes/remix-switch-trace`).
 
 ---
 
@@ -265,7 +266,7 @@ the only one whose read happens before anything can wedge.
   unparseable file means "no default" (which it should mean anyway).
 - **Not the mailbox** (section 2) and **not NOR** (section 5).
 
-Either way `make_obi.py`'s checks stay the gate on what may be named: the
+Either way `make_rmx.py`'s checks stay the gate on what may be named: the
 OS entry's first instruction, a length inside `OSW_MAXLEN` (2,706,400 B),
 and the bootstrap version equal to NOR's.
 
@@ -302,7 +303,7 @@ What it needs:
   `0x4006d57c` — which is exactly the shape of the retired first prototype
   (`FIRMWARE_SWITCHER.md` section 3, "❌ a seventh CONTROL row with a
   one-file-at-a-time dialog"), and needs no menu at all. What would answer
-  it: drive both under the port with `verify_osswitch`'s `--live-script`
+  it: drive both under the port with `verify_remixswitch`'s `--live-script`
   path and render the result with `--lcd`.
 - **a hook after the UI is up.** The same ❓ as section 4, but far weaker: showing
   a pane stops no playback, syncs no project and reads no file beyond the
@@ -313,7 +314,7 @@ What it needs:
 
 ## 8. Gates
 
-`verify_osswitch.py` (16 checks) already proves, for the machinery both
+`verify_remixswitch.py` (16 checks) already proves, for the machinery both
 designs reuse: the row, the dialog, the deferred load, the mailbox's
 contents, the stage reading back equal to the file, the chainload from
 exactly the memory a switch leaves, the four refusals, the DSP park, and
@@ -338,7 +339,7 @@ New, for either design:
   `abbr` and `fullname` are why `schema.MenuEntry` checks lengths.)
 - **the unit.** Nothing here is believable from the port alone: the reset,
   SDRAM keeping the stage, and the doubled boot's real duration are all
-  hardware. One flash of an `os-switch-trace` build gives the two missing
+  hardware. One flash of an `remix-switch-trace` build gives the two missing
   numbers in section 2 and the escape byte at once.
 
 ---
@@ -375,7 +376,7 @@ lands under 4 s. Then the default is cheap and only the hatch matters.
 
 - Naming the flashed image as the default (so the default can mean "stay"),
   which needs the pane to know its own name — it does: `str_self` /
-  `OSW_SELF`, the build's `VERSION` (`modules/os-switch/manifest.py:62-74`).
+  `OSW_SELF`, the build's `VERSION` (`modules/remix-switch/manifest.py:62-74`).
 - More than one default (a per-key choice at power-on: FUNC+1..4).
 - Whether OS SWITCH should be the thing that owns a card-root settings
   file at all, or whether that belongs to a platform-level module.

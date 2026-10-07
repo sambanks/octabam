@@ -750,3 +750,62 @@ void brain_menu_log(u32 unused)
 	msg[1] = "/BRAIN/DEBUG.TXT";
 	POPUP("DEBUG LOG", 2, msg, 0, 0);
 }
+
+/* ---- the pane's sub-lists ------------------------------------------------ */
+
+/* The stock menu engine is two levels deep: LEFT always focuses the root,
+ * and YES on a list row runs its action (0x40064e64; docs/firmware/
+ * MAINMENU.md section 4). So BRAIN's DEFAULTS, REMIXES and TOOLS rows each
+ * point brain_list at another row array, and the redraw that follows every
+ * key (0x40064d7c) shows it. Each sub-list's first row goes back to the
+ * top; MAIN MENU's opening (REMIX SWITCH's osw_menu) resets to the top too. */
+
+struct mrow { const char *label; void *window; void (*action)(u32); u32 getter; void *child; u32 id; };
+struct mlist { u32 count, scroll, cursor, sel, visible, count2; struct mrow *rows; };
+
+extern struct mlist brain_list;
+extern struct mrow brain_top_rows[], brain_def_rows[], brain_tool_rows[], brain_rmx_rows[];
+extern u32 brain_rmx_n;			/* REMIXES' rows, the back row included (switch.s) */
+
+static u32 brain_from DATA;		/* the top row the open sub-list came from */
+
+static void show(struct mrow *rows, u32 n, u32 at)
+{
+	brain_list.rows = rows;
+	brain_list.count = brain_list.count2 = n;
+	brain_list.scroll = at >= brain_list.visible ? at - brain_list.visible + 1 : 0;
+	brain_list.cursor = at - brain_list.scroll;
+	brain_list.sel = at;
+}
+
+void brain_menu_top(void)
+{
+	show(brain_top_rows, 4, 1);
+}
+
+void brain_menu_back(u32 unused)
+{
+	(void)unused;
+	show(brain_top_rows, 4, brain_from ? brain_from : 1);
+}
+
+void brain_open_defaults(u32 unused)
+{
+	(void)unused;
+	brain_from = 1;
+	show(brain_def_rows, 3, 1);
+}
+
+void brain_open_remixes(u32 unused)
+{
+	(void)unused;
+	brain_from = 2;
+	show(brain_rmx_rows, brain_rmx_n, brain_rmx_n > 1 ? 1 : 0);
+}
+
+void brain_open_tools(u32 unused)
+{
+	(void)unused;
+	brain_from = 3;
+	show(brain_tool_rows, 2, 1);
+}

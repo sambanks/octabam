@@ -1,12 +1,12 @@
 """BOOT TRACE -- a probe: one MIDI note on MIDI OUT at each boot stage.
 
-Built for OS SWITCH's hardware bring-up: after a switch the unit stops on
+Built for REMIX SWITCH's hardware bring-up: after a switch the unit stops on
 the OCTABAM screen, and only the unit can say where. Notes 1..8 (the OS
 entry, the DSP upload's start and return, the panel link's init, the MKII
 panel handshake, the UI's panel check, the first audio frame interrupt
 entered and returned): the last note a MIDI monitor on
 MIDI OUT receives names the stage that hangs. trace.s has the table.
-Note 1 is sent by OS SWITCH's chainloader when both are in the image.
+Note 1 is sent by REMIX SWITCH's chainloader when both are in the image.
 """
 
 from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof

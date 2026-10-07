@@ -1,4 +1,4 @@
-| OS SWITCH, the chainloader's gate -- a ROM cave the OS entry detours into,
+| REMIX SWITCH, the chainloader's gate -- a ROM cave the OS entry detours into,
 | at the first instruction after it parks the bootstrap's argument:
 |
 |   0x40000412  movea.l #0x48000000,%sp   ->  jmp osw_chain
@@ -55,7 +55,7 @@ badbody:
 nombox:
         | "BOOT" in the status means the chainloader handed over on this
         | boot and this image is the one it handed to (a staged image that
-        | carries OS SWITCH runs this cave too): keep that as "RUN ".
+        | carries REMIX SWITCH runs this cave too): keep that as "RUN ".
         move.l  (MB_STATUS,%a1),%d1
         move.l  #ST_NONE,%d0
         cmpi.l  #ST_BOOT,%d1

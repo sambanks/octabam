@@ -1,9 +1,9 @@
-| OS SWITCH, the switcher -- a CONTROL row that boots an OS image from the
+| REMIX SWITCH, the switcher -- a CONTROL row that boots an OS image from the
 | card without writing the flash.
 |
-|   MAIN MENU > CONTROL > OS SWITCH   (a seventh row, after METRONOME)
+|   MAIN MENU > CONTROL > REMIX SWITCH   (a seventh row, after METRONOME)
 |
-| [YES] on the row lists the card root's `.OBI` files (the stock directory
+| [YES] on the row lists the card root's `.RMX` files (the stock directory
 | scan OS UPGRADE uses for `.BIN`, 0x4007f598) and offers the first in the
 | stock confirm dialog (0x4006d57c, OS UPGRADE's): YES boots it, NO offers
 | the next. YES stops playback exactly as OS UPGRADE's does (0x40063660)
@@ -14,9 +14,9 @@
 | after it flashes (interrupts masked, the panel queue flushed, spin:
 | 0x4007fe6c..0x4007fe7c). The chainloader (chain.s) takes it from there.
 |
-| An `.OBI` is the raw image the bootstrap would depack to 0x40000400:
+| An `.RMX` is the raw image the bootstrap would depack to 0x40000400:
 | `out/mainos_bus.bin` of any build, or the stock MAIN OS itself
-| (`make obi`). It is checked here before anything is stopped for good:
+| (`make rmx`). It is checked here before anything is stopped for good:
 | the OS entry's first instruction, a length that fits the stage, and the
 | bootstrap version word equal to NOR's.
 |
@@ -69,42 +69,41 @@
         .set    PARK_HC,   0x008f       | HC | $0f: vector P:$1e, dsp_park.asm's osw_dsp
                                         | (was $12/P:$24 until the park moved
                                         | into the dead vector run, 29 Sep 2026)
-        .set    NMAX, 32                | .OBI files listed
+        .set    NMAX, 32                | .RMX files listed
         .set    NLEN, 24                | bytes kept of each name
 
         .text
 
-| ---- MAIN MENU > BRAIN: the images below BRAIN's own rows ----------------
-| BRAIN's list (brain_list, its rows at brain_rows) holds BRAIN's
-| brain_fixed rows; the rows from here on are written at brain_os_rows,
-| right after them, and both of brain_list's counts cover the two parts.
-| Until 8 Oct 2026 this was a fifth root category of its own, OS.
+| ---- MAIN MENU > BRAIN > REMIXES ------------------------------------------
+| BRAIN's REMIXES sub-list (brain_rmx_rows) holds its back row, then the
+| rows buildrows writes; brain_rmx_n counts them. Until 8 Oct 2026 this was
+| a fifth root category of its own, OS (PR #542), then rows in BRAIN's pane.
 str_self:
-        OSW_SELF                        | remix.inc: this image's own name (make's VERSION)
+        OSW_SELF                        | remix.inc: this image's own name (`<REMIX> <BUILD>`)
 str_flash:
-        .asciz  "HOME "
+        .asciz  "FLASHED"
+str_empty:
+        .byte   0
 str_unknown:
         .asciz  "?"
 str_title:
-        .asciz  "OS SWITCH"
-str_obi:
-        .asciz  "OBI"
+        .asciz  "REMIX SWITCH"
+str_ext:
+        .asciz  "RMX"
 str_osdir:
-        .asciz  "/BRAIN/OS"         | where the images are: the scan's directory
+        .asciz  "/BRAIN/REMIXES"         | where the images are: the scan's directory
 str_ospath:
-        .asciz  "/BRAIN/OS/"        | and the load's path prefix
+        .asciz  "/BRAIN/REMIXES/"        | and the load's path prefix
 str_none:
-        .asciz  "NO .OBI IN BRAIN/OS"
+        .asciz  "NO REMIX FILES"
 str_boot:
-        .asciz  "BOOT "
+        .asciz  "SWITCH TO "
 str_q:
         .asciz  "?"
 str_stops:
         .asciz  "PLAYBACK WILL STOP"
 str_home:
-        .asciz  "POWER-CYCLE: BACK HOME"
-str_now:
-        .asciz  "NOW "
+        .asciz  "OFF/ON: BACK TO FLASHED"
 str_flashed:
         .asciz  "FLASHED"
 str_hash:
@@ -122,7 +121,7 @@ str_more:
 str_stayin:
         .asciz  "  STAY IN 3"
 str_bootin:
-        .asciz  "  BOOT IN 3"
+        .asciz  "SWITCH IN 3"
         .set    IN_DIGIT, 10
         .align  2
 
@@ -145,13 +144,14 @@ osw_menu:
         tst.l   (FS_OPEN).l
         beq.s   1f
         bsr.w   osw_scan
-1:      movem.l (%sp),%d0-%d7/%a0-%a6
+1:      jsr     brain_menu_top          | BRAIN's pane opens at its top level
+        movem.l (%sp),%d0-%d7/%a0-%a6
         lea     (60,%sp),%sp
         move.l  (0x400cbf6c).l,-(%sp)
         jmp     (0x40064c38).l
 
-| osw_scan: names[] = the card root's .OBI files, sorted; rows[] = the
-| heading(s), then one row per file (label = the name without .OBI)
+| osw_scan: names[] = the .RMX files in /BRAIN/REMIXES, sorted; then
+| buildrows
         .global osw_scan
 osw_scan:
         lea     (-12,%sp),%sp
@@ -175,7 +175,7 @@ osw_scan:
         bne.s   1b
         clr.l   -(%sp)
         clr.l   -(%sp)
-        pea     str_obi
+        pea     str_ext
         pea     osw_tab
         pea     str_osdir
         jsr     (DIRSCAN).l
@@ -255,33 +255,69 @@ sortnames:
         lea     (20,%sp),%sp
         rts
 
-| buildrows: the rows and the counts. Row 0 is a heading in stock's
-| separator form (two 0x17 glyphs, the text, 0x17 to 22 wide; the cursor
-| skips a row whose action is 0): NOW <running>. The rows after it that
-| are text only (HOME, a failed last switch's reason, NO .OBI) carry
-| stock's no-op action instead: the cursor skips ONE action-0 row, never
-| two in a row (docs/firmware/MAINMENU.md section 4), and BRAIN's pane
-| puts NOW straight after an action row. Then a row per file.
+| buildrows: REMIXES' rows after BRAIN's back row (brain_rmx_rows), and
+| their count with it (brain_rmx_n). A row per file, sorted, labelled with
+| its name without .RMX (or one NO REMIX FILES row); after a switch a
+| FLASHED separator in stock's form and the name of the image a power-cycle
+| returns to; a failed last switch's reason. Every row
+| has an action, the text rows stock's no-op: the cursor skips one
+| action-0 row, never two in a row (docs/firmware/MAINMENU.md section 4).
 buildrows:
         lea     (-16,%sp),%sp
         movem.l %d2-%d3/%a2-%a3,(%sp)
-        lea     brain_os_rows,%a2
-        | heading 0: "\x17NOW <this image>\x17..."
-        lea     head0,%a3
-        lea     str_now,%a0
-        bsr.w   heading
-        lea     str_self,%a0
-        bsr.w   headtail
-        | heading 1: "\x17HOME <the flashed image>\x17...": this one
-        | after a power-on; after a switch, the name the switch carried
+        lea     brain_rmx_rows+0x18,%a2
+        | the files
+        move.l  count,%d2
+        bne.s   3f
+        lea     str_none,%a0
+        bsr.w   quiet
+        moveq   #1,%d2                  | rows so far
+        bra.s   5f
+3:      moveq   #0,%d1
+        lea     names,%a0
+        lea     labels,%a1
+4:      move.l  %a1,(%a2)+              | label
+        clr.l   (%a2)+                  | no window
+        move.l  #osw_pick,%d0
+        move.l  %d0,(%a2)+              | action
+        clr.l   (%a2)+
+        clr.l   (%a2)+
+        clr.l   (%a2)+
+        | label = the name, without .RMX
+        move.l  %a0,-(%sp)
+        move.l  %a1,-(%sp)
+        move.l  %d1,-(%sp)
+        move.l  %a0,-(%sp)
+        move.l  %a1,-(%sp)
+        bsr.w   strcpy24
+        addq.l  #8,%sp
+        move.l  (4,%sp),%a0
+        bsr.w   stripext
+        move.l  (%sp)+,%d1
+        move.l  (%sp)+,%a1
+        move.l  (%sp)+,%a0
+        lea     (NLEN,%a0),%a0
+        lea     (NLEN,%a1),%a1
+        addq.l  #1,%d1
+        cmp.l   %d2,%d1
+        bcs.s   4b
+        | after a switch (status RUN): a FLASHED separator and, on its own
+        | row where the whole name fits, the image a power-cycle returns to.
+        | BRAIN's heading names the running image.
+5:      lea     (OSW_MBOX).l,%a1
+        move.l  (MB_STATUS,%a1),%d0
+        cmpi.l  #ST_RUN,%d0
+        bne.s   7f
         lea     head1,%a3
         lea     str_flash,%a0
         bsr.w   heading
-        bsr.w   flashname
+        lea     str_empty,%a0
         bsr.w   headtailq
-        moveq   #2,%d3                  | headings
-        | a failed last switch: its reason, text only
-        lea     (OSW_MBOX).l,%a1
+        bsr.w   flashname
+        bsr.w   quiet
+        addq.l  #2,%d2
+        | a failed last switch: its reason
+7:      lea     (OSW_MBOX).l,%a1
         move.l  (MB_STATUS,%a1),%d0
         lea     str_hash,%a0
         cmpi.l  #ST_HASH,%d0
@@ -293,64 +329,13 @@ buildrows:
         cmpi.l  #ST_SIZE,%d0
         bne.s   2f
 1:      bsr.w   quiet
-        addq.l  #1,%d3
-2:      add.l   brain_fixed,%d3         | BRAIN's own rows come first
-        move.l  %d3,nhead
-        | the files
-        move.l  count,%d2
-        bne.s   3f
-        lea     str_none,%a0
-        bsr.w   quiet
-        moveq   #1,%d2                  | rows after the headings
-        bra.s   6f
-3:      moveq   #0,%d1
-        lea     names,%a0
-        lea     labels,%a1
-4:      move.l  %a1,(%a2)+              | label
-        clr.l   (%a2)+                  | no window
-        move.l  #osw_pick,%d0
-        move.l  %d0,(%a2)+              | action
-        clr.l   (%a2)+
-        clr.l   (%a2)+
-        clr.l   (%a2)+
-        | label = the name, without .OBI
-        move.l  %a0,-(%sp)
-        move.l  %a1,-(%sp)
-        move.l  %d1,-(%sp)
-        move.l  %a0,-(%sp)
-        move.l  %a1,-(%sp)
-        bsr.w   strcpy24
-        addq.l  #8,%sp
-        move.l  (4,%sp),%a0
-        bsr.w   stripobi
-        move.l  (%sp)+,%d1
-        move.l  (%sp)+,%a1
-        move.l  (%sp)+,%a0
-        lea     (NLEN,%a0),%a0
-        lea     (NLEN,%a1),%a1
-        addq.l  #1,%d1
-        cmp.l   %d2,%d1
-        bcs.s   4b
-6:      add.l   %d3,%d2                 | every row
-        lea     brain_list,%a0
-        move.l  %d2,(%a0)
-        move.l  %d2,(0x14,%a0)
-        | the window at the top, the cursor on BRAIN's first row
-        clr.l   (4,%a0)
-        clr.l   (8,%a0)
-        clr.l   (0xc,%a0)
+        addq.l  #1,%d2
+2:      addq.l  #1,%d2                  | BRAIN's back row
+        move.l  %d2,brain_rmx_n
+        moveq   #1,%d0                  | the files start after the back row
+        move.l  %d0,nhead
         movem.l (%sp),%d2-%d3/%a2-%a3
         lea     (16,%sp),%sp
-        rts
-
-| inert: a row at (a2)+ with label a0 and no action
-inert:
-        move.l  %a0,(%a2)+
-        clr.l   (%a2)+
-        clr.l   (%a2)+
-        clr.l   (%a2)+
-        clr.l   (%a2)+
-        clr.l   (%a2)+
         rts
 
 | quiet: a row at (a2)+ with label a0 and stock's no-op action
@@ -363,8 +348,7 @@ quiet:
         clr.l   (%a2)+
         rts
 
-| heading: start the heading at a3 -- one 0x17 glyph (the pane is 15
-| characters wide: HOME + a 9-character name fills it), then the text at a0
+| heading: start the heading at a3 -- one 0x17 glyph, then the text at a0
 heading:
         moveq   #0x17,%d0
         move.b  %d0,(%a3)
@@ -375,21 +359,18 @@ heading:
         addq.l  #8,%sp
         rts
 
-| headtail: append the name at a0, pad with 0x17 to 22, and emit the row
-| (headtailq: the same row with the no-op action)
+| headtailq: append the name at a0, pad with 0x17 to 22, and emit the row
+| with the no-op action
 headtailq:
         bsr.s   headtext
         bra.w   quiet
-headtail:
-        bsr.s   headtext
-        bra.w   inert
 headtext:
         move.l  %a0,-(%sp)
         move.l  %a3,-(%sp)
         bsr.w   strcat
         addq.l  #8,%sp
         move.l  %a3,%a0
-        bsr.w   stripobi
+        bsr.w   stripext
         move.l  %a3,%a0
         moveq   #22,%d0
         bsr.w   padsep
@@ -410,8 +391,8 @@ flashname:
         lea     str_unknown,%a0
 1:      rts
 
-| stripobi: cut a trailing ".OBI" (any case) off the string at a0
-stripobi:
+| stripext: cut a trailing ".RMX" (any case) off the string at a0
+stripext:
         move.l  %a0,%a1
 1:      tst.b   (%a1)+
         bne.s   1b
@@ -424,6 +405,19 @@ stripobi:
         lea     (-4,%a1),%a1
         move.b  (%a1),%d1
         cmpi.b  #'.',%d1
+        bne.s   9f
+        | ".RMX" only: a name of its own may carry a dot (STOCK 1.40C)
+        move.b  (1,%a1),%d1
+        andi.l  #0xdf,%d1               | upper case
+        cmpi.b  #'R',%d1
+        bne.s   9f
+        move.b  (2,%a1),%d1
+        andi.l  #0xdf,%d1
+        cmpi.b  #'M',%d1
+        bne.s   9f
+        move.b  (3,%a1),%d1
+        andi.l  #0xdf,%d1
+        cmpi.b  #'X',%d1
         bne.s   9f
         clr.b   (%a1)
 9:      rts
@@ -649,7 +643,7 @@ osw_load:
         jsr     (0x40020c7c).l
         addq.l  #8,%sp
         bra.s   1b
-        | "/BRAIN/OS/" + name
+        | "/BRAIN/REMIXES/" + name
 2:      lea     path,%a2
         clr.b   (%a2)
         pea     str_ospath
@@ -1499,8 +1493,7 @@ idx:    .long   0
 nhead:  .long   1
 lines:  .long   line1, str_stops, str_home
 line1:  .space  32
-path:   .space  48                  | "/BRAIN/OS/" + a name of NLEN bytes
-head0:  .space  32
+path:   .space  48                  | "/BRAIN/REMIXES/" + a name of NLEN bytes
 head1:  .space  32
 names:  .space  NMAX*NLEN
 labels: .space  NMAX*NLEN

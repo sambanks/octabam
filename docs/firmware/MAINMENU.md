@@ -67,9 +67,9 @@ shipped initialised with 7 visible rows); STEMS does the same through a
 `TableGrow`, so the two are refused together. A pane can be rebuilt each
 time MAIN MENU opens from a detour at `0x40064c32`, the opener's new-window
 path (skipped while the menu is already up), before the window is created:
-its row count and cursor may change there (OS SWITCH's rows in BRAIN's
+its row count and cursor may change there (REMIX SWITCH's rows in BRAIN's
 pane, sanderlegit). ✅ drawn and driven under the port, 29 Sep 2026 (OS
-SWITCH's own category then) and 8 Oct 2026 (`verify_osswitch`, BRAIN).
+SWITCH's own category then) and 8 Oct 2026 (`verify_remixswitch`, BRAIN).
 
 Root rows: window descriptor set, child set, action 0. Leaf rows: window 0,
 child 0, action or page id set.
@@ -140,6 +140,15 @@ Driven under the port with real keys, the MKII (PROJ) and the MKI
   x = 118 and the root column at x = 56 (the right edge of 24 Ws). `WRITE
   FAILED` ends at 105 and `STEMS` at 45.
 - ✅ PLAY and STOP work with the menu open, and it stays open.
+- ✅ **Two levels only.** LEFT (`0x34`) always puts the focus on the root
+  (`0x40064e98`); YES (`0x31`) and RIGHT (`0x21`) enter a child list only
+  from the root (`0x40064ea8`, `0x40064f8c`); in a list YES runs the row's
+  page id (1..15) or its action, never a child list (`0x40065010..`).
+  Every key handled ends at `0x40064d7c`, the redraw, so a row action
+  that repoints its own list descriptor (rows pointer, both counts,
+  scroll, cursor, selection) shows the new rows at once: BRAIN's
+  DEFAULTS / REMIXES / TOOLS sub-lists, driven and drawn under the port
+  8 Oct 2026 (`modules/brain/README.md`).
 
 ## 5. Adding a row ✅
 

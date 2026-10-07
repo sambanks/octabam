@@ -1,7 +1,7 @@
-"""OS SWITCH -- boot an OS image from the card without writing the flash.
+"""REMIX SWITCH -- boot an OS image from the card without writing the flash.
 
-BRAIN's MAIN MENU pane lists the `.OBI` files in /BRAIN/OS/ (raw OS images:
-`make obi`) below its own rows, stages the chosen one at the top of the platform's arena
+BRAIN's MAIN MENU pane lists the `.RMX` files in /BRAIN/REMIXES/ (raw OS images:
+`make rmx`) below its own rows, stages the chosen one at the top of the platform's arena
 reserve with a mailbox, and resets the unit the way OS UPGRADE does after
 it flashes. On the way back up, a chainloader in the OS entry (a ROM cave,
 reached before the DSP upload or any other set-up) finds the mailbox,
@@ -9,7 +9,7 @@ checks the stage, copies it over the image the bootstrap just depacked and
 calls it as the bootstrap called us. NOR is never written; a power-cycle
 boots the flashed image again, and a staged image need not carry this
 module (stock 1.40C itself is a valid target). Every remix that carries
-BRAIN carries OS SWITCH (tools/remix/registry.py); until 8 Oct 2026 it was
+BRAIN carries REMIX SWITCH (tools/remix/registry.py); until 8 Oct 2026 it was
 a fifth root category of its own, OS, in every image (PR #542).
 
 Two units: `chain.s` (the chainloader, a ROM cave: the DRAM runtime is not
@@ -30,17 +30,15 @@ ROOT = HERE.parents[1]
 
 def _include(_modules):
     """osw.inc, the TRACE switch and this image's own name."""
-    # the image's own name, what BRAIN's pane shows it as: make's VERSION
-    # (exported by the Makefile, the name make image gives the .bin and the
-    # .OBI), else OCTABAM<BUILD>; A-Z 0-9 _ - and 12 characters, as make_obi
+    # the image's own name (remix.brain.image_name: `<REMIX> <BUILD>`, the
+    # name BRAIN's heading shows and make image gives the .RMX)
     # OSW_TRACE=1: this module's own BOOT TRACE notes (1 and 12 from the
     # chainloader, 13 before a switch's reset, 26/27 from the boot picker)
     # without the BOOT TRACE module, whose ROM-cave detours a full rig has
     # no room for (bottleservice-ret: CC MAP's page-2 cave, 30 Sep 2026)
     import os
-    import re
-    name = os.environ.get("VERSION") or f"OCTABAM{os.environ.get('BUILD', '')}"
-    name = re.sub(r"[^A-Z0-9_-]", "", name.upper())[:12] or "OCTABAM"
+    from remix import brain
+    name = brain.image_name()
     return ((HERE / "osw.inc").read_text()
             + f"        .set    TRACE, {1 if 'BOOT TRACE' in _modules or os.environ.get('OSW_TRACE') == '1' else 0}\n"
             + "        .macro  OSW_SELF\n"
@@ -49,28 +47,28 @@ def _include(_modules):
 
 
 MODULE = Module(
-    name="os-switch",
-    key="OS SWITCH",
+    name="remix-switch",
+    key="REMIX SWITCH",
     kind=Kind.HYBRID,
     category=Category.REFERENCE, author="sanderlegit", author_url="https://github.com/sanderlegit",
     proof=Proof.HARDWARE,
     proof_note="an MKII, 29 Sep 2026 (OCTABAM14 with BOOT TRACE): switched to its own "
                "image and to stock 1.40C, audio and play working; and with the park "
                "moved into the dead vector run (BSRETVEC) booted, played and switched "
-               "away again -- 40 region words down to 18; `verify_osswitch`. The list in "
-               "BRAIN's pane and /BRAIN/OS/ (8 Oct 2026): under the port only",
-    doc="MAIN MENU > BRAIN lists the raw OS images (.OBI) in /BRAIN/OS/ and boots the one "
+               "away again -- 40 region words down to 18; `verify_remixswitch`. The list in "
+               "BRAIN's pane and /BRAIN/REMIXES/ (8 Oct 2026): under the port only",
+    doc="MAIN MENU > BRAIN lists the raw OS images (.RMX) in /BRAIN/REMIXES/ and boots the one "
         "picked without writing the flash; a power-cycle returns to the flashed image. "
         "At power-on a picker offers them before the project loads (3 s, then NO).",
     linked=(
-        Linked("osw_chain", "modules/os-switch/chain.s", loader=True, include=_include),
-        Linked("osw_switch", "modules/os-switch/switch.s", dram=True, include=_include),
+        Linked("osw_chain", "modules/remix-switch/chain.s", loader=True, include=_include),
+        Linked("osw_switch", "modules/remix-switch/switch.s", dram=True, include=_include),
     ),
     # Each DSP core, told by host command $12 before the reset, parks in a
     # boot-ROM loader of its own (dsp_park.asm): the soft reset restarts the
     # ColdFire but not the DSP, whose ROM only listens after a chip reset.
     dsp=DspSection(
-        asm="modules/os-switch/dsp_park.asm",
+        asm="modules/remix-switch/dsp_park.asm",
         priority=20,
         payloads=frozenset({"A", "B"}),
         hooks=(DspHook(0x1E, (0x0C001E, 0x000000), "osw_dsp",
@@ -102,7 +100,7 @@ MODULE = Module(
     ),
     # the list is BRAIN's pane (brain_list, brain_os_rows)
     requires=("BRAIN",),
-    gates=(Gate("tools/verify/verify_osswitch.py", venv=True),
+    gates=(Gate("tools/verify/verify_remixswitch.py", venv=True),
            # The park's 40 words could come out of the DSP's unused
            # interrupt vectors instead of the effect region. That is only
            # safe while nothing arms an interrupt in those runs, and once

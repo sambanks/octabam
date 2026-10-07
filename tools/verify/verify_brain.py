@@ -32,7 +32,7 @@ lane at the end:
                 card.work; a second boot of that card puts the saved values
                 on both descriptors
   menu          the BRAIN category on the panel: T1, the FX2 page, PROJ,
-                DOWN x4, RIGHT, YES on SAVE AS DEFAULT: card.work holds T1's
+                DOWN x4, RIGHT, YES on DEFAULTS, YES on SAVE AS DEFAULT: card.work holds T1's
                 FX2 page; then OK, DOWN, YES on CLEAR DEFAULT: no BusDelay
                 record left
   mode          a GRAIN record for BusDelay (T1): the FX2 page-2 editor moves
@@ -388,6 +388,7 @@ def main():
         lines.append(f"{tt} quit")
         return "\n".join(lines) + "\n"
     nav = [("no", 400), ("t1", 600), ("fx2", 1500), ("proj", 1200)] + [("down", 400)] * 4 + [("right", 800)]
+    nav += [("yes", 800)]                    # DEFAULTS: its sub-list, the cursor on SAVE AS DEFAULT
     runs = {"menu_save": nav + [("yes", 2500)],
             "menu_clear": nav + [("yes", 2500), ("yes", 800), ("down", 400), ("yes", 2500)]}
     for name, keys in runs.items():

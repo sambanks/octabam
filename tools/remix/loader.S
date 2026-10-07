@@ -180,7 +180,7 @@ hashloop:
         bne.w   hashloop
         rts
 
-| the loader units (schema.Linked.loader): OS SWITCH's chainloader gate;
+| the loader units (schema.Linked.loader): REMIX SWITCH's chainloader gate;
 | empty for a remix without one
         .include "early.inc"
 

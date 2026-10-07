@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import pathlib
 import sys
 from dataclasses import dataclass
@@ -53,6 +54,22 @@ class Resolved:
         if isinstance(k, Number) and k.unit:
             return f"{self.value} {k.unit}"
         return str(self.value)
+
+
+IMAGE_NAME_MAX = 15        # REMIX SWITCH's mailbox keeps the flashed image's name in 16 bytes
+
+
+def image_name(remix=None, build=None) -> str:
+    """The name an image calls itself: BRAIN's heading row, REMIX SWITCH's
+    RUNNING/FLASHED rows, and its .RMX file on the card. `RMXNAME` in the
+    environment overrides it (`make rmx RMX=NAME`); else the remix's last
+    path part and the build tag, `BRAIN B2`. Upper case, A-Z 0-9 space . _ -,
+    at most IMAGE_NAME_MAX characters."""
+    import os
+    raw = os.environ.get("RMXNAME") or (
+        f"{pathlib.PurePath(remix or os.environ.get('REMIX', '?')).name} "
+        f"{build if build is not None else os.environ.get('BUILD', '79')}")
+    return re.sub(r"[^A-Z0-9 ._-]", "", raw.upper()).strip()[:IMAGE_NAME_MAX].strip() or "OCTABAM"
 
 
 def has_brain(remix) -> bool:

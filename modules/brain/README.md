@@ -10,15 +10,30 @@ FX1 or FX2 the effect's default in `card.work`, and SAVE PROJECT copies
 
 ## On the panel
 
-PROJ (MAIN MENU), then BRAIN, the fifth category:
+PROJ (MAIN MENU), then BRAIN, the fifth category. Its pane:
 
 | row | does |
 |---|---|
-| `<REMIX> <BUILD>` | a heading the cursor skips: which image is running |
+| `<REMIX> <BUILD>` | a heading the cursor skips: the running image's name |
+| DEFAULTS ► | its sub-list: `◄ DEFAULTS`, SAVE AS DEFAULT, CLEAR DEFAULT |
+| REMIXES ► | its sub-list: `◄ REMIXES`, then REMIX SWITCH's rows (`modules/remix-switch`, sanderlegit): each `.RMX` in `/BRAIN/REMIXES/`, sorted; after a switch a `FLASHED` separator and the image a power-cycle returns to |
+| TOOLS ► | its sub-list: `◄ TOOLS`, WRITE DEBUG LOG |
+
+| sub-list row | does |
+|---|---|
+| `◄ <NAME>` | back to the pane's top, the cursor on the row it came from |
 | SAVE AS DEFAULT | the FX1 or FX2 page in view (of the current audio track, in the current Part) becomes that effect's default on this card; a popup names the page |
 | CLEAR DEFAULT | that effect's default leaves `card.work`; the descriptor goes back to the image's |
+| an image | [YES]: `SWITCH TO <NAME>?`; YES boots it without writing the flash (REMIX SWITCH) |
 | WRITE DEBUG LOG | the last 256 MIDI messages (clock and active sensing left out), each with the sync flags, the playing pattern and the next pattern after its handler ran, written to `/BRAIN/debug.txt` by the engine task |
-| (the images) | OS SWITCH's rows (`modules/os-switch`, sanderlegit): `NOW` and `HOME` headings, then each `.OBI` in `/BRAIN/OS/`; [YES] boots it without writing the flash. Every remix with BRAIN carries OS SWITCH |
+
+The stock menu engine is two levels deep: LEFT always focuses the root and
+YES on a list row runs its action (`0x40064e64`). A sub-list is BRAIN's
+list descriptor (`brain_list`) repointed at another row array by the row's
+action (`brain.c` show()); the redraw after every key (`0x40064d7c`) shows
+it. MAIN MENU's opening resets the pane to its top (REMIX SWITCH's detour
+at `0x40064c32`). Measured under the port, 8 Oct 2026 (`verify_brain`
+menu, `verify_remixswitch` ui, screens rendered with `ot_emu --lcd`).
 
 Opened over any other page, or on a MIDI track, the popup says to open an
 FX page and nothing is written. The category is a fifth root row: the root

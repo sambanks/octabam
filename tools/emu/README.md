@@ -134,16 +134,16 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   `0x4000050c`; `--preload 0x3ffc=<04 08>` gives the hardware's path. A
   unit's power-on also finds battery SRAM from its last session: dump
   `0x10000000..0x100fffff` after a boot (`--mem-dump`) and preload it, or the
-  port measures the first-ever power-on only (OS SWITCH's boot picker,
+  port measures the first-ever power-on only (REMIX SWITCH's boot picker,
   `docs/contributing/FAILURE_MODES.md`).
 - **A power-on's own load.** `--boot-load` (`--names-early --no-post`) writes the SET/PROJECT names
   before the mount, as a unit that has run a project has them, and posts
   nothing itself: the one LOAD PROJECT is the firmware's own (sys's media
   case, through `0x4002574c`). With a short `--load-ms` the run goes on to
-  `--live-script` while the load is still held (`verify_osswitch`'s boot
+  `--live-script` while the load is still held (`verify_remixswitch`'s boot
   cases).
 - **Three things the DSP emulator does that the chip does not** (found
-  bringing up OS SWITCH's DSP park, 29 Sep 2026): `dsp peek <core> P <addr>`
+  bringing up REMIX SWITCH's DSP park, 29 Sep 2026): `dsp peek <core> P <addr>`
   answers 0 for `0x30000..0x3ffff` (it reads the core's own array, not the
   shared window); `--dsp-pcwatch`'s a1/b1 print the accumulator shifted left
   by 8; and inside a long interrupt (a `jsr` vector) no peripheral runs until

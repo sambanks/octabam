@@ -859,7 +859,7 @@ def main():
                  "DJ EQ", "COMB FILTER")
     _want = {"mods": (), "ok-ms": (), "usb-out-tracks-main-cue": (), "usb-out-tracks": (), "usb-out-master": (),
              "usb-out-tracks-post": (),
-             "os-switch": (), "os-switch-trace": (),   # OS SWITCH's park in dead vectors, no region words
+             "remix-switch": (), "remix-switch-trace": (),   # REMIX SWITCH's park in dead vectors, no region words
              "usb-out-main-cue": (), "usb-out-main": (), "usb-midi": (), "stems": (),     # stock effects + ColdFire modules, no DSP words
              "repitch": (), "plocks-p2": (), "scenes-midisc": (), "kits": (), "analog-bassdrum": ("SPRING REV",),
              "sidechain-compressor": ("SPRING REV",), "kyoti-mute-sidechain": ("SPRING REV",),   # its DSP section in SPRING's words

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""OS SWITCH under the ColdFire port: the switcher stages an image, the
+"""REMIX SWITCH under the ColdFire port: the switcher stages an image, the
 chainloader boots it, and every refusal boots the flashed image instead.
 
-    python3 tools/verify/verify_osswitch.py os-switch
-    make check REMIX=os-switch                      # the same, as the module's gate
+    python3 tools/verify/verify_remixswitch.py remix-switch
+    make check REMIX=remix-switch                      # the same, as the module's gate
 
 Builds the remix (the HOME image: what NOR would hold), then:
 
   layout   the platform runtime and its stage end below the mailbox: the
            top of the reserve is the switch's, in every remix carrying it
   ui       an MKII (`--mkii`: the reset sends the panel `60 02` first) with a
-           card holding STOCK140.OBI (the user's own stock MAIN OS, copied
-           at run time); PROJ opens MAIN MENU > BRAIN (the list in /BRAIN/OS/, scanned),
+           card holding STOCK140.RMX (the user's own stock MAIN OS, copied
+           at run time); PROJ opens MAIN MENU > BRAIN (the list in /BRAIN/REMIXES/, scanned),
            YES on the row, YES in the dialog. The row's action, the dialog's
            answer, the deferred load and the reset sequence each run; the
            stage reads back equal to the file and the mailbox carries its
@@ -24,7 +24,7 @@ Builds the remix (the HOME image: what NOR would hold), then:
            site holds stock's instruction again, and the boot reaches the
            RTOS handoff
   self     the home image staged as its own target: the second boot's
-           chainloader (the target carries OS SWITCH) turns BOOT into RUN,
+           chainloader (the target carries REMIX SWITCH) turns BOOT into RUN,
            the mailbox is spent, the home loader runs once
   none     no mailbox: status NONE, the normal boot
   hash     one byte of the stage changed after the mailbox was written:
@@ -78,7 +78,7 @@ from remix import registry  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 EMU = ROOT / "out/emu/ot_emu"
 STOCK = ROOT / "out/raw/section_3_MAIN_OS.bin"
-INC = ROOT / "modules/os-switch/osw.inc"
+INC = ROOT / "modules/remix-switch/osw.inc"
 OUT = ROOT / "out/osswitch"
 KEY_YES, KEY_NO, KEY_DOWN, KEY_PROJ, KEY_RIGHT = 0x31, 0x32, 0x20, 0x1c, 0x21
 
@@ -110,14 +110,14 @@ def main():
     # 29 Sep 2026, docs/contributing/FAILURE_MODES.md). A gate that asserts a
     # normal boot, an upload and a park cannot be run on that image.
     if "DSP RESET PROBE" in registry.remix(remix).modules:
-        print(f"  [SKIP] verify_osswitch: {remix} carries DSP RESET PROBE, which stops "
+        print(f"  [SKIP] verify_remixswitch: {remix} carries DSP RESET PROBE, which stops "
               f"the boot on purpose")
         return 0
-    if "OS SWITCH" not in registry.remix(remix).modules:
-        print(f"  [SKIP] verify_osswitch: {remix} does not carry OS SWITCH")
+    if "REMIX SWITCH" not in registry.remix(remix).modules:
+        print(f"  [SKIP] verify_remixswitch: {remix} does not carry REMIX SWITCH")
         return 0
     if not EMU.exists():
-        print("  [SKIP] verify_osswitch: the ColdFire port is not built (make emu-cf)")
+        print("  [SKIP] verify_remixswitch: the ColdFire port is not built (make emu-cf)")
         return 0
     C = consts()
     cached = lambda a: a - 0x08000000                  # the port folds the alias; dumps read either
@@ -128,7 +128,7 @@ def main():
     r = subprocess.run([sys.executable, str(ROOT / "tools/build/build_bus.py")], env=env,
                        capture_output=True, text=True, cwd=ROOT)
     if r.returncode:
-        sys.exit(f"verify_osswitch: building {remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
+        sys.exit(f"verify_remixswitch: building {remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
     work = pathlib.Path(tempfile.mkdtemp(prefix="osswitch."))
     home = work / "home.bin"
     home.write_bytes((ROOT / "out/mainos_bus.bin").read_bytes())
@@ -154,7 +154,7 @@ def main():
     def check(label, ok, detail=""):
         nonlocal fails
         fails += 0 if ok else 1
-        print(f"  [{'PASS' if ok else 'FAIL'}] verify_osswitch: {label}{'  (' + detail + ')' if detail else ''}")
+        print(f"  [{'PASS' if ok else 'FAIL'}] verify_remixswitch: {label}{'  (' + detail + ')' if detail else ''}")
 
     def boot(tag, preload, watch, dumps, extra=(), max_instr=150_000_000):
         args = [str(EMU), "--image", str(home), "--max", str(max_instr),
@@ -177,7 +177,7 @@ def main():
             hits[a] = hits.get(a, 0) + 1
         return out, hits, {k: p.read_bytes() for k, p in paths.items() if p.exists()}
 
-    def mailbox(image, status=0, name=b"TEST.OBI", length=None, check_ok=True):
+    def mailbox(image, status=0, name=b"TEST.RMX", length=None, check_ok=True):
         n = len(image) if length is None else length
         h = roll(image)
         chk = C["OSW_MAGIC"] ^ n ^ h
@@ -206,8 +206,8 @@ def main():
 
     # ---- ui: the row, the dialog, the load, the reset sequence ------------
     tree = work / "card"
-    (tree / "BRAIN" / "OS").mkdir(parents=True)
-    (tree / "BRAIN" / "OS" / "STOCK140.OBI").write_bytes(stock)
+    (tree / "BRAIN" / "REMIXES").mkdir(parents=True)
+    (tree / "BRAIN" / "REMIXES" / "STOCK140.RMX").write_bytes(stock)
     import emu_card
     card = work / "card.img"
     card.write_bytes(emu_card.build_image(str(tree), size_mb=64))
@@ -225,9 +225,9 @@ def main():
     key(KEY_PROJ, 400)                                 # an MKII: the reset sends the panel `60 02`
     for _ in range(4):
         key(KEY_DOWN)                                  # root: PROJECT SYSTEM CONTROL MIDI [BRAIN]
-    key(KEY_YES, 300)                                  # into BRAIN's pane: the cursor on its heading
-    for _ in range(5):
-        key(KEY_DOWN)                                  # SAVE, CLEAR, LOG, (NOW skipped) HOME, STOCK140
+    key(KEY_YES, 300)                                  # into BRAIN's pane: the cursor on DEFAULTS
+    key(KEY_DOWN)                                      # REMIXES
+    key(KEY_YES, 400)                                  # its sub-list: the cursor on the first image
     key(KEY_YES, 600)                                  # STOCK140 picked: the dialog
     key(KEY_YES, 3000)                                 # the dialog: boot it
     send("quit")
@@ -245,21 +245,22 @@ def main():
     check("ui: MAIN MENU's scan, the image's row, the dialog's YES, the deferred load and the reset ran",
           len(ran) == 5, "ran: " + ", ".join(ran))
     bl = d.get("list", b"")
-    check("ui: BRAIN's list holds its 4 rows, NOW and HOME, and the one image (7 rows)",
-          len(bl) == 0x1c and struct.unpack(">I", bl[:4])[0] == 7 and struct.unpack(">I", bl[0x14:0x18])[0] == 7,
-          bl[:0x18].hex())
+    check("ui: BRAIN's pane shows REMIXES: the back row, the one image, RUNNING and FLASHED (4 rows)",
+          len(bl) == 0x1c and struct.unpack(">I", bl[:4])[0] == 4 and struct.unpack(">I", bl[0x14:0x18])[0] == 4
+          and struct.unpack(">I", bl[0x18:0x1c])[0] == rt["brain_rmx_rows"],
+          bl.hex())
     check("ui: the pane's switch syncs the project first (SYNC TO CARD posted), as OS UPGRADE does",
           hits.get(0x40022CD4, 0) >= 1, f"{hits.get(0x40022CD4, 0)}x")
     check("ui: an MKII sends the panel its two start-up bytes (`60 02`) before the reset",
           hits.get(rt["putpanel"]) == 2, f"{hits.get(rt['putpanel'], 0)} byte(s)")
     mb, stage = d.get("mbox", b""), d.get("stage", b"")
-    check("ui: the stage reads back equal to STOCK140.OBI", stage == stock,
+    check("ui: the stage reads back equal to STOCK140.RMX", stage == stock,
           f"{len(stage):,} B")
     # MAIN MENU's rescan borrows the stock dir scan's global name pool and
     # cache and puts them back: the cache's extension is not ours after it
     # (build 15 on the unit left the browsers' listing state rewritten)
-    check("ui: the rescan left the stock dir scan's cache as it found it (not \"OBI\")",
-          d.get("scanext", b"")[:4] != b"OBI\0", (d.get("scanext") or b"").hex())
+    check("ui: the rescan left the stock dir scan's cache as it found it (not \"RMX\")",
+          d.get("scanext", b"")[:4] != b"RMX\0", (d.get("scanext") or b"").hex())
     check("ui: the chainloader's body sits in the stage page, its length and sum in the mailbox",
           d.get("body") == body and len(mb) == 72
           and struct.unpack(">II", mb[C["MB_BODYLEN"]:C["MB_BODYLEN"] + 8]) == (len(body) // 4, body_sum),
@@ -267,7 +268,7 @@ def main():
     ok = (len(mb) == 72 and magic(mb) == C["OSW_MAGIC"]
           and struct.unpack(">III", mb[4:16]) == (len(stock), roll(stock),
                                                    C["OSW_MAGIC"] ^ len(stock) ^ roll(stock))
-          and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.OBI")
+          and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.RMX")
     check("ui: the mailbox holds its length, hash, check word and name", ok, mb[:40].hex())
     check("ui: the port does not reset, so the switcher reached its RCR fallback and said so",
           mb[C["MB_RESET"]:C["MB_RESET"] + 4] == struct.pack(">I", C["RS_RCR"]),
@@ -293,7 +294,7 @@ def main():
     homeb = home.read_bytes()
     stage_self = work / "stage_self.bin"
     stage_self.write_bytes(homeb)
-    out, hits, d = boot("self", [(0x3FFC, norver), (MBOX, mailbox(homeb, name=b"HOME.OBI")), (BODY, body_f),
+    out, hits, d = boot("self", [(0x3FFC, norver), (MBOX, mailbox(homeb, name=b"HOME.RMX")), (BODY, body_f),
                                  (IMG, stage_self)], watch, {"mbox": (MBOX, 72)})
     mb = d.get("mbox", b"\0" * 72)
     check("self: status RUN after the handover, the mailbox spent, the loader ran once",
@@ -337,24 +338,24 @@ def main():
     # SRAM before the mount, the harness posts nothing, so the one LOAD
     # PROJECT is the firmware's own through 0x4002574c. The card: a set
     # with its AUDIO folder and an empty project (enough for the load to be
-    # handled), and three images in /BRAIN/OS/, one of them this image's own
+    # handled), and three images in /BRAIN/REMIXES/, one of them this image's own
     # name, which the picker skips.
     import re as _re
-    self_name = (_re.sub(r"[^A-Z0-9_-]", "", (os.environ.get("VERSION")
-                 or f"OCTABAM{env['BUILD']}").upper())[:12] or "OCTABAM")
+    from remix import brain as _brain
+    self_name = _brain.image_name(remix, env["BUILD"])
     btree = work / "bootcard"
     (btree / "OSW" / "AUDIO").mkdir(parents=True)
     (btree / "OSW" / "P").mkdir()
-    (btree / "BRAIN" / "OS").mkdir(parents=True)
-    (btree / "BRAIN" / "OS" / f"{self_name}.OBI").write_bytes(homeb)
-    (btree / "BRAIN" / "OS" / "OTHER.OBI").write_bytes(homeb)
-    (btree / "BRAIN" / "OS" / "STOCK140.OBI").write_bytes(stock)
+    (btree / "BRAIN" / "REMIXES").mkdir(parents=True)
+    (btree / "BRAIN" / "REMIXES" / f"{self_name}.RMX").write_bytes(homeb)
+    (btree / "BRAIN" / "REMIXES" / "OTHER.RMX").write_bytes(homeb)
+    (btree / "BRAIN" / "REMIXES" / "STOCK140.RMX").write_bytes(stock)
     bcard = work / "bootcard.img"
     bcard.write_bytes(emu_card.build_image(str(btree), size_mb=64))
     nosets = work / "noaudio"
     (nosets / "OSW" / "P").mkdir(parents=True)
-    (nosets / "BRAIN" / "OS").mkdir(parents=True)
-    (nosets / "BRAIN" / "OS" / "STOCK140.OBI").write_bytes(stock)
+    (nosets / "BRAIN" / "REMIXES").mkdir(parents=True)
+    (nosets / "BRAIN" / "REMIXES" / "STOCK140.RMX").write_bytes(stock)
     ncard = work / "noaudio.img"
     ncard.write_bytes(emu_card.build_image(str(nosets), size_mb=64))
     POST, FILES, HANDLER = 0x40023c7c, 0x400228dc, 0x40085336
@@ -429,7 +430,7 @@ def main():
           and "post" not in seq and "files" not in seq and "sync" not in seq,
           " ".join(k for k in seq if k != "bp_tick"))
     check("boot: the stage holds the image picked (OTHER, then RIGHT: STOCK140)",
-          len(mb) == 72 and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.OBI" and d.get("stage") == stock,
+          len(mb) == 72 and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.RMX" and d.get("stage") == stock,
           (mb[C["MB_NAME"]:C["MB_NAME"] + 16] if len(mb) == 72 else b"").decode("latin1"))
     _, seq, d = f_pick.result()
     mb = d.get("mbox", b"")
@@ -438,7 +439,7 @@ def main():
           "no sync, nothing loaded",
           0 <= first(seq, "bp_key") < first(seq, "bp_answer") < first(seq, "osw_load") < first(seq, "osw_reset")
           and after.count("bp_tick") >= 30 and "sync" not in seq and "post" not in seq and "files" not in seq
-          and len(mb) == 72 and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.OBI",
+          and len(mb) == 72 and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK140.RMX",
           " ".join(k for k in seq if k != "bp_tick") + f"; {after.count('bp_tick')} ticks after the key; "
           + (mb[C["MB_NAME"]:C["MB_NAME"] + 16] if len(mb) == 72 else b"").decode("latin1"))
     _, seq, _ = f_known.result()
@@ -497,7 +498,7 @@ def main():
           ", ".join(f"{pc} x{res[pc][1]}" for pc in res))
 
     if fails:
-        print(f"  verify_osswitch: logs in {work}")
+        print(f"  verify_remixswitch: logs in {work}")
     else:
         import shutil
         shutil.rmtree(work, ignore_errors=True)       # a 64 MB card and three stages per run

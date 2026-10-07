@@ -1,13 +1,14 @@
 # Switching OS images from the card, without flashing
 
-> Written while the list was MAIN MENU > OS and the images sat in the card
-> root (sanderlegit, PR #542). Since 8 Oct 2026 the list is BRAIN's MAIN
-> MENU pane and the images are in `/BRAIN/OS/` (`modules/os-switch/README.md`).
+> Written while the module was OS SWITCH, its list MAIN MENU > OS and the
+> images `.OBI` files in the card root (sanderlegit, PR #542). Since 8 Oct
+> 2026 it is REMIX SWITCH: MAIN MENU > BRAIN > REMIXES, `.RMX` files in
+> `/BRAIN/REMIXES/` (`modules/remix-switch/README.md`).
 
 A technical proposition, with a working prototype. It says what the
 firmware already does, what the prototype does with it, what the ColdFire
 port has measured, and what only the unit can answer, in the order to ask
-it. The prototype is `modules/os-switch` and the remix `os-switch`. It has
+it. The prototype is `modules/remix-switch` and the remix `os-switch`. It has
 run on an MKII (29 Sep 2026, build 14): a switch to the flashed image's
 own `.OBI` and to stock 1.40C, each with audio and play working, the flash
 never written (section 5).
@@ -158,7 +159,7 @@ from the state the bootstrap hands over, minus one parked argument and the
 
 ---
 
-## 4. What is measured ✅ (the port, `tools/verify/verify_osswitch.py`, 16 checks)
+## 4. What is measured ✅ (the port, `tools/verify/verify_remixswitch.py`, 16 checks)
 
 - The panel drives the row, the dialog, the deferred load and the reset
   sequence on a card holding `STOCK140.OBI`. The stage reads back equal
@@ -213,8 +214,8 @@ its own (`dsp_park.asm`: host command `$12` on stock's unused vector
 `P:$24`; DMA and ESAI stopped; the interrupt left; count, address, words,
 jump). Under the port both cores take it, the stock upload completes
 through the loaders, and each core enters its stock bootstrap and payload
-start again (`verify_osswitch`'s `dsp` case). The steps below stand, for
-build 6 (with BOOT TRACE: `os-switch-trace`):
+start again (`verify_remixswitch`'s `dsp` case). The steps below stand, for
+build 6 (with BOOT TRACE: `remix-switch-trace`):
 
 **Builds 7-14, on the unit** (BOOT TRACE throughout; the whole story is
 `docs/contributing/FAILURE_MODES.md`'s OS SWITCH entry):

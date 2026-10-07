@@ -1,5 +1,5 @@
-| OS SWITCH -- the addresses both units share, and the gate reads
-| (tools/verify/verify_osswitch.py parses the `.set` lines of this file).
+| REMIX SWITCH -- the addresses both units share, and the gate reads
+| (tools/verify/verify_remixswitch.py parses the `.set` lines of this file).
 |
 | The stage is the top of octabam's platform reserve (tools/remix/arena.py:
 | the first 1,707 pages of stock's audio page arena, 0x40a955e0..0x41495de0,

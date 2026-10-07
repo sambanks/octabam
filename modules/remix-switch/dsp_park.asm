@@ -1,4 +1,4 @@
-; OS SWITCH, DSP side: park the core in a boot-ROM loader, so the OS the
+; REMIX SWITCH, DSP side: park the core in a boot-ROM loader, so the OS the
 ; unit resets into can upload its program without the chip being reset.
 ;
 ; MEASURED on the unit (BOOT TRACE, build 4, 29 Sep 2026): after the soft
