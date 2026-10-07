@@ -11,7 +11,8 @@
     "TRACKS",
     "MASTER",
     "MAIN CUE",
-    "MAIN"
+    "MAIN",
+    "TRACKS POST"
    ],
    "name": "LAYOUT",
    "type": "option"

@@ -132,7 +132,7 @@ On allmyfriendsaresynths's (@clickysteve) MKII.
 - P2 (a 20-channel diagnostic build, not in the tree: these sixteen stems
   plus MAIN and CUE): a 196 s take nulled the stems against MAIN, 99.995%
   of ~17.3 M samples within 0..7 LSB, no gain/block misalignment at
-  ~16,700 level edges (`modules/usb-audio-out-tracks-post/README.md`).
+  ~16,700 level edges (`modules/usb-audio-out/README.md`, TRACKS POST).
 - Not run on a unit: MASTER TRACK, CF METER, a soak.
 
 ## sos-capture BUILD=94 and BUILD=95 — 3 Oct 2026 (Bryan T's builds)

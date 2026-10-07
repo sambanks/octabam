@@ -43,7 +43,7 @@
 |                               as core 0 applies it (LEVEL, mute, solo, XLV,
 |                               the 16-sample ramp), MAIN_LEVEL left out. The
 |                               POST section below has the design;
-|                               modules/usb-audio-out-tracks-post/README.md
+|                               modules/usb-audio-out/README.md (TRACKS POST)
 |                               the semantics and what was measured.
 | Layouts 1-3 are ours; every USB_LAYOUT = 0 path is the source as it was.
     .include "remix.inc"

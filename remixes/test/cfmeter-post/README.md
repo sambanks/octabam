@@ -1,7 +1,7 @@
 # `cfmeter-post` — CF METER with USB AUDIO OUT TRACKS POST
 
 [`cfmeter`](../cfmeter/README.md) with [USB AUDIO OUT TRACKS
-POST](../../../modules/usb-audio-out-tracks-post/README.md) in place of
+POST](../../../modules/usb-audio-out/README.md#tracks-post) in place of
 USB AUDIO OUT TRACKS MAIN CUE, everything else the same: the ColdFire's
 frame-interrupt time with this layout, read out over USB from T8 on
 channels 15/16. T8's channels carry T8's MAIN gain here, so the readout
@@ -13,7 +13,7 @@ TRACKS on the same project is POST's cost.
 
 ## Status
 
-Flashed as BUILD C2 on allmyfriendsaresynths's (@clickysteve) MKII, 7 Oct 2026: three 8 s streaming takes decoded (period 362.8 µs, TUE/ROE 0); results in the [POST module's README](../../../modules/usb-audio-out-tracks-post/README.md), *On the unit*. The no-host takes were not run.
+Flashed as BUILD C2 on allmyfriendsaresynths's (@clickysteve) MKII, 7 Oct 2026: three 8 s streaming takes decoded (period 362.8 µs, TUE/ROE 0); results in the [USB AUDIO OUT README, TRACKS POST](../../../modules/usb-audio-out/README.md#tracks-post), *On the unit*. The no-host takes were not run.
 
 ## Procedure (PR #625's CPU comparison)
 
@@ -28,4 +28,4 @@ Flashed as BUILD C2 on allmyfriendsaresynths's (@clickysteve) MKII, 7 Oct 2026: 
    the interface; `tools/rec 8 cpu_nohost.wav <interface>`, then
    `cfmeter.py cpu_nohost.wav --lr <CUE L>,<CUE R> --analog`.
 
-Results: [`modules/usb-audio-out-tracks-post/README.md`](../../../modules/usb-audio-out-tracks-post/README.md), *Cost*.
+Results: [`modules/usb-audio-out/README.md#tracks-post`](../../../modules/usb-audio-out/README.md#tracks-post), *Cost*.
