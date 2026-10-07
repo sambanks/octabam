@@ -1229,6 +1229,7 @@ int main(int _argc, char** _argv)
 	std::string periphTrace;	// every peripheral access over the load, for the same diff
 	std::string peeks;			// comma-separated hex addresses to print after the load
 	std::string cmdLog;		// every ATA COMMAND in order, for diffing against route A
+	std::string cmdLogEnd;		// the same, for the whole run, written at its end
 	uint64_t pcRing = 0;		// instructions to record from the first ATA command
 	double loadMs = 90000.0;	// ceiling in emulated ms for the load (it ends when the engine is idle after LOAD PROJECT)
 	double ataLatency = -1.0;	// --ata-latency: samples between an ATA data sector and its interrupt (default: the Rtos's 8, ~180 us)
@@ -1319,6 +1320,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--periph-trace" && i + 1 < _argc)	periphTrace = _argv[++i];
 		else if(a == "--peek" && i + 1 < _argc)		peeks = _argv[++i];
 		else if(a == "--cmd-log" && i + 1 < _argc)		cmdLog = _argv[++i];
+		else if(a == "--cmd-log-end" && i + 1 < _argc)	cmdLogEnd = _argv[++i];
 		else if(a == "--pc-ring" && i + 1 < _argc)	pcRing = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--load-ms" && i + 1 < _argc)	loadMs = std::atof(_argv[++i]);
 		else if(a == "--ata-latency" && i + 1 < _argc)	ataLatency = std::atof(_argv[++i]);
@@ -2815,6 +2817,21 @@ int main(int _argc, char** _argv)
 			o.write(reinterpret_cast<const char*>(card->image().data()), static_cast<std::streamsize>(card->image().size()));
 			std::printf("card out   : %s (%zu bytes, %llu sector(s) written by the firmware)\n", cardOut.c_str(),
 				card->image().size(), static_cast<unsigned long long>(card->sectorsWritten()));
+		}
+		// --cmd-log-end: every ATA command of the whole run, load and take,
+		// in --cmd-log's format (STEM REC's card traffic per write call).
+		if(!cmdLogEnd.empty() && card)
+		{
+			std::ofstream t(cmdLogEnd);
+			size_t n = 0;
+			for(const auto& e : card->log())
+			{
+				char line[160];
+				std::snprintf(line, sizeof line, "%s %u %u | #%zu pc %#010x %s",
+					e.what.c_str(), e.lba, e.count, n++, e.pc, ot::taskName(e.tcb));
+				t << line << '\n';
+			}
+			std::printf("cmd log end: %s (%zu commands)\n", cmdLogEnd.c_str(), card->log().size());
 		}
 	}
 

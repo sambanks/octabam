@@ -57,6 +57,14 @@
         .equ    RAW_SETLEN_PTR,0x46c82436   | -> setlen(handle, length)                     (12.1)
         .equ    RAW_CLOSE_PTR, 0x46c82422   | -> close(handle)                              (12.1)
         .equ    UNCACHED,      0x08000000   | the same RAM, data cache bypassed (PLAN.md, "The RAM")
+        .equ    DTCN3,         0xfc07c00c   | DMA timer 3: free-running at the bus clock (modules/cfmeter)
+        .equ    BUS_MHZ,       132          | its counts a microsecond: 7.58 ns a count
+        .equ    CARD_UDMA,     0x46c85c8c   | byte: the card's Ultra DMA mode, if any (STEM_REC.md 11.7)
+        .equ    CARD_MWDMA,    0x46c85c8b   | byte: its multiword DMA mode, if any
+        .equ    CARD_SPC,      0x46107990   | byte: the mounted volume's sectors a cluster: the raw
+                                            | write returns it << 9 (0x40018e28; 2,048 on FAT16 and
+                                            | 512 on FAT32 in STEM_REC.md 12.1). The file layer sends
+                                            | the card one command a cluster (perf probe, 7 Oct 2026)
 
 | ---- constants -----------------------------------------------------------
         .equ    ST_IDLE,       0
@@ -219,6 +227,26 @@ stems_probe:     .long   0          | test seam: non-zero runs stems_probe_run o
 stems_probe_res: .space  28
         .global stems_took, stems_ui_bufs
 stems_took:      .long   0          | a take ended since the last arm: IDLE shows its result
+
+| ---- the readout, STATS.TXT (perf design 3): cleared at each arm ----------
+| Times in DTCN3 counts unless named; sums of counts are 64 bits, hi:lo.
+        .global stems_st, stems_st_n, stems_st_wn
+stems_st:
+stems_st_on:     .long   0          | 1 while this frame records: the hook times it
+stems_st_t0:     .long   0          | DTCN3 at the hook's entry
+stems_st_hmax:   .long   0          | the hook's longest frame
+stems_st_hsum:   .long   0, 0       | the hook's frames, summed
+stems_st_fmax:   .long   0          | the hook and the stock frame routine after it, longest
+stems_st_fsum:   .long   0, 0       | ... summed
+stems_st_n:      .long   0          | frames timed
+stems_st_wn:     .long   0          | card writes, the raw write calls
+stems_st_wsum:   .long   0          | their time, microseconds
+stems_st_wmax:   .long   0          | the longest
+stems_st_csum:   .long   0          | the writer's copy, microseconds
+stems_st_cmax:   .long   0          | its longest batch
+stems_st_smax:   .long   0          | the writer's longest sleep while recording (it asks TASK_SLEEP_US)
+stems_st_end:
+        .equ    ST_LONGS,      (stems_st_end-stems_st)/4
 ui_key:          .long   -1         | what the labels last showed, packed (stems_ui)
 stems_ui_bufs:                      | two buffers for each formatted line
 stat_buf0:       .space  16
@@ -377,6 +405,20 @@ b24_off:  .asciz "24 BIT [ ]"
 fmt_rec:        .asciz  "REC %02d:%02d"
 fmt_done:       .asciz  "DONE %02d:%02d"
 fmt_peak:       .asciz  "PEAK %d%s"         | "%" as an argument: %% is untested in the stock sprintf
+| STATS.TXT (perf design 3), a line each
+nm_stats:       .asciz  "/STATS.TXT"
+lbl_ok:         .asciz  "OK"
+st_f_take:      .asciz  "STEM REC STATS %s\r\n"
+st_f_status:    .asciz  "status %s\r\n"
+st_f_take2:     .asciz  "%d frames, %d s, %d files, %d bits\r\n"
+st_f_ring:      .asciz  "ring peak %d of %d frames\r\n"
+st_f_writes:    .asciz  "card writes %d, %d ms in all, longest %d us\r\n"
+st_f_copy:      .asciz  "writer copy %d ms in all, longest batch %d us\r\n"
+st_f_sleep:     .asciz  "writer longest sleep %d us, asks %d\r\n"
+st_f_hook:      .asciz  "hook mean %d us, longest %d us\r\n"
+st_f_frame:     .asciz  "hook and frame routine mean %d us, longest %d us, %d frames\r\n"
+st_f_card:      .asciz  "card udma %d mwdma %d, cluster %d sectors\r\n"
+        .even
 pct_sign:       .asciz  "%"
         .balign 2
 
@@ -413,6 +455,12 @@ stems_action:
         clr.l   stems_took          | the new take's result replaces the last one's
         clr.l   stems_wr_off
         clr.l   stems_rd_off
+        lea     stems_st,%a0        | the readout starts over
+        moveq   #ST_LONGS,%d1
+.La_st:
+        clr.l   (%a0)+
+        subq.l  #1,%d1
+        bne.s   .La_st
         moveq   #ST_ARMED,%d1
         bra.s   .La_set
 .La_busy:
@@ -580,15 +628,23 @@ stems_switch_action:
 | frame, so the room test comes before it: a take stops when the next
 | frame doesn't fit, at the last whole frame. A staged frame of a take
 | that stops is never published.
+|
+| A recording frame is timed on DTCN3 for the readout: the hook from its
+| entry, and the hook with the stock frame routine after it (stems_st_on).
         .global stems_frame_hook
 stems_frame_hook:
+        tst.l   stems_state
+        beq.w   .Lh_idle            | IDLE: the mirror only, and stock
+        move.l  %d0,-(%sp)
+        move.l  DTCN3,%d0
+        move.l  %d0,stems_st_t0
+        move.l  (%sp)+,%d0
+        clr.l   stems_st_on
         bsr.w   stems_mirror
         tst.l   stems_trace
         beq.s   .Lh_notrace
         bsr.w   stems_trace_frame
 .Lh_notrace:
-        tst.l   stems_state
-        beq.w   .Lh_stock           | IDLE
         lea     -56(%sp),%sp
         movem.l %d0-%d7/%a0-%a5,(%sp)
         move.l  stems_state,%d0
@@ -618,6 +674,8 @@ stems_frame_hook:
         move.l  %d0,stems_state
         bra.w   .Lh_out
 .Lh_play:
+        moveq   #1,%d0
+        move.l  %d0,stems_st_on     | a recording frame: time it
         tst.l   stems_staged
         beq.s   .Lh_stage           | nothing staged yet: the take starts at the next frame
         movea.l stems_wr_off,%a1
@@ -658,8 +716,44 @@ stems_frame_hook:
         moveq   #1,%d0
         move.l  %d0,stems_staged
 .Lh_out:
+        tst.l   stems_st_on
+        beq.s   .Lh_rest
+        move.l  DTCN3,%d0
+        sub.l   stems_st_t0,%d0     | the hook's own time this frame
+        cmp.l   stems_st_hmax,%d0
+        bls.s   .Lh_hm
+        move.l  %d0,stems_st_hmax
+.Lh_hm:
+        add.l   %d0,stems_st_hsum+4
+        bcc.s   .Lh_rest
+        addq.l  #1,stems_st_hsum
+.Lh_rest:
         movem.l (%sp),%d0-%d7/%a0-%a5
         lea     56(%sp),%sp
+        jsr     FRAME_ROUTINE
+        move.w  #0x2700,%sr
+        tst.l   stems_st_on
+        beq.s   .Lh_ret
+        move.l  %d0,-(%sp)
+        move.l  DTCN3,%d0
+        sub.l   stems_st_t0,%d0     | with the stock frame routine
+        cmp.l   stems_st_fmax,%d0
+        bls.s   .Lh_fm
+        move.l  %d0,stems_st_fmax
+.Lh_fm:
+        add.l   %d0,stems_st_fsum+4
+        bcc.s   .Lh_fc
+        addq.l  #1,stems_st_fsum
+.Lh_fc:
+        addq.l  #1,stems_st_n
+        move.l  (%sp)+,%d0
+.Lh_ret:
+        rts
+.Lh_idle:
+        bsr.w   stems_mirror
+        tst.l   stems_trace
+        beq.s   .Lh_stock
+        bsr.w   stems_trace_frame
 .Lh_stock:
         jsr     FRAME_ROUTINE
         move.w  #0x2700,%sr
@@ -1503,10 +1597,20 @@ stems_sec0:                         | clobbers d0
 | K_DELAY(us, wait): C order, so wait is pushed first (STEM_REC.md 4.4).
 stems_task:
 .Lt_loop:
+        move.l  DTCN3,-(%sp)        | the sleep's start, for the readout
         pea     K_DELAY_TRY
         pea     TASK_SLEEP_US
         jsr     K_DELAY             | d0 = -1 when the timer was busy: just loop
         addq.l  #8,%sp
+        move.l  DTCN3,%d1
+        sub.l   (%sp)+,%d1          | how long the sleep took
+        moveq   #ST_RECORDING,%d0
+        cmp.l   stems_state,%d0
+        bne.s   .Lt_slept           | only a recording's sleeps count
+        cmp.l   stems_st_smax,%d1
+        bls.s   .Lt_slept
+        move.l  %d1,stems_st_smax
+.Lt_slept:
         bsr.w   stems_ui            | the menu's labels, every pass
         tst.l   stems_probe
         beq.s   .Lt_noprobe
@@ -1538,7 +1642,7 @@ stems_task:
         bra.w   .Lt_loop
 .Lt_rec:
         tst.l   stems_hold
-        bne.s   .Lt_loop            | test seam: hold the writer
+        bne.w   .Lt_loop            | test seam: hold the writer
         tst.l   stems_nopen
         bne.s   .Lt_drain
         bsr.w   stems_start
@@ -1880,8 +1984,8 @@ stems_close_all:
 | d1 = CHUNK_FRAMES: whole chunks only (recording). d1 = 1: everything.
 | d0 = 0, or -1 with ERR_WRITE set and stems_wfail = 1.
 stems_drain:
-        lea     -24(%sp),%sp
-        movem.l %d2-%d5/%a2-%a3,(%sp)
+        lea     -40(%sp),%sp
+        movem.l %d2-%d7/%a2-%a5,(%sp)
         move.l  %d1,%d5             | the smallest batch worth taking
 .Ld_more:
         cmpi.l  #CHUNK_FRAMES,%d5   | recording: the test seam holds the writer
@@ -1898,63 +2002,96 @@ stems_drain:
         cmpi.l  #CHUNK_FRAMES,%d2
         bls.s   .Ld_batch
         move.l  #CHUNK_FRAMES,%d2
-.Ld_batch:
-        moveq   #0,%d3              | frame within the batch
-.Ld_frame:
-        movea.l stems_rd_off,%a3
-        adda.l  #stems_ring,%a3
+.Ld_batch:                          | per file, over the batch's frames (perf design 2.1)
+        move.l  DTCN3,-(%sp)        | the copy's start, for the readout
         moveq   #0,%d4              | file j
+        moveq   #0,%d7              | its part's offset in a ring frame
+        lea     stems_ftab,%a4
+        lea     stems_slen,%a5
 .Ld_file:
         move.l  %d4,%d1
         bsr.w   stems_sbuf          | a2 = stream buffer j
-        lea     stems_slen,%a0
-        move.l  (%a0,%d4.l*4),%d0
-        adda.l  %d0,%a2
-        lea     stems_ftab,%a1
-        move.l  (%a1,%d4.l*4),%d1
-        andi.l  #0xffff,%d1         | this file's bytes in the frame
-        add.l   %d1,%d0
-        move.l  %d0,(%a0,%d4.l*4)
+        adda.l  (%a5),%a2           | past the bytes already waiting in it
+        move.l  (%a4)+,%d1
+        andi.l  #0xffff,%d1         | d1: this file's bytes in a frame
+        move.l  %d1,%d0
+        mulu.l  %d2,%d0
+        add.l   %d0,(%a5)+          | the buffer's fill after the batch
+        move.l  stems_rd_off,%d6    | d6: the frame's offset in the ring
+        move.l  %d2,%d3             | d3: frames left
         move.l  stems_lfmt,%d0
         btst    #0,%d0
-        beq.s   .Ld_16
-        moveq   #6,%d0
-        divu.l  %d0,%d1             | groups of two 24-bit samples
-.Ld_g:                              | [a2 a1 a0 b2 b1 b0] -> [a0 a1 a2 b0 b1 b2]
+        bne.s   .Ld_24
+.Ld_f16:                            | 16 bits: a frame's part is 2 or 4 groups of 16 bytes
+        movea.l %d6,%a3
+        adda.l  %d7,%a3
+        adda.l  #stems_ring,%a3
+        lea     (%a3,%d1.l),%a1     | its end
+.Ld_s:                              | [L1 L0 R1 R0] -> [L0 L1 R0 R1], four longs a pass
+        move.l  (%a3)+,%d0
+        BYTEREV 0
+        swap    %d0
+        move.l  %d0,(%a2)+
+        move.l  (%a3)+,%d0
+        BYTEREV 0
+        swap    %d0
+        move.l  %d0,(%a2)+
+        move.l  (%a3)+,%d0
+        BYTEREV 0
+        swap    %d0
+        move.l  %d0,(%a2)+
+        move.l  (%a3)+,%d0
+        BYTEREV 0
+        swap    %d0
+        move.l  %d0,(%a2)+
+        cmpa.l  %a1,%a3
+        bcs.s   .Ld_s
+        add.l   stems_fbytes,%d6
+        cmp.l   stems_rlimit,%d6
+        bcs.s   .Ld_w16
+        moveq   #0,%d6              | the ring's wrap
+.Ld_w16:
+        subq.l  #1,%d3
+        bne.s   .Ld_f16
+        bra.s   .Ld_fnext
+.Ld_24:                             | 24 bits: a frame's part is 4 or 8 groups of 12 bytes
+        movea.l %d6,%a3
+        adda.l  %d7,%a3
+        adda.l  #stems_ring,%a3
+        lea     (%a3,%d1.l),%a1
+.Ld_g:                              | [a2 a1 a0 b2 b1 b0] -> [a0 a1 a2 b0 b1 b2], twice a pass
         move.b  2(%a3),(%a2)+
         move.b  1(%a3),(%a2)+
         move.b  (%a3),(%a2)+
         move.b  5(%a3),(%a2)+
         move.b  4(%a3),(%a2)+
         move.b  3(%a3),(%a2)+
-        addq.l  #6,%a3
-        subq.l  #1,%d1
-        bne.s   .Ld_g
-        bra.s   .Ld_fnext
-.Ld_16:
-        lsr.l   #2,%d1              | longs: two 16-bit samples each
-.Ld_s:                              | [L1 L0 R1 R0] -> [L0 L1 R0 R1]
-        move.l  (%a3)+,%d0
-        BYTEREV 0
-        swap    %d0
-        move.l  %d0,(%a2)+
-        subq.l  #1,%d1
-        bne.s   .Ld_s
+        move.b  8(%a3),(%a2)+
+        move.b  7(%a3),(%a2)+
+        move.b  6(%a3),(%a2)+
+        move.b  11(%a3),(%a2)+
+        move.b  10(%a3),(%a2)+
+        move.b  9(%a3),(%a2)+
+        lea     12(%a3),%a3
+        cmpa.l  %a1,%a3
+        bcs.s   .Ld_g
+        add.l   stems_fbytes,%d6
+        cmp.l   stems_rlimit,%d6
+        bcs.s   .Ld_w24
+        moveq   #0,%d6
+.Ld_w24:
+        subq.l  #1,%d3
+        bne.s   .Ld_24
 .Ld_fnext:
+        add.l   %d1,%d7             | the next file's part
         addq.l  #1,%d4
         cmp.l   stems_nf,%d4
-        bcs.s   .Ld_file
-        move.l  stems_rd_off,%d0
-        add.l   stems_fbytes,%d0
-        cmp.l   stems_rlimit,%d0
-        bcs.s   .Ld_nowrap
-        moveq   #0,%d0
-.Ld_nowrap:
-        move.l  %d0,stems_rd_off
-        addq.l  #1,%d3
-        cmp.l   %d2,%d3
-        bcs.w   .Ld_frame
+        bcs.w   .Ld_file
+        move.l  %d6,stems_rd_off    | every file's loop ends one batch on
         add.l   %d2,stems_rd        | the hook may reuse these frames now
+        move.l  DTCN3,%d1
+        sub.l   (%sp)+,%d1
+        bsr.w   stems_st_copy
         moveq   #0,%d4
 .Ld_flush:
         move.l  %d4,%d1
@@ -1972,8 +2109,8 @@ stems_drain:
 .Ld_err:
         moveq   #-1,%d0
 .Ld_out:
-        movem.l (%sp),%d2-%d5/%a2-%a3
-        lea     24(%sp),%sp
+        movem.l (%sp),%d2-%d7/%a2-%a5
+        lea     40(%sp),%sp
         rts
 
 | ---- flush slot d1's whole sectors; with d0 != 0, pad the tail first ------
@@ -2004,12 +2141,16 @@ stems_flush:
         lsr.l   #8,%d3
         lsr.l   #1,%d3              | whole sectors
         beq.w   .Lf_ok
+        move.l  DTCN3,-(%sp)        | the write's start, for the readout
         move.l  %d3,-(%sp)
         move.l  %a2,-(%sp)
         lea     stems_handle,%a0
         move.l  (%a0,%d4.l*4),-(%sp)
         RAWCALL RAW_WRITE_PTR
         lea     12(%sp),%sp
+        move.l  DTCN3,%d1
+        sub.l   (%sp)+,%d1
+        bsr.w   stems_st_write
         tst.l   %d0
         bmi.s   .Lf_err
         lea     stems_fpos,%a3
@@ -2163,10 +2304,252 @@ stems_finish:
         move.l  %d0,stems_status
         bra.s   .Lz_close
 .Lz_done:
+        bsr.w   stems_stats         | the readout, beside the closed files
         clr.l   stems_nopen
         clr.l   stems_wfail
         movem.l (%sp),%d2-%d4/%a2
         lea     16(%sp),%sp
+        rts
+
+| ---- the readout's writer counters: d1 = DTCN3 counts; d0 is kept --------
+stems_st_write:                     | one card write
+        addq.l  #1,stems_st_wn
+        cmp.l   stems_st_wmax,%d1
+        bls.s   .Lsw_us
+        move.l  %d1,stems_st_wmax
+.Lsw_us:
+        move.l  %d0,-(%sp)
+        move.l  #BUS_MHZ,%d0
+        divu.l  %d0,%d1
+        add.l   %d1,stems_st_wsum
+        move.l  (%sp)+,%d0
+        rts
+stems_st_copy:                      | one batch of the writer's copy
+        cmp.l   stems_st_cmax,%d1
+        bls.s   .Lsc_us
+        move.l  %d1,stems_st_cmax
+.Lsc_us:
+        move.l  %d0,-(%sp)
+        move.l  #BUS_MHZ,%d0
+        divu.l  %d0,%d1
+        add.l   %d1,stems_st_csum
+        move.l  (%sp)+,%d0
+        rts
+
+| ---- d1 = (d0:d1) / d2, unsigned, d0 < d2 (a 64-bit sum over its count);
+| d0 = the remainder. Uses d3.
+stems_div64:
+        moveq   #32,%d3
+.Ldv_bit:
+        add.l   %d1,%d1             | d0:d1 one bit left
+        addx.l  %d0,%d0
+        bcs.s   .Ldv_sub            | a 33-bit d0 is above d2
+        cmp.l   %d2,%d0
+        bcs.s   .Ldv_next
+.Ldv_sub:
+        sub.l   %d2,%d0
+        addq.l  #1,%d1              | the quotient's next bit
+.Ldv_next:
+        subq.l  #1,%d3
+        bne.s   .Ldv_bit
+        rts
+
+| ---- d1 = the mean of a 64-bit sum at a0 over stems_st_n, in microseconds
+stems_st_mean:
+        moveq   #0,%d1
+        move.l  stems_st_n,%d2
+        beq.s   .Lsm_out
+        move.l  (%a0),%d0
+        move.l  4(%a0),%d1
+        bsr.w   stems_div64         | counts a frame
+        move.l  #BUS_MHZ,%d0
+        divu.l  %d0,%d1
+.Lsm_out:
+        rts
+
+| ---- d1 = d1 DTCN3 counts in microseconds ---------------------------------
+stems_st_us:
+        move.l  %d0,-(%sp)
+        move.l  #BUS_MHZ,%d0
+        divu.l  %d0,%d1
+        move.l  (%sp)+,%d0
+        rts
+
+| ---- a3 = the end of the text at a3 (its NUL) -----------------------------
+stems_st_tail:
+        tst.b   (%a3)
+        beq.s   .Lst_out
+        addq.l  #1,%a3
+        bra.s   stems_st_tail
+.Lst_out:
+        rts
+
+| ---- STATS.TXT: the readout, one sector of text in the take's folder -----
+| After the take's files are closed (stems_finish), unless a card write
+| failed: the card may refuse this one too. Built in sector-0 copy 0, free
+| by then. An error here changes nothing: the take is whole without it.
+stems_stats:
+        lea     -32(%sp),%sp
+        movem.l %d2-%d7/%a2-%a3,(%sp)
+        tst.l   stems_wfail
+        bne.w   .Lo_out
+        moveq   #0,%d1
+        bsr.w   stems_sec0
+        movea.l %a0,%a2             | a2: the text
+        movea.l %a0,%a3             | a3: its end
+        moveq   #127,%d0
+.Lo_clr:
+        clr.l   (%a0)+              | 512 bytes of NUL: the sector past the text
+        subq.l  #1,%d0
+        bpl.s   .Lo_clr
+        pea     stems_name                          | STEM REC STATS <take>
+        pea     st_f_take
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     12(%sp),%sp
+        bsr.w   stems_st_tail
+        move.l  stems_status,%d0                    | status <name>
+        lea     lbl_ok,%a0
+        beq.s   .Lo_st
+        lea     err_names,%a0
+        movea.l (%a0,%d0.l*4),%a0
+.Lo_st:
+        move.l  %a0,-(%sp)
+        pea     st_f_status
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     12(%sp),%sp
+        bsr.w   stems_st_tail
+        moveq   #16,%d2                             | frames, seconds, files, bits
+        move.l  stems_lfmt,%d0
+        btst    #0,%d0
+        beq.s   .Lo_bits
+        moveq   #24,%d2
+.Lo_bits:
+        move.l  %d2,-(%sp)
+        move.l  stems_nf,-(%sp)
+        move.l  stems_frames,%d0
+        lsl.l   #4,%d0
+        move.l  #44100,%d1
+        divu.l  %d1,%d0
+        move.l  %d0,-(%sp)
+        move.l  stems_frames,-(%sp)
+        pea     st_f_take2
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     24(%sp),%sp
+        bsr.w   stems_st_tail
+        move.l  stems_rframes,-(%sp)                | ring peak
+        move.l  stems_peak,-(%sp)
+        pea     st_f_ring
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     16(%sp),%sp
+        bsr.w   stems_st_tail
+        move.l  stems_st_wmax,%d1                   | card writes
+        bsr.w   stems_st_us
+        move.l  %d1,-(%sp)
+        move.l  stems_st_wsum,%d0
+        move.l  #1000,%d1
+        divu.l  %d1,%d0
+        move.l  %d0,-(%sp)
+        move.l  stems_st_wn,-(%sp)
+        pea     st_f_writes
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     20(%sp),%sp
+        bsr.w   stems_st_tail
+        move.l  stems_st_cmax,%d1                   | the writer's copy
+        bsr.w   stems_st_us
+        move.l  %d1,-(%sp)
+        move.l  stems_st_csum,%d0
+        move.l  #1000,%d1
+        divu.l  %d1,%d0
+        move.l  %d0,-(%sp)
+        pea     st_f_copy
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     16(%sp),%sp
+        bsr.w   stems_st_tail
+        pea     TASK_SLEEP_US                       | the writer's longest sleep
+        move.l  stems_st_smax,%d1
+        bsr.w   stems_st_us
+        move.l  %d1,-(%sp)
+        pea     st_f_sleep
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     16(%sp),%sp
+        bsr.w   stems_st_tail
+        move.l  stems_st_hmax,%d1                   | the hook
+        bsr.w   stems_st_us
+        move.l  %d1,-(%sp)
+        lea     stems_st_hsum,%a0
+        bsr.w   stems_st_mean
+        move.l  %d1,-(%sp)
+        pea     st_f_hook
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     16(%sp),%sp
+        bsr.w   stems_st_tail
+        move.l  stems_st_n,-(%sp)                   | the hook and the stock frame routine
+        move.l  stems_st_fmax,%d1
+        bsr.w   stems_st_us
+        move.l  %d1,-(%sp)
+        lea     stems_st_fsum,%a0
+        bsr.w   stems_st_mean
+        move.l  %d1,-(%sp)
+        pea     st_f_frame
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     20(%sp),%sp
+        bsr.w   stems_st_tail
+        moveq   #0,%d0                              | the card's DMA modes and its cluster
+        move.b  CARD_SPC,%d0
+        move.l  %d0,-(%sp)
+        moveq   #0,%d0
+        move.b  CARD_MWDMA,%d0
+        move.l  %d0,-(%sp)
+        moveq   #0,%d0
+        move.b  CARD_UDMA,%d0
+        move.l  %d0,-(%sp)
+        pea     st_f_card
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     20(%sp),%sp
+        bsr.w   stems_st_tail
+        move.l  %a3,%d7
+        sub.l   %a2,%d7                             | d7: the text's length
+        lea     stems_path,%a0                      | <set>/AUDIO/<take>/STATS.TXT
+        lea     stems_fpath,%a1
+.Lo_p1:
+        move.b  (%a0)+,(%a1)+
+        bne.s   .Lo_p1
+        subq.l  #1,%a1
+        lea     nm_stats,%a0
+.Lo_p2:
+        move.b  (%a0)+,(%a1)+
+        bne.s   .Lo_p2
+        pea     MODE_W
+        pea     stems_fpath
+        RAWCALL RAW_OPEN_PTR
+        addq.l  #8,%sp
+        move.l  %d0,%d6                             | d6: the handle
+        ble.s   .Lo_out
+        pea     1
+        move.l  %a2,-(%sp)
+        move.l  %d6,-(%sp)
+        RAWCALL RAW_WRITE_PTR
+        lea     12(%sp),%sp
+        move.l  %d7,-(%sp)
+        move.l  %d6,-(%sp)
+        RAWCALL RAW_SETLEN_PTR
+        addq.l  #8,%sp
+        move.l  %d6,-(%sp)
+        RAWCALL RAW_CLOSE_PTR
+        addq.l  #4,%sp
+.Lo_out:
+        movem.l (%sp),%d2-%d7/%a2-%a3
+        lea     32(%sp),%sp
         rts
 
 | ---- the raw file routines, measured (a test seam; STEM_REC.md 12.1) -----

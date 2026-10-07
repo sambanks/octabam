@@ -105,7 +105,7 @@ SRC_FRAMES = 600
 A14_FRAMES = 3600                  # THRU_STOP (1,700) + 1,900
 A14W_FRAMES = 5000                 # 24 bits: 1.5 times the data, so 3,300 follow the stop
 MAX_FRAMES = 9922500               # 60 minutes
-CHUNK_FRAMES = 512
+CHUNK_FRAMES = 512                 # stems.s
 
 fails = 0
 
@@ -977,7 +977,9 @@ def stream(s):
     the take runs. The write watch logs the state words; a write to rd
     (word 4) before the first FINISHING is a write during the take."""
     mems = ((s["stems_peak"], 4, "peak"),) if "stems_peak" in s else ()
-    log, dump, card, words, _ = port(s, 1900, stop_at=1700, tag="stream", extra=watched(s, span=24), mems=mems)
+    stop = 3 * CHUNK_FRAMES + 200         # three chunks while recording
+    log, dump, card, words, _ = port(s, stop + 200, stop_at=stop, tag="stream", extra=watched(s, span=24),
+                                     mems=mems)
     st, status, _, wr, rd, nfr = words
     ws = writes(s, log, span=24)
     fin = next((x for x, w, v in ws if w == 0 and v == ST_FINISHING), None)
@@ -988,6 +990,7 @@ def stream(s):
     check("stream: the task drained every frame", nfr > 3 * CHUNK_FRAMES and rd == wr,
           f"rd {rd}, wr {wr}, frames {nfr}")
     wav_check(card, nfr, dump, "stream", g=gain_of(log, 0))
+    stats_check(card, "stream", nfr, 1, 16)
     if "stems_peak" in s:
         raw = run_path("stream", "peak")
         peak = int.from_bytes(raw.read_bytes(), "big") if raw.exists() else None
@@ -1037,11 +1040,12 @@ def cap(s):
 
 
 def cut(s):
-    """A take cut off mid-way, as a power cut or a card pull would: 1,500
-    frames and no STOP, so the run ends while RECORDING, after the writer
-    has streamed two chunks. What a computer would find on the card: the
-    directory entry's length, and whether the take's data can be read."""
-    log, _, card, words, _ = port(s, 1500, tag="cut", dump_blocks=False)
+    """A take cut off mid-way, as a power cut or a card pull would: two
+    chunks and 500 frames, no STOP, so the run ends while RECORDING, after
+    the writer has streamed two chunks. What a computer would find on the
+    card: the directory entry's length, and whether the take's data can be
+    read."""
+    log, _, card, words, _ = port(s, 2 * CHUNK_FRAMES + 500, tag="cut", dump_blocks=False)
     st, status, _, wr, rd, nfr = words
     files = card_files(card)
     fx = json.loads(FIXTURE.read_text())
@@ -1283,6 +1287,47 @@ def take_files(card_path, fixture=FIXTURE):
     return sorted((p[len(folder):], d) for p, d in files.items()
                   if p.lower().startswith(folder) and "/" not in p[len(folder):]
                   and p.upper().endswith(".WAV"))
+
+
+def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE):
+    """The readout (perf design 3): STATS.TXT in the take's folder, one
+    sector of text that names the take and agrees with it: the frames, the
+    files, the width and the status; card writes counted and timed; the
+    hook timed on (about) every recorded frame, its mean at most its
+    longest. Returns the parsed numbers, or None."""
+    import re
+    files = card_files(card_path)
+    fx = json.loads(pathlib.Path(fixture).read_text())
+    names = new_entries(files, fixture)
+    text = card_get(files, f"{fx['set']}/AUDIO/{names[0]}/STATS.TXT") if len(names) == 1 else None
+    check(f"{tag}: STATS.TXT is in the take's folder, at most a sector", text is not None and 0 < len(text) <= 512,
+          f"{None if text is None else len(text)} bytes")
+    if not text:
+        return None
+    t = text.decode("ascii", "replace")
+    nums = lambda pat: [int(v) for v in re.search(pat, t).groups()] if re.search(pat, t) else None  # noqa: E731
+    took = nums(r"(\d+) frames, (\d+) s, (\d+) files, (\d+) bits")
+    ring = nums(r"ring peak (\d+) of (\d+) frames")
+    wr = nums(r"card writes (\d+), (\d+) ms in all, longest (\d+) us")
+    hook = nums(r"hook mean (\d+) us, longest (\d+) us")
+    frame = nums(r"routine mean (\d+) us, longest (\d+) us, (\d+) frames")
+    check(f"{tag}: STATS.TXT names the take and its status",
+          t.startswith(f"STEM REC STATS {names[0]}\r\n") and f"\r\nstatus {status}\r\n" in t, repr(t[:60]))
+    check(f"{tag}: STATS.TXT's frames, files and width are the take's",
+          took is not None and took[0] == nfr and took[1] == nfr * 16 // 44100 and took[2:] == [nfiles, bits],
+          f"{took} vs {nfr} frames, {nfiles} files, {bits} bits")
+    check(f"{tag}: STATS.TXT counts and times the card writes", wr is not None and wr[0] > 0 and wr[2] > 0,
+          f"{wr}")
+    check(f"{tag}: STATS.TXT times the hook on the recorded frames, mean at most longest",
+          ring is not None and hook is not None and frame is not None and 0 < hook[0] <= hook[1]
+          and hook[0] <= frame[0] <= frame[1] and abs(frame[2] - nfr) <= 2,
+          f"ring {ring}, hook {hook}, frame {frame}")
+    img = pathlib.Path(card_path).read_bytes()        # the volume's boot sector: MBR entry 0, else sector 0
+    part = struct.unpack_from("<I", img, 0x1c6)[0] if img[0x1fe:0x200] == b"\x55\xaa" and img[0x1c2] else 0
+    spc = img[part * 512 + 13]
+    clus = nums(r"cluster (\d+) sectors")
+    check(f"{tag}: STATS.TXT's cluster is the card's", clus == [spc], f"{clus} vs {spc} sectors a cluster")
+    return {"took": took, "ring": ring, "writes": wr, "hook": hook, "frame": frame, "cluster": clus}
 
 
 def slot_frames(dump_path, k, g=None):
