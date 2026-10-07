@@ -867,10 +867,15 @@ namespace ot
 			{
 				m_window.push_back(pc());
 				m_windowWrites.push_back(m_writes);
+				std::array<uint32_t, 7> aregs;
+				for(int r = 0; r < 7; ++r)
+					aregs[r] = m68k_get_reg(getCpuState(), static_cast<m68k_register_t>(M68K_REG_A0 + r));
+				m_windowAregs.push_back(aregs);
 				if(m_window.size() > g_stallBursts)
 				{
 					m_window.erase(m_window.begin());
 					m_windowWrites.erase(m_windowWrites.begin());
+					m_windowAregs.erase(m_windowAregs.begin());
 				}
 				if(m_window.size() == g_stallBursts)
 				{
@@ -878,11 +883,18 @@ namespace ot
 					const auto hi = *std::max_element(m_window.begin(), m_window.end());
 					if(hi - lo <= 64)
 					{
-						// A memset makes progress; a poll does not.
-						if(m_windowWrites.back() - m_windowWrites.front() > 2000)
-							m_window.clear(), m_windowWrites.clear();
+						// A memset makes progress; a poll does not. Nor does a
+						// walk: an address register that moved 4 KB or more.
+						bool walked = false;
+						for(int r = 0; r < 7; ++r)
+						{
+							const auto a = m_windowAregs.front()[r], b = m_windowAregs.back()[r];
+							walked |= (a > b ? a - b : b - a) >= 4096;
+						}
+						if(m_windowWrites.back() - m_windowWrites.front() > 2000 || walked)
+							m_window.clear(), m_windowWrites.clear(), m_windowAregs.clear();
 						else if(tryAutoPoke(pc()))
-							m_window.clear(), m_windowWrites.clear();
+							m_window.clear(), m_windowWrites.clear(), m_windowAregs.clear();
 						else
 						{
 							char msg[160];
