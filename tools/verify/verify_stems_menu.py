@@ -51,7 +51,7 @@ WORK = pathlib.Path("out/stems_runs")
 ERRS = ["RING FULL", "PATH FAILED", "OPEN FAILED", "SAME MINUTE", "WRITE FAILED",
         "SEEK FAILED", "CLOSE FAILED", "TASK FAILED"]
 TEXTS = (["REC", "CANCEL", "STOP", "SAVING", "READY", "ARMED", "NO CARD", "PEAK 0%", "PEAK 100%",
-          "REC 60:00", "DONE 60:00"] + ERRS + [f"T{k} [{m}]" for k in range(1, 9) for m in "X "]
+          "REC 60:00", "DONE 60:00"] + ERRS + [f"T{k} [{m}]" for k in range(1, 9) for m in "X "] + ["T8 MASTER"]
          + [f"{n} [{m}]" for n in ("MAIN", "CUE", "AB", "CD", "AB STEREO", "CD STEREO", "24 BIT") for m in "X "])
 
 

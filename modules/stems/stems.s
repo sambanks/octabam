@@ -17,6 +17,7 @@
 | ---- stock facts (docs/firmware/STEM_REC.md) ----------------------------
         .equ    TRANSPORT,     0x800065b8   | long; 1 = running, 0 or 2 = stopped (Task 2)
         .equ    TRANSPORT_RUNNING, 1        | the ONLY value that means playing   (Task 2)
+        .equ    MASTER_TRK,    0x80000034   | byte; non-zero = MASTER TRACK on: MAIN is T8 alone (18.8)
         .equ    CARD_MOUNTED,  0x460d1cb8   | long; 0 = no card                   (Task 8)
         .equ    FRAME_ROUTINE, 0x400031a0   | the displaced call
         .equ    MODE_W,        0x400b328b   | "w": opens without truncating
@@ -122,6 +123,16 @@
         movea.l \ptr,%a0
         jsr     (%a0)
         .endm
+| The mirror's EMAC, entered at its first multiply in a page: a page whose
+| targets are all cached multiplies nothing and leaves the EMAC alone (the
+| perf round). Clobbers the condition codes only.
+        .macro  EMAC_ON
+        tst.l   stems_gemac
+        bne.s   .Le\@
+        bsr.w   stems_emac_in
+        addq.l  #1,stems_gemac
+.Le\@:
+        .endm
 
 | A value limited to 16 bits: one compare on the common path. Uses d0.
         .macro  LIM16 reg
@@ -198,6 +209,7 @@ stems_gqn:       .long   0          | frames written to stems_gq
 stems_gqok:      .long   0          | frames written to stems_gq since IDLE: the start edge needs 2
 stems_gq:        .space  GQ_N*GQ_FRAME
 stems_emac_save: .space  16         | the caller's MACSR, ACC0, ACC1, ACCEXT01
+stems_gemac:     .long   0          | 1 while the mirror holds the EMAC (EMAC_ON)
 stems_staged:    .long   0          | 1: the ring frame at stems_wr_off holds the next frame's tracks
         .include "remix.inc"        | stems_gtab: core 0's gain table, from the user's image (18.4)
         .balign 4
@@ -227,6 +239,8 @@ stems_probe:     .long   0          | test seam: non-zero runs stems_probe_run o
 stems_probe_res: .space  28
         .global stems_took, stems_ui_bufs
 stems_took:      .long   0          | a take ended since the last arm: IDLE shows its result
+        .global stems_m8last
+stems_m8last:    .long   0          | the MASTER TRACK byte T8's row was last drawn for
 
 | ---- the readout, STATS.TXT (perf design 3): cleared at each arm ----------
 | Times in DTCN3 counts unless named; sums of counts are 64 bits, hi:lo.
@@ -388,6 +402,7 @@ trk7_on:  .asciz "T7 [X]"
 trk7_off: .asciz "T7 [ ]"
 trk8_on:  .asciz "T8 [X]"
 trk8_off: .asciz "T8 [ ]"
+trk8_master: .asciz "T8 MASTER"         | MASTER TRACK on: T8 is MAIN, not a source
 main_on:  .asciz "MAIN [X]"
 main_off: .asciz "MAIN [ ]"
 cue_on:   .asciz "CUE [X]"
@@ -520,7 +535,9 @@ stems_ui_state:
 | take records or saves: the take keeps the sources it latched at its
 | start, and the rows show what records. The last source that's on stays
 | on, so a take always has a file the rows show. The test and the flip run
-| with interrupts masked, so the hook can't latch between them.
+| with interrupts masked, so the hook can't latch between them. With
+| MASTER TRACK on, T8's row reads T8 MASTER (stems_m8check) and does
+| nothing: T8 is MAIN then, and a take doesn't record it (stems_layout).
         .global stems_source_action
 stems_source_action:
         lea     -8(%sp),%sp
@@ -536,6 +553,12 @@ stems_source_action:
         moveq   #ST_RECORDING,%d0
         cmp.l   %d0,%d1
         bcc.s   .Lk_keep                    | RECORDING or FINISHING: locked
+        moveq   #7,%d0
+        cmp.l   %d0,%d3
+        bne.s   .Lk_flip
+        tst.b   MASTER_TRK
+        bne.s   .Lk_keep                    | T8 with MASTER TRACK on: MAIN, not a source
+.Lk_flip:
         moveq   #1,%d0
         lsl.l   %d3,%d0                     | the source's bit
         move.l  stems_tracks,%d1
@@ -645,6 +668,7 @@ stems_frame_hook:
         beq.s   .Lh_notrace
         bsr.w   stems_trace_frame
 .Lh_notrace:
+        bsr.w   stems_m8check
         lea     -56(%sp),%sp
         movem.l %d0-%d7/%a0-%a5,(%sp)
         move.l  stems_state,%d0
@@ -752,15 +776,46 @@ stems_frame_hook:
 .Lh_idle:
         bsr.w   stems_mirror
         tst.l   stems_trace
-        beq.s   .Lh_stock
+        beq.s   .Lh_m8
         bsr.w   stems_trace_frame
+.Lh_m8:
+        bsr.w   stems_m8check
 .Lh_stock:
         jsr     FRAME_ROUTINE
         move.w  #0x2700,%sr
         rts
 
+| ---- T8's row against MASTER TRACK, from the hook every frame -----------
+| On a change of the MASTER TRACK byte, T8's label becomes T8 MASTER, or
+| T8 [X] / T8 [ ] by its bit, which the row keeps underneath. The hook
+| runs from boot, so the row is right before the writer task exists.
+| Every register is kept.
+stems_m8check:
+        move.l  %d0,-(%sp)
+        moveq   #0,%d0
+        move.b  MASTER_TRK,%d0
+        cmp.l   stems_m8last,%d0
+        beq.s   .Lm8_out            | no change
+        move.l  %d0,stems_m8last
+        move.l  %a0,-(%sp)
+        lea     trk8_master,%a0
+        tst.l   %d0
+        bne.s   .Lm8_set
+        lea     trk8_off,%a0
+        move.l  stems_tracks,%d0
+        btst    #7,%d0
+        beq.s   .Lm8_set
+        lea     trk8_on,%a0
+.Lm8_set:
+        move.l  %a0,stems_rows+(ROW_SRC0+7)*ROW_LEN
+        movea.l (%sp)+,%a0
+.Lm8_out:
+        move.l  (%sp)+,%d0
+        rts
+
 | ---- the layout, latched at the start edge (in the hook) ---------------
-| The sources and the format, then the file table in file order (T1..T8,
+| The sources (with MASTER TRACK on, T8 left out, or MAIN for T8 alone)
+| and the format, then the file table in file order (T1..T8,
 | MAIN, CUE, AB or A B, CD or C D), the ring frame and the ring's capacity;
 | then each file's routine and argument (stems_ffn, stems_farg), the track
 | files' count and their part of a ring frame. Uses d0-d4 and a0-a2.
@@ -768,6 +823,14 @@ stems_frame_hook:
 stems_layout:
         move.l  stems_tracks,%d0
         andi.l  #SRC_BITS,%d0
+        tst.b   MASTER_TRK
+        beq.s   .Ll_any
+        andi.l  #SRC_BITS-0x80,%d0  | MASTER TRACK on: T8 is MAIN (T8.wav would equal MAIN.wav)
+        bne.s   .Ll_some
+        move.l  #0x100,%d0          | T8 alone: MAIN, the same audio
+        bra.s   .Ll_some
+.Ll_any:
+        tst.l   %d0
         bne.s   .Ll_some
         moveq   #1,%d0              | no source: T1
 .Ll_some:
@@ -962,7 +1025,6 @@ stems_mirror:
         beq.s   .Lg_seq                     | the ring wrapped to page 0
         addq.l  #1,stems_lvskip
 .Lg_seq:
-        bsr.w   stems_emac_in
         lsl.l   #7,%d0
         movea.l %d0,%a0
         adda.l  #LV_PAGES,%a0               | a0: the page
@@ -971,6 +1033,7 @@ stems_mirror:
         cmp.l   stems_gw29,%d0
         beq.s   .Lg_m2
         move.l  %d0,stems_gw29
+        EMAC_ON
         andi.l  #0xff,%d0
         moveq   #24,%d1
         lsl.l   %d1,%d0                     | m << 8: (W29 & 0xff) << 24
@@ -1035,6 +1098,7 @@ stems_mirror:
         cmp.l   %d7,%d4
         bne.w   .Lg_cached                  | a hit, unless the key is the stale mark itself
 .Lg_miss:
+        EMAC_ON
         move.l  %d4,(%a3)
         move.l  %d1,%d0
         swap    %d0                         | x << 8 = w1 << 16, signed
@@ -1159,7 +1223,11 @@ stems_mirror:
 .Lg_idle:
         clr.l   stems_gqok
 .Lg_done:
+        tst.l   stems_gemac
+        beq.s   .Lg_noemac                  | no multiply this page: the EMAC was never touched
+        clr.l   stems_gemac
         bsr.w   stems_emac_out
+.Lg_noemac:
         movem.l (%sp),%d1-%d7/%a0-%a6
         lea     56(%sp),%sp
         move.l  (%sp)+,%d0

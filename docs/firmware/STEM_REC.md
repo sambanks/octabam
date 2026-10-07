@@ -7578,6 +7578,29 @@ T8's stem holds T1-T7 again, through T8's effects, so in this mode the
 stems don't sum to MAIN. `verify_stems`' `master` check confirms only that
 the take is whole and aligned.
 
+✅ **The files against each other, measured 7 Oct 2026 under the port**
+(the one-THRU master fixture; a take of T1, T8, MAIN and CUE at 16 bits,
+T1 cued; each file's left channel against the others by normalized
+cross-correlation over ±64 samples, `master-measure.py` in the perf design's appendix):
+
+| File | Against `MAIN.wav` | Against `T8.wav` |
+|---|---|---|
+| `T1.wav` | 32 samples early, correlation 1.0000 | 32 samples early, 1.0000 |
+| `T8.wav` | 0, 1.0000 | |
+| `CUE.wav` | 32 samples early, 0.9278 | 32 samples early, 0.9278 |
+
+So with MASTER TRACK on, `T8.wav` is `MAIN.wav`, and T1 and CUE lead them
+by two frames, as the mixdown above predicts and as upstream's USB modules
+measured (CUE 32 samples ahead of MAIN on Bryan T's MKII, 29 Sep 2026;
+TRACKS POST's T1-T7 two blocks ahead of T8). 🟡 T2-T7 are inferred to
+lead alike: the mixdown sums T1-T7 the same way.
+
+Rulings (Yves, 7 Oct 2026): the lead is documented, not corrected
+(`modules/stems/README.md`, Limits). T8 is not a source while MASTER
+TRACK is on: its row reads `T8 MASTER` and does nothing, a take leaves T8
+out, and a take with T8 alone records `MAIN.wav`. `verify_stems`'
+`master8` and `verify_stems_units`' `master_t8` check it.
+
 ### 18.9 The gates ✅ under the port
 
 Every gate of the spec's section 6
@@ -7730,3 +7753,93 @@ writer 2,446 frames behind, the seconds rise).
 - **The ramp's start on a unit.** `gainsdirty` covers dirty DSP RAM, but
   the port's boot order isn't the unit's (18.3).
 - **MASTER TRACK's stems** are whole and aligned only (18.8).
+
+## 19. The perf round (7 Oct 2026)
+
+Branch `stems-perf`; the design is
+`docs/superpowers/specs/2026-10-07-stem-rec-perf-design.md`. Every number
+here is from the port unless marked; the files are unchanged sample for
+sample, which the take checks of 18.9 prove again.
+
+### 19.1 The frame hook ✅ under the port
+
+- **Tracks staged a frame early.** MAIN at frame f is mixed from the half
+  `PING` doesn't name as it read at f−1, with the gains of the page sent
+  at f−2 (18.5), so both are there at f−1. The hook stages each track's
+  share into the next ring frame and writes MAIN, CUE and the inputs into
+  the frame staged the frame before; the one-frame copy (`TRACK_DELAY`)
+  is gone, and `GAIN_LAG` is 1.
+- **The start edge.** A take armed before play starts on the frame it
+  started on before (`stream` and `wrap` at lag 39, `postfader` 6,624
+  samples equal to MAIN, as in 18.9). REC pressed while playing starts one
+  frame later (`postmove` 3,840 samples, 3,872 before). The first build
+  left the gains out of every IDLE frame and started the port's
+  armed-before-play takes a frame late (lag 40): the port arms 9.6
+  samples before the first playing frame, so no ARMED frame came first.
+  The gains are now written while the sequencer is stopped too.
+- **The mirror's idle path.** Per-sample gains only while a take is
+  armed, recording or saving, or the sequencer is stopped; two states
+  used in turn instead of a copy; the EMAC entered only when a target
+  changes.
+- **The limit only when it can act.** With 0 ≤ g ≤ 0x200000, lim(floor(g·x
+  / 2^21)) never limits at either width; the mirror stores each slot's
+  bound (the largest end of the ramp's three linear parts, unsigned) and
+  the track loops skip the limit under it, two samples a pass.
+
+Before and after on one port binary, the same fixture and method
+(the perf design's appendix: `verify_stems --only=cost`, the eight-track costs,
+a 2,000-frame take with `--coverage` for the writer, then `stems_sweep.py
+--counts 8 --latencies 8,16`; logs `/home/yvez/xcheck/perf-baseline.log`
+and `perf-after.log`, 7 Oct 2026):
+
+| Instructions a frame | `6f9e5bc9` | After the round |
+|---|---|---|
+| The hook, idle, the sequencer playing | 1,001 | 394 |
+| The hook, T1 to T8 at 16 bits | 5,579 | 3,299 |
+| The hook, T1 to T8 at 24 bits | 6,219 | 4,059 |
+| The hook, every source at 24 bits | 7,415 | 5,188 |
+| The writer's copy, T1 to T8 at 16 bits, per recorded frame | 737 | 502 |
+| The writer's copy, every source at 24 bits | 1,067 | 807 |
+| The whole CPU while recording, T1 to T8 at 16 bits | 37,974 | 35,471 |
+
+| Eight tracks, card delay | Fill growth before | After |
+|---|---|---|
+| 8 | +97 frames/s (163 s to overflow) | +64 (247 s) |
+| 16 | +185 (83 s) | +148 (104 s) |
+
+The port's PIO card still falls behind at eight tracks (18.9's
+mechanism: one sector a frame while the frame interrupt runs), less
+than before. 🟡 A DMA card, as on Yves's unit, takes a command's sectors
+with no processor work between them (11.8).
+
+### 19.2 What the card takes, per write ✅ under the port
+
+`ot_emu --cmd-log-end` (new) logs every ATA command of a run. On the THRU
+fixture card (FAT16, 4 sectors a cluster), a 3,028-frame take at T1 to T8,
+16 bits: the writer's data went out as 673 commands of 4 sectors, one a
+cluster, 663 of 677 starting where the one before ended; the FAT was
+written twice in the take and the directory cluster once a file at the
+start. A T1 take: 97 commands of 4 sectors, 4 FAT writes.
+
+- The file layer sends one command a cluster, contiguous or not, so the
+  command's size is the card's cluster, not the writer's chunk. Bigger
+  chunks would only save calls into the file layer: not done.
+- It keeps the FAT in RAM (14.1), so space reservation saves nothing: not
+  done.
+- The take is one sequential stream on the card.
+- 🟡 Inferred for the unit: a card formatted with 32 KB clusters takes
+  16 times fewer, 16 times larger commands than the fixture's 2 KB, for
+  STEM REC's writes and the Static tracks' reads alike.
+
+### 19.3 The readout ✅ under the port
+
+`STATS.TXT` in each take's folder (`modules/stems/README.md`): the take,
+the ring's peak, the card writes, the writer's copy and sleeps, the hook
+and the frame routine's time on DTCN3, the card's DMA modes and its
+cluster (`0x46107990`, sectors a cluster: the raw write returns it << 9,
+12.1). `verify_stems`' `stream` checks it against the take.
+
+### 19.4 MASTER TRACK and T8
+
+18.8: `T8.wav` equals `MAIN.wav`; T1 to T7 and CUE lead them by 32
+samples. T8 is no longer a source while MASTER TRACK is on.

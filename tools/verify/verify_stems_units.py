@@ -711,5 +711,46 @@ def actions(rt):
           rt.r32(s["stems_tracks"]) == 0x100 and rt.r32(s["stems_fmt"]) == 0b001)
 
 
+MASTER_TRK = 0x80000034                         # stems.s: non-zero = MASTER TRACK on
+
+
+@unit
+def master_t8(rt):
+    """MASTER TRACK on (the master design, 7 Oct 2026): T8's row reads T8
+    MASTER and its YES changes nothing; off again, it reads its bit; a take
+    latched with it on leaves T8 out, and T8 alone becomes MAIN."""
+    s = rt.s
+    row8 = s["stems_rows"] + 24 * 9
+
+    def label():
+        return rt.rmem(rt.r32(row8), 16).split(b"\0")[0].decode()
+
+    def master(on):
+        rt.wmem(MASTER_TRK, bytes([1 if on else 0]))
+        rt.call("stems_m8check")
+
+    rt.w32(s["stems_state"], 0)
+    rt.w32(s["stems_tracks"], 0x81)
+    rt.w32(s["stems_m8last"], 0)
+    master(True)
+    check("master_t8: on, T8's row reads T8 MASTER", label() == "T8 MASTER", label())
+    rt.w32(s["stems_list"] + 0x0c, 9)
+    rt.call("stems_source_action")
+    check("master_t8: on, T8's YES changes nothing", rt.r32(s["stems_tracks"]) == 0x81 and label() == "T8 MASTER",
+          f"{rt.r32(s['stems_tracks']):#x} {label()}")
+    for src, want in ((0x81, [0]), (0x80, [8]), (0xff, list(range(7))), (0x380, [8, 9])):
+        rt.w32(s["stems_tracks"], src)
+        rt.w32(s["stems_fmt"], 6)
+        rt.call("stems_layout")
+        kinds = [rt.r32(s["stems_ftab"] + 4 * i) >> 24 for i in range(rt.r32(s["stems_nf"]))]
+        check(f"master_t8: on, sources {src:#05x} latch kinds {want}", kinds == want, f"{kinds}")
+    rt.w32(s["stems_tracks"], 0x81)
+    master(False)
+    check("master_t8: off again, T8's row reads its bit", label() == "T8 [X]", label())
+    rt.call("stems_layout")
+    kinds = [rt.r32(s["stems_ftab"] + 4 * i) >> 24 for i in range(rt.r32(s["stems_nf"]))]
+    check("master_t8: off, T8 is a source again", kinds == [0, 7], f"{kinds}")
+
+
 if __name__ == "__main__":
     sys.exit(main())

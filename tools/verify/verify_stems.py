@@ -641,6 +641,22 @@ def clip(s):
               f"peak {peak} of 32767")
 
 
+def master8(s):
+    """MASTER TRACK on, T1 and T8 on (the master design, 7 Oct 2026): T8 is
+    MAIN then (T8.wav equalled MAIN.wav sample for sample, measured), so its
+    row reads T8 MASTER and the take records T1 alone, whole."""
+    tag = "master8"
+    log, dump, card, words, _ = port(s, 900, stop_at=180, tag=tag, fixture=FIXTURE_THRU1_MASTER, mask=0x81,
+                                     dump_blocks=False, mems=ui_mems(s, "end"))
+    st, status, _, wr, rd, nfr = words
+    names = [n.upper() for n, _ in take_files(card, FIXTURE_THRU1_MASTER)]
+    check("master8: IDLE, no error, T1.wav alone (T8 left out)", st == ST_IDLE and status == 0 and names == ["T1.WAV"],
+          f"state {st}, status {status}, {names}")
+    t, _ = ui_read(s, tag, "end")
+    check("master8: T8's row reads T8 MASTER", t is not None and t[ROW_TRK0 + 7] == "T8 MASTER",
+          f"{t[ROW_TRK0 + 7] if t else None}")
+
+
 def master(s):
     """Review Focus 5: MASTER TRACK on (STEM_REC.md 18.8): the take is whole --
     T1.wav as long as the frames recorded, and the task ends IDLE with no error."""
@@ -1142,9 +1158,10 @@ def same_as_alone(s):
 HOOK_SIDE = ("stems_frame_hook", "stems_mirror", "stems_emac_in", "stems_emac_out", "stems_half",
              "stems_track16", "stems_track24", "stems_bus_src",
              "stems_bus16", "stems_bus24", "stems_stage", "stems_bus_frame", "stems_layout",
-             "stems_trace_frame")
-HOOK_CEILING = 7415   # the measured worst case, everything at 24 bits; 5,000 until Yves's
-                      # decision of 4 Oct 2026 to test the cost on the unit (spec 4.6)
+             "stems_trace_frame", "stems_m8check")
+HOOK_CEILING = 5188   # the measured worst case, everything at 24 bits, since the perf round
+                      # (7 Oct 2026; STEM_REC.md 19.1); 7,415 before it, and 5,000 until
+                      # Yves's decision of 4 Oct 2026 to test the cost on the unit (spec 4.6)
 
 
 def hook_cost(s, cov):
@@ -1898,6 +1915,7 @@ def main():
     only = next((a.split("=", 1)[1].split(",") for a in sys.argv if a.startswith("--only=")), None)
     runs = [("probe", probe), ("thru", thru), ("tap", tap), ("full", full), ("gains", gains),
             ("postfader", postfader), ("postmove", postmove), ("clip", clip), ("master", master),
+            ("master8", master8),
             ("layout", layout), ("sources", sources), ("mono", mono), ("all14", all14),
             ("w24", w24), ("w16v24", w16v24), ("all14w", all14w),
             ("rowstop", rowstop),
