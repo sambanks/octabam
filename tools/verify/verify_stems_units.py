@@ -32,8 +32,10 @@ import stems_gain as sg  # noqa: E402,F401
 # The constants of modules/stems/stems.s these tests depend on. Each task
 # that adds one to stems.s copies its value here.
 GQ_N = 4
+GQ_SLOT, GQ_FRAME = 0x80, 0x400                         # stems.s: a slot is its largest gain, then 16
+LIM_FREE = 0x200000                                     # stems.s: gains in 0..this never limit (design 1.3)
 SRC_BITS = 0xfff                                        # stems.s: every source (Task 8)
-GAIN_LAG, TRACK_HALF, TRACK_DELAY = 2, 1, 1             # STEM_REC.md 18.5
+GAIN_LAG, TRACK_HALF, TRACK_DELAY = 1, 1, 0             # stems.s: staged a frame early (perf design 1.1)
 IN_RING, IN_IDX = 0x80005660, 0x46104d00                # STEM_REC.md 18.7: eight frame pages, the index
 IN_AB_OFF, IN_CD_OFF, IN_A_IS_LEFT = 0x80, 0x00, 1      # STEM_REC.md 18.7: within a page
 
@@ -225,7 +227,7 @@ def layout_ref(src, fmt):
 def layout(rt):
     """stems_layout against layout_ref for every source word and format."""
     s = rt.s
-    bad = None
+    bad = badfn = None
     for src in range(4096):
         for fmt in range(8):
             rt.w32(s["stems_tracks"], src)
@@ -236,13 +238,26 @@ def layout(rt):
             nf = rt.r32(s["stems_nf"])
             got = ([rt.r32(s["stems_ftab"] + 4 * i) for i in range(nf)], rt.r32(s["stems_fbytes"]),
                    rt.r32(s["stems_rframes"]), rt.r32(s["stems_rlimit"]))
-            if got != layout_ref(src, fmt):
-                bad = (hex(src), fmt, got, layout_ref(src, fmt))
+            ref = layout_ref(src, fmt)
+            if got != ref:
+                bad = (hex(src), fmt, got, ref)
                 break
+            # each file's routine and argument, and the tracks' part (perf design 1.4)
+            w = "24" if fmt & 1 else "16"
+            want = ([s[f"stems_track{w}"] if f >> 24 < 8 else s[f"stems_bus{w}"] for f in ref[0]],
+                    [(f >> 24) * 0x80 if f >> 24 < 8 else f >> 24 for f in ref[0]],
+                    sum(1 for f in ref[0] if f >> 24 < 8), sum(f & 0xffff for f in ref[0] if f >> 24 < 8))
+            have = ([rt.r32(s["stems_ffn"] + 4 * i) for i in range(nf)],
+                    [rt.r32(s["stems_farg"] + 4 * i) for i in range(nf)],
+                    rt.r32(s["stems_ntrk"]), rt.r32(s["stems_tbytes"]))
+            if badfn is None and have != want:
+                badfn = (hex(src), fmt, have, want)
         if bad:
             break
     check("layout: every source word and format (32,768 cases)", bad is None,
           f"first difference {bad}" if bad else "")
+    check("layout: each file's routine and argument, the track files and their bytes", badfn is None,
+          f"first difference {badfn}" if badfn else "")
 
 
 @unit
@@ -280,23 +295,34 @@ def send_page(rt, idx, page):
     rt.w32(LV_SENT, idx)
 
 
-def mirror_reset(rt):
+def mirror_reset(rt, state=1):
     s = rt.s
-    rt.w32(s["stems_state"], 1)                     # ARMED: the gains are written
+    rt.w32(s["stems_state"], state)                 # ARMED (1): the gains are written
     rt.w32(s["stems_lvlast"], 0xffffffff)
     rt.w32(s["stems_gqn"], 0)
+    rt.w32(s["stems_gqok"], 0)
     rt.w32(s["stems_lvskip"], 0)
-    rt.wmem(s["stems_gstate"], bytes(96))
+    rt.wmem(s["stems_gstate"], bytes(192))          # both states
+    rt.w32(s["stems_gsel"], 0)
     rt.wmem(s["stems_gcache"], b"\xff" * 64)
     rt.w32(s["stems_gw29"], 0xffffffff)
 
 
+def gq_frame(rt, back=1):
+    """The address of the gains' frame `back` frames before the next one."""
+    return rt.s["stems_gq"] + ((rt.r32(rt.s["stems_gqn"]) - back) % GQ_N) * GQ_FRAME
+
+
 def mirror_read(rt):
+    """The current state's eight slots, and the newest frame's gains: each
+    slot's 16, and the largest the mirror wrote before them."""
     s = rt.s
-    state = [[rt.r32s(s["stems_gstate"] + 12 * k + 4 * f) for f in range(3)] for k in range(8)]
-    q = s["stems_gq"] + ((rt.r32(s["stems_gqn"]) - 1) % GQ_N) * 512
-    gq = [[rt.r32s(q + 64 * k + 4 * j) for j in range(16)] for k in range(8)]
-    return state, gq
+    cur = s["stems_gstate"] + rt.r32(s["stems_gsel"])
+    state = [[rt.r32s(cur + 12 * k + 4 * f) for f in range(3)] for k in range(8)]
+    q = gq_frame(rt)
+    gq = [[rt.r32s(q + GQ_SLOT * k + 4 + 4 * j) for j in range(16)] for k in range(8)]
+    tops = [rt.r32(q + GQ_SLOT * k) for k in range(8)]
+    return state, gq, tops
 
 
 @unit
@@ -316,7 +342,7 @@ def mirror(rt, n=4000, seed=5):
     caller = rt.get_emac()
     regs = {r: (0x10203040 + 0x01010101 * i) & 0xffffffff for i, r in enumerate(rt.REGS)}
     rng = random.Random(seed)
-    page, first, emac, kept = [0] * 64, None, None, None
+    page, first, emac, kept, low, free = [0] * 64, None, None, None, None, 0
     for i in range(n):
         if i == 0 or rng.random() > 0.33:
             page = random_page(rng)
@@ -328,12 +354,20 @@ def mirror(rt, n=4000, seed=5):
         if kept is None and any(out[r] != v for r, v in regs.items()):
             kept = (i, {r: hex(out[r]) for r, v in regs.items() if out[r] != v})
         want = model.step(page)
-        state, gq = mirror_read(rt)
+        state, gq, tops = mirror_read(rt)
         if state != model.state or gq != want:
             first = (i, state[0], model.state[0], gq[0][:4], want[0][:4])
             break
+        for k in range(8):
+            if tops[k] <= LIM_FREE:
+                free += 1
+                if low is None and not all(0 <= g <= LIM_FREE for g in gq[k]):
+                    low = (i, k, hex(tops[k]), [hex(g & 0xffffffff) for g in gq[k]])
     check(f"mirror: {n} pages, every slot's state and gains equal the model", first is None,
           f"first difference (page, mirror, model, gains, model's): {first}" if first else "")
+    check("mirror: a slot's bound is at most LIM_FREE only when all its gains are in 0..LIM_FREE",
+          low is None and free > 0,
+          f"first: page, slot, bound, gains {low}" if low else f"{free} of {8 * n} slots at most LIM_FREE")
     check("mirror: the caller's MACSR, ACC0, ACC1 and ACCEXT01 come back", emac is None,
           f"page, after, before: {emac}" if emac else f"{tuple(hex(v) for v in caller)}")
     check("mirror: every register comes back", kept is None, f"page, changed: {kept}" if kept else "")
@@ -360,9 +394,63 @@ def mirror_cache_mark(rt):
     send_page(rt, 1, page)
     rt.call("stems_mirror")
     model.step(page)
-    state, _ = mirror_read(rt)
+    state, _, _ = mirror_read(rt)
     check("mirror_cache_mark: a real key of 0xffffffff gets its own target", state[0] == model.state[0],
           f"mirror {state[0]}, model {model.state[0]}")
+
+
+TRANSPORT = 0x800065b8                          # stems.s: 1 = the sequencer plays
+
+
+@unit
+def mirror_idle(rt, n=60, seed=12):
+    """IDLE while the sequencer plays (perf design 1.2): the state still
+    follows every page, but no gains are written and stems_gqok stays 0;
+    armed, each page writes a frame of gains and counts it, IDLE again
+    clears the count; IDLE with the sequencer stopped writes and counts
+    them, so the frame before a take's first playing frame has them."""
+    s = rt.s
+    model = sg.Mirror(rt.table)
+    mirror_reset(rt, state=0)
+    rt.w32(TRANSPORT, 1)
+    rng = random.Random(seed)
+    for i in range(n):
+        page = random_page(rng)
+        send_page(rt, i % 4, page)
+        rt.call("stems_mirror")
+        model.step(page)
+    state, _, _ = mirror_read(rt)
+    check("mirror_idle: IDLE follows every page", state == model.state, f"slot 0 {state[0]} vs {model.state[0]}")
+    check("mirror_idle: IDLE writes no gains and counts nothing",
+          rt.r32(s["stems_gqn"]) == 0 and rt.r32(s["stems_gqok"]) == 0,
+          f"gqn {rt.r32(s['stems_gqn'])}, gqok {rt.r32(s['stems_gqok'])}")
+    rt.w32(s["stems_state"], 1)
+    for i in range(n, n + 3):
+        page = random_page(rng)
+        send_page(rt, i % 4, page)
+        rt.call("stems_mirror")
+        want = model.step(page)
+    state, gq, _ = mirror_read(rt)
+    check("mirror_idle: armed, three pages write three frames, counted, equal to the model",
+          rt.r32(s["stems_gqn"]) == 3 and rt.r32(s["stems_gqok"]) == 3 and gq == want and state == model.state,
+          f"gqn {rt.r32(s['stems_gqn'])}, gqok {rt.r32(s['stems_gqok'])}")
+    rt.w32(s["stems_state"], 0)
+    page = random_page(rng)
+    send_page(rt, (n + 3) % 4, page)
+    rt.call("stems_mirror")
+    model.step(page)
+    check("mirror_idle: IDLE again clears the count", rt.r32(s["stems_gqok"]) == 0 and rt.r32(s["stems_gqn"]) == 3)
+    for t in (0, 2):                                # stopped: 0 at the end or rewind, 2 after STOP
+        rt.w32(TRANSPORT, t)
+        page = random_page(rng)
+        send_page(rt, (n + 4 + (t // 2)) % 4, page)
+        rt.call("stems_mirror")
+        want = model.step(page)
+    state, gq, _ = mirror_read(rt)
+    check("mirror_idle: IDLE with the sequencer stopped writes the gains and counts them",
+          rt.r32(s["stems_gqn"]) == 5 and rt.r32(s["stems_gqok"]) == 2 and gq == want and state == model.state,
+          f"gqn {rt.r32(s['stems_gqn'])}, gqok {rt.r32(s['stems_gqok'])}")
+    rt.w32(TRANSPORT, 0)
 
 
 @unit
@@ -392,35 +480,47 @@ def post16(g, x):
     return max(-0x8000, min(0x7fff, (g * x) >> 29))
 
 
-def _track(rt, name, out_bytes, conv, n=200, seed=6, junk=False, dirty=False):
+def put_track(rt, k, gains, words):
+    """A track's inputs as stems_stage hands them over (perf design 1.1): the
+    slot's gains in the frame GAIN_LAG before the newest, after their largest
+    (unsigned, as stems_mirror writes it), and the 32 sample longs where
+    TRACK_HALF puts them. Returns the registers for a track routine but a1."""
+    s = rt.s
+    gqn = random.Random(k * 7919 + len(gains)).randrange(GQ_N + 1, 1000)
+    rt.w32(s["stems_gqn"], gqn)
+    frame = s["stems_gq"] + ((gqn - 1 - GAIN_LAG) % GQ_N) * GQ_FRAME
+    top = max(g & 0xffffffff for g in gains)
+    rt.wmem(frame + GQ_SLOT * k, b"".join((g & 0xffffffff).to_bytes(4, "big") for g in [top] + gains))
+    assert not TRACK_DELAY
+    src = 0x80003190 + (0x400 if TRACK_HALF else 0) + 0x80 * k
+    rt.wmem(src, b"".join((w & 0xffffffff).to_bytes(4, "big") for w in words))
+    return {"d4": 0x80003190, "d5": 0x80 * k, "d7": frame}
+
+
+def _track(rt, name, out_bytes, conv, n=200, seed=6, junk=False, dirty=False, free=False):
     """One track routine against `conv` on n random frames: random gains (0
-    and 0x7fffff among them) and random samples (both full scales), the
-    gains GAIN_LAG frames behind the newest, the samples where TRACK_HALF and
-    TRACK_DELAY put them. `junk`: each long's low byte random, as the half
-    core 0 mixes carries it (0xff on positive samples, STEM_REC.md 18.5);
-    the DSP takes only the top 24 bits. `dirty`: the interrupted task's
-    EMAC, ACC1 included, before the caller's stems_emac_in. Returns the
-    first difference, or None."""
+    and 0x7fffff among them; with `free`, every gain in 0..LIM_FREE, the
+    loop without the limit) and random samples (both full scales), put
+    where stems_stage puts them. `junk`: each long's low byte random, as the
+    half core 0 mixes carries it (0xff on positive samples, STEM_REC.md
+    18.5); the DSP takes only the top 24 bits. `dirty`: the interrupted
+    task's EMAC, ACC1 included, before the caller's stems_emac_in. Returns
+    the first difference, or None."""
     s = rt.s
     rng = random.Random(seed)
     for i in range(n):
         k = rng.randrange(8)
-        gains = [rng.choice((0, 0x7fffff, 0x1f7fe0, rng.randrange(0x800000))) for _ in range(16)]
+        if free:
+            gains = [rng.choice((0, LIM_FREE, 0x1f7fe0, rng.randrange(LIM_FREE + 1))) for _ in range(16)]
+        else:
+            gains = [rng.choice((0, 0x7fffff, 0x1f7fe0, rng.randrange(0x800000))) for _ in range(16)]
         xs = [rng.choice((0x7fffff, -0x800000, 0, rng.randrange(-0x800000, 0x800000))) for _ in range(32)]
         lows = [rng.choice((0, 0xff, rng.randrange(256))) if junk else 0 for _ in range(32)]
-        gqn = rng.randrange(GQ_N + 1, 1000)
-        rt.w32(s["stems_gqn"], gqn)
-        frame = (gqn - 1 - GAIN_LAG) % GQ_N
-        rt.wmem(s["stems_gq"] + frame * 512 + 64 * k, b"".join(g.to_bytes(4, "big") for g in gains))
-        if TRACK_DELAY:
-            src = s["stems_tdelay"] + 0x80 * k
-        else:
-            src = 0x80003190 + (0x400 if TRACK_HALF else 0) + 0x80 * k
-        rt.wmem(src, b"".join((((x << 8) | lo) & 0xffffffff).to_bytes(4, "big") for x, lo in zip(xs, lows)))
+        regs = put_track(rt, k, gains, [(x << 8) | lo for x, lo in zip(xs, lows)])
         if dirty:
             rt.set_emac(*DIRTY_EMAC)
         rt.call("stems_emac_in")
-        rt.call(name, d4=0x80003190, d5=0x80 * k, a1=s["stems_ring"])
+        rt.call(name, a1=s["stems_ring"], **regs)
         rt.call("stems_emac_out")
         got = rt.rmem(s["stems_ring"], out_bytes)
         want = b"".join(conv(gains[j], xs[2 * j + c]) for j in range(16) for c in (0, 1))
@@ -440,6 +540,9 @@ def track16(rt):
     low byte is not zero: only the top 24 bits are the sample."""
     bad = _track(rt, "stems_track16", 64, _post16_bytes, junk=True)
     check("track16: 200 frames equal post16 of each long's top 24 bits", bad is None,
+          f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
+    bad = _track(rt, "stems_track16", 64, _post16_bytes, seed=13, junk=True, free=True)
+    check("track16: 200 frames with every gain in 0..LIM_FREE (no limit) equal post16", bad is None,
           f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
 
 
@@ -464,13 +567,9 @@ def track16_rails(rt):
         gains = [rng.choice((0x7fffff, 0x7c0980, 0x400000, rng.randrange(0x200000, 0x800000))) for _ in range(16)]
         xs = [rng.choice((0x7fffff, -0x800000, 0x400000, -0x400000, rng.randrange(-0x800000, 0x800000)))
               for _ in range(32)]
-        gqn = rng.randrange(GQ_N + 1, 1000)
-        rt.w32(s["stems_gqn"], gqn)
-        rt.wmem(s["stems_gq"] + ((gqn - 1 - GAIN_LAG) % GQ_N) * 512 + 64 * k,
-                b"".join(g.to_bytes(4, "big") for g in gains))
-        rt.wmem(s["stems_tdelay"] + 0x80 * k, b"".join(((x << 8) & 0xffffffff).to_bytes(4, "big") for x in xs))
+        regs = put_track(rt, k, gains, [x << 8 for x in xs])
         rt.call("stems_emac_in")
-        rt.call("stems_track16", d4=0x80003190, d5=0x80 * k, a1=s["stems_ring"])
+        rt.call("stems_track16", a1=s["stems_ring"], **regs)
         rt.call("stems_emac_out")
         got = rt.rmem(s["stems_ring"], 64)
         want = b"".join(_main_top16_bytes(gains[j], xs[2 * j + c]) for j in range(16) for c in (0, 1))
@@ -531,6 +630,9 @@ def track24(rt):
     on longs whose low byte is not zero: only the top 24 bits are the sample."""
     bad = _track(rt, "stems_track24", 96, lambda g, x: b24(sg.stem24(g, x)), seed=11, junk=True)
     check("track24: 200 frames equal stem24 of each long's top 24 bits", bad is None,
+          f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
+    bad = _track(rt, "stems_track24", 96, lambda g, x: b24(sg.stem24(g, x)), seed=14, junk=True, free=True)
+    check("track24: 200 frames with every gain in 0..LIM_FREE (no limit) equal stem24", bad is None,
           f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
 
 

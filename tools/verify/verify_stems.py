@@ -65,9 +65,12 @@ TEMPLATE = pathlib.Path(os.environ.get("STEMS_TEMPLATE") or "out/projects/Ultima
 KEY_STOP = 0x4000a1e0
 STOP_GATE = 0x80000029     # the STOP handler returns early while this byte is 0 (STEM_REC.md 1.6)
 PRE_ROLL = 40              # frames before the transport start; the dump includes them
-TRACK_HALF, TRACK_DELAY = 1, 1             # stems.s: the samples core 0 mixes (STEM_REC.md 18.5)
+TRACK_HALF, TRACK_DELAY = 1, 1             # the samples core 0 mixes (STEM_REC.md 18.5)
 # A take's first frame is one frame after the edge (the frame that latches
 # records nothing), and its samples are the half and the frame core 0 mixes.
+# TRACK_DELAY is the signal's delay: since the perf round (design 1.1) the
+# hook stages the tracks a frame early rather than copying them a frame
+# late, so stems.s has no TRACK_DELAY and the files are the same.
 STEM_LAG = PRE_ROLL + 1 - TRACK_DELAY - TRACK_HALF
 ST_IDLE, ST_ARMED, ST_RECORDING, ST_FINISHING = 0, 1, 2, 3   # stems.s
 STACK_SIZE, STACK_FILL = 0x2000, 0x5354454d                   # stems.s: DramRegion stems_stack, "STEM"
@@ -302,7 +305,7 @@ def gains(s):
     for tag, extra in (("gains", ()), ("gainsdirty", ("--dsp-dirty", "7"))):
         log, *_ = port(s, 260, tag=tag, calls_before=(), fixture=FIXTURE_THRU1, mask=None,
                        dump_blocks=False, extra=extra, steps=steps, midi_lines=midi,
-                       mems=((s["stems_gstate"], 96, "gs"), (s["stems_gstate_prev"], 96, "gp"),
+                       mems=((s["stems_gstate"], 192, "gs"), (s["stems_gsel"], 4, "gsel"),
                              (s["stems_lvskip"], 4, "skip")))
         dsp = dsp_state(log)
 
@@ -310,7 +313,8 @@ def gains(s):
             p = run_path(tag, name)
             raw = p.read_bytes() if p.exists() else b""
             return [int.from_bytes(raw[i:i + 4], "big", signed=True) for i in range(0, len(raw), 4)]
-        now, prev = longs("gs"), longs("gp")
+        both, sel = longs("gs"), (longs("gsel") or [0])[0] // 96     # two states, used in turn
+        now, prev = (both[24:], both[:24]) if sel else (both[:24], both[24:])
         mine = [now[3 * k:3 * k + 3] for k in range(8)]
         before = [prev[3 * k:3 * k + 3] for k in range(8)]
         check(f"{tag}: core 0's state was read", len(dsp) == 8, f"{len(dsp)} slots")
@@ -1132,8 +1136,8 @@ def same_as_alone(s):
 
 
 HOOK_SIDE = ("stems_frame_hook", "stems_mirror", "stems_emac_in", "stems_emac_out", "stems_half",
-             "stems_track_src", "stems_track_gains", "stems_track16", "stems_track24", "stems_bus_src",
-             "stems_bus16", "stems_bus24", "stems_copy_frame", "stems_tdelay_step", "stems_layout",
+             "stems_track16", "stems_track24", "stems_bus_src",
+             "stems_bus16", "stems_bus24", "stems_stage", "stems_bus_frame", "stems_layout",
              "stems_trace_frame")
 HOOK_CEILING = 7415   # the measured worst case, everything at 24 bits; 5,000 until Yves's
                       # decision of 4 Oct 2026 to test the cost on the unit (spec 4.6)

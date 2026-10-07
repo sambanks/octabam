@@ -77,17 +77,27 @@ figures hold on today's `main`.
      today. When REC is pressed while the sequencer plays, the page of the
      frame before the press has no per-sample gains (item 2), so that
      take stages one frame later and starts one frame (16 samples) later
-     than today. `stems_gqok` counts the frames the mirror has written
-     gains for since IDLE; the edge needs two.
+     than today (`postmove`: 3,840 samples against MAIN, 3,872 before).
+     `stems_gqok` counts the frames the mirror has written gains for in a
+     row; the edge needs two.
    - **The ring.** Staging reserves the next frame, so the ring's room
      test moves to the staging step: a take stops when the next frame
      doesn't fit, at the last whole frame, as today. The staged frame of
      a take that stops is never published.
-2. **The mirror writes per-sample gains only while ARMED or RECORDING.**
-   `GQ_ALWAYS` was there so a take started while playing had the previous
-   frame's gains (2 frames of lag); with a lag of 1 it isn't worth about
-   550 instructions in every idle frame. The state (`stems_gstate`) still
-   follows every page.
+2. **The mirror writes per-sample gains only while a take is armed,
+   recording or saving, or the sequencer is stopped.** `GQ_ALWAYS` was
+   there so a take started while playing had the previous frame's gains
+   (2 frames of lag); with a lag of 1 it isn't worth about 550
+   instructions in every frame the sequencer plays without a take. The
+   state (`stems_gstate`) still follows every page.
+   - **Why stopped too** (found 7 Oct 2026, `stream` and `wrap` at lag 40
+     for 39): the port arms a take 9.6 samples before the first playing
+     frame (`--call-before-play`), so no armed frame came before the edge
+     and the take started late. The frame before a take's first playing
+     frame is always a stopped frame, so with the gains written while
+     stopped an armed-before-play take starts as before however late it
+     was armed. Stopped, the audio engine idles, so the cost there doesn't
+     matter.
    - The mirror alternates two state buffers instead of copying the
      state to `stems_gstate_prev` every frame; `gains`/`gainsdirty` read
      both, with the index of the current one.
@@ -122,13 +132,19 @@ or two. Optional, last.
    35% off `stems_drain`. The 24-bit byte order stays a byte copy: a
    ColdFire has no rotate, and a register shuffle costs more than
    `move.b` memory to memory (1.5 instructions a byte).
-2. **Bigger writes.** `CHUNK_FRAMES` 512 to 1,024: 64 KiB a write a
-   stereo 16-bit file, 96 KiB at 24 bits, half the commands. The buffers
-   grow from 0.70 MB to 1.38 MB; the stems remix has 1.36 MB free between
-   the runtime's stage and the buffers, so the ring's 8 MiB stays. The
-   risk: card commands run one at a time (STEM_REC.md 11.8), so a longer
-   write delays a Static track's next read. The readout's slowest write
-   measures it.
+2. **Bigger writes, decided by the probe.** `CHUNK_FRAMES` 512 to 1,024:
+   64 KiB a write a stereo 16-bit file, 96 KiB at 24 bits, half the
+   commands. The buffers grow from 0.70 MB to 1.38 MB; the stems remix has
+   1.36 MB free between the runtime's stage and the buffers, so the ring's
+   8 MiB stays. The risk: card commands run one at a time (STEM_REC.md
+   11.8), so a longer write delays a Static track's next read; the
+   readout's longest write measures it. The gain depends on what each
+   write call costs beyond its data, which the probe (2.3) counts first:
+   if every call also rewrites a FAT or directory sector, halving the
+   calls halves those single-sector writes, which are the slow kind on a
+   CF card. With 1,024-frame chunks the checks that need two or three
+   chunks in a take (`stream`, `cut`, `mask_take`) need longer takes;
+   `stream` and `cut` take their length from `CHUNK_FRAMES` already.
 3. **Space reservation, a probe first.** Under the port: how many sectors
    the card takes per raw write beyond the data (FAT and directory
    updates), and whether set length (`0x40018788`, which allocates when a
@@ -144,18 +160,36 @@ error. Times come from DMA timer 3 (`0xfc07c00c`), the free-running
 counter the firmware itself timestamps with: 7.58 ns a count at the
 132 MHz bus clock (`modules/cfmeter/meter.s`).
 
-- The take: frames, seconds, files, width, status.
-- The ring: PEAK in frames and percent, and the time behind at the peak.
-- Card writes: count, total time, mean and slowest; the share of the take
-  the card spent writing for STEM REC.
-- The writer's copy: total and slowest batch.
-- The writer's wake gaps: the longest time between passes while data
-  waited.
-- The frame hook on the unit: mean and longest time a frame, recording.
+As built, a line each (CRLF):
 
-How it decides: card writes that fill most of the take's time, with slow
-outliers, mean card contention; fast writes with long gaps or a long
-hook mean CPU.
+```
+STEM REC STATS 261007-2015
+status OK                          (or the error's name: RING FULL, ...)
+165375 frames, 60 s, 11 files, 24 bits
+ring peak 1234 of 7943 frames
+card writes 2584, 41234 ms in all, longest 62300 us
+writer copy 1902 ms in all, longest batch 5100 us
+writer longest sleep 12000 us, asks 10000
+hook mean 41 us, longest 88 us
+hook and frame routine mean 290 us, longest 335 us, 165375 frames
+card udma 4 mwdma 0
+```
+
+- Card writes: the raw write calls of the take (the chunks and the last
+  carries); their time in all, so their share of the take, and the
+  longest.
+- The writer's copy: the ring to the stream buffers, in all and the
+  longest batch.
+- The writer's longest sleep: it asks K_DELAY for 10 ms; a much longer
+  sleep while recording means it waited for the CPU.
+- The hook: from its entry to the stock frame routine; then the hook
+  with the stock frame routine after it (the frame is 362.8 µs). Timed on
+  the frames that publish a ring frame, so their count is the take's.
+- The card: the DMA modes the driver chose (11.7); both 0 is likely PIO.
+
+How it decides: card writes that fill most of the take's time, with long
+outliers, mean card contention; fast writes with long sleeps, or a hook
+and frame routine near the frame's 362.8 µs, mean CPU.
 
 ## 4. Testing
 
