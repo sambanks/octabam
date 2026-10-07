@@ -196,9 +196,13 @@ def main():
 
     # ---- layout: the runtime stays below the switch's pages ---------------
     lay = json.loads((ROOT / "out/platform/layout.json").read_text())
-    check("layout: the platform runtime and its stage end below the mailbox",
-          lay.get("stage_end", 0) <= MBOX,
-          f"runtime ..0x{lay.get('stage_end', 0):08x}, mailbox 0x{MBOX:08x}")
+    # the top of everything the platform places: the runtime, its stage,
+    # the units' .bss (never loaded: KITS's library, PLOCKS P2's table) and
+    # the modules' DRAM regions
+    top = max([lay.get("stage_end", 0), lay.get("bss_end", 0)]
+              + [a + n for a, n in lay.get("regions", {}).values()])
+    check("layout: the platform runtime, its stage, .bss and regions end below the mailbox",
+          top <= MBOX, f"..0x{top:08x}, mailbox 0x{MBOX:08x}")
 
     # ---- ui: the row, the dialog, the load, the reset sequence ------------
     tree = work / "card"
