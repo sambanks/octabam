@@ -60,12 +60,10 @@ def menu_inc():
     """The BRAIN root category (docs/firmware/MAINMENU.md sections 1-5): the
     root row array with the four stock rows copied from the stock image at
     build time and BRAIN appended, its icon, its list descriptor and rows.
-    The heading row names the remix and the build tag."""
+"""
     img = (pathlib.Path(schema.__file__).resolve().parents[2] / "out/raw/section_3_MAIN_OS.bin").read_bytes()
     rows = img[ROOT_ROWS - 0x40000400:ROOT_ROWS - 0x40000400 + 4 * 24]
     words = struct.unpack(">24I", rows)
-    from remix import brain as _brain
-    head = _brain.image_name()
     cols = [sum(1 << r for r in range(8) if ICON[r][c] == "#") << 24 for c in range(19)]
     out = ["        .data", "        .balign 4", "        .globl  brain_root_rows",
            "brain_root_rows:"]
@@ -77,10 +75,9 @@ def menu_inc():
             "        .balign 4",
             "        .globl  brain_list",
             # shipped at the top level; brain.c's show() repoints it
-            "brain_list: .long 4, 0, 1, 1, 7, 4, brain_top_rows",
+            "brain_list: .long 3, 0, 0, 0, 7, 3, brain_top_rows",
             "        .globl  brain_top_rows, brain_def_rows, brain_tool_rows, brain_rmx_rows, brain_rmx_n",
             "brain_top_rows:",
-            "        .long   brain_lbl_head, 0, 0, 0, 0, 0",
             "        .long   brain_lbl_defaults, 0, brain_open_defaults, 0, 0, 0",
             "        .long   brain_lbl_remixes, 0, brain_open_remixes, 0, 0, 0",
             "        .long   brain_lbl_tools, 0, brain_open_tools, 0, 0, 0",
@@ -98,7 +95,6 @@ def menu_inc():
             "        .space  36 * 0x18",
             "brain_rmx_n: .long 1",
             'brain_lbl_root: .asciz "BRAIN"',
-            f'brain_lbl_head: .asciz "{head}"',
             # \x14 / \x13: the stock font's right and left arrows (REMIX
             # SWITCH's picker draws "\x13\x14 MORE" with them)
             'brain_lbl_defaults: .asciz "DEFAULTS    \\x14"',

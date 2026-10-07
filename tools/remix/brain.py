@@ -60,8 +60,8 @@ IMAGE_NAME_MAX = 15        # REMIX SWITCH's mailbox keeps the flashed image's na
 
 
 def image_name(remix=None, build=None) -> str:
-    """The name an image calls itself: BRAIN's heading row, REMIX SWITCH's
-    RUNNING/FLASHED rows, and its .RMX file on the card. `RMXNAME` in the
+    """The name an image calls itself: REMIX SWITCH's
+    FLASHED row, the boot picker, and its .RMX file on the card. `RMXNAME` in the
     environment overrides it (`make rmx RMX=NAME`); else the remix's last
     path part and the build tag, `BRAIN B2`. Upper case, A-Z 0-9 space . _ -,
     at most IMAGE_NAME_MAX characters."""

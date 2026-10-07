@@ -245,8 +245,8 @@ def main():
     check("ui: MAIN MENU's scan, the image's row, the dialog's YES, the deferred load and the reset ran",
           len(ran) == 5, "ran: " + ", ".join(ran))
     bl = d.get("list", b"")
-    check("ui: BRAIN's pane shows REMIXES: the back row, the one image, RUNNING and FLASHED (4 rows)",
-          len(bl) == 0x1c and struct.unpack(">I", bl[:4])[0] == 4 and struct.unpack(">I", bl[0x14:0x18])[0] == 4
+    check("ui: BRAIN's pane shows REMIXES: the back row and the one image (no FLASHED rows on a boot that was not a switch)",
+          len(bl) == 0x1c and struct.unpack(">I", bl[:4])[0] == 2 and struct.unpack(">I", bl[0x14:0x18])[0] == 2
           and struct.unpack(">I", bl[0x18:0x1c])[0] == rt["brain_rmx_rows"],
           bl.hex())
     check("ui: the pane's switch syncs the project first (SYNC TO CARD posted), as OS UPGRADE does",

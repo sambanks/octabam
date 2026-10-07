@@ -303,7 +303,6 @@ buildrows:
         bcs.s   4b
         | after a switch (status RUN): a FLASHED separator and, on its own
         | row where the whole name fits, the image a power-cycle returns to.
-        | BRAIN's heading names the running image.
 5:      lea     (OSW_MBOX).l,%a1
         move.l  (MB_STATUS,%a1),%d0
         cmpi.l  #ST_RUN,%d0

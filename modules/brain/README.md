@@ -14,7 +14,6 @@ PROJ (MAIN MENU), then BRAIN, the fifth category. Its pane:
 
 | row | does |
 |---|---|
-| `<REMIX> <BUILD>` | a heading the cursor skips: the running image's name |
 | DEFAULTS ► | its sub-list: `◄ DEFAULTS`, SAVE AS DEFAULT, CLEAR DEFAULT |
 | REMIXES ► | its sub-list: `◄ REMIXES`, then REMIX SWITCH's rows (`modules/remix-switch`, sanderlegit): each `.RMX` in `/BRAIN/REMIXES/`, sorted; after a switch a `FLASHED` separator and the image a power-cycle returns to |
 | TOOLS ► | its sub-list: `◄ TOOLS`, WRITE DEBUG LOG |

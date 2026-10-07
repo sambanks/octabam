@@ -29,17 +29,15 @@ make rmx REMIX=<any remix> [RMX=NAME]     # out/<NAME>.RMX: any build, 15-charac
 ```
 
 An image names itself `<REMIX> <BUILD>` (`remix.brain.image_name`: upper
-case, A-Z 0-9 space . _ -, 15 characters); BRAIN's heading shows it and
-`make image` gives the `.RMX` the same name, which is how the boot picker
-knows its own file.
+case, A-Z 0-9 space . _ -, 15 characters); `make image` gives the `.RMX`
+the same name, which is how the boot picker knows its own file.
 
 1. Copy the `.RMX` files to `/BRAIN/REMIXES/` on the card. A Mac writes a
    `._<name>` file beside each copy; delete those, or they are listed too.
 2. MAIN MENU > BRAIN > REMIXES: `◄ REMIXES`, then every `.RMX`, sorted,
    without the extension; after a switch, a `FLASHED` separator and the
    name of the image a power-cycle returns to (carried in the mailbox
-   across the switch); a line if the last switch was refused. BRAIN's
-   heading names the running image. The list is read again each time MAIN
+   across the switch); a line if the last switch was refused. The list is read again each time MAIN
    MENU opens, without disturbing the stock browsers' listing (the scan's
    global name pool and cache are saved and restored around it,
    `docs/contributing/FAILURE_MODES.md`).
@@ -99,11 +97,10 @@ but has no list, so from it you power-cycle to come back.
 The version string on the boot screen is the FLASHED image's, whichever OS
 runs. ✅ Measured on an MKII, 29 Sep 2026: a switch to `DSPRESET.OBI` came
 up with `BSRET3OS2` under the logo, and a switch to `BASE1` did the same.
-BRAIN's heading row names the running image (`<REMIX> <BUILD>`, built
-into the image). Before the image named itself, the pane read
-`OCTABAM79` on a switch to `BASE1.OBI` (an MKII, 29 Sep 2026). Neither
-`1.40C` nor the `-V` string is in the MAIN OS image, so the boot screen's
-version is read from the flash header 🟡. Trust BRAIN's heading instead. (SYSTEM STATUS after a switch is still
+Each image carries its own name (`<REMIX> <BUILD>`); before it did, the
+pane read `OCTABAM79` on a switch to `BASE1.OBI` (an MKII, 29 Sep 2026).
+Neither `1.40C` nor the `-V` string is in the MAIN OS image, so the boot
+screen's version is read from the flash header 🟡. (SYSTEM STATUS after a switch is still
 unmeasured.)
 
 ## How

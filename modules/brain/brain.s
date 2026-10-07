@@ -2292,27 +2292,18 @@ brain_menu_log:
 	.globl	brain_menu_top
 	.type	brain_menu_top, @function
 brain_menu_top:
+	tst.l brain_list+16
+	seq %d0
 	move.l #brain_top_rows,%d1
-	move.l brain_list+16,%d0
 	move.l %d1,brain_list+24
-	mov3q.l #4,brain_list+20
-	mov3q.l #4,brain_list
-	mov3q.l #1,%d1
-	cmp.l %d0,%d1
-	jcs .L502
-	mov3q.l #2,%d1
-	sub.l %d0,%d1
-	subq.l #1,%d0
+	mov3q.l #3,brain_list+20
+	mov3q.l #3,brain_list
+	clr.l brain_list+12
+	mvs.b %d0,%d0
+	move.l %d0,%d1
+	neg.l %d1
 	move.l %d1,brain_list+4
 	move.l %d0,brain_list+8
-	mov3q.l #1,brain_list+12
-	rts
-.L502:
-	mov3q.l #1,%d0
-	clr.l %d1
-	move.l %d1,brain_list+4
-	move.l %d0,brain_list+8
-	mov3q.l #1,brain_list+12
 	rts
 	.size	brain_menu_top, .-brain_menu_top
 	.align	2
@@ -2320,27 +2311,24 @@ brain_menu_top:
 	.type	brain_menu_back, @function
 brain_menu_back:
 	move.l brain_from,%d0
-	tst.l %d0
-	jne .L506
-	mov3q.l #1,%d0
-.L506:
-	move.l brain_list+16,%a0
 	move.l #brain_top_rows,%d1
+	move.l brain_list+16,%a1
 	move.l %d1,brain_list+24
-	mov3q.l #4,brain_list+20
-	mov3q.l #4,brain_list
-	cmp.l %d0,%a0
-	jhi .L508
+	mov3q.l #3,brain_list+20
+	mov3q.l #3,brain_list
+	cmp.l %d0,%a1
+	jhi .L504
 	move.l %d0,%d1
-	sub.l %a0,%d1
 	addq.l #1,%d1
-	move.l %d0,%a0
+	move.l %a1,%a0
 	sub.l %d1,%a0
+	sub.l %a1,%d1
+	add.l %d0,%a0
 	move.l %d1,brain_list+4
 	move.l %a0,brain_list+8
 	move.l %d0,brain_list+12
 	rts
-.L508:
+.L504:
 	move.l %d0,%a0
 	clr.l %d1
 	move.l %d1,brain_list+4
@@ -2355,12 +2343,12 @@ brain_open_defaults:
 	move.l #brain_def_rows,%d1
 	move.l brain_list+16,%d0
 	move.l %d1,brain_list+24
-	mov3q.l #1,brain_from
+	clr.l brain_from
 	mov3q.l #3,brain_list+20
 	mov3q.l #3,brain_list
 	mov3q.l #1,%d1
 	cmp.l %d0,%d1
-	jcs .L513
+	jcs .L509
 	mov3q.l #2,%d1
 	sub.l %d0,%d1
 	subq.l #1,%d0
@@ -2368,7 +2356,7 @@ brain_open_defaults:
 	move.l %d0,brain_list+8
 	mov3q.l #1,brain_list+12
 	rts
-.L513:
+.L509:
 	mov3q.l #1,%d0
 	clr.l %d1
 	move.l %d1,brain_list+4
@@ -2387,14 +2375,14 @@ brain_open_remixes:
 	scs %d0
 	move.l brain_list+16,%d1
 	lea brain_rmx_rows,%a1
-	mov3q.l #2,brain_from
+	mov3q.l #1,brain_from
 	move.l %a1,brain_list+24
 	move.l %a0,brain_list+20
 	move.l %a0,brain_list
 	mvs.b %d0,%d0
 	neg.l %d0
 	cmp.l %d0,%d1
-	jhi .L518
+	jhi .L514
 	eor.l %d1,%d2
 	subq.l #1,%d1
 	move.l %d1,brain_list+8
@@ -2404,7 +2392,7 @@ brain_open_remixes:
 	move.l (%sp)+,%d2
 	move.l %a0,brain_list+4
 	rts
-.L518:
+.L514:
 	move.l (%sp)+,%d2
 	move.l %d0,%d1
 	sub.l %a0,%a0
@@ -2420,12 +2408,12 @@ brain_open_tools:
 	move.l #brain_tool_rows,%d1
 	move.l brain_list+16,%d0
 	move.l %d1,brain_list+24
-	mov3q.l #3,brain_from
+	mov3q.l #2,brain_from
 	mov3q.l #2,brain_list+20
 	mov3q.l #2,brain_list
 	mov3q.l #1,%d1
 	cmp.l %d0,%d1
-	jcs .L523
+	jcs .L519
 	mov3q.l #2,%d1
 	sub.l %d0,%d1
 	subq.l #1,%d0
@@ -2433,7 +2421,7 @@ brain_open_tools:
 	move.l %d0,brain_list+8
 	mov3q.l #1,brain_list+12
 	rts
-.L523:
+.L519:
 	mov3q.l #1,%d0
 	clr.l %d1
 	move.l %d1,brain_list+4
