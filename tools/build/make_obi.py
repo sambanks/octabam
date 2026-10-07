@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A raw OS image for OS SWITCH (modules/os-switch): the bytes the bootstrap
-would depack to 0x40000400, named for the card root (12 characters at
-most, what MAIN MENU > OS shows in one line; `make image` writes one named
+would depack to 0x40000400, named for /BRAIN/OS/ on the card (12 characters at
+most, what BRAIN's pane shows in one line; `make image` writes one named
 after the build's VERSION beside the .bin).
 
     make obi REMIX=<name> [OBI=NAME]     # out/mainos_bus.bin -> out/NAME.OBI
@@ -44,8 +44,8 @@ def main():
                  f"{stock[ver:ver + 2].hex()}: the chainloader would refuse it (BVER)")
     out = ROOT / "out" / f"{base}.OBI"
     out.write_bytes(img)
-    print(f"{out.relative_to(ROOT)}: {len(img):,} B -- copy it to the card ROOT, then "
-          f"MAIN MENU > OS")
+    print(f"{out.relative_to(ROOT)}: {len(img):,} B -- copy it to /BRAIN/OS/ on the card, then "
+          f"MAIN MENU > BRAIN")
 
 
 if __name__ == "__main__":

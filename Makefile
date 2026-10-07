@@ -17,7 +17,9 @@ DSP_ASM := vendor/dsp56300/build/source/dsp_host/dsp_asm
 # make keeps the spaces before a `#` and `make image` then splits its recipe.
 BUILD   ?= 79
 VERSION ?= OCTABAM$(BUILD)
-OBI_NAME = $(if $(OBI),$(OBI),$(notdir $(REMIX)))    # `make obi`: the .OBI's name AND the name the image calls itself
+# `make obi`: the .OBI's name AND the name the image calls itself (a comment on
+# the same line would put its spaces into the name)
+OBI_NAME = $(if $(OBI),$(OBI),$(notdir $(REMIX)))
 export VERSION                  # OS SWITCH names the image it is built into after it
 
 # Which modules the image carries. `make modules` lists what is available;
