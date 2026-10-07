@@ -3,6 +3,8 @@
 |
 | Design: git show 4d2d6456:docs/superpowers/specs/2026-09-22-stem-rec-streaming-design.md
 | (streaming), over git show 4d2d6456:docs/superpowers/specs/2026-09-10-stem-rec-poc-design.md.
+| The perf round (the 'perf design' below): 
+| git show 15703f7a:docs/superpowers/specs/2026-10-07-stem-rec-perf-design.md.
 | Every stock address below, with its evidence: docs/firmware/STEM_REC.md.
 |
 | Three parts share the state words below:

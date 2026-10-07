@@ -19,6 +19,8 @@ widths and the menu key by key on the MKII and MKI panels
   The menu: `git show 4d2d6456:docs/superpowers/specs/2026-09-28-stem-rec-menu-design.md`.
   After the fader, the buses and 24 bits:
   `git show 4d2d6456:docs/superpowers/specs/2026-10-01-stem-rec-sources-design.md`.
+  The perf round (less CPU, less card traffic, STATS.TXT, T8 MASTER):
+  `git show 15703f7a:docs/superpowers/specs/2026-10-07-stem-rec-perf-design.md`.
 - Every stock address the module uses, with its evidence:
   `docs/firmware/STEM_REC.md`. Section 12 covers streaming, section 18
   the level path, the inputs and MASTER TRACK.

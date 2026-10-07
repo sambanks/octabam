@@ -7757,7 +7757,7 @@ writer 2,446 frames behind, the seconds rise).
 ## 19. The perf round (7 Oct 2026)
 
 Branch `stems-perf`; the design is
-`docs/superpowers/specs/2026-10-07-stem-rec-perf-design.md`. Every number
+`git show 15703f7a:docs/superpowers/specs/2026-10-07-stem-rec-perf-design.md`. Every number
 here is from the port unless marked; the files are unchanged sample for
 sample, which the take checks of 18.9 prove again.
 
