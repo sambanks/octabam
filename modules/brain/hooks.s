@@ -70,3 +70,33 @@ brain_on_job:
 1:      moveq   #45,%d1
         cmp.l   %d0,%d1
         jmp     0x40084864
+
+| ---- the debug log: the MIDI thread's handler call -----------------------------
+|   0x40005572  `moveal %a2@(0,%d0:l:4),%a0 / jsr %a0@`: the handler for the
+|               message (status>>4 in d0), with the message pointer and 0
+|               pushed. The stub keeps its own return in a slot (the MIDI
+|               thread is the only caller), calls the handler as stock does,
+|               then logs the message and what the handler left.
+        .globl  brain_on_midi
+brain_on_midi:
+        move.l  %sp@+,brain_midi_ret
+        lea     brain_midi_msg,%a1      | the message as it came in: a handler
+        move.b  %a0@,%a1@               | may overwrite it (program change does)
+        move.b  %a0@(1),%a1@(1)
+        move.b  %a0@(2),%a1@(2)
+        moveal  %a2@(0,%d0:l:4),%a0
+        jsr     %a0@
+        lea     %sp@(-16),%sp
+        movem.l %d0-%d1/%a0-%a1,%sp@
+        pea     brain_midi_msg
+        jsr     brain_midi_log
+        addq.l  #4,%sp
+        movem.l %sp@,%d0-%d1/%a0-%a1
+        lea     %sp@(16),%sp
+        move.l  brain_midi_ret,%sp@-
+        rts
+        .data
+        .balign 4
+brain_midi_ret: .long 0
+brain_midi_msg: .long 0
+        .text

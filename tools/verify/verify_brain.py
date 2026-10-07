@@ -418,6 +418,28 @@ def main():
             check(f"menu: CLEAR DEFAULT leaves no BusDelay record ({sorted(recs)})",
                   mw is not None and brain.fx_store_id(bd) not in recs)
 
+    # ---- debug log: the MIDI thread's messages to /BRAIN/debug.txt ----------
+    log_at = symbol("brain_post_log")
+    lcard, lafter, llog, lmidi = OUT / "log.img", OUT / "log_after.img", OUT / "log.txt", OUT / "log.midi"
+    lmidi.write_text("40 B0 07 14\n60 C0 02\n80 B1 28 40\n")
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+                        "--tree", str(OUT / "tree_log"), "--out", str(lcard)], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_brain: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    cmd = [EMU, "--image", image, "--card", lcard, "--set", a.set_name, "--project", a.name,
+           "--mount", "--load-ms", "90000", "--sequencer", "--internal-clock", "--frames", "400",
+           "--midi", lmidi, "--step", f"200:call:{log_at:#x}", "--card-out", lafter]
+    with open(llog, "w") as fh:
+        r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+    files = emu_card.extract_image(lafter.read_bytes()) if lafter.exists() else {}
+    dbg = next((v for k, v in files.items() if k.upper().endswith("BRAIN/DEBUG.TXT")), b"").decode("ascii", "replace")
+    rows = [l.split() for l in dbg.splitlines()[2:]]
+    want = [["B0", "07", "14"], ["C0", "02", "00"], ["B1", "28", "40"]]
+    check(f"log: debug.txt holds the three messages as sent, in order  {[r[1:4] for r in rows]}",
+          [r[1:4] for r in rows] == want)
+    check(f"log: the program change left pattern {rows[1][6] if len(rows) > 1 else '?'} queued (sent 2)",
+          len(rows) > 1 and rows[1][6] == "2")
+
     # ---- mode: MODE DEFAULTS' view takes the card's values ------------------
     if "MODE DEFAULTS" in remix.modules and bd.mode_views:
         mcopy = OUT / "project_mode"

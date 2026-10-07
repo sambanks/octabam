@@ -74,15 +74,17 @@ def menu_inc():
             "brain_icon: .long 0x13, 0x09, 0x01, brain_icon_plane, " + f"0x{ICON_MASK:08x}",
             "brain_icon_plane: .long " + ", ".join(f"0x{c:08x}" for c in cols),
             "        .balign 4",
-            "brain_list: .long 3, 0, 0, 0, 7, 3, brain_rows",
+            "brain_list: .long 4, 0, 0, 0, 7, 4, brain_rows",
             "brain_rows:",
             "        .long   brain_lbl_head, 0, 0, 0, 0, 0",
             "        .long   brain_lbl_save, 0, brain_menu_save, 0, 0, 0",
             "        .long   brain_lbl_clear, 0, brain_menu_clear, 0, 0, 0",
+            "        .long   brain_lbl_log, 0, brain_menu_log, 0, 0, 0",
             'brain_lbl_root: .asciz "BRAIN"',
             f'brain_lbl_head: .asciz "{head}"',
             'brain_lbl_save: .asciz "SAVE AS DEFAULT"',
-            'brain_lbl_clear: .asciz "CLEAR DEFAULT"']
+            'brain_lbl_clear: .asciz "CLEAR DEFAULT"',
+            'brain_lbl_log: .asciz "WRITE DEBUG LOG"']
     return "\n".join(out)
 
 
@@ -104,6 +106,8 @@ MODULE = Module(
                "LOAD PROJECT, before the empty-project init: the card's defaults onto the descriptors", kind="jsr"),
         Detour(0x40084d4a, H("73b980000002"), "brain", "brain_on_bankload",
                "the bank load the power-up runs: the card's defaults onto the descriptors", kind="jsr"),
+        Detour(0x40005572, H("20720c004e90"), "brain", "brain_on_midi",
+               "the MIDI thread's handler call: the debug log records each message and what it left", kind="jsr"),
         Detour(0x4008485e, H("7192722db280"), "brain", "brain_on_job",
                "the engine task's job switch: type 0x41 runs SAVE AS DEFAULT"),
         *(Detour(site, H("4eb94008ee74"), "brain", "brain_on_store",

@@ -17,6 +17,7 @@ PROJ (MAIN MENU), then BRAIN, the fifth category:
 | `<REMIX> <BUILD>` | a heading the cursor skips: which image is flashed |
 | SAVE AS DEFAULT | the FX1 or FX2 page in view (of the current audio track, in the current Part) becomes that effect's default on this card; a popup names the page |
 | CLEAR DEFAULT | that effect's default leaves `card.work`; the descriptor goes back to the image's |
+| WRITE DEBUG LOG | the last 256 MIDI messages (clock and active sensing left out), each with the sync flags, the playing pattern and the next pattern after its handler ran, written to `/BRAIN/debug.txt` by the engine task |
 
 Opened over any other page, or on a MIDI track, the popup says to open an
 FX page and nothing is written. The category is a fifth root row: the root
@@ -142,6 +143,7 @@ Not yet.
 |---|---|---|
 | `0x40085342` | `moveq #27,%d1 / movel %d1,%fp@(-570)`, LOAD PROJECT before the empty-project init `0x400909d8` | `brain_on_load`: `brain_load`, then the two instructions |
 | `0x40084d4a` | `mvzb 0x80000002,%d1`, the bank load of every bank but the current (the power-up's path) | `brain_on_bankload` |
+| `0x40005572` | `moveal %a2@(0,%d0:l:4),%a0 / jsr %a0@`, the MIDI thread's handler call (table `0x400d6474`) | `brain_on_midi`: copies the message, calls the handler, logs it with what it left |
 | `0x4008485e` | `mvzb %a2@,%d0 / moveq #45,%d1 / cmpl %d0,%d1`, the engine task's job switch | `brain_on_job`: type `0x41` runs `brain_job` and returns to the receive at `0x4008484e`; other types continue at `0x40084864` |
 | `0x40085642`, `0x400856dc`, `0x40085780` | `jsr 0x4008ee74`, the project store | `brain_on_store`: `card.work` -> `card.strd`, then the store |
 

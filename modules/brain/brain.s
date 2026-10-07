@@ -241,13 +241,84 @@ menu_target:
 	jra .L30
 	.size	menu_target, .-menu_target
 	.align	2
+	.type	put_dec, @function
+put_dec:
+	lea (-32,%sp),%sp
+	movem.l #16444,(%sp)
+	move.l 40(%sp),%d1
+	moveq #10,%d5
+	move.l %d1,%d2
+	move.l %sp,%d3
+	remu.l %d5,%d0:%d2
+	divu.l %d5,%d2
+	add.l #22,%d3
+	move.l %d3,%a0
+	move.l %sp,%d4
+	move.l 36(%sp),%a1
+	add.l #32,%d4
+	lea (1,%a0),%a6
+	add.l #48,%d0
+	move.b %d0,(%a0)
+	moveq #9,%d0
+	cmp.l %d1,%d0
+	jcc .L45
+.L56:
+	move.l %d2,%d1
+	cmp.l %a6,%d4
+	jeq .L45
+	move.l %d1,%d2
+	moveq #10,%d5
+	remu.l %d5,%d0:%d2
+	divu.l %d5,%d2
+	move.l %a6,%a0
+	lea (1,%a0),%a6
+	add.l #48,%d0
+	move.b %d0,(%a0)
+	moveq #9,%d0
+	cmp.l %d1,%d0
+	jcs .L56
+.L45:
+	mov3q.l #1,%d0
+	sub.l %d3,%d0
+	add.l %a0,%d0
+	cmp.l 44(%sp),%d0
+	jcc .L57
+	move.l 44(%sp),%d1
+	add.l %a1,%d1
+	move.l %a1,%a0
+	sub.l %d0,%d1
+.L47:
+	move.b #32,(%a0)+
+	cmp.l %a0,%d1
+	jne .L47
+	move.l 44(%sp),%d1
+	sub.l %d0,%d1
+	move.l %d0,%a0
+	add.l %d1,%a1
+	add.l %d3,%a0
+.L50:
+	move.b -(%a0),(%a1)+
+	cmp.l %a0,%d3
+	jne .L50
+	movem.l (%sp),#16444
+	add.l %d1,%d0
+	lea (32,%sp),%sp
+	rts
+.L57:
+	clr.l %d1
+	move.l %d0,%a0
+	add.l %d1,%a1
+	add.l %d3,%a0
+	jra .L50
+	.size	put_dec, .-put_dec
+	.align	2
 	.type	snapshot, @function
 snapshot:
 	lea (-32,%sp),%sp
 	movem.l #31772,(%sp)
 	move.l brain_fx_n,%d3
 	tst.l %d3
-	jeq .L45
+	jeq .L59
 	lea brain_fx+32,%a3
 	clr.l %d1
 	lea desc,%a4
@@ -255,7 +326,7 @@ snapshot:
 	lea desc+4,%a2
 	move.l #1074618332,%a6
 	move.l #1074618200,%a5
-.L57:
+.L71:
 	mvz.b (%a3),%d4
 	move.l %d4,%d0
 	lsl.l #2,%d0
@@ -263,115 +334,115 @@ snapshot:
 	move.l (%a0,%a6.l),%d0
 	move.l (%a0,%a5.l),%a1
 	tst.l %d0
-	jeq .L46
+	jeq .L60
 	move.l %d0,%a0
 	cmp.l (%a0),%d4
-	jne .L46
+	jne .L60
 	move.l %d0,(%a4)
 	tst.l %a1
-	jeq .L54
+	jeq .L68
 	cmp.l (%a1),%d4
-	jne .L54
+	jne .L68
 	cmp.l %d0,%a1
-	jeq .L54
+	jeq .L68
 	move.l %a1,(%a2)
 	move.l %d0,%a0
 	move.l %d2,%a1
 	lea (94,%a0),%a0
 	add.l #106,%d0
 	lea (-12,%a1),%a1
-.L55:
+.L69:
 	move.b (%a0)+,(%a1)+
 	cmp.l %d0,%a0
-	jne .L55
+	jne .L69
 	move.l (%a2),%a1
 	tst.l %a1
-	jne .L53
-.L51:
+	jne .L67
+.L65:
 	addq.l #1,%d1
 	cmp.l %d3,%d1
-	jeq .L45
+	jeq .L59
 	lea (36,%a3),%a3
 	addq.l #8,%a4
 	add.l #24,%d2
 	addq.l #8,%a2
 	moveq #32,%d0
 	cmp.l %d1,%d0
-	jne .L57
-.L45:
+	jne .L71
+.L59:
 	move.l brain_modedef,%a1
 	tst.l %a1
-	jeq .L59
+	jeq .L73
 	sub.l %a0,%a0
-.L58:
+.L72:
 	mvz.b (%a1,%a0.l),%d0
 	cmp.l #255,%d0
-	jeq .L92
+	jeq .L106
 	mvz.b 2(%a1,%a0.l),%d2
 	addq.l #3,%a0
 	tst.l %d2
-	jeq .L60
+	jeq .L74
 	clr.l %d0
-.L61:
+.L75:
 	mvz.b 1(%a1,%a0.l),%d1
 	addq.l #1,%d0
 	lea 2(%a0,%d1.l*2),%a0
 	cmp.l %d2,%d0
-	jne .L61
-.L60:
+	jne .L75
+.L74:
 	cmp.l #1023,%a0
-	jls .L58
+	jls .L72
 	clr.l table_len
-.L59:
+.L73:
 	movem.l (%sp),#31772
 	mov3q.l #1,snapped
 	lea (32,%sp),%sp
 	rts
-.L46:
+.L60:
 	clr.l (%a4)
 	tst.l %a1
-	jeq .L87
+	jeq .L101
 	cmp.l (%a1),%d4
-	jne .L87
+	jne .L101
 	move.l %a1,(%a2)
-.L53:
+.L67:
 	lea (94,%a1),%a0
 	move.l %a1,%d0
 	move.l %d2,%a1
 	add.l #106,%d0
-.L56:
+.L70:
 	move.b (%a0)+,(%a1)+
 	cmp.l %a0,%d0
-	jeq .L51
+	jeq .L65
 	move.b (%a0)+,(%a1)+
 	cmp.l %a0,%d0
-	jne .L56
-	jra .L51
-.L54:
+	jne .L70
+	jra .L65
+.L68:
 	move.l %d0,%a0
 	move.l %d2,%a1
 	clr.l (%a2)
 	lea (94,%a0),%a0
 	add.l #106,%d0
 	lea (-12,%a1),%a1
-	jra .L55
-.L87:
+	jra .L69
+.L101:
 	clr.l (%a2)
-	jra .L51
-.L92:
+	jra .L65
+.L106:
 	move.l %a0,table_len
 	tst.l %a0
-	jeq .L59
+	jeq .L73
 	lea table_shadow,%a2
 	add.l %a1,%a0
-.L65:
+.L79:
 	move.b (%a1)+,(%a2)+
 	cmp.l %a0,%a1
-	jeq .L59
+	jeq .L73
 	move.b (%a1)+,(%a2)+
 	cmp.l %a0,%a1
-	jne .L65
-	jra .L59
+	jne .L79
+	jra .L73
 	.size	snapshot, .-snapshot
 	.align	2
 	.type	apply.isra.0, @function
@@ -380,7 +451,7 @@ apply.isra.0:
 	lea (-584,%sp),%sp
 	movem.l #31996,(%sp)
 	tst.l %d0
-	jeq .L93
+	jeq .L107
 	move.l brain_fx_n,%d5
 	move.l %d0,%d6
 	move.l brain_counts+8,%d3
@@ -389,7 +460,7 @@ apply.isra.0:
 	moveq #32,%d4
 	lea buf+16,%a3
 	move.l %d6,44(%sp)
-.L108:
+.L122:
 	move.l %d4,%a2
 	add.l #buf,%a2
 	mvz.b (%a2),%d0
@@ -397,11 +468,11 @@ apply.isra.0:
 	move.l %d3,brain_counts+8
 	subq.l #2,%d0
 	tst.l %d0
-	jne .L102
+	jne .L116
 	move.l 8(%a2),%d2
 	mvz.b 1(%a2),%d7
 	tst.l %d2
-	jeq .L96
+	jeq .L110
 	move.l %d7,%d0
 	moveq #-4,%d6
 	addq.l #3,%d0
@@ -409,11 +480,11 @@ apply.isra.0:
 	mov3q.l #-1,%d1
 	lea 20(%a2,%d0.l),%a1
 	add.l %a1,%d2
-.L98:
+.L112:
 	mvz.b (%a1)+,%d0
 	move.w #8,%a0
 	eor.l %d0,%d1
-.L97:
+.L111:
 	mov3q.l #1,%d0
 	and.l %d1,%d0
 	lsr.l #1,%d1
@@ -422,56 +493,56 @@ apply.isra.0:
 	and.l #-306674912,%d0
 	eor.l %d0,%d1
 	tst.l %a0
-	jne .L97
+	jne .L111
 	cmp.l %a1,%d2
-	jne .L98
+	jne .L112
 	move.l %d1,%d2
 	not.l %d2
-.L96:
+.L110:
 	cmp.l 12(%a2),%d2
-	jne .L99
+	jne .L113
 	tst.l %d5
-	jeq .L101
+	jeq .L115
 	lea brain_fx+4,%a6
 	sub.l %a4,%a4
-.L107:
+.L121:
 	mvz.b 29(%a6),%d0
 	cmp.l %d7,%d0
-	jne .L103
+	jne .L117
 	tst.l %d7
-	jeq .L104
+	jeq .L118
 	move.l (%a6),%a0
 	move.l %d7,%d2
 	lea (20,%a2),%a1
 	add.l %a0,%d2
-.L105:
+.L119:
 	mvz.b (%a1),%d1
 	mvz.b (%a0),%d0
 	addq.l #1,%a1
 	addq.l #1,%a0
 	cmp.l %d1,%d0
-	jne .L103
+	jne .L117
 	cmp.l %a0,%d2
-	jne .L105
-.L104:
+	jne .L119
+.L118:
 	moveq #63,%d0
 	cmp.l %a5,%d0
-	jcs .L102
+	jcs .L116
 	lea (%sp,%a5.l*4),%a0
 	addq.l #1,%a5
 	move.l %a2,72(%a0)
 	move.l %a4,328(%a0)
-.L102:
+.L116:
 	add.l (%a3,%d4.l),%d4
 	cmp.l 44(%sp),%d3
-	jne .L108
-.L203:
+	jne .L122
+.L217:
 	tst.l %a5
-	jeq .L93
+	jeq .L107
 	clr.l %d7
 	lea (328,%sp),%a4
 	lea (72,%sp),%a6
-.L145:
+.L159:
 	move.l (%a6)+,%a1
 	moveq #-4,%d4
 	move.l %sp,%d1
@@ -483,33 +554,33 @@ apply.isra.0:
 	addq.l #3,%d2
 	and.l %d4,%d2
 	lea 20(%a1,%d2.l),%a3
-.L112:
+.L126:
 	move.l %d1,%a2
 	addq.l #4,%d1
 	cmp.l %d0,%d7
-	jeq .L110
+	jeq .L124
 	move.l (%a4),%d6
 	cmp.l (%a0),%d6
-	jeq .L201
-.L110:
+	jeq .L215
+.L124:
 	addq.l #1,%d0
 	addq.l #4,%a0
 	cmp.l %d0,%a5
-	jne .L112
-.L202:
+	jne .L126
+.L216:
 	tst.l %d3
-	jeq .L113
+	jeq .L127
 	addq.l #1,brain_counts+36
-.L114:
+.L128:
 	addq.l #1,%d7
 	addq.l #4,%a4
 	cmp.l %d7,%a5
-	jne .L145
-.L93:
+	jne .L159
+.L107:
 	movem.l (%sp),#31996
 	lea (584,%sp),%sp
 	rts
-.L201:
+.L215:
 	move.l (%a2),%a2
 	moveq #-4,%d4
 	move.l (%a3),%d6
@@ -524,32 +595,32 @@ apply.isra.0:
 	neg.l %d2
 	or.l %d2,%d3
 	cmp.l %d0,%a5
-	jne .L112
-	jra .L202
-.L103:
+	jne .L126
+	jra .L216
+.L117:
 	addq.l #1,%a4
 	cmp.l %a4,%d5
-	jeq .L101
+	jeq .L115
 	lea (36,%a6),%a6
 	cmp.l #brain_fx+1156,%a6
-	jne .L107
-.L101:
+	jne .L121
+.L115:
 	add.l (%a3,%d4.l),%d4
 	addq.l #1,brain_counts+20
 	cmp.l 44(%sp),%d3
-	jne .L108
-	jra .L203
-.L113:
+	jne .L122
+	jra .L217
+.L127:
 	mvz.w 2(%a1),%d0
 	subq.l #1,%d0
 	tst.l %d0
-	jne .L114
+	jne .L128
 	move.l 8(%a1),%d6
 	mov3q.l #7,%d2
 	cmp.l %d6,%d2
-	jcc .L114
+	jcc .L128
 	tst.w (%a3)
-	jne .L118
+	jne .L132
 	move.l (%a4),56(%sp)
 	move.l 56(%sp),%d3
 	moveq #36,%d4
@@ -558,31 +629,31 @@ apply.isra.0:
 	move.l (%a0,%d3.l),%a1
 	move.l %d3,48(%sp)
 	cmp.l 4(%a3),%a1
-	jeq .L116
+	jeq .L130
 	addq.l #1,brain_counts+24
 	addq.l #1,%d7
 	addq.l #4,%a4
 	cmp.l %d7,%a5
-	jne .L145
-	jra .L93
-.L99:
+	jne .L159
+	jra .L107
+.L113:
 	add.l (%a3,%d4.l),%d4
 	addq.l #1,brain_counts+32
 	cmp.l 44(%sp),%d3
-	jne .L108
-	jra .L203
-.L116:
+	jne .L122
+	jra .L217
+.L130:
 	mvz.w 2(%a3),%d0
 	move.l %d0,%a2
 	cmp.l #65535,%d0
-	jne .L204
+	jne .L218
 	clr.l %d5
 	clr.l 44(%sp)
-.L117:
+.L131:
 	addq.l #1,brain_counts+12
 	moveq #11,%d3
 	cmp.l %d6,%d3
-	jcc .L114
+	jcc .L128
 	moveq #8,%d1
 	move.w #12,%a1
 	move.l %a6,60(%sp)
@@ -590,8 +661,8 @@ apply.isra.0:
 	move.l %d7,64(%sp)
 	move.l %d1,%a0
 	cmp.l #255,%d2
-	jeq .L123
-.L206:
+	jeq .L137
+.L220:
 	move.l %d2,%d0
 	moveq #-4,%d4
 	addq.l #3,%d0
@@ -599,26 +670,26 @@ apply.isra.0:
 	addq.l #4,%a0
 	add.l %a0,%d0
 	cmp.l %d6,%d0
-	jhi .L197
-.L207:
+	jhi .L211
+.L221:
 	mvz.b 2(%a3,%d1.l),%d3
 	subq.l #5,%d3
 	tst.l %d3
-	jeq .L205
-.L125:
+	jeq .L219
+.L139:
 	move.l %d0,%a1
 	addq.l #4,%a1
 	cmp.l %d6,%a1
-	jhi .L197
+	jhi .L211
 	move.l %d0,%d1
 	move.l %d1,%a0
 	mvz.b 3(%a3,%d1.l),%d2
 	cmp.l #255,%d2
-	jne .L206
-.L123:
+	jne .L220
+.L137:
 	addq.l #8,%a0
 	cmp.l %d6,%a0
-	jhi .L197
+	jhi .L211
 	move.l (%a3,%a1.l),%d2
 	moveq #-4,%d4
 	move.l %d2,%d0
@@ -626,62 +697,62 @@ apply.isra.0:
 	and.l %d4,%d0
 	add.l %a0,%d0
 	cmp.l %d6,%d0
-	jls .L207
-.L197:
+	jls .L221
+.L211:
 	move.l 64(%sp),%d7
 	addq.l #4,%a4
 	move.l 60(%sp),%a6
 	addq.l #1,%d7
 	cmp.l %d7,%a5
-	jne .L145
-	jra .L93
-.L204:
+	jne .L159
+	jra .L107
+.L218:
 	move.l brain_modedef,%a1
 	tst.l %a1
-	jeq .L118
+	jeq .L132
 	move.l table_len,%d1
 	move.l %d1,44(%sp)
 	tst.l %d1
-	jeq .L118
+	jeq .L132
 	move.l 48(%sp),%d2
 	mvz.b 32(%a0,%d2.l),%d3
 	sub.l %a0,%a0
-.L122:
+.L136:
 	mvz.b 2(%a1,%a0.l),%d2
 	tst.l %d2
-	jeq .L147
+	jeq .L161
 	move.b (%a1,%a0.l),%d1
 	addq.l #3,%a0
 	clr.l %d0
 	mvz.b %d1,%d1
-.L121:
+.L135:
 	mvz.b 1(%a1,%a0.l),%d5
 	addq.l #1,%d0
 	cmp.l %d3,%d1
-	jeq .L208
-.L120:
+	jeq .L222
+.L134:
 	lea 2(%a0,%d5.l*2),%a0
 	cmp.l %d2,%d0
-	jne .L121
+	jne .L135
 	cmp.l 44(%sp),%a0
-	jcs .L122
-.L118:
+	jcs .L136
+.L132:
 	addq.l #1,brain_counts+28
 	addq.l #1,%d7
 	addq.l #4,%a4
 	cmp.l %d7,%a5
-	jne .L145
-	jra .L93
-.L205:
+	jne .L159
+	jra .L107
+.L219:
 	subq.l #1,%d2
 	tst.l %d2
-	jne .L125
+	jne .L139
 	mvz.w (%a3,%d1.l),%d4
 	tst.l %d4
-	jeq .L125
+	jeq .L139
 	move.b (%a3,%a0.l),%d7
 	tst.l 44(%sp)
-	jne .L209
+	jne .L223
 	move.l 56(%sp),%d3
 	mvz.b %d7,%d2
 	mvz.w #154,%d1
@@ -691,56 +762,56 @@ apply.isra.0:
 	add.l #brain_fx+8,%a1
 	move.l %d2,52(%sp)
 	move.l %d0,68(%sp)
-.L143:
+.L157:
 	mvz.w (%a1)+,%d2
 	cmp.l %d4,%d2
-	jeq .L210
-.L138:
+	jeq .L224
+.L152:
 	addq.l #1,%a0
 	addq.l #4,%d1
 	cmp.l #202,%d1
-	jne .L143
+	jne .L157
 	move.l 68(%sp),%d0
-	jra .L125
-.L210:
+	jra .L139
+.L224:
 	move.l %d3,%a2
 	add.l #desc,%a2
 	move.l (%a2)+,%a6
 	tst.l %a6
-	jeq .L172
+	jeq .L186
 	move.l 52(%sp),%d0
 	clr.l %d2
 	cmp.l (%a6,%d1.l),%d0
-	jcc .L140
-.L211:
+	jcc .L154
+.L225:
 	move.b %d7,(%a6,%a0.l)
 	subq.l #1,%d2
 	addq.l #1,brain_counts+16
 	tst.l %d2
-	jeq .L138
-.L172:
+	jeq .L152
+.L186:
 	move.l (%a2),%a6
 	tst.l %a6
-	jeq .L138
+	jeq .L152
 	move.l 52(%sp),%d0
 	addq.l #4,%a2
 	mov3q.l #1,%d2
 	cmp.l (%a6,%d1.l),%d0
-	jcs .L211
-.L140:
+	jcs .L225
+.L154:
 	addq.l #1,brain_counts+40
 	subq.l #1,%d2
 	tst.l %d2
-	jeq .L138
-	jra .L172
-.L208:
+	jeq .L152
+	jra .L186
+.L222:
 	mvz.b (%a1,%a0.l),%d4
 	cmp.l %a2,%d4
-	jne .L120
+	jne .L134
 	lea 2(%a1,%a0.l),%a0
 	move.l %a0,44(%sp)
-	jra .L117
-.L209:
+	jra .L131
+.L223:
 	move.l 56(%sp),%d1
 	sub.l %a1,%a1
 	mvz.b %d7,%d2
@@ -752,42 +823,42 @@ apply.isra.0:
 	move.l %d1,52(%sp)
 	mvz.w (%a2)+,%d1
 	cmp.l %d4,%d1
-	jeq .L212
-.L127:
+	jeq .L226
+.L141:
 	addq.l #1,%a1
 	addq.l #4,%d3
 	cmp.l #202,%d3
-	jeq .L125
-.L200:
+	jeq .L139
+.L214:
 	mvz.w (%a2)+,%d1
 	cmp.l %d4,%d1
-	jne .L127
-.L212:
+	jne .L141
+.L226:
 	move.l 52(%sp),%a0
 	move.l #desc,%d1
 	move.l (%a0,%d1.l),%a6
 	tst.l %a6
-	jeq .L128
+	jeq .L142
 	tst.l %d5
-	jeq .L130
+	jeq .L144
 	move.l 44(%sp),%a0
 	clr.l %d1
-.L131:
+.L145:
 	mvz.b (%a0),%d2
 	addq.l #2,%a0
 	cmp.l %d2,%a1
-	jeq .L132
+	jeq .L146
 	addq.l #1,%d1
 	cmp.l %d1,%d5
-	jhi .L131
-.L132:
+	jhi .L145
+.L146:
 	cmp.l %d5,%d1
-	jeq .L130
+	jeq .L144
 	tst.l %a6
-	jeq .L135
+	jeq .L149
 	move.l 68(%sp),%d2
 	cmp.l (%a6,%d3.l),%d2
-	jcc .L135
+	jcc .L149
 	mvz.w %d1,%d1
 	move.l 44(%sp),%a0
 	addq.l #1,%a1
@@ -795,36 +866,36 @@ apply.isra.0:
 	move.b %d7,1(%a0,%d1.l*2)
 	addq.l #1,brain_counts+16
 	cmp.l #202,%d3
-	jne .L200
-	jra .L125
-.L135:
+	jne .L214
+	jra .L139
+.L149:
 	addq.l #1,brain_counts+40
 	addq.l #1,%a1
 	addq.l #4,%d3
 	cmp.l #202,%d3
-	jne .L200
-	jra .L125
-.L128:
+	jne .L214
+	jra .L139
+.L142:
 	tst.l %d5
-	jeq .L130
+	jeq .L144
 	move.l 52(%sp),%d1
 	lea desc,%a0
 	move.l 4(%a0,%d1.l),%a6
 	move.l 44(%sp),%a0
 	clr.l %d1
-	jra .L131
-.L130:
+	jra .L145
+.L144:
 	addq.l #1,brain_counts+44
 	addq.l #1,%a1
 	addq.l #4,%d3
 	cmp.l #202,%d3
-	jne .L200
-	jra .L125
-.L147:
+	jne .L214
+	jra .L139
+.L161:
 	addq.l #3,%a0
 	cmp.l 44(%sp),%a0
-	jcs .L122
-	jra .L118
+	jcs .L136
+	jra .L132
 	.size	apply.isra.0, .-apply.isra.0
 	.align	2
 	.type	valid, @function
@@ -833,36 +904,36 @@ valid:
 	moveq #31,%d0
 	movem.l #1036,(%sp)
 	cmp.l 24(%sp),%d0
-	jcc .L216
+	jcc .L230
 	move.l #1112686926,%d1
 	cmp.l buf.l,%d1
-	jeq .L227
-.L216:
+	jeq .L241
+.L230:
 	movem.l (%sp),#1036
 	clr.l %d0
 	lea (20,%sp),%sp
 	rts
-.L227:
+.L241:
 	mvz.w buf+4,%d0
 	moveq #32,%d2
 	cmp.l %d0,%d2
-	jne .L216
+	jne .L230
 	mvz.b buf+6,%d0
 	subq.l #1,%d0
 	tst.l %d0
-	jne .L216
+	jne .L230
 	move.l 24(%sp),%a1
 	cmp.l buf+12.l,%a1
-	jne .L216
+	jne .L230
 	add.l #buf,%a1
 	move.l %a1,12(%sp)
 	mov3q.l #-1,%d1
 	lea buf+20,%a1
-.L218:
+.L232:
 	mvz.b (%a1)+,%d0
 	move.w #8,%a0
 	eor.l %d0,%d1
-.L217:
+.L231:
 	mov3q.l #1,%d0
 	and.l %d1,%d0
 	lsr.l #1,%d1
@@ -871,23 +942,23 @@ valid:
 	and.l #-306674912,%d0
 	eor.l %d0,%d1
 	tst.l %a0
-	jne .L217
+	jne .L231
 	cmp.l 12(%sp),%a1
-	jne .L218
+	jne .L232
 	not.l %d1
 	cmp.l buf+16.l,%d1
-	jne .L216
+	jne .L230
 	mvz.w buf+10,%d0
 	move.l %d0,16(%sp)
 	tst.l %d0
-	jeq .L221
+	jeq .L235
 	moveq #32,%d0
-.L220:
+.L234:
 	move.l %d0,%d1
 	addq.l #1,%a0
 	add.l #20,%d1
 	cmp.l 24(%sp),%d1
-	jhi .L216
+	jhi .L230
 	lea buf,%a1
 	moveq #-4,%d3
 	mvz.b 1(%a1,%d0.l),%d1
@@ -899,7 +970,7 @@ valid:
 	move.l %d2,%a1
 	moveq #62,%d2
 	cmp.l %d1,%d2
-	jcs .L216
+	jcs .L230
 	lea buf+8,%a2
 	move.l (%a2,%d0.l),%d1
 	addq.l #3,%d1
@@ -907,27 +978,27 @@ valid:
 	lea buf+16,%a2
 	lea 20(%a1,%d1.l),%a1
 	cmp.l (%a2,%d0.l),%a1
-	jne .L216
+	jne .L230
 	add.l %a1,%d0
 	cmp.l 24(%sp),%d0
-	jhi .L216
+	jhi .L230
 	cmp.l 16(%sp),%a0
-	jne .L220
+	jne .L234
 	cmp.l 24(%sp),%d0
 	seq %d0
 	mvs.b %d0,%d0
 	neg.l %d0
-.L228:
+.L242:
 	movem.l (%sp),#1036
 	lea (20,%sp),%sp
 	rts
-.L221:
+.L235:
 	moveq #32,%d0
 	cmp.l 24(%sp),%d0
 	seq %d0
 	mvs.b %d0,%d0
 	neg.l %d0
-	jra .L228
+	jra .L242
 	.size	valid, .-valid
 	.section	.rodata.str1.1
 .LC9:
@@ -952,42 +1023,42 @@ write_default:
 	add.l 1187521622,%a2
 	move.l %d6,%d0
 	tst.l %d5
-	jeq .L230
+	jeq .L244
 	addq.l #8,%d0
-.L230:
+.L244:
 	move.b (%a2,%d0.l),%d2
 	addq.l #1,brain_save_counts
 	tst.l snapped
-	jeq .L353
-.L231:
+	jeq .L367
+.L245:
 	move.l brain_fx_n,%d3
 	tst.l %d3
-	jeq .L240
+	jeq .L254
 	mvz.b %d2,%d2
 	clr.l %d0
 	lea desc,%a1
 	mov3q.l #-1,%d4
 	lea brain_fx+32,%a0
-.L239:
+.L253:
 	mvz.b (%a0),%d1
 	lea (36,%a0),%a0
 	cmp.l %d2,%d1
-	jeq .L354
-.L235:
+	jeq .L368
+.L249:
 	addq.l #1,%d0
 	addq.l #8,%a1
 	cmp.l %d0,%d3
-	jeq .L238
+	jeq .L252
 	moveq #32,%d1
 	cmp.l %d0,%d1
-	jne .L239
-.L238:
+	jne .L253
+.L252:
 	mov3q.l #-1,%d2
 	cmp.l %d4,%d2
-	jeq .L285
+	jeq .L299
 	mov3q.l #7,%d3
 	cmp.l %d6,%d3
-	jcs .L240
+	jcs .L254
 	tst.l %d5
 	sne %d1
 	moveq #24,%d0
@@ -1000,14 +1071,14 @@ write_default:
 	neg.l %d1
 	add.l %a2,%a0
 	tst.b %d1
-	jne .L355
+	jne .L369
 	move.w #766,%a5
 	move.l %a3,%a1
 	clr.l %d0
 	add.l %d6,%a2
-.L245:
+.L259:
 	tst.l %d5
-	jeq .L243
+	jeq .L257
 	move.b 6(%a0),%d1
 	lea (%a2,%d0.l),%a4
 	addq.l #1,%a0
@@ -1017,33 +1088,33 @@ write_default:
 	move.b %d1,(%a1)+
 	move.b (%a4),5(%a1)
 	cmp.l %d0,%d3
-	jne .L245
-.L359:
+	jne .L259
+.L373:
 	pea .LC9
 	lea slurp,%a2
 	jsr (%a2)
 	addq.l #4,%sp
 	tst.l %d0
-	jeq .L246
+	jeq .L260
 	move.l %d0,-(%sp)
 	lea valid,%a4
 	jsr (%a4)
 	addq.l #4,%sp
 	tst.l %d0
-	jne .L247
+	jne .L261
 	pea .LC10
 	jsr (%a2)
 	addq.l #4,%sp
 	move.l %d0,%d7
 	tst.l %d0
-	jeq .L251
+	jeq .L265
 	move.l %d7,-(%sp)
 	jsr (%a4)
 	addq.l #4,%sp
 	tst.l %d0
-	jne .L247
-.L251:
-.L233:
+	jne .L261
+.L265:
+.L247:
 	mov3q.l #2,%d0
 	moveq #-2,%d4
 	move.l %d0,brain_save_counts+4
@@ -1051,30 +1122,30 @@ write_default:
 	movem.l (%sp),#31996
 	lea (64,%sp),%sp
 	rts
-.L354:
+.L368:
 	tst.l (%a1)
-	jeq .L356
+	jeq .L370
 	move.l %d0,%d4
-	jra .L235
-.L356:
+	jra .L249
+.L370:
 	tst.l 4(%a1)
-	jeq .L235
+	jeq .L249
 	move.l %d0,%d4
-	jra .L235
-.L353:
+	jra .L249
+.L367:
 	jsr snapshot
-	jra .L231
-.L355:
+	jra .L245
+.L369:
 	move.w #772,%a5
 	move.l %a3,%a1
 	clr.l %d0
 	add.l %d6,%a2
-	jra .L245
-.L247:
+	jra .L259
+.L261:
 	mvz.w buf+10,%d5
 	move.l %d5,%a4
 	tst.l %d5
-	jeq .L286
+	jeq .L300
 	moveq #36,%d0
 	moveq #32,%d3
 	muls.l %d4,%d0
@@ -1089,73 +1160,73 @@ write_default:
 	add.l #brain_fx+33,%a0
 	move.l %a0,%a3
 	move.l %d0,%a6
-.L259:
+.L273:
 	move.l %d3,%a0
 	add.l #buf,%a0
 	mvz.b (%a0),%d0
 	subq.l #2,%d0
 	tst.l %d0
-	jne .L252
+	jne .L266
 	mvz.b 1(%a0),%d4
 	mvz.b (%a3),%d0
 	cmp.l %d4,%d0
-	jne .L252
+	jne .L266
 	tst.l %d4
-	jeq .L253
+	jeq .L267
 	move.l (%a6),%a1
 	move.l %d4,%d6
 	lea (20,%a0),%a2
 	add.l %a1,%d6
-.L254:
+.L268:
 	mvz.b (%a2),%d2
 	mvz.b (%a1),%d0
 	addq.l #1,%a2
 	addq.l #1,%a1
 	cmp.l %d2,%d0
-	jne .L252
+	jne .L266
 	cmp.l %d6,%a1
-	jne .L254
-.L253:
+	jne .L268
+.L267:
 	mov3q.l #3,%d0
 	cmp.l 8(%a0),%d0
-	jcc .L252
+	jcc .L266
 	addq.l #3,%d4
 	moveq #-4,%d2
 	and.l %d2,%d4
 	lea 20(%a0,%d4.l),%a1
 	tst.w (%a1)
-	jne .L252
+	jne .L266
 	mvz.w 2(%a1),%d0
 	cmp.l #65535,%d0
-	jeq .L255
-.L252:
+	jeq .L269
+.L266:
 	move.l 16(%a0),%d0
 	move.l %d0,%d2
 	add.l %d1,%d2
 	cmp.l #16384,%d2
-	jhi .L256
+	jhi .L270
 	tst.l %d0
-	jeq .L257
+	jeq .L271
 	move.l %d1,%a1
 	add.l %a0,%d0
 	add.l #out,%a1
-.L258:
+.L272:
 	move.b (%a0)+,(%a1)+
 	cmp.l %d0,%a0
-	jne .L258
-.L257:
+	jne .L272
+.L271:
 	addq.l #1,%d7
 	move.l %d2,%d1
-.L255:
+.L269:
 	add.l (%a5,%d3.l),%d3
 	addq.l #1,%d5
 	cmp.l %d5,%a4
-	jne .L259
+	jne .L273
 	move.l 44(%sp),%a3
 	move.l 48(%sp),%d4
-.L250:
+.L264:
 	tst.l 76(%sp)
-	jne .L260
+	jne .L274
 	move.w %d4,%d3
 	clr.l %d0
 	mulu.w #36,%d3
@@ -1163,13 +1234,13 @@ write_default:
 	add.l #brain_fx+8,%a1
 	add.l #brain_fx+32,%d3
 	move.l %a1,%a0
-.L261:
+.L275:
 	tst.w (%a0)+
 	sne %d2
 	mvs.b %d2,%d2
 	sub.l %d2,%d0
 	cmp.l %d3,%a0
-	jne .L261
+	jne .L275
 	moveq #36,%d5
 	moveq #-4,%d6
 	muls.l %d4,%d5
@@ -1189,19 +1260,19 @@ write_default:
 	move.l %d3,%d6
 	add.l %d1,%d6
 	cmp.l #16384,%d6
-	jhi .L256
+	jhi .L270
 	move.l %d1,%a4
 	add.l #out,%a4
 	tst.l %d3
-	jeq .L263
+	jeq .L277
 	move.l %d3,%d1
 	move.l %a4,%a2
 	add.l %a4,%d1
-.L264:
+.L278:
 	clr.b (%a2)+
 	cmp.l %d1,%a2
-	jne .L264
-.L263:
+	jne .L278
+.L277:
 	move.w %a6,%d1
 	move.b #2,(%a4)
 	move.l %d0,8(%a4)
@@ -1210,15 +1281,15 @@ write_default:
 	moveq #1,%d1
 	move.w %d1,2(%a4)
 	tst.l %d2
-	jeq .L265
+	jeq .L279
 	move.l 4(%a5,%d5.l),%a2
 	lea (20,%a4),%a6
 	add.l %a2,%d2
-.L266:
+.L280:
 	move.b (%a2)+,(%a6)+
 	cmp.l %d2,%a2
-	jne .L266
-.L265:
+	jne .L280
+.L279:
 	moveq #-1,%d2
 	add.l %a4,%a0
 	add.l %d5,%a5
@@ -1228,27 +1299,27 @@ write_default:
 	move.l %a3,%d2
 	add.l #12,%d2
 	move.l (%a5),4(%a0)
-.L268:
+.L282:
 	move.w (%a1)+,%d1
-	jeq .L267
+	jeq .L281
 	move.w #1281,%d3
 	move.b (%a2),4(%a6)
 	move.w %d1,(%a6)
 	addq.l #8,%a6
 	move.w %d3,-6(%a6)
-.L267:
+.L281:
 	addq.l #1,%a2
 	cmp.l %a2,%d2
-	jne .L268
+	jne .L282
 	tst.l %d0
-	jeq .L287
+	jeq .L301
 	add.l %a0,%d0
 	mov3q.l #-1,%d2
-.L271:
+.L285:
 	mvz.b (%a0)+,%d1
 	move.w #8,%a1
 	eor.l %d1,%d2
-.L270:
+.L284:
 	mov3q.l #1,%d1
 	and.l %d2,%d1
 	lsr.l #1,%d2
@@ -1257,9 +1328,9 @@ write_default:
 	and.l #-306674912,%d1
 	eor.l %d1,%d2
 	tst.l %a1
-	jne .L270
+	jne .L284
 	cmp.l %d0,%a0
-	jne .L271
+	jne .L285
 	not.l %d2
 	move.b %d2,%d3
 	moveq #24,%d5
@@ -1275,13 +1346,13 @@ write_default:
 	move.b %d3,15(%a4)
 	move.b %d1,13(%a4)
 	move.l %d6,%d1
-.L260:
+.L274:
 	move.l #out,%d3
 	move.l %d3,%a0
-.L272:
+.L286:
 	clr.l (%a0)+
 	cmp.l #out+32,%a0
-	jne .L272
+	jne .L286
 	moveq #1,%d0
 	moveq #32,%d6
 	move.l #1112686926,%d2
@@ -1298,16 +1369,16 @@ write_default:
 	move.l %d6,out+20
 	move.b %d0,out+24
 	cmp.l %d1,%d2
-	jeq .L288
+	jeq .L302
 	move.l %d1,%d5
 	mov3q.l #-1,%d2
 	add.l #out,%d5
 	lea out+20,%a1
-.L275:
+.L289:
 	mvz.b (%a1)+,%d0
 	move.w #8,%a0
 	eor.l %d0,%d2
-.L274:
+.L288:
 	mov3q.l #1,%d0
 	and.l %d2,%d0
 	lsr.l #1,%d2
@@ -1316,11 +1387,11 @@ write_default:
 	and.l #-306674912,%d0
 	eor.l %d0,%d2
 	tst.l %a0
-	jne .L274
+	jne .L288
 	cmp.l %a1,%d5
-	jne .L275
+	jne .L289
 	not.l %d2
-.L273:
+.L287:
 	move.l %d1,-(%sp)
 	move.l %d3,-(%sp)
 	pea .LC9
@@ -1329,9 +1400,9 @@ write_default:
 	lea (12,%sp),%sp
 	addq.l #1,%d0
 	tst.l %d0
-	jeq .L289
+	jeq .L303
 	tst.l 76(%sp)
-	jne .L357
+	jne .L371
 	move.l %d4,%d3
 	moveq #94,%d1
 	lsl.l #3,%d3
@@ -1342,16 +1413,16 @@ write_default:
 	move.l %d4,%a0
 	add.l #brain_fx+8,%a0
 	lea 4(%a2,%d3.l),%a4
-.L283:
+.L297:
 	tst.w (%a0)+
-	jne .L358
-.L281:
+	jne .L372
+.L295:
 	addq.l #1,%d1
 	addq.l #1,%a3
 	addq.l #4,%d0
 	cmp.l %a3,%a1
-	jne .L283
-.L348:
+	jne .L297
+.L362:
 	clr.l %d0
 	clr.l %d4
 	move.l %d0,brain_save_counts+4
@@ -1359,7 +1430,7 @@ write_default:
 	movem.l (%sp),#31996
 	lea (64,%sp),%sp
 	rts
-.L243:
+.L257:
 	move.b (%a0),%d1
 	lea (%a2,%d0.l),%a4
 	addq.l #1,%a0
@@ -1369,9 +1440,9 @@ write_default:
 	move.b %d1,(%a1)+
 	move.b (%a4),5(%a1)
 	cmp.l %d0,%d3
-	jne .L245
-	jra .L359
-.L240:
+	jne .L259
+	jra .L373
+.L254:
 	mov3q.l #1,%d0
 	mov3q.l #-1,%d4
 	move.l %d0,brain_save_counts+4
@@ -1379,32 +1450,32 @@ write_default:
 	movem.l (%sp),#31996
 	lea (64,%sp),%sp
 	rts
-.L358:
+.L372:
 	lea desc,%a5
 	move.l (%a5,%d3.l),%a2
 	tst.l %a2
-	jeq .L282
+	jeq .L296
 	move.b (%a3),%d2
 	mvz.b %d2,%d4
 	cmp.l (%a2,%d0.l),%d4
-	jcc .L282
+	jcc .L296
 	move.b %d2,(%a2,%d1.l)
-.L282:
+.L296:
 	move.l (%a4),%a2
 	tst.l %a2
-	jeq .L281
+	jeq .L295
 	move.b (%a3),%d2
 	mvz.b %d2,%d4
 	cmp.l (%a2,%d0.l),%d4
-	jcc .L281
+	jcc .L295
 	move.b %d2,(%a2,%d1.l)
 	addq.l #1,%d1
 	addq.l #1,%a3
 	addq.l #4,%d0
 	cmp.l %a3,%a1
-	jne .L283
-	jra .L348
-.L256:
+	jne .L297
+	jra .L362
+.L270:
 	mov3q.l #3,%d0
 	moveq #-3,%d4
 	move.l %d0,brain_save_counts+4
@@ -1412,45 +1483,45 @@ write_default:
 	movem.l (%sp),#31996
 	lea (64,%sp),%sp
 	rts
-.L246:
+.L260:
 	pea .LC10
 	jsr (%a2)
 	addq.l #4,%sp
 	move.l %d0,%d7
 	tst.l %d0
-	jeq .L347
+	jeq .L361
 	move.l %d7,-(%sp)
 	lea valid,%a4
 	jsr (%a4)
 	addq.l #4,%sp
 	tst.l %d0
-	jeq .L251
-	jra .L247
-.L285:
+	jeq .L265
+	jra .L261
+.L299:
 	mov3q.l #1,%d0
 	move.l %d0,brain_save_counts+4
 	move.l %d4,%d0
 	movem.l (%sp),#31996
 	lea (64,%sp),%sp
 	rts
-.L286:
+.L300:
 	clr.l %d7
-.L347:
+.L361:
 	moveq #32,%d1
-	jra .L250
-.L357:
+	jra .L264
+.L371:
 	move.l %d4,%d1
 	lsl.l #3,%d1
 	lea desc,%a0
 	move.l (%a0,%d1.l),%a1
 	tst.l %a1
-	jne .L360
-.L277:
+	jne .L374
+.L291:
 	lea desc,%a0
 	lea 4(%a0,%d1.l),%a2
 	move.l (%a2),%a1
 	tst.l %a1
-	jeq .L348
+	jeq .L362
 	moveq #24,%d1
 	moveq #95,%d0
 	muls.l %d4,%d1
@@ -1460,21 +1531,21 @@ write_default:
 	move.b (%a0),94(%a1)
 	move.l %d4,%a0
 	add.l #shadow+13,%a0
-.L280:
+.L294:
 	move.l (%a2),%a1
 	moveq #106,%d1
 	move.b (%a0)+,(%a1,%d0.l)
 	addq.l #1,%d0
 	cmp.l %d0,%d1
-	jeq .L348
+	jeq .L362
 	move.l (%a2),%a1
 	moveq #106,%d1
 	move.b (%a0)+,(%a1,%d0.l)
 	addq.l #1,%d0
 	cmp.l %d0,%d1
-	jne .L280
-	jra .L348
-.L360:
+	jne .L294
+	jra .L362
+.L374:
 	move.w %d4,%d3
 	moveq #24,%d2
 	moveq #95,%d0
@@ -1485,23 +1556,23 @@ write_default:
 	move.b (%a0),94(%a1)
 	move.l %d3,%a0
 	add.l #shadow+1,%a0
-.L278:
+.L292:
 	lea desc,%a2
 	moveq #106,%d2
 	move.l (%a2,%d1.l),%a1
 	move.b (%a0)+,(%a1,%d0.l)
 	addq.l #1,%d0
 	cmp.l %d0,%d2
-	jeq .L277
+	jeq .L291
 	lea desc,%a2
 	moveq #106,%d2
 	move.l (%a2,%d1.l),%a1
 	move.b (%a0)+,(%a1,%d0.l)
 	addq.l #1,%d0
 	cmp.l %d0,%d2
-	jne .L278
-	jra .L277
-.L289:
+	jne .L292
+	jra .L291
+.L303:
 	mov3q.l #4,%d0
 	moveq #-4,%d4
 	move.l %d0,brain_save_counts+4
@@ -1509,10 +1580,10 @@ write_default:
 	movem.l (%sp),#31996
 	lea (64,%sp),%sp
 	rts
-.L288:
+.L302:
 	clr.l %d2
-	jra .L273
-.L287:
+	jra .L287
+.L301:
 	clr.b %d1
 	clr.b %d3
 	clr.b %d0
@@ -1523,7 +1594,7 @@ write_default:
 	move.b %d0,14(%a4)
 	move.b %d2,12(%a4)
 	move.l %d6,%d1
-	jra .L260
+	jra .L274
 	.size	write_default, .-write_default
 	.align	2
 	.globl	brain_load
@@ -1532,137 +1603,137 @@ brain_load:
 	lea (-20,%sp),%sp
 	movem.l #7180,(%sp)
 	lea brain_counts+4,%a0
-.L362:
+.L376:
 	clr.l (%a0)+
 	cmp.l #brain_counts+48,%a0
-	jne .L362
+	jne .L376
 	addq.l #1,brain_counts
 	tst.l snapped
-	jeq .L406
-.L363:
+	jeq .L420
+.L377:
 	move.l brain_fx_n,%d2
 	tst.l %d2
-	jeq .L364
+	jeq .L378
 	lea desc,%a3
 	clr.l %d1
 	lea shadow,%a4
 	lea desc+4,%a2
-.L365:
+.L379:
 	move.l (%a3),%a1
 	tst.l %a1
-	jne .L407
-.L369:
+	jne .L421
+.L383:
 	move.l (%a2),%a0
 	tst.l %a0
-	jne .L408
-.L371:
+	jne .L422
+.L385:
 	addq.l #1,%d1
 	cmp.l %d2,%d1
-	jeq .L364
+	jeq .L378
 	addq.l #8,%a3
 	lea (24,%a4),%a4
 	addq.l #8,%a2
 	moveq #32,%d0
 	cmp.l %d1,%d0
-	jne .L365
-.L364:
+	jne .L379
+.L378:
 	move.l table_len,%d0
 	tst.l %d0
-	jeq .L368
+	jeq .L382
 	move.l brain_modedef,%a1
 	lea table_shadow,%a0
 	add.l %a0,%d0
-.L373:
+.L387:
 	move.b (%a0)+,(%a1)+
 	cmp.l %a0,%d0
-	jne .L373
-.L368:
+	jne .L387
+.L382:
 	pea .LC9
 	lea slurp,%a2
 	jsr (%a2)
 	addq.l #4,%sp
 	tst.l %d0
-	jeq .L374
+	jeq .L388
 	move.l %d0,-(%sp)
 	lea valid,%a3
 	jsr (%a3)
 	addq.l #4,%sp
 	tst.l %d0
-	jne .L409
+	jne .L423
 	pea .LC10
 	jsr (%a2)
 	addq.l #4,%sp
 	tst.l %d0
-	jeq .L378
+	jeq .L392
 	move.l %d0,-(%sp)
 	jsr (%a3)
 	addq.l #4,%sp
 	tst.l %d0
-	jne .L410
-.L378:
+	jne .L424
+.L392:
 	mov3q.l #3,%d0
-.L377:
+.L391:
 	movem.l (%sp),#7180
 	move.l %d0,brain_counts+4
 	lea (20,%sp),%sp
 	rts
-.L408:
+.L422:
 	move.b 12(%a4),94(%a0)
 	lea (13,%a4),%a0
 	moveq #95,%d0
-.L372:
+.L386:
 	move.l (%a2),%a1
 	moveq #106,%d3
 	move.b (%a0)+,(%a1,%d0.l)
 	addq.l #1,%d0
 	cmp.l %d0,%d3
-	jeq .L371
+	jeq .L385
 	move.l (%a2),%a1
 	moveq #106,%d3
 	move.b (%a0)+,(%a1,%d0.l)
 	addq.l #1,%d0
 	cmp.l %d0,%d3
-	jne .L372
-	jra .L371
-.L407:
+	jne .L386
+	jra .L385
+.L421:
 	move.l %a4,%a0
 	moveq #95,%d0
 	move.b (%a0)+,94(%a1)
-.L370:
+.L384:
 	move.l (%a3),%a1
 	moveq #106,%d3
 	move.b (%a0)+,(%a1,%d0.l)
 	addq.l #1,%d0
 	cmp.l %d0,%d3
-	jeq .L369
+	jeq .L383
 	move.l (%a3),%a1
 	moveq #106,%d3
 	move.b (%a0)+,(%a1,%d0.l)
 	addq.l #1,%d0
 	cmp.l %d0,%d3
-	jne .L370
-	jra .L369
-.L406:
+	jne .L384
+	jra .L383
+.L420:
 	jsr snapshot
-	jra .L363
-.L374:
+	jra .L377
+.L388:
 	pea .LC10
 	jsr (%a2)
 	addq.l #4,%sp
 	tst.l %d0
-	jeq .L377
+	jeq .L391
 	move.l %d0,-(%sp)
 	lea valid,%a3
 	jsr (%a3)
 	addq.l #4,%sp
 	tst.l %d0
-	jeq .L378
-.L410:
+	jeq .L392
+.L424:
 	movem.l (%sp),#7180
 	mov3q.l #2,brain_counts+4
 	lea (20,%sp),%sp
 	jra (apply.isra.0)
-.L409:
+.L423:
 	movem.l (%sp),#7180
 	mov3q.l #1,brain_counts+4
 	lea (20,%sp),%sp
@@ -1699,18 +1770,18 @@ brain_card_store:
 	jsr slurp
 	addq.l #4,%sp
 	tst.l %d0
-	jeq .L415
+	jeq .L429
 	move.l %d0,-(%sp)
 	move.l %d0,4(%sp)
 	jsr valid
 	addq.l #4,%sp
 	move.l (%sp),%d1
 	tst.l %d0
-	jne .L426
-.L415:
+	jne .L440
+.L429:
 	addq.l #4,%sp
 	rts
-.L426:
+.L440:
 	moveq #1,%d0
 	move.l %d1,-(%sp)
 	pea buf
@@ -1720,11 +1791,11 @@ brain_card_store:
 	lea (12,%sp),%sp
 	addq.l #1,%d0
 	tst.l %d0
-	jeq .L427
+	jeq .L441
 	addq.l #1,brain_save_counts+8
 	addq.l #4,%sp
 	rts
-.L427:
+.L441:
 	addq.l #1,brain_save_counts+12
 	addq.l #4,%sp
 	rts
@@ -1791,44 +1862,254 @@ brain_post_clear:
 	move.l %d0,job_args
 	jmp 1073744956
 	.size	brain_post_clear, .-brain_post_clear
+	.section	.rodata.str1.1
+.LC11:
+	.string	"BRAIN debug: "
+.LC12:
+	.string	" MIDI messages since the boot, the last "
+.LC13:
+	.string	" below (clock and active sensing not logged)\r\n  seq status d1 d2 sync pattern next\r\n"
+.LC14:
+	.string	"0123456789ABCDEF"
+.LC15:
+	.string	"    "
+.LC16:
+	.string	"/BRAIN/debug.txt"
+	.text
 	.align	2
 	.globl	brain_job
 	.type	brain_job, @function
 brain_job:
 	move.l job_args,%d0
-	move.l %d3,-(%sp)
-	move.l %d2,-(%sp)
+	lea (-52,%sp),%sp
+	movem.l #31996,(%sp)
+	btst #17,%d0
+	jne .L468
 	btst #16,%d0
-	jeq .L435
-	move.l (%sp)+,%d2
-	move.l (%sp)+,%d3
+	jeq .L459
+	movem.l (%sp),#31996
+	lea (52,%sp),%sp
 	jra brain_card_store
-.L435:
-	moveq #9,%d2
+.L459:
+	moveq #9,%d3
+	mov3q.l #1,%d4
+	move.l %d0,%d2
 	move.l %d0,%d1
-	lsr.l %d2,%d1
-	mov3q.l #1,%d2
-	move.l %d1,%d3
-	move.l %d0,%d1
-	and.l %d2,%d3
+	lsr.l %d3,%d2
 	lsr.l #8,%d1
-	move.l %d3,-(%sp)
-	mov3q.l #1,%d3
-	and.l %d1,%d3
+	mov3q.l #1,%d5
+	and.l %d2,%d4
+	and.l %d1,%d5
 	mov3q.l #7,%d1
 	and.l %d0,%d1
-	move.l %d3,-(%sp)
+	move.l %d4,-(%sp)
+	move.l %d5,-(%sp)
 	move.l %d1,-(%sp)
 	jsr write_default
 	lea (12,%sp),%sp
-	move.l (%sp)+,%d2
-	move.l (%sp)+,%d3
+.L448:
+	movem.l (%sp),#31996
+	lea (52,%sp),%sp
 	rts
+.L468:
+	move.l dbg_seq,%d1
+	move.l %d1,%d3
+	move.l %d1,48(%sp)
+	cmp.l #256,%d1
+	jhi .L469
+	moveq #66,%d0
+	lea .LC11+1,%a0
+	lea out,%a2
+.L451:
+	move.b %d0,(%a2)+
+	move.b (%a0)+,%d0
+	cmp.l #out+13,%a2
+	jne .L451
+	clr.l -(%sp)
+	move.l 52(%sp),-(%sp)
+	move.l %a2,-(%sp)
+	lea put_dec,%a4
+	jsr (%a4)
+	lea (12,%sp),%sp
+	moveq #32,%d1
+	lea .LC12+1,%a0
+	move.l %d0,%d2
+	add.l %d0,%a2
+	lea .LC12+41,%a1
+.L452:
+	move.b %d1,(%a2)+
+	move.b (%a0)+,%d1
+	cmp.l %a1,%a0
+	jne .L452
+	clr.l -(%sp)
+	move.l %d3,-(%sp)
+	move.l %d2,%d4
+	add.l #out+53,%d4
+	move.l %d4,-(%sp)
+	jsr (%a4)
+	lea (12,%sp),%sp
+	moveq #32,%d1
+	move.l %d2,%a0
+	lea 53(%a0,%d0.l),%a0
+	move.l #.LC13+85,%d0
+	move.l %a0,%d2
+	move.l %d2,%a1
+	lea .LC13+1,%a0
+	add.l #out,%a1
+.L453:
+	move.b %d1,(%a1)+
+	move.b (%a0)+,%d1
+	cmp.l %d0,%a0
+	jne .L453
+	move.l 48(%sp),%d5
+	add.l #84,%d2
+	sub.l %d3,%d5
+	cmp.l 48(%sp),%d5
+	jcc .L454
+	lea .LC14,%a3
+	move.l #.LC15+5,%d3
+	move.l %d2,%d4
+	move.l %d5,%d7
+.L457:
+	move.l %d7,%d5
+	move.l %d4,%a5
+	mvz.b %d5,%d5
+	mov3q.l #5,-(%sp)
+	lea dbg_ring,%a1
+	add.l #out,%a5
+	lsl.l #3,%d5
+	mvz.w (%a1,%d5.l),%d0
+	move.l %d0,-(%sp)
+	move.l %a5,-(%sp)
+	jsr (%a4)
+	lea dbg_ring,%a6
+	lea out+2,%a5
+	lea (12,%sp),%sp
+	move.b 2(%a6,%d5.l),%d6
+	moveq #32,%d1
+	move.l %d0,%d2
+	moveq #15,%d0
+	add.l %d4,%d2
+	lea out,%a0
+	lea out+1,%a1
+	move.l %d2,%a2
+	add.l #out+3,%a2
+	and.l %d6,%d0
+	mvz.b %d6,%d6
+	lsr.l #4,%d6
+	move.b %d1,(%a0,%d2.l)
+	move.b %d1,(%a1,%d2.l)
+	move.b %d1,(%a5,%d2.l)
+	move.b (%a3,%d6.l),(%a2)
+	lea out+5,%a1
+	add.l %d2,%a1
+	lea .LC15+1,%a0
+	lea (%a3,%d0.l),%a6
+	move.b (%a6),1(%a2)
+.L455:
+	move.b %d1,(%a1)+
+	move.b (%a0)+,%d1
+	cmp.l %d3,%a0
+	jne .L455
+	lea dbg_ring,%a2
+	moveq #15,%d6
+	add.l %d5,%a2
+	move.b 3(%a2),%d4
+	moveq #15,%d5
+	addq.l #1,%d7
+	move.b 4(%a2),%d1
+	move.b 5(%a2),%d0
+	move.l %d2,%a5
+	add.l #out+9,%a5
+	move.l %d2,%a1
+	add.l #out+12,%a1
+	move.l %d2,%a0
+	add.l #out+16,%a0
+	and.l %d4,%d5
+	mvz.b %d4,%d4
+	lsr.l #4,%d4
+	and.l %d1,%d6
+	mvz.b %d1,%d1
+	lsr.l #4,%d1
+	move.b (%a3,%d4.l),(%a5)
+	move.l %d5,44(%sp)
+	moveq #15,%d5
+	move.l 44(%sp),%d4
+	and.l %d0,%d5
+	mvz.b %d0,%d0
+	lea (%a3,%d4.l),%a6
+	lsr.l #4,%d0
+	moveq #32,%d4
+	move.b (%a6),1(%a5)
+	lea out+11,%a5
+	lea (%a3,%d6.l),%a6
+	move.b %d4,(%a5,%d2.l)
+	move.b (%a3,%d1.l),(%a1)
+	move.b (%a6),1(%a1)
+	lea out+14,%a1
+	move.b %d4,(%a1,%d2.l)
+	lea out+15,%a5
+	move.b %d4,(%a5,%d2.l)
+	lea (%a3,%d5.l),%a6
+	move.b (%a3,%d0.l),(%a0)
+	move.b (%a6),1(%a0)
+	mov3q.l #6,-(%sp)
+	mvz.b 6(%a2),%d0
+	move.l %d0,-(%sp)
+	move.l %d2,%d0
+	add.l #out+18,%d0
+	move.l %d0,-(%sp)
+	jsr (%a4)
+	mov3q.l #7,-(%sp)
+	move.l %d2,%a0
+	lea 18(%a0,%d0.l),%a0
+	mvz.b 7(%a2),%d0
+	move.l %d0,-(%sp)
+	move.l %a0,%a1
+	add.l #out,%a1
+	move.l %a0,%d2
+	move.l %a1,-(%sp)
+	jsr (%a4)
+	moveq #13,%d1
+	lea (24,%sp),%sp
+	lea out,%a0
+	add.l %d2,%d0
+	move.l %d0,%d4
+	addq.l #2,%d4
+	move.b %d1,(%a0,%d0.l)
+	moveq #10,%d1
+	lea out+1,%a0
+	move.b %d1,(%a0,%d0.l)
+	cmp.l 48(%sp),%d7
+	jeq .L465
+	cmp.l #16319,%d4
+	jls .L457
+.L465:
+	move.l %d4,%d2
+.L454:
+	move.l %d2,-(%sp)
+	pea out
+	pea .LC16
+	jsr write_file
+	lea (12,%sp),%sp
+	addq.l #1,%d0
+	tst.l %d0
+	jne .L448
+	movem.l (%sp),#31996
+	mov3q.l #4,brain_save_counts+4
+	lea (52,%sp),%sp
+	rts
+.L469:
+	moveq #66,%d0
+	mvz.w #256,%d3
+	lea .LC11+1,%a0
+	lea out,%a2
+	jra .L451
 	.size	brain_job, .-brain_job
 	.section	.rodata.str1.1
-.LC11:
+.LC17:
 	.string	"SAVED AS DEFAULT"
-.LC12:
+.LC18:
 	.string	"SAVE AS DEFAULT"
 	.text
 	.align	2
@@ -1839,17 +2120,17 @@ brain_menu_save:
 	jsr menu_target
 	mov3q.l #-1,%d1
 	cmp.l %d0,%d1
-	jne .L445
+	jne .L477
 	clr.l -(%sp)
 	clr.l -(%sp)
 	pea msg
 	mov3q.l #2,-(%sp)
-	pea .LC12
+	pea .LC18
 	jsr 1074189692
 	lea (20,%sp),%sp
 	move.l (%sp)+,%d2
 	rts
-.L445:
+.L477:
 	moveq #65,%d2
 	move.b -2147483648,%d1
 	lsl.l #8,%d0
@@ -1865,19 +2146,19 @@ brain_menu_save:
 	clr.l -(%sp)
 	clr.l -(%sp)
 	pea msg
-	move.l #.LC11,%d0
+	move.l #.LC17,%d0
 	mov3q.l #2,-(%sp)
 	move.l %d0,msg+4
-	pea .LC12
+	pea .LC18
 	jsr 1074189692
 	lea (20,%sp),%sp
 	move.l (%sp)+,%d2
 	rts
 	.size	brain_menu_save, .-brain_menu_save
 	.section	.rodata.str1.1
-.LC13:
+.LC19:
 	.string	"DEFAULT CLEARED"
-.LC14:
+.LC20:
 	.string	"CLEAR DEFAULT"
 	.text
 	.align	2
@@ -1888,17 +2169,17 @@ brain_menu_clear:
 	jsr menu_target
 	mov3q.l #-1,%d1
 	cmp.l %d0,%d1
-	jne .L453
+	jne .L485
 	clr.l -(%sp)
 	clr.l -(%sp)
 	pea msg
 	mov3q.l #2,-(%sp)
-	pea .LC14
+	pea .LC20
 	jsr 1074189692
 	lea (20,%sp),%sp
 	move.l (%sp)+,%d2
 	rts
-.L453:
+.L485:
 	moveq #65,%d2
 	move.b -2147483648,%d1
 	lsl.l #8,%d0
@@ -1915,15 +2196,106 @@ brain_menu_clear:
 	clr.l -(%sp)
 	clr.l -(%sp)
 	pea msg
-	move.l #.LC13,%d0
+	move.l #.LC19,%d0
 	mov3q.l #2,-(%sp)
 	move.l %d0,msg+4
-	pea .LC14
+	pea .LC20
 	jsr 1074189692
 	lea (20,%sp),%sp
 	move.l (%sp)+,%d2
 	rts
 	.size	brain_menu_clear, .-brain_menu_clear
+	.align	2
+	.globl	brain_midi_log
+	.type	brain_midi_log, @function
+brain_midi_log:
+	move.l %a2,-(%sp)
+	move.l 8(%sp),%a0
+	mvz.b (%a0),%d0
+	cmp.l #248,%d0
+	jeq .L486
+	cmp.l #254,%d0
+	jeq .L486
+	move.l dbg_seq,%d1
+	lea dbg_ring,%a2
+	lea dbg_seq+2,%a1
+	mvz.b %d1,%d1
+	lsl.l #8,%d0
+	lsl.l #3,%d1
+	move.w (%a1),(%a2,%d1.l)
+	lea (%a2,%d1.l),%a1
+	move.b 1(%a0),%d0
+	move.w %d0,2(%a2,%d1.l)
+	move.b 2(%a0),4(%a1)
+	move.l #-2147483608,%a0
+	move.b (%a0),5(%a1)
+	move.l #-2147457602,%a0
+	move.b (%a0),6(%a1)
+	move.l #-2147457600,%a0
+	move.b (%a0),7(%a1)
+	move.l dbg_seq,%a1
+	addq.l #1,%a1
+	move.l %a1,dbg_seq
+.L486:
+	move.l (%sp)+,%a2
+	rts
+	.size	brain_midi_log, .-brain_midi_log
+	.align	2
+	.globl	brain_post_log
+	.type	brain_post_log, @function
+brain_post_log:
+	lea job_msg,%a0
+	moveq #2,%d0
+	swap %d0
+	move.b #65,(%a0)
+	move.l %a0,-(%sp)
+	move.l #1175263182,-(%sp)
+	move.l %d0,job_args
+	jsr 1073744956
+	addq.l #8,%sp
+	rts
+	.size	brain_post_log, .-brain_post_log
+	.section	.rodata.str1.1
+.LC21:
+	.string	"WRITING THE LOG TO"
+.LC22:
+	.string	"/BRAIN/DEBUG.TXT"
+.LC23:
+	.string	"DEBUG LOG"
+	.text
+	.align	2
+	.globl	brain_menu_log
+	.type	brain_menu_log, @function
+brain_menu_log:
+	lea job_msg,%a0
+	move.b #65,(%a0)
+	moveq #2,%d0
+	swap %d0
+	move.l %a0,-(%sp)
+	move.l #1175263182,-(%sp)
+	move.l %d0,job_args
+	jsr 1073744956
+	clr.l -(%sp)
+	clr.l -(%sp)
+	lea msg,%a0
+	move.l %a0,-(%sp)
+	move.l #.LC22,%d0
+	mov3q.l #2,-(%sp)
+	move.l #.LC21,(%a0)
+	move.l %d0,msg+4
+	pea .LC23
+	jsr 1074189692
+	lea (28,%sp),%sp
+	rts
+	.size	brain_menu_log, .-brain_menu_log
+	.section	.data,"aw"
+	.align	2
+	.type	dbg_seq, @object
+	.size	dbg_seq, 4
+dbg_seq:
+	.zero	4
+	.local	dbg_ring
+	.comm	dbg_ring,2048,2
 	.local	line1
 	.comm	line1,16,1
 	.local	msg
@@ -1935,7 +2307,6 @@ brain_menu_clear:
 	.local	out
 	.comm	out,16384,4
 	.globl	brain_save_counts
-	.section	.data,"aw"
 	.align	2
 	.type	brain_save_counts, @object
 	.size	brain_save_counts, 16
@@ -2042,3 +2413,33 @@ brain_on_job:
 1:      moveq   #45,%d1
         cmp.l   %d0,%d1
         jmp     0x40084864
+
+| ---- the debug log: the MIDI thread's handler call -----------------------------
+|   0x40005572  `moveal %a2@(0,%d0:l:4),%a0 / jsr %a0@`: the handler for the
+|               message (status>>4 in d0), with the message pointer and 0
+|               pushed. The stub keeps its own return in a slot (the MIDI
+|               thread is the only caller), calls the handler as stock does,
+|               then logs the message and what the handler left.
+        .globl  brain_on_midi
+brain_on_midi:
+        move.l  %sp@+,brain_midi_ret
+        lea     brain_midi_msg,%a1      | the message as it came in: a handler
+        move.b  %a0@,%a1@               | may overwrite it (program change does)
+        move.b  %a0@(1),%a1@(1)
+        move.b  %a0@(2),%a1@(2)
+        moveal  %a2@(0,%d0:l:4),%a0
+        jsr     %a0@
+        lea     %sp@(-16),%sp
+        movem.l %d0-%d1/%a0-%a1,%sp@
+        pea     brain_midi_msg
+        jsr     brain_midi_log
+        addq.l  #4,%sp
+        movem.l %sp@,%d0-%d1/%a0-%a1
+        lea     %sp@(16),%sp
+        move.l  brain_midi_ret,%sp@-
+        rts
+        .data
+        .balign 4
+brain_midi_ret: .long 0
+brain_midi_msg: .long 0
+        .text

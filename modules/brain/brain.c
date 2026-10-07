@@ -584,9 +584,13 @@ void brain_post_clear(u32 t, u32 fx)
 }
 
 /* The engine task, at a JOB_SAVE message (hooks.s brain_on_job). */
+static void write_debug(void);
+
 void brain_job(void)
 {
-	if (job_args & 0x10000)
+	if (job_args & 0x20000)
+		write_debug();
+	else if (job_args & 0x10000)
 		brain_card_store();
 	else
 		write_default(job_args & 7, (job_args >> 8) & 1, (job_args >> 9) & 1);
@@ -654,4 +658,95 @@ void brain_menu_clear(u32 unused)
 		msg[1] = "DEFAULT CLEARED";
 	}
 	POPUP("CLEAR DEFAULT", 2, msg, 0, 0);
+}
+
+/* ---- the debug log: MIDI messages and what the firmware did with them ------ */
+
+/* hooks.s brain_on_midi wraps the MIDI thread's call to its handler (table
+ * 0x400d6474, docs/firmware/MIDI.md appendix B) and calls brain_midi_log
+ * after the handler returns, with the message (status, data) and the state
+ * it left: the sync flags (0x80000028), the playing pattern (0x800065be)
+ * and the byte after it (0x800065c0). Clock and active sensing are not
+ * logged. WRITE DEBUG LOG has the engine task write the ring to
+ * /BRAIN/debug.txt. */
+
+#define LOG_N    256
+
+struct dbg_ent { u16 seq; u8 st, d1, d2, sync, pnow, pnext; };
+static struct dbg_ent dbg_ring[LOG_N];
+static u32 dbg_seq DATA;			/* messages logged since the boot */
+
+void brain_midi_log(const u8 *m)
+{
+	u8 st = m[0];
+	if (st == 0xf8 || st == 0xfe)
+		return;
+	struct dbg_ent *e = &dbg_ring[dbg_seq % LOG_N];
+	e->seq = (u16)dbg_seq;
+	e->st = st;
+	e->d1 = m[1];
+	e->d2 = m[2];
+	e->sync = *(volatile u8 *)0x80000028;
+	e->pnow = *(volatile u8 *)0x800065be;
+	e->pnext = *(volatile u8 *)0x800065c0;
+	dbg_seq++;
+}
+
+/* Text without stock's sprintf, which does not take %02X or field widths. */
+static u32 put_s(char *o, const char *s) { u32 n = 0; while (s[n]) { o[n] = s[n]; n++; } return n; }
+static u32 put_hex2(char *o, u32 v) { const char *h = "0123456789ABCDEF"; o[0] = h[(v >> 4) & 15]; o[1] = h[v & 15]; return 2; }
+static u32 put_dec(char *o, u32 v, u32 width)
+{
+	char d[10];
+	u32 n = 0, k = 0;
+	do { d[n++] = (char)('0' + v % 10); v /= 10; } while (v && n < 10);
+	while (k + n < width) o[k++] = ' ';
+	while (n) o[k++] = d[--n];
+	return k;
+}
+
+/* The engine task: the ring, oldest first, to /BRAIN/debug.txt. */
+static void write_debug(void)
+{
+	u32 n = dbg_seq < LOG_N ? dbg_seq : LOG_N, at = 0;
+	char *o = (char *)out;
+	at += put_s(o + at, "BRAIN debug: ");
+	at += put_dec(o + at, dbg_seq, 0);
+	at += put_s(o + at, " MIDI messages since the boot, the last ");
+	at += put_dec(o + at, n, 0);
+	at += put_s(o + at, " below (clock and active sensing not logged)\r\n"
+		       "  seq status d1 d2 sync pattern next\r\n");
+	for (u32 k = dbg_seq - n; k < dbg_seq && at < BUF_LEN - 64; k++) {
+		const struct dbg_ent *e = &dbg_ring[k % LOG_N];
+		at += put_dec(o + at, e->seq, 5);
+		at += put_s(o + at, "   ");
+		at += put_hex2(o + at, e->st);
+		at += put_s(o + at, "    ");
+		at += put_hex2(o + at, e->d1);
+		at += put_s(o + at, " ");
+		at += put_hex2(o + at, e->d2);
+		at += put_s(o + at, "  ");
+		at += put_hex2(o + at, e->sync);
+		at += put_dec(o + at, e->pnow, 6);
+		at += put_dec(o + at, e->pnext, 7);
+		at += put_s(o + at, "\r\n");
+	}
+	if (write_file("/BRAIN/debug.txt", out, at) < 0)
+		brain_save_counts[S_SAVE_ERR] = 4;
+}
+
+void brain_post_log(void)
+{
+	job_args = 0x20000;
+	((u8 *)job_msg)[0] = JOB_SAVE;
+	Q_SEND(ENGINE_Q, job_msg);
+}
+
+void brain_menu_log(u32 unused)
+{
+	(void)unused;
+	brain_post_log();
+	msg[0] = "WRITING THE LOG TO";
+	msg[1] = "/BRAIN/DEBUG.TXT";
+	POPUP("DEBUG LOG", 2, msg, 0, 0);
 }
