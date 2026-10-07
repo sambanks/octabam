@@ -51,6 +51,11 @@ extern u8 *const brain_modedef;		/* MODEDEF_TABLE or 0 (hooks.s) */
 #define T_BYTE    5
 #define NO_MODE   0xffff
 
+/* The platform loads a unit's image and leaves its .bss as the boot left
+ * it (tools/remix/platform_build.py): state read before BRAIN first writes
+ * it lives in .data. */
+#define DATA __attribute__((section(".data")))
+
 /* counters, read by the gates (tools/verify/verify_brain.py); all but
  * C_LOADS describe the last brain_load() */
 enum { C_LOADS, C_STATE, C_RECORDS, C_APPLIED, C_VALUES, C_SKIP_ID, C_SKIP_LAYOUT,
@@ -58,14 +63,14 @@ enum { C_LOADS, C_STATE, C_RECORDS, C_APPLIED, C_VALUES, C_SKIP_ID, C_SKIP_LAYOU
 /* C_SKIP_MODE: a mode record with no MODE DEFAULTS or no view for the mode;
  * C_SKIP_SLOT: a mode value for a slot the view does not list */
 /* C_STATE: 0 fresh, 1 card.work, 2 recovered from card.strd, 3 damaged */
-u32 brain_counts[C_N];
+u32 brain_counts[C_N] DATA;
 
 static u8 shadow[MAX_FX][2][12];
 #define MAX_TABLE 1024
 static u8 table_shadow[MAX_TABLE];
-static u32 table_len;
+static u32 table_len DATA;
 static u8 *desc[MAX_FX][2];
-static u32 snapped;
+static u32 snapped DATA;
 
 static u8 fobj[24];
 static u8 iob[4096];
@@ -359,7 +364,7 @@ void brain_load(void)
 enum { S_SAVES, S_SAVE_ERR, S_STRD, S_STRD_ERR, S_N };
 /* S_SAVE_ERR: last error of brain_save_default (0 none, 1 no effect, 2 card
  * store damaged, 3 too large, 4 write); S_STRD: card.strd copies written */
-u32 brain_save_counts[S_N];
+u32 brain_save_counts[S_N] DATA;
 
 static u8 out[BUF_LEN];
 

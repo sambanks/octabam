@@ -1935,7 +1935,7 @@ brain_menu_clear:
 	.local	out
 	.comm	out,16384,4
 	.globl	brain_save_counts
-	.section	.bss
+	.section	.data,"aw"
 	.align	2
 	.type	brain_save_counts, @object
 	.size	brain_save_counts, 16
@@ -1947,12 +1947,18 @@ brain_save_counts:
 	.comm	iob,4096,1
 	.local	fobj
 	.comm	fobj,24,1
-	.local	snapped
-	.comm	snapped,4,2
+	.align	2
+	.type	snapped, @object
+	.size	snapped, 4
+snapped:
+	.zero	4
 	.local	desc
 	.comm	desc,256,2
-	.local	table_len
-	.comm	table_len,4,2
+	.align	2
+	.type	table_len, @object
+	.size	table_len, 4
+table_len:
+	.zero	4
 	.local	table_shadow
 	.comm	table_shadow,1024,1
 	.local	shadow

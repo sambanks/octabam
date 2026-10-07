@@ -166,6 +166,16 @@ def main():
         print(f"  [{'ok' if ok else 'FAIL'}] {msg}")
         fails += not ok
 
+    # The platform leaves a unit's .bss as the boot left it; the port boots
+    # zeroed RAM and cannot show what BRAIN reads there before it writes
+    # (image A7 halted on every power-on, docs/contributing/FAILURE_MODES.md).
+    nm = shutil.which("m68k-elf-nm") or shutil.which("m68k-linux-gnu-nm")
+    kinds = {l.split()[2]: l.split()[1] for l in subprocess.run([nm, str(ELF)], capture_output=True, text=True).stdout.splitlines()
+             if len(l.split()) == 3}
+    for name in ("snapped", "table_len", "brain_counts", "brain_save_counts"):
+        check(f"{name} is in .data (the unit's .bss holds what the boot left)  [{kinds.get(name)}]",
+              kinds.get(name, "?").lower() == "d")
+
     for name, files in cases.items():
         roots = []
         for fn, data in files.items():
