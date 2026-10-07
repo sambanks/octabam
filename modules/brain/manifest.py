@@ -86,6 +86,11 @@ def menu_inc():
     return "\n".join(out)
 
 
+# BRAIN_DIAG=noload (a diagnostic build): the two load-path hooks are left
+# out, so nothing of BRAIN runs at boot or at a project load; the menu, the
+# engine job switch and the store copy stay.
+_NOLOAD = os.environ.get("BRAIN_DIAG") == "noload"
+
 MODULE = Module(
     name="brain", key=schema.BRAIN_KEY, kind=Kind.CF_PATCH,
     category=Category.SETTINGS, author="Sam Banks", author_url="https://github.com/sambanks",
@@ -94,7 +99,7 @@ MODULE = Module(
     # MODEDEF_TABLE: MODE DEFAULTS' view table, 0 without that module.
     linked=(Linked("brain", SOURCE, cpu="5475", dram=True, include=fx_inc,
                    defsyms=(("MODEDEF_TABLE", 0),)),),
-    detours=(
+    detours=tuple(d for d in (
         Detour(0x40085342, H("721b2d41fdc6"), "brain", "brain_on_load",
                "LOAD PROJECT, before the empty-project init: the card's defaults onto the descriptors", kind="jsr"),
         Detour(0x40084d4a, H("73b980000002"), "brain", "brain_on_bankload",
@@ -104,7 +109,7 @@ MODULE = Module(
         *(Detour(site, H("4eb94008ee74"), "brain", "brain_on_store",
                  "SAVE PROJECT's project store: card.work copied to card.strd", kind="jsr")
           for site in (0x40085642, 0x400856dc, 0x40085780)),
-    ),
+    ) if not (_NOLOAD and d.site in (0x40085342, 0x40084d4a))),
     # the BRAIN root category: the root list's rows pointer to brain_root_rows
     # and its count 4 -> 5 (two modules growing the root are refused by the ledger)
     symbol_refs=(SymbolRef(ROOT_DESC + 0x18, ROOT_ROWS, "brain", "brain_root_rows",
