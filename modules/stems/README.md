@@ -278,6 +278,15 @@ timestamps with (7.58 ns a count).
   the unit (STEMS3), eleven stereo files at 24 bits, 2.91 MB/s, peaked
   the ring at 13 to 16% on a light project and filled it on a busy one:
   RING FULL, cause open (STEM_REC.md 17.3).
+- **On a busy project, eight tracks at 24 bits is the most that keeps
+  up.** Zero copy on Yves's MKII, a project of eight Static tracks
+  playing (STEM_REC.md 17.6): T1 to T8 at 24 bits ran a minute with the
+  ring at most 21% full; twelve files at 24 bits (MAIN, CUE, AB and CD
+  added, 3.17 MB/s) stopped with `RING FULL` after 4.3 s, the card taking
+  2.1 MB/s while the writer, at priority 1, waited for the processor. A
+  lighter project leaves the writer more of it (not measured with zero
+  copy). The writer at priority 2 is built and kept as the next step
+  (`stems-prio2`, STEM_REC.md 19.6).
 - A power cut or a card pull before the end loses the take: each file is
   left at 0 bytes, because its length is set only at the end
   (STEM_REC.md 12.3).
