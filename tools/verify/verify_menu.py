@@ -142,7 +142,7 @@ REG_DRAM = {(_u.registers_formatter.module, _u.registers_formatter.slot):
 
 def _runtime_syms() -> dict:
     elf = pathlib.Path("out/platform/runtime/runtime.elf")
-    if not REG_DRAM or not elf.exists():
+    if not elf.exists():
         return {}
     out = subprocess.run(["m68k-elf-nm", str(elf)], capture_output=True, text=True).stdout
     return {f[2]: int(f[0], 16) for f in (l.split() for l in out.splitlines()) if len(f) == 3}
@@ -382,7 +382,8 @@ def main():
                 # What each cave PRINTS is proven separately, by asking the
                 # emulated firmware: tools/verify/verify_labels.py.
                 a_ok = (f1 == STEPPED_FMT[0] or CAVE_LO <= f1 < CAVE_HI
-                        or OVF_LO <= f1 < OVF_HI)
+                        or OVF_LO <= f1 < OVF_HI
+                        or f1 in {v for k, v in RUNTIME_SYMS.items() if k.startswith("lfmt_")})
                 want_b = STEPPED_FMT[1] if cnt <= 5 else 0
                 check(a_ok and f2 == want_b and f3 == 0,
                       f"{name}: p{i} count {cnt} is a SELECT, so it carries "
