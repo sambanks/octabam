@@ -220,8 +220,9 @@ card udma 4 mwdma 0, cluster 64 sectors
   layer's), so a card formatted with larger clusters takes fewer, larger
   commands.
 - **The writer's longest sleep** far above the 10 ms it asks for: it
-  waited for the processor. It runs at priority 1, beside the task that
-  streams Static samples.
+  waited for the processor. It runs at priority 1, in turn with the engine,
+  the UI and one more stock task, below three tasks that by their code most
+  likely include the Static machines' card reader (STEM_REC.md 19.6).
 - **Card rec and card save** split the card's writes into the take
   (recording) and the rest after STOP (saving), each in ms, KB and µs a
   KB. There is no copy to time: the card reads each file's ring where the

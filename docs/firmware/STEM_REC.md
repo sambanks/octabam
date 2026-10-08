@@ -8083,11 +8083,29 @@ Flash E (17.5) showed the writer's own work small and its time spent
 waiting for the processor at priority 1. Raising it to priority 2 is one
 constant; it was built (STEMS6, branch `stems-prio2`, `f53117b4`: the
 units 71 PASS, the scheduling-reached port checks 111 PASS) and not
-flashed. Its section there lists the priority-2 tasks by their code (a
-card reader, likely the Static machines', their scheduler, and the
-machine parameters) and what the writer would outrank (the engine, the
-UI and the unidentified per-voice task `0x40098a5c`). Yves chose zero
-copy first (19.7), which keeps priority 1.
+flashed. Yves chose zero copy first (19.7), which keeps priority 1.
+
+**Who the writer would outrank, and who it would take turns with.** 🟡
+Read from each task's entry, not measured (`KERNEL.md`'s table has the
+same):
+
+| Task entry | Priority | What its code does |
+|---|---|---|
+| `0x400921c4` | 2 | Receives requests on queue `0x460fcd24`, reads each from the card through the raw read slot `0x46c82426`, signals the requester (`0x40000968`): a card reader, most likely the Static machines' (its requesters aren't traced) |
+| `0x40091d18` | 2 | Waits on event `0x46c901b8`, then walks eight per-track records (`0x40000e50`) with the interrupts masked and builds requests: most likely the Static streaming scheduler that feeds the reader |
+| `0x4009203c` | 2 | Receives queue `0x460d17ee`: kind `0x0f`, page-1 parameters for the DSP, and kind `0x0e`, the crossfader's STRT/LEN/RATE and slot (`docs/firmware/MIDI.md`) |
+| `0x4008445c` | 1 | The engine: project, bank and sample loading (`KERNEL.md`) |
+| `0x40061a94` | 1 | Start-up, then the UI event loop (3.5) |
+| `0x40098a5c` | 1 | Waits on event `0x4610755c`, then walks eight per-track records with the EMAC in fractional mode: unidentified, per-voice work |
+
+At priority 2 the writer would take turns with the Static streaming
+instead of yielding to it, and the engine, the UI and `0x40098a5c` would
+wait while it works. What the change wouldn't touch, from the code: the
+writer's sleep can't spin (`K_DELAY`'s busy return is dead in practice,
+4.4); `K_START` from the UI task would switch to the writer at once, which
+the action's state-last order already makes safe (3.5); and the card's
+lock is shared as before. A flash of it must listen to the Static voices
+and try the keys during a take.
 
 ### 19.7 Zero copy: each file's ring is what the card reads
 
