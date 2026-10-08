@@ -8186,3 +8186,21 @@ most capacity × its frame's bytes + 44 ≤ its ring's size.
 - 🟡 Not measurable here: the uncached stores' time in the hook, and the
   writer's share of the processor. Flash G's `STATS.TXT` reads both: the
   hook line, and `card rec` against `card fastest write`.
+
+### 19.8 For later
+
+Ideas from the perf round that weren't needed for its goal (eight tracks
+at 24 bits on a busy project), with what each would buy and its size.
+None is measured.
+
+| Idea | What it would buy | Size |
+|---|---|---|
+| The writer at priority 2 (`stems-prio2`, 19.6) | Twelve files at 24 bits on a busy project: flash G's writer still waited 4.8 times its fastest write there | One constant; built, not flashed. A flash must listen to the Static voices and try the keys during a take |
+| Bigger writes per file when the writer is behind | Fewer switches between the files' streams on the card: its fastest write fell from 28 to 10 MB/s with twelve files (17.6), cause unknown | Small: the per-pass cap in `stems_zwrite` |
+| One card command for a run of contiguous clusters | The file layer sends one command a cluster (19.2); a run of clusters in one WRITE DMA cuts the per-command cost | Large: a write path beside the file layer's, keeping its FAT right |
+| The hook's stores cached, then one `cpushl` a line | About a quarter of the uncached stores' time in the audio interrupt (one burst a 16-byte line); the hook runs in supervisor mode, so the instruction is allowed there | Medium: a hardware probe first (19.5); USB AUDIO OUT's packet build would gain the same |
+| A bounded wait on the card | A card that stops answering would end the take with an error instead of hanging the writer on the PIO path (11.4) | Medium |
+| WRITE MULTIPLE (`0xC5`) for PIO cards | One interrupt a block of sectors instead of one a sector | Medium: PIO cards only; Yves's card writes by DMA |
+| Pre-shifted gains | The mirror stores `g << 8`, saving one shift a sample in the track loops: 128 instructions a frame at T1–T8 | Small |
+| The stems from the audio processor | Core 0 already computes each track's share of MAIN; reading it back would remove the hook's multiplies | Large: DSP work, both payloads |
+| A CAPTURE-style menu page | A clearer STEMS menu (octalab's page-drawing calls; TUNER is the in-tree precedent) | Medium: menu work, deferred this round |
