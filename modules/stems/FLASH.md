@@ -10,7 +10,21 @@ sectors straight from the rings (STEM_REC.md 19.7). The writer stays at
 priority 1. Flash F (STEMS6, the writer at priority 2, branch
 `stems-prio2`) is built and kept as the fallback; it isn't flashed.
 
-**The image.** IMAGE_G
+**The image.** Built 8 Oct 2026 from branch `stems-zerocopy` at
+`92959832` (a clean tree), with the bare-metal `m68k-elf` toolchain:
+`make image REMIX=stems BUILD=7 VERSION=STEMS7`. The unit's OS version
+reads `STEMS7`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS7.bin` | 452,116 | `00caf7e72a5d0cb948266aa4186a0e752f289f62ca84d69466a5dc247283186b` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS7.syx` | 631,537 | `217e1e10c6c556563d64e7687468a06e993fea6c56dffea0ee379f00fe0dc5e4` |
+
+Both are built from your own 1.40C and never enter the repository. Copies
+are in `/home/yvez/xcheck/stems7`. The checks on that code: the unit
+tests 79 PASS; `verify_stems --long --fat32` 451 PASS, its two FAILs
+`cut`'s threshold (corrected in the same commit and passing alone);
+`verify_docs` 0 problems (STEM_REC.md 19.7).
 
 **Before you flash.** As flash E: power cycle first if REC was pressed
 since power-on, the stock `.syx` and a DIN MIDI interface at hand, the
