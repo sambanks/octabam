@@ -77,13 +77,13 @@ sequencer and not the tempo", and every entry after the line "Entries from here 
 - **Cause:** inferred: a 16 KiB ATA write lost one 64-byte burst at its head and took a 64-byte block from another buffer (sector 0, read at mount) at its tail — a DMA/bus-arbitration fault, not a serialiser error. USB CROSSBAR raises the USB host's crossbar priority on SDRAM; it is the one module in the image that changes bus arbitration under card DMA. Not reproduced under the port (a project SAVE with PLOCKS P2 writes every bank intact; the port has no bus timing).
 - **Fix:** USB CROSSBAR and USB AUDIO IN CD removed from bottleservice (image 100). To find out: whether a bank written on image 100 ever fails again; the bad file is at `~/octa/backups/card_20261004_strand/`.
 
-## REMIX SWITCH (OS SWITCH at the time): "SOME ERRORS OCCURED DURING CARD SYNC. 'INVALID STATE'" on a boot picker YES ✅ measured, fixed
+## OS SWITCH: "SOME ERRORS OCCURED DURING CARD SYNC. 'INVALID STATE'" on a boot picker YES ✅ measured, fixed; closed by removal (8 Oct 2026: REMIX SWITCH has no boot picker)
 
 - **Seen:** BSRET8BP, 30 Sep 2026: power-on, the boot picker, YES -> SYNCING PROJECT, then that message; the switch went through.
 - **Cause (measured):** the YES path reused the pane's OS UPGRADE stop sequence, whose `0x40022cd4(1)` posts SYNC TO CARD; at the boot picker nothing is loaded (the files job is held).
 - **Fix:** a boot-picker YES skips the sync (the next image boots from the same SRAM); the pane's YES keeps it. BSRET9BP on the unit: no message. **Check:** `verify_remixswitch` (both paths).
 
-## REMIX SWITCH (OS SWITCH at the time): the boot picker never opens on the unit ✅ measured, fixed
+## OS SWITCH: the boot picker never opens on the unit ✅ measured, fixed; closed by removal (8 Oct 2026: REMIX SWITCH has no boot picker)
 
 - **Seen:** BSRET6BP, 30 Sep 2026: power-on went straight to the project; BOOT TRACE sent notes 1 and 12 and no 26 -- the hook was never called.
 - **Cause (measured):** the hook was the boot's LOAD PROJECT post (`0x4002574c`). A unit whose battery SRAM knows the card (id at `0x100f8584`, compared by `0x4004abcc`) never posts it: the project stays in SRAM and only the last set is mounted, which posts LOADING FILES (`0x4002573e`). The port boots SRAM zeroed, so every port boot took the reload path.

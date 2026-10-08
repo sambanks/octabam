@@ -514,7 +514,7 @@ with a name editor, copy, paste and clear (✅ on the unit, image A6).
 | 3 | templates for FX pages: image, card, saved on the unit; the TEMPLATES lists | yes | yes |
 | 4 | the stock provider: MIDI track target, instrument templates with knob names, incoming CC map, controller presets; audio track pages; project-level stock settings | yes | yes |
 | from 2, in parallel | DSP run-time delivery: probe, route, first DSP setting | yes | yes |
-| REMIX SWITCH | sanderlegit's OS SWITCH (PR #542), renamed, carried by every remix with BRAIN: the `.RMX` images in `/BRAIN/REMIXES/` in BRAIN's REMIXES sub-list, rebuilt at each MAIN MENU opening; the boot picker. Built 8 Oct 2026 (`verify_remixswitch` under the port; a switch on an MKII as image B2) | yes | yes |
+| REMIX SWITCH | sanderlegit's OS SWITCH (PR #542), renamed, carried by every remix with BRAIN: the `.RMX` images in `/BRAIN/REMIXES/` in BRAIN's REMIXES sub-list, rebuilt at each MAIN MENU opening (PR #542's power-on picker left out). Built 8 Oct 2026 (`verify_remixswitch` under the port; a switch on an MKII as image B2) | yes | yes |
 | after REMIX SWITCH | a MIDI monitor in the BRAIN category: the last incoming messages decoded, each marked with what the firmware did (which handler, or dropped and at which test); a detour on the MIDI byte parser and dispatch (`docs/firmware/MIDI.md` appendix B) into a ring, rows rebuilt and redrawn on a timer (the row mechanism REMIX SWITCH's list needs) | yes | yes |
 
 Phase 0 is implemented (6 Oct 2026): the declarations in

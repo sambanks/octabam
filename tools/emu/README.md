@@ -134,7 +134,7 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   `0x4000050c`; `--preload 0x3ffc=<04 08>` gives the hardware's path. A
   unit's power-on also finds battery SRAM from its last session: dump
   `0x10000000..0x100fffff` after a boot (`--mem-dump`) and preload it, or the
-  port measures the first-ever power-on only (REMIX SWITCH's boot picker,
+  port measures the first-ever power-on only (PR #542's boot picker,
   `docs/contributing/FAILURE_MODES.md`).
 - **A power-on's own load.** `--boot-load` (`--names-early --no-post`) writes the SET/PROJECT names
   before the mount, as a unit that has run a project has them, and posts

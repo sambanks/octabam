@@ -13,7 +13,7 @@ BRAIN carries REMIX SWITCH (tools/remix/registry.py); until 8 Oct 2026 it was
 a fifth root category of its own, OS, in every image (PR #542).
 
 Two units: `chain.s` (the chainloader, a ROM cave: the DRAM runtime is not
-depacked yet when it runs) and `switch.s` (the row, the picker, the load and
+depacked yet when it runs) and `switch.s` (the rows, the load and
 the reset, DRAM). `osw.inc` is the layout both share.
 docs/proposals/FIRMWARE_SWITCHER.md is the design and what is measured;
 README.md beside this file is the procedure.
@@ -33,7 +33,7 @@ def _include(_modules):
     # the image's own name (remix.brain.image_name: `<REMIX> <BUILD>`, the
     # name BRAIN's heading shows and make image gives the .RMX)
     # OSW_TRACE=1: this module's own BOOT TRACE notes (1 and 12 from the
-    # chainloader, 13 before a switch's reset, 26/27 from the boot picker)
+    # chainloader, 13 before a switch's reset)
     # without the BOOT TRACE module, whose ROM-cave detours a full rig has
     # no room for (bottleservice-ret: CC MAP's page-2 cave, 30 Sep 2026)
     import os
@@ -58,8 +58,7 @@ MODULE = Module(
                "away again -- 40 region words down to 18; `verify_remixswitch`. The list in "
                "BRAIN's pane and /BRAIN/REMIXES/ (8 Oct 2026): under the port only",
     doc="MAIN MENU > BRAIN lists the raw OS images (.RMX) in /BRAIN/REMIXES/ and boots the one "
-        "picked without writing the flash; a power-cycle returns to the flashed image. "
-        "At power-on a picker offers them before the project loads (3 s, then NO).",
+        "picked without writing the flash; a power-cycle returns to the flashed image.",
     linked=(
         Linked("osw_chain", "modules/remix-switch/chain.s", loader=True, include=_include),
         Linked("osw_switch", "modules/remix-switch/switch.s", dram=True, include=_include),
@@ -90,15 +89,9 @@ MODULE = Module(
         Detour(0x40000412, H("2e7c48000000"), "osw_chain", "osw_chain",
                "the OS entry, after it parks the bootstrap's argument: a staged image first"),
         Detour(0x40064C32, H("2f39400cbf6c"), "osw_switch", "osw_menu",
-               "MAIN MENU opening: the OS list rescanned from the card"),
-        Detour(0x4002574C, H("4879100f8378"), "osw_switch", "osw_bootpick",
-               "the named project's (re)load post: the boot's first offers the card's "
-               "images before the project loads"),
-        Detour(0x4002573E, H("4eb9400228dc"), "osw_switch", "osw_bootfiles",
-               "the last-set mount's LOADING FILES post: held with the load while the "
-               "boot picker is up, posted after it in stock's order", kind="jsr"),
+               "MAIN MENU opening: the REMIXES list rescanned from the card, BRAIN's pane reset to its top"),
     ),
-    # the list is BRAIN's pane (brain_list, brain_os_rows)
+    # the list is BRAIN's REMIXES sub-list (brain_rmx_rows, brain_rmx_n)
     requires=("BRAIN",),
     gates=(Gate("tools/verify/verify_remixswitch.py", venv=True),
            # The park's 40 words could come out of the DSP's unused
