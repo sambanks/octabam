@@ -31,7 +31,7 @@ descriptor's formatter against its value count and the strings the build
 writes against their fields.
 """
 import hashlib
-import os, pathlib, sys
+import os, pathlib, subprocess, sys
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 from dsp_modmap import BASE  # noqa: E402
@@ -131,6 +131,21 @@ REG_FMT = {(_c.registers_formatter.module, _c.registers_formatter.slot):
            (_c.pinned, _c.registers_formatter.offset)
            for _k in REMIX.modules for _c in _MODS[_k].cf_patches
            if _c.registers_formatter is not None}
+# DRAM label formatters (Linked.registers_formatter): A is the unit's symbol
+# in the platform runtime the same build linked (out/platform/runtime).
+RUNTIME_SYMS: dict = {}
+REG_DRAM = {(_u.registers_formatter.module, _u.registers_formatter.slot):
+            (_u.registers_formatter.symbol, _u.registers_formatter.offset)
+            for _k in REMIX.modules for _u in _MODS[_k].linked
+            if _u.registers_formatter is not None}
+
+
+def _runtime_syms() -> dict:
+    elf = pathlib.Path("out/platform/runtime/runtime.elf")
+    if not REG_DRAM or not elf.exists():
+        return {}
+    out = subprocess.run(["m68k-elf-nm", str(elf)], capture_output=True, text=True).stdout
+    return {f[2]: int(f[0], 16) for f in (l.split() for l in out.splitlines()) if len(f) == 3}
 
 
 def _built_for(img: bytes) -> str | None:
@@ -149,6 +164,8 @@ def _built_for(img: bytes) -> str | None:
 def main():
     stock = STOCK.read_bytes()
     img = BUILT.read_bytes()
+    global RUNTIME_SYMS
+    RUNTIME_SYMS = _runtime_syms()
     # ⚠️ THE IMAGE ON DISK IS WHATEVER BUILT LAST, and this check reads its
     # expectations from REMIX. Checking one remix's image against another's
     # list prints dozens of FAILs whose "garbage" entries are the other
@@ -387,6 +404,12 @@ def main():
                 # to the plain-knob rule below, as before.
                 check(f2 == 0,
                       f"{name}: p{i} carries a registered label formatter at "
+                      f"0x{f1:08x}, so B is 0 (got 0x{f2:08x})")
+            elif ((name, i) in REG_DRAM and REG_DRAM[(name, i)][0] in RUNTIME_SYMS
+                  and f1 == RUNTIME_SYMS[REG_DRAM[(name, i)][0]] + REG_DRAM[(name, i)][1]):
+                # A DRAM label formatter: the same shape, A in the runtime.
+                check(f2 == 0,
+                      f"{name}: p{i} carries a DRAM label formatter at "
                       f"0x{f1:08x}, so B is 0 (got 0x{f2:08x})")
             elif i in getattr(_MODS[name], "bipolar_slots", ()):
                 # A BIPOLAR knob: SPRING BAL's dial, drawn

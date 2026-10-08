@@ -539,6 +539,9 @@ class FormatterReg:
     # modules/cfprobe puts it at +0x100 with an `.org`, so one cave, one
     # address and one pc-relative state block serve both callers.
     offset: int = 0
+    # On a Linked unit (Linked.registers_formatter): the formatter's entry
+    # symbol in that unit; `offset` is added to it.
+    symbol: str = ""
 
 
 @dataclass(frozen=True)
@@ -939,9 +942,19 @@ class Linked:
     # oracle uses the declared values. A name the source itself defines is
     # refused. DRAM units share one link, so two declaring one name must
     # resolve it to one value.
+    # ARENA_BASE, declared, resolves to the remix's audio arena base (stock
+    # 0x40a955e0, moved up by the platform reserve).
     defsyms: tuple[tuple[str, int], ...] = ()
+    # A DRAM unit that is some module's label formatter, as
+    # CavePatch.registers_formatter: the build writes the unit's
+    # `registers_formatter.symbol` into that module's descriptor clone.
+    registers_formatter: FormatterReg | None = None
 
     def __post_init__(self):
+        if self.registers_formatter is not None and not (
+                self.dram and self.registers_formatter.symbol):
+            raise ValueError(f"Linked({self.label!r}): registers_formatter needs "
+                             f"dram=True and a FormatterReg.symbol")
         names = [n for n, _v in self.defsyms]
         if len(names) != len(set(names)):
             raise ValueError(f"Linked({self.label!r}): a defsym name declared twice")

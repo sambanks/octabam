@@ -7,7 +7,7 @@
 |      END - 1 and d1 = 1, so the copy repeats the last sample once.
 |      Otherwise d0/d1 unchanged.
 | Preserves every register but d0/d1/a0; a1 is saved across the fetch call.
-fix:    cmpi.l  #0x40a955e0,%d0
+fix:    cmpi.l  #ARENA_BASE,%d0
         bne     fixret                  | a mapped block
         tst.l   %d1
         ble     fixret                  | nothing there, or reverse play
@@ -26,7 +26,7 @@ fix:    cmpi.l  #0x40a955e0,%d0
         jsr     (%a0)                   | fetch END - 1
         addq.l  #8,%sp
         movea.l (%sp)+,%a1
-        cmpi.l  #0x40a955e0,%d0
+        cmpi.l  #ARENA_BASE,%d0
         beq     fixback                 | END - 1 unmapped too: stock
         tst.l   %d1
         ble     fixback
@@ -34,5 +34,5 @@ fix:    cmpi.l  #0x40a955e0,%d0
         moveq   #1,%d1                  | one sample: the last one, again
         rts
 fixback: move.l (%sp)+,%d1
-fixnull: move.l #0x40a955e0,%d0
+fixnull: move.l #ARENA_BASE,%d0
 fixret: rts

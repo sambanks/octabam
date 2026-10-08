@@ -62,6 +62,31 @@ def redefined(obj, defs) -> list[str]:
                   and (f[1] not in ("a", "A") or int(f[0], 16) != want[f[2]] & 0xFFFFFFFF))
 
 
+def _globals_defined(units, work, includes, unit_defs) -> dict:
+    """{unit label: global names the OTHER units define, None: every unit's},
+    from a first assembly of each unit with its declared defsyms."""
+    probe = work / "globals"
+    probe.mkdir(parents=True, exist_ok=True)
+    own = {}
+    for i, (_key, u) in enumerate(units):
+        obj = probe / f"{i:02d}_{u.label}.o"
+        inc = []
+        if includes and u.label in includes:
+            d = probe / f"{i:02d}_{u.label}.inc"
+            d.mkdir(exist_ok=True)
+            (d / "remix.inc").write_text(includes[u.label])
+            inc = ["-I", str(d)]
+        mine = tuple((unit_defs or {}).get(u.label, ()))
+        _run(["m68k-elf-as", "-mcpu=54455", *inc, "-I", ROOT, *as_defsyms(mine), "-o", obj, ROOT / u.source], probe)
+        rows = [l.split() for l in _run(["m68k-elf-nm", "-g", "--defined-only", obj], ROOT).splitlines()]
+        own[u.label] = {f[2] for f in rows if len(f) == 3 and f[1] not in ("A",)}
+    every = set().union(*own.values()) if own else set()
+    out = {label: set().union(*(s for k, s in own.items() if k != label)) if len(own) > 1 else set()
+           for label in own}
+    out[None] = every
+    return out
+
+
 def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int, includes=None,
                  unit_defs=None) -> tuple[bytes, dict]:
     """Assemble every (module key, Linked) unit and link them together at
@@ -71,6 +96,14 @@ def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int, includes=N
     `unit_defs` = {unit label: ((name, value), ...)}, that unit's resolved
     Linked.defsyms, passed to its assembly."""
     work.mkdir(parents=True, exist_ok=True)
+    # A declared default for a name another unit of this link defines (CC
+    # MAP's CC_MODEDEF1 beside MODE DEFAULTS' label) gives way to that
+    # definition: an assembly-time --defsym would bind the reference before
+    # the link sees the label.
+    provided = _globals_defined(units, work, includes, unit_defs)
+    unit_defs = {k: tuple((n, v) for n, v in d if n not in provided.get(k, set()))
+                 for k, d in (unit_defs or {}).items()}
+    defsyms = {n: v for n, v in defsyms.items() if n not in provided[None]}
     objs = []
     for i, (key, u) in enumerate(units):
         obj = work / f"{i:02d}_{u.label}.o"
@@ -87,7 +120,7 @@ def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int, includes=N
         # bytes (refhash: every runtime bit-identical, 25 Sep 2026).
         # `Linked.cpu` still governs the ROM-cave form.
         mine = tuple((unit_defs or {}).get(u.label, ()))
-        _run(["m68k-elf-as", "-mcpu=54455", *inc, *as_defsyms(mine), "-o", obj, ROOT / u.source], work)
+        _run(["m68k-elf-as", "-mcpu=54455", *inc, "-I", ROOT, *as_defsyms(mine), "-o", obj, ROOT / u.source], work)
         own = redefined(obj, mine) if mine else []
         if own:
             sys.exit(f"platform build: {u.source} defines {', '.join(own)}, which its "

@@ -89,17 +89,12 @@ MODULE = Module(
     proof=Proof.PORT, proof_note="`verify_set`; carried by image 88 on Sam's MKII, not exercised there",
     doc="The TEMPO window lists and edits BusDelay's and BusVerb's knobs "
         "(UP/DOWN = row, A or B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM).",
-    # Both pinned in measured free runs (docs/contributing/PLACEMENT.md): the
-    # helpers (host lookup, value read/write) at the start of the overflow
-    # run 0x400d24d0..0x400d2ce0 (the floating caves that overflow the
-    # clone window take the run after them), the screen in the first
-    # part of 0x400d64da..0x400d6b00, below the FX2 chooser's NONE row. The
-    # helpers link first: the screen calls them. (0x400d2ee6..0x400d3020 is
-    # refused at placement: a live descriptor, modules/midi-scenes.)
+    # DRAM units (8 Oct 2026; pinned in the ROM zero runs at 0x400d24d0 and
+    # 0x400d64e0 until then). The helpers link first: the screen calls them.
     linked=(Linked("helpers", "modules/tempo-bus/helpers.s",
-                   cave_addr=0x400D24D0, include=table_inc),
+                   include=table_inc, dram=True),
             Linked("tempobus", "modules/tempo-bus/tempobus.s",
-                   cave_addr=0x400D64E0, include=table_inc),),
+                   include=table_inc, dram=True),),
     detours=(
         Detour(0x40059F2C, H("4ef94004b528"), "tempobus", "tb_open",
                "TEMPO opener: push the bus layer, draw the bus screen"),

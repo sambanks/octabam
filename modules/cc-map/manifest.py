@@ -16,15 +16,17 @@ count tables; FX1 writes on any id but NONE (0), clamped by the FX1
 descriptor's min/count. Selects are clamped to their count: an over-count
 stored value is used as an index and stalls the sequencer.
 
-Source is the truth: the build assembles and links cc_map.s where the
-cave floats; `legacy_bytes()` is the hand-assembled oracle the linked
-source is compared against (CavePatch.reference, and
+Source is the truth: the build links cc_map.s into the DRAM runtime;
+`legacy_bytes()` is the hand-assembled oracle the linked source is
+compared against (Linked.reference, and
 tools/verify/verify_ccmap.py, which also proves the write for all eight
 tracks in the emulator against the firmware editor)."""
 
 import pathlib
 
-from remix.schema import Gate, Category, Proof, CavePatch, Kind, Module
+import hashlib
+
+from remix.schema import Gate, Category, Proof, Kind, Linked, Module, SymbolRef
 
 # Page-2 clamp counts, slots 6..11: selects carry their count, knobs 128.
 # Must match modules/busverb and modules/busdelay.
@@ -81,11 +83,9 @@ def legacy_bytes(addr):
     return bytes(code) + VERB_COUNTS + DLY_COUNTS
 
 
-def emit(addr):
-    """No cave bytes (the linked source supplies them); only the dispatch
-    repoint."""
-    pokes = ((DISPATCH_CC, STOCK_CC.to_bytes(4, "big"), addr.to_bytes(4, "big")),)
-    return b"", pokes
+# Where the oracle links the hand-assembled form: the address the ROM cave
+# last landed at (bottleservice, 2f89c186).
+ORACLE_AT = 0x400d26bc
 
 
 MODULE = Module(
@@ -95,19 +95,16 @@ MODULE = Module(
     category=Category.MIDI_USB, author="sambanks", author_url="https://github.com/sambanks",
     proof=Proof.HARDWARE, proof_note="Sam's MKII (image 96, 13 Sep 2026)",
     doc="MIDI CC 62-67 drive the FX2 engine's page-2 slots 6-11; CC 68-73 the FX1 station's.",
-    cf_patches=(CavePatch(
-        label="CC->FX2/FX1 page-2 cave + dispatch repoint",
-        cave_addr=None,                 # floats in the ColdFire free region
-        pinned=b"",                     # the linked source is the bytes
-        source="modules/cc-map/cc_map.s",
-        cpu="5407",
-        reference=legacy_bytes,         # checked at whatever address it floats to
-        # Where other CCs go: stock's handler.
-        # CC_MODEDEF2 / CC_MODEDEF1: a stock `rts` unless MODE DEFAULTS is in
-        # the image, whose unit exports them (the oracle is set aside then).
-        defsyms=(("CC_NEXT", STOCK_CC), ("CC_MODEDEF2", STOCK_RTS), ("CC_MODEDEF1", STOCK_RTS)),
-        emit=emit,
-        report_note=" (CC 62-67 reach FX2 page 2, CC 68-73 FX1 page 2)",
-    ),),
+    # A DRAM unit (8 Oct 2026; a floating ROM cave until then): the CC
+    # dispatch entry points at its entry symbol.
+    linked=(Linked("ccmap", "modules/cc-map/cc_map.s", dram=True,
+                   reference=(ORACLE_AT, hashlib.sha256(legacy_bytes(ORACLE_AT)).hexdigest()),
+                   # Where other CCs go: stock's handler.
+                   # CC_MODEDEF2 / CC_MODEDEF1: a stock `rts` unless MODE DEFAULTS is in
+                   # the image, whose unit exports them.
+                   defsyms=(("CC_NEXT", STOCK_CC), ("CC_MODEDEF2", STOCK_RTS),
+                            ("CC_MODEDEF1", STOCK_RTS))),),
+    symbol_refs=(SymbolRef(DISPATCH_CC, STOCK_CC, "ccmap", "ccm_entry",
+                           "MIDI dispatch: the CC vector (CC 62-67 reach FX2 page 2, CC 68-73 FX1 page 2)"),),
     gates=(Gate('tools/verify/verify_ccmap.py', remix_arg=False, venv=True),),
 )

@@ -1272,8 +1272,11 @@ def main():
     # one value per name.
     _dram_defs: dict[str, int] = {}
     _unit_defs: dict[str, tuple] = {}
+    # ARENA_BASE is the remix's audio arena base (the stock literal moved by
+    # the reservation), as the build rewrites a ROM cave's base literals.
+    _build_defs = {"ARENA_BASE": _pbase}
     for _m, _u in _dram:
-        _mine = tuple((n, _exports.get(n, v)) for n, v in _u.defsyms)
+        _mine = tuple((n, _build_defs.get(n, _exports.get(n, v))) for n, v in _u.defsyms)
         for _n, _v in _mine:
             if _dram_defs.get(_n, _v) != _v:
                 sys.exit(f"{_m.key} {_u.label}: defsym {_n} = 0x{_v:x}, but another DRAM unit "
@@ -1315,6 +1318,19 @@ def main():
                              f"author's {_rsha} -- source or toolchain drift; refusing")
                 print(f"  {_m.key} {_u.label}: matches the author's build at 0x{_ra:08x} ({len(_rb):,} B)")
         _exports.update(_psyms)
+        # DRAM label formatters (Linked.registers_formatter), as the cave
+        # registration above: skipped for a module not cloned or BLANKED,
+        # and under NOTEMPO=1 with the caves.
+        for _m, _u in _dram:
+            _reg = _u.registers_formatter
+            if (_reg is None or _reg.module not in clone_addr or _reg.module in BLANKED
+                    or os.environ.get("NOTEMPO") == "1"):
+                continue
+            _fa = _psyms[_reg.symbol] + _reg.offset
+            wr32(clone_addr[_reg.module] + 0x0ca + _reg.slot * 4, _fa)
+            wr32(clone_addr[_reg.module] + 0x0fa + _reg.slot * 4, 0)
+            print(f"  {_m.key} {_u.label}: {_reg.symbol} 0x{_fa:08x} registered as "
+                  f"{_reg.module} p{_reg.slot}'s formatter")
         _platform_at = len(_appends)
         _appends.append(("octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend))
         _ba, _bexp, _bw, _bnote = _boot
@@ -1546,7 +1562,8 @@ def main():
     # stepped select.
     _pristine_desc = IMG.read_bytes()
     _regd = {(c.registers_formatter.module, c.registers_formatter.slot)
-             for k in REMIX.modules for c in remix_modules()[k].cf_patches
+             for k in REMIX.modules
+             for c in (*remix_modules()[k].cf_patches, *remix_modules()[k].linked)
              if c.registers_formatter is not None}
     for name in CLONED_ORDER:
         for idx, _pr in enumerate(_MODS[name].params):

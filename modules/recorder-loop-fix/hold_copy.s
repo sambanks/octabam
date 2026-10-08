@@ -3,6 +3,8 @@
 | Scratch: a0, a1 (loaded before use below the hook).
 | Assemble: m68k-elf-as -mcpu=5475 -o hold_copy.o hold_copy.s (from the repo root)
         .text
+        .globl  rlf_hold_copy
+rlf_hold_copy:
 stub:   movea.l (%sp)+,%a1              | return address
         movea.l (4,%sp),%a0             | the fetched index
         addq.l  #8,%sp                  | displaced: the fetch's two arguments
