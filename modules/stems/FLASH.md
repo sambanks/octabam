@@ -1,4 +1,33 @@
-# STEM REC: flashes A to E, and crosscheck's flash plan as a record
+# STEM REC: flashes A to G, and crosscheck's flash plan as a record
+
+## Flash G — `stems`: zero copy, the writer at priority 1 (staged 8 Oct 2026)
+
+Flash E's `STATS.TXT` (STEM_REC.md 17.5) showed the writer waiting for
+the processor at priority 1, and about half its time was the copy. STEMS7
+drops the copy: the frame hook writes each file's bytes into that file's
+own ring, through the uncached alias, and the writer hands the card whole
+sectors straight from the rings (STEM_REC.md 19.7). The writer stays at
+priority 1. Flash F (STEMS6, the writer at priority 2, branch
+`stems-prio2`) is built and kept as the fallback; it isn't flashed.
+
+**The image.** IMAGE_G
+
+**Before you flash.** As flash E: power cycle first if REC was pressed
+since power-on, the stock `.syx` and a DIN MIDI interface at hand, the
+card backed up; power cycle once after the upgrade.
+
+**The tests, in order.**
+
+1. Boot; MAIN MENU › SYSTEM › OS UPGRADE still opens.
+2. Flash D's project (T1 to T8 Static, the bell), T1 to T8 at 24 bits,
+   at least a minute: `DONE` or `RING FULL`, and its `STATS.TXT` either
+   way, with the files. The hook line shows the cost of the uncached
+   stores; `card rec` shows the card's speed during the take.
+3. Seven tracks at 24 bits, then every source at 24 bits (MAIN, CUE and
+   the inputs too), if 2 holds.
+4. Listen to one take's files against the project: no clicks or gaps
+   (the files are checked byte for byte under the port, but a unit can
+   only be checked by ear and by `STATS.TXT`).
 
 ## Flash E — `stems`: the writer's copy in whole longs (staged 8 Oct 2026)
 

@@ -8042,3 +8042,113 @@ ISA, `byterev` in ISA_A+ (the V4e's) and `movem`'s memory operand at
 `(Ay)` or `(d16,Ay)`, the forms STEMS5 uses. USB AUDIO OUT would gain
 from the same copy: its packet build stores 320 longs a frame uncached
 inside the frame interrupt (14 to 25 µs a frame on Bryan T's unit).
+
+### 19.6 The writer at priority 2: kept as a fallback
+
+Flash E (17.5) showed the writer's own work small and its time spent
+waiting for the processor at priority 1. Raising it to priority 2 is one
+constant; it was built (STEMS6, branch `stems-prio2`, `f53117b4`: the
+units 71 PASS, the scheduling-reached port checks 111 PASS) and not
+flashed. Its section there lists the priority-2 tasks by their code (a
+card reader, likely the Static machines', their scheduler, and the
+machine parameters) and what the writer would outrank (the engine, the
+UI and the unidentified per-voice task `0x40098a5c`). Yves chose zero
+copy first (19.7), which keeps priority 1.
+
+### 19.7 Zero copy: each file's ring is what the card reads
+
+**Why.** At priority 1 the writer gets the processor only when every
+higher task is idle, in turn with three stock tasks, and flash E's copy
+averaged 15 to 18 times its own work. About half the writer's time was
+that copy. The audio interrupt never waits for a turn, so the hook writes
+each file's bytes where the card reads them, and the writer only issues
+card writes.
+
+**The layout** (`stems_zlayout`, at the take's start). The 8 MiB region is
+cut into one ring per file, in file order, each 512-aligned and followed
+by a 512-byte margin. A ring holds its file's bytes from the header on:
+file byte p at (p + phase) mod size. Its size is the capacity's bytes of
+the file plus its 44-byte header, in whole sectors, so every sector of the
+file is one unbroken piece of its ring. The capacity in frames is
+(8 MiB − 2,048 × files) / the frame's bytes, about what the shared ring
+held: 131,040 frames at T1 (131,072 before), 10,901 at T1–T8 at 24 bits
+(10,922). The phase is 0, or a test seam (`stems_zlead`) puts sector 0 a
+few sectors before the ring's end so a short take wraps.
+
+**The hook** (`stems_zframe`, for each file): the file's routine writes
+its frame at the hook's place in its ring, through the uncached alias. A
+frame that crosses the ring's end runs on into the margin, and the hook
+moves that tail (4 to 92 bytes, whole longs) to the ring's start before
+the frame is published. The track routines are unchanged; only where a1
+points is new.
+
+**The writer.** At the take's start it writes the placeholder header at
+sector 0's place in each ring (the hook writes only past it). A pass
+writes each file's whole published sectors, a chunk's at most (the
+file's bytes a frame, in sectors: 512 frames' worth), from the writer's
+place in its ring, split in two where they cross its end
+(`stems_zwrite`, `stems_zput`). The first sector is kept in the file's
+sector-0 copy for the header's fix, as before. The hook counts the take's
+frames itself (`stems_tfr`), and a file's published bytes are 44 plus
+that count times its frame's bytes. `stems_rd`, which the hook's room
+test reads, moves on by the frames every file newly has on the card
+(`stems_zrd`), as the copy moved it, so the checks that poke `stems_wr`
+and `stems_rd` together keep their distance (the first draft counted the
+take from `stems_wr` and the `cap` check's poke made it 9.9 million
+frames). At the end the last partial sector is padded with zeros in
+the ring and written (`stems_ztail`): the hook adds nothing in FINISHING,
+so the sector's rest is free.
+
+**Why the hook can't overwrite a byte the card hasn't taken.** The hook
+writes frame wr (staged) only while wr − rd < capacity, and rd is at most
+every file's whole frames on the card, so a file's pending bytes are at
+most capacity × its frame's bytes + 44 ≤ its ring's size.
+
+**What changes, and what doesn't.**
+
+- The files are byte for byte what STEMS5 wrote.
+- The stream buffers are gone: `stems_buf` holds only the fourteen
+  sector-0 copies (7 KB; it was 702 KB).
+- The hook stores to uncached memory: each store waits for the RAM.
+  🟡 Inferred from flash E's copy (768 bytes in 12.6 µs at best): about
+  10 to 13 µs more a frame at T1–T8, 24 bits, in the audio interrupt.
+  `STATS.TXT`'s hook line measures it.
+- `STATS.TXT` loses the copy's lines and gains the card's time split by
+  phase (`card rec`, `card save`: ms, KB, µs a KB), beside its fastest
+  write.
+- The overflow checks (writer held, `stems_rd` poked) now get the frames
+  the hook published, not the whole ring: the writer reads each file's
+  own place, not `stems_rd`. The writer saves those 100 frames by frame
+  133 (the copy took some 10,000), so `overflow` presses REC at frame 85,
+  inside the save, and both overflow runs are shorter.
+- Nothing reaches the rings through the cache any more (the hook, the
+  writer, the card and the probe seam all use the uncached alias). 🟡 A
+  line the loader dirtied there at boot could still be written back over
+  a take; with a 16 KB data cache (MCF54455RM, 4-way) and minutes of
+  other work before any take, it is long gone. USB AUDIO OUT's buffers rest on the same
+  assumption. Not measured.
+
+**Measured** under the port, 8 Oct 2026 (logs `/home/yvez/xcheck/zc4-full.log`,
+`zc4-perf.log`, `zc5`):
+
+- `verify_stems --long --fat32`: 451 PASS; the two FAILs were `cut`'s
+  threshold (on each card), which assumed rd counted copied frames: two
+  chunks of T1 now give 1,023 whole frames, the header taking 44 bytes
+  of the first sector. Corrected, `cut` passes. The units: 79 PASS,
+  among them the rings for all 32,768 layouts and `stems_zframe`'s wrap.
+- Every take's files equal their tracks sample for sample, as STEMS5's
+  did: across a wrap (`wrap`: both places end where predicted; `wrap8`),
+  at 24 bits (`w24`, `all14w`), on a card at half the speed eight tracks
+  need (`slow8`: the rings rose to 14,791 of 16,352 frames and held),
+  and on FAT32.
+- The hook, in instructions a frame: 3,401 at T1–T8, 16 bits (STEMS5
+  3,427), 3,969 at 24 bits (3,995), 4,972 with everything at 24 bits
+  (5,012), the new `HOOK_CEILING`: the per-file wrapper costs less than
+  the shared frame's offsets did. The whole processor while recording,
+  everything at 24 bits: 36,889 (37,019).
+- The writer's copy, 206 and 284 instructions a frame in STEMS5, is gone.
+  What the writer still does is a few dozen instructions a file per
+  512-frame pass (counted from the code) beside the file layer's own.
+- 🟡 Not measurable here: the uncached stores' time in the hook, and the
+  writer's share of the processor. Flash G's `STATS.TXT` reads both: the
+  hook line, and `card rec` against `card fastest write`.

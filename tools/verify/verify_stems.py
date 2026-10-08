@@ -75,9 +75,24 @@ STEM_LAG = PRE_ROLL + 1 - TRACK_DELAY - TRACK_HALF
 ST_IDLE, ST_ARMED, ST_RECORDING, ST_FINISHING = 0, 1, 2, 3   # stems.s
 STACK_SIZE, STACK_FILL = 0x2000, 0x5354454d                   # stems.s: DramRegion stems_stack, "STEM"
 STACK_LIMIT = 6 * 1024     # above this, the plan raises the stack to 16 KB before a flash
-RING_SIZE = 0x800000               # stems.s: the ring, 8 MiB (piece 5)
-RING_SIZE_T1 = RING_SIZE           # T1 only: 131,072 frames of 64 bytes
-RING_FRAMES_T1 = RING_SIZE_T1 // 64
+RING_SIZE = 0x800000               # stems.s: the ring region, 8 MiB (piece 5)
+ZC_SLACK = 2048                    # stems.s: per file, off the region before the capacity (19.7)
+
+
+def ring_frames(nf, fbytes):
+    """The rings' capacity in frames for nf files of fbytes a frame in all
+    (stems_layout, zero copy: STEM_REC.md 19.7)."""
+    return (RING_SIZE - nf * ZC_SLACK) // fbytes
+
+
+def ring0(s):
+    """File 0's ring, from the region's start: its first 512-byte boundary
+    (stems_zlayout). File 0's byte p is at ring0 + p while it doesn't wrap."""
+    return ((s["stems_ring"] + 511) & ~511) - s["stems_ring"]
+
+
+RING_SIZE_T1 = RING_SIZE           # T1 only: the region to dump
+RING_FRAMES_T1 = ring_frames(1, 64)   # 131,040 frames of 64 bytes
 FILE_NAMES = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "MAIN", "CUE", "AB", "CD", "A", "B", "C", "D"]
 LAYOUT_CASES = [  # (sources, format, files, ring frame bytes)
     (0x001, 0b110, ["T1"], 64),
@@ -156,7 +171,7 @@ def regions(s):
     check(f"ring is {RING_SIZE >> 20} MiB ending at the reserve ceiling", ring + RING_SIZE == lay["ceiling"],
           f"0x{ring:08x} + {RING_SIZE >> 20} MiB vs ceiling 0x{lay['ceiling']:08x}")
     check("stack sits just below the ring", stack + 0x2000 <= ring, f"0x{stack:08x}")
-    check("sector buffers sit below the stack, 512-aligned", buf + 270336 <= stack and buf % 512 == 0,
+    check("the sector-0 copies sit below the stack, 512-aligned", buf + 14 * 512 <= stack and buf % 512 == 0,
           f"0x{buf:08x}")
     check("the runtime's stage ends below the sector buffers", lay["stage_end"] <= buf,
           f"stage end 0x{lay['stage_end']:08x}")
@@ -329,24 +344,23 @@ def gains(s):
 
 def layout(s):
     """The file table the hook latches at the start edge, for each case: the
-    files in order, the ring frame, and the ring's capacity, RING_SIZE //
-    frame bytes, with its wrap point."""
+    files in order, a frame of every file, and the rings' capacity
+    (ring_frames: zero copy, STEM_REC.md 19.7)."""
     for src, fmt, names, fb in LAYOUT_CASES:
         tag = f"layout{src:03x}{fmt}"
         log, _, _, _, _ = port(s, 120, stop_at=80, tag=tag, mask=None, dump_blocks=False,
                                pokes_before=[(s["stems_tracks"] + 2, src >> 8), (s["stems_tracks"] + 3, src & 0xff),
                                              (s["stems_fmt"] + 3, fmt)],
-                               mems=((s["stems_nf"], 4 + 4 * 14, "ftab"), (s["stems_fbytes"], 12, "geom")))
+                               mems=((s["stems_nf"], 4 + 4 * 14, "ftab"), (s["stems_fbytes"], 8, "geom")))
         raw = run_path(tag, "ftab").read_bytes()
         nf = int.from_bytes(raw[:4], "big")
         ftab = [int.from_bytes(raw[4 + 4 * i:8 + 4 * i], "big") for i in range(nf)]
         kinds = [FILE_NAMES[d >> 24] for d in ftab]
         geom = run_path(tag, "geom").read_bytes()
-        fbytes, rframes, rlimit = (int.from_bytes(geom[i:i + 4], "big") for i in (0, 4, 8))
+        fbytes, rframes = (int.from_bytes(geom[i:i + 4], "big") for i in (0, 4))
         check(f"{tag}: the files", kinds == names, f"{kinds}")
-        check(f"{tag}: the ring frame", fbytes == fb == sum(d & 0xffff for d in ftab), f"{fbytes}")
-        check(f"{tag}: the capacity", rframes == RING_SIZE // fb and rlimit == rframes * fb,
-              f"{rframes} frames, wrap at {rlimit}")
+        check(f"{tag}: a frame of every file", fbytes == fb == sum(d & 0xffff for d in ftab), f"{fbytes}")
+        check(f"{tag}: the capacity", rframes == ring_frames(nf, fb), f"{rframes} frames")
 
 
 def wav24(data):
@@ -841,7 +855,9 @@ def prefetch(s, checks, jobs=1):
 
 
 def tap(s):
-    log, dump, _, words, raw = port(s, 400, stop_at=300, tag="tap", ring_bytes=64 * 400)
+    base = ring0(s) + 44                  # zero copy: T1's ring holds T1.wav's bytes, header first
+    log, dump, _, words, raw = port(s, 400, stop_at=300, tag="tap", ring_bytes=base + 64 * 400)
+    raw = raw[base:]
     st, status, _, wr, rd, nfr = words
     armed = [l for l in log.splitlines() if l.startswith("call") and "before play" in l]
     check("the action was called before play", any("-> returned" in l for l in armed),
@@ -853,7 +869,8 @@ def tap(s):
     check("wr counts frames", nfr > 0 and wr == nfr, f"wr {wr}, frames {nfr}")
     check("the stop moved RECORDING on", nfr > 0 and st in (ST_IDLE, ST_FINISHING),
           f"state {st}, status {status}")
-    # The ring holds the file's bytes, little-endian, since STEMS5: the task copies longs.
+    # The ring holds the file's bytes, little-endian, since STEMS5; since zero copy
+    # (STEM_REC.md 19.7) at their place in the file, past its 44-byte header.
     got = [[int.from_bytes(raw[f * 64 + 2 * k:f * 64 + 2 * k + 2], "little", signed=True)
             for k in range(32)] for f in range(nfr)]
     peaks = core1_slot_peaks(dump)
@@ -1015,41 +1032,53 @@ def stream(s):
 
 
 def wrap(s):
-    """The ring's offsets set to three frames before its end (T1: frames
-    are 64 bytes) after the action and before play, so they are in force
-    from the take's first frame: frames 0 to 2 go at the ring's end, and
-    frame 3 on from its start, just before the kick's four loud frames (4
-    to 7). The hook and the task both wrap, the offsets end at the right
-    place, and the file must equal the read-back at the pre-roll lag."""
-    off = RING_SIZE_T1 - 3 * 64
-    pokes = [(s[w] + i, (off >> (24 - 8 * i)) & 0xff)
-             for w in ("stems_wr_off", "stems_rd_off") for i in range(4)]
+    """stems_zlead (a test seam) set to 1 after the action and before play,
+    so T1's sector 0 is its ring's last sector from the take's first frame:
+    the header and frames 0 to 6 go at the ring's end, frame 7 crosses it
+    (the hook moves its tail to the start), and frame 8 on go from its
+    start, as the kick's four loud frames (4 to 7) play; the writer's first
+    write is split at the end. Both places wrap and end where the take
+    does (the hook's past the frame it staged and never published), and the
+    file must equal the read-back at the pre-roll lag."""
+    pokes = [(s["stems_zlead"] + 3, 1)]
     log, dump, card, words, _ = port(s, 400, stop_at=300, tag="wrap", pokes_before=pokes,
-                                     mems=((s["stems_wr_off"], 8, "offs"),))
+                                     mems=((s["stems_rsize"], 4, "rsize"), (s["stems_wpos"], 4, "wpos"),
+                                           (s["stems_rpos"], 4, "rpos")))
     st, status, _, wr, rd, nfr = words
     check("wrap: the task finished (state IDLE, no error)", st == ST_IDLE and status == 0,
           f"state {st}, status {status}")
-    raw = run_path("wrap", "offs")
-    offs = raw.read_bytes() if raw.exists() else b"\0" * 8
-    wr_off, rd_off = int.from_bytes(offs[:4], "big"), int.from_bytes(offs[4:], "big")
-    want = (off + 64 * nfr) % RING_SIZE_T1
-    check("wrap: both offsets wrapped and end where the take does", nfr > 3 and wr_off == rd_off == want,
-          f"wr_off {wr_off}, rd_off {rd_off}, want {want} ({nfr} frames)")
+    size, wpos, rpos = (int.from_bytes(run_path("wrap", n).read_bytes(), "big") if run_path("wrap", n).exists()
+                        else None for n in ("rsize", "wpos", "rpos"))
+    ph = size - 512 if size else 0
+    end = 44 + 64 * nfr
+    want_w = (ph + end + 64) % size if size else None        # the staged frame past the take's end
+    want_r = (ph + (end + 511) // 512 * 512) % size if size else None
+    check("wrap: both places wrapped and end where the take does",
+          nfr > 8 and wpos == want_w and rpos == want_r and wpos < ph and rpos < ph,
+          f"hook {wpos}, writer {rpos}, want {want_w} and {want_r}, ring {size} ({nfr} frames)")
     wav_check(card, nfr, dump, "wrap", g=gain_of(log, 0))
 
 
 def cap(s):
     """The 60-minute cap: wr and rd poked to 50 frames short of it after
-    the action. The hook must end the take by itself, with no error."""
+    the action (the poke lands some 25 frames into play). The hook must end
+    the take by itself, with no error, 50 frames on. The file holds every
+    frame the hook published, its own count (stems_tfr): zero copy writes
+    each file's own bytes, where the copy took the 50 frames wr - rd
+    counted from the ring's start (STEM_REC.md 19.7)."""
     v = MAX_FRAMES - 50
     pokes = [(s[w] + i, (v >> (24 - 8 * i)) & 0xff) for w in ("stems_wr", "stems_rd") for i in range(4)]
     log, _, card, words, _ = port(s, 300, tag="cap", pokes=pokes, dump_blocks=False, extra=watched(s),
-                                  mems=ui_mems(s, "end"))
+                                  mems=ui_mems(s, "end") + ((s["stems_tfr"], 4, "tfr"),))
     st, status, _, wr, rd, nfr = words
     check("cap: the hook ended the take at the cap", wr == MAX_FRAMES and st == ST_IDLE and status == 0,
           f"wr {wr}, state {st}, status {status}")
+    raw = run_path("cap", "tfr")
+    tfr = int.from_bytes(raw.read_bytes(), "big") if raw.exists() else None
     data = take(card) or b""
-    check("cap: the file holds the 50 frames", len(data) == 44 + 50 * 64, f"{len(data)} bytes")
+    check("cap: the file holds every frame the hook published, 50 of them after the poke",
+          tfr is not None and tfr >= 50 and len(data) == 44 + tfr * 64
+          and int.from_bytes(data[40:44], "little") == tfr * 64, f"{len(data)} bytes, {tfr} frames")
     t, _ = ui_read(s, "cap", "end")
     check("cap: the status reads DONE 60:00", t is not None and t[:2] == ["REC", "DONE 60:00"],
           f"{t[:2] if t else None}")
@@ -1071,8 +1100,11 @@ def cut(s):
     # set only at the end, so a cut-off take is a 0-byte file even though
     # the writer had streamed most of it. A change here means the writer
     # started setting the length during the take.
+    # Two chunks streamed: since zero copy rd counts the whole frames in the
+    # sectors written, and the header takes 44 bytes of the first, so two
+    # chunks of T1 (128 sectors) hold 1,023 frames (STEM_REC.md 19.7).
     check("cut: a take cut off mid-way is a 0-byte T1.wav, its streamed audio unreachable (known)",
-          st == ST_RECORDING and rd >= 2 * CHUNK_FRAMES and data is not None and len(data) == 0,
+          st == ST_RECORDING and rd >= (2 * CHUNK_FRAMES * 64 - 44) // 64 and data is not None and len(data) == 0,
           f"state {st}, {nfr} frames recorded, {rd} streamed, T1.wav {None if data is None else len(data)} bytes")
 
 
@@ -1085,7 +1117,7 @@ def labels(s):
     whole seconds or one less (the writer task rewrites the line at most a
     pass late), rising from 00:00 to 00:01. After it: REC, DONE mm:ss with
     the take's length, and PEAK n% from the recorder's own peak (one track:
-    a 131,072-frame ring). The menu isn't open: the rows are memory, and the
+    a 131,040-frame ring). The menu isn't open: the rows are memory, and the
     screen draws them at the next key (STEM_REC.md 16.1)."""
     tag = "labels"
     port(s, LABEL_FRAMES, stop_at=LABEL_STOP, tag=tag, dump_blocks=False,
@@ -1103,7 +1135,7 @@ def labels(s):
         secs.append(int(t[1][-2:]) if t[1].startswith("REC ") else -1)
     check("labels: the seconds rise while it records", secs[0] == 0 and secs[1] >= 1, f"{secs}")
     t, w = ui_read(s, tag, "end")
-    pct = w[6] * 100 // (RING_SIZE_T1 // 64) if w else None
+    pct = w[6] * 100 // RING_FRAMES_T1 if w else None
     shown = [t[0], t[1], t[ROW_PEAK]] if t else None
     check("labels (end): REC, DONE with the take's length, PEAK from its peak",
           t is not None and w[0] == ST_IDLE and shown == ["REC", f"DONE {mmss(w[5])}", f"PEAK {pct}%"],
@@ -1159,7 +1191,7 @@ HOOK_SIDE = ("stems_frame_hook", "stems_mirror", "stems_emac_in", "stems_emac_ou
              "stems_track16", "stems_track24", "stems_bus_src",
              "stems_bus16", "stems_bus24", "stems_stage", "stems_bus_frame", "stems_layout",
              "stems_trace_frame", "stems_m8check")
-HOOK_CEILING = 5012   # the measured worst case, everything at 24 bits, since STEMS5 (5,188 in STEMS4)
+HOOK_CEILING = 4972   # the measured worst case, everything at 24 bits, since zero copy (5,012 in STEMS5)
                       # (7 Oct 2026; STEM_REC.md 19.1); 7,415 before it, and 5,000 until
                       # Yves's decision of 4 Oct 2026 to test the cost on the unit (spec 4.6)
 
@@ -1311,9 +1343,11 @@ def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE,
     two sectors of text that name the take and agree with it: the frames,
     the files, the width and the status; card writes counted and timed; the
     hook timed on (about) every recorded frame, its mean at most its
-    longest. With `fbytes` (STEMS5): the copy split by phase adds up to the
-    take, and the copy's fastest frame and the card's fastest write are
-    there. Returns the parsed numbers, or None."""
+    longest. With `fbytes` (one file's bytes a frame, every file alike):
+    the card writes split by phase add up to the files' sectors (zero copy:
+    each file's header and frames in whole sectors, the last padded), the
+    card's fastest write is there, and the ring line names the rings'
+    capacity. Returns the parsed numbers, or None."""
     import re
     files = card_files(card_path)
     fx = json.loads(pathlib.Path(fixture).read_text())
@@ -1345,17 +1379,18 @@ def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE,
     part = struct.unpack_from("<I", img, 0x1c6)[0] if img[0x1fe:0x200] == b"\x55\xaa" and img[0x1c2] else 0
     spc = img[part * 512 + 13]
     clus = nums(r"cluster (\d+) sectors")
-    crec = nums(r"copy rec (\d+) ms (\d+) KB (\d+) us/KB")
-    csav = nums(r"copy save (\d+) ms (\d+) KB (\d+) us/KB")
-    if fbytes:                                         # STEMS5: the copy split by phase, in KB
-        kb = None if crec is None or csav is None else crec[1] + csav[1]
-        check(f"{tag}: STATS.TXT's copy, recording and saving, adds up to the take's bytes",
-              kb is not None and abs(kb - nfr * fbytes // 1024) <= 2, f"rec {crec}, save {csav}, take {nfr * fbytes // 1024} KB")
-        ffast = nums(r"copy fastest frame (\d+) ns, (\d+) bytes")
+    wrec = nums(r"card rec (\d+) ms (\d+) KB (\d+) us/KB")
+    wsav = nums(r"card save (\d+) ms (\d+) KB (\d+) us/KB")
+    if fbytes:                                         # zero copy: the card's writes by phase, in KB
+        kb = None if wrec is None or wsav is None else wrec[1] + wsav[1]
+        want = nfiles * ((44 + nfr * fbytes + 511) // 512 * 512) // 1024
+        check(f"{tag}: STATS.TXT's card writes, recording and saving, add up to the files' sectors",
+              kb is not None and want - 2 <= kb <= want, f"rec {wrec}, save {wsav}, the files {want} KB")
         wfast = nums(r"card fastest write (\d+) KB/s")
-        check(f"{tag}: STATS.TXT has the copy's fastest frame and the card's fastest write",
-              ffast is not None and ffast[0] > 0 and ffast[1] == fbytes and wfast is not None and wfast[0] > 0,
-              f"frame {ffast}, write {wfast}, {len(text)} bytes")
+        check(f"{tag}: STATS.TXT has the card's fastest write, and the rings' capacity",
+              wfast is not None and wfast[0] > 0 and ring is not None
+              and ring[1] == ring_frames(nfiles, nfiles * fbytes),
+              f"write {wfast}, ring {ring}, {len(text)} bytes")
     check(f"{tag}: STATS.TXT's cluster is the card's", clus == [spc], f"{clus} vs {spc} sectors a cluster")
     return {"took": took, "ring": ring, "writes": wr, "hook": hook, "frame": frame, "cluster": clus}
 
@@ -1436,8 +1471,8 @@ DRIVER_DRQ_POLL = 0x40014cf4             # the stock write command's wait for DR
 # 4 MiB ring took 5,167 frames from FINISHING to IDLE (measured 27 Sep
 # 2026), so the row must come later than the 3,800 it did while the card
 # answered at once. The 8 MiB ring (piece 5) takes twice the frames.
-OVERFLOW_STOP = 7200
-OVERFLOW_FRAMES = 14400
+OVERFLOW_STOP = 1000               # zero copy: the save is over by frame ~133 (it took ~10,000)
+OVERFLOW_FRAMES = 2000
 
 
 def watched(s, extra=(), span=8):
@@ -1498,10 +1533,11 @@ LIMIT_FRAMES = 55300                     # the --long take: about 20 s, past the
 
 def limit(s):
     """A 20-second take, stopped by STOP: past the old 15-second cap. T1's
-    ring (131,072 frames) does not wrap in 20 s, so the file's data must equal
-    the ring's first frames byte for byte: since STEMS5 the ring holds the
-    file's own bytes (it was big-endian before). A sector sent twice or lost
-    keeps the size and fails this."""
+    ring (131,040 frames) does not wrap in 20 s, so the file's data must equal
+    the ring's bytes past its header byte for byte: since zero copy the ring
+    holds the file's own bytes at their place (STEM_REC.md 19.7; STEMS5 had
+    them in the file's byte order, big-endian before). A sector sent twice
+    or lost keeps the size and fails this."""
     frames = PRE_ROLL + LIMIT_FRAMES + 200
     log, _, card, words, ring = port(s, frames, stop_at=PRE_ROLL + LIMIT_FRAMES, tag="limit",
                                      dump_blocks=False, extra=watched(s), ring_bytes=RING_SIZE_T1)
@@ -1514,7 +1550,8 @@ def limit(s):
     dlen = int.from_bytes(data[40:44], "little") if data and len(data) >= 44 else None
     check("limit: the file holds every frame", dlen == n and len(data) == 44 + dlen,
           f"data {dlen}, file {len(data) if data else None}")
-    want = bytes(ring[:n])
+    base = ring0(s) + 44
+    want = bytes(ring[base:base + n])
     same = data is not None and len(want) == n and data[44:] == want
     bad = None
     if data is not None and not same:
@@ -1548,25 +1585,24 @@ def exists(s):
 
 def overflow(s):
     """The writer held (stems_hold, a test seam) and the ring made to look
-    nearly full after the action: rd poked 100 frames short of the ring's
-    capacity behind wr (131,072 frames of 64 bytes at T1), and rd_off 100
-    frames past wr_off. The hook stops with ERR_OVERFLOW once 100 frames
-    are in. FINISHING ignores the hold, so the task writes the whole ring
-    and closes a playable file. A STOP, then the row, arms again: the task
-    came back to IDLE."""
+    nearly full after the action: rd poked 100 frames short of the rings'
+    capacity behind wr (131,040 frames of 64 bytes at T1). The hook stops
+    with ERR_OVERFLOW once 100 frames are in. FINISHING ignores the hold,
+    so the task writes what the hook published, the 100 frames (zero copy:
+    the writer reads each file's own place, not rd, STEM_REC.md 19.7; the
+    copy wrote the whole ring), and closes a playable file. A STOP, then
+    the row, arms again: the task came back to IDLE."""
     used = RING_FRAMES_T1 - 100
     rd = (-used) & 0xffffffff
-    rd_off = 100 * 64
     pokes = [(s["stems_hold"] + 3, 1)]
     pokes += [(s["stems_rd"] + i, (rd >> (24 - 8 * i)) & 0xff) for i in range(4)]
-    pokes += [(s["stems_rd_off"] + i, (rd_off >> (24 - 8 * i)) & 0xff) for i in range(4)]
-    # REC pressed at frame 1000, inside the task's long FINISHING (the guard
-    # trips near frame 75; IDLE came about frame 5,300 with the 4 MiB ring,
-    # twice that with 8 MiB): it must change
+    # REC pressed at frame 85, inside the task's FINISHING: the guard trips at
+    # frame 75.5, and the writer wakes within 27 frames and then needs some 30
+    # frames for the 100 frames (IDLE at 133; zero copy, 8 Oct 2026): it must change
     # nothing. The menu's words are dumped just before the re-arm and at the end.
     log, _, card, words, _ = port(s, OVERFLOW_FRAMES, stop_at=OVERFLOW_STOP, tag="overflow",
                                   pokes=pokes, dump_blocks=False,
-                                  calls=((1000, s["stems_action"]), (OVERFLOW_FRAMES - 200, s["stems_action"])),
+                                  calls=((85, s["stems_action"]), (OVERFLOW_FRAMES - 200, s["stems_action"])),
                                   extra=watched(s, span=24),
                                   steps=[ui_step(s, OVERFLOW_FRAMES - 210, "overflow", "pre")],
                                   mems=ui_mems(s, "end") + ((s["stems_peak"], 4, "peak"),))
@@ -1579,8 +1615,8 @@ def overflow(s):
           f"status writes {statuses}")
     check("overflow: 100 frames, then the guard", 100 in wrs and 101 not in wrs, f"wr reached {max(wrs, default=0)}")
     data = take(card) or b""
-    ok = len(data) >= 44 and int.from_bytes(data[40:44], "little") == len(data) - 44 == RING_SIZE_T1
-    check("overflow: the file holds the whole ring and its header agrees", ok,
+    ok = len(data) >= 44 and int.from_bytes(data[40:44], "little") == len(data) - 44 == 100 * 64
+    check("overflow: the file holds the 100 frames and its header agrees", ok,
           f"{len(data)} bytes")
     check("overflow: the task wrote and went IDLE, and the row armed again",
           states[-2:] == [ST_IDLE, ST_ARMED] and st == ST_ARMED, f"state writes {states}, state {st}")
@@ -1791,33 +1827,34 @@ def latch(s):
     mask_take(s, 0x01, "latch", pokes=pokes)
 
 
-RING_FRAMES_8 = RING_SIZE // 512     # 16,384
+RING_FRAMES_8 = ring_frames(8, 512)  # 16,352
 
 
 def wrap8(s):
-    """An eight-track take past the ring's 16,384 frames: the ring wraps, and
-    every file still equals its track."""
+    """An eight-track take past each file's ring (16,352 frames of 64 bytes
+    and the header, in whole sectors): every ring wraps, and every file
+    still equals its track."""
     nfr = mask_take(s, 0xFF, "wrap8", stop_at=17000, frames=18500)
-    check("wrap8: the take outran the ring, so the ring wrapped", nfr is not None and nfr > RING_FRAMES_8,
-          f"{nfr} frames, the ring {RING_FRAMES_8}")
+    size = (RING_FRAMES_8 * 64 + 44 + 511) // 512 * 512
+    check("wrap8: the take outran each file's ring, so the rings wrapped",
+          nfr is not None and 44 + 64 * nfr > size, f"{nfr} frames, a ring of {size} bytes")
 
 
-# overflow8's run: the 4 MiB ring was written out by frame 9,000; the 8 MiB
-# ring takes twice the frames, as OVERFLOW_FRAMES did for T1.
-OVERFLOW8_FRAMES = 18400
+# overflow8's run: zero copy writes the 100 frames it published, so the run
+# is short (the copy wrote the whole ring out, by frame 18,000 with 8 MiB).
+OVERFLOW8_FRAMES = 3000
 
 
 def overflow8(s):
     """The overflow check at eight tracks: the writer held, the ring made to
     look nearly full; the guard trips at 100 frames, eight complete files
-    are written and closed, and the largest value the hook ever wrote to
-    stems_peak is the ring's capacity (the watch log, span 28)."""
+    of those 100 frames are written and closed (zero copy, as overflow),
+    and the largest value the hook ever wrote to stems_peak is the rings'
+    capacity (the watch log, span 28)."""
     used = RING_FRAMES_8 - 100
     rd = (-used) & 0xffffffff
-    rd_off = 100 * 512
     pokes = [(s["stems_hold"] + 3, 1)]
     pokes += [(s["stems_rd"] + i, (rd >> (24 - 8 * i)) & 0xff) for i in range(4)]
-    pokes += [(s["stems_rd_off"] + i, (rd_off >> (24 - 8 * i)) & 0xff) for i in range(4)]
     log, _, card, words, _ = port(s, OVERFLOW8_FRAMES, stop_at=OVERFLOW_STOP, tag="overflow8", mask=0xFF,
                                   fixture=FIXTURE_THRU, pokes=pokes, dump_blocks=False,
                                   calls=((OVERFLOW8_FRAMES - 200, s["stems_action"]),),
@@ -1831,8 +1868,8 @@ def overflow8(s):
           f"largest stems_peak write {max(peaks, default=0)} of {RING_FRAMES_8}")
     files = take_files(card, FIXTURE_THRU)
     sizes = [len(d) for _, d in files]
-    check("overflow8: eight files, each the whole ring's share",
-          len(files) == 8 and all(sz == 44 + RING_FRAMES_8 * 64 for sz in sizes), f"{sizes}")
+    check("overflow8: eight files, each the 100 frames",
+          len(files) == 8 and all(sz == 44 + 100 * 64 for sz in sizes), f"{sizes}")
     check("overflow8: the task went IDLE and the row armed again", st == ST_ARMED,
           f"state {st}, state writes {[val for x, w, val in ws if w == 0]}")
 

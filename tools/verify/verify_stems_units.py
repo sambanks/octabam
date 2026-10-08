@@ -34,6 +34,8 @@ import stems_gain as sg  # noqa: E402,F401
 GQ_N = 4
 GQ_SLOT, GQ_FRAME = 0x80, 0x400                         # stems.s: a slot is its largest gain, then 16
 LIM_FREE = 0x200000                                     # stems.s: gains in 0..this never limit (design 1.3)
+RING_SIZE, UNCACHED = 0x800000, 0x08000000              # stems.s: the ring region; the uncached alias
+ZC_SLACK, ZC_MARGIN = 2048, 512                         # stems.s: zero copy (STEM_REC.md 19.7)
 SRC_BITS = 0xfff                                        # stems.s: every source (Task 8)
 GAIN_LAG, TRACK_HALF, TRACK_DELAY = 1, 1, 0             # stems.s: staged a frame early (perf design 1.1)
 IN_RING, IN_IDX = 0x80005660, 0x46104d00                # STEM_REC.md 18.7: eight frame pages, the index
@@ -220,28 +222,56 @@ def layout_ref(src, fmt):
         else:
             files.append((k << 24) | 0x20000 | 2 * w)
     fb = sum(f & 0xffff for f in files)
-    return files, fb, 0x800000 // fb, 0x800000 // fb * fb
+    return files, fb, (RING_SIZE - len(files) * ZC_SLACK) // fb
+
+
+def rings_ref(files, rframes, ring, zlead=0):
+    """Each file's ring (STEM_REC.md 19.7): (base through the uncached alias,
+    size, the hook's place, the writer's place), one after another with a
+    margin between, sector 0 at the ring's start or zlead sectors before
+    its end."""
+    base, out = (ring + UNCACHED + 511) & ~511, []
+    for f in files:
+        size = (rframes * (f & 0xffff) + 44 + 511) & ~511
+        lead = zlead * 512
+        ph = size - lead if 0 < lead < size else 0
+        out.append((base, size, ph + 44, ph))
+        base += size + ZC_MARGIN
+    return out
+
+
+def rings_read(rt, nf):
+    s = rt.s
+    return [tuple(rt.r32(s[a] + 4 * i) for a in ("stems_rbase", "stems_rsize", "stems_wpos", "stems_rpos"))
+            for i in range(nf)]
 
 
 @unit
 def layout(rt):
-    """stems_layout against layout_ref for every source word and format."""
+    """stems_layout against layout_ref for every source word and format, and
+    each file's ring against rings_ref: inside the region, a capacity the
+    hook can't outrun (rframes x bytes <= size - 44), whole sectors."""
     s = rt.s
-    bad = badfn = None
+    bad = badfn = badz = None
+    rt.w32(s["stems_zlead"], 0)
     for src in range(4096):
         for fmt in range(8):
             rt.w32(s["stems_tracks"], src)
             rt.w32(s["stems_fmt"], fmt)
-            rt.w32(s["stems_wr_off"], 0)
-            rt.w32(s["stems_rd_off"], 0)
             rt.call("stems_layout")
             nf = rt.r32(s["stems_nf"])
             got = ([rt.r32(s["stems_ftab"] + 4 * i) for i in range(nf)], rt.r32(s["stems_fbytes"]),
-                   rt.r32(s["stems_rframes"]), rt.r32(s["stems_rlimit"]))
+                   rt.r32(s["stems_rframes"]))
             ref = layout_ref(src, fmt)
             if got != ref:
                 bad = (hex(src), fmt, got, ref)
                 break
+            rings, want = rings_read(rt, nf), rings_ref(ref[0], ref[2], s["stems_ring"])
+            end = rings[-1][0] + rings[-1][1] + ZC_MARGIN if rings else 0
+            fits = all(ref[2] * (f & 0xffff) <= z[1] - 44 and z[1] % 512 == 0 and z[0] % 512 == 0
+                       for f, z in zip(ref[0], rings))
+            if badz is None and (rings != want or end > s["stems_ring"] + UNCACHED + RING_SIZE or not fits):
+                badz = (hex(src), fmt, [tuple(map(hex, z)) for z in rings[:2]], end, fits)
             # each file's routine and argument, and the tracks' part (perf design 1.4)
             w = "24" if fmt & 1 else "16"
             want = ([s[f"stems_track{w}"] if f >> 24 < 8 else s[f"stems_bus{w}"] for f in ref[0]],
@@ -258,6 +288,51 @@ def layout(rt):
           f"first difference {bad}" if bad else "")
     check("layout: each file's routine and argument, the track files and their bytes", badfn is None,
           f"first difference {badfn}" if badfn else "")
+    check("layout: each file's ring, 512-aligned, inside the region, its capacity safe, whole sectors", badz is None,
+          f"first difference {badz}" if badz else "")
+    # the test seam: sector 0 a few sectors before each ring's end, or at its start past the end
+    rt.w32(s["stems_tracks"], 0x3ff)
+    rt.w32(s["stems_fmt"], 1)
+    for lead in (1, 3, 1 << 20):
+        rt.w32(s["stems_zlead"], lead)
+        rt.call("stems_layout")
+        nf = rt.r32(s["stems_nf"])
+        ref = layout_ref(0x3ff, 1)
+        rings, want = rings_read(rt, nf), rings_ref(ref[0], ref[2], s["stems_ring"], lead)
+        check(f"layout: stems_zlead {lead} puts sector 0 where rings_ref does", rings == want,
+              f"{[tuple(map(hex, z)) for z in rings[:1]]} vs {[tuple(map(hex, z)) for z in want[:1]]}")
+    rt.w32(s["stems_zlead"], 0)
+
+
+@unit
+def zframe(rt):
+    """stems_zframe: a file's frame at the hook's place in its ring; one that
+    crosses the ring's end has its tail moved to the start and the place
+    wraps; one that ends at the end exactly wraps to 0 with nothing moved.
+    MAIN at 16 bits (stems_bus16, 64 bytes) into a 512-byte ring."""
+    s = rt.s
+    rng = random.Random(21)
+    bus = [rng.randrange(1 << 32) & 0xffffff00 for _ in range(64)]
+    rt.wmem(0x80005e60, b"".join(v.to_bytes(4, "big") for v in bus))
+    rt.call("stems_bus16", d5=8, a1=s["stems_ring"])
+    frame = rt.rmem(s["stems_ring"], 64)                 # what stems_bus16 writes, as unit-tested
+    ring = s["stems_ring"] + 0x1000
+    for wpos, want_pos in ((100, 164), (448, 0), (480, 32), (508, 60)):
+        rt.wmem(ring, b"\xee" * (512 + ZC_MARGIN))
+        rt.w32(s["stems_ffn"], s["stems_bus16"])
+        rt.w32(s["stems_farg"], 8)
+        rt.w32(s["stems_rbase"], ring)
+        rt.w32(s["stems_rsize"], 512)
+        rt.w32(s["stems_wpos"], wpos)
+        regs = rt.call("stems_zframe", a4=s["stems_ffn"])
+        mem = rt.rmem(ring, 512)
+        got = (mem[wpos:] + mem[:want_pos])[:64] if wpos + 64 > 512 else mem[wpos:wpos + 64]
+        untouched = mem[want_pos:wpos] if wpos + 64 > 512 else mem[:wpos] + mem[wpos + 64:]
+        check(f"zframe: a frame at {wpos} of a 512-byte ring, the place after it {want_pos}",
+              got == frame and rt.r32(s["stems_wpos"]) == want_pos and set(untouched) <= {0xee}
+              and regs["a4"] == s["stems_ffn"] + 4,
+              f"place {rt.r32(s['stems_wpos'])}, frame {'equal' if got == frame else 'differs'}, "
+              f"a4 {regs['a4'] - s['stems_ffn']}")
 
 
 @unit
