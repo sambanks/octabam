@@ -106,7 +106,7 @@ measures the ring against the emulated card's speed (STEM_REC.md 15.4).
 | The frame hook, everything at 24 bits | 5,188 instructions per frame | 7,415 | 19.1 |
 | The writer's copy, eight tracks at 16 bits | 502 per recorded frame | 737 | 19.1 |
 | The writer's copy, everything at 24 bits | 807 per recorded frame | 1,067 | 19.1 |
-| The writer task's stack peak | 1,060 of 8,192 bytes | 1,244 | 18.9 |
+| The writer task's stack peak | 1,560 of 8,192 bytes (the most seen; `full`, 8 Oct 2026) | 1,244 | 19.3 |
 
 The hook's figures are instruction counts. On the unit, `STATS.TXT`
 measures its time in every take. Bryan T's CF METER takes put

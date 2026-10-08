@@ -7837,7 +7837,10 @@ start. A T1 take: 97 commands of 4 sectors, 4 FAT writes.
 the ring's peak, the card writes, the writer's copy and sleeps, the hook
 and the frame routine's time on DTCN3, the card's DMA modes and its
 cluster (`0x46107990`, sectors a cluster: the raw write returns it << 9,
-12.1). `verify_stems`' `stream` checks it against the take.
+12.1). `verify_stems`' `stream` checks it against the take. The
+writer's stack peaked at 1,560 of 8,192 bytes in `full` on 8 Oct 2026
+(1,060 in an earlier run of the same check: where the frame interrupt
+lands on the writer's stack varies), under the 6,144-byte limit.
 
 ### 19.4 MASTER TRACK and T8
 
