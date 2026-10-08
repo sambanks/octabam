@@ -180,9 +180,7 @@ Octakit (in this remix until 6 Oct 2026). MKII keys:
 | save the Kit, copy it and the pattern to the next empty ones, play the copy | PTN + FUNC + RIGHT |
 | copy / paste / clear an inactive pattern | hold PTN, FUNC and its TRIG; REC / STOP / PLAY |
 
-LOAD KIT's last two rows turn AUTOSAVE (a Part's edits into its Kit at a
-pattern change) and KEEP LEVELS (a Kit load keeps the track levels) on and
-off. The first load of a project writes `kits.work`: the Parts become Kits
+The first load of a project writes `kits.work`: the Parts become Kits
 1–64, or Octakit's `kits3a/b.work` are imported. Module:
 [`kits`](../../modules/kits/README.md).
 

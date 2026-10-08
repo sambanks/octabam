@@ -26,6 +26,8 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
   internal state; 909 overloads limit at full scale. The 808 uses the same
   three output instructions; the 909 adds four instructions per sample.
 
+- KITS: the AUTOSAVE and KEEP LEVELS settings are removed: LOAD KIT lists UNDO KIT and the Kits only, a Part's edits reach its Kit by a save, and a Kit load replaces the track levels too. The `kits.work` header word that held them is written as zero; the file format and version are unchanged (8 Oct, not built or run: no toolchain or stock image in that session).
+
 Remixes
 - KITS replaces OCTAKIT, SCENES KITS, SCENES P2 KITS and KITS RELOAD in bottleservice, ok-ms, mods and character-txtr; mods also carries DIRECT_JUMP_KYOTI and RELOAD_FROM_PROJECT; `remixes/test/octakit` removed, `remixes/test/kits` added (6 Oct, port only).
 - `usb-out-tracks-post`: stock + USB MIDI + USB AUDIO OUT TRACKS POST (5 Oct).

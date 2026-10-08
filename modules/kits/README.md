@@ -9,16 +9,14 @@ Credit: Em ([emuyia](https://github.com/emuyia)) designed Kits on the
 Octatrack in [Octakit](https://github.com/emuyia/ems-octakit) (MIT,
 Copyright (c) 2026 June Kiff). KITS follows its design: Kits per
 project, LOAD KIT and SAVE KIT on PART and FUNC+PART with its key map, the
-list copy, paste, clear and undo, AUTOSAVE and KEEP LEVELS (ems-octakit
-discussions #2 and #3), the pattern clipboard carrying the Kit, and the
-`NNN name` status line. It reads Octakit's `kits3a/b.work` files.
+list copy, paste, clear and undo, the pattern clipboard carrying the Kit,
+and the `NNN name` status line. It reads Octakit's `kits3a/b.work` files.
 Markers as in `CHIP.md`: ✅ measured, 📖 read from the code.
 
 ## What a Kit is
 
 A Kit is the 6,322 bytes of one Octatrack Part, plus an eight-byte name.
-Loading a Kit loads those bytes into a Part slot (with KEEP LEVELS on,
-the slot's eight track levels are kept, below).
+Loading a Kit loads those bytes into a Part slot.
 
 The Octatrack manual's Part (OS 1.40A, section 10.2 PARTS: page 52 of the
 [MKII manual](https://www.elektron.se/wp-content/uploads/2024/09/Octatrack-MKII-User-Manual_ENG_OS1.40A_210414.pdf),
@@ -90,8 +88,7 @@ which is not what an MD or MnM Kit holds.
 
 - **LOAD KIT** lists UNDO KIT (the Kit the current pattern had before
   the last load), the 255 Kits (`NNN name`, `*` on a Kit no pattern
-  plays, `NNN ---` on an empty one) and two settings, AUTOSAVE and KEEP
-  LEVELS (YES turns one on or off). YES on a Kit: the current pattern
+  plays, `NNN ---` on an empty one). YES on a Kit: the current pattern
   plays it, now.
 - **MKI FUNC+BANK** is SAVE KIT only while the LOAD KIT list is open
   (Octakit's key map); with SAVE KIT open it closes it, over the Kit name
@@ -112,11 +109,11 @@ which is not what an MD or MnM Kit holds.
 - In either list, FUNC+REC copies the Kit under the cursor, FUNC+STOP
   pastes onto it, FUNC+PLAY clears it; the same paste or clear again on
   the same Kit undoes it.
-- **AUTOSAVE**: at a pattern change request, the playing Part's edits go
-  into its Kit (and its saved Part) first (ems-octakit discussion #2).
-- **KEEP LEVELS**: a Kit loaded into a slot keeps the slot's eight track
-  levels (Part `+0x12 + 2t`, the bytes CC 7 writes, measured; the cue
-  levels at `+0x13 + 2t` come from the Kit) (ems-octakit discussion #3).
+- A Part's edits reach its Kit only by a save (SAVE KIT, quick save, a
+  stock Part Save or SAVE ALL, PTN+FUNC+RIGHT); a Kit load replaces the
+  whole Part, track levels included. The AUTOSAVE and KEEP LEVELS settings
+  (ems-octakit discussions #2 and #3) were removed on 8 Oct 2026; the
+  `kits.work` header word that held them is written as zero and not read.
 - The status line's Part field shows the current slot's Kit as `NNN
   name` (Octakit's form; measured on the port's LCD: `009 ONE`). The
   stock Part name is the Kit's first six characters (its field is seven
@@ -148,9 +145,9 @@ which is not what an MD or MnM Kit holds.
   (`0x40026eb0`), the paste's undo snapshot (`0x40026ef0`) and the paste
   or undo restore (`0x4002b9b0`).
 - **Files.** `kits.work` and `kits.strd` in the project directory:
-  64 bytes of header (`KITS`, version 1, length, CRC-32 of the rest,
-  the settings), ASSIGN (256), the valid bits (32), RESID (64), then 256
-  records of an 8-byte name, 8 reserved bytes and the 6,322-byte Part:
+  64 bytes of header (`KITS`, version 1, length, CRC-32 of the rest, a
+  reserved word that held the settings until 8 Oct 2026), ASSIGN (256),
+  the valid bits (32), RESID (64), then 256 records of an 8-byte name, 8 reserved bytes and the 6,322-byte Part:
   1,622,944 bytes. Record 256 is never a Kit: ASSIGN and RESID use 0xff
   for "no Kit". A Part found there at a load (Em's Kit 256, or a save
   into Kit 256 by a build before 255) moves to the next empty Kit; on
@@ -179,7 +176,7 @@ which is not what an MD or MnM Kit holds.
   and restaged).
 - No `illegal`. The counters (`KSTATE` in the unit, read by the gate):
   READY, CNT_ISR, CNT_NOSLOT, CNT_INVALID (an assignment naming an empty
-  Kit), CNT_IOERR, CNT_BADFILE, CNT_STAGED, CNT_REPOINT, CNT_AUTOSAVE.
+  Kit), CNT_IOERR, CNT_BADFILE, CNT_STAGED, CNT_REPOINT.
 
 ## Measured
 
@@ -212,8 +209,7 @@ OCTABAM89_setgate (bank 3), each scenario forked from one load:
   the one after a further FUNC tap): the load runs stock FUNC+CUE's
   refresh after the Part Reload.
 - ✅ LOAD KIT, UNDO KIT, SAVE KIT with the name editor, quick save, the list
-  copy / paste / clear and their undos, the AUTOSAVE and KEEP LEVELS rows
-  and behaviours, a pattern copy and paste carrying its Kit (and the undo
+  copy / paste / clear and their undos, a pattern copy and paste carrying its Kit (and the undo
   restore, its stock routines called in order: the panel's second
   FUNC+STOP pastes again under the port, on stock too), FUNC+PASTE+PART,
   PTN+FUNC+RIGHT, PTN+FUNC+TRIG paste and its undo.
@@ -241,7 +237,9 @@ OCTABAM89_setgate (bank 3), each scenario forked from one load:
 
 ## On the unit
 
-Image A6 (bottleservice), Sam's MKII, 6 Oct 2026. No halt in any of:
+Image A6 (bottleservice), Sam's MKII, 6 Oct 2026 (it carried the AUTOSAVE
+and KEEP LEVELS rows; the build without them has not been on the unit).
+No halt in any of:
 
 - Bottleservice 2026 (Em's `kits3a/b.work`, no `kits.work`): the load
   imports (a pause at its end; not timed), the status line reads `065
