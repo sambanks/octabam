@@ -33,7 +33,7 @@ from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
 from remix import registry as remix_registry  # noqa: E402
 from remix.registry import modules as remix_modules  # noqa: E402
 from remix.schema import (DEFAULT_HARVEST, NO_FALLBACK, BusRole,  # noqa: E402
-                          YBase, enable_words)
+                          Linked, YBase, enable_words)
 from remix.state import fx1_hazard  # noqa: E402
 from remix import stock as stock_mod  # noqa: E402
 import label_fmt  # noqa: E402
@@ -999,6 +999,11 @@ def main():
     _cave_top = cave_end            # caves start past the descriptor clones
     _last_placed = "the descriptor clones"      # what ends at _cave_top
     _ovf_top = OVERFLOW_RUN
+    # A cave pinned in the overflow run (SYNTH's page at its start) is
+    # placed in plan order; what floats into the run goes above it.
+    for _c, _b in _plan:
+        if _c.cave_addr is not None and OVERFLOW_RUN <= _c.cave_addr < OVERFLOW_RUN_END:
+            _ovf_top = max(_ovf_top, (_c.cave_addr + len(_b) + 3) & ~3)
     # ROM-placed linked units go FIRST, so a cave may name a unit's global
     # (cc-map's CC_MODEDEF*, resolved to mode-defaults' cc_fx2 / cc_fx1 when
     # the module is in the image, its stub `rts` otherwise). Floating caves
@@ -1082,6 +1087,13 @@ def main():
                 f"[PROJ]). Place the cave in the decoded 0x400d2000..0x400d8000 "
                 f"free region.")
         _inside = CLONE_BASE <= _c.cave_addr < cave_limit
+        if _floating and _inside and _c.cave_addr + len(_b) > cave_limit \
+                and ((_ovf_top + 3) & ~3) + len(_b) <= OVERFLOW_RUN_END:
+            # A floating cave past the clone window goes to the second zero
+            # run, as a linked source cave that outgrows it does below.
+            _c = dataclasses.replace(_c, cave_addr=(_ovf_top + 3) & ~3)
+            _inside = False
+            print(f"  {_c.label}: past the clone window, placed in the overflow run")
         if _inside:
             if _c.cave_addr < _cave_top:
                 sys.exit(f"{_c.label} at 0x{_c.cave_addr:08x} overlaps what precedes it "
@@ -1173,6 +1185,8 @@ def main():
             sys.exit(f"{_c.label}: its source is the only truth and there is no "
                      f"m68k-elf toolchain -- run `make setup`")
         img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)] = _b
+        if OVERFLOW_RUN <= _c.cave_addr < OVERFLOW_RUN_END:
+            _ovf_top = max(_ovf_top, (_c.cave_addr + len(_b) + 3) & ~3)
         if _c.pool_base_literals:
             _pool_caves.append((_c.label, _c.cave_addr, len(_b), _c.pool_base_literals))
         for _pa, _expect, _write in _pokes:
@@ -1268,6 +1282,57 @@ def main():
                 img[_ca - BASE + _o:_ca - BASE + _o + 4] = _pbase.to_bytes(4, "big")
             print(f"  arena: {_lbl}: {_want} arena-base literal(s) -> 0x{_pbase:08x}")
 
+    # ---- the label formatters' plan (placed below, after the links) -----
+    # One entry per select that prints its words: (module, slot, param,
+    # renames, names table). The table is the clone's own (P + NAMES_AT) or,
+    # for a host_slots module, the screen's NAMES_xx, by symbol: in a remix
+    # with DRAM units the formatters are DRAM units themselves (8 Oct 2026;
+    # the clone window and the overflow run until then), linked with the
+    # rest of the runtime, so the table may be another unit's.
+    _lplan = []
+    for name in CLONED_ORDER:
+        # A BLANKED module's page draws no knobs, so nothing ever calls its
+        # label formatters: skip them. On the rig that is the
+        # two hosts' six select labels, ~500 B the bus screen needs. The
+        # screen prints its own words (busscreen VERB_SELECTS / DLY_SELECTS).
+        if name in BLANKED:
+            continue
+        for _i, _p in enumerate(_MODS[name].params):
+            if not _p.prints_labels:
+                continue
+            # A MODE select with views gets the BIGGER cave: it renames the
+            # knobs around it before printing its own word, so the panel
+            # stops calling BusDelay's grain scatter "MDEP" (tools/
+            # mode_names.py). Everything else keeps the plain label cave.
+            _mod = _MODS[name]
+            _views = _mod.name_views_for(_i)
+            _ren = (mode_names.complete(_mod, _i, _views) if _views else {})
+            # Only the MODE select names itself (15 Sep 2026, image 26): a
+            # select whose word is not self-explaining (SIZE, SHFT,
+            # RATE) keeps its name, the tick widget flashing the word.
+            if _i == _mod.mode_slot:
+                _ren = mode_names.with_selfname(_ren, _i, _p.labels)
+            _desc = clone_addr[name] + mode_names.NAMES_AT if _ren else None
+            if _ren and name in HOST_SLOTS:
+                # the renames go to the screen's own table: the shared
+                # descriptor keeps the host page's one name
+                _desc = f"NAMES_{NEW_IDS[name]:02x}"
+            _lplan.append((name, _i, _p, _ren, _desc))
+    _ldram = {}                     # (module, slot) -> its DRAM unit's label
+    if _dram:
+        _lsrc = pathlib.Path("out/generated/labels")
+        _lsrc.mkdir(parents=True, exist_ok=True)
+        for name, _i, _p, _ren, _desc in _lplan:
+            _ul = f"lfmt_{NEW_IDS[name]:02x}_{_i}"
+            _body = (mode_names.source(_p.labels, _desc, _ren) if _ren
+                     else label_fmt.source(_p.labels))
+            assert _body.startswith("        .text\n")
+            _f = _lsrc / f"{_ul}.s"
+            _f.write_text(f"        .text\n        .globl  {_ul}\n{_ul}:\n"
+                          + _body[len("        .text\n"):])
+            _dram.append((_MODS[name], Linked(_ul, str(_f.resolve()), dram=True)))
+            _ldram[(name, _i)] = _ul
+
     # DRAM units' Linked.defsyms, resolved as a ROM unit's; one link, so
     # one value per name.
     _dram_defs: dict[str, int] = {}
@@ -1356,10 +1421,20 @@ def main():
                            [_sym[u][s] for u, s in _t.symbols])
         _blob = b"".join(v.to_bytes(4, "big") for v in _ents)
         _at = (_cave_top + 0x7f) & ~0x7f
+        _in = _at + len(_blob) <= cave_limit
+        if not _in:
+            # past the clone window: the overflow run, as a floating cave
+            _at = (_ovf_top + 3) & ~3
+            if _at + len(_blob) > OVERFLOW_RUN_END:
+                sys.exit(f"{_m.key} table {_t.label} ({len(_blob)} B) fits neither the "
+                         f"clone window nor the overflow run")
         if any(img[_at - BASE:_at - BASE + len(_blob)]):
             sys.exit(f"{_m.key} table {_t.label} at 0x{_at:08x} not free")
         img[_at - BASE:_at - BASE + len(_blob)] = _blob
-        _cave_top = _at + len(_blob)
+        if _in:
+            _cave_top = _at + len(_blob)
+        else:
+            _ovf_top = (_at + len(_blob) + 3) & ~3
         for _ra, _old in _t.refs:
             if rd32(_ra) != _old:
                 sys.exit(f"{_m.key} table {_t.label}: ref 0x{_ra:08x} holds "
@@ -1428,44 +1503,30 @@ def main():
     # and emit() is re-derived through m68k-elf-as whenever one is on PATH.
     _lbl_top = max(_cave_top, cave_end)
     _lbl = []
-    for name in CLONED_ORDER:
-        # A BLANKED module's page draws no knobs, so nothing ever calls its
-        # label formatters: skip them. On the rig that is the
-        # two hosts' six select labels, ~500 B the bus screen needs. The
-        # screen prints its own words (busscreen VERB_SELECTS / DLY_SELECTS).
-        if name in BLANKED:
-            continue
-        for _i, _p in enumerate(_MODS[name].params):
-            if not _p.prints_labels:
-                continue
-            # A MODE select with views gets the BIGGER cave: it renames the
-            # knobs around it before printing its own word, so the panel
-            # stops calling BusDelay's grain scatter "MDEP" (tools/
-            # mode_names.py). Everything else keeps the plain label cave.
-            _mod = _MODS[name]
-            _views = _mod.name_views_for(_i)
-            _ren = (mode_names.complete(_mod, _i, _views) if _views else {})
-            # Only the MODE select names itself (15 Sep 2026, image 26): a
-            # select whose word is not self-explaining (SIZE, SHFT,
-            # RATE) keeps its name, the tick widget flashing the word.
-            if _i == _mod.mode_slot:
-                _ren = mode_names.with_selfname(_ren, _i, _p.labels)
-            if _ren:
-                _desc = clone_addr[name] + mode_names.NAMES_AT
-                if name in HOST_SLOTS:
-                    # the renames go to the screen's own table: the shared
-                    # descriptor keeps the host page's one name
-                    _nsym = f"NAMES_{NEW_IDS[name]:02x}"
-                    if _nsym not in _exports:
-                        sys.exit(f"{name} is a host_slots module, but no linked "
-                                 f"unit exports {_nsym} for its MODE renames")
-                    _desc = _exports[_nsym]
-                    print(f"  {name} MODE renames -> {_nsym} 0x{_desc:08x}")
-                _bytes = mode_names.emit(_p.labels, _desc, _ren)
-                mode_names.verify(_p.labels, _desc, _ren)
-            else:
-                _bytes = label_fmt.emit(_p.labels)
-                label_fmt.verify(_p.labels)
+    _rt = (pathlib.Path("out/platform/runtime/runtime.bin").read_bytes()
+           if _ldram else b"")
+    for name, _i, _p, _ren, _desc in _lplan:
+        if _ren and isinstance(_desc, str):
+            if _desc not in _exports:
+                sys.exit(f"{name} is a host_slots module, but no linked "
+                         f"unit exports {_desc} for its MODE renames")
+            print(f"  {name} MODE renames -> {_desc} 0x{_exports[_desc]:08x}")
+            _desc = _exports[_desc]
+        if _ren:
+            _bytes = mode_names.emit(_p.labels, _desc, _ren)
+            mode_names.verify(_p.labels, _desc, _ren)
+        else:
+            _bytes = label_fmt.emit(_p.labels)
+            label_fmt.verify(_p.labels)
+        _ovf = False
+        if (name, _i) in _ldram:
+            # A DRAM unit: the bytes the link made must be emit()'s.
+            _at = _sym[_ldram[(name, _i)]][_ldram[(name, _i)]]
+            _o = _at - _reserve[0]
+            if _rt[_o:_o + len(_bytes)] != _bytes:
+                sys.exit(f"{name} slot {_i}: the linked label formatter at 0x{_at:08x} "
+                         f"differs from label_fmt/mode_names.emit -- refusing")
+        else:
             # Past the clone window? Into the second zero run, above the
             # caves pinned there. Either region is checked free; a formatter
             # is position independent (pc-relative tables, absolute OS
@@ -1483,18 +1544,22 @@ def main():
             if any(img[_at - BASE:_at - BASE + len(_bytes)]):
                 sys.exit(f"label cave at 0x{_at:08x} is not free")
             img[_at - BASE:_at - BASE + len(_bytes)] = _bytes
-            wr32(clone_addr[name] + 0x0ca + _i * 4, _at)
-            _lbl.append((name, _i, _p.name.decode("latin1"), _at,
-                         len(_bytes), _p.labels, bool(_ren)))
-            if _ovf:
-                _ovf_top = (_at + len(_bytes) + 3) & ~3
-            else:
-                _lbl_top += len(_bytes)
+        wr32(clone_addr[name] + 0x0ca + _i * 4, _at)
+        _lbl.append((name, _i, _p.name.decode("latin1"), _at,
+                     len(_bytes), _p.labels, bool(_ren)))
+        if (name, _i) in _ldram:
+            pass
+        elif _ovf:
+            _ovf_top = (_at + len(_bytes) + 3) & ~3
+        else:
+            _lbl_top += len(_bytes)
     for _n, _i, _nm, _a, _sz, _labels, _rn in _lbl:
         print(f"  {_n:13s} slot {_i:<2} {_nm:<5} prints "
               f"{'|'.join(_labels)}  ({_sz} B at 0x{_a:08x})"
               + (" + RENAMES its neighbours per mode" if _rn else ""))
-    if _lbl:
+    if _ldram:
+        print(f"  {len(_ldram)} label formatters in the DRAM runtime, each == its emit()")
+    elif _lbl:
         print(f"  {len(_lbl)} label formatters, "
               f"0x{max(_cave_top, cave_end):08x}..0x{_lbl_top:08x} "
               f"({_lbl_top - max(_cave_top, cave_end)} B)"

@@ -125,9 +125,11 @@ def emit(labels: tuple[str, ...], desc: int,
     return out + b"\0" * (len(out) % 2)
 
 
-def source(labels: tuple[str, ...], desc: int,
+def source(labels: tuple[str, ...], desc: int | str,
            renames: dict[int, dict[int, bytes]]) -> str:
-    """The same cave as assembler, for verify() and for a human reading it."""
+    """The same cave as assembler, for verify(), for a human reading it, and
+    as a DRAM unit; `desc` may be a symbol the link resolves (a host's
+    NAMES_xx table in another DRAM unit)."""
     n = len(labels)
     blocks = _blocks(renames, n)
     rt = ",".join(f"r{i}-rtab" for i in range(n))
@@ -151,7 +153,7 @@ def source(labels: tuple[str, ...], desc: int,
             f'        addq.l  #1,%a1\n'
             f'        and.l   #0xff,%d1\n'
             f'        mulu.w  #{NAME_LEN},%d1\n'
-            f'        lea     0x{desc:08x},%a0\n'
+            f'        lea     {desc if isinstance(desc, str) else f"0x{desc:08x}"},%a0\n'
             f'        adda.l  %d1,%a0\n'
             f'        move.l  (%a1)+,(%a0)+\n'
             f'        move.w  (%a1)+,(%a0)+\n'
