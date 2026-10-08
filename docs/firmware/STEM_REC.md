@@ -7396,6 +7396,46 @@ flash D). Yves reported it and copied the take's folder off the card.
   readout adds the copy's fastest frame and the card's fastest write,
   which separate the work from the waiting.
 
+### 17.5 Flash E: STEMS5 on Yves's MKII, reported 8 Oct 2026
+
+The image is STEMS5 (`BUILD=5`, from `19a3a113`; `modules/stems/FLASH.md`
+flash E). Yves flashed it, recorded six takes on flash D's project (T1
+to T8 Static, one bell sample each) and copied the folders off the card
+(`261008-1421` to `1426`).
+
+| Take | Tracks, bits | Result | Ring peak | Copy while recording | Fastest frame | Card mean, fastest |
+|---|---|---|---|---|---|---|
+| 1421 | 8, 24 | RING FULL at 18.1 s | 10,922 of 10,922 | 303 µs/KB | 12,621 ns, 768 B (16.4 µs/KB) | 3.7, 27.0 MB/s |
+| 1426 | 8, 24 | RING FULL at 17.9 s | 10,922 of 10,922 | 299 µs/KB | 12,636 ns, 768 B | 3.7, 26.4 MB/s |
+| 1425 | 7, 24 | OK, 69.8 s | 5,831 of 12,483 | 288 µs/KB | 11,053 ns, 672 B | 3.7, 27.1 MB/s |
+| 1424 | 6, 24 | OK, 44.6 s | 2,332 of 14,563 | 276 µs/KB | 9,454 ns, 576 B | 3.7, 26.9 MB/s |
+| 1423 | 4, 24 | OK, 29.0 s | 1,448 of 21,845 | 246 µs/KB | 6,257 ns, 384 B | 4.8, 26.7 MB/s |
+| 1422 | 8, 16 | OK, 62.8 s | 2,812 of 16,384 | 266 µs/KB | 8,893 ns, 512 B | 6.3, 29.9 MB/s |
+
+(The card's mean is the take's KB over its card writes' time.)
+
+- ✅ **Better than flash D**: eight tracks at 24 bits ran 18 s against
+  6.75 s, the writer keeping about 78% of what the hook produced (the
+  ring grew about 600 frames a second of the 2,756 produced) against
+  about half. Seven tracks at 24 bits filled slowly (47% after 70 s, so
+  about 2.5 minutes to RING FULL); six and fewer, and eight at 16 bits,
+  held.
+- ✅ **The copy's own cost is small and as estimated**: its fastest
+  frame moves 768 bytes in 12.6 µs, about 66 ns a long store with its
+  share of the instructions, inside Bryan T's 45 to 80 ns (17.4). The
+  hook took 25 µs a frame (28 in flash D).
+- ✅ **The writer waits, in every take**: the copy's mean while recording
+  is 15 to 18 times its fastest frame, and the card's mean 5 to 7 times
+  slower than its fastest write. Its time goes to not running, at any
+  track count. The 16-bit take's longest sleep came back after 22.4 ms
+  for a 10 ms request. 🟡 Inferred: with eight Static voices, the frame
+  interrupt and the tasks at priorities 2 to 7 leave priority 1 little,
+  and the writer shares that round robin with three stock tasks (3.5).
+  The work itself, about 13 µs of copy and 28 µs of card a frame at the
+  fastest rates, is about 11% of the processor.
+- The card's longest single write was 254 ms (the 16-bit take), about
+  700 frames; the ring absorbs it.
+
 ## 18. The level path (piece 5)
 
 Measured 1 Oct 2026 under the port with `tools/verify/stems_levels_probe.py`

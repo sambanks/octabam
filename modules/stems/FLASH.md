@@ -2,6 +2,14 @@
 
 ## Flash E — `stems`: the writer's copy in whole longs (staged 8 Oct 2026)
 
+**Flashed** on Yves's MKII, reported 8 Oct 2026, six takes on flash D's
+project: eight tracks at 24 bits ran 18 s before `RING FULL` (6.75 s in
+flash D); seven at 24 bits filled slowly (47% after 70 s); six, four,
+and eight at 16 bits held. `STATS.TXT` says why eight at 24 bits still
+fills: the copy's own work is small (768 bytes in 12.6 µs), but its mean
+is 15 to 18 times that, and the card's 5 to 7 times its fastest write.
+The writer waits for the processor (STEM_REC.md 17.5).
+
 Flash D's `STATS.TXT` (STEM_REC.md 17.4) put the limit in the writer's
 copy into its uncached buffers: 8.5 s to copy 6.75 s of audio, one
 stall a byte at 24 bits, plus time the writer wasn't running (how much
@@ -11,7 +19,24 @@ third of the instructions (STEM_REC.md 19.5). `STATS.TXT` splits the
 copy into recording and saving and adds the copy's fastest frame and the
 card's fastest write, which tell the work from the waiting.
 
-**The image.** IMAGE_E
+**The image.** Built 8 Oct 2026 from branch `stems-perf` at `19a3a113` (a
+clean tree; the commits after it change docs only), with the bare-metal
+`m68k-elf` toolchain: `make image REMIX=stems BUILD=5 VERSION=STEMS5`.
+The unit's OS version reads `STEMS5`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS5.bin` | 452,100 | `cd36f267825dd1b1b907ed0ab5dd5e41927acd876ba93765b5f22a9e9028e2be` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS5.syx` | 631,504 | `50c648ee2bd3b01ae1bfaa5c332a22e067347788f2a58560664f6a98db0a876f` |
+
+Both are built from your own 1.40C and never enter the repository. Copies
+are in `/home/yvez/xcheck/stems5`. The checks on that code: the unit
+tests, 71 PASS, 0 FAIL; under the port, first the checks the copy and
+the byte order reach on the draft (170 PASS; its one FAIL, `cost` at
+5,764, is what `PACK12A`/`PACK12B` fixed), then the 24-bit takes byte for
+byte, all fourteen files, `STATS.TXT` and `cost` again on the final code
+(77 PASS, 0 FAIL, `cost` 5,012); `verify_stems --long --fat32` on
+`19a3a113`: 453 PASS, 0 FAIL, 0 SKIP.
 
 **Before you flash.** As flash D: power cycle first if REC was pressed
 since power-on (STEMS4 included), the stock `.syx` and a DIN MIDI
