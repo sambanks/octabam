@@ -7436,6 +7436,40 @@ to T8 Static, one bell sample each) and copied the folders off the card
 - The card's longest single write was 254 ms (the 16-bit take), about
   700 frames; the ring absorbs it.
 
+### 17.6 Flash G: STEMS7 (zero copy) on Yves's MKII, reported 8 Oct 2026
+
+The image is STEMS7 (`BUILD=7`, from `92959832`; `modules/stems/FLASH.md`
+flash G), the writer at priority 1. Two takes on flash D's project (T1 to
+T8 Static, one bell each), copied off the card as `261008-1856` and
+`1858`.
+
+| Take | Files, bits | Result | Ring peak | Card while recording, fastest | Hook mean, longest |
+|---|---|---|---|---|---|
+| 1856 | T1–T8, 24 | OK, 61.4 s | 2,244 of 10,901 (21%) | 3.0 MB/s (329 µs/KB), 28.0 MB/s | 29 µs, 52 µs |
+| 1858 | 12: T1–T8, MAIN, CUE, AB, CD, 24 | RING FULL at 4.3 s | 7,260 of 7,260 | 2.1 MB/s (474 µs/KB), 10.1 MB/s | 37 µs, 64 µs |
+
+- ✅ **Eight tracks at 24 bits keep up**: 61 s with the ring never above
+  21% (flash D filled it in 6.75 s, flash E in 18 s). The writer needs
+  2.12 MB/s there and the card took 3.0 while recording.
+- ✅ **The hook's uncached stores cost less than estimated**: 29 µs a
+  frame against flash E's 25 at T1–T8, 24 bits (19.7 estimated about
+  37).
+- ✅ **The files are whole** (read by `zcheck.py` and `zsum.py`, scripts
+  in the session, not in the tree): in take 1858 MAIN minus the sum of T1
+  to T8 is 0 to 7 at all 379,744 samples off MAIN's rails, the property
+  the port's checks hold, and 2 to 5 around the place each ring wrapped;
+  nine files agree sample for sample through the wrap and the RING FULL
+  stop. In take 1856 (each ring wrapped 15 times) no loud 16-sample
+  frame repeats and the steps in the audio fall on sector boundaries no
+  more often than chance (3 of 422, 4.7 expected): they are the bell's
+  attacks.
+- 🔴 **Twelve files at 24 bits still fall behind**: 3.17 MB/s needed, 2.1
+  taken. 🟡 Two things differ from eight files: the writer still waits
+  (its mean is 4.8 times its fastest write, 9 times at eight files), and
+  the fastest write itself fell from 28 to 10 MB/s. Unmeasured guesses
+  for the second: the file layer finding clusters for twelve growing
+  files, or the card switching between twelve streams every 48 KB.
+
 ## 18. The level path (piece 5)
 
 Measured 1 Oct 2026 under the port with `tools/verify/stems_levels_probe.py`

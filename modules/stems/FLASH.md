@@ -2,6 +2,12 @@
 
 ## Flash G — `stems`: zero copy, the writer at priority 1 (staged 8 Oct 2026)
 
+**Flashed** on Yves's MKII, reported 8 Oct 2026: T1 to T8 at 24 bits on
+flash D's project ran 61 s with `DONE` and the ring at most 21% full;
+twelve files at 24 bits (MAIN, CUE, AB and CD added) stopped with `RING
+FULL` after 4.3 s. The files of both takes are whole, MAIN equal to the
+stems' sum to the last bit (STEM_REC.md 17.6).
+
 Flash E's `STATS.TXT` (STEM_REC.md 17.5) showed the writer waiting for
 the processor at priority 1, and about half its time was the copy. STEMS7
 drops the copy: the frame hook writes each file's bytes into that file's
