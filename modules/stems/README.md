@@ -101,18 +101,20 @@ measures the ring against the emulated card's speed (STEM_REC.md 15.4).
 | Measured under the port | Since the perf round | Before it | STEM_REC.md |
 |---|---|---|---|
 | The frame hook, not recording (the gain mirror) | 394 instructions per frame | 1,001 | 19.1 |
-| The frame hook, eight tracks at 16 bits | 3,299 instructions per frame | 5,579 | 19.1 |
-| The frame hook, eight tracks at 24 bits | 4,059 instructions per frame | 6,219 | 19.1 |
-| The frame hook, everything at 24 bits | 5,188 instructions per frame | 7,415 | 19.1 |
-| The writer's copy, eight tracks at 16 bits | 502 per recorded frame | 737 | 19.1 |
-| The writer's copy, everything at 24 bits | 807 per recorded frame | 1,067 | 19.1 |
+| The frame hook, eight tracks at 16 bits | 3,427 instructions per frame | 5,579 | 19.1 |
+| The frame hook, eight tracks at 24 bits | 3,995 instructions per frame | 6,219 | 19.1 |
+| The frame hook, everything at 24 bits | 5,012 instructions per frame | 7,415 | 19.1 |
+| The writer's copy, eight tracks at 16 bits | 206 per recorded frame | 737 | 19.1 |
+| The writer's copy, everything at 24 bits | 284 per recorded frame | 1,067 | 19.1 |
 | The writer task's stack peak | 1,560 of 8,192 bytes (the most seen; `full`, 8 Oct 2026) | 1,244 | 19.3 |
 
-The hook's figures are instruction counts. On the unit, `STATS.TXT`
-measures its time in every take. Bryan T's CF METER takes put
-compute-bound interrupt code at about 1.1 cycles an instruction on the
-264 MHz core (`docs/firmware/ARCHITECTURE.md`), so about 22 µs a frame
-with everything at 24 bits and under 2 µs idle: estimated.
+The figures are STEMS5's (STEM_REC.md 19.5; STEMS4, flash D, had 3,299,
+4,059, 5,188, 502 and 807). The hook's figures are instruction counts.
+On the unit, `STATS.TXT` measures its time in every take: flash D
+measured 28 µs a frame on average (43 at most) at eight tracks, 24 bits,
+4,059 instructions then, about 1.8 cycles an instruction on the 266 MHz
+core. So about 35 µs a frame with everything at 24 bits and under 3 µs
+idle: estimated.
 STEMS3 recorded eleven files at 24 bits on the unit; clicks and the
 screen's response during a take aren't reported yet (STEM_REC.md 17.3).
 Before piece 5 the hook copied the tracks as they were and cost 743
@@ -202,7 +204,11 @@ status OK
 165375 frames, 60 s, 11 files, 24 bits
 ring peak 1234 of 7943 frames
 card writes 2584, 41234 ms in all, longest 62300 us
-writer copy 1902 ms in all, longest batch 5100 us
+card fastest write 21000 KB/s
+copy rec 1702 ms 81500 KB 20 us/KB
+copy save 200 ms 9300 KB 21 us/KB
+copy longest batch 5100 us
+copy fastest frame 17500 ns, 960 bytes
 writer longest sleep 12000 us, asks 10000
 hook mean 41 us, longest 88 us
 hook and frame routine mean 290 us, longest 335 us, 165375 frames
@@ -216,6 +222,16 @@ card udma 4 mwdma 0, cluster 64 sectors
 - **The writer's longest sleep** far above the 10 ms it asks for: it
   waited for the processor. It runs at priority 1, beside the task that
   streams Static samples.
+- **The copy** moves the take from the ring into the buffers the card
+  reads, while recording and while saving. Its µs a KB while recording
+  far above while saving: the memory bus was busy (Static voices read
+  samples from it). The buffers are uncached, so each store waits for
+  the memory (STEM_REC.md 17.4).
+- **The fastest frame and the fastest write** are runs that nothing
+  interrupted: the copy's and the card's own speed. A copy whose µs a KB
+  while recording sits far above its fastest frame's (a frame's bytes
+  over its ns) spent its time waiting for the processor, not working; a
+  card's mean far below its fastest write, likewise.
 - **The hook and frame routine** near the frame's 362.8 µs: the audio
   interrupt left little for any task.
 - **The card line** gives the DMA modes the card's driver chose (both 0
@@ -245,7 +261,7 @@ timestamps with (7.58 ns a count).
   track is in that track's file too, after its fader, 80 samples later
   (the THRU track's own delay, STEM_REC.md 18.7).
 - **More work in the audio interrupt.** While a take records, the frame
-  hook runs 3,299 to 5,188 instructions per frame (eight tracks at 16
+  hook runs 3,427 to 5,012 instructions per frame (eight tracks at 16
   bits to everything at 24 bits), and 394 while nothing records.
   `STATS.TXT` gives its time on the unit.
 - The status doesn't tick on its own: it's current as of the last key.
@@ -323,7 +339,10 @@ effects. [BUILDING.md](../../docs/guide/BUILDING.md) has every step.
     buffer the audio processor fills, and the inputs from the page of the
     input ring that frame filled, go into the ring frame staged the frame
     before, which is then published (18.5-18.7). At 16 bits it keeps each
-    result's top 16 bits; at 24 bits all of them. When a take starts it
+    result's top 16 bits; at 24 bits all of them. Every sample goes into
+    the ring in its file's byte order, so the writer moves whole longs:
+    its buffers are uncached, and on the unit each store waits for the
+    memory (STEM_REC.md 17.4, 19.5). When a take starts it
     latches the file table: the sources, the format, each file's bytes
     per frame and routine, and the ring's capacity.
 - **The peak ring fill.** Each recorded frame the hook also keeps the
@@ -336,7 +355,7 @@ effects. [BUILDING.md](../../docs/guide/BUILDING.md) has every step.
   start it names the take from the clock, creates the folder, refuses a
   folder that exists, and opens one file per entry of the file table.
   While recording, it moves the ring into each file in 512-frame chunks,
-  one file at a time over the chunk, and refreshes the menu's labels
+  in whole longs, and refreshes the menu's labels
   between chunks. It times its card writes, its copies and its sleeps
   for `STATS.TXT`. At the end it writes
   the rest, rewrites each file's first sector with the real header, sets

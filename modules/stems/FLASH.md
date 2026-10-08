@@ -1,6 +1,41 @@
-# STEM REC: flashes A to D, and crosscheck's flash plan as a record
+# STEM REC: flashes A to E, and crosscheck's flash plan as a record
+
+## Flash E — `stems`: the writer's copy in whole longs (staged 8 Oct 2026)
+
+Flash D's `STATS.TXT` (STEM_REC.md 17.4) put the limit in the writer's
+copy into its uncached buffers: 8.5 s to copy 6.75 s of audio, one
+stall a byte at 24 bits, plus time the writer wasn't running (how much
+is not measured). STEMS5 writes every sample into the ring in its file's
+byte order and copies whole longs: a quarter of the stores and about a
+third of the instructions (STEM_REC.md 19.5). `STATS.TXT` splits the
+copy into recording and saving and adds the copy's fastest frame and the
+card's fastest write, which tell the work from the waiting.
+
+**The image.** IMAGE_E
+
+**Before you flash.** As flash D: power cycle first if REC was pressed
+since power-on (STEMS4 included), the stock `.syx` and a DIN MIDI
+interface at hand, the card backed up; power cycle once after the
+upgrade.
+
+**The tests, in order.**
+
+1. Boot; MAIN MENU › SYSTEM › OS UPGRADE still opens.
+2. Flash D's project (T1 to T8 Static, the bell), T1 to T8 at 24 bits,
+   a minute: `DONE` or `RING FULL`, and its `STATS.TXT` either way, with
+   the files.
+3. The same at 16 bits.
+4. Flash D's tests 3 and 5 (T8 MASTER; the cluster line), if not done.
+
 
 ## Flash D — `stems`: the perf round, STATS.TXT, T8 MASTER (staged 8 Oct 2026)
+
+**Flashed** on Yves's MKII, reported 8 Oct 2026: it boots and records;
+on a new project of eight Static tracks (one bell sample each) T1 to T8
+at 24 bits stopped with `RING FULL` after 6.75 s, every file whole and
+intact. `STATS.TXT` put the limit in the writer's copy, not the card or
+the audio interrupt (STEM_REC.md 17.4). Flash E is the fix.
+
 
 The perf round (PR #644; the design:
 `git show 15703f7a:docs/superpowers/specs/2026-10-07-stem-rec-perf-design.md`;

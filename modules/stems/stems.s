@@ -162,18 +162,45 @@
 .Ll24\@:
         .endm
 
-| Two 24-bit values (right-justified) as six bytes, big-endian, at (a1)+:
-| three word stores, so every store stays word-aligned. Uses d0; changes a.
-        .macro  PACK6 a, b
-        move.l  \a,%d0
-        asr.l   #8,%d0
-        move.w  %d0,(%a1)+                  | a's top 16
-        lsl.l   #8,\a
-        move.l  \b,%d0
-        swap    %d0                         | b's top byte, in the low byte
-        move.b  %d0,\a
-        move.w  \a,(%a1)+                   | a's low 8 : b's top 8
-        move.w  \b,(%a1)+                   | b's low 16
+| The ring holds every sample in its file's byte order, little-endian, so
+| the writer copies whole longs (STEMS5: on the unit, single-byte stores to
+| the uncached stream buffers made the copy the take's bottleneck).
+|
+| Four 24-bit values (right-justified, any top byte) as twelve bytes in file
+| order at (a1)+, a0 a1 a2 b0 | b1 b2 c0 c1 | c2 e0 e1 e2: three long
+| stores, a1 4-aligned (every file's part of a ring frame is a multiple of
+| 16 bytes). PACK12A takes a, b in d1, d2 and leaves b's last two bytes in
+| d3; PACK12B takes c, e in d1, d2. 16 instructions for the four. Uses d0,
+| changes d2 and d3.
+        .macro  PACK12A
+        move.l  %d1,%d0
+        BYTEREV 0                           | a0 a1 a2 s
+        move.b  %d2,%d0                     | a0 a1 a2 b0
+        move.l  %d0,(%a1)+
+        move.l  %d2,%d3
+        BYTEREV 3                           | b0 b1 b2 s
+        lsl.l   #8,%d3                      | b1 b2 s .
+        .endm
+        .macro  PACK12B
+        move.l  %d1,%d0
+        BYTEREV 0                           | c0 c1 c2 s
+        swap    %d0                         | c2 s c0 c1
+        move.w  %d0,%d3                     | b1 b2 c0 c1
+        move.l  %d3,(%a1)+
+        andi.l  #0xff000000,%d0             | c2 . . .
+        BYTEREV 2                           | e0 e1 e2 s
+        lsr.l   #8,%d2                      | . e0 e1 e2
+        or.l    %d0,%d2                     | c2 e0 e1 e2
+        move.l  %d2,(%a1)+
+        .endm
+
+| A 16-bit stereo sample in file order at (a1)+, L low, L high, R low, R
+| high: L in d1's low half, R in d2's. Changes d2.
+        .macro  LE16PAIR
+        swap    %d2                         | R : .
+        move.w  %d1,%d2                     | R : L
+        BYTEREV 2                           | L low, L high, R low, R high
+        move.l  %d2,(%a1)+
         .endm
 
         .text
@@ -235,6 +262,7 @@ stems_nopen:     .long   0          | files open
 stems_wfail:     .long   0          | a card write failed: finish without writing more
 stems_handle:    .space  4*MAX_FILES  | one per open file, in file order
 stems_slen:      .space  4*MAX_FILES  | bytes waiting in each stream buffer
+stems_dptr:      .space  4*MAX_FILES  | the drain's next byte in each stream buffer
 stems_fpos:      .space  4*MAX_FILES  | bytes of each file on the card
 stems_tcb:       .space  TCB_SIZE   | zero until the one create (STEM_REC.md 3.8)
 stems_probe:     .long   0          | test seam: non-zero runs stems_probe_run once
@@ -258,9 +286,15 @@ stems_st_n:      .long   0          | frames timed
 stems_st_wn:     .long   0          | card writes, the raw write calls
 stems_st_wsum:   .long   0          | their time, microseconds
 stems_st_wmax:   .long   0          | the longest
-stems_st_csum:   .long   0          | the writer's copy, microseconds
+stems_st_crec:   .long   0, 0       | the writer's copy while recording: microseconds, bytes
+stems_st_csav:   .long   0, 0       | ... while saving (the take stopped)
 stems_st_cmax:   .long   0          | its longest batch
 stems_st_smax:   .long   0          | the writer's longest sleep while recording (it asks TASK_SLEEP_US)
+| Two minima, kept complemented so that the zeroed block means "none yet":
+| a frame or a write that no interrupt or other task cut into gives the
+| work's own cost, which the sums above mix with the time the writer waited.
+stems_st_ffast:  .long   0          | NOT the copy's fastest frame
+stems_st_wfast:  .long   0          | NOT the fastest card write's counts a sector
 stems_st_end:
         .equ    ST_LONGS,      (stems_st_end-stems_st)/4
 ui_key:          .long   -1         | what the labels last showed, packed (stems_ui)
@@ -430,7 +464,11 @@ st_f_status:    .asciz  "status %s\r\n"
 st_f_take2:     .asciz  "%d frames, %d s, %d files, %d bits\r\n"
 st_f_ring:      .asciz  "ring peak %d of %d frames\r\n"
 st_f_writes:    .asciz  "card writes %d, %d ms in all, longest %d us\r\n"
-st_f_copy:      .asciz  "writer copy %d ms in all, longest batch %d us\r\n"
+st_f_wfast:     .asciz  "card fastest write %d KB/s\r\n"
+st_f_crec:      .asciz  "copy rec %d ms %d KB %d us/KB\r\n"
+st_f_csav:      .asciz  "copy save %d ms %d KB %d us/KB\r\n"
+st_f_cmax:      .asciz  "copy longest batch %d us\r\n"
+st_f_ffast:     .asciz  "copy fastest frame %d ns, %d bytes\r\n"
 st_f_sleep:     .asciz  "writer longest sleep %d us, asks %d\r\n"
 st_f_hook:      .asciz  "hook mean %d us, longest %d us\r\n"
 st_f_frame:     .asciz  "hook and frame routine mean %d us, longest %d us, %d frames\r\n"
@@ -1288,9 +1326,7 @@ stems_track16:
         movclr.l %acc1,%d2
         asr.l   %d3,%d1                     | floor(g*x / 2^29)
         asr.l   %d3,%d2
-        swap    %d1
-        move.w  %d2,%d1                     | L : R, big-endian halves
-        move.l  %d1,(%a1)+
+        LE16PAIR                            | L, R in file order
         move.l  (%a3)+,%d0                  | the next sample, the same
         lsl.l   #8,%d0
         move.l  (%a2)+,%d1
@@ -1303,9 +1339,7 @@ stems_track16:
         movclr.l %acc1,%d2
         asr.l   %d3,%d1
         asr.l   %d3,%d2
-        swap    %d1
-        move.w  %d2,%d1
-        move.l  %d1,(%a1)+
+        LE16PAIR
         cmpa.l  %a0,%a2
         bcs.s   .Lp_f
         rts
@@ -1327,9 +1361,7 @@ stems_track16:
         asr.l   %d0,%d2
         LIM16   %d1
         LIM16   %d2
-        swap    %d1
-        move.w  %d2,%d1                     | L : R, big-endian halves, as before
-        move.l  %d1,(%a1)+
+        LE16PAIR
         subq.l  #1,%d3
         bne.s   .Lp_s
         rts
@@ -1366,16 +1398,17 @@ stems_bus16:
 .Lb_st:
         move.l  (%a2)+,%d1                  | L
         move.l  (%a2)+,%d2                  | R
-        swap    %d2
-        move.w  %d2,%d1                     | L's top 16 : R's top 16
-        move.l  %d1,(%a1)+
+        swap    %d1                         | L's top 16 in the low half
+        move.w  %d1,%d2                     | R's top 16 : L's top 16
+        BYTEREV 2                           | in file order
+        move.l  %d2,(%a1)+
         subq.l  #1,%d3
         bne.s   .Lb_st
         rts
 .Lb_mono:
         move.l  (%a2),%d1
-        swap    %d1
-        move.w  %d1,(%a1)+                  | the channel's top 16
+        BYTEREV 1                           | the channel's top 16, in file order, low half
+        move.w  %d1,(%a1)+
         addq.l  #8,%a2
         subq.l  #1,%d3
         bne.s   .Lb_mono
@@ -1401,7 +1434,7 @@ stems_track24:
         movclr.l %acc1,%d2
         asr.l   #6,%d1                      | floor(g*x / 2^21)
         asr.l   #6,%d2
-        PACK6   %d1,%d2
+        PACK12A
         move.l  (%a3)+,%d0                  | the next sample, the same
         lsl.l   #8,%d0
         move.l  (%a2)+,%d1
@@ -1414,13 +1447,11 @@ stems_track24:
         movclr.l %acc1,%d2
         asr.l   #6,%d1
         asr.l   #6,%d2
-        PACK6   %d1,%d2
+        PACK12B
         cmpa.l  %a0,%a2
         bcs.s   .Lq_f
         rts
-.Lq_lim:
-        moveq   #16,%d3
-.Lq_s:
+.Lq_lim:                                    | the same, limited
         move.l  (%a3)+,%d0
         lsl.l   #8,%d0
         move.l  (%a2)+,%d1
@@ -1435,9 +1466,24 @@ stems_track24:
         asr.l   #6,%d2
         LIM24   %d1
         LIM24   %d2
-        PACK6   %d1,%d2
-        subq.l  #1,%d3
-        bne.s   .Lq_s
+        PACK12A
+        move.l  (%a3)+,%d0
+        lsl.l   #8,%d0
+        move.l  (%a2)+,%d1
+        move.l  (%a2)+,%d2
+        clr.b   %d1
+        clr.b   %d2
+        mac.l   %d0,%d1,%acc0
+        mac.l   %d0,%d2,%acc1
+        movclr.l %acc0,%d1
+        movclr.l %acc1,%d2
+        asr.l   #6,%d1
+        asr.l   #6,%d2
+        LIM24   %d1
+        LIM24   %d2
+        PACK12B
+        cmpa.l  %a0,%a2
+        bcs.w   .Lq_lim
         rts
 
 | ---- MAIN, CUE or an input, 24-bit (d5 = the kind, a1 = the ring) ------
@@ -1445,29 +1491,37 @@ stems_track24:
         .global stems_bus24
 stems_bus24:
         bsr.w   stems_bus_src
+        lea     128(%a2),%a0                | the 16 samples' end, either kind
         cmpi.l  #K_A,%d5
         bcc.s   .Lu_mono
-        moveq   #16,%d3
-.Lu_st:
+.Lu_st:                                     | two stereo samples to twelve bytes
         move.l  (%a2)+,%d1
         move.l  (%a2)+,%d2
         asr.l   #8,%d1                      | 24 bits, right-justified
         asr.l   #8,%d2
-        PACK6   %d1,%d2
-        subq.l  #1,%d3
-        bne.s   .Lu_st
+        PACK12A
+        move.l  (%a2)+,%d1
+        move.l  (%a2)+,%d2
+        asr.l   #8,%d1
+        asr.l   #8,%d2
+        PACK12B
+        cmpa.l  %a0,%a2
+        bcs.s   .Lu_st
         rts
-.Lu_mono:
-        moveq   #8,%d3                      | two samples to six bytes
-.Lu_mo:
+.Lu_mono:                                   | four samples to twelve bytes
         move.l  (%a2),%d1
         move.l  8(%a2),%d2
         asr.l   #8,%d1
         asr.l   #8,%d2
-        PACK6   %d1,%d2
-        lea     16(%a2),%a2
-        subq.l  #1,%d3
-        bne.s   .Lu_mo
+        PACK12A
+        move.l  16(%a2),%d1
+        move.l  24(%a2),%d2
+        asr.l   #8,%d1
+        asr.l   #8,%d2
+        PACK12B
+        lea     32(%a2),%a2
+        cmpa.l  %a0,%a2
+        bcs.s   .Lu_mono
         rts
 
 | ---- stage: the tracks' part of the next ring frame (a1 = its first byte) --
@@ -2072,95 +2126,68 @@ stems_drain:
         cmpi.l  #CHUNK_FRAMES,%d2
         bls.s   .Ld_batch
         move.l  #CHUNK_FRAMES,%d2
-.Ld_batch:                          | per file, over the batch's frames (perf design 2.1)
+.Ld_batch:                          | frame by frame in ring order, whole longs (STEMS5)
         move.l  DTCN3,-(%sp)        | the copy's start, for the readout
-        moveq   #0,%d4              | file j
-        moveq   #0,%d7              | its part's offset in a ring frame
-        lea     stems_ftab,%a4
+        moveq   #0,%d4              | each file's destination: past the bytes waiting
         lea     stems_slen,%a5
-.Ld_file:
+        lea     stems_dptr,%a4
+        lea     stems_ftab,%a3
+.Ld_dst:
         move.l  %d4,%d1
         bsr.w   stems_sbuf          | a2 = stream buffer j
-        adda.l  (%a5),%a2           | past the bytes already waiting in it
-        move.l  (%a4)+,%d1
-        andi.l  #0xffff,%d1         | d1: this file's bytes in a frame
-        move.l  %d1,%d0
-        mulu.l  %d2,%d0
-        add.l   %d0,(%a5)+          | the buffer's fill after the batch
-        move.l  stems_rd_off,%d6    | d6: the frame's offset in the ring
-        move.l  %d2,%d3             | d3: frames left
-        move.l  stems_lfmt,%d0
-        btst    #0,%d0
-        bne.s   .Ld_24
-.Ld_f16:                            | 16 bits: a frame's part is 2 or 4 groups of 16 bytes
-        movea.l %d6,%a3
-        adda.l  %d7,%a3
-        adda.l  #stems_ring,%a3
-        lea     (%a3,%d1.l),%a1     | its end
-.Ld_s:                              | [L1 L0 R1 R0] -> [L0 L1 R0 R1], four longs a pass
-        move.l  (%a3)+,%d0
-        BYTEREV 0
-        swap    %d0
-        move.l  %d0,(%a2)+
-        move.l  (%a3)+,%d0
-        BYTEREV 0
-        swap    %d0
-        move.l  %d0,(%a2)+
-        move.l  (%a3)+,%d0
-        BYTEREV 0
-        swap    %d0
-        move.l  %d0,(%a2)+
-        move.l  (%a3)+,%d0
-        BYTEREV 0
-        swap    %d0
-        move.l  %d0,(%a2)+
-        cmpa.l  %a1,%a3
-        bcs.s   .Ld_s
-        add.l   stems_fbytes,%d6
-        cmp.l   stems_rlimit,%d6
-        bcs.s   .Ld_w16
-        moveq   #0,%d6              | the ring's wrap
-.Ld_w16:
-        subq.l  #1,%d3
-        bne.s   .Ld_f16
-        bra.s   .Ld_fnext
-.Ld_24:                             | 24 bits: a frame's part is 4 or 8 groups of 12 bytes
-        movea.l %d6,%a3
-        adda.l  %d7,%a3
-        adda.l  #stems_ring,%a3
-        lea     (%a3,%d1.l),%a1
-.Ld_g:                              | [a2 a1 a0 b2 b1 b0] -> [a0 a1 a2 b0 b1 b2], twice a pass
-        move.b  2(%a3),(%a2)+
-        move.b  1(%a3),(%a2)+
-        move.b  (%a3),(%a2)+
-        move.b  5(%a3),(%a2)+
-        move.b  4(%a3),(%a2)+
-        move.b  3(%a3),(%a2)+
-        move.b  8(%a3),(%a2)+
-        move.b  7(%a3),(%a2)+
-        move.b  6(%a3),(%a2)+
-        move.b  11(%a3),(%a2)+
-        move.b  10(%a3),(%a2)+
-        move.b  9(%a3),(%a2)+
-        lea     12(%a3),%a3
-        cmpa.l  %a1,%a3
-        bcs.s   .Ld_g
-        add.l   stems_fbytes,%d6
-        cmp.l   stems_rlimit,%d6
-        bcs.s   .Ld_w24
-        moveq   #0,%d6
-.Ld_w24:
-        subq.l  #1,%d3
-        bne.s   .Ld_24
-.Ld_fnext:
-        add.l   %d1,%d7             | the next file's part
+        adda.l  (%a5),%a2
+        move.l  %a2,(%a4)+
+        move.l  (%a3)+,%d1
+        andi.l  #0xffff,%d1         | this file's bytes in a frame
+        mulu.l  %d2,%d1
+        add.l   %d1,(%a5)+          | the buffer's fill after the batch
         addq.l  #1,%d4
         cmp.l   stems_nf,%d4
-        bcs.w   .Ld_file
-        move.l  %d6,stems_rd_off    | every file's loop ends one batch on
+        bcs.s   .Ld_dst
+        move.l  stems_rd_off,%d6    | d6: the frame's offset in the ring
+        move.l  %d2,%d3             | d3: frames left
+.Ld_frame:
+        move.l  DTCN3,-(%sp)        | the frame's start, for the readout
+        movea.l %d6,%a3
+        adda.l  #stems_ring,%a3     | a3: this ring frame, read in order
+        lea     stems_dptr,%a4
+        lea     stems_ftab,%a5
+        move.l  stems_nf,%d4        | files left
+.Ld_file:
+        movea.l (%a4),%a2           | file j's next byte (uncached: a store each long)
+        move.l  (%a5)+,%d7
+        andi.l  #0xffff,%d7
+        lsr.l   #4,%d7              | its part of the frame in 16-byte groups: 2, 3, 4 or 6
+.Ld_grp:
+        movem.l (%a3),%d0-%d1/%a0-%a1
+        movem.l %d0-%d1/%a0-%a1,(%a2)
+        lea     16(%a3),%a3
+        lea     16(%a2),%a2
+        subq.l  #1,%d7
+        bne.s   .Ld_grp
+        move.l  %a2,(%a4)+
+        subq.l  #1,%d4
+        bne.s   .Ld_file
+        move.l  DTCN3,%d0
+        sub.l   (%sp)+,%d0
+        not.l   %d0
+        cmp.l   stems_st_ffast,%d0
+        bls.s   .Ld_slow
+        move.l  %d0,stems_st_ffast  | the fastest frame yet
+.Ld_slow:
+        add.l   stems_fbytes,%d6
+        cmp.l   stems_rlimit,%d6
+        bcs.s   .Ld_nw
+        moveq   #0,%d6              | the ring's wrap
+.Ld_nw:
+        subq.l  #1,%d3
+        bne.s   .Ld_frame
+        move.l  %d6,stems_rd_off
         add.l   %d2,stems_rd        | the hook may reuse these frames now
         move.l  DTCN3,%d1
         sub.l   (%sp)+,%d1
+        move.l  stems_fbytes,%d0
+        mulu.l  %d2,%d0             | the batch's bytes
         bsr.w   stems_st_copy
         moveq   #0,%d4
 .Ld_flush:
@@ -2244,10 +2271,17 @@ stems_flush:
         movea.l %a2,%a1
         move.l  %d2,%d0
         beq.s   .Lf_set
-.Lf_mv:
+.Lf_mvl:                            | whole longs: the buffer is uncached, a bus cycle each
+        cmpi.l  #4,%d0
+        bcs.s   .Lf_mvb
+        move.l  (%a0)+,(%a1)+
+        subq.l  #4,%d0
+        bne.s   .Lf_mvl
+        bra.s   .Lf_set
+.Lf_mvb:                            | the rest, bytes
         move.b  (%a0)+,(%a1)+
         subq.l  #1,%d0
-        bne.s   .Lf_mv
+        bne.s   .Lf_mvb
 .Lf_set:
         lea     stems_slen,%a3
         move.l  %d2,(%a3,%d4.l*4)
@@ -2382,28 +2416,45 @@ stems_finish:
         rts
 
 | ---- the readout's writer counters: d1 = DTCN3 counts; d0 is kept --------
-stems_st_write:                     | one card write
+stems_st_write:                     | one card write of d3 sectors
         addq.l  #1,stems_st_wn
         cmp.l   stems_st_wmax,%d1
         bls.s   .Lsw_us
         move.l  %d1,stems_st_wmax
 .Lsw_us:
         move.l  %d0,-(%sp)
+        move.l  %d1,%d0
+        divu.l  %d3,%d0             | counts a sector
+        not.l   %d0
+        cmp.l   stems_st_wfast,%d0
+        bls.s   .Lsw_slow
+        move.l  %d0,stems_st_wfast  | the fastest write yet
+.Lsw_slow:
         move.l  #BUS_MHZ,%d0
         divu.l  %d0,%d1
         add.l   %d1,stems_st_wsum
         move.l  (%sp)+,%d0
         rts
-stems_st_copy:                      | one batch of the writer's copy
+stems_st_copy:                      | one batch of the writer's copy: d1 counts, d0 bytes
         cmp.l   stems_st_cmax,%d1
         bls.s   .Lsc_us
         move.l  %d1,stems_st_cmax
 .Lsc_us:
-        move.l  %d0,-(%sp)
+        move.l  %a0,-(%sp)
+        move.l  %d0,-(%sp)          | the bytes
+        lea     stems_st_crec,%a0
+        moveq   #ST_RECORDING,%d0
+        cmp.l   stems_state,%d0
+        beq.s   .Lsc_rec
+        lea     stems_st_csav,%a0
+.Lsc_rec:
+        move.l  (%sp),%d0
+        add.l   %d0,4(%a0)          | its bytes
         move.l  #BUS_MHZ,%d0
         divu.l  %d0,%d1
-        add.l   %d1,stems_st_csum
+        add.l   %d1,(%a0)           | its microseconds
         move.l  (%sp)+,%d0
+        movea.l (%sp)+,%a0
         rts
 
 | ---- d1 = (d0:d1) / d2, unsigned, d0 < d2 (a 64-bit sum over its count);
@@ -2454,10 +2505,37 @@ stems_st_tail:
 .Lst_out:
         rts
 
-| ---- STATS.TXT: the readout, one sector of text in the take's folder -----
+| ---- a copy line of STATS.TXT at a3: a0 = (microseconds, bytes), a1 = its
+| format (ms, KB, microseconds a KB). Uses d0-d4, a0, a1; a3 = the text's end.
+stems_st_cline:
+        move.l  (%a0),%d2                   | microseconds
+        move.l  4(%a0),%d3
+        moveq   #10,%d0
+        lsr.l   %d0,%d3                     | KB
+        moveq   #0,%d4
+        tst.l   %d3
+        beq.s   .Lcl_n
+        move.l  %d2,%d4
+        divu.l  %d3,%d4                     | microseconds a KB
+.Lcl_n:
+        move.l  %d4,-(%sp)
+        move.l  %d3,-(%sp)
+        move.l  %d2,%d0
+        move.l  #1000,%d1
+        divu.l  %d1,%d0
+        move.l  %d0,-(%sp)                  | ms
+        move.l  %a1,-(%sp)
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     20(%sp),%sp
+        bsr.w   stems_st_tail
+        rts
+
+| ---- STATS.TXT: the readout, two sectors of text in the take's folder ----
 | After the take's files are closed (stems_finish), unless a card write
-| failed: the card may refuse this one too. Built in sector-0 copy 0, free
-| by then. An error here changes nothing: the take is whole without it.
+| failed: the card may refuse this one too. Built in sector-0 copies 0 and 1,
+| free by then (about 530 bytes with STEMS5's lines; the file's length is the
+| text's). An error here changes nothing: the take is whole without it.
 stems_stats:
         lea     -32(%sp),%sp
         movem.l %d2-%d7/%a2-%a3,(%sp)
@@ -2467,9 +2545,9 @@ stems_stats:
         bsr.w   stems_sec0
         movea.l %a0,%a2             | a2: the text
         movea.l %a0,%a3             | a3: its end
-        moveq   #127,%d0
+        move.l  #255,%d0
 .Lo_clr:
-        clr.l   (%a0)+              | 512 bytes of NUL: the sector past the text
+        clr.l   (%a0)+              | 1,024 bytes of NUL: the sectors past the text
         subq.l  #1,%d0
         bpl.s   .Lo_clr
         pea     stems_name                          | STEM REC STATS <take>
@@ -2529,14 +2607,45 @@ stems_stats:
         jsr     SPRINTF
         lea     20(%sp),%sp
         bsr.w   stems_st_tail
-        move.l  stems_st_cmax,%d1                   | the writer's copy
+        moveq   #0,%d1                              | the fastest card write
+        move.l  stems_st_wfast,%d0
+        not.l   %d0                                 | counts a sector
+        beq.s   .Lo_wf
+        move.l  #BUS_MHZ*500000,%d1                 | half a KB over its seconds: KB/s
+        divu.l  %d0,%d1
+.Lo_wf:
+        move.l  %d1,-(%sp)
+        pea     st_f_wfast
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     12(%sp),%sp
+        bsr.w   stems_st_tail
+        lea     stems_st_crec,%a0                   | the writer's copy while recording
+        lea     st_f_crec,%a1
+        bsr.w   stems_st_cline
+        lea     stems_st_csav,%a0                   | ... and while saving
+        lea     st_f_csav,%a1
+        bsr.w   stems_st_cline
+        move.l  stems_st_cmax,%d1                   | its longest batch
         bsr.w   stems_st_us
         move.l  %d1,-(%sp)
-        move.l  stems_st_csum,%d0
+        pea     st_f_cmax
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     12(%sp),%sp
+        bsr.w   stems_st_tail
+        move.l  stems_fbytes,-(%sp)                 | the copy's fastest frame
+        moveq   #0,%d1
+        move.l  stems_st_ffast,%d0
+        beq.s   .Lo_ff
+        not.l   %d0
         move.l  #1000,%d1
-        divu.l  %d1,%d0
-        move.l  %d0,-(%sp)
-        pea     st_f_copy
+        mulu.l  %d0,%d1
+        move.l  #BUS_MHZ,%d0
+        divu.l  %d0,%d1                             | nanoseconds
+.Lo_ff:
+        move.l  %d1,-(%sp)
+        pea     st_f_ffast
         move.l  %a3,-(%sp)
         jsr     SPRINTF
         lea     16(%sp),%sp
@@ -2605,7 +2714,7 @@ stems_stats:
         addq.l  #8,%sp
         move.l  %d0,%d6                             | d6: the handle
         ble.s   .Lo_out
-        pea     1
+        pea     2
         move.l  %a2,-(%sp)
         move.l  %d6,-(%sp)
         RAWCALL RAW_WRITE_PTR

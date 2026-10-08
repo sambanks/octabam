@@ -853,8 +853,8 @@ def tap(s):
     check("wr counts frames", nfr > 0 and wr == nfr, f"wr {wr}, frames {nfr}")
     check("the stop moved RECORDING on", nfr > 0 and st in (ST_IDLE, ST_FINISHING),
           f"state {st}, status {status}")
-    # The ring stays big-endian: the task swaps into its own buffers.
-    got = [[int.from_bytes(raw[f * 64 + 2 * k:f * 64 + 2 * k + 2], "big", signed=True)
+    # The ring holds the file's bytes, little-endian, since STEMS5: the task copies longs.
+    got = [[int.from_bytes(raw[f * 64 + 2 * k:f * 64 + 2 * k + 2], "little", signed=True)
             for k in range(32)] for f in range(nfr)]
     peaks = core1_slot_peaks(dump)
     k1 = T1_OFFSET // 0x80
@@ -1006,7 +1006,7 @@ def stream(s):
     check("stream: the task drained every frame", nfr > 3 * CHUNK_FRAMES and rd == wr,
           f"rd {rd}, wr {wr}, frames {nfr}")
     wav_check(card, nfr, dump, "stream", g=gain_of(log, 0))
-    stats_check(card, "stream", nfr, 1, 16)
+    stats_check(card, "stream", nfr, 1, 16, fbytes=64)
     if "stems_peak" in s:
         raw = run_path("stream", "peak")
         peak = int.from_bytes(raw.read_bytes(), "big") if raw.exists() else None
@@ -1159,7 +1159,7 @@ HOOK_SIDE = ("stems_frame_hook", "stems_mirror", "stems_emac_in", "stems_emac_ou
              "stems_track16", "stems_track24", "stems_bus_src",
              "stems_bus16", "stems_bus24", "stems_stage", "stems_bus_frame", "stems_layout",
              "stems_trace_frame", "stems_m8check")
-HOOK_CEILING = 5188   # the measured worst case, everything at 24 bits, since the perf round
+HOOK_CEILING = 5012   # the measured worst case, everything at 24 bits, since STEMS5 (5,188 in STEMS4)
                       # (7 Oct 2026; STEM_REC.md 19.1); 7,415 before it, and 5,000 until
                       # Yves's decision of 4 Oct 2026 to test the cost on the unit (spec 4.6)
 
@@ -1306,18 +1306,20 @@ def take_files(card_path, fixture=FIXTURE):
                   and p.upper().endswith(".WAV"))
 
 
-def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE):
-    """The readout (perf design 3): STATS.TXT in the take's folder, one
-    sector of text that names the take and agrees with it: the frames, the
-    files, the width and the status; card writes counted and timed; the
+def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE, fbytes=None):
+    """The readout (perf design 3): STATS.TXT in the take's folder, at most
+    two sectors of text that name the take and agree with it: the frames,
+    the files, the width and the status; card writes counted and timed; the
     hook timed on (about) every recorded frame, its mean at most its
-    longest. Returns the parsed numbers, or None."""
+    longest. With `fbytes` (STEMS5): the copy split by phase adds up to the
+    take, and the copy's fastest frame and the card's fastest write are
+    there. Returns the parsed numbers, or None."""
     import re
     files = card_files(card_path)
     fx = json.loads(pathlib.Path(fixture).read_text())
     names = new_entries(files, fixture)
     text = card_get(files, f"{fx['set']}/AUDIO/{names[0]}/STATS.TXT") if len(names) == 1 else None
-    check(f"{tag}: STATS.TXT is in the take's folder, at most a sector", text is not None and 0 < len(text) <= 512,
+    check(f"{tag}: STATS.TXT is in the take's folder, at most two sectors", text is not None and 0 < len(text) <= 1024,
           f"{None if text is None else len(text)} bytes")
     if not text:
         return None
@@ -1343,6 +1345,17 @@ def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE)
     part = struct.unpack_from("<I", img, 0x1c6)[0] if img[0x1fe:0x200] == b"\x55\xaa" and img[0x1c2] else 0
     spc = img[part * 512 + 13]
     clus = nums(r"cluster (\d+) sectors")
+    crec = nums(r"copy rec (\d+) ms (\d+) KB (\d+) us/KB")
+    csav = nums(r"copy save (\d+) ms (\d+) KB (\d+) us/KB")
+    if fbytes:                                         # STEMS5: the copy split by phase, in KB
+        kb = None if crec is None or csav is None else crec[1] + csav[1]
+        check(f"{tag}: STATS.TXT's copy, recording and saving, adds up to the take's bytes",
+              kb is not None and abs(kb - nfr * fbytes // 1024) <= 2, f"rec {crec}, save {csav}, take {nfr * fbytes // 1024} KB")
+        ffast = nums(r"copy fastest frame (\d+) ns, (\d+) bytes")
+        wfast = nums(r"card fastest write (\d+) KB/s")
+        check(f"{tag}: STATS.TXT has the copy's fastest frame and the card's fastest write",
+              ffast is not None and ffast[0] > 0 and ffast[1] == fbytes and wfast is not None and wfast[0] > 0,
+              f"frame {ffast}, write {wfast}, {len(text)} bytes")
     check(f"{tag}: STATS.TXT's cluster is the card's", clus == [spc], f"{clus} vs {spc} sectors a cluster")
     return {"took": took, "ring": ring, "writes": wr, "hook": hook, "frame": frame, "cluster": clus}
 
@@ -1486,10 +1499,9 @@ LIMIT_FRAMES = 55300                     # the --long take: about 20 s, past the
 def limit(s):
     """A 20-second take, stopped by STOP: past the old 15-second cap. T1's
     ring (131,072 frames) does not wrap in 20 s, so the file's data must equal
-    the ring's first frames with each 16-bit word byte-swapped: the ring is
-    big-endian, the file little-endian. A sector sent twice or lost keeps
-    the size and fails this."""
-    import array
+    the ring's first frames byte for byte: since STEMS5 the ring holds the
+    file's own bytes (it was big-endian before). A sector sent twice or lost
+    keeps the size and fails this."""
     frames = PRE_ROLL + LIMIT_FRAMES + 200
     log, _, card, words, ring = port(s, frames, stop_at=PRE_ROLL + LIMIT_FRAMES, tag="limit",
                                      dump_blocks=False, extra=watched(s), ring_bytes=RING_SIZE_T1)
@@ -1502,9 +1514,7 @@ def limit(s):
     dlen = int.from_bytes(data[40:44], "little") if data and len(data) >= 44 else None
     check("limit: the file holds every frame", dlen == n and len(data) == 44 + dlen,
           f"data {dlen}, file {len(data) if data else None}")
-    want = array.array("H", ring[:n])
-    want.byteswap()
-    want = want.tobytes()
+    want = bytes(ring[:n])
     same = data is not None and len(want) == n and data[44:] == want
     bad = None
     if data is not None and not same:

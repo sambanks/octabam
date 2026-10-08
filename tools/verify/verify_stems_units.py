@@ -531,12 +531,12 @@ def _track(rt, name, out_bytes, conv, n=200, seed=6, junk=False, dirty=False, fr
 
 
 def _post16_bytes(g, x):
-    return (post16(g, x) & 0xffff).to_bytes(2, "big")
+    return (post16(g, x) & 0xffff).to_bytes(2, "little")
 
 
 @unit
 def track16(rt):
-    """stems_track16 against post16, big-endian halves L : R, on longs whose
+    """stems_track16 against post16, L then R in file order (little-endian), on longs whose
     low byte is not zero: only the top 24 bits are the sample."""
     bad = _track(rt, "stems_track16", 64, _post16_bytes, junk=True)
     check("track16: 200 frames equal post16 of each long's top 24 bits", bad is None,
@@ -550,7 +550,7 @@ def _main_top16_bytes(g, x):
     """MAIN's own arithmetic for one track (STEM_REC.md 18.2): the 24-bit
     mix limited, then its top 16 bits."""
     v = max(-0x800000, min(0x7fffff, (g * x) >> 21)) >> 8
-    return (v & 0xffff).to_bytes(2, "big")
+    return (v & 0xffff).to_bytes(2, "little")
 
 
 @unit
@@ -573,7 +573,7 @@ def track16_rails(rt):
         rt.call("stems_emac_out")
         got = rt.rmem(s["stems_ring"], 64)
         want = b"".join(_main_top16_bytes(gains[j], xs[2 * j + c]) for j in range(16) for c in (0, 1))
-        rails += sum(1 for b in range(0, 64, 2) if want[b:b + 2] in (b"\x7f\xff", b"\x80\x00"))
+        rails += sum(1 for b in range(0, 64, 2) if want[b:b + 2] in (b"\xff\x7f", b"\x00\x80"))  # little-endian
         if bad is None and got != want:
             bad = (i, k, got[:8].hex(), want[:8].hex())
     check("track16_rails: 100 frames past both rails equal MAIN's limited top 16 bits",
@@ -608,25 +608,25 @@ def bus16(rt, seed=8):
             rt.call("stems_bus16", d5=kind, a1=s["stems_ring"])
             if kind in (8, 9):
                 base = (kind - 8) * 32
-                want = b"".join((bus[base + 2 * j + c] >> 16).to_bytes(2, "big") for j in range(16) for c in (0, 1))
+                want = b"".join((bus[base + 2 * j + c] >> 16).to_bytes(2, "little") for j in range(16) for c in (0, 1))
             elif kind in (10, 11):
                 base = page + (IN_AB_OFF if kind == 10 else IN_CD_OFF) // 4
-                want = b"".join((ring[base + 2 * j + c] >> 16).to_bytes(2, "big") for j in range(16) for c in (0, 1))
+                want = b"".join((ring[base + 2 * j + c] >> 16).to_bytes(2, "little") for j in range(16) for c in (0, 1))
             else:
                 pair = IN_AB_OFF if kind < 14 else IN_CD_OFF
                 ch = 0 if ((kind - 12) % 2 == 0) == bool(IN_A_IS_LEFT) else 1
-                want = b"".join((ring[page + pair // 4 + ch + 2 * j] >> 16).to_bytes(2, "big") for j in range(16))
+                want = b"".join((ring[page + pair // 4 + ch + 2 * j] >> 16).to_bytes(2, "little") for j in range(16))
             got = rt.rmem(s["stems_ring"], len(want))
             check(f"bus16: index {idx:#04x}, kind {kind}", got == want, f"{got[:8].hex()} vs {want[:8].hex()}")
 
 
 def b24(v):
-    return (v & 0xffffff).to_bytes(3, "big")
+    return (v & 0xffffff).to_bytes(3, "little")
 
 
 @unit
 def track24(rt):
-    """stems_track24 against stems_gain.stem24, six big-endian bytes a pair,
+    """stems_track24 against stems_gain.stem24, six bytes a pair in file order (little-endian),
     on longs whose low byte is not zero: only the top 24 bits are the sample."""
     bad = _track(rt, "stems_track24", 96, lambda g, x: b24(sg.stem24(g, x)), seed=11, junk=True)
     check("track24: 200 frames equal stem24 of each long's top 24 bits", bad is None,
@@ -639,8 +639,9 @@ def track24(rt):
 @unit
 def bus24(rt, seed=10):
     """stems_bus24 for each kind 8-15: MAIN and CUE from channel 6's buffer,
-    the inputs from this frame's page of channel 7's ring; the 24 bits, big-
-    endian, stereo L R, mono the input's own channel. Two ring indexes."""
+    the inputs from this frame's page of channel 7's ring; the 24 bits in
+    file order (little-endian), stereo L R, mono the input's own channel.
+    Two ring indexes."""
     s = rt.s
     rng = random.Random(seed)
     bus = [rng.randrange(1 << 32) & 0xffffff00 for _ in range(64)]

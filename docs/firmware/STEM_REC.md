@@ -7311,6 +7311,91 @@ percent of the ring's capacity in frames.
   (6), the 5-minute take at eight tracks and 16 bits (7), clicks, the
   screen's response, and timing during a take (8), and stock saves (10).
 
+### 17.4 Flash D: STEMS4 on Yves's MKII, reported 8 Oct 2026
+
+The image is STEMS4 (`BUILD=4`, from `ad73ee89`; `modules/stems/FLASH.md`
+flash D). Yves reported it and copied the take's folder off the card.
+
+- ✅ **The flash** and the boot.
+- 🔴 **RING FULL after 6.75 s** on a new project: T1 to T8 Static
+  machines, each playing one bell sample on its own sequence (T8 a trig
+  on every step), all eight tracks recorded at 24 bits. Take
+  `261008-1131`: eight files of 1,785,836 bytes (44 + 18,602 frames of
+  96 bytes), whole to the cut.
+- ✅ **The files are intact** (read by a script, not by ear): every hit
+  of T1 from 1.0 s to 6.0 s sits on a grid of exactly 22,048 samples
+  (1,378 frames), eleven hits, no drift, so no recorder frame was lost
+  or doubled; hits on a step shared by several tracks start on the same
+  sample in every file (286,785 in T1, T3, T4 and T8); no run of zeros
+  inside a sound, no repeated non-silent frame past each track's leading
+  silence (−3, the floor of a near-zero product). The other gaps are the
+  sequencer's: trigs land on 16-sample frames (500 ms is 1,378.125
+  frames) and some steps sit about 97 samples late (swing or micro
+  timing).
+- **STATS.TXT, the first readout from a unit:**
+
+  ```
+  status RING FULL
+  18602 frames, 6 s, 8 files, 24 bits
+  ring peak 10922 of 10922 frames
+  card writes 304, 3506 ms in all, longest 89979 us
+  writer copy 8462 ms in all, longest batch 329432 us
+  writer longest sleep 10075 us, asks 10000
+  hook mean 28 us, longest 43 us
+  hook and frame routine mean 73 us, longest 92 us, 18602 frames
+  card udma 5 mwdma 4, cluster 64 sectors
+  ```
+
+  - **The card kept up**: it wrote the take's 14.3 MB in 3.5 s, about
+    4.1 MB/s against the 2.12 MB/s eight 24-bit tracks need. A DMA card
+    (Ultra DMA 5) with 32 KB clusters. The card is a SanDisk Extreme
+    64 GB, rated up to 85 MB/s write, a minimum of 20 MB/s sustained for
+    video recording (VPG-20), Ultra DMA 7 (SanDisk's data sheet, 06/16).
+    So each write took far longer than the card needs: the time is the
+    host's (one command a cluster, the writer's share of the processor)
+    or the card's under mixed traffic (the Static voices read the same
+    card). Not measured.
+  - **The writer woke on time**: its 10 ms sleeps came back within 75 µs.
+    That's its wake-up latency, not its share of the processor while it
+    copies (below).
+  - **The hook took 28 µs a frame** on average (43 at most): STEM REC's
+    part of the audio interrupt, 4,059 instructions under the port, so
+    about 1.8 cycles an instruction. (The second time line covers the
+    hook and the stock routine called at its site, not the whole
+    interrupt.)
+  - **The writer's copy was the limit**: 8.5 s to copy 6.75 s of audio,
+    230 to 330 ms a 512-frame batch (186 ms of audio), about 0.6 µs a
+    byte. Wall time: it includes any time the writer didn't run.
+- ✅ **The stores are precise, from the chip's own manual.** The stock CACR is `0xA50CE100`
+  (`0x4001f3e0`): DEC 1, DESB 1, DDPI 0, DDCM `10`, SPA 1. DDCM `10`
+  is "cache-inhibited precise" for every address outside the RAMBARs and
+  ACRs (MCF54455RM Rev. 6.1, Table 6-3), which includes the uncached
+  alias `0x48000000` where STEM REC's stream buffers are addressed
+  (ACR0 caches `0x40000000`-`0x47FFFFFF`, `docs/firmware/ARCHITECTURE.md`).
+  In precise mode "the instruction is held in the pipeline until external
+  bus transfer termination is received… the minimum write time [is] six
+  cycles" (section 6.4.4.2.1). At 24 bits the copy reordered every
+  sample's bytes and stored them one byte at a time: 14.3 M stores, each
+  waiting for the SDRAM. The port models neither the cache nor bus
+  timing (19.1 counts instructions), so it could not show this.
+- 🟡 **But the stalls alone don't add up to 8.5 s** (corrected 8 Oct
+  2026, the same day). Bryan T's USB AUDIO OUT TRACKS MAIN CUE copies
+  320 longs a frame into buffers addressed the same way (the uncached
+  alias, the same CACR) inside the frame interrupt, and streaming costs
+  it 14 µs a frame with no voices playing and 25 µs with seven
+  (`modules/usb-audio-out-tracks-main-cue/README.md`, his MKII, 4 Oct
+  2026): at most 45 to 80 ns a store, its instructions and descriptor
+  writes included. At that rate flash D's 14.3 M byte stores take 0.6 to
+  1.1 s, and their 18 M instructions about 0.12 s more (at the hook's
+  measured 6.9 ns an instruction), against 8.5 s measured. The rest is
+  either time the copy wasn't running (the audio interrupt, and the
+  tasks at the writer's priority, which include the one streaming the
+  eight Static voices), or stores far slower under this project's load
+  than under Bryan's. Neither is measured. STEMS5 (19.5) cuts the stores
+  to a quarter and the instructions to about a third either way, and its
+  readout adds the copy's fastest frame and the card's fastest write,
+  which separate the work from the waiting.
+
 ## 18. The level path (piece 5)
 
 Measured 1 Oct 2026 under the port with `tools/verify/stems_levels_probe.py`
@@ -7790,17 +7875,22 @@ Before and after on one port binary, the same fixture and method
 (the perf design's appendix: `verify_stems --only=cost`, the eight-track costs,
 a 2,000-frame take with `--coverage` for the writer, then `stems_sweep.py
 --counts 8 --latencies 8,16`; logs `/home/yvez/xcheck/perf-baseline.log`
-and `perf-after.log`, 7 Oct 2026):
+and `perf-after.log`, 7 Oct 2026; STEMS5 (19.5) the same way,
+`perf-after5.log`, 8 Oct 2026):
 
-| Instructions a frame | `6f9e5bc9` | After the round |
-|---|---|---|
-| The hook, idle, the sequencer playing | 1,001 | 394 |
-| The hook, T1 to T8 at 16 bits | 5,579 | 3,299 |
-| The hook, T1 to T8 at 24 bits | 6,219 | 4,059 |
-| The hook, every source at 24 bits | 7,415 | 5,188 |
-| The writer's copy, T1 to T8 at 16 bits, per recorded frame | 737 | 502 |
-| The writer's copy, every source at 24 bits | 1,067 | 807 |
-| The whole CPU while recording, T1 to T8 at 16 bits | 37,974 | 35,471 |
+| Instructions a frame | `6f9e5bc9` | After the round (STEMS4) | STEMS5 |
+|---|---|---|---|
+| The hook, idle, the sequencer playing | 1,001 | 394 | 394 |
+| The hook, T1 to T8 at 16 bits | 5,579 | 3,299 | 3,427 |
+| The hook, T1 to T8 at 24 bits | 6,219 | 4,059 | 3,995 |
+| The hook, every source at 24 bits | 7,415 | 5,188 | 5,012 |
+| The writer's copy, T1 to T8 at 16 bits, per recorded frame | 737 | 502 | 206 |
+| The writer's copy, every source at 24 bits | 1,067 | 807 | 284 |
+| The whole CPU while recording, T1 to T8 at 16 bits | 37,974 | 35,471 | 35,315 |
+
+The writer's counts are its instructions over the take's frames, so
+they leave out what each store costs on the unit: STEMS4 stored a byte
+at a time at 24 bits, STEMS5 a long (19.5).
 
 | Eight tracks, card delay | Fill growth before | After |
 |---|---|---|
@@ -7846,3 +7936,69 @@ lands on the writer's stack varies), under the 6,144-byte limit.
 
 18.8: `T8.wav` equals `MAIN.wav`; T1 to T7 and CUE lead them by 32
 samples. T8 is no longer a source while MASTER TRACK is on.
+
+### 19.5 STEMS5: the ring in file byte order, the copy in whole longs
+
+Flash D's readout (17.4) put the limit in the writer's copy: precise-mode
+stores to the uncached stream buffers, one a byte at 24 bits, and
+however much of its time the writer spent not running.
+
+- **The hook writes every sample in its file's byte order**,
+  little-endian, at both widths: a 16-bit stereo sample as one long
+  (`LE16PAIR`: `swap`, `move.w`, `byterev`, the form the writer's copy
+  ran on the unit since STEMS1), four 24-bit values as three longs
+  (`PACK12A`, `PACK12B`: `byterev`, shifts, one `move.b`, one `move.w`,
+  the second value's last two bytes carried in d3), so every loop takes
+  two stereo samples (or four mono) a pass. 4 instructions a 16-bit
+  pair (3 before), 8 a 24-bit pair (8 before; a first draft with three
+  word stores a pair took 12 and put the hook at 5,764 instructions a
+  frame with everything at 24 bits, over the 5,188 ceiling). Measured
+  (19.1's table): 3,427 a frame at T1 to T8, 16 bits (+128), 3,995 at
+  24 bits (−64), 5,012 with everything at 24 bits (−176), the new
+  `HOOK_CEILING`.
+- **The writer copies whole longs**, frame by frame in ring order, 16
+  bytes a `movem.l` pair, one destination pointer a file
+  (`stems_dptr`). Every file's part of a frame is a multiple of 16 bytes
+  and every destination stays 4-aligned (the header is 44 bytes, so a
+  carry is 12 mod 16). At 24 bits that is a quarter of the stores, and
+  none of the per-byte work; at 16 bits the same stores as before, with
+  less work. Measured: 206 instructions a recorded frame at T1 to T8,
+  16 bits, and 284 with everything at 24 bits, against 502 and 807.
+- **The carry** (0 to 511 bytes moved to the buffer's start after each
+  write, uncached both ways) moves in longs.
+- **STATS.TXT** splits the copy into recording and saving, each in ms,
+  KB and µs a KB, then its longest batch: the same copy with the
+  sequencer playing and stopped. Two minima separate the work from the
+  waiting: the copy's fastest frame (ns, and the frame's bytes) and the
+  card's fastest write (KB/s), each a run that nothing interrupted, kept
+  complemented in the zeroed block (`stems_st_ffast`, `stems_st_wfast`).
+  The frame costs two timer reads and five instructions. The text is now
+  about 530 bytes, so the file is written as two sectors (copies 0 and 1
+  of the sector-0 buffers, free by then) and its length set to the
+  text's.
+- 🟡 Inferred, for a unit: at T1 to T8, 24 bits, a frame's copy falls
+  from 768 stores and about 960 instructions to 192 stores and about 360.
+  At Bryan T's 45 to 80 ns a store (17.4), that's 11 to 18 µs a frame
+  against 42 to 68. If the writer's share of the processor stays what it
+  was in flash D, the copy takes about 0.12 ms of wall time a frame
+  against 0.46, and the card 0.19: under the frame's 0.36 ms, with little
+  margin. If RING FULL comes back, the readout says which way to go: a
+  copy whose mean µs a KB sits near its fastest frame's is the stores
+  themselves (the cache-push copy below); far above it is waiting (the
+  writer at priority 2, Yves's call, kept at 1 this round).
+
+**For later: pushing cache lines.** The stock CACR sets SPA (bit 14), so
+`cpushl dc,(Ax)` searches the data cache by the physical address in Ax
+and pushes that line if modified, then invalidates it (DDPI 0, IVO 0;
+MCF54455RM Table 6-10, section 6.4.8), at 12 cycles (the instruction
+timing table). A copy into cached memory followed by one push a 16-byte
+line would make each line one burst instead of four precise stores. The
+stock image runs no `cpushl` in code (the `objdump -m m68k:cfv4e` hits
+lie in data, from `0x400aaf1e` up), so the form has no precedent on the
+chip: a hardware probe first. The silicon errata (MCF54455DE Rev. 5)
+list nothing for the cache, the store buffer, `cpushl`, `movem`,
+`byterev` or the eDMA, and the CFPRM (Rev. 3) puts `cpushl` in every
+ISA, `byterev` in ISA_A+ (the V4e's) and `movem`'s memory operand at
+`(Ay)` or `(d16,Ay)`, the forms STEMS5 uses. USB AUDIO OUT would gain
+from the same copy: its packet build stores 320 longs a frame uncached
+inside the frame interrupt (14 to 25 µs a frame on Bryan T's unit).
