@@ -1,4 +1,65 @@
-# STEM REC: flashes A, B and C, and crosscheck's flash plan as a record
+# STEM REC: flashes A to D, and crosscheck's flash plan as a record
+
+## Flash D — `stems`: the perf round, STATS.TXT, T8 MASTER (staged 8 Oct 2026)
+
+The perf round (PR #644; the design:
+`git show 15703f7a:docs/superpowers/specs/2026-10-07-stem-rec-perf-design.md`;
+`docs/firmware/STEM_REC.md` section 19). A take's files are what the code
+before the round wrote, sample for sample, with two exceptions by design:
+REC pressed while the sequencer plays starts one frame (0.36 ms) later,
+and T8 isn't recorded while MASTER TRACK is on. New for the unit: less work in the audio
+interrupt, `STATS.TXT` in each take's folder, and T8's row reading
+`T8 MASTER` while MASTER TRACK is on.
+
+**The image.** Built 8 Oct 2026 from branch `stems-perf` at `ad73ee89` (a
+clean tree, the PR's head), with the bare-metal `m68k-elf` toolchain:
+`make image REMIX=stems BUILD=4 VERSION=STEMS4`. The unit's OS version
+reads `STEMS4`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS4.bin` | 451,852 | `c7a8cb78e3a03728a631dd6ab1bf8f3f1f3f2ace0a0da24f78cc8b0395101795` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS4.syx` | 631,155 | `4ad3812f89643a366f606c008eb7cc971b2fd3eb632360f0dfbc69eeb983cd5d` |
+
+Both are built from your own 1.40C and never enter the repository. Copies
+are in `/home/yvez/xcheck/stems4`. The gates on that code: `make reach
+RUN=1 KEEP=1 TESTS=1` every gate ok, `verify_stems --long --fat32` 449
+PASS, 0 FAIL, 0 SKIP (the PR). The wrapped OS itself (`out/mainos_bus.bin`,
+`dcefe88f…6d420f9f`) booted under the port and recorded an eight-track
+take and a MASTER TRACK take (IDLE, `T1.wav`, `MAIN.wav` and `CUE.wav`, no
+`T8.wav`).
+
+**Before you flash.**
+
+- **If REC was pressed since power-on (STEMS3 included), power cycle
+  first, then OS UPGRADE.** The writer task sleeps on the timer the
+  upgrade uses, which holds one sleeper (STEM_REC.md 4.7).
+- As flash A: the stock `.syx` and a DIN MIDI interface at hand for the
+  Startup Menu (`docs/guide/BUILDING.md` section 7), the card backed up.
+- After the upgrade, power cycle once more (flash A's silent first boot).
+
+**The tests, in order.** Stop at the first that fails.
+
+1. Boot; MAIN MENU › SYSTEM › OS UPGRADE still opens (the recovery path);
+   MAIN MENU › STEMS shows its eighteen rows.
+2. A light project, T1 to T8 at 16 bits, 30 s: the take saves (`DONE`),
+   the files play, and the folder holds `STATS.TXT`. Send it.
+3. MASTER TRACK on: T8's row reads `T8 MASTER` and YES does nothing; a
+   take with T1, T8 and MAIN on holds `T1.wav` and `MAIN.wav`, no
+   `T8.wav`. MASTER TRACK off again: T8's row reads as before.
+4. Flash C's busy project (T2 to T8 Static, all trigs; eleven stereo
+   files at 24 bits) for a minute: `DONE` or `RING FULL`, and the take's
+   `STATS.TXT` either way. It tells the card from the processor: card
+   writes filling most of the take's time point at the card; a writer
+   sleep far above 10,000 µs, or a hook and frame routine near 362 µs,
+   point at the processor.
+5. The card's cluster: the `card ... cluster N sectors` line, or `chkdsk`
+   on a computer (bytes in each allocation unit).
+6. Flash C's tests not reported yet still stand: the null tests, the
+   inputs mono and CD, and a 5-minute take at eight tracks and 16 bits.
+
+**After the flash.** Every result goes into `docs/firmware/STEM_REC.md`
+section 17, as flash D.
 
 ## Flash C — `stems`: stems after the fader, the buses and 24 bits (staged 5 Oct 2026)
 
