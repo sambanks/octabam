@@ -14,7 +14,7 @@ make fxlive MODULE=SPECTRUM REMIX=bottleservice   # build it in a particular rem
 ```
 
 Then open http://127.0.0.1:8573. Needs `make emu-setup` (numpy,
-sounddevice).
+sounddevice) and, for ColdFire effects, `make emu-cf` (`ot_cf_host`).
 `FXLIVEARGS` passes `--port N`, `--device NAME` or `--no-audio`.
 
 fxlive needs a `dsp_host` with `-stream`. If yours predates it,
@@ -25,9 +25,9 @@ the host is missing or too old.
 ## Using it
 
 1. **Choose an effect.** The list has every module with an FX chooser row,
-   grouped: DSP effects, stock effects, and the ones it cannot play, greyed
-   with the reason (bus servers and clients, and effects made on the
-   ColdFire). Choosing one builds it (about 2 s).
+   grouped: DSP effects, CPU effects (ColdFire), stock effects, and the ones
+   it cannot play, greyed with the reason (bus servers and clients). Choosing
+   one builds it (about 2 s).
 2. **Play** (the button, or the space bar). The page starts stopped; Play
    before an effect is built runs the loop dry. Stop fades out over one
    chunk and pauses the engines; Play restarts the loop from the top.
@@ -65,7 +65,10 @@ module arrives with a remix (the selftest refuses one that no remix
 carries), so a new module can be picked as soon as it builds.
 
 fxlive builds to `out/fxlive/<remix>.bin` (`BUS_OUT`), never
-`out/mainos_bus.bin`.
+`out/mainos_bus.bin`. A DRAM build also rewrites the fixed `out/platform/`,
+so fxlive copies the runtime to `out/fxlive/<remix>.runtime.raw` (and
+`.base`) right after its own build. A gate run in the same worktree at the
+same time can still race it there; do not run both at once.
 
 ## What runs
 
@@ -75,6 +78,11 @@ fxlive builds to `out/fxlive/<remix>.bin` (`BUS_OUT`), never
   carries its twelve knob values and samples over a pipe. The stream's
   output is bit-identical to a file render of the same input and knobs
   (MINIVERB, 3,000 blocks). About 4-26x real time through fxlive, by module.
+- **CPU effects** (`CF_AUDIO` in `fxlive.py`: TAPE ECHO, and the stock
+  DELAY of `stock.NO_DSP`): after the DSP stage, `ot_cf_host` runs the
+  ColdFire's delay routine `0x400031a0` on T5 ("cf_host" below). It equals
+  Tape Echo's native oracle bit for bit (`make fxlive-check`). About
+  1.6-2.3x real time through fxlive, 7,500-8,800 CPU instructions a block.
 - **Hot swap.** Every file under the module's directory and the host
   remix's `remix.py` is watched. A save rebuilds, boots a new engine, warms
   it on silence and crossfades the loop onto it. The new engine starts from
@@ -90,7 +98,52 @@ fxlive builds to `out/fxlive/<remix>.bin` (`BUS_OUT`), never
   effects (EQUALIZER, PHASER, FLANGER, CHORUS, COMB FILTER) are exactly dry
   at their defaults.
 - **Knobs** are the module's drawn slots; a clone's unwritten fields are
-  its donor's (SIDECHAIN_COMPRESSOR shows COMPRESSOR's page 1).
+  its donor's (SIDECHAIN_COMPRESSOR shows COMPRESSOR's page 1). The stock
+  DELAY at its defaults sends nothing (SEND 0): raise SEND to hear repeats.
+  Its SYNC (on by default) times them from the tempo, 120 BPM here.
+
+## cf_host: the ColdFire stage
+
+`out/emu/ot_cf_host` (`make emu-cf`; source `cf_host.cpp` here):
+the ColdFire's per-frame delay routine `0x400031a0` on one track, one
+16-sample block per call, from a built image and its DRAM runtime. It is
+`tools/harness/tapeecho_cpu_probe.cpp`'s benchmark setup made a tool:
+`docs/firmware/COLDFIRE_DELAY.md` is the map.
+
+- **Per block:** the track's DSP voice record (`0x80000110 + 0x200·ping +
+  64·track`; halfword = DSP word >> 8 at r6 offset + 12, the id at +56)
+  is staged by stock's own producer copy `0x4000d0ea..0x4000d15a`, which
+  fills the routine's snapshot (`0x80001a00`, `0x80001b80`). The tempo
+  words are set as the frame code sets them: `0x80001814` and
+  `0x8000181c` = BPM × 24, and `0x80001820 = −2³¹/tempo24`, the
+  multiplier the delay's TIME uses with SYNC on. The samples (DSP word
+  << 8) go to the read-back block `0x80003190 + 1024·ping + 128·track`,
+  the routine runs all eight tracks over a synchronous eDMA model, and the
+  block comes back processed in place.
+- **`--stream`** speaks `dsp_host -stream`'s packets; `--selftest` sends
+  an impulse and prints where it returns and the speed.
+- **Measured** (9 Oct 2026, `make fxlive-check`, which builds its own
+  `tapeecho` image): TAPE ECHO through `cf_host` equals
+  `modules/tapeecho/cpu.c` bit for bit, 3,000 blocks with every control
+  moving, on T1 and T5; the stock DELAY's SYNC repeat at 60 BPM lands
+  twice as late as at 120 (16,537 and 33,075 samples). Alone it runs
+  about 3.5x real time (about 10,000 blocks a second).
+- **Not modelled:** the frame of latency the read-back adds on the unit,
+  the transfer state machine, the sequencer, LFOs and everything else in
+  the frame, and the CPU's cache, bus and DMA timing. Its instruction
+  count is a floor, never the budget (six Tape Echoes run on the author's
+  unit and a seventh freezes it).
+- **The ColdFire effects list** is `CF_AUDIO` in `fxlive.py`, not a
+  manifest field: declaring it in the module schema is a decision for the
+  schema and module owners.
+
+## Checking it
+
+`make fxlive-check` (about 10 s; needs `make emu-setup` and `make
+emu-cf`) builds its own `tapeecho` image and holds `cf_host` to Tape
+Echo's native oracle and the stock DELAY's tempo law, as above. It is
+fxlive's check, not a module gate: nothing in `make check` runs it. Run it
+after changing `cf_host.cpp` or anything it stages.
 
 ## The API
 
@@ -118,8 +171,9 @@ cannot see"). Also:
 - the dispatcher is modelled, not run: anything keyed on r7, r6 or
   `X:0x213` is measured under the port;
 - AMP VOL and LEVEL are not applied;
-- effects made on the ColdFire (TAPE ECHO, the stock DELAY): their DSP
-  code is a passthrough, so they are listed but not played;
+- for a CPU effect, the rest of the frame around the routine, the frame of
+  latency the read-back adds, and the CPU budget: the instruction count is
+  a floor, not a measure of whether the unit keeps up;
 - bus servers and clients (they need both cores and the rotation:
   `rig_render.py`).
 
@@ -141,7 +195,7 @@ changes is the remix's role:
   `Claims.fx1_only` modules are FX1-only. Each slot's list should come from
   the remix.
 - **A CPU effect sits after FX2 only**, keyed by the FX2 id, so at most one
-  per track.
+  per track, followed by the `cf_host` stage.
 - **Slot placement in `dsp_host` is a model.** Its r7 for each slot is
   computed, not measured, and was once wrong (three r7 bumps per track,
   AGENTS.md); a chain whose behaviour depends on its slot is checked under

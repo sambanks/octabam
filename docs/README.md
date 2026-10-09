@@ -30,7 +30,7 @@ Where each doc is, by who reads it. A module's own page is
 |---|---|
 | [../tools/remix/README.md](../tools/remix/README.md) | the remix engine: schema, registry, ledger, the DRAM platform, the remixer's internals |
 | [../tools/harness/README.md](../tools/harness/README.md) | hearing and measuring the DSP side locally: `dsp_host`, `send_probe`, `rig_render`, `pressure`, the stress project |
-| [../tools/harness/fxlive/README.md](../tools/harness/fxlive/README.md) | one effect live in a browser while you write it: knobs, a loop, rebuilt on save (DSP effects) |
+| [../tools/harness/fxlive/README.md](../tools/harness/fxlive/README.md) | one effect live in a browser while you write it: knobs, a loop, rebuilt on save (DSP and ColdFire effects) |
 | [../tools/emu/README.md](../tools/emu/README.md) | the ColdFire emulators: the port (`ot_emu`) and Tier-0 (Unicorn) |
 | [../tools/panel/README.md](../tools/panel/README.md) | the virtual front panel over the port; [KEYMAP.md](../tools/panel/KEYMAP.md) the key and LED map |
 | [../tools/ghidra/README.md](../tools/ghidra/README.md) | the Ghidra project over the OS and both DSP payloads |

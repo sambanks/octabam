@@ -229,8 +229,8 @@ refusal and station silence, senders and delay on payload B, reverb on payload A
 `make fxlive [MODULE=<KEY>] [WAV=loop.wav]`: one effect live in a browser,
 knobs and all, rebuilt and crossfaded on every save. Its own README is
 [`fxlive/README.md`](fxlive/README.md): how to use it, where a module is
-built, what it runs, its API, what it cannot show, and notes for chaining
-FX1 into FX2 later.
+built, what it runs (including `cf_host`, its ColdFire stage), its API,
+what it cannot show, and notes for chaining FX1 into FX2 later.
 
 ## port_compare.py
 

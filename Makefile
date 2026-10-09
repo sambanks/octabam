@@ -104,6 +104,11 @@ fxlive: ## Hear one effect live: a WAV on loop, knobs in the browser, rebuilt on
 	@test -x .venv/bin/python3 || { echo "fxlive needs numpy and sounddevice: make emu-setup"; exit 1; }
 	.venv/bin/python3 tools/harness/fxlive/fxlive.py $(if $(MODULE),--module "$(MODULE)") $(if $(REMIX),--remix "$(REMIX)") $(if $(WAV),--wav "$(WAV)") $(FXLIVEARGS)
 
+.PHONY: fxlive-check
+fxlive-check: ## fxlive's own check: its ColdFire stage (cf_host) against Tape Echo's native oracle
+	@test -x .venv/bin/python3 || { echo "fxlive-check needs numpy: make emu-setup"; exit 1; }
+	.venv/bin/python3 tools/harness/fxlive/check.py
+
 .PHONY: render-delay
 render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay locally
 	$(need-remix)

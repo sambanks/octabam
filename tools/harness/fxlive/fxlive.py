@@ -19,9 +19,14 @@ the same packet, so what you hear is the module's real instruction stream.
 `dsp_host -stream`'s output is bit-identical to a file render of the same
 input and knobs.
 
-COLDFIRE EFFECTS. TAPE ECHO and the stock DELAY make their sound in the
-ColdFire's delay routine; their DSP dispatch is a passthrough. They are
-listed but not played (CF_AUDIO below).
+COLDFIRE EFFECTS. A module whose sound is made on the ColdFire (CF_AUDIO
+below: TAPE ECHO, and the stock DELAY of stock.NO_DSP) gets a second stage
+after the DSP: `out/emu/ot_cf_host`, the stock delay routine 0x400031a0 on
+T5 from the same image and a copy of this build's DRAM runtime
+(cf_host.cpp beside this file; `make emu-cf` builds it). Its output equals
+Tape Echo's native oracle bit for bit (`make fxlive-check`). It does
+not add the frame of latency the read-back adds on the unit, and it runs
+the routine, not the firmware around it.
 
 HOT SWAP. Every file under the module's directory (and the remix's
 remix.py) is watched. When one changes the remix is rebuilt (~2 s), a new
@@ -38,7 +43,9 @@ clean (an LFO leaves bits 8-15 set; dsp_host -pword shows that), RAM starts
 zeroed (verify_dirtystate), the dispatcher is modelled, not run, and AMP
 VOL / LEVEL are not applied. WET/DRY is a monitor control here, not
 anything the module does. Bus servers and clients need both cores and the
-rotation and are refused: render those with rig_render.py. A sound you like
+rotation and are refused: render those with rig_render.py. For a ColdFire
+effect the instruction count is a floor, not the CPU budget (no cache, bus
+or DMA stalls, and none of the rest of the frame). A sound you like
 here is a starting point for a render and `make check`, never a result.
 
 dsp_host: a branch that changes tools/harness/dsp_host/dsp_host.cpp must
@@ -68,10 +75,9 @@ from remix.stock import NO_DSP         # noqa: E402  (stock DELAY runs on the Co
 
 # Effects whose sound is made in the ColdFire's delay routine 0x400031a0,
 # their DSP dispatch a passthrough (docs/firmware/COLDFIRE_DELAY.md section
-# 3): a DSP render of one is its dry stub, so they are listed, not played.
-# Kept here rather than in the module schema, which is for its owners to
-# change. One missing from this list plays dry, and the page says so
-# (passes_through).
+# 3). Kept here rather than in the module schema, which is for its owners to
+# change. A ColdFire effect missing from this list plays dry, and the page
+# says so (passes_through).
 CF_AUDIO = frozenset({"TAPE ECHO"}) | NO_DSP    # modules/tapeecho/README.md
 
 SR = 44100
@@ -162,12 +168,13 @@ def demo_loop():
 # ---- what can be played --------------------------------------------------------
 def support(m):
     """(how fxlive plays the module, why not). "dsp": an insert on its own
-    track's frames. None: not here (made on the ColdFire, a bus server or
-    client, or no chooser row)."""
+    track's frames. "cpu": the sound is made in the ColdFire's delay routine
+    (CF_AUDIO), run by cf_host after the DSP. None:
+    not here (a bus server or client, or no chooser row)."""
     if m.menu is None or m.kind not in (Kind.DSP_EFFECT, Kind.DSP_CLIENT, Kind.HYBRID, Kind.STOCK):
         return None, "no FX chooser row"
     if m.key in CF_AUDIO:
-        return None, "made on the ColdFire: its DSP code is a passthrough"
+        return "cpu", ""
     if m.is_stock or (m.dsp is not None and m.dsp.bus_role is BusRole.NONE):
         return "dsp", ""
     return None, (f"a bus {m.dsp.bus_role.value}: it needs both cores and the rotation "
@@ -180,7 +187,7 @@ def playable(m):
 
 def module_index():
     """Every module with a chooser row: how it plays, the group it lists
-    under (dsp, stock, not), why not, and the remixes that carry it,
+    under (dsp, cpu, stock, not), why not, and the remixes that carry it,
     smallest first -- the first is the host fxlive builds unless told
     otherwise. A module sounds the same in any carrier (the build moves its
     address, not its code: MODULATION at P:0x01984 and P:0x01a11 rendered
@@ -258,15 +265,28 @@ def describe(m):
 
 
 # ---- one process per stage, one chain per build -------------------------------------
+CF_HOST = ROOT / "out/emu/ot_cf_host"
+CF_TRACK = 4                   # T5: payload A's position 0, where the DSP stage runs
+
+
 def dsp_cmd(host, mem, init, proc, r7, alloc, extra=()):
     return [str(host), "-mem", str(mem), "-init", f"{init:x}", "-proc", f"{proc:x}",
             "-inst", "1", "-r7", str(r7), "-alloc", str(alloc), "-audio", "0",
             "-frames", str(FRAMES), "-stream", *extra]
 
 
+def cf_cmd(image, fxid, runtime=None, tempo=120):
+    cmd = [str(CF_HOST), str(image), "--fxid", f"{fxid:x}", "--track", str(CF_TRACK),
+           "--tempo", str(tempo), "--stream"]
+    if runtime is not None:
+        cmd[2:2] = ["--runtime", str(runtime[0]), f"{runtime[1]:x}"]
+    return cmd
+
+
 class Engine:
-    """One `dsp_host -stream` process. render() is a synchronous round trip
-    of whole blocks: write every packet, then read every reply. 16 blocks are ~5 KB
+    """One `-stream` process: dsp_host, or cf_host for the ColdFire routine
+    (the same packets). render() is a synchronous round trip of whole
+    blocks: write every packet, then read every reply. 16 blocks are ~5 KB
     each way, well inside a pipe's buffer, so it cannot deadlock."""
 
     def __init__(self, cmd, name="dsp_host"):
@@ -326,8 +346,9 @@ class Engine:
 
 
 class Chain:
-    """The stages a track's audio crosses, in order; one here, the DSP's FX2.
-    render() returns the output and each stage's instruction counts."""
+    """The stages a track's audio crosses, in order: the DSP's FX2, then (for
+    a "cpu" module) the ColdFire routine. On the unit the routine sees the
+    read-back one frame later; the chain does not add that frame."""
 
     def __init__(self, stages):
         self.stages = stages
@@ -378,6 +399,8 @@ class Session:
         self.built_key = None       # the module the playing engine runs
         self.built_remix = None     # ... and the remix it was built from
         self.index = module_index()  # every chooser module: support, group, hosts
+        self.how = None             # "dsp" or "cpu": the stages the playing module runs
+        self.cf_ipb = 0.0
         self.params_meta = []
         self.values = [0] * NPARAM
         self.module_doc = ""
@@ -462,7 +485,7 @@ class Session:
                 remix=self.remix, index=self.index,
                 built=self.built_key or "", built_remix=self.built_remix or "",
                 module=self.module_key,
-                doc=self.module_doc,
+                how=self.how, cpu_instr_per_block=round(self.cf_ipb), doc=self.module_doc,
                 params=[dict(p, value=self.values[p["slot"]]) for p in self.params_meta],
                 values=list(self.values), wet=self.wet, bypass=self.bypass, playing=self.playing,
                 gain_db=self.gain_db, wav=self.src_name, status=self.status,
@@ -490,6 +513,10 @@ class Session:
             raise RuntimeError(f"no dsp_host at {self.a.host}: run scripts/setup.sh, or point "
                                f"DSP_HOST at a build with -stream (a branch that changes "
                                f"dsp_host.cpp builds its own, AGENTS.md)")
+        how = support(m)[0]
+        if how == "cpu" and not CF_HOST.is_file():
+            raise RuntimeError(f"{key} is made on the ColdFire and {CF_HOST.relative_to(ROOT)} "
+                               f"is not built: make emu-cf")
         OUTDIR.mkdir(parents=True, exist_ok=True)
         image = OUTDIR / f"{remix}.bin"
         env = dict(os.environ, REMIX=remix, XBUS="1", SPEC="1", BUS_OUT=str(image))
@@ -499,6 +526,16 @@ class Session:
         log = (b.stdout + b.stderr).strip()
         if b.returncode != 0:
             raise RuntimeError("build failed:\n" + log[-4000:])
+        # The DRAM runtime lands at a fixed out/platform/ (any DRAM build
+        # rewrites it, a ROM-only one leaves it alone): take a copy now, and
+        # only when THIS build printed that it linked one.
+        runtime = None
+        if how == "cpu" and "platform runtime:" in log:
+            raw = OUTDIR / f"{remix}.runtime.raw"
+            raw.write_bytes((ROOT / "out/platform/runtime.raw").read_bytes())
+            base = json.loads((ROOT / "out/platform/layout.json").read_text())["base"]
+            raw.with_suffix(".base").write_text(f"{base:x}\n")   # the pair, for a cf_host run by hand
+            runtime = (raw, base)
         mem = send_probe.dump_mem(image, OUTDIR / f"{remix}_A.mem", "A")
         try:
             init, proc = send_probe.entry_points(mem, m.menu.fx2_id)
@@ -514,7 +551,10 @@ class Session:
         meta = describe(m)
 
         def make_chain():
-            return Chain([Engine(dsp_cmd(self.a.host, mem, init, proc, r7, alloc), "dsp_host")])
+            stages = [Engine(dsp_cmd(self.a.host, mem, init, proc, r7, alloc), "dsp_host")]
+            if how == "cpu":
+                stages.append(Engine(cf_cmd(image, m.menu.fx2_id, runtime), "cf_host"))
+            return Chain(stages)
         passthrough = passes_through(make_chain, meta)
         eng = make_chain()
         with self.lock:
@@ -538,17 +578,21 @@ class Session:
         took = time.time() - t0
         summary = "\n".join(line for line in log.splitlines()[-3:])
         if passthrough:
+            where = ("the DSP and the ColdFire's delay routine" if how == "cpu" else "the DSP")
             self.passthrough = (f"{key} returned its input unchanged, bit for bit, at its "
                                 f"defaults and with every knob at minimum, middle and maximum. "
-                                f"fxlive runs the DSP; if the module makes its sound anywhere "
+                                f"fxlive runs {where}; if the module makes its sound anywhere "
                                 f"else, it cannot be heard here. If it is a ColdFire effect "
                                 f"in the stock delay routine, add it to CF_AUDIO in "
                                 f"tools/harness/fxlive/fxlive.py.")
         else:
             self.passthrough = ""
+        self.how = how
+        stage = (f"; ColdFire routine 0x400031a0 as id 0x{m.menu.fx2_id:02x} on T{CF_TRACK + 1}"
+                 + (f", runtime at 0x{runtime[1]:08x}" if runtime else "") if how == "cpu" else "")
         return eng, meta, m.doc, catalog, watch, key, vals, \
             f"built {remix} in {took:.1f} s; {key} init P:0x{init:05x} proc P:0x{proc:05x} " \
-            f"r7 {r7} alloc {alloc}\n{summary}"
+            f"r7 {r7} alloc {alloc}{stage}\n{summary}"
 
     def builder(self):
         while self.running:
@@ -695,6 +739,7 @@ class Session:
             if eng is not None and dt > 0:
                 self.rt = 0.9 * self.rt + 0.1 * ((CHUNK / SR) / dt) if self.rt else (CHUNK / SR) / dt
                 self.ips = float(np.mean(ins[0])) / FRAMES
+                self.cf_ipb = float(np.mean(ins[1])) if len(ins) > 1 else 0.0
             wet = y.astype(np.float32) / FS
             w = self.wet_now + (wet_t - self.wet_now) * (np.arange(1, CHUNK + 1) / CHUNK)[:, None]
             self.wet_now = wet_t

@@ -113,11 +113,13 @@
       <h2>Engine</h2>
       <dl>
         <dt>Speed</dt><dd id="rt" class="mono"></dd>
+        <dt>Stages</dt><dd id="how" class="mono"></dd>
         <dt>DSP instr / sample</dt><dd id="ips" class="mono"></dd>
+        <dt>CPU instr / block</dt><dd id="cfi" class="mono"></dd>
         <dt>Underruns</dt><dd id="under" class="mono"></dd>
         <dt>Clipped samples</dt><dd id="clips" class="mono"></dd>
       </dl>
-      <div class="note">Not shown here: LFO bits in knob words, uncleared RAM, the real dispatcher, AMP VOL/LEVEL. Confirm with a render and <span class="mono">make check</span>.</div>
+      <div class="note">Not shown here: LFO bits in knob words, uncleared RAM, the real dispatcher, AMP VOL/LEVEL; for a CPU effect, the rest of the firmware and the CPU budget (the instruction count is a floor). Confirm with a render and <span class="mono">make check</span>.</div>
     </section>
   </div>
 </main>
@@ -165,7 +167,7 @@ function render(s) {
   const mod = $("module");
   const mkey = JSON.stringify(s.index);
   if (mod.dataset.k !== mkey) {
-    const groups = [["dsp", "DSP effects"],
+    const groups = [["dsp", "DSP effects"], ["cpu", "CPU effects (ColdFire)"],
                     ["stock", "Stock effects"], ["not", "Not playable here"]];
     let html = '<option value="" disabled>\u2014 choose an effect \u2014</option>';
     for (const [g, label] of groups) {
@@ -174,10 +176,11 @@ function render(s) {
       html += `<optgroup label="${label}">` + items.map(e => {
         const o = document.createElement("option");
         o.value = e.key;
-        o.textContent = e.key
+        o.textContent = e.key + (g === "stock" && e.support === "cpu" ? "  \u00b7  CPU" : "")
                       + (g === "not" ? "  \u00b7  " + e.why.split(":")[0] : "");
         o.disabled = !e.support;
-        o.title = e.support === "dsp" ? "a DSP insert (dsp_host)" : e.why;
+        o.title = e.support === "cpu" ? "made on the ColdFire: the DSP stage, then the delay routine (cf_host)"
+                : e.support === "dsp" ? "a DSP insert (dsp_host)" : e.why;
         return o.outerHTML;
       }).join("") + "</optgroup>";
     }
@@ -231,6 +234,8 @@ function render(s) {
   meter("min", "minv", s.peak_in); meter("mout", "moutv", s.peak_out);
   $("rt").textContent = s.realtime ? s.realtime.toFixed(1) + "x real time" : "-";
   $("ips").textContent = s.instr_per_sample || "-";
+  $("how").textContent = s.how === "cpu" ? "DSP \u2192 ColdFire" : s.how === "dsp" ? "DSP" : "-";
+  $("cfi").textContent = s.how === "cpu" ? s.cpu_instr_per_block : "-";
   $("under").textContent = s.underruns;
   $("clips").textContent = s.clips;
 }

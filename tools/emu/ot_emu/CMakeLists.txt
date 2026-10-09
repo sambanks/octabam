@@ -179,6 +179,11 @@ add_test(NAME repitch-patch COMMAND ot_repitch_stock_test --patched out/mainos_b
 add_executable(ot_euclid_test ../../harness/euclid_probe.cpp)
 target_link_libraries(ot_euclid_test PRIVATE ot_machine)
 
+# fxlive's CPU stage: the ColdFire frame routine on one track, streamed
+# (tools/harness/fxlive/README.md).
+add_executable(ot_cf_host ../../harness/fxlive/cf_host.cpp)
+target_link_libraries(ot_cf_host PRIVATE ot_machine)
+
 add_executable(ot_tapeecho_cpu_test ../../harness/tapeecho_cpu_probe.cpp
     ../../../modules/tapeecho/cpu.c)
 target_compile_definitions(ot_tapeecho_cpu_test PRIVATE TE_HOST=1)
