@@ -145,7 +145,10 @@ Under the port, 5 Oct 2026:
 
 ## On the unit
 
-All on allmyfriendsaresynths's (@clickysteve) MKII.
+On allmyfriendsaresynths's (@clickysteve) MKII. erreye's MK1 takes with
+this layout into Ableton Live are in the
+[USB AUDIO OUT TRACKS MAIN CUE README](../usb-audio-out-tracks-main-cue/README.md),
+*A MK1 into Ableton Live*.
 
 **This module** (P3, `usb-out-tracks-post` built from this module's source
 on main `faa32663`; the platform under it has changed since, so today's

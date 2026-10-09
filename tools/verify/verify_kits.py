@@ -54,11 +54,6 @@ pattern content beyond pattern 1 playing.
             the Kit above is a copy; FUNC+STOP again: it is back.
   lclear    SAVE KIT open, DOWN x3, FUNC+PLAY: that Kit is empty; again:
             it is back.
-  toggle    LOAD KIT, DOWN to the AUTOSAVE row, YES: the setting is on.
-  autosave  AUTOSAVE on, CC 7 on track 1 (an edit), PTN+TRIG 2: the
-            edit is in the playing slot's Kit and its saved Part.
-  levels    KEEP LEVELS on, CC 7 on track 1, LOAD KIT two rows up: the
-            Kit loaded, track 1's level the edited one.
   ptncopy   FUNC+REC (pattern 1), pattern 14, FUNC+STOP: pattern 14
             plays pattern 1's Kit; FUNC+STOP again: its own again.
   pclone    ... the paste with STOP held and PART pressed: pattern 14
@@ -436,15 +431,6 @@ def main():
     for _ in range(3):
         s.tap("down", 150)
     s.hold("func", "play", gap=600); s.hold("func", "play", gap=600); add("lclundo", s)
-    s = Script(); s.tap("no"); s.tap("part", 800)
-    for _ in range(260):
-        s.tap("down", 30)
-    s.tap("yes", 800); add("toggle", s)                           # the last row is KEEP LEVELS
-    s = Script(); s.tap("no"); s.tap("play", 2000); s.send("midi b0 07 23", 500); s.hold("ptn", 1); s.wait(17000)
-    add("autosave", s, [(KI + 16 + 3, 1), (pa(1), 0)])
-    s = Script(); s.tap("no"); s.send("midi b0 07 23", 500)
-    s.tap("part", 800); s.tap("up", 200); s.tap("up", 200); s.tap("yes", 1500)
-    add("levels", s, [(KI + 16 + 3, 2)])
 
     def ptncopy(s, extra=None):
         s.tap("no"); s.hold("func", "rec", gap=600)                 # pattern 1 copied
@@ -608,7 +594,7 @@ def main():
         b, im = b3_(tag), img(tag)
         sl = [b[p * PSTRIDE + PBYTE] for p in (1, 2, 3)]
         # unattended: the CCs edit the playing Parts' levels (+0x10..+0x21,
-        # measured); AUTOSAVE is off, so the Kits keep theirs
+        # measured); the Kits keep theirs
         cut = (lambda x: x[:0x10] + x[0x22:]) if tag == "unattended" else (lambda x: x)
         held = [cut(slot(b, x)) == cut(kit(im, k)) for x, k in zip(sl, (0, 1, 4))]
         check(f"{tag}: patterns 2-4 on slots {[x + 1 for x in sl]}, each holding its Kit ({held})",
@@ -769,25 +755,6 @@ def main():
         im, b0 = img("lclundo"), img("base")
         k = BANK * 4 + cur_slot(b3_("lclundo")) + 3
         check(f"lclundo: the second clear brought Kit {k + 1} back", valid(im, k) and kit(im, k) == kit(b0, k))
-    if exists("toggle"):
-        clean("toggle")
-        im = img("toggle")
-        check(f"toggle: KEEP LEVELS on from its row (flags {im[16:20].hex()})", im[19] & 2)
-    if exists("autosave"):
-        s_ = clean("autosave")
-        im, b = img("autosave"), b3_("autosave")
-        k = im[O_RESID + BANK * 4]
-        check(f"autosave: slot 1's Kit {k + 1} and saved Part hold track 1's edited level (0x23)",
-              k != 0xff and kit(im, k)[0x12] == 0x23 and b[SAVED + 0x12] == 0x23)
-    if exists("levels"):
-        clean("levels")
-        im, b = img("levels"), b3_("levels")
-        s_ = cur_slot(b)
-        k = im[O_ASSIGN + BANK * 16]
-        w = slot(b, s_)
-        check(f"levels: Kit {k + 1} loaded, track 1 level kept at 0x23 (Kit has {kit(im, k)[0x12]:#x})",
-              k == BANK * 4 + s_ - 2 and w[0x12] == 0x23 and w[:0x12] == kit(im, k)[:0x12]
-              and w[0x22:] == kit(im, k)[0x22:] and w[0x13:0x22:2] == kit(im, k)[0x13:0x22:2])
     if exists("ptncopy"):
         clean("ptncopy")
         im = img("ptncopy")

@@ -158,6 +158,36 @@ paid with no host connected. Each voice also costs ~2.5 µs more under this
 layout; cache pressure from the 320 read-back words per block is the
 candidate, not measured.
 
+### A MK1 into Ableton Live (erreye, 5–7 Oct 2026)
+
+erreye's Octatrack MK1, an M1 Mac mini, Live 12.4, a Behringer UMC404HD at
+44.1 kHz as the output interface. The image is their `felipe` remix with
+USB AUDIO OUT TRACKS POST (this source, layout 5), built from main
+`faa32663` + #625 with `AUD_TARGET` raised locally from 64 to 256 (which
+also needs the `moveq` in `audio_cushion_zero` made a `movel`).
+
+- With a 2 m cable straight into the Mac: 0 transaction errors on EP 0x83,
+  0 underruns, 0 overruns, 0 `bankdup`, fill 238–271 at a target of 256.
+  A 240 s `tools/rec` take of all sixteen channels has no discontinuity.
+- **Live with the unit as input and another interface as output** puts a
+  dropped or repeated buffer into the recording about every 1–2 minutes:
+  in a 170 s take of T7 and T8, every jump sits on a multiple of Live's
+  128-sample buffer, on both tracks at once (8 outliers on buffer
+  boundaries against 0.4 by chance), with the device counters clean, no
+  USB errors and no CoreAudio overload. A `tools/rec` take overlapping it
+  in time (one device, one clock) is clean. 🟡 Inferred: Live reconciles
+  the two devices' clocks by a whole buffer. Workaround: Live's output on
+  "No Device" and monitoring on the unit.
+- **An aggregate device** (the UMC as clock, drift correction on the
+  unit) does not start: CoreAudio logs 12 failed starts of the unit in
+  about a second (`Initialize failed`, `_StartIO(): Start failed ...
+  error 35`), and the unit froze later (`docs/contributing/FAILURE_MODES.md`,
+  "Two SET_INTERFACE requests 40 ms apart"). The unit as the aggregate's
+  clock has not been tried.
+- `AUD_TARGET` 256 adds 192 frames (about 4.4 ms) over 64. erreye raised
+  it for glitches on 2 Oct (through a hub) that they now attribute to the
+  cable, the hub and Live's clock slips; a take at 64 is to come.
+
 ### UAC2 hosts that set the clock
 
 The clock is fixed at 44.1 kHz and declares its frequency control read-only,
@@ -188,6 +218,10 @@ only (`verify_usb`).
   five. Whether it is the device's queue at stream start or the host's
   stream start is not known. `docs/contributing/FAILURE_MODES.md` has the
   entry.
+- **Two SET_INTERFACE requests 40 ms apart freeze the unit** (alt 1, then
+  alt 0, whose status stage never completes): erreye's MK1, from a buffer
+  size change in Live; not reproduced under the port.
+  `docs/contributing/FAILURE_MODES.md` has the entry.
 - Not measured: Windows and Linux hosts; USB controller load from the
   250 µs packet rate beyond the takes above. The rejection of a SET CUR to
   an unoffered rate on a unit (the port only).

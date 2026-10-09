@@ -106,10 +106,8 @@
         .set    O_LIB,      O_RESID+64
         .set    IMG_LEN,    O_LIB+NKITS*REC
         .set    MAGIC,      0x4b495453      | 'KITS'
-        .set    FLAGS,      KIMG+16         | header: the settings, kept in kits.work
-        .set    KF_AUTO,    1               | AUTOSAVE: a Part's edits into its Kit at a pattern change
-        .set    KF_LEVELS,  2               | KEEP LEVELS: a Kit load keeps the slot's track levels
-        .set    LROWS,      NUSE+3         | LOAD KIT: UNDO KIT, the Kits, the two settings
+        .set    FLAGS,      KIMG+16         | header word: unused, zero in a new library
+        .set    LROWS,      NUSE+1         | LOAD KIT: UNDO KIT, the Kits
         .set    CLIPBUF,    0x460c8122      | stock's clipboard
         .set    UNDOBUF,    0x460bf218      | stock's undo buffer
         .set    M_ROW,      0x460e5e40      | long: the open list's cursor
@@ -1085,100 +1083,6 @@ pattern_clone:
         lea     %sp@(28),%sp
         rts
 
-| put_levels: a0 = a Part's +0x12: LVLBUF's eight track levels back
-| (even bytes), the cue levels (odd) as the Kit has them.
-put_levels:
-        lea     LVLBUF,%a1
-        moveq   #8,%d0
-1:      moveb   %a1@,%a0@
-        addql   #2,%a0
-        addql   #2,%a1
-        subql   #1,%d0
-        bne.s   1b
-        rts
-
-| autosave_current: the playing Part's edits into the Kit its slot holds
-| (KF_AUTO): working -> the Kit, the saved Part, the CS1 copies; the
-| unsaved bit clear.
-autosave_current:
-        lea     %sp@(-44),%sp
-        movem.l %d2-%d7/%a2-%a6,%sp@
-        moveq   #0,%d4
-        moveb   CUR_BANK,%d4
-        moveq   #0,%d1
-        moveb   CUR_PART,%d1
-        andil   #3,%d1
-        movel   %d1,%d7                 | d7 = the part
-        movel   %d4,%d6
-        lsll    #2,%d6
-        addl    %d1,%d6                 | d6 = the slot
-        lea     KIMG+O_RESID,%a0
-        moveq   #0,%d5
-        moveb   %a0@(0,%d6:l),%d5       | d5 = its Kit
-        cmpil   #0xff,%d5
-        beq.w   9f
-        bsr.w   slot_equal
-        tstl    %d0
-        bne.w   9f
-        movel   %d5,%d0
-        movel   %d6,%d1
-        bsr.w   others_mark
-        movel   %d4,%d0
-        bsr.w   bank_at
-        moveal  %a0,%a2                 | a2 = the bank
-        movel   #PARTSZ,%d3
-        mulu.l  %d7,%d3                 | d3 = part * PARTSZ
-        movel   %a2,%a4
-        addal   %d3,%a4
-        movel   %a4,%a3
-        addal   #WORKOFF,%a3            | a3 = the working Part
-        movel   %d5,%d0
-        bsr.w   kit_at
-        pea     PARTSZ
-        movel   %a3,%sp@-
-        pea     %a0@(R_PAY)
-        jsr     MEMCPY
-        lea     %sp@(12),%sp
-        pea     PARTSZ
-        movel   %a3,%sp@-
-        movel   %a4,%d0
-        addil   #SAVEDOFF,%d0
-        movel   %d0,%sp@-
-        jsr     MEMCPY
-        lea     %sp@(12),%sp
-        pea     PARTSZ
-        movel   %a3,%sp@-
-        movel   %d3,%d0
-        addil   #CS1_SAVED,%d0
-        movel   %d0,%sp@-
-        jsr     MEMCPY
-        lea     %sp@(12),%sp
-        moveal  %a2,%a0
-        addal   #SVALID,%a0
-        moveq   #1,%d0
-        moveb   %d0,%a0@(0,%d7:l)
-        lea     CS1_SVALID,%a0
-        moveb   %d0,%a0@(0,%d7:l)
-        lsll    %d7,%d0
-        notl    %d0
-        moveal  %a2,%a0
-        addal   #MODBITS,%a0
-        moveb   %a0@,%d1
-        andl    %d0,%d1
-        moveb   %d1,%a0@
-        moveb   CS1_MOD,%d1
-        andl    %d0,%d1
-        moveb   %d1,CS1_MOD
-        movel   %d5,%d0
-        bsr.w   others_refresh
-        moveq   #1,%d0
-        movel   %d0,KDIRTY
-        movel   %d0,GDIRTY
-        addql   #1,CNT_AUTOSAVE
-9:      movem.l %sp@,%d2-%d7/%a2-%a6
-        lea     %sp@(44),%sp
-        rts
-
 | ---- PTN+FUNC+TRIG: copy, paste, clear an inactive pattern ---------------
 | 0x40056b2c (pattern): a pattern trig with PTN held. With FUNC held too the
 | trig names a target instead of requesting it (Octakit's PTN+FUNC+TRIG).
@@ -1332,22 +1236,7 @@ stage_req:
         addql   #1,CNT_ISR
         rts
 1:      movel   %a0,%d0
-        movel   FLAGS,%d2
-        btst    #0,%d2                  | KF_AUTO
-        beq.s   2f
-        moveq   #0,%d2                  | a change of pattern: the playing
-        moveb   CUR_BANK,%d2            | Part's edits into its Kit first
-        cmpl    %d0,%d2
-        bne.s   3f
-        moveb   CUR_PTN,%d2
-        cmpl    %d1,%d2
-        beq.s   2f
-3:      lea     %sp@(-8),%sp
-        movem.l %d0-%d1,%sp@
-        bsr.w   autosave_current
-        movem.l %sp@,%d0-%d1
-        lea     %sp@(8),%sp
-2:      moveq   #0,%d2                  | no apply
+        moveq   #0,%d2                  | no apply
         bra.w   kits_stage
 9:      rts
 
@@ -1697,13 +1586,6 @@ load_into:
         movel   #PARTSZ,%d3
         mulu.l  %d7,%d3                 | d3 = slot * PARTSZ
         lea     %a2@(0,%d3:l),%a4
-        movel   %a4,%a0                 | the slot's track levels, Part +0x12 + 2t
-        addal   #WORKOFF+0x12,%a0
-        lea     LVLBUF,%a1
-        moveq   #16,%d0
-5:      moveb   %a0@+,%a1@+
-        subql   #1,%d0
-        bne.s   5b
         pea     PARTSZ
         pea     %a3@(R_PAY)
         movel   %a4,%d0
@@ -1732,18 +1614,7 @@ load_into:
         moveb   %a0@,%d1
         andl    %d0,%d1
         moveb   %d1,%a0@
-3:      movel   FLAGS,%d0               | KEEP LEVELS: the levels back
-        btst    #1,%d0
-        beq.s   6f
-        movel   %a4,%a0
-        addal   #SAVEDOFF+0x12,%a0
-        bsr.w   put_levels
-        tstl    LI_SAVEDONLY
-        bne.s   6f
-        movel   %a4,%a0
-        addal   #WORKOFF+0x12,%a0
-        bsr.w   put_levels
-6:      movel   %d7,%d0                 | the name: six characters and a NUL
+3:      movel   %d7,%d0                 | the name: six characters and a NUL
         mulu.w  #7,%d0
         moveal  %a2,%a0
         addal   #PNAMES,%a0
@@ -1768,20 +1639,7 @@ load_into:
         lea     CS1_SVALID,%a0
         moveq   #1,%d0
         moveb   %d0,%a0@(0,%d7:l)
-        movel   FLAGS,%d0               | KEEP LEVELS in the CS1 copies
-        btst    #1,%d0
-        beq.s   7f
-        movel   %d3,%d0
-        addil   #CS1_SAVED+0x12,%d0
-        moveal  %d0,%a0
-        bsr.w   put_levels
-        tstl    LI_SAVEDONLY
-        bne.s   7f
-        movel   %d3,%d0
-        addil   #CS1_WORK+0x12,%d0
-        moveal  %d0,%a0
-        bsr.w   put_levels
-7:      movel   %d7,%d0                 | the name's CS1 copy
+        movel   %d7,%d0                 | the name's CS1 copy
         mulu.w  #7,%d0
         addil   #CS1_NAMES,%d0
         moveal  %d0,%a0
@@ -2070,32 +1928,10 @@ cur_kit:
         movel   %d1,%d0
         rts
 
-| the LOAD KIT row's YES: row 0 = UNDO KIT, then the Kits, then the two
-| settings (each YES turns one on or off)
+| the LOAD KIT row's YES: row 0 = UNDO KIT, then the Kits
 load_yes:
         movel   MSEL,%d0
-        cmpil   #NUSE+1,%d0
-        bcs.s   4f
-        subil   #NUSE+1,%d0            | 0 AUTOSAVE, 1 KEEP LEVELS
-        movel   %d2,%sp@-
-        moveq   #1,%d1
-        lsll    %d0,%d1
-        movel   FLAGS,%d2
-        eorl    %d1,%d2
-        movel   %d2,FLAGS
-        andl    %d2,%d1                 | the toast: the row's new state
-        movel   %sp@+,%d2
-        tstl    %d1
-        beq.s   5f
-        moveq   #1,%d1
-5:      lsll    #1,%d0
-        addl    %d1,%d0
-        lea     T_SETTINGS,%a0
-        moveal  %a0@(0,%d0:l:4),%a0
-        moveq   #1,%d1
-        movel   %d1,KDIRTY
-        bra.w   toast
-4:      tstl    %d0
+        tstl    %d0
         bne.s   1f
         moveq   #0,%d0
         moveb   UNDOKIT,%d0
@@ -2256,21 +2092,7 @@ labels:
         addql   #1,%d2
         cmpil   #NUSE,%d2
         bne.w   5b
-        tstl    %d5                     | the LOAD list's two settings
-        beq.s   9f
-        movel   FLAGS,%d1
-        lea     T_SETTINGS,%a0
-        moveq   #0,%d0
-        btst    #0,%d1
-        beq.s   1f
-        moveq   #1,%d0
-1:      movel   %a0@(0,%d0:l:4),%a3@+
-        moveq   #2,%d0
-        btst    #1,%d1
-        beq.s   2f
-        moveq   #3,%d0
-2:      movel   %a0@(0,%d0:l:4),%a3@+
-9:      movem.l %sp@,%d2-%d5/%a2-%a4
+        movem.l %sp@,%d2-%d5/%a2-%a4
         lea     %sp@(28),%sp
         rts
 
@@ -3179,12 +3001,6 @@ T_PCOPY:   .asciz  "PATTERN COPIED"
 T_PPASTE:  .asciz  "PATTERN PASTED"
 T_PCLEAR:  .asciz  "PATTERN CLEARED"
 T_NOPCOPY: .asciz  "COPY A PATTERN FIRST"
-T_AUTO0:   .asciz  "AUTOSAVE OFF"
-T_AUTO1:   .asciz  "AUTOSAVE ON"
-T_LVL0:    .asciz  "KEEP LEVELS OFF"
-T_LVL1:    .asciz  "KEEP LEVELS ON"
-        .align  4
-T_SETTINGS: .long  T_AUTO0, T_AUTO1, T_LVL0, T_LVL1
 
 | State in .text: the depacked window is RAM and starts zeroed at boot.
         .align  4
@@ -3201,7 +3017,6 @@ CNT_IOERR: .long   0               | kits.work writes that failed
 CNT_BADFILE: .long 0               | kits.work files refused
 CNT_STAGED: .long  0               | Kits copied into a slot
 CNT_REPOINT: .long 0               | Part bytes repointed
-CNT_AUTOSAVE: .long 0              | AUTOSAVE copies
 STAMP:     .long   0
 CLEARING:  .long   0
 CRCREADY:  .long   0
@@ -3246,7 +3061,6 @@ LRU:    .space  64*4
 CRCTAB: .space  256*4
 LBTAB:  .space  LROWS*4
 CBTAB:  .space  LROWS*4
-LVLBUF: .space  16
 KUNDOREC: .space REC
 LBUF:   .space  NKITS*16
 REFD:   .space  32

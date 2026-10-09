@@ -8222,3 +8222,79 @@ None is measured.
 | Pre-shifted gains | The mirror stores `g << 8`, saving one shift a sample in the track loops: 128 instructions a frame at T1–T8 | Small |
 | The stems from the audio processor | Core 0 already computes each track's share of MAIN; reading it back would remove the hook's multiplies | Large: DSP work, both payloads |
 | A CAPTURE-style menu page | A clearer STEMS menu (octalab's page-drawing calls; TUNER is the in-tree precedent) | Medium: menu work, deferred this round |
+## 19. BuMa's MKI recorder, against this design (9 Oct 2026)
+
+BuMa sent notes from their own recorder on a MKI (OS 1.40C): MAIN plus an
+input pair or CUE, two to four channels of 24-bit PCM into one WAV on the
+card, written while it records. Their markers are kept: **MKI** measured on
+their unit, **code** read in their disassembly. Their tip for testing:
+a project with many sample locks on Static tracks.
+
+### 19.1 New here
+
+- **MKI card write rate** (MKI): 4.7–5.7 MB/s with the sequencer stopped,
+  1.4–2.1 MB/s under load (Static tracks streaming). Single writes took
+  1.2–2.6 s under load, with the ring peaking at 81 %, while another
+  recorder of theirs posted to the same storage queue. STEMS3's busy take
+  needed 2.91 MB/s (17.3) and its light one peaked at 13–16 %; their
+  under-load rate is below the busy take's.
+- **The stock `memset` (`0x40020984`) writes one zero long past any length
+  that is a multiple of 16** (code; read here too: the tail loop
+  `clrl %a0@+ / subql #4,%d1 / bgts` runs once with nothing left, and also
+  rounds a length that is not a multiple of 4 up). The arena clear
+  (`memset(0x40a955e0, 0x05590800)` at `0x40097006`) therefore zeroes the
+  long at `0x46025de0`, the first above the arena, and so does the
+  project-load clear of the arena's top pages, which ends at the same
+  address (`docs/contributing/PLACEMENT.md`); BuMa saw it on every LOAD
+  PROJECT. A reservation at the arena's top starts at that long and
+  needs a guard there. octabam's reserve is at the bottom
+  (`docs/contributing/PLACEMENT.md`); STEM REC's ring is inside it.
+- **Writer under FS_MUTEX** (hypothesis, never measured): a priority-1
+  writer holds `0x461079c0` while a Static read waits for it, and the UI
+  and key repeat (priorities 3–4) preempt the writer. BuMa writes in
+  pieces of at most 16 KiB and gives the mutex back between pieces. STEM
+  REC's writer is also priority 1 (`modules/stems/README.md`) and writes a
+  512-frame chunk per file per raw call (12.0): 32 KiB at 16 bits, 48 KiB
+  at 24 bits, each call holding the lock across its body (7.2).
+- **Stray jobs.** Their writer runs as job messages on the stock engine
+  queue; a late message once opened a new file and ran the finish again,
+  and the close set a 114 MB length on a 44-byte file, extending the
+  cluster chain without writing it (stale card data in the file). STEM REC
+  has its own task and no job messages; the close behaviour is 7.10's
+  "close sets the file's length to `+16`, shorter as well as longer",
+  measured under the port.
+- **Playback of PCM24** (code): preview and STATIC play a 16-bit cache
+  (the high 16 bits, no dither); the file stays 24-bit. PCM24 reaches the
+  DSP as two 16-bit halves rebuilt there.
+- Their FS write-back of the FAT during a take, for power loss, exists
+  and is unproven; power-loss behaviour is unknown. STEM REC's files are
+  0 bytes after a cut (12.3).
+
+### 19.2 Agrees with what is here
+
+- MAIN L/R at `0x80005e60`, CUE at `+0x80` (18.6).
+- The inputs: eight `0x100` pages from `0x80005660`, page from the frame
+  clock `0x46104d00 & 7`, read `(clock − 2) & 7`; `+0x80` A/B (MKI: a
+  signal on A/B alone came out on the expected channels), `+0x00` C/D
+  (18.7).
+- Per-track blocks at `0x80003190`, bank `0x800000e4`, 128 bytes a track,
+  pre-fader for LEVEL and MUTE (section 9; their reading is from an
+  earlier octabam 20-channel image; STEM REC applies the fader itself,
+  18.2). Which bank is fresh at the end of the
+  frame interrupt is their open question; STEM REC reads at `0x40004b12`,
+  not at the USB modules' `0x4000d9a0` they hook.
+- DTCN3 (`0xfc07c00c`) at 132 MHz agrees with the frame count to 1 % on
+  their MKI; `modules/cfmeter/README.md` has 132 MHz from the frame period
+  on a MKII.
+- The engine queue: priority 1, `0x4008445c`, mailbox `0x460d17ce`; FAT/ATA
+  task priority 5, `0x4001ee30` (`docs/firmware/KERNEL.md`). The task that
+  refills STATIC during playback is unknown to them too.
+- The buffered file calls `0x40016864` / `0x40016564` / `0x400166b8` /
+  `0x4001660c` / `0x4001677c`, and the logical length as word 4 (`+16`) of
+  the handle, set before the one close (7.10, 12.0).
+- A FAT32 directory record's first cluster is the long at `+0x11e`, `+0x120`
+  its low half (`docs/firmware/STORAGE.md`). Their card is FAT32 with
+  512-byte clusters; the 64 GB card in 14.2 has 32 KB clusters, so the
+  cluster size is the card's format.
+- The emulator runs storage instantly and cannot show starvation or late
+  jobs (15.4, 18.9).

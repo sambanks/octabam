@@ -34,6 +34,22 @@ and a further session ran under them (build 16, 27 Sep 2026). This module
 writes the same values at boot instead, so the setting does not depend on
 which module opens a stream.
 
+erreye's MK1, 7 Oct 2026: the same remix (`felipe`, a local branch with
+USB AUDIO OUT TRACKS POST) without this module (OCTABAM3) and with it
+(OCTABAM4), one after the other, a 2 m cable straight into an M1 Mac, Live
+holding the stream open:
+
+| image | time | EP 0x83 transaction errors (macOS) | device counters |
+|---|---|---|---|
+| OCTABAM3, without | ~5 min | 0 | 0 underruns, 0 overruns, 0 bankdup, fill 240–271 |
+| OCTABAM4, with | ~4 min | 0 | 0 underruns, 0 overruns, 0 bankdup, fill 238–265 |
+
+No difference on that unit and cable. Their 5 Oct before/after (~2,270
+errors a minute, then 0) is retracted by them: the earlier image (OCTABAM2
+or 3) was not recorded and a 3 m cable they also used was bad
+(`docs/contributing/FAILURE_MODES.md`, "A marginal USB cable"). Streaming
+and DISK MODE ran normally with this module on the MK1.
+
 The voice path under this priority (Bryan T's CF METER takes, 4 Oct 2026,
 `docs/firmware/ARCHITECTURE.md` "ColdFire time per frame on a unit"): each
 added FLEX voice costs the frame interrupt 16.6 µs with the USB cable out
@@ -48,7 +64,11 @@ nothing measurable to the ISR mean.
 ## Open
 
 - CAPTURE and card writes under this priority on a MKI (nordseele's review
-  of PR #468, 27 Sep 2026).
+  of PR #468, 27 Sep 2026); DISK MODE ran on erreye's MK1.
+- Whether a MK1 under a busy project shows the MKII's bad OUT packets with
+  BCR 0: erreye's remix has no USB AUDIO IN, so their A/B streamed
+  device to host (EP 0x83) only; the MKII's errors were on host-to-device
+  packets.
 - The stock DELAY on eight tracks with Flex playback (SDRAM-heavy DMA)
   under USB-first arbitration: four tracks with seven voices measured
   clean on the ISR mean (above); eight tracks, and the routine's own
