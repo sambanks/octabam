@@ -163,7 +163,8 @@ def _built_for(img: bytes) -> str | None:
 
 def main():
     stock = STOCK.read_bytes()
-    img = BUILT.read_bytes()
+    from remix import booted
+    img = booted.image(BUILT.read_bytes())
     global RUNTIME_SYMS
     RUNTIME_SYMS = _runtime_syms()
     # ⚠️ THE IMAGE ON DISK IS WHATEVER BUILT LAST, and this check reads its

@@ -166,7 +166,7 @@ def preboot_layout(layout, entries):
 
 
 def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, preboot=(), includes=None,
-          unit_defs=None, regions=()):
+          unit_defs=None, regions=(), patch=None):
     """units: [(module key, Linked)] with dram=True, in link order.
     payloads: [dict(name, blob, stage, dst, rawlen, rhash, backup)] for
     payloads built elsewhere: `blob` = signature + GKA3 stream.
@@ -181,7 +181,10 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, prebo
     Linked.defsyms} for each unit's assembly (link_runtime). regions:
     [(symbol, size, align)] of uninitialised DRAM (schema.DramRegion),
     stacked down from the reserve's ceiling and handed to the link as
-    --defsym symbol=address."""
+    --defsym symbol=address. patch: {address: bytes} written over the
+    linked runtime before it is packed, each over bytes the link left zero
+    (the build's descriptor clones, filled after every pass that writes
+    them)."""
     import json
     work = work.resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -205,6 +208,16 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, prebo
             placed[r_sym] = (top, r_size)
         defs.update({s: a for s, (a, _) in placed.items()})
         raw, symbols = link_runtime(units, work / "runtime", defs, base, includes, unit_defs)
+        if patch:
+            raw = bytearray(raw)
+            for p_at, p_bytes in sorted(patch.items()):
+                o = p_at - base
+                if not 0 <= o <= len(raw) - len(p_bytes) or any(raw[o:o + len(p_bytes)]):
+                    sys.exit(f"platform build: patch at 0x{p_at:08x} ({len(p_bytes)} B) is "
+                             f"not over zero bytes of the linked runtime")
+                raw[o:o + len(p_bytes)] = p_bytes
+            raw = bytes(raw)
+            (work / "runtime" / "runtime.bin").write_bytes(raw)
         packed = pack.PACKED_MAGIC + len(raw).to_bytes(4, "big") + \
             pack.pack(raw, MAX_CANDIDATES)
         stage = (base + len(raw) + STAGE_ALIGN - 1) & ~(STAGE_ALIGN - 1)

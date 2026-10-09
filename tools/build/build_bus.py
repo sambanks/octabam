@@ -185,6 +185,11 @@ FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
 # FX1 page too. A hidden module on FX1 loses its FX2 row and keeps its names;
 # only a hidden module that is nowhere on FX1 is drawn empty.
 BLANKED = [k for k in HIDDEN if k in REMIX.blanked]   # schema.Remix.blanked
+
+
+def _clone_sym(key: str) -> str:
+    """A descriptor clone's build export (CLONE_SPECTRUM for SPECTRUM)."""
+    return "CLONE_" + re.sub(r"\W", "_", key)
 # A host_slots module's page draws its first n slots, under their names.
 HOST_SLOTS = {k: n for k, n in REMIX.host_slots if k in HIDDEN}
 # a stock `rts` (the tail of the TEMPO window's FUNC-release handler,
@@ -679,7 +684,26 @@ def main():
         FULLNAME["DELAY SERVER"] = b"BusDlyRPL" + BUILD_TAG
     elif os.environ.get("NOTEMPO") == "1":
         FULLNAME["DELAY SERVER"] = b"BusDlyNOC" + BUILD_TAG
-    cave_end = CLONE_BASE + CLONE_STRIDE * len(CLONED_ORDER)
+    # ---- the descriptor clones: ROM, or DRAM in a remix with DRAM units --
+    # With a DRAM runtime the clones are built at a STAGING address past the
+    # image (every pass below writes them there), linked into the runtime as
+    # CLONE_<key> (a generated unit, 1e), filled from the staging bytes and
+    # every reference repointed before the image is written (8 Oct 2026;
+    # the clone window until then). The staging range is one no word of the
+    # stock image holds, so the repoint scan finds only what this build wrote.
+    _dram_clones = bool(CLONED_ORDER) and any(
+        _u.dram for _k in REMIX.modules for _u in getattr(remix_modules()[_k], "linked", ()))
+    _img_len = len(img)
+    _stage_base = None
+    if _dram_clones:
+        _span = CLONE_STRIDE * len(CLONED_ORDER)
+        _stage_base = (BASE + _img_len + 0xffff) & ~0xffff
+        _pristine = IMG.read_bytes()
+        while any(_stage_base <= int.from_bytes(_pristine[o:o + 4], "big") < _stage_base + _span
+                  for o in range(0, len(_pristine) - 3, 2)):
+            _stage_base += 0x10000
+        img.extend(bytes(_stage_base + _span - BASE - len(img)))
+    cave_end = CLONE_BASE if _dram_clones else CLONE_BASE + CLONE_STRIDE * len(CLONED_ORDER)
     if any(img[NEW_LIST - BASE:cave_end - BASE]):
         sys.exit("menu cave not free")
 
@@ -701,7 +725,7 @@ def main():
         # from the donor's P, not its E -- the record is 0x192 bytes measured
         # FROM P, and its tail carries the parameter enable bitmap
         donor_P = DESC_DONORS[name] + 0x38
-        clone_P = CLONE_BASE + i * CLONE_STRIDE
+        clone_P = (_stage_base if _dram_clones else CLONE_BASE) + i * CLONE_STRIDE
         img[clone_P - BASE:clone_P - BASE + DESC_LEN] = \
             img[donor_P - BASE:donor_P - BASE + DESC_LEN]
         new_id = NEW_IDS[name]
@@ -1312,13 +1336,25 @@ def main():
             # RATE) keeps its name, the tick widget flashing the word.
             if _i == _mod.mode_slot:
                 _ren = mode_names.with_selfname(_ren, _i, _p.labels)
-            _desc = clone_addr[name] + mode_names.NAMES_AT if _ren else None
+            _desc = None
+            if _ren:
+                _desc = (f"{_clone_sym(name)}+0x{mode_names.NAMES_AT:x}" if _dram_clones
+                         else clone_addr[name] + mode_names.NAMES_AT)
             if _ren and name in HOST_SLOTS:
                 # the renames go to the screen's own table: the shared
                 # descriptor keeps the host page's one name
                 _desc = f"NAMES_{NEW_IDS[name]:02x}"
             _lplan.append((name, _i, _p, _ren, _desc))
     _ldram = {}                     # (module, slot) -> its DRAM unit's label
+    if _dram_clones:
+        # The clones' home in the runtime: zeros the link places, filled
+        # from the staging bytes when every pass has written them.
+        _csrc = pathlib.Path("out/generated/clones.s")
+        _csrc.parent.mkdir(parents=True, exist_ok=True)
+        _csrc.write_text("        .text\n" + "".join(
+            f"        .balign 4\n        .globl  {_clone_sym(n)}\n{_clone_sym(n)}:\n"
+            f"        .space  {DESC_LEN}\n" for n in CLONED_ORDER))
+        _dram.append((_MODS[CLONED_ORDER[0]], Linked("clones", str(_csrc.resolve()), dram=True)))
     if _dram:
         _lsrc = pathlib.Path("out/generated/labels")
         _lsrc.mkdir(parents=True, exist_ok=True)
@@ -1507,11 +1543,11 @@ def main():
            if _ldram else b"")
     for name, _i, _p, _ren, _desc in _lplan:
         if _ren and isinstance(_desc, str):
-            if _desc not in _exports:
-                sys.exit(f"{name} is a host_slots module, but no linked "
-                         f"unit exports {_desc} for its MODE renames")
-            print(f"  {name} MODE renames -> {_desc} 0x{_exports[_desc]:08x}")
-            _desc = _exports[_desc]
+            _dsym, _, _doff = _desc.partition("+")
+            if _dsym not in _exports:
+                sys.exit(f"{name}: no linked unit exports {_dsym} for its MODE renames")
+            print(f"  {name} MODE renames -> {_desc} 0x{_exports[_dsym] + int(_doff or '0', 0):08x}")
+            _desc = _exports[_dsym] + int(_doff or "0", 0)
         if _ren:
             _bytes = mode_names.emit(_p.labels, _desc, _ren)
             mode_names.verify(_p.labels, _desc, _ren)
@@ -3277,6 +3313,60 @@ hostquit:
         # only; letting it land on the flashable path is the one way this
         # hatch could do harm.
         out = pathlib.Path("out/mainos_bus_dev.bin")
+    # The descriptor clones into the DRAM runtime: every pass has written
+    # them at staging; each staging pointer in the image (the id tables, the
+    # chooser lists, any cave that named CLONE_*) and inside the clones
+    # becomes the clone's address in the runtime, which is linked again with
+    # the clone bytes in place of its zeros.
+    _rt_patch = {}
+    if _dram_clones:
+        _lo = _stage_base
+        _hi = _stage_base + CLONE_STRIDE * len(CLONED_ORDER)
+        _dmap = [_psyms[_clone_sym(n)] for n in CLONED_ORDER]
+
+        def _to_dram(v):
+            _ci, _co = divmod(v - _lo, CLONE_STRIDE)
+            return _dmap[_ci] + _co
+
+        def _repoint(buf, start, stop):
+            _hits = []
+            for _o in range(start, stop - 3, 2):
+                _v = int.from_bytes(buf[_o:_o + 4], "big")
+                if _lo <= _v < _hi:
+                    if (_v - _lo) % CLONE_STRIDE >= DESC_LEN:
+                        sys.exit(f"0x{_o + BASE:08x} points into the gap between two "
+                                 f"staged clones (0x{_v:08x})")
+                    buf[_o:_o + 4] = _to_dram(_v).to_bytes(4, "big")
+                    _hits.append(_v)
+            return _hits
+
+        for _ci, _n in enumerate(CLONED_ORDER):
+            _cb = bytearray(img[_lo + _ci * CLONE_STRIDE - BASE:
+                                _lo + _ci * CLONE_STRIDE - BASE + DESC_LEN])
+            _repoint(_cb, 0, len(_cb))
+            _rt_patch[_dmap[_ci]] = bytes(_cb)
+        del img[_img_len:]
+        _refs = _repoint(img, 0, len(img))
+        print("\n=== ColdFire: the descriptor clones in the DRAM runtime ===")
+        for _ci, _n in enumerate(CLONED_ORDER):
+            _nref = sum(1 for _v in _refs if (_v - _lo) // CLONE_STRIDE == _ci)
+            if not _nref:
+                sys.exit(f"{_n}: no reference to its clone was repointed")
+            print(f"  {_n:14s} P=0x{_dmap[_ci]:08x}  {_nref} reference(s) repointed")
+        _pappend, _psyms2, _boot, _pnames = platform_build.build(
+            [(_m.key, _u) for _m, _u in _dram], [], pathlib.Path("out/platform"),
+            reserve=_reserve, defsyms=_pdefs, unit_defs=_unit_defs,
+            includes={_u.label: _u.include(_sel) for _m, _u in _dram if _u.include is not None},
+            regions=_regions, patch=_rt_patch)
+        if _psyms2 != _psyms:
+            sys.exit("descriptor clones: the platform runtime linked differently the second time")
+        _appends[_platform_at] = (
+            "octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend)
+        _raw = pathlib.Path("out/platform/runtime.raw").read_bytes()
+        if any(_lo <= int.from_bytes(_raw[_o:_o + 4], "big") < _hi
+               for _o in range(0, len(_raw) - 3, 2)):
+            sys.exit("descriptor clones: the DRAM runtime still holds a staging address")
+
     # Analog BD replaces the source renderer on both cores. Its uploads
     # must see the final DSP payloads, before they are packed for boot.
     if "ANALOG BD" in REMIX.modules:
@@ -3303,7 +3393,8 @@ hostquit:
             [(_m.key, _u) for _m, _u in _dram], [], pathlib.Path("out/platform"),
             reserve=_reserve, defsyms=_pdefs, preboot=_pres, unit_defs=_unit_defs,
             includes={_u.label: _u.include(_sel) for _m, _u in _dram if _u.include is not None},
-            regions=_regions)       # the same regions as the first link, or its symbols differ
+            regions=_regions,       # the same regions as the first link, or its symbols differ
+            patch=_rt_patch)
         if _psyms2 != _psyms or _platform_at is None:
             sys.exit("analog bd: the platform runtime linked differently the second time")
         _appends[_platform_at] = (
