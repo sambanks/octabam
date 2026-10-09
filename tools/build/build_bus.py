@@ -42,7 +42,9 @@ import wide_dial  # noqa: E402
 from remix import dsp_ranges, ledger  # noqa: E402
 from remix import ybase as ybase_lit  # noqa: E402
 
-OUT = pathlib.Path("out/mainos_bus.bin")
+# BUS_OUT: a private path for a tool that rebuilds on its own (fxlive), so it
+# never replaces the image another command just built for flashing or a gate.
+OUT = pathlib.Path(os.environ.get("BUS_OUT") or "out/mainos_bus.bin")
 DIS = pathlib.Path("vendor/dsp56300/build/source/dsp_host/dsp_asm")
 DISASM = pathlib.Path("vendor/dsp56300/build/source/disassemble/dsp56kDisassemble")
 
