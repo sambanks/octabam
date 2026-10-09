@@ -37,6 +37,7 @@ make reverb IN=loop.wav ARGS='--wet --mode all'   # hear BusVerb
 make render REMIX=<name>                          # the full bus, SEND → REVERB
 make render-delay REMIX=<name>                    # BusDelay via the DEV hatch
 make render-rig REMIX=<name>                      # eight tracks on both cores
+make fxlive [MODULE=<KEY>] [WAV=loop.wav]          # one effect live, knobs in a browser
 python3 tools/harness/send_probe.py --mem out/dsp/mem_dev_A.mem --direct --pick 2   # an insert (Character) on its own track
 ```
 
@@ -222,6 +223,14 @@ one core through the DEV hatch, and under four skews.
 `tools/verify/verify_onebus.py` (in `make check`): the one-aux bus's chain,
 its liveness stamp, WET passthrough, each host's print, the track-8 send
 refusal and station silence, senders and delay on payload B, reverb on payload A.
+
+## fxlive
+
+`make fxlive [MODULE=<KEY>] [WAV=loop.wav]`: one effect live in a browser,
+knobs and all, rebuilt and crossfaded on every save. Its own README is
+[`fxlive/README.md`](fxlive/README.md): how to use it, where a module is
+built, what it runs, its API, what it cannot show, and notes for chaining
+FX1 into FX2 later.
 
 ## port_compare.py
 

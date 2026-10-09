@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fxlive</title>
+<style>
+  :root { --bg:#08080a; --panel:#121214; --line:#232326; --ctl:#2c2c2e; --edge:#47474a;
+          --fg:#d8d5cc; --dim:#8e8c86; --amber:#e8b23a; --ok:#8fe39a; --okbg:#1d3a22;
+          --warn:#f0c85a; --warnbg:#3a3016; --bad:#ff8a80; --badbg:#3f1a18; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 16px;
+           background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:14px; margin:0 8px 0 0; letter-spacing:.04em; }
+  select, button, input[type=text] { background:var(--ctl); color:var(--fg); border:1px solid var(--edge);
+           border-radius:4px; padding:4px 8px; font:inherit; }
+  button { cursor:pointer; }
+  button:hover { background:#38383a; }
+  button.on { background:#7a5a18; border-color:var(--amber); }
+  .pill { padding:2px 9px; border-radius:9px; font-size:11px; background:#2a2a2c; color:#bdbab2; }
+  .pill.ok { background:var(--okbg); color:var(--ok); }
+  .pill.busy { background:var(--warnbg); color:var(--warn); }
+  .pill.bad { background:var(--badbg); color:var(--bad); }
+  .mono { font-family:ui-monospace, Menlo, monospace; font-size:11px; }
+  main { max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:16px;
+         grid-template-columns:minmax(0,1fr) 300px; }
+  @media (max-width:800px) { main { grid-template-columns:minmax(0,1fr); } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; min-width:0; }
+  section h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0 0 10px; }
+  .doc { color:var(--dim); margin:-4px 0 12px; }
+  .knobs { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:14px 18px; }
+  .knob label { display:flex; justify-content:space-between; gap:8px; font-weight:600; }
+  .knob .val { font-family:ui-monospace, Menlo, monospace; color:var(--amber); font-weight:400; }
+  .knob .slot { color:var(--dim); font-weight:400; font-size:11px; }
+  .knob .help { color:var(--dim); font-size:11px; min-height:1.4em; }
+  input[type=range] { width:100%; accent-color:var(--amber); }
+  .row { display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .row label { min-width:70px; color:var(--dim); }
+  .row input[type=range] { flex:1; min-width:120px; }
+  .meter { height:8px; background:#1b1b1d; border-radius:4px; overflow:hidden; flex:1; }
+  .meter div { height:100%; width:0; background:var(--ok); transition:width .1s; }
+  .meter div.hot { background:var(--bad); }
+  dl { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; margin:0; }
+  dt { color:var(--dim); } dd { margin:0; text-align:right; }
+  pre { white-space:pre-wrap; word-break:break-word; max-height:260px; overflow:auto; margin:8px 0 0;
+        background:#0d0d0f; border:1px solid var(--line); border-radius:4px; padding:8px; }
+  pre.err { color:var(--bad); }
+  .drop { border:1px dashed var(--edge); border-radius:6px; padding:10px; text-align:center; color:var(--dim); margin-top:8px; }
+  .drop.over { border-color:var(--amber); color:var(--fg); }
+  .note { color:var(--dim); font-size:11px; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>fxlive</h1>
+  <button id="play" title="play / stop the loop (space)">Stop</button>
+  <select id="module" title="the effect to hear"></select>
+  <label id="hostbox" class="mono" style="color:var(--dim)" hidden>in
+    <select id="remix" title="the remix the module is built in: any carrier sounds the same; the smallest is the default"></select>
+  </label>
+  <button id="reload" title="rebuild the remix and swap the engine (also happens when a module file is saved)">Rebuild</button>
+  <span id="status" class="pill">connecting</span>
+  <span id="ver" class="pill mono"></span>
+  <span id="dry" class="pill busy" hidden title="the module's output has equalled its input, bit for bit, for the last half second: at these knob settings it is a passthrough (many stock effects are, at their defaults)">output = input</span>
+</header>
+<main>
+  <div style="display:grid;gap:16px;min-width:0">
+    <section>
+      <h2 id="mname">Knobs</h2>
+      <div class="doc" id="mdoc"></div>
+      <div class="knobs" id="knobs"></div>
+      <div class="row" style="margin-top:14px">
+        <button id="defaults">Defaults</button>
+        <span class="mono" style="color:var(--dim)">-params <span id="plist"></span></span>
+      </div>
+    </section>
+    <section id="ptbox" hidden style="border-color:var(--warn)">
+      <h2 style="color:var(--warn)">Nothing to hear here</h2>
+      <div id="pt"></div>
+    </section>
+    <section id="errbox" hidden>
+      <h2>Build</h2>
+      <pre id="err" class="err mono"></pre>
+    </section>
+    <section>
+      <h2>Build log</h2>
+      <pre id="log" class="mono"></pre>
+      <div class="note">Watching: <span id="watch" class="mono"></span></div>
+    </section>
+  </div>
+  <div style="display:grid;gap:16px;align-content:start;min-width:0">
+    <section>
+      <h2>Monitor</h2>
+      <div class="row"><label for="wet">Wet</label><input id="wet" type="range" min="0" max="100" value="100"><span id="wetv" class="mono">100%</span></div>
+      <div class="row"><label for="gain">Input</label><input id="gain" type="range" min="-36" max="12" step="0.5" value="0"><span id="gainv" class="mono">0 dB</span></div>
+      <div class="row"><button id="bypass">Bypass</button></div>
+      <div class="row"><label>In</label><div class="meter"><div id="min"></div></div><span id="minv" class="mono"></span></div>
+      <div class="row"><label>Out</label><div class="meter"><div id="mout"></div></div><span id="moutv" class="mono"></span></div>
+      <div class="note">Wet/dry and input gain are monitor controls here, not part of the module.</div>
+    </section>
+    <section>
+      <h2>Loop</h2>
+      <div id="wav" style="word-break:break-all"></div>
+      <div class="row" style="margin-top:8px">
+        <input id="wavpath" type="text" placeholder="/path/to/loop.wav" style="flex:1;min-width:0">
+        <button id="loadpath">Load</button>
+      </div>
+      <div class="drop" id="drop">Drop a WAV here, or <label style="text-decoration:underline;cursor:pointer">choose one<input id="file" type="file" accept=".wav,audio/wav" hidden></label></div>
+    </section>
+    <section>
+      <h2>Engine</h2>
+      <dl>
+        <dt>Speed</dt><dd id="rt" class="mono"></dd>
+        <dt>DSP instr / sample</dt><dd id="ips" class="mono"></dd>
+        <dt>Underruns</dt><dd id="under" class="mono"></dd>
+        <dt>Clipped samples</dt><dd id="clips" class="mono"></dd>
+      </dl>
+      <div class="note">Not shown here: LFO bits in knob words, uncleared RAM, the real dispatcher, AMP VOL/LEVEL. Confirm with a render and <span class="mono">make check</span>.</div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let S = null, builtFor = "", dragging = new Set();
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} :
+    {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.status);
+  return j;
+}
+
+function fmt(p, v) { return p.labels ? p.labels[v] ?? v : String(v); }
+
+function buildKnobs(s) {
+  const box = $("knobs"); box.innerHTML = "";
+  if (!s.params.length) {
+    box.innerHTML = `<div class="doc">${s.built ? "No knobs drawn." : "Choose an effect. Play runs the loop dry until one is built."}</div>`;
+    return;
+  }
+  for (const p of s.params) {
+    const d = document.createElement("div"); d.className = "knob";
+    d.innerHTML = `<label><span>${p.name} <span class="slot">slot ${p.slot}</span></span><span class="val" id="v${p.slot}"></span></label>
+      <input type="range" id="k${p.slot}" min="0" max="${p.count - 1}" step="1">
+      <div class="help"></div>`;
+    d.querySelector(".help").textContent = p.doc;
+    box.appendChild(d);
+    const r = d.querySelector("input");
+    r.value = p.value; $("v" + p.slot).textContent = fmt(p, p.value);
+    let t = 0;
+    r.addEventListener("pointerdown", () => dragging.add(p.slot));
+    r.addEventListener("pointerup", () => setTimeout(() => dragging.delete(p.slot), 300));
+    r.addEventListener("input", () => {
+      $("v" + p.slot).textContent = fmt(p, +r.value);
+      clearTimeout(t); t = setTimeout(() => api("/api/knob", {slot:p.slot, value:+r.value}), 15);
+    });
+  }
+}
+
+function render(s) {
+  S = s;
+  const mod = $("module");
+  const mkey = JSON.stringify(s.index);
+  if (mod.dataset.k !== mkey) {
+    const groups = [["dsp", "DSP effects"],
+                    ["stock", "Stock effects"], ["not", "Not playable here"]];
+    let html = '<option value="" disabled>\u2014 choose an effect \u2014</option>';
+    for (const [g, label] of groups) {
+      const items = s.index.filter(e => e.group === g);
+      if (!items.length) continue;
+      html += `<optgroup label="${label}">` + items.map(e => {
+        const o = document.createElement("option");
+        o.value = e.key;
+        o.textContent = e.key
+                      + (g === "not" ? "  \u00b7  " + e.why.split(":")[0] : "");
+        o.disabled = !e.support;
+        o.title = e.support === "dsp" ? "a DSP insert (dsp_host)" : e.why;
+        return o.outerHTML;
+      }).join("") + "</optgroup>";
+    }
+    mod.innerHTML = html;
+    mod.dataset.k = mkey;
+  }
+  if (document.activeElement !== mod) mod.value = s.module || "";
+  const entry = s.index.find(e => e.key === s.module);
+  const rem = $("remix");
+  $("hostbox").hidden = !entry;
+  if (entry) {
+    const hkey = entry.key + "|" + entry.hosts.join("|");
+    if (rem.dataset.k !== hkey) {
+      rem.innerHTML = entry.hosts.map((h, i) => `<option value="${h}">${h}${i ? "" : " (smallest)"}</option>`).join("");
+      rem.dataset.k = hkey;
+    }
+    rem.disabled = entry.hosts.length < 2;
+    if (document.activeElement !== rem) rem.value = s.remix || entry.hosts[0];
+  }
+  const st = $("status");
+  st.textContent = s.status;
+  st.className = "pill " + (s.building || s.status === "swapping" ? "busy" : s.error ? "bad" : s.status === "playing" ? "ok" : "");
+  $("ver").textContent = s.version ? "build " + s.version : "";
+  $("dry").hidden = !s.dry || s.bypass || s.wet === 0;
+  $("mname").textContent = s.built ? s.built + (s.built_remix ? "  \u00b7  " + s.built_remix : "") : "No effect";
+  $("mdoc").textContent = s.doc || "";
+  const shape = s.built + s.version + JSON.stringify(s.params.map(p => [p.slot, p.name, p.count]));
+  if (shape !== builtFor) { builtFor = shape; buildKnobs(s); }
+  for (const p of s.params) {
+    const r = $("k" + p.slot);
+    if (r && !dragging.has(p.slot) && document.activeElement !== r) {
+      r.value = p.value; $("v" + p.slot).textContent = fmt(p, p.value);
+    }
+  }
+  $("plist").textContent = s.dsp_params;
+  $("errbox").hidden = !s.error; $("err").textContent = s.error;
+  $("ptbox").hidden = !s.passthrough; $("pt").textContent = s.passthrough;
+  $("log").textContent = s.build_log;
+  $("watch").textContent = s.watching.join("  ");
+  if (document.activeElement !== $("wet")) { $("wet").value = Math.round(s.wet * 100); $("wetv").textContent = Math.round(s.wet * 100) + "%"; }
+  if (document.activeElement !== $("gain")) { $("gain").value = s.gain_db; $("gainv").textContent = s.gain_db + " dB"; }
+  $("bypass").classList.toggle("on", s.bypass);
+  $("play").textContent = s.playing ? "\u25a0 Stop" : "\u25b6 Play";
+  $("play").classList.toggle("on", !s.playing);
+  $("wav").textContent = s.wav;
+  const meter = (el, lbl, db) => {
+    const w = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+    $(el).style.width = w + "%"; $(el).classList.toggle("hot", db > -1);
+    $(lbl).textContent = db <= -119 ? "-inf" : db.toFixed(1);
+  };
+  meter("min", "minv", s.peak_in); meter("mout", "moutv", s.peak_out);
+  $("rt").textContent = s.realtime ? s.realtime.toFixed(1) + "x real time" : "-";
+  $("ips").textContent = s.instr_per_sample || "-";
+  $("under").textContent = s.underruns;
+  $("clips").textContent = s.clips;
+}
+
+async function poll() {
+  try { render(await api("/api/state")); }
+  catch (e) { $("status").textContent = "server gone"; $("status").className = "pill bad"; }
+  setTimeout(poll, 250);
+}
+
+$("module").onchange = e => api("/api/load", {module:e.target.value}).then(render).catch(err => alert(err.message));
+$("remix").onchange = e => api("/api/load", {module:S.module, remix:e.target.value}).then(render).catch(err => alert(err.message));
+$("reload").onclick = () => api("/api/reload", {}).then(render);
+$("defaults").onclick = () => api("/api/defaults", {}).then(s => { builtFor = ""; render(s); });
+const toggle = () => api("/api/transport", {playing:!S.playing}).then(render);
+$("play").onclick = toggle;
+document.addEventListener("keydown", e => {
+  if (e.code !== "Space" || e.repeat || !S) return;
+  const tag = (document.activeElement || {}).tagName;
+  if (tag === "INPUT" && document.activeElement.type === "text") return;
+  if (tag === "SELECT" || tag === "BUTTON") document.activeElement.blur();
+  e.preventDefault(); toggle();
+});
+$("bypass").onclick = () => api("/api/mix", {bypass:!S.bypass}).then(render);
+$("wet").oninput = e => { $("wetv").textContent = e.target.value + "%"; api("/api/mix", {wet:e.target.value / 100}); };
+$("gain").oninput = e => { $("gainv").textContent = e.target.value + " dB"; api("/api/mix", {gain_db:+e.target.value}); };
+$("loadpath").onclick = () => api("/api/load", {wav:$("wavpath").value}).then(render).catch(e => alert(e.message));
+
+async function upload(f) {
+  const r = await fetch("/api/upload", {method:"POST", headers:{"X-Filename":f.name}, body:await f.arrayBuffer()});
+  const j = await r.json(); if (!r.ok) alert(j.error); else render(j);
+}
+$("file").onchange = e => e.target.files[0] && upload(e.target.files[0]);
+const drop = $("drop");
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); e.dataTransfer.files[0] && upload(e.dataTransfer.files[0]); };
+poll();
+</script>
+</body>
+</html>

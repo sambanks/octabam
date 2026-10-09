@@ -99,6 +99,11 @@ render: ## Build the DEV image and render the bus locally (no hardware)
 	REMIX=$(REMIX) DEV=1 XBUS=1 SPEC=1 python3 tools/build/build_bus.py
 	python3 tools/harness/send_probe.py --mem out/dsp/mem_dev_A.mem --layout RS
 
+.PHONY: fxlive
+fxlive: ## Hear one effect live: a WAV on loop, knobs in the browser, rebuilt on save. [MODULE=KEY] [WAV=loop.wav] [REMIX= to override its host]
+	@test -x .venv/bin/python3 || { echo "fxlive needs numpy and sounddevice: make emu-setup"; exit 1; }
+	.venv/bin/python3 tools/harness/fxlive/fxlive.py $(if $(MODULE),--module "$(MODULE)") $(if $(REMIX),--remix "$(REMIX)") $(if $(WAV),--wav "$(WAV)") $(FXLIVEARGS)
+
 .PHONY: render-delay
 render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay locally
 	$(need-remix)
