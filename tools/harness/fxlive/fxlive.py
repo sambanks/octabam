@@ -75,9 +75,9 @@ from remix.stock import NO_DSP         # noqa: E402  (stock DELAY runs on the Co
 
 # Effects whose sound is made in the ColdFire's delay routine 0x400031a0,
 # their DSP dispatch a passthrough (docs/firmware/COLDFIRE_DELAY.md section
-# 3). Kept here rather than in the module schema, which is for its owners to
-# change. A ColdFire effect missing from this list plays dry, and the page
-# says so (passes_through).
+# 3). Kept here rather than in the module schema: SUGGESTIONS.md proposes a
+# manifest declaration to the module and schema owners. A ColdFire effect
+# missing from this list plays dry, and the page says so (passes_through).
 CF_AUDIO = frozenset({"TAPE ECHO"}) | NO_DSP    # modules/tapeecho/README.md
 
 SR = 44100

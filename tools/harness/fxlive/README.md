@@ -135,7 +135,7 @@ the ColdFire's per-frame delay routine `0x400031a0` on one track, one
   unit and a seventh freezes it).
 - **The ColdFire effects list** is `CF_AUDIO` in `fxlive.py`, not a
   manifest field: declaring it in the module schema is a decision for the
-  schema and module owners.
+  schema and module owners (`SUGGESTIONS.md`).
 
 ## Checking it
 
@@ -163,7 +163,8 @@ set knobs, rebuild and read the result:
 ## What it cannot show
 
 Everything a `dsp_host` render cannot (`../README.md` "What the harness
-cannot see"). Also:
+cannot see"), including the stock reverbs' wet signal (`SUGGESTIONS.md`,
+item 3). Also:
 
 - knob words are clean: an LFO leaves bits 8-15 set, which no local render
   writes (AGENTS.md);
@@ -176,6 +177,13 @@ cannot see"). Also:
   a floor, not a measure of whether the unit keeps up;
 - bus servers and clients (they need both cores and the rotation:
   `rig_render.py`).
+
+## Suggestions for other areas
+
+Things building fxlive turned up that belong to other people's code (a
+manifest flag for ColdFire effects, the build's assembler message, the
+stock reverbs under `dsp_host`, and more) are in
+[`SUGGESTIONS.md`](SUGGESTIONS.md), not changed from here.
 
 ## Later: two effects on a track (FX1 into FX2)
 
