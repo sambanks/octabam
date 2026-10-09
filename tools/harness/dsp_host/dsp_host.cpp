@@ -158,6 +158,15 @@
 //     -trackout FILE        where -track writes (default /tmp/dsp_track.txt)
 //     -trackinst K          which instance -track samples (default 0)
 //     -trace N              log the first N instructions executed
+//     -stream               run until stdin closes, for tools/harness/fxlive.
+//                           Each block stdin carries 12 knob values (int32,
+//                           0..127, applied to every instance as -params
+//                           would) then `frames` interleaved L,R samples
+//                           (int32, 24-bit) fed to every fed instance; stdout
+//                           carries the last capturing instance's `frames`
+//                           L,R samples then one int32: the instructions its
+//                           core ran that block. Text output goes to stderr.
+//                           -in, -out, -blocks and -paramfile are ignored.
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -168,6 +177,8 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <climits>
+#include <unistd.h>
 
 #include "dsp56kEmu/dsp.h"
 #include "dsp56kEmu/memory.h"
@@ -220,6 +231,8 @@ struct Args {
     std::string meterFile;
     std::vector<TWord> ctx, ctxB;          // lo,hi,exit overrides
     TWord shareLo = 0x30000, shareHi = 0x40000;
+    bool stream = false;                   // -stream: blocks over stdin/stdout
+    FILE* streamOut = nullptr;             // the real stdout once -stream moves text to stderr
 };
 
 // Everything the dispatcher would set up for one effect instance.
@@ -550,6 +563,7 @@ int main(int argc, char** argv) {
         else if (k == "-proc") { a.procList = parseHexList(argv[++i]); a.proc = a.procList[0]; }
         else if (k == "-inmask") a.inmask = strtoul(argv[++i], nullptr, 0);
         else if (k == "-stereo") a.stereo = true;
+        else if (k == "-stream") a.stream = true;
         else if (k == "-audio") a.audio = strtoul(argv[++i], nullptr, 16);
         else if (k == "-pblock") a.params = strtoul(argv[++i], nullptr, 16);
         else if (k == "-tempo") a.tempo = atof(argv[++i]);
@@ -707,6 +721,15 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    if (a.stream) {
+        // stdout is the audio pipe: keep it for the blocks, send text to stderr
+        fflush(stdout);
+        const int fd = dup(1);
+        dup2(2, 1);
+        a.streamOut = fdopen(fd, "wb");
+        a.blocks = INT_MAX;
+        a.in.clear(); a.out.clear(); a.paramEvents.clear();
+    }
     setvbuf(stdout, nullptr, _IONBF, 0);
 
     // ---- the cores ----------------------------------------------------------
@@ -1153,6 +1176,8 @@ int main(int argc, char** argv) {
     const TWord DIFF_LO = 0x000, DIFF_HI = 0x8000;
     std::vector<TWord> snap;
     bool hung = false;
+    int streamInst = 0;                         // the track's output: the last capturing instance
+    for (int k = 0; k < a.inst; ++k) if (inst[k].captures) streamInst = k;
 
     // Start a call: what the dispatcher does before `jsr (r2)`.
     auto beginCall = [&](CoreRun& R, const Call& call) {
@@ -1276,6 +1301,7 @@ int main(int argc, char** argv) {
                 int32_t s = static_cast<int32_t>(w << 8) >> 8;   // sign-extend 24 -> 32
                 if (s) ++I.nonzero;
                 if (I.out.is_open()) I.out.write(reinterpret_cast<char*>(&s), 4);
+                if (a.streamOut && k == streamInst) std::fwrite(&s, 4, 1, a.streamOut);
             }
         }
     };
@@ -1315,7 +1341,15 @@ int main(int argc, char** argv) {
     };
 
     std::vector<size_t> nextParamEvent(a.paramEvents.size());
+    std::vector<int32_t> streamIn(12 + 2 * static_cast<size_t>(a.frames));
     for (int b = 0; b < a.blocks; ++b) {
+        if (a.stream) {
+            if (std::fread(streamIn.data(), 4, streamIn.size(), stdin) != streamIn.size()) break;
+            for (auto& I : inst) {
+                I.pv.assign(streamIn.begin(), streamIn.begin() + 12);
+                for (int& v : I.pv) v &= 0x7f;
+            }
+        }
         // -sched: this block's knob moves (beginCall re-applies I.pv)
         for (auto& sc : a.sched)
             if (sc.block == b && sc.inst >= 0 && sc.inst < a.inst && sc.slot >= 0 && sc.slot < 12) {
@@ -1342,7 +1376,11 @@ int main(int argc, char** argv) {
             if (!I.fills) continue;              // a chained instance sees its predecessor's output
             for (int f = 0; f < a.frames; ++f) {
                 int32_t s = 0, s2 = 0;
-                if (I.hasInput) {
+                if (a.stream) {
+                    s = streamIn[12 + 2 * f];
+                    s2 = streamIn[12 + 2 * f + 1];
+                }
+                else if (I.hasInput) {
                     s = I.inPos < I.input.size() ? I.input[I.inPos++] : 0;
                     // -stereo: the next word is R; mono copies L to both
                     s2 = a.stereo ? (I.inPos < I.input.size() ? I.input[I.inPos++] : 0) : s;
@@ -1404,6 +1442,13 @@ int main(int argc, char** argv) {
         }
         if (hung) return 1;
 
+        if (a.streamOut) {
+            const int32_t n = static_cast<int32_t>(
+                cores[inst[streamInst].core]->dsp->getInstructionCounter() - i0[inst[streamInst].core]);
+            std::fwrite(&n, 4, 1, a.streamOut);
+            if (std::fflush(a.streamOut) != 0) break;       // the reader went away
+            continue;                                       // no per-block history in an endless run
+        }
         for (int c = 0; c < ncores; ++c) {
             Core& C = *cores[c];
             const long n = static_cast<long>(C.dsp->getInstructionCounter() - i0[c]);

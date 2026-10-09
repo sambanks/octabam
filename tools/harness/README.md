@@ -86,6 +86,10 @@ reference.
   reports, after every call, any word that changed outside the calling
   instance's own window (a stray write vs a clobber of a loaded module).
   `-dirty` pre-fills Y with garbage, as hardware never zeroes a buffer.
+- **Streams** (`-stream`, for `fxlive/`): runs until stdin closes. Each
+  block in: 12 knob values then the frames as interleaved int32. Each
+  block out: the track's frames, then the instructions its core ran.
+  Text goes to stderr.
 - **Instrumentation:** `-track` dumps r7-relative state words every block,
   `-peekx/-peeky/-pokey` read and seed words, `-dumpy` writes a region,
   `-trace` logs the first N instructions; every run reports
