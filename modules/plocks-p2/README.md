@@ -34,7 +34,7 @@ stations, SCENES P2 KITS), project OCTABAM89_setgate:
 
 ## On the unit
 
-Not flashed.
+Image A0 (`bottleservice`, `CHANGELOG.md`) carries PLOCKS P2; `p2lk01.work` was written by image 99 on Sam's MKII, 4 Oct 2026 (`docs/contributing/FAILURE_MODES.md`). The STORE-based build (refused-file prompt, `.bak` copy) has not run on a unit.
 
 ## Open
 
