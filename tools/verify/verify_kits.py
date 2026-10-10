@@ -878,6 +878,39 @@ def main():
         check(f"v1up: the version 1 file read ({len(v1)} B): every Kit as in the version 2 file ({same}), "
               f"every table empty ({blank})", same and blank)
 
+    # ---- a refused kits.work: listed by STORE, kept; OVERWRITE and BACKUP --------
+    if (not only or "krefuse" in only) and exists("base") and "store_answer_cb" in sym:
+        kw = next((v for k, v in emu_card.extract_image((OUT / "base.img").read_bytes()).items()
+                   if k.lower().endswith("/kits/kits.work")), b"")
+        badk = bytearray(kw); badk[O_LIB + 3000] ^= 0x55; badk = bytes(badk)       # the CRC fails
+        f = OUT / "kits.work"; f.write_bytes(badk)
+        c = stage(pathlib.Path(a.strand_project).expanduser(), "KBAD", extra=[f])
+
+        def kbad(tag, choice):
+            dmp = (f"{KS:#x},48={OUT / f'{tag}_st.bin'};{sym['store_npend']:#x},4={OUT / f'{tag}_np.bin'};"
+                   f"{sym['store_pend']:#x},32={OUT / f'{tag}_pend.bin'};{sym['KBACKUP']:#x},8={OUT / f'{tag}_bk.bin'}")
+            cmd = [EMU, "--image", image, "--card", c, "--set", "OCTABAM", "--project", "KBAD", "--load-ms", "90000",
+                   "--live-script", s1, "--mem-dump", dmp]
+            if choice is not None:
+                cmd += ["--step", f"-:call:{sym['store_answer_cb']:#x},{choice},0"]
+            run(cmd, OUT / f"{tag}.txt")
+        with ThreadPoolExecutor(3) as ex:
+            list(ex.map(lambda t: kbad(*t), [("kbad_ignore", None), ("kbad_over", 1), ("kbad_back", 2)]))
+        for tag in ("kbad_ignore", "kbad_over", "kbad_back"):
+            s_ = st(tag)
+            np_ = struct.unpack(">I", (OUT / f"{tag}_np.bin").read_bytes())[0]
+            pend = (OUT / f"{tag}_pend.bin").read_bytes()
+            bk = struct.unpack(">II", (OUT / f"{tag}_bk.bin").read_bytes())      # KBACKUP, KDEFER
+            if tag == "kbad_ignore":
+                check(f"{tag}: listed ({np_} entry {tuple(pend[:2])}), refused (BADFILE {s_['BADFILE']}), "
+                      f"NOWRITE {s_['NOWRITE']}, READY {s_['READY']}",
+                      np_ == 1 and tuple(pend[:2]) == (1, 0) and s_["BADFILE"] == 1 and s_["NOWRITE"] == 1 and not s_["READY"])
+            else:
+                check(f"{tag}: answered (listed {np_}), NOWRITE {s_['NOWRITE']}, READY {s_['READY']}, KDIRTY {s_['KDIRTY']}, "
+                      f"backup flag {bk[0]}, write deferred {bk[1]}",
+                      np_ == 0 and not s_["NOWRITE"] and s_["READY"] == 1 and s_["KDIRTY"] == 1
+                      and bk == (1 if tag == "kbad_back" else 0, 0))
+
     # ---- a rejected bank file, a missing project --------------------------------
     sd = pathlib.Path(a.strand_project).expanduser()
     if (not only or "strand" in only) and (sd / "project.work").is_file():
