@@ -164,7 +164,7 @@ which is not what an MD or MnM Kit holds.
   card.
 - **Power-off.** RESID (with a magic and a sum) at `0x100f85a0` and ASSIGN
   at `0x100ffe00` in CS1 (stock references nothing there; PLOCKS P2 holds
-  `0x100f8600..0x100ffe00`). The power-up's bank load (the masked load
+  `0x100f8600..0x100fbdf0`). The power-up's bank load (the masked load
   returning to `0x40084d66` when no project has been loaded since boot)
   takes them from CS1.
 - The masked bank load `0x400905d4` is told apart by its return address

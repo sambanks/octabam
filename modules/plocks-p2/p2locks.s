@@ -73,7 +73,7 @@
         .set    SPRINTF,    0x40013a08
         .set    IOB_LEN,    0x1000
         .set    NV,         0x100f8600      | CS1: the current bank's page 2, sparse (see nv_save)
-        .set    NV_END,     0x100ffe00
+        .set    NV_END,     0x100fbdf0      | MIDI SCENES' CS1 copy follows (0x100fbdf0..0x100ffe00)
         .set    NV_MAX,     (NV_END-NV-16)/3
         .set    NV_MAGIC,   0x50324e56      | 'P2NV'
         .set    CUR_BANK,   0x80000002
@@ -1217,7 +1217,7 @@ MODE_W: .asciz  "w"
 | through, and at power-up 0x40025770 checks it and 0x4000fbb4(bank) puts
 | it back; the firmware's own load then reads every OTHER bank from the
 | card (mask 0xfffb at 0x40084d60). The page-2 locks of that bank go the
-| same way, sparse, in CS1's unused top (0x100f8600..0x100ffe00, no stock
+| same way, sparse, in CS1's unused top (0x100f8600..0x100fbdf0, no stock
 | reference and no module's; written only by stock's whole-CS1 init):
 |   +0 'P2NV' (written last), +4 bank, +8 count, +12 sum of the entries,
 |   +16 entries of 3 bytes: step index (bank-relative, 17 bits) << 7 | value.

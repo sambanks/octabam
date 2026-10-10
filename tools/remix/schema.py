@@ -726,7 +726,7 @@ class Claims:
     # between two modules; the stock extent is the author's census. The
     # check is on address overlap, so a range in CS1 (battery SRAM at
     # 0x10000000) is declared here too: PLOCKS P2 keeps the current bank's
-    # page 2 in 0x100f8600..0x100ffe00.
+    # page 2 in 0x100f8600..0x100fbdf0.
     sram: tuple[tuple[int, int, str], ...] = ()
     # DSP DATA a module writes outside its r7 block and the regions the
     # fields above cover (schema.DspRange): shared-window buffers, fixed X

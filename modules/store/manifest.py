@@ -30,6 +30,9 @@ CLIENTS = (
     ("KITS", "kits", ("loadall_pre", "loadall_post", "loadmask_pre", "loadmask_post",
                       "newproj", "bankw_post", "pstore_pre", "pstore_post",
                       "preload_post", "partsaved", "partclear")),
+    ("MIDI SCENES", "scn", ("loadall_pre", "loadmask_pre", "newproj", "bankw_post",
+                            "pstore_pre", "pstore_post", "preload_post", "tocs1",
+                            "fromcs1", "partclear")),
 )
 
 

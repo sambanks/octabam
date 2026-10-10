@@ -242,7 +242,7 @@ def build(remix):
     nm = subprocess.run(["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")],
                         capture_output=True, text=True).stdout
     sym = {f[2]: int(f[0], 16) for f in (l.split() for l in nm.splitlines()) if len(f) == 3}
-    return sym["scn_msc"], sym["scn_clip"]
+    return sym["scn_lib"], sym["scn_clip"]
 
 
 def run_image(name, path, msc, out, card, tags, jobs, bank):
@@ -250,7 +250,10 @@ def run_image(name, path, msc, out, card, tags, jobs, bank):
     d = out / name; d.mkdir(exist_ok=True)
     dumps = dict(DUMPS, parts=(BANK0 + bank * BANK_STRIDE + PART_WINDOW, 4 * PART_STRIDE))
     if msc is not None:
-        dumps["msc"] = (msc, MSC_LEN + CLIP_LEN)  # the clipboard follows the table in both images
+        if name == "ours":                        # the library: bank * 4 Parts, Part 0 displayed
+            msc = (msc[0] + bank * 4 * MSC_LEN, msc[1])
+        dumps["msc"] = (msc[0], MSC_LEN)
+        dumps["clip"] = (msc[1], CLIP_LEN)
     scen = []
     for tag in tags:
         s = Script(); SCENARIOS[tag](s)
@@ -269,11 +272,9 @@ def run_image(name, path, msc, out, card, tags, jobs, bank):
 
 def collect(d, tag):
     r = {"midi": midi_out(d / f"{tag}.midi.frames")}
-    for k in ("trk", "mask", "parts", "msc"):
+    for k in ("trk", "mask", "parts", "msc", "clip"):
         f = d / f"{tag}_{k}.bin"
         r[k] = f.read_bytes() if f.is_file() else None
-    if r["msc"] is not None:
-        r["clip"], r["msc"] = r["msc"][MSC_LEN:], r["msc"][:MSC_LEN]
     r["screen"] = panel(d / f"{tag}.serial") if (d / f"{tag}.serial.a").is_file() else None
     return r
 
@@ -307,16 +308,16 @@ def main():
 
     images = []                                   # (name, path, address of the lock table or None)
     if a.remix:
-        msc, _clip = build(a.remix)
+        lib, clip = build(a.remix)
         ours = out / "mainos_ours.bin"; shutil.copy2(ROOT / "out/mainos_bus.bin", ours)
-        images.append(("ours", ours, msc))
+        images.append(("ours", ours, (lib, clip)))
         if a.oracle and pathlib.Path(a.oracle).is_file():
-            images.append(("his", pathlib.Path(a.oracle), HIS_MSC))
+            images.append(("his", pathlib.Path(a.oracle), (HIS_MSC, HIS_MSC + MSC_LEN)))
         if STOCK.is_file():
             images.append(("stock", STOCK, None))
     for spec in a.image:
         n, p = spec.split("=", 1)
-        images.append((n, pathlib.Path(p), HIS_MSC if n == "his" else None))
+        images.append((n, pathlib.Path(p), (HIS_MSC, HIS_MSC + MSC_LEN) if n == "his" else None))
 
     card = pathlib.Path(a.card) if a.card else out / "card.img"
     if not a.card:

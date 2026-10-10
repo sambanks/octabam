@@ -11,6 +11,6 @@ REMIX = Remix(
     name="midi-scenes",
     family="mods", proof=Proof.PORT, proof_note="`verify_scenes` against MIDISC2.1 under the port; not flashed",
     doc="Reference minimal build: the MIDI SCENES ColdFire patch, alone.",
-    modules=("MIDI SCENES",),
+    modules=("STORE", "MIDI SCENES",),
     fallback="NONE",
 )

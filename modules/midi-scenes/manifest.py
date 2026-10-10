@@ -17,7 +17,7 @@ written fresh and checked against his image under the port
 and is not linked.
 """
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof
+from remix.schema import Category, Claims, Detour, Gate, Kind, Linked, Module, Poke, Proof
 
 H = bytes.fromhex
 
@@ -77,9 +77,13 @@ MODULE = Module(
     proof=Proof.PORT,
     proof_note="`verify_scenes` against MIDISC2.1 under the port, phase 1 scenarios (b1, b7, b3, b29copy, b29clear); the earlier 2.0 build ran on his unit as `ok-ms`, 14 Sep 2026",
     doc="Scene locks for the MIDI tracks (hold-to-lock, readout, unlock, lock LEDs, XF morph, "
-        "scene clear / copy / paste). RAM only; after bkkbrls-del's midisc.",
+        "scene clear / copy / paste), kept per Part in scenes.work and CS1. After bkkbrls-del's midisc.",
     linked=(Linked("scenes", "modules/midi-scenes/scenes.s", dram=True),),
     detours=DETOURS,
     pokes=POKES,
+    requires=("STORE",),
+    # CS1 (battery SRAM): the current bank's four lock tables, as stock keeps
+    # its Part copy there (docs/firmware/MIDI_SCENES.md section 8).
+    claims=Claims(sram=((0x100FBDF0, 0x100FFE00 - 0x100FBDF0, "MIDI SCENES: the current bank's lock tables"),)),
     gates=(Gate("tools/verify/verify_scenes.py", once=True),),
 )

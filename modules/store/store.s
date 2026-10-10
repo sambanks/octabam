@@ -25,6 +25,13 @@
         .include "remix.inc"
 
         .set    F_COPY,     0x40016388      | (dst path, src path, 0) -> <0 error
+        .set    F_OPEN,     0x40016864      | (fo, path, mode, buffer, size) -> <0 error
+        .set    F_READ,     0x40016564      | (fo, dst, n) -> 1
+        .set    F_WRITE,    0x400166b8      | (fo, src, n) -> 1
+        .set    F_CLOSE,    0x4001677c      | (fo)
+        .set    PROJDIR,    0x40025230      | (0, 0) -> the project directory
+        .set    SPRINTF,    0x40013a08
+        .set    IOB_LEN,    0x1000
 
         .macro  SAVE
         lea     %sp@(-60),%sp
@@ -40,6 +47,7 @@
         .globl  store_bankw_mid, store_pstore, store_preload, store_fcopy
         .globl  store_d5_ef9a, store_d5_f02e, store_d5_f2a6, store_d5_f33a
         .globl  store_tocs1, store_fromcs1, store_partsaved, store_partclear
+        .globl  store_path, store_fopen, store_fread, store_fwrite, store_fclose, store_crc32
 
 | fire: a0 = a table, d0-d2 = the arguments. Calls each handler with them.
 fire:
@@ -287,6 +295,120 @@ store_partclear:
         moveml  %d2-%d3/%a2-%a3,%sp@
         jmp     0x4004a9d8
 
+
+| =============================================================== files ====
+| The file calls a client uses. A client owns a context of STORE_CTX = 4,120
+| bytes (.space 4120, 4-byte aligned): the stock file object (24 B) and its
+| 4 KB buffer. Handlers of different events never share a context, so one
+| client's open file is not disturbed by another's. Each call clobbers d0,
+| d1, a0, a1 and keeps everything else; a2 = the context.
+
+| store_path: a0 = format ("%s/name.ext", or one more %d), a1 = a 260-byte
+| buffer, d0 = the number a second %d takes (0 when the format has none).
+store_path:
+        movel   %a2,%sp@-
+        movel   %a3,%sp@-
+        moveal  %a0,%a2
+        moveal  %a1,%a3
+        movel   %d0,%sp@-
+        clrl    %sp@-
+        clrl    %sp@-
+        jsr     PROJDIR
+        addql   #8,%sp
+        movel   %d0,%sp@-
+        movel   %a2,%sp@-
+        movel   %a3,%sp@-
+        jsr     SPRINTF
+        lea     %sp@(16),%sp
+        movel   %sp@+,%a3
+        movel   %sp@+,%a2
+        rts
+
+| store_fopen: a0 = path, a1 = mode, a2 = ctx -> d0 (< 0: failed).
+store_fopen:
+        pea     IOB_LEN
+        pea     %a2@(24)
+        movel   %a1,%sp@-
+        movel   %a0,%sp@-
+        pea     %a2@
+        jsr     F_OPEN
+        lea     %sp@(20),%sp
+        rts
+
+| store_fread / store_fwrite: a0 = buffer, d0 = length, a2 = ctx -> d0 (1: done).
+store_fread:
+        movel   %d0,%sp@-
+        movel   %a0,%sp@-
+        pea     %a2@
+        jsr     F_READ
+        lea     %sp@(12),%sp
+        rts
+store_fwrite:
+        movel   %d0,%sp@-
+        movel   %a0,%sp@-
+        pea     %a2@
+        jsr     F_WRITE
+        lea     %sp@(12),%sp
+        rts
+
+store_fclose:
+        pea     %a2@
+        jsr     F_CLOSE
+        addql   #4,%sp
+        rts
+
+| store_crc32: a0 = data, d0 = length, d1 = the CRC of what came before (0
+| to start) -> d0 = the CRC-32 (zlib's); the table is built on the first call. Keeps d2-d7/a2-a6; clobbers d1, a0.
+store_crc32:
+        movel   %d2,%sp@-
+        movel   %a2,%sp@-
+        movel   %d0,%d2
+        movel   %d1,%sp@-
+        bsr.s   crc_init
+        movel   %sp@+,%d1
+        lea     CRCTAB,%a2
+        movel   %d1,%d0                 | the running value, 0 to start
+        notl    %d0
+        tstl    %d2
+        beq.s   2f
+1:      moveq   #0,%d1
+        moveb   %a0@+,%d1
+        eorl    %d0,%d1
+        andil   #0xff,%d1
+        lsrl    #8,%d0
+        movel   %a2@(0,%d1:l:4),%d1
+        eorl    %d1,%d0
+        subql   #1,%d2
+        bne.s   1b
+2:      notl    %d0
+        movel   %sp@+,%a2
+        movel   %sp@+,%d2
+        rts
+
+crc_init:
+        tstl    CRCREADY
+        bne.s   9f
+        movel   %d2,%sp@-
+        movel   %a0,%sp@-
+        lea     CRCTAB,%a0
+        moveq   #0,%d0
+1:      movel   %d0,%d1
+        moveq   #7,%d2
+2:      lsrl    #1,%d1
+        bcc.s   3f
+        eoril   #0xedb88320,%d1
+3:      subql   #1,%d2
+        bpl.s   2b
+        movel   %d1,%a0@+
+        addql   #1,%d0
+        cmpil   #256,%d0
+        bne.s   1b
+        moveq   #1,%d0
+        movel   %d0,CRCREADY
+        movel   %sp@+,%a0
+        movel   %sp@+,%d2
+9:      rts
+
         .section .data
         .align  4
 SL_RET: .long   0
@@ -298,3 +420,8 @@ PR_RET: .long   0
 FA0:    .long   0
 FA1:    .long   0
 FA2:    .long   0
+CRCREADY: .long 0
+
+        .section .bss
+        .align  4
+CRCTAB: .space  256*4

@@ -69,7 +69,11 @@
         .globl  scn_hold_a, scn_hold_b, scn_dial, scn_enc_a, scn_enc_b
         .globl  scn_taddi, scn_paddi, scn_pad, scn_press, scn_done
         .globl  scn_morph, scn_xf1, scn_xf2, scn_clear, scn_copy, scn_paste
-        .globl  scn_msc, scn_clip, scn_state
+        .globl  scn_lib, scn_clip, scn_state
+        .globl  scn_st_loadall_pre, scn_st_loadmask_pre, scn_st_newproj, scn_st_bankw_post
+        .globl  scn_st_pstore_pre, scn_st_pstore_post, scn_st_preload_post, scn_st_tocs1
+        .globl  scn_st_fromcs1, scn_st_partclear
+        .extern store_path, store_fopen, store_fread, store_fwrite, store_fclose, store_crc32
 
 | ===================================================== B1: hold + turn ====
 
@@ -109,8 +113,8 @@ hold_store:
         bmi.s   8f
         bsr.w   flat_of_knob            | d5 = flat; keeps d1
         addl    %d5,%d1
-        lea     scn_msc:l,%a1
-        addal   %d1,%a1                 | a1 -> the lock
+        bsr.w   msc_a0
+        lea     %a0@(0,%d1:l),%a1       | a1 -> the lock
         mvzb    %a1@,%d1
         cmpil   #NOLOCK,%d1
         bne.s   2f
@@ -118,6 +122,7 @@ hold_store:
 2:      addl    %d6,%d1
         bsr.w   clamp                   | d1 = 0..127, the ARP limits
         moveb   %d1,%a1@
+        bsr.w   msc_edited
         bsr.w   mix
         moveq   #1,%d0
         rts
@@ -238,7 +243,7 @@ scn_dial:
         subl    %d2,%d0                 | page * 6
         addl    %a4,%d0                 | + knob
         addl    %d0,%d1
-        lea     scn_msc:l,%a0
+        bsr.w   msc_a0
         mvzb    %a0@(0,%d1:l),%d0
         cmpil   #NOLOCK,%d0
         beq.s   miss
@@ -317,9 +322,10 @@ unlock:
         tstl    %d1
         bmi.s   9f
         addl    %d5,%d1
-        lea     scn_msc:l,%a0
+        bsr.w   msc_a0
         moveq   #-1,%d0                  | 0xff in the byte
         moveb   %d0,%a0@(0,%d1:l)
+        bsr.w   msc_edited
         bsr.w   mix
         pea     0xffffffff
         jsr     UI_OVERLAY
@@ -346,7 +352,10 @@ scn_taddi:
         subl    %d2,%d0
         movel   BANK_PTR,%d1
         subl    %d1,%d0
-        addil   #scn_msc,%d0
+        movel   %a0,%sp@-
+        bsr.w   msc_a0
+        addl    %a0,%d0
+        moveal  %sp@+,%a0
         movel   %sp@+,%d2
         movel   %sp@+,%d1
         rts
@@ -364,7 +373,10 @@ scn_paddi:
         subl    %d2,%d1
         movel   BANK_PTR,%d0
         subl    %d0,%d1
-        addil   #scn_msc,%d1
+        movel   %a0,%sp@-
+        bsr.w   msc_a0
+        addl    %a0,%d1
+        moveal  %sp@+,%a0
         movel   %sp@+,%d2
         movel   %sp@+,%d0
         rts
@@ -382,7 +394,7 @@ scn_pad:
         movel   %sp@(32),%d0
         andil   #15,%d0
         lsll    #8,%d0
-        lea     scn_msc:l,%a0
+        bsr.w   msc_a0
         addal   %d0,%a0
         movel   #256,%d1
 1:      mvzb    %a0@,%d0
@@ -473,7 +485,10 @@ mix:
         beq.s   1f
         andil   #15,%d0
         lsll    #8,%d0
-        lea     scn_msc:l,%a2
+        movel   %a0,%sp@-
+        bsr.w   msc_a0
+        moveal  %a0,%a2
+        moveal  %sp@+,%a0
         addal   %d0,%a2
 1:      subal   %a3,%a3                 | a3 = scene B's rows
         mvzb    %a0@(1),%d0
@@ -481,7 +496,10 @@ mix:
         beq.s   2f
         andil   #15,%d0
         lsll    #8,%d0
-        lea     scn_msc:l,%a3
+        movel   %a0,%sp@-
+        bsr.w   msc_a0
+        moveal  %a0,%a3
+        moveal  %sp@+,%a0
         addal   %d0,%a3
 2:      movel   XF_RAM,%d5
         andil   #127,%d5
@@ -590,7 +608,7 @@ scn_clear:
         movel   %sp@(16),%d0
         andil   #15,%d0
         lsll    #8,%d0
-        lea     scn_msc:l,%a0
+        bsr.w   msc_a0
         addal   %d0,%a0
         movel   #256,%d1
 1:      moveb   #NOLOCK,%a0@
@@ -600,6 +618,7 @@ scn_clear:
         moveal  %sp@+,%a0
         movel   %sp@+,%d1
         movel   %sp@+,%d0
+        bsr.w   msc_edited
         bsr.w   mix
 scn_stock_clear:
         jmp     0x40038c30
@@ -617,7 +636,7 @@ scn_copy:
         movel   %sp@(24),%d0
         andil   #15,%d0
         lsll    #8,%d0
-        lea     scn_msc:l,%a0
+        bsr.w   msc_a0
         addal   %d0,%a0
         lea     scn_clip:l,%a1
         movel   #256,%d1
@@ -648,7 +667,8 @@ scn_paste:
         movel   %sp@(24),%d0
         andil   #15,%d0
         lsll    #8,%d0
-        lea     scn_msc:l,%a1
+        bsr.w   msc_a0
+        moveal  %a0,%a1
         addal   %d0,%a1
         lea     scn_clip:l,%a0
         movel   #256,%d1
@@ -660,7 +680,463 @@ scn_paste:
         moveal  %sp@+,%a0
         movel   %sp@+,%d1
         movel   %sp@+,%d0
+        bsr.w   msc_edited
 2:      jmp     0x40027578
+
+| ================================================================ storage ====
+| One lock table per Part, 4,096 B each (scn_lib: 16 banks x 4 Parts, slot =
+| bank * 4 + Part). Every table above is the displayed Part's slot in the
+| current bank (msc_a0). The library is written whole to scenes.work beside
+| the bank files, and the current bank's four tables are copied to CS1
+| (0x100fbdf0..0x100ffe00) on every edit, as stock keeps its Part copy there:
+| an unsaved edit survives a power cycle (measured on stock, MIDI_SCENES.md
+| section 8). STORE (modules/store) calls the scn_st_* handlers.
+|
+| scenes.work: 'MSCW', version 1, payload length 262,144, CRC-32 of the
+| payload; then the 64 slots in order. A file that is not that is never
+| written over (scn_nowrite); the banks it would have filled stay empty.
+| CS1: 'SCS1' (written last), bank, sum (the bank and every long of the four
+| tables, added), reserved; then the bank's four tables.
+
+        .set    CUR_BANK,       0x80000002      | byte: the current bank
+        .set    CS1_BASE,       0x100fbdf0
+        .set    CS1_DATA,       0x100fbe00
+        .set    CS1_MAGIC,      0x53435331      | 'SCS1'
+        .set    FMAGIC,         0x4d534357      | 'MSCW'
+        .set    LIB_B,          64*4096
+        .set    F_COPY,         0x40016388      | (dst path, src path, 0) -> <0 error
+
+| msc_a0: a0 = the displayed Part's table. Keeps every other register.
+msc_a0:
+        movel   %d0,%sp@-
+        movel   %d1,%sp@-
+        bsr.w   scn_ensure
+        mvzb    CUR_BANK,%d0
+        andil   #15,%d0
+        lsll    #2,%d0
+        mvzb    PART_DISP,%d1
+        andil   #3,%d1
+        addl    %d1,%d0
+        lsll    #7,%d0
+        lsll    #5,%d0
+        addil   #scn_lib,%d0
+        moveal  %d0,%a0
+        movel   %sp@+,%d1
+        movel   %sp@+,%d0
+        rts
+
+| scn_ensure: the library is 0xff (no lock) before first use. Keeps every register.
+scn_ensure:
+        tstl    scn_ready
+        bne.s   9f
+        movel   %d0,%sp@-
+        movel   %d1,%sp@-
+        movel   %a0,%sp@-
+        lea     scn_lib,%a0
+        movel   #LIB_B/4,%d0
+        bsr.w   fill_ff
+        moveq   #1,%d0
+        movel   %d0,scn_ready
+        moveal  %sp@+,%a0
+        movel   %sp@+,%d1
+        movel   %sp@+,%d0
+9:      rts
+
+| fill_ff: a0 = start, d0 = longs. Clobbers d0, d1, a0.
+fill_ff:
+        moveq   #-1,%d1
+1:      movel   %d1,%a0@+
+        subql   #1,%d0
+        bne.s   1b
+        rts
+
+| msc_edited: a lock changed. The file is due, and CS1 follows. Keeps every register.
+msc_edited:
+        lea     %sp@(-32),%sp
+        movem.l %d0-%d5/%a0-%a1,%sp@
+        moveq   #1,%d0
+        movel   %d0,scn_dirty
+        mvzb    CUR_BANK,%d0
+        bsr.w   cs1_full
+        movem.l %sp@,%d0-%d5/%a0-%a1
+        lea     %sp@(32),%sp
+        rts
+
+| cs1_full: d0 = bank -> CS1 holds that bank's four tables. Keeps every register.
+| Two tasks reach it (the UI task for an edit, the engine task for the
+| stock bank copy), the UI task preempting the other at any instruction. The
+| request is left in scn_want; a copy that finds one running sets scn_again
+| and returns, and the running copy, which re-reads scn_want and starts over,
+| is the one whose copy stands. The magic is set under the mask with the
+| last compare, after the bank and the sum.
+cs1_full:
+        lea     %sp@(-40),%sp
+        movem.l %d0-%d5/%a0-%a1,%sp@
+        andil   #15,%d0
+        move.w  %sr,%d1
+        movew   %d1,%sp@(32)
+        move.w  #0x2700,%sr
+        movel   %d0,scn_want
+        tstl    scn_busy
+        bne.w   cf_later
+        moveq   #1,%d1
+        movel   %d1,scn_busy
+        movew   %sp@(32),%d1
+        move.w  %d1,%sr
+cf_run: clrl    scn_again
+        movel   scn_want,%d0
+        lea     CS1_BASE,%a1
+        clrl    %a1@                    | no magic while it is written
+        movel   %d0,%a1@(4)
+        movel   %d0,%d3                 | the sum starts with the bank
+        lsll    #7,%d0
+        lsll    #7,%d0
+        lea     scn_lib,%a0
+        addal   %d0,%a0
+        lea     CS1_DATA,%a1
+        movel   #4096,%d2
+1:      movel   %a0@+,%d0
+        movel   %d0,%a1@+
+        addl    %d0,%d3
+        subql   #1,%d2
+        bne.s   1b
+        lea     CS1_BASE,%a1
+        movel   %d3,%a1@(8)
+        move.w  #0x2700,%sr
+        tstl    scn_again
+        bne.s   cf_redo
+        clrl    scn_busy
+        movel   #CS1_MAGIC,%d0
+        movel   %d0,CS1_BASE
+        movew   %sp@(32),%d1
+        move.w  %d1,%sr
+        bra.s   cf_out
+cf_redo:
+        movew   %sp@(32),%d1
+        move.w  %d1,%sr
+        bra.s   cf_run
+cf_later:
+        moveq   #1,%d1
+        movel   %d1,scn_again
+        movew   %sp@(32),%d1
+        move.w  %d1,%sr
+cf_out: movem.l %sp@,%d0-%d5/%a0-%a1
+        lea     %sp@(40),%sp
+        rts
+
+| cs1_restore: d0 = bank. When CS1 holds a whole copy of that bank its four
+| tables replace the library's; otherwise the bank is read from scenes.work
+| at the next masked load (scn_needfile). Keeps every register.
+cs1_restore:
+        lea     %sp@(-24),%sp
+        movem.l %d0-%d3/%a0-%a1,%sp@
+        bsr.w   scn_ensure
+        andil   #15,%d0
+        movel   %d0,%d3
+        lea     CS1_BASE,%a1
+        movel   %a1@,%d1
+        cmpil   #CS1_MAGIC,%d1
+        bne.s   cr_none
+        cmpl    %a1@(4),%d3
+        bne.s   cr_none
+        movel   %d3,%d2
+        lea     CS1_DATA,%a0
+        movel   #4096,%d1
+1:      addl    %a0@+,%d2
+        subql   #1,%d1
+        bne.s   1b
+        cmpl    %a1@(8),%d2
+        bne.s   cr_none
+        movel   %d3,%d0
+        lsll    #7,%d0
+        lsll    #7,%d0
+        lea     scn_lib,%a1
+        addal   %d0,%a1
+        lea     CS1_DATA,%a0
+        movel   #4096,%d1
+2:      movel   %a0@+,%a1@+
+        subql   #1,%d1
+        bne.s   2b
+        moveq   #1,%d0
+        movel   %d0,scn_dirty           | CS1 may hold edits the file lacks
+        bra.s   cr_out
+cr_none:
+        addql   #1,%d3
+        movel   %d3,scn_needfile
+cr_out: movem.l %sp@,%d0-%d3/%a0-%a1
+        lea     %sp@(24),%sp
+        rts
+
+| clear_banks: d1 = a bank mask -> those banks' tables empty. Clobbers d0-d3, a0.
+clear_banks:
+        movel   %d1,%d3
+        moveq   #0,%d2
+1:      btst    %d2,%d3
+        beq.s   2f
+        movel   %d2,%d0
+        lsll    #7,%d0
+        lsll    #7,%d0
+        lea     scn_lib,%a0
+        addal   %d0,%a0
+        movel   #4096,%d0
+        bsr.w   fill_ff
+2:      addql   #1,%d2
+        cmpil   #16,%d2
+        bne.s   1b
+        rts
+
+| write_scenes -> d0 = 0 when scenes.work holds the library.
+write_scenes:
+        movel   %d2,%sp@-
+        lea     scn_lib,%a0
+        movel   #LIB_B,%d0
+        moveq   #0,%d1
+        jsr     store_crc32
+        movel   %d0,scn_hdr+12
+        movel   #FMAGIC,%d0
+        movel   %d0,scn_hdr
+        moveq   #1,%d0
+        movel   %d0,scn_hdr+4
+        movel   #LIB_B,%d0
+        movel   %d0,scn_hdr+8
+        lea     FMT_WORK,%a0
+        lea     scn_path,%a1
+        moveq   #0,%d0
+        jsr     store_path
+        lea     scn_path,%a0
+        lea     MODE_W,%a1
+        lea     scn_ctx,%a2
+        jsr     store_fopen
+        tstl    %d0
+        bmi.s   8f
+        lea     scn_hdr,%a0
+        moveq   #16,%d0
+        jsr     store_fwrite
+        movel   %d0,%d2
+        lea     scn_lib,%a0
+        movel   #LIB_B,%d0
+        jsr     store_fwrite
+        subql   #1,%d0
+        bne.s   7f
+        subql   #1,%d2
+        bne.s   7f
+        jsr     store_fclose
+        moveq   #0,%d0
+        bra.s   9f
+7:      jsr     store_fclose
+8:      addql   #1,scn_cnt_ioerr
+        moveq   #-1,%d0
+9:      movel   %sp@+,%d2
+        rts
+
+write_if_dirty:
+        tstl    scn_ready
+        beq.s   1f
+        tstl    scn_dirty
+        beq.s   1f
+        tstl    scn_nowrite
+        bne.s   1f
+        bsr.w   write_scenes
+        tstl    %d0
+        bne.s   1f
+        clrl    scn_dirty
+1:      rts
+
+| read_scenes: d1 = a bank mask -> d0 = 0 the masked banks read, 1 no file,
+| 2 a file that is not scenes.work version 1 or fails its CRC (the library is
+| not touched in that case).
+read_scenes:
+        movel   %d2,%sp@-
+        movel   %d3,%sp@-
+        movel   %d1,%d3
+        lea     FMT_WORK,%a0
+        lea     scn_path,%a1
+        moveq   #0,%d0
+        jsr     store_path
+        lea     scn_path,%a0
+        lea     MODE_R,%a1
+        lea     scn_ctx,%a2
+        jsr     store_fopen
+        tstl    %d0
+        bpl.s   1f
+        moveq   #1,%d0
+        bra.w   9f
+1:      lea     scn_hdr,%a0
+        moveq   #16,%d0
+        jsr     store_fread
+        subql   #1,%d0
+        bne.w   7f
+        lea     scn_hdr,%a0
+        movel   %a0@,%d0
+        cmpil   #FMAGIC,%d0
+        bne.w   7f
+        moveq   #1,%d0
+        cmpl    %a0@(4),%d0
+        bne.s   7f
+        movel   %a0@(8),%d0
+        cmpil   #LIB_B,%d0
+        bne.s   7f
+        lea     scn_stage,%a0
+        movel   #LIB_B,%d0
+        jsr     store_fread
+        subql   #1,%d0
+        bne.s   7f
+        jsr     store_fclose
+        lea     scn_stage,%a0
+        movel   #LIB_B,%d0
+        moveq   #0,%d1
+        jsr     store_crc32
+        cmpl    scn_hdr+12,%d0
+        bne.s   6f
+        moveq   #0,%d2
+2:      btst    %d2,%d3
+        beq.s   3f
+        movel   %d2,%d0
+        lsll    #7,%d0
+        lsll    #7,%d0
+        lea     scn_stage,%a0
+        addal   %d0,%a0
+        lea     scn_lib,%a1
+        addal   %d0,%a1
+        movel   #4096,%d1
+4:      movel   %a0@+,%a1@+
+        subql   #1,%d1
+        bne.s   4b
+3:      addql   #1,%d2
+        cmpil   #16,%d2
+        bne.s   2b
+        moveq   #0,%d0
+        bra.s   9f
+7:      jsr     store_fclose
+6:      addql   #1,scn_cnt_bad
+        moveq   #2,%d0
+9:      movel   %sp@+,%d3
+        movel   %sp@+,%d2
+        rts
+
+| load_masked: d1 = a bank mask: those banks from scenes.work; empty when it
+| has none, empty and never overwritten when it is refused.
+load_masked:
+        movel   %d1,%d4
+        bsr.w   read_scenes
+        tstl    %d0
+        beq.s   9f
+        movel   %d0,%d5
+        movel   %d4,%d1
+        bsr.w   clear_banks
+        cmpil   #2,%d5
+        bne.s   9f
+        moveq   #1,%d0
+        movel   %d0,scn_nowrite
+9:      rts
+
+| ---- STORE's handlers (modules/store/store.s) ----
+scn_st_loadall_pre:
+        bsr.w   scn_ensure
+        clrl    scn_nowrite
+        clrl    scn_dirty
+        clrl    scn_needfile
+        movel   #0xffff,%d1
+        bra.w   load_masked
+
+scn_st_loadmask_pre:                    | d1 = the mask
+        bsr.w   scn_ensure
+        movel   scn_needfile,%d0
+        beq.s   1f
+        clrl    scn_needfile
+        subql   #1,%d0
+        moveq   #1,%d2
+        lsll    %d0,%d2
+        orl     %d2,%d1
+1:      bra.w   load_masked
+
+scn_st_newproj:
+        lea     scn_lib,%a0
+        movel   #LIB_B/4,%d0
+        bsr.w   fill_ff
+        moveq   #1,%d0
+        movel   %d0,scn_ready
+        movel   %d0,scn_dirty
+        clrl    scn_nowrite
+        clrl    scn_needfile
+        rts
+
+scn_st_bankw_post:
+        bra.w   write_if_dirty
+
+scn_st_pstore_pre:
+        bra.w   write_if_dirty
+
+scn_st_pstore_post:
+        tstl    scn_ready
+        beq.s   1f
+        tstl    scn_nowrite
+        bne.s   1f
+        lea     FMT_STRD,%a0
+        lea     scn_psrc,%a1
+        moveq   #0,%d0
+        jsr     store_path
+        lea     FMT_WORK,%a0
+        lea     scn_path,%a1
+        moveq   #0,%d0
+        jsr     store_path
+        clrl    %sp@-
+        pea     scn_path
+        pea     scn_psrc
+        jsr     F_COPY
+        lea     %sp@(12),%sp
+1:      rts
+
+scn_st_preload_post:
+        tstl    scn_ready
+        beq.s   1f
+        lea     FMT_WORK,%a0
+        lea     scn_psrc,%a1
+        moveq   #0,%d0
+        jsr     store_path
+        lea     FMT_STRD,%a0
+        lea     scn_path,%a1
+        moveq   #0,%d0
+        jsr     store_path
+        clrl    %sp@-
+        pea     scn_path
+        pea     scn_psrc
+        jsr     F_COPY
+        lea     %sp@(12),%sp
+        tstl    %d0
+        bmi.s   1f
+        clrl    scn_nowrite
+        clrl    scn_dirty
+        movel   #0xffff,%d1
+        bsr.w   load_masked
+        mvzb    CUR_BANK,%d0
+        bra.w   cs1_full
+1:      rts
+
+scn_st_tocs1:                           | d0 = the bank
+        bsr.w   scn_ensure
+        bra.w   cs1_full
+
+scn_st_fromcs1:                         | d0 = the bank
+        bra.w   cs1_restore
+
+scn_st_partclear:                       | d0 = the part
+        bsr.w   scn_ensure
+        andil   #3,%d0
+        mvzb    CUR_BANK,%d1
+        andil   #15,%d1
+        lsll    #2,%d1
+        addl    %d1,%d0
+        lsll    #7,%d0
+        lsll    #5,%d0
+        addil   #scn_lib,%d0
+        moveal  %d0,%a0
+        movel   #1024,%d0
+        bsr.w   fill_ff
+        moveq   #1,%d0
+        movel   %d0,scn_dirty
+        mvzb    CUR_BANK,%d0
+        bra.w   cs1_full
 
 | ======================================================================= data
 
@@ -669,7 +1145,27 @@ scn_paste:
 scn_state:
         .long   0
         .long   -1
-scn_msc:
-        .fill   4096, 1, 0xff           | the lock table
 scn_clip:
         .fill   256, 1, 0xff            | the scene clipboard
+scn_ready:      .long   0               | scn_lib is filled
+scn_dirty:      .long   0               | scenes.work is due
+scn_nowrite:    .long   0               | scenes.work was refused: never overwritten
+scn_needfile:   .long   0               | bank + 1: no CS1 copy, read it at the next masked load
+scn_busy:       .long   0               | cs1_full is running
+scn_again:      .long   0               | another cs1_full was asked for meanwhile
+scn_want:       .long   0               | the bank the newest cs1_full wants
+scn_cnt_bad:    .long   0               | scenes.work refused
+scn_cnt_ioerr:  .long   0               | scenes.work not written
+FMT_WORK:       .asciz  "%s/scenes.work"
+FMT_STRD:       .asciz  "%s/scenes.strd"
+MODE_R:         .asciz  "r"
+MODE_W:         .asciz  "w"
+
+        .section .bss
+        .align  4
+scn_lib:        .space  LIB_B           | 64 Parts, 4,096 B each; 0xff until scn_ensure
+scn_stage:      .space  LIB_B           | scenes.work read here before it is applied
+scn_ctx:        .space  4120            | STORE_CTX
+scn_hdr:        .space  16
+scn_path:       .space  260
+scn_psrc:       .space  260

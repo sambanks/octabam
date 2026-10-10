@@ -104,7 +104,7 @@ MODULE = Module(
     ),
     requires=("SCENES P2", "STORE"),
     # NV copy of the current bank's page 2 in CS1 (battery SRAM), nv_save in
-    # p2locks.s: 0x100f8600..0x100ffe00, unused by stock beyond its whole-CS1 init.
-    claims=Claims(sram=((0x100f8600, 0x100ffe00 - 0x100f8600, "P2NV bank copy in CS1"),)),
+    # p2locks.s: 0x100f8600..0x100fbdf0, unused by stock beyond its whole-CS1 init.
+    claims=Claims(sram=((0x100f8600, 0x100fbdf0 - 0x100f8600, "P2NV bank copy in CS1"),)),
     gates=(Gate('tools/verify/verify_plocksp2.py'),),
 )
