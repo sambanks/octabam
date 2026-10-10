@@ -544,20 +544,8 @@ def main():
         kw = next((v for k, v in files.items() if k.lower().endswith("/kits/kits.work")), b"")
         check(f"base: kits.work on the card ({len(kw)} B), CRC-32 holds",
               len(kw) == IMG_LEN and struct.unpack(">I", kw[12:16])[0] == zlib.crc32(kw[64:]))
-        # MIDI SCENES rewrites its Part-window bytes in the current Part after
-        # the load (KITS's equality leaves them out the same way)
-        lo, hi = 0, 0
-        if "MIDI SCENES" in remix.modules:
-            cl = registry.modules()["MIDI SCENES"].claims
-            pw = cl.part_window if cl else ()
-            if pw:
-                lo, hi = min(o for o, _l, _w in pw) - WORK, max(o + l for o, l, _w in pw) - WORK
-
-        def eq(x, y):
-            return x[:lo] == y[:lo] and x[hi:] == y[hi:]
-        ok = all(eq(kit(im, BANK * 4 + p), slot(b, p)) for p in range(4))
-        check("base: Kits 9-12 are bank 3's working Parts"
-              + (f" (outside MIDI SCENES' +{lo:#x}..+{hi:#x})" if hi else ""), ok)
+        ok = all(kit(im, BANK * 4 + p) == slot(b, p) for p in range(4))
+        check("base: Kits 9-12 are bank 3's working Parts", ok)
         names = [im[O_LIB + (BANK * 4 + p) * REC:O_LIB + (BANK * 4 + p) * REC + 7].split(b"\0")[0] for p in range(4)]
         stock = [b[PNAMES + 7 * p:PNAMES + 7 * p + 7].split(b"\0")[0] for p in range(4)]
         check(f"base: their names are the Parts' ({names})", names == stock)

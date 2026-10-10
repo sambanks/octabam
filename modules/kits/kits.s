@@ -97,7 +97,7 @@
         .set    IOB_LEN,    0x1000
         .set    NKITS,      256             | records in kits.work
         .set    NUSE,       255             | Kits 1-255: index 255 (0xff) is "no Kit" in ASSIGN and RESID
-        .include "remix.inc"            | PWSKIP_LO / PWSKIP_HI, MSCKIT (manifest.kits_inc)
+        .include "remix.inc"            | MSCKIT (manifest.kits_inc)
         .set    REC1,       6338            | name 8, flags 4, reserved 4, payload
         .set    R_MSC,      REC1            | with MIDI SCENES: the Part's lock table (4,096 B) follows
         .if     MSCKIT
@@ -1426,20 +1426,10 @@ slot_equal:
         lea     %sp@(16),%sp
         rts
 | part_eq: a0 = a working Part, a2 = a Kit's Part -> d0 = 1 when they are
-| equal outside PWSKIP_LO..PWSKIP_HI: the Part-window bytes MIDI SCENES
-| mirrors its own table into (its Claims.part_window; MIDISC2.0 rewrote them
-| in the current Part after a project load, measured under ok-ms). 0..0 when
-| MIDI SCENES is not in the remix or declares no Part window (the rewrite,
-| until its storage phase). Clobbers d0/d1/a0/a2.
+| equal, byte for byte. Clobbers d0/d1/a0/a2.
 part_eq:
         movel   %d2,%sp@-
-        movel   #PWSKIP_LO,%d2
-        bsr.s   pe_run
-        bne.s   8f
-        movel   #PWSKIP_HI-PWSKIP_LO,%d0
-        addal   %d0,%a0
-        addal   %d0,%a2
-        movel   #PARTSZ-PWSKIP_HI,%d2
+        movel   #PARTSZ,%d2
         bsr.s   pe_run
         bne.s   8f
         moveq   #1,%d0

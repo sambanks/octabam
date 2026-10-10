@@ -653,8 +653,7 @@ A port is done when the author's build and this repo's build agree byte for byte
 address on every build, with its declared `defsyms` and this remix's
 `remix.inc`, and compares; a unit whose bytes depend on the remix gives
 `reference=fn` instead, `fn(modules) -> (addr, sha256)` naming the variant
-the author ratified for that selection. `tools/verify/verify_midiscenes.py`
-is the standing proof. When you port someone else's
+the author ratified for that selection. When you port someone else's
 mod, run their build against the shared stock image first and use its
 output as the oracle.
 

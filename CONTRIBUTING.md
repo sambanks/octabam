@@ -118,8 +118,8 @@ The form depends on the module:
 | a floating source-linked cave | `reference(addr)` — the ratified bytes *at that address*, checked every build |
 | `Linked` units | `reference=(addr, sha256)`: the unit re-linked at the author's own address, compared every build |
 
-`tools/verify/verify_midiscenes.py` is the standing proof; write the
-equivalent for yours. When you port someone
+The reference comparison above is the standing proof; write the
+equivalent gate for yours. When you port someone
 else's mod, run their build against the shared stock image first and use
 its output as the oracle.
 

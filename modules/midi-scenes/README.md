@@ -8,9 +8,9 @@ Credit: bkkbrls-del ([midisc](https://github.com/bkkbrls-del/midisc), MIT)
 is the original author of the behaviour. This module rewrites it as
 readable GNU as, checked against his MIDISC2.1 image under the port
 (`tools/verify/verify_scenes.py`), the way `modules/kits` rewrites Em's
-Octakit. None of his code or data is copied or linked. `upstream/` (his
-repository, a submodule at `4f9a894`) stays in the tree until the last
-phase and is not built.
+Octakit. None of his code or data is copied or linked. His repository was a
+submodule here (pinned at `4f9a894`, MIDISC 2.0) until 10 Oct 2026; the
+build no longer needs it.
 
 Markers as in `CHIP.md`: ✅ measured, 📖 read from the code.
 
@@ -95,7 +95,7 @@ Paste and bank-copy rows.
 
 ## Measured
 
-✅ Against the oracle image (stock + `release21.json`, built from upstream
+✅ Against the oracle image (stock + `release21.json`, built from his repository at
 `52eaab0`) under the port (`ot_emu`, OCTABAM89_setgate bank 3 Part 1, T1 a
 MIDI track on channel 11), remix `midi-scenes`, 10 Oct 2026: scenarios b1,
 b2, b7, b7play, b3, b29copy, b29clear pass every comparison. MIDI out
@@ -132,6 +132,6 @@ cover.
   phase 2 keeps the locks in a project file.
 - Phase 2: KITS carries the locks (`kits.work` version 2); the conversion of 2.x projects; the prompt for a refused file; B19–B27 beyond Part Clear.
 - Phase 3: the sequencer sites (B10, B12–B18, B28) and B33.
-- Phase 4: `upstream/` and `verify_midiscenes` leave.
+- The oracle image is not in the repository and is not built by `make`: `verify_scenes.py --oracle MAIN21.raw` (or `OT_MSC21_IMAGE`) takes one made from his repository at `52eaab0` (his own build; not re-run here after the submodule left). `make check` runs the scenarios on our image and stock's.
 - Hardware: the 2.0 build ran on his unit as `ok-ms` (14 Sep 2026); the
   rewrite has not run on a unit.

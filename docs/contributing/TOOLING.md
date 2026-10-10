@@ -186,7 +186,7 @@ CI). The family, and what each proves:
 | `tools/verify/verify_slots.py` | static dead-store check on the reverb's r7 state block |
 | `tools/verify/verify_midi.py` | the note→PITCH interval path, locally, via a build override |
 | `tools/verify/verify_burn.py` | the cycle-burn probe is the shipping engine plus an inert knob |
-| `tools/verify/verify_midiscenes.py`, `verify_dram_boot.py` | MIDI SCENES' oracle; every DRAM remix booted under the port and its window read back |
+| `tools/verify/verify_dram_boot.py` | every DRAM remix booted under the port and its window read back |
 | `tools/verify/verify_kits.py` | KITS under the port: staging, LOAD/SAVE KIT, the files, migration and Octakit import |
 | `tools/verify/verify_dirtystate.py`, `verify_initregs.py`, `verify_replaces.py`, `verify_labels.py`, `verify_modenames.py`, `verify_hidden.py`, `verify_grains.py`, `verify_twocore.py`, `verify_onebus.py`, the per-module render gates | every module silent from a garbage block; no init writes r1; no stock effect hijacked; selects print their words on the emulated firmware; the mode formatter renames; hidden engines; the grain lever; both cores; the bus |
 | `tools/remix/selftest.py` | the resource ledger catches every collision it claims to, and every shipped remix is clean (part of `make check`) |

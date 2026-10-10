@@ -13,8 +13,7 @@ the unit's DRAM and nothing is written to a Part, a bank file or CS1.
 
 The behaviour is bkkbrls-del's MIDISC2.1 (original author); `scenes.s` is
 written fresh and checked against his image under the port
-(`tools/verify/verify_scenes.py`). `upstream/` stays until the last phase
-and is not linked.
+(`tools/verify/verify_scenes.py`). His repository is no longer a submodule here.
 """
 
 from remix.schema import Category, Claims, Detour, Gate, Kind, Linked, Module, Poke, Proof
