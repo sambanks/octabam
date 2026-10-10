@@ -790,13 +790,13 @@ scn_step:
         lea     0x800065e4,%a2
         jmp     0x400a4ba6
 
-| 0x40062224 (8 bytes): addq.l #4,sp; lea 0x400c0a6c,a0, after the event that
-| sets the current Part has run its Part writes and `jsr 0x400326a0`.
+| 0x4006221c (8 bytes): clr.l -(sp); jsr 0x40078850, after the event that sets
+| the current Part has written it and run `jsr 0x400326a0`.
 scn_evt:
-        addql   #4,%sp
+        clrl    %sp@-
+        jsr     0x40078850
         bsr.w   ensure
-        lea     0x400c0a6c,%a0
-        jmp     0x4006222c
+        jmp     0x40062224
 
 | 0x4005538a (8 bytes): move.b d2,(a5); move.l #0x18b2,d1 in the panel's MIDI
 | parameter write (d4 = track, d6 = flat). The mix runs, and the value the
