@@ -300,3 +300,29 @@ comparisons against the oracle pass:
   assignment (bank `+0x8ed90 + part*0x18b2`, bytes A, B) and the displayed
   track (`0x100b14cc & 7`).
 - The pad hook scans MSC[scene] in every mode, MIDI or not.
+
+## 8. An unsaved audio scene lock across a power cycle ✅
+
+Measured 10 Oct 2026 under the port on the stock image, project `SCN`
+(bank 2, `out/scenesverify/card.img`). Three boots, same card:
+
+| run | script | |
+|---|---|---|
+| control | NO, T1, FX1 | |
+| lock | NO, T1, FX1, SCENE A held + encoder 3 +40, no save | |
+| power cycle | `--cs1-in` the lock run's CS1, `--no-post`, no key presses | |
+
+- Control vs lock: one byte differs in the four-Part working window, Part 0
+  `+0x677` (scene block `+0x15`, scene A, track 1): `0xff` -> `0x28`.
+- The same byte differs in the CS1 Part copy (`0x100a4ece + 0x677`): the
+  edit is written through to CS1 without a save.
+- Power cycle vs lock: the working window is identical (0 bytes differ), so
+  the power-up restore returns the unsaved scene lock.
+
+Stock therefore keeps an unsaved audio scene lock over a power-off, through the
+Part copy in CS1. A lock stored only in DRAM (phase 1's `scn_msc`, and
+`scenes.work` until a save) is gone after the same power cycle.
+
+Not measured: retention of CS1 over a power-off on a unit (the port restores
+what it is given); other unreferenced CS1 runs large enough for a dense copy
+(a current bank is 4 Parts x 4,096 B = 16,384 B).
