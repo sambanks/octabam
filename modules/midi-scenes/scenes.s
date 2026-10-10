@@ -73,7 +73,8 @@
         .globl  scn_st_loadall_pre, scn_st_loadmask_pre, scn_st_newproj, scn_st_bankw_post
         .globl  scn_st_pstore_pre, scn_st_pstore_post, scn_st_preload_post, scn_st_tocs1
         .globl  scn_st_fromcs1, scn_st_partclear, scn_slot_ptr, scn_slot_changed
-        .extern store_path, store_fopen, store_fread, store_fwrite, store_fclose, store_crc32
+        .extern store_path, store_fopen, store_fread, store_fwrite, store_fclose, store_crc32, store_refuse
+        .globl  scn_st_answer
 
 | ===================================================== B1: hold + turn ====
 
@@ -942,6 +943,23 @@ clear_banks:
 | write_scenes -> d0 = 0 when scenes.work holds the library.
 write_scenes:
         movel   %d2,%sp@-
+        tstl    scn_backup
+        beq.s   ws_nb
+        clrl    scn_backup              | the refused file kept as scenes.bak
+        lea     FMT_WORK,%a0
+        lea     scn_psrc,%a1
+        moveq   #0,%d0
+        jsr     store_path
+        lea     FMT_BAK,%a0
+        lea     scn_path,%a1
+        moveq   #0,%d0
+        jsr     store_path
+        clrl    %sp@-
+        pea     scn_psrc
+        pea     scn_path
+        jsr     F_COPY
+        lea     %sp@(12),%sp
+ws_nb:
         lea     scn_lib,%a0
         movel   #LIB_B,%d0
         moveq   #0,%d1
@@ -1082,6 +1100,25 @@ load_masked:
         bne.s   9f
         moveq   #1,%d0
         movel   %d0,scn_nowrite
+        moveq   #2,%d0                  | STORE's list: the prompt offers what to do with it
+        moveq   #0,%d1
+        jsr     store_refuse
+9:      rts
+
+| scn_st_answer: d0 = IGNORE / OVERWRITE / BACKUP for a refused scenes.work.
+| OVERWRITE leaves the banks it would have filled empty and writes the file at
+| the next save; BACKUP has that write copy the file to scenes.bak first (the
+| answer runs in the UI task, the save in the engine task, where the card is used).
+scn_st_answer:
+        tstl    %d0
+        beq.s   9f
+        cmpil   #2,%d0
+        bne.s   1f
+        moveq   #1,%d0
+        movel   %d0,scn_backup          | write_scenes copies the file first
+1:      clrl    scn_nowrite
+        moveq   #1,%d0
+        movel   %d0,scn_dirty
 9:      rts
 
 | ---- STORE's handlers (modules/store/store.s) ----
@@ -1203,6 +1240,7 @@ scn_clip:
         .fill   256, 1, 0xff            | the scene clipboard
 scn_ready:      .long   0               | scn_lib is filled
 scn_dirty:      .long   0               | scenes.work is due
+scn_backup:     .long   0               | the next write first copies scenes.work to scenes.bak
 scn_nowrite:    .long   0               | scenes.work was refused: never overwritten
 scn_needfile:   .long   0               | bank + 1: no CS1 copy, read it at the next masked load
 scn_busy:       .long   0               | cs1_full is running
@@ -1212,6 +1250,7 @@ scn_cnt_bad:    .long   0               | scenes.work refused
 scn_cnt_ioerr:  .long   0               | scenes.work not written
 FMT_WORK:       .asciz  "%s/scenes.work"
 FMT_STRD:       .asciz  "%s/scenes.strd"
+FMT_BAK:        .asciz  "%s/scenes.bak"
 MODE_R:         .asciz  "r"
 MODE_W:         .asciz  "w"
 

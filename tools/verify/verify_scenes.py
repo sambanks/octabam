@@ -243,7 +243,7 @@ def build(remix):
     nm = subprocess.run(["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")],
                         capture_output=True, text=True).stdout
     sym = {f[2]: int(f[0], 16) for f in (l.split() for l in nm.splitlines()) if len(f) == 3}
-    return sym["scn_lib"], sym["scn_clip"], sym.get("KIMG")
+    return sym["scn_lib"], sym["scn_clip"], sym.get("KIMG"), sym
 
 
 def run_image(name, path, msc, out, card, tags, jobs, bank):
@@ -284,7 +284,7 @@ CS1, CS1_LEN = 0x10000000, 0x100000
 CS1_SCN = 0x100fbdf0                              # 'SCS1', bank, sum, 0, then the current bank's four tables
 
 
-def persist(card, out, bank, lib, check, kimg=None):
+def persist(card, out, bank, lib, check, kimg=None, syms=None):
     """Storage under the port, our image only: the b1 locks kept by SAVE PROJECT
     (scenes.work and its .strd), a second boot, a power cycle (CS1 in, nothing
     posted) after a save and after none, and the same unsaved card without CS1."""
@@ -361,6 +361,62 @@ def persist(card, out, bank, lib, check, kimg=None):
     check(f"persist: powerun (unsaved card, CS1 in, nothing posted): {held(msc('powerun'))}", held(msc("powerun")) == want)
     check(f"persist: nocs1 (the unsaved card, posted load): {held(msc('nocs1'))} (none)", held(msc("nocs1")) == {})
 
+    # A scenes.work that is refused (a payload byte flipped: the CRC fails) is not
+    # written over; STORE lists it; OVERWRITE and BACKUP (store_answer_cb(choice, 0))
+    # then let the next save write it, BACKUP after copying it to scenes.bak.
+    files_saved = emu_card.extract_image((d / "saved.img").read_bytes())
+    wk = next(v for k, v in files_saved.items() if k.lower().endswith("/scn/scenes.work"))
+    bad = bytearray(wk); bad[16 + 5000] ^= 0x55; bad = bytes(bad)
+    proj = d / "proj_bad"
+    if proj.exists():
+        shutil.rmtree(proj)
+    shutil.copytree(out / "project", proj)
+    (proj / "scenes.work").write_bytes(bad)
+    card_bad = d / "card_bad.img"
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(proj), "OCTABAM", "SCN",
+                        "--tree", str(d / "tree_bad"), "--out", str(card_bad)], cwd=ROOT, capture_output=True, text=True)
+    check("persist: the card with a refused scenes.work staged", r.returncode == 0)
+    ans = syms["store_answer_cb"]
+
+    def rboot(tag, choice):
+        scr(tag, True)
+        cmd = [EMU, "--image", d / "ours.bin", "--card", card_bad, "--set", "OCTABAM", "--project", "SCN",
+               "--load-ms", "90000", "--mkii", "--live-script", d / f"{tag}.script", "--card-out", d / f"{tag}.img",
+               "--mem-dump", f"{slot:#x},{MSC_LEN:#x}={d / (tag + '_msc.bin')};{syms['store_npend']:#x},4={d / (tag + '_np.bin')};{syms['store_pend']:#x},32={d / (tag + '_pend.bin')}"]
+        if choice is not None:
+            cmd += ["--step", f"-:call:{ans:#x},{choice},0"]
+        with open(d / f"{tag}.txt", "w") as f:
+            return subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=f, stderr=subprocess.STDOUT).returncode
+
+    with ThreadPoolExecutor(3) as ex:
+        rc = list(ex.map(lambda a: rboot(*a), [("ignore", None), ("overwrite", 1), ("backup", 2)]))
+    check(f"persist: the refused-file runs exited {rc}", rc == [0, 0, 0])
+
+    def card_files(tag):
+        return emu_card.extract_image((d / f"{tag}.img").read_bytes())
+
+    def find(fs, name):
+        return next((v for k, v in fs.items() if k.lower().endswith(f"/scn/{name}")), None)
+
+    npend = struct.unpack(">I", (d / "ignore_np.bin").read_bytes())[0]
+    pend = (d / "ignore_pend.bin").read_bytes()
+    check(f"persist: ignore: STORE lists the file ({npend} entry, client {pend[0]}, arg {pend[1]})",
+          npend == 1 and pend[0] == 2)
+    fi = card_files("ignore")
+    check("persist: ignore: the refused scenes.work is byte for byte what it was, no scenes.bak",
+          find(fi, "scenes.work") == bad and find(fi, "scenes.bak") is None)
+    fo = card_files("overwrite")
+    wo = find(fo, "scenes.work")
+    ok = wo is not None and len(wo) == 16 + 64 * MSC_LEN and wo[:8] == b"MSCW\0\0\0\1" and \
+        struct.unpack(">I", wo[12:16])[0] == zlib.crc32(wo[16:]) and \
+        held(wo[16 + bank * 4 * MSC_LEN:16 + (bank * 4 + 1) * MSC_LEN]) == want
+    check("persist: overwrite: the next save wrote a good scenes.work holding the locks; no scenes.bak",
+          ok and find(fo, "scenes.bak") is None)
+    fb = card_files("backup")
+    wb = find(fb, "scenes.work")
+    check("persist: backup: scenes.bak is the refused file, scenes.work a good one",
+          find(fb, "scenes.bak") == bad and wb is not None and struct.unpack(">I", wb[12:16])[0] == zlib.crc32(wb[16:]))
+
     if kimg is None:
         return
     # A Kit carries its Part's locks (KITS, kits.work version 2): SAVE KIT stores the
@@ -432,7 +488,7 @@ def main():
 
     images = []                                   # (name, path, address of the lock table or None)
     if a.remix:
-        lib, clip, kimg = build(a.remix)
+        lib, clip, kimg, syms = build(a.remix)
         ours = out / "mainos_ours.bin"; shutil.copy2(ROOT / "out/mainos_bus.bin", ours)
         images.append(("ours", ours, (lib, clip)))
         if a.oracle and pathlib.Path(a.oracle).is_file():
@@ -531,7 +587,7 @@ def main():
         if s and s["parts"] is not None:
             check(f"{t}: nopart: the Part windows equal stock's", o["parts"] == s["parts"])
     if a.persist and not a.card:
-        persist(card, out, bank, images[0][2][0], check, kimg)
+        persist(card, out, bank, images[0][2][0], check, kimg, syms)
     print(f"verify_scenes: {'PASS' if not fails else 'FAIL'} ({fails} failing)")
     return 1 if fails else 0
 

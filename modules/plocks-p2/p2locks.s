@@ -83,7 +83,8 @@
         .globl  plk_reset, plk_p2r, plk_note, plk_apply, plk_dial, plk_init, STORE
         .globl  plk_place, plk_clrlocks, plk_clrtrack, plk_tcopy, plk_tpaste, plk_memcpy
         .globl  plk_st_bankw_pre, plk_st_bankcopy, plk_st_loadall_pre, plk_st_loadmask_pre
-        .globl  plk_st_newproj, plk_st_tocs1, plk_st_fromcs1
+        .globl  plk_st_newproj, plk_st_tocs1, plk_st_fromcs1, plk_st_answer
+        .extern store_refuse
 
 
 | ---------------------------------------------------------------- record ----
@@ -934,8 +935,33 @@ hdr:    lea     HDR,%a0
 
 | write_bank: d0 = bank -> p2lkNN.work from RAM. Keeps d2-d7/a2-a6.
 write_bank:
-        movel   %d2,%sp@-
+        movel   NWMASK,%d1
+        btst    %d0,%d1
+        beq.s   wb_go
+        rts                            | a refused file is never written over
+wb_go:  movel   %d2,%sp@-
         movel   %d0,%d2
+        movel   BKMASK,%d1
+        btst    %d2,%d1
+        beq.s   wb_nb
+        bclr    %d2,%d1
+        movel   %d1,BKMASK
+        movel   %d2,%d0                | the refused file kept as p2lkNN.bak
+        lea     FMT_WORK,%a0
+        bsr.w   path
+        lea     PATH,%a0
+        lea     PSRC,%a1
+wb_cp:  moveb   %a0@+,%a1@+
+        bne.s   wb_cp
+        movel   %d2,%d0
+        lea     FMT_BAK,%a0
+        bsr.w   path
+        clrl    %sp@-
+        pea     PSRC
+        pea     PATH
+        jsr     F_COPY
+        lea     %sp@(12),%sp
+wb_nb:
         lea     FMT_WORK,%a0
         bsr.w   path
         lea     PATH,%a0
@@ -944,7 +970,7 @@ write_bank:
         tstl    %d0
         bmi.s   wb_out
         movel   %d2,%d0
-        bsr.s   hdr
+        bsr.w   hdr
         lea     HDR,%a0
         moveq   #16,%d0
         lea     F_WRITE,%a1
@@ -963,6 +989,9 @@ wb_out: movel   %sp@+,%d2
 read_bank:
         movel   %d2,%sp@-
         movel   %d0,%d2
+        movel   NWMASK,%d1
+        bclr    %d2,%d1
+        movel   %d1,NWMASK
         lea     FMT_WORK,%a0
         bsr.w   path
         lea     PATH,%a0
@@ -996,6 +1025,12 @@ read_bank:
         bsr.w   fclose
         bra.s   rb_out
 rb_bad: bsr.w   fclose
+        movel   NWMASK,%d1             | an unusable file: kept, and offered to the prompt
+        bset    %d2,%d1
+        movel   %d1,NWMASK
+        moveq   #0,%d0
+        movel   %d2,%d1
+        jsr     store_refuse
 rb_blank:
         movel   %d2,%d0
         bsr.w   blank
@@ -1162,8 +1197,29 @@ lm_next:
 lm_done:
         rts
 
+| answer (d0 = IGNORE / OVERWRITE / BACKUP, d1 = the bank) for a refused
+| p2lkNN.work: BACKUP has the bank's next write copy the file to p2lkNN.bak
+| first (the answer runs in the UI task, the write in the engine task, where
+| the card is used); then the bank may be written (its locks are in RAM as
+| none) at the next bank write.
+plk_st_answer:
+        tstl    %d0
+        beq.s   an_out
+        movel   %d1,%d2
+        cmpil   #2,%d0
+        bne.s   an_clear
+        movel   BKMASK,%d0
+        bset    %d2,%d0
+        movel   %d0,BKMASK             | write_bank copies the file first
+an_clear:
+        movel   NWMASK,%d0
+        bclr    %d2,%d0
+        movel   %d0,NWMASK
+an_out: rts
+
 | newproj: a new, empty project (0x400909d8): no page-2 locks.
 plk_st_newproj:
+        clrl    NWMASK
         lea     %sp@(-8),%sp
         movem.l %d0-%d1,%sp@
         movel   INITED,%d0             | uninitialised: plk_init fills it anyway
@@ -1207,6 +1263,8 @@ rp_loop:
 
 FMT_WORK:
         .asciz  "%s/p2lk%02d.work"
+FMT_BAK:
+        .asciz  "%s/p2lk%02d.bak"
 MODE_R: .asciz  "r"
 MODE_W: .asciz  "w"
         .align  4
@@ -1511,6 +1569,8 @@ in_out: movem.l %sp@,%d0-%d1/%a0
         .align  4
 INITED: .long   0
 NVBANK: .long   -1                      | the bank whose page 2 CS1 holds
+BKMASK:  .long 0                        | banks whose refused p2lkNN.work is copied to .bak at the next write
+NWMASK:  .long 0                        | banks whose p2lkNN.work was refused: not written
 NEEDFILE: .long 0                       | bank + 1: read it from its file at the next bank load
 NVGEN:  .long   0                       | counts nv_save starts (see nv_save)
 EDITED: .long   0                       | set by a page-2 lock edit (the file pass reads it)

@@ -296,6 +296,96 @@ store_partclear:
         jmp     0x4004a9d8
 
 
+| ============================================================= refusals ====
+| A client that finds a file it cannot use (an unknown version, a length or a
+| CRC that does not hold) calls store_refuse and leaves the file alone: it
+| plays without it and never writes over it. STORE keeps the list; the prompt
+| (store_answer) then offers IGNORE (nothing), OVERWRITE (start empty, write at
+| the next save) or BACKUP (copy the file to a .bak name, then OVERWRITE). The
+| answer goes to the client's <prefix>_st_answer through ans_tab.
+        .set    ANS_IGNORE,     0
+        .set    ANS_OVERWRITE,  1
+        .set    ANS_BACKUP,     2
+        .globl  store_refuse, store_answer, store_answer_cb, store_pend, store_npend
+
+| store_refuse: d0 = the client's id (CLIENT_IDS), d1 = its argument (a bank,
+| or 0). Entered again for the same file it adds nothing. Clobbers d0, d1, a0.
+store_refuse:
+        movel   %d2,%sp@-
+        movel   %d3,%sp@-
+        lea     store_pend,%a0
+        movel   store_npend,%d3
+        beq.s   2f
+1:      moveq   #0,%d2
+        moveb   %a0@+,%d2
+        cmpl    %d2,%d0
+        bne.s   3f
+        moveb   %a0@,%d2
+        cmpl    %d2,%d1
+        beq.s   9f
+3:      addql   #1,%a0
+        subql   #1,%d3
+        bne.s   1b
+2:      movel   store_npend,%d3
+        cmpil   #16,%d3
+        bcc.s   9f
+        lea     store_pend,%a0
+        lsll    #1,%d3
+        addal   %d3,%a0
+        moveb   %d0,%a0@+
+        moveb   %d1,%a0@
+        addql   #1,store_npend
+9:      movel   %sp@+,%d3
+        movel   %sp@+,%d2
+        rts
+
+| store_answer: d0 = ANS_*, d1 = the entry's number in store_pend. The entry
+| leaves the list and its client is called with d0 = the answer, d1 = its
+| argument. Clobbers everything the handler does.
+store_answer:
+        movel   %d0,%sp@-
+        movel   store_npend,%d0
+        cmpl    %d0,%d1
+        bcc.s   8f
+        lea     store_pend,%a0
+        movel   %d1,%d2
+        lsll    #1,%d2
+        addal   %d2,%a0                 | a0 = the entry
+        moveq   #0,%d2
+        moveb   %a0@,%d2                | d2 = client
+        moveq   #0,%d3
+        moveb   %a0@(1),%d3             | d3 = argument
+        subql   #1,%d0
+        movel   %d0,store_npend         | one fewer
+        subl    %d1,%d0                 | entries behind it
+        beq.s   2f
+1:      moveb   %a0@(2),%a0@
+        moveb   %a0@(3),%a0@(1)
+        addql   #2,%a0
+        subql   #1,%d0
+        bne.s   1b
+2:      lea     ans_tab,%a0
+        movel   %a0@(0,%d2:l:4),%d0
+        beq.s   8f
+        moveal  %d0,%a1
+        movel   %d3,%d1
+        movel   %sp@,%d0
+        jsr     %a1@
+8:      addql   #4,%sp
+        rts
+
+| store_answer_cb(choice, entry): store_answer with the C calling convention,
+| for the prompt's callbacks and the port's --call.
+store_answer_cb:
+        lea     %sp@(-44),%sp
+        movem.l %d2-%d7/%a2-%a6,%sp@
+        movel   %sp@(44+4),%d0
+        movel   %sp@(44+8),%d1
+        bsr.w   store_answer
+        movem.l %sp@,%d2-%d7/%a2-%a6
+        lea     %sp@(44),%sp
+        rts
+
 | =============================================================== files ====
 | The file calls a client uses. A client owns a context of STORE_CTX = 4,120
 | bytes (.space 4120, 4-byte aligned): the stock file object (24 B) and its
@@ -421,7 +511,9 @@ FA0:    .long   0
 FA1:    .long   0
 FA2:    .long   0
 CRCREADY: .long 0
+store_npend: .long 0
 
         .section .bss
         .align  4
 CRCTAB: .space  256*4
+store_pend: .space 32

@@ -36,8 +36,15 @@ CLIENTS = (
 )
 
 
+# A client's number in the refusal registry (store_refuse) and in ans_tab.
+CLIENT_IDS = {"PLOCKS P2": 0, "KITS": 1, "MIDI SCENES": 2}
+
+
 def store_inc(modules):
-    out = []
+    out = ["ans_tab:"]
+    for key, _prefix, _events in sorted(CLIENTS, key=lambda c: CLIENT_IDS[c[0]]):
+        pre = {k: p for k, p, _e in CLIENTS}[key]
+        out.append(f"        .long   {pre}_st_answer" if key in modules else "        .long   0")
     for ev in EVENTS:
         out.append(f"ev_{ev}:")
         for key, prefix, handled in CLIENTS:

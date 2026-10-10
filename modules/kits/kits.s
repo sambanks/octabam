@@ -139,7 +139,8 @@
         .globl  kits_st_loadall_pre, kits_st_loadall_post, kits_st_loadmask_pre
         .globl  kits_st_loadmask_post, kits_st_newproj, kits_st_bankw_post
         .globl  kits_st_pstore_pre, kits_st_pstore_post, kits_st_preload_post
-        .globl  kits_st_partsaved, kits_st_partclear
+        .globl  kits_st_partsaved, kits_st_partclear, kits_st_answer
+        .extern store_refuse
         .globl  kits_partkey, kits_savekey, kits_mkisave, kits_funcyes, kits_level
         .globl  kits_lcopy, kits_lpaste, kits_lclear, kits_pcopy, kits_psnap, kits_pstore_ptn
         .globl  kits_fright, kits_ptrig, kits_status
@@ -2124,6 +2125,21 @@ write_if_dirty:
 | write_kits -> d0 = 0 when kits.work holds KIMG. Keeps d2-d7/a2-a6.
 write_kits:
         movel   %d2,%sp@-
+        tstl    KBACKUP
+        beq.s   wk_nb
+        clrl    KBACKUP                 | the refused file kept as kits.bak
+        lea     FMT_WORK,%a0
+        lea     PSRC,%a1
+        bsr.w   path
+        lea     FMT_BAK,%a0
+        lea     PATH,%a1
+        bsr.w   path
+        clrl    %sp@-
+        pea     PSRC
+        pea     PATH
+        jsr     F_COPY
+        lea     %sp@(12),%sp
+wk_nb:
         lea     KIMG,%a0
         movel   #MAGIC,%d0
         movel   %d0,%a0@
@@ -2329,6 +2345,27 @@ kmsc_expand:
         rts
         .endif
 
+| kits_st_answer: d0 = IGNORE / OVERWRITE / BACKUP for a refused kits.work.
+| OVERWRITE starts the library as a missing file does (the stock Parts become
+| Kits); BACKUP has the next write copy the file to kits.bak first. No file
+| is touched here: the answer runs in the UI task and the save runs in the
+| engine task, where the card is used.
+kits_st_answer:
+        tstl    %d0
+        beq.s   9f
+        cmpil   #2,%d0
+        bne.s   1f
+        moveq   #1,%d0
+        movel   %d0,KBACKUP             | write_kits copies the file first
+1:      clrl    NOWRITE
+        bsr.w   lib_empty
+        moveq   #2,%d0
+        movel   %d0,PENDING
+        movel   %d0,KDEFER              | the library is written by the next save
+        moveq   #0,%d0
+        bra.w   post_load
+9:      rts
+
 | read_project: kits.work, else Em's v3 files (IMPORT), else the stock
 | Parts (MIGRATE) after the banks are in. A kits.work that is refused is
 | never overwritten (NOWRITE) and the project plays its Parts as stock.
@@ -2344,6 +2381,9 @@ read_project:
         bsr.w   lib_empty
         moveq   #1,%d0
         movel   %d0,NOWRITE
+        moveq   #1,%d0                  | STORE's list: the prompt offers what to do with it
+        moveq   #0,%d1
+        jsr     store_refuse
         bra.s   9f
 1:      bsr.w   lib_empty
         moveq   #2,%d0                  | MIGRATE unless the import finds a file
@@ -2368,8 +2408,13 @@ post_load:
         bne.s   3f
         bsr.w   v3_import
 2:      clrl    PENDING
-        bsr.w   write_kits
-        tstl    %d0
+        tstl    KDEFER
+        beq.s   pl_w
+        clrl    KDEFER
+        moveq   #-1,%d0                 | the write waits for the next save
+        bra.s   pl_d
+pl_w:   bsr.w   write_kits
+pl_d:   tstl    %d0
         sne     %d0
         extb.l  %d0
         negl    %d0
@@ -3081,6 +3126,7 @@ clr_valid:
 | ============================================================ data =========
 FMT_WORK:  .asciz  "%s/kits.work"
 FMT_STRD:  .asciz  "%s/kits.strd"
+FMT_BAK:   .asciz  "%s/kits.bak"
 FMT_V3A:   .asciz  "%s/kits3a.work"
 FMT_V3B:   .asciz  "%s/kits3b.work"
 MODE_R:    .asciz  "r"
@@ -3129,6 +3175,8 @@ CNT_REPOINT: .long 0               | Part bytes repointed
 STAMP:     .long   0
 CLEARING:  .long   0
 CRCREADY:  .long   0
+KBACKUP:   .long   0               | the next write first copies kits.work to kits.bak
+KDEFER:    .long   0               | post_load does not write: the next save does
 LM_MODE:   .long   0
 JUSTLOADED: .long  0               | a LOAD PROJECT's banks are what RESID says
 LI_SAVEDONLY: .long 0
