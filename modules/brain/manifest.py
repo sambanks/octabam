@@ -14,7 +14,8 @@ import struct
 import sys
 
 from remix import schema
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, SymbolRef
+from remix.schema import (Binary, Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, Setting,
+                          Store, SymbolRef)
 
 H = bytes.fromhex
 SOURCE = "modules/brain/brain.s"
@@ -39,7 +40,59 @@ def fx_inc(modules):
                 "        .word   0"]
     for i, m in enumerate(targets):
         out.append(f'brain_id_{i}: .ascii "{brain.fx_store_id(m)}"')
-    return "\n".join(out) + "\n" + menu_inc() + "\n        .text\n"
+    return "\n".join(out) + "\n" + menu_inc() + "\n" + settings_inc(mods) + "\n        .text\n"
+
+
+PANE_W = 15                              # characters BRAIN's list pane shows (brain.c PANE_W)
+
+
+def settings_inc(mods):
+    """brain_set[] and brain_values[]: one entry per setting the unit holds
+    at run time (remix.brain.live_table), in the SETTINGS list's order.
+    An entry is 40 bytes (brain.c struct set_ent): store id, id length,
+    type (1 Binary, 2 Option, 3 Number), apply (0 live, 1 callback, 2 next
+    boot), label count, key, min, max, the default after layers 1 and 2,
+    the labels, the name, the module's key (the list's heading). Each value
+    is a long with its own global (remix.brain.value_symbol), which a
+    module's read macro loads."""
+    from remix import brain, registry
+    from remix.schema import Apply, Binary, Number, Option
+    remix = registry.remix(os.environ.get("REMIX")) if os.environ.get("REMIX") else None
+    rows = brain.live_table(remix, mods) if remix is not None else []
+    applies = {Apply.LIVE: 0, Apply.CALLBACK: 1, Apply.NEXT_BOOT: 2}
+    out = ["        .data", "        .balign 4", "        .globl  brain_set, brain_set_n, brain_values",
+           f"brain_set_n: .long {len(rows)}", "brain_set:"]
+    strs, groups = [], {}
+    for i, (r, s, m) in enumerate(rows):
+        k = s.kind
+        widest = max(len(x) for x in (("ON", "OFF") if isinstance(k, Binary) else
+                                      k.labels if isinstance(k, Option) else (str(k.min), str(k.max))))
+        if len(s.name) + 1 + widest > PANE_W:
+            raise ValueError(f"{m.key}: setting {s.name!r} and its widest value {widest} characters "
+                             f"do not fit BRAIN's {PANE_W}-character list pane")
+        if m.key not in groups:
+            groups[m.key] = len(groups)
+            g = m.key[:PANE_W - 2]
+            # octal: gas's \x takes every hex digit after it (\x17B is one byte)
+            strs.append(f'brain_sgrp_{groups[m.key]}: .asciz "\\027{g}' + "\\027" * (PANE_W - 1 - len(g)) + '"')
+        typ, lo, hi, nl = ((1, 0, 1, 0) if isinstance(k, Binary) else
+                           (2, 0, len(k.labels) - 1, len(k.labels)) if isinstance(k, Option) else
+                           (3, k.min, k.max, 0))
+        out += [f"        .long   brain_sid_{i}",
+                f"        .byte   {len(r.store_id)}, {typ}, {applies[s.apply]}, {nl}",
+                f"        .word   {r.key}, {k.step if isinstance(k, Number) else 1}",
+                f"        .long   {lo}, {hi}, {int(r.value)}",
+                f"        .long   {f'brain_slab_{i}' if nl else 0}, brain_snam_{i}, brain_sgrp_{groups[m.key]}"]
+        strs += [f'brain_sid_{i}: .ascii "{r.store_id}"', f'brain_snam_{i}: .asciz "{s.name}"']
+        if nl:
+            strs.append(f"brain_slab_{i}: .long " + ", ".join(f"brain_slab_{i}_{j}" for j in range(nl)))
+            strs += [f'brain_slab_{i}_{j}: .asciz "{lab}"' for j, lab in enumerate(k.labels)]
+    out += ["        .balign 4", "brain_values:"]
+    for r, s, m in rows:
+        sym = brain.value_symbol(r.store_id, r.key)
+        out += [f"        .globl  {sym}", f"{sym}: .long {int(r.value)}"]
+    out += ["        .balign 4"] + strs + ["        .balign 4"]
+    return "\n".join(out)
 
 
 ROOT_ROWS, ROOT_DESC, ROOT_COUNT_AT = 0x400cc698, 0x400cbd8c, 0x400cbd8c
@@ -75,9 +128,10 @@ def menu_inc():
             "        .balign 4",
             "        .globl  brain_list",
             # shipped at the top level; brain.c's show() repoints it
-            "brain_list: .long 3, 0, 0, 0, 7, 3, brain_top_rows",
-            "        .globl  brain_top_rows, brain_def_rows, brain_tool_rows, brain_rmx_rows, brain_rmx_n",
+            "brain_list: .long 4, 0, 0, 0, 7, 4, brain_top_rows",
+            "        .globl  brain_top_rows, brain_def_rows, brain_tool_rows, brain_rmx_rows, brain_rmx_n, brain_set_rows",
             "brain_top_rows:",
+            "        .long   brain_lbl_settings, 0, brain_open_settings, 0, 0, 0",
             "        .long   brain_lbl_defaults, 0, brain_open_defaults, 0, 0, 0",
             "        .long   brain_lbl_remixes, 0, brain_open_remixes, 0, 0, 0",
             "        .long   brain_lbl_tools, 0, brain_open_tools, 0, 0, 0",
@@ -94,9 +148,16 @@ def menu_inc():
             "        .long   brain_lbl_bremixes, 0, brain_menu_back, 0, 0, 0",
             "        .space  36 * 0x18",
             "brain_rmx_n: .long 1",
+            # SETTINGS: the back row, then brain.c's rows (a heading per
+            # module and each setting: up to 48 settings and their headings)
+            "brain_set_rows:",
+            "        .long   brain_lbl_bsettings, 0, brain_menu_back, 0, 0, 0",
+            "        .space  97 * 0x18",
             'brain_lbl_root: .asciz "BRAIN"',
-            # \x14 / \x13: the stock font's right and left arrows (REMIX
-            # SWITCH's picker draws "\x13\x14 MORE" with them)
+            # \x14 / \x13: the stock font's right and left arrows (drawn
+            # under the port, 8 Oct 2026); \027 its separator dot
+            'brain_lbl_settings: .asciz "SETTINGS    \\x14"',
+            'brain_lbl_bsettings: .asciz "\\x13 SETTINGS"',
             'brain_lbl_defaults: .asciz "DEFAULTS    \\x14"',
             'brain_lbl_remixes: .asciz "REMIXES     \\x14"',
             'brain_lbl_tools: .asciz "TOOLS       \\x14"',
@@ -120,6 +181,12 @@ MODULE = Module(
     proof=Proof.PORT, proof_note="`verify_brain` under the port (6 Oct 2026); not on hardware",
     doc="The settings store on the unit: card-wide knob defaults read from BRAIN/card.work at each project load (docs/proposals/BRAIN.md).",
     # MODEDEF_TABLE: MODE DEFAULTS' view table, 0 without that module.
+    # BRAIN's own settings (SETTINGS > BRAIN), read by brain.c
+    store=Store("octabam.brain"),
+    settings=(Setting(1, "MIDI LOG", Binary(), default=1,
+                      doc="the debug log records MIDI messages (TOOLS > WRITE DEBUG LOG); off, the MIDI thread's handler call returns at once after the handler"),
+              Setting(2, "DEFAULTS", Binary(), default=1,
+                      doc="the card's knob defaults (BRAIN/card.work) apply at each project load; off, every effect takes the image's defaults")),
     linked=(Linked("brain", SOURCE, cpu="5475", dram=True, include=fx_inc,
                    defsyms=(("MODEDEF_TABLE", 0),)),),
     detours=tuple(d for d in (

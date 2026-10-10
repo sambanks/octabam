@@ -764,11 +764,11 @@ Three kinds of state, three homes:
 The design is [`docs/proposals/BRAIN.md`](../proposals/BRAIN.md) (6 Oct
 2026): settings, defaults and templates in one registry, resolved through
 four layers (manifest, remix, card, project), kept in a `.work` / `.strd`
-pair at the card root and one in the project. Phase 0 is implemented (6 Oct
-2026): the declarations below, `tools/remix/brain.py`, the container
-`tools/remix/brainfile.py`; no module declares a setting yet, and the card and
-project layers wait for the core (phase 2). Its section 12 lists the phases. It starts from nordseele's
-OTX proposal
+pair at the card root and one in the project. The BRAIN module
+(`modules/brain`) reads the card layer of settings and shows them in
+PROJ, BRAIN, SETTINGS (10 Oct 2026; its own two settings are MIDI LOG and
+DEFAULTS, `modules/brain/README.md`). The project layer and the CS1 block
+are not built. It starts from nordseele's OTX proposal
 ([`OTX_PROJECT_PROPOSAL.md`](../proposals/OTX_PROJECT_PROPOSAL.md),
 [`OTX_MODULE_GUIDELINES.md`](../proposals/OTX_MODULE_GUIDELINES.md)), and
 its section 14 lists what is taken from OTX and what differs.
@@ -791,6 +791,25 @@ MODULE = Module(...,
                       scope=Scope.CARD, apply=Apply.NEXT_BOOT),),
 )
 ```
+
+A ColdFire module reads a setting at run time through a gas macro that
+`remix.brain.read_macro(remix, mods, store_id, name, macro)` returns; the
+manifest puts it in the unit's `include`:
+
+```python
+def settings_inc(remix, mods):
+    return brain.read_macro(remix, mods, "octabam.<module directory>", "IN", "get_in")
+```
+
+and the source writes `get_in %d0`. With BRAIN in the remix and the value
+neither pinned nor `Apply.BUILD`, that assembles to one absolute load from
+BRAIN's value table (`move.l brain_v_<store>_<key>,%d0`; the unit links
+against BRAIN's global); otherwise it assembles to `move.l #<value>,%d0`
+with the resolved value. The same source builds with and without BRAIN.
+`brain.live_table(remix, mods)` lists the settings the table holds: Binary,
+Option and Number settings, one long each. Blob and Trigger settings have
+no row yet, and `Apply.CALLBACK` has no callback field yet (it reads as
+`LIVE`).
 
 A setting declared `apply=Apply.BUILD` chooses code: the module's
 `variant(values)` returns the fields that differ (`linked`, `dsp`,

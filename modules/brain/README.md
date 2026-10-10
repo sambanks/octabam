@@ -14,6 +14,7 @@ PROJ (MAIN MENU), then BRAIN, the fifth category. Its pane:
 
 | row | does |
 |---|---|
+| SETTINGS ► | its sub-list: `◄ SETTINGS`, then a heading row per module and a value row per setting (below) |
 | DEFAULTS ► | its sub-list: `◄ DEFAULTS`, SAVE AS DEFAULT, CLEAR DEFAULT |
 | REMIXES ► | its sub-list: `◄ REMIXES`, then REMIX SWITCH's rows (`modules/remix-switch`, sanderlegit): each `.RMX` in `/BRAIN/REMIXES/`, sorted; after a switch a `FLASHED` separator and the image a power-cycle returns to |
 | TOOLS ► | its sub-list: `◄ TOOLS`, WRITE DEBUG LOG |
@@ -23,6 +24,7 @@ PROJ (MAIN MENU), then BRAIN, the fifth category. Its pane:
 | `◄ <NAME>` | back to the pane's top, the cursor on the row it came from |
 | SAVE AS DEFAULT | the FX1 or FX2 page in view (of the current audio track, in the current Part) becomes that effect's default on this card; a popup names the page |
 | CLEAR DEFAULT | that effect's default leaves `card.work`; the descriptor goes back to the image's |
+| a setting row | `NAME  VALUE` (a Binary reads ON or OFF); YES steps the value (a Binary toggles; an Option steps by one and a Number by its step, each wrapping to its minimum past the maximum) and writes it to `card.work` through an engine-task job |
 | an image | [YES]: `SWITCH TO <NAME>?`; YES boots it without writing the flash (REMIX SWITCH) |
 | WRITE DEBUG LOG | the last 256 MIDI messages (clock and active sensing left out), each with the sync flags, the playing pattern and the next pattern after its handler ran, written to `/BRAIN/debug.txt` by the engine task |
 
@@ -56,6 +58,43 @@ python3 tools/hw/ot_brain.py default /Volumes/CARD/BRAIN/card.work bottleservice
 python3 tools/hw/ot_brain.py default /Volumes/CARD/BRAIN/card.work bottleservice DELAY --clear
 python3 tools/hw/ot_brain.py dump /Volumes/CARD/BRAIN/card.work
 ```
+
+## Settings
+
+`SETTINGS` lists the settings of the modules in the remix that declare a
+`Store` (BRAIN.md section 5). BRAIN's own store is `octabam.brain`:
+
+| key | name | kind | default | does |
+|---|---|---|---|---|
+| 1 | MIDI LOG | Binary | on | the debug log (TOOLS, WRITE DEBUG LOG) records MIDI messages; off, the MIDI thread's handler call returns at once after the handler |
+| 2 | DEFAULTS | Binary | on | the card's knob defaults apply at each project load; off, every effect takes the image's defaults |
+
+At each load the core reads kind-1 records from `BRAIN/card.work` into
+`brain_values[]` (one long per setting): a value outside its bounds or of
+another type is skipped, a second record for a store is skipped, and a
+setting with no record keeps its manifest default. A row's YES writes one
+record per store to `card.work`, keeping the keys it does not know, in an
+engine-task job (`brain_post_settings`, `job_args` `0x40000`). A name plus
+its widest label must fit the 15-character pane (`PANE_W`); the build
+refuses a setting that does not.
+
+A module declares a setting and reads it:
+
+```python
+store=Store("octabam.<name>"),
+settings=(Setting(1, "SHOW", Binary(), default=1),),
+```
+
+```python
+from remix import brain
+inc = brain.read_macro(remix, mods, "octabam.<name>", "SHOW", "get_show")  # text for the unit's include
+```
+
+The source then writes `get_show %d0`. With BRAIN in the remix and the
+value neither pinned nor `Apply.BUILD`, the macro is one absolute load of
+`brain_v_octabam_<name>_1`; otherwise it is `move.l #<value>,%d0`
+(`docs/contributing/MODULES.md`, "Settings on the card"). Not built:
+Blob and Trigger rows; `Apply.CALLBACK` has no callback field.
 
 ## SAVE AS DEFAULT
 
@@ -116,6 +155,9 @@ with T2's FX2 chooser select (SEND -> stock DELAY) and FX1 select
 | the panel: T1, FX2 page, PROJ, DOWN x4, RIGHT, YES on SAVE AS DEFAULT; then OK, DOWN, YES on CLEAR DEFAULT | `card.work` holds T1's FX2 page; after CLEAR no BusDelay record | |
 | SAVE AS DEFAULT on a card with no `BRAIN` folder | the folder and `card.work` with one record | |
 | out-of-count bytes in every Part of every bank, no file | read count - 1 after the load: stock's Part validator `0x40002318`, so the brain has no clamp | |
+| `card.work` with MIDI LOG and DEFAULTS off and an unknown key 99 | values (0,0); no default record applied; the unknown key kept on write | card.work |
+| a settings record with an out-of-bounds Binary and a wrong type | values stay (1,1); 2 skipped | card.work |
+| the panel: PROJ, DOWN x4, RIGHT, YES on SETTINGS, YES on MIDI LOG | `card.work` holds one settings record {1:0, 2:1, 99:1}; screens rendered under `ot_emu --lcd` | card.work |
 | a GRAIN record for BusDelay (FDBK, SCTR, GLEN listed by the view; DEL not), then MODE CLEAN -> GRAIN through the FX2 page-2 editor on T1 | the view with the card's three values; DEL skipped and untouched | card.work |
 
 Both hooks run during one LOAD PROJECT under the port (2 calls a load). A power-up with no LOAD PROJECT post
@@ -141,7 +183,7 @@ Not yet.
 - Timing of the card read on the unit (one file, at most 16 KB).
 
 - A shortcut on the FX page itself (a free key combination); the
-  SETTINGS list, the project pair, the project record, the CS1 block
+  project pair, the project record, the CS1 block
   (BRAIN.md section 12).
 - `--step call` runs as main under the port, where file I/O does not
   return (an unimplemented opcode at `0x4003b108`); the gate posts the job

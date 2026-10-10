@@ -548,12 +548,33 @@ SAVE AS DEFAULT is built as an engine-task job (`brain_post_save`; type
 SAVE PROJECT copies `card.work` to `card.strd` at the project store's
 call sites. The BRAIN MAIN MENU category (a fifth root row: heading,
 SAVE AS DEFAULT, CLEAR DEFAULT) runs them on the FX page in view,
-measured under the port through the panel keys. The SETTINGS list, the
-project pair, the project record and the CS1 block are not built yet. The project pair's write and copy
+measured under the port through the panel keys. The project pair, the project record and the CS1 block are not built yet
+(the SETTINGS list: see the next paragraph). The project pair's write and copy
 points: every stock call site of the bank writer `0x400917c8` (5), the
 project store `0x4008ee74` (3) and the project reload `0x4008f180` (1) is
 unclaimed by any module (6 Oct 2026); KITS hooks the routines' entries, so
 the brain takes the call sites, as PLOCKS P2 does for the loads.
+
+Phase 2, SETTINGS (10 Oct 2026): `tools/remix/brain.py` `live_table` and
+`read_macro` give each module a run-time value table (one long per Binary,
+Option or Number setting that is not pinned and not `Apply.BUILD`, a global
+`brain_v_<store>_<key>` in the BRAIN unit; a module without BRAIN reads the
+same macro as a constant). `modules/brain/manifest.py` generates
+`brain_set[]` (40 bytes a setting) and `brain_values[]`. At each load
+`brain.c` reads kind-1 records from `card.work`: a value out of its bounds
+or of another type is skipped and counted, a second record for a store is
+skipped (section 7.7), unknown keys are kept on write. PROJ, BRAIN, SETTINGS
+is the first top row; YES on a setting steps its value and writes one
+record per store to `card.work` through an engine-task job (`job_args`
+`0x40000`). BRAIN's own settings: MIDI LOG (gates the MIDI thread's log
+detour) and DEFAULTS (gates applying default records at a load). ✅ Under
+the port (`verify_brain`, remix `brain`): a `card.work` with both off and an
+unknown key 99 gives values (0,0) and applies no default record; an
+out-of-bounds Binary and a wrong-type record leave (1,1) with 2 skipped; no
+file gives (1,1); the panel (PROJ, DOWN x4, RIGHT, YES, YES) writes
+{1:0, 2:1, 99:1}. Not built: `Apply.CALLBACK` has no callback field (it
+acts as `LIVE`); Blob and Trigger settings have no row; the list has a heading row
+per module, BRAIN's own included. On the unit: not yet.
 
 MODE DEFAULTS and RIG HOSTS keep working without the brain. KITS keeps
 AUTOSAVE and KEEP LEVELS in its own header.

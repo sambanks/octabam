@@ -109,6 +109,40 @@ def resolve(remix, mods) -> list[tuple[Resolved, object]]:
 _ABSENT = object()
 
 
+# ---- the run-time value table (BRAIN.md section 5) ------------------------
+
+def value_symbol(store_id: str, key: int) -> str:
+    """The BRAIN unit's global for one setting's run-time value (a long)."""
+    return "brain_v_" + re.sub(r"[^a-z0-9]", "_", store_id) + f"_{key}"
+
+
+def live_table(remix, mods) -> list[tuple[Resolved, object, object]]:
+    """(Resolved, Setting, module) for each setting the unit holds at run
+    time: the remix carries BRAIN, the value is not pinned, it is not
+    Apply.BUILD, and it is a Binary, an Option or a Number (a long in the
+    value table; Blobs and Triggers have no row yet). Remix order, then key
+    order: the SETTINGS list's order."""
+    if not has_brain(remix):
+        return []
+    return [(r, s, mods[r.module]) for r, s in resolve(remix, mods)
+            if r.runtime and isinstance(s.kind, (Binary, Option, Number))]
+
+
+def read_macro(remix, mods, store_id: str, name: str, macro: str) -> str:
+    """A gas macro `<macro> reg` a ColdFire unit reads one of its settings
+    with: one absolute load from BRAIN's value table when the value is held
+    at run time, else the resolved value as a constant (no BRAIN, a pin, or
+    Apply.BUILD). The source is the same either way (BRAIN.md section 5)."""
+    for r, s in resolve(remix, mods):
+        if r.store_id == store_id and r.name == name:
+            if r.runtime and isinstance(s.kind, (Binary, Option, Number)):
+                body = f"        move.l  {value_symbol(store_id, r.key)},\\reg"
+            else:
+                body = f"        move.l  #{int(r.value)},\\reg"
+            return f"        .macro  {macro} reg\n{body}\n        .endm\n"
+    raise KeyError(f"{store_id}: no setting {name!r} in this remix")
+
+
 def build_values(remix, mods) -> dict[str, dict[str, object]]:
     """{module key: {setting name: value}} of every Apply.BUILD setting of
     the selected modules; an Option as its label."""

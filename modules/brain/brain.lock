@@ -1,0 +1,21 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "name": "MIDI LOG",
+   "type": "binary"
+  },
+  "2": {
+   "name": "DEFAULTS",
+   "type": "binary"
+  }
+ },
+ "store": {
+  "id": "octabam.brain",
+  "major": 1
+ }
+}

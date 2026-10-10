@@ -327,6 +327,109 @@ static void apply(u32 n)
 	}
 }
 
+/* ---- settings: the run-time value table (BRAIN.md sections 5, 7.7) -------- */
+
+/* One per setting the unit holds (manifest.py settings_inc), in the
+ * SETTINGS list's order. brain_values[i] is its value, a long other units
+ * read by symbol (remix.brain.value_symbol). */
+struct set_ent {
+	const char *id;
+	u8 id_len, type, apply, nlabels;	/* type 1 Binary, 2 Option, 3 Number */
+	u16 key, step;
+	int min, max, def;
+	const char *const *labels;
+	const char *name, *group;
+};
+extern const struct set_ent brain_set[];
+extern const u32 brain_set_n;
+extern int brain_values[];
+
+#define K_SETTINGS 1
+#define MAX_SET    48
+
+enum { C_SET_RECORDS = 0, C_SET_VALUES, C_SET_SKIP, C_SET_DUP, C_SET_N };
+/* C_SET_SKIP: a value whose type, bounds or step does not fit (the layer
+ * below stays); C_SET_DUP: two settings records for one store (neither) */
+u32 brain_set_counts[C_SET_N] DATA;
+
+static int value_ok(const struct set_ent *e, int v)
+{
+	return v >= e->min && v <= e->max && (e->step <= 1 || (v - e->min) % e->step == 0);
+}
+
+/* One settings record's values into the table: the known keys of its
+ * store whose type and bounds fit. */
+static void apply_settings(const u8 *rec)
+{
+	u32 idlen = rec[1], plen = be32(rec + 8);
+	const u8 *pay = rec + REC_HDR + align4(idlen);
+	if (be16(rec + 2) != 1)				/* schema major 1 */
+		return;
+	brain_set_counts[C_SET_RECORDS]++;
+	for (u32 at = 0; at + 4 <= plen;) {
+		u32 key = be16(pay + at), type = pay[at + 2], n = pay[at + 3], head = 4;
+		if (n == 255) {
+			if (at + 8 > plen)
+				break;
+			n = be32(pay + at + 4);
+			head = 8;
+		}
+		if (at + head + align4(n) > plen)
+			break;
+		const u8 *d = pay + at + head;
+		for (u32 i = 0; i < brain_set_n && i < MAX_SET; i++) {
+			const struct set_ent *e = &brain_set[i];
+			if (e->key != key || !same_id(rec + REC_HDR, idlen, e->id, e->id_len))
+				continue;
+			int v;
+			if (type != e->type || (type == 3 ? n != 2 : n != 1)) {
+				brain_set_counts[C_SET_SKIP]++;
+				continue;
+			}
+			v = type == 3 ? (int)(short)be16(d) : d[0];
+			if (!value_ok(e, v)) {
+				brain_set_counts[C_SET_SKIP]++;
+				continue;
+			}
+			brain_values[i] = v;
+			brain_set_counts[C_SET_VALUES]++;
+		}
+		at += head + align4(n);
+	}
+}
+
+/* Every settings record of the file in buf: a store with two is skipped
+ * (rule 5); the table first goes back to the layers below. */
+static void load_settings(int have)
+{
+	for (u32 i = 0; i < brain_set_n && i < MAX_SET; i++)
+		brain_values[i] = brain_set[i].def;
+	for (int k = 0; k < C_SET_N; k++)
+		brain_set_counts[k] = 0;
+	if (!have)
+		return;
+	u32 count = be16(buf + 10);
+	for (u32 r = 0, at = HDR; r < count; r++, at += be32(buf + at + 16)) {
+		const u8 *p = buf + at;
+		if (p[0] != K_SETTINGS || crc32(p + REC_HDR + align4(p[1]), be32(p + 8)) != be32(p + 12))
+			continue;
+		int dup = 0;
+		for (u32 r2 = 0, at2 = HDR; r2 < count; r2++, at2 += be32(buf + at2 + 16)) {
+			const u8 *q = buf + at2;
+			if (q != p && q[0] == K_SETTINGS && same_id(q + REC_HDR, q[1], (const char *)p + REC_HDR, p[1]))
+				dup = 1;
+		}
+		if (dup)
+			brain_set_counts[C_SET_DUP]++;
+		else
+			apply_settings(p);
+	}
+}
+
+/* BRAIN's own settings (manifest.py: store octabam.brain) */
+extern int brain_v_octabam_brain_1;		/* MIDI LOG: 1 = the debug log records */
+extern int brain_v_octabam_brain_2;		/* CARD DEFAULTS: 1 = card defaults apply */
+
 void brain_load(void)
 {
 	/* the counters after C_LOADS describe the last load */
@@ -339,17 +442,22 @@ void brain_load(void)
 	u32 n = slurp("/BRAIN/card.work");
 	if (n && valid(n)) {
 		brain_counts[C_STATE] = 1;
-		apply(n);
+		load_settings(1);
+		if (brain_v_octabam_brain_2)
+			apply(n);
 		return;
 	}
 	int work_present = n != 0;
 	n = slurp("/BRAIN/card.strd");
 	if (n && valid(n)) {
 		brain_counts[C_STATE] = 2;
-		apply(n);
+		load_settings(1);
+		if (brain_v_octabam_brain_2)
+			apply(n);
 		return;
 	}
 	brain_counts[C_STATE] = (work_present || n) ? 3 : 0;
+	load_settings(0);
 }
 
 /* ---- writing the card store ------------------------------------------------ */
@@ -405,6 +513,127 @@ static int current_store(void)
  * its bytes. The descriptor takes the values at once. 0, or an error code
  * (also in brain_save_counts[S_SAVE_ERR]). */
 static int write_default(u32 t, u32 fx, int clear);
+
+/* out[HDR..at) holds `kept` records: the header, then card.work. */
+static int write_store(u32 at, u32 kept)
+{
+	for (u32 k = 0; k < HDR; k++)
+		out[k] = 0;
+	put32(out, 0x4252414eu);			/* "BRAN": a brain file */
+	put16(out + 4, HDR);
+	out[6] = 1;					/* container 1.0, card .work */
+	put16(out + 10, kept);
+	put32(out + 12, at);
+	for (u32 k = 0; k < 8 && "BRAIN"[k]; k++)
+		out[20 + k] = "BRAIN"[k];
+	put32(out + 16, crc32(out + 20, at - 20));
+	return write_file("/BRAIN/card.work", out, at);
+}
+
+/* The settings records in card.work: one per store the table names, its
+ * values the table's; the values with keys this image does not know are
+ * kept from the record it replaces (rule 2), and every other record keeps
+ * its bytes. 0, or an error code as write_default's. */
+static int write_settings(void)
+{
+	int n = current_store();
+	if (n < 0)
+		return 2;
+	u32 at = HDR, kept = 0;
+	/* the kept records: everything but the settings of the stores we write */
+	for (u32 r = 0, i = HDR; n && r < be16(buf + 10); r++, i += be32(buf + i + 16)) {
+		const u8 *p = buf + i;
+		u32 size = be32(p + 16), ours = 0;
+		if (p[0] == K_SETTINGS)
+			for (u32 e = 0; e < brain_set_n && e < MAX_SET; e++)
+				ours |= same_id(p + REC_HDR, p[1], brain_set[e].id, brain_set[e].id_len);
+		if (ours)
+			continue;
+		if (at + size > BUF_LEN)
+			return 3;
+		for (u32 k = 0; k < size; k++)
+			out[at + k] = p[k];
+		at += size;
+		kept++;
+	}
+	/* one record per store, in table order */
+	for (u32 e = 0; e < brain_set_n && e < MAX_SET; e++) {
+		const struct set_ent *s = &brain_set[e];
+		int first = 1;
+		for (u32 f = 0; f < e; f++)
+			if (same_id((const u8 *)brain_set[f].id, brain_set[f].id_len, s->id, s->id_len))
+				first = 0;
+		if (!first)
+			continue;
+		u8 *r = out + at;
+		u32 idsz = align4(s->id_len);
+		if (at + REC_HDR + idsz > BUF_LEN)
+			return 3;
+		for (u32 k = 0; k < REC_HDR + idsz; k++)
+			r[k] = 0;
+		r[0] = K_SETTINGS;
+		r[1] = s->id_len;
+		put16(r + 2, 1);			/* schema major 1, minor 0 */
+		for (u32 k = 0; k < s->id_len; k++)
+			r[REC_HDR + k] = s->id[k];
+		u8 *v = r + REC_HDR + idsz, *v0 = v;
+		for (u32 f = e; f < brain_set_n && f < MAX_SET; f++) {
+			const struct set_ent *g = &brain_set[f];
+			if (!same_id((const u8 *)g->id, g->id_len, s->id, s->id_len))
+				continue;
+			if (v + 8 > out + BUF_LEN)
+				return 3;
+			put16(v, g->key);
+			v[2] = g->type;
+			v[3] = g->type == 3 ? 2 : 1;
+			v[4] = v[5] = v[6] = v[7] = 0;
+			if (g->type == 3)
+				put16(v + 4, (u32)brain_values[f] & 0xffff);
+			else
+				v[4] = (u8)brain_values[f];
+			v += 8;
+		}
+		/* unknown keys from the record this one replaces */
+		for (u32 rr = 0, i = HDR; n && rr < be16(buf + 10); rr++, i += be32(buf + i + 16)) {
+			const u8 *p = buf + i;
+			if (p[0] != K_SETTINGS || !same_id(p + REC_HDR, p[1], s->id, s->id_len))
+				continue;
+			const u8 *pay = p + REC_HDR + align4(p[1]);
+			u32 plen = be32(p + 8);
+			for (u32 a = 0; a + 4 <= plen;) {
+				u32 key = be16(pay + a), len = pay[a + 3], head = 4, known = 0;
+				if (len == 255) {
+					if (a + 8 > plen)
+						break;
+					len = be32(pay + a + 4);
+					head = 8;
+				}
+				u32 sz = head + align4(len);
+				if (a + sz > plen)
+					break;
+				for (u32 f = 0; f < brain_set_n && f < MAX_SET; f++)
+					known |= brain_set[f].key == key
+						&& same_id((const u8 *)brain_set[f].id, brain_set[f].id_len, s->id, s->id_len);
+				if (!known) {
+					if (v + sz > out + BUF_LEN)
+						return 3;
+					for (u32 k = 0; k < sz; k++)
+						v[k] = pay[a + k];
+					v += sz;
+				}
+				a += sz;
+			}
+			break;
+		}
+		u32 plen = (u32)(v - v0), size = REC_HDR + idsz + plen;
+		put32(r + 8, plen);
+		put32(r + 12, crc32(v0, plen));
+		put32(r + 16, size);
+		at += size;
+		kept++;
+	}
+	return write_store(at, kept) < 0 ? 4 : 0;
+}
 
 int brain_save_default(u32 t, u32 fx)
 {
@@ -498,17 +727,7 @@ static int write_default(u32 t, u32 fx, int clear)
 	at += size;
 	kept++;
 header:
-	for (u32 k = 0; k < HDR; k++)
-		out[k] = 0;
-	put32(out, 0x4252414eu);			/* "BRAN": a brain file */
-	put16(out + 4, HDR);
-	out[6] = 1;					/* container 1.0, card .work */
-	put16(out + 10, kept);
-	put32(out + 12, at);
-	for (u32 k = 0; k < 8 && "BRAIN"[k]; k++)
-		out[20 + k] = "BRAIN"[k];
-	put32(out + 16, crc32(out + 20, at - 20));
-	if (write_file("/BRAIN/card.work", out, at) < 0) {
+	if (write_store(at, kept) < 0) {
 		err = 4;
 		goto done;
 	}
@@ -586,9 +805,18 @@ void brain_post_clear(u32 t, u32 fx)
 /* The engine task, at a JOB_SAVE message (hooks.s brain_on_job). */
 static void write_debug(void);
 
+void brain_post_settings(void)
+{
+	job_args = 0x40000;
+	((u8 *)job_msg)[0] = JOB_SAVE;
+	Q_SEND(ENGINE_Q, job_msg);
+}
+
 void brain_job(void)
 {
-	if (job_args & 0x20000)
+	if (job_args & 0x40000)
+		brain_save_counts[S_SAVE_ERR] = (u32)write_settings();
+	else if (job_args & 0x20000)
 		write_debug();
 	else if (job_args & 0x10000)
 		brain_card_store();
@@ -678,6 +906,8 @@ static u32 dbg_seq DATA;			/* messages logged since the boot */
 
 void brain_midi_log(const u8 *m)
 {
+	if (!brain_v_octabam_brain_1)			/* SETTINGS > MIDI LOG off */
+		return;
 	u8 st = m[0];
 	if (st == 0xf8 || st == 0xfe)
 		return;
@@ -764,7 +994,9 @@ struct mrow { const char *label; void *window; void (*action)(u32); u32 getter; 
 struct mlist { u32 count, scroll, cursor, sel, visible, count2; struct mrow *rows; };
 
 extern struct mlist brain_list;
-extern struct mrow brain_top_rows[], brain_def_rows[], brain_tool_rows[], brain_rmx_rows[];
+extern struct mrow brain_top_rows[], brain_def_rows[], brain_tool_rows[], brain_rmx_rows[],
+	brain_set_rows[];
+void brain_post_settings(void);
 extern u32 brain_rmx_n;			/* REMIXES' rows, the back row included (switch.s) */
 
 static u32 brain_from DATA;		/* the top row the open sub-list came from */
@@ -778,34 +1010,151 @@ static void show(struct mrow *rows, u32 n, u32 at)
 	brain_list.sel = at;
 }
 
+#define TOP_N   4				/* SETTINGS, DEFAULTS, REMIXES, TOOLS */
+#define PANE_W  15				/* characters the list pane shows */
+#define NOOP    ((void (*)(u32))0x400648f8)	/* stock's shared row action, `rts` */
+
 void brain_menu_top(void)
 {
-	show(brain_top_rows, 3, 0);
+	show(brain_top_rows, TOP_N, 0);
 }
 
 void brain_menu_back(u32 unused)
 {
 	(void)unused;
-	show(brain_top_rows, 3, brain_from);
+	show(brain_top_rows, TOP_N, brain_from);
 }
 
 void brain_open_defaults(u32 unused)
 {
 	(void)unused;
-	brain_from = 0;
+	brain_from = 1;
 	show(brain_def_rows, 3, 1);
 }
 
 void brain_open_remixes(u32 unused)
 {
 	(void)unused;
-	brain_from = 1;
+	brain_from = 2;
 	show(brain_rmx_rows, brain_rmx_n, brain_rmx_n > 1 ? 1 : 0);
 }
 
 void brain_open_tools(u32 unused)
 {
 	(void)unused;
-	brain_from = 2;
+	brain_from = 3;
 	show(brain_tool_rows, 2, 1);
+}
+
+/* SETTINGS: the back row, then per module a heading (its key, no action)
+ * and its settings, each label "NAME" with the value at the pane's right
+ * edge. YES steps the value (Binary and Option wrap; a Number by its step,
+ * from max back to min) and has the engine task write card.work. */
+
+static char set_lbl[MAX_SET][PANE_W + 1];
+static u8 set_row_ent[MAX_SET * 2 + 2];		/* row -> entry, 0xff: not a setting */
+static char set_none[] = "NO SETTINGS";
+
+static void put_row(struct mrow *r, const char *label, void (*action)(u32))
+{
+	r->label = label;
+	r->window = 0;
+	r->action = action;
+	r->getter = 0;
+	r->child = 0;
+	r->id = 0;
+}
+
+static u32 slen(const char *s)
+{
+	u32 n = 0;
+	while (s[n])
+		n++;
+	return n;
+}
+
+static void set_label(u32 i)
+{
+	const struct set_ent *e = &brain_set[i];
+	char val[12];
+	const char *vs = val;
+	int v = brain_values[i];
+	if (e->type == 1)
+		vs = v ? "ON" : "OFF";
+	else if (e->type == 2)
+		vs = (u32)v < e->nlabels ? e->labels[v] : "?";
+	else {
+		u32 k = 0, a = (u32)(v < 0 ? -v : v);
+		char tmp[8];
+		do
+			tmp[k++] = (char)('0' + a % 10);
+		while ((a /= 10) && k < 7);
+		u32 o = 0;
+		if (v < 0)
+			val[o++] = '-';
+		while (k)
+			val[o++] = tmp[--k];
+		val[o] = 0;
+	}
+	u32 vl = slen(vs), nl = slen(e->name);
+	if (vl > PANE_W - 2)
+		vl = PANE_W - 2;
+	if (nl > PANE_W - 1 - vl)
+		nl = PANE_W - 1 - vl;
+	char *o = set_lbl[i];
+	u32 k = 0;
+	for (; k < nl; k++)
+		o[k] = e->name[k];
+	for (; k < PANE_W - vl; k++)
+		o[k] = ' ';
+	for (u32 j = 0; j < vl; j++)
+		o[k++] = vs[j];
+	o[k] = 0;
+}
+
+void brain_set_row(u32 unused)
+{
+	(void)unused;
+	u32 r = brain_list.sel;
+	if (r >= sizeof set_row_ent || set_row_ent[r] == 0xff)
+		return;
+	u32 i = set_row_ent[r];
+	const struct set_ent *e = &brain_set[i];
+	int v = brain_values[i] + (e->type == 3 ? e->step : 1);
+	if (v > e->max)
+		v = e->min;
+	brain_values[i] = v;
+	set_label(i);
+	brain_post_settings();
+}
+
+void brain_open_settings(u32 unused)
+{
+	(void)unused;
+	struct mrow *row = brain_set_rows + 1;	/* row 0: the back row (manifest) */
+	u32 n = 1, first = 0;
+	const char *group = 0;
+	for (u32 i = 0; i < sizeof set_row_ent; i++)
+		set_row_ent[i] = 0xff;
+	for (u32 i = 0; i < brain_set_n && i < MAX_SET; i++) {
+		const struct set_ent *e = &brain_set[i];
+		if (e->group != group) {
+			group = e->group;
+			put_row(row++, group, 0);
+			n++;
+		}
+		set_label(i);
+		put_row(row++, set_lbl[i], brain_set_row);
+		set_row_ent[n] = (u8)i;
+		if (!first)
+			first = n;
+		n++;
+	}
+	if (n == 1) {
+		put_row(row, set_none, NOOP);
+		n = 2;
+		first = 1;
+	}
+	brain_from = 0;
+	show(brain_set_rows, n, first);
 }

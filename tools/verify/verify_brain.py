@@ -151,11 +151,26 @@ def main():
     dup.records.append(dup.records[0])
     dup = dup.encode()
     damaged = work[:-3] + b"xyz"
+    # settings (BRAIN's own store): MIDI LOG and DEFAULTS off, a key this
+    # image does not know; a second file with a value out of bounds (2 for
+    # a Binary) and one of the wrong type (an Option)
+    V = brainfile.Value
+    sett = brainfile.parse(work)
+    sett.records.append(brainfile.Record(brainfile.SETTINGS, "octabam.brain",
+        payload=V(1, brainfile.BINARY, b"\x00").encode() + V(2, brainfile.BINARY, b"\x00").encode()
+        + V(99, brainfile.BINARY, b"\x01").encode()))
+    sett = sett.encode()
+    sbad = brainfile.parse(work)
+    sbad.records.append(brainfile.Record(brainfile.SETTINGS, "octabam.brain",
+        payload=V(1, brainfile.BINARY, b"\x02").encode() + V(2, brainfile.OPTION, b"\x00").encode()))
+    sbad = sbad.encode()
 
     cases = {
         "none": {}, "work": {"card.work": work}, "recover": {"card.work": damaged, "card.strd": strd},
         "damaged": {"card.work": damaged}, "layout": {"card.work": bad_layout}, "duplicate": {"card.work": dup},
+        "settings": {"card.work": sett}, "settings_bad": {"card.work": sbad},
     }
+    values_at, set_counts_at = symbol("brain_values"), symbol("brain_set_counts")
     # FX2 LOCK's poke undone in RAM, so the FX2 chooser's YES selects
     unlock = (["--poke", ";".join(f"{0x400bc374 + i:#x}={b:#x}" for i, b in enumerate(bytes.fromhex("40052474")))]
               if "FX2 LOCK" in remix.modules else [])
@@ -190,6 +205,7 @@ def main():
             sys.exit(f"verify_brain: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
         lanes = {}
         for page in ("fx2", "fx1"):
+            vdump, scdump = OUT / f"{name}_{page}_values.bin", OUT / f"{name}_{page}_setcounts.bin"
             sp, dump, cdump, log, c = (OUT / f"{page}.script", OUT / f"{name}_{page}.bin",
                                        OUT / f"{name}_{page}_counts.bin", OUT / f"{name}_{page}.txt",
                                        OUT / f"{name}_{page}_run.img")
@@ -198,6 +214,8 @@ def main():
             cmd = [EMU, "--image", image, "--card", c, "--set", a.set_name, "--project", a.name,
                    "--load-ms", "90000", "--mkii", "--live-script", sp, *unlock,
                    "--step", f"-:dump:{counts_at:#x},{4 * len(COUNTERS)}={cdump}",
+                   "--step", f"-:dump:{values_at:#x},8={vdump}",
+                   "--step", f"-:dump:{set_counts_at:#x},16={scdump}",
                    "--mem-dump", f"{LANES:#x},{IDS + 16 - LANES}={dump}"]
             with open(log, "w") as fh:
                 fh.write(" ".join(map(str, cmd)) + "\n"); fh.flush()
@@ -207,6 +225,8 @@ def main():
             m = dump.read_bytes()
             lanes[page] = (m[IDS - LANES:], m[72:144])
             counts = dict(zip(COUNTERS, struct.unpack(f">{len(COUNTERS)}I", cdump.read_bytes())))
+            svals = struct.unpack(">2i", vdump.read_bytes())
+            scounts = dict(zip(("records", "values", "skip", "dup"), struct.unpack(">4I", scdump.read_bytes())))
         print(f"  {name}: counters {counts}")
         state = STATES.get(counts["state"], counts["state"])
 
@@ -228,16 +248,17 @@ def main():
             for knob, v in values.items():
                 out[[p.name for p in m.params].index(knob.encode())] = v
             return bytes(out)
-        if name in ("none", "damaged", "layout", "duplicate"):
+        if name in ("none", "damaged", "layout", "duplicate", "settings"):
             exp2, exp1 = d2, d1
-        elif name == "work":
+        elif name in ("work", "settings_bad"):
             exp2, exp1 = expect(d2, delay, want["DELAY"]), expect(d1, character, want["CHARACTER"])
         else:
             exp2, exp1 = expect(d2, delay, {"TIME": 33}), d1
         check(f"{name}: DELAY's page  {got2.hex(' ')}  (expected {exp2.hex(' ')})", got2 == exp2)
         check(f"{name}: CHARACTER's page  {got1.hex(' ')}  (expected {exp1.hex(' ')})", got1 == exp1)
         want_state = {"none": "fresh", "work": "card.work", "recover": "recovered", "damaged": "damaged",
-                      "layout": "card.work", "duplicate": "card.work"}[name]
+                      "layout": "card.work", "duplicate": "card.work", "settings": "card.work",
+                      "settings_bad": "card.work"}[name]
         check(f"{name}: state {state}", state == want_state)
         if name == "work":
             check(f"{name}: the value outside its count skipped ({counts['skip_value']})", counts["skip_value"] == 1)
@@ -245,6 +266,15 @@ def main():
             check(f"{name}: the record with another layout skipped ({counts['skip_layout']})", counts["skip_layout"] == 1)
         if name == "duplicate":
             check(f"{name}: both copies refused ({counts['skip_dup']})", counts["skip_dup"] == 2)
+        if name == "settings":
+            check(f"settings: MIDI LOG and DEFAULTS read off from card.work, so the default records "
+                  f"are not applied (values {svals}, {scounts})",
+                  svals == (0, 0) and scounts["values"] == 2 and counts["applied"] == 0)
+        if name == "settings_bad":
+            check(f"settings: a value out of bounds and one of the wrong type take the layer below "
+                  f"(values {svals}, {scounts})", svals == (1, 1) and scounts["skip"] == 2)
+        if name == "none":
+            check(f"settings: no card store, the defaults of layers 1 and 2 (values {svals})", svals == (1, 1))
     # ---- stock clamps: why the brain has no clamp of its own ----------------
     # The Part validator 0x40002318 rewrites every FX page byte outside its
     # descriptor's [min, min + count - 1] to the nearer end during the load
@@ -388,7 +418,7 @@ def main():
         lines.append(f"{tt} quit")
         return "\n".join(lines) + "\n"
     nav = [("no", 400), ("t1", 600), ("fx2", 1500), ("proj", 1200)] + [("down", 400)] * 4 + [("right", 800)]
-    nav += [("yes", 800)]                    # DEFAULTS: its sub-list, the cursor on SAVE AS DEFAULT
+    nav += [("down", 400), ("yes", 800)]     # DEFAULTS (SETTINGS first): its sub-list, the cursor on SAVE AS DEFAULT
     runs = {"menu_save": nav + [("yes", 2500)],
             "menu_clear": nav + [("yes", 2500), ("yes", 800), ("down", 400), ("yes", 2500)]}
     for name, keys in runs.items():
@@ -418,6 +448,31 @@ def main():
         else:
             check(f"menu: CLEAR DEFAULT leaves no BusDelay record ({sorted(recs)})",
                   mw is not None and brain.fx_store_id(bd) not in recs)
+
+    # ---- settings from the panel: SETTINGS > MIDI LOG, YES ------------------
+    seed = brainfile.File(brainfile.CARD_WORK, [brainfile.Record(brainfile.SETTINGS, "octabam.brain",
+        payload=brainfile.Value(99, brainfile.BINARY, b"\x01").encode())]).encode()
+    (OUT / "mset_seed.work").write_bytes(seed)
+    mc, mafter, mlog = OUT / "menu_settings.img", OUT / "menu_settings_after.img", OUT / "menu_settings.txt"
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+                        "--tree", str(OUT / "tree_menu_settings"), "--out", str(mc),
+                        "--root-file", f"{OUT / 'mset_seed.work'}:BRAIN/card.work"], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_brain: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    keys = [("no", 400), ("proj", 1200)] + [("down", 400)] * 4 + [("right", 800), ("yes", 800), ("yes", 3000)]
+    (OUT / "menu_settings.script").write_text(keys_script(keys))
+    cmd = [EMU, "--image", image, "--card", mc, "--set", a.set_name, "--project", a.name, "--load-ms", "90000",
+           "--mkii", "--live-script", OUT / "menu_settings.script", "--card-out", mafter]
+    with open(mlog, "w") as fh:
+        r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+    if r.returncode or "ended on quit" not in mlog.read_text():
+        sys.exit(f"verify_brain: the menu_settings run did not finish -- {mlog}")
+    files = emu_card.extract_image(mafter.read_bytes())
+    mw = next((v for k, v in files.items() if k.upper().endswith("BRAIN/CARD.WORK")), None)
+    srec = [r for r in brainfile.parse(mw).records if r.kind == brainfile.SETTINGS] if mw else []
+    got = {v.key: v.data[0] for v in srec[0].values()} if len(srec) == 1 else {}
+    check(f"settings: YES on SETTINGS > MIDI LOG writes one settings record, MIDI LOG off, DEFAULTS on, "
+          f"the unknown key kept  {got}", got == {1: 0, 2: 1, 99: 1})
 
     # ---- debug log: the MIDI thread's messages to /BRAIN/debug.txt ----------
     log_at = symbol("brain_post_log")

@@ -293,5 +293,65 @@ class KnobDefaults(unittest.TestCase):
         self.assertEqual(brain.report(remix(self.m), {"FX": self.m}), [])
 
 
+class LiveTable(unittest.TestCase):
+    """The run-time value table and the read macro (BRAIN.md section 5)."""
+
+    def setUp(self):
+        self.usb = mod()
+        self.log = mod("log", settings=(Setting(2, "B", Binary(), apply=Apply.NEXT_BOOT),
+                                        Setting(1, "A", Number(0, 9), apply=Apply.NEXT_BOOT)),
+                       store_id="octabam.log")
+        self.core = core()
+        self.mods = {"USB": self.usb, "LOG": self.log, BRAIN_KEY: self.core}
+
+    def names(self, r):
+        return [(res.store_id, res.name) for res, _s, _m in brain.live_table(r, self.mods)]
+
+    def test_empty_without_brain(self):
+        self.assertEqual(brain.live_table(remix(self.usb, self.log), self.mods), [])
+
+    def test_skips_build_settings(self):
+        r = remix(self.core, self.usb)
+        self.assertEqual(self.names(r), [("octabam.usb", "IN")])
+
+    def test_skips_pinned(self):
+        r = remix(self.core, self.usb, settings={("octabam.usb", "IN"): Pin(1)})
+        self.assertEqual(self.names(r), [])
+
+    def test_order_is_remix_then_key(self):
+        r = remix(self.core, self.log, self.usb)
+        self.assertEqual(self.names(r), [("octabam.log", "A"), ("octabam.log", "B"),
+                                         ("octabam.usb", "IN")])
+        r = remix(self.core, self.usb, self.log)
+        self.assertEqual(self.names(r)[0], ("octabam.usb", "IN"))
+
+    def test_table_carries_module_and_setting(self):
+        res, s, m = brain.live_table(remix(self.core, self.usb), self.mods)[0]
+        self.assertIs(s, IN)
+        self.assertIs(m, self.usb)
+        self.assertEqual(res.key, 2)
+
+    def test_symbol(self):
+        self.assertEqual(brain.value_symbol("octabam.usb", 2), "brain_v_octabam_usb_2")
+
+    def test_read_macro_live(self):
+        out = brain.read_macro(remix(self.core, self.usb), self.mods, "octabam.usb", "IN", "get_in")
+        self.assertIn(".macro  get_in reg", out)
+        self.assertIn("move.l  brain_v_octabam_usb_2,\\reg", out)
+
+    def test_read_macro_absent_pinned_and_build(self):
+        cases = [((self.usb,), {}, "IN", 0),
+                 ((self.core, self.usb), {("octabam.usb", "IN"): Pin(3)}, "IN", 3),
+                 ((self.core, self.usb), {}, "OUT", 0)]
+        for mods, pins, name, want in cases:
+            out = brain.read_macro(remix(*mods, settings=pins), self.mods, "octabam.usb", name, "m")
+            self.assertIn(f"move.l  #{want},\\reg", out)
+            self.assertNotIn("brain_v_", out)
+
+    def test_read_macro_unknown(self):
+        with self.assertRaises(KeyError):
+            brain.read_macro(remix(self.core, self.usb), self.mods, "octabam.usb", "NOPE", "m")
+
+
 if __name__ == "__main__":
     unittest.main()

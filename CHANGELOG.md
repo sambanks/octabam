@@ -18,6 +18,7 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- BRAIN: SETTINGS list (PROJ, BRAIN, SETTINGS) with card-stored settings, a run-time value table and `remix.brain.read_macro` for modules; MIDI LOG and DEFAULTS are BRAIN's first two settings. Measured under the port only.
 - Analog BD: engine selection now lives only in the pool-style browser; the
   former SRC SETUP MODEL control and its encoder editing path are removed.
   Both source outputs are 12.04 dB louder than the 29 September revision,
