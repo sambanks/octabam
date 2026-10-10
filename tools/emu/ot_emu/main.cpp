@@ -2356,6 +2356,19 @@ int main(int _argc, char** _argv)
 				std::string line;
 				size_t n = 0;
 				bool early = false;
+				// MIDI OUT with the frame each byte was first seen at (frames since the
+				// script start), checked at every event of the run: --midi-out FILE.frames
+				std::vector<std::pair<uint64_t, size_t>> txMarks;
+				size_t txSeen = rtos.serialTx0().size();
+				const auto txMark = [&]
+				{
+					const auto sz = rtos.serialTx0().size();
+					if(sz != txSeen)
+					{
+						txMarks.emplace_back(rtos.frameCount() - f0, txSeen);
+						txSeen = sz;
+					}
+				};
 				while(std::getline(in, line) && !live.quit)
 				{
 					std::istringstream is(line);
@@ -2365,7 +2378,7 @@ int main(int _argc, char** _argv)
 					std::string rest;
 					std::getline(is, rest);
 					const auto at = f0 + static_cast<uint64_t>(ms / 1000.0 * ot::g_sampleHz / ot::g_framePeriod);
-					if(rtos.runUntil(ms * 5 + 60000.0, [&] { return rtos.frameCount() >= at; }, ot::Rtos::Changes::OnEvent) != ot::Rtos::Stop::Gate)
+					if(rtos.runUntil(ms * 5 + 60000.0, [&] { txMark(); return rtos.frameCount() >= at; }, ot::Rtos::Changes::OnEvent) != ot::Rtos::Stop::Gate)
 					{
 						std::printf("live script: stopped before %.0f ms -- %s\n", ms, rtos.why().c_str());
 						early = true;
@@ -2384,6 +2397,20 @@ int main(int _argc, char** _argv)
 					std::ofstream f(midiOut, std::ios::binary);
 					f.write(reinterpret_cast<const char*>(tx.data()), static_cast<std::streamsize>(tx.size()));
 					std::printf("midi out   : %zu byte(s) on UART0 -> %s\n", tx.size(), midiOut.c_str());
+					txMark();
+					std::ofstream fl(midiOut + ".frames");
+					for(size_t i = 0; i < txMarks.size(); ++i)
+					{
+						const auto end = i + 1 < txMarks.size() ? txMarks[i + 1].second : tx.size();
+						fl << txMarks[i].first;
+						for(auto k = txMarks[i].second; k < end; ++k)
+						{
+							char h[4];
+							std::snprintf(h, sizeof h, " %02x", tx[k]);
+							fl << h;
+						}
+						fl << "\n";
+					}
 				}
 				if(pcRing && rtos.pcRingArmed())
 				{
