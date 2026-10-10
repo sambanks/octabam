@@ -23,7 +23,7 @@ REMIX = Remix(
              "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "CC MAP", "CC FEEDBACK", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
              "USB MIDI", "USB AUDIO OUT MASTER",
-             "KITS",
+             "STORE", "KITS",
              "SCENES P2", "PLOCKS P2",
              "DELAY",    # the stock DELAY keeps its chooser row: T8 hosts it (4 Oct 2026)
              "FX2 LOCK"),   # and the chooser cannot change any track's FX2 (4 Oct 2026, image A1)

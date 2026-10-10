@@ -124,8 +124,11 @@
         .include "remix.inc"            | PWSKIP_LO / PWSKIP_HI (manifest.kits_inc)
 
         .text
-        .globl  kits_sched, kits_chain, kits_loadall, kits_loadmask, kits_newproj
-        .globl  kits_bankw, kits_pstore, kits_preload, kits_saved, kits_clear
+        .globl  kits_sched, kits_chain
+        .globl  kits_st_loadall_pre, kits_st_loadall_post, kits_st_loadmask_pre
+        .globl  kits_st_loadmask_post, kits_st_newproj, kits_st_bankw_post
+        .globl  kits_st_pstore_pre, kits_st_pstore_post, kits_st_preload_post
+        .globl  kits_st_partsaved, kits_st_partclear
         .globl  kits_partkey, kits_savekey, kits_mkisave, kits_funcyes, kits_level
         .globl  kits_lcopy, kits_lpaste, kits_lclear, kits_pcopy, kits_psnap, kits_pstore_ptn
         .globl  kits_fright, kits_ptrig, kits_status
@@ -163,34 +166,25 @@ kits_chain:
         movel   %sp@(8),%d2
         jmp     0x4009c63a
 
-| 0x40090504: the project load's bank load. The library first; the
-| migration, the import and the current pattern's Kit after every bank is
-| in RAM.
-kits_loadall:
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
+| The STORE module (modules/store) owns the stock file and Part sites and
+| calls these at its events. A handler may clobber every register; d0, d1,
+| d2 carry the event's arguments (modules/store/store.s).
+
+| loadall: the project load's bank load (0x40090504). The library first;
+| the migration, the import and the current pattern's Kit after every bank
+| is in RAM.
+kits_st_loadall_pre:
         bsr.w   kinit
         clrl    READY
-        bsr.w   read_project
-        movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
-        movel   %sp@+,LA_RET
-        pea     la_after
-        lea     %sp@(-328),%sp          | displaced
-        moveml  %d2-%d7/%a2-%fp,%sp@
-        jmp     0x4009050c
-la_after:
-        movel   LA_RET,%sp@-
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
-        moveq   #0,%d0                  | no CS1 copy: a load from the menu
-        bsr.w   post_load
-        movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
-        rts
+        bra.w   read_project
 
-| 0x400905d4 (?, mask, ...): a masked bank load, told apart by where it
-| returns to (measured under the port, OCTABAM89_setgate):
+kits_st_loadall_post:
+        moveq   #0,%d0                  | no CS1 copy: a load from the menu
+        bra.w   post_load
+
+| loadmask: a masked bank load (0x400905d4; d1 = the mask, d2 = the return
+| address), told apart by where it returns to (measured under the port,
+| OCTABAM89_setgate):
 |   0x400853de  LOAD PROJECT, every bank: the project's Kits (LM_MODE 1)
 |   0x40084d66  every bank but the current one, the current from CS1: the
 |               power-up's load when no project has been loaded since boot
@@ -200,10 +194,9 @@ la_after:
 | In 3 the masked banks' slots hold their files' Parts, which KITS knows
 | only right after a LOAD PROJECT (JUSTLOADED); otherwise they are
 | forgotten and restaged at their next schedule.
-kits_loadmask:
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
-        movel   %sp@(60),%d0            | the return address
+kits_st_loadmask_pre:
+        movel   %d2,%d0
+        movel   %d1,%d5
         moveq   #1,%d1
         cmpil   #0x400853de,%d0
         beq.s   1f
@@ -220,14 +213,13 @@ kits_loadmask:
         bsr.w   kinit
         clrl    READY
         clrl    JUSTLOADED
-        bsr.w   read_project
-        bra.s   2f
+        bra.w   read_project
 5:      tstl    JUSTLOADED
         beq.s   6f
         clrl    JUSTLOADED
-        bra.s   2f
+        rts
 6:      moveq   #0,%d3
-        movew   %sp@(60+10),%d3         | the mask
+        movew   %d5,%d3                 | the mask
         moveq   #0,%d4
 3:      btst    %d4,%d3
         beq.s   4f
@@ -236,83 +228,41 @@ kits_loadmask:
 4:      addql   #1,%d4
         cmpil   #16,%d4
         bne.s   3b
-        bsr.w   cs1_save
-2:      movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
-        movel   %sp@+,LM_RET
-        pea     lm_after
-        lea     %sp@(-328),%sp          | displaced
-        moveml  %d2-%d7/%a2-%fp,%sp@
-        jmp     0x400905dc
-lm_after:
-        movel   LM_RET,%sp@-
+        bra.w   cs1_save
+
+kits_st_loadmask_post:
         movel   LM_MODE,%d1
         subql   #3,%d1
         beq.s   1f
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
         addql   #3,%d1
         moveq   #0,%d0
         subql   #2,%d1
         bne.s   2f
         moveq   #1,%d0                  | the power-up: CS1's RESID and ASSIGN win
-2:      bsr.w   post_load
-        movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
+2:      bra.w   post_load
 1:      rts
 
-| 0x400909d8: a new, empty project: an empty library.
-kits_newproj:
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
+| newproj (0x400909d8): a new, empty project: an empty library.
+kits_st_newproj:
         bsr.w   kinit
         bsr.w   lib_empty
         moveq   #1,%d0
         movel   %d0,READY
         movel   %d0,KDIRTY
         clrl    NOWRITE
-        bsr.w   cs1_save
-        movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
-        movel   %a2,%sp@-               | displaced
-        clrl    %sp@-
-        jsr     0x4000fd34
-        jmp     0x400909e2
+        bra.w   cs1_save
 
-| 0x400917c8: the bank writer (background save, save-as, new project,
-| SAVE PROJECT). After it, kits.work when a Kit or an assignment changed.
-kits_bankw:
-        movel   %sp@+,BW_RET
-        pea     bw_after
-        linkw   %fp,#-324               | displaced
-        moveml  %d2-%d7/%a2-%a5,%sp@
-        jmp     0x400917d0
-bw_after:
-        movel   BW_RET,%sp@-
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
-        bsr.w   write_if_dirty
-        movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
-        rts
+| bankw_post: after the bank writer (background save, save-as, new project,
+| SAVE PROJECT): kits.work when a Kit or an assignment changed.
+kits_st_bankw_post:
+        bra.w   write_if_dirty
 
-| 0x4008ee74: the project store (.work -> .strd). kits.work first, then
-| its .strd copy.
-kits_pstore:
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
-        bsr.w   write_if_dirty
-        movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
-        movel   %sp@+,PS_RET
-        pea     ps_after
-        linkw   %fp,#-560               | displaced
-        moveml  %d2-%d7/%a2-%a5,%sp@
-        jmp     0x4008ee7c
-ps_after:
-        movel   PS_RET,%sp@-
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
+| pstore_pre / pstore_post: the project store (.work -> .strd). kits.work
+| first, then its .strd copy.
+kits_st_pstore_pre:
+        bra.w   write_if_dirty
+
+kits_st_pstore_post:
         tstl    READY
         beq.s   1f
         tstl    NOWRITE
@@ -328,21 +278,10 @@ ps_after:
         pea     PSRC
         jsr     F_COPY
         lea     %sp@(12),%sp
-1:      movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
-        rts
+1:      rts
 
-| 0x4008f180: the project reload (.strd -> .work): kits.strd back, read.
-kits_preload:
-        movel   %sp@+,PR_RET
-        pea     pr_after
-        linkw   %fp,#-560               | displaced
-        moveml  %d2-%d7/%a2-%a5,%sp@
-        jmp     0x4008f188
-pr_after:
-        movel   PR_RET,%sp@-
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
+| preload_post: the project reload (.strd -> .work): kits.strd back, read.
+kits_st_preload_post:
         tstl    READY
         beq.s   1f
         lea     FMT_WORK,%a0
@@ -362,17 +301,14 @@ pr_after:
         tstl    %d0
         bne.s   1f
         clrl    KDIRTY
-        bsr.w   cs1_save
-1:      movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
-        rts
+        bra.w   cs1_save
+1:      rts
 
-| 0x4004a9c4: the stock Part Save's tail, d4 = the part, the current bank.
-| The saved Part goes into the slot's Kit (a Part Clear ends here too:
-| the slot then holds no Kit).
-kits_saved:
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
+| partsaved (d0 = the part, the current bank): the stock Part Save's tail.
+| The saved Part goes into the slot's Kit (a Part Clear ends here too: the
+| slot then holds no Kit).
+kits_st_partsaved:
+        movel   %d0,%d4
         tstl    READY
         beq.s   9f
         moveq   #0,%d2
@@ -386,8 +322,7 @@ kits_saved:
         clrl    CLEARING
         moveq   #-1,%d0
         moveb   %d0,%a2@(0,%d2:l)
-        bsr.w   cs1_save
-        bra.s   9f
+        bra.w   cs1_save
 1:      moveq   #0,%d3
         moveb   %a2@(0,%d2:l),%d3       | d3 = the Kit
         cmpil   #0xff,%d3
@@ -411,21 +346,13 @@ kits_saved:
         bsr.w   others_refresh
         moveq   #1,%d0
         movel   %d0,KDIRTY
-9:      movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
-        moveml  %sp@,%d2-%d4/%a2-%a3    | displaced
-        lea     %sp@(20),%sp
-        rts
+9:      rts
 
-| 0x4004a9d0 (part): the stock Part Clear's entry; it ends in Part Save.
-kits_clear:
-        movel   %d0,%sp@-
+| partclear: the stock Part Clear's entry; it ends in Part Save.
+kits_st_partclear:
         moveq   #1,%d0
         movel   %d0,CLEARING
-        movel   %sp@+,%d0
-        lea     %sp@(-16),%sp           | displaced
-        moveml  %d2-%d3/%a2-%a3,%sp@
-        jmp     0x4004a9d8
+        rts
 
 | 0x4002e7b8: the PART key (MKII; FUNC+MIDI on the MKI): LOAD KIT.
 kits_partkey:
@@ -3024,11 +2951,6 @@ CRCREADY:  .long   0
 LM_MODE:   .long   0
 JUSTLOADED: .long  0               | a LOAD PROJECT's banks are what RESID says
 LI_SAVEDONLY: .long 0
-LA_RET:    .long   0
-LM_RET:    .long   0
-BW_RET:    .long   0
-PS_RET:    .long   0
-PR_RET:    .long   0
 MSEL:      .long   0
 MOWN:      .long   0               | 1 LOAD KIT, 2 SAVE KIT list opened last
 SWALLOW:   .long   0

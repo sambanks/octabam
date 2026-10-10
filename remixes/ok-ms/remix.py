@@ -18,7 +18,7 @@ REMIX = Remix(
     name="ok-ms",
     family="mods", proof=Proof.PORT, proof_note="with Octakit on midisc's author's unit, 14 Sep 2026 (OKMS2); with KITS under the port",
     doc="KITS + MIDI SCENES on the stock effects: the two mods alone.",
-    modules=("MIDI SCENES", "KITS",
+    modules=("MIDI SCENES", "STORE", "KITS",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),
