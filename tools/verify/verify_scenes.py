@@ -438,9 +438,11 @@ def persist(card, out, bank, lib, check, kimg=None, syms=None):
     r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(proj), "OCTABAM", "SCN",
                         "--tree", str(d / "tree_conv"), "--out", str(card_conv)], cwd=ROOT, capture_output=True, text=True)
     check("persist: the card with a 2.x project staged", r.returncode == 0)
+    pbase = 0x400e21e0 + bank * 0x9b340
     cmd = [EMU, "--image", d / "ours.bin", "--card", card_conv, "--set", "OCTABAM", "--project", "SCN", "--load-ms", "90000",
            "--mkii", "--live-script", d / "idle.script",
-           "--mem-dump", f"{slot:#x},{MSC_LEN:#x}={d / 'conv_p0.bin'};{slot + MSC_LEN:#x},{MSC_LEN:#x}={d / 'conv_p1.bin'}"]
+           "--mem-dump", f"{slot:#x},{MSC_LEN:#x}={d / 'conv_p0.bin'};{slot + MSC_LEN:#x},{MSC_LEN:#x}={d / 'conv_p1.bin'};"
+           f"{pbase + 0x8ed80 + 0x1712:#x},0x120={d / 'conv_w.bin'};{pbase + 0x9504a + 0x1712:#x},0x120={d / 'conv_s.bin'}"]
     with open(d / "conv.txt", "w") as f:
         rc = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=f, stderr=subprocess.STDOUT).returncode
     p0 = held((d / "conv_p0.bin").read_bytes()) if (d / "conv_p0.bin").is_file() else None
@@ -448,6 +450,11 @@ def persist(card, out, bank, lib, check, kimg=None, syms=None):
     check(f"persist: 2.x project: Part 0's blob became its table {p0} (predicted {{21: 33, 2069: 77, 675: 5}}); "
           f"Part 1's out-of-range blob became nothing {p1} (run exit {rc})",
           p0 == {21: 33, 2069: 77, 675: 5} and p1 == {})
+    cleared = bytes(0x110) + b"\xff" * 16
+    wk = (d / "conv_w.bin").read_bytes() if (d / "conv_w.bin").is_file() else b""
+    sv = (d / "conv_s.bin").read_bytes() if (d / "conv_s.bin").is_file() else b""
+    check("persist: 2.x project: the blob's Part copy holds what stock Part Clear leaves (zeros, last 16 bytes 0xff)",
+          cleared in (wk, sv))
 
     if kimg is None:
         return

@@ -128,9 +128,13 @@ cover.
 - His freeze twin and sparse blob (Part `+0x1712..+0x1832`) are the LFO
   designer records of audio and MIDI tracks 2-8 (measured under the port, 10
   Oct 2026; `docs/firmware/PARTS.md` section 9,
-  `docs/contributing/FAILURE_MODES.md`). The rewrite writes no Part bytes;
-  phase 2 keeps the locks in a project file.
-- Phase 2: KITS carries the locks (`kits.work` version 2); the conversion of 2.x projects; the prompt for a refused file; B19–B27 beyond Part Clear.
+  `docs/contributing/FAILURE_MODES.md`). The rewrite writes no Part bytes
+  except in one case: reading a 2.x project (no `scenes.work`), the Part copy
+  whose blob held up gets its design area set to what stock Part Clear leaves
+  (✅ measured under the port: zeros, the last 16 bytes `0xff`). The original
+  designs are not recoverable. The wiped Part is not marked changed; the
+  next normal Part save writes it.
+- Phase 2: B19–B27 beyond Part Clear.
 - Phase 3: the sequencer sites (B10, B12–B18, B28) and B33.
 - The oracle image is not in the repository and is not built by `make`: `verify_scenes.py --oracle MAIN21.raw` (or `OT_MSC21_IMAGE`) takes one made from his repository at `52eaab0` (his own build; not re-run here after the submodule left). `make check` runs the scenarios on our image and stock's.
 - Hardware: the 2.0 build ran on his unit as `ok-ms` (14 Sep 2026); the

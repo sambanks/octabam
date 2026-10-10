@@ -1133,8 +1133,8 @@ scn_st_answer:
 | at +0x1712; the working Part first, then the saved one): 'MS', a count (at
 | most 46), then entries of a 16-bit index into the lock table and a value. The
 | first blob of a Part that holds up (every index <= 0xfff, every value <= 127)
-| fills that Part's table. The Part bytes are left as they are: what stock
-| holds there is the LFO designer records, which is not known. Clobbers d0-d7, a0-a2.
+| fills that Part's table, and that Part copy's design area is then set to what
+| stock Part Clear leaves (cv_wipe). Clobbers d0-d7, a0-a2.
 scn_convert:
         movel   %d1,%d7
         moveq   #0,%d6                  | bank
@@ -1153,21 +1153,25 @@ cv_part:
         addal   %d0,%a0                 | the Part's offset in its bank
         moveal  %a0,%a1
         addal   #0x8ed80+0x17a2,%a1
+        moveq   #0,%d4
         bsr.w   cv_try
         tstl    %d0
         bne.w   cv_done
         moveal  %a0,%a1
         addal   #0x8ed80+0x1712,%a1
+        moveq   #1,%d4
         bsr.w   cv_try
         tstl    %d0
         bne.w   cv_done
         moveal  %a0,%a1
         addal   #0x9504a+0x17a2,%a1
+        moveq   #0,%d4
         bsr.w   cv_try
         tstl    %d0
         bne.w   cv_done
         moveal  %a0,%a1
         addal   #0x9504a+0x1712,%a1
+        moveq   #1,%d4
         bsr.w   cv_try
 cv_done:
         addql   #1,%d5
@@ -1180,10 +1184,12 @@ cv_next:
         mvzb    CUR_BANK,%d0
         bra.w   cs1_full                | the current bank's copy follows
 
-| cv_try: a1 = a blob, d6 = bank, d5 = Part -> d0 = 1 when it held up and was
+| cv_try: a1 = a blob, d4 = 0 (the blob at +0x17a2) or 1 (the freeze twin at
+| +0x1712), d6 = bank, d5 = Part -> d0 = 1 when it held up and was
 | applied (d0 = 0: not an 'MS' blob, or an entry out of range; nothing applied).
 | Reads by byte: the entries sit at odd addresses.
 cv_try:
+        movel   %a1,cv_base
         mvzb    %a1@,%d0
         cmpil   #0x4d,%d0
         bne.w   cv_no
@@ -1229,8 +1235,31 @@ cv_ap:  mvzb    %a1@,%d0
         bne.w   cv_ap
 cv_yes: moveq   #1,%d0
         movel   %d0,scn_dirty
-        rts
+        bra.w   cv_wipe
 cv_no:  moveq   #0,%d0
+        rts
+
+| cv_wipe: d4 as in cv_try, cv_base = the blob's address. Both 144-byte halves
+| of that Part copy's design area (+0x1712, +0x17a2) return to what stock Part
+| Clear leaves, measured under the port: zeros, the last 16 bytes 0xff.
+cv_wipe:
+        movel   cv_base,%d0
+        tstl    %d4
+        bne.s   1f
+        subil   #0x90,%d0               | the blob half: the twin half precedes it
+1:      moveal  %d0,%a2
+        moveq   #0,%d0
+        movel   #0x110,%d1
+        bsr.w   cv_fill
+        moveq   #-1,%d0
+        moveq   #16,%d1
+        bsr.w   cv_fill
+        moveq   #1,%d0
+        rts
+cv_fill:
+        moveb   %d0,%a2@+
+        subql   #1,%d1
+        bne.s   cv_fill
         rts
 
 | ---- STORE's handlers (modules/store/store.s) ----
@@ -1360,6 +1389,7 @@ scn_clip:
         .fill   256, 1, 0xff            | the scene clipboard
 scn_ready:      .long   0               | scn_lib is filled
 scn_dirty:      .long   0               | scenes.work is due
+cv_base:        .long   0
 scn_cvmask:     .long   0               | banks to read 2.x blobs from once they are loaded
 scn_backup:     .long   0               | the next write first copies scenes.work to scenes.bak
 scn_nowrite:    .long   0               | scenes.work was refused: never overwritten
