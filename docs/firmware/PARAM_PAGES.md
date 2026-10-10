@@ -304,6 +304,23 @@ track:
 | page 2, read by the dial | `DB + 0x8f072 + t·30` | LFO PMTR×3 WAVE×3 · AMP · FX1 (`+0x8f07e`) · FX2 (`+0x8f084`) · LFO MULT×3 TRIG×3 (`+0x8f08a`) |
 | page 2, PLAYBACK editor storage | `DB + 0x8ef5a + t·30 + 6·machine + slot` | indexed by `0x460d5c30` |
 
+Audio-track page homes, offsets from `DB + p·0x18b2` 📖 (read 7 Oct 2026,
+`t` = audio track, nothing run under the port):
+
+| page | page 1 | page 2 | page-2 editor |
+|---|---|---|---|
+| SRC / PLAYBACK | `+0x8edaa + t·30 + machine·6` | `+0x8ef5a + t·30 + machine·6` | `0x4003a474` (slot 2, delta) |
+| LFO | `+0x8ee9a + t·24` | PMTR/WAVE `+0x8f072 + t·30`; MULT/TRIG `+0x8f08a + t·30` | resolver `0x40057538` |
+| AMP | `+0x8eea0 + t·24` | `+0x8f078 + t·30` (live `0x8000083c + t·72`) | `0x4003adec` |
+| FX1 | `+0x8eea6 + t·24` | `+0x8f07e + t·30` | `0x4003abe4` |
+| FX2 | `+0x8eeac + t·24` | `+0x8f084 + t·30` | `0x4003a9dc` |
+
+The machine byte is `+0x8eda2 + t`. `0x40054cd8(track, flat, value)` covers
+all of page 1: flat 0-5 SRC (the current machine's block), 6-11 LFO, 12-17
+AMP, 18-23 FX1, 24-29 FX2. It does not reach page 2; page 2 goes through
+the editors (delta-based, reading globals) or an absolute write as in
+`MAINMENU.md` section 7. The MIDI tracks' homes are in `MIDI_TRACKS.md`.
+
 The bank file's page-2 block (`ot_project.P2_OFF 0x307 + t·30`, FX1 p2 at
 +0, FX2 p2 at +6) has the DB display array's order from the FX1 column on.
 ❌ Until 21 Sep 2026 the display array was written as `+0x8f06c` with a

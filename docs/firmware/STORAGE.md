@@ -95,3 +95,49 @@ under the port on stock 1.40C;
 - A zero or 64-frame trim therefore plays a 64-frame stub at every trig.
   🟡 The browser's load writes `end` = the file's length (`0x40095d90..5dd8`,
   read from the code, not driven through the browser).
+
+## 5. Project settings 📖 (read from the image, 7 Oct 2026; not run)
+
+`project.work` carries a `[SETTINGS]` block, parsed in `0x40086c00..0x40088288`
+(the `TEMPOx24` key is referenced at `0x40086d72`) and written by `0x40088288`
+as `KEY=%d` lines after a `# Project Settings` header. In RAM the settings
+are bytes from `0x80000000`; each byte is mirrored in CS1 at `0x100b1460 +
+(address - 0x80000000)`.
+
+| key | offset from `0x80000000` |
+|---|---|
+| TEMPOx24 | long `0x20` (the parser calls `0x4009c708` with the value) |
+| PATTERN_TEMPO_ENABLED | `0x24` |
+| CLOCK SEND / RECEIVE | `0x28` bit 1 / bit 0 |
+| TRANSPORT SEND / RECEIVE | `0x2a` / `0x29` |
+| PROG CHG SEND / RECEIVE | `0x2b` bit 1 / bit 0 |
+| PROG CHG SEND_CH / RECEIVE_CH | `0x2c` / `0x2d` |
+| GAIN_CD / GAIN_AB | `0x2e` / `0x2f` |
+| DIR_CD / DIR_AB | `0x30` / `0x31` |
+| PHONES_MIX | `0x32` |
+| MAIN_TO_CUE | `0x33` |
+| MASTER_TRACK | `0x34` |
+| MAIN_LEVEL / CUE_LEVEL | `0x35` / `0x36` |
+| CUE_STUDIO_MODE | `0x37` |
+| MIDI_TRIG_CH1..8 | `0x3f..0x46` |
+| AUTO_CHANNEL | `0x47` |
+| SOFT_THRU | `0x48` |
+| AUDIO_TRK CC_IN / CC_OUT / NOTE_IN / NOTE_OUT | `0x49..0x4c` |
+| MIDI_TRK_CC_IN | `0x4d` |
+| PATTERN_CHANGE_* | `0x4e..0x50` |
+| LOAD_24BIT_FLEX, DYNAMIC_RECORDERS, RECORD_24BIT, RESERVED_RECORDER_COUNT | `0x51..0x54` |
+| RESERVED_RECORDER_LENGTH | word `0x56` |
+| GATE_AB / GATE_CD | `0x58` / `0x59` |
+| INPUT_DELAY_COMPENSATION | `0x5a` |
+| METRONOME_* | `0x5b..0x62` |
+| TRIG_MODE_MIDI x8 | `0x63..` |
+| WRITEPROTECTED | long at `0x100f847c` (absolute); the writer returns -53 when it is set |
+
+UI setters found: `0x40067148` (clock send: argument 0 toggles, > 0 sets,
+otherwise clears), `0x40067184` (program-change send), `0x400671c0`
+(program-change receive), `0x400679a4(delta, wrap)` (TRIG_CH1; one per
+channel at +0x40 spacing). The setters of AUDIO CC IN (code at `0x40068112`)
+and AUTO_CHANNEL (end at `0x40067994`) were seen without their entries. The
+setters write the RAM byte and the CS1 mirror and mark nothing dirty; the
+file is written at project save.
+

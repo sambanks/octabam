@@ -310,7 +310,7 @@ Writers:
 
 - Page 1: `0x40054cd8(track, flat, value)`, absolute, self-contained.
   `flat` 0–5 → `DB + 0x8edaa + track*30 + machine*6 + slot` (PLAYBACK);
-  `flat` 6–29 → `DB + 0x8ee9a + track*24 + flat − 6` (AMP · LFO · FX1 · FX2;
+  `flat` 6–29 → `DB + 0x8ee9a + track*24 + flat − 6` (LFO · AMP · FX1 · FX2; ❌ retracted 10 Oct 2026: "AMP · LFO", the order is `+0x8ee9a` LFO, `+0x8eea0` AMP as `PARAM_PAGES.md` section 5a has it;
   FX2 page 1 = `flat` 24–29; measured at two tracks and a dozen indices).
   Page 2 is not reachable through it: it clears a scene-lock bit `1 <<
   flat` in a 32-bit word per track (`0x80000110 + (track + 1290)*4`) and

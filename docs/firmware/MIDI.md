@@ -30,7 +30,7 @@ Page 2 is unreachable from stock CC: `cc−16 < 30` and the writer derives
 **The generic writer `FUN_40054cd8(track, flat, value)`** ✅ resolves the
 descriptor via `FUN_40031da4(track, flat/6)`, refuses disabled slots,
 clamps to `[min, min+count−1]` from `P+0x6a/P+0x9a`, stores to the Part
-(`+0x8ee9a + track·24 + flat−6` for AMP/LFO/FX1/FX2), a shadow, and the
+(`+0x8ee9a + track·24 + flat−6` for LFO/AMP/FX1/FX2; ❌ was "AMP/LFO", see `MAINMENU.md` section 7), a shadow, and the
 live byte `0x80000810[track·72 + flat]`; the frame builder `0x4000c0f0`
 copies those `<<8` into the DSP frame every frame (why knobs sit at bits
 16-23). The UI knob path is a near-copy, `FUN_40055008(slot, delta)`.
