@@ -72,7 +72,7 @@
         .globl  scn_lib, scn_clip, scn_state
         .globl  scn_st_loadall_pre, scn_st_loadmask_pre, scn_st_newproj, scn_st_bankw_post
         .globl  scn_st_pstore_pre, scn_st_pstore_post, scn_st_preload_post, scn_st_tocs1
-        .globl  scn_st_fromcs1, scn_st_partclear
+        .globl  scn_st_fromcs1, scn_st_partclear, scn_slot_ptr, scn_slot_changed
         .extern store_path, store_fopen, store_fread, store_fwrite, store_fclose, store_crc32
 
 | ===================================================== B1: hold + turn ====
@@ -723,6 +723,34 @@ msc_a0:
         moveal  %d0,%a0
         movel   %sp@+,%d1
         movel   %sp@+,%d0
+        rts
+
+| scn_slot_ptr: d0 = bank, d1 = Part -> a0 = that slot's table (KITS carries
+| it in a Kit). Clobbers d0, d1, a0.
+scn_slot_ptr:
+        bsr.w   scn_ensure
+        andil   #15,%d0
+        lsll    #2,%d0
+        andil   #3,%d1
+        addl    %d1,%d0
+        lsll    #7,%d0
+        lsll    #5,%d0
+        addil   #scn_lib,%d0
+        moveal  %d0,%a0
+        rts
+
+| scn_slot_changed: d0 = the bank whose slot a Kit load has rewritten: the
+| file is due and, for the current bank, CS1 follows. Keeps every register.
+scn_slot_changed:
+        movel   %d1,%sp@-
+        moveq   #1,%d1
+        movel   %d1,scn_dirty
+        mvzb    CUR_BANK,%d1
+        andil   #15,%d0
+        cmpl    %d0,%d1
+        bne.s   1f
+        bsr.w   cs1_full
+1:      movel   %sp@+,%d1
         rts
 
 | scn_ensure: the library is 0xff (no lock) before first use. Keeps every register.

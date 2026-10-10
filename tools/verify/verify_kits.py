@@ -132,6 +132,7 @@ OUT = ROOT / "out/kitsverify"
 BLOB, BSTRIDE, PSTRIDE, PARTSZ = 0x400e21e0, 0x9b340, 0x8ed8, 0x18b2
 WORK, SAVED, PNAMES, PBYTE = 0x8ed80, 0x9504a, 0x9b316, 0x8e57
 REC, O_ASSIGN, O_VALID, O_RESID, O_LIB = 6338, 64, 320, 352, 416
+REC1 = REC
 IMG_LEN = O_LIB + 256 * REC
 TRK = 0x8000182a
 CS1, CS1_LEN = 0x10000000, 0x100000
@@ -236,6 +237,10 @@ def main():
     ap.add_argument("--only", default="", help="comma-separated scenario names")
     a = ap.parse_args()
     remix = registry.remix(a.remix)
+    global REC, IMG_LEN
+    if "MIDI SCENES" in remix.modules:        # a Kit record carries its Part's lock table (kits.work version 2)
+        REC = REC1 + 4096
+        IMG_LEN = O_LIB + 256 * REC
     if "KITS" not in remix.modules:
         print(f"  [ -- ] verify_kits: {a.remix} carries no KITS"); return 0
     if not a.project:
@@ -514,7 +519,7 @@ def main():
         return (OUT / f"{tag}_b3.bin").read_bytes()
 
     def kit(im, k):
-        return im[O_LIB + k * REC + 16:O_LIB + (k + 1) * REC]
+        return im[O_LIB + k * REC + 16:O_LIB + k * REC + REC1]
 
     def slot(b, s):
         return b[WORK + s * PARTSZ:WORK + (s + 1) * PARTSZ]
@@ -853,6 +858,25 @@ def main():
               and all(any(k.endswith(f"/IMPORT/kits3{p}.work") for k in files) for p in "ab"))
     elif not only or "import" in only:
         print("  [SKIP] import: no kits3a/b.work at --octakit-project")
+
+    # ---- a version 1 kits.work under MIDI SCENES: read, expanded, empty tables --
+    if (not only or "v1up" in only) and "MIDI SCENES" in remix.modules and exists("base"):
+        kw = next((v for k, v in emu_card.extract_image((OUT / "base.img").read_bytes()).items()
+                   if k.lower().endswith("/kits/kits.work")), b"")
+        body = kw[64:O_LIB]
+        for k in range(256):
+            body += kw[O_LIB + k * REC:O_LIB + k * REC + REC1]
+        v1 = struct.pack(">4sIII", b"KITS", 1, O_LIB + 256 * REC1, zlib.crc32(body)) + bytes(48) + body
+        f = OUT / "kits.work"; f.write_bytes(v1)
+        c = stage(pathlib.Path(a.strand_project).expanduser(), "V1UP", extra=[f])
+        run([EMU, "--image", image, "--card", c, "--set", "OCTABAM", "--project", "V1UP", "--load-ms", "90000",
+             "--live-script", s1, "--mem-dump", dumps("v1up")], OUT / "v1up.txt")
+        clean("v1up")
+        im, b0 = img("v1up"), img("base")
+        same = all(im[O_LIB + k * REC:O_LIB + k * REC + REC1] == b0[O_LIB + k * REC:O_LIB + k * REC + REC1] for k in range(256))
+        blank = all(im[O_LIB + k * REC + REC1:O_LIB + (k + 1) * REC] == b"\xff" * 4096 for k in range(256))
+        check(f"v1up: the version 1 file read ({len(v1)} B): every Kit as in the version 2 file ({same}), "
+              f"every table empty ({blank})", same and blank)
 
     # ---- a rejected bank file, a missing project --------------------------------
     sd = pathlib.Path(a.strand_project).expanduser()

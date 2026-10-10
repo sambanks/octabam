@@ -97,7 +97,14 @@
         .set    IOB_LEN,    0x1000
         .set    NKITS,      256             | records in kits.work
         .set    NUSE,       255             | Kits 1-255: index 255 (0xff) is "no Kit" in ASSIGN and RESID
-        .set    REC,        6338            | name 8, flags 4, reserved 4, payload
+        .include "remix.inc"            | PWSKIP_LO / PWSKIP_HI, MSCKIT (manifest.kits_inc)
+        .set    REC1,       6338            | name 8, flags 4, reserved 4, payload
+        .set    R_MSC,      REC1            | with MIDI SCENES: the Part's lock table (4,096 B) follows
+        .if     MSCKIT
+        .set    REC,        REC1+4096
+        .else
+        .set    REC,        REC1
+        .endif
         .set    R_PAY,      16
         .set    HDR_LEN,    64
         .set    O_ASSIGN,   HDR_LEN
@@ -105,6 +112,7 @@
         .set    O_RESID,    O_VALID+32
         .set    O_LIB,      O_RESID+64
         .set    IMG_LEN,    O_LIB+NKITS*REC
+        .set    IMG1_LEN,   O_LIB+NKITS*REC1
         .set    MAGIC,      0x4b495453      | 'KITS'
         .set    FLAGS,      KIMG+16         | header word: unused, zero in a new library
         .set    LROWS,      NUSE+1         | LOAD KIT: UNDO KIT, the Kits
@@ -115,13 +123,16 @@
         .set    REQUEST,    0x400a1030      | (bank, pattern): the pattern request
         .set    KSTOP,      0x27
         .set    KPTN,       0x2e
+        .if     MSCKIT
+        .set    VERSION,    2
+        .else
         .set    VERSION,    1
+        .endif
         .set    KCS1A,      0x100f85a0      | CS1: magic, RESID, sum (72 B)
         .set    KCS1B,      0x100ffe00      | CS1: ASSIGN (256 B)
         .set    CS1MAGIC,   0x4b435331      | 'KCS1'
         .set    V3_REC,     0x1a00          | Em's v3 record
         .set    V3_RECS,    0x600
-        .include "remix.inc"            | PWSKIP_LO / PWSKIP_HI (manifest.kits_inc)
 
         .text
         .globl  kits_sched, kits_chain
@@ -310,7 +321,7 @@ kits_st_preload_post:
 kits_st_partsaved:
         movel   %d0,%d4
         tstl    READY
-        beq.s   9f
+        beq.w   9f
         moveq   #0,%d2
         moveb   CUR_BANK,%d2
         lsll    #2,%d2
@@ -340,6 +351,12 @@ kits_st_partsaved:
         pea     %a3@(R_PAY)
         jsr     MEMCPY
         lea     %sp@(12),%sp
+        .if     MSCKIT
+        moveq   #0,%d0
+        moveb   CUR_BANK,%d0
+        movel   %d4,%d1
+        bsr.w   kmsc_s2k
+        .endif
         movel   %d3,%d0
         bsr.w   set_valid
         movel   %d3,%d0
@@ -1384,6 +1401,9 @@ slot_equal:
         beq.s   3f                      | unknown content: kept
         bsr.w   kit_at
         lea     %a0@(R_PAY),%a2
+        .if     MSCKIT
+        lea     %a0@(R_MSC),%a1
+        .endif
         movel   %d4,%d0
         bsr.w   bank_at
         addal   #WORKOFF,%a0
@@ -1392,6 +1412,13 @@ slot_equal:
         mulu.l  %d1,%d0
         addal   %d0,%a0
         bsr.w   part_eq
+        .if     MSCKIT
+        tstl    %d0
+        beq.s   4f
+        movel   %d4,%d0
+        movel   %sp@,%d1
+        bsr.w   kmsc_eq
+        .endif
         bra.s   4f
 3:      moveq   #0,%d0
 4:      movem.l %sp@,%d1-%d2/%a1-%a2
@@ -1590,7 +1617,13 @@ load_into:
         moveb   %d1,CS1_MOD
 4:      moveq   #1,%d0
         movel   %d0,GDIRTY
-2:      movel   %d6,%d0
+2:
+        .if     MSCKIT
+        movel   %d6,%d0
+        movel   %d7,%d1
+        bsr.w   kmsc_k2s
+        .endif
+        movel   %d6,%d0
         lsll    #2,%d0
         addl    %d7,%d0
         lea     KIMG+O_RESID,%a0
@@ -2149,6 +2182,11 @@ read_kits:
         movel   %a0@,%d0
         cmpil   #MAGIC,%d0
         bne.s   7f
+        .if     MSCKIT
+        moveq   #1,%d0
+        cmpl    %a0@(4),%d0
+        beq.w   rk_v1
+        .endif
         moveq   #VERSION,%d0
         cmpl    %a0@(4),%d0
         bne.s   7f
@@ -2174,6 +2212,122 @@ read_kits:
         moveq   #2,%d0
 9:      movel   %sp@+,%d2
         rts
+        .if     MSCKIT
+| a version 1 file: read as it is, checked as it is, then each Kit moves to
+| its version 2 place with an empty table; the file is due for rewriting.
+rk_v1:  movel   %a0@(8),%d0
+        cmpil   #IMG1_LEN,%d0
+        bne.w   7b
+        lea     KIMG+HDR_LEN,%a0
+        movel   #IMG1_LEN-HDR_LEN,%d0
+        lea     F_READ,%a1
+        bsr.w   fio
+        subql   #1,%d0
+        bne.w   7b
+        bsr.w   fclose
+        lea     KIMG+HDR_LEN,%a0
+        movel   #IMG1_LEN-HDR_LEN,%d0
+        bsr.w   crc32
+        cmpl    KIMG+12,%d0
+        bne.w   6b
+        bsr.w   kmsc_expand
+        moveq   #1,%d0
+        movel   %d0,KDIRTY
+        moveq   #0,%d0
+        bra.w   9b
+        .endif
+
+
+| ====================================================== MIDI SCENES locks ====
+| With MIDI SCENES in the remix a Kit record carries its Part's lock table
+| (R_MSC, 4,096 B: scene<<8 | track<<5 | flat, 0xff = none): saving a Kit
+| stores the slot's table in it, loading one writes it into the slot, and a
+| slot is "the Kit" only when its table equals the Kit's. kits.work is
+| version 2 then; a version 1 file is read and its Kits get empty tables.
+        .if     MSCKIT
+        .extern scn_slot_ptr, scn_slot_changed
+
+| kmsc_s2k: d0 = bank, d1 = Part, a3 = a Kit's record: the slot's table into
+| the Kit. Keeps d2-d7/a2-a6.
+kmsc_s2k:
+        jsr     scn_slot_ptr
+        pea     4096
+        movel   %a0,%sp@-
+        pea     %a3@(R_MSC)
+        jsr     MEMCPY
+        lea     %sp@(12),%sp
+        rts
+
+| kmsc_k2s: d0 = bank, d1 = Part, a3 = a Kit's record: the Kit's table into
+| the slot. Keeps d2-d7/a2-a6.
+kmsc_k2s:
+        movel   %d0,%sp@-
+        jsr     scn_slot_ptr
+        pea     4096
+        pea     %a3@(R_MSC)
+        movel   %a0,%sp@-
+        jsr     MEMCPY
+        lea     %sp@(12),%sp
+        movel   %sp@+,%d0
+        jsr     scn_slot_changed
+        rts
+
+| kmsc_eq: d0 = bank, d1 = Part, a1 = a Kit's table -> d0 = 1 when the
+| slot's table equals it. Keeps d2-d7/a2-a6.
+kmsc_eq:
+        movel   %a1,%sp@-
+        jsr     scn_slot_ptr
+        moveal  %sp@+,%a1
+        movel   %d2,%sp@-
+        movel   #1024,%d2
+1:      movel   %a0@+,%d0
+        cmpl    %a1@+,%d0
+        bne.s   2f
+        subql   #1,%d2
+        bne.s   1b
+        moveq   #1,%d0
+        bra.s   3f
+2:      moveq   #0,%d0
+3:      movel   %sp@+,%d2
+        rts
+
+| kmsc_blank: a0 = a Kit's record: no locks. Clobbers d0, d1, a0.
+kmsc_blank:
+        lea     %a0@(R_MSC),%a0
+        movel   #1024,%d1
+        moveq   #-1,%d0
+1:      movel   %d0,%a0@+
+        subql   #1,%d1
+        bne.s   1b
+        rts
+
+| kmsc_expand: KIMG holds a version 1 file's records: each moves to its
+| version 2 place, last first, with an empty table. Clobbers d0-d3, a0-a1.
+kmsc_expand:
+        movel   #NKITS-1,%d3
+1:      movel   %d3,%d0
+        movel   #REC1,%d1
+        mulu.l  %d1,%d0
+        lea     KIMG+O_LIB,%a0
+        addal   %d0,%a0                 | a0 = the v1 record
+        movel   %d3,%d0
+        movel   #REC,%d1
+        mulu.l  %d1,%d0
+        lea     KIMG+O_LIB,%a1
+        addal   %d0,%a1                 | a1 = its v2 place, never below a0
+        lea     %a0@(REC1),%a0
+        lea     %a1@(REC1),%a1
+        movel   #REC1/2,%d2
+2:      movew   %a0@-,%d0
+        movew   %d0,%a1@-
+        subql   #1,%d2
+        bne.s   2b
+        moveal  %a1,%a0                 | the loop left a1 at the record's start
+        bsr.s   kmsc_blank
+        subql   #1,%d3
+        bpl.s   1b
+        rts
+        .endif
 
 | read_project: kits.work, else Em's v3 files (IMPORT), else the stock
 | Parts (MIGRATE) after the banks are in. A kits.work that is refused is
@@ -2291,6 +2445,13 @@ lib_empty:
         movel   #NKITS-1,%d1
 4:      clrl    %a0@
         clrl    %a0@(4)
+        .if     MSCKIT
+        movel   %a0,%sp@-
+        movel   %d1,%sp@-
+        bsr.w   kmsc_blank
+        movel   %sp@+,%d1
+        moveal  %sp@+,%a0
+        .endif
         lea     %a0@(REC),%a0
         subql   #1,%d1
         bpl.s   4b
@@ -2323,6 +2484,11 @@ migrate:
         pea     %a3@(R_PAY)
         jsr     MEMCPY
         lea     %sp@(12),%sp
+        .if     MSCKIT
+        movel   %d4,%d0
+        movel   %d5,%d1
+        bsr.w   kmsc_s2k
+        .endif
         movel   %d5,%d0
         mulu.w  #7,%d0
         moveal  %a2,%a1
@@ -2619,6 +2785,16 @@ infer_resid:
         moveal  %a3,%a2
         bsr.w   part_eq
         moveal  %sp@+,%a2
+        .if     MSCKIT
+        tstl    %d0
+        beq.s   4f
+        movel   %d5,%d0
+        bsr.w   kit_at
+        lea     %a0@(R_MSC),%a1
+        movel   %d4,%d0
+        movel   %d7,%d1
+        bsr.w   kmsc_eq
+        .endif
         tstl    %d0
         bne.s   6f                      | equal: d5 is the slot's Kit
 4:      addql   #1,%d5
@@ -2635,6 +2811,11 @@ infer_resid:
         pea     %a3@(R_PAY)
         jsr     MEMCPY
         lea     %sp@(12),%sp
+        .if     MSCKIT
+        movel   %d4,%d0
+        movel   %d7,%d1
+        bsr.w   kmsc_s2k
+        .endif
         movel   %d4,%d0
         bsr.w   bank_at
         movel   %d7,%d0

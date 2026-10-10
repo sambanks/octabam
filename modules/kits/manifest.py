@@ -16,7 +16,8 @@ PART_WINDOW = 0x8ed80
 
 
 def kits_inc(modules):
-    """PWSKIP_LO / PWSKIP_HI: the Part bytes KITS leaves out when it asks
+    """MSCKIT: 1 with MIDI SCENES in the remix: a Kit record then carries the Part's
+    lock table and kits.work is version 2. PWSKIP_LO / PWSKIP_HI: the Part bytes KITS leaves out when it asks
     whether a slot still holds its Kit -- MIDI SCENES' Claims.part_window,
     which his code rewrites in the current Part after a project load from
     its own table (measured under ok-ms, 6 Oct 2026). 0, 0 without him."""
@@ -24,7 +25,9 @@ def kits_inc(modules):
     pw = m.claims.part_window if (m is not None and m.claims) else ()
     lo = min(o for o, _l, _w in pw) - PART_WINDOW if pw else 0
     hi = max(o + l for o, l, _w in pw) - PART_WINDOW if pw else 0
-    return f"        .set    PWSKIP_LO, {lo:#x}\n        .set    PWSKIP_HI, {hi:#x}\n"
+    msc = 1 if m is not None else 0
+    return (f"        .set    PWSKIP_LO, {lo:#x}\n        .set    PWSKIP_HI, {hi:#x}\n"
+            f"        .set    MSCKIT, {msc}\n")
 
 
 MODULE = Module(
