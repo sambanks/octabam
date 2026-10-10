@@ -459,8 +459,10 @@ inside a pane cannot open a further submenu and no free stock page id is
 known (`docs/firmware/MAINMENU.md` section 5). KITS draws 256-row lists
 with a name editor, copy, paste and clear (✅ on the unit, image A6).
 
-- One root category, **BRAIN**, owned by the BRAIN module. Its first row is a
-  heading with the remix name and build tag.
+- One root category, **BRAIN**, owned by the BRAIN module: SETTINGS,
+  DEFAULTS, REMIXES, TOOLS, each a sub-list (as built, 8-10 Oct 2026: the
+  stock engine is two levels deep, so a row's action repoints the pane's
+  list descriptor; `modules/brain/README.md`).
 - **SETTINGS**: one list; the brain's own settings first, then a heading
   row per module in the image and its setting rows, the value in the
   label. YES or the arrows change a value.
@@ -471,6 +473,23 @@ with a name editor, copy, paste and clear (✅ on the unit, image A6).
 - On an FX page, a MIDI track page or an audio track page, one key
   combination opens a short list for the current page: SAVE AS DEFAULT,
   LOAD TEMPLATE, SAVE TEMPLATE.
+
+  Built (10 Oct 2026): **hold the page key, then press FUNC**. The key
+  census, 📖 read from the image: a key record is 0x1a bytes `{code, 0,
+  press, release, repeat, sub-map, +0x12, u16}`; a record's sub-map is a
+  layer active while that key is held. The FUNC layer (keys `0x400bf628`
+  MKII, `0x400bf2b4` MKI) covers the track keys, the page keys (FUNC + page
+  = the chooser), PAGE, TEMPO, PTN, BANK, REC, PLAY, STOP, the arrows, CUE,
+  the REC keys, MIDI, YES, NO, PROJ, PART, AED, MIXER and ARR; it has no
+  record for the trigs or the encoder pushes. The five page keys share one
+  held layer on both models (`0x400bab6e`, keys `0x400baad2`) with REC,
+  STOP, PLAY, YES and NO (page + YES and page + NO are page operations).
+  The encoder-push handler `0x4004ecfc` does not test FUNC: a value timer
+  on audio pages, the CC on/off toggle on MIDI CTRL pages; the LEVEL push
+  (`0x3e`) only the timer. So page-held + FUNC reaches only FUNC's own
+  handler (✅ under the port on stock: no state change), and FUNC + LEVEL
+  push is free on every page of an MKII (MKI encoders do not push), the
+  LOAD view's chord to come.
 - A pinned value has no row. A module absent from the image has no rows.
   A remix without the brain has no category, and a module that owns a menu
   today keeps it.

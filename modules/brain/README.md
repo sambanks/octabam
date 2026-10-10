@@ -96,6 +96,59 @@ value neither pinned nor `Apply.BUILD`, the macro is one absolute load of
 (`docs/contributing/MODULES.md`, "Settings on the card"). Not built:
 Blob and Trigger rows; `Apply.CALLBACK` has no callback field.
 
+## The page shortcut and templates
+
+Hold a page key (SRC, AMP, LFO, FX1, FX2) and press FUNC: a list opens
+over the page with SAVE AS DEFAULT, CLEAR DEFAULT, SAVE TEMPLATE, LOAD
+TEMPLATE and DELETE TEMPLATE. They act on the track and page in view, as
+the BRAIN pane's DEFAULTS rows do; over SRC, AMP or LFO, or on a MIDI
+track, each says to open an FX page.
+
+- **The combination.** A page key's record names a key layer that is
+  active while the key is held (`0x400bab6e`, keys `0x400baad2`, the same
+  on MKI and MKII); stock's table there has REC, STOP, PLAY, YES and NO.
+  BRAIN repoints the layer's keys (`SymbolRef` at `0x400bab72`) at a copy
+  of those five records, read from the stock image at build time, with a
+  record for FUNC that calls `brain_page_func`. ✅ Under the port on stock
+  (10 Oct 2026): holding FX1 shows the knob values under the knobs, and
+  FUNC pressed then changes nothing (the FUNC handler sets its held flag
+  and redraws); stock's FUNC-then-page gesture (the chooser) is the other
+  order and is unaffected. The keymap census is in `docs/proposals/BRAIN.md`
+  section 9.
+- **The list** is stock's (`0x4006d94c(count, sel, &sel_out, labels,
+  handlers)`): YES stores the row, closes it and calls the row's handler.
+- **Templates** are records of kind 3 in `card.work` (BRAIN.md section
+  7.3): target 0, no mode, the effect's layout hash, an 8-byte name, the
+  twelve slots as Part bytes. SAVE TEMPLATE names it `TPL nn`, the lowest
+  free number for that effect; DELETE TEMPLATE and LOAD TEMPLATE list the
+  effect's templates by name. Saves and deletes run in the engine task;
+  `brain_load` and every template write keep a copy of the template
+  records (4 KB) that the lists and LOAD read.
+- **LOAD** writes the twelve values as the user's knobs would: page 1
+  through the stock writer `0x40054cd8(track, flat, value)`, page 2 as the
+  page-2 editors store it (`modules/cc-map`'s measured recipe: the Part
+  byte, the shadow, the live lane byte, the four dirty flags), each value
+  clamped to the descriptor's `[min, min + count - 1]`. A template carries
+  MODE with the other knobs, so MODE DEFAULTS' re-default is not called.
+- Not built yet: renaming (names are `TPL nn` until a host tool or a name
+  editor renames them), templates from the image (`templates/`, BRAIN.md
+  section 3), template files on the card for sharing, a TEMPLATES list in
+  the BRAIN pane, templates for SRC/AMP/LFO pages and MIDI tracks
+  (phase 4).
+
+## The boot screen
+
+The OS's own boot animation (2.8 s after the bootstrap's logo, the
+LED/key-scan task) draws a brain over OCTABAM instead of stock's sprite
+field: the brain draws in from the left, then the word. A `jsr` detour at
+the animation's per-frame flush (`0x40055aa2`, PIRATE FLAG's site,
+sanderlegit, PR #542) replaces the plane's 128 columns each frame, then
+calls the flush stock called. The frame value in `d2` is DTIM3 time
+(0..559, by steps of varying size). The art is `bootart.py`'s, drawn from
+shapes and generated into the build (`manifest.py boot_inc`). The
+bootstrap's logo and version line before it are NOR's and do not change.
+Every image carrying BRAIN shows it, after a REMIX SWITCH too.
+
 ## SAVE AS DEFAULT
 
 `brain_post_save(track, fx)` posts a message of type `0x41` to the engine
@@ -158,6 +211,8 @@ with T2's FX2 chooser select (SEND -> stock DELAY) and FX1 select
 | `card.work` with MIDI LOG and DEFAULTS off and an unknown key 99 | values (0,0); no default record applied; the unknown key kept on write | card.work |
 | a settings record with an out-of-bounds Binary and a wrong type | values stay (1,1); 2 skipped | card.work |
 | the panel: PROJ, DOWN x4, RIGHT, YES on SETTINGS, YES on MIDI LOG | `card.work` holds one settings record {1:0, 2:1, 99:1}; screens rendered under `ot_emu --lcd` | card.work |
+| the shortcut on T1's FX1 page: SAVE TEMPLATE, knob A +10, LOAD TEMPLATE `TPL 01` | one template record of CHARACTER with the saved page; the page moves with the knob and comes back to the saved values on LOAD; screens rendered under `ot_emu --lcd` | card.work |
+| `--boot-logo`: the first animation frame at or past 280 | equals `bootart.py`'s pixels for that frame, bit for bit | |
 | a GRAIN record for BusDelay (FDBK, SCTR, GLEN listed by the view; DEL not), then MODE CLEAN -> GRAIN through the FX2 page-2 editor on T1 | the view with the card's three values; DEL skipped and untouched | card.work |
 
 Both hooks run during one LOAD PROJECT under the port (2 calls a load). A power-up with no LOAD PROJECT post
@@ -182,9 +237,8 @@ Not yet.
   not measured on a unit.
 - Timing of the card read on the unit (one file, at most 16 KB).
 
-- A shortcut on the FX page itself (a free key combination); the
-  project pair, the project record, the CS1 block
-  (BRAIN.md section 12).
+- The project pair, the project record, the CS1 block (BRAIN.md
+  section 12).
 - `--step call` runs as main under the port, where file I/O does not
   return (an unimplemented opcode at `0x4003b108`); the gate posts the job
   instead. The menu rows post from the UI task (measured under the port).

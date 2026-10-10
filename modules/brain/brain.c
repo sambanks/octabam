@@ -426,6 +426,37 @@ static void load_settings(int have)
 	}
 }
 
+/* ---- templates: the copy brain_load keeps (more below the menu) ---------- */
+
+#define K_TEMPLATE  3
+#define TPL_CACHE   4096
+#define TPL_MAX     64
+#define TPL_NAME    8
+
+static u8 tpl_cache[TPL_CACHE];
+static u32 tpl_len DATA;			/* bytes of records in tpl_cache */
+
+/* the copy: every template record of the file in buf (called by brain_load
+ * and after each template write) */
+static void cache_templates(int have)
+{
+	tpl_len = 0;
+	if (!have)
+		return;
+	u32 count = be16(buf + 10);
+	for (u32 r = 0, at = HDR; r < count; r++, at += be32(buf + at + 16)) {
+		const u8 *p = buf + at;
+		u32 size = be32(p + 16);
+		if (p[0] != K_TEMPLATE || tpl_len + size > TPL_CACHE)
+			continue;
+		if (crc32(p + REC_HDR + align4(p[1]), be32(p + 8)) != be32(p + 12))
+			continue;
+		for (u32 k = 0; k < size; k++)
+			tpl_cache[tpl_len + k] = p[k];
+		tpl_len += size;
+	}
+}
+
 /* BRAIN's own settings (manifest.py: store octabam.brain) */
 extern int brain_v_octabam_brain_1;		/* MIDI LOG: 1 = the debug log records */
 extern int brain_v_octabam_brain_2;		/* CARD DEFAULTS: 1 = card defaults apply */
@@ -443,6 +474,7 @@ void brain_load(void)
 	if (n && valid(n)) {
 		brain_counts[C_STATE] = 1;
 		load_settings(1);
+		cache_templates(1);
 		if (brain_v_octabam_brain_2)
 			apply(n);
 		return;
@@ -452,12 +484,14 @@ void brain_load(void)
 	if (n && valid(n)) {
 		brain_counts[C_STATE] = 2;
 		load_settings(1);
+		cache_templates(1);
 		if (brain_v_octabam_brain_2)
 			apply(n);
 		return;
 	}
 	brain_counts[C_STATE] = (work_present || n) ? 3 : 0;
 	load_settings(0);
+	cache_templates(0);
 }
 
 /* ---- writing the card store ------------------------------------------------ */
@@ -812,9 +846,15 @@ void brain_post_settings(void)
 	Q_SEND(ENGINE_Q, job_msg);
 }
 
+static int write_template(int del, u32 t, u32 fx, u32 e, u32 i);
+
 void brain_job(void)
 {
-	if (job_args & 0x40000)
+	if (job_args & 0x100000)
+		brain_save_counts[S_SAVE_ERR] = (u32)write_template(1, 0, 0, (job_args >> 8) & 0xff, job_args & 0xff);
+	else if (job_args & 0x80000)
+		brain_save_counts[S_SAVE_ERR] = (u32)write_template(0, job_args & 7, (job_args >> 8) & 1, 0, 0);
+	else if (job_args & 0x40000)
 		brain_save_counts[S_SAVE_ERR] = (u32)write_settings();
 	else if (job_args & 0x20000)
 		write_debug();
@@ -1157,4 +1197,343 @@ void brain_open_settings(u32 unused)
 	}
 	brain_from = 0;
 	show(brain_set_rows, n, first);
+}
+
+/* ---- templates: lists, apply, save and delete (BRAIN.md sections 5.2, 9) ---- */
+
+/* The i-th template record of effect entry e among the records at
+ * recs[0..len), or 0. */
+static const u8 *nth_in(const u8 *recs, u32 len, u32 e, u32 i)
+{
+	const struct fx_ent *f = &brain_fx[e];
+	for (u32 at = 0; at < len; at += be32(recs + at + 16)) {
+		const u8 *p = recs + at;
+		const u8 *pay = p + REC_HDR + align4(p[1]);
+		if (!same_id(p + REC_HDR, p[1], f->id, f->id_len) || be32(p + 8) < 16
+		    || be32(pay + 4) != f->layout)
+			continue;
+		if (p[0] != K_TEMPLATE)
+			continue;
+		if (i-- == 0)
+			return p;
+	}
+	return 0;
+}
+
+static const u8 *tpl_nth(u32 e, u32 i)
+{
+	return nth_in(tpl_cache, tpl_len, e, i);
+}
+
+static u32 tpl_count(u32 e)
+{
+	u32 n = 0;
+	while (n < TPL_MAX && tpl_nth(e, n))
+		n++;
+	return n;
+}
+
+/* The track and page in view and their effect entry, or -1 (msg[] says
+ * why); *t and *fx set. */
+static int view_entry(u32 *t, u32 *fx)
+{
+	int f = menu_target();			/* 0 FX1, 1 FX2, -1 */
+	if (f < 0)
+		return -1;
+	u8 *part = DBPTR + WORKING + (CUR_PART & 3) * PART_LEN;
+	*t = CUR_TRACK & 7;
+	*fx = (u32)f;
+	u32 id = part[f ? 0x8 + *t : *t];
+	for (u32 i = 0; i < brain_fx_n && i < MAX_FX; i++)
+		if (brain_fx[i].fx_id == id)
+			return (int)i;
+	return -1;
+}
+
+/* ---- apply: the twelve slots through the stock paths -------------------- */
+
+#define P1WRITE  ((void (*)(u32, u32, u32))0x40054cd8)	/* page-1 writer (track, flat, value) */
+#define LIVEB    0x80000810				/* live lane: track*72 */
+
+/* Track t's FX1 (fx 0) or FX2 (fx 1) page takes vals[12]: page 1 through
+ * the stock writer, page 2 as the page-2 editors store it (modules/cc-map:
+ * Part, shadow, live lane, the four dirty flags), each value clamped to the
+ * descriptor's [min, min + count - 1]. */
+static void apply_values(u32 t, u32 fx, const u8 *desc_p, const u8 *vals)
+{
+	u32 part = CUR_PART & 3;
+	u8 *pb = DBPTR + part * PART_LEN;
+	for (u32 s = 0; s < 12; s++) {
+		int min = (int)be32(desc_p + 0x6a + 4 * s), cnt = (int)be32(desc_p + 0x9a + 4 * s);
+		int v = vals[s];
+		if (cnt <= 0)
+			continue;
+		if (v < min)
+			v = min;
+		if (v > min + cnt - 1)
+			v = min + cnt - 1;
+		if (s < 6) {
+			P1WRITE(t, (fx ? 24 : 18) + s, (u32)v);
+			continue;
+		}
+		u32 s2 = s - 6;
+		pb[(fx ? 0x8f084 : 0x8f07e) + t * 30 + s2] = (u8)v;
+		*(volatile u8 *)((fx ? 0x100a51d2 : 0x100a51cc) + part * PART_LEN + t * 30 + s2) = (u8)v;
+		*(volatile u8 *)(LIVEB + t * 72 + (fx ? 0x38 : 0x32) + s2) = (u8)v;
+	}
+	DBPTR[0x95048] |= (u8)(1 << part);
+	*(volatile u8 *)0x100b145e |= (u8)(1 << part);
+	*(volatile u32 *)(DBPTR + 0x9b332) = 1;
+	*(volatile u32 *)0x100f8598 = 1;
+}
+
+/* The twelve values of template record p for entry e: its Part bytes by
+ * key; a slot it has no value for keeps track t's current byte. */
+static void tpl_values(const u8 *p, u32 e, u32 t, u32 fx, u8 *vals)
+{
+	const struct fx_ent *f = &brain_fx[e];
+	u8 *part = DBPTR + WORKING + (CUR_PART & 3) * PART_LEN;
+	for (int s = 0; s < 6; s++) {
+		vals[s] = part[0x11a + t * 24 + (fx ? 18 : 12) + s];
+		vals[6 + s] = part[0x2fe + t * 30 + (fx ? 6 : 0) + s];
+	}
+	const u8 *pay = p + REC_HDR + align4(p[1]);
+	u32 plen = be32(p + 8);
+	for (u32 at = 16; at + 8 <= plen; at += 8) {
+		u32 key = be16(pay + at);
+		if (pay[at + 2] != T_BYTE || pay[at + 3] != 1 || !key)
+			continue;
+		for (int s = 0; s < 12; s++)
+			if (f->keys[s] == key)
+				vals[s] = pay[at + 4];
+	}
+}
+
+/* ---- the engine task: a template saved or deleted ------------------------ */
+
+/* Save (del 0): track t's FX1 (fx 0) or FX2 (fx 1) page becomes a new
+ * template of its effect, named "TPL nn" with the lowest free nn. Delete
+ * (del 1): the i-th template of entry e leaves card.work. Every other
+ * record keeps its bytes. The copy is read back after the write. 0, or an
+ * error code as write_default's. */
+static int write_template(int del, u32 t, u32 fx, u32 e, u32 i)
+{
+	int n = current_store();
+	if (n < 0)
+		return 2;
+	if (!del) {
+		u8 *part = DBPTR + WORKING + (CUR_PART & 3) * PART_LEN;
+		u32 id = part[fx ? 0x8 + t : t];
+		e = MAX_FX;
+		for (u32 k = 0; k < brain_fx_n && k < MAX_FX; k++)
+			if (brain_fx[k].fx_id == id)
+				e = k;
+		if (e == MAX_FX || t > 7)
+			return 1;
+	}
+	const struct fx_ent *f = &brain_fx[e];
+	const u8 *drop = (del && n) ? nth_in(buf + HDR, (u32)n - HDR, e, i) : 0;
+	if (del && !drop)
+		return 1;
+	u32 at = HDR, kept = 0;
+	for (u32 r = 0, k = HDR; n && r < be16(buf + 10); r++, k += be32(buf + k + 16)) {
+		const u8 *p = buf + k;
+		u32 size = be32(p + 16);
+		if (p == drop)
+			continue;
+		if (at + size > BUF_LEN)
+			return 3;
+		for (u32 b = 0; b < size; b++)
+			out[at + b] = p[b];
+		at += size;
+		kept++;
+	}
+	if (!del) {
+		/* the lowest free number among this effect's names */
+		u32 num = 1;
+		for (int again = 1; again && num < 100;) {
+			again = 0;
+			for (u32 j = 0; j < TPL_MAX; j++) {
+				const u8 *q = nth_in(buf + HDR, n ? (u32)n - HDR : 0, e, j);
+				if (!q)
+					break;
+				const u8 *nm = q + REC_HDR + align4(q[1]) + 8;
+				if (nm[0] == 'T' && nm[1] == 'P' && nm[2] == 'L' && nm[3] == ' '
+				    && (u32)((nm[4] - '0') * 10 + (nm[5] - '0')) == num) {
+					num++;
+					again = 1;
+				}
+			}
+		}
+		u8 vals[12];
+		for (int s = 0; s < 6; s++) {
+			u8 *part = DBPTR + WORKING + (CUR_PART & 3) * PART_LEN;
+			vals[s] = part[0x11a + t * 24 + (fx ? 18 : 12) + s];
+			vals[6 + s] = part[0x2fe + t * 30 + (fx ? 6 : 0) + s];
+		}
+		u32 nvals = 0;
+		for (int s = 0; s < 12; s++)
+			nvals += f->keys[s] != 0;
+		u32 plen = 16 + 8 * nvals, size = REC_HDR + align4(f->id_len) + plen;
+		if (at + size > BUF_LEN)
+			return 3;
+		u8 *r = out + at;
+		for (u32 b = 0; b < size; b++)
+			r[b] = 0;
+		r[0] = K_TEMPLATE;
+		r[1] = f->id_len;
+		put16(r + 2, 1);			/* schema major 1, minor 0 */
+		put32(r + 8, plen);
+		put32(r + 16, size);
+		for (u32 b = 0; b < f->id_len; b++)
+			r[REC_HDR + b] = f->id[b];
+		u8 *pay = r + REC_HDR + align4(f->id_len);
+		put16(pay + 2, NO_MODE);		/* target 0, no mode */
+		put32(pay + 4, f->layout);
+		pay[8] = 'T'; pay[9] = 'P'; pay[10] = 'L'; pay[11] = ' ';
+		pay[12] = (u8)('0' + num / 10);
+		pay[13] = (u8)('0' + num % 10);
+		u8 *v = pay + 16;
+		for (int s = 0; s < 12; s++)
+			if (f->keys[s]) {
+				put16(v, f->keys[s]);
+				v[2] = T_BYTE;
+				v[3] = 1;
+				v[4] = vals[s];
+				v += 8;
+			}
+		put32(r + 12, crc32(pay, plen));
+		at += size;
+		kept++;
+	}
+	if (write_store(at, kept) < 0)
+		return 4;
+	n = current_store();
+	cache_templates(n > 0);
+	return 0;
+}
+
+void brain_post_template(u32 args)
+{
+	job_args = args;
+	((u8 *)job_msg)[0] = JOB_SAVE;
+	Q_SEND(ENGINE_Q, job_msg);
+}
+
+/* ---- the page shortcut and the template lists ---------------------------- */
+
+/* Hold a page key (SRC, AMP, LFO, FX1, FX2) and press FUNC: the record
+ * manifest.py adds to the page-held key layer (0x400bab6e's keys) calls
+ * brain_page_func, which opens the stock list popup (0x4006d94c(count,
+ * sel, &sel_out, labels, handlers); YES stores the row in sel_out, closes
+ * it and calls that row's handler, no argument). */
+#define LISTPOP ((void (*)(u32, u32, u32 *, const char *const *, void *))0x4006d94c)
+
+void brain_tpl_save(u32 unused);
+void brain_tpl_load(u32 unused);
+void brain_tpl_delete(u32 unused);
+
+static u32 pop_sel;
+static const char *const page_lbl[5] = { "SAVE AS DEFAULT", "CLEAR DEFAULT", "SAVE TEMPLATE",
+					 "LOAD TEMPLATE", "DELETE TEMPLATE" };
+static void (*const page_fn[5])(u32) = { brain_menu_save, brain_menu_clear, brain_tpl_save,
+					 brain_tpl_load, brain_tpl_delete };
+
+void brain_page_func(void)
+{
+	pop_sel = 0;
+	LISTPOP(5, 0, &pop_sel, page_lbl, (void *)page_fn);
+}
+
+static char tpl_lbl[TPL_MAX][TPL_NAME + 1];
+static const char *tpl_lp[TPL_MAX];
+static void (*tpl_fp[TPL_MAX])(u32);
+static u32 tpl_e, tpl_t, tpl_fx, tpl_sel;
+
+/* The names of the templates of the effect in view, each row calling fn;
+ * their count (0: msg[] says why, the popup shown). */
+static u32 tpl_list(const char *title, void (*fn)(u32))
+{
+	int e = view_entry(&tpl_t, &tpl_fx);
+	if (e < 0) {
+		POPUP(title, 2, msg, 0, 0);
+		return 0;
+	}
+	tpl_e = (u32)e;
+	u32 n = 0;
+	for (; n < TPL_MAX; n++) {
+		const u8 *p = tpl_nth(tpl_e, n);
+		if (!p)
+			break;
+		const u8 *nm = p + REC_HDR + align4(p[1]) + 8;
+		for (u32 k = 0; k < TPL_NAME; k++)
+			tpl_lbl[n][k] = (char)nm[k];
+		tpl_lbl[n][TPL_NAME] = 0;
+		tpl_lp[n] = tpl_lbl[n];
+		tpl_fp[n] = fn;
+	}
+	if (!n) {
+		msg[0] = "NO TEMPLATES";
+		msg[1] = "FOR THIS EFFECT";
+		POPUP(title, 2, msg, 0, 0);
+	}
+	return n;
+}
+
+static void tpl_apply_sel(u32 unused)
+{
+	(void)unused;
+	const u8 *p = tpl_nth(tpl_e, tpl_sel);
+	if (!p)
+		return;
+	if (!snapped)
+		snapshot();
+	const u8 *d = desc[tpl_e][tpl_fx] ? desc[tpl_e][tpl_fx] : desc[tpl_e][tpl_fx ^ 1];
+	if (!d)
+		return;
+	u8 vals[12];
+	tpl_values(p, tpl_e, tpl_t, tpl_fx, vals);
+	apply_values(tpl_t, tpl_fx, d, vals);
+}
+
+static void tpl_delete_sel(u32 unused)
+{
+	(void)unused;
+	brain_post_template(0x100000 | (tpl_e << 8) | (tpl_sel & 0xff));
+	msg[0] = tpl_lbl[tpl_sel < TPL_MAX ? tpl_sel : 0];
+	msg[1] = "DELETED";
+	POPUP("DELETE TEMPLATE", 2, msg, 0, 0);
+}
+
+void brain_tpl_load(u32 unused)
+{
+	(void)unused;
+	u32 n = tpl_list("LOAD TEMPLATE", tpl_apply_sel);
+	if (n) {
+		tpl_sel = 0;
+		LISTPOP(n, 0, &tpl_sel, tpl_lp, (void *)tpl_fp);
+	}
+}
+
+void brain_tpl_delete(u32 unused)
+{
+	(void)unused;
+	u32 n = tpl_list("DELETE TEMPLATE", tpl_delete_sel);
+	if (n) {
+		tpl_sel = 0;
+		LISTPOP(n, 0, &tpl_sel, tpl_lp, (void *)tpl_fp);
+	}
+}
+
+void brain_tpl_save(u32 unused)
+{
+	(void)unused;
+	u32 t, fx;
+	if (view_entry(&t, &fx) < 0) {
+		POPUP("SAVE TEMPLATE", 2, msg, 0, 0);
+		return;
+	}
+	brain_post_template(0x80000 | t | (fx << 8));
+	msg[1] = "TEMPLATE SAVED";
+	POPUP("SAVE TEMPLATE", 2, msg, 0, 0);
 }

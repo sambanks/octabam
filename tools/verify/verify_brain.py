@@ -474,6 +474,94 @@ def main():
     check(f"settings: YES on SETTINGS > MIDI LOG writes one settings record, MIDI LOG off, DEFAULTS on, "
           f"the unknown key kept  {got}", got == {1: 0, 2: 1, 99: 1})
 
+    # ---- templates: the page shortcut saves, a knob moves, a template loads -
+    # T1's FX1 page; hold FX1 + FUNC: the shortcut popup; SAVE TEMPLATE; knob
+    # A's Part byte set to 42; the shortcut again, LOAD TEMPLATE, the first: the page is
+    # back at the saved values, and card.work holds one template record of
+    # the effect with them.
+    def tap(code, t, gap=500):
+        return [f"{t} key {code:#x} down", f"{t + 30} key {code:#x} up"], t + gap
+    def shortcut(t):
+        return [f"{t} key 0x25 down", f"{t + 200} key 0x2d down", f"{t + 230} key 0x2d up",
+                f"{t + 500} key 0x25 up"], t + 900
+    lines, tt = [], 1500
+    for c in (0x32, 0x10, 0x25):
+        l, tt = tap(c, tt); lines += l
+    l, tt = shortcut(tt); lines += l
+    for c in (0x20, 0x20, 0x31, 0x31):              # SAVE TEMPLATE, then OK on the popup
+        l, tt = tap(c, tt, 800); lines += l
+    # knob A's Part byte moved (the port does not turn an FX page's knob
+    # from an encoder event; PANEL.md has knob A on a SRC page)
+    # (bank 1 part 1's T1 FX1 page-1 slot 0: 0x400e21e0 + 0x8eea6; the lane
+    # is rebuilt from the Part every frame)
+    lines.append(f"{tt} poke {0x400e21e0 + 0x8eea6:#x}=0x2a"); tt += 800
+    lines.append(f"{tt} poke-note"); tt += 10
+    l, tt = shortcut(tt); lines += l
+    for c in (0x20, 0x20, 0x20, 0x31, 0x31):        # LOAD TEMPLATE, the first name
+        l, tt = tap(c, tt, 800); lines += l
+    cut = lines.index(next(x for x in lines if "poke-note" in x))
+    moved_lines = lines[:cut] + [f"{tt + 2000} quit"]
+    lines = [x for x in lines if "poke-note" not in x] + [f"{tt + 2000} quit"]
+    tc, tafter, tlog, tlanes = OUT / "tpl.img", OUT / "tpl_after.img", OUT / "tpl.txt", OUT / "tpl_lanes.bin"
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+                        "--tree", str(OUT / "tree_tpl"), "--out", str(tc)], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_brain: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    (OUT / "tpl.script").write_text("\n".join(lines) + "\n")
+    cmd = [EMU, "--image", image, "--card", tc, "--set", a.set_name, "--project", a.name, "--load-ms", "90000",
+           "--mkii", "--live-script", OUT / "tpl.script", "--card-out", tafter, "--step", f"-:dump:{LANES:#x},144={tlanes}"]
+    with open(tlog, "w") as fh:
+        r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+    if r.returncode or "ended on quit" not in tlog.read_text():
+        sys.exit(f"verify_brain: the template run did not finish -- {tlog}")
+    files = emu_card.extract_image(tafter.read_bytes())
+    mw = next((v for k, v in files.items() if k.upper().endswith("BRAIN/CARD.WORK")), None)
+    trecs = [r for r in brainfile.parse(mw).records if r.kind == brainfile.TEMPLATE_REC] if mw else []
+    lane = tlanes.read_bytes()
+    page = lane[0x12:0x18] + lane[0x32:0x38]                 # T1's FX1 page 1, page 2
+    ch = mods["CHARACTER"]
+    got = {v.key: v.data[0] for v in trecs[0].values()} if len(trecs) == 1 else {}
+    saved = {k: page[i] for i, k in enumerate(brain.fx_keys(ch)) if k}
+    check(f"templates: SAVE TEMPLATE from the shortcut writes one template record "
+          f"({len(trecs)}, name {trecs[0].name() if trecs else None!r})",
+          len(trecs) == 1 and trecs[0].store_id == brain.fx_store_id(ch) and trecs[0].name().startswith("TPL 01"))
+    # the same keys up to the turn: the page has moved from the saved values
+    (OUT / "tpl_moved.script").write_text("\n".join(moved_lines) + "\n")
+    mlanes2 = OUT / "tpl_moved_lanes.bin"
+    shutil.copy2(tc, OUT / "tpl_moved.img")
+    cmd = [EMU, "--image", image, "--card", OUT / "tpl_moved.img", "--set", a.set_name, "--project", a.name,
+           "--load-ms", "90000", "--mkii", "--live-script", OUT / "tpl_moved.script",
+           "--step", f"-:dump:{LANES:#x},144={mlanes2}"]
+    with open(OUT / "tpl_moved.txt", "w") as fh:
+        subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+    ml = mlanes2.read_bytes() if mlanes2.exists() else b""
+    mpage = ml[0x12:0x18] + ml[0x32:0x38] if len(ml) >= 0x38 else b""
+    moved = {k: mpage[i] for i, k in enumerate(brain.fx_keys(ch)) if k} if mpage else {}
+    check(f"templates: knob A at 42 in the lane before the load  {mpage.hex(' ')}", bool(moved) and mpage[0] == 0x2a)
+    check(f"templates: after knob A moved, LOAD TEMPLATE puts T1's FX1 page back at the saved values  "
+          f"page {page.hex(' ')}  record {got}", bool(got) and got == saved)
+
+    # ---- boot screen: the OS's boot animation draws bootart.py -------------
+    snapf_at = symbol("brain_boot_snapf")
+    bc, blog, bsnap = OUT / "boot.img", OUT / "boot.txt", OUT / "boot_snap.bin"
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+                        "--tree", str(OUT / "tree_boot"), "--out", str(bc)], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_brain: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    (OUT / "boot.script").write_text("8000 quit\n")
+    cmd = [EMU, "--image", image, "--card", bc, "--set", a.set_name, "--project", a.name, "--load-ms", "90000",
+           "--mkii", "--boot-logo", "--live-script", OUT / "boot.script", "--mem-dump", f"{snapf_at:#x},1028={bsnap}"]
+    with open(blog, "w") as fh:
+        r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+    raw = bsnap.read_bytes() if bsnap.exists() else b""
+    sys.path.insert(0, str(ROOT / "modules/brain"))
+    import bootart
+    frame = int.from_bytes(raw[:4], "big") if len(raw) == 1028 else 0
+    want = b"".join(sum(1 << y for y in range(bootart.H) if bootart.pixel(x, y, frame)).to_bytes(8, "big")
+                    for x in range(bootart.W))
+    check(f"boot: the animation's frame {frame} is bootart.py's, bit for bit (first frame at or past 280)",
+          frame >= 280 and raw[4:] == want)
+
     # ---- debug log: the MIDI thread's messages to /BRAIN/debug.txt ----------
     log_at = symbol("brain_post_log")
     lcard, lafter, llog, lmidi = OUT / "log.img", OUT / "log_after.img", OUT / "log.txt", OUT / "log.midi"

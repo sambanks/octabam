@@ -40,7 +40,48 @@ def fx_inc(modules):
                 "        .word   0"]
     for i, m in enumerate(targets):
         out.append(f'brain_id_{i}: .ascii "{brain.fx_store_id(m)}"')
-    return "\n".join(out) + "\n" + menu_inc() + "\n" + settings_inc(mods) + "\n        .text\n"
+    return ("\n".join(out) + "\n" + menu_inc() + "\n" + settings_inc(mods) + "\n" + boot_inc()
+            + "\n" + page_keys_inc()
+            + "\n        .text\n")
+
+
+PAGE_LAYER_KEYS, PAGE_KEYS, PAGE_RECORDS, KEY_RECORD = 0x400bab72, 0x400baad2, 5, 0x1a
+
+
+def page_keys_inc():
+    """The page-held key layer's table (docs/firmware/PANEL.md: a page key's
+    record names layer 0x400bab6e, whose keys are 0x400baad2 on both models:
+    REC, STOP, PLAY, YES, NO), copied from the user's stock image at build
+    time, with BRAIN's record for FUNC (0x2d) after them: hold a page key and
+    press FUNC for the page shortcut (brain.c brain_page_func). Records are
+    0x1a bytes {code, 0, press, release, repeat, sub-map, +0x12, u16}; the
+    table ends at a code 0xff."""
+    stock = pathlib.Path(schema.__file__).resolve().parents[2] / "out/raw/section_3_MAIN_OS.bin"
+    return "\n".join([
+        "        .data", "        .balign 2", "        .globl  brain_page_keys", "brain_page_keys:",
+        f'        .incbin "{stock}", 0x{PAGE_KEYS - 0x40000400:x}, {PAGE_RECORDS * KEY_RECORD}',
+        "        .byte   0x2d, 0",
+        "        .long   brain_page_func, 0, 0, 0, 0",
+        "        .word   0",
+        "        .byte   0xff, 0", "        .long   0, 0, 0, 0, 0", "        .word   0"])
+
+
+def boot_inc():
+    """The boot screen's columns (bootart.py, drawn from shapes at build):
+    brain_boot_brain and brain_boot_word, 128 columns each, a column as one
+    big-endian 64-bit word with row y at bit y (the top row the lowest bit;
+    the plane's layout, docs/firmware/PANEL.md section 1, as PIRATE FLAG
+    measured it)."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import bootart
+    out = ["        .section .rodata", "        .balign 4"]
+    for label, f in (("brain_boot_brain", bootart.brain_pixel), ("brain_boot_word", bootart.word_pixel)):
+        out.append(f"        .globl  {label}")
+        out.append(f"{label}:")
+        for x in range(bootart.W):
+            v = sum(1 << y for y in range(bootart.H) if f(x, y))
+            out.append(f"        .long   0x{v >> 32:08x}, 0x{v & 0xFFFFFFFF:08x}")
+    return "\n".join(out)
 
 
 PANE_W = 15                              # characters BRAIN's list pane shows (brain.c PANE_W)
@@ -196,6 +237,9 @@ MODULE = Module(
                "the bank load the power-up runs: the card's defaults onto the descriptors", kind="jsr"),
         Detour(0x40005572, H("20720c004e90"), "brain", "brain_on_midi",
                "the MIDI thread's handler call: the debug log records each message and what it left", kind="jsr"),
+        Detour(0x40055AA2, H("4eb940013abc"), "brain", "brain_boot_frame",
+               "the boot animation's per-frame flush: BRAIN's boot screen first (PIRATE FLAG's site, sanderlegit)",
+               kind="jsr"),
         Detour(0x4008485e, H("7192722db280"), "brain", "brain_on_job",
                "the engine task's job switch: type 0x41 runs SAVE AS DEFAULT"),
         *(Detour(site, H("4eb94008ee74"), "brain", "brain_on_store",
@@ -204,7 +248,9 @@ MODULE = Module(
     ) if not (_NOLOAD and d.site in (0x40085342, 0x40084d4a))),
     # the BRAIN root category: the root list's rows pointer to brain_root_rows
     # and its count 4 -> 5 (two modules growing the root are refused by the ledger)
-    symbol_refs=(SymbolRef(ROOT_DESC + 0x18, ROOT_ROWS, "brain", "brain_root_rows",
+    symbol_refs=(SymbolRef(PAGE_LAYER_KEYS, PAGE_KEYS, "brain", "brain_page_keys",
+                           "the page-held key layer's keys: stock's five records + FUNC, the page shortcut"),
+                 SymbolRef(ROOT_DESC + 0x18, ROOT_ROWS, "brain", "brain_root_rows",
                            "MAIN MENU root rows: the four stock categories + BRAIN"),),
     pokes=(Poke(ROOT_COUNT_AT, H("00000004"), H("00000005"), "MAIN MENU root count: + BRAIN"),),
     gates=(Gate("tools/verify/verify_brain.py", remix_arg=False, venv=True, stage="image"),),

@@ -100,3 +100,76 @@ brain_on_midi:
 brain_midi_ret: .long 0
 brain_midi_msg: .long 0
         .text
+
+| ---- the boot screen: the OS's boot animation draws BRAIN's ------------------
+|   0x40055aa2  `jsr 0x40013abc`: the animation's per-frame flush (560 frames
+|               on DTIM3's clock, the LED/key-scan task). d2 is the frame
+|               (DTIM3 time, 0..559 by frames of varying step), d6 the surface, whose +12 is the plane
+|               (PIRATE FLAG's hook site and reading, sanderlegit, PR #542).
+|               Every frame the 128 columns are replaced: the brain's from
+|               the left over frames 0..199, the word's over 240..399; then
+|               the flush stock called. The art is bootart.py's, generated
+|               per build (manifest.py boot_inc: brain_boot_brain/_word, a
+|               column a big-endian 64-bit word, row y at bit y).
+        .set    BOOT_FLUSH, 0x40013abc
+        .globl  brain_boot_frame
+brain_boot_frame:
+        lea     %sp@(-20),%sp
+        movem.l %d2-%d5/%a2,%sp@
+        movea.l %d6,%a0
+        movea.l %a0@(12),%a1            | the plane
+        move.l  %d2,%d4                 | brain columns shown: frame * 16 / 25
+        lsl.l   #4,%d4
+        moveq   #25,%d0                 | ColdFire's divu.l takes no immediate
+        divu.l  %d0,%d4
+        move.l  %d2,%d5                 | word columns shown: (frame - 240) * 4 / 5
+        subi.l  #240,%d5
+        bpl.s   1f
+        moveq   #0,%d5
+1:      lsl.l   #2,%d5
+        moveq   #5,%d0
+        divu.l  %d0,%d5
+        lea     brain_boot_brain,%a2
+        lea     brain_boot_word,%a0
+        moveq   #0,%d3                  | x
+2:      moveq   #0,%d0
+        moveq   #0,%d1
+        cmp.l   %d4,%d3
+        bge.s   3f
+        move.l  %a2@,%d0
+        move.l  %a2@(4),%d1
+3:      cmp.l   %d5,%d3
+        bge.s   4f
+        or.l    %a0@,%d0
+        or.l    %a0@(4),%d1
+4:      move.l  %d0,%a1@+
+        move.l  %d1,%a1@+
+        addq.l  #8,%a2
+        addq.l  #8,%a0
+        addq.l  #1,%d3
+        cmpi.l  #128,%d3
+        blt.s   2b
+        | the first frame at or past 280 kept for verify_brain, with its
+        | frame number (the plane is redrawn long before a dump can read it;
+        | d2 is DTIM3 time, so a frame number can be skipped)
+        tst.l   brain_boot_snapf
+        bne.s   6f
+        cmpi.l  #280,%d2
+        blt.s   6f
+        move.l  %d2,brain_boot_snapf
+        movea.l %d6,%a0
+        movea.l %a0@(12),%a0
+        lea     brain_boot_snap,%a1
+        move.l  #256,%d0
+5:      move.l  %a0@+,%a1@+
+        subq.l  #1,%d0
+        bne.s   5b
+6:      movem.l %sp@,%d2-%d5/%a2
+        lea     %sp@(20),%sp
+        jmp     (BOOT_FLUSH).l          | the flush stock called, returning to it
+        .data
+        .balign 4
+        .globl  brain_boot_snap, brain_boot_snapf
+brain_boot_snapf: .long 0
+brain_boot_snap: .space 1024
+        .text
