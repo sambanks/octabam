@@ -153,6 +153,9 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   `0x80000810 + 72·t`.
 - **The card.**
   - `--card-out FILE` writes the card as the firmware left it.
+  - `--cmd-log-end FILE` writes every ATA command of the whole run, the
+    load and what follows it, one line each: `WHAT LBA COUNT | #n pc PC
+    TASK`. `--cmd-log` writes the load's commands only.
   - `emu_card.extract_image(bytes[, out_dir])` reads a FAT16 image back as
     `{path: bytes}`.
   - The firmware writes `LOG 000000.txt` in the card root during a load,

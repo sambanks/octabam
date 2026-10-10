@@ -19,6 +19,8 @@ widths and the menu key by key on the MKII and MKI panels
   The menu: `git show 4d2d6456:docs/superpowers/specs/2026-09-28-stem-rec-menu-design.md`.
   After the fader, the buses and 24 bits:
   `git show 4d2d6456:docs/superpowers/specs/2026-10-01-stem-rec-sources-design.md`.
+  The perf round (less CPU, less card traffic, STATS.TXT, T8 MASTER):
+  `git show 15703f7a:docs/superpowers/specs/2026-10-07-stem-rec-perf-design.md`.
 - Every stock address the module uses, with its evidence:
   `docs/firmware/STEM_REC.md`. Section 12 covers streaming, section 18
   the level path, the inputs and MASTER TRACK.
@@ -96,17 +98,25 @@ by itself and stops with `RING FULL`, every file whole. It takes about an
 hour and a half and stays outside `make check`. `tools/verify/stems_sweep.py`
 measures the ring against the emulated card's speed (STEM_REC.md 15.4).
 
-| Measured under the port | Value | STEM_REC.md |
-|---|---|---|
-| The frame hook, not recording (the gain mirror) | 1,001 instructions per frame | 18.9 |
-| The frame hook, eight tracks at 16 bits | 5,579 instructions per frame | 18.9 |
-| The frame hook, eight tracks at 24 bits | 6,219 instructions per frame | 18.9 |
-| The frame hook, everything at 24 bits | 7,415 instructions per frame | 18.9 |
-| The writer task's stack peak | 1,244 of 8,192 bytes | 18.9 |
+| Measured under the port | Since the perf round | Before it | STEM_REC.md |
+|---|---|---|---|
+| The frame hook, not recording (the gain mirror) | 394 instructions per frame | 1,001 | 19.1 |
+| The frame hook, eight tracks at 16 bits | 3,401 instructions per frame | 5,579 | 19.7 |
+| The frame hook, eight tracks at 24 bits | 3,969 instructions per frame | 6,219 | 19.7 |
+| The frame hook, everything at 24 bits | 4,972 instructions per frame | 7,415 | 19.7 |
+| The writer's copy | none: the card reads each file's ring (zero copy) | 737 a frame at eight tracks, 16 bits; 1,067 everything at 24 bits | 19.7 |
+| The writer task's stack peak | 1,560 of 8,192 bytes (the most seen; `full`, 8 Oct 2026) | 1,244 | 19.3 |
 
-The hook's figures are instruction counts. Its time on the unit isn't
-measured: whether the unit has room for it is flash C's test
-(`git show 4d2d6456:docs/superpowers/specs/2026-10-01-stem-rec-sources-design.md` 4.6).
+The figures are zero copy's (STEM_REC.md 19.7; STEMS5 had 3,427, 3,995
+and 5,012 for the hook and a copy of 206 and 284; STEMS4, flash D,
+3,299, 4,059, 5,188, 502 and 807). The hook's figures are instruction
+counts. On the unit, `STATS.TXT` measures its time in every take: flash
+D measured 28 µs a frame on average (43 at most) at eight tracks, 24
+bits, 4,059 instructions then, about 1.8 cycles an instruction on the
+266 MHz core. Since zero copy the hook's stores go to uncached memory and
+each waits for the RAM: 🟡 about 10 to 13 µs more a frame at eight tracks,
+24 bits, estimated from flash E's copy, so about 37 µs, and about 45 µs
+with everything at 24 bits.
 STEMS3 recorded eleven files at 24 bits on the unit; clicks and the
 screen's response during a take aren't reported yet (STEM_REC.md 17.3).
 Before piece 5 the hook copied the tracks as they were and cost 743
@@ -147,7 +157,7 @@ Its rows, top to bottom:
 |---|---|---|
 | 1 | `REC`; `CANCEL` while armed; `STOP` while recording; `SAVING` while the files are finished | Arms, cancels or stops the take |
 | 2 | The status: `READY`, `ARMED`, `REC 01:23`, `SAVING`, `DONE 01:23`, `NO CARD`, or an error by name | The cursor skips this row |
-| 3-10 | `T1 [X]` to `T8 [X]`, `[ ]` when a track is off | Turns the track on or off |
+| 3-10 | `T1 [X]` to `T8 [X]`, `[ ]` when a track is off; `T8 MASTER` while MASTER TRACK is on | Turns the track on or off; `T8 MASTER` does nothing |
 | 11-14 | `MAIN [ ]`, `CUE [ ]`, `AB [ ]`, `CD [ ]` | Turns the source on or off |
 | 15-16 | `AB STEREO [X]`, `CD STEREO [X]` | Records the pair as one stereo file, or as two mono files (`A.wav` and `B.wav`, `C.wav` and `D.wav`) |
 | 17 | `24 BIT [ ]` | Switches between 16-bit and 24-bit files |
@@ -157,6 +167,11 @@ Its rows, top to bottom:
    MAIN, CUE and the inputs off, both pairs stereo, and 16 bits. The last
    source that's on stays on, and rows 3 to 17 are locked while a take
    records or saves.
+   - With MASTER TRACK on, T8 is the master bus: MAIN is T8 alone, and
+     `T8.wav` would equal `MAIN.wav` sample for sample. So T8's row reads
+     `T8 MASTER`, a take leaves T8 out, and a take with only T8 on records
+     `MAIN.wav` instead. Turn MAIN on for the master bus. T8's own choice
+     comes back when MASTER TRACK goes off.
 2. Press **REC**.
    - If the sequencer is stopped, STEM REC arms. Recording starts on the
      first frame the sequencer plays. Press it again to cancel.
@@ -179,22 +194,74 @@ The error names: `RING FULL` (the card fell behind; the files still play),
 `SEEK FAILED`,
 `CLOSE FAILED` and `TASK FAILED`.
 
+### STATS.TXT
+
+Each take's folder also gets `STATS.TXT`, a few lines of text about the
+take, written after its audio files are closed (not when a card write
+failed). It's there to tell why a take fell behind, without an emulator:
+
+```
+STEM REC STATS 261007-2015
+status OK
+165375 frames, 60 s, 11 files, 24 bits
+ring peak 1234 of 7922 frames
+card writes 2584, 41234 ms in all, longest 62300 us
+card fastest write 21000 KB/s
+card rec 36800 ms 81500 KB 451 us/KB
+card save 4434 ms 9300 KB 476 us/KB
+writer longest sleep 12000 us, asks 10000
+hook mean 41 us, longest 88 us
+hook and frame routine mean 290 us, longest 335 us, 165375 frames
+card udma 4 mwdma 0, cluster 64 sectors
+```
+
+- **Card writes** fill most of the take's time, with long outliers: the
+  card is the limit. The card takes one command a cluster (the file
+  layer's), so a card formatted with larger clusters takes fewer, larger
+  commands.
+- **The writer's longest sleep** far above the 10 ms it asks for: it
+  waited for the processor. It runs at priority 1, in turn with the engine,
+  the UI and one more stock task, below three tasks that by their code most
+  likely include the Static machines' card reader (STEM_REC.md 19.6).
+- **Card rec and card save** split the card's writes into the take
+  (recording) and the rest after STOP (saving), each in ms, KB and µs a
+  KB. There is no copy to time: the card reads each file's ring where the
+  hook wrote it (zero copy, STEM_REC.md 19.7).
+- **The fastest write** is a write that nothing interrupted: the card's
+  own speed. A mean far below it (1,024 over the µs a KB, in KB/s) spent
+  its time waiting for the processor, not for the card.
+- **The hook and frame routine** near the frame's 362.8 µs: the audio
+  interrupt left little for any task.
+- **The card line** gives the DMA modes the card's driver chose (both 0
+  is likely the PIO path) and the volume's sectors a cluster.
+
+The times come from DMA timer 3, the counter the firmware itself
+timestamps with (7.58 ns a count).
+
 ## Limits
 
 - The choices reset at every boot. Nothing is saved.
 - At most 60 minutes.
 - **A track's file is after its fader.** With MASTER TRACK on, T1 to T7's
   files hold each track as it would sit in MAIN through a T8 that passed
-  it unchanged, and T8's file holds them again through T8's effects, so
-  the files don't sum to MAIN in that mode (STEM_REC.md 18.8).
+  it unchanged, and T8 isn't recorded (MAIN is T8 then), so the files
+  don't sum to MAIN in that mode (STEM_REC.md 18.8).
+- **With MASTER TRACK on, T1 to T7 and CUE are 32 samples early.** The
+  audio processor builds MAIN from T8's output of a mix it sent two
+  frames before, and CUE from T1 to T7 of the current frame. So in a DAW,
+  `T1.wav` to `T7.wav` and `CUE.wav` sit 32 samples (two frames, 0.73 ms)
+  ahead of `MAIN.wav`; delay them by 32 samples to line them up. Measured
+  under the port for T1 and CUE (STEM_REC.md 18.8); upstream's USB
+  modules measured the same lead (CUE on Bryan T's MKII). The inputs
+  aren't affected. With MASTER TRACK off, every file lines up.
 - **The inputs are recorded raw**, as the stock recorder records INAB and
   INCD: before any track's level. An input that also plays through a THRU
   track is in that track's file too, after its fader, 80 samples later
   (the THRU track's own delay, STEM_REC.md 18.7).
 - **More work in the audio interrupt.** While a take records, the frame
-  hook runs 5,579 to 7,415 instructions per frame (eight tracks at 16
-  bits to everything at 24 bits), and 1,001 while nothing records. Flash C
-  tests whether the unit stays responsive with it.
+  hook runs 3,401 to 4,972 instructions per frame (eight tracks at 16
+  bits to everything at 24 bits), and 394 while nothing records.
+  `STATS.TXT` gives its time on the unit.
 - The status doesn't tick on its own: it's current as of the last key.
 - The name has no seconds. A second take in the same minute is refused, and
   the first stays intact.
@@ -211,9 +278,16 @@ The error names: `RING FULL` (the card fell behind; the files still play),
   frame, and the ring would fill in about 160 s (STEM_REC.md 18.9). On
   the unit (STEMS3), eleven stereo files at 24 bits, 2.91 MB/s, peaked
   the ring at 13 to 16% on a light project and filled it on a busy one:
-  RING FULL, cause open (STEM_REC.md 17.3). BuMa measured a MKI's card
-  writes at 4.7–5.7 MB/s with the sequencer stopped and 1.4–2.1 MB/s with
-  Static tracks streaming (STEM_REC.md 19.1).
+  RING FULL, cause open (STEM_REC.md 17.3).
+- **On a busy project, eight tracks at 24 bits is the most that keeps
+  up.** Zero copy on Yves's MKII, a project of eight Static tracks
+  playing (STEM_REC.md 17.6): T1 to T8 at 24 bits ran a minute with the
+  ring at most 21% full; twelve files at 24 bits (MAIN, CUE, AB and CD
+  added, 3.17 MB/s) stopped with `RING FULL` after 4.3 s, the card taking
+  2.1 MB/s while the writer, at priority 1, waited for the processor. A
+  lighter project leaves the writer more of it (not measured with zero
+  copy). The writer at priority 2 is built and kept as the next step
+  (`stems-prio2`, STEM_REC.md 19.6).
 - A power cut or a card pull before the end loses the take: each file is
   left at 0 bytes, because its length is set only at the end
   (STEM_REC.md 12.3).
@@ -258,16 +332,28 @@ effects. [BUILDING.md](../../docs/guide/BUILDING.md) has every step.
   service. Each frame:
   - **The gain mirror.** It reads the level page the main processor sends
     core 0 that frame and redoes core 0's gain arithmetic for the eight
-    tracks, bit for bit, so it holds each track's 16 MAIN gains for the
-    frame (STEM_REC.md 18.2-18.3). This runs whether or not a take
-    records.
-  - **The copy.** While a take records, each track's 16 stereo samples,
-    as core 0 mixed them, times their gains on the EMAC unit, limited as
-    MAIN is; MAIN and CUE from the buffer the audio processor fills; the
-    inputs from the page of the input ring that frame filled (18.5-18.7).
-    At 16 bits it keeps each result's top 16 bits; at 24 bits all of them.
-    When a take starts it latches the file table: the sources, the format,
-    each file's bytes per frame, and the ring's capacity.
+    tracks, bit for bit, so it holds each track's ramp state (STEM_REC.md
+    18.2-18.3). This runs whether or not a take records. It writes each
+    track's 16 per-sample gains only while a take is armed, recording or
+    saving, or the sequencer is stopped, and enters the EMAC unit only
+    when a level changed.
+  - **The copy.** Core 0 mixes MAIN for frame f from the track samples
+    and gains that are already there at frame f−1, so the hook works
+    out each track's share one frame early, straight into the track
+    file's ring: the samples times their gains on the EMAC unit, limited
+    as MAIN is, the limit skipped for a track whose gains are all at or
+    below a quarter (it can't act then). Then MAIN and CUE from the
+    buffer the audio processor fills, and the inputs from the page of the
+    input ring that frame filled, go into their files' rings, and the
+    frame is published (18.5-18.7). At 16 bits it keeps each result's top
+    16 bits; at 24 bits all of them. Each file has its own ring, holding
+    the file's bytes in order from its header on, written through the
+    uncached alias, so the card reads them where they are: zero copy
+    (STEM_REC.md 19.7). A frame that crosses a ring's end has its tail
+    moved to the ring's start before it's published. When a take starts
+    it latches the file table (the sources, the format, each file's bytes
+    per frame and routine), cuts the 8 MiB into the files' rings, and
+    sets the capacity in frames.
 - **The peak ring fill.** Each recorded frame the hook also keeps the
   take's largest ring fill in frames, `stems_peak`. Arming resets it to 0,
   and it keeps its value after the take ends. Its share of the ring is
@@ -276,21 +362,24 @@ effects. [BUILDING.md](../../docs/guide/BUILDING.md) has every step.
 - **The writer task.** The module's own RTOS task at priority 1, created
   the first time REC is pressed. It wakes every 10 ms. At a take's
   start it names the take from the clock, creates the folder, refuses a
-  folder that exists, and opens one file per entry of the file table.
-  While recording, it moves the ring into each file in 512-frame chunks,
-  and refreshes the menu's labels between chunks. At the end it writes
-  the rest, rewrites each file's first sector with the real header, sets
-  the exact length, and closes.
+  folder that exists, writes each file's placeholder header into its
+  ring, and opens one file per entry of the file table. While recording,
+  it writes each file's whole published sectors straight from its ring,
+  a 512-frame chunk's at most a pass, and refreshes the menu's labels
+  between passes. It times its card writes and its sleeps for
+  `STATS.TXT`. At the end it writes the rest, the last sector padded with
+  zeros, rewrites each file's first sector with the real header, sets the
+  exact length, and closes.
 - **The raw file routines.** The writer calls the file layer's own
-  sector-level routines, from its own buffers, and never the buffered API
-  (STEM_REC.md 12.1). The processor reaches those buffers only through the
+  sector-level routines, from the rings, and never the buffered API
+  (STEM_REC.md 12.1). The processor reaches the rings only through the
   uncached address alias, so a card DMA reads what was written (11.8).
 - **The first-sector fix.** A detour in the stock PIO write routine at
   `0x40014cfe`. It advances the card handler's data pointer and sector
   count before the first sector goes out, not after, so a card interrupt
   can never find them stale (STEM_REC.md 11.7).
-- **The memory.** The ring, the task's 8 KB stack, and the writer's
-  buffers are DRAM regions at the free top of the platform's arena
+- **The memory.** The rings, the task's 8 KB stack, and the sector-0
+  copies (7 KB) are DRAM regions at the free top of the platform's arena
   reserve. So the module costs no sample memory beyond what any DRAM remix
   already gives up.
 - **The menu.** The manifest copies MAIN MENU's four stock categories from
@@ -299,7 +388,9 @@ effects. [BUILDING.md](../../docs/guide/BUILDING.md) has every step.
   is a pointer: a press switches it to another fixed string at once, and
   the writer task formats the numbers (`REC 01:23`, `DONE`, `PEAK`) into a
   spare buffer before it switches the pointer, so a redraw never catches a
-  half-written label.
+  half-written label. The frame hook points T8's row at `T8 MASTER` when
+  the MASTER TRACK byte (`0x80000034`) turns on, and back when it turns
+  off.
 - **The gain table.** Core 0's gain table is copied out of your own stock
   image at build time, because the OS reuses the memory it sits in after
   the audio processor's start-up (STEM_REC.md 18.4).

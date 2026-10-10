@@ -1,4 +1,174 @@
-# STEM REC: flashes A, B and C, and crosscheck's flash plan as a record
+# STEM REC: flashes A to G, and crosscheck's flash plan as a record
+
+## Flash G — `stems`: zero copy, the writer at priority 1 (staged 8 Oct 2026)
+
+**Flashed** on Yves's MKII, reported 8 Oct 2026: T1 to T8 at 24 bits on
+flash D's project ran 61 s with `DONE` and the ring at most 21% full;
+twelve files at 24 bits (MAIN, CUE, AB and CD added) stopped with `RING
+FULL` after 4.3 s. The files of both takes are whole, MAIN equal to the
+stems' sum to the last bit (STEM_REC.md 17.6).
+
+Flash E's `STATS.TXT` (STEM_REC.md 17.5) showed the writer waiting for
+the processor at priority 1, and about half its time was the copy. STEMS7
+drops the copy: the frame hook writes each file's bytes into that file's
+own ring, through the uncached alias, and the writer hands the card whole
+sectors straight from the rings (STEM_REC.md 19.7). The writer stays at
+priority 1. Flash F (STEMS6, the writer at priority 2, branch
+`stems-prio2`) is built and kept as the fallback; it isn't flashed.
+
+**The image.** Built 8 Oct 2026 from branch `stems-zerocopy` at
+`92959832` (a clean tree), with the bare-metal `m68k-elf` toolchain:
+`make image REMIX=stems BUILD=7 VERSION=STEMS7`. The unit's OS version
+reads `STEMS7`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS7.bin` | 452,116 | `00caf7e72a5d0cb948266aa4186a0e752f289f62ca84d69466a5dc247283186b` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS7.syx` | 631,537 | `217e1e10c6c556563d64e7687468a06e993fea6c56dffea0ee379f00fe0dc5e4` |
+
+Both are built from your own 1.40C and never enter the repository. Copies
+are in `/home/yvez/xcheck/stems7`. The checks on that code: the unit
+tests 79 PASS; `verify_stems --long --fat32` 451 PASS, its two FAILs
+`cut`'s threshold (corrected in the same commit and passing alone);
+`verify_docs` 0 problems (STEM_REC.md 19.7).
+
+**Before you flash.** As flash E: power cycle first if REC was pressed
+since power-on, the stock `.syx` and a DIN MIDI interface at hand, the
+card backed up; power cycle once after the upgrade.
+
+**The tests, in order.**
+
+1. Boot; MAIN MENU › SYSTEM › OS UPGRADE still opens.
+2. Flash D's project (T1 to T8 Static, the bell), T1 to T8 at 24 bits,
+   at least a minute: `DONE` or `RING FULL`, and its `STATS.TXT` either
+   way, with the files. The hook line shows the cost of the uncached
+   stores; `card rec` shows the card's speed during the take.
+3. Seven tracks at 24 bits, then every source at 24 bits (MAIN, CUE and
+   the inputs too), if 2 holds.
+4. Listen to one take's files against the project: no clicks or gaps
+   (the files are checked byte for byte under the port, but a unit can
+   only be checked by ear and by `STATS.TXT`).
+
+## Flash E — `stems`: the writer's copy in whole longs (staged 8 Oct 2026)
+
+**Flashed** on Yves's MKII, reported 8 Oct 2026, six takes on flash D's
+project: eight tracks at 24 bits ran 18 s before `RING FULL` (6.75 s in
+flash D); seven at 24 bits filled slowly (47% after 70 s); six, four,
+and eight at 16 bits held. `STATS.TXT` says why eight at 24 bits still
+fills: the copy's own work is small (768 bytes in 12.6 µs), but its mean
+is 15 to 18 times that, and the card's 5 to 7 times its fastest write.
+The writer waits for the processor (STEM_REC.md 17.5).
+
+Flash D's `STATS.TXT` (STEM_REC.md 17.4) put the limit in the writer's
+copy into its uncached buffers: 8.5 s to copy 6.75 s of audio, one
+stall a byte at 24 bits, plus time the writer wasn't running (how much
+is not measured). STEMS5 writes every sample into the ring in its file's
+byte order and copies whole longs: a quarter of the stores and about a
+third of the instructions (STEM_REC.md 19.5). `STATS.TXT` splits the
+copy into recording and saving and adds the copy's fastest frame and the
+card's fastest write, which tell the work from the waiting.
+
+**The image.** Built 8 Oct 2026 from branch `stems-perf` at `19a3a113` (a
+clean tree; the commits after it change docs only), with the bare-metal
+`m68k-elf` toolchain: `make image REMIX=stems BUILD=5 VERSION=STEMS5`.
+The unit's OS version reads `STEMS5`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS5.bin` | 452,100 | `cd36f267825dd1b1b907ed0ab5dd5e41927acd876ba93765b5f22a9e9028e2be` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS5.syx` | 631,504 | `50c648ee2bd3b01ae1bfaa5c332a22e067347788f2a58560664f6a98db0a876f` |
+
+Both are built from your own 1.40C and never enter the repository. Copies
+are in `/home/yvez/xcheck/stems5`. The checks on that code: the unit
+tests, 71 PASS, 0 FAIL; under the port, first the checks the copy and
+the byte order reach on the draft (170 PASS; its one FAIL, `cost` at
+5,764, is what `PACK12A`/`PACK12B` fixed), then the 24-bit takes byte for
+byte, all fourteen files, `STATS.TXT` and `cost` again on the final code
+(77 PASS, 0 FAIL, `cost` 5,012); `verify_stems --long --fat32` on
+`19a3a113`: 453 PASS, 0 FAIL, 0 SKIP.
+
+**Before you flash.** As flash D: power cycle first if REC was pressed
+since power-on (STEMS4 included), the stock `.syx` and a DIN MIDI
+interface at hand, the card backed up; power cycle once after the
+upgrade.
+
+**The tests, in order.**
+
+1. Boot; MAIN MENU › SYSTEM › OS UPGRADE still opens.
+2. Flash D's project (T1 to T8 Static, the bell), T1 to T8 at 24 bits,
+   a minute: `DONE` or `RING FULL`, and its `STATS.TXT` either way, with
+   the files.
+3. The same at 16 bits.
+4. Flash D's tests 3 and 5 (T8 MASTER; the cluster line), if not done.
+
+
+## Flash D — `stems`: the perf round, STATS.TXT, T8 MASTER (staged 8 Oct 2026)
+
+**Flashed** on Yves's MKII, reported 8 Oct 2026: it boots and records;
+on a new project of eight Static tracks (one bell sample each) T1 to T8
+at 24 bits stopped with `RING FULL` after 6.75 s, every file whole and
+intact. `STATS.TXT` put the limit in the writer's copy, not the card or
+the audio interrupt (STEM_REC.md 17.4). Flash E is the fix.
+
+
+The perf round (PR #644; the design:
+`git show 15703f7a:docs/superpowers/specs/2026-10-07-stem-rec-perf-design.md`;
+`docs/firmware/STEM_REC.md` section 19). A take's files are what the code
+before the round wrote, sample for sample, with two exceptions by design:
+REC pressed while the sequencer plays starts one frame (0.36 ms) later,
+and T8 isn't recorded while MASTER TRACK is on. New for the unit: less work in the audio
+interrupt, `STATS.TXT` in each take's folder, and T8's row reading
+`T8 MASTER` while MASTER TRACK is on.
+
+**The image.** Built 8 Oct 2026 from branch `stems-perf` at `ad73ee89` (a
+clean tree, the PR's head), with the bare-metal `m68k-elf` toolchain:
+`make image REMIX=stems BUILD=4 VERSION=STEMS4`. The unit's OS version
+reads `STEMS4`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS4.bin` | 451,852 | `c7a8cb78e3a03728a631dd6ab1bf8f3f1f3f2ace0a0da24f78cc8b0395101795` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS4.syx` | 631,155 | `4ad3812f89643a366f606c008eb7cc971b2fd3eb632360f0dfbc69eeb983cd5d` |
+
+Both are built from your own 1.40C and never enter the repository. Copies
+are in `/home/yvez/xcheck/stems4`. The gates on that code: `make reach
+RUN=1 KEEP=1 TESTS=1` every gate ok, `verify_stems --long --fat32` 449
+PASS, 0 FAIL, 0 SKIP (the PR). The wrapped OS itself (`out/mainos_bus.bin`,
+`dcefe88f…6d420f9f`) booted under the port and recorded an eight-track
+take and a MASTER TRACK take (IDLE, `T1.wav`, `MAIN.wav` and `CUE.wav`, no
+`T8.wav`).
+
+**Before you flash.**
+
+- **If REC was pressed since power-on (STEMS3 included), power cycle
+  first, then OS UPGRADE.** The writer task sleeps on the timer the
+  upgrade uses, which holds one sleeper (STEM_REC.md 4.7).
+- As flash A: the stock `.syx` and a DIN MIDI interface at hand for the
+  Startup Menu (`docs/guide/BUILDING.md` section 7), the card backed up.
+- After the upgrade, power cycle once more (flash A's silent first boot).
+
+**The tests, in order.** Stop at the first that fails.
+
+1. Boot; MAIN MENU › SYSTEM › OS UPGRADE still opens (the recovery path);
+   MAIN MENU › STEMS shows its eighteen rows.
+2. A light project, T1 to T8 at 16 bits, 30 s: the take saves (`DONE`),
+   the files play, and the folder holds `STATS.TXT`. Send it.
+3. MASTER TRACK on: T8's row reads `T8 MASTER` and YES does nothing; a
+   take with T1, T8 and MAIN on holds `T1.wav` and `MAIN.wav`, no
+   `T8.wav`. MASTER TRACK off again: T8's row reads as before.
+4. Flash C's busy project (T2 to T8 Static, all trigs; eleven stereo
+   files at 24 bits) for a minute: `DONE` or `RING FULL`, and the take's
+   `STATS.TXT` either way. It tells the card from the processor: card
+   writes filling most of the take's time point at the card; a writer
+   sleep far above 10,000 µs, or a hook and frame routine near 362 µs,
+   point at the processor.
+5. The card's cluster: the `card ... cluster N sectors` line, or `chkdsk`
+   on a computer (bytes in each allocation unit).
+6. Flash C's tests not reported yet still stand: the null tests, the
+   inputs mono and CD, and a 5-minute take at eight tracks and 16 bits.
+
+**After the flash.** Every result goes into `docs/firmware/STEM_REC.md`
+section 17, as flash D.
 
 ## Flash C — `stems`: stems after the fader, the buses and 24 bits (staged 5 Oct 2026)
 

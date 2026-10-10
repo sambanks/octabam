@@ -66,11 +66,11 @@ first KB, `[0x400b9668]`).
 | 5 | `0x460bcc2c` | `0x4001ee30` | `0x460bc42c` +0x800 | sys | storage (FAT/ATA) |
 | 4 | `0x460d4f80` | `0x4005593c` | `0x460d4780` +0x800 | sys | key-repeat timer |
 | 3 | `0x460d59d4` | `0x40056c40` | `0x460d51d4` +0x800 | sys | UI (`queue_receive(UI_QUEUE)`) |
-| 2 | `0x460fab80` | `0x40091d18` | `0x460fabd4` +0x2000 | main | ❓ |
-| 2 | `0x460ffd44` | `0x400921c4` | `0x460fdd44` +0x2000 | main | ❓ |
-| 2 | `0x460e0e38` | `0x4009203c` | `0x460dee38` +0x2000 | main | ❓ (ping-pongs with sys) |
+| 2 | `0x460fab80` | `0x40091d18` | `0x460fabd4` +0x2000 | main | 🟡 likely the Static streaming scheduler: waits on `0x46c901b8`, walks eight per-track records, builds read requests (`STEM_REC.md` 19.6) |
+| 2 | `0x460ffd44` | `0x400921c4` | `0x460fdd44` +0x2000 | main | 🟡 card reader: requests on queue `0x460fcd24`, the raw read slot `0x46c82426`, signals the requester; likely for the Static machines (`STEM_REC.md` 19.6) |
+| 2 | `0x460e0e38` | `0x4009203c` | `0x460dee38` +0x2000 | main | machine parameters: receives queue `0x460d17ee` (kinds `0x0f` and `0x0e`, `MIDI.md`); ping-pongs with sys |
 | 1 | `0x460ddde4` | `0x4008445c` | `0x460d9de4` +0x4000 | main | engine (46-opcode dispatcher, queue `0x460d17ce`; RELOAD BANK types `0x14`, `6`) |
-| 1 | `0x46105508` | `0x40098a5c` | `0x4610555c` +0x2000 | main | ❓ |
+| 1 | `0x46105508` | `0x40098a5c` | `0x4610555c` +0x2000 | main | ❓ waits on `0x4610755c`, walks eight per-track records with the EMAC fractional: per-voice work (`STEM_REC.md` 19.6) |
 | 1 | `0x46c7bed8` | `0x40061a94` | `0x460d6de4` +0x2000 | main | sys: serial + SPI start-up, then creates storage, UI, p3 |
 | 0 | `0x46c7ae84` | `0x4001f834` | top `0x46c7becc` | boot | main: runs the init list, then `bras .` at `0x4001fc9c` (= idle) |
 

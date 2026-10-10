@@ -88,7 +88,7 @@ def analyse(s, n, lat, log, words):
     fin = next((x for x, w, val in ws if w == 0 and val == v.ST_FINISHING), None)
     over = next((x for x, w, val in ws if w == 1 and val == v.ERR_OVERFLOW), None)
     end_x = over if over is not None else fin
-    rframes = RING // (64 * n)
+    rframes = v.ring_frames(n, 64 * n)   # zero copy: each file's slack off the region (STEM_REC.md 19.7)
     # The fill is a sawtooth: one frame more every frame, a chunk less each
     # time the writer takes one. Its trend is the troughs': the fill right
     # after each stems_rd write, over the second half of the recording.

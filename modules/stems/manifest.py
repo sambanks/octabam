@@ -15,17 +15,17 @@ Every stock fact the unit uses: docs/firmware/STEM_REC.md.
 
 HOW, in one breath: a detour at the per-frame routine's only call site
 (0x40004b12) mirrors core 0's MAIN gains every frame and, while a take
-runs, packs each source into an 8 MiB ring: each track's read-back block
-times its gain (its share of MAIN), MAIN and CUE as mixed, the inputs
-raw; an RTOS task of the module's own streams the ring
-to the card while the take runs, through the file layer's raw sector
-routines from its own buffers (never the buffered API or its shared
-staging buffer), then rewrites each file's header and sets its length;
-the ring and the task's stack are DramRegions at the free top of the
-platform reserve, so the module costs no sample memory beyond what any
-DRAM remix already gives up. The writer's sector buffers are a third
-region, `stems_buf`: fourteen 49,664-byte stream buffers and fourteen 512-byte
-sector-0 copies.
+runs, packs each source into its file's own ring in the 8 MiB ring region,
+through the uncached alias, as the file's bytes: each track's read-back
+block times its gain (its share of MAIN), MAIN and CUE as mixed, the
+inputs raw; an RTOS task of the module's own streams each ring's whole
+sectors to the card while the take runs, straight from the ring (zero
+copy), through the file layer's raw sector routines (never the buffered
+API or its shared staging buffer), then rewrites each file's header and
+sets its length; the ring and the task's stack are DramRegions at the
+free top of the platform reserve, so the module costs no sample memory
+beyond what any DRAM remix already gives up. A third region, `stems_buf`,
+holds fourteen 512-byte sector-0 copies (the header's fix).
 
 On hardware: STEMS1 to STEMS3 on Yves's MKII (docs/firmware/STEM_REC.md
 section 17). No module upstream hooks the frame site or grows MAIN MENU's
@@ -99,7 +99,7 @@ MODULE = Module(
                 write=(ROOT_N + 1).to_bytes(4, "big"), note="MAIN MENU categories 4 -> 5 (STEMS)"),),
     dram_regions=(DramRegion("stems_ring", 0x800000),
                   DramRegion("stems_stack", 0x2000),
-                  DramRegion("stems_buf", 14 * (512 * 96 + 512) + 14 * 512, align=512),),
+                  DramRegion("stems_buf", 14 * 512, align=512),),
     # verify_stems builds its own stems image and its fixture cards (from the
     # project template STEMS_TEMPLATE names, default out/projects/Ultimate FX
     # 1.5.3; it SKIPs the port runs by name without one) and runs the takes
