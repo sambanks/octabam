@@ -417,6 +417,38 @@ def persist(card, out, bank, lib, check, kimg=None, syms=None):
     check("persist: backup: scenes.bak is the refused file, scenes.work a good one",
           find(fb, "scenes.bak") == bad and wb is not None and struct.unpack(">I", wb[12:16])[0] == zlib.crc32(wb[16:]))
 
+    # A project saved under MIDISC 2.x: Part 0 of bank 3 keeps three locks in its sparse
+    # blob ('MS', 3, entries of index and value at Part +0x17a2), Part 1 a blob whose value
+    # is out of range. With no scenes.work the first becomes Part 0's table, the second nothing.
+    proj = d / "proj_conv"
+    if proj.exists():
+        shutil.rmtree(proj)
+    shutil.copytree(out / "project", proj)
+    bf = proj / f"bank{bank + 1:02d}.work"
+    dat = bytearray(bf.read_bytes())
+
+    def put(part, blob):
+        o = FILE_PART + part * FILE_PSTRIDE + 9 + 0x17a2
+        dat[o:o + len(blob)] = blob
+    put(0, bytes([0x4d, 0x53, 3, 0, 0x00, 0x15, 33, 0x08, 0x15, 77, 0x02, 0xa3, 5]))
+    put(1, bytes([0x4d, 0x53, 1, 0, 0x00, 0x20, 200]))
+    dat[-2:] = (sum(dat[0x10:-2]) & 0xffff).to_bytes(2, "big")
+    bf.write_bytes(bytes(dat))
+    card_conv = d / "card_conv.img"
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(proj), "OCTABAM", "SCN",
+                        "--tree", str(d / "tree_conv"), "--out", str(card_conv)], cwd=ROOT, capture_output=True, text=True)
+    check("persist: the card with a 2.x project staged", r.returncode == 0)
+    cmd = [EMU, "--image", d / "ours.bin", "--card", card_conv, "--set", "OCTABAM", "--project", "SCN", "--load-ms", "90000",
+           "--mkii", "--live-script", d / "idle.script",
+           "--mem-dump", f"{slot:#x},{MSC_LEN:#x}={d / 'conv_p0.bin'};{slot + MSC_LEN:#x},{MSC_LEN:#x}={d / 'conv_p1.bin'}"]
+    with open(d / "conv.txt", "w") as f:
+        rc = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=f, stderr=subprocess.STDOUT).returncode
+    p0 = held((d / "conv_p0.bin").read_bytes()) if (d / "conv_p0.bin").is_file() else None
+    p1 = held((d / "conv_p1.bin").read_bytes()) if (d / "conv_p1.bin").is_file() else None
+    check(f"persist: 2.x project: Part 0's blob became its table {p0} (predicted {{21: 33, 2069: 77, 675: 5}}); "
+          f"Part 1's out-of-range blob became nothing {p1} (run exit {rc})",
+          p0 == {21: 33, 2069: 77, 675: 5} and p1 == {})
+
     if kimg is None:
         return
     # A Kit carries its Part's locks (KITS, kits.work version 2): SAVE KIT stores the

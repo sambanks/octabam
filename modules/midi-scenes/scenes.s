@@ -73,6 +73,7 @@
         .globl  scn_st_loadall_pre, scn_st_loadmask_pre, scn_st_newproj, scn_st_bankw_post
         .globl  scn_st_pstore_pre, scn_st_pstore_post, scn_st_preload_post, scn_st_tocs1
         .globl  scn_st_fromcs1, scn_st_partclear, scn_slot_ptr, scn_slot_changed
+        .globl  scn_st_loadall_post, scn_st_loadmask_post
         .extern store_path, store_fopen, store_fread, store_fwrite, store_fclose, store_crc32, store_refuse
         .globl  scn_st_answer
 
@@ -1096,7 +1097,13 @@ load_masked:
         movel   %d0,%d5
         movel   %d4,%d1
         bsr.w   clear_banks
-        cmpil   #2,%d5
+        cmpil   #1,%d5
+        bne.s   2f
+        movel   scn_cvmask,%d0          | no file: a 2.x project's blobs are read once the banks are in
+        orl     %d4,%d0
+        movel   %d0,scn_cvmask
+        rts
+2:      cmpil   #2,%d5
         bne.s   9f
         moveq   #1,%d0
         movel   %d0,scn_nowrite
@@ -1121,6 +1128,111 @@ scn_st_answer:
         movel   %d0,scn_dirty
 9:      rts
 
+| scn_convert: d1 = a bank mask. A project saved under MIDISC 2.x keeps each
+| Part's locks in a sparse blob inside the Part (Part +0x17a2, the freeze twin
+| at +0x1712; the working Part first, then the saved one): 'MS', a count (at
+| most 46), then entries of a 16-bit index into the lock table and a value. The
+| first blob of a Part that holds up (every index <= 0xfff, every value <= 127)
+| fills that Part's table. The Part bytes are left as they are: what stock
+| holds there is the LFO designer records, which is not known. Clobbers d0-d7, a0-a2.
+scn_convert:
+        movel   %d1,%d7
+        moveq   #0,%d6                  | bank
+cv_bank:
+        btst    %d6,%d7
+        beq.w   cv_next
+        moveq   #0,%d5                  | Part
+cv_part:
+        movel   %d6,%d0
+        movel   #0x9b340,%d1
+        mulu.l  %d1,%d0
+        addil   #0x400e21e0,%d0
+        moveal  %d0,%a0
+        movel   #PARTSZ,%d0
+        mulu.l  %d5,%d0
+        addal   %d0,%a0                 | the Part's offset in its bank
+        moveal  %a0,%a1
+        addal   #0x8ed80+0x17a2,%a1
+        bsr.w   cv_try
+        tstl    %d0
+        bne.w   cv_done
+        moveal  %a0,%a1
+        addal   #0x8ed80+0x1712,%a1
+        bsr.w   cv_try
+        tstl    %d0
+        bne.w   cv_done
+        moveal  %a0,%a1
+        addal   #0x9504a+0x17a2,%a1
+        bsr.w   cv_try
+        tstl    %d0
+        bne.w   cv_done
+        moveal  %a0,%a1
+        addal   #0x9504a+0x1712,%a1
+        bsr.w   cv_try
+cv_done:
+        addql   #1,%d5
+        cmpil   #4,%d5
+        bne.w   cv_part
+cv_next:
+        addql   #1,%d6
+        cmpil   #16,%d6
+        bne.w   cv_bank
+        mvzb    CUR_BANK,%d0
+        bra.w   cs1_full                | the current bank's copy follows
+
+| cv_try: a1 = a blob, d6 = bank, d5 = Part -> d0 = 1 when it held up and was
+| applied (d0 = 0: not an 'MS' blob, or an entry out of range; nothing applied).
+| Reads by byte: the entries sit at odd addresses.
+cv_try:
+        mvzb    %a1@,%d0
+        cmpil   #0x4d,%d0
+        bne.w   cv_no
+        mvzb    %a1@(1),%d0
+        cmpil   #0x53,%d0
+        bne.w   cv_no
+        mvzb    %a1@(2),%d2             | the count
+        cmpil   #46,%d2
+        bhi.w   cv_no
+        lea     %a1@(4),%a2
+        movel   %d2,%d3
+        beq.w   cv_ok
+cv_chk: mvzb    %a2@,%d0
+        lsll    #8,%d0
+        mvzb    %a2@(1),%d1
+        orl     %d1,%d0
+        cmpil   #0xfff,%d0
+        bhi.w   cv_no
+        mvzb    %a2@(2),%d0
+        cmpil   #127,%d0
+        bhi.w   cv_no
+        addql   #3,%a2
+        subql   #1,%d3
+        bne.w   cv_chk
+cv_ok:  movel   %d6,%d0
+        lsll    #2,%d0
+        addl    %d5,%d0
+        lsll    #7,%d0
+        lsll    #5,%d0
+        addil   #scn_lib,%d0
+        moveal  %d0,%a2                 | the Part's table
+        lea     %a1@(4),%a1
+        tstl    %d2
+        beq.w   cv_yes
+cv_ap:  mvzb    %a1@,%d0
+        lsll    #8,%d0
+        mvzb    %a1@(1),%d1
+        orl     %d1,%d0
+        mvzb    %a1@(2),%d1
+        moveb   %d1,%a2@(0,%d0:l)
+        addql   #3,%a1
+        subql   #1,%d2
+        bne.w   cv_ap
+cv_yes: moveq   #1,%d0
+        movel   %d0,scn_dirty
+        rts
+cv_no:  moveq   #0,%d0
+        rts
+
 | ---- STORE's handlers (modules/store/store.s) ----
 scn_st_loadall_pre:
         bsr.w   scn_ensure
@@ -1140,6 +1252,14 @@ scn_st_loadmask_pre:                    | d1 = the mask
         lsll    %d0,%d2
         orl     %d2,%d1
 1:      bra.w   load_masked
+
+scn_st_loadall_post:
+scn_st_loadmask_post:
+        movel   scn_cvmask,%d1
+        beq.s   9f
+        clrl    scn_cvmask
+        bra.w   scn_convert
+9:      rts
 
 scn_st_newproj:
         lea     scn_lib,%a0
@@ -1240,6 +1360,7 @@ scn_clip:
         .fill   256, 1, 0xff            | the scene clipboard
 scn_ready:      .long   0               | scn_lib is filled
 scn_dirty:      .long   0               | scenes.work is due
+scn_cvmask:     .long   0               | banks to read 2.x blobs from once they are loaded
 scn_backup:     .long   0               | the next write first copies scenes.work to scenes.bak
 scn_nowrite:    .long   0               | scenes.work was refused: never overwritten
 scn_needfile:   .long   0               | bank + 1: no CS1 copy, read it at the next masked load
