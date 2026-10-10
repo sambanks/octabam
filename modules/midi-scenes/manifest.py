@@ -1,108 +1,72 @@
-"""MIDI SCENES -- MIDI-driven scene locks, built from bkkbrls-del/midisc.
+"""MIDI SCENES -- scene locks for the MIDI tracks, after bkkbrls-del's midisc.
 
-Stock 1.40C has no per-scene parameter lock over MIDI: XF morph reads one
-live 8x30 lock table only the panel writes. midisc adds a second table
-(MSC, `scene<<8 | track<<5 | flat`, 4096 bytes) and rewires scene hold,
-XF morph, part save/reload and the scene clear/copy/paste rows to read it
-when a MIDI event is driving. The panel path is untouched.
+Stock 1.40C keeps scene locks for the audio tracks only. This module adds a
+second table (MSC, `scene<<8 | track<<5 | flat`, 4096 bytes, 0xff = no lock)
+and routes the scene hold, the encoder press, the lock LEDs, the crossfader
+and the scene clear / copy / paste rows to it when a MIDI track is
+displayed.
 
-Source: `upstream/` is his repository (submodule at 4f9a894, MIDISC2.0; the
-gas units are his 1.40MIDISC8.2 code, which 2.0 did not change -- README).
-His caves are written in his Python encoder; his `tools/gas_port.py`
-regenerates `gas/*.s` from the same builders and proves each region
-assembles to his bytes at his addresses (`tools/verify/verify_midiscenes.py`
-re-runs that). Nothing in `upstream/` is edited here.
+Phase 1 of the rewrite (modules/midi-scenes/README.md): hold-to-lock, the
+readout, encoder unlock, lock LEDs and pad indicator, the XF morph, scene
+apply, the scene rows. The table, the clipboard and the mix state live in
+the unit's DRAM and nothing is written to a Part, a bank file or CS1.
 
-Placement: every unit is `dram=True`, linked into octabam's platform
-runtime and depacked at boot into the arena reserve (docs/remixer/
-PLACEMENT.md). Inside the OS this module changes only the detour and poke
-sites below, plus the boot redirect when no other module supplies it.
-
-Not carried: his MIDI CONTROL CC48/55/56 tick rows (UI-table pokes, not a
-cave); CCs behave as stock. The apply_part entry (0x40009094) stays stock
-since his 1.40MSCN6, so Octakit owns it alone. His own 1.40MIDISC8 image
-fails project load under the port because his CAVE2 (0x400d2ee6) overruns
-a live descriptor's enable words at 0x400d3014/18; this build links every
-unit into DRAM and is immune (measured).
-
-On hardware as OKMS1 (remix ok-ms, with Octakit), confirmed by him. Part
-Reload trapped there: Octakit's replacement of the stock reload validated
-its caller's return address and his `reload` stub substitutes it; the
-KITS RELOAD bridge carried the pair until Octakit was removed (6 Oct
-2026). With KITS the stock reload is stock, so his stubs run as on stock.
+The behaviour is bkkbrls-del's MIDISC2.1 (original author); `scenes.s` is
+written fresh and checked against his image under the port
+(`tools/verify/verify_scenes.py`). `upstream/` stays until the last phase
+and is not linked.
 """
 
-from remix.schema import Gate, Category, Proof, Claims, Detour, Kind, Linked, Module, Poke
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof
 
-UP = "modules/midi-scenes/upstream/gas/"
 H = bytes.fromhex
 
-# Link order: a unit can only reference symbols of units before it.
-UNITS = (
-    Linked("msc", UP + "msc.s", dram=True),
-    Linked("state", UP + "state.s", dram=True),
-    Linked("seam", UP + "seam.s", dram=True),                 # part_window: no deps
-    Linked("cave2", UP + "cave2.s", dram=True),               # rebuild, freeze_alt
-    Linked("safe_cave", UP + "safe_cave.s", dram=True),       # pack/unpack/... call part_window, rebuild
-    Linked("reload_cave", UP + "reload_cave.s", dram=True),   # rel_after: freeze_alt + pack/unpack
-    Linked("code2", UP + "code2.s", dram=True),               # reload -> rel_after
-    Linked("scene_paste", UP + "scene_paste.s", dram=True),
-    Linked("seam_bank", UP + "seam_bank.s", dram=True),       # bank_sw/bank_inv call pack/unpack
-    Linked("stub", UP + "stub.s", dram=True),
-    Linked("project_cave", UP + "project_cave.s", dram=True),
-    Linked("enc_unlock", UP + "enc_unlock.s", dram=True),
-)
-
 DETOURS = (
-    Detour(0x400534CE, H("4ab98000001266000586"), "stub", "hold_a", "scene-hold dispatch, engine A", pad_to=10),
-    Detour(0x40052ECE, H("4ab980000012660005b6"), "stub", "hold_b", "scene-hold dispatch, engine B", pad_to=10),
-    Detour(0x4004E348, H("71b9100b14cc"), "stub", "dial", "scene-held dial readout"),
-    Detour(0x400343BC, H("4ab980000012"), note="per-track ADDI dispatch -> stock", target=0x400343C4),
-    Detour(0x4003445E, H("4ab980000012"), note="per-page ADDI dispatch -> stock", target=0x40034466),
-    Detour(0x400343E8, H("06800008f3e2"), "stub", "taddi", "scene-locked track offset", kind="jsr"),
-    Detour(0x4003448E, H("06810008f3e2"), "stub", "paddi", "scene-locked page offset", kind="jsr"),
-    Detour(0x40034764, H("06800008f3e2"), "stub", "taddi", "MIDI lock-LED paint, engine A", kind="jsr"),
-    Detour(0x40034950, H("06800008f3e2"), "stub", "taddi", "MIDI lock-LED paint, engine B", kind="jsr"),
-    Detour(0x40031F44, H("4fefffe448d704fc"), "stub", "pad", "pad-has-locks indicator", pad_to=8),
-    Detour(0x400434CA, H("4ebae414241f"), "stub", "press", "encoder-press refresh"),
-    Detour(0x40054CB6, H("42b9460d1694"), "stub", "release", "scene-pad release mix"),
-    Detour(0x40062F24, H("4eb940038c30"), "stub", "clr_sc", "CLEAR SCENE menu row", kind="jsr"),
-    Detour(0x40062FBE, H("4eb9400274cc"), "stub", "cpy_sc", "COPY SCENE menu row", kind="jsr"),
-    Detour(0x40062E3C, H("4eb940027578"), "scene_paste", "pst_sc", "PASTE SCENE menu row", kind="jsr"),
-    Detour(0x4002E828, H("4eb94004a9d0"), "project_cave", "clr_pt", "FUNC+Part clear", kind="jsr"),
-    Detour(0x40053A9E, H("4ab980000012660008aa"), "enc_unlock", "hook_a", "scene+encoder unlock, engine A", pad_to=10),
-    Detour(0x40054392, H("4ab980000012660008b8"), "enc_unlock", "hook_b", "scene+encoder unlock, engine B", pad_to=10),
-    Detour(0x4003F3A2, H("4ef94003577c"), "safe_cave", "morph", "XF morph tail (SAFE_CAVE since 1.40MSCN6)"),
-    Detour(0x40061E78, H("71398000004a"), "stub", "xf1", "post-XF continuation 1"),
-    Detour(0x40062C32, H("71b980000003"), "safe_cave", "xf2", "post-XF continuation 2"),
-    Detour(0x40052AE0, H("4ef94007e8d8"), "code2", "scene_done", "scene-recall completion A"),
-    Detour(0x40052A10, H("4ef94007e8d8"), "code2", "scene_done", "scene-recall completion B"),
-    Detour(0x4005538A, H("1a82223c000018b2"), "code2", "write_mix", "part-window write, remixed", pad_to=8),
-    Detour(0x4009D1DE, H("4cd73cfc4fef00284e75"), "safe_cave", "plock", "post-plock scene rebuild", pad_to=10),
-    Detour(0x4002DD12, H("4eb94004a908"), "safe_cave", "save", "Part Save menu action", kind="jsr"),
-    # `reload` and `apply_bridge` park the site's return address in apply_ret
-    # and return the stock callee through their own continuation.
-    Detour(0x4002DD56, H("4eb94004aab4"), "code2", "reload", "Part Reload, menu path", kind="jsr"),
-    Detour(0x4005E05A, H("4eb94004aab4"), "code2", "reload", "Part Reload, non-menu path", kind="jsr"),
-    Detour(0x400622AA, H("23c046c82456"), "seam_bank", "bank_sw", "bank-pointer refresh on switch A", kind="jsr"),
-    Detour(0x40087D44, H("23c046c82456"), "stub", "bank_pub", "bank publish (no pack) on switch B", kind="jsr"),
-    Detour(0x4001FBD0, H("23c046c82456"), "seam_bank", "bank_inv", "bank-pointer refresh on init A", kind="jsr"),
-    Detour(0x40025AA2, H("23c046c82456"), "seam_bank", "bank_inv", "bank-pointer refresh on init B", kind="jsr"),
-    Detour(0x400622C6, H("4eb9400418e0"), "project_cave", "after_proj", "post-project-load CKPT seed + unpack", kind="jsr"),
-    Detour(0x4002DCD4, H("45f94004a908"), "safe_cave", "save", "SAVE ALL's lea -> the ported Save", kind="lea"),
-    # The part-change UI sites go through his apply bridge (pack, stock
-    # apply, unpack + mix); STOCK_APPLY itself stays stock.
-    Detour(0x4002B59A, H("4eb940009094"), "safe_cave", "apply_bridge", "part-change UI apply -> bridge, site 1", kind="jsr"),
-    Detour(0x4002B8F8, H("4eb940009094"), "safe_cave", "apply_bridge", "part-change UI apply -> bridge, site 2", kind="jsr"),
-    Detour(0x4004A8FC, H("4eb940009094"), "safe_cave", "apply_bridge", "set pattern's part then apply -> bridge, site 3", kind="jsr"),
-    Detour(0x40029AF8, H("4ef940009094"), "safe_cave", "apply_bridge", "part-change UI apply (jmp) -> bridge"),
+    Detour(0x400534CE, H("4ab98000001266000586"), "scenes", "scn_hold_a",
+           "scene A held + encoder, MIDI mode: the lock goes to MSC", pad_to=10),
+    Detour(0x40052ECE, H("4ab980000012660005b6"), "scenes", "scn_hold_b",
+           "scene B held + encoder, MIDI mode: the lock goes to MSC", pad_to=10),
+    Detour(0x4004E348, H("71b9100b14cc"), "scenes", "scn_dial",
+           "knob readout: the held scene's lock"),
+    Detour(0x40053A9E, H("4ab980000012660008aa"), "scenes", "scn_enc_a",
+           "scene held + encoder press, MIDI mode: the lock cleared", pad_to=10),
+    Detour(0x40054392, H("4ab980000012660008b8"), "scenes", "scn_enc_b",
+           "scene held + encoder press, MIDI mode (second function)", pad_to=10),
+    Detour(0x400343BC, H("4ab980000012"), note="per-track lock offset: always the audio path", target=0x400343C4),
+    Detour(0x4003445E, H("4ab980000012"), note="per-page lock offset: always the audio path", target=0x40034466),
+    Detour(0x400343E8, H("06800008f3e2"), "scenes", "scn_taddi",
+           "scene-block base per track: MSC in MIDI mode", kind="jsr"),
+    Detour(0x4003448E, H("06810008f3e2"), "scenes", "scn_paddi",
+           "scene-block base per page: MSC in MIDI mode", kind="jsr"),
+    Detour(0x40034764, H("06800008f3e2"), "scenes", "scn_taddi",
+           "lock LED paint, first scan: MSC in MIDI mode", kind="jsr"),
+    Detour(0x40034950, H("06800008f3e2"), "scenes", "scn_taddi",
+           "lock LED paint, second scan: MSC in MIDI mode", kind="jsr"),
+    Detour(0x40031F44, H("4fefffe448d704fc"), "scenes", "scn_pad",
+           "scene pad lit when MSC holds a lock for the scene", pad_to=8),
+    Detour(0x400434CA, H("4ebae414241f"), "scenes", "scn_press",
+           "scene key pressed, MIDI mode: the knob overlay redrawn"),
+    Detour(0x40052A10, H("4ef94007e8d8"), "scenes", "scn_done",
+           "scene recall completion (second path): mix at the XF"),
+    Detour(0x40052AE0, H("4ef94007e8d8"), "scenes", "scn_done",
+           "scene recall completion (first path): mix at the XF"),
+    Detour(0x4003F3A2, H("4ef94003577c"), "scenes", "scn_morph",
+           "tail of the audio morph: mix when the XF moved"),
+    Detour(0x40061E78, H("71398000004a"), "scenes", "scn_xf1",
+           "after the panel XF handler's CC 48 out: mix"),
+    Detour(0x40062C32, H("71b980000003"), "scenes", "scn_xf2",
+           "after the second XF publish: mix"),
+    Detour(0x40062F24, H("4eb940038c30"), "scenes", "scn_clear",
+           "CLEAR SCENE row: MSC[scene] wiped", kind="jsr"),
+    Detour(0x40062FBE, H("4eb9400274cc"), "scenes", "scn_copy",
+           "COPY SCENE row: MSC[scene] to the clipboard", kind="jsr"),
+    Detour(0x40062E3C, H("4eb940027578"), "scenes", "scn_paste",
+           "PASTE SCENE row: the clipboard to MSC[scene]", kind="jsr"),
 )
 
 POKES = (
-    Poke(0x40034754, H("665a"), H("4e71"), "MIDI lock LEDs: scan MSC too, engine A (bne->nop)"),
-    Poke(0x4003493E, H("6648"), H("4e71"), "MIDI lock LEDs: scan MSC too, engine B (bne->nop)"),
-    Poke(0x4004A9B0, H("6612"), H("6012"), "never re-apply the part after Part Save (bne->bra)"),
-    Poke(0x4004AA8E, H("6612"), H("6012"), "never re-apply the part after Part Clear (bne->bra)"),
+    Poke(0x40034754, H("665a"), H("4e71"), "lock LEDs scan MSC too, first scan (bne -> nop)"),
+    Poke(0x4003493E, H("6648"), H("4e71"), "lock LEDs scan MSC too, second scan (bne -> nop)"),
 )
 
 MODULE = Module(
@@ -110,14 +74,12 @@ MODULE = Module(
     key="MIDI SCENES",
     kind=Kind.CF_PATCH,
     category=Category.PARTS, author="bkkbrls-del/midisc", author_url="https://github.com/bkkbrls-del/midisc",
-    proof=Proof.HARDWARE, proof_note="`ok-ms` on his unit, 14 Sep 2026",
-    doc="MIDI-driven scene locks (hold/morph/save/reload/clear/copy/paste), "
-        "built from bkkbrls-del/midisc as linker-placed units.",
-    linked=UNITS,
+    proof=Proof.PORT,
+    proof_note="`verify_scenes` against MIDISC2.1 under the port, phase 1 scenarios (b1, b7, b3, b29copy, b29clear); the earlier 2.0 build ran on his unit as `ok-ms`, 14 Sep 2026",
+    doc="Scene locks for the MIDI tracks (hold-to-lock, readout, unlock, lock LEDs, XF morph, "
+        "scene clear / copy / paste). RAM only; after bkkbrls-del's midisc.",
+    linked=(Linked("scenes", "modules/midi-scenes/scenes.s", dram=True),),
     detours=DETOURS,
     pokes=POKES,
-    # his MIDI-track lock store: the 144-byte freeze twin (0x90492) then the
-    # 144-byte sparse blob (0x90522) inside every Part window (his memory_map)
-    claims=Claims(part_window=((0x90492, 288, "MSC freeze twin + sparse blob"),)),
-    gates=(Gate('tools/verify/verify_midiscenes.py', remix_arg=False),),
+    gates=(Gate("tools/verify/verify_scenes.py", once=True),),
 )

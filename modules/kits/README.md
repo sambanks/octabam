@@ -124,8 +124,10 @@ which is not what an MD or MnM Kit holds.
   no engine track names it while the transport runs, no queued or
   chained pattern's Part byte names it, and its working Part is byte for
   byte the Kit KITS recorded there (outside MIDI SCENES' Part-window
-  bytes when it is in the remix: his code rewrites them in the current
-  Part from his own table after a project load, measured in ok-ms). A
+  bytes when that module declares a `Claims.part_window`: MIDISC2.0 and
+  the 2.0 build rewrote them in the current Part from its own table after
+  a project load, measured in ok-ms; the rewritten module declares none
+  until its storage phase, so PWSKIP is 0 beside it). A
   slot whose content is in no Kit is
   never copied over. With no free slot, or a request with an interrupt
   level set (the arranger and repeat publish from the tick), the pattern
@@ -263,11 +265,11 @@ Not run on the unit: an unattended run with the BCR2000.
   tracks' steps and locks (`0x40039df4`), not the MIDI tracks.
 - `kits.work` is written whole (1.6 MB) when anything changed; Octakit's
   per-record writes are not carried.
-- MIDI SCENES' own Part reload hooks are on the stock call sites; LOAD
-  KIT calls the reload directly, so his post-reload restore does not run
-  for a Kit load (FUNC+CUE goes through his hooks as on stock). A staged
-  Kit carries the MIDI scene locks it was saved with in his Part-window
-  bytes; whether his table follows a staged slot is not measured.
+- MIDI SCENES (rewrite, phase 1) hooks no Part reload and writes no Part
+  byte: its lock table is RAM beside the displayed Part, and a Kit carries
+  no MIDI scene locks. Phase 2 puts the table in a project file and makes a
+  Kit carry its Part's locks (`modules/midi-scenes/README.md`); this
+  section and `PWSKIP` change then.
 - Whether the CS1 range holds over a power-off on the unit is read from
   stock's use of CS1 (as PLOCKS P2), not measured.
 

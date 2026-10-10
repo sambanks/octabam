@@ -1472,9 +1472,10 @@ slot_equal:
         rts
 | part_eq: a0 = a working Part, a2 = a Kit's Part -> d0 = 1 when they are
 | equal outside PWSKIP_LO..PWSKIP_HI: the Part-window bytes MIDI SCENES
-| mirrors its own table into (its Claims.part_window; it rewrites them in
-| the current Part after a project load, measured under ok-ms). 0..0 when
-| MIDI SCENES is not in the remix. Clobbers d0/d1/a0/a2.
+| mirrors its own table into (its Claims.part_window; MIDISC2.0 rewrote them
+| in the current Part after a project load, measured under ok-ms). 0..0 when
+| MIDI SCENES is not in the remix or declares no Part window (the rewrite,
+| until its storage phase). Clobbers d0/d1/a0/a2.
 part_eq:
         movel   %d2,%sp@-
         movel   #PWSKIP_LO,%d2

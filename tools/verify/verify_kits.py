@@ -543,8 +543,10 @@ def main():
         # the load (KITS's equality leaves them out the same way)
         lo, hi = 0, 0
         if "MIDI SCENES" in remix.modules:
-            pw = registry.modules()["MIDI SCENES"].claims.part_window
-            lo, hi = min(o for o, _l, _w in pw) - WORK, max(o + l for o, l, _w in pw) - WORK
+            cl = registry.modules()["MIDI SCENES"].claims
+            pw = cl.part_window if cl else ()
+            if pw:
+                lo, hi = min(o for o, _l, _w in pw) - WORK, max(o + l for o, l, _w in pw) - WORK
 
         def eq(x, y):
             return x[:lo] == y[:lo] and x[hi:] == y[hi:]

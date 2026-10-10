@@ -248,3 +248,55 @@ Remaining:
 | `0x4000b1c4` (frame ISR switch) vs `0x400a44f4` order | add `0x4000b1c4` to the watch list of the `t2` run |
 | KITS reload order, staged slots | `verify_kits` with his image |
 | whether a pattern switch with scene locks and playing trigs changes the MIDI stream between stock and his | needs MIDI trigs |
+
+## 11. Phase 1: the rewrite against MIDISC2.1 (10 Oct 2026)
+
+`modules/midi-scenes/scenes.s` (B1..B8, B11, B29, B30, RAM only) built as
+`midi-scenes` and `ok-ms`, run through `verify_scenes.py` beside the
+oracle image and stock under the port; every scenario of section 1 plus
+`b2` (SCENE A held and left held). ✅ measured on `midi-scenes`, all
+comparisons against the oracle pass:
+
+| scenario | MIDI out (bytes, frames) | MSC | track records `0x46c76dc0` | lock mask `0x8000664e` | Part windows vs stock |
+|---|---|---|---|---|---|
+| b1, b2, b7, b7play, b3, b29copy, b29clear | identical, 0 frames apart | identical | identical | identical (zero) | identical |
+
+- The clipboard (`msc21_ram+0x1000`) is untouched in every scenario but
+  b29copy: the oracle's reads zeros, this module's `0xff`; b29copy's is
+  identical after the copy.
+- b2's end-of-scenario LCD plane (the panel link's UART stream) is
+  identical to the oracle's, and differs from stock's (the readout shows
+  the held scene's value 40 in both). With KITS in the image the status
+  line reads `009 ONE` where the oracle's reads `Pt:1 ONE`; that is the
+  only difference on `ok-ms`.
+- LED rows and levels on the panel link are identical between stock, the
+  oracle and the rewrite in all seven scenarios: the compare cannot see
+  B4's LED half or B5.
+
+📖 From the 2.1 image (disassembly), what the rewrite reproduces:
+
+- B9: the release hook's replacement (`0x400d7b14`) executes stock's own
+  sequence at `0x40054cb6..0x40054cd2` (`clr.l 0x460d1694`, `clr.l
+  0x460d169c`, `pea -1`, `jsr 0x4004d948`, `jsr 0x400418e0`, `addq #8,sp`,
+  `jmp 0x4007cf28`); no site is needed.
+- The mix wrapper: `0x400d28c8` -> context check, setup refresh
+  (`0x400d6600`), then the loop body `0x400d28ce`. Per track and flat: a
+  side with no lock reads the trig snapshot (`msc21_ram+0x1a80`, `0xff`
+  until a trig) and then the Part's `+0x3e2` value; both sides without a
+  lock write the Part's value to the record and send nothing; otherwise
+  `A + ((B-A)*w >> 7)`, `w = 127 - (xf & 127)`, weight 0 = A, 127 = B; the
+  record byte is written first and `0x4009eec8(track, flat, value, 0)` is
+  called when it changed.
+- The mix clears bit `flat` of `0x800064d0 + 4t + 0x17e` for flats 18..29
+  on every pass: that long is the lock mask of section 5 (`0x8000664e +
+  4t`).
+- `0x4009eec8` saves d2-d7/a2-a5 in its prologue.
+- Its LFO-row write (`0x400d2b24`) is jumped over in 2.1 (`0x400d2b1e: jmp
+  0x400d2b2e`); the mix writes only the track record.
+- The mix follows PLAY_BANK/PLAY_PART (`0x400d6d60/64`): while the
+  sequencer is not scheduling (`0x800065b8 != 1`) they are the current
+  bank pointer and the displayed Part (`0x100b14cf`) at each call.
+- The scene-held readout, hold and unlock use the displayed Part's scene
+  assignment (bank `+0x8ed90 + part*0x18b2`, bytes A, B) and the displayed
+  track (`0x100b14cc & 7`).
+- The pad hook scans MSC[scene] in every mode, MIDI or not.
