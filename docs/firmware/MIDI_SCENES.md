@@ -301,6 +301,47 @@ comparisons against the oracle pass:
   track (`0x100b14cc & 7`).
 - The pad hook scans MSC[scene] in every mode, MIDI or not.
 
+## 12. Phase 3: the Part the mix runs on (11 Oct 2026)
+
+✅ Measured under the port, project OCTABAM89_setgate bank 3, Parts 1 and 2
+holding T1 CC 1 locks (scene A 30 / B 90 and 50 / 110, loaded from 2.x
+sparse blobs, which the oracle unpacks and this module converts), XF pot 128,
+PLAY, then PTN + TRIG 2:
+
+| image | CC 1 on the wire (frame) |
+|---|---|
+| oracle (MIDISC2.1) | 59 (5,347), 79 (50,490) |
+| `midi-scenes` with the phase 3 hooks | 59 (5,347), 79 (50,490) |
+| `midi-scenes` before them | 59 (5,347) |
+
+79 = the mix of Part 2 at XF 128: his mix runs on the playing pattern's
+Part at the switch. 📖 His path (disassembled): `0x400a3c2a` records a
+queued pattern's (bank, Part, step time) when it differs from the mix Part;
+`0x400a169a` publishes it when the step time passes; `0x400a44f4` takes the
+playing pattern's Part byte at the switch tick; `0x400a4ba0` and `0x40062216`
+run a due mix at every playback step and after the Part event; `0x4005538a`
+runs the mix after a panel write and sends the record's value.
+
+📖 B12 (`0x400a19da`, `0x400a1d32`) copies the 32-byte lane `0x46c78960 +
+32·track` into a per-track snapshot as a trig plays and re-mixes that track;
+B13 (`0x400d6afc` area) skips a flat whose bit is set in `0x8000664e`; B14
+runs the stock CC loop (`0x4009fe4e`) before the note-on (`0x4009faaa`).
+Not compared: no MIDI trig fires a note under the port here, stock included
+(trig masks set by grid recording and by poke, T1 on channel 11: watch-pc
+hits 0 at `0x4009faaa` and `0x4009fe4e`, 5,034 at the step routine
+`0x400a1608`).
+
+✅ Layout, by diffing the bank blob after grid recording: the MIDI track
+record's trig mask for steps 1 to 8 is at pattern `+0x48d7` (bit 0 = step
+1; steps 1 and 5 gave `0x11`), and its lock bytes at pattern `+0x4900 +
+step·32 + flat` (step 1, flat 21: `0x4915`, `0xff` = none).
+
+The oracle image's cave code sits 0x400 above its file offsets: the MAIN
+file maps at `0x40000400`, so `objdump --adjust-vma=0x40000400` shows real
+addresses. With `0x40000000` every address reads 0x400 low, and absolute
+data addresses inside the caves then disagree with their pc-relative
+references by 0x400.
+
 ## 8. An unsaved audio scene lock across a power cycle ✅
 
 Measured 10 Oct 2026 under the port on the stock image, project `SCN`

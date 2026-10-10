@@ -37,7 +37,8 @@ lock. `flat` is the MIDI page × 6 + knob (NOTE, LFO, ARP, CTRL1, CTRL2;
 | B11 | track `t`'s locks affect track `t` only | phase 1 |
 | B29 | CLEAR / COPY / PASTE SCENE rows carry MSC | phase 1 (the gate scenarios need them) |
 | B30 | encoder press in MIDI mode: overlay refresh | phase 1 |
-| B10, B12–B28, B31–B33 | | later phases |
+| B10, B15–B18, B28 | the mix follows the Part that plays; a panel write re-mixes | `verify_scenes` seq group (`sw`) |
+| B12–B14, B33 | | not done (Open) |
 
 The mix (`scenes.s`, `mix`) reads scenes A and B from the displayed Part's
 assignment bytes (Part `+0x10`, `+0x11`, bank offset `0x8ed90`). For each
@@ -88,9 +89,9 @@ Paste and bank-copy rows.
 |---|---|---|
 | a lock edit marks the Part unsaved and the project dirty, and writes the Part into its saved copy (B31) | the flags are set; no saved-copy write | the locks are in `scenes.work` and CS1, not in the Part |
 | the scene clipboard starts as zeros | starts as `0xff` | a PASTE SCENE after an audio-only COPY SCENE gives his table zeros (a lock at 0 on every flat), here none |
-| the mix follows the Part the sequencer plays (cached, published at the pattern boundary) | follows the displayed Part | B15–B17 are phase 3; the two are the same Part in every scenario run |
-| a context key (the sparse blob's contents) decides whether a mix may reuse its state; the XF-changed test runs only once a mix has run | the XF-changed test only | the key belongs to the Part storage of phase 2 |
-| the mix refreshes the MIDI track records' setup bytes (`+0x1e..+0x43`) from the Part | not done | stock's apply already copies them; the Part-change timing is phase 3 |
+| the mix follows the Part the sequencer plays (cached, published at the pattern boundary) | the same, as a target (bank, Part) that follows the displayed Part while the sequencer is stopped | `sw` matches his MIDI out frame for frame |
+| a context key (the sparse blob's contents) decides whether a mix may reuse its state; the XF-changed test runs only once a mix has run | a due flag (set by a target change, a load, a Kit load, Part Clear) and the XF-changed test | the tables are in `scn_lib`, not in a Part blob |
+| the mix refreshes the MIDI track records' setup bytes (`+0x1e..+0x43`) from the Part | not done | stock's apply already copies them; no scenario differs |
 | trig snapshot (`TRIG_SNAP`) as the unlocked side while a trig plays | the Part's value | B12 is phase 3 |
 
 ## Measured
@@ -135,7 +136,7 @@ cover.
   designs are not recoverable. The wiped Part is not marked changed; the
   next normal Part save writes it.
 - Phase 2: B19–B27 beyond Part Clear.
-- Phase 3: the sequencer sites (B10, B12–B18, B28) and B33.
+- B12 (the trig snapshot as the unlocked side), B13 (a live lock is not replaced by a scene refresh), B14 (the stock CC loop before the same step's note-on) and B33: not done. Under the port no MIDI trig fires a note in any scenario authored so far, stock included (T1 on channel 11, trig masks set through grid recording and by poke at pattern `+0x48d7`; the note-on path `0x4009faaa` and the CC loop `0x4009fe4e` have zero hits); until one does, nothing can compare them with his image.
 - The oracle image is not in the repository and is not built by `make`: `verify_scenes.py --oracle MAIN21.raw` (or `OT_MSC21_IMAGE`) takes one made from his repository at `52eaab0` (his own build; not re-run here after the submodule left). `make check` runs the scenarios on our image and stock's.
 - Hardware: the 2.0 build ran on his unit as `ok-ms` (14 Sep 2026); the
   rewrite has not run on a unit.

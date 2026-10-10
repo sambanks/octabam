@@ -297,7 +297,9 @@ def run_image(name, path, msc, out, card, tags, jobs, bank, table=None):
         s = Script(); (table or SCENARIOS)[tag](s)
         sp = d / f"{tag}.script"; sp.write_text(s.text())
         dump = ";".join(f"{ad:#x},{ln:#x}={d / f'{tag}_{k}.bin'}" for k, (ad, ln) in dumps.items())
-        scen += ["--scenario", f"{d / (tag + '.txt')} --live-script {sp} --midi-out {d / (tag + '.midi')} "
+        pk = getattr((table or SCENARIOS)[tag], "pokes", ())
+        poke = f"--poke {';'.join(f'{x:#x}={v:#x}' for x, v in pk)} " if pk else ""
+        scen += ["--scenario", f"{d / (tag + '.txt')} {poke}--live-script {sp} --midi-out {d / (tag + '.midi')} "
                                f"--serial-out {d / (tag + '.serial')} --mem-dump {dump}"]
     cmd = [EMU, "--image", path, "--card", card, "--set", "OCTABAM", "--project", "SCN", "--load-ms", "90000",
            "--scenario-jobs", jobs] + scen
