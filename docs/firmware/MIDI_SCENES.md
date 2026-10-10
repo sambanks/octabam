@@ -318,7 +318,7 @@ PLAY, then PTN + TRIG 2:
 Part at the switch. 📖 His path (disassembled): `0x400a3c2a` records a
 queued pattern's (bank, Part, step time) when it differs from the mix Part;
 `0x400a169a` publishes it when the step time passes; `0x400a44f4` takes the
-playing pattern's Part byte at the switch tick; `0x400a4ba0` and `0x40062216`
+playing pattern's Part byte at the switch tick; `0x400a4ba0` and `0x40062224` (after `0x40062216`'s call, which `batch-bugfixes` detours)
 run a due mix at every playback step and after the Part event; `0x4005538a`
 runs the mix after a panel write and sends the record's value.
 
