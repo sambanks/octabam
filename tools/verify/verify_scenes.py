@@ -3,7 +3,7 @@
 and on bkkbrls-del's MIDISC2.1 image (the oracle), MIDI OUT recorded with
 the frame of each byte, and the state each scenario leaves compared.
 
-    python3 tools/verify/verify_scenes.py REMIX [--oracle MAIN21.raw] [--project DIR]
+    python3 tools/verify/verify_scenes.py REMIX [--oracle MAIN21.raw] [--project DIR] [--persist]
         [--only b1,b7] [--tolerance FRAMES] [--reuse his,stock] [--out DIR]
     python3 tools/verify/verify_scenes.py --image NAME=PATH [...]   # record only
 
@@ -83,7 +83,7 @@ FILE_PART, FILE_PSTRIDE, NPARTS_FILE = 0x8eed6, 0x18bb, 8
 MIDI_SETUP, MIDI_PARAMS = 0x4e2, 0x3e2            # Part offsets: setup 36 B per track (byte 0 = channel + 1), params 32 B per track
 SCENE_B = 0x11                                    # Part offset: scene B's index (scene A at +0x10)
 K = dict(no=0x32, midi=0x35, t1=0x10, t2=0x11, fx1=0x25, fx2=0x26, amp=0x23, play=0x28, stop=0x27,
-         func=0x2d, scene_a=0x19, scene_b=0x1a, push_d=0x3b, rec=0x29)
+         func=0x2d, scene_a=0x19, scene_b=0x1a, push_d=0x3b, rec=0x29, yes=0x31, down=0x20, right=0x21)
 MSC_LEN, CLIP_LEN = 0x1000, 0x100
 
 DUMPS = {                                         # name: (address, length)
@@ -106,7 +106,8 @@ class Script:
         self.lines.append(f"{self.t:.0f} {x}"); self.t += gap
 
     def tap(self, k, gap=250):
-        self.send(f"key {K[k]:#x} down", 40); self.send(f"key {K[k]:#x} up", gap)
+        c = K[k] if isinstance(k, str) else k
+        self.send(f"key {c:#x} down", 40); self.send(f"key {c:#x} up", gap)
 
     def turn(self, hold, enc, ticks):
         self.send(f"key {K[hold]:#x} down", 60)
@@ -279,6 +280,88 @@ def collect(d, tag):
     return r
 
 
+CS1, CS1_LEN = 0x10000000, 0x100000
+CS1_SCN = 0x100fbdf0                              # 'SCS1', bank, sum, 0, then the current bank's four tables
+
+
+def persist(card, out, bank, lib, check):
+    """Storage under the port, our image only: the b1 locks kept by SAVE PROJECT
+    (scenes.work and its .strd), a second boot, a power cycle (CS1 in, nothing
+    posted) after a save and after none, and the same unsaved card without CS1."""
+    import struct
+    import zlib
+    from concurrent.futures import ThreadPoolExecutor
+    sys.path.insert(0, str(ROOT / "tools/emu"))
+    import emu_card
+    d = out / "persist"; d.mkdir(exist_ok=True)
+    slot = lib + bank * 4 * MSC_LEN
+    want = {0x015: 40, 0x815: 100}
+
+    def scr(tag, save):
+        s = Script(); b1(s)
+        if save:                                 # PROJ: SAVE PROJECT
+            s.tap(0x1c, 1000); s.tap("right", 700); s.tap("down", 500); s.tap("yes", 1100); s.tap("yes", 30000)
+        else:
+            s.t += 2000
+        (d / f"{tag}.script").write_text(s.text())
+
+    def boot(tag, card_, script, cs1=None, card_out=False):
+        cmd = [EMU, "--image", d / "ours.bin", "--card", card_, "--set", "OCTABAM",
+               "--project", "SCN", "--load-ms", "90000", "--mkii", "--live-script", script,
+               "--mem-dump", f"{slot:#x},{MSC_LEN:#x}={d / (tag + '_msc.bin')};{CS1:#x},{CS1_LEN:#x}={d / (tag + '_cs1.bin')}"]
+        if card_out:
+            cmd += ["--card-out", d / f"{tag}.img"]
+        if cs1 is not None:
+            cmd += ["--cs1-in", cs1, "--no-post"]
+        with open(d / f"{tag}.txt", "w") as f:
+            r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
+        return r.returncode
+
+    shutil.copy2(OUT / "mainos_ours.bin", d / "ours.bin")
+    scr("saved", True); scr("unsaved", False)
+    idle = Script(); idle.tap("no", 400); (d / "idle.script").write_text(idle.text())
+    with ThreadPoolExecutor(2) as ex:
+        rc = list(ex.map(lambda j: boot(*j), [("saved", card, d / "saved.script", None, True),
+                                              ("unsaved", card, d / "unsaved.script", None, True)]))
+    check(f"persist: the save and the unsaved run exited {rc}", rc == [0, 0])
+
+    def msc(tag):
+        f = d / f"{tag}_msc.bin"
+        return f.read_bytes() if f.is_file() else b""
+
+    def held(b):
+        return {i: v for i, v in enumerate(b) if v != 0xff}
+
+    check(f"persist: saved run holds {held(msc('saved'))} (predicted {want})", held(msc("saved")) == want)
+    files = emu_card.extract_image((d / "saved.img").read_bytes())
+    for ext in ("work", "strd"):
+        f = next((v for k, v in files.items() if k.lower().endswith(f"/scn/scenes.{ext}")), b"")
+        ok = len(f) == 16 + 64 * MSC_LEN and f[:8] == b"MSCW\0\0\0\1" and \
+            struct.unpack(">I", f[12:16])[0] == zlib.crc32(f[16:]) and \
+            held(f[16 + bank * 4 * MSC_LEN:16 + (bank * 4 + 1) * MSC_LEN]) == want
+        check(f"persist: scenes.{ext} on the card ({len(f)} B), header, CRC-32 and the locks in bank {bank} Part 0", ok)
+    uf = emu_card.extract_image((d / "unsaved.img").read_bytes())
+    check("persist: the unsaved run wrote no scenes.work",
+          not any(k.lower().endswith("/scn/scenes.work") for k in uf))
+
+    cs1 = (d / "saved_cs1.bin").read_bytes()[CS1_SCN - CS1:CS1_SCN - CS1 + 16 + 4 * MSC_LEN]
+    ssum = (bank + sum(struct.unpack(">%dI" % (len(cs1[16:]) // 4), cs1[16:]))) & 0xffffffff
+    check(f"persist: CS1 copy: magic {cs1[:4]!r}, bank {struct.unpack('>I', cs1[4:8])[0]}, sum "
+          f"{'holds' if struct.unpack('>I', cs1[8:12])[0] == ssum else 'WRONG'}, Part 0 holds {held(cs1[16:16 + MSC_LEN])}",
+          cs1[:4] == b"SCS1" and struct.unpack(">I", cs1[4:8])[0] == bank
+          and struct.unpack(">I", cs1[8:12])[0] == ssum and held(cs1[16:16 + MSC_LEN]) == want)
+
+    jobs = [("reboot", d / "saved.img", None), ("power", d / "saved.img", d / "saved_cs1.bin"),
+            ("powerun", d / "unsaved.img", d / "unsaved_cs1.bin"), ("nocs1", d / "unsaved.img", None)]
+    with ThreadPoolExecutor(3) as ex:
+        rc = list(ex.map(lambda j: boot(j[0], j[1], d / "idle.script", j[2]), jobs))
+    check(f"persist: the four boots exited {rc}", rc == [0, 0, 0, 0])
+    check(f"persist: reboot (the saved card, posted load): {held(msc('reboot'))}", held(msc("reboot")) == want)
+    check(f"persist: power (saved card, CS1 in, nothing posted): {held(msc('power'))}", held(msc("power")) == want)
+    check(f"persist: powerun (unsaved card, CS1 in, nothing posted): {held(msc('powerun'))}", held(msc("powerun")) == want)
+    check(f"persist: nocs1 (the unsaved card, posted load): {held(msc('nocs1'))} (none)", held(msc("nocs1")) == {})
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("remix", nargs="?", default=os.environ.get("REMIX"))
@@ -290,6 +373,7 @@ def main():
     ap.add_argument("--only", default="")
     ap.add_argument("--jobs", default="4")
     ap.add_argument("--reuse", default="", help="image names whose last run in --out is read instead of run again")
+    ap.add_argument("--persist", action="store_true", help="also run the storage scenarios (our image only: SAVE PROJECT, a second boot, power cycles; six more boots, not timed)")
     ap.add_argument("--tolerance", type=int, default=0, help="frames of MIDI timing jitter allowed")
     a = ap.parse_args()
     if not a.remix and not a.image:
@@ -406,6 +490,8 @@ def main():
         s = res.get("stock", {}).get(t)
         if s and s["parts"] is not None:
             check(f"{t}: nopart: the Part windows equal stock's", o["parts"] == s["parts"])
+    if a.persist and not a.card:
+        persist(card, out, bank, images[0][2][0], check)
     print(f"verify_scenes: {'PASS' if not fails else 'FAIL'} ({fails} failing)")
     return 1 if fails else 0
 

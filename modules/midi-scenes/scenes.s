@@ -750,7 +750,9 @@ fill_ff:
         bne.s   1b
         rts
 
-| msc_edited: a lock changed. The file is due, and CS1 follows. Keeps every register.
+| msc_edited: a lock changed. The file is due, CS1 follows, and the Part is
+| marked changed the way stock's editors mark it (SAVE PROJECT does nothing
+| for a project it thinks unchanged). Keeps every register.
 msc_edited:
         lea     %sp@(-32),%sp
         movem.l %d0-%d5/%a0-%a1,%sp@
@@ -758,6 +760,30 @@ msc_edited:
         movel   %d0,scn_dirty
         mvzb    CUR_BANK,%d0
         bsr.w   cs1_full
+        mvzb    PART_DISP,%d1           | the Part is changed, as for a stock editor's store
+        andil   #3,%d1
+        moveq   #1,%d0
+        lsll    %d1,%d0
+        movel   %d0,%d1                 | d1 = its bit
+        movel   BANK_PTR,%d0
+        moveal  %d0,%a0
+        addil   #0x95048,%d0            | the bank's changed-Part bits
+        moveal  %d0,%a1
+        moveq   #0,%d0
+        moveb   %a1@,%d0
+        orl     %d1,%d0
+        moveb   %d0,%a1@
+        moveq   #0,%d0
+        moveb   0x100b145e,%d0          | the unsaved-Part bits
+        orl     %d1,%d0
+        moveb   %d0,0x100b145e
+        movel   %a0,%d0
+        addil   #0x9b332,%d0            | the bank's changed flag
+        moveal  %d0,%a1
+        moveq   #1,%d0
+        movel   %d0,%a1@
+        movel   %d0,0x100f8598          | the global changed flag
+        jsr     0x40027e00              | the edited-state refresh
         movem.l %sp@,%d0-%d5/%a0-%a1
         lea     %sp@(32),%sp
         rts
