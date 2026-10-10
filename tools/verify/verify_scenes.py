@@ -83,7 +83,7 @@ FILE_PART, FILE_PSTRIDE, NPARTS_FILE = 0x8eed6, 0x18bb, 8
 MIDI_SETUP, MIDI_PARAMS = 0x4e2, 0x3e2            # Part offsets: setup 36 B per track (byte 0 = channel + 1), params 32 B per track
 SCENE_B = 0x11                                    # Part offset: scene B's index (scene A at +0x10)
 K = dict(no=0x32, midi=0x35, t1=0x10, t2=0x11, fx1=0x25, fx2=0x26, amp=0x23, play=0x28, stop=0x27,
-         func=0x2d, scene_a=0x19, scene_b=0x1a, push_d=0x3b, rec=0x29, yes=0x31, down=0x20, right=0x21)
+         func=0x2d, scene_a=0x19, scene_b=0x1a, push_d=0x3b, rec=0x29, yes=0x31, down=0x20, right=0x21, part=0x1d, up=0x33)
 MSC_LEN, CLIP_LEN = 0x1000, 0x100
 
 DUMPS = {                                         # name: (address, length)
@@ -243,7 +243,7 @@ def build(remix):
     nm = subprocess.run(["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")],
                         capture_output=True, text=True).stdout
     sym = {f[2]: int(f[0], 16) for f in (l.split() for l in nm.splitlines()) if len(f) == 3}
-    return sym["scn_lib"], sym["scn_clip"]
+    return sym["scn_lib"], sym["scn_clip"], sym.get("KIMG")
 
 
 def run_image(name, path, msc, out, card, tags, jobs, bank):
@@ -284,7 +284,7 @@ CS1, CS1_LEN = 0x10000000, 0x100000
 CS1_SCN = 0x100fbdf0                              # 'SCS1', bank, sum, 0, then the current bank's four tables
 
 
-def persist(card, out, bank, lib, check):
+def persist(card, out, bank, lib, check, kimg=None):
     """Storage under the port, our image only: the b1 locks kept by SAVE PROJECT
     (scenes.work and its .strd), a second boot, a power cycle (CS1 in, nothing
     posted) after a save and after none, and the same unsaved card without CS1."""
@@ -361,6 +361,46 @@ def persist(card, out, bank, lib, check):
     check(f"persist: powerun (unsaved card, CS1 in, nothing posted): {held(msc('powerun'))}", held(msc("powerun")) == want)
     check(f"persist: nocs1 (the unsaved card, posted load): {held(msc('nocs1'))} (none)", held(msc("nocs1")) == {})
 
+    if kimg is None:
+        return
+    # A Kit carries its Part's locks (KITS, kits.work version 2): SAVE KIT stores the
+    # slot's table in the Kit; LOAD KIT of it, after the locks were cleared, puts it back.
+    O_RESID, O_LIB, REC1 = 352, 416, 6338
+    REC = REC1 + 4096
+    FK = dict(func=0x2d, part=0x1d, up=0x33)
+
+    def savekit(s):
+        s.send(f"key {FK['func']:#x} down", 800); s.tap(FK["part"], 800); s.send(f"key {FK['func']:#x} up", 300)
+        s.tap("down", 200); s.tap("down", 200); s.tap("yes", 1200); s.tap("yes", 1500)
+
+    def kscript(tag, clear):
+        s = Script(); b1(s); savekit(s)
+        if clear:
+            s.chord("scene_a", "play"); s.chord("scene_b", "play")
+            s.tap("part", 800); s.tap("yes", 1500)               # LOAD KIT: the list opens on the current Kit
+        s.t += 2000
+        (d / f"{tag}.script").write_text(s.text())
+
+    def kboot(tag, clear):
+        kscript(tag, clear)
+        cmd = [EMU, "--image", d / "ours.bin", "--card", card, "--set", "OCTABAM", "--project", "SCN",
+               "--load-ms", "90000", "--mkii", "--live-script", d / f"{tag}.script",
+               "--mem-dump", f"{slot:#x},{MSC_LEN:#x}={d / (tag + '_msc.bin')};{kimg:#x},{O_LIB + 256 * REC}={d / (tag + '_kimg.bin')}"]
+        with open(d / f"{tag}.txt", "w") as f:
+            return subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=f, stderr=subprocess.STDOUT).returncode
+
+    with ThreadPoolExecutor(2) as ex:
+        rc = list(ex.map(lambda a: kboot(*a), [("kitsave", False), ("kitload", True)]))
+    check(f"persist: the Kit runs exited {rc}", rc == [0, 0])
+    ks = (d / "kitsave_kimg.bin").read_bytes()
+    slot_kit = ks[O_RESID + bank * 4]
+    tab = lambda im, k: held(im[O_LIB + k * REC + REC1:O_LIB + (k + 1) * REC])
+    check(f"persist: SAVE KIT: the slot holds Kit {slot_kit}, whose table is {tab(ks, slot_kit) if slot_kit != 255 else None} (predicted {want})",
+          slot_kit != 255 and tab(ks, slot_kit) == want)
+    kl = (d / "kitload_kimg.bin").read_bytes()
+    check(f"persist: LOAD KIT after the locks were cleared: the slot's locks {held(msc('kitload'))} (predicted {want})",
+          held(msc("kitload")) == want)
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -392,7 +432,7 @@ def main():
 
     images = []                                   # (name, path, address of the lock table or None)
     if a.remix:
-        lib, clip = build(a.remix)
+        lib, clip, kimg = build(a.remix)
         ours = out / "mainos_ours.bin"; shutil.copy2(ROOT / "out/mainos_bus.bin", ours)
         images.append(("ours", ours, (lib, clip)))
         if a.oracle and pathlib.Path(a.oracle).is_file():
@@ -491,7 +531,7 @@ def main():
         if s and s["parts"] is not None:
             check(f"{t}: nopart: the Part windows equal stock's", o["parts"] == s["parts"])
     if a.persist and not a.card:
-        persist(card, out, bank, images[0][2][0], check)
+        persist(card, out, bank, images[0][2][0], check, kimg)
     print(f"verify_scenes: {'PASS' if not fails else 'FAIL'} ({fails} failing)")
     return 1 if fails else 0
 
