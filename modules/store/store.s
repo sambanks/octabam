@@ -69,6 +69,8 @@ fire:
 
 | 0x40090504: the project load's bank load.
 store_loadall:
+        clrl    store_npend             | a new project: nothing refused yet
+        clrl    store_shown
         SAVE
         moveq   #0,%d0
         moveq   #0,%d1
@@ -94,6 +96,7 @@ sl_after:
 
 | 0x400905d4 (?, mask, ...): a masked bank load.
 store_loadmask:
+        clrl    store_shown
         SAVE
         moveq   #0,%d0
         moveq   #0,%d1
@@ -386,6 +389,140 @@ store_answer_cb:
         lea     %sp@(44),%sp
         rts
 
+| =============================================================== prompt ====
+| A refused file is offered three rows in the firmware's list window (the one
+| KITS opens for LOAD KIT): IGNORE, OVERWRITE, BACKUP, each naming the file.
+| The list opens at the first encoder turn after the load, the only UI-task
+| site STORE holds (a window cannot be opened from the engine task), and
+| LEVEL scrolls it. A row's callback answers the first listed file; the next
+| asks at the next turn. Closing the list with NO leaves the entries listed
+| and asks no more until the next project load.
+        .set    M_OPEN,     0x4006d94c      | (count, sel, &sel, labels, callbacks)
+        .set    M_OBJ,      0x460e5e30      | long: the open list
+        .set    M_CBS,      0x460e5e28      | long: its callbacks, stored by M_OPEN
+        .set    M_STATE,    0x460e5e38      | its scroll state
+        .set    M_DOWN,     0x4007eca4      | (&state): one row down
+        .set    M_UP,       0x4007ec7c      | (&state): one row up
+        .set    M_REDRAW,   0x4006d784
+        .set    T_OBJ,      0x460e7612      | nonzero: a text editor is open
+        .set    CTL_DISP,   0x40031944      | (control, delta): the encoders' dispatch
+        .globl  store_ctl
+
+| 0x40061e00 (jsr CTL_DISP, control, delta): an encoder turn.
+store_ctl:
+        tstl    store_mown
+        beq.s   sc_closed
+        tstl    M_OBJ
+        bne.s   sc_open
+        clrl    store_mown              | closed without an answer
+sc_closed:
+        tstl    store_npend
+        beq.s   sc_pass
+        tstl    store_shown
+        bne.s   sc_pass
+        tstl    M_OBJ
+        bne.s   sc_pass
+        tstl    T_OBJ
+        bne.s   sc_pass
+        bra.w   prompt_open             | the turn that opens it is spent
+sc_open:
+        movel   M_CBS,%d0
+        cmpil   #store_cbtab,%d0
+        bne.s   sc_pass
+        moveq   #6,%d0
+        cmpl    %sp@(4),%d0
+        bne.s   sc_pass
+        movel   %d2,%sp@-
+        movel   %sp@(12),%d2            | the delta, signed detents
+        beq.s   8f
+        bpl.s   2f
+        negl    %d2
+1:      pea     M_STATE
+        jsr     M_UP
+        addql   #4,%sp
+        subql   #1,%d2
+        bne.s   1b
+        bra.s   3f
+2:      pea     M_STATE
+        jsr     M_DOWN
+        addql   #4,%sp
+        subql   #1,%d2
+        bne.s   2b
+3:      jsr     M_REDRAW
+8:      movel   %sp@+,%d2
+        rts
+sc_pass:
+        movel   ev_ctl,%d0              | KITS' list scroll, else stock's dispatch
+        beq.s   1f
+        moveal  %d0,%a0
+        jmp     %a0@
+1:      jmp     CTL_DISP
+
+| prompt_open: the first listed file's three rows. A C routine: keeps d2-d7/a2-a6.
+prompt_open:
+        lea     %sp@(-44),%sp
+        movem.l %d2-%d7/%a2-%a6,%sp@
+        lea     store_pend,%a0
+        moveq   #0,%d2
+        moveb   %a0@,%d2                | the client
+        moveq   #0,%d3
+        moveb   %a0@(1),%d3             | its argument
+        addql   #1,%d3
+        lea     name_tab,%a1
+        movel   %a1@(0,%d2:l:4),%d0
+        movel   %d3,%sp@-
+        movel   %d0,%sp@-
+        pea     store_name
+        jsr     SPRINTF
+        lea     %sp@(12),%sp
+        pea     store_name
+        pea     fmt_ignore
+        pea     store_row0
+        jsr     SPRINTF
+        lea     %sp@(12),%sp
+        pea     store_name
+        pea     fmt_over
+        pea     store_row1
+        jsr     SPRINTF
+        lea     %sp@(12),%sp
+        pea     store_name
+        pea     fmt_back
+        pea     store_row2
+        jsr     SPRINTF
+        lea     %sp@(12),%sp
+        clrl    store_msel
+        pea     store_cbtab
+        pea     store_lbtab
+        pea     store_msel
+        clrl    %sp@-
+        pea     3
+        jsr     M_OPEN
+        lea     %sp@(20),%sp
+        moveq   #1,%d0
+        movel   %d0,store_mown
+        movel   %d0,store_shown
+        movem.l %sp@,%d2-%d7/%a2-%a6
+        lea     %sp@(44),%sp
+        rts
+
+store_cb0:
+        moveq   #ANS_IGNORE,%d0
+        bra.s   cb_go
+store_cb1:
+        moveq   #ANS_OVERWRITE,%d0
+        bra.s   cb_go
+store_cb2:
+        moveq   #ANS_BACKUP,%d0
+cb_go:  lea     %sp@(-44),%sp
+        movem.l %d2-%d7/%a2-%a6,%sp@
+        moveq   #0,%d1
+        bsr.w   store_answer
+        clrl    store_mown
+        clrl    store_shown             | the next listed file asks at the next turn
+        movem.l %sp@,%d2-%d7/%a2-%a6
+        lea     %sp@(44),%sp
+        rts
+
 | =============================================================== files ====
 | The file calls a client uses. A client owns a context of STORE_CTX = 4,120
 | bytes (.space 4120, 4-byte aligned): the stock file object (24 B) and its
@@ -510,6 +647,15 @@ PR_RET: .long   0
 FA0:    .long   0
 FA1:    .long   0
 FA2:    .long   0
+store_mown:  .long 0            | the prompt's list is open
+store_shown: .long 0            | the prompt has been shown since the last project load
+store_msel:  .long 0
+store_cbtab: .long store_cb0, store_cb1, store_cb2
+store_lbtab: .long store_row0, store_row1, store_row2
+fmt_ignore:  .asciz "IGNORE %s"
+fmt_over:    .asciz "OVERWRITE %s"
+fmt_back:    .asciz "BACKUP %s"
+        .align  4
 CRCREADY: .long 0
 store_npend: .long 0
 
@@ -517,3 +663,7 @@ store_npend: .long 0
         .align  4
 CRCTAB: .space  256*4
 store_pend: .space 32
+store_name: .space 32
+store_row0: .space 40
+store_row1: .space 40
+store_row2: .space 40

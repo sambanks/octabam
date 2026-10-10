@@ -896,6 +896,35 @@ def main():
             run(cmd, OUT / f"{tag}.txt")
         with ThreadPoolExecutor(3) as ex:
             list(ex.map(lambda t: kbad(*t), [("kbad_ignore", None), ("kbad_over", 1), ("kbad_back", 2)]))
+        # the prompt: an encoder turn opens the list, LEVEL scrolls, YES answers
+        def ui(tag, *rows):
+            sc = Script(); sc.tap("no", 400); sc.send("enc 1 1", 800)
+            for r in rows:
+                sc.send(r, 700)
+            sp = OUT / f"{tag}.script"; sp.write_text(sc.text())
+            dmp = (f"{KS:#x},48={OUT / f'{tag}_st.bin'};{sym['store_npend']:#x},4={OUT / f'{tag}_np.bin'};"
+                   f"{sym['store_pend']:#x},32={OUT / f'{tag}_pend.bin'};{sym['KBACKUP']:#x},8={OUT / f'{tag}_bk.bin'};"
+                   f"0x460e5e28,4={OUT / f'{tag}_cbs.bin'};0x460e5e30,4={OUT / f'{tag}_obj.bin'};"
+                   f"{sym['store_mown']:#x},4={OUT / f'{tag}_mown.bin'}")
+            run([EMU, "--image", image, "--card", c, "--set", "OCTABAM", "--project", "KBAD", "--load-ms", "90000",
+                 "--live-script", sp, "--mem-dump", dmp], OUT / f"{tag}.txt")
+        with ThreadPoolExecutor(3) as ex:
+            list(ex.map(lambda t: ui(*t), [("kui_open",), ("kui_over", "enc 6 1", "key 0x31 down", "key 0x31 up"),
+                                           ("kui_ignore", "key 0x31 down", "key 0x31 up")]))
+        w = lambda tag, n: struct.unpack(">I", (OUT / f"{tag}_{n}.bin").read_bytes())[0]
+        check(f"kui_open: the encoder turn opened STORE's list (M_OBJ {w('kui_open', 'obj'):#x}, callbacks {w('kui_open', 'cbs'):#x} "
+              f"= store_cbtab {sym['store_cbtab']:#x}, open flag {w('kui_open', 'mown')}); the file is still listed ({w('kui_open', 'np')})",
+              w("kui_open", "obj") != 0 and w("kui_open", "cbs") == sym["store_cbtab"] and w("kui_open", "mown") == 1
+              and w("kui_open", "np") == 1)
+        so = st("kui_over")
+        check(f"kui_over: LEVEL down, YES: OVERWRITE answered (listed {w('kui_over', 'np')}, NOWRITE {so['NOWRITE']}, "
+              f"READY {so['READY']}, KDIRTY {so['KDIRTY']}, list closed {w('kui_over', 'obj') == 0})",
+              w("kui_over", "np") == 0 and not so["NOWRITE"] and so["READY"] == 1 and so["KDIRTY"] == 1
+              and w("kui_over", "obj") == 0)
+        si = st("kui_ignore")
+        check(f"kui_ignore: YES on the first row: IGNORE answered (listed {w('kui_ignore', 'np')}, NOWRITE {si['NOWRITE']}, "
+              f"READY {si['READY']}, list closed {w('kui_ignore', 'obj') == 0})",
+              w("kui_ignore", "np") == 0 and si["NOWRITE"] == 1 and not si["READY"] and w("kui_ignore", "obj") == 0)
         for tag in ("kbad_ignore", "kbad_over", "kbad_back"):
             s_ = st(tag)
             np_ = struct.unpack(">I", (OUT / f"{tag}_np.bin").read_bytes())[0]

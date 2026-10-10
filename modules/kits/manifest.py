@@ -53,8 +53,6 @@ MODULE = Module(
                "the MKI FUNC+BANK dispatch: SAVE KIT from LOAD KIT, else stock", pad_to=8),
         Detour(0x4004C146, H("41f9400a7230"), "kits", "kits_status",
                "the status line's Part field: NNN name of the Kit in the current slot"),
-        Detour(0x40061E00, H("4eb940031944"), "kits", "kits_level",
-               "the encoder dispatch call: LEVEL scrolls an open KITS list", kind="jsr"),
         Detour(0x4005E3D8, H("4feffff448d7001c"), "kits", "kits_funcyes",
                "FUNC+YES: with the SAVE KIT list open, quick save", pad_to=8),
         Detour(0x40060F34, H("2f032f02262f000c"), "kits", "kits_lcopy",

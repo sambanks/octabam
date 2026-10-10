@@ -41,7 +41,10 @@ CLIENT_IDS = {"PLOCKS P2": 0, "KITS": 1, "MIDI SCENES": 2}
 
 
 def store_inc(modules):
-    out = ["ans_tab:"]
+    out = ["ev_ctl:", "        .long   kits_level" if "KITS" in modules else "        .long   0",
+           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn",
+           'nm_plk: .asciz "P2LK%02d.WORK"', 'nm_kits: .asciz "KITS.WORK"', 'nm_scn: .asciz "SCENES.WORK"',
+           ".balign 2", "ans_tab:"]
     for key, _prefix, _events in sorted(CLIENTS, key=lambda c: CLIENT_IDS[c[0]]):
         pre = {k: p for k, p, _e in CLIENTS}[key]
         out.append(f"        .long   {pre}_st_answer" if key in modules else "        .long   0")
@@ -102,5 +105,8 @@ MODULE = Module(
                "the Part Save's tail", pad_to=10),
         Detour(0x4004A9D0, H("4feffff048d70c0c"), "store", "store_partclear",
                "the Part Clear's entry", pad_to=8),
+        Detour(0x40061E00, H("4eb940031944"), "store", "store_ctl",
+               "the encoder dispatch call: a refused file's prompt opens at an encoder turn, "
+               "LEVEL scrolls it; else KITS' list scroll or stock's dispatch", kind="jsr"),
     ),
 )

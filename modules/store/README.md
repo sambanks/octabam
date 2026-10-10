@@ -22,6 +22,7 @@ STORE calls at the event.
 | fromcs1 | `0x40025808` (power-up bank from CS1) | d0 = bank; after stock's call |
 | partsaved | `0x4004a9c4` (Part Save tail) | d0 = part |
 | partclear | `0x4004a9d0` (Part Clear entry) | d0 = part |
+| ctl (not an event) | `0x40061e00` (the encoder dispatch call) | opens the refusal prompt, scrolls it; else KITS' list scroll or stock's dispatch |
 
 A handler may clobber every register. Handlers of one event run in the order
 of `CLIENTS` in `manifest.py`. Wrappers keep one return slot per event and do
@@ -48,6 +49,41 @@ for each address finds only those call operands (10 Oct 2026). PLOCKS P2's
 call-site hooks covered every caller of the load and new-project routines, so
 an entry hook sees the same calls.
 
+## File calls
+
+`store_path`, `store_fopen`, `store_fread`, `store_fwrite`, `store_fclose`
+and `store_crc32` (running value in d1, 0 to start). A client owns a 4,120-byte
+context (stock file object and its 4 KB buffer), so one client's open file is
+never another's. `scenes.work` uses them; KITS and PLOCKS P2 keep their own
+copies.
+
+## Refused files
+
+A client that cannot use a file (unknown version, bad length or CRC) calls
+`store_refuse(client id, argument)` and leaves the file alone: it is never
+written over. STORE lists up to 16 refusals (`store_pend`, `store_npend`,
+cleared at a load of every bank). At the first encoder turn after the load
+(the only UI-task site STORE holds; a list cannot be opened from the engine
+task) a three-row list opens, each row naming the file:
+
+| row | answer | what the client does |
+|---|---|---|
+| IGNORE | `ANS_IGNORE` | nothing: the client stays off for the session |
+| OVERWRITE | `ANS_OVERWRITE` | starts empty (KITS: as a missing file, the stock Parts become Kits); the next save writes |
+| BACKUP | `ANS_BACKUP` | as OVERWRITE, and that save first copies the file to `.bak` |
+
+LEVEL scrolls the list; YES answers; NO closes it without an answer, leaving the
+entries listed and asking no more until the next load. No answer touches the
+card: the callbacks run in the UI task and the save in the engine task (a file
+copy called through the port's `--call` never returned). Client ids: 0 PLOCKS P2
+(argument = the bank), 1 KITS, 2 MIDI SCENES. PLOCKS P2 used to read a refused
+`p2lkNN.work` as empty and overwrite it at the next bank write.
+
 ## Measured
 
-Not yet. `verify_kits` and `verify_plocksp2` are the gates for the move.
+Under the port (10 Oct 2026): `verify_kits` (the refused `kits.work`: listed; OVERWRITE
+and BACKUP read it as a missing file; the list opens at an encoder turn, LEVEL + YES
+answers OVERWRITE, YES on row 0 answers IGNORE), `verify_plocksp2` (a bad `p2lk` header is
+listed and survives SAVE PROJECT), `verify_scenes --persist` (a bad `scenes.work` stays byte
+for byte under IGNORE; OVERWRITE and BACKUP give a good file, BACKUP also `scenes.bak`).
+Not covered: the rows' text on the LCD, a list opened over another window, the prompt on a unit.
