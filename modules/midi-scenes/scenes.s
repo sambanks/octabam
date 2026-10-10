@@ -579,9 +579,11 @@ mix_out:
 
 | ====================================================== B29: scene rows ====
 
-| 0x40062f24: CLEAR SCENE, jsr 0x40038c30(scene). MSC[scene] is wiped, the
-| mix runs, stock clears the audio scene.
+| 0x40062f24: CLEAR SCENE, jsr 0x40038c30(scene). In MIDI mode MSC[scene] is
+| wiped and the mix runs; stock clears the audio scene in either mode.
 scn_clear:
+        tstl    MIDI_MODE
+        beq.s   scn_stock_clear
         movel   %d0,%sp@-
         movel   %d1,%sp@-
         movel   %a0,%sp@-
@@ -599,11 +601,15 @@ scn_clear:
         movel   %sp@+,%d1
         movel   %sp@+,%d0
         bsr.w   mix
+scn_stock_clear:
         jmp     0x40038c30
 
-| 0x40062fbe: COPY SCENE, jsr 0x400274cc(part, scene). MSC[scene] goes to
-| the clipboard, stock copies the audio scene.
+| 0x40062fbe: COPY SCENE, jsr 0x400274cc(part, scene). In MIDI mode
+| MSC[scene] goes to the clipboard; stock copies the audio scene in either
+| mode.
 scn_copy:
+        tstl    MIDI_MODE
+        beq.s   scn_stock_copy
         movel   %d0,%sp@-
         movel   %d1,%sp@-
         movel   %a0,%sp@-
@@ -623,12 +629,15 @@ scn_copy:
         moveal  %sp@+,%a0
         movel   %sp@+,%d1
         movel   %sp@+,%d0
+scn_stock_copy:
         jmp     0x400274cc
 
-| 0x40062e3c: PASTE SCENE, jsr 0x40027578(part, scene). When a scene is on
-| the clipboard the clipboard goes to MSC[scene]; stock pastes the audio
-| scene.
+| 0x40062e3c: PASTE SCENE, jsr 0x40027578(part, scene). In MIDI mode, when a
+| scene is on the clipboard the clipboard goes to MSC[scene]; stock pastes
+| the audio scene in either mode.
 scn_paste:
+        tstl    MIDI_MODE
+        beq.s   2f
         movel   CLIPBOARD_TYPE,%d0
         cmpil   #0x10,%d0
         bne.s   2f
