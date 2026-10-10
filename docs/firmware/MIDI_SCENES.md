@@ -322,14 +322,31 @@ playing pattern's Part byte at the switch tick; `0x400a4ba0` and `0x4006221c` (a
 run a due mix at every playback step and after the Part event; `0x4005538a`
 runs the mix after a panel write and sends the record's value.
 
-📖 B12 (`0x400a19da`, `0x400a1d32`) copies the 32-byte lane `0x46c78960 +
-32·track` into a per-track snapshot as a trig plays and re-mixes that track;
-B13 (`0x400d6afc` area) skips a flat whose bit is set in `0x8000664e`; B14
-runs the stock CC loop (`0x4009fe4e`) before the note-on (`0x4009faaa`).
-Not compared: no MIDI trig fires a note under the port here, stock included
-(trig masks set by grid recording and by poke, T1 on channel 11: watch-pc
-hits 0 at `0x4009faaa` and `0x4009fe4e`, 5,034 at the step routine
-`0x400a1608`).
+✅ B12-B14 measured against the oracle (`tg`, `tg2`: T1 of the project's bank 2
+pattern 1 plays its trigs with scene locks on CC 1, CC 7 and the NOTE page's
+flat 3 in every Part; `tg2` moves the crossfader four times while it plays):
+1,112 and 1,722 MIDI messages, 0 frames apart. What the oracle does, as
+reproduced:
+
+- B12 (`0x400a19da`, `0x400a1d32`): as a trig plays, the track's 32-byte lane
+  `0x46c78960 + 32·track` is copied to a snapshot (cleared to `0xff` when a
+  mix is due); after the track's 30-parameter loop the track is re-mixed
+  alone, marked as having a trig playing. In a mix the unlocked side of a
+  scene reads the snapshot byte, else the Part's value.
+- B13: with a trig playing on the track, a flat with no lock on either side
+  is left alone when its bit is set in `0x8000664e + 4·track` (the playing
+  step's lock), and always in the track's own re-mix.
+- Between the pure A and B ends of the crossfader a track with a trig playing
+  gets its value written to the record and no CC (the sequencer's CC loop
+  sends it at its next step); at the ends and on tracks with no trig the mix
+  sends the CC when the value changed.
+- B14 (`0x4009faaa`, poke `0x4009fe4e`): the CC loop (flats 20..29: the
+  enabled CC numbers, the lane value against `0x46c76100 + ch·128 + cc`, one
+  per CC number per tick through `0x46c76000`) runs before the note-on and
+  the stock loop after it is jumped over.
+- ✅ The project mutes every track at load (`0x8000000c..f`, `0x46c78d6a`),
+  which silences the sequencer's notes; `tg` clears them. The earlier
+  absence of notes was this, not the trig data.
 
 ✅ Layout, by diffing the bank blob after grid recording: the MIDI track
 record's trig mask for steps 1 to 8 is at pattern `+0x48d7` (bit 0 = step

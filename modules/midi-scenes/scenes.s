@@ -66,6 +66,11 @@
         .set    REC,            0x46c76dc0      | MIDI track records, 0x44 B each
         .set    REC_STRIDE,     0x44
         .set    LOCK_MASK,      0x8000664e      | u32 per track: bit = param locked by the playing step
+        .set    LANE,           0x46c76fe0      | per track, 32 B: the values the sequencer's CC loop sends
+        .set    CCSENT,         0x46c76000      | per channel, 4 longs: bit = CC number already handled this tick
+        .set    CCCACHE,        0x46c76100      | per channel, 128 B: the last CC value sent
+        .set    MSGBUF,         0x400d8082      | the three-byte CC message the MIDI routine builds
+        .set    MIDI_TX,        0x40010bc8      | (3, buffer): queue a MIDI message
         .set    CC_TX,          0x4009eec8      | (track, flat, value, quiet): MIDI-track emitter
         .set    UI_OVERLAY,     0x4004d948      | (-1): redraws the knob overlay
         .set    PRESS_UI,       0x400418e0      | the stock encoder-press refresh
@@ -80,6 +85,7 @@
         .globl  scn_taddi, scn_paddi, scn_pad, scn_press, scn_done
         .globl  scn_morph, scn_xf1, scn_xf2, scn_clear, scn_copy, scn_paste
         .globl  scn_qrec, scn_qcommit, scn_switch, scn_step, scn_evt, scn_pwrite, scn_invalidate
+        .globl  scn_snap1, scn_snap2, scn_ccnote
         .globl  scn_lib, scn_clip, scn_state
         .globl  scn_st_loadall_pre, scn_st_loadmask_pre, scn_st_newproj, scn_st_bankw_post
         .globl  scn_st_pstore_pre, scn_st_pstore_post, scn_st_preload_post, scn_st_tocs1
@@ -489,7 +495,10 @@ mix:
         movel   scn_pbi,%d0
         cmpil   #15,%d0
         bhi.w   mix_out
-        movel   #BANKSZ,%d1
+        tstl    scn_state+ST_DUE
+        beq.s   1f
+        bsr.w   ctx_reset
+1:      movel   #BANKSZ,%d1
         mulsl   %d1,%d0
         addil   #BANK0,%d0
         moveal  %d0,%a0
@@ -527,7 +536,11 @@ mix:
         moveq   #127,%d0
         subl    %d5,%d0
         movel   %d0,%d5                 | d5 = w
-        moveq   #0,%d6                  | d6 = track
+        lea     scn_snap:l,%a1
+        movel   scn_only,%d6            | d6 = track: all of them, or only the one a trig played on
+        beq.s   1f
+        subql   #1,%d6
+1:
 mix_track:
         moveq   #0,%d7                  | d7 = flat
 mix_flat:
@@ -545,23 +558,32 @@ mix_flat:
 4:      cmpil   #NOLOCK,%d3
         bne.s   5f
         cmpil   #NOLOCK,%d4
-        beq.s   mix_free
+        beq.w   mix_free
 5:      cmpil   #NOLOCK,%d3
         bne.s   6f
-        mvzb    %a4@(0,%d0:l),%d3       | A unlocked: the Part's value
+        mvzb    %a1@(0,%d0:l),%d3       | A unlocked: the trig snapshot, else the Part's value
+        cmpil   #NOLOCK,%d3
+        bne.s   6f
+        mvzb    %a4@(0,%d0:l),%d3
 6:      cmpil   #NOLOCK,%d4
+        bne.s   7f
+        mvzb    %a1@(0,%d0:l),%d4
+        cmpil   #NOLOCK,%d4
         bne.s   7f
         mvzb    %a4@(0,%d0:l),%d4
 7:      movel   %d3,%d2
         tstl    %d5
-        beq.s   9f
+        beq.s   8f                      | the A end
         movel   %d4,%d2
         cmpil   #127,%d5
-        beq.s   9f
+        beq.s   8f                      | the B end
         subl    %d3,%d2
         mulsl   %d5,%d2
         asrl    #7,%d2
         addl    %d3,%d2
+        moveq   #1,%d3                  | between the ends
+        bra.s   9f
+8:      moveq   #0,%d3
 9:      andil   #127,%d2
         movel   #REC_STRIDE,%d1
         mulsl   %d6,%d1
@@ -570,7 +592,12 @@ mix_flat:
         addal   %d1,%a0                 | a0 -> the record's byte
         mvzb    %a0@,%d1
         moveb   %d2,%a0@
-        cmpl    %d2,%d1
+        tstl    %d3
+        beq.s   1f
+        lea     scn_sdirty:l,%a0
+        tstb    %a0@(0,%d6:l)
+        bne.s   mix_ctl                 | between the ends, a trig playing: the CC loop sends it
+1:      cmpl    %d2,%d1
         beq.s   mix_ctl
         clrl    %sp@-                   | CC_TX (track, flat, value, 0)
         movel   %d2,%sp@-
@@ -580,7 +607,19 @@ mix_flat:
         lea     %sp@(16),%sp
         bra.s   mix_ctl
 mix_free:                               | no lock on either side
-        mvzb    %a4@(0,%d0:l),%d2
+        tstl    scn_only
+        bne.w   mix_next                | the track a trig played on: its values stay
+        lea     scn_sdirty:l,%a0
+        tstb    %a0@(0,%d6:l)
+        beq.s   1f
+        movel   %d6,%d1                 | a trig plays: a flat its step locks is left alone
+        lsll    #2,%d1
+        moveal  %d1,%a0
+        addal   #LOCK_MASK,%a0
+        movel   %a0@,%d1
+        btst    %d7,%d1
+        bne.w   mix_next
+1:      mvzb    %a4@(0,%d0:l),%d2
         andil   #127,%d2
         movel   #REC_STRIDE,%d1
         mulsl   %d6,%d1
@@ -603,6 +642,8 @@ mix_next:
         addql   #1,%d7
         cmpil   #30,%d7
         bcs.w   mix_flat
+        tstl    scn_only
+        bne.s   mix_out
         addql   #1,%d6
         cmpil   #8,%d6
         bcs.w   mix_track
@@ -812,6 +853,201 @@ scn_pwrite:
         addal   %d0,%a0
         mvzb    %a0@,%d2
         jmp     0x40055392
+
+| ctx_reset: the context the mix rebuilds on when a mix is due: the trig
+| snapshots are empty and no track has a trig playing. Keeps every register.
+ctx_reset:
+        movel   %d0,%sp@-
+        movel   %a0,%sp@-
+        lea     scn_snap:l,%a0
+        moveq   #64,%d0
+1:      movel   #-1,%a0@+
+        subql   #1,%d0
+        bne.s   1b
+        clrl    scn_sdirty
+        clrl    scn_sdirty+4
+        moveal  %sp@+,%a0
+        movel   %sp@+,%d0
+        rts
+
+| ============================================ B12: the trig snapshot ====
+
+| 0x400a19da (8 bytes): moveml (a0),d1-d4/d6-d7/a4-a5; moveml ...,(a1) in the
+| sequencer's step routine: a track's 32-byte lane (values with the trig's
+| locks) is copied to its destination as a trig plays (d5 = track, a0 = the
+| lane). The lane is kept as the track's snapshot.
+scn_snap1:
+        movem.l %a0@,%d1-%d4/%d6-%d7/%a4-%a5
+        movem.l %d1-%d4/%d6-%d7/%a4-%a5,%a1@
+        lea     %sp@(-64),%sp
+        movem.l %d0-%d7/%a0-%a6,%sp@
+        cmpil   #7,%d5
+        bhi.s   9f
+        bsr.w   ensure
+        movel   %d5,%d0
+        lsll    #5,%d0
+        lea     scn_snap:l,%a1
+        addal   %d0,%a1
+        moveq   #8,%d0
+1:      movel   %a0@+,%a1@+
+        subql   #1,%d0
+        bne.s   1b
+        lea     scn_spend:l,%a0
+        moveq   #1,%d0
+        moveb   %d0,%a0@(0,%d5:l)
+9:      movem.l %sp@,%d0-%d7/%a0-%a6
+        lea     %sp@(64),%sp
+        jmp     0x400a19e2
+
+| 0x400a1d32: movel a2,d1; btst #0,d1, after the 30-parameter loop of track d5.
+| When the track took a snapshot, it is marked as having a trig playing and
+| re-mixed alone.
+scn_snap2:
+        lea     %sp@(-64),%sp
+        movem.l %d0-%d7/%a0-%a6,%sp@
+        cmpil   #7,%d5
+        bhi.s   9f
+        lea     scn_spend:l,%a0
+        tstb    %a0@(0,%d5:l)
+        beq.s   9f
+        clrb    %a0@(0,%d5:l)
+        tstl    scn_state+ST_VALID
+        beq.s   9f
+        lea     scn_sdirty:l,%a0
+        moveq   #1,%d0
+        moveb   %d0,%a0@(0,%d5:l)
+        movel   %d5,%d0
+        addql   #1,%d0
+        movel   %d0,scn_only
+        bsr.w   mix
+        clrl    scn_only
+9:      movem.l %sp@,%d0-%d7/%a0-%a6
+        lea     %sp@(64),%sp
+        movel   %a2,%d1
+        btst    #0,%d1
+        jmp     0x400a1d38
+
+| ================================= B14: the CC loop before the note-on ====
+
+| 0x4009faaa: move.l #0x10001,d0 in the MIDI routine 0x4009f794, after the
+| track's channel and mute tests (d5 = channel, d7 = track). Stock sends the
+| track's CC values after its note-on; the loop runs here instead (the stock
+| loop at 0x4009fe4e is jumped over). The routine's three frame slots the loop
+| uses are kept.
+scn_ccnote:
+        lea     %sp@(-72),%sp
+        movem.l %d0-%d7/%a0-%a6,%sp@
+        movel   %fp@(-64),%d0
+        movel   %d0,%sp@(60)
+        movel   %fp@(-54),%d0
+        movel   %d0,%sp@(64)
+        movel   %fp@(-50),%d0
+        movel   %d0,%sp@(68)
+        bsr.w   cc_loop
+        movel   %sp@(60),%d0
+        movel   %d0,%fp@(-64)
+        movel   %sp@(64),%d0
+        movel   %d0,%fp@(-54)
+        movel   %sp@(68),%d0
+        movel   %d0,%fp@(-50)
+        movem.l %sp@,%d0-%d7/%a0-%a6
+        lea     %sp@(72),%sp
+        movel   #0x10001,%d0
+        jmp     0x4009fab0
+
+| cc_loop: d7 = track, d5 = channel. Sends the track's enabled CCs (flats 20..23,
+| then 24..29) whose lane value differs from the last one sent on the channel,
+| once per CC number per tick.
+cc_loop:
+        movel   %d5,%d0
+        lsll    #2,%d0
+        moveal  %d0,%a5                 | a5 = channel * 4
+        movel   %d7,%d0
+        movel   #REC_STRIDE,%d1
+        mulsl   %d1,%d0
+        addil   #REC+0x34,%d0
+        moveal  %d0,%a2                 | the CC numbers of flats 20..23
+        movel   %d7,%d0
+        lsll    #5,%d0
+        addil   #LANE+20,%d0
+        moveal  %d0,%a3                 | their lane values
+        moveal  %fp@(-28),%a4           | the enable bits (record +0x1e)
+        moveq   #2,%d6
+        moveq   #4,%d4
+        bsr.s   cc_pass
+        movel   %d7,%d0
+        movel   #REC_STRIDE,%d1
+        mulsl   %d1,%d0
+        addil   #REC+0x38,%d0
+        moveal  %d0,%a2                 | the CC numbers of flats 24..29
+        movel   %d7,%d0
+        lsll    #5,%d0
+        addil   #LANE+24,%d0
+        moveal  %d0,%a3
+        moveal  %fp@(-24),%a4
+        addal   #31,%a4                 | record +0x1f
+        moveq   #0,%d6
+        moveq   #6,%d4
+cc_pass:
+        mvsb    %a2@,%d2                | the CC number
+        moveb   %a3@,%d3                | the lane value
+        moveq   #31,%d1
+        andl    %d2,%d1
+        moveq   #1,%d0
+        lsll    %d1,%d0
+        movel   %d0,%d1                 | d1 = its bit
+        movel   %d2,%d0
+        asrl    #5,%d0
+        addl    %a5,%d0
+        lea     CCSENT:l,%a0
+        movel   %a0@(0,%d0:l:4),%d0
+        andl    %d1,%d0
+        bne.w   cp_next                 | already handled this tick
+        mvsb    %a4@,%d0
+        btst    %d6,%d0
+        beq.w   cp_next                 | not enabled
+        moveal  %fp@(-32),%a1
+        mvsb    %a1@,%d1
+        mvsb    0x46c79e70,%d0
+        cmpl    %d1,%d0
+        bne.s   cp_mask
+        movel   %d5,%d0
+        lsll    #7,%d0
+        addl    %d2,%d0
+        lea     CCCACHE:l,%a1
+        mvsb    %a1@(0,%d0:l),%d1
+        mvsb    %d3,%d0
+        cmpl    %d1,%d0
+        beq.s   cp_mask
+        moveb   %d2,MSGBUF+1
+        moveb   %d3,MSGBUF+2
+        pea     MSGBUF
+        pea     3
+        jsr     MIDI_TX
+        movel   %d5,%d0
+        lsll    #7,%d0
+        addl    %d2,%d0
+        lea     CCCACHE:l,%a1
+        moveb   %d3,%a1@(0,%d0:l)
+        addql   #8,%sp
+cp_mask:
+        moveq   #31,%d1
+        andl    %d2,%d1
+        moveq   #1,%d0
+        lsll    %d1,%d0
+        movel   %d0,%d1
+        movel   %d2,%d0
+        asrl    #5,%d0
+        addl    %a5,%d0
+        lea     CCSENT:l,%a0
+        orl     %d1,%a0@(0,%d0:l:4)
+cp_next:
+        addql   #1,%a2
+        addql   #1,%a3
+        addql   #1,%d6
+        subql   #1,%d4
+        bne.w   cc_pass
+        rts
 
 | ====================================================== B29: scene rows ====
 
@@ -1624,6 +1860,10 @@ scn_state:
         .long   0
         .long   -1
         .long   0
+scn_only:       .long   0               | track + 1 while a trig's track is re-mixed alone
+scn_sdirty:     .long   0, 0            | per track: a trig has played since the context was reset
+scn_spend:      .long   0, 0            | per track: a snapshot is taken, its re-mix not yet run
+scn_snap:       .fill   256, 1, 0xff    | per track, 32 B: the lane of the trig that played
 scn_pbi:        .long   0xff            | the mix Part: its bank (0xff: none yet) and Part
 scn_pp:         .long   0
 scn_pnd:        .long   0               | a queued pattern's Part waits for its first step

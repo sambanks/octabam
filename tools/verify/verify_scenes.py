@@ -120,6 +120,9 @@ class Script:
     def pot(self, v, gap=500):
         self.send(f"pot {v}", gap)
 
+    def wait(self, ms):
+        self.t += ms
+
     def text(self):
         return "\n".join(self.lines + [f"{self.t:.0f} quit"]) + "\n"
 
@@ -201,14 +204,24 @@ def blob(entries):
 # Phase 3 scenarios use a project whose Parts 0 and 1 hold locks (as 2.x sparse blobs, which
 # the oracle unpacks at load and this module converts): T1's CC 1 knob (flat 21) is locked in
 # scene A (index 0) and scene B (index 8) of each.
+# With trigs: locks on CC 1 (flat 21), CC 0's flat 20 and the NOTE page's flat 3, in every Part.
+TRIG_LOCKS = [(0x0015, 30), (0x0815, 90), (0x0014, 10), (0x0814, 120), (0x0003, 20), (0x0803, 100)]
 SEQ_PARTS = {0: [(0x0015, 30), (0x0815, 90)], 1: [(0x0015, 50), (0x0815, 110)]}
 
 
-def seq_fixture(src, dst, bank):
+def seq_fixture(src, dst, bank, trigs=False):
+    """`trigs`: the current bank is the project's bank 2, whose pattern 1 holds MIDI trigs on T1 and T2."""
+    if trigs:
+        tmp = dst.parent / "trigsrc"
+        if tmp.exists():
+            shutil.rmtree(tmp)
+        shutil.copytree(src, tmp)
+        shutil.copy2(tmp / "bank02.work", tmp / f"bank{bank + 1:02d}.work")
+        src = tmp
     fixture(src, dst)
     bf = dst / f"bank{bank + 1:02d}.work"
     dat = bytearray(bf.read_bytes())
-    for part, ents in SEQ_PARTS.items():
+    for part, ents in (SEQ_PARTS if not trigs else {p: TRIG_LOCKS for p in range(4)}).items():
         o = FILE_PART + part * FILE_PSTRIDE + 9 + 0x17a2
         dat[o:o + len(blob(ents))] = blob(ents)
     dat[-2:] = (sum(dat[0x10:-2]) & 0xffff).to_bytes(2, "big")
@@ -221,10 +234,28 @@ def sw(s):
     s.send("key 0x2e down", 100); s.tap(1, 100); s.send("key 0x2e up", 20000)
 
 
-SEQ = dict(sw=sw)
+def tg(s):
+    """T1 plays its trigs (pattern 1 of the project's bank 2) under a scene lock on CC 1 at XF 128."""
+    s.tap("no", 400); s.tap("midi", 300); s.tap("t1", 300); s.pot(128, 800); s.tap("play", 14000)
+
+
+# The project mutes every track at load, which silences the sequencer's notes.
+tg.pokes = [(0x8000000c, 0), (0x8000000d, 0), (0x8000000e, 0), (0x8000000f, 0), (0x46c78d6a, 0)]
+tg.fixture = "trigs"
+def tg2(s):
+    """The same, with the crossfader moved while the trigs play."""
+    s.tap("no", 400); s.tap("midi", 300); s.tap("t1", 300); s.pot(128, 800); s.tap("play", 3000)
+    for v in (0, 255, 64, 192):
+        s.pot(v, 3000)
+    s.wait(6000)
+
+
+tg2.pokes = tg.pokes
+tg2.fixture = "trigs"
+SEQ = dict(sw=sw, tg=tg, tg2=tg2)
 # CC 1 on the wire: the mix of Part 1 at XF 128 ((30 * 64 + 90 * 63) / 127 = 59), then of Part 2
 # ((50 * 64 + 110 * 63) / 127 = 79) when the pattern switch lands.
-SEQ_WIRE = dict(sw=[59, 79])
+SEQ_WIRE = dict(sw=[59, 79], tg=None, tg2=None)
 
 
 def decode(raw, st=0):
@@ -538,15 +569,19 @@ def persist(card, out, bank, lib, check, kimg=None, syms=None):
 
 def seq_group(a, images, out, bank, check):
     """Phase 3: scenarios on the playing sequencer, MIDI out compared with the oracle's."""
-    tags = [t for t in SEQ if not a.only or t in a.only.split(",")]
-    if not tags:
-        return
-    sd = out / "seq"; sd.mkdir(exist_ok=True)
-    seq_fixture(pathlib.Path(a.project).expanduser(), sd / "project", bank)
+    for fx in ("", "trigs"):
+        tags = [t for t in SEQ if getattr(SEQ[t], "fixture", "") == fx and (not a.only or t in a.only.split(","))]
+        if tags:
+            seq_run(a, images, out, bank, check, fx, tags)
+
+
+def seq_run(a, images, out, bank, check, fx, tags):
+    sd = out / ("seq" + fx); sd.mkdir(exist_ok=True)
+    seq_fixture(pathlib.Path(a.project).expanduser(), sd / "project", bank, trigs=bool(fx))
     card = sd / "card.img"
     r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(sd / "project"), "OCTABAM",
                         "SCN", "--tree", str(sd / "tree"), "--out", str(card)], cwd=ROOT, capture_output=True, text=True)
-    check("seq: the card with Parts holding locks staged", r.returncode == 0)
+    check(f"seq{fx}: the card staged", r.returncode == 0)
     res = {}
     for name, path, _msc in images:
         if name == "stock":
@@ -559,8 +594,9 @@ def seq_group(a, images, out, bank, check):
         check(f"seq {t}: ours ran ({len(o['midi'] or [])} MIDI messages)", o["midi"] is not None)
         if o["midi"] is None:
             continue
-        cc1 = [int(m.split()[2], 16) for _f, m in o["midi"] if m.startswith("ba 01 ")]
-        check(f"seq {t}: CC 1 on the wire {cc1} (predicted {SEQ_WIRE[t]})", cc1 == SEQ_WIRE[t])
+        if SEQ_WIRE.get(t) is not None:
+            cc1 = [int(m.split()[2], 16) for _f, m in o["midi"] if m.startswith("ba 01 ")]
+            check(f"seq {t}: CC 1 on the wire {cc1} (predicted {SEQ_WIRE[t]})", cc1 == SEQ_WIRE[t])
         h = res.get("his", {}).get(t)
         if h is None:
             continue
@@ -572,7 +608,8 @@ def seq_group(a, images, out, bank, check):
         check(f"seq {t}: midi against his: {len(om)} vs {len(hm)} messages, largest frame difference {worst}"
               f" (tolerance {a.tolerance})", same)
         if not same:
-            print(f"       ours: {om}\n       his: {hm}")
+            i = next((k for k, (x, y) in enumerate(zip(om, hm)) if x != y), min(len(om), len(hm)))
+            print(f"       first difference at message {i}:\n       ours: {om[max(0, i - 2):i + 3]}\n       his:  {hm[max(0, i - 2):i + 3]}")
 
 
 def main():
