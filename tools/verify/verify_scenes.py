@@ -190,6 +190,43 @@ def fixture(src, dst):
         p.write_bytes(bytes(d))
 
 
+def blob(entries):
+    """A 2.x sparse blob ('MS', count, pad, entries of a 16-bit index and a value)."""
+    b = bytearray([0x4d, 0x53, len(entries), 0])
+    for idx, v in entries:
+        b += bytes([idx >> 8, idx & 255, v])
+    return bytes(b)
+
+
+# Phase 3 scenarios use a project whose Parts 0 and 1 hold locks (as 2.x sparse blobs, which
+# the oracle unpacks at load and this module converts): T1's CC 1 knob (flat 21) is locked in
+# scene A (index 0) and scene B (index 8) of each.
+SEQ_PARTS = {0: [(0x0015, 30), (0x0815, 90)], 1: [(0x0015, 50), (0x0815, 110)]}
+
+
+def seq_fixture(src, dst, bank):
+    fixture(src, dst)
+    bf = dst / f"bank{bank + 1:02d}.work"
+    dat = bytearray(bf.read_bytes())
+    for part, ents in SEQ_PARTS.items():
+        o = FILE_PART + part * FILE_PSTRIDE + 9 + 0x17a2
+        dat[o:o + len(blob(ents))] = blob(ents)
+    dat[-2:] = (sum(dat[0x10:-2]) & 0xffff).to_bytes(2, "big")
+    bf.write_bytes(bytes(dat))
+
+
+def sw(s):
+    """XF at the middle on Part 1, play, PTN + TRIG 2: pattern 2 (Part 2) starts when the pattern ends."""
+    s.tap("no", 400); s.pot(128, 800); s.tap("play", 1500)
+    s.send("key 0x2e down", 100); s.tap(1, 100); s.send("key 0x2e up", 20000)
+
+
+SEQ = dict(sw=sw)
+# CC 1 on the wire: the mix of Part 1 at XF 128 ((30 * 64 + 90 * 63) / 127 = 59), then of Part 2
+# ((50 * 64 + 110 * 63) / 127 = 79) when the pattern switch lands.
+SEQ_WIRE = dict(sw=[59, 79])
+
+
 def decode(raw, st=0):
     """MIDI bytes -> (messages, running status). The firmware's drainer uses running status."""
     out, i = [], 0
@@ -246,7 +283,7 @@ def build(remix):
     return sym["scn_lib"], sym["scn_clip"], sym.get("KIMG"), sym
 
 
-def run_image(name, path, msc, out, card, tags, jobs, bank):
+def run_image(name, path, msc, out, card, tags, jobs, bank, table=None):
     """One ot_emu: the load, then one child per scenario."""
     d = out / name; d.mkdir(exist_ok=True)
     dumps = dict(DUMPS, parts=(BANK0 + bank * BANK_STRIDE + PART_WINDOW, 4 * PART_STRIDE))
@@ -257,7 +294,7 @@ def run_image(name, path, msc, out, card, tags, jobs, bank):
         dumps["clip"] = (msc[1], CLIP_LEN)
     scen = []
     for tag in tags:
-        s = Script(); SCENARIOS[tag](s)
+        s = Script(); (table or SCENARIOS)[tag](s)
         sp = d / f"{tag}.script"; sp.write_text(s.text())
         dump = ";".join(f"{ad:#x},{ln:#x}={d / f'{tag}_{k}.bin'}" for k, (ad, ln) in dumps.items())
         scen += ["--scenario", f"{d / (tag + '.txt')} --live-script {sp} --midi-out {d / (tag + '.midi')} "
@@ -497,6 +534,45 @@ def persist(card, out, bank, lib, check, kimg=None, syms=None):
           held(msc("kitload")) == want)
 
 
+def seq_group(a, images, out, bank, check):
+    """Phase 3: scenarios on the playing sequencer, MIDI out compared with the oracle's."""
+    tags = [t for t in SEQ if not a.only or t in a.only.split(",")]
+    if not tags:
+        return
+    sd = out / "seq"; sd.mkdir(exist_ok=True)
+    seq_fixture(pathlib.Path(a.project).expanduser(), sd / "project", bank)
+    card = sd / "card.img"
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(sd / "project"), "OCTABAM",
+                        "SCN", "--tree", str(sd / "tree"), "--out", str(card)], cwd=ROOT, capture_output=True, text=True)
+    check("seq: the card with Parts holding locks staged", r.returncode == 0)
+    res = {}
+    for name, path, _msc in images:
+        if name == "stock":
+            continue
+        d = sd / name if name in a.reuse.split(",") else run_image(name, path, None, sd, card, tags, a.jobs, bank, SEQ)
+        res[name] = {t: collect(d, t) for t in tags}
+    for t in tags:
+        print(f"-- seq {t}")
+        o = res["ours"][t]
+        check(f"seq {t}: ours ran ({len(o['midi'] or [])} MIDI messages)", o["midi"] is not None)
+        if o["midi"] is None:
+            continue
+        cc1 = [int(m.split()[2], 16) for _f, m in o["midi"] if m.startswith("ba 01 ")]
+        check(f"seq {t}: CC 1 on the wire {cc1} (predicted {SEQ_WIRE[t]})", cc1 == SEQ_WIRE[t])
+        h = res.get("his", {}).get(t)
+        if h is None:
+            continue
+        if h["midi"] is None:
+            check(f"seq {t}: his left no MIDI record", False); continue
+        om, hm = o["midi"], h["midi"]
+        same = len(om) == len(hm) and all(x[1] == y[1] and abs(x[0] - y[0]) <= a.tolerance for x, y in zip(om, hm))
+        worst = max((abs(x[0] - y[0]) for x, y in zip(om, hm)), default=0)
+        check(f"seq {t}: midi against his: {len(om)} vs {len(hm)} messages, largest frame difference {worst}"
+              f" (tolerance {a.tolerance})", same)
+        if not same:
+            print(f"       ours: {om}\n       his: {hm}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("remix", nargs="?", default=os.environ.get("REMIX"))
@@ -625,6 +701,8 @@ def main():
         s = res.get("stock", {}).get(t)
         if s and s["parts"] is not None:
             check(f"{t}: nopart: the Part windows equal stock's", o["parts"] == s["parts"])
+    if not a.card and a.project:
+        seq_group(a, images, out, bank, check)
     if a.persist and not a.card:
         persist(card, out, bank, images[0][2][0], check, kimg, syms)
     print(f"verify_scenes: {'PASS' if not fails else 'FAIL'} ({fails} failing)")

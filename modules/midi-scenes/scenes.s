@@ -45,6 +45,15 @@
 | hooks may use d0-d7/a0-a1 once their own arguments are read.
 
         .set    PARTSZ,         0x18b2          | one Part in the bank window
+        .set    BANK0,          0x400e21e0      | bank 0's RAM base
+        .set    BANKSZ,         0x9b340         | one bank
+        .set    SCHED,          0x800065b8      | long: 1 while the sequencer schedules
+        .set    PLAY_BANK,      0x800065bd      | byte: the playing pattern's bank
+        .set    PLAY_PTN,       0x800065be      | byte: the playing pattern
+        .set    PTN_STRIDE,     0x8ed8          | one pattern in a bank
+        .set    PTN_PART,       0x8e57          | pattern: its Part byte
+        .set    Q_BANK,         0x46c7a9c6      | bytes: bank of each queued pattern
+        .set    Q_PART,         0x46c77c1a      | bytes: Part of each queued pattern
         .set    SCENE_ASSIGN,   0x8ed90         | bank: scene A id, scene B id (0xff = none)
         .set    PART_LIVE,      0x8f162         | bank: MIDI track params, 32 B per track
         .set    MIDI_MODE,      0x80000012      | long: nonzero in MIDI track mode
@@ -64,11 +73,13 @@
         .set    NOLOCK,         0xff
         .set    ST_VALID,       0               | scn_state long: a mix has run
         .set    ST_XF,          4               | scn_state long: the XF position it mixed
+        .set    ST_DUE,         8               | scn_state long: a mix is due (the target or the tables changed)
 
         .text
         .globl  scn_hold_a, scn_hold_b, scn_dial, scn_enc_a, scn_enc_b
         .globl  scn_taddi, scn_paddi, scn_pad, scn_press, scn_done
         .globl  scn_morph, scn_xf1, scn_xf2, scn_clear, scn_copy, scn_paste
+        .globl  scn_qrec, scn_qcommit, scn_switch, scn_step, scn_evt, scn_pwrite, scn_invalidate
         .globl  scn_lib, scn_clip, scn_state
         .globl  scn_st_loadall_pre, scn_st_loadmask_pre, scn_st_newproj, scn_st_bankw_post
         .globl  scn_st_pstore_pre, scn_st_pstore_post, scn_st_preload_post, scn_st_tocs1
@@ -474,10 +485,18 @@ scn_morph:
 mix:
         lea     %sp@(-52),%sp
         movem.l %d0-%d7/%a0-%a4,%sp@
-        moveal  BANK_PTR,%a0
-        cmpal   #0,%a0
-        beq.w   mix_out
-        bsr.w   part_window             | a0 = the Part's window
+        bsr.w   follow
+        movel   scn_pbi,%d0
+        cmpil   #15,%d0
+        bhi.w   mix_out
+        movel   #BANKSZ,%d1
+        mulsl   %d1,%d0
+        addil   #BANK0,%d0
+        moveal  %d0,%a0
+        movel   scn_pp,%d0
+        movel   #PARTSZ,%d1
+        mulsl   %d1,%d0
+        addal   %d0,%a0                 | a0 = the mix Part's window
         moveal  %a0,%a4
         addal   #PART_LIVE,%a4          | a4 -> its unlocked values, 32 B per track
         addal   #SCENE_ASSIGN,%a0
@@ -488,7 +507,7 @@ mix:
         andil   #15,%d0
         lsll    #8,%d0
         movel   %a0,%sp@-
-        bsr.w   msc_a0
+        bsr.w   msc_mix
         moveal  %a0,%a2
         moveal  %sp@+,%a0
         addal   %d0,%a2
@@ -499,7 +518,7 @@ mix:
         andil   #15,%d0
         lsll    #8,%d0
         movel   %a0,%sp@-
-        bsr.w   msc_a0
+        bsr.w   msc_mix
         moveal  %a0,%a3
         moveal  %sp@+,%a0
         addal   %d0,%a3
@@ -590,12 +609,206 @@ mix_next:
         lea     scn_state:l,%a0
         moveq   #1,%d0
         movel   %d0,%a0@(ST_VALID)
+        clrl    %a0@(ST_DUE)
         movel   XF_RAM,%d0
         movel   %d0,%a0@(ST_XF)
 mix_out:
         movem.l %sp@,%d0-%d7/%a0-%a4
         lea     %sp@(52),%sp
         rts
+
+| ====================================== B10, B16-B18, B28: the mix Part ====
+
+| The mix runs on the target Part: the displayed Part while the sequencer is
+| not scheduling, the Part of the pattern that plays while it is (that
+| pattern's Part byte). scn_pbi (bank index, 0xff = none) and scn_pp (Part)
+| hold it. A change, a pattern switch, a Part event or a table change makes a
+| mix due (ST_DUE); ensure runs it.
+
+| set_target: d0 = bank index, d1 = Part. Keeps every register.
+set_target:
+        cmpl    scn_pbi,%d0
+        bne.s   1f
+        cmpl    scn_pp,%d1
+        beq.s   9f
+1:      movel   %d0,scn_pbi
+        movel   %d1,scn_pp
+        mov3ql  #1,scn_state+ST_DUE
+9:      rts
+
+| scn_invalidate: a mix is due. Keeps every register.
+scn_invalidate:
+        mov3ql  #1,scn_state+ST_DUE
+        rts
+
+| pattern_part: d0 = the playing pattern's bank, d1 = its Part; d0 = -1 when
+| the sequencer's bytes are out of range. Clobbers a0.
+pattern_part:
+        mvzb    PLAY_BANK,%d0
+        cmpil   #15,%d0
+        bhi.s   8f
+        movel   %d0,%sp@-
+        movel   #BANKSZ,%d1
+        mulsl   %d1,%d0
+        addil   #BANK0,%d0
+        moveal  %d0,%a0
+        mvzb    PLAY_PTN,%d1
+        cmpil   #15,%d1
+        bhi.s   7f
+        movel   #PTN_STRIDE,%d0
+        mulsl   %d1,%d0
+        addal   %d0,%a0
+        addal   #PTN_PART,%a0
+        mvzb    %a0@,%d1
+        cmpil   #3,%d1
+        bhi.s   7f
+        movel   %sp@+,%d0
+        rts
+7:      addql   #4,%sp
+8:      moveq   #-1,%d0
+        rts
+
+| follow: not scheduling, the target is the displayed Part; scheduling, it
+| stays where it is until a switch or a queued pattern's first step moves it,
+| and is taken from the playing pattern when it is still none. Keeps every register.
+follow:
+        movel   %d0,%sp@-
+        movel   %d1,%sp@-
+        movel   %a0,%sp@-
+        movel   SCHED,%d0
+        cmpil   #1,%d0
+        beq.s   1f
+        clrl    scn_pnd
+        mvzb    CUR_BANK,%d0
+        andil   #15,%d0
+        mvzb    PART_DISP,%d1
+        andil   #3,%d1
+        bsr.w   set_target
+        bra.s   9f
+1:      movel   scn_pbi,%d0
+        cmpil   #15,%d0
+        bls.s   9f
+        bsr.w   pattern_part
+        tstl    %d0
+        bmi.s   9f
+        bsr.w   set_target
+9:      moveal  %sp@+,%a0
+        movel   %sp@+,%d1
+        movel   %sp@+,%d0
+        rts
+
+| ensure: the mix is run when one is due. Keeps every register.
+ensure:
+        bsr.w   follow
+        tstl    scn_state+ST_DUE
+        beq.s   9f
+        bsr.w   mix
+9:      rts
+
+| 0x400a3c2a: move.l d0,0x46c76aae in the sequencer tick (d0 = the time of the
+| queued pattern's first step, a2 = its queue index). A queued pattern whose
+| Part is not the target waits as pending until that step.
+scn_qrec:
+        movel   %d0,0x46c76aae
+        lea     %sp@(-24),%sp
+        movem.l %d0-%d3/%a0-%a1,%sp@
+        movel   %a2,%d3
+        cmpil   #23,%d3
+        bhi.s   9f
+        lea     Q_BANK:l,%a0
+        mvzb    %a0@(0,%d3:l),%d1
+        cmpil   #15,%d1
+        bhi.s   9f
+        lea     Q_PART:l,%a0
+        mvzb    %a0@(0,%d3:l),%d2
+        cmpil   #3,%d2
+        bhi.s   9f
+        cmpl    scn_pbi,%d1
+        bne.s   1f
+        cmpl    scn_pp,%d2
+        beq.s   9f
+1:      tstl    scn_pnd
+        beq.s   2f
+        cmpl    scn_pnd_b,%d1
+        bne.s   2f
+        cmpl    scn_pnd_p,%d2
+        bne.s   2f
+        movel   %d0,%d3
+        subl    scn_pnd_t,%d3
+        bpl.s   9f                      | already pending for an earlier step
+2:      movel   %d0,scn_pnd_t
+        movel   %d1,scn_pnd_b
+        movel   %d2,scn_pnd_p
+        mov3ql  #1,scn_pnd
+9:      movem.l %sp@,%d0-%d3/%a0-%a1
+        lea     %sp@(24),%sp
+        jmp     0x400a3c30
+
+| 0x400a169a: lea 0x46c77b66,%a1 in the sequencer's step routine (sp@(140) = the
+| step time). The pending Part becomes the target at its first step; the
+| mix follows at once.
+scn_qcommit:
+        lea     0x46c77b66,%a1
+        tstl    scn_pnd
+        bne.s   1f
+        jmp     0x400a16a0
+1:      movel   %d0,%sp@-
+        movel   %d1,%sp@-
+        movel   scn_pnd_t,%d0
+        subl    %sp@(148),%d0           | the step time: 140, two pushes
+        bpl.s   9f
+        clrl    scn_pnd
+        movel   scn_pnd_b,%d0
+        movel   scn_pnd_p,%d1
+        bsr.w   set_target
+        bsr.w   ensure
+9:      movel   %sp@+,%d1
+        movel   %sp@+,%d0
+        jmp     0x400a16a0
+
+| 0x400a44f4 (12 bytes): lea 0x80006634,%a1; move.l (a1),0x8000662c in the
+| pattern switch tick. The new pattern's Part is the target at once; the mix
+| follows at the next playback step.
+scn_switch:
+        lea     0x80006634,%a1
+        movel   %a1@,0x8000662c
+        movel   %d0,%sp@-
+        movel   %d1,%sp@-
+        movel   %a0,%sp@-
+        bsr.w   pattern_part
+        tstl    %d0
+        bmi.s   9f
+        bsr.w   set_target
+9:      moveal  %sp@+,%a0
+        movel   %sp@+,%d1
+        movel   %sp@+,%d0
+        jmp     0x400a4500
+
+| 0x400a4ba0: lea 0x800065e4,%a2 in the playback step.
+scn_step:
+        bsr.w   ensure
+        lea     0x800065e4,%a2
+        jmp     0x400a4ba6
+
+| 0x40062216: jsr 0x400326a0, the event that sets the current Part.
+scn_evt:
+        jsr     0x400326a0
+        bra.w   ensure
+
+| 0x4005538a (8 bytes): move.b d2,(a5); move.l #0x18b2,d1 in the panel's MIDI
+| parameter write (d4 = track, d6 = flat). The mix runs, and the value the
+| rest of the routine sends is the one it left in the track record.
+scn_pwrite:
+        moveb   %d2,%a5@
+        movel   #PARTSZ,%d1
+        bsr.w   mix
+        movel   #REC_STRIDE,%d0
+        mulsl   %d4,%d0
+        addl    %d6,%d0
+        lea     REC,%a0
+        addal   %d0,%a0
+        mvzb    %a0@,%d2
+        jmp     0x40055392
 
 | ====================================================== B29: scene rows ====
 
@@ -727,6 +940,25 @@ msc_a0:
         movel   %sp@+,%d0
         rts
 
+| msc_mix: a0 = the mix Part's table (scn_pbi, scn_pp). Keeps every other register.
+msc_mix:
+        movel   %d0,%sp@-
+        movel   %d1,%sp@-
+        bsr.w   scn_ensure
+        movel   scn_pbi,%d0
+        andil   #15,%d0
+        lsll    #2,%d0
+        movel   scn_pp,%d1
+        andil   #3,%d1
+        addl    %d1,%d0
+        lsll    #7,%d0
+        lsll    #5,%d0
+        addil   #scn_lib,%d0
+        moveal  %d0,%a0
+        movel   %sp@+,%d1
+        movel   %sp@+,%d0
+        rts
+
 | scn_slot_ptr: d0 = bank, d1 = Part -> a0 = that slot's table (KITS carries
 | it in a Kit). Clobbers d0, d1, a0.
 scn_slot_ptr:
@@ -744,6 +976,7 @@ scn_slot_ptr:
 | scn_slot_changed: d0 = the bank whose slot a Kit load has rewritten: the
 | file is due and, for the current bank, CS1 follows. Keeps every register.
 scn_slot_changed:
+        mov3ql  #1,scn_state+ST_DUE
         movel   %d1,%sp@-
         moveq   #1,%d1
         movel   %d1,scn_dirty
@@ -1284,6 +1517,7 @@ scn_st_loadmask_pre:                    | d1 = the mask
 
 scn_st_loadall_post:
 scn_st_loadmask_post:
+        mov3ql  #1,scn_state+ST_DUE
         movel   scn_cvmask,%d1
         beq.s   9f
         clrl    scn_cvmask
@@ -1375,6 +1609,7 @@ scn_st_partclear:                       | d0 = the part
         bsr.w   fill_ff
         moveq   #1,%d0
         movel   %d0,scn_dirty
+        movel   %d0,scn_state+ST_DUE
         mvzb    CUR_BANK,%d0
         bra.w   cs1_full
 
@@ -1385,6 +1620,13 @@ scn_st_partclear:                       | d0 = the part
 scn_state:
         .long   0
         .long   -1
+        .long   0
+scn_pbi:        .long   0xff            | the mix Part: its bank (0xff: none yet) and Part
+scn_pp:         .long   0
+scn_pnd:        .long   0               | a queued pattern's Part waits for its first step
+scn_pnd_t:      .long   0
+scn_pnd_b:      .long   0
+scn_pnd_p:      .long   0
 scn_clip:
         .fill   256, 1, 0xff            | the scene clipboard
 scn_ready:      .long   0               | scn_lib is filled

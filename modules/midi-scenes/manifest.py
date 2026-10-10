@@ -8,7 +8,8 @@ displayed.
 
 Phase 1 of the rewrite (modules/midi-scenes/README.md): hold-to-lock, the
 readout, encoder unlock, lock LEDs and pad indicator, the XF morph, scene
-apply, the scene rows. The table, the clipboard and the mix state live in
+apply, the scene rows. Phase 3: the mix follows the Part that plays (pattern
+switch, queued pattern, Part event, panel write). The table, the clipboard and the mix state live in
 the unit's DRAM and nothing is written to a Part, a bank file or CS1.
 
 The behaviour is bkkbrls-del's MIDISC2.1 (original author); `scenes.s` is
@@ -55,6 +56,18 @@ DETOURS = (
            "after the panel XF handler's CC 48 out: mix"),
     Detour(0x40062C32, H("71b980000003"), "scenes", "scn_xf2",
            "after the second XF publish: mix"),
+    Detour(0x400A3C2A, H("23c046c76aae"), "scenes", "scn_qrec",
+           "sequencer tick: a queued pattern's Part waits for its first step"),
+    Detour(0x400A169A, H("43f946c77b66"), "scenes", "scn_qcommit",
+           "sequencer step routine: the waiting Part becomes the mix Part at its first step"),
+    Detour(0x400A44F4, H("43f98000663423d18000662c"), "scenes", "scn_switch",
+           "pattern switch tick: the new pattern's Part becomes the mix Part", pad_to=12),
+    Detour(0x400A4BA0, H("45f9800065e4"), "scenes", "scn_step",
+           "every playback step: a due mix runs"),
+    Detour(0x40062216, H("4eb9400326a0"), "scenes", "scn_evt",
+           "event that sets the current Part: a due mix runs", kind="jsr"),
+    Detour(0x4005538A, H("1a82223c000018b2"), "scenes", "scn_pwrite",
+           "panel MIDI parameter write: the mix runs, the record's value is sent", pad_to=8),
     Detour(0x40062F24, H("4eb940038c30"), "scenes", "scn_clear",
            "CLEAR SCENE row: MSC[scene] wiped", kind="jsr"),
     Detour(0x40062FBE, H("4eb9400274cc"), "scenes", "scn_copy",
