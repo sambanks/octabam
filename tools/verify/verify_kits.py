@@ -54,6 +54,8 @@ pattern content beyond pattern 1 playing.
             the Kit above is a copy; FUNC+STOP again: it is back.
   lclear    SAVE KIT open, DOWN x3, FUNC+PLAY: that Kit is empty; again:
             it is back.
+  swback    Kit 3 on pattern 3 and Kit 4 on pattern 4, playing, PTN 3, 4, 3, 4:
+            each pattern keeps its Kit and its slot holds it.
   ptncopy   FUNC+REC (pattern 1), pattern 14, FUNC+STOP: pattern 14
             plays pattern 1's Kit; FUNC+STOP again: its own again.
   pclone    ... the paste with STOP held and PART pressed: pattern 14
@@ -339,6 +341,12 @@ def main():
         s.down("ptn"); s.down(1, 120); s.tap(2, 120); s.tap(3, 120); s.up(1, 120); s.up("ptn", 300)
         if extra:
             extra(s)
+    # Kit 3 on pattern 3 and Kit 4 on pattern 4 (a field report: pattern 4 reverted to Kit 3
+    # on a pattern switch); switched 3, 4, 3, 4 while playing.
+    s = Script(); s.tap("no"); s.tap("play", 2000)
+    for p_ in (2, 3, 2, 3):
+        s.hold("ptn", p_); s.wait(17000)
+    add("swback", s, [(pa(2), 2), (pa(3), 3), (pb(2), 0), (pb(3), 0)])
     cpokes = [(pa(1), 0), (pa(2), 1), (pa(3), 4), (pb(1), 0), (pb(2), 0), (pb(3), 0)]
     s = Script(); chain(s, lambda s: s.wait(48000)); add("chain", s, cpokes)
 
@@ -582,6 +590,15 @@ def main():
         if tag in ("repoint", "stopped", "progchg", "trackbtn1", "extplay"):
             check(f"{tag}: the Part byte repointed off the playing slot ({sl + 1})", sl != 0 or tag == "stopped")
 
+    if exists("swback"):
+        clean("swback")
+        b, im = b3_("swback"), img("swback")
+        sl = [b[p * PSTRIDE + PBYTE] for p in (2, 3)]
+        asg = [im[O_ASSIGN + BANK * 16 + p] for p in (2, 3)]
+        held = [slot(b, x) == kit(im, k) for x, k in zip(sl, (2, 3))]
+        check(f"swback: after switching 3, 4, 3, 4 the patterns keep Kits {[a + 1 for a in asg]} (3, 4), "
+              f"on slots {[x + 1 for x in sl]} holding them ({held})",
+              asg == [2, 3] and all(held) and sl[0] != sl[1])
     for tag in ("chain", "trackbtn", "presses", "unattended"):
         if not exists(tag):
             continue
