@@ -41,13 +41,15 @@ Where each doc is, by who reads it. A module's own page is
 is the silicon and the cycle budget, [DSP.md](firmware/DSP.md) the audio
 DSP, and the rest one subsystem each (kernel, tables, parameter pages,
 menus, panel, MIDI, LFO, level law, recorder, sample save, storage,
-Parts and pattern changes in [PARTS.md](firmware/PARTS.md), step locks, the ColdFire delay routine in [COLDFIRE_DELAY.md](firmware/COLDFIRE_DELAY.md),
+the MIDI tracks' setup record, writers, outgoing MIDI and CTRL labels in [MIDI_TRACKS.md](firmware/MIDI_TRACKS.md), Parts and pattern changes in [PARTS.md](firmware/PARTS.md), step locks, the ColdFire delay routine in [COLDFIRE_DELAY.md](firmware/COLDFIRE_DELAY.md),
 REPITCH in [REPITCH.md](firmware/REPITCH.md)).
 
 ## Proposals
 
-[proposals/](proposals/): two OTX documents, a shared settings store for
-modules (draft, not implemented): [OTX_PROJECT_PROPOSAL.md](proposals/OTX_PROJECT_PROPOSAL.md)
+[proposals/](proposals/): [BRAIN.md](proposals/BRAIN.md), the design for
+settings, defaults and templates (6 Oct 2026, not implemented), and the two
+OTX documents it starts from, nordseele's shared settings store (draft, not
+implemented): [OTX_PROJECT_PROPOSAL.md](proposals/OTX_PROJECT_PROPOSAL.md)
 and [OTX_MODULE_GUIDELINES.md](proposals/OTX_MODULE_GUIDELINES.md).
 
 [proposals/remixes/](proposals/remixes/README.md): remix proposals, each

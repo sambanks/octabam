@@ -48,7 +48,9 @@
 | everything preserved but d0/d1/a0/a1.
 
         .text
+        .global ccm_entry
 | ---- CAVE(msg): dispatch entry (jsr'd), msg* at %sp@(4) ------------------
+ccm_entry:
 CAVE:   movel   %sp@(4),%a0            | a0 = msg {status, cc, value}
         moveq   #0,%d0
         moveb   %a0@(1),%d0            | d0 = CC number

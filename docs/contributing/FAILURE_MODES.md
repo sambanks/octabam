@@ -19,6 +19,17 @@ sequencer and not the tempo", and every entry after the line "Entries from here 
 - **Cause:** the tempo (`0x80001818`) is built by the clock handler `0x40005a48` from the DTCN0 interval the UART0 ISR stores for each `0xF8` (`0x4001070a`); the USB decoder enqueued the byte without it, so the tempo stayed at the project's (no DIN clock since power-on) or at the last DIN clock's. Measured under the port (`modules/usb-midi/README.md` "Clock"); that time stretch, LFOs and FX read `0x80001818` is inferred.
 - **Fix:** `usbmidi_rx_decode` timestamps each `0xF8` as the ISR does; `verify_usbmidi_clock` (#633). Kazeko's MKI, 6 Oct 2026: reported working on a build carrying #633 (build number and which of time stretch, LFOs and FX were checked not recorded).
 
+
+## Image A7 (bottleservice + BRAIN) halts on every power-on: EXCEPTION VEC:04 ADDR:400D7790 ✅ fixed (B0)
+
+- **Seen:** Sam's MKII, image A7 (`remixes/test/brain`, branch `store-phase0` at `9b6b6fc2`, sha256 `80512da84fd50194…`), 7 Oct 2026: `EXCEPTION SSP:4 VEC:04 FS:0 SR:2504 ADDR:400D7790` on every power-on, with nothing pressed, over project Bottleservice26 (its track page drawn behind the dialog). No LOG line was written; no project file on the card changed.
+- **What the numbers point at:** VEC 4 is an illegal instruction; `0x400D7790` is 16 bytes into TEMPO SYNC's tempo cave (`0x400d7780`, hooked into the per-frame voice-record writer at `0x40004d40`), where the built image holds `movel %d0,%sp@-`; SR `0x2504` is interrupt level 5. So the bytes there changed on the unit, or the PC got there another way.
+- **Not reproduced under the port** (7 Oct 2026, the same image on Bottleservice26 from the morning's card backup, no samples): LOAD PROJECT, DSPs, 600 frames; and a power-up from captured CS1 with no LOAD PROJECT post, 600 frames. BRAIN's writes do not reach the cave: MODE DEFAULTS' view table (`0x400d765e`) ends at `0x400d76f7`; descriptor writes land on the clone descriptors.
+- **Cause:** BRAIN's `snapped` flag, which gates its first snapshot, was in `.bss`. The platform leaves a unit's `.bss` as the boot left it (`tools/remix/platform_build.py`: "the unit initialises it"; the depack stage sits inside it), so on the unit it starts nonzero: the snapshot is skipped, and the restore writes through uninitialised `desc[][]` pointers and an uninitialised `table_len` starting at MODE DEFAULTS' table (`0x400d765e`), which reaches RIG HOSTS' cave and the tempo cave (`0x400d7790` is `0x132` bytes on). The port and `dsp_host` boot zeroed RAM, which is why neither showed it.
+- **Fix:** image B0 (`modules/brain`: `snapped`, `table_len` and the counters in `.data`; `verify_brain` checks the four symbols are `.data`), sha256 `ca9c50c373c3c6f7…`: boots and loads Bottleservice26 on the same unit and card, 7 Oct 2026 (with A8 booting and A7 halting, the change between A7 and B0 is the measured cause).
+- **A8 boots (measured, 7 Oct 2026):** image A8, bottleservice from the same tree with no BRAIN, flashed over MIDI, boots and loads on the same unit and card. So the halt comes from BRAIN.
+- **To find out:** image A8 (bottleservice from the same tree, no BRAIN, sha256 `40aa4ca3fb40c9fd…`) and A9 (`brain` built with `BRAIN_DIAG=noload`: BRAIN's two load-path hooks out, sha256 `8fd683abd9a36dde…`), both on the card: A8 halting rules BRAIN out; A8 clean and A9 halting points at BRAIN's presence (its runtime or the engine job switch at `0x4008485e`); both clean points at its work at load.
+
 ## STOP, a pattern switch while stopped, PLAY halts in Octakit's pattern-event retry bridge, D0 = CORRUPT (image A5, bottleservice) ✅ closed by removal (6 Oct 2026)
 
 - **Seen:** Sam's MKII, image A5 (bottleservice at main `f80ecfea`, 5 Oct 2026, USB and the BCR2000 connected): `EXCEPTION SSP:4 VEC:04 FS:0 SR:2008 ADDR:45D27CBC D0:FFFFFFFA SP:460D8D34` = `gk_pattern_event_retry_corrupt_fatal` (`part_event_retry.S`, her bridge on the stock pattern-event refresh, D0 = `GK_ERR_CORRUPT`), after STOP, a change to A2 while stopped (A1 and A2 on different Kits), PLAY, the transport and the pattern changes driven over MIDI from an Analog Rytm (start/stop and program change). Rare: many tries per halt. One halt with the BCR2000 unplugged, so the BCR is ruled out; USB is not. The same stop/start habit ran on A4.
@@ -65,6 +76,31 @@ sequencer and not the tempo", and every entry after the line "Entries from here 
 - **Seen:** Sam's MKII, image 99 (bottleservice with USB AUDIO IN CD + USB CROSSBAR, a computer on USB), 4 Oct 2026 12:42:14: `PROJECT 261004p/bank01.work` written with `project.work`, `markers.work` and `p2lk01.work` in the same second (a project change or SYNC, not SAVE: no `.strd`). Checksum 0x7188 stored, 0x4e8c computed; with the checksum repaired the firmware still rejects it (−51). Content: from 0x2c000 to 0x30000 every byte is 64 earlier than in a good bank, and the last 64 bytes of that span are the card's MBR code (`33 c0 8e d0 bc 00 7c fb 50 07 50 1f …`). Three other saves that day (09:40, 12:45, 14:13) are intact.
 - **Cause:** inferred: a 16 KiB ATA write lost one 64-byte burst at its head and took a 64-byte block from another buffer (sector 0, read at mount) at its tail — a DMA/bus-arbitration fault, not a serialiser error. USB CROSSBAR raises the USB host's crossbar priority on SDRAM; it is the one module in the image that changes bus arbitration under card DMA. Not reproduced under the port (a project SAVE with PLOCKS P2 writes every bank intact; the port has no bus timing).
 - **Fix:** USB CROSSBAR and USB AUDIO IN CD removed from bottleservice (image 100). To find out: whether a bank written on image 100 ever fails again; the bad file is at `~/octa/backups/card_20261004_strand/`.
+
+## OS SWITCH: "SOME ERRORS OCCURED DURING CARD SYNC. 'INVALID STATE'" on a boot picker YES ✅ measured, fixed; closed by removal (8 Oct 2026: REMIX SWITCH has no boot picker)
+
+- **Seen:** BSRET8BP, 30 Sep 2026: power-on, the boot picker, YES -> SYNCING PROJECT, then that message; the switch went through.
+- **Cause (measured):** the YES path reused the pane's OS UPGRADE stop sequence, whose `0x40022cd4(1)` posts SYNC TO CARD; at the boot picker nothing is loaded (the files job is held).
+- **Fix:** a boot-picker YES skips the sync (the next image boots from the same SRAM); the pane's YES keeps it. BSRET9BP on the unit: no message. **Check:** `verify_remixswitch` (both paths).
+
+## OS SWITCH: the boot picker never opens on the unit ✅ measured, fixed; closed by removal (8 Oct 2026: REMIX SWITCH has no boot picker)
+
+- **Seen:** BSRET6BP, 30 Sep 2026: power-on went straight to the project; BOOT TRACE sent notes 1 and 12 and no 26 -- the hook was never called.
+- **Cause (measured):** the hook was the boot's LOAD PROJECT post (`0x4002574c`). A unit whose battery SRAM knows the card (id at `0x100f8584`, compared by `0x4004abcc`) never posts it: the project stays in SRAM and only the last set is mounted, which posts LOADING FILES (`0x4002573e`). The port boots SRAM zeroed, so every port boot took the reload path.
+- **Fix:** whichever of the two posts comes first opens the picker; the other is held and replayed in stock's order. BSRET7BP on the unit: it opens. **Check:** `verify_remixswitch` boot case from a dumped SRAM.
+- **Lesson:** power-on behaviour is measured from SRAM a boot has left (`ot_emu --preload 0x10000000=sram.bin`), not from zeroed RAM.
+
+## REMIX SWITCH (OS SWITCH at the time): VEC:04 at PC 0x2007E788 on a file load after a switch 🟡 cause inferred, fixed
+
+- **Seen:** BSRET3OS, 29 Sep 2026, once: a switch to itself, a power-cycle, a file load -> `VEC:04 ADDR:2007E788`.
+- **Cause (🟡):** MAIN MENU's rescan listed the card through the stock dir scan (`0x4007f598`), whose one global name pool (`0x460e76ac`) and cache the project, set and sample browsers keep pointing into.
+- **Fix:** the rescan saves the pool and cache, lists into its own table and restores both. BSRET3OS2 ran the sequence clean. **Check:** `verify_remixswitch` (the cache as found after the menu).
+
+## REMIX SWITCH (OS SWITCH at the time): the unit hangs on the logo after a switch, keys dimmer than at power-on ✅ measured, fixed (build 14, on the unit)
+
+- **Seen:** builds 1-13, 29 Sep 2026: after the switch's reset the logo stays; builds 11-12 got to the UI and hung on play.
+- **Cause (measured with BOOT TRACE):** the soft reset restarts the ColdFire, not the DSP. (1) The next OS's upload assumes the cores in their boot ROM; they ran the old payload on. (2) Two stale words sat in core 0's host-side receive register. (3) The payload's start sets HPCR bit 7, in which the ColdFire read every record echo as `0x010101`; the record sender abandons the upload silently.
+- **Fix:** before the reset each core is sent a host command into a park (`modules/remix-switch/dsp_park.asm`, in stock's dead vectors): DMA and ESAI stopped, HPCR bit 7 cleared, a boot-ROM-style loader; the ColdFire drains each receive register. Build 14 on the unit: uploads complete, audio and play work.
 
 ## STEM REC: RING FULL ends a 24-bit take on a busy project 🔴 open
 
@@ -450,7 +486,7 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
 ## Two SET_INTERFACE requests 40 ms apart freeze the unit (USB AUDIO OUT, a DAW changing its buffer size) 🔴 open
 
 - **Seen:** erreye's MK1, 7 Oct 2026, `felipe` remix (USB AUDIO OUT TRACKS POST, `AUD_TARGET` 256 locally), macOS and Ableton Live with the unit as the open input. A buffer-size change in Live: CoreAudio stops IO (20:11:18.653), SET_INTERFACE(4, alt 1) (.747), `Initialize failed` and SET_INTERFACE(4, alt 0) (.786); 6 s later `Unable to select alternate setting`, `0xe00002d6` (timeout): the alt 0 status stage never completed. Then every EP0 request timed out (5 s each), EP 0x82 (USB MIDI) took transaction errors and the device dropped. Frozen until a power cycle; the screen was not recorded. Also while building an aggregate device: 12 failed starts in about a second, and a freeze at 20:08:06 right after a reopen.
-- **Cause:** open. Not reproduced under the port (`usb_host` bench, `--frame`): 24 rounds of alt 1, then 0–160 polls on EP3, alt 0 and GET_INTERFACE; the same 18 rounds with GET CUR + SET CUR 44100 before alt 1, and with SET CUR 48000 (STALL) mid-stream. All clean, alt reads 0. 🟡 erreye's candidate: alt 0 in `audio_setiface_shim` runs `audio_ep3_flush` inside the USB interrupt, and the port's flush completes at once (`modules/usb-audio-out-tracks-main-cue/README.md`, "Bus reset and session end"), so that path is unmeasured on a unit.
+- **Cause:** open. Not reproduced under the port (`usb_host` bench, `--frame`): 24 rounds of alt 1, then 0–160 polls on EP3, alt 0 and GET_INTERFACE; the same 18 rounds with GET CUR + SET CUR 44100 before alt 1, and with SET CUR 48000 (STALL) mid-stream. All clean, alt reads 0. 🟡 erreye's candidate: alt 0 in `audio_setiface_shim` runs `audio_ep3_flush` inside the USB interrupt, and the port's flush completes at once (`modules/usb-audio-out/README.md`, "Bus reset and session end"), so that path is unmeasured on a unit.
 - **Fix:** none. Workaround: don't change the DAW's buffer size or sample rate while the unit is its open input. To find out: the same on stock upstream test images (`AUD_TARGET` 64, without POST); a diagnostic build on erreye's unit (offered) around the alt 0 flush; whether the port's bench can hold the flush pending.
 
 ## A marginal USB cable freezes the unit in DISK MODE ✅ measured (the cable)

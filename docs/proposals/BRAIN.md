@@ -1,0 +1,664 @@
+# Settings, defaults and templates: one registry and the brain
+
+Design of 6 Oct 2026 (Sam Banks). Section 12 lists the phases and what of
+each is implemented; section 13 what has to be measured first.
+It starts from nordseele's OTX proposal
+([OTX_PROJECT_PROPOSAL.md](OTX_PROJECT_PROPOSAL.md)); section 14 lists what
+is taken from it and what differs.
+
+Confidence markers: ✅ measured, 🟡 inferred with a falsifier stated,
+❌ retracted.
+
+## 1. What it holds
+
+| word | meaning | example |
+|---|---|---|
+| **setting** | a value that configures a module | USB AUDIO's output layout; KITS's AUTOSAVE |
+| **default** | the value something takes when nothing is stored for it | BusDelay's twelve knob bytes on a newly selected effect |
+| **template** | a named set of values for one target, applied by copy | a MIDI track set up for one external instrument |
+| **target** | a thing that has values: its owner declares the fields, where each lives, and a capture and an apply routine | an FX page; a MIDI track; a module's settings |
+
+A default is the template the system applies at a target's birth events.
+A setting is a target with one live instance whose value is persisted.
+
+Outside the system: the values a Part stores (the Part keeps them) and
+creative material in files a module owns (KITS's `kits.work`, Octalab's
+grooves).
+
+## 2. Layers
+
+Every value has an address `(store id, key)` and resolves through four
+layers. The later layer wins.
+
+| # | layer | written by | when |
+|---|---|---|---|
+| 1 | manifest | the module's author | build |
+| 2 | remix | `remix.py`: a new default, or a `Pin` | build |
+| 3 | card | the user, on the unit or with the host tool | run time, shared by every project on the card |
+| 4 | project | the user | run time, stored with the project |
+
+- A setting declares `Scope.CARD` (resolves 1, 2, 3) or `Scope.PROJECT`
+  (resolves 1, 2, 4).
+- A default resolves 1, 2, 3. A project that wants other starting values
+  applies a template.
+- A pinned value has no menu row and no stored value. A stored value for
+  it on the card is preserved and not applied.
+- A changed default takes effect at the next birth event. Existing Parts
+  keep their bytes.
+- With the card absent or unreadable the unit runs on layers 1 and 2.
+
+## 3. Targets
+
+| target | owner | fields | home of the values | birth events |
+|---|---|---|---|---|
+| FX page of an effect, per mode | the effect's module; the stock provider for a stock effect | 12 slot bytes, by `Param.key` | the Part | effect select, MODE turn, new part |
+| MIDI track | stock provider | channel, bank, program, CTRL 1/2 CC numbers and values; knob names | the Part; names in the project store, per Part and MIDI track | new part |
+| audio track pages | stock provider | SRC/PLAYBACK, AMP, LFO pages and their setup pages | the Part | new part |
+| Part | stock provider (RIG HOSTS sets layer 2) | FX1 and FX2 id per track | the Part | new part |
+| project-level stock settings | stock provider | entries of the stock PROJECT menu | the project | new project |
+| incoming CC map | CC MAP | blocks of CC number to page and slot | project store | project load |
+| controller preset | host tool, from the manifests | the layout sent to a controller | a template file | none |
+| module settings | each module | its `Setting` declarations | card or project store | boot, project load |
+
+A field's value lives in stock storage (the Part: the MIDI track channel is
+at `Part + 0x8f262 + t*0x24`, `docs/firmware/MIDI.md` appendix A,
+section 1) or, where stock has no place for it, in the store.
+
+An instrument template holds the MIDI track setup, the knob names, the
+incoming CC map and the controller preset for one external instrument.
+
+Knob names: 8 MIDI tracks x 10 assignable CCs x 6 bytes = 480 bytes per
+Part (🟡 the 10 CCs are read from the panel's CTRL 1 and CTRL 2 pages; no
+record in `docs/firmware/` yet). 64 Parts are 30,720 bytes; with KITS the
+block is indexed by Kit, 256 Kits are 122,880 bytes, and KITS raises an
+event to the brain at Kit load and save.
+
+## 4. Declarations
+
+### 4.1 A module
+
+```python
+store=Store(id="octabam.usb-audio"),
+settings=(
+    Setting(key=1, name="OUT", kind=Option("MAIN", "MAIN+CUE", "MASTER", "TRACKS"),
+            default=0, scope=Scope.CARD, apply=Apply.BUILD),
+    Setting(key=2, name="IN", kind=Option("OFF", "AB", "CD", "ABCD"),
+            default=0, scope=Scope.CARD, apply=Apply.NEXT_BOOT, early=True),
+),
+```
+
+- `Store.id`: ASCII, 1 to 63 bytes, `octabam.<module directory>` for a
+  module in this repository, the author's own namespace otherwise;
+  `stock.<page>` is the stock provider's. `Store.major` and `Store.minor`
+  default to 1 and 0.
+- `Setting.key`: 1 to 65535, never reused for another meaning.
+- `Setting.kind`:
+
+  | kind | value | stored as |
+  |---|---|---|
+  | `Binary()` | 0 or 1 | 1 byte |
+  | `Option(*labels)` | an index; labels are append-only | 1 byte |
+  | `Number(min, max, step=1, unit="")` | signed 16-bit | 2 bytes |
+  | `Trigger()` | an action | never stored |
+  | `Blob(max_bytes)` | bytes the module packs and unpacks | up to `max_bytes` |
+
+- `Setting.scope`: `Scope.CARD` or `Scope.PROJECT`.
+- `Setting.apply`: `LIVE` (the module reads the value table), `CALLBACK`
+  (its routine is called after a load and after an edit; it is safe to
+  receive the same value twice), `NEXT_BOOT`, `BUILD` (the value selects
+  code and exists only at build; it takes layers 1 and 2).
+- `Setting.early`: a `Scope.CARD` setting of fixed size that is also kept
+  in the CS1 block (section 6.4) and read from there at boot.
+- `Module.requires_brain`: the module's function is stored state. The
+  build refuses it in a remix without the brain, by name.
+- `Param.key`: 1 to 65535, unique in the module, never reused. Stored
+  defaults and templates are keyed by it, so a renamed or moved knob keeps
+  its value and a removed knob's value is skipped. A module that keys one
+  drawn slot keys every drawn slot. Stock pages take key = slot + 1 from
+  `tools/remix/stock.py`.
+
+### 4.2 A remix
+
+```python
+REMIX = Remix(...,
+    modules=(..., "BRAIN"),
+    settings={("octabam.usb-audio", "OUT"): Pin("MASTER"),
+              ("octabam.usb-audio", "IN"): "CD"},
+    defaults={("DELAY SERVER", "GRAIN", "PTCH"): 96},
+    templates=("rytm", "digitone"),
+)
+```
+
+- `settings`: `(store id, setting name)` to `Pin(value)` or a plain value
+  (a new default). An Option takes a label or an index.
+- `defaults`: `(module key, mode label or None, knob name)` to a byte;
+  it replaces `Param.default` or the `ModeView` entry in this image.
+- `templates`: names of JSON files in the top-level `templates/`
+  directory. A module may also ship templates for its own targets.
+
+### 4.3 What the build refuses
+
+- two modules with one store id; two settings with one key or one name in
+  a store; a key of 0;
+- a default outside its bounds or its label count; a `Pin` or a remix
+  value outside them;
+- `early=True` on a `PROJECT` setting, a `Blob` or a `Trigger`; early
+  settings larger than the free CS1 run of the remix;
+- `Apply.BUILD` on a `Blob` or a `Trigger`;
+- a `settings`, `defaults` or `templates` entry that names nothing in the
+  remix; `templates` or a `requires_brain` module without the brain;
+- two `Param.key`s equal in a module; a module with some drawn slots
+  keyed and some not;
+- a manifest that breaks its lock file (4.4).
+
+### 4.4 The lock file
+
+A module with a store or with `Param.key`s commits
+`modules/<dir>/brain.lock`, generated JSON: the store id and major, and
+per key the type, the labels or bounds, and for a `Param` its count. The
+build compares the manifest with it and refuses a removed key that is not
+listed as retired, a changed type, a reordered, removed or renamed label,
+and a reused retired key. Adding a key or appending a label regenerates
+the file (`python3 tools/remix/brain.py lock <module>`).
+
+## 5. The brain
+
+The brain is a module (`BRAIN`), a DRAM unit written in C. A remix lists it
+explicitly.
+
+- **Without the brain** every value resolves at build through layers 1 and
+  2. A module reads a setting through a macro that assembles a constant,
+  so its source is the same either way. `Apply.BUILD` values, `Pin`s and
+  remix `defaults` need no core.
+- **With the brain**: the registry table (generated: per `(store id, key)`
+  the type, bounds, the default after layers 1 and 2, scope, apply policy,
+  callback symbol, value-table offset), the value table in RAM with a
+  generated include naming each offset, the store I/O, the events and the
+  menu.
+
+Reading a setting from ColdFire source:
+
+| the value is | the macro assembles |
+|---|---|
+| live | one absolute read from the value table |
+| pinned, or the brain is absent | a constant |
+| `Apply.BUILD` | an assembler symbol, as `layout_inc(n)` passes `USB_LAYOUT` today |
+
+Events: `card_loaded`, `project_loaded`, `project_saving`,
+`project_closing`, `setting_changed`, and the birth events
+`effect_selected`, `mode_turned`, `part_born`. Callbacks run in store id
+order; the build report prints the order.
+
+### 5.1 FX-page defaults
+
+Layers 1 and 2 are the descriptor bytes the build writes today
+(`Param.default`: page 1 at `desc+0x5e`, page 2 at `desc+0x64`, read by
+`FUN_400526e4`, ✅ `docs/firmware/PARAM_PAGES.md` 5g) and MODE DEFAULTS'
+table. For layer 3 the brain writes the card's values over those bytes in
+RAM after the card store loads; the OS image runs from cached SDRAM at
+`0x40000000` (✅ `docs/contributing/PLACEMENT.md`). The consuming sites
+are unchanged: the stock effect select, the new-part initialiser
+`0x40005638` with RIG HOSTS' detours, and MODE DEFAULTS at `0x4003aaea` /
+`0x4003acf2`, whose table moves into the brain's data when the brain is in
+the image.
+
+Measured under the port (6 Oct 2026, bottleservice,
+`tools/verify/verify_descdefaults.py`): the FX2 chooser's select (T2 SEND
+-> stock DELAY) and the FX1 chooser's select (T2 SPECTRUM -> CHARACTER)
+land the descriptor's twelve defaults in the live lane, and with those
+twelve bytes poked in RAM after the load they land the poked bytes ✅. The
+new-part initialiser `0x40005638` reads the same bytes at execution time
+(📖 `lea P,%a1 / lea %a1@(5e,%d2:l)`, RIG HOSTS' sites); the read watch on
+stock DELAY's defaults shows it at `0x4000583c`/`0x4000584a` during the
+project load and no other reader in that window (the watch logs the first
+64 reads). 57 stock instructions read at `+0x5e`/`+0x64` through a
+register (`0x40005736..0x400058d2`, `0x4005aff8`, `0x4005b174`,
+`0x4005d180..0x4005db88`, `0x4008c912`); which gestures reach the last
+three groups is not traced. Falsifier for the design: one of them reading
+a copy taken before the brain's write.
+
+A card value is checked against the slot's count before it is written: a
+default outside its count is used as an index (`AGENTS.md`).
+
+### 5.2 Capture and apply
+
+Capture reads a target's fields from their homes. Apply writes
+Part-homed fields through the stock writers (`0x40054cd8(track, flat,
+value)` for page 1, the page-2 editors' stores for page 2;
+`docs/firmware/MAINMENU.md` section 7), so the shadow, the live lane and
+the DSP record follow. SAVE AS DEFAULT is a capture into the card store;
+SAVE TEMPLATE is the same capture into a template file.
+
+### 5.3 DSP modules
+
+A pinned or `Apply.BUILD` setting reaches DSP source as an assembler
+constant. A run-time setting needs a ColdFire-to-DSP route, which is not
+chosen: the per-track voice record is the only carrier in use and every
+halfword of it is read (`docs/firmware/MIDI.md`, "The DSP record"); the
+shared window `Y:0x30000+` is visible to both cores, so one delivery point
+serves both payloads. Candidates: a record kind of our own through the
+poster `0x400053d8`, or spare bits of a record halfword. Either is
+measured under the port and probed on hardware before a module uses it
+(`AGENTS.md`, "An instruction form the chip has never run").
+
+## 6. Files on the card
+
+### 6.1 Places
+
+| file | holds | written |
+|---|---|---|
+| `BRAIN/card.work`, `BRAIN/card.strd` at the card root | `Scope.CARD` settings; card-layer defaults | `.work` after an edit or SAVE AS DEFAULT; `.strd` copied at SAVE PROJECT |
+| `<set>/<project>/brain.work`, `brain.strd` | `Scope.PROJECT` settings; store-homed fields; the project record (section 8) | `.work` after an edit; `.strd` copied by the project store, copied back by the project reload |
+| `BRAIN/templates/<store id>/<NAME>.brain` | one template | SAVE TEMPLATE on the unit, or the host tool |
+| the brain's read-only data | the templates the remix selected | build |
+
+A template's name is 1 to 8 characters, the record's name field and the
+list row.
+
+### 6.2 The pairs
+
+The rules are KITS's (`modules/kits/README.md`, "Files"; ✅ on the unit,
+image A6): a header with magic, version, length and a CRC-32 of the rest;
+`.work` rewritten when something changed; `.strd` copied where stock
+copies `.work` to `.strd` (`0x4008ee74`) and back (`0x4008f180`); a
+`.work` that fails its CRC is never overwritten.
+
+What the brain does at a load depends on which files are on the card (the
+table of `OTX_PROJECT_PROPOSAL.md` section 3.3):
+
+| `.work` | `.strd` | meaning | action |
+|---|---|---|---|
+| absent | absent | fresh | layers 1 to 3; normal first write |
+| valid | absent | edited, never saved | use `.work` |
+| valid | valid | normal | use `.work` |
+| valid | invalid | saved copy damaged | use `.work`, report; SAVE PROJECT rewrites `.strd` |
+| absent | valid | interrupted rewrite | load `.strd`, report |
+| invalid | valid | working copy damaged | load `.strd`, report |
+| invalid | absent | damaged | report; no write until the user confirms a replace |
+| absent or invalid | invalid | damaged | report; no write until the user confirms a replace |
+
+### 6.3 The write path
+
+A job on the stock engine job queue; the UI task does no file access for
+the store. `open("w")`, write, close through the stock buffered calls; edits coalesced about 2 s
+after the last one; deferred while a recorder is writing. ✅ on
+nordseele's MKI for Octalab's own files (`OTX_PROJECT_PROPOSAL.md` section
+2.2); not measured under an octabam image.
+
+Each record and each `Blob` has a declared byte maximum and the build
+checks the sum against a file ceiling. The ceiling is set in phase 2 from
+the measured write latency.
+
+### 6.4 The CS1 block
+
+`early` settings are copied into CS1 and read from there before the card
+mounts. The scope stays `CARD`: the card store is the home and CS1 a copy,
+rewritten when the card store loads and after an edit.
+
+| CS1 range | holder | bytes |
+|---|---|---|
+| `0x100f859c..0x100fff00` | stock references nothing here (`docs/firmware/STEP_LOCKS.md` section 6) | 31,076 |
+| `0x100f85a0..0x100f85e8` | KITS | 72 |
+| `0x100f8600..0x100ffe00` | PLOCKS P2 | 30,720 |
+| `0x100ffe00..0x100fff00` | KITS | 256 |
+| `0x100f859c..0x100f85a0`, `0x100f85e8..0x100f8600` | free in bottleservice | 4 + 24 |
+
+The block is a 4-byte header (magic, version, 16-bit sum) and the early
+values at build-assigned offsets: 20 value bytes at `0x100f85e8` in a
+remix that carries KITS and PLOCKS P2. The build sizes it from the
+declarations, claims the range in the ledger and refuses on overflow.
+
+🟡 CS1 keeps its contents with the power off. Inferred from stock's use
+of it (`STEP_LOCKS.md` section 6); both module READMEs record it as not
+measured on the unit.
+
+## 7. The brain file
+
+One container for the card store, the project store and a template file.
+Big-endian. CRC-32 is the IEEE 802.3 polynomial (zlib's `crc32`).
+`align4(n)` rounds up to a multiple of 4; padding bytes are zero.
+
+### 7.1 File header, 32 bytes
+
+```text
+  0   char[4]  "BRAIN"
+  4   u16      header size = 32
+  6   u8       container major = 1
+  7   u8       container minor = 0
+  8   u8       file kind: 0 card .work, 1 card .strd, 2 project .work,
+               3 project .strd, 4 template
+  9   u8       reserved = 0
+  10  u16      record count
+  12  u32      total file bytes
+  16  u32      CRC-32 of bytes 20 .. total-1
+  20  char[8]  build tag of the writing image, zero-padded
+  28  u32      reserved = 0
+```
+
+A file is invalid when its magic or header size is wrong, its total differs
+from the file's length, its CRC fails, or the records do not end exactly at
+the total. A file with a newer container major is unreadable to this
+reader: the unit runs on the layers below it and does not write the file.
+A newer minor is read.
+
+### 7.2 Record
+
+```text
+  0   u8       record kind (7.3)
+  1   u8       store id length, 1..63
+  2   u16      schema major
+  4   u16      schema minor
+  6   u16      flags = 0
+  8   u32      payload length
+  12  u32      CRC-32 of the payload bytes
+  16  u32      record size = 20 + align4(id length) + align4(payload length)
+  20  byte[]   store id (ASCII), zero-padded to 4
+      byte[]   payload, zero-padded to 4
+```
+
+A reader advances by the record size. A record whose size disagrees with
+its two lengths, or runs past the total, makes the file invalid.
+
+### 7.3 Record kinds and payload prefixes
+
+| kind | holds | prefix before the values |
+|---|---|---|
+| 1 settings | a store's settings | none |
+| 2 default | a card-layer default for one target and mode | `u16 target`, `u16 mode` (`0xffff` none), `u32 layout hash` |
+| 3 template | one template | `u16 target`, `u16 mode` (`0xffff` none), `u32 layout hash`, `char[8] name` (zero-padded) |
+| 4 project record | FX id to store id and layout, as saved | none; entries of 7.5 in place of values |
+| 5 field block | store-homed fields of one target instance | `u16 target`, `u16 instance` |
+
+Target 0 of a store is its effect's FX page. A store's other targets take
+keys from 1, declared by the owner. A template of an FX page carries the
+MODE knob among its values and has mode `0xffff`.
+
+### 7.4 Value
+
+```text
+  0   u16      key
+  2   u8       type
+  3   u8       length n of the data; 255 = a u32 length follows (Blob only)
+  4   byte[n]  data, zero-padded to 4
+```
+
+| type | data |
+|---|---|
+| 1 Binary | 1 byte, 0 or 1 |
+| 2 Option | 1 byte, the index |
+| 3 Number | 2 bytes, signed |
+| 4 Blob | n bytes |
+| 5 Byte | 1 byte: a Part byte, 0..127 |
+| 6 Name | 6 bytes: up to 5 characters, zero-padded, byte 5 zero |
+
+### 7.5 Project record entry
+
+```text
+  0   u8       FX id
+  1   u8       store id length, 1..63
+  2   u16      reserved = 0
+  4   u32      layout hash
+  8   byte[]   store id, zero-padded to 4
+```
+
+### 7.6 Layout hash
+
+CRC-32 over 49 bytes: for slots 0 to 11 in order `u16 key, u16 count`
+(both 0 for a slot that is not drawn), then `u8` MODE slot (`0xff` when
+the effect has none).
+
+### 7.7 Reader and writer rules
+
+1. A record whose store id the image does not carry, whose schema major
+   the image does not support, whose kind is unknown, or whose payload CRC
+   fails is not applied. Its bytes are written back unchanged on every
+   save.
+2. In an applied record, a value with an unknown key or an unknown type is
+   kept byte for byte when other values are edited.
+3. A known key whose stored type differs from the declared one takes the
+   layer below; the stored bytes are kept.
+4. A stored value outside its bounds, label count or slot count takes the
+   layer below; a Part byte outside its count is stock's validator's (section 8).
+5. Two records with the same kind, store id and prefix: neither is
+   applied, both are kept.
+6. A newer schema minor is applied: known keys are read, the rest kept.
+7. New records and values write zero in flags and reserved fields. A
+   reader ignores them and keeps them.
+8. A save assembles the whole file, checks it against the declared
+   maxima, and fails visibly before the open when a kept record no longer
+   fits.
+
+## 8. Compatibility
+
+- A card moved to an image without a module keeps that module's records
+  (7.7 rule 1). A card in a stock OS keeps the files as written; stock
+  ignores the `BRAIN` directory.
+- A card file wins over an image template of the same name and target;
+  the list shows one entry.
+- A template or default for a target the image does not carry is hidden
+  and its file untouched.
+- **The project record.** FX ids are assigned per remix and a Part stores
+  the id; a slot's count, position or meaning can change between images
+  (`AGENTS.md`, "A part saved under an older slot layout"). At
+  `project_saving` the brain writes, per FX id in the image, the store id
+  and layout hash. At `project_loaded` it compares them with the running
+  image, and reports an id that now names another store or a changed
+  layout. It does not rewrite Parts to a new layout, and needs no clamp:
+  stock's Part validator `0x40002318` rewrites every FX page byte outside
+  its descriptor's `[min, min + count - 1]` to the nearer end during the
+  load, in all 16 banks x 8 Parts (measured under the port, 6 Oct 2026,
+  `tools/verify/verify_brain.py`; reached from the new-part initialiser's
+  tail `0x40005a44`, from `0x4002579e` and from the load at `0x4008cea0`).
+
+## 9. Menu
+
+Facts: the MAIN MENU root row array can be extended and a fifth root
+category has run (✅ nordseele's MKI, 7 Sep 2026); a null-action row is a
+heading the cursor skips and a row carries its value in its label; a row
+inside a pane cannot open a further submenu and no free stock page id is
+known (`docs/firmware/MAINMENU.md` section 5). KITS draws 256-row lists
+with a name editor, copy, paste and clear (✅ on the unit, image A6).
+
+- One root category, **BRAIN**, owned by the BRAIN module: SETTINGS,
+  DEFAULTS, REMIXES, TOOLS, each a sub-list (as built, 8-10 Oct 2026: the
+  stock engine is two levels deep, so a row's action repoints the pane's
+  list descriptor; `modules/brain/README.md`).
+- **SETTINGS**: one list; the brain's own settings first, then a heading
+  row per module in the image and its setting rows, the value in the
+  label. YES or the arrows change a value.
+- **DEFAULTS**: the targets that have a card-layer default; CLEAR on a
+  row removes the record and returns the target to layers 1 and 2.
+- **TEMPLATES**: a list per target type, built like the KITS lists: name,
+  apply, copy, clear, rename.
+- On an FX page, a MIDI track page or an audio track page, one key
+  combination opens a short list for the current page: SAVE AS DEFAULT,
+  LOAD TEMPLATE, SAVE TEMPLATE.
+
+  Built (10 Oct 2026): **hold the page key, then press FUNC**. The key
+  census, 📖 read from the image: a key record is 0x1a bytes `{code, 0,
+  press, release, repeat, sub-map, +0x12, u16}`; a record's sub-map is a
+  layer active while that key is held. The FUNC layer (keys `0x400bf628`
+  MKII, `0x400bf2b4` MKI) covers the track keys, the page keys (FUNC + page
+  = the chooser), PAGE, TEMPO, PTN, BANK, REC, PLAY, STOP, the arrows, CUE,
+  the REC keys, MIDI, YES, NO, PROJ, PART, AED, MIXER and ARR; it has no
+  record for the trigs or the encoder pushes. The five page keys share one
+  held layer on both models (`0x400bab6e`, keys `0x400baad2`) with REC,
+  STOP, PLAY, YES and NO (page + YES and page + NO are page operations).
+  The encoder-push handler `0x4004ecfc` does not test FUNC: a value timer
+  on audio pages, the CC on/off toggle on MIDI CTRL pages; the LEVEL push
+  (`0x3e`) only the timer. So page-held + FUNC reaches only FUNC's own
+  handler (✅ under the port on stock: no state change), and FUNC + LEVEL
+  push is free on every page of an MKII (MKI encoders do not push), the
+  LOAD view's chord to come.
+- A pinned value has no row. A module absent from the image has no rows.
+  A remix without the brain has no category, and a module that owns a menu
+  today keeps it.
+
+## 10. Tooling
+
+- `tools/remix/brainfile.py`: the container, in Python; used by the build, the
+  host tool and the gates. The brain's C reader and writer compile on the
+  computer and run against the same files.
+- `tools/remix/brain.py`: the declarations resolved through layers 1 and
+  2 for a remix, the refusals of 4.3, the lock file.
+- `tools/hw/ot_brain.py`: card store, project store and template files to
+  JSON and back; templates onto a card; a template saved on the unit back
+  to JSON for `templates/`; the resolved value of every setting and
+  default for a remix with the layer it came from.
+- The build report prints the resolved value table.
+- Template JSON uses the vocabulary of `tools/hw/ot_spec.py`: knobs by
+  name, resolved to keys when compiled.
+
+## 11. Gates
+
+| gate | proves | instrument |
+|---|---|---|
+| schema refusals | every refusal of 4.3 | build |
+| bit-identity | a remix with no core, pin or override builds the 24 refhash configurations unchanged | `scripts/refhash.sh` |
+| USB migration | the merged USB module with OUT and IN pinned builds each of today's variant artifacts byte for byte | build, per variant |
+| format corpus | Python and C agree on every file: absent module, newer minor, unsupported major, unknown key and type, duplicate records, bad length, bad CRC, each row of 6.2, kept bytes after an edit | computer |
+| with and without the brain | each module that reads a setting passes `make check` both ways | `make check` |
+| card defaults | a card default reaches a new part, an effect select and a MODE turn; a value outside its count is clamped | port |
+| stores | `.work` after an edit, `.strd` at SAVE PROJECT, reload, a power-up from CS1 (`--cs1-in`) | port |
+| template apply | values reach the Part, the live lane and the DSP record | port |
+| project record | a Part byte outside its count is clamped at load and the project plays | port |
+
+## 12. Phases
+
+| phase | content | core | hardware |
+|---|---|---|---|
+| 0 | this document; `Param.key`, `Store`, `Setting`, `Pin` in the schema; `brainfile.py` and the format corpus; the lock file | no | no |
+| 1 | the build-time layer: the USB audio migration (five `usb-audio-out-*` and three `usb-audio-in-*` modules to two, 17 test remixes to pins); remix `defaults`; the resolved-value report | no | no |
+| 2 | the brain: card store, SETTINGS, FX-page card defaults, SAVE AS DEFAULT, project pair, project record (reported; stock clamps, section 8), CS1 block | yes | yes |
+| 3 | templates for FX pages: image, card, saved on the unit; the TEMPLATES lists | yes | yes |
+| 4 | the stock provider: MIDI track target, instrument templates with knob names, incoming CC map, controller presets; audio track pages; project-level stock settings | yes | yes |
+| from 2, in parallel | DSP run-time delivery: probe, route, first DSP setting | yes | yes |
+| REMIX SWITCH | sanderlegit's OS SWITCH (PR #542), renamed, carried by every remix with BRAIN: the `.RMX` images in `/BRAIN/REMIXES/` in BRAIN's REMIXES sub-list, rebuilt at each MAIN MENU opening (PR #542's power-on picker left out). Built 8 Oct 2026 (`verify_remixswitch` under the port; a switch on an MKII as image B2) | yes | yes |
+| after REMIX SWITCH | a MIDI monitor in the BRAIN category: the last incoming messages decoded, each marked with what the firmware did (which handler, or dropped and at which test); a detour on the MIDI byte parser and dispatch (`docs/firmware/MIDI.md` appendix B) into a ring, rows rebuilt and redrawn on a timer (the row mechanism REMIX SWITCH's list needs) | yes | yes |
+
+Phase 0 is implemented (6 Oct 2026): the declarations in
+`tools/remix/schema.py`, `tools/remix/brain.py` (resolution, refusals, lock
+file; `brain.py check` in `make verify-shared`), `tools/remix/brainfile.py`,
+`tools/hw/ot_brain.py`, and the corpus in `tools/verify/tests/brainfile_corpus/`
+(generated by `make_brainfile_corpus.py`; `test_brainfile.py`, `test_brain.py` and
+`test_ot_brain.py` under `make test-acceptance`). No module declares a
+setting yet. Remix `defaults` and `templates` are phase 1 and 3.
+
+Phase 1 is implemented (6 Oct 2026): `Module.variant` and `Module.bind`
+(an `Apply.BUILD` setting chooses code; `registry.bound` binds every
+selected module once per remix); USB AUDIO OUT (`LAYOUT`) and USB AUDIO IN
+(`INPUTS`) replace the eight variant modules, and every remix that carried
+one pins its value (`make identity`: the 25 such images that build are
+byte-identical to `origin/main`, the build reports differing only in the
+module keys; `waveload` and `waveload-port` fail to build on `origin/main`
+as well, at `modules/cfmeter/meter.s:91`);
+`Remix.defaults`; the build report's settings section
+(`brain.report`).
+
+Phase 2, first increment (6 Oct 2026): the BRAIN module (`modules/brain`)
+applies card-layer FX page defaults from `BRAIN/card.work` /
+`card.strd` at each LOAD PROJECT and at the power-up's bank load,
+read-only on the unit; `tools/hw/ot_brain.py default` writes the records;
+`tools/verify/verify_brain.py` passes six card cases under the port (remix
+`brain`), and a mode record writes into MODE DEFAULTS' view for the slots
+that view lists (seventh case: a MODE turn on T1 lands the card's values).
+SAVE AS DEFAULT is built as an engine-task job (`brain_post_save`; type
+`0x41` on the engine queue, the job switch detoured at `0x4008485e`) and
+SAVE PROJECT copies `card.work` to `card.strd` at the project store's
+call sites. The BRAIN MAIN MENU category (a fifth root row: heading,
+SAVE AS DEFAULT, CLEAR DEFAULT) runs them on the FX page in view,
+measured under the port through the panel keys. The project pair, the project record and the CS1 block are not built yet
+(the SETTINGS list: see the next paragraph). The project pair's write and copy
+points: every stock call site of the bank writer `0x400917c8` (5), the
+project store `0x4008ee74` (3) and the project reload `0x4008f180` (1) is
+unclaimed by any module (6 Oct 2026); KITS hooks the routines' entries, so
+the brain takes the call sites, as PLOCKS P2 does for the loads.
+
+Phase 2, SETTINGS (10 Oct 2026): `tools/remix/brain.py` `live_table` and
+`read_macro` give each module a run-time value table (one long per Binary,
+Option or Number setting that is not pinned and not `Apply.BUILD`, a global
+`brain_v_<store>_<key>` in the BRAIN unit; a module without BRAIN reads the
+same macro as a constant). `modules/brain/manifest.py` generates
+`brain_set[]` (40 bytes a setting) and `brain_values[]`. At each load
+`brain.c` reads kind-1 records from `card.work`: a value out of its bounds
+or of another type is skipped and counted, a second record for a store is
+skipped (section 7.7), unknown keys are kept on write. PROJ, BRAIN, SETTINGS
+is the first top row; YES on a setting steps its value and writes one
+record per store to `card.work` through an engine-task job (`job_args`
+`0x40000`). BRAIN's own settings: MIDI LOG (gates the MIDI thread's log
+detour) and DEFAULTS (gates applying default records at a load). ✅ Under
+the port (`verify_brain`, remix `brain`): a `card.work` with both off and an
+unknown key 99 gives values (0,0) and applies no default record; an
+out-of-bounds Binary and a wrong-type record leave (1,1) with 2 skipped; no
+file gives (1,1); the panel (PROJ, DOWN x4, RIGHT, YES, YES) writes
+{1:0, 2:1, 99:1}. Not built: `Apply.CALLBACK` has no callback field (it
+acts as `LIVE`); Blob and Trigger settings have no row; the list has a heading row
+per module, BRAIN's own included. On the unit: not yet.
+
+MODE DEFAULTS and RIG HOSTS keep working without the brain. KITS keeps
+AUTOSAVE and KEEP LEVELS in its own header.
+
+## 13. To find out
+
+| phase | item | instrument |
+|---|---|---|
+| 1 | the merged USB module reproduces each variant artifact | build |
+| 2 | which gestures reach the default readers at `0x4005aff8`, `0x4005b174`, `0x4005d180..0x4005db88`, `0x4008c912` (5.1; the choosers and the new-part initialiser are measured) | image, then port |
+| 2 | write latency of both pairs under playback and recording | port, then unit |
+| 2 | stock SAVE TO NEW, COLLECT SAMPLES and EXPORT carrying the project pair | port, then unit |
+| 2 | CS1 keeps its contents with the power off | unit |
+| 2 | further unreferenced runs in CS1 below `0x100f859c` | image census, then port |
+| 2 | the point in boot at which the card mounts, relative to USB enumeration | port |
+| 2 | a key combination free on FX, MIDI track and audio track pages | image keymaps, then unit |
+| 2 | the card-root `BRAIN` directory on a unit's set list (📖 not listed: stock keeps a root directory as a set only when it holds `AUDIO`; `modules/brain/README.md`), and a set named `BRAIN` sharing it | unit |
+| 2 | the 4 Sep 2026 stale-part stall reproduced under the port, as the clamp gate's fixture. Not reproduced (6 Oct 2026, bottleservice, sequencer on the internal clock): out-of-count bytes on T1's FX2 and five tracks' FX1 in every part of every bank, with the FX1 setup page drawn and with the DSPs running, and the play step (`0x800064d0[t]`) advances as on the clean project. Stock's Part validator rewrites those bytes to count - 1 during the load (section 8), so the clamp is stock's and the stall's cause is open | port, then unit |
+| 3 | template apply while the sequencer runs | port, then unit |
+| 4 | the writer for the MIDI track setup fields at `Part + 0x8f262 + t*0x24` | image, then port |
+| 4 | how the MIDI CTRL pages draw their labels | image, then port |
+| 4 | the KITS event the brain needs at Kit load and save | `modules/kits/kits.s` |
+| parallel | a ColdFire-to-DSP route for a run-time setting | port, then a hardware probe |
+
+## 14. Relation to OTX
+
+Taken from `OTX_PROJECT_PROPOSAL.md` (nordseele, draft 2.1, 26 Sep 2026):
+settings declared in the manifest with a stable id, a numeric key, a type,
+a default, a scope and an apply policy; keys never reused and Option
+labels append-only; an absent module's record and unknown keys written
+back byte for byte; a schema major and minor per record; the project
+`.work` / `.strd` pair and its table by which files are present; the
+write path; one menu category generated from the declarations.
+
+Different here:
+
+| OTX | this design |
+|---|---|
+| settings only ("meta-settings") | settings, defaults and templates |
+| one declared default per setting | layers 1 to 4 |
+| `OTX1` container: 24-byte header, CRC trailing the file, 12-byte value header | BRAIN: 32-byte header with the CRC in it, a record kind byte, 4-byte value header, types Byte and Name |
+| `otx.work` / `otx.strd` | `brain.work` / `brain.strd` |
+| `unit.otx`, one file | the card pair and the CS1 block |
+| the core in every OTX build | the brain listed by the remix; modules build without it |
+| `NEXT_CONNECT` | not carried; `BUILD` added |
+
+Not designed here yet, and carried from OTX without conflict when they
+are: the LOAD ERR display, the confirmed replace of a damaged record,
+setting groups, `visible=` conditions, `save=False`.
+
+Every record of this design can be written in OTX1 as specified (record
+kind in the store id, Byte as Number, Name as Blob), at about 1.5 times
+the bytes on small values; 🟡 inferred from the two layouts, not built.
+`brainfile.py` can carry OTX1 as a second serialisation of the same model when
+a firmware writes an `otx.work`.
+
+Status on 6 Oct 2026: OTX is implemented in no repository we can read.
+The proposal files in `nordseele/octalab` have no commit after 26 Sep
+2026; its README (1 to 2 Oct) lists October work as ot1, a custom
+firmware, and OType, a scripting language.
+
+## 15. Retracted
+
+- ❌ "A template's name is limited to the 8-character FAT name" (design
+  session, 6 Oct 2026). The card's file system carries longer names:
+  stock's `project.work`, and Octalab's `octalab_generators.map` on
+  nordseele's MKI. The 8 characters are the record's name field and the
+  list row.

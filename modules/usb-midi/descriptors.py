@@ -9,23 +9,24 @@ MSC interface byte for byte at the front:
   MSC only (stock)      one interface, 32 bytes
   + USB MIDI            + AudioControl [2] + MIDIStreaming with EP2 bulk
                         in/out: three interfaces, 124 bytes
-  + USB AUDIO           the MIDI function under an interface association,
+  + USB AUDIO OUT       the MIDI function under an interface association,
                         then a second: a UAC2 AudioControl (clock source,
                         input terminal, USB streaming output terminal) +
                         AudioStreaming (alt 0 idle, alt 1 with the iso IN
-                        EP3): five interfaces, 250 bytes. The audio module
-                        sets the channels: USB AUDIO OUT TRACKS MAIN CUE twenty at high
-                        speed (tracks, MAIN, CUE), USB AUDIO OUT TRACKS sixteen
-                        (the tracks), both with the stereo sum at full
-                        speed; USB AUDIO OUT MASTER track 8's L/R at both
-                        speeds, a front-left/front-right cluster; USB
-                        AUDIO OUT MAIN CUE MAIN + CUE, with MAIN at full speed.
-                        24-bit samples in 4-byte subslots in every layout.
-  + USB AUDIO IN AB/CD/ABCD  the other direction beside it, at high speed: a
+                        EP3): five interfaces, 250 bytes. Its LAYOUT
+                        setting sets the channels: TRACKS MAIN CUE twenty at
+                        high speed (tracks, MAIN, CUE), TRACKS sixteen (the
+                        tracks), both with the stereo sum at full speed;
+                        MASTER track 8's L/R at both speeds and MAIN MAIN
+                        alone, each a front-left/front-right cluster; MAIN
+                        CUE MAIN + CUE, with MAIN at full speed. 24-bit
+                        samples in 4-byte subslots in every layout.
+  + USB AUDIO IN        the other direction beside it, at high speed: a
                         USB streaming input terminal -> line output terminal,
                         and AudioStreaming interface 5 with EP3 OUT (a stereo
                         pair or four channels from the host, standing in for
-                        inputs A/B, C/D or A-D): six interfaces.
+                        inputs A/B, C/D or A-D by its INPUTS setting): six
+                        interfaces.
 
 `cfg_len` is exported as an absolute symbol: the responder's two clamp
 shims (usbmidi.s) compare wLength against it, since the stock `moveq #32`
@@ -63,14 +64,34 @@ UAC2_CLOCK_ID, UAC2_IT_ID, UAC2_OT_ID = 0x10, 0x11, 0x12
 # unit does not serve it), so a full-speed host is never offered one.
 USBIN_AS_IFACE = 5
 USBIN_IT_ID, USBIN_OT_ID = 0x13, 0x14
-# the three IN modules: host channels -> inputs (the DSP inject's slots)
+# USB AUDIO IN by its INPUTS setting: host channels -> inputs (the DSP
+# inject's slots). HS_LAYOUT and IN_LAYOUT are keyed "USB AUDIO OUT <LAYOUT>"
+# and "USB AUDIO IN <INPUTS>", the module keys of the layouts until 6 Oct 2026.
 IN_LAYOUT = {"USB AUDIO IN AB": 2, "USB AUDIO IN CD": 2, "USB AUDIO IN ABCD": 4}
 
 
+def _bound_value(modules, key, name):
+    """The build-time value `name` of module `key` in a selection (a dict of
+    bound modules, as the build passes an include); the setting's default
+    when the module is unbound; None when the module is not selected."""
+    if key not in modules:
+        return None
+    m = modules[key] if isinstance(modules, dict) else None
+    if m is not None and name in m.build_values:
+        return m.build_values[name]
+    from remix import registry
+    s = next(s for s in registry.by_key(key).settings if s.name == name)
+    return s.kind.labels[s.default]
+
+
+def audio_key(modules):
+    layout = _bound_value(modules, "USB AUDIO OUT", "LAYOUT")
+    return None if layout is None else f"USB AUDIO OUT {layout}"
+
+
 def in_key(modules):
-    keys = [k for k in IN_LAYOUT if k in modules]
-    assert len(keys) <= 1, f"one USB AUDIO IN module per remix, not {keys}"
-    return keys[0] if keys else None
+    inputs = _bound_value(modules, "USB AUDIO IN", "INPUTS")
+    return None if inputs is None else f"USB AUDIO IN {inputs}"
 
 
 def _ep(addr, pkt):
@@ -216,9 +237,7 @@ def configs(audio=None, with_in=None):
 
 
 def remix_inc(modules):
-    audio = [k for k in HS_LAYOUT if k in modules]
-    assert len(audio) <= 1, f"one USB audio module per remix, not {audio}"
-    audio = audio[0] if audio else None
+    audio = audio_key(modules)
     with_in = in_key(modules)
     if with_in:
         assert audio, (f"{with_in} needs a USB AUDIO OUT module beside it: EP3 IN is "
@@ -240,4 +259,4 @@ def remix_inc(modules):
 
 if __name__ == "__main__":
     import sys
-    print(remix_inc({"USB MIDI", "USB AUDIO OUT TRACKS MAIN CUE"} if "--audio" in sys.argv else {"USB MIDI"}))
+    print(remix_inc({"USB MIDI", "USB AUDIO OUT"} if "--audio" in sys.argv else {"USB MIDI"}))

@@ -64,7 +64,8 @@ def main():
     if r.returncode != 0:
         tail = (r.stdout + r.stderr).strip().splitlines()
         sys.exit(f"{name}: build failed: {tail[-1] if tail else '?'}")
-    img = IMAGE.read_bytes()
+    from remix import booted
+    img = booted.image(IMAGE.read_bytes())
     fails = 0
 
     def check(label, ok, detail=""):
@@ -88,7 +89,7 @@ def main():
     for key in hidden:
         P = clones[key]
         check(f"{key}: its id resolves to a clone of its own",
-              0x400d6b20 <= P < 0x400d7c3c and P not in
+              (0x400d6b20 <= P < 0x400d7c3c or P >= 0x40a955e0) and P not in
               [clones[o] for o in clones if o != key], f"0x{P:08x}")
         names = [bytes(img[P - BASE + P_PARAM_NAMES + 6 * i:][:6]).split(b"\0")[0]
                  for i in range(12)]

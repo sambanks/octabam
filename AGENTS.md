@@ -572,7 +572,14 @@ looking at is NOT enough; the sequencer runs every track of the part. After
 any change to a slot's count, position or meaning: `tools/hw/ot_project.py
 stamp-defaults <project> <remix>` on the card BEFORE play, and say so in the
 flash notes. (Cause inferred from the symptom and a refreshed project
-running clean; not measured.)
+running clean; not measured.) Measured against it under the port (6 Oct
+2026): stock's Part validator `0x40002318` rewrites every FX page byte
+outside its descriptor's `[min, min + count - 1]` to the nearer end during
+the load, in all 16 banks x 8 Parts (`tools/verify/verify_brain.py`, "stock
+clamps"), so a stored byte loaded from the card does not reach play outside
+its count; and with such bytes stamped, the page drawn and the DSPs
+running, the sequencer advanced as on a clean project. What stalled the
+unit is open; the stamp before play stays the rule.
 
 **THE PART THE EMULATED LOAD APPLIES IS NOT THE PART THAT PLAYS.** `ot_emu`'s
 load applies bank 1 part 1; its transport start re-applies the SAVED bank's

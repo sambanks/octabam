@@ -4,7 +4,7 @@ The stock chooser plus USB MIDI and USB AUDIO OUT TRACKS, for testing the sixtee
 
 ## What is in it
 
-- **USB MIDI** and **USB AUDIO OUT TRACKS** (markandrus/octemu): USB-MIDI mirroring DIN; sixteen 24-bit channels, track N's L/R on 2N−1/2N, post-FX, pre-fader; the tracks' stereo sum at full speed. [`modules/usb-audio-out-tracks`](../../../modules/usb-audio-out-tracks/README.md).
+- **USB MIDI** and **USB AUDIO OUT TRACKS** (markandrus/octemu): USB-MIDI mirroring DIN; sixteen 24-bit channels, track N's L/R on 2N−1/2N, post-FX, pre-fader; the tracks' stereo sum at full speed. [`modules/usb-audio-out`](../../../modules/usb-audio-out/README.md#tracks).
 - the 14 stock FX2 effects.
 
 ## Status

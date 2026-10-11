@@ -1,0 +1,25 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "labels": [
+    "TRACKS MAIN CUE",
+    "TRACKS",
+    "MASTER",
+    "MAIN CUE",
+    "MAIN",
+    "TRACKS POST"
+   ],
+   "name": "LAYOUT",
+   "type": "option"
+  }
+ },
+ "store": {
+  "id": "octabam.usb-audio-out",
+  "major": 1
+ }
+}

@@ -42,7 +42,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 import usb_host  # noqa: E402  (tools/harness)
-from remix import registry  # noqa: E402
+from remix import registry, brain  # noqa: E402
 from verify_usb import LAYOUTS  # noqa: E402  (the input layouts: channels, packet cap, bInterval, taps)
 
 EMU = ROOT / "out/emu/ot_emu"
@@ -51,7 +51,7 @@ ELF = ROOT / "out/platform/runtime/runtime.elf"
 COUNTERS = ("produced", "consumed", "pkts", "lastn", "lastfill", "underruns",
             "overruns", "reprimes", "bad", "frames", "seconds", "minfill", "maxfill",
             "err", "partial")
-# RX block slot -> host channel (0-based) per IN module; a slot not listed
+# RX block slot -> host channel (0-based) per INPUTS value ("USB AUDIO IN <INPUTS>"); a slot not listed
 # is a jack and must read zero under the port
 IN_SLOTS = {"USB AUDIO IN AB": {2: 0, 3: 1},
             "USB AUDIO IN CD": {0: 0, 1: 1},
@@ -222,14 +222,16 @@ def main():
         print("  [FAIL] verify_usb_in: the runtime has no USB AUDIO IN unit")
         return 1
     remix = registry.remix(os.environ.get("REMIX"))
-    ain = next((k for k in IN_SLOTS if k in remix.modules), None)
+    inputs = brain.value(remix, registry.modules(), "octabam.usb-audio-in", "INPUTS")
+    ain = None if inputs is None else f"USB AUDIO IN {inputs}"
     if ain is None:
         print("  [FAIL] verify_usb_in: the remix carries no USB AUDIO IN module")
         return 1
     SLOT_CH = IN_SLOTS[ain]
     CHANNELS = len(SLOT_CH)
     print(f"  {ain}: {CHANNELS} host channels -> RX slots {sorted(SLOT_CH)}")
-    audio = next((k for k in LAYOUTS if k in remix.modules), None)
+    layout = brain.value(remix, registry.modules(), "octabam.usb-audio-out", "LAYOUT")
+    audio = None if layout is None else f"USB AUDIO OUT {layout}"
     if audio is None or LAYOUTS[audio][2] != 2:
         print(f"  [FAIL] verify_usb_in: needs a 250 us USB AUDIO OUT layout (MAIN CUE, MAIN, TRACKS or TRACKS MAIN CUE) beside it, not {audio}")
         return 1
@@ -259,7 +261,7 @@ def main():
               f"{rate:.4f} per poll; first {s1['frames'] - s0['frames']} / second {s1['seconds'] - s0['seconds']} visits between the reads")
     else:
         check("two counter reads over EP0 during the stream (POLLS >= 4)", False, f"{len(r['snaps'])} read(s)")
-    tgt = re.search(r"^\.set IN_TARGET,\s+(\d+)", (ROOT / "modules/usb-audio-in-ab/usbaudio_in.s").read_text(), re.M).group(1)
+    tgt = re.search(r"^\.set IN_TARGET,\s+(\d+)", (ROOT / "modules/usb-audio-in/usbaudio_in.s").read_text(), re.M).group(1)
     print(f"  ring fill while consuming: min {c['minfill']} max {c['maxfill']} (target {tgt})")
     # up to NSLOTI (4) dTDs can still be queued when the bench hangs up
     check("every OUT packet retired, whole frames, no errors (up to 4 in flight at hangup)",

@@ -55,10 +55,17 @@ def main():
         m = re.match(r"\s+(.+?) MODE renames -> \w+ 0x([0-9a-f]+)", line)
         if m:
             targets[m.group(1).strip()] = int(m.group(2), 16)
-    img = IMAGE.read_bytes()
+    from remix import booted
+    img = booted.image(IMAGE.read_bytes())
 
     def rd32(a):
         return int.from_bytes(img[a - BASE:a - BASE + 4], "big")
+
+    # each clone where the unit finds it: FX2_IDS[id] (ROM, or the DRAM runtime)
+    for key in list(clones):
+        _m = registry.modules().get(key)
+        if _m is not None and _m.menu is not None:
+            clones[key] = rd32(0x400d5fdc + _m.menu.fx2_id * 4)
 
     import emu_bringup as emu
     boot = emu.boot(str(IMAGE))

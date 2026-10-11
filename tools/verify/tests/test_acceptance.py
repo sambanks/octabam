@@ -155,7 +155,7 @@ class GateTests(unittest.TestCase):
         status, _ = a.pressure_profile([SimpleNamespace(key="CF PATCH", dsp=None)])
         self.assertEqual(status, "not_applicable")
         # a DSP section with no chooser row (a hook-only inject) is not an effect
-        status, _ = a.pressure_profile([SimpleNamespace(key="USB AUDIO IN AB", dsp=object(), menu=None, params=(), dear={})])
+        status, _ = a.pressure_profile([SimpleNamespace(key="USB AUDIO IN", dsp=object(), menu=None, params=(), dear={})])
         self.assertEqual(status, "not_applicable")
 
     def test_missing_prerequisites_produce_partial_json_and_nonzero_exit(self):

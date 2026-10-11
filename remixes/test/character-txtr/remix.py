@@ -8,7 +8,7 @@ pricer reads the reverb ~270 low, so ~3,020), which no hardware has run;
 bottleservice keeps the plain station until it has.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Pin, Proof, Remix
 
 REMIX = Remix(
     name="character-txtr",
@@ -17,7 +17,7 @@ REMIX = Remix(
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER TXTR", "MODULATION",
              "TEMPO SYNC", "CC MAP", "CC FEEDBACK", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
-             "USB MIDI", "USB AUDIO OUT MASTER",
+             "USB MIDI", "USB AUDIO OUT",
              "STORE", "KITS",
              "SCENES P2", "PLOCKS P2",
              "DELAY",
@@ -27,4 +27,5 @@ REMIX = Remix(
     host_slots=(("DELAY SERVER", 2), ("REVERB SERVER", 2)),
     locked=("REVERB SERVER", "DELAY SERVER"),
     fx1=("SPECTRUM", "CHARACTER TXTR", "MODULATION"),
+    settings={("octabam.usb-audio-out", "LAYOUT"): Pin("MASTER")},
 )

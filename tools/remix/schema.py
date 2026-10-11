@@ -13,6 +13,7 @@ worse than none, so a field exists only where a check consumes it.
 from __future__ import annotations
 
 from collections.abc import Mapping
+import dataclasses
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from enum import Enum
@@ -45,6 +46,7 @@ class Category(Enum):
     PARTS = "parts"             # Parts, Kits and scenes, and the bridges between them
     MIDI_USB = "midi-usb"       # MIDI and USB
     FIXES = "fixes"             # a fix to stock behaviour
+    SETTINGS = "settings"       # the settings store and what it carries
     REFERENCE = "reference"     # the canaries
     STOCK = "stock"             # a stock effect kept in the chooser
 
@@ -56,6 +58,7 @@ CATEGORY_TITLE = {
     Category.PARTS: "Parts, Kits and scenes",
     Category.MIDI_USB: "MIDI and USB",
     Category.FIXES: "Fixes",
+    Category.SETTINGS: "Settings",
     Category.REFERENCE: "Reference",
     Category.STOCK: "Stock effects",
 }
@@ -184,6 +187,11 @@ class Param:
     formatter_word: int | tuple[str, str] | None = None
     widget_word: int | tuple[str, str] | None = None
     word_12a: int | tuple[str, str] | None = None
+    # The knob's stable identity in a stored default or template
+    # (docs/proposals/BRAIN.md section 4.1): 1..65535, never reused, so a
+    # renamed or moved knob keeps its stored value. A module that keys one
+    # drawn slot keys every drawn slot; brain.lock holds the released keys.
+    key: int | None = None
 
     @property
     def raw_words(self) -> tuple:
@@ -217,6 +225,8 @@ class Param:
                 f"descriptor words together -- the raw words are the drawing")
         if self.link and not self.active:
             raise ValueError(f"param {self.name!r}: link on a slot that is not drawn")
+        if self.key is not None and (isinstance(self.key, bool) or not 1 <= self.key <= 0xFFFF):
+            raise ValueError(f"param {self.name!r}: key {self.key!r} is not 1..65535")
         if self.name is not None and len(self.name) > 5:
             raise ValueError(
                 f"param name {self.name!r} exceeds 5 characters; the panel "
@@ -262,6 +272,210 @@ def enable_words(active, linked=(), inherited=(), donor=(0, 0)):
         else:
             hi = (hi & ~m) | (donor[1] & m)
     return lo, hi
+
+
+# ---- settings (docs/proposals/BRAIN.md section 4) -------------------------
+# A module's settings, resolved through four layers: the manifest's default,
+# the remix's (`Remix.settings`, a value or a Pin), the card's and the
+# project's. Without the BRAIN module in the remix only the first two exist
+# and every value is a build-time constant (tools/remix/brain.py).
+
+BRAIN_KEY = "BRAIN"                # the module that carries the run-time layers
+STORE_ID_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789.-_")
+
+
+class Scope(Enum):
+    CARD = "card"                # layers 1, 2, 3: shared by every project on the card
+    PROJECT = "project"          # layers 1, 2, 4: stored with the project
+
+
+class Apply(Enum):
+    LIVE = "live"                # the module reads the value table
+    CALLBACK = "callback"        # its routine runs after a load and after an edit
+    NEXT_BOOT = "next_boot"      # read once at boot
+    BUILD = "build"              # selects code: layers 1 and 2 only
+
+
+@dataclass(frozen=True)
+class Binary:
+    """0 or 1, stored as one byte (brain file type 1)."""
+
+    def check(self, v) -> str | None:
+        return None if v in (0, 1) and not isinstance(v, float) else f"{v!r} is not 0 or 1"
+
+    def zero(self):
+        return 0
+
+
+@dataclass(frozen=True, init=False)
+class Option:
+    """An index into append-only labels, stored as one byte (brain file type 2).
+    A label is never removed, renamed or moved: brain.lock refuses it."""
+    labels: tuple[str, ...]
+
+    def __init__(self, *labels: str):
+        if not 1 <= len(labels) <= 256:
+            raise ValueError(f"Option takes 1..256 labels, got {len(labels)}")
+        if any(not isinstance(x, str) or not x for x in labels):
+            raise ValueError(f"Option labels are non-empty strings: {labels!r}")
+        if len(set(labels)) != len(labels):
+            raise ValueError(f"Option labels repeat: {labels!r}")
+        object.__setattr__(self, "labels", tuple(labels))
+
+    def index(self, v) -> int | None:
+        """A label or an index -> the index, or None when it names nothing."""
+        if isinstance(v, str):
+            return self.labels.index(v) if v in self.labels else None
+        if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < len(self.labels):
+            return v
+        return None
+
+    def check(self, v) -> str | None:
+        return None if self.index(v) is not None else \
+            f"{v!r} is not one of {len(self.labels)} labels {self.labels!r}"
+
+    def zero(self):
+        return 0
+
+
+@dataclass(frozen=True)
+class Number:
+    """A signed 16-bit integer, stored as two bytes (brain file type 3)."""
+    min: int
+    max: int
+    step: int = 1
+    unit: str = ""
+
+    def __post_init__(self):
+        if not -0x8000 <= self.min <= self.max <= 0x7FFF:
+            raise ValueError(f"Number bounds {self.min}..{self.max} are not "
+                             f"ordered inside -32768..32767")
+        if self.step < 1:
+            raise ValueError(f"Number step {self.step} is not positive")
+
+    def check(self, v) -> str | None:
+        if isinstance(v, bool) or not isinstance(v, int):
+            return f"{v!r} is not an integer"
+        if not self.min <= v <= self.max:
+            return f"{v} is outside {self.min}..{self.max}"
+        if (v - self.min) % self.step:
+            return f"{v} is not on a step of {self.step} from {self.min}"
+        return None
+
+    def zero(self):
+        return self.min if self.min > 0 else self.max if self.max < 0 else 0
+
+
+@dataclass(frozen=True)
+class Trigger:
+    """An action; never stored and never defaulted."""
+
+    def check(self, v) -> str | None:
+        return None if v is None else "a Trigger holds no value"
+
+    def zero(self):
+        return None
+
+
+@dataclass(frozen=True)
+class Blob:
+    """Bytes the module packs and unpacks, at most `max_bytes` (brain file type 4)."""
+    max_bytes: int
+
+    def __post_init__(self):
+        if not 1 <= self.max_bytes <= 0xFFFF:
+            raise ValueError(f"Blob max_bytes {self.max_bytes} is not 1..65535")
+
+    def check(self, v) -> str | None:
+        if not isinstance(v, (bytes, bytearray)):
+            return f"{v!r} is not bytes"
+        return None if len(v) <= self.max_bytes else \
+            f"{len(v)} bytes exceed the declared {self.max_bytes}"
+
+    def zero(self):
+        return b""
+
+
+KINDS = (Binary, Option, Number, Trigger, Blob)
+
+
+@dataclass(frozen=True)
+class Store:
+    """The id a module's settings and stored defaults are filed under.
+    ASCII, 1..63 bytes; the build refuses two modules with one id."""
+    id: str
+    major: int = 1
+    minor: int = 0
+
+    def __post_init__(self):
+        if not 1 <= len(self.id) <= 63 or not set(self.id) <= STORE_ID_CHARS \
+                or self.id[0] in ".-_":
+            raise ValueError(f"store id {self.id!r}: 1..63 of [a-z0-9.-_], "
+                             f"starting with a letter or digit")
+        if not 1 <= self.major <= 0xFFFF or not 0 <= self.minor <= 0xFFFF:
+            raise ValueError(f"store {self.id}: schema {self.major}.{self.minor} "
+                             f"is not u16.u16 with a major of at least 1")
+
+
+@dataclass(frozen=True)
+class Setting:
+    """One setting of a module (docs/proposals/BRAIN.md section 4.1).
+
+    `default` None takes the kind's zero (0, the first label, b"" or, for a
+    Number whose range excludes 0, its nearer bound). An Option takes a
+    label or an index; it is kept as the index. `early` copies a CARD
+    setting into the CS1 block, read before the card mounts."""
+
+    key: int
+    name: str
+    kind: object                 # Binary() | Option(...) | Number(...) | Trigger() | Blob(n)
+    default: object = None
+    scope: Scope = Scope.CARD
+    apply: Apply = Apply.LIVE
+    early: bool = False
+    doc: str | None = None
+
+    def __post_init__(self):
+        where = f"setting {self.key} {self.name!r}"
+        if isinstance(self.key, bool) or not isinstance(self.key, int) \
+                or not 1 <= self.key <= 0xFFFF:
+            raise ValueError(f"{where}: key is not 1..65535")
+        if not self.name or not self.name.isascii() or not self.name.isprintable():
+            raise ValueError(f"{where}: the name is printable ASCII")
+        if not isinstance(self.kind, KINDS):
+            raise ValueError(f"{where}: kind {self.kind!r} is not one of "
+                             f"{', '.join(k.__name__ for k in KINDS)}")
+        if self.default is None:
+            object.__setattr__(self, "default", self.kind.zero())
+        why = self.kind.check(self.default)
+        if why:
+            raise ValueError(f"{where}: default {why}")
+        if isinstance(self.kind, Option):
+            object.__setattr__(self, "default", self.kind.index(self.default))
+        if self.early:
+            if self.scope is not Scope.CARD:
+                raise ValueError(f"{where}: early is for a CARD setting; a "
+                                 f"PROJECT value has no meaning before a project loads")
+            if isinstance(self.kind, (Blob, Trigger)):
+                raise ValueError(f"{where}: early takes a fixed-size value, "
+                                 f"not a {type(self.kind).__name__}")
+        if self.apply is Apply.BUILD and isinstance(self.kind, (Blob, Trigger)):
+            raise ValueError(f"{where}: Apply.BUILD selects code from a "
+                             f"Binary, Option or Number, not a {type(self.kind).__name__}")
+
+    @property
+    def size(self) -> int:
+        """Bytes of the value: the value table's slot and the CS1 block's."""
+        k = self.kind
+        return k.max_bytes if isinstance(k, Blob) else \
+            {Binary: 1, Option: 1, Number: 2, Trigger: 0}[type(k)]
+
+
+@dataclass(frozen=True)
+class Pin:
+    """A remix's fixed value for a setting: no menu row, nothing stored,
+    a stored value on the card preserved and not applied."""
+    value: object
 
 
 @dataclass(frozen=True)
@@ -451,6 +665,30 @@ class DspSection:
     # with hooks and no MenuEntry is placed on `payloads` only and takes no
     # dispatch entry; one with a menu may carry hooks as well.
     hooks: tuple[DspHook, ...] = ()
+    # PINNED PLACEMENT -- put the section's code at a FIXED P address instead
+    # of packing it into the harvested region, and take the words from what
+    # is already there. The one place that has words to give is the interrupt
+    # vector table: stock leaves whole runs of slots as `jmp *` (a self-jump
+    # plus a zero word), which would freeze the core if that interrupt ever
+    # fired, so they are dead -- `tools/verify/verify_dspvectors.py` proves
+    # nothing arms one, on every build, and that gate is the licence for this
+    # field. The build walks forward from `pin` while the stock pattern
+    # holds, refuses if what it finds is not that pattern, and claims every
+    # word it takes so a second module is refused by name.
+    #
+    # `pins` is one address per PIECE, and a section that is fully pinned
+    # takes nothing from the harvested region at all -- which is what lets a
+    # remix that harvests nothing (every stock effect kept) carry one. The
+    # runs are rarely long enough for a section whole, so `pin_split_label`
+    # names the ONE label where it may be cut, and the source carries a
+    # one-word short jump (`jmp $fab`, build_bus.PIN_BRIDGE) immediately
+    # before that label which the build points at the second piece. Each
+    # piece is assembled at its own address and never moved after assembly:
+    # a `do` loop's end address is absolute, so a memcpy would be wrong in a
+    # way no local gate would catch. The cut may not fall inside a DO loop --
+    # the chip cannot enter or leave one by a jump.
+    pins: tuple[int, ...] = ()
+    pin_split_label: str | None = None
     # Per-payload text substitutions applied to the source before anything
     # else the build does to it: {"A": {"@SBASE@": "$33e00"}, "B":
     # {"@SBASE@": "$3be00"}}. dsp_asm has no equ and no expressions, so a
@@ -539,6 +777,9 @@ class FormatterReg:
     # modules/cfprobe puts it at +0x100 with an `.org`, so one cave, one
     # address and one pc-relative state block serve both callers.
     offset: int = 0
+    # On a Linked unit (Linked.registers_formatter): the formatter's entry
+    # symbol in that unit; `offset` is added to it.
+    symbol: str = ""
 
 
 @dataclass(frozen=True)
@@ -926,6 +1167,16 @@ class Linked:
     # belongs; the ~8 KB of zero runs inside the OS image are for what
     # must be ROM.
     dram: bool = False
+    # LOADER: the unit is assembled INTO octabam's loader (tools/remix/
+    # loader.S), which the build appends after the OS image unpacked, so it
+    # runs from its link address from the first instruction of the OS on --
+    # before the runtime is depacked, and without taking a byte of the ROM
+    # caves full remixes run out of. For code the OS entry must reach before
+    # anything else runs (REMIX SWITCH's chainloader gate). It links in the
+    # loader's one link (its globals are the platform's symbols, as a DRAM
+    # unit's), under the loader's labels: prefix every label. Needs the
+    # platform (a remix with at least one DRAM unit).
+    loader: bool = False
     # Assembler text generated PER REMIX -- include(modules) -> str, given
     # the remix's modules by key -- written beside the unit as `remix.inc`
     # and reachable by `.include "remix.inc"`. A unit whose data depends
@@ -939,9 +1190,19 @@ class Linked:
     # oracle uses the declared values. A name the source itself defines is
     # refused. DRAM units share one link, so two declaring one name must
     # resolve it to one value.
+    # ARENA_BASE, declared, resolves to the remix's audio arena base (stock
+    # 0x40a955e0, moved up by the platform reserve).
     defsyms: tuple[tuple[str, int], ...] = ()
+    # A DRAM unit that is some module's label formatter, as
+    # CavePatch.registers_formatter: the build writes the unit's
+    # `registers_formatter.symbol` into that module's descriptor clone.
+    registers_formatter: FormatterReg | None = None
 
     def __post_init__(self):
+        if self.registers_formatter is not None and not (
+                self.dram and self.registers_formatter.symbol):
+            raise ValueError(f"Linked({self.label!r}): registers_formatter needs "
+                             f"dram=True and a FormatterReg.symbol")
         names = [n for n, _v in self.defsyms]
         if len(names) != len(set(names)):
             raise ValueError(f"Linked({self.label!r}): a defsym name declared twice")
@@ -1196,6 +1457,32 @@ class Module:
     # DSP work outside the FX pricer (for example a CF-registered source).
     # An explicit gap must block pressure qualification, never report N/A.
     pressure_blocker: str = ""
+    # ---- settings (docs/proposals/BRAIN.md section 4.1) --------------------
+    # The id the module's settings and stored defaults are filed under, and
+    # the settings themselves. tools/remix/brain.py resolves them for a
+    # remix; modules/<name>/brain.lock holds the released keys.
+    store: Store | None = None
+    settings: tuple[Setting, ...] = ()
+    # The module's function is stored state: the build refuses it in a
+    # remix without the BRAIN module, by name.
+    requires_brain: bool = False
+    # CODE CHOSEN BY A SETTING: variant(values) -> {field: value}, given the
+    # module's Apply.BUILD settings resolved for the remix ({name: value},
+    # an Option as its label). registry.bound() applies it once per remix,
+    # so every reader of `linked`, `dsp`, `detours` or `gates` sees the
+    # chosen code without asking (modules/usb-audio-out is the first).
+    variant: object | None = None
+    # The values a bound module was built with ({name: value}); empty on an
+    # unbound one. An `include` callable reads them from the selection.
+    build_values: Mapping = field(default_factory=dict, hash=False, compare=False)
+
+    def bind(self, values: Mapping) -> "Module":
+        """This module with its Apply.BUILD settings fixed to `values`."""
+        over = self.variant(dict(values)) if self.variant is not None else {}
+        bad = set(over) - {f.name for f in dataclasses.fields(self)} | ({"key", "name", "store", "settings"} & set(over))
+        if bad:
+            raise ValueError(f"{self.name}: variant returns {sorted(bad)}, which a variant may not set")
+        return dataclasses.replace(self, build_values=MappingProxyType(dict(values)), **over)
 
     def write_spans(self):
         """Every fixed-address write this module declares, as (kind, start,
@@ -1235,6 +1522,25 @@ class Module:
         if self.params and len(self.params) != 12:
             raise ValueError(f"{self.name}: expected 12 param slots, "
                              f"got {len(self.params)}")
+        if self.settings and self.store is None:
+            raise ValueError(f"{self.name}: settings without a Store to file them under")
+        if self.variant is not None and not any(s.apply is Apply.BUILD for s in self.settings):
+            raise ValueError(f"{self.name}: a variant with no Apply.BUILD setting to choose it")
+        for attr in ("key", "name"):
+            seen = [getattr(s, attr) for s in self.settings]
+            dup = sorted({v for v in seen if seen.count(v) > 1}, key=str)
+            if dup:
+                raise ValueError(f"{self.name}: two settings with {attr} {dup[0]!r}")
+        pkeys = [p.key for p in self.params if p.key is not None]
+        dup = sorted({k for k in pkeys if pkeys.count(k) > 1})
+        if dup:
+            raise ValueError(f"{self.name}: two params with key {dup[0]}")
+        if pkeys:
+            bare = [i for i, p in enumerate(self.params) if p.active and p.key is None]
+            if bare:
+                raise ValueError(f"{self.name}: drawn slot{'s' if len(bare) > 1 else ''} "
+                                 f"{', '.join(map(str, bare))} carr{'y' if len(bare) > 1 else 'ies'} "
+                                 f"no key while others do: key every drawn slot")
         if self.mode_views and self.mode_slot is None:
             raise ValueError(f"{self.name}: mode_views without a mode_slot")
         if self.mode_slot is not None:
@@ -1677,6 +1983,18 @@ class Remix:
     # offsets have no such exact identity.
     grains: int = 4
     fx1: tuple[str, ...] = ()
+    # LAYER 2 OF EACH SETTING (docs/proposals/BRAIN.md section 4.2):
+    # (store id, setting name) -> a value (a new default the card and the
+    # project may still change) or Pin(value) (fixed: no row, nothing stored).
+    # An Option takes a label or an index. tools/remix/brain.py checks every
+    # entry against the selected modules.
+    settings: Mapping = field(default_factory=dict, hash=False)
+    # LAYER 2 OF EACH KNOB DEFAULT (docs/proposals/BRAIN.md section 4.2):
+    # (module key, mode, knob) -> byte. `mode` is the MODE select's label or
+    # value, or None for the knob's own default (Param.default); `knob` is the
+    # Param's name, or the name the mode's view gives it. It replaces that
+    # default in this image's descriptor or MODE DEFAULTS table.
+    defaults: Mapping = field(default_factory=dict, hash=False)
 
     def __post_init__(self):
         if self.grains not in (2, 4):

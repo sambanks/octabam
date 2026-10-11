@@ -171,7 +171,7 @@ Image 64, `usb-audio`, Sam's MKII, 25 Sep 2026:
 - Receive: 896,760 messages (7,170/s, notes + CCs on channel 16) and then
   1,471,080 messages (7,950/s, 185 s) sent into the unit, with the audio
   stream running, without a stall or a change in the audio stream
-  (`modules/usb-audio-out-tracks-main-cue/README.md`, the image 64 takes).
+  (`modules/usb-audio-out/README.md`, the image 64 takes).
 - No USB MIDI transmit measurement from the unit is recorded.
 
 Also carried on Tim Hastie's MKI (`octatrick-usb`, OCTATRICK9, 26 Sep 2026),

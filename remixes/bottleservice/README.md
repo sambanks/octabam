@@ -158,7 +158,7 @@ Plug the unit into a computer over its USB port.
 - **USB audio: the master track.** A two-channel 44.1 kHz 24-bit input on
   the computer carrying track 8 left and right, after T8's effects and
   before T8's LEVEL and the MAIN volume. With MASTER TRACK on, that is the
-  whole mix. ([`usb-audio-out-master`](../../modules/usb-audio-out-master/README.md))
+  whole mix. ([`usb-audio-out`](../../modules/usb-audio-out/README.md#master))
   ```bash
   sox -t coreaudio "Elektron Octatrack DPS-1" -c 2 -r 44100 -b 24 take.wav trim 0 60
   ```

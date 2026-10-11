@@ -5,7 +5,7 @@ The stock chooser plus USB MIDI and USB AUDIO OUT TRACKS MAIN CUE, for testing t
 ## What is in it
 
 - **USB MIDI** (markandrus, [octemu](https://github.com/markandrus/octemu), MIT) — MIDI in and out over USB, mirroring DIN. [`modules/usb-midi/README.md`](../../../modules/usb-midi/README.md).
-- **USB AUDIO OUT TRACKS MAIN CUE** (markandrus, octemu, MIT) — at USB high speed, track N's post-FX, pre-fader L/R on channels 2N−1/2N, MAIN on 17–18, CUE on 19–20, 44.1 kHz, 24-bit. At full speed, the stereo sum of the tracks. Track LEVEL, the crossfader and MAIN volume are not in channels 1–16. [`modules/usb-audio-out-tracks-main-cue/README.md`](../../../modules/usb-audio-out-tracks-main-cue/README.md).
+- **USB AUDIO OUT TRACKS MAIN CUE** (markandrus, octemu, MIT) — at USB high speed, track N's post-FX, pre-fader L/R on channels 2N−1/2N, MAIN on 17–18, CUE on 19–20, 44.1 kHz, 24-bit. At full speed, the stereo sum of the tracks. Track LEVEL, the crossfader and MAIN volume are not in channels 1–16. [`modules/usb-audio-out/README.md`](../../../modules/usb-audio-out/README.md).
 - the 14 stock FX2 effects.
 
 ## Status

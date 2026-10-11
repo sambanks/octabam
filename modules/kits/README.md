@@ -274,6 +274,27 @@ Not run on the unit: an unattended run with the BCR2000.
 - Whether the CS1 range holds over a power-off on the unit is read from
   stock's use of CS1 (as PLOCKS P2), not measured.
 
+## Calls another module can take
+
+KITS has no callout today. A module that follows Kit changes (BRAIN's
+per-Kit knob names, for one) would take these routines in `kits.s` 📖
+(read 7 Oct 2026):
+
+| event | routine | covers |
+|---|---|---|
+| Kit to slot, every load | `load_into` (d0 Kit, d1 bank, d2 slot) | called from `stage_req` (lines 1290, 1340), `others_refresh` (1425) and `kits_load_current` (1745, LOAD KIT; d0 Kit, then the Part reload) |
+| slot to Kit, every save | `kits_saved` (hooked on Part Save's tail `0x4004a9c4`; d4 part, slot `bank*4 + part`, Kit `RESID[slot]`) | SAVE KIT, Part Save, SAVE ALL |
+| slot to Kit, explicit | `kits_save_current` (d0 Kit, a0 name; exported) | callers outside the Part Save path |
+| file written | `write_if_dirty` at the bank write `0x400917c8`; `kits_pstore` (`0x4008ee74`, SAVE PROJECT) | `kits.work` |
+| file read | `read_kits` (project load, power-up); `kits_preload` (`0x4008f180`, `.strd` to `.work`) | `kits.work` |
+
+Exports: `kits_load_current`, `kits_save_current`, `kits_stage`, `KIMG`,
+`KSTATE`. A hook for another module means a call at the end of `load_into`,
+`kits_saved` and `kits_save_current`. A Kit is a whole Part, so the MIDI
+setup record (`docs/firmware/MIDI_TRACKS.md`) travels with it. A Kit record
+(6338 bytes) has 4 reserved bytes; 480 bytes of knob names need a store keyed
+by Kit number.
+
 ## Gates
 
 - `tools/verify/verify_kits.py`.

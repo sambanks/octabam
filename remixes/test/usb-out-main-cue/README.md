@@ -4,7 +4,7 @@ The stock chooser plus USB MIDI and USB AUDIO OUT MAIN CUE, for testing the four
 
 ## What is in it
 
-- **USB MIDI** and **USB AUDIO OUT MAIN CUE** (markandrus/octemu; the MC variant Bryan T's): USB-MIDI mirroring DIN; four 24-bit channels, MAIN L/R + CUE L/R, at the same 250 us cadence as USB AUDIO OUT TRACKS MAIN CUE/FULL (not USB AUDIO OUT MASTER's 1 ms); full speed carries MAIN alone. [`modules/usb-audio-out-main-cue`](../../../modules/usb-audio-out-main-cue/README.md).
+- **USB MIDI** and **USB AUDIO OUT MAIN CUE** (markandrus/octemu; the MC variant Bryan T's): USB-MIDI mirroring DIN; four 24-bit channels, MAIN L/R + CUE L/R, at the same 250 us cadence as USB AUDIO OUT TRACKS MAIN CUE/FULL (not USB AUDIO OUT MASTER's 1 ms); full speed carries MAIN alone. [`modules/usb-audio-out`](../../../modules/usb-audio-out/README.md#main-cue).
 - the 14 stock FX2 effects.
 
 ## Status

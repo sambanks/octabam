@@ -26,9 +26,13 @@ def main():
                     help="'<src wav>:<card path relative to the SET folder>' -- a sample to put on "
                          "the card as well (none are staged by default, so every sample slot is "
                          "empty and the DSP has nothing to play: O9); repeatable")
+    ap.add_argument("--root-file", action="append", default=[],
+                    help="'<src>:<card path relative to the card root>' -- a file outside the set "
+                         "(the settings store's BRAIN/card.work); repeatable")
     a = ap.parse_args()
     img, staged = emu_card.stage_project(a.project, a.set_name, a.name,
-                                         tree=a.tree, image_mb=a.image_mb, audio=a.audio)
+                                         tree=a.tree, image_mb=a.image_mb, audio=a.audio,
+                                         root_files=a.root_file)
     pathlib.Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     with open(a.out, "wb") as f:
         f.write(img)

@@ -79,6 +79,7 @@ namespace
 	//   tx                -> tx <hex>      UART A's transmit bytes since the last tx
 	//   peek <addr> <len> -> peek <hex>    len <= 4096; unmapped -> err
 	//   poke <addr> <hex> -> ok
+	//   call <addr> [<arg>...] -> ok d0=<hex>   a firmware routine run as main (--call's callAsMain)
 	//   frame on|off      -> ok            Rtos::setFrame
 	//   status            -> status sample= ms= frames= frame=on|off idle= wall=
 	//   quit              -> ok            then exit 0
@@ -825,6 +826,34 @@ namespace
 				reply("ok");
 				continue;
 			}
+			if(cmd == "call")
+			{
+				// `call <addr> [<arg>...]` -> ok d0=<hex> | err <why>: a firmware
+				// routine run as main (Rtos::callAsMain, --call's), for a routine
+				// that cannot genuinely block. modules/remix-switch's osw_reupload
+				// (verify_remixswitch: park the DSP, then the stock upload).
+				uint64_t addr = 0;
+				std::vector<uint32_t> args;
+				bool okArgs = w.size() >= 2 && parseNumber(w[1], addr) && addr <= 0xffffffffull;
+				for(size_t i = 2; okArgs && i < w.size(); ++i)
+				{
+					uint64_t v = 0;
+					okArgs = parseNumber(w[i], v) && v <= 0xffffffffull;
+					args.push_back(static_cast<uint32_t>(v));
+				}
+				if(!okArgs)
+				{
+					reply("err usage: call <addr> [<arg>...]");
+					continue;
+				}
+				uint32_t d0 = 0;
+				if(_rtos.callAsMain(static_cast<uint32_t>(addr), args, d0, 400000000))
+					std::snprintf(buf, sizeof buf, "ok d0=%#x", d0);
+				else
+					std::snprintf(buf, sizeof buf, "err did not return: %s", _rtos.why().c_str());
+				reply(buf);
+				continue;
+			}
 			if(cmd == "frame")
 			{
 				if(w.size() != 2 || (w[1] != "on" && w[1] != "off"))
@@ -1276,6 +1305,8 @@ int main(int _argc, char** _argv)
 	bool frameTimer = false;	// O9b: keep the free-running 16-sample frame timer with --dsp (default: the DSP's bank word is the frame edge)
 	double dspLazy = ot::DspPair::g_lazyDefault;	// O16c: --dsp-lazy N -- the pair's ticks are booked and replayed in chunks of up to N DSP instructions at the ColdFire's touch points (0 = the per-tick path); the default in every mode, byte-identical to it
 	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
+	std::string preload;		// "addr=path[;...]": a file's bytes into memory BEFORE the boot runs -- what a reset leaves
+								// in SDRAM (modules/remix-switch's stage) or in NOR (the bootstrap version word at 0x3ffc)
 	std::string pokeEarly;		// the same, written before --call (the current-track byte 0x80000000 an editor call reads)
 	bool noPost = false;		// 2 Oct 2026: --no-post: no LOAD PROJECT post; the firmware's own power-up load (with --cs1-in, a power cycle)
 	bool loadEarly = false;		// 4 Oct 2026: live phase from LOAD PROJECT's first handling, the background bank loads still queued
@@ -1374,8 +1405,10 @@ int main(int _argc, char** _argv)
 		else if(a == "--card-out" && i + 1 < _argc)	cardOut = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
 		else if(a == "--poke-early" && i + 1 < _argc)	pokeEarly = _argv[++i];
+		else if(a == "--preload" && i + 1 < _argc)	preload = _argv[++i];
 		else if(a == "--cs1-in" && i + 1 < _argc)	cs1In = _argv[++i];
 		else if(a == "--no-post")				noPost = true;
+		else if(a == "--boot-load")				namesEarly = noPost = true;	// a power-on as the unit has it: the names before the mount, the firmware's own LOAD PROJECT (modules/remix-switch's boot picker sits on it)
 		else if(a == "--load-early")			loadEarly = true;
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
 		else if(a == "--call-at" && i + 1 < _argc)	callAt = std::atoi(_argv[++i]);
@@ -1407,6 +1440,8 @@ int main(int _argc, char** _argv)
 			"              [--step FRAME:call|poke|dump:SPEC]...              a gate's whole script on one boot: FRAME '-' = after the load, N = N frames after the transport start\n"
 			"              [--live-script FILE]                              '<emulated ms> key|enc|pot|midi|poke|quit ...' lines, transport stopped, no wall-clock pacing\n"
 			"              [--no-post]                                       no LOAD PROJECT post: the firmware's own power-up load\n"
+			"              [--boot-load]                                     --names-early --no-post: the names before the mount, the firmware's own load\n"
+			"              [--preload ADDR=FILE[;...]]                       a file's bytes into memory before the boot (a staged OS image, NOR's 0x3ffc)\n"
 			"              [--cs1-in FILE]                                   CS1 (0x10000000) from FILE before the boot: a power cycle with an earlier --mem-dump 0x10000000,0x100000\n"
 			"              [--scenario \"LOG ARGS...\"]... [--scenario-jobs N]  load once, fork one child per scenario (stdout to LOG, ARGS its post-load options)\n");
 			return false;
@@ -1462,6 +1497,30 @@ int main(int _argc, char** _argv)
 	std::printf("image      : %s (%zu bytes) at %#x\n", image.c_str(), img.size(), ot::Machine::g_imageBase);
 
 	ot::Machine m(img);
+	// --preload: memory as a reset finds it. The port boots every image into
+	// zeroed RAM with NOR unmodelled (0x3ffc reads 0, so the entry takes the
+	// bootstrap-upgrade branch); a file here stands in for what the hardware
+	// would hold before the OS entry runs.
+	for(size_t q = 0; q < preload.size();)
+	{
+		auto e = preload.find(';', q);
+		if(e == std::string::npos) e = preload.size();
+		const auto spec = preload.substr(q, e - q);
+		q = e + 1;
+		const auto eq = spec.find('=');
+		if(eq == std::string::npos)
+			continue;
+		const auto addr = static_cast<uint32_t>(std::strtoul(spec.substr(0, eq).c_str(), nullptr, 0));
+		const auto bytes = readFile(spec.substr(eq + 1));
+		if(bytes.empty())
+		{
+			std::printf("--preload: cannot read %s\n", spec.substr(eq + 1).c_str());
+			return 2;
+		}
+		for(size_t k = 0; k < bytes.size(); ++k)
+			m.write8(addr + static_cast<uint32_t>(k), bytes[k]);
+		std::printf("preload    : %s (%zu bytes) at %#x\n", spec.substr(eq + 1).c_str(), bytes.size(), addr);
+	}
 	if(!cs1In.empty())
 	{
 		const auto cs1 = readFile(cs1In);

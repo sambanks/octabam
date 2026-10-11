@@ -210,12 +210,20 @@ in `d3`, the current LFO *n* (`0x460d1a32`), and branches on
 
 | slots | audio | MIDI |
 |---|---|---|
-| 0–1 PMTR / WAVE | `part + 0x2f2 + 30·t` | `part + 0x2e8 + 36·t` |
-| 2–3 MULT / TRIG | `part + 0x30a + 30·t` | `part + 0x300 + 36·t` |
-| 4–5 SPD / DEP | `part + 0x11a + 24·t` | `part + 0x268 + 36·t` |
+| 0–1 PMTR / WAVE | `part + 0x2f2 + 30·t` | `part + 0x4e8 + 36·t` (❌ was `0x2e8`) |
+| 2–3 MULT / TRIG | `part + 0x30a + 30·t` | `part + 0x500 + 36·t` (❌ was `0x300`) |
+| 4–5 SPD / DEP | `part + 0x11a + 24·t` | `part + 0x3e8 + 32·t` (❌ was `0x268 + 36·t`) |
 
-then `+ 3·(slot & 1) + n`. `0x2f2 + 8·30 = 0x3e2` and `0x30a + 7·30 + 6 =
-0x3e2`, the MIDI page-2 array's base (`PARAM_PAGES.md` section 5a): the audio
+then `+ 3·(slot & 1) + n`. 📖 Re-read 10 Oct 2026: the MIDI offsets are
+the `addal` immediates `0x8f268` (`0x40057598`), `0x8f280` (`0x400575c8`) and
+`0x8f168` (`0x400575f4`) from the bank base, i.e. `0x4e8`, `0x500` and `0x3e8`
+from `part`; the SPD / DEP path (`0x400575da`) shifts the track by 5 (stride
+32), the other two by 5 plus 2 (stride 36). ❌ Retracted: the MIDI column
+`0x2e8` / `0x300` / `0x268`. `0x2f2 + 8·30 = 0x3e2` and `0x30a + 7·30 + 6 =
+0x3e2` are the base of the MIDI tracks' page-1 array (`part + 0x3e2` = bank
+`+ 0x8f162`); the MIDI page-2 (setup) array is at `part + 0x4e2` (bank
+`+ 0x8f262`, `MIDI_TRACKS.md` section 1). ❌ Retracted: "`0x3e2` is the MIDI
+page-2 array". The audio
 page-2 array is `part + 0x2f2 + 30·t`, per track PMTR×3 WAVE×3 · AMP p2 ·
 FX1 p2 · FX2 p2 · MULT×3 TRIG×3. Designer data: `part + 0x1702 + 16·t`
 (audio), `+ 0x1792` (MIDI).

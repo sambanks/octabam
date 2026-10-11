@@ -15,7 +15,7 @@ KITS migrates the Parts into kits.work on the first load: back up projects
 first.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Pin, Proof, Remix
 
 REMIX = Remix(
     name="mods",
@@ -25,9 +25,10 @@ REMIX = Remix(
     modules=("MIDI SCENES", "STORE", "KITS", "LOFI AMF FIX", "CC MAP",
              "RECORDER LOOP FIX", "RLEN PLEN",
              "REPITCH", "DIRECT_JUMP_KYOTI", "BATCH_BUGFIXES", "RELOAD_FROM_PROJECT",
-             "USB MIDI", "USB AUDIO OUT TRACKS MAIN CUE",
+             "USB MIDI", "USB AUDIO OUT",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),
     fallback="NONE",
+    settings={("octabam.usb-audio-out", "LAYOUT"): Pin("TRACKS MAIN CUE")},
 )

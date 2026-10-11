@@ -39,7 +39,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 import toolpath  # noqa: E402,F401
-from remix import registry  # noqa: E402
+from remix import registry, brain  # noqa: E402
 
 EMU = ROOT / "out/emu/ot_emu"
 PY = ROOT / ".venv/bin/python3"
@@ -92,8 +92,8 @@ def main():
     if not EMU.exists() or not PY.exists():
         sys.exit("usb_align: needs the port (make emu-cf) and the .venv")
     remix = registry.remix(a.remix)
-    if "USB AUDIO OUT TRACKS MAIN CUE" not in remix.modules:
-        sys.exit(f"usb_align: {a.remix} does not carry USB AUDIO OUT TRACKS MAIN CUE")
+    if brain.value(remix, registry.modules(), "octabam.usb-audio-out", "LAYOUT") != "TRACKS MAIN CUE":
+        sys.exit(f"usb_align: {a.remix} does not carry USB AUDIO OUT with LAYOUT TRACKS MAIN CUE")
     if OUT.exists():
         shutil.rmtree(OUT)
     OUT.mkdir(parents=True)

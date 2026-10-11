@@ -17,6 +17,9 @@ DSP_ASM := vendor/dsp56300/build/source/dsp_host/dsp_asm
 # make keeps the spaces before a `#` and `make image` then splits its recipe.
 BUILD   ?= 79
 VERSION ?= OCTABAM$(BUILD)
+# The name an image calls itself and its .RMX file's: `<REMIX> <BUILD>`
+# (tools/remix/brain.py image_name), or RMX=NAME for `make rmx`
+IMAGE_NAME = $(shell echo "$(notdir $(REMIX)) $(BUILD)" | tr a-z A-Z | cut -c1-15 | sed 's/ *$$//')
 
 # Which modules the image carries. `make modules` lists what is available;
 # remixes/<name>/remix.py is the selection. There is no default: a target
@@ -71,6 +74,20 @@ bus-plain: ## Build without specialization (both servers on both cores)
 	$(need-remix)
 	REMIX=$(REMIX) python3 tools/build/build_bus.py
 
+.PHONY: rmx
+rmx: ## REMIX SWITCH: the build as an .RMX for /BRAIN/REMIXES/ on the card -> out/<NAME>.RMX (RMX=NAME, 15 characters; default <REMIX> <BUILD>). make image writes one too
+	$(need-remix)
+	@# The image names itself (BRAIN's heading, REMIX SWITCH's RUNNING row), so
+	@# the build is told the name the file gets. Recursive, because the name
+	@# must be set for `bus` itself.
+	RMXNAME="$(if $(RMX),$(RMX),$(IMAGE_NAME))" $(MAKE) --no-print-directory bus REMIX=$(REMIX)
+	python3 tools/build/make_rmx.py out/mainos_bus.bin "$(if $(RMX),$(RMX),$(IMAGE_NAME))"
+
+.PHONY: rmx-stock
+rmx-stock: ## REMIX SWITCH: your stock 1.40C MAIN OS as out/STOCK 1.40C.RMX (switch back to stock without flashing)
+	@test -f out/raw/section_3_MAIN_OS.bin || { echo "missing out/raw/section_3_MAIN_OS.bin -- run 'make os' then 'make recon'"; exit 1; }
+	python3 tools/build/make_rmx.py out/raw/section_3_MAIN_OS.bin "STOCK 1.40C"
+
 .PHONY: image
 image: bus ## Repack the build into a card-flashable .bin (see docs/guide/BUILDING.md); BUILD=N is required
 	$(need-remix)
@@ -86,9 +103,11 @@ image: bus ## Repack the build into a card-flashable .bin (see docs/guide/BUILDI
 	  echo "  Fix: rm -rf vendor/elektron-firmware-tool; make setup; make image REMIX=$(REMIX) BUILD=$(BUILD)"; exit 1; }
 	python3 tools/build/make_bin.py out/elek_$(BUILD).bin \
 	  -o out/OCTATRACK_$(VERSION).bin
+	python3 tools/build/make_rmx.py out/mainos_bus.bin "$(IMAGE_NAME)"
 	@echo
 	@echo "  card image: out/OCTATRACK_$(VERSION).bin"
 	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(VERSION).syx"
+	@echo "  REMIX SWITCH: out/$(IMAGE_NAME).RMX (/BRAIN/REMIXES/ on the card; MAIN MENU > BRAIN boots it without flashing)"
 	@echo "  -> docs/guide/BUILDING.md before you write either to hardware."
 
 # ------------------------------------------------- audition without flashing --
@@ -227,12 +246,13 @@ verify: verify-shared verify-remix ## The remix-independent gates, then the sele
 # and 25 checks used to repeat them 25 times (27 Sep 2026, ~3 h serially).
 REMIXES ?= $(REMIX)
 .PHONY: verify-shared
-verify-shared: ## The gates that do not depend on the remix: ledger selftest, slots, replaces, docs, the remixer draws, label_fmt, knob census, remix-independent module gates (REMIXES="a b")
+verify-shared: ## The gates that do not depend on the remix: ledger selftest, slots, replaces, docs, settings and locks, the remixer draws, label_fmt, knob census, remix-independent module gates (REMIXES="a b")
 	@test -n "$(REMIXES)" || { echo "REMIXES is unset: make $@ REMIXES=\"<name> ...\"   (make modules lists them)"; exit 2; }
 	python3 tools/remix/selftest.py
 	python3 tools/verify/verify_slots.py
 	python3 tools/verify/verify_replaces.py --static
 	python3 tools/verify/verify_docs.py
+	python3 tools/remix/brain.py check
 	$(PY) tools/verify/verify_remixer.py
 	python3 tools/build/label_fmt.py
 	@# The knob click census: every continuous knob of the rig fixture's DSP

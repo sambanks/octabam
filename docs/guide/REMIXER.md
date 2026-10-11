@@ -290,6 +290,18 @@ REMIX = Remix(
   measured.
 - Two selected modules that claim one address, id, hook or buffer are
   refused by name; `make modules` prints the pairwise matrix.
+- `settings` fixes or re-defaults a module's settings for this image:
+  `(store id, setting name) -> value` or `Pin(value)`. A module whose
+  setting chooses its code (USB AUDIO OUT's `LAYOUT`, USB AUDIO IN's
+  `INPUTS`) builds that code:
+  `settings={("octabam.usb-audio-out", "LAYOUT"): Pin("MASTER")}`.
+  `python3 tools/remix/brain.py resolve mine` prints every setting and the
+  layer its value came from; the build report prints the same.
+- `defaults` replaces a knob's default in this image:
+  `(module key, mode, knob) -> byte`, with `mode` None for the knob's own
+  default or a MODE label for that mode's view, and `knob` the name the
+  panel shows: `defaults={("DELAY SERVER", "GRAIN", "PTCH"): 96}`. A value
+  outside the knob's count is refused.
 - `hidden`, `named`, `grains`: [MODULES.md](../contributing/MODULES.md).
 
 Then:

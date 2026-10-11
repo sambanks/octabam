@@ -21,7 +21,10 @@ import types
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 
+from remix import schema  # noqa: E402
 from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
+
+REMIX_SWITCH = "REMIX SWITCH"
 MODULES_DIR = ROOT / "modules"
 
 _cache: dict[str, object] | None = None
@@ -265,6 +268,13 @@ def remix(name: str | None):
                  and known[k].claims is not None and known[k].claims.fx1_only)
     if auto:
         r = dataclasses.replace(r, hidden=r.hidden + auto)
+    # REMIX SWITCH WITH EVERY BRAIN: the BRAIN pane lists the card's images in
+    # /BRAIN/REMIXES/ and boots one without writing the flash (modules/remix-switch,
+    # sanderlegit). Appended last, so no remix's chooser order moves; a
+    # ColdFire module and a DSP park pinned in dead vectors, it takes no FX2
+    # id and no region word.
+    if schema.BRAIN_KEY in r.modules and REMIX_SWITCH not in r.modules and REMIX_SWITCH in known:
+        r = dataclasses.replace(r, modules=r.modules + (REMIX_SWITCH,))
     return r
 
 
@@ -289,9 +299,31 @@ def remix_names() -> list[str]:
     return sorted(names)
 
 
+def bound(r) -> dict[str, object]:
+    """Every module, with each selected one bound to the remix's
+    Apply.BUILD settings (schema.Module.bind). The build and every check
+    that reads a selected module's code take modules from here."""
+    from remix import brain
+    mods = modules()
+    bad = brain.check_remix(r, mods)
+    if bad:
+        raise SystemExit(f"remix {r.name!r}: " + "; ".join(bad))
+    vals = brain.build_values(r, mods)
+    knobs = brain.defaults_by_module(r, mods)
+    out = {}
+    for k, m in mods.items():
+        if k in vals:
+            m = m.bind(vals[k])
+        if k in knobs:
+            m = dataclasses.replace(m, **brain.apply_defaults(m, knobs[k]))
+        out[k] = m
+    return out
+
+
 def selected(r) -> list:
-    """The remix's modules, in its declared order."""
-    return [modules()[k] for k in r.modules]
+    """The remix's modules, in its declared order, bound to its settings."""
+    b = bound(r)
+    return [b[k] for k in r.modules]
 
 
 def fixture(*keys: str, grains: int | None = None) -> str:

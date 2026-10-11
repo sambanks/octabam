@@ -59,6 +59,18 @@ fifth category, which draws its own icon on a MKI.
 | `0x400cbd54` | 6 | `0x400cc5a8` | CONTROL: AUDIO, INPUT, SEQUENCER, MIDI SEQUENCER, MEMORY, METRONOME |
 | `0x400cbd70` | 4 | `0x400cc638` | MIDI: CONTROL, SYNC, CHANNELS, TURBO STATUS |
 
+A fifth root category fits without touching the engine: the root window is
+five tall (`init(&0x400cbd90, 5, count)` at `0x40064c70`) and stock fills
+four. BRAIN adds its category this way (rows pointer `0x400cbda4` repointed
+to a five-row array in DRAM, count `0x400cbd8c` 4 → 5, its child descriptor
+shipped initialised with 7 visible rows); STEMS does the same through a
+`TableGrow`, so the two are refused together. A pane can be rebuilt each
+time MAIN MENU opens from a detour at `0x40064c32`, the opener's new-window
+path (skipped while the menu is already up), before the window is created:
+its row count and cursor may change there (REMIX SWITCH's rows in BRAIN's
+pane, sanderlegit). ✅ drawn and driven under the port, 29 Sep 2026 (OS
+SWITCH's own category then) and 8 Oct 2026 (`verify_remixswitch`, BRAIN).
+
 Root rows: window descriptor set, child set, action 0. Leaf rows: window 0,
 child 0, action or page id set.
 
@@ -128,6 +140,15 @@ Driven under the port with real keys, the MKII (PROJ) and the MKI
   x = 118 and the root column at x = 56 (the right edge of 24 Ws). `WRITE
   FAILED` ends at 105 and `STEMS` at 45.
 - ✅ PLAY and STOP work with the menu open, and it stays open.
+- ✅ **Two levels only.** LEFT (`0x34`) always puts the focus on the root
+  (`0x40064e98`); YES (`0x31`) and RIGHT (`0x21`) enter a child list only
+  from the root (`0x40064ea8`, `0x40064f8c`); in a list YES runs the row's
+  page id (1..15) or its action, never a child list (`0x40065010..`).
+  Every key handled ends at `0x40064d7c`, the redraw, so a row action
+  that repoints its own list descriptor (rows pointer, both counts,
+  scroll, cursor, selection) shows the new rows at once: BRAIN's
+  DEFAULTS / REMIXES / TOOLS sub-lists, driven and drawn under the port
+  8 Oct 2026 (`modules/brain/README.md`).
 
 ## 5. Adding a row ✅
 
@@ -289,7 +310,7 @@ Writers:
 
 - Page 1: `0x40054cd8(track, flat, value)`, absolute, self-contained.
   `flat` 0–5 → `DB + 0x8edaa + track*30 + machine*6 + slot` (PLAYBACK);
-  `flat` 6–29 → `DB + 0x8ee9a + track*24 + flat − 6` (AMP · LFO · FX1 · FX2;
+  `flat` 6–29 → `DB + 0x8ee9a + track*24 + flat − 6` (LFO · AMP · FX1 · FX2; ❌ retracted 10 Oct 2026: "AMP · LFO", the order is `+0x8ee9a` LFO, `+0x8eea0` AMP as `PARAM_PAGES.md` section 5a has it;
   FX2 page 1 = `flat` 24–29; measured at two tracks and a dozen indices).
   Page 2 is not reachable through it: it clears a scene-lock bit `1 <<
   flat` in a 32-bit word per track (`0x80000110 + (track + 1290)*4`) and

@@ -196,6 +196,18 @@ def check(selected) -> list[str]:
                           f"overwrites the first, so the first section never runs")
                 for w in (site, site + 1):
                     dsp_hooks[(pl, w)] = m.name
+    # A pinned section (schema.DspSection.pins) owns words in the dead vector
+    # runs it was placed in. Two modules pinned at one address are refused
+    # here by name; an OVERLAP that is not an exact match is caught in
+    # build_bus, which refuses to pin over anything that is not still the
+    # stock self-jump it was audited as.
+    for m in selected:
+        for _pin in (m.dsp.pins if m.dsp is not None else ()):
+            for pl in sorted(m.dsp.payloads):
+                if (pl, _pin) in dsp_hooks:
+                    clash("DSP pin", dsp_hooks[(pl, _pin)], m.name,
+                          f"P:0x{_pin:05x} on payload {pl} -- both want the words there")
+                dsp_hooks[(pl, _pin)] = m.name
 
     # ---- on-chip SRAM windows (Claims.sram) --------------------------------
     sram: list[tuple[int, int, str, str]] = []

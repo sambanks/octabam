@@ -26,7 +26,7 @@
         .set    REDRAW,  0x46c7d244    | [(slot2*5+1)*4] = 20 -> redraw that slot
 
         .text
-        .globl  fx2_hook, fx1_hook, CC_MODEDEF2, CC_MODEDEF1
+        .globl  fx2_hook, fx1_hook, CC_MODEDEF2, CC_MODEDEF1, MODEDEF_TABLE
 fx2_hook:
         jsr     DIRTY
 CC_MODEDEF2:                           | CC MAP's entry (its cave sets the

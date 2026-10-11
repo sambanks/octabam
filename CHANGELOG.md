@@ -18,6 +18,7 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- BRAIN: SETTINGS list (PROJ, BRAIN, SETTINGS) with card-stored settings, a run-time value table and `remix.brain.read_macro` for modules; MIDI LOG and DEFAULTS are BRAIN's first two settings. Measured under the port only.
 - Analog BD: engine selection now lives only in the pool-style browser; the
   former SRC SETUP MODEL control and its encoder editing path are removed.
   Both source outputs are 12.04 dB louder than the 29 September revision,
@@ -27,6 +28,8 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
   three output instructions; the 909 adds four instructions per sample.
 
 Remixes
+- `remixes/test/brain`: bottleservice + BRAIN (7 Oct, port only).
+- Every remix that carried a USB AUDIO OUT or IN variant selects USB AUDIO OUT / USB AUDIO IN and pins LAYOUT / INPUTS; each image byte-identical to before (6 Oct, `make identity`).
 - KITS replaces OCTAKIT, SCENES KITS, SCENES P2 KITS and KITS RELOAD in bottleservice, ok-ms, mods and character-txtr; mods also carries DIRECT_JUMP_KYOTI and RELOAD_FROM_PROJECT; `remixes/test/octakit` removed, `remixes/test/kits` added (6 Oct, port only).
 - `usb-out-tracks-post`: stock + USB MIDI + USB AUDIO OUT TRACKS POST (5 Oct).
 - bottleservice takes the computer's stereo output onto inputs C/D (USB AUDIO IN CD + USB CROSSBAR); USB AUDIO OUT MASTER polls every 250 µs (28 Sep). Both IN modules out again on 4 Oct (#575, image A0 below).
@@ -43,6 +46,12 @@ Modules
 - SCENES P2: page-2 scene locks move from the 144-byte pool at Part `+0x17a2` (stock's LFO designs of MIDI tracks 2–8) to bytes 30 and 31 of the stock scene block, eight a scene; stock scene copy, paste, undo and clear carry them; builds beside MIDI SCENES. Locks saved by earlier images are not read (10 Oct, port only).
 - STEM REC: MAIN MENU > STEMS records every track to the card while the sequencer plays, one 16-bit stereo file per track, streamed, up to 60 min (Yves Rosius, 26-30 Sep).
 - STEM REC, piece 5: every track after its fader (its share of MAIN, from core 0's own gain arithmetic redone in the frame hook), MAIN, CUE and the inputs AB/CD as sources (stereo or mono), 24-bit files, an 8 MiB ring; the menu's labels keep moving when the card falls behind (Yves Rosius, 1-4 Oct).
+- BRAIN (new): the settings store on the unit (`docs/proposals/BRAIN.md`): card-wide knob defaults from `BRAIN/card.work` at each project load (MODE views through MODE DEFAULTS), SAVE AS DEFAULT and CLEAR DEFAULT in a BRAIN MAIN MENU category as engine-task jobs, `card.strd` at SAVE PROJECT (6-7 Oct, port: `verify_brain`).
+- USB AUDIO OUT (LAYOUT) and USB AUDIO IN (INPUTS) replace the five `usb-audio-out-*` and three `usb-audio-in-*` modules: a build-time setting chooses the code (`Module.variant`) (6 Oct); USB AUDIO OUT TRACKS POST became its sixth LAYOUT (8 Oct).
+- BRAIN: WRITE DEBUG LOG writes the last 256 MIDI messages, each with the sync flags and the playing and next pattern after its handler ran, to `/BRAIN/debug.txt` (7 Oct, image B1).
+- REMIX SWITCH (sanderlegit's OS SWITCH, PR #542, renamed): MAIN MENU > BRAIN > REMIXES lists the `.RMX` images in `/BRAIN/REMIXES/`, each named `<REMIX> <BUILD>`, and boots one without writing the flash; every remix with BRAIN carries it; PR #542's power-on picker is left out. Its DSP park sits in stock's dead interrupt vectors (`DspSection.pins`, `verify_dspvectors`), its chainloader in octabam's loader (`Linked.loader`). BOOT TRACE (sanderlegit) is its boot-stage probe. `make rmx`, `make rmx-stock`; `make image` writes the `.RMX` (8 Oct, port: `verify_remixswitch`; on an MKII as OS SWITCH, its own category, 29-30 Sep; under BRAIN as image B2, a switch on an MKII, 8 Oct).
+- BRAIN: the page shortcut (hold a page key + FUNC: SAVE AS DEFAULT, CLEAR DEFAULT, SAVE/LOAD/DELETE TEMPLATE over the page), FX templates as records in `card.work` applied through the stock writers, and a boot screen (a brain over OCTABAM, PIRATE FLAG's frame hook) (10 Oct, port: `verify_brain`).
+- BRAIN's pane: DEFAULTS, REMIXES and TOOLS sub-lists, each a row array BRAIN's list descriptor is repointed at (the stock menu engine has two levels) (8 Oct).
 - KITS (new): 256 Kits per project through the stock Part slots: each pattern's Kit is copied into a slot nothing plays before the pattern is scheduled; LOAD/SAVE KIT on the stock list menu with Octakit's key map, UNDO KIT, list copy/paste/clear/undo, AUTOSAVE and KEEP LEVELS, the pattern clipboard carrying the Kit, FUNC+PASTE+PART, PTN+FUNC+RIGHT, PTN+FUNC+TRIG; kits.work/kits.strd, migration of the stock Parts, import of Octakit's kits3a/b.work; no `illegal` (6 Oct, port: `verify_kits`, 89 checks; on the unit in image A6).
 - OCTAKIT, SCENES KITS, SCENES P2 KITS, KITS RELOAD removed, with the build's Runtime/ArenaReserve machinery (every other remix's image and report bit-identical; refhash 24/24); TEMPO BUS and MODE DEFAULTS no longer push Octakit's token (6 Oct).
 - USB AUDIO OUT TRACKS POST: the sixteen track channels after each track's own MAIN gain (LEVEL, mute, solo, XLV, core 0's 16-sample ramp; MAIN_LEVEL left out), `USB_LAYOUT = 5` of the shared source; every other layout byte-identical (5 Oct; on a MKII as P3, below; streaming cost +2.8 µs a frame over OUT TRACKS on the unit, the no-host cost not measured; MASTER TRACK checked under the port only).
@@ -128,7 +137,7 @@ On allmyfriendsaresynths's (@clickysteve) MKII.
 - P2 (a 20-channel diagnostic build, not in the tree: these sixteen stems
   plus MAIN and CUE): a 196 s take nulled the stems against MAIN, 99.995%
   of ~17.3 M samples within 0..7 LSB, no gain/block misalignment at
-  ~16,700 level edges (`modules/usb-audio-out-tracks-post/README.md`).
+  ~16,700 level edges (`modules/usb-audio-out/README.md`, TRACKS POST).
 - Not run on a unit: MASTER TRACK, CF METER, a soak.
 
 ## sos-capture BUILD=94 and BUILD=95 — 3 Oct 2026 (Bryan T's builds)

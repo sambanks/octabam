@@ -107,15 +107,8 @@ from the card (section 5).
 |---|---|---|---|
 | [**CC FEEDBACK**](modules/cc-feedback/README.md) | [sambanks](https://github.com/sambanks) | Every knob value change is transmitted as its CC (page 1: 16-45; page 2: CC MAP's 62-73), so a controller's encoders follow the unit. | port-gated: `verify_ccfeedback` (Unicorn) and `verify_set` (the port's MIDI OUT bytes) |
 | [**CC MAP**](modules/cc-map/README.md) | [sambanks](https://github.com/sambanks) | MIDI CC 62-67 drive the FX2 engine's page-2 slots 6-11; CC 68-73 the FX1 station's. | on hardware: Sam's MKII (image 96, 13 Sep 2026) |
-| [**USB AUDIO IN AB**](modules/usb-audio-in-ab/README.md) | [bryantysinger](https://github.com/bryantysinger) | A stereo pair from the host into inputs A/B (UAC2 EP3 OUT, implicit feedback); the jacks while the stream is closed. C/D stay on the jacks. | port-gated: `verify_usb_in` under the port (28 Sep 2026); the four-channel form ran on Bryan T's MKII as usbin-test build 16 (27 Sep 2026) |
-| [**USB AUDIO IN ABCD**](modules/usb-audio-in-abcd/README.md) | [bryantysinger](https://github.com/bryantysinger) | Four channels from the host into inputs A-D (UAC2 EP3 OUT, implicit feedback); the jacks while the stream is closed. | port-gated: `verify_usb_in` under the port (28 Sep 2026); this channel set ran on Bryan T's MKII as usbin-test build 16 (27 Sep 2026), with its inject poked into SPATIALIZER's words |
-| [**USB AUDIO IN CD**](modules/usb-audio-in-cd/README.md) | [bryantysinger](https://github.com/bryantysinger) | A stereo pair from the host into inputs C/D (UAC2 EP3 OUT, implicit feedback); the jacks while the stream is closed. A/B stay on the jacks. | port-gated: `verify_usb_in` under the port (28 Sep 2026); the four-channel form ran on Bryan T's MKII as usbin-test build 16 (27 Sep 2026) |
-| [**USB AUDIO OUT MAIN**](modules/usb-audio-out-main/README.md) | [markandrus/octemu](https://github.com/markandrus/octemu) | MAIN L/R over USB (UAC2, 2 channels, 24-bit) every 250 us; the stereo pairing for USB AUDIO IN (markandrus/octemu's source, the MAIN layout ours). | port-gated: `verify_usb` under the port (28 Sep 2026); not on a unit |
-| [**USB AUDIO OUT MAIN CUE**](modules/usb-audio-out-main-cue/README.md) | [markandrus/octemu](https://github.com/markandrus/octemu) | MAIN and CUE over USB (UAC2, 4 channels, 24-bit) every 250 us; full speed carries MAIN alone (markandrus/octemu; the MAIN + CUE variant Bryan T's, from usbin-test's AUD_IN4). | on hardware: Bryan T's MKII, build 16 (usb-io), 27 Sep 2026, high speed; the full-speed MAIN-only path not run on a unit |
-| [**USB AUDIO OUT MASTER**](modules/usb-audio-out-master/README.md) | [markandrus/octemu](https://github.com/markandrus/octemu) | Track 8's L/R over USB (UAC2, 2 channels, 24-bit): the master track, post-FX pre-fader; USB AUDIO OUT TRACKS MAIN CUE's source, the T8 variant Sam Banks's. | port-gated: `verify_usb` under the port (27 Sep 2026); not on hardware |
-| [**USB AUDIO OUT TRACKS**](modules/usb-audio-out-tracks/README.md) | [markandrus/octemu](https://github.com/markandrus/octemu) | Sixteen 24-bit channels over USB (UAC2): the tracks post-FX pre-fader, no MAIN/CUE; the stereo sum at full speed (markandrus/octemu). | port-gated: `verify_usb` under the port (27 Sep 2026); this build not on hardware (image 69 ran the 16-channel layout from earlier source) |
-| [**USB AUDIO OUT TRACKS MAIN CUE**](modules/usb-audio-out-tracks-main-cue/README.md) | [markandrus/octemu](https://github.com/markandrus/octemu) | Twenty 24-bit channels over USB (UAC2): the tracks post-FX pre-fader, MAIN, CUE; the stereo sum at full speed (markandrus/octemu). Costs the ColdFire 27-50 us of each 362.8 us frame over OUT MAIN CUE, host or not (one MKII, 4 Oct 2026). | port-gated: bus reset and session-end shims (audio_reset_shim, audio_sessend_shim): the alt 0 request `verify_usb` under the port only, the `usbmidi_rx_bus_end` call on Ignorato's MKII (OCTABAM21, 9 Oct 2026, three replugs); the rest ran on Sam's MKII (image 64, 25 Sep 2026) and Tim's MKI (OCTATRICK9, 26 Sep 2026) |
-| [**USB AUDIO OUT TRACKS POST**](modules/usb-audio-out-tracks-post/README.md) | [markandrus/octemu](https://github.com/markandrus/octemu) | Sixteen 24-bit channels over USB (UAC2): each track after its own MAIN gain (LEVEL, mute, solo, XLV; MAIN_LEVEL left out); the stems' stereo sum at full speed. USB AUDIO OUT TRACKS MAIN CUE's source (markandrus/octemu), the POST layout allmyfriendsaresynths's (@clickysteve). | on hardware: allmyfriendsaresynths's MKII, P3 (usb-out-tracks-post), 5 Oct 2026: 16 channels, each track on its pair, LEVEL/mute/solo/crossfader follow; the gain engine nulled against MAIN in a 20-channel diagnostic build; 7 Oct 2026: streaming costs +2.8 µs a frame over OUT TRACKS (CF METER); MASTER TRACK and the no-host cost not on a unit |
+| [**USB AUDIO IN**](modules/usb-audio-in/README.md) | [bryantysinger](https://github.com/bryantysinger) | The host's channels into inputs A/B, C/D or A-D by its INPUTS setting (UAC2 EP3 OUT, implicit feedback); the jacks while the stream is closed. | port-gated: `verify_usb_in` under the port for each INPUTS value (28 Sep 2026); ABCD ran on Bryan T's MKII as usbin-test build 16 (27 Sep 2026), with its inject poked into SPATIALIZER's words |
+| [**USB AUDIO OUT**](modules/usb-audio-out/README.md) | [markandrus/octemu](https://github.com/markandrus/octemu) | The tracks, MAIN, CUE or track 8 over USB (UAC2, 2 to 20 channels, 24-bit), by its LAYOUT setting (markandrus/octemu; the POST layout allmyfriendsaresynths's, @clickysteve). | port-gated: each layout under the port (`verify_usb`); on a unit: TRACKS MAIN CUE on Sam's MKII (image 64, 25 Sep 2026) and Tim's MKI (OCTATRICK9, 26 Sep 2026), MAIN CUE on Bryan T's MKII (build 16, 27 Sep 2026), TRACKS POST on allmyfriendsaresynths's MKII (P3, 5 Oct 2026); the bus reset and session-end shims: the `usbmidi_rx_bus_end` call on Ignorato's MKII (OCTABAM21, 9 Oct 2026, three replugs); README.md per layout |
 | [**USB CROSSBAR**](modules/usb-crossbar/README.md) | [bryantysinger](https://github.com/bryantysinger) | The USB controller bursts and arbitrates first on the SDRAM and SRAM crossbar ports (SCM BCR, XBS PRS/CRS), set at boot; cures lost isochronous packet tails. | on hardware: the register values, written at stream-up by usbin-test builds 12-16 on Bryan T's MKII (26-27 Sep 2026); this boot-time write under the port only |
 | [**USB MIDI**](modules/usb-midi/README.md) | [markandrus/octemu](https://github.com/markandrus/octemu) | Class-compliant USB-MIDI in and out on the OT's own USB port, mirroring the DIN ports (markandrus/octemu). | on hardware: Sam's MKII (image 64, 25 Sep 2026: enumerates, receives 7,950 msg/s); Tim's MKI (OCTATRICK9, 26 Sep 2026); USB clock tempo on Kazeko's MKI (#633, 6 Oct 2026); transmit, and transmit after three cable replugs, on Ignorato's MKII (OCTABAM21, 9 Oct 2026, macOS and Windows 10) |
 
@@ -128,12 +121,20 @@ from the card (section 5).
 | [**LOFI AMF FIX**](modules/lofi-amf-fix/README.md) | [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) | Fixes stock LO-FI's AMF knob: mpysu -> mpyuu, both payloads. Ported from bryantysinger/octa-bt-pt. | `make check`: both words disassembled against stock |
 | [**RECORDER LOOP FIX**](modules/recorder-loop-fix/README.md) | [sambanks](https://github.com/sambanks) | ColdFire caves: the recorder loop click -- seek on a same-sample FLEX re-bind, keep its counter, record exactly the arm spacing, and repeat the last sample where sound-on-sound would play a zero. | on hardware: OCTABAM83, 12 Sep 2026 (self-loop); Bryan T's MKII, sos-capture BUILD=95, 3 Oct 2026 (sound-on-sound) |
 
+### Settings
+
+| module | author | what it does | proof |
+|---|---|---|---|
+| [**BRAIN**](modules/brain/README.md) | [Sam Banks](https://github.com/sambanks) | The settings store on the unit: card-wide knob defaults read from BRAIN/card.work at each project load (docs/proposals/BRAIN.md). | port-gated: `verify_brain` under the port (6 Oct 2026); not on hardware |
+
 ### Reference
 
 | module | author | what it does | proof |
 |---|---|---|---|
+| [**BOOT TRACE**](modules/boot-trace/) | [sanderlegit](https://github.com/sanderlegit) | Probe: a MIDI note on MIDI OUT at each boot stage, the DSP upload's record echoes and any stall, for finding where a boot hangs. | on hardware: an MKII, 29 Sep 2026 (OCTABAM4-14); `verify_boottrace` |
 | [**CF METER**](modules/cfmeter/README.md) | [sambanks](https://github.com/sambanks) | Probe: frame-interrupt duration and (with CF METER IDLE) idle time, plus core 0's frame spin count, ESAI underrun/overrun frames and frame period, printed as audio on T8's FX2. | port-gated: ColdFire half on image 92 (Sam's MKII, 3 Oct 2026: interrupt 123.1 us stopped, 213.5 us playing); the DSP slots and DBRN under the port only (4 Oct 2026) |
 | [**CF METER IDLE**](modules/cfmeter-idle/README.md) | [sambanks](https://github.com/sambanks) | Probe: main's idle loop timed, for CF METER's idle-time slot. | `make check`: boots and loads a project under the port (28 Sep 2026); the idle number needs the unit |
+| [**REMIX SWITCH**](modules/remix-switch/README.md) | [sanderlegit](https://github.com/sanderlegit) | MAIN MENU > BRAIN lists the raw OS images (.RMX) in /BRAIN/REMIXES/ and boots the one picked without writing the flash; a power-cycle returns to the flashed image. | on hardware: an MKII, 29 Sep 2026 (OCTABAM14 with BOOT TRACE): switched to its own image and to stock 1.40C, audio and play working; and with the park moved into the dead vector run (BSRETVEC) booted, played and switched away again -- 40 region words down to 18; `verify_remixswitch`. The list in BRAIN's pane and /BRAIN/REMIXES/ (8 Oct 2026): under the port only |
 | [**WAVE LOAD**](modules/waveload/README.md) | [sambanks](https://github.com/sambanks) | Probe: K 4-voice wave engines per frame interrupt (CF METER's BURN), for CF METER's duration readout. | on hardware: image 92, Sam's MKII, 3 Oct 2026: one 4-voice engine 69.2 us of the 362.8 us frame, clean beside four sample tracks |
 
 <!-- modules:end -->
@@ -168,11 +169,11 @@ address and compares, and refuses on any drift.
 **Where a module's state lives.** An effect's twelve knobs are Part
 parameters and stay in the Part. Personal material (KITS's library,
 octalab's grooves) is in files the module owns and formats. A module's
-settings (menu options, a USB profile) have no shared home yet; the shared
-settings store for all modules, OTX, is specified in
-[docs/proposals/OTX_PROJECT_PROPOSAL.md](docs/proposals/OTX_PROJECT_PROPOSAL.md)
-(nordseele, draft 2, 26 Sep 2026) with author-facing
-[guidelines](docs/proposals/OTX_MODULE_GUIDELINES.md), and is not implemented.
+settings (menu options, a USB profile) have no shared home yet; the store
+for settings, defaults and templates is designed in
+[docs/proposals/BRAIN.md](docs/proposals/BRAIN.md) (6 Oct 2026, starting
+from nordseele's
+[OTX proposal](docs/proposals/OTX_PROJECT_PROPOSAL.md)), and is not implemented.
 
 ## Checking without a flash
 

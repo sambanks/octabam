@@ -272,7 +272,8 @@ def reverb_tests(image, keys=('PLATE REV', 'SPRING REV', 'DARK REV')):
     from remix import stock
 
     original = dm.IMG.read_bytes()
-    built = pathlib.Path(image).read_bytes()
+    from remix import booted
+    built = booted.image(pathlib.Path(image).read_bytes())
 
     def rd32(data, address):
         return struct.unpack_from('>I', data, address - dm.BASE)[0]

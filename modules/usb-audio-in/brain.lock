@@ -1,0 +1,22 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "labels": [
+    "AB",
+    "CD",
+    "ABCD"
+   ],
+   "name": "INPUTS",
+   "type": "option"
+  }
+ },
+ "store": {
+  "id": "octabam.usb-audio-in",
+  "major": 1
+ }
+}

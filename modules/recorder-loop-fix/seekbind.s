@@ -4,6 +4,8 @@
 | compare that turns a recorder-buffer re-bind into a new note. Otherwise
 | the stock "different" path. Entry: (sp) = return, bind's sp@55 = (59,sp).
         .text
+        .globl  rlf_seekbind
+rlf_seekbind:
 seekA:  tstb    (59,%sp)
         beqs    diff
         moveq   #1,%d0
