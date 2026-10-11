@@ -96,7 +96,8 @@ def main():
     if r.returncode:
         sys.exit(f"verify_descdefaults: building {a.remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
     shutil.copy2(ROOT / "out/mainos_bus.bin", image)
-    img = image.read_bytes()
+    from remix import booted
+    img = booted.image(image.read_bytes())   # descriptors may be in the DRAM runtime
 
     def rd(addr, n):
         return img[addr - BASE:addr - BASE + n]
