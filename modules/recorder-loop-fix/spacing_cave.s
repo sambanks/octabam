@@ -12,6 +12,8 @@
 | Assemble: m68k-elf-as -mcpu=5475 -o spacing.o spacing_cave.s
 
         .text
+        .globl  rlf_spacing
+rlf_spacing:
 cave:
         move.l  %d0,%d4                 | displaced: product
         addq.l  #1,%d4                  | displaced

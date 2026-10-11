@@ -25,12 +25,14 @@ The formatter cave is BusDelay TIME's display: it prints the division name
 from the same integers as the DSP rule. Position-independent; its two state
 longs live inside the cave.
 
-Both caves float in the stock zero run past the descriptor clones.
-NOTEMPO=1 installs neither; the DSP then reads no note and TIME draws in
+The publish cave floats in the stock zero run past the descriptor clones;
+the formatter is a DRAM unit. NOTEMPO=1 installs neither; the DSP then reads no note and TIME draws in
 milliseconds.
 """
 
-from remix.schema import Category, Proof, CavePatch, FormatterReg, Kind, Module
+import hashlib
+
+from remix.schema import Category, Proof, CavePatch, FormatterReg, Kind, Linked, Module
 
 # The per-frame voice-record writer, at the instruction that publishes the
 # FX2 id. Ten bytes: three instructions, displaced into the cave.
@@ -66,18 +68,15 @@ MODULE = Module(
             hook_stock=TEMPO_HOOK_STOCK,
             report_note=" (held note -> r6+$1 bits 8-15; id 6)",
         ),
-        CavePatch(
-            label="time_fmt cave",
-            cave_addr=None,          # floats: 0x400d7080 behind the tempo cave
-            pinned=TIME_FMT_BYTES,
-            source="modules/tempo-sync/time_fmt.s",
-            # A (P+0x0ca) points at the cave and B (P+0x0fa) stays zero --
-            # stock DELAY TIME's own configuration.
-            # TIME is page-2 slot 11 since 26 Sep 2026 (slot 1 from the
-            # one-aux re-slot, 7 Sep 2026; at slot 0 the division labels
-            # drew on SEND, seen on the unit, 15 Sep 2026).
-            registers_formatter=FormatterReg(module="DELAY SERVER", slot=11),
-            report_note=", registered as BusDelay TIME's formatter",
-        ),
     ),
+    # BusDelay TIME's formatter: a DRAM unit since 8 Oct 2026 (a floating
+    # ROM cave until then). A (P+0x0ca) points at `time_fmt` and B (P+0x0fa)
+    # stays zero -- stock DELAY TIME's own configuration. TIME is page-2
+    # slot 11 since 26 Sep 2026 (slot 1 from the one-aux re-slot, 7 Sep
+    # 2026; at slot 0 the division labels drew on SEND, seen on the unit,
+    # 15 Sep 2026).
+    linked=(Linked("time_fmt", "modules/tempo-sync/time_fmt.s", dram=True,
+                   reference=(0x400d7800, hashlib.sha256(TIME_FMT_BYTES).hexdigest()),
+                   registers_formatter=FormatterReg(module="DELAY SERVER", slot=11,
+                                                    symbol="time_fmt")),),
 )

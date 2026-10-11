@@ -7,9 +7,9 @@ trig, docs/firmware/RECORDER.md 2a), which is why a manual loop needs TRIG
 ONE2 and a second press. This module adds RLEN value 65, drawn PLEN: one
 press under TRIG ONE + QREC PLEN records exactly the next pass and stops.
 
-One cave, three entries:
+One DRAM unit, three entries:
 
-  cave    hooked at 0x40006da6, the arm converter's RLEN read (replayed).
+  cave    detoured at 0x40006da6, the arm converter's RLEN read (replayed).
           Raw 65 computes L = len x ticks[scale] x 2,646,000 / tempo24,
           rounded to nearest, and rejoins the fixed-RLEN path at 0x40006e18
           with d4 = L (the stock product would overflow past 67 steps).
@@ -21,7 +21,7 @@ One cave, three entries:
           scale). Ticks per step from the sequencer's table 0x400aba50.
   screen  the RECORDING SETUP drawer's push of the stock RLEN formatter
           (0x4002fb10, `move.l d4,-(sp); pea 0x4002f224`) replayed with
-          `fmt` pushed instead -- a six-byte poke, not a second hook.
+          `fmt` pushed instead (a jsr detour over the six bytes).
   fmt     fmt(buf, value): 65 -> the stock "PLEN" string (0x400b541c), else
           the stock RLEN formatter (1..64, MAX).
 
@@ -40,20 +40,20 @@ a manual REC press under the port (the key handler is not located; the
 length path is exercised by a sequencer recorder trig, which takes the same
 converter), and the PER TRACK branch on hardware.
 
-Assemble: `m68k-elf-as -mcpu=5475 -o plen.o plen_cave.s`; the build
-re-assembles, links at the resolved address and compares against the pinned
-bytes (the cave is position-independent: the one self-reference is a
-pc-relative pea).
+The build links plen_cave.s into the DRAM runtime and compares it, linked
+alone at 0x400d7980 (where the ROM cave last landed), against the pinned
+bytes (position-independent: the one self-reference is a pc-relative pea).
 """
 
-from remix.schema import Category, Proof, CavePatch, Kind, Module
+import hashlib
+
+from remix.schema import Category, Proof, Detour, Kind, Linked, Module, Poke
 
 CONV_HOOK = 0x40006da6
 CONV_HOOK_STOCK = bytes.fromhex("712c0002" "5280")   # mvs.b 2(a4),d0; addq.l #1,d0
 
 SCREEN_SITE = 0x4002fb10
 SCREEN_STOCK = bytes.fromhex("2f04" "487af710")      # move.l d4,-(sp); pea pc(0x4002f224)
-SCREEN_OFF = 0xfa                                    # `screen:` in the cave
 
 RLEN_COUNT = 0x400d3c74 + 0xd2 + 2 * 4               # descriptor entry 8, slot 2, u32
 
@@ -96,20 +96,6 @@ PLEN_CAVE_BYTES = bytes.fromhex(
     "203c400b541c" "2f400008" "4ef940013a08" #   sprintf(buf, "PLEN")
     "4ef94002f224")                          #   else the stock RLEN formatter
 
-assert PLEN_CAVE_BYTES[SCREEN_OFF:SCREEN_OFF + 4] == bytes.fromhex("201f2f04")
-
-
-def emit(addr):
-    """No cave bytes (the linked source supplies them); the screen repoint
-    and the count."""
-    pokes = (
-        (SCREEN_SITE, SCREEN_STOCK,
-         bytes.fromhex("4eb9") + (addr + SCREEN_OFF).to_bytes(4, "big")),
-        (RLEN_COUNT, (65).to_bytes(4, "big"), (66).to_bytes(4, "big")),
-        (VALIDATOR_CMP, bytes.fromhex("7240"), bytes.fromhex("7241")),
-        (VALIDATOR_SET, bytes.fromhex("7640"), bytes.fromhex("7641")),
-    )
-    return b"", pokes
 
 
 MODULE = Module(
@@ -121,17 +107,18 @@ MODULE = Module(
     doc="ColdFire cave: RLEN value PLEN (past MAX) = one loop of the track's "
         "pattern on its own scale, so TRIG ONE + QREC PLEN records the next "
         "pass and stops.",
-    cf_patches=(
-        CavePatch(
-            label="rlen plen cave",
-            cave_addr=None,
-            pinned=PLEN_CAVE_BYTES,
-            source="modules/rlen-plen/plen_cave.s",
-            hook_addr=CONV_HOOK,
-            hook_stock=CONV_HOOK_STOCK,
-            emit=emit,
-            report_note=" (RLEN 65 = PLEN: length := one pattern loop on the track's "
-                        "scale; setup screen draws PLEN; count 65 -> 66)",
-        ),
+    # A DRAM unit since 8 Oct 2026 (a floating ROM cave until then).
+    linked=(Linked("plen", "modules/rlen-plen/plen_cave.s", dram=True,
+                   reference=(0x400d7980, hashlib.sha256(PLEN_CAVE_BYTES).hexdigest())),),
+    detours=(
+        Detour(CONV_HOOK, CONV_HOOK_STOCK, "plen", "plen_cave",
+               "RLEN 65 = PLEN: length := one pattern loop on the track's scale", kind="jsr"),
+        Detour(SCREEN_SITE, SCREEN_STOCK, "plen", "plen_screen",
+               "RECORDING SETUP: the RLEN formatter push, PLEN drawn", kind="jsr"),
+    ),
+    pokes=(
+        Poke(RLEN_COUNT, (65).to_bytes(4, "big"), (66).to_bytes(4, "big"), "RLEN count 65 -> 66"),
+        Poke(VALIDATOR_CMP, bytes.fromhex("7240"), bytes.fromhex("7241"), "part validator: RLEN 64 -> 65"),
+        Poke(VALIDATOR_SET, bytes.fromhex("7640"), bytes.fromhex("7641"), "part validator: RLEN 64 -> 65"),
     ),
 )

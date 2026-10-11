@@ -23,8 +23,8 @@ Every mpy is `mpy x0,y1`, the audited-signed form, but the VOWL decode's
 store limiter.
 """
 
-from remix.schema import (Gate, Category, Proof, ModeView, BusRole, CavePatch, Claims, DspSection, Formatter,
-                          FormatterReg, Harness, Kind, MenuEntry, Module, Param, YBase)
+from remix.schema import (Gate, Category, Proof, ModeView, BusRole, Claims, DspSection, Formatter,
+                          FormatterReg, Harness, Kind, Linked, MenuEntry, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
@@ -67,7 +67,7 @@ VOWL_ER = (
 MODULE = Module(
     name="spectrum",
     key="SPECTRUM",
-    kind=Kind.HYBRID,                 # the engine + SHPE's display cave
+    kind=Kind.HYBRID,                 # the engine + SHPE's display formatter
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
     proof=Proof.HARDWARE, proof_note="Sam's MKII",
     doc="FX1 station: a filter pedal -- the Moog ladder, SEM (LP -> BP -> HP by SHPE), Airwindows Capacitor2, formants; ENV and LFO onto the cutoff; width.",
@@ -124,22 +124,15 @@ MODULE = Module(
     # FX1 only: the rig's cycle envelope closes only with the stations on
     # FX1. The FX2 chooser hides the row; verify_spectrum proves the dry pass.
     claims=Claims(fx1_only=True),
-    # SHPE prints LP / BP / HP at its stops (27 Sep 2026). The cave reads
-    # slot 7's name from the clone (CLONE_SPECTRUM, a build export), so its
-    # bytes depend on where the clone lands: the source is the only truth
-    # (emit returns no bytes; a build without the m68k toolchain refuses).
-    # Pinned in the 338 B zero run at 0x400c45b0 (docs/contributing/PLACEMENT.md):
-    # the clone window had 18 B left and the overflow run none, and a
-    # floating cave there moved MODULATION's 454 B label formatter out of
-    # both (the build refused). midisc's own build used this run on
-    # hardware; in the remixer its enc_unlock is DRAM, so nothing else here.
-    cf_patches=(CavePatch(
-        label="SHPE formatter", cave_addr=0x400c45b0, pinned=b"", reserve=96,   # linked: 89 B
-        source="modules/spectrum/shpe_fmt.s",
-        emit=lambda _addr: (b"", ()),
-        registers_formatter=FormatterReg(module="SPECTRUM", slot=7),
-        report_note=", registered as Spectrum SHPE's formatter (LP / BP / HP at 0 / 64 / 127)",
-    ),),
+    # SHPE prints LP / BP / HP at its stops (27 Sep 2026). The formatter
+    # reads slot 7's name from the clone (CLONE_SPECTRUM, a build export),
+    # so its bytes depend on where the clone lands: the source is the only
+    # truth. A DRAM unit since 8 Oct 2026 (pinned in the 338 B zero run at
+    # 0x400c45b0 until then).
+    linked=(Linked("shpe", "modules/spectrum/shpe_fmt.s", dram=True,
+                   defsyms=(("CLONE_SPECTRUM", 0),),
+                   registers_formatter=FormatterReg(module="SPECTRUM", slot=7,
+                                                    symbol="shpe_fmt")),),
     harness=Harness(layout_char="1", is_server=False, bus_client=False),
     gates=(Gate('tools/verify/verify_spectrum.py', remix_arg=False),),
     dear={'RES': 127, 'MODE': 3, 'ENV': 127, 'LDP': 127},   # MODE 3 = VOWL, the dearest loop (main, 27 Sep 2026)

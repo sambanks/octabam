@@ -3,6 +3,8 @@
 | 8 bytes). On a same-sample re-bind leave the counter alone so the frame
 | builder does not re-send the voice as new; always replay the store.
         .text
+        .globl  rlf_seekbind_ctr
+rlf_seekbind_ctr:
 seekB:  tstb    (59,%sp)
         bnes    same
         addql   #1,(144,%a2)

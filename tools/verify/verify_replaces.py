@@ -45,7 +45,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
-from remix import registry, stock  # noqa: E402
+from remix import booted, registry, stock  # noqa: E402
 
 BASE = 0x40000400
 FX2_IDS = 0x400d5fdc
@@ -231,7 +231,7 @@ def main():
         if not out.exists():
             sys.exit(f"verify_replaces: {out} is missing (make bus REMIX={args[1]})")
         before = len(fails)
-        check_image(args[1], out.read_bytes(), pristine, fails)
+        check_image(args[1], booted.image(out.read_bytes()), pristine, fails)
         if len(fails) == before:
             print(f"  [PASS] {args[1]}: every stock id is stock's, or declared")
         return report(fails)
@@ -295,7 +295,7 @@ def run(names, out, pristine, fails):
             fails.append(f"{name}: build failed: {tail[-1] if tail else '?'}")
             continue
         before = len(fails)
-        check_image(name, out.read_bytes(), pristine, fails)
+        check_image(name, booted.image(out.read_bytes()), pristine, fails)
         if len(fails) == before:
             print(f"  [PASS] {name}: every stock id is stock's, or declared")
 

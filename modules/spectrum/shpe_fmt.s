@@ -7,6 +7,8 @@
 | the twelve 6-byte names sit at P+0x16, slot 7's at P+0x40).
 
         .text
+        .globl  shpe_fmt
+shpe_fmt:
 fmt:    moveq   #0,%d1
         move.b  CLONE_SPECTRUM+0x40,%d1 | slot 7's name, first byte
         cmpi.l  #0x2d,%d1               | '-': a mode that hides SHPE

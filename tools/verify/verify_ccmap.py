@@ -79,16 +79,16 @@ def check_source_matches(m):
     if not all(shutil.which(t) for t in ("m68k-elf-as", "m68k-elf-ld", "m68k-elf-objcopy")):
         print("  (skip source link check: no m68k-elf toolchain)")
         return
-    for addr in (0x400d7300, 0x400d24d0):
+    for addr in (0x40a955e0, 0x400d24d0):       # the DRAM runtime base, and a ROM run
         with tempfile.TemporaryDirectory() as d:
             o, e, b = (pathlib.Path(d) / n for n in ("cc.o", "cc.elf", "cc.bin"))
-            subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", str(o),
+            subprocess.run(["m68k-elf-as", "-mcpu=54455", "-o", str(o),
                             str(ROOT / "modules/cc-map/cc_map.s")], check=True)
             # The cave's fall-through is a link-time symbol (CC_NEXT); the
             # manifest's default is stock's handler, and that is what the
             # ratified bytes carry.
             subprocess.run(["m68k-elf-ld", f"-Ttext=0x{addr:x}",
-                            *[f"--defsym={n}=0x{v:x}" for n, v in m.MODULE.cf_patches[0].defsyms],
+                            *[f"--defsym={n}=0x{v:x}" for n, v in m.MODULE.linked[0].defsyms],
                             "-o", str(e), str(o)], check=True)
             subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j", ".text",
                             str(e), str(b)], check=True)
@@ -129,12 +129,11 @@ FX1_ID_OFF = 0x8ed80                                    # Part: +track, the FX1 
 def main():
     m = _manifest()
     check_source_matches(m)
-    blob, pokes = m.emit(CAVE_AT)
-    # the source is the truth and emit() returns no bytes: run the ORACLE
-    # form (== the linked source, proven above) at the test address
+    # run the ORACLE form (== the linked source, proven above) at the test address
     blob = m.legacy_bytes(CAVE_AT)
-    assert pokes[0] == (0x400d64a0, (0x4000e79c).to_bytes(4, "big"),
-                        CAVE_AT.to_bytes(4, "big")), "dispatch poke wrong"
+    ref = m.MODULE.symbol_refs[0]
+    assert (ref.addr, ref.expect, ref.unit, ref.symbol) == (
+        0x400d64a0, 0x4000e79c, "ccmap", "ccm_entry"), "dispatch repoint wrong"
 
     # The checks below read BusVerb's, BusDelay's and Character's descriptor
     # counts, and the Unicorn boot reaches the RTOS handoff only on an image

@@ -20,7 +20,8 @@
 | Assemble: m68k-elf-as -mcpu=5475 -o plen.o plen_cave.s
 
         .text
-        .globl  cave, screen, fmt
+        .globl  plen_cave, plen_screen
+plen_cave:
 cave:
         mvs.b   2(%a4),%d0              | displaced: RLEN raw
         addq.l  #1,%d0                  | displaced
@@ -94,6 +95,7 @@ keep:
 done:
         rts
 
+plen_screen:
 screen:
         move.l  (%sp)+,%d0              | return address (d0 is dead at the site)
         move.l  %d4,-(%sp)              | displaced

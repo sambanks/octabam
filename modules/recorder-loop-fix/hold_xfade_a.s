@@ -4,6 +4,8 @@
 | Scratch: a0, a1 (loaded before use below the hook).
 | Assemble: m68k-elf-as -mcpu=5475 -o hold_xfade_a.o hold_xfade_a.s (from the repo root)
         .text
+        .globl  rlf_hold_xfade_a
+rlf_hold_xfade_a:
 stub:   movea.l (%sp)+,%a1              | return address
         movea.l (4,%sp),%a0             | the fetched index
         bsr     fix

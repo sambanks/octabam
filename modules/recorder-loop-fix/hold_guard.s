@@ -9,6 +9,8 @@
 | = direction), d3 = the fetched address. Rejoins at 0x4000871e (tst.l d2).
 | Assemble: m68k-elf-as -mcpu=5475 -o hold_guard.o hold_guard.s
         .text
+        .globl  rlf_hold_guard
+rlf_hold_guard:
 stub:   addq.l  #4,%sp                  | the return address: rejoin below
         suba.l  %d0,%a1                 | displaced: samples before END
         cmpa.l  %d2,%a1
@@ -29,7 +31,7 @@ capped: tst.l   %d2
         movea.l (-68,%fp),%a0
         jsr     (%a0)                   | fetch END - 1
         addq.l  #8,%sp
-        cmpi.l  #0x40a955e0,%d0
+        cmpi.l  #ARENA_BASE,%d0
         beq     back                    | END - 1 unmapped: stock
         tst.l   %d1
         ble     back

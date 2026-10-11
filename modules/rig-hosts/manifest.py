@@ -43,7 +43,7 @@ MODULE = Module(
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
     proof=Proof.PORT, proof_note="a new project born hosted under the port",
     doc="A new part is born hosted: T1 FX2 = BusDelay, T5 = BusVerb, T8 = the stock DELAY, the rest SEND.",
-    linked=(Linked("righosts", "modules/rig-hosts/righosts.s", include=ids_inc),),
+    linked=(Linked("righosts", "modules/rig-hosts/righosts.s", include=ids_inc, dram=True),),
     detours=(
         Detour(0x4000567E, H("41f9400d47ad15903800" "41f9400d4ad1226f004413500008"), "righosts", "fx_ids",
                "part-defaults initialiser: FX1 = NONE, FX2 by track", kind="jmp", pad_to=24),

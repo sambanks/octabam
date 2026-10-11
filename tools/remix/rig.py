@@ -182,7 +182,8 @@ def drawn_as(fx2_id: int, img: bytes | None = None):
         from remix.state import BUILT_IMAGE
         if not BUILT_IMAGE.exists():
             return None
-        img = BUILT_IMAGE.read_bytes()
+        from remix import booted
+        img = booted.image(BUILT_IMAGE.read_bytes())
     base = 0x40000400
 
     def rd32(a):

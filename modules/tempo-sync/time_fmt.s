@@ -6,6 +6,8 @@
 | lives inside the cave.
 
         .text
+        .global time_fmt
+time_fmt:
 fmt:    lea     -20(%sp),%sp
         movem.l %d2-%d5/%a2,(%sp)       | 20 bytes: buf 24(sp), value 28(sp)
         move.l  28(%sp),%d0             | value 0..127
