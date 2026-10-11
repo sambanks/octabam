@@ -12,19 +12,12 @@ beside the bank files. docs/firmware/PARTS.md says what of stock this reads.
 from remix.schema import Category, Claims, Detour, Gate, Kind, Linked, Module, Proof
 
 H = bytes.fromhex
-PART_WINDOW = 0x8ed80
 
 
 def kits_inc(modules):
-    """PWSKIP_LO / PWSKIP_HI: the Part bytes KITS leaves out when it asks
-    whether a slot still holds its Kit -- MIDI SCENES' Claims.part_window,
-    which his code rewrites in the current Part after a project load from
-    its own table (measured under ok-ms, 6 Oct 2026). 0, 0 without him."""
-    m = modules.get("MIDI SCENES")
-    pw = m.claims.part_window if (m is not None and m.claims) else ()
-    lo = min(o for o, _l, _w in pw) - PART_WINDOW if pw else 0
-    hi = max(o + l for o, l, _w in pw) - PART_WINDOW if pw else 0
-    return f"        .set    PWSKIP_LO, {lo:#x}\n        .set    PWSKIP_HI, {hi:#x}\n"
+    """MSCKIT: 1 with MIDI SCENES in the remix: a Kit record then carries the Part's
+    lock table and kits.work is version 2."""
+    return f"        .set    MSCKIT, {1 if 'MIDI SCENES' in modules else 0}\n"
 
 
 MODULE = Module(
@@ -42,22 +35,6 @@ MODULE = Module(
                pad_to=8),
         Detour(0x4009C634, H("2f02242f0008"), "kits", "kits_chain",
                "the chain append: each chained pattern's Kit staged"),
-        Detour(0x40090504, H("4feffeb848d77cfc"), "kits", "kits_loadall",
-               "a load of every bank: the project's Kits", pad_to=8),
-        Detour(0x400905D4, H("4feffeb848d77cfc"), "kits", "kits_loadmask",
-               "a masked bank load (LOAD PROJECT, the power-up, reloads)", pad_to=8),
-        Detour(0x400909D8, H("2f0a42a74eb94000fd34"), "kits", "kits_newproj",
-               "a new, empty project: no Kits", pad_to=10),
-        Detour(0x400917C8, H("4e56febc48d73cfc"), "kits", "kits_bankw",
-               "the bank writer: kits.work after the banks", pad_to=8),
-        Detour(0x4008EE74, H("4e56fdd048d73cfc"), "kits", "kits_pstore",
-               "the project store: kits.work, then kits.strd", pad_to=8),
-        Detour(0x4008F180, H("4e56fdd048d73cfc"), "kits", "kits_preload",
-               "the project reload: kits.strd back to kits.work", pad_to=8),
-        Detour(0x4004A9C4, H("4cd70c1c4fef00144e75"), "kits", "kits_saved",
-               "the Part Save's tail: the saved Part into the slot's Kit", pad_to=10),
-        Detour(0x4004A9D0, H("4feffff048d70c0c"), "kits", "kits_clear",
-               "the Part Clear: the slot holds no Kit after", pad_to=8),
         Detour(0x4002E7B8, H("4ab9460d1060"), "kits", "kits_partkey",
                "PART (MKII), FUNC+MIDI (MKI): LOAD KIT"),
         Detour(0x4002DC9C, H("71b9100b14cf"), "kits", "kits_savekey",
@@ -66,8 +43,6 @@ MODULE = Module(
                "the MKI FUNC+BANK dispatch: SAVE KIT from LOAD KIT, else stock", pad_to=8),
         Detour(0x4004C146, H("41f9400a7230"), "kits", "kits_status",
                "the status line's Part field: NNN name of the Kit in the current slot"),
-        Detour(0x40061E00, H("4eb940031944"), "kits", "kits_level",
-               "the encoder dispatch call: LEVEL scrolls an open KITS list", kind="jsr"),
         Detour(0x4005E3D8, H("4feffff448d7001c"), "kits", "kits_funcyes",
                "FUNC+YES: with the SAVE KIT list open, quick save", pad_to=8),
         Detour(0x40060F34, H("2f032f02262f000c"), "kits", "kits_lcopy",
@@ -89,6 +64,7 @@ MODULE = Module(
                "FUNC+RIGHT with PTN held: the pattern and its Kit copied to the next empty ones",
                pad_to=8),
     ),
+    requires=("STORE",),
     # CS1 (battery SRAM), unused by stock beyond its whole-CS1 init
     # (docs/firmware/STEP_LOCKS.md section 6): RESID with a magic and a sum,
     # and ASSIGN, over a power-off.

@@ -47,8 +47,7 @@ make emu-setup
 ```
 
 `--recurse-submodules` fetches the module authors' repositories
-(`modules/midi-scenes/upstream` and
-`timhastie/octatrick-modules` under `modules/synth`, `modules/quantizer`,
+(`timhastie/octatrick-modules` under `modules/synth`, `modules/quantizer`,
 `modules/direct-jump` and `modules/tuner`) at the pinned commits. If you cloned without
 it: `git submodule update --init`.
 

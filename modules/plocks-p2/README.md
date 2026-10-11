@@ -34,11 +34,11 @@ stations, SCENES P2 KITS), project OCTABAM89_setgate:
 
 ## On the unit
 
-Not flashed.
+Image A0 (`bottleservice`, `CHANGELOG.md`) carries PLOCKS P2; `p2lk01.work` was written by image 99 on Sam's MKII, 4 Oct 2026 (`docs/contributing/FAILURE_MODES.md`). The STORE-based build (refused-file prompt, `.bak` copy) has not run on a unit.
 
 ## Open
 
-- The CS1 copy holds 10,229 locks; a current bank with more has no copy
+- The CS1 copy holds 4,768 locks (`NV_MAX`; 10,234 until 10 Oct 2026, when 16,400 B of its top went to MIDI SCENES' copy); a current bank with more has no copy
   and a power cut loses its page-2 locks back to the last save.
 - That CS1 keeps its contents over a power-off on the unit is read from
   stock's use of it (the power-up check and restore), not measured here.
@@ -113,7 +113,7 @@ trig. Nothing carries page 2, and every byte of the pattern data is used.
   through, and at power-up `0x40025770` checks it, `0x4000fbb4` restores
   the bank and the firmware's load reads only the other banks from the
   card. The page-2 locks of that bank follow, sparse, in CS1's unused top
-  (`0x100f8600..0x100ffe00`): 16 bytes of header (`P2NV` written last,
+  (`0x100f8600..0x100fbdf0`): 16 bytes of header (`P2NV` written last,
   bank, count, sum) and 3 bytes a lock (step index << 7 | value). The copy
   is rewritten when stock copies a bank into CS1 and after every change
   to that bank; at power-up it is applied after stock's restore, or, with
@@ -134,4 +134,4 @@ KITS (in bottleservice beside this module since 6 Oct 2026) hooks the
 file routines' own entries (`0x40090504`, `0x400905d4`, `0x400909d8`,
 `0x400917c8`, `0x4008ee74`, `0x4008f180`) where this module hooks their
 call sites, so the two share no site. Its CS1 ranges (`0x100f85a0..e8`,
-`0x100ffe00..ff00`) sit on either side of this module's.
+`0x100ffe00..ff00`) and MIDI SCENES' (`0x100fbdf0..0x100ffe00`) sit on either side of this module's.

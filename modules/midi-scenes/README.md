@@ -1,112 +1,142 @@
 # `midi-scenes` — MIDI SCENES
 
-MIDI-driven scene locks, built from
-[bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) (submodule
-`upstream/` at his `4f9a894`, MIDISC2.0; the units linked here are his
-`gas/*.s`, which are the 1.40MIDISC8.2 code, unchanged by 2.0 -- see
-"MIDISC2.0" below). `Kind.CF_PATCH`: twelve linker-placed
-units in DRAM, 38 detours, four pokes. No DSP code, no menu row.
+Scene locks for the eight MIDI tracks. `Kind.CF_PATCH`: one linked DRAM
+unit (`scenes.s`), 21 detours and two pokes in the OS, nothing on the DSP,
+no menu row.
 
-Stock 1.40C has no per-scene parameter lock over MIDI: XF morph reads one live
-8×30 lock table that only the panel writes. midisc adds a second, addressable
-table (`MSC`, `scene<<8 | track<<5 | flat`, 4 KB) and rewires scene hold, XF
-morph, part save/reload and the scene clear/copy/paste rows to read and write
-it when a MIDI event is driving. The panel path is untouched. His README
-(`upstream/README.md`) is the behaviour list.
+Credit: bkkbrls-del ([midisc](https://github.com/bkkbrls-del/midisc), MIT)
+is the original author of the behaviour. This module rewrites it as
+readable GNU as, checked against his MIDISC2.1 image under the port
+(`tools/verify/verify_scenes.py`), the way `modules/kits` rewrites Em's
+Octakit. None of his code or data is copied or linked. His repository was a
+submodule here (pinned at `4f9a894`, MIDISC 2.0) until 10 Oct 2026; the
+build no longer needs it.
 
-Not carried: his MIDI → CONTROL CC48/55/56 tick rows (UI-table pokes, not a
-cave; off in his own builds since 8.1); CCs behave as stock in an octabam
-image. His `voice_reload` cave has no caller since 8.2 and is not linked.
+Markers as in `CHIP.md`: ✅ measured, 📖 read from the code.
+
+## What it does
+
+Stock keeps scene locks for the audio tracks only (Part `+0x662`: 16
+scenes × 8 tracks × 32 B) and bails out of scene editing when MIDI track
+mode (`0x80000012`) is set. This module adds a second table with the same
+shape, **MSC**: `scene<<8 | track<<5 | flat`, 4,096 bytes, `0xff` = no
+lock. `flat` is the MIDI page × 6 + knob (NOTE, LFO, ARP, CTRL1, CTRL2;
+`docs/firmware/MIDI_SCENES.md` section 6).
+
+| # | behaviour (MIDISC2.1 numbering) | here |
+|---|---|---|
+| B1 | MIDI mode, scene A or B held, knob turned: the value goes to MSC for the displayed track; clamped 0..127, ARP LEG 0..1, MODE 0..6, SPD 0..95, RNGE 0..7; the mix runs at the XF | phase 1 |
+| B2 | scene held: the knob readout shows that scene's lock | phase 1 |
+| B3 | scene held, encoder pressed: that knob's lock cleared | phase 1 |
+| B4 | lock LEDs and grey cells read MSC in MIDI mode | phase 1 |
+| B5 | a scene pad lights when MSC holds a lock for it (any mode) | phase 1 |
+| B6 | per-track and per-page scene-block offsets point at MSC in MIDI mode | phase 1 |
+| B7 | XF moved (panel or CC 48): each track's locked parameters go A↔B, CCs sent when the value changes | phase 1 |
+| B8 | scene recall completion: mix at the XF | phase 1 |
+| B9 | scene pad release: the held flags clear, no mix | stock's own sequence, no site |
+| B11 | track `t`'s locks affect track `t` only | phase 1 |
+| B29 | CLEAR / COPY / PASTE SCENE rows carry MSC | phase 1 (the gate scenarios need them) |
+| B30 | encoder press in MIDI mode: overlay refresh | phase 1 |
+| B10, B15–B18, B28 | the mix follows the Part that plays; a panel write re-mixes | `verify_scenes` seq group (`sw`) |
+| B12–B14 | trig snapshot as the unlocked side, a trig-locked flat left alone, the CC loop before the note-on | `verify_scenes` seq group (`tg`, `tg2`) |
+| B33 | his crash fixes need no counterpart | the module writes no stock bytes outside its listed detours and two pokes, and its scratch is its own DRAM unit (📖 from the manifest) |
+
+The mix (`scenes.s`, `mix`) reads scenes A and B from the displayed Part's
+assignment bytes (Part `+0x10`, `+0x11`, bank offset `0x8ed90`). For each
+track and flat: both sides unlocked, the record takes the Part's value and
+nothing is sent; otherwise an unlocked side reads the Part's value and the
+result is `A + ((B − A)·w >> 7)` with `w = 127 − (xf & 127)` (weight 0 =
+A end, 127 = B end). The result goes to the track record `0x46c76dc0 +
+0x44·t + flat` and, when it changed, out through stock's `0x4009eec8`.
+
+## Storage
+
+One 4,096-byte table per Part: `scn_lib`, 64 slots (bank × 4 + Part) in
+`.bss` (262,144 B), filled with `0xff` at first use. Every site reads the
+displayed Part's slot in the current bank (`msc_a0`). The scene clipboard
+(256 B) and two mix-state longs are `.data`. The module writes no Part byte
+(Part `+0x1712..+0x1832` is the LFO designer records,
+`docs/firmware/PARTS.md`), so KITS' `PWSKIP` is 0 beside it.
+
+- **`scenes.work`** in the project directory, beside `kits.work`: 16 bytes
+  (`MSCW`, version 1, payload length 262,144, CRC-32 of the payload) then the
+  64 slots. Written whole after the bank writer and before the project store
+  when a lock changed; `scenes.strd` is its copy at the project store and is
+  copied back at a project reload. STORE (`modules/store`) supplies the events
+  and the file calls. A file with another version, length or a failing CRC is
+  never written over (`scn_nowrite`); the banks it would have filled are empty.
+  A missing file is empty. A new project is empty and due for writing.
+- **CS1 copy**: `0x100fbdf0..0x100ffe00` (16,400 B): `SCS1` (written last),
+  the bank, the sum of the bank and every long of the four tables, a reserved
+  long, then the current bank's four tables. Rewritten on every edit and when
+  stock copies a bank into CS1; at power-up, after stock's restore, it replaces
+  that bank's tables when magic, bank and sum hold, and otherwise that bank is
+  read from `scenes.work` at the first masked load. Stock keeps an unsaved
+  audio scene lock over a power cycle the same way (`docs/firmware/MIDI_SCENES.md`
+  section 8). Taken from the top of PLOCKS P2's range (its `NV_MAX` is 4,768).
+- **Part Clear** empties the Part's slot. Part Save and Part Reload leave the
+  locks as they are (B31 is not carried).
+- An edit marks the Part changed the way a stock editor's store does
+  (`bank+0x95048`, `0x100b145e`, `bank+0x9b332`, `0x100f8598`, the refresh at
+  `0x40027e00`); without that SAVE PROJECT does nothing for the project.
+
+Not done: a Kit carrying its Part's locks (`kits.work` version 2), the
+conversion of 2.x projects, the on-unit prompt for a refused file, and Part
+Paste and bank-copy rows.
+
+## Differences from MIDISC2.1 (phase 1)
+
+| 2.1 | here | why |
+|---|---|---|
+| a lock edit marks the Part unsaved and the project dirty, and writes the Part into its saved copy (B31) | the flags are set; no saved-copy write | the locks are in `scenes.work` and CS1, not in the Part |
+| the scene clipboard starts as zeros | starts as `0xff` | a PASTE SCENE after an audio-only COPY SCENE gives his table zeros (a lock at 0 on every flat), here none |
+| the mix follows the Part the sequencer plays (cached, published at the pattern boundary) | the same, as a target (bank, Part) that follows the displayed Part while the sequencer is stopped | `sw` matches his MIDI out frame for frame |
+| a context key (the sparse blob's contents) decides whether a mix may reuse its state; the XF-changed test runs only once a mix has run | a due flag (set by a target change, a load, a Kit load, Part Clear) and the XF-changed test | the tables are in `scn_lib`, not in a Part blob |
+| the mix refreshes the MIDI track records' setup bytes (`+0x1e..+0x43`) from the Part | not done | stock's apply already copies them; no scenario differs |
 
 ## Measured
 
-- Under the ColdFire port: the boot detour reaches the loader, the loader's
-  hash gates pass, the window reads back equal to the linked image except his
-  own state words, i.e. his code ran from DRAM during boot. Arms the control
-  fixture's five tracks.
-- The submodule pin is his `main` at `4f9a894` (MIDISC2.0, 1 Oct 2026).
-  The pin moved from `63ca127` (his PR #6: 8.2 `8cba0fa` plus the two gas
-  commits) on 4 Oct 2026 and the `midi-scenes` image is bit-identical
-  across the move (`OCTABAM_NO_CACHE=1 make bus REMIX=midi-scenes`, sha256
-  `abe21844…` both sides): 2.0 touched no `gas/*.s`. The 1.40MIDISC8
-  `gas_port.py` (region table checked against his image) regenerates them,
-  linking `cc_gate` only while his CONTROL filter is on, as his `build.py`
-  does. His `build.py` at `8cba0fa` stops at `SAFE_CAVE overrun 2068`
-  (`SAFE_CAVE_END` allows 2060): the 8.2 `xf_mix` probe adds 12 bytes. The
-  linked units are unaffected (DRAM).
-- His own `1.40MIDISC8` image fails project load under the port: his CAVE2
-  (`0x400d2ee6`, 308 bytes) overruns the enable words (`0x400d3014/18`) of a
-  stock descriptor at `0x400d2e8a` that the loader reads; stock also writes
-  `0x400d2e84..89`, where his VOICE_RELOAD_CAVE starts. This build links
-  every unit into DRAM and is immune. Told him.
+✅ Against the oracle image (stock + `release21.json`, built from his repository at
+`52eaab0`) under the port (`ot_emu`, OCTABAM89_setgate bank 3 Part 1, T1 a
+MIDI track on channel 11), remix `midi-scenes`, 10 Oct 2026: scenarios b1,
+b2, b7, b7play, b3, b29copy, b29clear pass every comparison. MIDI out
+(bytes and frames, 0 frames apart), the lock table, the track records
+`0x46c76dc0..+0x220`, the lock-mask longs and (b2) the LCD plane are
+identical to the oracle's; the Part windows are identical to stock's. The
+clipboard differs where untouched (table above). The scenario table and
+what the compare cannot see (LED rows are identical on stock, the oracle
+and this module) are in `docs/firmware/MIDI_SCENES.md` section 11 and the
+docstring of `verify_scenes.py`.
 
-## MIDISC2.0, not carried
+On `ok-ms` the same scenarios pass except the LCD plane, whose status line
+reads the Kit (`009 ONE`) where the oracle reads `Pt:1 ONE`; the gate skips
+the screen compare on a remix with KITS.
 
-His 2.0 release (`4f9a894`) is `tools/midisc/release20.json`: 843 writes
-(7,604 B) applied to a hash-checked stock MAIN, "source: MIDISC8.20", from
-what his TECH.md calls the hardware MIDI-scenes line. The Python encoder
-and `gas/*.s` in the same tree are the 8.2 code; TECH.md says the JSON is
-authoritative for 2.0. No 2.0 source is published. Measured here, 4 Oct
-2026, against our stock image (his `stock_sha256` is ours, and applying the
-writes reproduces his `main_sha256`):
+Unit size (phase 1, before the library, measured with `m68k-elf-size`): 1,558 B of code and 4,360 B of data; the library adds the code of the storage section and 524,288 B of `.bss`. No site needs a ROM-resident target (`docs/firmware/MIDI_SCENES.md` section 9; every detour is a `jmp` or `jsr` into the DRAM unit and the OS ran them under the port).
 
-- 7,196 B in 750 writes land in stock filler: ten ROM caves,
-  `0x400c45cb..0x400c47a4`, `0x400d24eb..0x400d2cd8`,
-  `0x400d35ad..0x400d3644`, `0x400d46ee..0x400d479e`,
-  `0x400d64e0..0x400d7c48` (four clusters) and `0x400e1ed1..0x400e1ff6`.
-  Octabam places code and state in five of those ranges
-  (`docs/contributing/PLACEMENT.md`: `0x400c4702`, `0x400d24f0`,
-  `0x400d64e0`, `0x400d6b00`, `0x400d7000..0x400d7100`, `0x400d7bbc`,
-  `0x400d7c3c`).
-- 408 B in 93 writes land in live code. 41 of this module's 42 sites are
-  among them; the post-plock rebuild site `0x4009d1de` is not (dropped or
-  moved). 51 writes are at sites this module has no detour for: 23 of them
-  change the `0x40a955e0` literal to `0x40aa7500` and the arena counts
-  `0x390a`/`0x390b` to `0x38fe`/`0x38ff` (14,602 -> 14,590 pages), i.e. 2.0
-  takes 12 pages at the bottom of the audio page arena, where the platform
-  reserve sits (PLACEMENT.md "The platform reserve"); the rest are new
-  hooks (`0x4004abc0`, `0x40062219`, `0x40087eac`, `0x4009faaa`,
-  `0x4009fe4e`, `0x400a169a`, `0x400a19da`, `0x400a1d32`, `0x400a3c2a`,
-  `0x400a44f4`, `0x400a4ba0`) and two displacement edits (`0x40097009`,
-  `0x40097128`).
+## Gate
 
-A port of 2.0 needs his 8.20 sources (or a `gas_port.py` regeneration from
-them): the units must relocate into the DRAM runtime and his arena pages
-into the platform reserve. His 2.0 image has not been run under the port.
-
-## On the unit
-
-✅ 14 Sep 2026 as `OKMS1` (remix `ok-ms`, with Octakit), confirmed working
-by him on his own unit.
+`tools/verify/verify_scenes.py REMIX [--oracle MAIN21.raw] [--persist]`: scenarios b1,
+b2, b7, b7play, b3, b29copy, b29clear on the built image, stock's, and the
+oracle's; with `--persist` (not in `make check`; the final batch passes it), on the built image only (MKII panel), the b1 locks through
+SAVE PROJECT (`scenes.work` and `.strd`: size, header, CRC-32, the locks), a second
+boot, a power cycle after a save and after none (CS1 in, nothing posted), and the
+unsaved card without CS1 (the locks are absent). The docstring says what each compares and what it does not
+cover.
 
 ## Open
 
-- His freeze twin and sparse blob (Part `+0x1712..+0x1832`) are the
-  LFO designer records of audio and MIDI tracks 2–8 (measured under the
-  port, 10 Oct 2026; `docs/firmware/PARTS.md` section 9,
-  `docs/contributing/FAILURE_MODES.md`).
-- The apply_part entry (`0x40009094`) stays stock since his 1.40MSCN6 (his
-  earlier wrapper hung project load on hardware). Beside KITS (since 6 Oct
-  2026) his Part save and reload hooks run on the stock routines; a LOAD
-  KIT calls the stock reload directly, so his post-reload restore does not
-  run for it (not measured).
-- His MIDI CONTROL tick rows, if wanted, need a menu-table mechanism.
-
-## Gates
-
-- `tools/verify/verify_midiscenes.py` (in `make verify`): every region
-  assembles and links to his encoder's bytes at his addresses, and the
-  committed `gas/*.s` are what `gas_port.py` regenerates.
-
-## How it is built
-
-His caves are written in his Python encoder (`upstream/tools/ot3_asm.py`) and placed
-at fixed addresses by his `build.py`. His `upstream/tools/gas_port.py` drives the same
-builders with an encoder subclass that records one GNU-as line per
-instruction, writes `gas/*.s`, then assembles and links every region at his
-address and compares. Cross-cave references are linker symbols, so octabam
-places each unit where it chooses: every unit is `dram=True`, linked into the
-platform runtime, appended behind octabam's loader and depacked at boot into
-the arena reserve (`docs/contributing/PLACEMENT.md`). Inside the OS the module
-changes only the detour and poke sites, plus the boot redirect when no other
-module supplies it.
+- His freeze twin and sparse blob (Part `+0x1712..+0x1832`) are the LFO
+  designer records of audio and MIDI tracks 2-8 (measured under the port, 10
+  Oct 2026; `docs/firmware/PARTS.md` section 9,
+  `docs/contributing/FAILURE_MODES.md`). The rewrite writes no Part bytes
+  except in one case: reading a 2.x project (no `scenes.work`), the Part copy
+  whose blob held up gets its design area set to what stock Part Clear leaves
+  (✅ measured under the port: zeros, the last 16 bytes `0xff`). The original
+  designs are not recoverable. The wiped Part is not marked changed; the
+  next normal Part save writes it.
+- Phase 2: B19–B27 beyond Part Clear.
+- B33: 📖 his 2.1 moved the scene scratch off the native clipboard addresses and restored the recorder and master playback descriptors that earlier caves overwrote. This module has no cave in ROM and no scratch at a stock address; whether any other 2.1 crash fix has a counterpart is not checked beyond that.
+- The oracle image is not in the repository and is not built by `make`: `verify_scenes.py --oracle MAIN21.raw` (or `OT_MSC21_IMAGE`) takes one made from his repository at `52eaab0` (his own build; not re-run here after the submodule left). `make check` runs the scenarios on our image and stock's.
+- Hardware: the 2.0 build ran on his unit as `ok-ms` (14 Sep 2026); the
+  rewrite has not run on a unit.

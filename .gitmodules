@@ -1,7 +1,3 @@
-[submodule "modules/midi-scenes/upstream"]
-	path = modules/midi-scenes/upstream
-	url = https://github.com/bkkbrls-del/midisc
-	branch = main
 [submodule "modules/direct-jump/upstream"]
 	path = modules/direct-jump/upstream
 	url = https://github.com/timhastie/octatrick-modules

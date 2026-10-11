@@ -54,6 +54,8 @@ pattern content beyond pattern 1 playing.
             the Kit above is a copy; FUNC+STOP again: it is back.
   lclear    SAVE KIT open, DOWN x3, FUNC+PLAY: that Kit is empty; again:
             it is back.
+  swback    Kit 3 on pattern 3 and Kit 4 on pattern 4, playing, PTN 3, 4, 3, 4:
+            each pattern keeps its Kit and its slot holds it.
   ptncopy   FUNC+REC (pattern 1), pattern 14, FUNC+STOP: pattern 14
             plays pattern 1's Kit; FUNC+STOP again: its own again.
   pclone    ... the paste with STOP held and PART pressed: pattern 14
@@ -132,6 +134,7 @@ OUT = ROOT / "out/kitsverify"
 BLOB, BSTRIDE, PSTRIDE, PARTSZ = 0x400e21e0, 0x9b340, 0x8ed8, 0x18b2
 WORK, SAVED, PNAMES, PBYTE = 0x8ed80, 0x9504a, 0x9b316, 0x8e57
 REC, O_ASSIGN, O_VALID, O_RESID, O_LIB = 6338, 64, 320, 352, 416
+REC1 = REC
 IMG_LEN = O_LIB + 256 * REC
 TRK = 0x8000182a
 CS1, CS1_LEN = 0x10000000, 0x100000
@@ -236,6 +239,10 @@ def main():
     ap.add_argument("--only", default="", help="comma-separated scenario names")
     a = ap.parse_args()
     remix = registry.remix(a.remix)
+    global REC, IMG_LEN
+    if "MIDI SCENES" in remix.modules:        # a Kit record carries its Part's lock table (kits.work version 2)
+        REC = REC1 + 4096
+        IMG_LEN = O_LIB + 256 * REC
     if "KITS" not in remix.modules:
         print(f"  [ -- ] verify_kits: {a.remix} carries no KITS"); return 0
     if not a.project:
@@ -334,6 +341,12 @@ def main():
         s.down("ptn"); s.down(1, 120); s.tap(2, 120); s.tap(3, 120); s.up(1, 120); s.up("ptn", 300)
         if extra:
             extra(s)
+    # Kit 3 on pattern 3 and Kit 4 on pattern 4 (a field report: pattern 4 reverted to Kit 3
+    # on a pattern switch); switched 3, 4, 3, 4 while playing.
+    s = Script(); s.tap("no"); s.tap("play", 2000)
+    for p_ in (2, 3, 2, 3):
+        s.hold("ptn", p_); s.wait(17000)
+    add("swback", s, [(pa(2), 2), (pa(3), 3), (pb(2), 0), (pb(3), 0)])
     cpokes = [(pa(1), 0), (pa(2), 1), (pa(3), 4), (pb(1), 0), (pb(2), 0), (pb(3), 0)]
     s = Script(); chain(s, lambda s: s.wait(48000)); add("chain", s, cpokes)
 
@@ -514,7 +527,7 @@ def main():
         return (OUT / f"{tag}_b3.bin").read_bytes()
 
     def kit(im, k):
-        return im[O_LIB + k * REC + 16:O_LIB + (k + 1) * REC]
+        return im[O_LIB + k * REC + 16:O_LIB + k * REC + REC1]
 
     def slot(b, s):
         return b[WORK + s * PARTSZ:WORK + (s + 1) * PARTSZ]
@@ -539,18 +552,8 @@ def main():
         kw = next((v for k, v in files.items() if k.lower().endswith("/kits/kits.work")), b"")
         check(f"base: kits.work on the card ({len(kw)} B), CRC-32 holds",
               len(kw) == IMG_LEN and struct.unpack(">I", kw[12:16])[0] == zlib.crc32(kw[64:]))
-        # MIDI SCENES rewrites its Part-window bytes in the current Part after
-        # the load (KITS's equality leaves them out the same way)
-        lo, hi = 0, 0
-        if "MIDI SCENES" in remix.modules:
-            pw = registry.modules()["MIDI SCENES"].claims.part_window
-            lo, hi = min(o for o, _l, _w in pw) - WORK, max(o + l for o, l, _w in pw) - WORK
-
-        def eq(x, y):
-            return x[:lo] == y[:lo] and x[hi:] == y[hi:]
-        ok = all(eq(kit(im, BANK * 4 + p), slot(b, p)) for p in range(4))
-        check("base: Kits 9-12 are bank 3's working Parts"
-              + (f" (outside MIDI SCENES' +{lo:#x}..+{hi:#x})" if hi else ""), ok)
+        ok = all(kit(im, BANK * 4 + p) == slot(b, p) for p in range(4))
+        check("base: Kits 9-12 are bank 3's working Parts", ok)
         names = [im[O_LIB + (BANK * 4 + p) * REC:O_LIB + (BANK * 4 + p) * REC + 7].split(b"\0")[0] for p in range(4)]
         stock = [b[PNAMES + 7 * p:PNAMES + 7 * p + 7].split(b"\0")[0] for p in range(4)]
         check(f"base: their names are the Parts' ({names})", names == stock)
@@ -587,6 +590,15 @@ def main():
         if tag in ("repoint", "stopped", "progchg", "trackbtn1", "extplay"):
             check(f"{tag}: the Part byte repointed off the playing slot ({sl + 1})", sl != 0 or tag == "stopped")
 
+    if exists("swback"):
+        clean("swback")
+        b, im = b3_("swback"), img("swback")
+        sl = [b[p * PSTRIDE + PBYTE] for p in (2, 3)]
+        asg = [im[O_ASSIGN + BANK * 16 + p] for p in (2, 3)]
+        held = [slot(b, x) == kit(im, k) for x, k in zip(sl, (2, 3))]
+        check(f"swback: after switching 3, 4, 3, 4 the patterns keep Kits {[a + 1 for a in asg]} (3, 4), "
+              f"on slots {[x + 1 for x in sl]} holding them ({held})",
+              asg == [2, 3] and all(held) and sl[0] != sl[1])
     for tag in ("chain", "trackbtn", "presses", "unattended"):
         if not exists(tag):
             continue
@@ -851,6 +863,87 @@ def main():
               and all(any(k.endswith(f"/IMPORT/kits3{p}.work") for k in files) for p in "ab"))
     elif not only or "import" in only:
         print("  [SKIP] import: no kits3a/b.work at --octakit-project")
+
+    # ---- a version 1 kits.work under MIDI SCENES: read, expanded, empty tables --
+    if (not only or "v1up" in only) and "MIDI SCENES" in remix.modules and exists("base"):
+        kw = next((v for k, v in emu_card.extract_image((OUT / "base.img").read_bytes()).items()
+                   if k.lower().endswith("/kits/kits.work")), b"")
+        body = kw[64:O_LIB]
+        for k in range(256):
+            body += kw[O_LIB + k * REC:O_LIB + k * REC + REC1]
+        v1 = struct.pack(">4sIII", b"KITS", 1, O_LIB + 256 * REC1, zlib.crc32(body)) + bytes(48) + body
+        f = OUT / "kits.work"; f.write_bytes(v1)
+        c = stage(pathlib.Path(a.strand_project).expanduser(), "V1UP", extra=[f])
+        run([EMU, "--image", image, "--card", c, "--set", "OCTABAM", "--project", "V1UP", "--load-ms", "90000",
+             "--live-script", s1, "--mem-dump", dumps("v1up")], OUT / "v1up.txt")
+        clean("v1up")
+        im, b0 = img("v1up"), img("base")
+        same = all(im[O_LIB + k * REC:O_LIB + k * REC + REC1] == b0[O_LIB + k * REC:O_LIB + k * REC + REC1] for k in range(256))
+        blank = all(im[O_LIB + k * REC + REC1:O_LIB + (k + 1) * REC] == b"\xff" * 4096 for k in range(256))
+        check(f"v1up: the version 1 file read ({len(v1)} B): every Kit as in the version 2 file ({same}), "
+              f"every table empty ({blank})", same and blank)
+
+    # ---- a refused kits.work: listed by STORE, kept; OVERWRITE and BACKUP --------
+    if (not only or "krefuse" in only) and exists("base") and "store_answer_cb" in sym:
+        kw = next((v for k, v in emu_card.extract_image((OUT / "base.img").read_bytes()).items()
+                   if k.lower().endswith("/kits/kits.work")), b"")
+        badk = bytearray(kw); badk[O_LIB + 3000] ^= 0x55; badk = bytes(badk)       # the CRC fails
+        f = OUT / "kits.work"; f.write_bytes(badk)
+        c = stage(pathlib.Path(a.strand_project).expanduser(), "KBAD", extra=[f])
+
+        def kbad(tag, choice):
+            dmp = (f"{KS:#x},48={OUT / f'{tag}_st.bin'};{sym['store_npend']:#x},4={OUT / f'{tag}_np.bin'};"
+                   f"{sym['store_pend']:#x},32={OUT / f'{tag}_pend.bin'};{sym['KBACKUP']:#x},8={OUT / f'{tag}_bk.bin'}")
+            cmd = [EMU, "--image", image, "--card", c, "--set", "OCTABAM", "--project", "KBAD", "--load-ms", "90000",
+                   "--live-script", s1, "--mem-dump", dmp]
+            if choice is not None:
+                cmd += ["--step", f"-:call:{sym['store_answer_cb']:#x},{choice},0"]
+            run(cmd, OUT / f"{tag}.txt")
+        with ThreadPoolExecutor(3) as ex:
+            list(ex.map(lambda t: kbad(*t), [("kbad_ignore", None), ("kbad_over", 1), ("kbad_back", 2)]))
+        # the prompt: an encoder turn opens the list, LEVEL scrolls, YES answers
+        def ui(tag, *rows):
+            sc = Script(); sc.tap("no", 400); sc.send("enc 1 1", 800)
+            for r in rows:
+                sc.send(r, 700)
+            sp = OUT / f"{tag}.script"; sp.write_text(sc.text())
+            dmp = (f"{KS:#x},48={OUT / f'{tag}_st.bin'};{sym['store_npend']:#x},4={OUT / f'{tag}_np.bin'};"
+                   f"{sym['store_pend']:#x},32={OUT / f'{tag}_pend.bin'};{sym['KBACKUP']:#x},8={OUT / f'{tag}_bk.bin'};"
+                   f"0x460e5e28,4={OUT / f'{tag}_cbs.bin'};0x460e5e30,4={OUT / f'{tag}_obj.bin'};"
+                   f"{sym['store_mown']:#x},4={OUT / f'{tag}_mown.bin'}")
+            run([EMU, "--image", image, "--card", c, "--set", "OCTABAM", "--project", "KBAD", "--load-ms", "90000",
+                 "--live-script", sp, "--mem-dump", dmp], OUT / f"{tag}.txt")
+        with ThreadPoolExecutor(3) as ex:
+            list(ex.map(lambda t: ui(*t), [("kui_open",), ("kui_over", "enc 6 1", "key 0x31 down", "key 0x31 up"),
+                                           ("kui_ignore", "key 0x31 down", "key 0x31 up")]))
+        w = lambda tag, n: struct.unpack(">I", (OUT / f"{tag}_{n}.bin").read_bytes())[0]
+        check(f"kui_open: the encoder turn opened STORE's list (M_OBJ {w('kui_open', 'obj'):#x}, callbacks {w('kui_open', 'cbs'):#x} "
+              f"= store_cbtab {sym['store_cbtab']:#x}, open flag {w('kui_open', 'mown')}); the file is still listed ({w('kui_open', 'np')})",
+              w("kui_open", "obj") != 0 and w("kui_open", "cbs") == sym["store_cbtab"] and w("kui_open", "mown") == 1
+              and w("kui_open", "np") == 1)
+        so = st("kui_over")
+        check(f"kui_over: LEVEL down, YES: OVERWRITE answered (listed {w('kui_over', 'np')}, NOWRITE {so['NOWRITE']}, "
+              f"READY {so['READY']}, KDIRTY {so['KDIRTY']}, list closed {w('kui_over', 'obj') == 0})",
+              w("kui_over", "np") == 0 and not so["NOWRITE"] and so["READY"] == 1 and so["KDIRTY"] == 1
+              and w("kui_over", "obj") == 0)
+        si = st("kui_ignore")
+        check(f"kui_ignore: YES on the first row: IGNORE answered (listed {w('kui_ignore', 'np')}, NOWRITE {si['NOWRITE']}, "
+              f"READY {si['READY']}, list closed {w('kui_ignore', 'obj') == 0})",
+              w("kui_ignore", "np") == 0 and si["NOWRITE"] == 1 and not si["READY"] and w("kui_ignore", "obj") == 0)
+        for tag in ("kbad_ignore", "kbad_over", "kbad_back"):
+            s_ = st(tag)
+            np_ = struct.unpack(">I", (OUT / f"{tag}_np.bin").read_bytes())[0]
+            pend = (OUT / f"{tag}_pend.bin").read_bytes()
+            bk = struct.unpack(">II", (OUT / f"{tag}_bk.bin").read_bytes())      # KBACKUP, KDEFER
+            if tag == "kbad_ignore":
+                check(f"{tag}: listed ({np_} entry {tuple(pend[:2])}), refused (BADFILE {s_['BADFILE']}), "
+                      f"NOWRITE {s_['NOWRITE']}, READY {s_['READY']}",
+                      np_ == 1 and tuple(pend[:2]) == (1, 0) and s_["BADFILE"] == 1 and s_["NOWRITE"] == 1 and not s_["READY"])
+            else:
+                check(f"{tag}: answered (listed {np_}), NOWRITE {s_['NOWRITE']}, READY {s_['READY']}, KDIRTY {s_['KDIRTY']}, "
+                      f"backup flag {bk[0]}, write deferred {bk[1]}",
+                      np_ == 0 and not s_["NOWRITE"] and s_["READY"] == 1 and s_["KDIRTY"] == 1
+                      and bk == (1 if tag == "kbad_back" else 0, 0))
 
     # ---- a rejected bank file, a missing project --------------------------------
     sd = pathlib.Path(a.strand_project).expanduser()

@@ -73,7 +73,7 @@
         .set    SPRINTF,    0x40013a08
         .set    IOB_LEN,    0x1000
         .set    NV,         0x100f8600      | CS1: the current bank's page 2, sparse (see nv_save)
-        .set    NV_END,     0x100ffe00
+        .set    NV_END,     0x100fbdf0      | MIDI SCENES' CS1 copy follows (0x100fbdf0..0x100ffe00)
         .set    NV_MAX,     (NV_END-NV-16)/3
         .set    NV_MAGIC,   0x50324e56      | 'P2NV'
         .set    CUR_BANK,   0x80000002
@@ -82,9 +82,10 @@
         .globl  plk_edit, plk_fill_slide, plk_fill_plain, plk_s2p_a, plk_s2p_b
         .globl  plk_reset, plk_p2r, plk_note, plk_apply, plk_dial, plk_init, STORE
         .globl  plk_place, plk_clrlocks, plk_clrtrack, plk_tcopy, plk_tpaste, plk_memcpy
-        .globl  plk_saveb, plk_fcopy, plk_loadall, plk_loadmask, plk_newproj, plk_newproj2
-        .globl  plk_d5_ef9a, plk_d5_f02e, plk_d5_f2a6, plk_d5_f33a
-        .globl  plk_tocs1, plk_fromcs1
+        .globl  plk_st_bankw_pre, plk_st_bankcopy, plk_st_loadall_pre, plk_st_loadmask_pre
+        .globl  plk_st_newproj, plk_st_tocs1, plk_st_fromcs1, plk_st_answer
+        .extern store_refuse
+
 
 | ---------------------------------------------------------------- record ----
 | Entry state of 0x400508e4: sp@(4) = slot (0..5), sp@(8) = ticks.
@@ -934,8 +935,33 @@ hdr:    lea     HDR,%a0
 
 | write_bank: d0 = bank -> p2lkNN.work from RAM. Keeps d2-d7/a2-a6.
 write_bank:
-        movel   %d2,%sp@-
+        movel   NWMASK,%d1
+        btst    %d0,%d1
+        beq.s   wb_go
+        rts                            | a refused file is never written over
+wb_go:  movel   %d2,%sp@-
         movel   %d0,%d2
+        movel   BKMASK,%d1
+        btst    %d2,%d1
+        beq.s   wb_nb
+        bclr    %d2,%d1
+        movel   %d1,BKMASK
+        movel   %d2,%d0                | the refused file kept as p2lkNN.bak
+        lea     FMT_WORK,%a0
+        bsr.w   path
+        lea     PATH,%a0
+        lea     PSRC,%a1
+wb_cp:  moveb   %a0@+,%a1@+
+        bne.s   wb_cp
+        movel   %d2,%d0
+        lea     FMT_BAK,%a0
+        bsr.w   path
+        clrl    %sp@-
+        pea     PSRC
+        pea     PATH
+        jsr     F_COPY
+        lea     %sp@(12),%sp
+wb_nb:
         lea     FMT_WORK,%a0
         bsr.w   path
         lea     PATH,%a0
@@ -944,7 +970,7 @@ write_bank:
         tstl    %d0
         bmi.s   wb_out
         movel   %d2,%d0
-        bsr.s   hdr
+        bsr.w   hdr
         lea     HDR,%a0
         moveq   #16,%d0
         lea     F_WRITE,%a1
@@ -963,6 +989,9 @@ wb_out: movel   %sp@+,%d2
 read_bank:
         movel   %d2,%sp@-
         movel   %d0,%d2
+        movel   NWMASK,%d1
+        bclr    %d2,%d1
+        movel   %d1,NWMASK
         lea     FMT_WORK,%a0
         bsr.w   path
         lea     PATH,%a0
@@ -996,22 +1025,25 @@ read_bank:
         bsr.w   fclose
         bra.s   rb_out
 rb_bad: bsr.w   fclose
+        movel   NWMASK,%d1             | an unusable file: kept, and offered to the prompt
+        bset    %d2,%d1
+        movel   %d1,NWMASK
+        moveq   #0,%d0
+        movel   %d2,%d1
+        jsr     store_refuse
 rb_blank:
         movel   %d2,%d0
         bsr.w   blank
 rb_out: movel   %sp@+,%d2
         rts
 
-| 0x400918aa, inside stock's bank write 0x400917c8(?, mask, ...), after the
-| project directory is made and before the first bankNN.work: d6 (low
-| word) = the banks it writes. Ours go first, the same banks.
-plk_saveb:
-        lea     0x400e21e0,%a2         | the displaced instruction
-        lea     %sp@(-60),%sp
-        movem.l %d0-%d7/%a0-%a6,%sp@
+| bankw_pre (d1 = the mask): inside stock's bank write 0x400917c8, after the
+| project directory is made and before the first bankNN.work. Ours go
+| first, the same banks.
+plk_st_bankw_pre:
         bsr.w   plk_init
         moveq   #0,%d3
-        movew   %d6,%d3                | the mask
+        movew   %d1,%d3                | the mask
         moveq   #0,%d4                 | bank
 sb_loop:
         btst    %d4,%d3
@@ -1022,28 +1054,20 @@ sb_next:
         addql   #1,%d4
         cmpil   #16,%d4
         bne.s   sb_loop
-        movem.l %sp@,%d0-%d7/%a0-%a6
-        lea     %sp@(60),%sp
-        jmp     0x400918b0
+        rts
 
-| plk_fcopy: the stock file copy (dst, src, 0) at the bank store and bank
-| reload sites. When both are bankNN files, p2lkNN follows; a missing
-| source leaves an empty destination (a bank stored before PLOCKS P2 has
-| no page-2 locks).
-plk_fcopy:
-        movel   %sp@(12),%sp@-
-        movel   %sp@(12),%sp@-
-        movel   %sp@(12),%sp@-
-        jsr     F_COPY
-        lea     %sp@(12),%sp
-        lea     %sp@(-16),%sp
-        movem.l %d0/%d2/%a2-%a3,%sp@   | sp@ = stock's result
-        moveal  %sp@(16+8),%a0         | src
+| bankcopy (d0 = dst, d1 = src): after the stock file copy (dst, src, 0) at
+| the bank store, bank reload, project store and project reload sites. When
+| both are bankNN files, p2lkNN follows; a missing source leaves an empty
+| destination (a bank stored before PLOCKS P2 has no page-2 locks).
+plk_st_bankcopy:
+        movel   %d0,%d4                | dst
+        moveal  %d1,%a0                | src
         lea     PSRC,%a1
         bsr.w   rename
         tstl    %d0
         beq.w   fc_out
-        moveal  %sp@(16+4),%a0         | dst
+        moveal  %d4,%a0
         lea     PATH,%a1
         bsr.w   rename
         tstl    %d0
@@ -1081,9 +1105,7 @@ fc_wr:  lea     IOB,%a0
         subql   #1,%d2
         bne.s   fc_wr
         bsr.w   fclose
-fc_out: movem.l %sp@,%d0/%d2/%a2-%a3
-        lea     %sp@(16),%sp
-        rts
+fc_out: rts
 
 | rename: a0 = a stock path, a1 = 260 bytes -> a1 = the same path with its
 | "/bankNN." made "/p2lkNN."; d0 = 0 when the path names no bank file.
@@ -1129,26 +1151,9 @@ rn_none:
         moveq   #0,%d0
         rts
 
-| The project store (0x4008ee74) and reload (0x4008f180) copy every
-| bank's file through d5 = the stock copy, loaded at these four sites.
-plk_d5_ef9a:
-        movel   #plk_fcopy,%d5
-        jmp     0x4008efa0
-plk_d5_f02e:
-        movel   #plk_fcopy,%d5
-        jmp     0x4008f034
-plk_d5_f2a6:
-        movel   #plk_fcopy,%d5
-        jmp     0x4008f2ac
-plk_d5_f33a:
-        movel   #plk_fcopy,%d5
-        jmp     0x4008f340
-
-| plk_loadall: at the project load's 0x40090504 call -- every bank's
-| page 2 from its file, then on to stock's load.
-plk_loadall:
-        lea     %sp@(-8),%sp
-        movem.l %d2-%d3,%sp@
+| loadall: at the project load's bank load (0x40090504) -- every bank's
+| page 2 from its file.
+plk_st_loadall_pre:
         bsr.w   plk_init
         bsr.w   reset_pipe
         clrl    NEEDFILE
@@ -1161,17 +1166,14 @@ la_loop:
         addql   #1,%d3
         cmpil   #16,%d3
         bne.s   la_loop
-        movem.l %sp@,%d2-%d3
-        lea     %sp@(8),%sp
-        jmp     0x40090504
+        rts
 
-| plk_loadmask: at the 0x400905d4(?, mask, ...) calls -- the masked banks.
-plk_loadmask:
-        lea     %sp@(-12),%sp
-        movem.l %d2-%d4,%sp@
+| loadmask (d1 = the mask): at the masked bank loads (0x400905d4) -- the
+| masked banks.
+plk_st_loadmask_pre:
         bsr.w   plk_init
         moveq   #0,%d3
-        movew   %sp@(12+10),%d3        | the mask
+        movew   %d1,%d3                | the mask
         moveq   #0,%d4
 lm_loop:
         btst    %d4,%d3
@@ -1193,21 +1195,31 @@ lm_next:
         movel   %d4,%d0
         bsr.w   nv_save
 lm_done:
-        movem.l %sp@,%d2-%d4
-        lea     %sp@(12),%sp
-        jmp     0x400905d4
+        rts
 
-| plk_newproj: a new, empty project (0x400909d8): no page-2 locks.
-plk_newproj:
-        bsr.s   newproj
-        jmp     0x400909d8
-| the pc-relative call at 0x4009159a, and the instruction after it
-plk_newproj2:
-        bsr.s   newproj
-        jsr     0x400909d8
-        movel   %d3,%d0
-        jmp     0x400915a0
-newproj:
+| answer (d0 = IGNORE / OVERWRITE / BACKUP, d1 = the bank) for a refused
+| p2lkNN.work: BACKUP has the bank's next write copy the file to p2lkNN.bak
+| first (the answer runs in the UI task, the write in the engine task, where
+| the card is used); then the bank may be written (its locks are in RAM as
+| none) at the next bank write.
+plk_st_answer:
+        tstl    %d0
+        beq.s   an_out
+        movel   %d1,%d2
+        cmpil   #2,%d0
+        bne.s   an_clear
+        movel   BKMASK,%d0
+        bset    %d2,%d0
+        movel   %d0,BKMASK             | write_bank copies the file first
+an_clear:
+        movel   NWMASK,%d0
+        bclr    %d2,%d0
+        movel   %d0,NWMASK
+an_out: rts
+
+| newproj: a new, empty project (0x400909d8): no page-2 locks.
+plk_st_newproj:
+        clrl    NWMASK
         lea     %sp@(-8),%sp
         movem.l %d0-%d1,%sp@
         movel   INITED,%d0             | uninitialised: plk_init fills it anyway
@@ -1251,6 +1263,8 @@ rp_loop:
 
 FMT_WORK:
         .asciz  "%s/p2lk%02d.work"
+FMT_BAK:
+        .asciz  "%s/p2lk%02d.bak"
 MODE_R: .asciz  "r"
 MODE_W: .asciz  "w"
         .align  4
@@ -1261,7 +1275,7 @@ MODE_W: .asciz  "w"
 | through, and at power-up 0x40025770 checks it and 0x4000fbb4(bank) puts
 | it back; the firmware's own load then reads every OTHER bank from the
 | card (mask 0xfffb at 0x40084d60). The page-2 locks of that bank go the
-| same way, sparse, in CS1's unused top (0x100f8600..0x100ffe00, no stock
+| same way, sparse, in CS1's unused top (0x100f8600..0x100fbdf0, no stock
 | reference and no module's; written only by stock's whole-CS1 init):
 |   +0 'P2NV' (written last), +4 bank, +8 count, +12 sum of the entries,
 |   +16 entries of 3 bytes: step index (bank-relative, 17 bits) << 7 | value.
@@ -1435,29 +1449,21 @@ nv_touch:
 nt_out: movel   %sp@+,%d1
         rts
 
-| 0x4000faf0(bank): stock copies the bank into CS1; its page 2 goes too.
-plk_tocs1:
-        movel   %d0,%sp@-
+| tocs1 (d0 = the bank): stock copies the bank into CS1; its page 2 goes too.
+plk_st_tocs1:
+        movel   %d0,%d3
         bsr.w   plk_init
-        movel   %sp@(8),%d0
-        bsr.w   nv_save
-        movel   %sp@+,%d0
-        movel   %a2,%sp@-              | the displaced instructions, then on
-        movel   %d2,%sp@-
-        movel   #0x8ed80,%sp@-
-        jmp     0x4000fafa
+        movel   %d3,%d0
+        bra.w   nv_save
 
-| the power-up's 0x4000fbb4(bank) call at 0x40025808: the bank back from
-| CS1, and its page 2 with it -- or, when CS1 has no copy of it, from its
-| file at the first bank load (the card is not mounted yet).
-plk_fromcs1:
-        movel   %sp@(4),%sp@-
-        jsr     0x4000fbb4
-        addql   #4,%sp
-        lea     %sp@(-8),%sp
-        movem.l %d0-%d1,%sp@
+| fromcs1 (d0 = the bank): the power-up's 0x4000fbb4(bank) call at
+| 0x40025808 has put the bank back from CS1; its page 2 comes with it -- or,
+| when CS1 has no copy of it, from its file at the first bank load (the card
+| is not mounted yet).
+plk_st_fromcs1:
+        movel   %d0,%d3
         bsr.w   plk_init
-        movel   %sp@(8+4),%d0          | bank
+        movel   %d3,%d0
         movel   %d0,%d1
         bsr.w   nv_apply
         tstl    %d0
@@ -1467,8 +1473,6 @@ plk_fromcs1:
         subql   #1,%d1
         movel   %d1,NVBANK
 fc1_out:
-        movem.l %sp@,%d0-%d1
-        lea     %sp@(8),%sp
         rts
 
 | ------------------------------------------------------------------ dial ----
@@ -1565,6 +1569,8 @@ in_out: movem.l %sp@,%d0-%d1/%a0
         .align  4
 INITED: .long   0
 NVBANK: .long   -1                      | the bank whose page 2 CS1 holds
+BKMASK:  .long 0                        | banks whose refused p2lkNN.work is copied to .bak at the next write
+NWMASK:  .long 0                        | banks whose p2lkNN.work was refused: not written
 NEEDFILE: .long 0                       | bank + 1: read it from its file at the next bank load
 NVGEN:  .long   0                       | counts nv_save starts (see nv_save)
 EDITED: .long   0                       | set by a page-2 lock edit (the file pass reads it)

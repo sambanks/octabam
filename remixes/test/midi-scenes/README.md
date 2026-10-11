@@ -4,11 +4,11 @@ One module. The smallest image with a real mod on the DRAM platform.
 
 ## What is in it
 
-- **MIDI SCENES** (bkkbrls-del, [midisc](https://github.com/bkkbrls-del/midisc) 1.40MIDISC8.2) — per-scene parameter locks driven over MIDI: a second lock table the panel never had; scene hold, XF morph, part save/reload and the scene clear/copy/paste rows read it when a MIDI event is driving. The panel path is untouched. Twelve units in DRAM, 38 detours, 4 pokes inside the OS.
+- **MIDI SCENES** (bkkbrls-del, [midisc](https://github.com/bkkbrls-del/midisc); rewritten here, phase 1) — scene locks for the MIDI tracks: a second lock table the panel never had; scene hold, readout, unlock, XF morph and the scene clear/copy/paste rows. RAM only. One unit in DRAM, 21 detours, 2 pokes inside the OS.
 
 ## Status
 
-Every region assembles to his encoder's bytes at his addresses; boots under the port with his hooks running from DRAM. Not flashed alone; on hardware in `ok-ms`.
+`verify_scenes` runs the panel scenarios on this image and on MIDISC2.1's under the port and compares MIDI out, the lock table, the track records and the screen. Not flashed.
 
 ## Build
 

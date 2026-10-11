@@ -10,7 +10,7 @@ REMIX = Remix(
     name="kits",
     family="mods", proof=Proof.PORT, proof_note="verify_kits under the port",
     doc="KITS (255 Kits per project) on the stock effects.",
-    modules=("KITS",
+    modules=("STORE", "KITS",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),

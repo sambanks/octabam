@@ -331,6 +331,33 @@ def main():
     check(f"power cycle, never saved: the lock is in STORE from CS1 ({got['unsaved']})", got["unsaved"] == v)
     check(f"power cycle, no CS1 copy: the lock is in STORE from p2lk{bank + 1:02d}.work ({got['nocopy']})",
           got["nocopy"] == v)
+    # ---- a refused p2lkNN.work is listed and never written over -------------------
+    if saved.is_file() and "store_npend" in sym:
+        prefix = f"/{a.name.lower()}/"
+        proj = OUT / "proj_bad"
+        if proj.exists():
+            shutil.rmtree(proj)
+        proj.mkdir(parents=True)
+        for k, v in files.items():
+            if prefix in k.lower() and "/" not in k.lower().split(prefix, 1)[1]:
+                (proj / k.rsplit("/", 1)[1]).write_bytes(v)
+        wk = proj / f"{nn}.work"
+        bad = bytearray(wk.read_bytes()); bad[0] ^= 0x20; wk.write_bytes(bytes(bad))        # 'P2LK' -> 'p2LK'
+        card_bad = OUT / "card_bad.img"
+        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(proj), a.set_name, a.name,
+                            "--tree", str(OUT / "tree_bad"), "--out", str(card_bad)], cwd=ROOT, capture_output=True, text=True)
+        check("refused: the card with a bad p2lk header staged", r.returncode == 0)
+        run([EMU, "--image", image, "--card", card_bad, "--set", a.set_name, "--project", a.name, "--load-ms", "90000",
+             "--live-script", OUT / "save.script", "--card-out", OUT / "refused.img",
+             "--mem-dump", f"{sym['store_npend']:#x},4={OUT / 'ref_np.bin'};{sym['store_pend']:#x},32={OUT / 'ref_pend.bin'}"],
+            OUT / "refused.txt")
+        npend = int.from_bytes((OUT / "ref_np.bin").read_bytes(), "big")
+        pend = (OUT / "ref_pend.bin").read_bytes()
+        listed = [(pend[2 * i], pend[2 * i + 1]) for i in range(npend)]
+        check(f"refused: STORE lists the bank ({listed}, wanted (0, {bank}))", (0, bank) in listed)
+        after = emu_card.extract_image((OUT / "refused.img").read_bytes())
+        k = next((k for k in after if k.lower().endswith(f"/{nn}.work")), None)
+        check(f"refused: {nn}.work is as it was after a SAVE PROJECT (it used to be overwritten)", after.get(k) == bytes(bad))
     print(f"verify_plocksp2: {'FAIL' if fails else 'ok'} ({fails} failure(s))")
     return 1 if fails else 0
 

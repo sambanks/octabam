@@ -123,9 +123,8 @@ which is not what an MD or MnM Kit holds.
   switch reads the Part byte then (PARTS.md section 3). A slot is free when
   no engine track names it while the transport runs, no queued or
   chained pattern's Part byte names it, and its working Part is byte for
-  byte the Kit KITS recorded there (outside MIDI SCENES' Part-window
-  bytes when it is in the remix: his code rewrites them in the current
-  Part from his own table after a project load, measured in ok-ms). A
+  byte the Kit KITS recorded there (and, with MIDI SCENES, the slot's
+  lock table the Kit's). A
   slot whose content is in no Kit is
   never copied over. With no free slot, or a request with an interrupt
   level set (the arranger and repeat publish from the tick), the pattern
@@ -143,7 +142,9 @@ which is not what an MD or MnM Kit holds.
   64 bytes of header (`KITS`, version 1, length, CRC-32 of the rest,
   an unused word), ASSIGN (256), the valid bits (32), RESID (64), then 256
   records of an 8-byte name, 8 reserved bytes and the 6,322-byte Part:
-  1,622,944 bytes. Record 256 is never a Kit: ASSIGN and RESID use 0xff
+  1,622,944 bytes (version 1). With MIDI SCENES in the remix, version 2: each
+  record carries the Part's 4,096-byte lock table after the Part (10,434 B a
+  record, 2,671,520 B). Record 256 is never a Kit: ASSIGN and RESID use 0xff
   for "no Kit". A Part found there at a load (Em's Kit 256, or a save
   into Kit 256 by a build before 255) moves to the next empty Kit; on
   Em's import the patterns her manifest gives Kit 256 move with it.
@@ -162,7 +163,7 @@ which is not what an MD or MnM Kit holds.
   card.
 - **Power-off.** RESID (with a magic and a sum) at `0x100f85a0` and ASSIGN
   at `0x100ffe00` in CS1 (stock references nothing there; PLOCKS P2 holds
-  `0x100f8600..0x100ffe00`). The power-up's bank load (the masked load
+  `0x100f8600..0x100fbdf0`). The power-up's bank load (the masked load
   returning to `0x40084d66` when no project has been loaded since boot)
   takes them from CS1.
 - The masked bank load `0x400905d4` is told apart by its return address
@@ -263,11 +264,13 @@ Not run on the unit: an unattended run with the BCR2000.
   tracks' steps and locks (`0x40039df4`), not the MIDI tracks.
 - `kits.work` is written whole (1.6 MB) when anything changed; Octakit's
   per-record writes are not carried.
-- MIDI SCENES' own Part reload hooks are on the stock call sites; LOAD
-  KIT calls the reload directly, so his post-reload restore does not run
-  for a Kit load (FUNC+CUE goes through his hooks as on stock). A staged
-  Kit carries the MIDI scene locks it was saved with in his Part-window
-  bytes; whether his table follows a staged slot is not measured.
+- MIDI SCENES (the rewrite) writes no Part byte: its lock tables are in
+  `scenes.work` and CS1 (`modules/midi-scenes/README.md`). With it in the
+  remix a Kit record carries the Part's 4,096-byte lock table (`kits.work`
+  version 2, 2,671,520 B; a version 1 file is read and its Kits get empty
+  tables). A version 2 file under an image without MIDI SCENES is refused
+  (`NOWRITE`, never overwritten), so flashing back loses no data; the Kits
+  are absent for the session.
 - Whether the CS1 range holds over a power-off on the unit is read from
   stock's use of CS1 (as PLOCKS P2), not measured.
 
