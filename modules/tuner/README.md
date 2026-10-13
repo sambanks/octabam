@@ -2,7 +2,7 @@
 
 A guitar-tuner window for the current audio track, built from
 [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules)
-(submodule `upstream/`, pinned to `v2.9` (`525f4b1`)). `Kind.CF_PATCH`: one DRAM unit
+(submodule `upstream/`, pinned to `v2.14` (`39dc5d8`)). `Kind.CF_PATCH`: one DRAM unit
 (`tuner.s`) and three detours. No ROM cave, no pokes, no DSP code, no FX2
 row.
 
@@ -18,7 +18,7 @@ detector, what was measured and what is open).
 
 ## How it is built
 
-Source: `upstream/` is Tim's repository (submodule, pinned to `v2.9` (`525f4b1`)).
+Source: `upstream/` is Tim's repository (submodule, pinned to `v2.14` (`39dc5d8`)).
 Nothing inside `upstream/` is edited here. The manifest here
 (`manifest.py`) executes `upstream/tuner/manifest.py` from the source on
 disk and re-exports its `MODULE`; that manifest derives its source paths
@@ -35,9 +35,11 @@ it keeps no accumulator state across a task switch.
 ## Collisions
 
 None known. It shares the platform reserve with the other DRAM modules
-(SYNTH MACHINE's engine, USB MIDI, USB AUDIO, MIDI SCENES) inside one
-runtime; `remixes/test/octatrick/` carries it beside the other three, USB
-MIDI, USB AUDIO OUT TRACKS MAIN CUE and USB AUDIO IN ABCD.
+(SYNTH MACHINE's engine, SY DRUM, PROCESSOR LOAD, USB MIDI, USB AUDIO,
+MIDI SCENES) inside one runtime; `remixes/test/octatrick/` carries it beside
+the other five, USB MIDI, USB AUDIO OUT TRACKS MAIN CUE and USB AUDIO IN
+ABCD. It shares the UI task with PROCESSOR LOAD (different sites: the
+loop head here, the type-1 message path there).
 
 ## Measured
 
@@ -52,8 +54,11 @@ MIDI, USB AUDIO OUT TRACKS MAIN CUE and USB AUDIO IN ABCD.
 ## On the unit
 
 - Works on Tim's MKI: UP + TEMPO opens the window and tunes (test build
-  3.0 b40 = `octatrick` at BUILD 40, 29 Sep 2026). The sources are
-  unchanged since `v2.8`. The hook sites are read
+  3.0 b40 = `octatrick` at BUILD 40, 29 Sep 2026), and in Modwerk's TUNER
+  0.1.0 image (the same `tuner.s`; MAIN OS SHA-256 `66489376...`, not an
+  octabam build) on 13 Oct 2026: its test sheet reported working (the
+  readings were not recorded). The sources are
+  unchanged since `v2.8` (`v2.14` included). The hook sites are read
   from the image and the build refuses on a difference; the other three
   modules' hooks in the same remix ran on Tim's MKI (the test builds
   2.3 .. 2.8 and the 2.9 line).

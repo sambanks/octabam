@@ -6,15 +6,15 @@ default: the value is an existing, unused position of an existing project
 setting, so a project that never selects it plays exactly as stock.
 
 Source: `upstream/` is Tim Hastie's repository (timhastie/octatrick-modules,
-submodule, pinned to v2.9 (525f4b1) = Octatrick 2.9, 29 Sep 2026; the test builds 2.3 .. 2.8 and the 2.9
-line up to its previous build flashed on his MKI, the last two 2.9 fixes
-emulator-verified). The declaration is
+submodule, pinned to v2.14 (39dc5d8) = Octatrick 2.14, 13 Oct 2026; the test
+builds 2.3 .. 2.8 and the 2.9 line flashed on his MKI). The declaration is
 `upstream/direct-jump/manifest.py`: one floating ROM cave (`direct_jump.s`,
 ratified bytes re-linked and compared every build) on the pattern-queue
 setter and the tick handler, four fixed pokes. Its source paths are derived from its own directory, so
 it is executed here from the source on disk, as the registry does for every
 manifest, and this file only re-exports its MODULE. Nothing inside
-`upstream/` is edited here. The sources are unchanged since v9.1; at 2.9
+`upstream/` is edited here. The sources are unchanged since v9.1 (v2.14
+included); at 2.9
 the quantizer's move into DRAM frees the ROM zero run, so the 358-byte cave
 fits beside SCALE QUANTIZER and CF METER's clone again.
 

@@ -4,7 +4,7 @@ A pattern change lands at the next step instead of at the pattern's end,
 the Analog Four / Rytm direct jump: CHAIN AFTER's unused value 1 becomes
 DIRECT. Built from
 [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules)
-(submodule `upstream/`, pinned to `v2.9` (`525f4b1`)). `Kind.CF_PATCH`: one floating ROM
+(submodule `upstream/`, pinned to `v2.14` (`39dc5d8`)). `Kind.CF_PATCH`: one floating ROM
 cave on the pattern-queue setter and the tick handler, four fixed pokes (step and label table entries, the menu setter, the project loader). No DSP code, no menu row of its
 own (the option appears in PROJECT > CONTROL > SEQUENCER > CHAIN AFTER as
 option 2, between PAT.LEN and 2/16).
@@ -31,6 +31,8 @@ inferred.
   (the cave links to the same 358 bytes); the quantizer's move into DRAM at
   2.9 frees the ROM zero run, so the cave fits beside SCALE QUANTIZER and
   CF METER's descriptor clone again (at 2.8 it did not).
+- `v2.10`, `v2.11`, `v2.12`, `v2.13` and `v2.14` (8 - 13 Oct 2026) leave
+  the sources as they were at `v9.1` too.
 
 ## On the unit
 
@@ -43,7 +45,7 @@ inferred.
 
 ## How it is built
 
-Source: `upstream/` is Tim's repository (submodule, pinned to `v2.9` (`525f4b1`)).
+Source: `upstream/` is Tim's repository (submodule, pinned to `v2.14` (`39dc5d8`)).
 Nothing inside `upstream/` is edited here. The manifest here
 (`manifest.py`) executes `upstream/direct-jump/manifest.py` from the source
 on disk and re-exports its `MODULE`; that manifest derives its source paths

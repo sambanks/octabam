@@ -48,7 +48,8 @@ make emu-setup
 
 `--recurse-submodules` fetches the module authors' repositories
 (`timhastie/octatrick-modules` under `modules/synth`, `modules/quantizer`,
-`modules/direct-jump` and `modules/tuner`) at the pinned commits. If you cloned without
+`modules/direct-jump`, `modules/tuner`, `modules/sy-drum` and
+`modules/processor-load`) at the pinned commits. If you cloned without
 it: `git submodule update --init`.
 
 `make setup` installs `binwalk`, `radare2` and `m68k-elf-gcc` with

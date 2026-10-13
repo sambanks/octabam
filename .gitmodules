@@ -10,6 +10,12 @@
 [submodule "modules/tuner/upstream"]
 	path = modules/tuner/upstream
 	url = https://github.com/timhastie/octatrick-modules
+[submodule "modules/sy-drum/upstream"]
+	path = modules/sy-drum/upstream
+	url = https://github.com/timhastie/octatrick-modules
+[submodule "modules/processor-load/upstream"]
+	path = modules/processor-load/upstream
+	url = https://github.com/timhastie/octatrick-modules
 [submodule "modules/direct-jump-kyoti/upstream"]
 	path = modules/direct-jump-kyoti/upstream
 	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw
