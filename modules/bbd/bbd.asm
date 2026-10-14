@@ -17,9 +17,9 @@
 ; The bucket path runs at half scale (the compressor clips at +-2).
 ;
 ; Knobs: TIME r6+0, FDBK r6+1, FRZ r6+2, TONE r6+3, FREQ r6+4, MIX r6+5,
-; STGS r6+$c (page-2 slot 6, knob field), LIM r6+$c bits 8-15 (slot 7),
-; PRE r6+$d bits 8-15 (slot 9), POST r6+$e (slot 10). A STGS change fades the
-; wet out over 16 calls, clears the ring (256 words a call, dry) and fades back in.
+; STGS r6+$c (page-2 slot 6, knob field), LIM r6+$d (slot 8, knob field),
+; PRE r6+$e (slot 10, knob field). A STGS change fades the wet out over 16
+; calls, clears the ring (256 words a call, dry) and fades back in.
 ;
 ; ---- r7 slots ($00..$5a; the OS allows $00..$83) --------------------------
 ;   $00 Y buffer base (allocator, FX2: 16,384 words)   $01 clear calls left
@@ -33,14 +33,14 @@
 ;   $1a..$1e their targets      $1f P16 target
 ;   $20..$29 AA boundaries (input, then after each of 4 sections; x1 x2)
 ;   $2a one-pole input x1      $2b..$34 recon boundaries (4 sections)
-;   $35 wet/2   $36 snap P16 to its target   $37 K   $38 K^2
+;   $35 wet/2   $36 snap P16 to its target   $37 K   $38 K^2 (PRE's after the rotation)
 ;   $39 FRZ hold   $3a FRZ 127   $3b rotation   $3c..$3e FREQ bandpass b0/2 -a1/2 -a2/2
 ;   $3f FDBK after LIM
 ;   ---- zeroed by init only ($40..$5a) ----
-;   $40..$48 1/(2Q) table   $49..$4c PRE x1 x2 y1 y2   $4d..$50 POST x1 x2 y1 y2
-;   $59 $5a PRE, POST on (0 = bypass)
+;   $40..$48 1/(2Q) table   $49..$4c PRE x1 x2 y1 y2   $4d PRE error feedback
+;   $59 PRE on (0 = bypass)   $5a PRE's K, gliding
 ; Y: ring at base..base+4094, coefficients at base+$2000 (5 per section),
-; the fixed 150 Hz PRE/POST high-pass at base+$2030, and FREQ's bandpass at
+; PRE's high-pass at base+$2030 (written each call), and FREQ's bandpass at
 ; base+$2035 (b0 0 -b0 -a1 -a2, halved), copied from $3c..$3e each call.
 ;
 ; Multiplies use only the canonical operand pairs (dsp_asm encodes the
@@ -58,19 +58,6 @@ bbzero:
         move    x:>$213,r4
         move    x:(r4),a
         move    a,x:(r7+$00)
-        move    #>$2030,x0
-        add     x0,a
-        move    a,r4                    ; the 150 Hz HPF, b0/2 b1/2 b2/2 -a1/2 -a2/2
-        move    #>$3f0a45,a
-        move    a,y:(r4)+
-        move    #>$81eb76,a
-        move    a,y:(r4)+
-        move    #>$3f0a45,a
-        move    a,y:(r4)+
-        move    #>$7e10da,a
-        move    a,y:(r4)+
-        move    #>$c1e7c7,a
-        move    a,y:(r4)+
         move    #>$10,a                 ; clear 16 x 256 words: the longest ring, 4,095
         move    a,x:(r7+$01)
         move    #>$5a5a5b,a
@@ -305,14 +292,13 @@ bbfrzdv:
         mpy     y0,x0,a
         add     b,a
         move    a,y1                    ; FDBK + h max(0, sustain - FDBK)
-; ---- LIM (page-2 slot 7, $c bits 8-15): the feedback governor. Above
+; ---- LIM (page-2 slot 8, $d's knob field): the feedback governor. Above
 ; T = 2^(-3.5v/127) (0: 1, off; 127: 2^-3.5, BBD08's 96) the expander's
 ; envelope scales FDBK by (T/env)^2, so a self-oscillating loop settles near
 ; T, even dB a value.
 ; Halves: T/2 against $0d = env/2.
-        move    x:(r6+$c),a
-        and     #>$007f00,a
-        asl     #$8,a,a
+        move    x:(r6+$d),a
+        and     #>$7f0000,a
         move    a,x0                    ; v/128
         move    #>$386ffc,y0            ; 3.5 * 128 / (127 * 8)
         mpy     y0,x0,a                 ; e/8, e = 3.5v/127 = 0..3.5
@@ -396,14 +382,32 @@ bblimok:
         tst     b
         tne     y1,a
         move    a,x:(r7+$3e)
-; ---- PRE (slot 9, $d bits 8-15) and POST (slot 10, $e knob): OFF/ON for the
-; fixed 150 Hz 2-pole HPFs (coefficients written by init)
-        move    x:(r6+$d),a
-        and     #>$007f00,a
-        move    a,x:(r7+$59)            ; PRE on
+; ---- PRE (page-2 slot 10, $e's knob field): 0 OFF, else a 2-pole Butterworth
+; HPF at 400 * 20^((v-127)/126) Hz (20..400). K = 2 tan(pi 400/sr) * 2^-e / 2,
+; e = log2(20) (127-v)/126, gliding 1/16 a call like FREQ; the section is
+; built after the rotation
         move    x:(r6+$e),a
         and     #>$7f0000,a
-        move    a,x:(r7+$5a)            ; POST on
+        move    a,x:(r7+$59)            ; PRE on
+        move    a,x0
+        move    #>$7f0000,a
+        sub     x0,a
+        move    a,x0                    ; (127 - v) / 128
+        move    #>$463f9d,y0            ; log2(20) * 128 / (126 * 8)
+        mpy     y0,x0,a                 ; e/8
+        bsr     bbexp2                  ; 2^-e / 2
+        move    a,x0
+        move    #>$074bf7,y0            ; 2 tan(pi 400 / 44100)
+        mpy     y0,x0,a
+        move    a,y1                    ; the target
+        move    x:(r7+$5a),b
+        sub     b,a
+        asr     #$4,a,a
+        add     b,a
+        move    x:(r7+$36),b            ; snap: straight to the target
+        tst     b
+        tne     y1,a
+        move    a,x:(r7+$5a)
 ; ---- TIME: P16 = A + B * value / 128 ---------------------------------------
         move    x:(r6),a
         and     #>$7f0000,a
@@ -500,6 +504,25 @@ bbrjoin:
         move    b,x:(r7+$3b)
 bbrend:
 bbcoefs:
+        move    x:(r7+$59),a            ; PRE OFF: its section waits, unused
+        tst     a
+        beq     bbpreok
+        move    x:(r7+$5a),a            ; PRE's section from its K: the low-pass's
+        move    a,x:(r7+$37)            ; poles (bbsect), then the high-pass numerator
+        move    a,x0
+        mpy     x0,x0,a
+        move    a,x:(r7+$38)
+        move    #>$5a827a,y1            ; 1/(2Q), Q = 1/sqrt(2)
+        lua     (r2+$30),r5
+        bsr     bbsect                  ; leaves y0 = 1/(2d)
+        lua     (r2+$30),r5
+        move    y0,y:(r5)+              ; b0/2 = 1/(2d)
+        move    y0,a
+        asl     a
+        neg     a
+        move    a,y:(r5)+               ; b1/2 = -1/d
+        move    y0,y:(r5)+              ; b2/2
+bbpreok:
         lua     (r2+$35),r5             ; the FREQ bandpass into Y for the loop:
         move    x:(r7+$3c),a            ; b0/2 0 -b0/2 -a1/2 -a2/2
         move    a,y:(r5)+
@@ -820,15 +843,6 @@ bbnotick:
         asl     a
         rnd     a                       ; a sub-LSB product of silence is 0, never -1
         move    a,x:(r7+$35)            ; wet / 2: FDBK reads it unlimited
-        move    x:(r7+$5a),b            ; POST: the HPF on wet/2, after FDBK's tap
-        tst     b
-        beq     bbpstoff
-        move    a,x0
-        lua     (r3+$4),r1
-        lua     (r2+$30),r5
-        bsr     bbhsec
-        move    x0,a
-bbpstoff:
 ; the output stage: linear to half scale, then 0.25 + e - e^2 at half scale
 ; (e = |wet/2| - 0.25, at most 0.5): exactly full scale, flat, from 1.5
         move    a,y1
@@ -884,7 +898,7 @@ bbend:
         move    #>$ffffff,m3
         rts
 
-; one DF1 section in the sample loop, no control transfer: x0 in and out,
+; PRE's DF1 section in the sample loop: x0 in and out,
 ; r1 -> x1 x2 y1 y2, r5 -> b0/2 b1/2 b2/2 -a1/2 -a2/2
 bbhsec:
         move    x:(r1)+,x1      y:(r5)+,y0
@@ -895,8 +909,11 @@ bbhsec:
         mac     x1,y0,a         x:(r1)-,x1      y:(r5)+,y0
         mac     x1,y0,a
         asl     a
-        rnd     a                       ; round, not truncate: the poles near DC
-        move    a,x0                    ; amplify a truncation bias by ~2,500
+        move    #0,x1                   ; error feedback: last sample's truncation goes
+        move    x:(r7+$4d),x0           ; back in, or the poles near DC (20 Hz) lift
+        add     x,a                     ; the rounding noise ~40 dB
+        move    a0,x:(r7+$4d)
+        move    a,x0
         move    x:(r1),x1
         move    x0,x:(r1)+
         move    x1,x:(r1)+

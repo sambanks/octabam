@@ -40,9 +40,16 @@ def poly3(c, u):
     return u * (c[0] + u * (c[1] + u * c[2]))
 
 
-# PRE/POST: one fixed 2-pole Butterworth HPF at 150 Hz, b0 b1 b2 a1 a2, as Q23 words
-HP_C = tuple(w / (1 << 23) * 2 * (1 if k < 3 else -1) for k, w in enumerate(
-    (0x3f0a45, 0x81eb76 - (1 << 24), 0x3f0a45, 0x7e10da, 0xc1e7c7 - (1 << 24))))
+# PRE: a 2-pole Butterworth HPF at 400 * 20^((v-127)/126) Hz; K = KMAX2 * 2^-e / 2 through
+# LIM's 2^-f fit, e = log2(20) (127-v)/126, from the DSP's Q23 words
+PRE_E8 = 0x463f9d / Q23                # e/8 per (127 - v)/128
+PRE_KMAX2 = 0x074bf7 / Q23             # 2 tan(pi 400 / sr)
+
+
+def hp_coefs(K):
+    """b0 b1 b2 a1 a2 of the HPF for K = tan(pi fc / sr)."""
+    d = 1 + math.sqrt(2) * K + K * K
+    return (1 / d, -2 / d, 1 / d, 2 * (K * K - 1) / d, (1 - math.sqrt(2) * K + K * K) / d)
 
 
 LIM_POW = (-0.019755, 0.1152969, -0.3455381, 0.4999493)   # 2^-f / 2, f = 0..1
@@ -97,7 +104,8 @@ class BBD:
         self.stage = None
         self.lcg = SEED
         self.probe = None                            # per-sample hook for tests: probe(self, v)
-        self.hp_s = [[0.0] * 4, [0.0] * 4]          # x1 x2 y1 y2
+        self.hp_s = [0.0] * 4                        # PRE x1 x2 y1 y2
+        self.pk = 0.0                                # PRE's K, gliding (zeroed by init only)
         self.reset()
 
     def reset(self):
@@ -121,7 +129,7 @@ class BBD:
 
     def call(self, frames, knobs):
         """frames: list of (L, R); knobs: 12 values 0..127.
-        TIME 0, FDBK 1, FRZ 2, TONE 3, FREQ 4, MIX 5, STGS 6, LIM 7, PRE 9, POST 10."""
+        TIME 0, FDBK 1, FRZ 2, TONE 3, FREQ 4, MIX 5, STGS 6, LIM 8, PRE 10."""
         sidx = min(knobs[6], 1)
         if self.clear:
             self.clear -= 1
@@ -155,7 +163,7 @@ class BBD:
         self.fb += ALPHA_S * (fb_t - self.fb)
         # LIM: above T = 2^(-3.5v/127) (0: off, 127: 2^-3.5) the expander's envelope scales
         # FDBK by (T/env)^2, so self-oscillation settles near T; even dB steps a value
-        e = 3.499782999565999 * knobs[7] / 127
+        e = 3.499782999565999 * knobs[8] / 127
         lim_t = 2 * horner(LIM_POW, e - int(e)) / 2 ** int(e)
         # FRZ below 127 fades the input out of the line and takes FDBK h of the way
         # up to sustain, 127/128 over TONE's peak gain (never down: an oscillating
@@ -167,8 +175,12 @@ class BBD:
         fu = knobs[4] / 128
         bp_t = [horner(c, fu) for c in (BP_B0H, BP_NA1H, BP_NA2H)]
         self.bpc = bp_t if self.snap else [c + ALPHA_S * (n - c) for c, n in zip(self.bpc, bp_t)]
-        # PRE (slot 9) and POST (slot 10): OFF/ON
-        hp_on = (knobs[9] > 0, knobs[10] > 0)
+        # PRE (slot 10): 0 OFF, else the HPF; K glides like FREQ
+        hp_on = knobs[10] > 0
+        e = 8 * PRE_E8 * (127 - knobs[10]) / 128
+        pk_t = PRE_KMAX2 * horner(LIM_POW, e - int(e)) / 2 ** int(e)
+        self.pk = pk_t if self.snap else self.pk + ALPHA_S * (pk_t - self.pk)
+        self.hp_c = hp_coefs(self.pk)
         # one of the nine sections follows the clock each call, all nine after a reset
         new = sections(self.p16 / Q23)
         if self.snap:
@@ -181,7 +193,7 @@ class BBD:
         for L, R in frames:
             self.p16 += ALPHA_G * (p_t - self.p16) >> 23
             self.mg += ALPHA_M * (m_t - self.mg)
-            mono = self._hp(0, (L + R) / 2, hp_on[0])
+            mono = self._hp((L + R) / 2, hp_on)
             # tone on the previous wet: tilt split + unity-peak bandpass
             w = self.wet
             self.l += LP200 * (w - self.l)
@@ -222,7 +234,7 @@ class BBD:
             self.dc_x = y
             self.avg_e += ALPHA_C * (abs(self.dc_y) - self.avg_e)
             self.wet = self.dc_y * self.avg_e
-            w = limit(self._hp(1, self.wet, hp_on[1]))
+            w = limit(self.wet)
             # MIX: the wet rises to unity by 64 with the dry whole, then the dry fades
             # out by 127; a sum past full scale saturates, as the DSP's move does
             gw, k = min(1.0, 2 * self.mg), max(0.0, 2 * self.mg - 1)
@@ -231,13 +243,13 @@ class BBD:
                 self.probe(self, v)
         return out
 
-    def _hp(self, i, x, on):
+    def _hp(self, x, on):
         if not on:                                   # skipped: its state waits
             return x
-        b0, b1, b2, a1, a2 = HP_C
-        x1, x2, y1, y2 = self.hp_s[i]
+        b0, b1, b2, a1, a2 = self.hp_c
+        x1, x2, y1, y2 = self.hp_s
         y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
-        self.hp_s[i] = [x, x1, y, y1]
+        self.hp_s = [x, x1, y, y1]
         return y
 
     @staticmethod

@@ -27,7 +27,7 @@ Gates:
   garbage     from an instance block pre-filled with garbage (verify_dirtystate.py's fills),
               silence renders exactly as from a zeroed block (the bucket noise: at most 2 LSB)
               and a tone starts like a zeroed start
-  zipper      TIME, FDBK, TONE and MIX jumped and turned under a steady tone: no block-rate
+  zipper      every continuous knob (PRE too) and TONE in the loop jumped and turned under a steady tone: no block-rate
               step above -70 dBFS and 6 dB over the knob held still (verify_knob_clicks.py)
   stock       DARK REV on both cores, fixed and moving, renders as on the stock OS
 """
@@ -68,7 +68,7 @@ KNOWN = registry.modules()
 MOD = KNOWN['BBD']
 NAMES = [p.name.decode() if p.name else '' for p in MOD.params]
 # BBD beside the stock effects (remixes/test/bbd): SPRING REV alone would hold BBD's
-# 1,044 words, but DARK REV calls a 35-word routine at SPRING REV+820, so PLATE REV goes too
+# 1,061 words, but DARK REV calls a 35-word routine at SPRING REV+820, so PLATE REV goes too
 # and BBD is placed from PLATE REV's start, clear of that routine (gate_stock_reverbs).
 DONORS = ('SPRING REV', 'PLATE REV')
 FR, SR = 16, 44100
@@ -287,8 +287,8 @@ CASES = (('TIME 0', dict(TIME=0), -60), ('TIME 64', dict(TIME=64), -60), ('TIME 
          ('FDBK 40, FRZ 64', dict(TIME=20, FDBK=40, FRZ=64), -40),
          ('FDBK 100, TONE 0, LIM 120', dict(TIME=20, FDBK=100, TONE=0, LIM=120), -40),
          ('MIX 32', dict(TIME=40, MIX=32), -60), ('MIX 96', dict(TIME=40, MIX=96), -60),
-         ('PRE ON', dict(TIME=40, FDBK=60, PRE=1), -60), ('POST ON', dict(TIME=40, FDBK=60, POST=1), -60),
-         ('PRE and POST ON', dict(TIME=40, FDBK=60, PRE=1, POST=1), -60))
+         ('PRE 1 (20 Hz)', dict(TIME=40, FDBK=60, PRE=1), -60), ('PRE 64', dict(TIME=40, FDBK=60, PRE=64), -60),
+         ('PRE 127 (400 Hz)', dict(TIME=40, FDBK=60, PRE=127), -60))
 
 
 def gate_reference(g, host, work):
@@ -448,7 +448,7 @@ def gate_garbage(g, host, work):
     blocks = 600
     silent = write_raw(work / 'g_silent.raw', [(0.0, 0.0)] * (blocks * FR))
     tone = write_raw(work / 'g_tone.raw', [(0.3 * math.sin(2 * math.pi * 438.75 * i / 44100),) * 2 for i in range(blocks * FR)])
-    sets = [knobs(), knobs(TIME=0, FDBK=127, TONE=0, MIX=127, STGS=1, PRE=1, POST=1)]
+    sets = [knobs(), knobs(TIME=0, FDBK=127, TONE=0, MIX=127, STGS=1, PRE=127)]
     zero = {}
     for k, kn in enumerate(sets):
         _, (z,) = host.run([dict(core=0, pos=0, knobs=kn)], blocks, [tone])

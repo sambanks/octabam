@@ -3,12 +3,13 @@
 A bucket-brigade delay for FX2, by JamCones (Cam Jones): a 2:1 compander,
 clock-tracking anti-alias and reconstruction filters at a third of the clock,
 a clocked bucket line with a charge-transfer curve and bucket noise, a
-resonant feedback tilt, a freeze and a feedback governor. 1,044 DSP words;
+resonant feedback tilt, a freeze, a feedback governor and an input high-pass.
+1,061 DSP words;
 `bbd.asm` is proven against a float model of the same chain, `bbd_ref.py`.
 
 The mono sum of the track goes through:
 
-1. **Input and compressor.** A tanh shapes the input (FDBK's returning wet is
+1. **Input and compressor.** PRE high-passes the input; a tanh shapes the input (FDBK's returning wet is
    added first), then a feedback compressor divides it by a 10 ms average of
    its own output: 2:1, as in the compander chips BBD delays use.
 2. **Anti-alias filter.** An 8th-order Butterworth low-pass at a third of the
@@ -35,14 +36,13 @@ the exact input.
 | main, D | TONE | −64–+63 (0) | The feedback tilt, ±9 dB at the ends, inside the loop only. Right: treble up and bass down about a 200 Hz pivot. Left: a bandpass peak at FREQ, Q 1.5. |
 | main, E | FREQ | 0–127 (64) | TONE's bandpass centre, 400 Hz to 2 kHz, logarithmic (64 is about 900 Hz). Heard only with TONE left of centre. |
 | main, F | MIX | 0–127 (40) | 0 is exactly dry. To 64 the wet rises to unity over the whole dry; from 64 to 127 the dry fades out. Smoothed per sample. |
-| SETUP, A | STGS | 1024 / 4096 (4096) | Bucket count. A change fades the wet out over 16 blocks, clears the line (about 6 ms, dry) and fades back in. |
-| SETUP, B | LIM | 0–127 (127) | The feedback governor, 0 off. Past an envelope of 2^(−3.5·LIM/127), FDBK is scaled by the square of the overshoot, so self-oscillation settles at a set level; at 127 it sits about 30 dB under LIM 0. |
-| SETUP, D | PRE | OFF / ON (OFF) | A 150 Hz 12 dB/oct high-pass on the signal entering the line. Drawn as stock DELAY's two-state switch (`formatter_word`/`widget_word`). |
-| SETUP, E | POST | OFF / ON (OFF) | The same high-pass on the wet output, after the feedback tap. Each costs nothing while OFF. |
+| SETUP, A | STGS | 1024 / 4096 (1024) | Bucket count. A change fades the wet out over 16 blocks, clears the line (about 6 ms, dry) and fades back in. |
+| SETUP, C | LIM | 0–127 (127) | The feedback governor, 0 off. Past an envelope of 2^(−3.5·LIM/127), FDBK is scaled by the square of the overshoot, so self-oscillation settles at a set level; at 127 it sits about 30 dB under LIM 0. |
+| SETUP, E | PRE | 0–127 (0) | 0 is off and costs nothing. Otherwise a 12 dB/oct Butterworth high-pass on the signal entering the line, 20 Hz at 1 to 400 Hz at 127, logarithmic (64 is about 90 Hz). Glides like FREQ. |
 
-FDBK, TONE and FREQ glide over about 6 ms; MIX glides per sample; TIME glides
-with the clock. `dear` is TIME 0, FDBK 127, TONE 0, FREQ 127, MIX 64, STGS
-4096 (`cycle_count.py` prices PRE and POST on).
+FDBK, TONE, FREQ and PRE glide over about 6 ms; MIX glides per sample; TIME
+glides with the clock. `dear` is TIME 0, FDBK 127, TONE 0, FREQ 127, MIX 64,
+STGS 4096, PRE 64 (`cycle_count.py` prices PRE on).
 
 ## Measured
 
@@ -53,7 +53,7 @@ and PLATE REV, as `remixes/test/bbd` places it):
 - **Exact dry:** MIX 0 renders the input sample for sample, static, with every
   other knob moving, and with trig splits (0 of 48,000 words differ).
 - **The DSP against `bbd_ref.py`:** −57 to −79 dB residual across TIME, STGS,
-  MIX, FDBK, TONE, FREQ, FRZ, LIM, PRE and POST; splits at 1, 7 and 15; STGS
+  MIX, FDBK, TONE, FREQ, FRZ, LIM and PRE (1, 64, 127); splits at 1, 7 and 15; STGS
   changed twice mid-signal; FRZ 127 mid-signal.
 - **Freeze:** a 0.5 s crossfade into FRZ 127 keeps a self-oscillating loop's
   level (+0.4 dB); FRZ 100 with TONE 0 and FDBK 20 lengthens the trails
@@ -66,24 +66,24 @@ and PLATE REV, as `remixes/test/bbd` places it):
 - **Garbage start:** silence from a garbage block renders exactly as from a
   zeroed one (at most 2 LSB, −132.5 dBFS: the bucket noise).
 - **Zipper:** no block-rate step on any continuous knob.
-- **Placement:** BBD at `P:0x01000..0x01414` (payload A) and
-  `P:0x00dc0..0x011d4` (B), inside PLATE REV's and SPRING REV's run and clear
+- **Placement:** BBD at `P:0x01000..0x01425` (payload A) and
+  `P:0x00dc0..0x011e5` (B), inside PLATE REV's and SPRING REV's run and clear
   of the 35 SPRING REV words DARK REV calls (`P:0x01586`, `P:0x01346`).
 - **DARK REV** renders bit-identically to the stock OS on both cores, fixed and
   moving. A layout with BBD in SPRING REV's space alone covers that routine and
   fails this gate (about 95 % of words differ).
 
-**Cost.** `cycle_count.py`: 401 cycles a sample per instance (the tick path,
-PRE and POST on), so four per core take 1,604 of the 3,120 usable. Executed in
-`dsp_host` (`benchmark_reverbs.run`, one instance per core, null stub
-subtracted; measured on the same DSP code in an earlier octabam tree): at most
-433.31 instructions a sample with a trig split, 406.38 unsplit, 370.38 at the
-defaults; SPRING REV 314.19, CHORUS 293.06 and DJ EQ 330.94 under the same
-cases. A 32 s stress render with BBD on all eight FX2 slots behind CHORUS on
-every FX1, three LFOs, 18 locked slots a sixteenth and trig splits on six
-tracks found no hang and no clobber; per-core peaks 2,774.8 and 2,802.4.
+**Cost.** `cycle_count.py`: 378 cycles a sample per instance (the tick path,
+PRE on), so four per core take 1,512 of the 3,120 usable. Executed in
+`dsp_host` (`benchmark_reverbs.run`, eight instances, four per core, its fixed,
+modulated and trig-split cases including every synchronised split): at most
+443.2 instructions a sample per instance (28,368 a block per core, synchronised
+splits at 1), 398.8 modulated unsplit, 373.8 at the defaults; SPRING REV
+318.4 under the same cases. PRE's section is rebuilt each call while it is on,
+so a split pays for it twice.
 
-**Sound.** Wet-only audit tables at TIME 0 and 127: harmonics −44 to −76 dBc,
+**Sound** (measured before PRE became variable and POST was removed; the
+wet path is otherwise the same code). Wet-only audit tables at TIME 0 and 127: harmonics −44 to −76 dBc,
 DC −85 to −140 dBFS, nothing on the rails, idle 2 LSB. The aliasing limit
 (−60 dBc) fails by design: a bucket brigade is a sampler clocked at 5–20 kHz,
 and the charge-transfer curve bends the held samples, so harmonics fold at the
@@ -93,15 +93,17 @@ clock (−44 dBc for 1.1 kHz at the fastest clock, −37 dBc at the slowest).
 
 The author played BBD on an Octatrack MKII, OS 1.40C, 11–12 October 2026, in
 images built by Modwerk's builder (derived from octabam) with BBD at FX2 id
-`0x0e`. **This remix's image (`0x1b`) has not been flashed**; its BBD code and
-placement are the same as the last image played.
+`0x0e`, before PRE became variable, POST was removed and LIM and PRE moved to
+SETUP C and E. **This remix's image (`0x1b`) and the current DSP have not been
+flashed.**
 
 - **BBD01–BBD02:** crackle on T1 and, after STGS changes, tracks 1–4 silent:
   the `rep` divides (FAILURE_MODES.md, "Crackle on core B"). **BBD03**, every
   `rep` a `do` loop: clean on T1 behind FILTER and PHASER, STGS clean on T1 and
   T5, a heavy existing project fine.
 - **BBD04–BBD13:** FRZ, FREQ, the ±9 dB TONE, LIM (range and default set by
-  ear), the MIX curve and PRE/POST (no switch-on thump) as intended.
+  ear), the MIX curve and the then fixed 150 Hz PRE/POST switches (no
+  switch-on thump) as intended.
 - **BBD14**, BBD beside the stock effects with SPRING REV and PLATE REV given
   up (`P:0x01000`/`P:0x00dc0`, as here): DARK REV works on FX2; two instances
   at once; eight instances (FX2 on all eight tracks) for 30 minutes with
@@ -111,8 +113,9 @@ placement are the same as the last image played.
 
 ## Open
 
-- This remix's image on a unit (the FX2 id and the surrounding tree differ
-  from BBD14).
+- This remix's image on a unit (the FX2 id, the surrounding tree, PRE, the
+  SETUP layout and the removal of POST differ from BBD14); the eight-instance
+  stress render on the current DSP.
 - LFO sweeps of controls other than FREQ, MIDI/USB load, MKI.
 - Real-chip headroom: the cycle figures are `cycle_count.py` bounds and
   `dsp_host` counts.
@@ -155,8 +158,11 @@ make check REMIX=bbd
   and FDBK becomes FDBK + h·max(0, S − FDBK), h = FRZ/128, S = (127/128) /
   TONE's peak gain. At 127 the line loops its own buckets. (Mixing old and new
   buckets instead combs a ringing loop down by 6–11 dB on a slow crossfade.)
-- PRE and POST round their output: the poles near DC would amplify a
-  truncation bias about 2,500 times.
+- PRE's K is 2 tan(π 400/sr) · 2^−e / 2 through LIM's 2^−f fit, gliding 1/16
+  a call; its section reuses the clock filters' Butterworth routine (same
+  poles) with a high-pass numerator. It feeds its truncation back in: at
+  20 Hz the poles near DC lift plain rounding noise about 40 dB (−42.6 dB
+  against the model without it, −67.8 dB with it).
 - No `rep` anywhere (`tools/build/norep.py`): every divide is a `do` loop.
 
 The charge-transfer curve follows Raffel's BBD paper (CCRMA, 2010); the noise
