@@ -12,6 +12,7 @@ MODULE=Module(
     proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "source/AMP/main on both cores and engine-browser/hidden-control gates",
     pressure_blocker="DSP source engines are outside the FX pressure pricer; "
                      "see modules/analog-bassdrum/CPU.md and benchmark_analog_bd.py",
+    dsp_source="tools/build/ab_image.py",
     linked=(
         Linked("abmachine", "modules/analog-bassdrum/machine.s", dram=True),
         Linked("abcontrol", "modules/analog-bassdrum/control.s", dram=True),
