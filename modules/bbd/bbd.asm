@@ -18,7 +18,7 @@
 ;
 ; Knobs: TIME r6+0, FDBK r6+1, FRZ r6+2, TONE r6+3, FREQ r6+4, MIX r6+5,
 ; STGS r6+$c (page-2 slot 6, knob field), LIM r6+$d (slot 8, knob field),
-; PRE r6+$e (slot 10, knob field), the stop kill's flag r6+$e bits 8-15 (hidden
+; HPF r6+$e (slot 10, knob field), the stop kill's flag r6+$e bits 8-15 (hidden
 ; slot 11: 127, 0 while the kill holds). A STGS change fades the wet out over 16
 ; calls, clears the ring (256 words a call, dry) and fades back in.
 ;
@@ -34,14 +34,14 @@
 ;   $1a..$1e their targets      $1f P16 target
 ;   $20..$29 AA boundaries (input, then after each of 4 sections; x1 x2)
 ;   $2a one-pole input x1      $2b..$34 recon boundaries (4 sections)
-;   $35 wet/2   $36 snap P16 to its target   $37 K   $38 K^2 (PRE's after the rotation)
+;   $35 wet/2   $36 snap P16 to its target   $37 K   $38 K^2 (HPF's after the rotation)
 ;   $39 FRZ hold   $3a FRZ 127   $3b rotation   $3c..$3e FREQ bandpass b0/2 -a1/2 -a2/2
 ;   $3f FDBK after LIM
 ;   ---- zeroed by init only ($40..$5a) ----
-;   $40..$48 1/(2Q) table   $49..$4c PRE x1 x2 y1 y2   $4d PRE error feedback
-;   $59 PRE on (0 = bypass)   $5a PRE's K, gliding
+;   $40..$48 1/(2Q) table   $49..$4c HPF x1 x2 y1 y2   $4d HPF error feedback
+;   $59 HPF on (0 = bypass)   $5a HPF's K, gliding
 ; Y: ring at base..base+4094, coefficients at base+$2000 (5 per section),
-; PRE's high-pass at base+$2030 (written each call), and FREQ's bandpass at
+; HPF's high-pass at base+$2030 (written each call), and FREQ's bandpass at
 ; base+$2035 (b0 0 -b0 -a1 -a2, halved), copied from $3c..$3e each call.
 ;
 ; Multiplies use only the canonical operand pairs (dsp_asm encodes the
@@ -396,13 +396,13 @@ bblimok:
         tst     b
         tne     y1,a
         move    a,x:(r7+$3e)
-; ---- PRE (page-2 slot 10, $e's knob field): 0 OFF, else a 2-pole Butterworth
+; ---- HPF (page-2 slot 10, $e's knob field): 0 OFF, else a 2-pole Butterworth
 ; HPF at 400 * 20^((v-127)/126) Hz (20..400). K = 2 tan(pi 400/sr) * 2^-e / 2,
 ; e = log2(20) (127-v)/126, gliding 1/16 a call like FREQ; the section is
 ; built after the rotation
         move    x:(r6+$e),a
         and     #>$7f0000,a
-        move    a,x:(r7+$59)            ; PRE on
+        move    a,x:(r7+$59)            ; HPF on
         move    a,x0
         move    #>$7f0000,a
         sub     x0,a
@@ -518,10 +518,10 @@ bbrjoin:
         move    b,x:(r7+$3b)
 bbrend:
 bbcoefs:
-        move    x:(r7+$59),a            ; PRE OFF: its section waits, unused
+        move    x:(r7+$59),a            ; HPF OFF: its section waits, unused
         tst     a
         beq     bbpreok
-        move    x:(r7+$5a),a            ; PRE's section from its K: the low-pass's
+        move    x:(r7+$5a),a            ; HPF's section from its K: the low-pass's
         move    a,x:(r7+$37)            ; poles (bbsect), then the high-pass numerator
         move    a,x0
         mpy     x0,x0,a
@@ -577,7 +577,7 @@ bbpreok:
         move    x:(r0+n0),x0
         add     x0,b
         asr     #$4,b,b
-        move    x:(r7+$59),a            ; PRE: the HPF on mono/8, skipped when OFF
+        move    x:(r7+$59),a            ; HPF: the HPF on mono/8, skipped when OFF
         tst     a
         beq     bbpreoff
         move    b,x0
@@ -912,7 +912,7 @@ bbend:
         move    #>$ffffff,m3
         rts
 
-; PRE's DF1 section in the sample loop: x0 in and out,
+; HPF's DF1 section in the sample loop: x0 in and out,
 ; r1 -> x1 x2 y1 y2, r5 -> b0/2 b1/2 b2/2 -a1/2 -a2/2
 bbhsec:
         move    x:(r1)+,x1      y:(r5)+,y0

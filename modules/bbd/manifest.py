@@ -6,7 +6,7 @@ clock, a bucket line clocked at 5.1..20.5 kHz (1,023 / 4,095 buckets
 read through a charge-transfer polynomial plus noise, held between ticks), a
 7th + 2nd order reconstruction filter at the same cutoff, a DC blocker and
 the expander. FDBK returns the wet through a feedback tilt (TONE, FREQ),
-governed by LIM; FRZ fades the input and sustains the loop, 127 loops the line; PRE is a
+governed by LIM; FRZ fades the input and sustains the loop, 127 loops the line; HPF is a
 20..400 Hz high-pass on the input (0 off).
 Free-running TIME: the DSP side has no tempo word.
 
@@ -52,7 +52,7 @@ MODULE = Module(
         Param(b"LIM", 127, active=True, formatter=Formatter.PLAIN,
               doc="feedback governor, 0 off: self-oscillation settles near 2^(-3.5v/127) of the envelope"),
         Param(b"", 0),
-        Param(b"PRE", 0, active=True, formatter=Formatter.PLAIN,
+        Param(b"HPF", 0, active=True, formatter=Formatter.PLAIN,
               doc="0 off, else a 12 dB/oct HPF on the signal entering the line, 20..400 Hz log"),
         Param(b"", 127),                     # hidden: the stop kill's flag, 0 while it holds (kill.s)
     ),
@@ -65,5 +65,5 @@ MODULE = Module(
                     "the stop kill's reverb test: BBD's id too, slot 11 only", pad_to=10),),
     harness=Harness(layout_char=None, is_server=False),
     gates=(Gate("tools/verify/verify_bbd.py", remix_arg=False),),
-    dear={"TIME": 0, "FDBK": 127, "TONE": 0, "FREQ": 127, "MIX": 64, "STGS": 1, "PRE": 64},
+    dear={"TIME": 0, "FDBK": 127, "TONE": 0, "FREQ": 127, "MIX": 64, "STGS": 1, "HPF": 64},
 )

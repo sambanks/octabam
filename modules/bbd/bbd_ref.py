@@ -40,7 +40,7 @@ def poly3(c, u):
     return u * (c[0] + u * (c[1] + u * c[2]))
 
 
-# PRE: a 2-pole Butterworth HPF at 400 * 20^((v-127)/126) Hz; K = KMAX2 * 2^-e / 2 through
+# HPF: a 2-pole Butterworth HPF at 400 * 20^((v-127)/126) Hz; K = KMAX2 * 2^-e / 2 through
 # LIM's 2^-f fit, e = log2(20) (127-v)/126, from the DSP's Q23 words
 PRE_E8 = 0x463f9d / Q23                # e/8 per (127 - v)/128
 PRE_KMAX2 = 0x074bf7 / Q23             # 2 tan(pi 400 / sr)
@@ -104,8 +104,8 @@ class BBD:
         self.stage = None
         self.lcg = SEED
         self.probe = None                            # per-sample hook for tests: probe(self, v)
-        self.hp_s = [0.0] * 4                        # PRE x1 x2 y1 y2
-        self.pk = 0.0                                # PRE's K, gliding (zeroed by init only)
+        self.hp_s = [0.0] * 4                        # HPF x1 x2 y1 y2
+        self.pk = 0.0                                # HPF's K, gliding (zeroed by init only)
         self.reset()
 
     def reset(self):
@@ -129,7 +129,7 @@ class BBD:
 
     def call(self, frames, knobs):
         """frames: list of (L, R); knobs: 12 values 0..127.
-        TIME 0, FDBK 1, FRZ 2, TONE 3, FREQ 4, MIX 5, STGS 6, LIM 8, PRE 10, kill flag 11 (0 = kill)."""
+        TIME 0, FDBK 1, FRZ 2, TONE 3, FREQ 4, MIX 5, STGS 6, LIM 8, HPF 10, kill flag 11 (0 = kill)."""
         sidx = min(knobs[6], 1)
         if knobs[11] == 0 and not self.clear:        # the stop kill: dry and clear now
             self.clear, self.fade = CLEAR_CALLS, 0
@@ -177,7 +177,7 @@ class BBD:
         fu = knobs[4] / 128
         bp_t = [horner(c, fu) for c in (BP_B0H, BP_NA1H, BP_NA2H)]
         self.bpc = bp_t if self.snap else [c + ALPHA_S * (n - c) for c, n in zip(self.bpc, bp_t)]
-        # PRE (slot 10): 0 OFF, else the HPF; K glides like FREQ
+        # HPF (slot 10): 0 OFF, else the HPF; K glides like FREQ
         hp_on = knobs[10] > 0
         e = 8 * PRE_E8 * (127 - knobs[10]) / 128
         pk_t = PRE_KMAX2 * horner(LIM_POW, e - int(e)) / 2 ** int(e)
