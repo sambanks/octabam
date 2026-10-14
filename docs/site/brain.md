@@ -84,7 +84,7 @@ key and first author.
 |---|---|
 | `BRAIN/card.work`, `BRAIN/card.strd` at the card root | card-scope settings; the `.strd` is the card-layer defaults, copied at SAVE PROJECT |
 | `<set>/<project>/brain.work`, `brain.strd` | project-scope settings; the project record |
-| `BRAIN/templates/` | template files (not built yet) |
+| template records in `BRAIN/card.work` | saved templates and card-wide defaults; standalone template import/export is not implemented |
 
 The pair rule: `.work` is the working copy, `.strd` the last saved. A
 damaged `.work` falls back to its `.strd`; a damaged pair falls back to the

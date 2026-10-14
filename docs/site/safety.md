@@ -1,10 +1,10 @@
 # Safety and recovery
 
-## Recovery always works
+## Recovery procedure
 
-The Startup Menu is the bootloader and lives in flash the OS upgrade never
-touches, so the unit can always be returned to stock, even with a corrupt
-OS ("Z" screen, no boot, a hang):
+The Startup Menu is separate from the operating system and provides a way
+to reinstall stock if the modified OS will not boot. Recovery requires a
+working Startup Menu, a DIN MIDI interface, and a copy of the stock OS:
 
 1. Power off. Hold FUNC and power on → STARTUP MENU.
 2. TRIG 3 → MIDI UPGRADE → "READY TO RECEIVE MIDI UPGRADE".
@@ -13,9 +13,9 @@ OS ("Z" screen, no boot, a hang):
    `make midi-flash PORT=<port> SYX=downloads/extracted/OCTATRACK_OS1.40C.syx`.
 4. Wait through PREPARING FLASH → UPDATING FLASH. Do not power off.
 
-The Octatrack's own USB port does not take an OS upgrade: recovery is over
-DIN MIDI, or over the CF card if the unit boots far enough for USB DISK
-MODE.
+If the unit still boots far enough to enter USB DISK MODE, you can also
+install from the CF card. The Octatrack's USB port cannot send an OS
+upgrade.
 
 TRIG 2 → EMPTY RESET clears battery-backed RAM and settings, not the card.
 
@@ -45,4 +45,6 @@ A built `.bin` or `.syx` contains Elektron's OS. Distributing it would
 distribute their software, so you build it yourself from your own copy.
 
 **Where are hardware failures recorded?**
-The failure register: https://github.com/sambanks/octabam/blob/main/docs/contributing/FAILURE_MODES.md
+The [failure register](https://github.com/sambanks/octabam/blob/main/docs/contributing/FAILURE_MODES.md)
+records observed failures, causes and fixes. It cannot guarantee that a
+particular unit or flash attempt will recover.

@@ -40,6 +40,6 @@ Start here:
   switching remixes from the card.
 - [Modules reference](reference/modules.md) — every module, credited to its
   author, with its proof status.
-- [Safety and recovery](safety.md) — how to get back to stock, always.
+- [Safety and recovery](safety.md) — the recovery procedure and its limits.
 
 The repository: https://github.com/sambanks/octabam

@@ -1,4 +1,4 @@
-# Build the manual site (MkDocs Material) from the manifests and deploy it
+# Build the manual site (MkDocs shadcn) from the manifests and deploy it
 # to GitHub Pages. The generated pages under the reference directory are not
 # checked in: the generator renders them from this commit's manifests, so
 # the site and the tree cannot drift. PRs build the same site without

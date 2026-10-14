@@ -7,7 +7,13 @@ site_dir: ../../out/site
 # the _remix-*.md fragments are snippet includes, not pages
 exclude_docs: reference/_remix-*.md
 theme:
-  name: material
+  name: shadcn
+  # The theme follows the system appearance; its header toggle can override it.
+  show_title: true
+  show_stargazers: false
+  pygments_style:
+    light: shadcn-light
+    dark: github-dark
 nav:
   - Home: index.md
   - Choosing a remix: choosing.md

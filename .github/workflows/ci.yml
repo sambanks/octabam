@@ -72,7 +72,7 @@ jobs:
       - run: make verify-docs
 
   site:
-    # The manual site builds: the generator runs the registry, and
+    # The manual site builds with MkDocs shadcn: the generator runs the registry, and
     # mkdocs --strict fails on a bad manifest, a broken link or a broken
     # snippet include. The deploy is the Pages workflow on main; a PR
     # builds without deploying.
