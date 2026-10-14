@@ -18,6 +18,7 @@ Gates:
               24-bit filter state noise is -56 dB; -40 dB with feedback)
   splits      a trig split in every block matches the model split alike
   stages      STGS changed twice mid-signal: fade, clear and fade back match the model
+  kill        the stop kill (hidden slot 11 at 0): dry exactly while it holds, no tail after
   freeze      FRZ 127 mid-signal: matches the model, the loop sustains, new input stays out
   idle        after a burst the repeats die away below -90 dBFS; FDBK 127 at TONE 0
               self-oscillates without reaching full scale, and LIM 127 (the default)
@@ -68,7 +69,7 @@ KNOWN = registry.modules()
 MOD = KNOWN['BBD']
 NAMES = [p.name.decode() if p.name else '' for p in MOD.params]
 # BBD beside the stock effects (remixes/test/bbd): SPRING REV alone would hold BBD's
-# 1,061 words, but DARK REV calls a 35-word routine at SPRING REV+820, so PLATE REV goes too
+# 1,075 words, but DARK REV calls a 35-word routine at SPRING REV+820, so PLATE REV goes too
 # and BBD is placed from PLATE REV's start, clear of that routine (gate_stock_reverbs).
 DONORS = ('SPRING REV', 'PLATE REV')
 FR, SR = 16, 44100
@@ -328,6 +329,38 @@ def gate_stages(g, host, work):
             f'{res:.1f} dB through two fades and clears')
 
 
+def gate_kill(g, host, work):
+    """The stop kill (kill.s zeroes hidden slot 11 while it holds): a ringing tail after the
+    the input, wet only; the kill from block 2000 (the input still playing) to 3300 (past its
+    end, 2756): the input exactly while it holds, no tail after it, as the model; the same
+    render without the kill still rings there."""
+    sig = signal(1.0)
+    sig += [(0.0, 0.0)] * (4 * SR // FR * FR - len(sig))
+    blocks = len(sig) // FR
+    live = knobs(TIME=20, FDBK=110, MIX=127)
+    dead = list(live)
+    dead[11] = 0
+    at, until = 2000, 3300
+    for tag, calls in (('kill', [live] * at + [dead] * (until - at) + [live] * (blocks - until)),
+                       ('none', [live] * blocks)):
+        pf = work / f'kill_{tag}.csv'
+        pf.write_text('\n'.join(','.join(map(str, [b, *k])) for b, k in enumerate(calls)) + '\n')
+        _, (out,) = host.run([dict(core=0, pos=0, knobs=calls[0], paramfile=pf)], blocks,
+                             [write_raw(work / 'kill_in.raw', sig)])
+        after = max(map(abs, out[2 * FR * (until + 16):]))
+        if tag == 'none':
+            g.check('kill: without the kill the tail still rings after block 3316', dbfs(after) > -60,
+                    f'peak {dbfs(after):.1f} dBFS')
+            continue
+        res = residual_db(out, reference(sig, calls), (LEAD + 64) * FR)
+        held = list(out[2 * FR * at:2 * FR * until])
+        dry = [max(-FS - 1, min(FS, int(round(v * FS)))) for f in sig[FR * at:FR * until] for v in f]
+        g.check('kill: matches the model through the kill and its release', res < -60, f'{res:.1f} dB')
+        g.check('kill: the input exactly while it holds', held == dry,
+                f'{sum(1 for a, b in zip(held, dry) if a != b)} of {len(dry)} words differ')
+        g.check('kill: no tail after its release', dbfs(after) < -100, f'peak {dbfs(after):.1f} dBFS')
+
+
 def gate_idle(g, host, work):
     burst = signal(10.0, seed=3)
     for i in range(LEAD * FR + SR // 2, len(burst)):
@@ -554,7 +587,7 @@ def main():
         mems = {c: send_probe.dump_mem(image, work / f'mem_{t}.mem', t) for c, t in ((0, 'A'), (1, 'B'))}
         gate_placement(g, log)
         host = Host(mems, work)
-        for gate in (gate_dry, gate_reference, gate_splits, gate_stages, gate_freeze, gate_idle, gate_isolation, gate_garbage, gate_zipper, gate_stock_reverbs):
+        for gate in (gate_dry, gate_reference, gate_splits, gate_stages, gate_kill, gate_freeze, gate_idle, gate_isolation, gate_garbage, gate_zipper, gate_stock_reverbs):
             gate(g, host, work)
     print(f"== bbd: {'all gates pass' if not g.failed else str(len(g.failed)) + ' failed: ' + ', '.join(g.failed)}")
     return 1 if g.failed else 0

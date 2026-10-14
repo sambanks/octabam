@@ -4,7 +4,7 @@ A bucket-brigade delay for FX2, by JamCones (Cam Jones): a 2:1 compander,
 clock-tracking anti-alias and reconstruction filters at a third of the clock,
 a clocked bucket line with a charge-transfer curve and bucket noise, a
 resonant feedback tilt, a freeze, a feedback governor and an input high-pass.
-1,061 DSP words;
+1,075 DSP words and a 32-byte ColdFire stub (`kill.s`);
 `bbd.asm` is proven against a float model of the same chain, `bbd_ref.py`.
 
 The mono sum of the track goes through:
@@ -40,13 +40,22 @@ the exact input.
 | SETUP, C | LIM | 0–127 (127) | The feedback governor, 0 off. Past an envelope of 2^(−3.5·LIM/127), FDBK is scaled by the square of the overshoot, so self-oscillation settles at a set level; at 127 it sits about 30 dB under LIM 0. |
 | SETUP, E | PRE | 0–127 (0) | 0 is off and costs nothing. Otherwise a 12 dB/oct Butterworth high-pass on the signal entering the line, 20 Hz at 1 to 400 Hz at 127, logarithmic (64 is about 90 Hz). Glides like FREQ. |
 
+**The stop kill.** STOP, STOP, STOP silences the stock reverbs' and DELAY's
+tails; it silences BBD's too. The ColdFire's frame pass at `0x40004d0c` zeroes
+slots A, F and 11 of every track in the kill mask (`0x8000184b`: all eight
+from stop-and-rewind, each cleared when its track triggers again) whose FX2
+is PLATE, SPRING or DARK REV. `kill.s` (a detour there) adds BBD's id and
+zeroes its slot 11 only: a hidden slot that is 127 otherwise. While it reads 0
+BBD outputs the input exactly and clears its line and state (the STGS clear,
+no fade), so nothing rings on when the track plays again.
+
 FDBK, TONE, FREQ and PRE glide over about 6 ms; MIX glides per sample; TIME
 glides with the clock. `dear` is TIME 0, FDBK 127, TONE 0, FREQ 127, MIX 64,
 STGS 4096, PRE 64 (`cycle_count.py` prices PRE on).
 
 ## Measured
 
-All 47 gates of `tools/verify/verify_bbd.py` pass on this tree (`dsp_host`, a
+All 51 gates of `tools/verify/verify_bbd.py` pass on this tree (`dsp_host`, a
 private image with the stock code built in and BBD in the space of SPRING REV
 and PLATE REV, as `remixes/test/bbd` places it):
 
@@ -55,6 +64,13 @@ and PLATE REV, as `remixes/test/bbd` places it):
 - **The DSP against `bbd_ref.py`:** −57 to −79 dB residual across TIME, STGS,
   MIX, FDBK, TONE, FREQ, FRZ, LIM and PRE (1, 64, 127); splits at 1, 7 and 15; STGS
   changed twice mid-signal; FRZ 127 mid-signal.
+- **Stop kill:** slot 11 at 0 from block 2000 to 3300 over a ringing loop
+  (FDBK 110): the input exactly while it holds (0 of 41,600 words differ), no
+  tail after (−102.4 dBFS; −44.0 dBFS without the kill), the model at −74.4 dB.
+  Under the ColdFire port (`ot_emu`, this remix's image, a project's T1 with
+  its FX2 id poked to BBD's, STOP three times): from the kill on, only record
+  byte +53 (slot 11) is zeroed, by `kill.s`, every frame; with DARK REV's id
+  the stock pass zeroes +24, +34 and +53 as before.
 - **Freeze:** a 0.5 s crossfade into FRZ 127 keeps a self-oscillating loop's
   level (+0.4 dB); FRZ 100 with TONE 0 and FDBK 20 lengthens the trails
   without droning (−97.7 dBFS at 8.5–10 s).
@@ -66,8 +82,8 @@ and PLATE REV, as `remixes/test/bbd` places it):
 - **Garbage start:** silence from a garbage block renders exactly as from a
   zeroed one (at most 2 LSB, −132.5 dBFS: the bucket noise).
 - **Zipper:** no block-rate step on any continuous knob.
-- **Placement:** BBD at `P:0x01000..0x01425` (payload A) and
-  `P:0x00dc0..0x011e5` (B), inside PLATE REV's and SPRING REV's run and clear
+- **Placement:** BBD at `P:0x01000..0x01433` (payload A) and
+  `P:0x00dc0..0x011f3` (B), inside PLATE REV's and SPRING REV's run and clear
   of the 35 SPRING REV words DARK REV calls (`P:0x01586`, `P:0x01346`).
 - **DARK REV** renders bit-identically to the stock OS on both cores, fixed and
   moving. A layout with BBD in SPRING REV's space alone covers that routine and
@@ -113,6 +129,9 @@ flashed.**
 
 ## Open
 
+- The stop kill on a unit: that the record's slot 11 byte is what the DSP
+  reads at `x:(r6+$e)` bits 8-15 is inferred from the slot layout and the stock
+  reverbs' own test of bit 8 there, not traced end to end.
 - This remix's image on a unit (the FX2 id, the surrounding tree, PRE, the
   SETUP layout and the removal of POST differ from BBD14); the eight-instance
   stress render on the current DSP.
@@ -132,7 +151,7 @@ flashed.**
 ## Gates
 
 ```bash
-python3 tools/verify/verify_bbd.py      # 47 render gates (make check runs them)
+python3 tools/verify/verify_bbd.py      # 51 render gates (make check runs them)
 make check REMIX=bbd
 ```
 

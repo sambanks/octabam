@@ -18,7 +18,8 @@
 ;
 ; Knobs: TIME r6+0, FDBK r6+1, FRZ r6+2, TONE r6+3, FREQ r6+4, MIX r6+5,
 ; STGS r6+$c (page-2 slot 6, knob field), LIM r6+$d (slot 8, knob field),
-; PRE r6+$e (slot 10, knob field). A STGS change fades the wet out over 16
+; PRE r6+$e (slot 10, knob field), the stop kill's flag r6+$e bits 8-15 (hidden
+; slot 11: 127, 0 while the kill holds). A STGS change fades the wet out over 16
 ; calls, clears the ring (256 words a call, dry) and fades back in.
 ;
 ; ---- r7 slots ($00..$5a; the OS allows $00..$83) --------------------------
@@ -84,6 +85,19 @@ proc:
         move    #>$ffffff,m1            ; r1, r4, r5 walk linearly until the loop
         move    #>$ffffff,m4
         move    #>$ffffff,m5
+; ---- the stop kill (kill.s): hidden slot 11 ($e bits 8-15) is 127, 0 while
+; the kill holds: cut to dry and clear now, no fade; again while it holds
+        move    x:(r6+$e),a
+        and     #>$007f00,a
+        bne     bblive
+        move    x:(r7+$01),a
+        tst     a
+        bne     bblive
+        move    #>$10,a
+        move    a,x:(r7+$01)
+        clr     a
+        move    a,x:(r7+$02)
+bblive:
 ; ---- clearing: dry, 256 ring words a call; the last call resets ----------
         move    x:(r7+$01),a
         tst     a

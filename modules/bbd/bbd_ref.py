@@ -129,8 +129,10 @@ class BBD:
 
     def call(self, frames, knobs):
         """frames: list of (L, R); knobs: 12 values 0..127.
-        TIME 0, FDBK 1, FRZ 2, TONE 3, FREQ 4, MIX 5, STGS 6, LIM 8, PRE 10."""
+        TIME 0, FDBK 1, FRZ 2, TONE 3, FREQ 4, MIX 5, STGS 6, LIM 8, PRE 10, kill flag 11 (0 = kill)."""
         sidx = min(knobs[6], 1)
+        if knobs[11] == 0 and not self.clear:        # the stop kill: dry and clear now
+            self.clear, self.fade = CLEAR_CALLS, 0
         if self.clear:
             self.clear -= 1
             if not self.clear:
