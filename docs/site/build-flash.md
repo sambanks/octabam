@@ -6,10 +6,15 @@ version of the [detailed build guide](https://github.com/sambanks/octabam/blob/m
 which includes Linux/WSL2 setup and toolchain notes.
 
 !!! warning "This is not official Elektron firmware"
-    Flashing a modified OS can leave the unit unusable until you recover it
-    ([Safety and recovery](safety.md)), and puts your warranty in
-    question. You flash at your own risk. **Do not share a built image**: a
-    built `.bin` or `.syx` contains Elektron's OS.
+    octabam is community software and is not supported by Elektron. Over
+    several months, hundreds of people have used octabam remixes and made
+    their own. We have no reports of an irrecoverable brick; every reported
+    failure to boot has been recovered with the Startup Menu's emergency
+    MIDI flash. A failed flash can still leave the installed OS unable to
+    boot until recovery. Keep a known-good stock OS image available. The
+    project maintainers are not responsible for damage or data loss. See
+    [Safety and recovery](safety.md) before flashing. **Do not share a built
+    image**: a built `.bin` or `.syx` contains Elektron's OS.
 
 ## What you need
 

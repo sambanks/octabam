@@ -1,5 +1,19 @@
 # Safety and recovery
 
+## Track record and limits
+
+Over several months, hundreds of people have used octabam remixes and made
+their own. We have no reports of an irrecoverable brick; every reported
+failure to boot has been recovered with the Startup Menu's emergency MIDI
+flash. This is project experience, not a guarantee for every unit or future
+flash attempt. A failed flash can leave the installed OS unable to boot
+until it is reinstalled. The recovery path requires a working Startup Menu,
+a DIN MIDI interface, and a copy of the stock OS.
+
+The project is community maintained and is not supported by Elektron. By
+flashing, you accept the risk; project maintainers are not responsible for
+damage or data loss.
+
 ## Recovery procedure
 
 The Startup Menu is separate from the operating system and provides a way

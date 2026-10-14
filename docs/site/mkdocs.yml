@@ -15,17 +15,21 @@ theme:
     light: shadcn-light
     dark: github-dark
 nav:
-  - Home: index.md
-  - Choosing a remix: choosing.md
+  - Get started:
+      - Overview: index.md
+      - Choose a remix: choosing.md
+      - Build and flash: build-flash.md
+      - Safety and recovery: safety.md
   - Remixes:
       - octabam-core: remix-core.md
       - octabam-inserts: remix-inserts.md
       - octabam-bus: remix-bus.md
-  - BRAIN: brain.md
-  - Modules reference: reference/modules.md
-  - Build and flash: build-flash.md
-  - Safety and recovery: safety.md
-  - Credits: reference/credits.md
+  - Customize:
+      - Build your own remix: own-remix.md
+      - BRAIN: brain.md
+  - Reference:
+      - Modules: reference/modules.md
+      - Credits: reference/credits.md
 markdown_extensions:
   - admonition
   - pymdownx.superfences:

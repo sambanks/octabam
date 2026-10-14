@@ -11,9 +11,14 @@ build, byte for byte. No firmware is distributed here: a built image contains
 Elektron's OS, so you build it yourself, on your machine.
 
 !!! warning "This is not official Elektron firmware"
-    Flashing a modified OS can leave the unit unusable until you recover it
-    ([Safety and recovery](safety.md)), and puts your warranty in
-    question. You flash at your own risk.
+    octabam is community software and is not supported by Elektron. Over
+    several months, hundreds of people have used octabam remixes and made
+    their own. We have no reports of an irrecoverable brick; every reported
+    failure to boot has been recovered with the Startup Menu's emergency
+    MIDI flash. A failed flash can still leave the installed OS unable to
+    boot until recovery. Keep a known-good stock OS image available. The
+    project maintainers are not responsible for damage or data loss. See
+    [Safety and recovery](safety.md) before flashing.
 
     **Do not share a built image.** A built `.bin` or `.syx` contains
     Elektron's OS.
@@ -35,6 +40,8 @@ delay and reverb bus without the core modules — which ran on Sam's MKII
 Start here:
 
 - [Choosing a remix](choosing.md) — the three compared.
+- [Build your own remix](own-remix.md) — combine existing modules, check
+  compatibility, and build a custom selection.
 - [Build and flash](build-flash.md) — from nothing installed to a flashed unit.
 - [BRAIN](brain.md) — the on-unit screens: templates, settings, defaults, and
   switching remixes from the card.
