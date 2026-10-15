@@ -2,8 +2,9 @@
 """EUCLID FILL: Euclidean bit patterns + UI contract (fast, no port).
 
 Math matches modules/euclid/control.c. UI checks audit euclid_fill.s so the
-popup keeps filter-EUCLID names (STEPS / PULSE / ROT), STEPS locked to
-pattern length, encoder A=PULSE / B=ROT / LEVEL=focused, and the key layer.
+popup keeps filter-EUCLID names (STEPS / PULSE / ROT / RAND VEL / RAND PTCH), STEPS
+locked to pattern length, encoder A=PULSE / B=ROT / C=RAND VEL / D=RAND PTCH /
+LEVEL=focused, and the key layer.
 """
 
 from __future__ import annotations
@@ -42,6 +43,11 @@ def pattern(n: int, k: int, rot: int = 0) -> list[int]:
     return out
 
 
+def vel_lock(pct: int, r: int) -> int:
+    """AMP VOL lock from RAND VEL and r in 0..63 → display delta -63..0."""
+    return 64 - (r * pct) // 100
+
+
 def _block(src: str, start: str, end: str | None = None) -> str:
     i = src.find(start)
     if i < 0:
@@ -55,85 +61,170 @@ def _block(src: str, start: str, end: str | None = None) -> str:
 def check_ui(src: str) -> None:
     print("UI contract (euclid_fill.s):")
 
-    # Labels — filter EUCLID vocabulary; no ROTATION
-    for lab, text in (("L_STEPS", "STEPS"), ("L_PULSES", "PULSE"), ("L_ROT", "ROT")):
+    for lab, text in (
+        ("L_STEPS", "STEPS"),
+        ("L_PULSES", "PULSE (A)"),
+        ("L_ROT", "ROT (B)"),
+        ("L_VEL", "RAND VEL (C)"),
+        ("L_PIT", "RAND PTCH (D)"),
+    ):
         m = re.search(rf"{lab}:\s*\.asciz\s+\"([^\"]*)\"", src)
         check(f"label {lab}", m is not None and m.group(1) == text,
               m.group(1) if m else "missing")
     check("no ROTATION string", "ROTATION" not in src)
 
-    # Window geometry (TEMPO-class compact box)
-    for name, val in (("WINW", 92), ("WINH", 54), ("Y_ROW0", 30),
-                      ("Y_ROW1", 22), ("Y_ROW2", 14)):
-        m = re.search(rf"\.set\s+{name},\s*(\d+)", src)
-        check(f"layout {name}={val}", m is not None and int(m.group(1)) == val,
-              m.group(1) if m else "missing")
+    for name, val in (
+        ("WINW", 92), ("WINH", 64),
+        ("Y_ROW0", 41), ("Y_ROW1", 34), ("Y_ROW2", 27), ("Y_ROW3", 20),
+        ("Y_ROW4", 13),
+        ("LOCK0", 0x59), ("LOCK_STEP", 32), ("LOCK_VOL", 15), ("LOCK_PTCH", 0),
+    ):
+        m = re.search(rf"\.set\s+{name},\s*(0x[0-9a-fA-F]+|\d+)", src)
+        got = int(m.group(1), 0) if m else None
+        check(f"layout {name}={val}", got == val, str(got) if got is not None else "missing")
 
-    # Defaults: STEPS seed 16, PULSE 5 (filter EUCLID), ROT 0
     check("default ef_pulses=5",
           re.search(r"ef_pulses:\s*\.long\s+5\b", src) is not None)
     check("default ef_rot=0",
           re.search(r"ef_rot:\s*\.long\s+0\b", src) is not None)
     check("default ef_steps=16",
           re.search(r"ef_steps:\s*\.long\s+16\b", src) is not None)
+    check("default ef_velrnd=0",
+          re.search(r"ef_velrnd:\s*\.long\s+0\b", src) is not None)
+    check("default ef_pitrnd=0",
+          re.search(r"ef_pitrnd:\s*\.long\s+0\b", src) is not None)
 
-    # STEPS locked: sync on open / draw / fill / nudge; nudge never targets ef_steps
     for site in ("ef_open", "ef_draw", "ef_fill", "ef_nudge"):
         i = src.find(f"{site}:")
         check(f"{site} calls ef_sync_len",
               i >= 0 and "ef_sync_len" in src[i:i + 800])
 
     nudge = _block(src, "ef_nudge:", "ef_nudge_rts:")
-    check("ef_nudge edits PULSE/ROT only",
+    check("ef_nudge edits PULSE/ROT/RAND VEL/RAND PTCH",
           "lea     ef_pulses" in nudge and "lea     ef_rot" in nudge
+          and "lea     ef_velrnd" in nudge and "lea     ef_pitrnd" in nudge
           and "lea     ef_steps" not in nudge)
-    # ef_sync_len clobbers d0-d3; delta must survive on the stack (hw:
-    # encoders one-way + L/R dead when parked in d2 alone).
     check("ef_nudge parks delta across ef_sync_len",
           re.search(
               r"movel\s+%d0,-\(%sp\).*?bsr\.w\s+ef_sync_len.*?movel\s+\(%sp\)\+,%d2",
               nudge, re.S) is not None)
+    check("editing PULSE clears ef_free", "clrl    ef_free" in nudge)
+    check("RAND VEL/RAND PTCH clamps to 100",
+          re.search(r"moveq\s+#100,%d3", nudge) is not None)
 
-    # Cursor is 0=PULSE / 1=ROT (two rows), not three including STEPS
-    check("cursor toggles 0<->1 (eoril #1)",
-          re.search(r"ef_down:.*?eoril\s+#1", src, re.S) is not None)
+    # Cursor wraps 0..3 (PULSE/ROT/RAND VEL/RAND PTCH)
+    down = _block(src, "ef_down:", "ef_left:")
+    check("cursor cycles 0..3",
+          "addql   #1,%d0" in down and "moveq   #4,%d1" in down)
+    up = _block(src, "ef_up:", "ef_down:")
+    check("cursor wrap to RAND PTCH",
+          re.search(r"moveq\s+#3,%d0", up) is not None)
 
-    # Key layer: PAGE / YES / NO / UP / DOWN / LEFT / RIGHT
     keys = _block(src, "EF_KEYS:", "EF_ENCS:")
     for code, handler in (
-        ("0x1b", "ef_close"),   # PAGE
+        ("0x1b", "ef_close"),
         ("0x31", "ef_yes"),
         ("0x32", "ef_no"),
         ("0x33", "ef_up"),
         ("0x20", "ef_down"),
         ("0x34", "ef_left"),
         ("0x21", "ef_right"),
+        ("0x2a", "ef_cue"),
     ):
         check(f"key {code} -> {handler}",
               re.search(rf"\.byte\s+{code},.*?\n\s*\.long\s+{handler}\b", keys, re.S)
               is not None)
 
-    # Encoders: A=0 ef_enc, B=1 ef_enc, LEVEL=6 ef_level
+    cue = _block(src, "ef_cue:", "ef_rng:")
+    check("ef_cue fills ef_mask", "ef_mask" in cue)
+    check("ef_cue sets ef_free", "ef_free" in cue)
+    check("ef_cue uses LCG (ef_rng)", "ef_rng" in cue)
+    check("ef_cue respects ef_pulses (k-subset)",
+          "ef_pulses" in cue and "clrl    ef_pulses" not in cue)
+    check("ef_hit serves free + Euclid",
+          "ef_hit:" in src and "ef_free" in _block(src, "ef_hit:", "ef_enc:"))
+
     encs = _block(src, "EF_ENCS:", "T_TITLE:")
     check("encoder A (0) -> ef_enc",
           re.search(r"\.byte\s+0,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
     check("encoder B (1) -> ef_enc",
           re.search(r"\.byte\s+1,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
+    check("encoder C (2) -> ef_enc",
+          re.search(r"\.byte\s+2,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
+    check("encoder D (3) -> ef_enc",
+          re.search(r"\.byte\s+3,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
     check("encoder LEVEL (6) -> ef_level",
           re.search(r"\.byte\s+6,\s*0[^\n]*\n\s*\.long\s+ef_level\b", encs) is not None)
-    check("ef_enc focuses cursor from index",
-          re.search(r"ef_enc:.*?movel\s+%d1,ef_cursor", src, re.S) is not None)
+    check("ef_enc accepts A/B/C/D",
+          re.search(r"ef_enc:.*?moveq\s+#3,%d0", src, re.S) is not None)
 
-    # Draw paints all three labels
     draw = _block(src, "ef_draw:", "ef_fill:")
-    for lab in ("L_STEPS", "L_PULSES", "L_ROT"):
+    for lab in ("L_STEPS", "L_PULSES", "L_ROT", "L_VEL", "L_PIT"):
         check(f"draw uses {lab}", f"lea     {lab}" in draw or f"lea\t{lab}" in draw)
+    check("RAND VEL/RAND PTCH values use %d%%",
+          "VFMT_PCT" in draw and '"%d%%"' in src)
 
-    # Pattern-length sources (NORMAL / PER TRACK)
+    write = _block(src, "ef_write_mask:", "ef_bit_addr:")
+    check("write_mask writes LOCK_VOL", "LOCK_VOL" in write)
+    check("write_mask reads ef_velrnd", "ef_velrnd" in write)
+    check("write_mask uses r 0..63 (andil #0x3f)",
+          "0x3f" in write or "#0x3f" in write)
+    check("write_mask VOL = 64 - drop",
+          re.search(r"moveq\s+#64,%d1", write) is not None
+          and re.search(r"subl\s+%d0,%d1", write) is not None)
+    check("write_mask calls ef_write_ptch", "ef_write_ptch" in write)
+    check("ef_write_ptch guards SCALE_AT",
+          "SCALE_AT" in write and "0x4ef9" in write)
+    check("ef_write_ptch writes LOCK_PTCH", "LOCK_PTCH" in write)
+    ptch = _block(src, "ef_write_ptch:", "ef_bit_addr:")
+    check("ef_write_ptch is a range knob (rad = max_rad*pct/100)",
+          re.search(r"mulu\.w\s+%d3,%d0", ptch) is not None
+          and re.search(r"divu\.l\s+%d1,%d0", ptch) is not None
+          and "ep_cnt:" in ptch
+          and "ep_pk:" in ptch)
+    check("ef_write_ptch parks n/rot/step across pick",
+          re.search(r"movel\s+%d5,-\(%sp\)", ptch) is not None
+          and re.search(r"movel\s+%d6,-\(%sp\)", ptch) is not None
+          and re.search(r"movel\s+%d2,-\(%sp\)", ptch) is not None
+          and "ep_clear_rad:" in ptch)
+    check("ef_write_ptch window ±PIT_RAD synth / ±PIT_SAMP sample",
+          re.search(r"\.set\s+PIT_RAD,\s*24", src) is not None
+          and re.search(r"\.set\s+PIT_SAMP,\s*12", src) is not None
+          and "PIT_RAD" in ptch and "PIT_SAMP" in ptch)
+    check("ef_write_ptch uses ROOT for absolute pitch class",
+          "NV_ROOT" in ptch and re.search(r"addl\s+%d6,%d0", ptch) is not None)
+    check("ef_write_ptch encodes sample 64+5·st and synth 64+st",
+          "ef_is_synth" in ptch
+          and "ep_samp:" in ptch
+          and re.search(r"muls\.l\s+%d1,%d0", ptch) is not None
+          and re.search(r"addi\.l\s+#64,%d0", ptch) is not None)
+    check("ef_write_ptch clamps raw to 0..127",
+          "ep_clamp:" in ptch and re.search(r"moveq\s+#127,%d1", ptch) is not None)
+    check("no divu.w insn (illegal on ColdFire 5407)",
+          re.search(r"^\s*divu\.w\b", src, re.M) is None)
+    cue = _block(src, "ef_cue:", "ef_rng:")
+    check("ef_cue uses remul for k-subset pick", "remul" in cue)
+    check("ef_cue parks free-count across ef_rng (d1 clobber)",
+          re.search(
+              r"sub\.l\s+%d2,%d1.*?movel\s+%d1,-\(%sp\).*?bsr\.w\s+ef_rng"
+              r".*?movel\s+\(%sp\)\+,%d1.*?remul",
+              cue, re.S) is not None)
+    check("ef_cue cwalk bounded by n",
+          re.search(r"cwalk:.*?cmpl\s+%d5,%d6.*?bcc\.w\s+cdone",
+                    cue, re.S) is not None)
+    hit = _block(src, "ef_hit:", "ef_enc:")
+    check("ef_hit Euclid uses remul", "remul" in hit)
+
     sync = _block(src, "ef_sync_len:", "ef_close:")
     check("sync reads PAT_LEN (+0x8e53)", "PAT_LEN" in sync)
     check("sync reads PAT_PER (+0x8e55)", "PAT_PER" in sync)
     check("sync reads TRK_LEN (+0x50)", "TRK_LEN" in sync)
+
+    print("RAND VEL math:")
+    check("0% -> 64 (display 0)", vel_lock(0, 0) == 64 and vel_lock(0, 63) == 64)
+    check("100% -> 64..1 (display 0..-63)",
+          vel_lock(100, 0) == 64 and vel_lock(100, 63) == 1)
+    check("50% half drop", vel_lock(50, 0) == 64 and vel_lock(50, 63) == 33)
 
 
 def main() -> int:
