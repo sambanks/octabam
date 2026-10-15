@@ -44,9 +44,11 @@ edited. PULSE defaults to 5, ROT/RAND VEL/RAND PTCH to 0 (DRAM, not saved).
 on (uniform k-subset). **ROT** still shifts that mask. Changing **PULSE**
 leaves free mode and returns to Euclidean.
 
-**RAND VEL** (0..100) scales random AMP VOL locks on written hits:
-`VOL = 64 − (r·pct)/100` with `r` in 0..63 — OT display delta **−63…0**
-(never louder than 0). At 0% no VOL lock is written.
+**RAND VEL** (0..100) scales random AMP VOL locks on written hits relative
+to the track's **Part AMP VOL** (the overall knob):
+`VOL = base − (r·pct)/100` with `r` in 0..63, floored at 0 (never louder
+than the Part). At 0% no VOL lock is written. Values draw with a trailing
+`%` (stock `sprintf` gets `"%"` as a `%s` arg — `%%` is untested there).
 
 **RAND PTCH** (0..100) is the **range** of random in-scale PTCH on every
 hit (not a probability — that left most hits on the Part root). Center is
@@ -54,7 +56,7 @@ the track's **Part PLAYBACK PTCH** (the overall knob), not unison. 100 =
 ±24 semitones (±2 octaves) on FM/SY; sample tracks ±12 (PLAYBACK max).
 0 = no PTCH lock. Degrees use `(ROOT + base_st + delta) mod 12` against
 SCALE QUANTIZER. Sample: `raw = 64+5·st`; FM/SY (`"FM",1` / `"SY",1`):
-`raw = 64+st`. No quantizer / SCALE OFF: no pitch locks.
+`raw = 64+st`. No quantizer / SCALE OFF: no pitch locks. Same `%` draw.
 
 FUNC + PAGE (SCALE SETUP) and PAGE alone stay stock.
 

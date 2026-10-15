@@ -43,9 +43,9 @@ def pattern(n: int, k: int, rot: int = 0) -> list[int]:
     return out
 
 
-def vel_lock(pct: int, r: int) -> int:
-    """AMP VOL lock from RAND VEL and r in 0..63 → display delta -63..0."""
-    return 64 - (r * pct) // 100
+def vel_lock(pct: int, r: int, base: int = 64) -> int:
+    """AMP VOL lock relative to Part VOL: base − (r·pct)/100, floor 0."""
+    return max(0, base - (r * pct) // 100)
 
 
 class CueHang(Exception):
@@ -276,17 +276,20 @@ def check_ui(src: str) -> None:
     draw = _block(src, "ef_draw:", "ef_fill:")
     for lab in ("L_STEPS", "L_PULSES", "L_ROT", "L_VEL", "L_PIT"):
         check(f"draw uses {lab}", f"lea     {lab}" in draw or f"lea\t{lab}" in draw)
-    check("RAND VEL/RAND PTCH values use %d%%",
-          "VFMT_PCT" in draw and '"%d%%"' in src)
+    check("RAND VEL/RAND PTCH values use %d%s + PCT_SIGN",
+          "VFMT_PCT" in draw and '"%d%s"' in src and "PCT_SIGN" in draw
+          and re.search(r'PCT_SIGN:\s*\.asciz\s+"%"', src) is not None)
 
     write = _block(src, "ef_write_mask:", "ef_bit_addr:")
     check("write_mask writes LOCK_VOL", "LOCK_VOL" in write)
     check("write_mask reads ef_velrnd", "ef_velrnd" in write)
     check("write_mask uses r 0..63 (andil #0x3f)",
           "0x3f" in write or "#0x3f" in write)
-    check("write_mask VOL = 64 - drop",
-          re.search(r"moveq\s+#64,%d1", write) is not None
-          and re.search(r"subl\s+%d0,%d1", write) is not None)
+    check("write_mask VOL = Part VOL - drop (ef_part_vol)",
+          "ef_part_vol" in write
+          and re.search(r"subl\s+%d0,%d1", write) is not None
+          and re.search(r"\.set\s+AMP_P1,\s*0x8eea0", src) is not None
+          and re.search(r"\.set\s+AMP_VOL,\s*3", src) is not None)
     check("write_mask calls ef_write_ptch", "ef_write_ptch" in write)
     check("ef_write_ptch guards SCALE_AT",
           "SCALE_AT" in write and "0x4ef9" in write)
@@ -353,11 +356,15 @@ def check_ui(src: str) -> None:
     check("sync reads PAT_PER (+0x8e55)", "PAT_PER" in sync)
     check("sync reads TRK_LEN (+0x50)", "TRK_LEN" in sync)
 
-    print("RAND VEL math:")
-    check("0% -> 64 (display 0)", vel_lock(0, 0) == 64 and vel_lock(0, 63) == 64)
-    check("100% -> 64..1 (display 0..-63)",
-          vel_lock(100, 0) == 64 and vel_lock(100, 63) == 1)
-    check("50% half drop", vel_lock(50, 0) == 64 and vel_lock(50, 63) == 33)
+    print("RAND VEL math (relative to Part AMP VOL):")
+    check("0% -> base unchanged",
+          vel_lock(0, 0, 64) == 64 and vel_lock(0, 63, 100) == 100)
+    check("100% base 64 -> 64..1",
+          vel_lock(100, 0, 64) == 64 and vel_lock(100, 63, 64) == 1)
+    check("100% base 40 floors at 0",
+          vel_lock(100, 0, 40) == 40 and vel_lock(100, 63, 40) == 0)
+    check("50% half drop from base",
+          vel_lock(50, 0, 80) == 80 and vel_lock(50, 63, 80) == 49)
 
 
 def check_cue_behavior() -> None:

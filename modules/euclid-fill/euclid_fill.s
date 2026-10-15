@@ -9,10 +9,12 @@
 | (NORMAL: +0x8e53; PER TRACK: first target track's TRAC+0x50). Encoder A
 | = PULSE, B = ROT, C = RAND VEL, D = RAND PTCH; UP/DOWN / LEFT/RIGHT / LEVEL edit
 | the focused row. CUE places a free random mask with exactly PULSE hits.
-| ROT still shifts it. RAND VEL (0..100): AMP VOL locks, display delta -63..0.
-| RAND PTCH (0..100): RANGE of random in-scale PTCH on every hit (not a
-| probability). 100 → ±PIT_RAD (±2 oct FM/SY; sample ±PIT_SAMP). PC test
-| is (ROOT+st) mod 12 vs SCALE_AT. Sample raw=64+5·st; FM/SY raw=64+st.
+| ROT still shifts it. RAND VEL (0..100): AMP VOL locks relative to Part
+| AMP VOL (overall): VOL = base − (r·pct)/100, r in 0..63, floor 0.
+| RAND PTCH (0..100): RANGE of random in-scale PTCH on every hit, centered
+| on Part PLAYBACK PTCH. 100 → ±PIT_RAD (±2 oct FM/SY; sample ±PIT_SAMP).
+| PC test is (ROOT+base_st+delta) mod 12 vs SCALE_AT. Sample raw=64+5·st;
+| FM/SY raw=64+st. Values draw as "%d%s" + "%" (stock sprintf: no %%).
 | Editing PULSE leaves free mode. YES writes the bar + locks. NO /
 | TRACK+PAGE / PAGE closes.
 |
@@ -77,6 +79,8 @@
         .set    SIG_OFF,   0x8edbc     | NEIGHBOR col: "FM",1 when FM SYNTH chosen
         .set    MACH_OFF,  0x8eda2     | Part: machine byte per track
         .set    PLAY_SLOTS,0x8edaa     | Part: PLAYBACK p1 + mach·6 + t·30
+        .set    AMP_P1,    0x8eea0     | Part: AMP p1 + t·24 (ATK HOLD REL VOL…)
+        .set    AMP_VOL,   3           | VOL slot inside AMP p1
         .set    NV_ROOT,   0x100b14ee  | SCALE QUANTIZER ROOT 0..11 (C..B)
         | RAND PTCH = range 0..100 → rad = max_rad*pct/100 (min 1 if pct>0).
         | PIT_RAD 24 = ±2 oct FM/SY; PIT_SAMP 12 = sample PLAYBACK max |st|.
@@ -604,16 +608,17 @@ dlbl:   moveq   #X_LAB,%d0
         cmpl    %d2,%d0
         beq.s   dval
         lea     ef_pitrnd,%a0
-dval:   movel   %a0@,-(%sp)
+dval:   pea     PCT_SIGN                | "%" (%% untested in stock sprintf)
+        movel   %a0@,-(%sp)
         lea     VFMT,%a1                | STEPS / PULSE / ROT: "%d"
         moveq   #3,%d0
         cmpl    %d0,%d2
         bcs.s   1f
-        lea     VFMT_PCT,%a1            | RAND VEL / RAND PTCH: "%d%%"
+        lea     VFMT_PCT,%a1            | RAND VEL / RAND PTCH: "%d%s"
 1:      movel   %a1,-(%sp)
         pea     ef_buf
         jsr     SPRINTF
-        lea     %sp@(12),%sp
+        lea     %sp@(16),%sp
         moveq   #X_VAL,%d0
         movel   %d3,%d1
         lea     ef_buf,%a0
@@ -847,7 +852,8 @@ fout:   movem.l %sp@,%d2-%d7/%a2-%a4
 
 | ef_write_mask(trac, rot, k, n) -- stack args after bsr. Clears then sets
 | hits on steps 0..n-1 of mask 0 (Euclid or free+rot via ef_hit).
-| RAND VEL>0: AMP VOL = 64-(r*pct)/100, r in 0..63 (display -63..0).
+| RAND VEL>0: AMP VOL lock = Part VOL − (r*pct)/100, r in 0..63 (never
+| louder than the overall knob; floor 0). Else clear VOL.
 | RAND PTCH>0: every hit gets an in-scale PTCH lock within ±rad (range knob);
 | else clear PTCH. Leaves n..63 alone.
 ef_write_mask:
@@ -873,18 +879,22 @@ ef_write_mask:
         moveb   %a0@,%d1
         or.l    %d0,%d1
         moveb   %d1,%a0@
-        | RAND VEL > 0 -> VOL in 1..64 (display -63..0); else clear VOL lock
+        | RAND VEL > 0 -> VOL = Part VOL - drop; else clear VOL lock
         movel   ef_velrnd,%d3
         tstl    %d3
         beq.s   6f
+        bsr.w   ef_part_vol             | d0 = Part AMP VOL (overall)
+        movel   %d0,-(%sp)              | park base (ef_rng clobbers d0/d1)
         bsr.w   ef_rng
         andil   #0x3f,%d0               | r = 0..63
         mulu.w  %d3,%d0                 | r*pct
         moveq   #100,%d1
-        divu.l  %d1,%d0                 | (r*pct)/100 = drop 0..63
-        moveq   #64,%d1
-        subl    %d0,%d1                 | VOL = 64 - drop (1..64)
-        movel   %d1,%d0
+        divu.l  %d1,%d0                 | drop 0..63
+        movel   (%sp)+,%d1              | base
+        subl    %d0,%d1                 | base - drop
+        bpl.s   4f
+        moveq   #0,%d1                  | floor at 0
+4:      movel   %d1,%d0
         bra.s   5f
 6:      moveq   #-1,%d0                 | 0xff = no lock
 5:      movel   %d2,%d1
@@ -1078,6 +1088,27 @@ ep_store:
         moveb   %d0,%a2@(0,%d1:l)
         rts
 
+| ef_part_vol: d0 := Part AMP VOL for ef_trk (overall knob).
+| Part + 0x8eea0 + track·24 + 3 (MIDI.md: 0x8ee9a + t·24 + (flat−6),
+| flat 15 = AMP VOL → +9 = 0x8eea0+3). Clobbers d0/d1/a0.
+ef_part_vol:
+        moveal  DBPTR,%a0
+        moveq   #0,%d0
+        moveb   UI_BANK,%d0
+        move.l  #PART_STR,%d1
+        muls.l  %d1,%d0
+        addal   %d0,%a0                 | Part
+        addal   #AMP_P1,%a0
+        move.l  ef_trk,%d1
+        move.l  %d1,%d0
+        lsll    #4,%d0                  | t*16
+        lsll    #3,%d1                  | t*8
+        addl    %d1,%d0                 | t*24
+        addal   %d0,%a0
+        moveq   #0,%d0
+        moveb   AMP_VOL(%a0),%d0        | +3 = VOL
+        rts
+
 | ef_part_ptch: d0 := Part PLAYBACK PTCH raw for ef_trk (slot A).
 | Same path as po_part_ptch / qz: Part + 0x8edaa + machine·6 + track·30.
 | Clobbers d0/d1/a0/a1.
@@ -1206,7 +1237,8 @@ L_ROT:    .asciz "ROT (B)"
 L_VEL:    .asciz "RAND VEL (C)"
 L_PIT:    .asciz "RAND PTCH (D)"
 VFMT:     .asciz "%d"
-VFMT_PCT: .asciz "%d%%"
+VFMT_PCT: .asciz "%d%s"                 | "%" via PCT_SIGN (stems idiom)
+PCT_SIGN: .asciz "%"
         .balign 4
 
         .data
@@ -1218,7 +1250,7 @@ ef_steps:   .long 16
 ef_pulses:  .long 5                     | match filter EUCLID default
 ef_rot:     .long 0
 ef_velrnd:  .long 0                     | 0..100; 0 = no AMP VOL lock
-ef_pitrnd:  .long 0                     | 0..100; prob of in-scale PTCH lock
+ef_pitrnd:  .long 0                     | 0..100; range of in-scale PTCH
 ef_cursor:  .long 0
 ef_targets: .long 0
 ef_rng_state: .long 0                   | LCG; 0 -> seed from tempo/clock
