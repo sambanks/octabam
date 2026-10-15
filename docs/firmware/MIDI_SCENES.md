@@ -311,16 +311,30 @@ PLAY, then PTN + TRIG 2:
 | image | CC 1 on the wire (frame) |
 |---|---|
 | oracle (MIDISC2.1) | 59 (5,347), 79 (50,490) |
-| `midi-scenes` with the phase 3 hooks | 59 (5,347), 79 (50,490) |
+| `midi-scenes` with the phase 3 hooks (before the latch follow) | 59 (5,347), 79 (50,490) |
+| `midi-scenes` with the latch follow, 16 Oct 2026 | 59 (5,347), 79 (51,229) |
 | `midi-scenes` before them | 59 (5,347) |
 
 79 = the mix of Part 2 at XF 128: his mix runs on the playing pattern's
-Part at the switch. ✅ His path (disassembled): `0x400a3c2a` records a
+Part at the switch, published when the sequencer commits it — 739 frames
+(2.17 steps) before the engine takes the pattern. With the latch follow the
+79 lands at the take, 51,229, the same frame as pattern 2's first trig —
+measured in `sw` and `swn`, both 16 Oct 2026; `tg` and `tg2` still match
+the oracle frame for frame. ✅ His path (disassembled): `0x400a3c2a` records a
 queued pattern's (bank, Part, step time) when it differs from the mix Part;
 `0x400a169a` publishes it when the step time passes; `0x400a44f4` takes the
 playing pattern's Part byte at the switch tick; `0x400a4ba0` and `0x4006221c` (after `0x40062216`'s call, which `batch-bugfixes` detours; `0x40062224` and `0x40062226` are branch targets)
 run a due mix at every playback step and after the Part event; `0x4005538a`
 runs the mix after a panel write and sends the record's value.
+
+✅ The same-step re-mix at a DIRECT pattern jump, measured 16 Oct 2026
+(`swd`, the `direct-jump` module, CHAIN AFTER = DIRECT): CC 79 is on the
+wire at the jump step itself — frame 13,013, one step after pattern 1's
+last grid trig (12,672), the same frame as pattern 2's first trig, 13 steps
+into the pattern, not at its end. The follow reads the engine latch (bank
+`0x80001828`, Part `0x80001829`) each playback step while SCHED `0x800065b8`
+is 1 and the mix runs in the same step (`scn_step`, `engine_follow`'s
+timing; the gate `verify_scenes` seq group `swd`).
 
 ✅ B12-B14 measured against the oracle (`tg`, `tg2`: T1 of the project's bank 2
 pattern 1 plays its trigs with scene locks on CC 1, CC 7 and the NOTE page's

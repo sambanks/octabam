@@ -810,6 +810,23 @@ failed with "no remix '_words'". Ignore that generated path: it is a build
 fixture, not a user selection. Its ignore rule keeps it out of both reach's
 untracked-file scan and shard snapshots.
 
+<a name="trap-work-file-ram"></a>
+
+### A bank-file fixture edits the file; the firmware parses it into a different RAM layout
+
+**A bank-file fixture edits the file; the firmware parses it into a
+different RAM layout (16 Oct 2026).** `verify_scenes` seq fixtures patch
+`bankNN.work` (a trig bitmap at file MTRA+9, 8 bytes big-endian, bit 0 =
+step 1), and the loader parses the file into a RAM structure whose offsets
+differ (the parsed trig mask is at pattern `+0x48d7`;
+`docs/firmware/MIDI_SCENES.md` section 12). Reading a RAM-side offset as a
+file offset, or the file layout as the RAM layout, writes the wrong bytes
+and the scenario plays the project's own trigs: `swd`'s first runs
+measured the original trigs, not the fixture's. Anchor every fixture edit
+to a known-good write (the `swn` notes fixture) and take RAM addresses
+from the routine's own arithmetic (direct_jump.s), not from the file
+layout.
+
 <a name="trap-tmp-race"></a>
 
 ### Two builds on one machine corrupted each other through fixed `/tmp` names

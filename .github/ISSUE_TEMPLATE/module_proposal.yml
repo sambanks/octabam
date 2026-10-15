@@ -1,0 +1,49 @@
+name: Module proposal
+description: A module or a port of an existing mod, before or alongside a pull request.
+labels: ["module"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One module per PR. `docs/contributing/MODULES.md` is the contributor guide.
+  - type: input
+    id: name
+    attributes:
+      label: Module name
+    validations:
+      required: true
+  - type: input
+    id: author
+    attributes:
+      label: Author and source
+      description: Who wrote it and where it lives (repo, thread, patch). Each module is credited to its author.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options: [ColdFire module, "DSP insert", "DSP server", Not sure]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What it does
+    validations:
+      required: true
+  - type: textarea
+    id: claims
+    attributes:
+      label: Claims
+      description: FX2 id, caves, hooks, detour spans, pokes, DSP data ranges, as far as known.
+  - type: textarea
+    id: oracle
+    attributes:
+      label: Author's build
+      description: Where the author's own build can be run against the stock image (a port is checked byte for byte against it).
+  - type: input
+    id: pr
+    attributes:
+      label: Pull request
+      description: Link, if one is open.

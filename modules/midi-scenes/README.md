@@ -36,7 +36,7 @@ lock. `flat` is the MIDI page × 6 + knob (NOTE, LFO, ARP, CTRL1, CTRL2;
 | B11 | track `t`'s locks affect track `t` only | phase 1 |
 | B29 | CLEAR / COPY / PASTE SCENE rows carry MSC | phase 1 (the gate scenarios need them) |
 | B30 | encoder press in MIDI mode: overlay refresh | phase 1 |
-| B10, B15–B18, B28 | the mix follows the Part that plays; a panel write re-mixes | `verify_scenes` seq group (`sw`) |
+| B10, B15–B18, B28 | the mix follows the Part that plays; a panel write re-mixes | `verify_scenes` seq group (`sw`); `swd` measures the same-step re-mix at a DIRECT pattern jump |
 | B12–B14 | trig snapshot as the unlocked side, a trig-locked flat left alone, the CC loop before the note-on | `verify_scenes` seq group (`tg`, `tg2`) |
 | B33 | his crash fixes need no counterpart | the module writes no stock bytes outside its listed detours and two pokes, and its scratch is its own DRAM unit (📖 from the manifest) |
 
@@ -89,7 +89,7 @@ Paste and bank-copy rows.
 |---|---|---|
 | a lock edit marks the Part unsaved and the project dirty, and writes the Part into its saved copy (B31) | the flags are set; no saved-copy write | the locks are in `scenes.work` and CS1, not in the Part |
 | the scene clipboard starts as zeros | starts as `0xff` | a PASTE SCENE after an audio-only COPY SCENE gives his table zeros (a lock at 0 on every flat), here none |
-| the mix follows the Part the sequencer plays (cached, published at the pattern boundary) | the same, as a target (bank, Part) that follows the displayed Part while the sequencer is stopped | `sw` matches his MIDI out frame for frame |
+| the mix follows the Part the sequencer plays: `engine_follow` reads the engine latch (bank `0x80001828`, Part `0x80001829`) each playback step and re-mixes in the same step | the same latch, read each playback step while SCHED `0x800065b8` is 1, the mix in the same step | `sw`/`swn` match his MIDI out except the switch burst: ours at the take (79 at frame 51,229), his at the sequencer commit (50,490), 739 frames earlier; `tg`/`tg2` match frame for frame; `swd` measures the same-step re-mix at a DIRECT pattern jump |
 | a context key (the sparse blob's contents) decides whether a mix may reuse its state; the XF-changed test runs only once a mix has run | a due flag (set by a target change, a load, a Kit load, Part Clear) and the XF-changed test | the tables are in `scn_lib`, not in a Part blob |
 | the mix refreshes the MIDI track records' setup bytes (`+0x1e..+0x43`) from the Part | not done | stock's apply already copies them; no scenario differs |
 

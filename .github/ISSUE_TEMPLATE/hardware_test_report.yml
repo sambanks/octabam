@@ -1,0 +1,54 @@
+name: Hardware test report
+description: What happened when an image was flashed to a unit.
+labels: ["hardware"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach an image, slice, `.syx` or firmware dump.
+  - type: input
+    id: remix
+    attributes:
+      label: Remix and BUILD
+      placeholder: "inserts, BUILD=7E"
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: Output of `git rev-parse --short HEAD` for the tree that built the image.
+    validations:
+      required: true
+  - type: dropdown
+    id: unit
+    attributes:
+      label: Unit
+      options: [MKI, MKII]
+    validations:
+      required: true
+  - type: input
+    id: osver
+    attributes:
+      label: Stock OS the image was built from
+      placeholder: "1.40C"
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options: [Boots and works, Boots with a fault, Does not boot, Not all features tried]
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What was tried
+      description: Modules and pages exercised, project used, card format.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed
+      description: Exact on-screen text for any fault; whether it repeats after power cycle.

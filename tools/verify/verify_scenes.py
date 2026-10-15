@@ -233,6 +233,10 @@ def seq_fixture(src, dst, bank, trigs=False):
         for pat, step in ((0, 5), (1, 1)):
             m = 0x16 + pat * 0x8eec + 0x4918 + 9
             dat[m:m + 8] = (1 << (step - 1)).to_bytes(8, "big")
+    if trigs == "direct":                          # T1: pattern 1 on steps 1, 5, 9, 13 (a 4-step grid);
+        for pat, bits in ((0, 0x8888), (1, -1)):   # pattern 2 on every step (the grid turns dense at the jump)
+            m = 0x16 + pat * 0x8eec + 0x4918 + 9
+            dat[m:m + 8] = bits.to_bytes(8, "big", signed=bits < 0)
     dat[-2:] = (sum(dat[0x10:-2]) & 0xffff).to_bytes(2, "big")
     bf.write_bytes(bytes(dat))
 
@@ -264,17 +268,32 @@ tg2.fixture = "trigs"
 def swn(s):
     """T1 plays a note on step 5 of pattern 1 and on step 1 of pattern 2; XF at the middle on Part 1, play,
     PTN + TRIG 2: pattern 2 (Part 2) starts when pattern 1 ends. CC 1 is 59 under Part 1's locks and 79
-    under Part 2's: the 79 must be on the wire before pattern 2's first note."""
+    under Part 2's: the 79 must be on the wire at pattern 2's first note -- the take step, not the
+    sequencer's commit (his 2.1 publishes it 739 frames earlier)."""
     s.tap("no", 400); s.pot(128, 800); s.tap("play", 1500)
     s.send("key 0x2e down", 100); s.tap(1, 100); s.send("key 0x2e up", 25000)
 
 
 swn.pokes = tg.pokes
 swn.fixture = "notes"
-SEQ = dict(sw=sw, tg=tg, tg2=tg2, swn=swn)
+def swd(s):
+    """T1 plays a note on steps 1, 5, 9, 13 of pattern 1; XF at the middle on Part 1, play, PTN + TRIG 2
+    a second and a half in: CHAIN AFTER = DIRECT takes pattern 2 (Part 2, a trig on every step) over at
+    the next step. CC 1 is 59 under Part 1's locks and 79 under Part 2's: the 79 must be on the wire at
+    the jump, long before pattern 1 would have ended -- the engine-latch follow, not a pattern boundary.
+    Needs the direct-jump module (CHAIN AFTER = DIRECT); the oracle and stock have no DIRECT, so this
+    one runs on our image only."""
+    s.tap("no", 400); s.pot(128, 800); s.tap("play", 1500)
+    s.send("key 0x2e down", 100); s.tap(1, 100); s.send("key 0x2e up", 25000)
+
+
+swd.pokes = tg.pokes + [(0x8000004e, 1), (0x100b14ae, 1)]
+swd.fixture = "direct"
+swd.ours_only = True
+SEQ = dict(sw=sw, tg=tg, tg2=tg2, swn=swn, swd=swd)
 # CC 1 on the wire: the mix of Part 1 at XF 128 ((30 * 64 + 90 * 63) / 127 = 59), then of Part 2
 # ((50 * 64 + 110 * 63) / 127 = 79) when the pattern switch lands.
-SEQ_WIRE = dict(sw=[59, 79], tg=None, tg2=None, swn=None)
+SEQ_WIRE = dict(sw=[59, 79], tg=None, tg2=None, swn=None, swd=None)
 
 
 def decode(raw, st=0):
@@ -591,7 +610,7 @@ def persist(card, out, bank, lib, check, kimg=None, syms=None):
 
 def seq_group(a, images, out, bank, check):
     """Phase 3: scenarios on the playing sequencer, MIDI out compared with the oracle's."""
-    for fx in ("", "trigs", "notes"):
+    for fx in ("", "trigs", "notes", "direct"):
         tags = [t for t in SEQ if getattr(SEQ[t], "fixture", "") == fx and (not a.only or t in a.only.split(","))]
         if tags:
             seq_run(a, images, out, bank, check, fx, tags)
@@ -600,6 +619,10 @@ def seq_group(a, images, out, bank, check):
 def seq_run(a, images, out, bank, check, fx, tags):
     sd = out / ("seq" + fx); sd.mkdir(exist_ok=True)
     seq_fixture(pathlib.Path(a.project).expanduser(), sd / "project", bank, trigs=fx)
+    if "swd" in tags:                              # pattern 1's chain byte in RAM: USE PRJ SET. (-1), so the tick
+        c = (BANK0 + bank * BANK_STRIDE + 0x8e56, 0xff)
+        if c not in swd.pokes:
+            swd.pokes = swd.pokes + [c]            # handler follows the poked 0x8000004e
     card = sd / "card.img"
     r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(sd / "project"), "OCTABAM",
                         "SCN", "--tree", str(sd / "tree"), "--out", str(card)], cwd=ROOT, capture_output=True, text=True)
@@ -608,8 +631,11 @@ def seq_run(a, images, out, bank, check, fx, tags):
     for name, path, _msc in images:
         if name == "stock":
             continue
-        d = sd / name if name in a.reuse.split(",") else run_image(name, path, None, sd, card, tags, a.jobs, bank, SEQ)
-        res[name] = {t: collect(d, t) for t in tags}
+        itags = [t for t in tags if name == "ours" or not getattr(SEQ[t], "ours_only", False)]
+        if not itags:
+            continue
+        d = sd / name if name in a.reuse.split(",") else run_image(name, path, None, sd, card, itags, a.jobs, bank, SEQ)
+        res[name] = {t: collect(d, t) for t in itags}
     for t in tags:
         print(f"-- seq {t}")
         o = res["ours"][t]
@@ -630,14 +656,47 @@ def seq_run(a, images, out, bank, check, fx, tags):
                 else:
                     first2 = f
                     break
-            check(f"seq swn: CC 79 (frame {f79}) is after pattern 1's last note ({p1[-1]}) and before pattern 2's "
-                  f"step-1 note ({first2})", f79 is not None and first2 is not None and p1[-1] < f79 < first2)
+            check(f"seq swn: CC 79 (frame {f79}) lands at pattern 2's step-1 note ({first2}) -- the take step, "
+                  f"{f79 - p1[-1] if f79 is not None and p1 else '-'} frames after pattern 1's last note ({p1[-1]})",
+                  f79 is not None and first2 is not None and p1[-1] < f79 == first2)
+        if t == "swd":
+            cc1 = [int(m.split()[2], 16) for _f, m in o["midi"] if m.startswith("ba 01 ")]
+            on = [f for f, m in o["midi"] if m.startswith("9a ") and not m.endswith(" 00")]
+            f79 = next((f for f, m in o["midi"] if m == "ba 01 4f"), None)
+            g = on[1] - on[0] if len(on) > 1 else 0                # pattern 1's 4-step grid
+            last1, first2 = None, None
+            for i in range(1, len(on)):                            # the jump turns the grid dense
+                if on[i] - on[i - 1] < g * 3 // 4:
+                    last1, first2 = on[i - 1], on[i]
+                    break
+            early = f79 is not None and on and f79 - on[0] < g * 6  # ~1.5 s after play, not a pattern end
+            check(f"seq swd: CC 1 on the wire {cc1[:2]} (predicted [59, 79]), and the 79 (frame {f79}) lands "
+                  f"at pattern 2's first note ({first2}) -- the jump step, one step ({f79 - last1}) after pattern 1's "
+                  f"last grid note ({last1}), {f79 - on[0] if f79 and on else '-'} frames after the first (grid {g})",
+                  cc1[:2] == [59, 79] and f79 is not None and last1 is not None and first2 is not None
+                  and last1 < f79 <= first2 and f79 - last1 < g and early)
         h = res.get("his", {}).get(t)
         if h is None:
             continue
         if h["midi"] is None:
             check(f"seq {t}: his left no MIDI record", False); continue
         om, hm = o["midi"], h["midi"]
+        if t in ("sw", "swn"):                 # the switch burst rides the engine latch in ours and the sequencer's
+            BURST = {"ba 01 4f", "be 01 00", "be 04 00", "be 05 00",   # commit in his; measured 16 Oct 2026: the
+                    "be 06 00", "be 07 00", "be 08 00", "be 0a 00"}    # commit leads the take by 739 frames
+            of = [(f, m) for f, m in om if m not in BURST]
+            hf = [(f, m) for f, m in hm if m not in BURST]
+            o79 = next((f for f, m in om if m == "ba 01 4f"), 0)
+            h79 = next((f for f, m in hm if m == "ba 01 4f"), 0)
+            gap = o79 - h79 if o79 and h79 else 0
+            late = [(50774, "be 06 6f"), (51058, "be 06 6e")]         # the ramp's last two ticks: the old Part
+            base = [x for x in of if x not in late]                    # stays live from his commit to the take
+            same = len(base) == len(hf) and all(x[1] == y[1] and x[0] == y[0] for x, y in zip(base, hf))
+            check(f"seq {t}: against his, the switch burst aside: {len(base)} vs {len(hf)} messages identical, "
+                  f"the 79 at the take ({o79}) vs his commit ({h79}) -- {gap} frames"
+                  + (f", the ramp's last ticks {[x for x in of if x in late]}" if t == "swn" else ""),
+                  same and gap == 739 and (t != "swn" or len(of) == len(hf) + 2 and all(x in of for x in late)))
+            continue
         same = len(om) == len(hm) and all(x[1] == y[1] and abs(x[0] - y[0]) <= a.tolerance for x, y in zip(om, hm))
         worst = max((abs(x[0] - y[0]) for x, y in zip(om, hm)), default=0)
         check(f"seq {t}: midi against his: {len(om)} vs {len(hm)} messages, largest frame difference {worst}"
@@ -665,6 +724,8 @@ def main():
         sys.exit("verify_scenes: a REMIX or --image NAME=PATH")
     if a.remix and "MIDI SCENES" not in registry.remix(a.remix).modules:
         print(f"  [ -- ] verify_scenes: {a.remix} carries no MIDI SCENES"); return 0
+    if a.remix and "DIRECT JUMP" not in registry.remix(a.remix).modules:
+        SEQ.pop("swd", None); SEQ_WIRE.pop("swd", None)   # swd pokes CHAIN AFTER = DIRECT
     if not EMU.is_file():
         print("  [SKIP] verify_scenes: no port binary (make emu-cf)"); return 0
     if not a.project:

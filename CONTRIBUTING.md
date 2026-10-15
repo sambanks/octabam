@@ -50,7 +50,8 @@ from the user's image at build time.
    on it; GitHub holds a first-time contributor's first CI run until a
    maintainer approves it.
 
-Report bugs in [GitHub Issues](https://github.com/sambanks/octabam/issues).
+[GitHub Issues](https://github.com/sambanks/octabam/issues) take bug reports,
+module proposals and hardware test reports (`.github/ISSUE_TEMPLATE/`).
 A question about a change under review goes in its PR.
 
 ## A module
@@ -233,6 +234,17 @@ A change that alters what a remix does — its modules, effects, menus,
 costs (memory pages, DSP words) or proof status — updates the
 hand-written manual site pages under `docs/site/` in the same PR. The
 generated reference pages update themselves from the manifests.
+
+The usage fragment `docs/site/usage/<name>.md` (`<name>` = the module
+dir) is included into the generated module page, so it is authored for
+that page: `##` headings only (the page owns the title), relative links
+and images at reference depth (`../../img/<name>/<screen>.png`,
+`../../choosing.md`), no section signs, no bare repo paths, no nested
+includes.
+Screenshots are LCD dumps from the port (`tools/emu/live_shots.py`, the
+scripts in `tools/site/shots/`); a UI change re-captures them in the
+same PR. `mkdocs build --strict --config-file docs/site/mkdocs.yml` is
+the local check for the fragments themselves.
 
 A manifest, remix selection or module README change leaves the generated
 copies stale: `make docs` renders `README.md`, `remixes/README.md` and

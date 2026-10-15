@@ -50,6 +50,8 @@
         .set    SCHED,          0x800065b8      | long: 1 while the sequencer schedules
         .set    PLAY_BANK,      0x800065bd      | byte: the playing pattern's bank
         .set    PLAY_PTN,       0x800065be      | byte: the playing pattern
+        .set    ENG_BANK,       0x80001828      | byte: the engine's playing bank
+        .set    ENG_PART,       0x80001829      | byte: the engine's playing Part
         .set    PTN_STRIDE,     0x8ed8          | one pattern in a bank
         .set    PTN_PART,       0x8e57          | pattern: its Part byte
         .set    Q_BANK,         0x46c7a9c6      | bytes: bank of each queued pattern
@@ -825,8 +827,28 @@ scn_switch:
         movel   %sp@+,%d0
         jmp     0x400a4500
 
-| 0x400a4ba0: lea 0x800065e4,%a2 in the playback step.
+| 0x400a4ba0: lea 0x800065e4,%a2 in the playback step. While the sequencer
+| schedules, the target follows the engine latch, not the sequencer's bytes:
+| the latch moves the moment the engine takes a switched pattern (a direct
+| jump lands here, not at a commit or a queued first step), and the mix below
+| runs in this same step -- engine_follow's timing, his B26..B28 while playing.
 scn_step:
+        movel   %d0,%sp@-
+        movel   %d1,%sp@-
+        movel   SCHED,%d0
+        cmpil   #1,%d0
+        bne.s   1f
+        moveq   #0,%d0
+        mvzb    ENG_BANK,%d0
+        cmpil   #15,%d0
+        bhi.s   1f
+        moveq   #0,%d1
+        mvzb    ENG_PART,%d1
+        cmpil   #3,%d1
+        bhi.s   1f
+        bsr.w   set_target
+1:      movel   %sp@+,%d1
+        movel   %sp@+,%d0
         bsr.w   ensure
         lea     0x800065e4,%a2
         jmp     0x400a4ba6

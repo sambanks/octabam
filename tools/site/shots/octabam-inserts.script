@@ -1,0 +1,118 @@
+# octabam-inserts: one track per effect, assigned in the project file
+# (OCTABAM89_shots bank 3): T1 SPECTRUM 0x04, T2 CHARACTER 0x1c,
+# T3 MODULATION 0x12, T4 TRANSIENT 0x0f, T5 EUCLID 0x1d (FX1);
+# T6 LOFI2 0x1f, T7 GATE VERB 0x14, T8 DELAY 0x06 (FX2).
+# Track keys + FX page keys only -- no chooser navigation.
+# Probe: p1 FX1 page; p2 second FX1; p5 FX2 page; p6 second FX2;
+# p7 FX1 from FX2 (fresh page 1 or stateful page 2?); p3 after NO;
+# p4 FX1 from closed.
+key 0x25
+key 0x10
+shot raw/ins-p1
+key 0x25
+shot raw/ins-p2
+key 0x26
+shot raw/ins-p5
+key 0x26
+shot raw/ins-p6
+key 0x25
+shot raw/ins-p7
+key 0x32
+shot raw/ins-p3
+key 0x25
+shot raw/ins-p4
+# T1 SPECTRUM
+key 0x25
+key 0x10
+shot raw/ins-t1-fx1a
+key 0x25
+shot raw/ins-t1-fx1b
+key 0x26
+shot raw/ins-t1-fx2a
+key 0x26
+shot raw/ins-t1-fx2b
+# T2 CHARACTER
+key 0x25
+key 0x11
+shot raw/ins-t2-fx1a
+key 0x25
+shot raw/ins-t2-fx1b
+key 0x26
+shot raw/ins-t2-fx2a
+key 0x26
+shot raw/ins-t2-fx2b
+# T3 MODULATION
+key 0x25
+key 0x12
+shot raw/ins-t3-fx1a
+key 0x25
+shot raw/ins-t3-fx1b
+key 0x26
+shot raw/ins-t3-fx2a
+key 0x26
+shot raw/ins-t3-fx2b
+# T4 TRANSIENT
+key 0x25
+key 0x13
+shot raw/ins-t4-fx1a
+key 0x25
+shot raw/ins-t4-fx1b
+key 0x26
+shot raw/ins-t4-fx2a
+key 0x26
+shot raw/ins-t4-fx2b
+# T5 EUCLID
+key 0x25
+key 0x14
+shot raw/ins-t5-fx1a
+key 0x25
+shot raw/ins-t5-fx1b
+key 0x26
+shot raw/ins-t5-fx2a
+key 0x26
+shot raw/ins-t5-fx2b
+# T6 LOFI2 (FX2)
+key 0x25
+key 0x15
+shot raw/ins-t6-fx1a
+key 0x25
+shot raw/ins-t6-fx1b
+key 0x26
+shot raw/ins-t6-fx2a
+key 0x26
+shot raw/ins-t6-fx2b
+# T7 GATE VERB (FX2)
+key 0x25
+key 0x16
+shot raw/ins-t7-fx1a
+key 0x25
+shot raw/ins-t7-fx1b
+key 0x26
+shot raw/ins-t7-fx2a
+key 0x26
+shot raw/ins-t7-fx2b
+# T8 DELAY (FX2)
+key 0x25
+key 0x17
+shot raw/ins-t8-fx1a
+key 0x25
+shot raw/ins-t8-fx1b
+key 0x26
+shot raw/ins-t8-fx2a
+key 0x26
+shot raw/ins-t8-fx2b
+# Choosers, last (FUNC+FX chords). FX1 chooser on T1 (SPECTRUM assigned).
+key 0x25
+key 0x10
+chord 0x2d 0x25
+wait 0.5
+shot raw/ins-chooser-fx1
+key 0x32
+wait 0.5
+shot raw/ins-after-no
+# FX2 chooser on T8 (DELAY assigned).
+key 0x17
+chord 0x2d 0x26
+wait 0.5
+shot raw/ins-chooser-fx2
+quit

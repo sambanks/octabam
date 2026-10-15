@@ -43,8 +43,9 @@ flowchart LR
 A new part is born wired this way (the RIG HOSTS module: T1 FX2 = BusDelay,
 T5 = BusVerb, T8 = the stock DELAY, the rest SEND). The delay follows the
 project tempo (TEMPO SYNC), and the TEMPO window lists and edits both
-engines' knobs (TEMPO BUS). The FX2 chooser cannot change a track's effect
-(FX2 LOCK).
+engines' knobs (TEMPO BUS). Turning a MODE on the panel re-defaults the
+knobs around it (MODE DEFAULTS). The FX2 chooser cannot change a track's
+effect (FX2 LOCK).
 
 ## FX1
 

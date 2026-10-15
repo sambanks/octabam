@@ -4,8 +4,11 @@ repo_url: https://github.com/sambanks/octabam
 repo_name: sambanks/octabam
 docs_dir: .
 site_dir: ../../out/site
-# the _remix-*.md fragments are snippet includes, not pages
-exclude_docs: reference/_remix-*.md
+# the _remix-*.md fragments are snippet includes, not pages; usage/*.md
+# are included into the generated module pages. Gitignore-style specs.
+exclude_docs: |
+  reference/_remix-*.md
+  usage/*.md
 extra_css:
   - css/sidebar-spacing.css
   - css/site-tables.css
@@ -35,6 +38,7 @@ nav:
       - Credits: reference/credits.md
 markdown_extensions:
   - admonition
+  - pymdownx.details
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid

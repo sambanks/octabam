@@ -1,0 +1,75 @@
+# octabam-inserts page-2 walk + per-effect choosers.
+# OCTABAM89_shots bank 3: T1 SPECTRUM, T2 CHARACTER, T3 MODULATION,
+# T4 TRANSIENT, T5 EUCLID (FX1); T6 LOFI2, T7 GATE VERB, T8 DELAY (FX2).
+# Measured 16 Oct: the boot restores the FX1 setup on PAGE 2 (the routing
+# grid); NO steps to page 1; track keys switch tracks on page 1.
+# Page-2 walk first (FX1 page 2 on T1-T5, then FX2 page 2 on T6-T8).
+key 0x10
+shot raw2/ins2-t1-p2
+key 0x11
+shot raw2/ins2-t2-p2
+key 0x12
+shot raw2/ins2-t3-p2
+key 0x13
+shot raw2/ins2-t4-p2
+key 0x14
+shot raw2/ins2-t5-p2
+key 0x26
+shot raw2/ins2-t5-fx2p2
+key 0x15
+shot raw2/ins2-t6-p2
+key 0x16
+shot raw2/ins2-t7-p2
+key 0x17
+shot raw2/ins2-t8-p2
+# NO to page 1 (measured), then the per-effect choosers: FUNC+FX1 on the
+# five FX1 tracks, FUNC+FX2 on the three FX2 tracks; NO closes the
+# chooser to the main page (measured).
+key 0x32
+key 0x10
+chord 0x2d 0x25
+wait 0.5
+shot raw2/ins2-ch-t1
+key 0x32
+wait 0.5
+key 0x11
+chord 0x2d 0x25
+wait 0.5
+shot raw2/ins2-ch-t2
+key 0x32
+wait 0.5
+key 0x12
+chord 0x2d 0x25
+wait 0.5
+shot raw2/ins2-ch-t3
+key 0x32
+wait 0.5
+key 0x13
+chord 0x2d 0x25
+wait 0.5
+shot raw2/ins2-ch-t4
+key 0x32
+wait 0.5
+key 0x14
+chord 0x2d 0x25
+wait 0.5
+shot raw2/ins2-ch-t5
+key 0x32
+wait 0.5
+key 0x15
+chord 0x2d 0x26
+wait 0.5
+shot raw2/ins2-ch-t6
+key 0x32
+wait 0.5
+key 0x16
+chord 0x2d 0x26
+wait 0.5
+shot raw2/ins2-ch-t7
+key 0x32
+wait 0.5
+key 0x17
+chord 0x2d 0x26
+wait 0.5
+shot raw2/ins2-ch-t8
+quit

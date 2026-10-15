@@ -1,0 +1,80 @@
+# octabam-core: menu, BRAIN screens, kits, tuner
+# Walk (measured, probe-walk boot): PROJ opens MAIN MENU; DOWN x4, RIGHT
+# enters the BRAIN pane; YES on a row opens its screen; NO from a screen
+# returns to the pane with the cursor kept; NO in the pane closes the menu.
+# PROJ while the menu is open closes it to the transport screen.
+# PLAY first: the transport runs (T1 is a THRU machine), so PERFORMANCE's
+# bars fill. The tuner stays "--": under the live path the port's DSP
+# track chain produces no output (measured 16 Oct: tone on the DSP input,
+# gain table filled, TX0 ring all zero) -- upstream's hardware reading
+# stands for the note display.
+key 0x28
+wait 2.0
+key 0x1c
+wait 1.5
+shot brain/menu
+key 0x20
+key 0x20
+key 0x20
+key 0x20
+wait 1.0
+shot brain/menu-b5
+key 0x21
+wait 1.0
+shot brain/pane
+# TEMPLATES (row 0)
+key 0x31
+wait 1.5
+shot brain/templates
+# REMIXES (row 1)
+key 0x32
+wait 1.0
+key 0x20
+key 0x31
+wait 1.5
+shot brain/remixes
+# SETTINGS (row 2)
+key 0x32
+wait 1.0
+key 0x20
+key 0x31
+wait 1.5
+shot brain/settings
+# PERFORMANCE (row 3)
+key 0x32
+wait 1.0
+key 0x20
+key 0x31
+wait 1.5
+shot brain/performance
+# LOG (row 4)
+key 0x32
+wait 1.0
+key 0x20
+key 0x31
+wait 1.5
+shot brain/log
+# ABOUT (row 5)
+key 0x32
+wait 1.0
+key 0x20
+key 0x31
+wait 1.5
+shot brain/about
+# close the list, then the menu
+key 0x32
+wait 1.0
+key 0x32
+wait 1.0
+# KITS list: PART
+key 0x1d
+wait 1.5
+shot kits/list
+key 0x32
+wait 1.0
+# TUNER: hold UP + TEMPO (the current track, T1, plays the 440 Hz tone)
+chord 0x33 0x18
+wait 5.0
+shot tuner/tuner
+key 0x31
+wait 1.0

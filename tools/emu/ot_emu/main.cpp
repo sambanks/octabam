@@ -2574,6 +2574,15 @@ int main(int _argc, char** _argv)
 				// The transport is the user's: PLAY is a key. The frame engine
 				// runs from here, as on the unit after boot.
 				rtos.setFrame(true);
+				// SET MAIN LEVEL where --interactive posts it (after the load,
+				// before anything plays): without it the gain table 0x80003c60
+				// is zero and every voice renders silent (O9b).
+				if(mainLevel >= 0)
+				{
+					const auto g = rtos.setMainLevelLive(static_cast<uint32_t>(mainLevel));
+					std::printf("main level : sys command %u posted with %d -> gain table[0] = %#x%s (bit 0 of 0x8000004a = %u)\n",
+						ot::g_setMainLevelCase, mainLevel, g, g ? "" : " -- NOT FILLED", m.read8(0x8000004a) & 1);
+				}
 				pokeBytes(pokeAfterLoad, "after the load");
 				std::printf("live       : running until 'quit' (transport stopped; PLAY is key 0x%02x on your panel)\n", 0x3f);
 				const auto rs = rtos.runUntil(1e15, [&] { return live.quit; }, ot::Rtos::Changes::OnEvent);	// the live poll wakes

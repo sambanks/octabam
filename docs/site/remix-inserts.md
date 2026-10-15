@@ -22,9 +22,11 @@ stock COMPRESSOR keeps its id, undisturbed, with no side-chain KEY.
 | [EUCLID](reference/modules/euclid.md) | ✓ | ✓ | Euclidean filter / amp sequencer (repeat98) |
 | [DELAY](reference/modules/delay.md) | | ✓ | stock |
 | [GATE VERB](reference/modules/gateverb.md) | | ✓ | gated plate reverb (the reverb stage of Mutable Instruments Clouds plus a gate): AMNT, GAIN, TIME, DIFF, TONE, GATE |
+| [LOFI2](reference/modules/lofi2.md) | | ✓ | ring mod or stereo frequency shifter into sample-rate and bit reduction (stock LO-FI's curves), plus a high-shelf cut: FREQ, MIX, FDBK/GAIN, SRR, BRR, LPF, RANGE, MODE, AMPH |
 
 The three stations are FX1-only in the bus remix; here each has its SLOTS
-build setting at FX1+FX2, so an FX2 instance runs live. CHARACTER's KEY = T1
+build setting at FX1+FX2, so an FX2 instance runs live. LOFI2 runs on FX2
+only: it needs more DSP than the FX1 slots leave. CHARACTER's KEY = T1
 needs a BusDelay host, so in this remix it keys on the track's own input. The
 FX1 chooser lists NONE and the effects marked FX1; the FX2 chooser lists the
 effects marked FX2. A MODE turned on the panel re-defaults the knobs around
@@ -42,7 +44,7 @@ credited to its author:
 | | stock | octabam-inserts |
 |---|---|---|
 | sample and recorder memory | 14,602 pages | 12,895 pages (the platform reserve) |
-| DSP words free, payload A / B | | 1,231 / 1,231 |
+| DSP words free, payload A / B | | 363 / 363 |
 
 ## Where it has run
 

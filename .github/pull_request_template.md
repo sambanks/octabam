@@ -22,6 +22,15 @@ Remixes reached: <!-- every remix that carries a changed module -->
 - `scripts/refhash.sh check` (build changes):
 - `make verify-docs` (manifest, remix selection or docs changes):
 
+## Manual site
+
+<!-- docs/site/: the manual for musicians. A new module, or a change a user
+can see, ships its docs in the same PR. -->
+
+- [ ] `docs/site/usage/<name>.md` added or updated (new module or a user-visible change)
+- [ ] Screenshots re-captured when the UI changed: `tools/emu/live_shots.py` (see `tools/site/shots/`)
+- [ ] `mkdocs build --strict --config-file docs/site/mkdocs.yml` passes
+
 ## Hardware
 
 <!-- Flashed? Which unit (MKI/MKII), which BUILD number, what was tried. "Not flashed" is a fine answer. -->

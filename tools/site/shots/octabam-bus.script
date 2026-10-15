@@ -1,0 +1,44 @@
+# octabam-bus: the bus servers' FX2 pages (main + page 2), the locked FX2
+# chooser, the TEMPO window. Gate project OCTABAM89_setgate bank 3 as
+# shipped: T1 fx2 BUSDELAY, T2 fx2 SEND, T5 fx2 BUSVERB.
+# Measured 16 Oct (inserts boot): the port restores the FX1 setup on
+# PAGE 2 (the routing grid) at boot; NO steps down to page 1; a second
+# FX press does not change pages.
+# Page-2 walk first: FX2 keeps page 2, then track keys.
+key 0x26
+key 0x10
+shot raw/bus-t1-fx2p2
+key 0x11
+shot raw/bus-t2-fx2p2
+key 0x14
+shot raw/bus-t5-fx2p2
+# NO: page 2 -> page 1 (measured)
+key 0x32
+shot raw/bus-after-no
+# fx2 main pages
+key 0x26
+key 0x10
+shot raw/bus-t1-fx2a
+key 0x26
+key 0x11
+shot raw/bus-t2-fx2a
+key 0x26
+key 0x14
+shot raw/bus-t5-fx2a
+# YES probe: page 1 -> page 2?
+key 0x31
+shot raw/bus-yesprobe
+key 0x32
+# locked FX2 chooser (T1)
+key 0x10
+chord 0x2d 0x26
+wait 0.5
+shot raw/bus-chooser-locked
+key 0x32
+wait 0.5
+shot raw/bus-after-chooser-no
+# TEMPO window
+key 0x18
+wait 0.5
+shot raw/bus-tempo
+quit

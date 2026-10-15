@@ -5,10 +5,10 @@ operating system. Not affiliated with Elektron.
 
 It composes **modules** — each one credited to its author — into **remixes**:
 named selections, built into one firmware image from your own copy of OS
-1.40C. The build places the code, wires the hooks by symbol, refuses
-collisions by name, and proves every ported module against its author's own
-build, byte for byte. No firmware is distributed here: a built image contains
-Elektron's OS, so you build it yourself, on your machine.
+1.40C. The build checks the chosen modules fit together and verifies every
+ported module against its author's own build, byte for byte. No firmware is
+distributed here: a built image contains Elektron's OS, so you build it
+yourself, on your machine.
 
 !!! warning "This is not official Elektron firmware"
     octabam is community software and is not supported by Elektron. A failed
@@ -26,7 +26,7 @@ The three remixes:
 | remix | what it adds | effects | where it has run |
 |---|---|---|---|
 | [octabam-core](remix-core.md) | the core modules only | all 14 stock effects, both menus unchanged (LO-FI's AMF knob fixed) | port gates only; not on a unit |
-| [octabam-inserts](remix-inserts.md) | core + insert effects | SPECTRUM, CHARACTER, MODULATION, TRANSIENT and EUCLID on FX1 and FX2, GATE VERB, the stock DELAY | port gates only; not on a unit |
+| [octabam-inserts](remix-inserts.md) | core + insert effects | SPECTRUM, CHARACTER, MODULATION, TRANSIENT and EUCLID on FX1 and FX2; GATE VERB and LOFI2 on FX2; the stock DELAY | port gates only; not on a unit |
 | [octabam-bus](remix-bus.md) | core + a delay and reverb bus | DELAY on track 1, REVERB on track 5, SEND on every other track, the stock DELAY on track 8; SPECTRUM, CHARACTER and MODULATION on FX1 | port gates only; not on a unit |
 
 None of the three has run on a unit. Each is verified under the port: an

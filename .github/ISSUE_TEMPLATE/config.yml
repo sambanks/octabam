@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A change to the code or docs
+    url: https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md
+    about: Open a pull request; CONTRIBUTING.md has the contract and the gates.

@@ -6,8 +6,10 @@
 Writes the generated pages (gitignored, so the deploy builds them fresh):
 
   modules.md           every module by category, plus the stock effects
-  modules/<name>.md    one page per module: what it is, the manifest facts,
-                       where it runs, which official remixes carry it
+  modules/<name>.md    one page per module: the usage fragment
+                       (docs/site/usage/<name>.md) when one is written,
+                       then the manifest facts, where it runs, which
+                       official remixes carry it
   _remix-<name>.md     one per non-test remix: its module table
   credits.md           authors grouped, with their module keys
 
@@ -124,14 +126,24 @@ def modules_page(mods) -> str:
 
 def module_page(m, mods, official) -> str:
     """One page per module (stock included, so every remix table can link
-    every row). The manifest facts, then where it runs."""
+    every row). Where a usage fragment exists (docs/site/usage/<name>.md)
+    it leads the page and the manifest facts collapse below it; without
+    one, the page is the manifest facts as before."""
+    fragment = OUT.parent / pathlib.Path("usage") / f"{m.name}.md"
     lines = ["---", "not_in_nav: true", "---", "",
-             f"# {m.key}", "",
-             m.doc, ""]
-    if m.is_stock:
-        lines += ["A stock effect: its code, descriptor and dispatch are in "
-                  "every image. A remix lists one by key to keep its chooser "
-                  "row; an effect on neither chooser gives up its DSP words.", ""]
+             f"# {m.key}", ""]
+    if fragment.is_file():
+        lines += [f'--8<-- "usage/{m.name}.md"', ""]
+        if m.is_stock:
+            lines += ["**Status:** stock: ships in every image, as on a stock unit.", ""]
+        else:
+            lines += [f"**Status:** {index.proof_text(m)}.", ""]
+    else:
+        lines += [m.doc, ""]
+        if m.is_stock:
+            lines += ["A stock effect: its code, descriptor and dispatch are in "
+                      "every image. A remix lists one by key to keep its chooser "
+                      "row; an effect on neither chooser gives up its DSP words.", ""]
     rows = []
     if not m.is_stock:
         rows += [f"| author | {_author(m)} |",
@@ -162,9 +174,16 @@ def module_page(m, mods, official) -> str:
         rows.append("| carried by | " + ", ".join(cells) + " |")
     elif not m.is_stock:
         rows.append("| carried by | no official remix |")
-    lines += ["| | |", "|---|---|"] + rows
-    if not m.is_stock:
-        lines += ["", f"On GitHub: {_module_url(m)}"]
+    if fragment.is_file():
+        body = [m.doc, "", "| | |", "|---|---|"] + rows
+        if not m.is_stock:
+            body += ["", f"On GitHub: {_module_url(m)}"]
+        lines += ["??? note \"Module facts (developers)\"", ""]
+        lines += ["    " + line if line else "    " for line in body]
+    else:
+        lines += ["| | |", "|---|---|"] + rows
+        if not m.is_stock:
+            lines += ["", f"On GitHub: {_module_url(m)}"]
     lines += ["", f"[All modules](../modules.md)"]
     return "\n".join(lines) + "\n"
 

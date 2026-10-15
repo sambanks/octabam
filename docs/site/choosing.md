@@ -8,10 +8,10 @@ reverb bus and keeps three of the inserts on FX1.
 | | octabam-core | octabam-inserts | octabam-bus |
 |---|---|---|---|
 | stock effects | all 14, unchanged (LO-FI's AMF knob fixed) | the stock DELAY; the other 13 give up their DSP words | the stock DELAY on track 8; the other 13 give up their DSP words |
-| new effects | none | SPECTRUM, CHARACTER, MODULATION, TRANSIENT and EUCLID on FX1 and FX2; GATE VERB on FX2 | SPECTRUM, CHARACTER and MODULATION on FX1; DELAY and REVERB engines on tracks 1 and 5; SEND on tracks 2–4, 6–7 |
+| new effects | none | SPECTRUM, CHARACTER, MODULATION, TRANSIENT and EUCLID on FX1 and FX2; GATE VERB and LOFI2 on FX2 | SPECTRUM, CHARACTER and MODULATION on FX1; DELAY and REVERB engines on tracks 1 and 5; SEND on tracks 2–4, 6–7 |
 | bus | no | no | yes: DELAY (track 1), REVERB (track 5), SEND elsewhere |
 | LOAD METER | not in the image | in the image | in the image |
-| DSP words free, payload A / B | 0 | 1,231 / 1,231 | 44 / 605 |
+| DSP words free, payload A / B | 0 | 363 / 363 | 44 / 605 |
 | sample and recorder memory | 12,895 pages | 12,895 pages | 12,895 pages |
 | where it has run | port gates only; not on a unit | port gates only; not on a unit | port gates only; not on a unit |
 

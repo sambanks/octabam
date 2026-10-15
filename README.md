@@ -16,8 +16,10 @@ user's machine, and a built image must never be shared.
 
 Every module is contributed by its author and credited in the table below.
 Pull requests are accepted: a module, a port of an existing mod, a fix, a
-doc correction. Report bugs in [GitHub Issues](https://github.com/sambanks/octabam/issues),
-including the remix, image build, hardware model and steps to reproduce.
+doc correction. [GitHub Issues](https://github.com/sambanks/octabam/issues)
+take bug reports, module proposals and hardware test reports; each has a
+form (`.github/ISSUE_TEMPLATE/`) asking for the remix, image build,
+hardware model and steps to reproduce.
 The licence is MIT.
 
 ## Start here

@@ -4,7 +4,10 @@ Two kinds of reference are checked:
 
 - a relative Markdown link, `[text](path)` or `[text](path#anchor)`, in a
   tracked `.md` file: the path must exist, and an anchor into a `.md` file
-  must match one of its headings (GitHub's slug rule);
+  must match one of its headings (GitHub's slug rule). A link in a
+  `docs/site/usage/` fragment resolves against the generated module page
+  it is included into (`docs/site/reference/modules/`), because that
+  page's directory is where the link will live on the site;
 - a repository path to a Markdown file, `docs/...md`, `tools/...md`,
   `modules/...md` or `remixes/...md`, written anywhere in a tracked text
   file (code comments, Makefile help, docs): the file must exist.
@@ -97,7 +100,9 @@ def check(root=ROOT):
                             fails.append(f"{rel}:{n}: no heading for {target}")
                         continue
                     ref, _, frag = target.partition("#")
-                    dest = (path.parent / ref).resolve()
+                    base = (root / pathlib.Path("docs") / "site" / "reference" / "modules"
+                            if rel.startswith("docs/site/usage/") else path.parent)
+                    dest = (base / ref).resolve()
                     if not dest.exists():
                         fails.append(f"{rel}:{n}: link to {target} -- no such file")
                     elif frag and dest.suffix == ".md" and frag not in anchors(dest):
