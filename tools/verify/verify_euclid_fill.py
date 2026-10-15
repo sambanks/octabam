@@ -157,8 +157,12 @@ def check_ui(src: str) -> None:
     panel = re.findall(r"\.asciz\s+\"([^\"]*)\"", src)
     for s in panel:
         check(f"asciz ASCII {s!r}", s.isascii() and all(32 <= ord(c) <= 126 for c in s))
-    check("cursor mark is '>'",
-          re.search(r'T_MARK:\s*\.asciz\s+">"', src) is not None)
+    check("no invented '>' caret (T_MARK gone)",
+          "T_MARK" not in src and '.asciz ">"' not in src)
+    check("focus uses invert bar (TEMPO BUS idiom)",
+          re.search(r"\.set\s+INVERT,\s*0x40012254", src) is not None
+          and "jsr     INVERT" in src
+          and re.search(r"pea\s+-1", _block(src, "ef_draw:", "ef_fill:")) is not None)
     check("no stock ARRUP/ARRDN icons (this window has no arrow legend)",
           "ARRUP" not in src and "ARRDN" not in src and "0x400b9d8c" not in src)
 

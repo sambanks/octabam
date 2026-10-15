@@ -24,7 +24,7 @@ the letter in parentheses.
 | control | does |
 |---|---|
 | TRACK + PAGE | open / close |
-| UP / DOWN | move the cursor (PULSE / ROT / RAND VEL / RAND PTCH) |
+| UP / DOWN | move the cursor (invert bar on the focused row) |
 | LEFT / RIGHT | step the focused value by 1 |
 | A | PULSE (A) (focus follows) |
 | B | ROT (B) (focus follows) |

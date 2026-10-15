@@ -43,6 +43,7 @@
         .set    TWIDTH,    0x40012f30   | (font, limit, str) -> pixels
         .set    RULE,      0x40011910   | (surf, x, y, x2, 1)
         .set    BOX,       0x40012254   | (surf, x1, y1, x2, y2, mode)
+        .set    INVERT,    0x40012254   | same; mode -1 = EOR bar (TEMPO BUS)
         .set    SPRINTF,   0x40013a08
         .set    LPUSH,     0x40031494
         .set    LPOP,      0x4003146c
@@ -63,8 +64,9 @@
         .set    Y_ROW4,    13          | RAND PTCH
         .set    Y_PAT,     3
         .set    PAT_H,     4
-        .set    X_LAB,     10          | label column (">" sits at 3)
+        .set    X_LAB,     10          | label column
         .set    X_VAL,     88          | value right edge (WINW-4)
+        .set    X_INV,     3           | invert bar left (TEMPO BUS idiom)
         .set    LOCK0,     0x59        | step records (STEP_LOCKS.md)
         .set    LOCK_STEP, 32
         .set    LOCK_VOL,  15          | AMP VOL flat index
@@ -522,11 +524,11 @@ ef_rtext:
 | EUCLID  T1
 | ─────────────
 |  STEPS     16     (pattern length; not editable)
-| >PULSE      5
+|  PULSE      5     (focused row: invert bar, TEMPO BUS idiom)
 |  ROT        0
-|  RAND VEL       0
-|  RAND PTCH       0
-| ■··■··■··■··     (preview)
+|  RAND VEL   0%
+|  RAND PTCH  0%
+|  [pattern bar]
 ef_draw:
         tstl    ef_win
         beq.w   d9
@@ -579,17 +581,7 @@ drow:   lea     L_STEPS,%a4
         lea     L_PIT,%a4
         moveq   #Y_ROW4,%d3
 | cursor 0=PULSE .. 3=RAND PTCH; STEPS never focused
-dlbl:   tstl    %d2
-        beq.s   dlab
-        movel   %d2,%d0
-        subql   #1,%d0
-        cmpl    ef_cursor,%d0
-        bne.s   dlab
-        moveq   #3,%d0
-        movel   %d3,%d1
-        lea     T_MARK,%a0
-        bsr.w   ef_text
-dlab:   moveq   #X_LAB,%d0
+dlbl:   moveq   #X_LAB,%d0
         movel   %d3,%d1
         movel   %a4,%a0
         bsr.w   ef_text
@@ -625,7 +617,25 @@ dval:   movel   %a0@,-(%sp)
         lea     ef_buf,%a0
         bsr.w   ef_rtext
 
-        addql   #1,%d2
+        | Focused editable row: invert bar (TEMPO BUS / stock cursor idiom).
+        tstl    %d2
+        beq.s   dnext
+        movel   %d2,%d0
+        subql   #1,%d0
+        cmpl    ef_cursor,%d0
+        bne.s   dnext
+        pea     -1
+        movel   %d3,%d0
+        addql   #6,%d0                  | y2 = row + font height
+        movel   %d0,%sp@-
+        pea     X_VAL
+        movel   %d3,%sp@-               | y1
+        pea     X_INV
+        movel   %a5,%sp@-
+        jsr     INVERT
+        lea     %sp@(24),%sp
+
+dnext:  addql   #1,%d2
         moveq   #5,%d0
         cmpl    %d0,%d2
         bcs.w   drow
@@ -1142,7 +1152,6 @@ EF_ENCS:
 
 T_TITLE:  .asciz "EUCLID"
 T_FILLED: .asciz "EUCLID FILL"
-T_MARK:   .asciz ">"
 L_STEPS:  .asciz "STEPS"
 L_PULSES: .asciz "PULSE (A)"
 L_ROT:    .asciz "ROT (B)"
