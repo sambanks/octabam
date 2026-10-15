@@ -28,7 +28,7 @@ MODULE = Module(
     author_url="https://github.com/iliamurzinov",
     proof=Proof.CHECK,
     proof_note="builds and boots under the port; fill math gated in verify_euclid_fill",
-    doc="TRACK + PAGE: Euclidean sample-trig fill (STEPS=pattern len / PULSE / ROT / RAND VEL / RAND PTCH; CUE = random k-subset; RAND VEL/RAND PTCH = optional VOL/PTCH locks).",
+    doc="TRACK + PAGE: Euclidean sample-trig fill (STEPS=pattern len / PULSE / ROT / RAND VEL / RAND PTCH; CUE = random k-subset; RAND VEL = VOL locks; RAND PTCH = in-scale range around Part PLAYBACK PTCH).",
     linked=(Linked("ef", "modules/euclid-fill/euclid_fill.s", dram=True),),
     detours=(
         Detour(PAGE, PAGE_STOCK, "ef", "ef_page",
