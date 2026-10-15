@@ -152,6 +152,24 @@ def check_ui(src: str) -> None:
               m.group(1) if m else "missing")
     check("no ROTATION string", "ROTATION" not in src)
 
+    # Panel strings: letters in parentheses (user contract), plain ASCII only.
+    # No invented unicode arrows/blocks in .asciz — those are not OT glyphs.
+    panel = re.findall(r"\.asciz\s+\"([^\"]*)\"", src)
+    for s in panel:
+        check(f"asciz ASCII {s!r}", s.isascii() and all(32 <= ord(c) <= 126 for c in s))
+    check("cursor mark is '>'",
+          re.search(r'T_MARK:\s*\.asciz\s+">"', src) is not None)
+    check("no stock ARRUP/ARRDN icons (this window has no arrow legend)",
+          "ARRUP" not in src and "ARRDN" not in src and "0x400b9d8c" not in src)
+
+    # Arrow keycodes = TEMPO BUS (measured OT codes), not guessed.
+    tb = (ROOT / "modules/tempo-bus/tempobus.s").read_text()
+    tb_keys = re.search(r"TB_KEYS:(.*?)TB_ENCS:", tb, re.S)
+    assert tb_keys, "TEMPO BUS key table missing"
+    for code, name in (("0x33", "UP"), ("0x20", "DOWN"), ("0x34", "LEFT"), ("0x21", "RIGHT")):
+        check(f"arrow {name} {code} matches TEMPO BUS",
+              code in tb_keys.group(1) and code in src)
+
     for name, val in (
         ("WINW", 92), ("WINH", 64),
         ("Y_ROW0", 41), ("Y_ROW1", 34), ("Y_ROW2", 27), ("Y_ROW3", 20),

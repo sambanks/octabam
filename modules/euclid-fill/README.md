@@ -24,7 +24,7 @@ the letter in parentheses.
 | control | does |
 |---|---|
 | TRACK + PAGE | open / close |
-| UP / DOWN | move the cursor (PULSE ↔ ROT ↔ RAND VEL ↔ RAND PTCH) |
+| UP / DOWN | move the cursor (PULSE / ROT / RAND VEL / RAND PTCH) |
 | LEFT / RIGHT | step the focused value by 1 |
 | A | PULSE (A) (focus follows) |
 | B | ROT (B) (focus follows) |
@@ -76,4 +76,5 @@ Not hardware-tested.
 - Euclidean bit patterns (`(i·k) % n < k`, same as filter EUCLID)
 - UI contract on `euclid_fill.s`: STEPS / PULSE (A) / ROT (B) / RAND VEL (C) /
   RAND PTCH (D) labels, layout, PULSE default 5, STEPS locked via `ef_sync_len`,
-  key layer, encoders A–D + LEVEL, AMP VOL + in-scale PTCH lock writers
+  key layer (= TEMPO BUS arrow codes), encoders A–D + LEVEL, AMP VOL +
+  in-scale PTCH lock writers
