@@ -111,14 +111,28 @@ def pitch_rad(pct: int, max_rad: int) -> int:
     return max(1, (max_rad * pct) // 100)
 
 
-def pitch_candidates(rad: int, root: int, mask: int) -> list[int]:
-    """In-scale st in [-rad..+rad]; PC = (root+st) mod 12 (SCALE_AT / po_snap)."""
+def pitch_candidates(
+    rad: int, root: int, mask: int, *, base_st: int = 0
+) -> list[int]:
+    """Absolute st = base_st+delta for delta in [-rad..+rad] on-scale.
+
+    PC = (root + st) mod 12. base_st is the Part PLAYBACK PTCH decoded to
+    semitones (overall knob); 0 = unison / raw 64.
+    """
     out: list[int] = []
-    for st in range(-rad, rad + 1):
+    for delta in range(-rad, rad + 1):
+        st = base_st + delta
         pc = (root + st) % 12
         if mask & (1 << pc):
             out.append(st)
     return out
+
+
+def decode_ptch(raw: int, *, synth: bool) -> int:
+    """Part/lock PTCH raw -> semitones (synth 64+st, sample 64+5·st)."""
+    if synth:
+        return raw - 64
+    return (raw - 64) // 5
 
 
 def encode_ptch(st: int, *, synth: bool) -> int:
@@ -294,6 +308,11 @@ def check_ui(src: str) -> None:
           and "PIT_RAD" in ptch and "PIT_SAMP" in ptch)
     check("ef_write_ptch uses ROOT for absolute pitch class",
           "NV_ROOT" in ptch and re.search(r"addl\s+%d6,%d0", ptch) is not None)
+    check("ef_write_ptch centers on Part PLAYBACK PTCH (ef_part_ptch)",
+          "ef_part_ptch" in ptch
+          and re.search(r"\.set\s+PLAY_SLOTS,\s*0x8edaa", src) is not None
+          and re.search(r"\.set\s+MACH_OFF,\s*0x8eda2", src) is not None
+          and "ep_dst:" in ptch)
     check("ef_write_ptch encodes sample 64+5·st and synth 64+st",
           "ef_is_synth" in ptch
           and "ep_samp:" in ptch
@@ -401,6 +420,19 @@ def check_pitch_behavior() -> None:
           all(major_d_mask & (1 << ((2 + st) % 12)) for st in cands_d)
           and 0 in cands_d
           and len(cands_d) > 0)
+
+    # Relative to Part PLAYBACK PTCH (overall knob), not unison.
+    check("decode synth raw 71 -> +7", decode_ptch(71, synth=True) == 7)
+    check("decode sample raw 64 -> 0", decode_ptch(64, synth=False) == 0)
+    check("decode sample raw 94 -> +6", decode_ptch(94, synth=False) == 6)
+    cands_rel = pitch_candidates(5, root=0, mask=major_c, base_st=7)
+    check("major/C ±5 around Part +7: all abs st near 7, on scale",
+          all(2 <= st <= 12 for st in cands_rel)
+          and all((st % 12) in major_pcs for st in cands_rel)
+          and 7 in cands_rel
+          and 0 not in cands_rel)
+    check("relative encode Part+7 delta0 -> synth 71",
+          encode_ptch(7, synth=True) == 71)
 
     # Encoding: sample |st|>12 must not produce a byte that clamps to 0 (-64).
     check("synth st=-24 -> raw 40", encode_ptch(-24, synth=True) == 40)

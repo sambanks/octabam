@@ -75,6 +75,8 @@
         .set    UI_BANK,   0x100b14cf  | bank index (qz_is_synth's Part walk)
         .set    PART_STR,  6322        | Part stride in the bank blob
         .set    SIG_OFF,   0x8edbc     | NEIGHBOR col: "FM",1 when FM SYNTH chosen
+        .set    MACH_OFF,  0x8eda2     | Part: machine byte per track
+        .set    PLAY_SLOTS,0x8edaa     | Part: PLAYBACK p1 + mach·6 + t·30
         .set    NV_ROOT,   0x100b14ee  | SCALE QUANTIZER ROOT 0..11 (C..B)
         | RAND PTCH = range 0..100 → rad = max_rad*pct/100 (min 1 if pct>0).
         | PIT_RAD 24 = ±2 oct FM/SY; PIT_SAMP 12 = sample PLAYBACK max |st|.
@@ -911,12 +913,12 @@ ef_write_mask:
 | ef_write_ptch: on hit step d2 / trac a2.
 | RAND PTCH=0 / no quantizer / SCALE OFF -> clear PTCH.
 | Else rad = max(1, max_rad*pct/100): EVERY hit gets a lock (range, not
-| probability — a probability left most hits on the Part root).
-| Pick uniform among st in [-rad..+rad] whose absolute PC (ROOT+st) mod 12
-| is in SCALE_AT (PTCH 64 = scale root, same as po_snap).
+| probability). Center is the track's Part PLAYBACK PTCH (overall knob),
+| not unison — same byte stock unlocks fall back to (po_part_ptch).
+| Pick uniform among delta in [-rad..+rad] whose absolute PC
+| (ROOT + base_st + delta) mod 12 is in SCALE_AT; lock encodes base_st+delta.
 | FM/SY: raw=64+st (max_rad=PIT_RAD). Sample: raw=64+5·st (max_rad=PIT_SAMP).
-| Clamp raw to 0..127 before store (sample encode of |st|>12 wrapped to a
-| byte the Part clamp turned into 0 = display -64 on synth).
+| Clamp raw to 0..127 before store.
 | Caller keeps n in d5 and rot in d6 — park across the pick.
 ef_write_ptch:
         movel   ef_pitrnd,%d3           | pct 0..100
@@ -953,6 +955,16 @@ ef_write_ptch:
         bne.s   1f
         moveq   #PIT_SAMP,%d4
 1:      movel   %d0,-(%sp)              | park is_synth
+        bsr.w   ef_part_ptch            | d0 = Part PTCH raw
+        movel   (%sp),%d1               | is_synth (still parked)
+        tstl    %d1
+        bne.s   ep_dsy
+        subi.l  #64,%d0                 | sample: st = (raw-64)/5
+        moveq   #5,%d1
+        divs.l  %d1,%d0
+        bra.s   ep_dst
+ep_dsy: subi.l  #64,%d0                 | synth: st = raw-64
+ep_dst: movel   %d0,-(%sp)              | park base_st
         | rad = max(1, max_rad * pct / 100)
         movel   %d4,%d0
         mulu.w  %d3,%d0
@@ -965,12 +977,13 @@ ef_write_ptch:
         moveq   #0,%d0
         moveb   NV_ROOT,%d0
         movel   %d0,%d6                 | d6 = ROOT
-        | count st in [-rad..+rad] with (ROOT+st)%12 in mask
+        | count delta in [-rad..+rad] with (ROOT+base_st+delta)%12 in mask
         moveq   #0,%d3
         move.l  %d4,%d1
-        negl    %d1                     | d1 = st = -rad
+        negl    %d1                     | d1 = delta = -rad
 ep_cnt: move.l  %d1,%d0
-        addl    %d6,%d0                 | ROOT+st
+        addl    (%sp),%d0               | + base_st
+        addl    %d6,%d0                 | + ROOT
 ep_cm:  tstl    %d0
         bpl.s   ep_cp
         addil   #12,%d0
@@ -987,23 +1000,23 @@ ep_cn:  addql   #1,%d1
         move.l  %d4,%d0
         addql   #1,%d0                  | rad+1
         cmpl    %d0,%d1
-        blt.w   ep_cnt                  | while st <= rad  (st < rad+1)
+        blt.w   ep_cnt
         tstl    %d3
         beq.w   ep_clear_rad
-        | rank = rng % count
         bsr.w   ef_rng
         move.l  %d0,%d1
         movel   %d3,%d5
         remul   %d5,%d0,%d1             | d0 = rank
         move.l  %d0,%d3
         move.l  %d4,%d1
-        negl    %d1                     | st = -rad
-        moveq   #0,%d5                  | cursor
+        negl    %d1                     | delta = -rad
+        moveq   #0,%d5
 ep_pk:  move.l  %d4,%d0
         addql   #1,%d0
         cmpl    %d0,%d1
         bge.w   ep_clear_rad
         move.l  %d1,%d0
+        addl    (%sp),%d0               | base_st
         addl    %d6,%d0
 ep_pm:  tstl    %d0
         bpl.s   ep_pp
@@ -1021,8 +1034,10 @@ ep_pq:  btst    %d0,%d7
         addql   #1,%d5
 ep_ps:  addql   #1,%d1
         bra.s   ep_pk
-ep_got: | d1 = st; encode
-        move.l  %d1,%d3                 | st
+ep_got: | d1 = delta; abs st = base_st + delta
+        move.l  %d1,%d3
+        movel   (%sp)+,%d0              | base_st
+        addl    %d0,%d3                 | abs st
         movel   (%sp)+,%d0              | is_synth
         tstl    %d0
         beq.s   ep_samp
@@ -1046,6 +1061,7 @@ ep_ok:  movel   (%sp)+,%d4              | pulses
         movel   (%sp)+,%d2              | step
         bra.s   ep_store
 ep_clear_rad:
+        movel   (%sp)+,%d0              | drop base_st
         movel   (%sp)+,%d0              | drop is_synth
         movel   (%sp)+,%d4
         movel   (%sp)+,%d6
@@ -1060,6 +1076,38 @@ ep_store:
         lsll    #5,%d1
         addil   #LOCK0+LOCK_PTCH,%d1
         moveb   %d0,%a2@(0,%d1:l)
+        rts
+
+| ef_part_ptch: d0 := Part PLAYBACK PTCH raw for ef_trk (slot A).
+| Same path as po_part_ptch / qz: Part + 0x8edaa + machine·6 + track·30.
+| Clobbers d0/d1/a0/a1.
+ef_part_ptch:
+        moveal  DBPTR,%a0
+        moveq   #0,%d0
+        moveb   UI_BANK,%d0
+        move.l  #PART_STR,%d1
+        muls.l  %d1,%d0
+        addal   %d0,%a0                 | Part
+        movel   %a0,-(%sp)              | park Part
+        addal   #MACH_OFF,%a0
+        move.l  ef_trk,%d1
+        moveq   #0,%d0
+        moveb   %a0@(0,%d1:l),%d0       | machine
+        addl    %d0,%d0
+        move.l  %d0,%d1
+        addl    %d0,%d0
+        addl    %d0,%d1                 | machine * 6
+        moveal  (%sp)+,%a0              | Part
+        addal   %d1,%a0
+        move.l  ef_trk,%d1
+        move.l  %d1,%d0
+        lsll    #5,%d0
+        subl    %d1,%d0
+        subl    %d1,%d0                 | track * 30
+        addal   %d0,%a0
+        addal   #PLAY_SLOTS,%a0
+        moveq   #0,%d0
+        moveb   (%a0),%d0               | PTCH
         rts
 
 | ef_is_synth: d0 := 1 when ef_trk's Part NEIGHBOR sig is "FM",1 or "SY",1
