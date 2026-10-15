@@ -1,7 +1,7 @@
 """BLACKPYRAMIDS_303 -- BLKPYRAMD, a TB-303 voice (Open303 on the DSP56300) as a track machine, one per DSP core.
 
 Source: `upstream/` is Zac Kyoti's repository (Zac-Kyoti/octatrack-kyoti-fw,
-submodule, pinned to `fee95f5`). The declaration is
+submodule, pinned to `e2fde9a`). The declaration is
 `upstream/octabam-modules/blackpyramids-303/manifest.py`: one DRAM unit (`bp_runtime.s`, the
 ColdFire runtime generated from its sources), re-linked and compared with the author's own bytes
 (`reference`) every build; 43 detours, 7 pokes, the FLEX renderer `SymbolRef`; and the DSP voice
