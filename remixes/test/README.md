@@ -68,6 +68,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`usb-out-tracks`](usb-out-tracks/README.md) | stock + USB (LAYOUT TRACKS) (16 ch: the tracks). | port-gated |
 | [`usb-out-tracks-main-cue`](usb-out-tracks-main-cue/README.md) | stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE). | port-gated |
 | [`usb-out-tracks-post`](usb-out-tracks-post/README.md) | stock + USB (LAYOUT TRACKS POST) (16 ch: the tracks after their own MAIN gain). | on hardware: allmyfriendsaresynths's MKII, P3, 5 Oct 2026 (smoke test: 16 channels, LEVEL/mute/solo/crossfader follow) |
+| [`varispeed`](varispeed/README.md) | stock effects with VARISPEED: TSTR VARI, QUAN on PTCH. | `make check` |
 | [`vocoder`](vocoder/README.md) | VOCODER beside the stock effects (all but PLATE REV, whose words it takes, and DJ EQ, so its table sits in X). | on hardware: Ignorato's MKII, OCTABAM12 (the earlier positions T1 T2 T5 T6), 4 Oct 2026; the current positions not flashed on this build |
 | [`wave`](wave/README.md) | Experiment: a 4-voice wavetable synth on FX2, played by a sine on its track; SCALE QUANTIZER, page-2 tools, USB out; DARK and SPRING REV give up their words. | on hardware: Sam's MKII, image 93, 3 Oct 2026: plays, PTCH and the CHROMATIC keys move the pitch |
 | [`waveload`](waveload/README.md) | CF METER + WAVE LOAD on stock: T8's FX2 BURN = K 4-voice wave engines per frame interrupt, read over USB. | on hardware: image 92, Sam's MKII, 3 Oct 2026 |

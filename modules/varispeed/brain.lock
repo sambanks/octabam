@@ -1,0 +1,21 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "labels": [
+    "DRAM",
+    "CAVE"
+   ],
+   "name": "PLACE",
+   "type": "option"
+  }
+ },
+ "store": {
+  "id": "kyoti.varispeed",
+  "major": 1
+ }
+}
