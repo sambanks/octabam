@@ -43,7 +43,7 @@ BusDlyRPL).
 import dataclasses
 import hashlib
 
-from remix.schema import (Apply, Category, Detour, FormatterReg, Kind, Linked, Module, Option, Proof,
+from remix.schema import (Apply, Category, Detour, FormatterReg, Gate, Kind, Linked, Module, Option, Proof,
                           Setting, Store)
 
 # The per-frame voice-record writer, at the instruction that publishes the
@@ -98,6 +98,7 @@ MODULE = Module(
     # 15 Sep 2026).
     linked=(TEMPO_CAVE, TIME_FMT),
     detours=(tempo_hook("cave"),),
+    gates=(Gate("tools/verify/verify_tempo_publish.py", venv=True, stage="image"),),
     store=Store(STORE_ID),
     settings=(Setting(1, "CAVE", Option(*CAVE_MODES), default="ON", apply=Apply.BUILD,
                       doc="ON: the publish cave and TIME's formatter; OFF: no cave and "

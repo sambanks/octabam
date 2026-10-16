@@ -47,3 +47,5 @@ caves; the build now refuses both variables.
 Background: [`docs/firmware/DSP.md`](../../docs/firmware/DSP.md) section 6c,
 [`docs/firmware/PARAM_PAGES.md`](../../docs/firmware/PARAM_PAGES.md) section 7,
 [`docs/firmware/MIDI.md`](../../docs/firmware/MIDI.md).
+
+[Installed-hook regression notes](DEVELOPMENT.md).
