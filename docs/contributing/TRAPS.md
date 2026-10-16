@@ -942,3 +942,20 @@ is NOT measured — the guard is not hardware-proven. Rule: an
 interrupt-mask restore that precedes the data it protects is a window;
 before blaming names or parsers, ask what the IRQ handler reads while the
 producer is mid-update.
+
+
+<a id="trap-popup-redraw"></a>
+### A nonzero popup pointer is not an open FX SETUP window
+
+PLOCKS page-two edits changed the lock bytes without repainting SETUP;
+the memory/persistence gate passed while the hardware display remained
+stale (16 Oct 2026). Native trig-down only conditionally redraws the main
+page, and that redraw does not repaint the SETUP popup. Refresh the native
+FX window after trig bookkeeping and edits, not just after a page redraw.
+
+`0x460d175c` points at a shared popup object used by MIXER, TEMPO and
+other dialogs too. Check its active pointer, open flag and SETUP geometry
+before calling the FX draw callback. `verify_plocksp2` now compares UART
+LCD pixels with normal-value references, exercises reholding without a
+knob turn, and checks the other windows. A lock-byte assertion alone
+cannot establish that a user can see the edit.

@@ -162,6 +162,8 @@ moment it costs real work, and add its line here.
 
 **ColdFire / DRAM side**
 
+- [A nonzero popup pointer is not an open FX SETUP window](docs/contributing/TRAPS.md#trap-popup-redraw) — check the open flag and geometry; verify held-lock edits on the decoded LCD.
+
 - [A branch can enter the middle of a displaced span](docs/contributing/TRAPS.md#trap-detour-interior) — whole instructions are insufficient: keep shared branch targets; the MIDI CHROMATIC gate exercises both paths.
 
 - [A write-watch on cached addresses is blind to the uncached-alias clear](docs/contributing/TRAPS.md#trap-watch-alias) — `machine.h` folds the alias.

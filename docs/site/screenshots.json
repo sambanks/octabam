@@ -65,10 +65,17 @@
   "plocks-p2": {
     "lock": {
       "image": "plocks-p2/lock.png",
-      "caption": "FX2 setup page with trig 1 held for parameter locking.",
+      "caption": "Trig 1 held: GVOL is locked to 50 with the value area highlighted.",
       "remix": "octabam-core",
       "source": "emulator panel UART",
-      "firmware_sha256": "f87679c92ddc36c09728279a8940f51f0c6d86cbce5b1c42b3c6dc39da1c0ca0"
+      "firmware_sha256": "2e797bc5a1d85480ea6243361e4be01f7fb3f83e67e94a64067f3d47afab97a9"
+    },
+    "released": {
+      "image": "plocks-p2/released.png",
+      "caption": "Trig released: GVOL shows the Part value 20; the step keeps its lock.",
+      "remix": "octabam-core",
+      "source": "emulator panel UART",
+      "firmware_sha256": "2e797bc5a1d85480ea6243361e4be01f7fb3f83e67e94a64067f3d47afab97a9"
     }
   },
   "direct-jump-kyoti": {

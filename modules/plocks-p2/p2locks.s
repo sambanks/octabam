@@ -242,6 +242,17 @@ pe_c1:  addl    %a0@(0x9a),%d1
 pe_c2:  moveb   %d0,%a1@
         bra.w   pe_loop
 pe_commit:
+        | Mirror stock's edited flag and pending trig-tap masks. Otherwise
+        | key-up handles a bare trig tap and clears the newly written lock.
+        moveq   #1,%d0
+        movel   %d0,0x460d173a
+        moveq   #0,%d0
+        movew   %d0,0x460d1a9e
+        movew   %d0,0x460d1aa0
+        movew   %d0,0x460d1aa2
+        movew   %d0,0x460d1aa4
+        movew   %d0,0x460d1aa6
+        movew   %d0,0x460d10dc
         bsr.w   ui_bank                | CS1, when it holds this bank
         bsr.w   nv_touch
         | the stock lock editor's marks: the bank edited, the project
@@ -263,10 +274,95 @@ pe_commit:
         lea     REDRAW,%a0
         moveq   #20,%d0
         movel   %d0,%a0@(0,%d1:l)
+        bsr.w   plk_refresh_setup
 pe_done:
         moveq   #0,%d0
         movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
+        rts
+
+| Refresh FX SETUP after stock's hold-event and release page redraws.
+| Use the native hold event, not key-down, to match page-one timing.
+| Keep each native call and its return registers intact.
+        .globl  plk_page_draw, plk_widget1, plk_widget2
+plk_page_draw:
+        movel   %sp@(4),%sp@-
+        jsr     0x4004d948
+        addql   #4,%sp
+        bra.w   plk_refresh_setup
+plk_refresh_setup:
+        lea     %sp@(-16),%sp
+        movem.l %d0-%d1/%a0-%a1,%sp@
+        tstl    MIDITRK
+        bne.s   prs_done
+        movel   PAGEKIND,%d0
+        subql   #3,%d0
+        cmpil   #1,%d0
+        bhi.s   prs_done
+        lea     0x400bc25a,%a1        | FX1 SETUP descriptor
+        tstl    %d0
+        beq.s   prs_window
+        lea     0x400bc484,%a1        | FX2 SETUP descriptor
+prs_window:
+        movel   %a1@(8),%d0           | native window object
+        beq.s   prs_done
+        cmpl    WINDOW,%d0
+        bne.s   prs_done
+        moveal  %d0,%a0
+        movel   %a0@(32),%d0
+        btst    #5,%d0
+        beq.s   prs_done              | closed popup
+        movel   %a0@(8),%d0
+        cmpil   #7,%d0
+        bne.s   prs_done
+        tstl    %a0@(12)
+        bne.s   prs_done
+        movel   %a0@(24),%d0
+        cmpil   #0xf4,%d0
+        bne.s   prs_done
+        movel   %a0@(40),%d0
+        cmpil   #0x40,%d0
+        bne.s   prs_done              | shared object now belongs to another modal
+        moveal  %a1@(44),%a0          | native SETUP draw callback
+        movel   %a0,%d0
+        beq.s   prs_done
+        jsr     %a0@
+prs_done:
+        movem.l %sp@,%d0-%d1/%a0-%a1
+        lea     %sp@(16),%sp
+        rts
+
+| Pass stock's held-lock flag to the existing widget renderer. Bit 0
+| both inverts the value area and keeps the formatted number visible,
+| including after its normal animation timer expires. The parameter name
+| stays native. Preserve the descriptor's other widget flags and formatter.
+plk_widget2:
+        bsr.s   plk_widget_flags
+        movel   %d3,%sp@-             | displaced renderer arguments
+        movel   %a3@,%sp@-
+        movel   %a1,%sp@-
+        jmp     0x4003787e
+plk_widget1:
+        bsr.s   plk_widget_flags
+        movel   %d3,%sp@-
+        movel   %a3@,%sp@-
+        movel   %a1,%sp@-
+        jmp     0x40037c1a
+plk_widget_flags:
+        movel   %d0,%sp@-
+        movel   %d6,%sp@-
+        movel   PAGEKIND,%d6
+        subql   #3,%d6
+        moveq   #-1,%d0
+        bsr.w   plk_dial
+        tstl    %d0
+        bmi.s   pwf_done
+        movel   %a1,%d0
+        oril    #1,%d0
+        moveal  %d0,%a1
+pwf_done:
+        movel   %sp@+,%d6
+        movel   %sp@+,%d0
         rts
 
 | -------------------------------------------------------------- playback ----

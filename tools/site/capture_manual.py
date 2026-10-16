@@ -116,6 +116,22 @@ def capture_core(p,r):
     shot(p,'reload-from-project','status','Track 1 sequence reload from the saved project.',r)
 
 
+def capture_plocks(p,r):
+    """PLATE REV slot A: a held lock and the normal Part value on release."""
+    press(p,'t1');p.press('pg_fx2',hold=180,settle=180)
+    if not setup_window_open(p.rt.uc):
+        p.press('pg_fx2',hold=30,settle=30)
+        p.press('pg_fx2',hold=180,settle=180)
+    assert setup_window_open(p.rt.uc), 'PLOCKS capture did not reach FX2 SETUP'
+    # Establish a visible Part value through the encoder, regardless of defaults.
+    enc(p,0,-127);enc(p,0,20)
+    press(p,'rec');press(p,'trig1')
+    p.key('trig1',True);p.run(180);enc(p,0,30)
+    shot(p,'plocks-p2','lock','Trig 1 held: GVOL is locked to 50 with the value area highlighted.',r)
+    p.key('trig1',False);p.run(350)
+    shot(p,'plocks-p2','released','Trig released: GVOL shows the Part value 20; the step keeps its lock.',r)
+
+
 def capture_features(p,r):
     p.chord('t1','page')
     shot(p,'euclid-fill','fill','Euclidean trig fill: pattern length, pulses, and rotation.',r)
@@ -239,13 +255,14 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','features','inserts','bus','extras','machines','probes'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
     for group in a.groups:
         assignments=[]
         if group=='core': jobs=[('octabam-core',capture_core,[])]
+        elif group=='plocks': jobs=[('octabam-core',capture_plocks,[(1,'fx2','PLATE REV')])]
         elif group=='features':
             # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist.
             scratch=OUT/'features.py'

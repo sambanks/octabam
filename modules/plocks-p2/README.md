@@ -10,6 +10,10 @@ each held step gets that slot's page-2 lock. FUNC held while turning
 removes it. The trig plays the lock and the next trig puts the Part's
 value back, as page 1 does.
 
+Holding a trig shows its lock after the same short delay as page 1, with
+the value area highlighted. Knob edits update immediately. Releasing the
+trig restores the Part display.
+
 ## Measured
 
 Under the port, 2 Oct 2026, `tools/verify/verify_plocksp2.py` on
@@ -127,6 +131,16 @@ trig. Nothing carries page 2, and every byte of the pattern data is used.
   and reload, the project store and reload loops), read at the project
   load and the masked bank loads, and emptied for a new project. A missing
   source copies as an empty file.
+
+## Trig edit and release
+
+While a trig is held, its page-two lock value stays visible with the value
+area highlighted, as on page 1. The parameter name stays unchanged.
+Releasing the trig shows the Part value again and keeps the step's lock.
+
+[Stock address provenance](DEVELOPMENT.md#stock-address-provenance) lists the
+native readers and writers mirrored by the editor, with observed addresses
+and inferred roles distinguished.
 
 ## KITS
 
