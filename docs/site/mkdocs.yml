@@ -65,6 +65,7 @@ nav:
       - Synth Machine: reference/modules/synth.md
       - Tuner: reference/modules/tuner.md
       - Tempo Controls: reference/modules/tempo-bus.md
+      - Varispeed: reference/modules/varispeed.md
       - Mute Modes: reference/modules/mute-modes.md
       - Page 2 Parameter Locks: reference/modules/plocks-p2.md
   - Kits and Scenes:
