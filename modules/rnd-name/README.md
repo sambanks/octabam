@@ -8,8 +8,8 @@ name from two 64-word pools (4096 joins).
 | Editor | FUNC+CUE |
 |--------|----------|
 | NAME THE NEW PROJECT | `YYMMDD ` + two pool words (e.g. `261014 FOGBED`) |
+| SAVE PROJECT AS… / CHOOSE NEW PROJECT NAME | `YYMMDD ` + two pool words |
 | SAVE SAMPLE AS… | two pool words (no date) |
-| SAVE PROJECT AS… / CHOOSE NEW PROJECT NAME | two pool words |
 | NAME THE NEW DIR / NAME THE NEW SET | two pool words |
 | KITS → SAVE KIT (name editor) | one short pool word (7-char max) |
 | RENAME PROJECT / PART / ARR / remarks / card | stock (inert) |

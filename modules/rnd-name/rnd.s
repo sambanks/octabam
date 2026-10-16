@@ -5,10 +5,10 @@
 | Reload. This unit replaces that key table (SymbolRef at 0x400d08f2) with
 | stock plus CUE -> rnd_chord.
 |
-| CREATE NEW PROJECT: YYMMDD + space + two pool words.
-| Words-only (no date): SAVE SAMPLE AS, SAVE PROJECT AS / CHOOSE NEW
-| PROJECT NAME, NAME THE NEW DIR, NAME THE NEW SET, and KITS SAVE KIT
-| (DRAM callback). Rename / remarks / card: inert.
+| Date + two pool words: CREATE NEW PROJECT, SAVE PROJECT AS, CHOOSE NEW
+| PROJECT NAME. Words-only (no date): SAVE SAMPLE AS, NAME THE NEW DIR,
+| NAME THE NEW SET, and KITS SAVE KIT (DRAM callback). Rename / remarks /
+| card: inert.
 |
 | Fill length follows the editor's ED_MAX (kits = 7). Short editors get
 | one pool word; longer ones join two (64 x 64).
@@ -49,14 +49,14 @@ rnd_chord:
         moveq   #1,%d3
         cmpil   #CREATE_CB,%d0
         beqs    0f
+        cmpil   #SAVEAS_CB,%d0         | SAVE PROJECT AS…
+        beqs    0f
+        cmpil   #CHOOSE_CB,%d0         | CHOOSE NEW PROJECT NAME
+        beqs    0f
         moveq   #0,%d3
         cmpil   #SAMPLE_CB1,%d0
         beqs    0f
         cmpil   #SAMPLE_CB2,%d0
-        beqs    0f
-        cmpil   #SAVEAS_CB,%d0
-        beqs    0f
-        cmpil   #CHOOSE_CB,%d0
         beqs    0f
         cmpil   #NEWDIR_CB,%d0
         beqs    0f

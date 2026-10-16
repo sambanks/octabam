@@ -12,8 +12,8 @@ build the test remix `rnd-name`.
 | Editor | FUNC + CUE writes |
 |---|---|
 | NAME THE NEW PROJECT | a date `YYMMDD ` and two words, for example `261014 FOGBED` |
+| SAVE PROJECT AS, CHOOSE NEW PROJECT NAME | a date `YYMMDD ` and two words |
 | SAVE SAMPLE AS | two words, no date |
-| SAVE PROJECT AS, CHOOSE NEW PROJECT NAME | two words |
 | NAME THE NEW DIR, NAME THE NEW SET | two words |
 | KITS > SAVE KIT | one short word (7 characters at most) |
 | RENAME PROJECT, PART, ARR, remarks, card | stock; the chord does nothing |
