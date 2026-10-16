@@ -7,6 +7,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`analog-bassdrum`](analog-bassdrum/README.md) | Analog BD source machine, switchable 808/909, stock AMP and FX. | port-gated: source/UI under the port; earlier ANALOGBD1 auditioned on MK1, current revision unflashed |
 | [`ata-write-guard`](ata-write-guard/README.md) | Stock effects with the first PIO card write guarded through bookkeeping. | port-gated: forced completion-interrupt gate under the port; not on hardware |
 | [`batch-bugfixes`](batch-bugfixes/README.md) | stock effects with BATCH_BUGFIXES: the MIDI Plays-Free trig, empty-pattern LED and Part-change carryover fixes. | `make check` |
+| [`buffer-saver`](buffer-saver/README.md) | stock effects with SAVE PROJECT offering to save the recorder buffers' unsaved takes, each assigned to itself. | on hardware: Chupitnik's MKII, 15-16 Oct 2026, AUTOSAVE1 and AUTOSAVE2 from the card (the module under its first name): after a take FUNC + PROJ and PROJECT > SAVE ask SAVE SAMPLES?; YES saves R<n>-YYMMDD-HHMM and assigns it to its buffer, two buffers in one save, an immediate re-save does not ask, a reload brings the takes back, NO saves as stock |
 | [`bus`](bus/README.md) | The plain two-server image: BusVerb + BusDelay + send bus + tempo sync. | on hardware: under earlier names |
 | [`bus-notempo`](bus-notempo/README.md) | bus with TEMPO SYNC's CAVE pinned OFF (diagnostic). | port-gated |
 | [`bus-tempo-replay`](bus-tempo-replay/README.md) | bus with TEMPO SYNC's CAVE pinned REPLAY (diagnostic). | port-gated |

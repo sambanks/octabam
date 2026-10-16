@@ -80,6 +80,7 @@ nav:
       - Memory: reference/modules/memory.md
       - Store: reference/modules/store.md
   - Utilities:
+      - Buffer Saver: reference/modules/buffer-saver.md
       - Random Naming: reference/modules/rnd-name.md
       - Reload from Project: reference/modules/reload-from-project.md
       - Remix Switch: reference/modules/remix-switch.md

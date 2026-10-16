@@ -606,5 +606,14 @@
       "source": "emulator panel UART",
       "firmware_sha256": "a9f09d312cdb9d74f00fb000cc28442b6621e9523936de425960de6339eb7e1a"
     }
+  },
+  "buffer-saver": {
+    "ask": {
+      "image": "buffer-saver/ask.png",
+      "caption": "After a take, SAVE PROJECT asks SAVE SAMPLES? first.",
+      "remix": "buffer-saver",
+      "source": "emulator panel UART",
+      "firmware_sha256": "54fcab1dea475054acfe455ac69a65ec37ac6abd0096fe67e28d692f9a6454c3"
+    }
   }
 }

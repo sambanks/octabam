@@ -59,6 +59,7 @@ Groups and what each captures, from the `shot(...)` calls:
 | `extras` | one test remix per module (character-txtr, testgen, sidechain-compressor, miniverb, tapeecho, vocoder, wave) | setup and main page of each |
 | `machines` | `analog-bassdrum`, `octatrick` | analog-bassdrum, synth, direct-jump |
 | `probes` | `cfmeter` | CF METER |
+| `utilities` | `buffer-saver` | buffer-saver (a one-second take, then FUNC + PROJ: the SAVE SAMPLES? question) |
 
 The project is `--project`, `OT_PROJECT`, or the path in
 `~/.octabam_project`. The tool copies it to `out/manual-captures/<remix>/project`
