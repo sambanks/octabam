@@ -78,6 +78,7 @@ nav:
   - Settings:
       - Brain: brain.md
       - Memory: reference/modules/memory.md
+      - Recbuf Persist: reference/modules/recbuf-persist.md
       - Store: reference/modules/store.md
   - Utilities:
       - Random Naming: reference/modules/rnd-name.md

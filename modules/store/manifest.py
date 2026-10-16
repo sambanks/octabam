@@ -1,14 +1,14 @@
 """STORE -- the stock sites where a project's side files are written, read,
 copied and cleared, and where a Part is saved or cleared, owned once.
 
-KITS (kits.work), PLOCKS P2 (p2lkNN.work) and MIDI SCENES' storage each need
-the same stock events: a load of every bank, a masked bank load, a new
-project, the bank writer, the project store and reload, the bank file copy,
-the bank to and from CS1, and the Part Save and Part Clear. The ledger
-allows one detour on a site, so STORE holds the detours and calls each
-client's handler at the event (modules/store/store.s). A client names its
-handlers in CLIENTS below; a client that is not in the remix is left out of
-the tables.
+KITS (kits.work), PLOCKS P2 (p2lkNN.work), MIDI SCENES' storage and RECBUF
+PERSIST (BUFFERS/RECn.wav) each need the same stock events: a load of
+every bank, a masked bank load, a new project, the bank writer, the project
+store and reload, the bank file copy, the bank to and from CS1, and the Part
+Save and Part Clear. The ledger allows one detour on a site, so STORE holds
+the detours and calls each client's handler at the event
+(modules/store/store.s). A client names its handlers in CLIENTS below; a
+client that is not in the remix is left out of the tables.
 """
 
 from remix.schema import Category, Detour, Kind, Linked, Module, Proof
@@ -33,17 +33,20 @@ CLIENTS = (
     ("MIDI SCENES", "scn", ("loadall_pre", "loadall_post", "loadmask_pre", "loadmask_post", "newproj", "bankw_post",
                             "pstore_pre", "pstore_post", "preload_post", "tocs1",
                             "fromcs1", "partclear")),
+    ("RECBUF PERSIST", "rbp", ("loadall_post", "loadmask_post", "pstore_pre",
+                               "preload_post")),
 )
 
 
 # A client's number in the refusal registry (store_refuse) and in ans_tab.
-CLIENT_IDS = {"PLOCKS P2": 0, "KITS": 1, "MIDI SCENES": 2}
+CLIENT_IDS = {"PLOCKS P2": 0, "KITS": 1, "MIDI SCENES": 2, "RECBUF PERSIST": 3}
 
 
 def store_inc(modules):
     out = ["ev_ctl:", "        .long   kits_level" if "KITS" in modules else "        .long   0",
-           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn",
-           'nm_plk: .asciz "P2LK%02d.WORK"', 'nm_kits: .asciz "KITS.WORK"', 'nm_scn: .asciz "SCENES.WORK"',
+           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn, nm_rbp",
+           'nm_plk: .asciz "P2LK%02d.WORK"', 'nm_kits: .asciz "KITS.WORK"',
+           'nm_scn: .asciz "SCENES.WORK"', 'nm_rbp: .asciz "BUFFERS/REC%d.WAV"',
            ".balign 2", "ans_tab:"]
     for key, _prefix, _events in sorted(CLIENTS, key=lambda c: CLIENT_IDS[c[0]]):
         pre = {k: p for k, p, _e in CLIENTS}[key]
@@ -63,7 +66,7 @@ MODULE = Module(
     kind=Kind.CF_PATCH,
     category=Category.PARTS, author="sambanks", author_url="https://github.com/sambanks",
     proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
-    doc="Platform: the stock save, load, copy, CS1 and Part sites KITS and PLOCKS P2 share.",
+    doc="Platform: the stock save, load, copy, CS1 and Part sites STORE clients share.",
     linked=(Linked("store", "modules/store/store.s", dram=True, include=store_inc),),
     detours=(
         Detour(0x40090504, H("4feffeb848d77cfc"), "store", "store_loadall",

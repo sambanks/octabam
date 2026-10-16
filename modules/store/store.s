@@ -672,10 +672,11 @@ store_row2: .asciz "BACKUP FILE THEN START FRESH"
 store_info_plk: .asciz "FX PAGE 2 LOCKS NOT LOADED"
 store_info_kits: .asciz "SAVED KITS NOT LOADED"
 store_info_scn: .asciz "MIDI SCENES NOT LOADED"
+store_info_rbp: .asciz "RECORDER BUFFERS NOT LOADED"
 store_info_bad: .asciz "UNREADABLE OR INCOMPATIBLE"
 store_info_next: .asciz "NO: KEEP FILE  YES: OPTIONS"
         .align  4
-store_info_text: .long store_info_plk, store_info_kits, store_info_scn
+store_info_text: .long store_info_plk, store_info_kits, store_info_scn, store_info_rbp
 store_info_lines: .long store_info_plk, store_info_bad, store_info_next
         .align  4
 CRCREADY: .long 0
