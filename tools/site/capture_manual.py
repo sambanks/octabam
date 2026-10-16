@@ -189,6 +189,25 @@ def capture_synth(p,r):
     shot(p,'direct-jump','settings','CHAIN AFTER set to DIRECT in sequencer settings.',r)
 
 
+def press_encoder(p, n):
+    # Encoder push switches are panel matrix row 0x27, A-F = bits 0-5.
+    p.proc.command(f'key 0x27 {1 << n:#x}', 'ok');p.run(40)
+    p.proc.command('key 0x27 0', 'ok');p.run(80)
+
+
+def capture_midi_scales(p,r):
+    # Sample-free fixture starts in audio mode with MIDI KEY OFF.
+    press(p,'midi');press(p,'t1');p.chord('func','pg_amp')
+    shot(p,'midi-scales','key-off','MIDI ARP SETUP: KEY OFF bypasses scale correction.',r)
+    press_encoder(p,5)
+    enc(p,5,4)
+    shot(p,'midi-scales','c-major','MIDI ARP SETUP: C Major selected with encoder F.',r)
+    enc(p,5,4)
+    shot(p,'midi-scales','c-dorian','MIDI ARP SETUP: C Dorian selected with encoder F.',r)
+    for _ in range(3): enc(p,5,4)
+    shot(p,'midi-scales','c-mixolydian','MIDI ARP SETUP: C Mixolydian selected with encoder F.',r)
+
+
 def prepare(remix,project,assignments):
     label='manual-features' if remix.startswith('../') else remix
     work=OUT/label;work.mkdir(parents=True,exist_ok=True)
@@ -239,13 +258,14 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','features','inserts','bus','extras','machines','probes'])
+    ap.add_argument('groups',nargs='+',choices=['core','features','inserts','bus','extras','machines','probes','midi-scales'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
     for group in a.groups:
         assignments=[]
         if group=='core': jobs=[('octabam-core',capture_core,[])]
+        elif group=='midi-scales':jobs=[('midi-scales',capture_midi_scales,[])]
         elif group=='features':
             # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist.
             scratch=OUT/'features.py'

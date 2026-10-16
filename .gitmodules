@@ -34,3 +34,8 @@
 [submodule "modules/sidechain-compressor/upstream"]
 	path = modules/sidechain-compressor/upstream
 	url = https://github.com/sambanks/octatrack-kyoti-fw
+
+[submodule "modules/midi-scales/upstream"]
+	path = modules/midi-scales/upstream
+	url = https://github.com/radiohagen/octatrack-modules.git
+	branch = codex/pr/midi-scales

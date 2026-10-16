@@ -606,5 +606,35 @@
       "source": "emulator panel UART",
       "firmware_sha256": "a9f09d312cdb9d74f00fb000cc28442b6621e9523936de425960de6339eb7e1a"
     }
+  },
+  "midi-scales": {
+    "key-off": {
+      "image": "midi-scales/key-off.png",
+      "caption": "MIDI ARP SETUP: KEY OFF bypasses scale correction.",
+      "remix": "midi-scales",
+      "source": "emulator panel UART",
+      "firmware_sha256": "d3a2476762978a946d1733c2f153ea23ab67b81ee40017d0349e2cbc65a3edcf"
+    },
+    "c-major": {
+      "image": "midi-scales/c-major.png",
+      "caption": "MIDI ARP SETUP: C Major selected with encoder F.",
+      "remix": "midi-scales",
+      "source": "emulator panel UART",
+      "firmware_sha256": "d3a2476762978a946d1733c2f153ea23ab67b81ee40017d0349e2cbc65a3edcf"
+    },
+    "c-dorian": {
+      "image": "midi-scales/c-dorian.png",
+      "caption": "MIDI ARP SETUP: C Dorian selected with encoder F.",
+      "remix": "midi-scales",
+      "source": "emulator panel UART",
+      "firmware_sha256": "d3a2476762978a946d1733c2f153ea23ab67b81ee40017d0349e2cbc65a3edcf"
+    },
+    "c-mixolydian": {
+      "image": "midi-scales/c-mixolydian.png",
+      "caption": "MIDI ARP SETUP: C Mixolydian selected with encoder F.",
+      "remix": "midi-scales",
+      "source": "emulator panel UART",
+      "firmware_sha256": "d3a2476762978a946d1733c2f153ea23ab67b81ee40017d0349e2cbc65a3edcf"
+    }
   }
 }
