@@ -1,10 +1,11 @@
 """EUCLID FILL -- TRACK + PAGE opens a standalone Euclidean trig-fill page.
 
-Hold any track key and press PAGE: a window with STEPS / PULSE / ROT.
-STEPS is the pattern (or PER-TRACK) length — not editable. Encoder A =
-PULSE, B = ROT. YES writes sample trigs on the held tracks (or the current
-track if none were held when the window opened). NO or TRACK+PAGE again
-closes.
+Hold any track key and press PAGE: a window with STEPS / PULSE / ROT /
+RAND VEL / RAND PTCH. STEPS is the pattern (or PER-TRACK) length — not editable.
+Encoder A = PULSE, B = ROT, C = RAND VEL, D = RAND PTCH. YES writes sample trigs
+(and optional AMP VOL / in-scale PTCH locks) on the held tracks (or the
+current track if none were held when the window opened). CUE places a
+random k-subset with density PULSE. NO or TRACK+PAGE again closes.
 
 Independent of PROJECT > SEQUENCER (SCALE QUANTIZER) and of the EUCLID
 DSP effect. FUNC + PAGE (SCALE SETUP) stays stock.
@@ -23,11 +24,16 @@ MODULE = Module(
     key="EUCLID FILL",
     kind=Kind.CF_PATCH,
     category=Category.MACHINES,
-    author="octabam",
-    author_url="https://github.com/sambanks/octabam",
+    author="ilia-murzinov",
+    author_url="https://github.com/ilia-murzinov",
     proof=Proof.HARDWARE,
-    proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "builds and boots under the port; fill math gated in verify_euclid_fill",
-    doc="TRACK + PAGE: Euclidean sample-trig fill (STEPS=pattern len / PULSE / ROT; A/B knobs).",
+    proof_note="YES/CUE with RAND PTCH>0 on sample + FM (+ SY encoding path), "
+               "SCALE on/off, relative RAND VEL (author, CF, 16 Oct 2026); "
+               "also cursory on Sam's MKII (owner report, 16 Oct 2026); "
+               "builds and boots under the port; fill math gated in verify_euclid_fill",
+    doc="TRACK + PAGE: Euclidean sample-trig fill (STEPS=pattern len / PULSE / ROT / "
+        "RAND VEL / RAND PTCH; CUE = random k-subset; RAND VEL = VOL locks; "
+        "RAND PTCH = in-scale range around Part PLAYBACK PTCH).",
     linked=(Linked("ef", "modules/euclid-fill/euclid_fill.s", dram=True),),
     detours=(
         Detour(PAGE, PAGE_STOCK, "ef", "ef_page",

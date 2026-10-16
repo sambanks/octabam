@@ -92,10 +92,10 @@
   "euclid-fill": {
     "fill": {
       "image": "euclid-fill/fill.png",
-      "caption": "Euclidean trig fill: pattern length, pulses, and rotation.",
+      "caption": "Euclidean trig fill: STEPS, PULSE, ROT, RAND VEL, RAND PTCH.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"
+      "firmware_sha256": "4fe378bc54b94d9789d8774e36be693088cb129c78f4d7ae298ee26d2dd7db71"
     }
   },
   "rec-threshold": {
@@ -104,14 +104,14 @@
       "caption": "TRIG set to THR in RECORDING SETUP 1.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"
+      "firmware_sha256": "4fe378bc54b94d9789d8774e36be693088cb129c78f4d7ae298ee26d2dd7db71"
     },
     "level": {
       "image": "rec-threshold/level.png",
       "caption": "Threshold LEV and live IN meter in RECORDING SETUP 2.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"
+      "firmware_sha256": "4fe378bc54b94d9789d8774e36be693088cb129c78f4d7ae298ee26d2dd7db71"
     }
   },
   "stems": {
@@ -120,16 +120,16 @@
       "caption": "The STEM REC recording window.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"
+      "firmware_sha256": "4fe378bc54b94d9789d8774e36be693088cb129c78f4d7ae298ee26d2dd7db71"
     }
   },
   "rnd-name": {
     "name": {
       "image": "rnd-name/name.png",
-      "caption": "Random project name filled with FUNC + CUE.",
+      "caption": "Random project name after FUNC + CUE.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"
+      "firmware_sha256": "4fe378bc54b94d9789d8774e36be693088cb129c78f4d7ae298ee26d2dd7db71"
     }
   },
   "spectrum": {

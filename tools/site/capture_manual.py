@@ -118,7 +118,7 @@ def capture_core(p,r):
 
 def capture_features(p,r):
     p.chord('t1','page')
-    shot(p,'euclid-fill','fill','Euclidean trig fill: pattern length, pulses, and rotation.',r)
+    shot(p,'euclid-fill','fill','Euclidean trig fill: STEPS, PULSE, ROT, RAND VEL, RAND PTCH.',r)
     close(p)
     p.chord('func','recab');enc(p,3,12);close(p)
     p.chord('func','recab')
