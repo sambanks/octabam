@@ -9,7 +9,7 @@ One machine module by Zac Kyoti and the stock effects, SPRING REV given up.
 
 ## Status
 
-The module's runtime bytes are the author's: `reference` re-links the unit at the author's address every build and compares. Its DSP voice is the author's standalone image's, word for word. The standalone ran on the author's MKI on 14 Oct 2026. This remix as a whole has not been flashed.
+The module's runtime bytes are the author's: `reference` re-links the unit at the author's address every build and compares. Its DSP voice is the author's standalone image's, word for word. The author's standalone images run on their MKI (14–16 Oct 2026). This remix as a whole has not been flashed.
 
 ## Build
 
