@@ -16,7 +16,7 @@ A remix with it gives up SPRING REV and carries no DSP module and no other sourc
 ## On the unit
 
 - 14 Oct 2026: the standalone image on the author's MKI, everything (the voice, the grid, live play, chromatic, FUNC + PTCH octaves).
-- 16 Oct 2026: the author's FINAL standalone (accents per step, push-turn octaves, equal-loudness WAVE, driven-VOL headroom, a RES trim below 20) is promoted; the build before its RES trim runs on the author's MKI.
+- 16 Oct 2026: the author's FINAL standalone (accents per step, push-turn octaves, equal-loudness WAVE, driven-VOL headroom, a RES trim below 20) on the author's MKI: all good.
 - This octabam form has not been flashed.
 
 ## Credits
