@@ -107,11 +107,15 @@ clock (−44 dBc for 1.1 kHz at the fastest clock, −37 dBc at the slowest).
 
 ## On the unit
 
-The author played BBD on an Octatrack MKII, OS 1.40C, 11–12 October 2026, in
-images built by Modwerk's builder (derived from octabam) with BBD at FX2 id
-`0x0e`, before HPF became variable, POST was removed and LIM and HPF moved to
-SETUP C and E. **This remix's image (`0x1b`) and the current DSP have not been
-flashed.**
+The author played this remix's image on an Octatrack MKII, OS 1.40C, on 17
+October 2026 (**BBDOB4**, `make image REMIX=bbd BUILD=4`, this tree's DSP; MAIN
+OS `4fb5486c…`). Earlier builds ran on the same unit, 11–12 October, in images
+built by Modwerk's builder (derived from octabam) with BBD at FX2 id `0x0e`.
+
+- **BBDOB4:** DARK REV still works on FX2; BBD on T1 behind FILTER and on T5
+  behind PHASER at once, clean; an LFO on the main page; STGS, LIM and HPF on
+  SETUP; STOP, STOP, STOP cuts the tail (the stop kill, `kill.s`); a project
+  save and reload and a power cycle restore the settings.
 
 - **BBD01–BBD02:** crackle on T1 and, after STGS changes, tracks 1–4 silent:
   the `rep` divides (FAILURE_MODES.md, "Crackle on core B"). **BBD03**, every
@@ -129,12 +133,11 @@ flashed.**
 
 ## Open
 
-- The stop kill on a unit: that the record's slot 11 byte is what the DSP
-  reads at `x:(r6+$e)` bits 8-15 is inferred from the slot layout and the stock
-  reverbs' own test of bit 8 there, not traced end to end.
-- This remix's image on a unit (the FX2 id, the surrounding tree, HPF, the
-  SETUP layout and the removal of POST differ from BBD14); the eight-instance
-  stress render on the current DSP.
+- The stop kill works on the unit (BBDOB4); that the record's slot 11 byte is
+  what the DSP reads at `x:(r6+$e)` bits 8-15 is inferred from the slot layout
+  and the stock reverbs' own test of bit 8 there, not traced end to end.
+- Eight instances on this remix's image (BBD14 ran eight at `0x0e` before
+  the SETUP changes); the eight-instance stress render on the current DSP.
 - LFO sweeps of controls other than FREQ, MIDI/USB load, MKI.
 - Real-chip headroom: the cycle figures are `cycle_count.py` bounds and
   `dsp_host` counts.

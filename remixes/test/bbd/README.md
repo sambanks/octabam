@@ -9,7 +9,7 @@ BBD beside 12 stock effects (all but SPRING REV and PLATE REV, whose words it ta
 
 ## Status
 
-Not flashed. The same BBD code and placement ran on JamCones' MKII in Modwerk-built images (BBD14, 12 Oct 2026; `modules/bbd/README.md`).
+Flashed as BBDOB4 (`make image REMIX=bbd BUILD=4`) on JamCones' MKII, 17 Oct 2026: DARK REV, BBD on T1 and T5 behind FILTER and PHASER, LFOs, SETUP, the stop kill, save, reload and a power cycle (`modules/bbd/README.md`).
 
 ## Build
 

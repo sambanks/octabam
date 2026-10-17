@@ -10,7 +10,8 @@ the pitch of the repeats.
 An effect on a track: select the track, press FX2, and pick BBD DELAY from
 the chooser. SPRING REV and PLATE REV are gone from the chooser; DARK REV
 stays. FX2 only: the line needs the FX2 slot's memory. Not in an official
-remix; build the test remix `bbd`.
+remix; build the test remix `bbd`. Hardware: played on the author's MKII,
+both DSP cores, with save, reload and a power cycle (17 Oct 2026).
 
 ![FX2 SETUP with BBD selected.](../../img/bbd/setup.png)
 
