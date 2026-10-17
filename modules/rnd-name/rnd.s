@@ -5,13 +5,19 @@
 | Reload. This unit replaces that key table (SymbolRef at 0x400d08f2) with
 | stock plus CUE -> rnd_chord.
 |
-| CREATE NEW PROJECT: YYMMDD + space + two pool words.
-| Words-only (no date): SAVE SAMPLE AS, SAVE PROJECT AS / CHOOSE NEW
-| PROJECT NAME, NAME THE NEW DIR, NAME THE NEW SET, and KITS SAVE KIT
-| (DRAM callback). Rename / remarks / card: inert.
+| Date + two pool words: CREATE NEW PROJECT, SAVE PROJECT AS, CHOOSE NEW
+| PROJECT NAME, and COPY PROJECT (cp_named, when that module is in the
+| remix). Words-only (no date): SAVE SAMPLE AS, NAME THE NEW DIR,
+| NAME THE NEW SET, and KITS SAVE KIT (other DRAM callbacks). Rename /
+| remarks / card: inert.
+|
+| Date is gated only on CB_SLOT (0x460e761a) — the editor's done-callback
+| — never on the window title.
 |
 | Fill length follows the editor's ED_MAX (kits = 7). Short editors get
 | one pool word; longer ones join two (64 x 64).
+
+        .include "remix.inc"            | HAVE_COPY_PROJECT: 1 when COPY PROJECT is in the remix
 
         .text
         .globl  rnd_chord
@@ -42,6 +48,10 @@
         .equ    DRAM_LO,    0x40a00000
         .equ    DRAM_HI,    0x4f000000
 
+        .if     HAVE_COPY_PROJECT
+        .extern cp_named                | COPY PROJECT's NAMEED done-cb (DRAM)
+        .endif
+
 | FUNC+CUE while the name editor's FUNC layer is up.
 | d3 = 1 -> prepend date; d3 = 0 -> words only.
 rnd_chord:
@@ -49,14 +59,19 @@ rnd_chord:
         moveq   #1,%d3
         cmpil   #CREATE_CB,%d0
         beqs    0f
+        cmpil   #SAVEAS_CB,%d0         | SAVE PROJECT AS…
+        beqs    0f
+        cmpil   #CHOOSE_CB,%d0         | CHOOSE NEW PROJECT NAME
+        beqs    0f
+        .if     HAVE_COPY_PROJECT
+        movel   #cp_named,%d1          | COPY PROJECT (same date template)
+        cmpl    %d1,%d0
+        beqs    0f
+        .endif
         moveq   #0,%d3
         cmpil   #SAMPLE_CB1,%d0
         beqs    0f
         cmpil   #SAMPLE_CB2,%d0
-        beqs    0f
-        cmpil   #SAVEAS_CB,%d0
-        beqs    0f
-        cmpil   #CHOOSE_CB,%d0
         beqs    0f
         cmpil   #NEWDIR_CB,%d0
         beqs    0f

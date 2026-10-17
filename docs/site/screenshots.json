@@ -606,5 +606,42 @@
       "source": "emulator panel UART",
       "firmware_sha256": "a9f09d312cdb9d74f00fb000cc28442b6621e9523936de425960de6339eb7e1a"
     }
+  },
+  "copy-project": {
+    "menu": {
+      "image": "copy-project/menu.png",
+      "caption": "PROJECT menu with COPY PROJECT under SAVE TO NEW.",
+      "remix": "copy-project",
+      "source": "emulator panel UART",
+      "firmware_sha256": "ed0816a7dead84eb11a3428e3a006bc30a2677b43b5c08051f7260b97cb8ed9e"
+    },
+    "list": {
+      "image": "copy-project/list.png",
+      "caption": "Source project list (LEVEL scrolls).",
+      "remix": "copy-project",
+      "source": "emulator panel UART",
+      "firmware_sha256": "ed0816a7dead84eb11a3428e3a006bc30a2677b43b5c08051f7260b97cb8ed9e"
+    },
+    "name": {
+      "image": "copy-project/name.png",
+      "caption": "NAME THE NEW PROJECT (stock PROJECT+date; FUNC+CUE with RND NAME).",
+      "remix": "copy-project",
+      "source": "emulator panel UART",
+      "firmware_sha256": "ed0816a7dead84eb11a3428e3a006bc30a2677b43b5c08051f7260b97cb8ed9e"
+    },
+    "confirm": {
+      "image": "copy-project/confirm.png",
+      "caption": "Confirm COPY source -> destination.",
+      "remix": "copy-project",
+      "source": "emulator panel UART",
+      "firmware_sha256": "ed0816a7dead84eb11a3428e3a006bc30a2677b43b5c08051f7260b97cb8ed9e"
+    },
+    "open": {
+      "image": "copy-project/open.png",
+      "caption": "After copy: PROJECT COPIED / OPEN IT?",
+      "remix": "copy-project",
+      "source": "emulator panel UART",
+      "firmware_sha256": "ed0816a7dead84eb11a3428e3a006bc30a2677b43b5c08051f7260b97cb8ed9e"
+    }
   }
 }

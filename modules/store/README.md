@@ -100,3 +100,5 @@ reopening on another encoder turn. `verify_plocksp2` exercises the same
 information, choices and cancellation with a refused lock file, capturing
 the LCD for review. Not covered: a list opened over another window, the
 new prompt on a unit.
+
+LEVEL on any open stock LISTPOP (control 6) scrolls a row per detent — the same path KITS uses for its own lists, generalized so COPY PROJECT and other LISTPOP callers get it without their own encoder hook.

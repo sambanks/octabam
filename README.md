@@ -134,9 +134,10 @@ from the card (section 5).
 
 | module | author | what it does | proof |
 |---|---|---|---|
+| [**COPY PROJECT**](modules/copy-project/README.md) | [iliamurzinov](https://github.com/iliamurzinov) | PROJECT > COPY PROJECT: duplicate a project folder on the card without loading it. | on hardware: flashed with CF card update and tested on author's MKII (17 Oct 2026) |
 | [**RELOAD_FROM_PROJECT**](modules/reload-from-project/README.md) | [Zac-Kyoti/octatrack-kyoti-fw](https://github.com/Zac-Kyoti/octatrack-kyoti-fw) | Reload one track's sequence from the card without stopping the transport: [PTN]+[TRACK n], or [BANK]+[TRACK n] to re-apply the Part. | on hardware: the author's MKI (standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image with all six KYOTI modules |
 | [**REMIX SWITCH**](modules/remix-switch/README.md) | [sanderlegit](https://github.com/sanderlegit) | MAIN MENU > BRAIN lists the raw OS images (.RMX) in /BRAIN/REMIXES/ and boots the one picked without writing the flash; remembers the choice across reboots. | on hardware: an MKII, 29 Sep 2026 (OCTABAM14 with BOOT TRACE): switched to its own image and to stock 1.40C, audio and play working; and with the park moved into the dead vector run (BSRETVEC) booted, played and switched away again -- 40 region words down to 18; `verify_remixswitch`. The list in BRAIN's pane and /BRAIN/REMIXES/ (8 Oct 2026), and the persisted selection (#743): under the port only |
-| [**RND NAME**](modules/rnd-name/README.md) | [iliamurzinov](https://github.com/iliamurzinov) | CREATE NEW PROJECT: FUNC+CUE fills YYMMDD + random pool name. | on hardware: cursory testing on Sam's MKII (owner report, 16 Oct 2026); FUNC+CUE on CREATE under the port (verify_rnd_name); pools from unit |
+| [**RND NAME**](modules/rnd-name/README.md) | [iliamurzinov](https://github.com/iliamurzinov) | Project name editors: FUNC+CUE fills YYMMDD + random pool name. | local render: FUNC+CUE on CREATE under the port (verify_rnd_name); pools from unit |
 
 ### Reference
 
