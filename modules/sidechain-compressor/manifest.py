@@ -1,7 +1,7 @@
 """SIDECHAIN_COMPRESSOR -- stock COMPRESSOR with a side-chain KEY from any track: KEY, KFLT, KGN and MON on page 2.
 
 Source: `upstream/` is Zac Kyoti's repository (Zac-Kyoti/octatrack-kyoti-fw,
-submodule, fork `sambanks/octatrack-kyoti-fw`, pinned to `bf5bfc0`). The declaration is
+submodule, pinned to `8e00275`). The declaration is
 `upstream/octabam-modules/sidechain-compressor/manifest.py`: one linked unit
 (`patch_sidechain.s`), placed in a ROM cave or DRAM by the `PLACE` setting
 (`octabam.sidechain-compressor`, default CAVE), re-linked and compared with the author's own bytes
