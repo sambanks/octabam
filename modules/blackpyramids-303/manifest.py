@@ -10,7 +10,7 @@ Its source paths are derived from its own directory, so it is executed here from
 disk, as the registry does for every manifest, and this file only re-exports its MODULE. Nothing
 inside `upstream/` is edited here.
 
-On hardware: the standalone image on the author's MKI, 14 Oct 2026. This octabam form (the same
+On hardware: the author's standalone images on their MKI, 14-16 Oct 2026. This octabam form (the same
 runtime and DSP bytes) has not been flashed.
 """
 
@@ -27,4 +27,4 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_blackpyramids_3
 # are added here rather than in the author's manifest.
 MODULE = dataclasses.replace(
     MODULE, category=Category.MACHINES, author="Zac-Kyoti/octatrack-kyoti-fw", author_url="https://github.com/Zac-Kyoti/octatrack-kyoti-fw",
-    proof=Proof.HARDWARE, proof_note="the standalone image on the author's MKI, 14 Oct 2026 (this octabam form not flashed)")
+    proof=Proof.HARDWARE, proof_note="the author's standalone images on their MKI, 14-16 Oct 2026 (this octabam form not flashed)")
