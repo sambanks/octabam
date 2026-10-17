@@ -4,9 +4,10 @@ UP + REC opens STEMS and records to the card while the sequencer plays:
 every track after its fader, the main mix (MAIN), the cue mix (CUE) and
 the four inputs, 16 or 24 bits. It writes the take while it records, so a
 take can run until you stop it, up to 60 minutes. Each source lands as its
-own file in `<set>/AUDIO/YYMMDD-HHMM/` at 44,100 Hz: `T1.wav` to `T8.wav`,
-`MAIN.wav`, `CUE.wav`, and the inputs as `AB.wav` and `CD.wav` (stereo) or
-`A.wav` to `D.wav` (mono). A track's file is its share of MAIN: the
+own file in `<set>/AUDIO/STEMS/<project>/YYMMDD-HHMM/` at 44,100 Hz:
+`T1.wav` to `T8.wav`, `MAIN.wav`, `CUE.wav`, and the inputs as `AB.wav` and
+`CD.wav` (stereo) or `A.wav` to `D.wav` (mono). `<project>` is the live
+project name, or `UNTITLED` when none is loaded. A track's file is its share of MAIN: the
 track's audio times the gain the mix gives it, so the level, MAIN LEVEL,
 the scenes and the crossfader are in it. At every boot the eight tracks
 are on, MAIN, CUE and the inputs off, both input pairs stereo, and the

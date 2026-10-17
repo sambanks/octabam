@@ -45,6 +45,7 @@
         .equ    TASK_SLEEP_US, 10000        | one pass; MICROSECONDS, not ticks       (Task 5)
         .equ    FS_EXISTS_PTR, 0x46c823fa   | -> exists(path): 0 no, 1 file, 2 folder (6.11, 8.0)
         .equ    SET_PATH,      0x100f8480   | the current set's path, a C string in place (Task 6)
+        .equ    PROJ_NAME,     0x100f8378   | the current project's name; empty -> UNTITLED (5.8)
         .equ    CLK_READ,      0x4001c4d8   | (field) -> one BCD byte in d0; BLOCKS   (Task 6)
         .equ    BCD2BIN,       0x4001c31c   | (bcd) -> binary                          (Task 6)
         .equ    NAME_FMT,      0x400b77bb   | "%02d%02d%02d-%02d%02d"                  (Task 6)
@@ -323,8 +324,8 @@ stat_buf1:       .space  16
 peak_buf0:       .space  16
 peak_buf1:       .space  16
 stems_name:      .space  16         | YYMMDD-HHMM
-stems_path:      .space  PATH_MAX   | <set>/AUDIO/<name>
-stems_fpath:     .space  PATH_MAX   | <set>/AUDIO/<name>/<file>.wav
+stems_path:      .space  PATH_MAX   | <set>/AUDIO/STEMS/<project>/<name>
+stems_fpath:     .space  PATH_MAX   | <set>/AUDIO/STEMS/<project>/<name>/<file>.wav
 | The 44-byte header, little-endian as RIFF wants, sizes 0: the placeholder
 | every file starts with. The real sizes go into the sector-0 copy at the end.
 stems_hdr:
@@ -340,7 +341,10 @@ stems_hdr:
         .byte   16,0                | bits
         .ascii  "data"
         .long   0
-fmt_dir:   .asciz  "/AUDIO/%s"
+fmt_dir:   .asciz  "/AUDIO/STEMS/%s/%s"     | project, then YYMMDD-HHMM
+fmt_pool:  .asciz  "/AUDIO/STEMS"           | the fixed pool under AUDIO
+fmt_proj:  .asciz  "/AUDIO/STEMS/%s"        | pool + project (or UNTITLED)
+untitled:  .asciz  "UNTITLED"
 fmt_file:  .asciz  "/T%d.wav"
 probe_name: .asciz "/PROBE.BIN"
         .balign 4
@@ -2287,13 +2291,96 @@ stems_make_name:
         lea     20(%sp),%sp
         rts
 
-| ---- the folder path: <set>/AUDIO/<name> ------------------------------
-| set = the C string at SET_PATH, used exactly as the stock save uses it
-| (STEM_REC.md 5.8). d0 = 0, or -1 (empty, or too long).
+| ---- the project name for the take path: PROJ_NAME, or UNTITLED --------
+| (STEM_REC.md 5.8). a0 = the C string to use. Does not touch d0.
+stems_project:
+        lea     PROJ_NAME,%a0
+        tst.b   (%a0)
+        bne.s   .Lpj_out
+        lea     untitled,%a0
+.Lpj_out:
+        rts
+
+| ---- mkdir path in stems_fpath if absent; fail if a file is there ------
+| d0 = 0 ok, -1 failed. Clobbers a0.
+stems_mkdir_missing:
+        movea.l FS_EXISTS_PTR,%a0
+        pea     stems_fpath
+        jsr     (%a0)
+        addq.l  #4,%sp
+        moveq   #2,%d1
+        cmp.l   %d1,%d0
+        beq.s   .Lmm_ok             | folder already there
+        tst.l   %d0
+        bne.s   .Lmm_fail           | a file (or other) is in the way
+        movea.l FS_MKDIR_PTR,%a0
+        pea     stems_fpath
+        jsr     (%a0)
+        addq.l  #4,%sp
+        tst.l   %d0
+        bmi.s   .Lmm_fail
+.Lmm_ok:
+        moveq   #0,%d0
+        rts
+.Lmm_fail:
+        moveq   #-1,%d0
+        rts
+
+| ---- ensure <set>/AUDIO/STEMS and <set>/AUDIO/STEMS/<project> ---------
+| Uses stems_fpath as scratch (files are not open yet). d0 = 0, or -1.
+stems_ensure_parents:
+        lea     SET_PATH,%a0
+        tst.b   (%a0)
+        beq.s   .Lep_fail
+        lea     stems_fpath,%a1
+        move.l  #PATH_MAX-48,%d1
+.Lep_set:
+        move.b  (%a0)+,%d0
+        beq.s   .Lep_set_end
+        move.b  %d0,(%a1)+
+        subq.l  #1,%d1
+        bne.s   .Lep_set
+        bra.s   .Lep_fail
+.Lep_set_end:
+        clr.b   (%a1)
+        pea     fmt_pool
+        move.l  %a1,-(%sp)
+        jsr     SPRINTF             | append /AUDIO/STEMS
+        addq.l  #8,%sp
+        bsr.w   stems_mkdir_missing
+        tst.l   %d0
+        bmi.s   .Lep_fail
+        lea     SET_PATH,%a0
+        lea     stems_fpath,%a1
+        move.l  #PATH_MAX-56,%d1
+.Lep_set2:
+        move.b  (%a0)+,%d0
+        beq.s   .Lep_set2_end
+        move.b  %d0,(%a1)+
+        subq.l  #1,%d1
+        bne.s   .Lep_set2
+        bra.s   .Lep_fail
+.Lep_set2_end:
+        clr.b   (%a1)
+        bsr.w   stems_project
+        move.l  %a0,-(%sp)
+        pea     fmt_proj
+        move.l  %a1,-(%sp)
+        jsr     SPRINTF             | append /AUDIO/STEMS/<project>
+        lea     12(%sp),%sp
+        bsr.w   stems_mkdir_missing
+        rts
+.Lep_fail:
+        moveq   #-1,%d0
+        rts
+
+| ---- the folder path: <set>/AUDIO/STEMS/<project>/<name> --------------
+| set = SET_PATH; project = PROJ_NAME or UNTITLED (STEM_REC.md 5.8).
+| d0 = 0, or -1 (empty, or too long).
 stems_make_folder:
         lea     SET_PATH,%a0
         lea     stems_path,%a1
-        move.l  #PATH_MAX-40,%d1    | room for /AUDIO/name/T8.wav
+        move.l  #PATH_MAX-72,%d1    | room for /AUDIO/STEMS/project/name/T8.wav
 .Lp_copy:
         move.b  (%a0)+,%d0
         beq.s   .Lp_end
@@ -2306,11 +2393,13 @@ stems_make_folder:
         move.l  %a1,%d0
         sub.l   #stems_path,%d0
         beq.s   .Lp_fail            | an empty set path: no set mounted
-        pea     stems_name
+        bsr.w   stems_project
+        pea     stems_name          | second %s: the take
+        move.l  %a0,-(%sp)          | first %s: the project
         pea     fmt_dir
         move.l  %a1,-(%sp)
         jsr     SPRINTF
-        lea     12(%sp),%sp
+        lea     16(%sp),%sp
         moveq   #0,%d0
         rts
 .Lp_fail:
@@ -2391,6 +2480,9 @@ stems_start:
         clr.l   stems_zdone         | nothing of this take on the card yet
         bsr.w   stems_make_name
         bsr.w   stems_make_folder
+        tst.l   %d0
+        bmi.w   .Ls_path
+        bsr.w   stems_ensure_parents | AUDIO/STEMS and AUDIO/STEMS/<project>
         tst.l   %d0
         bmi.w   .Ls_path
         movea.l FS_EXISTS_PTR,%a0   | same minute as an earlier take: refuse
@@ -3074,7 +3166,7 @@ stems_stats:
         bsr.w   stems_st_tail
         move.l  %a3,%d7
         sub.l   %a2,%d7                             | d7: the text's length
-        lea     stems_path,%a0                      | <set>/AUDIO/<take>/STATS.TXT
+        lea     stems_path,%a0                      | <set>/AUDIO/STEMS/<project>/<take>/STATS.TXT
         lea     stems_fpath,%a1
 .Lo_p1:
         move.b  (%a0)+,(%a1)+

@@ -904,9 +904,10 @@ def tap(s):
 
 def card_files(card_path):
     """Every file on a card image, {path: bytes}, paths as the card spells
-    them, without a leading slash ('STEMS/AUDIO/000000-0000/T1.wav'). A
-    folder with no file in it does not appear: emu_card.extract_image lists
-    files (verify_card_reader.py pins that)."""
+    them, without a leading slash
+    ('STEMS/AUDIO/STEMS/ULTFX/000000-0000/T1.wav'). A folder with no file
+    in it does not appear: emu_card.extract_image lists files
+    (verify_card_reader.py pins that)."""
     import emu_card as ec
     return ec.extract_image(pathlib.Path(card_path).read_bytes())
 
@@ -919,12 +920,17 @@ def first_clusters(card_path):
     return clusters
 
 
+def stems_pool(fx):
+    """Where take folders live: <set>/AUDIO/STEMS/<project>/ (no leading slash)."""
+    return f"{fx['set']}/AUDIO/STEMS/{fx['project']}/"
+
+
 def take_clusters(card_path):
-    """The first cluster of each take's T1.wav under <set>/AUDIO, {path: cluster}."""
+    """The first cluster of each take's T1.wav under the stems pool, {path: cluster}."""
     fx = json.loads(FIXTURE.read_text())
-    audio = f"{fx['set']}/AUDIO/".lower()
+    pool = stems_pool(fx).lower()
     return {p: c for p, c in first_clusters(card_path).items()
-            if p.lower().startswith(audio) and p.lower().endswith("/t1.wav")}
+            if p.lower().startswith(pool) and p.lower().endswith("/t1.wav")}
 
 
 def card_get(files, path):
@@ -934,18 +940,17 @@ def card_get(files, path):
 
 
 def new_entries(files, fixture=None):
-    """What this run added to <set>/AUDIO: the first path component under it
-    of every file there, minus what the fixture staged, as the card spells
-    it. An empty take folder cannot be seen, so it is not counted."""
+    """What this run added under <set>/AUDIO/STEMS/<project>/: the take-folder
+    name (YYMMDD-HHMM) of every file there. An empty take folder cannot be
+    seen, so it is not counted."""
     fx = json.loads(pathlib.Path(fixture or FIXTURE).read_text())
-    audio = f"{fx['set']}/AUDIO/".lower()
-    staged = {n.lower() for n in fx.get("staged", [])}
-    names = {p[len(audio):].split("/", 1)[0] for p in files if p.lower().startswith(audio)}
-    return sorted(n for n in names if n.lower() not in staged)
+    pool = stems_pool(fx).lower()
+    names = {p[len(pool):].split("/", 1)[0] for p in files if p.lower().startswith(pool)}
+    return sorted(n for n in names if n)
 
 
 def wav_check(card_path, nfr, dump, tag, lag_want=STEM_LAG, g=None):
-    """The take on the card: one new folder in the set's AUDIO folder, its
+    """The take on the card: one new folder under AUDIO/STEMS/<project>/, its
     T1.wav with the header STEM REC writes, and every sample equal to T1's
     read-back after the fader (g, the run's settled gain) at the lag a take
     armed before play starts at (STEM_LAG).
@@ -954,12 +959,12 @@ def wav_check(card_path, nfr, dump, tag, lag_want=STEM_LAG, g=None):
     lag, which is how a wrap test once passed on a file of zeros."""
     files = card_files(card_path)
     fx = json.loads(FIXTURE.read_text())
-    audio = f"/{fx['set']}/AUDIO"
+    pool = f"/{stems_pool(fx).rstrip('/')}"
     names = new_entries(files)
-    check(f"{tag}: one new recording in {audio}", len(names) == 1, f"{names}")
+    check(f"{tag}: one new recording in {pool}", len(names) == 1, f"{names}")
     if not names:
         return
-    path = f"{audio}/{names[0]}/T1.wav"
+    path = f"{pool}/{names[0]}/T1.wav"
     data = card_get(files, path)
     check(f"{tag}: {path} exists", data is not None)
     if data is None:
@@ -1109,7 +1114,8 @@ def cut(s):
     files = card_files(card)
     fx = json.loads(FIXTURE.read_text())
     names = new_entries(files)
-    data = card_get(files, f"{fx['set']}/AUDIO/{names[0]}/T1.wav") if len(names) == 1 else None
+    data = (card_get(files, f"{stems_pool(fx)}{names[0]}/T1.wav")
+            if len(names) == 1 else None)
     # Records a fact rather than a wish (26 Sep 2026): the file's length is
     # set only at the end, so a cut-off take is a 0-byte file even though
     # the writer had streamed most of it. A change here means the writer
@@ -1346,7 +1352,7 @@ def take_files(card_path, fixture=FIXTURE):
     names = new_entries(files, fixture)
     if len(names) != 1:
         return []
-    folder = f"{fx['set']}/AUDIO/{names[0]}/".lower()
+    folder = f"{stems_pool(fx)}{names[0]}/".lower()
     return sorted((p[len(folder):], d) for p, d in files.items()
                   if p.lower().startswith(folder) and "/" not in p[len(folder):]
                   and p.upper().endswith(".WAV"))
@@ -1366,7 +1372,8 @@ def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE,
     files = card_files(card_path)
     fx = json.loads(pathlib.Path(fixture).read_text())
     names = new_entries(files, fixture)
-    text = card_get(files, f"{fx['set']}/AUDIO/{names[0]}/STATS.TXT") if len(names) == 1 else None
+    text = (card_get(files, f"{stems_pool(fx)}{names[0]}/STATS.TXT")
+            if len(names) == 1 else None)
     check(f"{tag}: STATS.TXT is in the take's folder, at most two sectors", text is not None and 0 < len(text) <= 1024,
           f"{None if text is None else len(text)} bytes")
     if not text:
@@ -1539,7 +1546,8 @@ def take(card_path):
     files = card_files(card_path)
     fx = json.loads(FIXTURE.read_text())
     names = new_entries(files)
-    return card_get(files, f"{fx['set']}/AUDIO/{names[0]}/T1.wav") if len(names) == 1 else None
+    return (card_get(files, f"{stems_pool(fx)}{names[0]}/T1.wav")
+            if len(names) == 1 else None)
 
 
 LIMIT_FRAMES = 55300                     # the --long take: about 20 s, past the old cap of 41,344
