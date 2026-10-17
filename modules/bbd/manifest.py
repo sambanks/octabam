@@ -42,7 +42,7 @@ MODULE = Module(
         Param(b"TONE", 64, 128, active=True, formatter=Formatter.BIPOLAR,
               doc="feedback tilt: + treble up / bass down, - bandpass peak at FREQ, 9 dB"),
         Param(b"FREQ", 64, active=True, formatter=Formatter.PLAIN,
-              doc="TONE's bandpass peak, 400..2000 Hz log, Q 1.5"),
+              doc="TONE's bandpass peak, 400..2000 Hz log, Q 1.5; heard only with TONE left of centre"),
         Param(b"MIX", 40, active=True, formatter=Formatter.PLAIN,
               doc="0-64 adds the wet up to unity over the whole dry; 64-127 fades the dry out"),
         Param(b"STGS", 0, count=2, active=True, formatter=Formatter.STEPPED,

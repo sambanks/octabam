@@ -26,6 +26,10 @@ both DSP cores, with save, reload and a power cycle (17 Oct 2026).
 - With TONE centred, FDBK rings longer up to 127 but never self-oscillates.
   With TONE at either end the loop rings on from about FDBK 40, and LIM
   sets how loud.
+- TONE right of centre brightens the repeats (treble up, bass down).
+  TONE left of centre adds a resonant peak, and FREQ sets where that peak
+  sits. FREQ only does anything with TONE left of centre; at centre or
+  to the right it has no effect.
 - FRZ fades the input out and lengthens the trails; at 127 the line loops
   its own buckets exactly.
 - A STGS change fades the wet out, clears the line and fades back in.
@@ -45,7 +49,7 @@ both DSP cores, with save, reload and a power cycle (17 Oct 2026).
 | 1 | FDBK | 0-127 | the wet returned through TONE |
 | 1 | FRZ | 0-127 | freeze; 127 loops the line |
 | 1 | TONE | -64-63 | feedback tilt, ±9 dB: right brightens, left peaks at FREQ |
-| 1 | FREQ | 0-127 | TONE's bandpass peak, 400 Hz to 2 kHz |
+| 1 | FREQ | 0-127 | where TONE's left-hand peak sits, 400 Hz to 2 kHz; no effect with TONE at centre or right |
 | 1 | MIX | 0-127 | dry and wet; 0 is exact dry |
 | 2 | STGS | 1024, 4096 | bucket count: the delay range |
 | 2 | LIM | 0-127 | feedback governor; 0 is off, 127 holds oscillation lowest |
