@@ -135,6 +135,8 @@ class BBD:
             self.clear, self.fade = CLEAR_CALLS, 0
         if self.clear:
             self.clear -= 1
+            if self.clear == 1:                      # the call before the reset: all nine for TIME's clock
+                self.coef = sections((P16_A + (P16_B * knobs[0] >> 7)) / Q23)
             if not self.clear:
                 self.reset()
                 self.stage = sidx
@@ -185,8 +187,8 @@ class BBD:
         self.hp_c = hp_coefs(self.pk)
         # one of the nine sections follows the clock each call, all nine after a reset
         new = sections(self.p16 / Q23)
-        if self.snap:
-            self.coef, self.rot, self.snap = new, 0, False
+        if self.snap:                                # the nine came a call before the reset: the last now
+            self.coef[8], self.rot, self.snap = new[8], 0, False
         else:
             self.coef[self.rot] = new[self.rot]
             self.rot = (self.rot + 1) % 9

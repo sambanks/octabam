@@ -98,7 +98,8 @@ proc:
         clr     a
         move    a,x:(r7+$02)
 bblive:
-; ---- clearing: dry, 256 ring words a call; the last call resets ----------
+; ---- clearing: dry, 256 ring words a call; the one before last builds the
+; nine clock sections (bbnine), the last resets -------------------------------
         move    x:(r7+$01),a
         tst     a
         beq     bbrun
@@ -114,6 +115,9 @@ bblive:
         do      #$100,>bbwipe           ; do, not rep: interrupts stay serviced
         move    a,y:(r4)+
 bbwipe:
+        move    #>$1,x0
+        cmp     x0,b
+        beq     bbnine
         tst     b
         bne     bbdry
         move    r7,r4
@@ -157,6 +161,21 @@ bbwipr:
         move    a,x:(r7+$04)
 bbdry:
         rts
+; the call before the reset: TIME's clock at its target, as the snap will set
+; it, and all nine sections for it (in a dry call, so they never share a block
+; with the sample loop); the snap call then follows the clock on one section
+bbnine:
+        move    x:(r6),a
+        and     #>$7f0000,a
+        move    a,x0
+        move    #>$34162c,y1
+        mpy     x0,y1,a
+        move    #>$113a00,x0
+        add     x0,a
+        move    a,x:(r7+$07)
+        move    #>$1,a
+        move    a,x:(r7+$36)
+        bra     bbsnapped
 
 bbrun:
 ; ---- STGS: a change fades out, then clears ---------------------------------
@@ -474,10 +493,17 @@ bbdivk:
         beq     bbrot
         clr     b
         move    b,x:(r7+$36)
+        move    x:(r7+$01),a            ; ... all nine from 0 in the clear call
+        sub     #>$1,a                  ; before a reset (bbnine, the one with
+        bne     bbsnap1                 ; $01 = 1) ...
         move    b,x:(r7+$3b)
-        move    #>$9,x1                 ; ... or all nine from 0 after a reset
+        move    #>$9,x1
+        bra     bbrot
+bbsnap1:
+        move    #>$8,b                  ; ... and in the snap call after it the
+        move    b,x:(r7+$3b)            ; last, so the rotation goes on from 0
 ; one of the nine sections follows the clock each call (all nine in 144
-; samples); after a reset all nine at once
+; samples); all nine at once in the clear call before a reset
 bbrot:
         do      x1,>bbrend
         move    x:(r7+$3b),b            ; section index 0..8
@@ -517,6 +543,10 @@ bbrjoin:
         tge     x1,b
         move    b,x:(r7+$3b)
 bbrend:
+        move    x:(r7+$01),a            ; $01 = 1: bbnine's clear call, dry, done
+        sub     #>$1,a                  ; (16 when a fade ends this call: the
+        bne     bbcoefs                 ; call goes on)
+        rts
 bbcoefs:
         move    x:(r7+$59),a            ; HPF OFF: its section waits, unused
         tst     a

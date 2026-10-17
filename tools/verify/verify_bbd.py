@@ -17,7 +17,8 @@ Gates:
               MIX, FDBK and TONE: residual below -60 dB (-50 dB at the slowest clocks, where
               24-bit filter state noise is -56 dB; -40 dB with feedback)
   splits      a trig split in every block matches the model split alike
-  stages      STGS changed twice mid-signal: fade, clear and fade back match the model
+  stages      STGS changed twice mid-signal: fade, clear and fade back match the model, TIME still
+              and TIME moving every block (the clock sections are built in the clear call before the reset)
   kill        the stop kill (hidden slot 11 at 0): dry exactly while it holds, no tail after
   freeze      FRZ 127 mid-signal: matches the model, the loop sustains, new input stays out
   idle        after a burst the repeats die away below -90 dBFS; FDBK 127 at TONE 0
@@ -327,6 +328,14 @@ def gate_stages(g, host, work):
     res = residual_db(out, reference(sig, calls), (LEAD + 64) * FR)
     g.check('stages: STGS 4096 -> 1024 -> 4096 mid-signal matches the model', res < -60 and max(map(abs, out)) < FS,
             f'{res:.1f} dB through two fades and clears')
+    # the nine clock sections come in the clear call before the reset: TIME moving every block across
+    # both resets (a clock the snap call no longer rebuilds them for) still matches the model
+    calls = [[(3 * b) % 128] + k[1:] for b, k in enumerate(calls)]
+    pf.write_text('\n'.join(','.join(map(str, [b, *k])) for b, k in enumerate(calls)) + '\n')
+    _, (out,) = host.run([dict(core=0, pos=0, knobs=calls[0], paramfile=pf)], blocks, [write_raw(work / 'st_in.raw', sig)])
+    res = residual_db(out, reference(sig, calls), (LEAD + 64) * FR)
+    g.check('stages: the same with TIME moving every block matches the model', res < -50 and max(map(abs, out)) < FS,
+            f'{res:.1f} dB')
 
 
 def gate_kill(g, host, work):
