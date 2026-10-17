@@ -33,6 +33,7 @@ nav:
       - Send: reference/modules/send.md
       - Delay Server: reference/modules/busdelay.md
       - Reverb Server: reference/modules/busverb.md
+      - BBD Delay: reference/modules/bbd.md
       - Spectrum: reference/modules/spectrum.md
       - Character: reference/modules/character.md
       - Character TXTR: reference/modules/character-txtr.md
