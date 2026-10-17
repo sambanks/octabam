@@ -28,7 +28,7 @@ FX2_ID = 0x1b
 MODULE = Module(
     name="bbd", key="BBD", kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="JamCones", author_url="https://github.com/JamCones",
-    proof=Proof.RENDER, proof_note="`tools/verify/verify_bbd.py` against bbd_ref.py, 51 gates; the same DSP code played on JamCones' MKII (README)",
+    proof=Proof.RENDER, proof_note="`tools/verify/verify_bbd.py` against bbd_ref.py, 52 gates; the same DSP code played on JamCones' MKII (README)",
     doc="Clocked BBD delay: compander, clock/3 filters, bucket noise, freeze, governor; FX2.",
     menu=MenuEntry(fx2_id=FX2_ID, donor_desc=0x400d58b8,
                    abbr=b"BBD", fullname=b"BBD DELAY", build_tag=False),

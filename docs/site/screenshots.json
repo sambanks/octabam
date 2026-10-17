@@ -606,5 +606,21 @@
       "source": "emulator panel UART",
       "firmware_sha256": "a9f09d312cdb9d74f00fb000cc28442b6621e9523936de425960de6339eb7e1a"
     }
+  },
+  "bbd": {
+    "setup": {
+      "image": "bbd/setup.png",
+      "caption": "BBD: effect selection and setup parameters.",
+      "remix": "bbd",
+      "source": "emulator panel UART",
+      "firmware_sha256": "4fb5486c2ac5fef6bca4e388c4882a79c9a3d21c3b42f063dd31260ecea3f927"
+    },
+    "main": {
+      "image": "bbd/main.png",
+      "caption": "BBD: main parameter page.",
+      "remix": "bbd",
+      "source": "emulator panel UART",
+      "firmware_sha256": "4fb5486c2ac5fef6bca4e388c4882a79c9a3d21c3b42f063dd31260ecea3f927"
+    }
   }
 }

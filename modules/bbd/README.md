@@ -4,7 +4,7 @@ A bucket-brigade delay for FX2, by JamCones (Cam Jones): a 2:1 compander,
 clock-tracking anti-alias and reconstruction filters at a third of the clock,
 a clocked bucket line with a charge-transfer curve and bucket noise, a
 resonant feedback tilt, a freeze, a feedback governor and an input high-pass.
-1,075 DSP words and a 32-byte ColdFire stub (`kill.s`);
+1,112 DSP words and a 32-byte ColdFire stub (`kill.s`);
 `bbd.asm` is proven against a float model of the same chain, `bbd_ref.py`.
 
 The mono sum of the track goes through:
@@ -55,7 +55,7 @@ STGS 4096, HPF 64 (`cycle_count.py` prices HPF on).
 
 ## Measured
 
-All 51 gates of `tools/verify/verify_bbd.py` pass on this tree (`dsp_host`, a
+All 52 gates of `tools/verify/verify_bbd.py` pass on this tree (`dsp_host`, a
 private image with the stock code built in and BBD in the space of SPRING REV
 and PLATE REV, as `remixes/test/bbd` places it):
 
@@ -63,7 +63,7 @@ and PLATE REV, as `remixes/test/bbd` places it):
   other knob moving, and with trig splits (0 of 48,000 words differ).
 - **The DSP against `bbd_ref.py`:** −57 to −79 dB residual across TIME, STGS,
   MIX, FDBK, TONE, FREQ, FRZ, LIM and HPF (1, 64, 127); splits at 1, 7 and 15; STGS
-  changed twice mid-signal; FRZ 127 mid-signal.
+  changed twice mid-signal, with TIME still and with TIME moving every block; FRZ 127 mid-signal.
 - **Stop kill:** slot 11 at 0 from block 2000 to 3300 over a ringing loop
   (FDBK 110): the input exactly while it holds (0 of 41,600 words differ), no
   tail after (−102.4 dBFS; −44.0 dBFS without the kill), the model at −74.4 dB.
@@ -82,8 +82,8 @@ and PLATE REV, as `remixes/test/bbd` places it):
 - **Garbage start:** silence from a garbage block renders exactly as from a
   zeroed one (at most 2 LSB, −132.5 dBFS: the bucket noise).
 - **Zipper:** no block-rate step on any continuous knob.
-- **Placement:** BBD at `P:0x01000..0x01433` (payload A) and
-  `P:0x00dc0..0x011f3` (B), inside PLATE REV's and SPRING REV's run and clear
+- **Placement:** BBD at `P:0x01000..0x01458` (payload A) and
+  `P:0x00dc0..0x01218` (B), inside PLATE REV's and SPRING REV's run and clear
   of the 35 SPRING REV words DARK REV calls (`P:0x01586`, `P:0x01346`).
 - **DARK REV** renders bit-identically to the stock OS on both cores, fixed and
   moving. A layout with BBD in SPRING REV's space alone covers that routine and
@@ -93,9 +93,9 @@ and PLATE REV, as `remixes/test/bbd` places it):
 HPF on), so four per core take 1,512 of the 3,120 usable. Executed in
 `dsp_host` (`benchmark_reverbs.run`, eight instances, four per core, its fixed,
 modulated and trig-split cases including every synchronised split): at most
-443.2 instructions a sample per instance (28,368 a block per core, synchronised
-splits at 1), 398.8 modulated unsplit, 373.8 at the defaults; SPRING REV
-318.4 under the same cases. HPF's section is rebuilt each call while it is on,
+399.9 instructions a sample per instance (25,592 a block per core, synchronised
+splits at 1), 365.8 modulated unsplit, 330.6 fixed; SPRING REV 318.4 under the
+same cases. HPF's section is rebuilt each call while it is on,
 so a split pays for it twice.
 
 **Sound** (measured before HPF became variable and POST was removed; the
@@ -151,7 +151,7 @@ flashed.**
 ## Gates
 
 ```bash
-python3 tools/verify/verify_bbd.py      # 51 render gates (make check runs them)
+python3 tools/verify/verify_bbd.py      # 52 render gates (make check runs them)
 make check REMIX=bbd
 ```
 
@@ -164,7 +164,9 @@ make check REMIX=bbd
   the slowest clock their state noise sits about 56 dB under the signal (the
   −57 dB reference residual there is that noise; in-phase gain error −66 dB).
 - One of the nine filter sections follows the clock each 16-frame call, so all
-  nine refresh in 144 samples; after a reset all nine are computed at once.
+  nine refresh in 144 samples. After a reset all nine are computed at once, in
+  the last silent clear call, so they never share a block with a full call
+  (Jannik Aßfalg's change in Modwerk's BBD 0.1.1).
 - The feedback tilt uses a 200 Hz split with cubic gain fits and a unity-peak
   bandpass whose coefficients are polynomial fits over FREQ (within 6e-5 of
   the exact design). ±9 dB is deliberate: at ±15 dB a full TONE made the loop
