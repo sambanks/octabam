@@ -1497,6 +1497,13 @@ class Module:
     # DSP work outside the FX pricer (for example a CF-registered source).
     # An explicit gap must block pressure qualification, never report N/A.
     pressure_blocker: str = ""
+    # A DSP SOURCE MACHINE: repo-relative path of a script whose
+    # integrate(img, stock) -> (pre-boot payloads, pokes, log) writes the
+    # machine's DSP code into both payloads, last, after every DSP pass
+    # (build_bus.py; ANALOG BD's tools/build/ab_image.py is the first).
+    # Such a machine owns the source seam and SPRING REV's words: the build
+    # refuses a remix with two, with SPRING REV, or with any DspSection.
+    dsp_source: str = ""
     # ---- settings (docs/proposals/BRAIN.md section 4.1) --------------------
     # The id the module's settings and stored defaults are filed under, and
     # the settings themselves. tools/remix/brain.py resolves them for a

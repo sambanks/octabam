@@ -3553,39 +3553,51 @@ hostquit:
                for _o in range(0, len(_raw) - 3, 2)):
             sys.exit("descriptor clones: the DRAM runtime still holds a staging address")
 
-    # Analog BD replaces the source renderer on both cores. Its uploads
-    # must see the final DSP payloads, before they are packed for boot.
-    if "ANALOG BD" in REMIX.modules:
-        import ab_image
+    # A DSP source machine (Module.dsp_source: ANALOG BD, BLACKPYRAMIDS_303)
+    # replaces the source renderer on both cores. Its integrate step must see
+    # the final DSP payloads, before they are packed for boot.
+    _srcm = [remix_modules()[_k] for _k in REMIX.modules if remix_modules()[_k].dsp_source]
+    if len(_srcm) > 1:
+        sys.exit(f"{' and '.join(_m.key for _m in _srcm)} are DSP source machines: each owns "
+                 "the source seam and SPRING REV's code -- take one")
+    if _srcm:
+        import importlib.util
         from remix import platform_build
+        _sm = _srcm[0]
         if "SPRING REV" in REMIX.modules or "MACHINEDRUM" in REMIX.modules:
-            sys.exit("ANALOG BD owns SPRING REV's code and both DSP uploads; "
+            sys.exit(f"{_sm.key} owns SPRING REV's code and both DSP uploads; "
                      "remove SPRING REV / MACHINEDRUM from this remix")
         # Private X and source-stage placement are qualified with stock FX.
         if any(_m.dsp is not None for _m in remix_modules().values()
                if _m.key in REMIX.modules):
-            sys.exit("ANALOG BD's DSP source currently composes with stock effects only")
-        _pres, _apokes, _alog = ab_image.integrate(img, IMG.read_bytes())
-        print("\n=== Analog BD: DSP 808/909, both payloads, pre-boot loader ===")
+            sys.exit(f"{_sm.key}'s DSP source currently composes with stock effects only")
+        _spec = importlib.util.spec_from_file_location(
+            f"dsp_source_{_sm.name.replace('-', '_')}", pathlib.Path(_sm.dsp_source))
+        _integ = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_integ)
+        _pres, _apokes, _alog = _integ.integrate(img, IMG.read_bytes())
+        print(f"\n=== {_sm.key}: DSP source machine, both payloads ===")
         for _l in _alog:
             print(_l)
         for _aa, _aexp, _aw, _anote in _apokes:
             _got = bytes(img[_aa - BASE:_aa - BASE + len(_aexp)])
             if _got != _aexp:
-                sys.exit(f"analog bd: 0x{_aa:08x} holds {_got.hex()}, not stock {_aexp.hex()}")
+                sys.exit(f"{_sm.key}: 0x{_aa:08x} holds {_got.hex()}, not stock {_aexp.hex()}")
             img[_aa - BASE:_aa - BASE + len(_aw)] = _aw
             print(f"    poke 0x{_aa:08x}: {_aexp.hex()} -> {_aw.hex()}  {_anote}")
-        _pappend, _psyms2, _pgsyms2, _punits2, _ploader2, _boot, _pnames = platform_build.build(
-            [(_m.key, _u) for _m, _u in _dram], [], pathlib.Path("out/platform"),
-            reserve=_reserve, defsyms=_pdefs, preboot=_pres, unit_defs=_unit_defs,
-            includes={_u.label: _u.include(_sel) for _m, _u in _dram + _early if _u.include is not None},
-            regions=_regions,       # the same regions as the first link, or its symbols differ
-            patch=_rt_patch, early=[_u for _m, _u in _early], fixed=_fixed)
-        if (_psyms2, _pgsyms2, _punits2) != (_psyms, _pgsyms, _punits) \
-                or _platform_at is None:
-            sys.exit("analog bd: the platform runtime linked differently the second time")
-        _appends[_platform_at] = (
-            "octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend)
+        if _pres:
+            # pre-boot payloads (ANALOG BD's grown uploads) ride the platform loader
+            _pappend, _psyms2, _pgsyms2, _punits2, _ploader2, _boot, _pnames = platform_build.build(
+                [(_m.key, _u) for _m, _u in _dram], [], pathlib.Path("out/platform"),
+                reserve=_reserve, defsyms=_pdefs, preboot=_pres, unit_defs=_unit_defs,
+                includes={_u.label: _u.include(_sel) for _m, _u in _dram + _early if _u.include is not None},
+                regions=_regions,       # the same regions as the first link, or its symbols differ
+                patch=_rt_patch, early=[_u for _m, _u in _early], fixed=_fixed)
+            if (_psyms2, _pgsyms2, _punits2) != (_psyms, _pgsyms, _punits) \
+                    or _platform_at is None:
+                sys.exit(f"{_sm.key}: the platform runtime linked differently the second time")
+            _appends[_platform_at] = (
+                "octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend)
 
     # ... and after everything is written but the appends.
     _kept = _keep.violations(img, BASE, [remix_modules()[k] for k in REMIX.modules])

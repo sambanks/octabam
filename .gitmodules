@@ -34,3 +34,6 @@
 [submodule "modules/sidechain-compressor/upstream"]
 	path = modules/sidechain-compressor/upstream
 	url = https://github.com/sambanks/octatrack-kyoti-fw
+[submodule "modules/blackpyramids-303/upstream"]
+	path = modules/blackpyramids-303/upstream
+	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw

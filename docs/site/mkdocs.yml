@@ -53,6 +53,7 @@ nav:
       - Tempo Sync: reference/modules/tempo-sync.md
   - Machines and Sequencer:
       - Analog BD: reference/modules/analog-bassdrum.md
+      - Blackpyramids 303: reference/modules/blackpyramids-303.md
       - Direct Jump: reference/modules/direct-jump.md
       - Direct Jump (Kyoti): reference/modules/direct-jump-kyoti.md
       - Euclid Fill: reference/modules/euclid-fill.md
