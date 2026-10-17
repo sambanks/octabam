@@ -606,5 +606,49 @@
       "source": "emulator panel UART",
       "firmware_sha256": "a9f09d312cdb9d74f00fb000cc28442b6621e9523936de425960de6339eb7e1a"
     }
+  },
+  "midi-loopback": {
+    "channel-ext": {
+      "image": "midi-loopback/channel-ext.png",
+      "caption": "MIDI NOTE SETUP: CHAN 1 uses external output.",
+      "remix": "midi-loopback",
+      "source": "emulator panel UART",
+      "firmware_sha256": "a9eb6cf4169608bce8bd68636bf26ede98fdebf1c97d4d1078202e128a475f47"
+    },
+    "routing-ext": {
+      "image": "midi-loopback/routing-ext.png",
+      "caption": "ROUTING: EXT sends to external MIDI.",
+      "remix": "midi-loopback",
+      "source": "emulator panel UART",
+      "firmware_sha256": "a9eb6cf4169608bce8bd68636bf26ede98fdebf1c97d4d1078202e128a475f47"
+    },
+    "routing-int": {
+      "image": "midi-loopback/routing-int.png",
+      "caption": "ROUTING: INT sends to the internal MIDI receiver.",
+      "remix": "midi-loopback",
+      "source": "emulator panel UART",
+      "firmware_sha256": "a9eb6cf4169608bce8bd68636bf26ede98fdebf1c97d4d1078202e128a475f47"
+    },
+    "channel-int": {
+      "image": "midi-loopback/channel-int.png",
+      "caption": "MIDI NOTE SETUP: CHAN 1I indicates internal routing.",
+      "remix": "midi-loopback",
+      "source": "emulator panel UART",
+      "firmware_sha256": "a9eb6cf4169608bce8bd68636bf26ede98fdebf1c97d4d1078202e128a475f47"
+    },
+    "routing-both": {
+      "image": "midi-loopback/routing-both.png",
+      "caption": "ROUTING: BOTH sends internally and externally.",
+      "remix": "midi-loopback",
+      "source": "emulator panel UART",
+      "firmware_sha256": "a9eb6cf4169608bce8bd68636bf26ede98fdebf1c97d4d1078202e128a475f47"
+    },
+    "channel-both": {
+      "image": "midi-loopback/channel-both.png",
+      "caption": "MIDI NOTE SETUP: CHAN 1B indicates both destinations.",
+      "remix": "midi-loopback",
+      "source": "emulator panel UART",
+      "firmware_sha256": "a9eb6cf4169608bce8bd68636bf26ede98fdebf1c97d4d1078202e128a475f47"
+    }
   }
 }

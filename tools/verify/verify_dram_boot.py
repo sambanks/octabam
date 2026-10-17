@@ -78,6 +78,18 @@ fatal_hits = sum(1 for l in hits if f"at 0x{fatal:x}" in l)
 ok = handoff and entry_hits == 1 and fatal_hits == 0
 print(f"  [{'PASS' if ok else 'FAIL'}] verify_dram_boot: {remix.name} boots to the handoff; "
       f"loader ran {entry_hits}x, its fatal hang {fatal_hits}x")
+# Part initialization runs after the loader, before handoff. Its outgoing
+# snapshot and replacement epochs are mutable data, not loader corruption.
+# Name only those two arrays; retain the existing 64-byte budget elsewhere.
+part_state_ranges = []
+if any(m.key == "MIDI PART STATE" for m in mods):
+    runtime_nm = subprocess.check_output([
+        "m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")], text=True)
+    runtime_symbols = {f[2]: int(f[0], 16) for line in runtime_nm.splitlines()
+                       if len(f := line.split()) == 3}
+    part_state_ranges = [(runtime_symbols[name], size) for name, size in
+                         (("mp_snapshot", 4 * 8 * 36), ("mp_part_epochs", 64 * 4))]
+
 for (a, n, p), (label, raw) in zip(dumps, expects):
     got = p.read_bytes() if p.exists() else b""
     diff = [i for i in range(min(len(got), len(raw))) if got[i] != raw[i]]
@@ -86,9 +98,19 @@ for (a, n, p), (label, raw) in zip(dumps, expects):
     # 41-42 (brain_ts/brain_ts_last plus PLOCKS P2's INITED stamp, see the
     # module docstring above); 64 keeps headroom without going blind to a
     # new undeclared writer.
-    fine = len(got) == len(raw) and len(diff) <= 64
+    # Verify the named arrays belong to the payload and start zeroed. Do not
+    # accept a symbol accidentally pointing outside the runtime or into code.
+    ranges_ok = all(a <= start and start + size <= a + len(raw)
+                    and raw[start-a:start-a+size] == bytes(size)
+                    for start, size in part_state_ranges)
+    transient = [i for i in diff if any(start <= a+i < start+size
+                                       for start, size in part_state_ranges)]
+    remaining = len(diff) - len(transient)
+    fine = len(got) == len(raw) and ranges_ok and remaining <= 64
     ok &= fine
+    changes = (f"{len(transient)} named Part-state byte(s) and {remaining} other byte(s)"
+               if part_state_ranges else f"{len(diff)} byte(s)")
     print(f"  [{'PASS' if fine else 'FAIL'}] verify_dram_boot: {label} at 0x{a:08x} == linked "
-          f"runtime ({n:,} B) except {len(diff)} byte(s) the runtime wrote itself"
+          f"runtime ({n:,} B) except {changes} the runtime wrote itself"
           + (f" at +{diff[0]:#x}.." if diff else ""))
 sys.exit(0 if ok else 1)

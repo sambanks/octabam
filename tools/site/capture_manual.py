@@ -189,6 +189,28 @@ def capture_synth(p,r):
     shot(p,'direct-jump','settings','CHAIN AFTER set to DIRECT in sequencer settings.',r)
 
 
+def press_encoder(p, n):
+    # Encoder push switches are panel matrix row 0x27, A-F = bits 0-5.
+    p.proc.command(f'key 0x27 {1 << n:#x}', 'ok');p.run(40)
+    p.proc.command('key 0x27 0', 'ok');p.run(80)
+
+
+def capture_midi_loopback(p,r):
+    # Sample-free fixture starts in audio mode, with MIDI channel 1, DEST EXT.
+    press(p,'midi');press(p,'t1');p.chord('func','pg_playback')
+    shot(p,'midi-loopback','channel-ext','MIDI NOTE SETUP: CHAN 1 uses external output.',r)
+    press_encoder(p,0)
+    shot(p,'midi-loopback','routing-ext','ROUTING: EXT sends to external MIDI.',r)
+    enc(p,0,4)
+    shot(p,'midi-loopback','routing-int','ROUTING: INT sends to the internal MIDI receiver.',r)
+    press_encoder(p,0)
+    shot(p,'midi-loopback','channel-int','MIDI NOTE SETUP: CHAN 1I indicates internal routing.',r)
+    press_encoder(p,0);enc(p,0,4)
+    shot(p,'midi-loopback','routing-both','ROUTING: BOTH sends internally and externally.',r)
+    press_encoder(p,0)
+    shot(p,'midi-loopback','channel-both','MIDI NOTE SETUP: CHAN 1B indicates both destinations.',r)
+
+
 def prepare(remix,project,assignments):
     label='manual-features' if remix.startswith('../') else remix
     work=OUT/label;work.mkdir(parents=True,exist_ok=True)
@@ -239,13 +261,14 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','features','inserts','bus','extras','machines','probes'])
+    ap.add_argument('groups',nargs='+',choices=['core','features','inserts','bus','extras','machines','probes','midi-loopback'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
     for group in a.groups:
         assignments=[]
         if group=='core': jobs=[('octabam-core',capture_core,[])]
+        elif group=='midi-loopback':jobs=[('midi-loopback',capture_midi_loopback,[])]
         elif group=='features':
             # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist.
             scratch=OUT/'features.py'
