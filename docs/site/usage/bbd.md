@@ -30,6 +30,12 @@ both DSP cores, with save, reload and a power cycle (17 Oct 2026).
   TONE left of centre adds a resonant peak, and FREQ sets where that peak
   sits. FREQ only does anything with TONE left of centre; at centre or
   to the right it has no effect.
+- LIM is at its maximum, 127, by default: the governor holds loud
+  feedback back early, so self-oscillation settles quietly. Lowering LIM
+  lets loud repeats keep more of their feedback, which changes the
+  character of the delays: they build up and ring harder, and
+  self-oscillation gets louder and more dramatic. 0 turns the governor off.
+  Quiet echoes sound the same at any LIM.
 - FRZ fades the input out and lengthens the trails; at 127 the line loops
   its own buckets exactly.
 - A STGS change fades the wet out, clears the line and fades back in.
@@ -52,5 +58,5 @@ both DSP cores, with save, reload and a power cycle (17 Oct 2026).
 | 1 | FREQ | 0-127 | where TONE's left-hand peak sits, 400 Hz to 2 kHz; no effect with TONE at centre or right |
 | 1 | MIX | 0-127 | dry and wet; 0 is exact dry |
 | 2 | STGS | 1024, 4096 | bucket count: the delay range |
-| 2 | LIM | 0-127 | feedback governor; 0 is off, 127 holds oscillation lowest |
+| 2 | LIM | 0-127 | feedback governor, 127 by default; lower lets loud repeats and self-oscillation grow, 0 is off |
 | 2 | HPF | 0-127 | input high-pass, 20 to 400 Hz; 0 is off |
