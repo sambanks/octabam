@@ -46,6 +46,7 @@ nav:
       - Spectrum: reference/modules/spectrum.md
       - Tape Echo: reference/modules/tapeecho.md
       - Transient: reference/modules/transient.md
+      - Void: reference/modules/void.md
       - Vocoder: reference/modules/vocoder.md
       - Wave: reference/modules/wave.md
   - Bus Setup:
