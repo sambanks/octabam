@@ -10,6 +10,14 @@ Replaces **COMB FILTER** on FX2 (id `0x13`). DSP words sit in harvested **PLATE 
 Select a track, press FX2, pick **VOID**. Page 1: BAL, RATE, SHPE, DPTH, DRV, FDBK.
 Page 2 (SETUP): COLR, HPF, NTYP on the top row.
 
+![FX2 SETUP with VOID selected: COLR, HPF, NTYP on page 2.](../../img/void/setup.png)
+
+*FX2 SETUP with VOID selected: COLR, HPF, NTYP on page 2.*
+
+![VOID main page: BAL, RATE, SHPE, DPTH, DRV, FDBK.](../../img/void/main.png)
+
+*VOID main page: BAL, RATE, SHPE, DPTH, DRV, FDBK.*
+
 A Part saved under stock COMB knobs will not match VOID's layout — re-pick VOID or
 stamp defaults after flashing.
 
