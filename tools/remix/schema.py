@@ -1254,10 +1254,12 @@ class Linked:
             reference_shape(self.label, self.reference)
 
     def reference_for(self, modules) -> tuple[int, str] | None:
-        """(address, sha256) of the author's build for this selection."""
+        """(address, sha256) of the author's build, if this selection has one."""
         if self.reference is None:
             return None
         ref = self.reference(modules) if callable(self.reference) else self.reference
+        if ref is None:
+            return None
         return reference_shape(self.label, ref)
 
 

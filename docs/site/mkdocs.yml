@@ -81,6 +81,7 @@ nav:
   - MIDI and USB:
       - CC Feedback: reference/modules/cc-feedback.md
       - CC Map: reference/modules/cc-map.md
+      - MIDI Follow: reference/modules/midi-follow.md
       - MIDI Loopback: reference/modules/midi-loopback.md
       - MIDI Scales: reference/modules/midi-scales.md
       - USB: reference/modules/usb.md

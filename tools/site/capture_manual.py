@@ -302,6 +302,15 @@ def capture_midi_scales(p,r):
     shot(p,'midi-scales','c-mixolydian','MIDI ARP SETUP: C Mixolydian selected with encoder F.',r)
 
 
+def capture_midi_follow(p,r):
+    press(p,'midi');press(p,'t2');p.chord('func','pg_playback')
+    shot(p,'midi-follow','source-off','MIDI NOTE SETUP: RFOL OFF uses native notes.',r)
+    enc(p,3,4)
+    shot(p,'midi-follow','source-t1','MIDI NOTE SETUP: RFOL T1 follows MIDI track 1.',r)
+    press_encoder(p,3)
+    shot(p,'midi-follow','fixed','FOLLOW: FIXED octave 3 and TRIG update.',r)
+
+
 def prepare(remix,project,assignments):
     label='manual-features' if remix.startswith('../') else remix
     work=OUT/label;work.mkdir(parents=True,exist_ok=True)
@@ -352,7 +361,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','utilities','varispeed','usb'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -360,6 +369,7 @@ def main():
         assignments=[]
         if group=='core': jobs=[('octabam-core',capture_core,[])]
         elif group=='midi-loopback':jobs=[('midi-loopback',capture_midi_loopback,[])]
+        elif group=='midi-follow':jobs=[('midi-follow',capture_midi_follow,[])]
         elif group=='plocks': jobs=[('octabam-core',capture_plocks,[(1,'fx2','PLATE REV')])]
         elif group=='midi-scales':jobs=[('midi-scales',capture_midi_scales,[])]
         elif group=='features':

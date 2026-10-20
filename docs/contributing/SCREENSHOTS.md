@@ -60,6 +60,7 @@ Groups and what each captures, from the `shot(...)` calls:
 | `extras` | one test remix per module (character-txtr, testgen, sidechain-compressor, miniverb, tapeecho, vocoder, wave) | setup and main page of each |
 | `machines` | `analog-bassdrum`, `octatrick` | analog-bassdrum, synth, direct-jump |
 | `midi-loopback` | `midi-loopback` | midi-loopback (EXT/INT/BOTH windows and CHAN indicators) |
+| `midi-follow` | `midi-follow` | midi-follow (source selection and FOLLOW register window) |
 | `midi-scales` | `midi-scales` | midi-scales (OFF, Major, Dorian, Mixolydian) |
 | `probes` | `cfmeter` | CF METER |
 | `utilities` | `buffer-saver` | buffer-saver (a one-second take, then FUNC + PROJ: the SAVE SAMPLES? question) |

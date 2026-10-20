@@ -17,6 +17,12 @@ MODULE = dataclasses.replace(MODULE, linked=tuple(
                                           ('mp_part_epochs', 64 * 4)))
     if unit.label == 'midipartcopy' else unit for unit in MODULE.linked
 ))
+# The pinned author manifest predates include(modules, remix). Keep its source
+# pin unchanged while adapting the existing Part State units to this build ABI.
+MODULE = dataclasses.replace(MODULE, linked=tuple(
+    dataclasses.replace(unit, include=(lambda modules, remix, source=unit.include: source(modules)))
+    if unit.include else unit for unit in MODULE.linked
+))
 
 MODULE = dataclasses.replace(MODULE, gates=(
     *MODULE.gates,
