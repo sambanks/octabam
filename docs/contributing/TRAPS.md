@@ -1134,3 +1134,44 @@ reports on a range it never watched. Rule: one comma-joined
 `--watch-mem addr,len;addr,len` argument; when a watch captures nothing,
 check what the command line actually watched before suspecting the
 runtime.
+
+<a name="trap-cf-frame"></a>
+
+### A ColdFire save frame sized for the wrong register count overwrites the return address
+
+**A COLDFIRE SAVE FRAME SIZED FOR THE WRONG REGISTER COUNT OVERWRITES THE
+RETURN ADDRESS.** ColdFire `movem` has no pre-decrement or post-increment
+form, so a stub opens `lea -N(%sp),%sp / movem.l regs,(%sp)` and closes the
+same way, and N is 4 per register. PATTERN MUTE's first build used 28 for
+eight registers and 32 for nine: the stub's `rts` returned into data and the
+port stopped with `unimplemented opcode 00ff at 401715c1` (odd PC) during
+LOAD PROJECT, caught by `verify_set`, not by the stub's own gate. The same
+build hit three more ISA-C restrictions the assembler reports as `operands
+mismatch`: `eor.l <mem>,Dn` (eor takes Dn as the source), `st <mem>` (Scc
+takes Dn) and `move.b #imm,<abs.l>`. Rule: count registers, then multiply by
+four, once, in a comment next to the frame.
+
+<a name="trap-unused-bytes"></a>
+
+### An unused-looking project byte can be rewritten on save
+
+**AN UNUSED-LOOKING PROJECT BYTE CAN BE REWRITTEN ON SAVE.** In the test
+project the four bytes after the pattern chunk's flag byte were zero in all
+256 patterns, and offsets 95, 2150 and 2200 of every audio track record were
+zero in all 2,048 records. A SAVE PROJECT round trip with marker bytes there
+returned `0xff 0x00 0x00` for the first three (the OS writes them from its own
+fields) and `0xff` / `0xe9` / `0xe9` for the others. Offsets 18, 40 and 85 of
+the audio track record came back unchanged in all 128 records of the bank.
+Rule: zero everywhere is not proof a byte is spare; write a marker into the
+file, load, save, and diff (`tools/verify/verify_pattern_mute.py` does it for
+byte 40).
+
+<a name="trap-scenario-watch"></a>
+
+### `--watch-mem` given to a `--scenario` child logs nothing
+
+**`--WATCH-MEM` GIVEN TO A `--SCENARIO` CHILD LOGS NOTHING.** A forked scenario
+accepted `--watch-mem 0x80000008,4` and reported `0 write(s)` while the same
+script run directly logged the writes with their PCs. Measure writer PCs with a
+direct run (one script, one process); use scenarios for `--mem-dump` end
+states.

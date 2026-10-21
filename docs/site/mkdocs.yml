@@ -62,6 +62,7 @@ nav:
       - Erase Empty Trigless Locks: reference/modules/erase-empty-trigless-locks.md
       - Euclid Fill: reference/modules/euclid-fill.md
       - Mute Modes: reference/modules/mute-modes.md
+      - Pattern Mute: reference/modules/pattern-mute.md
       - Page 2 Parameter Locks: reference/modules/plocks-p2.md
       - Quantize Live Rec Toggle: reference/modules/quantize-live-rec-toggle.md
       - Rec Threshold: reference/modules/rec-threshold.md

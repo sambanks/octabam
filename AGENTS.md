@@ -190,6 +190,9 @@ moment it costs real work, and add its line here.
 - [A forked port shares its DSP memory with its siblings](docs/contributing/TRAPS.md#trap-fork-shm) — `unshareRanges`; new shared maps need the same.
 - [The port ran under Rosetta and nothing said so](docs/contributing/TRAPS.md#trap-rosetta) — `file out/emu/ot_emu` is the check.
 - [The report is API and prints paths](docs/contributing/TRAPS.md#trap-report-api) — re-save refhash only after the artifacts are shown identical.
+- [A ColdFire save frame sized for the wrong register count overwrites the return address](docs/contributing/TRAPS.md#trap-cf-frame) — `lea -4N(%sp)` + `movem.l regs,(%sp)`; no pre-decrement `movem`, no `eor <mem>,Dn`, no `st <mem>`, no `move.b #imm,abs.l`.
+- [An unused-looking project byte can be rewritten on save](docs/contributing/TRAPS.md#trap-unused-bytes) — mark, load, save, diff before using one.
+- [`--watch-mem` given to a `--scenario` child logs nothing](docs/contributing/TRAPS.md#trap-scenario-watch) — watch with a direct run.
 - [Same-named labels across units resolve by nm table order](docs/contributing/TRAPS.md#trap-nm-order) — per-unit tables; a ref naming a symbol its unit does not define is refused.
 - [`moveml %sp@` is the mode-2 form and stores at sp unchanged](docs/contributing/TRAPS.md#trap-movem-sp) — the lea-framed save/restore idiom, or `%sp@-`/`%sp@+`.
 - [cfgsel served one MAIN and one CUE short of the declared nch](docs/contributing/TRAPS.md#trap-cfgsel-nch) — 16 × TRACKS + 2 × (MAIN + CUE + MASTER); every consumer agrees on usb_nch.
