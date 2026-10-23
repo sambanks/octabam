@@ -9,7 +9,7 @@ TRACK PATTERNS with every module of `octabam-core` (KITS, DIRECT_JUMP_KYOTI, REL
 
 ## Status
 
-`make check REMIX=trackpatterns-core`. Under the ColdFire port the gesture, MIDI and global-change run and the trig LEDs behave as with TRACK PATTERNS alone (`modules/trackpatterns/TESTING.md`). On the contributor's MKII, 22 Oct 2026 (`OCTABAM8`): the gesture on T1 and M1, a global change, save and power cycle passed; KITS' and DIRECT JUMP's own actions were not tried.
+`make check REMIX=trackpatterns-core`. Under the ColdFire port the gesture, MIDI and global-change run and the trig LEDs behave as with TRACK PATTERNS alone (`modules/trackpatterns/TESTING.md`). On the contributor's MKII, 22 Oct 2026 (`OCTABAM8`): the gesture on T1 and M1, a global change, save and power cycle passed; KITS' and DIRECT JUMP's own actions were not tried. That report predates this remix's EDIT EVENTS integration.
 
 ## Build
 

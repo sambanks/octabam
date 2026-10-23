@@ -38,4 +38,5 @@ while stopped, it applies at once and PLAY starts it from step 1.
   global pattern again.
 - Beside Kits and Direct Jump (Kyoti) (`trackpatterns-core`): on an MKII
   the gesture, a global change and a save and power cycle passed; Kits' and
-  Direct Jump's own actions have not been tried beside it.
+  Direct Jump's own actions have not been tried beside it. This report
+  predates the remix's EDIT EVENTS integration.

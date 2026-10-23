@@ -1160,3 +1160,18 @@ Seen in the emulator: the firmware's own draw puts a module on FX1's
 chooser with its own knob names; a replacement on LO-FI's id draws in
 LO-FI's slot on the FX1 chooser with its own page. `verify_replaces.py`
 checks both tables in both directions.
+
+## Shared native events
+
+Use [EVENTS](../../modules/events/README.md) for transport notifications,
+accepted-note notifications, held-step ownership and native copy notifications.
+Register by event family and select `EVENTS`; clients must not also claim its
+native detours. STORE continues to own project/Part persistence.
+
+An optional `Module.select(frozenset(module_keys))` returns `linked` and/or
+`detours` for that selection. It runs in `registry.bound()` after build settings,
+so the claims ledger, linker, installer and image gates share the same result.
+It must be deterministic, have no side effects and may not change identity,
+dependencies, settings or gates. Unselected modules are not specialized.
+EVENTS uses it to omit unsubscribed boundaries, with independent assembly guards
+omitting unused entry points within a selected unit.

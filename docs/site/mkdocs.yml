@@ -99,7 +99,7 @@ nav:
       - Memory: reference/modules/memory.md
       - Persistent Buffers: reference/modules/persistent-buffers.md
       - Store: reference/modules/store.md
-      - Sequencer Events: reference/modules/sequencer-events.md
+      - Events: reference/modules/events.md
   - Utilities:
       - Buffer Saver: reference/modules/buffer-saver.md
       - Copy Project: reference/modules/copy-project.md

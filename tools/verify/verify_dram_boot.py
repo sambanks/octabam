@@ -39,7 +39,7 @@ from boot_mutable import resolve_ranges, compare_runtime  # noqa: E402
 EMU = ROOT / "out/emu/ot_emu"
 IMAGE = ROOT / "out/mainos_bus.bin"
 remix = registry.remix(os.environ.get("REMIX"))
-mods = [registry.modules()[k] for k in remix.modules]
+mods = registry.selected(remix)
 dram = any(u.dram for m in mods for u in getattr(m, "linked", ()))
 if not dram:
     print(f"  [ -- ] verify_dram_boot: {remix.name} carries no DRAM payload")

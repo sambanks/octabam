@@ -943,6 +943,7 @@ def main():
              "resonator": ("PLATE REV",),   # RESONATOR runs in its words; the other 13 stay
              "vocoder": ("PLATE REV", "DJ EQ"),   # VOCODER runs in PLATE's words; DJ EQ out so the tables sit in X
              "vocoder-usb": ("PLATE REV", "DJ EQ"),   # the vocoder remix + USB MIDI and USB AUDIO (ColdFire, no DSP words)
+             "events-empty": ("SPRING REV", "DARK REV"),
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "rig": _rig,
              "character-txtr": _rig,   # octabam-bus with the TXTR station
@@ -984,7 +985,7 @@ def main():
     _probe.write_text(
         "from remix.schema import Remix\n\n"
         "REMIX = Remix(name='_selftest_scattered', doc='scratch',\n"
-        "              modules=('EUCLID', 'SEQUENCER EVENTS', 'MINIVERB', 'PLATE REV'),\n"
+        "              modules=('EUCLID', 'EVENTS', 'MINIVERB', 'PLATE REV'),\n"
         "              fallback='NONE',\n"
         "              fx1=('FILTER', 'EQUALIZER', 'DJ EQ', 'PHASER',\n"
         "                   'SPATIALIZER', 'COMPRESSOR', 'LO-FI',\n"

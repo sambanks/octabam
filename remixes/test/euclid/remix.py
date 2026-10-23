@@ -7,9 +7,9 @@ from remix.schema import Proof, Remix
 
 REMIX = Remix(
     name="euclid",
-    family="effects", proof=Proof.PORT, proof_note="Shared event migration: firmware/render validation",
+    family="effects", proof=Proof.PORT, proof_note="Shared event migration: firmware/render validation; shared EVENTS migration is software-only, not hardware-tested",
     doc="Euclid rhythmic modulation: 12 dB LP/BP/HP or AMP, both FX slots.",
-    modules=("SEQUENCER EVENTS", "EUCLID", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "COMPRESSOR", "LO-FI",
+    modules=("EVENTS", "EUCLID", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "COMPRESSOR", "LO-FI",
              "PLATE REV", "SPRING REV", "DARK REV"),
     fx1=("EUCLID", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "COMPRESSOR", "LO-FI"),
     fallback="NONE",

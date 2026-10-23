@@ -37,6 +37,10 @@ remixes add effects to this set: [`octabam-inserts`](../octabam-inserts/README.m
 Cursory testing on an MKII (owner report, 16 Oct 2026). USB IN in this remix has run under the port only; the same placement has run on Bryan T's MKII in [`usb-io-stock14`](../test/usb-io-stock14/README.md) (22 Oct 2026). Port gates:
 `make check REMIX=octabam-core` and the reach round.
 
+EDIT EVENTS/PLOCKS: radiohagen, Octatrack MKII, PLK858/build 98, 22 October 2026:
+held-edit and trig/track/pattern checks passed
+([results](../../modules/plocks-p2/DEVELOPMENT.md#edit-events-hardware-results-22-october-2026)).
+
 ## How to flash
 
 [BUILDING.md](../../docs/guide/BUILDING.md) has every step, from what to

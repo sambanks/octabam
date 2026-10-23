@@ -1571,6 +1571,11 @@ class Module:
     # so every reader of `linked`, `dsp`, `detours` or `gates` sees the
     # chosen code without asking (modules/usb is the first).
     variant: object | None = None
+    # Optional build-time subscription selection: select(frozenset(module keys))
+    # returns only linked/detours. registry.bound applies it after settings, so
+    # claims, linking, installation and image gates all see the same subset.
+    # It must be deterministic and must not modify the registry or filesystem.
+    select: object | None = None
     # CODE THAT THE BUILD DROPS WHEN IT CANNOT BE NEEDED: dsp_if(fixed) ->
     # bool, given {setting name: value} of the module's settings that are
     # fixed in the image (Apply.BUILD, pinned, or any setting of a remix

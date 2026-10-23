@@ -335,6 +335,11 @@ def bound(r) -> dict[str, object]:
         if m.dsp_if is not None and m.dsp is not None and k in sel:
             if not m.dsp_if(fixed.get(k, {})):
                 m = dataclasses.replace(m, dsp=None)
+        if m.select is not None and k in sel:
+            over = m.select(frozenset(sel))
+            if set(over) - {'linked', 'detours'}:
+                raise ValueError(f'{m.name}: select may only set linked and detours')
+            m = dataclasses.replace(m, **over)
         out[k] = m
     return out
 

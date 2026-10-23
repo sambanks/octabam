@@ -81,7 +81,7 @@
         .text
         .globl  plk_edit, plk_fill_slide, plk_fill_plain, plk_s2p_a, plk_s2p_b
         .globl  plk_reset, plk_p2r, plk_note, plk_apply, plk_dial, plk_init, STORE
-        .globl  plk_place, plk_clrlocks, plk_clrtrack, plk_tcopy, plk_tpaste, plk_memcpy
+        .globl  plk_place, plk_clrlocks, plk_clrtrack, plk_tcopy, plk_tpaste
         .globl  plk_st_bankw_pre, plk_st_bankcopy, plk_st_loadall_pre, plk_st_loadmask_pre
         .globl  plk_st_newproj, plk_st_tocs1, plk_st_fromcs1, plk_st_answer
         .extern store_refuse
@@ -825,7 +825,7 @@ tp_out: movem.l %sp@,%d0-%d2/%a0-%a1
 | pattern (0x8ed8) or a track (0x91a) copied between the bank RAM, the
 | clipboard and the undo buffer takes its page 2 along, in the same
 | shape. memcpy clobbers d0, d1, a0, a1.
-plk_memcpy:
+plk_copy_mirror:
         movel   %sp@(12),%d0
         cmpil   #TRK_STRIDE,%d0
         beq.s   mc_go
@@ -876,7 +876,7 @@ mc_t:   subil   #STORE,%d0
 mc_out: movem.l %sp@,%d2-%d4
         lea     %sp@(12),%sp
 mc_stock:
-        jmp     0x40020898             | stock memcpy, the caller's frame as it was
+        rts                          | EVENTS owns the native copy
 
 | p2loc: d0 = an address -> a0 = the page-2 track block that mirrors it
 | (a track's start in a bank's patterns, the clipboard or the undo
@@ -1686,3 +1686,33 @@ PATH:   .space  260
 PSRC:   .space  260
         .align  4
 IOB:    .space  IOB_LEN                 | the stock file layer's buffer
+
+        .text
+        .globl plk_ed_claim, plk_ed_handle, plk_ed_copy_pre
+plk_ed_handle:
+        jmp plk_edit
+plk_ed_claim:
+        tstl MIDITRK
+        bne.s plk_ed_no
+        tstl WINDOW
+        beq.s plk_ed_no
+        cmpil #5,%d0
+        bhi.s plk_ed_no
+        tstw HELD
+        beq.s plk_ed_no
+        movel PAGEKIND,%d0
+        subql #3,%d0
+        cmpil #1,%d0
+        bhi.s plk_ed_no
+        moveq #1,%d0
+        rts
+plk_ed_no:
+        moveq #0,%d0
+        rts
+plk_ed_copy_pre:
+        movel %d2,%sp@-
+        movel %d1,%sp@-
+        movel %d0,%sp@-
+        jsr plk_copy_mirror
+        lea %sp@(12),%sp
+        rts

@@ -4,7 +4,7 @@ module beside the modules it shares handlers with."""
 
 from remix.schema import Pin, Proof, Remix
 
-CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
+CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "EVENTS", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
         "RECORDER LOOP FIX", "BATCH_BUGFIXES", "ERASE_EMPTY_TRIGLESS_LOCKS",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES",
@@ -15,8 +15,8 @@ STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATI
 
 REMIX = Remix(
     name="trackpatterns-core",
-    family="mods", proof=Proof.HARDWARE,
-    proof_note="MKII, OCTABAM8, 22 Oct 2026: gesture on T1 and M1, global change, save and power cycle passed (contributor's report)",
+    family="mods", proof=Proof.PORT,
+    proof_note="MKII, OCTABAM8, 22 Oct 2026: gesture on T1 and M1, global change, save and power cycle passed (contributor's report); EDIT EVENTS migration: software only, hardware pending; shared EVENTS migration is software-only, not hardware-tested",
     doc="TRACK PATTERNS on octabam-core (KITS, DIRECT_JUMP_KYOTI and the other core modules).",
     modules=("TRACK PATTERNS",) + CORE + ("LOFI AMF FIX",) + STOCK14,
     fallback="NONE",

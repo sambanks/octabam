@@ -13,7 +13,7 @@ G2 = tuple(round(math.tan(math.pi * 30 * 500 ** (i / 32) / 44100) * (1 << 22))
 MODULE = Module(
     name="euclid", key="EUCLID", kind=Kind.HYBRID,
     category=Category.TRACK, author="repeat98", author_url="https://github.com/repeat98",
-    proof=Proof.HARDWARE, proof_note="Cursory testing on Sam's MKII (owner report, 16 Oct 2026); radiohagen's MKII: start/resume recovery with one instance, several tracks and both FX slots (owner report, 21 Oct 2026; [PR #851](https://github.com/sambanks/octabam/pull/851)).",
+    proof=Proof.HARDWARE, proof_note="Cursory testing on Sam's MKII (owner report, 16 Oct 2026); radiohagen's MKII: start/resume recovery with one instance, several tracks and both FX slots (owner report, 21 Oct 2026; [PR #851](https://github.com/sambanks/octabam/pull/851)).; shared EVENTS migration is software-only, not hardware-tested",
     doc="Euclidean LP/BP/HP/notch/amp sequencer: swing, envelope, gate, random and loop.",
     menu=MenuEntry(fx2_id=0x1d, donor_desc=0x400d58b8,
                    abbr=b"EUCL", fullname=b"Euclid"),
@@ -55,7 +55,7 @@ MODULE = Module(
     ),
     dsp=DspSection(asm="modules/euclid/filter.asm", priority=16,
                    bus_role=BusRole.NONE, ybase=YBase.NEVER, ptable=G2),
-    requires=("SEQUENCER EVENTS",),
+    requires=("EVENTS",),
     linked=(Linked("euclid", "modules/euclid/control.s", cpu="5475", dram=True),),
     detours=(
         Detour(0x4000d562, bytes.fromhex("43f9800000f0"), "euclid", "eu_frame_hook",

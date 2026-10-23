@@ -49,7 +49,7 @@ from the chooser. In Octabam Inserts only.
 | Setup | OUT mode | ENV, GATE, RAND, LOOP |
 | Setup | MIX | dry/wet; 0 is an exact dry passthrough |
 
-SEQUENCER EVENTS coordinates PLAY/resume notifications with other selected modules. EUCLID retains its own phase-reset policy.
+EVENTS coordinates PLAY/resume notifications with other selected modules. EUCLID retains its own phase-reset policy.
 
 ## Hardware evidence
 
