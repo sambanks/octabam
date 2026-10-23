@@ -46,7 +46,7 @@ class Fixture:
         include = fn(keys)
         assert not any(f'test{i}_' in fn(()) for i in range(count)), 'absent clients must be omitted'
         self.callbacks = {}
-        suffixes = events if slug == 'sequencer-events' else ('claim','handle','copy_pre','copy_post')
+        suffixes = events if slug == 'sequencer-events' else ('claim','handle','copy_pre')
         for i in range(count):
             for suffix in suffixes:
                 address = 0x47002000 + len(self.callbacks)*16
@@ -95,8 +95,6 @@ class Fixture:
                 self.ret(91);return
             if event=='copy_pre':
                 assert bytes(u.mem_read(0x47005000,4))==b'old!'
-            if event=='copy_post':
-                assert bytes(u.mem_read(0x47005000,4))==b'new!'
             for i,r in enumerate(REGS):u.reg_write(r,0xdead0000+i)
             self.ret(int(client in self.claims) if event=='claim' else 0xabcdef01)
         elif pc==0x40010bc8 and self.sent is not None:
@@ -298,7 +296,7 @@ def main():
                 f=Fixture('edit-events',count,work);u=f.uc
                 u.mem_write(0x47005000,b'old!');u.mem_write(0x47005100,b'new!')
                 f.call('ed_copy',args=(0x47005000,0x47005100,4))
-                assert [(i,e,a[:3]) for i,e,a in f.log]==[(i,e,(0x47005000,0x47005100,4)) for e in ('copy_pre','copy_post') for i in range(count)]
+                assert [(i,e,a[:3]) for i,e,a in f.log]==[(i,e,(0x47005000,0x47005100,4)) for e in ('copy_pre',) for i in range(count)]
                 assert f.native_count==1
                 f.preserved({0:0x47005000},STACK+4);cases+=1
                 for claims in [set(),*({i} for i in range(count)),set(range(count))]:

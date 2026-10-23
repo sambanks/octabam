@@ -8,7 +8,7 @@ RIG HOSTS and FX2 LOCK. USB is MAIN CUE.
 
 from remix.schema import Pin, Proof, Remix
 
-CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
+CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "EDIT EVENTS", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
         "RECORDER LOOP FIX", "BATCH_BUGFIXES", "ERASE_EMPTY_TRIGLESS_LOCKS",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES",
@@ -18,7 +18,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
 
 REMIX = Remix(
     name="octabam-bus",
-    family="rig", proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
+    family="rig", proof=Proof.PORT, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); EDIT EVENTS migration: software only, hardware pending",
     doc="CORE + the delay and reverb bus (BusDelay on T1's FX2, BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8) + SPECTRUM, CHARACTER and MODULATION on FX1.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",

@@ -12,7 +12,7 @@ DSP effects give up their words. No SIDECHAIN_COMPRESSOR: overlaps CHARACTER
 
 from remix.schema import Pin, Proof, Remix
 
-CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
+CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "EDIT EVENTS", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
         "RECORDER LOOP FIX", "BATCH_BUGFIXES", "ERASE_EMPTY_TRIGLESS_LOCKS",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES",
@@ -24,7 +24,7 @@ STATIONS = ("SPECTRUM", "CHARACTER", "MODULATION")
 
 REMIX = Remix(
     name="octabam-inserts",
-    family="mods", proof=Proof.HARDWARE, proof_note="EUCLID transport integration: scoped hardware checks ([PR #851](https://github.com/sambanks/octabam/pull/851))",
+    family="mods", proof=Proof.PORT, proof_note="EUCLID transport integration: scoped hardware checks ([PR #851](https://github.com/sambanks/octabam/pull/851)); EDIT EVENTS migration of PLOCKS P2: software only on this remix, hardware on octabam-core (Core PLK858, 22 Oct 2026)",
     doc="CORE + SPECTRUM, CHARACTER, MODULATION, TRANSIENT and EUCLID on FX1 and FX2, LOFI2 (FX2), the stock DELAY and GATE VERB on FX2.",
     modules=STATIONS + ("MODE DEFAULTS", "DELAY", "GATE VERB") + INSERTS + ("LOFI2",) + CORE,
     fallback="NONE",

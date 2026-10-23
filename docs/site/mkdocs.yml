@@ -99,6 +99,7 @@ nav:
       - Memory: reference/modules/memory.md
       - Persistent Buffers: reference/modules/persistent-buffers.md
       - Store: reference/modules/store.md
+      - Edit Events: reference/modules/edit-events.md
       - Sequencer Events: reference/modules/sequencer-events.md
   - Utilities:
       - Buffer Saver: reference/modules/buffer-saver.md

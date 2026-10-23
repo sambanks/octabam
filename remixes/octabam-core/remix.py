@@ -10,7 +10,7 @@ from the tail of payload A (DspSection.tail).
 
 from remix.schema import Pin, Proof, Remix
 
-CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
+CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "EDIT EVENTS", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
         "RECORDER LOOP FIX", "BATCH_BUGFIXES", "ERASE_EMPTY_TRIGLESS_LOCKS",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES",
@@ -21,7 +21,7 @@ STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATI
 
 REMIX = Remix(
     name="octabam-core",
-    family="mods", proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
+    family="mods", proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); EDIT EVENTS held-edit/copy paths on radiohagen's MKII, PLK858 (22 Oct); scoped operator report",
     doc="The core ColdFire modules on the 14 stock effects, with LOFI AMF FIX.",
     modules=CORE + ("LOFI AMF FIX",) + STOCK14,
     fallback="NONE",
