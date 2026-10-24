@@ -953,5 +953,21 @@
       "source": "emulator panel UART",
       "firmware_sha256": "ed50ef7d8f6a5e5fad1e6726ab8c1a816d1a7e4ebb6ea947fa932daf8b00f13a"
     }
+  },
+  "scope": {
+    "main": {
+      "image": "scope/osc.png",
+      "caption": "SCOPE OSC with G/P HUD (quiet ring under the live path).",
+      "remix": "scope",
+      "source": "emulator panel UART (live_shots.py + scope.script)",
+      "firmware_sha256": "1c63417e490ed070ee86170461b3740f4536b4bad89ad17e2fb546e49f841949"
+    },
+    "help": {
+      "image": "scope/help.png",
+      "caption": "RIGHT help: A GAIN, B TIME; CUE=HUD, LEFT=BACK.",
+      "remix": "scope",
+      "source": "emulator panel UART (live_shots.py + scope.script)",
+      "firmware_sha256": "1c63417e490ed070ee86170461b3740f4536b4bad89ad17e2fb546e49f841949"
+    }
   }
 }

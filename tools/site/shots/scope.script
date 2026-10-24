@@ -1,0 +1,19 @@
+# SCOPE: settled OSC + help (wait out NOTIFY toast before either shot).
+# TEMPO=0x18 DOWN=0x20 RIGHT=0x21 LEFT=0x34 NO=0x32
+
+key 0x28
+wait 1.0
+
+chord 0x20 0x18
+wait 8.0
+shot scope/osc
+
+key 0x21
+wait 1.0
+shot scope/help
+
+key 0x34
+wait 0.3
+key 0x32
+wait 0.3
+quit

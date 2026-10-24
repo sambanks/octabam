@@ -17,6 +17,9 @@ directory, so it is executed here from the source on disk, as the registry
 does for every manifest, and this file only re-exports its MODULE. Nothing
 inside `upstream/` is edited here.
 
+When SCOPE is also selected, SCOPE.overrides those three detours and
+dispatches UP + TEMPO to tu_open / tu_close (solo TUNER keeps its own).
+
 Emulator-verified (26 Sep 2026 in Tim's tree; here in remix octatrick,
 29 Sep 2026). On hardware: UP + TEMPO opens the window and tunes on Tim's
 MKI (test build 3.0 b40 = `octatrick` at BUILD 40, 29 Sep 2026).

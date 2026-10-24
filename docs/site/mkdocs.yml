@@ -105,6 +105,7 @@ nav:
       - Copy Project: reference/modules/copy-project.md
       - Random Naming: reference/modules/rnd-name.md
       - Remix Switch: reference/modules/remix-switch.md
+      - Scope: reference/modules/scope.md
   - Fixes:
       - ATA Write Guard: reference/modules/ata-write-guard.md
       - Batch Bugfixes: reference/modules/batch-bugfixes.md
