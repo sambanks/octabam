@@ -138,14 +138,14 @@ jobs:
             && [ -x vendor/dsp56300/build/source/disassemble/dsp56kDisassemble ] && echo dsp=true >> "$GITHUB_OUTPUT" || true
 
       - name: 💾 Save Toolchain Cache
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always() && steps.m68k.outputs.cache-hit != 'true' && steps.done.outputs.m68k == 'true'
         with:
           path: ~/.local/m68k-elf
           key: m68k-elf-${{ runner.os }}-${{ steps.m68kver.outputs.v }}
 
       - name: 💾 Save DSP Toolchain Cache
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always() && steps.dsp.outputs.cache-hit != 'true' && steps.done.outputs.dsp == 'true'
         with:
           path: vendor/dsp56300
@@ -188,14 +188,14 @@ jobs:
         run: ls .git/octabam-port/*/ot_emu >/dev/null 2>&1 && echo built=true >> "$GITHUB_OUTPUT" || true
 
       - name: 💾 Save ColdFire Port Cache
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always() && steps.portcache.outputs.cache-hit != 'true' && steps.portdone.outputs.built == 'true'
         with:
           path: .git/octabam-port
           key: port-${{ steps.port.outputs.key }}
 
       - name: 💾 Save Compiler Cache
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always()
         with:
           path: ~/.cache/ccache
