@@ -99,7 +99,7 @@ jobs:
 
       - name: 💾 Restore Toolchain Cache
         id: m68k
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/m68k-elf
           key: m68k-elf-${{ runner.os }}-${{ steps.m68kver.outputs.v }}
@@ -108,13 +108,13 @@ jobs:
       # scripts/setup.sh's build of it is in the key
       - name: 💾 Restore DSP Toolchain Cache
         id: dsp
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: vendor/dsp56300
           key: dsp56300-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/vendor.sh', 'scripts/setup.sh', 'tools/patches/dsp56300.patch', 'tools/harness/dsp_host/**') }}
 
       - name: 💾 Restore Compiler Cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ccache
           key: ccache-${{ runner.os }}-${{ github.run_id }}
@@ -168,7 +168,7 @@ jobs:
 
       - name: 💾 Restore ColdFire Port Cache
         id: portcache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .git/octabam-port
           key: port-${{ steps.port.outputs.key }}
