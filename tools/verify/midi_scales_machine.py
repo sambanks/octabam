@@ -26,7 +26,7 @@ def dram_map_size(layout):
 
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
-    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [Tt] (ms_\w+)$',raw,re.M)}
+    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [Tt] ((?:ms_|mp_read_key)\w*)$',raw,re.M)}
 
 class Machine:
     def __init__(self, symbol_loader=symbols, artifact_root=None):
@@ -43,12 +43,19 @@ class Machine:
         u.mem_write(0x40000400,(out/'mainos_bus.bin').read_bytes())
         self.base=layout['base']
         u.mem_write(self.base,(out/'platform/runtime/runtime.bin').read_bytes())
+        self.part_key = 'mp_read_key' in self.sym
+        if self.part_key:
+            # Follow/Harmony Scales variants read the active native Part KEY.
+            u.mem_write(0x46c82456,(0x400e21e0).to_bytes(4,'big'))
+            u.mem_write(0x100b14cf,b'\0')
         self.stack=0x47008000;self.done=0x4700fff0;self.scratch=0x47001000
         self.stops={self.done}; self.arrival=None;self.writes=[]
         u.hook_add(UC_HOOK_CODE,self.stop)
         u.hook_add(UC_HOOK_MEM_WRITE,lambda u,a,p,n,v,x:self.writes.append((p,n)))
     def set_key(self,track,value):
         self.uc.mem_write(0x46c76df1+68*track,bytes((value,)))
+        if self.part_key:
+            self.uc.mem_write(0x400e21e0+0x8ed80+0x4e2+36*track+17,bytes((value,)))
     def stop(self,u,p,n,x):
         if p in self.stops:self.arrival=p;u.emu_stop()
     def call(self,name,d0=0,d1=0,a0=None,stop=None,regs=None):
