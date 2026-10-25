@@ -969,5 +969,28 @@
       "source": "emulator panel UART (live_shots.py + scope.script)",
       "firmware_sha256": "1c63417e490ed070ee86170461b3740f4536b4bad89ad17e2fb546e49f841949"
     }
+  },
+  "midi-follow": {
+    "source-off": {
+      "image": "midi-follow/source-off.png",
+      "caption": "MIDI NOTE SETUP: RFOL OFF uses native notes.",
+      "remix": "midi-follow",
+      "source": "emulator panel UART",
+      "firmware_sha256": "1fdf5741dd9155ee3fde885d6ba16f8e1b6214d3561c4d215aa50a5eab7f25b8"
+    },
+    "source-t1": {
+      "image": "midi-follow/source-t1.png",
+      "caption": "MIDI NOTE SETUP: RFOL T1 follows MIDI track 1.",
+      "remix": "midi-follow",
+      "source": "emulator panel UART",
+      "firmware_sha256": "1fdf5741dd9155ee3fde885d6ba16f8e1b6214d3561c4d215aa50a5eab7f25b8"
+    },
+    "fixed": {
+      "image": "midi-follow/fixed.png",
+      "caption": "FOLLOW: FIXED octave 3 and TRIG update.",
+      "remix": "midi-follow",
+      "source": "emulator panel UART",
+      "firmware_sha256": "1fdf5741dd9155ee3fde885d6ba16f8e1b6214d3561c4d215aa50a5eab7f25b8"
+    }
   }
 }
