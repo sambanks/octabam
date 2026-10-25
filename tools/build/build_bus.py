@@ -1685,7 +1685,11 @@ def main():
                 sys.exit(f"{_u.label}: resident bytes changed before runtime reference link")
             img[_at - BASE:_at - BASE + len(_after)] = _after
             _sym[_u.label] = _syms
-            _exports.update(_glob)
+            # --defsym imports also appear in nm's global table. They may
+            # contain staging addresses (notably CLONE_*); retain the final
+            # provider exports installed above, publishing only this unit's own.
+            _imports = dict(_rest)
+            _exports.update({n: v for n, v in _glob.items() if n not in _imports})
             print(f"  {_u.label}: {len(_resolved)} runtime references resolved; resident layout unchanged")
         # DRAM label formatters (Linked.registers_formatter), as the cave
         # registration above: skipped for a module not cloned or BLANKED,

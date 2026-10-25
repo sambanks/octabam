@@ -1394,3 +1394,16 @@ the list (a byte search for the clamp found all five), and in a port script
 hold a key only as long as you mean it to repeat. Gate: `verify_hooks`
 (installed: the ten pokes) and `verify_analog_bassdrum_ui` on
 `hooks-machines` (row 5 reached from the bottom of seven).
+
+<a id="trap-resident-import-exports"></a>
+### Resident relinking must not publish imported staging symbols
+
+A remix combining MIDI Part State and EUCLID failed the linked label-formatter
+byte check: EUCLID's final descriptor address was replaced by its earlier
+staging address. The resident unit's second link included imported `--defsym`
+symbols in its global `nm` output. Publishing those as its own exports overwrote
+the runtime provider's final `CLONE_*` addresses.
+
+Keep imported symbols available to the resident link, but exclude them when
+publishing its exports. `make check REMIX=midi-follow-events` exercises the
+combination, including the build's formatter-byte and installed-image checks.
