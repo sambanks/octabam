@@ -25,6 +25,16 @@ def main():
         project=work/'project';fixture(a.project,project)
         for path in project.glob('bank*.work'):
             def mutate(data):
+                # This gate measures single-note register movement. Do not
+                # inherit the template's KEY or the shared fixture's chords;
+                # native N1-4 following has its own UART capture gate.
+                for part in range(8):
+                    base=otp.PART_BASE+part*otp.PART_STRIDE+9
+                    for track in range(8):
+                        data[base+0x4e2+36*track+17]=0
+                for track,step in ((0,4),(1,8)):
+                    at=0x492e+track*0x8b9+0x39+step*32
+                    data[at+3:at+6]=b'\xff'*3
                 for step,note in ((2,59),(4,72),(8,53)):
                     data[0x492e+0x39+step*32]=note
             otp._bank_write(project,int(path.stem[4:]),mutate,guard=False)
