@@ -102,8 +102,8 @@ GATE VERB, SHATTER and DISTORX were read on a unit on 27 Oct 2026 (images `COST-
 7.46 % at mode1+dear. DISTORX is bypassed at its defaults (about 0 %) and 9.45 % at its dearest, over the 9.07 % that
 core 0 allows, so a remix carrying it fails `check`. At every effect's dearest settings these three layouts were
 flagged by the matrix for audio (GATE VERB: CLICKS STATIC LEVEL CLIP; SHATTER: ROUGH STATIC LEVEL RINGS; DISTORX:
-STATIC LEVEL): RMS rose from about -35 dB to -8 to -14 dB. The static counts of `make cycles` ran 13 to 48 % under the
-measured slot costs of the five effects read this way (factor 1.36 to 1.60, mean about 1.5), so estimates from them
+STATIC LEVEL): RMS rose from about -35 dB to -8 to -14 dB. The static counts of `make cycles` ran 26 to 38 % under the
+measured slot costs of the five effects read this way (measured over static, 1.36 to 1.60, mean about 1.5), so estimates from them
 carry that spread.
 
 ## Not in the catalog yet
