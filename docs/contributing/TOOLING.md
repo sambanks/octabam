@@ -279,6 +279,7 @@ last section), the hardware capture setup — protocol in `docs/history/CAPTURE_
 | `tools/hw/hw_sweep.py` | scripted sweeps: MIDI steps + capture + per-step metrics in one process |
 | `tools/hw/level_cap.py` | quick capture with peak/RMS/crest/clip-run reporting per channel |
 | `tools/hw/gain_pass.py` | gain-matches a whole project bank-by-bank over MIDI |
+| `tools/hw/ot_sampleslot.py` | one WAV in a project as a FLEX slot on one track, with its `[SAMPLE]` block, the `markers.work` trim record the unit needs, the track's machine in every part of every bank, optional trigs every Nth step of A01, and `MIDI_TRANSPORT_RECEIVE=1` so MIDI Start works; `.strd` twins written |
 | `tools/hw/ot_project.py` | reads and writes Octatrack project/bank files on the CF card: `stamp-defaults` after a layout change, `set-fx`, `stamp-slot`, `rigproj` |
 | `tools/hw/ot_soak.py`, `hw_bus_test.py`, `hw_knob_sweep.py`, `hw_flash7.py`, `midi_flash.py`, `ot_clock.py` | a soak run that reports a freeze or the idle tick; synchronous-detection A/B of a parameter over MIDI; every knob's liveness; the one-aux bus claims driven over MIDI; OS flashing over MIDI; transport |
 | `tools/hw/ot_ladder.py` | the LADDER: one configuration per bank in a card project (effect selection without the panel), stepped by program change, each rung measured by level, spectrum and the tail after STOP (bus connected, reverb T60, delay time); `proj` / `run` / `analyse` / `summary` |
