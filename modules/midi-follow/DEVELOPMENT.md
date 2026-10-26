@@ -230,10 +230,87 @@ a cycle, and runtime fallback terminates without writing outside its scratch
 and stack. Run it on both `midi-follow` and `midi-follow-events`.
 This exercises linked ColdFire code, not physical outgoing-MIDI timing.
 
+## Instruction budgets
+
+`tools/verify/verify_midi_follow_cpu.py` measures the installed image without
+building it. It counts executed guest instructions from each entry through its
+return or native continuation, excluding the stopping instruction. The MIDI
+enqueue routine is replaced by a packet-recording stub, so queue execution,
+wire transmission, interrupt timing and hardware cache effects are excluded.
+Cold and warm cases refer to Follow's initialized state, not the processor
+instruction cache. These counts do not establish CPU utilization or deadlines.
+
+On 26 October 2026, all 139 cases passed for the optimized `midi-follow-events`
+image. Selected warmed counts compared with PR #824 head `f79ad3ca`:
+
+| Case | Before | After |
+| --- | ---: | ---: |
+| Empty pre-capture pass, RFOL OFF / TRIG | 2,213 | 1,853 |
+| Direct FIXED root, KEY OFF | 925 | 612 |
+| Seven-link GRAV root, KEY OFF | 3,203 | 2,232 |
+| Seven-link GRAV root through MIDI Scales, KEY 25 | 4,144 | 3,141 |
+| Unchanged seven-link GRAV LIVE receiver | 5,384 | 4,855 |
+| Seven-link GRAV LIVE receiver moving four held voices | 15,309 | 11,492 |
+| Seven GRAV LIVE receivers each moving four held voices | 48,609 | 41,858 |
+| Direct GRAV LIVE, committed history, four held voices | 8,808 | 7,535 |
+| Seven-link GRAV LIVE, committed history, four held voices | 15,342 | 11,525 |
+| Seven GRAV LIVE receivers, committed history, four voices each | 48,840 | 42,089 |
+
+The original LIVE cases retain their initially uncommitted GRAV proposals.
+The three additional committed-history cases first commit the previously
+sounded root, then verify the movement's packets, held voices and unchanged
+release deadlines. Their budgets require at least a 10% instruction reduction.
+
+The original image SHA-256 is
+`9b476627e979949177a8e87a10a6d048fe6a209f9e21799f00a2a856e0d7b695`;
+the optimized combined image is
+`2ee2f33f896dccad2f13f455cdbbe5c15790913fcb3ee0eff66e8bdc0984aa39`.
+The standalone `midi-follow` image is `1947d51c1f840f2196e6341c9c54074faad711753e27c4fd8fe552e19ce4e6e5`;
+its 75 instruction/lifecycle cases and 59 measured-path budgets also pass.
+Both images pass the 28,800-case native KEY oracle. The combined image additionally
+passes the six STORE Part gates, Follow routing/notes/register/response/GRAV/stress,
+and Loopback settings/context checks. Five project-backed commands cover native
+Part save/reload/clear/paste, four-voice playback, all 12 TRIG/LIVE response cases,
+register controls and GRAV, with balanced note releases. These are focused
+software checks; the CI whole-remix matrix, hardware timing and maximum load are
+separate qualification.
+
+The gate enforces 123 measured-path budgets: at least a 10% reduction from the
+original counts, except unchanged/settled long-chain and seven-receiver GRAV,
+which require at least 8%. An unchanged source token cannot safely skip target
+validation: TRAN can move the effective note out of range, and Part changes can
+invalidate a held-note anchor. Those checks remain. The preserved original
+image reproduces every recorded baseline count and fails all 123 performance
+budgets, while passing the musical-behavior assertions.
+
+Regression cases also cover a LIVE Part changing to a TRIG Part and back without
+a new trig, pending GRAV proposals invalidated before accepted-note callbacks,
+source/register edits, and enabling a follower during a rest after its muted
+source was captured. STORE retains its shared system hooks, coherent Part APIs,
+snapshot publication and replacement epochs. Only absent optional companion
+callbacks and their empty setup/replacement walk are compiled out; the shared
+service remains available.
+
+After building the desired composition, run:
+
+```sh
+.venv/bin/python tools/verify/verify_midi_follow_cpu.py midi-follow-events
+```
+
+The receipt is `out/midi-follow-events-follow-cpu.json`, including image/runtime
+hashes, per-case counts, called-symbol histograms and budgets. Use
+`--artifact-root PATH/out --record-only --output PATH.json` to measure a
+preserved image without enforcing the optimized budgets. Preserve its
+`mainos_bus.remix` marker alongside the image, layout and runtime files: the
+gate checks the requested remix and image hash, and refuses artifacts changed
+during measurement. The same command with
+`midi-follow` checks a built standalone image.
+
 ## Verification
 
 Run `make check REMIX=midi-follow` for the standalone module. The manifest
-runs linked routing, register, response and graph stress checks. With a prepared
+runs linked routing, register, response, graph stress and instruction-budget
+checks. With a prepared
 project copy, `verify_midi_follow_response_port.py --project DIR` checks LIVE
 response through emulated panel events and captured MIDI output. Hardware
 validation of boot, controls, persistence, MIDI timing and note releases remains

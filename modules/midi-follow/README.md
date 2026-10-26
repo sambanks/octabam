@@ -75,4 +75,9 @@ MIDI Follow has been tested in the emulator. **Hardware testing is still to
 be done**, including physical MIDI output, timing and note releases on an
 Octatrack MKI/MKII.
 
+An instruction-budget gate covers inactive paths, all four chord voices,
+seven-link chains and simultaneous LIVE receivers, with Part/control changes
+and muted-source capture checked alongside the counts. These are linked-code
+instruction measurements, not hardware CPU or MIDI timing measurements.
+
 [Implementation and verification](DEVELOPMENT.md).

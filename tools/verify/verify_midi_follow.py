@@ -48,9 +48,12 @@ def machine_gate(image):
     uc = m.uc
     m.stops = set()  # This gate observes native detour continuation addresses.
     pitch, stack = 0x47001000, 0x47008000
-    # Measured deepest call is pre-capture -> register sync -> native Part
-    # reader, 224 bytes including return addresses (previous graph: 192).
-    stack_budget = 224
+    # Measured deepest write: pre-capture -> register begin -> sync -> Part
+    # reader. Frames/returns: (36 + 4 + 84) for pre-capture/response, 28 for
+    # the register C adapter, 8 for begin->sync, 28 for sync->mode, 16 for
+    # the field adapters, and 24 for STORE = 228. The extra response local
+    # retains the resolved source for all four voices (previous bound: 224).
+    stack_budget = 228
     arrivals = []
     unexpected_writes = []
     written_addresses = set()

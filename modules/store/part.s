@@ -96,6 +96,7 @@ store_part_midi_context:
 .address:
     cmpi.l #0x18b2,%d0
     bcc.w .address_bad
+.address_in_part:
     cmpi.l #63,%d1
     bhi.w .address_bad
     STORE_PART_READ_GUARD .address_bad
@@ -124,6 +125,7 @@ store_part_read:
     lea -20(%sp),%sp
     movem.l %d4-%d6/%a0-%a1,(%sp)
     bsr.w .address
+.read_value:
     tst.l %d0
     bmi.s .read_done
     bsr.w .snapshot_address
@@ -206,28 +208,34 @@ store_part_write:
     rts
 
 /* MIDI layout adapters: d0 track,d1 context,d2 SETUP field,d3 value.
- * The general service owns permission checks and publication. */
+ * Valid track/field pairs are necessarily inside the Part. Keep the general
+ * context/window and snapshot checks, sharing the reader's register frame. */
 store_part_midi_read:
     cmpi.l #7,%d0
     bhi.s .midi_read_bad
     cmpi.l #35,%d2
     bhi.s .midi_read_bad
-    move.l %d4,-(%sp)
+    lea -20(%sp),%sp
+    movem.l %d4-%d6/%a0-%a1,(%sp)
     moveq #36,%d4
     mulu.l %d4,%d0
-    move.l (%sp)+,%d4
     add.l %d2,%d0
     addi.l #0x4e2,%d0
-    bra.w store_part_read
+.midi_read_address:
+    bsr.w .address_in_part
+    bra.w .read_value
 .midi_read_bad:
     moveq #-1,%d0
     rts
 store_part_midi_key:
-    move.l %d2,-(%sp)
-    moveq #17,%d2
-    bsr.w store_part_midi_read
-    move.l (%sp)+,%d2
-    rts
+    cmpi.l #7,%d0
+    bhi.s .midi_read_bad
+    lea -20(%sp),%sp
+    movem.l %d4-%d6/%a0-%a1,(%sp)
+    moveq #36,%d4
+    mulu.l %d4,%d0
+    addi.l #0x4e2+17,%d0
+    bra.s .midi_read_address
 store_part_midi_write:
     cmpi.l #7,%d0
     bhi.s .midi_write_bad

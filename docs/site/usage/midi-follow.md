@@ -42,3 +42,13 @@ separate project copy before saving in stock firmware.
 
 MIDI Follow has been tested in the emulator. **Hardware testing is still to
 be done**, including physical MIDI output, timing and note releases.
+
+The CPU regression gate checks inactive tracks, four-note chords, long Follow
+chains and seven simultaneous LIVE receivers. In the measured combined remix,
+an empty service pass with RFOL OFF uses 1,853 executed instructions, down from
+2,213; moving four held voices through a seven-link GRAV chain uses 11,492,
+down from 15,309. These measurements exclude MIDI queue and transmission work;
+they are not hardware cycle counts, CPU percentages or latency guarantees.
+Native Part persistence, muted-source capture and note-release behavior remain
+covered by regression checks. STORE keeps its shared system hooks and APIs;
+optional callbacks are omitted at build time only when their module is absent.
