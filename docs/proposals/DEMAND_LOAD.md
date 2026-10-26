@@ -119,14 +119,18 @@ records are left out of payload A's upload and written to `out/dsp/demand_record
 | DARK REV | 127 | 0x3da2 | 13199 | 0x3da2 |
 | SPRING REV | 0 | 0xfff | 3502 | 0xfff |
 | SPRING REV | 127 | 0xfff | 3502 | 0xfff |
+| FLANGER | 0 and 127 | 0x7ff | 2048 | 0x7ff |
+| CHORUS | 0 and 127 | 0xbfd | 3068 | 0xbfd |
+| SPATIALIZER | 0 and 127 | 0xa5f | 2656 | 0xa5f |
+| COMB FILTER | 0 and 127 | 0xbff | 3072 | 0xbff |
 
 - Each reverb's bucket counts are the same at both knob settings.
 - 0x3da2 is the last word the probe scans (LOAD METER's code starts at 0x37da3), so DARK REV's figure is a lower bound.
-- Silent input: a knob that lengthens a delay line only when signal runs through it is not exercised. CHORUS, COMB, FLANGER and SPATIALIZER were not measured.
+- Silent input: a knob that lengthens a delay line only when signal runs through it is not exercised.
 
 ## Open
 
-- The unit: the stock extents with signal on T8 and for CHORUS, COMB, FLANGER, SPATIALIZER, the audible dropout while an effect loads (about 25 ms), and a reverb meeting a loaded effect's block.
+- The unit: the stock extents with signal on T8, the audible dropout while an effect loads (about 25 ms), and a reverb meeting a loaded effect's block.
 - Core A's stall when sent to, and the mask at the frames that lose their chunk.
 - The wording of the toasts and how long the deferred ones wait for a page key.
 - A dry instance that had run its init (state 3) resuming is not covered by a gate: `dsp_host` cannot change the published span between blocks.
