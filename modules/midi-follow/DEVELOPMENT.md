@@ -7,8 +7,8 @@ offset after its register choice. Scale Quantizer is not required.
 
 ## Composition and controls
 
-Select `MIDI FOLLOW` with `MIDI PART STATE` and `EVENTS`; neither Harmony, Scales nor KITS
-is required. RFOL is a persistent source choice, not a held modifier. Pressing
+Select `MIDI FOLLOW` with `MIDI PART STATE` and `EVENTS`. Scales and KITS
+are optional. RFOL is a persistent source choice, not a held modifier. Pressing
 D opens its editor; TRIG/LIVE is a per-receiver setting. Start with TRIG so
 roots change only at your programmed rhythm, then try LIVE for sustained bass.
 
@@ -33,15 +33,14 @@ layout flag 8 and range-scaled needle positions, with independent real-value
 formatters. REG uses the native three-position widget; UPDT uses two.
 
 The receiver applies register choice first, then its native TRAN/P-lock offset.
-With Harmony active, root snapping and chord generation follow those steps.
 Out-of-range final roots are silent, never wrapped or clamped. Settings affect
 the next receiver note trig; already-held notes keep their original releases.
 A chain uses the ultimate source's root and the final receiver's register and
 TRAN; intermediate receiver offsets do not accumulate.
 
-Source register refers to the harmonic root before inversion, spread and root
-omission/placement, not whichever generated or arpeggiated note is lowest.
-Source sequence TRAN/scale and live key root selection still happen before capture.
+Source register refers to the source's first NOTE before arpeggiation, not
+whichever chord or arp note is lowest. Source sequence TRAN/scale processing
+happens before capture.
 
 RFOL, REG, three remembered register values and TRIG/LIVE response are native
 Part settings per MIDI track. They are not parameter locked. UI edits use the
@@ -73,13 +72,10 @@ Chains resolve to their final source: T3 → T2 → T1 follows T1's root.
 - Root means the source's first NOTE, with its stock transpose/scale processing;
   it does not infer the root from a chord inversion. C–E–G arp notes leave the
   bass on C. A new F–A–C chord moves it to F.
-- A HARM OFF source publishes its effective NOTE1–4 pitch set. A HARM OFF
-  follower uses those intervals around its selected register and TRAN; its
-  own NOT2–4 do not add another chord. A HARM NOTE/CHORD source publishes only
-  its resolved degree root, never its generated chord. A HARM NOTE/CHORD
-  follower generates its own notes from that root. Without Harmony selected,
-  both source and follower use the native HARM OFF rule. Before the first
-  eligible source trigger, native playback passes through unchanged.
+- The source publishes its effective NOTE1–4 pitch set. The follower uses those
+  intervals around its selected register and TRAN; its own NOT2–4 do not add
+  another chord. Before the first eligible source trigger, native playback
+  passes through unchanged.
 - The next follower trig uses the selected source's latest root and the receiver's register choice. A held bass
   keeps its original note-off, including when RFOL changes or switches OFF.
 - The follower's NOTE does not set an interval: use TRAN. Its live value,
@@ -107,8 +103,8 @@ Chains resolve to their final source: T3 → T2 → T1 follows T1's root.
   full-firmware emulator tests; unusual mute/plays-free modes remain untested
   on hardware.
 
-On its own, MIDI Follow copies native one to four note sets. Optional Harmony integration adds live keyboard roots and follower chords/arp. Audio
-following and live transposition of a running pattern are outside its scope.
+MIDI Follow copies native one-to-four-note sets. Audio following and
+manually held receiver keyboard notes are outside its scope.
 Shared output channels have ownership stress coverage; physical MIDI timing
 requires instrument validation.
 
@@ -127,7 +123,7 @@ stock NOTE descriptor, drawer and encoder dispatch. No DSP code is added.
   stock skips absent follower slots.
 - `0x4009fb80`: resolve a follower's source, add its live TRAN (`a5+0x22c`,
   biased by 64), and replace each scratch pitch with the source's native
-  effective interval or its Harmony root before
+  effective interval before
   stock note ownership and release bookkeeping (`0x4009fbbc` / `0x4009fd04`).
   Chained resolution has a defensive eight-hop bound.
 - EVENTS owns transport start/resume (`0x4009c3d4` / `0x4009c4d4`) and
@@ -175,13 +171,13 @@ source pitch-class changes invalidate it for LIVE response. Queries and arp
 repeats reuse the proposal, including after it has sounded. The shared
 EVENTS accepted-note notifications commit it only for nonzero
 velocity sequenced output; the LIVE sender commits only actual note-ons.
-The remembered root precedes ACC, TRAN, quantization and chord voicing.
+The remembered root precedes the follower's TRAN offset.
 Native transport start/resume resets all history. Playing Part/epoch and
 source/mode/home changes invalidate the affected receiver; unrelated UI
 Parts and ordinary pattern changes do not.
 
-Run `python3 modules/midi-follow/generate.py --check` for generated assembly,
-`verify_midi_follow_gravity.py` for linked policy/lifecycle/packing, and
+Run `python3 modules/midi-follow/upstream/modules/midi-follow/generate.py --check`
+for generated assembly, `verify_midi_follow_gravity.py` for linked policy/lifecycle/packing, and
 `verify_midi_follow_gravity_port.py --project DIR` for emulated panel events
 and full-firmware MIDI output. These are emulator proofs, not hardware tests.
 
@@ -199,20 +195,18 @@ Press D on MIDI NOTE SETUP to open RFOL, then turn D inside the window
 
 The setting belongs to each receiver in the native Part and takes effect
 from its next ordinary trig (not an arp-only tick).
-Live source-key changes are handled on the next sequencer service pass, not
+Source-root changes are handled on the next sequencer service pass, not
 held until the next receiver trig. This is not a measured zero-latency claim.
 A source change coinciding with a scheduled receiver event does not add an
 extra retrigger. Muted/disabled receivers and CHAN OFF do not generate notes.
 Only voices owned by that receiver may move; occupied channel/note pairs
 are not stolen. Out-of-range voices are omitted rather than wrapped.
 
-With Harmony chords, LIVE shifts the currently sounding shape by the
-logical-root interval; the next ordinary trig generates a fresh chord and
-voicing. With an arp, its clock/order are retained and outgoing cached-pool
-notes track the changed root. It does not trigger during an arp rest or
-restart the arp. This control targets sequenced/arp receivers, including
-those following a live Chord Play source; it does not retune manually held
-receiver keyboard notes.
+LIVE shifts the currently sounding chord by the source-root interval; the
+next ordinary trig uses the current source note set. With an arp, its clock/order
+are retained and outgoing cached-pool notes track the changed root. It does not trigger during an arp rest or
+restart the arp. This control targets sequenced/arp receivers; it does not
+retune manually held receiver keyboard notes.
 
 `tools/verify/verify_midi_follow_response.py` checks linked machine code,
 release deadlines, silence gates and MIDI ownership. The companion
@@ -229,7 +223,7 @@ edits, and 56,080 routed outputs with register/transpose extremes, unknown
 roots, cycles and invalid links. The independent graph model checks that
 editing one receiver cannot change another, no selectable route introduces
 a cycle, and runtime fallback terminates without writing outside its scratch
-and stack. Run it on both standalone Follow and the combined Harmony image.
+and stack. Run it on both `midi-follow` and `midi-follow-events`.
 This exercises linked ColdFire code, not physical outgoing-MIDI timing.
 
 ## Verification
@@ -239,7 +233,7 @@ runs linked routing, register, response and graph stress checks. With a prepared
 project copy, `verify_midi_follow_response_port.py --project DIR` checks LIVE
 response through emulated panel events and captured MIDI output. Hardware
 validation of boot, controls, persistence, MIDI timing and note releases remains
-outstanding. Optional Harmony integration is verified separately.
+outstanding.
 
 
 ## Octabam composition and full-firmware captures
