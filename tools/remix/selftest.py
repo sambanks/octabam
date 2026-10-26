@@ -993,6 +993,7 @@ def main():
              "octabam": (),   # all 14 stock effects stay; ours and LOAD METER run from the window
              "dlspike": (),   # all 14 stock effects stay; MODULATION is loaded on demand
              "dl-probe": ("EQUALIZER",), "dl-probe-any": ("EQUALIZER",),   # DLPROBE takes EQUALIZER's id
+             "ext-probe": ("EQUALIZER",),   # EXTPROBE takes EQUALIZER's id
              "stock-meter-a": ("PHASER",), "stock-meter-b": ("SPATIALIZER",),   # LOAD METER's DSP half in the given-up effect's words
              "sos-capture": ("SPATIALIZER",),   # usb-io-tracks-ab + the recorder fixes
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",), "cfmeter-post": ("DARK REV",), "cfmeter-tracks": ("DARK REV",),   # the readout insert's words
