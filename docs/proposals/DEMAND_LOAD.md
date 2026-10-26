@@ -107,9 +107,26 @@ records are left out of payload A's upload and written to `out/dsp/demand_record
 - Sending on every frame (`DLPANYJ9`, `test/dl-probe-any`, the same project): the copier refused blocks for their sum on the unit (MODULATION received 4, refused 3, published 1; SPECTRUM received 2, refused 2, published 0; TRANSIENT received 2, refused 1, published 1; CHARACTER received nothing) and ran no bad copy. The ping-0 rule holds on the unit as in the port; with it, no block was refused in the rounds on `DLPROBEJ5` and `J7` (about 16 blocks over several loads).
 - A repeat send that is refused leaves the effect unbound: the copier clears BOUND before it copies and publishes nothing for a bad sum, and the ColdFire cannot see the counters to send again. Not seen with the ping-0 gate. The unit did freeze once during the first rounds (13:27); it was on `DLPROBEJ3`, the build with the stale-byte bug, and the cause was not found.
 
+## Stock reverb extents on a unit (26 Oct 2026, MKII, image `test/ext-probe` X1, projects MXEXT_{PL,DK,SP}_{MN,MX})
+
+`modules/extprobe`: fills `X:0x34000..0x37da2` (T8 FX2's block) with `0xA5A5A5`, then counts the words that differ. T8 held the reverb with silent input and LEVEL 0; knobs all 0 (MN) or all 127 (MX); 8 s USB capture of T1 after each project load.
+
+| reverb | knobs | highest differing offset | differing words in the last pass | `SLOT_EXTENT` |
+|---|---|---|---|---|
+| PLATE REV | 0 | 0x37ff | 12265 | 0x37ff |
+| PLATE REV | 127 | 0x37ff | 12265 | 0x37ff |
+| DARK REV | 0 | 0x3da2 | 13199 | 0x3da2 |
+| DARK REV | 127 | 0x3da2 | 13199 | 0x3da2 |
+| SPRING REV | 0 | 0xfff | 3502 | 0xfff |
+| SPRING REV | 127 | 0xfff | 3502 | 0xfff |
+
+- Each reverb's bucket counts are the same at both knob settings.
+- 0x3da2 is the last word the probe scans (LOAD METER's code starts at 0x37da3), so DARK REV's figure is a lower bound.
+- Silent input: a knob that lengthens a delay line only when signal runs through it is not exercised. CHORUS, COMB, FLANGER and SPATIALIZER were not measured.
+
 ## Open
 
-- The unit: the stock extents at other knob settings, the audible dropout while an effect loads (about 25 ms), and a reverb meeting a loaded effect's block.
+- The unit: the stock extents with signal on T8 and for CHORUS, COMB, FLANGER, SPATIALIZER, the audible dropout while an effect loads (about 25 ms), and a reverb meeting a loaded effect's block.
 - Core A's stall when sent to, and the mask at the frames that lose their chunk.
 - The wording of the toasts and how long the deferred ones wait for a page key.
 - A dry instance that had run its init (state 3) resuming is not covered by a gate: `dsp_host` cannot change the published span between blocks.
