@@ -1,6 +1,6 @@
 MIDI Follow lets a MIDI track play another track's notes at its own rhythm,
-velocity and note length. It uses the source's native N1–4 pitches and keeps
-their intervals when placing them in the follower's register. Several tracks
+velocity and note length. It places the source's native N1–4 pitches in the
+follower's register, then applies TRAN and the inherited source KEY. Several tracks
 can follow one source; chains resolve to their final source.
 
 ## How to Use It
@@ -13,16 +13,20 @@ can follow one source; chains resolve to their final source.
 5. Set **UPDT** to TRIG for changes at the follower's next trig, or LIVE to
    shift held notes when the source root changes.
 
-The follower's **TRAN** adds a chromatic semitone offset after register
-placement. Its stored N2–4 do not add notes: when the source has N2–4, those
+The follower's **TRAN** adds a semitone offset after register placement;
+the inherited KEY then corrects each note to the scale, as in stock. Its stored N2–4 do not add notes: when the source has N2–4, those
 source voices are followed even if the follower's own slots are empty. A
 source rest retains the last notes. Source mute silences its output while
 allowing its notes to drive followers. Give source and follower separate MIDI
 channels while checking the result.
 
 The source's scale and transpose are applied before Follow captures its notes.
-Followers therefore share the source's pitch choices without copying its scale
-setting. The follower's own TRAN is then applied as a chromatic offset.
+The follower also inherits the source's KEY for correction after its own TRAN.
+Its KEY display shows the source setting and cannot be edited while following.
+KEY OFF leaves transposition chromatic. For example, C with TRAN +1 gives C♯
+with KEY OFF, but C with KEY C major. Stock major/minor scales work with
+Follow alone; MIDI Scales adds more choices. The follower's saved KEY returns
+when RFOL is switched OFF.
 
 ## Storage and compatibility
 

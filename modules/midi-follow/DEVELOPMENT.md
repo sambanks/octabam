@@ -79,9 +79,13 @@ Chains resolve to their final source: T3 → T2 → T1 follows T1's root.
 - The next follower trig uses the selected source's latest root and the receiver's register choice. A held bass
   keeps its original note-off, including when RFOL changes or switches OFF.
 - The follower's NOTE does not set an interval: use TRAN. Its live value,
-  including parameter locks, is added after root selection without an additional
-  scale correction. These are chromatic semitones, not scale degrees; +7 is
-  always a perfect fifth, even when that pitch falls outside the source scale.
+  including parameter locks, is added after register selection. Each voice then
+  passes through the inherited source KEY correction. Native values 1–24 use
+  the stock rotation and correction table at `0x400d80a0`, matching the stock
+  output path at `0x4009fb58`; OFF is chromatic. Additional MIDI Scales values
+  use its extension. TRAN remains a semitone input, not a scale-degree offset.
+  LIVE retains each voice's raw-minus-corrected pitch so repeated movements
+  reapply KEY without accumulating rounding drift.
   Pitches outside MIDI 0–127 are suppressed instead of wrapped. Before stock
   scans the chord slots, Follow enables only slots backed by valid source notes;
   their final pitches still pass through stock note ownership and release.

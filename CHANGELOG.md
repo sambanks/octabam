@@ -36,6 +36,9 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
   track 8 (the old producer stored the pair into the next frame's track 8
   field).
 - SIDECHAIN_COMPRESSOR (`modules/sidechain-compressor`, `b0d49bf`): on the author's MKI as OCTABAM33 (`remixes/test/sidechain-compressor`, mainos `6cfe4121…`, 26 Oct 2026): KBAS and KWID across their range with MON on and off, MON's switch and its OFF on a project saved with an earlier version, KEY's pressed turn, the MON and KEY fades, all good. The module's proof is now hardware.
+- MIDI Follow now applies inherited source KEY after TRAN, matching stock;
+  native-only KEY display/locking and drift-free LIVE voice correction.
+
 - STORE: optional native Part access replaces MIDI PART STATE. Registered clients share edited/playing context lookup, bounded native field writes with dirty/CS1 updates, outgoing snapshots during native replacement and per-Part replacement counters. MIDI Follow, Loopback and Scales integrations use the service; saved bytes are unchanged. Existing STORE selections without these clients gain no Part hooks or snapshot storage. Emulator qualification; hardware testing outstanding.
 
 - MIDI Follow: per-track RFOL source, FIXED/GRAV/SOURCE register and TRIG/LIVE updates. Followers use the source's native N1–4 pitches with their own rhythm and TRAN; settings belong to the Part. Requires STORE native Part access and EVENTS. Standalone and combined EVENTS-client test remixes only; no standard remix gains it. Linked-code and full-firmware emulator checks; hardware testing outstanding.

@@ -2,7 +2,7 @@
 
 Makes one MIDI track follow another track's notes while keeping its own
 rhythm, velocity and note length. It follows the source's native N1–4 notes
-and preserves their intervals in the follower's selected register.
+in the follower's selected register, then applies the inherited KEY after TRAN.
 
 ## Use
 
@@ -24,7 +24,8 @@ and preserves their intervals in the follower's selected register.
 Each mode remembers its own value in the same C control. FIXED is the default;
 RFOL starts OFF and UPDT starts TRIG. Octave names use C0 = MIDI 0.
 Use the follower's native **TRAN**, including parameter locks, for a semitone
-offset after register selection. TRAN +7 is always seven semitones, not a scale degree.
+offset after register selection, followed by the source's KEY correction, as in stock.
+TRAN +7 adds seven semitones before correction; it does not mean seven scale degrees.
 Out-of-range roots are silent.
 
 GRAV prefers the twelve notes C–B in the selected octave without a hard
@@ -42,8 +43,11 @@ ordinary pattern changes alone retain it.
 - The source supplies its NOTE and NOT2–4 pitches. The follower plays that set in its selected register, with its own
   TRAN. Its stored NOT2–4 do not add notes.
 - Source pitches include the source track's TRAN and KEY/scale processing.
-  The follower applies its register and chromatic TRAN afterward; the scale
-  setting itself is not copied and there is no second scale correction.
+  The follower applies its register and TRAN, then corrects each resulting
+  note to the inherited source KEY, using stock behavior for major/minor.
+  KEY OFF leaves the result chromatic. The follower's KEY display follows
+  the source and is read-only; its own saved KEY is retained for RFOL OFF.
+  MIDI Scales is optional and adds its extra scale choices.
 - LIVE shifts currently held notes when the source root moves. A change to
   native NOT2–4 with the same root takes effect at the follower's next trig.
 - Several tracks can follow one source. Chains use the ultimate source and

@@ -59,7 +59,7 @@ def machine_gate(image):
         written_addresses.add(address)
         # Only module state, scratch output, the displaced stock write and
         # a bounded stack frame may change during these machine-code calls.
-        allowed = tuple((sym[name],sym[name]+size) for name,size in (('bf_history',128),('bf_response_context',64),('bf_response_anchor',32),('bf_response_seen',32),('bf_response_pool',32),('bf_intervals',24))) + ((root, root + 8), (sym["bf_pitches"], sym["bf_pitches"] + 8), *tuple((m.part_address(t,3),m.part_address(t,3)+1) for t in range(8)),
+        allowed = tuple((sym[name],sym[name]+size) for name,size in (('bf_history',128),('bf_response_context',64),('bf_response_anchor',32),('bf_response_seen',32),('bf_response_pool',32),('bf_intervals',24),('bf_scale_offsets',32))) + ((root, root + 8), (sym["bf_pitches"], sym["bf_pitches"] + 8), *tuple((m.part_address(t,3),m.part_address(t,3)+1) for t in range(8)),
                    *tuple((0x100a4ece+0x4e2+t*36+3,0x100a4ece+0x4e2+t*36+4) for t in range(8)),
                    (0x400e21e0+0x95048,0x400e21e0+0x95049),
                    (0x400e21e0+0x9b332,0x400e21e0+0x9b336),

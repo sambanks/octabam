@@ -86,7 +86,7 @@ def machine(seed=20261008, steps=12000):
                              UC_M68K_REG_A2:m.scratch,UC_M68K_REG_A5:lane,
                              UC_M68K_REG_A6:frame})
                 assert u.mem_read(m.scratch,1)[0]==expected,(seed,graph,t,slot,original,tran,expected)
-                assert all(m.stack-192<=a and a+n<=m.stack+4 or a==m.scratch and n==1 for a,n in m.writes),m.writes
+                assert all(m.stack-192<=a and a+n<=m.stack+4 or a==m.scratch and n==1 or a==s['bf_scale_offsets']+t*4+slot and n==1 for a,n in m.writes),m.writes
                 outputs += 1
         assert list(m.follow_read('source',8,0))==graph
     print(f'[ok] {count} full-chain permutations, {steps} live graph edits, {outputs} routed outputs; bounded cycles, register/TRAN and write guards',flush=True)
