@@ -144,6 +144,9 @@ _BOUND = remix_registry.bound(REMIX)
 WINDOW = dict(REMIX.window)
 WINDOW_KEYS = {_k.removesuffix(":B") for _k in WINDOW}   # modules with window code; "KEY:B" is payload B's own copy
 DEMAND = {_dk: _i for _i, _dk in enumerate(REMIX.window_demand)}      # key -> index k
+HOMES = {}                                                              # key -> the addresses of its other homes (Remix.window_homes)
+for _hk, _ha in REMIX.window_homes:
+    HOMES.setdefault(_hk, []).append(_ha)
 if len(DEMAND) > 4:
     sys.exit(f"Remix.window_demand: {len(DEMAND)} effects; the entry table at x:$33da3 holds 4")
 for _dk in DEMAND:
@@ -2471,6 +2474,7 @@ mkgo:""",
     dev_delay = None            # (words) for the .mem dump append, DEV only
     tail_records = {}           # {payload: [P start, words]}: the tail's record
     window_records = {}         # {module key: (P start, words)}: Remix.window's records, payload A's upload
+    demand_homes = {}           # {(module key, P start): (words, (init, proc))}: a demand effect's other homes
     demand_syms = {}            # {module key: (init, proc)}: entries of the Remix.window_demand records
     guard_records = {}          # {"KEY:payload": addresses}: the wrappers of Remix.window_guard
     loader_next = REMIX.window_loader    # where the next loader piece goes
@@ -3273,15 +3277,18 @@ hostquit:
                 _wl = ((LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB) if "$facade" in src else []
                 if _wl and src.count("$facade") != 1:
                     sys.exit(f"payload {tag}: {name} has multiple $facade LFOTAB literals -- expected exactly one")
-                _ws = src
-                if _wt or _wl:
-                    _w0, _ = assemble_syms(src.replace(PTABLE_MARK, "$0").replace("$facade", "$0"), _wa, label=name)
-                    _tb = _wa + len(_w0)
-                    _ws = src.replace("$facade", f"${_tb:x}").replace(PTABLE_MARK, f"${_tb + len(_wl):x}")
-                _ww, _wsyms = assemble_syms(_ws, _wa, label=name)
-                if (_wt or _wl) and len(_ww) != len(_w0):
-                    sys.exit(f"{name}: the code changed length with its table's address")
-                _ww = list(_ww) + _wl + _wt
+                def _asm_at(_addr, src=src, _wt=_wt, _wl=_wl, name=name):
+                    """The module assembled at a window address: its code, then the LFO table, then the ptable."""
+                    _ws = src
+                    if _wt or _wl:
+                        _w0, _ = assemble_syms(src.replace(PTABLE_MARK, "$0").replace("$facade", "$0"), _addr, label=name)
+                        _tb = _addr + len(_w0)
+                        _ws = src.replace("$facade", f"${_tb:x}").replace(PTABLE_MARK, f"${_tb + len(_wl):x}")
+                    _aw, _asyms = assemble_syms(_ws, _addr, label=name)
+                    if (_wt or _wl) and len(_aw) != len(_w0):
+                        sys.exit(f"{name}: the code changed length with its table's address")
+                    return list(_aw) + _wl + _wt, _asyms
+                _ww, _wsyms = _asm_at(_wa)
                 if _wk in window_records and window_records[_wk][1] != _ww:
                     sys.exit(f"{name}: placed in the shared window as one copy, but its payload "
                              f"A and payload B sources assemble to different words")
@@ -3298,6 +3305,26 @@ hostquit:
                             sys.exit(f"{name} and {_on} overlap in the shared window")
                     window_records[_wk] = (_wa, _ww)
                     demand_syms[_wk] = (_wsyms.get("init"), _wsyms.get("proc"))
+                if name in DEMAND and _wk == name:
+                    # the effect's other homes (Remix.window_homes): assembled at each address by each payload, which must agree
+                    from remix import dsp_ranges as _dr
+                    for _ha in HOMES.get(name, ()):
+                        _hw, _hs = _asm_at(_ha)
+                        if (_ha - 0x30000) >> 14 != (_ha + len(_hw) - 1 - 0x30000) >> 14:
+                            sys.exit(f"{name}: its home at P:0x{_ha:05x}..0x{_ha + len(_hw):05x} crosses the end of its FX2 block")
+                        _prev = demand_homes.get((name, _ha))
+                        if _prev is not None:
+                            if _prev[0] != _hw:
+                                sys.exit(f"{name}: its home at P:0x{_ha:05x}: payload A and payload B sources assemble to different words")
+                            continue
+                        for _o in _dr.owners(remix_registry.selected(REMIX)):
+                            if _o.domain == "shared" and _o.start < _ha + len(_hw) and _ha < _o.end:
+                                sys.exit(f"{name}: its home at P:0x{_ha:05x}..0x{_ha + len(_hw):05x} overlaps "
+                                         f"{_o.owner}'s {_o.what} (0x{_o.start:05x}..0x{_o.end:05x})")
+                        for _on, (_oa, _ow) in window_records.items():
+                            if _on.removesuffix(":B") not in DEMAND and _oa < _ha + len(_hw) and _ha < _oa + len(_ow):
+                                sys.exit(f"{name}: its home at P:0x{_ha:05x} overlaps {_on} in the shared window")
+                        demand_homes[(name, _ha)] = (_hw, (_hs.get("init"), _hs.get("proc")))
                 for _h in _wd.hooks:
                     # the two stock words become `jsr >label`, a 24-bit address (schema.DspHook)
                     if not _h.on(tag):
@@ -3976,7 +4003,11 @@ hostquit:
     if demand_records:
         _df.parent.mkdir(parents=True, exist_ok=True)
         _df.write_text(json.dumps({k: {"addr": a, "words": list(w), "init": demand_syms[k][0],
-                                       "proc": demand_syms[k][1], "id": NEW_IDS[k]}
+                                       "proc": demand_syms[k][1], "id": NEW_IDS[k],
+                                       "homes": [{"addr": a, "words": list(w), "init": demand_syms[k][0], "proc": demand_syms[k][1]}]
+                                                + [{"addr": _ha, "words": list(demand_homes[(k, _ha)][0]),
+                                                    "init": demand_homes[(k, _ha)][1][0], "proc": demand_homes[(k, _ha)][1][1]}
+                                                   for _hk, _ha in REMIX.window_homes if _hk == k]}
                                    for k, (a, w) in demand_records.items()}))
     else:
         _df.unlink(missing_ok=True)

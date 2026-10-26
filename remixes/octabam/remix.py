@@ -39,6 +39,15 @@ REMIX = Remix(
     window=(("DLCOPY", 0x33DC3), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
             ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820), ("TRANSIENT", 0x3FE00)),
     window_demand=("MODULATION", "SPECTRUM", "CHARACTER", "TRANSIENT"),
+    # The other homes: each effect can be loaded into any block it fits (the code is assembled once per home). The loader
+    # sends the first home whose block holds no other demand effect and whose FX2 slot is not a stock reverb that reaches
+    # the code, and moves a loaded effect when such a reverb arrives. MODULATION (1,561 words) needs a block with 2,016
+    # words above 0x3820, which the third and fourth have; the first two end at the loader (1,411 words). TRANSIENT
+    # (357 words) also fits at 0x3e00 of the third block, above DARK REV's highest word.
+    window_homes=(("MODULATION", 0x3F820),
+                  ("SPECTRUM", 0x37820), ("SPECTRUM", 0x3B820), ("SPECTRUM", 0x3F820),
+                  ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820),
+                  ("TRANSIENT", 0x3BE00), ("TRANSIENT", 0x33820), ("TRANSIENT", 0x37820)),
     window_guard=("PLATE REV", "DARK REV", "SPRING REV"),
     window_loader=0x33E56,
     fallback="NONE",

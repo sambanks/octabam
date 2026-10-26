@@ -17,7 +17,7 @@ import load_meter as lm
 
 NAMES = ("pump calls (frame interrupts)", "calls with ping 0", "calls with ping 1", "calls with another ping",
          "idle passes on a delivering frame", "loads armed", "withdrawals armed", "chunks sent",
-         "doorbells sent", "repeats armed", "effects loaded (bits)", "(spare)", "(spare)")
+         "doorbells sent", "repeats armed", "effects loaded (bits)", "blocks holding code (bits)", "(spare)")
 
 
 def read(dev):

@@ -16,11 +16,13 @@ TOAST_NAME_MAX = 10             # "EVICT <name> 1ST" must fit the popup, so a lo
 
 
 def table_inc(modules, remix):
-    """remix.inc: one record per Remix.window_demand effect (id, the track whose FX2 slot shares its block, the
-    staged block, its length in halfwords, the withdraw message, the two toasts, the mask of stock reverbs that
-    reach its code), then the blocks. The DSP stage writes
-    RECORDS after the first link, so that link reserves CAPACITY words per effect with no content; the second
-    link has the words and the same size."""
+    """remix.inc: one record per Remix.window_demand effect (id, the track of its first home's block, its home table,
+    the number of homes, the withdraw message, the two toasts), then per effect a table of homes and a staged block
+    for each. A home is one block of the window the effect can be loaded into: its track, the staged block, its length
+    in halfwords, the mask of stock reverbs that reach its code (bit i for REVERBS[i], set when the code starts at or
+    below the highest word that reverb writes, `stock.SLOT_EXTENT` counted from the block's base) and the block's
+    index. The DSP stage writes RECORDS after the first link, so that link reserves CAPACITY words per staged block
+    with no content; the second link has the words and the same size."""
     from remix import stock
     recs = json.loads(RECORDS.read_text()) if RECORDS.is_file() else {}
     keys = list(remix.window_demand)
@@ -29,34 +31,39 @@ def table_inc(modules, remix):
     rows = [f"        .equ    DL_N, {len(keys)}", f"        .equ    PHASE_ANY, {int(phase_any)}", f"        .equ    GRACE, {grace}"]
     for key in REVERBS:
         rows.append(f"        .equ    DL_{key.split()[0]}, 0x{stock.BY_KEY[key].menu.fx2_id:02x}")
+    addrs = {key: [dict(remix.window)[key]] + [a for hk, a in remix.window_homes if hk == key] for key in keys}
     rows.append("dl_tab:")
     for k, key in enumerate(keys):
-        addr = dict(remix.window)[key]
-        track = BLOCK_TRACK[(addr - WIN) >> 14 & 3]
-        n = 7 + 2 * len(recs[key]["words"]) if key in recs else 0
-        # the stock reverbs whose buffer reaches the code: bit i for REVERBS[i], set when the code starts at or below
-        # the highest word that reverb writes (stock.SLOT_EXTENT, measured), counted from its block's base
-        mask = sum(1 << i for i, r in enumerate(REVERBS) if (addr - WIN) % 0x4000 <= stock.SLOT_EXTENT[r])
-        rows.append(f"        .long   0x{modules[key].menu.fx2_id:02x}, {track}, dl_blk{k}, {n}, dl_off{k}, dl_need{k}, dl_hold{k}, {mask}")
+        track = BLOCK_TRACK[(addrs[key][0] - WIN) >> 14 & 3]
+        rows.append(f"        .long   0x{modules[key].menu.fx2_id:02x}, {track}, dl_hm{k}, {len(addrs[key])}, dl_off{k}, dl_need{k}, dl_hold{k}, 0")
     for k, key in enumerate(keys):
-        track = BLOCK_TRACK[(dict(remix.window)[key] - WIN) >> 14 & 3]
-        rec = recs.get(key)
-        halves = []
-        if rec:
-            words = rec["words"]
-            if len(words) > CAPACITY:
-                raise ValueError(f"{key}: {len(words)} code words; DLPUMP reserves {CAPACITY}")
-            halves = [k, rec["addr"] - WIN, len(words), rec["init"] - WIN, rec["proc"] - WIN]
-            for w in words:
-                halves += [w >> 8, w & 0xFF]
-            total = sum(words) & 0xFFFFFF                   # the copier checks this before it publishes
-            halves += [total >> 8, total & 0xFF]
-        used = len(halves)
-        rows.append(f"dl_blk{k}:")
-        for i in range(0, used, 8):
-            rows.append("        .word   " + ", ".join(str(h) for h in halves[i:i + 8]))
-        rows.append(f"        .space  {2 * (2 * CAPACITY + 7) - 2 * used}")
-        rows.append(f"dl_blk{k}_end:")
+        homes = recs[key]["homes"] if key in recs else []
+        rows.append(f"dl_hm{k}:")
+        for h, addr in enumerate(addrs[key]):
+            n = 7 + 2 * len(homes[h]["words"]) if h < len(homes) else 0
+            mask = sum(1 << i for i, r in enumerate(REVERBS) if (addr - WIN) % 0x4000 <= stock.SLOT_EXTENT[r])
+            rows.append(f"        .long   {BLOCK_TRACK[(addr - WIN) >> 14 & 3]}, dl_blk{k}_{h}, {n}, {mask}, {(addr - WIN) >> 14 & 3}, 0")
+    for k, key in enumerate(keys):
+        track = BLOCK_TRACK[(addrs[key][0] - WIN) >> 14 & 3]
+        homes = recs[key]["homes"] if key in recs else []
+        for h, addr in enumerate(addrs[key]):
+            rec = homes[h] if h < len(homes) else None
+            halves = []
+            if rec:
+                words = rec["words"]
+                if len(words) > CAPACITY:
+                    raise ValueError(f"{key}: {len(words)} code words; DLPUMP reserves {CAPACITY}")
+                halves = [k, rec["addr"] - WIN, len(words), rec["init"] - WIN, rec["proc"] - WIN]
+                for w in words:
+                    halves += [w >> 8, w & 0xFF]
+                total = sum(words) & 0xFFFFFF               # the copier checks this before it publishes
+                halves += [total >> 8, total & 0xFF]
+            used = len(halves)
+            rows.append(f"dl_blk{k}_{h}:")
+            for i in range(0, used, 8):
+                rows.append("        .word   " + ", ".join(str(x) for x in halves[i:i + 8]))
+            rows.append(f"        .space  {2 * (2 * CAPACITY + 7) - 2 * used}")
+            rows.append(f"dl_blk{k}_{h}_end:")
         rows.append(f"dl_off{k}:  .word   {k}, 0, 0, 0, 0")
         name = modules[key].menu.fullname.decode().upper()[:TOAST_NAME_MAX]      # as the chooser lists it, cut to fit
         rows.append(f'dl_need{k}: .asciz "EVICT T{track + 1} FX2 1ST"')

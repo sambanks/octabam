@@ -132,6 +132,8 @@ idle:
         addq.l  #1,%a1@(16)                     | [4]: idle passes on a delivering frame
         move.l  dl_loaded,%d0
         move.l  %d0,%a1@(40)                    | [10]: loaded bits
+        move.l  dl_busy,%d1
+        move.l  %d1,%a1@(44)                    | [11]: blocks holding code
         lea     LIVE,%a0
         move.l  %a0@+,%a1@(48)                  | [12..15]: the 16 live ids
         move.l  %a0@+,%a1@(52)
@@ -150,21 +152,34 @@ idle:
         moveq   #1,%d3
 5:      subq.l  #1,%d4
         bpl.w   4b
-        moveq   #0,%d5                          | blocked: the FX2 slot that shares the block is a stock reverb
-        move.l  %a2@(4),%d1
-        lea     LIVE+8,%a1
-        move.b  %a1@(0,%d1:l),%d2
-        bsr.w   dl_rvm                          | d2: the reverb's bit, 0 for any other effect
-        and.l   %a2@(28),%d2                    | ... if that reverb reaches this effect's code
-        beq.w   1f
-        moveq   #1,%d5
-1:      move.l  dl_loaded,%d0
+        move.l  dl_loaded,%d0
         btst    %d6,%d0
         sne     %d4                             | d4.b: loaded
+        moveq   #0,%d5                          | d5: blocked (not loaded: no home is free; loaded: a reverb reaches its code)
+        moveq   #0,%d7                          | d7: loaded and blocked, and another home is free (it can move)
+        tst.b   %d4
+        bne.w   dl_ld
+        bsr.w   dl_pick                         | d1 = a free home, or -1
+        tst.l   %d1
+        bpl.w   dl_tc
+        moveq   #1,%d5
+        bra.w   dl_tc
+dl_ld:  bsr.w   dl_cur                          | a1 = the current home
+        move.l  %a1@(0),%d1
+        lea     LIVE+8,%a0
+        move.b  %a0@(0,%d1:l),%d2
+        bsr.w   dl_rvm
+        and.l   %a1@(12),%d2                    | does a reverb on that slot reach the code?
+        beq.w   dl_tc
+        moveq   #1,%d5
+        bsr.w   dl_pick                         | another home (this one is busy)
+        tst.l   %d1
+        bmi.w   dl_tc
+        moveq   #1,%d7
         | Toasts, once per collision, shown at the next page key (dl_key):
-        |   the effect is used, not loaded, and the block is under a reverb: EVICT Tn FX2 1ST
-        |   the effect is loaded and a reverb arrived on its block (the reverb runs dry): EVICT <effect> 1ST
-        move.l  dl_ta,%d2
+        |   the effect is used, not loaded, and no home is free: EVICT Tn FX2 1ST (Tn: its first home's track)
+        |   the effect is loaded, a reverb reaches it and it has nowhere to move (the reverb runs dry): EVICT <effect> 1ST
+dl_tc:  move.l  dl_ta,%d2
         tst.b   %d4
         bne.w   8f
         tst.l   %d3
@@ -185,6 +200,8 @@ idle:
         beq.w   8f
         tst.l   %d5
         beq.w   8f
+        tst.l   %d7
+        bne.w   8f                              | it can move: no toast
         btst    %d6,%d2
         bne.w   0f
         bset    %d6,%d2
@@ -196,22 +213,35 @@ idle:
         move.l  %d2,dl_tb
 0:      tst.b   %d4
         bne.w   6f
-        lea     dl_seen,%a1                     | not loaded: for how many idle calls it has been used on a free block
+        lea     dl_seen,%a1                     | not loaded: for how many idle calls it has been used with a home free
         move.l  %d6,%d1
         lsl.l   #2,%d1
         adda.l  %d1,%a1
         tst.l   %d3
         beq.w   dg_used                         | not used: the count starts over
         tst.l   %d5
-        bne.w   dg_used                         | its block is under a reverb
+        bne.w   dg_used                         | no home is free
         move.l  %a1@,%d1
         addq.l  #1,%d1
         move.l  %d1,%a1@
         cmp.l   #DEBOUNCE,%d1
         bcs.w   7f                              | not yet: a project load writes the ids over a stretch of frames
         clr.l   %a1@
-        move.l  %a2@(8),%d1                     | the staged block
-        move.l  %a2@(12),%d2
+        bsr.w   dl_pick                         | the home to load into
+        tst.l   %d1
+        bmi.w   7f
+        bsr.w   dl_hrec                         | a1 = its record
+        move.l  %d1,%d2
+        lea     dl_hm,%a0
+        move.l  %d6,%d1
+        lsl.l   #2,%d1
+        move.l  %d2,%a0@(0,%d1:l)               | the effect's home
+        move.l  %a1@(16),%d1
+        move.l  dl_busy,%d3
+        bset    %d1,%d3
+        move.l  %d3,dl_busy                     | its block holds code
+        move.l  %a1@(4),%d1                     | the staged block
+        move.l  %a1@(8),%d2
         bset    %d6,%d0
         move.l  %d1,dl_rsrc
         move.l  %d2,dl_rlen
@@ -228,12 +258,8 @@ idle:
         lsl.l   #2,%d1
         adda.l  %d1,%a1
         tst.l   %d3
-        bne.w   dg_used
-        move.l  %a2@(4),%d1                     | unused: a stock reverb that reaches its code takes it at once
-        lea     LIVE+8,%a0
-        move.b  %a0@(0,%d1:l),%d2
-        bsr.w   dl_rvm
-        and.l   %a2@(28),%d2
+        bne.w   dl_lu
+        tst.l   %d5                             | unused: a reverb that reaches its code takes it at once
         beq.w   dg_wait
 dg_now: move.l  #GRACE,%a1@
 dg_wait:
@@ -243,17 +269,105 @@ dg_wait:
         cmp.l   #GRACE,%d1
         bcs.w   7f                              | still within it
         clr.l   %a1@
+        bra.w   dl_wd
+dl_lu:  tst.l   %d7                             | used: a reverb reaches its code and another home is free: move it
+        beq.w   dg_used
+        clr.l   %a1@
+        bra.w   dl_wd                           | a move is a withdrawal; the next pass loads the effect elsewhere
+dg_used:
+        clr.l   %a1@                            | used again: the grace starts over
+7:      lea     %a2@(32),%a2
+        addq.l  #1,%d6
+        bra.w   3b
+dl_wd:  bsr.w   dl_cur                          | withdraw effect d6: free its block, clear its bit, send the message
+        move.l  %a1@(16),%d1
+        move.l  dl_busy,%d2
+        bclr    %d1,%d2
+        move.l  %d2,dl_busy
         move.l  %a2@(16),%d1                    | the withdraw message
         moveq   #5,%d2
         bclr    %d6,%d0
         lea     dl_dg,%a1
         addq.l  #1,%a1@(24)                     | [6]: withdrawals armed
         bra.w   arm
-dg_used:
-        clr.l   %a1@                            | used again: the grace starts over
-7:      lea     %a2@(32),%a2
-        addq.l  #1,%d6
-        bra.w   3b
+
+| ---- homes: a block of the window an effect can be loaded into ----------------------------------------------
+| d6 = the effect's index, a2 = its record (dl_tab); each home is 24 bytes: track, staged block, halfwords, the
+| mask of reverbs that reach its code, the block's index.
+| a2 -> home d1 (0..3): a1 = its record; d1 kept.
+dl_hrec:
+        move.l  %a2@(8),%a1
+        move.l  %d1,%sp@-
+1:      tst.l   %d1
+        beq.w   2f
+        lea     %a1@(24),%a1
+        subq.l  #1,%d1
+        bra.w   1b
+2:      move.l  %sp@+,%d1
+        rts
+
+| The effect's current home: d1 = its index, a1 = its record.
+dl_cur: lea     dl_hm,%a1
+        move.l  %d6,%d1
+        lsl.l   #2,%d1
+        move.l  %a1@(0,%d1:l),%d1
+        bra.w   dl_hrec
+
+| A home the effect can be loaded into now: d1 = its index, or -1. A home is free when no demand effect holds its
+| block and the FX2 slot of its block's track is not a stock reverb that reaches the code. A loaded effect's own
+| block is busy, so for it this finds another home.
+dl_pick:
+        lea     %sp@(-24),%sp
+        movem.l %d2-%d5/%a0-%a1,%sp@
+        moveq   #0,%d4
+1:      cmp.l   %a2@(12),%d4
+        bcc.w   9f
+        move.l  %a2@(8),%a0
+        move.l  %d4,%d5
+        lsl.l   #3,%d5                          | home index * 24
+        move.l  %d5,%d3
+        add.l   %d5,%d3
+        add.l   %d3,%d5
+        adda.l  %d5,%a0
+        move.l  %a0@(16),%d5
+        move.l  dl_busy,%d3
+        btst    %d5,%d3
+        bne.w   2f                              | another effect's code is there
+        move.l  %a0@(0),%d3
+        lea     LIVE+8,%a1
+        move.b  %a1@(0,%d3:l),%d2
+        bsr.w   dl_rvm
+        and.l   %a0@(12),%d2
+        bne.w   2f                              | a reverb reaches the code
+        move.l  %d4,%d1
+        bra.w   8f
+2:      addq.l  #1,%d4
+        bra.w   1b
+9:      moveq   #-1,%d1
+8:      movem.l %sp@,%d2-%d5/%a0-%a1
+        lea     %sp@(24),%sp
+        rts
+
+| d7 = a track: d2 = 1 if it is the track of one of the effect's homes.
+dl_ishome:
+        move.l  %d3,%sp@-
+        move.l  %a0,%sp@-
+        moveq   #0,%d2
+        move.l  %a2@(8),%a0
+        move.l  %a2@(12),%d3
+1:      tst.l   %d3
+        beq.w   9f
+        cmp.l   %a0@(0),%d7
+        bne.w   2f
+        moveq   #1,%d2
+        bra.w   9f
+2:      lea     %a0@(24),%a0
+        subq.l  #1,%d3
+        bra.w   1b
+9:      move.l  %sp@+,%a0
+        move.l  %sp@+,%d3
+        rts
+
 arm:    move.l  %d0,dl_loaded
         move.l  %d1,dl_src
         move.l  %d2,dl_left
@@ -330,30 +444,30 @@ dl_veto:
         moveq   #0,%d6
 2:      cmp.l   #DL_N,%d6
         bcc.w   9f
+        move.l  %sp@,%d1                        | the id chosen (the calls below clobber d1)
         move.l  dl_loaded,%d2
         btst    %d6,%d2
         sne     %d4                             | d4.b: loaded
-        move.l  %a2@(4),%d3                     | the track whose FX2 slot shares the block
         cmp.l   %a2@,%d1
         bne.w   5f
         tst.b   %d4                             | the effect chosen
         bne.w   9f                              | loaded: goes on
         tst.l   %d5
         beq.w   3f
-        cmp.l   %d7,%d3
-        beq.w   9f                              | the FX2 chooser on that track replaces what is there
-3:      lea     LIVE+8,%a0
-        move.b  %a0@(0,%d3:l),%d2
-        bsr.w   dl_rvm
-        and.l   %a2@(28),%d2                    | a reverb on that slot that reaches the code
-        beq.w   9f
+        bsr.w   dl_ishome
+        tst.l   %d2
+        bne.w   9f                              | the FX2 chooser on the track of one of its homes replaces what is there
+3:      bsr.w   dl_pick                         | is a home free?
+        tst.l   %d1
+        bpl.w   9f
         move.l  %a2@(20),%d0                    | EVICT Tn FX2 1ST
         bra.w   9f
-5:      tst.b   %d4                             | a reverb chosen on the FX2 slot of a loaded effect's block
+5:      tst.b   %d4                             | a reverb chosen on the FX2 slot of a loaded effect's current home
         beq.w   7f
         tst.l   %d5
         beq.w   7f
-        cmp.l   %d7,%d3
+        bsr.w   dl_cur
+        cmp.l   %a1@(0),%d7
         bne.w   7f
         move.l  %a2@,%d2                        | ... that a track uses
         lea     LIVE,%a0
@@ -365,10 +479,13 @@ dv_scan:
         bpl.w   dv_scan
         bra.w   7f                              | unused: it is about to be withdrawn, not a holder
 dv_used:
-        move.l  %d1,%d2                         | the reverb chosen: does it reach this effect's code?
+        move.l  %sp@,%d2                        | the reverb chosen: does it reach this home's code?
         bsr.w   dl_rvm
-        and.l   %a2@(28),%d2
+        and.l   %a1@(12),%d2
         beq.w   7f
+        bsr.w   dl_pick                         | it does: allowed when the effect has another home to move to
+        tst.l   %d1
+        bpl.w   7f
         move.l  %a2@(24),%d0                    | EVICT <effect> 1ST
         bra.w   9f
 7:      lea     %a2@(32),%a2
@@ -436,6 +553,8 @@ dl_src:   .long 0
 dl_left:  .long 0
 dl_loaded: .long 0                      | bit k: effect k is loaded
 dl_seen:  .long 0, 0, 0, 0              | per effect: idle calls it has been used, not loaded, on a free block
+dl_hm:    .long 0, 0, 0, 0                  | per effect: the index of the home it is loaded in
+dl_busy:  .long 0                           | bit b: the demand code in block b (0..3)
 dl_gone:  .long 0, 0, 0, 0              | per effect: idle calls it has been loaded and unused
 dl_rwait: .long 0                       | idle calls until the load of effect dl_rk is sent again (0: none)
 dl_rk:    .long 0

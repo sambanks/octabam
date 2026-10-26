@@ -34,20 +34,29 @@ replaced or shrunk. The window is stock's buffer memory, so the code goes only w
 Core B loads for both cores. The window is one memory, so code copied by B's hook is resident for A's tracks, and the pump
 never writes to core A.
 
-**Collisions.** A block is held by whoever has it first. A stock reverb and a demand effect never share a block when the
-reverb writes as high as the effect's first word; neither is moved for the other. Each effect's record carries a mask of
-the reverbs that reach its code: bit i is set when the code starts at or below the highest word `REVERBS[i]` writes
-(`stock.SLOT_EXTENT`: PLATE `0x37ff`, SPRING `0xfff`, DARK `0x3da2`, counted from the block's base). In octabam the code
-starts at the top of its block (offset `0x3820`; TRANSIENT `0x3e00`), so only DARK REV reaches it, and not TRANSIENT's.
-Remixes that place code lower (`test/dlspike` earlier, offset `0x1000`) get PLATE and DARK in the mask, and not SPRING.
+**Homes and collisions.** A demand effect has one or more homes (`Remix.window_homes` beside its address in `Remix.window`):
+the blocks of the window it fits in, the code assembled once per home. At most one demand effect holds a block. A stock reverb
+reaches an effect's code in a home when the code starts at or below the highest word the reverb writes (`stock.SLOT_EXTENT`:
+PLATE `0x37ff`, SPRING `0xfff`, DARK `0x3da2`, counted from the block's base); each home's record carries that mask, bit i for
+`REVERBS[i]`. In octabam every effect's code sits at the top of its block (offset `0x3820`; TRANSIENT's at `0x3e00` in the third and
+fourth), so only DARK REV reaches it, and not TRANSIENT's there.
 
-| route | effect X chosen, block's FX2 is a reverb | reverb chosen on the FX2 slot of a loaded X's block |
-|---|---|---|
-| FX1 / FX2 chooser | refused, toast `EVICT Tn FX2 1ST` (an FX2 choice on that very track goes through: it replaces the reverb) | refused, toast `EVICT <effect> 1ST` |
-| any other route (song load, pattern, Part, paste) | X is not loaded and stays dry; toast `EVICT Tn FX2 1ST` at the next page key | X stays loaded, the reverb runs dry; toast `EVICT <effect> 1ST` at the next page key |
+The pump loads an effect into the first of its homes whose block holds no other demand effect and whose track's FX2 is not a
+reverb that reaches the code. When such a reverb arrives on the block of a loaded effect that a track uses, and another home is
+free, the pump withdraws the effect and loads it into that home (a short dry gap, no toast). A reverb on the FX2 of an
+unused loaded effect's block takes the block at once.
 
-Both toasts are shown once per collision. When the holder goes away (X unused and withdrawn, or the reverb replaced) the other
-takes the block: the pump loads X, and a dry reverb resumes (it runs the stock init first if its init never ran).
+| situation | what happens |
+|---|---|
+| the chooser picks effect X, and a home is free | goes through |
+| the chooser picks X, no home is free | refused, toast `EVICT Tn FX2 1ST` (Tn: its first home's track). An FX2 choice on the track of one of its homes goes through: it replaces the reverb |
+| the chooser picks a reverb on a loaded, used X's block, and X has another free home | goes through; X moves |
+| the same, and X has nowhere to move | refused, toast `EVICT <effect> 1ST` |
+| any other route (song load, pattern, Part, paste): X used, no home free | X is not loaded and stays dry; toast `EVICT Tn FX2 1ST` at the next page key |
+| any other route: a reverb reaches a loaded X that cannot move | X stays loaded, the reverb runs dry; toast `EVICT <effect> 1ST` at the next page key |
+
+Both toasts are shown once per collision. When the holder goes away the other takes the block: the pump loads X, and a dry reverb
+resumes (it runs the stock init first if its init never ran).
 
 - **DLPUMP** (ColdFire, `modules/dlpump`), called from LOAD METER's entry code (`lm_in`, weak symbol) every frame interrupt.
   Idle: on ping-0 frames it compares the ids on the 16 live FX slots with the effects loaded and arms one message: a load when

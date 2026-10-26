@@ -2052,6 +2052,12 @@ class Remix:
     # (modules/dlcopy/dlstub.asm) that passes the audio through until DLCOPY has published the code. The
     # position in this tuple is the effect's index k, 0..3 (the entry at x:$33da3 + 8 k).
     window_demand: tuple[str, ...] = ()
+    # OTHER HOMES OF A DEMAND EFFECT: (key, P address) pairs, any number per key. The effect's address in `window` is its
+    # first home; each pair here is another, in a different FX2 block of the window. The build assembles the effect once per
+    # home (the code is position-dependent) and DLPUMP stages every copy; at load time it sends the first whose block holds no
+    # other demand effect and whose track's FX2 is not a stock reverb that reaches the code, and moves a loaded effect to
+    # another home when such a reverb arrives on its block.
+    window_homes: tuple[tuple[str, int], ...] = ()
     # STOCK REVERBS KEPT OFF LOADED CODE: stock keys. The build assembles modules/dlcopy/dlwrap.asm once
     # per payload (the stock entries differ), with a pair of trampolines per reverb, and points each
     # reverb's id at them: the reverb then runs only while its buffer range misses every loaded
@@ -2142,6 +2148,18 @@ class Remix:
                 raise ValueError(f"remix {self.name!r}: {_k!r} is in fx1, so its id stays below 0x20")
         if len(set(self.ids.values())) != len(self.ids):
             raise ValueError(f"remix {self.name!r}: ids pins two modules to one id")
+        _first = dict(self.window)
+        for _k, _a in self.window_homes:
+            if _k not in self.window_demand:
+                raise ValueError(f"remix {self.name!r}: window_homes names {_k!r}, which is not in window_demand")
+            if not 0x30000 <= _a < 0x40000:
+                raise ValueError(f"remix {self.name!r}: window_homes {_k!r} at P:0x{_a:05x} is outside the shared window")
+            if (_a - 0x30000) >> 14 == (_first.get(_k, 0) - 0x30000) >> 14:
+                raise ValueError(f"remix {self.name!r}: window_homes {_k!r} at P:0x{_a:05x} is in the block of its first home; "
+                                 f"a home is a different FX2 block")
+        _blk = [(_k, (_a - 0x30000) >> 14) for _k, _a in self.window_homes]
+        if len(set(_blk)) != len(_blk):
+            raise ValueError(f"remix {self.name!r}: window_homes gives a demand effect two homes in one block")
         if self.grains not in (2, 4):
             raise ValueError(f"grains={self.grains}: BusDelay's GRAIN reader "
                              f"is built for 4 or 2 per line, nothing else")
