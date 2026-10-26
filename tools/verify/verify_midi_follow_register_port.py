@@ -19,9 +19,10 @@ def panel(text):
 
 def settings(work):
     part=(work/'part-after.bin').read_bytes()
-    return bytes([part[0x4e2+36*t+12]&1 for t in range(8)]+
-                 [part[0x4e2+36*t+13] for t in range(8)]+
-                 [(part[0x4e2+36*t+15]-2)&255 for t in range(8)])
+    return bytes([(part[0x4e2+36*t+15]>>4)&3 for t in range(8)]+
+                 [part[0x4e2+36*t+13]&15 for t in range(8)]+
+                 [(((part[0x4e2+36*t+13]>>4)&7)-2)&255 for t in range(8)]+
+                 [part[0x4e2+36*t+15]&15 for t in range(8)])
 
 
 def guard_parts(work):
@@ -65,9 +66,9 @@ def main():
     card,_=emu_card.stage_project(project,'OCTABAM','BASS',tree=out/'tree');(out/'card.img').write_bytes(card)
     setup='100 key 0x31 down\n150 key 0x31 up\n300 key 0x35 down\n350 key 0x35 up\n500 key 0x11 down\n550 key 0x11 up\n700 key 0x2d down\n800 key 0x22 down\n850 key 0x22 up\n900 key 0x2d up\n1100 enc 3 1\n1300 key 0x3b down\n1350 key 0x3b up\n'
     cases={}
-    for mode,octave in [(0,3),(0,4),(1,0),(1,-2),(1,2)]:
+    for mode,octave in [(0,3),(0,4),(1,2),(1,3),(2,0),(2,-2),(2,2)]:
         name=f'mode{mode}-oct{octave}';work=out/name;work.mkdir(exist_ok=True)
-        script=work/'panel.txt';script.write_text(panel(setup+f'1500 enc 0 {mode}\n1600 enc 0 {1 if mode else -1}\n1700 enc 1 {octave-(3 if mode==0 else 0)}\n1900 key 0x28 down\n1950 key 0x28 up\n5200 key 0x27 down\n5250 key 0x27 up\n5600 quit\n'))
+        script=work/'panel.txt';script.write_text(panel(setup+f'1500 enc 0 {mode}\n1700 enc 1 {octave-(0 if mode==2 else 3)}\n1900 key 0x28 down\n1950 key 0x28 up\n5200 key 0x27 down\n5250 key 0x27 up\n5600 quit\n'))
         dump=f'{sym["bf_pitches"]:#x},8={work}/pitches.bin;{sym["bf_page_win"]:#x},4={work}/window.bin;0x100a4ece,25288={work}/part-after.bin'
         cmd=[str(ROOT/'out/emu/ot_emu'),'--image',str(image),'--card',str(out/'card.img'),'--set','OCTABAM','--project','BASS','--load-ms','90000','--mkii','--rtc','1800000000','--internal-clock','--live-script',str(script),'--midi-out',str(work/'notes.midi'),'--lcd',str(work/'screen.lcd'),'--step',f'-:dump:0x100a4ece,25288={work}/part-before.bin','--mem-dump',dump]
         with (work/'run.log').open('w') as log:r=subprocess.run(cmd,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT)
@@ -77,12 +78,15 @@ def main():
             source=[e[2] for e in events if e[:2]==('on',1)]
             assert source==[12,40,43,36,64,67,26,53,57],(name,source)
         received=[e[2] for e in events if e[:2]==('on',2)]
-        wanted=[(n if mode else n%12)+12*octave for n in (36,60,50)]
+        wanted=[(n if mode==2 else n%12)+12*octave for n in (36,60,50)]
         assert received==wanted,(name,received,wanted)
         state=settings(work);assert state[1]==mode
-        assert state[(16 if mode else 8)+1]==octave&255,state
-        assert state[(8 if mode else 16)+1]==(3 if mode else 0), 'B/C touched the other mode octave'
-        assert all(state[t]==0 and state[8+t]==3 and state[16+t]==0 for t in range(8) if t!=1)
+        values={0:8,1:24,2:16}
+        assert state[values[mode]+1]==octave&255,state
+        assert all(state[offset+1]==(0 if other==2 else 3)
+                   for other,offset in values.items() if other!=mode), 'B/C touched another mode value'
+        assert all(state[t]==0 and state[8+t]==3 and state[16+t]==0 and state[24+t]==3
+                   for t in range(8) if t!=1)
         assert (work/'window.bin').read_bytes()!=bytes(4)
         guard_parts(work)
         held=set()
@@ -95,13 +99,14 @@ def main():
     # Close, switch tracks, edit independently, reopen, and restore native UI.
     lifecycle=out/'lifecycle';lifecycle.mkdir(exist_ok=True)
     script=lifecycle/'panel.txt'
-    script.write_text(panel(setup+'1500 enc 0 1\n1700 enc 1 2\n1900 key 0x32 down\n1950 key 0x32 up\n2100 key 0x12 down\n2150 key 0x12 up\n2300 key 0x3b down\n2350 key 0x3b up\n2500 enc 1 1\n2700 key 0x32 down\n2750 key 0x32 up\n2900 key 0x11 down\n2950 key 0x11 up\n3100 key 0x3b down\n3150 key 0x3b up\n3300 key 0x32 down\n3350 key 0x32 up\n3500 quit\n'))
+    script.write_text(panel(setup+'1500 enc 0 2\n1700 enc 1 2\n1900 key 0x32 down\n1950 key 0x32 up\n2100 key 0x12 down\n2150 key 0x12 up\n2300 key 0x3b down\n2350 key 0x3b up\n2500 enc 1 1\n2700 key 0x32 down\n2750 key 0x32 up\n2900 key 0x11 down\n2950 key 0x11 up\n3100 key 0x3b down\n3150 key 0x3b up\n3300 key 0x32 down\n3350 key 0x32 up\n3500 quit\n'))
     cmd=[arg.replace(str(work)+'/',str(lifecycle)+'/') for arg in cmd]
     with (lifecycle/'run.log').open('w') as log:
         result=subprocess.run(cmd,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT)
     assert result.returncode==0
     state=settings(lifecycle)
-    assert state[1]==1 and state[17]==2 and state[2]==0 and state[10]==4,state
+    assert state[1]==2 and state[17]==2 and state[9]==3 and state[25]==3,state
+    assert state[2]==0 and state[10]==4 and state[18]==0 and state[26]==3,state
     assert (lifecycle/'window.bin').read_bytes()==bytes(4)
     guard_parts(lifecycle)
     print('[ok] close/reopen, independent receiver settings, only native Follow fields changed',flush=True)
