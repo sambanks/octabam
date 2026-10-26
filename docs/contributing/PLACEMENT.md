@@ -153,7 +153,16 @@ and the FX1 side. A 62-byte per-frame SRAM buffer at `0x800017d6` differs
 between the stock and the grown image after the same emulated time (the stock
 image is deterministic; the cause was not confirmed).
 
-Hardware, in this order (each step isolates one unknown; none has been run):
+Hardware step 1 was run on 27 Oct 2026 (an MKII, image `test/bus-usb` P3: the `bus` remix with USB added, REVERB SERVER
+replaced by `dsp/xmem_probe_ids64.asm`; T5 playing a noise loop, captured over USB). T5's left channel carried signal and
+its right channel had no non-zero samples, and MAIN, which is T5 at the centre pan law, matched. By the
+probe's rule that is: the 129-word record `X:0x8da0..0x8e20` read back every walking value (good), and the 1,024 words above
+it (`0x8e21..0x9220`) did not. The one block the layout needs behaves as X RAM; the memory above it does not read back, so the
+record would sit at the end of the X RAM that exists (inferred from the two results). This shows the words behave as RAM while the probe runs; it does not show
+that stock never uses them for something else. An earlier build on the `bus` remix without USB (image P1, flashed, not
+measurable) is not used.
+
+Hardware, in this order (each step isolates one unknown; step 1 is done):
 
 1. `X:0x8da0..0x8e20` is X RAM. `XBUS=1 XPROBE=1 XPROBE_SRC=dsp/xmem_probe_ids64.asm
    REMIX=bus python3 tools/build/build_bus.py` builds a stock-layout image whose
