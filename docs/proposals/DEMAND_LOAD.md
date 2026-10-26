@@ -126,11 +126,27 @@ records are left out of payload A's upload and written to `out/dsp/demand_record
 
 - Each reverb's bucket counts are the same at both knob settings.
 - 0x3da2 is the last word the probe scans (LOAD METER's code starts at 0x37da3), so DARK REV's figure is a lower bound.
-- Silent input: a knob that lengthens a delay line only when signal runs through it is not exercised.
+- The section after this table gives the same effects with signal on T8.
+
+With signal on T8 (27 Oct 2026, projects `MXSG4_*`: T8 a FLEX slot playing a 31.7 s band-limited noise loop, started by MIDI Start and a note 43 on channel 8; knobs 127):
+
+| effect | highest differing offset | differing words | silent input |
+|---|---|---|---|
+| PLATE REV | 0x37ff | 12265 | 0x37ff, 12265 |
+| DARK REV | 0x3da2 (the scan limit) | 13199 | 0x3da2, 13199 |
+| SPRING REV | 0xfff | 3502 | 0xfff, 3502 |
+| FLANGER | 0x7ff | 2048 | 0x7ff, 2048 |
+| CHORUS | 0xbfd | 3068 | 0xbfd, 3068 |
+| SPATIALIZER | 0xa67 | 2664 | 0xa5f, 2656 |
+| COMB FILTER | 0xbff | 3072 | 0xbff, 3072 |
+
+- SPATIALIZER wrote 8 words past its silent-input extent. A run on an earlier project, whose sample slot had no trim record, read 0xa79; the figure depends on the signal.
+- Every figure is below 0x1000, where the demand loader places effect code. SPATIALIZER's 0xa67 is 0x599 words below it.
+- One capture per effect at knobs 127; knobs 0 with signal were not measured.
 
 ## Open
 
-- The unit: the stock extents with signal on T8, the audible dropout while an effect loads (about 25 ms), and a reverb meeting a loaded effect's block.
+- The unit: the audible dropout while an effect loads (about 25 ms), and a reverb meeting a loaded effect's block.
 - Core A's stall when sent to, and the mask at the frames that lose their chunk.
 - The wording of the toasts and how long the deferred ones wait for a page key.
 - A dry instance that had run its init (state 3) resuming is not covered by a gate: `dsp_host` cannot change the published span between blocks.
