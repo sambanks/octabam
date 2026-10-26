@@ -161,11 +161,17 @@ bank file's serialized header. No raw writable pointer is returned.
 | `store_part_midi_write` | same, d3 = value 0–127 | layout adapter for the general write API |
 | `store_part_midi_key` | d0 = MIDI track, d1 = context | read-only KEY byte; no writable permission is added |
 
+Native replacement and setting writes use the native single UI-writer path;
+playback/interrupt readers may interrupt it. This API does not serialize
+competing writers: a client must not write from a playback interrupt or another
+concurrent writer.
+
 Writes update the working byte, its current-bank battery-backed CS1 mirror
 and native Part/bank dirty markers in one short interrupt-masked section.
 Saved Parts and card files remain owned by the native save operations.
 Unchanged writes do not mark clean state dirty. A busy write returns zero;
-the client must not report success or spin waiting inside an interrupt.
+the client must not report success or spin waiting for the replacement; retry
+from the UI after the native operation returns.
 
 Native copy and initialization run with their original interrupt state.
 Readers of affected contexts see the outgoing snapshot until publication;

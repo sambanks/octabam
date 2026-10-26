@@ -3,6 +3,10 @@
 Routes MIDI-track output into the Octatrack's own MIDI receiver, with optional
 DIN/USB output. Use it to sequence audio-track controls without a loopback cable.
 
+The current STORE integration has passed native Part and playback-context checks
+in the emulator. Hardware testing of this integration remains outstanding;
+[earlier hardware reports](DEVELOPMENT.md) refer to their recorded images.
+
 ## Use
 
 1. Open a MIDI track's **NOTE SETUP** with **FUNC + SRC**.
