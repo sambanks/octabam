@@ -12,7 +12,7 @@ CAPACITY = 2600                 # code words a block may hold: the staging area 
 BLOCK_TRACK = {0: 6, 1: 7, 2: 2, 3: 3}   # window block (address >> 14 & 3) -> the FX2 track whose slot is there (0-based; docs/firmware/DSP.md section 7)
 WIN = 0x30000
 REVERBS = ("PLATE REV", "SPRING REV", "DARK REV")
-TOAST_NAME_MAX = 10             # "EVICT <name> FIRST" must fit the popup, so a longer name is cut: 22 characters on one line (measured on the unit, 27 Oct 2026; a newline does not break the line)
+TOAST_NAME_MAX = 10             # "EVICT <name> 1ST" must fit the popup, so a longer name is cut: 20 characters. Measured on the unit, 27 Oct 2026: 22 clipped slightly, 19 fitted; a newline does not break the line
 
 
 def table_inc(modules, remix):
@@ -55,8 +55,8 @@ def table_inc(modules, remix):
         rows.append(f"dl_blk{k}_end:")
         rows.append(f"dl_off{k}:  .word   {k}, 0, 0, 0, 0")
         name = modules[key].menu.fullname.decode().upper()[:TOAST_NAME_MAX]      # as the chooser lists it, cut to fit
-        rows.append(f'dl_need{k}: .asciz "EVICT T{track + 1} FX2 FIRST"')
-        rows.append(f'dl_hold{k}: .asciz "EVICT {name} FIRST"')
+        rows.append(f'dl_need{k}: .asciz "EVICT T{track + 1} FX2 1ST"')
+        rows.append(f'dl_hold{k}: .asciz "EVICT {name} 1ST"')
         rows.append("        .balign 2")
     return "\n".join(rows) + "\n"
 

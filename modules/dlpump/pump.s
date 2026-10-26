@@ -164,8 +164,8 @@ idle:
         btst    %d6,%d0
         sne     %d4                             | d4.b: loaded
         | Toasts, once per collision, shown at the next page key (dl_key):
-        |   the effect is used, not loaded, and the block is under a reverb: EVICT Tn FX2 FIRST
-        |   the effect is loaded and a reverb arrived on its block (the reverb runs dry): EVICT <effect> FIRST
+        |   the effect is used, not loaded, and the block is under a reverb: EVICT Tn FX2 1ST
+        |   the effect is loaded and a reverb arrived on its block (the reverb runs dry): EVICT <effect> 1ST
         move.l  dl_ta,%d2
         tst.b   %d4
         bne.w   8f
@@ -329,7 +329,7 @@ dl_veto:
         beq.w   4f
         cmp.b   #DL_DARK,%d2
         bne.w   9f
-4:      move.l  %a2@(20),%d0                    | EVICT Tn FX2 FIRST
+4:      move.l  %a2@(20),%d0                    | EVICT Tn FX2 1ST
         bra.w   9f
 5:      tst.b   %d4                             | a reverb chosen on the FX2 slot of a loaded effect's block
         beq.w   7f
@@ -353,7 +353,7 @@ dv_used:
         beq.w   6f
         cmp.b   #DL_DARK,%d1
         bne.w   7f
-6:      move.l  %a2@(24),%d0                    | EVICT <effect> FIRST
+6:      move.l  %a2@(24),%d0                    | EVICT <effect> 1ST
         bra.w   9f
 7:      lea     %a2@(28),%a2
         addq.l  #1,%d6

@@ -15,7 +15,7 @@ Remix.window_demand (k):
   reverb-takes  effect 0 unused at 2 s, a reverb on its block at 2.5 s -> unbound by 3.4 s, well inside the grace
   pick-reverb-unused  effect 0 loaded and unused: the FX2 chooser accepts a reverb on its block, no toast, effect withdrawn
   unused     no track uses any                          -> none bound
-  toast text  each effect's toast strings (EVICT Tn FX2 FIRST, EVICT <name> FIRST) name the track of its own block and the effect's chooser name (the generated table)
+  toast text  each effect's toast strings (EVICT Tn FX2 1ST, EVICT <name> 1ST) name the track of its own block and the effect's chooser name (the generated table)
   two-b, two-a, two-ab-b, two-ab-a  effect 0 on two tracks of one core, and on one track of each core: the instances each have their own r7 (a pcwatch on the proc)
   runs-b<k> / runs-a<k>  T1 (core B) / T5 (core A) uses effect k -> its loaded proc is reached on that core (--dsp-pcwatch)
   reverb-late effect 0 in use and loaded, then at 2 s the FX2 of its block's track becomes PLATE REV (a route the choosers do not guard) -> effect 0 stays loaded, the reverb is dry
@@ -266,7 +266,7 @@ def main():
         need = re.search(rf'dl_need{k}: \.asciz "([^"]*)"', text).group(1)
         hold = re.search(rf'dl_hold{k}: \.asciz "([^"]*)"', text).group(1)
         check(f"{key}: its toasts name its block's track T{track}",
-              need == f"EVICT T{track} FX2 FIRST" and hold == f"EVICT {name} FIRST", f"{need!r}, {hold!r}")
+              need == f"EVICT T{track} FX2 1ST" and hold == f"EVICT {name} 1ST", f"{need!r}, {hold!r}")
     print("PASS" if not FAILS else "FAIL")
     return 1 if FAILS else 0
 
