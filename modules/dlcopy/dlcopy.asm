@@ -17,7 +17,7 @@
 ;   x:$2906.. 2 N + 2 words: each 24-bit code word as its high 16 bits, then its low 8; the last
 ;   pair is the sum of the N code words, modulo 2^24, in the same form
 ; The doorbell is cleared when the block is consumed. A block whose sum does not match is
-; not published (BOUND stays clear); the ColdFire sends every block twice.
+; not published (BOUND stays clear); the ColdFire sends every block three times.
 ;
 ; The effect's entry in the window, x:$33da3 + 8 k (five words used):
 ;   +0 BOUND  $b0a5ed while the code is resident   +1 the real init   +2 the real proc

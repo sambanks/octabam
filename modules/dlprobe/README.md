@@ -13,7 +13,7 @@ published. DLPROBE sends them with each entry's BOUND word, and four counters of
 
 ## What the counters say
 
-Every load is sent twice, so a healthy load reads received 2, refused 0, published 2, BOUND.
+Every load is sent three times, so a healthy load reads received 3, refused 0, published 3, BOUND.
 
 | reading | what it means |
 |---|---|

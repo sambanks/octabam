@@ -15,6 +15,7 @@ Remix.window_demand (k):
   reverb-takes  effect 0 unused at 2 s, a reverb on its block at 2.5 s -> unbound by 3.4 s, well inside the grace
   pick-reverb-unused  effect 0 loaded and unused: the FX2 chooser accepts a reverb on its block, no toast, effect withdrawn
   unused     no track uses any                          -> none bound
+  two-b, two-a, two-ab-b, two-ab-a  effect 0 on two tracks of one core, and on one track of each core: the instances each have their own r7 (a pcwatch on the proc)
   runs-b<k> / runs-a<k>  T1 (core B) / T5 (core A) uses effect k -> its loaded proc is reached on that core (--dsp-pcwatch)
   reverb-late effect 0 in use and loaded, then at 2 s the FX2 of its block's track becomes PLATE REV (a route the choosers do not guard) -> effect 0 stays loaded, the reverb is dry
   blocked    effect 0 in use, and the FX2 of the track whose slot shares its block is PLATE REV -> effect 0 not loaded
@@ -121,6 +122,11 @@ def main():
         scenarios[f"runs-b{k}"] = (poke(FX1_LIVE, FX1_PART, 0, r["id"]), [])      # T1 is on core B
         scenarios[f"runs-a{k}"] = (poke(FX1_LIVE, FX1_PART, 4, r["id"]), [])      # T5 is on core A
         watch[f"runs-b{k}"], watch[f"runs-a{k}"] = f"1:{r['proc']:x}", f"0:{r['proc']:x}"
+    TWO = {"two-b": ((0, 1), 1, 2), "two-a": ((4, 5), 0, 2),             # tag: (tracks, watched core, instances it sees)
+           "two-ab-b": ((0, 4), 1, 1), "two-ab-a": ((0, 4), 0, 1)}       # one track on each core, the same effect
+    for tag, (tracks, core, _) in TWO.items():
+        scenarios[tag] = (";".join(poke(FX1_LIVE, FX1_PART, t, rec["id"]) for t in tracks), [])
+        watch[tag] = f"{core}:{rec['proc']:x}"
     procs = {}
     for tag, (first, later) in scenarios.items():
         card = OUT / f"{tag}.img"
@@ -179,8 +185,8 @@ def main():
             check(f"core {c}: {r['key']} is bound with its entries and span",
                   entry[:5] == [0xB0A5ED, r["init"], r["proc"], r["addr"], r["addr"] + n], f"{[hex(w) for w in entry]}")
             if c == 1:
-                check(f"{r['key']}: the copier counted two blocks received, none refused, two published (DLPROBE's counters)",
-                      entry[5:8] == [2, 0, 2], f"{entry[5:8]}")
+                check(f"{r['key']}: the copier counted three blocks received, none refused, three published (DLPROBE's counters)",
+                      entry[5:8] == [3, 0, 3], f"{entry[5:8]}")
             code = peek("used", c, "P", r["addr"])
             check(f"core {c}: {r['key']}'s code is in the window, every word", code == r["words"],
                   f"{len(code)} of {n} words read")
@@ -193,7 +199,7 @@ def main():
     print("grace:")
     entry = peek("grace", 1, "X", 0x33DA3)
     check(f"{recs[0]['key']} stays loaded through a short gap in use, and is not loaded a second time",
-          entry[:1] == [0xB0A5ED] and entry[5:8] == [2, 0, 2], f"{[hex(w) for w in entry]}")
+          entry[:1] == [0xB0A5ED] and entry[5:8] == [3, 0, 3], f"{[hex(w) for w in entry]}")
     print("unused:")
     for k, r in enumerate(recs):
         check(f"{r['key']} was never bound", peek("unused", 1, "X", 0x33DA3 + 8 * k)[:1] == [0])
@@ -242,6 +248,13 @@ def main():
             arrivals = len(m.group(1).splitlines()) if m else None
             check(f"core {core}: {r['key']}'s loaded proc is reached on a track of that core", bool(arrivals),
                   f"arrivals at P:0x{r['proc']:x}: {arrivals}")
+    print("instances:")
+    for tag, (tracks, core, want) in TWO.items():
+        m = re.search(r"dsp pcwatch:[^\n]*\n((?: +\d+ [^\n]*\n)*)", texts[tag])
+        rows = [ln.split() for ln in m.group(1).splitlines()] if m else []
+        bases = sorted({int(f[16], 16) for f in rows if len(f) > 16})
+        check(f"{rec['key']} on tracks {[t + 1 for t in tracks]}: core {core} runs {want} instance(s), each with its own r7",
+              len(bases) == want, f"{len(rows)} arrivals, r7 = {[hex(b) for b in bases]}")
     print("PASS" if not FAILS else "FAIL")
     return 1 if FAILS else 0
 

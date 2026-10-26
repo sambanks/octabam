@@ -49,7 +49,7 @@ takes the block: the pump loads X, and a dry reverb resumes (it runs the stock i
   Idle: on ping-0 frames it compares the ids on the 16 live FX slots with the effects loaded and arms one message: a load when
   an effect is used, not loaded, and its block is not under a reverb; a withdrawal when it is loaded and no slot uses it for 10 s in a row (a project load leaves every id at its default for about 4 s, measured on a unit; the `GRACE` build setting, 2 S for the port gates), or at once when a stock reverb is on the FX2 slot of its block.
   Sending: 100 halfwords per ping-0 frame to core B's `X:0x2901..`, then the doorbell `0xa55a` to `X:0x2900` two frames later.
-  A load is sent twice, 30 idle calls apart, if the effect is still loaded then. The table of effects, their blocks and the toast
+  A load is sent three times, 30 idle calls apart, if the effect is still loaded each time. The table of effects, their blocks and the toast
   strings is generated per remix (`remix.inc`, `Linked.include`) from `out/dsp/demand_records.json`; the unit reserves 2,600 code
   words an effect on every link. The FX1 and FX2 choosers' "same effect" test is detoured (the refusals above, with the popup
   `FUN_4005a2b8`, which runs in the key handler). The idle loop cannot call the popup, so it leaves its message in `dl_pend`,
@@ -105,7 +105,7 @@ records are left out of payload A's upload and written to `out/dsp/demand_record
 - SPECTRUM and CHARACTER on an FX2 slot cost a dry slot's 116..119 counts: they are `fx1_only` and render dry there. `octabam` had no FX1 list, so it offered them on FX2 only; it lists them on FX1 now.
 - A project load leaves every id at its default for about 3.8 s (polled over USB every 0.25 s: ids reset at 36.2 s, back at 40.05 s). With a 2 s grace the pump withdrew all four effects at 38.3 s and loaded them again at 40.05 s; the grace is 10 s.
 - Sending on every frame (`DLPANYJ9`, `test/dl-probe-any`, the same project): the copier refused blocks for their sum on the unit (MODULATION received 4, refused 3, published 1; SPECTRUM received 2, refused 2, published 0; TRANSIENT received 2, refused 1, published 1; CHARACTER received nothing) and ran no bad copy. The ping-0 rule holds on the unit as in the port; with it, no block was refused in the rounds on `DLPROBEJ5` and `J7` (about 16 blocks over several loads).
-- A repeat send that is refused leaves the effect unbound: the copier clears BOUND before it copies and publishes nothing for a bad sum, and the ColdFire cannot see the counters to send again. Not seen with the ping-0 gate. The unit did freeze once during the first rounds (13:27); it was on `DLPROBEJ3`, the build with the stale-byte bug, and the cause was not found.
+- A repeat send that is refused leaves the effect unbound: the copier clears BOUND before it copies and publishes nothing for a bad sum, and the ColdFire cannot see the counters to send again. Not seen with the ping-0 gate. The pump sends each load a third time since 26 Oct 2026: a refusal of the second send is followed by a good third; a refusal of the last send still leaves the effect unbound (dry). Each repeat holds the pump's idle comparison for 30 ping-0 frames, about 22 ms at 1,378 ping-0 frames a second (inferred from the frame rate, not measured). The unit did freeze once during the first rounds (13:27); it was on `DLPROBEJ3`, the build with the stale-byte bug, and the cause was not found.
 
 ## Stock reverb extents on a unit (26 Oct 2026, MKII, image `test/ext-probe` X1, projects MXEXT_{PL,DK,SP}_{MN,MX})
 

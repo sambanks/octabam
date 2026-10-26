@@ -9,7 +9,7 @@ live FX slots (`0x80000ec4`) with the effects loaded and arms one message: a loa
 is used, not loaded, and the FX2 slot that shares its block is not PLATE REV, SPRING REV or DARK
 REV; a withdrawal when it is loaded and unused. Sending, it writes 100 halfwords a ping-0 frame
 to core B's `X:0x2901..` by the stock host write, then the doorbell two frames later; a load is
-sent twice. It never writes to core A. A block is held by whoever has it first: a reverb does not
+sent three times. It never writes to core A. A block is held by whoever has it first: a reverb does not
 evict a loaded effect, and an effect does not move a reverb.
 
 Detours at the FX1 and FX2 choosers' "same effect" test (`0x4005272a`, `0x400524ba`) refuse the

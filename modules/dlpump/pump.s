@@ -107,7 +107,7 @@ idle:
         cmp.l   0x800000e0,%d1
         bne.w   9b
         .endif
-        move.l  dl_rwait,%d0                    | a load is sent twice: the second copy replaces one the DSP
+        move.l  dl_rwait,%d0                    | a load is sent three times: a later copy replaces one the DSP
         beq.w   4f                              | refused for its checksum
         subq.l  #1,%d0
         move.l  %d0,dl_rwait
@@ -120,6 +120,12 @@ idle:
         move.l  dl_rlen,%d2
         lea     dl_dg,%a1
         addq.l  #1,%a1@(36)                     | [9]: repeats armed
+        move.l  dl_rn,%d3
+        subq.l  #1,%d3
+        move.l  %d3,dl_rn
+        beq.w   arm                             | the last repeat
+        move.l  #REPEAT,%d3
+        move.l  %d3,dl_rwait
         bra.w   arm
 4:      lea     dl_dg,%a1
         addq.l  #1,%a1@(16)                     | [4]: idle passes on a delivering frame
@@ -204,6 +210,8 @@ idle:
         move.l  %d6,dl_rk
         move.l  #REPEAT,%d3
         move.l  %d3,dl_rwait
+        moveq   #2,%d3
+        move.l  %d3,dl_rn                       | two repeats follow the first send
         lea     dl_dg,%a1
         addq.l  #1,%a1@(20)                     | [5]: loads armed
         bra.w   arm
@@ -414,6 +422,7 @@ dl_loaded: .long 0                      | bit k: effect k is loaded
 dl_gone:  .long 0, 0, 0, 0              | per effect: idle calls it has been loaded and unused
 dl_rwait: .long 0                       | idle calls until the load of effect dl_rk is sent again (0: none)
 dl_rk:    .long 0
+dl_rn:    .long 0                       | repeats still to send for it
 dl_rsrc:  .long 0
 dl_rlen:  .long 0
 dl_ta:    .long 0                       | bit k: the NEEDS toast for effect k has been queued for this collision
