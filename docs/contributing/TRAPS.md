@@ -1540,3 +1540,10 @@ step 1 and checks RATE/MIX as its discrete/continuous pair. Knob values are kept
 away from the edit clamp. The supplied project is unchanged. Check the playing
 Part and the selected module's real parameter layout before interpreting a
 constant frame value as a failure of event dispatch or scene interpolation.
+
+The same MIDI-only input exposed an unstated BRAIN fixture dependency: its
+save/menu probes expected T1 FX2 to be DELAY SERVER, but only seeded T2 FX1.
+Saving T1's actual effect correctly produced no BusDelay record. `verify_brain.py`
+now seeds both required effects in its disposable copy. Prepare every effect
+whose identity a later assertion assumes, rather than inheriting it from the
+operator's project.
