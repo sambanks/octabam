@@ -1140,7 +1140,15 @@ def main():
     log_at = symbol("brain_post_log")
     lcard, lafter, llog, lmidi = OUT / "log.img", OUT / "log_after.img", OUT / "log.txt", OUT / "log.midi"
     lmidi.write_text("40 B0 07 14\n60 C0 02\n80 B1 28 40\n")
-    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+    # This probe asserts that CH1 program change queues pattern 2. Other
+    # probes keep the supplied project's MIDI receive configuration.
+    import ot_matrix
+    logcopy = OUT / "project_log"
+    shutil.rmtree(logcopy, ignore_errors=True)
+    shutil.copytree(copy, logcopy)
+    ot_matrix.stamp_text(logcopy, {"MIDI_PROGRAM_CHANGE_RECEIVE": 1,
+                                 "MIDI_PROGRAM_CHANGE_RECEIVE_CH": 0}, {})
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(logcopy), a.set_name, a.name,
                         "--tree", str(OUT / "tree_log"), "--out", str(lcard),
                         "--root-file", f"{logon}:BRAIN/card.work"], cwd=ROOT, capture_output=True, text=True)
     if r.returncode:
