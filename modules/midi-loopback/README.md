@@ -59,13 +59,13 @@ copy/paste and project save/load carry it; fresh Parts use EXT. Playback uses
 each MIDI track's applied Part, independently of retained audio voices and
 the Part selected for editing.
 
-Requires **MIDI Part State**. Combining it with MIDI Scenes needs a separate
+Requires **STORE**. Combining it with MIDI Scenes needs a separate
 producer bridge, which is not included in this contribution; that combination
 is currently refused. KITS is not required.
 
 ### Returning to stock 1.40C
 
-MIDI Part State changes the allowed-value count at `0x400d4082` from 1 to
+STORE native Part access changes the allowed-value count at `0x400d4082` from 1 to
 `0x10`: the Part's MIDI SETUP flags byte accepts 0–15 instead of only zero.
 DEST occupies bits 2–3 (INT = 4, BOTH = 8); EXT is zero. This uses an existing
 Part field and does not enlarge the file format.

@@ -59,7 +59,8 @@ def main():
     assert clear[PS:]==before[PS:]
     for t in range(8):
         for field in FIELDS:
-            expected=0
+            expected=({13:0x23,15:0x03}.get(field,0)
+                      if 'bf_source_get' in p.symbols() else 0)
             assert clear[0x4e2+36*t+field]==expected,(t,field,clear[0x4e2+36*t+field],expected)
     # Stock Clear initializes both working and saved Part and leaves the
     # current CS1 working mirror to the caller's later refresh.

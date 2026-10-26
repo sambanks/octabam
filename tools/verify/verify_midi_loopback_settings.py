@@ -61,7 +61,7 @@ def main():
     m.capture((0x90,85,100));assert m.next()==bytes((0x90,85,100))
     work=B+0x8ed80
     m.u.mem_write(0x47004000,bytes(m.u.mem_read(work,PS)))
-    m.call('mp_native_copy',(work,0x47004000,PS));m.call('lb_part_sync')
+    m.call('store_part_native_copy',(work,0x47004000,PS));m.call('lb_part_sync')
     assert m.next()==bytes((0x80,85,0))
     assert m.get('lb_internal_held')==0
     print('[ok] playing context separation, Part switch and same-slot recall release original destinations without duplicate offs')

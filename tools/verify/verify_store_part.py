@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Execute shared Part access machine code with distinct UI/engine contexts."""
 import re
+import json
 import subprocess
 
 from midi_machine import Machine, ROOT
@@ -16,11 +17,18 @@ FIELDS = (3, 5, 12, 13, 15, 16, 18, 19)
 
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
-    return {n: int(a, 16) for a, n in re.findall(r'^([0-9a-f]+) [Tt] (mp_\w+)$', raw, re.M)}
+    return {n: int(a, 16) for a, n in re.findall(r'^([0-9a-f]+) [TtBb] (store_part_\w+)$', raw, re.M)}
 
 
 def main():
     m = Machine(symbols); u = m.uc
+    keys = {row[0] for row in json.loads((ROOT/'out/platform/layout.json').read_text())['units']}
+    fields = set()
+    if 'MIDI FOLLOW' in keys: fields.update((3,12,13,15))
+    if 'MIDI LOOPBACK' in keys: fields.add(12)
+    if 'MIDI HARMONY' in keys: fields.update((5,16,18,19))
+    assert fields, 'this gate needs a native settings client'
+    fields = tuple(sorted(fields))
     def put(a, v, n=1): u.mem_write(a, v.to_bytes(n, 'big'))
     def get(a, n=1): return int.from_bytes(u.mem_read(a, n), 'big')
     def ui(bank, part):
@@ -31,21 +39,28 @@ def main():
     for bank in range(16):
         for part in range(4):
             ui(bank, part)
-            assert call('mp_ui_context') == bank*4+part
+            assert call('store_part_ui_context') == bank*4+part
     for ptr, part in ((0, 0), (BANK+1, 0), (BANK+STRIDE*16, 0), (BANK, 4)):
         put(0x46c82456, ptr, 4); put(0x100b14cf, part)
-        assert call('mp_ui_context') == 0xffffffff
+        assert call('store_part_ui_context') == 0xffffffff
     ui(15, 3)
     put(0x80001828, 2); put(0x80001829, 1)
     for track in range(8):
-        put(0x8000182a+track, track); put(0x80001832+track, track % 4)
-        assert call('mp_play_context', track) == track*4+track % 4
-        put(0x8000182a+track, 255)
-        assert call('mp_play_context', track) == 9
-    assert call('mp_play_context', 8) == 0xffffffff
-    put(0x80001828, 255)
-    assert call('mp_play_context', 0) == 0xffffffff
-    print('  [ok] UI and per-track engine contexts stay distinct; unlatched fallback and invalid inputs')
+        put(0x8000182a+track,track);put(0x80001832+track,track%4)
+        put(0x8000666e+track,15-track);put(0x80006676+track,(track+1)%4)
+        assert call('store_part_audio_context',track)==track*4+track%4
+        assert call('store_part_midi_context',track)==(15-track)*4+(track+1)%4
+        put(0x8000666e+track,255)
+        assert call('store_part_midi_context',track)==9
+        assert call('store_part_audio_context',track)==track*4+track%4
+        put(0x8000182a+track,255)
+        assert call('store_part_audio_context',track)==9
+    assert call('store_part_midi_context',8)==0xffffffff
+    assert call('store_part_audio_context',8)==0xffffffff
+    put(0x80001828,255)
+    assert call('store_part_midi_context',0)==0xffffffff
+    assert call('store_part_audio_context',0)==0xffffffff
+    print('  [ok] UI, audio and MIDI contexts stay distinct; independent latches, unlatched fallback and invalid inputs')
 
     writes = 0
     for bank in (0, 7, 15):
@@ -57,18 +72,18 @@ def main():
                 put(b+0x95048, 0); put(b+0x9b332, 0, 4)
                 put(0x100b145e, 0); put(0x100f8598, 0, 4)
                 for track in range(8):
-                    for field in FIELDS:
+                    for field in fields:
                         at = b+WORK+part*PART+0x4e2+track*36+field
                         put(at, 255)
                         value = (bank+part+track+field) % 128
-                        assert call('mp_write', track, bank*4+part, field, value) == 1
+                        assert call('store_part_midi_write', track, bank*4+part, field, value) == 1
                         allowed = {at, b+0x95048, b+0x9b332}
                         if current:
                             allowed |= {CS1+part*PART+0x4e2+track*36+field, 0x100b145e, 0x100f8598}
                         assert all(a in allowed or m.stack-128 <= a and a+n <= m.stack+4
                                    for a,n in m.writes), m.writes
                         assert get(at) == value
-                        assert call('mp_read', track, bank*4+part, field) == value
+                        assert call('store_part_midi_read', track, bank*4+part, field) == value
                         mirror = CS1+part*PART+0x4e2+track*36+field
                         assert get(mirror) == (value if current else 0xa5)
                         writes += 1
@@ -79,16 +94,33 @@ def main():
 
     for track, context, field, value in ((8,0,3,1), (0,64,3,1), (0,0,4,1),
                                        (0,0,20,1), (0,0,3,128), (0,0,3,0xffffffff)):
-        assert call('mp_write', track, context, field, value) == 0
+        assert call('store_part_midi_write', track, context, field, value) == 0
         assert all(m.stack-128 <= a and a+n <= m.stack+4 for a,n in m.writes), m.writes
     ui(0,0)
     for field in range(36):
-        if field not in FIELDS:
-            assert call('mp_read',0,0,field) == 0xffffffff
+        assert call('store_part_midi_read',0,0,field) == get(BANK+WORK+0x4e2+field)
+        if field not in fields:
+            assert call('store_part_midi_write',0,0,field,1) == 0
+    # Public byte API uses Part-relative addresses and accepts all byte values.
+    offset = 0x4e2+fields[0]
+    assert m.call('store_part_write',offset,0,regs={UC_M68K_REG_D3:255}) == 1
+    assert m.call('store_part_read',offset,0) == 255
+    assert m.call('store_part_write',0x18b2,0,regs={UC_M68K_REG_D3:1}) == 0
+    assert m.call('store_part_read',0x18b2,0) == 0xffffffff
+    assert m.call('store_part_read',0,0) == 0xffffffff
+    assert m.call('store_part_read',offset,64) == 0xffffffff
+    # A replacement must not accept an edit that the native copy will overwrite.
+    put(m.sym['store_part_snapshot_bank'],BANK,4)
+    put(m.sym['store_part_snapshot_parts'],1,4)
+    before = get(BANK+WORK+offset)
+    assert m.call('store_part_write',offset,0,regs={UC_M68K_REG_D3:2}) == 0
+    assert get(BANK+WORK+offset) == before
+    put(m.sym['store_part_snapshot_bank'],0,4)
+    put(m.sym['store_part_snapshot_parts'],0,4)
     regs = {r: 0x12345678 for r in (UC_M68K_REG_D4,UC_M68K_REG_D5,UC_M68K_REG_D6,
                                    UC_M68K_REG_D7,UC_M68K_REG_A0,UC_M68K_REG_A1)}
     regs.update({UC_M68K_REG_D2: 3, UC_M68K_REG_D3: 1})
-    m.call('mp_write',0,0,regs=regs)
+    m.call('store_part_midi_write',0,0,regs=regs)
     assert all(u.reg_read(r) == v for r,v in regs.items())
     assert m.read_sr() & 0x2700 == 0x2700
     print(f'  [ok] {writes} field writes: bounded working storage, current-bank CS1, native dirty bits, register preservation')

@@ -48,7 +48,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`lofi2`](lofi2/README.md) | LOFI2 beside the stock effects (all but PLATE REV and SPRING REV, whose words it takes). | `make check` |
 | [`midi-follow`](midi-follow/README.md) | Per-track RFOL source selection on MIDI NOTE SETUP; Part-owned bass following. | port-gated |
 | [`midi-follow-events`](midi-follow-events/README.md) | MIDI Follow with EUCLID and PLOCKS P2 sharing EVENTS notifications. | port-gated |
-| [`midi-loopback`](midi-loopback/README.md) | Stock effects plus the Part-scoped per-track MIDI loopback routing. | on hardware |
+| [`midi-loopback`](midi-loopback/README.md) | Stock effects plus the Part-scoped per-track MIDI loopback routing. | port-gated: routing previously tested on MKII; STORE Part migration requires new hardware qualification |
 | [`midi-scales`](midi-scales/README.md) | All twelve keys and seven modes in the native ARP SETUP KEY control. | port-gated |
 | [`midi-scenes`](midi-scenes/README.md) | Reference minimal build: the MIDI SCENES ColdFire patch, plus direct-jump so `swd` runs. | port-gated: `verify_scenes` against MIDISC2.1 under the port; not flashed |
 | [`miniverb`](miniverb/README.md) | Minimal allocator-owned FDN reverb. | local render: `make verify-miniverb` |

@@ -1,6 +1,6 @@
 # MIDI Follow test remix
 
-Selects MIDI Follow, MIDI Part State and EVENTS with stock audio effects. No standard
+Selects MIDI Follow, STORE native Part access and EVENTS with stock audio effects. No standard
 remix selection is changed. Only the declared dependencies are selected.
 
 Run `make check REMIX=midi-follow` for the standalone image gates. The

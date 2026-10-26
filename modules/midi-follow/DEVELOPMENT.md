@@ -7,7 +7,7 @@ offset after its register choice. Scale Quantizer is not required.
 
 ## Composition and controls
 
-Select `MIDI FOLLOW` with `MIDI PART STATE` and `EVENTS`. Scales and KITS
+Select `MIDI FOLLOW` with `STORE` and `EVENTS`. Scales and KITS
 are optional. RFOL is a persistent source choice, not a held modifier. Pressing
 D opens its editor; TRIG/LIVE is a per-receiver setting. Start with TRIG so
 roots change only at your programmed rhythm, then try LIVE for sustained bass.
@@ -146,7 +146,7 @@ SOURCE=2) in bits 4–5. Native ranges are 80 and 48; each getter also
 validates its own subfield. Defaults are 0x23 and 0x03. Offset 12 bit 0
 is reserved; response and Loopback bits are untouched. This is greenfield,
 without legacy migration. UI reads use the selected Part;
-playback uses each MIDI track's playing Part through MIDI PART STATE.
+playback uses each MIDI track's playing Part through STORE.
 `bf_roots[8]` holds the source's bass pitch or 0xff (unknown), and
 `bf_pitches[8]` retains full MIDI root pitches. `bf_intervals[8][3]` holds
 effective source N2–4 offsets from that root, with 0x80 for absent voices.
@@ -244,7 +244,7 @@ no EUCLID runtime change or separate bridge is required. The Scales adapter keep
 its standalone author reference and uses installed-image gates when resolving
 Follow symbols. The builder preserves the final runtime provider's exports when
 relinking resident imports, so EUCLID descriptor references retain their final
-addresses alongside MIDI Part State.
+addresses alongside STORE native Part access.
 
 Build the selected remix, then run the project-backed checks on a disposable
 template with `--project DIR`: `verify_midi_follow.py midi-follow-events`,

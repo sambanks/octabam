@@ -15,7 +15,7 @@ DEST is saved per MIDI track in each native Part. Fresh Parts use EXT.
 
 ## Notes
 
-Select MIDI PART STATE alongside MIDI LOOPBACK. This contribution supplies a
+Select STORE alongside MIDI LOOPBACK. This contribution supplies a
 standalone test remix; official remix selections are unchanged. MIDI Scenes
 needs a later bridge and is currently refused with Loopback.
 
@@ -32,7 +32,7 @@ Clock, transport, SysEx and project-wide program-change sync stay global.
 
 Stock 1.40C cold project load resets the destination flags to zero (EXT) in
 both working and saved Parts. The native flags field accepts only zero on stock,
-whereas MIDI PART STATE allows 0–15; INT/BOTH occupy bits 2–3.
+whereas STORE allows 0–15; INT/BOTH occupy bits 2–3.
 Saving that bank on stock loses its INT/BOTH settings. Other bank files stay
 unchanged until saved; keep a separate backup before returning to stock.
 

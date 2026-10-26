@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prove the boot gate still rejects code drift outside named Part-state data."""
 import contextlib
+import hashlib
 import io
 import os
 from pathlib import Path
@@ -16,6 +17,9 @@ import toolpath  # noqa: E402,F401
 def main():
     if len(sys.argv) > 1:
         os.environ['REMIX'] = sys.argv[1]
+    image = ROOT/'out/mainos_bus.bin'
+    image_hash = hashlib.sha256(image.read_bytes()).digest()
+    argv = sys.argv[:]
     original = subprocess.run
     dump = ROOT/'out/_dump_octabam.bin'
     saved = None
@@ -36,6 +40,7 @@ def main():
     status = None
     try:
         subprocess.run = run
+        sys.argv = [*argv, '--existing-image']
         with contextlib.redirect_stdout(output):
             try:
                 runpy.run_path(str(ROOT/'tools/verify/verify_dram_boot.py'), run_name='__main__')
@@ -43,8 +48,10 @@ def main():
                 status = e.code
     finally:
         subprocess.run = original
+        sys.argv = argv
         if saved is not None:
             dump.write_bytes(saved)
+    assert hashlib.sha256(image.read_bytes()).digest() == image_hash, 'boot gate replaced candidate'
     text = output.getvalue()
     assert saved is not None and status == 1, (status, text)
     assert '[PASS] verify_dram_boot:' in text and 'boots to the handoff' in text, text

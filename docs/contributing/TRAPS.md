@@ -949,6 +949,24 @@ into a register and `jmp (rN)`. Dispatch entries must keep `init < proc <= init 
 
 ## Traps on the ColdFire / DRAM side (the platform work, 9–10 Sep 2026)
 
+<a name="trap-part-engine-context"></a>
+### Audio and MIDI have independent playing-Part latches
+
+**Symptom:** a MIDI consumer reads the wrong Part while the audio and MIDI
+engines are on different track contexts. Fixtures that put both engines on
+one Part conceal the error.
+
+**Cost:** the native Part service migration exposed an audio-latch lookup in
+the old shared MIDI helper; Loopback had separately implemented the MIDI lookup.
+
+**Fix:** STORE exposes separate `store_part_audio_context` and
+`store_part_midi_context` readers. MIDI clients use the latter. Each falls back
+to the applied bank/Part only while its own track is unlatched.
+
+**Gate:** `verify_store_part.py` seeds different audio and MIDI contexts,
+checks all eight tracks and tests each fallback independently.
+
+
 <a name="trap-watch-alias"></a>
 
 ### A write-watch on cached addresses is blind to a clear through the uncached alias

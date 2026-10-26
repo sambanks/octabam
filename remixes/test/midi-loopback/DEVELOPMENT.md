@@ -1,6 +1,6 @@
 # MIDI Loopback test remix
 
-MIDI Loopback and MIDI Part State with stock audio effects. Every track defaults
+MIDI Loopback and STORE native Part access with stock audio effects. Every track defaults
 to EXT; the emulator scenarios select Part-scoped INT/BOTH routes.
 
 - Build and check: `make check REMIX=test/midi-loopback`.
