@@ -53,4 +53,3 @@
 [submodule "modules/midi-follow/upstream"]
 	path = modules/midi-follow/upstream
 	url = https://github.com/radiohagen/octatrack-modules.git
-	branch = codex/midi-follow-voices

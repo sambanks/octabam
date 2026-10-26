@@ -7,4 +7,7 @@ No standard remix selection is changed.
 Build and check with `make check REMIX=midi-follow-events`. The module gates
 check shared hook ownership, Follow history and note releases, EUCLID audio
 and controls, and editor event contracts. Project-based checks require a
-fixture. Hardware testing of this combination remains outstanding.
+fixture. Functional and project-backed checks have run in the emulator;
+[developer notes](../../../modules/midi-follow/DEVELOPMENT.md#octabam-composition-and-full-firmware-captures)
+record the pressure-qualification limit. Hardware testing of this combination
+remains outstanding.
