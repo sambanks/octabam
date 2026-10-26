@@ -70,6 +70,7 @@ MODULE = Module(
     detours=(Detour(0x40004d0c, bytes.fromhex("302a00380680ffffffec"), "bbd_kill", "bbd_kill",
                     "the stop kill's reverb test: BBD's id too, slot 11 only", pad_to=10),),
     harness=Harness(layout_char=None, is_server=False),
-    gates=(Gate("tools/verify/verify_bbd.py", remix_arg=False),),
+    gates=(Gate("tools/verify/verify_bbd.py", remix_arg=False),
+           Gate("tools/verify/verify_ids64_load.py", remix_arg=False, venv=True)),     # BBD is the module the 64-id test image carries on 0x25
     dear={"TIME": 0, "FDBK": 127, "TONE": 0, "FREQ": 127, "MIX": 64, "STGS": 1, "HPF": 64},
 )

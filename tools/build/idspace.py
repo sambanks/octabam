@@ -62,6 +62,10 @@ DISPATCH_PCS = {"A": [0x4b4, 0x4cb, 0x4ce, 0x4ea, 0x501, 0x504],
 A_LEN_SITES = (0x40000478, 0x4000048a, 0x400004d6)     # imm32 of pea / addil
 B_LEN_SITES = (0x400004ac, 0x400004fa)
 B_START_SITES = (0x400004b2, 0x40000502, 0x40001ed4)
+# The Part validator (0x40002318) clamps each track's FX2 id byte to 31 with `moveq #31,%d1` / `moveq #31,%d3` at these two
+# addresses, so a project's id of 32 or more loads as 31 (measured on a unit and under the port, 27 Oct 2026). The 64-id
+# layout raises it to 63. FX1's pair (0x400023b6, 0x400023bc) stays: FX1's tables keep 32 entries.
+VALIDATOR_FX2_CLAMP = ((0x400023de, "721f"), (0x400023e4, "761f"))
 SRAM_INIT = 0x4000f938              # `lea 0x401086f4,%a1`, then the copy loop at 0x4000f944
 SRAM_INIT_END = 0x4010c57c
 SRAM_HEAD_NONZERO = (0xe8, 0xf0)    # the stock image's only non-zero bytes in the head
@@ -225,11 +229,15 @@ def convert(img, virt, cache_dir):
             if img[pc - BASE:pc - BASE + 2] == bytes.fromhex("41f9"):
                 _wr32(img, pc + 2, old_va, new_va)
                 repointed += 1
+    for va, stock in VALIDATOR_FX2_CLAMP:
+        if img[va - BASE:va - BASE + 2] != bytes.fromhex(stock):
+            raise Refusal(f"the Part validator's FX2 id clamp at {va:#x} is not `{stock}` (moveq #31)")
+        img[va - BASE + 1] = 0x3f
     return [f"  id space 64: X record of {K} words at X:{XADDR:#x} in both payloads "
             f"(+{D} B each), B now at {new_b_va:#x}",
             f"  id space 64: SRAM-init cave {len(cave)} B at {CAVE:#x}, FX2_IDS at {FX2_IDS64:#x}, "
             f"ID2POS at {ID2POS64:#x}, {repointed} of "
-            f"{sum(len(v) for v in LEA_SITES.values())} lea sites repointed"]
+            f"{sum(len(v) for v in LEA_SITES.values())} lea sites repointed, the Part validator's FX2 id clamp raised to 63"]
 
 
 def _assemble(src, cache_dir):

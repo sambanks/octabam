@@ -145,11 +145,11 @@ layout throughout, writes the tables it grows into a virtual window, and
 Measured in the port (22 Oct 2026): the image boots and loads a project as
 stock does; id `0x25` poked into T1 makes core 1 run BBD's process entry every
 frame with `r1 = 0x25`; the firmware's resolver `0x40031da4` returns BBD's
-descriptor for it; `make check REMIX=ids64` passes. Not measured: a boot on
+descriptor for it; `make check REMIX=ids64` passes. Not measured then: a boot on
 hardware, that `X:0x8da0..0x8e21` is physical X RAM on the chip (X above
 `0x8d8b` holds no loaded record today and `docs/firmware/DSP.md` section 7
 says high X is not usable memory), the chooser and UI with ids of 32 or more,
-and the FX1 side. A 62-byte per-frame SRAM buffer at `0x800017d6` differs
+and the FX1 side (the hardware results below cover the first three). A 62-byte per-frame SRAM buffer at `0x800017d6` differs
 between the stock and the grown image after the same emulated time (the stock
 image is deterministic; the cause was not confirmed).
 
@@ -162,7 +162,20 @@ record would sit at the end of the X RAM that exists (inferred from the two resu
 that stock never uses them for something else. An earlier build on the `bus` remix without USB (image P1, flashed, not
 measurable) is not used.
 
-Hardware, in this order (each step isolates one unknown; step 1 is done):
+Hardware steps 2 and 3, the same unit and day:
+
+- Step 2, the grown image boots: `ids64-usb` (the `ids64` test remix with USB added, image I7) booted and loaded a project.
+- Step 3, first attempt: a project that stored BBD's id `0x25` loaded with nothing on FX2. The stock Part validator
+  (`0x40002318`) clamps each FX2 id byte to 31 as the project loads (`moveq #31` at `0x400023de` and `0x400023e4`), so `0x25`
+  loaded as `0x1f`; the port showed the same with a project. See `TRAPS.md` "The stock Part validator clamps a stored FX2 id
+  to 31". `idspace.convert` now rewrites those two immediates to 63.
+- Step 3, after the fix (image I8): BBD shows in the FX2 slot of T1 and T5 and runs on both cores. With MIX 127, FDBK 100
+  and TIME 64 the captured T1 and T5 audio, identical to each other, has autocorrelation peaks at 126 ms (r 0.39) and 252 ms
+  (0.15), a feedback echo; a peak near 2,000 ms is the pattern repeating (16 steps).
+- Not measured: choosing BBD from the FX2 chooser on the panel (the project path only), the FX1 side, and anything else that
+  reads or validates FX2 ids of 32 or more (scene and p-lock writes, part copy, the MIDI pages, `kill.s` for ids above 31).
+
+Hardware, as planned in this order (steps 1 to 3 above are done; the earlier attempts are listed there):
 
 1. `X:0x8da0..0x8e20` is X RAM. `XBUS=1 XPROBE=1 XPROBE_SRC=dsp/xmem_probe_ids64.asm
    REMIX=bus python3 tools/build/build_bus.py` builds a stock-layout image whose

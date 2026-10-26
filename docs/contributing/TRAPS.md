@@ -1119,6 +1119,30 @@ before blaming names or parsers, ask what the IRQ handler reads while the
 producer is mid-update.
 
 
+<a name="trap-id-clamp"></a>
+
+### The stock Part validator clamps a stored FX2 id to 31
+
+**THE STOCK PART VALIDATOR CLAMPS A STORED FX2 ID TO 31.** The 64-id layout
+moved the dispatch tables and the ColdFire id and position tables, and the port
+passed with an id of `0x25` poked into the live slot (`make check REMIX=ids64`).
+A project that stored `0x25` for BBD loaded on an MKII (image `ids64-usb`, 27 Oct
+2026) with nothing on FX2. The Part validator at `0x40002318` runs as the project
+loads and clamps each track's FX1 and FX2 id byte with `moveq #31`: FX1's at
+`0x400023b6` and `0x400023bc`, FX2's at `0x400023de` and `0x400023e4`. `0x25` became
+`0x1f`, an id no module holds, which shows as an empty slot. A poke goes
+straight to the live id and never meets the validator; the same project under the
+port read `0x1f` too, so the port would have shown it from the start with a
+project and not a poke. Cost: two image builds and two flashes. Fix:
+`idspace.convert` rewrites the two FX2 immediates to 63 (the table lookup the
+validator does next, `0x40002406`, was already one of the repointed `lea` sites);
+FX1's stay at 31 because FX1's tables keep 32 entries. `verify_ids64_load` loads a
+project file that stores `0x25` under the port and reads the live id (it skips
+when there is no project, as `verify_dlload` does). Measured on the unit after
+the fix: BBD shows on FX2 and runs on core A and core B. Rule: an id or any index
+that a layout change makes legal must be run through the project load, not
+poked, because the load validates every stored byte.
+
 <a id="trap-popup-redraw"></a>
 ### A nonzero popup pointer is not an open FX SETUP window
 
