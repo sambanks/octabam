@@ -1,7 +1,7 @@
 # MIDI Follow test remix
 
 Selects MIDI Follow, MIDI Part State and EVENTS with stock audio effects. No standard
-remix selection is changed. Harmony and Scales are not required or selected.
+remix selection is changed. Only the declared dependencies are selected.
 
 Run `make check REMIX=midi-follow` for the standalone image gates. The
 [module developer notes](../../../modules/midi-follow/DEVELOPMENT.md) describe

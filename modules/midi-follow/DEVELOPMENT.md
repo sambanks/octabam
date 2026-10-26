@@ -240,3 +240,27 @@ project copy, `verify_midi_follow_response_port.py --project DIR` checks LIVE
 response through emulated panel events and captured MIDI output. Hardware
 validation of boot, controls, persistence, MIDI timing and note releases remains
 outstanding. Optional Harmony integration is verified separately.
+
+
+## Octabam composition and full-firmware captures
+
+EVENTS owns the shared transport and accepted-note hooks. The `midi-follow-events`
+test remix combines Follow with EUCLID, PLOCKS P2, MIDI Scales and MIDI Loopback;
+no EUCLID runtime change or separate bridge is required. The Scales adapter keeps
+its standalone author reference and uses installed-image gates when resolving
+Follow symbols. The builder preserves the final runtime provider's exports when
+relinking resident imports, so EUCLID descriptor references retain their final
+addresses alongside MIDI Part State.
+
+Build the selected remix, then run the project-backed checks on a disposable
+template with `--project DIR`: `verify_midi_follow.py midi-follow-events`,
+`verify_midi_follow_register_port.py`, `verify_midi_follow_response_port.py`,
+`verify_midi_follow_gravity_port.py` and `verify_midi_follow_voices_port.py`.
+All are under `tools/verify/`. They cover routing and OFF equivalence, three-mode
+packing and control isolation, native chord TRIG/LIVE response, GRAV movement,
+four-voice output into empty follower slots, and matching note releases.
+
+EUCLID currently has no declared worst-case `Module.dear` settings. The combined
+remix can run functional and project-backed checks, but the strict acceptance
+runner reports its pressure stages blocked until that profile is supplied.
+This is separate from Follow's hardware acceptance, which remains outstanding.
