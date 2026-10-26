@@ -160,6 +160,23 @@ With signal on T8 (26 Oct 2026, projects `MXSG4_*`: T8 a FLEX slot playing a 31.
 - Every figure is below 0x1000, where the demand loader places effect code. SPATIALIZER's 0xa67 is 0x599 words below it.
 - One capture per effect at knobs 127; knobs 0 with signal were not measured.
 
+## Homes on a unit (28 Oct 2026, MKII, image `octabam` H1, projects `MXHOME_A`, `B`, `C`)
+
+MODULATION on T1's FX1; T3 and T4's FX2 are the only slots that matter (its two homes are the T3 and T4 blocks). Pump state read with `tools/hw/dl_state.py` (word 11: bit 2 the T3 block, bit 3 the T4 block), the effect's cost from LOAD METER (4,535 counts a slot when loaded, a dry slot 76 to 147).
+
+| case | result |
+|---|---|
+| T3 and T4 on DELAY | loaded into the T3 block (blocks holding code `4`); 1 load armed, 3 sends, T1 4,535 counts |
+| then DARK REV picked on T3's FX2 | accepted, no toast; moved to the T4 block (`4` to `8`), 2 loads and 1 withdrawal armed, 7 doorbells; T1 4,535 counts |
+| then DARK REV picked on T4's FX2 | refused, T4's FX2 stayed DELAY; toast `EVICT MODULATION 1ST`, whole inside the popup |
+| `MXHOME_B` (DARK REV on T3), power-cycled | loaded straight into the T4 block (`8`), 1 load armed, 0 withdrawals, T1 4,535 counts |
+| `MXHOME_C` (DARK REV on T3 and T4) loaded over a loaded MODULATION | stays loaded, toast `EVICT MODULATION 1ST` at the next page key (the effect cannot move) |
+| `MXHOME_C`, power-cycled | nothing loaded (all counters 0, blocks `0`), T1 dry (147 counts); toast `EVICT T3 FX2 1ST` at the AMP key |
+
+Not measured: the dry gap while an effect moves and whether it is audible; whether the DARK REV that arrives runs correctly (it is guarded, so it should pass the audio through until the code is gone); and whether the toast at a page key appears on keys other than AMP.
+
+DSP 1's peak since reset read 99.8 % with an effect loaded (also 91.7 % and 99.8 % on cores 0 and 1 in an earlier round with four effects loaded, 26 Oct 2026) and 43.1 % when nothing had loaded. LOAD METER cannot reset the peak, so which frame made it is not measured: the load is the common factor, and the copy of a whole block in one frame hook (DLCOPY, up to 2,600 words) is the candidate.
+
 ## Open
 
 - The unit: the audible dropout while an effect loads (about 25 ms), and a reverb meeting a loaded effect's block.
