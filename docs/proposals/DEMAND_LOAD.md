@@ -34,8 +34,12 @@ replaced or shrunk. The window is stock's buffer memory, so the code goes only w
 Core B loads for both cores. The window is one memory, so code copied by B's hook is resident for A's tracks, and the pump
 never writes to core A.
 
-**Collisions.** A block is held by whoever has it first. A stock reverb (PLATE, DARK, SPRING) and a demand effect never
-share one; neither is moved for the other.
+**Collisions.** A block is held by whoever has it first. A stock reverb and a demand effect never share a block when the
+reverb writes as high as the effect's first word; neither is moved for the other. Each effect's record carries a mask of
+the reverbs that reach its code: bit i is set when the code starts at or below the highest word `REVERBS[i]` writes
+(`stock.SLOT_EXTENT`: PLATE `0x37ff`, SPRING `0xfff`, DARK `0x3da2`, counted from the block's base). In octabam the code
+starts at the top of its block (offset `0x3820`; TRANSIENT `0x3e00`), so only DARK REV reaches it, and not TRANSIENT's.
+Remixes that place code lower (`test/dlspike` earlier, offset `0x1000`) get PLATE and DARK in the mask, and not SPRING.
 
 | route | effect X chosen, block's FX2 is a reverb | reverb chosen on the FX2 slot of a loaded X's block |
 |---|---|---|
@@ -76,7 +80,7 @@ Layout (words are `X:` or `P:` as in the window, which aliases):
 | `x:$3f00..$3f4c` | the stub's per-instance flags and saved registers; `x:$3f50..$3fea` the guard's, and the copier's saved `b` |
 | `P:0x33dc3..0x33e34` | DLCOPY; the stub follows at `window_loader` (`0x33e40`), then the guard's trampolines for payload A and B, then its body (to `0x33fd2` in octabam) |
 | `P:0x37da3..0x37eff` | LOAD METER's DSP half (A and B) |
-| slot offset `0x1000` | the effects: SPECTRUM `0x31000`, MODULATION `0x35000`, CHARACTER `0x39000`, TRANSIENT `0x3d000`, not uploaded |
+| top of each slot | the effects, not uploaded: SPECTRUM `0x33820` (slot of T7), CHARACTER `0x37820` (T8), MODULATION `0x3b820` (T3), TRANSIENT `0x3fe00` (T4). The loader and LOAD METER sit above `0x33da3` and `0x37da3` in the first two slots, so those hold at most 1,411 words from `0x3820` (SPECTRUM, the larger of the two placed there, is 1,399); the third and fourth hold 2,016 |
 
 The clear gaps are `0x33da3..0x33fff` (605 words) and `0x37da3..0x37eff` (349 words); resident code above `0x37f00` is wiped at
 boot. octabam uses 559 and 340.
