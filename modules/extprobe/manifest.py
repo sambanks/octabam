@@ -27,7 +27,7 @@ MODULE = Module(
     ),
     params=(
         Param(b"GO", 0, 3, active=True, formatter=Formatter.STEPPED, labels=("OFF", "FILL", "SCAN"),
-              doc="OFF touches nothing; FILL writes the pattern over T8's slot, then scans; SCAN counts without filling"),
+              doc="OFF idle; FILL writes a pattern over T8's slot, then scans; SCAN counts only"),
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     dsp=DspSection(
