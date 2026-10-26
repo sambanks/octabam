@@ -172,8 +172,11 @@ Hardware steps 2 and 3, the same unit and day:
 - Step 3, after the fix (image I8): BBD shows in the FX2 slot of T1 and T5 and runs on both cores. With MIX 127, FDBK 100
   and TIME 64 the captured T1 and T5 audio, identical to each other, has autocorrelation peaks at 126 ms (r 0.39) and 252 ms
   (0.15), a feedback echo; a peak near 2,000 ms is the pattern repeating (16 steps).
-- Not measured: choosing BBD from the FX2 chooser on the panel (the project path only), the FX1 side, and anything else that
-  reads or validates FX2 ids of 32 or more (scene and p-lock writes, part copy, the MIDI pages, `kill.s` for ids above 31).
+- Choosing BBD from the FX2 chooser was measured under the port only (28 Oct 2026): the chooser's row for id `0x25` in the
+  image's id-to-row table, picked on track 2 with the panel keys, sets its FX2 id to `0x25` (`verify_ids64_load`). On the unit
+  only the project path has been tried.
+- Not measured: the chooser on the unit, the FX1 side, and anything else that reads or validates FX2 ids of 32 or more (scene
+  and p-lock writes, part copy, the MIDI pages, `kill.s` for ids above 31).
 
 Hardware, as planned in this order (steps 1 to 3 above are done; the earlier attempts are listed there):
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A project that stores an FX2 id of 32 or more keeps it through the load, in the 64-id layout.
+"""An FX2 id of 32 or more survives a project load and can be picked from the chooser, in the 64-id layout.
 
     python3 tools/verify/verify_ids64_load.py [--project DIR]       (default: $OT_PROJECT or ~/.octabam_project)
 
@@ -7,7 +7,8 @@ The stock Part validator (0x40002318) clamps each track's FX2 id byte to 31 as t
 layout assigns above that (BBD on 0x25 in `test/ids64`) arrived as 0x1f and the slot showed nothing (a unit, 27 Oct 2026).
 `idspace.convert` raises the clamp to 63. This builds `test/ids64`, writes the id into a copy of the project's bank files
 (a poke into the Part would bypass the validator, which runs at load), loads it under the port and reads the live FX2 ids
-(0x80000ecc..). Track 1's must be 0x25.
+(0x80000ecc..). Track 1's must be 0x25. Then, from an untouched copy of the project, the FX2 chooser's row for that id (the
+image's id-to-row table) is picked on track 2 with the panel keys, and track 2's live id must be 0x25.
 """
 import argparse
 import os
@@ -18,8 +19,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools")); sys.path.insert(0, str(ROOT / "tools/hw")); sys.path.insert(0, str(ROOT / "tools/verify"))
+sys.path.insert(0, str(ROOT / "tools/build"))
 import toolpath  # noqa: E402,F401
 import ot_project  # noqa: E402
+import idspace  # noqa: E402
 
 EMU = ROOT / "out/emu/ot_emu"
 PY = ROOT / ".venv/bin/python3"
@@ -68,6 +71,38 @@ def main():
     ok = got == FX_ID
     print(f"  [{'PASS' if ok else 'FAIL'}] track 1's FX2 id is 0x{FX_ID:02x} after the load of a project that stores it"
           f"  (live id 0x{got:02x}; a clamp to 31 reads 0x1f)")
+    # the chooser: an untouched copy, the row of the id in the image's table, the panel keys, T2's FX2
+    pick = OUT / "pick"
+    (pick / "project").mkdir(parents=True)
+    for f in pathlib.Path(project).expanduser().iterdir():
+        if f.is_file() and f.suffix.lower() == ".work":
+            shutil.copy2(f, pick / "project" / f.name)
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(pick / "project"), "BRAINSET", "BRAINPRJ",
+                        "--tree", str(pick / "tree"), "--out", str(pick / "card.img")], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_ids64_load: stage_card failed:\n{r.stdout[-600:]}{r.stderr[-600:]}")
+    base = 0x40000400
+    img = (OUT / "mainos.bin").read_bytes()
+    row = int.from_bytes(img[idspace.ID2POS64 - base + 4 * FX_ID:][:4], "big")
+    keys = dict(no=0x32, fx2=0x26, down=0x20, yes=0x31, t2=0x11)
+    seq = [("no", 400), ("t2", 400), ("fx2", 160), ("fx2", 800)] + [("down", 500)] * row + [("yes", 1500)]
+    lines, tm = [], 1500
+    for k, gap in seq:
+        lines += [f"{tm} key {keys[k]:#x} down", f"{tm + 40} key {keys[k]:#x} up"]
+        tm += 40 + gap
+    lines.append(f"{tm + 1500} quit")
+    (pick / "s.script").write_text("\n".join(lines) + "\n")
+    pids = pick / "ids.bin"
+    r = subprocess.run([str(EMU), "--image", str(OUT / "mainos.bin"), "--card", str(pick / "card.img"), "--set", "BRAINSET",
+                        "--project", "BRAINPRJ", "--load-ms", "90000", "--mkii", "--dsp", "--frame", "--live-script",
+                        str(pick / "s.script"), "--mem-dump", f"{FX2_LIVE:#x},8={pids}"], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode or not pids.is_file():
+        sys.exit(f"verify_ids64_load: the chooser run failed:\n{(r.stdout + r.stderr)[-800:]}")
+    got2 = pids.read_bytes()[1]
+    ok2 = got2 == FX_ID
+    print(f"  [{'PASS' if ok2 else 'FAIL'}] picking row {row} of the FX2 chooser on track 2 sets its FX2 id to 0x{FX_ID:02x}"
+          f"  (live id 0x{got2:02x})")
+    ok = ok and ok2
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 
