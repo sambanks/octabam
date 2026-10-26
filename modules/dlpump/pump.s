@@ -31,6 +31,7 @@
         .equ    STAGE1, 0x2901                  | the first word of a staged message
         .equ    TOAST,  0x4005a2b8              | the firmware's message popup (text, duration)
         .equ    TOAST_TIME, 120                 | 1/60 s ticks: 2 s (stock's own calls use 48)
+        .equ    DEBOUNCE, 200                   | idle calls (about 145 ms) an effect is used on a free block before it is loaded
         .equ    REPEAT, 30                      | idle calls (ping-0 frames) between a load and its second send
         .equ    RING,   0xa55a
         .equ    PING,   0                       | the frames whose host writes the port delivers (below)
@@ -198,10 +199,20 @@ idle:
         move.l  %d2,dl_tb
 0:      tst.b   %d4
         bne.w   6f
-        tst.l   %d3                             | not loaded
-        beq.w   7f
+        lea     dl_seen,%a1                     | not loaded: for how many idle calls it has been used on a free block
+        move.l  %d6,%d1
+        lsl.l   #2,%d1
+        adda.l  %d1,%a1
+        tst.l   %d3
+        beq.w   dg_used                         | not used: the count starts over
         tst.l   %d5
-        bne.w   7f
+        bne.w   dg_used                         | its block is under a reverb
+        move.l  %a1@,%d1
+        addq.l  #1,%d1
+        move.l  %d1,%a1@
+        cmp.l   #DEBOUNCE,%d1
+        bcs.w   7f                              | not yet: a project load writes the ids over a stretch of frames
+        clr.l   %a1@
         move.l  %a2@(8),%d1                     | the staged block
         move.l  %a2@(12),%d2
         bset    %d6,%d0
@@ -419,6 +430,7 @@ dl_dest:  .long 0
 dl_src:   .long 0
 dl_left:  .long 0
 dl_loaded: .long 0                      | bit k: effect k is loaded
+dl_seen:  .long 0, 0, 0, 0              | per effect: idle calls it has been used, not loaded, on a free block
 dl_gone:  .long 0, 0, 0, 0              | per effect: idle calls it has been loaded and unused
 dl_rwait: .long 0                       | idle calls until the load of effect dl_rk is sent again (0: none)
 dl_rk:    .long 0

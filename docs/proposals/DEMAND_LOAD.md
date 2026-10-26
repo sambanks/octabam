@@ -47,7 +47,7 @@ takes the block: the pump loads X, and a dry reverb resumes (it runs the stock i
 
 - **DLPUMP** (ColdFire, `modules/dlpump`), called from LOAD METER's entry code (`lm_in`, weak symbol) every frame interrupt.
   Idle: on ping-0 frames it compares the ids on the 16 live FX slots with the effects loaded and arms one message: a load when
-  an effect is used, not loaded, and its block is not under a reverb; a withdrawal when it is loaded and no slot uses it for 10 s in a row (a project load leaves every id at its default for about 4 s, measured on a unit; the `GRACE` build setting, 2 S for the port gates), or at once when a stock reverb is on the FX2 slot of its block.
+  an effect has been used, not loaded, and its block not under a reverb for 200 idle calls in a row (about 145 ms: a project load writes the ids over a stretch of frames, and a reverb that arrives within it keeps the block; `DEBOUNCE` in `pump.s`, port-gated by `verify_dlload` `race`, not measured on a unit); a withdrawal when it is loaded and no slot uses it for 10 s in a row (a project load leaves every id at its default for about 4 s, measured on a unit; the `GRACE` build setting, 2 S for the port gates), or at once when a stock reverb is on the FX2 slot of its block.
   Sending: 100 halfwords per ping-0 frame to core B's `X:0x2901..`, then the doorbell `0xa55a` to `X:0x2900` two frames later.
   A load is sent three times, 30 idle calls apart, if the effect is still loaded each time. The table of effects, their blocks and the toast
   strings is generated per remix (`remix.inc`, `Linked.include`) from `out/dsp/demand_records.json`; the unit reserves 2,600 code

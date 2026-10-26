@@ -15,6 +15,7 @@ Remix.window_demand (k):
   reverb-takes  effect 0 unused at 2 s, a reverb on its block at 2.5 s -> unbound by 3.4 s, well inside the grace
   pick-reverb-unused  effect 0 loaded and unused: the FX2 chooser accepts a reverb on its block, no toast, effect withdrawn
   unused     no track uses any                          -> none bound
+  race       effect 0 in use, a reverb on its block 60 ms later (inside the load debounce) -> never loaded, no block received
   toast text  each effect's toast strings (EVICT Tn FX2 1ST, EVICT <name> 1ST) name the track of its own block and the effect's chooser name (the generated table)
   two-b, two-a, two-ab-b, two-ab-a  effect 0 on two tracks of one core, and on one track of each core: the instances each have their own r7 (a pcwatch on the proc)
   runs-b<k> / runs-a<k>  T1 (core B) / T5 (core A) uses effect k -> its loaded proc is reached on that core (--dsp-pcwatch)
@@ -106,6 +107,7 @@ def main():
         "used": (every, []),
         "withdrawn": (every, [(2000, poke(FX1_LIVE, FX1_PART, 0, FILTER))]),
         "unused": ("", []),
+        "race": (poke(FX1_LIVE, FX1_PART, 0, mod_id), [(60, poke(FX2_LIVE, FX2_PART, block_track, PLATE))]),     # a reverb 60 ms behind the effect
         "grace": (poke(FX1_LIVE, FX1_PART, 0, mod_id),            # unused at 2 s, used again at 3 s: inside the 2 s grace
                   [(2000, poke(FX1_LIVE, FX1_PART, 0, FILTER)), (3000, poke(FX1_LIVE, FX1_PART, 0, mod_id))]),
         "reverb-late": (poke(FX1_LIVE, FX1_PART, 0, mod_id), [(2000, poke(FX2_LIVE, FX2_PART, block_track, PLATE))]),
@@ -210,6 +212,10 @@ def main():
           f"(whoever holds the block keeps it)", entry[:1] == [0xB0A5ED], f"{[hex(w) for w in entry]}")
     print("blocked:")
     check(f"{recs[0]['key']} is not loaded over a stock reverb's block", peek("blocked", 1, "X", 0x33DA3)[:1] == [0])
+    print("race:")
+    entry = peek("race", 1, "X", 0x33DA3)
+    check(f"{recs[0]['key']} is not loaded when a reverb arrives on its block 60 ms after it (a project load writes the ids over a stretch of frames)",
+          entry[:1] == [0] and entry[5:6] == [0], f"{[hex(w) for w in entry]}")
     print("pick:")
     ids = {t: (OUT / f"{t}_ids.bin").read_bytes() for t in ("pick", "pick-blocked")}
     check(f"T2's {chooser.upper()} chooser picks {recs[0]['key']} when it can be loaded", ids["pick"][slot + 1] == mod_id, f"{chooser} of T2 = 0x{ids['pick'][slot + 1]:02x}")
