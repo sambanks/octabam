@@ -89,6 +89,9 @@ def generic_window(ns):
         u.mem_write(part,old);u.mem_write(0x47002000,new)
         for offset in (0x10,0x11,0x12,0x13,0x14,0x18b0,0x18b1):assert m.call('store_part_read',offset,context)==old[offset]
         for offset in (0,0x15,0x18af,0x18b2):assert m.call('store_part_read',offset,context)==0xffffffff
+        # MIDI adapter bounds do not grant access to an unregistered window.
+        assert m.call('store_part_midi_read',0,context)==0xffffffff
+        assert m.call('store_part_midi_key',0,context)==0xffffffff
         assert m.call('store_part_write',0x10,context,regs={UC_M68K_REG_D3:4})==0
         assert m.call('store_part_write',0x11,context,regs={UC_M68K_REG_D3:255})==1
         assert u.mem_read(part+0x11,1)==b'\xff'
