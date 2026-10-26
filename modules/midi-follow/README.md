@@ -41,6 +41,9 @@ ordinary pattern changes alone retain it.
 - RFOL OFF uses native notes. Before a source root is available, playback is unchanged.
 - The source supplies its NOTE and NOT2–4 pitches. The follower plays that set in its selected register, with its own
   TRAN. Its stored NOT2–4 do not add notes.
+- Source pitches include the source track's TRAN and KEY/scale processing.
+  The follower applies its register and chromatic TRAN afterward; the scale
+  setting itself is not copied and there is no second scale correction.
 - LIVE shifts currently held notes when the source root moves. A change to
   native NOT2–4 with the same root takes effect at the follower's next trig.
 - Several tracks can follow one source. Chains use the ultimate source and

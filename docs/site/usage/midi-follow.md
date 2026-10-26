@@ -20,6 +20,10 @@ source rest retains the last notes. Source mute silences its output while
 allowing its notes to drive followers. Give source and follower separate MIDI
 channels while checking the result.
 
+The source's scale and transpose are applied before Follow captures its notes.
+Followers therefore share the source's pitch choices without copying its scale
+setting. The follower's own TRAN is then applied as a chromatic offset.
+
 ## Storage and compatibility
 
 RFOL, register choices and UPDT are saved in each Part. Fresh Parts default

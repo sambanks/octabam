@@ -41,7 +41,9 @@ def main():
         assert state[0x4e2+36+3]==1
         assert bytes((state[0x4e2+36*t+12]>>1)&1 for t in range(8))==bytes((0,mode,0,0,0,0,0,0))
         bass=[e[2] for e in events if e[:2]==('on',2)]
-        want=[48,36,36,41,43,43] if not mode else [48,36,36,41,41,43,43]
+        # Native sources publish F+A; generated source voices are excluded.
+        want=([48,36,36,41,43,43] if not mode else [48,36,36,41,41,43,43]) if harmony else (
+            [48,36,36,41,45,43,43] if not mode else [48,36,36,41,41,45,43,43])
         if not arp:assert bass==want,(name,bass,want)
         else:
             f_index=next(i for i,e in enumerate(events) if e[:3]==('on',1,65))
