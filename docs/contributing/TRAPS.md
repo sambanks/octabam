@@ -1547,3 +1547,11 @@ Saving T1's actual effect correctly produced no BusDelay record. `verify_brain.p
 now seeds both required effects in its disposable copy. Prepare every effect
 whose identity a later assertion assumes, rather than inheriting it from the
 operator's project.
+Its MIDI logging probe also explicitly enables program-change reception on
+channel 1 in a separate copy before asserting that the message queues a pattern.
+
+BRAIN's gate builds its own `octabam-bus` image, so it belongs to the shared
+isolated stage. Running it as an image gate replaced the selected Follow image
+and made later Scales/Loopback gates fail on missing symbols. Declare gates that
+build another image as isolated; `verify-remix` then restores the selected image
+before its image gates run.
