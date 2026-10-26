@@ -592,26 +592,29 @@ class Context:
                     test_carriers.setdefault(k, []).append(name)
         gate_owners, gate_shared, gate_once = {}, {}, {}
         plain = {g.script for m in mods.values() for g in getattr(m, "gates", ())}
+        def add_gate(key, g):
+            owners = gate_owners.setdefault(g.script, [])
+            if key not in owners:
+                owners.append(key)
+            gate_shared[g.script] = (gate_shared.get(g.script, True) and not g.remix_arg
+                                     and g.stage == "isolated")
+            gate_once[g.script] = gate_once.get(g.script, False) or getattr(g, "once", False)
+
         for m in mods.values():
             for g in variant_gates(m):
-                gate_owners.setdefault(g.script, []).append(m.key)
-                # the shared half runs the isolated remix-independent gates;
-                # an image-stage gate runs in each carrying remix's half
-                gate_shared[g.script] = (gate_shared.get(g.script, True) and not g.remix_arg
-                                         and g.stage == "isolated")
-                gate_once[g.script] = gate_once.get(g.script, False) or getattr(g, "once", False)
-        # A gate only a build variant declares runs where that variant is
-        # built: the remixes whose bound module carries it (verify_usb_post:
-        # the TRACKS POST layout's remixes, not every USB remix).
+                add_gate(m.key, g)
+        # Both build variants and selection callbacks can add gates. Discover
+        # the latter from actual bound selections, then route each optional
+        # gate only to remixes that install it (including test-only clients).
         gate_remixes = {}
-        if set(gate_owners) - plain:
-            for name in registry.remix_names():
-                r = registry.remix(name)
-                b = registry.bound(r)
-                for k in r.modules:
-                    for g in getattr(b[k], "gates", ()):
-                        if g.script not in plain:
-                            gate_remixes.setdefault(g.script, set()).add(name)
+        for name in registry.remix_names():
+            r = registry.remix(name)
+            b = registry.bound(r)
+            for k in r.modules:
+                for g in getattr(b[k], "gates", ()):
+                    add_gate(k, g)
+                    if g.script not in plain:
+                        gate_remixes.setdefault(g.script, set()).add(name)
         make_head = (ROOT / "Makefile").read_text()
         make_base = None
 
