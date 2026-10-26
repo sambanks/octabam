@@ -128,7 +128,7 @@ records are left out of payload A's upload and written to `out/dsp/demand_record
 - 0x3da2 is the last word the probe scans (LOAD METER's code starts at 0x37da3), so DARK REV's figure is a lower bound.
 - The section after this table gives the same effects with signal on T8.
 
-With signal on T8 (27 Oct 2026, projects `MXSG4_*`: T8 a FLEX slot playing a 31.7 s band-limited noise loop, started by MIDI Start and a note 43 on channel 8; knobs 127):
+With signal on T8 (26 Oct 2026, projects `MXSG4_*`: T8 a FLEX slot playing a 31.7 s band-limited noise loop, started by MIDI Start and a note 43 on channel 8; knobs 127):
 
 | effect | highest differing offset | differing words | silent input |
 |---|---|---|---|
