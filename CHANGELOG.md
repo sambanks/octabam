@@ -138,6 +138,19 @@ Docs
 - `docs/contributing/TESTING.md`: every gate, how to write one, what it costs (29 Sep).
 - ColdFire load on a unit: Bryan T's CF METER takes (4 Oct; `docs/firmware/ARCHITECTURE.md` section 6): ~16.5 µs per playing voice at CPI ~4.4 against the port, no first-voice premium (the morning's +37 µs retracted the same evening), the USB stack ~14 µs idle / ~25 µs playing, no crossbar contention; OUT TRACKS MAIN CUE costs 27–50 µs of frame interrupt over OUT MAIN CUE, most of it with no host connected; TSTR and the stock DELAY not measurable; interrupt levels from the ICR writes in `KERNEL.md`.
 - Removed: `PLAN.md`, `docs/TIMESTRETCH_PIPELINE.md` (27 Sep).
+- Demand loader (`modules/dlpump`, `modules/dlcopy`, `modules/dlprobe`; `docs/proposals/DEMAND_LOAD.md`): `octabam` copies SPECTRUM, CHARACTER, MODULATION and TRANSIENT into the DSP's shared window while a track uses them and withdraws them 10 s after the last use. All 14 stock effects stay; the stock reverbs run behind a guard that keeps them off loaded code. A block is held by whoever has it first: the FX1 and FX2 choosers refuse an effect whose block is under PLATE, DARK or SPRING REV, and a reverb on the block of a loaded effect a track uses, each with a toast (`NEEDS Tn FX2 FREE`, `Tn HOLDS <effect>`); other routes toast at the next page key. `octabam` lists the stations on FX1 (it offered SPECTRUM and CHARACTER on FX2 only, where they render dry). GATE VERB is not in `octabam`. New builder fields `Remix.window_demand`, `window_guard`, `window_loader`; the build refuses an uploaded window record above `0x37f00`. DLPROBE and `tools/hw/dl_state.py` (USB `0xc0/0x57` block 3) read the counters on a unit. Gates `verify_dlstub`, `verify_dlwrap`, `verify_dlload`, `verify_dlprobe`.
+
+## Images DLPROBEJ1..K1 (26 Oct 2026, `remixes/test/dl-probe` and `dl-probe-any`)
+
+Sam's MKII, one image after another with the project `MXDLPR01` / `MXDLPR02` (DLPROBE on T1's FX1; MODULATION, SPECTRUM, CHARACTER on FX1 or FX2 of other tracks, TRANSIENT on T6's FX2), read over USB (`modules/dlprobe/decode.py`, `tools/hw/dl_state.py`, `tools/hw/load_meter.py`):
+
+- `DLPROBEJ1`: all four effects unbound, received 0.
+- `DLPROBEJ3`: the pump ran (the ping word alternated 0 and 1; 4 loads, 180 chunks, 8 doorbells sent); the doorbell word read `0x40a55a` and stayed non-zero (~77,000 frames): the byte above a host word's 16 bits is stale on the unit, and the copier compared the full word. The unit froze once on this image (13:27, cause not found).
+- `DLPROBEJ5`: with the doorbell and header masked, all four effects BOUND, every block's sum matched, published equal to received. SPECTRUM and CHARACTER on FX2 cost a dry slot's 116..119 counts (`fx1_only`).
+- `DLPROBEJ7`: the stations on FX1. CHARACTER (core A) 5,147 counts a frame, SPECTRUM (core B) 4,062, TRANSIENT (core A, FX2) 3,616, MODULATION (core B) 323, a dry slot 89..147: the code runs, on core A as written by core B.
+- `DLPANYJ9` (the pump sends on every frame): blocks refused for their sum (MODULATION received 4, refused 3, published 1; SPECTRUM 2, 2, 0; TRANSIENT 2, 1, 1; CHARACTER received nothing). The ping-0 rule holds on the unit.
+- `DLPROBEK0`: with a 2 s grace, a project load withdrew and reloaded all four effects: the ids sit at their defaults for 3.8 s.
+- `DLPROBEK1`: the 10 s grace; 4 loads, 0 withdrawals, received 2, refused 0, published 2 per effect, all four running.
 
 ## AUTOSAVE1 and AUTOSAVE2 — 15-16 Oct 2026 (`rec-buffer-autosave`, now `buffer-saver`, Chupitnik's builds)
 

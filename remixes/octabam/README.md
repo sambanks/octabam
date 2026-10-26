@@ -56,7 +56,7 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 
 ## Where it has run
 
-Port gates only: `make check REMIX=octabam`, which loads, withdraws and runs each of the four effects on both cores. Nothing of the loader has run on a unit: the host write to the DSP, copying code into the window and running it from there, the window's wait-state cost, and the stock effects' buffer extents at other settings are open.
+The loader: Sam's MKII, 26 Oct 2026, as the images `DLPROBEJ1` to `K1` (`remixes/test/dl-probe`, which is `octabam` with DLPROBE in place of EQUALIZER; [CHANGELOG](../../CHANGELOG.md)): all four effects load, their blocks pass the sum check, they run (core B's copies run on core A), and they stay loaded through a project load. This image itself, `octabam`, has run under the port only (`make check REMIX=octabam`). Not measured on a unit: the stock reverbs' buffer extents at other settings, the toast wording and width, the dropout while an effect loads.
 
 EDIT EVENTS/PLOCKS: radiohagen, Octatrack MKII, PLK858/build 98, 22 October 2026:
 held-edit and trig/track/pattern checks passed
