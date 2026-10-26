@@ -967,6 +967,7 @@ def main():
     _want = {"midi-loopback": (), "midi-scales": (), "mods": (), "ata-write-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
              "usb-out-tracks-post": (),
              "remix-switch": (), "remix-switch-trace": (),   # REMIX SWITCH's park in dead vectors, no region words
+             "rs64": (),   # remix-switch with BBD placed in the shared window: no region words
              "usb-io-stock14": (),   # USB's RX inject at payload A's tail (DspSection.tail), no region words
              "usb-out-main-cue": (), "usb-out-main": (), "usb-midi": (), "stems": (),     # stock effects + ColdFire modules, no DSP words
              "stems-brain": (),   # STEM REC under PROJECT + BRAIN/REMIX SWITCH; no DSP words

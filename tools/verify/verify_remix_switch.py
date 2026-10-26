@@ -65,6 +65,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "build"))
 from remix import brainfile, registry  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -445,8 +446,12 @@ def main():
 
     # ---- dsp: park the running cores, boot them through the loaders --------
     B = 0x40000400
-    blobs = {"bootA": (0x400E21E0, 0x96), "payA": (0x400E2324, 0x136CB),
-             "bootB": (0x400E2276, 0xAE), "payB": (0x400F59EF, 0x12D05)}   # dsp_modmap
+    # the payloads' addresses and lengths are read from the image: the 64-id layout adds a record to each and moves B
+    # (tools/build/idspace.py); the boot blobs and their start addresses are the same in both layouts
+    import idspace  # noqa: E402
+    (a_va, a_len), (b_va, b_len) = idspace.payloads(homeb)
+    blobs = {"bootA": (0x400E21E0, 0x96), "payA": (a_va, a_len),
+             "bootB": (0x400E2276, 0xAE), "payB": (b_va, b_len)}   # dsp_modmap, 32-id: 0x136CB and 0x12D05 long
     at, where, cmds = 0x41300000, {}, ["frame on", "run 300", "frame off", "run 20"]
     for k, (a, n) in blobs.items():
         where[k] = at
