@@ -153,6 +153,11 @@ def main():
     # T2's FX1 is SPECTRUM, so the FX1 chooser opens on its row and one DOWN lands CHARACTER. The
     # project's own bytes name an effect by id, and which one that is depends on the remix.
     import ot_project
+    # The save/menu probes below require BusDelay on T1, even when the
+    # supplied project is MIDI-only. Seed the disposable copy explicitly.
+    bd = mods["DELAY SERVER"]
+    ot_project.set_fx(copy, "fx2", 1, "DELAY SERVER", page=[p.default for p in bd.params[:6]],
+                      page2=[p.default for p in bd.params[6:12]], guard=False)
     spm = mods["SPECTRUM"]
     ot_project.set_fx(copy, "fx1", 2, "SPECTRUM", page=[p.default or 0 for p in spm.params[:6]],
                       page2=[p.default or 0 for p in spm.params[6:12]], guard=False)
