@@ -153,14 +153,11 @@ idle:
         moveq   #0,%d5                          | blocked: the FX2 slot that shares the block is a stock reverb
         move.l  %a2@(4),%d1
         lea     LIVE+8,%a1
-        move.b  %a1@(0,%d1:l),%d1
-        cmp.b   #DL_PLATE,%d1
-        beq.w   2f
-        cmp.b   #DL_SPRING,%d1
-        beq.w   2f
-        cmp.b   #DL_DARK,%d1
-        bne.w   1f
-2:      moveq   #1,%d5
+        move.b  %a1@(0,%d1:l),%d2
+        bsr.w   dl_rvm                          | d2: the reverb's bit, 0 for any other effect
+        and.l   %a2@(28),%d2                    | ... if that reverb reaches this effect's code
+        beq.w   1f
+        moveq   #1,%d5
 1:      move.l  dl_loaded,%d0
         btst    %d6,%d0
         sne     %d4                             | d4.b: loaded
@@ -232,15 +229,12 @@ idle:
         adda.l  %d1,%a1
         tst.l   %d3
         bne.w   dg_used
-        move.l  %a2@(4),%d1                     | unused: a stock reverb on its block takes it at once
+        move.l  %a2@(4),%d1                     | unused: a stock reverb that reaches its code takes it at once
         lea     LIVE+8,%a0
-        move.b  %a0@(0,%d1:l),%d1
-        cmp.b   #DL_PLATE,%d1
-        beq.w   dg_now
-        cmp.b   #DL_SPRING,%d1
-        beq.w   dg_now
-        cmp.b   #DL_DARK,%d1
-        bne.w   dg_wait
+        move.b  %a0@(0,%d1:l),%d2
+        bsr.w   dl_rvm
+        and.l   %a2@(28),%d2
+        beq.w   dg_wait
 dg_now: move.l  #GRACE,%a1@
 dg_wait:
         move.l  %a1@,%d1
@@ -257,7 +251,7 @@ dg_wait:
         bra.w   arm
 dg_used:
         clr.l   %a1@                            | used again: the grace starts over
-7:      lea     %a2@(28),%a2
+7:      lea     %a2@(32),%a2
         addq.l  #1,%d6
         bra.w   3b
 arm:    move.l  %d0,dl_loaded
@@ -269,6 +263,22 @@ arm:    move.l  %d0,dl_loaded
         move.l  %d0,dl_dest
         moveq   #1,%d0
         move.l  %d0,dl_state
+        rts
+
+| d2 = an FX2 id -> d2 = 1, 2 or 4 for PLATE, SPRING or DARK REV, 0 for any other id (bit i = DLPUMP's REVERBS[i])
+dl_rvm: cmp.b   #DL_PLATE,%d2
+        bne.w   1f
+        moveq   #1,%d2
+        rts
+1:      cmp.b   #DL_SPRING,%d2
+        bne.w   2f
+        moveq   #2,%d2
+        rts
+2:      cmp.b   #DL_DARK,%d2
+        bne.w   3f
+        moveq   #4,%d2
+        rts
+3:      moveq   #0,%d2
         rts
 
 | ---- the choosers: refuse a collision, and say so ----------------------------
@@ -334,13 +344,10 @@ dl_veto:
         beq.w   9f                              | the FX2 chooser on that track replaces what is there
 3:      lea     LIVE+8,%a0
         move.b  %a0@(0,%d3:l),%d2
-        cmp.b   #DL_PLATE,%d2
-        beq.w   4f
-        cmp.b   #DL_SPRING,%d2
-        beq.w   4f
-        cmp.b   #DL_DARK,%d2
-        bne.w   9f
-4:      move.l  %a2@(20),%d0                    | EVICT Tn FX2 1ST
+        bsr.w   dl_rvm
+        and.l   %a2@(28),%d2                    | a reverb on that slot that reaches the code
+        beq.w   9f
+        move.l  %a2@(20),%d0                    | EVICT Tn FX2 1ST
         bra.w   9f
 5:      tst.b   %d4                             | a reverb chosen on the FX2 slot of a loaded effect's block
         beq.w   7f
@@ -358,15 +365,13 @@ dv_scan:
         bpl.w   dv_scan
         bra.w   7f                              | unused: it is about to be withdrawn, not a holder
 dv_used:
-        cmp.b   #DL_PLATE,%d1
-        beq.w   6f
-        cmp.b   #DL_SPRING,%d1
-        beq.w   6f
-        cmp.b   #DL_DARK,%d1
-        bne.w   7f
-6:      move.l  %a2@(24),%d0                    | EVICT <effect> 1ST
+        move.l  %d1,%d2                         | the reverb chosen: does it reach this effect's code?
+        bsr.w   dl_rvm
+        and.l   %a2@(28),%d2
+        beq.w   7f
+        move.l  %a2@(24),%d0                    | EVICT <effect> 1ST
         bra.w   9f
-7:      lea     %a2@(28),%a2
+7:      lea     %a2@(32),%a2
         addq.l  #1,%d6
         bra.w   2b
 9:      movem.l %sp@,%d1-%d7/%a0-%a2

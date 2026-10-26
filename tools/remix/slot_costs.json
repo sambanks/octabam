@@ -55,9 +55,87 @@
      59.44
     ]
    }
+  },
+  "test/cost-a": {
+   "cf_share": 67.11,
+   "core0": 22.45,
+   "core1": 14.85,
+   "reports": {
+    "costa": [
+     22.45,
+     14.85,
+     67.11
+    ]
+   }
+  },
+  "test/cost-b": {
+   "cf_share": 59.51,
+   "core0": 22.45,
+   "core1": 14.86,
+   "reports": {
+    "costb": [
+     22.45,
+     14.86,
+     59.51
+    ]
+   }
+  },
+  "test/cost-c": {
+   "cf_share": 59.51,
+   "core0": 22.45,
+   "core1": 14.86,
+   "reports": {
+    "costc": [
+     22.45,
+     14.86,
+     59.51
+    ]
+   }
+  },
+  "test/cost-g": {
+   "cf_share": 59.52,
+   "core0": 22.44,
+   "core1": 14.86,
+   "reports": {
+    "costg": [
+     22.44,
+     14.86,
+     59.52
+    ]
+   }
+  },
+  "test/cost-h": {
+   "cf_share": 59.51,
+   "core0": 22.45,
+   "core1": 14.86,
+   "reports": {
+    "costh": [
+     22.45,
+     14.86,
+     59.51
+    ]
+   }
   }
  },
  "effects": {
+  "BBD": {
+   "costs": {
+    "FX2 dear": {
+     "cf_over_base": 0.1,
+     "core0": 11.34,
+     "core1": 11.33,
+     "remix": "test/cost-g",
+     "report": "costg"
+    },
+    "FX2 def": {
+     "cf_over_base": -0.0,
+     "core0": 10.07,
+     "core1": 10.06,
+     "remix": "test/cost-g",
+     "report": "costg"
+    }
+   }
+  },
   "CHARACTER": {
    "costs": {
     "FX1 dear": {
@@ -149,11 +227,11 @@
   "CHORUS": {
    "costs": {
     "FX1 def": {
-     "cf_over_base": -0.0,
-     "core0": 6.29,
-     "core1": 6.29,
-     "remix": "stock-meter-b",
-     "report": "stock_b"
+     "cf_over_base": 0.0,
+     "core0": 6.28,
+     "core1": 6.28,
+     "remix": "test/cost-b",
+     "report": "costb"
     },
     "FX2 def": {
      "cf_over_base": 0.1,
@@ -167,11 +245,11 @@
   "COMB FILTER": {
    "costs": {
     "FX1 def": {
-     "cf_over_base": -0.0,
+     "cf_over_base": 0.0,
      "core0": 2.74,
      "core1": 2.74,
-     "remix": "stock-meter-b",
-     "report": "stock_b"
+     "remix": "test/cost-b",
+     "report": "costb"
     },
     "FX2 def": {
      "cf_over_base": -0.0,
@@ -185,11 +263,11 @@
   "COMPRESSOR": {
    "costs": {
     "FX1 def": {
-     "cf_over_base": -0.0,
-     "core0": 2.18,
+     "cf_over_base": 0.0,
+     "core0": 2.17,
      "core1": 2.18,
-     "remix": "stock-meter-b",
-     "report": "stock_b"
+     "remix": "test/cost-b",
+     "report": "costb"
     },
     "FX2 def": {
      "cf_over_base": -0.0,
@@ -222,14 +300,32 @@
     }
    }
   },
+  "DISTORX": {
+   "costs": {
+    "FX2 dear": {
+     "cf_over_base": -0.0,
+     "core0": 9.45,
+     "core1": 9.44,
+     "remix": "test/cost-b",
+     "report": "costb"
+    },
+    "FX2 def": {
+     "cf_over_base": 0.0,
+     "core0": -0.02,
+     "core1": -0.01,
+     "remix": "test/cost-b",
+     "report": "costb"
+    }
+   }
+  },
   "DJ EQ": {
    "costs": {
     "FX1 def": {
      "cf_over_base": 0.0,
      "core0": 7.3,
      "core1": 7.3,
-     "remix": "stock-meter-b",
-     "report": "stock_b"
+     "remix": "test/cost-b",
+     "report": "costb"
     },
     "FX2 def": {
      "cf_over_base": 0.0,
@@ -246,8 +342,8 @@
      "cf_over_base": 0.0,
      "core0": 4.1,
      "core1": 4.1,
-     "remix": "stock-meter-b",
-     "report": "stock_b"
+     "remix": "test/cost-b",
+     "report": "costb"
     },
     "FX2 def": {
      "cf_over_base": 0.1,
@@ -310,8 +406,8 @@
      "cf_over_base": 0.0,
      "core0": 5.11,
      "core1": 5.1,
-     "remix": "stock-meter-b",
-     "report": "stock_b"
+     "remix": "test/cost-b",
+     "report": "costb"
     },
     "FX2 def": {
      "cf_over_base": -0.0,
@@ -325,11 +421,11 @@
   "FLANGER": {
    "costs": {
     "FX1 def": {
-     "cf_over_base": -0.0,
+     "cf_over_base": 0.0,
      "core0": 3.14,
      "core1": 3.15,
-     "remix": "stock-meter-b",
-     "report": "stock_b"
+     "remix": "test/cost-b",
+     "report": "costb"
     },
     "FX2 def": {
      "cf_over_base": -0.0,
@@ -342,23 +438,30 @@
   },
   "GATE VERB": {
    "costs": {
-    "FX2 def": {
+    "FX2 dear": {
      "cf_over_base": 0.0,
-     "core0": 7.76,
+     "core0": 7.74,
      "core1": 7.75,
-     "remix": "octabam-inserts",
-     "report": "ins01"
+     "remix": "test/cost-a",
+     "report": "costa"
+    },
+    "FX2 def": {
+     "cf_over_base": -0.0,
+     "core0": 7.75,
+     "core1": 7.76,
+     "remix": "test/cost-a",
+     "report": "costa"
     }
    }
   },
   "LO-FI": {
    "costs": {
     "FX1 def": {
-     "cf_over_base": -0.0,
+     "cf_over_base": 0.0,
      "core0": 6.66,
      "core1": 6.66,
-     "remix": "stock-meter-b",
-     "report": "stock_b"
+     "remix": "test/cost-b",
+     "report": "costb"
     },
     "FX2 def": {
      "cf_over_base": 0.0,
@@ -412,6 +515,17 @@
      "core1": 13.58,
      "remix": "octabam-inserts",
      "report": "ins02"
+    }
+   }
+  },
+  "MINIVERB": {
+   "costs": {
+    "FX2 def": {
+     "cf_over_base": 0.0,
+     "core0": 12.29,
+     "core1": 12.28,
+     "remix": "test/cost-h",
+     "report": "costh"
     }
    }
   },
@@ -577,10 +691,10 @@
    "costs": {
     "FX1 def": {
      "cf_over_base": 0.0,
-     "core0": 5.19,
+     "core0": 5.18,
      "core1": 5.18,
-     "remix": "stock-meter-b",
-     "report": "stock_b"
+     "remix": "test/cost-b",
+     "report": "costb"
     },
     "FX2 def": {
      "cf_over_base": -0.1,
@@ -599,6 +713,52 @@
      "core1": 5.27,
      "remix": "stock-meter-b",
      "report": "stock_b"
+    }
+   }
+  },
+  "SHATTER": {
+   "costs": {
+    "FX2 dear": {
+     "cf_over_base": 0.1,
+     "core0": 7.09,
+     "core1": 7.09,
+     "remix": "test/cost-a",
+     "report": "costa"
+    },
+    "FX2 def": {
+     "cf_over_base": -0.0,
+     "core0": 3.41,
+     "core1": 3.42,
+     "remix": "test/cost-a",
+     "report": "costa"
+    },
+    "FX2 mode0+dear": {
+     "cf_over_base": -0.0,
+     "core0": 7.06,
+     "core1": 7.07,
+     "remix": "test/cost-a",
+     "report": "costa"
+    },
+    "FX2 mode1": {
+     "cf_over_base": 0.0,
+     "core0": 3.41,
+     "core1": 3.42,
+     "remix": "test/cost-a",
+     "report": "costa"
+    },
+    "FX2 mode1+dear": {
+     "cf_over_base": 0.0,
+     "core0": 7.46,
+     "core1": 7.46,
+     "remix": "test/cost-a",
+     "report": "costa"
+    },
+    "FX2 mode2": {
+     "cf_over_base": 0.0,
+     "core0": 3.44,
+     "core1": 3.44,
+     "remix": "test/cost-a",
+     "report": "costa"
     }
    }
   },
@@ -747,6 +907,66 @@
     }
    }
   },
+  "STUTTR": {
+   "costs": {
+    "FX2 dear": {
+     "cf_over_base": -0.0,
+     "core0": 4.6,
+     "core1": 4.6,
+     "remix": "test/cost-c",
+     "report": "costc"
+    },
+    "FX2 def": {
+     "cf_over_base": -0.0,
+     "core0": 3.1,
+     "core1": 3.11,
+     "remix": "test/cost-c",
+     "report": "costc"
+    },
+    "FX2 mode1": {
+     "cf_over_base": 0.1,
+     "core0": 3.13,
+     "core1": 3.14,
+     "remix": "test/cost-c",
+     "report": "costc"
+    },
+    "FX2 mode1+dear": {
+     "cf_over_base": 0.1,
+     "core0": 4.19,
+     "core1": 4.19,
+     "remix": "test/cost-c",
+     "report": "costc"
+    },
+    "FX2 mode2": {
+     "cf_over_base": 0.1,
+     "core0": 3.1,
+     "core1": 3.11,
+     "remix": "test/cost-c",
+     "report": "costc"
+    },
+    "FX2 mode2+dear": {
+     "cf_over_base": 0.0,
+     "core0": 3.94,
+     "core1": 3.94,
+     "remix": "test/cost-c",
+     "report": "costc"
+    },
+    "FX2 mode3": {
+     "cf_over_base": 0.1,
+     "core0": 3.1,
+     "core1": 3.11,
+     "remix": "test/cost-c",
+     "report": "costc"
+    },
+    "FX2 mode3+dear": {
+     "cf_over_base": 0.0,
+     "core0": 3.74,
+     "core1": 3.75,
+     "remix": "test/cost-c",
+     "report": "costc"
+    }
+   }
+  },
   "TRANSIENT": {
    "costs": {
     "FX1 dear": {
@@ -776,6 +996,24 @@
      "core1": 5.31,
      "remix": "octabam-inserts",
      "report": "ins01"
+    }
+   }
+  },
+  "VOID": {
+   "costs": {
+    "FX2 dear": {
+     "cf_over_base": 0.0,
+     "core0": 10.46,
+     "core1": 10.45,
+     "remix": "test/cost-h",
+     "report": "costh"
+    },
+    "FX2 def": {
+     "cf_over_base": -0.0,
+     "core0": 7.05,
+     "core1": 7.05,
+     "remix": "test/cost-h",
+     "report": "costh"
     }
    }
   }

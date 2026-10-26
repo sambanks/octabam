@@ -17,7 +17,8 @@ TOAST_NAME_MAX = 10             # "EVICT <name> 1ST" must fit the popup, so a lo
 
 def table_inc(modules, remix):
     """remix.inc: one record per Remix.window_demand effect (id, the track whose FX2 slot shares its block, the
-    staged block, its length in halfwords, the withdraw message), then the blocks. The DSP stage writes
+    staged block, its length in halfwords, the withdraw message, the two toasts, the mask of stock reverbs that
+    reach its code), then the blocks. The DSP stage writes
     RECORDS after the first link, so that link reserves CAPACITY words per effect with no content; the second
     link has the words and the same size."""
     from remix import stock
@@ -33,7 +34,10 @@ def table_inc(modules, remix):
         addr = dict(remix.window)[key]
         track = BLOCK_TRACK[(addr - WIN) >> 14 & 3]
         n = 7 + 2 * len(recs[key]["words"]) if key in recs else 0
-        rows.append(f"        .long   0x{modules[key].menu.fx2_id:02x}, {track}, dl_blk{k}, {n}, dl_off{k}, dl_need{k}, dl_hold{k}")
+        # the stock reverbs whose buffer reaches the code: bit i for REVERBS[i], set when the code starts at or below
+        # the highest word that reverb writes (stock.SLOT_EXTENT, measured), counted from its block's base
+        mask = sum(1 << i for i, r in enumerate(REVERBS) if (addr - WIN) % 0x4000 <= stock.SLOT_EXTENT[r])
+        rows.append(f"        .long   0x{modules[key].menu.fx2_id:02x}, {track}, dl_blk{k}, {n}, dl_off{k}, dl_need{k}, dl_hold{k}, {mask}")
     for k, key in enumerate(keys):
         track = BLOCK_TRACK[(dict(remix.window)[key] - WIN) >> 14 & 3]
         rec = recs.get(key)

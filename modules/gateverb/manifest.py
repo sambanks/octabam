@@ -41,5 +41,6 @@ MODULE = Module(
                    r7_latch_slot=None, gate_label=None),
     claims=Claims(stock_instance_buffer=True, buffer_words=15862),
     harness=Harness(layout_char="H", is_server=False),
+    dear={'AMNT': 127, 'GAIN': 127, 'TIME': 127, 'DIFF': 127, 'TONE': 127, 'GATE': 127},   # every knob at its maximum: the hardware matrix's dearest layout
     gates=(Gate('tools/verify/verify_gateverb.py', remix_arg=False, venv=True),),
 )

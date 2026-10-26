@@ -15,13 +15,14 @@ Remix.window_demand (k):
   reverb-takes  effect 0 unused at 2 s, a reverb on its block at 2.5 s -> unbound by 3.4 s, well inside the grace
   pick-reverb-unused  effect 0 loaded and unused: the FX2 chooser accepts a reverb on its block, no toast, effect withdrawn
   unused     no track uses any                          -> none bound
-  race       effect 0 in use, a reverb on its block 60 ms later (inside the load debounce) -> never loaded, no block received
+  plate-ok / spring-ok  effect 0 in use with PLATE or SPRING REV on its block's track -> loaded, no toast (neither reaches the code)
+  race       effect 0 in use, a DARK REV on its block 60 ms later (inside the load debounce) -> never loaded, no block received
   toast text  each effect's toast strings (EVICT Tn FX2 1ST, EVICT <name> 1ST) name the track of its own block and the effect's chooser name (the generated table)
   two-b, two-a, two-ab-b, two-ab-a  effect 0 on two tracks of one core, and on one track of each core: the instances each have their own r7 (a pcwatch on the proc)
   runs-b<k> / runs-a<k>  T1 (core B) / T5 (core A) uses effect k -> its loaded proc is reached on that core (--dsp-pcwatch)
-  reverb-late effect 0 in use and loaded, then at 2 s the FX2 of its block's track becomes PLATE REV (a route the choosers do not guard) -> effect 0 stays loaded, the reverb is dry
-  blocked    effect 0 in use, and the FX2 of the track whose slot shares its block is PLATE REV -> effect 0 not loaded
-  pick / pick-blocked  T2's chooser (FX1, else FX2; NONE, DOWN to its row, YES) picks effect 0; with the block's track on PLATE REV
+  reverb-late effect 0 in use and loaded, then at 2 s the FX2 of its block's track becomes DARK REV (a route the choosers do not guard) -> effect 0 stays loaded, the reverb is dry
+  blocked    effect 0 in use, and the FX2 of the track whose slot shares its block is DARK REV -> effect 0 not loaded
+  pick / pick-blocked  T2's chooser (FX1, else FX2; NONE, DOWN to its row, YES) picks effect 0; with the block's track on DARK REV
              the chooser leaves T2's FX1 as it was
 
 Cannot see: the hardware's host-write timing, other projects' use of X:0x2840..0x3fff.
@@ -37,8 +38,8 @@ OUT = ROOT / "out/dlload"
 STAGE = 0x2900
 FX1_LIVE, FX2_LIVE = 0x80000EC4, 0x80000ECC
 FX1_PART, FX2_PART = 0x402A75E0, 0x402A75E8      # Part 1's FX ids of track 1 (bank + 0x8ed80 / 0x8ed88)
-FILTER, PLATE = 0x01, 0x14
-KEYS = dict(no=0x32, fx1=0x25, fx2=0x26, down=0x20, yes=0x31, t2=0x11, t8=0x17)
+FILTER, PLATE, SPRING, DARK = 0x01, 0x14, 0x15, 0x16      # DARK REV is the reverb whose buffer reaches the demand effect's code
+KEYS = dict(no=0x32, fx1=0x25, fx2=0x26, down=0x20, yes=0x31, **{f"t{i + 1}": 0x10 + i for i in range(8)})
 TOAST = 0x4005A2B8          # the firmware's message popup: every decision the loader makes on a chooser ends here
 FAILS = []
 
@@ -102,23 +103,25 @@ def main():
         sys.exit(f"verify_dlload: {rec['key']} (id 0x{mod_id:02x}) is on neither chooser")
     live, part, slot = (FX1_LIVE, FX1_PART, 0) if chooser == "fx1" else (FX2_LIVE, FX2_PART, 8)
     every_first = poke(FX1_LIVE, FX1_PART, 0, mod_id)
-    reverb_row = int.from_bytes(img[0x400D6150 + 4 * PLATE - 0x40000400:][:4], "big")     # PLATE REV's row on the FX2 chooser
+    reverb_row = int.from_bytes(img[0x400D6150 + 4 * DARK - 0x40000400:][:4], "big")     # DARK REV's row on the FX2 chooser
     scenarios = {
         "used": (every, []),
         "withdrawn": (every, [(2000, poke(FX1_LIVE, FX1_PART, 0, FILTER))]),
         "unused": ("", []),
-        "race": (poke(FX1_LIVE, FX1_PART, 0, mod_id), [(60, poke(FX2_LIVE, FX2_PART, block_track, PLATE))]),     # a reverb 60 ms behind the effect
+        "plate-ok": (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";" + poke(FX2_LIVE, FX2_PART, block_track, PLATE), []),      # reverbs the code is clear of
+        "spring-ok": (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";" + poke(FX2_LIVE, FX2_PART, block_track, SPRING), []),
+        "race": (poke(FX1_LIVE, FX1_PART, 0, mod_id), [(60, poke(FX2_LIVE, FX2_PART, block_track, DARK))]),     # a reverb 60 ms behind the effect
         "grace": (poke(FX1_LIVE, FX1_PART, 0, mod_id),            # unused at 2 s, used again at 3 s: inside the 2 s grace
                   [(2000, poke(FX1_LIVE, FX1_PART, 0, FILTER)), (3000, poke(FX1_LIVE, FX1_PART, 0, mod_id))]),
-        "reverb-late": (poke(FX1_LIVE, FX1_PART, 0, mod_id), [(2000, poke(FX2_LIVE, FX2_PART, block_track, PLATE))]),
-        "blocked": (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";" + poke(FX2_LIVE, FX2_PART, block_track, PLATE), []),
+        "reverb-late": (poke(FX1_LIVE, FX1_PART, 0, mod_id), [(2000, poke(FX2_LIVE, FX2_PART, block_track, DARK))]),
+        "blocked": (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";" + poke(FX2_LIVE, FX2_PART, block_track, DARK), []),
         "pick": (poke(live, part, 1, 0), []),
-        "pick-blocked": (poke(live, part, 1, 0) + ";" + poke(FX2_LIVE, FX2_PART, block_track, PLATE), []),
+        "pick-blocked": (poke(live, part, 1, 0) + ";" + poke(FX2_LIVE, FX2_PART, block_track, DARK), []),
         "pick-reverb": (every_first + ";" + poke(FX2_LIVE, FX2_PART, block_track, 0), []),
         "pick-reverb-unused": (every_first + ";" + poke(FX2_LIVE, FX2_PART, block_track, 0),
                                [(2000, poke(FX1_LIVE, FX1_PART, 0, FILTER))]),         # loaded, but no track uses it
         "reverb-takes": (poke(FX1_LIVE, FX1_PART, 0, mod_id),                           # unused at 2 s, a reverb arrives at 2.5 s
-                         [(2000, poke(FX1_LIVE, FX1_PART, 0, FILTER)), (2500, poke(FX2_LIVE, FX2_PART, block_track, PLATE))]),
+                         [(2000, poke(FX1_LIVE, FX1_PART, 0, FILTER)), (2500, poke(FX2_LIVE, FX2_PART, block_track, DARK))]),
     }
     watch = {}
     for k, r in enumerate(recs):                                   # every effect, on a track of each core
@@ -142,7 +145,7 @@ def main():
         if tag.startswith("pick"):
             t = 1500 if not tag.startswith("pick-reverb") else 3500   # after the load has landed
             if tag.startswith("pick-reverb"):
-                keys = (("t8", 400), ("fx2", 160), ("fx2", 800)) + (("down", 500),) * reverb_row + (("yes", 1500),)
+                keys = ((f"t{block_track + 1}", 400), ("fx2", 160), ("fx2", 800)) + (("down", 500),) * reverb_row + (("yes", 1500),)
             else:
                 keys = (("no", 400), ("t2", 400), (chooser, 160), (chooser, 800)) + (("down", 500),) * row + (("yes", 1500),)
             if tag.startswith("pick-reverb"):
@@ -150,7 +153,7 @@ def main():
             for k, gap in keys:
                 lines += [f"{t} key {KEYS[k]:#x} down", f"{t + 40} key {KEYS[k]:#x} up"]
                 t += 40 + gap
-        if tag in ("used", "blocked", "reverb-late"):               # a page key after the decision: where a deferred toast shows
+        if tag in ("used", "blocked", "reverb-late", "plate-ok", "spring-ok"):               # a page key after the decision: where a deferred toast shows
             lines += [f"{a.ms - 800} key {KEYS['fx1']:#x} down", f"{a.ms - 760} key {KEYS['fx1']:#x} up"]
         lines.append(f"{3400 if tag == 'reverb-takes' else a.ms} quit")
         (OUT / f"{tag}.script").write_text("\n".join(lines) + "\n")
@@ -164,7 +167,7 @@ def main():
             cmd += ["--step", "-:poke:" + first]
         if tag in watch:
             cmd += ["--dsp-pcwatch", watch[tag]]
-        if tag.startswith("pick") or tag in ("used", "blocked", "reverb-late"):
+        if tag.startswith("pick") or tag in ("used", "blocked", "reverb-late", "plate-ok", "spring-ok"):
             cmd += ["--watch-pc", f"{TOAST:#x}"]
         fh = open(OUT / f"{tag}.txt", "w")
         procs[tag] = (subprocess.Popen(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT), fh)
@@ -232,6 +235,11 @@ def main():
     check("a reverb that arrives on a loaded effect's block (and runs dry) says so at the next page key",
           toasts("reverb-late") >= 1, f"toast calls: {toasts('reverb-late')}")
     check("no toast when nothing collides", toasts("used") == 0, f"toast calls: {toasts('used')}")
+    print("clear reverbs:")
+    for tag, rname in (("plate-ok", "PLATE REV"), ("spring-ok", "SPRING REV")):
+        entry = peek(tag, 1, "X", 0x33DA3)
+        check(f"{recs[0]['key']} loads with {rname} on its block's FX2 (the reverb's buffer ends below the code), and no toast is shown",
+              entry[:1] == [0xB0A5ED] and toasts(tag) == 0, f"{[hex(w) for w in entry[:8]]}, toast calls {toasts(tag)}")
     print("pick-reverb:")
     rv = (OUT / "pick-reverb_ids.bin").read_bytes()
     check(f"a stock reverb chosen on the FX2 slot of {recs[0]['key']}'s block is refused while it is loaded",
@@ -240,7 +248,7 @@ def main():
     print("pick-reverb-unused:")
     rv = (OUT / "pick-reverb-unused_ids.bin").read_bytes()
     check("a reverb chosen on the block of a loaded effect that no track uses is accepted, without a toast",
-          rv[8 + block_track] == PLATE and toasts("pick-reverb-unused") == 0,
+          rv[8 + block_track] == DARK and toasts("pick-reverb-unused") == 0,
           f"FX2 of track {block_track + 1} = 0x{rv[8 + block_track]:02x}, toast calls {toasts('pick-reverb-unused')}")
     check(f"and {recs[0]['key']} is withdrawn for it",
           peek("pick-reverb-unused", 1, "X", 0x33DA3)[:1] == [0])
