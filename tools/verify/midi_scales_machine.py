@@ -26,7 +26,7 @@ def dram_map_size(layout):
 
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
-    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [Tt] ((?:ms_|mp_read_key)\w*)$',raw,re.M)}
+    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [Tt] ((?:ms_|store_part_midi_key)\w*)$',raw,re.M)}
 
 class Machine:
     def __init__(self, symbol_loader=symbols, artifact_root=None):
@@ -43,7 +43,7 @@ class Machine:
         u.mem_write(0x40000400,(out/'mainos_bus.bin').read_bytes())
         self.base=layout['base']
         u.mem_write(self.base,(out/'platform/runtime/runtime.bin').read_bytes())
-        self.part_key = 'mp_read_key' in self.sym
+        self.part_key = 'store_part_midi_key' in self.sym
         if self.part_key:
             # Follow/Harmony Scales variants read the active native Part KEY.
             u.mem_write(0x46c82456,(0x400e21e0).to_bytes(4,'big'))

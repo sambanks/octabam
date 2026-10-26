@@ -27,7 +27,7 @@ setting. The follower's own TRAN is then applied as a chromatic offset.
 ## Storage and compatibility
 
 RFOL, register choices and UPDT are saved in each Part. Fresh Parts default
-to RFOL OFF, FIXED octave 3 and TRIG. MIDI Follow requires **MIDI Part State** and **EVENTS**.
+to RFOL OFF, FIXED octave 3 and TRIG. MIDI Follow requires **STORE** and **EVENTS**.
 
 Stock 1.40C preserves the source-track number but resets Follow's register and
 update settings when saving the bank. Returning to Follow after that save

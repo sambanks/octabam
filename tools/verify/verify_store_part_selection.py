@@ -28,7 +28,7 @@ def registrations():
         chosen=registry.bound(registry.remix(remix))['STORE']
         assert chosen.linked==base.linked and chosen.detours==base.detours
         assert chosen.pokes==base.pokes and chosen.claims==base.claims
-    for remix,setup in (('midi-loopback',False),):
+    for remix,setup in (('midi-loopback',False),('midi-follow',True),('midi-follow-events',True)):
         r=registry.remix(remix);m=registry.bound(r)['STORE']
         assert len(m.detours)==len(base.detours)+3+int(setup)
         assert len({d.site for d in m.detours})==len(m.detours)

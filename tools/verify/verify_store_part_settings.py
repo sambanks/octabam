@@ -12,7 +12,7 @@ PS = 0x18b2
 
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
-    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBb] ((?:hd|mh|bf|ch|mp|ms|seq|eu)_\w+)$',raw,re.M)}
+    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBb] ((?:hd|mh|bf|ch|store_part|ms|seq|eu)_\w+)$',raw,re.M)}
 
 
 def main():
@@ -21,7 +21,7 @@ def main():
     def ui(bank,part):
         u.mem_write(0x46c82456,(B+bank*BS).to_bytes(4,'big'));byte(0x100b14cf,part)
     def at(bank,part,track,field):return B+bank*BS+0x8ed80+part*PS+0x4e2+track*36+field
-    def play(track,bank,part):byte(0x8000182a+track,bank);byte(0x80001832+track,part)
+    def play(track,bank,part):byte(0x8000666e+track,bank);byte(0x80006676+track,part)
     for bank in range(2):
         for part in range(4):
             for track in range(8):
@@ -114,10 +114,10 @@ def main():
         original=bytes(u.mem_read(B+0x8ed80,PS));source=0x47002000
         u.mem_write(source,original)
         u.mem_write(fresh.stack+4,b''.join(v.to_bytes(4,'big') for v in (B+0x8ed80,source,PS)))
-        epoch=fresh.call('mp_epoch',0)
-        fresh.call('mp_native_copy')
-        assert fresh.call('mp_epoch',0)==epoch+1
-        assert fresh.call('mp_epoch',1)==0
+        epoch=fresh.call('store_part_epoch',0)
+        fresh.call('store_part_native_copy')
+        assert fresh.call('store_part_epoch',0)==epoch+1
+        assert fresh.call('store_part_epoch',1)==0
         expected=chord(55);fresh.call('mh_voice',0,a0=fresh.scratch)
         assert bytes(u.mem_read(fresh.scratch,4))==expected,'recalled Part inherited old AUTO history'
         print('  [ok] Native same-slot replacement advances only its epoch and resets Harmony AUTO history')

@@ -6,7 +6,7 @@ import sys
 import subprocess
 from unicorn import UC_HOOK_CODE
 from midi_machine import Machine, ROOT
-from verify_midi_part_settings import symbols
+from verify_store_part_settings import symbols
 from verify_midi_follow import REGS
 from unicorn.m68k_const import UC_M68K_REG_D7, UC_M68K_REG_A7, UC_M68K_REG_PC
 
@@ -104,7 +104,7 @@ def main():
     part=0x400e21e0+0x8ed80;copy=m.scratch+0x1000
     u.mem_write(copy,bytes(u.mem_read(part,0x18b2)))
     u.mem_write(m.stack+4,struct.pack('>III',part,copy,0x18b2))
-    m.call('mp_native_copy');assert query()==24
+    m.call('store_part_native_copy');assert query()==24
     # Ordinary pattern changes do not touch the native Part identity.
     root(35);begin();query();sent();u.mem_write(0x100b14d0,b'\x01')
     root(0);begin();assert query()==36

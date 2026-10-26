@@ -32,7 +32,7 @@ def fixture(source, dest, arp=False, leader=0, offsets=None, voices=False):
                     data[base + 0x4e2 + 36*t] = channel if t in steps else 0
                     # Fresh native custom settings, independent of the template.
                     # The stock control ignores/clamps these blank SETUP fields.
-                    for field,value in ((3,0),(5,0),(12,0),(13,35),(15,3),(16,0),(18,0),(19,0)):
+                    for field,value in ((3,0),(5,0),(12,0),(13,35),(15,3),(16,0),(17,0),(18,0),(19,0)):
                         data[base + 0x4e2 + 36*t + field] = value
             for p in range(16):
                 # Explicit normal scale mode, 64-step cycle at 1x. Otherwise

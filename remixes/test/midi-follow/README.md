@@ -1,6 +1,6 @@
 # MIDI Follow
 
-MIDI Follow, Part State and EVENTS with stock audio effects. Followers keep their own
+MIDI Follow, STORE and EVENTS with stock audio effects. Followers keep their own
 rhythm and transposition while taking native notes from another MIDI track. Settings
 belong to the native Part; RFOL defaults OFF.
 

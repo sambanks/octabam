@@ -382,7 +382,7 @@ def port_case(image, project, arp=False, leader=0, enabled=True, live_change=Non
         # Prove the fixture's base setting and P-locks are active in stock too.
         stock_expected = []
         for step in (0, 2, 3, 6, 8, 10):
-            pitch = 47 + offsets.get(step, 7)
+            pitch = 48 + offsets.get(step, 7)
             stock_expected.append(pitch)
             if step == 8:
                 stock_expected.append(pitch + 7)

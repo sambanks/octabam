@@ -15,7 +15,7 @@ MODULE = dataclasses.replace(
         unit, reference=(lambda modules: None if
                          {'MIDI FOLLOW', 'MIDI HARMONY'} & set(modules)
                          else _REFERENCE),
-        include=(lambda modules, remix, source=unit.include: source(modules)) if unit.include else None,
+        include=unit.include,
     ) for unit in MODULE.linked),
 )
 

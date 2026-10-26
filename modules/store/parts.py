@@ -141,4 +141,4 @@ def additions(modules):
                 pokes=(Poke(0x400d4082,bytes.fromhex('00000001'),bytes.fromhex('00000010'),'native MIDI SETUP shared flags range'),) if flags else (),
                 claims=Claims(part_window=tuple((MIDI_BASE+36*t+12,1,'shared MIDI SETUP flags') for t in range(8))) if flags else Claims(),
                 gates=tuple(Gate(f'tools/verify/verify_store_part{suffix}.py',stage='image',venv=True)
-                            for suffix in ('','_copy','_boot','_activation','_selection')))
+                            for suffix in ('','_copy','_boot','_activation','_settings','_selection')))

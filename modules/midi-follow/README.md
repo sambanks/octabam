@@ -57,7 +57,7 @@ ordinary pattern changes alone retain it.
 ## Storage and stock firmware
 
 RFOL, REG, all three remembered values and UPDT are native Part settings per track.
-Runtime roots and held notes are not saved. Requires **MIDI Part State** and **EVENTS**.
+Runtime roots and held notes are not saved. Requires **STORE** and **EVENTS**.
 Scales and KITS are optional.
 
 Stock 1.40C preserves the source-track number but resets the mode, response
