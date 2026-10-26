@@ -14,8 +14,10 @@ def main():
     out=ROOT/'out/follow-response-port';out.mkdir(exist_ok=True)
     image=out/'candidate.bin';image.write_bytes((ROOT/'out/mainos_bus.bin').read_bytes())
     sym=f.symbols();results={}
-    for mode,arp,harmony in [(m,arp,h) for h in ((False,True) if a.harmony else (False,)) for arp in (False,True) for m in (0,1)]:
-        name=f'response-{mode}-arp-{int(arp)}-harmony-{int(harmony)}'
+    cases = [(m, arp, h, int(h), 0) for h in ((False, True) if a.harmony else (False,)) for arp in (False, True) for m in (0, 1)]
+    cases += [(m, arp, False, key, 1) for key in (0, 1) for arp in (False, True) for m in (0, 1)]
+    for mode,arp,harmony,key,tran in cases:
+        name=f'response-{mode}-arp-{int(arp)}-harmony-{int(harmony)}-key-{key}-tran-{tran}'
         work=out/name;work.mkdir(exist_ok=True)
         project=work/'project';fixture(a.project,project)
         for bank in project.glob('bank*.work'):
@@ -24,8 +26,9 @@ def main():
                     base=otp.PART_BASE+part*otp.PART_STRIDE+9
                     data[base+0x4e2+5]=int(harmony)
                     data[base+0x4e2+36+5]=int(harmony)
-                    data[base+0x4e2+17]=1 if harmony else 0
-                    data[base+0x4e2+36+17]=1 if harmony else 0
+                    data[base+0x4e2+17]=key
+                    data[base+0x4e2+36+17]=key
+                    data[base+0x3e2+32+12]=64+tran
                     if arp:
                         data[base+0x3e2+32+14]=1
                         data[base+0x3e2+32+15]=3
@@ -44,12 +47,17 @@ def main():
         # Native sources publish F+A; generated source voices are excluded.
         want=([48,36,36,41,43,43] if not mode else [48,36,36,41,41,43,43]) if harmony else (
             [48,36,36,41,45,43,43] if not mode else [48,36,36,41,41,45,43,43])
+        def corrected(pitch):
+            pitch += tran
+            # Stock C-major correction rounds chromatic notes down.
+            return pitch - int(pitch % 12 in (1, 3, 6, 8, 10)) if key == 1 else pitch
+        if tran:want = [corrected(n) for n in want]
         if not arp:assert bass==want,(name,bass,want)
         else:
             f_index=next(i for i,e in enumerate(events) if e[:3]==('on',1,65))
             next_bass=next(e[2] for e in events[f_index+1:] if e[:2]==('on',2))
             assert len(bass)>6,(name,bass)
-            assert next_bass==(41 if mode or not harmony else 36),(name,next_bass,events)
+            assert next_bass==corrected(41 if mode or not harmony else 36),(name,next_bass,events)
         held=set()
         for kind,ch,n,_ in events:
             if kind=='on':assert (ch,n) not in held,(mode,events);held.add((ch,n))

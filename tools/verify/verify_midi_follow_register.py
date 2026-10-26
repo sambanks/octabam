@@ -71,7 +71,7 @@ def main():
                         want=base+tran;valid=0<=want<128
                         m.call('bf_note',a0=0,stop=0x4009fb86 if valid else 0x4009fd2a,regs={UC_M68K_REG_D7:receiver,UC_M68K_REG_D4:0,UC_M68K_REG_A2:m.scratch,UC_M68K_REG_A5:lane})
                         assert u.mem_read(m.scratch,1)==bytes((want if valid else 255,)),(root,mode,octave,tran)
-                        assert all((m.stack-96<=a<m.stack) or a==m.scratch for a,_ in m.writes),m.writes
+                        assert all((m.stack-192<=a<m.stack) or a==m.scratch or a==s['bf_scale_offsets']+receiver*4 for a,_ in m.writes),m.writes
                         cases+=1
     if 'mh_generate' in s:
         # Both sequenced and live sources retain their harmonic root's octave.
