@@ -59,8 +59,12 @@ refuse_shared_vendor() {
 }
 
 pin_checkout() {  # dir url sha
-  [ -d "$1" ] || git clone --no-checkout "$2" "$1"
-  if [ "$(git -C "$1" rev-parse HEAD 2>/dev/null)" != "$3" ]; then
+  # A --no-checkout clone has HEAD at the remote's default branch with an empty
+  # index and work tree; when the pin is that tip the HEAD test below is
+  # false and nothing would be checked out.
+  fresh=0
+  [ -d "$1" ] || { git clone --no-checkout "$2" "$1"; fresh=1; }
+  if [ "$fresh" = 1 ] || [ "$(git -C "$1" rev-parse HEAD 2>/dev/null)" != "$3" ]; then
     git -C "$1" fetch -q origin "$3"
     git -C "$1" checkout -q "$3"
   fi
