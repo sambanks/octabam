@@ -710,6 +710,8 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
 - **Cause (the module's README, read, and the symptom):** REMIX SWITCH saves the last image picked in a card blob (`octabam.remix-switch` in `BRAIN/card.work`); the flashed image reads it at power-on and switches before the project loads. It follows the card, not the project, and not the name length (`COST-H CH` is 9 of 15 characters).
 - **Fix:** select the name under `FLASHED` in BRAIN > REMIXES (clears the choice), or hold FUNC at power-on and choose EXIT in the STARTUP MENU for one boot. After flashing, check the running name against the flashed one before trusting a measurement; `tools/hw/dl_state.py` and the logo's name both show it.
 
+
+
 ## DARK REV picked on T4's FX2 while a demand effect's code is in T4's block stops the DSP frame loop 🔴 open (octabam with homes, #926)
 
 Handover for another agent. Nothing here is fixed; `octabam` on `main` still has `Remix.window_homes`, so the sequence below is reachable on hardware (Sam, 28 Oct 2026: left as it is).
