@@ -57,6 +57,7 @@ OUT = ROOT / "out/coreverify"
 BASE = 0x40000400
 LANES, IDS = 0x80000810, 0x80000ec4
 FX2_TABLE, FX1_TABLE = 0x400d5fdc, 0x400d5f58
+LIST_REF = 0x400375f4        # the operand of FUN_40052474 that holds the FX2 chooser list's address
 K = dict(no=0x32, fx1=0x25, fx2=0x26, down=0x20, yes=0x31, t2=0x11)
 PAGE = {"fx1": (0x12, 0x32, 0), "fx2": (0x18, 0x38, 8)}
 COUNTERS = ("loads", "state", "records", "applied", "values", "skip_id", "skip_layout",
@@ -92,6 +93,8 @@ def main():
     ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
     ap.add_argument("--set-name", default="BRAINSET")       # not BRAIN: that is the store's directory
     ap.add_argument("--name", default="BRAINPRJ")
+    ap.add_argument("--only-cases", action="store_true",
+                    help="run the eight card cases (none .. settings_bad) and stop: minutes, not the whole gate")
     a = ap.parse_args()
     project = a.project
     if not project and pathlib.Path("~/.octabam_project").expanduser().is_file():
@@ -128,6 +131,17 @@ def main():
         P = struct.unpack(">I", rd(table + 4 * fx, 4))[0]
         return P, rd(P + 0x5e, 12), struct.unpack(">12I", rd(P + 0x9a, 48))
 
+    def fx2_chooser_ids():
+        """The id on each row of the FX2 chooser, top to bottom, read from the built image: the list the
+        chooser walks holds each row's descriptor, whose first word's low byte is the id it stores."""
+        lst = struct.unpack(">I", rd(LIST_REF, 4))[0]
+        ids = []
+        while True:
+            ptr = struct.unpack(">I", rd(lst + 4 * len(ids), 4))[0]
+            if not ptr:
+                return ids
+            ids.append(struct.unpack(">I", rd(ptr, 4))[0] & 0xff)
+
     pdir = pathlib.Path(project).expanduser()
     copy = OUT / "project"
     shutil.rmtree(copy, ignore_errors=True)
@@ -142,6 +156,12 @@ def main():
     spm = mods["SPECTRUM"]
     ot_project.set_fx(copy, "fx1", 2, "SPECTRUM", page=[p.default or 0 for p in spm.params[:6]],
                       page2=[p.default or 0 for p in spm.params[6:12]], guard=False)
+    # The panel script opens T2's FX2 chooser on the track's own row and presses DOWN once, so the track has to start
+    # on the row above DELAY: SEND in the bus remix, whatever sits above it in the others (LO-FI in octabam).
+    rows = fx2_chooser_ids()
+    if 0x08 not in rows[1:]:
+        sys.exit(f"verify_brain: DELAY (0x08) is not below the first row of {a.remix}'s FX2 chooser {rows}")
+    ot_project.set_fx(copy, "fx2", 2, rows[rows.index(0x08) - 1], guard=False)
     delay, character = mods["DELAY"], mods["CHARACTER"]
     want = {"DELAY": {"TIME": 52, "FB": 5, "X": 1, "TAPE": 0}, "CHARACTER": {"DRV": 9, "MIX": 77}}
     work = ot_brain.set_default(None, delay, want["DELAY"])
@@ -287,6 +307,9 @@ def main():
         if name == "none":
             check(f"settings: no card store, the defaults of layers 1 and 2 (values {svals}: APPLY DFLTS, MIDI LOG)",
                   svals == (1, 0))
+    if a.only_cases:
+        print(f"verify_brain: {'ok' if not fails else 'FAILED'} ({fails} failure(s)) -- the eight card cases only")
+        return 1 if fails else 0
     # ---- stock clamps: why the brain has no clamp of its own ----------------
     # The Part validator 0x40002318 rewrites every FX page byte outside its
     # descriptor's [min, min + count - 1] to the nearer end during the load
