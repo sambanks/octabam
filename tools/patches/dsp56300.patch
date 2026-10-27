@@ -8,49 +8,6 @@ index da7612b..944719a 100644
  endif()
 +
 +add_subdirectory(dsp_host)
-diff --git a/source/dsp56kEmu/agu.h b/source/dsp56kEmu/agu.h
-index ac3853c..5acf878 100644
---- a/source/dsp56kEmu/agu.h
-+++ b/source/dsp56kEmu/agu.h
-@@ -45,20 +45,27 @@ namespace dsp56k
- 
- 				n = signextend<int, 24>(n);
- 
-+				// octabam (O9b, 8 Sep 2026): work RELATIVE to the buffer base in
-+				// signed arithmetic. `r` is unsigned: a pre-decrement from r = 0
-+				// underflowed to 0xffffffff, the lower-bound test could not see
-+				// it, and the upper-bound test then subtracted the modulo and
-+				// left 0xffffbf -- so `x:-(r2)` with m2 = 0x3f at r2 = 0 gave
-+				// 0xffffbf where the chip gives 0x3f, and the next sixteen
-+				// writes walked the DSP's peripheral registers (TCSR0 among
-+				// them: a timer interrupt whose vector in payload B corrupts the
-+				// voice records).
- 				const auto lowerBound = r & ~moduloMask;
--				const auto upperBound = lowerBound + m;
--
-+				const auto wrap = (n & moduloMask) ? modulo : 0;
-+				int32_t rel = static_cast<int32_t>(r - lowerBound);
- 				if constexpr(add)
--					r += n;
-+					rel += static_cast<int32_t>(n);
- 				else
--					r -= n;
--
--				modulo = n & moduloMask ? modulo : 0;
--
--				if(r < lowerBound)
--					r += modulo;
--				if(r > upperBound)
--					r -= modulo;
-+					rel -= static_cast<int32_t>(n);
-+				if(rel < 0)
-+					rel += wrap;
-+				else if(rel > static_cast<int32_t>(m))
-+					rel -= wrap;
-+				r = (lowerBound + static_cast<TWord>(rel)) & 0xffffff;
- 				/*
- 				if constexpr(add)
- 				{
 diff --git a/source/dsp56kEmu/assembler.cpp b/source/dsp56kEmu/assembler.cpp
 index 1a22ced..dbbc307 100644
 --- a/source/dsp56kEmu/assembler.cpp
@@ -370,10 +327,10 @@ index 8759c66..c7fb9b1 100644
  		// Build mnemonic table
  		void buildMnemonicTable();
 diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
-index 44fca43..2ee6696 100644
+index de5b522..0b63a67 100644
 --- a/source/dsp56kEmu/dma.cpp
 +++ b/source/dsp56kEmu/dma.cpp
-@@ -9,6 +9,7 @@
+@@ -10,6 +10,7 @@
  #include <cstring> // memcpy
  
  #include "interrupts.h"
@@ -381,108 +338,12 @@ index 44fca43..2ee6696 100644
  
  #if 0
  #include "dsp56kBase/logging.h"
-@@ -133,7 +134,28 @@ namespace dsp56k
- 	void DmaChannel::setDCR(const TWord _controlRegister)
- 	{
- 		if(m_dcr == _controlRegister)
-+		{
-+			// octabam: measured 22 Sep 2026 (Task C) -- the Octatrack's ESAI
-+			// feed (DCR2=0xcc6220, request-triggered, self-clearing word
-+			// mode: isDEClearedAfterTransfer()==true) rewrites this exact
-+			// value every idle-loop pass at P:0x099, and DE was still SET at
-+			// the time of the rewrite on 1199 of 1200 frames of a real
-+			// project under the port (0 in the other case). The early
-+			// return above silently drops that write; per octemu's
-+			// independent QEMU fix (DMA patch, "de-renewal"), a DCR write
-+			// with DE=1 while a self-clearing window is running is a
-+			// re-arm, not a no-op. WHETHER dropping it costs anything for
-+			// THIS channel's actual operation is not established here --
-+			// DE never reads as cleared in this run, so nothing upstream of
-+			// this line observably needed the renewal in this test (its own
-+			// block-dump is bit-identical with and without this fix); ported
-+			// defensively per the general rule (a same-value DE=1 rewrite
-+			// during an open window should behave like a fresh arm, not
-+			// silently vanish).
-+			if (m_armed && bitvalue(m_dcr, De) && isDEClearedAfterTransfer())
-+				m_deRenewed = true;
- 			return;
-+		}
- 
- 		// Re-configuration: drop any previous trigger registration and clear the armed flag
- 		// so arm() can re-initialize the working counters with the new DCR settings.
-@@ -484,6 +506,19 @@ namespace dsp56k
- 		{
- 			_dst += _dor;
- 			_dst &= 0xffffff;
-+			// octabam: THE COUNTERS RELOAD AT THE END OF THE BLOCK. Without this
-+			// a continuous (DE-not-cleared) dual-counter channel added DOR on
-+			// EVERY word after its first pass: the Octatrack's ESAI-in ring
-+			// (DMA3, DCO3 = 0x23f, DOR3 = -575) walked its destination DOWN
-+			// 575 words per received sample, wrapped below zero into the
-+			// peripheral space and, 1,215,032 words later, wrote a silent
-+			// sample into X:$FFFFB5 -- the ESAI's own TCR -- which killed the
-+			// transmitter (measured 8 Sep 2026: `Write ESAI TCR 000000 at pc
-+			// 000097`, the idle loop; nothing in either payload writes TCR
-+			// after setup). The firmware's DOR3 = -DCO3 only makes sense as a
-+			// ring, i.e. with the reload.
-+			m_dcol = m_dcolInit;
-+			m_dcoh = m_dcohInit;
- 			return true;
- 		}
- 
-@@ -806,7 +841,27 @@ namespace dsp56k
- 	void DmaChannel::finishTransfer()
- 	{
- 		if(isDEClearedAfterTransfer())
-+		{
-+			if (m_deRenewed)
-+			{
-+				// octabam: a same-value DCR rewrite landed while this window
-+				// was still open (setDCR) -- renew instead of clearing DE:
-+				// drop the address-phase bookkeeping and re-arm from the
-+				// current DSR/DDR (arm() re-derives DCOH/DCOL from the
-+				// unchanged DCR; DSR/DDR are the state a fresh m_armed=false
-+				// does not itself preserve).
-+				m_deRenewed = false;
-+				m_dma.removeTriggerTarget(this);
-+				m_armed = false;
-+				m_dma.clearActiveChannel();
-+				const auto dsr = m_dsr, ddr = m_ddr;
-+				arm();
-+				m_dsr = dsr;
-+				m_ddr = ddr;
-+				return;
-+			}
- 			m_dcr &= ~(1 << De);
-+		}
- 
- 		m_dma.clearActiveChannel();
- 
-@@ -892,14 +947,100 @@ namespace dsp56k
- 		m_dstr &= ~(1 << Dact);
- 	}
- 
-+	// octabam (O17): DRS is a 5-bit field and m_requestTargets has Count
-+	// entries (21); a garbage DCR -- measured 12 Sep 2026 when a JIT defect
-+	// let a DSP pointer sweep the peripheral space -- indexed past the array
-+	// and crashed in setDCR. A source without a slot has no targets.
-+	static bool validRequestSource(const DmaChannel::RequestSource _source)
-+	{
-+		return static_cast<uint32_t>(_source) < static_cast<uint32_t>(DmaChannel::RequestSource::Count);
-+	}
-+
- 	bool Dma::hasTrigger(DmaChannel::RequestSource _source) const
- 	{
-+		if(!validRequestSource(_source))
-+			return false;
- 		const auto& channels = m_requestTargets[static_cast<uint32_t>(_source)];
+@@ -955,6 +956,77 @@ namespace dsp56k
  		return !channels.empty();
  	}
  
 +	DmaChannel* Dma::firstTriggerTarget(DmaChannel::RequestSource _source) const
 +	{
-+		if(!validRequestSource(_source))
-+			return nullptr;
 +		const auto& channels = m_requestTargets[static_cast<uint32_t>(_source)];
 +		return channels.empty() ? nullptr : channels.front();
 +	}
@@ -554,31 +415,25 @@ index 44fca43..2ee6696 100644
 +
  	bool Dma::trigger(DmaChannel::RequestSource _source) const
  	{
-+		if(!validRequestSource(_source))
-+			return false;
  		const auto& channels = m_requestTargets[static_cast<uint32_t>(_source)];
- 
- 		if (channels.empty())
-@@ -914,6 +1055,8 @@ namespace dsp56k
+@@ -971,7 +1043,6 @@ namespace dsp56k
  	void Dma::addTriggerTarget(DmaChannel* _channel)
  	{
  		auto src = _channel->getRequestSource();
-+		if(!validRequestSource(src))	// octabam (O17): see validRequestSource
-+			return;
- 
+-
  		auto& channels = m_requestTargets[static_cast<uint32_t>(src)];
  
-@@ -923,6 +1066,8 @@ namespace dsp56k
+ 		channels.push_back(_channel);
+@@ -980,7 +1051,6 @@ namespace dsp56k
  	void Dma::removeTriggerTarget(const DmaChannel* _channel)
  	{
  		auto src = _channel->getRequestSource();
-+		if(!validRequestSource(src))	// octabam (O17): see validRequestSource
-+			return;
- 
+-
  		auto& channels = m_requestTargets[static_cast<uint32_t>(src)];
  
+ 		auto it = std::find(channels.begin(), channels.end(), _channel);
 diff --git a/source/dsp56kEmu/dma.h b/source/dsp56kEmu/dma.h
-index c4b0c4b..9544a0d 100644
+index 119caed..20f1caa 100644
 --- a/source/dsp56kEmu/dma.h
 +++ b/source/dsp56kEmu/dma.h
 @@ -10,6 +10,8 @@ namespace dsp56k
@@ -611,15 +466,7 @@ index c4b0c4b..9544a0d 100644
  		TransferMode getTransferMode() const;
  		TWord getPriority() const;
  		RequestSource getRequestSource() const;
-@@ -177,6 +193,7 @@ namespace dsp56k
- 		bool m_dsrWritten = false;
- 		bool m_ddrWritten = false;
- 		bool m_armed = false;
-+		bool m_deRenewed = false;
- 
- 		TWord m_dcoh = 0;
- 		TWord m_dcom = 0;
-@@ -231,6 +248,7 @@ namespace dsp56k
+@@ -233,6 +249,7 @@ namespace dsp56k
  
  		bool hasTrigger(DmaChannel::RequestSource _source) const;
  		bool trigger(DmaChannel::RequestSource _source) const;
@@ -628,29 +475,10 @@ index c4b0c4b..9544a0d 100644
  		void removeTriggerTarget(const DmaChannel* _channel);
  
 diff --git a/source/dsp56kEmu/dsp.cpp b/source/dsp56kEmu/dsp.cpp
-index 5f023c0..1b07b71 100644
+index 48d1cbc..2e1c754 100644
 --- a/source/dsp56kEmu/dsp.cpp
 +++ b/source/dsp56kEmu/dsp.cpp
-@@ -180,7 +180,18 @@ namespace dsp56k
- 		const auto vba = interrupt;
- 
- 		if(isInterruptMasked(vba))
-+		{
-+			// octabam: a masked interrupt WAITS; the peripherals do not. Without
-+			// this the peripheral clock is never serviced again until the DSP
-+			// lowers its mask -- the Octatrack's core A boots with `ori #3,mr`,
-+			// takes a peripheral interrupt into the queue, and its ESAI stopped
-+			// after three frames (measured 8 Sep 2026: SAISR stuck at RDF|ROE,
-+			// the peripheral target clock frozen at 845,824 while the
-+			// instruction counter ran on).
-+			if(m_hostStepped || m_periphUnderMask)	// octabam (jit-spike): also for a threaded JIT core
-+				m_execPeripheralsFunc(this);
- 			return;
-+		}
- 
- 		// it is important that the processing mode is switched first before popping the vector to prevent a possible race condition in hasPendingInterrupt()
- 		{
-@@ -196,12 +207,15 @@ namespace dsp56k
+@@ -201,12 +201,15 @@ namespace dsp56k
  		pcCurrentInstruction = vba;
  		m_processingMode = FastInterrupt;
  
@@ -667,7 +495,7 @@ index 5f023c0..1b07b71 100644
  		{
  			LOGJITPC(vba);
  			const auto pc = getPC();
-@@ -525,6 +539,10 @@ namespace dsp56k
+@@ -530,6 +533,10 @@ namespace dsp56k
  
  		traceOp();
  
@@ -678,7 +506,7 @@ index 5f023c0..1b07b71 100644
  		// __________________
  		//
  
-@@ -559,6 +577,48 @@ namespace dsp56k
+@@ -576,6 +583,48 @@ namespace dsp56k
  		return true;
  	}
  
@@ -728,7 +556,7 @@ index 5f023c0..1b07b71 100644
  	// exec_do_end
  	//
 diff --git a/source/dsp56kEmu/dsp.h b/source/dsp56kEmu/dsp.h
-index e53ecd4..2fdec18 100644
+index 0e2665d..01dc22e 100644
 --- a/source/dsp56kEmu/dsp.h
 +++ b/source/dsp56kEmu/dsp.h
 @@ -1,6 +1,7 @@
@@ -739,7 +567,7 @@ index e53ecd4..2fdec18 100644
  
  #include "disasm.h"
  #include "dspconfig.h"
-@@ -185,7 +186,7 @@ namespace dsp56k
+@@ -188,7 +189,7 @@ namespace dsp56k
  
  		ASMJIT_FORCE_INLINE void exec() noexcept
  		{
@@ -748,8 +576,8 @@ index e53ecd4..2fdec18 100644
  				execJit();
  			else
  				execInterpreter();
-@@ -324,6 +325,16 @@ namespace dsp56k
- 			return false;
+@@ -337,6 +338,16 @@ namespace dsp56k
+ 			return m_pendingInterrupts.anyOf([&](const TWord _v) { return _v >= _first && _v <= _last; });
  		}
  
 +		// octabam (O17b): how many interrupts wait in the core's own queue
@@ -765,7 +593,7 @@ index e53ecd4..2fdec18 100644
  		void			clearOpcodeCache				();
  		void			clearOpcodeCache				(TWord _address);
  
-@@ -421,6 +432,54 @@ namespace dsp56k
+@@ -436,6 +447,47 @@ namespace dsp56k
  		bool	do_start						( const TWord* _loopcount, TWord _addr );
  		bool	do_end							();
  
@@ -794,66 +622,35 @@ index e53ecd4..2fdec18 100644
 +		// HI08's HC/HCP -- can be cleared at the right moment. A fast
 +		// interrupt never sets the PC to the vector, so the PC cannot tell.
 +		void	setInterruptTakenHook			( std::function<void(TWord)> _f )	{ m_onInterruptTaken = std::move(_f); }
-+		// octabam (jit-spike): a core run under the JIT on its own thread. The
-+		// masked-interrupt peripheral service (above, host-stepped) is needed
-+		// there too -- core A boots with `ori #3,mr` and a queued peripheral
-+		// interrupt would otherwise freeze its ESAI -- so it is a flag of its
-+		// own. And the PC of the instruction that made a peripheral write is
-+		// recorded (the JIT passes it to callDSPMemWritePeriph; the
-+		// interpreter's execOp sets it anyway), so a host-side hook can tell
-+		// which instruction wrote the host port (the bank word at P:0x73).
-+		void	setPeripheralsUnderMaskedInterrupt	( bool _on )						{ m_periphUnderMask = _on; }
 +		// octabam (jit-spike): a DMA channel armed while its request already
 +		// holds fires once (dma.cpp checkTrigger; the Octatrack arms DMA2 long
 +		// after its ESAI transmitter set TDE) -- for a threaded JIT core too.
 +		void	setDmaTriggerOnArm				( bool _on )						{ m_dmaTriggerOnArm = _on; }
 +		bool	dmaTriggerOnArm					() const							{ return m_dmaTriggerOnArm; }
++		// octabam (jit-spike): the PC of the instruction that made a peripheral write. The JIT passes
++		// it to callDSPMemWritePeriph, the interpreter's execOp sets it itself; a host-side hook reads
++		// it to tell which instruction wrote the host port (the bank word at P:0x73).
 +		void	setPcCurrentInstruction			( TWord _pc )						{ pcCurrentInstruction = _pc; }
 +		TWord	getPcCurrentInstruction			() const							{ return pcCurrentInstruction; }
 +		TWord&	pcCurrentInstructionRef			()									{ return pcCurrentInstruction; }
 +	private:
 +		bool	m_hostStepped = false;
-+		bool	m_periphUnderMask = false;
 +		bool	m_dmaTriggerOnArm = false;
 +		std::function<void(TWord)> m_onInterruptTaken;
 +
  		bool	rep_exec						(TWord _loopCount);
  
  		void	traceOp							();
-diff --git a/source/dsp56kEmu/esai.cpp b/source/dsp56kEmu/esai.cpp
-index ff461c3..07f79bb 100644
---- a/source/dsp56kEmu/esai.cpp
-+++ b/source/dsp56kEmu/esai.cpp
-@@ -17,6 +17,8 @@ namespace dsp56k
- 
- 	void Esai::reset()
- 	{
-+		// octabam diagnostic: who resets the ESAI after boot?
-+		LOG("ESAI reset (tcr was " << HEX(m_tcr) << ")");
- 		// Reset control registers to power-on defaults
- 		m_cr = 0;
- 		m_tcr = 0;
-@@ -191,7 +193,7 @@ namespace dsp56k
- 	void Esai::writeTransmitControlRegister(TWord _val)
- 	{
- 		m_sr.clear(M_TUE);
--		LOG("Write ESAI TCR " << HEX(_val));
-+		LOG("Write ESAI TCR " << HEX(_val) << " at pc " << HEX(m_periph.getDSP().getPC().toWord()));
- 		const auto tem = getEnabledTransmitters();
- 		m_tcr = _val;
- 		if(tem != getEnabledTransmitters())
 diff --git a/source/dsp56kEmu/hdi08.cpp b/source/dsp56kEmu/hdi08.cpp
-index fad20d3..9f6b737 100644
+index c045c70..6437fa0 100644
 --- a/source/dsp56kEmu/hdi08.cpp
 +++ b/source/dsp56kEmu/hdi08.cpp
-@@ -66,8 +66,40 @@ namespace dsp56k
+@@ -65,8 +65,35 @@ namespace dsp56k
  				if(rxInterruptEnabled())
  					m_periph.getDSP().injectInterrupt(Vba_Host_Receive_Data_Full);
  				m_lastRXClock = clock;
-+				// octabam (O17b): with a FIFO configured and no receive
-+				// interrupt the drain is a burst through the channel itself
-+				// (dma.cpp burstFromHost) -- the per-word path below is kept
-+				// for a channel in another shape.
++				// octabam: with a FIFO and no receive interrupt, drain as a burst through the
++				// channel (burstFromHost); a channel in another shape takes the per-word path below
 +				if(m_txFifoDepth && !rxInterruptEnabled() && m_dma)
 +				{
 +					if(auto* ch = m_dma->firstTriggerTarget(m_dmaReqSourceReceive))
@@ -870,12 +667,9 @@ index fad20d3..9f6b737 100644
 +				}
  				m_waitServeRXInterrupt = true;
  				dmaTriggerReceive();
-+				// octabam (jit-spike): with a transmit FIFO configured the host
-+				// DMA is a burst device on the receive side too -- the chip's
-+				// DMA drains the host words at bus speed while the core runs
-+				// whatever it runs -- so a receive DMA takes up to the FIFO's
-+				// depth of words per service instead of one per JIT block (a
-+				// block inside a long DO loop made the drain outlast the frame).
++				// octabam: with a transmit FIFO a receive DMA takes up to the FIFO's depth of
++				// words per service, not one per JIT block (a block inside a long DO loop made
++				// the drain outlast the frame)
 +				if(m_txFifoDepth && !rxInterruptEnabled())
 +				{
 +					for(uint32_t k = 1; k < m_txFifoDepth && !m_waitServeRXInterrupt && !m_dataRX.empty() && hasDmaReceiveTrigger(); ++k)
@@ -887,7 +681,7 @@ index fad20d3..9f6b737 100644
  //				LOG("Wait serve interrupt");
  				return 0;
  			}
-@@ -105,10 +137,48 @@ namespace dsp56k
+@@ -104,10 +131,44 @@ namespace dsp56k
  //					LOG("Inject HTDE");
  					m_periph.getDSP().injectInterrupt(Vba_Host_Transmit_Data_Empty);
  				}
@@ -899,20 +693,16 @@ index fad20d3..9f6b737 100644
 +			}
 +			if(m_txFifoDepth && m_dataTX.size() < m_txFifoDepth)
 +			{
-+				// octabam (jit-spike, O17): room in the FIFO is a standing transmit
-+				// request -- HTDE is level-sensitive on the chip -- and the DMA
-+				// fills it as a burst in THIS service (the chip's DMA runs at bus
-+				// speed beside the core). ❌ Two earlier shapes failed: a word per
-+				// JIT block was too slow inside a long DO loop (the spike), and a
-+				// request only on the HTDE 0->1 edge, or one word then "again at
-+				// once", let a host draining the FIFO between two services win
-+				// the race every time -- the read-back came one word per block
-+				// and each pull ran its core 5000-8300 instructions past the due
-+				// count (measured 12 Sep 2026, core 1). A registered but finished
-+				// channel moves nothing and ends the burst.
++				// octabam: room in the FIFO is a standing transmit request (HTDE is
++				// level-sensitive on the chip) and the DMA fills it as a burst in this service.
++				// A word per JIT block was too slow inside a long DO loop; a request only on the
++				// HTDE 0->1 edge let a host draining the FIFO between two services win every
++				// time, so each pull ran its core 5000-8300 instructions past the due count
++				// (12 Sep 2026, core 1). A registered but finished channel moves nothing and
++				// ends the burst.
 +				bool moved = false;
-+				// octabam (O17b): the fill as a burst through the channel
-+				// (dma.cpp burstToHost); the per-word loop below for any other shape
++				// octabam: fill as a burst through the channel (burstToHost); any other shape
++				// takes the per-word loop below
 +				if(m_dma)
 +				{
 +					if(auto* ch = m_dma->firstTriggerTarget(m_dmaReqSourceTransmit))
@@ -937,7 +727,7 @@ index fad20d3..9f6b737 100644
  			}
  		}
  
-@@ -305,9 +375,19 @@ namespace dsp56k
+@@ -311,9 +372,19 @@ namespace dsp56k
  		return m_dataTX.pop_front();
  	}
  
@@ -959,18 +749,18 @@ index fad20d3..9f6b737 100644
  			// A DSP that writes faster than the host reads overwrites its own word, exactly as the hardware
  			// does. Only a different word is worth a line: a program that answers the same value in a loop
 diff --git a/source/dsp56kEmu/hdi08.h b/source/dsp56kEmu/hdi08.h
-index e9852de..b613509 100644
+index e453ada..74c5bd3 100644
 --- a/source/dsp56kEmu/hdi08.h
 +++ b/source/dsp56kEmu/hdi08.h
-@@ -64,6 +64,7 @@ namespace dsp56k
- 		using CallbackHostStateChanged = std::function<void()>;
+@@ -65,6 +65,7 @@ namespace dsp56k
+ 		using CallbackWriteHDR = std::function<void(TWord)>;
  
  		TWord readStatusRegister();
 +		TWord peekStatusRegister() const { return m_hsr; }	// octabam (O17b): a diagnostic look from another thread -- readStatusRegister applies the pending host flags, a write the core's thread owns
  
  		TWord readControlRegister() const
  		{
-@@ -89,6 +90,29 @@ namespace dsp56k
+@@ -90,6 +91,29 @@ namespace dsp56k
  		TWord readTX();
  		void writeTX(TWord _val);
  
@@ -1000,7 +790,7 @@ index e9852de..b613509 100644
  		uint32_t exec() noexcept;
  
  		TWord readRX(Instruction _inst);
-@@ -134,6 +158,22 @@ namespace dsp56k
+@@ -133,6 +157,22 @@ namespace dsp56k
  			m_transmitDataAlwaysEmpty = _alwaysEmpty;
  		}
  
@@ -1023,7 +813,7 @@ index e9852de..b613509 100644
  		static void setSymbols(Disassembler& _disasm);
  
  		void injectTXInterrupt();
-@@ -182,8 +222,18 @@ namespace dsp56k
+@@ -200,8 +240,18 @@ namespace dsp56k
  		TWord m_hsr = 0;
  		std::atomic<TWord> m_hcr{0};		// HF2/HF3: DSP thread writes, UC thread reads (boot HF3 handshake)
  		TWord m_hpcr = 0;
@@ -1044,16 +834,16 @@ index e9852de..b613509 100644
  		IPeripherals& m_periph;
  		std::atomic<uint32_t> m_pendingTXInterrupts;
  		uint64_t m_lastRXClock = 0;
-@@ -194,6 +244,7 @@ namespace dsp56k
- 		CallbackRx m_callbackRx = [] {};
+@@ -213,6 +263,7 @@ namespace dsp56k
  		CallbackHostStateChanged m_callbackHostStateChanged = [] {};
+ 		CallbackWriteHDR m_callbackWriteHDR;
  		uint32_t m_rxRateLimit;		// minimum number of instructions between two RX interrupts
 +		uint32_t m_txFifoDepth = 0;	// octabam (jit-spike): see setTransmitFifoDepth
  		bool m_waitServeRXInterrupt = false;
  		std::atomic<int32_t> m_pendingHostFlags01{-1};	// pulse latch: UC/queue thread sets, DSP thread reads+clears
  
 diff --git a/source/dsp56kEmu/jit.h b/source/dsp56kEmu/jit.h
-index 0bd2195..43a2c0e 100644
+index 5dc2773..841963e 100644
 --- a/source/dsp56kEmu/jit.h
 +++ b/source/dsp56kEmu/jit.h
 @@ -76,6 +76,17 @@ namespace dsp56k
@@ -1075,10 +865,10 @@ index 0bd2195..43a2c0e 100644
  		void recreate(TWord _pc);
  
 diff --git a/source/dsp56kEmu/jitblock.cpp b/source/dsp56kEmu/jitblock.cpp
-index 2074e46..c3710f5 100644
+index 275e36e..81b1829 100644
 --- a/source/dsp56kEmu/jitblock.cpp
 +++ b/source/dsp56kEmu/jitblock.cpp
-@@ -542,6 +542,7 @@ namespace dsp56k
+@@ -547,6 +547,7 @@ namespace dsp56k
  				}
  			}
  
@@ -1188,10 +978,10 @@ index 0306a05..38cdbd1 100644
  		void readPeriph(DspValue& _dst, EMemArea _area, const DspValue& _offset, Instruction _inst) const;
  
 diff --git a/source/dsp56kEmu/memory.cpp b/source/dsp56kEmu/memory.cpp
-index 14cf3ae..05ddd92 100644
+index fbf4d36..b06a1d5 100644
 --- a/source/dsp56kEmu/memory.cpp
 +++ b/source/dsp56kEmu/memory.cpp
-@@ -145,6 +145,17 @@ namespace dsp56k
+@@ -150,6 +150,17 @@ namespace dsp56k
  			}
  		}
  */
@@ -1209,7 +999,7 @@ index 14cf3ae..05ddd92 100644
  		if (_offset < size(_area))		// Fix the amazing "write to wrong address" bug
  			m_mem[_area][_offset] = _value & 0x00ffffff;
  
-@@ -178,6 +189,9 @@ namespace dsp56k
+@@ -183,6 +194,9 @@ namespace dsp56k
  			return 0;
  		}
  
@@ -1219,7 +1009,7 @@ index 14cf3ae..05ddd92 100644
  		const auto res = m_mem[_area][_offset];
  
  #ifdef _DEBUG
-@@ -211,6 +225,14 @@ namespace dsp56k
+@@ -216,6 +230,14 @@ namespace dsp56k
  		}
  #endif
  
@@ -1235,7 +1025,7 @@ index 14cf3ae..05ddd92 100644
  		_wordB = p[_offset+1];
  
 diff --git a/source/dsp56kEmu/memory.h b/source/dsp56kEmu/memory.h
-index 567d068..8ea2123 100644
+index ddaa078..0b2062a 100644
 --- a/source/dsp56kEmu/memory.h
 +++ b/source/dsp56kEmu/memory.h
 @@ -1,5 +1,7 @@
@@ -1294,72 +1084,11 @@ index 567d068..8ea2123 100644
  		TWord*				getMemAreaPtr		(EMemArea _area)
  		{
  			switch (_area)
-diff --git a/source/dsp56kEmu/peripherals.cpp b/source/dsp56kEmu/peripherals.cpp
-index 20d687f..aac49ea 100644
---- a/source/dsp56kEmu/peripherals.cpp
-+++ b/source/dsp56kEmu/peripherals.cpp
-@@ -811,6 +811,12 @@ namespace dsp56k
- 		case Esai::M_RSMA_1:		return m_esai.readRSMA();
- 		case Esai::M_RSMB_1:		return m_esai.readRSMB();
- 		default:
-+			if(m_readHook)	// octabam
-+			{
-+				TWord v;
-+				if(m_readHook(_addr, v))
-+					return v;
-+			}
- 			return m_mem[_addr - XIO_Reserved_High_First];
- 		}
- 	}
-@@ -836,6 +842,8 @@ namespace dsp56k
- 		case Esai::M_RSMA_1:	m_esai.writeRSMA(_val);								return;
- 		case Esai::M_RSMB_1:	m_esai.writeRSMB(_val);								return;
- 		default:
-+			if(m_writeHook && m_writeHook(_addr, _val))	// octabam
-+				return;
- 			break;
- 		}
- 		if (_addr != 0xffffd5)
-diff --git a/source/dsp56kEmu/peripherals.h b/source/dsp56kEmu/peripherals.h
-index 73e89ae..92bf2fe 100644
---- a/source/dsp56kEmu/peripherals.h
-+++ b/source/dsp56kEmu/peripherals.h
-@@ -1,5 +1,7 @@
- #pragma once
- 
-+#include <functional>
-+
- #include "dma.h"
- #include "esai.h"
- #include "esaiclock.h"
-@@ -275,6 +277,14 @@ namespace dsp56k
- 		const TWord* readAsPtr(TWord _addr, Instruction _inst) override { return nullptr; }
- 		void write(TWord _addr, TWord _val) override;
- 
-+		// octabam: a host-supplied model for Y-space peripheral registers this
-+		// class does not map (the DSP56721's inter-core mailbox at
-+		// Y:$FFFFD3..$FFFFD7, as the Octatrack firmware uses it). Return true
-+		// to claim the access; unclaimed ones fall through as before.
-+		using ReadHook = std::function<bool(TWord _addr, TWord& _val)>;
-+		using WriteHook = std::function<bool(TWord _addr, TWord _val)>;
-+		void setUnmappedHooks(ReadHook _r, WriteHook _w) { m_readHook = std::move(_r); m_writeHook = std::move(_w); }
-+
- 		uint32_t exec() noexcept { return MaxDelayCycles; }
- 
- 		void reset() override;
-@@ -294,5 +304,7 @@ namespace dsp56k
- 	private:
- 		std::array<TWord, XIO_Reserved_High_Last - XIO_Reserved_High_First + 1> m_mem;
- 		Esai m_esai;
-+		ReadHook m_readHook;
-+		WriteHook m_writeHook;
- 	};
- }
 diff --git a/source/dsp56kEmu/unittests.cpp b/source/dsp56kEmu/unittests.cpp
-index e43b9cf..e753855 100644
+index a028328..7541f98 100644
 --- a/source/dsp56kEmu/unittests.cpp
 +++ b/source/dsp56kEmu/unittests.cpp
-@@ -610,6 +610,55 @@ namespace dsp56k
+@@ -1164,6 +1164,55 @@ namespace dsp56k
  			verify(dsp.regs().r[1] == 0x3cd);
  			verify(dsp.regs().r[2] == 0x3c9);
  		});

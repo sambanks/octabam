@@ -273,14 +273,11 @@ namespace ot
 			c.dsp->setHostStepped(!m_rt);
 			if(m_rt)
 			{
-				// O17: two of O8's defects apply to a JIT core on its own
-				// thread too, as flags of their own (the host-stepped mode
-				// carries them for the interpreter): the peripheral service
-				// under a masked interrupt (defect 3: core A boots with `ori
-				// #3,mr`) and the DMA trigger on arming (defect 8: DMA2 is
-				// armed with TDE already set; measured again under the JIT,
-				// core 0 parked at P:0x4b with DSR2 never moving).
-				c.dsp->setPeripheralsUnderMaskedInterrupt(true);
+				// O17: the DMA trigger on arming (defect 8 of O8: DMA2 is armed
+				// with TDE already set; measured again under the JIT, core 0
+				// parked at P:0x4b with DSR2 never moving) applies to a JIT core
+				// on its own thread too, as a flag of its own (the host-stepped
+				// mode carries it for the interpreter).
 				c.dsp->setDmaTriggerOnArm(true);
 			}
 			// HC and HCP clear when the DSP TAKES the host command. ✅ Measured
@@ -538,7 +535,7 @@ namespace ot
 			c.px->getEsaiClock().setCyclesPerSample(c.esaiCyclesPerSlot);
 
 			// The inter-core mailbox (see dsp.h), on the Y-side peripherals.
-			c.py->setUnmappedHooks(
+			c.py->setIoExtension(
 				[this, i](dsp56k::TWord _a, dsp56k::TWord& _v)
 				{
 					// O17: `full` is the flag of a one-word SPSC channel between the

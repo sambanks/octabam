@@ -141,6 +141,20 @@ DE-renewal hunk (disabling `HostTransmitData` as a request source):
 `ot_emu` drives HDI08 directly, never through a `DmaChannel`, so that
 half doesn't apply here (checked, not inferred).
 
+### The 28 Oct 2026 re-pin
+
+`vendor/dsp56300` moved from `8ccdd843` to `8b731966` (upstream's default
+branch `dsp56300`, 66 commits). The patch dropped the hunks upstream
+carries: the signed modulo bounds (`fdd98fc`), the masked-interrupt
+peripheral service, `Peripherals56367::setIoExtension` (our unmapped-register
+hooks; `ot_emu` calls it), the DMA request-target table sized to all 32 DRS
+values (our out-of-range guard) and the dual-counter reload in the 2D
+transfer loop. The same-value DCR renewal of 22 Sep (above) is removed; it
+had no observed effect. Built and run in an isolated tree: `dsp56kTestRunner`
+passes (including our `bset #$f,m4` test), `dsp_asm` emits `0257de` and
+`f4f9ea`, `ot_emu` builds and its non-firmware `ctest` passes. The gates run
+in CI.
+
 ## 2. Acquiring and unpacking an OS
 
 No Elektron binary lives in this repository; every build derives from the
