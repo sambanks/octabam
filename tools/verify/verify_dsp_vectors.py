@@ -68,6 +68,7 @@ PERIPHERALS = {
     "M_DDR0", "M_DDR1", "M_DDR2", "M_DDR3", "M_DOR2", "M_DOR3",
     "M_DSR0", "M_DSR1", "M_DSR2", "M_DSR3", "M_HCR", "M_HOTX", "M_PCRC", "M_PRRC",
     "M_RCCR", "M_RCCR_1", "M_RCR", "M_RCR_1", "M_RSMA", "M_RSMA_1", "M_RSMB", "M_RSMB_1",
+    "M_PCRE", "M_PRRE",   # port E GPIO control and direction; named by the disassembler since the 28 Oct 2026 re-pin
     "M_SAICR", "M_SAICR_1", "M_TCCR", "M_TCCR_1", "M_TCR", "M_TCR_1",
     "M_TSMA", "M_TSMA_1", "M_TSMB", "M_TSMB_1", "M_TX0",
 }

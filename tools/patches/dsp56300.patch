@@ -1,5 +1,5 @@
 diff --git a/source/CMakeLists.txt b/source/CMakeLists.txt
-index da7612bd..944719a8 100644
+index da7612b..944719a 100644
 --- a/source/CMakeLists.txt
 +++ b/source/CMakeLists.txt
 @@ -57,3 +57,5 @@ if(DSP56300_DEBUGGER)
@@ -9,7 +9,7 @@ index da7612bd..944719a8 100644
 +
 +add_subdirectory(dsp_host)
 diff --git a/source/dsp56kEmu/assembler.cpp b/source/dsp56kEmu/assembler.cpp
-index 1a22cedf..dbbc3072 100644
+index 1a22ced..dbbc307 100644
 --- a/source/dsp56kEmu/assembler.cpp
 +++ b/source/dsp56kEmu/assembler.cpp
 @@ -1140,19 +1140,21 @@ namespace dsp56k
@@ -315,7 +315,7 @@ index 1a22cedf..dbbc3072 100644
  
  			TWord extWord = 0;
 diff --git a/source/dsp56kEmu/assembler.h b/source/dsp56kEmu/assembler.h
-index 8759c66b..c7fb9b12 100644
+index 8759c66..c7fb9b1 100644
 --- a/source/dsp56kEmu/assembler.h
 +++ b/source/dsp56kEmu/assembler.h
 @@ -117,6 +117,7 @@ namespace dsp56k
@@ -327,7 +327,7 @@ index 8759c66b..c7fb9b12 100644
  		// Build mnemonic table
  		void buildMnemonicTable();
 diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
-index de5b5227..a311f8b9 100644
+index de5b522..3700bfc 100644
 --- a/source/dsp56kEmu/dma.cpp
 +++ b/source/dsp56kEmu/dma.cpp
 @@ -10,6 +10,7 @@
@@ -338,17 +338,20 @@ index de5b5227..a311f8b9 100644
  
  #if 0
  #include "dsp56kBase/logging.h"
-@@ -248,7 +249,8 @@ namespace dsp56k
+@@ -248,7 +249,11 @@ namespace dsp56k
  			};
  
  			// a raised request is only served by a channel that was set to that request source before, see checkTrigger
 -			if(reqSrc == m_prevRequestSource && raised())
-+			// octabam: unless the host asks for the older rule (DSP::setDmaTriggerOnArm)
++			// octabam: a host that sets DSP::setDmaTriggerOnArm gets the rule before 3cee91c9 -- the DCR
++			// write that selects the source serves a raised request too. ot_emu sets it: with 3cee91c9's rule
++			// verify_remix_switch's park command was not taken by either core (`ok d0=0`, CI 27 Oct 2026); with
++			// this one it is. The mechanism is not found.
 +			if((reqSrc == m_prevRequestSource || m_peripherals.getDSP().dmaTriggerOnArm()) && raised())
  				triggerByRequest();
  		}
  		else
-@@ -955,6 +957,77 @@ namespace dsp56k
+@@ -955,6 +960,77 @@ namespace dsp56k
  		return !channels.empty();
  	}
  
@@ -426,7 +429,7 @@ index de5b5227..a311f8b9 100644
  	bool Dma::trigger(DmaChannel::RequestSource _source) const
  	{
  		const auto& channels = m_requestTargets[static_cast<uint32_t>(_source)];
-@@ -971,7 +1044,6 @@ namespace dsp56k
+@@ -971,7 +1047,6 @@ namespace dsp56k
  	void Dma::addTriggerTarget(DmaChannel* _channel)
  	{
  		auto src = _channel->getRequestSource();
@@ -434,7 +437,7 @@ index de5b5227..a311f8b9 100644
  		auto& channels = m_requestTargets[static_cast<uint32_t>(src)];
  
  		channels.push_back(_channel);
-@@ -980,7 +1052,6 @@ namespace dsp56k
+@@ -980,7 +1055,6 @@ namespace dsp56k
  	void Dma::removeTriggerTarget(const DmaChannel* _channel)
  	{
  		auto src = _channel->getRequestSource();
@@ -443,7 +446,7 @@ index de5b5227..a311f8b9 100644
  
  		auto it = std::find(channels.begin(), channels.end(), _channel);
 diff --git a/source/dsp56kEmu/dma.h b/source/dsp56kEmu/dma.h
-index 119caede..20f1caaf 100644
+index 119caed..20f1caa 100644
 --- a/source/dsp56kEmu/dma.h
 +++ b/source/dsp56kEmu/dma.h
 @@ -10,6 +10,8 @@ namespace dsp56k
@@ -485,7 +488,7 @@ index 119caede..20f1caaf 100644
  		void removeTriggerTarget(const DmaChannel* _channel);
  
 diff --git a/source/dsp56kEmu/dsp.cpp b/source/dsp56kEmu/dsp.cpp
-index 48d1cbc0..2e1c754b 100644
+index 48d1cbc..2e1c754 100644
 --- a/source/dsp56kEmu/dsp.cpp
 +++ b/source/dsp56kEmu/dsp.cpp
 @@ -201,12 +201,15 @@ namespace dsp56k
@@ -566,7 +569,7 @@ index 48d1cbc0..2e1c754b 100644
  	// exec_do_end
  	//
 diff --git a/source/dsp56kEmu/dsp.h b/source/dsp56kEmu/dsp.h
-index 0e2665db..01dc22e4 100644
+index 0e2665d..01dc22e 100644
 --- a/source/dsp56kEmu/dsp.h
 +++ b/source/dsp56kEmu/dsp.h
 @@ -1,6 +1,7 @@
@@ -652,7 +655,7 @@ index 0e2665db..01dc22e4 100644
  
  		void	traceOp							();
 diff --git a/source/dsp56kEmu/hdi08.cpp b/source/dsp56kEmu/hdi08.cpp
-index c045c709..6437fa07 100644
+index c045c70..6437fa0 100644
 --- a/source/dsp56kEmu/hdi08.cpp
 +++ b/source/dsp56kEmu/hdi08.cpp
 @@ -65,8 +65,35 @@ namespace dsp56k
@@ -759,7 +762,7 @@ index c045c709..6437fa07 100644
  			// A DSP that writes faster than the host reads overwrites its own word, exactly as the hardware
  			// does. Only a different word is worth a line: a program that answers the same value in a loop
 diff --git a/source/dsp56kEmu/hdi08.h b/source/dsp56kEmu/hdi08.h
-index e453adad..74c5bd3e 100644
+index e453ada..74c5bd3 100644
 --- a/source/dsp56kEmu/hdi08.h
 +++ b/source/dsp56kEmu/hdi08.h
 @@ -65,6 +65,7 @@ namespace dsp56k
@@ -853,7 +856,7 @@ index e453adad..74c5bd3e 100644
  		std::atomic<int32_t> m_pendingHostFlags01{-1};	// pulse latch: UC/queue thread sets, DSP thread reads+clears
  
 diff --git a/source/dsp56kEmu/jit.h b/source/dsp56kEmu/jit.h
-index 5dc2773f..841963ef 100644
+index 5dc2773..841963e 100644
 --- a/source/dsp56kEmu/jit.h
 +++ b/source/dsp56kEmu/jit.h
 @@ -76,6 +76,17 @@ namespace dsp56k
@@ -875,7 +878,7 @@ index 5dc2773f..841963ef 100644
  		void recreate(TWord _pc);
  
 diff --git a/source/dsp56kEmu/jitblock.cpp b/source/dsp56kEmu/jitblock.cpp
-index 275e36e8..81b18290 100644
+index 275e36e..81b1829 100644
 --- a/source/dsp56kEmu/jitblock.cpp
 +++ b/source/dsp56kEmu/jitblock.cpp
 @@ -547,6 +547,7 @@ namespace dsp56k
@@ -887,7 +890,7 @@ index 275e36e8..81b18290 100644
  			ops.emit(opPC, opA, opB);
  			if (m_config.splitOpsByNops)	m_asm.nop();
 diff --git a/source/dsp56kEmu/jitblock.h b/source/dsp56kEmu/jitblock.h
-index 22ca87cf..8fc4a1d3 100644
+index 22ca87c..8fc4a1d 100644
 --- a/source/dsp56kEmu/jitblock.h
 +++ b/source/dsp56kEmu/jitblock.h
 @@ -66,6 +66,7 @@ namespace dsp56k
@@ -907,7 +910,7 @@ index 22ca87cf..8fc4a1d3 100644
  
  		JitConfig m_config;
 diff --git a/source/dsp56kEmu/jitdspregs.cpp b/source/dsp56kEmu/jitdspregs.cpp
-index 52b80219..175c9801 100644
+index 52b8021..175c980 100644
 --- a/source/dsp56kEmu/jitdspregs.cpp
 +++ b/source/dsp56kEmu/jitdspregs.cpp
 @@ -137,7 +137,18 @@ namespace dsp56k
@@ -931,7 +934,7 @@ index 52b80219..175c9801 100644
  			const auto m = dspReg - DspM0;
  
 diff --git a/source/dsp56kEmu/jitmem.cpp b/source/dsp56kEmu/jitmem.cpp
-index d86df772..57d5fa83 100644
+index d86df77..57d5fa8 100644
 --- a/source/dsp56kEmu/jitmem.cpp
 +++ b/source/dsp56kEmu/jitmem.cpp
 @@ -667,9 +667,22 @@ namespace dsp56k
@@ -976,7 +979,7 @@ index d86df772..57d5fa83 100644
  		const FuncArg r1(m_block, 1);
  		const FuncArg r2(m_block, 2);
 diff --git a/source/dsp56kEmu/jitmem.h b/source/dsp56kEmu/jitmem.h
-index 0306a05c..38cdbd17 100644
+index 0306a05..38cdbd1 100644
 --- a/source/dsp56kEmu/jitmem.h
 +++ b/source/dsp56kEmu/jitmem.h
 @@ -117,6 +117,7 @@ namespace dsp56k
@@ -988,7 +991,7 @@ index 0306a05c..38cdbd17 100644
  		void readPeriph(DspValue& _dst, EMemArea _area, const DspValue& _offset, Instruction _inst) const;
  
 diff --git a/source/dsp56kEmu/memory.cpp b/source/dsp56kEmu/memory.cpp
-index fbf4d365..b06a1d59 100644
+index fbf4d36..b06a1d5 100644
 --- a/source/dsp56kEmu/memory.cpp
 +++ b/source/dsp56kEmu/memory.cpp
 @@ -150,6 +150,17 @@ namespace dsp56k
@@ -1035,7 +1038,7 @@ index fbf4d365..b06a1d59 100644
  		_wordB = p[_offset+1];
  
 diff --git a/source/dsp56kEmu/memory.h b/source/dsp56kEmu/memory.h
-index ddaa0786..0b2062a7 100644
+index ddaa078..0b2062a 100644
 --- a/source/dsp56kEmu/memory.h
 +++ b/source/dsp56kEmu/memory.h
 @@ -1,5 +1,7 @@
@@ -1095,7 +1098,7 @@ index ddaa0786..0b2062a7 100644
  		{
  			switch (_area)
 diff --git a/source/dsp56kEmu/unittests.cpp b/source/dsp56kEmu/unittests.cpp
-index a0283285..7541f98b 100644
+index a028328..7541f98 100644
 --- a/source/dsp56kEmu/unittests.cpp
 +++ b/source/dsp56kEmu/unittests.cpp
 @@ -1164,6 +1164,55 @@ namespace dsp56k
