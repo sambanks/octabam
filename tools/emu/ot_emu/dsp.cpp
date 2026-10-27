@@ -271,15 +271,9 @@ namespace ot
 			// op_Brclr_pp forever; the second faulted in the JIT's funcCreate
 			// on the first DSP interrupt (lldb, EXC_BAD_ACCESS).
 			c.dsp->setHostStepped(!m_rt);
-			if(m_rt)
-			{
-				// O17: the DMA trigger on arming (defect 8 of O8: DMA2 is armed
-				// with TDE already set; measured again under the JIT, core 0
-				// parked at P:0x4b with DSR2 never moving) applies to a JIT core
-				// on its own thread too, as a flag of its own (the host-stepped
-				// mode carries it for the interpreter).
-				c.dsp->setDmaTriggerOnArm(true);
-			}
+			// The older arming rule (EXPERIMENT): a request raised before a DCR write that selects
+			// its source and sets DE is served by the write (upstream 3cee91c9 waits for the next).
+			c.dsp->setDmaTriggerOnArm(true);
 			// HC and HCP clear when the DSP TAKES the host command. ✅ Measured
 			// 8 Sep 2026: watching for the PC to land on the vector never fired
 			// -- a fast interrupt runs the vector's two words inline -- so the

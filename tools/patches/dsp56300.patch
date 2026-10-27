@@ -327,7 +327,7 @@ index 8759c66b..c7fb9b12 100644
  		// Build mnemonic table
  		void buildMnemonicTable();
 diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
-index de5b5227..8019f4b2 100644
+index de5b5227..a311f8b9 100644
 --- a/source/dsp56kEmu/dma.cpp
 +++ b/source/dsp56kEmu/dma.cpp
 @@ -10,6 +10,7 @@
@@ -338,16 +338,17 @@ index de5b5227..8019f4b2 100644
  
  #if 0
  #include "dsp56kBase/logging.h"
-@@ -248,7 +249,7 @@ namespace dsp56k
+@@ -248,7 +249,8 @@ namespace dsp56k
  			};
  
  			// a raised request is only served by a channel that was set to that request source before, see checkTrigger
 -			if(reqSrc == m_prevRequestSource && raised())
-+			if(raised())
++			// octabam: unless the host asks for the older rule (DSP::setDmaTriggerOnArm)
++			if((reqSrc == m_prevRequestSource || m_peripherals.getDSP().dmaTriggerOnArm()) && raised())
  				triggerByRequest();
  		}
  		else
-@@ -955,6 +956,77 @@ namespace dsp56k
+@@ -955,6 +957,77 @@ namespace dsp56k
  		return !channels.empty();
  	}
  
@@ -425,7 +426,7 @@ index de5b5227..8019f4b2 100644
  	bool Dma::trigger(DmaChannel::RequestSource _source) const
  	{
  		const auto& channels = m_requestTargets[static_cast<uint32_t>(_source)];
-@@ -971,7 +1043,6 @@ namespace dsp56k
+@@ -971,7 +1044,6 @@ namespace dsp56k
  	void Dma::addTriggerTarget(DmaChannel* _channel)
  	{
  		auto src = _channel->getRequestSource();
@@ -433,7 +434,7 @@ index de5b5227..8019f4b2 100644
  		auto& channels = m_requestTargets[static_cast<uint32_t>(src)];
  
  		channels.push_back(_channel);
-@@ -980,7 +1051,6 @@ namespace dsp56k
+@@ -980,7 +1052,6 @@ namespace dsp56k
  	void Dma::removeTriggerTarget(const DmaChannel* _channel)
  	{
  		auto src = _channel->getRequestSource();
