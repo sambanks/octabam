@@ -179,6 +179,7 @@ DSP 1's peak since reset read 99.8 % with an effect loaded (also 91.7 % and 99.8
 
 ## Open
 
+- OPEN, hardware: a move from T4's block freezes the DSP frame loop (`FAILURE_MODES.md`, "DARK REV picked on T4's FX2 ..."). `octabam` still has `window_homes`. A poll caught DSP 1 at 99.8 % in a single frame at the copy of a send (15.544 s, 28 Oct 2026): copying a block in one frame takes core B close to a frame.
 - The unit: the audible dropout while an effect loads (about 25 ms), and a reverb meeting a loaded effect's block.
 - Core A's stall when sent to, and the mask at the frames that lose their chunk.
 - How long the deferred toasts wait for a page key; whether 2 s (120 ticks) is long enough to read.
