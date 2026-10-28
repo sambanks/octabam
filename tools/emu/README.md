@@ -580,39 +580,29 @@ that third.
    DSP-write census, memory dumps and command log are byte-identical, and the
    oracle's 25 checks agree (the render's `cpu` line differs only in its
    wall-clock figures).
-3. **Re-pin `vendor/dsp56300` to the 9 Oct tip (7a5390e7, 49 commits past
-   8ccdd843).** Scoped 12 Oct in scratch trees; not done.
-   - By title: timers 6, JIT fixes 8, ESAI 7, DMA 5, host interface (HDI08,
-     SHI, the host-command queue) 7, interpreter semantics 8 (undefined
-     opcodes run as ILLEGAL, MOVEP, the DO-loop end, the signed modulo bounds,
-     scale-up limits), interrupts 2, memory, GPIO and build 6.
-   - Our patch (59 hunks) on the tip: 51 hunks apply, 8 are rejected in six
-     files. The AGU hunk is covered by upstream's signed compare (`fdd98fc5`;
-     equal for the base-0 pre-decrement, not tested over the whole space).
-     The masked-interrupt peripheral hunk is `823e697c`. Our unmapped-register
-     hooks are upstream's `setIoExtension`; `ot_emu`'s one call changes name.
-     Three hunks only need new context (`pendingInterruptCount`,
-     `peekStatusRegister`, `m_txFifoDepth`).
-   - `ot_emu` builds against the tip with those fix-ups and nothing else; the
-     `dsp_host`/`dsp_asm` build and upstream's `dsp56kTestRunner` were not
-     tried.
-   - Speed: none. The load phase of the gate command (853,049,038 ColdFire
-     instructions in both) took 22.4 s on the tip against 22.9 s on the pin,
-     the same flags, three paired runs.
-   - Behaviour: the first run after the load halts the firmware at frame 8
-     (`halt` at `0x4000ab40`; core 0 spins 3.88 G instructions on 53 host
-     commands). Bisected over the 49 commits (patch re-applied with the same
-     fix-ups at each): good to `2afc1c4f`, first bad `3cee91c9` ("DMA: a
-     channel enabled together with a new request source waits for the next
-     request"), which reworks the request semantics our DMA hunks also
-     change (the ESAI input feed, DCR2 rewritten every idle pass). The port
-     is to reconcile our DMA hunks with it.
-   - Estimate (not measured): half a day to a day to reconcile the DMA
-     hunks and pass the gate command, then the gates of the 22 Sep re-pin
-     (`scripts/refhash.sh check`, `verify-bus`, `verify-two-core`, every DSP
-     gate) and `ci-dsp` from the main checkout. The gain is a smaller patch
-     (about 60 lines fewer) and eight JIT fixes that matter to `--dsp-rt`
-     only.
+3. **Re-pin `vendor/dsp56300`.** Done in PR #943: 8ccdd843 to 8b731966
+   (66 commits), the patch 1417 to 1146 lines. CI on the PR head, all green:
+   DSP Toolchain and ColdFire Port Unit Tests (ubuntu, macos), `ci-dsp`,
+   `ci-emu`, `emu-cf`, `verify-bus`, `check-shared` (both), `check-remix
+   octabam` (plain, long, project) and `make reach`.
+   - Dropped from the patch: the AGU modulo hunk (upstream `fdd98fc`), the
+     masked-interrupt peripheral service, the unmapped-register hooks
+     (upstream `setIoExtension`), the request-source guard, the dual-counter
+     reload, the same-value DCR renewal (no observed effect) and the ESAI
+     LOG lines.
+   - The 12 Oct halt did not recur as a halt. What was measured: with
+     upstream's `3cee91c9` rule unchanged, `verify_remix_switch` failed in
+     CI (`ok d0=0`: neither core took the park command; then `callAsMain`
+     did not return in 400000000 steps). With the pre-`3cee91c9` arming rule
+     behind `DSP::setDmaTriggerOnArm` (set by `ot_emu` in both modes) the
+     gate passes. Not measured: why the rule matters to that gate, and
+     whether the 12 Oct halt at frame 8 is the same failure; neither was
+     run under the firmware here.
+   - Also changed: upstream names `M_PCRE` and `M_PRRE` in the disassembler
+     (`2dee93df`), so `verify_dsp_vectors` lists them. Inferred, not
+     measured: the payloads wrote those addresses before and only the name
+     is new.
+   - Not run: `scripts/refhash.sh check`.
 4. **Snapshot the machine after LOAD PROJECT** and restore it per gate.
    Removes about 23 s per boot of the same image and project; a bottleservice
    half boots at least seven times (`set`, `verify_scenes_p2`,
