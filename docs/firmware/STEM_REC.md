@@ -8184,6 +8184,12 @@ ISA, `byterev` in ISA_A+ (the V4e's) and `movem`'s memory operand at
 `(Ay)` or `(d16,Ay)`, the forms STEMS5 uses. USB AUDIO OUT would gain
 from the same copy: its packet build stores 320 longs a frame uncached
 inside the frame interrupt (14 to 25 µs a frame on Bryan T's unit).
+❌ Answered on a unit (Bryan T, `docs/firmware/CHIP.md`, 26 Oct 2026):
+a dirty `cpushl` costs 80 ns, a cached store that misses fills its line
+first (~80 ns), and an uncached store costs 36 ns, so cache plus push
+costs about what the uncached stores do. The idea is withdrawn (29 Oct
+2026), and USB OUT went the other way in #956: no copy, its packets
+written straight through the alias.
 
 ### 20.6 The writer at priority 2: kept as a fallback
 
