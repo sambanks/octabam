@@ -1,4 +1,63 @@
-# STEM REC: flashes A to K, and crosscheck's flash plan as a record
+# STEM REC: flashes A to L, and crosscheck's flash plan as a record
+
+## Flash L — `octabam` + STEM REC: the hook's parts, the gain probe, the slot mask (staged 29 Oct 2026)
+
+`STEMS12`, the same remix as flashes I to K, on branch `stems-hookparts`
+(from `stems-next` at `ecfbb2ff`). It records as STEMS11 did; what's new
+is measurement, and one saving:
+
+- `STATS.TXT` has two more lines, `hook parts mean ns` and `hook parts
+  longest ns`. They split the hook's time into `mirror`, `buses`,
+  `gains` and `tracks`, and the means add up to the hook's mean
+  (STEM_REC.md 20.9).
+- `gains` is a probe: it times one load from each cache line of the gains
+  the tracks then use. About 0.1 µs at eight tracks means those lines stay
+  in the cache; about 2 µs or more means they don't.
+- The gain mirror writes only the gains of the tracks a take records. A
+  take of T1 alone ran about 1,553 hook instructions a frame on STEMS11
+  and runs 1,078 here (under the port).
+
+**The image.** Built 29 Oct 2026 at `83ac96ec` with the local remix
+`remixes/test/lm-stems` (as before): `make image REMIX=lm-stems BUILD=12
+VERSION=STEMS12`. The unit's OS version reads `STEMS12`. The simplify
+round after it (`d365fad3`) changes only instruction counts (STEM_REC.md
+20.9) and isn't in this image.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS12.bin` | 615,604 | `682234ba1fe58aebe85584439e0f7dc1cd44e2afc531caef0913d6edbdb9af46` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS12.syx` | 859,900 | `ee0322adc0d0fc9561e49f1c53078743d9e57ae90d0769f59c5120da97ed7ae4` |
+| remix switch | `out/LM-STEMS 12.RMX` | 1,283,078 | `daa3373b2019b83d6b20eeddc04f694bc3eb6ac873bd7f6dfe12a810327215df` |
+
+Copies are in `/home/yvez/xcheck/stems12`, checked against these sha256s
+after WSL's disk recovered (29 Oct 2026, 12:29). Under the port:
+
+- `verify_stems` 334 PASS, 5 FAIL. Four are the input checks main's port
+  fails since its re-pin, as on `stems-next`.
+- The fifth is `CUE.wav` against the port's audio-out capture. In that
+  capture, the cue's left word sits one sample off its right word;
+  `CUE.wav`'s left and right come from one sample, as `stems_bus16`
+  reads them. The same check passes on `stems-next` and on the simplify
+  round, with the same port and the same bus code: only the hook's length
+  differs. 🟡 So it's the port's timing, not the file. A listen on the
+  unit settles it (test 4).
+- `verify_stems_units` 120 PASS, `verify_stems_menu` 93 PASS,
+  `verify_docs` 0 problems.
+
+**The tests, in order.** The project of 28 Oct (STEMS11), every take at
+24 bits and about 30 to 60 seconds:
+
+1. T1 alone.
+2. Seven files.
+3. Eleven files, as `261028-2008-2`: T1 to T7, MAIN, CUE, AB, CD, every
+   track a Static machine with every trig filled.
+4. The same eleven with the Static tracks muted. Listen to that take's
+   `CUE.wav`: it should play the cue, with nothing out of place.
+
+Then send the four logs (`/BRAIN/STEMS/<take>.TXT`). Their `hook parts`
+lines answer STEM_REC.md 20.9: whether the gain queue misses the cache
+(`gains` at eleven files), and the slot mask's saving on the unit (take
+1's hook mean against STEMS11's 8 µs).
 
 ## Flash K — `octabam` + STEM REC: a folder for each take, T1 at 24 bits (staged 27 Oct 2026)
 

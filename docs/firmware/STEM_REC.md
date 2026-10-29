@@ -8405,6 +8405,17 @@ at 24 bits:
 | with the mask (STEMS12's code) | 5,316 |
 | after the simplify round (the new `HOOK_CEILING`) | 5,252 |
 
+**CUE.wav and the port's capture** (🟡 inferred from three runs). On
+STEMS12's code (`83ac96ec`), `verify_stems`' `sources` check failed:
+`CUE.wav` matched the port's audio-out capture only with the capture's
+left cue word one sample off its right one. `CUE.wav`'s own left and right
+come from one sample, as `stems_bus16` reads them from the bus buffer. The
+same check passes on `stems-next` and on the simplify round, with the same
+port binary and the same bus code; only the hook's length differs. So it
+is the port's timing (the re-pin's arm rule, as with the inputs in 18.7),
+not the file. A listen to a take's `CUE.wav` on the unit settles it
+(flash L, test 4).
+
 The simplify round (a review of this round's own code): the parts are
 taken inline with one macro (`ST_ACC`) instead of a loop, two dead mark
 stores go, the probe and the stage share `GQ_READ`, and the mask lives
