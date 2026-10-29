@@ -11,7 +11,7 @@ MODULE = runpy.run_path(str(SOURCE), run_name='remix_manifest_midi_follow')['MOD
 MODULE = replace(MODULE, proof_note=(
     "linked routing/register/response and eight-track stress checks; "
     "project-backed MIDI captures with native chords, TRIG/LIVE, arp and note releases "
-    "(26 Oct 2026); hardware testing outstanding"
+    "(26 Oct 2026); limited MKII USB notes/releases and Part persistence pass  (29 Oct 2026, MFOL29U/FA); wider hardware coverage outstanding"
 ), gates=MODULE.gates + (
     Gate('tools/verify/verify_midi_follow_cpu.py', stage='image', venv=True),
 ))

@@ -312,9 +312,30 @@ Run `make check REMIX=midi-follow` for the standalone module. The manifest
 runs linked routing, register, response, graph stress and instruction-budget
 checks. With a prepared
 project copy, `verify_midi_follow_response_port.py --project DIR` checks LIVE
-response through emulated panel events and captured MIDI output. Hardware
-validation of boot, controls, persistence, MIDI timing and note releases remains
-outstanding.
+response through emulated panel events and captured MIDI output.
+
+### Limited MKII hardware pass, 29 October 2026
+
+MFOL29U / BUILD FA is the USB MIDI test selection based on PR implementation
+`c89b1e59`, with source pin `15e9b168`. Image SHA-256:
+`67e25a32515128f3f6e9de7343215160d6c948b45c9b98fa59415ac813beffdd`.
+The user confirmed the MKII model and loaded candidate/project; image identity
+was not read back from the device.
+
+- Two complete source/follower cycles at OCT 3: 128 USB MIDI note events,
+  matching the expected four-note chords and independent follower rhythm.
+- Three STOP-while-held runs: 72 events, with all four held follower voices
+  released and no subsequent note-ons before the next START.
+- Part SAVE at OCT 4, change to OCT 5, RELOAD: the user confirmed OCT 4 returned.
+- Project save and power-cycle: the user confirmed OCT 4 remained; a further
+  two-cycle capture (128 events) matched the expected OCT 4 chords.
+
+All three captures had balanced releases, no duplicate note-ons, unexpected
+channels or parser/callback errors. The driver sent only START/STOP. Persistence
+is supported by physical UI observations and the post-reboot MIDI output; the
+power-cycle itself was performed by the user. Host timestamps do not measure
+DIN latency. Visual KEY locking, MKI, sustained maximum load and the broader
+composition matrix remain unverified on hardware.
 
 
 ## Octabam composition and full-firmware captures

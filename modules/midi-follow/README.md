@@ -71,9 +71,11 @@ separate project copy to preserve these settings.
 
 ## Testing status
 
-MIDI Follow has been tested in the emulator. **Hardware testing is still to
-be done**, including physical MIDI output, timing and note releases on an
-Octatrack MKI/MKII.
+MIDI Follow has emulator coverage and a limited Octatrack MKII hardware pass
+(29 October 2026, MFOL29U / BUILD FA). USB MIDI captures confirmed four-note
+following and clean releases, including STOP during held chords. Part save/reload
+and saved OCT 4 surviving a power-cycle also passed. MKI, DIN timing and sustained
+maximum-load testing remain unverified.
 
 An instruction-budget gate covers inactive paths, all four chord voices,
 seven-link chains and simultaneous LIVE receivers, with Part/control changes

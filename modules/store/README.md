@@ -222,9 +222,12 @@ The `verify_store_part*` gates cover context bounds, write permissions, CS1 and
 dirty state, cold-entry ABI, real copy/clear publication, replacement counters,
 boot integrity and non-MIDI windows. Removing epoch publication and corrupting
 the cold-entry register save are rejected by negative controls. Functional
-checks are emulator evidence. Earlier hardware reports for STORE's side-file
-service and MIDI Loopback remain scoped to their recorded images; **the STORE
-native Part extension still needs hardware testing**.
+checks are emulator evidence. On an Octatrack MKII (29 October 2026,
+MFOL29U / BUILD FA), Follow's native OCT setting passed Part save/reload and
+project save/power-cycle persistence; post-reboot USB MIDI pitches matched the
+saved OCT 4 value. This is limited native Part hardware coverage, not validation
+of every client or replacement operation. Earlier hardware reports for STORE's
+side-file service and MIDI Loopback remain scoped to their recorded images.
 
 Audio latches are `0x8000182a` / `0x80001832`; MIDI latches are
 `0x8000666e` / `0x80006676` (published by the MIDI step routine at
