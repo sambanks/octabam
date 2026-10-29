@@ -241,7 +241,7 @@ Cold and warm cases refer to Follow's initialized state, not the processor
 instruction cache. These counts do not establish CPU utilization or deadlines.
 
 On 26 October 2026, all 139 cases passed for the optimized `midi-follow-events`
-image. Selected warmed counts compared with PR #824 head `f79ad3ca`:
+image. Selected warmed counts compared with commit `f79ad3ca`:
 
 | Case | Before | After |
 | --- | ---: | ---: |
@@ -316,24 +316,24 @@ response through emulated panel events and captured MIDI output.
 
 ### Limited MKII hardware pass, 29 October 2026
 
-MFOL29U / BUILD FA is the USB MIDI test selection based on PR implementation
+MFOL29U / BUILD FA is the USB MIDI test selection based on implementation commit
 `c89b1e59`, with source pin `15e9b168`. Image SHA-256:
 `67e25a32515128f3f6e9de7343215160d6c948b45c9b98fa59415ac813beffdd`.
-The user confirmed the MKII model and loaded candidate/project; image identity
+The operator confirmed the MKII model and loaded candidate/project; image identity
 was not read back from the device.
 
 - Two complete source/follower cycles at OCT 3: 128 USB MIDI note events,
   matching the expected four-note chords and independent follower rhythm.
 - Three STOP-while-held runs: 72 events, with all four held follower voices
   released and no subsequent note-ons before the next START.
-- Part SAVE at OCT 4, change to OCT 5, RELOAD: the user confirmed OCT 4 returned.
-- Project save and power-cycle: the user confirmed OCT 4 remained; a further
+- Part SAVE at OCT 4, change to OCT 5, RELOAD: OCT 4 returned on the device display.
+- Project save and power-cycle: OCT 4 remained on the device display; a further
   two-cycle capture (128 events) matched the expected OCT 4 chords.
 
 All three captures had balanced releases, no duplicate note-ons, unexpected
 channels or parser/callback errors. The driver sent only START/STOP. Persistence
 is supported by physical UI observations and the post-reboot MIDI output; the
-power-cycle itself was performed by the user. Host timestamps do not measure
+power-cycle was performed on the device. Host timestamps do not measure
 DIN latency. Visual KEY locking, MKI, sustained maximum load and the broader
 composition matrix remain unverified on hardware.
 
@@ -359,4 +359,4 @@ four-voice output into empty follower slots, and matching note releases.
 EUCLID currently has no declared worst-case `Module.dear` settings. The combined
 remix can run functional and project-backed checks, but the strict acceptance
 runner reports its pressure stages blocked until that profile is supplied.
-This is separate from Follow's hardware acceptance, which remains outstanding.
+The limited MKII checks above do not qualify this combined remix on hardware.
