@@ -1199,7 +1199,7 @@ Register the smallest read windows and writable offsets, keep field semantics
 in the client, and let STORE own native Part copy/reset hooks.
 
 An optional `Module.select(frozenset(module_keys))` returns any of `linked`,
-`detours`, `pokes`, `claims` and `gates` for that selection. It runs in `registry.bound()` after build settings,
+`detours`, `symbol_refs`, `overrides`, `pokes`, `claims` and `gates` for that selection. It runs in `registry.bound()` after build settings,
 so the claims ledger, linker, installer and image gates share the same result.
 It must be deterministic, have no side effects and may not change identity,
 dependencies or settings. Unselected modules are not specialized. Optional

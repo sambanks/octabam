@@ -205,6 +205,9 @@ and replacement walk. STORE's shared APIs and publication rules stay available.
 The cold resident gates use stock copy/init before the runtime is loaded.
 The original post-loader activation point publishes the DRAM targets. The
 new names and generic windows do not remove this cold-start protection.
+When BOOT TRACE is also selected, HOOKS calls its boot notification and then
+STORE's activation. Without a registered native Part client, STORE adds no
+boot hook and needs no bridge.
 
 ### Provenance and verification
 
