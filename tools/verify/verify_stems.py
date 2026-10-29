@@ -1324,10 +1324,10 @@ def same_as_alone(s):
 HOOK_SIDE = ("stems_frame_hook", "stems_mirror", "stems_emac_in", "stems_emac_out", "stems_half",
              "stems_track16", "stems_track24", "stems_bus_src",
              "stems_bus16", "stems_bus24", "stems_stage", "stems_bus_frame", "stems_zframe",
-             "stems_layout", "stems_trace_frame", "stems_m8check", "stems_st_parts")
-HOOK_CEILING = 5210   # the measured worst case, everything at 24 bits, with the hook's parts (29 Oct
-                      # 2026, STEM_REC.md 20.9); 4,972 since zero copy left out stems_zframe's 182
-                      # (5,154 with it); 5,012 in STEMS5
+             "stems_layout", "stems_trace_frame", "stems_m8check", "stems_st_parts", "stems_gprobe")
+HOOK_CEILING = 5294   # the measured worst case, everything at 24 bits, with the gain probe's 84 and
+                      # the hook's parts (5,210; 29 Oct 2026, STEM_REC.md 20.9); 4,972 since zero copy
+                      # left out stems_zframe's 182 (5,154 with it); 5,012 in STEMS5
                       # (7 Oct 2026; STEM_REC.md 20.1); 7,415 before it, and 5,000 until
                       # Yves's decision of 4 Oct 2026 to test the cost on the unit (spec 4.6)
 

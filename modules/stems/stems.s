@@ -1575,6 +1575,7 @@ stems_frame_hook:
 .Lh_stage:
         move.l  DTCN3,%d0
         move.l  %d0,stems_st_t2
+        bsr.w   stems_gprobe        | the gains the stage reads, into the cache
         move.l  DTCN3,%d0
         move.l  %d0,stems_st_t3
         bsr.w   stems_stage         | the tracks of the next frame, into their rings
@@ -2446,6 +2447,38 @@ stems_stage:
         bne.s   .Lc_file
 .Lc_done:
         bsr.w   stems_emac_out
+        rts
+
+| ---- the gain probe, STATS.TXT's gains part: one long of each 16-byte
+| line of the gains stems_stage reads next (its d7 frame), for every track
+| file. Its time is what those lines cost to bring into the data cache: a
+| hit is ~2.9 ns, a line fill ~80 ns (docs/firmware/CHIP.md), so about
+| 0.1 us at eight tracks when the mirror's lines are still cached and about
+| 3 us when none is (STEM_REC.md 20.9). The stage then finds them cached.
+| Five longs 16 bytes apart cover a slot's 68 bytes at any 4-byte
+| alignment. Uses d0-d2, a0, a1.
+stems_gprobe:
+        move.l  stems_ntrk,%d1
+        beq.s   .Lgp_out
+        move.l  stems_gqn,%d0               | the gains' frame, as stems_stage takes it
+        subq.l  #1+GAIN_LAG,%d0
+        moveq   #GQ_N-1,%d2
+        and.l   %d2,%d0
+        moveq   #10,%d2
+        lsl.l   %d2,%d0                     | * GQ_FRAME
+        addi.l  #stems_gq,%d0
+        lea     stems_farg,%a0              | each track file's k * 0x80
+.Lgp_file:
+        movea.l %d0,%a1
+        adda.l  (%a0)+,%a1                  | its slot
+        tst.l   (%a1)
+        tst.l   16(%a1)
+        tst.l   32(%a1)
+        tst.l   48(%a1)
+        tst.l   64(%a1)
+        subq.l  #1,%d1
+        bne.s   .Lgp_file
+.Lgp_out:
         rts
 
 | ---- the buses of this frame, each into its ring: MAIN, CUE and the inputs
