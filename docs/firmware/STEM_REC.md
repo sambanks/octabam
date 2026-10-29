@@ -8327,7 +8327,9 @@ most capacity × its frame's bytes + 44 ≤ its ring's size.
 
 The ideas from the perf round and from Sam's review of it (#644) that
 weren't needed for its goal are in `modules/stems/FLASH.md`, "For later —
-ideas from the perf round".
+ideas from the perf round". The review of the hook and the writer of
+29 Oct 2026, ranked with its savings and risks, is
+`modules/stems/CLEANUP.md`.
 
 ### 20.9 The hook's parts, the gain probe and the mirror's slot mask (29 Oct 2026)
 
