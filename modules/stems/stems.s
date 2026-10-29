@@ -320,7 +320,14 @@ stems_m8last:    .long   0          | the MASTER TRACK byte T8's row was last dr
         .global stems_st, stems_st_n, stems_st_wn
 stems_st:
 stems_st_on:     .long   0          | 1 while this frame records: the hook times it
+| The hook's marks, in order (stems_st_parts takes the four differences):
 stems_st_t0:     .long   0          | DTCN3 at the hook's entry
+stems_st_t1:     .long   0          | after the mirror: the buses start
+stems_st_t2:     .long   0          | before the gain probe
+stems_st_t3:     .long   0          | before the stage
+stems_st_tend:   .long   0          | the hook's end
+stems_st_pmax:   .space  4*4        | each part's longest: mirror, buses, gains, tracks
+stems_st_psum:   .space  4*8        | each part's frames, summed
 stems_st_hmax:   .long   0          | the hook's longest frame
 stems_st_hsum:   .long   0, 0       | the hook's frames, summed
 stems_st_fmax:   .long   0          | the hook and the stock frame routine after it, longest
@@ -1184,6 +1191,8 @@ st_f_wrec:      .asciz  "card rec %d ms %d KB %d us/KB\r\n"
 st_f_wsav:      .asciz  "card save %d ms %d KB %d us/KB\r\n"
 st_f_sleep:     .asciz  "writer longest sleep %d us, asks %d\r\n"
 st_f_hook:      .asciz  "hook mean %d us, longest %d us\r\n"
+st_f_pmean:     .asciz  "hook parts mean ns: mirror %d, buses %d, gains %d, tracks %d\r\n"
+st_f_plong:     .asciz  "hook parts longest ns: mirror %d, buses %d, gains %d, tracks %d\r\n"
 st_f_frame:     .asciz  "hook and frame routine mean %d us, longest %d us, %d frames\r\n"
 st_f_card:      .asciz  "card udma %d mwdma %d, cluster %d sectors\r\n"
 st_f_yes:       .asciz  "yes gap %d ms, double taps %d\r\n"
@@ -1482,6 +1491,10 @@ stems_switch_action:
 |
 | A recording frame is timed on DTCN3 for the readout: the hook from its
 | entry, and the hook with the stock frame routine after it (stems_st_on).
+| Four marks split the hook into parts that add up to it: the mirror, the
+| buses (the state, this frame's buses and the publish), the gain probe
+| and the tracks (the stage). A frame without a stage (the take's last)
+| counts what follows the mirror as buses.
         .global stems_frame_hook
 stems_frame_hook:
         tst.l   stems_state
@@ -1499,6 +1512,10 @@ stems_frame_hook:
         bsr.w   stems_m8check
         lea     -56(%sp),%sp
         movem.l %d0-%d7/%a0-%a5,(%sp)
+        move.l  DTCN3,%d0           | the mirror's end, and the other marks' until they're set
+        move.l  %d0,stems_st_t1
+        move.l  %d0,stems_st_t2
+        move.l  %d0,stems_st_t3
         move.l  stems_state,%d0
         moveq   #ST_FINISHING,%d1
         cmp.l   %d1,%d0
@@ -1549,25 +1566,35 @@ stems_frame_hook:
         moveq   #ERR_OVERFLOW,%d0   | the card fell behind: stop at the last whole frame
         move.l  %d0,stems_status
 .Lh_fin:
+        move.l  DTCN3,%d0           | no stage: the buses end here
+        move.l  %d0,stems_st_t2
+        move.l  %d0,stems_st_t3
         moveq   #ST_FINISHING,%d0
         move.l  %d0,stems_state
         bra.s   .Lh_out
 .Lh_stage:
+        move.l  DTCN3,%d0
+        move.l  %d0,stems_st_t2
+        move.l  DTCN3,%d0
+        move.l  %d0,stems_st_t3
         bsr.w   stems_stage         | the tracks of the next frame, into their rings
         moveq   #1,%d0
         move.l  %d0,stems_staged
 .Lh_out:
         tst.l   stems_st_on
         beq.s   .Lh_rest
-        move.l  DTCN3,%d0
+        move.l  DTCN3,%d1           | the hook's end
+        move.l  %d1,%d0
         sub.l   stems_st_t0,%d0     | the hook's own time this frame
         cmp.l   stems_st_hmax,%d0
         bls.s   .Lh_hm
         move.l  %d0,stems_st_hmax
 .Lh_hm:
         add.l   %d0,stems_st_hsum+4
-        bcc.s   .Lh_rest
+        bcc.s   .Lh_hs
         addq.l  #1,stems_st_hsum
+.Lh_hs:
+        bsr.w   stems_st_parts      | and its four parts
 .Lh_rest:
         movem.l (%sp),%d0-%d7/%a0-%a5
         lea     56(%sp),%sp
@@ -1629,6 +1656,33 @@ stems_m8check:
         movea.l (%sp)+,%a0
 .Lm8_out:
         move.l  (%sp)+,%d0
+        rts
+
+| ---- the hook's four parts this frame, into their sums and longest -------
+| d1 = DTCN3 at the hook's end. Each part is the difference of two marks
+| (stems_st_t0 .. stems_st_tend), so the four add up to the hook's time.
+| In the hook, after the hook's own sum. Uses d0, d2, a0-a2.
+stems_st_parts:
+        move.l  %d1,stems_st_tend
+        lea     stems_st_t0,%a0
+        lea     stems_st_pmax,%a1
+        lea     stems_st_psum,%a2
+        moveq   #4,%d2
+.Lpt_part:
+        move.l  4(%a0),%d0
+        sub.l   (%a0)+,%d0          | this part's counts
+        cmp.l   (%a1),%d0
+        bls.s   .Lpt_max
+        move.l  %d0,(%a1)
+.Lpt_max:
+        addq.l  #4,%a1
+        add.l   %d0,4(%a2)
+        bcc.s   .Lpt_sum
+        addq.l  #1,(%a2)
+.Lpt_sum:
+        addq.l  #8,%a2
+        subq.l  #1,%d2
+        bne.s   .Lpt_part
         rts
 
 | ---- the layout, latched at the start edge (in the hook) ---------------
@@ -3549,6 +3603,28 @@ stems_st_us:
         move.l  (%sp)+,%d0
         rts
 
+| ---- d1 = d1 DTCN3 counts in nanoseconds (below 32 ms: 1,000 x counts) --
+stems_st_ns:
+        move.l  %d0,-(%sp)
+        move.l  #1000,%d0
+        mulu.l  %d0,%d1
+        move.l  #BUS_MHZ,%d0
+        divu.l  %d0,%d1
+        move.l  (%sp)+,%d0
+        rts
+
+| ---- d1 = the mean of a 64-bit sum at a0 over stems_st_n, in nanoseconds
+stems_st_pmean:
+        moveq   #0,%d1
+        move.l  stems_st_n,%d2
+        beq.s   .Lpm_out
+        move.l  (%a0),%d0
+        move.l  4(%a0),%d1
+        bsr.w   stems_div64         | counts a frame
+        bsr.w   stems_st_ns
+.Lpm_out:
+        rts
+
 | ---- a3 = the end of the text at a3 (its NUL) -----------------------------
 stems_st_tail:
         tst.b   (%a3)
@@ -3698,6 +3774,34 @@ stems_stats:
         move.l  %a3,-(%sp)
         jsr     SPRINTF
         lea     16(%sp),%sp
+        bsr.w   stems_st_tail
+        moveq   #3,%d4                              | its parts' means, the last pushed first
+.Lo_pm:
+        lea     stems_st_psum,%a0
+        move.l  %d4,%d0
+        lsl.l   #3,%d0
+        adda.l  %d0,%a0
+        bsr.w   stems_st_pmean
+        move.l  %d1,-(%sp)
+        subq.l  #1,%d4
+        bpl.s   .Lo_pm
+        pea     st_f_pmean
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     24(%sp),%sp
+        bsr.w   stems_st_tail
+        moveq   #3,%d4                              | ... and their longest
+.Lo_pl:
+        lea     stems_st_pmax,%a0
+        move.l  (%a0,%d4.l*4),%d1
+        bsr.w   stems_st_ns
+        move.l  %d1,-(%sp)
+        subq.l  #1,%d4
+        bpl.s   .Lo_pl
+        pea     st_f_plong
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     24(%sp),%sp
         bsr.w   stems_st_tail
         move.l  stems_st_n,-(%sp)                   | the hook and the stock frame routine
         move.l  stems_st_fmax,%d1

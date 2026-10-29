@@ -1323,9 +1323,11 @@ def same_as_alone(s):
 
 HOOK_SIDE = ("stems_frame_hook", "stems_mirror", "stems_emac_in", "stems_emac_out", "stems_half",
              "stems_track16", "stems_track24", "stems_bus_src",
-             "stems_bus16", "stems_bus24", "stems_stage", "stems_bus_frame", "stems_layout",
-             "stems_trace_frame", "stems_m8check")
-HOOK_CEILING = 4972   # the measured worst case, everything at 24 bits, since zero copy (5,012 in STEMS5)
+             "stems_bus16", "stems_bus24", "stems_stage", "stems_bus_frame", "stems_zframe",
+             "stems_layout", "stems_trace_frame", "stems_m8check", "stems_st_parts")
+HOOK_CEILING = 5210   # the measured worst case, everything at 24 bits, with the hook's parts (29 Oct
+                      # 2026, STEM_REC.md 20.9); 4,972 since zero copy left out stems_zframe's 182
+                      # (5,154 with it); 5,012 in STEMS5
                       # (7 Oct 2026; STEM_REC.md 20.1); 7,415 before it, and 5,000 until
                       # Yves's decision of 4 Oct 2026 to test the cost on the unit (spec 4.6)
 
@@ -1507,6 +1509,9 @@ def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE,
     ring = nums(r"ring peak (\d+) of (\d+) frames")
     wr = nums(r"card writes (\d+), (\d+) ms in all, longest (\d+) us")
     hook = nums(r"hook mean (\d+) us, longest (\d+) us")
+    part_re = r"mirror (\d+), buses (\d+), gains (\d+), tracks (\d+)"
+    pmean = nums(r"hook parts mean ns: " + part_re)
+    plong = nums(r"hook parts longest ns: " + part_re)
     frame = nums(r"routine mean (\d+) us, longest (\d+) us, (\d+) frames")
     check(f"{tag}: STATS.TXT names the take and its status",
           t.startswith(f"STEM REC STATS {names[0]}\r\n") and f"\r\nstatus {status}\r\n" in t, repr(t[:60]))
@@ -1519,6 +1524,14 @@ def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE,
           ring is not None and hook is not None and frame is not None and 0 < hook[0] <= hook[1]
           and hook[0] <= frame[0] <= frame[1] and abs(frame[2] - nfr) <= 2,
           f"ring {ring}, hook {hook}, frame {frame}")
+    # The parts are differences of marks between the hook's entry and end, so
+    # their means add up to the hook's mean; each figure is truncated, the
+    # hook's to whole µs.
+    check(f"{tag}: STATS.TXT splits the hook into four parts that add up to it",
+          hook is not None and pmean is not None and plong is not None
+          and abs(sum(pmean) / 1000 - hook[0]) <= 1
+          and all(m <= l for m, l in zip(pmean, plong)) and max(plong) < (hook[1] + 1) * 1000,
+          f"hook {hook}, parts mean {pmean}, longest {plong}")
     img = pathlib.Path(card_path).read_bytes()        # the volume's boot sector: MBR entry 0, else sector 0
     part = struct.unpack_from("<I", img, 0x1c6)[0] if img[0x1fe:0x200] == b"\x55\xaa" and img[0x1c2] else 0
     spc = img[part * 512 + 13]
