@@ -144,10 +144,10 @@ measures the ring against the emulated card's speed (STEM_REC.md 15.4).
 | Measured under the port | Since the perf round | Before it | STEM_REC.md |
 |---|---|---|---|
 | The frame hook, not recording (the gain mirror) | 394 instructions per frame | 1,001 | 20.1 |
-| The frame hook, T1 alone at 24 bits | 1,078 instructions per frame (about 1,553 before the mirror's slot mask) | | 20.9 |
+| The frame hook, T1 alone at 24 bits | 1,035 instructions per frame (the mirror 477 of them, 968 before its slot mask) | | 20.9 |
 | The frame hook, eight tracks at 16 bits | 3,401 instructions per frame, without `stems_zframe` (about 15 a file) | 5,579 | 20.7 |
 | The frame hook, eight tracks at 24 bits | 3,969 instructions per frame, without `stems_zframe` | 6,219 | 20.7 |
-| The frame hook, everything at 24 bits | 5,316 instructions per frame (4,972 as counted until 29 Oct 2026, without `stems_zframe`) | 7,415 | 20.9 |
+| The frame hook, everything at 24 bits | 5,252 instructions per frame (4,972 as counted until 29 Oct 2026, without `stems_zframe`) | 7,415 | 20.9 |
 | The writer's copy | none: the card reads each file's ring (zero copy) | 737 a frame at eight tracks, 16 bits; 1,067 everything at 24 bits | 20.7 |
 | The writer task's stack peak | 1,560 of 8,192 bytes (the most seen; `full`, 8 Oct 2026) | 1,244 | 20.3 |
 
@@ -391,7 +391,7 @@ and STEM REC's writer named on the CPU tab (its task control block is
   track is in that track's file too, after its fader, 80 samples later
   (the THRU track's own delay, STEM_REC.md 18.7).
 - **More work in the audio interrupt.** While a take records, the frame
-  hook runs 1,078 to 5,316 instructions per frame (T1 alone at 24 bits
+  hook runs 1,035 to 5,252 instructions per frame (T1 alone at 24 bits
   to everything at 24 bits), and 394 while nothing records.
   `STATS.TXT` gives its time on the unit.
 - The status doesn't tick on its own: it's current as of the last key.

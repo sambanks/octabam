@@ -40,6 +40,7 @@ chip (the port has its own), and how a take plays back (its level, its
 tempo). A run ends at a fixed frame count, so a writer that got slower
 fails it before its files are complete (21 Oct 2026, the take folder).
 """
+import bisect
 import json
 import os
 import pathlib
@@ -1321,14 +1322,10 @@ def same_as_alone(s):
               a[3] == g[3] and fa == fg and len(fa) > 0, f"{a[3]} vs {g[3]}, {len(fa)} and {len(fg)} files")
 
 
-HOOK_SIDE = ("stems_frame_hook", "stems_mirror", "stems_emac_in", "stems_emac_out", "stems_half",
-             "stems_track16", "stems_track24", "stems_bus_src",
-             "stems_bus16", "stems_bus24", "stems_stage", "stems_bus_frame", "stems_zframe",
-             "stems_layout", "stems_trace_frame", "stems_m8check", "stems_st_parts", "stems_gprobe")
-HOOK_CEILING = 5316   # the measured worst case, everything at 24 bits, with the mirror's slot mask
-                      # (22: every slot is read here), the gain probe's 84 (5,294) and the hook's
-                      # parts (5,210; 29 Oct 2026, STEM_REC.md 20.9); 4,972 since zero copy left
-                      # out stems_zframe's 182 (5,154 with it); 5,012 in STEMS5
+HOOK_CEILING = 5252   # the measured worst case, everything at 24 bits, counted over the hook's whole
+                      # block (29 Oct 2026, STEM_REC.md 20.9): 5,316 with the mirror's slot mask before
+                      # the simplify round, 5,294 with the gain probe, 5,210 with the hook's parts;
+                      # 4,972 since zero copy left out stems_zframe's 182 (5,154 with it); 5,012 in STEMS5
                       # (7 Oct 2026; STEM_REC.md 20.1); 7,415 before it, and 5,000 until
                       # Yves's decision of 4 Oct 2026 to test the cost on the unit (spec 4.6)
 
@@ -1336,28 +1333,27 @@ HOOK_CEILING = 5316   # the measured worst case, everything at 24 bits, with the
 def hook_cost(s, cov):
     """Instructions the hook runs a frame, from a --coverage file (one
     `hexaddr count` line per instruction from the transport start): the
-    counts inside the hook's routines (each from its symbol to the next
-    symbol), over the times its first instruction ran (STEM_REC.md 10.0).
-    Returns (per frame, frames, {routine: per frame})."""
-    starts = sorted(set(s.values()))
-    spans = []
-    for name in HOOK_SIDE:
-        a = s[name]
-        nxt = next((x for x in starts if x > a), a + 0x1000)
-        spans.append((name, a, nxt))
+    counts inside the hook's block, stems_frame_hook up to stems_hook_end,
+    where stems.s keeps every routine the hook calls (a list of names
+    missed stems_zframe from zero copy to 29 Oct 2026, STEM_REC.md 20.9),
+    over the times its first instruction ran (STEM_REC.md 10.0). Returns
+    (per frame, frames, {routine: per frame}), each routine from its
+    symbol to the next."""
+    lo, hi = s["stems_frame_hook"], s["stems_hook_end"]
+    routines = sorted((a, name) for name, a in s.items() if lo <= a < hi)
+    starts = [a for a, _ in routines]
     total, frames, split = 0, 0, {}
     for line in pathlib.Path(cov).read_text().splitlines():
         f = line.split()
         if len(f) != 2:
             continue
         a, n = int(f[0], 16), int(f[1])
-        if a == s["stems_frame_hook"]:
+        if a == lo:
             frames = n
-        for name, lo, hi in spans:
-            if lo <= a < hi:
-                total += n
-                split[name] = split.get(name, 0) + n
-                break
+        if lo <= a < hi:
+            total += n
+            name = routines[bisect.bisect_right(starts, a) - 1][1]
+            split[name] = split.get(name, 0) + n
     per = {k: v // frames for k, v in split.items()} if frames else {}
     return (total // frames if frames else None), frames, per
 
@@ -1368,8 +1364,10 @@ def cost(s):
     cost with the recorder idle (the mirror alone), and of a take of T1 alone
     at 24 bits (the default: the mirror writes one slot's gains, 29 Oct
     2026), recorded. The detail splits the count by routine."""
-    for tag, before, src, fmt in (("costrec", None, 0xfff, 0b001), ("costidle", (), 0x0ff, 0b110),
-                                  ("costt1", None, 0x001, 0b111)):
+    runs = (("costrec", None, 0xfff, 0b001, HOOK_CEILING, "everything on at 24 bits"),
+            ("costidle", (), 0x0ff, 0b110, None, "with the recorder idle (the mirror)"),
+            ("costt1", None, 0x001, 0b111, None, "recording T1 alone at 24 bits"))
+    for tag, before, src, fmt, ceiling, what in runs:
         cov = run_path(tag, "cov")
         log, *_ = port(s, 400, tag=tag, fixture=FIXTURE_THRU, mask=None, dump_blocks=False, calls_before=before,
                        pokes_before=[(s["stems_tracks"] + 2, src >> 8), (s["stems_tracks"] + 3, src & 0xff),
@@ -1377,15 +1375,10 @@ def cost(s):
                        extra=("--coverage", str(cov)))
         per, frames, split = hook_cost(s, cov) if cov.exists() else (None, 0, {})
         top = ", ".join(f"{k} {v}" for k, v in sorted(split.items(), key=lambda kv: -kv[1]) if v)
-        if tag == "costrec":
-            check(f"cost: at most {HOOK_CEILING} hook instructions a frame, everything on at 24 bits",
-                  per is not None and per <= HOOK_CEILING, f"{per} a frame over {frames} frames ({top})")
-        elif tag == "costidle":
-            check("cost: the hook with the recorder idle (the mirror) is measured", per is not None,
-                  f"{per} a frame over {frames} frames ({top})")
-        else:
-            check("cost: the hook recording T1 alone at 24 bits is measured", per is not None,
-                  f"{per} a frame over {frames} frames ({top})")
+        name = (f"cost: at most {ceiling} hook instructions a frame, {what}" if ceiling
+                else f"cost: the hook {what} is measured")
+        check(name, per is not None and (ceiling is None or per <= ceiling),
+              f"{per} a frame over {frames} frames ({top})")
 
 
 def nocard(s):

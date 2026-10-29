@@ -8369,30 +8369,43 @@ take recorded: 968 instructions a frame against 378 at idle (the 28 Oct
 coverage). The stage reads only the track files' slots, so a take of T1
 alone, the default, wrote seven slots that nothing read.
 
-- `stems_layout` now latches those slots (`stems_gmask`). While a take
-  records or finishes, the mirror writes only them; the others advance
-  their state in closed form, as at idle.
+- The slots are `stems_lsrc`'s T1-T8 bits, which `stems_layout` latches
+  at the start edge: each set bit is exactly one track file. While a take
+  records or finishes, the mirror writes only those slots; the others
+  advance their state in closed form, as at idle. The mirror walks the
+  slots as a shifting mask in a register, so a slot costs no memory test.
 - A stopped or armed frame still writes every slot, because the take's
   first stage reads it before the layout latches.
-- With T1 alone at 24 bits, the hook runs 1,078 instructions a frame
-  and the mirror 493 of them. Before the mask, the mirror ran 968 there,
+- With T1 alone at 24 bits, the hook runs 1,035 instructions a frame
+  and the mirror 477 of them. Before the mask, the mirror ran 968 there,
   because its path didn't depend on what the take records. So the mask
-  saves 475 a frame, from about 1,553. 🟡 On the unit that's about
-  1.4 µs at 2.9 ns, plus 35 line writes if they miss; STEMS12's log
-  measures it against STEMS11's 8 µs.
-- With every slot recorded, the mask costs 22.
+  saves 491 a frame. 🟡 On the unit that's about 1.4 µs at 2.9 ns, plus
+  35 line writes if they miss; STEMS12's log measures it against
+  STEMS11's 8 µs. (STEMS12 itself carries the mask's first form, before
+  the simplify round below: 1,078 and 493.)
+- With every slot recorded, the mirror runs 960, 8 fewer than before the
+  mask.
 
 The unit test `mirror_mask` checks the written slots against the model
 and the others for their old bytes.
 
 **The cost gate** (✅ under the port). Since zero copy (20.7) the gate's
 routine list didn't name `stems_zframe`, so `HOOK_CEILING` left out its
-182 instructions a frame with everything at 24 bits. Counted now, that
-case is:
+182 instructions a frame with everything at 24 bits. The gate now counts
+every instruction from `stems_frame_hook` to `stems_hook_end`, the block
+where `stems.s` keeps every routine the hook calls, so a new routine
+can't be left out (the list also missed `stems_zlayout`). With everything
+at 24 bits:
 
 | state of the hook | instructions a frame |
 |---|---|
 | before this round, `stems_zframe` counted | 5,154 |
 | with the parts' marks and sums | 5,210 |
 | with the probe | 5,294 |
-| with the mask (the new `HOOK_CEILING`) | 5,316 |
+| with the mask (STEMS12's code) | 5,316 |
+| after the simplify round (the new `HOOK_CEILING`) | 5,252 |
+
+The simplify round (a review of this round's own code): the parts are
+taken inline with one macro (`ST_ACC`) instead of a loop, two dead mark
+stores go, the probe and the stage share `GQ_READ`, and the mask lives
+in a register instead of two state words.

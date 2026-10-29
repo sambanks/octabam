@@ -290,7 +290,7 @@ def layout(rt):
                     sum(1 << (f >> 24) for f in ref[0] if f >> 24 < 8))
             have = ([rt.r32(s["stems_ffn"] + 4 * i) for i in range(nf)],
                     [rt.r32(s["stems_farg"] + 4 * i) for i in range(nf)],
-                    rt.r32(s["stems_ntrk"]), rt.r32(s["stems_tbytes"]), rt.r32(s["stems_gmask"]))
+                    rt.r32(s["stems_ntrk"]), rt.r32(s["stems_tbytes"]), rt.r32(s["stems_lsrc"]) & 0xff)
             if badfn is None and have != want:
                 badfn = (hex(src), fmt, have, want)
         if bad:
@@ -566,17 +566,17 @@ def mirror_idle(rt, n=60, seed=12):
 @unit
 def mirror_mask(rt, n=40, seed=13):
     """Recording or finishing, the mirror writes the gains of the slots the
-    take's track files read (stems_gmask, from stems_layout) and no others:
-    those equal the model, the other slots' words stay as they were, and
-    every slot's state still follows the model. Armed, every slot is
-    written again."""
+    take's track files read (stems_lsrc's T1-T8, as stems_layout latched
+    them; its other bits set here) and no others: those equal the model,
+    the other slots' words stay as they were, and every slot's state still
+    follows the model. Armed, every slot is written again."""
     s = rt.s
     rt.w32(TRANSPORT, 1)
     rng = random.Random(seed)
     for state, mask in ((2, 0x01), (2, 0xa5), (3, 0x7e), (2, 0x00)):
         mirror_reset(rt, state=state)
         model = sg.Mirror(rt.table)
-        rt.w32(s["stems_gmask"], mask)
+        rt.w32(s["stems_lsrc"], 0xf300 | mask)          # MAIN, CUE and the OUT bits besides
         junk = bytes(rng.randrange(256) for _ in range(GQ_N * GQ_FRAME))
         rt.wmem(s["stems_gq"], junk)
         bad = None
@@ -586,21 +586,22 @@ def mirror_mask(rt, n=40, seed=13):
             rt.call("stems_mirror")
             want = model.step(page)
             st, gq, _ = mirror_read(rt)
-            q = gq_frame(rt)
-            for k in range(8):
-                at = q + GQ_SLOT * k
-                ok = (gq[k] == want[k] if mask >> k & 1
-                      else rt.rmem(at, 68) == junk[at - s["stems_gq"]:at - s["stems_gq"] + 68])
-                if not ok or st != model.state:
-                    bad = (i, k)
-                    break
-            if bad:
+            if st != model.state:
+                bad = (i, "state")
+                break
+            q = gq_frame(rt) - s["stems_gq"]
+            slot = next((k for k in range(8) if not (
+                gq[k] == want[k] if mask >> k & 1
+                else rt.rmem(s["stems_gq"] + q + GQ_SLOT * k, 68) == junk[q + GQ_SLOT * k:q + GQ_SLOT * k + 68])),
+                None)
+            if slot is not None:
+                bad = (i, slot)
                 break
         check(f"mirror_mask: state {state}, slots {mask:#04x}: only those slots' gains, every slot's state",
               bad is None, f"first difference at page, slot {bad}" if bad else "")
     mirror_reset(rt, state=1)
     model = sg.Mirror(rt.table)
-    rt.w32(s["stems_gmask"], 0x01)
+    rt.w32(s["stems_lsrc"], 0x01)
     for i in range(3):
         page = random_page(rng)
         send_page(rt, i % 4, page)
