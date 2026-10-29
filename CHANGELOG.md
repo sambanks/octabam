@@ -36,6 +36,11 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
   track 8 (the old producer stored the pair into the next frame's track 8
   field).
 - SIDECHAIN_COMPRESSOR (`modules/sidechain-compressor`, `b0d49bf`): on the author's MKI as OCTABAM33 (`remixes/test/sidechain-compressor`, mainos `6cfe4121…`, 26 Oct 2026): KBAS and KWID across their range with MON on and off, MON's switch and its OFF on a project saved with an earlier version, KEY's pressed turn, the MON and KEY fades, all good. The module's proof is now hardware.
+- MIDI Follow: LIVE commits GRAV history once per receiver update, preserving
+  Part-replacement validation and release-only behavior. Seven four-voice
+  receivers use 29,041 measured instructions, down from 41,858; emulator
+  instruction counts exclude native MIDI transmission.
+
 - MIDI Follow now applies inherited source KEY after TRAN, matching stock;
   native-only KEY display/locking and drift-free LIVE voice correction.
 
