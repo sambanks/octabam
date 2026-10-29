@@ -10,9 +10,9 @@ MODULE = runpy.run_path(str(SOURCE), run_name='remix_manifest_midi_follow')['MOD
 # Qualification belongs to this Octabam integration and its declared gates.
 MODULE = replace(MODULE, proof_note=(
     "linked routing/register/response and eight-track stress checks; "
-    "project-backed MIDI captures with native chords, TRIG/LIVE, arp and note releases "
-    "(26 Oct 2026); limited MKII USB notes/releases and Part persistence pass "
-    "(29 Oct 2026, MFOL29U/FA); wider hardware coverage outstanding"
+    "GRAV instruction/lifecycle and full-firmware captures (30 Oct 2026); "
+    "earlier MKII MFOL29U/FA notes/releases and Part persistence (29 Oct 2026); "
+    "current revision not hardware tested"
 ), gates=MODULE.gates + (
     Gate('tools/verify/verify_midi_follow_cpu.py', stage='image', venv=True),
 ))

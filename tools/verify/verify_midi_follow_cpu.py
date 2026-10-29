@@ -84,6 +84,19 @@ for _profile in ('chain7', 'seven'):
     for _phase in ('unchanged', 'settled'):
         _name = f'live_{_profile}_GRAV.{_phase}'
         BUDGETS[_name] = BASELINE[_name] * 92 // 100
+# LIVE batching regression: measured before batching on source 15e9b168,
+# combined image 336e094bf302df58dc06f69d28f1eaba2ffd9b5caafa481c65dd18e0c700d354.
+# Require 20% below these already-optimized counts; retain the older baselines
+# above for other paths. These budgets also hold for standalone Follow.
+LIVE_BATCH_BASELINE = {
+    'live_direct_GRAV.moved4': 7502,
+    'live_direct_GRAV.committed_moved4': 7535,
+    'live_chain7_GRAV.moved4': 11492,
+    'live_chain7_GRAV.committed_moved4': 11525,
+    'live_seven_GRAV.moved4': 41858,
+    'live_seven_GRAV.committed_moved4': 42089,
+}
+BUDGETS.update({name: count * 8 // 10 for name, count in LIVE_BATCH_BASELINE.items()})
 BANK = 0x400e21e0
 PART = BANK + 0x8ed80
 PART_SIZE = 0x18b2
@@ -286,6 +299,113 @@ def committed_live(probe):
         assert_voices(m, receivers, 5)
 
 
+def partial_live_commits(probe):
+    # LIVE must commit one logical GRAV proposal when any owned voice sounds,
+    # including when N1 is blocked or absent. Release-only movement must not
+    # advance history. The next independent query distinguishes those cases.
+    for operation in ('first_collision', 'all_collisions', 'upper_only'):
+        m, source = live_fixture(probe, grav=True)
+        u, s = m.uc, m.sym
+        m.call('bf_register_sent', 0)  # C3 is the last sounded logical root.
+        pitches = dict(enumerate(PITCHES))
+        blocked = []
+        if operation == 'upper_only':
+            # N1 is no longer owned; two upper voices overflow on the move,
+            # while N4 remains valid. Native ownership, not slot zero, decides
+            # whether this operation actually produces a new note-on.
+            for pitch in PITCHES:
+                u.mem_write(0x46c78152+pitch, b'\xff')
+            for slot in range(4):
+                u.mem_write(0x46c77a16+slot*8+4, b'\xff'*4)
+            pitches = {1: 125, 2: 126, 3: 119}
+            for slot, pitch in pitches.items():
+                u.mem_write(0x46c77a16+slot*8+4, pitch.to_bytes(4, 'big'))
+                u.mem_write(0x46c78152+pitch, bytes((slot,)))
+            shift = 5
+        else:
+            shift = 2
+            blocked = [38] if operation == 'first_collision' else [p+shift for p in PITCHES]
+            for pitch in blocked:
+                u.mem_write(0x46c78152+pitch, b'\x20')  # live-key owner
+        sounding = {slot: pitch+shift for slot, pitch in pitches.items()
+                    if pitch+shift <= 127 and pitch+shift not in blocked}
+        u.mem_write(s['bf_roots']+source, bytes((36+shift,)))
+        u.mem_write(s['bf_pitches']+source, bytes((60+shift,)))
+        probe.measure('live_GRAV.partial_'+operation, m,
+                      lambda: m.call('bf_response_tick', 0, 0))
+        expected = [(0x90, pitch, 0) for pitch in pitches.values()]
+        expected += [(0x90, pitch, 91) for pitch in sounding.values()]
+        assert m.events == expected, (operation, m.events, expected)
+        for slot in range(4):
+            held = int.from_bytes(u.mem_read(0x46c77a16+slot*8+4, 4), 'big')
+            assert held == sounding.get(slot, 0xffffffff), (operation, slot, held)
+        for pitch in pitches.values():
+            assert u.mem_read(0x46c78152+pitch, 1) == b'\xff', (operation, pitch)
+        for slot, pitch in sounding.items():
+            assert u.mem_read(0x46c78152+pitch, 1) == bytes((slot,)), (operation, slot)
+        for pitch in blocked:
+            assert u.mem_read(0x46c78152+pitch, 1) == b'\x20', (operation, pitch)
+        assert int.from_bytes(u.mem_read(0x46c7a7f0, 4), 'big') == 37, operation
+        # G# chooses 32 from unadvanced C3 history, or 44 once D3/F3 has
+        # sounded. Begin a fresh event so a cached proposal cannot mask this.
+        u.mem_write(s['bf_roots']+source, b'\x2c')
+        u.mem_write(s['bf_pitches']+source, b'\x44')
+        m.call('bf_register_begin', 0)
+        result = m.call('bf_register', source, 0)
+        assert result == (44 if sounding else 32), (operation, result)
+
+
+def live_commit_replacement(probe):
+    m, source = live_fixture(probe, grav=True)
+    u, s = m.uc, m.sym
+    # Start with sounded B3 so the next C proposal is C4. A replacement must
+    # discard that proposal: with no history, the next C starts at home C3.
+    for pitch in PITCHES:
+        u.mem_write(0x46c78152+pitch, b'\xff')
+    for slot, pitch in enumerate(PITCHES):
+        u.mem_write(0x46c77a16+slot*8+4, (pitch+11).to_bytes(4, 'big'))
+        u.mem_write(0x46c78152+pitch+11, bytes((slot,)))
+    u.mem_write(s['bf_roots']+source, b'\x2f')
+    u.mem_write(s['bf_pitches']+source, b'\x47')
+    m.call('bf_register_reset')
+    m.call('bf_response_observe', regs={UC_M68K_REG_D7: 0,
+           UC_M68K_REG_D4: 0, UC_M68K_REG_A2: m.scratch})
+    m.call('bf_register_sent', 0)
+    changed = []
+
+    def replace_during_send(uc, pc, size, data):
+        stack = uc.reg_read(UC_M68K_REG_A7)
+        count, pointer = struct.unpack('>II', uc.mem_read(stack+4, 8))
+        packet = bytes(uc.mem_read(pointer, count))
+        if packet[2] and not changed:
+            # Emulate the publication boundary of a same-slot replacement
+            # between the first note-on and the final history commit. Native
+            # copy/snapshot behavior is covered by the lifecycle gates.
+            epoch = s['store_part_epochs']
+            value = int.from_bytes(uc.mem_read(epoch, 4), 'big')
+            uc.mem_write(epoch, (value+1).to_bytes(4, 'big'))
+            changed.append(packet)
+
+    hook = u.hook_add(UC_HOOK_CODE, replace_during_send,
+                      begin=0x40010bc8, end=0x40010bc8)
+    u.mem_write(s['bf_roots']+source, b'\x24')
+    u.mem_write(s['bf_pitches']+source, b'\x48')
+    try:
+        probe.measure('live_GRAV.replacement_during_send', m,
+                      lambda: m.call('bf_response_tick', 0, 0))
+    finally:
+        u.hook_del(hook)
+    expected = [(0x90, pitch+11, 0) for pitch in PITCHES]
+    expected += [(0x90, pitch+12, 91) for pitch in PITCHES]
+    assert m.events == expected, (m.events, expected)
+    assert len(changed) == 1
+    # The late commit must synchronize, leaving neither a previous root nor
+    # an old proposal published under the replacement's new epoch.
+    assert bytes(u.mem_read(s['bf_history']+12, 2)) == b'\xff\xff'
+    m.call('bf_register_begin', 0)
+    assert m.call('bf_register', source, 0) == 36
+
+
 def lifecycle(probe):
     # State must stay correct when an optimization skips idle feature work.
     # These use public setters, native context latches and actual Part copy.
@@ -429,7 +549,9 @@ def main():
     artifacts = args.artifact_root.resolve()
     identity = artifact_identity(artifacts, args.remix)
     probe = Probe(artifacts)
-    for check in (idle, notes, live, committed_live, lifecycle, accepted_lifecycle, enable_after_rest):
+    for check in (idle, notes, live, committed_live, partial_live_commits,
+                  live_commit_replacement, lifecycle, accepted_lifecycle,
+                  enable_after_rest):
         check(probe)
     assert artifact_identity(artifacts, args.remix) == identity, \
         'image/runtime/symbols/layout changed during Follow CPU gate'
@@ -437,6 +559,8 @@ def main():
     for name, result in probe.results.items():
         if name in BASELINE:
             result['review_baseline_instructions'] = BASELINE[name]
+        if name in LIVE_BATCH_BASELINE:
+            result['live_batch_baseline_instructions'] = LIVE_BATCH_BASELINE[name]
         if name in BUDGETS:
             result['budget'] = BUDGETS[name]
             if result['instructions'] > BUDGETS[name]:

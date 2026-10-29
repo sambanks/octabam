@@ -240,6 +240,42 @@ wire transmission, interrupt timing and hardware cache effects are excluded.
 Cold and warm cases refer to Follow's initialized state, not the processor
 instruction cache. These counts do not establish CPU utilization or deadlines.
 
+### LIVE history commit
+
+The LIVE sender commits one shared GRAV root proposal after the voice loop,
+only when at least one note-on was emitted. It retains full Part, epoch and
+route validation at that commit. GRAV also reuses HOME from the configuration
+validated by the current query. Per-service lifecycle checks remain in place;
+no routing or Part cache is retained across calls.
+
+Measured on 30 October 2026, relative to source `15e9b168`:
+
+| Case | Before | After |
+| --- | ---: | ---: |
+| Direct GRAV LIVE, four moving voices | 7,502 | 5,671 |
+| Seven-link GRAV LIVE, four moving voices | 11,492 | 7,951 |
+| Seven GRAV LIVE receivers, four voices each | 41,858 | 29,041 |
+| Seven GRAV LIVE receivers, committed history | 42,089 | 29,272 |
+| Seven GRAV LIVE receivers, unchanged source | 11,359 | 11,352 |
+| Empty pre-capture pass, RFOL OFF | 1,853 | 1,853 |
+
+The before image is `336e094bf302df58dc06f69d28f1eaba2ffd9b5caafa481c65dd18e0c700d354`;
+the after image is `8d6b5b346cffe9265dffdd172374f46f8d6c0b00df8d1984ef9867098d257b23`.
+Six LIVE movement budgets require at least 20% fewer instructions than the
+before image; that image passes the behavior assertions but fails all six
+new budgets. The combined gate passes 143 cases; standalone passes 79.
+
+Regression cases check first-voice collisions, release-only movement, an
+upper voice sounding while lower voices are absent/out of range, and Part
+epoch publication during a note-on. History advances only for emitted notes;
+a replacement discards the stale proposal. Targeted controls that skip or
+force a commit, or omit its final synchronization, fail these assertions.
+Both selections pass the GRAV policy/lifecycle and LIVE response gates.
+The combined full-firmware GRAV capture passes four register/update scenarios
+with balanced releases. These optimizations have not been tested on hardware.
+
+### Earlier instruction baseline
+
 On 26 October 2026, all 139 cases passed for the optimized `midi-follow-events`
 image. Selected warmed counts compared with commit `f79ad3ca`:
 
