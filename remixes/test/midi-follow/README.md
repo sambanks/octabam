@@ -5,7 +5,9 @@ rhythm and transposition while taking native notes from another MIDI track. Sett
 belong to the native Part; RFOL defaults OFF.
 
 Tested in the emulator, including routing, register choices and MIDI note releases.
-Hardware testing remains outstanding.
+This standalone selection has not been tested on hardware. Limited MKII checks
+used a USB MIDI variant; see the module
+[verification report](../../../modules/midi-follow/DEVELOPMENT.md#limited-mkii-hardware-pass-29-october-2026).
 
 See [MIDI Follow controls](../../../modules/midi-follow/README.md).
 

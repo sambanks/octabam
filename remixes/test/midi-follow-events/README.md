@@ -2,7 +2,6 @@
 
 Test selection combining MIDI Follow, EUCLID, PLOCKS P2, MIDI Scales and MIDI
 Loopback. Follow keeps its own rhythm and register while EUCLID processes audio.
-No standard remix selection is changed.
 
 Build and check with `make check REMIX=midi-follow-events`. The module gates
 check shared hook ownership, Follow history and note releases, EUCLID audio

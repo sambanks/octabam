@@ -77,9 +77,4 @@ following and clean releases, including STOP during held chords. Part save/reloa
 and saved OCT 4 surviving a power-cycle also passed. MKI, DIN timing and sustained
 maximum-load testing remain unverified.
 
-An instruction-budget gate covers inactive paths, all four chord voices,
-seven-link chains and simultaneous LIVE receivers, with Part/control changes
-and muted-source capture checked alongside the counts. These are linked-code
-instruction measurements, not hardware CPU or MIDI timing measurements.
-
 [Implementation and verification](DEVELOPMENT.md).

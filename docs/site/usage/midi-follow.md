@@ -45,13 +45,3 @@ MIDI Follow has emulator coverage and a limited Octatrack MKII hardware pass
 following and clean releases, including STOP during held chords. Part save/reload
 and saved OCT 4 surviving a power-cycle also passed. MKI, DIN timing and sustained
 maximum-load testing remain unverified.
-
-The CPU regression gate checks inactive tracks, four-note chords, long Follow
-chains and seven simultaneous LIVE receivers. In the measured combined remix,
-an empty service pass with RFOL OFF uses 1,853 executed instructions, down from
-2,213; moving four held voices through a seven-link GRAV chain uses 11,492,
-down from 15,309. These measurements exclude MIDI queue and transmission work;
-they are not hardware cycle counts, CPU percentages or latency guarantees.
-Native Part persistence, muted-source capture and note-release behavior remain
-covered by regression checks. STORE keeps its shared system hooks and APIs;
-optional callbacks are omitted at build time only when their module is absent.
