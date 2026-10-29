@@ -270,6 +270,9 @@ stems_gstate:    .space  2*8*12     | two states, used in turn: per slot split, 
 stems_gqn:       .long   0          | frames written to stems_gq
 stems_gqok:      .long   0          | frames written to stems_gq since IDLE: the start edge needs 2
 stems_gq:        .space  GQ_N*GQ_FRAME
+        .global stems_gmask
+stems_gmask:     .long   0          | the slots whose gains stems_stage reads, a bit each (stems_layout)
+stems_gwmask:    .long   0          | the slots this page writes: stems_gmask while recording, else all
 stems_emac_save: .space  16         | the caller's MACSR, ACC0, ACC1, ACCEXT01
 stems_gemac:     .long   0          | 1 while the mirror holds the EMAC (EMAC_ON)
 stems_staged:    .long   0          | 1: the next frame's tracks are in their rings
@@ -1693,7 +1696,7 @@ stems_st_parts:
 | OUT_BITS leave out), a frame of every file and the rings'
 | capacity; then each file's ring (stems_zlayout), its routine and argument
 | (stems_ffn, stems_farg), the track files' count and their bytes in a
-| frame. Uses d0-d4 and a0-a2.
+| frame, and their gain slots (stems_gmask). Uses d0-d5 and a0-a2.
 stems_layout:
         clr.l   stems_tfr           | the take's frames, counted by the hook from here
         move.l  TEMPO_PUB,%d0       | the tempo at the start edge, for the .ot files
@@ -1806,6 +1809,7 @@ stems_layout:
         lea     stems_ftab,%a0
         moveq   #0,%d0              | track files
         moveq   #0,%d3              | their bytes in a frame
+        moveq   #0,%d5              | their gain slots, a bit each
         move.l  stems_nf,%d2
 .Ll_fn:
         move.l  (%a0)+,%d1          | kind << 24 | channels << 16 | bytes
@@ -1818,6 +1822,7 @@ stems_layout:
         bcc.s   .Ll_bus
         addq.l  #1,%d0
         add.l   %d4,%d3
+        bset    %d1,%d5             | slot k's gains are read
         lsl.l   #7,%d1              | k * 0x80: the track's block, and its gains' slot
         move.l  %a1,(STEMS_FN_OFF,%a0)
         bra.s   .Ll_arg
@@ -1829,6 +1834,7 @@ stems_layout:
         bne.s   .Ll_fn
         move.l  %d0,stems_ntrk
         move.l  %d3,stems_tbytes
+        move.l  %d5,stems_gmask
         rts
 
 | ---- each file's ring, from stems_layout --------------------------------
@@ -1935,6 +1941,10 @@ stems_emac_out:
 | armed: the take starts as it did before the perf round), also each track
 | slot's 16 gains into stems_gq, after
 | their bound: the largest end of the three parts that write them, unsigned.
+| While a take records or finishes, only the slots its track files read
+| (stems_gmask); the others advance their state in closed form, as IDLE's
+| do (a take of T1 alone wrote seven slots no one read until 29 Oct 2026:
+| about 520 instructions a frame under the port).
 | Each part is linear, so the bound is at most LIM_FREE only when every gain
 | is in 0..LIM_FREE (an end below 0 reads as large). stems_gqok counts
 | those frames; IDLE while playing sets it to 0. An index above 3 is the
@@ -2009,6 +2019,13 @@ stems_mirror:
         lsl.l   %d1,%d0                     | * GQ_FRAME
         movea.l %d0,%a4
         adda.l  #stems_gq,%a4
+        moveq   #-1,%d0                     | every slot's gains, unless a take records
+        moveq   #ST_RECORDING,%d1           | or finishes: then only the slots stems_stage
+        cmp.l   stems_state,%d1             | reads (a stopped or armed frame's gains serve
+        bhi.s   .Lg_wall                    | the take's first stage, whatever it latches)
+        move.l  stems_gmask,%d0
+.Lg_wall:
+        move.l  %d0,stems_gwmask
 .Lg_noq:
         move.l  stems_gsel,%d0              | a2: the state now, a1: the one this page makes
         lea     stems_gstate,%a2
@@ -2088,6 +2105,11 @@ stems_mirror:
 .Lg_m:
         move.l  %a4,%d2
         beq.s   .Lg_fast
+        btst    %d6,stems_gwmask+3
+        bne.s   .Lg_wr
+        lea     GQ_SLOT(%a4),%a4            | a slot no file reads: the state only
+        bra.s   .Lg_fast
+.Lg_wr:
         addq.l  #4,%a4                      | the slot's first long: the gains' bound, below
         move.l  %d5,%d7                     | d7: the largest end so far, unsigned. Each part is
                                             | linear, so its ends bound it: the old ramp and the

@@ -286,17 +286,18 @@ def layout(rt):
             w = "24" if fmt & 1 else "16"
             want = ([s[f"stems_track{w}"] if f >> 24 < 8 else s[f"stems_bus{w}"] for f in ref[0]],
                     [(f >> 24) * 0x80 if f >> 24 < 8 else f >> 24 for f in ref[0]],
-                    sum(1 for f in ref[0] if f >> 24 < 8), sum(f & 0xffff for f in ref[0] if f >> 24 < 8))
+                    sum(1 for f in ref[0] if f >> 24 < 8), sum(f & 0xffff for f in ref[0] if f >> 24 < 8),
+                    sum(1 << (f >> 24) for f in ref[0] if f >> 24 < 8))
             have = ([rt.r32(s["stems_ffn"] + 4 * i) for i in range(nf)],
                     [rt.r32(s["stems_farg"] + 4 * i) for i in range(nf)],
-                    rt.r32(s["stems_ntrk"]), rt.r32(s["stems_tbytes"]))
+                    rt.r32(s["stems_ntrk"]), rt.r32(s["stems_tbytes"]), rt.r32(s["stems_gmask"]))
             if badfn is None and have != want:
                 badfn = (hex(src), fmt, have, want)
         if bad:
             break
     check("layout: every source word and format (32,768 cases)", bad is None,
           f"first difference {bad}" if bad else "")
-    check("layout: each file's routine and argument, the track files and their bytes", badfn is None,
+    check("layout: each file's routine and argument, the track files, their bytes and gain slots", badfn is None,
           f"first difference {badfn}" if badfn else "")
     check("layout: each file's ring, 512-aligned, inside the region, its capacity safe, whole sectors", badz is None,
           f"first difference {badz}" if badz else "")
@@ -559,6 +560,54 @@ def mirror_idle(rt, n=60, seed=12):
     check("mirror_idle: IDLE with the sequencer stopped writes the gains and counts them",
           rt.r32(s["stems_gqn"]) == 5 and rt.r32(s["stems_gqok"]) == 2 and gq == want and state == model.state,
           f"gqn {rt.r32(s['stems_gqn'])}, gqok {rt.r32(s['stems_gqok'])}")
+    rt.w32(TRANSPORT, 0)
+
+
+@unit
+def mirror_mask(rt, n=40, seed=13):
+    """Recording or finishing, the mirror writes the gains of the slots the
+    take's track files read (stems_gmask, from stems_layout) and no others:
+    those equal the model, the other slots' words stay as they were, and
+    every slot's state still follows the model. Armed, every slot is
+    written again."""
+    s = rt.s
+    rt.w32(TRANSPORT, 1)
+    rng = random.Random(seed)
+    for state, mask in ((2, 0x01), (2, 0xa5), (3, 0x7e), (2, 0x00)):
+        mirror_reset(rt, state=state)
+        model = sg.Mirror(rt.table)
+        rt.w32(s["stems_gmask"], mask)
+        junk = bytes(rng.randrange(256) for _ in range(GQ_N * GQ_FRAME))
+        rt.wmem(s["stems_gq"], junk)
+        bad = None
+        for i in range(n):
+            page = random_page(rng)
+            send_page(rt, i % 4, page)
+            rt.call("stems_mirror")
+            want = model.step(page)
+            st, gq, _ = mirror_read(rt)
+            q = gq_frame(rt)
+            for k in range(8):
+                at = q + GQ_SLOT * k
+                ok = (gq[k] == want[k] if mask >> k & 1
+                      else rt.rmem(at, 68) == junk[at - s["stems_gq"]:at - s["stems_gq"] + 68])
+                if not ok or st != model.state:
+                    bad = (i, k)
+                    break
+            if bad:
+                break
+        check(f"mirror_mask: state {state}, slots {mask:#04x}: only those slots' gains, every slot's state",
+              bad is None, f"first difference at page, slot {bad}" if bad else "")
+    mirror_reset(rt, state=1)
+    model = sg.Mirror(rt.table)
+    rt.w32(s["stems_gmask"], 0x01)
+    for i in range(3):
+        page = random_page(rng)
+        send_page(rt, i % 4, page)
+        rt.call("stems_mirror")
+        want = model.step(page)
+    _, gq, _ = mirror_read(rt)
+    check("mirror_mask: armed, every slot's gains whatever the mask", gq == want, "")
     rt.w32(TRANSPORT, 0)
 
 

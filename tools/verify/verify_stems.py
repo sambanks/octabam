@@ -1325,9 +1325,10 @@ HOOK_SIDE = ("stems_frame_hook", "stems_mirror", "stems_emac_in", "stems_emac_ou
              "stems_track16", "stems_track24", "stems_bus_src",
              "stems_bus16", "stems_bus24", "stems_stage", "stems_bus_frame", "stems_zframe",
              "stems_layout", "stems_trace_frame", "stems_m8check", "stems_st_parts", "stems_gprobe")
-HOOK_CEILING = 5294   # the measured worst case, everything at 24 bits, with the gain probe's 84 and
-                      # the hook's parts (5,210; 29 Oct 2026, STEM_REC.md 20.9); 4,972 since zero copy
-                      # left out stems_zframe's 182 (5,154 with it); 5,012 in STEMS5
+HOOK_CEILING = 5316   # the measured worst case, everything at 24 bits, with the mirror's slot mask
+                      # (22: every slot is read here), the gain probe's 84 (5,294) and the hook's
+                      # parts (5,210; 29 Oct 2026, STEM_REC.md 20.9); 4,972 since zero copy left
+                      # out stems_zframe's 182 (5,154 with it); 5,012 in STEMS5
                       # (7 Oct 2026; STEM_REC.md 20.1); 7,415 before it, and 5,000 until
                       # Yves's decision of 4 Oct 2026 to test the cost on the unit (spec 4.6)
 
@@ -1364,9 +1365,11 @@ def hook_cost(s, cov):
 def cost(s):
     """Gate 7: everything on at 24 bits, the eight-track THRU fixture, a take
     armed before play: at most HOOK_CEILING instructions a frame; and the
-    cost with the recorder idle (the mirror alone), recorded. The detail
-    splits the count by routine."""
-    for tag, before, src, fmt in (("costrec", None, 0xfff, 0b001), ("costidle", (), 0x0ff, 0b110)):
+    cost with the recorder idle (the mirror alone), and of a take of T1 alone
+    at 24 bits (the default: the mirror writes one slot's gains, 29 Oct
+    2026), recorded. The detail splits the count by routine."""
+    for tag, before, src, fmt in (("costrec", None, 0xfff, 0b001), ("costidle", (), 0x0ff, 0b110),
+                                  ("costt1", None, 0x001, 0b111)):
         cov = run_path(tag, "cov")
         log, *_ = port(s, 400, tag=tag, fixture=FIXTURE_THRU, mask=None, dump_blocks=False, calls_before=before,
                        pokes_before=[(s["stems_tracks"] + 2, src >> 8), (s["stems_tracks"] + 3, src & 0xff),
@@ -1377,8 +1380,11 @@ def cost(s):
         if tag == "costrec":
             check(f"cost: at most {HOOK_CEILING} hook instructions a frame, everything on at 24 bits",
                   per is not None and per <= HOOK_CEILING, f"{per} a frame over {frames} frames ({top})")
-        else:
+        elif tag == "costidle":
             check("cost: the hook with the recorder idle (the mirror) is measured", per is not None,
+                  f"{per} a frame over {frames} frames ({top})")
+        else:
+            check("cost: the hook recording T1 alone at 24 bits is measured", per is not None,
                   f"{per} a frame over {frames} frames ({top})")
 
 
