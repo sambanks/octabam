@@ -8303,9 +8303,13 @@ most capacity × its frame's bytes + 44 ≤ its ring's size.
   and on FAT32.
 - The hook, in instructions a frame: 3,401 at T1–T8, 16 bits (STEMS5
   3,427), 3,969 at 24 bits (3,995), 4,972 with everything at 24 bits
-  (5,012), the new `HOOK_CEILING`: the per-file wrapper costs less than
-  the shared frame's offsets did. The whole processor while recording,
-  everything at 24 bits: 36,889 (37,019).
+  (5,012), the new `HOOK_CEILING`. ❌ (29 Oct 2026, 20.9) These counts
+  leave out `stems_zframe`, the per-file wrapper itself: the cost gate's
+  routine list didn't name it. It runs 182 instructions a frame with
+  everything at 24 bits (twelve files, about 15 a file), so that case is
+  5,154, above STEMS5's 5,012, and "the per-file wrapper costs less than
+  the shared frame's offsets did" does not hold. The whole processor
+  while recording, everything at 24 bits: 36,889 (37,019).
 - The writer's copy, 206 and 284 instructions a frame in STEMS5, is gone.
   What the writer still does is a few dozen instructions a file per
   512-frame pass (counted from the code) beside the file layer's own.
@@ -8318,3 +8322,69 @@ most capacity × its frame's bytes + 44 ≤ its ring's size.
 The ideas from the perf round and from Sam's review of it (#644) that
 weren't needed for its goal are in `modules/stems/FLASH.md`, "For later —
 ideas from the perf round".
+
+### 20.9 The hook's parts, the gain probe and the mirror's slot mask (29 Oct 2026)
+
+**Why.** STEMS11 on Yves's MKII (28 Oct 2026, `/BRAIN/STEMS/*.TXT`, every
+take at 24 bits) measured the hook's mean at 8 µs with T1 alone, 24 µs
+with seven files and 32 µs with eleven (longest 18, 39 and 69 µs). Bryan
+T's access costs (`docs/firmware/CHIP.md`) price what the eleven-file
+hook does: about 5,000 instructions at ~2.9 ns, about 14 µs, and 264
+uncached ring stores at 36 ns, about 9.5 µs. 🟡 That leaves about 8 µs
+unexplained.
+
+**The candidate: the gain queue** (🟡 inferred). `stems_mirror` writes
+each track slot's 16 gains and their bound, 68 bytes, into `stems_gq`:
+cached SDRAM, four 1 KB frames in rotation. `stems_stage` reads them a
+frame later. A copyback write miss first fills the line from memory
+(MCF54455RM 6.4.2.2), and a miss costs ~80 ns, so the 40 lines of eight
+tracks could cost about 3 µs each way.
+
+**What STATS.TXT measures since STEMS12.** Four marks split each recorded
+frame's hook into parts that add up to it: `mirror`, `buses` (the state,
+this frame's buses and the publish), `gains` and `tracks` (the stage).
+`gains` is a probe: before the stage, one long of each 16-byte line of
+the slots the stage reads next. That costs ~0.1 µs at eight tracks if the
+lines are cached, and ~3 µs if none is.
+
+**What would falsify it.** At eight tracks, a `gains` part near 0.1 µs
+and a `mirror` part within about 1 µs of its prediction (its port
+instructions × 2.9 ns) mean the queue doesn't miss. The gap is then
+elsewhere, and SDRAM contention with the card's DMA is the next
+candidate. A `gains` part of about 2 µs or more means it misses. The next
+step would then be to compute each slot's ramp in registers and drop
+`stems_gq`.
+
+**The mirror's slot mask** (✅ under the port). Until now, on every
+recorded frame, the mirror wrote all eight slots' gains, whatever the
+take recorded: 968 instructions a frame against 378 at idle (the 28 Oct
+coverage). The stage reads only the track files' slots, so a take of T1
+alone, the default, wrote seven slots that nothing read.
+
+- `stems_layout` now latches those slots (`stems_gmask`). While a take
+  records or finishes, the mirror writes only them; the others advance
+  their state in closed form, as at idle.
+- A stopped or armed frame still writes every slot, because the take's
+  first stage reads it before the layout latches.
+- With T1 alone at 24 bits, the hook runs 1,078 instructions a frame
+  and the mirror 493 of them. Before the mask, the mirror ran 968 there,
+  because its path didn't depend on what the take records. So the mask
+  saves 475 a frame, from about 1,553. 🟡 On the unit that's about
+  1.4 µs at 2.9 ns, plus 35 line writes if they miss; STEMS12's log
+  measures it against STEMS11's 8 µs.
+- With every slot recorded, the mask costs 22.
+
+The unit test `mirror_mask` checks the written slots against the model
+and the others for their old bytes.
+
+**The cost gate** (✅ under the port). Since zero copy (20.7) the gate's
+routine list didn't name `stems_zframe`, so `HOOK_CEILING` left out its
+182 instructions a frame with everything at 24 bits. Counted now, that
+case is:
+
+| state of the hook | instructions a frame |
+|---|---|
+| before this round, `stems_zframe` counted | 5,154 |
+| with the parts' marks and sums | 5,210 |
+| with the probe | 5,294 |
+| with the mask (the new `HOOK_CEILING`) | 5,316 |

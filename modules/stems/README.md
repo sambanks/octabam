@@ -144,9 +144,10 @@ measures the ring against the emulated card's speed (STEM_REC.md 15.4).
 | Measured under the port | Since the perf round | Before it | STEM_REC.md |
 |---|---|---|---|
 | The frame hook, not recording (the gain mirror) | 394 instructions per frame | 1,001 | 20.1 |
-| The frame hook, eight tracks at 16 bits | 3,401 instructions per frame | 5,579 | 20.7 |
-| The frame hook, eight tracks at 24 bits | 3,969 instructions per frame | 6,219 | 20.7 |
-| The frame hook, everything at 24 bits | 4,972 instructions per frame | 7,415 | 20.7 |
+| The frame hook, T1 alone at 24 bits | 1,078 instructions per frame (about 1,553 before the mirror's slot mask) | | 20.9 |
+| The frame hook, eight tracks at 16 bits | 3,401 instructions per frame, without `stems_zframe` (about 15 a file) | 5,579 | 20.7 |
+| The frame hook, eight tracks at 24 bits | 3,969 instructions per frame, without `stems_zframe` | 6,219 | 20.7 |
+| The frame hook, everything at 24 bits | 5,316 instructions per frame (4,972 as counted until 29 Oct 2026, without `stems_zframe`) | 7,415 | 20.9 |
 | The writer's copy | none: the card reads each file's ring (zero copy) | 737 a frame at eight tracks, 16 bits; 1,067 everything at 24 bits | 20.7 |
 | The writer task's stack peak | 1,560 of 8,192 bytes (the most seen; `full`, 8 Oct 2026) | 1,244 | 20.3 |
 
@@ -289,6 +290,8 @@ card rec 36800 ms 81500 KB 451 us/KB
 card save 4434 ms 9300 KB 476 us/KB
 writer longest sleep 12000 us, asks 10000
 hook mean 41 us, longest 88 us
+hook parts mean ns: mirror 2600, buses 9400, gains 300, tracks 29100
+hook parts longest ns: mirror 4100, buses 21000, gains 3200, tracks 52000
 hook and frame routine mean 290 us, longest 335 us, 165375 frames
 card udma 4 mwdma 0, cluster 64 sectors
 yes gap 312 ms, double taps 1
@@ -315,6 +318,14 @@ yes gap 312 ms, double taps 1
 - **The fastest write** is a write that nothing interrupted: the card's
   own speed. A mean far below it (1,024 over the µs a KB, in KB/s) spent
   its time waiting for the processor, not for the card.
+- **Hook parts** split the hook's time into four, in ns: `mirror` (the
+  gain mirror), `buses` (MAIN, CUE and the inputs into their rings, and
+  the frame's publish), `gains` (the gain probe) and `tracks` (the next
+  frame's tracks into their rings). The means add up to the hook's mean.
+  The probe reads one long from each 16-byte cache line of the gains the
+  tracks then use: about 0.1 µs at eight tracks when those lines are in
+  the data cache, about 3 µs when each one has to come from the RAM
+  (STEM_REC.md 20.9).
 - **The hook and frame routine** near the frame's 362.8 µs: the audio
   interrupt left little for any task.
 - **The card line** gives the DMA modes the card's driver chose (both 0
@@ -380,8 +391,8 @@ and STEM REC's writer named on the CPU tab (its task control block is
   track is in that track's file too, after its fader, 80 samples later
   (the THRU track's own delay, STEM_REC.md 18.7).
 - **More work in the audio interrupt.** While a take records, the frame
-  hook runs 3,401 to 4,972 instructions per frame (eight tracks at 16
-  bits to everything at 24 bits), and 394 while nothing records.
+  hook runs 1,078 to 5,316 instructions per frame (T1 alone at 24 bits
+  to everything at 24 bits), and 394 while nothing records.
   `STATS.TXT` gives its time on the unit.
 - The status doesn't tick on its own: it's current as of the last key.
 - The name has no seconds. A second take in the same minute is refused, and
