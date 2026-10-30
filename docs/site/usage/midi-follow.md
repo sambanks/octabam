@@ -40,9 +40,15 @@ separate project copy before saving in stock firmware.
 
 ## Testing status
 
-The current revision has emulator coverage. Limited Octatrack MKII tests used
-MFOL29U / BUILD FA (29 October 2026); the current revision has not been tested
-on hardware. USB MIDI captures confirmed four-note
-following and clean releases, including STOP during held chords. Part save/reload
-and saved OCT 4 surviving a power-cycle also passed. MKI, DIN timing and sustained
-maximum-load testing remain unverified.
+MKII USB MIDI tests on 30 October 2026 passed ten minutes each with seven
+four-note GRAV LIVE followers at 200 BPM / 1×, both sharing one source and
+forming a chain. A five-minute run added eight looping FLEX tracks with
+FILTER and PLATE REV; audio stayed continuous and the panel remained responsive.
+STOP released all held follower notes. Earlier Part save/reload and power-cycle
+checks also passed.
+
+**Known limit:** eight MIDI tracks playing four-note chords on every sixteenth
+at 300 BPM / 2× froze the unit with RFOL OFF on every track and Follow still
+loaded. Avoid that load while the freeze remains unresolved. The
+passing runs do not establish a safe maximum for all MIDI traffic or remix
+combinations. MKI and DIN output/timing remain unverified.

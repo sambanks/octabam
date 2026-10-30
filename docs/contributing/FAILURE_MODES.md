@@ -3,6 +3,33 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
+## Dense native MIDI output freezes the unit
+
+- **Seen:** radiohagen's MKII, MFOL30U / BUILD FB (`520be921`, MIDI source
+  pin `22bbdab`), 30 October 2026. Eight tracks played native four-note chords
+  on every sixteenth at 300 BPM / 2×, with RFOL OFF on all tracks. USB output
+  stopped 1.577 seconds after START, after 4,006 note events; 26 notes remained
+  held in the capture. The USB endpoint disappeared and the operator confirmed
+  that the unit was unresponsive. A power-cycle restored operation; a
+  subsequent normal-rate FOLLOW capture passed all 192 events and releases.
+- **Measured in stock code:** `0x40010bc8` masks interrupts at IPL7, then
+  busy-waits when its native TX ring contains 4,095 bytes. The level-6 UART
+  interrupt drains that ring. A bounded software probe reproduced the masked
+  wait with the ring full, and a partial-message wait with 4,094 bytes queued.
+  The relevant sender and drain bytes match stock 1.40C in the tested image.
+- **Candidate cause, inferred:** outgoing traffic fills the native queue,
+  and the masked wait prevents its drain. Estimated backlog reaches capacity
+  near the observed stop time. The hardware failure PC was not captured.
+  Follow was loaded although RFOL was OFF; this run does not establish which
+  remix components are necessary to reproduce the physical freeze. The
+  emulator's immediately ready UART does not reproduce serial bandwidth
+  pressure.
+- **Status:** unresolved; avoid that workload. Seven four-voice GRAV LIVE
+  followers passed ten minutes at 200 BPM / 1× in both direct and chained
+  routing, plus five minutes with eight audio tracks. These passes establish
+  those workloads only. See the
+  [image and measurements](../../modules/midi-follow/DEVELOPMENT.md#mkii-usb-midi-load-tests-30-october-2026).
+
 ## PLOCKS trig-paste undo keeps copied page-two locks
 
 - **Seen:** radiohagen's MKII, EVT871E1 (`f09654ca`), 25 October 2026:

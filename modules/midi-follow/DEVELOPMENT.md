@@ -272,7 +272,9 @@ a replacement discards the stale proposal. Targeted controls that skip or
 force a commit, or omit its final synchronization, fail these assertions.
 Both selections pass the GRAV policy/lifecycle and LIVE response gates.
 The combined full-firmware GRAV capture passes four register/update scenarios
-with balanced releases. These optimizations have not been tested on hardware.
+with balanced releases. The optimized source also passed the sustained MKII
+USB MIDI cases [below](#mkii-usb-midi-load-tests-30-october-2026); those runs do
+not measure hardware instruction counts or establish a global load limit.
 
 ### Earlier instruction baseline
 
@@ -350,6 +352,87 @@ checks. With a prepared
 project copy, `verify_midi_follow_response_port.py --project DIR` checks LIVE
 response through emulated panel events and captured MIDI output.
 
+### MKII USB MIDI load tests, 30 October 2026
+
+MFOL30U / BUILD FB uses Octabam commit `520be9216ea8099464d696a1146cd030f64a1917`
+and MIDI module source pin `22bbdab38cae97587b9845727cbadc392ebc57b9`.
+Image SHA-256:
+`20a1840110fd90e45ff7d421044af4fb421f3e042370af9c2639046d5390c5d2`.
+The MKII operator confirmed the running name and selected project before each
+capture; firmware identity was not read back from the device.
+
+FAN200 and CHAIN200 run at 200 BPM / 1×. T8 alternates four-note chords on
+every sixteenth note; T1–7 each hold four GRAV LIVE voices. FAN200 routes all
+seven followers directly to T8. CHAIN200 routes T1 → T2 → … → T8, with all
+seven followers active. Each track has its own output channel. MIX200 keeps
+FAN200's MIDI pattern and adds eight looping FLEX tracks, each with FILTER
+and PLATE REV. It checks this audio workload, not the most expensive possible
+DSP or remix configuration.
+
+| Case | Play time (s) | Complete chords per channel | MIDI note events | Result |
+| --- | ---: | ---: | ---: | --- |
+| FOLLOW, independent source/follower rhythms | 24.009 | Source 9; follower 15 | 192 | Pass |
+| FAN200, seven direct followers | 600.004 | 8,000 | 512,000 | Pass |
+| CHAIN200, seven active chained followers | 600.014 | 8,001 | 512,064 | Pass |
+| MIX200, FAN200 plus eight audio tracks | 300.018 | 4,001 | 256,064 | Pass; operator confirmed continuous audio and responsive panel |
+| FAN200, STOP then restart | 12.000 | 161 | 10,304 | Pass |
+| CHAIN200, STOP then restart | 12.001 | 161 | 10,304 | Pass |
+| NATIVE, RFOL OFF, 300 BPM / 2× | Output stopped at 1.577 | 63 | 4,006 | Unit froze; 26 notes remained held in the capture |
+| FOLLOW after power-cycle recovery | 24.008 | Source 9; follower 15 | 192 | Pass |
+
+Passing captures match the expected pitches and release ownership, end with
+no held notes, and have no parser/callback errors. The three sustained runs
+each released all 28 held follower notes on STOP and remained stopped during
+a five-second tail. The baseline and restart rows are shorter functional
+checks, not additional sustained-load qualifications.
+
+| Sustained case | Largest observed chord gap (ms) | Last held-note release after STOP (ms) |
+| --- | ---: | ---: |
+| FAN200 | 79.687 | 1.662 |
+| CHAIN200 | 80.556 | 7.681 |
+| MIX200 | 80.364 | 2.931 |
+
+These are host-observed USB times, not DIN latency or processor deadlines.
+The expected chord interval is 75 ms. CHAIN200's largest spread between
+channels' first note-ons for the same chord was 1.820 ms. Project selection
+and the verified fixture routing establish the chain topology; its pitches
+alone cannot distinguish it from direct followers. Audio continuity and
+panel response in MIX200 are operator observations, not an audio recording
+or a per-track isolation measurement.
+
+The NATIVE pattern plays all eight tracks' own four-note chords on every
+sixteenth at 300 BPM / 2×, with RFOL OFF throughout. The capture was scheduled
+for 60 seconds, but USB output stopped after 1.577 seconds; the endpoint then
+disappeared and the operator confirmed an unresponsive unit. Follow remained
+loaded in the remix, so RFOL OFF does not isolate the failure to or from the
+module. Power-cycling restored operation, followed by the passing FOLLOW
+capture above. FANMAX and CHAINMAX at the same tempo/rate were not run.
+
+A bounded software probe of the stock MIDI sender at `0x40010bc8` confirms
+that its full-ring loops wait with interrupts masked at IPL7. The UART drain
+interrupt is level 6. With 4,092 bytes queued, a three-byte note returns;
+with 4,094, it commits the status byte then stalls; with 4,095, it stalls
+before that byte. Both stalls remain at IPL7 after 10,000 instructions.
+The sender body and UART drain bytes are identical in stock 1.40C and this
+image. The estimated native MIDI backlog reaches the 4,095-byte queue capacity
+near the observed stop time. This is a candidate cause supported by source
+and timing; no hardware failure PC was captured. The emulator's immediately
+ready UART does not model this bandwidth pressure. See the
+[failure record](../../docs/contributing/FAILURE_MODES.md#dense-native-midi-output-freezes-the-unit).
+
+The measurement receipt is `hardware/results.json` in the retained
+`midi-follow-usb-20261030` artifact set, with raw captures and analyses beside
+it. `native-midi-full-ring-probe.json` records the bounded stock-code probe
+and image-byte comparisons. The first FAN200 recording was invalidated by
+the host recorder's ARM64 packet-alignment error; the table uses the complete
+repeat with the corrected recorder.
+
+These results qualify the stated MKII USB workloads. They do not qualify
+MKI, DIN output/timing, all remix combinations, or a universal maximum load.
+Avoid the failing native workload while the freeze remains unresolved. The Part
+persistence evidence below belongs to the earlier image and was not repeated
+on MFOL30U.
+
 ### Limited MKII hardware pass, 29 October 2026
 
 MFOL29U / BUILD FA is the USB MIDI test selection based on implementation commit
@@ -370,8 +453,8 @@ All three captures had balanced releases, no duplicate note-ons, unexpected
 channels or parser/callback errors. The driver sent only START/STOP. Persistence
 is supported by physical UI observations and the post-reboot MIDI output; the
 power-cycle was performed on the device. Host timestamps do not measure
-DIN latency. Visual KEY locking, MKI, sustained maximum load and the broader
-composition matrix remain unverified on hardware.
+DIN latency. At that date, visual KEY locking, MKI, sustained maximum load
+and the broader composition matrix had not been verified on hardware.
 
 
 ## Octabam composition and full-firmware captures
