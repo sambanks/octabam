@@ -83,11 +83,6 @@ in the tree. The recordings are not redistributed: the fits are numbers in the m
 | `modules/mute-modes` (MUTE_MODES) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount, pinned to `a1e0288`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
 | `modules/rec-trig-mute` (REC_TRIG_MUTE) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount, pinned to `553d8d2`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
 
-The MIDI source repository's [attribution record](https://github.com/radiohagen/octatrack-modules/blob/0ebe11e7f19fd6c48bf0109544d5da84326db86d/THIRD_PARTY.md)
-credits radiohagen's module work. Its root `LICENSE` reproduces the inherited
-Octabam MIT notice naming Sam Banks for repository tooling; that notice is
-preserved and is separate from the module authorship recorded above.
-
 `modules/kits-reload`, `modules/scenes-kits`, `modules/cc-map`,
 `modules/tempo-sync`, `modules/mode-defaults` and `modules/recorder-loop-fix`
 have `sambanks` as author in their manifests; none of these module

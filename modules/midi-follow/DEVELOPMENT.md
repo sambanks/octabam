@@ -417,8 +417,7 @@ The sender body and UART drain bytes are identical in stock 1.40C and this
 image. The estimated native MIDI backlog reaches the 4,095-byte queue capacity
 near the observed stop time. This is a candidate cause supported by source
 and timing; no hardware failure PC was captured. The emulator's immediately
-ready UART does not model this bandwidth pressure. See the
-[failure record](../../docs/contributing/FAILURE_MODES.md#dense-native-midi-output-freezes-the-unit).
+ready UART does not model this bandwidth pressure.
 
 The measurement receipt is `hardware/results.json` in the retained
 `midi-follow-usb-20261030` artifact set, with raw captures and analyses beside
