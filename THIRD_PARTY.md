@@ -80,7 +80,7 @@ in the tree. The recordings are not redistributed: the fits are numbers in the m
 | `modules/direct-jump-kyoti`, `modules/reload-from-project`, `modules/sidechain-compressor`, `modules/blackpyramids-303`, `modules/varispeed` (DIRECT_JUMP_KYOTI, RELOAD_FROM_PROJECT, SIDECHAIN_COMPRESSOR, BLACKPYRAMIDS_303, VARISPEED) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one repository, ten submodule mounts; DIRECT_JUMP_KYOTI pinned to `329b801`, RELOAD_FROM_PROJECT to `6a2da8d`; SIDECHAIN_COMPRESSOR to `b0d49bf`; BLACKPYRAMIDS_303 to `9b2e35a`; VARISPEED to `9b2e35a`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
 | `modules/batch-bugfixes`, `modules/quantize-live-rec-toggle`, `modules/erase-empty-trigless-locks` (BATCH_BUGFIXES, QUANTIZE_LIVE_REC_TOGGLE, ERASE_EMPTY_TRIGLESS_LOCKS) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (three mounts; BATCH_BUGFIXES and ERASE_EMPTY_TRIGLESS_LOCKS pinned to `77f132f`, QUANTIZE_LIVE_REC_TOGGLE to `9c890bb`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
 | `modules/mute-modes` (MUTE_MODES) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount, pinned to `a1e0288`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
-| `modules/rec-trig-mute` (REC_TRIG_MUTE) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount, pinned to `0bc14c7`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
+| `modules/rec-trig-mute` (REC_TRIG_MUTE) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount, pinned to `553d8d2`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
 
 `modules/kits-reload`, `modules/scenes-kits`, `modules/cc-map`,
 `modules/tempo-sync`, `modules/mode-defaults` and `modules/recorder-loop-fix`
