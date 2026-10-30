@@ -12,8 +12,9 @@ FAMILIES = {
     'edit': ('held', 'copy_pre'),
 }
 CLIENTS = {
-    'transport': (('EUCLID', 'eu_seq', ('start', 'resume')),),
-    'midi': (),
+    'transport': (('EUCLID', 'eu_seq', ('start', 'resume')),
+                  ('MIDI FOLLOW', 'bf_seq', ('start', 'resume'))),
+    'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),),
     'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre')),),
 }
 
