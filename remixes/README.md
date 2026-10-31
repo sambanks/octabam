@@ -17,6 +17,6 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 | remix | contains | proof |
 |---|---|---|
 | [`cxosc-core`](cxosc-core/README.md) | CORE + REMIX SWITCH + CX OSC on the 14 stock effects. | `make check`: unit handoff: CORE + CX OSC; marker-less machine list, mono, stock LFOs |
-| [`octabam`](octabam/README.md) | The core ColdFire modules, all 14 stock effects, and SPECTRUM, CHARACTER, MODULATION and TRANSIENT, loaded on demand. | `make check` |
+| [`octabam`](octabam/README.md) | The core ColdFire modules and every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER, MODULATION and TRANSIENT, loaded on demand. | `make check` |
 
 Never share a built image: it contains Elektron's OS.

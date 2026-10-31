@@ -41,6 +41,8 @@ turned on the panel re-defaults the knobs around it (the MODE DEFAULTS module).
   [scene locks](reference/modules/scenes-p2.md): control both effect pages.
 - [MIDI scenes](reference/modules/midi-scenes.md), CC mapping, and CC feedback.
 - [USB](reference/modules/usb.md): MIDI input and output, plus audio to a computer: the 16 track channels, MAIN and CUE by default.
+- [PATTERN MUTE](reference/modules/pattern-mute.md): double-press FUNC to mute tracks per pattern as well as
+  globally, as on the Digitakt II.
 - Recorder, sequencing, mute, and storage fixes listed below.
 
 ## Build and install

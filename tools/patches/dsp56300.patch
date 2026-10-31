@@ -8,6 +8,127 @@ index da7612b..944719a 100644
  endif()
 +
 +add_subdirectory(dsp_host)
+diff --git a/source/dsp56kBase/ringbuffer.h b/source/dsp56kBase/ringbuffer.h
+index d6f4fc8..a769959 100644
+--- a/source/dsp56kBase/ringbuffer.h
++++ b/source/dsp56kBase/ringbuffer.h
+@@ -122,6 +122,22 @@ namespace dsp56k
+ 			m_readSem.notify(static_cast<uint32_t>(_count));
+ 		}
+ 
++		// Lock=false only: as many of _count entries as there is room for, _fill(i) giving entry i, published with
++		// ONE bump of the write count. Returns how many went in. One store the consumer has to see per call instead of
++		// one per entry: the consumer spins on that count, so per-entry bumps move the cache line once per entry.
++		template<typename TFunc>
++		size_t push_some(const size_t _count, const TFunc& _fill)
++		{
++			static_assert(!Lock && sizeof(TFunc) > 0, "push_some is for the lock-free ring");
++			const size_t w = loadWriteRlx();
++			const size_t room = C - (w - loadReadAcq());
++			const size_t n = _count < room ? _count : room;
++			for (size_t i=0; i<n; ++i)
++				m_data[wrapCounter(w + i)] = _fill(i);
++			incWriteCount(n);
++			return n;
++		}
++
+ 		template<typename TFunc>
+ 		void pop_front(const TFunc& _readCallback)
+ 		{
+diff --git a/source/dsp56kBase/ringbuffer_test.cpp b/source/dsp56kBase/ringbuffer_test.cpp
+index b83e091..30cb8ec 100644
+--- a/source/dsp56kBase/ringbuffer_test.cpp
++++ b/source/dsp56kBase/ringbuffer_test.cpp
+@@ -106,6 +106,80 @@ namespace
+ 		std::cout << "  " << _name << ": " << TotalItems << " items ok in " << ms << " ms" << std::endl;
+ 		return true;
+ 	}
++	// The lock-free ring (Lock=false, HDI08's RX/TX) with a producer writing BLOCKS: push_some publishes each
++	// block with one count update. Order and contents must match what the per-entry push_back path delivers;
++	// a stall exits with 2 like the blocking test. Block sizes vary, and the ring is smaller than a block, so a
++	// block is split across waits.
++	bool runBlocks(const char* const _name, const bool _bulk)
++	{
++		constexpr size_t Cap = 64;
++		dsp56k::RingBuffer<uint32_t, Cap, false> rb;
++		constexpr uint64_t Items = 4'000'000;
++		std::atomic<bool> failed{false};
++		std::atomic<uint64_t> consumed{0};
++		const auto tStart = std::chrono::steady_clock::now();
++
++		std::thread producer([&]
++		{
++			std::mt19937 rng(3);
++			std::uniform_int_distribution<size_t> d(1, 100);
++			std::vector<uint32_t> block;
++			for(uint64_t i = 0; i < Items && !failed.load();)
++			{
++				block.resize(std::min<uint64_t>(d(rng), Items - i));
++				for(size_t k = 0; k < block.size(); ++k)
++					block[k] = static_cast<uint32_t>(i + k);
++				for(size_t k = 0; k < block.size();)
++				{
++					rb.waitNotFull();
++					if(_bulk)
++						k += rb.push_some(block.size() - k, [&](const size_t _j) { return block[k + _j]; });
++					else
++						rb.push_back(block[k++]);
++				}
++				i += block.size();
++			}
++		});
++		std::thread consumer([&]
++		{
++			for(uint64_t i = 0; i < Items; ++i)
++			{
++				rb.waitNotEmpty();
++				const uint32_t v = rb.pop_front();
++				if(v != static_cast<uint32_t>(i))
++				{
++					std::cerr << "  " << _name << ": MISMATCH at " << i << " got " << v << std::endl;
++					failed.store(true);
++					return;
++				}
++				consumed.store(i + 1, std::memory_order_relaxed);
++			}
++		});
++		std::thread watchdog([&]
++		{
++			uint64_t last = 0;
++			for(int stalled = 0; consumed.load() < Items && !failed.load();)
++			{
++				std::this_thread::sleep_for(std::chrono::seconds(1));
++				const uint64_t c = consumed.load();
++				stalled = c == last ? stalled + 1 : 0;
++				last = c;
++				if(stalled >= 10)
++				{
++					std::cerr << "  " << _name << ": STALL at " << c << std::endl;
++					std::_Exit(2);
++				}
++			}
++		});
++		producer.join();
++		consumer.join();
++		watchdog.join();
++		if(failed.load())
++			return false;
++		const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - tStart).count();
++		std::cout << "  " << _name << ": " << Items << " items ok in " << ms << " ms" << std::endl;
++		return true;
++	}
+ }
+ 
+ int main()
+@@ -117,6 +191,8 @@ int main()
+ 	ok = ok && runOne("producer-slower", true,  false);
+ 	ok = ok && runOne("both-jittered",   true,  true);
+ 	ok = ok && runOne("full-throttle",   false, false);	// pure ping-pong: the boot scenario
++	ok = ok && runBlocks("lock-free, per entry", false);
++	ok = ok && runBlocks("lock-free, push_some", true);
+ 
+ 	if(!ok)
+ 	{
 diff --git a/source/dsp56kEmu/assembler.cpp b/source/dsp56kEmu/assembler.cpp
 index 1a22ced..dbbc307 100644
 --- a/source/dsp56kEmu/assembler.cpp
@@ -327,7 +448,7 @@ index 8759c66..c7fb9b1 100644
  		// Build mnemonic table
  		void buildMnemonicTable();
 diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
-index de5b522..f128a51 100644
+index de5b522..3700bfc 100644
 --- a/source/dsp56kEmu/dma.cpp
 +++ b/source/dsp56kEmu/dma.cpp
 @@ -10,6 +10,7 @@
@@ -338,7 +459,7 @@ index de5b522..f128a51 100644
  
  #if 0
  #include "dsp56kBase/logging.h"
-@@ -248,7 +249,18 @@ namespace dsp56k
+@@ -248,7 +249,11 @@ namespace dsp56k
  			};
  
  			// a raised request is only served by a channel that was set to that request source before, see checkTrigger
@@ -347,18 +468,11 @@ index de5b522..f128a51 100644
 +			// write that selects the source serves a raised request too. ot_emu sets it: with 3cee91c9's rule
 +			// verify_remix_switch's park command was not taken by either core (`ok d0=0`, CI 27 Oct 2026); with
 +			// this one it is. The mechanism is not found.
-+			// octabam: a channel armed on a host interface request serves it when it is raised (the rule
-+			// before 3cee91c9); the ESAI keeps 3cee91c9's rule. Measured 28 Oct 2026: with 3cee91c9 for every
-+			// source, the Octatrack's channels 0 and 1 (HostReceiveData, HostTransmitData) armed with the request
-+			// raised and were not served again, and verify_remix_switch's park command was taken by neither core;
-+			// serving only these two sources restores it. Inferred, not measured: HRDF and HTDE do not raise a
-+			// new request until a word has moved, as the ESAI does in every slot.
-+			const bool hostRequest = reqSrc == RequestSource::HostReceiveData || reqSrc == RequestSource::HostTransmitData;
-+			if((reqSrc == m_prevRequestSource || hostRequest) && raised())
++			if((reqSrc == m_prevRequestSource || m_peripherals.getDSP().dmaTriggerOnArm()) && raised())
  				triggerByRequest();
  		}
  		else
-@@ -955,6 +967,77 @@ namespace dsp56k
+@@ -955,6 +960,77 @@ namespace dsp56k
  		return !channels.empty();
  	}
  
@@ -436,7 +550,7 @@ index de5b522..f128a51 100644
  	bool Dma::trigger(DmaChannel::RequestSource _source) const
  	{
  		const auto& channels = m_requestTargets[static_cast<uint32_t>(_source)];
-@@ -971,7 +1054,6 @@ namespace dsp56k
+@@ -971,7 +1047,6 @@ namespace dsp56k
  	void Dma::addTriggerTarget(DmaChannel* _channel)
  	{
  		auto src = _channel->getRequestSource();
@@ -444,7 +558,7 @@ index de5b522..f128a51 100644
  		auto& channels = m_requestTargets[static_cast<uint32_t>(src)];
  
  		channels.push_back(_channel);
-@@ -980,7 +1062,6 @@ namespace dsp56k
+@@ -980,7 +1055,6 @@ namespace dsp56k
  	void Dma::removeTriggerTarget(const DmaChannel* _channel)
  	{
  		auto src = _channel->getRequestSource();
@@ -576,7 +690,7 @@ index 48d1cbc..2e1c754 100644
  	// exec_do_end
  	//
 diff --git a/source/dsp56kEmu/dsp.h b/source/dsp56kEmu/dsp.h
-index 0e2665d..812f0de 100644
+index 0e2665d..01dc22e 100644
 --- a/source/dsp56kEmu/dsp.h
 +++ b/source/dsp56kEmu/dsp.h
 @@ -1,6 +1,7 @@
@@ -613,7 +727,7 @@ index 0e2665d..812f0de 100644
  		void			clearOpcodeCache				();
  		void			clearOpcodeCache				(TWord _address);
  
-@@ -436,6 +447,41 @@ namespace dsp56k
+@@ -436,6 +447,47 @@ namespace dsp56k
  		bool	do_start						( const TWord* _loopcount, TWord _addr );
  		bool	do_end							();
  
@@ -642,6 +756,11 @@ index 0e2665d..812f0de 100644
 +		// HI08's HC/HCP -- can be cleared at the right moment. A fast
 +		// interrupt never sets the PC to the vector, so the PC cannot tell.
 +		void	setInterruptTakenHook			( std::function<void(TWord)> _f )	{ m_onInterruptTaken = std::move(_f); }
++		// octabam (jit-spike): a DMA channel armed while its request already
++		// holds fires once (dma.cpp checkTrigger; the Octatrack arms DMA2 long
++		// after its ESAI transmitter set TDE) -- for a threaded JIT core too.
++		void	setDmaTriggerOnArm				( bool _on )						{ m_dmaTriggerOnArm = _on; }
++		bool	dmaTriggerOnArm					() const							{ return m_dmaTriggerOnArm; }
 +		// octabam (jit-spike): the PC of the instruction that made a peripheral write. The JIT passes
 +		// it to callDSPMemWritePeriph, the interpreter's execOp sets it itself; a host-side hook reads
 +		// it to tell which instruction wrote the host port (the bank word at P:0x73).
@@ -650,13 +769,14 @@ index 0e2665d..812f0de 100644
 +		TWord&	pcCurrentInstructionRef			()									{ return pcCurrentInstruction; }
 +	private:
 +		bool	m_hostStepped = false;
++		bool	m_dmaTriggerOnArm = false;
 +		std::function<void(TWord)> m_onInterruptTaken;
 +
  		bool	rep_exec						(TWord _loopCount);
  
  		void	traceOp							();
 diff --git a/source/dsp56kEmu/hdi08.cpp b/source/dsp56kEmu/hdi08.cpp
-index c045c70..6437fa0 100644
+index c045c70..308c4ce 100644
 --- a/source/dsp56kEmu/hdi08.cpp
 +++ b/source/dsp56kEmu/hdi08.cpp
 @@ -65,8 +65,35 @@ namespace dsp56k
@@ -741,7 +861,22 @@ index c045c70..6437fa0 100644
  			}
  		}
  
-@@ -311,9 +372,19 @@ namespace dsp56k
+@@ -150,12 +211,10 @@ namespace dsp56k
+ 
+ 	void HDI08::writeRX(const TWord* _data, const size_t _count)
+ 	{
+-		for (size_t i = 0; i < _count; ++i)
++		for (size_t i = 0; i < _count;)
+ 		{
+ 			m_dataRX.waitNotFull();
+-			const auto d = _data[i] & 0x00ffffff;
+-//			LOG("Write RX: " << HEX(d));
+-			m_dataRX.push_back(d);
++			i += m_dataRX.push_some(_count - i, [&](const size_t _k) { return _data[i + _k] & 0x00ffffff; });
+ 		}
+ 		m_periph.setDelayCycles(0);
+ 	}
+@@ -311,9 +370,19 @@ namespace dsp56k
  		return m_dataTX.pop_front();
  	}
  

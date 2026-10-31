@@ -12,7 +12,7 @@
    after the other; the opposite order is shown to lose the blink. The
    [TRACK]-layer table is decoded and compared with track_key_records.
    The frame interrupt's entry and epilogue chains and the boot chain are
-   run with LOAD METER, CF METER, BOOT TRACE and MIDI PART STATE built with
+   run with LOAD METER, CF METER, BOOT TRACE and STORE built with
    HOOKS's flags: one prologue and one epilogue, every participant's work
    done, the registers and stack as the interrupt found them. The machine
    rows (ANALOG BD + OCTA303): each track's row type, the machine list's
@@ -33,7 +33,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 import toolpath  # noqa: E402,F401
-from remix import ledger, registry  # noqa: E402
+from remix import ledger, registry, schema  # noqa: E402
 
 DECL = runpy.run_path(str(ROOT / "modules/hooks/manifest.py"))
 RTM = "REC_TRIG_MUTE"
@@ -55,6 +55,13 @@ def selection():
     bridged = DECL["bridged"]
     check(bridged({RTM}) == () and bridged({"MORPH"}) == () and bridged({THR}) == (),
           "one participant alone: no bridge")
+    check(bridged({"STORE", "BOOT TRACE"}) == (), "STORE without a Part client: no boot bridge")
+    for client in DECL["_STORE_PARTS"]["PART_CLIENTS"]:
+        check(bridged({"STORE", "BOOT TRACE", client}) == ("boot",),
+              f"STORE + BOOT TRACE + {client}: native Part boot bridge")
+    check(ledger.check(m("STORE", "BOOT TRACE")) == [], "STORE without a Part client leaves BOOT TRACE's site alone")
+    check(ledger.check(m("STORE", "BOOT TRACE", "MIDI LOOPBACK", "EVENTS", "HOOKS")) == [],
+          "STORE native Part boot bridge: claims and requirements are clean")
     check(bridged({RTM, "MORPH"}) == ("track_key",), "REC_TRIG_MUTE + MORPH: track_key only")
     check(bridged({RTM, THR}) == ("status_icon",), "REC_TRIG_MUTE + REC THRESHOLD: status_icon only")
     check(bridged({RTM, THR, "MORPH"}) == ("track_key", "status_icon"), "all three: both bridges")
@@ -63,7 +70,7 @@ def selection():
           "an empty selection: HOOKS has no unit, claim or override")
     check(not registry.hooks_needed(known, {RTM, "MORPH"} - {"MORPH"}) and
           registry.hooks_needed(known, {RTM, "MORPH"}), "registry.hooks_needed follows the bridges")
-    for name, want in (("octabam", False), ("morph", False), ("rec-threshold", False), ("hooks", True)):
+    for name, want in (("octabam", True), ("morph", False), ("rec-threshold", False), ("hooks", True)):
         try:
             has = "HOOKS" in registry.remix(name).modules
         except SystemExit:
@@ -79,7 +86,7 @@ def selection():
     rom = {sym for b, parts in DECL["BRIDGES"].items() if b in DECL["FLAGS"] and b not in DECL["CODELESS"]
            for key, sym in parts
            if any(re.search(rf"^{sym}:", (ROOT / u.source).read_text(), re.M) and not u.dram
-                  for u in known[key].linked)}
+                  for u in schema.apply_select(known[key], set(known)).linked)}
     del called
     check(rom == DECL["ROM_ROUTINES"], f"ROM_ROUTINES names the ROM-placed routines ({', '.join(sorted(rom))})")
     tk = DECL["TRACK_KEY"]
@@ -276,10 +283,10 @@ def frames():
     from unicorn.m68k_const import (UC_CPU_M68K_CFV4E, UC_M68K_REG_A7, UC_M68K_REG_PC,
                                     UC_M68K_REG_D0, UC_M68K_REG_A6)
     from unicorn import m68k_const as mc
-    keys = {"LOAD METER", "CF METER", "BOOT TRACE", "MIDI PART STATE", "HOOKS"}
+    keys = {"LOAD METER", "CF METER", "BOOT TRACE", "STORE", "MIDI LOOPBACK", "HOOKS"}
     known = registry.modules()
     units = [(k, u) for k in ("LOAD METER", "CF METER", "BOOT TRACE") for u in known[k].linked]
-    units += [("MIDI PART STATE", u) for u in known["MIDI PART STATE"].linked if u.label == "midipartentry"]
+    units += [("STORE", u) for u in schema.apply_select(known["STORE"], keys).linked if u.label == "storepartentry"]
     units += [("HOOKS", DECL["UNIT"])]
     with tempfile.TemporaryDirectory(prefix="octabam-hooks-frames-") as td:
         segs, sym = _link_units(Path(td), keys, units)
@@ -329,7 +336,7 @@ def frames():
     check(rd(sym["m_seg0"]) == now and rd(sym["m_icnt"]) == 0 and u.mem_read(sym["seen8"], 1)[0] == 1,
           "frame_tail: CF METER closes its segment at the same instant; BOOT TRACE's note 8")
 
-    # ---- boot: BOOT TRACE's note 3, then MIDI PART STATE into the stock call
+    # ---- boot: BOOT TRACE's note 3, then STORE into the stock call
     DONE = 0x4700FFF0
     u.mem_write(DONE, b"\x4e\x71")
     u.reg_write(UC_M68K_REG_A7, STACK - 4)
@@ -342,9 +349,9 @@ def frames():
     check(u.reg_read(UC_M68K_REG_PC) == DONE and u.reg_read(UC_M68K_REG_A7) == STACK
           and trace == [0x4000F938],
           "boot: the stock call made once, and the boot resumes after it")
-    check(rd(sym["mp_copy_target"]) == sym["mp_native_copy"]
-          and rd(sym["mp_init_target"]) == sym["mp_native_init"],
-          "boot: MIDI PART STATE's copy and init targets set (its source unedited)")
+    check(rd(sym["store_part_copy_target"]) == sym["store_part_native_copy"]
+          and rd(sym["store_part_init_target"]) == sym["store_part_native_init"],
+          "boot: STORE's native Part copy and init targets set")
     del UC_M68K_REG_D0, UC_M68K_REG_A6
 
 
@@ -615,7 +622,7 @@ def installed(name):
                and f[1] == ".text")
     rt = (ROOT / "out/platform/runtime/runtime.bin").read_bytes()
     rom = {}
-    for key in ("BOOT TRACE", "MIDI PART STATE"):
+    for key in ("BOOT TRACE", "STORE"):
         if key in sel:
             for u in sel[key].linked:
                 ue = ROOT / "out/linked" / sel[key].name / u.label / "u.elf"

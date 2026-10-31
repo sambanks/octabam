@@ -32,7 +32,7 @@ DEST belongs to each MIDI track in each native Part. Part Save/Reload/Clear,
 copy/paste and project save/load use the existing native storage. Playback
 reads each track's playing Part, independently of the Part selected for editing.
 Fresh Parts use EXT. No parameter locks or separate settings file are added.
-The shared `MIDI PART STATE` module is required; KITS is not required; its combination is not qualified here.
+The shared `STORE` module is required; KITS is not required; its combination is not qualified here.
 
 Changing the playing destination releases held notes at their original
 channel/destinations. Part replacement also releases the outgoing ownership;
@@ -98,7 +98,7 @@ simultaneous external traffic still need separate integration tests.
 ## Implementation
 
 Four ColdFire DRAM units, no DSP effect slot. SETUP offset 12 is owned by
-MIDI PART STATE: DEST uses bits 2–3 and preserves the other bits. Bits 0–1 are reserved
+STORE: DEST uses bits 2–3 and preserves the other bits. Bits 0–1 are reserved
 for future shared MIDI settings. DEST 3 or invalid flags decode as EXT. `lb_routes[8]` is an applied
 runtime cache; tools must use `lb_dest_write(track, route)` to edit native
 settings. `lb_set_route` remains the low-level cache/cleanup helper.
@@ -143,15 +143,15 @@ and uses the stock sender for external releases. The counters use 16 bytes
 inside the existing platform reserve, with no allocation or storage-format change.
 Worst-case hardware cost and UART backpressure are not yet measured.
 
-The standalone selection reserves three 6,144-byte sample-arena pages
-(18,432 bytes). Its linked runtime is 9,444 bytes; the reservation also holds
+The earlier MIDI PART STATE selection reserved three 6,144-byte sample-arena pages
+(18,432 bytes). Its linked runtime was 9,444 bytes; the reservation also holds
 loading and runtime state. The old fixed 10 MiB reserve predates per-remix
 sizing. Combined selections compute their own reservation; consult
 `out/platform/layout.json` and the build report for the selected image.
 
 ## Verification and limits
 
-This contribution selects only Loopback and Part State on stock effects.
+This contribution selects only Loopback and STORE on stock effects.
 Its gates execute the linked code, installed hooks and native queue/receiver
 routines. They cover all eight tracks, channels 1–16, EXT/INT/BOTH, message
 lengths, live/sequence producers, route changes, ownership, queue fairness,
@@ -161,7 +161,7 @@ including interrupted replacement with readers observing the outgoing snapshot.
 
 `tools/verify/measure_midi_loopback_cost.py` counts executed ColdFire instructions
 on the built image and checks instrumented state against an unmetered run.
-The isolated cases measure 16 instructions for an empty-track cleanup, 314 for
+The earlier MIDI PART STATE image measured 16 instructions for an empty-track cleanup, 314 for
 eight changed channels with empty tracks, 131 for queuing an internal note-on,
 76 for its release and 110 for an internal CC. With 128 held internal notes,
 cleanup takes 27,823 instructions: this shortcut benefits empty tracks, not
@@ -286,3 +286,7 @@ analog outputs; recorder measurements use an internal audio source.
   external-synth response and analog input/output latency were not measured.
 - Raw recordings, SHA-256 hashes and filename mapping are retained locally;
   no device projects, sample data or proprietary firmware are committed.
+
+The STORE migration retains the saved settings but changes the Part access calls.
+The earlier image sizes, instruction counts and physical reports above are
+historical measurements, not qualification of the STORE composition.

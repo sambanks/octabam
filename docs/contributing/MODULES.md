@@ -1193,10 +1193,16 @@ accepted-note notifications, held-step ownership and native copy notifications.
 Register by event family and select `EVENTS`; clients must not also claim its
 native detours. STORE continues to own project/Part persistence.
 
-An optional `Module.select(frozenset(module_keys))` returns `linked` and/or
-`detours` for that selection. It runs in `registry.bound()` after build settings,
+For native Part settings, edited/playing context lookup and replacement
+history, use [STORE native Part access](../../modules/store/README.md#native-part-access).
+Register the smallest read windows and writable offsets, keep field semantics
+in the client, and let STORE own native Part copy/reset hooks.
+
+An optional `Module.select(frozenset(module_keys))` returns any of `linked`,
+`detours`, `symbol_refs`, `overrides`, `pokes`, `claims` and `gates` for that selection. It runs in `registry.bound()` after build settings,
 so the claims ledger, linker, installer and image gates share the same result.
 It must be deterministic, have no side effects and may not change identity,
-dependencies, settings or gates. Unselected modules are not specialized.
+dependencies or settings. Unselected modules are not specialized. Optional
+gates are discovered from bound selections and reach only their actual carriers.
 EVENTS uses it to omit unsubscribed boundaries, with independent assembly guards
 omitting unused entry points within a selected unit.

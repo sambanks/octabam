@@ -37,6 +37,8 @@ LIM_FREE = 0x200000                                     # stems.s: gains in 0..t
 RING_SIZE, UNCACHED = 0x800000, 0x08000000              # stems.s: the ring region; the uncached alias
 ZC_SLACK, ZC_MARGIN = 2048, 512                         # stems.s: zero copy (STEM_REC.md 20.7)
 SRC_BITS = 0xfff                                        # stems.s: every source (Task 8)
+OUT_BITS = 0xf000                                       # stems.s: A, B, C, D left out of a mono pair
+FILE_KINDS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "MAIN", "CUE", "AB", "CD", "A", "B", "C", "D"]
 GAIN_LAG, TRACK_HALF, TRACK_DELAY = 1, 1, 0             # stems.s: staged a frame early (perf design 1.1)
 IN_RING, IN_IDX = 0x80005660, 0x46104d00                # STEM_REC.md 18.7: eight frame pages, the index
 IN_AB_OFF, IN_CD_OFF, IN_A_IS_LEFT = 0x80, 0x00, 1      # STEM_REC.md 18.7: within a page
@@ -129,16 +131,19 @@ class Rt:
                 raise RuntimeError(f"trap vector {self.trap[0]} at {self.trap[1]:#x}")
             pc = npc
 
-    def call(self, name, **regs):
+    def call(self, name, *args, **regs):
+        """Call a routine with its registers set and its stack arguments
+        (longs, the first nearest the return address), as a C caller."""
         uc = self.uc
         for r, v in regs.items():
             uc.reg_write(self.REGS[r], v & 0xffffffff)
-        uc.reg_write(K.UC_M68K_REG_A7, STACK - 4)
-        uc.mem_write(STACK - 4, struct.pack(">I", STOP))
+        top = STACK - 4 * len(args)
+        uc.reg_write(K.UC_M68K_REG_A7, top - 4)
+        uc.mem_write(top - 4, struct.pack(f">{1 + len(args)}I", STOP, *(a & 0xffffffff for a in args)))
         self._start(self.s[name], STOP)
         assert uc.reg_read(K.UC_M68K_REG_PC) == STOP, f"{name} did not return"
         sp = uc.reg_read(K.UC_M68K_REG_A7)
-        assert sp == STACK, f"{name}: the stack is off by {sp - STACK}"
+        assert sp == top, f"{name}: the stack is off by {sp - top}"
         return {r: uc.reg_read(n) for r, n in self.REGS.items()}
 
     def wmem(self, a, b):
@@ -208,7 +213,10 @@ def main():
 
 
 def layout_ref(src, fmt):
-    """The file table a source word and a format should latch (spec section 3)."""
+    """The file table a source word and a format should latch (spec section 3).
+    A pair in mono records A and B (C and D) but those its bit 12-15 leaves
+    out; both left out reads as neither, so a pair that's on has a file."""
+    out = (src & OUT_BITS) >> 12
     src &= SRC_BITS
     src = src or 1
     w = 48 if fmt & 1 else 32
@@ -218,7 +226,9 @@ def layout_ref(src, fmt):
             continue
         if k >= 10 and not fmt >> (k - 9) & 1:
             a = 12 + 2 * (k - 10)
-            files += [(a << 24) | 0x10000 | w, ((a + 1) << 24) | 0x10000 | w]
+            left = out >> 2 * (k - 10) & 3
+            left = 0 if left == 3 else left
+            files += [((a + i) << 24) | 0x10000 | w for i in (0, 1) if not left >> i & 1]
         else:
             files.append((k << 24) | 0x20000 | 2 * w)
     fb = sum(f & 0xffff for f in files)
@@ -290,6 +300,30 @@ def layout(rt):
           f"first difference {badfn}" if badfn else "")
     check("layout: each file's ring, 512-aligned, inside the region, its capacity safe, whole sectors", badz is None,
           f"first difference {badz}" if badz else "")
+    # A, B, C, D left out of a mono pair (Yves's one-row pairs, 27 Oct 2026), with
+    # either pair on or off, a track or none, MASTER TRACK off, in every format
+    bad = None
+    for low in (0, 0x001, 0x400, 0x800, 0xc00, 0xc01, 0xfff):
+        for out in range(16):
+            for fmt in range(8):
+                src = low | out << 12
+                rt.w32(s["stems_tracks"], src)
+                rt.w32(s["stems_fmt"], fmt)
+                rt.call("stems_layout")
+                nf = rt.r32(s["stems_nf"])
+                got = [rt.r32(s["stems_ftab"] + 4 * i) for i in range(nf)]
+                if (got, rt.r32(s["stems_fbytes"]), rt.r32(s["stems_rframes"])) != layout_ref(src, fmt):
+                    bad = bad or (hex(src), fmt, [FILE_KINDS[f >> 24] for f in got])
+    check("layout: a mono pair records only the inputs left in (A alone, D alone, ...)", bad is None,
+          f"first difference {bad}" if bad else "")
+    for src, fmt, want in ((0x2400, 0b000, ["A"]), (0x1400, 0b000, ["B"]), (0x8800, 0b000, ["C"]),
+                           (0x4800, 0b000, ["D"]), (0x6c00, 0b000, ["A", "D"]), (0x3400, 0b000, ["A", "B"]),
+                           (0x2400, 0b010, ["AB"]), (0xf001, 0b000, ["T1"])):
+        rt.w32(s["stems_tracks"], src)
+        rt.w32(s["stems_fmt"], fmt)
+        rt.call("stems_layout")
+        got = [FILE_KINDS[rt.r32(s["stems_ftab"] + 4 * i) >> 24] for i in range(rt.r32(s["stems_nf"]))]
+        check(f"layout: sources {src:#06x}, format {fmt:03b}: {' '.join(want)}", got == want, f"{got}")
     # the test seam: sector 0 a few sectors before each ring's end, or at its start past the end
     rt.w32(s["stems_tracks"], 0x3ff)
     rt.w32(s["stems_fmt"], 1)
@@ -743,48 +777,157 @@ def bus24(rt, seed=10):
             check(f"bus24: index {idx:#04x}, kind {kind}", got == want, f"{got[:9].hex()} vs {want[:9].hex()}")
 
 
+ROW_ACTIONS = ["stems_action", None] + ["stems_source_action"] * 10 + ["stems_pair_action"] * 2 \
+    + ["stems_switch_action"]                   # stems.s: the 15 rows' actions (the one-row pairs, 27 Oct 2026)
+BOX_ON, BOX_OFF = "\x16", "\x15"                # the small UI font's checkbox glyphs, as PERSONALIZE draws them
+FIELD_IN1, FIELD_IN2, FIELD_ST = 0, 1, 2        # stems.s: stems_field on a pair row
+
+
+def row_value(rt, row):
+    return rt.rmem(rt.r32(rt.s["stems_rows"] + 24 * row + 4), 16).split(b"\0")[0].decode("latin1")
+
+
 @unit
 def actions(rt):
     """stems_source_action and stems_switch_action: each row flips its bit
-    and its label follows; the last source stays on; every row is locked
-    while recording (2) or saving (3); the status and PEAK rows do nothing."""
+    and its checkbox follows; the last source stays on; every row is locked
+    while recording (2) or saving (3); no action changes a row it isn't
+    for, so the PEAK row (row 1, no action) can do nothing."""
     s = rt.s
 
-    def press(row, state=0):
+    def press(row, state=0, name=None):
         rt.w32(s["stems_list"] + 0x0c, row)
         rt.w32(s["stems_state"], state)
-        rt.call("stems_source_action" if 2 <= row <= 13 else "stems_switch_action")
-
-    def label(row):
-        return rt.rmem(rt.r32(s["stems_rows"] + 24 * row), 16).split(b"\0")[0].decode()
+        rt.call(name or ROW_ACTIONS[row])
 
     rt.w32(s["stems_tracks"], 0xff)
     rt.w32(s["stems_fmt"], 6)
     press(10)
-    check("actions: MAIN on", rt.r32(s["stems_tracks"]) == 0x1ff and label(10) == "MAIN [X]",
-          f"{rt.r32(s['stems_tracks']):#x} {label(10)}")
+    check("actions: MAIN on", rt.r32(s["stems_tracks"]) == 0x1ff and row_value(rt, 10) == BOX_ON,
+          f"{rt.r32(s['stems_tracks']):#x} {row_value(rt, 10)!r}")
     for row in range(2, 10):
         press(row)
     check("actions: every track off while MAIN is on",
-          rt.r32(s["stems_tracks"]) == 0x100 and label(9) == "T8 [ ]")
+          rt.r32(s["stems_tracks"]) == 0x100 and row_value(rt, 9) == BOX_OFF)
     press(10)
-    check("actions: the last source stays on", rt.r32(s["stems_tracks"]) == 0x100 and label(10) == "MAIN [X]")
+    check("actions: the last source stays on", rt.r32(s["stems_tracks"]) == 0x100 and row_value(rt, 10) == BOX_ON)
     for state in (2, 3):
         press(9, state)
-        press(16, state)
+        press(14, state)
     check("actions: locked while recording and saving",
           rt.r32(s["stems_tracks"]) == 0x100 and rt.r32(s["stems_fmt"]) == 6)
-    press(16)
     press(14)
-    press(15)
-    check("actions: 24 BIT on, both STEREO rows off, the labels follow",
-          rt.r32(s["stems_fmt"]) == 0b001
-          and [label(r) for r in (14, 15, 16)] == ["AB STEREO [ ]", "CD STEREO [ ]", "24 BIT [X]"],
+    check("actions: 24 BIT on, its checkbox follows", rt.r32(s["stems_fmt"]) == 0b111 and row_value(rt, 14) == BOX_ON,
           f"{rt.r32(s['stems_fmt']):03b}")
-    press(1)
-    press(17)
-    check("actions: the status and PEAK rows change nothing",
-          rt.r32(s["stems_tracks"]) == 0x100 and rt.r32(s["stems_fmt"]) == 0b001)
+    for name in ("stems_source_action", "stems_pair_action", "stems_switch_action"):
+        for row in (0, 1):
+            press(row, name=name)
+    press(12, name="stems_source_action")
+    press(14, name="stems_pair_action")
+    press(12, name="stems_switch_action")
+    check("actions: an action on a row not its own changes nothing",
+          rt.r32(s["stems_tracks"]) == 0x100 and rt.r32(s["stems_fmt"]) == 0b111)
+
+
+@unit
+def pairs(rt):
+    """stems_pair_action on the AB and CD rows (Yves's one-row pairs, 27 Oct
+    2026): in stereo the first field turns the pair on or off; STEREO off
+    splits it, A and B both as AB was; in mono each input is on or off on
+    its own (bits 12-15 say which is left out, the pair's bit that one is
+    on); STEREO on again joins them, on if either was; the last source
+    stays on; locked while recording or saving."""
+    s = rt.s
+
+    def press(row, field, state=0):
+        rt.w32(s["stems_list"] + 0x0c, row)
+        rt.w32(s["stems_field"], field)
+        rt.w32(s["stems_state"], state)
+        rt.call("stems_pair_action")
+        return rt.r32(s["stems_tracks"]), rt.r32(s["stems_fmt"])
+
+    rt.w32(s["stems_tracks"], 0x001)
+    rt.w32(s["stems_fmt"], 0b110)
+    steps = [
+        ("AB on", 12, FIELD_IN1, (0x401, 0b110)),
+        ("AB STEREO off: A and B both on", 12, FIELD_ST, (0x401, 0b100)),
+        ("B off: A alone", 12, FIELD_IN2, (0x2401, 0b100)),
+        ("A off too: the pair off", 12, FIELD_IN1, (0x001, 0b100)),
+        ("B on: B alone", 12, FIELD_IN2, (0x1401, 0b100)),
+        ("AB STEREO on: AB on", 12, FIELD_ST, (0x1401, 0b110)),
+        ("AB STEREO off again: A and B both on", 12, FIELD_ST, (0x401, 0b100)),
+        ("CD on", 13, FIELD_IN1, (0xc01, 0b100)),
+        ("CD STEREO off", 13, FIELD_ST, (0xc01, 0b000)),
+        ("C off: D alone", 13, FIELD_IN1, (0x4c01, 0b000)),
+        ("D off: CD off", 13, FIELD_IN2, (0x0401, 0b000)),
+    ]
+    for what, row, field, want in steps:
+        got = press(row, field)
+        check(f"pairs: {what}", got == want, f"{got[0]:#06x} {got[1]:03b}, want {want[0]:#06x} {want[1]:03b}")
+    rt.w32(s["stems_tracks"], 0x2400)                   # A alone, the last source
+    mono = press(12, FIELD_IN1)
+    rt.w32(s["stems_tracks"], 0x0400)
+    rt.w32(s["stems_fmt"], 0b110)                       # AB alone, in stereo
+    got = press(12, FIELD_IN1)
+    check("pairs: the last source stays on (A alone in mono, then AB in stereo)",
+          (mono, got) == ((0x2400, 0b000), (0x0400, 0b110)), f"{mono[0]:#06x} {got[0]:#06x} {got[1]:03b}")
+    for state in (2, 3):
+        for field in (FIELD_IN1, FIELD_IN2, FIELD_ST):
+            got = press(12, field, state)
+    check("pairs: locked while recording and saving", got == (0x0400, 0b110), f"{got[0]:#06x} {got[1]:03b}")
+    rt.w32(s["stems_tracks"], 0x0401)
+    got = press(12, FIELD_IN2)
+    check("pairs: in stereo there is no second input", got == (0x0401, 0b110), f"{got[0]:#06x} {got[1]:03b}")
+
+
+KUP, KDOWN, KLEFT, KRIGHT = 0x33, 0x20, 0x34, 0x21     # the panel's key codes (tools/panel/key_map.json)
+
+
+@unit
+def cursor(rt):
+    """stems_ud and stems_lr, the window closed (no draw): UP and DOWN skip
+    PEAK and scroll five rows; LEFT and RIGHT pick a pair row's field, only
+    the ones it has (AB and STEREO in stereo; A, B and STEREO in mono), and
+    stop at either end; DOWN or UP onto the other pair keeps the field when
+    it has it; any other row puts it back on the first."""
+    s = rt.s
+    rt.w32(s["stems_win"], 0)
+    rt.w32(s["stems_fmt"], 0b110)
+    rt.call("stems_enter")
+
+    def at():
+        return (rt.r32(s["stems_list"] + 0x0c), rt.r32(s["stems_list"] + 0x04), rt.r32(s["stems_field"]))
+
+    def key(k, n=1):
+        for _ in range(n):
+            rt.call("stems_lr" if k in (KLEFT, KRIGHT) else "stems_ud", k)
+        return at()
+
+    check("cursor: STEMS opens on STEM REC", at() == (0, 0, 0), f"{at()}")
+    check("cursor: DOWN skips PEAK onto T1", key(KDOWN) == (2, 0, 0), f"{at()}")
+    check("cursor: UP from T1 back on STEM REC", key(KUP) == (0, 0, 0), f"{at()}")
+    check("cursor: DOWN 5 times: CUE, the list scrolled to MAIN", key(KDOWN, 5) == (6, 2, 0), f"{at()}")
+    walked = [key(KDOWN)[0] for _ in range(10)]
+    check("cursor: DOWN to 24 BIT and it stays there", walked == [7, 8, 9, 10, 11, 12, 13, 14, 14, 14] and
+          at()[1] == 10, f"{walked}, top {at()[1]}")
+    check("cursor: LEFT and RIGHT on 24 BIT do nothing", key(KRIGHT) == (14, 10, 0) and key(KLEFT) == (14, 10, 0),
+          f"{at()}")
+    key(KUP, 2)
+    check("cursor: on AB in stereo, RIGHT goes to STEREO and stops there", key(KRIGHT) == (12, 10, FIELD_ST)
+          and key(KRIGHT) == (12, 10, FIELD_ST), f"{at()}")
+    check("cursor: LEFT back to AB, and it stops there", key(KLEFT) == (12, 10, FIELD_IN1)
+          and key(KLEFT) == (12, 10, FIELD_IN1), f"{at()}")
+    rt.w32(s["stems_fmt"], 0b100)                       # AB in mono
+    check("cursor: in mono RIGHT goes A, B, STEREO", [key(KRIGHT)[2] for _ in range(3)] == [1, 2, 2], f"{at()}")
+    check("cursor: STEREO kept onto CD", key(KDOWN) == (13, 10, FIELD_ST), f"{at()}")
+    key(KUP)
+    key(KLEFT)
+    check("cursor: B onto CD in stereo is CD's first field", key(KDOWN) == (13, 10, FIELD_IN1), f"{at()}")
+    key(KRIGHT)
+    check("cursor: off a pair row the field goes back to the first", key(KDOWN) == (14, 10, 0)
+          and key(KUP) == (13, 10, 0), f"{at()}")
+    key(KUP, 12)
+    check("cursor: UP to the top shows PEAK again", at() == (0, 0, 0), f"{at()}")
 
 
 MASTER_TRK = 0x80000034                         # stems.s: non-zero = MASTER TRACK on
@@ -792,14 +935,13 @@ MASTER_TRK = 0x80000034                         # stems.s: non-zero = MASTER TRA
 
 @unit
 def master_t8(rt):
-    """MASTER TRACK on (the master design, 7 Oct 2026): T8's row reads T8
+    """MASTER TRACK on (the master design, 7 Oct 2026): T8's value reads
     MASTER and its YES changes nothing; off again, it reads its bit; a take
     latched with it on leaves T8 out, and T8 alone becomes MAIN."""
     s = rt.s
-    row8 = s["stems_rows"] + 24 * 9
 
     def label():
-        return rt.rmem(rt.r32(row8), 16).split(b"\0")[0].decode()
+        return row_value(rt, 9)
 
     def master(on):
         rt.wmem(MASTER_TRK, bytes([1 if on else 0]))
@@ -809,10 +951,10 @@ def master_t8(rt):
     rt.w32(s["stems_tracks"], 0x81)
     rt.w32(s["stems_m8last"], 0)
     master(True)
-    check("master_t8: on, T8's row reads T8 MASTER", label() == "T8 MASTER", label())
+    check("master_t8: on, T8's value reads MASTER", label() == "MASTER", label())
     rt.w32(s["stems_list"] + 0x0c, 9)
     rt.call("stems_source_action")
-    check("master_t8: on, T8's YES changes nothing", rt.r32(s["stems_tracks"]) == 0x81 and label() == "T8 MASTER",
+    check("master_t8: on, T8's YES changes nothing", rt.r32(s["stems_tracks"]) == 0x81 and label() == "MASTER",
           f"{rt.r32(s['stems_tracks']):#x} {label()}")
     for src, want in ((0x81, [0]), (0x80, [8]), (0xff, list(range(7))), (0x380, [8, 9])):
         rt.w32(s["stems_tracks"], src)
@@ -822,7 +964,7 @@ def master_t8(rt):
         check(f"master_t8: on, sources {src:#05x} latch kinds {want}", kinds == want, f"{kinds}")
     rt.w32(s["stems_tracks"], 0x81)
     master(False)
-    check("master_t8: off again, T8's row reads its bit", label() == "T8 [X]", label())
+    check("master_t8: off again, T8's row reads its bit", label() == BOX_ON, repr(label()))
     rt.call("stems_layout")
     kinds = [rt.r32(s["stems_ftab"] + 4 * i) >> 24 for i in range(rt.r32(s["stems_nf"]))]
     check("master_t8: off, T8 is a source again", kinds == [0, 7], f"{kinds}")

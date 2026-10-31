@@ -6180,6 +6180,16 @@ data.
 writer is stuck in that loop after exactly 20 sectors, so a change in the
 driver's answer or in the port's card model shows up as a failure.
 
+Since 28 Oct 2026 the run refuses writes after the 31st sector. Each take
+now makes its own folder at the start, which writes 11 sectors more
+(measured on three runs: 103 to 114, 113 to 124 and 97 to 108 sectors in
+all). With 20, the refusal came during the start, while the take was still
+RECORDING. The writer hung there, main stopped (the first point above), and
+the port's STOP call at frame 400 never reached main's idle loop. The take
+stayed RECORDING, after 22 sectors. With 31, the start completes, the STOP
+lands, and the hang comes in the take's first raw write while FINISHING,
+after 34 sectors, with 3.3 million polls at `0x40014cf4`, as before.
+
 ### 11.5 A second take in the same minute, and the overflow guard ✅
 
 Two runs of `verify_stems.py`, 13 Sep 2026:
@@ -7106,7 +7116,10 @@ the seconds, `SAVING` to `DONE`, `RING FULL`. Yves chose (29 Sep 2026) to
 keep the design and let the status refresh on any key: opening the menu, or
 a key inside it, shows it current. A status that ticks by itself needs a
 redraw request from outside a key handler, which is left for piece 7's
-recording window.
+recording window. (27 Oct 2026, note 2: STEMS is its own window now, and
+a detour in the UI task's loop, `0x40056c7c`, redraws it at the task's next
+message when a label changed. `verify_stems_menu` checks the screen
+against a fresh redraw.)
 
 The first probe run pressed NO to leave CONTROL, which closed the menu, so
 its items 3 to 5 measured a closed menu; that run is void, and item 7
@@ -7185,6 +7198,23 @@ that's on stays on, so a take always has a track the rows show.
   at `a0852d2`, dirty 0): 208 PASS, 0 FAIL; the menu gate's 28 checks
   pass with the same values; the only SKIP is `verify_set`'s (no
   `OT_PROJECT`). Each panel's walk takes 15 to 18 minutes there.
+
+### 16.2a The window as PERSONALIZE (27 Oct 2026) ✅ under the port
+
+Sections 16.1 and 16.2 describe the eighteen-row list. On 27 Oct 2026
+Yves chose PERSONALIZE's look from firmware-drawn mockups, and STEMS
+became fifteen rows of a label and a value, five at a time: STEM REC
+(its state as the value, a failure's name in place of the label), PEAK
+(the one row with no action, skipped by the cursor), T1 to T8, MAIN,
+CUE, the pairs AB and CD on one row each, and 24 BIT. A pair row holds
+its checkboxes side by side (`AB` and `STEREO`; with STEREO off, `A`, `B`
+and `STEREO`), picked with LEFT and RIGHT as on stock MIDI SYNC, and a
+mono pair can record one input alone (bits 12 to 15 of `stems_tracks`
+name the input left out). How MAIN MENU and PERSONALIZE draw, and so
+how STEMS does: `MAINMENU.md` section 5, after the STEMS paragraph.
+`verify_stems_menu`'s third boot compares STEMS with PERSONALIZE drawn
+with STEMS's rows, pixel for pixel; `verify_stems_units` covers the
+rows' actions, the cursor and the file table with inputs left out.
 
 ### 16.3 What the gate can't see 🟡
 
@@ -8074,7 +8104,8 @@ start. A T1 take: 97 commands of 4 sectors, 4 FAT writes.
 
 ### 20.3 The readout ✅ under the port
 
-`STATS.TXT` in each take's folder (`modules/stems/README.md`): the take,
+`STATS.TXT` in each take's folder (since 27 Oct 2026 the take's log,
+`/BRAIN/STEMS/<take>.TXT`; `modules/stems/README.md`): the take,
 the ring's peak, the card writes, the writer's copy and sleeps, the hook
 and the frame routine's time on DTCN3, the card's DMA modes and its
 cluster (`0x46107990`, sectors a cluster: the raw write returns it << 9,

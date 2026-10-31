@@ -127,7 +127,7 @@
       "caption": "The STEM REC recording window.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"
+      "firmware_sha256": "fdb1ba5f644079d738e46d80b7ebe8b2da0b75c055eeae199896dc2288fda0a0"
     }
   },
   "rnd-name": {

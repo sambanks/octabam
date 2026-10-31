@@ -107,7 +107,7 @@ vendor_eft() {
 # with Y) and three-way for the ColdFire port's DSP pair (P, X and Y one
 # memory, as the chip has it); and the host-stepped mode the port drives
 # the cores in (DO loops stepped, interrupts interpreted, an idle step); the
-# pre-3cee91c9 DMA arming rule for the two host interface request sources.
+# pre-3cee91c9 DMA arming rule behind DSP::setDmaTriggerOnArm.
 # From Tim Hastie's octa-panel (be68244, the port's --dsp-rt mode,
 # O17-O22): the JIT cores on worker threads -- a transmit FIFO and
 # lock-free rings on the HDI08, burst DMA to and from the host port, the

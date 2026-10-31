@@ -8,7 +8,7 @@ B, BS, PS = 0x400e21e0, 0x9b340, 0x18b2
 
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
-    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBbAa] (mp_\w+)$',raw,re.M)}
+    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBbAa] (store_part_\w+)$',raw,re.M)}
 from unicorn import UC_HOOK_CODE
 from unicorn.m68k_const import *
 
@@ -35,14 +35,14 @@ def main():
         nonlocal interrupted
         if cold:
             assert not m.base<=pc<runtime_end, f'early entry executed DRAM at {pc:#x}'
-        if active and not interrupted and int.from_bytes(u.mem_read(m.sym['mp_snapshot_bank'],4),'big'):
+        if active and not interrupted and int.from_bytes(u.mem_read(m.sym['store_part_snapshot_bank'],4),'big'):
             if (pc==0x400208ae and u.reg_read(UC_M68K_REG_A1)>=target+0x4e2+144) or (pc==0x400058da and u.reg_read(UC_M68K_REG_D3)==3):
                 interrupted=True;u.emu_stop()
     u.hook_add(UC_HOOK_CODE,observe)
     def install(on):
         nonlocal wrapped
         wrapped=on
-        for entry,name in ((COPY,'mp_native_copy'),(INIT,'mp_native_init')):
+        for entry,name in ((COPY,'store_part_native_copy'),(INIT,'store_part_native_init')):
             data=patched_entries[entry] if on else originals[entry]
             u.mem_write(entry,data);u.ctl_remove_cache(entry,entry+len(data))
     def run(entry,args,sr=0x2000,pause=False):
@@ -50,9 +50,9 @@ def main():
         active=pause;interrupted=False;target=args[0]
         # Derive expected state from the operation's input memory, independent
         # of the wrapper's snapshot/epoch implementation.
-        epochs = bytes(u.mem_read(m.sym['mp_part_epochs'], 64*4))
+        epochs = bytes(u.mem_read(m.sym['store_part_epochs'], 64*4))
         expected_epochs = bytearray(epochs)
-        expected_snapshot = bytes(u.mem_read(m.sym['mp_snapshot'], 4*288))
+        expected_snapshot = bytes(u.mem_read(m.sym['store_part_snapshot'], 4*288))
         length = args[2] if entry == COPY else PS
         bank = (target-B)//BS
         if wrapped and not cold and length > 0 and 0 <= bank < 16:
@@ -75,21 +75,21 @@ def main():
         if pause:
             assert interrupted and m.arrival is None
             assert m.read_sr()&0xff00==sr, 'native operation masked interrupts'
-            assert bytes(u.mem_read(m.sym['mp_snapshot'], 4*288)) == expected_snapshot, 'outgoing snapshot mismatch'
-            assert bytes(u.mem_read(m.sym['mp_part_epochs'], 64*4)) == epochs
+            assert bytes(u.mem_read(m.sym['store_part_snapshot'], 4*288)) == expected_snapshot, 'outgoing snapshot mismatch'
+            assert bytes(u.mem_read(m.sym['store_part_epochs'], 64*4)) == epochs
             saved=u.context_save();oldstack=m.stack;m.stack-=0x1000
             bank=(target-B)//BS
             part=(target-B-bank*BS-0x8ed80)//PS
             length=args[2] if entry==COPY else PS
             affected=sum(1<<p for p in range(4) if target<B+bank*BS+0x8ed80+(p+1)*PS and target+length>B+bank*BS+0x8ed80+p*PS)
-            assert int.from_bytes(u.mem_read(m.sym['mp_snapshot_parts'],4),'big')==affected
+            assert int.from_bytes(u.mem_read(m.sym['store_part_snapshot_parts'],4),'big')==affected
             # This is the state a playback interruption sees after native bytes
             # have already begun changing, including KEY and other Parts.
             for part in range(4):
                 for track in range(8):
                     for field in FIELDS:
-                        if field==17:got=m.call('mp_read_key',track,bank*4+part)
-                        else:got=m.call('mp_read',track,bank*4+part,regs={UC_M68K_REG_D2:field})
+                        if field==17:got=m.call('store_part_midi_key',track,bank*4+part)
+                        else:got=m.call('store_part_midi_read',track,bank*4+part,regs={UC_M68K_REG_D2:field})
                         assert got==old_settings[part,track,field],(part,track,field,got)
             m.stack=oldstack;u.context_restore(saved);m.arrival=None;m.stops={m.done}
             active=False
@@ -97,10 +97,10 @@ def main():
         assert m.arrival==m.done,(hex(entry),hex(u.reg_read(UC_M68K_REG_PC)))
         assert u.reg_read(UC_M68K_REG_A7)==m.stack+4
         assert bytes(u.mem_read(m.stack+4,4*len(args)))==b''.join(x.to_bytes(4,'big') for x in args)
-        assert bytes(u.mem_read(m.sym['mp_snapshot'], 4*288)) == expected_snapshot, 'outgoing snapshot mismatch'
-        assert bytes(u.mem_read(m.sym['mp_part_epochs'], 64*4)) == bytes(expected_epochs), 'Part epoch publication mismatch'
-        assert bytes(u.mem_read(m.sym['mp_snapshot_bank'],4))==bytes(4)
-        assert bytes(u.mem_read(m.sym['mp_snapshot_parts'],4))==bytes(4)
+        assert bytes(u.mem_read(m.sym['store_part_snapshot'], 4*288)) == expected_snapshot, 'outgoing snapshot mismatch'
+        assert bytes(u.mem_read(m.sym['store_part_epochs'], 64*4)) == bytes(expected_epochs), 'Part epoch publication mismatch'
+        assert bytes(u.mem_read(m.sym['store_part_snapshot_bank'],4))==bytes(4)
+        assert bytes(u.mem_read(m.sym['store_part_snapshot_parts'],4))==bytes(4)
         return tuple(u.reg_read(r) for r in REGS),m.read_sr()&0xff00
     # Cold entries must use stock before the platform runtime is available.
     # Poisoning its first instruction makes any premature DRAM dispatch fail.
@@ -163,19 +163,19 @@ def main():
     cold=False
     # Exercise the installed boot call, including resident activation builds.
     boot=bytes(u.mem_read(0x40000512,6));assert boot[:2]==bytes.fromhex('4eb9')
-    m.sym['mp_boot_activate']=int.from_bytes(boot[2:],'big')
+    m.sym['store_part_boot_activate']=int.from_bytes(boot[2:],'big')
     hk=re.search(r'^([0-9a-f]+) [Tt] hk_boot$',subprocess.check_output(
         ['m68k-elf-nm',str(ROOT/'out/platform/runtime/runtime.elf')],text=True),re.M)
-    if hk and int(hk.group(1),16)==m.sym['mp_boot_activate']:
+    if hk and int(hk.group(1),16)==m.sym['store_part_boot_activate']:
         # HOOKS's boot bridge (modules/hooks, boot): BOOT TRACE's note, then a jmp to the
         # resident activation (verify_hooks checks the chain); exercise the activation itself.
-        res=re.search(r'^([0-9a-f]+) [Tt] mp_resident_activate$',subprocess.check_output(
-            ['m68k-elf-nm',str(ROOT/'out/linked/midi-part-state/midipartentry/u.elf')],text=True),re.M)
+        res=re.search(r'^([0-9a-f]+) [Tt] store_part_resident_activate$',subprocess.check_output(
+            ['m68k-elf-nm',str(ROOT/'out/linked/store/storepartentry/u.elf')],text=True),re.M)
         act=int(res.group(1),16)
         assert bytes.fromhex('4ef9')+act.to_bytes(4,'big') in bytes(u.mem_read(int(hk.group(1),16),64))
-        m.sym['mp_boot_activate']=act
-    m.call('mp_boot_activate',stop=0x4000f938)
-    for target,entry in (('mp_copy_target','mp_native_copy'),('mp_init_target','mp_native_init')):
+        m.sym['store_part_boot_activate']=act
+    m.call('store_part_boot_activate',stop=0x4000f938)
+    for target,entry in (('store_part_copy_target','store_part_native_copy'),('store_part_init_target','store_part_native_init')):
         assert int.from_bytes(u.mem_read(m.sym[target],4),'big')==m.sym[entry]
     # Copy ABI/canaries at working, saved and unrelated destinations, including
     # partial SETUP writes and copies touching neither settings nor native Parts.
@@ -218,11 +218,11 @@ def main():
             for t in range(8):
                 for field in FIELDS:
                     native=u.mem_read(dest+0x4e2+t*36+field,1)[0]
-                    got=m.call('mp_read_key',t,bank*4+part) if field==17 else m.call('mp_read',t,bank*4+part,regs={UC_M68K_REG_D2:field})
+                    got=m.call('store_part_midi_key',t,bank*4+part) if field==17 else m.call('store_part_midi_read',t,bank*4+part,regs={UC_M68K_REG_D2:field})
                     assert got==native,(entry,bank,part,t,field)
     # Negative control: execute the real wrapper with its epoch increment
     # disabled. The state assertions must reject it even though copy succeeds.
-    start, end = m.sym['mp_native_init'], m.sym['mp_snapshot_bank']
+    start, end = m.sym['store_part_native_init'], m.sym['store_part_snapshot_bank']
     code = bytes(u.mem_read(start, end-start))
     needle = bytes.fromhex('5290')  # ADDQ.L #1,(A0)
     sites = [i for i in range(0, len(code)-1, 2) if code[i:i+2] == needle]

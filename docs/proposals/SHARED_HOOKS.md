@@ -13,8 +13,8 @@ frame_entry, boot). Phase 4 is not here: radiohagen's MIDI Follow PR
 (sambanks/octabam#824) already gives STORE the native Part access section 5
 describes and retires MIDI PART STATE, and this design adopts it (a PARTS
 module built here first was withdrawn, 28 Oct 2026). HOOKS's boot bridge
-joins BOOT TRACE with MIDI PART STATE today and moves to STORE's activation
-when #824 lands. Two departures from sections 4.3 and 7: the
+joins BOOT TRACE with STORE's native Part activation when a registered Part
+client is selected; STORE alone adds no boot hook. Two departures from sections 4.3 and 7: the
 in-tree participants were not rewritten as clients -- each keeps its
 proven standalone bytes and, where its detour never returns, builds a
 returning form under a HOOKS flag -- and the machine table (phase 6) has

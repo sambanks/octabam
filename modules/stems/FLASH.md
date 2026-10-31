@@ -1,4 +1,243 @@
-# STEM REC: flashes A to G, and crosscheck's flash plan as a record
+# STEM REC: flashes A to K, and crosscheck's flash plan as a record
+
+## Flash K — `octabam` + STEM REC: a folder for each take, T1 at 24 bits (staged 27 Oct 2026)
+
+**Flashed** on Yves's MKII, reported 28 Oct 2026: "tests are ok! No 100%
+encountered, even after pushing hard with a lot of triggers as before."
+His card's logs hold three takes on STEMS11 (his folder, not the
+repository). Tests 1 and 3 passed; test 2 only in part, since the logs
+hold one eleven-file take, not a series. From those logs and files:
+- The first take was T1 alone at 24 bits, the boot default.
+- Each take wrote its own folder, `!STEMS/261028-2000/` and so on, and the
+  second take in one minute was named `261028-2008-2`.
+- The hard take, `261028-2008-2`: T1 to T7, MAIN, CUE, AB and CD, eleven
+  files at 24 bits, every track a Static machine with every trig filled,
+  49 s and `status OK`. The ring peaked at 2,694 of 7,922 frames (34%),
+  against 36% and 37% for flash J's first two eleven-file takes on an
+  emptied folder. The card wrote 140,156 KB in 35.8 s of the 49 (255 µs
+  a KB), its longest write 447 ms; the hook took 32 µs a frame on
+  average, 69 µs at most. No take reached 100%, by his report.
+- Not measured on the unit yet: the peak from take to take. Flash J's
+  logs show the climb over a series (36%, 37%, 60%, 89%, then `RING
+  FULL`); STEMS11's logs have no such series. Under the port, the
+  `crowded` run measures the same peak with 0, 40 or 88 files in
+  `!STEMS`.
+- Every WAV's length is its log's frame count × 16. Every `.ot` holds the
+  take's tempo (63 and 139 BPM, as the project had them) and a gain of
+  +12 dB.
+
+`STEMS11`, the same remix as flashes I and J, on branch `stems-next`
+rebased onto main `3b62cdef`:
+
+- Each take gets a folder of its own, `AUDIO/!STEMS/<take>/`, its files
+  still named `<take>-T1.wav` and so on. So a take's start no longer
+  slows as `!STEMS` fills (flash J: `RING FULL` with 88 files there).
+- At boot T1 alone is on, at 24 bits.
+
+**The image.** Built 27 Oct 2026 at `a585cd92` with the local remix
+`remixes/test/lm-stems` (as before): `make image REMIX=lm-stems BUILD=11
+VERSION=STEMS11`. The unit's OS version reads `STEMS11`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS11.bin` | 612,140 | `dc2f4e096e628eb92af63897030c0e5d8dd999e3700b8737fb8088ad3ff1f9b0` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS11.syx` | 855,062 | `8e57de3e44f1fdd931d2085e3513256ada70c26c537242bd4745881a5051fe37` |
+| remix switch | `out/LM-STEMS 11.RMX` | 1,280,087 | `e22225a1b1c109a1e47ba4f5e7e11693ad5f98946da29624a26ff71eb711c4df` |
+
+Copies are in `/home/yvez/xcheck/stems11`. Rebuilt 28 Oct 2026 with
+the branch rebased onto main `b36afa2c`: the same three files, byte for
+byte (the same sizes and sha256). Under the port:
+`verify_stems_units` 115 pass; the pixel boot on `lm-stems` itself 9
+pass; the `crowded` run measures a take's start against a full `!STEMS`.
+
+**The tests, in order.**
+
+1. Boot, UP + REC: T1 alone has a checkbox ticked, and 24 BIT is ticked.
+2. Five or more takes of eleven files at 24 bits, as in flash J: each in
+   its own folder in `!STEMS`, and the logs' `ring peak` stays about
+   where the first take's is, with no `RING FULL`.
+3. The `.ot` beside each WAV in the take's folder, and the files load
+   from there in the browser.
+
+## Flash J — `octabam` + STEM REC: STEMS drawn as PERSONALIZE (staged 27 Oct 2026)
+
+**Flashed** on Yves's MKII, reported 27 Oct 2026: "everything looking
+good". From the twelve takes' logs (his folder, not the repository):
+- The double tap armed on the unit: `yes gap 160 ms` to `171 ms`, up to
+  three double taps a boot.
+- Split pairs wrote `A.wav` to `D.wav`, each a mono file.
+- **A full `!STEMS` slowed each take's start.** Five takes with eleven
+  files at 24 bits on an emptied folder: the ring peaked at 36%, 37%,
+  60%, 89%, and with 88 files there the fifth filled it before its first
+  write (`RING FULL` after 2.9 s, `card rec 0 ms 0 KB`). Four of the seven
+  takes before that ended the same way. Fixed in the next image: a folder
+  for each take (README, "Why a folder for each take").
+
+`STEMS10`, the same remix as flash I, with the STEMS window Yves chose
+after flash H: SYSTEM > PERSONAL SETTINGS's look, from mockups the
+firmware drew. It carries flash I's fixes too, so if STEMS9 never went on
+the unit, flash I's tests apply here as well.
+
+- STEMS opens in MAIN MENU's window, with the set and the project in the
+  band at the top, the STEMS title with its icon, and five rows at a
+  time, each a name and a value.
+- 15 rows: STEM REC (its value `READY`, `ARMED`, the time, `SAVING`,
+  `DONE` or `NO CARD`; a failure's name in place of `STEM REC`), PEAK,
+  T1 to T8, MAIN, CUE, AB, CD and 24 BIT. Checkboxes are the stock ones.
+- Each input pair is on one row: `AB` and `STEREO`. With STEREO off, it
+  reads `A`, `B` and `STEREO`, and each input that's on records its own
+  mono file, so A can record alone. LEFT and RIGHT pick a checkbox, as on
+  MIDI SYNC.
+
+**The image.** Built 27 Oct 2026 from branch `stems-next` at `9ca15bf2`
+with the local remix `remixes/test/lm-stems` (as flash I): `make image
+REMIX=lm-stems BUILD=10 VERSION=STEMS10`. The unit's OS version reads
+`STEMS10`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS10.bin` | 611,876 | `36d39ccf647c7d06f56779828b6355f4860ce1d77b329a6215e5951b8dc3cf64` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS10.syx` | 854,698 | `dcf10e31262b6c286a1d87f3bbf7f16de32b4719dc699a71d47168afd6e0ef9d` |
+| remix switch | `out/LM-STEMS 10.RMX` | 1,279,831 | `67cd18918a6e732367f9b4a2770050be74fc881b150eef32b51bb7fa8a71676b` |
+
+Copies are in `/home/yvez/xcheck/stems10`. The checks, under the port:
+- `verify_stems_units`: 115 pass.
+- `verify_stems`, the take runs this change touched: 86 pass and 1 fail,
+  `mono` read against a stale `sources` take. Rerun with `sources`: 36
+  pass. The new run `monoad` takes A and D alone, each every sample.
+- `verify_stems_menu` on `stems`: 91 pass, 0 fail, both panels.
+- The pixel boot (STEMS against PERSONALIZE drawn by the firmware with
+  STEMS's rows, six states) on `lm-stems` itself: 9 pass.
+- `verify-docs`: 0 problems.
+
+LOAD METER's refusal is lifted for this build only, as in flash I, with
+the same unmeasured risk at 24 bits.
+
+**The tests, in order.**
+
+1. Boot; MAIN MENU › SYSTEM › OS UPGRADE still opens; BRAIN is on MAIN
+   MENU's root.
+2. UP + REC: STEMS should look like SYSTEM › PERSONAL SETTINGS, the set
+   and project at the top. UP and DOWN skip PEAK.
+3. On AB: YES turns it on. RIGHT, then YES on STEREO: the row reads `A`,
+   `B`, `STEREO`. LEFT to B, YES: B off. One take: the folder holds
+   `A.wav` and no `B.wav`.
+4. During a take: STEM REC's value is the time, it moves by itself, and
+   nothing flickers.
+5. Flash I's tests 2 and 4, if STEMS9 never went on the unit: `!STEMS`
+   first in the browser, and YES twice quickly on the main page arms.
+
+## Flash I — `octabam` + STEM REC: the fixes from flash H (staged 27 Oct 2026)
+
+`STEMS9`, on `octabam` (BRAIN, KITS, TUNER and the rest) with STEM REC, as
+LMSTEMS1 was. It fixes what flash H showed on Yves's MKII:
+
+- The folder is `!STEMS`: `_` sorted after the letter folders, and `!`
+  sorts before digits and letters. Takes in `_STEMS` stay there.
+- The column that flickered with each new second is gone (the selection
+  bar inverted one column past the window's clear).
+- The double tap's window is 0.5 s, not 0.4 s, and the take's log has a
+  new line, `yes gap N ms, double taps N`: the last gap between two YES
+  presses on the main page, and the double taps since boot.
+
+**The image.** Built 27 Oct 2026 from branch `stems-next` at `26d45d81`
+with a local remix, `remixes/test/lm-stems` (octabam's definition, plus
+STEM REC and MEMORY; not committed): `make image REMIX=lm-stems BUILD=9
+VERSION=STEMS9`. The unit's OS version reads `STEMS9`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS9.bin` | 611,348 | `d6534d7cf9ef6eddbb3859a2b52e659f0a1e4522daef2620dbb7dfb611bca719` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS9.syx` | 853,948 | `bbb51d0bf662ab5eba4ef4d6c31d71b92c516a880ebead1fde0acb9f9fdbb528` |
+| remix switch | `out/LM-STEMS 9.RMX` | 1,279,287 | `e248efa736bfce54d02a0185dc1bb695c596c7c9c3f2caed152521ebd424f68e` |
+
+Copies are in `/home/yvez/xcheck/stems9`. The checks, under the port:
+`verify_stems` (the take runs this round touched) 158 PASS;
+`verify_stems_menu` on `stems` 85 PASS; on octabam with STEM REC every
+STEM REC check passes, and one stock check differs: with T1 held, stock
+arms nothing there (STEM REC stays idle, as it should).
+
+**LOAD METER refuses STEM REC** (its manifest), so the image is built from
+a local remix with that refusal lifted for the build only, as LMSTEMS1
+was. Not measured together on a unit: LOAD METER's worst frame (336.5 µs
+on `octabam-bus`) plus STEM REC's hook (29 µs at eight tracks, 24 bits)
+is about 365 µs, over the frame's 362.8 µs. If takes at 24 bits misbehave
+on this image and didn't on STEMS8, that's the first suspect.
+
+**The tests, in order.**
+
+1. Boot; MAIN MENU › SYSTEM › OS UPGRADE still opens; BRAIN is on MAIN
+   MENU's root.
+2. One take: the files go to `AUDIO/!STEMS/`, first in the browser.
+3. STEMS open during the take: the time moves, nothing flickers.
+4. On the main page, stopped: YES twice quickly arms (`STEMS ARMED`). If it
+   doesn't, record any take from STEMS and send its log
+   (`/BRAIN/STEMS/<take>.TXT`): its `yes gap` line says how far apart your
+   two presses were.
+
+## Flash H — `stems`: Yves's six notes of 26 Oct (staged 27 Oct 2026)
+
+**Flashed** on Yves's MKII, reported 27 Oct 2026: the `.ot` files are fine
+(tempo and gain) and the naming is good. Four findings, fixed in flash I:
+`_STEMS` sorted after the letter folders, not first; the time refreshed by
+itself, but a column of pixels flickered with each new second; BRAIN was
+missing (the `stems` remix doesn't carry it); and a double tap of YES on
+the main page did nothing, though one YES showed `ARM ALL`.
+
+It carries the six notes (TODO.md, "Where the six notes stand"): the flat
+folder, the log under `/BRAIN/STEMS`, the `.ot` files, the window that
+redraws itself and the double tap of YES.
+
+**The image.** Built 27 Oct 2026 from branch `stems-next` at `3d050e04`:
+`make image REMIX=stems BUILD=8 VERSION=STEMS8`. The unit's OS version
+reads `STEMS8`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS8.bin` | 453,464 | `08dd6faa04711dc410869eae011a021d91c5539615d012742e64dbce72fb3d43` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS8.syx` | 633,417 | `deb0b2e9b506f7598d862f0027f001880e0127fef761f43ed353a0b4ad14baae` |
+| remix switch | `out/STEMS 8.RMX` | 1,120,122 | `529caa155f360ce7e3d982d4b3c76ff3e5691cade1fbb4dc13f2b0c89be02d44` |
+
+All three are built from your own 1.40C and never enter the repository.
+Copies are in `/home/yvez/xcheck/stems8`. The checks on that code, under
+the port: `verify_stems` 324 PASS, `verify_stems_menu` 83 PASS (MKII and
+MKI), `verify-docs` 0 problems; STEM REC with TUNER and SCOPE builds.
+
+**Before you flash.** As flash E: power cycle first if REC was pressed
+since power-on, the stock `.syx` and a DIN MIDI interface at hand, the
+card backed up; power cycle once after the upgrade.
+
+**The tests, in order.** Each answers something the port can't.
+
+1. Boot; MAIN MENU › SYSTEM › OS UPGRADE still opens.
+2. **A stock recording first, for the `.ot` check** (TODO.md item 2 A):
+   with the stock recorder, record four bars at 123.4 BPM, save the
+   sample, and copy its `.wav` and `.ot` to `C:\Projects\Stem recordings`.
+3. **The folder.** One take, T1 to T8 at 16 bits, about 30 s. The files
+   are in `AUDIO/!STEMS/`, named `<take>-T1.wav` and so on. Can the file
+   browser reach them? Load `-T1.wav` onto a Flex track.
+4. **The `.ot`.** On that Flex track: the tempo equals the project's (no
+   1.5 BPM drift), the take plays in time with timestretch on, and the
+   gain reads +12 dB. Load `-MAIN.wav` too: does it sit at the stems'
+   level?
+5. **A second take in the same minute:** its files are `<take>-2-T1.wav`
+   and so on; the first take's files still play.
+6. **The log:** `/BRAIN/STEMS/<take>.TXT` is on the card, and BRAIN still
+   opens its settings.
+7. **The window.** Open STEMS (UP + REC) while a take records: it shows
+   `STOP` and `REC mm:ss`, and the time moves with no key. After STOP it
+   goes to `SAVING`, then `DONE`, with no key.
+8. **The double tap.** On the main page, stopped: YES twice quickly shows
+   `STEMS ARMED`, and PLAY starts the take. One YES doesn't arm. A double
+   tap while recording doesn't stop the take. With a track key held, YES
+   only arms that track. Does 0.5 s feel right?
+9. Listen to one take's files against the project.
+
+Not checked, by Yves's choice (27 Oct 2026): how a `!STEMS` folder with
+many takes behaves. Every start looks its names up in the folder, and
+under the port a folder of 100 takes (1,600 files) delayed the take's
+first file past 1.1 s; the ring covers about 6 s at eight tracks and 16
+bits, 2.6 s with every source at 24 bits.
 
 ## Flash G — `stems`: zero copy, the writer at priority 1 (staged 8 Oct 2026)
 

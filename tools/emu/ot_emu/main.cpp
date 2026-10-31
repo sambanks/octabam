@@ -374,6 +374,17 @@ namespace
 		if(const char* e = std::getenv("OT_SELFPROF"); e && std::atof(e) > 0.0)
 			prof.start(std::atof(e));
 		struct ProfEnd { SelfProfiler& p; ~ProfEnd() { p.finish(); } } profEnd{prof};
+		// EOF on stdin ends the loop only when the loop reads it; a long `run`
+		// or a stuck core never does. So a dead parent (we are re-parented)
+		// ends the process from here, whatever the main thread is doing.
+		// Every card sector is already pwrite()n (--card-rw), so _exit loses nothing.
+		if(const pid_t parent = ::getppid(); parent > 1)
+			std::thread([parent] {
+				while(::getppid() == parent)
+					std::this_thread::sleep_for(std::chrono::seconds(1));
+				std::fprintf(stderr, "ot_emu: parent %d is gone: exiting\n", static_cast<int>(parent));
+				::_exit(3);
+			}).detach();
 #ifdef __APPLE__
 		// O17: the ColdFire's thread joins the DSP workers' scheduling band.
 		// The workers run at QOS_CLASS_USER_INITIATED (the vendored

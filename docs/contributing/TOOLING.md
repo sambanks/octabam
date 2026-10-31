@@ -150,17 +150,12 @@ peripheral service, `Peripherals56367::setIoExtension` (our unmapped-register
 hooks; `ot_emu` calls it), the DMA request-target table sized to all 32 DRS
 values (our out-of-range guard) and the dual-counter reload in the 2D
 transfer loop. The same-value DCR renewal of 22 Sep (above) is removed; it
-had no observed effect. Kept: in `DmaChannel::arm`, a channel armed on
-`HostReceiveData` or `HostTransmitData` with its request raised serves it
-(the rule before upstream `3cee91c9`, which waits for the next request on
-a DCR write that also selects the source); the ESAI sources keep
-`3cee91c9`'s rule. Measured: with `3cee91c9` for every source,
-`verify_remix_switch` failed in CI and under the port (`ok d0=0`: neither
-core took the park command), and the arm log (a temporary print, not kept)
-showed channels 0 and 1 armed on those two sources with the request raised
-and not served; serving only those two sources passes the gate, as the
-whole rule did before. Inferred, not measured: HRDF and HTDE do not raise a
-new request until a word has moved. The disassembler now names `M_PCRE` and `M_PRRE` (upstream `2dee93df`),
+had no observed effect. Kept: the arming rule of `DmaChannel::arm`, behind
+`DSP::setDmaTriggerOnArm` (upstream `3cee91c9` no longer serves a raised
+request on a DCR write that also selects the source; `ot_emu` sets the flag).
+With upstream's rule `verify_remix_switch` failed in CI (`ok d0=0`: neither
+core took the park command); with the flag it passes. The mechanism is not
+found. The disassembler now names `M_PCRE` and `M_PRRE` (upstream `2dee93df`),
 so `verify_dsp_vectors` lists them. Built and run in an isolated tree: `dsp56kTestRunner`
 passes (including our `bset #$f,m4` test), `dsp_asm` emits `0257de` and
 `f4f9ea`, `ot_emu` builds and its non-firmware `ctest` passes. The gates run

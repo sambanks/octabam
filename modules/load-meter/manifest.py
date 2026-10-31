@@ -107,8 +107,11 @@ MODULE = Module(
                "the frame interrupt, before the recorder reads MAIN: the DSP meter's bytes taken and zeroed"),
     ),
     # STEM REC reads MAIN at its frame hook in the transfer routine (0x40004b12),
-    # outside the order lm_scrub is measured against: refused until measured.
-    conflicts=(("STEM REC", "reads MAIN before lm_scrub's place in the frame interrupt is shown to precede it"),),
+    # outside the order lm_scrub runs in. It needs no order: the meter's bytes are
+    # only in the low byte of MAIN's longs, which STEM REC never writes to a file
+    # (stems_bus16 keeps the top 16 bits, stems_bus24 shifts the low byte off), so
+    # either order gives the same files. verify_stems checks MAIN.wav against the
+    # DSP's own output on an image with both (28 Oct 2026; the conflict is gone).
     gates=(Gate("tools/verify/verify_load_meter.py", remix_arg=False, venv=True, stage="image"),
            Gate("tools/verify/verify_dsp_vectors.py"),
            Gate("tools/verify/verify_usb_load_meter.py", venv=True, stage="image"),),

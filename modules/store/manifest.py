@@ -121,3 +121,21 @@ MODULE = Module(
                "LEVEL scrolls it; else KITS' list scroll or stock's dispatch", kind="jsr"),
     ),
 )
+
+
+# Native Part access is selected independently of side-file clients.
+from pathlib import Path
+import runpy
+_PARTS = runpy.run_path(str(Path(__file__).with_name('parts.py')))
+_BASE = MODULE
+
+def select(modules):
+    extra = _PARTS['additions'](modules)
+    return dict(linked=_BASE.linked + extra['linked'],
+                detours=_BASE.detours + extra['detours'],
+                pokes=_BASE.pokes + extra['pokes'],
+                claims=extra['claims'], gates=_BASE.gates + extra['gates'])
+
+from dataclasses import replace
+MODULE = replace(MODULE, select=select,
+    proof_note=MODULE.proof_note + "; native Part access extension: hardware testing outstanding")

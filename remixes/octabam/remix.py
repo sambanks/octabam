@@ -1,20 +1,21 @@
 """octabam -- the core ColdFire modules, all 14 stock effects and our effects.
 
 CORE (BRAIN, STORE, KITS, MIDI SCENES, SCENES P2, PLOCKS P2, CC MAP, CC FEEDBACK,
-USB at MAIN CUE, the recorder and bug fixes, MUTE_MODES from DRAM, SCALE QUANTIZER,
+USB at MAIN CUE, the recorder and bug fixes, MUTE_MODES from DRAM, PATTERN MUTE, SCALE QUANTIZER,
 TUNER, DIRECT_JUMP_KYOTI, RELOAD_FROM_PROJECT, RLEN PLEN, LOAD METER) with all 14
 stock effects and LOFI AMF FIX. SPECTRUM, CHARACTER, MODULATION and TRANSIENT are loaded
 into the shared P window while a track uses them (docs/proposals/DEMAND_LOAD.md); the
 stock reverbs are wrapped so they never run over loaded code. LOAD METER's DSP half, the
 loader's stubs, copier and wrappers sit in the window words no stock effect writes.
-No bus and no SEND (fallback NONE).
+Every other ColdFire module that can share the image (COLDFIRE below). No bus and no SEND
+(fallback NONE).
 """
 from remix.schema import Pin, Proof, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
         "RECORDER LOOP FIX", "BATCH_BUGFIXES", "ERASE_EMPTY_TRIGLESS_LOCKS",
-        "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES",
+        "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES", "PATTERN MUTE",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
         "LOAD METER")
@@ -23,14 +24,24 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
 STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
            "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
 OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "TRANSIENT")
+# Every other ColdFire module that can share this image (the ledger; HOOKS joins the pairs that
+# share a stock site). Not here: ANALOG BD (its fixed pre-boot DSP scratch 0x40b00000 is under
+# this much DRAM code), CX OSC and SYNTH MACHINE (the cave 0x400d24d0 the stock DELAY reads),
+# CF METER IDLE and WAVE LOAD (CF METER's FX2 id is MODULATION's),
+# MIDI LOOPBACK (MIDI SCENES), DIRECT JUMP and PERSISTENT BUFFERS (DIRECT_JUMP_KYOTI and BUFFER
+# SAVER do their jobs), and the bus and diagnostic modules (TEMPO SYNC, TEMPO BUS, RIG HOSTS, BOOT TRACE).
+COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
+            "FX2 LOCK", "MIDI SCALES", "RND NAME", "SCOPE", "TRACK PATTERNS",
+            "VARISPEED", "STEM REC")
 STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
              "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI")
 
 REMIX = Remix(
     name="octabam",
     family="mods", proof=Proof.CHECK, proof_note="",
-    doc="The core ColdFire modules, all 14 stock effects, and SPECTRUM, CHARACTER, MODULATION and TRANSIENT, loaded on demand.",
-    modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE") + STOCK14 + OURS,
+    doc="The core ColdFire modules and every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER, MODULATION and TRANSIENT, loaded on demand.",
+    modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE") + STOCK14 + OURS
+            + COLDFIRE,
     # The window words no stock effect writes (docs/proposals/DEMAND_LOAD.md): the top of each FX2
     # slot from 0x3da3 up, and below 0x37f00, where payload B's boot zero loop starts. DLCOPY is the
     # lowest upload; the stub and the reverb guards follow it (window_loader); LOAD METER's DSP half

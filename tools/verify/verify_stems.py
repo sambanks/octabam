@@ -57,7 +57,7 @@ LAYOUT_DIR = pathlib.Path("out/platform")      # platform_build.LAYOUT lives her
 CONTROL_DESC, CONTROL_ROWS, ROW_LEN, STOCK_N = 0x400cbd54, 0x400cc5a8, 24, 6
 ROOT_DESC, ROOT_ROWS, ROOT_N = 0x400cbd8c, 0x400cc698, 4      # MAIN MENU's root (MAINMENU.md 2)
 PROJECT_DESC, PROJECT_N = 0x400cbcac, 15                     # stock PROJECT (MAINMENU.md 2)
-MENU_ROWS, ROW_TRK0, ROW_PEAK, MENU_VISIBLE = 18, 2, 17, 6     # stems.s: the STEMS list
+MENU_ROWS, ROW_TRK0, ROW_PEAK, MENU_VISIBLE = 15, 2, 1, 5      # stems.s: the STEMS list
 FRAME_SITE = 0x40004b12
 ATA_FIRST_SITE = 0x40014cfe  # the stock PIO write's first sector (STEM_REC.md 11.7)
 REC_SITE = 0x40048774        # REC press handler (PANEL.md code 0x29)
@@ -113,6 +113,7 @@ LAYOUT_CASES = [  # (sources, format, files, ring frame bytes)
     (0x0a5, 0b110, ["T1", "T3", "T6", "T8"], 256),
     (0x701, 0b110, ["T1", "MAIN", "CUE", "AB"], 256),
     (0x401, 0b100, ["T1", "A", "B"], 128),
+    (0x6c01, 0b000, ["T1", "A", "D"], 128),      # B and C left out of their mono pairs
     (0xfff, 0b000, [f"T{k}" for k in range(1, 9)] + ["MAIN", "CUE", "A", "B", "C", "D"], 768),
     (0x001, 0b111, ["T1"], 96),
     (0xfff, 0b001, [f"T{k}" for k in range(1, 9)] + ["MAIN", "CUE", "A", "B", "C", "D"], 1152),
@@ -126,12 +127,12 @@ CUE_STEPS = [f"1:poke:0x{CUE_ON:x}=1", f"1:poke:0x{CUE_T1:x}=127"]
 # The source takes stop at 180; four files need more than 120 frames from
 # FINISHING to IDLE under the port's card latency (3 Oct 2026: a 300-frame
 # run ended FINISHING with every file still 0 bytes), so 420 follow.
-SRC_FRAMES = 600
+SRC_FRAMES = 1050                  # sources IDLE at frame 822, mono at 634 (27 Oct 2026: the .ot and the log at the end), + 25%
 # Fourteen files at 16 bits: the writer falls behind under the port's card
 # latency (frame 1,024 of 1,731 written at the stop) and needs 1,516 frames
 # from FINISHING to IDLE (3 Oct 2026, watch log), so 1,900 follow the stop.
-A14_FRAMES = 3600                  # THRU_STOP (1,700) + 1,900
-A14W_FRAMES = 5000                 # 24 bits: 1.5 times the data, so 3,300 follow the stop
+A14_FRAMES = 5900                  # IDLE at frame 4,721 (27 Oct 2026: the name check, the .ot files and the log), + 25%
+A14W_FRAMES = 6500                 # 24 bits: IDLE at frame 5,224 (27 Oct 2026), + 25%
 MAX_FRAMES = 9922500               # 60 minutes
 CHUNK_FRAMES = 512                 # stems.s
 
@@ -231,27 +232,26 @@ def runtime_long(s, name):
 
 def menu_static(s):
     """The STEMS list as it ships: filled in (the boot's set-up covers only
-    the stock lists), eighteen rows, REC's, the sources' and the switches'
-    actions, two
-    headings never next to each other (the engine skips one row with
-    action 0, not two in a row, and never moves onto a last one:
-    STEM_REC.md 16.1), every label as at boot, the record-dot icon."""
+    the stock lists), fifteen rows, five shown, as PERSONALIZE (Yves's
+    choice, 27 Oct 2026): STEM REC's, the sources', the pairs' and 24 BIT's
+    actions, PEAK the one row with none (the cursor skips it); every label
+    and value as at boot, the record-dot icon."""
     lng = lambda a: int.from_bytes(runtime_at(s, a, 4), "big")  # noqa: E731
-    txt = lambda a: runtime_at(s, a, 32).split(b"\0")[0].decode("latin1")  # noqa: E731
+    txt = lambda a: runtime_at(s, a, 32).split(b"\0")[0].decode("latin1") if a else None  # noqa: E731
     lst = [lng(s["stems_list"] + 4 * k) for k in range(7)]
-    check("the STEMS list ships filled in: 18 rows, 6 visible, its rows",
+    check("the STEMS list ships filled in: 15 rows, 5 visible, its rows",
           lst == [MENU_ROWS, 0, 0, 0, MENU_VISIBLE, MENU_ROWS, s["stems_rows"]], f"{[hex(x) for x in lst]}")
     rows = [[lng(s["stems_rows"] + ROW_LEN * r + 4 * k) for k in range(6)] for r in range(MENU_ROWS)]
-    check("REC runs stems_action; T1-T8 and MAIN to CD stems_source_action; the three switches "
-          "stems_switch_action; the status and PEAK are headings",
-          [r[2] for r in rows] == [s["stems_action"], 0] + [s["stems_source_action"]] * 12
-          + [s["stems_switch_action"]] * 3 + [0], f"{[hex(r[2]) for r in rows]}")
-    check("no row has a window, a getter, a child or a page id",
-          all(r[1] == r[3] == r[4] == r[5] == 0 for r in rows))
-    texts = [txt(r[0]) for r in rows]
-    check("the rows ship with the boot defaults",
-          texts == ["REC", "READY"] + [f"T{k} [X]" for k in range(1, 9)]
-          + ["MAIN [ ]", "CUE [ ]", "AB [ ]", "CD [ ]", "AB STEREO [X]", "CD STEREO [X]", "24 BIT [ ]", "PEAK 0%"],
+    check("STEM REC runs stems_action; T1-T8, MAIN and CUE stems_source_action; AB and CD "
+          "stems_pair_action; 24 BIT stems_switch_action; PEAK has none",
+          [r[2] for r in rows] == [s["stems_action"], 0] + [s["stems_source_action"]] * 10
+          + [s["stems_pair_action"]] * 2 + [s["stems_switch_action"]], f"{[hex(r[2]) for r in rows]}")
+    check("no row has a getter, a child or a page id", all(r[3] == r[4] == r[5] == 0 for r in rows))
+    on, off = "\x16", "\x15"                    # the small UI font's checkboxes
+    texts = [(txt(r[0]), txt(r[1])) for r in rows]
+    check("the rows ship with the boot defaults, T1 alone at 24 bits (a pair row's value is drawn from the bits)",
+          texts == [("STEM REC", "READY"), ("PEAK", "0%"), ("T1", on)] + [(f"T{k}", off) for k in range(2, 9)]
+          + [("MAIN", off), ("CUE", off), ("AB", None), ("CD", None), ("24 BIT", on)],
           f"{texts}")
     check("the category is labelled STEMS", txt(s["stems_cat_label"]) == "STEMS")
     icon = [lng(s["stems_icon"] + 4 * k) for k in range(5)]
@@ -509,12 +509,19 @@ def capture(prefix, chans):
 
 
 def wav_fmt(data):
-    """(channels, bytes a second, block align, bits, data bytes) of a WAV header."""
+    """(channels, bytes a second, block align, bits, data bytes) of a WAV
+    header, all None for a file too short to hold one (a take that never
+    closed is a 0-byte file): a check that fails, not a crash that ends the
+    run's other checks."""
+    if data is None or len(data) < 44:
+        return (None,) * 5
     ch, rate, brate, align, bits = struct.unpack_from("<HIIHH", data, 22)
     return ch, brate, align, bits, struct.unpack_from("<I", data, 40)[0]
 
 
 def wav16(data):
+    if data is None or len(data) < 44:
+        return []
     return list(struct.unpack_from(f"<{(len(data) - 44) // 2}h", data, 44))
 
 
@@ -605,6 +612,31 @@ def mono(s):
           and a[:n] == left[:n] and b[:n] == right[:n], f"{len(a)} and {len(left)} samples")
 
 
+def monoad(s):
+    """Both pairs mono, B and C left out (Yves's one-row pairs, 27 Oct 2026:
+    an input of a pair on its own): T1, A and D, nothing else; A.wav is
+    input A and D.wav input D, every sample, at one offset (the input WAV's
+    channels 2 and 1: STEM_REC.md 18.7, A B at page offset 0x80, C D at 0)."""
+    log, dump, card, words, _ = port(s, SRC_FRAMES, stop_at=180, tag="monoad", fixture=FIXTURE_THRU1, mask=None,
+                                     pokes_before=[(s["stems_tracks"] + 2, 0x6c), (s["stems_tracks"] + 3, 0x01),
+                                                   (s["stems_fmt"] + 3, 0b000)])
+    check("monoad: the take finished (IDLE, no error)", words[0] == ST_IDLE and words[1] == 0,
+          f"state {words[0]}, status {words[1]}")
+    f = {n.upper(): d for n, d in take_files(card, FIXTURE_THRU1)}
+    check("monoad: T1, A and D, B and C left out", sorted(f) == ["A.WAV", "D.WAV", "T1.WAV"], f"{sorted(f)}")
+    if sorted(f) != ["A.WAV", "D.WAV", "T1.WAV"] or any(len(d) < 44 for d in f.values()):
+        return
+    check("monoad: A.wav and D.wav are one channel, 16 bits",
+          wav_fmt(f["A.WAV"])[:4] == wav_fmt(f["D.WAV"])[:4] == (1, 88200, 2, 16))
+    import wave
+    with wave.open(json.loads(FIXTURE_THRU1.read_text())["audio_in"]) as w:
+        raw = w.readframes(w.getnframes())
+    ins = list(struct.unpack(f"<{len(raw) // 2}h", raw))
+    offs = [find_at(wav16(f["A.WAV"]), ins[2::4]), find_at(wav16(f["D.WAV"]), ins[1::4])]
+    check("monoad: A.wav is input A and D.wav input D, every sample, at one offset",
+          None not in offs and offs[0] == offs[1], f"offsets {offs}")
+
+
 def all14(s):
     """Review Focus 4: every source on, both pairs mono, on the eight-track
     THRU fixture: 14 files in order, each header its own, each length its
@@ -635,6 +667,7 @@ def all14(s):
               off and min(off) >= 0 and max(off) <= 7, f"{min(off) if off else None}..{max(off) if off else None}")
         check("all14: on MAIN's rails, the stems' sum lies beyond the rail",
               all((m > 0 and x >= m - 7) or (m < 0 and x <= m + 7) for m, x in rail), f"{len(rail)} rail samples")
+    ot_check(card, "all14", FIXTURE_THRU, nwavs=14)
 
 
 def against_main(tag, card, fixture, aud):
@@ -680,7 +713,7 @@ def postmove(s):
     frames before the first LEVEL step: equal to MAIN from its first frame."""
     steps, midi = level_steps(LEVEL_STEPS)
     aud = run_path("postmove", "aud")
-    log, dump, card, words, _ = port(s, 300, stop_at=180, tag="postmove", fixture=FIXTURE_THRU1,
+    log, dump, card, words, _ = port(s, 650, stop_at=180, tag="postmove", fixture=FIXTURE_THRU1,  # IDLE at 515 (28 Oct 2026: the take's folder), + 25%
                                      calls_before=(), calls=((58, s["stems_action"]),),
                                      steps=steps, midi_lines=midi, extra=("--audio-out", str(aud)))
     against_main("postmove", card, FIXTURE_THRU1, aud)
@@ -716,14 +749,14 @@ def master8(s):
     check("master8: IDLE, no error, T1.wav alone (T8 left out)", st == ST_IDLE and status == 0 and names == ["T1.WAV"],
           f"state {st}, status {status}, {names}")
     t, _ = ui_read(s, tag, "end")
-    check("master8: T8's row reads T8 MASTER", t is not None and t[ROW_TRK0 + 7] == "T8 MASTER",
+    check("master8: T8's row reads T8 MASTER", t is not None and t[ROW_TRK0 + 7] == ("T8", "MASTER"),
           f"{t[ROW_TRK0 + 7] if t else None}")
 
 
 def master(s):
     """Review Focus 5: MASTER TRACK on (STEM_REC.md 18.8): the take is whole --
     T1.wav as long as the frames recorded, and the task ends IDLE with no error."""
-    log, dump, card, words, _ = port(s, 300, stop_at=180, tag="master", fixture=FIXTURE_THRU1_MASTER)
+    log, dump, card, words, _ = port(s, 550, stop_at=180, tag="master", fixture=FIXTURE_THRU1_MASTER)  # IDLE at 431 (27 Oct 2026)
     st, status, _, wr, rd, nfr = words
     files = dict(take_files(card, FIXTURE_THRU1_MASTER))
     data = files.get("T1.wav") or files.get("T1.WAV")
@@ -787,7 +820,11 @@ def _port_parts(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, call
     tag = f"{tag}{SUFFIX}"
     before = (s["stems_action"],) if calls_before is None else tuple(calls_before)
     fx = json.loads(pathlib.Path(fixture or FIXTURE).read_text())
-    pokes_before = ([(s["stems_tracks"] + 3, mask)] if mask is not None else []) + list(pokes_before)
+    # The runs' starting point is the boot defaults before 27 Oct 2026, all
+    # eight tracks at 16 bits, both pairs stereo (T1 alone at 24 bits since):
+    # a run's own mask and pokes come after it and win.
+    base = [(s["stems_tracks"] + 2, 0x00), (s["stems_tracks"] + 3, 0xff), (s["stems_fmt"] + 3, 0b110)]
+    pokes_before = base + ([(s["stems_tracks"] + 3, mask)] if mask is not None else []) + list(pokes_before)
     work = pathlib.Path("out/stems_runs"); work.mkdir(parents=True, exist_ok=True)
     paths = {"log": work / f"{tag}.log", "dump": work / f"{tag}.dump", "card": work / f"{tag}.img",
              "mem": work / f"{tag}.mem", "ring": work / f"{tag}.ring", "ring_bytes": ring_bytes}
@@ -940,7 +977,7 @@ def tap(s):
 def card_files(card_path):
     """Every file on a card image, {path: bytes}, paths as the card spells
     them, without a leading slash
-    ('STEMS/AUDIO/STEMS/ULTFX/000000-0000/T1.wav'). A folder with no file
+    ('STEMS/AUDIO/!STEMS/000000-0000/000000-0000-T1.wav'). A folder with no file
     in it does not appear: emu_card.extract_image lists files
     (verify_card_reader.py pins that)."""
     import emu_card as ec
@@ -956,8 +993,46 @@ def first_clusters(card_path):
 
 
 def stems_pool(fx):
-    """Where take folders live: <set>/AUDIO/STEMS/<project>/ (no leading slash)."""
-    return f"{fx['set']}/AUDIO/STEMS/{fx['project']}/"
+    """Where takes live: <set>/AUDIO/!STEMS/ (no leading slash), a folder in
+    it for each take of the set (note 6 of 26 Oct 2026; the folders since
+    27 Oct, when a full flat folder slowed a take's start to RING FULL)."""
+    return f"{fx['set']}/AUDIO/!STEMS/"
+
+
+# A take's file in the pool: <take>/<take>-<file>, the take <YYMMDD-HHMM>[-<n>].
+# The number marks a second (third, ...) take in one minute.
+TAKE_FILE = re.compile(r"^(\d{6}-\d{4}(?:-\d+)?)/\1-([^/]+)$", re.IGNORECASE)
+
+
+def take_file(fx, take, name):
+    """The pool path of take `take`'s file `name` ('T1.wav'), no leading slash."""
+    return f"{stems_pool(fx)}{take}/{take}-{name}"
+
+
+def log_file(take):
+    """Take `take`'s log, at the card's root where BRAIN keeps its files
+    (/BRAIN/...), no leading slash."""
+    return f"BRAIN/STEMS/{take}.TXT"
+
+
+def card_plus(card_in, out, root_files, fixture=FIXTURE):
+    """card_in's files rebuilt into a card image at `out`, of the same
+    size, with `root_files` ({card path: bytes}) added: a card the
+    fixtures don't make, such as a file where a folder should be. The set's
+    AUDIO folder is made again (an empty folder is not extracted)."""
+    import tempfile
+    import emu_card as ec
+    img = pathlib.Path(card_in).read_bytes()
+    fx = json.loads(pathlib.Path(fixture).read_text())
+    with tempfile.TemporaryDirectory() as d:
+        ec.extract_image(img, d)
+        (pathlib.Path(d) / fx["set"] / "AUDIO").mkdir(parents=True, exist_ok=True)
+        for rel, data in root_files.items():
+            p = pathlib.Path(d) / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
+        pathlib.Path(out).write_bytes(ec.build_image(d, len(img) // (1024 * 1024)))
+    return pathlib.Path(out)
 
 
 def take_clusters(card_path):
@@ -965,7 +1040,7 @@ def take_clusters(card_path):
     fx = json.loads(FIXTURE.read_text())
     pool = stems_pool(fx).lower()
     return {p: c for p, c in first_clusters(card_path).items()
-            if p.lower().startswith(pool) and p.lower().endswith("/t1.wav")}
+            if p.lower().startswith(pool) and p.lower().endswith("-t1.wav")}
 
 
 def card_get(files, path):
@@ -975,17 +1050,18 @@ def card_get(files, path):
 
 
 def new_entries(files, fixture=None):
-    """What this run added under <set>/AUDIO/STEMS/<project>/: the take-folder
-    name (YYMMDD-HHMM) of every file there. An empty take folder cannot be
-    seen, so it is not counted."""
+    """What this run added under <set>/AUDIO/!STEMS/: the take name
+    (YYMMDD-HHMM, or YYMMDD-HHMM-<n>) of every file there, sorted. The
+    fixture's card has no takes, so every take on a run's card is new."""
     fx = json.loads(pathlib.Path(fixture or FIXTURE).read_text())
     pool = stems_pool(fx).lower()
-    names = {p[len(pool):].split("/", 1)[0] for p in files if p.lower().startswith(pool)}
-    return sorted(n for n in names if n)
+    names = {m.group(1) for p in files if p.lower().startswith(pool)
+             for m in [TAKE_FILE.match(p[len(pool):])] if m}
+    return sorted(names)
 
 
 def wav_check(card_path, nfr, dump, tag, lag_want=STEM_LAG, g=None):
-    """The take on the card: one new folder under AUDIO/STEMS/<project>/, its
+    """The take on the card: one new take under AUDIO/!STEMS/, its
     T1.wav with the header STEM REC writes, and every sample equal to T1's
     read-back after the fader (g, the run's settled gain) at the lag a take
     armed before play starts at (STEM_LAG).
@@ -999,7 +1075,7 @@ def wav_check(card_path, nfr, dump, tag, lag_want=STEM_LAG, g=None):
     check(f"{tag}: one new recording in {pool}", len(names) == 1, f"{names}")
     if not names:
         return
-    path = f"{pool}/{names[0]}/T1.wav"
+    path = f"/{take_file(fx, names[0], 'T1.wav')}"
     data = card_get(files, path)
     check(f"{tag}: {path} exists", data is not None)
     if data is None:
@@ -1078,6 +1154,7 @@ def stream(s):
           f"rd {rd}, wr {wr}, frames {nfr}")
     wav_check(card, nfr, dump, "stream", g=gain_of(log, 0))
     stats_check(card, "stream", nfr, 1, 16, fbytes=64)
+    ot_check(card, "stream")
     if "stems_peak" in s:
         raw = run_path("stream", "peak")
         peak = int.from_bytes(raw.read_bytes(), "big") if raw.exists() else None
@@ -1095,7 +1172,7 @@ def wrap(s):
     does (the hook's past the frame it staged and never published), and the
     file must equal the read-back at the pre-roll lag."""
     pokes = [(s["stems_zlead"] + 3, 1)]
-    log, dump, card, words, _ = port(s, 400, stop_at=300, tag="wrap", pokes_before=pokes,
+    log, dump, card, words, _ = port(s, 660, stop_at=300, tag="wrap", pokes_before=pokes,  # IDLE at 523 (27 Oct 2026)
                                      mems=((s["stems_rsize"], 4, "rsize"), (s["stems_wpos"], 4, "wpos"),
                                            (s["stems_rpos"], 4, "rpos")))
     st, status, _, wr, rd, nfr = words
@@ -1122,7 +1199,7 @@ def cap(s):
     counted from the ring's start (STEM_REC.md 20.7)."""
     v = MAX_FRAMES - 50
     pokes = [(s[w] + i, (v >> (24 - 8 * i)) & 0xff) for w in ("stems_wr", "stems_rd") for i in range(4)]
-    log, _, card, words, _ = port(s, 300, tag="cap", pokes=pokes, dump_blocks=False, extra=watched(s),
+    log, _, card, words, _ = port(s, 440, tag="cap", pokes=pokes, dump_blocks=False, extra=watched(s),  # IDLE at 350 (28 Oct 2026), + 25%
                                   mems=ui_mems(s, "end") + ((s["stems_tfr"], 4, "tfr"),))
     st, status, _, wr, rd, nfr = words
     check("cap: the hook ended the take at the cap", wr == MAX_FRAMES and st == ST_IDLE and status == 0,
@@ -1134,8 +1211,8 @@ def cap(s):
           tfr is not None and tfr >= 50 and len(data) == 44 + tfr * 64
           and int.from_bytes(data[40:44], "little") == tfr * 64, f"{len(data)} bytes, {tfr} frames")
     t, _ = ui_read(s, "cap", "end")
-    check("cap: the status reads DONE 60:00", t is not None and t[:2] == ["REC", "DONE 60:00"],
-          f"{t[:2] if t else None}")
+    check("cap: STEM REC reads DONE", t is not None and t[0] == ("STEM REC", "DONE"),
+          f"{t[0] if t else None}")
 
 
 def cut(s):
@@ -1149,7 +1226,7 @@ def cut(s):
     files = card_files(card)
     fx = json.loads(FIXTURE.read_text())
     names = new_entries(files)
-    data = (card_get(files, f"{stems_pool(fx)}{names[0]}/T1.wav")
+    data = (card_get(files, take_file(fx, names[0], "T1.wav"))
             if len(names) == 1 else None)
     # Records a fact rather than a wish (26 Sep 2026): the file's length is
     # set only at the end, so a cut-off take is a 0-byte file even though
@@ -1184,16 +1261,16 @@ def labels(s):
             check(f"labels: the frame dump '{when}' exists", False)
             return
         now = w[5] * 16 // 44100
-        allowed = {f"REC {mmss(w[5])}", f"REC {(now - 1) // 60:02d}:{(now - 1) % 60:02d}"}
-        check(f"labels ({when}): STOP, and REC with the take's seconds", t[0] == "STOP" and t[1] in allowed,
-              f"{[t[0], t[1], t[ROW_PEAK]]}, {w[5]} frames")
-        secs.append(int(t[1][-2:]) if t[1].startswith("REC ") else -1)
+        allowed = {mmss(w[5]), f"{(now - 1) // 60:02d}:{(now - 1) % 60:02d}"}
+        check(f"labels ({when}): STEM REC with the take's time", t[0][0] == "STEM REC" and t[0][1] in allowed,
+              f"{[t[0], t[ROW_PEAK]]}, {w[5]} frames")
+        secs.append(int(t[0][1][-2:]) if t[0][1] in allowed else -1)
     check("labels: the seconds rise while it records", secs[0] == 0 and secs[1] >= 1, f"{secs}")
     t, w = ui_read(s, tag, "end")
     pct = w[6] * 100 // RING_FRAMES_T1 if w else None
-    shown = [t[0], t[1], t[ROW_PEAK]] if t else None
-    check("labels (end): REC, DONE with the take's length, PEAK from its peak",
-          t is not None and w[0] == ST_IDLE and shown == ["REC", f"DONE {mmss(w[5])}", f"PEAK {pct}%"],
+    shown = [t[0], t[ROW_PEAK]] if t else None
+    check("labels (end): STEM REC DONE, PEAK from its peak",
+          t is not None and w[0] == ST_IDLE and shown == [("STEM REC", "DONE"), ("PEAK", f"{pct}%")],
           f"{shown}, {w[5] if w else None} frames, peak {w[6] if w else None}")
 
 
@@ -1216,7 +1293,7 @@ def labelsbehind(s):
         if t is None:
             check(f"labelsbehind: the frame dump '{when}' exists", False)
             return
-        secs.append(int(t[1][-2:]) if t[1].startswith("REC ") else -1)
+        secs.append(int(t[0][1][-2:]) if re.fullmatch(r"\d\d:\d\d", t[0][1] or "") else -1)
         behind = w[3] - w[4]
     check("labelsbehind: the writer is more than a chunk behind at frame 6,000", behind > CHUNK_FRAMES,
           f"{behind} frames waiting")
@@ -1228,11 +1305,13 @@ def same_as_alone(s):
     three runs on the one-THRU fixture (armed before play, 24 bits, a take
     started while playing), each alone and then together; the state words
     and every file of each take, byte for byte. No block dump: it is one
-    stream opened at boot, so a run that wants one boots alone."""
-    runs = [dict(frames=260, stop_at=180, tag="sa1", fixture=FIXTURE_THRU1, dump_blocks=False),
-            dict(frames=260, stop_at=180, tag="sa2", fixture=FIXTURE_THRU1, dump_blocks=False,
+    stream opened at boot, so a run that wants one boots alone. Each run
+    lasts until its take is IDLE: at frames 440, 450 and 515 since the
+    take's folder (28 Oct 2026), so 650."""
+    runs = [dict(frames=650, stop_at=180, tag="sa1", fixture=FIXTURE_THRU1, dump_blocks=False),
+            dict(frames=650, stop_at=180, tag="sa2", fixture=FIXTURE_THRU1, dump_blocks=False,
                  pokes_before=[(s["stems_fmt"] + 3, 0b111)]),
-            dict(frames=260, stop_at=180, tag="sa3", fixture=FIXTURE_THRU1, dump_blocks=False,
+            dict(frames=650, stop_at=180, tag="sa3", fixture=FIXTURE_THRU1, dump_blocks=False,
                  calls_before=(), calls=((58, s["stems_action"]),))]
     alone = [port(s, **r) for r in runs]
     together = port_group(s, [{**r, "tag": r["tag"] + "g"} for r in runs])
@@ -1310,9 +1389,9 @@ def nocard(s):
     port(s, 120, tag=tag, calls_before=(), dump_blocks=False, steps=[f"30:poke:{zero}"],
          calls=((31, s["stems_action"]),), mems=ui_mems(s, "end"))
     t, w = ui_read(s, tag, "end")
-    check("nocard: REC shows NO CARD, the state stays IDLE, no task is made",
-          t is not None and t[:2] == ["REC", "NO CARD"] and w[0] == ST_IDLE and w[2] == 0,
-          f"{t[:2] if t else None}, state {w[0] if w else None}, task {w[2] if w else None}")
+    check("nocard: STEM REC shows NO CARD, the state stays IDLE, no task is made",
+          t is not None and t[0] == ("STEM REC", "NO CARD") and w[0] == ST_IDLE and w[2] == 0,
+          f"{t[0] if t else None}, state {w[0] if w else None}, task {w[2] if w else None}")
 
 
 FIXTURE8 = pathlib.Path("out/stems_fixture8.json")   # tools/verify/stems_fixture.py --eight
@@ -1356,20 +1435,24 @@ def ui_step(s, frame, tag, when):
 
 
 def ui_read(s, tag, when):
-    """(the eleven rows' texts, the seven state words) from a ui_mems or
-    ui_step dump: a label pointing into the buffers is read from the dump,
-    any other from the linked runtime (the fixed strings never change).
-    (None, None) when the dump is missing."""
+    """(each row's (label, value), the seven state words) from a ui_mems or
+    ui_step dump: a string in the buffers is read from the dump, any other
+    from the linked runtime (the fixed strings never change); a value of 0
+    (a pair row's, drawn from the bits) is None. (None, None) when the dump
+    is missing."""
     paths = [run_path(tag, f"{when}.{x}") for x in ("rows", "bufs", "state")]
     if not all(p.exists() for p in paths):
         return None, None
     rows, bufs, st = (p.read_bytes() for p in paths)
-    texts = []
-    for k in range(MENU_ROWS):
-        ptr = int.from_bytes(rows[ROW_LEN * k:ROW_LEN * k + 4], "big")
-        b0 = s["stems_ui_bufs"]
+    b0 = s["stems_ui_bufs"]
+
+    def text(ptr):
+        if not ptr:
+            return None
         src = bufs[ptr - b0:] if b0 <= ptr < b0 + UI_BUFS else runtime_at(s, ptr, 32)
-        texts.append(src.split(b"\0")[0].decode("latin1"))
+        return src.split(b"\0")[0].decode("latin1")
+    texts = [tuple(text(int.from_bytes(rows[ROW_LEN * k + o:ROW_LEN * k + o + 4], "big")) for o in (0, 4))
+             for k in range(MENU_ROWS)]
     return texts, [int.from_bytes(st[i:i + 4], "big") for i in range(0, 28, 4)]
 
 
@@ -1380,22 +1463,25 @@ def mmss(frames):
 
 
 def take_files(card_path, fixture=FIXTURE):
-    """Every .wav in the one new take folder, as [(name, bytes)] sorted by
-    name (T1 first), or [] when there is not exactly one new folder."""
+    """Every .wav of the one new take, as [(name, bytes)] sorted by name
+    (T1 first), the name without the take's prefix ('T1.wav'), or [] when
+    there is not exactly one new take."""
     files = card_files(card_path)
     fx = json.loads(pathlib.Path(fixture).read_text())
     names = new_entries(files, fixture)
     if len(names) != 1:
         return []
-    folder = f"{stems_pool(fx)}{names[0]}/".lower()
-    return sorted((p[len(folder):], d) for p, d in files.items()
-                  if p.lower().startswith(folder) and "/" not in p[len(folder):]
+    prefix = take_file(fx, names[0], "").lower()
+    return sorted((p[len(prefix):], d) for p, d in files.items()
+                  if p.lower().startswith(prefix) and "/" not in p[len(prefix):]
                   and p.upper().endswith(".WAV"))
 
 
 def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE, fbytes=None):
-    """The readout (perf design 3): STATS.TXT in the take's folder, at most
-    two sectors of text that name the take and agree with it: the frames,
+    """The readout (perf design 3): the take's log, /BRAIN/STEMS/<take>.TXT
+    where BRAIN keeps its files (note 5 of 26 Oct 2026), and none beside
+    the take's WAVs; at most two sectors of text that name the take and
+    agree with it: the frames,
     the files, the width and the status; card writes counted and timed; the
     hook timed on (about) every recorded frame, its mean at most its
     longest. With `fbytes` (one file's bytes a frame, every file alike):
@@ -1407,10 +1493,12 @@ def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE,
     files = card_files(card_path)
     fx = json.loads(pathlib.Path(fixture).read_text())
     names = new_entries(files, fixture)
-    text = (card_get(files, f"{stems_pool(fx)}{names[0]}/STATS.TXT")
-            if len(names) == 1 else None)
-    check(f"{tag}: STATS.TXT is in the take's folder, at most two sectors", text is not None and 0 < len(text) <= 1024,
+    text = (card_get(files, log_file(names[0])) if len(names) == 1 else None)
+    check(f"{tag}: the log is /BRAIN/STEMS/<take>.TXT, at most two sectors", text is not None and 0 < len(text) <= 1024,
           f"{None if text is None else len(text)} bytes")
+    pool = stems_pool(fx).lower()
+    beside = [p for p in files if p.lower().startswith(pool) and p.upper().endswith(".TXT")]
+    check(f"{tag}: no log beside the take's WAVs", not beside, f"{beside}")
     if not text:
         return None
     t = text.decode("ascii", "replace")
@@ -1448,7 +1536,96 @@ def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE,
               and ring[1] == ring_frames(nfiles, nfiles * fbytes),
               f"write {wfast}, ring {ring}, {len(text)} bytes")
     check(f"{tag}: STATS.TXT's cluster is the card's", clus == [spc], f"{clus} vs {spc} sectors a cluster")
+    yes = nums(r"yes gap (\d+) ms, double taps (\d+)")
+    check(f"{tag}: STATS.TXT has the main page's YES line (the last gap, the double taps; none in a run)",
+          yes is not None and yes[1] == 0, f"{yes}")
     return {"took": took, "ring": ring, "writes": wr, "hook": hook, "frame": frame, "cluster": clus}
+
+
+def ot_fields(data):
+    """An Octatrack attributes file (.ot), big-endian: the fields STEM REC
+    writes, the checksum it carries and the one recomputed (the 16-bit
+    byte sum from offset 20, the version, up to the checksum, as the
+    firmware's writer sums it: SAMPLE_SAVE.md 8.1), or None when the size
+    or the header is wrong."""
+    if data is None or len(data) != 832 or data[:16] != b"FORM\0\0\0\0DPS1SMPA":
+        return None
+    tempo, trim_len, loop_len, stretch, loop = struct.unpack_from(">5I", data, 0x17)
+    gain, quant = struct.unpack_from(">HB", data, 0x2b)
+    trim_start, trim_end, loop_point = struct.unpack_from(">3I", data, 0x2e)
+    slices = struct.unpack_from(">I", data, 0x33a)[0]
+    return {"tempo": tempo, "trim_len": trim_len, "loop_len": loop_len, "stretch": stretch,
+            "loop": loop, "gain": gain, "quant": quant, "trim_start": trim_start,
+            "trim_end": trim_end, "loop_point": loop_point, "slices": slices,
+            "sum": struct.unpack_from(">H", data, 830)[0], "want_sum": sum(data[20:830]) & 0xffff,
+            "flag": data[22], "version": struct.unpack_from(">H", data, 20)[0]}
+
+
+OT_GAIN = 72        # stems.s: +12 dB on every file, as stock's own recordings (note 1 of 26 Oct 2026)
+
+
+def project_tempo(files, fx):
+    """The fixture project's tempo, BPM * 24, from its project.work on the card."""
+    import re
+    work = card_get(files, f"{fx['set']}/{fx['project']}/project.work")
+    m = re.search(rb"TEMPOx24=(\d+)", work or b"")
+    return int(m.group(1)) if m else None
+
+
+def ot_check(card_path, tag, fixture=FIXTURE, nwavs=None):
+    """Each WAV of the take has its .ot beside it (<take>-T1.ot beside
+    <take>-T1.wav): 832 bytes with a good checksum, version 2 and flag 0
+    as a stock recording's (SAMPLE_SAVE.md 8.2), the project's tempo
+    (TEMPOx24 in the card's project.work, the tempo when the take
+    started), the trim the whole file, its length in bars * 100 at that
+    tempo, timestretch NORMAL, no loop, no slices, and +12 dB (72) on
+    every file, MAIN and CUE too. `nwavs`: the WAVs the take must have."""
+    files = card_files(card_path)
+    fx = json.loads(pathlib.Path(fixture).read_text())
+    names = new_entries(files, fixture)
+    if len(names) != 1:
+        check(f"{tag}: .ot: one take", False, f"{names}")
+        return
+    tempo = project_tempo(files, fx)
+    prefix = take_file(fx, names[0], "").lower()
+    wavs = sorted(p for p in files if p.lower().startswith(prefix) and p.lower().endswith(".wav"))
+    if nwavs is not None:
+        check(f"{tag}: .ot: {nwavs} WAVs, each checked", len(wavs) == nwavs, f"{len(wavs)}")
+    for w in wavs:
+        f = ot_fields(card_get(files, w[:-4] + ".ot"))
+        n = wav_fmt(files[w])[4] // wav_fmt(files[w])[2] if f else None
+        bars = (n // 16 * tempo + 158760 // 2) // 158760 if f and tempo else None   # 16-sample frames * BPM*24 / 158760
+        ok = (f is not None and f["sum"] == f["want_sum"] and f["tempo"] == tempo
+              and (f["version"], f["flag"]) == (2, 0)
+              and f["trim_start"] == 0 and f["trim_end"] == n and f["trim_len"] == f["loop_len"] == bars
+              and (f["stretch"], f["loop"], f["quant"], f["loop_point"], f["slices"]) == (2, 0, 0xff, 0, 0)
+              and f["gain"] == OT_GAIN)
+        check(f"{tag}: {w.rsplit('/', 1)[1][:-4]}.ot holds the take's tempo and the file's length, +12 dB",
+              ok, f"{f}, tempo {tempo}, samples {n}, bars*100 {bars}")
+
+
+TEMPO_SET = 0x80001814      # the tempo both setters write; the frame latches it into 0x8000181c (DSP.md)
+TEMPO_PUB = 0x8000181c      # the published tempo, what the take latches at its start
+
+
+def tempochange(s):
+    """Review Focus 5: the tempo moves to 140 BPM 100 frames into a take;
+    each .ot keeps the tempo the take started at (the project's). A dump of
+    the published word at frame 300 shows the move took."""
+    new = 140 * 24
+    steps = [f"100:poke:" + ";".join(f"0x{TEMPO_SET + i:x}={(new >> (24 - 8 * i)) & 0xff}" for i in range(4)),
+             f"300:dump:0x{TEMPO_PUB:x},4={run_path('tempochange', 'tempo')}"]
+    log, dump, card, words, _ = port(s, 700, stop_at=400, tag="tempochange", steps=steps)
+    st, status, _, wr, rd, nfr = words
+    check("tempochange: the task finished (state IDLE, no error)", st == ST_IDLE and status == 0,
+          f"state {st}, status {status}")
+    raw = run_path("tempochange", "tempo")
+    moved = int.from_bytes(raw.read_bytes(), "big") if raw.exists() else None
+    fx = json.loads(FIXTURE.read_text())
+    start = project_tempo(card_files(card), fx)
+    check("tempochange: the published tempo moved during the take", moved == new and start != new,
+          f"{moved} at frame 300, {start} at the start")
+    ot_check(card, "tempochange", nwavs=1)
 
 
 def slot_frames(dump_path, k, g=None):
@@ -1485,7 +1662,7 @@ def slot_frames(dump_path, k, g=None):
 # latency (30b530a, 27 Sep 2026); the writer then needs 255 frames from
 # FINISHING to IDLE (measured the same day). It was 400 while the emulated
 # card answered at once.
-EIGHT_FRAMES = 700
+EIGHT_FRAMES = 1650                 # IDLE at frame 1,318 (27 Oct 2026: one lookup a file at the start, an .ot each at the end), + 25%
 
 
 def eight(s):
@@ -1581,7 +1758,7 @@ def take(card_path):
     files = card_files(card_path)
     fx = json.loads(FIXTURE.read_text())
     names = new_entries(files)
-    return (card_get(files, f"{stems_pool(fx)}{names[0]}/T1.wav")
+    return (card_get(files, take_file(fx, names[0], "T1.wav"))
             if len(names) == 1 else None)
 
 
@@ -1619,25 +1796,129 @@ def limit(s):
 
 
 def exists(s):
-    """A second take on the first take's card, in the same minute: refused,
-    and the first take is untouched. Every port take is 000000-0000 (the
-    port's clock reads 0, STEM_REC.md 11.2), so the minute is the same."""
+    """Two more takes on the first take's card, in the same minute: each
+    gets the next number, and no earlier take changes (Yves, 27 Oct 2026: a
+    number replaces the SAME MINUTE refusal). Every port take is in minute
+    000000-0000 (the port's clock reads 0, STEM_REC.md 11.2). The first
+    (the full run's) armed T1; the second arms T2, so its own file is new
+    but its name is not; the third arms T1 again, taken twice."""
     first = run_path("full", "img")
     if not first.exists():
         print("  [SKIP] exists: needs the full run's card")
         return
-    before = take(first)
-    log, _, card, words, _ = port(s, 700, stop_at=400, tag="exists", card_in=str(first),
-                                  dump_blocks=False, mems=ui_mems(s, "end"))
+    fx = json.loads(FIXTURE.read_text())
+    base = "000000-0000"
+    card_in, earlier = first, {}
+    for n, (mask, name) in enumerate(((0x02, "T2.wav"), (0x01, "T1.wav")), start=2):
+        tag = "exists" if n == 2 else f"exists{n}"
+        files = card_files(card_in)
+        pool = stems_pool(fx).lower()
+        earlier.update({p: d for p, d in files.items()
+                        if p.lower().startswith(pool) and TAKE_FILE.match(p[len(pool):])})
+        log, _, card, words, _ = port(s, 700, stop_at=400, tag=tag, card_in=str(card_in), mask=mask,
+                                      dump_blocks=False, mems=ui_mems(s, "end"))
+        st, status, _, wr, rd, nfr = words
+        want = [base] + [f"{base}-{k}" for k in range(2, n + 1)]
+        after = card_files(card)
+        got = new_entries(after)
+        check(f"exists: take {n} of the minute is {want[-1]}, state IDLE, no error",
+              st == ST_IDLE and status == 0 and got == want, f"state {st}, status {status}, takes {got}")
+        mine = card_get(after, take_file(fx, want[-1], name))
+        check(f"exists: take {n} wrote its {name}", mine is not None and len(mine) > 44,
+              f"{None if mine is None else len(mine)} bytes")
+        changed = [p for p, d in earlier.items() if after.get(p) != d]
+        check(f"exists: take {n} left every earlier take's file byte-identical", earlier and not changed,
+              f"{len(earlier)} files, changed {changed}")
+        t, _ = ui_read(s, tag, "end")
+        check(f"exists: take {n}'s status is DONE", t is not None and t[0] == ("STEM REC", "DONE"),
+              f"{t[0] if t else None}")
+        card_in = card
+
+
+CROWD_SRC = ["AB", "CD", "CUE", "MAIN"] + [f"T{k}" for k in range(1, 8)]   # Yves's eleven files, 27 Oct 2026
+CROWD_SOURCES, CROWD_FMT = 0xf7f, 0b111         # T1-T7, MAIN, CUE, AB, CD; 24 bits, both pairs stereo
+CROWD_FRAMES, CROWD_STOP = 16000, 8000          # past the ring's 2.9 s at that size (7,922 frames), then the save
+
+
+def crowded(s):
+    """A take's start against a full !STEMS (Yves's STEMS10 takes of 27 Oct
+    2026, in his own folder, not the repository): with eleven files at 24
+    bits, each take's ring peaked higher as the one flat folder filled, 36%,
+    37%, 60%, 89%, and then RING FULL with 88 files in it, the writer having
+    written nothing while it recorded. The same take three times: on the
+    fixture's card, with !STEMS empty; with the 88 files of his first four
+    takes there, flat (261027-2151-T1.wav ...); and with 40 takes of eleven
+    files in folders of their own, the layout since then. Each must finish
+    OK, its ring's peak within an eighth of the ring of the empty card's.
+    The files are empty: a name costs what it costs, a file's bytes don't."""
+    fx = json.loads(FIXTURE.read_text())
+    pool = stems_pool(fx)
+    flat = [f"261027-{t}" for t in ("2151", "2152", "2152-2", "2152-3")]
+    cards = {"crowd0": None,
+             "crowd88": {f"{pool}{t}-{n}.{e}": b"" for t in flat for n in CROWD_SRC for e in ("wav", "ot")},
+             "crowd40": {f"{pool}{t}/{t}-{n}.{e}": b""
+                         for t in (f"261027-{1000 + k:04d}" for k in range(40)) for n in CROWD_SRC for e in ("wav", "ot")}}
+    peaks = {}
+    for tag, extra in cards.items():
+        card_in = card_plus(fx["card"], run_path(tag, "in.img"), extra) if extra else None
+        log, _, card, words, _ = port(s, CROWD_FRAMES, stop_at=CROWD_STOP, tag=tag, mask=None, dump_blocks=False,
+                                      **({"card_in": str(card_in)} if card_in else {}),
+                                      pokes_before=[(s["stems_tracks"] + 2, CROWD_SOURCES >> 8),
+                                                    (s["stems_tracks"] + 3, CROWD_SOURCES & 0xff),
+                                                    (s["stems_fmt"] + 3, CROWD_FMT)],
+                                      mems=((s["stems_peak"], 4, "peak"), (s["stems_rframes"], 4, "cap")))
+        st, status = words[0], words[1]
+        raw = [run_path(tag, x) for x in ("peak", "cap")]
+        peak, cap = (int.from_bytes(r.read_bytes(), "big") if r.exists() else None for r in raw)
+        peaks[tag] = (peak, cap)
+        check(f"{tag}: eleven files at 24 bits, the take finished OK", st == ST_IDLE and status == 0,
+              f"state {st}, status {status}, ring peak {peak} of {cap} frames")
+    p0, cap = peaks["crowd0"]
+    for tag in ("crowd88", "crowd40"):
+        p, _ = peaks[tag]
+        check(f"{tag}: the ring's peak within an eighth of the ring of the empty card's",
+              None not in (p, p0, cap) and p <= p0 + cap // 8,
+              f"{p} frames against {p0}, of {cap}")
+
+
+def logblocked(s):
+    """Note 5's failure case: /BRAIN/STEMS is a FILE, so the log's folder
+    can't be made. The take is whole and OK; only its log is missing, and
+    the file in the way is left as it was."""
+    fx = json.loads(FIXTURE.read_text())
+    before = card_files(fx["card"])
+    check("logblocked: the fixture's card has no /BRAIN (BRAIN never ran on it)",
+          not any(p.lower().startswith("brain/") for p in before), f"{[p for p in before if 'brain' in p.lower()]}")
+    blocker = b"in the way\r\n"
+    card_in = card_plus(fx["card"], run_path("logblocked", "in.img"), {"BRAIN/STEMS": blocker})
+    log, dump, card, words, _ = port(s, 700, stop_at=400, tag="logblocked", card_in=str(card_in))
     st, status, _, wr, rd, nfr = words
-    check("exists: refused with ERR_EXISTS, state IDLE", st == ST_IDLE and status == ERR_EXISTS,
+    check("logblocked: the take finished (state IDLE, no error)", st == ST_IDLE and status == 0,
           f"state {st}, status {status}")
-    after = take(card)
-    check("exists: the first take is byte-identical", before is not None and after == before,
-          f"{len(before) if before else None} bytes before, {len(after) if after else None} after")
-    t, _ = ui_read(s, "exists", "end")
-    check("exists: the status names the refusal", t is not None and t[:2] == ["REC", "SAME MINUTE"],
-          f"{t[:2] if t else None}")
+    wav_check(card, nfr, dump, "logblocked", g=gain_of(log, 0))
+    after = card_files(card)
+    check("logblocked: the file in the log's way is unchanged", card_get(after, "BRAIN/STEMS") == blocker)
+    new_txt = [p for p in after if p.upper().endswith(".TXT") and p not in before]
+    check("logblocked: no log anywhere", not new_txt, f"{new_txt}")
+
+
+def logtaken(s):
+    """A log alone takes its name: with /BRAIN/STEMS/000000-0000.TXT on the
+    card (a take of that minute in another set, its WAVs moved away), the
+    take is 000000-0000-2, and the old log is unchanged."""
+    fx = json.loads(FIXTURE.read_text())
+    old = b"STEM REC STATS 000000-0000\r\n"
+    card_in = card_plus(fx["card"], run_path("logtaken", "in.img"), {log_file("000000-0000"): old})
+    log, _, card, words, _ = port(s, 700, stop_at=400, tag="logtaken", card_in=str(card_in), dump_blocks=False)
+    st, status, _, wr, rd, nfr = words
+    after = card_files(card)
+    check("logtaken: the take is 000000-0000-2, state IDLE, no error",
+          st == ST_IDLE and status == 0 and new_entries(after) == ["000000-0000-2"],
+          f"state {st}, status {status}, takes {new_entries(after)}")
+    check("logtaken: the old log is unchanged", card_get(after, log_file("000000-0000")) == old)
+    mine = card_get(after, log_file("000000-0000-2"))
+    check("logtaken: the take's log is /BRAIN/STEMS/000000-0000-2.TXT",
+          mine is not None and mine.startswith(b"STEM REC STATS 000000-0000-2\r\n"), f"{mine[:40] if mine else None}")
 
 
 def overflow(s):
@@ -1684,26 +1965,32 @@ def overflow(s):
     check("overflow: REC while it saved changed nothing",
           states == [ST_ARMED, ST_RECORDING, ST_FINISHING, ST_IDLE, ST_ARMED], f"state writes {states}")
     t, _ = ui_read(s, "overflow", "pre")
-    check("overflow: the status names the full ring", t is not None and t[:2] == ["REC", "RING FULL"],
-          f"{t[:2] if t else None}")
+    check("overflow: STEM REC's label names the full ring", t is not None and t[0] == ("RING FULL", ""),
+          f"{t[0] if t else None}")
     t, _ = ui_read(s, "overflow", "end")
-    shown = [t[0], t[1], t[ROW_PEAK]] if t else None
-    check("overflow: the re-arm shows CANCEL, ARMED and PEAK 0%",
-          shown == ["CANCEL", "ARMED", "PEAK 0%"], f"{shown}")
+    shown = [t[0], t[ROW_PEAK]] if t else None
+    check("overflow: the re-arm shows STEM REC ARMED and PEAK 0%",
+          shown == [("STEM REC", "ARMED"), ("PEAK", "0%")], f"{shown}")
+
+
+CARD_FAIL_AFTER = 31    # the take's start writes 31 sectors since its folder (11 of them, 28 Oct 2026)
 
 
 def cardfail(s):
-    """Every card write after the 20th is refused, as a card answers an
+    """Every card write after the 31st is refused, as a card answers an
     aborted command: ERR and ABRT, no DRQ. The stock driver's write command
     waits for DRQ at 0x40014cf4 with no error check and no timeout, so the
     writer task hangs there, holding the file layer's lock (STEM_REC.md
     11.4). This run RECORDS that fact rather than expecting a recovery: a
     change here means the driver's answer, or the port's card model,
-    changed."""
+    changed. The start's writes must all reach the card, so the hang comes
+    in the take's first raw write, after the STOP: a hang in the start
+    stops main before the STOP can reach it (11.4)."""
     work = pathlib.Path("out/stems_runs")
     cov = work / "cardfail.cov"
     log, _, card, words, _ = port(s, 700, stop_at=400, tag="cardfail", dump_blocks=False,
-                                  extra=watched(s, ("--card-fail-after", "20", "--coverage", str(cov))))
+                                  extra=watched(s, ("--card-fail-after", str(CARD_FAIL_AFTER),
+                                                    "--coverage", str(cov))))
     st, status, _, wr, rd, nfr = words
     polls = 0
     if cov.exists():
@@ -1713,7 +2000,7 @@ def cardfail(s):
     # The port refuses a command that STARTS at or past the 20th sector; a
     # raw write of several sectors that starts below it completes.
     check("cardfail: a refused raw write hangs the writer in the stock driver's DRQ poll (known)",
-          st == ST_FINISHING and sectors is not None and sectors >= 20 and polls > 100000,
+          st == ST_FINISHING and sectors is not None and sectors >= CARD_FAIL_AFTER and polls > 100000,
           f"state {st}, {sectors if sectors is not None else 'no card-out line in upstream form:'} "
           f"sectors written, {polls} polls at 0x{DRIVER_DRQ_POLL:x}")
 
@@ -2007,8 +2294,9 @@ def main():
     regions(s)
     check("the card-out parse reads upstream's line and refuses crosscheck's",
           card_out_sectors(CARD_OUT_UPSTREAM) == 23 and card_out_sectors(CARD_OUT_CROSSCHECK) is None)
-    check("the build records all eight tracks by default", runtime_long(s, "stems_tracks") == 0xFF,
-          f"0x{runtime_long(s, 'stems_tracks'):02x}")
+    check("the build records T1 alone at 24 bits by default, both pairs stereo (Yves, 27 Oct 2026)",
+          (runtime_long(s, "stems_tracks"), runtime_long(s, "stems_fmt")) == (0x01, 0b111),
+          f"0x{runtime_long(s, 'stems_tracks'):02x}, {runtime_long(s, 'stems_fmt'):03b}")
     check("stems_peak is in the runtime, 0 at boot", "stems_peak" in s and runtime_long(s, "stems_peak") == 0)
     check("stems_gtab is the stock slice's gain table, word for word (STEM_REC.md 18.4)",
           "stems_gtab" in s and runtime_at(s, s["stems_gtab"], GTAB_LEN) == stock[GTAB_OFF:GTAB_OFF + GTAB_LEN])
@@ -2020,13 +2308,14 @@ def main():
     runs = [("probe", probe), ("thru", thru), ("tap", tap), ("full", full), ("gains", gains),
             ("postfader", postfader), ("postmove", postmove), ("clip", clip), ("master", master),
             ("master8", master8),
-            ("layout", layout), ("sources", sources), ("mono", mono), ("all14", all14),
+            ("layout", layout), ("sources", sources), ("mono", mono), ("monoad", monoad), ("all14", all14),
             ("w24", w24), ("w16v24", w16v24), ("all14w", all14w),
             ("rowstop", rowstop),
             ("stream", stream), ("wrap", wrap), ("cap", cap), ("eight", eight)]
     runs += [(f"mask{m:02x}", lambda s, m=m: mask_take(s, m, f"mask{m:02x}"))
              for m in (0x01, 0x03, 0x0F, 0xFF, 0xA5)]
     runs += [("cost", cost), ("same_as_alone", same_as_alone), ("cut", cut), ("labels", labels), ("labelsbehind", labelsbehind), ("nocard", nocard), ("exists", exists),
+             ("logblocked", logblocked), ("logtaken", logtaken), ("tempochange", tempochange), ("crowded", crowded),
              ("overflow", overflow), ("cardfail", cardfail)]
     if "--long" in sys.argv:
         runs += [("limit", limit)]

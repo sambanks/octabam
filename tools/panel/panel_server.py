@@ -3456,8 +3456,14 @@ class Handler(BaseHTTPRequestHandler):
     html: bytes = b""
     model: str = "mki"
 
+    last_request = time.monotonic()     # --idle-timeout's clock: any request resets it
+
     def log_message(self, *a):  # quiet
         pass
+
+    def parse_request(self):
+        Handler.last_request = time.monotonic()
+        return super().parse_request()
 
     def _send(self, code, body, ctype="application/json"):
         self.send_response(code)
@@ -3873,6 +3879,37 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"?", "text/plain")
 
 
+def watchdog(srv, parent_pid, idle_s):
+    """Nothing left running unseen: stop the server (its finally quits the
+    child) when the process that started it is gone (--parent-pid), or when
+    nobody has asked it anything for idle_s seconds (--idle-timeout). An open
+    page polls /status, so a panel someone is looking at never times out."""
+    ppid = os.getppid()
+    while True:
+        time.sleep(min(1.0, idle_s / 4) if idle_s else 1.0)
+        why = None
+        if parent_pid:
+            if parent_pid == ppid:
+                gone = os.getppid() != ppid      # re-parented: no pid-reuse doubt
+            else:
+                try:
+                    os.kill(parent_pid, 0)
+                    gone = False
+                except ProcessLookupError:
+                    gone = True
+                except PermissionError:
+                    gone = False
+            if gone:
+                why = f"parent pid {parent_pid} is gone"
+        idle = time.monotonic() - Handler.last_request
+        if why is None and idle_s and idle > idle_s:
+            why = f"no HTTP request for {idle:.0f} s (--idle-timeout {idle_s / 60:g} min)"
+        if why:
+            print(f"panel: exiting: {why}", flush=True)
+            srv.shutdown()
+            return
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--image", default=None,
@@ -3904,6 +3941,11 @@ def main():
     ap.add_argument("--mki", action="store_true",
                     help="run the port as an MKI (no --mkii): the MKI keymap, no PROJ/PART/AED/ARR/REC3 keys. "
                          "Default: the port child runs --mkii (docs/firmware/PANEL.md)")
+    ap.add_argument("--parent-pid", type=int, default=0, metavar="PID",
+                    help="exit (and stop the port child) when this process is gone: a bench or app passes its own pid")
+    ap.add_argument("--idle-timeout", type=float, default=60.0, metavar="MIN",
+                    help="exit after this many minutes with no HTTP request (default 60; 0 = never). "
+                         "An open page polls, so it only fires when nobody is looking")
     a = ap.parse_args()
 
     # Default to the STOCK image: out/mainos_bus.bin is whatever the last
@@ -4087,6 +4129,9 @@ def main():
     if (host_nice() or 0) > 0:
         print(f"panel: running at nice {host_nice()} (a zsh `&` job: BG_NICE) -- the unit will be slower "
               f"whenever anything else wants the CPU; start the server in the foreground, or `unsetopt BG_NICE`")
+    if a.parent_pid or a.idle_timeout > 0:
+        threading.Thread(target=watchdog, args=(srv, a.parent_pid, a.idle_timeout * 60.0),
+                         daemon=True, name="watchdog").start()
     try:
         srv.serve_forever()
     finally:

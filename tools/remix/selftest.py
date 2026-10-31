@@ -1025,6 +1025,7 @@ def main():
                                   "quantize-live-rec-toggle", "erase-empty-trigless-locks",
                                   "mute-modes", "kyoti-mute-jump", "kyoti-fixes", "rec-trig-mute",
                                   "euclid-fill", "varispeed", "copy-project",
+                                  "pattern-mute-modes",  # PATTERN MUTE beside MUTE_MODES, stock effects
                                   "scope",  # SCOPE: ColdFire window, no DSP words
                                   "cxosc", "cxosc-core")},  # CX OSC (+ CORE handoff); ColdFire, no DSP words
              "trackpatterns": (),   # pgstath's ColdFire module on the stock effects, no DSP words

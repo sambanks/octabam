@@ -211,6 +211,12 @@ moment it costs real work, and add its line here.
 - [A floating cave rounded past the clone window landed on the chooser list](docs/contributing/TRAPS.md#trap-cave-round) — `… not free` names the victim; the overflow fallback takes any floating cave ending past the limit, starting past DELAY's kept bytes.
 - [A DRAM clone's `CLONE_<key>` export is its staging address](docs/contributing/TRAPS.md#trap-dram-clone-stage) — repointed only at the end; compare runtime addresses from `_psyms`.
 - [The machine list's key handlers clamp the cursor to 5](docs/contributing/TRAPS.md#trap-machine-clamp) — a sixth row fits by accident, a seventh needs the ten `moveq`s; a port key held 0.25 s repeats.
+- [Narrowing the port's DMA arm rule broke a gate whose image never moved](docs/contributing/TRAPS.md#trap-dma-arm) — a port change is every port gate's instrument; CI's cached passes hide it.
+
+- [Resident relinks can republish imported staging addresses](docs/contributing/TRAPS.md#trap-resident-import-exports) — publish only owned exports; `midi-follow-events` exercises descriptor relocation with MIDI Part State.
+- [A ColdFire save frame sized for the wrong register count overwrites the return address](docs/contributing/TRAPS.md#trap-cf-frame) — `lea -4N(%sp)` + `movem.l regs,(%sp)`; no pre-decrement `movem`, no `eor <mem>,Dn`, no `st <mem>`, no `move.b #imm,abs.l`.
+- [An unused-looking project byte can be rewritten on save](docs/contributing/TRAPS.md#trap-unused-bytes) — mark, load, save, diff before using one.
+- [`--watch-mem` given to a `--scenario` child logs nothing](docs/contributing/TRAPS.md#trap-scenario-watch) — watch with a direct run.
 
 ## How claims are written here
 
@@ -241,3 +247,6 @@ git show <sha>:dsp/baseprobe.asm
 Leave those citations alone — rewriting one to remove a filename erases
 how the number was obtained. A citation of a removed file uses the form
 `git show <sha>:<path>` (`docs/history/` records: sha `3ceba41`).
+
+
+- [Audio and MIDI playing Parts are independent](docs/contributing/TRAPS.md#trap-part-engine-context) — use the matching STORE context reader; seed different engine Parts in fixtures.

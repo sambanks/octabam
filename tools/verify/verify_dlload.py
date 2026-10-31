@@ -24,6 +24,10 @@ Remix.window_demand (k):
   blocked    effect 0 in use, and the FX2 of its first home's track is DARK REV -> effect 0 is loaded into its second home, no toast
   both-blocked  DARK REV on the FX2 of both homes' tracks -> not loaded, a toast at the next page key
   stuck      effect 0 loaded in its first home, DARK REV already on the second's track, then on the first's -> it stays, a toast
+  moveback   effect 0 loaded in its second home (DARK REV on its first's track), that track back to DELAY at 3 s, DARK REV
+             on the second's at 5 s -> effect 0 moves back to its first home (the move that froze a unit, 28 Oct 2026)
+  pick-reverb-t4  the same move with the panel's keys: effect 0 in its second home, its first's track back to DELAY at 3 s,
+             then DARK REV picked from the FX2 chooser on the second home's track -> the reverb is taken, effect 0 back in its first home
   pick / pick-blocked  T2's chooser (FX1, else FX2; NONE, DOWN to its row, YES) picks effect 0; with the block's track on DARK REV
              the chooser leaves T2's FX1 as it was
 
@@ -132,6 +136,12 @@ def main():
         "pick": (poke(live, part, 1, 0), []),
         "pick-blocked": (poke(live, part, 1, 0) + ";" + poke(FX2_LIVE, FX2_PART, block_track, DARK), []),
         "pick-both-blocked": (poke(live, part, 1, 0) + ";" + both, []),
+        # the move that froze a unit (28 Oct 2026): loaded in the second home, then back to the first when a reverb arrives on the second's track
+        "moveback": (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";" + poke(FX2_LIVE, FX2_PART, block_track, DARK),
+                     [(3000, poke(FX2_LIVE, FX2_PART, block_track, 0x08)), (5000, poke(FX2_LIVE, FX2_PART, alt_track, DARK))]),
+        # the same with the panel's keys, as on the unit: the reverb is picked on the second home's track from the chooser
+        "pick-reverb-t4": (every_first + ";" + poke(FX2_LIVE, FX2_PART, block_track, DARK),
+                           [(3000, poke(FX2_LIVE, FX2_PART, block_track, 0x08))]),
         "pick-reverb": (every_first + ";" + poke(FX2_LIVE, FX2_PART, block_track, 0), []),
         "pick-reverb-stuck": (every_first + ";" + poke(FX2_LIVE, FX2_PART, block_track, 0) + ";" + poke(FX2_LIVE, FX2_PART, alt_track, DARK), []),
         "pick-reverb-unused": (every_first + ";" + poke(FX2_LIVE, FX2_PART, block_track, 0),
@@ -161,7 +171,7 @@ def main():
         if tag.startswith("pick"):
             t = 1500 if not tag.startswith("pick-reverb") else 3500   # after the load has landed
             if tag.startswith("pick-reverb"):
-                keys = ((f"t{block_track + 1}", 400), ("fx2", 160), ("fx2", 800)) + (("down", 500),) * reverb_row + (("yes", 1500),)
+                keys = ((f"t{(alt_track if tag == 'pick-reverb-t4' else block_track) + 1}", 400), ("fx2", 160), ("fx2", 800)) + (("down", 500),) * reverb_row + (("yes", 1500),)
             else:
                 keys = (("no", 400), ("t2", 400), (chooser, 160), (chooser, 800)) + (("down", 500),) * row + (("yes", 1500),)
             if tag.startswith("pick-reverb"):
@@ -173,7 +183,7 @@ def main():
             lines += [f"{a.ms - 800} key {KEYS['fx1']:#x} down", f"{a.ms - 760} key {KEYS['fx1']:#x} up"]
         # the script is read in order, so a quit that is earlier than the last key waits for it; after a pick that moves
         # an effect, the reload (the debounce, then three sends) needs a few seconds past the last key
-        lines.append(f"{(t + 3000) if tag == 'pick-reverb' else (3400 if tag == 'reverb-takes' else a.ms)} quit")
+        lines.append(f"{(t + 3000) if tag in ('pick-reverb', 'pick-reverb-t4') else (3400 if tag == 'reverb-takes' else a.ms)} quit")
         (OUT / f"{tag}.script").write_text("\n".join(lines) + "\n")
         dump = OUT / f"{tag}_ids.bin"
         peeks = ";".join(f"{c}:X:{STAGE:x},1;{c}:X:{0x33DA3 + 8 * k:x},8;{c}:P:{r['addr']:x},{len(r['words'])}"
@@ -246,6 +256,10 @@ def main():
     entry = peek("stuck", 1, "X", 0x33DA3)
     check(f"{recs[0]['key']} stays in its first home when a reverb reaches it and the other home is taken",
           entry[0] == 0xB0A5ED and entry[3] == rec["addr"] and entry[5:8] == [3, 0, 3], f"{[hex(w) for w in entry]}")
+    print("moveback:")
+    entry = peek("moveback", 1, "X", 0x33DA3)
+    check(f"{recs[0]['key']}, loaded in its second home, moves back to its first when a reverb that reaches the second arrives",
+          entry[0] == 0xB0A5ED and entry[3] == rec["addr"] and entry[5:8] == [6, 0, 6], f"{[hex(w) for w in entry]}")
     print("race:")
     entry = peek("race", 1, "X", 0x33DA3)
     check(f"{recs[0]['key']} is not loaded when reverbs arrive on every home 60 ms after it (a project load writes the ids over a stretch of frames)",
@@ -281,6 +295,13 @@ def main():
           f"FX2 of track {block_track + 1} = 0x{rv[8 + block_track]:02x}, toast calls {toasts('pick-reverb')}")
     entry = peek("pick-reverb", 1, "X", 0x33DA3)
     check(f"and the effect moves: it is bound in its second home", entry[0] == 0xB0A5ED and entry[3] == ALT, f"{[hex(w) for w in entry]}")
+    print("pick-reverb-t4:")
+    rv = (OUT / "pick-reverb-t4_ids.bin").read_bytes()
+    check(f"a stock reverb chosen on the FX2 slot of {recs[0]['key']}'s second home, while the code is there, is accepted",
+          rv[8 + alt_track] == DARK and toasts("pick-reverb-t4") == 0,
+          f"FX2 of track {alt_track + 1} = 0x{rv[8 + alt_track]:02x}, toast calls {toasts('pick-reverb-t4')}")
+    entry = peek("pick-reverb-t4", 1, "X", 0x33DA3)
+    check(f"and the effect moves back: it is bound in its first home", entry[0] == 0xB0A5ED and entry[3] == rec["addr"], f"{[hex(w) for w in entry]}")
     print("pick-reverb-stuck:")
     rv = (OUT / "pick-reverb-stuck_ids.bin").read_bytes()
     check(f"a stock reverb chosen there is refused when the other home is taken",

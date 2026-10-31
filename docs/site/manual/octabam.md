@@ -28,6 +28,17 @@ Octabam has no delay and reverb bus. If you want one, see
   patterns, reloading one track from the card, a recording length of one
   pattern pass (PLEN), recorder trig mute, mute modes, a scale quantizer
   and a tuner window.
+- **OCTA-303.** A circuit-modelled TB-303 voice, chosen as a machine
+  below PICKUP in the machine list. See [OCTA303](../../../usage/octa303.md).
+- **More for the sequencer.** Track patterns (each track plays its own
+  pattern of the bank, clip style), Euclidean fills, varispeed for STATIC
+  and FLEX tracks, a track's scene morph played on its own (MORPH), and the
+  seven diatonic modes for the MIDI tracks' KEY (MIDI SCALES).
+- **Recording.** A recorder TRIG mode that waits for the input (REC
+  THRESHOLD), and recorder buffers saved with the project (BUFFER SAVER).
+- **Utilities.** A full-screen scope, copying a project without loading it,
+  random names in the name editor, and FX2 LOCK, which stops the FX2
+  chooser changing a track's effect.
 - **Effects.** SPECTRUM, CHARACTER and MODULATION on FX1 and FX2,
   TRANSIENT on FX2, and a side-chain on COMPRESSOR. The stock effects stay
   as they were.

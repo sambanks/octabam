@@ -223,7 +223,14 @@ that pump for 0.5 s after a track key so a page double-click could land
 now, see "Loading samples"). Route A keeps the pump.
 A child that answers nothing for 20 s (`ACTION_LIMIT`) is killed by the
 watchdog and respawned — boot, load and YES again, `restarts` counts it in
-`/status` — as is one that exits. `--port-bin` names another binary (a
+`/status` — as is one that exits. Nothing is left running unseen
+(29 Oct 2026, after a hand-started panel's child held three cores for
+eight hours): `--parent-pid <pid>` stops the server and its child when
+that process is gone (a bench or the app passes its own pid), and
+`--idle-timeout <min>` (default 60, `0` = never) stops a server no HTTP
+request has reached for that long, with `panel: exiting: …` in its log.
+An open page polls `/status`, so a panel someone is looking at stays up.
+`--port-bin` names another binary (a
 `.py` stand-in runs under the server's Python; `out/_agents/server/
 fake_ot_emu.py` speaks the protocol from a route-A capture); `--port-arg`
 passes extra flags to the child (`--port-arg=--dsp`). No jump-table path

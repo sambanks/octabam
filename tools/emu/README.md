@@ -345,7 +345,8 @@ commands' reply formats are the header comment of `main.cpp`
   load the port prints `ready sample=<n> frames=<n>` and answers one line
   per command on stdin. Integers are decimal or `0x..` (a leading zero is
   not octal). Anything malformed answers `err <message>` and the loop
-  continues; EOF exits 0. `--main-level` defaults to 64 here; the batch
+  continues; EOF exits 0, and so does a dead parent (`ot_emu: parent <pid> is
+  gone: exiting`, status 3) even while a `run` is executing. `--main-level` defaults to 64 here; the batch
   posts no level unless asked.
   - `run <ms> [wall <s>]` is the only command that advances emulated time;
     `stop=` in its reply is `time`, `gate`, `fault`, `illegal` or `wall`.
@@ -591,17 +592,13 @@ that third.
      reload, the same-value DCR renewal (no observed effect) and the ESAI
      LOG lines.
    - The 12 Oct halt did not recur as a halt. What was measured: with
-     upstream's `3cee91c9` rule for every request source,
-     `verify_remix_switch` failed in CI and under the port (`ok d0=0`:
-     neither core took the park command; then `callAsMain` did not return
-     in 400000000 steps). An arm log showed DMA channels 0 and 1 armed on
-     `HostReceiveData` and `HostTransmitData` with the request raised, and
-     not served; the run with the older rule showed 6,612 further arms of
-     those two. The patch serves a raised request at arm for those two
-     sources only (the ESAI keeps `3cee91c9`); the gate passes. Not
-     measured: why those flags raise no new request (inferred: they change
-     only when a word moves), and whether the 12 Oct halt at frame 8 is the
-     same failure; it was not run.
+     upstream's `3cee91c9` rule unchanged, `verify_remix_switch` failed in
+     CI (`ok d0=0`: neither core took the park command; then `callAsMain`
+     did not return in 400000000 steps). With the pre-`3cee91c9` arming rule
+     behind `DSP::setDmaTriggerOnArm` (set by `ot_emu` in both modes) the
+     gate passes. Not measured: why the rule matters to that gate, and
+     whether the 12 Oct halt at frame 8 is the same failure; neither was
+     run under the firmware here.
    - Also changed: upstream names `M_PCRE` and `M_PRRE` in the disassembler
      (`2dee93df`), so `verify_dsp_vectors` lists them. Inferred, not
      measured: the payloads wrote those addresses before and only the name

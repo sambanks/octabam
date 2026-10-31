@@ -26,9 +26,9 @@ def main():
     raw = (ROOT/'out/platform/runtime/runtime.bin').read_bytes()
     layout = json.loads((ROOT/'out/platform/layout.json').read_text())
     runtime = symbols(ROOT/'out/platform/runtime/runtime.elf')
-    resident = symbols(ROOT/'out/linked/midi-part-state/midipartentry/u.elf')
-    start = resident['mp_resident_activate']
-    original = runtime['mp_activate']
+    resident = symbols(ROOT/'out/linked/store/storepartentry/u.elf')
+    start = resident['store_part_resident_activate']
+    original = runtime['store_part_activate']
     site = image[0x40000512-BASE:0x40000518-BASE]
     hk = runtime.get('hk_boot')
     if hk is not None and site == bytes.fromhex('4eb9')+hk.to_bytes(4,'big'):
@@ -39,14 +39,14 @@ def main():
     else:
         assert site == bytes.fromhex('4eb9')+start.to_bytes(4,'big')
     assert BASE <= start < BASE+len(image) and not layout['base'] <= start < layout['top']
-    length = runtime['mp_native_copy']-original
+    length = runtime['store_part_native_copy']-original
     assert length == 34
     assert image[start-BASE:start-BASE+length] == raw[original-layout['base']:original-layout['base']+length]
-    for name in ('mp_copy_target','mp_init_target'):
+    for name in ('store_part_copy_target','store_part_init_target'):
         assert resident[name] == runtime[name]
         assert image[resident[name]-BASE:resident[name]-BASE+4] == bytes(4)
-    expected_slots = ((resident['mp_copy_target'],runtime['mp_native_copy']),
-                      (resident['mp_init_target'],runtime['mp_native_init']))
+    expected_slots = ((resident['store_part_copy_target'],runtime['store_part_native_copy']),
+                      (resident['store_part_init_target'],runtime['store_part_native_init']))
 
     def run(data, entry, cc, d0):
         u=Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN);u.ctl_set_cpu_model(UC_CPU_M68K_CFV4E)

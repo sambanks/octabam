@@ -41,7 +41,10 @@ R = registry.remix(REMIX)
 IMAGE = dlbuild.build(REMIX, "dlwrap")
 g_all = json.loads(pathlib.Path("out/dsp/guard_records.json").read_text())
 d_all = json.loads(pathlib.Path("out/dsp/demand_records.json").read_text())
-SPANS = [(k, d_all[key]["addr"], d_all[key]["addr"] + len(d_all[key]["words"])) for k, key in enumerate(R.window_demand)]
+# every home of every demand effect: its first and each of Remix.window_homes (a freeze on a unit, 28 Oct 2026, came with the
+# code published in the second home, which the first-home spans never reached)
+SPANS = [(f"{k}.{h}", hm["addr"], hm["addr"] + len(hm["words"]), k)
+         for k, key in enumerate(R.window_demand) for h, hm in enumerate(d_all[key]["homes"])]
 samples = []
 for i in range(FRAMES * BLOCKS):
     v = int(0.4 * 8388607 * math.sin(2 * math.pi * 220 * i / 44100))
@@ -89,7 +92,7 @@ for key, sid, tag, bases, (lo, hi) in [(k, i, t, b, w) for k, i in (("PLATE REV"
     init_w, proc_w = send_probe.entry_points(mem, sid)            # its id now dispatches to the wrapper
     init_n, proc_n = send_probe.entry_points(mem, 0x08)           # the null stub
     # the published spans to try: each demand effect's own, and a synthetic one inside this payload's window slot
-    cases = [(f"{k}", lo_k, hi_k, k) for k, lo_k, hi_k in SPANS] + [("syn", lo, hi, 0)]
+    cases = list(SPANS) + [("syn", lo, hi, 0)]
     dry_out, _ = run(mem, init_n, proc_n, 1, f"null{tag}")
     for alloc, base in zip((1, 3, 5, 7), bases):
         d_out, d_y = run(mem, init_p, proc_p, alloc, f"direct{key[:2]}{tag}{alloc}")

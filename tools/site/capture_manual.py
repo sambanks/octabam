@@ -420,9 +420,10 @@ def main():
         elif group=='plocks': jobs=[('octabam',capture_plocks,[(1,'fx2','PLATE REV')])]
         elif group=='midi-scales':jobs=[('midi-scales',capture_midi_scales,[])]
         elif group=='features':
-            # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist.
+            # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist, and
+            # LOAD METER declares a conflict with STEM REC (11 Oct 2026); its screens are the bus group's.
             scratch=OUT/'features.py'
-            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k!="REC_TRIG_MUTE")+("REC THRESHOLD","EUCLID FILL","RND NAME","STEM REC"))\n')
+            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k not in ("REC_TRIG_MUTE","LOAD METER"))+("REC THRESHOLD","EUCLID FILL","RND NAME","STEM REC"),window=tuple(w for w in base.window if not w[0].startswith("LOAD METER")))\n')
             jobs=[('../out/manual-captures/features',capture_features,[])]
         elif group=='inserts':
             assignments=[(i+1,'fx1' if i<4 else 'fx2',key) for i,key in enumerate(('SPECTRUM','CHARACTER','MODULATION','TRANSIENT','GATE VERB','DELAY'))]

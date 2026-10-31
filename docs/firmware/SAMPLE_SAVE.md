@@ -3,6 +3,8 @@
 The firmware writes WAV files itself. This page is the save path: the
 routine that emits the header, the loop that streams the audio out of the
 sample pool, the file API underneath, and the clock that names the file.
+Section 8 is the attribute file (`.ot`) a save writes beside the WAV, and
+the tempo a sample gets without one.
 
 **Method.** Read from `out/raw/section_3_MAIN_OS.bin`, SHA-256
 `164f31224bf61181e3f50e7dec40df9afcae5b16dbf6e4c0d0cc5e986af0a84e`, load base
@@ -288,3 +290,141 @@ builder simply does not ask.
   any of the three others surveyed. Every figure that exists is a sector count
   from an emulator. Nothing on this page should be read as a statement about
   how fast the card can be written.
+
+---
+
+## 8. The attribute file (`.ot`) and the tempo
+
+A sample's attributes (its tempo, trim, loop, timestretch, gain and
+slices) live in a 1,096-byte record per slot. A save also writes them to a
+file beside the WAV, with the same name and the extension `.ot`. This
+section is how that file is written, where a recording's tempo comes from,
+and what tempo a sample gets when it has no `.ot`.
+
+Read from the image named at the top of this page, 9 Oct 2026. Nothing in
+this section has run under the port.
+
+### 8.1 The writer `0x40089940` ✅
+
+```
+long ot_write(void *handle, long kind, long id)
+```
+
+- Kind 0: the record at `0x100d5b30 + id × 1096`, id at most 128.
+- Kinds 1 and 4: the record at `0x100b14f0 + id × 1096`, id at most 135.
+  That's the arena with the recorder buffers, ids 128 to 135
+  (`RECORDER.md` section 1).
+- Any other kind returns 0. A write that fails returns its negative code,
+  and success returns 1.
+
+✅ Kind 0 is a Static slot and kind 1 a Flex slot: the project parser
+sets kind 1 for `TYPE=FLEX` and 0 for `TYPE=STATIC` (`0x400868a4..d8`)
+before it calls 8.3's defaults routine with that kind. The Static arena
+starts 136 records after the Flex one. Kind 4 isn't named.
+
+Its one caller is the engine job at `0x40084e7a`. The job opens the path
+at its own `+10`, then calls the writer with its `+6` as the kind and its
+`+2` as the id. The WAV save is the job beside it, at `0x40084ddc`
+(section 1). The storage job `0x40024168` builds the WAV path and queues
+the WAV job (type 22). It then swaps the path's extension for `ot`
+(`0x400b3a9f`) and passes the new path to `0x40022a28`. 🟡 That call
+queues the `.ot` job; `0x40022a28` isn't read.
+
+The file is 832 bytes. Every number is big endian, the CPU's own order:
+the writer passes the record's bytes straight to the write primitive
+`0x400166b8`, with no `byterev`.
+
+| offset | size | content | from the record |
+|---|---|---|---|
+| 0 | 4 | `FORM` (`0x400d1670`) | |
+| 4 | 4 | the long at `0x460fab54` (not traced) | |
+| 8 | 4 | `DPS1` | |
+| 12 | 4 | `SMPA` (`0x400d167e`) | |
+| 16 | 4 | the long at `0x460fab5e` (not traced) | |
+| 20 | 2 | version, `0x0002` (`0x400d1682`) | |
+| 22 | 1 | a flag (8.3) | `+296` |
+| 23 | 4 | tempo, BPM × 24 | `+276` |
+| 27 | 4 | trim length, bars × 100 | `+284` |
+| 31 | 4 | loop length, bars × 100 | `+288` |
+| 35 | 4 | timestretch mode 🟡 | `+272` |
+| 39 | 4 | loop mode | `+292` |
+| 43 | 2 | gain 🟡 | `+268` |
+| 45 | 1 | trig quantization 🟡 | `+297` |
+| 46 | 4 | trim start, in samples | `+300` |
+| 50 | 4 | trim end, in samples | `+304` |
+| 54 | 4 | loop point, in samples | `+308` |
+| 58 | 768 | 64 slices, 12 bytes each | `+312` |
+| 826 | 4 | slice count | `+1092` |
+| 830 | 2 | checksum | |
+
+The checksum is the 16-bit sum of bytes 20 to 829. The writer clears it at
+`0x40089a22`, just before the version, and adds every byte it writes after
+that.
+
+How the fields are named:
+
+- ✅ The tempo is BPM × 24 because the recorder stores the published tempo
+  there (8.2), and that word is BPM × 24 (`RECORDER.md` section 1).
+- ✅ The lengths are bars × 100, and the trim and loop points samples,
+  from the converters in 8.3: they turn `+304 − +300` and `+304 − +308`
+  into `+284` and `+288`.
+- ✅ The loop mode is `RECORDER.md`'s "LOOP at state `+292`".
+- 🟡 The timestretch mode, gain and trig quantization are named by order
+  alone. The project file's sample keys run in the same order
+  (`0x400b8617..0x400b866d`): `BPMx24`, `TRIM_BARSx100`, `LOOP_BARSx100`,
+  `TSMODE`, `LOOPMODE`, `GAIN`, `TRIGQUANTIZATION`. Falsifier: a stock
+  `.ot` saved with known attributes.
+
+### 8.2 A recording carries the project's tempo ✅
+
+The routine at `0x4000432c` sets recorder buffer n's record
+(`0x100d38f0 + n × 1096`, the arena's id 128 + n). With interrupts masked
+it writes:
+
+- the trim start, trim end and loop point (`+300`, `+304`, `+308`);
+- the flag `+296` = 0;
+- the tempo `+276` = the long at `0x8000181c`, the published tempo
+  (BPM × 24);
+- `+280` = −`[0x80001820]`, that is 2³¹ / tempo24, a reciprocal the file
+  doesn't carry.
+
+So a stock recording keeps the tempo the project had when it recorded, and
+its `.ot` carries it. The routine's callers aren't read.
+
+### 8.3 The tempo a sample gets without attributes ✅ read, 🟡 when it runs
+
+`0x40099148(kind, id, length)` sets a slot's defaults. The project parser
+calls it at each `SLOT` key (`0x40086940`) and then applies the keys that
+follow, so a project's saved tempo overrides it. 🟡 A sample
+loaded with no `.ot` keeps these defaults. The routine's other callers
+(`0x400255a0`, `0x40084b66`, `0x40084c34`) aren't read.
+
+For a sample longer than 50,000 samples (1.13 s) it guesses a bar count
+(`0x40020ad8`). Then it sets the tempo from that count and the trim
+length (`0x40098fa8`, which also sets the flag `+296` to 1), the
+timestretch mode to 2, and the loop mode to 1 for kinds 1 and 4, 0 for
+kind 0. The guess:
+
+- **The bar count comes from the length alone.** Below 65,536 samples
+  it's half a bar. Otherwise it's 2^(k − 16) bars, where
+  2^k ≤ length < 2^(k + 1): `ff1` at `0x40020aea` finds k, and the count
+  is 50 shifted left by k − 15, in bars × 100.
+- **The name can move it by one step.** When the caller passes a name,
+  the routine tries half, once and twice that count. It keeps the first
+  whose whole BPM, printed with `"%d"` (`0x400b465d`), appears in the name
+  (`strstr`, `0x40014158`). With no match it keeps the count.
+- **The tempo follows from the count.** tempo24 = 2,540,160 × bars×100 /
+  length, rounded (`0x40020a94`). The reverse, at `0x40020a24`, is bars ×
+  100 = length × tempo24 / 2,540,160, rounded, with tempo24 clamped to
+  720..7,200 (30 to 300 BPM). 254,016,000 / tempo24 is one bar of four
+  beats in samples.
+
+So the guessed tempo always lies between 80.75 and 161.5 BPM, and the
+guess never reads the project's tempo. A 61 s file recorded at 120 BPM
+(2,690,100 samples) loads as 32 bars at 125.9 BPM.
+
+🟡 Falsifier, on the unit: STEM REC's take `261008-1858` (189,872 frames,
+4.31 s) predicts 2 bars at 111.5 BPM, and take `261008-1131` (297,632
+frames, 6.75 s) 4 bars at about 142.2 BPM, whatever the project's tempo
+was. Load one file from each into a Flex slot and read TEMPO on the AUDIO
+EDITOR's ATTRIBUTES page.

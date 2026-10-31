@@ -93,6 +93,7 @@ def _label(m) -> str:
         "analog-bassdrum": "Analog BD",
         "ata-write-guard": "ATA write guard",
         "bbd": "BBD delay",
+        "blackpyramids-303": "BlackPyramids 303",
         "character-txtr": "Character TXTR",
         "devilish": "dEVILish",
         "direct-jump-kyoti": "Direct jump (Kyoti)",

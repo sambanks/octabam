@@ -427,6 +427,16 @@ class PlanTests(unittest.TestCase):
         self.assertIn("tools/verify/verify_usb_post.py", scripts)
         self.assertIn("tools/verify/verify_usb_align.py", scripts)
 
+    def test_selection_only_store_gate_reaches_its_actual_clients(self):
+        context = reach.Context.from_registry()
+        script = "tools/verify/verify_store_part_selection.py"
+        self.assertEqual(context.gate_owners[script], ["STORE"])
+        self.assertEqual(context.gate_remixes[script],
+                         {"hooks-boot", "midi-loopback"})
+        rows = reach.classify([script], context)
+        self.assertEqual(reach.remixes_reached(rows),
+                         ["hooks-boot", "midi-loopback"])
+
     def test_remixes_reached(self):
         rows = reach.classify(["modules/character/a.asm", "remixes/miniverb/remix.py"], ctx())
         self.assertEqual(reach.remixes_reached(rows), ["bamsep26", "miniverb", "usb"])

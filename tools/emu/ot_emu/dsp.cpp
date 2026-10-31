@@ -271,6 +271,11 @@ namespace ot
 			// op_Brclr_pp forever; the second faulted in the JIT's funcCreate
 			// on the first DSP interrupt (lldb, EXC_BAD_ACCESS).
 			c.dsp->setHostStepped(!m_rt);
+			// DMA arming: a DCR write that selects the request source and sets DE
+			// serves a request raised before it (the rule before upstream 3cee91c9),
+			// in both modes. Upstream's rule leaves verify_remix_switch's park
+			// command untaken by both cores (measured in CI, 27 Oct 2026).
+			c.dsp->setDmaTriggerOnArm(true);
 			// HC and HCP clear when the DSP TAKES the host command. ✅ Measured
 			// 8 Sep 2026: watching for the PC to land on the vector never fired
 			// -- a fast interrupt runs the vector's two words inline -- so the

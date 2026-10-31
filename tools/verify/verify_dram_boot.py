@@ -53,12 +53,15 @@ if not EMU.exists():
 # out/mainos_bus.bin (and its loader at out/platform/). The first run of
 # this check booted `warped` while looking for midi-scenes' loader and
 # reported it never ran.
-env = dict(os.environ, REMIX=remix.name, XBUS="1", SPEC="1")
-env.setdefault("BUILD", "0")
-r = subprocess.run([sys.executable, str(ROOT / "tools/build/build_bus.py")], env=env,
-                   capture_output=True, text=True, cwd=ROOT)
-if r.returncode:
-    sys.exit(f"verify_dram_boot: building {remix.name} failed:\n{(r.stdout + r.stderr)[-1500:]}")
+# Image-stage callers have already built and frozen their candidate. They
+# explicitly opt out of rebuilding so a default RMXNAME cannot replace it.
+if '--existing-image' not in sys.argv:
+    env = dict(os.environ, REMIX=remix.name, XBUS="1", SPEC="1")
+    env.setdefault("BUILD", "0")
+    r = subprocess.run([sys.executable, str(ROOT / "tools/build/build_bus.py")], env=env,
+                       capture_output=True, text=True, cwd=ROOT)
+    if r.returncode:
+        sys.exit(f"verify_dram_boot: building {remix.name} failed:\n{(r.stdout + r.stderr)[-1500:]}")
 
 nm = subprocess.run(["m68k-elf-nm", str(ROOT / "out/platform/loader.elf")],
                     capture_output=True, text=True).stdout
