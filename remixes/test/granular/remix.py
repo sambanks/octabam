@@ -7,8 +7,9 @@ REMIX = Remix(
     proof=Proof.CHECK,
     proof_note=(
         "Granular image built and booted to the RTOS handoff under the ColdFire port; "
-        "synthetic-source gate runs under Unicorn; full make check and hardware testing "
-        "not run."
+        "synthetic-source gate runs under Unicorn; a generated project and synthetic GRAN WAV "
+        "played on the real firmware under the port (controls, retrigger, MIDI Stop, "
+        "stock-sample passthrough); full make check and hardware testing not run."
     ),
     doc="The four-grain FLEX source engine and stock effects.",
     modules=(
