@@ -222,7 +222,7 @@ def render(uc: Uc, symbols: dict[str, int], track: int, start: int = 0,
            end: int = 16, trigger: bool = False) -> None:
     uc.mem_write(0x80001C80, struct.pack(">I", HEADER))
     uc.mem_write(NIBBLE_BASE + track, b"\x10" if trigger else b"\x00")
-    uc.mem_write(HEADER, bytes(16 + 16 * 8))
+    uc.mem_write(HEADER, bytes([0, 0, 0, end - start]) + bytes(12 + 16 * 8))
     instruction_count[0] = 0
     call(uc, symbols, "gr_render", track, 0, start, end)
     max_render_instructions[0] = max(max_render_instructions[0], instruction_count[0])
