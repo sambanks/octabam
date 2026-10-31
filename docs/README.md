@@ -30,6 +30,7 @@ Where each doc is, by who reads it. A module's own page is
 | [contributing/FAILURE_MODES.md](contributing/FAILURE_MODES.md) | what has gone wrong on a unit: symptom, cause, fix, the gate that catches it |
 | [contributing/TRAPS.md](contributing/TRAPS.md) | the trap register: what has cost real work in the code, build, emulators and harness — symptom, fix, the gate that catches it |
 | [../AGENTS.md](../AGENTS.md) | working rules, worktrees, build and check, and the trap index (for people and coding agents) |
+| [../modules/granular/README.md](../modules/granular/README.md) | the GRANULAR FLEX source engine: controls, sample formats, gate, and hardware status |
 
 ## The tools
 
