@@ -140,6 +140,16 @@ def capture_morph(p,r):
     p.key('t1',False);p.run(300)
 
 
+def capture_free_loop(p,r):
+    # The project is modules/free-loop/make_template.py's (T1 FREE, POPUP ON).
+    p.key('t1',True);p.run(60);p.press('up',settle=120)
+    shot(p,'free-loop','window','T1 + UP: the FREE LOOP window for T1, ROLE FREE, 4/4, BARS AUTO, 70-160 BPM.',r)
+    p.key('t1',False);p.press('no',settle=200)
+    p.proc.command('midi b0 5a 7f','ok');p.run(60);p.proc.command('midi b0 5a 00','ok')
+    p.run(3000)
+    shot(p,'free-loop','popup','CC 90 on channel 1, 3 s into the free take: T1\'s REC popup, FIRST LOOP.',r)
+
+
 def capture_features(p,r):
     p.chord('t1','page')
     shot(p,'euclid-fill','fill','Euclidean trig fill: STEPS, PULSE, ROT, RAND VEL, RAND PTCH.',r)
@@ -409,7 +419,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','utilities','varispeed','usb','octa303','distorx','devilish','morph'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','utilities','varispeed','usb','octa303','distorx','devilish','morph','free-loop'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -433,6 +443,7 @@ def main():
         elif group=='octa303':jobs=[('octa303',capture_octa303,[])]
         elif group=='distorx':jobs=[('distorx',capture_fx,[(2,'fx2','DISTORX')])]
         elif group=='morph':jobs=[('morph',capture_morph,[])]
+        elif group=='free-loop':jobs=[('free-loop',capture_free_loop,[])]
         elif group=='machines':jobs=[('analog-bassdrum',capture_analog,[]),('octatrick',capture_synth,[]),('blackpyramids-303',capture_blackpyramids,[]),('octa303',capture_octa303,[]),('cxosc',capture_cxosc,[])]
         elif group=='devilish':jobs=[('devilish',capture_fx,[(2,'fx2','DEVILISH')])]
         elif group=='probes':jobs=[('cfmeter',capture_fx,[(8,'fx2','CF METER')])]

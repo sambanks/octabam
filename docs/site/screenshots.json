@@ -969,5 +969,21 @@
       "source": "emulator panel UART (live_shots.py + scope.script)",
       "firmware_sha256": "1c63417e490ed070ee86170461b3740f4536b4bad89ad17e2fb546e49f841949"
     }
+  },
+  "free-loop": {
+    "window": {
+      "image": "free-loop/window.png",
+      "caption": "T1 + UP: the FREE LOOP window for T1, ROLE FREE, 4/4, BARS AUTO, 70-160 BPM.",
+      "remix": "free-loop",
+      "source": "emulator panel UART",
+      "firmware_sha256": "bb0b4c6080a8ab36cdbec79a2409660f8bc8bc7516a5977fe40b3df3eef9cd2a"
+    },
+    "popup": {
+      "image": "free-loop/popup.png",
+      "caption": "CC 90 on channel 1, 3 s into the free take: T1's REC popup, FIRST LOOP.",
+      "remix": "free-loop",
+      "source": "emulator panel UART",
+      "firmware_sha256": "bb0b4c6080a8ab36cdbec79a2409660f8bc8bc7516a5977fe40b3df3eef9cd2a"
+    }
   }
 }
