@@ -13,7 +13,7 @@ MODULE = Module(
     proof=Proof.CHECK,
     proof_note=(
         "Granular image built and booted to the RTOS handoff under the ColdFire port; "
-        "synthetic-source gate runs under Unicorn; full make check and hardware testing "
+        "synthetic-source gate runs under Unicorn; real-firmware port run with a generated project (controls, retrigger, MIDI Stop, stock passthrough); full make check and hardware testing "
         "not run."
     ),
     linked=(
