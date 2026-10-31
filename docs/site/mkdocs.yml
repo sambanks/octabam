@@ -106,6 +106,7 @@ nav:
       - Direct Jump (Kyoti): reference/modules/direct-jump-kyoti.md
       - Erase Empty Trigless Locks: reference/modules/erase-empty-trigless-locks.md
       - Euclid Fill: reference/modules/euclid-fill.md
+      - Granular: reference/modules/granular.md
       - Mute Modes: reference/modules/mute-modes.md
       - OCTA-303: reference/modules/octa303.md
       - Page 2 Parameter Locks: reference/modules/plocks-p2.md
