@@ -70,6 +70,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`rig`](rig/README.md) | octabam-bus's delay and reverb bus and FX1 stations, without USB, Octakit or the scene modules: the fixture of the CC MAP, Character and one-aux gates. | `make check` |
 | [`rnd-name`](rnd-name/README.md) | smoke: RND NAME alone | local render: RND NAME smoke |
 | [`rs64`](rs64/README.md) | remix-switch with id_space=64 and BBD on FX2 id 0x25 in the shared window: the gate for REMIX SWITCH's DSP upload in a grown image. | port-gated: the chainload and the DSP re-upload under the port in the 64-id layout (verify_remix_switch) |
+| [`sc-core`](sc-core/README.md) | octabam's ColdFire core with SIDECHAIN_COMPRESSOR per-core (SPRING REV's words), no demand loader, no LOAD METER | `make check` |
 | [`scenes-midisc`](scenes-midisc/README.md) | MIDI SCENES + KITS + page-2 scene locks (SCENES P2) + page-2 parameter locks (PLOCKS P2), stock effects. | port-gated: verify_scenes_p2 and verify_plocks_p2 under the port |
 | [`scope`](scope/README.md) | stock effects with SCOPE + TUNER (shared TEMPO detours). | on hardware: MKII: LSCOPE BJ 24 Oct 2026 (CF METER + busy soak); also make check REMIX=test/scope |
 | [`shatter`](shatter/README.md) | SHATTER beside the stock effects (all but PLATE REV, whose words it takes). | on hardware: Ilia's MKII, BUILD S6 (SHATTER S6.RMX), 21 Oct 2026: every SHATTER knob exercised; verify_shatter. Solo gate remix. |
