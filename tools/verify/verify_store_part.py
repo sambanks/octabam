@@ -27,7 +27,8 @@ def main():
     if 'MIDI FOLLOW' in keys: fields.update((3,12,13,15))
     if 'MIDI LOOPBACK' in keys: fields.add(12)
     if 'MIDI HARMONY' in keys: fields.update((5,16,18,19))
-    assert fields, 'this gate needs a native settings client'
+    reader = 'SCALES' in keys       # reads the MIDI setup window, writes no native byte
+    assert fields or reader, 'this gate needs a native settings client'
     fields = tuple(sorted(fields))
     def put(a, v, n=1): u.mem_write(a, v.to_bytes(n, 'big'))
     def get(a, n=1): return int.from_bytes(u.mem_read(a, n), 'big')
@@ -61,6 +62,25 @@ def main():
     assert call('store_part_midi_context',0)==0xffffffff
     assert call('store_part_audio_context',0)==0xffffffff
     print('  [ok] UI, audio and MIDI contexts stay distinct; independent latches, unlatched fallback and invalid inputs')
+
+    if not fields:                  # a read-only client: coherent reads, every write refused
+        reads = 0
+        for bank in (0, 7, 15):
+            for part in range(4):
+                b = BANK+bank*STRIDE+WORK+part*PART+0x4e2
+                for track in range(8):
+                    for field in range(36):
+                        put(b+track*36+field, (bank+part+track+field) % 256)
+                    for field in range(36):
+                        assert call('store_part_midi_read', track, bank*4+part, field) == get(b+track*36+field)
+                        assert call('store_part_midi_write', track, bank*4+part, field, 1) == 0
+                        assert all(m.stack-128 <= a and a+n <= m.stack+4 for a,n in m.writes), m.writes
+                        reads += 1
+                    assert m.call('store_part_midi_key', track, bank*4+part) == get(b+track*36+17)
+        assert m.call('store_part_midi_key', 8, 0) == 0xffffffff
+        assert m.call('store_part_midi_key', 0, 64) == 0xffffffff
+        print(f'  [ok] read-only client: {reads} setup reads and KEYs through every context, every write refused')
+        return
 
     writes = 0
     for bank in (0, 7, 15):

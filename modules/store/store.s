@@ -707,11 +707,12 @@ store_info_kits: .asciz "SAVED KITS NOT LOADED"
 store_info_scn: .asciz "MIDI SCENES NOT LOADED"
 store_info_mrp: .asciz "MORPH SETTINGS NOT LOADED"
 store_info_fl: .asciz "FREE LOOP SETTINGS NOT LOADED"
+store_info_sc: .asciz "SCALES NOT LOADED"
 store_info_rbp: .asciz "RECORDER BUFFERS NOT LOADED"
 store_info_bad: .asciz "UNREADABLE OR INCOMPATIBLE"
 store_info_next: .asciz "NO: KEEP FILE  YES: OPTIONS"
         .align  4
-store_info_text: .long store_info_plk, store_info_kits, store_info_scn, store_info_rbp, store_info_mrp, store_info_fl
+store_info_text: .long store_info_plk, store_info_kits, store_info_scn, store_info_rbp, store_info_mrp, store_info_fl, store_info_sc
 store_info_lines: .long store_info_plk, store_info_bad, store_info_next
         .align  4
 CRCREADY: .long 0

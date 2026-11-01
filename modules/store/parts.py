@@ -18,6 +18,9 @@ PART_CLIENTS = {
     'MIDI LOOPBACK': (((MIDI_BASE, MIDI_SIZE),), midi_fields(12)),
     'MIDI HARMONY': (((MIDI_BASE, MIDI_SIZE),), midi_fields(5, 16, 18, 19)),
     'MIDI SRAM': ((), ()),
+    # Reads each MIDI track's KEY (store_part_midi_key) and the engines' Part
+    # contexts; writes no native byte (its scale IDs live in scales.work).
+    'SCALES': (((MIDI_BASE, MIDI_SIZE),), ()),
 }
 # Optional companions extend replacement handling without owning native hooks.
 # snapshot_pre gets d0=bank address before publication; replace_pre gets
