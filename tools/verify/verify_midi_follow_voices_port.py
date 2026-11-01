@@ -17,7 +17,7 @@ def main():
     args = parser.parse_args()
     work = OUT / 'native-voices'
     work.mkdir(parents=True, exist_ok=True)
-    fixture(args.project, work / 'project', voices=True)
+    fixture(args.project, work / 'project', voices=True, profile='follow')
     card, _ = emu_card.stage_project(work / 'project', 'OCTABAM', 'BASS', tree=work / 'tree')
     (work / 'card.img').write_bytes(card)
     image = ROOT / 'out/mainos_bus.bin'

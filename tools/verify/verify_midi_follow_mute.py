@@ -47,7 +47,7 @@ def port_gate(image, project, out):
     for mode, leader, arp in modes:
         work = out/mode
         work.mkdir(exist_ok=True)
-        follow.fixture(project, work/'project', arp=arp, leader=leader)
+        follow.fixture(project, work/'project', arp=arp, leader=leader, profile='follow')
         harmony = mode.startswith('harmony') or mode == 'chord-locks'
         for path in (work/'project').glob('project.*'):
             data = re.sub(rb'^#MIDI_HARMONY[^\r\n]*\r?\n', b'', path.read_bytes(), flags=re.M)

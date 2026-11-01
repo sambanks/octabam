@@ -291,7 +291,7 @@ def port_case(image, project, arp=False, leader=0, enabled=True, live_change=Non
     work = OUT / name
     work.mkdir(parents=True, exist_ok=True)
     import emu_card
-    fixture(project, work / 'project', arp=arp, leader=leader, offsets=offsets)
+    fixture(project, work / 'project', arp=arp, leader=leader, offsets=offsets, profile='follow')
     card, _ = emu_card.stage_project(work / 'project', 'OCTABAM', 'BASS', tree=work / 'tree')
     (work / 'card.img').write_bytes(card)
     results, hashes = {}, {}

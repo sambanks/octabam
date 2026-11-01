@@ -44,9 +44,17 @@ def dram_map_size(layout):
     return (end - 0x40000000 + 4095) & ~4095
 
 
+def _instruction_budget(value):
+    # Unicorn treats zero as unlimited, which would hide a stuck gate.
+    if type(value) is not int or value <= 0:
+        raise ValueError('instruction_budget must be a positive integer')
+    return value
+
 
 class Machine:
-    def __init__(self, symbol_loader=None, artifact_root=None):
+    def __init__(self, symbol_loader=None, artifact_root=None, *, instruction_budget=20_000):
+        """Bound each call independently of which module symbols are loaded."""
+        self.instruction_budget = _instruction_budget(instruction_budget)
         if symbol_loader is None:
             def symbol_loader():
                 raw=subprocess.check_output(['m68k-elf-nm',str(ROOT/'out/platform/runtime/runtime.elf')],text=True)
@@ -115,15 +123,17 @@ class Machine:
         if p in self.stops:self.arrival=p;u.emu_stop()
     def read_sr(self):
         return read_sr(self.uc,self.sr_probe)
-    def call(self,name,d0=0,d1=0,a0=None,stop=None,regs=None):
+    def call(self,name,d0=0,d1=0,a0=None,stop=None,regs=None,*,instruction_budget=None):
+        """Execute one entry; a budget override applies only to this call."""
+        budget = _instruction_budget(self.instruction_budget if instruction_budget is None
+                                     else instruction_budget)
         u=self.uc;self.stops={stop or self.done};self.arrival=None;self.writes=[]
         u.reg_write(UC_M68K_REG_SR,self.initial_sr);u.reg_write(UC_M68K_REG_A7,self.stack)
         u.mem_write(self.stack,self.done.to_bytes(4,'big'))
         u.reg_write(UC_M68K_REG_D0,d0);u.reg_write(UC_M68K_REG_D1,d1)
         if a0 is not None:u.reg_write(UC_M68K_REG_A0,a0)
         for r,v in (regs or {}).items():u.reg_write(r,v)
-        u.emu_start(self.sym[name],0,count=self.instruction_limit(name))
-        assert self.arrival in self.stops,(name,hex(u.reg_read(UC_M68K_REG_PC)))
+        u.emu_start(self.sym[name],0,count=budget)
+        assert self.arrival in self.stops, \
+            f'{name} did not reach its stop within {budget:,} instructions (PC {u.reg_read(UC_M68K_REG_PC):#x})'
         return u.reg_read(UC_M68K_REG_D0)
-    def instruction_limit(self,name):
-        return 10000000 if 'hd_set' in self.sym else 20000

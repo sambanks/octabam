@@ -19,7 +19,7 @@ def main():
     for mode,arp,harmony,key,tran in cases:
         name=f'response-{mode}-arp-{int(arp)}-harmony-{int(harmony)}-key-{key}-tran-{tran}'
         work=out/name;work.mkdir(exist_ok=True)
-        project=work/'project';fixture(a.project,project)
+        project=work/'project';fixture(a.project,project,profile='follow')
         for bank in project.glob('bank*.work'):
             def mutate(data):
                 for part in range(8):
@@ -70,7 +70,7 @@ def main():
         for mode in (0,1):
             name=f'live-source-{mode}'
             work=out/name;work.mkdir(exist_ok=True)
-            project=work/'project';fixture(a.project,project)
+            project=work/'project';fixture(a.project,project,profile='follow')
             for bank in project.glob('bank*.work'):
                 def mutate_live(data):
                     for part in range(8):

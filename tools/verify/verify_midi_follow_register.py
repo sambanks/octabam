@@ -102,7 +102,6 @@ def ui():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'emu'))
     from lcd_view import png
     m=Machine(); u=m.uc; s=m.sym
-    m.instruction_limit=lambda name: 200000 if name=='bf_page_draw' else 20000
     win=m.scratch; plane=win+0x1000
     u.mem_write(win+36,struct.pack('>IIII',120,60,2,plane))
     u.mem_write(s['bf_page_win'],win.to_bytes(4,'big'))
@@ -124,7 +123,7 @@ def ui():
                     u.mem_write(m.stack+4,struct.pack('>II',win+512,value))
                     m.call(formatter)
                     assert bytes(u.mem_read(win+512,16)).split(b'\0')[0].decode()==want
-                m.call('bf_page_draw')
+                m.call('bf_page_draw', instruction_budget=200_000)
                 data=bytes(u.mem_read(plane,960))
                 def pixel(x,y): return (data[x*8+y//8]>>(7-y%8))&1
                 def crop(x,y,w,h): return tuple(pixel(i,j) for j in range(y,y+h) for i in range(x,x+w))

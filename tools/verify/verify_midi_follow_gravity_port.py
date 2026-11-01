@@ -22,7 +22,7 @@ def main():
     edits='1500 enc 2 -4\n1600 enc 1 4\n1700 enc 2 -4\n1800 enc 1 4\n1900 enc 2 -4\n'
     for mode,response in ((0,0),(1,0),(2,0),(1,1)):
         work=out/f'mode-{mode}-response-{response}';work.mkdir(exist_ok=True)
-        project=work/'project';fixture(a.project,project)
+        project=work/'project';fixture(a.project,project,profile='follow')
         for path in project.glob('bank*.work'):
             def mutate(data):
                 # This gate measures single-note register movement. Do not

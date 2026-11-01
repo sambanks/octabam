@@ -26,8 +26,8 @@ bank file. Before returning to stock, select OFF or an original Major/Minor
 choice and save, or retain a separate project backup. Audio-track Scale
 Quantizer is separate.
 
-This module works independently. Combinations with other MIDI modules are
-not qualified.
+This module works independently. With MIDI Follow, the follower inherits its
+source track's KEY setting.
 
 ## Verification limits
 
@@ -36,6 +36,10 @@ remix (BUILD=91), not photographs of hardware. Linked-code checks cover all
 84 key/mode combinations, all 128 note values, the installed hooks and
 formatter bounds. Full-firmware emulator checks cover cold project load and
 native save across candidate, stock and candidate again.
+
+The MIDI Follow combination also has emulator coverage and targeted MKII
+tests of four-note output, releases and sustained MIDI load. Those hardware
+checks do not cover every key/mode choice or qualify other module combinations.
 
 Octatrack MKII hardware testing on 16 October 2026 used OCTABAMS1
 (source `9c30ec46`). Scale playback, Part Reload, project save/load and

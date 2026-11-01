@@ -136,9 +136,8 @@ class Probe:
         self.results = {}
 
     def machine(self):
-        m = Machine(lambda: self.symbols.copy(), artifact_root=self.artifacts)
-        m.instruction_limit = lambda name: 300000
-        return m
+        return Machine(lambda: self.symbols.copy(), artifact_root=self.artifacts,
+                       instruction_budget=300_000)
 
     def measure(self, name, m, call):
         total = 0

@@ -1,7 +1,18 @@
 """Shared virtual-project fixture and MIDI capture decoder for module gates."""
 import re
 
-def fixture(source, dest, arp=False, leader=0, offsets=None, voices=False):
+def fixture(source, dest, arp=False, leader=0, offsets=None, voices=False, *, profile='native'):
+    """Prepare the shared native fixture, or opt into fresh Follow settings.
+
+    Native preserves the template's KEY and the legacy blank-field defaults.
+    Follow uses its packed register defaults and KEY OFF; scale-specific cases
+    can set KEY explicitly after preparation.
+    """
+    if profile not in ('native', 'follow'):
+        raise ValueError(f'unknown MIDI fixture profile: {profile!r}')
+    settings = ((3,0),(5,0),(12,0),(13,3),(15,2),(16,0),(18,0),(19,0))
+    if profile == 'follow':
+        settings = ((3,0),(5,0),(12,0),(13,35),(15,3),(16,0),(17,0),(18,0),(19,0))
     import ab_fixture
     from hw import ot_project as otp
     ab_fixture.prepare(source, dest)
@@ -30,9 +41,8 @@ def fixture(source, dest, arp=False, leader=0, offsets=None, voices=False):
                         data[at+12] = 71  # whole-track TRAN +7; unlocked steps inherit
                     channel = {7: 13, 1: 5, 2: 3}.get(t, 0) if leader == 7 else t + 1
                     data[base + 0x4e2 + 36*t] = channel if t in steps else 0
-                    # Fresh native custom settings, independent of the template.
-                    # The stock control ignores/clamps these blank SETUP fields.
-                    for field,value in ((3,0),(5,0),(12,0),(13,35),(15,3),(16,0),(17,0),(18,0),(19,0)):
+                    # Reset optional controls without silently clearing native KEY.
+                    for field,value in settings:
                         data[base + 0x4e2 + 36*t + field] = value
             for p in range(16):
                 # Explicit normal scale mode, 64-step cycle at 1x. Otherwise

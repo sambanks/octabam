@@ -44,7 +44,7 @@ def main():
     image=out/'candidate.bin';image.write_bytes((a.build_root/'out/mainos_bus.bin').read_bytes())
     f.ROOT=a.build_root
     sym=f.symbols();(out/'symbols.json').write_text(json.dumps(sym,indent=2)+'\n')
-    project=out/'project';fixture(a.project,project)
+    project=out/'project';fixture(a.project,project,profile='follow')
     for path in project.glob('bank*.work'):
         def mutate(data):
             for part in range(8):
