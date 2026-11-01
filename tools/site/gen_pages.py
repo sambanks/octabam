@@ -149,7 +149,7 @@ def screen_reference(m) -> list[str]:
 
 
 def directory_page(mods, manual_page: dict) -> str:
-    """The feature directory: first what is in Octabam v0.1, by the manual's sections, each linked to its
+    """The feature directory: first what is in the release, by the manual's sections, each linked to its
     manual page; then every other contributed module by category, each linked to its page here."""
     import gen_manual
     import release
