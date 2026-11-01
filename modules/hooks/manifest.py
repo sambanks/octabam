@@ -130,7 +130,25 @@ ICON_STOCK = H("41f9400c0cb8")          # lea 0x400c0cb8,%a0
 STATUS_ICON = (
     ("REC_TRIG_MUTE", "rtm_glyph"),
     ("REC THRESHOLD", "blink_gate"),
+    # last: on a track it manages, its ring (armed) or dot (overdubbing) is drawn over
+    # REC_TRIG_MUTE's mute dots and REC THRESHOLD's blink; elsewhere it folds nothing
+    ("FREE LOOP", "fl_glyph"),
 )
+
+# ---- rec_gate, icon_draw (codeless) ---------------------------------------
+# The step handler's recorder-trig test 0x4009d9a4 and the status icon
+# drawer 0x4004c00c, which FREE LOOP and REC_TRIG_MUTE both detour (jmp,
+# each replaying stock and jumping back). REC_TRIG_MUTE is pinned to its
+# author's bytes, so it goes last: FREE LOOP's detour stays and, built with
+# HK_REC_GATE / HK_ICON_DRAW (its own defsyms, FREE LOOP's select), hands on
+# to rtm_gate / rtm_draw where it replayed stock. The gate is an AND: a
+# FREE / GRID track's recorder trig fires only when FREE LOOP arms it and
+# REC_TRIG_MUTE has not muted it. The drawer: FREE LOOP's states 10..13,
+# then REC_TRIG_MUTE's 8 / 9 (state values disjoint by design).
+REC_GATE_SITE = 0x4009D9A4
+ICON_DRAW_SITE = 0x4004C00C
+REC_GATE = (("FREE LOOP", "fl_gate_stub"), ("REC_TRIG_MUTE", "rtm_gate"))
+ICON_DRAW = (("FREE LOOP", "fl_draw"), ("REC_TRIG_MUTE", "rtm_draw"))
 
 
 # ---- frame_tail, frame_entry, boot -----------------------------------------
@@ -314,12 +332,13 @@ def _mc_overrides(modules):
 
 BRIDGES = {"track_key": TRACK_KEY, "status_icon": STATUS_ICON, "frame_tail": FRAME_TAIL,
            "frame_entry": FRAME_ENTRY, "boot": BOOT, "chrom_pitch": CHROM_PITCH,
-           "chromatic": CHROMATIC, "machine_rows": MACHINE_ROWS}
+           "chromatic": CHROMATIC, "machine_rows": MACHINE_ROWS,
+           "rec_gate": REC_GATE, "icon_draw": ICON_DRAW}
 # The flag each bridge sets in its participants' remix.inc (flags_inc).
 FLAGS = {"frame_tail": "HK_FRAME_TAIL", "frame_entry": "HK_FRAME_ENTRY", "boot": "HK_BOOT",
          "chrom_pitch": "HK_CHROM_PITCH", "machine_rows": "HK_MACHINE_ROWS"}
 # Bridges that need no code of HOOKS's own: a participant's flagged build does it.
-CODELESS = {"chrom_pitch"}
+CODELESS = {"chrom_pitch", "rec_gate", "icon_draw"}
 
 
 _STORE_PARTS = runpy.run_path(str(Path(__file__).resolve().parents[1] / "store" / "parts.py"))
@@ -451,6 +470,10 @@ def select(modules):
             overrides += [Override(site, key) for key, _sym in _present(BRIDGES[b], modules)]
     if "chrom_pitch" in on:
         overrides.append(Override(PITCH_SITE, "SCALE QUANTIZER"))   # OCTA303's detour stays
+    if "rec_gate" in on:
+        overrides.append(Override(REC_GATE_SITE, "REC_TRIG_MUTE"))  # FREE LOOP's detour stays
+    if "icon_draw" in on:
+        overrides.append(Override(ICON_DRAW_SITE, "REC_TRIG_MUTE"))
     if "chromatic" in on:
         for site, stock, sym in CHROMATIC_SITES:
             detours.append(Detour(site, stock, "hooks", sym,

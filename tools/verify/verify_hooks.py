@@ -627,6 +627,72 @@ def machines(on=("ANALOG BD", "OCTA303")):
                    f"and its shadow, from every starting machine{f' ({bad})' if bad else ''}")
 
 
+def free_loop():
+    """rec_gate and icon_draw (codeless), under Unicorn: FREE LOOP built with
+    HK_REC_GATE / HK_ICON_DRAW (its select) and REC_TRIG_MUTE, linked as the
+    platform links them. The recorder-trig test is an AND of the two; the
+    drawer draws FREE LOOP's states 10..13, then REC_TRIG_MUTE's 8 / 9."""
+    from unicorn import m68k_const as mc
+    from remix.schema import apply_select
+    known = registry.modules()
+    keys = {"FREE LOOP", "REC_TRIG_MUTE", "STORE", "HOOKS"}
+    units = [(k, u) for k in ("FREE LOOP", "REC_TRIG_MUTE") for u in apply_select(known[k], keys).linked]
+    with tempfile.TemporaryDirectory(prefix="octabam-hooks-fl-") as td:
+        segs, sym = _link_units(Path(td), keys, units)
+    u = _uc(segs)
+    u.mem_map(0x80000000, 0x100000)
+    STACK, NO_TRIG, TRIG = 0x47008000, 0x4009DA16, 0x4009D9AE
+    GO, BLIT, SKIP = 0x4004C012, 0x4004C024, 0x4004C02A
+    for stop in (NO_TRIG, TRIG, GO, BLIT, SKIP):
+        u.mem_write(stop, b"\x4e\x71")
+    mask = sym.get("RTM_MASK", 0x400D7C3A)
+    regs = [getattr(mc, f"UC_M68K_REG_D{i}") for i in range(8)] + [getattr(mc, f"UC_M68K_REG_A{i}") for i in range(7)]
+
+    def run(entry, stops, r):
+        for x in regs:
+            u.reg_write(x, 0)
+        for i, v in r.items():
+            u.reg_write(regs[i], v)
+        u.reg_write(mc.UC_M68K_REG_SR, 0x2000)
+        u.reg_write(mc.UC_M68K_REG_A7, STACK)
+        pc = None
+        for stop in stops:          # unicorn stops at one address: try each until one is reached
+            try:
+                u.emu_start(entry, stop, count=200000)
+            except Exception:
+                return None, None
+            pc = u.reg_read(mc.UC_M68K_REG_PC)
+            if pc == stop:
+                break
+        return pc, u.reg_read(regs[3])
+
+    bad = n = 0
+    for role in (0, 1):                     # OFF; GRID, not armed: FREE LOOP holds its trig back
+        for muted in (0, 1):
+            for d3 in (0, 0x5000):
+                u.mem_write(sym["fl_cfg"], bytes(1098))
+                u.mem_write(sym["fl_st"], bytes(176))
+                u.mem_write(sym["fl_cfg"] + 2, bytes([role]))                # track 2's ROLE
+                u.mem_write(mask, bytes([0x04 if muted else 0]))             # track 2 muted
+                want = TRIG if d3 and not role and not muted else NO_TRIG
+                pc, _ = run(sym["fl_gate_stub"], (want, NO_TRIG if want == TRIG else TRIG), {3: d3, 7: 2})
+                n += 1
+                bad += pc != want or u.reg_read(regs[2]) != 0x91A
+    check(bad == 0, f"rec_gate: {n} cases -- a recorder trig fires only when FREE LOOP's role lets it and "
+                    f"REC_TRIG_MUTE has not muted the track; d2 = 0x91a on both exits")
+    bad = n = 0
+    descs = {8: sym.get("D_DOTSS"), 9: sym.get("D_DOTSP"), 10: sym["fl_ring_stop"], 11: sym["fl_ring_play"],
+             12: sym["fl_dot_stop"], 13: sym["fl_dot_play"]}
+    for state in (0, 1, 3, 8, 9, 10, 11, 12, 13, 14):
+        want = GO if state == 3 else BLIT if state in descs else SKIP
+        pc, _ = run(sym["fl_draw"], (want,) + tuple(x for x in (GO, BLIT, SKIP) if x != want), {12: state})
+        drawn = int.from_bytes(u.mem_read(u.reg_read(mc.UC_M68K_REG_A7), 4), "big") if pc == BLIT else None
+        n += 1
+        bad += pc != want or (pc == BLIT and descs[state] is not None and drawn != descs[state])
+    check(bad == 0, f"icon_draw: {n} states -- 3 stock's, 10..13 FREE LOOP's marks, 8 / 9 REC_TRIG_MUTE's mute "
+                    f"dots, any other nothing drawn")
+
+
 def installed(name):
     img_path = ROOT / "out/mainos_bus.bin"
     raw = ROOT / "out/raw/section_3_MAIN_OS.bin"
@@ -744,6 +810,8 @@ def main():
     for on in (("ANALOG BD", "OCTA303"), ("OCTA303", "CX OSC"), ("ANALOG BD", "CX OSC"),
                ("ANALOG BD", "OCTA303", "CX OSC")):
         machines(on)
+    print("verify_hooks: FREE LOOP beside REC_TRIG_MUTE under Unicorn")
+    free_loop()
     print(f"verify_hooks: installed ({name})")
     installed(name)
     print(f"verify_hooks: {'all passed' if not fails else f'{fails} failed'}")
