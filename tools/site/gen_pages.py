@@ -149,14 +149,16 @@ def screen_reference(m) -> list[str]:
 
 
 def directory_page(mods, manual_page: dict) -> str:
-    """The feature directory: first what is in Octabam v0.1, by the manual's sections, each linked to its
+    """The feature directory: first what is in the release, by the manual's sections, each linked to its
     manual page; then every other contributed module by category, each linked to its page here."""
     import gen_manual
+    import release
+    v = release.VERSION
     lines = ["# Feature Directory", "",
-             "Every feature the project has. The first part is what is in Octabam v0.1, with a page in the "
+             f"Every feature the project has. The first part is what is in Octabam {v}, with a page in the "
              "[manual](manual/octabam/index.md) for each; the second part is the rest, with a page here for each. "
              "The stock effects are described in Elektron's own manual.", "",
-             "## In Octabam v0.1", ""]
+             f"## In Octabam {v}", ""]
     mine = {k: m for k, m in mods.items() if k in manual_page and not m.is_stock}
     for folder, title in gen_manual.SECTIONS:
         ms = sorted((m for m in mine.values()
@@ -165,7 +167,7 @@ def directory_page(mods, manual_page: dict) -> str:
         if ms:
             lines += [f"### {title}", "", "| Feature | Author |", "|---|---|"]
             lines += [f"| [{_label(m)}](manual/{manual_page[m.key]}) | {_author(m)} |" for m in ms] + [""]
-    lines += ["## Not in Octabam v0.1", ""]
+    lines += [f"## Not in Octabam {v}", ""]
     for cat, ms in index.by_category(mods).items():
         ms = [m for m in ms if not m.is_stock and m.key not in manual_page]
         if not ms:
@@ -184,10 +186,12 @@ def module_page(m, mods, manual_page: dict) -> str:
         who = f'<a href="{html.escape(m.author_url)}">{who}</a>'
     lines = ["---", "not_in_nav: true", "---", "", f"# {_label(m)}", "", f'<p class="byline">By {who}</p>', ""]
     target = manual_page.get(m.key)
+    import release
+    v = release.VERSION
     if target:
-        lines += [f"This feature is in Octabam v0.1: see its [manual page](../manual/{target}).", ""]
+        lines += [f"This feature is in Octabam {v}: see its [manual page](../manual/{target}).", ""]
     else:
-        lines += ['!!! note "Not in Octabam v0.1"', "    This feature is not in the v0.1 image.", ""]
+        lines += [f'!!! note "Not in Octabam {v}"', f"    This feature is not in the {v} image.", ""]
     lines += hero(m)
     if fragment.is_file():
         lines += [f'--8<-- "usage/{m.name}.md"', ""]

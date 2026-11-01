@@ -19,7 +19,7 @@ We are getting close to our first stable releases now, so watch this space!
 Octabam is an unofficial community remixer for the Elektron Octatrack's
 operating system. It is not affiliated with Elektron. A **module** adds one
 feature; a **remix** is a named set of modules built into one image from
-your own copy of OS 1.40C. This site covers Octabam v0.1, one remix
+your own copy of OS 1.40C. This site covers Octabam v0.2, one remix
 ([what is in it](remix-octabam.md)); [Create your own remix](own-remix.md)
 covers choosing other modules.
 
@@ -41,7 +41,7 @@ covers choosing other modules.
 
 ## Status and testing
 
-Octabam is a community project and version 0.1 is its first release. If
+Octabam is a community project and version 0.1 was its first release; this site is version 0.2. If
 something misbehaves, see [Safety and Recovery](safety.md) and report it on
 GitHub Issues.
 
