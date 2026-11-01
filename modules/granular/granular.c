@@ -9,6 +9,7 @@ typedef struct {
     uint32_t cache_start;
     uint32_t cache_frames;
     uint32_t cache_data;
+    uint32_t subposition;
 } GrGrain;
 
 typedef struct {
@@ -55,12 +56,35 @@ typedef struct {
 #define PAGE_COUNT_OFFSET 0x09au
 #define PAGE_FORMATTERS_OFFSET 0x0cau
 #define PAGE_WIDGETS_OFFSET 0x0fau
+#define PAGE_HANDLERS_OFFSET 0x12au
 #define STOCK_RENDERER 0x40004008u
 #define POOL_READ_DIRECTION 1u
+#define PITCH_MIN 4u
+#define PITCH_MAX 124u
 
-GrTrack gr_state[TRACKS];
-uint8_t gr_page_descriptor[FLEX_PLAYBACK_SIZE];
-uint32_t gr_page_ready;
+/* Q16 rates: stock FLEX uses five raw units per semitone, centred on 64. */
+static const uint32_t gr_pitch_steps[PITCH_MAX - PITCH_MIN + 1u] = {
+    32768u, 33149u, 33534u, 33924u, 34318u, 34716u, 35120u, 35528u,
+    35941u, 36358u, 36781u, 37208u, 37641u, 38078u, 38520u, 38968u,
+    39421u, 39879u, 40342u, 40811u, 41285u, 41765u, 42250u, 42741u,
+    43238u, 43740u, 44248u, 44762u, 45283u, 45809u, 46341u, 46879u,
+    47424u, 47975u, 48533u, 49097u, 49667u, 50244u, 50828u, 51419u,
+    52016u, 52620u, 53232u, 53850u, 54476u, 55109u, 55749u, 56397u,
+    57052u, 57715u, 58386u, 59064u, 59751u, 60445u, 61147u, 61858u,
+    62576u, 63304u, 64039u, 64783u, 65536u, 66297u, 67068u, 67847u,
+    68635u, 69433u, 70240u, 71056u, 71882u, 72717u, 73562u, 74416u,
+    75281u, 76156u, 77041u, 77936u, 78841u, 79758u, 80684u, 81622u,
+    82570u, 83530u, 84500u, 85482u, 86475u, 87480u, 88497u, 89525u,
+    90565u, 91617u, 92682u, 93759u, 94848u, 95950u, 97065u, 98193u,
+    99334u, 100488u, 101656u, 102837u, 104032u, 105241u, 106464u, 107701u,
+    108952u, 110218u, 111499u, 112794u, 114105u, 115431u, 116772u, 118129u,
+    119501u, 120890u, 122295u, 123715u, 125153u, 126607u, 128078u, 129567u,
+    131072u,
+};
+
+GrTrack gr_state[TRACKS] = {0};
+uint8_t gr_page_descriptor[FLEX_PLAYBACK_SIZE] = {0};
+uint32_t gr_page_ready = 0;
 
 void gr_pool_read(uint32_t slot, uint32_t frame, uint32_t *data, uint32_t *frames);
 
@@ -108,6 +132,7 @@ uint32_t gr_resolve_page(uint32_t stock, uint32_t bank, uint32_t part,
     };
     static const uint8_t defaults[6] = {64, 0, 48, 64, 80, 0};
     volatile uint8_t *descriptor;
+    volatile uint8_t copied_byte;
     volatile uint32_t *words;
     uint32_t slot;
     uint32_t i;
@@ -120,8 +145,10 @@ uint32_t gr_resolve_page(uint32_t stock, uint32_t bank, uint32_t part,
 
     if (!gr_page_ready) {
         descriptor = (volatile uint8_t *)gr_page_descriptor;
-        for (i = 0; i < FLEX_PLAYBACK_SIZE; ++i)
-            descriptor[i] = ((volatile uint8_t *)FLEX_PLAYBACK)[i];
+        for (i = 0; i < FLEX_PLAYBACK_SIZE; ++i) {
+            copied_byte = ((volatile uint8_t *)FLEX_PLAYBACK)[i];
+            descriptor[i] = copied_byte;
+        }
 
         descriptor = (volatile uint8_t *)gr_page_descriptor;
         descriptor[PAGE_TITLE_OFFSET + 0] = 'G';
@@ -139,13 +166,17 @@ uint32_t gr_resolve_page(uint32_t stock, uint32_t bank, uint32_t part,
             descriptor[PAGE_DEFAULTS_OFFSET + i] = defaults[i];
         for (i = 0; i < 6u; ++i) {
             words = (volatile uint32_t *)(descriptor + PAGE_MIN_OFFSET + i * 4u);
-            *words = 0;
+            *words = i == 0u ? PITCH_MIN : 0u;
             words = (volatile uint32_t *)(descriptor + PAGE_COUNT_OFFSET + i * 4u);
-            *words = 128u;
+            *words = i == 0u ? PITCH_MAX - PITCH_MIN + 1u : 128u;
             words = (volatile uint32_t *)(descriptor + PAGE_FORMATTERS_OFFSET + i * 4u);
-            *words = 0;
+            if (i != 0u)
+                *words = 0;
             words = (volatile uint32_t *)(descriptor + PAGE_WIDGETS_OFFSET + i * 4u);
             *words = 0;
+            words = (volatile uint32_t *)(descriptor + PAGE_HANDLERS_OFFSET + i * 4u);
+            if (i != 0u)
+                *words = 0;
         }
         gr_page_ready = 1u;
     }
@@ -155,6 +186,15 @@ uint32_t gr_resolve_page(uint32_t stock, uint32_t bank, uint32_t part,
 static uint32_t gr_param(uint32_t parameters, uint32_t index)
 {
     return (*(volatile uint16_t *)(parameters + index * 2u) >> 8) & 127u;
+}
+
+static uint32_t gr_pitch_step(uint32_t pitch)
+{
+    if (pitch < PITCH_MIN)
+        pitch = PITCH_MIN;
+    if (pitch > PITCH_MAX)
+        pitch = PITCH_MAX;
+    return gr_pitch_steps[pitch - PITCH_MIN];
 }
 
 static uint32_t gr_sample_meta(GrTrack *state, uint32_t slot)
@@ -171,17 +211,15 @@ static uint32_t gr_sample_meta(GrTrack *state, uint32_t slot)
     return state->sample_frames != 0u;
 }
 
-static int16_t gr_read_channel(GrTrack *state, GrGrain *grain,
-                               uint32_t frame, uint32_t channel)
+static uint32_t gr_read_sample(GrTrack *state, GrGrain *grain, uint32_t frame)
 {
     uint32_t data;
     uint32_t frames;
-    uint32_t flags;
     uint32_t bytes_per_sample;
-    uint32_t channels;
     uint32_t byte_offset;
     volatile uint8_t *sample;
-    uint32_t raw;
+    uint32_t left;
+    uint32_t right;
 
     if (frame >= state->sample_frames)
         return 0;
@@ -195,24 +233,16 @@ static int16_t gr_read_channel(GrTrack *state, GrGrain *grain,
         grain->cache_data = data;
     }
 
-    flags = *(volatile uint32_t *)(POOL_STATE + state->slot * POOL_STATE_STRIDE);
-    bytes_per_sample = (flags & 2u) ? 2u : 3u;
-    channels = (flags & 1u) ? 2u : 1u;
-    if (channel >= channels)
-        channel = channels - 1u;
-    byte_offset = (frame - grain->cache_start) * state->bytes_per_frame +
-                  channel * bytes_per_sample;
+    byte_offset = (frame - grain->cache_start) * state->bytes_per_frame;
     sample = (volatile uint8_t *)(grain->cache_data + byte_offset);
-    if (bytes_per_sample == 2u) {
-        raw = ((uint32_t)sample[0] << 8) | sample[1];
-        return (int16_t)raw;
-    }
-    raw = ((uint32_t)sample[0] << 16) |
-          ((uint32_t)sample[1] << 8) | sample[2];
-    raw >>= 8;
-    if (raw & 0x8000u)
-        raw |= 0xffff0000u;
-    return (int16_t)raw;
+    /* Both pool formats are big-endian; interpolation uses their top 16 bits. */
+    left = ((uint32_t)sample[0] << 8) | sample[1];
+    if (state->bytes_per_frame < 4u)
+        return (left << 16) | left;
+    bytes_per_sample = state->bytes_per_frame / 2u;
+    right = ((uint32_t)sample[bytes_per_sample] << 8) |
+            sample[bytes_per_sample + 1u];
+    return (left << 16) | right;
 }
 
 static void gr_spawn(GrTrack *state, GrGrain *grain,
@@ -238,7 +268,8 @@ static void gr_spawn(GrTrack *state, GrGrain *grain,
         start = (int32_t)max_start;
 
     grain->position = (uint32_t)start << POSITION_SHIFT;
-    grain->step = 128u + pitch * 2u;
+    grain->step = pitch;
+    grain->subposition = 0u;
     grain->phase = 0u;
     grain->phase_step = 65536u / grain_frames;
     grain->remaining = grain_frames;
@@ -299,7 +330,7 @@ static void gr_mix(GrTrack *state, uint32_t parameters,
 {
     uint32_t count;
     uint32_t voice;
-    uint32_t pitch = gr_param(parameters, 0u);
+    uint32_t pitch = gr_pitch_step(gr_param(parameters, 0u));
     uint32_t i;
 
     gr_configure(state, parameters);
@@ -308,8 +339,7 @@ static void gr_mix(GrTrack *state, uint32_t parameters,
     count = *(volatile uint8_t *)(cursor + 3u);
     voice = VOICE_BASE + track * VOICE_STRIDE;
     for (i = 0; i < count; ++i) {
-        uint32_t left_weight = 0u;
-        uint32_t right_weight = 0u;
+        uint32_t total_weight = 0u;
         int32_t left_sum = 0;
         int32_t right_sum = 0;
         uint32_t g;
@@ -339,6 +369,9 @@ static void gr_mix(GrTrack *state, uint32_t parameters,
             uint32_t frame;
             uint32_t fraction;
             uint32_t weight;
+            uint32_t advance;
+            uint32_t first;
+            uint32_t second;
             int16_t l0;
             int16_t l1;
             int16_t r0;
@@ -348,32 +381,33 @@ static void gr_mix(GrTrack *state, uint32_t parameters,
                 continue;
             frame = grain->position >> POSITION_SHIFT;
             fraction = grain->position & (POSITION_ONE - 1u);
-            l0 = gr_read_channel(state, grain, frame, 0u);
-            l1 = gr_read_channel(state, grain, frame + 1u, 0u);
-            if (state->bytes_per_frame == 2u || state->bytes_per_frame == 3u) {
-                r0 = l0;
-                r1 = l1;
-            } else {
-                r0 = gr_read_channel(state, grain, frame, 1u);
-                r1 = gr_read_channel(state, grain, frame + 1u, 1u);
-            }
+            first = gr_read_sample(state, grain, frame);
+            second = fraction != 0u ?
+                     gr_read_sample(state, grain, frame + 1u) : first;
+            l0 = (int16_t)(first >> 16);
+            r0 = (int16_t)first;
+            l1 = (int16_t)(second >> 16);
+            r1 = (int16_t)second;
             left = gr_interpolate(l0, l1, fraction);
             right = gr_interpolate(r0, r1, fraction);
             weight = grain->phase < 32768u ?
                      grain->phase >> 8 : (65536u - grain->phase) >> 8;
             left_sum += left * (int32_t)weight;
             right_sum += right * (int32_t)weight;
-            left_weight += weight;
-            right_weight += weight;
-            grain->position += grain->step;
+            total_weight += weight;
+            advance = grain->subposition + grain->step;
+            grain->subposition = advance & 255u;
+            advance >>= 8;
             grain->phase += grain->phase_step;
             --grain->remaining;
-            if ((grain->position >> POSITION_SHIFT) >= state->sample_frames)
+            if (advance >= (state->sample_frames << POSITION_SHIFT) - grain->position)
                 grain->remaining = 0u;
+            else
+                grain->position += advance;
         }
 
-        left = left_weight ? left_sum / (int32_t)left_weight : 0;
-        right = right_weight ? right_sum / (int32_t)right_weight : 0;
+        left = total_weight ? left_sum / (int32_t)total_weight : 0;
+        right = total_weight ? right_sum / (int32_t)total_weight : 0;
         {
             volatile uint32_t *out =
                 (volatile uint32_t *)(cursor + 16u + i * 8u);

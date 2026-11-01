@@ -210,6 +210,9 @@ moment it costs real work, and add its line here.
 - [The stock Part validator clamps a stored FX2 id to 31](docs/contributing/TRAPS.md#trap-id-clamp) — a poke bypasses it, a project does not; `idspace.convert` raises the two immediates to 63; `verify_ids64_load` loads a project.
 - [A floating cave rounded past the clone window landed on the chooser list](docs/contributing/TRAPS.md#trap-cave-round) — `… not free` names the victim; the overflow fallback takes any floating cave ending past the limit, starting past DELAY's kept bytes.
 - [A DRAM clone's `CLONE_<key>` export is its staging address](docs/contributing/TRAPS.md#trap-dram-clone-stage) — repointed only at the end; compare runtime addresses from `_psyms`.
+- [A descriptor-copy test must check retained bytes](docs/contributing/TRAPS.md#trap-cf-copy) — materialize the copied byte; compare header/enables under both linked-code and real-port gates.
+- [A pre-load-step scene seed is overwritten by sequencer setup](docs/contributing/TRAPS.md#trap-scene-startup) — seed with `--poke` after setup; assert audio endpoints and actual FLEX pool format.
+- [Implicit C globals are not serialized DRAM boot data](docs/contributing/TRAPS.md#trap-cf-bss) — explicit zero initializers with `-fno-zero-initialized-in-bss`; check the payload and boot-mutable ranges.
 - [The machine list's key handlers clamp the cursor to 5](docs/contributing/TRAPS.md#trap-machine-clamp) — a sixth row fits by accident, a seventh needs the ten `moveq`s; a port key held 0.25 s repeats.
 - [Narrowing the port's DMA arm rule broke a gate whose image never moved](docs/contributing/TRAPS.md#trap-dma-arm) — a port change is every port gate's instrument; CI's cached passes hide it.
 

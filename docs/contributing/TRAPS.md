@@ -449,6 +449,13 @@ timing, so a local "clean" is still NOT evidence a bus timing defect is
 gone (a local red IS a defect). When local says clean and hardware says
 broken, believe the hardware and go looking for what the harness omits.
 
+GRANULAR's mixed-effect fixture needed the same distinction: DELAY/DARK REV
+can change the chain even if MODULATION/SPECTRUM never load. `dl_loaded`
+is set when a transfer is armed, not after the DSP accepts its checksum.
+`verify_granular_port` now isolates FX1 against the same FX2 settings and
+checks the published DSP entry, span and built code words on both cores;
+the bus fixture isolates CHARACTER against unchanged nonzero sends.
+
 <a name="trap-bus-zero-client"></a>
 
 ### A bus client that registers but contributes nothing steals everyone else's level
@@ -1488,3 +1495,47 @@ accepted `--watch-mem 0x80000008,4` and reported `0 write(s)` while the same
 script run directly logged the writes with their PCs. Measure writer PCs with a
 direct run (one script, one process); use scenarios for `--mem-dump` end
 states.
+
+<a name="trap-cf-copy"></a>
+
+### A descriptor-copy test must check the bytes the clone did not overwrite
+
+**A DESCRIPTOR-COPY TEST MUST CHECK THE BYTES THE CLONE DID NOT OVERWRITE.**
+GRANULAR's compiler combined its byte loop into a `move.b` whose source
+post-increment and indexed destination shared a register. Under Unicorn,
+the clone shifted by one byte; tests of the newly written title and knobs
+passed while the untouched header and enables were wrong. Materializing
+the source byte through a volatile temporary prevents that combined form.
+The linked-code and real-port granular gates now compare the retained
+header/tail with the user's stock descriptor and check each parameter's
+range, formatter and handler. This establishes the generated code under
+those instruments, not a claim about the chip's execution of the old form.
+
+<a name="trap-scene-startup"></a>
+
+### A pre-load-step scene seed can be overwritten by sequencer setup
+
+**A PRE-LOAD-STEP SCENE SEED CAN BE OVERWRITTEN BY SEQUENCER SETUP.**
+GRANULAR's scene gate wrote the A endpoint with `--step -:poke`, then
+heard 419.388 Hz instead of 300 Hz; the later B endpoint reached 600 Hz.
+The port executes '-' steps before its sequencer bank/Part and MAIN-level
+setup, which rewrites the same gain weights. Seed them with `--poke`
+after that setup, and use numbered steps for the later transition.
+`verify_granular_port` checks both endpoints in MAIN audio, not only a
+final parameter dump. Its 24-bit cases also set `LOAD_24BIT_FLEX=1` and
+assert the real pool flags: a 24-bit WAV with the setting off loaded a
+16-bit pool and never exercised the intended decoder.
+
+<a name="trap-cf-bss"></a>
+
+### Implicit C globals are not serialized DRAM boot data
+
+**IMPLICIT C GLOBALS ARE NOT SERIALIZED DRAM BOOT DATA.** GRANULAR's state
+and descriptor were implicit zero-initialized globals in `.bss`, outside
+`runtime.bin`. The port's zero-filled memory hid their missing boot bytes;
+the DRAM boot gate rejected the declared mutable ranges as exceeding the
+payload. `-fno-zero-initialized-in-bss` affects explicit initializers, not
+implicit ones: initialize those globals with `= {0}` or `= 0` so the
+compiler places their zeros in serialized `.data`. The linked GRANULAR
+gate checks the zeroed payload ranges before running, and
+`verify_dram_boot` checks their owners, extents and boot delivery.
