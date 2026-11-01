@@ -2,6 +2,7 @@
 """Exercise the linked GRANULAR renderer against synthetic FLEX pool pages."""
 from __future__ import annotations
 
+import math
 import pathlib
 import struct
 import subprocess
@@ -37,7 +38,8 @@ POOL_STATE, POOL_STATE_STRIDE = 0x46C922C4, 44
 POOL_DATA_BASE = 0x42100000
 HEADER, FP_REC, RS_REC = 0x80010000, 0x80011000, 0x80012000
 STOP, STACK = 0x10000, 0x20000
-TRACK_STATE_SIZE, TRACK_COUNT = 180, 8
+GRAIN_STATE_SIZE = 9 * 4
+TRACK_STATE_SIZE, TRACK_COUNT = 13 * 4 + 4 * GRAIN_STATE_SIZE, 8
 POOL_PAGE_FRAMES = 8
 PAGE_TABLE = 0x26000
 instruction_count = [0]
@@ -58,12 +60,11 @@ def check(label: str, ok: bool, detail: str = "") -> None:
 def map_range(uc: Uc, address: int, size: int) -> None:
     base = address & ~0xFFF
     end = (address + size + 0xFFF) & ~0xFFF
+    regions = list(uc.mem_regions())
     current = base
     while current < end:
-        try:
+        if not any(begin <= current <= finish for begin, finish, _ in regions):
             uc.mem_map(current, 0x1000)
-        except Exception:
-            pass
         current += 0x1000
 
 
@@ -82,7 +83,7 @@ def load_runtime():
         if len(fields) == 3
     }
     for symbol in ("gr_render", "gr_resolve_page", "gr_page", "gr_state",
-                   "gr_page_descriptor"):
+                   "gr_page_descriptor", "gr_page_ready"):
         if symbol not in symbols:
             fail(f"{symbol} missing from runtime.elf")
 
@@ -98,6 +99,15 @@ def load_runtime():
         16,
     )
     data = (RUNTIME / "runtime.bin").read_bytes()
+    for symbol, size in (
+        ("gr_state", TRACK_STATE_SIZE * TRACK_COUNT),
+        ("gr_page_descriptor", 0x192),
+        ("gr_page_ready", 4),
+    ):
+        offset = symbols[symbol] - base
+        check(f"{symbol} is initialized by the serialized loader payload",
+              0 <= offset and offset + size <= len(data)
+              and data[offset:offset + size] == bytes(size))
     uc = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
     uc.ctl_set_cpu_model(UC_CPU_M68K_CFV4E)
     map_range(uc, base, len(data) + 0x10000)
@@ -178,6 +188,11 @@ pool_calls = [0]
 pool_errors: list[str] = []
 
 
+def advance_stock_cursor(uc: Uc, address: int, _size: int, _data) -> None:
+    if address == STOCK_RENDER:
+        uc.mem_write(CURSOR_AT, struct.pack(">I", HEADER + 0x400))
+
+
 def emulate_pool_read(uc: Uc, address: int, _size: int, _data) -> None:
     if address != POOL_READ:
         return
@@ -241,6 +256,9 @@ def check_page_descriptor(uc: Uc, symbols: dict[str, int]) -> None:
     check("GRAN basename selects the FLEX descriptor clone", page == clone)
 
     page_bytes = bytes(uc.mem_read(clone, 0x192))
+    stock_bytes = bytes(uc.mem_read(FLEX_PAGE, 0x192))
+    check("stock descriptor header and enable fields are copied without a byte shift",
+          page_bytes[:9] == stock_bytes[:9] and page_bytes[0x142:] == stock_bytes[0x142:])
     check("clone title is GRANULAR", page_bytes[9:18] == b"GRANULAR\0")
     names = (
         b"PTCH\0\0SCAN\0\0SIZE\0\0SPEED\0"
@@ -253,11 +271,15 @@ def check_page_descriptor(uc: Uc, symbols: dict[str, int]) -> None:
     defaults = page_bytes[0x5E:0x64]
     formatters = struct.unpack_from(">6I", page_bytes, 0xCA)
     widgets = struct.unpack_from(">6I", page_bytes, 0xFA)
-    check("control ranges are 0..127 with six matching defaults",
-          minimums == (0,) * 6 and counts == (128,) * 6
+    handlers = struct.unpack_from(">6I", page_bytes, 0x12A)
+    check("PTCH keeps the FLEX range and the other controls are 0..127",
+          minimums == (4, 0, 0, 0, 0, 0) and counts == (121, 128, 128, 128, 128, 128)
           and defaults == bytes((64, 0, 48, 64, 80, 0)))
-    check("all six controls use the plain knob formatter",
-          formatters == (0,) * 6 and widgets == (0,) * 6)
+    check("PTCH retains stock's semitone formatter and knob handler",
+          formatters == (0x4003B4B0, 0, 0, 0, 0, 0)
+          and handlers == (0x40032D08, 0, 0, 0, 0, 0)
+          and widgets == (0,) * 6,
+          f"formatters={formatters} handlers={handlers}")
     enabled = struct.unpack_from(">I", page_bytes, 0x18E)[0]
     check("the stock FLEX page keeps all six encoder enable bits",
           all(((enabled >> (index * 4)) & 1) for index in range(6)))
@@ -273,6 +295,7 @@ def check_page_descriptor(uc: Uc, symbols: dict[str, int]) -> None:
 
 def check_render(uc: Uc, symbols: dict[str, int]) -> None:
     uc.hook_add(UC_HOOK_CODE, emulate_pool_read)
+    uc.hook_add(UC_HOOK_CODE, advance_stock_cursor)
     uc.hook_add(UC_HOOK_CODE, count_instruction)
     uc.mem_write(POOL_READ, b"\x4e\x75")
     mono = [-3000 + frame * 100 for frame in range(80)]
@@ -290,8 +313,17 @@ def check_render(uc: Uc, symbols: dict[str, int]) -> None:
           mono_output[0] == 0
           and mono_output[1:] == [sample * 256 for sample in mono[1:16]],
           f"pool reads={pool_calls[0]}")
+    check("the renderer uses the header captured before stock advances its cursor",
+          struct.unpack(">I", uc.mem_read(CURSOR_AT, 4))[0] == HEADER + 0x400
+          and any(mono_output[1:]))
+    check("stock's neutral carrier parameters do not overwrite granular controls",
+          bytes(uc.mem_read(FP_REC, 12)) ==
+          b"".join(struct.pack(">H", value << 8) for value in (64, 0, 0, 0, 127, 0)))
+    steps = struct.unpack(">121I", uc.mem_read(symbols["gr_pitch_steps"], 121 * 4))
+    check("all pitch coefficients match the exponential FLEX semitone mapping",
+          steps == tuple(round(65536 * math.pow(2, (raw - 64) / 60)) for raw in range(4, 125)))
     check("the renderer consumes the pool's page-aware reader",
-          pool_calls[0] >= 3 and not pool_errors,
+          pool_calls[0] >= 2 and not pool_errors,
           "; ".join(pool_errors) if pool_errors else f"{pool_calls[0]} page reads")
     state = symbols["gr_state"]
     density = struct.unpack(">I", uc.mem_read(state + 8 * 4, 4))[0]
@@ -303,7 +335,7 @@ def check_render(uc: Uc, symbols: dict[str, int]) -> None:
     render(uc, symbols, 0)
     render(uc, symbols, 0, end=15)
     active_grains = [
-        struct.unpack(">I", uc.mem_read(state + 13 * 4 + index * 32 + 16, 4))[0]
+        struct.unpack(">I", uc.mem_read(state + 13 * 4 + index * GRAIN_STATE_SIZE + 16, 4))[0]
         for index in range(4)
     ]
     next_grain = struct.unpack(">I", uc.mem_read(state + 11 * 4, 4))[0]
@@ -312,7 +344,7 @@ def check_render(uc: Uc, symbols: dict[str, int]) -> None:
     remaining = sum(active_grains)
     render(uc, symbols, 0)
     after_voice_end = [
-        struct.unpack(">I", uc.mem_read(state + 13 * 4 + index * 32 + 16, 4))[0]
+        struct.unpack(">I", uc.mem_read(state + 13 * 4 + index * GRAIN_STATE_SIZE + 16, 4))[0]
         for index in range(4)
     ]
     check("active grains finish without spawning after the FLEX voice ends",
@@ -320,7 +352,7 @@ def check_render(uc: Uc, symbols: dict[str, int]) -> None:
           struct.unpack(">I", uc.mem_read(state + 11 * 4, 4))[0] == next_grain)
 
     uc.mem_write(state, bytes(TRACK_STATE_SIZE * TRACK_COUNT))
-    set_controls(uc, [0, 0, 0, 64, 0, 0])
+    set_controls(uc, [4, 0, 0, 64, 0, 0])
     uc.mem_write(VOICE_BASE, b"\xff")
     render(uc, symbols, 0, trigger=True)
     half_speed_sample = sample24_at(uc, HEADER + 16 + 8)
@@ -328,6 +360,20 @@ def check_render(uc: Uc, symbols: dict[str, int]) -> None:
     check("PTCH changes grain rate independently of SPEED",
           half_speed_sample == (mono[0] + 50) * 256 and scan_position == 16 * 256,
           f"half-speed sample={half_speed_sample}, scan={scan_position >> 8}")
+
+    for raw, expected_step in ((0, 32768), (4, 32768), (64, 65536),
+                               (69, 69433), (124, 131072), (127, 131072)):
+        uc.mem_write(state, bytes(TRACK_STATE_SIZE * TRACK_COUNT))
+        set_controls(uc, [raw, 0, 0, 0, 0, 0])
+        uc.mem_write(VOICE_BASE, b"\xff")
+        render(uc, symbols, 0, trigger=True)
+        grain = state + 13 * 4
+        position, step = struct.unpack(">II", uc.mem_read(grain, 8))
+        remainder = struct.unpack(">I", uc.mem_read(grain + 32, 4))[0]
+        check(f"PTCH raw {raw}: exponential FLEX rate and fractional carry",
+              step == expected_step and position == 16 * expected_step // 256
+              and remainder == (16 * expected_step) % 256,
+              f"rate={step / 65536:.6f}")
 
     set_controls(uc, [64, 127, 0, 0, 0, 0])
     uc.mem_write(state, bytes(TRACK_STATE_SIZE * TRACK_COUNT))
@@ -346,7 +392,7 @@ def check_render(uc: Uc, symbols: dict[str, int]) -> None:
     for _ in range(4):
         render(uc, symbols, 0)
     second_grain_position = struct.unpack(
-        ">I", uc.mem_read(state + 13 * 4 + 32, 4)
+        ">I", uc.mem_read(state + 13 * 4 + GRAIN_STATE_SIZE, 4)
     )[0]
     check("SPEED advances the next grain independently of PTCH",
           second_grain_position == 32 * 256,
@@ -377,22 +423,48 @@ def check_render(uc: Uc, symbols: dict[str, int]) -> None:
         bytes_per_sample = 2 if bits == 16 else 3
         write_sample(uc, slot, track, b"GRANformat.wav", flags, 80,
                      bytes(raw_data), bytes_per_sample * channels)
-        uc.mem_write(state + track * TRACK_STATE_SIZE, bytes(TRACK_STATE_SIZE))
-        set_controls(uc, [64, 0, 0, 0, 0, 0])
-        uc.mem_write(VOICE_BASE + track * VOICE_STRIDE, b"\xff")
-        pool_calls[0] = 0
-        render(uc, symbols, track, trigger=True)
-        matches = True
-        for frame in range(1, 16):
-            left = sample24_at(uc, HEADER + 16 + frame * 8)
-            right = sample24_at(uc, HEADER + 20 + frame * 8)
-            expected_left, expected_right = expected_samples[frame]
-            if channels == 1:
-                expected_right = expected_left
-            matches &= left == expected_left and right == expected_right
-        label = f"{'mono' if channels == 1 else 'stereo'} {bits}-bit"
-        check(f"{label} source renders across pool pages",
-              matches and pool_calls[0] >= 3, f"pool reads={pool_calls[0]}")
+        for pitch in (64, 69):
+            uc.mem_write(state + track * TRACK_STATE_SIZE, bytes(TRACK_STATE_SIZE))
+            set_controls(uc, [pitch, 0, 0, 0, 0, 0])
+            uc.mem_write(VOICE_BASE + track * VOICE_STRIDE, b"\xff")
+            pool_calls[0] = 0
+            render(uc, symbols, track, trigger=True)
+            step = round(65536 * math.pow(2, (pitch - 64) / 60))
+            matches = True
+            for frame in range(1, 16):
+                position = frame * step >> 8
+                index, fraction = position >> 8, position & 255
+                expected = []
+                for channel in range(2):
+                    first = expected_samples[index][channel] // 256
+                    second = expected_samples[index + 1][channel] // 256
+                    expected.append((first + ((second - first) * fraction >> 8)) * 256)
+                if channels == 1:
+                    expected[1] = expected[0]
+                left = sample24_at(uc, HEADER + 16 + frame * 8)
+                right = sample24_at(uc, HEADER + 20 + frame * 8)
+                matches &= left == expected[0] and right == expected[1]
+            label = f"{'mono' if channels == 1 else 'stereo'} {bits}-bit, PTCH {pitch}"
+            check(f"{label} interpolates exactly across pool pages",
+                  matches and pool_calls[0] >= 2, f"pool reads={pool_calls[0]}")
+
+    uc.mem_write(state, bytes(TRACK_STATE_SIZE * TRACK_COUNT))
+    limits = bytearray(TRACK_STATE_SIZE)
+    struct.pack_into(">I", limits, 0, 1)
+    struct.pack_into(">I", limits, 4, 2)
+    struct.pack_into(">I", limits, 8, 0xFFFFFF)
+    struct.pack_into(">I", limits, 12, 2)
+    struct.pack_into(">I", limits, 13 * 4, 0xFFFFFE00)
+    struct.pack_into(">I", limits, 13 * 4 + 4, 131072)
+    struct.pack_into(">I", limits, 13 * 4 + 16, 2)
+    uc.mem_write(state, bytes(limits))
+    uc.mem_write(VOICE_BASE, b"\x00")
+    set_controls(uc, [124, 0, 0, 0, 0, 0])
+    render(uc, symbols, 0, end=1)
+    position = struct.unpack(">I", uc.mem_read(state + 13 * 4, 4))[0]
+    remaining = struct.unpack(">I", uc.mem_read(state + 13 * 4 + 16, 4))[0]
+    check("the longest supported sample ends without a fixed-point position wrap",
+          position == 0xFFFFFE00 and remaining == 0)
 
     write_sample(uc, 3, 1, b"OTHERstereo.wav", 3, 80, bytes(raw_data), 6)
     uc.mem_write(symbols["gr_state"] + TRACK_STATE_SIZE, bytes(TRACK_STATE_SIZE))

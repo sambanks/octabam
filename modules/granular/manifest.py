@@ -10,11 +10,12 @@ MODULE = Module(
     author="sambanks/octabam",
     author_url="https://github.com/sambanks/octabam",
     doc="Four-grain sample source on FLEX tracks whose sample name begins GRAN.",
-    proof=Proof.CHECK,
+    proof=Proof.PORT,
     proof_note=(
-        "Granular image built and booted to the RTOS handoff under the ColdFire port; "
-        "synthetic-source gate runs under Unicorn; real-firmware port run with a generated project (controls, retrigger, MIDI Stop, stock passthrough); full make check and hardware testing "
-        "not run."
+        "Linked ABI/arithmetic and serialized initialization, actual DRAM boot, and "
+        "generated-project firmware audio are port-gated: musical pitch, true mono/stereo "
+        "16/24-bit pools, pitch locks/scenes/LFO, retrigger/Stop, stock identity and "
+        "clean four-reference MAIN output. Not hardware-qualified; no full make check."
     ),
     linked=(
         Linked(
@@ -22,7 +23,7 @@ MODULE = Module(
             "modules/granular/granular.s",
             dram=True,
             boot_mutable=(
-                ("gr_state", 8 * (13 * 4 + 4 * 8 * 4)),
+                ("gr_state", 8 * (13 * 4 + 4 * 9 * 4)),
                 ("gr_page_descriptor", 0x192),
                 ("gr_page_ready", 4),
             ),
@@ -53,8 +54,10 @@ MODULE = Module(
         ("OCTA303", "both replace the FLEX renderer and playback-page resolver"),
         ("ANALOG BD", "both replace the FLEX renderer"),
         ("BLACKPYRAMIDS_303", "both replace the FLEX renderer and playback-page resolver"),
+        ("CX OSC", "both replace the FLEX renderer and playback-page resolver"),
     ),
     gates=(
         Gate("tools/verify/verify_granular.py", remix_arg=False, venv=True),
+        Gate("tools/verify/verify_granular_port.py", stage="image", venv=True),
     ),
 )

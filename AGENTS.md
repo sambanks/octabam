@@ -240,6 +240,9 @@ moment it costs real work, and add its line here.
 - [A floating cave rounded past the clone window landed on the chooser list](docs/contributing/TRAPS.md#trap-cave-round) — `… not free` names the victim; the overflow fallback takes any floating cave ending past the limit, starting past DELAY's kept bytes.
 - [A DRAM clone's `CLONE_<key>` export is its staging address](docs/contributing/TRAPS.md#trap-dram-clone-stage) — repointed only at the end; compare runtime addresses from `_psyms`.
 - [A runtime's own bytes can spell the clones' staging range](docs/contributing/TRAPS.md#trap-staging-coincidence) — the build moves staging and re-checks; a word that moves with it is stale.
+- [A descriptor-copy test must check retained bytes](docs/contributing/TRAPS.md#trap-cf-copy) — materialize the copied byte; compare header/enables under both linked-code and real-port gates.
+- [A pre-load-step scene seed is overwritten by sequencer setup](docs/contributing/TRAPS.md#trap-scene-startup) — seed with `--poke` after setup; assert audio endpoints and actual FLEX pool format.
+- [Implicit C globals are not serialized DRAM boot data](docs/contributing/TRAPS.md#trap-cf-bss) — explicit zero initializers with `-fno-zero-initialized-in-bss`; check the payload and boot-mutable ranges.
 - [The machine list's key handlers clamp the cursor to 5](docs/contributing/TRAPS.md#trap-machine-clamp) — a sixth row fits by accident, a seventh needs the ten `moveq`s; a port key held 0.25 s repeats.
 - [Narrowing the port's DMA arm rule broke a gate whose image never moved](docs/contributing/TRAPS.md#trap-dma-arm) — a port change is every port gate's instrument; CI's cached passes hide it.
 - [A wall-clock timeout in a port gate failed on a loaded runner](docs/contributing/TRAPS.md#trap-wall-timeout) — the same tree passed on its PR and failed on main; under the port, waits and settles are emulated time (`Events(clock=)`, `MenuPort.run` finishes a capped slice).
