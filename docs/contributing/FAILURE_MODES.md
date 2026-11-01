@@ -756,3 +756,66 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   a stock fallback (`fb_init` unbound) as soon as a registry module was left
   out, so no image with one had reached a unit.
 - **Check:** `tools/remix/selftest.py` probes the refusal.
+
+## CX OSC in the image: the DSP frame loop stops when a host reads the USB audio, with a continuous clock and a program change before START ✅ cause isolated, mechanism open, CX OSC left out of `octabam`
+
+- **Seen:** 1 Nov 2026, Sam's MKII, `ot_matrix.py run` on `OCTABAMS1` (octabam at `5f8e779f` with MODULATION, SPECTRUM,
+  CHARACTER, TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR demand-loaded, and the 14 extra ColdFire modules), `SFX_01`
+  from `ot_suite.py build`. `fx01` stopped at layout 3: `rms -43.7`, CoreAudio `err=-10863` on the host, then
+  `USBError [Errno 19] No such device`. The unit was frozen and needed a power-cycle. Three further `--only` runs: `0,3` clean, `0-3` and
+  `0,1` (BASE, then FILTER FX2 def) stopped it; the level fell to about -45 dB first.
+- **After a stop:** `load_meter.healthy()` gives "the DSP's frame count advances 0 a second" while the frame interrupt
+  runs at 2,756 a second; every LOAD METER figure is then stale. The input LEDs A, B and D were solid yellow or
+  orange (Sam), the display worked, the sequencer froze on step 1 at PLAY. The LED reading is inferred to be the
+  input levels frozen with the DSP; not checked.
+- **Recipe** (`tools/hw/ot_dspwatch.py`, suite phase `dsp-watch`): STOP, 0.3 s, program change, 0.8 s, START, 12 s of
+  play, STOP, 3 s rest, repeated; the DSP record count (`dsp.seq`, about 2,800 a second when running) polled at 20 Hz.
+  On `T3` (the stations only, CX OSC in the image):
+
+  | clock | host USB audio capture | program change | cycles | stalls |
+  |---|---|---|---|---|
+  | continuous (one thread) | open (20 ch, TRACKS PRE) | alternating 0 and 1 | 5, 2 and 1 (three runs) | 3, at 0.035 s, 1.2 s and 0.048 s after START (the last with TRACKS OFF, 4 ch) |
+  | continuous | none | alternating | 20 | 0 |
+  | continuous | open | 1, every cycle | 20 | 0 |
+  | continuous | open | none (STOP and START only) | 12 | 0 |
+  | restarted per cycle | open | alternating | 11 (a stall in cycle 0, then 10 clean) | 1 (8.04 s after START) |
+  | restarted per cycle | none, or open with 6 s of play | alternating | 10 and 10 | 0 |
+
+  A stall is either the record count stopping or a LOAD METER read timing out (`Errno 60`).
+- **Bisect** (recipe, 20 cycles, TRACKS PRE; `remixes/test/` names in parentheses). Stalled: `OCTABAMS1`, `N1` (without
+  SIDECHAIN_COMPRESSOR), `T3` (stations only), `P1` (without PATTERN MUTE), `Q1` (`L1` plus OCTA303, MORPH, FX2 LOCK,
+  CX OSC: the DSP stopped about 3 s after it started, before any probe), `Q2` (`L1` plus OCTA303 and CX OSC: at the first
+  program change). Clean (2,756 records a second): `F1` (27 Oct), `L1` (`F1`'s module list on today's code), `H1`, `Q3`
+  (OCTA303 alone), `X1` (all 14 extra ColdFire modules but CX OSC), `Y1` (`OCTABAMS1` without CX OSC), `R3`. The
+  stalling images read 2,745 to 2,748 records a second at rest.
+- **Established:** CX OSC is in every stalling image and in none of the clean ones; `OCTABAMS1` without it (`Y1`) is
+  clean. TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR are not implicated.
+- **Not established:** the mechanism (CX OSC chains its machine row with OCTA303 on DRAM, `HOOKS machine_rows`); whether
+  CX OSC alone stalls (`Q2` had both); why the host's audio capture, the continuous clock and a changed program are
+  all needed.
+- **Fix:** CX OSC is out of `octabam` ([the 0.1 scope](../../remixes/octabam/README.md)).
+
+## Program changes left unapplied in a loader soak; images with STEM REC, VARISPEED, SCOPE, MIDI SCALES or RND NAME 🟡 module group found, individual modules not all separated, those five left out of `octabam`
+
+- **Probe:** `ot_matrix.py switch --pairs 15:12,12:15,15:0,0:15` repeated 8 times (32 transitions between MODULATION FX2
+  def, PLATE REV FX2 def and BASE; the program change is sent 2 s after START and lands at the pattern end, 8 s),
+  USB audio captured, TRACKS PRE, `SFX_01`. A transition is unapplied when the DSP busy after it stays at the previous
+  layout's figure; the silence reads 1,480 ms, the ColdFire longest run in the window about 240 us (a plain switch:
+  340 ms and 440 to 500 us).
+- **Unapplied in 32:** `F1` 0, `L1` 0, `A1` (`L1` plus PATTERN MUTE and TRACK PATTERNS) 0, `H2` (`L1` plus OCTA303, MORPH,
+  REC THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, FX2 LOCK) 0, `K1` (the stations, PATTERN MUTE, TRACK PATTERNS and
+  those seven) 0; `C1` (`L1` plus STEM REC) 2, `B1` (STEM REC and VARISPEED) 2, `H1` (`L1` plus PATTERN MUTE, STEM REC,
+  SCOPE, TRACK PATTERNS, VARISPEED, MIDI SCALES, RND NAME) 5, `R2` (the extra ColdFire modules but CX OSC and STEM REC)
+  4. `R1` (all 14 extra ColdFire modules but CX OSC): the unit stopped answering USB within 3 transitions of a
+  soak and within 10 of `loader01`; `bad 0` in every transition of every image.
+- **Common to all images:** 340 ms of silence and a ColdFire spike to 440 to 500 us (136 % of the 362.8 us frame) at every
+  applied switch, on `F1` too; the DSP busy figure and the loader logs show the effect loading. `HARDWARE_MATRIX.md`
+  records no silence reaching 40 ms at switches with resident effects.
+- **Also seen on `R1`:** `fx01` stopped at layout 24 (MODULATION FX2 mode3+dear), the DSP frame count 0 a second, no
+  input LEDs lit, the sequencer frozen on step 1; layouts 0 and 24, 16 to 24, and 12 to 24 then ran clean, and a full
+  rerun passed all 32. One crash in four runs that reached layout 24.
+- **Not established:** which of STEM REC, VARISPEED, SCOPE, MIDI SCALES and RND NAME cause the unapplied changes in `R2`
+  (only STEM REC is shown alone); whether the load, the USB MIDI receive path or a hook drops the program change.
+  The module sets are consistent with the count rising with the number of ColdFire modules; that is an inference.
+- **Fix:** those five modules are left out of `octabam`; `R3` (`K1`'s set) applied 18 of 18 `loader01` transitions and
+  the 2 of `loader02`.

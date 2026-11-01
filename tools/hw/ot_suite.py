@@ -108,6 +108,11 @@ def build(a):
         sys.stdout.write(r.stdout)
         if r.returncode:
             sys.exit(r.stderr or f"stamp {name} failed")
+        if name == "SDJ":
+            # ot_djump.py models 16-step patterns; the stimuli projects' patterns are 64 steps (a toggle-off landing is at 64)
+            import ot_project as P
+            for pat in (0, 1):
+                P.set_pattern_scale(dest / name, 1, pat, 16, "1X", guard=False)
     suite = {"remix": a.remix, "src": str(a.src), "projects": {"SFX": nproj},
              "layouts": names, "where": {n: list(v) for n, v in locate(names).items()},
              "transitions": {str(k): v for k, v in transitions(names, a.remix).items()},
@@ -128,6 +133,9 @@ def phases(suite):
              minutes=1, cmd="{py} {hw}/usb_transport_probe.py"),
         dict(id="pre-usb", title="USB audio ring counters", project="SFX_01", needs="",
              minutes=1, cmd="{py} {hw}/usb_counters.py"),
+        dict(id="dsp-watch", title="DSP frame count through program change + START with a continuous clock and the USB audio capture open",
+             project="SFX_01", needs="USB TRACKS PRE (the shipped setting)", minutes=6,
+             cmd="{py} {hw}/ot_dspwatch.py --cycles 20 --audio --continuous-clock --programs 0,1 --play 12 --out {out}/{id}.json"),
     ]
     for k in range(1, n + 1):
         ph.append(dict(id=f"fx{k:02d}", title=f"effect layouts, project SFX_{k:02d}", project=f"SFX_{k:02d}", needs="",
@@ -183,6 +191,8 @@ def cmd_run(a):
     out = OUT / a.label
     out.mkdir(parents=True, exist_ok=True)
     want = set(a.phase.split(",")) if a.phase else None
+    sumf = out / "summary.json"
+    prev = json.loads(sumf.read_text()) if sumf.exists() else []
     rows, loaded = [], None
     for p in phases(suite):
         if want and p["id"] not in want:
@@ -204,7 +214,8 @@ def cmd_run(a):
         rows.append(dict(id=p["id"], title=p["title"], project=p["project"], rc=r.returncode,
                          seconds=round(time.time() - t0), tail=(r.stdout + r.stderr).strip().splitlines()[-6:]))
         print(f"   {'PASS' if r.returncode == 0 else 'FAIL'} rc={r.returncode} {rows[-1]['seconds']} s -> {out / (p['id'] + '.log')}")
-        (out / "summary.json").write_text(json.dumps(rows, indent=1))
+        merged = [r for r in prev if r["id"] not in {x["id"] for x in rows}] + rows
+        sumf.write_text(json.dumps(merged, indent=1))
         if r.returncode and not a.keep_going:
             print("   stopped (power-cycle the unit, read FAILURE_MODES.md); --keep-going continues")
             break
