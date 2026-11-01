@@ -88,6 +88,22 @@ class LoaderRunner(unittest.TestCase):
         process.terminate.assert_called_once()
         process.wait.assert_called_once_with(timeout=10)
 
+    def test_reuse_requires_matching_inputs_script_and_finished_outputs(self):
+        dump = self.out / "case_ids.bin"
+        dump.write_bytes(bytes(16))
+        log = self.out / "case.txt"
+        log.write_text("ended on quit\n")
+        script = "14000 quit\n"
+        args = ("case", True, {"case": script}, script, dump)
+        self.assertEqual(verify_dlload.reusable_text(*args), "ended on quit\n")
+        self.assertIsNone(verify_dlload.reusable_text("case", False, args[2], script, dump))
+        self.assertIsNone(verify_dlload.reusable_text("case", True, args[2], "7000 quit\n", dump))
+        dump.unlink()
+        self.assertIsNone(verify_dlload.reusable_text(*args))
+        dump.write_bytes(bytes(16))
+        log.write_text("M6a gate: PASS\n")
+        self.assertIsNone(verify_dlload.reusable_text(*args))
+
 
 if __name__ == "__main__":
     unittest.main()

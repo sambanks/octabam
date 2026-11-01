@@ -35,6 +35,10 @@ Cannot see: the hardware's host-write timing, other projects' use of X:0x2840..0
 At most two emulator scenarios run together (--jobs); each has a 900-second wall-clock
 limit (--timeout). Progress names each child and elapsed time. Failure or interruption
 stops the remaining children and retains their logs.
+The withdrawal scenario waits past the selected DLPUMP grace. A selected FX2 LOCK
+must leave chooser ids and loader homes unchanged, rather than accept a stock reverb.
+--reuse-runs requires identical rebuilt firmware, project work files and scenario
+script plus finished logs and id dumps; changed scenarios run again.
 """
 import argparse, json, os, pathlib, re, shutil, signal, subprocess, sys, time
 
@@ -61,6 +65,15 @@ def check(what, ok, detail=""):
 
 def poke(live, part, track, value):
     return f"{live + track:#x}={value:#x};{part + track:#x}={value:#x}"
+
+
+def reusable_text(tag, matching_inputs, old_scripts, script_text, dump):
+    log = OUT / f"{tag}.txt"
+    if not (matching_inputs and old_scripts.get(tag) == script_text
+            and log.is_file() and dump.is_file()):
+        return None
+    text = log.read_text(errors="replace")
+    return text if "ended on quit" in text else None
 
 
 def run_scenarios(commands, jobs, timeout):
@@ -122,6 +135,8 @@ def main():
     ap.add_argument("--ms", type=int, default=7000)
     ap.add_argument("--jobs", type=int, default=2, help="maximum simultaneous emulator scenarios")
     ap.add_argument("--timeout", type=int, default=900, help="wall-clock seconds per emulator scenario")
+    ap.add_argument("--reuse-runs", action="store_true",
+                    help="reuse finished runs only when the rebuilt image, project files and scenario script are unchanged")
     a = ap.parse_args()
     if a.jobs < 1 or a.timeout < 1:
         ap.error("--jobs and --timeout must be positive")
@@ -136,6 +151,9 @@ def main():
     if not EMU.is_file():
         print("  [SKIP] verify_dlload: no port binary (make emu-cf)"); return 0
     OUT.mkdir(parents=True, exist_ok=True)
+    old_image = (OUT / "mainos.bin").read_bytes() if a.reuse_runs and (OUT / "mainos.bin").exists() else None
+    old_project = {f.name: f.read_bytes() for f in (OUT / "project").glob("*.work")} if a.reuse_runs else {}
+    old_scripts = {f.stem: f.read_text() for f in OUT.glob("*.script")} if a.reuse_runs else {}
 
     env = dict(os.environ, REMIX=a.remix, XBUS="1", SPEC="1")
     env.setdefault("BUILD", "0")
@@ -147,6 +165,10 @@ def main():
     shutil.copy2(ROOT / "out/mainos_bus.bin", image)
     recs = list(json.loads((ROOT / "out/dsp/demand_records.json").read_text()).items())
     from remix import registry
+    selected = {m.key: m for m in registry.selected(registry.remix(a.remix))}
+    locked = "FX2 LOCK" in selected
+    grace_seconds = {"10 S": 10, "2 S": 2}[selected["DLPUMP"].build_values.get("GRACE", "10 S")]
+    print(f"  [INFO] selected FX2 lock={locked}; withdrawal grace={grace_seconds}s", flush=True)
     order = list(registry.remix(a.remix).window_demand)
     recs = [dict(next(r for key, r in recs if key == k), key=k) for k in order]
     rec = recs[0]
@@ -158,6 +180,8 @@ def main():
     for f in pathlib.Path(project).expanduser().iterdir():
         if f.is_file() and f.suffix.lower() == ".work":
             shutil.copy2(f, copy / f.name)
+    can_reuse = (old_image == image.read_bytes()
+                 and old_project == {f.name: f.read_bytes() for f in copy.glob("*.work")})
 
     # one effect a block: the window has four, so with more demand effects than that the ones past the fourth are
     # left out of `used` (each still loads and runs on its own: runs-b<k>, runs-a<k>)
@@ -217,6 +241,7 @@ def main():
         scenarios[tag] = (";".join(poke(FX1_LIVE, FX1_PART, t, rec["id"]) for t in tracks), [])
         watch[tag] = f"{core}:{rec['proc']:x}"
     commands = {}
+    reused = {}
     for tag, (first, later) in scenarios.items():
         card = OUT / f"{tag}.img"
         r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
@@ -240,8 +265,13 @@ def main():
             lines += [f"{a.ms - 800} key {KEYS['fx1']:#x} down", f"{a.ms - 760} key {KEYS['fx1']:#x} up"]
         # the script is read in order, so a quit that is earlier than the last key waits for it; after a pick that moves
         # an effect, the reload (the debounce, then three sends) needs a few seconds past the last key
-        lines.append(f"{(t + 3000) if tag in ('pick-reverb', 'pick-reverb-t4') else (3400 if tag == 'reverb-takes' else a.ms)} quit")
-        (OUT / f"{tag}.script").write_text("\n".join(lines) + "\n")
+        stop_ms = ((t + 3000) if tag in ('pick-reverb', 'pick-reverb-t4')
+                   else (3400 if tag == 'reverb-takes' else a.ms))
+        if tag == "withdrawn":
+            stop_ms = max(stop_ms, 2000 + grace_seconds * 1000 + 2000)
+        lines.append(f"{stop_ms} quit")
+        script_text = "\n".join(lines) + "\n"
+        (OUT / f"{tag}.script").write_text(script_text)
         dump = OUT / f"{tag}_ids.bin"
         peeks = ";".join(f"{c}:X:{STAGE:x},1;{c}:X:{0x33DA3 + 8 * k:x},8;{c}:P:{r['addr']:x},{len(r['words'])}"
                          for c in (0, 1) for k, r in enumerate(recs))
@@ -254,10 +284,16 @@ def main():
             cmd += ["--dsp-pcwatch", watch[tag]]
         if tag.startswith("pick") or tag in ("used", "blocked", "both-blocked", "stuck", "reverb-late", "plate-ok", "spring-ok"):
             cmd += ["--watch-pc", f"{TOAST:#x}"]
-        commands[tag] = list(map(str, cmd))
+        cached = reusable_text(tag, can_reuse, old_scripts, script_text, dump)
+        if cached is not None:
+            reused[tag] = cached
+            print(f"  [REUSE] {tag}: identical image/project/script and finished log", flush=True)
+        else:
+            commands[tag] = list(map(str, cmd))
     previous_handler = signal.signal(signal.SIGTERM, lambda number, _: sys.exit(128 + number))
     try:
         texts = run_scenarios(commands, a.jobs, a.timeout)
+        texts.update(reused)
     except RuntimeError as exc:
         sys.exit(f"verify_dlload: {exc}")
     finally:
@@ -346,27 +382,36 @@ def main():
               entry[:1] == [0xB0A5ED] and toasts(tag) == 0, f"{[hex(w) for w in entry[:8]]}, toast calls {toasts(tag)}")
     print("pick-reverb:")
     rv = (OUT / "pick-reverb_ids.bin").read_bytes()
-    check(f"a stock reverb chosen on the FX2 slot of {recs[0]['key']}'s block is accepted while the effect has another home to move to",
-          rv[8 + block_track] == DARK and toasts("pick-reverb") == 0,
+    check("FX2 LOCK leaves the reverb slot unchanged" if locked else
+          f"a stock reverb chosen on the FX2 slot of {recs[0]['key']}'s block is accepted while the effect has another home to move to",
+          rv[8 + block_track] == (0 if locked else DARK) and toasts("pick-reverb") == 0,
           f"FX2 of track {block_track + 1} = 0x{rv[8 + block_track]:02x}, toast calls {toasts('pick-reverb')}")
     entry = peek("pick-reverb", 1, "X", 0x33DA3)
-    check(f"and the effect moves: it is bound in its second home", entry[0] == 0xB0A5ED and entry[3] == ALT, f"{[hex(w) for w in entry]}")
+    check("the locked chooser does not move the loaded effect" if locked else
+          "and the effect moves: it is bound in its second home",
+          entry[0] == 0xB0A5ED and entry[3] == (rec["addr"] if locked else ALT), f"{[hex(w) for w in entry]}")
     print("pick-reverb-t4:")
     rv = (OUT / "pick-reverb-t4_ids.bin").read_bytes()
-    check(f"a stock reverb chosen on the FX2 slot of {recs[0]['key']}'s second home, while the code is there, is accepted",
-          rv[8 + alt_track] == DARK and toasts("pick-reverb-t4") == 0,
+    check("FX2 LOCK leaves the second home's reverb slot unchanged" if locked else
+          f"a stock reverb chosen on the FX2 slot of {recs[0]['key']}'s second home, while the code is there, is accepted",
+          rv[8 + alt_track] == (0 if locked else DARK) and toasts("pick-reverb-t4") == 0,
           f"FX2 of track {alt_track + 1} = 0x{rv[8 + alt_track]:02x}, toast calls {toasts('pick-reverb-t4')}")
     entry = peek("pick-reverb-t4", 1, "X", 0x33DA3)
-    check(f"and the effect moves back: it is bound in its first home", entry[0] == 0xB0A5ED and entry[3] == rec["addr"], f"{[hex(w) for w in entry]}")
+    check("the locked chooser leaves the effect in its second home" if locked else
+          "and the effect moves back: it is bound in its first home",
+          entry[0] == 0xB0A5ED and entry[3] == (ALT if locked else rec["addr"]), f"{[hex(w) for w in entry]}")
     print("pick-reverb-stuck:")
     rv = (OUT / "pick-reverb-stuck_ids.bin").read_bytes()
     check(f"a stock reverb chosen there is refused when the other home is taken",
           rv[8 + block_track] == 0, f"FX2 of track {block_track + 1} = 0x{rv[8 + block_track]:02x}")
-    check("and the refusal shows a toast", toasts("pick-reverb-stuck") >= 1, f"toast calls: {toasts('pick-reverb-stuck')}")
+    check("FX2 LOCK closes without a loader-refusal toast" if locked else "and the refusal shows a toast",
+          toasts("pick-reverb-stuck") == 0 if locked else toasts("pick-reverb-stuck") >= 1,
+          f"toast calls: {toasts('pick-reverb-stuck')}")
     print("pick-reverb-unused:")
     rv = (OUT / "pick-reverb-unused_ids.bin").read_bytes()
-    check("a reverb chosen on the block of a loaded effect that no track uses is accepted, without a toast",
-          rv[8 + block_track] == DARK and toasts("pick-reverb-unused") == 0,
+    check("FX2 LOCK leaves an unused effect's reverb slot unchanged" if locked else
+          "a reverb chosen on the block of a loaded effect that no track uses is accepted, without a toast",
+          rv[8 + block_track] == (0 if locked else DARK) and toasts("pick-reverb-unused") == 0,
           f"FX2 of track {block_track + 1} = 0x{rv[8 + block_track]:02x}, toast calls {toasts('pick-reverb-unused')}")
     check(f"and {recs[0]['key']} is withdrawn for it",
           peek("pick-reverb-unused", 1, "X", 0x33DA3)[:1] == [0])

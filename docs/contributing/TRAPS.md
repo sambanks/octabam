@@ -31,6 +31,15 @@ two), names starts/completions, and uses a per-child wall-clock timeout.
 `test_dlload_runner` checks the bound and cleanup after timeout, failure
 and interruption. Timeout logs remain failures, not passing evidence.
 
+The complete follow-up produced 34 clean child exits but seven failed
+assertions: it assumed a 2-second grace where the selected DLPUMP declared
+10 seconds, and expected FX2 chooser changes where FX2 LOCK intentionally
+refused every selection. The gate now checks the declared grace and the
+selected chooser behavior. The focused correction reused 33 finished runs
+only after image/project/script equality checks, reran withdrawal past the
+10-second grace, and evaluated every assertion again. Ordinary process
+completion is never substituted for the semantic verdict.
+
 <a id="trap-detour-interior"></a>
 ### A branch can enter the middle of a displaced instruction span
 
