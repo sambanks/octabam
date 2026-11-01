@@ -467,6 +467,18 @@ def remix_table(name: str, r, mods) -> list[str]:
     return rows
 
 
+def published_pages(mods, official) -> dict[str, str]:
+    """Module key -> its page under reference/manual/, for every module in a published manual."""
+    out: dict[str, str] = {}
+    for name, r in official:
+        for ms in placed(r, mods).values():
+            for m in ms:
+                out.setdefault(m.key, f"{name}/{page_of(m)}.md")
+        if "BRAIN" in r.modules:
+            out.setdefault("BRAIN", f"{name}/brain/index.md")
+    return out
+
+
 def _q(label: str) -> str:
     """A nav label as YAML: quoted when it holds a colon or a quote."""
     return '"' + label.replace('"', '\\"') + '"' if re.search(r'[:#"\']', label) else label

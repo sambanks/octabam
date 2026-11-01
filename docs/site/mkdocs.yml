@@ -93,6 +93,7 @@ nav:
           - Store: reference/manual/octabam/inside/store.md
       - Credits: reference/manual/octabam/credits.md
   - More:
+      - Feature Directory: reference/modules.md
       - Create a Remix: own-remix.md
 markdown_extensions:
   - admonition

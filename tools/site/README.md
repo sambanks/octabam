@@ -19,6 +19,12 @@ rebuilds them.
 Generated, gitignored:
 
 - the manual of each published remix, `reference/manual/<remix>/` (below)
+- `modules.md`, the Feature Directory (in the nav under More): what is in the published
+  remix by the manual's sections, linked to the manual pages, then every other contributed
+  module by category, linked to its own page
+- `modules/<name>.md`, one page per contributed module: the usage fragment, whether the
+  module is in the published remix (and its manual page), and its facts; no test status.
+  The pages are not in the nav (each carries a `not_in_nav` line); the directory reaches them
 - `_remix-<name>.md`: the module table of the remix's overview page
   (`remix-<name>.md`, hand-written), each row linked to its manual page;
   stock effects read `stock` in the author column
