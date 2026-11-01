@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Native MIDI Part fixture and CPU harness; callers supply their module symbols.
 
-No firmware is bundled. The memory fixture seeds native Part defaults; it is
-not a generic CPU-only fixture.
+No firmware is bundled. Native Part defaults are the default fixture; Follow
+gates select their packed settings explicitly. Module initialization belongs
+to each caller.
 """
 import json
 import pathlib
@@ -52,8 +53,11 @@ def _instruction_budget(value):
 
 
 class Machine:
-    def __init__(self, symbol_loader=None, artifact_root=None, *, instruction_budget=20_000):
-        """Bound each call independently of which module symbols are loaded."""
+    def __init__(self, symbol_loader=None, artifact_root=None, *, profile='native',
+                 instruction_budget=20_000):
+        """Select fixture settings and call bounds independently of loaded symbols."""
+        if profile not in ('native', 'follow'):
+            raise ValueError(f'unknown MIDI fixture profile: {profile!r}')
         self.instruction_budget = _instruction_budget(instruction_budget)
         if symbol_loader is None:
             def symbol_loader():
@@ -81,14 +85,13 @@ class Machine:
         # A native fresh Part fixture, with UI and all engine tracks on bank 0
         # Part 0. Tests may move either context independently.
         u.mem_write(0x46c82456,(0x400e21e0).to_bytes(4,'big'))
-        follow_defaults = 'bf_source_get' in self.sym
+        follow_defaults = profile == 'follow'
         for p in range(4):
             for t in range(8):
                 u.mem_write(0x400e21e0+0x8ed80+p*0x18b2+0x4e2+t*36+13,
                             b'\x23' if follow_defaults else b'\x03')
                 u.mem_write(0x400e21e0+0x8ed80+p*0x18b2+0x4e2+t*36+15,
                             b'\x03' if follow_defaults else b'\x02')
-        if 'mh_defaults' in self.sym:self.call('mh_defaults',stop=0x40025ace)
     def part_address(self,track,field):
         bank=int.from_bytes(self.uc.mem_read(0x46c82456,4),'big')
         part=self.uc.mem_read(0x100b14cf,1)[0]

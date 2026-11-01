@@ -7,7 +7,7 @@ from unicorn.m68k_const import UC_M68K_REG_A7,UC_M68K_REG_A2,UC_M68K_REG_D4,UC_M
 
 
 def fixture(pitches=(36,), response=1, receiver=1, source=0):
-    m=Machine();u=m.uc;s=m.sym;m.events=[]
+    m=Machine(profile='follow');u=m.uc;s=m.sym;m.events=[]
     u.mem_write(0x46c78152,b'\xff'*2048)
     u.mem_write(0x46c77a16,b'\xff'*256)
     m.follow_write('source',bytes((source+1,)),receiver)

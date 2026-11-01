@@ -6,7 +6,7 @@ from midi_machine import Machine
 from unicorn.m68k_const import *
 
 def main():
-    m=Machine();u=m.uc;s=m.sym;lane=m.scratch+0x1000
+    m=Machine(profile='follow');u=m.uc;s=m.sym;lane=m.scratch+0x1000
     def edit(track,control,delta):
         m.call('bf_reg_change',track,control,regs={UC_M68K_REG_D2:delta&0xffffffff})
     for track in range(8):
@@ -101,7 +101,7 @@ def ui():
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'emu'))
     from lcd_view import png
-    m=Machine(); u=m.uc; s=m.sym
+    m=Machine(profile='follow'); u=m.uc; s=m.sym
     win=m.scratch; plane=win+0x1000
     u.mem_write(win+36,struct.pack('>IIII',120,60,2,plane))
     u.mem_write(s['bf_page_win'],win.to_bytes(4,'big'))

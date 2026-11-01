@@ -43,7 +43,7 @@ def notes(machine, source_harm, follower_harm, root=60, offsets=(4, 7, 12), tran
 
 
 def main():
-    m = Machine()
+    m = Machine(profile='follow')
     has_harmony = 'mh_active' in m.sym
     # Native source N1-4, receiver HARM OFF. Default FIXED octave 3.
     assert notes(m, 0, 0) == [36, 40, 43, 48]

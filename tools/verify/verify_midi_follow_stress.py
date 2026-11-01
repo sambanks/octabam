@@ -21,7 +21,7 @@ def source(graph, track):
 
 
 def machine(seed=20261008, steps=12000):
-    m = Machine()
+    m = Machine(profile='follow')
     u, s = m.uc, m.sym
     rng = random.Random(seed)
     lane = m.scratch+0x1000

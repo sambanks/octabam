@@ -44,7 +44,7 @@ def machine_gate(image):
     assert binary[SITE - 0x40000400:SITE - 0x40000400 + 6] == b'\x4e\xf9' + entry.to_bytes(4, 'big')
     assert binary[CAPTURE - 0x40000400:CAPTURE - 0x40000400 + 6] == b'\x4e\xf9' + capture_entry.to_bytes(4, 'big')
     from midi_machine import Machine
-    m = Machine(symbols)
+    m = Machine(symbols, profile='follow')
     uc = m.uc
     m.stops = set()  # This gate observes native detour continuation addresses.
     pitch, stack = 0x47001000, 0x47008000

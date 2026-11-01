@@ -137,7 +137,7 @@ class Probe:
 
     def machine(self):
         return Machine(lambda: self.symbols.copy(), artifact_root=self.artifacts,
-                       instruction_budget=300_000)
+                       profile='follow', instruction_budget=300_000)
 
     def measure(self, name, m, call):
         total = 0

@@ -6,8 +6,8 @@ from unicorn.m68k_const import *
 
 
 def main():
-    m = Machine()
-    stock = Machine()
+    m = Machine(profile='follow')
+    stock = Machine(profile='native')
     stock.uc.mem_write(0x40000400, (ROOT / 'out/raw/section_3_MAIN_OS.bin').read_bytes())
     stock.sym['stock_quant'] = 0x4009fb58
     frame = 0x47004000

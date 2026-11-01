@@ -21,7 +21,7 @@ def choose(pc, previous, home):
 
 def main():
     subprocess.run([sys.executable,str(ROOT/'modules/midi-follow/upstream/modules/midi-follow/generate.py'),'--check'],check=True)
-    m=Machine(symbols);u=m.uc;s=m.sym
+    m=Machine(symbols,profile='follow');u=m.uc;s=m.sym
     for address,name in ((0x4009c3d4,'seq_start'),(0x4009c4d4,'seq_resume'),
                          (0x4009fbb2,'seq_sent_a'),(0x4009fcfa,'seq_sent_b')):
         assert bytes(u.mem_read(address,6))==b'\x4e\xf9'+s[name].to_bytes(4,'big')
