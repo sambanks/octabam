@@ -5,7 +5,7 @@ GitHub Pages by `.github/workflows/pages.yml` on pushes to main. The same
 build, without the deploy, runs as the `site` job on every PR
 (`.github/workflows/ci.yml`).
 
-`release.py` says what the site publishes: one release (`v0.1`, the git tag
+`release.py` says what the site publishes: one release (`v0.2`, the git tag
 the web builder's patches are built from) of one remix (`octabam`). A remix
 that is not listed (`octabam-bus`, `cxosc-core`) has no manual, no overview
 row and no builder entry; it stays in the repository.

@@ -4,7 +4,7 @@ Octabam is Octatrack OS 1.40C with more built in. It keeps what you know:
 all 14 stock effects, both effect menus and the way a project is laid out.
 On top of that it adds features for sequencing, Kits and scenes, MIDI and
 USB, and three new effects. Every feature is credited to the person who wrote
-it, and each has its own page in this manual. This is version 0.1.
+it, and each has its own page in this manual. This is version 0.2.
 
 ### What changes on the unit
 

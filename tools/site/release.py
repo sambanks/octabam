@@ -6,5 +6,5 @@ manual, no overview row and no builder entry. The remixes stay in the
 repository.
 """
 
-VERSION = "v0.1"          # the git tag the builder's patches are built from
+VERSION = "v0.2"          # the git tag the builder's patches are built from
 REMIXES = ("octabam",)
