@@ -82,11 +82,11 @@ def run_scenarios(commands, jobs, timeout):
                 except BaseException:
                     fh.close()
                     raise
-                active[tag] = (process, fh, time.monotonic())
+                active[tag] = (process, fh, time.time())
                 print(f"  [RUN] {tag}: pid {process.pid}", flush=True)
             for tag, (process, fh, started) in list(active.items()):
                 rc = process.poll()
-                elapsed = time.monotonic() - started
+                elapsed = time.time() - started
                 if rc is None:
                     if elapsed >= timeout:
                         raise RuntimeError(f"{tag} timed out after {timeout}s -- {OUT / (tag + '.txt')}")

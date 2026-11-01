@@ -53,7 +53,7 @@ class LoaderRunner(unittest.TestCase):
     def test_timeout_terminates_every_active_child_and_retains_logs(self):
         processes = [mock.Mock(pid=i, poll=mock.Mock(return_value=None)) for i in (1, 2)]
         with mock.patch.object(verify_dlload.subprocess, "Popen", side_effect=processes), \
-                mock.patch.object(verify_dlload.time, "monotonic", side_effect=[0, 0, 2]):
+                mock.patch.object(verify_dlload.time, "time", side_effect=[0, 0, 2]):
             with self.assertRaisesRegex(RuntimeError, "first timed out"):
                 verify_dlload.run_scenarios({"first": ["port"], "second": ["port"]}, 2, 1)
         for process in processes:
