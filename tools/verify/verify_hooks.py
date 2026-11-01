@@ -10,7 +10,8 @@
    state, mute, arm, TRIG and blink phase, and compared with the model of
    the two routines in HOOKS's order, and with the two routines called one
    after the other; the opposite order is shown to lose the blink. The
-   [TRACK]-layer table is decoded and compared with track_key_records.
+   [TRACK]-layer table is decoded and compared with track_key_records, with
+   REC_TRIG_MUTE standing in as a second track_key participant.
    The frame interrupt's entry and epilogue chains and the boot chain are
    run with LOAD METER, CF METER, BOOT TRACE and STORE built with
    HOOKS's flags: one prologue and one epilogue, every participant's work
@@ -23,6 +24,7 @@
    HOOKS copies; each bridged site holds HOOKS's write, and the
    participants' overridden writes are not there.
 """
+import contextlib
 import hashlib
 from pathlib import Path
 import runpy
@@ -62,21 +64,21 @@ def selection():
     check(ledger.check(m("STORE", "BOOT TRACE")) == [], "STORE without a Part client leaves BOOT TRACE's site alone")
     check(ledger.check(m("STORE", "BOOT TRACE", "MIDI LOOPBACK", "EVENTS", "HOOKS")) == [],
           "STORE native Part boot bridge: claims and requirements are clean")
-    check(bridged({RTM, "MORPH"}) == ("track_key",), "REC_TRIG_MUTE + MORPH: track_key only")
+    check(bridged({RTM, "MORPH"}) == (), "REC_TRIG_MUTE + MORPH: no bridge (REC_TRIG_MUTE leaves the [TRACK] layer alone)")
     check(bridged({RTM, THR}) == ("status_icon",), "REC_TRIG_MUTE + REC THRESHOLD: status_icon only")
-    check(bridged({RTM, THR, "MORPH"}) == ("track_key", "status_icon"), "all three: both bridges")
+    check(bridged({RTM, THR, "MORPH"}) == ("status_icon",), "all three: status_icon only")
     check(bridged({"ANALOG BD", "OCTA303"}) == ("machine_rows",), "ANALOG BD + OCTA303: machine_rows only")
     check(DECL["select"](set()) == {"linked": (), "detours": (), "symbol_refs": (), "overrides": (), "pokes": ()},
           "an empty selection: HOOKS has no unit, claim or override")
-    check(not registry.hooks_needed(known, {RTM, "MORPH"} - {"MORPH"}) and
-          registry.hooks_needed(known, {RTM, "MORPH"}), "registry.hooks_needed follows the bridges")
+    check(not registry.hooks_needed(known, {RTM, THR} - {THR}) and
+          registry.hooks_needed(known, {RTM, THR}), "registry.hooks_needed follows the bridges")
     for name, want in (("octabam", True), ("morph", False), ("rec-threshold", False), ("hooks", True)):
         try:
             has = "HOOKS" in registry.remix(name).modules
         except SystemExit:
             continue
         check(has == want, f"remix {name}: HOOKS {'appended' if want else 'not appended'}")
-    for sel in ((RTM, "MORPH", "STORE"), (RTM, THR), ("ANALOG BD", "OCTA303")):
+    for sel in ((RTM, THR), ("ANALOG BD", "OCTA303")):
         bad = ledger.check(m(*sel))
         check(any(p.startswith("hooks:") for p in bad), f"{' + '.join(sel)} without HOOKS is refused")
         check(ledger.check(m(*sel, "HOOKS")) == [], f"{' + '.join(sel)} with HOOKS is clean")
@@ -101,6 +103,21 @@ def selection():
         except ValueError:
             check(True, f"refused: {why}")
     DECL["track_key_records"].__globals__["TRACK_KEY"] = tk
+
+
+@contextlib.contextmanager
+def standin_track_key():
+    """track_key has one real participant (MORPH). The table is built and linked
+    with REC_TRIG_MUTE standing in as a second one: it replaces YES with rtm_glyph
+    and NO with rtm_trel, routines its source defines."""
+    g = DECL["track_key_records"].__globals__
+    real = g["TRACK_KEY"]
+    both = (("REC_TRIG_MUTE", ((0x31, "rtm_glyph", "rtm_glyph"), (0x32, "rtm_trel", "rtm_trel")), (), False),) + real
+    g["TRACK_KEY"] = DECL["BRIDGES"]["track_key"] = both
+    try:
+        yield
+    finally:
+        g["TRACK_KEY"] = DECL["BRIDGES"]["track_key"] = real
 
 
 def _link(work):
@@ -136,7 +153,8 @@ def behaviour():
     from unicorn.m68k_const import (UC_CPU_M68K_CFV4E, UC_M68K_REG_A0, UC_M68K_REG_A4,
                                     UC_M68K_REG_A7, UC_M68K_REG_D3, UC_M68K_REG_PC)
     with tempfile.TemporaryDirectory(prefix="octabam-hooks-") as td:
-        rt, base, sym = _link(Path(td))
+        with standin_track_key():
+            rt, base, sym = _link(Path(td))
     CACHE, PART_IDX, BANK_PTR, BANK = 0x400C0CB8, 0x100B14CF, 0x46C82456, 0x42000000
     STACK, DONE = 0x47008000, 0x4700FFF0
     u = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
@@ -204,14 +222,15 @@ def behaviour():
     check(bad_seq == 0, "hk_status_icon equals rtm_glyph then blink_gate, called one after the other")
     check(lost, "the opposite order loses the blink on a muted, armed track (why HOOKS folds first)")
 
-    recs = DECL["track_key_records"]({RTM, THR, "MORPH"})
+    with standin_track_key():
+        recs = DECL["track_key_records"]({RTM, THR, "MORPH"})
     at = sym["hk_track_keys"]
     table = bytes(u.mem_read(at, 0x1A * (len(recs) + 1)))
     resolve = lambda v: v if isinstance(v, int) else sym[v]   # noqa: E731
     decoded = [(table[i * 0x1A], int.from_bytes(table[i * 0x1A + 2:i * 0x1A + 6], "big"),
                 int.from_bytes(table[i * 0x1A + 6:i * 0x1A + 10], "big")) for i in range(len(recs))]
     check(decoded == [(c, resolve(p), resolve(r)) for c, p, r in recs],
-          f"the [TRACK]-layer table: {len(recs)} records, YES/NO -> rtm_yes/rtm_no, UP/DOWN -> MORPH")
+          f"the [TRACK]-layer table: {len(recs)} records, YES/NO -> rtm_glyph/rtm_trel (REC_TRIG_MUTE standing in), UP/DOWN -> MORPH")
     check(all(not any(table[i * 0x1A + 10:i * 0x1A + 0x1A]) and table[i * 0x1A + 1] == 0
               for i in range(len(recs))) and table[len(recs) * 0x1A] == 0xFF,
           "each record's padding is zero and stock's terminator follows")

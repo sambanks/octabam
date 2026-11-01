@@ -91,7 +91,7 @@ at `1f01ce4`).
 | machine registration: chooser rows, SRC SETUP, Part validator, FLEX renderer entry, PLAYBACK resolver, LFO PMTR names | 23 sites, among them `0x400d6438`, `0x40002318`, `0x4000c634`, `0x40031ece`, `0x4003bff0`; cave `0x400d24d0` | OCTA303, ANALOG BD, CX OSC | SYNTH MACHINE (timhastie), BLACKPYRAMIDS_303 (Zac Kyoti) |
 | CHROMATIC keyboard (first written here as "MIDI note in": corrected, see Phase 5 above) | `0x4004fc58`, `0x40044968`, `0x40045918`, `0x40050254` | OCTA303 | SCALE QUANTIZER (CORE), BLACKPYRAMIDS_303 |
 | MIDI note-on | `0x4000e746` | CX OSC | BLACKPYRAMIDS_303, SYNTH MACHINE (not SCALE QUANTIZER, as first written) |
-| `[TRACK]`-held key layer | table `0x400d1594`, its YES/NO records | MORPH | REC_TRIG_MUTE (CORE) |
+| `[TRACK]`-held key layer | table `0x400d1594`, its YES/NO records | MORPH | REC_TRIG_MUTE (CORE) until its pin `553d8d2`, which repoints the base keymaps' `[REC]` records instead |
 | track status icon | the state-cache load `0x4004bee2` | REC THRESHOLD | REC_TRIG_MUTE (CORE) |
 | frame interrupt tail, and order within it | `0x4000d9a6`, `0x4000aad0` | CF METER, CF METER IDLE, WAVE LOAD, LOAD METER (CORE), BOOT TRACE; LOAD METER before STEM REC (declared) | |
 | boot entry | `0x40000512` | BOOT TRACE | MIDI PART STATE (radiohagen) |
@@ -178,7 +178,7 @@ author's own routines, as SCOPE does with TUNER.
 
 | module | contested | assessment |
 |---|---|---|
-| REC_TRIG_MUTE (CORE) | Detour `0x4004bee2`; SymbolRefs for the `[TRACK]` YES/NO records (`rtm_yes`, `rtm_no`) | 🟡 bridgeable: the handlers are separate labelled routines. Falsified if they cannot be called as routines. Needs `Override` on SymbolRefs (phase 1). |
+| REC_TRIG_MUTE (CORE) | Detour `0x4004bee2`; until pin `553d8d2`, SymbolRefs for the `[TRACK]` YES/NO records (`rtm_yes`, `rtm_no`), since then SymbolRefs for the base keymaps' `[REC]` records (`rtm_rec`) | 🟡 bridgeable: the handlers are separate labelled routines. Falsified if they cannot be called as routines. Needs `Override` on SymbolRefs (phase 1). |
 | SCALE QUANTIZER (CORE) | 4 of its 19 detours | ⬜ depends on whether its note-path stubs fall through to the stock continuation |
 | SYNTH MACHINE | 25 detours, the renderer entry, cave `0x400d24d0` | ⬜ the PARTS machine interface has to fit its renderer and page; the hardest |
 | BLACKPYRAMIDS_303 | 44 detours, 7 pokes; SPRING REV's DSP words | ⬜ ColdFire half through PARTS; the DSP half stays a separate problem |

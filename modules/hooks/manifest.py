@@ -19,14 +19,14 @@ docs/proposals/SHARED_HOOKS.md is the design. Bridges:
   * track_key -- the [TRACK]-held key layer 0x400d164a. Its keys field
     0x400d164e points at stock's six records at 0x400d1594 (0x1a bytes
     each: code, 0, press, release, 16 zero bytes; then 0xff, 0). MORPH
-    repoints the field at its own copy with UP and DOWN added; REC_TRIG_MUTE
-    repoints the YES and NO records' handlers inside stock's table. Together,
-    MORPH's copy would carry stock's YES/NO and REC_TRIG_MUTE's mute keys
-    would silently stop working. Bridged: HOOKS's table is stock's six
+    repoints the field at its own copy with UP and DOWN added. A second
+    participant that repoints records inside stock's table would have its
+    handlers dropped by MORPH's copy. Bridged: HOOKS's table is stock's six
     records with each participant's replacements, then each participant's
-    added keys, and the field points at it. REC_TRIG_MUTE's own refs into
-    stock's table are still written; nothing reads that table once the field
-    is repointed.
+    added keys, and the field points at it. MORPH is the only participant
+    since REC_TRIG_MUTE's pin 553d8d2: its mute moved to the base keymaps'
+    [REC] records, which it repoints itself. The bridge is on when a second
+    participant is added to TRACK_KEY.
   * status_icon -- the track status icon renderer's state-cache load
     0x4004bee2 (`lea 0x400c0cb8,%a0`), d3 the track, a4 the state about to be
     compared and drawn. REC_TRIG_MUTE (rtm_glyph) folds a mute into a4 as
@@ -120,7 +120,6 @@ STOCK_KEYS = (
 # A record is (code, press symbol, release symbol or None). Table order is
 # participant order; a code may be replaced or added by one participant only.
 TRACK_KEY = (
-    ("REC_TRIG_MUTE", ((0x31, "rtm_yes", "rtm_yes"), (0x32, "rtm_no", "rtm_no")), (), False),
     ("MORPH", (), ((0x33, "morph_up", None), (0x20, "morph_down", None)), True),
 )
 

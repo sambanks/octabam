@@ -15,7 +15,7 @@ The design, and the conflicts it is meant to remove next:
 
 | bridge | site | participants | what HOOKS does |
 |---|---|---|---|
-| track_key | the [TRACK]-held key layer's keys field `0x400d164e` (stock `0x400d1594`, six 26-byte records) | REC_TRIG_MUTE (replaces YES/NO), MORPH (adds UP/DOWN) | points the field at one table: stock's records with each participant's replacements, then each participant's added keys |
+| track_key | the [TRACK]-held key layer's keys field `0x400d164e` (stock `0x400d1594`, six 26-byte records) | MORPH (adds UP/DOWN); REC_TRIG_MUTE until its pin 553d8d2 (replaced YES/NO) | points the field at one table: stock's records with each participant's replacements, then each participant's added keys |
 | status_icon | the track status icon renderer's state-cache load `0x4004bee2` | REC_TRIG_MUTE (`rtm_glyph`), REC THRESHOLD (`blink_gate`) | one `jsr` calls `rtm_glyph`, then `blink_gate`: the mute fold first, so the blink bit survives it |
 | frame_tail | the frame interrupt's epilogue `0x4000d9a6` | LOAD METER (`lm_out`), CF METER (`m_tail`), BOOT TRACE (`tr_frame_end`) | calls each, built to return (`HK_FRAME_TAIL`), then replays the epilogue once |
 | frame_entry | the frame interrupt's entry `0x4000aad0` | BOOT TRACE (`tr_frame`), LOAD METER (`lm_in`) | replays the prologue once, then calls each, built to enter after it (`HK_FRAME_ENTRY`): LOAD METER's stamp last, so its duration excludes the note |
@@ -32,12 +32,12 @@ A participant whose own detour replays stock instructions and never returns
 returns instead; alone, the flag is 0 and its bytes are the ones proven.
 STORE's routine already ends in the stock call, so it is called
 last and needs no flag: its submodule source is not edited.
-REC_TRIG_MUTE's own refs into stock's [TRACK] table are still written when
+A participant's own refs into stock's [TRACK] table are still written when
 track_key is bridged; nothing reads that table once the field is repointed.
 
 A selection with a bridged pair and no HOOKS is refused by the ledger, by
-name: MORPH's and REC_TRIG_MUTE's claims do not overlap, so without the
-rule the pair would build and REC_TRIG_MUTE's keys would silently stop.
+name: the participants' claims do not overlap, so without the rule the
+pair would build and one of them would silently stop.
 
 ## Measured
 
