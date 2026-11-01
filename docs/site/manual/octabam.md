@@ -38,12 +38,12 @@ it, and each has its own page in this manual. This is version 0.1.
   [per-pattern mutes](sequencer/pattern-mute.md), a
   [scale quantizer](sequencer/quantizer.md) and a [tuner](sequencer/tuner.md).
   Also [track patterns](sequencer/trackpatterns.md) (each track plays its own
-  pattern), [Euclidean fills](sequencer/euclid-fill.md), a track's scene
+  pattern), [Euclidean fills](sequencer/euclid-fill.md),
+  [varispeed](sequencer/varispeed.md) for STATIC and FLEX tracks, a track's scene
   [morph](parts/morph.md) played on its own, and a recorder TRIG mode that
   waits for the input ([rec threshold](sequencer/rec-threshold.md)).
 - **Utilities.** [Copy a project](utilities/copy-project.md) without loading
-  it, [save the recorder buffers](utilities/buffer-saver.md) with the project,
-  and [lock the FX2 chooser](utilities/fx2-lock.md).
+  it and [save the recorder buffers](utilities/buffer-saver.md) with the project.
 - **Fixes.** The recorder loop click, stock LO-FI's AMF knob and a few
   sequencer and card-write faults are [corrected](fixes/recorder-loop-fix.md).
 
