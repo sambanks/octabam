@@ -24,8 +24,6 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVEN
 # The ColdFire modules octabam carries beyond CORE (FX2 LOCK is in MODULES below).
 COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
             "TRACK PATTERNS")
-STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
-             "COMB FILTER", "COMPRESSOR", "LO-FI")
 
 REMIX = Remix(
     name="octabam-bus",
@@ -36,13 +34,10 @@ REMIX = Remix(
              "DELAY",       # the stock DELAY keeps its chooser row: T8 hosts it
              "FX2 LOCK") + CORE + COLDFIRE,   # the chooser cannot change any track's FX2
     fallback="SEND",
-    window=(("DELAY SERVER:B", 0x35800), ("SEND", 0x35df0), ("SEND:B", 0x35f00),
-            ("MODULATION", 0x36200), ("SPECTRUM", 0x36820), ("CHARACTER", 0x36da0),
-            ("REVERB SERVER", 0x371a0), ("LOAD METER", 0x37b00), ("LOAD METER:B", 0x37bc0)),
     hidden=("REVERB SERVER", "DELAY SERVER"),
     host_slots=(("DELAY SERVER", 2), ("REVERB SERVER", 2)),
     locked=("REVERB SERVER", "DELAY SERVER"),
-    fx1=("SPECTRUM", "CHARACTER", "MODULATION") + STOCK_FX1,
+    fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,
               ("octabam.usb", "IN"): "OFF",
