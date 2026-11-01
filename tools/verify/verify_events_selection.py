@@ -76,7 +76,7 @@ def main():
             raise AssertionError(clients)
     select.__globals__['CLIENTS'] = original
     # Exercise the registry's actual bound selection, not only the helper.
-    for remix, count in (('events-empty', 0), ('euclid', 2), ('plocks-p2', 23), ('octabam', 23), ('events-clients', 25)):
+    for remix, count in (('events-empty', 0), ('euclid', 2), ('plocks-p2', 23), ('octabam', 23), ('events-clients', 25), ('midi-follow', 4), ('midi-follow-events', 27)):
         selected = {m.key: m for m in registry.selected(registry.remix(remix))}
         assert len(selected['EVENTS'].detours) == count, remix
         assert selected['EVENTS'].select is not None

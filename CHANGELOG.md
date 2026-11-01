@@ -40,7 +40,18 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
   track 8 (the old producer stored the pair into the next frame's track 8
   field).
 - SIDECHAIN_COMPRESSOR (`modules/sidechain-compressor`, `b0d49bf`): on the author's MKI as OCTABAM33 (`remixes/test/sidechain-compressor`, mainos `6cfe4121…`, 26 Oct 2026): KBAS and KWID across their range with MON on and off, MON's switch and its OFF on a project saved with an earlier version, KEY's pressed turn, the MON and KEY fades, all good. The module's proof is now hardware.
-- STORE: optional native Part access replaces MIDI PART STATE. Registered clients share edited/playing context lookup, bounded native field writes with dirty/CS1 updates, outgoing snapshots during native replacement and per-Part replacement counters. Loopback and Scales integrations use the service; saved bytes are unchanged. Existing STORE selections without these clients gain no Part hooks or snapshot storage. Emulator qualification; hardware testing outstanding.
+- STORE: optional native Part access replaces MIDI PART STATE. Registered clients share edited/playing context lookup, bounded native field writes with dirty/CS1 updates, outgoing snapshots during native replacement and per-Part replacement counters. MIDI Follow, Loopback and Scales integrations use the service; saved bytes are unchanged. Existing STORE selections without these clients gain no Part hooks or snapshot storage. Emulator qualification and limited MKII Part save/reload and power-cycle checks (MFOL29U/FA); broader hardware coverage remains unverified.
+- MIDI Follow: per-track RFOL source, FIXED/GRAV/SOURCE register and TRIG/LIVE
+  updates. Followers inherit the source's native N1–4 notes and KEY/scale,
+  keeping their own rhythm, velocity, note lengths and TRAN. Inherited KEY
+  correction follows TRAN, matching stock; KEY is read-only while following.
+  Settings belong to the Part. Requires STORE native Part access and EVENTS;
+  test remixes only, no standard remix gains it. Linked-code and full-firmware
+  emulator checks; on MKII USB MIDI (MFOL30U/FB), seven four-note GRAV LIVE
+  followers at 200 BPM / 1× passed ten minutes each in direct and chained
+  routing, plus five minutes with eight audio tracks and responsive controls.
+  STOP released held notes. Earlier MFOL29U/FA Part save/reload and power-cycle
+  checks passed; MKI, DIN output/timing and maximum load remain unverified.
 - SIDECHAIN_COMPRESSOR (`modules/sidechain-compressor`, submodule `554ca1c` → `b0d49bf`): KBAS and KWID work in this form. The key-filter table's base came from `lua (r1+$10),r1` after the gain store had already moved r1, so the filters read their coefficients from unrelated P memory: silence, level jumps and squeals on the author's MKI (OCTABAM31, 24 Oct 2026). The table is now the module's `ptable2`, loaded by its own literal as in the standalone image; the image changes in two DSP words per core. MON shows OFF on the left and ON on the right (it stores 2 / 3; `sc_norm` turns any other value OFF, so a COMPRESSOR saved with an earlier version comes up with MON OFF); KEY gets its own step handler (`word_12a`), so a pressed turn moves one position per detent instead of stock's 7; switching MON, or changing KEY while MON is on, fades over 256 samples (was 64). `sc_cf` grows to 698 B. On the author's MKI: the table fix as OCTABAM32 (25 Oct 2026); MON, KEY and the fades in the author's standalone image `140C_SCKD3` (25 Oct 2026), not yet in this form.
 - **EVENTS** replaces SEQUENCER EVENTS with separate transport,
   MIDI notification and editor contracts. EUCLID and PLOCKS P2 register as
