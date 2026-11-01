@@ -18,7 +18,7 @@ after their parents showed zero CPU and no recent stdout. MORPH's next
 checks simulate many thousands of frames in Python; bounded stack dumps
 showed changing simulator frames and further passing checks. The loader
 launched every scenario's full port before waiting for the first one,
-leaving roughly 36 competing emulator processes and no per-child progress.
+leaving 34 competing emulator processes in this candidate and no per-child progress.
 A retained scenario run alone used nearly one full CPU.
 
 **Cost:** incomplete suites were misdiagnosed as deadlocks. Neither parent
