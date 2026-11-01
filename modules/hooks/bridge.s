@@ -118,8 +118,8 @@ hk_octdraw:
         .endif
 
         .if     hk_machine_rows
-| the track's machine list, seven rows (ANALOG BD's 5, OCTA303's 6) in six
-| on screen. The list at 0x460e7386: +0 the top row, +8 the cursor, +16 the
+| the track's machine list, 5 + N rows (each machine module's, 5 .. 4 + N,
+| machine_rows) in six on screen. The list at 0x460e7386: +0 the top row, +8 the cursor, +16 the
 | count. The drawer's loop (0x4007864c..0x400787b2) keeps d2 the screen row,
 | a2 its y, d3 the name formatter, d4 the surface, d7 the text drawer; stock
 | draws and boxes row d2, which is right only while the list never scrolls.
@@ -149,10 +149,11 @@ hk_mc_name:
         lea     28(%sp),%sp
 1:      jmp     (0x400786a2).l
 | 0x400786c8, a0 the UI track's machine byte: the box on screen row d2 when
-| that track's row (ab_row_type: 5 / 6 for a signed track) is top + d2.
+| that track's row (the head machine's type routine, which asks the others
+| down the chain: 5 .. 4 + N for a signed track) is top + d2.
 hk_mc_box:
         mvs.b   (%a0),%d0
-        jsr     ab_row_type
+        hk_mc_type
         move.l  (MC_LIST).l,%d1
         add.l   %d2,%d1
         cmp.l   %d1,%d0

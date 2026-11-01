@@ -4,7 +4,7 @@
 | Playback resolves our runtime descriptor per track. Audio enters through
 | the native renderer kind table, leaving AMP, FX1 and FX2 to stock.
         .text
-        .include "remix.inc"            | HK_MACHINE_ROWS: OCTA303 on row 6 beside us (modules/hooks)
+        .include "remix.inc"            | HK_MACHINE_ROWS: other machines on the list beside us (modules/hooks)
         .global ab_machine_name
         .global ab_src_names
         .global ab_main_commit
@@ -17,9 +17,11 @@
         .global ab_sig_check
         .global ab_validate
         .if     HK_MACHINE_ROWS
-| Beside OCTA303 (modules/hooks, machine_rows): our hooks stay the head and
-| hand every row but ours to OCTA303's routine for the same hook, which is
-| built with its row 6. ab_row_type answers both machines' rows.
+| Beside other machines on the list (modules/hooks, machine_rows): we are
+| the first in its chain, so our hooks take the shared sites and hand every
+| row but ours to the next machine's routine for the same hook (MC_NEXT_*,
+| remix.inc); the rows after ours, AB_ROW+1 .. MC_ROWS_END-1, are theirs.
+| ab_row_type answers every machine's row through their type routines.
         .global ab_row_type
         .endif
 
@@ -125,7 +127,7 @@ ab_machine_name:
         cmpi.l  #AB_ROW,%d0
         beq.s   1f
         .if     HK_MACHINE_ROWS
-        jmp     o3_machine_name
+        jmp     MC_NEXT_NAME
         .else
         move.l  %d2,-(%sp)
         move.l  8(%sp),%d1
@@ -144,7 +146,7 @@ ab_src_names:
         .long   0x400b7a63
         .long   ab_name
         .if     HK_MACHINE_ROWS
-        .long   o3_title
+        mc_names_tail                   | the other machines' names, in row order
         .endif
 
 ab_admit:
@@ -180,7 +182,7 @@ ab_main_commit:
         .if     HK_MACHINE_ROWS
         movem.l (%sp),%d0-%d1/%a0
         lea     12(%sp),%sp
-        jmp     o3_main_commit          | its row signs as TB-303, any other stores as stock
+        jmp     MC_NEXT_MAIN_COMMIT     | the next machine signs its row; the last stores stock's
         .endif
 .mc_store:
         movem.l (%sp),%d0-%d1/%a0
@@ -230,8 +232,8 @@ ab_src_common:
         move.l  (%sp)+,%d1              | our continuation: OCTA303's commit pushes its own
         cmpi.l  #0x4005a61c,%d1
         bne.s   3f
-        jmp     o3_src_commit
-3:      jmp     o3_src_commit2
+        jmp     MC_NEXT_SRC_COMMIT
+3:      jmp     MC_NEXT_SRC_COMMIT2
         .endif
 .sc_go:
         movem.l (%sp),%d0/%d2/%a0
@@ -262,8 +264,11 @@ ab_setup_open:
 
 ab_setup_edit6:
         .if     HK_MACHINE_ROWS
-        cmpi.l  #6,%d2                  | OCTA303's row: its bytes are FLEX's too
-        beq.s   2f
+        cmpi.l  #AB_ROW+1,%d2           | another machine's row: its bytes are FLEX's too
+        bcs.s   4f
+        cmpi.l  #MC_ROWS_END,%d2
+        bcs.s   2f
+4:
         .endif
         cmpi.l  #AB_ROW,%d2
         bne.s   1f
@@ -278,8 +283,11 @@ ab_setup_edit6:
         jmp     (0x4003a536).l
 ab_setup_draw6:
         .if     HK_MACHINE_ROWS
-        cmpi.l  #6,%d6
-        beq.s   2f
+        cmpi.l  #AB_ROW+1,%d6
+        bcs.s   4f
+        cmpi.l  #MC_ROWS_END,%d6
+        bcs.s   2f
+4:
         .endif
         cmpi.l  #AB_ROW,%d6
         bne.s   1f
@@ -330,8 +338,8 @@ ab_row_type:
         movem.l 8(%sp),%d1/%a0-%a1
         lea 20(%sp),%sp
         .if     HK_MACHINE_ROWS
-        jmp     o3_type                 | FLEX not ours: OCTA303's row 6 when its
-        .else                           | signature is there (it keeps all but d0)
+        jmp     MC_NEXT_TYPE            | FLEX not ours: the next machine's row when
+        .else                           | its signature is there (it keeps all but d0)
         rts
         .endif
 
@@ -346,8 +354,10 @@ ab_resolve_pb:
         jmp (0x40031ed6).l
 1:
         .if     HK_MACHINE_ROWS
-        cmpi.l  #6,%d0                  | OCTA303's row: stored FLEX, which its
-        bne.s   2f                      | resolver hook (0x40031ece) reads
+        cmpi.l  #AB_ROW+1,%d0           | another machine's row: stored FLEX, which its
+        bcs.s   2f                      | resolver hook (0x40031ece) reads
+        cmpi.l  #MC_ROWS_END,%d0
+        bcc.s   2f
         moveq   #FLEX,%d0
 2:
         .endif
@@ -360,7 +370,7 @@ ab_validate:
         .global ab_stock_validate
 ab_stock_validate:
         .if     HK_MACHINE_ROWS
-        jmp     o3_validate             | OCTA303's tracks next, then stock
+        jmp     MC_NEXT_VALIDATE        | the next machine's tracks, then stock
         .endif
         lea -96(%sp),%sp
         movem.l %d2-%d7/%a2-%fp,(%sp)
@@ -372,7 +382,7 @@ ab_tick_hook:
         jsr 0x4007e940
         jsr ab_ui_tick
         .if     HK_MACHINE_ROWS
-        jsr     o3_publish              | OCTA303's record as UI type 6's
+        mc_publish                      | each other machine's record as its row's type
         .endif
         jmp 0x40052228
 ab_name:

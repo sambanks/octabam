@@ -2,7 +2,7 @@
 
 A circuit-modelled Roland TB-303 voice that runs on the Octatrack MKI's ColdFire, one voice per
 track. Since v7.0 it is a machine of its own, **OCTA-303**: row 5 of the track's machine list (row 6,
-below ANALOG BD, in an image that carries both: [HOOKS](../hooks/README.md) `machine_rows`), with
+below ANALOG BD, in an image that carries both; CX OSC then follows it: [HOOKS](../hooks/README.md) `machine_rows`), with
 its own PLAYBACK and SETUP pages. It needs no sample. It is calibrated against recordings of a real
 TB-303 (Din Sync's x0xb0x reference set, 400 notes with known knob positions) and optionally plays
 Robin Whittle's Devil Fish modifications through the companion FX module `devilish`.

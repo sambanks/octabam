@@ -82,8 +82,10 @@
         .set    TRK_STRIDE,     0x91a           | + track * 0x91a: the track record (masks at +0, +8, +16; length +0x50)
         .set    LANE_HOLD,      13              | the live lane's AMP HOLD (lock slot 13, PARAM_PAGES.md 5a')
         .include "remix.inc"            | DEVIL_ID: dEVILish's FX id, or 0x100 (never a byte) without it
-        .if     HK_MACHINE_ROWS         | beside ANALOG BD (modules/hooks, machine_rows): its renderer
-        .set    STOCK_RENDER,   ab_render       | is the next in the FLEX kind entry's chain
+        .if     HK_MACHINE_ROWS         | beside other machines (modules/hooks, machine_rows): the
+        .if     MC_HAS_RENDER           | next renderer in the FLEX kind entry's chain
+        .set    STOCK_RENDER,   MC_NEXT_RENDER
+        .endif
         .endif
         .set    CURVALS,        0x80000810      | the frame builder's live lane, 72 B a track, locks applied
         .set    CV_STRIDE,      72
@@ -363,7 +365,12 @@
         move.l  %d0,\dst(%a3)
         .endm
 
-        .global sy_render, o3_pgdesc, o3_page, o3_retrig, o3_chrom
+        .global o3_pgdesc, o3_page, o3_retrig, o3_chrom
+        .if     HK_MACHINE_ROWS         | CX OSC's poly.s exports sy_render too: ours is o3_render
+        .global o3_render
+        .else
+        .global sy_render
+        .endif
 
         .align  4
 
@@ -371,7 +378,11 @@
 | sy_render(track, ping, start, end) -- in place of the stock FLEX renderer
 | (frame as poly.s: 44(sp) the stock return, 48 our return, args 52 / 56 / 60 / 64)
 | ============================================================================
+        .if     HK_MACHINE_ROWS
+o3_render:
+        .else
 sy_render:
+        .endif
         lea     -48(%sp),%sp
         movem.l %d2-%d7/%a2-%a6,(%sp)
         move.l  CURSOR,%a2              | the header this call writes
@@ -851,7 +862,15 @@ o3_retrig:
         add.l   %d1,%d1
         lea     o3_state,%a2
         tst.l   S_LATCHED(%a2,%d1.l)
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_RETRIG
+        beq     .Lrt_not                | not an OCTA303 track: the next machine's
+        .else
         beq     .Lrt_out                | not an OCTA303 track: stock's byte stands
+        .endif
+        .else
+        beq     .Lrt_out                | not an OCTA303 track: stock's byte stands
+        .endif
         moveq   #0,%d1
         move.b  (%a0,%a1.l),%d1
         and.l   #0x30,%d1
@@ -863,6 +882,14 @@ o3_retrig:
         lea     8(%sp),%sp
         move.b  (%a0,%a1.l),%d0         | displaced: the byte for the packer's nibble byte
         jmp     RETRIG_RET
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_RETRIG
+.Lrt_not:                               | entered as its own detour: it replays the load of a1
+        movem.l (%sp),%d1/%a2
+        lea     8(%sp),%sp
+        jmp     MC_NEXT_RETRIG
+        .endif
+        .endif
 
 | ============================================================================
 | o3_page -- Detour 0x40031ece (6 bytes: `move.l 0(a0,d0.l*4),d0; bra.s 0x40031ed6`),
@@ -872,9 +899,23 @@ o3_retrig:
 | TB303* sample gets the TB-303 clone (o3_pgdesc); everything else the stock descriptor.
 | ============================================================================
 o3_page:
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_PAGE             | the entry state, for the next machine's resolver
+        lea     -12(%sp),%sp
+        movem.l %d0-%d1/%a0,(%sp)
+        .endif
+        .endif
         move.l  0(%a0,%d0.l*4),%d0      | displaced: the machine's descriptor
         cmp.l   #FLEX_P,%d0
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_PAGE
+        bne     .Lpg_not                | not FLEX: not ours
+        .else
         bne     .Lpg_done
+        .endif
+        .else
+        bne     .Lpg_done
+        .endif
         move.l  #PART_SIZE,%d2
         muls.l  %d1,%d2
         add.l   %a1,%d2                 | the Part
@@ -915,8 +956,21 @@ o3_page:
         bsr     o3_pgdesc               | d0 = the clone
         bra     .Lpg_done
 .Lpg_stock:
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_PAGE
+.Lpg_not:                               | not ours: the next machine's resolver, as its own detour
+        movem.l (%sp),%d0-%d1/%a0
+        lea     12(%sp),%sp
+        jmp     MC_NEXT_PAGE
+        .endif
+        .endif
         move.l  %d5,%d0
 .Lpg_done:
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_PAGE
+        lea     12(%sp),%sp
+        .endif
+        .endif
         jmp     RESOLVER_RET
 
 | ---- o3_stamp (v6.9): a new 303 track's CUT RES ENV DEC to 64.  New = the track's FLEX slot is not the
@@ -1405,7 +1459,7 @@ o3_setup:
 | Part' = BANK + PART_OFF + part * PART_SIZE (the machine bytes at +0x22, ANALOG BD's form).
 | ============================================================================
         .if     HK_MACHINE_ROWS
-        .set    O3_ROW,         6               | beside ANALOG BD, which keeps row 5 (modules/hooks)
+        .set    O3_ROW,         MC_ROW          | beside other machines: our place in the chain (modules/hooks)
         .global o3_type, o3_title, o3_publish
         .else
         .set    O3_ROW,         5               | the machine's row and UI type
@@ -1511,6 +1565,14 @@ o3_type:
 .Lty_x:
         movem.l (%sp),%d1/%a0-%a1
         lea     12(%sp),%sp
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_TYPE
+        cmp.l   #O3_ROW,%d0
+        beq     .Lty_rts
+        jmp     MC_NEXT_TYPE            | not ours: the next machine's (it keeps all but d0)
+.Lty_rts:
+        .endif
+        .endif
         rts
 
 | ---- o3_sigwrite (ab_sig_write): a0 = Part' (in the bank blob), d0 = track, d1 = 1 sign / 0 unsign,
@@ -1619,6 +1681,11 @@ o3_machine_name:
         move.l  4(%sp),%d0
         cmp.l   #O3_ROW,%d0
         beq     .Lmn_303
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_NAME
+        jmp     MC_NEXT_NAME            | not our row: the next machine's
+        .endif
+        .endif
         move.l  %d2,-(%sp)
         move.l  8(%sp),%d1
         jmp     0x400334de
@@ -1631,6 +1698,9 @@ o3_machine_name:
         .align  4
 o3_src_names:
         .long   0x400b3eac, 0x400b3e98, 0x400b7c67, 0x400b5413, 0x400b7a63, o3_title
+        .if     HK_MACHINE_ROWS
+        mc_names_tail                   | the other machines' names, in row order
+        .endif
 
 | o3_name_a / o3_name_b -- Detours 0x4003d718 / 0x4004c36a (`lea 0x400a78c8,a0`; then d1 = name[d0]).
 o3_name_a:
@@ -2031,6 +2101,9 @@ o3_tick:
         jsr     0x4007e940
         bsr     o3_mdesc
         move.l  %d0,PB_TABLE+4*O3_ROW
+        .if     HK_MACHINE_ROWS
+        mc_publish                      | each other machine's record as its row's type
+        .endif
         jmp     0x40052228
         .if     HK_MACHINE_ROWS
 | o3_publish -- the same record from ANALOG BD's tick hook (ab_tick_hook), which owns the site.
@@ -2056,6 +2129,16 @@ o3_main_commit:
         moveq   #1,%d4                  | FLEX
 .Lmc_w:
         bsr     o3_sigwrite
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_MAIN_COMMIT
+        tst.l   %d1                     | 0: not our row (o3_sigwrite keeps d1)
+        bne     .Lmc_ours
+        movem.l (%sp),%d0-%d1/%a0
+        lea     12(%sp),%sp
+        jmp     MC_NEXT_MAIN_COMMIT     | the next machine signs its row; the last stores stock's
+.Lmc_ours:
+        .endif
+        .endif
         movem.l (%sp),%d0-%d1/%a0
         lea     12(%sp),%sp
         mvs.b   (%a0),%d3
@@ -2089,6 +2172,18 @@ o3_src_commit2:
         moveq   #0,%d1
         bsr     o3_sigwrite
         move.l  (%sp)+,%d1
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_SRC_COMMIT
+        movem.l (%sp),%d0/%d2/%a0
+        lea     12(%sp),%sp
+        move.l  (%sp)+,%d1              | our continuation: the next machine's commit pushes its own
+        cmp.l   #0x4005a61c,%d1
+        bne     .Lsrc_n2
+        jmp     MC_NEXT_SRC_COMMIT
+.Lsrc_n2:
+        jmp     MC_NEXT_SRC_COMMIT2
+        .endif
+        .endif
 .Lsrc_go:
         movem.l (%sp),%d0/%d2/%a0
         lea     12(%sp),%sp
@@ -2097,9 +2192,17 @@ o3_src_commit2:
 | o3_setup_edit6 / o3_setup_draw6 -- Detours 0x4003a52e / 0x4003cd98 (6 * machine): SETUP's editor and
 | drawer address the machine's bytes as FLEX's (Part' + 0x1da + 6 * 1 + 30 * track).
 o3_setup_edit6:
+        .if     HK_MACHINE_ROWS
+        cmp.l   #5,%d2                  | any machine's row (ours and the others'): FLEX's bytes
+        bcs     .Le6
+        cmp.l   #MC_ROWS_END,%d2
+        bcc     .Le6
+        moveq   #1,%d2
+        .else
         cmp.l   #O3_ROW,%d2
         bne     .Le6
         moveq   #1,%d2
+        .endif
 .Le6:
         move.l  %d2,%d0
         lsl.l   #3,%d0
@@ -2107,9 +2210,17 @@ o3_setup_edit6:
         sub.l   %d2,%d0
         jmp     0x4003a536
 o3_setup_draw6:
+        .if     HK_MACHINE_ROWS
+        cmp.l   #5,%d6
+        bcs     .Ld6
+        cmp.l   #MC_ROWS_END,%d6
+        bcc     .Ld6
+        moveq   #1,%d6
+        .else
         cmp.l   #O3_ROW,%d6
         bne     .Ld6
         moveq   #1,%d6
+        .endif
 .Ld6:
         move.l  %d6,%d7
         lsl.l   #3,%d7
@@ -2195,6 +2306,11 @@ o3_vptr:                                | d2 = track, a2 = Part' -> a0 = Part' +
         add.l   %d0,%a1
         rts
 o3_stock_validate:
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_VALIDATE
+        jmp     MC_NEXT_VALIDATE        | the next machine's tracks, then stock
+        .endif
+        .endif
         lea     -96(%sp),%sp
         movem.l %d2-%d7/%a2-%a6,(%sp)
         jmp     0x40002320

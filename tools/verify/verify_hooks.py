@@ -482,19 +482,38 @@ def chromatic():
                     f"BLACKPYRAMIDS's sanitize then SCALE QUANTIZER's, stack and continuations as the sites expect")
 
 
-def machines():
-    """machine_rows, under Unicorn: ANALOG BD and OCTA303 built with
-    HK_MACHINE_ROWS and HOOKS's stubs, linked as the platform links them."""
+SIGS = {"ANALOG BD": b"AB\x01", "OCTA303": b"TB\x01", "CX OSC": b"CX\x01"}
+TITLES = {"ANALOG BD": "ab_name", "OCTA303": "o3_title", "CX OSC": "fm_name"}
+
+
+def _machine_units(k):
+    m = registry.modules()[k]
+    if m.variant is not None and m.settings:        # CX OSC: PLACE=DRAM, its page unit linked
+        return m.variant({s.name: s.default for s in m.settings}).get("linked", m.linked)
+    return m.linked
+
+
+def machines(on=("ANALOG BD", "OCTA303")):
+    """machine_rows, under Unicorn: the machines `on` (row order) built with
+    HK_MACHINE_ROWS and their place in the chain (flags_inc), and HOOKS's
+    stubs, linked as the platform links them. Every entry is the head's."""
     from unicorn import UC_HOOK_CODE
     from unicorn import m68k_const as mc
-    known = registry.modules()
-    keys = {"ANALOG BD", "OCTA303", "HOOKS"}
-    units = [(k, u) for k in ("ANALOG BD", "OCTA303") for u in known[k].linked]
+    keys = set(on) | {"HOOKS"}
+    head, n_rows = on[0], 5 + len(on)
+    hd = DECL["MACHINES"][head]
+    units = [(k, u) for k in on for u in _machine_units(k)]
     units += [("HOOKS", hu) for hu in DECL["select"](keys)["linked"]]
     with tempfile.TemporaryDirectory(prefix="octabam-hooks-mc-") as td:
         segs, sym = _link_units(Path(td), keys, units)
     u = _uc(segs)
     u.mem_map(0x80000000, 0x100000)
+    # CX OSC's machine change (ml_reset) reads stock's page descriptors: the user's image
+    # under the linked code when it is here, else those commits are not run
+    raw = ROOT / "out/raw/section_3_MAIN_OS.bin"
+    if raw.exists():
+        u.mem_write(BASE_IMG, raw.read_bytes())
+        _load(u, segs)
     BANK, PARTX, LIST = 0x42000000, 0x42000000 + 0x8ED80, 0x460E7386
     STACK, DONE = 0x47008000, 0x4700FFF0
     FMT, DRAW = 0x4700F000, 0x4700F100
@@ -509,13 +528,14 @@ def machines():
     u.hook_add(UC_HOOK_CODE, lambda uc, pc, size, _d: drawn.append(
         [int.from_bytes(uc.mem_read(uc.reg_read(mc.UC_M68K_REG_A7) + 4 + 4 * i, 4), "big") for i in range(6)]),
         begin=DRAW, end=DRAW)
+    sigs = {"static": bytes(3), "flex": bytes(3), **{k: SIGS[k] for k in on}}
 
     def track(t, kind):
         u.mem_write(PARTX, bytes(0x18B2))
         wr(0x46C82456, BANK)
         u.mem_write(0x100B14CF, b"\x00")
         u.mem_write(PARTX + 0x22 + t, b"\x00" if kind == "static" else b"\x01")
-        u.mem_write(PARTX + 0x3C + 30 * t, {"ab": b"AB\x01", "tb": b"TB\x01"}.get(kind, bytes(3)))
+        u.mem_write(PARTX + 0x3C + 30 * t, sigs[kind])
 
     def run(entry, stop, r=None, stack=()):
         for x in regs:
@@ -526,27 +546,27 @@ def machines():
         sp = STACK - 4 * len(stack)
         u.mem_write(sp, b"".join(v.to_bytes(4, "big") for v in stack))
         u.reg_write(mc.UC_M68K_REG_A7, sp)
-        u.emu_start(entry, stop, count=200000)
+        u.emu_start(entry, stop, count=400000)
         return u.reg_read(mc.UC_M68K_REG_PC), u.reg_read(regs[0]), u.reg_read(mc.UC_M68K_REG_A7) - sp
 
-    kinds = {"static": 0, "flex": 1, "ab": 5, "tb": 6}
+    name = " + ".join(on)
+    kinds = {"static": 0, "flex": 1, **{k: 5 + i for i, k in enumerate(on)}}
     got = {}
     for kind in kinds:
         track(3, kind)
-        u.mem_write(PARTX + 0x22 + 3, b"\x00" if kind == "static" else b"\x01")
-        got[kind] = run(sym["ab_row_type"], DONE, {0: 0 if kind == "static" else 1, 8: PARTX + 0x22 + 3},
+        got[kind] = run(sym[hd["TYPE"]], DONE, {0: 0 if kind == "static" else 1, 8: PARTX + 0x22 + 3},
                         stack=(DONE,))[1]
-    check(got == kinds, f"ab_row_type: static 0, FLEX 1, ANALOG BD 5, OCTA-303 6 ({got})")
+    check(got == kinds, f"[{name}] {hd['TYPE']}: static 0, FLEX 1, each machine its row ({got})")
 
     n = bad = 0
-    for top in (0, 1):
+    for top in range(n_rows - 5):
         for d2 in range(6):
             wr(LIST, top)
-            wr(LIST + 16, 7)
+            wr(LIST + 16, n_rows)
             drawn.clear()
             pc, _d0, dsp = run(sym["hk_mc_name"], 0x400786A2, {2: d2, 3: FMT, 4: 0x4444, 7: DRAW, 10: 0x30})
             row = top + d2
-            want = [[0x400BA876, 0x4444, 5, 0x31, 0xFFFFFFFF, 0x1000 + row]] if row < 7 else []
+            want = [[0x400BA876, 0x4444, 5, 0x31, 0xFFFFFFFF, 0x1000 + row]] if row < n_rows else []
             n += 1
             bad += pc != 0x400786A2 or dsp != 0 or drawn != want
             for kind, typ in kinds.items():
@@ -555,24 +575,37 @@ def machines():
                          {2: d2, 8: PARTX + 0x22 + 2})[0]
                 n += 1
                 bad += pc != (0x400786D4 if typ == row else 0x400786FC)
-    check(bad == 0, f"hk_mc_name / hk_mc_box: {n} cases -- row top + d2's name on screen row d2, none past the "
-                    f"seventh; the box on the screen row of the track's machine (static, FLEX, ANALOG BD, OCTA-303)")
+    check(bad == 0, f"[{name}] hk_mc_name / hk_mc_box: {n} cases -- row top + d2's name on screen row d2, "
+                    f"none past row {n_rows - 1}; the box on the screen row of the track's machine")
 
-    out = {r: run(sym["ab_machine_name"], 0x400334DE if r < 5 else DONE, stack=(DONE, r))[:2] for r in (1, 5, 6)}
-    check(out[1][0] == 0x400334DE and out[5] == (DONE, sym["ab_name"]) and out[6] == (DONE, sym["o3_title"]),
-          "ab_machine_name: row 5 ANALOG BD, row 6 OCTA303's name (o3_machine_name), stock rows to stock")
+    rows = (1,) + tuple(range(5, n_rows))
+    out = {r: run(sym[hd["NAME"]], 0x400334DE if r < 5 else DONE, stack=(DONE, r))[:2] for r in rows}
+    want = {5 + i: (DONE, sym[TITLES[k]]) for i, k in enumerate(on)}
+    check(out[1][0] == 0x400334DE and all(out[r] == want[r] for r in want),
+          f"[{name}] {hd['NAME']}: rows 5.. each machine's name through the chain, stock rows to stock")
+
+    names = sym[{"ANALOG BD": "ab_src_names", "OCTA303": "o3_src_names"}[head]]
+    check([rd(names + 4 * r) for r in range(5, n_rows)] == [sym[TITLES[k]] for k in on],
+          f"[{name}] the head's SRC SETUP name table: each machine's name on its row")
 
     res = {}
-    for row in (1, 5, 6):
-        for start in ("ab", "tb", "flex"):
+    if "CX OSC" in on and not raw.exists():
+        print(f"  [SKIP] [{name}] {hd['MAIN_COMMIT']}: no out/raw/section_3_MAIN_OS.bin for CX OSC's machine change")
+        return
+    for row in rows:
+        for start in kinds:
+            if start == "static":
+                continue
             track(4, start)
-            pc = run(sym["ab_main_commit"], 0x40079822, {0: 0, 1: 4, 4: row, 8: PARTX + 0x22 + 4, 9: BANK})[0]
+            pc = run(sym[hd["MAIN_COMMIT"]], 0x40079822, {0: 0, 1: 4, 4: row, 8: PARTX + 0x22 + 4,
+                                                         9: BANK})[0]
             res[(row, start)] = (pc, u.mem_read(PARTX + 0x22 + 4, 1)[0], bytes(u.mem_read(PARTX + 0x3C + 120, 3)),
                                  bytes(u.mem_read(0x100A4ECE + 0x3C + 120, 3)))
-    want = {1: (1, bytes(3)), 5: (1, b"AB\x01"), 6: (1, b"TB\x01")}
-    check(all(v[0] == 0x40079822 and (v[1], v[2]) == want[r] and v[3] == want[r][1] for (r, _s), v in res.items()),
-          "ab_main_commit: row 5 signs AB, row 6 OCTA303's TB (through o3_main_commit), FLEX neither; "
-          "the Part and its shadow, from every starting machine")
+    want = {1: (1, bytes(3)), **{5 + i: (1, SIGS[k]) for i, k in enumerate(on)}}
+    bad = {k: v for k, v in res.items() if not (v[0] == 0x40079822 and (v[1], v[2]) == want[k[0]]
+                                                 and v[3] == want[k[0]][1])}
+    check(not bad, f"[{name}] {hd['MAIN_COMMIT']}: each machine's row signs its signature, FLEX none; the Part "
+                   f"and its shadow, from every starting machine{f' ({bad})' if bad else ''}")
 
 
 def installed(name):
@@ -638,22 +671,29 @@ def installed(name):
               and b"\x4e\xf9" + sym["qz_chrom"].to_bytes(4, "big") in rt[o3:o3 + 0x100],
               "0x4004fc58: jsr o3_chrom, and o3_chrom hands every other track to qz_chrom")
     if "machine_rows" in DECL["bridged"](set(sel)):
-        # ANALOG BD's hooks at every shared site; its flagged not-ours paths
-        # reach OCTA303's routines; the FLEX kind entry is OCTA303's, chaining to ab_render
-        own = {d.site: d.symbol for d in sel["ANALOG BD"].detours}
+        # the head's hooks at every shared site it claims; each machine's flagged not-ours
+        # paths reach the next one's routine; the FLEX kind entry is the render chain's head;
+        # the head's tick publishes the others' records
+        on = DECL["machines"](set(sel))
+        head = on[0]
+        own = {d.site: d.symbol for d in sel[head].detours}
+        heads = [a for a, ks in DECL["MC_HEAD_SITES"].items() if head in ks]
         check(all(img[a - BASE_IMG:a - BASE_IMG + 2] in (b"\x4e\xf9", b"\x4e\xb9", b"\x41\xf9", b"\x4b\xf9")
-                  and rd(img, a + 2) == sym[own[a]] for a in DECL["MC_OCTA_DETOURS"] if a in own and a != 0x400786C8),
-              "OCTA303's machine sites hold ANALOG BD's hooks")
-        check(rd(img, DECL["MC_KIND_FLEX"]) == sym["sy_render"], "0x400d6438: OCTA303's sy_render")
-        for src, op, dst in (("ab_machine_name", b"\x4e\xf9", "o3_machine_name"),
-                             ("ab_stock_validate", b"\x4e\xf9", "o3_validate"),
-                             ("ab_tick_hook", b"\x4e\xb9", "o3_publish"),
-                             ("ab_row_type", b"\x4e\xf9", "o3_type"),
-                             ("ab_main_commit", b"\x4e\xf9", "o3_main_commit"),
-                             ("ab_src_commit", b"\x4e\xf9", "o3_src_commit2"),
-                             ("sy_render", b"\x4e\xb9", "ab_render")):
-            at = sym[src] - base
-            check(op + sym[dst].to_bytes(4, "big") in rt[at:at + 0x200], f"{src} reaches {dst}")
+                  and rd(img, a + 2) == sym[own[a]] for a in heads),
+              f"the machine list's {len(heads)} shared sites hold {head}'s hooks")
+        render = DECL["_chain"]("RENDER", set(sel))
+        check(rd(img, DECL["MC_KIND_FLEX"]) == sym[DECL["MACHINES"][render[0]]["RENDER"]],
+              f"0x400d6438: {render[0]}'s renderer, the render chain's head")
+        text = rt
+        for hook in DECL["MC_CHAINED"]:
+            chain = DECL["_chain"](hook, set(sel))
+            for nxt in chain[1:]:
+                dst = DECL["MACHINES"][nxt][hook]
+                ops = [op + sym[dst].to_bytes(4, "big") for op in (b"\x4e\xf9", b"\x4e\xb9")]
+                check(any(o in text for o in ops), f"{hook}: the chain reaches {nxt}'s {dst}")
+        for k in on[1:]:
+            pub = DECL["MACHINES"][k]["publish"]
+            check(b"\x4e\xb9" + sym[pub].to_bytes(4, "big") in text, f"{head}'s tick publishes {k}'s record ({pub})")
     stubs = {"status_icon": ("hk_status_icon", 0), "frame_tail": ("hk_frame_tail", 0),
              "frame_entry": ("hk_frame_entry", 8), "boot": ("hk_boot", 0)}
     on = DECL["bridged"](set(sel))
@@ -682,7 +722,9 @@ def main():
     print("verify_hooks: CHROMATIC bridges under Unicorn")
     chromatic()
     print("verify_hooks: machine rows under Unicorn")
-    machines()
+    for on in (("ANALOG BD", "OCTA303"), ("OCTA303", "CX OSC"), ("ANALOG BD", "CX OSC"),
+               ("ANALOG BD", "OCTA303", "CX OSC")):
+        machines(on)
     print(f"verify_hooks: installed ({name})")
     installed(name)
     print(f"verify_hooks: {'all passed' if not fails else f'{fails} failed'}")

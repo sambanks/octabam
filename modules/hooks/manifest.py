@@ -174,36 +174,144 @@ CHROMATIC = (
 )
 
 # ---- machine_rows -----------------------------------------------------------
-# (module key, its row-type routine), the head first: ANALOG BD's hooks take
-# every site and hand every row but 5 on to OCTA303's (HK_MACHINE_ROWS).
+# The machines on the track's list after the stock five, in row order: each
+# present one takes the next row (5, 6, 7). The first present is the HEAD: its
+# hooks keep every shared site and hand each row but its own on through the
+# chain; each machine's not-mine path jumps to the next one's routine for the
+# same hook, entered as at the site (MC_NEXT_*, flags_inc), and the last one's
+# replays stock. (module key, its row-type routine.)
 MACHINE_ROWS = (
     ("ANALOG BD", "ab_row_type"),
     ("OCTA303", "o3_type"),
+    ("CX OSC", "fm_type"),
 )
-# OCTA303's detours that ANALOG BD's, built flagged, chain into.
-MC_OCTA_DETOURS = (0x400334D8, 0x4003C928, 0x4003D718, 0x4004C36A, 0x4003C980, 0x400786C8,
-                   0x400585DC, 0x4005221E, 0x40078886, 0x4007981C, 0x4005A616, 0x4005A850,
-                   0x4003A52E, 0x4003CD98, 0x40002318)
-MC_KIND_FLEX = 0x400D6438               # OCTA303's sy_render stays; it chains to ab_render
-# Both modules' six-row pokes; HOOKS's seven-row ones replace four, the drawer
-# stubs the other two.
+# PB_TABLE (0x400d5f38) has slots 0..6 and a spare zero word at 0x400d5f54 that
+# no code reads; the FX1 table starts at 0x400d5f58: three rows at most.
+MC_MAX = 3
+# Each machine's routine for each chained hook. A routine is entered as at its
+# hook's site; None: the machine has no such hook. `publish` (its PLAYBACK
+# record into PB_TABLE[its row], called from the head's tick) and `title` (its
+# name, a word of the head's SRC SETUP name table) are needed of a non-head only.
+MACHINES = {
+    "ANALOG BD": dict(TYPE="ab_row_type", NAME="ab_machine_name", MAIN_COMMIT="ab_main_commit",
+                      SRC_COMMIT="ab_src_commit", SRC_COMMIT2="ab_src_commit2",
+                      VALIDATE="ab_validate", RENDER="ab_render", PAGE=None, RETRIG=None,
+                      publish=None, title=None),
+    "OCTA303": dict(TYPE="o3_type", NAME="o3_machine_name", MAIN_COMMIT="o3_main_commit",
+                    SRC_COMMIT="o3_src_commit", SRC_COMMIT2="o3_src_commit2",
+                    VALIDATE="o3_validate", RENDER="o3_render", PAGE="o3_page", RETRIG="o3_retrig",
+                    publish="o3_publish", title="o3_title"),
+    # CX OSC's commit is at 0x40079816, before the others' 0x4007981c: fm_main_commit_hk
+    # undoes the stock `adda` the chain's head site follows (modules/cxosc/machine.s)
+    "CX OSC": dict(TYPE="fm_type", NAME="fm_machine_name", MAIN_COMMIT="fm_main_commit_hk",
+                   SRC_COMMIT="fm_src_commit", SRC_COMMIT2="fm_src_commit2",
+                   VALIDATE="fm_validate", RENDER="sy_render", PAGE="pg_resolve", RETRIG="po_retrig",
+                   publish="fm_publish", title="fm_name"),
+}
+# The hooks whose chain is not the row order. CX OSC heads the render chain:
+# its page code and SCALE QUANTIZER find its records in the words before the
+# renderer the FLEX kind entry names (`movea.l 0x400d6438,%a0 ; movea.l
+# -4(%a0),%a0`), so the entry must be its sy_render. ANALOG BD's renderer (C)
+# calls stock's 0x40004008 itself, so it is the last. CX OSC's STATIC entry
+# chains the same way: OCTA303 claims a voice only by a FLEX signature or a
+# TB303* sample's settings record (o3_marker), and stock renders the rest.
+MC_ORDER = {"RENDER": ("CX OSC", "OCTA303", "ANALOG BD"),
+            "PAGE": ("OCTA303", "CX OSC"), "RETRIG": ("OCTA303", "CX OSC")}
+MC_CHAINED = ("TYPE", "NAME", "MAIN_COMMIT", "SRC_COMMIT", "SRC_COMMIT2", "VALIDATE",
+              "RENDER", "PAGE", "RETRIG")
+# The row chain's head-owned sites, and the machines that claim each (CX OSC
+# has no second name lookup and commits at 0x40079816).
+_ALL3, _AO = ("ANALOG BD", "OCTA303", "CX OSC"), ("ANALOG BD", "OCTA303")
+MC_HEAD_SITES = {
+    0x400334D8: _ALL3, 0x4003C928: _ALL3, 0x4003D718: _ALL3, 0x4004C36A: _AO,
+    0x4003C980: _ALL3, 0x400585DC: _ALL3, 0x4005221E: _ALL3, 0x40078886: _ALL3,
+    0x4007981C: _AO, 0x4005A616: _ALL3, 0x4005A850: _ALL3, 0x4003A52E: _ALL3,
+    0x4003CD98: _ALL3, 0x40002318: _ALL3,
+}
+# Their own chains' heads keep these; the rest are overridden.
+MC_KIND_FLEX = 0x400D6438               # the FLEX kind entry: the render chain's head
+MC_PAGE_SITE = 0x40031ECE               # the PLAYBACK page resolver (CX OSC: PLACE=DRAM's)
+MC_RETRIG_SITE = 0x4000C634
+MC_CX_COMMIT = 0x40079816               # CX OSC's machine-window commit, never a head
+# The list's count and bound sites, HOOKS's for any number of rows: each
+# machine's own six-row pokes (CX OSC: detours, and five cursor clamps).
 MC_POKE_SITES = (0x40079248, 0x400585FA, 0x4003C950, 0x40078678, 0x400786CE, 0x40079904)
 MC_CLAMPS = (0x40078C22, 0x40078CB0, 0x40078D2E, 0x40078DEE, 0x40078E7C)
-MC_POKES = (
-    Poke(0x40079248, H("48780005"), H("48780007"), "the machine list has seven rows"),
-    Poke(0x400585FA, H("48780005"), H("48780007"), "SRC SETUP's selector has seven rows"),
-    Poke(0x4003C950, H("7204"), H("7206"), "SRC SETUP's name lookup admits rows 5 and 6"),
-    Poke(0x40079904, H("7604"), H("7606"), "the machine list's commit persists rows 5 and 6"),
-) + tuple(
-    # the list's five key handlers (UP, DOWN, their FUNC pages, the encoder) clamp the cursor
-    # to 0..5 after moving (`moveq #5,%d1 ; cmp.l %d0,%d1 ; bge.s ; moveq #5,%d0`): one past
-    # stock's last row, which is why one added machine fitted without them
-    Poke(at + off, H(f"{op}05"), H(f"{op}06"), "the machine list's cursor reaches row 6")
-    for at in MC_CLAMPS for off, op in ((0, "72"), (6, "70")))
 MC_DRAW = (                             # (site, stock bytes, HOOKS's routine, pad)
     (0x40078678, H("7004b0826d24"), "hk_mc_name", 6),               # moveq #4,%d0 ; cmp.l %d2,%d0 ; blt.s
     (0x400786C8, H("7110b480662e7004b0826d28"), "hk_mc_box", 12),   # the stored machine's box test
 )
+MC_BOX = 0x400786C8                     # each machine's own row-box detour, HOOKS's
+
+
+def mc_pokes(n):
+    """HOOKS's pokes for 5 + n rows."""
+    rows, last = 5 + n, 4 + n
+    return (
+        Poke(0x40079248, H("48780005"), H(f"487800{rows:02x}"), f"the machine list has {rows} rows"),
+        Poke(0x400585FA, H("48780005"), H(f"487800{rows:02x}"), f"SRC SETUP's selector has {rows} rows"),
+        Poke(0x4003C950, H("7204"), H(f"72{last:02x}"), f"SRC SETUP's name lookup admits rows 5..{last}"),
+        Poke(0x40079904, H("7604"), H(f"76{last:02x}"), f"the machine list's commit persists rows 5..{last}"),
+    ) + tuple(
+        # the list's five key handlers (UP, DOWN, their FUNC pages, the encoder) clamp the cursor
+        # to 0..5 after moving (`moveq #5,%d1 ; cmp.l %d0,%d1 ; bge.s ; moveq #5,%d0`): one past
+        # stock's last row, which is why one added machine fitted without them
+        Poke(at + off, H(f"{op}05"), H(f"{op}{last:02x}"), f"the machine list's cursor reaches row {last}")
+        for at in MC_CLAMPS for off, op in ((0, "72"), (6, "70")))
+
+
+def machines(modules):
+    """The machines on the list for a selection, in row order."""
+    return tuple(k for k, _t in _present(MACHINE_ROWS, modules))
+
+
+def _chain(hook, modules):
+    """The present machines that have `hook`, in its chain's order."""
+    order = MC_ORDER.get(hook, tuple(k for k, _t in MACHINE_ROWS))
+    on = machines(modules)
+    return tuple(k for k in order if k in on and MACHINES[k][hook])
+
+
+def machine_inc(key, modules):
+    """The machine_rows lines of a machine's remix.inc: its row, the list's end,
+    and per chained hook whether a next machine has it (MC_HAS_*) and its
+    routine (MC_NEXT_*); the head's names-table tail and tick publishes."""
+    on = machines(modules)
+    if "machine_rows" not in bridged(modules) or key not in on:
+        return ""
+    if len(on) > MC_MAX:
+        raise ValueError(f"HOOKS machine_rows: {', '.join(on)} need {len(on)} rows "
+                         f"after the stock five; PB_TABLE has room for {MC_MAX}")
+    out = [f".set MC_ROW, {5 + on.index(key)}", f".set MC_ROWS_END, {5 + len(on)}"]
+    for hook in MC_CHAINED:
+        chain = _chain(hook, modules)
+        nxt = chain[chain.index(key) + 1:] if key in chain else ()
+        out.append(f".set MC_HAS_{hook}, {int(bool(nxt))}")
+        if nxt:
+            out.append(f".set MC_NEXT_{hook}, {MACHINES[nxt[0]][hook]}")
+    head = on[0] == key
+    out.append(".macro mc_names_tail")
+    out += [f"    .long {MACHINES[k]['title']}" for k in on[1:]] if head else []
+    out += [".endm", ".macro mc_publish"]
+    out += [f"    jsr {MACHINES[k]['publish']}" for k in on[1:]] if head else []
+    out.append(".endm")
+    return "\n".join(out) + "\n"
+
+
+def _mc_overrides(modules):
+    """Every machine's claim the chain or HOOKS stands in for."""
+    on = machines(modules)
+    head, out = on[0], []
+    for site, owners in MC_HEAD_SITES.items():
+        out += [Override(site, k) for k in on if k != head and k in owners]
+    for site in MC_POKE_SITES + (MC_BOX,):
+        out += [Override(site, k) for k in on]
+    if "CX OSC" in on:
+        out += [Override(site, "CX OSC") for site in MC_CLAMPS + (MC_CX_COMMIT,)]
+    for hook, site in (("RENDER", MC_KIND_FLEX), ("PAGE", MC_PAGE_SITE), ("RETRIG", MC_RETRIG_SITE)):
+        out += [Override(site, k) for k in _chain(hook, modules)[1:]]
+    return out
+
 
 BRIDGES = {"track_key": TRACK_KEY, "status_icon": STATUS_ICON, "frame_tail": FRAME_TAIL,
            "frame_entry": FRAME_ENTRY, "boot": BOOT, "chrom_pitch": CHROM_PITCH,
@@ -232,10 +340,11 @@ def bridged(modules) -> tuple[str, ...]:
 
 def flags_inc(key, modules) -> str:
     """The lines a participant's remix.inc carries: each flag 1 when that
-    bridge is on and `key` is in it, else 0 (its own bytes, unchanged)."""
+    bridge is on and `key` is in it, else 0 (its own bytes, unchanged); a
+    machine on a shared list also gets its place in the chain (machine_inc)."""
     on = bridged(modules)
     return "".join(f".set {flag}, {int(b in on and any(p[0] == key for p in BRIDGES[b]))}\n"
-                   for b, flag in FLAGS.items())
+                   for b, flag in FLAGS.items()) + machine_inc(key, modules)
 
 
 def track_key_records(modules):
@@ -290,6 +399,11 @@ def hooks_inc(modules, remix=None):
             # to the boot itself; the others' last is called like the rest
             out += [f"    jmp {last}" if b == "boot" else f"    jsr {last}"]
         out += [".endm"]
+    # the machine list's row box: the head's type routine answers every machine's row
+    out += [".macro hk_mc_type"]
+    if "machine_rows" in on:
+        out += [f"    jsr {MACHINES[machines(modules)[0]]['TYPE']}"]
+    out += [".endm"]
     return "\n".join(out) + "\n"
 
 
@@ -349,9 +463,8 @@ def select(modules):
             detours.append(Detour(site, stock, "hooks", sym,
                                   "the machine list scrolls: row top + d2 on screen row d2",
                                   kind="jmp", pad_to=pad))
-        pokes += MC_POKES
-        overrides += [Override(site, "OCTA303") for site in MC_OCTA_DETOURS + MC_POKE_SITES]
-        overrides += [Override(site, "ANALOG BD") for site in (0x400786C8, MC_KIND_FLEX) + MC_POKE_SITES]
+        pokes += mc_pokes(len(machines(modules)))
+        overrides += _mc_overrides(modules)
     coded = [b for b in on if b not in CODELESS]
     return {"linked": (_unit(modules),) if coded else (), "detours": tuple(detours),
             "symbol_refs": tuple(refs), "overrides": tuple(overrides), "pokes": tuple(pokes)}

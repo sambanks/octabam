@@ -1017,6 +1017,8 @@ def main():
              "hooks-chrom-bp": ("SPRING REV",),   # BLACKPYRAMIDS's voice in SPRING's words, as blackpyramids-303
              "hooks-core": ("PHASER", "DARK REV"),   # LOAD METER's DSP half in PHASER's (as stock-meter-a), CF METER's readout in DARK's (as cfmeter)
              "hooks-machines": ("SPRING REV",),   # ANALOG BD's voices in SPRING's words, as analog-bassdrum
+             "hooks-machines-all": ("SPRING REV",),   # the same, with CX OSC
+             "hooks-machines-cx": (),   # OCTA303 + CX OSC: ColdFire, no DSP words
              "analog-bassdrum": ("SPRING REV",),
               "blackpyramids-303": ("SPRING REV",),   # its DSP voice in SPRING's words, as ANALOG BD's
              "sidechain-compressor": ("SPRING REV",), "kyoti-mute-sidechain": ("SPRING REV",),   # its DSP section in SPRING's words

@@ -4,8 +4,9 @@ Choose CX OSC in FUNC+SRC / SELECT MACHINE TYPE (FLEX + Part signature "CX",1).
 Mono only; stock LFO page (no VOIC/CHRD). PLAYBACK: PTCH RATO INDX FOLD SYMM FDBK.
 
 Machine list adapted from timhastie/octatrick-modules v2.15 SYNTH MACHINE
-(MIT / Modwerk chooser lineage). Conflicts with SYNTH MACHINE, ANALOG BD,
-and BLACKPYRAMIDS_303.
+(MIT / Modwerk chooser lineage). Conflicts with SYNTH MACHINE and
+BLACKPYRAMIDS_303. Beside ANALOG BD or OCTA303 it shares the machine list
+through HOOKS (machine_rows): its row follows theirs.
 """
 
 import os
@@ -52,8 +53,23 @@ def _cxosc_place(modules) -> str:
     return "DRAM"
 
 
+def _hooks_inc(modules):
+    """modules/hooks's flags and, beside another machine, CX OSC's place in the
+    machine_rows chain (its row; the next machine's routines)."""
+    from remix import hooks_flags
+    if _cxosc_place(modules) != "DRAM" and "OCTA303" in modules:
+        raise ValueError("CX OSC: PLACE=CAVE beside OCTA303 -- both take the PLAYBACK page "
+                         "resolver 0x40031ece and the cave's jump there cannot be chained; "
+                         "build with PLACE=DRAM")
+    return hooks_flags.inc("CX OSC", modules)
+
+
+def poly_include(modules, remix=None):
+    return _hooks_inc(modules)
+
+
 def machine_include(modules, remix=None):
-    text = remix_include(modules, remix) + machine_limits()
+    text = remix_include(modules, remix) + machine_limits() + _hooks_inc(modules)
     # CAVE: page.s is not linked; machine.s's .long fm_descriptor needs the
     # absolute cave base. DRAM: the Linked page unit exports the symbol.
     if _cxosc_place(modules) != "DRAM":
@@ -271,14 +287,13 @@ MODULE = Module(
     doc="CX OSC in the machine list (no marker file): PTCH RATO INDX FOLD SYMM FDBK, mono, stock LFOs. Local fork of FM SYNTH.",
     conflicts=(
         ("SYNTH MACHINE", "both own the FLEX/STATIC kind-table renderers, page cave 0x400d24d0, and machine-list sites"),
-        ("ANALOG BD", "both own the machine list rows after PICKUP"),
         ("BLACKPYRAMIDS_303", "shares ColdFire ROM hooks (e.g. MIDI note-on 0x4000e746) — build refuses the pair"),
     ),
     gates=(
         Gate("tools/verify/verify_cxosc.py", remix_arg=False, venv=True, stage="image"),
     ),
     linked=(
-        Linked("poly", os.path.join(_HERE, "poly.s"), cpu="5475", dram=True),
+        Linked("poly", os.path.join(_HERE, "poly.s"), cpu="5475", dram=True, include=poly_include),
         Linked("fmmachine", os.path.join(_HERE, "machine.s"), cpu="5475", dram=True, include=machine_include),
     ),
     symbol_refs=(

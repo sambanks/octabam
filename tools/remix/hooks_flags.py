@@ -21,3 +21,22 @@ def _hooks():
 def inc(key, modules) -> str:
     """remix.inc lines for module `key` in a selection of module keys."""
     return _hooks()["flags_inc"](key, modules)
+
+
+def on(bridge, key, modules) -> bool:
+    """Is module `key` in HOOKS's `bridge` for a selection of module keys?"""
+    h = _hooks()
+    return bridge in h["bridged"](modules) and any(p[0] == key for p in h["BRIDGES"][bridge])
+
+
+def image_row(key, root=ROOT) -> int:
+    """The machine list row of machine module `key` in the image last built
+    (out/mainos_bus.bin, whose sidecar names its remix): 5, or its place after
+    the machines before it (machine_rows)."""
+    side = root / "out/mainos_bus.remix"
+    if not side.exists():
+        return 5
+    from remix import registry
+    keys = {m.key for m in registry.selected(registry.remix(side.read_text().split()[0]))}
+    on = _hooks()["machines"](keys)
+    return 5 + on.index(key) if key in on else 5

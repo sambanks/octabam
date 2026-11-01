@@ -40,10 +40,31 @@ image, the list scrolling, each row's commit), not flashed; each alone
 byte-identical. One measured surprise: the list's five key handlers clamp
 the cursor to 0..5 after moving -- one past stock's last row, which is why a
 single added machine never met it ([TRAPS.md](../contributing/TRAPS.md#trap-machine-clamp)).
-Still open: CX OSC, SYNTH MACHINE and BLACKPYRAMIDS_303 (the last can never
+
+**Phase 6b, a chain of N (31 Oct 2026).** CX OSC joins, and the pair
+became a chain rather than a registry: `machine_rows` lists the machines in
+row order (ANALOG BD, OCTA303, CX OSC), each present one takes the next row,
+and each is built with its place (`flags_inc` → `machine_inc`: `MC_ROW`,
+`MC_ROWS_END`, and per hook `MC_HAS_*` / `MC_NEXT_*`, the next machine's
+routine). The first present is the head and keeps every shared site; the
+head's names table and tick take the others' names and page records
+(`mc_names_tail`, `mc_publish`). Three hooks chain in their own order: the
+renderer CX OSC → OCTA303 → ANALOG BD (CX OSC first: its page code reads its records from the words before the renderer the FLEX kind entry names, and with OCTA303 first the port's boot jumped through garbage; ANALOG BD's C renderer calls stock itself),
+the page resolver and the START rewrite OCTA303 → CX OSC. Two adapters were
+needed, both in CX OSC: its machine-window commit sits at `0x40079816`, six
+bytes before the others' `0x4007981c`, so the chain enters after stock's
+`adda` there and `po_machwin` replays the head's two displaced instructions;
+and OCTA303's renderer is `o3_render` under the bridge, as CX OSC's `poly.s`
+exports a `sy_render` into the same link. Three machines is the ceiling:
+PB_TABLE has one spare word (`0x400d5f54`) before the FX1 table, and the
+manifest refuses a fourth. ✅ under Unicorn (`verify_hooks`, the four
+selections: each row type, the drawer over every top row, every machine's
+name and main commit through the chain), each alone byte-identical (ANALOG
+BD, OCTA303, CX OSC rebuilt, 31 Oct 2026); the port gates: see
+[HOOKS](../../modules/hooks/README.md). Not flashed.
+Still open: SYNTH MACHINE and BLACKPYRAMIDS_303 (the last can never
 sit beside ANALOG BD: both put a DSP voice in SPRING REV's words), and the
-MIDI note-on site `0x4000e746`. Whether a registry earns its code depends on
-those three: a third machine on the list makes chaining by pairs grow.
+MIDI note-on site `0x4000e746`.
 
 Confidence markers: ✅ measured, 🟡 inferred with a falsifier stated,
 ⬜ not looked at.

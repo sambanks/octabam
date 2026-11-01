@@ -8,8 +8,10 @@ SYNTH MACHINE submodule.
 **FUNC + SRC** or **SELECT MACHINE TYPE** → **CX OSC** (after the stock
 five). No marker sample. The Part stores FLEX with signature `"CX", 1`.
 At most one CX OSC track per Part (one sounding CX OSC track on the active
-Part). It cannot share an image with **SYNTH MACHINE**, **ANALOG BD** or
-**BLACKPYRAMIDS_303**, which use the same machine list.
+Part). It cannot share an image with **SYNTH MACHINE** or
+**BLACKPYRAMIDS_303**, which use the same machine list. Beside **ANALOG BD**
+or **OCTA-303** it shares the list: CX OSC is the row after theirs, and the
+list scrolls.
 
 ![SRC SETUP: CX OSC selected in the machine list.](../../img/cxosc/setup.png)
 

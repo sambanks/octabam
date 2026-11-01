@@ -43,6 +43,21 @@ def remix_inc(modules, remix=None):
             + hooks_flags.inc("OCTA303", modules))
 
 
+def _render_ref(sym):
+    return SymbolRef(KIND_TABLE_FLEX, STOCK_RENDERER, "octa303", sym,
+                     "kind table FLEX renderer -> OCTA303 sy_render (TB303*-named samples play the "
+                     "303; every other sample the stock renderer)")
+
+
+def select(modules):
+    """Beside another machine (modules/hooks, machine_rows) the renderer is o3_render: CX OSC's
+    poly.s exports a sy_render of its own into the same runtime link."""
+    from remix import hooks_flags
+    if hooks_flags.on("machine_rows", "OCTA303", modules):
+        return {"symbol_refs": (_render_ref("o3_render"),)}
+    return {}
+
+
 CHROM_HOOK = 0x4004FC58                  # `lea (4,a2,a2.l*4),a2; mvz.b 0x100b14cf,d0` (quantizer's qz_chrom site)
 CHROM_STOCK = H("45f2ac04" "71b9100b14cf")
 
@@ -72,11 +87,8 @@ MODULE = Module(
     linked=(
         Linked("octa303", os.path.join(_HERE, "octa303.s"), dram=True, include=remix_inc),
     ),
-    symbol_refs=(
-        SymbolRef(KIND_TABLE_FLEX, STOCK_RENDERER, "octa303", "sy_render",
-                  "kind table FLEX renderer -> OCTA303 sy_render (TB303*-named samples play the "
-                  "303; every other sample the stock renderer)"),
-    ),
+    symbol_refs=(_render_ref("sy_render"),),
+    select=select,
     detours=(
         Detour(RESOLVER_HOOK, RESOLVER_STOCK, "octa303", "o3_page",
                "page resolver PLAYBACK table load: a FLEX track whose slot holds a TB303* sample "

@@ -90,11 +90,16 @@ def main():
                     "--tree", str(OUT / "tree"), "--out", str(card)], check=True, cwd=ROOT)
     image = OUT / "image.bin"
     shutil.copy2(os.environ.get("O3_IMAGE", ROOT / "out/mainos_bus.bin"), image)
-    # Beside ANALOG BD (modules/hooks machine_rows) OCTA-303 is row 6 of seven, UI type 6: the
-    # machine list's row count, poked at 0x40079248, says which image this is. SELECT's six DOWNs
-    # land on the last row either way.
-    global PB_TABLE5
-    o3_row = image.read_bytes()[0x40079248 - 0x40000400 + 3] - 1
+    # Beside other machines (modules/hooks machine_rows) OCTA-303 is a later row of a longer list,
+    # its UI type its row: the machine list's row count, poked at 0x40079248, says how long, and
+    # the remix the image was built from says where (hooks_flags.image_row). SELECT's six DOWNs
+    # land on the last row; short UPs (a 0.25 s hold repeats) climb to ours.
+    global PB_TABLE5, SELECT
+    sys.path.insert(0, str(ROOT / "tools"))
+    from remix import hooks_flags
+    rows = image.read_bytes()[0x40079248 - 0x40000400 + 3]
+    o3_row = hooks_flags.image_row("OCTA303", ROOT) if not os.environ.get("O3_IMAGE") else rows - 1
+    SELECT = SELECT[:-2] + [e for _ in range(rows - 1 - o3_row) for e in key(0x33, 0.25, 0.06)] + SELECT[-2:]
     PB_TABLE5 = 0x400D5F38 + 4 * o3_row
     sym = symbols()
     rec = sym["o3_desc"] + 0x194          # the machine's record (o3_desc's second, O3_DLEN apart)

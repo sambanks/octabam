@@ -45,7 +45,7 @@ def _unflag(s):
     for line in s.split('\n'):
         tok = line.split('|')[0].split()
         if tok[:1] == ['.if']:
-            if tok[1:] and tok[1] not in flags:
+            if tok[1:] and tok[1] not in flags and all(keep):    # nested in a dropped block: any symbol
                 raise ValueError('cfsim harness: .if on ' + ' '.join(tok[1:]) + ', not a HOOKS flag')
             keep.append(False)
         elif tok[:1] == ['.else']:

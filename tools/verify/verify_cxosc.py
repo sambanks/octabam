@@ -54,7 +54,7 @@ STOP, STACK = 0x10000, 0x20000
 
 Q14_PEAK = 0x4000
 RAIL = 0x7FFFF0  # top-24 sample near full scale
-FM_ROW = 5  # machine.s: sixth list row = CX OSC
+FM_ROW = 5  # machine.s: sixth list row = CX OSC; after ANALOG BD / OCTA303 when the image has them (main)
 MSG_FM_MAX = b"CX OSC: 1 MAX"
 
 
@@ -321,10 +321,16 @@ def rms(xs):
 
 
 def main():
+    global FM_ROW
     loaded = load_runtime()
     if loaded is None:
         return 0
     uc, symbols, _base = loaded
+    sys.path.insert(0, str(ROOT / "tools"))
+    from remix import hooks_flags
+    FM_ROW = hooks_flags.image_row("CX OSC", ROOT)     # beside other machines (modules/hooks machine_rows)
+    if FM_ROW != 5:
+        print(f"  CX OSC is row {FM_ROW} of this image's machine list (machine_rows)")
 
     check_guard(uc, symbols)
 

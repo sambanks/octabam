@@ -65,7 +65,12 @@
         .global fm_page_store, fm_track_undo, fm_track_paste, fm_part_undo, fm_part_paste, fm_preview | 2.15: the paste guards
         .include "remix.inc"             | 2.11: HAVE_SYDRUM and the shared equates (engine_abi.inc; manifest.py)
 
+        .if     HK_MACHINE_ROWS          | beside other machines (modules/hooks, machine_rows): our
+        .set    FM_ROW, MC_ROW           | place in the list, after theirs; their hooks are the head's,
+        .global fm_main_commit_hk, fm_publish, fm_name, fm_type | which chain into ours for any row not theirs
+        .else
         .set    FM_ROW, 5                | the sixth row, the first after the stock five: CX OSC
+        .endif
         .set    ML_COUNT, 1 + HAVE_SYDRUM | the rows after the stock five (2.11)
         .set    ML_LAST, 4 + ML_COUNT    | the last row's index
         .set    RD_KIND, 3               | a row descriptor: +0 signature (3 B), +3 kind, +4 name,
@@ -597,6 +602,15 @@ fm_mc_refuse:
         lea     12(%sp),%sp              | the exit reloads what it uses
         bsr     ml_toast
         jmp     WIN_REFUSE               | nothing written: the stock refusal's exit
+        .if     HK_MACHINE_ROWS
+| fm_main_commit_hk: the same from the chain's head (ANALOG BD's or OCTA303's commit at
+| 0x4007981c, which does not take a CX OSC row): our 0x40079816 detour stands down, so stock's
+| `addal #0x8eda2,%a0` there has run. Undone here, as fm_main_commit replays it (po_machwin,
+| which rejoins after the head's span when built for the chain).
+fm_main_commit_hk:
+        suba.l  #MACH_OFF,%a0
+        bra     fm_main_commit
+        .endif
 
 | ---- 0x4005a616 / 0x4005a850 (jmp, 6 B each): SRC SETUP's two machine-byte writes:
 | displaced `movel 0x460d5c30,%d1` (the chosen row), then stock stores d1 at a0 (the
@@ -1189,6 +1203,28 @@ fm_tk_row:
         move.l  (%sp)+,%d2
         movea.l (%sp)+,%a2
         jmp     TICK_RET
+        .if     HK_MACHINE_ROWS
+| fm_publish: fm_tick's PLAYBACK records from the chain's head's tick hook, which owns the
+| site and fills its own SRC SETUP name table (fm_name is a word of it). d0/d1/a0/a1
+| clobbered, as by the stock calls around it.
+fm_publish:
+        move.l  %a2,-(%sp)
+        move.l  %d2,-(%sp)
+        moveq   #0,%d2
+fm_pb_row:
+        lea     ml_rows(%pc),%a2
+        movea.l (%a2,%d2.l*4),%a2
+        movea.l RD_DESC(%a2),%a0
+        jsr     (%a0)                    | d0 = its page
+        lea     PB_TABLE+4*FM_ROW,%a0
+        move.l  %d0,(%a0,%d2.l*4)
+        addq.l  #1,%d2
+        cmpi.l  #ML_COUNT,%d2
+        bne     fm_pb_row
+        move.l  (%sp)+,%d2
+        movea.l (%sp)+,%a2
+        rts
+        .endif
 
 | ---- the six row-count and row-bound sites (2.11): the stock list code was written for
 | five machines; 2.10 poked its constants to six rows. Each detour does what the stock

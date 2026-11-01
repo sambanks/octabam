@@ -128,7 +128,13 @@
         .set    VOICE_STRIDE, 0xa8
         .set    CURSOR, 0x80001c80
         .set    NIBBLE, 0x46104d0c
+        .include "remix.inc"             | HK_MACHINE_ROWS: beside other machines (modules/hooks)
         .set    STOCK_RENDER, 0x40004008
+        .if     HK_MACHINE_ROWS
+        .if     MC_HAS_RENDER
+        .set    STOCK_RENDER, MC_NEXT_RENDER | the next renderer in the FLEX kind entry's chain
+        .endif
+        .endif
         .set    FMSRC_RET, 0x4000d51e    | after po_fmsource's displaced 8 B
         .set    FLEX_START, 0x4000f450   | stock FLEX START callback
         .set    MACH_OFF, 0x8eda2
@@ -4928,7 +4934,13 @@ po_machwin:
         movem.l (%sp),%d0-%d2/%d4/%a0-%a1
         lea     24(%sp),%sp
         mvs.b   (%a0),%d3                | (not written yet)
+        .if     HK_MACHINE_ROWS
+        move.b  %d4,(%a0)                | entered from the chain (fm_main_commit_hk): the head's
+        add.l   %d1,%d0                  | detour spans 0x4007981c..0x40079822, so its two
+        jmp     MACHWIN_RET+4            | instructions are replayed here
+        .else
         jmp     MACHWIN_RET
+        .endif
 
 | ---- 0x4005a848: the sample-list window's machine-byte write (8 bytes displaced) -
 po_machlist:
