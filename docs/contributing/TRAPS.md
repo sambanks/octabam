@@ -10,6 +10,27 @@ states the symptom, what it cost, the fix, and what now gates it.
 Add a new trap here the moment it costs real work, and add its one-line
 index entry in `AGENTS.md`'s trap index.
 
+<a id="trap-gate-parent-idle"></a>
+### An idle gate parent does not mean its children are stalled
+
+**Seen:** the GRANULAR follow-up stopped shared MORPH and `verify_dlload`
+after their parents showed zero CPU and no recent stdout. MORPH's next
+checks simulate many thousands of frames in Python; bounded stack dumps
+showed changing simulator frames and further passing checks. The loader
+launched every scenario's full port before waiting for the first one,
+leaving roughly 36 competing emulator processes and no per-child progress.
+A retained scenario run alone used nearly one full CPU.
+
+**Cost:** incomplete suites were misdiagnosed as deadlocks. Neither parent
+CPU nor stdout alone measures descendant progress; these observations do
+not prove the loader's remaining scenarios pass.
+
+**Fix and gate:** inspect descendants, CPU time and scenario logs before
+stopping a run. `verify_dlload` bounds active ports with `--jobs` (default
+two), names starts/completions, and uses a per-child wall-clock timeout.
+`test_dlload_runner` checks the bound and cleanup after timeout, failure
+and interruption. Timeout logs remain failures, not passing evidence.
+
 <a id="trap-detour-interior"></a>
 ### A branch can enter the middle of a displaced instruction span
 

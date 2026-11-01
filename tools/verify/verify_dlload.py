@@ -32,8 +32,11 @@ Remix.window_demand (k):
              the chooser leaves T2's FX1 as it was
 
 Cannot see: the hardware's host-write timing, other projects' use of X:0x2840..0x3fff.
+At most two emulator scenarios run together (--jobs); each has a 900-second wall-clock
+limit (--timeout). Progress names each child and elapsed time. Failure or interruption
+stops the remaining children and retains their logs.
 """
-import argparse, json, os, pathlib, re, shutil, subprocess, sys
+import argparse, json, os, pathlib, re, shutil, subprocess, sys, time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 
@@ -60,6 +63,56 @@ def poke(live, part, track, value):
     return f"{live + track:#x}={value:#x};{part + track:#x}={value:#x}"
 
 
+def run_scenarios(commands, jobs, timeout):
+    pending = iter(commands.items())
+    active = {}
+    texts = {}
+    exhausted = False
+    try:
+        while active or not exhausted:
+            while len(active) < jobs and not exhausted:
+                item = next(pending, None)
+                if item is None:
+                    exhausted = True
+                    break
+                tag, command = item
+                fh = open(OUT / f"{tag}.txt", "w")
+                try:
+                    process = subprocess.Popen(command, cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+                except BaseException:
+                    fh.close()
+                    raise
+                active[tag] = (process, fh, time.monotonic())
+                print(f"  [RUN] {tag}: pid {process.pid}", flush=True)
+            for tag, (process, fh, started) in list(active.items()):
+                rc = process.poll()
+                elapsed = time.monotonic() - started
+                if rc is None:
+                    if elapsed >= timeout:
+                        raise RuntimeError(f"{tag} timed out after {timeout}s -- {OUT / (tag + '.txt')}")
+                    continue
+                fh.close()
+                del active[tag]
+                texts[tag] = (OUT / f"{tag}.txt").read_text(errors="replace")
+                print(f"  [DONE] {tag}: exit {rc}, {elapsed:.1f}s", flush=True)
+                if rc or "ended on quit" not in texts[tag]:
+                    raise RuntimeError(f"the {tag} run did not finish -- {OUT / (tag + '.txt')}")
+            if active:
+                time.sleep(0.1)
+    finally:
+        for process, _, _ in active.values():
+            if process.poll() is None:
+                process.terminate()
+        for process, fh, _ in active.values():
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            fh.close()
+    return texts
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("remix", nargs="?", default="test/dlspike")
@@ -67,7 +120,11 @@ def main():
     ap.add_argument("--set-name", default="BRAINSET")
     ap.add_argument("--name", default="BRAINPRJ")
     ap.add_argument("--ms", type=int, default=7000)
+    ap.add_argument("--jobs", type=int, default=2, help="maximum simultaneous emulator scenarios")
+    ap.add_argument("--timeout", type=int, default=900, help="wall-clock seconds per emulator scenario")
     a = ap.parse_args()
+    if a.jobs < 1 or a.timeout < 1:
+        ap.error("--jobs and --timeout must be positive")
     project = a.project
     if not project and pathlib.Path("~/.octabam_project").expanduser().is_file():
         project = pathlib.Path("~/.octabam_project").expanduser().read_text().strip()
@@ -159,7 +216,7 @@ def main():
     for tag, (tracks, core, _) in TWO.items():
         scenarios[tag] = (";".join(poke(FX1_LIVE, FX1_PART, t, rec["id"]) for t in tracks), [])
         watch[tag] = f"{core}:{rec['proc']:x}"
-    procs = {}
+    commands = {}
     for tag, (first, later) in scenarios.items():
         card = OUT / f"{tag}.img"
         r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
@@ -197,15 +254,11 @@ def main():
             cmd += ["--dsp-pcwatch", watch[tag]]
         if tag.startswith("pick") or tag in ("used", "blocked", "both-blocked", "stuck", "reverb-late", "plate-ok", "spring-ok"):
             cmd += ["--watch-pc", f"{TOAST:#x}"]
-        fh = open(OUT / f"{tag}.txt", "w")
-        procs[tag] = (subprocess.Popen(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT), fh)
-    texts = {}
-    for tag, (p, fh) in procs.items():
-        rc = p.wait()
-        fh.close()
-        texts[tag] = (OUT / f"{tag}.txt").read_text(errors="replace")
-        if rc or "ended on quit" not in texts[tag]:
-            sys.exit(f"verify_dlload: the {tag} run did not finish -- {OUT / (tag + '.txt')}")
+        commands[tag] = list(map(str, cmd))
+    try:
+        texts = run_scenarios(commands, a.jobs, a.timeout)
+    except RuntimeError as exc:
+        sys.exit(f"verify_dlload: {exc}")
 
     def peek(tag, core, space, addr):
         m = re.search(rf"core {core} {space}:0x0*{addr:x}:([^\n]*)", texts[tag])
