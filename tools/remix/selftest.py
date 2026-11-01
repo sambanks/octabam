@@ -1033,6 +1033,7 @@ def main():
              "trackpatterns": (),   # pgstath's ColdFire module on the stock effects, no DSP words
              "trackpatterns-core": (),   # TRACK PATTERNS on the core modules and the 14 stock effects, which gives up nothing
              "free-loop": (),   # FREE LOOP: ColdFire, no DSP words, on the 14 stock effects
+             "granular": (), "granular-octabam": (),   # GRANULAR keeps every stock effect; no region harvest
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
              "octatrick": ("SPATIALIZER",),   # USB's ABCD input inject, as in the io remixes
@@ -1068,6 +1069,7 @@ def main():
              "rig": _rig,
              "character-txtr": _rig,   # octabam-bus with the TXTR station
              "octabam-bus": ("PLATE REV", "SPRING REV", "DARK REV"),   # FX2 is locked, so no row for the reverbs; nothing is harvested
+             "granular-bus": ("PLATE REV", "SPRING REV", "DARK REV"),
              "stations-fx2": _rig}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
