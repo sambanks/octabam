@@ -107,6 +107,11 @@ which is not what an MD or MnM Kit holds.
   YES opens the name editor (seven characters, `NEW KIT` for an empty
   Kit); the current Part is saved into the Kit and the current pattern
   plays it.
+- The stock list has no title, so the two lists look alike: each shows
+  its name (`LOAD KIT`, `SAVE KIT`) as a message when it opens. FUNC+YES
+  is the quick save in SAVE KIT only; in LOAD KIT it shows `LOAD KIT: NO
+  SAVE` and nothing else (until 1 Nov 2026 it fell through to stock's
+  FUNC+YES, which arms every track and shows `ARM ALL`: a field report).
 - In either list, LEVEL moves the cursor a row per detent (Octakit's
   LEVEL scroll; the encoder dispatch call `0x40061e00`), UP and DOWN as
   stock.

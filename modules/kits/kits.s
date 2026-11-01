@@ -480,7 +480,11 @@ kits_level:
 
 | 0x4005e3d8 (key, pressed): FUNC+YES. With the SAVE KIT list open, the
 | row under the cursor is saved now under its Kit's name (Octakit's
-| FUNC+PART+YES quick save); its release is swallowed with it.
+| FUNC+PART+YES quick save). With the LOAD KIT list open it does nothing
+| but say so: stock's FUNC+YES (ARM ALL) is not for an open list, and
+| the two lists look alike. Either way its release is swallowed with it.
+| The open list is KITS' when its callbacks are CBTAB (MOWN alone outlives
+| a close by NO).
 kits_funcyes:
         tstl    SWALLOW
         beq.s   1f
@@ -490,16 +494,21 @@ kits_funcyes:
         rts
 1:      tstl    READY
         beq.s   9f
-        movel   MOWN,%d0
-        subql   #2,%d0
-        bne.s   9f
         tstl    M_OBJ
         beq.s   9f
+        movel   M_CBS,%d0
+        cmpil   #CBTAB,%d0
+        bne.s   9f
         tstl    %sp@(8)
         beq.s   9f
         moveq   #1,%d0
         movel   %d0,SWALLOW
-        clrl    MOWN
+        movel   MOWN,%d0
+        subql   #2,%d0
+        beq.s   3f
+        lea     T_FYLOAD,%a0            | LOAD KIT: nothing armed, nothing saved
+        bra.w   toast
+3:      clrl    MOWN
         movel   0x460e5e40,%d0          | the list's cursor
         movel   %d0,SAVEK
         jsr     M_CLOSE
@@ -2442,6 +2451,8 @@ load_menu:
         lea     %sp@(20),%sp
         moveq   #1,%d0
         movel   %d0,MOWN
+        lea     T_LOADKIT,%a0           | the lists look alike: say which
+        bsr.w   toast
         movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
 m_out:  rts
@@ -2483,6 +2494,8 @@ save_menu:
         lea     %sp@(20),%sp
         moveq   #2,%d0
         movel   %d0,MOWN
+        lea     T_SAVEKIT,%a0
+        bsr.w   toast
         movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
         rts
@@ -3775,6 +3788,9 @@ T_UNDO:    .asciz  "UNDO KIT"
 T_LOADED:  .asciz  "KIT LOADED"
 T_KRELOAD: .asciz  "KIT RELOADED"
 T_SAVED:   .asciz  "KIT SAVED"
+T_LOADKIT: .asciz  "LOAD KIT"
+T_SAVEKIT: .asciz  "SAVE KIT"
+T_FYLOAD:  .asciz  "LOAD KIT: NO SAVE"
 T_EMPTY:   .asciz  "EMPTY KIT"
 T_NOUNDO:  .asciz  "NO UNDO KIT"
 T_KITNAME: .asciz  "KIT NAME"
