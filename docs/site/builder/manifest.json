@@ -1,18 +1,18 @@
 {
- "version": "v0.1",
- "commit": "c02fec6cfef29fbbceb8f272eea910bae8615851",
+ "version": "v0.2",
+ "commit": "c528d132d1681134f03fc974b64b3cf3753fb799",
  "dev": false,
- "build": "01",
+ "build": "02",
  "date": "2026-11-02",
  "remixes": [
   {
    "name": "octabam",
    "title": "octabam",
-   "version": "OCTABAM01",
-   "imageName": "OCTABAM 01",
+   "version": "OCTABAM02",
+   "imageName": "OCTABAM 02",
    "patch": "patches/octabam.obp",
-   "patchBytes": 196627,
-   "sha256": "c4756cb81645c71a15b6a97bf577c3bbd55bdcdc0e0550620605a606e8cf29bd"
+   "patchBytes": 198841,
+   "sha256": "9dea5b5498b1921fdd4bf8e1bf239d51ccf1bdf6e991ed4f3bda78f40794e9ae"
   }
  ]
 }
