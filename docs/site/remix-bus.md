@@ -5,7 +5,7 @@
 *Bus Delay, the bus effect on FX1*
 
 Octabam Bus adds the core features, a **delay and reverb bus** with a send
-from every track, three new FX1 effects, and ten stock effects on FX1 to Octatrack OS 1.40C. The USB
+from every track, three new FX1 effects, ten stock effects on FX1 and the extra ColdFire modules of [Octabam](remix-octabam.md) (OCTA303, MORPH, REC THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, TRACK PATTERNS) to Octatrack OS 1.40C. The USB
 module's defaults here are TRACKS PRE, MAIN and CUE on, MASTER off, IN off,
 MIDI on. They are changed on the unit in PROJ > BRAIN > SETTINGS and take
 effect at the next boot; see [USB](reference/modules/usb.md).
@@ -107,7 +107,7 @@ Every module in the image, credited to its author:
 
 ## Where it has run
 
-Port gates only: `make check REMIX=octabam-bus` and the reach round. The previous
+Port gates only: `make check REMIX=octabam-bus` and the reach round. The seven extra ColdFire modules have not run beside the bus on a unit. The previous
 definition of this remix ran on an MKII (owner report, 16 Oct 2026). The servers and
 stations running from the shared window, and the stock effects beside them, have not
 run on a unit.
