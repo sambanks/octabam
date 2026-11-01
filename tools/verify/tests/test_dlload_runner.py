@@ -79,6 +79,15 @@ class LoaderRunner(unittest.TestCase):
         process.terminate.assert_called_once()
         process.wait.assert_called_once_with(timeout=10)
 
+    def test_termination_exit_stops_children_already_started(self):
+        process = mock.Mock(pid=1, poll=mock.Mock(return_value=None))
+        with mock.patch.object(verify_dlload.subprocess, "Popen", side_effect=[process, SystemExit(143)]):
+            with self.assertRaises(SystemExit) as caught:
+                verify_dlload.run_scenarios({"first": ["port"], "second": ["port"]}, 2, 30)
+        self.assertEqual(caught.exception.code, 143)
+        process.terminate.assert_called_once()
+        process.wait.assert_called_once_with(timeout=10)
+
 
 if __name__ == "__main__":
     unittest.main()

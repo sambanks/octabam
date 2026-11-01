@@ -36,7 +36,7 @@ At most two emulator scenarios run together (--jobs); each has a 900-second wall
 limit (--timeout). Progress names each child and elapsed time. Failure or interruption
 stops the remaining children and retains their logs.
 """
-import argparse, json, os, pathlib, re, shutil, subprocess, sys, time
+import argparse, json, os, pathlib, re, shutil, signal, subprocess, sys, time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 
@@ -255,10 +255,13 @@ def main():
         if tag.startswith("pick") or tag in ("used", "blocked", "both-blocked", "stuck", "reverb-late", "plate-ok", "spring-ok"):
             cmd += ["--watch-pc", f"{TOAST:#x}"]
         commands[tag] = list(map(str, cmd))
+    previous_handler = signal.signal(signal.SIGTERM, lambda number, _: sys.exit(128 + number))
     try:
         texts = run_scenarios(commands, a.jobs, a.timeout)
     except RuntimeError as exc:
         sys.exit(f"verify_dlload: {exc}")
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
 
     def peek(tag, core, space, addr):
         m = re.search(rf"core {core} {space}:0x0*{addr:x}:([^\n]*)", texts[tag])
