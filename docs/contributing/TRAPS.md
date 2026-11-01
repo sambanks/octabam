@@ -998,7 +998,13 @@ selftest, which builds every remix in turn and leaves the LAST one at
 `out/mainos_bus.bin`; the first in-pipeline run booted `warped` looking for
 midi-scenes' loader and reported "loader ran 0x". `verify_dram_boot` now
 rebuilds its remix first. Any verifier that reads `out/` must know who wrote
-it last.
+it last. GRANULAR's first shared-reach run repeated this with
+`out/platform/runtime/runtime.elf`: the shared census had left a runtime
+without `gr_render`, although the standalone linked-code gate passed.
+`verify_granular.py` now builds its registered fixture before reading the
+runtime, or the explicitly requested candidate. Starting it after a
+non-GRANULAR build exercises the ordering regression without changing the
+engine or accepting a stale artifact.
 
 <a name="trap-pipe-exit"></a>
 

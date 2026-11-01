@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Exercise the linked GRANULAR renderer against synthetic FLEX pool pages."""
+"""Build and exercise the linked GRANULAR renderer against synthetic FLEX pool pages."""
 from __future__ import annotations
 
+import argparse
 import math
+import os
 import pathlib
 import struct
 import subprocess
 import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from remix import registry  # noqa: E402
 
 from unicorn import Uc, UC_ARCH_M68K, UC_HOOK_CODE, UC_MODE_BIG_ENDIAN
 from unicorn.m68k_const import (
@@ -478,6 +483,20 @@ def check_render(uc: Uc, symbols: dict[str, int]) -> None:
 
 def main() -> None:
     global pool_samples
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("remix", nargs="?", default=registry.fixture("GRANULAR"))
+    args = parser.parse_args()
+    if "GRANULAR" not in registry.remix(args.remix).modules:
+        fail(f"{args.remix} carries no GRANULAR")
+    env = dict(os.environ, REMIX=args.remix, XBUS="1", SPEC="1")
+    env.setdefault("BUILD", "0")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "tools/build/build_bus.py")],
+        cwd=ROOT, env=env, capture_output=True, text=True,
+    )
+    if result.returncode:
+        fail(f"building {args.remix} failed:\n{result.stdout}{result.stderr}")
+    print(f"  [INFO] linked runtime freshly built for {args.remix}")
     uc, symbols = load_runtime()
     pool_samples = {}
     check_page_descriptor(uc, symbols)

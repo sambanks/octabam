@@ -133,7 +133,10 @@ REMIX=granular .venv/bin/python3 tools/verify/verify_dram_boot.py --existing-ima
 
 The linked-code gate checks descriptor retention and handlers, all pitch
 coefficients, exact fractional advancement, mono/stereo pool boundaries and
-the longest supported sample's position guard under Unicorn. Its maximum
+the longest supported sample's position guard under Unicorn. It builds the
+smallest registered GRANULAR fixture first, so another gate's runtime in
+`out/` cannot be mistaken for its input; an optional remix argument checks a
+specific candidate instead. Its maximum
 observed 6,348 instructions/call is **not ColdFire cycles**; the earlier
 10,403 count preceded the sample-read optimization.
 

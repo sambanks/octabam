@@ -187,7 +187,7 @@ moment it costs real work, and add its line here.
 - [A branch can enter the middle of a displaced span](docs/contributing/TRAPS.md#trap-detour-interior) — whole instructions are insufficient: keep shared branch targets; the MIDI CHROMATIC gate exercises both paths.
 
 - [A write-watch on cached addresses is blind to the uncached-alias clear](docs/contributing/TRAPS.md#trap-watch-alias) — `machine.h` folds the alias.
-- [The boot verifier booted the wrong image](docs/contributing/TRAPS.md#trap-boot-verifier) — a verifier that reads `out/` must know who wrote it last.
+- [The boot verifier booted the wrong image](docs/contributing/TRAPS.md#trap-boot-verifier) — image and linked-runtime gates build their fixture before reading `out/`.
 - [`make … | grep | tail` reports tail's exit code](docs/contributing/TRAPS.md#trap-pipe-exit) — `> log; echo $?`.
 - [Matching an author's bytes with GNU as](docs/contributing/TRAPS.md#trap-gnu-as) — `lea SYM:l` for same-unit labels; `moveq`; the `-Ttext` 2-mod-4 `nop`.
 - [A bank-file fixture edits the file; the firmware parses it into a different RAM layout](docs/contributing/TRAPS.md#trap-work-file-ram) — anchor fixture edits to a known-good write; RAM addresses from the routine's arithmetic.
