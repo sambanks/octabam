@@ -2315,6 +2315,26 @@ o3_validate:
         move.l  %a2,%a0
         bsr     o3_sig
         beq     .Lv_n
+        move.l  %d3,%d1                 | the limit: d3 holds the signed tracks kept so far, all below this one
+        moveq   #0,%d0
+.Lv_pc:
+        lsr.l   #1,%d1
+        bcc     .Lv_nc
+        addq.l  #1,%d0
+.Lv_nc:
+        tst.l   %d1
+        bne     .Lv_pc
+        cmp.l   #O3_MAX,%d0
+        bcs     .Lv_keep
+        moveq   #30,%d0                 | a third signed track (a loaded project): unsign it, the stock
+        muls.l  %d2,%d0                 | validator then clamps its bytes as FLEX's
+        lea     SIG_OFF(%a2),%a1
+        adda.l  %d0,%a1
+        clr.b   (%a1)+
+        clr.b   (%a1)+
+        clr.b   (%a1)
+        bra     .Lv_n
+.Lv_keep:
         moveq   #1,%d0
         lsl.l   %d2,%d0
         or.l    %d0,%d3

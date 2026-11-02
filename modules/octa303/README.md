@@ -24,8 +24,9 @@ Markers as in `CHIP.md`: ✅ measured, 🟡 inferred.
 ## Limit: two machines in a Part
 
 A Part holds at most **two** OCTA-303 tracks. Choosing OCTA-303 for a third shows `MAX 2 OCTA-303` and the
-track becomes plain FLEX. A project loaded with more has only the first two signed tracks (by track number)
-render; the rest play as FLEX. Measured on one MKII (2 Nov 2026, meter only, fresh start): nothing playing
+track becomes plain FLEX. A Part loaded with more has its first two signed tracks (by track number) kept and
+the rest unsigned by the Part validator, so they are FLEX in the Part and on the screen (a file saved
+afterwards no longer has those signatures); the render path counts the same way. Measured on one MKII (2 Nov 2026, meter only, fresh start): nothing playing
 25.3 % of the ColdFire frame interrupt, 2 machines playing 65.5 %, 4 machines 83.2 %; the model fitted to those
 (about 21 points once any machine plays, 9.3 per machine) gives about 102 % for six. Near 98 % the frame
 interrupt leaves the panel's task almost no time: the audio keeps playing and the interface stops answering

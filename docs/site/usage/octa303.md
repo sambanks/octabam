@@ -6,7 +6,7 @@ x0xb0x reference set).
 ## Limit
 
 A Part holds at most two OCTA-303 tracks. Choosing OCTA-303 for a third shows `MAX 2 OCTA-303` and the track
-becomes plain FLEX. Each playing machine takes a large share of the processor, and with more the panel stops
+becomes plain FLEX, and a project that has more loses the extra machines when it loads (they become FLEX). Each playing machine takes a large share of the processor, and with more the panel stops
 answering while the audio keeps playing.
 
 ## Access

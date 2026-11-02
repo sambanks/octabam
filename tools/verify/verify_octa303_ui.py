@@ -171,6 +171,16 @@ def main():
             assert t3 == (b"TB\x01", b"TB\x01"), (name, "control: T3 should be signed with one other machine", t3)
             print("PASS limit control: with one other machine T3 is signed")
 
+    # 5. the Part validator unsigns a third signed track of a loaded Part
+    pk = [x for t in (0, 1, 2) for x in sig(PART, t)]
+    rd, log, _ = run("limit-validate", card, image, None,
+                     (f"-:poke:{';'.join(pk)}", f"-:call:0x40002318,{PART:#x}", f"-:dump:{PART:#x},6322={OUT}/limit-validate/after.bin"))
+    after = rd("after.bin")
+    for t in (0, 1):
+        assert after[0x3C + 30 * t:0x3F + 30 * t] == b"TB\x01", ("limit-validate", f"T{t + 1} lost its signature")
+    assert after[0x3C + 60:0x3F + 60] == bytes(3), ("limit-validate", "T3 still signed", after[0x3C + 60:0x3F + 60])
+    print("PASS limit-validate: the Part validator keeps the first two signed tracks and unsigns the third")
+
 
 if __name__ == "__main__":
     main()
