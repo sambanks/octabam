@@ -219,6 +219,7 @@ moment it costs real work, and add its line here.
 - [Resident relinks can republish imported staging addresses](docs/contributing/TRAPS.md#trap-resident-import-exports) — publish only owned exports; `midi-follow-events` exercises descriptor relocation with MIDI Part State.
 - [A ColdFire save frame sized for the wrong register count overwrites the return address](docs/contributing/TRAPS.md#trap-cf-frame) — `lea -4N(%sp)` + `movem.l regs,(%sp)`; no pre-decrement `movem`, no `eor <mem>,Dn`, no `st <mem>`, no `move.b #imm,abs.l`.
 - [An unused-looking project byte can be rewritten on save](docs/contributing/TRAPS.md#trap-unused-bytes) — mark, load, save, diff before using one.
+- [A file opened through the stock layer keeps unwritten bytes in the buffer you gave it](docs/contributing/TRAPS.md#trap-file-buffer) — PLOCKS P2's empty files lost their header to a fill of that buffer; write from anything else while the file is open.
 - [`--watch-mem` given to a `--scenario` child logs nothing](docs/contributing/TRAPS.md#trap-scenario-watch) — watch with a direct run.
 
 ## How claims are written here

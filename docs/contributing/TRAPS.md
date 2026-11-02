@@ -1525,3 +1525,19 @@ name was 12 characters or fewer. Rule: a bound written for one caller is not a
 bound for the others; size each buffer's bound at the buffer, and give a
 gate fixture a name at the longest the build writes (`make image` writes up to
 19 characters).
+
+<a id="trap-file-buffer"></a>
+
+### A file opened through the stock layer keeps unwritten bytes in the buffer you gave it
+
+**A FILE OPENED THROUGH THE STOCK FILE LAYER KEEPS UNWRITTEN BYTES IN THE
+BUFFER YOU GAVE IT.** `F_OPEN(fo, path, mode, buf, len)` takes the caller's
+buffer as the file's own. PLOCKS P2's empty-file copy wrote its 16-byte header,
+then filled that same buffer with 0xff for the body, and the header reached the
+card as 0xff (measured under the port, 2 Nov 2026): so a write smaller than the
+buffer waits there (when the stock layer flushes it is inferred, not traced).
+Every empty `p2lkNN` file on a unit's card had no header, the next load refused
+them all, and STORE's prompt came up at every load. Rule: while a file is open, its buffer belongs to the
+file layer; write from anything else. **Gate:** `verify_plocks_p2`'s save
+case stages a bank with no `p2lkNN.work` and checks the header SAVE PROJECT
+gives its `.strd`.
