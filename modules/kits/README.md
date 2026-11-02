@@ -107,6 +107,11 @@ which is not what an MD or MnM Kit holds.
   YES opens the name editor (seven characters, `NEW KIT` for an empty
   Kit); the current Part is saved into the Kit and the current pattern
   plays it.
+- The stock list has no title, so the two lists look alike: each shows
+  its name (`LOAD KIT`, `SAVE KIT`) as a message when it opens. FUNC+YES
+  is the quick save in SAVE KIT only; in LOAD KIT it shows `LOAD KIT: NO
+  SAVE` and nothing else (until 1 Nov 2026 it fell through to stock's
+  FUNC+YES, which arms every track and shows `ARM ALL`: a field report).
 - In either list, LEVEL moves the cursor a row per detent (Octakit's
   LEVEL scroll; the encoder dispatch call `0x40061e00`), UP and DOWN as
   stock.
@@ -257,6 +262,13 @@ OCTABAM89_setgate (bank 3), each scenario forked from one load:
   restore, its stock routines called in order: the panel's second
   FUNC+STOP pastes again under the port, on stock too), FUNC+PASTE+PART,
   PTN+FUNC+RIGHT, PTN+FUNC+TRIG paste and its undo.
+- ✅ (2 Nov 2026) FUNC+YES with LOAD KIT open, YES still held: both arm
+  words as with no FUNC+YES, nothing saved, the list open
+  (`verify_kits` lfyes against lfyes0); the module before this change set
+  the first to all ones there. The `LOAD KIT` and `SAVE KIT` messages
+  drawn over the list on opening and gone by ~1.9 s
+  (`tools/emu/live_shots.py`, not a gate: the message is a popup window,
+  which the plane dump does not hold).
 - ✅ The MKI panel (the port without `--mkii`): FUNC+BANK on the main
   screen opens PATTERN SETTINGS; FUNC+MIDI then FUNC+BANK opens SAVE KIT,
   and a save from it lands; FUNC+BANK again closes it; over the name
