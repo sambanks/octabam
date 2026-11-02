@@ -282,10 +282,10 @@ def capture_cxosc(p,r):
     press(p,'yes')
     close(p)
     press(p,'pg_playback')
-    enc(p,3,40)   # FOLD
-    enc(p,4,24)   # SYMM
-    enc(p,5,16)   # FDBK
-    shot(p,'cxosc','source','CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM FDBK.',r)
+    enc(p,3,40)   # FOLD default 40 → ~80: mid-high zig-zags
+    enc(p,4,36)   # SYMM default 64 → ~100: upper half dominates (skew off-center)
+    enc(p,5,-64)  # DEC: from HOLD (127) toward mid so the envelope icon shows a fall
+    shot(p,'cxosc','source','CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.',r)
     p.chord('func','pg_playback')
     shot(p,'cxosc','setup','SRC SETUP: CX OSC selected in the machine list.',r)
 
@@ -421,7 +421,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','utilities','varispeed','usb','octa303','distorx','devilish','morph','free-loop'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','utilities','varispeed','usb','octa303','cxosc','distorx','devilish','morph','free-loop'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -443,6 +443,7 @@ def main():
         elif group=='bus':jobs=[('octabam-bus',capture_bus,[])]
         elif group=='usb':jobs=[('octabam-bus',capture_usb,[])]
         elif group=='octa303':jobs=[('octa303',capture_octa303,[])]
+        elif group=='cxosc':jobs=[('cxosc',capture_cxosc,[])]
         elif group=='distorx':jobs=[('distorx',capture_fx,[(2,'fx2','DISTORX')])]
         elif group=='morph':jobs=[('morph',capture_morph,[])]
         elif group=='free-loop':jobs=[('free-loop',capture_free_loop,[])]

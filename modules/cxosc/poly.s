@@ -8,8 +8,11 @@
 | WHAT: a FLEX track with CX OSC chosen generates a two-operator FM voice
 | every frame (16 samples, rate 1.0): carrier = sin(phi_c + I *
 | sin(phi_m + fb * m_prev)), then a sine fold with symmetry.
-| PLAYBACK: PTCH RATO INDX FOLD SYMM FDBK. RATO is free 0.25..4 (FUNC snaps
-| the classic table). FDBK scales to ~1 cycle at 127. Mono only -- T_POLY
+| PLAYBACK: PTCH RATO INDX FOLD SYMM DEC. RATO is free 0.25..4 (FUNC snaps
+| the classic table). SYMM bipolar half-wave skew into the folder
+| (64 = even; 0/127 opposite polarity tilt). DEC: 127 = HOLD (Tim 5 Oct
+| polarity). FDBK fixed mid.
+| Mono only -- T_POLY
 | is cleared; stock LFO page (no VOIC/CHRD). GLIDE still slews pitch.
 |
 | (The upstream file also described paraphonic VOIC/CHRD paths retained in
@@ -124,6 +127,7 @@
         .global po_assign, po_machwin, po_machlist, po_loadsel, po_stop, po_kill
         .global po_retrig
         .global po_fmstart, po_fmsource, po_is_synth, po_sig, po_signed, po_slot_marker
+        .global po_amp, po_amp_snap, po_amp_at, po_alaw
         .set    VOICE_BASE, 0x800049d8
         .set    VOICE_STRIDE, 0xa8
         .set    CURSOR, 0x80001c80
@@ -360,18 +364,18 @@ sy_render:
         bsr     po_signed                | CX OSC chosen in the machine list?
         beq     sy_no                    | not chosen: sample (marker path off)
 sy_cold:                                 | a synth starts -- THE START RULE (plan B, 28 Sep 2026): the engine owns
-        move.l  #CV_STRIDE,%d1           | the AMP envelope (the DSP sees ATK 0 / HOLD INF / REL INF: sy_ison), so
-        muls.l  %d2,%d1                  | the only question is whether THIS voice still sounds. S_GPREV != 0 (the
-        lea     CURVALS,%a0              | gain the last call ended at): WARM -- the SAME oscillator continues
-        mvz.b   CV_HOLD(%a0,%d1.l),%d1   | phase-continuously at its current level, the pitch changes, the attack
+        bsr     po_amp_snap              | the AMP envelope (the DSP sees ATK 0 / HOLD INF / REL INF: sy_ison), so
+        bsr     po_amp_at                | the only question is whether THIS voice still sounds. S_GPREV != 0 (the
+                                         | gain the last call ended at): WARM -- the SAME oscillator continues
+        mvz.b   1(%a0),%d1               | phase-continuously at its current level, the pitch changes, the attack
                                          | re-runs from that level (an analog mono synth's retrigger), and the index
                                          | envelope RAMPS from its level to ENV_ONE over 16 frames (BUILD 38). S_GPREV
                                          | == 0: COLD -- both operators at phase 0, the gain ramps from 0 (the ATK law,
                                          | the 16-frame ramp its floor), the index envelope restarts at once (from
                                          | silence: inaudible). BUILD 27/28's four-condition rule (S_HOLD, S_KEYED,
                                          | the released flag) is gone: the DSP no longer restarts or
-        cmpi.l  #127,%d1                 | releases anything. The HOLD the live lane holds now (the lock, else the
-        beq     sy_cold_nohold           | Part's) arms the mono HOLD timer: 127 = INF (none), else po_hold128 steps
+        cmpi.l  #127,%d1                 | releases anything. The track's effective HOLD now (2.20, po_amp_at: the
+        beq     sy_cold_nohold           | lock or the Part's, a scene, an LFO) arms the mono HOLD timer: 127 = INF (none), else po_hold128 steps
         lea     po_hold128(%pc),%a0      | in 1/128 x frames a step (the DSP's own timer runs from the START at that
         mvz.w   (%a0,%d1.l*2),%d1        | length, stage 1: HOLD 32 = 282 ms at 120 BPM, a key held or not), and its
         lea     po_clock(%pc),%a0        | end starts the release (po_mono_env). (S_HOLD / S_KEYED went with BUILD 38: S_ISTEP has +126.)
@@ -430,6 +434,7 @@ sy_set:
 sy_ison:
         tst.b   S_ON(%a3)
         beq     sy_sample
+        bsr     po_amp_snap              | (2.20) the AMP values the frame builder wrote (locks, scenes, LFOs), before the override
         lea     CURVALS,%a0              | LEG (2 Oct 2026): the track's live lane 0x80000810 + t * 72 holds the
         move.l  #CV_STRIDE,%d1           | Part's AMP page-2 bytes at +0x2c; byte 5 (+0x31, LEG) is what the copier
         muls.l  %d2,%d1                  | 0x4000cb6a carries into the DSP record's AMP word 23, low byte, every
@@ -448,7 +453,7 @@ sy_ison:
         add.l   %d1,%a0                  | these halfwords after the render loop, so nothing is restored, and the
         clr.w   (%a0)                    | live lane the UI shows (0x80000810 + 72 t + 12..14) is never touched --
         move.w  #0x7f00,2(%a0)           | the same shape as the PTCH / RATE override of the CF record below. The
-        move.w  #0x7f00,4(%a0)           | engine applies the lane's ATK / HOLD / REL itself (po_mono_env, po_frame).
+        move.w  #0x7f00,4(%a0)           | engine applies the track's ATK / HOLD / REL itself (po_mono_env, po_frame; 2.20: po_amp_at).
         mvz.w   6(%a4),%d5               | the RATE (FINE) halfword, restored for the DSP after the call
         mvz.w   (%a4),%d1
         lsr.l   #8,%d1
@@ -587,8 +592,8 @@ sy_mono_inc:
         mvz.w   8(%a4),%d1               | RTRG -> SYMM raw
         lsr.l   #8,%d1
         move.b  %d1,1(%a0,%d0.l*2)       | SYMM
-        mvz.w   10(%a4),%d1              | RTIM -> feedback (FDBK)
-        move.l  #FB_SCALE,%d0
+        move.l  #FB_SCALE,%d0            | FDBK: fixed mid (knob is DEC; Tim polarity on RTIM)
+        moveq   #40,%d1
         mulu.l  %d0,%d1
         lsr.l   #8,%d1
         move.l  %d1,S_FB(%a3)
@@ -601,10 +606,35 @@ sy_mono_inc:
         subq.l  #1,%d1
         move.b  %d1,S_ERAMP(%a3)
         bra     sy_envdone
-sy_env_k:
+sy_env_k:                                | (2.10 / 5 Oct 2026: HOLD at 127, not 0)
+        mvz.w   10(%a4),%d1              | RTIM -> DEC (index envelope)
+        lsr.l   #8,%d1
+        moveq   #127,%d0                 | RTIM 127: the index holds;
+        cmp.l   %d0,%d1                  | 0 = the shortest -- read as 1, whose k is the cap
+        bcc     sy_nodecay               | K_MAX
+        tst.l   %d1
+        bne.s   sy_env0
+        moveq   #1,%d1
+sy_env0:
+        move.l  %d1,%d2
+        mulu.l  %d2,%d1                  | raw^2
+        move.l  #K_NUM,%d0
+        divu.l  %d1,%d0                  | k, Q20 per frame
+        cmpi.l  #K_MAX,%d0
+        ble     sy_env1
+        move.l  #K_MAX,%d0
+sy_env1:
+        move.l  S_ENV(%a3),%d1
+        subi.l  #ENV_FLOOR,%d1           | E - floor
+        ble     sy_envdone               | at the floor: stays
+        lsr.l   #8,%d1
+        lsr.l   #4,%d1
+        mulu.l  %d0,%d1
+        lsr.l   #8,%d1                   | (E - floor) * k
+        sub.l   %d1,S_ENV(%a3)
+        bra     sy_envdone
 sy_nodecay:
-        | CX OSC: index env HOLD (drone with INDX; LFO/plock for motion — no DEC)
-        move.l  #ENV_ONE,%d1
+        move.l  #ENV_ONE,%d1             | RTIM 127: the index holds
         move.l  %d1,S_ENV(%a3)
 sy_envdone:
         mvz.w   4(%a4),%d1               | LEN -> index
@@ -625,11 +655,72 @@ sy_envdone:
         bsr     po_mono_env              | the mono voice's AMP envelope (plan B): S_GAIN := the level this frame ends at
         bra     sy_check                 | (po_mono_env's body follows: not fall-through)
 
+| ---- po_amp_snap (2.20): the track's effective AMP ATK / HOLD / REL this frame --------
+| Following Jan Kolkmeier's report and fix in Modwerk #883 / #884. The live lane (CURVALS
+| + 72 t + 12..14) holds the Part's bytes with the trig's locks; the scene morph and the
+| LFOs write the DSP voice record's halfwords 0..2 (value << 8, the LFO's fraction in the
+| low byte) instead, the words sy_ison then overrides. Called while they are still the
+| frame builder's (sy_cold at a START, sy_ison before the override), this keeps their high
+| bytes, capped at 127, in po_amp + 4 t, and byte 3 := 1 (the track has a snapshot).
+| d2 = track. Preserves every register.
+po_amp_snap:
+        lea     -12(%sp),%sp
+        movem.l %d0-%d1/%a0,(%sp)
+        move.l  PING_AT,%d1              | 0x80000110 + (ping << 9) + 64 * track, as sy_ison
+        andi.l  #1,%d1
+        lsl.l   #8,%d1
+        lsl.l   #1,%d1
+        move.l  %d2,%d0
+        lsl.l   #6,%d0
+        add.l   %d0,%d1
+        lea     DSP_REC,%a0
+        add.l   %d1,%a0
+        move.l  %a1,-(%sp)
+        lea     po_amp(%pc),%a1
+        lea     (%a1,%d2.l*4),%a1
+        moveq   #2,%d1
+po_as_byte:
+        mvz.b   (%a0),%d0                | the value byte
+        cmpi.l  #127,%d0
+        bls     po_as_put
+        moveq   #127,%d0
+po_as_put:
+        move.b  %d0,(%a1)+
+        addq.l  #2,%a0
+        subq.l  #1,%d1
+        bpl     po_as_byte
+        move.b  #1,(%a1)                 | (a1 = po_amp + 4 t + 3)
+        movea.l (%sp)+,%a1
+        movem.l (%sp),%d0-%d1/%a0
+        lea     12(%sp),%sp
+        rts
+
+| ---- po_amp_at (2.20): a0 := the track's ATK at 0(a0), HOLD at 1, REL at 2 -----------
+| An FM SYNTH track with a snapshot (po_amp_snap): po_amp + 4 t, the values the frame
+| builder wrote (locks, scenes, LFOs), as the stock envelope reads them. Before its first
+| snapshot the live lane (CURVALS + 72 t + CV_ATK: the three slots follow each other).
+| d2 = track. Preserves every other register.
+po_amp_at:
+        move.l  %d0,-(%sp)
+        lea     po_amp(%pc),%a0
+        lea     (%a0,%d2.l*4),%a0
+        tst.b   3(%a0)
+        bne     po_aa_out
+        move.l  #CV_STRIDE,%d0
+        muls.l  %d2,%d0
+        lea     CURVALS+CV_ATK,%a0
+        add.l   %d0,%a0
+po_aa_out:
+        move.l  (%sp)+,%d0
+        rts
+
 | ---- po_mono_env: the mono voice's AMP envelope, once a frame (plan B) -----------
 | a3 = the track record, d2 = track. The level S_GAIN (Q15, full 32768; sy_loop
-| ramps S_GPREV -> S_GAIN linearly across the call) follows the live lane's AMP
-| bytes (CURVALS + 72 t + 12 / 13 / 14: locks, scenes and LFOs applied by the frame
-| builder before the render loop) with the DSP's own laws as measured (stage 1):
+| ramps S_GPREV -> S_GAIN linearly across the call) follows the track's AMP
+| bytes (2.20: po_amp_at, the values the frame builder wrote into the DSP record before
+| the render loop: the lock or the Part's, the scenes and the LFOs; until 2.19 the live
+| lane CURVALS + 72 t + 12 / 13 / 14, which has the locks only) with the DSP's own laws
+| as measured (stage 1):
 |   RELEASING (S_ON bit 1: po_rel for every note-off path -- the panel key's
 |     release, MIDI note-off, the sequencer's -- or the HOLD timer below, or
 |     po_stop): gain -= gain * k, k = po_relk[REL] (Q16 a frame: tau = 0.295 ms x
@@ -642,14 +733,13 @@ sy_envdone:
 |   SOUNDING: gain += po_atk[ATK] (Q15 a frame: a LINEAR ramp to full in 3.85 ms x
 |     2^(ATK / 8.53), the 16-frame ramp its floor, the step at least 1), capped
 |     at full -- from wherever the level is (a warm START re-attacks from its
-|     current level; a cold one from 0).
+|     current level; a cold one from 0). 2.10: the step goes through po_alaw --
+|     no faster than one carrier period, S-shaped at the same total time (linear
+|     for a step under 32) -- and a voice at full skips it (two instructions).
 | Clobbers d0, d1, a0.
 po_mono_env:
         move.l  S_GAIN(%a3),%d1
-        move.l  #CV_STRIDE,%d0
-        muls.l  %d2,%d0
-        lea     CURVALS,%a0
-        add.l   %d0,%a0                  | a0 = the track's live lane
+        bsr     po_amp_at                | (2.20) a0 = the track's effective ATK / HOLD / REL
         btst    #1,S_ON(%a3)
         bne     po_me_rel
         move.l  S_HTIM(%a3),%d0          | the HOLD timer
@@ -660,16 +750,23 @@ po_mono_env:
         bset    #1,S_ON(%a3)             | the hold ran out: release
         bra     po_me_rel
 po_me_atk:
-        mvz.b   CV_ATK(%a0),%d0
+        cmpi.l  #32768,%d1               | at full: the attack is over, nothing to pay (po_alaw is for attacks only)
+        bge     po_me_store
+        mvz.b   (%a0),%d0                | ATK
         lea     po_atk(%pc),%a0
         mvz.w   (%a0,%d0.l*2),%d0
+        movea.l S_INC(%a3),%a0           | the onset law (po_alaw): no faster than one carrier period, S-shaped
+        move.l  %a1,-(%sp)
+        movea.l #32768,%a1
+        bsr     po_alaw
+        movea.l (%sp)+,%a1
         add.l   %d0,%d1
         cmpi.l  #32768,%d1
         ble     po_me_store
         move.l  #32768,%d1
         bra     po_me_store
 po_me_rel:
-        mvz.b   CV_REL(%a0),%d0
+        mvz.b   2(%a0),%d0               | REL
         lea     po_relk(%pc),%a0
         mvz.w   (%a0,%d0.l*2),%d0        | k, Q16 (0 = INF)
         bne     po_me_rel0
@@ -692,6 +789,84 @@ po_me_rel1:
         moveq   #0,%d1
 po_me_store:
         move.l  %d1,S_GAIN(%a3)
+        rts
+
+| ---- po_alaw: the attack's step this frame (2.10, 6 Oct 2026: the low-note onset click) ----
+| d0 = the ATK law's linear step (Q15 of full, a frame), d1 = the level now, a0 = the
+| voice's carrier increment, a1 = full (32768 mono, T_GMAX paraphonic) -> d0 = the step.
+| (1) no faster than ONE CARRIER PERIOD: the 16-frame floor (5.8 ms) is a fraction of a
+| cycle below ~C3, and the ramp's splatter (100 Hz .. 1 kHz) is louder than a dark low
+| tone's own content (RATO 0.25: Tim's click); one period's step is inc >> 13 (Q15 a
+| frame for 32768), scaled to full. (7 Oct 2026) A period of 16..32 frames (~F2..F3) gets
+| 2p - 16 frames (at most 32): C3 26 instead of 21; nothing changes from F3 up or below F2.
+| (2) S-SHAPED: step' * (1/4 + 4 r (1 - r)), r = level / full, step' = 1.28 step (the same total time) -- the linear ramp's corner at full (a
+| slope step at an arbitrary phase) shrinks to a quarter. Preserves all but d0.
+po_alaw:
+        lea     -12(%sp),%sp
+        movem.l %d1-%d3,(%sp)
+        move.l  %a0,%d2
+        moveq   #13,%d3
+        lsr.l   %d3,%d2                  | one carrier period's step for full 32768
+        cmpi.l  #128,%d2
+        bcc     po_al_p
+        move.l  #128,%d2                 | (2.10) at most 256 frames (93 ms; a carrier under ~11 Hz, or none)
+po_al_p:
+        cmpi.l  #4096,%d2
+        bcc     po_al_s                  | the 8-frame fade / 16-frame attack floor is the slower: no change
+        cmpi.l  #2048,%d2
+        bcc     po_al_sc                 | (2.10, 7 Oct) a period of 16 frames or less: one period
+        move.l  #32768,%d3
+        divu.l  %d2,%d3                  | p, frames
+        cmpi.l  #32,%d3
+        bcc     po_al_sc                 | p >= 32 (below ~F2): one period
+        add.l   %d3,%d3                  | 16 < p < 32 (~F2..F3): max(p, min(2p - 16, 32)) frames -- C3's
+        subi.l  #16,%d3                  | 21-frame attack ended on a corner that splattered (+8.2 dB at INDX 40); 26 frames
+        cmpi.l  #32,%d3
+        bls     po_al_f
+        moveq   #32,%d3
+po_al_f:
+        move.l  #32768,%d2
+        divu.l  %d3,%d2                  | the longer floor's step
+po_al_sc:
+        move.l  %a1,%d3
+        mulu.l  %d3,%d2
+        moveq   #15,%d3
+        lsr.l   %d3,%d2
+        addq.l  #1,%d2                   | ... scaled to full
+        cmp.l   %d0,%d2
+        bcc     po_al_s
+        move.l  %d2,%d0
+po_al_s:
+        moveq   #32,%d2
+        cmp.l   %d2,%d0
+        bcs     po_al_out                | (2.10) a step under 32 (a slow ATK, past ~370 ms): linear -- the S-curve's
+        move.l  %d0,%d2                  | truncations there stretched ATK 64 by 11 %, 87 by 2.1x; its corner is inaudible
+        lsr.l   #2,%d2
+        add.l   %d2,%d0                  | step * 1.25
+        lsr.l   #3,%d2
+        add.l   %d2,%d0                  | + step / 32: 1.28
+        moveq   #15,%d3
+        lsl.l   %d3,%d1
+        move.l  %a1,%d3
+        divu.l  %d3,%d1                  | r, Q15
+        move.l  #32768,%d3
+        sub.l   %d1,%d3
+        bpl     po_al_q
+        moveq   #0,%d3
+po_al_q:
+        mulu.l  %d1,%d3
+        moveq   #15,%d1
+        lsr.l   %d1,%d3                  | r (1 - r), Q15: at most 8192
+        mulu.l  %d0,%d3
+        lsr.l   #8,%d3
+        lsr.l   #5,%d3                   | step' * 4 r (1 - r)
+        lsr.l   #2,%d0
+        add.l   %d3,%d0                  | + step' / 4
+        bne     po_al_out
+        moveq   #1,%d0
+po_al_out:
+        movem.l (%sp),%d1-%d3
+        lea     12(%sp),%sp
         rts
 
 | ---- the samples --------------------------------------------------------------
@@ -779,10 +954,10 @@ sy_loop:
         asr.l   #8,%d2
         asr.l   #8,%d2
         add.l   %d2,%d1                  | c, Q14 (+-0x4000 = -6 dBFS)
-        | ---- FOLD (RATE) + SYMM (RTRG): sine fold with Buchla-style symmetry ----
-        | folded = sin(drive * (c + offset)); offset_q14 = SYMM*64 (0..8128).
-        | drive_q8 = 256 + FOLD*24 (1.0 .. ~12.9). Dry stays unbiased; SYMM only
-        | skews the fold. out = c + (folded - c) * FOLD/128.
+        | ---- FOLD (RATE) + SYMM (RTRG): sine fold with half-wave SYMM skew ----
+        | c_fold = c * gain/64; gain = SYMM (c>=0) or (128-SYMM) (c<0).
+        | 64 = even; extremes mute one polarity / ~2x the other into the folder.
+        | drive_q8 = 256 + FOLD*24. Dry stays unbiased; out = c + (folded-c)*FOLD/128.
         move.l  (%sp),%d2                | FOLD<<8|SYMM
         lsr.l   #8,%d2
         beq     sy_nofold
@@ -795,10 +970,18 @@ sy_loop:
         addi.l  #256,%d4                 | drive_q8
         move.l  4(%sp),%d1               | c
         move.l  8(%sp),%d2               | FOLD<<8|SYMM (under the two parks)
-        mvz.b   %d2,%d2                  | SYMM
-        lsl.l   #6,%d2                   | *64 -> Q14 offset
-        add.l   %d2,%d1                  | c + symmetry (fold input only)
-        muls.l  %d4,%d1                  | (c+off) * drive_q8
+        mvz.b   %d2,%d2                  | SYMM 0..127
+        tstl    %d1
+        bmi     sy_skew_lo
+        muls.l  %d2,%d1                  | +half: c * SYMM
+        bra     sy_skew_div
+sy_skew_lo:
+        negl    %d2                      | −SYMM (d0 = carrier phase — leave it)
+        addil   #128,%d2                 | 128 − SYMM
+        muls.l  %d2,%d1                  | −half: c * (128−SYMM)
+sy_skew_div:
+        asr.l   #6,%d1                   | / 64 -> c_fold
+        muls.l  %d4,%d1                  | c_fold * drive_q8
         asl.l   #8,%d1                   | phase: drive 1.0 + peak c -> index 64 (sin pi/2)
         move.l  %d1,%d2
         lsr.l   %d3,%d2                  | >>24 -> table index
@@ -1192,12 +1375,30 @@ po_fr_params:
         lsr.l   #8,%d1
         bsr     sy_rato_q8               | d1 := Q8
         move.l  %d1,T_RATIO(%a5)
-        mvz.w   10(%a4),%d1              | RTIM -> feedback (FDBK)
-        move.l  #FB_SCALE,%d0
+        move.l  #FB_SCALE,%d0            | FDBK: fixed mid (PLAYBACK RTIM is DEC)
+        moveq   #40,%d1
         mulu.l  %d0,%d1
         lsr.l   #8,%d1
         move.l  %d1,S_FB(%a5)
-        moveq   #0,%d0                   | index env HOLD (T_DK 0 = no decay)
+        mvz.w   10(%a4),%d1              | RTIM -> the index decay k (127 = hold: k 0;
+        lsr.l   #8,%d1                   | 0 = the shortest: read as 1, k the cap K_MAX)
+        moveq   #127,%d0
+        cmp.l   %d0,%d1
+        bcc     po_fr_hold
+        tst.l   %d1
+        bne.s   po_fr_k
+        moveq   #1,%d1
+po_fr_k:
+        move.l  %d1,%d0
+        mulu.l  %d0,%d1                  | raw^2
+        move.l  #K_NUM,%d0
+        divu.l  %d1,%d0
+        cmpi.l  #K_MAX,%d0
+        ble     po_fr_dk
+        move.l  #K_MAX,%d0
+        bra     po_fr_dk
+po_fr_hold:
+        moveq   #0,%d0
 po_fr_dk:
         move.l  %d0,T_DK(%a5)
         mvz.w   4(%a4),%d1               | LEN -> index I
@@ -1205,11 +1406,8 @@ po_fr_dk:
         mulu.l  %d0,%d1
         lsr.l   #8,%d1
         move.l  %d1,T_I(%a5)
-        move.l  #CV_STRIDE,%d0           | AMP REL -> the release k (po_relk: the DSP's law, plan B)
-        muls.l  %d2,%d0
-        lea     CURVALS,%a0
-        add.l   %d0,%a0
-        mvz.b   CV_REL(%a0),%d0
+        bsr     po_amp_at                | AMP REL -> the release k (po_relk: the DSP's law, plan B; 2.20: the effective REL)
+        mvz.b   2(%a0),%d0
         lea     po_relk(%pc),%a1
         mvz.w   (%a1,%d0.l*2),%d0
         bne     po_fr_rk
@@ -1218,7 +1416,7 @@ po_fr_dk:
         mvz.w   (%a1),%d0
 po_fr_rk:
         move.l  %d0,T_RK(%a5)
-        mvz.b   CV_ATK(%a0),%d0          | AMP ATK -> the attack step a frame, po_atk[ATK] * T_GMAX / 32768 (at least 1)
+        mvz.b   (%a0),%d0                | AMP ATK -> the attack step a frame, po_atk[ATK] * T_GMAX / 32768 (at least 1)
         lea     po_atk(%pc),%a1
         mvz.w   (%a1,%d0.l*2),%d0
         mulu.l  T_GMAX(%a5),%d0
@@ -1861,10 +2059,10 @@ po_st_env:
         lea     po_clock(%pc),%a6
         move.l  CK_FRAMES(%a6),%d0
         move.l  %d0,V_FRAME(%a0)         | when (the dedupe above)
-        move.l  #CV_STRIDE,%d1           | EVERY note is gated for the lane's HOLD (the lock, else the Part's
-        muls.l  %d2,%d1                  | byte): frames = hold * frames a step -- a sequencer note and a live
-        lea     CURVALS,%a4              | key alike (plan B: the DSP's own timer ran from the START whoever
-        mvz.b   CV_HOLD(%a4,%d1.l),%d1   | started it, stage 1; 127 = INF: until the note-off / the next trig)
+        move.l  %a0,-(%sp)               | EVERY note is gated for the track's HOLD (2.20, po_amp_at: the lock
+        bsr     po_amp_at                | or the Part's byte, a scene, an LFO): frames = hold * frames a step
+        mvz.b   1(%a0),%d1               | (plan B: the DSP's own timer ran from the START, stage 1; 127 = INF)
+        movea.l (%sp)+,%a0               | a0 = the voice again
         cmpi.l  #127,%d1
         beq     po_st_hinf
         lea     po_hold128(%pc),%a4
@@ -2894,7 +3092,7 @@ po_kn_out:
         movem.l (%sp),%d2-%d5
         lea     16(%sp),%sp
         rts
-po_kn_jump:                              | FUNC's jump a detent, by slot: PTCH RATO INDX FOLD SYMM FDBK
+po_kn_jump:                              | FUNC's jump a detent, by slot: PTCH RATO INDX FOLD SYMM DEC
         .byte   12, 0, 16, 16, 16, 16
         .align  4
 
@@ -5360,6 +5558,8 @@ sy_state:                                | 8 tracks x 128 bytes
         .fill   8 * ST_STRIDE, 1, 0
 sy_cxparm:                               | 8 tracks x (FOLD, SYMM) -- off the 128 B record (S_ISTEP owns +126)
         .fill   16, 1, 0
+po_amp:                                  | (2.20) 8 tracks x 4 bytes: ATK, HOLD, REL as the frame builder wrote them,
+        .fill   8 * 4, 1, 0              | 1 once kept (po_amp_snap)
 po_voices:                               | 8 tracks x 4 voices x 64 bytes
         .fill   8 * 4 * V_STRIDE, 1, 0
 po_seq:                                  | the allocation stamp

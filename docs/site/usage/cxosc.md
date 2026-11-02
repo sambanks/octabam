@@ -17,24 +17,27 @@ list scrolls.
 
 ## Operation
 
-![CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM FDBK.](../../img/cxosc/source.png)
+![CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.](../../img/cxosc/source.png)
 
 
-- PLAYBACK reads PTCH RATO INDX FOLD SYMM FDBK.
+- PLAYBACK reads PTCH RATO INDX FOLD SYMM DEC.
 - PTCH is semitones (−64..+63). Pitch is PTCH alone (no FINE).
 - RATO is free 0.25..4 on the knob; FUNC snaps the classic ratio table
   (exact Q8 at those detents, including 1.01 / 1.41).
-- INDX is FM index and holds (drone with the knob; LFO / p-lock for motion).
-  No DEC envelope on the index.
+- INDX is FM index; DEC is its envelope (**127 = HOLD**, 0 = shortest —
+  Tim’s polarity, not hold-at-zero).
 - FOLD is a sine waveshape (dry/wet). Drive rises with the knob; bass
   level is not monotonic (fold order).
-- SYMM biases the fold (DC into the folder). Needs some FOLD to matter;
-  0 is centered.
-- FDBK is modulator feedback (up to about one cycle at 127).
+- SYMM is bipolar **half-wave amplitude skew** into the folder (not a second
+  waveshape). **64 = even**; below/above tilts opposite polarities (~mute one
+  side / boost the other). Needs FOLD — at FOLD 0 you will not hear it.
+- Modulator feedback is a fixed mid (no FDBK knob).
 - Mono only. Stock LFO page (all three LFOs). No VOIC / CHRD.
+- AMP ATK / HOLD / REL are owned by the engine (the DSP sees an open envelope).
+  Scenes and LFOs on those knobs apply (Tim FM SYNTH 2.20 snapshot path).
 
 ## Parameters
 
 | Page | A | B | C | D | E | F |
 |---|---|---|---|---|---|---|
-| PLAYBACK | PTCH | RATO | INDX | FOLD | SYMM | FDBK |
+| PLAYBACK | PTCH | RATO | INDX | FOLD | SYMM | DEC |
