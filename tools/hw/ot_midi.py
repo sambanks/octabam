@@ -48,7 +48,8 @@ def find(kind, name, wait=3.0):
         time.sleep(0.1)
 
 
-ARM = platform.machine() == "arm64"
+# MIDIServices.h's MIDIPacketNext: packets 4-byte aligned on an ARM CPU, packed on Intel
+PACKETS_ALIGNED = platform.machine() == "arm64"
 
 
 def _walk(pktlist, aligned):
@@ -72,22 +73,19 @@ def _walk(pktlist, aligned):
 
 def packets(pktlist):
     """Each MIDIPacket's data in a MIDIPacketList: an 8-byte timestamp, a 2-byte length, the data.
-    MIDIServices.h's MIDIPacketNext starts the next packet at the 4-byte-aligned address after the
-    data on ARM and right after it on Intel; a CoreMIDI virtual source's lists on an arm64 Mac are
-    aligned (2 Nov 2026: read unaligned, the packet after a START came out one byte early). On
-    19 Oct 2026 the unit's bursts read aligned were reported to run off the list after the first
-    packet (not reproduced since), so a list that does not read whole as aligned is read
-    unaligned. Probing an aligned list unaligned stays inside it: each unaligned address is at or
-    before the aligned one."""
-    walk = (_walk(pktlist, True) if ARM else None) or _walk(pktlist, False) or []
+    A virtual source's lists follow PACKETS_ALIGNED (read packed on ARM, the packet after a START
+    came out one byte early). The unit's own bursts were once reported packed on ARM, so a list
+    that does not read whole as aligned is read packed; probing an aligned list packed stays
+    inside it, each packed address being at or before the aligned one."""
+    walk = (_walk(pktlist, True) if PACKETS_ALIGNED else None) or _walk(pktlist, False) or []
     for p, length in walk:
         yield ctypes.string_at(p + 10, length)
 
 
 class In:
     """Source `port_name`'s bytes, one packet at a time, to `on_bytes(data)`. CoreMIDI calls it on
-    threads of its own (3 Nov 2026: 32 calls during 2 s in which the caller slept, from 112 threads),
-    so its timestamps do not wait for the caller and anything it shares with the caller needs a lock.
+    threads of its own (measured: they keep coming while the caller sleeps), so its timestamps do
+    not wait for the caller and anything it shares with the caller needs a lock.
     pump() runs this thread's run loop, which delivers the endpoint list's changes."""
 
     def __init__(self, port_name, on_bytes):
@@ -144,7 +142,7 @@ _NAME = cfstr("name")                                   # one key for every look
 
 def name_of(ep):
     """The endpoint's name, or None when it has gone: a source that left between the count and here
-    gave no string, and reading the null crashed the process (2 Nov 2026, a unit's source going away)."""
+    gave no string, and reading the null crashed the process (a unit's source going away)."""
     out = ctypes.c_void_p()
     if not ep or cm.MIDIObjectGetStringProperty(ep, _NAME, ctypes.byref(out)) != 0 or not out.value:
         return None
