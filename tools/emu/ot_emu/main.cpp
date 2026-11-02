@@ -1246,6 +1246,20 @@ static bool unshareRanges(const std::vector<std::pair<uint8_t*, size_t>>& _range
 	return true;
 }
 
+// OT_PROFILE_ALL=FILE: every sampled PC and its count, one "addr count" line each (the --profile table prints 24).
+static void dumpAllProfile(const std::vector<std::pair<uint32_t, uint64_t>>& _hot)
+{
+	const char* path = std::getenv("OT_PROFILE_ALL");
+	if(!path || !*path)
+		return;
+	FILE* f = std::fopen(path, "w");
+	if(!f)
+		return;
+	for(const auto& h : _hot)
+		std::fprintf(f, "%#x %llu\n", h.first, static_cast<unsigned long long>(h.second));
+	std::fclose(f);
+}
+
 int main(int _argc, char** _argv)
 {
 	// ⚠️ LINE-BUFFERED, ALWAYS. Redirected to a file, printf is block-buffered,
@@ -1742,6 +1756,7 @@ int main(int _argc, char** _argv)
 	{
 		std::vector<std::pair<uint32_t, uint64_t>> hot(m.profile().begin(), m.profile().end());
 		std::sort(hot.begin(), hot.end(), [](const auto& _a, const auto& _b){ return _a.second > _b.second; });
+		dumpAllProfile(hot);
 		std::printf("hottest addresses (PC sampled every 64 instructions):\n");
 		for(size_t i = 0; i < hot.size() && i < 16; ++i)
 		{
@@ -3372,6 +3387,7 @@ int main(int _argc, char** _argv)
 	{
 		std::vector<std::pair<uint32_t, uint64_t>> hot(m.profile().begin(), m.profile().end());
 		std::sort(hot.begin(), hot.end(), [](const auto& _a, const auto& _b){ return _a.second > _b.second; });
+		dumpAllProfile(hot);
 		std::printf("hottest addresses over the frames (PC sampled every 64 instructions; the boot table above is the boot alone):\n");
 		uint64_t total = 0;
 		for(const auto& h : hot) total += h.second;
