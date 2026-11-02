@@ -64,10 +64,9 @@ pattern content beyond pattern 1 playing.
   save      FUNC+PART, DOWN DOWN, YES, YES (the name editor): the Kit
             two rows down is the current Part, named.
   quick     FUNC+PART, DOWN, FUNC+YES: saved at once.
-  lfyes     PART, DOWN, FUNC+YES: stock's ARM ALL does not run (both arm
-            words clear), nothing is saved, LOAD KIT stays open.
-  lname     PART, the plane 150 ms in: LOAD KIT's name toast (sname: SAVE
-            KIT's); dumped, not compared.
+  lfyes     PART, DOWN, FUNC+YES (dumped with YES held): stock's ARM ALL
+            does not run (the arm words as in lfyes0, the list with no
+            FUNC+YES), nothing is saved, LOAD KIT stays open.
   newproj   PROJECT > CHANGE > <CREATE EMPTY PROJECT> on the panel; on
             patterns 2 and 3 knob A turned and SAVE KIT (two and three rows
             down); playing, PTN 2, PTN 3: each pattern's slot holds its Kit,
@@ -539,14 +538,16 @@ def main():
     s = Script(); s.tap("no"); s.hold("func", "part", gap=800); s.tap("down", 200)
     s.down("func", 100); s.tap("yes", 200); s.up("func", 1500); add("quick", s)
     # FUNC+YES with LOAD KIT open: stock's ARM ALL must not run, nothing is saved, the list stays
-    armd = f";0x46c7ff64,4={OUT / 'lfyes_arm.bin'};0x46c803d4,4={OUT / 'lfyes_arm2.bin'}"
-    s = Script(); s.tap("no"); s.tap("part", 800); s.tap("down", 200)
-    s.down("func", 100); s.tap("yes", 200); s.up("func", 1500)
-    add("lfyes", s, more_dumps=armd + menud + str(OUT / "lfyes_menu.bin"))
-    # each list says which it is when it opens (both look alike): the screen, 150 ms in
-    s = Script(); s.tap("no"); s.tap("part", 150); add("lname", s, more_dumps=lcdd + str(OUT / "lname_lcd.bin"))
-    s = Script(); s.tap("no"); s.hold("func", "part", gap=150)
-    add("sname", s, more_dumps=lcdd + str(OUT / "sname_lcd.bin"))
+    # (dumped with YES still down: stock's press sets both arm words, its release clears the first;
+    # lfyes0 is the same list with no FUNC+YES)
+    for tag, fy in (("lfyes", True), ("lfyes0", False)):
+        armd = f";0x46c7ff64,4={OUT / f'{tag}_arm.bin'};0x46c803d4,4={OUT / f'{tag}_arm2.bin'}"
+        s = Script(); s.tap("no"); s.tap("part", 800); s.tap("down", 200)
+        if fy:
+            s.down("func", 100); s.down("yes", 800)
+        else:
+            s.wait(900)
+        add(tag, s, more_dumps=armd + menud + str(OUT / f"{tag}_menu.bin"))
 
     s = Script(); s.tap("no"); s.tap("part", 800); s.tap("up", 200); s.tap("up", 200); s.tap("yes", 1500)
     add("drawn", s, more_dumps=lcdd + str(OUT / "drawn_lcd.bin"))
@@ -1041,16 +1042,14 @@ def main():
         clean("lfyes")
         im = img("lfyes"); b0 = img("base") if exists("base") else None
         arm = (OUT / "lfyes_arm.bin").read_bytes() + (OUT / "lfyes_arm2.bin").read_bytes()
+        arm0 = ((OUT / "lfyes0_arm.bin").read_bytes() + (OUT / "lfyes0_arm2.bin").read_bytes()
+                if exists("lfyes0") else None)
         mobj = struct.unpack(">9I", (OUT / "lfyes_menu.bin").read_bytes())[2]
-        check(f"lfyes: FUNC+YES in LOAD KIT arms nothing (arm words {arm.hex()})", arm.count(0xff) == 0)
+        check(f"lfyes: FUNC+YES in LOAD KIT arms nothing (arm words {arm.hex()}, "
+              f"{arm0.hex() if arm0 else '?'} with no FUNC+YES)", arm0 is not None and arm == arm0)
         check(f"lfyes: ... saves nothing (the library as at the load) and the list stays open ({mobj:#x})",
               (b0 is None or im[O_LIB:] == b0[O_LIB:]) and im[O_ASSIGN:O_ASSIGN + 256] == (b0 or im)[O_ASSIGN:O_ASSIGN + 256]
               and mobj != 0)
-    for tag in ("lname", "sname"):
-        if exists(tag):
-            clean(tag)
-            pl = (OUT / f"{tag}_lcd.bin").read_bytes()
-            print(f"  [ -- ] {tag}: the plane dumped to {OUT / (tag + '_lcd.bin')} ({sum(map(bool, pl))} non-zero bytes)")
 
     if exists("drawn") and exists("drawnf"):
         clean("drawn")

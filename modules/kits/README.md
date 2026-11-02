@@ -262,6 +262,13 @@ OCTABAM89_setgate (bank 3), each scenario forked from one load:
   restore, its stock routines called in order: the panel's second
   FUNC+STOP pastes again under the port, on stock too), FUNC+PASTE+PART,
   PTN+FUNC+RIGHT, PTN+FUNC+TRIG paste and its undo.
+- ✅ (2 Nov 2026) FUNC+YES with LOAD KIT open, YES still held: both arm
+  words as with no FUNC+YES, nothing saved, the list open
+  (`verify_kits` lfyes against lfyes0); the module before this change set
+  the first to all ones there. The `LOAD KIT` and `SAVE KIT` messages
+  drawn over the list on opening and gone by ~1.9 s
+  (`tools/emu/live_shots.py`, not a gate: the message is a popup window,
+  which the plane dump does not hold).
 - ✅ The MKI panel (the port without `--mkii`): FUNC+BANK on the main
   screen opens PATTERN SETTINGS; FUNC+MIDI then FUNC+BANK opens SAVE KIT,
   and a save from it lands; FUNC+BANK again closes it; over the name
