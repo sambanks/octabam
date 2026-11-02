@@ -81,13 +81,13 @@ form at that address; the ledger refuses it in a remix that lists DELAY.
 
 **Port:** `make check REMIX=cxosc` runs `verify_cxosc` (FOLD/SYMM/RATO/DEC
 change the waveform; FOLD=SYMM=DEC=127 stays off the rails; DSP-record ATK
-shapes the attack via the 2.20 snap). Not yet re-confirmed on hardware for
-this AMP/DEC tip.
+shapes the attack via the 2.20 snap).
 
-**Hardware (author MKII):** image **BUILD CS**, commit **`052bb14d`**
-(`cxosc-core`). Tried and OK: machine select; each PLAYBACK knob (PTCH, RATO,
-INDX, FOLD, SYMM, FDBK); FUNC snaps on RATO; MIDI note-on; STOP/START; Part
-change.
+**Hardware (author MKII):** remix **VRCS-CX VS**, tip **`32316200`** — AMP
+snap, DEC (HOLD@127), bipolar SYMM skew + icons, FOLD default 40; PLAYBACK
+knobs and FUNC RATO snaps OK. Earlier **BUILD CS** @ **`052bb14d`**
+(`cxosc-core`) smoked machine select / PLAYBACK then FDBK / MIDI / STOP /
+Part.
 
 ## Build
 
