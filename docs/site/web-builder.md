@@ -1,6 +1,6 @@
 # Build and Install
 
-Builds Octabam v0.2 ([what is in it](remix-octabam.md)) from your own copy of
+Builds Octabam v0.3 ([what is in it](remix-octabam.md)) from your own copy of
 Octatrack OS 1.40C, in this browser tab. The OS file is read locally and
 nothing is uploaded.
 
@@ -91,7 +91,7 @@ the same steps, or see [Safety and recovery](safety.md).
 
 ## How it works
 
-The page holds the patch for Octabam v0.2: its bytes, plus instructions to
+The page holds the patch for Octabam v0.3: its bytes, plus instructions to
 copy ranges from your 1.40C. It applies the patch to the MAIN OS section of
 your file, rebuilds the firmware container with Elektron's container tool
 compiled to WebAssembly, and wraps it for the card. It refuses a file whose

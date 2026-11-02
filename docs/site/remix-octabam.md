@@ -1,4 +1,4 @@
-# Octabam v0.2
+# Octabam v0.3
 
 ![BRAIN in the main menu, added by Octabam](img/brain/pane.png)
 
