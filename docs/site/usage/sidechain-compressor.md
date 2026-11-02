@@ -13,7 +13,7 @@ An effect on a track: select the track, press FX2 (or FX1), and pick COMPRESSOR
 from the chooser; the setup page shows the new knobs. There is no separate
 effect to load: COMPRESSOR is the side-chain compressor.
 
-[Octabam](../../remix-octabam.md) 0.2 does not carry it; COMPRESSOR there is stock. The loader form (the
+[Octabam](../../remix-octabam.md) 0.3 does not carry it; COMPRESSOR there is stock. The loader form (the
 side-chain's DSP code loaded while a track uses COMPRESSOR, in the top of T4's FX2 block) is in the repository and has
 not run on a unit in the current `octabam` form.
 
