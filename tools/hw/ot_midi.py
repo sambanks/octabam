@@ -85,8 +85,10 @@ def packets(pktlist):
 
 
 class In:
-    """Source `port_name`'s bytes, one packet at a time, to `on_bytes(data)`. The callback runs
-    inside pump(): CoreMIDI delivers on this thread's run loop."""
+    """Source `port_name`'s bytes, one packet at a time, to `on_bytes(data)`. CoreMIDI calls it on
+    threads of its own (3 Nov 2026: 32 calls during 2 s in which the caller slept, from 112 threads),
+    so its timestamps do not wait for the caller and anything it shares with the caller needs a lock.
+    pump() runs this thread's run loop, which delivers the endpoint list's changes."""
 
     def __init__(self, port_name, on_bytes):
         self.client = ctypes.c_uint32(); self.port = ctypes.c_uint32()
@@ -101,6 +103,13 @@ class In:
         if self.src is None:
             sys.exit(f"no MIDI source named {port_name!r}")
         cm.MIDIPortConnectSource(self.port, self.src, None)
+
+    def close(self):
+        """No more deliveries. Keep the object: CoreMIDI may hold the callback's pointer until the port goes."""
+        cm.MIDIPortDisconnectSource.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+        cm.MIDIPortDisconnectSource(self.port, self.src)
+        cm.MIDIPortDispose.argtypes = [ctypes.c_uint32]
+        cm.MIDIPortDispose(self.port)
 
     @staticmethod
     def pump(seconds):
@@ -130,18 +139,27 @@ def cfstr(s):
     return cf.CFStringCreateWithCString(None, s.encode(), UTF8)
 
 
+_NAME = cfstr("name")                                   # one key for every lookup: each cfstr is a copy
+
+
 def name_of(ep):
+    """The endpoint's name, or None when it has gone: a source that left between the count and here
+    gave no string, and reading the null crashed the process (2 Nov 2026, a unit's source going away)."""
     out = ctypes.c_void_p()
-    cm.MIDIObjectGetStringProperty(ep, cfstr("name"), ctypes.byref(out))
+    if not ep or cm.MIDIObjectGetStringProperty(ep, _NAME, ctypes.byref(out)) != 0 or not out.value:
+        return None
     buf = ctypes.create_string_buffer(256)
     cf.CFStringGetCString(out, buf, 256, UTF8)
+    cf.CFRelease.argtypes = [ctypes.c_void_p]
+    cf.CFRelease(out)                                   # the property is a copy the caller owns
     return buf.value.decode()
 
 
 def endpoints(kind):
     n, get = ((cm.MIDIGetNumberOfSources, cm.MIDIGetSource) if kind == "src"
               else (cm.MIDIGetNumberOfDestinations, cm.MIDIGetDestination))
-    return [(name_of(get(i)), get(i)) for i in range(n())]
+    eps = [get(i) for i in range(n())]
+    return [(name, ep) for ep in eps if (name := name_of(ep)) is not None]
 
 
 class Out:
