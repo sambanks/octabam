@@ -3,6 +3,12 @@ machine of its own: **OCTA-303**. It needs no sample, gives up no stock
 effect, and its model is fitted to recordings of a real TB-303 (Din Sync's
 x0xb0x reference set).
 
+## Limit
+
+A Part holds at most two OCTA-303 tracks. Choosing OCTA-303 for a third shows `MAX 2 OCTA-303` and the track
+becomes plain FLEX. Each playing machine takes a large share of the processor, and with more the panel stops
+answering while the audio keeps playing.
+
 ## Access
 
 Double-tap the [TRACK] key to open the machine list, choose **OCTA-303**

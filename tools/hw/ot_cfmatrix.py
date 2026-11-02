@@ -120,7 +120,9 @@ def stamp_layout(data, i, lay):
     assigned = {}
     for t in range(8):
         is303 = t < lay.n303
-        assigned[t] = lay.carrier if is303 else SLOT_HITS
+        # a signed machine needs no carrier sample (SETUP's WAVE is the carrier), and a TB303* name would make it a
+        # second way into the voice that the signature does not control
+        assigned[t] = (SLOT_HITS if lay.signed else lay.carrier) if is303 else SLOT_HITS
     for p in (j, j + 4):
         off = P.PART_BASE + p * P.PART_STRIDE
         om.stim_part(data, off, [(t, s) for t, s in assigned.items()])
@@ -176,7 +178,7 @@ def cmd_proj(a):
     print(f"{dest}: {len(lays)} layouts (slot 0 first); the rest repeat BASE")
 
 
-SETTLE_S, MEASURE_S = 4.0, 6.0      # after MIDI START: the voices and loads settle, then the readings
+SETTLE_S, MEASURE_S = 4.0, 6.0      # after MIDI START: the voices and loads settle, then the readings (--settle, --measure)
 
 
 def cmd_run(a):
@@ -221,9 +223,9 @@ def cmd_run(a):
             clock.pc(pc_ch, e["program"]); time.sleep(1.0)
             t0 = time.time()
             clock.start()
-            time.sleep(SETTLE_S + MEASURE_S)
+            time.sleep(a.settle + a.measure)
             clock.stop()
-            rr = [r for r in rows if t0 + SETTLE_S <= r["t"] <= t0 + SETTLE_S + MEASURE_S]
+            rr = [r for r in rows if t0 + a.settle <= r["t"] <= t0 + a.settle + a.measure]
             if len(rr) < 20:
                 results.append({"slot": i, "name": e["name"], "flags": ["NO READINGS"]})
                 print(f"{i:2d} {e['name'][:48]:48s} no readings"); break
@@ -239,6 +241,9 @@ def cmd_run(a):
                 row["flags"].append("CF_OVERRUN")
             if bad > 0:
                 row["flags"].append("BAD")
+            if a.series:                      # every reading: seconds after START, share, mean run, longest run, DSP counter
+                row["series"] = [[round(r["t"] - t0, 2), round(r["cf"]["share"] or 0.0, 4), round(r["cf"]["mean_us"], 1),
+                                  round(r["cf"]["longest_us"], 1), r["dsp"]["seq"]] for r in rr]
             results.append(row)
             print(f"{i:2d} {e['name'][:48]:48s} {100 * row['cf_share_mean']:7.1f}% {100 * row['cf_share_max']:6.1f}% {row['cf_longest_us_max']:7.0f}u "
                   f"{100 * row['dsp0_mean']:5.1f}/{100 * row['dsp0_max']:5.1f}% {100 * row['dsp1_mean']:5.1f}/{100 * row['dsp1_max']:5.1f}% {bad:4d} "
@@ -265,6 +270,9 @@ def main():
     r.add_argument("label")
     r.add_argument("--only", default="")
     r.add_argument("--midi", default="Elektron Octatrack DPS-1")
+    r.add_argument("--settle", type=float, default=SETTLE_S, help="seconds after START before the readings")
+    r.add_argument("--measure", type=float, default=MEASURE_S, help="seconds of readings")
+    r.add_argument("--series", action="store_true", help="keep every reading in cf_report.json")
     a = ap.parse_args()
     {"plan": cmd_plan, "proj": cmd_proj, "run": cmd_run}[a.cmd](a)
 
