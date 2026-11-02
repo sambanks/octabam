@@ -14,7 +14,7 @@ track's channel (SEND: 40 = -DEL, 41 = -VRB); FX1 = CC 34-39; level CC 7;
 mute/solo CC 49/50; crossfader CC 48; sample trig = note 36+track;
 chromatic = notes 72-96 (84 = unison).
 """
-import ctypes, ctypes.util, sys, time
+import ctypes, ctypes.util, platform, sys, time
 
 cm = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/CoreMIDI.framework/CoreMIDI')
 cf = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
@@ -48,39 +48,81 @@ def find(kind, name, wait=3.0):
         time.sleep(0.1)
 
 
+ARM = platform.machine() == "arm64"
+
+
+def _walk(pktlist, aligned):
+    """The packets' (address, length), each next one after the data (aligned: at the next 4-byte
+    boundary), or None when one of them cannot be a packet: a length of 0 or over 256, or data
+    that starts with a byte below 0x80 outside a SysEx. Reads 3 bytes a packet before trusting it."""
+    n = ctypes.cast(pktlist, ctypes.POINTER(ctypes.c_uint32))[0]
+    p, out, sysex = pktlist + 4, [], False
+    for _ in range(n):
+        length = ctypes.cast(p + 8, ctypes.POINTER(ctypes.c_uint16))[0]
+        if not 0 < length <= 256 or (ctypes.string_at(p + 10, 1)[0] < 0x80 and not sysex):
+            return None
+        for b in ctypes.string_at(p + 10, length):
+            if b == 0xF0 or b == 0xF7:
+                sysex = b == 0xF0                       # a packet may end inside a SysEx
+        out.append((p, length))
+        end = p + 10 + length
+        p = (end + 3) & ~3 if aligned else end
+    return out
+
+
+def packets(pktlist):
+    """Each MIDIPacket's data in a MIDIPacketList: an 8-byte timestamp, a 2-byte length, the data.
+    MIDIServices.h's MIDIPacketNext starts the next packet at the 4-byte-aligned address after the
+    data on ARM and right after it on Intel; a CoreMIDI virtual source's lists on an arm64 Mac are
+    aligned (2 Nov 2026: read unaligned, the packet after a START came out one byte early). On
+    19 Oct 2026 the unit's bursts read aligned were reported to run off the list after the first
+    packet (not reproduced since), so a list that does not read whole as aligned is read
+    unaligned. Probing an aligned list unaligned stays inside it: each unaligned address is at or
+    before the aligned one."""
+    walk = (_walk(pktlist, True) if ARM else None) or _walk(pktlist, False) or []
+    for p, length in walk:
+        yield ctypes.string_at(p + 10, length)
+
+
+class In:
+    """Source `port_name`'s bytes, one packet at a time, to `on_bytes(data)`. The callback runs
+    inside pump(): CoreMIDI delivers on this thread's run loop."""
+
+    def __init__(self, port_name, on_bytes):
+        self.client = ctypes.c_uint32(); self.port = ctypes.c_uint32()
+        cm.MIDIClientCreate(cfstr("octabam-in"), None, None, ctypes.byref(self.client))
+
+        def cb(pktlist, _a, _b):
+            for data in packets(pktlist):
+                on_bytes(data)
+        self.proc = READPROC(cb)                        # kept: CoreMIDI holds only the pointer
+        cm.MIDIInputPortCreate(self.client, cfstr("in"), self.proc, None, ctypes.byref(self.port))
+        self.src = find("src", port_name)
+        if self.src is None:
+            sys.exit(f"no MIDI source named {port_name!r}")
+        cm.MIDIPortConnectSource(self.port, self.src, None)
+
+    @staticmethod
+    def pump(seconds):
+        cf.CFRunLoopRunInMode.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_bool]
+        cf.CFRunLoopRunInMode(cfstr("kCFRunLoopDefaultMode"), seconds, False)
+
+
 def listen(port_name, seconds):
     """Print incoming events from source `port_name` for `seconds`; F8 and FE are only counted."""
-    client = ctypes.c_uint32(); inport = ctypes.c_uint32()
-    cm.MIDIClientCreate(cfstr("octabam-in"), None, None, ctypes.byref(client))
     t0 = time.time()
     skipped = {0xF8: 0, 0xFE: 0}
 
-    def cb(pktlist, _a, _b):
-        n = ctypes.cast(pktlist, ctypes.POINTER(ctypes.c_uint32))[0]
-        p = pktlist + 4
-        for _ in range(n):
-            length = ctypes.cast(p + 8, ctypes.POINTER(ctypes.c_uint16))[0]
-            data = ctypes.string_at(p + 10, length)
-            for b in data:
-                if b in skipped:
-                    skipped[b] += 1
-            rest = bytes(b for b in data if b not in skipped)
-            if rest:
-                print(f"{time.time()-t0:7.3f}  {rest.hex(' ')}", flush=True)
-            # packets are packed: 8-byte timestamp, 2-byte length, data. Padding each to
-            # 4 bytes (as MIDIPacketNext does on x86) ran off the list after the first
-            # packet on an arm64 Mac, 19 Oct 2026, and the rest of the burst printed nothing.
-            p += 10 + length
-    proc = READPROC(cb)
-    cm.MIDIInputPortCreate(client, cfstr("in"), proc, None, ctypes.byref(inport))
-    src = find("src", port_name)
-    if src is None:
-        sys.exit(f"no MIDI source named {port_name!r}")
-    cm.MIDIPortConnectSource(inport, src, None)
-    cf.CFRunLoopRunInMode.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_bool]
-    mode = cfstr("kCFRunLoopDefaultMode")
+    def show(data):
+        for b in data:
+            if b in skipped:
+                skipped[b] += 1
+        rest = bytes(b for b in data if b not in skipped)
+        if rest:
+            print(f"{time.time()-t0:7.3f}  {rest.hex(' ')}", flush=True)
+    inp = In(port_name, show)                           # held: its callback must outlive the loop
     while time.time() - t0 < seconds:
-        cf.CFRunLoopRunInMode(mode, 0.1, False)
+        inp.pump(0.1)
     print(f"not printed: {skipped[0xF8]} clock (F8), {skipped[0xFE]} active sensing (FE)")
 
 

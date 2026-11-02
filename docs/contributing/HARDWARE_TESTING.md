@@ -154,6 +154,13 @@ replays sequences under the ColdFire port with no unit.
   `out/hw/fuzz/<label>/failure.json` with the operation index, the last 40
   operations and the unit's state. `run <seq.json> <label> --until <index>`
   replays up to it. Power-cycle the unit after a failure.
+- A freeze that comes at random: `freeze_watch.py` beside the unit for as long
+  as it takes, with CLOCK SEND and TRANSPORT SEND on in the project. It needs
+  nothing in the image, stops at the freeze, and writes
+  `out/hw/freeze/freeze_<time>.json` with the seconds before it: whether the
+  clock stopped without a STOP, and whether USB kept answering after (the
+  sequencer alone) or stopped with it (the main processor). Run
+  `freeze_watch.py selftest` after changing it, `list` to see the unit.
 - Read LOAD METER after a stop before concluding the unit froze: a stopped
   count (`load_meter.healthy()`) is a frozen frame engine; a healthy count with
   silent audio is a different cause.
