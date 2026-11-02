@@ -1,7 +1,8 @@
 """CX OSC -- Buchla-flavoured complex oscillator (marker-less machine list).
 
 Choose CX OSC in FUNC+SRC / SELECT MACHINE TYPE (FLEX + Part signature "CX",1).
-Mono only; stock LFO page (no VOIC/CHRD). PLAYBACK: PTCH RATO INDX FOLD SYMM FDBK.
+Mono only; stock LFO page (no VOIC/CHRD). PLAYBACK: PTCH RATO INDX FOLD SYMM DEC
+(HOLD at 127; SYMM bipolar half-wave skew, 64 = even).
 
 Machine list adapted from timhastie/octatrick-modules v2.15 SYNTH MACHINE
 (MIT / Modwerk chooser lineage). Conflicts with SYNTH MACHINE and
@@ -266,7 +267,7 @@ def _variant(values):
         "cf_patches": (),
         "detours": MODULE.detours + (Detour(
             RESOLVER_HOOK, RESOLVER_STOCK, "page", "pg_resolve",
-            "PLAYBACK page resolver: CX OSC track reads PTCH/RATO/INDX/FOLD/SYMM/FDBK "
+            "PLAYBACK page resolver: CX OSC track reads PTCH/RATO/INDX/FOLD/SYMM/DEC "
             "(DRAM form; leaves the stock DELAY table tail alone)", kind="jmp"),),
     }
 
@@ -280,11 +281,13 @@ MODULE = Module(
     author_url="https://github.com/ilia-murzinov",
     proof=Proof.HARDWARE,
     proof_note=(
-        "MKII BUILD CS @ 052bb14d (author, cxosc-core): machine select; each PLAYBACK "
-        "knob (PTCH RATO INDX FOLD SYMM FDBK); FUNC RATO snaps; MIDI note-on; STOP/START; "
-        "Part change. Port: verify_cxosc + make check REMIX=cxosc"
+        "MKII VRCS-CX VS @ 32316200 (author): Tim 2.20 AMP snap; DEC HOLD@127; "
+        "bipolar SYMM half-wave skew (64=even) + icons; FOLD default 40; PLAYBACK "
+        "knobs; FUNC RATO snaps. Prior MKII BUILD CS @ 052bb14d (cxosc-core) smoked "
+        "machine select / PLAYBACK then FDBK / MIDI / STOP / Part. verify_cxosc + "
+        "make check REMIX=cxosc"
     ),
-    doc="CX OSC in the machine list (no marker file): PTCH RATO INDX FOLD SYMM FDBK, mono, stock LFOs. Local fork of FM SYNTH.",
+    doc="CX OSC in the machine list (no marker file): PTCH RATO INDX FOLD SYMM DEC (HOLD@127; SYMM half-wave skew 64=even), mono, stock LFOs. Local fork of FM SYNTH.",
     conflicts=(
         ("SYNTH MACHINE", "both own the FLEX/STATIC kind-table renderers, page cave 0x400d24d0, and machine-list sites"),
         ("BLACKPYRAMIDS_303", "shares ColdFire ROM hooks (e.g. MIDI note-on 0x4000e746) — build refuses the pair"),

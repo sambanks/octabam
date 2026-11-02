@@ -18,11 +18,14 @@ refusal under Unicorn.
 
 | File | Upstream pin |
 |------|----------------|
-| `poly.s` | timhastie/octatrick-modules **v2.9** `525f4b1` |
+| `poly.s` | timhastie/octatrick-modules **v2.9** `525f4b1` + Tim **2.20** AMP path (`po_amp_snap` / `po_amp_at` / `po_alaw` from `v2.22`) |
 | `page.s`, `machine.s` | **v2.15** `17ba281` (`machine.s` via Modwerk FM Synth `1c1d938`) |
 
 CX-specific: marker-less list row, FOLD + SYMM waveshape, free/snap RATO,
-harder FDBK, mono + stock LFOs (no VOIC/CHRD).
+DEC on the index (HOLD at **127**, Tim 5 Oct polarity), fixed mid FDBK in the
+engine, mono + stock LFOs (no VOIC/CHRD). AMP ATK / HOLD / REL are the
+engine's (plan B); scenes and LFOs on those knobs apply via the 2.20 DSP-record
+snapshot (not the live lane alone).
 
 ## PLAYBACK
 
@@ -30,18 +33,20 @@ harder FDBK, mono + stock LFOs (no VOIC/CHRD).
 |------|------|------|
 | A | PTCH | Semitones (−64..+63) |
 | B | RATO | Mod:carrier ratio (free 0.25..4; FUNC snaps classic table ≤4.01) |
-| C | INDX | FM index (holds; LFO/plock for motion) |
+| C | INDX | FM index |
 | D | FOLD | Sine waveshape fold (dry/wet; moderate drive) |
-| E | SYMM | Fold symmetry (DC bias into the fold; 0 = centered) |
-| F | FDBK | Modulator feedback (up to ~1 cycle at 127) |
+| E | SYMM | Bipolar half-wave skew into the folder (64 = even; extremes mute one polarity) |
+| F | DEC | Index envelope; **127 = HOLD**, 0 = shortest (not the old min=HOLD) |
 
-Mono only. Stock LFO page (all three LFOs). No VOIC/CHRD.
+Mono only. Stock LFO page (all three LFOs). No VOIC/CHRD. AMP page ATK / HOLD /
+REL shape the note in the engine (locks, scenes, LFOs). Modulator feedback is
+a fixed mid (no FDBK knob).
 
 ## Cost
 
 Unicorn executed instructions for one mono CX OSC track (`tools/verify/verify_cxosc.py`,
-`sy_render`, base knobs; pitch curve stubbed — EMAC): **~1290 instructions/frame**
-(~81/sample), peak ~1293. Not hardware cycles. One track per Part by the
+`sy_render`, base knobs; pitch curve stubbed — EMAC): **~1352 instructions/frame**
+(~85/sample), peak ~1391. Not hardware cycles. One track per Part by the
 selection guard; how that sits against ColdFire headroom on a loaded Part is
 **unmeasured** on the chip (same caveat as SYNTH MACHINE's lockstep figures).
 
@@ -74,13 +79,15 @@ form at that address; the ledger refuses it in a remix that lists DELAY.
 
 ## Proof / hardware
 
-**Port:** `make check REMIX=cxosc` runs `verify_cxosc` (FOLD/SYMM/RATO/FDBK
-change the waveform; FOLD=SYMM=FDBK=127 stays off the rails).
+**Port:** `make check REMIX=cxosc` runs `verify_cxosc` (FOLD/SYMM/RATO/DEC
+change the waveform; FOLD=SYMM=DEC=127 stays off the rails; DSP-record ATK
+shapes the attack via the 2.20 snap).
 
-**Hardware (author MKII):** image **BUILD CS**, commit **`052bb14d`**
-(`cxosc-core`). Tried and OK: machine select; each PLAYBACK knob (PTCH, RATO,
-INDX, FOLD, SYMM, FDBK); FUNC snaps on RATO; MIDI note-on; STOP/START; Part
-change.
+**Hardware (author MKII):** remix **VRCS-CX VS**, tip **`32316200`** — AMP
+snap, DEC (HOLD@127), bipolar SYMM skew + icons, FOLD default 40; PLAYBACK
+knobs and FUNC RATO snaps OK. Earlier **BUILD CS** @ **`052bb14d`**
+(`cxosc-core`) smoked machine select / PLAYBACK then FDBK / MIDI / STOP /
+Part.
 
 ## Build
 
