@@ -20,7 +20,7 @@
 | THE STORAGE. Chosen track = FLEX (machine byte 1) with signature
 | "C", "X", 1 in NEIGHBOR PLAYBACK: bank + part * 6322 + 0x8edbc + 30 *
 | track (and the battery-RAM shadow). Seed PLAYBACK: PTCH 0, RATO 1,
-| INDX 32, FOLD 1, SYMM 0, FDBK 0; SETUP 0 (LOOP, SLIC,
+| INDX 32, FOLD 40, SYMM 64 (even), DEC HOLD; SETUP 0 (LOOP, SLIC,
 | LEN, RATE, TSTR, TSNS: OFF); choosing it again keeps the patch; choosing any other
 | row clears the signature.
 |
@@ -311,7 +311,7 @@ ml_flexslot:
 | machine's INIT into the Part, its battery-RAM shadow and the track's live lane, so the
 | page shows it at once, the next frame plays it and SAVE keeps it:
 |   * PLAYBACK and PLAYBACK SETUP: a row's machine -- its twelve seeds in the FLEX column (FM
-|     SYNTH: PTCH 0, RATO 1, INDX 32, FOLD 1, SYMM 0, FDBK 0, SETUP 0; SY DRUM: PTCH 0, MODE
+|     SYNTH: PTCH 0, RATO 1, INDX 32, FOLD 40, SYMM 64, DEC HOLD, SETUP 0; SY DRUM: PTCH 0, MODE
 |     A, WDTH 64, SWEP 0, SPED 64, DEC 64, LSPD 64, LDEP 0, WAVE OFF, S&H OFF); a stock
 |     machine -- its column at the defaults of its stock PLAYBACK descriptor, and the FLEX
 |     column at FLEX's (the FLEX bytes a row's machine had used: they are no sample settings);
@@ -1416,7 +1416,7 @@ ml_msg_both:
         .asciz  "FM+SY DRUM: LIMIT"
         .balign 2
 fm_defaults:
-        .byte   64, 25, 32, 1, 0, 0    | PLAYBACK: PTCH 0, RATO ~1 (free 0.25..4 raw 25), INDX 32, FOLD 1, SYMM 0, FDBK 0
+        .byte   64, 25, 32, 40, 64, 127 | PLAYBACK: PTCH 0, RATO ~1, INDX 32, FOLD 40, SYMM even, DEC HOLD
         .byte   0, 0, 0, 0, 0, 0         | SETUP: LOOP SLIC LEN RATE TSTR TSNS all 0 (OFF)
 fm_name:
         .asciz  "CX OSC"

@@ -1235,16 +1235,9 @@ plk_st_bankcopy:
         moveq   #16,%d0
         lea     F_WRITE,%a1
         bsr.w   fio
-        lea     IOB,%a0
-        moveq   #-1,%d0
-        movel   #IOB_LEN/4,%d1
-fc_fill:
-        movel   %d0,%a0@+
-        subql   #1,%d1
-        bne.s   fc_fill
-        moveq   #BANK_B/IOB_LEN,%d2
-fc_wr:  lea     IOB,%a0
-        movel   #IOB_LEN,%d0
+        movel   #BANK_B/FFROW_LEN,%d2  | the body from FFROW: the header is still in IOB, the file's buffer
+fc_wr:  lea     FFROW,%a0
+        movel   #FFROW_LEN,%d0
         lea     F_WRITE,%a1
         bsr.w   fio
         subql   #1,%d2
@@ -1723,6 +1716,8 @@ P2STAGE: .fill  8*REC,1,0xff            | the staging record, by track
 P2PEND: .fill   24*REC,1,0xff           | pending slots n = 0..2, index n*8 + track
 P2REC:  .fill   8*REC,1,0xff            | the trig record, by track
 P2MASK: .fill   8,2,0                   | bits: the slots the last trig locked, by track
+        .set    FFROW_LEN,  256
+FFROW:  .fill   FFROW_LEN,1,0xff        | an empty bank's body, written from here by plk_st_bankcopy
 
         .section .bss
         .align  4
