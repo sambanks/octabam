@@ -72,3 +72,35 @@ places:
 A loop whose period is not a whole number of samples still gains or loses
 one sample at each wrap. In sound-on-sound the repeated sample is recorded
 into the loop and replays until the next skip removes it.
+
+## Cost
+
+The spacing cave runs on every recording track about 1.4 times a frame, and
+the ratified version does six 32-bit divides each time. A PC sampler on a
+MKII (Bryan T, 1 Nov 2026) put RECORDER LOOP FIX at about 2 µs a frame per
+recording track, most of it in that cave.
+
+The cave's answer depends only on L, tempo24 and the track's arm sample,
+which change once a bar. Since 2 Nov 2026 it keeps a memo per track (0–7) of
+those three and its answer, and answers from the memo when all three match.
+Otherwise it computes exactly as before and stores the result.
+
+**Measured.**
+
+- `verify_recorder_loop_fix`: the memoised cave and the ratified bytes
+  (`SPACING_CAVE_BYTES_V1`) under unicorn, about 78,000 calls (hits, new
+  bars, tempo changes, RLEN changes, the ±1 guard, tempo 0, r = 0, tracks 8
+  and 9). The answers and every register match. A hit is 30 instructions
+  with no divides. A miss is the ratified cave's work plus about 20
+  instructions.
+- Under the ColdFire port, a project recording through pattern changes, a
+  stop and a start leaves every recorder record and length in CS1 as the
+  ratified cave leaves them. The cave's instructions a frame fell from 429
+  to 299.
+- On Bryan T's MKII the memoised cave ran in test builds recording up to
+  eight tracks at once.
+
+**Inferred, not measured.** The hardware saving from the memo alone: those
+builds carried other changes, so the memo's share of the drop was not
+separated. The loop-point behaviour was not captured again on hardware.
+The gate shows the answers are the ratified cave's, call for call.

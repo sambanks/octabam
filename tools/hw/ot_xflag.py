@@ -43,15 +43,10 @@ class Rx:
 
         def cb(pktlist, _a, _b):
             now = time.monotonic()
-            n = ctypes.cast(pktlist, ctypes.POINTER(ctypes.c_uint32))[0]
-            p = pktlist + 4
-            for _ in range(n):
-                length = ctypes.cast(p + 8, ctypes.POINTER(ctypes.c_uint16))[0]
-                data = ctypes.string_at(p + 10, length)
+            for data in M.packets(pktlist):
                 rest = bytes(b for b in data if b not in (0xF8, 0xFE))
                 if rest:
                     self.q.put((now, rest))
-                p += 10 + length
         self.proc = M.READPROC(cb)
         M.cm.MIDIInputPortCreate(client, M.cfstr("in"), self.proc, None, ctypes.byref(inport))
         src = M.find("src", port_name)

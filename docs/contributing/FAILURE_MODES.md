@@ -3,6 +3,28 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
+## FX PAGE 2 LOCKS NOT LOADED at every load: SAVE PROJECT wrote empty page-2 lock files with no header ✅ measured, fixed
+
+- **Seen:** an MKII, 2 Nov 2026: STORE's prompt (FX PAGE 2 LOCKS NOT LOADED /
+  UNREADABLE OR INCOMPATIBLE) at loads of one project. Of its sixteen
+  `p2lkNN.work`, bank 1's held a header; the other fifteen were 98,320 bytes
+  of 0xff, header included. The project had been played under several remixes
+  first; which save made those files is inferred, not traced.
+- **Cause (measured under the port):** a bank copy with no `p2lkNN` source
+  (`plk_st_bankcopy`) writes an empty file: the header, then a body filled
+  in `IOB`. `IOB` is the buffer the file was opened with, and the 16 header
+  bytes were still in it, unwritten; the fill wrote 0xff over them. PLOCKS
+  P2 refuses a file without `P2LK` and version 1, and STORE lists it.
+  `verify_plocks_p2` on origin/main `828314dc`: `p2lk02.strd` made by SAVE
+  PROJECT from no source reads `ffffffff…`; with the fix, `P2LK`, version 1,
+  length `0x18000`, an all-0xff body.
+- **Fix:** the body is written from `FFROW`, a row of 0xff in `.data`, and
+  `IOB` is left to the file layer. On a card that already holds such files,
+  START FRESH / REPLACE FILE loses nothing: they hold no locks.
+- **Not established:** whether the refusals have anything to do with the
+  freezes seen on the same unit and project; the freezes stayed open when
+  this was found (`tools/hw/freeze_watch.py` caught four).
+
 ## PLOCKS trig-paste undo keeps copied page-two locks
 
 - **Seen:** radiohagen's MKII, EVT871E1 (`f09654ca`), 25 October 2026:
