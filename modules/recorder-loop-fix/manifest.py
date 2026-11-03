@@ -40,7 +40,7 @@ ColdFire writes the quotient.
 
 import hashlib
 
-from remix.schema import Category, Proof, Detour, Kind, Linked, Module
+from remix.schema import Category, Proof, Detour, Gate, Kind, Linked, Module
 
 # The audio arena base, stock; the build resolves ARENA_BASE to the moved base.
 _ARENA = (("ARENA_BASE", 0x40a955e0),)
@@ -57,7 +57,8 @@ SEEKBIND_HOOK_STOCK = bytes.fromhex("4a2f0037" "6718")       # tstb (55,sp) / be
 SPACING_HOOK = 0x40006e0c
 SPACING_HOOK_STOCK = bytes.fromhex("2800" "5284" "e284")   # movel d0,d4; addql #1,d4; asrl #1,d4
 
-SPACING_CAVE_BYTES = bytes.fromhex(
+# The cave as ratified on hardware (3 Oct 2026), before the memo; kept for the record.
+SPACING_CAVE_BYTES_V1 = bytes.fromhex(
     "2800" "5284" "e284"                     # displaced: L = (product + 1) >> 1
     "4fefffe8" "48d7030f"                    # save d0-d3/a0-a1 (24 bytes)
     "2239" "80001814" "6700" "0072"          # d1 = tempo24; 0 -> keep
@@ -79,16 +80,27 @@ SPACING_CAVE_BYTES = bytes.fromhex(
     "2802"                                   # d4 = L'
     "4cd7030f" "4fef0018" "4e75")            # restore, rts
 
+# Memoised (2 Nov 2026, spacing_cave.s): the same arithmetic, skipped when the
+# track's (L, tempo24, arm) match the last call's. verify_recorder_loop_fix runs
+# both byte strings call for call; under the port, a project recording through
+# pattern changes, a stop and a start leaves every recorder record and length
+# in CS1 as the cave above leaves them.
+SPACING_CAVE_BYTES = bytes.fromhex(
+    "28005284e2844fefffe048d7072f223980001814670000ce2a0495ca202f00ac7408b082642ce98845fa00c6d5c0e48841f946c7fa8424300800ba926614b2aa0004660eb4aa00086608282a000c6000009420044c010000068000791fd0243c00f23fa04c420000670000584c02000026004c4100006700004a24004c01000096806700002c202f00ace58841f946c7fa84203008004c4200004c0300002240d08326094c4100004c4130039083d4802002908452800c8000000002620000042802200a671e248525410004202f00ace58841f946c7fa8420300800254000082544000c4cd7072f4fef00204e7500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
+
 MODULE = Module(
     name="recorder-loop-fix",
     key="RECORDER LOOP FIX",
     kind=Kind.CF_PATCH,
     category=Category.FIXES, author="sambanks", author_url="https://github.com/sambanks",
     proof=Proof.HARDWARE,
-    proof_note="OCTABAM83, 12 Sep 2026 (self-loop); Bryan T's MKII, sos-capture BUILD=95, 3 Oct 2026 (sound-on-sound)",
+    proof_note="OCTABAM83, 12 Sep 2026 (self-loop); Bryan T's MKII, sos-capture BUILD=95, 3 Oct 2026 (sound-on-sound); "
+               "the spacing cave's memo (2 Nov 2026): verify_recorder_loop_fix, call for call against the ratified "
+               "cave under unicorn, and Bryan T's MKII recording up to eight tracks at once",
     doc="ColdFire caves: the recorder loop click -- seek on a same-sample FLEX re-bind, keep its "
         "counter, record exactly the arm spacing, and repeat the last sample where sound-on-sound "
         "would play a zero.",
+    gates=(Gate("tools/verify/verify_recorder_loop_fix.py", remix_arg=False, venv=True),),
     # DRAM units since 8 Oct 2026 (floating ROM caves until then). Each is
     # linked alone at 0x400d7000 with ARENA_BASE at stock's 0x40a955e0 and
     # compared against its ratified bytes; the image carries ARENA_BASE at
@@ -99,7 +111,7 @@ MODULE = Module(
         Linked("rlf_seekbind_ctr", "modules/recorder-loop-fix/seekbind_ctr.s", dram=True, defsyms=_ARENA,
                reference=_ref(bytes.fromhex("4a2f003b660452aa0090254800984e75"))),
         Linked("rlf_spacing", "modules/recorder-loop-fix/spacing_cave.s", dram=True, defsyms=_ARENA,
-               reference=_ref(SPACING_CAVE_BYTES)),
+               reference=_ref(SPACING_CAVE_BYTES)),       # memoised (2 Nov 2026): spacing_cave.s
         Linked("rlf_hold_copy", "modules/recorder-loop-fix/hold_copy.s", dram=True, defsyms=_ARENA,
                reference=_ref(bytes.fromhex("225f206f0004508f6100000826004a814ed10c8040a955e0660000504a816f00004a4a2a00156c000042b1ea00646600003a538820086b00002c2f012f092f002f0a206effbc4e90508f225f0c8040a955e06700000e4a816f000008588f72014e75221f203c40a955e04e75"))),
         Linked("rlf_hold_xfade_a", "modules/recorder-loop-fix/hold_xfade_a.s", dram=True, defsyms=_ARENA,
