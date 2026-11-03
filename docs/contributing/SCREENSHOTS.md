@@ -60,8 +60,10 @@ Groups and what each captures, from the `shot(...)` calls:
 | `extras` | one test remix per module (character-txtr, testgen, sidechain-compressor, miniverb, tapeecho, vocoder, wave, distorx, devilish, transient, gateverb; also alone as `distorx`) | setup and main page of each |
 | `machines` | `analog-bassdrum`, `octatrick`, `blackpyramids-303`, `octa303`, `cxosc` | analog-bassdrum, synth, direct-jump, blackpyramids-303, octa303, cxosc |
 | `octa303` | `octa303` (test remix) | octa303 alone (its two pages), without re-capturing the other machines |
+| `cxosc` | `cxosc` (test remix) | cxosc alone (PLAYBACK + SRC SETUP), without re-capturing the other machines |
 | `morph` | `morph` (test remix) | morph: the window on T1 armed, then STEPS 8 and x 2 |
 | `midi-loopback` | `midi-loopback` | midi-loopback (EXT/INT/BOTH windows and CHAN indicators) |
+| `midi-follow` | `midi-follow` | midi-follow (source selection and FOLLOW register window) |
 | `midi-scales` | `midi-scales` | midi-scales (OFF, Major, Dorian, Mixolydian) |
 | `probes` | `cfmeter` | CF METER |
 | `utilities` | `buffer-saver` | buffer-saver (a one-second take, then FUNC + PROJ: the SAVE SAMPLES? question) |
