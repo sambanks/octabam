@@ -46,7 +46,7 @@ It also compares trig paste/clear undo, track paste undo and pattern editing
 with stock, including native undo availability rather than assuming it.
 It cannot measure physical panel timing or a slide trig (page 2 does not slide).
 """
-import argparse, os, pathlib, shutil, subprocess, sys, threading
+import argparse, os, pathlib, re, shutil, subprocess, sys, threading
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
@@ -591,6 +591,13 @@ def main():
     for f in pdir.iterdir():
         if f.is_file() and f.suffix.lower() == ".work":
             shutil.copy2(f, copy / f.name)
+    # One bank without a page-2 lock file, as in a project carried over from a
+    # remix without PLOCKS P2: SAVE PROJECT makes its .strd from no source.
+    # Bank 2, which the save copies early; bank 3 when the project opens on
+    # bank 2, the bank the panel edits.
+    opens = re.search(rb"^BANK=(\d+)", (pdir / "project.work").read_bytes(), re.M)
+    nofile = 3 if opens and int(opens.group(1)) == 1 else 2
+    (copy / f"p2lk{nofile:02d}.work").unlink(missing_ok=True)
     # Install the fallback in the copied bank files, including saved Parts.
     # Poking only RAM/live IDs after load leaves the UI's SRAM Part as NONE;
     # it then records no lock even though the descriptor probe looks valid.
@@ -794,6 +801,13 @@ def main():
         d = files.get(k, b"")
         got = d[16 + (trk * 64) * REC + 6] if len(d) == 16 + 16 * 8 * TRACK_B else None
         check(f"save: {nn}.{ext} holds the lock ({got})", got == v)
+    # The empty file's header must survive the body fill (it once did not:
+    # an all-0xff file the next load refused, STORE's prompt).
+    k = next((k for k in files if k.lower().endswith(f"/p2lk{nofile:02d}.strd")), None)
+    d = files.get(k, b"")
+    check(f"save: p2lk{nofile:02d}.strd, made from no source, is a header and no locks ({d[:16].hex()})",
+          nofile != bank + 1 and d[:8] == b"P2LK\0\0\0\1" and d[12:16] == (16 * 8 * TRACK_B).to_bytes(4, "big")
+          and len(d) == 16 + 16 * 8 * TRACK_B and set(d[16:]) == {0xff})
     def reload_saved():
         reload_dump = OUT / "reload.bin"
         s = Script(); s.tap("no", 400)

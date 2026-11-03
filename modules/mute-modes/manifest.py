@@ -1,14 +1,14 @@
 """MUTE_MODES -- PERSONALIZE > MUTE MODE: OT (stock), OTFX, OTFX-T, DT-T -- what a muted or soloed-out audio track does.
 
 Source: `upstream/` is Zac Kyoti's repository (Zac-Kyoti/octatrack-kyoti-fw,
-submodule, pinned to `a1e0288`). The declaration is
+submodule, pinned to `826d23e`). The declaration is
 `upstream/octabam-modules/mute-modes/manifest.py`: two linked units (`patch_softmute.s`, `patch_mutemode.s`), placed in ROM caves or DRAM by the `PLACE` setting (`kyoti.mute-modes`, default CAVE), six detours, three grown PERSONALIZE tables, four pokes, each re-linked and
 compared with the author's own bytes (`reference`) every build. Its source
 paths are derived from its own directory, so it is executed here from the
 source on disk, as the registry does for every manifest, and this file only
 re-exports its MODULE. Nothing inside `upstream/` is edited here.
 
-On hardware: the author's MKI (standalone image and the KYOTI V1.0 combined image).
+On hardware: the author's MKI (standalone image, the KYOTI V1.7 combined image, and this octabam form beside SIDECHAIN_COMPRESSOR as OCTABAM37, 1 Nov 2026).
 """
 
 import dataclasses
@@ -42,4 +42,4 @@ def _adapted_variant(values):
 MODULE = dataclasses.replace(
     MODULE, linked=tuple(_adapt_unit(_u) for _u in MODULE.linked), variant=_adapted_variant,
     category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="the author's MKI (standalone image and the KYOTI V1.0 combined image)")
+    proof=Proof.HARDWARE, proof_note="the author's MKI (standalone image, the KYOTI V1.7 combined image, and this octabam form beside SIDECHAIN_COMPRESSOR as OCTABAM37, 1 Nov 2026)")

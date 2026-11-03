@@ -167,6 +167,17 @@ replays sequences under the ColdFire port with no unit.
   `out/hw/fuzz/<label>/failure.json` with the operation index, the last 40
   operations and the unit's state. `run <seq.json> <label> --until <index>`
   replays up to it. Power-cycle the unit after a failure.
+- A freeze that comes at random: `freeze_watch.py` beside the unit for as long
+  as it takes, with CLOCK SEND and TRANSPORT SEND on in the project. It adds
+  nothing to the image: `probe` shows what the unit answers (GET_STATUS, LOAD
+  METER when the image has it, USB audio's counters) and which triggers that
+  arms. At a trigger it samples `--post` seconds more and writes
+  `out/hw/freeze/freeze_<time>.json`: the `--pre` seconds before, the seconds
+  after, and which part stopped (the sequencer alone, the audio engine, or the
+  whole unit with USB). A reboot, USB DISK MODE or a STOP is logged, not
+  counted. `--when` adds a trigger of your own; `--audio` keeps the unit's
+  USB audio for the window (it starts USB audio's producer: a cost to the
+  frame interrupt). Run `freeze_watch.py selftest` after changing it.
 - Read LOAD METER after a stop before concluding the unit froze: a stopped
   count (`load_meter.healthy()`) is a frozen frame engine; a healthy count with
   silent audio is a different cause.

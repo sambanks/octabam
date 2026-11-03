@@ -141,7 +141,10 @@ trig. Nothing carries page 2, and every byte of the pattern data is used.
   (`0x400918aa`), copied where stock copies `.work` ↔ `.strd` (bank store
   and reload, the project store and reload loops), read at the project
   load and the masked bank loads, and emptied for a new project. A missing
-  source copies as an empty file.
+  source copies as an empty file: the header, then 98,304 bytes of 0xff.
+  An earlier version lost that header (the file was all 0xff), so the
+  next load refused it and STORE showed FX PAGE 2 LOCKS NOT LOADED
+  (`docs/contributing/FAILURE_MODES.md`).
 
 ## Trig edit and release
 
