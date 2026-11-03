@@ -162,6 +162,14 @@ bank file's serialized header. No raw writable pointer is returned.
 | `store_part_midi_write` | same, d3 = value 0–127 | layout adapter for the general write API |
 | `store_part_midi_key` | d0 = MIDI track, d1 = context | read-only KEY byte; no writable permission is added |
 
+The MIDI readers share the general reader's register frame. Valid track/field
+pairs already prove the Part bounds; context, registered-window and snapshot
+checks still use the shared service. The ordinary MIDI read and KEY paths take
+44 and 42 executed instructions respectively with the current MIDI window,
+down from 48 and 53 before this optimization (`verify_store_part` checks the
+ceilings). These are instruction counts under the CPU harness, not hardware
+cycle or utilization measurements.
+
 Native replacement and setting writes use the native single UI-writer path;
 playback/interrupt readers may interrupt it. This API does not serialize
 competing writers: a client must not write from a playback interrupt or another
@@ -192,6 +200,9 @@ cannot veto the native operation. Read-only `store_part_snapshot_bank` and
 for companion snapshots; only STORE may write them. Bulk copies spanning
 multiple native banks are outside this contract.
 
+When a composition selects no companion callback, the build omits its setup
+and replacement walk. STORE's shared APIs and publication rules stay available.
+
 The cold resident gates use stock copy/init before the runtime is loaded.
 The original post-loader activation point publishes the DRAM targets. The
 new names and generic windows do not remove this cold-start protection.
@@ -212,9 +223,12 @@ The `verify_store_part*` gates cover context bounds, write permissions, CS1 and
 dirty state, cold-entry ABI, real copy/clear publication, replacement counters,
 boot integrity and non-MIDI windows. Removing epoch publication and corrupting
 the cold-entry register save are rejected by negative controls. Functional
-checks are emulator evidence. Earlier hardware reports for STORE's side-file
-service and MIDI Loopback remain scoped to their recorded images; **the STORE
-native Part extension still needs hardware testing**.
+checks are emulator evidence. On an Octatrack MKII (29 October 2026,
+MFOL29U / BUILD FA), Follow's native OCT setting passed Part save/reload and
+project save/power-cycle persistence; post-reboot USB MIDI pitches matched the
+saved OCT 4 value. This is limited native Part hardware coverage, not validation
+of every client or replacement operation. Earlier hardware reports for STORE's
+side-file service and MIDI Loopback remain scoped to their recorded images.
 
 Audio latches are `0x8000182a` / `0x80001832`; MIDI latches are
 `0x8000666e` / `0x80006676` (published by the MIDI step routine at

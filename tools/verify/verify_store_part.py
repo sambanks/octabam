@@ -5,6 +5,7 @@ import json
 import subprocess
 
 from midi_machine import Machine, ROOT
+from unicorn import UC_HOOK_CODE
 from unicorn.m68k_const import *
 
 BANK = 0x400e21e0
@@ -124,6 +125,57 @@ def main():
     assert all(u.reg_read(r) == v for r,v in regs.items())
     assert m.read_sr() & 0x2700 == 0x2700
     print(f'  [ok] {writes} field writes: bounded working storage, current-bank CS1, native dirty bits, register preservation')
+
+    # The MIDI adapters share the byte reader's saved-register frame. Exercise
+    # both exits and all fields, including KEY with an unrelated d2 value.
+    preserved = (UC_M68K_REG_D3, UC_M68K_REG_D4, UC_M68K_REG_D5, UC_M68K_REG_D6,
+                 UC_M68K_REG_D7, UC_M68K_REG_A0, UC_M68K_REG_A1, UC_M68K_REG_A2,
+                 UC_M68K_REG_A3, UC_M68K_REG_A4, UC_M68K_REG_A5, UC_M68K_REG_A6)
+    def read(name, track, context, field, expected, budget=None):
+        regs = {r: 0x12340000+i for i,r in enumerate(preserved)}
+        regs.update({UC_M68K_REG_D1:context, UC_M68K_REG_D2:field})
+        count = [0]
+        def instruction(uc, pc, size, data):
+            if pc != m.done: count[0] += 1
+        hook = u.hook_add(UC_HOOK_CODE, instruction)
+        try:
+            assert m.call(name,track,context,regs=regs) == expected, (name,track,context,field)
+        finally:
+            u.hook_del(hook)
+        assert all(u.reg_read(r) == v for r,v in regs.items()), (name,track,context,field)
+        assert u.reg_read(UC_M68K_REG_A7) == m.stack+4
+        if budget is not None:
+            assert count[0] <= budget, (name,count[0],budget)
+    for context in (0,63):
+        base = BANK+(context//4)*STRIDE+WORK+(context%4)*PART
+        for track in (0,7):
+            for field in range(36):
+                value = (context+track*36+field)&255
+                put(base+0x4e2+track*36+field,value)
+                read('store_part_midi_read',track,context,field,value,44)
+            read('store_part_midi_key',track,context,0xabcdef01,
+                 get(base+0x4e2+track*36+17),42)
+    for track,context,field in ((8,0,0),(0xffffffff,0,0),(0,64,0),(0,0xffffffff,0),
+                                (0,0,36),(0,0,0xffffffff)):
+        read('store_part_midi_read',track,context,field,0xffffffff)
+    for track,context in ((8,0),(0xffffffff,0),(0,64),(0,0xffffffff)):
+        read('store_part_midi_key',track,context,0xabcdef01,0xffffffff)
+    # A selected Part reads the outgoing snapshot; another Part in that bank
+    # still reads native data. The fast adapters must keep this distinction.
+    put(m.sym['store_part_snapshot_bank'],BANK+15*STRIDE,4)
+    put(m.sym['store_part_snapshot_parts'],1<<3,4)
+    u.mem_write(m.sym['store_part_snapshot'],b'\x5a'*(4*288))
+    for context in (62,63):
+        base = BANK+15*STRIDE+WORK+(context%4)*PART
+        for track in (0,7):
+            put(base+0x4e2+track*36+3,0xa5)
+            put(base+0x4e2+track*36+17,0xa5)
+            expected = 0x5a if context==63 else 0xa5
+            read('store_part_midi_read',track,context,3,expected)
+            read('store_part_midi_key',track,context,0xabcdef01,expected)
+    put(m.sym['store_part_snapshot_bank'],0,4)
+    put(m.sym['store_part_snapshot_parts'],0,4)
+    print('  [ok] MIDI read/KEY registers, bounds, snapshot selection and 44/42 instruction ceilings (not hardware cycles)')
 
 
 if __name__ == '__main__': main()

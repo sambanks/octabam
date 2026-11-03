@@ -5,13 +5,15 @@
 | modules/cxosc/NOTICE. Resolved when the track is CX OSC (signature
 | "CX", 1), not by a marker filename.
 |
-| WHAT: PLAYBACK presents PTCH RATO INDX FOLD SYMM FDBK (four-character
-| names; boxes 19 px). RATO formats free 0.25..4; INDX/FOLD/SYMM/FDBK
-| 0..127. Icons: operators (RATO), sidebands (INDX), fold/symmetry, FDBK
-| loop. Footer CX OSC>FLEX. PTCH is semitones (−64..+63); RATE slot is
-| FOLD (not FINE). Knobs: po_knob — one unit a detent, seven pressed;
-| FUNC: PTCH 12 semitones, FOLD/SYMM/INDX/FDBK 16, RATO next classic
-| snap ≤4.01. Non-CX tracks draw as stock.
+| WHAT: PLAYBACK presents PTCH RATO INDX FOLD SYMM DEC (four-character
+| names; boxes 19 px). RATO formats free 0.25..4; INDX/FOLD/SYMM 0..127;
+| DEC as ms / "1.1s" / "HOLD" at 127 (5 Oct 2026 polarity). Icons: operators
+| (RATO), sidebands (INDX), folded sine (FOLD), bipolar half-wave SYMM
+| (64 = even), index-env DEC. FDBK is a fixed mid (no knob). Footer
+| CX OSC>FLEX. PTCH is semitones (−64..+63); RATE slot is FOLD (not FINE).
+| Knobs: po_knob — one unit a detent, seven pressed; FUNC: PTCH 12
+| semitones, FOLD/SYMM/INDX/DEC 16, RATO next classic snap ≤4.01.
+| Non-CX tracks draw as stock.
 |
 | HOW: the page descriptor resolver 0x40031da4(track, page kind) returns
 | tbl[machine] for the PLAYBACK page at 0x40031ece (`movel %a0@(0,%d0:l:4),%d0;
@@ -29,28 +31,27 @@
 | unit -- so it takes the builder's address from the long before sy_render,
 | whose own address the kind table's FLEX entry 0x400d6438 holds) with only
 | the fields pg_over lists changed: the names, the title, the six A
-| formatters (P+0xca), the four B widgets (P+0xfa), the enable nibbles
-| (P+0x18e: 5/7 = bit 2 "always show the value") and, since the tuning
-| system, PTCH's minimum and count (P+0x6a, P+0x9a: 0 and 128), FINE's
-| default (P+0x5e+3: 64) and the two knob handlers (P+0x12a, +12: 0) --
-| storage, locks, scenes, LFOs and MIDI reach the bytes exactly as before. The stock record itself is never written, and this file
-| carries none of its bytes (26 Sep 2026: until then pg_desc was a copy of the
-| 402-byte stock record with the fields patched, 347 of them Elektron's).
+| formatters (P+0xca), the five B widgets (P+0xfe slots 1..2, P+0x106
+| slot 3 FOLD, P+0x10a slots 4..5), the enable nibbles (P+0x18e: 5/7 =
+| bit 2 "always show the value") and, since the tuning system, PTCH's
+| minimum and count (P+0x6a, P+0x9a: 0 and 128), FINE's default
+| (P+0x5e+3: 64) and the two knob handlers (P+0x12a, +12: 0) -- storage,
+| locks, scenes, LFOs and MIDI reach the bytes exactly as before. The
+| stock record itself is never written, and this file carries none of
+| its bytes (26 Sep 2026: until then pg_desc was a copy of the 402-byte
+| stock record with the fields patched, 347 of them Elektron's).
 |
 | The renderer draws each box at (x = 60/80/100, y = 36 top row / 8 bottom
 | row; y grows UPWARD, screen row = 63 - y): the name centred on x+9 at y+20,
 | then widget(x, y, slot, value, flags, fmt, window). With flags bit 3 (the
 | nibble's bit 2) the stock dial 0x400479b4 clears the box, draws its circle
-| bitmap at (x+4, y+7), the pointer at (x+6, y+9) and the value text centred
-| at y+1. Each widget here calls the stock dial first (so the value text, the
-| box clear and the lock highlight stay stock's) and then blits a 17 x 13
-| column bitmap over the dial at (x+1, y+7) with 0x400128a8(bitmap, window,
-| x, y): {width, height, longs per column, columns, mask}, one long per
-| column, bit 31 = the bottom row, bit 31-k = row k above it; the blit does
-| dst = (dst & ~mask) | (data & mask), so a full mask replaces the area. The
-| icon is composed in a RAM scratch (pg_data; the main OS runs from DRAM)
-| from static column images (pg_img_*) and a few procedural strokes.
-| Formatters have the stock signature fmt(buf, value) -> sprintf.
+| at (x+4, y+7) and the value at y+1. Each widget here forces flags bit 1 for
+| that stock call (value alone, no circle — same path as CHROMATIC compact)
+| so the knob never sits under a sparse icon, then blits a 17 x 13 column
+| bitmap at (x+1, y+7) with 0x400128a8: {width, height, longs/col, cols, mask},
+| bit 31 = bottom row; dst = (dst & ~mask) | (data & mask). Icons are composed
+| in RAM scratch (pg_data) from pg_img_* and procedural strokes. Formatters:
+| fmt(buf, value) -> sprintf.
 
         .text
         .global fm_descriptor, pg_resolve
@@ -109,7 +110,7 @@ pg_over:
         .short  0x009, 9
         .long   pg_title                 | P+0x009: the title, "CX OSC" (the footer reads CX OSC>FLEX)
         .short  0x01c, 30
-        .long   pg_names                 | P+0x01c: slots 1..5 (STRT LEN RATE RTRG RTIM) read RATO INDX FINE FDBK DEC
+        .long   pg_names                 | P+0x01c: slots 1..5 (STRT LEN RATE RTRG RTIM) read RATO INDX FOLD SYMM DEC
         .short  0x061, 1
         .long   pg_def1                  | P+0x05e+3: FOLD's default, 1 (never stock RATE 0)
         .short  0x06a, 4
@@ -120,8 +121,10 @@ pg_over:
         .long   pg_fmts                  | P+0x0ca: the six A formatters
         .short  0x0fe, 8
         .long   pg_wids_a                | P+0x0fe: the B widgets of slots 1 2
+        .short  0x106, 4
+        .long   pg_wids_fold             | P+0x106: slot 3 FOLD (folded-sine icon)
         .short  0x10a, 8
-        .long   pg_wids_b                | P+0x10a: of slots 4 5
+        .long   pg_wids_b                | P+0x10a: of slots 4 5 (SYMM bias, DEC env)
         .short  0x12a, 4
         .long   pg_zero                  | P+0x12a: PTCH's knob handler, 0 (stock: the semitone-snapping
         .short  0x136, 4                 | accumulator 0x40032d08, built for 5 a semitone) ...
@@ -136,7 +139,7 @@ pg_over:
 pg_title:
         .asciz  "CX OSC"
 pg_names:
-        .ascii  "RATO\0\0INDX\0\0FOLD\0\0SYMM\0\0FDBK\0\0\0"
+        .ascii  "RATO\0\0INDX\0\0FOLD\0\0SYMM\0\0DEC\0\0\0\0"
 pg_def1:
         .byte   1
         .align  4
@@ -145,23 +148,23 @@ pg_zero:
 pg_l128:
         .long   128
 pg_fmts:
-        .long   pg_fmt_ptch, pg_fmt_ratio, FMT_PLAIN, FMT_PLAIN, FMT_PLAIN, FMT_PLAIN
+        .long   pg_fmt_ptch, pg_fmt_ratio, FMT_PLAIN, FMT_PLAIN, FMT_PLAIN, pg_fmt_decay
 pg_wids_a:
         .long   pg_wid_ratio, pg_wid_index
+pg_wids_fold:
+        .long   pg_wid_fold
 pg_wids_b:
-        .long   pg_wid_fdbk, pg_wid_decay
+        .long   pg_wid_symm, pg_wid_decay
 pg_nibbles:
         .long   0x55551551               | nibble s (from the LOW end, as 0x400a6994 shifts it) = slot
                                          | s; stock 0x55311311: bit 0 = the encoder is live, bit 1 (LEN,
                                          | RTIM) = the arch the renderer draws bridging the slot to the
                                          | one before it (STRT-LEN, RTRG-RTIM: cleared here, the pairs
                                          | mean nothing to the voice), bit 2 = always show the value
-                                         | (set on 1 2 4 5). The first build set 0x55715751: RATE (s3)
-                                         | always shown instead of FDBK (s4)
+                                         | (set on 1 2 4 5). Slot 5 = DEC (HOLD at 127).
 
 | ---- the formatters: fmt(buf, value), C convention ----------------------------
-| INDEX and FDBK print 0..127 as stored through the stock's own "%d" formatter,
-| FMT_PLAIN (26 Sep 2026: this cave's copy of it was the same 26 bytes).
+| INDEX / FOLD / SYMM print 0..127 through the stock's "%d" formatter, FMT_PLAIN.
 
 pg_fmt_ptch:                             | PTCH on a synth track: raw - 64 as a signed whole number, "-12" "0" "+7"
         movel   %sp@(8),%d0              | raw
@@ -239,10 +242,12 @@ pg_fr_out:
         movel   %sp@+,%d2
         rts
 
-pg_fmt_decay:                            | tau = 2 s * (raw/127)^2: "HOLD", "32", "286", "1.1s", "2.0s"
+pg_fmt_decay:                            | tau = 2 s * (raw/127)^2: "0", "32", "286", "1.1s", "1.9s", 127 "HOLD"
         movel   %d2,%sp@-
         movel   %sp@(12),%d0             | raw
-        beq     pg_fd_hold
+        moveq   #127,%d1                 | 127 (the last position): HOLD; 0 = the shortest, prints "0"
+        cmpl    %d1,%d0                  | (5 Oct 2026: HOLD moved from 0 to 127)
+        bccs    pg_fd_hold
         movel   %d0,%d1
         mulul   %d0,%d1                  | raw^2
         movel   #2000,%d0
@@ -298,12 +303,28 @@ pg_wid_fdbk:
 pg_wid_decay:
         moveq   #3,%d0
         bra     pg_wid
+pg_wid_symm:
+        moveq   #4,%d0
+        bra     pg_wid
+pg_wid_fold:
+        moveq   #5,%d0
+        bra     pg_wid
 pg_wid:
         lea     %sp@(-44),%sp
         moveml  %d2-%d7/%a2-%a6,%sp@     | args: 48 x, 52 y, 56 slot, 60 value, 64 flags, 68 fmt, 72 window
         movel   %d0,%d7                  | which icon
-        movel   %sp@(72),%sp@-           | the stock dial first: the box clear, the value text,
-        movel   %sp@(72),%sp@-           | the lock highlight (each push brings the next arg to 72)
+        movel   %sp@(64),%d5             | caller's flags (bit 1 = compact)
+        movel   %d5,%d0
+        btst    #1,%d5
+        bne     pg_wid_stock             | compact: stock as-is, then skip the icon
+        | Full page: ask stock for value-only (bit 1) so its dial/knob is never
+        | drawn under the icon — sparse FOLD/SYMM were leaving the circle visible
+        | whenever a neighbour redrawn the page (2 Nov 2026).
+        bset    #1,%d0
+        movel   %d0,%sp@(64)
+pg_wid_stock:
+        movel   %sp@(72),%sp@-           | stock: box clear, value text, lock highlight
+        movel   %sp@(72),%sp@-           | (each push brings the next arg to 72)
         movel   %sp@(72),%sp@-
         movel   %sp@(72),%sp@-
         movel   %sp@(72),%sp@-
@@ -311,9 +332,9 @@ pg_wid:
         movel   %sp@(72),%sp@-
         jsr     STOCK_WIDGET
         lea     %sp@(28),%sp
-        movel   %sp@(64),%d0             | flags bit 1 = the compact layout (CHROMATIC trig mode's
-        btst    #1,%d0                   | half-height page: the stock prints the value alone at
-        bne     pg_wid_out               | 0x40047a42) -- no room for an icon, leave the box as drawn
+        movel   %d5,%sp@(64)             | restore caller's flags
+        btst    #1,%d5                   | original compact? then no icon
+        bne     pg_wid_out
         movel   %sp@(60),%d6             | value
         tstl    %d7
         beq     pg_ic_ratio
@@ -321,7 +342,11 @@ pg_wid:
         beq     pg_ic_index
         subql   #1,%d7
         beq     pg_ic_fdbk
-        bra     pg_ic_decay
+        subql   #1,%d7
+        beq     pg_ic_decay
+        subql   #1,%d7
+        beq     pg_ic_symm
+        bra     pg_ic_fold
 
 | RATIO: the two operators, M -> C (the ratio itself is the value text)
 pg_ic_ratio:
@@ -398,9 +423,136 @@ pg_ic_fdbk:
         bsr     pg_or
         bra     pg_blit
 
+| FOLD: one-cycle sine that folds as drive rises (Buchla wavefolder cartoon).
+| value 0 ≈ gentle sine (drive 1×); high values reflect past ±5 so the wave
+| zig-zags — the icon tracks the knob live.
+pg_ic_fold:
+        lea     pg_data(%pc),%a0
+        moveq   #16,%d0
+pg_fo_clr:
+        clrl    %a0@+
+        subql   #1,%d0
+        bge     pg_fo_clr
+        movel   %d6,%d5                  | drive Q6 = 64 + value * 192 / 127 (1.0 .. ~4.0)
+        movel   #192,%d0
+        mulul   %d0,%d5
+        moveq   #127,%d0
+        divul   %d0,%d5
+        addil   #64,%d5
+        moveq   #1,%d7
+pg_fo_col:
+        lea     pg_fold_sin(%pc),%a0
+        mvsb    %a0@(0,%d7:l),%d3        | signed half-amp −5..+5
+        mulsl   %d5,%d3                  | × drive
+        asrl    #6,%d3                   | / 64 → height before fold
+pg_fo_fold:
+        cmpil   #5,%d3
+        bgt     pg_fo_hi
+        cmpil   #-5,%d3
+        blt     pg_fo_lo
+        bra     pg_fo_ok
+pg_fo_hi:
+        moveq   #10,%d0                  | reflect: 10 − h
+        subl    %d3,%d0
+        movel   %d0,%d3
+        bra     pg_fo_fold
+pg_fo_lo:
+        moveq   #-10,%d0                 | reflect: −10 − h
+        subl    %d3,%d0
+        movel   %d0,%d3
+        bra     pg_fo_fold
+pg_fo_ok:
+        moveq   #6,%d1
+        subl    %d3,%d1                  | row = 6 − folded height
+        bpl     pg_fo_r0
+        moveq   #0,%d1
+pg_fo_r0:
+        cmpil   #12,%d1
+        ble     pg_fo_r1
+        moveq   #12,%d1
+pg_fo_r1:
+        moveq   #6,%d2                   | fill the lobe from the sample down/up to the midline
+        cmpl    %d1,%d2
+        bge     pg_fo_ord
+        movel   %d1,%d0
+        movel   %d2,%d1
+        movel   %d0,%d2
+pg_fo_ord:
+        movel   %d7,%d0
+        bsr     pg_vline
+        addql   #1,%d7
+        cmpil   #15,%d7
+        ble     pg_fo_col
+        bra     pg_blit
+
+| SYMM: half-wave amplitude skew. Midline + solid half-cycle fills;
+| height = full half-box * gain (upper ∝ value, lower ∝ 128−value).
+| 64 = equal blocks; off-center one side dominates — reads as imbalance.
+pg_ic_symm:
+        lea     pg_data(%pc),%a0
+        moveq   #16,%d0
+pg_sy_clr:
+        clrl    %a0@+
+        subql   #1,%d0
+        bge     pg_sy_clr
+        moveq   #1,%d7                   | zero line
+pg_sy_ax:
+        moveq   #6,%d1
+        moveq   #6,%d2
+        movel   %d7,%d0
+        bsr     pg_vline
+        addql   #1,%d7
+        cmpil   #15,%d7
+        ble     pg_sy_ax
+        | h_up = value*6/64, h_lo = (128−value)*6/64 (0..6)
+        movel   %d6,%d4
+        moveq   #6,%d0
+        mulul   %d0,%d4
+        asrl    #6,%d4                   | h_up
+        cmpil   #6,%d4
+        ble     pg_sy_hu
+        moveq   #6,%d4
+pg_sy_hu:
+        movel   #128,%d5
+        subl    %d6,%d5
+        moveq   #6,%d0
+        mulul   %d0,%d5
+        asrl    #6,%d5                   | h_lo
+        cmpil   #6,%d5
+        ble     pg_sy_hl
+        moveq   #6,%d5
+pg_sy_hl:
+        moveq   #1,%d7
+pg_sy_col:
+        lea     pg_fold_sin(%pc),%a0
+        mvsb    %a0@(0,%d7:l),%d3        | sign picks upper vs lower half
+        tstl    %d3
+        bmi     pg_sy_lo
+        tstl    %d4
+        beq     pg_sy_next
+        moveq   #6,%d1
+        subl    %d4,%d1                  | top = 6 − h_up
+        moveq   #6,%d2
+        bra     pg_sy_draw
+pg_sy_lo:
+        tstl    %d5
+        beq     pg_sy_next
+        moveq   #6,%d1
+        moveq   #6,%d2
+        addl    %d5,%d2                  | bottom = 6 + h_lo
+pg_sy_draw:
+        movel   %d7,%d0
+        bsr     pg_vline
+pg_sy_next:
+        addql   #1,%d7
+        cmpil   #15,%d7
+        ble     pg_sy_col
+        bra     pg_blit
+
 | DECAY: the index envelope -- an instant rise at column 1, then pg_env's
 | exponential fall stretched over L = 2 + value * 13 / 127 columns to the
-| floor (row 1 = I/16), columns 2..15; value 0 holds, a flat top
+| floor (row 1 = I/16), columns 2..15; value 127 holds, a flat top (0 = the
+| shortest fall, L = 2)
 pg_ic_decay:
         lea     pg_img_base(%pc),%a0
         bsr     pg_copy
@@ -408,9 +560,10 @@ pg_ic_decay:
         moveq   #1,%d1
         moveq   #11,%d2
         bsr     pg_vline                 | the attack edge
-        movel   #0x7fff,%d5              | value 0: i stays 0, h stays 11
-        tstl    %d6
-        beq     pg_dc_go
+        movel   #0x7fff,%d5              | value 127 (HOLD): i stays 0, h stays 11
+        moveq   #127,%d0
+        cmpl    %d0,%d6
+        bccs    pg_dc_go
         movel   %d6,%d5
         moveq   #13,%d0
         mulul   %d0,%d5
@@ -519,6 +672,8 @@ pg_f_dc:
         .asciz  "%dc"
 pg_env:                                  | 11 * exp(-i/5), i = 0..16; the floor is row 1
         .byte   11, 9, 7, 6, 5, 4, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1
+pg_fold_sin:                             | signed sine half-amp for FOLD + SYMM cartoons (cols 0..16)
+        .byte   0, 3, 5, 6, 5, 3, 0, -3, -5, -6, -5, -3, 0, 3, 5, 3, 0
         .align  2
 pg_snap_q8:                              | classic FM ratios <= 4.01 (Q8); matches poly.s sy_rato_snap
         .short  64, 128, 192, 256, 259, 320, 362, 384
