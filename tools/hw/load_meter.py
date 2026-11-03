@@ -131,8 +131,12 @@ def healthy(dev, wait=0.4):
     power-cycle."""
     a = read_fast(dev)
     time.sleep(wait)
-    b = read_fast(dev)
-    adv = (b["dsp"]["seq"] - a["dsp"]["seq"]) / wait
+    return judge(a, read_fast(dev), wait)
+
+
+def judge(a, b, dt):
+    """healthy()'s rules on two read_fast() readings taken dt seconds apart -> (ok, why)."""
+    adv = (b["dsp"]["seq"] - a["dsp"]["seq"]) / dt
     irq = b["cf"]["irq_per_s"] or 0.0
     if adv < 1500:
         return False, f"the DSP's frame count advances {adv:.0f} a second (about 2,800 when running)"

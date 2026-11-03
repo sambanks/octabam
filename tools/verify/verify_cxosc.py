@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """CX OSC gates under Unicorn: voice knobs + the one-track-per-Part guard.
 
-1. Voice: FOLD / SYMM / RATO / FDBK move the output; FOLD=SYMM=FDBK=127 stays
-   bounded (rail sample counts). Calls `sy_render` with a planted Part.
+1. Voice: FOLD / bipolar SYMM half-wave skew / RATO / DEC move the output;
+   center vs high/low skew differ; FOLD=SYMM=DEC=127 stays bounded.
+   Calls `sy_render` with a planted Part.
 2. Guard: `ml_guard_p` refuses a second CX OSC track in a Part ("CX OSC: 1 MAX")
    and allows the track's own machine again / a first choice / a stock row.
+3. AMP 2.20: with the live lane fixed at ATK 0, a slow ATK in the DSP voice
+   record (scene/LFO stand-in) changes the attack vs a fast DSP ATK — proving
+   `po_amp_snap` / `po_amp_at`, not CURVALS alone.
 
 ColdFire, not dsp_host. Instruction counts are diagnostics, not hardware cycles.
 
@@ -200,7 +204,7 @@ def load_runtime():
     uc.mem_write(0x40000000, os_bytes[:0x100000])
     uc.mem_write(STOCK_RENDER, bytes.fromhex("4e75"))  # rts
     # Unicorn's ColdFire EMAC path faults on stock po_rate (macl). Stub it:
-    # always C4_INC — pitch is fixed; FOLD/SYMM/RATO/FDBK still run in sy_loop.
+    # always C4_INC — pitch is fixed; FOLD/SYMM/RATO/DEC still run in sy_loop.
     if "po_rate" in symbols:
         # move.l #25480119,%d0; rts  (C4_INC — Unicorn EMAC faults on the real curve)
         uc.mem_write(symbols["po_rate"], bytes.fromhex("203c0184cbb74e75"))
@@ -230,9 +234,9 @@ def plant_part(uc, track=0):
     uc.mem_write(BANK + SIG_OFF + 30 * track, b"CX\x01")
 
 
-def plant_fp(uc, ptch=64, rato=32, indx=40, fold=0, symm=0, fdbk=0):
-    """PLAYBACK halfwords as the packer leaves them (raw << 8)."""
-    words = [ptch, rato, indx, fold, symm, fdbk]
+def plant_fp(uc, ptch=64, rato=32, indx=40, fold=0, symm=0, dec=127):
+    """PLAYBACK halfwords as the packer leaves them (raw << 8). DEC 127 = HOLD."""
+    words = [ptch, rato, indx, fold, symm, dec]
     blob = b"".join(struct.pack(">H", (v & 0xFF) << 8) for v in words)
     uc.mem_write(FP_REC, blob + bytes(64))
     uc.mem_write(FP_PTR_AT, struct.pack(">I", FP_REC))
@@ -240,21 +244,43 @@ def plant_fp(uc, ptch=64, rato=32, indx=40, fold=0, symm=0, fdbk=0):
     uc.mem_write(RS_PTR_AT, struct.pack(">I", RS_REC))
 
 
-def plant_voice(uc, track=0, active=True):
-    uc.mem_write(VOICE_BASE + VOICE_STRIDE * track, b"\xff" if active else b"\x00")
-    # AMP live lane: ATK/HOLD/REL for po_mono_env (HOLD INF = 127)
+def plant_amp(uc, track=0, atk=0, hold=127, rel=64, dsp_atk=None, dsp_hold=None, dsp_rel=None):
+    """Live-lane AMP bytes + optional DSP voice-record halfwords (value << 8).
+
+    Tim 2.20: scenes/LFOs write the DSP record; po_amp_snap reads it before
+    sy_ison overrides. Re-plant the DSP halfwords every frame in the harness
+    (no frame builder). Defaults: DSP mirrors the live lane.
+    """
     lane = CURVALS + 72 * track
-    uc.mem_write(lane + 12, bytes([0, 127, 64]))  # ATK, HOLD, REL
+    uc.mem_write(lane + 12, bytes([atk & 0xFF, hold & 0xFF, rel & 0xFF]))
     uc.mem_write(PING_AT, b"\x00")
-    # Clear DSP AMP override region
-    uc.mem_write(DSP_REC, bytes(0x200))
+    da = atk if dsp_atk is None else dsp_atk
+    dh = hold if dsp_hold is None else dsp_hold
+    dr = rel if dsp_rel is None else dsp_rel
+    # ping 0, track t: DSP_REC + 64*t; halfwords 0/1/2 = ATK/HOLD/REL
+    base = DSP_REC + 64 * track
+    uc.mem_write(
+        base,
+        struct.pack(
+            ">HHH",
+            (da & 0xFF) << 8,
+            (dh & 0xFF) << 8,
+            (dr & 0xFF) << 8,
+        ),
+    )
 
 
-def render_frames(uc, symbols, knobs, frames=64, track=0):
+def plant_voice(uc, track=0, active=True, **amp):
+    uc.mem_write(VOICE_BASE + VOICE_STRIDE * track, b"\xff" if active else b"\x00")
+    plant_amp(uc, track, **amp)
+
+
+def render_frames(uc, symbols, knobs, frames=64, track=0, amp=None):
     """Cold-start then run `frames` second-calls; return interleaved L samples (signed 24)."""
+    amp = dict(amp or {})
     plant_part(uc, track)
     plant_fp(uc, **knobs)
-    plant_voice(uc, track, True)
+    plant_voice(uc, track, True, **amp)
     uc.mem_write(HEADER, bytes(16 + 16 * 8 * 2))  # header + stereo pairs
     uc.mem_write(CURSOR_AT, struct.pack(">I", HEADER))
     uc.mem_write(GLIDE_AT, b"\x00")
@@ -272,6 +298,8 @@ def render_frames(uc, symbols, knobs, frames=64, track=0):
     sy = symbols["sy_render"]
 
     def call_render(start, end):
+        # Frame builder stand-in: effective AMP in the DSP record before snap.
+        plant_amp(uc, track, **amp)
         uc.reg_write(UC_M68K_REG_A7, STACK)
         # sy_render frame: return, then d2-d7/a2-a6 park is inside the routine;
         # ABI args after the 48-byte frame: track, ping, start, end at 52..64
@@ -334,14 +362,16 @@ def main():
 
     check_guard(uc, symbols)
 
-    base = dict(ptch=64, rato=32, indx=48, fold=0, symm=0, fdbk=0)
+    # SYMM default 64 = even; plant fold-alone at even so bias variants differ.
+    base = dict(ptch=64, rato=32, indx=48, fold=0, symm=64, dec=127)
     variants = {
         "base": base,
         "fold": {**base, "fold": 96},
-        "symm": {**base, "fold": 96, "symm": 96},
+        "symm": {**base, "fold": 96, "symm": 112},
+        "symm_lo": {**base, "fold": 96, "symm": 16},
         "rato": {**base, "rato": 96},
-        "fdbk": {**base, "fdbk": 96},
-        "rails": {**base, "fold": 127, "symm": 127, "fdbk": 127, "indx": 127},
+        "dec": {**base, "dec": 32},
+        "rails": {**base, "fold": 127, "symm": 127, "dec": 127, "indx": 127},
     }
 
     outs = {}
@@ -364,23 +394,56 @@ def main():
         check(label, diff >= min_frac, f"{diff * 100:.1f}% samples differ")
 
     differ(outs["base"], outs["fold"], "FOLD changes the output")
-    differ(outs["fold"], outs["symm"], "SYMM changes the output (vs FOLD alone)")
+    differ(outs["fold"], outs["symm"], "SYMM high bias ≠ even (vs FOLD alone)")
+    differ(outs["fold"], outs["symm_lo"], "SYMM low bias ≠ even (vs FOLD alone)")
+    differ(outs["symm_lo"], outs["symm"], "SYMM low bias ≠ high bias")
     differ(outs["base"], outs["rato"], "RATO changes the output")
-    differ(outs["base"], outs["fdbk"], "FDBK changes the output")
+    differ(outs["base"], outs["dec"], "DEC (not HOLD) changes the output")
 
-    # Boundedness at full FOLD/SYMM/FDBK: count samples at both rails.
+    # Boundedness at full FOLD/SYMM/DEC HOLD: count samples at both rails.
     rails = outs["rails"]
     pos = sum(1 for x in rails if x >= RAIL)
     neg = sum(1 for x in rails if x <= -RAIL - 1)
     frac = (pos + neg) / max(len(rails), 1)
     peak = max(abs(x) for x in rails)
     check(
-        "FOLD=SYMM=FDBK=127 stays bounded (not stuck on the rails)",
+        "FOLD=SYMM=DEC=127 stays bounded (not stuck on the rails)",
         frac < 0.25 and peak <= 0x7FFFFF,
         f"rail {frac * 100:.2f}% ({pos}+/{neg}-), peak={peak:#x}",
     )
     # Non-silent at the extreme
     check("extreme settings still sound", rms(rails) > 100, f"rms={rms(rails):.1f}")
+
+    # Tim 2.20 AMP path: live lane ATK stays 0; DSP record carries the effective ATK.
+    # A slow DSP ATK must change early frames vs a fast DSP ATK (snap, not CURVALS).
+    if "sy_state" in symbols:
+        uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+    if "po_amp" in symbols:
+        uc.mem_write(symbols["po_amp"], bytes(8 * 4))
+    fast, _ = render_frames(
+        uc,
+        symbols,
+        base,
+        frames=24,
+        amp=dict(atk=0, hold=127, rel=64, dsp_atk=0),
+    )
+    if "sy_state" in symbols:
+        uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+    if "po_amp" in symbols:
+        uc.mem_write(symbols["po_amp"], bytes(8 * 4))
+    slow, _ = render_frames(
+        uc,
+        symbols,
+        base,
+        frames=24,
+        amp=dict(atk=0, hold=127, rel=64, dsp_atk=100),
+    )
+    early = 16 * 8  # first ~8 steady frames after cold start
+    differ(fast[:early], slow[:early], "DSP-record ATK (2.20 snap) shapes the attack", min_frac=0.05)
+    if "po_amp" in symbols:
+        # After the last slow frame, snap kept DSP ATK=100 in po_amp[0]
+        snap = bytes(uc.mem_read(symbols["po_amp"], 4))
+        check("po_amp snapshot holds DSP ATK", snap[0] == 100, f"po_amp={snap.hex()}")
 
     # Cost: mean instructions of steady frames (skip cold start).
     steady = costs["base"][1:]
