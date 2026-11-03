@@ -146,9 +146,12 @@ store_part_native_init:
     adda.l #0x18b2,%a0
     subq.l #1,%d3
     bne.s .snapshot_part
+    .if STORE_PART_HAS_SNAPSHOT_PRE
     move.l %d5,%d0
     STORE_PART_SNAPSHOT_PRE
+    .endif
     move.l %d5,store_part_snapshot_bank
+    .if STORE_PART_HAS_REPLACE_PRE
     moveq #0,%d3
     move.l store_part_snapshot_parts,%d2
 .before_part:
@@ -163,6 +166,7 @@ store_part_native_init:
     addq.l #1,%d3
     cmpi.l #4,%d3
     bne.s .before_part
+    .endif
     moveq #1,%d0
     bra.s .begin_done
 .no_begin:

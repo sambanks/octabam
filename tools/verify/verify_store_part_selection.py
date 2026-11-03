@@ -28,7 +28,7 @@ def registrations():
         chosen=registry.bound(registry.remix(remix))['STORE']
         assert chosen.linked==base.linked and chosen.detours==base.detours
         assert chosen.pokes==base.pokes and chosen.claims==base.claims
-    for remix,setup in (('midi-loopback',False),):
+    for remix,setup in (('midi-loopback',False),('midi-follow',True),('midi-follow-events',True)):
         r=registry.remix(remix);m=registry.bound(r)['STORE']
         assert len(m.detours)==len(base.detours)+3+int(setup)
         assert len({d.site for d in m.detours})==len(m.detours)
@@ -89,6 +89,9 @@ def generic_window(ns):
         u.mem_write(part,old);u.mem_write(0x47002000,new)
         for offset in (0x10,0x11,0x12,0x13,0x14,0x18b0,0x18b1):assert m.call('store_part_read',offset,context)==old[offset]
         for offset in (0,0x15,0x18af,0x18b2):assert m.call('store_part_read',offset,context)==0xffffffff
+        # MIDI adapter bounds do not grant access to an unregistered window.
+        assert m.call('store_part_midi_read',0,context)==0xffffffff
+        assert m.call('store_part_midi_key',0,context)==0xffffffff
         assert m.call('store_part_write',0x10,context,regs={UC_M68K_REG_D3:4})==0
         assert m.call('store_part_write',0x11,context,regs={UC_M68K_REG_D3:255})==1
         assert u.mem_read(part+0x11,1)==b'\xff'
