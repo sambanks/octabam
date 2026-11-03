@@ -6,6 +6,9 @@ Lydian, Mixolydian, natural Minor and Locrian. The selected scale module must
 provide a compatible integration; additional catalogue scales are not yet
 supported by Harmony. Existing project formats are unchanged.
 
+The **midi** remix brings Harmony, Follow, Scales and Loopback together.
+Harmony also works independently; the smaller combinations are test carriers.
+
 ## Start playing
 
 1. Set the MIDI track's output channel and choose **KEY** on **ARP SETUP**

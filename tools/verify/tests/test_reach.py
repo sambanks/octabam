@@ -432,7 +432,7 @@ class PlanTests(unittest.TestCase):
         script = "tools/verify/verify_store_part_selection.py"
         self.assertEqual(context.gate_owners[script], ["STORE"])
         expected = {"hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback",
-                    "midi-harmony", "midi-harmony-follow",
+                    "midi", "midi-harmony", "midi-harmony-follow",
                     "harmony-follow-native-review", "harmony-scales-provider"}
         self.assertEqual(context.gate_remixes[script], expected)
         rows = reach.classify([script], context)

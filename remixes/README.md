@@ -17,8 +17,7 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 | remix | contains | proof |
 |---|---|---|
 | [`cxosc-core`](cxosc-core/README.md) | CORE + REMIX SWITCH + CX OSC on the 14 stock effects. | `make check`: unit handoff: CORE + CX OSC; marker-less machine list, mono, stock LFOs |
-| [`midi-harmony`](midi-harmony/README.md) | Scale-degree notes, chords and accumulator with native KEY; no Follow. | port-gated |
-| [`midi-harmony-follow`](midi-harmony-follow/README.md) | MIDI Harmony, Scales and Follow together with all stock effects. | port-gated |
+| [`midi`](midi/README.md) | Harmony, Follow, Scales and Loopback together with all stock effects. | port-gated: Combined emulator qualification; not tested on hardware |
 | [`octabam`](octabam/README.md) | The core ColdFire modules and every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand. | on hardware: Sam's MKII, image OCTABAMR3 (this remix before the rebase onto fa49e92f), USB TRACKS PRE, 1 Nov 2026: ot_suite.py phases pre-meter, pre-transport, pre-usb, dsp-watch, fx01-fx03 (74 layouts, no crash), loader01-02, kits-identity, scenes-sweep, scenes-latency, djump-off/on/burst; mix-soak and the manual plan not run (docs/contributing/HARDWARE_SUITE.md) |
 
 Never share a built image: it contains Elektron's OS.

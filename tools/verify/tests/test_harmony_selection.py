@@ -48,6 +48,23 @@ class HarmonySelectionTests(unittest.TestCase):
                 for gate in author.gates:
                     self.assertIn(gate, store.gates)
 
+    def test_combined_midi_remix_and_test_only_controls(self):
+        remix = registry.remix('midi')
+        self.assertTrue({'MIDI HARMONY', 'MIDI FOLLOW', 'MIDI SCALES',
+                         'MIDI LOOPBACK', 'STORE', 'EVENTS'} <= set(remix.modules))
+        self.assertEqual(registry.remix_dir('midi'), ROOT / 'remixes/midi')
+        for name in ('midi-harmony', 'midi-harmony-follow',
+                     'harmony-scales-provider', 'harmony-follow-native-review'):
+            self.assertEqual(registry.remix_dir(name).parent, ROOT / 'remixes/test')
+        selected = registry.selected(remix)
+        labels = [unit.label for module in selected for unit in module.linked]
+        for label in ('midiscaleprovider', 'midiscalemath', 'midisram', 'midisramcopy'):
+            self.assertEqual(labels.count(label), 1)
+        fields = runpy.run_path(str(ROOT / 'modules/store/parts.py'))
+        inc = fields['part_inc'](set(remix.modules))
+        self.assertIn('jmp rp_store_copy', inc)
+        self.assertEqual(fields['layout'](set(remix.modules))[1], ((0x4e2, 288),))
+
     def test_other_store_clients_do_not_install_retained_storage(self):
         for name in ('octabam', 'events-clients', 'midi-follow', 'midi-follow-events', 'midi-loopback'):
             with self.subTest(remix=name):
