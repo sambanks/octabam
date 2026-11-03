@@ -1023,7 +1023,7 @@ def main():
     _rig = ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
-    _want = {"chords": (), "chords-alone": (), "scales": (), "scales-quantizer": (), "midi-harmony": (), "midi-harmony-follow": (),
+    _want = {"chords": (), "chords-alone": (), "scales": (), "scales-quantizer": (), "midi": (), "midi-harmony": (), "midi-harmony-follow": (),
              "harmony-follow-native-review": (), "harmony-scales-provider": (),
              "midi-follow": (), "midi-loopback": (), "midi-scales": (), "mods": (), "ata-write-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
              "usb-out-tracks-post": (),
