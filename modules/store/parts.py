@@ -17,7 +17,6 @@ PART_CLIENTS = {
     'MIDI FOLLOW': (((MIDI_BASE, MIDI_SIZE),), midi_fields(3, 12, 13, 15)),
     'MIDI LOOPBACK': (((MIDI_BASE, MIDI_SIZE),), midi_fields(12)),
     'MIDI HARMONY': (((MIDI_BASE, MIDI_SIZE),), midi_fields(5, 16, 18, 19)),
-    'MIDI SRAM': ((), ()),
     # Reads each MIDI track's KEY (store_part_midi_key) and the engines' Part
     # contexts; writes no native byte (its scale IDs live in scales.work).
     'SCALES': (((MIDI_BASE, MIDI_SIZE),), ()),
@@ -101,7 +100,7 @@ def part_inc(modules, remix=None):
                         f'    jsr {symbol}', '    movem.l (%sp),%d0-%d7/%a0-%a6', '    lea 60(%sp),%sp']
         out += ['.endm']
     out += ['.macro STORE_PART_COPY_OVERRIDE']
-    if 'MIDI SRAM' in active:
+    if 'MIDI HARMONY' in active:
         out += ['    jmp rp_store_copy']
     out += ['.endm', '.macro STORE_PART_NOTE_REFRESH']
     # NOTE SETUP stages the first six bytes as longs. Only live module fields

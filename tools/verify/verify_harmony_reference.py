@@ -42,11 +42,13 @@ def reference_bytes(unit, keys, remix, address, exports, work, sections):
 
 
 def author_modules(keys):
-    for key, slug in (('MIDI HARMONY', 'midi-harmony'),
-                      ('MIDI SRAM', 'midi-sram'), ('MIDI FOLLOW', 'midi-follow')):
+    # STORE packages the retained pool from Harmony's pin, without a new module.
+    for key, owner, slug in (('MIDI HARMONY', 'midi-harmony', 'midi-harmony'),
+                             ('MIDI HARMONY', 'midi-harmony', 'midi-sram'),
+                             ('MIDI FOLLOW', 'midi-follow', 'midi-follow')):
         if key not in keys:
             continue
-        author = ROOT / 'modules' / slug / 'upstream/modules' / slug / 'manifest.py'
+        author = ROOT / 'modules' / owner / 'upstream/modules' / slug / 'manifest.py'
         yield schema.apply_select(runpy.run_path(str(author))['MODULE'], keys)
 
 
