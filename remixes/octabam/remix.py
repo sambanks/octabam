@@ -19,10 +19,11 @@ OURS = ("MODULATION", "SPECTRUM", "CHARACTER")
 # CF METER IDLE and WAVE LOAD (CF METER's FX2 id is MODULATION's),
 # MIDI LOOPBACK (MIDI SCENES), DIRECT JUMP and PERSISTENT BUFFERS (DIRECT_JUMP_KYOTI and BUFFER
 # SAVER do their jobs), and the bus and diagnostic modules (TEMPO SYNC, TEMPO BUS, RIG HOSTS, BOOT TRACE).
-# STEM REC, VARISPEED, SCOPE, MIDI SCALES and RND NAME are not here either: images with them left program changes
+# STEM REC, SCOPE, MIDI SCALES and RND NAME are not here either: images with them left program changes
 # unapplied in a loader soak (2 to 5 of 32 transitions; none in the images without them) on Sam's MKII, 1 Nov 2026.
+# FX2 LOCK is not here: it makes the FX2 chooser's YES close without selecting, and this remix has no engine to lock to a track.
 COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
-            "FX2 LOCK", "TRACK PATTERNS")
+            "TRACK PATTERNS", "VARISPEED")
 STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
              "COMB FILTER", "COMPRESSOR", "LO-FI")
 

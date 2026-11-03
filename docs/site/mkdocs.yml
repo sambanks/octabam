@@ -52,6 +52,7 @@ nav:
           - Scale Quantizer: reference/manual/octabam/sequencer/quantizer.md
           - Track Patterns: reference/manual/octabam/sequencer/trackpatterns.md
           - Tuner: reference/manual/octabam/sequencer/tuner.md
+          - Varispeed: reference/manual/octabam/sequencer/varispeed.md
       - Parts, Kits and scenes:
           - Kits: reference/manual/octabam/parts/kits.md
           - MIDI Scenes: reference/manual/octabam/parts/midi-scenes.md
@@ -74,7 +75,6 @@ nav:
       - Utilities:
           - Buffer Saver: reference/manual/octabam/utilities/buffer-saver.md
           - Copy Project: reference/manual/octabam/utilities/copy-project.md
-          - FX2 Lock: reference/manual/octabam/utilities/fx2-lock.md
           - Mode Defaults: reference/manual/octabam/utilities/mode-defaults.md
           - Remix Switch: reference/manual/octabam/utilities/remix-switch.md
       - Fixes to stock behaviour:

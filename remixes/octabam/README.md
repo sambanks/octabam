@@ -66,8 +66,12 @@ transitions between BASE, the stock reverbs, MODULATION, SPECTRUM and CHARACTER 
 `scenes-sweep` (2,289 operations) and `djump-burst` (536) pass; crossfader to lock CC 0.77 to 0.95 ms median; DIRECT_JUMP
 lands within 0 to 5 steps with the toggle on and at the pattern end with it off.
 
+VARISPEED was added and FX2 LOCK removed after `OCTABAMR3`; `OCTABAMV5` (that composition) was flashed on 2 Nov 2026 and FX2 picks take effect; the suite was not run on it. In a loader soak on 2 Nov 2026
+the image without VARISPEED left 3 of 32 program changes unapplied and the image with it 4
+([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)).
+
 Not run on this image: `mix-soak` and the [manual plan](../../docs/contributing/HARDWARE_MANUAL.md). The images that
-had CX OSC, STEM REC, VARISPEED, SCOPE, MIDI SCALES or RND NAME stopped the DSP or left program changes unapplied in the
+had CX OSC, STEM REC, SCOPE, MIDI SCALES or RND NAME stopped the DSP or left program changes unapplied in the
 same probes ([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)). Not measured on a unit: the stock reverbs'
 buffer extents at other settings, the toast wording and width.
 
