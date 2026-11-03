@@ -63,9 +63,8 @@ copy/paste and project save/load carry it; fresh Parts use EXT. Playback uses
 each MIDI track's applied Part, independently of retained audio voices and
 the Part selected for editing.
 
-Requires **STORE**. Combining it with MIDI Scenes needs a separate
-producer bridge, which is not included in this contribution; that combination
-is currently refused. KITS is not required.
+Requires **STORE**. Combining MIDI Loopback with MIDI Scenes is not supported;
+the build rejects that selection. KITS is not required.
 
 ### Returning to stock 1.40C
 

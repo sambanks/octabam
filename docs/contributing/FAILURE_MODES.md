@@ -795,6 +795,12 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   all needed.
 - **Fix:** CX OSC is out of `octabam` ([the 0.1 scope](../../remixes/octabam/README.md)).
 
+## FX2 chooser: picking an effect does nothing in `octabam` ✅ measured, fixed
+
+- **Seen:** Sam, 2 Nov 2026: selecting an effect on FX2 changes nothing.
+- **Cause (from the code):** FX2 LOCK was in `octabam`'s `COLDFIRE` set since `1464bd16` (28 Oct, PR #964). It points YES's key-table entry at NO's handler, so YES closes the chooser and the select handler never runs. `modules/fx2-lock/README.md`: made for bottleservice; "On the unit: Not yet"; `verify_fx2_lock` ran on bottleservice only.
+- **Fix:** FX2 LOCK is out of `octabam`; `octabam-bus` keeps it. Sam's MKII, image `OCTABAMV5` (`octabam` with VARISPEED, no FX2 LOCK), 2 Nov 2026: FX2 picks take effect. The failing image was not re-flashed to reproduce the symptom, so the cause is the code reading plus this result.
+
 ## Program changes left unapplied in a loader soak; images with STEM REC, VARISPEED, SCOPE, MIDI SCALES or RND NAME 🟡 module group found, individual modules not all separated, those five left out of `octabam`
 
 - **Probe:** `ot_matrix.py switch --pairs 15:12,12:15,15:0,0:15` repeated 8 times (32 transitions between MODULATION FX2
@@ -817,5 +823,11 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
 - **Not established:** which of STEM REC, VARISPEED, SCOPE, MIDI SCALES and RND NAME cause the unapplied changes in `R2`
   (only STEM REC is shown alone); whether the load, the USB MIDI receive path or a hook drops the program change.
   The module sets are consistent with the count rising with the number of ColdFire modules; that is an inference.
+- **2 Nov 2026, same probe, same unit, same project:** `C0` (`octabam` at `620e9263`, none of the five) left 3 of 32
+  unapplied (transitions 7, 26, 31), `V1` (`C0` plus VARISPEED) 4 (11, 15, 23, 31), `V4` (`C0` plus VARISPEED, SCOPE,
+  MIDI SCALES and RND NAME) 5 (3, 15, 22, 27, 31). Unapplied here is the level after the switch equal to the level
+  before it. `bad 0` and 300 to 340 ms of silence throughout. The 0-of-32 figures above are from 1 Nov; no image of
+  that set was run on 2 Nov. All four of `V1`'s and four of `V4`'s five are BASE to MODULATION. Run-to-run spread is not
+  measured (one run per image).
 - **Fix:** those five modules are left out of `octabam`; `R3` (`K1`'s set) applied 18 of 18 `loader01` transitions and
-  the 2 of `loader02`.
+  the 2 of `loader02`. 2 Nov 2026: VARISPEED is back in `octabam`, since `C0` without it also left unapplied changes.

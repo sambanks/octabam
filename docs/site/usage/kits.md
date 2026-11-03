@@ -33,6 +33,9 @@ settings.
   (the first empty Kit when the slot holds none). YES opens the name
   editor (seven characters, `NEW KIT` for an empty Kit); the current
   Part is saved into the Kit and the current pattern plays it.
+- Each list shows its name, `LOAD KIT` or `SAVE KIT`, when it opens.
+  FUNC+YES is the quick save in SAVE KIT; in LOAD KIT it saves nothing
+  and shows `LOAD KIT: NO SAVE`.
 - In either list, LEVEL moves the cursor a row per detent; UP and DOWN
   as stock.
 - In either list, FUNC+REC copies the Kit under the cursor, FUNC+STOP
