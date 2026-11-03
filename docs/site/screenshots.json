@@ -916,17 +916,17 @@
   "cxosc": {
     "source": {
       "image": "cxosc/source.png",
-      "caption": "CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM FDBK.",
+      "caption": "CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.",
       "remix": "cxosc",
       "source": "emulator panel UART",
-      "firmware_sha256": "47560f6033490386b25b9ff3feac5502b3de03dc70f9faaec7d17a463f249a99"
+      "firmware_sha256": "4e612b3b898b1002d7428f6c1dae7808e7d852a766616a996f0fb27eb392743a"
     },
     "setup": {
       "image": "cxosc/setup.png",
       "caption": "SRC SETUP: CX OSC selected in the machine list.",
       "remix": "cxosc",
       "source": "emulator panel UART",
-      "firmware_sha256": "47560f6033490386b25b9ff3feac5502b3de03dc70f9faaec7d17a463f249a99"
+      "firmware_sha256": "4e612b3b898b1002d7428f6c1dae7808e7d852a766616a996f0fb27eb392743a"
     }
   },
   "morph": {

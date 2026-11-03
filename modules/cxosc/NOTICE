@@ -3,8 +3,10 @@ CX OSC third-party provenance
 
 poly.s
   Closest to timhastie/octatrick-modules v2.9 (525f4b1), MIT,
-  Copyright (c) 2026 Tim Hastie. Local CX OSC voice changes (FOLD/SYMM,
-  free RATO, stronger FDBK, mono-only) are by ilia-murzinov.
+  Copyright (c) 2026 Tim Hastie, plus po_amp_snap / po_amp_at / po_alaw
+  from v2.22 (73686de; po_amp_at without the SY DRUM branch). Local CX
+  OSC voice changes (FOLD/SYMM, free RATO, DEC on slot F, mono-only) are
+  by ilia-murzinov.
 
 page.s
   Follows timhastie/octatrick-modules v2.15 (17ba281), MIT,
