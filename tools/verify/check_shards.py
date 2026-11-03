@@ -78,6 +78,7 @@ import os
 import pathlib
 import queue
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -400,14 +401,28 @@ def remix_jobs(remix_name, shard):
     jobs.append(job("menu", [[py, f"{V}/verify_menu.py"], [py, f"{V}/verify_replaces.py", "--image", remix_name]],
                     f"{V}/verify_menu.py", f"{V}/verify_replaces.py"))
     jobs.append(job("set", [[py, f"{V}/verify_set.py", remix_name]], f"{V}/verify_set.py"))
-    # The image-stage module gates (TEMPO BUS boots the card verify_set
-    # stages) as their own job: verify_set --stage-only stages the same
-    # image and card without running, so the two run on separate shards.
-    jobs.append(job("image", [[py, f"{V}/verify_set.py", remix_name, "--stage-only"],
-                              [PY, f"{V}/module_gates.py", remix_name, "--stage", "image"]
-                              + (["--modules", ",".join(SCOPE)] if SCOPE else [])],
-                    f"{V}/module_gates.py"))
+    # The image-stage module gates, one job each (until 4 Nov 2026 one `image`
+    # job ran them serially: 2723 s of a 3031 s unit). A gate that boots the
+    # card verify_set stages (TEMPO BUS) stages it first, in its own job;
+    # verify_set --stage-only stages the same image and card without running.
+    for _key, g in module_gates.collect(selected, "image"):
+        if mine is not None and g.script not in mine:
+            continue
+        try:
+            boots_card = "verify_set" in (ROOT / g.script).read_text(errors="replace")
+        except OSError:
+            boots_card = True       # unreadable: stage it, as the single job did
+        stage = [[py, f"{V}/verify_set.py", remix_name, "--stage-only"]] if boots_card else []
+        jobs.append(job("image:" + pathlib.Path(g.script).stem.removeprefix("verify_").replace("_", "-"),
+                        stage + [[PY, f"{V}/module_gates.py", remix_name, "--stage", "image", "--only-script", str(g.script)]],
+                        f"{V}/module_gates.py"))
     jobs.append(job("usb", [[py, f"{V}/verify_usb.py"]], f"{V}/verify_usb.py"))
+    # reach.SPLIT_EXTRA_UNITS: a gate that runs only in its own unit, with a generated project
+    from reach import SPLIT_EXTRA_UNITS  # noqa: E402
+    for name, (module, command) in SPLIT_EXTRA_UNITS.get(remix_name, {}).items():
+        if SCOPE is None or module in SCOPE:
+            argv = shlex.split(command)
+            jobs.append(job(name, [[PY, *argv[1:]]], *[a for a in argv if a.startswith("tools/")]))
     return jobs
 
 

@@ -19,6 +19,36 @@ class CacheTests(unittest.TestCase):
         deps = {"a.py": {"b.py"}, "b.py": {"c.py"}, "c.py": set(), "d.py": {"a.py"}}
         self.assertEqual(gate_cache.closure(["a.py"], deps), {"a.py", "b.py", "c.py"})
 
+    def test_tracked_leaves_out_markdown(self):
+        with tempfile.TemporaryDirectory() as d:
+            import subprocess
+            d = pathlib.Path(d)
+            (d / "m").mkdir()
+            (d / "m/a.s").write_text("x"); (d / "m/README.md").write_text("y")
+            subprocess.run(["git", "init", "-q"], cwd=d, check=True)
+            subprocess.run(["git", "add", "."], cwd=d, check=True)
+            self.assertEqual(gate_cache.tracked(d, "m"), ["m/a.s"])
+
+    def test_shared_key_ignores_the_image_and_moves_with_a_module_file(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            (d / "modules/x").mkdir(parents=True)
+            (d / "modules/x/a.s").write_text("1"); (d / "out/raw").mkdir(parents=True)
+            (d / "out/raw/section_3_MAIN_OS.bin").write_text("os")
+            subprocess.run(["git", "init", "-q"], cwd=d, check=True)
+            subprocess.run(["git", "add", "-A", "-f"], cwd=d, check=True)
+            args = (d, "g", ["python3", "g.py"], set(), ["modules/x"])
+            with mock.patch("reach.port_digest", return_value="p", create=True):
+                import reach  # noqa: F401
+                one = gate_cache.shared_key(*args, deps={}, env={})
+                self.assertEqual(one, gate_cache.shared_key(*args, deps={}, env={}))
+                (d / "modules/x/a.s").write_text("2")
+                self.assertNotEqual(one, gate_cache.shared_key(*args, deps={}, env={}))
+                (d / "modules/x/a.s").write_text("1")
+                (d / "out/raw/section_3_MAIN_OS.bin").write_text("os2")
+                self.assertNotEqual(one, gate_cache.shared_key(*args, deps={}, env={}))
+
     def test_project_stamp_moves_with_a_file(self):
         with tempfile.TemporaryDirectory() as d:
             d = pathlib.Path(d)

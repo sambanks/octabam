@@ -383,7 +383,7 @@ half through `check_shards.py` split by gate, instead of a serial
 `check_shards.py` runs (a remix's whole half, or one gate job) builds the
 remix's image and looks itself up by a key over the image, the job's
 scripts and everything they reach in the tools/ graph, the Makefile, the
-remix's and its modules' tracked files, every module's manifest, the
+remix's and its modules' tracked files (not the Markdown), every module's manifest, the
 data files in `tools/remix/`, the port's sources, `dsp_asm` and
 `dsp_host` by content, the project (each file's path, size and mtime),
 the `.venv` interpreter, `BUILD` and `OT_BANK`. A hit is reported `cached`
@@ -391,7 +391,8 @@ with the commit and time of the pass, replays the pass's `[SKIP]` lines
 and is not run. Passes are stored in `<git common dir>/octabam-gate-cache/`
 (failures are not), so a pass in one worktree is a hit in every other on
 the machine. In CI the passes and the durations below go through the
-actions cache per unit (`gates-<unit>-<run id>`, restored from the newest
+actions cache per unit (`gates-<unit slug>-@<run id>`; the `-@` ends the slug, so
+`check-remix-octabam-` does not restore `check-remix-octabam--project-`'s entry; restored from the newest
 entry of the PR's branch, else of main; passes unused for 14 days are
 dropped), so a push that leaves a remix's image and a gate's inputs alone
 reports those gates `cached`. After a rebase onto a
@@ -399,21 +400,35 @@ main that did not move a remix's image or a gate's inputs, the second run
 before merging is cache hits. `CACHE=0` (`--no-cache`) runs every job. The
 key cannot see a file a gate reads through a path built at run time, or
 anything outside the repository other than the toolchain and the project.
-The shared half and `make accept` are not cached.
+`make accept` is not cached. Of the shared half, `module_gates --shared`
+caches the gates that take no remix (`gate_cache.shared_key`): the key has no
+image or remix and covers the gate's script closure, `dsp/`, `tools/build/`,
+`tools/remix/`, `tools/harness/`, the directories of the gate's module and of
+every module `reached()` from it, every manifest, the stock OS slice, the
+port, the toolchain, the project, `BUILD` and `OT_BANK`. Each gate prints
+`gate: <s> s` when it runs. The `rest` steps of `check-shared`, the
+once-per-run gates and `refhash` itself are not cached; in CI `refhash`'s
+baseline (`refhash_store.py`, the 24 builds of the merge-base) is restored
+from the actions cache by `refhash_store.py key`.
 
 **CI units cut up** (`reach.entries`, `reach.SPLIT_REMIX_JOBS`). Each unit of
 the CI matrix is a runner with its own setup. `check-remix octabam` runs as
 three units, each `check_shards --only-jobs ...` over a part of the gate jobs:
 `(long)` is `remix-switch`, `(project)` is `set`, `mode-defaults` and
 `plocks-p2` (the jobs that read `OT_PROJECT`), and the unit without a suffix is
-`--skip-jobs` of both (every other job, `image` among them). A name that is no
+`--skip-jobs` of both and of `brain` (every other job, the `image:` jobs among them). A name that is no
 gate job is refused, so the parts always cover every gate job once. Only the
 `(project)` unit makes a project: `tools/hw/ot_fresh.py` boots the port and
 creates one with the panel script (100 s locally, 255 s in CI), and keeps it in
 `<git common dir>/octabam-fresh-cache/<sha256 of image, port sources, script>`
 (CI: the same actions cache as the gate passes), so a rerun for the same inputs
-is the image build alone (41 s locally). `image` is outside it: with a project it
-failed in `verify_brain` and ran 2869 s on cxosc-core (27 Oct 2026).
+is the image build alone (41 s locally). The `image:` jobs are outside it: with a project
+`verify_brain` failed and the one `image` job ran 2869 s on cxosc-core (27 Oct 2026).
+Each image-stage module gate is a job of its own, `image:<script>` (until 4 Nov 2026
+one `image` job ran them in turn: 2723 s of a 3031 s unit); a gate whose script names
+`verify_set` stages its card first. `brain` (`reach.SPLIT_EXTRA_UNITS`) is a gate job
+that only the `check-remix octabam (brain)` unit runs (`--only-jobs brain`), with a
+generated project; it is cached like the others.
 `check-shared` runs as two units: `make check-shared SHARED_PART=modules`
 (`module_gates --shared`) and `SHARED_PART=rest` (every other step of
 `verify-shared`); a bare `make verify-shared` runs both, in that order. A
