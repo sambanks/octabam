@@ -8,6 +8,54 @@ STORE calls at the event.
 
 Spec: [docs/specs/STORE.md](../../docs/specs/STORE.md) — the events and their stock sites, the client list, the file calls, refused files, native Part access, the MIDI SETUP byte table and the register ABI.
 
+## Events
+
+| event | stock site | arguments to a handler |
+|---|---|---|
+| loadall_pre / post | `0x40090504` (load of every bank) | none |
+| loadmask_pre / post | `0x400905d4` (masked bank load) | d1 = mask, d2 = return address |
+| newproj | `0x400909d8` (new, empty project) | none |
+| bankw_pre | `0x400918aa` (inside the bank writer, after the project directory exists) | d1 = mask of banks written |
+| bankw_post | `0x400917c8` (bank writer, after it returns) | none |
+| pstore_pre / post | `0x4008ee74` (project store) | none |
+| preload_post | `0x4008f180` (project reload) | none |
+| newproj_post | after the native new-project routine returns | none; optional |
+| bankw_guard | before bankw_pre | d1 = bank mask; negative d0 refuses the write |
+| bankcopy_guard | before native file copy | d0 = destination, d1 = source, d2 = 0; negative d0 refuses |
+| bankcopy_done | after native copy and bankcopy notifications succeed | d0 = destination, d1 = source, d2 = native result; negative d0 propagates companion failure |
+| bankcopy | `0x4008ee42`, `0x4008f14e`, and the four `d5` loads at `0x4008ef9a`, `0x4008f02e`, `0x4008f2a6`, `0x4008f33a` (stock `.work` / `.strd` file copy) | d0 = destination path, d1 = source path; after stock's copy |
+| tocs1 | `0x4000faf0` (current bank into CS1) | d0 = bank; before stock's copy |
+| fromcs1 | `0x40025808` (power-up bank from CS1) | d0 = bank; after stock's call |
+| partsaved | `0x4004a9c4` (Part Save tail) | d0 = part |
+| partclear | `0x4004a9d0` (Part Clear entry) | d0 = part |
+| ctl (not an event) | `0x40061e00` (the encoder dispatch call) | opens the refusal prompt, scrolls it; else KITS' list scroll or stock's dispatch |
+
+A handler may clobber every register. Handlers of one event run in the order
+of `CLIENTS` in `manifest.py`. Wrappers keep one return slot per event and do
+not re-enter. Checked callbacks return negative d0 to stop the phase;
+nonnegative results allow the next client. Arguments are restored before each
+client even if the previous callback clobbered all registers. Native file-copy
+failure skips all companion notifications. With no subscribers, checked phases
+and the post-new-project return slot are omitted.
+
+## Clients
+
+`CLIENTS` in `manifest.py` lists, per module key, the symbol prefix and the
+events it handles; the handler for event `e` is `<prefix>_st_<e>`. A client not
+in the remix is left out of the tables, and a handler named there that the
+link cannot find stops the build. A client declares `requires=("STORE",)`.
+
+| client | events |
+|---|---|
+| PLOCKS P2 (`plk`) | loadall_pre, loadmask_pre, newproj, bankw_pre, bankcopy, tocs1, fromcs1 |
+| KITS (`kits`) | loadall_pre/post, loadmask_pre/post, newproj, bankw_post, pstore_pre/post, preload_post, partsaved, partclear |
+| MIDI SCENES (`scn`) | loadall_pre/post, loadmask_pre/post, newproj, bankw_post, pstore_pre/post, preload_post, tocs1, fromcs1, partclear |
+| PERSISTENT BUFFERS (`pbf`) | loadall_post, loadmask_post, pstore_pre, preload_post |
+| MORPH (`mrp`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+| FREE LOOP (`fl`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+
+| MIDI HARMONY (`ch`) | loadall_post, loadmask_post, newproj, newproj_post, bankw_guard, bankcopy_guard, bankcopy_done, tocs1, fromcs1 |
+
 ## Caller census
 
 Every caller of `0x40090504` (1), `0x400905d4` (3), `0x400909d8` (5, one

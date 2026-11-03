@@ -18,11 +18,7 @@ import re
 import struct
 import subprocess
 
-from midi_machine import Machine, ROOT
-from unicorn import UC_HOOK_CODE
-from unicorn.m68k_const import (UC_M68K_REG_A2, UC_M68K_REG_A5, UC_M68K_REG_A6,
-                               UC_M68K_REG_A7, UC_M68K_REG_D2, UC_M68K_REG_D3,
-                               UC_M68K_REG_D4, UC_M68K_REG_D7)
+ROOT = Path(__file__).resolve().parents[2]
 
 
 # Exact warmed measurements from PR #824 f79ad3ca, source fde8036c. Image:
@@ -97,6 +93,24 @@ LIVE_BATCH_BASELINE = {
     'live_seven_GRAV.committed_moved4': 42089,
 }
 BUDGETS.update({name: count * 8 // 10 for name, count in LIVE_BATCH_BASELINE.items()})
+def instruction_budgets(symbols):
+    """Keep standalone targets; account explicitly for the new pitch policy.
+
+    A new optional consumer pays for Part-safe ownership/scale reads even
+    while HARM is OFF. Its complete installed paths have separate, exact
+    initial ceilings. Keep the earlier combined LIVE batching targets too.
+    """
+    if 'mh_pitch_owned' not in symbols:
+        return BUDGETS, 'standalone Follow optimization targets'
+    profile = 'midi-scales' if 'ms_output' in symbols else 'native-key'
+    reference = json.loads((ROOT / 'tools/verify/harmony_follow_cpu_baseline.json').read_text())
+    limits = reference['profiles'][profile]['ceilings'].copy()
+    for name, baseline in LIVE_BATCH_BASELINE.items():
+        if name in limits:
+            limits[name] = min(limits[name], baseline * 8 // 10)
+    return limits, 'Harmony composition ceiling: ' + profile
+
+
 BANK = 0x400e21e0
 PART = BANK + 0x8ed80
 PART_SIZE = 0x18b2
@@ -536,6 +550,14 @@ def enable_after_rest(probe):
 
 
 def main():
+    # Keep budget/receipt validation usable in the firmware-free test job.
+    global Machine, UC_HOOK_CODE, UC_M68K_REG_A2, UC_M68K_REG_A5, UC_M68K_REG_A6
+    global UC_M68K_REG_A7, UC_M68K_REG_D2, UC_M68K_REG_D3, UC_M68K_REG_D4, UC_M68K_REG_D7
+    from midi_machine import Machine
+    from unicorn import UC_HOOK_CODE
+    from unicorn.m68k_const import (UC_M68K_REG_A2, UC_M68K_REG_A5, UC_M68K_REG_A6,
+                                   UC_M68K_REG_A7, UC_M68K_REG_D2, UC_M68K_REG_D3,
+                                   UC_M68K_REG_D4, UC_M68K_REG_D7)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('remix', nargs='?', default='midi-follow')
     parser.add_argument('--artifact-root', type=Path, default=ROOT/'out',
@@ -554,21 +576,30 @@ def main():
         check(probe)
     assert artifact_identity(artifacts, args.remix) == identity, \
         'image/runtime/symbols/layout changed during Follow CPU gate'
+    limits, budget_basis = instruction_budgets(probe.symbols)
+    if 'mh_pitch_owned' in probe.symbols:
+        assert set(probe.results) == set(limits), 'composition ceiling needs the complete measured case set'
     failures = []
+    standalone_excesses = []
     for name, result in probe.results.items():
         if name in BASELINE:
             result['review_baseline_instructions'] = BASELINE[name]
         if name in LIVE_BATCH_BASELINE:
             result['live_batch_baseline_instructions'] = LIVE_BATCH_BASELINE[name]
         if name in BUDGETS:
-            result['budget'] = BUDGETS[name]
+            result['standalone_budget'] = BUDGETS[name]
             if result['instructions'] > BUDGETS[name]:
-                failures.append(f'{name}: {result["instructions"]} > {BUDGETS[name]}')
+                standalone_excesses.append(f'{name}: {result["instructions"]} > {BUDGETS[name]}')
+        if name in limits:
+            result['budget'] = limits[name]
+            if result['instructions'] > limits[name]:
+                failures.append(f'{name}: {result["instructions"]} > {limits[name]}')
         print(f'  {name}: {result["instructions"]} instructions')
     receipt = dict(status='recorded' if args.record_only else 'fail' if failures else 'pass',
                    remix=args.remix, artifact_root=str(probe.artifacts),
                    **identity,
-                   scope=__doc__, cases=probe.results, budget_failures=failures)
+                   scope=__doc__, cases=probe.results, budget_basis=budget_basis,
+                   standalone_budget_excesses=standalone_excesses, budget_failures=failures)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(receipt, indent=2)+'\n')
     assert args.record_only or not failures, '\n'.join(failures)

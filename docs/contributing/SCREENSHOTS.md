@@ -64,6 +64,7 @@ Groups and what each captures, from the `shot(...)` calls:
 | `morph` | `morph` (test remix) | morph: the window on T1 armed, then STEPS 8 and x 2 |
 | `midi-loopback` | `midi-loopback` | midi-loopback (EXT/INT/BOTH windows and CHAN indicators) |
 | `midi-follow` | `midi-follow` | midi-follow (source selection and FOLLOW register window) |
+| `midi-harmony` | `midi-harmony` | midi-harmony (NOTE SETUP, CHORD, ACCUM and NOTE MAIN), without Follow |
 | `midi-scales` | `midi-scales` | midi-scales (OFF, Major, Dorian, Mixolydian) |
 | `probes` | `cfmeter` | CF METER |
 | `utilities` | `buffer-saver` | buffer-saver (a one-second take, then FUNC + PROJ: the SAVE SAMPLES? question) |

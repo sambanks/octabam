@@ -37,6 +37,8 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`events-empty`](events-empty/README.md) | EVENTS with no clients: no event hooks or dispatcher code. | `make check`: Empty EVENTS selection: stock boundaries checked in the built image. |
 | [`ext-probe`](ext-probe/README.md) | octabam's core and stock effects (EQUALIZER's id is the probe's) with EXTPROBE on FX1: the highest window word a reverb writes. | `make check` |
 | [`free-loop`](free-loop/README.md) | stock effects with FREE LOOP: a loop pedal per track, the first free loop sets the tempo. | `make check` |
+| [`harmony-follow-native-review`](harmony-follow-native-review/README.md) | Harmony native-KEY control composition for the EVENTS/STORE migration. | port-gated |
+| [`harmony-scales-provider`](harmony-scales-provider/README.md) | Harmony native-KEY control composition for the EVENTS/STORE migration. | port-gated |
 | [`hooks`](hooks/README.md) | REC THRESHOLD and FREE LOOP together (HOOKS bridges the status icons) with STORE and the stock effects. | port-gated: verify_hooks: the bridged chain and table under Unicorn, and this image's sites |
 | [`hooks-boot`](hooks-boot/README.md) | BOOT TRACE beside STORE and MIDI LOOPBACK: HOOKS runs both at the boot's post-loader call. | port-gated: verify_hooks: the boot chain under Unicorn and in this image |
 | [`hooks-chrom-303`](hooks-chrom-303/README.md) | OCTA303 (the OCTA-303 machine) beside SCALE QUANTIZER: HOOKS gives a 303 track's CHROMATIC keys to OCTA303 and every other track's to SCALE QUANTIZER. | port-gated: verify_hooks: the bridged CHROMATIC sites in this image and the chains under Unicorn |
