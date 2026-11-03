@@ -1,5 +1,5 @@
 {
-  "description": "First Harmony composition ceiling: complete installed-path instruction counts, including inactive optional policy. No hardware timing claim. Standalone Follow retains its existing optimization budgets. Composition must not exceed these measured totals; the pre-existing LIVE batching ceilings also remain enforced.",
+  "description": "First Harmony composition ceilings: complete installed-path instruction counts, including inactive optional policy. No hardware timing claim. Standalone Follow retains its existing optimization budgets. The no-Loopback controls retain the pre-existing LIVE batching ceilings. Loopback EXT adds only the separately recorded routing instructions.",
   "upstream_base": "5a18f0ce",
   "author_source": "cb11475731eab5dc35f1ec6a93a497e6dcaaf77b",
   "standalone_scales_control": {
@@ -243,6 +243,37 @@
         "enable.muted_source_while_off": 3971,
         "enable.rest_after_source": 1853,
         "enable.note_after_rest": 828
+      }
+    }
+  },
+  "loopback_ext": {
+    "midi-scales": {
+      "description": "Additional executed instructions with Loopback installed and all routes at EXT. Added only to the existing Harmony/Follow limits; their no-Loopback controls remain unchanged. Internal/BOTH routing and hardware timing are outside this ceiling.",
+      "upstream_base": "ff94fd90",
+      "remix": "midi",
+      "loopback_source": "0ebe11e7f19fd6c48bf0109544d5da84326db86d",
+      "image_sha256": "b51d05afe72edb7ff482ee0cad01352c849888ace1608be6a6651073b43686cd",
+      "runtime_sha256": "e7b48511721137b33cf0527bd639ff3fcb9dce7f25f4737c1fafe2a448126a77",
+      "symbols_sha256": "1b926579ba3e71d1fa4e6ed4183815bc4698f268bd335a173dce090e702989b1",
+      "layout_sha256": "1b427084ef9e5280be48158e2b2ef12d4c89d64210a74764912b01982b46660d",
+      "extra_instructions": {
+        "live_direct_FIXED.moved4": 944,
+        "live_direct_GRAV.moved4": 944,
+        "live_chain7_FIXED.moved4": 944,
+        "live_chain7_GRAV.moved4": 944,
+        "live_seven_FIXED.moved4": 6608,
+        "live_seven_GRAV.moved4": 6608,
+        "live_direct_GRAV.committed_moved4": 944,
+        "live_chain7_GRAV.committed_moved4": 944,
+        "live_seven_GRAV.committed_moved4": 6608,
+        "live_GRAV.partial_first_collision": 812,
+        "live_GRAV.partial_all_collisions": 416,
+        "live_GRAV.partial_upper_only": 444,
+        "live_GRAV.replacement_during_send": 944,
+        "lifecycle.mode": 944,
+        "lifecycle.mode_roundtrip": 944,
+        "lifecycle.source_roundtrip": 944,
+        "lifecycle.context_roundtrip": 944
       }
     }
   }
