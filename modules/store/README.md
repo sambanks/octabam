@@ -245,3 +245,26 @@ Audio latches are `0x8000182a` / `0x80001832`; MIDI latches are
 `0x400a1ace` / `0x400a1ad4`). Both use applied `0x80001828` / `0x80001829`
 only while their own track is unlatched. The context gate deliberately keeps
 audio and MIDI on different Parts.
+
+## Harmony retained storage
+
+Selecting MIDI HARMONY also selects STORE's retained MIDI storage support.
+There is no separate MIDI SRAM module to enable, and other STORE clients do
+not install this code or its copy/clear changes.
+
+The unchanged radiohagen implementation is read from Harmony's pinned source
+(`modules/midi-harmony/upstream/modules/midi-sram`). STORE owns the two linked
+units, eight MIDI-only copy/clear loop guards and 8,192 separate two-byte SRAM
+claims. Its native copy wrapper preserves these bytes in CS1 and strips them
+from native bank files and clipboards. Audio-step fields keep stock behavior.
+The full 16,384-byte pool belongs to Harmony's step state and track metadata;
+PLOCKS and MIDI Scenes retain their separate allocations. This does not alter
+the retained layout or the `hdegNN.work` / `.strd` companion format.
+
+Harmony owns checkpoint validation and publication. Clearing SRAM invalidates
+those checkpoints; recovery uses validated project companions. The optional
+`verify_midi_sram.py` gate checks bounds and native copy/clear protection;
+Harmony's gates check the installed lifecycle. Fresh author-source assembly
+is compared with the packaged storage units by `verify_harmony_reference.py`.
+Physical battery retention, power-cycle behavior and hardware timing remain
+unverified for this integration.

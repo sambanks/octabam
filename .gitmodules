@@ -56,6 +56,3 @@
 [submodule "modules/midi-harmony/upstream"]
 	path = modules/midi-harmony/upstream
 	url = https://github.com/radiohagen/octatrack-modules.git
-[submodule "modules/midi-sram/upstream"]
-	path = modules/midi-sram/upstream
-	url = https://github.com/radiohagen/octatrack-modules.git
