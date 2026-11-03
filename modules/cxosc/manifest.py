@@ -281,7 +281,7 @@ MODULE = Module(
     author_url="https://github.com/ilia-murzinov",
     proof=Proof.HARDWARE,
     proof_note=(
-        "MKII VRCS-CX VS @ 32316200 (author): Tim 2.20 AMP snap; DEC HOLD@127; "
+        "MKII VRCS-CX VS @ 32316200 (author): Tim v2.22 AMP snap; DEC HOLD@127; "
         "bipolar SYMM half-wave skew (64=even) + icons; FOLD default 40; PLAYBACK "
         "knobs; FUNC RATO snaps. Prior MKII BUILD CS @ 052bb14d (cxosc-core) smoked "
         "machine select / PLAYBACK then FDBK / MIDI / STOP / Part. verify_cxosc + "

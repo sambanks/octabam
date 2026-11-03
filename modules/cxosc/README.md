@@ -18,14 +18,14 @@ refusal under Unicorn.
 
 | File | Upstream pin |
 |------|----------------|
-| `poly.s` | timhastie/octatrick-modules **v2.9** `525f4b1` + Tim **2.20** AMP path (`po_amp_snap` / `po_amp_at` / `po_alaw` from `v2.22`) |
+| `poly.s` | timhastie/octatrick-modules **v2.9** `525f4b1` + AMP snap (`po_amp_snap` / `po_amp_at` / `po_alaw`) from **v2.22** `73686de` (`po_amp_at` without the SY DRUM branch; Tim's source comments still say 2.10 / 2.20) |
 | `page.s`, `machine.s` | **v2.15** `17ba281` (`machine.s` via Modwerk FM Synth `1c1d938`) |
 
 CX-specific: marker-less list row, FOLD + SYMM waveshape, free/snap RATO,
 DEC on the index (HOLD at **127**, Tim 5 Oct polarity), fixed mid FDBK in the
 engine, mono + stock LFOs (no VOIC/CHRD). AMP ATK / HOLD / REL are the
-engine's (plan B); scenes and LFOs on those knobs apply via the 2.20 DSP-record
-snapshot (not the live lane alone).
+engine's (plan B); scenes and LFOs on those knobs apply via the **v2.22**
+DSP-record snapshot (not the live lane alone).
 
 ## PLAYBACK
 
@@ -42,13 +42,19 @@ Mono only. Stock LFO page (all three LFOs). No VOIC/CHRD. AMP page ATK / HOLD /
 REL shape the note in the engine (locks, scenes, LFOs). Modulator feedback is
 a fixed mid (no FDBK knob).
 
+**Saved Parts.** Slot F was FDBK; SYMM's even centre was 0. Seeds FOLD 40 /
+SYMM 64 / DEC 127 are written only when CX OSC is chosen. A Part saved under
+the older layout with FDBK 0 and SYMM 0 loads as **DEC 0** (shortest index
+decay) and **SYMM 0** (one half-wave muted). Re-select CX OSC on the track, or
+set DEC 127 and SYMM 64 by hand.
+
 ## Cost
 
 Unicorn executed instructions for one mono CX OSC track (`tools/verify/verify_cxosc.py`,
 `sy_render`, base knobs; pitch curve stubbed — EMAC): **~1352 instructions/frame**
-(~85/sample), peak ~1391. Not hardware cycles. One track per Part by the
-selection guard; how that sits against ColdFire headroom on a loaded Part is
-**unmeasured** on the chip (same caveat as SYNTH MACHINE's lockstep figures).
+(~85/sample; was ~1290 before the v2.22 AMP snap), peak ~1391. Not hardware
+cycles. One track per Part by the selection guard; ColdFire headroom on a
+loaded Part on the unit is still **open** ([#852](https://github.com/sambanks/octabam/issues/852)).
 
 ## Conflicts
 
@@ -81,7 +87,7 @@ form at that address; the ledger refuses it in a remix that lists DELAY.
 
 **Port:** `make check REMIX=cxosc` runs `verify_cxosc` (FOLD/SYMM/RATO/DEC
 change the waveform; FOLD=SYMM=DEC=127 stays off the rails; DSP-record ATK
-shapes the attack via the 2.20 snap).
+shapes the attack via the v2.22 snap).
 
 **Hardware (author MKII):** remix **VRCS-CX VS**, tip **`32316200`** — AMP
 snap, DEC (HOLD@127), bipolar SYMM skew + icons, FOLD default 40; PLAYBACK

@@ -34,7 +34,11 @@ list scrolls.
 - Modulator feedback is a fixed mid (no FDBK knob).
 - Mono only. Stock LFO page (all three LFOs). No VOIC / CHRD.
 - AMP ATK / HOLD / REL are owned by the engine (the DSP sees an open envelope).
-  Scenes and LFOs on those knobs apply (Tim FM SYNTH 2.20 snapshot path).
+  Scenes and LFOs on those knobs apply (Tim FM SYNTH **v2.22** AMP snapshot).
+- **Older Parts:** slot F used to be FDBK and SYMM's even centre was 0. New
+  seeds (FOLD 40, SYMM 64, DEC 127) apply only when CX OSC is chosen. A Part
+  saved with FDBK 0 / SYMM 0 loads as DEC 0 (shortest index decay) and SYMM 0
+  (one half-wave muted). Re-select CX OSC, or set DEC 127 and SYMM 64.
 
 ## Parameters
 
