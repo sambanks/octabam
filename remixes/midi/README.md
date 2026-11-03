@@ -34,3 +34,11 @@ The focused carriers under `remixes/test` retain separate checks for Harmony
 without Follow, native KEY without Scales, and each module in isolation.
 There is no separately selectable MIDI SRAM module; STORE includes the
 retained-storage protection when Harmony is selected.
+
+With HARM OFF and all Loopback routes at EXT, seven GRAV LIVE followers moving four voices
+execute 31,974 instructions in the focused probe, versus 25,366 in the
+Harmony/Follow control without Loopback. Unchanged-root updates stay at 12,766.
+The CPU gate keeps the existing control limits and adds only the measured
+routing cost for this composition. Native enqueue/transmission is stubbed;
+these are instruction counts, not cycles or hardware capacity. INT/BOTH routing
+is functionally checked separately and has no timing qualification here.

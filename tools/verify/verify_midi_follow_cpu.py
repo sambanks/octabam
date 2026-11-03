@@ -108,7 +108,17 @@ def instruction_budgets(symbols):
     for name, baseline in LIVE_BATCH_BASELINE.items():
         if name in limits:
             limits[name] = min(limits[name], baseline * 8 // 10)
-    return limits, 'Harmony composition ceiling: ' + profile
+    basis = 'Harmony composition ceiling: ' + profile
+    if 'lb_track_send' in symbols:
+        # Execute the route adapter; only native enqueue/transmit stays stubbed.
+        # Account for its measured EXT cost without weakening control builds.
+        routing = reference.get('loopback_ext', {}).get(profile)
+        assert routing is not None, 'Loopback composition needs a measured EXT instruction profile'
+        extra = routing['extra_instructions']
+        assert set(extra) <= set(limits) and all(type(n) is int and n > 0 for n in extra.values())
+        limits = {name: value + extra.get(name, 0) for name, value in limits.items()}
+        basis += ' + measured Loopback EXT routing cost'
+    return limits, basis
 
 
 BANK = 0x400e21e0
