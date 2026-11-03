@@ -294,7 +294,8 @@ last section), the hardware capture setup — protocol in `docs/history/CAPTURE_
 | `tools/hw/usb_offset.py` | the offset in samples between two channels of one recording, per click (cross-correlation and onset): a click on one track recorded with `tools/rec`, for example a track channel against MAIN in the twenty-channel stream; `--selftest` |
 | `tools/harness/usb_align.py` | the twenty-channel stream's MAIN-to-track alignment under the port: the tone project on a staged card, EP3 IN drained once the sequencer plays, the lag from each tone's phase in its track channel and in MAIN |
 | `tools/hw/rec.swift` | drop-free CoreAudio HAL recorder (compiled on demand); the ffmpeg/avfoundation path drops samples |
-| `tools/hw/ot_midi.py` | drives the Octatrack over CoreMIDI from the CLI: CC, notes, raw bytes |
+| `tools/hw/ot_midi.py` | drives the Octatrack over CoreMIDI from the CLI: CC, notes, raw bytes; `In` hands a source's packets to a callback |
+| `tools/hw/freeze_watch.py` | waits beside a unit and stops at a freeze, nothing added to the image: a handshake (`probe`) finds what the unit answers (GET_STATUS, LOAD METER, USB audio's counters, MIDI clock) and arms the triggers it can (clock stall, USB dead, frame stall, interrupt rate, `--when`); the samples `--pre` before and `--post` after, which part stopped, LOAD METER's per-slot costs, with `--audio` the unit's audio, in `out/hw/freeze/`; reboots, USB DISK MODE and STOPs are logged, not counted; `selftest` without a unit |
 | `tools/hw/bcr2000.py` | programs a Behringer BCR2000 for octabam-bus: BCL from the manifests (page-1 CCs + CC MAP's page 2), sent over SysEx with per-line acks or written for BC Manager |
 | `tools/hw/hw_sweep.py` | scripted sweeps: MIDI steps + capture + per-step metrics in one process |
 | `tools/hw/level_cap.py` | quick capture with peak/RMS/crest/clip-run reporting per channel |
