@@ -196,8 +196,10 @@ def shared_key(root, name, argv, scripts, module_dirs, deps=None, env=None):
     root = pathlib.Path(root)
     deps = reach.scan_deps(root) if deps is None else deps
     files = set(ALWAYS) | closure(scripts, deps)
+    # no global manifest glob (inputs() has one): a module's manifest is in its directory, and
+    # another module's edit cannot change this gate's scratch image (4 Nov 2026: three
+    # unrelated manifests moved the key of OCTA303 and MORPH)
     files |= set(tracked(root, *BUILD_TREES, *module_dirs))
-    files |= set(tracked(root, "modules/*/manifest.py", "tools/remix/*.json"))
     h = hashlib.sha256()
 
     def put(label, value):

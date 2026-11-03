@@ -46,8 +46,13 @@ class CacheTests(unittest.TestCase):
                 (d / "modules/x/a.s").write_text("2")
                 self.assertNotEqual(one, gate_cache.shared_key(*args, deps={}, env={}))
                 (d / "modules/x/a.s").write_text("1")
+                (d / "modules/y").mkdir(); (d / "modules/y/manifest.py").write_text("m")
+                subprocess.run(["git", "add", "-A", "-f"], cwd=d, check=True)
+                two = gate_cache.shared_key(*args, deps={}, env={})
+                (d / "modules/y/manifest.py").write_text("m2")
+                self.assertEqual(two, gate_cache.shared_key(*args, deps={}, env={}))   # an unrelated module's manifest
                 (d / "out/raw/section_3_MAIN_OS.bin").write_text("os2")
-                self.assertNotEqual(one, gate_cache.shared_key(*args, deps={}, env={}))
+                self.assertNotEqual(two, gate_cache.shared_key(*args, deps={}, env={}))
 
     def test_project_stamp_moves_with_a_file(self):
         with tempfile.TemporaryDirectory() as d:

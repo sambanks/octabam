@@ -404,7 +404,7 @@ anything outside the repository other than the toolchain and the project.
 caches the gates that take no remix (`gate_cache.shared_key`): the key has no
 image or remix and covers the gate's script closure, `dsp/`, `tools/build/`,
 `tools/remix/`, `tools/harness/`, the directories of the gate's module and of
-every module `reached()` from it, every manifest, the stock OS slice, the
+every module `reached()` from it (their manifests with them), the stock OS slice, the
 port, the toolchain, the project, `BUILD` and `OT_BANK`. Each gate prints
 `gate: <s> s` when it runs. The `rest` steps of `check-shared`, the
 once-per-run gates and `refhash` itself are not cached; in CI `refhash`'s
