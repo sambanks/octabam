@@ -7,7 +7,9 @@ provide a compatible integration; additional catalogue scales are not yet
 supported by Harmony. Existing project formats are unchanged.
 
 The **midi** remix brings Harmony, Follow, Scales and Loopback together.
-Harmony also works independently; the smaller combinations are test carriers.
+Harmony also works **without Follow**: each track uses its own degree pattern,
+KEY and chord settings. With Follow installed, **RFOL OFF** gives the same
+independent musical workflow. The smaller combinations are test carriers.
 
 ## Start playing
 
@@ -46,7 +48,15 @@ at bottom left. Empty E/F cells ignore turns.
 | C | ROOT | KEEP, OMIT, -1 OCT or -2 OCT. |
 | D | SIZE | NAT recipe size, or 2, 3 or 4 voices. |
 
-These are track settings affecting CHORD, not NOTE.
+These are track settings affecting CHORD, not NOTE. Use **AUTO** for nearby
+voicings between chords, or choose an inversion to place a particular chord
+tone at the bottom. **OPEN/WIDE** separates the voices for a more spacious
+part. **ROOT OMIT** leaves room for a separate bass; **−1 OCT/−2 OCT** puts
+the root below the upper voices. **SIZE 2** can make a sparse accompaniment:
+with a normal seventh chord and ROOT OMIT, it keeps the third and seventh.
+The resulting voices feed the stock arp, so the same progression can become
+held harmony, short stabs or an arpeggiated line.
+
 Existing held notes retain their original releases.
 See [Voicing](https://github.com/radiohagen/octatrack-modules/blob/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b/modules/midi-harmony/VOICING.md) for the musical rules.
 
@@ -62,6 +72,12 @@ Each step's first sounding occurrence is unshifted. Its amount then advances
 the next occurrence. Rests, failed conditions and suppressed outputs do not
 advance it; chord voices and arp repeats share the same captured root shift.
 Live keyboard notes do not accumulate.
+
+For example, leave one step at DEG 1, set **ACC +1**, **LOW 0**, **HIGH 7**
+and **WRAP**. Its sounding returns climb 1, 2, 3 … through the scale to the
+next octave, then wrap to the original root. In CHORD mode the whole chord
+moves together; an arp plays the captured chord before the next return shifts
+it again. This adds harmonic variation to a repeating rhythm.
 
 Select ACCUM in the Harmony window:
 
@@ -107,6 +123,45 @@ keeping their inversion and octave spread. For example, C–E–G becomes D–F�
 in C major. Explicit MAJ/MIN/DOM7 chords and KEY OFF retain chromatic intervals.
 Cached arp notes use the same movement without resetting the arp clock; note-off
 ownership and the original release deadlines remain attached to the held notes.
+
+## Arrange a song with the MIDI remix
+
+The **midi** remix combines four musical roles: **Scales** chooses the
+key/mode, **Harmony** builds the notes or chords, **Follow** shares the
+progression while each track keeps its rhythm and register, and **Loopback**
+chooses external or internal delivery.
+
+Start with separate external MIDI channels for the pitched parts:
+
+| MIDI track | Setup | What you hear or control |
+| --- | --- | --- |
+| T1: progression | RFOL OFF, KEY C minor, HARM CHORD, CHRD TRI; place DEG 1, 4, 5 on spaced trigs. | Cm → Fm → Gm establishes the harmony. |
+| T2: bass | RFOL T1, HARM NOTE; choose a low FOLLOW register and program your own bass rhythm. | One root at a time follows the progression, with independent rhythm, velocity and length. |
+| T3: accompaniment | RFOL T1, HARM CHORD, CHRD 7TH; choose a higher register, AUTO and ROOT OMIT. | Seventh-chord stabs follow the roots while leaving the low register to T2. Turn on the stock arp for a moving line instead. |
+| T4: internal motion | RFOL OFF, HARM OFF; choose INT routing and sequence CCs for an audio track's filter. | A separate rhythm animates an internal sound while T1–3 play external instruments. |
+
+On T2/T3, turn **D: RFOL** on NOTE SETUP to T1, then press D for FOLLOW.
+Choose **UPDT TRIG** when each part should adopt the new harmony at its next
+trig. Choose **LIVE** when an already-held chord should move as T1 changes
+root. T2/T3 inherit T1's KEY; changing it to D minor moves the arrangement to
+that key without rewriting the degree progression. Followers build their
+own chord quality and voicing rather than copying T1's generated chord tones.
+
+For T4, press **A: CHAN** on NOTE SETUP to open ROUTING and set **DEST INT**.
+Assign its channel to the intended audio receiver, enable the relevant MIDI
+receive switches and select the desired CC control. Matching track numbers
+alone do not route MIDI. **EXT** is the default for external instruments;
+**BOTH** delivers to both destinations. Internal routing needs no loopback
+cable. See [Loopback routing](midi-loopback.md) for receiver and held-note
+boundaries, and [Follow](midi-follow.md) for register choices.
+
+To make any part independent again, set **RFOL OFF**. To use native NOTE and
+NOT2–4 on a track, set **HARM OFF**. Without the Follow module, Harmony still
+provides degree sequences, chords, voicing, Chord Play and accumulation;
+each track then supplies its own progression and KEY.
+
+This is a playing example, not a hardware qualification of the combined
+remix; its maximum load and physical timing remain unverified.
 
 ## Chord Play
 
