@@ -15,9 +15,13 @@ DEST is saved per MIDI track in each native Part. Fresh Parts use EXT.
 
 ## Notes
 
-Select STORE alongside MIDI LOOPBACK. This contribution supplies a
-standalone test remix; official remix selections are unchanged. MIDI Scenes
-needs a later bridge and is currently refused with Loopback.
+The **midi** remix combines Loopback with Harmony, Follow and Scales: send
+bass and chords to external instruments while another MIDI track sequences
+internal audio-track controls. See the
+[four-track musical example](midi-harmony.md#arrange-a-song-with-the-midi-remix).
+STORE is included in that remix; select it alongside MIDI LOOPBACK in a
+custom selection. MIDI Scenes needs a later bridge and is currently refused
+with Loopback.
 
 Held notes are released at their original destination when routes change.
 Avoid overlapping internal and external held notes on the same channel/pitch:
