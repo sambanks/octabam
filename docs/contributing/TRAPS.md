@@ -1442,8 +1442,8 @@ symbols in its global `nm` output. Publishing those as its own exports overwrote
 the runtime provider's final `CLONE_*` addresses.
 
 Keep imported symbols available to the resident link, but exclude them when
-publishing its exports. `make check REMIX=midi-follow-events` (the remix arrives with MIDI Follow,
-sambanks/octabam#824) exercises the combination, including the build's formatter-byte and installed-image checks.
+publishing its exports. `make check REMIX=midi-follow-events` exercises the
+combination, including the build's formatter-byte and installed-image checks.
 
 <a name="trap-dma-arm"></a>
 
@@ -1525,3 +1525,33 @@ name was 12 characters or fewer. Rule: a bound written for one caller is not a
 bound for the others; size each buffer's bound at the buffer, and give a
 gate fixture a name at the longest the build writes (`make image` writes up to
 19 characters).
+
+<a id="trap-midi-only-frame-fixture"></a>
+### A MIDI-only fixture can leave audio frame checks with no playing Part
+
+A short Scenes P2 frame probe on a MIDI-only project read unchanged knob values:
+all audio tracks' native playing-Part pointers were `0xff`, so the scene pass
+correctly skipped them. The probe ended before its injected step-2 trig. In an
+EUCLID composition the old MODE/TIME assumptions also did not describe the
+selected effect's page-two controls.
+
+`verify_scenes_p2.py` prepares the disposable EUCLID fixture with T1 active on
+step 1 and checks RATE/MIX as its discrete/continuous pair. Knob values are kept
+away from the edit clamp. The supplied project is unchanged. Check the playing
+Part and the selected module's real parameter layout before interpreting a
+constant frame value as a failure of event dispatch or scene interpolation.
+
+The same MIDI-only input exposed an unstated BRAIN fixture dependency: its
+save/menu probes expected T1 FX2 to be DELAY SERVER, but only seeded T2 FX1.
+Saving T1's actual effect correctly produced no BusDelay record. `verify_brain.py`
+now seeds both required effects in its disposable copy. Prepare every effect
+whose identity a later assertion assumes, rather than inheriting it from the
+operator's project.
+Its MIDI logging probe also explicitly enables program-change reception on
+channel 1 in a separate copy before asserting that the message queues a pattern.
+
+BRAIN's gate builds its own `octabam-bus` image, so it belongs to the shared
+isolated stage. Running it as an image gate replaced the selected Follow image
+and made later Scales/Loopback gates fail on missing symbols. Declare gates that
+build another image as isolated; `verify-remix` then restores the selected image
+before its image gates run.

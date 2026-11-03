@@ -93,6 +93,9 @@ class ReferenceTests(unittest.TestCase):
                    reference=lambda mods: self.B if "SIDECHAIN" in mods else self.A)
         self.assertEqual(u.reference_for({"SIDECHAIN": object()}), self.B)
         self.assertEqual(u.reference_for({}), self.A)
+        optional = Linked("optional", "u.s", reference=lambda mods: None if "SIDECHAIN" in mods else self.A)
+        self.assertIsNone(optional.reference_for({"SIDECHAIN": object()}))
+        self.assertEqual(optional.reference_for({}), self.A)
 
     def test_shape_is_validated(self):
         with self.assertRaises(ValueError):
