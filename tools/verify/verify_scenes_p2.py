@@ -5,7 +5,13 @@ scene copy and paste carry the cells.
 
     python3 tools/verify/verify_scenes_p2.py REMIX --project DIR
 
-Stages the project's card, boots the remix's image in `ot_emu`, and:
+Stages a disposable project copy and boots the remix's image in `ot_emu`.
+For EUCLID compositions the fixture selects RATE/MIX on T1, sets unclamped
+knob values, enables scenes and starts T1 on step 1; a MIDI-only template
+otherwise leaves the audio track's playing-Part pointer unset during the
+120-frame probe. Other remixes retain the MODE/TIME fixture below.
+
+The checks are:
 
   frame   pokes cells into every bank's part-0 window (bytes 30, 31 of the
           stock scene block; scene 0: T1 FX2 MODE = 1 and TIME = 100;
@@ -39,7 +45,7 @@ Stages the project's card, boots the remix's image in `ot_emu`, and:
 SKIPs without a project, without the port, or for a remix without SCENES
 P2.
 """
-import argparse, os, pathlib, shutil, subprocess, sys
+import argparse, os, pathlib, re, shutil, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 from remix import registry  # noqa: E402
@@ -137,6 +143,28 @@ def main():
     for f in pdir.iterdir():
         if f.is_file() and f.suffix.lower() == ".work":
             shutil.copy2(f, copy / f.name)
+    # The combined EVENTS fixture has EUCLID rather than the bus effect
+    # whose page-two MODE/TIME layout this gate originally assumed. Select
+    # its real RATE/MIX pair in the disposable copy: a stepped selector and
+    # a continuous value exercise the same snap/interpolation contract.
+    select_slot, select_name, value_name = 0, "MODE", "TIME"
+    if "EUCLID" in remix.modules:
+        from hw import ot_project as otp
+        effect = registry.bound(remix)["EUCLID"]
+        defaults = otp.module_defaults(effect, {"RATE": 0, "MIX": 64})
+        otp.set_fx(copy, "fx2", 1, str(effect.menu.fx2_id),
+                   page=defaults[:6], page2=defaults[6:], guard=False)
+        # The 120-frame probe ends before step 2 at 120 BPM. Activate T1
+        # on the first step so its native playing-Part pointer is valid even
+        # when the supplied template contains only MIDI trigs.
+        for bank_file in copy.glob("bank*.work"):
+            def activate(data):
+                data[otp.trac_off(0, 0) + 7] |= 1
+            otp._bank_write(copy, int(bank_file.stem[4:]), activate, guard=False)
+        select_slot, select_name, value_name = 1, "RATE", "MIX"
+        project_file = copy / "project.work"
+        project_file.write_bytes(re.sub(rb"(SCENE_[AB]_MUTE=)1", rb"\g<1>0", project_file.read_bytes()))
+    select_byte = 48 + select_slot
     card = OUT / "card.img"
     r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
                         "--tree", str(OUT / "tree"), "--out", str(card)], cwd=ROOT, capture_output=True, text=True)
@@ -155,7 +183,7 @@ def main():
     # the cells (key = track<<4 | fx1<<3 | slot2): scene 0 / T1 / FX2 slot 5
     # (TIME) = 100 and slot 0 (MODE) = 1, scene 1 / T1 / slot 5 = 20 -- in
     # part 0 of every bank (the playing bank is the saved one, not bank 0)
-    cells = {(0, 0): (0x05, 100), (1, 0): (0x05, 20), (0, 3): (0x00, 1)}
+    cells = {(0, 0): (0x05, 100), (1, 0): (0x05, 20), (0, 3): (select_slot, 1)}
 
     def frames(tag, cells, xf):
         """One frame run as a scenario: (log, args, dump)."""
@@ -245,14 +273,14 @@ def main():
         check(f"{tag}: 120 frames ran", ran)
     recs = {tag: r for tag, (_, r) in results.items()}
     knob = recs["knob"]
-    knob_mode = knob[0][48]
-    check(f"knob alone: both pings read T1 MODE {knob_mode}", knob[1][48] == knob_mode)
+    knob_mode = knob[0][select_byte]
+    check(f"knob alone: both pings read T1 {select_name} {knob_mode}", knob[1][select_byte] == knob_mode)
     for xf, want_mode, want_time, why in ((64, 1, 60, "the A side, a select snaps"),
                                           (0, knob_mode, 20, "the knob, B alone")):
         for ping, r in enumerate(recs[f"fader {xf}"]):
-            check(f"fader {xf}: ping {ping} T1 MODE (hw 24 hi) = {r[48]} (want {want_mode}: {why})",
-                  r[48] == want_mode)
-            check(f"fader {xf}: ping {ping} T1 TIME (hw 26 lo) = {r[53]} (want {want_time})", r[53] == want_time)
+            check(f"fader {xf}: ping {ping} T1 {select_name} (record byte {select_byte}) = {r[select_byte]} (want {want_mode}: {why})",
+                  r[select_byte] == want_mode)
+            check(f"fader {xf}: ping {ping} T1 {value_name} (hw 26 lo) = {r[53]} (want {want_time})", r[53] == want_time)
 
     # ---- the editor's checks ------------------------------------------------
     check(f"editor: all {len(SEEDS)} calls returned", editor_text.count("returned, d0") == len(SEEDS))

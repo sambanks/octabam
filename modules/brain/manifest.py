@@ -321,5 +321,7 @@ MODULE = Module(
                  SymbolRef(ROOT_DESC + 0x18, ROOT_ROWS, "brain", "brain_root_rows",
                            "MAIN MENU root rows: the four stock categories + BRAIN"),),
     pokes=(Poke(ROOT_COUNT_AT, H("00000004"), H("00000005"), "MAIN MENU root count: + BRAIN"),),
-    gates=(Gate("tools/verify/verify_brain.py", remix_arg=False, venv=True, stage="image"),),
+    # This gate builds its own octabam-bus image. Run it before the selected
+    # image is restored, never between gates that inspect that image.
+    gates=(Gate("tools/verify/verify_brain.py", remix_arg=False, venv=True),),
 )

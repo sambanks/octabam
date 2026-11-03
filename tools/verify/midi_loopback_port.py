@@ -18,7 +18,7 @@ OUT=ROOT/'out/midi-loopback-port'
 
 def fixture(source, name, records=None, arp=False):
     work=OUT/name;work.mkdir(parents=True,exist_ok=True)
-    midi_fixture.fixture(source,work/'project',arp=arp)
+    midi_fixture.fixture(source,work/'project',arp=arp,profile='native')
     card,_=emu_card.stage_project(work/'project','OCTABAM','BASS',tree=work/'tree')
     (work/'card.img').write_bytes(card)
     return work
