@@ -3,8 +3,9 @@
 System owner of shared native event boundaries. Select **EVENTS** once; clients
 declare `requires=('EVENTS',)` and register only the events they consume.
 EUCLID uses transport notifications. MIDI Follow uses transport and accepted-note
-notifications. PLOCKS P2 uses held-edit ownership and
-copy notifications. The module adds no controls, persistent data or FX slots.
+notifications. Harmony uses those notifications plus held-edit ownership and
+copy pre/post notifications. PLOCKS P2 uses held-edit ownership and copy-pre
+notifications. The module adds no controls, persistent data or FX slots.
 
 ## Native boundaries and saved data
 
@@ -18,7 +19,7 @@ Selection determines which sites are installed. The address-load sites
 | Transport | `0x4009c3d4` / `0x4009c4d4` write PLAYING at `0x800065b8`; continue at `0x4009c3da` / `0x4009c4da` |
 | Accepted MIDI | `0x4009fbb2` / `0x4009fcfa`, after native sender `0x40010bc8` returns; continue at `0x4009fbb8` / `0x4009fd00` |
 | Held editor | Entry `0x400508e4`; unclaimed edits replay its prologue and continue at `0x400508ec` |
-| Copy | The 22 call/address-load sites listed in `manifest.py` target native memcpy `0x40020898`; callbacks finish before entering it with the original frame |
+| Copy | The 22 call/address-load sites listed in `manifest.py` target native memcpy `0x40020898`; pre callbacks run before the native copy; optional post callbacks run after it |
 
 These addresses and instructions are observed; the event names describe their
 roles, not firmware symbols. Native-code tests check transport writes, MIDI
@@ -62,6 +63,7 @@ Missing callback implementations fail linking.
 | `midi.note_accepted` | Notify all: d0 = MIDI track 0–7, d1 = native pool kind, d2 = packet velocity, d3 = packet note; after the sender returns, before ownership bookkeeping |
 | `edit.held` | First owner: `<prefix>_claim(d0=encoder, d1=delta)` returns zero to pass or nonzero to select `<prefix>_handle` with the original native entry frame |
 | `edit.copy_pre` | Notify all: d0 = destination, d1 = source, d2 = length; before exactly one native copy with its original arguments |
+| `edit.copy_post` | Same arguments, after native memcpy; native return registers and CCR survive the callbacks |
 
 Notification symbols are `<prefix>_<event>` (for example `eu_seq_start` or
 `observer_note_accepted`). Family names describe contracts; there is no runtime
@@ -88,8 +90,14 @@ handler receives the untouched native function frame. No match falls through
 to the native editor exactly once. New editors must define their context and
 test overlap with existing owners. Neither predicates nor handlers may re-enter
 held dispatch. Copy observers own their side data and filter addresses/lengths
-themselves; native memcpy runs once after all observers. Trig clear/paste hooks
+themselves; native memcpy runs once between pre and post observers. With no
+post subscriber, the original native tail call remains. With post subscribers,
+the wrapper copies the three stack arguments for the native call, then restores
+its output registers and CCR after dispatch. Trig clear/paste hooks
 remain feature-owned. Persistence remains STORE's responsibility.
+
+Harmony takes held-edit precedence ahead of PLOCKS only when its predicate
+claims the edit. Both copy phases retain their registration order.
 
 ## Selection and performance
 
@@ -121,6 +129,9 @@ includes the two displaced native prologue instructions:
 | 1 | 13 | 16 | 12 | 30 |
 | 3 | 21 | 26 | 16 | 34 |
 
+The copy column measures pre-only subscriptions. Post-copy behavior has separate
+native-output preservation tests; these numbers do not describe its cost.
+
 Zero-client EVENTS has no dispatcher: tests execute stock code. Both MIDI
 acceptance sites have the same count. These are emulator instruction counts,
 **not** ColdFire cycles, elapsed time, hardware CPU headroom or MIDI latency.
@@ -140,10 +151,10 @@ synthetic clients, independent transport subscriptions, and native MIDI packet
 construction/arbitration. `verify_edit_events.py` checks first-owner precedence,
 native fallback, register/stack/condition-code preservation, callback ordering,
 copy results and counts. A second pass executes native memcpy for 12 lengths
-and four alignments, comparing zero/one/three clients' copy bytes, entry frame,
+and four alignments, comparing zero/one/three pre clients, post-only and pre/post clients' copy bytes, entry frame,
 return registers, stack and condition codes. Synthetic callbacks deliberately
 clobber registers.
-`verify_events_selection.py` checks all 32 event subsets, absent code/hooks,
+`verify_events_selection.py` checks all 64 event subsets, absent code/hooks,
 invalid registrations and the registry's bound real-client selections. A
 16-subscriber MIDI case also checks branch reach and constant stack depth.
 `verify_event_clients.py` checks executable callbacks, exclusive installed hook

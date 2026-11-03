@@ -9,13 +9,16 @@ from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 FAMILIES = {
     'transport': ('start', 'resume'),
     'midi': ('note_accepted',),
-    'edit': ('held', 'copy_pre'),
+    'edit': ('held', 'copy_pre', 'copy_post'),
 }
 CLIENTS = {
     'transport': (('EUCLID', 'eu_seq', ('start', 'resume')),
-                  ('MIDI FOLLOW', 'bf_seq', ('start', 'resume'))),
-    'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),),
-    'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre')),),
+                  ('MIDI FOLLOW', 'bf_seq', ('start', 'resume')),
+                  ('MIDI HARMONY', 'mh_seq', ('start', 'resume'))),
+    'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),
+             ('MIDI HARMONY', 'mh_seq', ('note_accepted',))),
+    'edit': (('MIDI HARMONY', 'mh_ed', ('held', 'copy_pre', 'copy_post')),
+             ('PLOCKS P2', 'plk_ed', ('held', 'copy_pre')),),
 }
 
 
@@ -58,7 +61,7 @@ def event_inc(modules, remix=None):
                 out += ['    move.l (%sp),%d0', f'    jsr {names[0]}']
             elif family == 'midi':
                 out += ['    movem.l (%sp),%d0-%d3', f'    jsr {names[0]}']
-            elif event == 'copy_pre':
+            elif event in ('copy_pre', 'copy_post'):
                 out += ['    move.l 68(%sp),%d0', '    move.l 72(%sp),%d1',
                         '    move.l 76(%sp),%d2', f'    jsr {names[0]}']
             else:
@@ -73,7 +76,7 @@ def event_inc(modules, remix=None):
 def select(modules):
     """Only claimed boundaries/code enter the bound module and claims ledger."""
     active = {event for event, handlers in registrations(modules).items() if handlers}
-    detours = tuple(d for event, hooks in HOOKS.items() if event in active for d in hooks)
+    detours = tuple(dict.fromkeys(d for event, hooks in HOOKS.items() if event in active for d in hooks))
     units = tuple(u for u in UNITS if any(d.unit == u.label for d in detours))
     return {'linked': units, 'detours': detours}
 
@@ -122,13 +125,14 @@ _EDIT_HOOKS = (
     )
 HOOKS['edit', 'held'] = _EDIT_HOOKS[:1]
 HOOKS['edit', 'copy_pre'] = _EDIT_HOOKS[1:]
+HOOKS['edit', 'copy_post'] = _EDIT_HOOKS[1:]
 
 MODULE = Module(
     name='events', key='EVENTS', kind=Kind.CF_PATCH,
     category=Category.PARTS, author='radiohagen', author_url='https://github.com/radiohagen',
-    proof=Proof.CHECK, proof_note="Tested on radiohagen's MKII (25 Oct 2026): transport and trig-paste undo.",
+    proof=Proof.CHECK, proof_note="Transport and trig-paste undo tested on radiohagen's MKII (25 Oct 2026); new post-copy/Harmony composition: emulator checks only.",
     doc='System: transport and MIDI notifications, held-step ownership and copy notifications.',
-    linked=UNITS, detours=tuple(d for hooks in HOOKS.values() for d in hooks),
+    linked=UNITS, detours=tuple(dict.fromkeys(d for hooks in HOOKS.values() for d in hooks)),
     select=select,
     gates=(Gate('tools/verify/verify_system_events.py', once=True, venv=True),
            Gate('tools/verify/verify_edit_events.py', once=True, venv=True),

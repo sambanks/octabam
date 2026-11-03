@@ -22,14 +22,16 @@ def native_copy_cases(work):
             if pc == 0x40020898:
                 self.native_count += 1
                 assert [u.reg_read(r) for r in fixture.REGS] == self.before
-                assert u.reg_read(fixture.UC_M68K_REG_A7) == STACK
+                assert u.reg_read(fixture.UC_M68K_REG_A7) == STACK - (16 if self.has_post else 0)
                 return
             super().hook(u, pc, size, data)
 
     raw = (fixture.ROOT / 'out/raw/section_3_MAIN_OS.bin').read_bytes()
     fixtures = []
-    for count in (0, 1, 3):
-        f = RealCopy('edit', count, work)
+    for count, handled in ((0, None), (1, None), (3, None),
+                           (1, ('copy_post',)), (3, ('copy_pre', 'copy_post'))):
+        f = RealCopy('edit', count, work, handled=handled)
+        f.has_post = handled is not None and 'copy_post' in handled
         f.uc.mem_write(0x40020898, raw[0x40020898 - 0x40000400:0x40022000 - 0x40000400])
         fixtures.append(f)
     cases = 0
@@ -49,9 +51,9 @@ def native_copy_cases(work):
                 states.append(([u.reg_read(r) for r in fixture.REGS],
                                u.reg_read(fixture.UC_M68K_REG_A7), read_sr(u, DONE - 16),
                                bytes(u.mem_read(0x47005000, 4096))))
-            assert states[0] == states[1] == states[2], (size, offset)
+            assert all(state == states[0] for state in states), (size, offset)
             cases += 1
-    print(f'[ok] {cases} native memcpy comparisons: 0/1/3 clients, {len(lengths)} lengths x 4 alignments; entry frame, copy bytes, return registers, stack and CCR match stock')
+    print(f'[ok] {cases} native memcpy comparisons: 0/1/3 clients, pre-only/post-only/pre+post, {len(lengths)} lengths x 4 alignments; entry frame, copy bytes, return registers, stack and CCR match stock')
 
 def main():
     cases=0;costs={}

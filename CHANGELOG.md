@@ -18,6 +18,7 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- **MIDI HARMONY** adds scale-degree notes, generated chords, CHORD PLAY and per-step degree accumulation. Works with or without MIDI Follow; guarded STORE companions and protected MIDI retained storage preserve its pattern data.
 - **Site and builder version v0.3** (`tools/site/release.py`): `octabam` v0.3 is v0.2 plus the KITS list change below (PR #1004).
 - **KITS: each list names itself; FUNC+YES in LOAD KIT no longer arms the tracks** (PR #1004, a field report). LOAD KIT and SAVE KIT are both the stock list, which has no title: each now shows `LOAD KIT` / `SAVE KIT` as a message when it opens (drawn over the list's middle row, gone by ~1.9 s under the port). FUNC+YES stays SAVE KIT's quick save; in LOAD KIT it fell through to stock's FUNC+YES (ARM ALL) and now shows `LOAD KIT: NO SAVE` and does nothing else. FUNC+YES now takes a KITS list by its callbacks, not by the last-opened flag, which outlived a close by NO. Under the port only (`verify_kits` lfyes/lfyes0 against the module before, on a fresh project; CI skipped `verify_kits` for want of a project); not flashed.
 - **Site and builder version v0.2** (`tools/site/release.py`): the tag the web builder's patches are built from, and the version the site pages and `gen_pages.py` print. `octabam` v0.2 is v0.1 plus VARISPEED, minus FX2 LOCK (PR #1000).

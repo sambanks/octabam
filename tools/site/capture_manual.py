@@ -362,6 +362,20 @@ def capture_midi_follow(p,r):
     shot(p,'midi-follow','fixed','FOLLOW: FIXED octave 3 and TRIG update.',r)
 
 
+def capture_midi_harmony(p,r):
+    press(p,'midi');press(p,'t1');p.chord('func','pg_playback')
+    # Small enumerations consume four counts per report; saturate at CHORD.
+    for _ in range(4): enc(p,5,4)
+    shot(p,'midi-harmony','note-setup','MIDI NOTE SETUP: HARM CHORD.',r)
+    press_encoder(p,5)
+    shot(p,'midi-harmony','chord','HARMONY: chord voicing, spread, root and size.',r)
+    press(p,'down')
+    shot(p,'midi-harmony','accum','HARMONY: degree accumulator bounds and reset.',r)
+    close(p)
+    press(p,'pg_playback')
+    shot(p,'midi-harmony','note-main','MIDI NOTE: degree, chord and accumulator controls.',r)
+
+
 def prepare(remix,project,assignments):
     label='manual-features' if remix.startswith('../') else remix
     work=OUT/label;work.mkdir(parents=True,exist_ok=True)
@@ -430,7 +444,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','devilish','morph','free-loop'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','midi-harmony','utilities','varispeed','usb','octa303','cxosc','distorx','devilish','morph','free-loop'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -439,6 +453,7 @@ def main():
         if group=='core': jobs=[('octabam',capture_core,[])]
         elif group=='midi-loopback':jobs=[('midi-loopback',capture_midi_loopback,[])]
         elif group=='midi-follow':jobs=[('midi-follow',capture_midi_follow,[])]
+        elif group=='midi-harmony':jobs=[('midi-harmony',capture_midi_harmony,[])]
         elif group=='plocks': jobs=[('octabam',capture_plocks,[(1,'fx2','PLATE REV')])]
         elif group=='midi-scales':jobs=[('midi-scales',capture_midi_scales,[])]
         elif group=='features':

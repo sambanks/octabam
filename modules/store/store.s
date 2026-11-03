@@ -8,7 +8,10 @@
 |
 |   loadall_pre/post     none
 |   loadmask_pre/post    d1 = the bank mask, d2 = the caller's return address
-|   newproj              none
+|   newproj/newproj_post none, before/after the native new-project routine
+|   bankw_guard          d1 = bank mask; checked before bankw_pre
+|   bankcopy_guard       d0 = destination, d1 = source; checked before any copy
+|   bankcopy_done        d0 = destination, d1 = source, d2 = native success; checked
 |   bankw_pre            d1 = the mask of banks the writer is about to write
 |   bankw_post           none
 |   pstore_pre/post      none
@@ -20,6 +23,7 @@
 |   partsaved            d0 = the part (0..3), the current bank
 |   partclear            d0 = the part
 |
+| Checked phases return d0 < 0 to stop; other callbacks have no result.
 | The wrappers keep one return slot each; none re-enters.
 
         .include "remix.inc"
@@ -66,6 +70,25 @@ fire:
         movel   %sp@+,%a2
         bra.s   1b
 2:      rts
+
+| Checked phases: the same d0-d2 arguments, d0 < 0 vetoes the operation.
+| Keep arguments and cursor on our stack because clients clobber all registers.
+        .ifdef STORE_CHECKED
+fire_checked:
+        lea     %sp@(-16),%sp
+        moveml  %d0-%d2/%a0,%sp@
+1:      moveal  %sp@(12),%a0
+        movel   %a0@+,%d0
+        beq.s   2f
+        movel   %a0,%sp@(12)
+        moveal  %d0,%a1
+        moveml  %sp@,%d0-%d2
+        jsr     %a1@
+        tstl    %d0
+        bpl.s   1b
+2:      lea     %sp@(16),%sp
+        rts
+        .endif
 
 | 0x40090504: the project load's bank load.
 store_loadall:
@@ -132,10 +155,26 @@ store_newproj:
         lea     ev_newproj,%a0
         bsr.w   fire
         REST
+        .ifdef STORE_NEWPROJ_POST
+        movel   %sp@+,NP_RET
+        pea     np_after
+        .endif
         movel   %a2,%sp@-               | displaced
         clrl    %sp@-
         jsr     0x4000fd34
         jmp     0x400909e2
+        .ifdef STORE_NEWPROJ_POST
+np_after:
+        movel   NP_RET,%sp@-
+        SAVE
+        moveq   #0,%d0
+        moveq   #0,%d1
+        moveq   #0,%d2
+        lea     ev_newproj_post,%a0
+        bsr.w   fire
+        REST
+        rts
+        .endif
 
 | 0x400917c8: the bank writer (background save, save-as, new project,
 | SAVE PROJECT). After it: bankw_post.
@@ -159,6 +198,18 @@ bw_after:
 | 0x400918aa, inside the bank writer, after the project directory is made
 | and before the first bankNN.work: d6 (low word) = the banks it writes.
 store_bankw_mid:
+        .ifdef STORE_BANKW_GUARD
+        SAVE
+        moveq   #0,%d0
+        moveq   #0,%d1
+        movew   %d6,%d1
+        moveq   #0,%d2
+        lea     ev_bankw_guard,%a0
+        bsr.w   fire_checked
+        tstl    %d0
+        bmi.s   bw_refused
+        REST
+        .endif
         lea     0x400e21e0,%a2          | displaced
         SAVE
         moveq   #0,%d0
@@ -169,6 +220,12 @@ store_bankw_mid:
         bsr.w   fire
         REST
         jmp     0x400918b0
+        .ifdef STORE_BANKW_GUARD
+bw_refused:
+        movel   %d0,%sp@(8)             | native error return is d2
+        REST
+        jmp     0x400919d6
+        .endif
 
 | 0x4008ee74: the project store. pstore_pre, stock's store, pstore_post.
 store_pstore:
@@ -217,18 +274,47 @@ pr_after:
 | and the project store and reload (which call it through d5): stock copies,
 | then bankcopy.
 store_fcopy:
+        .ifdef STORE_BANKCOPY_GUARD
+        SAVE
+        movel   %sp@(60+4),%d0
+        movel   %sp@(60+8),%d1
+        moveq   #0,%d2
+        lea     ev_bankcopy_guard,%a0
+        bsr.w   fire_checked
+        tstl    %d0
+        bpl.s   fc_allowed
+        movel   %d0,%sp@
+        REST
+        rts
+fc_allowed:
+        REST
+        .endif
         movel   %sp@(12),%sp@-
         movel   %sp@(12),%sp@-
         movel   %sp@(12),%sp@-
         jsr     F_COPY
         lea     %sp@(12),%sp
+        tstl    %d0
+        bmi.w   fc_return               | no client may copy after native failure
         SAVE                            | d0 = stock's result, kept
         movel   %sp@(60+4),%d0
         movel   %sp@(60+8),%d1
         moveq   #0,%d2
         lea     ev_bankcopy,%a0
         bsr.w   fire
+        .ifdef STORE_BANKCOPY_DONE
+        movel   %sp@(60+4),%d0
+        movel   %sp@(60+8),%d1
+        movel   %sp@,%d2
+        lea     ev_bankcopy_done,%a0
+        bsr.w   fire_checked
+        tstl    %d0
+        bpl.s   fc_done
+        movel   %d0,%sp@               | return the companion failure
+fc_done:
+        .endif
         REST
+fc_return:
         rts
 
 store_d5_ef9a:
@@ -685,6 +771,9 @@ crc_init:
 
         .section .data
         .align  4
+        .ifdef STORE_NEWPROJ_POST
+NP_RET: .long   0
+        .endif
 SL_RET: .long   0
 SM_RET: .long   0
 SM_MASK: .long  0

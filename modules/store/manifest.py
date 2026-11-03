@@ -10,7 +10,7 @@ the detours and calls each client's handler at the event
 client that is not in the remix is left out of the tables.
 """
 
-from remix.schema import Category, Detour, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 
 H = bytes.fromhex
 
@@ -21,6 +21,9 @@ EVENTS = (
     "bankw_pre", "bankw_post", "pstore_pre", "pstore_post", "preload_post",
     "bankcopy", "tocs1", "fromcs1", "partsaved", "partclear",
 )
+
+CHECKED_EVENTS = ("bankw_guard", "bankcopy_guard", "bankcopy_done")
+EXTRA_EVENTS = (*CHECKED_EVENTS, "newproj_post")
 
 # (module key, symbol prefix, events handled). Table order is run order.
 CLIENTS = (
@@ -41,6 +44,8 @@ CLIENTS = (
     # No side file: partclear holds its per-track state and the partsaved that ends
     # the clear lets it go (stock Part Clear tail-jumps into Part Save).
     ("VARISPEED", "vs", ("partsaved", "partclear")),
+    ("MIDI HARMONY", "ch", ("loadall_post", "loadmask_post", "newproj", "newproj_post",
+                           "bankw_guard", "bankcopy_guard", "bankcopy_done", "tocs1", "fromcs1")),
 )
 
 
@@ -62,7 +67,13 @@ def store_inc(modules, remix):
                                         key=lambda c: CLIENT_IDS[c[0]]):
         pre = {k: p for k, p, _e in CLIENTS}[key]
         out.append(f"        .long   {pre}_st_answer" if key in modules else "        .long   0")
-    for ev in EVENTS:
+    selected_events = {ev for key, _prefix, handled in CLIENTS if key in modules for ev in handled}
+    extra = [ev for ev in EXTRA_EVENTS if ev in selected_events]
+    defines = [f".set STORE_{ev.upper()},1" for ev in extra]
+    if selected_events.intersection(CHECKED_EVENTS):
+        defines.append(".set STORE_CHECKED,1")
+    out[0:0] = defines
+    for ev in (*EVENTS, *extra):
         out.append(f"ev_{ev}:")
         for key, prefix, handled in CLIENTS:
             if key in modules and ev in handled:
@@ -76,9 +87,10 @@ MODULE = Module(
     key="STORE",
     kind=Kind.CF_PATCH,
     category=Category.PARTS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
+    proof=Proof.HARDWARE, proof_note="Prior STORE: cursory testing on Sam's MKII (owner report, 16 Oct 2026); new guarded Harmony callbacks: emulator checks only",
     doc="Platform: the stock save, load, copy, CS1 and Part sites STORE clients share.",
     linked=(Linked("store", "modules/store/store.s", dram=True, include=store_inc),),
+    gates=(Gate("tools/verify/verify_store_copy.py", stage="image", venv=True),),
     detours=(
         Detour(0x40090504, H("4feffeb848d77cfc"), "store", "store_loadall",
                "a load of every bank", pad_to=8),

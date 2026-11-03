@@ -431,11 +431,12 @@ class PlanTests(unittest.TestCase):
         context = reach.Context.from_registry()
         script = "tools/verify/verify_store_part_selection.py"
         self.assertEqual(context.gate_owners[script], ["STORE"])
-        self.assertEqual(context.gate_remixes[script],
-                         {"hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback"})
+        expected = {"hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback",
+                    "midi-harmony", "midi-harmony-follow",
+                    "harmony-follow-native-review", "harmony-scales-provider"}
+        self.assertEqual(context.gate_remixes[script], expected)
         rows = reach.classify([script], context)
-        self.assertEqual(reach.remixes_reached(rows),
-                         ["hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback"])
+        self.assertEqual(reach.remixes_reached(rows), sorted(expected))
 
     def test_remixes_reached(self):
         rows = reach.classify(["modules/character/a.asm", "remixes/miniverb/remix.py"], ctx())
