@@ -12,6 +12,8 @@ has a page for every feature.
 ## The effects
 
 SPECTRUM, CHARACTER and MODULATION are on FX1 and FX2, beside the stock effects.
+COMPRESSOR has a side-chain: on page 2, KEY picks the track that drives it
+([side-chain compressor](usage/sidechain-compressor.md)).
 
 | Effect | What it is |
 |---|---|

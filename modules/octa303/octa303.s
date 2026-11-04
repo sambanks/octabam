@@ -404,8 +404,8 @@ sy_render:
         add.l   %d2,%a0
         btst    #4,(%a0)                | a voice starts this frame: whose sample?
         beq     .Lison
-        move.l  %d2,%d0                 | v7.0: the TB-303 machine (a signed FLEX track)?
-        bsr     o3_sigcur
+        move.l  %d2,%d0                 | v7.0: the TB-303 machine (a signed FLEX track, one of the first O3_MAX)?
+        bsr     o3_sigcur_lim
         move.l  %d0,S_MACH(%a3)
         beq     .Lsmp
         bsr     o3_setupptr             | yes: SETUP's WAVE is the carrier, whatever the slot holds
@@ -1537,6 +1537,65 @@ o3_sigcur:
         moveq   #0,%d0
         rts
 
+| ---- the limit: O3_MAX signed tracks in a Part.  Each voice costs about 9 points of the ColdFire's frame interrupt
+|      and the first about 21 more (one MKII, 2 Nov 2026: 2 machines 65 %, 4 machines 83 %, ~102 % extrapolated for 6),
+|      and the panel starves near 98 %.
+        .set    O3_MAX,         2
+
+| ---- o3_nsigned: a0 = Part', d0 = a track -> d0 = the signed tracks of the Part other than that one.  Saves all else.
+o3_nsigned:
+        lea     -16(%sp),%sp
+        movem.l %d1-%d4,(%sp)
+        move.l  %d0,%d3
+        moveq   #0,%d2
+        moveq   #7,%d4
+.Lnsg_l:
+        cmp.l   %d3,%d4
+        beq     .Lnsg_n
+        move.l  %d4,%d0
+        bsr     o3_sig
+        add.l   %d0,%d2
+.Lnsg_n:
+        subq.l  #1,%d4
+        bpl     .Lnsg_l
+        move.l  %d2,%d0
+        movem.l (%sp),%d1-%d4
+        lea     16(%sp),%sp
+        rts
+
+| ---- o3_sigcur_lim: d0 = track -> d0 = 1 when it is a signed track among the first O3_MAX of the current Part
+|      (a project loaded with more has the rest play as plain FLEX).  Clobbers d1, a0.
+o3_sigcur_lim:
+        move.l  %d0,-(%sp)
+        bsr     o3_sigcur
+        beq     .Llim_x
+        bsr     o3_curpart                      | a0 = Part'
+        move.l  (%sp),%d0
+        lea     -8(%sp),%sp
+        movem.l %d2-%d3,(%sp)
+        move.l  %d0,%d3
+        moveq   #0,%d2                          | the signed tracks below this one
+        subq.l  #1,%d3
+        bmi     .Llim_cnt
+.Llim_l:
+        move.l  %d3,%d0
+        bsr     o3_sig
+        add.l   %d0,%d2
+        subq.l  #1,%d3
+        bpl     .Llim_l
+.Llim_cnt:
+        moveq   #0,%d0
+        cmp.l   #O3_MAX,%d2
+        bcc     .Llim_no
+        moveq   #1,%d0
+.Llim_no:
+        movem.l (%sp),%d2-%d3
+        lea     8(%sp),%sp
+.Llim_x:
+        addq.l  #4,%sp
+        tst.l   %d0
+        rts
+
 | ---- o3_type (ANALOG BD's ab_type): d0 = a machine byte, a0 = where it was read -> d0 = O3_ROW when
 |      the byte is the current part's track machine byte (Part' + 0x22 + track) of a signed track,
 |      else d0 unchanged.  Everything else kept.
@@ -1582,6 +1641,20 @@ o3_type:
 o3_sigwrite:
         lea     -20(%sp),%sp
         movem.l %d0-%d2/%a0-%a1,(%sp)
+        tst.l   %d1
+        beq     .Lsw_ok                 | unsigning is never refused
+        bsr     o3_nsigned              | signing: a third machine in the Part is refused (the callers store FLEX)
+        cmp.l   #O3_MAX,%d0
+        bcs     .Lsw_ok
+        pea     0x30
+        pea     o3_maxmsg
+        jsr     NOTIFY
+        addq.l  #8,%sp
+        movem.l (%sp),%d0-%d2/%a0-%a1
+        lea     20(%sp),%sp
+        rts
+.Lsw_ok:
+        move.l  (%sp),%d0
         moveq   #30,%d2
         muls.l  %d2,%d0
         move.l  %a0,%a1
@@ -2242,6 +2315,26 @@ o3_validate:
         move.l  %a2,%a0
         bsr     o3_sig
         beq     .Lv_n
+        move.l  %d3,%d1                 | the limit: d3 holds the signed tracks kept so far, all below this one
+        moveq   #0,%d0
+.Lv_pc:
+        lsr.l   #1,%d1
+        bcc     .Lv_nc
+        addq.l  #1,%d0
+.Lv_nc:
+        tst.l   %d1
+        bne     .Lv_pc
+        cmp.l   #O3_MAX,%d0
+        bcs     .Lv_keep
+        moveq   #30,%d0                 | a third signed track (a loaded project): unsign it, the stock
+        muls.l  %d2,%d0                 | validator then clamps its bytes as FLEX's
+        lea     SIG_OFF(%a2),%a1
+        adda.l  %d0,%a1
+        clr.b   (%a1)+
+        clr.b   (%a1)+
+        clr.b   (%a1)
+        bra     .Lv_n
+.Lv_keep:
         moveq   #1,%d0
         lsl.l   %d2,%d0
         or.l    %d0,%d3
@@ -4106,6 +4199,9 @@ o3_f_plus:
         .asciz  "+%d"
 o3_notes:                               | v7.0: o3_fmt_tune's names, two bytes each
         .ascii  "C C#D D#E F F#G G#A A#B "
+        .align  4
+o3_maxmsg:
+        .asciz  "MAX 2 OCTA-303"
         .align  4
 o3_obuf:                                | v7.1: o3_octave's toast
         .space  16

@@ -120,7 +120,13 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
     - FRAME `-` means after the load and before the transport;
     - FRAME N means frame N after the transport start.
   - `--live-script FILE`: lines of `<emulated ms> key|enc|pot|midi|poke|quit ...` (`poke` as `--poke`),
-    applied at those emulated times with the transport stopped.
+    applied at those emulated times with the transport stopped. A script that
+    stops early (`live script: stopped before ...`: its frames stopped
+    coming) prints `stall cpu  : pc=... sr=...`, where the ColdFire was. With
+    `OT_STALL_CPU=1` it also prints the next 64 PCs, single-stepped, which
+    shows the loop it is in (and moves the machine 64 instructions before
+    any `--mem-dump`). A loop at `0x4001551e` with the mask at 5 is the stock
+    card driver's first-sector window (TRAPS.md, trap-first-sector-irq).
   - `--scenario "LOG ARGS..."` (repeatable, with `--scenario-jobs N`) loads
     once and forks one child per scenario from the identical loaded
     machine. The DSP cores' shared memory is copied private in each child

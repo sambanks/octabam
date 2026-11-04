@@ -727,6 +727,11 @@ namespace ot
 		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())), M68K_REG_PPC);
 	}
 
+	uint32_t Machine::sr() const
+	{
+		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())), M68K_REG_SR);
+	}
+
 	uint32_t Machine::pc() const
 	{
 		return getPC();

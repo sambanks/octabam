@@ -211,6 +211,10 @@ CASES = [
       _cf("beta", keeps=(Keep(0x4001f322, bytes.fromhex("48780070")),))], "kept bytes"),
     ("a cave over the stock DELAY's table read (issue #771)",
      [registry.by_key("DELAY"), _cave("alpha", 0x400d24d0)], "kept bytes"),
+    ("a cave over entry 764 of the stock DELAY's table (issue #1007)",
+     [registry.by_key("DELAY"), _cave("alpha", 0x400d28d0)], "kept bytes"),
+    ("a cave over entry 1006 of the stock DELAY's table (issue #1007)",
+     [registry.by_key("DELAY"), _cave("alpha", 0x400d2c98)], "kept bytes"),
     # ---- grown tables ----------------------------------------------------
     ("two modules growing one stock array",
      [_cf("alpha", tables=(TableGrow("t", 0x40100000, 4, (("u", "a"),), ((0x40065bd8, 0x40100000),)),)),
@@ -1016,6 +1020,7 @@ def main():
              "hooks": (), "hooks-boot": (), "hooks-chrom-303": (),
              "hooks-chrom-bp": ("SPRING REV",),   # BLACKPYRAMIDS's voice in SPRING's words, as blackpyramids-303
              "hooks-core": ("PHASER", "DARK REV"),   # LOAD METER's DSP half in PHASER's (as stock-meter-a), CF METER's readout in DARK's (as cfmeter)
+             "hooks-free-loop": (),   # FREE LOOP + REC_TRIG_MUTE + REC THRESHOLD: ColdFire, no DSP words
              "hooks-machines": ("SPRING REV",),   # ANALOG BD's voices in SPRING's words, as analog-bassdrum
              "hooks-machines-all": ("SPRING REV",),   # the same, with CX OSC
              "hooks-machines-cx": (),   # OCTA303 + CX OSC: ColdFire, no DSP words
@@ -1039,7 +1044,7 @@ def main():
              "octatrick": ("SPATIALIZER",),   # USB's ABCD input inject, as in the io remixes
              "pext-probe": ("EQUALIZER", "PLATE REV", "SPRING REV"),   # the probe takes EQUALIZER's id and the two reverbs' words
              "window-mod": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"), "window-ctl": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"),   # MODULATION takes CHORUS's id; the reverbs' words hold LOAD METER and CORE
-             "octabam": (),   # all 14 stock effects stay; ours and LOAD METER run from the window
+             "octabam": (),   # all 14 stock effects stay; ours, SC and LOAD METER run from the window
              "octabam-full": (),   # octabam with TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR as well
              "dlspike": (),   # all 14 stock effects stay; MODULATION is loaded on demand
              "dl-probe": ("EQUALIZER",), "dl-probe-any": ("EQUALIZER",),   # DLPROBE takes EQUALIZER's id

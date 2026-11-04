@@ -45,7 +45,7 @@ def symbols():
     return {l.split()[-1]: int(l.split()[0], 16) for l in out.splitlines() if len(l.split()) == 3}
 
 
-def run(name, card, image, script, steps=()):
+def run(name, card, image, script, steps=(), extra=()):
     global PART
     d = OUT / name
     d.mkdir(parents=True, exist_ok=True)
@@ -53,7 +53,7 @@ def run(name, card, image, script, steps=()):
              f"{LANE:#x},600={d}/lane.bin;{PB_TABLE5:#x},4={d}/page.bin")
     cmd = [os.environ.get("O3_EMU", str(ROOT / "out/emu/ot_emu")), "--image", str(image), "--card", str(card),
            "--set", "OCTABAM", "--project", "RIG", "--load-ms", "20000", "--dsp", "--mem-dump", spans,
-           "--lcd", str(d / "lcd.bin")]
+           "--lcd", str(d / "lcd.bin"), *extra]
     if script:
         t, ev = 0, []
         for delay, e in script + [(1.0, "quit")]:
@@ -146,6 +146,40 @@ def main():
     assert after[0x1E0 + 30 + 2] <= 3, ("the unsigned track was not validated", after[0x1E0 + 32])
     print("PASS validate: a signed track keeps FINE/SLID/DRIV 100/90/120; the unsigned one clamps "
           f"(T2 LEN 100 -> {after[0x1E0 + 32]})")
+
+    # 4. the limit: a Part holds at most O3_MAX signed tracks; a third pick is refused with the stock toast
+    NOTIFY = 0x4005A2B8
+    sig = lambda base, t: [f"{base + 0x3C + 30 * t + i:#x}={v:#x}" for i, v in enumerate((0x54, 0x42, 1))]
+    pick_t3 = key(0x12) + SELECT[len(key(0x10)):]
+    for name, signed in (("limit", (0, 1)), ("limit-control", (0,))):
+        pokes = ";".join(x for t in signed for base in (PART, SHADOW) for x in sig(base, t))
+        rd, log, d = run(name, card, image, [(0.5, f"poke {pokes}")] + pick_t3, extra=("--watch-pc", f"{NOTIFY:#x}"))
+        assert "ended on quit" in log, f"{name}: the script did not finish"
+        part, shadow = rd("part.bin"), rd("shadow.bin")
+        hits = [l for l in log.splitlines() if l.startswith("watch-pc") and "hit(s)" in l]
+        n = int(hits[0].split(":")[1].split()[0]) if hits else 0
+        for nm, p in (("part", part), ("shadow", shadow)):
+            for t in signed:
+                assert p[0x3C + 30 * t:0x3F + 30 * t] == b"TB\x01", (name, nm, f"T{t + 1} lost its signature")
+            assert p[0x22 + 2] == 1, (name, nm, "T3's machine byte", p[0x22 + 2])
+        t3 = (part[0x3C + 60:0x3F + 60], shadow[0x3C + 60:0x3F + 60])
+        if len(signed) == 2:
+            assert t3 == (bytes(3), bytes(3)), (name, "T3 was signed past the limit", t3)
+            assert n > 0, (name, "no toast: NOTIFY was not called")
+            print(f"PASS limit: T1 and T2 signed, T3 refused (FLEX, no signature, in both copies), toast called {n}x")
+        else:
+            assert t3 == (b"TB\x01", b"TB\x01"), (name, "control: T3 should be signed with one other machine", t3)
+            print("PASS limit control: with one other machine T3 is signed")
+
+    # 5. the Part validator unsigns a third signed track of a loaded Part
+    pk = [x for t in (0, 1, 2) for x in sig(PART, t)]
+    rd, log, _ = run("limit-validate", card, image, None,
+                     (f"-:poke:{';'.join(pk)}", f"-:call:0x40002318,{PART:#x}", f"-:dump:{PART:#x},6322={OUT}/limit-validate/after.bin"))
+    after = rd("after.bin")
+    for t in (0, 1):
+        assert after[0x3C + 30 * t:0x3F + 30 * t] == b"TB\x01", ("limit-validate", f"T{t + 1} lost its signature")
+    assert after[0x3C + 60:0x3F + 60] == bytes(3), ("limit-validate", "T3 still signed", after[0x3C + 60:0x3F + 60])
+    print("PASS limit-validate: the Part validator keeps the first two signed tracks and unsigns the third")
 
 
 if __name__ == "__main__":

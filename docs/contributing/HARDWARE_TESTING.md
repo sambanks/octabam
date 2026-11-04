@@ -117,6 +117,19 @@ about 0.03 point.
 - **Results so far.** The stock effects' per-slot costs are in
   [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), "Tests not yet run", item 1.
 
+**ColdFire cost of a ColdFire module.** `tools/hw/ot_cfmatrix.py` writes a project of
+layouts whose cost is ColdFire work: OCTA-303 voices (a `TB303` sample name, or a signed
+machine), trig density, PTCH locks, VARISPEED (TSTR = VARI) and stations on FX1.
+`plan` lists a set (`--set cost` or `--set diag`), `proj SRC DEST` writes it
+(`--only-layout N` fills every slot with one layout, for the port, which plays A01), and
+`run DEST LABEL` steps the layouts over USB MIDI and records only LOAD METER's ColdFire
+share, longest run and both DSP cores. It needs no USB audio device.
+`ot_matrix.py run` on the same project adds the audio detectors but needs the device.
+The ColdFire share depends on whether a host is reading the unit's USB audio:
+BASE (8 FLEX tracks, a hit on step 1) read 29.9 % with nothing reading the stream and
+67.7 % with a capture open, TRACKS PRE, on one MKII (2 Nov 2026). Compare layouts
+within one state.
+
 ## Stress sequences
 
 `python3 tools/hw/ot_fuzz.py gen <seed> <out.json> --profile mix --minutes 10 --layouts <n>`

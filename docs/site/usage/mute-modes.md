@@ -19,3 +19,6 @@ setting survives a power cycle.
 
 - A muted track that a COMPRESSOR uses as its KEY keeps feeding it, as on
   stock, including SIDECHAIN COMPRESSOR where the image has it.
+- A track that is still muted when MUTE MODE changes from OT to another mode
+  keeps OT's cut until you unmute it, so a note OT started while the track was
+  muted is never heard.

@@ -1084,6 +1084,7 @@ def main():
     # TEMPO SYNC's CAVE setting chooses its own (its manifest's variant).
     import shutil, tempfile
     _sym = {}                       # cave/unit label -> {symbol: address}
+    _wrapping = []                  # (module, unit, FormatterReg, address): wrapping formatters, written after 1c
     _exports = {}                   # GLOBAL symbols of every unit linked so
                                     # far -> the --defsym set later units
                                     # resolve their cross-unit references from
@@ -1156,7 +1157,9 @@ def main():
         if _c.cave_addr is not None and OVERFLOW_RUN <= _c.cave_addr < OVERFLOW_RUN_END:
             _ovf_top = max(_ovf_top, (_c.cave_addr + len(_b) + 3) & ~3)
     # Floating code starts past any bytes a module keeps stock here (DELAY
-    # reads the run's first 16 as the tail of its table, stock.DELAY_TABLE_END).
+    # reads the whole run as entries 508..1023 of its table, stock.DELAY_TABLE_END;
+    # issue #1007; it keeps all but SCALE QUANTIZER's pinned tail), so in a remix
+    # that lists DELAY nothing floats into it.
     for _k in REMIX.modules:
         for _kp in getattr(remix_modules()[_k], "keeps", ()):
             if OVERFLOW_RUN <= _kp.addr < OVERFLOW_RUN_END:
@@ -1390,6 +1393,8 @@ def main():
                 b"\x4e\xb9" + _c.cave_addr.to_bytes(4, "big") \
                 + b"\x4e\x71" * ((_n - 6) // 2)
         _reg = _c.registers_formatter
+        if _reg is not None and _reg.wraps:
+            sys.exit(f"{_c.label}: a wrapping formatter (FormatterReg.wraps) is a DRAM unit's")
         if _reg is not None and _reg.module in clone_addr:
             wr32(clone_addr[_reg.module] + 0x0ca + _reg.slot * 4,
                  _c.cave_addr + _reg.offset)
@@ -1703,6 +1708,10 @@ def main():
             if _reg is None or _reg.module not in clone_addr or _reg.module in BLANKED:
                 continue
             _fa = _psyms[_reg.symbol] + _reg.offset
+            if _reg.wraps:
+                # written after the raw descriptor words (1c), over A only
+                _wrapping.append((_m.key, _u.label, _reg, _fa))
+                continue
             wr32(clone_addr[_reg.module] + 0x0ca + _reg.slot * 4, _fa)
             wr32(clone_addr[_reg.module] + 0x0fa + _reg.slot * 4, 0)
             print(f"  {_m.key} {_u.label}: {_reg.symbol} 0x{_fa:08x} registered as "
@@ -1966,7 +1975,7 @@ def main():
     _regd = {(c.registers_formatter.module, c.registers_formatter.slot)
              for k in REMIX.modules
              for c in (*remix_modules()[k].cf_patches, *remix_modules()[k].linked)
-             if c.registers_formatter is not None}
+             if c.registers_formatter is not None and not c.registers_formatter.wraps}
     for name in CLONED_ORDER:
         for idx, _pr in enumerate(_MODS[name].params):
             if not _pr.has_raw_words:
@@ -1991,6 +2000,16 @@ def main():
                 _out.append(_v)
             print(f"  {name} p{idx} {(_pr.name or b'').decode()}: descriptor words "
                   f"A 0x{_out[0]:08x} B 0x{_out[1]:08x} 0x12a 0x{_out[2]:08x}")
+    # Wrapping formatters (FormatterReg.wraps): over A only, after the raw
+    # words, so the declared formatter they wrap stays the B/0x12a slot's.
+    for _mk, _ul, _reg, _fa in _wrapping:
+        _pr = _MODS[_reg.module].params[_reg.slot]
+        if not (_pr.has_raw_words and isinstance(_pr.formatter_word, tuple)):
+            sys.exit(f"{_mk} {_ul}: wraps {_reg.module} p{_reg.slot}, which declares no "
+                     f"formatter of its own to wrap")
+        wr32(clone_addr[_reg.module] + 0x0ca + _reg.slot * 4, _fa)
+        print(f"  {_mk} {_ul}: {_reg.symbol} 0x{_fa:08x} wraps {_reg.module} p{_reg.slot}'s "
+              f"formatter {_pr.formatter_word[0]}:{_pr.formatter_word[1]}")
     # ==== 1d. FX1 ROWS, for modules that asked for one =====================
     # THE OTHER HALF OF "BOTH SLOTS". The DSP dispatch is ONE table indexed by
     # the raw id and shared by the menus, so a module's CODE already runs from

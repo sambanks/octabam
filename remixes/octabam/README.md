@@ -26,7 +26,13 @@ effect dry, and says which at the next page key. The design and what has been me
 | CHARACTER | ✓ | ✓ | 0x17 | fold, saturation, tilt, compressor, width | [`character`](../../modules/character/README.md) |
 | MODULATION | ✓ | ✓ | 0x0e | Juno, Dimension, flanger, phaser, comb | [`modulation`](../../modules/modulation/README.md) |
 
-TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR are not in this remix; COMPRESSOR runs as stock. Their modules are in the repository.
+COMPRESSOR is [SIDECHAIN_COMPRESSOR](../../modules/sidechain-compressor/README.md): stock COMPRESSOR with a
+side-chain KEY on page 2. Its DSP code (1,711 words) is loaded the same way, into the top of T4's FX2 block, while a
+track uses COMPRESSOR; until it is, or while DARK REV on T4's FX2 or another loaded effect holds that block,
+COMPRESSOR runs as stock, KEY reads `--` and a toast says `SC KEY OFF`. It was out of this remix from 1 Nov 2026
+(`433e22e`, the 0.1 scope) and is back since #1026; this composition has not run on a unit.
+
+TRANSIENT and DISTORX are not in this remix. Their modules are in the repository.
 
 The stations have their `SLOTS` build setting at `FX1+FX2`. CHARACTER's KEY = T1
 needs a BusDelay host, so here it keys on the track's own input. A MODE
