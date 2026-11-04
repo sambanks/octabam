@@ -56,6 +56,32 @@ its channels never carried it. The channel count is 16 × TRACKS(≠ OFF) +
 combination's full-speed form is two channels, and IN is served at high
 speed only.
 
+### Descriptor counts with MIDI off (#1039, 4 Nov 2026)
+
+Reported by yvesrosius (MKII, image STEMS11, two Windows 11 laptops). With
+MIDI at OFF, DISK MODE did not mount on Windows: Device Manager showed "USB
+Mass Storage Device" with Code 10, USBSTOR `0xC0000182`. The reporter read
+the configuration descriptor off the hub port: the MSC interface declared
+`bNumEndpoints` 1 and two endpoints (bulk IN `0x81`, bulk OUT `0x01`)
+followed. Windows trusts the count, finds no bulk OUT, and the driver fails.
+
+- `msc_only_config` and `audio_config` (MIDI off) declared 1. Stock 1.40C's
+  four MSC interface descriptors declare 2 (read from the stock bytes at
+  `0x400e2025..0x400e2085`); both builders now do, whatever MIDI is.
+- `descriptors.check_config` walks a configuration and refuses it when
+  `wTotalLength`, `bNumInterfaces` or an interface's `bNumEndpoints` disagree
+  with what follows; `_blob` runs it over all four tables of all 256 sets, so
+  a bad combination fails the build. It found a second count off by one:
+  every audio configuration with MIDI off declared `bNumInterfaces` 2 (3 with
+  IN) for MSC, AudioControl and AudioStreaming (+ the IN stream), now 3 (4).
+  `verify_usb` had copied that formula; it expects the corrected counts.
+- Inferred, not tried on a unit: the interface count could also stop a strict
+  host from using the audio function with MIDI off. macOS and Linux were not
+  tried by the reporter.
+- Gate: `tools/verify/tests/test_usb_descriptors.py` (every set passes; MSC
+  declares its two endpoints with MIDI off and on; the old count and a wrong
+  total or interface count are refused). Not flashed.
+
 ## USB MIDI
 
 Class-compliant USB-MIDI in and out on the Octatrack's own USB port,
