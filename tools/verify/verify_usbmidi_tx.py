@@ -72,6 +72,9 @@ class Machine:
         self.put(0x400b966c, 0x47004000)    # the UART TX ring midi_send's DIN half writes
         self.put(0x400b9678, 4095)
         self.put("usbmidi_up", 1, 1)
+        # stock's encode-and-prime (0x4001d3ee) loads the EP2 IN queue head from this
+        # global and writes its next-dTD word; unset it is 0 and the write is at 0x8
+        self.put(0x46c8ce1c, 0x4ec94900)
 
     def put(self, at, value, size=4):
         self.u.mem_write(self.sym.get(at, at), value.to_bytes(size, "big"))
