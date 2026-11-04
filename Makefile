@@ -19,7 +19,7 @@ BUILD   ?= 79
 VERSION ?= OCTABAM$(BUILD)
 # The name an image calls itself and its .RMX file's: `<REMIX> <BUILD>`
 # (tools/remix/brain.py image_name), or RMX=NAME for `make rmx`
-IMAGE_NAME = $(shell echo "$(notdir $(REMIX)) $(BUILD)" | tr a-z A-Z | cut -c1-15 | sed 's/ *$$//')
+IMAGE_NAME = $(shell python3 tools/remix/brain.py image-name "$(notdir $(REMIX))" "$(BUILD)")
 
 # Which modules the image carries. `make modules` lists what is available;
 # remixes/<name>/remix.py is the selection. There is no default: a target

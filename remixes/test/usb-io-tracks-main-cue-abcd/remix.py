@@ -11,6 +11,7 @@ from remix.schema import Proof, Remix
 
 REMIX = Remix(
     name="usb-io-tracks-main-cue-abcd",
+    image_name="IO-TMC-ABCD",
     family="mods", proof=Proof.PORT, proof_note="`make check` (verify_usb, verify_usb_in) under the port, 28 Sep 2026; not on hardware in this form",
     doc="stock - SPATIALIZER + USB (TRACKS MAIN CUE out, ABCD in).",
     modules=("USB",

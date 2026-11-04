@@ -7,6 +7,7 @@ the BRAIN module.
 
     python3 tools/remix/brain.py resolve <remix>      the value of every setting and its layer
     python3 tools/remix/brain.py check                every module's lock, every remix's settings
+    python3 tools/remix/brain.py image-name <remix> <build>   the name REMIX SWITCH shows, and its .RMX file's
     python3 tools/remix/brain.py lock <module> [--retire KEY ...] [--retire-param KEY ...]
 """
 from __future__ import annotations
@@ -62,13 +63,18 @@ IMAGE_NAME_MAX = 15        # REMIX SWITCH's mailbox keeps the flashed image's na
 def image_name(remix=None, build=None) -> str:
     """The name an image calls itself: REMIX SWITCH's
     FLASHED row, the boot picker, and its .RMX file on the card. `RMXNAME` in the
-    environment overrides it (`make rmx RMX=NAME`); else the remix's last
-    path part and the build tag, `BRAIN B2`. Upper case, A-Z 0-9 space . _ -,
-    at most IMAGE_NAME_MAX characters."""
+    environment overrides it (`make rmx RMX=NAME`); else the remix's
+    `image_name` (schema.Remix) or its last path part, then the build tag:
+    `BRAIN B2`. Upper case, A-Z 0-9 space . _ -, at most IMAGE_NAME_MAX
+    characters. A declared image_name is at most IMAGE_NAME_MAX - 3 characters
+    so the tag (up to two characters) is never cut."""
     import os
-    raw = os.environ.get("RMXNAME") or (
-        f"{pathlib.PurePath(remix or os.environ.get('REMIX', '?')).name} "
-        f"{build if build is not None else os.environ.get('BUILD', '79')}")
+    raw = os.environ.get("RMXNAME")
+    if not raw:
+        rname = pathlib.PurePath(remix or os.environ.get("REMIX", "?")).name
+        from remix import registry
+        base = registry.declared_image_name(rname) or rname
+        raw = f"{base} {build if build is not None else os.environ.get('BUILD', '79')}"
     return re.sub(r"[^A-Z0-9 ._-]", "", raw.upper()).strip()[:IMAGE_NAME_MAX].strip() or "OCTABAM"
 
 
@@ -603,9 +609,12 @@ def write_lock(m, retire=(), retire_param=()) -> list[str]:
 
 def main(argv):
     from remix import registry
-    if len(argv) < 2 or argv[1] not in ("resolve", "check", "lock"):
+    if len(argv) < 2 or argv[1] not in ("resolve", "check", "lock", "image-name"):
         print(__doc__.strip())
         return 2
+    if argv[1] == "image-name":      # the Makefile's IMAGE_NAME: image-name <remix> <build>
+        print(image_name(argv[2], argv[3]))
+        return 0
     mods = registry.modules()
     if argv[1] == "resolve":
         r = registry.remix(argv[2] if len(argv) > 2 else None)
