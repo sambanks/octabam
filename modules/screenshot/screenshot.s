@@ -127,8 +127,8 @@ ss_go:
         movew   %sr,%d1
         movew   #0x2700,%sr
         moveal  (FRONT).l,%a3
-        movel   #255,%d0
-3:      movel   %a3@+,%a1@+
+        movel   #511,%d0
+3:      movew   %a3@+,%a1@+                 | words: ss_raw+14 is 2 mod 4
         subql   #1,%d0
         bpls    3b
         movew   %d1,%sr
