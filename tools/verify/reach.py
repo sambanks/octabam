@@ -1116,11 +1116,15 @@ def entry_name(kind, command):
 # 40467801048: remix-switch 481 s of octabam's 1886 s over 3 shards (the other
 # jobs: 1405 s, 468 s over 3 shards); module_gates --shared 353 s of the shared
 # half's 645 s, run serially.
-# The `image:` jobs (one per image-stage module gate) are cut up by their times in run 41762397696 (4 Nov 2026, 3 shards
-# on one runner, 3082 s wall, 7935 s of work): `rec` is rec-threshold 1203 s, usb-in 620 s, usb-load-meter 527 s.
+# The `image:` jobs (one per image-stage module gate) are cut up by their times in runs 41762397696 and 41783120715 (4 Nov
+# 2026): `rec` is usb-in and usb-load-meter, about 600 s each; `rec-arming`, `rec-inputs` and `rec-level` are the three
+# REC THRESHOLD gates (verify_rec_threshold.py: twelve port runs with the DSP, 1042 s in one job beside the others).
 # A runner each (a public repo's minutes are free).
 SPLIT_REMIX_JOBS = {"octabam": {"long": ("remix-switch",), "project": ("set", "mode-defaults", "plocks-p2", "pattern-mute"),
-                                "rec": ("image:rec-threshold", "image:usb-in", "image:usb-load-meter")}}
+                                "rec": ("image:usb-in", "image:usb-load-meter"),
+                                "rec-arming": ("image:rec-threshold-arming",),
+                                "rec-inputs": ("image:rec-threshold-inputs",),
+                                "rec-level": ("image:rec-threshold-level",)}}
 
 # A unit that runs one gate on its own, with a generated project, beside the units above: `check-remix <remix> (<name>)`
 # is `check_shards --only-jobs <name>`; check_shards.remix_jobs adds the gate job from COMMAND, so the gate cache covers it

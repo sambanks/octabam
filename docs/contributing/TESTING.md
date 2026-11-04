@@ -416,11 +416,12 @@ from the actions cache by `refhash_store.py key`.
 
 **CI units cut up** (`reach.entries`, `reach.SPLIT_REMIX_JOBS`). Each unit of
 the CI matrix is a runner with its own setup. `check-remix octabam` runs as
-four units, each `check_shards --only-jobs ...` over a part of the gate jobs:
+seven units, each `check_shards --only-jobs ...` over a part of the gate jobs:
 `(long)` is `remix-switch`, `(project)` is `set`, `mode-defaults` and
-`plocks-p2` (the jobs that read `OT_PROJECT`), `(rec)` is `image:rec-threshold`,
-`image:usb-in` and `image:usb-load-meter`, and the unit without a suffix is
-`--skip-jobs` of all of them and of `brain` (every other job, the remaining `image:` jobs among them). A name that is no
+`plocks-p2` (the jobs that read `OT_PROJECT`), `(rec)` is `image:usb-in`
+and `image:usb-load-meter`, `(rec-arming)`, `(rec-inputs)` and `(rec-level)` are
+the three `image:rec-threshold-*` jobs (the twelve REC THRESHOLD port runs, four each), and the unit without a suffix is
+`--skip-jobs` of all of them and of the `brain` jobs (every other job, the remaining `image:` jobs among them). A name that is no
 gate job is refused, so the parts always cover every gate job once.
 The shared half is cut the same way (`reach.SPLIT_SHARED_GATES`): `check-shared (morph)` and
 `check-shared (octa303)` run `test_morph` and `test_octa303` (`SHARED_PART=modules

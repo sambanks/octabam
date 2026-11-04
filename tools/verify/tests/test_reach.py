@@ -634,7 +634,7 @@ class PlanJsonTests(unittest.TestCase):
         # the plain unit skips the parts and the brain job; the image-stage gates no part names stay in it
         skipped = got["check-remix octabam"].split("--skip-jobs ")[1].split()[0].split(",")
         self.assertIn("brain", skipped)
-        self.assertIn("image:rec-threshold", skipped)
+        self.assertIn("image:rec-threshold-arming", skipped)
         self.assertNotIn("image:ata-write", skipped)
 
     def test_slow_shared_gates_are_units_of_their_own(self):
