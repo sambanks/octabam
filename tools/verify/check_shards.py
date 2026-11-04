@@ -417,6 +417,10 @@ def remix_jobs(remix_name, shard):
                         stage + [[PY, f"{V}/module_gates.py", remix_name, "--stage", "image", "--only-script", str(g.script)]],
                         f"{V}/module_gates.py"))
     jobs.append(job("usb", [[py, f"{V}/verify_usb.py"]], f"{V}/verify_usb.py"))
+    # The recipe runs module_gates.py for every remix; one that has no gate of
+    # its own (or none the scope reaches) has no job above that stands for it.
+    if not any(f"{V}/module_gates.py" in scripts for _n, _c, _e, scripts in jobs):
+        jobs.append(job("module-gates", [["echo", "  [none] no module gates for this remix"]], f"{V}/module_gates.py"))
     # reach.SPLIT_EXTRA_UNITS: a gate that runs only in its own unit, with a generated project
     from reach import SPLIT_EXTRA_UNITS  # noqa: E402
     for name, (module, command) in SPLIT_EXTRA_UNITS.get(remix_name, {}).items():
