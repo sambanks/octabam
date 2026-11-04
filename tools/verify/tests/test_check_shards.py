@@ -23,6 +23,13 @@ class ByGate(unittest.TestCase):
         named = set().union(*(scripts for _n, _c, _e, scripts in jobs)) | {"tools/verify/step.py", "tools/verify/card_retention.py"}
         self.assertTrue(recipe <= named, recipe - named)
 
+    def test_remix_without_module_gates_passes_the_recipe_check(self):
+        """A remix with no module gate (blackpyramids-303 on 4 Nov 2026) still
+        has a job standing for module_gates.py."""
+        jobs = self.jobs("blackpyramids-303")
+        check_shards.check_recipe(jobs)
+        self.assertIn("module-gates", [j[0] for j in jobs])
+
     def test_drift_is_refused(self):
         jobs = [j for j in self.jobs() if j[0] != "usb"]
         with self.assertRaises(SystemExit) as cm:
