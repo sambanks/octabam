@@ -87,6 +87,11 @@ def transitions(names, remix="octabam"):
     return {p: sorted(set(v)) for p, v in by_proj.items()}
 
 
+def lean(ph):
+    """--lean: the pre-flight checks and the effect layouts (`pre-*`, `fx*`); no loader, KITS, scenes, DIRECT_JUMP or soak phases."""
+    return [p for p in ph if p["id"].startswith(("pre-", "fx"))]
+
+
 def build(a):
     import ot_matrix as M
     dest = pathlib.Path(a.dest).resolve()
@@ -100,8 +105,8 @@ def build(a):
     if r.returncode:
         sys.exit(r.stderr or "proj failed")
     nproj = len(sorted(dest.glob("SFX_*")))
-    for name, args in (("SSCN", ["--banks", "1-2", "--all-scenes", "--trigs", "grid4"]),
-                       ("SDJ", ["--banks", "1-2", "--pattern-steps", "2=1,2,4,7,8,11,13"])):
+    for name, args in (() if a.lean else (("SSCN", ["--banks", "1-2", "--all-scenes", "--trigs", "grid4"]),
+                                          ("SDJ", ["--banks", "1-2", "--pattern-steps", "2=1,2,4,7,8,11,13"]))):
         shutil.copytree(dest / "SFX_01", dest / name)
         r = subprocess.run([PY, str(HERE / "ot_scenes.py"), "stamp", str(dest / name), *args],
                            capture_output=True, text=True)
@@ -113,12 +118,12 @@ def build(a):
             import ot_project as P
             for pat in (0, 1):
                 P.set_pattern_scale(dest / name, 1, pat, 16, "1X", guard=False)
-    suite = {"remix": a.remix, "src": str(a.src), "projects": {"SFX": nproj},
+    suite = {"lean": a.lean, "remix": a.remix, "src": str(a.src), "projects": {"SFX": nproj},
              "layouts": names, "where": {n: list(v) for n, v in locate(names).items()},
              "transitions": {str(k): v for k, v in transitions(names, a.remix).items()},
              "per_project": PER_PROJECT}
     (dest / "suite.json").write_text(json.dumps(suite, indent=1))
-    print(f"{len(names)} layouts, {nproj} SFX project(s), SSCN, SDJ -> {dest}/suite.json")
+    print(f"{len(names)} layouts, {nproj} SFX project(s)" + ("" if a.lean else ", SSCN, SDJ") + f" -> {dest}/suite.json")
 
 
 # ---------------------------------------------------------------------------
@@ -176,10 +181,10 @@ def cmd_plan(a):
     names = layout_names(a.remix)
     per = PER_PROJECT - 1
     nproj = -(-(len(names) - 1) // per)
-    print(f"{a.remix}: {len(names) - 1} layouts + BASE -> SFX_01..{nproj:02d}, SSCN, SDJ")
+    print(f"{a.remix}: {len(names) - 1} layouts + BASE -> SFX_01..{nproj:02d}" + ("" if a.lean else ", SSCN, SDJ"))
     suite = {"projects": {"SFX": nproj}, "transitions": {str(k): v for k, v in transitions(names, a.remix).items()}}
     t = 0
-    for p in phases(suite):
+    for p in (lean(phases(suite)) if a.lean else phases(suite)):
         t += p["minutes"]
         print(f"  {p['id']:<14} {p['project']:<7} ~{p['minutes']:>2} min  {p['title']}" + (f"  [{p['needs']}]" if p["needs"] else ""))
     print(f"about {t} min of rig time, plus loads")
@@ -194,7 +199,7 @@ def cmd_run(a):
     sumf = out / "summary.json"
     prev = json.loads(sumf.read_text()) if sumf.exists() else []
     rows, loaded = [], None
-    for p in phases(suite):
+    for p in (lean(phases(suite)) if suite.get("lean") else phases(suite)):
         if want and p["id"] not in want:
             continue
         if p["project"] != loaded:
@@ -238,6 +243,7 @@ def main():
         p.add_argument("dest", nargs="?", default=str(ROOT / "out/suite"))
         p.add_argument("--src", default=str(pathlib.Path.home() / "octa/projects/EMPTY"))
         p.add_argument("--remix", default="octabam")
+        p.add_argument("--lean", action="store_true", help="pre-flight and effect layouts only; no SSCN, SDJ, loader, KITS, scenes, DIRECT_JUMP or soak")
     p = sub.add_parser("run"); p.add_argument("label"); p.add_argument("--dest", default=str(ROOT / "out/suite"))
     p.add_argument("--phase"); p.add_argument("--yes", action="store_true"); p.add_argument("--keep-going", action="store_true")
     p = sub.add_parser("report"); p.add_argument("label")

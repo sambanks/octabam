@@ -10,7 +10,7 @@ import toolpath  # noqa: E402,F401
 from remix import ledger, registry  # noqa: E402
 
 PAGE_AT = 0x400d24d0
-STOCK_DELAY_READS = range(0x400d24d0, 0x400d24e0)
+STOCK_DELAY_READS = range(0x400d24d0, 0x400d2ce0)   # entries 508..1023 (issue #1007)
 
 
 class SynthPlace(unittest.TestCase):
