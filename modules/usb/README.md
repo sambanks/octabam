@@ -278,9 +278,47 @@ The `usb-midi` remix (this module on the stock effects) has not been flashed.
   packet, and each then gets a near-zero interval); a CC flood against the
   256-byte queue; DISK MODE entered with a MIDI session open; Windows.
 
+### A completion between the two ENDPTCOMPLETE reads (#1017, 4 Nov 2026)
+
+Reported by xynta, under the port on Octatrick 2.21's pin (`6e4aeb76`); the
+path is unchanged on main. `usbmidi_rx_isr_shim` reads ENDPTCOMPLETE, takes an
+EP2 OUT completion and re-primes the 512-byte dTD, then jumps to his
+`usbmidi_isr_shim`, which reads ENDPTCOMPLETE again and still takes bit 2 the
+64-byte way. A transfer completing between the two reads was cleared there with
+`64 - remaining <= 0` bytes and not decoded, and the stock 64-byte
+`usb_midi_rx_prime` left `usbmidi_rx_state` at 2, so the next transfer decoded
+as `448 + n` bytes: the tail of an older transfer replayed. Measured by the
+reporter, paced bench under the port: 174,012 bytes enqueued for 12,348 sent,
+500 of 1,000 short transfers lost, 55,888 stale events. On a unit that is a lost
+packet now and then (a lost note-off is a stuck note) and the rest of an earlier
+chord after the next one (inferred).
+
+- The fix: a detour at `usb_midi_rx_prime` (`0x4001d184`, `usbmidi_rx_late_shim`).
+  At state 2 the only caller is that late branch, which has already w1c'd the
+  bit: the dTD's token still holds the completion, so it is decoded here and
+  the 512-byte dTD primed again. For `n > 448` his decoder took the first
+  `n - 448` bytes itself, so only the rest is decoded here. A token still ACTIVE
+  is left primed; any other state runs the stock prime. Counted in
+  `usbmidi_rx_late`. Masking the second read cannot close the window (the
+  controller sets the bit, not an interrupt), and his shim does the EP2 IN kick,
+  so it is not skipped. `usbmidi.s` is unchanged.
+- This is the reporter's design. Their module form ran 12,348 of 12,348 bytes
+  once each and in order on the same bench (late branch taken 500 times) and has
+  been on their MKI since 2 Nov 2026. This form is not on a unit.
+- Still open, from the same report: a transfer over 64 bytes sent between
+  SET_CONFIGURATION and the next USB interrupt lands in the dormant init's
+  64-byte dTD (port: taken as 64 bytes; on silicon a data buffer error,
+  inferred). Not changed here.
+
 ### Gates
 
 - `verify_usb` (`make check REMIX=usb`).
+- `verify_usbmidi_late` (image stage, unicorn): calls the detoured
+  `usb_midi_rx_prime` from the state the late branch leaves (a completed
+  512-byte dTD at state 2) and checks what `midi_rx_enqueue` receives: a
+  16-byte transfer whole and once, a 464-byte one only past usbmidi.s's 16
+  bytes, an errored one counted and not decoded, an ACTIVE dTD untouched, and
+  the stock prime at full speed.
 - `verify_usbmidi_rx` (image stage): the four packets of "Receive path",
   parsed bytes compared with sent bytes, and each packet accepted whole by
   the dTD. Five of its nine checks fail on the code before this change.

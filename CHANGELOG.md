@@ -18,6 +18,8 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- **USB MIDI in: a completion between the two ENDPTCOMPLETE reads is decoded** (#1017, reported by xynta). A transfer that completed after `usbmidi_rx.s`'s ISR shim read ENDPTCOMPLETE was cleared undecoded by `usbmidi.s`'s second read, and the next transfer replayed an older one's tail (reporter's paced bench: 500 of 1,000 short transfers lost, 55,888 stale events). A detour at `usb_midi_rx_prime` (`0x4001d184`) decodes it and re-primes the 512-byte dTD; `usbmidi.s` is unchanged. Gate: `verify_usbmidi_late`. Not flashed in this form; the reporter's module form has run on their MKI since 2 Nov.
+
 - **`octabam`: SIDECHAIN_COMPRESSOR back** (with SC LOAD METER BRIDGE; out since `433e22e`, 1 Nov). COMPRESSOR's row is the side-chain compressor again, its DSP loaded on demand into the top of T4's FX2 block (the fourth demand entry; DLCOPY moves to `0x33DC3`), `FORM = SHARED`, `PLACE = DRAM`. While its code is not loaded, page 2's KEY reads `--` (DLPUMP's `dl_keyfmt` over sc_cf's `key_fmt`, issue #934) beside the `SC KEY OFF` toasts. The remix's proof is CHECK again: OCTABAMR3's suite ran without SC. Not flashed.
 
 - `octabam-bus` carries OCTA303, MORPH, REC THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL and TRACK PATTERNS (FX2 LOCK was in it). `make bus` builds: 52 → 60 DRAM units, runtime append 84,368 → 119,867 B, platform reserve unchanged at 1,707 pages (12,895 left for samples and recorders). FX1 lists only SPECTRUM, CHARACTER and MODULATION: the ten stock effects are given up and the stations' DSP code runs from internal P, so `remixes/octabam-bus` no longer pins window addresses. Port gates not yet run on the new layout; not on a unit.
