@@ -129,9 +129,11 @@ _MS_CLASS = (bytes([7, 0x24, 1, 0, 1, 37, 0]) +           # MS header
 
 
 def msc_only_config(hs, other_speed=False):
-    """MSC alone: the stock one-interface configuration, 32 bytes."""
+    """MSC alone: the stock one-interface configuration, 32 bytes. Two
+    endpoints, as stock's four MSC interface descriptors declare (bulk IN
+    0x81, bulk OUT 0x01); 1 until 4 Nov 2026 failed USBSTOR on Windows (#1039)."""
     bulk = 512 if hs else 64
-    body = (bytes([9, 4, 0, 0, 1, 8, 6, 0x50, 0]) +
+    body = (bytes([9, 4, 0, 0, 2, 8, 6, 0x50, 0]) +
             _ep(0x81, bulk) + _ep(0x01, bulk))
     total = 9 + len(body)
     hdr = bytes([9, 7 if other_speed else 2]) + struct.pack("<H", total) + bytes([1, 1, 0, 0xC0, 3])
@@ -239,7 +241,7 @@ def audio_config(hs, other_speed=False, nch=20, chcfg=0, in_ch=0, midi=True):
             struct.pack("<H", 12 * in_ch * SUBSLOT) +       # 96 B for a pair, 192 for four
             bytes([HS_BINTERVAL]) +
             bytes([8, 0x25, 1, 0, 0, 0]) + struct.pack("<H", 0))
-    body = bytes([9, 4, 0, 0, 2 if midi else 1, 8, 6, 0x50, 0]) + \
+    body = bytes([9, 4, 0, 0, 2, 8, 6, 0x50, 0]) + \
         _ep(0x81, bulk) + _ep(0x01, bulk)
     if midi:
         ac_midi = bytes([9, 0x24, 1, 0, 1]) + struct.pack("<H", 9) + bytes([1, 2])
@@ -254,7 +256,9 @@ def audio_config(hs, other_speed=False, nch=20, chcfg=0, in_ch=0, midi=True):
     body += (iad_audio +
              bytes([9, 4, ac, 0, 0, 1, 1, 0x20, 0]) + ac_audio +
              as_iface)
-    nif = (6 if in_ch else 5) if midi else (3 if in_ch else 2)
+    # MSC + (AC + MS with MIDI) + AC + AS (+ the IN AS): 3 or 4 without MIDI, 5 or 6 with it
+    # (2 or 3 without MIDI until 4 Nov 2026, one short: #1039's check found it)
+    nif = (6 if in_ch else 5) if midi else (4 if in_ch else 3)
     total = 9 + len(body)
     hdr = bytes([9, 7 if other_speed else 2]) + struct.pack("<H", total) + bytes([nif, 1, 0, 0xC0, 3])
     return hdr + body
@@ -291,6 +295,46 @@ def _set_tables(trk, main, cue, master, in_, midi):
     return [f(False), f(True), f(False, True), f(True, True)]
 
 
+def check_config(cfg):
+    """Refuse a configuration descriptor whose counts disagree with what
+    follows: wTotalLength with its length, bNumInterfaces with the distinct
+    interface numbers, and each interface descriptor's bNumEndpoints with the
+    endpoint descriptors before the next interface descriptor (class-specific
+    endpoint descriptors, type 0x25, are not endpoints). A host trusts the
+    counts: Windows' USBSTOR failed with Code 10 on an MSC interface that
+    declared one endpoint and was followed by two (#1039). Returns cfg."""
+    if len(cfg) < 9 or cfg[0] != 9 or cfg[1] not in (2, 7):
+        raise ValueError(f"USB config: no configuration header ({cfg[:9].hex()})")
+    total, nif = cfg[2] | cfg[3] << 8, cfg[4]
+    if total != len(cfg):
+        raise ValueError(f"USB config: wTotalLength {total}, but {len(cfg)} bytes")
+    i, ifaces, cur = 9, set(), None      # cur: [interface, alt, declared, counted]
+    found = []
+    while i < len(cfg):
+        n, t = cfg[i], cfg[i + 1] if i + 1 < len(cfg) else None
+        if n < 2 or i + n > len(cfg):
+            raise ValueError(f"USB config: descriptor at {i} has length {n} past the end")
+        if t == 4:
+            if cur:
+                found.append(cur)
+            cur = [cfg[i + 2], cfg[i + 3], cfg[i + 4], 0]
+            ifaces.add(cfg[i + 2])
+        elif t == 5:
+            if cur is None:
+                raise ValueError(f"USB config: endpoint 0x{cfg[i + 2]:02x} before any interface")
+            cur[3] += 1
+        i += n
+    if cur:
+        found.append(cur)
+    for num, alt, declared, counted in found:
+        if declared != counted:
+            raise ValueError(f"USB config: interface {num} alt {alt} declares {declared} "
+                             f"endpoint(s), {counted} follow")
+    if nif != len(ifaces):
+        raise ValueError(f"USB config: bNumInterfaces {nif}, but {len(ifaces)} interfaces")
+    return cfg
+
+
 def _blob():
     """All 256 sets: every table zero-padded to one cfg_len, deduplicated
     (AB and CD share a set; every audio set shares its full-speed pair),
@@ -298,6 +342,12 @@ def _blob():
     pointer table) where rows is label -> bytes."""
     sets = [_set_tables(i & 3, (i >> 2) & 1, (i >> 3) & 1, (i >> 4) & 1, (i >> 5) & 3, (i >> 7) & 1)
             for i in range(256)]
+    for i, s in enumerate(sets):       # every table of every set, before padding (#1039)
+        for which, t in zip(("fs", "hs", "os_fs", "os_hs"), s):
+            try:
+                check_config(t)
+            except ValueError as e:
+                raise ValueError(f"set {i} ({which}): {e}") from None
     length = max(len(t) for s in sets for t in s)
     tables, ptrs = {}, []
     for s in sets:

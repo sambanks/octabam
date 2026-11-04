@@ -233,7 +233,7 @@ def main():
     as_ = ac + 1
     ii = as_ + 1
     if audio:
-        nif = (6 if in_ch else 5) if midi else (3 if in_ch else 2)
+        nif = (6 if in_ch else 5) if midi else (4 if in_ch else 3)   # MSC, AC, AS (+ IN AS); #1039
     else:
         nif = 3 if midi else 1
     sock = f"/tmp/ot-usb-{os.getpid()}.sock"     # sun_path is 104 bytes on macOS; the scratch dirs are longer
@@ -320,7 +320,7 @@ def main():
                 # speed) carries no interface ii: the unit serves it at high speed only
                 ocfg = b.ctrl_in(0x80, 6, 0x0700, 0, 512)
                 check(f"USB AUDIO: no interface {ii} in the other-speed (full-speed) configuration",
-                      len(ocfg) >= 9 and ocfg[4] == (5 if midi else 2) and bytes([16, 0x24, 1, 0x13]) not in ocfg,
+                      len(ocfg) >= 9 and ocfg[4] == (5 if midi else 3) and bytes([16, 0x24, 1, 0x13]) not in ocfg,
                       f"bNumInterfaces {ocfg[4] if len(ocfg) >= 9 else None}")
             asg = cfg.find(bytes([16, 0x24, 1]))                 # CS AS_GENERAL: bNrChannels at +10, bmChannelConfig +11
             check(f"USB AUDIO: AS_GENERAL declares {nch} channels",
@@ -587,7 +587,7 @@ def main():
             ras = racc + 1
             rii = ras + 1
             if rnch:
-                rnif = (6 if rin_ch else 5) if midi_i else (3 if rin_ch else 2)
+                rnif = (6 if rin_ch else 5) if midi_i else (4 if rin_ch else 3)
             else:
                 rnif = 3 if midi_i else 1
             cs1_file = ROOT / f"out/verify_usb_cs1_{k}.bin"
