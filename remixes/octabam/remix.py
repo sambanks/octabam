@@ -1,4 +1,4 @@
-"""octabam -- the core ColdFire modules, every other ColdFire module that fits, all 14 stock effects, and MODULATION, SPECTRUM and CHARACTER loaded on demand, with COMPRESSOR's side-chain (SIDECHAIN_COMPRESSOR) loaded the same way. TRANSIENT and DISTORX are not in this remix."""
+"""octabam -- the core ColdFire modules, every other ColdFire module that fits, all 14 stock effects, and MODULATION, SPECTRUM, CHARACTER and SHATTER loaded on demand, with COMPRESSOR's side-chain (SIDECHAIN_COMPRESSOR) loaded the same way. TRANSIENT and DISTORX are not in this remix."""
 from remix.schema import Pin, Proof, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
@@ -13,7 +13,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
 # with TRANSIENT and DISTORX, back 4 Nov 2026: KEY reads "--" while the side-chain is not loaded (#934).
 STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
            "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
-OURS = ("MODULATION", "SPECTRUM", "CHARACTER")
+OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER")
 # Every other ColdFire module that can share this image (the ledger; HOOKS joins the pairs that
 # share a stock site). Not here: ANALOG BD (its fixed pre-boot DSP scratch 0x40b00000 is under
 # this much DRAM code), SYNTH MACHINE (the cave 0x400d24d0 the stock DELAY reads, and OCTA303's
@@ -49,20 +49,24 @@ REMIX = Remix(
     # tables, then its key window and counters as zero words, 1,711 words) has one home, the fourth block's top,
     # which only DARK REV on T4's FX2 reaches; its four hooks go to resident stubs.
     fx1=("SPECTRUM", "CHARACTER", "MODULATION") + STOCK_FX1,   # the chooser order on FX1; the stations also run live on FX2 (SLOTS pin below)
-    # DLCOPY follows the four demand entries (x:$33da3 + 8 k, k = 0..3).
-    window=(("DLCOPY", 0x33DC3), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
+    # DLCOPY follows the five demand entries (x:$33da3 + 8 k, k = 0..4).
+    window=(("DLCOPY", 0x33DCB), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
             ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820),
-            ("SIDECHAIN_COMPRESSOR", 0x3F820)),
+            ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x37C10)),
     # DLPUMP loads in this order, and the first free home wins: SIDECHAIN_COMPRESSOR has one home, the fourth
     # block, which the others reach only as their second or later home.
-    window_demand=("MODULATION", "SPECTRUM", "CHARACTER", "SIDECHAIN_COMPRESSOR"),
+    # SHATTER (378 words, FX2 only) first goes to the second block behind CHARACTER's 1,008 words, so its first
+    # address is no other demand effect's (each id-dispatched effect needs its own); the fourth block, SC's only
+    # home, is its last.
+    window_demand=("MODULATION", "SPECTRUM", "CHARACTER", "SIDECHAIN_COMPRESSOR", "SHATTER"),
     # The other homes: each effect can be loaded into any block it fits (the code is assembled once per home). The loader
     # sends the first home whose block holds no other demand effect and whose FX2 slot is not a stock reverb that reaches
     # the code, and moves a loaded effect when such a reverb arrives. MODULATION (1,561 words) needs a block with 2,016
     # words above 0x3820, which the third and fourth have; the first two end at the loader (1,411 words).
     window_homes=(("MODULATION", 0x3F820),
                   ("SPECTRUM", 0x37820), ("SPECTRUM", 0x3B820), ("SPECTRUM", 0x3F820),
-                  ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820)),
+                  ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820),
+                  ("SHATTER", 0x33820), ("SHATTER", 0x3B820), ("SHATTER", 0x3F820)),
     window_guard=("PLATE REV", "DARK REV", "SPRING REV"),
     window_loader=0x33E66,
     fallback="NONE",
