@@ -205,8 +205,9 @@ lines at seven tracks), and the mirror runs 3 to 4.5 µs over its
 instruction count, so the queue is to go (`docs/firmware/STEM_REC.md`
 20.9). Eleven files filled the ring in 10 s (`RING FULL`) with the card
 writing at 423 µs a KB, against 255 on STEMS11's eleven-file take; why
-isn't established (`modules/stems/FLASH.md` flash L). `lm-stems` as for
-STEMS11.
+isn't established (`modules/stems/FLASH.md` flash L). With the same ten
+files, other samples on the Static machines slowed the card from 252 to
+387 µs a KB. `lm-stems` as for STEMS11.
 - STEM REC: STATS.TXT splits the hook into four parts and probes the gain queue's cache lines; the mirror writes only the gains of the tracks a take records.
 
 ## STEMS11 — 28 Oct 2026 (local remix `lm-stems`, branch `stems-next`, PR #965)

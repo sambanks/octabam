@@ -28,12 +28,24 @@ all at 24 bits (his folder, not the repository):
   files peaked at 82% in 49 s at 387. Eleven files at 24 bits need
   2.9 MB/s and ten 2.65 MB/s; the card gave 2.4 and 2.65 while recording.
   The hook costs what it did (33 µs against 32), and STEM REC's writer is
-  unchanged since STEMS11. 🟡 Why the card was slower isn't established:
-  the project, the card's fill since 2 Nov's 21-minute take, the Static
-  machines' load, or the image's other changes since STEMS11's base (68
-  module files, among them USB #956 and HOOKS' frame-interrupt entry and
-  epilogue).
-- Which takes had the Static tracks muted (test 4) isn't in the logs.
+  unchanged since STEMS11.
+- What changed between the takes (Yves, 4 Nov 2026): AB and CD off for
+  the third take, one pair back on for the fourth, and other audio files
+  on the Static machines for the fifth. So the fourth and fifth takes
+  differ only in the samples the Static machines stream from the same
+  card: ✅ with them the card took 387 µs a KB against 252, 54% longer,
+  and the ring peaked at 82% against 32%. 🟡 Why those samples cost more
+  (their length, their channels, or where they lie on the card) isn't
+  measured.
+- 🟡 The `RING FULL` take isn't explained by that: it came before the
+  change, with the samples of the third and fourth takes, and its eleven
+  files are 10% more data than their ten. Open: the card's own state
+  (a flash card slows while it reorganizes, and this one took about
+  0.9 GB of takes on 2 and 3 Nov), the cost of a take's start (eleven new files at
+  once, in a 10-second take), or the image's other changes since
+  STEMS11's base (68 module files, among them USB #956 and HOOKS'
+  frame-interrupt entry and epilogue). Recording the eleven-file take two
+  or three times on one set of samples would tell the first two apart.
 
 `STEMS12`, the same remix as flashes I to K, on branch `stems-hookparts`
 (from `stems-next` at `ecfbb2ff`). It records as STEMS11 did; what's new
