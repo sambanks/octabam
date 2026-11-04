@@ -2,6 +2,9 @@
 """verify_brain -- the BRAIN module applies the card's knob defaults.
 
     python3 tools/verify/verify_brain.py [REMIX] [--project DIR] [--only-cases]
+    python3 tools/verify/verify_brain.py [REMIX] --section cards|templates|panes|screens[,..]
+
+`--section` runs one group of the sections (the CI units, reach.SPLIT_EXTRA_UNITS); none runs all four.
 
 Builds REMIX (default `octabam`; `octabam-bus` too), stages
 the project with BRAIN/card.work and card.strd written by
