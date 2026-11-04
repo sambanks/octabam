@@ -2,9 +2,9 @@
 """verify_brain -- the BRAIN module applies the card's knob defaults.
 
     python3 tools/verify/verify_brain.py [REMIX] [--project DIR] [--only-cases]
-    python3 tools/verify/verify_brain.py [REMIX] --section cards|templates|panes|screens[,..]
+    python3 tools/verify/verify_brain.py [REMIX] --section cards|stores|templates|panes|screens[,..]
 
-`--section` runs one group of the sections (the CI units, reach.SPLIT_EXTRA_UNITS); none runs all four.
+`--section` runs one group of the sections (the CI units, reach.SPLIT_EXTRA_UNITS); none runs all five.
 
 Builds REMIX (default `octabam`; `octabam-bus` too), stages
 the project with BRAIN/card.work and card.strd written by
@@ -100,7 +100,7 @@ def main():
     ap.add_argument("--only-cases", action="store_true",
                     help="run the eight card cases (none .. settings_bad) and stop: minutes, not the whole gate")
     ap.add_argument("--section", default="",
-                    help="comma-separated groups to run (default all): cards, templates, panes, screens")
+                    help="comma-separated groups to run (default all): cards, stores, templates, panes, screens")
     a = ap.parse_args()
     in_group = lambda group: not a.section or group in a.section.split(",")
     project = a.project
@@ -517,7 +517,7 @@ def main():
         if a.only_cases:
             print(f"verify_brain: {'ok' if not fails else 'FAILED'} ({fails} failure(s)) -- the eight card cases only")
             return 1 if fails else 0
-    if in_group("cards"):
+    if in_group("stores"):
         ccopy = OUT / "project_clamp"
         shutil.rmtree(ccopy, ignore_errors=True)
         shutil.copytree(copy, ccopy)
@@ -560,7 +560,7 @@ def main():
                     for bank in range(16) for part in range(8) for tr, fxo, s2, cnt in planted)
         check(f"stock clamps: {16 * 8 * len(planted)} planted out-of-count bytes (16 banks x 8 Parts) read "
               f"count - 1 after the load ({wrong} do not)", wrong == 0)
-    if in_group("cards"):
+    if in_group("stores"):
         scard = OUT / "save.img"
         swork = OUT / "save_card.work"
         swork.write_bytes(work)
@@ -661,7 +661,7 @@ def main():
         ps_counts = struct.unpack(">4I", (OUT / "save_pcounts.bin").read_bytes())
         check(f"project: one project save, error {ps_counts[1]}, brain.strd written {ps_counts[2]} "
               f"(errors {ps_counts[3]})", ps_counts == (1, 0, 1, 0))
-    if in_group("cards"):
+    if in_group("stores"):
 
         # ---- project load: the project record against the image ---------------
         PC = ("loads", "state", "record", "entries", "same", "moved", "layout", "gone", "skip")
@@ -725,7 +725,7 @@ def main():
         recs = [r.store_id for r in brainfile.parse(fw).records] if fw else []
         check(f"save: on a card with no BRAIN folder the first save creates it and card.work  {recs}",
               recs == [brain.fx_store_id(t1)])
-    if in_group("cards"):
+    if in_group("stores"):
         for name, keys in runs.items():
             mc, mafter, mlog, mlanes = OUT / f"{name}.img", OUT / f"{name}_after.img", OUT / f"{name}.txt", OUT / f"{name}_lanes.bin"
             r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
@@ -753,7 +753,7 @@ def main():
             else:
                 check(f"menu: CLEAR FX DEFAULT leaves no BusDelay record ({sorted(recs)})",
                       mw is not None and brain.fx_store_id(t1) not in recs)
-    if in_group("cards"):
+    if in_group("stores"):
 
         # ---- settings from the panel: MIDI > MIDI LOG, YES (off by default: on) ----
         seed = brainfile.File(brainfile.CARD_WORK, [brainfile.Record(brainfile.SETTINGS, "octabam.brain",
@@ -780,7 +780,7 @@ def main():
         got = {v.key: v.data[0] for v in srec[0].values()} if len(srec) == 1 else {}
         check(f"settings: YES on LOG > MIDI > MIDI LOG writes the octabam.brain settings record, MIDI LOG on, APPLY DFLTS on, "
               f"EVENT LOG at its default (on), the unknown key kept  {got}", got == {1: 1, 2: 1, 3: 1, 99: 1})
-    if in_group("cards"):
+    if in_group("stores"):
 
         # ---- USB's pair rule from the panel: IN is refused while TRACKS, MAIN, CUE and MASTER are off ----
         # BRAIN > SETTINGS: TRACKS PRE -> POST -> OFF, MAIN off, CUE off, then YES on IN. The rule

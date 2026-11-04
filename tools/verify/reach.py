@@ -1134,10 +1134,12 @@ SPLIT_REMIX_JOBS = {"octabam": {"long": ("remix-switch",), "project": ("set", "m
 # not narrow it (that is "reached from BRAIN": 9 gates of ten modules, 4581 s, with verify_usb_post, verify_load_meter
 # and verify_usb_load_meter failing on a generated project, run 40640514673), so the unit runs verify_brain alone.
 # It builds its own image and reads OT_PROJECT, which ci.yml sets for a `(brain)` unit.
-# verify_brain runs as four units, one per `--section` group (4 Nov 2026: 1026 s locally in one process, about 40
-# boots; `brain` keeps the name of the whole gate and runs the card cases and the stock-store sections).
+# verify_brain runs as five units, one per `--section` group (4 Nov 2026: 1026 s locally in one process, about 40
+# boots; `brain` keeps the name of the whole gate and runs the eight card cases; in CI the `cards` group took 782 and
+# 784 s with the stock-store sections in it, the others 308-786 s).
 _BRAIN = ".venv/bin/python3 tools/verify/verify_brain.py octabam --section "
 SPLIT_EXTRA_UNITS = {"octabam": {"brain": ("BRAIN", _BRAIN + "cards"),
+                                 "brain-stores": ("BRAIN", _BRAIN + "stores"),
                                  "brain-templates": ("BRAIN", _BRAIN + "templates"),
                                  "brain-panes": ("BRAIN", _BRAIN + "panes"),
                                  "brain-screens": ("BRAIN", _BRAIN + "screens")}}
