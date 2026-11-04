@@ -1183,6 +1183,20 @@ interrupt-mask restore that precedes the data it protects is a window;
 before blaming names or parsers, ask what the IRQ handler reads while the
 producer is mid-update.
 
+**Seen again, 1–4 Nov 2026:** `hooks-free-loop` (FREE LOOP beside
+REC_TRIG_MUTE and REC THRESHOLD, no ATA WRITE GUARD) hung REC THRESHOLD's
+`high` and `low` port scenarios at 3.1 s, deterministically, while the same
+image with two `nop`s in the icon drawer chain passed. Bisecting the bridges,
+a byte diff, a write watch and the DSP frame trace all pointed at timing
+before the CPU's state did: frames stopped because the ColdFire took no
+interrupt at all, SR `0x2510`, looping at `0x4001551e/24/26`. The test remix
+now carries ATA WRITE GUARD. Rule: a test remix whose gates write the card
+carries ATA WRITE GUARD, or a timing shift anywhere can land in this window;
+`hooks`, `free-loop` and `rec-threshold` still do not. When a port run's
+frames stop, read the ColdFire's PC and SR at that point first (the reading
+that ended this hunt; the port does not print it today): a loop at
+`0x4001551e` with the mask at 5 is this trap.
+
 
 <a name="trap-id-clamp"></a>
 
