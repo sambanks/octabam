@@ -3,6 +3,7 @@
 import struct
 from pathlib import Path
 from midi_machine import Machine
+from verify_store_part_settings import harmony_mode
 from unicorn.m68k_const import *
 
 def main():
@@ -76,7 +77,7 @@ def main():
     if 'mh_generate' in s:
         # Both sequenced and live sources retain their harmonic root's octave.
         m.set_key(0,1) # source C major inherited by receivers
-        m.call('mh_set',1,1) # receiver HARM NOTE
+        harmony_mode(m,1,1) # receiver HARM NOTE; UI/storage work, not a note call
         for root in range(128):
             m.call('mh_latch_key_root',root,regs={UC_M68K_REG_D2:0})
             assert u.mem_read(s['bf_pitches'],1)==bytes((root,))

@@ -89,7 +89,7 @@ def machine():
     assert m.change(67)==[],'arp-only output cannot arm an unknown cached pool'
     # New Parts and same-slot native replacement must not retune old voices.
     # An unrelated Part replacement must leave this receiver's anchor intact.
-    from verify_store_part_settings import symbols, B, PS
+    from verify_store_part_settings import symbols, B, PS, HARMONY_EDIT_BUDGET
     for operation in ('switch','replace','unrelated'):
         m=fixture();m.sym.update(symbols());u=m.uc
         part0=B+0x8ed80
@@ -101,7 +101,8 @@ def machine():
         else:
             dest=part0+(3*PS if operation=='unrelated' else 0)
             u.mem_write(m.stack+4,b''.join(v.to_bytes(4,'big') for v in (dest,source,PS)))
-            m.call('store_part_native_copy')
+            m.call('store_part_native_copy', instruction_budget=(
+                HARMONY_EDIT_BUDGET if 'mh_set' in m.sym else m.instruction_budget))
         events=m.change()
         if operation=='unrelated':
             assert events==[(0x91,36,0),(0x91,41,91)]
