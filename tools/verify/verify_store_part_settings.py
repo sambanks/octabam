@@ -8,17 +8,6 @@ from unicorn.m68k_const import *
 B = 0x400e21e0
 BS = 0x9b340
 PS = 0x18b2
-# HARM changes migrate pattern roots and publish retained state. This is a
-# UI/storage operation, not a per-note path; keep the generic 20k call limit.
-# Measured maximum: 32,526 instructions for composed Part replacement
-# (including the unrelated-Part Follow response case).
-HARMONY_EDIT_BUDGET = 40_000
-
-
-def harmony_mode(machine, track, value):
-    return machine.call('mh_set', track, value,
-                        instruction_budget=HARMONY_EDIT_BUDGET)
-
 
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
@@ -62,7 +51,7 @@ def main():
         for t in range(8):
             for prefix,maximum in [('mh',2),('mh_voic',4),('mh_sprd',2),('mh_root',3)]:
                 for value in range(maximum+1):
-                    assert (harmony_mode(m,t,value) if prefix=='mh' else m.call(prefix+'_set',t,value))==1
+                    assert m.call(prefix+'_set',t,value)==1
                     assert m.call(prefix+'_get',t)==value
                     assert m.call(prefix+'_get_at',t,6)==0
                 before=bytes(u.mem_read(at(0,0,t,0),36))
@@ -70,7 +59,7 @@ def main():
                 assert bytes(u.mem_read(at(0,0,t,0),36))==before
             assert m.call('mh_active',t)==0
         # UI and playback operation/KEY must both use their own context.
-        harmony_mode(m,0,2);m.call('mh_voic_set',0,0);m.call('mh_sprd_set',0,0);m.call('mh_root_set',0,0)
+        m.call('mh_set',0,2);m.call('mh_voic_set',0,0);m.call('mh_sprd_set',0,0);m.call('mh_root_set',0,0)
         byte(at(0,0,0,17),2)  # UI C minor
         byte(at(1,2,0,5),1)   # playing NOTE/C major
         u.mem_write(m.scratch,bytes((64,1,2,3)))
@@ -115,7 +104,7 @@ def main():
 
     if 'mh_voice' in m.sym:
         fresh=Machine(symbols);u=fresh.uc
-        harmony_mode(fresh,0,2);fresh.call('mh_voic_set',0,1);fresh.set_key(0,1)
+        fresh.call('mh_set',0,2);fresh.call('mh_voic_set',0,1);fresh.set_key(0,1)
         def chord(root):
             u.mem_write(fresh.scratch,bytes((root,0,0,0)))
             fresh.call('mh_generate',0,0,a0=fresh.scratch)
@@ -125,7 +114,7 @@ def main():
         u.mem_write(source,original)
         u.mem_write(fresh.stack+4,b''.join(v.to_bytes(4,'big') for v in (B+0x8ed80,source,PS)))
         epoch=fresh.call('store_part_epoch',0)
-        fresh.call('store_part_native_copy', instruction_budget=HARMONY_EDIT_BUDGET)
+        fresh.call('store_part_native_copy')
         assert fresh.call('store_part_epoch',0)==epoch+1
         assert fresh.call('store_part_epoch',1)==0
         expected=chord(55);fresh.call('mh_voice',0,a0=fresh.scratch)

@@ -181,3 +181,26 @@ retains the earlier combined LIVE batching limits. The report keeps the
 standalone thresholds and their excesses visible (54 cases with Scales).
 These ceilings prevent further instruction regressions; they do not establish
 hardware capacity or imply that the added policy is free.
+
+## Lifecycle cost investigation
+
+The integration keeps upstream's **20,000-instruction** generic call limit.
+The temporary 40,000 override has been removed. Mode-change and Part-copy gates
+remain failing until the implementation meets the unchanged checks.
+Diagnostics used the `midi` image built after merging upstream `c50e94b5`
+(SHA-256 `08045c4ae80ffec84e23b0fba1f64200b8846f6f5db025487f85034d401bc027`).
+The profiling runs allow completion solely to attribute work; they are not
+acceptance passes and do not raise any test limit.
+
+| Area | Measured work | Candidate reduction |
+| --- | --- | --- |
+| Same-Part and unrelated-Part replacement | Follow fixtures: 32,514 / 32,526 instructions. The same-Part callback spends 26,835 scanning all 2,048 pattern/track records. After Harmony initialization, an inactive Part copy still takes 24,322, including 18,643 in that callback. | Track attached Harmony provenance so replacement visits only relevant records. Preserve cross-bank Follow dependencies and detach outgoing KEY before the native copy. An unrelated Part must leave other histories and held notes intact. |
+| HARM mode edit | Follow fixture: 31,784. After `ch_lock_init`, OFF→NOTE / NOTE→CHORD / CHORD→OFF take 649,047 / 648,895 / 649,085. Full-bank packing, validation and retained writing dominate. | Keep immediate note conversion and dirty invalidation, but coalesce the retained save through the existing `hd_nv_poll_c` path. Check publication ordering, explicit save/load and interrupted-save recovery before changing this path. The polling work itself still needs bounding. |
+| Rejected retained payload | The original Follow fixture has uninitialized Harmony roots; `hd_pack_c` rejects them, but `ha_pack_c` still copies 4,736 accumulator bytes, costing 14,217 instructions. | Stop serialization after validation failure. This avoids wasted work but does not solve the full initialized mode-edit cost. |
+
+These are identified opportunities, not implemented optimizations. An active,
+dense bank can cost more than the inactive copy fixture. Validation must include
+HARM OFF, initialized empty and dense data, Part recall with cross-bank Follow,
+held-note releases, and retained save/reload interruption. Instruction counts
+do not establish processor cycles or device latency. No storage format change
+is proposed.
