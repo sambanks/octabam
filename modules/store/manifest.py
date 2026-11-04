@@ -38,6 +38,8 @@ CLIENTS = (
                       "pstore_pre", "pstore_post", "preload_post")),
     ("FREE LOOP", "fl", ("loadall_post", "loadmask_post", "newproj", "bankw_post",
                          "pstore_pre", "pstore_post", "preload_post")),
+    ("SCALES", "sc", ("loadall_pre", "loadmask_pre", "newproj", "bankw_post", "pstore_pre",
+                      "pstore_post", "preload_post", "partclear")),
     # No side file: partclear holds its per-track state and the partsaved that ends
     # the clear lets it go (stock Part Clear tail-jumps into Part Save).
     ("VARISPEED", "vs", ("partsaved", "partclear")),
@@ -47,16 +49,17 @@ CLIENTS = (
 # A client's number in the refusal registry (store_refuse) and in ans_tab: only the
 # clients that keep a side file (VARISPEED keeps none and has no entry).
 CLIENT_IDS = {"PLOCKS P2": 0, "KITS": 1, "MIDI SCENES": 2, "PERSISTENT BUFFERS": 3, "MORPH": 4,
-              "FREE LOOP": 5}
+              "FREE LOOP": 5, "SCALES": 6}
 
 
 def store_inc(modules, remix):
     out = ["ev_ctl:", "        .long   kits_level" if "KITS" in modules else "        .long   0",
            "cp_cbs:", "        .long   name_fp" if "COPY PROJECT" in modules else "        .long   0",
-           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn, nm_pbf, nm_mrp, nm_fl",
+           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn, nm_pbf, nm_mrp, nm_fl, nm_sc",
            'nm_plk: .asciz "P2LK%02d.WORK"', 'nm_kits: .asciz "KITS.WORK"',
            'nm_scn: .asciz "SCENES.WORK"', 'nm_pbf: .asciz "BUFFERS/REC%d.WAV"',
            'nm_mrp: .asciz "MORPH.WORK"', 'nm_fl: .asciz "FREELOOP.WORK"',
+           'nm_sc: .asciz "SCALES.WORK"',
            ".balign 2", "ans_tab:"]
     for key, _prefix, _events in sorted((c for c in CLIENTS if c[0] in CLIENT_IDS),
                                         key=lambda c: CLIENT_IDS[c[0]]):
