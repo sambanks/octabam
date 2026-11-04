@@ -1,10 +1,9 @@
 | usbmidi.s -- the glue that completes the firmware's dormant USB-MIDI half.
-| markandrus/octemu custom/coldfire/usb-midi.s at 6a9ff68 (MIT), his text
-| verbatim: the build re-links this unit at his zone address 0x400d24f0 on
-| every build and compares it with his blob's sha256 (manifest.py
-| Linked.reference), so it is his bytes, carried as a DRAM unit of
-| octabam's platform instead of the in-image free zone his patch links it
-| into. The grown configuration descriptors are cfg.s (descriptors.py, per
+| From markandrus/octemu custom/coldfire/usb-midi.s at 6a9ff68 (MIT), carried
+| as a DRAM unit of octabam's platform instead of the in-image free zone his
+| patch links it into. His text verbatim, and pinned to his blob's sha256,
+| until 4 Nov 2026; since then octabam's: the TX queue is a 4 KB ring of whole
+| messages (issue #1016, "TX queue" below), and the rest is his. The grown configuration descriptors are cfg.s (descriptors.py, per
 | remix) and the responder's length clamps clamp.s.
 |
 | Five shims and a USB-MIDI RX decoder. The TX encoder, EP2 bring-up and
@@ -167,69 +166,132 @@ usbmidi_rx_decode:
     lea     %sp@(20),%sp
     rts
 
-| ---- TX coalescing queue -------------------------------------------------
+| ---- TX queue ---------------------------------------------------------------
 | D1's single-dTD hole is closed by a software queue, not a dTD chain: both
-| senders APPEND complete MIDI messages to a byte accumulator; a kick flushes
-| the accumulator through the dormant encoder as one transfer whenever EP2 IN
-| is free, and the EP2-IN completion ISR kicks again. Double-buffered (acc
-| fills, snd is being encoded) so the encoder never reads a buffer an append
-| is writing. A message that would overflow the accumulator increments
-| usbmidi_tx_drops instead of corrupting the stream — loss is counted, never
-| silent. TX_CAP is the accumulator size (bytes of raw MIDI queued).
-.set TX_CAP, 256
+| senders APPEND complete MIDI messages to a ring; a kick moves whole messages,
+| up to TX_SND bytes, into the send buffer and encodes it through the dormant
+| encoder as one transfer whenever EP2 IN is free, and the EP2-IN completion
+| ISR kicks again until the ring is empty. The encoder never reads a buffer an
+| append is writing. A message that does not fit in the ring, or is longer
+| than TX_SND, increments usbmidi_tx_drops: loss is counted, never silent.
+|
+| Until 4 Nov 2026 (issue #1016) the queue was one 256-byte accumulator
+| (markandrus's TX_CAP), so any burst longer than what fitted before the next
+| completion lost its tail: CC 61's 283-CC dump (849 bytes in about 5 ms)
+| reached the host with 102 to 172 messages on an MKI (xynta). The ring holds
+| TX_RING bytes of [length hi, length lo, message] records.
+| TX_SND bounds one transfer: the encoder (0x4001d204) writes up to 4 bytes per
+| MIDI byte to 0x4ecc8000 with no bound, and usb_midi_rx_buf starts 4 KB later
+| (0x4ecc9000), so a transfer must stay under 1,024 MIDI bytes; 512 keeps the
+| interrupt-masked copy short. A message is never split (the encoder reads
+| ahead inside a message: a SysEx cut in two would be framed wrongly).
+.set TX_RING, 4096                  | a power of two
+.set TX_MASK, TX_RING - 1
+.set TX_SND,  512
 
 | usbmidi_tx_append(len=%d0, buf=%a0): queue one complete message, then
-| kick. Masks interrupts around the accumulator. Trashes %d0-%d3/%a0-%a1.
+| kick. Masks interrupts around the ring. Trashes %d0-%d3/%a0-%a1.
 usbmidi_tx_append:
     tstl    %d0
-    bles    9f                      | nothing to queue
+    blew    9f                      | nothing to queue
+    cmpil   #TX_SND,%d0
+    bgtw    8f                      | can never go out whole: drop, count
     movew   %sr,%d2
     movew   #0x2700,%sr
-    mvzw    usbmidi_tx_acc_len,%d1  | d1 = acc_len
-    movel   %d1,%d3
-    addl    %d0,%d3                 | d3 = acc_len + len (proposed)
-    cmpil   #TX_CAP,%d3
-    bgts    6f                      | overflow -> drop, count
+    mvzw    usbmidi_tx_used,%d3
+    addl    %d0,%d3
+    addql   #2,%d3                  | used + the record (header + message)
+    cmpil   #TX_RING,%d3
+    bgtw    6f                      | the ring is full -> drop, count
+    movew   %d3,usbmidi_tx_used
+    mvzw    usbmidi_tx_acc_len,%d3
+    addl    %d0,%d3
+    movew   %d3,usbmidi_tx_acc_len  | MIDI bytes queued (headers not counted)
     lea     usbmidi_tx_acc,%a1
-    addal   %d1,%a1                 | dest = &acc[acc_len]
-5:  moveb   %a0@+,%a1@+
+    mvzw    usbmidi_tx_head,%d1
+    movel   %d0,%d3
+    lsrl    #8,%d3
+    moveb   %d3,%a1@(0,%d1:l)       | length, high byte
+    addql   #1,%d1
+    andil   #TX_MASK,%d1
+    moveb   %d0,%a1@(0,%d1:l)       | length, low byte
+    addql   #1,%d1
+    andil   #TX_MASK,%d1
+5:  moveb   %a0@+,%d3
+    moveb   %d3,%a1@(0,%d1:l)
+    addql   #1,%d1
+    andil   #TX_MASK,%d1
     subql   #1,%d0
     bnes    5b
-    movew   %d3,usbmidi_tx_acc_len  | acc_len = acc_len + len
+    movew   %d1,usbmidi_tx_head
     movew   %d2,%sr
     bra     usbmidi_tx_kick
-6:  addql   #1,usbmidi_tx_drops
-    movew   %d2,%sr
+6:  movew   %d2,%sr
+8:  addql   #1,usbmidi_tx_drops
 9:  rts
 
-| usbmidi_tx_kick: if EP2 IN is free and the accumulator is non-empty, swap
-| acc->snd and encode snd as one transfer. Masks only the swap; the encode
-| runs unmasked on the stable snd buffer (tx_busy serialises kicks).
+| usbmidi_tx_kick: if EP2 IN is free and the ring is non-empty, move whole
+| messages (up to TX_SND bytes) into snd and encode it as one transfer. Masks
+| only the move; the encode runs unmasked on the stable snd buffer (tx_busy
+| serialises kicks). Trashes %d0-%d2/%a0-%a1 (usbmidi_isr_shim saves those);
+| saves what else it uses.
 usbmidi_tx_kick:
+    lea     %sp@(-16),%sp
+    moveml  %d3-%d5/%a2,%sp@
     movew   %sr,%d1
     movew   #0x2700,%sr
     tstb    usbmidi_tx_busy
-    bnes    9f
-    mvzw    usbmidi_tx_acc_len,%d0
-    beqs    9f                      | nothing queued
+    bnew    9f
+    tstw    usbmidi_tx_acc_len
+    beqw    9f                      | nothing queued
     moveq   #1,%d2
     moveb   %d2,usbmidi_tx_busy     | claim the transfer (reg -> abs)
-    movew   %d0,usbmidi_tx_snd_len  | remember length for the encode
     lea     usbmidi_tx_acc,%a0
     lea     usbmidi_tx_snd,%a1
-7:  moveb   %a0@+,%a1@+             | swap acc -> snd (d0 > 0 guaranteed)
-    subql   #1,%d0
-    bnes    7b
-    clrw    usbmidi_tx_acc_len
+    moveal  %a1,%a2                 | where the next message goes in snd
+    mvzw    usbmidi_tx_tail,%d2     | the oldest record
+    moveq   #0,%d3                  | bytes in snd
+1:  mvzb    %a0@(0,%d2:l),%d4
+    lsll    #8,%d4
+    movel   %d2,%d5
+    addql   #1,%d5
+    andil   #TX_MASK,%d5
+    mvzb    %a0@(0,%d5:l),%d0
+    orl     %d0,%d4                 | d4 = this message's length
+    movel   %d3,%d0
+    addl    %d4,%d0
+    cmpil   #TX_SND,%d0
+    bgts    4f                      | it waits for the next transfer (never the first)
+    movel   %d0,%d3
+    mvzw    usbmidi_tx_used,%d0
+    subl    %d4,%d0
+    subql   #2,%d0
+    movew   %d0,usbmidi_tx_used
+    mvzw    usbmidi_tx_acc_len,%d0
+    subl    %d4,%d0
+    movew   %d0,usbmidi_tx_acc_len
+2:  addql   #1,%d5
+    andil   #TX_MASK,%d5
+    moveb   %a0@(0,%d5:l),%d0
+    moveb   %d0,%a2@+
+    subql   #1,%d4
+    bnes    2b
+    addql   #1,%d5
+    andil   #TX_MASK,%d5
+    movel   %d5,%d2                 | the next record
+    tstw    usbmidi_tx_acc_len
+    bnes    1b
+4:  movew   %d2,usbmidi_tx_tail
+    movew   %d3,usbmidi_tx_snd_len
     movew   %d1,%sr                 | encode with interrupts restored
-    mvzw    usbmidi_tx_snd_len,%d0
-    lea     usbmidi_tx_snd,%a0
-    movel   %a0,%sp@-               | buf
-    movel   %d0,%sp@-              | len
+    movel   %a1,%sp@-               | buf
+    movel   %d3,%sp@-               | len
     jsr     ENCODER
     addql   #8,%sp
-    rts
+    bras    8f
 9:  movew   %d1,%sr
+8:  moveml  %sp@,%d3-%d5/%a2
+    lea     %sp@(16),%sp
     rts
 
 | ---- midi_send entry hook -------------------------------------------------
@@ -272,13 +334,18 @@ usbmidi_prio_shim:
 usbmidi_cin_len:
     .byte   0,0,2,3,3,1,2,3,3,3,3,3,2,2,3,1
     .global usbmidi_up, usbmidi_tx_busy, usbmidi_tx_drops
+    .global usbmidi_tx_acc, usbmidi_tx_acc_len, usbmidi_tx_head, usbmidi_tx_tail, usbmidi_tx_used
 usbmidi_up:      .byte 0
 usbmidi_tx_busy: .byte 0
 usbmidi_tmpbyte: .byte 0
     .balign 2
-usbmidi_tx_acc_len: .word 0
+usbmidi_tx_acc_len: .word 0         | MIDI bytes queued in the ring
 usbmidi_tx_snd_len: .word 0
+usbmidi_tx_head:    .word 0         | ring index of the next record
+usbmidi_tx_tail:    .word 0         | ring index of the oldest record
+usbmidi_tx_used:    .word 0         | ring bytes in use, headers included
+    .balign 4
 usbmidi_tx_drops:   .long 0
-usbmidi_tx_acc:  .space TX_CAP
-usbmidi_tx_snd:  .space TX_CAP
+usbmidi_tx_acc:  .space TX_RING     | the ring
+usbmidi_tx_snd:  .space TX_SND
     .balign 2

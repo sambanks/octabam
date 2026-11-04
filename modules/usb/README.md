@@ -107,8 +107,8 @@ Causes (read from the stock disassembly; the measurements above agree):
   bulk max packet at high speed.
 - The dTD token's status bits were not read.
 
-`usbmidi_rx.s` (octabam's; `usbmidi.s` is unchanged and still matches his
-build) takes over the SET_CONFIGURATION and usb_isr detours and hands on to
+`usbmidi_rx.s` (octabam's; `usbmidi.s` was then unchanged and matched his
+build, and is his text but for the TX queue since #1016) takes over the SET_CONFIGURATION and usb_isr detours and hands on to
 his shims:
 
 - Before the bytes of each event are enqueued, `count + event bytes` must be
@@ -275,8 +275,8 @@ The `usb-midi` remix (this module on the stock effects) has not been flashed.
 
 - Not measured: clock jitter over USB against DIN (bulk transfers have no schedule; the
   gate sends one `0xF8` per transfer, a host can bunch several into one
-  packet, and each then gets a near-zero interval); a CC flood against the
-  256-byte queue; DISK MODE entered with a MIDI session open; Windows.
+  packet, and each then gets a near-zero interval); a clock byte's latency
+  behind a full TX ring; DISK MODE entered with a MIDI session open; Windows.
 
 ### A completion between the two ENDPTCOMPLETE reads (#1017, 4 Nov 2026)
 
@@ -301,7 +301,8 @@ chord after the next one (inferred).
   is left primed; any other state runs the stock prime. Counted in
   `usbmidi_rx_late`. Masking the second read cannot close the window (the
   controller sets the bit, not an interrupt), and his shim does the EP2 IN kick,
-  so it is not skipped. `usbmidi.s` is unchanged.
+  so it is not skipped. `usbmidi.s` was not changed for this (its TX queue
+  was, later, for #1016).
 - This is the reporter's design. Their module form ran 12,348 of 12,348 bytes
   once each and in order on the same bench (late branch taken 500 times) and has
   been on their MKI since 2 Nov 2026. This form is not on a unit.
@@ -356,23 +357,59 @@ primitives, reached by nothing, and no receive decoder. The module:
   MIDI uses, then re-primes (`usbmidi_rx.s`, see "Receive path");
 - mirrors both senders into the encoder: `midi_send` (channel messages)
   and the priority byte sender (clock, transport). Messages are queued in
-  a 256-byte accumulator behind one transfer; a message that would
-  overflow it is counted in `usbmidi_tx_drops`, never sent corrupt.
+  a 4 KB ring of whole messages; each transfer takes whole messages, at
+  most 512 bytes; a message that does not fit the ring, or is longer than
+  512 bytes, is counted in `usbmidi_tx_drops`, never sent corrupt (see
+  "Transmit queue").
 
-Nine detours, four descriptor-pointer rewrites, no pokes. The `usbmidi`
-unit is his file verbatim (two of the detours reach `usbmidi_rx` first, and two more, bus reset and session end, are `usbmidi_rx`'s own), and the build proves it: every build re-links
-it at his zone address `0x400d24f0` and compares with the 1,124-byte blob
-his `usb-midi.py` produced from our stock bytes (`Linked.reference`, the
-port-is-a-proof rule). The clamps are a second unit (`clamp.s`, his
-usb-audio.s shims reading `cfg_len`).
+Ten detours, four descriptor-pointer rewrites, no pokes. The `usbmidi`
+unit is from his file (two of the detours reach `usbmidi_rx` first, and two more, bus reset and session end, are `usbmidi_rx`'s own). Until 4 Nov 2026 it
+was his file verbatim, and every build re-linked it at his zone address
+`0x400d24f0` and compared it with the 1,124-byte blob his `usb-midi.py`
+produced from our stock bytes (`Linked.reference`). Since #1016 its TX queue
+is octabam's, and the pin is gone; the rest is his text. The clamps are a
+second unit (`clamp.s`, his usb-audio.s shims reading `cfg_len`).
+
+### Transmit queue (#1016, 4 Nov 2026)
+
+Reported by xynta. Both senders appended whole messages to one 256-byte
+accumulator (his `TX_CAP`) while one transfer was in flight, and dropped what
+did not fit, counting it. So a burst longer than what fitted before the next
+EP2 IN completion lost its tail: CC 61's dump (283 CCs, 849 bytes in about
+5 ms) reached the host with 172, 115 and 102 of 283 on an MKI (3 Nov 2026,
+`usbmidi_tx_drops` rising by exactly the rest), and under the port 616 of
+1,981 messages (the stock dump request plus CC 61 six times).
+
+- Now a 4 KB ring of `[length hi, length lo, message]` records. The kick moves
+  whole messages, oldest first, into the send buffer, at most `TX_SND` = 512
+  bytes, and encodes them as one transfer; each EP2 IN completion kicks again
+  until the ring is empty. A message is never split: the encoder reads ahead
+  inside a message, so a SysEx cut in two would be framed wrongly.
+- `TX_SND` bounds one transfer because the encoder (`0x4001d204`) writes up to
+  4 bytes per MIDI byte to `0x4ecc8000` with no bound and `usb_midi_rx_buf`
+  starts 4 KB later (read from the code); under 1,024 MIDI bytes is safe, and
+  512 keeps the interrupt-masked copy near the old 256-byte one.
+- Clock and transport bytes queue behind a backlog, as they did behind the
+  old accumulator, but the backlog can now be up to 4 KB: their latency then
+  is the drain time (not measured).
+- A bus reset or session end empties the ring (`usbmidi_rx_bus_end`, by the
+  exported `usbmidi_tx_head` / `tail` / `used` / `acc_len`).
+- The reporter's own fix, a 4 KB FIFO in front of the old accumulator in a
+  separate module, ran 283 of 283 three times on their MKI and 1,981 of 1,981
+  under the port. This ring is a different implementation in `usbmidi.s`
+  itself, as they suggested; it has not run on a unit.
+- Gate: `verify_usbmidi_tx` (image stage, unicorn): 283 CCs queued whole with
+  EP2 IN busy; a full ring drops exactly what does not fit; a kick sends one
+  transfer of 170 whole messages, oldest first, and keeps the rest; a SysEx
+  longer than 512 bytes is dropped and counted.
 
 ### Ground
 
 | what | where |
 |---|---|
-| code + queues | DRAM units `usbmidi` (1,124 B, his bytes), `usbmidi_rx` and `usbmidi_clamp` in the platform reserve |
+| code + queues | DRAM units `usbmidi` (from his file; a 4 KB TX ring since #1016), `usbmidi_rx` and `usbmidi_clamp` in the platform reserve |
 | descriptors | DRAM unit `usbmidi_cfg` (4 × 124 B, or 4 × 250 B with an output stream) |
-| hooks | `0x4001d9ca` `0x4001daec` `0x4001e606` `0x40010bc8` `0x400108b0` `0x4001d858` `0x4001d896` `0x4001e91c` `0x4001e952` (the last two replaced by the audio shims, which call `usbmidi_rx_bus_end`) |
+| hooks | `0x4001d9ca` `0x4001daec` `0x4001e606` `0x40010bc8` `0x400108b0` `0x4001d858` `0x4001d896` `0x4001e91c` `0x4001e952` (the last two replaced by the audio shims, which call `usbmidi_rx_bus_end`), `0x4001d184` (#1017) |
 | pointer rewrites | the responder's four `pea` operands `0x4001d882` `0x4001d88a` `0x4001d8c0` `0x4001d8c8` |
 | firmware memory it uses | the firmware's own EP2 dQHs, dTDs and buffers (`0x4ec94900..`, `0x4ecc8000`, `0x4ecc9000`; the RX buffer's 4 KB page has no other reference in the image) |
 

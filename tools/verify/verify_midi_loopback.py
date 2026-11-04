@@ -270,7 +270,8 @@ def routing_machine_gate():
                 if usb:
                     m.put("usbmidi_up", 1, 1)
                     m.put("usbmidi_tx_busy", 1, 1)
-                    m.put("usbmidi_tx_acc_len", 0, 2)
+                    for f in ("usbmidi_tx_acc_len", "usbmidi_tx_used", "usbmidi_tx_head", "usbmidi_tx_tail"):
+                        m.put(f, 0, 2)          # the TX ring, empty (#1016)
                 events = [(0x90 | channel, 84, 100), (0xb0 | channel, 34, 70),
                           (0x80 | channel, 84, 0)]
                 for msg, pc, operand in zip(events,
@@ -283,7 +284,8 @@ def routing_machine_gate():
                 if usb:
                     assert m.get("usbmidi_tx_acc_len", 2) == (0 if route == 1 else 9)
                     if route != 1:
-                        assert bytes(m.u.mem_read(m.sym["usbmidi_tx_acc"], 9)) == bytes(sum((list(x) for x in events), []))
+                        # the ring's records from index 0: [length hi, length lo, message]
+                        assert bytes(m.u.mem_read(m.sym["usbmidi_tx_acc"], 15)) == b"".join(b"\x00\x03" + bytes(x) for x in events)
                 if route:
                     assert [m.next() for _ in events] == [bytes(x) for x in events]
                 assert m.get("lb_internal_held") == 0

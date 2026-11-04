@@ -102,10 +102,10 @@ def audio_inc(modules, remix):
 # image: USB MIDI's four, then usbaudio, then crossbar, then usbaudio_in.
 
 LINKED = (
-    # his unit, verbatim: the build re-links it at his zone address and
-    # compares with his usb-midi.py's blob (1,124 B, from our stock bytes)
-    Linked("usbmidi", f"{SOURCE}/usbmidi.s", cpu="54455", dram=True,
-           reference=(0x400d24f0, "6291d91e923145be62719eee56c2ca823d36c2d71ae538550e70b5533d404e60")),
+    # from markandrus's usb-midi.s (6a9ff68); pinned to his blob's sha256
+    # (Linked.reference, 1,124 B at 0x400d24f0) until 4 Nov 2026, when its TX
+    # queue became octabam's 4 KB ring (#1016)
+    Linked("usbmidi", f"{SOURCE}/usbmidi.s", cpu="54455", dram=True),
     Linked("usbmidi_rx", f"{SOURCE}/usbmidi_rx.s", cpu="54455", dram=True),
     Linked("usbmidi_clamp", f"{SOURCE}/clamp.s", cpu="54455", dram=True),
     # every configuration of every setting combination, one length
@@ -238,7 +238,8 @@ CLAIMS = Claims(sram=((0x80007c00, 0x80, "EP3 OUT dTDs"),
 MIDI_GATES = (Gate("tools/verify/verify_usbmidi_rx.py", stage="image"),
               Gate("tools/verify/verify_usb_midi_clock.py", stage="image"),
               Gate("tools/verify/verify_usb_midi_replug.py", stage="image"),
-              Gate("tools/verify/verify_usbmidi_late.py", venv=True, stage="image"))
+              Gate("tools/verify/verify_usbmidi_late.py", venv=True, stage="image"),
+              Gate("tools/verify/verify_usbmidi_tx.py", venv=True, stage="image"))
 # MAIN/CUE aligned with the tracks (skips without a source project)
 GATE_ALIGN = Gate("tools/verify/verify_usb_align.py", remix_arg=False, venv=True, stage="image")
 # the stems against core 0's own MAIN, sample by sample, under the port (skips without a source project)

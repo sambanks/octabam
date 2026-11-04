@@ -18,6 +18,8 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- **USB MIDI out: a burst longer than one transfer no longer loses its tail** (#1016, reported by xynta). `usbmidi.s`'s 256-byte TX accumulator is a 4 KB ring of whole messages; each transfer takes whole messages, at most 512 bytes. CC 61's 283-CC dump reached the host with 102 to 172 messages on the reporter's MKI. `usbmidi.s` is no longer pinned to markandrus's blob (`Linked.reference` removed); the rest of it is his text. Gate: `verify_usbmidi_tx`. Not flashed.
+
 - **USB MIDI in: a completion between the two ENDPTCOMPLETE reads is decoded** (#1017, reported by xynta). A transfer that completed after `usbmidi_rx.s`'s ISR shim read ENDPTCOMPLETE was cleared undecoded by `usbmidi.s`'s second read, and the next transfer replayed an older one's tail (reporter's paced bench: 500 of 1,000 short transfers lost, 55,888 stale events). A detour at `usb_midi_rx_prime` (`0x4001d184`) decodes it and re-primes the 512-byte dTD; `usbmidi.s` is unchanged. Gate: `verify_usbmidi_late`. Not flashed in this form; the reporter's module form has run on their MKI since 2 Nov.
 
 - **`octabam`: SIDECHAIN_COMPRESSOR back** (with SC LOAD METER BRIDGE; out since `433e22e`, 1 Nov). COMPRESSOR's row is the side-chain compressor again, its DSP loaded on demand into the top of T4's FX2 block (the fourth demand entry; DLCOPY moves to `0x33DC3`), `FORM = SHARED`, `PLACE = DRAM`. While its code is not loaded, page 2's KEY reads `--` (DLPUMP's `dl_keyfmt` over sc_cf's `key_fmt`, issue #934) beside the `SC KEY OFF` toasts. The remix's proof is CHECK again: OCTABAMR3's suite ran without SC. Not flashed.

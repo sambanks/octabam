@@ -1,5 +1,5 @@
 | usbmidi_rx.s -- the USB-MIDI receive path, in front of usbmidi.s.
-| octabam. usbmidi.s stays markandrus's bytes (manifest.py Linked.reference);
+| octabam. usbmidi.s is markandrus's text but for its TX queue (#1016);
 | the two detours that reached its SET_CONFIGURATION and usb_isr shims reach
 | these, which hand over to them.
 |
@@ -273,12 +273,11 @@ usbmidi_rx_sessend_shim:
 | usbmidi_rx_bus_end: EP2 down until the next SET_CONFIGURATION. The senders
 | stop queueing (usbmidi_up = 0), the transfer slot is free (tx_busy = 0),
 | what was queued for the old session is dropped (a stale clock is worth
-| nothing to the next host), and both EP2 directions are flushed. The
-| accumulator length is usbmidi.s's local usbmidi_tx_acc_len, at
-| usbmidi_up + 4 in his verbatim layout (up, tx_busy, tmpbyte, .balign 2):
-| Linked.reference pins those bytes and verify_usb_midi_replug checks the
-| offset. Interrupts are masked for the three stores, as usbmidi.s masks its
-| own accumulator. Saves everything it uses.
+| nothing to the next host), and both EP2 directions are flushed. The TX
+| ring (usbmidi.s's usbmidi_tx_head / tail / used / acc_len, exported since
+| the ring replaced the 256-byte accumulator, #1016) is emptied. Interrupts
+| are masked for the stores, as usbmidi.s masks its own ring. Saves
+| everything it uses.
 | usbmidi_tx_kick sets tx_busy and runs the encoder with interrupts unmasked;
 | a reset or session end in that window is followed by the encoder's EP2 IN
 | prime. The flush here at SET_CONFIGURATION cancels it before EP2_INIT.
@@ -289,7 +288,10 @@ usbmidi_rx_bus_end:
     movew   #0x2700,%sr
     clrb    usbmidi_up
     clrb    usbmidi_tx_busy
-    clrw    usbmidi_up+4            | usbmidi_tx_acc_len
+    clrw    usbmidi_tx_acc_len      | the TX ring, empty
+    clrw    usbmidi_tx_used
+    clrw    usbmidi_tx_head
+    clrw    usbmidi_tx_tail
     movew   %d3,%sr
     bsr     usbmidi_rx_ep2_flush
     moveml  %sp@,%d0-%d3
