@@ -1252,7 +1252,7 @@ the restore reads the same wrong place. The four cfgsel responder stubs
 (usbaudio.s) saved registers this way across the cfgsel re-run
 (usb_cfg_ready 0: brain, block not valid yet) and corrupted the
 control-transfer handler's frame. The fix is the module's lea-framed
-idiom (usbmidi_rx.s): `lea %sp@(-44),%sp` before the moveml pair and
+idiom (usbmidi.s): `lea %sp@(-44),%sp` before the moveml pair and
 `lea %sp@(44),%sp` after — the movem writes into the reserved space and
 sp round-trips. verify_usb's runtime rows exercise cfgsel with the block
 invalid (the brain rows) and valid. Rule: a register-save movem through
