@@ -234,12 +234,37 @@ jobs:
           path: .git/octabam-port
           key: port-${{ steps.port.outputs.key }}
 
+      # scripts/refhash.sh check compares against the 24 builds of the merge-base
+      # (tools/verify/refhash_store.py), built on the runner when the store has
+      # none: hashes and normalised build logs, no firmware. A later push to the
+      # same PR on the same merge-base restores them.
+      - name: 🔑 Key the Refhash Baseline
+        id: refhash
+        if: matrix.name == 'refhash'
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          echo "key=$(python3 tools/verify/refhash_store.py key --base "$base")" >> "$GITHUB_OUTPUT"
+
+      - name: 💾 Restore Refhash Baseline
+        id: refhashcache
+        if: matrix.name == 'refhash'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .git/octabam-refhash
+          key: refhash-${{ steps.refhash.outputs.key }}
+
       # check_shards orders its jobs longest-first from the durations of the last
       # run (<git common dir>/octabam-gate-times.json) and skips a gate whose pass
       # is recorded for the same image and inputs (octabam-gate-cache,
       # tools/verify/gate_cache.py). Neither survives a runner, so both go
       # through the cache, keyed by unit. A PR run restores the newest entry of
-      # its own branch, else of the base branch.
+      # its own branch, else of the base branch. The `-@` ends the unit's slug:
+      # `check-remix-octabam-` is also the start of `check-remix-octabam--project-`,
+      # and a restore-key takes the newest entry that starts with it.
       - name: 🔑 Name the Unit's Caches
         id: unit
         env:
@@ -254,22 +279,22 @@ jobs:
             .git/octabam-gate-times.json
             .git/octabam-gate-cache
             .git/octabam-fresh-cache
-          key: gates-${{ steps.unit.outputs.slug }}-${{ github.run_id }}
-          restore-keys: gates-${{ steps.unit.outputs.slug }}-
+          key: gates-${{ steps.unit.outputs.slug }}-@${{ github.run_id }}
+          restore-keys: gates-${{ steps.unit.outputs.slug }}-@
 
       # The set gates (mode-defaults, plocks-p2, set, ...) SKIP without a project. An empty one is made by the
       # firmware itself under the port from the runner's own OS (tools/hw/ot_fresh.py), on the unit's remix, and kept
       # in .git/octabam-fresh-cache by image, port and script. Only the `(project)` unit of a remix (reach.SPLIT_REMIX_JOBS)
-      # runs the jobs that read it; the image job is not one: with a project it ran 2869 s and failed in verify_brain.
-      # The `(brain)` unit (reach.SPLIT_EXTRA_UNITS) runs BRAIN's image-stage gate, verify_brain, with one.
+      # runs the jobs that read it; the `image:` jobs are not among them: with a project they ran 2869 s and verify_brain failed.
+      # The `(brain)`, `(brain-templates)`, `(brain-panes)` and `(brain-screens)` units (reach.SPLIT_EXTRA_UNITS) run verify_brain's
+      # sections with one, through check_shards (gate cache).
       - name: 📁 Fresh Project
-        if: contains(matrix.name, ' (project)') || contains(matrix.name, ' (brain)')
+        if: contains(matrix.name, ' (project)') || contains(matrix.name, ' (brain')
         env:
           UNIT: ${{ matrix.name }}
         run: |
           remix="${UNIT#check-remix }"
-          remix="${remix% (project)}"
-          remix="${remix% (brain)}"
+          remix="$(echo "$remix" | sed -E 's/ \((project|brain[a-z-]*)\)$//')"
           make emu-get
           .venv/bin/python3 tools/hw/ot_fresh.py --remix "$remix" --out out/fresh
           echo "OT_PROJECT=$PWD/out/fresh/$remix/NOPROJ" >> "$GITHUB_ENV"
@@ -315,7 +340,9 @@ jobs:
         if: always()
         run: |
           find .git/octabam-gate-cache -name '*.json' -mtime +14 -delete 2>/dev/null || true
-          [ -f .git/octabam-gate-times.json ] && echo recorded=true >> "$GITHUB_OUTPUT" || true
+          # check-shared units record passes (module_gates --shared) and no times
+          { [ -f .git/octabam-gate-times.json ] || [ -n "$(ls .git/octabam-gate-cache 2>/dev/null)" ]; } \
+            && echo recorded=true >> "$GITHUB_OUTPUT" || true
 
       - name: 💾 Save Gate Times and Passes
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -325,7 +352,19 @@ jobs:
             .git/octabam-gate-times.json
             .git/octabam-gate-cache
             .git/octabam-fresh-cache
-          key: gates-${{ steps.unit.outputs.slug }}-${{ github.run_id }}
+          key: gates-${{ steps.unit.outputs.slug }}-@${{ github.run_id }}
+
+      - name: 🧮 Check Refhash Baseline Saved
+        id: refhashdone
+        if: always() && matrix.name == 'refhash'
+        run: ls .git/octabam-refhash/*/manifest.txt >/dev/null 2>&1 && echo saved=true >> "$GITHUB_OUTPUT" || true
+
+      - name: 💾 Save Refhash Baseline
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: always() && matrix.name == 'refhash' && steps.refhashcache.outputs.cache-hit != 'true' && steps.refhashdone.outputs.saved == 'true'
+        with:
+          path: .git/octabam-refhash
+          key: refhash-${{ steps.refhash.outputs.key }}
 
       - name: 🧮 Check ColdFire Port Built
         id: portdone
@@ -339,10 +378,12 @@ jobs:
           path: .git/octabam-port
           key: port-${{ steps.port.outputs.key }}
 
-      # one unit saves it: the key is per run and every unit would write 130 MB
+      # one unit saves it, and only on main: the key is per run, an entry saved
+      # from a PR is read by no other ref, and 29 of them were 8 GB of the
+      # repository's 10 GB cache limit, evicting the toolchain and port caches
       - name: 💾 Save Compiler Cache
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        if: always() && strategy.job-index == 0
+        if: always() && strategy.job-index == 0 && github.ref == 'refs/heads/main'
         with:
           path: ~/.cache/ccache
           key: ccache-${{ runner.os }}-${{ github.run_id }}

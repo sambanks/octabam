@@ -1116,15 +1116,41 @@ def entry_name(kind, command):
 # 40467801048: remix-switch 481 s of octabam's 1886 s over 3 shards (the other
 # jobs: 1405 s, 468 s over 3 shards); module_gates --shared 353 s of the shared
 # half's 645 s, run serially.
-SPLIT_REMIX_JOBS = {"octabam": {"long": ("remix-switch",), "project": ("set", "mode-defaults", "plocks-p2", "pattern-mute")}}
+# The `image:` jobs (one per image-stage module gate) are cut up by their times in runs 41762397696 and 41783120715 (4 Nov
+# 2026): `rec` is usb-in and usb-load-meter, about 600 s each; `rec-arming`, `rec-inputs` and `rec-level` are the three
+# REC THRESHOLD gates (verify_rec_threshold.py: twelve port runs with the DSP, 1042 s in one job beside the others).
+# A runner each (a public repo's minutes are free).
+SPLIT_REMIX_JOBS = {"octabam": {"long": ("remix-switch",), "project": ("set", "mode-defaults", "plocks-p2", "pattern-mute"),
+                                "rec": ("image:usb-in", "image:usb-load-meter"),
+                                "rec-arming": ("image:rec-threshold-arming",),
+                                "rec-inputs": ("image:rec-threshold-inputs",),
+                                "rec-level": ("image:rec-threshold-level",)}}
 
 # A unit that runs one gate on its own, with a generated project, beside the units above: `check-remix <remix> (<name>)`
-# is COMMAND. It is additive (the remix's other units still run that gate, without a project), so it exists only when
-# MODULE is reached. `brain`: BRAIN's image-stage gate, verify_brain, needs a project; the `image` job cannot take one, and
-# scoping it with --modules does not narrow it (that is "reached from BRAIN": 9 gates of ten modules, 4581 s, with
-# verify_usb_post, verify_load_meter and verify_usb_load_meter failing on a generated project, run 40640514673), so the
-# unit runs verify_brain alone. It builds its own image and reads OT_PROJECT, which ci.yml sets for a `(brain)` unit.
-SPLIT_EXTRA_UNITS = {"octabam": {"brain": ("BRAIN", ".venv/bin/python3 tools/verify/verify_brain.py octabam")}}
+# is `check_shards --only-jobs <name>`; check_shards.remix_jobs adds the gate job from COMMAND, so the gate cache covers it
+# (4 Nov 2026; until then the unit ran COMMAND directly, uncached, 24.7 min on average). It is additive (the remix's
+# other units still run that gate, without a project), so it exists only when MODULE is reached. `brain`: BRAIN's
+# image-stage gate, verify_brain, needs a project; the `image:` jobs cannot take one, and scoping it with --modules does
+# not narrow it (that is "reached from BRAIN": 9 gates of ten modules, 4581 s, with verify_usb_post, verify_load_meter
+# and verify_usb_load_meter failing on a generated project, run 40640514673), so the unit runs verify_brain alone.
+# It builds its own image and reads OT_PROJECT, which ci.yml sets for a `(brain)` unit.
+# verify_brain runs as five units, one per `--section` group (4 Nov 2026: 1026 s locally in one process, about 40
+# boots; `brain` keeps the name of the whole gate and runs the eight card cases; in CI the `cards` group took 782 and
+# 784 s with the stock-store sections in it, the others 308-786 s).
+_BRAIN = ".venv/bin/python3 tools/verify/verify_brain.py octabam --section "
+SPLIT_EXTRA_UNITS = {"octabam": {"brain": ("BRAIN", _BRAIN + "cards"),
+                                 "brain-stores": ("BRAIN", _BRAIN + "stores"),
+                                 "brain-templates": ("BRAIN", _BRAIN + "templates"),
+                                 "brain-panes": ("BRAIN", _BRAIN + "panes"),
+                                 "brain-screens": ("BRAIN", _BRAIN + "screens")}}
+
+
+# Shared module gates that are slow beside the rest, each a unit of its own: `check-shared (<part>)` is
+# `SHARED_PART=modules MODULE_GATES_ONLY=<script>`, and `check-shared (module gates)` is `MODULE_GATES_SKIP` of all of
+# them. Run 41768453842 (4 Nov 2026): the module gates took 1328 s in one serial loop, test_morph 579 s and
+# test_octa303 409 s of it. Module key, script (the manifest's Gate).
+SPLIT_SHARED_GATES = {"morph": ("MORPH", "tools/morph/test_morph.py"),
+                      "octa303": ("OCTA303", "tools/octa303/sim/test_octa303.py")}
 
 
 def entries(items, jobs):
@@ -1150,19 +1176,27 @@ def entries(items, jobs):
                                          + (f'--modules "{",".join(modules)}" ' if modules else "") + extra + r)
                 if r in SPLIT_REMIX_JOBS:
                     parts = SPLIT_REMIX_JOBS[r]
-                    every = ",".join(n for names in parts.values() for n in names)
+                    every = ",".join([n for names in parts.values() for n in names] + list(SPLIT_EXTRA_UNITS.get(r, {})))
                     out.append({"name": f"check-remix {r}", "items": [(kind, line(f"--skip-jobs {every} "), paths)]})
                     for part, names in parts.items():
                         out.append({"name": f"check-remix {r} ({part})",
                                     "items": [(kind, line(f"--only-jobs {','.join(names)} "), paths)]})
                     for name, (module, command) in SPLIT_EXTRA_UNITS.get(r, {}).items():
                         if modules is None or module in modules:
-                            out.append({"name": f"check-remix {r} ({name})", "items": [(kind, command, paths)]})
+                            out.append({"name": f"check-remix {r} ({name})",
+                                        "items": [(kind, line(f"--only-jobs {name} "), paths)]})
                 else:
                     out.append({"name": f"check-remix {r}", "items": [(kind, line(), paths)]})
         elif kind == "check-shared":
+            mods = shared_modules(command)
+            skip = ",".join(script for _, script in SPLIT_SHARED_GATES.values())
             out.append({"name": "check-shared", "items": [(kind, command + " SHARED_PART=rest", paths)]})
-            out.append({"name": "check-shared (module gates)", "items": [(kind, command + " SHARED_PART=modules", paths)]})
+            out.append({"name": "check-shared (module gates)",
+                        "items": [(kind, command + f" SHARED_PART=modules MODULE_GATES_SKIP={skip}", paths)]})
+            for part, (module, script) in SPLIT_SHARED_GATES.items():
+                if mods is None or module in mods:
+                    out.append({"name": f"check-shared ({part})",
+                                "items": [(kind, command + f" SHARED_PART=modules MODULE_GATES_ONLY={script}", paths)]})
         else:
             out.append({"name": entry_name(kind, command), "items": [item]})
     if light:
