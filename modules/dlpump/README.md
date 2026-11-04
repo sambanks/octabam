@@ -22,7 +22,10 @@ COMPRESSOR, id `0x18`), is never refused: while its code is not loaded the track
 choosers let it and any reverb through, a reverb that reaches its loaded code takes the block at once (the
 effect is withdrawn and the track runs as stock), and its toasts say so (`SC KEY OFF: T4 FX2` when no home is
 free, `SC KEY OFF: T4 REV` when a reverb took it). The flag is the eighth long of the effect's `dl_tab` row
-(`table_inc`'s `_soft`). Not run on a unit.
+(`table_inc`'s `_soft`). While SIDECHAIN_COMPRESSOR's code is not loaded, page 2's KEY reads `--`: `dl_keyfmt`
+wraps sc_cf's `key_fmt` (`FormatterReg(wraps=True)`, written over KEY's formatter word only, so the switch widget
+stays) and prints `--` while the effect's `dl_loaded` bit is clear; the stored KEY is not touched (issue #934).
+`verify_labels` calls it in both states under the emulator. Not run on a unit.
 
 `remix.inc` (the effect table and the blocks) is generated per remix from
 `out/dsp/demand_records.json`; the unit reserves 2,600 code words an effect on every link.

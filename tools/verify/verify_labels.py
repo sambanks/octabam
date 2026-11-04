@@ -117,6 +117,40 @@ def main():
             else:
                 print(f"  [PASS] {key:13} slot {slot:<2} in {mname:<5} prints "
                       + " | ".join(f"{v}:{t}" for v, t in got.items()))
+    # A WRAPPING formatter (FormatterReg.wraps): DLPUMP's dl_keyfmt over
+    # SIDECHAIN_COMPRESSOR's KEY (issue #934). It prints "--" for every value
+    # while SC's side-chain code is not loaded (its bit in dl_loaded clear), and
+    # the wrapped formatter's labels when it is; both states are called here.
+    for mk in remix.modules:
+        for u in mods[mk].linked:
+            reg = u.registers_formatter
+            if reg is None or not reg.wraps or reg.module not in cloned or reg.module in remix.blanked:
+                continue
+            nm = subprocess.run(["m68k-elf-nm", "out/platform/runtime/runtime.elf"],
+                                capture_output=True, text=True).stdout
+            syms = {f[2]: int(f[0], 16) for f in (l.split() for l in nm.splitlines()) if len(f) == 3}
+            P = rd32(fx2_ids + mods[reg.module].menu.fx2_id * 4)
+            fmt = rd32(P + P_FMT_A + reg.slot * 4)
+            labels = mods[reg.module].params[reg.slot].labels
+            bit = 1 << list(remix.window_demand).index(reg.module)
+            checked += 1
+            if fmt != syms.get(reg.symbol):
+                fails.append(f"{reg.module} slot {reg.slot}: A is 0x{fmt:08x}, not {mk}'s "
+                             f"{reg.symbol} 0x{syms.get(reg.symbol, 0):08x}")
+                continue
+            for loaded, want in ((0, ["--"] * len(labels)), (bit, list(labels))):
+                uc.mem_write(syms["dl_loaded"], loaded.to_bytes(4, "big"))
+                got = []
+                for v in range(len(labels)):
+                    uc.mem_write(BUF, b"\0" * 32)
+                    emu._call(uc, fmt, (BUF, v))
+                    got.append(emu._cstr(uc, BUF, 16))
+                state = "loaded" if loaded else "not loaded"
+                if got != want:
+                    fails.append(f"{reg.module} slot {reg.slot} ({state}): firmware prints {got}, want {want}")
+                else:
+                    print(f"  [PASS] {reg.module} slot {reg.slot} {state}: prints {' | '.join(got)}")
+            uc.mem_write(syms["dl_loaded"], b"\0" * 4)
     for f in fails:
         print(f"  [FAIL] {f}")
     if not checked:

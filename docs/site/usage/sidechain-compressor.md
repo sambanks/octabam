@@ -13,9 +13,10 @@ An effect on a track: select the track, press FX2 (or FX1), and pick COMPRESSOR
 from the chooser; the setup page shows the new knobs. There is no separate
 effect to load: COMPRESSOR is the side-chain compressor.
 
-[Octabam](../../remix-octabam.md) 0.3 does not carry it; COMPRESSOR there is stock. The loader form (the
-side-chain's DSP code loaded while a track uses COMPRESSOR, in the top of T4's FX2 block) is in the repository and has
-not run on a unit in the current `octabam` form.
+[Octabam](../../remix-octabam.md) carries it in the loader form: the side-chain's DSP code is loaded
+while a track uses COMPRESSOR, into the top of T4's FX2 block. Until it is, and while DARK REV on T4's FX2 or
+another loaded effect holds that block, COMPRESSOR works as stock, KEY reads `--` and the screen says
+`SC KEY OFF`. This form has not run on a unit in the current `octabam`.
 
 The test remixes `sidechain-compressor` and `kyoti-mute-sidechain` carry it the
 earlier way, in SPRING REV's words, so SPRING REV is off the chooser in those images.
@@ -46,7 +47,10 @@ affected.
 ## Operation
 
 - KEY chooses what drives the detector: OFF (the track's own signal, as
-  stock) or T1-T8. It is drawn as a nine-position switch, OFF pointing
+  stock) or T1-T8. In the loader form, KEY reads `--` while the side-chain
+  is not loaded (just after you pick COMPRESSOR, or while a reverb holds
+  its block: the `SC KEY OFF` message). COMPRESSOR then works as stock;
+  your KEY setting is kept and comes back when the side-chain does. It is drawn as a nine-position switch, OFF pointing
   left and T8 right, and moves one position per detent, also with the
   encoder pressed. Choosing the compressor's own track keys it from its own
   signal through the filter.
