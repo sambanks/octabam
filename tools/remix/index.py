@@ -230,7 +230,7 @@ def main():
         for m in ms:
             _print_module(m)
     _print_stock()
-    matrix(mods)
+    matrix(registry.defaulted())   # judged as a remix that sets no Apply.BUILD setting builds them
     _print_remixes()
     print("Build one with:  make bus REMIX=<name>")
     return 0

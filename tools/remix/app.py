@@ -509,7 +509,7 @@ class RemixerScreen(Screen):
     def avail_rows(self):
         """Everything that COULD be in an image: our modules by category
         (schema.Category, the module table's grouping), then stock."""
-        mods = [m for m in registry.modules().values() if not m.is_stock]
+        mods = [m for m in registry.defaulted().values() if not m.is_stock]
         mods.sort(key=lambda m: (self._GROUPS.index(m.category or Category.REFERENCE),
                                  disp(m).lower()))
         return mods + list(stock.MODULES)
@@ -735,7 +735,7 @@ class RemixerScreen(Screen):
         from remix import ledger
         out = {}
         loaded = st.selected
-        mods = [m for m in registry.modules().values()
+        mods = [m for m in registry.defaulted().values()
                 if not m.is_stock and rig.category(m) == rig.MOD]
         bridges = [b for b in mods if b.overrides and b.key not in st.sel]
         for m in mods:

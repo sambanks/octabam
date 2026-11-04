@@ -75,7 +75,7 @@ def fx1_hazard(mod) -> str | None:
 
 class State:
     def __init__(self):
-        self.mods = registry.modules()
+        self.mods = registry.defaulted()   # as a remix that sets no Apply.BUILD setting builds them
         self.keys = sorted(self.mods)
         self.sel: set[str] = set()
         # ⚠️ THE HARVEST IS DERIVED, not held. See the `harvest` property.

@@ -331,6 +331,25 @@ def remix_names() -> list[str]:
     return sorted(names)
 
 
+def defaulted() -> dict[str, object]:
+    """Every module bound to its own Apply.BUILD settings' defaults (an
+    Option as its label): the module a remix that sets none of them builds.
+    What the compatibility matrix and the remixer judge, so a module whose
+    unbound declaration is a non-default form (CX OSC's PLACE=CAVE cave)
+    is not refused for a form the default build never takes."""
+    out = {}
+    for k, m in modules().items():
+        vals = {}
+        for st in m.settings:
+            if st.apply is schema.Apply.BUILD:
+                v = st.default
+                if isinstance(st.kind, schema.Option) and isinstance(v, int):
+                    v = st.kind.labels[v]
+                vals[st.name] = v
+        out[k] = m.bind(vals) if vals and m.variant is not None else m
+    return out
+
+
 def bound(r) -> dict[str, object]:
     """Every module, with each selected one bound to the remix's
     Apply.BUILD settings (schema.Module.bind). The build and every check
