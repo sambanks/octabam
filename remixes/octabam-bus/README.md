@@ -2,7 +2,7 @@
 
 A remix of Octatrack OS 1.40C, built from your own copy of it, that adds a
 **delay and reverb bus** with a send from every track, three new FX1
-effects, ten stock effects on FX1, and the [core modules](../octabam/README.md#the-core-modules)
+effects, and the [core modules](../octabam/README.md#the-core-modules)
 (KITS, scene and parameter locks on page 2, USB MIDI and USB audio, BRAIN and
 the rest) and the extra ColdFire modules of `octabam` (OCTA303, MORPH,
 REC THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, TRACK PATTERNS). The USB settings are at their defaults here (TRACKS PRE, MAIN, CUE, MIDI on). See [Where it has run](#where-it-has-run).

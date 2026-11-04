@@ -74,6 +74,18 @@ class DocLinks(unittest.TestCase):
         self.assertEqual(got,
                          ["docs/site/usage/x.md:1: link to ../../img/x/gone.png -- no such file"])
 
+    def test_a_sibling_fragment_link_must_name_a_fragment(self):
+        self.assertEqual(self.fails({
+            "docs/site/usage/x.md": "[y](y.md)\n",
+            "docs/site/usage/y.md": "text\n"}), [])
+        got = self.fails({"docs/site/usage/x.md": "[z](z.md)\n"})
+        self.assertEqual(got, ["docs/site/usage/x.md:1: link to z.md -- no such usage fragment"])
+
+    def test_a_brain_fragment_may_link_its_sibling_part(self):
+        self.assertEqual(self.fails({
+            "docs/site/manual/brain-settings.md": "[log](log.md)\n",
+            "docs/site/manual/brain-log.md": "text\n"}), [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@ Mute tracks per pattern as well as globally, as on the Digitakt II.
 
 ## Access
 
-Double-press FUNC to switch the layer the next mute edit changes. A toast reads `GLOBAL MUTE` or `PATTERN MUTE`. In `octabam` and `octabam-bus`.
+Double-press FUNC to switch the layer the next mute edit changes. A toast reads `GLOBAL MUTE` or `PATTERN MUTE`.
 
 ## Operation
 

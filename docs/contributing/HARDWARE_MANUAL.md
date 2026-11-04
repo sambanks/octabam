@@ -37,18 +37,17 @@ For each effect in FX1 and FX2 on a track playing the `hits`, `pink` and `sweep`
 | 2.5 | save the project, reload it | knobs, MODE and LFOs return |
 | 2.6 | the same effect on 4 tracks at once, 5 minutes | stable audio, LOAD METER below 95 % per core |
 
-Effects: the 14 stock effects (read `remixes/octabam/remix.py` for the current list), SPECTRUM, CHARACTER, MODULATION,
-TRANSIENT, DISTORX, SIDECHAIN_COMPRESSOR.
+Effects: the 14 stock effects and SPECTRUM, CHARACTER, MODULATION (`remixes/octabam/remix.py` has the current list).
 
-### 2a. Demand loader (SPECTRUM, CHARACTER, MODULATION, TRANSIENT, DISTORX, SIDECHAIN_COMPRESSOR)
+### 2a. Demand loader (SPECTRUM, CHARACTER, MODULATION)
 
 | # | step | expected |
 |---|---|---|
-| 2a.1 | choose one of the six on a track | the effect passes audio dry for about 25 ms, then runs |
+| 2a.1 | choose one of the three on a track | the effect passes audio dry for about 25 ms, then runs |
 | 2a.2 | remove it from every track | the block is released; a stock reverb can then be chosen on the FX2 slot that shares its memory |
-| 2a.3 | with a stock reverb on that FX2 slot, choose one of the six | refused, with a toast |
-| 2a.4 | with one of the six loaded, choose a stock reverb on the sharing FX2 slot | refused, with a toast |
-| 2a.5 | all six at once on different tracks, then two on the same block (homes in `window_homes`) | each runs; the holder keeps the block; the second goes to its next home or is refused with a toast |
+| 2a.3 | with a stock reverb on that FX2 slot, choose one of the three | refused, with a toast |
+| 2a.4 | with one of the three loaded, choose a stock reverb on the sharing FX2 slot | refused, with a toast |
+| 2a.5 | all three at once on different tracks, then two on the same block (homes in `window_homes`) | each runs; the holder keeps the block; the second goes to its next home or is refused with a toast |
 | 2a.6 | open a song that sets both by another route | the reverb or the effect is dry, and the next page key says which |
 | 2a.7 | CHARACTER KEY = T1 | keys on the track's own input (no BusDelay host in this remix) |
 | 2a.8 | stock reverb size and decay sweeps at each setting, then load and withdraw an effect | no reverb crash or silence |

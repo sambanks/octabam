@@ -1,11 +1,10 @@
-A modulation pedal that replaces stock CHORUS: Juno chorus, Dimension,
+A modulation effect: Juno chorus, Dimension,
 through-zero flanger, a tuned comb and a phaser, with a LOFI stage on top.
 MIX 0 is an exact passthrough; MIX 127 is the wet outright.
 
 ## Access
 
-Press FX1 on a track; MODULATION is in the chooser in place of CHORUS. In
-Octabam it is also on FX2; in Octabam Bus it is FX1 only.
+Press FX1 or FX2 on a track; MODULATION is in the chooser with the stock effects.
 
 ## Operation
 
@@ -24,8 +23,7 @@ Octabam it is also on FX2; in Octabam Bus it is FX1 only.
   brightness, drawn BRIT.
 - WDTH sets the right channel's LFO lag: 0 mono, 64 quadrature, 127
   antiphase.
-- How many fit: beside the bus, three instances run cleanly; a fourth
-  overran the DSP on the unit.
+- Load: with MODULATION on all eight tracks, the effects processor runs at about 26 % at the defaults and up to 85 % at its most demanding settings (an empty project reads about 24 %). Past 100 % the unit stalls until you switch it off and on.
 
 ## Parameters
 
@@ -40,8 +38,3 @@ Octabam it is also on FX2; in Octabam Bus it is FX1 only.
 | 2 | MODE | JUNO / DIM / FLNG / COMB / PHSR | — | Selects the effect. |
 | 2 | TONE | 0–127 | 80 | lowpass on the line (127 is an exact bypass); BRIT in COMB |
 | 2 | WDTH | 0–127 | 127 | right LFO lag: 0 mono, 64 quadrature, 127 antiphase |
-
-## Old projects
-
-MODE's stored bytes 3–5 (FLNG/COMB/PHSR) mean one lower since ENS went.
-Run `stamp-defaults` on the card before play.

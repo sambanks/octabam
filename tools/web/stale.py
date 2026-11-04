@@ -19,7 +19,8 @@ stale: a manifest-only edit to a module still lists that module's remixes.
 every patch exists, matches its recorded sha256, parses as OBP1, and all
 patches name the same stock MAIN OS. It exits 1 on any mismatch.
 
-`--strict` exits 1 when any remix is stale. Under GitHub Actions each stale
+A manifest that names a `version` is locked to that release (tools/site/release.py): the
+paths changed since are listed and nothing warns. `--strict` exits 1 when any remix is stale. Under GitHub Actions each stale
 remix is also printed as a ::warning::.
 """
 import argparse
@@ -126,6 +127,10 @@ def main():
         paths = res[n]
         if n not in set(registry_names()):
             print(f"{n}: RETIRED (no remixes/{n}); the published patch stays until it is republished")
+            continue
+        if m.get("version"):
+            # a patch locked to a release: later changes are expected, so nothing warns
+            print(f"{n}: locked to {m['version']} (built from {m['commit'][:8]}); {len(paths)} path(s) changed since")
             continue
         if not paths:
             print(f"{n}: current (built from {m['commit'][:8]})")

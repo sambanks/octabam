@@ -12,11 +12,11 @@ README.md. Eight merged modules and four remixes had no row or page on
 rules are in tools/verify/doclinks.py; 14 references pointed at no file on
 30 Sep 2026, when nothing checked them.
 
-The hand-written site pages link to the generated reference pages, so this
+The hand-written site pages link to the generated manual pages, so this
 renders them first (tools/site/gen_pages.py, gitignored output); CI's docs
-job runs the generator before this anyway. Every contributed module needs
-an entry in the site nav (docs/site/mkdocs.yml), under its category, and each
-nav label equals the page title tools/site/gen_pages.py gives that module.
+job runs the generator before this anyway. Every page of the published
+manual (tools/site/release.py) needs an entry in the site nav
+(docs/site/mkdocs.yml), and the nav names no page the manifests do not make.
 """
 import pathlib, re, sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
@@ -25,6 +25,7 @@ from remix import index, registry
 import doclinks
 import gen_manual
 import gen_pages
+import release
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -40,25 +41,14 @@ def main():
         elif not (d / "README.md").exists():
             fails.append(f"{d.relative_to(ROOT)}/README.md: missing")
     nav = (ROOT / "docs/site/mkdocs.yml").read_text()
-    for m in registry.modules().values():
-        # BRAIN's page is hand-written (brain.md), not the generated one
-        if not m.is_stock and m.name != "brain" and f"reference/modules/{m.name}.md" not in nav:
-            fails.append(f"docs/site/mkdocs.yml: no nav entry for module {m.name} "
-                         f"(reference/modules/{m.name}.md)")
-    for label, name in re.findall(r"^\s+- (.+?): reference/modules/([\w-]+)\.md$", nav, re.M):
-        m = next((x for x in registry.modules().values() if x.name == name), None)
-        if m is not None and gen_pages._label(m) != label:
-            fails.append(f"docs/site/mkdocs.yml: nav label '{label}' for {name} differs from its page title "
-                         f"'{gen_pages._label(m)}'")
     mods = registry.modules()
-    want = {f"reference/manual/{n}/{p}.md" for n in registry.remix_names()
-            if not registry.is_test(n) and registry.remix_dir(n) is not None
-            for p in gen_manual.pages_of(registry.remix(n), mods)}
-    have = set(re.findall(r"reference/manual/[\w-]+/[\w-]+\.md", nav))
+    # the manual of each published remix: every page the manifests make is in the nav, and the nav names no other
+    want = {f"reference/manual/{n}/{p}.md" for n in release.REMIXES for p in gen_manual.pages_of(registry.remix(n), mods)}
+    have = set(re.findall(r"reference/manual/[\w-]+/[\w/-]+\.md", nav))
     for path in sorted(want - have):
-        fails.append(f"docs/site/mkdocs.yml: no nav entry for the manual page {path}")
+        fails.append(f"docs/site/mkdocs.yml: no nav entry for the manual page {path} (python3 tools/site/gen_manual.py --nav)")
     for path in sorted(have - want):
-        fails.append(f"docs/site/mkdocs.yml: nav entry {path} is not a page of any manual")
+        fails.append(f"docs/site/mkdocs.yml: nav entry {path} is not a page of a published manual")
     fails += doclinks.check()
     for f in fails:
         print("  [FAIL]", f)

@@ -9,8 +9,7 @@ Sequence.
 Hold a TRACK key and press UP: the MORPH window opens for the held tracks
 and arms them. Turn A, B and C to set them, then release the TRACK key: the
 window closes and the morph starts from scene A on the next step. Hold the
-TRACK key and press DOWN to stop it. Not in an official remix; build the
-test remix `morph`. Needs STORE (it saves through it).
+TRACK key and press DOWN to stop it. It saves through STORE.
 
 ## Operation
 
@@ -24,8 +23,7 @@ test remix `morph`. Needs STORE (it saves through it).
   its A end, so nothing jumps.
 - STOP holds the morph where it is; PLAY carries on.
 - The settings of every track, and which tracks morph, are saved with the
-  project (`morph.work`, beside the bank files; SAVE PROJECT keeps a
-  `morph.strd` copy that RELOAD brings back). After a project load or a
+  project (SAVE PROJECT keeps a copy that RELOAD brings back). After a project load or a
   power-up, the tracks that were morphing start from A on the first step
   after PLAY.
 - MIDI tracks keep the crossfader. Select parameters jump at the middle of

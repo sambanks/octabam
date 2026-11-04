@@ -265,11 +265,14 @@ hand-written manual site pages under `docs/site/` in the same PR. The
 generated reference pages update themselves from the manifests.
 
 The usage fragment `docs/site/usage/<name>.md` (`<name>` = the module
-dir) is included into the generated module page, so it is authored for
-that page: `##` headings only (the page owns the title), relative links
-and images at reference depth (`../../img/<name>/<screen>.png`,
-`../../choosing.md`), no section signs, no bare repo paths, no nested
-includes.
+dir) is included into the module's page of the manual, so it is authored for
+that page: `##` headings only (the page owns the title), links and images
+written two levels below the site root (`../../img/<name>/<screen>.png`,
+`../../safety.md`), a link to another module's fragment by its bare file name
+(`kits.md`; the manual turns it into a link to that module's page, or into
+plain text when the module is not in the manual), no section signs, no bare
+repo paths, no nested includes. Write it for a musician: no commands, file
+names or test status.
 Screenshots are LCD captures from the emulator (`tools/site/capture_manual.py`;
 `tools/emu/live_shots.py` and the scripts in `tools/site/shots/` are the
 probe walks); a UI change re-captures them in the

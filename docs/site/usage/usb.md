@@ -46,21 +46,10 @@ at USB high speed only.
 
 ![The end of the USB group: TRACKS, with * AT NEXT BOOT under the list.](../../img/usb/settings-end.png)
 
-A remix can fix a setting. `octabam` and `octabam-bus` set IN to OFF without
-fixing it.
-
-### Without BRAIN
-
-An image built without BRAIN has no settings menu and no `BRAIN/card.work`.
-USB uses the values the image was built with, the defaults above unless the
-remix sets others. To change one, rebuild with a different value; see
-[Create a remix](../../own-remix.md).
-
 ## USB MIDI
 
 MIDI in and out over USB, mirroring the DIN ports. The sequencer, time
-stretch, the LFOs and the FX follow USB MIDI clock. This has been reported
-working on one MKI.
+stretch, the LFOs and the FX follow USB MIDI clock.
 
 The Octatrack follows one clock at a time, and DIN comes first. While MIDI
 clock is arriving on DIN, USB clock, START, STOP, CONTINUE and song position

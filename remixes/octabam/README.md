@@ -1,16 +1,16 @@
 # octabam
 
 A remix of Octatrack OS 1.40C, built from your own copy of it, that adds the
-core modules (below) to all 14 stock effects and adds SPECTRUM, CHARACTER,
-MODULATION, TRANSIENT and DISTORX, which are copied into the DSP when a track uses them. It
+core modules (below) to all 14 stock effects and adds SPECTRUM, CHARACTER and
+MODULATION, which are copied into the DSP when a track uses them. It
 has no bus and no SEND. See [Where it has run](#where-it-has-run).
 
 ## The effects
 
-All 14 stock effects stay in the menus and run as stock. SPECTRUM, CHARACTER,
-MODULATION, TRANSIENT and DISTORX are on FX1 and FX2. Their DSP code is not in the image's
+All 14 stock effects stay in the menus and run as stock. SPECTRUM, CHARACTER and
+MODULATION are on FX1 and FX2. Their DSP code is not in the image's
 upload: while a track uses one, the ColdFire copies it into the shared P window
-(`P:0x30000..0x3ffff`), at offset `0x1000` of one of the four FX2 buffer slots, and
+(`P:0x30000..0x3ffff`), at offset `0x3820` of one of the four FX2 buffer slots, and
 withdraws it when no track does. Until it arrives, about 25 ms, the effect passes
 the audio through. Stock PLATE REV, DARK REV and SPRING REV are fronted by a guard
 that runs them only while their buffer does not cover loaded code. A block is held by whoever has it first. Choosing one of
@@ -25,10 +25,8 @@ effect dry, and says which at the next page key. The design and what has been me
 | SPECTRUM | ✓ | ✓ | 0x0f | filter: Moog ladder, SEM, Capacitor2, formants | [`spectrum`](../../modules/spectrum/README.md) |
 | CHARACTER | ✓ | ✓ | 0x17 | fold, saturation, tilt, compressor, width | [`character`](../../modules/character/README.md) |
 | MODULATION | ✓ | ✓ | 0x0e | Juno, Dimension, flanger, phaser, comb | [`modulation`](../../modules/modulation/README.md) |
-| TRANSIENT | ✓ | ✓ | 0x0a | transient shaper (Ignorato) | [`transient`](../../modules/transient/README.md) |
-| DISTORX | ✓ | ✓ | 0x1b | SD-1, RAT and Turbo RAT pedals (MaMarko) | [`distorx`](../../modules/distorx/README.md) |
 
-DISTORX (1,629 words) has two homes, the third and fourth blocks, as MODULATION does; SIDECHAIN_COMPRESSOR has the fourth only. By the home rule, DISTORX, MODULATION and the side-chain code cannot all be loaded at once (two blocks, three effects); the last to arrive is refused with a toast. Port-gated only by `verify_dlload`, which has not been run on this change.
+TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR are not in this remix; COMPRESSOR runs as stock. Their modules are in the repository.
 
 The stations have their `SLOTS` build setting at `FX1+FX2`. CHARACTER's KEY = T1
 needs a BusDelay host, so here it keys on the track's own input. A MODE
@@ -59,7 +57,26 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 
 ## Where it has run
 
-The loader: Sam's MKII, 26 Oct 2026, as the images `DLPROBEJ1` to `K1` (`remixes/test/dl-probe`, which is `octabam` with DLPROBE in place of EQUALIZER; [CHANGELOG](../../CHANGELOG.md)): all four effects load, their blocks pass the sum check, they run (core B's copies run on core A), and they stay loaded through a project load. DISTORX in this form (demand-loaded, id `0x1b`) has not run on a unit. This image itself, `octabam`, has run under the port only (`make check REMIX=octabam`). Not measured on a unit: the stock reverbs' buffer extents at other settings, the toast wording and width, the dropout while an effect loads.
+Sam's MKII, image `OCTABAMR3` (this remix before the rebase onto `fa49e92f`), USB TRACKS PRE, 1 Nov 2026, the hardware
+suite ([HARDWARE_SUITE.md](../../docs/contributing/HARDWARE_SUITE.md)): `pre-meter`, `pre-transport`, `pre-usb`
+(`underruns=0`) and `dsp-watch` (20 cycles) pass; 74 effect layouts ran with no crash or stall, 39 flagged (CLICKS,
+ROUGH, DC, STATIC, CLIP: MODULATION, SPECTRUM and CHARACTER `dear` and mode layouts, DJ EQ, LO-FI); the 20 demand-loader
+transitions between BASE, the stock reverbs, MODULATION, SPECTRUM and CHARACTER applied with `bad 0`, each with about
+340 ms of silence and a ColdFire run of 404 to 476 us (a frame is 362.8 us); `kits-identity` (603 program changes),
+`scenes-sweep` (2,289 operations) and `djump-burst` (536) pass; crossfader to lock CC 0.77 to 0.95 ms median; DIRECT_JUMP
+lands within 0 to 5 steps with the toggle on and at the pattern end with it off.
+
+VARISPEED was added and FX2 LOCK removed after `OCTABAMR3`; `OCTABAMV5` (that composition) was flashed on 2 Nov 2026 and FX2 picks take effect; the suite was not run on it. In a loader soak on 2 Nov 2026
+the image without VARISPEED left 3 of 32 program changes unapplied and the image with it 4
+([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)).
+
+Not run on this image: `mix-soak` and the [manual plan](../../docs/contributing/HARDWARE_MANUAL.md). The images that
+had CX OSC, STEM REC, SCOPE, MIDI SCALES or RND NAME stopped the DSP or left program changes unapplied in the
+same probes ([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)). Not measured on a unit: the stock reverbs'
+buffer extents at other settings, the toast wording and width.
+
+Earlier, the loader alone: Sam's MKII, 26 Oct 2026, the images `DLPROBEJ1` to `K1` (`remixes/test/dl-probe`;
+[CHANGELOG](../../CHANGELOG.md)).
 
 EDIT EVENTS/PLOCKS: radiohagen, Octatrack MKII, PLK858/build 98, 22 October 2026:
 held-edit and trig/track/pattern checks passed

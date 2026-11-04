@@ -1,4 +1,1 @@
-Part of the on-demand loader. SPECTRUM, CHARACTER, MODULATION, TRANSIENT, DISTORX and
-the side-chain compressor are not resident in the DSP: the loader brings
-one in while a track uses it. This half copies the staged code into the
-shared DSP window. It has no controls and nothing on the panel.
+Part of the effect loader (the other half is Effect loader (sender)). It copies the effect code the sender delivers into the effects processor's shared memory, where the effect runs. It has no controls and nothing on the panel. What you will notice is described under Effect loader (sender).

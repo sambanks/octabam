@@ -1,5 +1,5 @@
-// The web builder page: pick a remix, give it your own OCTATRACK_OS1.40C
-// zip, download the card image. Everything runs in this browser tab.
+// The web builder page: give it your own OCTATRACK_OS1.40C zip, download the
+// card image of the release the manifest names. Everything runs in this browser tab.
 import { build } from "./builder.js";
 import { makeEft } from "./eft-run.js";
 
@@ -14,8 +14,7 @@ const here = (p) => new URL(p, import.meta.url);
 async function main() {
   const manifest = await (await fetch(here("manifest.json"))).json();
 
-  const pick = el("select", { id: "ob-remix" },
-    ...manifest.remixes.map((r) => el("option", { value: r.name, textContent: r.title })));
+  const meta = manifest.remixes[0];
   const file = el("input", { type: "file", id: "ob-file", accept: ".zip,.syx", hidden: true });
   const choose = el("button", { type: "button", id: "ob-choose", textContent: "Choose OS file" });
   const chosen = el("span", { id: "ob-chosen", textContent: " No file chosen." });
@@ -23,10 +22,10 @@ async function main() {
   const status = el("p", { id: "ob-status", role: "status" });
   const links = el("p", { id: "ob-links" });
   const built = el("p", { className: "ob-meta" },
-    `Patches built from commit ${manifest.commit.slice(0, 8)}, ${manifest.date}.`);
+    `Built from the ${manifest.version} release, commit ${manifest.commit.slice(0, 8)}, ${manifest.date}.`);
 
   root.replaceChildren(
-    el("p", {}, el("label", { htmlFor: "ob-remix" }, "Remix: "), pick),
+    el("p", {}, `Octabam ${manifest.version}`),
     el("p", {}, "Your OCTATRACK_OS1.40C_dist.zip or OCTATRACK_OS1.40C.syx:"),
     el("p", {}, choose, chosen, file),
     el("p", {}, go), status, links, built);
@@ -41,7 +40,6 @@ async function main() {
     go.disabled = true;
     links.replaceChildren();
     try {
-      const meta = manifest.remixes.find((r) => r.name === pick.value);
       const bytes = new Uint8Array(await file.files[0].arrayBuffer());
       const patch = new Uint8Array(await (await fetch(here(meta.patch))).arrayBuffer());
       const createModule = (await import("./eft.mjs")).default;

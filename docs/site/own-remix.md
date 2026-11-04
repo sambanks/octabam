@@ -43,8 +43,7 @@ continue to [Build and Install](web-builder.md#install-the-image).
 
 ## Next steps
 
-- [Choose a ready-made remix](choosing.md) if you want a tested starting
-  selection.
+- [Octabam v0.3](remix-octabam.md) is the ready-made selection.
 - [Developer documentation](https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md)
   and [writing a module](https://github.com/sambanks/octabam/blob/main/docs/contributing/MODULES.md)
   if you want to add a new feature or share a module.

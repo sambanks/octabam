@@ -2,7 +2,8 @@
 
 System owner of shared native event boundaries. Select **EVENTS** once; clients
 declare `requires=('EVENTS',)` and register only the events they consume.
-EUCLID uses transport notifications. PLOCKS P2 uses held-edit ownership and
+EUCLID uses transport notifications. MIDI Follow uses transport and accepted-note
+notifications. PLOCKS P2 uses held-edit ownership and
 copy notifications. The module adds no controls, persistent data or FX slots.
 
 ## Native boundaries and saved data
@@ -41,8 +42,9 @@ save/return guarantee for client data; no such round trip is claimed here.
 
 ```python
 CLIENTS = {
-    'transport': (('EUCLID', 'eu_seq', ('start', 'resume')),),
-    'midi': (),
+    'transport': (('EUCLID', 'eu_seq', ('start', 'resume')),
+                  ('MIDI FOLLOW', 'bf_seq', ('start', 'resume'))),
+    'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),),
     'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre')),),
 }
 ```
@@ -99,7 +101,9 @@ entry point. Consequently:
 - No clients: no event code, tables or hooks; zero runtime overhead.
 - PLOCKS only: 23 editor/copy hooks, no transport or MIDI hooks.
 - EUCLID only: two transport hooks, no MIDI or editor hooks.
-- Both: 25 hooks, no MIDI hooks (there is currently no production MIDI client).
+- EUCLID + PLOCKS: 25 hooks, no MIDI hooks.
+- MIDI Follow: four hooks (two transport, two accepted-MIDI). Adding EUCLID
+  keeps those same four hooks and adds its transport callbacks.
 
 Active dispatch uses generated direct calls. There are no null checks, pointer
 tables, indirect callback calls or registration loops on a live event. One

@@ -1,12 +1,10 @@
-A filter pedal that replaces stock FILTER: a Moog ladder, an Oberheim SEM
+A filter: a Moog ladder, an Oberheim SEM
 state-variable filter, an isolator and a formant bank, with an envelope and
-an LFO on the cutoff. The defaults are an exact passthrough, so a part that
-chose FILTER sounds the same until you turn it.
+an LFO on the cutoff. The defaults are an exact passthrough: it does nothing until you turn it.
 
 ## Access
 
-Press FX1 on a track; SPECTRUM is in the chooser in place of FILTER. In
-Octabam it is also on FX2; in Octabam Bus it is FX1 only.
+Press FX1 or FX2 on a track; SPECTRUM is in the chooser with the stock effects.
 
 ## Operation
 
@@ -23,6 +21,7 @@ Octabam it is also on FX2; in Octabam Bus it is FX1 only.
 - ENV is a peak follower onto the cutoff: instant attack, release on LSP.
   LDP is an LFO onto the cutoff; LSP sets its speed (~0.08–9 Hz).
 - WDTH is mid/side width on the output; the centre (64) is untouched.
+- Load: with SPECTRUM on all eight tracks, the effects processor runs at about 28 % at the defaults and up to 78 % at its most demanding settings (an empty project reads about 24 %). Past 100 % the unit stalls until you switch it off and on.
 
 ## Parameters
 
@@ -36,13 +35,3 @@ Octabam it is also on FX2; in Octabam Bus it is FX1 only.
 | 1 | WDTH | bipolar | 64 | mid/side width on the output |
 | 2 | MODE | LADR / SEM / ISO / VOWL | — | Selects the filter model. |
 | 2 | SHPE | 0–127 | 0 | SEM only (blank in other modes): LP → BP → HP |
-
-## Old projects
-
-MODE's saved values moved on 27 Sep 2026 (BP 2 → SEM 1, ISO 3 → 2, VOWL
-4 → 3); SHPE keeps its stored value, so a part saved on BP comes back as
-SEM at whatever SHPE it held. Once per project, before play:
-
-```bash
-python3 tools/hw/ot_project.py remap-slot <project> SPECTRUM MODE 2:1,3:2,4:3
-```

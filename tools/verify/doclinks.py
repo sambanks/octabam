@@ -102,9 +102,17 @@ def check(root=ROOT):
                             fails.append(f"{rel}:{n}: no heading for {target}")
                         continue
                     ref, _, frag = target.partition("#")
-                    if rel.startswith("docs/site/usage/"):
+                    if rel.startswith(("docs/site/usage/", "docs/site/manual/brain-")):
+                        # inlined into a manual page by gen_manual.py: a sibling fragment (kits.md) is relinked to
+                        # that module's page or loses its link, so it only has to exist; the rest climb from
+                        # the page of the module's own folder to the site root
+                        if re.fullmatch(r"[\w-]+\.md", ref):
+                            if not ((path.parent / ref).exists() or (path.parent / f"brain-{ref}").exists()):
+                                fails.append(f"{rel}:{n}: link to {target} -- no such usage fragment")
+                            continue
                         base = root / pathlib.Path("docs") / "site" / "reference" / "modules"
                     elif rel.startswith("docs/site/manual/"):
+                        # the introduction sits at reference/manual/<remix>/
                         base = root / pathlib.Path("docs") / "site" / "reference" / "manual" / path.stem
                     else:
                         base = path.parent

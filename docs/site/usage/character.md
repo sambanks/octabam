@@ -1,12 +1,10 @@
-A channel strip that replaces stock LO-FI: fold → saturate → tilt →
+A channel strip: fold → saturate → tilt →
 compress → width → mix, distortion before dynamics. The defaults are an
-exact passthrough, so a part that chose LO-FI sounds the same until you
-turn it.
+exact passthrough: it does nothing until you turn it.
 
 ## Access
 
-Press FX1 on a track; CHARACTER is in the chooser in place of LO-FI. In
-Octabam it is also on FX2; in Octabam Bus it is FX1 only.
+Press FX1 or FX2 on a track; CHARACTER is in the chooser with the stock effects.
 
 ## Operation
 
@@ -17,12 +15,11 @@ Octabam it is also on FX2; in Octabam Bus it is FX1 only.
 - COMP compresses after the distortion. On the master (T8) it is GLUE by
   position — slow and soft-kneed; on every other track it is fast. No knob
   picks between them.
-- KEY on page 2 picks the compressor's key. SELF is the track's own input.
-  T1 keys on the bus delay host (track 1's input peak, scaled by KLVL) —
-  the bus's delay level ducks the track. In Octabam (no bus) T1
-  reads as SELF.
+- KEY on page 2 picks the compressor's key. SELF is the track's own input;
+  T1 reads as SELF in this image.
 - TONE tilts the spectrum: centre (64) is flat, + is bright, − is dark.
 - WDTH: 64 untouched, 0 mono, 127 double sides. MIX 127 is full wet.
+- Load: with CHARACTER on all eight tracks, the effects processor runs at about 29 % at the defaults and up to 83 % at its most demanding settings (an empty project reads about 24 %). Past 100 % the unit stalls until you switch it off and on.
 
 ## Parameters
 

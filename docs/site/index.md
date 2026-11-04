@@ -4,9 +4,9 @@
 
 Octabam adds community features to the Elektron Octatrack's operating
 system (OS 1.40C): Kits, templates, expanded scenes and parameter locks, USB
-audio and MIDI, and new effects. You pick a **remix**, build it in your
-browser from your own copy of OS 1.40C, and install it from a CF card or
-over MIDI. Octabam is unofficial community software; see [About](about.md).
+audio and MIDI, and new effects. You build it in your browser from your own
+copy of OS 1.40C and install it from a CF card or over MIDI. This is
+**version 0.3**. Octabam is unofficial community software; see [About](about.md).
 
 ## Unofficial firmware
 
@@ -17,25 +17,18 @@ damage to your Octatrack.
 
 ## Get started
 
-1. [Choose a remix](choosing.md).
+1. Read [what is in Octabam](remix-octabam.md).
 2. [Build and install](web-builder.md) it.
-3. Use the features below.
-
-## The remixes
-
-| Remix | What you get |
-|---|---|
-| [Octabam](remix-octabam.md) | The core features, the 14 stock effects and five more effects that run on any track. |
-| [Octabam Bus](remix-bus.md) | The core features plus a shared delay and reverb bus, three more FX1 effects and ten stock effects on FX1. |
+3. Use the [Octabam Remix Manual](reference/manual/octabam/index.md).
 
 ## Everyday use
 
-- Save templates or change defaults: [BRAIN](brain.md)
-- Assign a saved sound setup to a pattern: [Kits and patterns](reference/modules/kits.md)
-- Lock parameters on an effect's second page: [Page 2 parameter locks](reference/modules/plocks-p2.md)
-- Control MIDI tracks with scenes: [MIDI scenes](reference/modules/midi-scenes.md)
-- Record MAIN and CUE on a computer: [USB audio and MIDI](reference/modules/usb.md)
-- Look up an effect or shortcut: [Feature directory](reference/modules.md)
+- Save templates or change defaults: [BRAIN](reference/manual/octabam/brain/index.md)
+- Assign a saved sound setup to a pattern: [Kits and patterns](reference/manual/octabam/parts/kits.md)
+- Lock parameters on an effect's second page: [Page 2 parameter locks](reference/manual/octabam/parts/plocks-p2.md)
+- Control MIDI tracks with scenes: [MIDI scenes](reference/manual/octabam/parts/midi-scenes.md)
+- Record MAIN and CUE on a computer: [USB audio and MIDI](reference/manual/octabam/midi-usb/usb.md)
+- Look up an effect or a feature: the [manual](reference/manual/octabam/index.md)
 
 ## Reading this manual
 
@@ -44,5 +37,4 @@ Parts, patterns, scenes and the front panel. **Bold labels** are controls and
 menu items. An arrow is a menu path: **PROJ → BRAIN → TEMPLATES**. A plus
 sign is a key combination: hold **FUNC** while pressing the other key.
 Commands and filenames are in `monospace`. Screen illustrations are captured
-firmware screens; their values are examples, and the features and labels you
-see depend on the remix you run.
+firmware screens; their values are examples.

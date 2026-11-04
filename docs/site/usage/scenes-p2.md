@@ -17,7 +17,3 @@ the page-1 dials do.
 - A knob press with a scene held toggles the page-1 lock of that knob
   (stock); page 2 uses FUNC+turn to remove a lock instead.
 
-## Notes
-
-- Page-2 scene locks saved by an image from before 10 Oct 2026 are not
-  read by this one.

@@ -13,16 +13,9 @@ An effect on a track: select the track, press FX2 (or FX1), and pick COMPRESSOR
 from the chooser; the setup page shows the new knobs. There is no separate
 effect to load: COMPRESSOR is the side-chain compressor.
 
-In [Octabam](../../remix-octabam.md) the side-chain's DSP code is loaded while a track
-uses COMPRESSOR and withdrawn about 10 s after none does, so every stock effect,
-SPRING REV included, stays. Until it is loaded (about 25 ms after you pick it),
-COMPRESSOR works as stock, keyed on its own track. Its code goes in the top of
-T4's FX2 block, and while that block is taken COMPRESSOR stays stock: by DARK REV
-on T4's FX2 (the screen says `SC KEY OFF: T4 REV`), or by another effect already
-loaded there, such as TRANSIENT (`SC KEY OFF: T4 FX2`). When both are wanted at once,
-as at a project load, the side-chain is loaded first and TRANSIENT goes to another block.
-The key comes back when the block is free. Nothing is refused: you can always pick
-COMPRESSOR and DARK REV. Not yet run on a unit in this form.
+[Octabam](../../remix-octabam.md) 0.3 does not carry it; COMPRESSOR there is stock. The loader form (the
+side-chain's DSP code loaded while a track uses COMPRESSOR, in the top of T4's FX2 block) is in the repository and has
+not run on a unit in the current `octabam` form.
 
 The test remixes `sidechain-compressor` and `kyoti-mute-sidechain` carry it the
 earlier way, in SPRING REV's words, so SPRING REV is off the chooser in those images.

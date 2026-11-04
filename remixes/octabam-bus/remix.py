@@ -5,11 +5,10 @@ COPY PROJECT, EUCLID FILL, FX2 LOCK, TRACK PATTERNS) with the bus effects: BusDe
 SEND on every other track's FX2, the stock DELAY on T8, TEMPO SYNC, TEMPO BUS, MODE
 DEFAULTS, RIG HOSTS and FX2 LOCK, and LOFI AMF FIX. USB is MAIN CUE.
 
-FX1 lists SPECTRUM, CHARACTER and MODULATION and ten stock effects (FILTER,
-EQUALIZER, DJ EQ, PHASER, FLANGER, CHORUS, SPATIALIZER, COMB FILTER, COMPRESSOR,
-LO-FI). The stock effects stay in internal P untouched; the servers, SEND, the stations
-and LOAD METER's DSP half run from the shared P window. The three stock reverbs have
-no chooser row: FX2 is locked and BusVerb replaces them.
+FX1 lists SPECTRUM, CHARACTER and MODULATION. The 13 stock effects give up their DSP
+code: the servers, SEND, the stations and LOAD METER's DSP half run from internal P, with
+no window pins. The three stock reverbs have no chooser row: FX2 is locked and BusVerb
+replaces them.
 """
 
 from remix.schema import Pin, Proof, Remix
@@ -28,7 +27,7 @@ COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT",
 REMIX = Remix(
     name="octabam-bus",
     family="rig", proof=Proof.CHECK, proof_note="",
-    doc="CORE + the extra ColdFire modules of octabam + the delay and reverb bus (BusDelay on T1's FX2, BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8) + SPECTRUM, CHARACTER and MODULATION and ten stock effects on FX1.",
+    doc="CORE + the extra ColdFire modules of octabam + the delay and reverb bus (BusDelay on T1's FX2, BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8) + SPECTRUM, CHARACTER and MODULATION on FX1.",
     modules=("LOFI AMF FIX", "REVERB SERVER", "DELAY SERVER", "SEND", "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
              "DELAY",       # the stock DELAY keeps its chooser row: T8 hosts it

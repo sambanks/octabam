@@ -1,8 +1,7 @@
-A circuit-modelled Roland TB-303 voice on the ColdFire, one per track, as a
+A circuit-modelled Roland TB-303 voice, one per track, as a
 machine of its own: **OCTA-303**. It needs no sample, gives up no stock
 effect, and its model is fitted to recordings of a real TB-303 (Din Sync's
-x0xb0x reference set). With the companion effect [dEVILish](devilish.md) on the track
-(a separate module) it plays Robin Whittle's Devil Fish modifications.
+x0xb0x reference set).
 
 ## Access
 
@@ -50,8 +49,5 @@ OCTA-303 track starts at TUNE C3, CUT RES ENV DEC 64, ACC 0.
   RES, ENV, DEC, ACC).
 - The chromatic keys play semitones. AMP, FX1, FX2, LFOs, scenes and
   p-locks work as on any track.
-- Cannot share an image with ANALOG BD, BLACKPYRAMIDS_303 or SYNTH
-  MACHINE: they use the same firmware seams.
 - Beside SCALE QUANTIZER, an OCTA-303 track's chromatic keys stay semitones;
-  every other track's follow the scale as usual. That pairing has not been
-  flashed.
+  every other track's follow the scale as usual.

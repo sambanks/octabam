@@ -13,11 +13,6 @@ alone, so it coexists with SCALE QUANTIZER.
 Hold a TRACK key and press PAGE. Targets are the track keys held when the
 window opened; with none held, the current audio track. TRACK + PAGE again
 closes it, as does NO. FUNC + PAGE (SCALE SETUP) and PAGE alone stay stock.
-Not in an official remix; build the test remix `euclid-fill`.
-Hardware: author BUILD 34 on CF, MKII, 16 Oct 2026 (YES/CUE with RAND
-PTCH>0 on sample + FM, SCALE on/off; SY encoding path in source, not
-tried on an SY track); also cursory testing on Sam's MKII (owner report,
-16 Oct 2026).
 
 ## Operation
 

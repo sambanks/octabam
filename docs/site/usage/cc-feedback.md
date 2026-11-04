@@ -32,9 +32,7 @@ feedback.
 | FX1 page 2 | 108–111, 14, 15 |
 | FX2 page 2 | 102–107 |
 
-Page 2 uses CC MAP's numbers. Before 1 Nov 2026 they were 62–73, which
-include the sustain pedal (CC 64): a project load sent it to every synth
-on channels 1–8, and a synth on that MIDI out held its notes (issue #981).
+Page 2 uses CC MAP's numbers.
 
 Not sent: LEVEL (CC 46), AMP VOL outside the AMP page, MUTE and SOLO
 (49/50), the crossfader (48), and PLAYBACK and AMP page 2 (no CC numbers

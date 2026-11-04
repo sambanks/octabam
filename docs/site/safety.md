@@ -59,18 +59,12 @@ No. Nothing here is endorsed by, supported by, or affiliated with
 Elektron.
 
 **Does flashing touch my card or projects?**
-No. An OS upgrade does not touch the CF card. Two exceptions: a remix
-carrying KITS writes `kits.work` into each project it loads (a stock OS
-ignores the file), and BRAIN writes its `card.work` / `card.strd`.
+No. An OS upgrade does not touch the CF card. Two exceptions: Octabam's Kits
+write a `kits.work` file into each project they load (a stock OS ignores the
+file), and BRAIN writes its own files to the card.
 
 **MKI or MKII?**
 Both run the same OS 1.40C file, and both can flash an octabam image.
-Most hardware testing has been on an MKII; each module page says where it has run.
-
-**Has an official remix run on a unit?**
-All three have had cursory testing on an MKII (owner report, 16 Oct 2026).
-Port checks cover the rest and do not prove hardware behaviour. See each
-remix page for the current status.
 
 **Why can I not download a built image?**
 A built `.bin` or `.syx` contains Elektron's OS. Distributing it would
