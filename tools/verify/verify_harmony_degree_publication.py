@@ -5,7 +5,7 @@ from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE
 from unicorn.m68k_const import *
 from verify_harmony_degree_integration import DegreeMachine, ROOT
 from harmony_midi_machine import InterruptMaskTrace
-from verify_midi_sram import BASE, OFFSETS
+from verify_store_retained import BASE, OFFSETS
 
 
 def main():

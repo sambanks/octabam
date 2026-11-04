@@ -2,7 +2,8 @@
 """Execute the protected pool and native operations in the linked image.
 
 The small machine gate stubs only UI notifications (no storage/copy/clear
-routine). The full-port gate separately runs the real firmware and RTOS.
+routine). Full-firmware Harmony checks separately exercise the installed
+client lifecycle and retained recovery.
 """
 import json
 import random
@@ -40,15 +41,26 @@ def main():
     # Staging is separate from the stack and large enough for every pool byte.
     src=0x46010000;dst=0x46018000
     u.mem_write(src,pool)
-    assert m.c('rp_write',src,0,len(pool))==1
-    assert bytes(u.mem_read(BASE,SIZE))==bytes(seed)
-    assert m.c('rp_read',dst,0,len(pool))==1
-    assert bytes(u.mem_read(dst,len(pool)))==pool
-    for offset,length in ((16384,1),(16385,0),(16380,5),(0xffffffff,2),(1,0xffffffff)):
-        before=bytes(u.mem_read(BASE,SIZE))
-        assert m.c('rp_write',src,offset,length)==0
-        assert m.c('rp_read',dst,offset,length)==0
-        assert bytes(u.mem_read(BASE,SIZE))==before
+    # The table describes only selected clients; no Harmony assumption here.
+    count=int.from_bytes(u.mem_read(m.sym['store_retained_count'],4),'big')
+    reservations=[]
+    for i in range(count):
+        raw=bytes(u.mem_read(m.sym['store_retained_clients']+12*i,12))
+        client,offset,length=(int.from_bytes(raw[j:j+4],'big') for j in (0,4,8))
+        reservations.append((client,offset,length))
+        assert m.c('store_retained_write',src+offset,client,0,length)==1
+        assert bytes(u.mem_read(BASE,SIZE))==bytes(seed)
+        assert m.c('store_retained_read',dst,client,0,length)==1
+        assert bytes(u.mem_read(dst,length))==pool[offset:offset+length]
+        for start,n in ((length,1),(length+1,0),(length-1,2),(0xffffffff,2),(1,0xffffffff)):
+            before=bytes(u.mem_read(BASE,SIZE));output=bytes(u.mem_read(dst,32))
+            assert m.c('store_retained_write',src,client,start,n)==0
+            assert m.c('store_retained_read',dst,client,start,n)==0
+            assert bytes(u.mem_read(BASE,SIZE))==before
+            assert bytes(u.mem_read(dst,32))==output
+    absent=next(i for i in range(count+1) if i not in {row[0] for row in reservations})
+    assert m.c('store_retained_write',src,absent,0,0)==0
+    assert m.c('store_retained_read',dst,absent,0,0)==0
     pads={BASE+o for o in OFFSETS};protected=False;writes=[]
     def watch(u,access,a,n,v,data):
         if protected and any(a+i in pads for i in range(n)):
@@ -108,7 +120,10 @@ def main():
             'native_copy_and_clear_cases':cases,'unexpected_pool_writes':len(writes),
             'hardware_tested':False}
     print(json.dumps(result))
-    out=ROOT/'out/midi-sram';out.mkdir(exist_ok=True)
+    out=ROOT/'out/store-retained';out.mkdir(exist_ok=True)
     (out/'machine.json').write_text(json.dumps(result,indent=2)+'\n')
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    main()
+    from verify_store_retained_clients import main as clients
+    clients()

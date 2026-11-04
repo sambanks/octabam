@@ -32,21 +32,15 @@ class HarmonySelectionTests(unittest.TestCase):
                 self.assertEqual('bassfollow' in labels, follow)
                 self.assertEqual('harmonypitchresponse' in labels, follow)
                 self.assertEqual('MIDI SCALES' in remix.modules, scales)
-                self.assertTrue({'chordpart', 'midiharmony', 'midisram'} <= set(labels))
+                self.assertTrue({'chordpart', 'midiharmony', 'storeretained'} <= set(labels))
                 self.assertNotIn('MIDI SRAM', remix.modules)
                 store = next(m for m in selected if m.key == 'STORE')
-                self.assertEqual([u.label for u in store.linked].count('midisram'), 1)
-                self.assertEqual([u.label for u in store.linked].count('midisramcopy'), 1)
-                source = ROOT / 'modules/midi-harmony/upstream/modules/midi-sram/manifest.py'
-                author = runpy.run_path(str(source))['MODULE']
-                self.assertEqual(store.claims.sram, author.claims.sram)
+                self.assertEqual([u.label for u in store.linked].count('storeretained'), 1)
+                self.assertEqual([u.label for u in store.linked].count('storeretainedcopy'), 1)
                 self.assertEqual(len(store.claims.sram), 8192)
-                for unit in author.linked:
-                    self.assertIn(unit, store.linked)
-                for poke in author.pokes:
-                    self.assertIn(poke, store.pokes)
-                for gate in author.gates:
-                    self.assertIn(gate, store.gates)
+                self.assertTrue(all('midi-harmony/upstream' not in u.source for u in store.linked))
+                self.assertIn('storeretainedclients', labels)
+                self.assertIn('tools/verify/verify_store_retained.py', {g.script for g in store.gates})
 
     def test_combined_midi_remix_and_test_only_controls(self):
         remix = registry.remix('midi')
@@ -58,11 +52,11 @@ class HarmonySelectionTests(unittest.TestCase):
             self.assertEqual(registry.remix_dir(name).parent, ROOT / 'remixes/test')
         selected = registry.selected(remix)
         labels = [unit.label for module in selected for unit in module.linked]
-        for label in ('midiscaleprovider', 'midiscalemath', 'midisram', 'midisramcopy'):
+        for label in ('midiscaleprovider', 'midiscalemath', 'storeretained', 'storeretainedcopy'):
             self.assertEqual(labels.count(label), 1)
         fields = runpy.run_path(str(ROOT / 'modules/store/parts.py'))
         inc = fields['part_inc'](set(remix.modules))
-        self.assertIn('jmp rp_store_copy', inc)
+        self.assertIn('jmp store_retained_copy', inc)
         self.assertEqual(fields['layout'](set(remix.modules))[1], ((0x4e2, 288),))
 
     def test_other_store_clients_do_not_install_retained_storage(self):
@@ -70,10 +64,10 @@ class HarmonySelectionTests(unittest.TestCase):
             with self.subTest(remix=name):
                 selected = registry.selected(registry.remix(name))
                 labels = {u.label for m in selected for u in m.linked}
-                self.assertFalse({'midisram', 'midisramcopy'} & labels)
+                self.assertFalse({'storeretained', 'storeretainedcopy'} & labels)
                 store = next(m for m in selected if m.key == 'STORE')
                 self.assertTrue(store.claims is None or not store.claims.sram)
-                self.assertNotIn('tools/verify/verify_midi_sram.py', {g.script for g in store.gates})
+                self.assertNotIn('tools/verify/verify_store_retained.py', {g.script for g in store.gates})
                 self.assertNotIn(0x4002adc8, {p.addr for p in store.pokes})
 
 

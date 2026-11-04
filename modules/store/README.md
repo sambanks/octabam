@@ -288,25 +288,68 @@ Audio latches are `0x8000182a` / `0x80001832`; MIDI latches are
 only while their own track is unlatched. The context gate deliberately keeps
 audio and MIDI on different Parts.
 
-## Harmony retained storage
+## Retained byte storage
 
-Selecting MIDI HARMONY also selects STORE's retained MIDI storage support.
-There is no separate MIDI SRAM module to enable, and other STORE clients do
-not install this code or its copy/clear changes.
+STORE owns an optional 16,384-byte retained pool and its native copy/clear
+protection. Any module can register as a client; no MIDI HARMONY, MIDI FOLLOW
+or separately selectable MIDI SRAM module is required. With no registered
+client selected, the build omits the pool, reservations and protection.
+A retained-only client activates the native copy service even if it uses no
+Part fields. That activation composes with HOOKS/BOOT TRACE as Part clients do.
 
-The unchanged radiohagen implementation is read from Harmony's pinned source
-(`modules/midi-harmony/upstream/modules/midi-sram`). STORE owns the two linked
-units, eight MIDI-only copy/clear loop guards and 8,192 separate two-byte SRAM
-claims. Its native copy wrapper preserves these bytes in CS1 and strips them
-from native bank files and clipboards. Audio-step fields keep stock behavior.
-The full 16,384-byte pool belongs to Harmony's step state and track metadata;
-PLOCKS and MIDI Scenes retain their separate allocations. This does not alter
-the retained layout or the `hdegNN.work` / `.strd` companion format.
+The implementation lives in `modules/store/retained*`, derived from
+radiohagen's MIT-licensed protected pool at `3e5ac07`. STORE does not load
+code or a module manifest from Harmony's submodule. The physical backing is
+still two padding bytes in each MIDI step of the current-bank CS1 mirror:
+16 patterns × 8 tracks × 64 steps × 2 bytes. That location does not restrict
+a client's purpose to MIDI. Audio-step fields keep stock behavior.
 
-Harmony owns checkpoint validation and publication. Clearing SRAM invalidates
-those checkpoints; recovery uses validated project companions. The optional
-`verify_midi_sram.py` gate checks bounds and native copy/clear protection;
-Harmony's gates check the installed lifecycle. Fresh author-source assembly
-is compared with the packaged storage units by `verify_harmony_reference.py`.
+### Registering a client
+
+1. Require STORE and add an entry to `RETAINED_CLIENTS` in `retained.py`:
+   `module key: (stable numeric client ID, logical byte offset, length)`.
+2. Reserve a fixed range. Selection never shifts existing ranges. IDs must
+   be unique, sizes positive, and ranges within 16,384 bytes. Two selected
+   clients with overlapping ranges fail before linking; adjacent ranges work.
+3. Use `store_retained_read(destination, client, offset, length)` and
+   `store_retained_write(source, client, offset, length)`. These use the C
+   stack ABI and return 1 on success, 0 on an absent client or out-of-range
+   transfer. Offsets are relative to the client's reservation. Overflowing
+   ranges reject before any byte is read or written. Zero-length access at
+   the end of a registered range succeeds; absent IDs always reject.
+4. Keep encoding, checksums, generation markers, save policy and recovery in
+   the client. These byte transfers are not atomic checkpoint publication,
+   do not mask interrupts, and do not serialize writers. Clients must supply
+   their own publication and concurrency protocol. Bounds prevent accidental
+   cross-client transfers; this is not a security boundary between firmware
+   modules. Never write outside the registered reservation.
+5. Add lifecycle and interruption checks for the client. A reset of CS1 may
+   destroy retained data; validate it before use and provide a safe fallback.
+
+The existing Harmony HMT2 layout reserves client 0, offset 0, all 16,384 bytes.
+It uses aligned physical words directly for its established atomic commit
+protocol; the registration pins that entire layout rather than relocating or
+re-encoding it. STORE contains none of its degree/chord encoding or checkpoint
+policy. Additional clients can use disjoint reservations in other compositions,
+but no positive-size client fits alongside this version of Harmony in this
+pool. Such a combination is refused explicitly. PLOCKS and MIDI Scenes keep
+their separate allocations. Sharing this pool with Harmony would require a
+separate storage-format change; this integration does not make one.
+
+STORE owns the three linked units, eight MIDI-only direct-loop guards and
+8,192 separate two-byte SRAM claims. The protection covers the whole backing
+pool, including unallocated bytes. Native copies preserve pool destinations
+and return unlocked bytes for pool sources, keeping retained data out of
+native DRAM, clipboards and bank files. No intervening stock bytes are claimed.
+This is one protected backing region, not an allocator for all device SRAM.
+
+`verify_store_retained.py` checks installed client bounds, native copy/clear
+protection and two synthetic non-Harmony clients with disjoint reservations.
+It also checks a retained-only client with no Part windows. Registration tests
+cover zero/one/multiple clients, absent clients, overlap, duplicate IDs and
+capacity errors. Harmony's retention gates cover its specialized word layout,
+publication, interrupted saves and recovery. `generate-retained.py --check`
+checks generated assembly against the maintained C source; Harmony's separate
+author-reference gate no longer claims these locally maintained STORE units.
 Physical battery retention, power-cycle behavior and hardware timing remain
 unverified for this integration.

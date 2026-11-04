@@ -305,7 +305,7 @@ store_part_epochs: .space 256
         put(field(0,0,0,19),55); put(base(0,0,0),99); put(BASE+0x8e57,3)
         assert call('hd_native_hash_c',0,0x12345678)==0x12345678
         # Dense retention: all qualities and pattern lanes, no Part defaults.
-        from verify_midi_sram import BASE as SRAM_BASE, OFFSETS
+        from verify_store_retained import BASE as SRAM_BASE, OFFSETS
         payload_len=15104
         chord=sym['ch_lock_table']
         def snapshot():
