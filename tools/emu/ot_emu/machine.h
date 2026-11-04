@@ -458,6 +458,7 @@ namespace ot
 		// reads an OS zero-run a mod placed code into.
 		void addReadWatch(uint32_t _begin, uint32_t _end, WriteWatch _cb);
 		uint32_t currentPc() const;
+		uint32_t sr() const;		// diagnostic (main.cpp OT_STALL_CPU)
 
 		// Map a span of plain memory after construction. Route A's `install`
 		// adds two of these over the boot map (`Rtos::install`), and an
