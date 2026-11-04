@@ -54,6 +54,33 @@ class CacheTests(unittest.TestCase):
                 (d / "out/raw/section_3_MAIN_OS.bin").write_text("os2")
                 self.assertNotEqual(two, gate_cache.shared_key(*args, deps={}, env={}))
 
+    def test_shared_key_takes_the_build_trees_python_only_where_the_build_reaches(self):
+        import subprocess
+        import reach
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            (d / "tools/build").mkdir(parents=True); (d / "tools/remix").mkdir(parents=True)
+            (d / "out/raw").mkdir(parents=True); (d / "out/raw/section_3_MAIN_OS.bin").write_text("os")
+            root = reach.BUILD_ROOTS[0]
+            files = {root: "1", "tools/remix/lib.py": "1", "tools/remix/selftest.py": "1", "tools/remix/t.json": "1"}
+            for f, v in files.items():
+                (d / f).write_text(v)
+            subprocess.run(["git", "init", "-q"], cwd=d, check=True)
+            subprocess.run(["git", "add", "-A", "-f"], cwd=d, check=True)
+            deps = {root: {"tools/remix/lib.py"}, "tools/remix/lib.py": set(), "tools/remix/selftest.py": {"tools/remix/lib.py"}}
+            with mock.patch("reach.port_digest", return_value="p"):
+                k = lambda scripts=(): gate_cache.shared_key(d, "g", ["python3", "g.py"], set(scripts), [], deps=deps, env={})
+                one = k()
+                for f, moves in (("tools/remix/selftest.py", False), ("tools/remix/lib.py", True),
+                                 ("tools/remix/t.json", True), (root, True)):
+                    (d / f).write_text("2")
+                    self.assertEqual(k() != one, moves, f)
+                    (d / f).write_text("1")
+                # the gate's own closure still takes a script the build does not reach
+                two = k({"tools/remix/selftest.py"})
+                (d / "tools/remix/selftest.py").write_text("2")
+                self.assertNotEqual(two, k({"tools/remix/selftest.py"}))
+
     def test_project_stamp_moves_with_a_file(self):
         with tempfile.TemporaryDirectory() as d:
             d = pathlib.Path(d)

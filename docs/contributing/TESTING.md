@@ -402,8 +402,11 @@ key cannot see a file a gate reads through a path built at run time, or
 anything outside the repository other than the toolchain and the project.
 `make accept` is not cached. Of the shared half, `module_gates --shared`
 caches the gates that take no remix (`gate_cache.shared_key`): the key has no
-image or remix and covers the gate's script closure, `dsp/`, `tools/build/`,
-`tools/remix/`, `tools/harness/`, the directories of the gate's module and of
+image or remix and covers the gate's script closure, the files of `dsp/`,
+`tools/build/`, `tools/remix/` and `tools/harness/` (of their Python, only what
+the build reaches from `reach.BUILD_ROOTS`: a tool or gate there, such as
+`selftest.py`, is in the key only through a gate's own closure; 4 Nov 2026, a
+one-line `selftest.py` edit on main moved every shared gate's key), the directories of the gate's module and of
 every module `reached()` from it (their manifests with them), the stock OS slice, the
 port, the toolchain, the project, `BUILD` and `OT_BANK`. Each gate prints
 `gate: <s> s` when it runs. The `rest` steps of `check-shared`, the

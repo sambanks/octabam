@@ -81,7 +81,10 @@ def tracked(root, *dirs):
     """The tracked files under `dirs`, less the Markdown: a README under a
     module or a remix is read by verify_docs and the site build, which are
     their own CI jobs, and by no gate (4 Nov 2026: a README edit moved the
-    key of every job of the remix)."""
+    key of every job of the remix). No `dirs`, no files (`git ls-files --`
+    alone lists the whole tree)."""
+    if not dirs:
+        return []
     r = subprocess.run(["git", "ls-files", "-z", "--", *dirs], cwd=root, capture_output=True, text=True, check=True)
     return [p for p in r.stdout.split("\0") if p and not p.endswith(".md")]
 
@@ -184,6 +187,20 @@ BUILD_TREES = ("dsp", "tools/build", "tools/remix", "tools/harness")
 STOCK_SLICE = "out/raw/section_3_MAIN_OS.bin"
 
 
+def build_files(root, deps):
+    """The tracked files of BUILD_TREES a scratch image can depend on: every
+    file that is not Python (sources, tables, data: read by paths the graph
+    may not see), and the Python the build reaches from reach.BUILD_ROOTS,
+    the closure reach itself calls the build. A Python file the build does
+    not reach is a tool or a gate (selftest, the harness probes): the gate's
+    own closure covers it when the gate uses it (4 Nov 2026: main's
+    one-line edit of tools/remix/selftest.py moved the key of every shared
+    module gate, 1356 s rerun for nothing)."""
+    import reach  # noqa: E402
+    built = closure(reach.BUILD_ROOTS, deps)
+    return {f for f in tracked(root, *BUILD_TREES) if not f.endswith(".py") or f in built}
+
+
 def shared_key(root, name, argv, scripts, module_dirs, deps=None, env=None):
     """The key of a gate that takes no remix and builds its own scratch image
     (module_gates --shared): no image or remix in it. It covers the gate's
@@ -199,7 +216,8 @@ def shared_key(root, name, argv, scripts, module_dirs, deps=None, env=None):
     # no global manifest glob (inputs() has one): a module's manifest is in its directory, and
     # another module's edit cannot change this gate's scratch image (4 Nov 2026: three
     # unrelated manifests moved the key of OCTA303 and MORPH)
-    files |= set(tracked(root, *BUILD_TREES, *module_dirs))
+    files |= set(tracked(root, *module_dirs))
+    files |= build_files(root, deps)
     h = hashlib.sha256()
 
     def put(label, value):
