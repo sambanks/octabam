@@ -50,6 +50,7 @@ DISASM = pathlib.Path("vendor/dsp56300/build/source/disassemble/dsp56kDisassembl
 
 # ---- ColdFire menu tables (task 11, tools/build/build_menu.py, reproduced here) --
 FX2_IDS = 0x400d5fdc
+_STOCK_FX2_IDS = FX2_IDS
 # ---- FX1's OWN descriptor tables ------------------------------------------
 # The DSP dispatch is ONE table shared by both menus, but the descriptors are
 # not: FX1 resolves its own. So a module replacing a stock effect runs from
@@ -988,11 +989,15 @@ def main():
     # A stock row's descriptor is the one stock ships, at P = E + 0x38, and
     # its FX2_IDS entry must still be stock's -- the two are the same
     # pointer on a pristine image, and nothing above may have touched it.
+    # The comparison is against the pristine FX2_IDS entry, not E + 0x38:
+    # MULTIBCOMP's id is wired to NONE on a stock image.
     for name in STOCK_ROWS:
         stock_P = _MODS[name].menu.donor_desc + 0x38
-        if rd32(FX2_IDS + NEW_IDS[name] * 4) != stock_P:
-            sys.exit(f"{name}: FX2_IDS[0x{NEW_IDS[name]:02x}] is not its "
-                     f"stock descriptor -- refusing to list it")
+        _pa = _STOCK_FX2_IDS + NEW_IDS[name] * 4 - BASE
+        if rd32(FX2_IDS + NEW_IDS[name] * 4) != int.from_bytes(
+                IMG.read_bytes()[_pa:_pa + 4], "big"):
+            sys.exit(f"{name}: FX2_IDS[0x{NEW_IDS[name]:02x}] is not the "
+                     f"pristine image's entry -- refusing to list it")
         clone_addr[name] = stock_P
         print(f"  {name:14s} id 0x{NEW_IDS[name]:02x}  STOCK P=0x{stock_P:08x}"
               f"  (no clone, no code: the row is the only edit)")
