@@ -45,6 +45,18 @@
 |    here) less than CLK_GAP counts ago. CLK_GAP is the clock handler's
 |    resync gap (0x40005a96), so the first USB tick taken after DIN stops
 |    carries a delta past it and the handler starts a fresh ring.
+|  * A completion between the two ENDPTCOMPLETE reads (#1017). This unit's ISR
+|    shim reads ENDPTCOMPLETE, takes an EP2 OUT completion and re-primes the
+|    512-byte dTD, then hands over to usbmidi_isr_shim, which reads it again and
+|    still takes bit 2 the 64-byte way: a transfer completing in between was
+|    w1c'd there as 64 - remaining <= 0 bytes, never decoded, and the stock
+|    64-byte prime left usbmidi_rx_state at 2, so the next transfer decoded as
+|    448 + n bytes (an older transfer's tail replayed; port: 500 of 1,000 short
+|    transfers lost, 55,888 stale events). That branch ends in the stock
+|    usb_midi_rx_prime, and is the only path that reaches it at state 2, so a
+|    detour there (usbmidi_rx_late_shim) decodes what it did not -- all of it,
+|    or for n > 448 the bytes past the n - 448 its own decoder took -- and
+|    re-primes the 512-byte dTD. usbmidi.s's bytes are unchanged.
 
 .set EP2_RX_PRIME,  0x4001d184      | usb_midi_rx_prime(buf), the 64-byte form
 .set RX_ENQUEUE,    0x40092bbc      | midi_rx_enqueue(byte on stack)
@@ -74,6 +86,7 @@
     .global usbmidi_rx_setcfg_shim, usbmidi_rx_isr_shim
     .global usbmidi_rx_reset_shim, usbmidi_rx_sessend_shim, usbmidi_rx_bus_end
     .global usbmidi_rx_state, usbmidi_rx_errs, usbmidi_rx_clk_t, usbmidi_rx_dropped
+    .global usbmidi_rx_late_shim, usbmidi_rx_late
 
 | ---- SET_CONFIGURATION hook (replaces usbmidi.s's detour) ------------------
 | Live at the hook: d0-d1 (usbmidi_setcfg_shim saves them). Records whether
@@ -152,6 +165,52 @@ usbmidi_rx_isr_shim:
 9:  moveml  %sp@,%d1-%d5/%a0-%a3
     lea     %sp@(36),%sp
     jmp     usbmidi_isr_shim
+
+| ---- usb_midi_rx_prime entry (0x4001d184), issue #1017 -------------------
+| Displaced (replayed on the stock path): movel #TD_STOCK64,%d0. At 4(sp): the
+| buffer (the stock argument). At usbmidi_rx_state 2 the caller is
+| usbmidi_isr_shim's 64-byte branch, for an EP2 OUT completion that landed after
+| this unit's ISR shim read ENDPTCOMPLETE (it has already w1c'd the bit). The
+| dTD's token still holds that completion: decode it here and prime 512 again,
+| instead of the stock 64-byte prime. A token still ACTIVE completed nothing:
+| the 512-byte dTD stays primed. Any other state goes on to stock.
+usbmidi_rx_late_shim:
+    lea     %sp@(-36),%sp
+    moveml  %d1-%d5/%a0-%a3,%sp@
+    mvzb    usbmidi_rx_state,%d0
+    cmpil   #2,%d0
+    bnew    8f                      | not the late branch: the stock prime
+    movel   EP2_RX_TD,%d1           | token: remaining<<16, status in 7:0
+    btst    #7,%d1
+    bnew    7f                      | still ACTIVE: nothing completed, keep it
+    addql   #1,usbmidi_rx_late
+    movel   %d1,%d2
+    swap    %d2
+    andil   #0x7fff,%d2             | remaining
+    movel   #512,%d0
+    subl    %d2,%d0                 | n, the bytes received
+    andil   #TD_ERRORS,%d1
+    beqs    1f
+    addql   #1,usbmidi_rx_errs
+    bras    6f
+1:  movel   #448,%d1                | usbmidi.s decoded 64 - remaining = n - 448
+    movel   %d0,%d2                 | bytes from RX_BUF itself when that was > 0
+    subl    %d1,%d2
+    bgts    2f
+    moveq   #0,%d2
+2:  subl    %d2,%d0                 | what is left, from RX_BUF + d2
+    bles    6f
+    lea     RX_BUF,%a2
+    addal   %d2,%a2
+    bsr     usbmidi_rx_decode_a2
+6:  bsr     usbmidi_rx_prime        | the 512-byte dTD again (state stays 2)
+7:  moveml  %sp@,%d1-%d5/%a0-%a3
+    lea     %sp@(36),%sp
+    rts                             | to usbmidi_isr_shim, past the stock prime
+8:  moveml  %sp@,%d1-%d5/%a0-%a3
+    lea     %sp@(36),%sp
+    movel   #TD_STOCK64,%d0         | the displaced instruction
+    jmp     0x4001d18a
 
 | usbmidi_rx_flush: take the primed EP2 OUT dTD back (ENDPTFLUSH bit 2, until
 | the flush and ENDPTSTAT have both cleared, bounded) and clear the overlay.
@@ -298,6 +357,8 @@ usbmidi_rx_prime:
 | Trashes d0-d5/a0-a3; d5 = the entry SR.
 usbmidi_rx_decode:
     lea     RX_BUF,%a2
+| usbmidi_rx_decode_a2: the same, from a2 (usbmidi_rx_late_shim's remainder).
+usbmidi_rx_decode_a2:
     lea     usbmidi_rx_cin_len,%a3
     movel   %d0,%d3
     asrl    #2,%d3                  | event count
@@ -394,3 +455,4 @@ usbmidi_rx_state: .byte 0
 usbmidi_rx_errs:  .long 0
 usbmidi_rx_clk_t: .long 0           | DTCN0 at the last 0xF8 this decoder stamped
 usbmidi_rx_dropped: .long 0         | USB clock and transport events dropped while DIN clocked
+usbmidi_rx_late:  .long 0           | EP2 OUT completions taken at usb_midi_rx_prime (#1017)
