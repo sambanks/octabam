@@ -16,5 +16,8 @@ reply goes back on the transport the request came on.
 | Reply | 1,194 bytes: `F0 00 20 3C 10 00`, 7-bit-encoded body, `F7` |
 | Body | msgId, replyTo, cmd `84`, version 1, width 128, height 64, length 1024, 1,024 pixel bytes |
 
+The picture is the frame the panel was last sent, so MIXER, the PROJECT menu, SETUP windows and popups are in
+it, not only the page underneath.
+
 On USB the reply is one 1,592-byte EP2 IN transfer. On DIN it takes 0.38 s at 31,250 baud, so about 2.6
 screens per second; USB has no such limit.

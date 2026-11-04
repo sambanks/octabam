@@ -34,9 +34,12 @@ x (rendered from a port dump under every candidate layout, 17 Sep 2026;
 `0xff` after a boot and a load; the UI init at `0x40063264` clears both
 with `0x40020950(buf, 0x400)` (a memset — ~~the refresh or DMA setup~~,
 retracted 17 Sep) and then fills a 1,024-byte block from `0x40011804`
-with `-1`. Every drawing routine below writes only `+12`. What sends the
+with `-1`. Every drawing routine below writes only `+12`. ~~What sends the
 plane to the panel controller over UART1 (`0xfc064000`; the byte queue is
-`0x40010aa4`) is not located.
+`0x40010aa4`) is not located.~~ Located 4 Nov 2026: the diff flush
+`0x40013abc` composites the plane with the windows into a back buffer and
+sends that (section 9, "The composite"). `+12` is the page layer only: a
+window (MIXER, a menu, a SETUP window, a popup) is not in it.
 
 ## 2. Fonts — metrics records, no colour
 
@@ -526,6 +529,33 @@ not the panel's. The stream is the ground truth.
 
 Bit order within a page byte is the same as `panel_server.FB`'s formula
 (`buf[x*8 + (63-y)//8]` bit `7-(63-y)%8` == page `7-y//8`, bit `y&7`).
+
+
+### The composite: what the flush sends
+
+Read from objdump of `0x40013abc` on 4 Nov 2026 (static, except where ✅):
+
+1. Clear the back buffer `[0x400b9710]` (1,024 bytes).
+2. Walk the layer list from `[0x460babf0]`, next at `+4`. A layer with
+   `+32` bit 0 clear is skipped. For each, per 32-bit word, `dst = (dst &
+   ~mask) | (mask & pix)`, mask at `[+52]` and pixels at `[+48]`, shifted
+   by `+12 & 31` bits, with the row stride at `+44` (words) and the span
+   from `+16`/`+20`/`+24`/`+28`. The page plane `0x46c7e0ea` is one layer,
+   and each window is another, drawn over it in list order (🟡 the record
+   fields beyond those the loop reads are not decoded).
+3. For each page p and column block c (0, 8, .., 120), compare bytes
+   `x*8 + p` of the back buffer with `[0x400b970c]` for x in c..c+7. If any
+   differ, send `0x10|p, c` and the 8 bytes.
+4. Swap `[0x400b9710]` and `[0x400b970c]`.
+
+So between flushes `[0x400b970c]` holds the frame the panel shows. Its
+layout is the plane's: 128 rows of 8 bytes, byte `x*8 + p` = page p of
+column x, which is `+12`'s pixel (x, y) = column 63-y of row x. ✅ Under
+the port (SCREENSHOT, `verify_screenshot`), a copy of `[0x400b970c]` equals
+the frame decoded from the UART1 stream to the pixel, with the boot's "NOT
+WORKING IN ANY PROJECT" popup up (the plane then differs by 2,314 pixels)
+and with MIXER up (3,132). On a unit, a copy of the plane showed the page
+screens and none of the windows (SCREENSHOT on Sam's MKII, 4 Nov 2026).
 
 ### Traffic per action (empty card, stock image)
 
