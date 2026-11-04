@@ -1192,7 +1192,7 @@ before the CPU's state did: frames stopped because the ColdFire took no
 interrupt at all, SR `0x2510`, looping at `0x4001551e/24/26`. The test remix
 now carries ATA WRITE GUARD. Rule: a test remix whose gates write the card
 carries ATA WRITE GUARD, or a timing shift anywhere can land in this window;
-`hooks`, `free-loop` and `rec-threshold` still do not. When a port run's
+`hooks`, `free-loop` and `rec-threshold` carry it since 4 Nov 2026. When a port run's
 frames stop, read the ColdFire's PC and SR at that point first (the reading
 that ended this hunt): the port prints them as `stall cpu  :` when a live
 script stops early, and `OT_STALL_CPU=1` adds the next 64 PCs (PR #1024). A
