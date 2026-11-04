@@ -349,7 +349,7 @@ audio_ep0page_shim:
 
 | ---- usb_isr shim (installed at 0x4001e606, USB MIDI's site) ---------------
 | Retires EP3 IN completions, then chains to USB MIDI's receive shim
-| (usbmidi_rx.s), which takes the EP2 OUT completion and hands on to
+| (usbmidi.s), which takes the EP2 OUT completion and hands on to
 | usbmidi.s's, which handles EP2 IN and runs the original displaced instruction.
     .global audio_isr_shim
 audio_isr_shim:
@@ -1658,7 +1658,7 @@ cfgsel:
 | own continuation, with the stock stack (table + d1 for the addq there).
 | When usb_cfg_ready is 0 (brain, block not valid yet), cfgsel is re-run
 | first; the registers the stock path keeps live are saved across it.
-| The moveml pair is the module's lea-framed idiom (see usbmidi_rx.s):
+| The moveml pair is the module's lea-framed idiom (see usbmidi.s):
 | `%sp@` is mode 2 (store at sp, sp unchanged), so the lea reserves the
 | frame below sp -- without it the save writes over the caller's live
 | frame ([sp+12] is the handler's return address, clobbered by d3's slot).

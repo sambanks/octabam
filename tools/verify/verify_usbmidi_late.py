@@ -4,7 +4,7 @@ ENDPTCOMPLETE reads is decoded once, and the 512-byte dTD is primed again (#1017
 
     REMIX=<name> python3 tools/verify/verify_usbmidi_late.py
 
-usbmidi_rx.s's ISR shim takes EP2 OUT completions, re-primes the 512-byte dTD
+usbmidi.s's receive ISR shim takes EP2 OUT completions, re-primes the 512-byte dTD
 and hands over to usbmidi.s's usbmidi_isr_shim, which reads ENDPTCOMPLETE again
 and takes bit 2 the 64-byte way: decode 64 - remaining bytes (none, or the first
 n - 448 of a longer transfer), then the stock usb_midi_rx_prime (0x4001d184).

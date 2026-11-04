@@ -51,6 +51,11 @@ at USB high speed only.
 MIDI in and out over USB, mirroring the DIN ports. The sequencer, time
 stretch, the LFOs and the FX follow USB MIDI clock.
 
+A burst of output, such as the 283 CCs of a CC 61 dump, is queued and sent in
+order. Up to about 4 KB can wait for the computer to read; messages past that
+are dropped and counted in the USB tab. Before this, a burst longer than 256
+bytes lost its tail.
+
 The Octatrack follows one clock at a time, and DIN comes first. While MIDI
 clock is arriving on DIN, USB clock, START, STOP, CONTINUE and song position
 are ignored. USB takes over about a sixth of a second after the last DIN clock.

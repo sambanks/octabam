@@ -102,10 +102,10 @@ def audio_inc(modules, remix):
 # image: USB MIDI's four, then usbaudio, then crossbar, then usbaudio_in.
 
 LINKED = (
-    # markandrus/octemu usb-midi.s at 6a9ff68 (MIT) is the starting text; the
-    # unit is octabam's own from the TX ring on and carries no reference pin
+    # markandrus/octemu usb-midi.s at 6a9ff68 (MIT) is the starting text of
+    # this unit; the TX ring, the receive path and the bus-reset handling are
+    # octabam's, and the unit has no reference pin
     Linked("usbmidi", f"{SOURCE}/usbmidi.s", cpu="54455", dram=True),
-    Linked("usbmidi_rx", f"{SOURCE}/usbmidi_rx.s", cpu="54455", dram=True),
     Linked("usbmidi_clamp", f"{SOURCE}/clamp.s", cpu="54455", dram=True),
     # every configuration of every setting combination, one length
     # (descriptors.remix_inc), and the absolute `cfg_len` the clamps read
@@ -127,20 +127,20 @@ LINKED = (
 # by symbol, as they did as separate modules).
 
 MIDI_DETOURS = (
-    Detour(0x4001d9ca, H("4879400b9868"), "usbmidi_rx", "usbmidi_rx_setcfg_shim",
+    Detour(0x4001d9ca, H("4879400b9868"), "usbmidi", "usbmidi_rx_setcfg_shim",
            "SET_CONFIGURATION body: note the speed, then usbmidi's EP2 bring-up (512-byte packets at high speed)"),
-    Detour(0x4001e606, H("2039fc0b01ac"), "usbmidi_rx", "usbmidi_rx_isr_shim",
+    Detour(0x4001e606, H("2039fc0b01ac"), "usbmidi", "usbmidi_rx_isr_shim",
            "usb_isr UI path: EP2 OUT completions -> decode with FIFO room / re-prime, then usbmidi's EP2 IN kick"),
-    Detour(0x4001d184, H("203c00408080"), "usbmidi_rx", "usbmidi_rx_late_shim",
+    Detour(0x4001d184, H("203c00408080"), "usbmidi", "usbmidi_rx_late_shim",
            "usb_midi_rx_prime entry: at state 2 it is usbmidi_isr_shim's 64-byte branch for a completion after "
            "the first ENDPTCOMPLETE read -- decode it and re-prime 512 (#1017)"),
     Detour(0x40010bc8, H("4fefffec48d7043c"), "usbmidi", "usbmidi_send_shim",
            "midi_send entry: queue the message for the USB encoder", pad_to=8),
     Detour(0x400108b0, H("2f02122f000b"), "usbmidi", "usbmidi_prio_shim",
            "priority (realtime) byte sender: queue the byte for the USB encoder"),
-    Detour(0x4001e91c, H("4ebaed9a7040"), "usbmidi_rx", "usbmidi_rx_reset_shim",
+    Detour(0x4001e91c, H("4ebaed9a7040"), "usbmidi", "usbmidi_rx_reset_shim",
            "USBSTS.URI handler: a bus reset takes EP2 down until the next SET_CONFIGURATION"),
-    Detour(0x4001e952, H("2039fc0b0140"), "usbmidi_rx", "usbmidi_rx_sessend_shim",
+    Detour(0x4001e952, H("2039fc0b0140"), "usbmidi", "usbmidi_rx_sessend_shim",
            "OTGSC.BSVIS session end (cable pulled): the same, before USBCMD.RS is cleared"),
     Detour(0x4001daec, H("303946c8ce0c"), "usbmidi", "usbmidi_clrfeat_shim",
            "CLEAR_FEATURE(ENDPOINT_HALT): answer for EP2 instead of stalling"),

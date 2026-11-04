@@ -21,7 +21,7 @@ time (`.incbin`, `make os`).
 | Airwindows Pockey2 | MIT | Chris Johnson | `modules/character-txtr` TXTR (`pockey2_ref.py`; in `modules/character` on 5 Oct 2026, moved out the same day) |
 | JClones TapeHead, DaTube, OInflator, AC1 (JSFX) | MIT | JClones | `modules/character` SAT (TAPE / TUBE / INFL), COMP / GLUE |
 | audiojs/filter `moogLadder`, `oberheim` (Zavalishin's zero-delay forms) | MIT | audiojs contributors | `modules/spectrum` LADR, LP / BP |
-| markandrus/octemu `custom/coldfire/usb-midi.s`, `custom/usb-midi.py` (descriptors) | MIT | markandrus | `modules/usb` (his text; one ISA-B substitution, README) |
+| markandrus/octemu `custom/coldfire/usb-midi.s`, `custom/usb-midi.py` (descriptors) | MIT | markandrus | `modules/usb` (`usbmidi.s` started from his text; one ISA-B substitution, README; octabam's from the TX ring on) |
 | markandrus/octemu `custom/coldfire/usb-audio.s`, `custom/usb-audio.py` (descriptors) | MIT | markandrus | `modules/usb` (his shims, producer, packet builder and servo; the loader replaces his card payload machinery); the LAYOUT values TRACKS, MASTER, MAIN and MAIN CUE assemble the same source with fewer channels or other layouts (the README cites `usbaudio.s`, markandrus/octemu, MIT) |
 | markandrus/octemu `src/board/ot-board.c` USB packet bench (line protocol) | MIT | markandrus | `tools/emu/ot_emu/usb.h` speaks the same protocol so his `tests/usb-host.py` drives the port; the model is written here |
 | Airwindows Capacitor2 | MIT | Chris Johnson | `modules/spectrum` ISO (`capacitor2_ref.py`) |
