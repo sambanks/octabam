@@ -36,6 +36,7 @@ nav:
       - Effects:
           - Character: reference/manual/octabam/effects/character.md
           - Modulation: reference/manual/octabam/effects/modulation.md
+          - Sidechain Compressor: reference/manual/octabam/effects/sidechain-compressor.md
           - Spectrum: reference/manual/octabam/effects/spectrum.md
       - Machines:
           - OCTA-303: reference/manual/octabam/machines/octa303.md
@@ -90,6 +91,7 @@ nav:
           - Hooks: reference/manual/octabam/inside/hooks.md
           - Load Meter: reference/manual/octabam/inside/load-meter.md
           - Memory: reference/manual/octabam/inside/memory.md
+          - Sc Load Meter Bridge: reference/manual/octabam/inside/sc-loadmeter-bridge.md
           - Store: reference/manual/octabam/inside/store.md
       - Credits: reference/manual/octabam/credits.md
   - More:

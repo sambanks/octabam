@@ -1,4 +1,4 @@
-"""octabam -- the core ColdFire modules, every other ColdFire module that fits, all 14 stock effects, and MODULATION, SPECTRUM and CHARACTER loaded on demand. TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR are not in this remix."""
+"""octabam -- the core ColdFire modules, every other ColdFire module that fits, all 14 stock effects, and MODULATION, SPECTRUM and CHARACTER loaded on demand, with COMPRESSOR's side-chain (SIDECHAIN_COMPRESSOR) loaded the same way. TRANSIENT and DISTORX are not in this remix."""
 from remix.schema import Pin, Proof, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
@@ -8,8 +8,11 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
         "LOAD METER")
+# COMPRESSOR's row is SIDECHAIN_COMPRESSOR's: stock COMPRESSOR with a side-chain KEY on page 2, its DSP
+# loaded on demand while a track uses COMPRESSOR (docs/proposals/SC_DEMAND_LOAD.md). Out 1 Nov 2026 (433e22e)
+# with TRANSIENT and DISTORX, back 4 Nov 2026: KEY reads "--" while the side-chain is not loaded (#934).
 STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
-           "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
+           "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
 OURS = ("MODULATION", "SPECTRUM", "CHARACTER")
 # Every other ColdFire module that can share this image (the ledger; HOOKS joins the pairs that
 # share a stock site). Not here: ANALOG BD (its fixed pre-boot DSP scratch 0x40b00000 is under
@@ -25,30 +28,34 @@ OURS = ("MODULATION", "SPECTRUM", "CHARACTER")
 COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
             "TRACK PATTERNS", "VARISPEED")
 STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
-             "COMB FILTER", "COMPRESSOR", "LO-FI")
+             "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI")
 
 REMIX = Remix(
     name="octabam",
-    family="mods", proof=Proof.HARDWARE,
-    proof_note="Sam's MKII, image OCTABAMR3 (this remix before the rebase onto fa49e92f), USB TRACKS PRE, 1 Nov 2026: "
-               "ot_suite.py phases pre-meter, pre-transport, pre-usb, dsp-watch, fx01-fx03 (74 layouts, no crash), "
-               "loader01-02, kits-identity, scenes-sweep, scenes-latency, djump-off/on/burst; mix-soak and the manual "
-               "plan not run (docs/contributing/HARDWARE_SUITE.md)",
-    doc="The core ColdFire modules and every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand.",
-    modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY") + STOCK14 + OURS
+    family="mods", proof=Proof.CHECK,
+    proof_note="Without SIDECHAIN_COMPRESSOR: Sam's MKII, image OCTABAMR3 (this remix before the rebase onto fa49e92f), "
+               "USB TRACKS PRE, 1 Nov 2026: ot_suite.py phases pre-meter, pre-transport, pre-usb, dsp-watch, fx01-fx03 "
+               "(74 layouts, no crash), loader01-02, kits-identity, scenes-sweep, scenes-latency, djump-off/on/burst; "
+               "mix-soak and the manual plan not run (docs/contributing/HARDWARE_SUITE.md). With it: not flashed",
+    doc="The core ColdFire modules and every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain.",
+    modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE") + STOCK14 + OURS
             + COLDFIRE,
     # The window words no stock effect writes (docs/proposals/DEMAND_LOAD.md): the top of each FX2
     # slot from 0x3da3 up, and below 0x37f00, where payload B's boot zero loop starts. DLCOPY is the
     # lowest upload; the stub and the reverb guards follow it (window_loader); LOAD METER's DSP half
     # fills the next gap. The three effects sit at offset 0x3820 of three of the four slots (core A tracks 7
     # and 8, core B tracks 3 and 4) and are not uploaded: PLATE REV writes up to offset 0x37ff and SPRING REV up to 0xfff,
-    # so only DARK REV (0x3da2) reaches the code.
+    # so only DARK REV (0x3da2) reaches the code. SIDECHAIN_COMPRESSOR's one copy (the shared form: code, its two
+    # tables, then its key window and counters as zero words, 1,711 words) has one home, the fourth block's top,
+    # which only DARK REV on T4's FX2 reaches; its four hooks go to resident stubs.
     fx1=("SPECTRUM", "CHARACTER", "MODULATION") + STOCK_FX1,   # the chooser order on FX1; the stations also run live on FX2 (SLOTS pin below)
-    # DLCOPY follows the three demand entries (x:$33da3 + 8 k, k = 0..2).
-    window=(("DLCOPY", 0x33DBB), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
-            ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820)),
-    # DLPUMP loads in this order, and the first free home wins.
-    window_demand=("MODULATION", "SPECTRUM", "CHARACTER"),
+    # DLCOPY follows the four demand entries (x:$33da3 + 8 k, k = 0..3).
+    window=(("DLCOPY", 0x33DC3), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
+            ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820),
+            ("SIDECHAIN_COMPRESSOR", 0x3F820)),
+    # DLPUMP loads in this order, and the first free home wins: SIDECHAIN_COMPRESSOR has one home, the fourth
+    # block, which the others reach only as their second or later home.
+    window_demand=("MODULATION", "SPECTRUM", "CHARACTER", "SIDECHAIN_COMPRESSOR"),
     # The other homes: each effect can be loaded into any block it fits (the code is assembled once per home). The loader
     # sends the first home whose block holds no other demand effect and whose FX2 slot is not a stock reverb that reaches
     # the code, and moves a loaded effect when such a reverb arrives. MODULATION (1,561 words) needs a block with 2,016
@@ -63,6 +70,8 @@ REMIX = Remix(
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,
               ("octabam.usb", "IN"): "OFF",
               ("kyoti.mute-modes", "PLACE"): Pin("DRAM"),
+              ("octabam.sidechain-compressor", "FORM"): Pin("SHARED"),
+              ("octabam.sidechain-compressor", "PLACE"): Pin("DRAM"),
               # no bus here, so the cycle envelope is not priced with the stations on FX1 only
               **{(f"octabam.{k.lower()}", "SLOTS"): Pin("FX1+FX2")
                  for k in ("SPECTRUM", "CHARACTER", "MODULATION")}},

@@ -20,7 +20,7 @@ from remix.schema import (
 _HERE = os.path.relpath(os.path.dirname(os.path.realpath(__file__)))
 
 # PLACE: DRAM (default) links page.s into the platform runtime and leaves the
-# stock DELAY curve table's last words alone (issue #771 / Keep on 0x400d24d0).
+# stock DELAY's table read alone (issues #771, #1007 / Keep on 0x400d24d0..0x400d2ca8).
 # CAVE is the pinned ROM form at PAGE_AT; refused where DELAY is listed.
 PAGE_AT = 0x400d24d0
 PAGE_LEN = 1780

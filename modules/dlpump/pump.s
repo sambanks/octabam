@@ -553,7 +553,30 @@ dl_xfer:
         bne.w   3b
         rts
 
+| ---- SIDECHAIN_COMPRESSOR's KEY on page 2 (issue #934) --------------------------------------------------------
+| The build writes dl_keyfmt over KEY's formatter word (FormatterReg.wraps); KEY's widget stays sc_ui's switch.
+| While SC's side-chain code is not loaded (not yet, withdrawn, or a reverb took its block: the SC KEY OFF toasts)
+| every COMPRESSOR runs as stock, so KEY prints "--" instead of the track it names, and the stored value is not
+| touched: the key comes back on that track when the code is loaded again. Loaded, it is key_fmt (sc_cf, Zac
+| Kyoti's) unchanged. Called as a formatter: 4(sp) = the text buffer, 8(sp) = KEY's value; clobbers d0.
+        .equ    DL_SPRINTF, 0x40013a08          | int sprintf(char *buf, const char *fmt, ...), as key_fmt's
+        .globl  dl_keyfmt
+dl_keyfmt:
+        .if     HAVE_SC_KEY
+        move.l  dl_loaded,%d0
+        btst    #DL_SC,%d0
+        bne.b   1f
+        move.l  #dl_dash,%d0                    | sprintf(buf, "--"): key_fmt's own OFF tail (ColdFire:
+        move.l  %d0,8(%sp)                      | no immediate long to d16(An))
+        jmp     DL_SPRINTF
+1:      jmp     key_fmt
+        .else
+        rts
+        .endif
+
         .data
+dl_dash:  .asciz  "--"
+        .balign 4
         .globl  dl_state, dl_core, dl_dest, dl_src, dl_left, dl_loaded
 dl_state: .long 0
 dl_core:  .long 0

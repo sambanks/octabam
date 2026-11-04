@@ -5,13 +5,14 @@ METER's entry code (docs/proposals/DEMAND_LOAD.md, decision 9).
 import json
 import pathlib
 
-from remix.schema import Apply, Category, Detour, Gate, Kind, Linked, Module, Option, Proof, Setting, Store
+from remix.schema import Apply, Category, Detour, FormatterReg, Gate, Kind, Linked, Module, Option, Proof, Setting, Store
 
 RECORDS = pathlib.Path("out/dsp/demand_records.json")
 CAPACITY = 2600                 # code words a block may hold: the staging area X:0x2906..0x3d55 takes 2 per word; the table is this size on every link
 BLOCK_TRACK = {0: 6, 1: 7, 2: 2, 3: 3}   # window block (address >> 14 & 3) -> the FX2 track whose slot is there (0-based; docs/firmware/DSP.md section 7)
 WIN = 0x30000
 REVERBS = ("PLATE REV", "SPRING REV", "DARK REV")
+SC_KEY = ("SIDECHAIN_COMPRESSOR", 8)   # the soft effect whose KEY reads "--" while its code is not loaded (#934)
 TOAST_NAME_MAX = 10             # "EVICT <name> 1ST" must fit the popup, so a longer name is cut: 20 characters. Measured on the unit, 27 Oct 2026: 22 clipped slightly, 19 fitted; a newline does not break the line
 
 
@@ -38,6 +39,10 @@ def table_inc(modules, remix):
     rows = [f"        .equ    DL_N, {len(keys)}", f"        .equ    PHASE_ANY, {int(phase_any)}", f"        .equ    GRACE, {grace}"]
     for key in REVERBS:
         rows.append(f"        .equ    DL_{key.split()[0]}, 0x{stock.BY_KEY[key].menu.fx2_id:02x}")
+    # dl_keyfmt: SIDECHAIN_COMPRESSOR's KEY formatter while its side-chain code is not loaded
+    sc = keys.index(SC_KEY[0]) if SC_KEY[0] in keys else -1
+    rows.append(f"        .equ    HAVE_SC_KEY, {int(sc >= 0)}")
+    rows.append(f"        .equ    DL_SC, {max(sc, 0)}")
     addrs = {key: [dict(remix.window)[key]] + [a for hk, a in remix.window_homes if hk == key] for key in keys}
     rows.append("dl_tab:")
     for k, key in enumerate(keys):
@@ -92,7 +97,13 @@ MODULE = Module(
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
     proof=Proof.CHECK, proof_note="",
     doc="Host-writes a staged block to a DSP core, a chunk per frame interrupt (demand loader).",
-    linked=(Linked("dlpump", "modules/dlpump/pump.s", cpu="5475", include=table_inc, dram=True),),
+    # dl_keyfmt wraps SIDECHAIN_COMPRESSOR's KEY formatter (sc_cf's key_fmt, named as a defsym:
+    # its ROM cave's export, or the same link's label when PLACE is DRAM): "--" while the
+    # side-chain code is not loaded (issue #934). A remix without SC skips the registration.
+    linked=(Linked("dlpump", "modules/dlpump/pump.s", cpu="5475", include=table_inc, dram=True,
+                   defsyms=(("key_fmt", 0),),
+                   registers_formatter=FormatterReg(module=SC_KEY[0], slot=SC_KEY[1],
+                                                    symbol="dl_keyfmt", wraps=True)),),
     detours=(
         Detour(0x4005578C, bytes.fromhex("2f032f02226f000c"), "dlpump", "dl_key",
                "the UI task's page-key handler: a toast the idle loop owes is shown at the next press", pad_to=8),
