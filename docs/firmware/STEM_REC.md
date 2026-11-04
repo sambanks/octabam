@@ -8363,6 +8363,31 @@ candidate. A `gains` part of about 2 µs or more means it misses. The next
 step would then be to compute each slot's ramp in registers and drop
 `stems_gq`.
 
+**On the unit** (STEMS12, Yves's MKII, 4 Nov 2026; flash L lists the
+takes). The parts add up to the logged hook mean in all five takes. At
+eleven files the means are mirror 6.9 µs, buses 9.0, gains 1.4 and tracks
+16.6, against a hook mean of 33 µs.
+
+- ✅ **The gain queue misses the cache, in part.** At seven tracks the
+  probe's 35 lines cost 1.36 to 1.55 µs. Cached, with the probe's own
+  instructions, they'd cost about 0.3 µs; all missing, about 3 µs. So
+  roughly 40% of the lines miss. With T1 alone, the five lines cost
+  0.58 µs: they all miss.
+- 🟡 **The mirror runs over its count.** It takes 6.8 to 7.3 µs at seven
+  tracks and 4.6 µs with T1 alone. Its port counts (about 920 and 493
+  instructions) at 2.9 ns predict 2.7 and 1.4 µs. The rest, 3 to 4.5 µs,
+  is part line misses (its writes to the same lines, its state words) and
+  part instructions that take more than one cycle, since 2.9 ns is a
+  floor. The two aren't separated.
+- **The verdict, by the rule above:** the mirror's excess passes 2 µs, so
+  the next step is to compute each slot's ramp in registers and drop
+  `stems_gq` (`modules/stems/CLEANUP.md` 1.1). The gain path, mirror and
+  gains together, is about 8.3 µs at seven tracks: a quarter of the hook.
+- Not measurable from these takes: the slot mask's own saving. T1 alone
+  ran 10 µs on average in a 1-second take, against 7 to 10 µs on STEMS11
+  (four takes, other projects), and STEMS12 adds about 1 µs of
+  instrumentation (the probe, four timer reads, the sums).
+
 **The mirror's slot mask** (✅ under the port). Until now, on every
 recorded frame, the mirror wrote all eight slots' gains, whatever the
 take recorded: 968 instructions a frame against 378 at idle (the 28 Oct

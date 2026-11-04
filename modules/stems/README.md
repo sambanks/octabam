@@ -160,7 +160,10 @@ bits, 4,059 instructions then, about 1.8 cycles an instruction on the
 266 MHz core. Since zero copy the hook's stores go to uncached memory and
 each waits for the RAM: 🟡 about 10 to 13 µs more a frame at eight tracks,
 24 bits, estimated from flash E's copy, so about 37 µs, and about 45 µs
-with everything at 24 bits.
+with everything at 24 bits. Measured since: 30 to 33 µs on average at
+nine to eleven files at 24 bits (seven tracks), 62 µs at most (STEMS11 and
+STEMS12, 28 Oct and 4 Nov 2026). STEMS12's parts split that time
+(STEM_REC.md 20.9).
 STEMS3 recorded eleven files at 24 bits on the unit; clicks and the
 screen's response during a take aren't reported yet (STEM_REC.md 17.3).
 Before piece 5 the hook copied the tracks as they were and cost 743
@@ -277,24 +280,25 @@ can't (a file in the way, or the card refuses), only the log is missing:
 the take's status and files don't change. The log is still called
 STATS.TXT in this document, its name before 27 Oct 2026, when it sat in
 the take's folder. It's there to tell why a take fell behind, without an
-emulator:
+emulator. This one is from a ten-file take on Yves's MKII (STEMS12,
+4 Nov 2026):
 
 ```
-STEM REC STATS 261007-2015
+STEM REC STATS 261104-2034
 status OK
-165375 frames, 60 s, 11 files, 24 bits
-ring peak 1234 of 7922 frames
-card writes 2584, 41234 ms in all, longest 62300 us
-card fastest write 21000 KB/s
-card rec 36800 ms 81500 KB 451 us/KB
-card save 4434 ms 9300 KB 476 us/KB
-writer longest sleep 12000 us, asks 10000
-hook mean 41 us, longest 88 us
-hook parts mean ns: mirror 2600, buses 9400, gains 300, tracks 29100
-hook parts longest ns: mirror 4100, buses 21000, gains 3200, tracks 52000
-hook and frame routine mean 290 us, longest 335 us, 165375 frames
-card udma 4 mwdma 0, cluster 64 sectors
-yes gap 312 ms, double taps 1
+136892 frames, 49 s, 10 files, 24 bits
+ring peak 7147 of 8716 frames
+card writes 2840, 50190 ms in all, longest 123331 us
+card fastest write 26742 KB/s
+card rec 48280 ms 124608 KB 387 us/KB
+card save 1909 ms 3732 KB 511 us/KB
+writer longest sleep 10138 us, asks 10000
+hook mean 32 us, longest 62 us
+hook parts mean ns: mirror 7272, buses 7272, gains 1553, tracks 16825
+hook parts longest ns: mirror 12916, buses 17530, gains 6545, tracks 40863
+hook and frame routine mean 79 us, longest 112 us, 136892 frames
+card udma 5 mwdma 4, cluster 64 sectors
+yes gap 13159 ms, double taps 1
 ```
 
 - **Yes gap** is the time between the last two presses of YES on the main

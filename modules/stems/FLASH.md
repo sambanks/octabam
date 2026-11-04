@@ -2,6 +2,39 @@
 
 ## Flash L — `octabam` + STEM REC: the hook's parts, the gain probe, the slot mask (staged 29 Oct 2026)
 
+**Flashed** on Yves's MKII. His card's logs of 4 Nov 2026 hold five takes,
+all at 24 bits (his folder, not the repository):
+
+| take | files | length | status | ring peak, frames | card while recording | hook mean, longest |
+|---|---|---|---|---|---|---|
+| `261104-2032` | T1 | 1 s | OK | 851 of 87,360 | 54 µs a KB | 10, 18 µs |
+| `261104-2032-2` | 11: T1 to T7, MAIN, CUE, AB, CD | 10 s | `RING FULL` | 7,922 of 7,922 | 423 µs a KB | 33, 61 µs |
+| `261104-2033` | 9: T1 to T7, MAIN, CUE | 20 s | OK | 2,565 of 9,687 | 234 µs a KB | 30, 55 µs |
+| `261104-2033-2` | 10: as 9, and AB | 19 s | OK | 2,766 of 8,716 | 252 µs a KB | 32, 57 µs |
+| `261104-2034` | 10: as 9, and AB | 49 s | OK | 7,147 of 8,716 (82%) | 387 µs a KB | 32, 62 µs |
+
+- Every WAV's length is its log's frame count × 16, with its `.ot` beside
+  it.
+- The hook parts add up to the hook's mean in every take. What they say
+  about the gain queue is in STEM_REC.md 20.9: it misses the cache in
+  part, and the queue is to go (`CLEANUP.md` 1.1).
+- `CUE.wav` is silent in every take: the project sends nothing to CUE
+  (Yves), as on STEMS11's 28 Oct take. So test 4 shows only that CUE
+  stays silent; the port's CUE question needs a take with a track sent to
+  CUE.
+- New: the card fell behind. STEMS11's eleven-file take
+  (`261028-2008-2`) wrote at 255 µs a KB and peaked at 34% in 49 s. Here
+  eleven files wrote at 423 µs a KB and filled the ring in 10 s, and ten
+  files peaked at 82% in 49 s at 387. Eleven files at 24 bits need
+  2.9 MB/s and ten 2.65 MB/s; the card gave 2.4 and 2.65 while recording.
+  The hook costs what it did (33 µs against 32), and STEM REC's writer is
+  unchanged since STEMS11. 🟡 Why the card was slower isn't established:
+  the project, the card's fill since 2 Nov's 21-minute take, the Static
+  machines' load, or the image's other changes since STEMS11's base (68
+  module files, among them USB #956 and HOOKS' frame-interrupt entry and
+  epilogue).
+- Which takes had the Static tracks muted (test 4) isn't in the logs.
+
 `STEMS12`, the same remix as flashes I to K, on branch `stems-hookparts`
 (from `stems-next` at `ecfbb2ff`). It records as STEMS11 did; what's new
 is measurement, and one saving:
