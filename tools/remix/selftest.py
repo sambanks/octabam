@@ -211,6 +211,10 @@ CASES = [
       _cf("beta", keeps=(Keep(0x4001f322, bytes.fromhex("48780070")),))], "kept bytes"),
     ("a cave over the stock DELAY's table read (issue #771)",
      [registry.by_key("DELAY"), _cave("alpha", 0x400d24d0)], "kept bytes"),
+    ("a cave over entry 764 of the stock DELAY's table (issue #1007)",
+     [registry.by_key("DELAY"), _cave("alpha", 0x400d28d0)], "kept bytes"),
+    ("a cave over entry 1023, read at boot (issue #1007)",
+     [registry.by_key("DELAY"), _cave("alpha", 0x400d2cd0)], "kept bytes"),
     # ---- grown tables ----------------------------------------------------
     ("two modules growing one stock array",
      [_cf("alpha", tables=(TableGrow("t", 0x40100000, 4, (("u", "a"),), ((0x40065bd8, 0x40100000),)),)),

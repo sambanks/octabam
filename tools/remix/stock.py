@@ -216,13 +216,24 @@ SLOT_EXTENT: dict[str, int] = {
 }
 SLOT_BASES = (0x30000, 0x34000, 0x38000, 0x3C000)
 
-# The stock DELAY looks up 0x400d1ce0 + 4 * (x >> 6) (0x40003526, 0x40003540) and
-# stores the word in the track's delay state. The table has 508 entries and ends at
-# 0x400d24d0, where the zero run begins; an index up to 511 (a slow tempo, a long TIME:
-# 51 BPM in verify_tapeecho_cpu) reads the first four words of the run, which are zero
-# in 1.40C. A module's code there changes the DELAY's output (issue #771, measured
-# under the port), so a remix that lists DELAY keeps them.
+# The stock DELAY (0x400031a0, gated on FX2 id 8) looks up two one-pole
+# coefficients per track in the table at 0x400d1ce0: the HP pole at
+# 0x4000351e (`mvz.w 6(a0),d1 / lsr.l #6` -> entry BASE >> 6, state +20) and
+# the LP pole at 0x4000353c (`mvs.w 8(a0),d0 / add.l d1,d0 / asr.l #6` ->
+# entry (BASE + WDTH) >> 6, state +24). BASE and WDTH are the staged page-1
+# halfwords, the knob << 8, so the LP index reaches (0x7f00 + 0x7f00) >> 6 =
+# 1016; the boot init at 0x40002f44 reads entry 1023 (`move.l $400d2cdc.l`)
+# directly. The curve has 508 entries and ends at 0x400d24d0; entries
+# 508..1023 are zero in 1.40C (0 = the filter open) and other data starts at
+# entry 1024, 0x400d2ce0. So the whole zero run 0x400d24d0..0x400d2ce0 is
+# read as table data, and a remix that lists DELAY keeps all of it: a module's
+# bytes there change the DELAY's output (issue #771, measured under the port at
+# entry 508; issue #1007, Zac Kyoti: entries 508 and 764 read on OT DEMO, and
+# BASE + WDTH from 128 to 254 reaching 512..1016). Until 4 Nov 2026 only the
+# first 16 bytes were kept, on the reading that the index stopped at 511
+# (retracted: read from the routine above, against the stock bytes).
 DELAY_TABLE_END = 0x400d24d0
+DELAY_TABLE_READ_END = 0x400d2ce0    # entry 1024: past the last word DELAY reads
 
 
 def _stock(key, name, fx2_id, desc, abbr, fullname, words, doc, char,
@@ -270,8 +281,9 @@ MODULES = (
     _stock("DELAY", "delay", 0x08, 0x400d4a96, b"DEL", b"DELAY", 0,
            "Stock Echo Freeze delay -- runs on the ColdFire, so it costs the "
            "DSP nothing; the row works as on a stock unit. No local render.",
-           "Y", keeps=(Keep(DELAY_TABLE_END, bytes(16),
-                            "the stock DELAY reads these words past its 508-entry coefficient table"),)),
+           "Y", keeps=(Keep(DELAY_TABLE_END, bytes(DELAY_TABLE_READ_END - DELAY_TABLE_END),
+                            "the stock DELAY reads entries 508..1023 of its coefficient "
+                            "table (zero: the filter open) as pole coefficients"),)),
     # Null DSP stub (docs/firmware/DSP.md); FX2-only. Listed so a buffer
     # insert can declare replaces="MULTIBCOMP" without taking DELAY/PHASER.
     _stock("MULTIBCOMP", "multibcomp", 0x19, 0x400d5bdc, b"MBC",
