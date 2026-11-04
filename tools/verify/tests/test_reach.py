@@ -633,7 +633,6 @@ class PlanJsonTests(unittest.TestCase):
         skipped = got["check-remix octabam"].split("--skip-jobs ")[1].split()[0].split(",")
         self.assertIn("brain", skipped)
         self.assertIn("image:rec-threshold", skipped)
-        self.assertIn("image:buffer-saver-new", skipped)
         self.assertNotIn("image:ata-write", skipped)
 
     def test_recipe_scripts_follow_an_implementation_cut_into_halves(self):

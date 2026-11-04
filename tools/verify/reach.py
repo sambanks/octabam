@@ -1117,11 +1117,10 @@ def entry_name(kind, command):
 # jobs: 1405 s, 468 s over 3 shards); module_gates --shared 353 s of the shared
 # half's 645 s, run serially.
 # The `image:` jobs (one per image-stage module gate) are cut up by their times in run 41762397696 (4 Nov 2026, 3 shards
-# on one runner, 3082 s wall, 7935 s of work): `rec` is rec-threshold 1203 s, usb-in 620 s, usb-load-meter 527 s;
-# `bufsave` is the six buffer-saver scenarios, 3889 s, the longest 1136 s. A runner each (a public repo's minutes are free).
+# on one runner, 3082 s wall, 7935 s of work): `rec` is rec-threshold 1203 s, usb-in 620 s, usb-load-meter 527 s.
+# A runner each (a public repo's minutes are free).
 SPLIT_REMIX_JOBS = {"octabam": {"long": ("remix-switch",), "project": ("set", "mode-defaults", "plocks-p2", "pattern-mute"),
-                                "rec": ("image:rec-threshold", "image:usb-in", "image:usb-load-meter"),
-                                "bufsave": tuple(f"image:buffer-saver-{n}" for n in ("yes", "again", "taken", "no", "new", "first"))}}
+                                "rec": ("image:rec-threshold", "image:usb-in", "image:usb-load-meter")}}
 
 # A unit that runs one gate on its own, with a generated project, beside the units above: `check-remix <remix> (<name>)`
 # is `check_shards --only-jobs <name>`; check_shards.remix_jobs adds the gate job from COMMAND, so the gate cache covers it

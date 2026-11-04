@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """BUFFER SAVER under the port: SAVE PROJECT (FUNC + PROJ) after a take,
-in six scenarios, each its own boot.
+in seven scenarios, each its own boot.
 
 Each boots the built image (out/mainos_bus.bin) on a private card holding a
 saved, empty project (project.work and project.strd, so SAVE takes stock's
@@ -29,10 +29,16 @@ copy.
            Stock's SAVE runs SAVE TO NEW's code itself: SAVE SAMPLES? still
            once, and stock's name keyboard opens.
 
-`verify_buffer_saver.py [scenario ...]` runs the named scenarios (default:
-all six, in parallel). The manifest runs each as its own gate through
-modules/buffer-saver/verify_buffer_saver_<scenario>.py, so the runner schedules them
-instead of six emulators sharing one job's CPU.
+`verify_buffer_saver.py [scenario ...]` runs the named scenarios (default: all,
+in parallel) and prints each one's wall time.
+
+  audio    the only run with the DSP: take, FUNC + PROJ, YES (SAVE SAMPLES?),
+           NO (CONTINUE?). Wanted: the saved WAV holds the take's audio (the
+           tones input), not silence.
+
+Without --dsp a take has the right length and is silent, and the port runs
+about 5x faster (the `yes` script: 37 s against 195 s, 4 Nov 2026, M-series,
+one scenario alone), so every scenario but `audio` runs without it.
 
 Never flashes or talks to hardware.
 """
@@ -104,14 +110,14 @@ def fail(message, output=""):
     return 1
 
 
-def run(work, card, name, script, quit_ms):
+def run(work, card, name, script, quit_ms, dsp=False):
     card = card[name] if isinstance(card, dict) else card
     path = work / f"{name}.script"
     path.write_text("\n".join(script + [f"{quit_ms} quit"]) + "\n")
     out_card = work / f"{name}.img"
     args = [str(EMU), "--image", str(IMAGE), "--card", str(card), "--card-out", str(out_card),
             "--set", "OCTABAM", "--project", "BUFSAVE", "--load-ms", "90000",
-            "--mkii", "--dsp", "--main-level", "64", "--audio-in", "tones",
+            "--mkii", *(["--dsp"] if dsp else []), "--main-level", "64", "--audio-in", "tones",
             "--watch-mem", f"{MODE:#x},4", "--watch-pc", f"{DIALOG_ENTRY:#x},{KEYBOARD:#x}",
             "--live-script", str(path)]
     t0 = time.monotonic()
@@ -189,7 +195,7 @@ def main(only=None):
                                 cwd=ROOT, capture_output=True, text=True)
         if staged.returncode:
             return fail("could not stage the card with R1-000000-0000.wav", staged.stdout + staged.stderr)
-        cards = {"yes": card, "again": card, "taken": card_taken, "no": card, "new": card, "first": card}
+        cards = {"yes": card, "audio": card, "again": card, "taken": card_taken, "no": card, "new": card, "first": card}
 
         first = SETUP + take(2000) + save(6000) + press(9000, YES) + press(14000, YES)
         # One project save at most per boot (it writes ~10 MB) and a late quit:
@@ -197,6 +203,7 @@ def main(only=None):
         # (USB in the remix) stretches the save ("live script: ... ended early
         # -- time"). "again" answers NO to CONTINUE?, so it writes no project.
         jobs = [("yes", first, 30000),
+                ("audio", SETUP + take(2000) + save(6000) + press(9000, YES) + press(14000, NO), 17000, True),
                 ("again", SETUP + take(2000) + save(6000) + press(9000, YES) + press(14000, NO)
                  + save(17000) + press(20000, NO), 24000),
                 ("taken", first, 30000),
@@ -236,6 +243,15 @@ def main(only=None):
             return fail(f"yes: wanted one mode-2 save by the module, saw {mode2}", out)
         if dialogs(out) != (1, 1):
             return fail(f"yes: wanted SAVE SAMPLES? and CONTINUE? once each, saw {dialogs(out)}", out)
+
+    if not only or "audio" in only:
+        rc, out, files = results["audio"]
+        wav = files.get(AUDIO + "R1-000000-0000.wav", b"")
+        data = wav[44:]
+        frames = len(data) // 4
+        loud = sum(1 for i in range(0, len(data) - 1, 4) if data[i:i + 2] != b"\0\0")
+        if frames < 22050 or loud < frames // 2:
+            return fail(f"audio: R1-000000-0000.wav holds {frames} frames, {loud} of them non-zero (the tones input, with the DSP)", out)
 
     if not only or "again" in only:
         rc, out, files = results["again"]

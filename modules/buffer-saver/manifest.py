@@ -43,6 +43,5 @@ MODULE = Module(
         Detour(0x40063618, H("487800014eb940022cd4"), "bufsave", "new_gate",
                "PROJECT > SAVE TO NEW: ask SAVE SAMPLES? first", pad_to=10),
     ),
-    gates=tuple(Gate(f"modules/buffer-saver/verify_buffer_saver_{n}.py", remix_arg=False, venv=True, stage="image")
-                for n in ("yes", "again", "taken", "no", "new", "first")),
+    gates=(Gate("tools/verify/verify_buffer_saver.py", remix_arg=False, venv=True, stage="image"),),
 )
