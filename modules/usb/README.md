@@ -107,9 +107,9 @@ Causes (read from the stock disassembly; the measurements above agree):
   bulk max packet at high speed.
 - The dTD token's status bits were not read.
 
-`usbmidi_rx.s` (octabam's; `usbmidi.s` is unchanged and still matches his
-build) takes over the SET_CONFIGURATION and usb_isr detours and hands on to
-his shims:
+The receive path in `usbmidi.s` (octabam's; the unit started as his text and
+is no longer compared with his build) takes over the SET_CONFIGURATION and
+usb_isr detours and hands on to the shims it started from:
 
 - Before the bytes of each event are enqueued, `count + event bytes` must be
   at most 32; otherwise the framer is entered from the decoder with a
@@ -228,7 +228,7 @@ EP2_INIT at SET_CONFIGURATION rewrites the queue head of an endpoint that
 may still be primed (the ChipIdea hazard `usbaudio.s` already guards EP3
 against).
 
-`usbmidi_rx.s` now takes EP2 down on a bus reset (`0x4001e91c`, the
+`usbmidi.s` now takes EP2 down on a bus reset (`0x4001e91c`, the
 USBSTS.URI handler) and on session end (`0x4001e952`, OTGSC.BSVIS, before
 the stock code clears USBCMD.RS), and again at SET_CONFIGURATION before
 EP2_INIT: `usbmidi_up` and `usbmidi_tx_busy` cleared, the queued bytes
@@ -275,8 +275,8 @@ The `usb-midi` remix (this module on the stock effects) has not been flashed.
 
 - Not measured: clock jitter over USB against DIN (bulk transfers have no schedule; the
   gate sends one `0xF8` per transfer, a host can bunch several into one
-  packet, and each then gets a near-zero interval); a CC flood against the
-  256-byte queue; DISK MODE entered with a MIDI session open; Windows.
+  packet, and each then gets a near-zero interval); how late a clock byte
+  goes out behind a ring backlog; the ring on a unit; DISK MODE entered with a MIDI session open; Windows.
 
 ### A completion between the two ENDPTCOMPLETE reads (#1017, 4 Nov 2026)
 
@@ -353,11 +353,18 @@ primitives, reached by nothing, and no receive decoder. The module:
 - dispatches EP2 completions from the USB ISR: IN completion frees the
   transmit slot and drains the queue, OUT completion runs the receive
   decoder, which feeds `midi_rx_enqueue` (`0x40092bbc`), the byte path DIN
-  MIDI uses, then re-primes (`usbmidi_rx.s`, see "Receive path");
+  MIDI uses, then re-primes (`usbmidi.s`, see "Receive path");
 - mirrors both senders into the encoder: `midi_send` (channel messages)
   and the priority byte sender (clock, transport). Messages are queued in
-  a 256-byte accumulator behind one transfer; a message that would
-  overflow it is counted in `usbmidi_tx_drops`, never sent corrupt.
+  a 256-byte accumulator behind one transfer, and behind that in a 4 KB
+  ring of whole messages, moved into the accumulator at each kick, in
+  order. A message longer than 255 bytes or one the ring has no room for
+  is counted in `usbmidi_tx_drops`, never sent corrupt. Bus reset, session
+  end and SET_CONFIGURATION empty both (`usbmidi_tx_reset`). Before the
+  ring, a burst longer than the accumulator lost its tail (#1016: 86 of
+  283 CCs under the port, `usbmidi_tx_drops` +197;
+  `verify_usbmidi_tx_ring`: 283 of 283 in order, drops +0). The ring adds
+  4,104 bytes of DRAM to the unit. The design is xynta's (#1016).
 
 Nine detours, four descriptor-pointer rewrites, no pokes. The `usbmidi`
 unit is his file verbatim (two of the detours reach `usbmidi_rx` first, and two more, bus reset and session end, are `usbmidi_rx`'s own), and the build proves it: every build re-links
