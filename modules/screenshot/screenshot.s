@@ -6,9 +6,15 @@
 |   msgId:u16 replyTo:u16 cmd:u8 with cmd = 04.
 | Reply:  the request's two id bytes, then the 7-bit encoding of
 |   msgId:u16 replyTo:u16 cmd=84 ver=1 w=0080 h=0040 len=00000400 pixels[1024]
-|   F7 (1,194 bytes). The pixels are the firmware's LCD plane, copied as it
-|   stands: 128 rows of 8 bytes, bit y of the big-endian row x = pixel (x, y),
-|   which is screendump's column-major, row 0 at the least significant bit.
+|   F7 (1,194 bytes). The pixels are the frame the panel was last sent: the
+|   flush 0x40013abc clears the back buffer [0x400b9710], ORs every visible
+|   layer of the list at [0x460babf0] into it (the page plane 0x46c7e0ea
+|   and the windows: MIXER, SETUP, popups, menus), sends the diff against
+|   [0x400b970c] to the panel and swaps the two pointers, so [0x400b970c]
+|   holds the composited frame now on the LCD. Same layout as the plane:
+|   128 rows of 8 bytes, byte x*8+p = panel page p of column x; bit y of
+|   the big-endian row x = pixel (x, y), which is screendump's column-major,
+|   row 0 at the least significant bit.
 | 7-bit encoding: groups of 7 data bytes, each behind a leader byte whose bit
 |   (6-i) is the MSB of data byte i; a trailing group of n bytes has n bytes.
 |
@@ -37,7 +43,7 @@
         .global ss_hook
         .weak   usbmidi_rx_sysex, usbmidi_up, usbmidi_tx_busy
 
-        .equ    FB,         0x46c7e0ea      | the LCD plane every drawer writes (PANEL.md)
+        .equ    FRONT,      0x400b970c      | -> the frame the last flush sent (PANEL.md section 9)
         .equ    RING_PTR,   0x400b966c
         .equ    RING_IDX,   0x400b9678
         .equ    RING_CNT,   0x400b967c
@@ -115,13 +121,17 @@ ss_go:
         clrw    %a2@(10)                    | len = 0x00000400
         movew   #1024,%a2@(12)
 
-        | framebuffer snapshot behind the header
+        | the frame last sent to the panel, behind the header; masked, so
+        | no flush swaps the pointers or reuses the buffer mid-copy
         lea     %a2@(14),%a1
-        lea     (FB).l,%a3
-        movel   #511,%d0
-3:      movew   %a3@+,%a1@+
+        movew   %sr,%d1
+        movew   #0x2700,%sr
+        moveal  (FRONT).l,%a3
+        movel   #255,%d0
+3:      movel   %a3@+,%a1@+
         subql   #1,%d0
         bpls    3b
+        movew   %d1,%sr
 
         | encoded message: F0 00 20 3C <id0> <id1> body F7
         lea     ss_enc:l,%a4
