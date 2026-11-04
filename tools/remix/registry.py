@@ -40,6 +40,7 @@ def hooks_needed(known, keys) -> bool:
 MODULES_DIR = ROOT / "modules"
 
 _cache: dict[str, object] | None = None
+_defaulted: tuple[dict, dict] | None = None
 
 
 def _exec(path: pathlib.Path, modname: str):
@@ -336,9 +337,16 @@ def defaulted() -> dict[str, object]:
     Option as its label): the module a remix that sets none of them builds.
     What the compatibility matrix and the remixer judge, so a module whose
     unbound declaration is a non-default form (CX OSC's PLACE=CAVE cave)
-    is not refused for a form the default build never takes."""
+    is not refused for a form the default build never takes.
+
+    Memoised on the `modules()` dict it was built from, as `modules()` is;
+    the remixer calls it on every redraw."""
+    global _defaulted
+    mods = modules()
+    if _defaulted is not None and _defaulted[0] is mods:
+        return _defaulted[1]
     out = {}
-    for k, m in modules().items():
+    for k, m in mods.items():
         vals = {}
         for st in m.settings:
             if st.apply is schema.Apply.BUILD:
@@ -347,6 +355,7 @@ def defaulted() -> dict[str, object]:
                     v = st.kind.labels[v]
                 vals[st.name] = v
         out[k] = m.bind(vals) if vals and m.variant is not None else m
+    _defaulted = (mods, out)
     return out
 
 
