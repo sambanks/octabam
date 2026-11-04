@@ -36,9 +36,12 @@ fails = rp.fails
 check = rp.check
 
 
+MINE = 0xBE     # channel 15: other modules' own CCs (CC FEEDBACK, ...) share EP2 IN in some remixes
+
+
 def cc(i):
-    """The i-th message: CC number i mod 128, value 1 + i div 128, channel 0."""
-    return bytes([0xB0, i % 128, 1 + (i // 128) % 127])
+    """The i-th message: CC number i mod 128, value 1 + i div 128, on channel 15."""
+    return bytes([MINE, i % 128, 1 + (i // 128) % 127])
 
 
 def burst(b, n, first=0):
@@ -66,8 +69,9 @@ def drain512(b, seconds):
 
 
 def received(b, seconds=3.0):
-    """Control-change events on EP2 IN as message indices, in arrival order."""
-    return [p[1:4] for p in drain512(b, seconds) if p[0] & 0x0F == 0x0B]
+    """This gate's control-change events on EP2 IN, in arrival order. Other CCs the
+    remix sends meanwhile (channel != 15) are not counted."""
+    return [p[1:4] for p in drain512(b, seconds) if p[0] & 0x0F == 0x0B and p[1] == MINE]
 
 
 def index_of(msg):
