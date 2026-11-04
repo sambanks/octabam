@@ -307,7 +307,10 @@ yes gap 13159 ms, double taps 1
 - **Card writes** fill most of the take's time, with long outliers: the
   card is the limit. The card takes one command a cluster (the file
   layer's), so a card formatted with larger clusters takes fewer, larger
-  commands.
+  commands. While a take records, each file writes whole clusters only,
+  so the card never goes back to one it left half written; on STEMS12 the
+  card's time per KB rose from about 60 µs with one file to 230 to 420
+  with nine to eleven (STEM_REC.md 20.11).
 - **The writer's longest sleep** far above the 10 ms it asks for: it
   waited for the processor. It runs at priority 1, in turn with the engine,
   the UI and one more stock task, below three tasks that by their code most

@@ -2,7 +2,7 @@
 
 A review of STEM REC's code for later rounds. Applied so far: 1.1's flat
 case and 1.6 for the track loops (branch `stems-gainflat`, 4 Nov 2026,
-STEM_REC.md 20.10).
+STEM_REC.md 20.10), and 2.1's whole-cluster writes (20.11).
 
 - **What was reviewed:** the hook path (`stems_frame_hook` to
   `stems_hook_end`, with the macros it uses) and the writer and card code
@@ -87,7 +87,7 @@ seven more instruction-cache lines a routine, ~80 ns a miss).
 
 | # | Change | What it buys (estimated) | Risk and gate | Size |
 |---|---|---|---|---|
-| 2.1 | **Writes in whole clusters.** While recording, write whole clusters (`CARD_SPC`), and round each ring to a cluster | About 25% fewer card commands at 24-bit stereo, ~50% for mono, and ~25% fewer `RAW_WRITE` calls. Inferred: that the file layer sends a command for every cluster a call touches, partial ones too (STEM_REC.md 20.2). Measure under the port first | Low to medium: each ring holds one cluster less; the `stems_zlead` seam. Combines with FLASH.md's "bigger writes when behind" | Small |
+| 2.1 | **Writes in whole clusters.** While recording, write whole clusters (`CARD_SPC`), and round each ring to a cluster | About 25% fewer card commands at 24-bit stereo, ~50% for mono, and ~25% fewer `RAW_WRITE` calls. Inferred: that the file layer sends a command for every cluster a call touches, partial ones too (STEM_REC.md 20.2). Measure under the port first | Low to medium: each ring holds one cluster less; the `stems_zlead` seam. Combines with FLASH.md's "bigger writes when behind" | Small. **Applied** (4 Nov 2026, STEM_REC.md 20.11): writes end on a cluster while recording; the rings stay as they were |
 | 2.2 | **One fix for the first-sector race, on the platform.** `stems_ata_first` (detour at `0x40014cfe`) and ATA WRITE GUARD (poke `0x40014cf2`, detour `0x40014d58`) fix the same stock race. With both in one image (octabam with STEM REC), STEM REC's code runs inside the guard's mask and returns through the guard's SR restore. That works only because it leaves `d3`, the guard's saved SR, alone (confirmed by reading both manifests). Either STEM REC requires the guard and drops its detour, or the guard takes STEM REC's reordering | One detour less, no hidden coupling | Neither form has run with a PIO card on hardware (Yves's card writes by DMA). `verify_ata_write`. The guard is Sam's | Small |
 | 2.3 | **`stems_drain`, one pass.** It returns the sectors written; the task loops without sleeping while that's above 0, and `stems_finish` loops `drain(1)`. Today it repeats the task's per-pass duties (`stems_ui`, the hold seam), keyed on `d1 == CHUNK_FRAMES` | One loop owns the duties | Writer throughput is hardware-proven: overflow, `slow8`, wrap | Small |
 | 2.4 | **One error rule.** `stems_fail(code)`: the first error wins, and "the card refused" (`stems_wfail`) follows from it. Today the last error wins, and five places test `stems_wfail` (which only `stems_zput` sets). Fixes 0.1 | One rule | The hook's OVERFLOW store against the writer's test-and-set, which must be masked | Small |

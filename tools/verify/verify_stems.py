@@ -1238,7 +1238,8 @@ def cut(s):
     # first chunk of T1 (64 sectors) holds 511 frames (STEM_REC.md 20.7).
     # The second pass writes the whole sectors waiting when it runs, which
     # the writer's timing under the port decides: 64 until the flat gains'
-    # shorter hook, 63 since (4 Nov 2026). So more than a chunk, not exactly two.
+    # shorter hook, 63 since (4 Nov 2026), and while recording it rounds
+    # down to the card's cluster (20.11). So more than a chunk, not exactly two.
     check("cut: a take cut off mid-way is a 0-byte T1.wav, its streamed audio unreachable (known)",
           st == ST_RECORDING and rd > CHUNK_FRAMES and data is not None and len(data) == 0,
           f"state {st}, {nfr} frames recorded, {rd} streamed, T1.wav {None if data is None else len(data)} bytes")
@@ -1386,6 +1387,87 @@ def cost(s):
               f"{per} a frame over {frames} frames ({top})")
 
 
+def wav_writes(cmds, card_path, card_in):
+    """A --cmd-log-end log's writes to the take's WAV files, against the
+    card's clusters (FAT16): (writes, leaving a cluster half written: ending
+    inside it with the next write elsewhere, coming back to one: starting
+    inside a cluster the write before didn't end in, so the card was
+    elsewhere in between, the card's sectors a cluster). Two writes in turn,
+    as at a ring's end, are one run on the card. A take still recording
+    has no WAV chains yet (a file's entry gets its cluster when it closes),
+    so the WAVs' clusters are those free on the card before the run
+    (`card_in`) that no directory on the card after it holds; directory
+    and FAT writes don't count."""
+    img, old = pathlib.Path(card_path).read_bytes(), pathlib.Path(card_in).read_bytes()
+    part = struct.unpack_from("<I", img, 0x1c6)[0] if img[0x1fe:0x200] == b"\x55\xaa" and img[0x1c2] else 0
+    b = part * 512
+    spc, rsv, nfat = img[b + 13], struct.unpack_from("<H", img, b + 14)[0], img[b + 16]
+    nroot, spf = struct.unpack_from("<H", img, b + 17)[0], struct.unpack_from("<H", img, b + 22)[0]
+    fat0 = part + rsv
+    root = fat0 + nfat * spf
+    data = root + (nroot * 32 + 511) // 512
+    entry = lambda m, c: struct.unpack_from("<H", m, fat0 * 512 + 2 * c)[0]    # noqa: E731
+    dirs, todo = set(), [img[root * 512:data * 512]]
+    while todo:                                     # every directory's clusters, from the root down
+        ents = todo.pop()
+        for o in range(0, len(ents) - 31, 32):
+            e = ents[o:o + 32]
+            if e[0] == 0:
+                break
+            if e[0] == 0xe5 or e[11] == 0x0f or not e[11] & 0x10 or e[0] == 0x2e:
+                continue
+            c, body = struct.unpack_from("<H", e, 26)[0], b""
+            while 2 <= c < 0xfff8 and c not in dirs:
+                dirs.add(c)
+                at = (data + (c - 2) * spc) * 512
+                body += img[at:at + spc * 512]
+                c = entry(img, c)
+            todo.append(body)
+    n = inside = back = 0
+    prev_end = None
+    for line in pathlib.Path(cmds).read_text().splitlines():
+        f = line.split()
+        if len(f) < 3 or f[0] != "WRITE":
+            continue
+        lba, count = int(f[1]), int(f[2])
+        c = (lba - data) // spc + 2
+        if lba < data or c in dirs or entry(old, c) != 0:
+            continue
+        start, end = lba - data, lba - data + count
+        n += 1
+        inside += prev_end is not None and prev_end % spc != 0 and start != prev_end
+        back += start % spc != 0 and start != prev_end
+        prev_end = end
+    inside += prev_end is not None and prev_end % spc != 0
+    return n, inside, back, spc
+
+
+def clusters(s):
+    """STEM_REC.md 20.11, CLEANUP.md 2.1: on a card of 32 KB clusters, as
+    the unit's card is formatted, a take of T1 and T2 in stereo and A and
+    B in mono, at 24 bits (chunks of 96 and 48 sectors against a cluster's
+    64), writes whole clusters while it records: no write to a WAV ends
+    inside a cluster, and none comes back to a cluster it left half
+    written. The 2 KB clusters of the other fixtures hide both. Four files
+    and 8,000 frames: the port's card takes about 18 ms a command, and each
+    file's creation reads whole 32 KB directory clusters, so a 14-file take
+    of 3,000 frames was still creating its files (4 Nov 2026)."""
+    cmds = run_path("clusters", "cmds")
+    _, _, card, words, _ = port(s, 8000, tag="clusters", fixture=FIXTURE_THRU64, mask=None, dump_blocks=False,
+                                pokes_before=[(s["stems_tracks"] + 2, 0x34), (s["stems_tracks"] + 3, 0x03),
+                                              (s["stems_fmt"] + 3, 0b001)],
+                                extra=("--cmd-log-end", str(cmds)))
+    card_in = json.loads(FIXTURE_THRU64.read_text())["card"]
+    n, inside, back, spc = (wav_writes(cmds, card, card_in) if cmds.exists() and pathlib.Path(card).exists()
+                            else (0, 0, 0, 0))
+    check("clusters: the card has 32 KB clusters and the take streamed its WAVs", spc == 64 and n >= 20,
+          f"{spc} sectors a cluster, {n} writes to the WAVs, state {words[0] if words else None}, "
+          f"{words[4] if words else None} of {words[5] if words else None} frames on the card")
+    check("clusters: recording, every write to a WAV ends on a cluster and none comes back to one",
+          n > 0 and inside == 0 and back == 0,
+          f"{n} writes, {inside} ending inside a cluster, {back} coming back to one")
+
+
 def nocard(s):
     """REC with no card: the status reads NO CARD and nothing else changes
     (IDLE, no task made). Nothing is armed before play; the card-mounted
@@ -1403,6 +1485,7 @@ def nocard(s):
 FIXTURE8 = pathlib.Path("out/stems_fixture8.json")   # tools/verify/stems_fixture.py --eight
 FIXTURE32 = pathlib.Path("out/stems_fixture32.json")   # tools/verify/stems_fixture.py --fat32
 FIXTURE_THRU = pathlib.Path("out/stems_fixture_thru.json")   # stems_fixture.py --thru
+FIXTURE_THRU64 = pathlib.Path("out/stems_fixture_thru64.json")   # --thru64: the THRU card, 32 KB clusters
 FIXTURE_THRU1 = pathlib.Path("out/stems_fixture_thru1.json")   # stems_fixture.py --thru1
 FIXTURE_THRU1_HOT = pathlib.Path("out/stems_fixture_thru1hot.json")         # --thru1hot: a full-scale input
 FIXTURE_THRU1_MASTER = pathlib.Path("out/stems_fixture_thru1master.json")   # --thru1master: MASTER TRACK on
@@ -1413,8 +1496,8 @@ LEVEL_STEPS = ((60, 64), (61, 100), (90, 20), (120, 127))   # two steps a frame 
 GTAB_OFF, GTAB_LEN = 0xe9d8a, 258 * 3      # STEM_REC.md 18.4: X:0x6c00's words in the stock slice
 FIXTURE_MODES = [("", FIXTURE), ("--eight", FIXTURE8), ("--fat32", FIXTURE32),
                  ("--thru1", FIXTURE_THRU1), ("--thru1hot", FIXTURE_THRU1_HOT),
-                 ("--thru1master", FIXTURE_THRU1_MASTER),
-                 ("--thru", FIXTURE_THRU)]   # the --thru1 builds pass through the THRU card: before --thru
+                 ("--thru1master", FIXTURE_THRU1_MASTER), ("--thru64", FIXTURE_THRU64),
+                 ("--thru", FIXTURE_THRU)]   # the --thru1 and --thru64 builds pass through the THRU card: before --thru
 CARD_READY = 0x460d1cb8     # emu_card.FW_CARD_READY: := 1 after the firmware's card init and mount
 SUFFIX = ""                 # appended to every run's tag: "32" while the FAT32 checks run
 
@@ -2331,7 +2414,7 @@ def main():
             ("stream", stream), ("wrap", wrap), ("cap", cap), ("eight", eight)]
     runs += [(f"mask{m:02x}", lambda s, m=m: mask_take(s, m, f"mask{m:02x}"))
              for m in (0x01, 0x03, 0x0F, 0xFF, 0xA5)]
-    runs += [("cost", cost), ("same_as_alone", same_as_alone), ("cut", cut), ("labels", labels), ("labelsbehind", labelsbehind), ("nocard", nocard), ("exists", exists),
+    runs += [("cost", cost), ("clusters", clusters), ("same_as_alone", same_as_alone), ("cut", cut), ("labels", labels), ("labelsbehind", labelsbehind), ("nocard", nocard), ("exists", exists),
              ("logblocked", logblocked), ("logtaken", logtaken), ("tempochange", tempochange), ("crowded", crowded),
              ("overflow", overflow), ("cardfail", cardfail)]
     if "--long" in sys.argv:

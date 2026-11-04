@@ -8524,3 +8524,99 @@ ran 3.2 µs over its count while writing only five lines, so most of its
 excess isn't the gain queue; if the `mirror` part falls by only its
 instructions, the rest is elsewhere (instruction-cache fills are the
 first candidate).
+
+### 20.11 Whole clusters while recording (4 Nov 2026)
+
+**Why.** STEMS12's takes (flash L) put the card's time per KB written at
+54 to 82 µs with one file and 142 to 423 µs with two to eleven, on one
+card. The steepest step is from one file to two, and the 1-file and
+9-file takes of 4 Nov played the same project:
+
+| files | card while recording, µs a KB (STATS.TXT) |
+|---|---|
+| 1 | 54 (4 Nov), 62, 65, 82 (3 Nov) |
+| 2 | 142 (3 Nov), 176 (2 Nov) |
+| 4 | 182 (3 Nov) |
+| 9, 10 | 234, 252 (4 Nov); 387 with other samples on the Static machines |
+| 11 | 423 (4 Nov, `RING FULL`); 255 on STEMS11 (28 Oct) |
+
+At ten or eleven files the card is then busy 65% to 120% of the take
+(files × 258 KB a second × the time a KB), and above 100% the ring only
+decides when `RING FULL` comes.
+
+**The writer's pattern before this round.** Yves's card has 32 KB
+clusters (`cluster 64 sectors` in every log). A pass writes each file a
+chunk at most: 512 frames, 96 sectors (48 KB) for a 24-bit stereo file
+and 48 for a mono one. The file layer sends a command a cluster (20.2),
+so a write that ends inside a cluster sends the rest of it on the file's
+next pass, after the other files' writes: the card goes back to a cluster
+it left half written. With one file the next write continues where the
+last ended, and the card sees one stream. 🟡 Inferred: flash cards are
+slow at going back, and that is the cost that grows with the files. 20.2
+measured one stream under the port on a card of 2 KB clusters, where a
+chunk is whole clusters and the pattern can't show.
+
+**The card's layout** (the card in disk mode on Windows, 4 Nov 2026: the
+partition table from Windows' partition log, and the volume's first
+sector read with an elevated PowerShell). One FAT32 partition
+from sector 63, 67 reserved sectors, two FATs of 15,263 sectors: the
+first cluster is at sector 30,656, on a 4 KB and a 32 KB boundary (not on
+4 MB: remainder 6,080 sectors). A cluster on a 32 KB boundary lies inside
+the card's flash pages and blocks, so the layout isn't the cost, and a
+write of whole clusters is aligned at every level that matters. The FAT
+is 93% of the 16,384 sectors the firmware keeps (14.1): a 128 GB card
+would need 64 KB clusters.
+
+**What changed.** While a take records, `stems_zwrite` writes whole
+clusters of the mounted volume only (`CARD_SPC`): at most a chunk rounded
+up to whole clusters, ending on one. The rest waits in the ring for the
+file's next pass. The finish writes every whole sector, as before. The
+rings are as they were; a file holds back up to a cluster less one
+sector, so `RING FULL` comes up to a cluster's frames sooner (341 frames
+of a 24-bit stereo file, about 4% of its ring at eleven files), and
+STATS.TXT's ring peak reads up to that much higher.
+
+**The gate.** A new fixture, `stems_fixture.py --thru64`, is the THRU
+card with 32 KB clusters (FAT16, 160 MB). `verify_stems`' `clusters` run
+records everything at 24 bits, the inputs mono (14 files, chunks of 96
+and 48 sectors), logs every card command (`--cmd-log-end`) and counts,
+in the WAVs' cluster chains, the writes that leave a cluster half written
+and the writes that come back to one.
+
+**Under the port** (✅, 4 Nov 2026). `clusters` records T1 and T2 in
+stereo and A and B in mono, at 24 bits (chunks of 96 and 48 sectors
+against a cluster's 64), for 8,000 frames:
+
+| the take's writes to its WAVs | the writer before | whole clusters |
+|---|---|---|
+| card commands | 109 | 66 (39% fewer) |
+| leaving a cluster half written | 43 | 0 |
+| coming back to a half-written cluster | 39 | 0 |
+| frames on the card at the end | 7,668 | 7,508 |
+
+- Both runs read the take's new clusters 12 times, 705 sectors: the
+  directory lookups of the files' creation. The file layer reads nothing
+  back to rewrite a cluster, so the cost of coming back is the card's.
+- The first run of the check, everything at 24 bits for 3,000 frames,
+  wrote no audio at all (`rd` 0 of 3,028 frames): the port's card takes
+  about 18 ms a command, and each of the fourteen files' creation reads
+  whole 32 KB directory clusters. The check records four files for
+  8,000 frames since.
+- On the other fixtures' 2 KB clusters a full chunk is whole clusters,
+  so their takes stream as before; a pass that writes less than a chunk
+  now ends on a cluster too (`cut` streams 1,503 frames in its run where
+  it streamed 1,015).
+- The other gates on this code (4 to 5 Nov 2026): `verify_stems` 340
+  PASS and 1 FAIL, `verify_stems_units` 126 PASS, `verify_stems_menu` 93
+  PASS, `verify_docs` 0 problems. The failure is `sources`' CUE check,
+  20.9's port timing again: each of `CUE.wav`'s channels equals the
+  port's capture at every one of its 3,280 frames, the left at offset
+  523,985 and the right at 523,986. It passed on the flat gain slots
+  alone, so the writer's pattern moves the port's timing as the hook's
+  length did.
+
+**What would falsify it.** On STEMS13, the same card and samples: if
+nine to eleven files still write at 230 to 420 µs a KB, going back to
+half-written clusters wasn't the cost. Then the per-command time is the
+next candidate (a 24-bit stereo file now sends one or two commands of 64
+sectors a pass instead of two of 64 and 32).

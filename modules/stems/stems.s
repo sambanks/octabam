@@ -3271,7 +3271,12 @@ stems_drain:
 
 | ---- file d1's waiting sectors to the card, a chunk's at most -------------
 | The sectors the hook has published in full, from the writer's place in
-| the file's ring: one write, or two when they cross its end. d0 = the
+| the file's ring: one write, or two when they cross its end. While a take
+| records, whole clusters of the mounted volume only: at most a chunk
+| rounded up to whole clusters, ending on one. The file layer sends the
+| card a command a cluster, so a write that ended inside one sent the rest
+| of it later, after the other files' writes: the card went back to it
+| (STEM_REC.md 20.11). The finish writes every whole sector. d0 = the
 | sectors written, or -1 (stems_zput's).
         .if     CHUNK_FRAMES != 512             | a chunk's sectors = the file's bytes a frame
         .error  "CHUNK_FRAMES is not 512"
@@ -3293,6 +3298,31 @@ stems_zwrite:
 .Lzw_wait:
         lsr.l   #8,%d2
         lsr.l   #1,%d2              | whole sectors waiting
+        moveq   #ST_RECORDING,%d0
+        cmp.l   stems_state,%d0
+        bne.s   .Lzw_sec            | finishing: every whole sector
+        moveq   #0,%d0
+        move.b  CARD_SPC,%d0
+        subq.l  #1,%d0              | a cluster's sectors - 1
+        bls.s   .Lzw_sec            | 0 or 1: a sector is a cluster
+        add.l   %d0,%d5
+        not.l   %d0                 | -(a cluster's sectors)
+        and.l   %d0,%d5             | a chunk, up to whole clusters: at least one
+        cmp.l   %d5,%d2
+        bls.s   .Lzw_cap
+        move.l  %d5,%d2
+.Lzw_cap:
+        lea     stems_fpos,%a0
+        move.l  (%a0,%d4.l*4),%d3
+        lsr.l   #8,%d3
+        lsr.l   #1,%d3              | the file's sectors on the card: whole clusters
+        add.l   %d3,%d2
+        and.l   %d0,%d2             | the write's end, down to a cluster
+        sub.l   %d3,%d2             | whole clusters, or none yet
+        bcc.s   .Lzw_n
+        moveq   #0,%d2
+        bra.s   .Lzw_n
+.Lzw_sec:
         cmp.l   %d5,%d2
         bls.s   .Lzw_n
         move.l  %d5,%d2             | a chunk's at most
