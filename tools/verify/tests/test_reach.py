@@ -629,10 +629,12 @@ class PlanJsonTests(unittest.TestCase):
                          'python3 tools/verify/check_shards.py --jobs 3 --modules "BRAIN,KITS" --only-jobs brain octabam')
         self.assertIn("check-remix octabam (brain)", names(""))              # an unscoped run reaches BRAIN too
         self.assertNotIn("check-remix octabam (brain)", names("KITS"))
-        # the plain unit skips the parts and the brain job; the image-stage gates stay in it
+        # the plain unit skips the parts and the brain job; the image-stage gates no part names stay in it
         skipped = got["check-remix octabam"].split("--skip-jobs ")[1].split()[0].split(",")
         self.assertIn("brain", skipped)
-        self.assertFalse([s for s in skipped if s.startswith("image")])
+        self.assertIn("image:rec-threshold", skipped)
+        self.assertIn("image:buffer-saver-new", skipped)
+        self.assertNotIn("image:ata-write", skipped)
 
     def test_recipe_scripts_follow_an_implementation_cut_into_halves(self):
         mk = ("verify-shared: ## x\n\t$(MAKE) -j1 verify-shared-impl\n\n"

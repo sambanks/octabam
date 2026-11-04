@@ -416,10 +416,12 @@ from the actions cache by `refhash_store.py key`.
 
 **CI units cut up** (`reach.entries`, `reach.SPLIT_REMIX_JOBS`). Each unit of
 the CI matrix is a runner with its own setup. `check-remix octabam` runs as
-three units, each `check_shards --only-jobs ...` over a part of the gate jobs:
+five units, each `check_shards --only-jobs ...` over a part of the gate jobs:
 `(long)` is `remix-switch`, `(project)` is `set`, `mode-defaults` and
-`plocks-p2` (the jobs that read `OT_PROJECT`), and the unit without a suffix is
-`--skip-jobs` of both and of `brain` (every other job, the `image:` jobs among them). A name that is no
+`plocks-p2` (the jobs that read `OT_PROJECT`), `(rec)` is `image:rec-threshold`,
+`image:usb-in` and `image:usb-load-meter`, `(bufsave)` is the six
+`image:buffer-saver-*` jobs, and the unit without a suffix is `--skip-jobs` of
+all of them and of `brain` (every other job, the remaining `image:` jobs among them). A name that is no
 gate job is refused, so the parts always cover every gate job once. Only the
 `(project)` unit makes a project: `tools/hw/ot_fresh.py` boots the port and
 creates one with the panel script (100 s locally, 255 s in CI), and keeps it in
