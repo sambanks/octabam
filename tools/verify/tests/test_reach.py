@@ -596,13 +596,15 @@ class PlanJsonTests(unittest.TestCase):
     def test_entries_group_the_quick_commands_and_split_the_shards_per_remix(self):
         got = {e["name"]: [c for _, c, _ in e["items"]] for e in reach.entries(self.items(), 3)}
         self.assertEqual(list(got), ["refhash", "check-shared", "check-shared (module gates)",
+                                     "check-shared (morph)", "check-shared (octa303)",
                                      "check-remix x", "check-remix y", "selftest"])
         self.assertEqual(got["selftest"], ["python3 tools/remix/selftest.py"])
         commands = [c for cs in got.values() for c in cs]
         for dedicated in ("verify_docs.py", "make test-acceptance", "make ci", "make ci-dsp", "make ci-emu"):
             self.assertFalse([c for c in commands if dedicated in c], dedicated)
         self.assertEqual(got["check-shared"], ['make check-shared REMIXES="x y" SHARED_PART=rest'])
-        self.assertEqual(got["check-shared (module gates)"], ['make check-shared REMIXES="x y" SHARED_PART=modules'])
+        self.assertEqual(got["check-shared (module gates)"], ['make check-shared REMIXES="x y" SHARED_PART=modules MODULE_GATES_SKIP='
+                         + ",".join(sc for _, sc in reach.SPLIT_SHARED_GATES.values())])
         self.assertEqual(got["check-remix y"],
                          ['python3 tools/verify/check_shards.py --jobs 3 --modules "K1,K2" y'])
 
@@ -634,6 +636,28 @@ class PlanJsonTests(unittest.TestCase):
         self.assertIn("brain", skipped)
         self.assertIn("image:rec-threshold", skipped)
         self.assertNotIn("image:ata-write", skipped)
+
+    def test_slow_shared_gates_are_units_of_their_own(self):
+        def units(modules):
+            flag = f' MODULES="{modules}"' if modules else ""
+            items = [("check-shared", f'make check-shared REMIXES="octabam"{flag}', ["e"])]
+            return {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
+        got = units("")
+        scripts = ",".join(sc for _, sc in reach.SPLIT_SHARED_GATES.values())
+        self.assertTrue(got["check-shared (module gates)"].endswith(f"SHARED_PART=modules MODULE_GATES_SKIP={scripts}"))
+        self.assertTrue(got["check-shared (morph)"].endswith("SHARED_PART=modules MODULE_GATES_ONLY=tools/morph/test_morph.py"))
+        self.assertIn("check-shared (octa303)", got)
+        self.assertNotIn("check-shared (morph)", units("KITS"))                # a unit only when its module is reached
+        self.assertIn("check-shared (morph)", units("KITS,MORPH"))
+
+    def test_slow_shared_gates_are_the_modules_own_shared_gates(self):
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+        from remix import registry
+        for part, (key, script) in reach.SPLIT_SHARED_GATES.items():
+            gates = [g for g in registry.by_key(key).gates if g.script == script]
+            self.assertEqual(len(gates), 1, part)
+            self.assertFalse(gates[0].remix_arg, part)           # the shared half runs it
+            self.assertEqual(gates[0].stage, "isolated", part)
 
     def test_recipe_scripts_follow_an_implementation_cut_into_halves(self):
         mk = ("verify-shared: ## x\n\t$(MAKE) -j1 verify-shared-impl\n\n"

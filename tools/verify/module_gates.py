@@ -201,7 +201,10 @@ def main(argv=None):
                          "modules' own (make check-shared MODULES=...); per remix, those of every module "
                          "they reach (reached(): make check-remix MODULES=...)")
     ap.add_argument("--only-script", default="",
-                    help="only the gate whose script is this path (check_shards runs the image-stage gates one per job)")
+                    help="only the gates whose script is one of these comma-separated paths (check_shards runs the "
+                         "image-stage gates one per job; CI gives a slow shared gate a runner of its own)")
+    ap.add_argument("--skip-script", default="",
+                    help="every gate but these comma-separated paths (the shared unit the slow gates were cut out of)")
     a = ap.parse_args(argv)
     if a.list:
         return _run(a, dict(os.environ))
@@ -245,8 +248,13 @@ def _run(a, env):
             label += f", reached from {a.modules} ({', '.join(sorted(keys)) or 'none here'})"
         env["REMIX"] = remix.name
     if a.only_script:
-        gates = [x for x in gates if x[1].script == a.only_script]
+        only = {x for x in a.only_script.split(",") if x}
+        gates = [x for x in gates if x[1].script in only]
         label += f", {a.only_script}"
+    if a.skip_script:
+        skip = {x for x in a.skip_script.split(",") if x}
+        gates = [x for x in gates if x[1].script not in skip]
+        label += f", without {a.skip_script}"
     if not gates:
         print(f"module gates ({label}): none declared")
         return 0

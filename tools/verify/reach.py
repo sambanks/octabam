@@ -1133,6 +1133,14 @@ SPLIT_REMIX_JOBS = {"octabam": {"long": ("remix-switch",), "project": ("set", "m
 SPLIT_EXTRA_UNITS = {"octabam": {"brain": ("BRAIN", ".venv/bin/python3 tools/verify/verify_brain.py octabam")}}
 
 
+# Shared module gates that are slow beside the rest, each a unit of its own: `check-shared (<part>)` is
+# `SHARED_PART=modules MODULE_GATES_ONLY=<script>`, and `check-shared (module gates)` is `MODULE_GATES_SKIP` of all of
+# them. Run 41768453842 (4 Nov 2026): the module gates took 1328 s in one serial loop, test_morph 579 s and
+# test_octa303 409 s of it. Module key, script (the manifest's Gate).
+SPLIT_SHARED_GATES = {"morph": ("MORPH", "tools/morph/test_morph.py"),
+                      "octa303": ("OCTA303", "tools/octa303/sim/test_octa303.py")}
+
+
 def entries(items, jobs):
     """The plan as units that run independently, for a caller that gives
     each its own machine (the CI matrix): [{"name", "items"}], `items` as
@@ -1168,8 +1176,15 @@ def entries(items, jobs):
                 else:
                     out.append({"name": f"check-remix {r}", "items": [(kind, line(), paths)]})
         elif kind == "check-shared":
+            mods = shared_modules(command)
+            skip = ",".join(script for _, script in SPLIT_SHARED_GATES.values())
             out.append({"name": "check-shared", "items": [(kind, command + " SHARED_PART=rest", paths)]})
-            out.append({"name": "check-shared (module gates)", "items": [(kind, command + " SHARED_PART=modules", paths)]})
+            out.append({"name": "check-shared (module gates)",
+                        "items": [(kind, command + f" SHARED_PART=modules MODULE_GATES_SKIP={skip}", paths)]})
+            for part, (module, script) in SPLIT_SHARED_GATES.items():
+                if mods is None or module in mods:
+                    out.append({"name": f"check-shared ({part})",
+                                "items": [(kind, command + f" SHARED_PART=modules MODULE_GATES_ONLY={script}", paths)]})
         else:
             out.append({"name": entry_name(kind, command), "items": [item]})
     if light:

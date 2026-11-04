@@ -421,7 +421,11 @@ four units, each `check_shards --only-jobs ...` over a part of the gate jobs:
 `plocks-p2` (the jobs that read `OT_PROJECT`), `(rec)` is `image:rec-threshold`,
 `image:usb-in` and `image:usb-load-meter`, and the unit without a suffix is
 `--skip-jobs` of all of them and of `brain` (every other job, the remaining `image:` jobs among them). A name that is no
-gate job is refused, so the parts always cover every gate job once. Only the
+gate job is refused, so the parts always cover every gate job once.
+The shared half is cut the same way (`reach.SPLIT_SHARED_GATES`): `check-shared (morph)` and
+`check-shared (octa303)` run `test_morph` and `test_octa303` (`SHARED_PART=modules
+MODULE_GATES_ONLY=<script>`, one unit each, only when the module is reached), and
+`check-shared (module gates)` runs every other shared module gate (`MODULE_GATES_SKIP`). Only the
 `(project)` unit makes a project: `tools/hw/ot_fresh.py` boots the port and
 creates one with the panel script (100 s locally, 255 s in CI), and keeps it in
 `<git common dir>/octabam-fresh-cache/<sha256 of image, port sources, script>`
