@@ -32,7 +32,9 @@ import stems_gain as sg  # noqa: E402,F401
 # The constants of modules/stems/stems.s these tests depend on. Each task
 # that adds one to stems.s copies its value here.
 GQ_N = 4
-GQ_SLOT, GQ_FRAME = 0x80, 0x400                         # stems.s: a slot is its largest gain, then 16
+GQ_SLOT, GQ_FRAME = 0x80, 0x400                         # stems.s: a slot is its flag, its largest gain, then 16
+GQ_FLAT, GQ_BOUND, GQ_GAINS = 0, 4, 8                   # stems.s: a flat slot writes only the first gain (20.10)
+GQ_BYTES = GQ_GAINS + 64                                # stems.s: a slot's bytes the mirror can write
 LIM_FREE = 0x200000                                     # stems.s: gains in 0..this never limit (design 1.3)
 RING_SIZE, UNCACHED = 0x800000, 0x08000000              # stems.s: the ring region; the uncached alias
 ZC_SLACK, ZC_MARGIN = 2048, 512                         # stems.s: zero copy (STEM_REC.md 20.7)
@@ -423,16 +425,19 @@ def gq_frame(rt, back=1):
     return rt.s["stems_gq"] + ((rt.r32(rt.s["stems_gqn"]) - back) % GQ_N) * GQ_FRAME
 
 
-def mirror_read(rt):
+def mirror_read(rt, flats=False):
     """The current state's eight slots, and the newest frame's gains: each
-    slot's 16, and the largest the mirror wrote before them."""
+    slot's 16 (a flat slot's first, 16 times: the mirror writes no other),
+    and the largest the mirror wrote before them. `flats`: also each slot's
+    flag, True when it is flat."""
     s = rt.s
     cur = s["stems_gstate"] + rt.r32(s["stems_gsel"])
     state = [[rt.r32s(cur + 12 * k + 4 * f) for f in range(3)] for k in range(8)]
     q = gq_frame(rt)
-    gq = [[rt.r32s(q + GQ_SLOT * k + 4 + 4 * j) for j in range(16)] for k in range(8)]
-    tops = [rt.r32(q + GQ_SLOT * k) for k in range(8)]
-    return state, gq, tops
+    flat = [rt.r32(q + GQ_SLOT * k + GQ_FLAT) != 0 for k in range(8)]
+    gq = [[rt.r32s(q + GQ_SLOT * k + GQ_GAINS + (0 if flat[k] else 4 * j)) for j in range(16)] for k in range(8)]
+    tops = [rt.r32(q + GQ_SLOT * k + GQ_BOUND) for k in range(8)]
+    return (state, gq, tops, flat) if flats else (state, gq, tops)
 
 
 @unit
@@ -592,7 +597,8 @@ def mirror_mask(rt, n=40, seed=13):
             q = gq_frame(rt) - s["stems_gq"]
             slot = next((k for k in range(8) if not (
                 gq[k] == want[k] if mask >> k & 1
-                else rt.rmem(s["stems_gq"] + q + GQ_SLOT * k, 68) == junk[q + GQ_SLOT * k:q + GQ_SLOT * k + 68])),
+                else rt.rmem(s["stems_gq"] + q + GQ_SLOT * k, GQ_BYTES)
+                == junk[q + GQ_SLOT * k:q + GQ_SLOT * k + GQ_BYTES])),
                 None)
             if slot is not None:
                 bad = (i, slot)
@@ -610,6 +616,54 @@ def mirror_mask(rt, n=40, seed=13):
     _, gq, _ = mirror_read(rt)
     check("mirror_mask: armed, every slot's gains whatever the mask", gq == want, "")
     rt.w32(TRANSPORT, 0)
+
+
+@unit
+def mirror_flat(rt, n=48, seed=15):
+    """A slot is flat (STEM_REC.md 20.10) when the model has no slope before
+    its split (no increment, or no samples of the old ramp) and none after
+    it: the mirror sets its flag and writes the bound and the first gain,
+    and none of the slot's other bytes. Repeated pages let every ramp
+    settle, so both kinds are seen; each written slot's flag must equal the
+    model's, and its gains and the state the model's. stems_gq starts on a
+    cache line, so a flat slot's 12 bytes are one."""
+    s = rt.s
+    check("mirror_flat: stems_gq is 16-aligned", s["stems_gq"] % 16 == 0, hex(s["stems_gq"]))
+    rng = random.Random(seed)
+    mirror_reset(rt, state=1)
+    model = sg.Mirror(rt.table)
+    rt.wmem(s["stems_gq"], bytes(rng.randrange(256) for _ in range(GQ_N * GQ_FRAME)))
+    bad, kinds = None, {True: 0, False: 0}
+    page = random_page(rng)
+    for i in range(n):
+        if i % 16 == 15:
+            page = random_page(rng)                 # a fader moves: the slots ramp again
+        q = s["stems_gq"] + (rt.r32(s["stems_gqn"]) % GQ_N) * GQ_FRAME
+        old = rt.rmem(q, GQ_FRAME)
+        before = [list(x) for x in model.state]
+        send_page(rt, i % 4, page)
+        rt.call("stems_mirror")
+        want = model.step(page)
+        st, gq, tops, flat = mirror_read(rt, flats=True)
+        for k in range(8):
+            sp, inc, _ = before[k]
+            s_new, inc_new, _ = model.state[k]
+            expect = (min(s_new, sp) == 0 or inc == 0) and inc_new == 0
+            kinds[flat[k]] += 1
+            tail = rt.rmem(q + GQ_SLOT * k + GQ_GAINS + 4, GQ_BYTES - GQ_GAINS - 4)
+            if (flat[k] != expect or gq[k] != want[k]
+                    or (flat[k] and (tops[k] != want[k][0] & 0xffffffff
+                                     or tail != old[GQ_SLOT * k + GQ_GAINS + 4:GQ_SLOT * k + GQ_BYTES]))):
+                bad = (i, k, flat[k], expect, gq[k][:3], want[k][:3])
+                break
+        if bad is None and st != model.state:
+            bad = (i, "state")
+        if bad:
+            break
+    check(f"mirror_flat: {n} pages, each slot's flag, gains and bound equal the model's, and a flat slot "
+          "writes 12 bytes", bad is None and kinds[True] > 0 and kinds[False] > 0,
+          f"first difference (page, slot, flag, model's, gains, model's) {bad}" if bad
+          else f"{kinds[True]} flat, {kinds[False]} ramps")
 
 
 @unit
@@ -639,32 +693,42 @@ def post16(g, x):
     return max(-0x8000, min(0x7fff, (g * x) >> 29))
 
 
-def put_track(rt, k, gains, words):
+def put_track(rt, k, gains, words, flat=False):
     """A track's inputs as stems_stage hands them over (perf design 1.1): the
-    slot's gains in the frame GAIN_LAG before the newest, after their largest
-    (unsigned, as stems_mirror writes it), and the 32 sample longs where
-    TRACK_HALF puts them. Returns the registers for a track routine but a1."""
+    slot's gains in the frame GAIN_LAG before the newest, after its flag and
+    their largest (unsigned, as stems_mirror writes it), and the 32 sample
+    longs where TRACK_HALF puts them. `flat`: the 16 gains are one, and the
+    slot is written as the mirror writes a flat one, its flag set and the
+    first gain only, with junk where the other 15 would be. Returns the
+    registers for a track routine but a1."""
     s = rt.s
     gqn = random.Random(k * 7919 + len(gains)).randrange(GQ_N + 1, 1000)
     rt.w32(s["stems_gqn"], gqn)
     frame = s["stems_gq"] + ((gqn - 1 - GAIN_LAG) % GQ_N) * GQ_FRAME
     top = max(g & 0xffffffff for g in gains)
-    rt.wmem(frame + GQ_SLOT * k, b"".join((g & 0xffffffff).to_bytes(4, "big") for g in [top] + gains))
+    if flat:
+        assert len(set(gains)) == 1
+        junk = random.Random(gqn).randrange
+        body = [1, top, gains[0]] + [junk(1 << 32) for _ in range(15)]
+    else:
+        body = [0, top] + gains
+    rt.wmem(frame + GQ_SLOT * k, b"".join((g & 0xffffffff).to_bytes(4, "big") for g in body))
     assert not TRACK_DELAY
     src = 0x80003190 + (0x400 if TRACK_HALF else 0) + 0x80 * k
     rt.wmem(src, b"".join((w & 0xffffffff).to_bytes(4, "big") for w in words))
     return {"d4": 0x80003190, "d5": 0x80 * k, "d7": frame}
 
 
-def _track(rt, name, out_bytes, conv, n=200, seed=6, junk=False, dirty=False, free=False):
+def _track(rt, name, out_bytes, conv, n=200, seed=6, junk=False, dirty=False, free=False, flat=False):
     """One track routine against `conv` on n random frames: random gains (0
     and 0x7fffff among them; with `free`, every gain in 0..LIM_FREE, the
     loop without the limit) and random samples (both full scales), put
     where stems_stage puts them. `junk`: each long's low byte random, as the
     half core 0 mixes carries it (0xff on positive samples, STEM_REC.md
     18.5); the DSP takes only the top 24 bits. `dirty`: the interrupted
-    task's EMAC, ACC1 included, before the caller's stems_emac_in. Returns
-    the first difference, or None."""
+    task's EMAC, ACC1 included, before the caller's stems_emac_in. `flat`:
+    one gain for all 16, in a slot written as the mirror writes a flat one
+    (put_track). Returns the first difference, or None."""
     s = rt.s
     rng = random.Random(seed)
     for i in range(n):
@@ -673,9 +737,11 @@ def _track(rt, name, out_bytes, conv, n=200, seed=6, junk=False, dirty=False, fr
             gains = [rng.choice((0, LIM_FREE, 0x1f7fe0, rng.randrange(LIM_FREE + 1))) for _ in range(16)]
         else:
             gains = [rng.choice((0, 0x7fffff, 0x1f7fe0, rng.randrange(0x800000))) for _ in range(16)]
+        if flat:
+            gains = [gains[0]] * 16
         xs = [rng.choice((0x7fffff, -0x800000, 0, rng.randrange(-0x800000, 0x800000))) for _ in range(32)]
         lows = [rng.choice((0, 0xff, rng.randrange(256))) if junk else 0 for _ in range(32)]
-        regs = put_track(rt, k, gains, [(x << 8) | lo for x, lo in zip(xs, lows)])
+        regs = put_track(rt, k, gains, [(x << 8) | lo for x, lo in zip(xs, lows)], flat=flat)
         if dirty:
             rt.set_emac(*DIRTY_EMAC)
         rt.call("stems_emac_in")
@@ -703,6 +769,12 @@ def track16(rt):
     bad = _track(rt, "stems_track16", 64, _post16_bytes, seed=13, junk=True, free=True)
     check("track16: 200 frames with every gain in 0..LIM_FREE (no limit) equal post16", bad is None,
           f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
+    bad = _track(rt, "stems_track16", 64, _post16_bytes, seed=16, junk=True, flat=True)
+    check("track16: 200 flat frames (one gain, 15 junk longs after it) equal post16", bad is None,
+          f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
+    bad = _track(rt, "stems_track16", 64, _post16_bytes, seed=17, junk=True, free=True, flat=True)
+    check("track16: 200 flat frames in 0..LIM_FREE (no limit) equal post16", bad is None,
+          f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
 
 
 def _main_top16_bytes(g, x):
@@ -724,9 +796,11 @@ def track16_rails(rt):
     for i in range(100):
         k = rng.randrange(8)
         gains = [rng.choice((0x7fffff, 0x7c0980, 0x400000, rng.randrange(0x200000, 0x800000))) for _ in range(16)]
+        if i % 2:
+            gains = [gains[0]] * 16                 # every other frame flat: the flat limited loop
         xs = [rng.choice((0x7fffff, -0x800000, 0x400000, -0x400000, rng.randrange(-0x800000, 0x800000)))
               for _ in range(32)]
-        regs = put_track(rt, k, gains, [x << 8 for x in xs])
+        regs = put_track(rt, k, gains, [x << 8 for x in xs], flat=bool(i % 2))
         rt.call("stems_emac_in")
         rt.call("stems_track16", a1=s["stems_ring"], **regs)
         rt.call("stems_emac_out")
@@ -792,6 +866,13 @@ def track24(rt):
           f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
     bad = _track(rt, "stems_track24", 96, lambda g, x: b24(sg.stem24(g, x)), seed=14, junk=True, free=True)
     check("track24: 200 frames with every gain in 0..LIM_FREE (no limit) equal stem24", bad is None,
+          f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
+    bad = _track(rt, "stems_track24", 96, lambda g, x: b24(sg.stem24(g, x)), seed=18, junk=True, flat=True)
+    check("track24: 200 flat frames (one gain, 15 junk longs after it) equal stem24", bad is None,
+          f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
+    bad = _track(rt, "stems_track24", 96, lambda g, x: b24(sg.stem24(g, x)), seed=19, junk=True, free=True,
+                 flat=True)
+    check("track24: 200 flat frames in 0..LIM_FREE (no limit) equal stem24", bad is None,
           f"first difference (frame, slot, where, got, want) {bad}" if bad else "")
 
 

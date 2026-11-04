@@ -1233,11 +1233,14 @@ def cut(s):
     # set only at the end, so a cut-off take is a 0-byte file even though
     # the writer had streamed most of it. A change here means the writer
     # started setting the length during the take.
-    # Two chunks streamed: since zero copy rd counts the whole frames in the
-    # sectors written, and the header takes 44 bytes of the first, so two
-    # chunks of T1 (128 sectors) hold 1,023 frames (STEM_REC.md 20.7).
+    # Two passes streamed: since zero copy rd counts the whole frames in the
+    # sectors written, and the header takes 44 bytes of the first, so the
+    # first chunk of T1 (64 sectors) holds 511 frames (STEM_REC.md 20.7).
+    # The second pass writes the whole sectors waiting when it runs, which
+    # the writer's timing under the port decides: 64 until the flat gains'
+    # shorter hook, 63 since (4 Nov 2026). So more than a chunk, not exactly two.
     check("cut: a take cut off mid-way is a 0-byte T1.wav, its streamed audio unreachable (known)",
-          st == ST_RECORDING and rd >= (2 * CHUNK_FRAMES * 64 - 44) // 64 and data is not None and len(data) == 0,
+          st == ST_RECORDING and rd > CHUNK_FRAMES and data is not None and len(data) == 0,
           f"state {st}, {nfr} frames recorded, {rd} streamed, T1.wav {None if data is None else len(data)} bytes")
 
 
@@ -1322,8 +1325,10 @@ def same_as_alone(s):
               a[3] == g[3] and fa == fg and len(fa) > 0, f"{a[3]} vs {g[3]}, {len(fa)} and {len(fg)} files")
 
 
-HOOK_CEILING = 5252   # the measured worst case, everything at 24 bits, counted over the hook's whole
-                      # block (29 Oct 2026, STEM_REC.md 20.9): 5,316 with the mirror's slot mask before
+HOOK_CEILING = 4468   # the measured worst case, everything at 24 bits, counted over the hook's whole
+                      # block, with every fader at rest as the port's are: flat gain slots (4 Nov 2026,
+                      # STEM_REC.md 20.10; a fader that moves costs its slot what it did before);
+                      # 5,252 after 20.9's simplify round (29 Oct 2026), 5,316 with the mirror's slot mask before
                       # the simplify round, 5,294 with the gain probe, 5,210 with the hook's parts;
                       # 4,972 since zero copy left out stems_zframe's 182 (5,154 with it); 5,012 in STEMS5
                       # (7 Oct 2026; STEM_REC.md 20.1); 7,415 before it, and 5,000 until

@@ -8445,3 +8445,82 @@ The simplify round (a review of this round's own code): the parts are
 taken inline with one macro (`ST_ACC`) instead of a loop, two dead mark
 stores go, the probe and the stage share `GQ_READ`, and the mask lives
 in a register instead of two state words.
+
+### 20.10 Flat gain slots: one gain while a fader rests (4 Nov 2026)
+
+**Why.** STEMS12 (20.9) put the gain path, `stems_mirror` and the gain
+probe together, at about 8.3 µs of the 33 µs hook at seven tracks, and
+found about 40% of the gain queue's lines missing the cache. Most frames
+of a take have every fader at rest. Then core 0's ramp for a slot is flat:
+its 16 gains are one value. Until now the mirror still wrote all 16 and
+their bound (68 bytes, five cache lines a slot), and the track loop loaded
+and shifted each of them again.
+
+**The rule.** A slot is flat on a page when its gain doesn't move on it:
+no slope before the split (the old increment is 0, or the old ramp has no
+samples left, `m` = 0) and none after it (the new increment, computed from
+the gain as it is, is 0). Every gain is then the current one, and the
+state the page leaves is the split, an increment of 0 and that gain, as
+the full path would leave it. A ramp of one sample, a split of 15 for
+example, has 16 equal gains too but an increment that isn't 0; it takes
+the full path, which is still exact.
+
+**What changed.**
+
+- A slot of `stems_gq` is now a flag, the bound and the 16 gains:
+  72 bytes, `GQ_FLAT`, `GQ_BOUND` and `GQ_GAINS` in `stems.s`.
+  `stems_gq` starts on a 16-byte line, so a slot is five lines and a flat
+  slot's 12 bytes are one.
+- `stems_mirror` tests the rule before its three loops. A flat slot gets
+  its flag set, the bound and the first gain, and nothing else is written.
+  A ramp slot clears the flag and is written as before.
+- `stems_track16` and `stems_track24` read the flag. A flat slot's gain,
+  shifted once, stays in `a3`, and the multiplies take it from there
+  (`mac.l %a3,…`, the form tapeecho and waveload use). So the loops have
+  four forms each: the 16 gains or one, with and without the limit. One
+  macro, `TRACK_LOOP`, writes all eight, so the arithmetic is in one place
+  (`modules/stems/CLEANUP.md` 1.6, for the track loops). The 16-bit
+  limited loop now does two samples a pass and keeps its shift in a
+  register, as the free one does.
+- `stems_gprobe` reads what the stage reads: one line for a flat slot,
+  five for a ramp.
+
+**What it doesn't change.** The samples: each loop does the same
+arithmetic on the same gain, and the units compare every form with the
+model. A frame where a fader moves: that slot costs what it did, plus the
+flag's test and store.
+
+**Under the port** (✅, 4 Nov 2026; the port's faders rest, so every
+written slot is flat after the first frames):
+
+| the hook, a frame | before (20.9) | flat slots |
+|---|---|---|
+| everything at 24 bits (the new `HOOK_CEILING`) | 5,252 | 4,468 |
+| its mirror, eight slots written | 960 | 400 |
+| T1 alone at 24 bits | 1,035 | 937 |
+| its mirror, one slot written | 477 | 407 |
+| the recorder idle, the sequencer playing (no slot written) | | 396 |
+
+- With everything at 24 bits the routines read `stems_track24` 2,632,
+  `stems_bus24` 910, `stems_mirror` 400, `stems_zframe` 182 and
+  `stems_gprobe` 59.
+- The units: `mirror_flat` checks each written slot's flag against the
+  model (48 pages: 352 flat slots and 32 ramps), and that a flat slot
+  writes only its 12 bytes; every track loop has a flat case, with junk
+  where the 15 unread gains would be. `stems_gq` sits at `0x40a96730`
+  in the build: 16-aligned.
+- `verify_stems`' `cut` check had asked for exactly two chunks streamed
+  before its run ends. With the shorter hook the port runs the writer's
+  second pass a few frames earlier, and it found 63 whole sectors waiting,
+  not 64 (1,015 frames on the card, not 1,023). The check now asks for a
+  second pass, which is what it is there to show.
+
+🟡 **On the unit,** inferred until STEMS13 measures it: at seven tracks
+the instructions alone save about 2 µs at 2.9 ns, and the gain lines
+touched fall from 70 (35 written, 35 read) to 14. STEMS12's probe priced
+its 35 lines at 1.4 µs, so the `gains` part should fall to about 0.3 µs
+and the `mirror` part by about 1.5 to 2.5 µs. With T1 alone the mirror
+ran 3.2 µs over its count while writing only five lines, so most of its
+excess isn't the gain queue; if the `mirror` part falls by only its
+instructions, the rest is elsewhere (instruction-cache fills are the
+first candidate).

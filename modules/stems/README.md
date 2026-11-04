@@ -143,11 +143,11 @@ measures the ring against the emulated card's speed (STEM_REC.md 15.4).
 
 | Measured under the port | Since the perf round | Before it | STEM_REC.md |
 |---|---|---|---|
-| The frame hook, not recording (the gain mirror) | 394 instructions per frame | 1,001 | 20.1 |
-| The frame hook, T1 alone at 24 bits | 1,035 instructions per frame (the mirror 477 of them, 968 before its slot mask) | | 20.9 |
-| The frame hook, eight tracks at 16 bits | 3,401 instructions per frame, without `stems_zframe` (about 15 a file) | 5,579 | 20.7 |
-| The frame hook, eight tracks at 24 bits | 3,969 instructions per frame, without `stems_zframe` | 6,219 | 20.7 |
-| The frame hook, everything at 24 bits | 5,252 instructions per frame (4,972 as counted until 29 Oct 2026, without `stems_zframe`) | 7,415 | 20.9 |
+| The frame hook, not recording (the gain mirror) | 396 instructions per frame (394 in the perf round) | 1,001 | 20.1, 20.10 |
+| The frame hook, T1 alone at 24 bits | 937 instructions per frame, every fader at rest (the mirror 407 of them; 1,035 and 477 before flat gain slots, 968 before the mirror's slot mask) | | 20.9, 20.10 |
+| The frame hook, eight tracks at 16 bits | 3,401 instructions per frame, without `stems_zframe` (about 15 a file), before flat gain slots | 5,579 | 20.7 |
+| The frame hook, eight tracks at 24 bits | 3,969 instructions per frame, without `stems_zframe`, before flat gain slots | 6,219 | 20.7 |
+| The frame hook, everything at 24 bits | 4,468 instructions per frame, every fader at rest (5,252 before flat gain slots; 4,972 as counted until 29 Oct 2026, without `stems_zframe`) | 7,415 | 20.9, 20.10 |
 | The writer's copy | none: the card reads each file's ring (zero copy) | 737 a frame at eight tracks, 16 bits; 1,067 everything at 24 bits | 20.7 |
 | The writer task's stack peak | 1,560 of 8,192 bytes (the most seen; `full`, 8 Oct 2026) | 1,244 | 20.3 |
 
@@ -395,8 +395,10 @@ and STEM REC's writer named on the CPU tab (its task control block is
   track is in that track's file too, after its fader, 80 samples later
   (the THRU track's own delay, STEM_REC.md 18.7).
 - **More work in the audio interrupt.** While a take records, the frame
-  hook runs 1,035 to 5,252 instructions per frame (T1 alone at 24 bits
-  to everything at 24 bits), and 394 while nothing records.
+  hook runs 937 to 4,468 instructions per frame (T1 alone at 24 bits
+  to everything at 24 bits, every fader at rest; on a frame where a
+  fader moves, its track costs what it did before flat gain slots, about
+  100 instructions more than at rest), and 396 while nothing records.
   `STATS.TXT` gives its time on the unit.
 - The status doesn't tick on its own: it's current as of the last key.
 - The name has no seconds. A second take in the same minute is refused, and
