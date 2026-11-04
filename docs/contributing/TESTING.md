@@ -383,7 +383,7 @@ half through `check_shards.py` split by gate, instead of a serial
 `check_shards.py` runs (a remix's whole half, or one gate job) builds the
 remix's image and looks itself up by a key over the image, the job's
 scripts and everything they reach in the tools/ graph, the Makefile, the
-remix's and its modules' tracked files, every module's manifest, the
+remix's and its modules' tracked files (not the Markdown), every module's manifest, the
 data files in `tools/remix/`, the port's sources, `dsp_asm` and
 `dsp_host` by content, the project (each file's path, size and mtime),
 the `.venv` interpreter, `BUILD` and `OT_BANK`. A hit is reported `cached`
@@ -391,7 +391,8 @@ with the commit and time of the pass, replays the pass's `[SKIP]` lines
 and is not run. Passes are stored in `<git common dir>/octabam-gate-cache/`
 (failures are not), so a pass in one worktree is a hit in every other on
 the machine. In CI the passes and the durations below go through the
-actions cache per unit (`gates-<unit>-<run id>`, restored from the newest
+actions cache per unit (`gates-<unit slug>-@<run id>`; the `-@` ends the slug, so
+`check-remix-octabam-` does not restore `check-remix-octabam--project-`'s entry; restored from the newest
 entry of the PR's branch, else of main; passes unused for 14 days are
 dropped), so a push that leaves a remix's image and a gate's inputs alone
 reports those gates `cached`. After a rebase onto a
@@ -399,21 +400,56 @@ main that did not move a remix's image or a gate's inputs, the second run
 before merging is cache hits. `CACHE=0` (`--no-cache`) runs every job. The
 key cannot see a file a gate reads through a path built at run time, or
 anything outside the repository other than the toolchain and the project.
-The shared half and `make accept` are not cached.
+`make accept` is not cached. Of the shared half, `module_gates --shared`
+caches the gates that take no remix (`gate_cache.shared_key`): the key has no
+image or remix and covers the gate's script closure, the files of `dsp/`,
+`tools/build/`, `tools/remix/` and `tools/harness/` (of their Python, only what
+the build reaches from `reach.BUILD_ROOTS`: a tool or gate there, such as
+`selftest.py`, is in the key only through a gate's own closure; 4 Nov 2026, a
+one-line `selftest.py` edit on main moved every shared gate's key), the directories of the gate's module and of
+every module `reached()` from it (their manifests with them), the stock OS slice, the
+port, the toolchain, the project, `BUILD` and `OT_BANK`. Each gate prints
+`gate: <s> s` when it runs. The `rest` steps of `check-shared`, the
+once-per-run gates and `refhash` itself are not cached; in CI `refhash`'s
+baseline (`refhash_store.py`, the 24 builds of the merge-base) is restored
+from the actions cache by `refhash_store.py key`.
 
 **CI units cut up** (`reach.entries`, `reach.SPLIT_REMIX_JOBS`). Each unit of
 the CI matrix is a runner with its own setup. `check-remix octabam` runs as
-three units, each `check_shards --only-jobs ...` over a part of the gate jobs:
+seven units, each `check_shards --only-jobs ...` over a part of the gate jobs:
 `(long)` is `remix-switch`, `(project)` is `set`, `mode-defaults` and
-`plocks-p2` (the jobs that read `OT_PROJECT`), and the unit without a suffix is
-`--skip-jobs` of both (every other job, `image` among them). A name that is no
-gate job is refused, so the parts always cover every gate job once. Only the
+`plocks-p2` (the jobs that read `OT_PROJECT`), `(rec)` is `image:usb-in`
+and `image:usb-load-meter`, `(rec-arming)`, `(rec-inputs)` and `(rec-level)` are
+the three `image:rec-threshold-*` jobs (the twelve REC THRESHOLD port runs, four each), and the unit without a suffix is
+`--skip-jobs` of all of them and of the `brain` jobs (every other job, the remaining `image:` jobs among them). A name that is no
+gate job is refused, so the parts always cover every gate job once.
+The shared half is cut the same way (`reach.SPLIT_SHARED_GATES`): `check-shared (morph)` and
+`check-shared (octa303)` run `test_morph` and `test_octa303` (`SHARED_PART=modules
+MODULE_GATES_ONLY=<script>`, one unit each, only when the module is reached), and
+`check-shared (module gates)` runs every other shared module gate (`MODULE_GATES_SKIP`). Only the
 `(project)` unit makes a project: `tools/hw/ot_fresh.py` boots the port and
 creates one with the panel script (100 s locally, 255 s in CI), and keeps it in
 `<git common dir>/octabam-fresh-cache/<sha256 of image, port sources, script>`
 (CI: the same actions cache as the gate passes), so a rerun for the same inputs
-is the image build alone (41 s locally). `image` is outside it: with a project it
-failed in `verify_brain` and ran 2869 s on cxosc-core (27 Oct 2026).
+is the image build alone (41 s locally). The `image:` jobs are outside it: with a project
+`verify_brain` failed and the one `image` job ran 2869 s on cxosc-core (27 Oct 2026).
+Each image-stage module gate is a job of its own, `image:<script>` (until 4 Nov 2026
+one `image` job ran them in turn: 2723 s of a 3031 s unit); a gate whose script names
+`verify_set` stages its card first. `brain`, `brain-stores`, `brain-templates`, `brain-panes` and
+`brain-screens` (`reach.SPLIT_EXTRA_UNITS`) are gate jobs that only their own
+`check-remix octabam (brain...)` units run (`--only-jobs <name>`), each with a generated
+project; they are cached like the others. Each is `verify_brain.py octabam --section <group>`:
+`cards` is the eight card cases and the .data checks, `stores` is the stock clamps, the saves, the
+project load, the menu, the settings and the USB pair rule; `templates` is SAVE and LOAD TEMPLATE, the AMP, LFO and
+SRC targets; `panes` is the BRAIN > TEMPLATES screens, the PART templates and the PART default;
+`screens` is the knob names, the project settings, the live screens, the debug log and MODE
+DEFAULTS. No `--section` runs all five (about 830 s on an M-series Mac, 4 Nov 2026). Measured in CI (runs 41730853350
+and 41744406390, 4 Nov 2026), cold, three jobs to a 4-vCPU runner: `image:buffer-saver`
+1426-1646 s, `image:rec-threshold` 840-1002 s (its per-run timeout is 3600 s),
+`image:usb-load-meter` 242-469 s, `usb` 257-336 s, every other `image:` job 12-233 s;
+`check-remix octabam` 1646-1737 s wall. `module_gates --shared`: `test_morph` 373-578 s,
+`test_octa303` 266-416 s, `verify_quantizer_ui` 123-155 s, `modules/memory/gate.py` 54-65 s,
+every other gate 22 s or less.
 `check-shared` runs as two units: `make check-shared SHARED_PART=modules`
 (`module_gates --shared`) and `SHARED_PART=rest` (every other step of
 `verify-shared`); a bare `make verify-shared` runs both, in that order. A

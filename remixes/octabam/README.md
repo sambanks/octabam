@@ -1,14 +1,14 @@
 # octabam
 
 A remix of Octatrack OS 1.40C, built from your own copy of it, that adds the
-core modules (below) to all 14 stock effects and adds SPECTRUM, CHARACTER and
-MODULATION, which are copied into the DSP when a track uses them. It
+core modules (below) to all 14 stock effects and adds SPECTRUM, CHARACTER,
+MODULATION and SHATTER, which are copied into the DSP when a track uses them. It
 has no bus and no SEND. See [Where it has run](#where-it-has-run).
 
 ## The effects
 
 All 14 stock effects stay in the menus and run as stock. SPECTRUM, CHARACTER and
-MODULATION are on FX1 and FX2. Their DSP code is not in the image's
+MODULATION are on FX1 and FX2; SHATTER is on FX2. Their DSP code is not in the image's
 upload: while a track uses one, the ColdFire copies it into the shared P window
 (`P:0x30000..0x3ffff`), at offset `0x3820` of one of the four FX2 buffer slots, and
 withdraws it when no track does. Until it arrives, about 25 ms, the effect passes
@@ -25,6 +25,7 @@ effect dry, and says which at the next page key. The design and what has been me
 | SPECTRUM | ✓ | ✓ | 0x0f | filter: Moog ladder, SEM, Capacitor2, formants | [`spectrum`](../../modules/spectrum/README.md) |
 | CHARACTER | ✓ | ✓ | 0x17 | fold, saturation, tilt, compressor, width | [`character`](../../modules/character/README.md) |
 | MODULATION | ✓ | ✓ | 0x0e | Juno, Dimension, flanger, phaser, comb | [`modulation`](../../modules/modulation/README.md) |
+| SHATTER | | ✓ | 0x0a | fold, clip, bit and sample-rate crush, chaotic feedback | [`shatter`](../../modules/shatter/README.md) |
 
 COMPRESSOR is [SIDECHAIN_COMPRESSOR](../../modules/sidechain-compressor/README.md): stock COMPRESSOR with a
 side-chain KEY on page 2. Its DSP code (1,711 words) is loaded the same way, into the top of T4's FX2 block, while a

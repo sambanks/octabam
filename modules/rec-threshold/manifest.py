@@ -78,5 +78,6 @@ MODULE = Module(
         Poke(VALIDATOR_CMP, H("7202"), H("7203"), "part validator: TRIG max 2 -> 3"),
         Poke(VALIDATOR_SET, H("7602"), H("7603"), "part validator: TRIG max 2 -> 3"),
     ),
-    gates=(Gate("tools/verify/verify_rec_threshold.py", remix_arg=False, venv=True, stage="image"),),
+    gates=tuple(Gate(f"modules/rec-threshold/verify_rec_threshold_{g}.py", remix_arg=False, venv=True, stage="image")
+                for g in ("arming", "inputs", "level")),
 )

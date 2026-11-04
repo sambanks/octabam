@@ -123,7 +123,7 @@ LINKED = (
 
 
 # ---- the detour sets --------------------------------------------------------
-# USB MIDI's nine sites; the ISR, bus-reset and session-end shims of the old
+# USB MIDI's ten sites; the ISR, bus-reset and session-end shims of the old
 # USB AUDIO OUT module replace these three (they chain to usbmidi_rx_bus_end
 # by symbol, as they did as separate modules).
 
@@ -132,6 +132,9 @@ MIDI_DETOURS = (
            "SET_CONFIGURATION body: note the speed, then usbmidi's EP2 bring-up (512-byte packets at high speed)"),
     Detour(0x4001e606, H("2039fc0b01ac"), "usbmidi_rx", "usbmidi_rx_isr_shim",
            "usb_isr UI path: EP2 OUT completions -> decode with FIFO room / re-prime, then usbmidi's EP2 IN kick"),
+    Detour(0x4001d184, H("203c00408080"), "usbmidi_rx", "usbmidi_rx_late_shim",
+           "usb_midi_rx_prime entry: at state 2 it is usbmidi_isr_shim's 64-byte branch for a completion after "
+           "the first ENDPTCOMPLETE read -- decode it and re-prime 512 (#1017)"),
     Detour(0x40010bc8, H("4fefffec48d7043c"), "usbmidi", "usbmidi_send_shim",
            "midi_send entry: queue the message for the USB encoder", pad_to=8),
     Detour(0x400108b0, H("2f02122f000b"), "usbmidi", "usbmidi_prio_shim",
@@ -234,7 +237,8 @@ CLAIMS = Claims(sram=((0x80007c00, 0x80, "EP3 OUT dTDs"),
 
 MIDI_GATES = (Gate("tools/verify/verify_usbmidi_rx.py", stage="image"),
               Gate("tools/verify/verify_usb_midi_clock.py", stage="image"),
-              Gate("tools/verify/verify_usb_midi_replug.py", stage="image"))
+              Gate("tools/verify/verify_usb_midi_replug.py", stage="image"),
+              Gate("tools/verify/verify_usbmidi_late.py", venv=True, stage="image"))
 # MAIN/CUE aligned with the tracks (skips without a source project)
 GATE_ALIGN = Gate("tools/verify/verify_usb_align.py", remix_arg=False, venv=True, stage="image")
 # the stems against core 0's own MAIN, sample by sample, under the port (skips without a source project)

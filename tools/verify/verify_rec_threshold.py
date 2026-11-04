@@ -39,6 +39,12 @@ RECORDING SETUP 2's encoder D, 4 detents a step of LEV_DB) against a steady
   full    positive full scale (24-bit       armed, started: at or over LEV
           +0x7fffff), LEV 0 dB              fires, and nothing passes 0 dB
 
+`verify_rec_threshold.py [scenario ...]` runs the named scenarios (default all twelve, at once). The
+manifest runs them as three gates, each a unit of its own in CI (modules/rec-threshold/verify_rec_threshold_<group>.py):
+`arming` is tones, late, cancel and untrig, `inputs` is silent, stock, inpage_one and inpage_thr, `level` is high,
+quiet, low and full. A run costs its emulated time with the DSP, about 6.5 s of wall time per emulated second
+(one scenario alone, M-series, 4 Nov 2026: 5 s of script 43 s, 14 s 97 s, boot 10 s).
+
 Never flashes or talks to hardware.
 """
 
@@ -73,7 +79,8 @@ QPL_PUBLISHED = 0x80000C9E           # slot 10: IN under THR, not edited
 LEV_DB = (-60, -56, -52, -48, -44, -40, -36, -32, -28, -24,   # thresh.s lev_db, raw -1 .. 16
           -20, -16, -12, -8, -6, -4, -2, 0)
 ARM_PC = 0x400069D6
-RUN_TIMEOUT_S = 900                  # per port run
+RUN_TIMEOUT_S = 3600                 # per port run: a hang guard. The eight runs share the cores, and in CI a
+                                     # third of a 4-vCPU runner took 840-1002 s (4 Nov 2026; 900 s timed out)
 ELAPSED = {}                         # job name -> wall seconds, None while running
 
 # Panel key codes (tools/panel/key_map.json: row 0x20+r, bit b -> r*8+b).
@@ -248,7 +255,7 @@ def writes(output, addr):
         rf"\[\s*([\d.]+)\] \[{addr:#x}\] <- (\S+) \(\d\) at pc (0x[0-9a-f]+)", output)]
 
 
-def main():
+def main(only=None):
     if not EMU.is_file():
         return fail("the ColdFire port is not built (make emu-cf)")
     if not IMAGE.is_file() or not ELF.is_file():
@@ -294,6 +301,10 @@ def main():
         full = work / "full.wav"
         write_full_scale(full, 10, 6)
         jobs += [("full", full, SETUP + lev(0) + press(3200), 14000)]
+        unknown = set(only or ()) - {j[0] for j in jobs}
+        if unknown:
+            return fail(f"no such scenario: {sorted(unknown)}; the scenarios are {[j[0] for j in jobs]}")
+        jobs = [j for j in jobs if not only or j[0] in only]
         host = f"{os.cpu_count()} cpus, load average {os.getloadavg()[0]:.1f}, {len(jobs)} port runs at once"
         print(f"  host: {host}", flush=True)
         with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
@@ -309,6 +320,9 @@ def main():
         if rc or "M6a gate   : PASS" not in out or "ended on quit" not in out:
             return fail(f"{name}: the port run did not finish cleanly (exit {rc})", out)
 
+    def has(*names):
+        return all(n in results for n in names)
+
     def facts(name):
         out = results[name][1]
         return (writes(out, TRIG_PUBLISHED), writes(out, armed),
@@ -323,86 +337,101 @@ def main():
         if any(pc == 0x400051F4 for _, _, pc in mail):
             return fail(f"{name}: stock's own start path ran under THR", out)
 
-    _, arm, mail, starts, out = facts("tones")
-    if len(starts) != 1 or not any(v == 0x9010 for _, v, _ in mail):
-        return fail(f"tones: wanted one start from the armed word, saw {len(starts)}", out)
-    _, arm, mail, starts, out = facts("silent")
-    if starts or len(arm) != 1:
-        return fail(f"silent: wanted armed and no start, saw starts {starts}, armed {arm}", out)
-    icon = [(t, v) for t, v, _ in writes(out, ICON) if t > arm[0][0]]
-    blinks = sum(1 for _, v in icon if v & 0x10)
-    if blinks < 3 or sum(1 for _, v in icon if not v & 0x10) < 3:
-        return fail(f"silent: track 1's icon did not blink while armed: {icon[:12]}", out)
-    _, arm, mail, starts, out = facts("late")
-    if len(starts) != 1:
-        return fail(f"late: wanted one start, saw {len(starts)}", out)
-    wait = starts[0][0] - arm[0][0]
-    t_tones = facts("tones")
-    quick = t_tones[3][0][0] - t_tones[1][0][0]
-    if wait <= 10 * quick:
-        return fail(f"late: started {wait:.0f} after the press, no later than tones' {quick:.0f}", out)
-    if first is None or first > 16:
-        return fail(f"late: the take's first sample is input sample {first}; wanted within "
-                    "the detection frame (<= 16): the detector reads a stale page", out)
-    _, arm, mail, starts, out = facts("cancel")
-    if starts or [v for _, v, _ in arm] != [0x9010, 0]:
-        return fail(f"cancel: wanted armed then cleared and no start, saw armed {arm}, starts {starts}", out)
-    icon = [v for t, v, _ in writes(out, ICON) if t > arm[1][0]]
-    if icon and icon[-1] & 0x10:
-        return fail(f"cancel: track 1's icon still blanked after the cancel: {icon[-4:]}", out)
-    for name, want in (("high", 0), ("quiet", 0), ("low", 1)):
+    if has("tones"):
+        _, arm, mail, starts, out = facts("tones")
+        if len(starts) != 1 or not any(v == 0x9010 for _, v, _ in mail):
+            return fail(f"tones: wanted one start from the armed word, saw {len(starts)}", out)
+    if has("silent"):
+        _, arm, mail, starts, out = facts("silent")
+        if starts or len(arm) != 1:
+            return fail(f"silent: wanted armed and no start, saw starts {starts}, armed {arm}", out)
+        icon = [(t, v) for t, v, _ in writes(out, ICON) if t > arm[0][0]]
+        blinks = sum(1 for _, v in icon if v & 0x10)
+        if blinks < 3 or sum(1 for _, v in icon if not v & 0x10) < 3:
+            return fail(f"silent: track 1's icon did not blink while armed: {icon[:12]}", out)
+    if has("late", "tones"):
+        _, arm, mail, starts, out = facts("late")
+        if len(starts) != 1:
+            return fail(f"late: wanted one start, saw {len(starts)}", out)
+        wait = starts[0][0] - arm[0][0]
+        t_tones = facts("tones")
+        quick = t_tones[3][0][0] - t_tones[1][0][0]
+        if wait <= 10 * quick:
+            return fail(f"late: started {wait:.0f} after the press, no later than tones' {quick:.0f}", out)
+        if first is None or first > 16:
+            return fail(f"late: the take's first sample is input sample {first}; wanted within "
+                        "the detection frame (<= 16): the detector reads a stale page", out)
+    if has("cancel"):
+        _, arm, mail, starts, out = facts("cancel")
+        if starts or [v for _, v, _ in arm] != [0x9010, 0]:
+            return fail(f"cancel: wanted armed then cleared and no start, saw armed {arm}, starts {starts}", out)
+        icon = [v for t, v, _ in writes(out, ICON) if t > arm[1][0]]
+        if icon and icon[-1] & 0x10:
+            return fail(f"cancel: track 1's icon still blanked after the cancel: {icon[-4:]}", out)
+    for name, want in [x for x in (("high", 0), ("quiet", 0), ("low", 1)) if x[0] in results]:
         _, arm, mail, starts, out = facts(name)
         if len(starts) != want:
             return fail(f"{name}: LEV wanted {want} start(s), saw {len(starts)}", out)
-    out = results["quiet"][1]
-    qrec = [v for _, v, _ in writes(out, QREC_PUBLISHED)]
-    if qrec != [4]:
-        return fail(f"quiet: TRIG -> THR did not set the unset LEV to -40 dB (QREC raw 4): {qrec}", out)
-    out = results["low"][1]
-    qrec = [v for _, v, _ in writes(out, QREC_PUBLISHED)]
-    if not qrec or qrec[0] != 4 or qrec[-1] not in (0, 0xFF):
-        return fail(f"low: RECORDING SETUP 2 did not lower LEV to -60 or -56 dB (QREC raw -1 or 0): {qrec}", out)
-    _, arm, mail, starts, out = facts("full")
-    qrec = [v for _, v, _ in writes(out, QREC_PUBLISHED)]
-    if not qrec or qrec[-1] != 16 or len(starts) != 1:
-        return fail(f"full: LEV 0 dB (QREC raw 16) and a positive full-scale input wanted one start; "
-                    f"QREC {qrec}, starts {starts}", out)
-    out = results["high"][1]
-    qrec = [v for _, v, _ in writes(out, QREC_PUBLISHED)]
-    if not qrec or qrec[0] != 4 or qrec[-1] < 11 or qrec != sorted(qrec):
-        # The port's encoder accelerates now and then (a step of 2), so LEV
-        # lands at -12 dB or above: still over the -20 dBFS tone.
-        return fail(f"high: RECORDING SETUP 2 did not raise LEV to -12 dB or more (QREC raw >= 11): {qrec}", out)
-    high_lev = LEV_DB[qrec[-1] + 1]
-    if writes(out, QPL_PUBLISHED):
-        return fail("high: turning IN (QPL's cell) on a THR track changed QPL", out)
-    trig, arm, mail, starts, out = facts("untrig")
-    if not trig or trig[-1][1] != 2:
-        return fail(f"untrig: RECORDING SETUP did not move TRIG from THR to HOLD: {trig}", out)
-    bg = (sym["blink_gate"], sym[".bg_out"])
-    if (starts or [v for _, v, _ in arm] != [0x9010, 0] or arm[1][0] < trig[-1][0]
-            or not bg[0] <= arm[1][2] < bg[1]):
-        return fail(f"untrig: wanted the arm dropped by the icon renderer after the TRIG edit, "
-                    f"no start; saw armed {arm}, TRIG {trig}, starts {starts}", out)
-    icon = [v for t, v, _ in writes(out, ICON) if t > arm[1][0]]
-    if icon and icon[-1] & 0x10:
-        return fail(f"untrig: track 1's icon still blanked after TRIG left THR: {icon[-4:]}", out)
-    _, arm, mail, starts, out = facts("stock")
-    if arm or len(starts) != 1 or not any(v == 0x9010 and pc == 0x400051F4 for _, v, pc in mail):
-        return fail("stock: TRIG ONE did not start at once through stock's path", out)
-    qrec = [v for _, v, _ in writes(out, QREC_PUBLISHED)]
-    if qrec != [0, 0xFF] or not writes(out, QPL_PUBLISHED):
-        return fail(f"stock: RECORDING SETUP 2 on a TRIG ONE track did not edit QREC (0 then OFF) "
-                    f"and QPL as stock: QREC {qrec}, QPL {writes(out, QPL_PUBLISHED)}", out)
-    _, arm, mail, starts, out = facts("inpage_one")
-    if arm or len(starts) != 1 or not any(v == 0x9010 and pc == 0x400051F4 for _, v, pc in mail):
-        return fail("inpage_one: TRIG ONE, TRACK 1 + REC AB inside RECORDING SETUP 1 did not start "
-                    "at once through stock's path", out)
-    trig, arm, mail, starts, out = facts("inpage_thr")
-    if not trig or trig[-1][1] != 3 or not arm or arm[0][1] != 0x9010 or len(starts) != 1:
-        return fail(f"inpage_thr: TRIG THR, TRACK 1 + REC AB inside RECORDING SETUP 1 did not arm "
-                    f"and start: TRIG {trig}, armed {arm}, starts {starts}", out)
+    if has("quiet"):
+        out = results["quiet"][1]
+        qrec = [v for _, v, _ in writes(out, QREC_PUBLISHED)]
+        if qrec != [4]:
+            return fail(f"quiet: TRIG -> THR did not set the unset LEV to -40 dB (QREC raw 4): {qrec}", out)
+    if has("low"):
+        out = results["low"][1]
+        qrec = [v for _, v, _ in writes(out, QREC_PUBLISHED)]
+        if not qrec or qrec[0] != 4 or qrec[-1] not in (0, 0xFF):
+            return fail(f"low: RECORDING SETUP 2 did not lower LEV to -60 or -56 dB (QREC raw -1 or 0): {qrec}", out)
+    if has("full"):
+        _, arm, mail, starts, out = facts("full")
+        qrec = [v for _, v, _ in writes(out, QREC_PUBLISHED)]
+        if not qrec or qrec[-1] != 16 or len(starts) != 1:
+            return fail(f"full: LEV 0 dB (QREC raw 16) and a positive full-scale input wanted one start; "
+                        f"QREC {qrec}, starts {starts}", out)
+    if has("high"):
+        out = results["high"][1]
+        qrec = [v for _, v, _ in writes(out, QREC_PUBLISHED)]
+        if not qrec or qrec[0] != 4 or qrec[-1] < 11 or qrec != sorted(qrec):
+            # The port's encoder accelerates now and then (a step of 2), so LEV
+            # lands at -12 dB or above: still over the -20 dBFS tone.
+            return fail(f"high: RECORDING SETUP 2 did not raise LEV to -12 dB or more (QREC raw >= 11): {qrec}", out)
+        high_lev = LEV_DB[qrec[-1] + 1]
+        if writes(out, QPL_PUBLISHED):
+            return fail("high: turning IN (QPL's cell) on a THR track changed QPL", out)
+    if has("untrig"):
+        trig, arm, mail, starts, out = facts("untrig")
+        if not trig or trig[-1][1] != 2:
+            return fail(f"untrig: RECORDING SETUP did not move TRIG from THR to HOLD: {trig}", out)
+        bg = (sym["blink_gate"], sym[".bg_out"])
+        if (starts or [v for _, v, _ in arm] != [0x9010, 0] or arm[1][0] < trig[-1][0]
+                or not bg[0] <= arm[1][2] < bg[1]):
+            return fail(f"untrig: wanted the arm dropped by the icon renderer after the TRIG edit, "
+                        f"no start; saw armed {arm}, TRIG {trig}, starts {starts}", out)
+        icon = [v for t, v, _ in writes(out, ICON) if t > arm[1][0]]
+        if icon and icon[-1] & 0x10:
+            return fail(f"untrig: track 1's icon still blanked after TRIG left THR: {icon[-4:]}", out)
+    if has("stock"):
+        _, arm, mail, starts, out = facts("stock")
+        if arm or len(starts) != 1 or not any(v == 0x9010 and pc == 0x400051F4 for _, v, pc in mail):
+            return fail("stock: TRIG ONE did not start at once through stock's path", out)
+        qrec = [v for _, v, _ in writes(out, QREC_PUBLISHED)]
+        if qrec != [0, 0xFF] or not writes(out, QPL_PUBLISHED):
+            return fail(f"stock: RECORDING SETUP 2 on a TRIG ONE track did not edit QREC (0 then OFF) "
+                        f"and QPL as stock: QREC {qrec}, QPL {writes(out, QPL_PUBLISHED)}", out)
+    if has("inpage_one"):
+        _, arm, mail, starts, out = facts("inpage_one")
+        if arm or len(starts) != 1 or not any(v == 0x9010 and pc == 0x400051F4 for _, v, pc in mail):
+            return fail("inpage_one: TRIG ONE, TRACK 1 + REC AB inside RECORDING SETUP 1 did not start "
+                        "at once through stock's path", out)
+    if has("inpage_thr"):
+        trig, arm, mail, starts, out = facts("inpage_thr")
+        if not trig or trig[-1][1] != 3 or not arm or arm[0][1] != 0x9010 or len(starts) != 1:
+            return fail(f"inpage_thr: TRIG THR, TRACK 1 + REC AB inside RECORDING SETUP 1 did not arm "
+                        f"and start: TRIG {trig}, armed {arm}, starts {starts}", out)
 
+    if only:
+        print(f"  [PASS] verify_rec_threshold: {', '.join(sorted(only))}")
+        return 0
     print("  [PASS] verify_rec_threshold: TRIG THR through RECORDING SETUP; TRACK 1 + REC AB "
           "arms with 0x9010; tones start at once, silence never, silence-then-loud only after "
           f"the wait ({wait:.0f} vs {quick:.0f}) with the take from input sample {first} of the onset, "
@@ -415,4 +444,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:] or None))
