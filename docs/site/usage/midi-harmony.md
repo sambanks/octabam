@@ -5,6 +5,8 @@ Supported scales are the seven diatonic modes: Major, Dorian, Phrygian,
 Lydian, Mixolydian, natural Minor and Locrian. The selected scale module must
 provide a compatible integration; additional catalogue scales are not yet
 supported by Harmony. Existing project formats are unchanged.
+The remixer reports the separate **SCALES** prototype as incompatible with
+these MIDI consumers; use **MIDI SCALES** for the seven modes above.
 
 The **midi** remix brings Harmony, Follow, Scales and Loopback together.
 Harmony also works **without Follow**: each track uses its own degree pattern,
@@ -58,7 +60,7 @@ The resulting voices feed the stock arp, so the same progression can become
 held harmony, short stabs or an arpeggiated line.
 
 Existing held notes retain their original releases.
-See [Voicing](https://github.com/radiohagen/octatrack-modules/blob/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b/modules/midi-harmony/VOICING.md) for the musical rules.
+See [Voicing](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/VOICING.md) for the musical rules.
 
 ## Degree accumulator
 
@@ -186,6 +188,12 @@ their `.strd` companions. Keep them with the project. Incompatible companions
 are protected from overwrite. Runtime accumulator offsets restart at zero;
 only the configuration is saved.
 
+HARM mode edits change the musical behavior immediately. The retained-state
+checkpoint is refreshed by the UI poll, so several quick edits can share one
+save. Explicit project saves remain synchronous. A power loss before a valid
+checkpoint completes uses the existing companion-file fallback; it does not
+guarantee recovery of every unsaved edit.
+
 Turning HARM OFF writes resolved roots back to native NOTE. It preserves
 NOT2–4 but does not render generated chords into those fields.
 
@@ -200,6 +208,6 @@ storage module to select. MIDI Follow and MIDI Scales remain optional.
 HARM and PLOCKS P2 register independently with EVENTS;
 no combination-specific bridge is selected. KITS libraries are per
 project; recalling a kit supplies Part defaults while pattern locks stay with
-the patterns. See [storage](https://github.com/radiohagen/octatrack-modules/blob/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b/modules/midi-harmony/DEVELOPMENT.md#compact-harmony-storage) and [KITS](https://github.com/radiohagen/octatrack-modules/blob/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b/modules/midi-harmony/KITS.md).
+the patterns. See [storage](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/DEVELOPMENT.md#compact-harmony-storage) and [KITS](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/KITS.md).
 
-[Implementation, provenance and verification](https://github.com/radiohagen/octatrack-modules/blob/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b/modules/midi-harmony/DEVELOPMENT.md).
+[Implementation, provenance and verification](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/DEVELOPMENT.md).

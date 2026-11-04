@@ -44,7 +44,7 @@ at bottom left. Empty E/F cells ignore turns.
 
 These are track settings affecting CHORD, not NOTE.
 Existing held notes retain their original releases.
-See [Voicing](https://github.com/radiohagen/octatrack-modules/blob/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b/modules/midi-harmony/VOICING.md) for the musical rules.
+See [Voicing](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/VOICING.md) for the musical rules.
 
 ## Degree accumulator
 
@@ -92,7 +92,7 @@ volatile and start at zero after project load or power-on.
 
 ## MIDI Follow
 
-Both modules register with [EVENTS](https://github.com/radiohagen/octatrack-modules/blob/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b/docs/SYSTEM_EVENTS.md)
+Both modules register with [EVENTS](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/docs/SYSTEM_EVENTS.md)
 to share transport and successful-note events. Follow supplies a source note set.
 A HARM OFF source supplies N1–4; a HARM NOTE/CHORD source supplies only its
 resolved degree:oct root as Note 1. HARM OFF on the follower plays the supplied
@@ -142,9 +142,9 @@ storage module to select. MIDI Follow and MIDI Scales remain optional.
 HARM and PLOCKS P2 register independently with EVENTS;
 no combination-specific bridge is selected. KITS libraries are per
 project; recalling a kit supplies Part defaults while pattern locks stay with
-the patterns. See [storage](https://github.com/radiohagen/octatrack-modules/blob/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b/modules/midi-harmony/DEVELOPMENT.md#compact-harmony-storage) and [KITS](https://github.com/radiohagen/octatrack-modules/blob/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b/modules/midi-harmony/KITS.md).
+the patterns. See [storage](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/DEVELOPMENT.md#compact-harmony-storage) and [KITS](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/KITS.md).
 
-[Implementation, provenance and verification](https://github.com/radiohagen/octatrack-modules/blob/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b/modules/midi-harmony/DEVELOPMENT.md).
+[Implementation, provenance and verification](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/DEVELOPMENT.md).
 
 ## Verification boundary
 
@@ -182,25 +182,42 @@ standalone thresholds and their excesses visible (54 cases with Scales).
 These ceilings prevent further instruction regressions; they do not establish
 hardware capacity or imply that the added policy is free.
 
-## Lifecycle cost investigation
+## Lifecycle instruction bounds
 
-The integration keeps upstream's **20,000-instruction** generic call limit.
-The temporary 40,000 override has been removed. Mode-change and Part-copy gates
-remain failing until the implementation meets the unchanged checks.
-Diagnostics used the `midi` image built after merging upstream `c50e94b5`
-(SHA-256 `08045c4ae80ffec84e23b0fba1f64200b8846f6f5db025487f85034d401bc027`).
-The profiling runs allow completion solely to attribute work; they are not
-acceptance passes and do not raise any test limit.
+Harmony source is pinned to `3e5ac07a090699c6a092d00de32d30239dea1a8b`. Its lifecycle changes are
+[reviewable against the prior pin](https://github.com/radiohagen/octatrack-modules/compare/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b...3e5ac07a090699c6a092d00de32d30239dea1a8b).
+The original **20,000-instruction** call limits are unchanged. The temporary
+40,000 override has been removed; the previously failing lifecycle gates now
+pass through implementation changes.
 
-| Area | Measured work | Candidate reduction |
-| --- | --- | --- |
-| Same-Part and unrelated-Part replacement | Follow fixtures: 32,514 / 32,526 instructions. The same-Part callback spends 26,835 scanning all 2,048 pattern/track records. After Harmony initialization, an inactive Part copy still takes 24,322, including 18,643 in that callback. | Track attached Harmony provenance so replacement visits only relevant records. Preserve cross-bank Follow dependencies and detach outgoing KEY before the native copy. An unrelated Part must leave other histories and held notes intact. |
-| HARM mode edit | Follow fixture: 31,784. After `ch_lock_init`, OFF→NOTE / NOTE→CHORD / CHORD→OFF take 649,047 / 648,895 / 649,085. Full-bank packing, validation and retained writing dominate. | Keep immediate note conversion and dirty invalidation, but coalesce the retained save through the existing `hd_nv_poll_c` path. Check publication ordering, explicit save/load and interrupted-save recovery before changing this path. The polling work itself still needs bounding. |
-| Rejected retained payload | The original Follow fixture has uninitialized Harmony roots; `hd_pack_c` rejects them, but `ha_pack_c` still copies 4,736 accumulator bytes, costing 14,217 instructions. | Stop serialization after validation failure. This avoids wasted work but does not solve the full initialized mode-edit cost. |
+| Operation in the combined MIDI remix | Before | After |
+| --- | ---: | ---: |
+| Follow fixture: same-Part replacement | 32,514 | 6,704 |
+| Follow fixture: unrelated-Part replacement | 32,526 | 6,716 |
+| Follow register fixture: HARM mode edit | 31,784 | 16,039 |
 
-These are identified opportunities, not implemented optimizations. An active,
-dense bank can cost more than the inactive copy fixture. Validation must include
-HARM OFF, initialized empty and dense data, Part recall with cross-bank Follow,
-held-note releases, and retained save/reload interruption. Instruction counts
-do not establish processor cycles or device latency. No storage format change
-is proposed.
+Those original Follow fixtures do not initialize the complete Harmony bank.
+The new lifecycle gate also starts with initialized retention and an empty
+native bank: mode edits measure 3,021 / 9,202 / 9,734, inactive Part copies
+7,839 / 7,747, attached mode edits 2,939 and a restored Part copy 8,422.
+Every measured operation must complete under the same 20,000 limit. The gate
+checks immediate invalidation, coalesced saves, restore of the latest degree,
+reattachment after restore and early exit on invalid payloads.
+
+Part replacement now uses a 256-byte runtime bitmap to visit attached Harmony
+provenance, preserving cross-bank Follow dependencies and outgoing KEY capture.
+Reset and load clear the index; playback rebuilds it. It is not saved.
+Mode edits still convert notes immediately and invalidate the old checkpoint,
+but request serialization at the existing UI poll. Repeated edits coalesce;
+explicit saves remain synchronous. A request during an existing write forces
+the writer to retry. Failed root packing stops before accumulator packing.
+
+The background full-bank save still costs hundreds of thousands of
+instructions; it has been removed from the immediate mode-edit call, not
+eliminated. The separate eight-active-track interrupted-copy gate measures
+24,245–26,989 instructions under its existing bound. The 20,000 limits above
+cover the named fixtures, not every possible dense-bank operation. Retained
+formats and commit ordering are unchanged. Incomplete checkpoints retain the
+existing validated-companion fallback. Emulator instruction counts do not
+establish processor cycles or hardware latency; physical qualification remains
+open.

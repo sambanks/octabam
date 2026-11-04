@@ -125,47 +125,50 @@ def main():
 
     # A preempting saver cannot commit its buffer while the outer saver is
     # writing. Capture a torn checkpoint, then retry with the new last step.
-    m.seed();m.c('hd_nv_save_c',0)
-    last_ticket=int.from_bytes(header(retained.snapshot(m))[3:7],'big')
-    watch=False;pending=False;interrupted=False;writes=0;torn=None
-    trace=InterruptMaskTrace(u);addresses={BASE+o for o in OFFSETS}
-    def written(uc,access,address,size,value,data):
-        nonlocal pending,writes
-        if watch and address in addresses and address!=BASE+OFFSETS[0]:
-            assert trace.ipl==0,'bulk retained writes masked interrupts'
-            assert not retained.committed(m),'bank published during bulk writes'
-            writes+=1
-            if not interrupted:pending=True
-    def inspect(uc,pc,size,data):
-        if watch:
-            trace.before(pc)
-            if pending:uc.emu_stop()
-    u.hook_add(UC_HOOK_MEM_WRITE,written);u.hook_add(UC_HOOK_CODE,inspect)
-    u.mem_write(m.stack,m.done.to_bytes(4,'big')+bytes(4))
-    u.reg_write(UC_M68K_REG_A7,m.stack);u.reg_write(UC_M68K_REG_SR,0x2000)
-    m.arrival=None;watch=True
-    u.emu_start(s['hd_nv_save_c'],0,count=30000000)
-    assert pending
-    saved=u.context_save();torn=retained.snapshot(m);interrupted=True;pending=False;watch=False
-    outer=m.stack;m.stack=0x4700c000
-    m.c('ha_set_c',0,15,7,63,10)  # real ACC edit invalidates the in-flight bank
-    u.mem_write(s['ch_lock_table']+8191,b'\x06')
-    for _ in range(20):m.c('hd_nv_poll_c')
-    m.c('hd_nv_save_c',0)
-    assert not retained.committed(m)
-    m.stack=outer;u.context_restore(saved);m.arrival=None;trace.ipl=0;watch=True
-    u.emu_start(u.reg_read(UC_M68K_REG_PC),0,count=30000000);watch=False
-    assert m.arrival==m.done and writes>8192
-    finished=retained.snapshot(m)
-    assert int.from_bytes(header(finished)[3:7],'big')==last_ticket+3,'UI polls created spurious generations'
-    retained.install(m,torn)
-    assert m.c('hd_nv_restore_c',0)==0
-    retained.install(m,finished);u.mem_write(s['ch_lock_table']+8191,b'\xff')
-    assert m.c('hd_nv_restore_c',0)==1 and u.mem_read(s['ch_lock_table']+8191,1)==b'\x06'
-    assert m.c('ha_lock_c',0,15,7,63)==10
+    for preempting in ('hd_nv_save_c', 'hd_nv_request_c'):
+        m.seed();m.c('hd_nv_save_c',0)
+        last_ticket=int.from_bytes(header(retained.snapshot(m))[3:7],'big')
+        watch=False;pending=False;interrupted=False;writes=0;torn=None
+        trace=InterruptMaskTrace(u);addresses={BASE+o for o in OFFSETS}
+        def written(uc,access,address,size,value,data):
+            nonlocal pending,writes
+            if watch and address in addresses and address!=BASE+OFFSETS[0]:
+                assert trace.ipl==0,'bulk retained writes masked interrupts'
+                assert not retained.committed(m),'bank published during bulk writes'
+                writes+=1
+                if not interrupted:pending=True
+        def inspect(uc,pc,size,data):
+            if watch:
+                trace.before(pc)
+                if pending:uc.emu_stop()
+        write_hook=u.hook_add(UC_HOOK_MEM_WRITE,written)
+        code_hook=u.hook_add(UC_HOOK_CODE,inspect)
+        u.mem_write(m.stack,m.done.to_bytes(4,'big')+bytes(4))
+        u.reg_write(UC_M68K_REG_A7,m.stack);u.reg_write(UC_M68K_REG_SR,0x2000)
+        m.arrival=None;watch=True
+        u.emu_start(s['hd_nv_save_c'],0,count=30000000)
+        assert pending
+        saved=u.context_save();torn=retained.snapshot(m);interrupted=True;pending=False;watch=False
+        outer=m.stack;m.stack=0x4700c000
+        m.c('ha_set_c',0,15,7,63,10)  # real ACC edit invalidates the in-flight bank
+        u.mem_write(s['ch_lock_table']+8191,b'\x06')
+        for _ in range(20):m.c('hd_nv_poll_c')
+        m.c(preempting,0)
+        assert not retained.committed(m)
+        m.stack=outer;u.context_restore(saved);m.arrival=None;trace.ipl=0;watch=True
+        u.emu_start(u.reg_read(UC_M68K_REG_PC),0,count=30000000);watch=False
+        assert m.arrival==m.done and writes>8192
+        finished=retained.snapshot(m)
+        assert int.from_bytes(header(finished)[3:7],'big')==last_ticket+3,'UI polls created spurious generations'
+        retained.install(m,torn)
+        assert m.c('hd_nv_restore_c',0)==0
+        retained.install(m,finished);u.mem_write(s['ch_lock_table']+8191,b'\xff')
+        assert m.c('hd_nv_restore_c',0)==1 and u.mem_read(s['ch_lock_table']+8191,1)==b'\x06'
+        assert m.c('ha_lock_c',0,15,7,63)==10
+        u.hook_del(write_hook);u.hook_del(code_hook)
     result=dict(step_mapping='same pattern/track/step',legal_tuples=765,lanes=128,steps=8192,
         corruption_cases=len(corruptions),native_track_clear_restore=[0,59,127],
-        preempting_save='retried',busy_ui_polls_coalesced=20,torn_snapshot_rejected=True,bulk_writes_unmasked=True,
+        preempting_save='retried',preempting_edit_request='retried',busy_ui_polls_coalesced=20,torn_snapshot_rejected=True,bulk_writes_unmasked=True,
         contiguous_sram_unchanged=True,hardware_tested=False)
     out=ROOT/'out/harmony-track-retention';out.mkdir(parents=True,exist_ok=True)
     (out/'machine.json').write_text(json.dumps(result,indent=2)+'\n')
