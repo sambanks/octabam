@@ -78,8 +78,15 @@ def closure(scripts, deps):
 
 
 def tracked(root, *dirs):
+    """The tracked files under `dirs`, less the Markdown: a README under a
+    module or a remix is read by verify_docs and the site build, which are
+    their own CI jobs, and by no gate (4 Nov 2026: a README edit moved the
+    key of every job of the remix). No `dirs`, no files (`git ls-files --`
+    alone lists the whole tree)."""
+    if not dirs:
+        return []
     r = subprocess.run(["git", "ls-files", "-z", "--", *dirs], cwd=root, capture_output=True, text=True, check=True)
-    return [p for p in r.stdout.split("\0") if p]
+    return [p for p in r.stdout.split("\0") if p and not p.endswith(".md")]
 
 
 def project_dir():
@@ -160,6 +167,65 @@ def key(root, remix, job, argv, scripts, deps=None, env=None):
     put("job", job)
     put("argv", json.dumps([pathlib.Path(a).name if os.path.isabs(a) else a for a in argv]))
     put("image", file_digest(image))
+    for f in sorted(files):
+        put(f, file_digest(root / f))
+    put("port", reach.port_digest(root / "tools/emu/ot_emu"))
+    put("arch", platform.machine() + "/" + platform.system())
+    for t in TOOLCHAIN:
+        put(t, file_digest(root / t))
+    venv = root / ".venv/bin/python3"
+    put("venv", os.path.realpath(venv) if venv.exists() else "none")
+    project = env.get("OT_PROJECT", "")
+    put("project", project_stamp(pathlib.Path(project).expanduser() if project else None))
+    for var in ("BUILD", "OT_BANK"):
+        put(var, env.get(var, ""))
+    return h.hexdigest()
+
+
+# Trees a gate's scratch image is built from, beyond its own module's directory.
+BUILD_TREES = ("dsp", "tools/build", "tools/remix", "tools/harness")
+STOCK_SLICE = "out/raw/section_3_MAIN_OS.bin"
+
+
+def build_files(root, deps):
+    """The tracked files of BUILD_TREES a scratch image can depend on: every
+    file that is not Python (sources, tables, data: read by paths the graph
+    may not see), and the Python the build reaches from reach.BUILD_ROOTS,
+    the closure reach itself calls the build. A Python file the build does
+    not reach is a tool or a gate (selftest, the harness probes): the gate's
+    own closure covers it when the gate uses it (4 Nov 2026: main's
+    one-line edit of tools/remix/selftest.py moved the key of every shared
+    module gate, 1356 s rerun for nothing)."""
+    import reach  # noqa: E402
+    built = closure(reach.BUILD_ROOTS, deps)
+    return {f for f in tracked(root, *BUILD_TREES) if not f.endswith(".py") or f in built}
+
+
+def shared_key(root, name, argv, scripts, module_dirs, deps=None, env=None):
+    """The key of a gate that takes no remix and builds its own scratch image
+    (module_gates --shared): no image or remix in it. It covers the gate's
+    script closure, BUILD_TREES, the directories in `module_dirs` (the gate's
+    module and the modules it reaches), the manifests, the stock OS slice
+    the scratch image is built from, the port, the toolchain, the venv, the
+    project and BUILD/OT_BANK."""
+    env = os.environ if env is None else env
+    import reach  # noqa: E402
+    root = pathlib.Path(root)
+    deps = reach.scan_deps(root) if deps is None else deps
+    files = set(ALWAYS) | closure(scripts, deps)
+    # no global manifest glob (inputs() has one): a module's manifest is in its directory, and
+    # another module's edit cannot change this gate's scratch image (4 Nov 2026: three
+    # unrelated manifests moved the key of OCTA303 and MORPH)
+    files |= set(tracked(root, *module_dirs))
+    files |= build_files(root, deps)
+    h = hashlib.sha256()
+
+    def put(label, value):
+        h.update(label.encode()); h.update(b"\0"); h.update(str(value).encode()); h.update(b"\n")
+    put("v", 2)
+    put("shared", name)
+    put("argv", json.dumps([pathlib.Path(a).name if os.path.isabs(a) else a for a in argv]))
+    put("stock", file_digest(root / STOCK_SLICE))
     for f in sorted(files):
         put(f, file_digest(root / f))
     put("port", reach.port_digest(root / "tools/emu/ot_emu"))
