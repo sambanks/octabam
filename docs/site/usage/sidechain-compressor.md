@@ -46,7 +46,10 @@ affected.
 ## Operation
 
 - KEY chooses what drives the detector: OFF (the track's own signal, as
-  stock) or T1-T8. It is drawn as a nine-position switch, OFF pointing
+  stock) or T1-T8. In the loader form, KEY reads `--` while the side-chain
+  is not loaded (just after you pick COMPRESSOR, or while a reverb holds
+  its block: the `SC KEY OFF` message). COMPRESSOR then works as stock;
+  your KEY setting is kept and comes back when the side-chain does. It is drawn as a nine-position switch, OFF pointing
   left and T8 right, and moves one position per detent, also with the
   encoder pressed. Choosing the compressor's own track keys it from its own
   signal through the filter.
