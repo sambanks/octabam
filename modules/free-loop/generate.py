@@ -33,7 +33,8 @@ STOCK_CALLS = {'0x4000e7a4', '0x4009da16', '0x4009d9ae', '0x40056c2e', '0x40006d
                '0x40012f30', '0x40016388', '0x4002557c', '0x4003146c', '0x40031494', '0x40035624',
                '0x40055db4', '0x40056f4c', '0x4005829c', '0x4005a2b8', '0x4009c708', '0x400053d8',
                '0x40033e3c', '0x4004c012', '0x4004c024', '0x4004c02a',   # CC_SEND; the edge renderer's draw, blit, skip
-               '0x40008f84', '0x4009d3a6', '0x4009d91a'}   # RELEASE; the record builder's trig, no-trig exits
+               '0x40008f84', '0x4009d3a6', '0x4009d91a',   # RELEASE; the record builder's trig, no-trig exits
+               'rtm_gate', 'rtm_draw'}   # REC_TRIG_MUTE's, beside it under HOOKS (HK_REC_GATE / HK_ICON_DRAW)
 
 
 def compiler():
