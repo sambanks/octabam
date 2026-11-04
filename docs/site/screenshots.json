@@ -1015,5 +1015,35 @@
       "source": "emulator panel UART",
       "firmware_sha256": "1fdf5741dd9155ee3fde885d6ba16f8e1b6214d3561c4d215aa50a5eab7f25b8"
     }
+  },
+  "midi-harmony": {
+    "note-setup": {
+      "image": "midi-harmony/note-setup.png",
+      "caption": "MIDI NOTE SETUP: HARM CHORD.",
+      "remix": "midi-harmony",
+      "source": "emulator panel UART",
+      "firmware_sha256": "badd9c956eb9d9902ffe88435231a795e470ab246dd153b7328502bd1b68c5d0"
+    },
+    "chord": {
+      "image": "midi-harmony/chord.png",
+      "caption": "HARMONY: chord voicing, spread, root and size.",
+      "remix": "midi-harmony",
+      "source": "emulator panel UART",
+      "firmware_sha256": "badd9c956eb9d9902ffe88435231a795e470ab246dd153b7328502bd1b68c5d0"
+    },
+    "accum": {
+      "image": "midi-harmony/accum.png",
+      "caption": "HARMONY: degree accumulator bounds and reset.",
+      "remix": "midi-harmony",
+      "source": "emulator panel UART",
+      "firmware_sha256": "badd9c956eb9d9902ffe88435231a795e470ab246dd153b7328502bd1b68c5d0"
+    },
+    "note-main": {
+      "image": "midi-harmony/note-main.png",
+      "caption": "MIDI NOTE: degree, chord and accumulator controls.",
+      "remix": "midi-harmony",
+      "source": "emulator panel UART",
+      "firmware_sha256": "badd9c956eb9d9902ffe88435231a795e470ab246dd153b7328502bd1b68c5d0"
+    }
   }
 }

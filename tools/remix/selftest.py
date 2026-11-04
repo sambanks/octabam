@@ -1006,7 +1006,9 @@ def main():
     _rig = ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
-    _want = {"midi-follow": (), "midi-loopback": (), "midi-scales": (), "scales": (), "scales-quantizer": (), "mods": (), "ata-write-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
+    _want = {"midi": (), "midi-harmony": (), "midi-harmony-follow": (),
+             "harmony-follow-native-review": (), "harmony-scales-provider": (),
+             "midi-follow": (), "midi-loopback": (), "midi-scales": (), "scales": (), "scales-quantizer": (), "mods": (), "ata-write-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
              "usb-out-tracks-post": (),
              "remix-switch": (), "remix-switch-trace": (),   # REMIX SWITCH's park in dead vectors, no region words
              "rs64": (),   # remix-switch with BBD placed in the shared window: no region words

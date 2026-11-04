@@ -9,7 +9,6 @@ B = 0x400e21e0
 BS = 0x9b340
 PS = 0x18b2
 
-
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
     return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBb] ((?:hd|mh|bf|ch|store_part|ms|seq|eu)_\w+)$',raw,re.M)}

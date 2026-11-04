@@ -34,6 +34,8 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`ext-probe`](ext-probe/README.md) | octabam's core and stock effects (EQUALIZER's id is the probe's) with EXTPROBE on FX1: the highest window word a reverb writes. | `make check` |
 | [`free-loop`](free-loop/README.md) | stock effects with FREE LOOP: a loop pedal per track, the first free loop sets the tempo. | `make check` |
 | [`gateverb`](gateverb/README.md) | GATE VERB alone: the fixture of its render gate. | local render: `verify_gateverb`; not flashed |
+| [`harmony-follow-native-review`](harmony-follow-native-review/README.md) | Harmony native-KEY control composition for the EVENTS/STORE migration. | port-gated |
+| [`harmony-scales-provider`](harmony-scales-provider/README.md) | Harmony native-KEY control composition for the EVENTS/STORE migration. | port-gated |
 | [`hooks`](hooks/README.md) | MORPH, REC_TRIG_MUTE and REC THRESHOLD together (HOOKS bridges the [TRACK] key layer and the status icons) with STORE and the stock effects. | port-gated: verify_hooks: the bridged chain and table under Unicorn, and this image's sites |
 | [`hooks-boot`](hooks-boot/README.md) | BOOT TRACE beside STORE and MIDI LOOPBACK: HOOKS runs both at the boot's post-loader call. | port-gated: verify_hooks: the boot chain under Unicorn and in this image |
 | [`hooks-chrom-303`](hooks-chrom-303/README.md) | OCTA303 (the OCTA-303 machine) beside SCALE QUANTIZER: HOOKS gives a 303 track's CHROMATIC keys to OCTA303 and every other track's to SCALE QUANTIZER. | port-gated: verify_hooks: the bridged CHROMATIC sites in this image and the chains under Unicorn |
@@ -52,6 +54,8 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`lofi2`](lofi2/README.md) | LOFI2 beside the stock effects (all but PLATE REV and SPRING REV, whose words it takes). | `make check` |
 | [`midi-follow`](midi-follow/README.md) | Per-track RFOL source selection on MIDI NOTE SETUP; Part-owned bass following. | port-gated |
 | [`midi-follow-events`](midi-follow-events/README.md) | MIDI Follow with EUCLID and PLOCKS P2 sharing EVENTS notifications. | port-gated |
+| [`midi-harmony`](midi-harmony/README.md) | Scale-degree notes, chords and accumulator with native KEY; no Follow. | port-gated |
+| [`midi-harmony-follow`](midi-harmony-follow/README.md) | MIDI Harmony, Scales and Follow control composition without Loopback. | port-gated |
 | [`midi-loopback`](midi-loopback/README.md) | Stock effects plus the Part-scoped per-track MIDI loopback routing. | port-gated: routing previously tested on MKII; STORE Part migration requires new hardware qualification |
 | [`midi-scales`](midi-scales/README.md) | All twelve keys and seven modes in the native ARP SETUP KEY control. | port-gated |
 | [`midi-scenes`](midi-scenes/README.md) | Reference minimal build: the MIDI SCENES ColdFire patch, plus direct-jump so `swd` runs. | port-gated: `verify_scenes` against MIDISC2.1 under the port; not flashed |

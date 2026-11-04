@@ -10,6 +10,34 @@ states the symptom, what it cost, the fix, and what now gates it.
 Add a new trap here the moment it costs real work, and add its one-line
 index entry in `AGENTS.md`'s trap index.
 
+<a id="trap-retention-budget"></a>
+### Uninitialized retention can hide the real edit cost
+
+**Seen:** Harmony integration, PR #1019: generic Follow fixtures measured a
+HARM mode edit at 31,784 instructions because uninitialized Harmony roots
+made packing reject. Initializing retention exposed roughly 649,000
+instructions of full-bank serialization. Raising the fixture allowance to
+40,000 would neither preserve the original limit nor bound the real path.
+
+**Fix and gate:** mode edits now request the existing UI poll to checkpoint;
+Part replacement indexes attached provenance. `verify_harmony_lifecycle`
+initializes retention and native bank data, enforces the original 20,000
+limit on edits/copies, and checks deferred save/recovery. Previous source
+fails its negative control. Background serialization and dense copies still
+have separate costs; these fixture counts are not hardware latency.
+
+<a id="trap-selection-refusal"></a>
+### A refused candidate can crash the remixer before selection
+
+**Seen:** PR #1019 CI, 4 Nov 2026: drawing the valid `midi` remix failed when
+AVAILABLE tested the incompatible SCALES prototype. Its selection callback
+raised `ValueError` before the ledger could return collision descriptions.
+
+**Fix and gate:** the candidate preview and selected-state problem list
+display that rejection instead of terminating the UI. Build compatibility
+is unchanged. `verify_remixer` checks both the candidate verdict and all
+three panes after selecting the rejected combination.
+
 <a id="trap-detour-interior"></a>
 ### A branch can enter the middle of a displaced instruction span
 

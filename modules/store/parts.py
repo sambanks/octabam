@@ -5,7 +5,11 @@ smallest read window that must remain coherent and only the bytes a client
 writes. Saved layout and field meaning remain the client's responsibility.
 """
 import re
+import runpy
+from pathlib import Path
 from remix.schema import Claims, Detour, Gate, Linked, Poke
+
+_RETAINED = runpy.run_path(str(Path(__file__).with_name('retained.py')))
 
 PART_SIZE = 0x18b2
 MIDI_BASE, MIDI_SIZE = 0x4e2, 8 * 36
@@ -17,7 +21,6 @@ PART_CLIENTS = {
     'MIDI FOLLOW': (((MIDI_BASE, MIDI_SIZE),), midi_fields(3, 12, 13, 15)),
     'MIDI LOOPBACK': (((MIDI_BASE, MIDI_SIZE),), midi_fields(12)),
     'MIDI HARMONY': (((MIDI_BASE, MIDI_SIZE),), midi_fields(5, 16, 18, 19)),
-    'MIDI SRAM': ((), ()),
     # Reads each MIDI track's KEY (store_part_midi_key) and the engines' Part
     # contexts; writes no native byte (its scale IDs live in scales.work).
     'SCALES': (((MIDI_BASE, MIDI_SIZE),), ()),
@@ -99,8 +102,8 @@ def part_inc(modules, remix=None):
                         f'    jsr {symbol}', '    movem.l (%sp),%d0-%d7/%a0-%a6', '    lea 60(%sp),%sp']
         out += ['.endm']
     out += ['.macro STORE_PART_COPY_OVERRIDE']
-    if 'MIDI SRAM' in active:
-        out += ['    jmp rp_store_copy']
+    if _RETAINED['layout'](modules):
+        out += ['    jmp store_retained_copy']
     out += ['.endm', '.macro STORE_PART_NOTE_REFRESH']
     # NOTE SETUP stages the first six bytes as longs. Only live module fields
     # declared writable are refreshed; stock CHAN/BANK/PROG/SBNK stay staged.
@@ -117,9 +120,15 @@ def part_inc(modules, remix=None):
     return '\n'.join(out)+'\n'
 
 
+def enabled(modules):
+    # HOOKS also asks about all potential clients while indexing bridges;
+    # overlapping alternative reservations are validated on actual selection.
+    return bool(layout(modules)[0] or set(modules).intersection(_RETAINED['RETAINED_CLIENTS']))
+
+
 def additions(modules):
     active, windows, writes = layout(modules)
-    if not active:
+    if not enabled(modules):
         return dict(linked=(), detours=(), pokes=(), claims=None, gates=())
     stride = max(1, sum(n for _,n in windows))
     linked = (

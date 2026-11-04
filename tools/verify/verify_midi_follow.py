@@ -30,7 +30,7 @@ REGS = [UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2, UC_M68K_REG_D3,
 
 def symbols():
     nm = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
-    return {name: int(addr, 16) for addr, name in re.findall(r'^([0-9a-f]+) [TtBb] (bf_\w+)$', nm, re.M)}
+    return {name: int(addr, 16) for addr, name in re.findall(r'^([0-9a-f]+) [TtBb] ((?:bf_\w+|mh_pitch_owned))$', nm, re.M)}
 
 
 def machine_gate(image):
@@ -53,7 +53,9 @@ def machine_gate(image):
     # the register C adapter, 8 for begin->sync, 28 for sync->mode, 16 for
     # the field adapters, and 24 for STORE = 228. The extra response local
     # retains the resolved source for all four voices (previous bound: 224).
-    stack_budget = 228
+    # The optional Harmony pitch policy adds one four-byte response local
+    # (response.s: HAVE_PITCH_RESPONSE). Keep standalone Follow at 228.
+    stack_budget = 232 if 'mh_pitch_owned' in sym else 228
     arrivals = []
     unexpected_writes = []
     written_addresses = set()

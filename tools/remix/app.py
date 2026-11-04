@@ -740,7 +740,13 @@ class RemixerScreen(Screen):
         bridges = [b for b in mods if b.overrides and b.key not in st.sel]
         for m in mods:
             sel = loaded if m.key in st.sel else loaded + [m]
-            probs = ledger.check(sel)
+            try:
+                probs = ledger.check(sel)
+            except ValueError as exc:
+                # Previewing an unsupported candidate is a verdict, not a
+                # reason to stop drawing the otherwise valid loaded remix.
+                out[m.key] = str(exc)
+                continue
             mine = [p_ for p_ in probs if m.name in p_]
             if not mine:
                 continue
