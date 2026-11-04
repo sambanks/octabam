@@ -61,7 +61,8 @@ usbmidi_setcfg_shim:
     movel   #0x22000000,%d0        | mult 1, max packet 512
     movel   %d0,QH_EP2OUT_W0
     movel   %d0,QH_EP2IN_W0
-1:  moveq   #1,%d0
+1:  bsr     usbmidi_tx_reset        | nothing queued for an old session goes out in this one
+    moveq   #1,%d0
     moveb   %d0,usbmidi_up
     clrb    usbmidi_tx_busy
     moveml  %sp@,%d0-%d1/%a0-%a1
@@ -167,29 +168,40 @@ usbmidi_rx_decode:
     lea     %sp@(20),%sp
     rts
 
-| ---- TX coalescing queue -------------------------------------------------
-| D1's single-dTD hole is closed by a software queue, not a dTD chain: both
-| senders APPEND complete MIDI messages to a byte accumulator; a kick flushes
-| the accumulator through the dormant encoder as one transfer whenever EP2 IN
-| is free, and the EP2-IN completion ISR kicks again. Double-buffered (acc
-| fills, snd is being encoded) so the encoder never reads a buffer an append
-| is writing. A message that would overflow the accumulator increments
-| usbmidi_tx_drops instead of corrupting the stream — loss is counted, never
-| silent. TX_CAP is the accumulator size (bytes of raw MIDI queued).
-.set TX_CAP, 256
+| ---- TX queue -------------------------------------------------------------
+| D1's single-dTD hole is closed by a software queue, not a dTD chain. Senders
+| append complete MIDI messages; a kick flushes them through the dormant
+| encoder as one transfer whenever EP2 IN is free, and the EP2-IN completion
+| ISR kicks again. Two stages:
+|   acc  (TX_CAP bytes)  the next transfer's bytes; a message that fits goes
+|                        here directly while the ring is empty
+|   ring (RING_CAP)      whole messages as [len][bytes], in arrival order,
+|                        for a burst longer than acc holds
+| snd is the transfer being encoded, so the encoder never reads a buffer an
+| append is writing. A kick moves whole ring messages into acc before it swaps.
+| A message longer than 255 bytes, or one the ring has no room for, increments
+| usbmidi_tx_drops: loss is counted, never silent.
+.set TX_CAP,   256
+.set RING_CAP, 4096                     | power of two
 
 | usbmidi_tx_append(len=%d0, buf=%a0): queue one complete message, then
-| kick. Masks interrupts around the accumulator. Trashes %d0-%d3/%a0-%a1.
+| kick. Masks interrupts around the queue. Trashes %d0-%d3/%a0-%a1.
 usbmidi_tx_append:
     tstl    %d0
-    bles    9f                      | nothing to queue
+    jle     9f                      | nothing to queue
     movew   %sr,%d2
     movew   #0x2700,%sr
+    cmpil   #255,%d0
+    jgt     6f                      | longer than a ring record -> drop, count
+    mvzw    usbmidi_tx_rhead,%d1
+    mvzw    usbmidi_tx_rtail,%d3
+    cmpl    %d3,%d1
+    bnes    4f                      | older messages wait in the ring: queue behind them
     mvzw    usbmidi_tx_acc_len,%d1  | d1 = acc_len
     movel   %d1,%d3
     addl    %d0,%d3                 | d3 = acc_len + len (proposed)
     cmpil   #TX_CAP,%d3
-    bgts    6f                      | overflow -> drop, count
+    bgts    4f                      | does not fit acc -> ring
     lea     usbmidi_tx_acc,%a1
     addal   %d1,%a1                 | dest = &acc[acc_len]
 5:  moveb   %a0@+,%a1@+
@@ -198,18 +210,90 @@ usbmidi_tx_append:
     movew   %d3,usbmidi_tx_acc_len  | acc_len = acc_len + len
     movew   %d2,%sr
     bra     usbmidi_tx_kick
+4:  mvzw    usbmidi_tx_rhead,%d1    | free = (head - tail - 1) mod RING_CAP
+    mvzw    usbmidi_tx_rtail,%d3
+    subl    %d3,%d1
+    subql   #1,%d1
+    andil   #RING_CAP-1,%d1
+    movel   %d0,%d3
+    addql   #1,%d3                  | record = len byte + message
+    cmpl    %d3,%d1
+    blts    6f                      | no room -> drop, count
+    mvzw    usbmidi_tx_rtail,%d1
+    lea     usbmidi_tx_ring,%a1
+    moveb   %d0,%a1@(0,%d1:l)       | len byte
+    addql   #1,%d1
+    andil   #RING_CAP-1,%d1
+3:  moveb   %a0@+,%d3
+    moveb   %d3,%a1@(0,%d1:l)
+    addql   #1,%d1
+    andil   #RING_CAP-1,%d1
+    subql   #1,%d0
+    bnes    3b
+    movew   %d1,usbmidi_tx_rtail
+    movew   %d2,%sr
+    bra     usbmidi_tx_kick
 6:  addql   #1,usbmidi_tx_drops
     movew   %d2,%sr
 9:  rts
 
-| usbmidi_tx_kick: if EP2 IN is free and the accumulator is non-empty, swap
-| acc->snd and encode snd as one transfer. Masks only the swap; the encode
-| runs unmasked on the stable snd buffer (tx_busy serialises kicks).
+| usbmidi_tx_refill: move whole ring messages into acc while the next one
+| fits. Caller has interrupts masked. Preserves %d1/%d3/%d4; trashes
+| %d0/%d2/%a0/%a1.
+usbmidi_tx_refill:
+    movel   %d1,%sp@-
+    movel   %d3,%sp@-
+    movel   %d4,%sp@-
+1:  mvzw    usbmidi_tx_rhead,%d1
+    mvzw    usbmidi_tx_rtail,%d0
+    cmpl    %d0,%d1
+    beqs    8f                      | ring empty
+    lea     usbmidi_tx_ring,%a0
+    mvzb    %a0@(0,%d1:l),%d2       | d2 = message length
+    mvzw    usbmidi_tx_acc_len,%d3
+    movel   %d3,%d4
+    addl    %d2,%d4
+    cmpil   #TX_CAP,%d4
+    bgts    8f                      | the next message does not fit acc
+    movew   %d4,usbmidi_tx_acc_len
+    lea     usbmidi_tx_acc,%a1
+    addal   %d3,%a1                 | dest = &acc[old acc_len]
+    addql   #1,%d1
+    andil   #RING_CAP-1,%d1
+2:  mvzb    %a0@(0,%d1:l),%d0
+    moveb   %d0,%a1@+
+    addql   #1,%d1
+    andil   #RING_CAP-1,%d1
+    subql   #1,%d2
+    bnes    2b
+    movew   %d1,usbmidi_tx_rhead
+    bra     1b
+8:  movel   %sp@+,%d4
+    movel   %sp@+,%d3
+    movel   %sp@+,%d1
+    rts
+
+| usbmidi_tx_reset: drop everything queued (acc and ring). Saves its own SR.
+| Trashes %d0.
+usbmidi_tx_reset:
+    movew   %sr,%d0
+    movew   #0x2700,%sr
+    clrw    usbmidi_tx_acc_len
+    clrw    usbmidi_tx_rhead
+    clrw    usbmidi_tx_rtail
+    movew   %d0,%sr
+    rts
+
+| usbmidi_tx_kick: if EP2 IN is free and something is queued, top acc up from
+| the ring, swap acc->snd and encode snd as one transfer. Masks only the
+| refill and swap; the encode runs unmasked on the stable snd buffer
+| (tx_busy serialises kicks).
 usbmidi_tx_kick:
     movew   %sr,%d1
     movew   #0x2700,%sr
     tstb    usbmidi_tx_busy
     bnes    9f
+    bsr     usbmidi_tx_refill
     mvzw    usbmidi_tx_acc_len,%d0
     beqs    9f                      | nothing queued
     moveq   #1,%d2
@@ -271,14 +355,17 @@ usbmidi_prio_shim:
     .balign 2
 usbmidi_cin_len:
     .byte   0,0,2,3,3,1,2,3,3,3,3,3,2,2,3,1
-    .global usbmidi_up, usbmidi_tx_busy, usbmidi_tx_drops
+    .global usbmidi_up, usbmidi_tx_busy, usbmidi_tx_drops, usbmidi_tx_reset
 usbmidi_up:      .byte 0
 usbmidi_tx_busy: .byte 0
 usbmidi_tmpbyte: .byte 0
     .balign 2
 usbmidi_tx_acc_len: .word 0
 usbmidi_tx_snd_len: .word 0
+usbmidi_tx_rhead:   .word 0
+usbmidi_tx_rtail:   .word 0
 usbmidi_tx_drops:   .long 0
 usbmidi_tx_acc:  .space TX_CAP
 usbmidi_tx_snd:  .space TX_CAP
+usbmidi_tx_ring: .space RING_CAP
     .balign 2
