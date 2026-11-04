@@ -73,7 +73,8 @@ QPL_PUBLISHED = 0x80000C9E           # slot 10: IN under THR, not edited
 LEV_DB = (-60, -56, -52, -48, -44, -40, -36, -32, -28, -24,   # thresh.s lev_db, raw -1 .. 16
           -20, -16, -12, -8, -6, -4, -2, 0)
 ARM_PC = 0x400069D6
-RUN_TIMEOUT_S = 900                  # per port run
+RUN_TIMEOUT_S = 3600                 # per port run: a hang guard. The eight runs share the cores, and in CI a
+                                     # third of a 4-vCPU runner took 840-1002 s (4 Nov 2026; 900 s timed out)
 ELAPSED = {}                         # job name -> wall seconds, None while running
 
 # Panel key codes (tools/panel/key_map.json: row 0x20+r, bit b -> r*8+b).
