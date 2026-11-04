@@ -36,6 +36,7 @@ nav:
       - Effects:
           - Character: reference/manual/octabam/effects/character.md
           - Modulation: reference/manual/octabam/effects/modulation.md
+          - Shatter: reference/manual/octabam/effects/shatter.md
           - Spectrum: reference/manual/octabam/effects/spectrum.md
       - Machines:
           - OCTA-303: reference/manual/octabam/machines/octa303.md
