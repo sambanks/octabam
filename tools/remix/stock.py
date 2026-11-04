@@ -234,6 +234,17 @@ SLOT_BASES = (0x30000, 0x34000, 0x38000, 0x3C000)
 # (retracted: read from the routine above, against the stock bytes).
 DELAY_TABLE_END = 0x400d24d0
 DELAY_TABLE_READ_END = 0x400d2ce0    # entry 1024: past the last word DELAY reads
+# ... less SCALE QUANTIZER's two pinned units (Tim Hastie's ABI, fixed
+# addresses his SYNTH, EUCLID FILL and SCALES call): `qzs` at 0x400d2ca8
+# (entries 1010-1011, `jmp qz_scale_mask`) and `qzk` at 0x400d2cb0..0x400d2cdd
+# (entries 1012-1023, the paraphonic key mailbox, written at run time). Until
+# they move out of the run, DELAY keeps 0x400d24d0..0x400d2ca8 and the rest is
+# KNOWN EXPOSURE (inferred, not rendered): with knob words the LP index is
+# (BASE + WDTH) * 4, so the reachable entries there are 1012 (qz_pkey[0..3],
+# BASE + WDTH = 253) and 1016 (qz_pmask[1], 127/127), and only while CHROMATIC
+# keys are held on a synth track; the boot init's entry 1023 is qz_oct's byte
+# and three zeros. Other entries need a knob word with low bits (an LFO).
+DELAY_KEEP_END = 0x400d2ca8
 
 
 def _stock(key, name, fx2_id, desc, abbr, fullname, words, doc, char,
@@ -281,9 +292,10 @@ MODULES = (
     _stock("DELAY", "delay", 0x08, 0x400d4a96, b"DEL", b"DELAY", 0,
            "Stock Echo Freeze delay -- runs on the ColdFire, so it costs the "
            "DSP nothing; the row works as on a stock unit. No local render.",
-           "Y", keeps=(Keep(DELAY_TABLE_END, bytes(DELAY_TABLE_READ_END - DELAY_TABLE_END),
-                            "the stock DELAY reads entries 508..1023 of its coefficient "
-                            "table (zero: the filter open) as pole coefficients"),)),
+           "Y", keeps=(Keep(DELAY_TABLE_END, bytes(DELAY_KEEP_END - DELAY_TABLE_END),
+                            "the stock DELAY reads entries 508..1009 of its coefficient "
+                            "table (zero: the filter open) as pole coefficients; "
+                            "1010..1023 are SCALE QUANTIZER's pinned units (#1007)"),)),
     # Null DSP stub (docs/firmware/DSP.md); FX2-only. Listed so a buffer
     # insert can declare replaces="MULTIBCOMP" without taking DELAY/PHASER.
     _stock("MULTIBCOMP", "multibcomp", 0x19, 0x400d5bdc, b"MBC",

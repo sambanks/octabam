@@ -1157,7 +1157,8 @@ def main():
             _ovf_top = max(_ovf_top, (_c.cave_addr + len(_b) + 3) & ~3)
     # Floating code starts past any bytes a module keeps stock here (DELAY
     # reads the whole run as entries 508..1023 of its table, stock.DELAY_TABLE_END;
-    # issue #1007), so in a remix that lists DELAY nothing floats into it.
+    # issue #1007; it keeps all but SCALE QUANTIZER's pinned tail), so in a remix
+    # that lists DELAY nothing floats into it.
     for _k in REMIX.modules:
         for _kp in getattr(remix_modules()[_k], "keeps", ()):
             if OVERFLOW_RUN <= _kp.addr < OVERFLOW_RUN_END:

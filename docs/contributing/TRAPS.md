@@ -1367,7 +1367,8 @@ end). Gate: none of its own; the refusal names both regions.
 
 The run's own bytes are not free either: the stock DELAY reads the whole run
 as entries 508..1023 of its coefficient table (`stock.DELAY_TABLE_END`, issues
-#771 and #1007; the 16 bytes past the curve until 4 Nov 2026), and the
+#771 and #1007; the 16 bytes past the curve until 4 Nov 2026; all but SCALE
+QUANTIZER's pinned tail at `0x400d2ca8` is kept now), and the
 first form of this fix put the cave on them in a selection listing DELAY (the
 kept-bytes check refused it: `DELAY keeps 0x400d24d0`). The overflow cursor
 now starts past every byte a selected module keeps stock in the run.

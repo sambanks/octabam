@@ -208,8 +208,10 @@ run at `0x401087e4` and the unit raised `VEC:03` in the menu draw loop
                                     and the boot init entry 1023; a cave there changes the DELAY's
                                     output. Issue #771 (measured 21 Oct 2026, entry 508) and #1007
                                     (read from the routine, 4 Nov 2026). A remix that lists DELAY
-                                    keeps the whole run zero; until 4 Nov the Keep was the first
-                                    16 B, on an index "up to 511", retracted.)
+                                    keeps 0x400d24d0..0x400d2ca8 zero; the tail is SCALE
+                                    QUANTIZER's pinned qzs/qzk, a known exposure until they
+                                    move (stock.DELAY_KEEP_END). Until 4 Nov the Keep was the
+                                    first 16 B, on an index "up to 511", retracted.)
 0x400d2ee6..0x400d3020     314 B   (refused at placement by the build, 25 Sep 2026:
                                     a live descriptor, modules/midi-scenes' CAVE2 note)
 0x400d64da..0x400d7c3c   5,986 B   (the FX2 chooser's NONE row + terminator sit at
