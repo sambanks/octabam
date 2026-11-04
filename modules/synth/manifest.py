@@ -72,9 +72,9 @@ MODULE = dataclasses.replace(
 # PLACE: where the PLAYBACK page lives. DRAM (the default) links page.s into the platform
 # runtime. CAVE is the author's pinned ROM cave at 0x400d24d0, the bytes his build ratified
 # (`PINNED_PAGE`); the ledger refuses it in a remix that lists the stock DELAY (stock.py).
-# The stock DELAY reads `0x400d1ce0 + 4 * (x >> 6)` for an index up to 511 and
-# its table ends at 0x400d24d0, so the first words of that run are read as
-# data when the delay time is long and the tempo slow: the page's first bytes
+# The stock DELAY reads `0x400d1ce0 + 4 * (x >> 6)` for an index up to 1023 and
+# its curve ends at 0x400d24d0, so the whole zero run is read as table data
+# (issue #1007; the first words when the delay time is long and the tempo slow): the page's first bytes
 # change the DELAY's output (issue #771, measured under the port). DRAM links
 # page.s into the platform runtime with poly.s and leaves the zero run alone;
 # its resolver is a detour at the same site. page.s is written with labels, so

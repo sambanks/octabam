@@ -815,6 +815,12 @@ class FormatterReg:
     # On a Linked unit (Linked.registers_formatter): the formatter's entry
     # symbol in that unit; `offset` is added to it.
     symbol: str = ""
+    # A formatter that WRAPS the slot's declared one (Param.formatter_word):
+    # the build writes it over the A word after the raw descriptor words, and
+    # keeps the slot's widget (B) and 0x12a. The wrapper tail-jumps to the
+    # declared formatter, which it names as a Linked.defsym. DRAM units only.
+    # DLPUMP's dl_keyfmt over SIDECHAIN_COMPRESSOR's KEY (issue #934).
+    wraps: bool = False
 
 
 @dataclass(frozen=True)

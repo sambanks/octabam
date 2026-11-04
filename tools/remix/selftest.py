@@ -211,6 +211,10 @@ CASES = [
       _cf("beta", keeps=(Keep(0x4001f322, bytes.fromhex("48780070")),))], "kept bytes"),
     ("a cave over the stock DELAY's table read (issue #771)",
      [registry.by_key("DELAY"), _cave("alpha", 0x400d24d0)], "kept bytes"),
+    ("a cave over entry 764 of the stock DELAY's table (issue #1007)",
+     [registry.by_key("DELAY"), _cave("alpha", 0x400d28d0)], "kept bytes"),
+    ("a cave over entry 1006 of the stock DELAY's table (issue #1007)",
+     [registry.by_key("DELAY"), _cave("alpha", 0x400d2c98)], "kept bytes"),
     # ---- grown tables ----------------------------------------------------
     ("two modules growing one stock array",
      [_cf("alpha", tables=(TableGrow("t", 0x40100000, 4, (("u", "a"),), ((0x40065bd8, 0x40100000),)),)),
@@ -1039,7 +1043,7 @@ def main():
              "octatrick": ("SPATIALIZER",),   # USB's ABCD input inject, as in the io remixes
              "pext-probe": ("EQUALIZER", "PLATE REV", "SPRING REV"),   # the probe takes EQUALIZER's id and the two reverbs' words
              "window-mod": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"), "window-ctl": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"),   # MODULATION takes CHORUS's id; the reverbs' words hold LOAD METER and CORE
-             "octabam": (),   # all 14 stock effects stay; ours and LOAD METER run from the window
+             "octabam": (),   # all 14 stock effects stay; ours, SC and LOAD METER run from the window
              "octabam-full": (),   # octabam with TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR as well
              "dlspike": (),   # all 14 stock effects stay; MODULATION is loaded on demand
              "dl-probe": ("EQUALIZER",), "dl-probe-any": ("EQUALIZER",),   # DLPROBE takes EQUALIZER's id
@@ -1071,7 +1075,7 @@ def main():
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "rig": _rig,
              "character-txtr": _rig,   # octabam-bus with the TXTR station
-             "octabam-bus": ("PLATE REV", "SPRING REV", "DARK REV"),   # FX2 is locked, so no row for the reverbs; nothing is harvested
+             "octabam-bus": _rig,   # FX1 lists only the three stations: the 13 stock effects give up their DSP code (FX2 is locked, so no row for the reverbs)
              "stations-fx2": _rig}
     for _n in registry.remix_names():
         _r = registry.remix(_n)

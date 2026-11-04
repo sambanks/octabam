@@ -95,9 +95,9 @@ start of the second free gap.
 page lives. `DRAM`: `page.s` is linked into the platform runtime with `poly.s`, the resolver at `0x40031ece`
 is a detour to `pg_resolve`, and the zero run is left alone. `CAVE`: the author's
 pinned ROM cave at `0x400d24d0`, which the ledger refuses in a remix that lists the
-stock DELAY (`Keep` on `0x400d24d0..0x400d24df`, `tools/remix/stock.py`). The stock DELAY
-reads the first words of that run as table data when its delay is long and the
-tempo slow, so with `CAVE` the DELAY computes a different output (issue #771,
+stock DELAY (`Keep` on `0x400d24d0..0x400d2ca8`, `tools/remix/stock.py`). The stock DELAY
+reads that whole run as table data (issue #1007; its first words when the delay is long and the
+tempo slow), so with `CAVE` the DELAY computes a different output (issue #771,
 `docs/contributing/FAILURE_MODES.md`). Measured under the port: the DRAM form
 renders the PLAYBACK and LFO pages pixel for pixel as the cave form, and TAPE ECHO
 + SYNTH MACHINE passes `verify_tapeecho_cpu` with it. Not on a unit; the DRAM
