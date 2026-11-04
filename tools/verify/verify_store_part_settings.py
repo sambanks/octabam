@@ -10,7 +10,8 @@ BS = 0x9b340
 PS = 0x18b2
 # HARM changes migrate pattern roots and publish retained state. This is a
 # UI/storage operation, not a per-note path; keep the generic 20k call limit.
-# Measured maximum: 32,514 instructions for the composed Part replacement.
+# Measured maximum: 32,526 instructions for composed Part replacement
+# (including the unrelated-Part Follow response case).
 HARMONY_EDIT_BUDGET = 40_000
 
 
