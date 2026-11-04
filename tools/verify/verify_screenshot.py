@@ -36,6 +36,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools")); sys.path.insert(0, str(ROOT / "tools/emu"))
 import toolpath  # noqa: E402,F401
 import emu_card  # noqa: E402
+sys.path.insert(0, str(ROOT / "tools/verify"))
+import gate_cache  # noqa: E402
 
 EMU = ROOT / "out/emu/ot_emu"
 PLANE = 0x46c7e0ea
@@ -92,10 +94,14 @@ def build(remix, work):
 
 def main():
     work = pathlib.Path(tempfile.mkdtemp(prefix="screenshot_"))
-    image = build("screenshot", work)
-    src = pathlib.Path(open(pathlib.Path.home() / ".octabam_project").read().strip())
-    card, _ = emu_card.stage_project(src, "OCTABAM", "BASS", tree=work / "tree")
-    (work / "card.img").write_bytes(card)
+    image = build("screenshot", work) if gate_cache.project_dir() else None
+    src = gate_cache.project_dir()
+    have_project = src is not None and src.is_dir()
+    if have_project:
+        card, _ = emu_card.stage_project(src, "OCTABAM", "BASS", tree=work / "tree")
+        (work / "card.img").write_bytes(card)
+    else:
+        print("  [SKIP] verify_screenshot: the DIN checks need a project (OT_PROJECT=<dir> or ~/.octabam_project); the USB checks run without one")
 
     fails = []
 
@@ -116,7 +122,7 @@ def main():
         assert r.returncode == 0, r.stdout[-1500:]
         return (out.read_bytes() if out.exists() else b""), dump.read_bytes()
 
-    for ident in ("10 00", "05 00"):
+    for ident in (("10 00", "05 00") if have_project else ()):
         got, plane = run("id" + ident[:2], [f"f0 00 20 3c {ident} {REQ_BODY} f7"])
         check(f"{ident}: one reply of 1,194 bytes", len(got) == 1194, f"{len(got)} bytes")
         check(f"{ident}: F0 00 20 3C + the request's id bytes, F7 last",
@@ -134,9 +140,9 @@ def main():
         check(f"{ident}: not blank, not full", 0 < sum(map(sum, gp)) < 128 * 64)
         if ident == "10 00":
             ref = got
-    for name, msg in (("cmd05", "f0 00 20 3c 10 00 00 00 01 00 00 05 f7"),
+    for name, msg in ((("cmd05", "f0 00 20 3c 10 00 00 00 01 00 00 05 f7"),
                       ("othermfr", "f0 00 20 3d 10 00 00 00 01 00 00 04 f7"),
-                      ("stock50", "f0 00 20 3c 05 00 50 00 00 00 00 04 f7")):
+                      ("stock50", "f0 00 20 3c 05 00 50 00 00 00 00 04 f7")) if have_project else ()):
         got, _ = run(name, [msg])
         check(f"{name}: no screenshot reply", len(got) != 1194, f"{len(got)} bytes")
 
@@ -172,8 +178,9 @@ def main():
     udiff = sum(a != b for a, b in zip(body[14:], ufb)) if len(body) == 1038 and len(ufb) == 1024 else -1
     check("usb: pixels = the plane (the firmware keeps drawing; read at exit)", 0 <= udiff <= 16, f"{udiff} bytes differ")
     check("usb: nothing on DIN", not din_out.exists() or din_out.stat().st_size == 0)
-    got, _ = run("usbdin", [f"f0 00 20 3c 10 00 {REQ_BODY} f7"], img=uimg)
-    check("usb image, request on DIN: answered on DIN", len(got) == 1194, f"{len(got)} bytes")
+    if have_project:
+        got, _ = run("usbdin", [f"f0 00 20 3c 10 00 {REQ_BODY} f7"], img=uimg)
+        check("usb image, request on DIN: answered on DIN", len(got) == 1194, f"{len(got)} bytes")
     print("verify_screenshot:", "FAIL " + ", ".join(fails) if fails else "ok")
     return 1 if fails else 0
 
