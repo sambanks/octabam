@@ -12,7 +12,7 @@ from collections import Counter
 from unicorn.m68k_const import *
 from verify_harmony_degree_files import Files, ROOT, BANK, STRIDE, PATTERN
 from harmony_retained import raw_p2 as raw
-from verify_midi_sram import OFFSETS
+from verify_store_retained import OFFSETS
 import harmony_retained as retained
 
 P2NV, P2SIZE = 0x100f8600, 15464

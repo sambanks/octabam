@@ -42,9 +42,8 @@ def reference_bytes(unit, keys, remix, address, exports, work, sections):
 
 
 def author_modules(keys):
-    # STORE packages the retained pool from Harmony's pin, without a new module.
+    # STORE retained storage is now locally maintained and verified separately.
     for key, owner, slug in (('MIDI HARMONY', 'midi-harmony', 'midi-harmony'),
-                             ('MIDI HARMONY', 'midi-harmony', 'midi-sram'),
                              ('MIDI FOLLOW', 'midi-follow', 'midi-follow')):
         if key not in keys:
             continue

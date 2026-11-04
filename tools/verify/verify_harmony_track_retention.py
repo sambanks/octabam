@@ -10,7 +10,7 @@ from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE
 from unicorn.m68k_const import *
 from verify_harmony_degree_files import Files, BANK, STRIDE
 from verify_harmony_degree_packed import oracle, mirror
-from verify_midi_sram import BASE, OFFSETS, SIZE
+from verify_store_retained import BASE, OFFSETS, SIZE
 from harmony_midi_machine import ROOT, InterruptMaskTrace
 import harmony_retained as retained
 

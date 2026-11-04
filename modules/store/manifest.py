@@ -151,16 +151,12 @@ _BASE = MODULE
 
 def select(modules):
     extra = _PARTS['additions'](modules)
-    if 'MIDI HARMONY' in modules:
-        # STORE owns native copy/clear protection. Reuse the author's unchanged
-        # pool code and exact sparse claims from Harmony's existing source pin;
-        # there is no separately selectable storage module in Octabam.
-        source = Path(__file__).resolve().parents[1] / 'midi-harmony/upstream/modules/midi-sram/manifest.py'
-        retained = runpy.run_path(str(source))['MODULE']
-        extra['linked'] += retained.linked
-        extra['pokes'] += retained.pokes
-        extra['gates'] += retained.gates
-        extra['claims'] = replace(extra['claims'], sram=retained.claims.sram)
+    retained = _PARTS['_RETAINED']['additions'](modules)
+    extra['linked'] += retained['linked']
+    extra['pokes'] += retained['pokes']
+    extra['gates'] += retained['gates']
+    if retained['sram']:
+        extra['claims'] = replace(extra['claims'], sram=retained['sram'])
     return dict(linked=_BASE.linked + extra['linked'],
                 detours=_BASE.detours + extra['detours'],
                 pokes=_BASE.pokes + extra['pokes'],
@@ -168,4 +164,4 @@ def select(modules):
 
 from dataclasses import replace
 MODULE = replace(MODULE, select=select,
-    proof_note=MODULE.proof_note + "; native Part access and optional Harmony retained storage: hardware testing outstanding")
+    proof_note=MODULE.proof_note + "; native Part access and optional retained storage: hardware testing outstanding")

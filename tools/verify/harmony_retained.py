@@ -1,5 +1,5 @@
 """Inspection helpers for Harmony's own-step retained layout, not musical oracles."""
-from verify_midi_sram import BASE, OFFSETS
+from verify_store_retained import BASE, OFFSETS
 
 def snapshot(m):
     data=bytes(m.uc.mem_read(BASE,16*0x8ed8))

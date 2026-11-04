@@ -204,7 +204,9 @@ to B Minor; saving persists those changes for the bank written.
 
 Requires **STORE** and **EVENTS**. STORE automatically includes native Part
 access and retained MIDI storage when Harmony is selected; there is no extra
-storage module to select. MIDI Follow and MIDI Scales remain optional.
+storage module to select. Harmony is a client of STORE’s retained-memory
+service and currently reserves its full 16 KB pool. MIDI Follow and MIDI Scales
+remain optional.
 HARM and PLOCKS P2 register independently with EVENTS;
 no combination-specific bridge is selected. KITS libraries are per
 project; recalling a kit supplies Part defaults while pattern locks stay with

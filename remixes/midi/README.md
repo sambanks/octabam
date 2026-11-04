@@ -33,7 +33,9 @@ hardware reports do not qualify the combination or its maximum load.
 The focused carriers under `remixes/test` retain separate checks for Harmony
 without Follow, native KEY without Scales, and each module in isolation.
 There is no separately selectable MIDI SRAM module; STORE includes the
-retained-storage protection when Harmony is selected.
+retained-storage protection when a registered client is selected. Harmony
+reserves the current pool’s full 16 KB through that system service; the
+implementation lives in STORE and has no MIDI SRAM module dependency.
 
 With HARM OFF and all Loopback routes at EXT, seven GRAV LIVE followers moving four voices
 execute 31,974 instructions in the focused probe, versus 25,366 in the

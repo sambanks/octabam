@@ -166,4 +166,4 @@ Ghidra file is committed.
 | mischa85/elektron-firmware-tool | MIT, Copyright (c) 2026 Marcel Bierling | `tools/patches/elektron-firmware-tool.patch` |
 | Unicorn (via `.venv`, `make emu-setup`) | GPL-2.0 | `tools/patches/unicorn_emac_fractional.patch` |
 
-STORE's optional Harmony retained-storage support uses the unchanged `modules/midi-sram` source from the MIDI Harmony submodule pin above (radiohagen, MIT). Its allocation and native copy/clear guards are selected inside STORE, not as a separate Octabam module.
+STORE's locally maintained `retained.c`, generated `retained.s`, `retained-copy.s` and loop guards derive from radiohagen's MIT-licensed protected-pool implementation at `3e5ac07a090699c6a092d00de32d30239dea1a8b` (`modules/midi-sram` in the author repository). STORE now owns client reservations, bounded access and native copy/clear protection. It has no build dependency on that module or Harmony's submodule; the path here records source provenance.

@@ -360,9 +360,9 @@ _STORE_PARTS = runpy.run_path(str(Path(__file__).resolve().parents[1] / "store" 
 
 
 def _present(participants, modules):
-    # STORE owns the boot site only when a registered native Part client is selected.
+    # Native Part and retained-storage clients share STORE's cold activation.
     return tuple(p for p in participants if p[0] in modules
-                 and (p[0] != "STORE" or _STORE_PARTS["layout"](modules)[0]))
+                 and (p[0] != "STORE" or _STORE_PARTS["enabled"](modules)))
 
 
 def bridged(modules) -> tuple[str, ...]:
@@ -523,7 +523,8 @@ def select(modules):
 # The unbound declaration carries every bridge, so the matrix and the
 # remixer see HOOKS as the bridge that joins each pair (index.py, app.py);
 # ledger.check and registry.bound apply select() to any real selection.
-_ALL = select({p[0] for parts in BRIDGES.values() for p in parts} | set(_STORE_PARTS["PART_CLIENTS"]))
+_ALL = select({p[0] for parts in BRIDGES.values() for p in parts} | set(_STORE_PARTS["PART_CLIENTS"])
+              | set(_STORE_PARTS['_RETAINED']['RETAINED_CLIENTS']))
 
 MODULE = Module(
     name="hooks",
