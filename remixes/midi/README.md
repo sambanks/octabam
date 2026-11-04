@@ -43,10 +43,17 @@ routing cost for this composition. Native enqueue/transmission is stubbed;
 these are instruction counts, not cycles or hardware capacity. INT/BOTH routing
 is functionally checked separately and has no timing qualification here.
 
-The Part-replacement fixture executes 32,514 instructions in this remix,
-versus 3,408 in standalone Follow; replacing an unrelated Part reaches 32,526.
-The Harmony mode-change fixture executes 31,784. This integration introduces
-an explicit 40,000-instruction test allowance for those Harmony UI/storage
-operations; upstream's generic harness limit is 20,000. The extra work is
-real: the allowance bounds completion, not hardware latency or CPU capacity.
-Standalone Follow retains the generic limit, and per-note limits are unchanged.
+The generic lifecycle gate limit remains **20,000 instructions**. The temporary
+40,000 allowance introduced during integration has been removed; the affected
+Harmony mode-change and Part-copy gates currently fail. This is unresolved
+implementation work, not a passing performance qualification.
+
+Diagnostic probes on the merged image measured 32,514 instructions for the
+Follow fixture's Part copy (3,408 with standalone Follow), and 31,784 for its
+HARM mode edit. Those fixtures did not initialize Harmony's retained data:
+the mode edit's payload pack rejects the input and exits early. After running
+Harmony initialization, mode edits instead take about **649,000 instructions**,
+mostly full-bank retained packing/validation/writing; an inactive Part copy
+takes **24,322**. These are emulator instruction counts, not hardware timing.
+See the [lifecycle investigation](../../modules/midi-harmony/README.md#lifecycle-cost-investigation)
+for the work to remove before accepting the integration.
