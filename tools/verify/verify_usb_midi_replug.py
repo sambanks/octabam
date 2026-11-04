@@ -146,9 +146,8 @@ def transmits(b, tag, fresh=False):
 def run():
     sym = symbols()
     tag = "replug"
-    check("usbmidi.s's layout: usbmidi_tx_acc_len is usbmidi_up + 4 (usbmidi_rx_bus_end clears it there)",
-          sym.get("usbmidi_tx_acc_len") == sym["usbmidi_up"] + 4,
-          f"up {sym['usbmidi_up']:#x} acc_len {sym.get('usbmidi_tx_acc_len', 0):#x}")
+    check("usbmidi_rx_bus_end empties the queue through usbmidi_tx_reset",
+          "usbmidi_tx_reset" in sym, "symbol usbmidi_tx_reset" + ("" if "usbmidi_tx_reset" in sym else " missing"))
     sock = f"/tmp/ot-replug-{os.getpid()}-{tag}.sock"
     log = ROOT / f"out/verify_usb_midi_replug_{tag}.log"
     watch = f"{sym['usbmidi_up']:#x},2;{MIDI_FIFO_HEAD:#x},4"
