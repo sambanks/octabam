@@ -47,8 +47,8 @@ it, and each has its own page in this manual. This is version 0.3.
 - **Fixes.** The recorder loop click, stock LO-FI's AMF knob and a few
   sequencer and card-write faults are [corrected](fixes/recorder-loop-fix.md).
 
-SPECTRUM, CHARACTER and MODULATION are copied into the audio processor only
-while a track uses them. Until the code arrives, about 25 ms after you choose
+SPECTRUM, CHARACTER and MODULATION, and COMPRESSOR's side-chain, are copied
+into the audio processor only while a track uses them. Until the code arrives, about 25 ms after you choose
 the effect, it passes the audio through. A pattern change that puts one of
 them on all eight tracks, or takes it off them, leaves about 0.34 s of silence
 at the switch. See
