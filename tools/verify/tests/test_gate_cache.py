@@ -19,6 +19,68 @@ class CacheTests(unittest.TestCase):
         deps = {"a.py": {"b.py"}, "b.py": {"c.py"}, "c.py": set(), "d.py": {"a.py"}}
         self.assertEqual(gate_cache.closure(["a.py"], deps), {"a.py", "b.py", "c.py"})
 
+    def test_tracked_leaves_out_markdown(self):
+        with tempfile.TemporaryDirectory() as d:
+            import subprocess
+            d = pathlib.Path(d)
+            (d / "m").mkdir()
+            (d / "m/a.s").write_text("x"); (d / "m/README.md").write_text("y")
+            subprocess.run(["git", "init", "-q"], cwd=d, check=True)
+            subprocess.run(["git", "add", "."], cwd=d, check=True)
+            self.assertEqual(gate_cache.tracked(d, "m"), ["m/a.s"])
+
+    def test_shared_key_ignores_the_image_and_moves_with_a_module_file(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            (d / "modules/x").mkdir(parents=True)
+            (d / "modules/x/a.s").write_text("1"); (d / "out/raw").mkdir(parents=True)
+            (d / "out/raw/section_3_MAIN_OS.bin").write_text("os")
+            subprocess.run(["git", "init", "-q"], cwd=d, check=True)
+            subprocess.run(["git", "add", "-A", "-f"], cwd=d, check=True)
+            args = (d, "g", ["python3", "g.py"], set(), ["modules/x"])
+            with mock.patch("reach.port_digest", return_value="p", create=True):
+                import reach  # noqa: F401
+                one = gate_cache.shared_key(*args, deps={}, env={})
+                self.assertEqual(one, gate_cache.shared_key(*args, deps={}, env={}))
+                (d / "modules/x/a.s").write_text("2")
+                self.assertNotEqual(one, gate_cache.shared_key(*args, deps={}, env={}))
+                (d / "modules/x/a.s").write_text("1")
+                (d / "modules/y").mkdir(); (d / "modules/y/manifest.py").write_text("m")
+                subprocess.run(["git", "add", "-A", "-f"], cwd=d, check=True)
+                two = gate_cache.shared_key(*args, deps={}, env={})
+                (d / "modules/y/manifest.py").write_text("m2")
+                self.assertEqual(two, gate_cache.shared_key(*args, deps={}, env={}))   # an unrelated module's manifest
+                (d / "out/raw/section_3_MAIN_OS.bin").write_text("os2")
+                self.assertNotEqual(two, gate_cache.shared_key(*args, deps={}, env={}))
+
+    def test_shared_key_takes_the_build_trees_python_only_where_the_build_reaches(self):
+        import subprocess
+        import reach
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            (d / "tools/build").mkdir(parents=True); (d / "tools/remix").mkdir(parents=True)
+            (d / "out/raw").mkdir(parents=True); (d / "out/raw/section_3_MAIN_OS.bin").write_text("os")
+            root = reach.BUILD_ROOTS[0]
+            files = {root: "1", "tools/remix/lib.py": "1", "tools/remix/selftest.py": "1", "tools/remix/t.json": "1"}
+            for f, v in files.items():
+                (d / f).write_text(v)
+            subprocess.run(["git", "init", "-q"], cwd=d, check=True)
+            subprocess.run(["git", "add", "-A", "-f"], cwd=d, check=True)
+            deps = {root: {"tools/remix/lib.py"}, "tools/remix/lib.py": set(), "tools/remix/selftest.py": {"tools/remix/lib.py"}}
+            with mock.patch("reach.port_digest", return_value="p"):
+                k = lambda scripts=(): gate_cache.shared_key(d, "g", ["python3", "g.py"], set(scripts), [], deps=deps, env={})
+                one = k()
+                for f, moves in (("tools/remix/selftest.py", False), ("tools/remix/lib.py", True),
+                                 ("tools/remix/t.json", True), (root, True)):
+                    (d / f).write_text("2")
+                    self.assertEqual(k() != one, moves, f)
+                    (d / f).write_text("1")
+                # the gate's own closure still takes a script the build does not reach
+                two = k({"tools/remix/selftest.py"})
+                (d / "tools/remix/selftest.py").write_text("2")
+                self.assertNotEqual(two, k({"tools/remix/selftest.py"}))
+
     def test_project_stamp_moves_with_a_file(self):
         with tempfile.TemporaryDirectory() as d:
             d = pathlib.Path(d)

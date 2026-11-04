@@ -1,4 +1,4 @@
-Part of the effect loader (the other half is Effect loader (copier)). SPECTRUM, CHARACTER and MODULATION are not kept in the effects processor all the time: the loader brings one in while a track uses it and takes it out when none does. This half sends the code to the processor in small pieces. It has no controls and nothing on the panel.
+Part of the effect loader (the other half is Effect loader (copier)). SPECTRUM, CHARACTER, MODULATION and SHATTER are not kept in the effects processor all the time: the loader brings one in while a track uses it and takes it out when none does. This half sends the code to the processor in small pieces. It has no controls and nothing on the panel.
 
 ## What you will notice
 

@@ -105,7 +105,7 @@ for k, key in enumerate(R.window_demand):
     mod = registry.modules()[key]
     rec = RECS[key]
     init_m, proc_m = rec["init"], rec["proc"]                          # the real code, loaded on demand
-    init_s, proc_s = send_probe.entry_points(mem, mod.menu.fx2_id)     # its id dispatches to the stub
+    init_s, proc_s = send_probe.entry_points(mem, BOUND[key].menu.fx2_id)   # its id in this remix dispatches to the stub
     entry = ENTRY + 8 * k
     code_at, n = rec["addr"], len(rec["words"])
     vals = [(p.default or 0) if p.name else 0 for p in mod.params]

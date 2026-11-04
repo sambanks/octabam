@@ -4,14 +4,14 @@
 
 *BRAIN in the main menu, added by Octabam*
 
-Octabam adds the core features to Octatrack OS 1.40C and three effects. All 14
+Octabam adds the core features to Octatrack OS 1.40C and four effects. All 14
 stock effects and both effect menus stay as stock has them, with stock LO-FI's
 AMF knob fixed. The [Octabam Remix Manual](reference/manual/octabam/index.md)
 has a page for every feature.
 
 ## The effects
 
-SPECTRUM, CHARACTER and MODULATION are on FX1 and FX2, beside the stock effects.
+SPECTRUM, CHARACTER and MODULATION are on FX1 and FX2, and SHATTER on FX2, beside the stock effects.
 COMPRESSOR has a side-chain: on page 2, KEY picks the track that drives it
 ([side-chain compressor](usage/sidechain-compressor.md)).
 
@@ -20,6 +20,7 @@ COMPRESSOR has a side-chain: on page 2, KEY picks the track that drives it
 | [SPECTRUM](reference/manual/octabam/effects/spectrum.md) | filter: Moog ladder, SEM, isolator, formants |
 | [CHARACTER](reference/manual/octabam/effects/character.md) | fold, saturation, tilt, compressor, width |
 | [MODULATION](reference/manual/octabam/effects/modulation.md) | Juno, Dimension, flanger, phaser, comb |
+| [SHATTER](reference/manual/octabam/effects/shatter.md) | fold, clip, bit and sample-rate crush, chaotic feedback |
 
 Each is loaded into the audio processor only while a track uses it; a pattern
 change that puts one on all eight tracks, or takes it off them, leaves about
