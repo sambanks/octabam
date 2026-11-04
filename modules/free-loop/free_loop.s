@@ -9728,12 +9728,16 @@ fl_gate_stub:
         addq.l  #8,%sp
         move.l  %d0,%d3                 | 0: this step has no recorder trig
 pass:
+        .ifdef  HK_REC_GATE             | beside REC_TRIG_MUTE (modules/hooks rec_gate): its gate
+        jmp     rtm_gate                | replays the displaced move, may mute d3, and decides
+        .else
         move.l  #0x91a,%d2              | displaced
         tst.l   %d3
         bne     fire
         jmp     0x4009da16              | no recorder trig on this step
 fire:
         jmp     0x4009d9ae              | muls.l %d7,%d2 and on
+        .endif
 
 | ---- the track's mark at the screen edge, beside its status icon: a dot
 | over it while it overdubs, a ring blinking at 2 Hz while armed. The form of
@@ -9787,7 +9791,11 @@ fl_draw:
         lea     fl_dot_play,%a0         | 13: overdubbing, playing
         subq.l  #1,%d0
         beq.s   2f
+        .ifdef  HK_ICON_DRAW            | beside REC_TRIG_MUTE (modules/hooks icon_draw):
+        jmp     rtm_draw                | its mute dots (8 / 9), else nothing to draw
+        .else
         jmp     0x4004c02a              | nothing to draw
+        .endif
 2:      pea     49(%a2)
         move.l  %a3,-(%sp)              | 7 wide, at x like stock's "+>"
         pea     0x400bf10a              | the plane

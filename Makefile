@@ -312,7 +312,7 @@ verify-shared-modules-impl:
 	@# Isolated module gates that take no remix: each renders its module on
 	@# a scratch image it builds itself, or checks an author's oracle. Run
 	@# once for the union of the modules across REMIXES.
-	BUILD=$(BUILD) $(PY) tools/verify/step.py --cards $(PY) tools/verify/module_gates.py --shared $(REMIXES) $(if $(MODULES),--modules "$(MODULES)",)
+	BUILD=$(BUILD) $(PY) tools/verify/step.py --cards $(PY) tools/verify/module_gates.py --shared $(REMIXES) $(if $(MODULES),--modules "$(MODULES)",) $(if $(MODULE_GATES_ONLY),--only-script "$(MODULE_GATES_ONLY)",) $(if $(MODULE_GATES_SKIP),--skip-script "$(MODULE_GATES_SKIP)",)
 
 .PHONY: verify-remix
 verify-remix: ## The selected remix's own gates: dirty state, init regs, DRAM boot, labels, its module gates, menu, the set under the port, USB

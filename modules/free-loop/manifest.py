@@ -37,7 +37,15 @@ Detours (INVESTIGATION.md):
   fl_draw      REC_TRIG_MUTE's sites: a ring while armed, a dot while overdubbing
 and the [TRACK]-held key layer's table pointer 0x400d164e (MORPH's site),
 pointed at a copy of stock's table with UP added (the window).
+
+Beside REC_TRIG_MUTE and REC THRESHOLD the shared sites go through HOOKS
+(modules/hooks): the status icon chain calls fl_glyph last; at the step
+handler and the icon drawer this detour stays and, assembled with
+HK_REC_GATE / HK_ICON_DRAW (select below), hands on to rtm_gate / rtm_draw
+where it replayed stock. MORPH stays a conflict: both want [TRACK]+UP.
 """
+
+import dataclasses
 
 from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof, SymbolRef
 
@@ -60,6 +68,18 @@ DRAW_STOCK = H("7003b08c6618")                  # moveq #3,%d0 ; cmpl %a4,%d0 ; 
 KEYS_FIELD = 0x400D164E                       # the [TRACK]-held layer's keys pointer
 KEYS_STOCK = 0x400D1594
 
+_UNIT = Linked("fl", "modules/free-loop/free_loop.s", cpu="5475", dram=True)
+
+
+def select(modules):
+    """Beside REC_TRIG_MUTE (modules/hooks rec_gate / icon_draw) the unit is assembled
+    with HK_REC_GATE / HK_ICON_DRAW: its not-ours paths jump to rtm_gate / rtm_draw."""
+    from remix import hooks_flags
+    defs = tuple((flag, 1) for bridge, flag in (("rec_gate", "HK_REC_GATE"), ("icon_draw", "HK_ICON_DRAW"))
+                 if hooks_flags.on(bridge, "FREE LOOP", modules))
+    return {"linked": (dataclasses.replace(_UNIT, defsyms=defs),)} if defs else {}
+
+
 MODULE = Module(
     name="free-loop",
     key="FREE LOOP",
@@ -76,7 +96,7 @@ MODULE = Module(
         "CC 91 PLAY/STOP (play, mute / unmute, held: END), CC 92 UNDO / REDO, CC 93 END (mute / unmute at the loop's start). "
         "TRACK + UP: the track's ROLE, SIGN, BARS, BPM range and the pattern's ENTRY mode. "
         "CC 83-89 on PROG CH: PLAY/STOP, clear, pattern and bank steps.",
-    linked=(Linked("fl", "modules/free-loop/free_loop.s", cpu="5475", dram=True),),
+    linked=(_UNIT,),
     detours=(
         Detour(CC_ENTRY, CC_ENTRY_STOCK, "fl", "fl_cc",
                "CC handler entry: CC 90 / 91 / 93 (a track's pedals), CC 83-89, else stock", pad_to=8),
@@ -101,10 +121,9 @@ MODULE = Module(
     ),
     requires=("STORE",),
     conflicts=(
-        ("REC_TRIG_MUTE", "both own the step handler's recorder-trig test 0x4009d9a4 and the status icon renderer"),
-        ("REC THRESHOLD", "both replace the track status icon renderer's state-cache load at 0x4004bee2"),
         ("MORPH", "both replace the [TRACK]-held key table 0x400d1594"),
     ),
     gates=(Gate("modules/free-loop/verify.py", remix_arg=False),
            Gate("tools/verify/verify_free_loop.py", venv=True)),
+    select=select,
 )

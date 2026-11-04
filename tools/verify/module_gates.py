@@ -30,11 +30,14 @@ gate the tree does not carry. A gate's own [SKIP] line stays its own.
 import argparse
 import os
 import pathlib
+import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import gate_cache  # noqa: E402
 import gate_ledger  # noqa: E402
 import card_retention  # noqa: E402
 from remix import registry  # noqa: E402
@@ -160,6 +163,25 @@ def command(gate, remix_name, root=ROOT):
     return cmd
 
 
+_DEPS = None
+
+
+def shared_cache_key(modules, key, g, cmd, env):
+    """The gate_cache key of a remix-independent gate (gate_cache.shared_key):
+    its module's directory and those of every module it reaches. None when
+    the cache is off."""
+    global _DEPS
+    if not gate_cache.enabled():
+        return None
+    if _DEPS is None:
+        import reach  # noqa: E402
+        _DEPS = reach.scan_deps(ROOT)
+    by_key = {m.key: m for m in modules}
+    dirs = [f"modules/{by_key[k].name}" for k in sorted(reached({key}, modules)) if k in by_key]
+    return gate_cache.shared_key(ROOT, g.script, [pathlib.Path(cmd[0]).name, g.script, *cmd[2:]],
+                                 {g.script}, dirs, deps=_DEPS, env=env)
+
+
 def port_built(root=ROOT):
     """The ColdFire port's binary is there; without it a port gate SKIPs."""
     return (root / "out/emu/ot_emu").exists()
@@ -178,6 +200,11 @@ def main(argv=None):
                     help="only the gates of these comma-separated module keys: with --shared those "
                          "modules' own (make check-shared MODULES=...); per remix, those of every module "
                          "they reach (reached(): make check-remix MODULES=...)")
+    ap.add_argument("--only-script", default="",
+                    help="only the gates whose script is one of these comma-separated paths (check_shards runs the "
+                         "image-stage gates one per job; CI gives a slow shared gate a runner of its own)")
+    ap.add_argument("--skip-script", default="",
+                    help="every gate but these comma-separated paths (the shared unit the slow gates were cut out of)")
     a = ap.parse_args(argv)
     if a.list:
         return _run(a, dict(os.environ))
@@ -220,6 +247,14 @@ def _run(a, env):
             gates = [x for x in gates if x[1].script in mine]
             label += f", reached from {a.modules} ({', '.join(sorted(keys)) or 'none here'})"
         env["REMIX"] = remix.name
+    if a.only_script:
+        only = {x for x in a.only_script.split(",") if x}
+        gates = [x for x in gates if x[1].script in only]
+        label += f", {a.only_script}"
+    if a.skip_script:
+        skip = {x for x in a.skip_script.split(",") if x}
+        gates = [x for x in gates if x[1].script not in skip]
+        label += f", without {a.skip_script}"
     if not gates:
         print(f"module gates ({label}): none declared")
         return 0
@@ -231,6 +266,7 @@ def _run(a, env):
               f"its gates would SKIP and the run would pass without them")
         return 1
     fails = []
+    union_modules = modules if a.shared else None
     for key, g, remix_name in gates:
         cmd = command(g, remix_name)
         if a.shared and g.remix_arg:
@@ -243,6 +279,15 @@ def _run(a, env):
             print(f"  [FAIL] {g.script}: no such file (the manifest names a gate the tree does not carry)")
             fails.append(g.script)
             continue
+        ck = shared_cache_key(union_modules, key, g, cmd, env) if union_modules is not None and not g.remix_arg else None
+        hit = gate_cache.lookup(ck)
+        if hit:
+            print(f"  gate_cache: a pass at {hit.get('head', '?')} ({hit.get('when', '?')}, {hit.get('seconds', 0):.0f} s), "
+                  f"same inputs: not run (key {ck[:12]})")
+            for skip in hit.get("skips", []):
+                print(skip)
+            continue
+        t0 = time.monotonic()
         try:
             with card_retention.Gate(ROOT, g.script, env) as cards:
                 out = []
@@ -260,6 +305,11 @@ def _run(a, env):
                     gate_ledger.record(g.script, remix_name, gate_ledger.first_fail("".join(out)))
                 cards.finish(rc == 0 and not any("[FAIL]" in line or "[SKIP]" in line or
                                                  line.lstrip().startswith("SKIP:") for line in out))
+                secs = time.monotonic() - t0
+                print(f"  gate: {secs:.0f} s  rc={rc}  {g.script}", flush=True)
+                if rc == 0 and ck:
+                    gate_cache.store(ck, dict(job=g.script, seconds=secs, skips=[
+                        l.rstrip() for l in out if re.match(r"\s*(?:\[SKIP\]|SKIP:)", l)]))
         except card_retention.RetentionError as exc:
             print(f"  [FAIL] card retention: {exc}", flush=True)
             fails.append(g.script)
