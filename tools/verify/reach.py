@@ -1130,7 +1130,13 @@ SPLIT_REMIX_JOBS = {"octabam": {"long": ("remix-switch",), "project": ("set", "m
 # not narrow it (that is "reached from BRAIN": 9 gates of ten modules, 4581 s, with verify_usb_post, verify_load_meter
 # and verify_usb_load_meter failing on a generated project, run 40640514673), so the unit runs verify_brain alone.
 # It builds its own image and reads OT_PROJECT, which ci.yml sets for a `(brain)` unit.
-SPLIT_EXTRA_UNITS = {"octabam": {"brain": ("BRAIN", ".venv/bin/python3 tools/verify/verify_brain.py octabam")}}
+# verify_brain runs as four units, one per `--section` group (4 Nov 2026: 1026 s locally in one process, about 40
+# boots; `brain` keeps the name of the whole gate and runs the card cases and the stock-store sections).
+_BRAIN = ".venv/bin/python3 tools/verify/verify_brain.py octabam --section "
+SPLIT_EXTRA_UNITS = {"octabam": {"brain": ("BRAIN", _BRAIN + "cards"),
+                                 "brain-templates": ("BRAIN", _BRAIN + "templates"),
+                                 "brain-panes": ("BRAIN", _BRAIN + "panes"),
+                                 "brain-screens": ("BRAIN", _BRAIN + "screens")}}
 
 
 # Shared module gates that are slow beside the rest, each a unit of its own: `check-shared (<part>)` is

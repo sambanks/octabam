@@ -615,7 +615,7 @@ class PlanJsonTests(unittest.TestCase):
             got = {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
         pre = 'python3 tools/verify/check_shards.py --jobs 3 --modules "K1" '
         self.assertEqual(got["check-remix x"], pre + "x")
-        self.assertEqual(got["check-remix octabam"], pre + "--skip-jobs remix-switch,set,plocks-p2,brain octabam")
+        self.assertEqual(got["check-remix octabam"], pre + "--skip-jobs remix-switch,set,plocks-p2,brain,brain-templates,brain-panes,brain-screens octabam")
         self.assertEqual(got["check-remix octabam (long)"], pre + "--only-jobs remix-switch octabam")
         self.assertEqual(got["check-remix octabam (project)"], pre + "--only-jobs set,plocks-p2 octabam")
         for line in got.values():
