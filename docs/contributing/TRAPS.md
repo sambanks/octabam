@@ -1194,8 +1194,9 @@ now carries ATA WRITE GUARD. Rule: a test remix whose gates write the card
 carries ATA WRITE GUARD, or a timing shift anywhere can land in this window;
 `hooks`, `free-loop` and `rec-threshold` still do not. When a port run's
 frames stop, read the ColdFire's PC and SR at that point first (the reading
-that ended this hunt; the port does not print it today): a loop at
-`0x4001551e` with the mask at 5 is this trap.
+that ended this hunt): the port prints them as `stall cpu  :` when a live
+script stops early, and `OT_STALL_CPU=1` adds the next 64 PCs (PR #1024). A
+loop at `0x4001551e` with the mask at 5 is this trap.
 
 
 <a name="trap-id-clamp"></a>
