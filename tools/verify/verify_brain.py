@@ -44,6 +44,7 @@ What it cannot see: the unit's card I/O timing, a power-up with no LOAD
 PROJECT post (the bank-load hook), the new-part initialiser.
 """
 import argparse, os, pathlib, shutil, struct, subprocess, sys
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 from remix import brainfile, registry, brain  # noqa: E402
@@ -233,7 +234,9 @@ def main():
         check(f"{name} is in .data (the unit's .bss holds what the boot left)  [{kinds.get(name)}]",
               kinds.get(name, "?").lower() == "d")
 
-    for name, files in cases.items():
+    def run_case(name, files):
+        """The case's card staged and booted once per page: (lanes, counts, svals, scounts).
+        Cases share nothing on disk, so they run side by side."""
         roots = []
         for fn, data in files.items():
             p = OUT / f"{name}_{fn}"
@@ -248,7 +251,7 @@ def main():
         lanes = {}
         for page in ("fx2", "fx1"):
             vdump, scdump = OUT / f"{name}_{page}_values.bin", OUT / f"{name}_{page}_setcounts.bin"
-            sp, dump, cdump, log, c = (OUT / f"{page}.script", OUT / f"{name}_{page}.bin",
+            sp, dump, cdump, log, c = (OUT / f"{name}_{page}.script", OUT / f"{name}_{page}.bin",
                                        OUT / f"{name}_{page}_counts.bin", OUT / f"{name}_{page}.txt",
                                        OUT / f"{name}_{page}_run.img")
             sp.write_text(script(page))
@@ -270,6 +273,13 @@ def main():
             vb = vdump.read_bytes()
             svals = (struct.unpack_from(">i", vb, v_apply)[0], struct.unpack_from(">i", vb, v_midilog)[0])
             scounts = dict(zip(("records", "values", "skip", "dup"), struct.unpack(">4I", scdump.read_bytes())))
+        return lanes, counts, svals, scounts
+
+    with ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 1)) as pool:
+        outcomes = dict(zip(cases, pool.map(lambda kv: run_case(*kv), cases.items())))
+
+    for name, files in cases.items():
+        lanes, counts, svals, scounts = outcomes[name]
         print(f"  {name}: counters {counts}")
         state = STATES.get(counts["state"], counts["state"])
 
