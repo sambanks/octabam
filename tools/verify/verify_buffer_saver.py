@@ -29,6 +29,11 @@ copy.
            Stock's SAVE runs SAVE TO NEW's code itself: SAVE SAMPLES? still
            once, and stock's name keyboard opens.
 
+`verify_buffer_saver.py [scenario ...]` runs the named scenarios (default:
+all six, in parallel). The manifest runs each as its own gate through
+modules/buffer-saver/verify_buffer_saver_<scenario>.py, so the runner schedules them
+instead of six emulators sharing one job's CPU.
+
 Never flashes or talks to hardware.
 """
 
@@ -41,6 +46,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -108,7 +114,9 @@ def run(work, card, name, script, quit_ms):
             "--mkii", "--dsp", "--main-level", "64", "--audio-in", "tones",
             "--watch-mem", f"{MODE:#x},4", "--watch-pc", f"{DIALOG_ENTRY:#x},{KEYBOARD:#x}",
             "--live-script", str(path)]
+    t0 = time.monotonic()
     r = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=3600)
+    print(f"  scenario {name}: {time.monotonic() - t0:.0f} s", flush=True)
     files = emu_card.extract_image(out_card.read_bytes()) if out_card.is_file() else {}
     return name, r.returncode, r.stdout + r.stderr, files
 
@@ -154,7 +162,7 @@ def slot129(files):
     return m.group(1) if m else None
 
 
-def main():
+def main(only=None):
     if not EMU.is_file():
         return fail("the ColdFire port is not built (make emu-cf)")
     if not IMAGE.is_file():
@@ -202,6 +210,10 @@ def main():
                 # TO NEW's code itself; NO, and nobody is asked a second time.
                 ("first", [f"1000 poke {PROJECT_NAME:#x}=0"] + SETUP + take(2000) + save(6000)
                  + press(9000, NO), 30000)]
+        unknown = set(only or ()) - {j[0] for j in jobs}
+        if unknown:
+            return fail(f"no such scenario: {sorted(unknown)}; the scenarios are {[j[0] for j in jobs]}")
+        jobs = [j for j in jobs if not only or j[0] in only]
         with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
             results = {name: (rc, out, files) for name, rc, out, files in
                        pool.map(lambda j: run(work, cards, *j), jobs)}
@@ -210,64 +222,73 @@ def main():
         if rc or "M6a gate   : PASS" not in out or "ended on quit" not in out:
             return fail(f"{name}: the port run did not finish cleanly (exit {rc})", out)
 
-    rc, out, files = results["yes"]
-    names = sorted(k[len(AUDIO):] for k in files if k.startswith(AUDIO))
-    if names != ["R1-000000-0000.ot", "R1-000000-0000.wav"]:
-        return fail(f"yes: wanted R1-000000-0000.wav and .ot in the set's AUDIO, saw {names}", out)
-    if len(files[AUDIO + "R1-000000-0000.wav"]) < 44 + 4 * 22050:
-        return fail("yes: R1-000000-0000.wav holds under half a second of audio", out)
-    if slot129(files) != "../AUDIO/R1-000000-0000.wav":
-        return fail(f"yes: the project's SLOT=129 path is {slot129(files)!r}", out)
-    mode2 = [w for w in writes(out, MODE) if w[1] == 2]
-    if len(mode2) != 1 or not DRAM[0] <= mode2[0][2] < DRAM[1]:
-        return fail(f"yes: wanted one mode-2 save by the module, saw {mode2}", out)
-    if dialogs(out) != (1, 1):
-        return fail(f"yes: wanted SAVE SAMPLES? and CONTINUE? once each, saw {dialogs(out)}", out)
+    if not only or "yes" in only:
+        rc, out, files = results["yes"]
+        names = sorted(k[len(AUDIO):] for k in files if k.startswith(AUDIO))
+        if names != ["R1-000000-0000.ot", "R1-000000-0000.wav"]:
+            return fail(f"yes: wanted R1-000000-0000.wav and .ot in the set's AUDIO, saw {names}", out)
+        if len(files[AUDIO + "R1-000000-0000.wav"]) < 44 + 4 * 22050:
+            return fail("yes: R1-000000-0000.wav holds under half a second of audio", out)
+        if slot129(files) != "../AUDIO/R1-000000-0000.wav":
+            return fail(f"yes: the project's SLOT=129 path is {slot129(files)!r}", out)
+        mode2 = [w for w in writes(out, MODE) if w[1] == 2]
+        if len(mode2) != 1 or not DRAM[0] <= mode2[0][2] < DRAM[1]:
+            return fail(f"yes: wanted one mode-2 save by the module, saw {mode2}", out)
+        if dialogs(out) != (1, 1):
+            return fail(f"yes: wanted SAVE SAMPLES? and CONTINUE? once each, saw {dialogs(out)}", out)
 
-    rc, out, files = results["again"]
-    mode2 = [w for w in writes(out, MODE) if w[1] == 2]
-    if len(mode2) != 1:
-        return fail(f"again: wanted the take saved once, saw {len(mode2)} mode-2 saves", out)
-    if dialogs(out) != (1, 2):
-        return fail(f"again: wanted SAVE SAMPLES? once (not on the second FUNC + PROJ) and "
-                    f"CONTINUE? twice, saw {dialogs(out)}", out)
+    if not only or "again" in only:
+        rc, out, files = results["again"]
+        mode2 = [w for w in writes(out, MODE) if w[1] == 2]
+        if len(mode2) != 1:
+            return fail(f"again: wanted the take saved once, saw {len(mode2)} mode-2 saves", out)
+        if dialogs(out) != (1, 2):
+            return fail(f"again: wanted SAVE SAMPLES? once (not on the second FUNC + PROJ) and "
+                        f"CONTINUE? twice, saw {dialogs(out)}", out)
 
-    rc, out, files = results["taken"]
-    names = sorted(k[len(AUDIO):] for k in files if k.startswith(AUDIO))
-    if names != ["R1-000000-0000-2.ot", "R1-000000-0000-2.wav", "R1-000000-0000.wav"]:
-        return fail(f"taken: wanted the take as R1-000000-0000-2 beside the old file, saw {names}", out)
-    if files[AUDIO + "R1-000000-0000.wav"] != _wav(4410):
-        return fail("taken: the old R1-000000-0000.wav was changed", out)
-    if slot129(files) != "../AUDIO/R1-000000-0000-2.wav":
-        return fail(f"taken: the project's SLOT=129 path is {slot129(files)!r}", out)
+    if not only or "taken" in only:
+        rc, out, files = results["taken"]
+        names = sorted(k[len(AUDIO):] for k in files if k.startswith(AUDIO))
+        if names != ["R1-000000-0000-2.ot", "R1-000000-0000-2.wav", "R1-000000-0000.wav"]:
+            return fail(f"taken: wanted the take as R1-000000-0000-2 beside the old file, saw {names}", out)
+        if files[AUDIO + "R1-000000-0000.wav"] != _wav(4410):
+            return fail("taken: the old R1-000000-0000.wav was changed", out)
+        if slot129(files) != "../AUDIO/R1-000000-0000-2.wav":
+            return fail(f"taken: the project's SLOT=129 path is {slot129(files)!r}", out)
 
-    rc, out, files = results["no"]
-    names = [k for k in files if k.startswith(AUDIO)]
-    if names:
-        return fail(f"no: NO wrote {names}", out)
-    if slot129(files) != "":
-        return fail(f"no: the project's SLOT=129 path is {slot129(files)!r}, wanted none "
-                    "(or the project was not saved)", out)
-    if writes(out, MODE):
-        return fail(f"no: the sample save ran after NO: {writes(out, MODE)}", out)
-    if dialogs(out) != (1, 1):
-        return fail(f"no: wanted SAVE SAMPLES? and CONTINUE? once each, saw {dialogs(out)}", out)
+    if not only or "no" in only:
+        rc, out, files = results["no"]
+        names = [k for k in files if k.startswith(AUDIO)]
+        if names:
+            return fail(f"no: NO wrote {names}", out)
+        if slot129(files) != "":
+            return fail(f"no: the project's SLOT=129 path is {slot129(files)!r}, wanted none "
+                        "(or the project was not saved)", out)
+        if writes(out, MODE):
+            return fail(f"no: the sample save ran after NO: {writes(out, MODE)}", out)
+        if dialogs(out) != (1, 1):
+            return fail(f"no: wanted SAVE SAMPLES? and CONTINUE? once each, saw {dialogs(out)}", out)
 
-    rc, out, files = results["new"]
-    names = sorted(k[len(AUDIO):] for k in files if k.startswith(AUDIO))
-    if names != ["R1-000000-0000.ot", "R1-000000-0000.wav"]:
-        return fail(f"new: wanted the take saved before SAVE TO NEW, saw {names}", out)
-    if slot129_in(files, NEW_PROJECT) != "../AUDIO/R1-000000-0000.wav":
-        return fail(f"new: the new project's SLOT=129 path is {slot129_in(files, NEW_PROJECT)!r}", out)
-    if dialogs(out)[0] != 1 or keyboards(out) != 1:
-        return fail(f"new: wanted SAVE SAMPLES? once and stock's name keyboard once, saw "
-                    f"{dialogs(out)[0]} and {keyboards(out)}", out)
+    if not only or "new" in only:
+        rc, out, files = results["new"]
+        names = sorted(k[len(AUDIO):] for k in files if k.startswith(AUDIO))
+        if names != ["R1-000000-0000.ot", "R1-000000-0000.wav"]:
+            return fail(f"new: wanted the take saved before SAVE TO NEW, saw {names}", out)
+        if slot129_in(files, NEW_PROJECT) != "../AUDIO/R1-000000-0000.wav":
+            return fail(f"new: the new project's SLOT=129 path is {slot129_in(files, NEW_PROJECT)!r}", out)
+        if dialogs(out)[0] != 1 or keyboards(out) != 1:
+            return fail(f"new: wanted SAVE SAMPLES? once and stock's name keyboard once, saw "
+                        f"{dialogs(out)[0]} and {keyboards(out)}", out)
 
-    rc, out, files = results["first"]
-    if dialogs(out)[0] != 1 or keyboards(out) != 1:
-        return fail(f"first: wanted SAVE SAMPLES? once (not again inside stock's SAVE TO NEW) and "
-                    f"stock's name keyboard, saw {dialogs(out)[0]} and {keyboards(out)}", out)
+    if not only or "first" in only:
+        rc, out, files = results["first"]
+        if dialogs(out)[0] != 1 or keyboards(out) != 1:
+            return fail(f"first: wanted SAVE SAMPLES? once (not again inside stock's SAVE TO NEW) and "
+                        f"stock's name keyboard, saw {dialogs(out)[0]} and {keyboards(out)}", out)
 
+    if only:
+        print(f"  [PASS] verify_buffer_saver: {', '.join(sorted(only))}")
+        return 0
     print("  [PASS] verify_buffer_saver: after a take FUNC + PROJ asks SAVE SAMPLES?; YES writes "
           "R1-000000-0000.wav and .ot and points the project's buffer 1 at it, and the next save does "
           "not ask; with that name taken the take is saved as R1-000000-0000-2 and the old file is "
@@ -277,4 +298,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:] or None))
