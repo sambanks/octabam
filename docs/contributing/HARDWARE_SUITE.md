@@ -24,6 +24,8 @@ python3 tools/hw/ot_suite.py run <label> [--phase fx01,mix-soak] [--keep-going]
 python3 tools/hw/ot_suite.py report <label>
 ```
 
+`plan --lean` and `build --lean` select the pre-flight checks and the effect layouts only (`pre-*`, `fx*`: no `SSCN`, `SDJ`, loader, KITS, scenes, DIRECT_JUMP or soak phases); `run` follows the `suite.json` the build wrote. `--remix octabam-bus --lean` is 37 layouts + BASE in 2 projects, 5 phases, about 25 min. Run it with `.venv/bin/python` (numpy).
+
 `--src` is a fresh project (`ot_matrix.py audit` finds nothing); default `~/octa/projects/EMPTY`.
 `run` prints the load steps when the project changes and waits for Enter; `--yes` skips the waits.
 Output: `out/hw/suite/<label>/<phase>.log`, `summary.json`; the tools write their own reports under

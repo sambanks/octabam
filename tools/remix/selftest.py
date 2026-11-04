@@ -1071,7 +1071,7 @@ def main():
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "rig": _rig,
              "character-txtr": _rig,   # octabam-bus with the TXTR station
-             "octabam-bus": ("PLATE REV", "SPRING REV", "DARK REV"),   # FX2 is locked, so no row for the reverbs; nothing is harvested
+             "octabam-bus": _rig,   # FX1 lists only the three stations: the 13 stock effects give up their DSP code (FX2 is locked, so no row for the reverbs)
              "stations-fx2": _rig}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
