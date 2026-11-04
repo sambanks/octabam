@@ -127,6 +127,9 @@ The traps that have already cost real work live in
 it cost, the fix, and what now gates each one. Add a new trap there the
 moment it costs real work, and add its line here.
 
+- [Uninitialized retention can hide the real edit cost](docs/contributing/TRAPS.md#trap-retention-budget) — initialize Harmony and native bank data before bounding lifecycle work; rejected packing is not a successful save.
+- [A refused candidate can crash the remixer before selection](docs/contributing/TRAPS.md#trap-selection-refusal) — render selection-callback errors as compatibility problems; keep build rejection intact.
+
 **DSP side**
 
 - [The assembler mis-encodes instructions, silently](docs/contributing/TRAPS.md#trap-asm) — `tfr a,b`→`rnd b`; unknown `mpy` operand orders→`mpysu` (second operand unsigned); `cmp a,b`→`max a,b`. Disassemble what you assemble.

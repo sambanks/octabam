@@ -9,4 +9,5 @@ MODULE = runpy.run_path(str(SOURCE), run_name="remix_manifest_midi_harmony")["MO
 
 # Retained storage is selected by STORE, using this same author source pin.
 MODULE = replace(MODULE, requires=("STORE", "EVENTS"), proof_note="Focused emulator checks; this integration has not been tested on hardware.",
-                 gates=(Gate("tools/verify/verify_harmony_reference.py", stage="image", venv=True), *MODULE.gates))
+                 gates=(Gate("tools/verify/verify_harmony_reference.py", stage="image", venv=True),
+                        Gate("tools/verify/verify_harmony_lifecycle.py", stage="image", venv=True), *MODULE.gates))
