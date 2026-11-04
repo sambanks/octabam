@@ -428,7 +428,13 @@ Each image-stage module gate is a job of its own, `image:<script>` (until 4 Nov 
 one `image` job ran them in turn: 2723 s of a 3031 s unit); a gate whose script names
 `verify_set` stages its card first. `brain` (`reach.SPLIT_EXTRA_UNITS`) is a gate job
 that only the `check-remix octabam (brain)` unit runs (`--only-jobs brain`), with a
-generated project; it is cached like the others.
+generated project; it is cached like the others. Measured in CI (runs 41730853350
+and 41744406390, 4 Nov 2026), cold, three jobs to a 4-vCPU runner: `image:buffer-saver`
+1426-1646 s, `image:rec-threshold` 840-1002 s (its per-run timeout is 3600 s),
+`image:usb-load-meter` 242-469 s, `usb` 257-336 s, every other `image:` job 12-233 s;
+`check-remix octabam` 1646-1737 s wall. `module_gates --shared`: `test_morph` 373-578 s,
+`test_octa303` 266-416 s, `verify_quantizer_ui` 123-155 s, `modules/memory/gate.py` 54-65 s,
+every other gate 22 s or less.
 `check-shared` runs as two units: `make check-shared SHARED_PART=modules`
 (`module_gates --shared`) and `SHARED_PART=rest` (every other step of
 `verify-shared`); a bare `make verify-shared` runs both, in that order. A
