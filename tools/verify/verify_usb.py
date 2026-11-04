@@ -638,8 +638,8 @@ def main():
                     ocfg = b.ctrl_in(0x80, 6, 0x0700, 0, 512)
                     of = [d for t, d in usb_host.descriptors(ocfg) if t == 5]
                     check(f"runtime {tag}: the other-speed config is the shared full-speed pair "
-                          f"(bNumInterfaces {5 if midi_i else 2}, EP 0x83 360 B at 1 ms, no IN interface)",
-                          len(ocfg) >= 9 and ocfg[4] == (5 if midi_i else 2) and bytes([16, 0x24, 1, 0x13]) not in ocfg
+                          f"(bNumInterfaces {5 if midi_i else 3}, EP 0x83 360 B at 1 ms, no IN interface)",
+                          len(ocfg) >= 9 and ocfg[4] == (5 if midi_i else 3) and bytes([16, 0x24, 1, 0x13]) not in ocfg
                           and [(d[2], d[3] & 3, d[4] | d[5] << 8, d[6]) for d in of if d[2] == 0x83] == [(0x83, 1, 360, 1)],
                           f"bNumInterfaces {ocfg[4] if len(ocfg) >= 9 else None} EP {[(d[2], d[4] | d[5] << 8, d[6]) for d in of if d[2] == 0x83]}")
                 b.sock.close()
