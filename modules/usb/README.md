@@ -159,6 +159,9 @@ The port's flush completes at once and ignores the overlay; the controller's
 behaviour on the flush/re-prime sequence is not measured. Hardware status:
 port only.
 
+`usbmidi_rx_sysex` (usbmidi.s) is set to 1 whenever the decoder enqueues an `F0`. SCREENSHOT reads and
+clears it at every SysEx to answer on the transport the request came on (`modules/screenshot/README.md`).
+
 ### Clock (6 Oct 2026)
 
 Reported by Kazeko (MKI, Discord, 6 Oct 2026): with USB MIDI clock the
