@@ -137,10 +137,27 @@ Bryan T's MKII, 4 Nov 2026, `_bt_oct` with VIBRATO on FX1 (DJ EQ given up):
 - With the SHP snap, the per-instance seeds and LOAD METER: four FX1
   instances on tracks 1-4, defaults and dearest, read for the slot cost
   above (no bad records, 2,756 interrupts a second throughout).
+- **SLOTS = FX1+FX2, sixteen instances** (FX1 and FX2 of all eight tracks),
+  LOAD METER over USB, from a base with every slot NONE (core 0 22.8 %,
+  core 1 15.3 %): defaults 58.8 % / 51.2 % (+36.0 / +35.9 points, 4.50 % /
+  4.49 % an instance), dearest 58.3 % / 50.7 % (4.43 % / 4.43 %); the
+  busiest frame 63.0 % on core 0, against the 95 % limit. The sixteen
+  per-slot timers within 2 % of each other (1,681-1,734 counts): FX2 costs
+  what FX1 does, the shared-window slots (tracks 3-4's FX2 on each core)
+  included. No bad records, 2,756 interrupts a second, the ColdFire's share
+  unchanged at 30.2 %. Heard: every instance live, RND independent across
+  tracks, no pops or dropouts.
 
-Still to check: SLOTS = FX1+FX2 on a unit, sixteen instances (FX1 and FX2
-on all eight tracks) with LOAD METER's reading; with the default SLOTS, an
-FX2 instance's dry pass; WID on RND across two tracks.
+Still to check: with the default SLOTS, an FX2 instance's dry pass on a
+unit (proven in dsp_host: bit-exact dry, nothing written).
+
+## Load
+
+No selectable configuration of VIBRATO alone can overload a core: its
+worst, eight instances on one core (SLOTS = FX1+FX2), measured 63.0 % of a
+frame at peak against the 95 % limit. Beside other effects the remix's bound
+is COSTS.md's: base + 4 x (dearest FX1 effect) + 4 x (dearest FX2 effect),
+with VIBRATO at 4.5 % a slot.
 
 ## Open
 

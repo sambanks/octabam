@@ -43,7 +43,7 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Bryan T", author_url="https://github.com/bryantysinger",
     proof=Proof.HARDWARE,
-    proof_note="Bryan T's MKII, _bt_oct with VIBRATO and LOAD METER, 4 Nov 2026: four FX1 instances on tracks 1-4, 4.5 % a slot (LOAD METER over USB); FX1+FX2 not yet on a unit",
+    proof_note="Bryan T's MKII, _bt_oct with VIBRATO and LOAD METER, 4 Nov 2026: 4.5 % a slot (LOAD METER over USB); SLOTS FX1+FX2: sixteen instances, FX1 and FX2 of all eight tracks, both cores at 59 % / 51 %",
     doc="Pitch vibrato on FX1, or FX1 and FX2 (SLOTS) -- sine, triangle, square trill or random; depth in cents.",
     menu=MenuEntry(
         # 0x0b: a free-pool id; WAVE (an experiment) prefers it too, and the
