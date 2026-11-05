@@ -90,23 +90,37 @@ block-based:
 - ✅ `verify_dirty_state` (−138.5 dBFS from a garbage-filled block),
   `verify_init_regs`, `verify_menu`, `verify_replaces`, `norep`, the
   selftest, `verify_docs`.
-- 🟡 **Cost**: 108 cycles a sample on `cycle_count.py`'s static count
-  (MODULATION's LINE is 266). Measured slot costs have run 1.36–1.60× the
-  static count (`docs/contributing/COSTS.md`), which would put it near 4 % of
-  a slot; not read on a unit.
+- ✅ **Cost on a unit, 4 Nov 2026**: **4.50 % of a frame a slot at the
+  defaults, 4.41 % at the dearest** (SHP RND, every knob 127); the busiest
+  single slot 5.5 % (RND's draw blocks). LOAD METER over USB
+  (`tools/hw/load_meter.py --for 20`), Bryan T's MKII, VIBRATO on FX1 of
+  tracks 1-4 (core 1), COSTS.md's method: core 1 busy 15.3 % with FX1 NONE,
+  33.3 % (defaults) and 32.9 % (dearest) with four VIBRATOs, slot = delta / 4.
+  The per-slot timers agree: ~1,707 counts a call against 80 empty, of a
+  36,256-count frame. The same runs read stock FILTER (tracks 5-8, FX1) at
+  5.3 % against the catalog's 5.11 %, so the readings sit with COSTS.md's.
+  Between FLANGER (3.15 %) and PHASER (5.19 %); under the 9.07 % that is free
+  on every slot. Static count 108 cycles a sample (`cycle_count.py`), so
+  measured over static is about 1.9, above the 1.36-1.60 COSTS.md records
+  (🟡 the per-sample loop keeps its delay, slope and MIX run in X memory, not
+  registers: the likely difference, and the saving if one is wanted).
 - Built with Ubuntu's m68k binutils in a Linux sandbox (the pinned toolchain
   could not be downloaded there); the DSP side does not use it.
 
 ## On the unit
 
-Bryan T's MKII, `_bt_oct` with VIBRATO on FX1 (DJ EQ given up), 4 Nov 2026,
-the build before the walk's limit: sounds right; an occasional pop or
-cutout, consistent with the knob-jump spike the limit removes (not yet
-re-checked). Defaults moved to SPD 80, DEP 48 by ear on the unit.
+Bryan T's MKII, 4 Nov 2026, `_bt_oct` with VIBRATO on FX1 (DJ EQ given up):
 
-Still to check: every page-1 knob and SHP's four positions on FX1, a
-SHP change while playing, SLEW 0 and 127, WID on SQR and on RND, an FX2
-instance (dry), four FX1 instances on one core, and LOAD METER's slot cost.
+- The first build (before the walk's limit): sounds right; an occasional pop
+  or cutout, consistent with the knob-jump spike the limit removes.
+  Defaults moved to SPD 80, DEP 48 by ear.
+- With the walk's limit: "performing quite nicely".
+- With the SHP snap, the per-instance seeds and LOAD METER: four FX1
+  instances on tracks 1-4, defaults and dearest, read for the slot cost
+  above (no bad records, 2,756 interrupts a second throughout).
+
+Still to check: an FX2 instance (dry), WID on RND across two tracks, and
+four instances on core 0 (tracks 5-8).
 
 ## Open
 

@@ -37,8 +37,8 @@ MODULE = Module(
     key="VIBRATO",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Bryan T", author_url="https://github.com/bryantysinger",
-    proof=Proof.RENDER,
-    proof_note="its render gates against vibrato_ref.py (verify_vibrato); not on hardware",
+    proof=Proof.HARDWARE,
+    proof_note="Bryan T's MKII, _bt_oct with VIBRATO and LOAD METER, 4 Nov 2026: four FX1 instances on tracks 1-4, 4.5 % a slot (LOAD METER over USB)",
     doc="FX1: pitch vibrato -- sine, triangle, square trill or random; depth in cents.",
     menu=MenuEntry(
         # 0x0b: a free-pool id; WAVE (an experiment) prefers it too, and the
@@ -46,7 +46,7 @@ MODULE = Module(
         fx2_id=0x0b,
         donor_desc=0x400d58b8,        # DARK REV: 12 active slots, selects 7/9/11
         abbr=b"VIBR",
-        fullname=b"Vibrato",
+        fullname=b"VIBRATO",
         build_tag=False,
     ),
     params=(
