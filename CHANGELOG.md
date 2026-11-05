@@ -199,8 +199,9 @@ Docs
 
 On the unit (Yves's MKII, flash M): three takes at 24 bits, every WAV
 whole. Eleven files recorded for 24 s without `RING FULL`, the card
-writing at 212 µs a KB against 423 on STEMS12's eleven-file take and 255
-on STEMS11's (`docs/firmware/STEM_REC.md` 20.11). At eleven files the
+writing at 212 µs a KB. On the same Static samples STEMS12's ten files
+wrote at 387, and on lighter ones its eleven at 423 before `RING FULL`
+(`docs/firmware/STEM_REC.md` 20.11). At eleven files the
 hook took 30 µs against 33: `mirror` 4.1 µs against 6.9, `gains` 0.78
 against 1.39 (20.10). Thirteen files, the inputs as four mono files,
 recorded too, at 261 µs a KB. `lm-stems` is STEMS12's 48 modules on main

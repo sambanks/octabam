@@ -13,10 +13,13 @@ takes, all at 24 bits (his folder, not the repository):
 
 - Every WAV holds its log's frame count (16 samples a frame) under a
   header that says so, with its `.ot` beside it.
-- ✅ Eleven files recorded for 24 s without `RING FULL`. On STEMS12 the
-  same eleven sources filled the ring in 10 s. The card wrote at 212 µs a
-  KB, against 423 then (50% less), 255 on STEMS11's eleven-file take and
-  234 on STEMS12's nine. It was busy 60% of the take, against 89%.
+- The Static machines played the samples of flash L's fifth take
+  (`261104-2034`), the slowest of flash L's two sets (Yves, 5 Nov 2026).
+- ✅ Eleven files recorded for 24 s without `RING FULL`, the card writing
+  at 212 µs a KB. On the same samples STEMS12's ten files (T1 to T7,
+  MAIN, CUE, AB) wrote at 387: 45% less here, with one file more. On the
+  lighter samples STEMS12's eleven files wrote at 423 and filled the ring
+  in 10 s, busy 89% of the take; here the card was busy 60%.
 - ✅ The hook at eleven files: 30 µs on average against 33, at most 51
   against 61. `mirror` fell from 6.9 to 4.1 µs and `gains` from 1.39 to
   0.78. `buses` (8.7 µs) and `tracks` (16.6) are as they were, and
@@ -26,10 +29,9 @@ takes, all at 24 bits (his folder, not the repository):
   tracks." Thirteen files carry the same 1,056 bytes a frame as the
   eleven, and the card took 261 µs a KB for them, 23% more. It was busy
   73% of the take.
+- T1 alone wrote at 92 µs a KB, against 54 to 82 on lighter samples.
 - Not recorded: the nine-file take and the eleven files three times in a
-  row. 🟡 Not known yet: which samples the Static machines played. Flash
-  L's fourth and fifth takes differed only in those, at 252 and 387 µs a
-  KB, so the comparison with flash L holds for the same set only.
+  row.
 - What the takes say about 20.10's and 20.11's questions is in
   STEM_REC.md, under "On the unit" in each.
 

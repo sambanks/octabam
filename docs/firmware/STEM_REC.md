@@ -8650,23 +8650,28 @@ half-written clusters wasn't the cost. Then the per-command time is the
 next candidate (a 24-bit stereo file now sends one or two commands of 64
 sectors a pass instead of two of 64 and 32).
 
-**On the unit** (✅ STEMS13, flash M, 5 Nov 2026; one take each, the
-Static machines' samples not yet known):
+**On the unit** (✅ STEMS13, flash M, 5 Nov 2026; one take each). The
+Static machines played the samples of flash L's fifth take
+(`261104-2034`), the slower of its two sets (Yves):
 
-| files | card while recording, µs a KB | busy, share of the take | a cluster's command |
-|---|---|---|---|
-| 1 (T1) | 92 (STEMS12: 54 to 82) | 2% | 3.0 ms |
-| 11: T1 to T7, MAIN, CUE, AB, CD | 212 (STEMS12: 423, `RING FULL`; STEMS11: 255) | 60% (STEMS12: 89%) | 6.8 ms |
-| 13: as 11, the inputs as four mono files | 261 | 73% | 8.4 ms |
+| files | STEMS13, µs a KB | busy, share of the take | a cluster's command | STEMS12, same samples | STEMS12, lighter samples |
+|---|---|---|---|---|---|
+| 1 (T1) | 92 | 2% | 3.0 ms | | 54 to 82 |
+| 10: T1 to T7, MAIN, CUE, AB | | | | 387 | 252 |
+| 11: as 10, and CD | 212 | 60% | 6.8 ms | | 423, `RING FULL` (busy 89%) |
+| 13: as 11, the inputs as four mono files | 261 | 73% | 8.4 ms | | |
 
 A cluster's command is the card's time while recording over the KB
 written in 32 KB clusters, one command each. Eleven and thirteen files
 carry the same 1,056 bytes a frame.
 
-- Eleven files wrote at 212 µs a KB, below the 230 to 420 that would
-  have falsified the change, but far above one file's 54 to 92. 🟡 So
-  going back to half-written clusters was part of the card's cost, not
-  all of it.
+- On the same samples, eleven files wrote at 212 µs a KB where STEMS12's
+  ten wrote at 387: 45% less, with one file more. That is also below the
+  230 to 420 that would have falsified the change. But it is far above
+  one file's 92 on these samples. 🟡 So going back to half-written
+  clusters was much of the card's cost, not all of it.
+- The samples raise even one file's time: 92 µs a KB here against 54 to
+  82 on the lighter set.
 - Thirteen files took 23% longer a KB than eleven for the same bytes,
   and a command takes more than twice as long with eleven files as with
   one.
@@ -8685,9 +8690,10 @@ the order of the writes. 🟡 The first candidate is the stock's sample
 reads from the same card. BuMa measured a MKI's card writes at 4.7 to
 5.7 MB/s with the sequencer stopped and 1.4 to 2.1 MB/s with Static
 tracks streaming (19.1), and on STEMS12 other samples on the Static
-machines alone took ten files from 252 to 387 µs a KB (flash L). With one
-file the card is mostly idle and the reads fit between the writes; with
-eleven it's busy 60% of the time and the reads land among them. The
-test: the eleven files on a project whose machines don't stream from the
-card (Flex machines, which play from RAM). If the time a KB falls toward
-one file's, the reads are the rest of the cost.
+machines alone took ten files from 252 to 387 µs a KB (flash L). On
+STEMS13 the same slower samples put one file at 92 against 54 to 82.
+With one file the card is mostly idle and the reads fit between the
+writes; with eleven it's busy 60% of the time and the reads land among
+them. The test: the eleven files on a project whose machines don't
+stream from the card (Flex machines, which play from RAM). If the time a
+KB falls toward one file's, the reads are the rest of the cost.

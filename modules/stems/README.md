@@ -311,8 +311,8 @@ yes gap 13159 ms, double taps 1
   commands. While a take records, each file writes whole clusters only,
   so the card never goes back to one it left half written. On STEMS12 the
   card's time per KB rose from about 60 µs with one file to 230 to 420
-  with nine to eleven; on STEMS13 eleven files wrote at 212 (STEM_REC.md
-  20.11).
+  with nine to eleven. On STEMS13 eleven files wrote at 212, on Static
+  samples where STEMS12's ten took 387 (STEM_REC.md 20.11).
 - **The writer's longest sleep** far above the 10 ms it asks for: it
   waited for the processor. It runs at priority 1, in turn with the engine,
   the UI and one more stock task, below three tasks that by their code most
@@ -426,7 +426,8 @@ and STEM REC's writer named on the CPU tab (its task control block is
   Static tracks streaming (STEM_REC.md 19.1).
 - **On a busy project, eleven files at 24 bits keep up; twelve aren't
   measured since.** On STEMS13 (whole clusters, 5 Nov 2026), Yves's
-  project recorded eleven files at 24 bits (T1 to T7,
+  project, with the slowest Static samples measured on STEMS12, recorded
+  eleven files at 24 bits (T1 to T7,
   MAIN, CUE, AB and CD, 2.91 MB/s) for 24 s with the ring at most 36%
   full and the card busy 60% of the take, and thirteen (the inputs as
   four mono files, the same bytes) for 21 s at 44% (STEM_REC.md 20.11).
