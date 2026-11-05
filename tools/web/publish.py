@@ -48,8 +48,10 @@ def remixes():
 
 
 def image_name(remix, build):
-    """The Makefile's IMAGE_NAME: upper-case, 15 characters, trailing spaces cut."""
-    return f"{remix} {build}".upper()[:15].rstrip(" ")
+    """The Makefile's IMAGE_NAME (tools/remix/brain.py image_name)."""
+    sys.path.insert(0, str(TREE / "tools"))
+    from remix import brain
+    return brain.image_name(remix, build)
 
 
 def main():

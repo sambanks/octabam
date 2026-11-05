@@ -233,6 +233,17 @@ def remix_path(name: str) -> pathlib.Path:
     return d / "remix.py" if d is not None else REMIXES_DIR / f"{name}.py"
 
 
+def declared_image_name(name: str) -> str:
+    """The remix's `image_name` (schema.Remix), or "" when it declares none, read
+    from its remix.py alone: no module is loaded, so brain.image_name can ask it
+    while the manifests themselves are loading."""
+    f = remix_path(name)
+    if not f.exists():
+        return ""
+    mod = _exec(f, f"remix_sel_{name}")
+    return getattr(getattr(mod, "REMIX", None), "image_name", "")
+
+
 def remix(name: str | None):
     """Load the remix's remix.py (remix_path) and return its REMIX. None refuses."""
     if not name:
