@@ -21,7 +21,7 @@ Gates:
 
     python3 tools/verify/verify_vibrato.py
 """
-import math, pathlib, struct, subprocess, sys
+import math, pathlib, re, struct, subprocess, sys
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 import send_probe
@@ -68,11 +68,11 @@ def params(**kw):
     return v
 
 
-def _run(inter, n, slot="fx1", guard=False, stereo=True, events=None, **kw):
+def _run(inter, n, slot="fx1", guard=False, stereo=True, events=None, pwords=None, **kw):
     src = TMP / "vb_in.raw"
     src.write_bytes(b"".join(struct.pack("<i", m) for m in inter))
     out = TMP / "vb_out.raw"
-    r7, alloc = ("1", "0") if slot == "fx1" else ("2", "1")
+    r7, alloc = {"fx1": ("1", "0"), "fx2": ("2", "1"), "fx1b": ("4", "2")}[slot]
     cmd = [HOST, "-mem", MEM, "-init", f"{init:x}", "-proc", f"{proc:x}",
            "-inst", "1", "-r7", r7, "-alloc", alloc, "-inmask", "1",
            *(["-stereo"] if stereo else []),
@@ -80,6 +80,8 @@ def _run(inter, n, slot="fx1", guard=False, stereo=True, events=None, **kw):
            "-frames", str(FRAMES), "-blocks", str(-(-n // FRAMES)),
            "-in", str(src), "-out", str(out),
            "-params", ",".join(str(x) for x in params(**kw))]
+    if pwords:
+        cmd += ["-pword", ",".join(f"0:{off:x}={w:x}" for off, w in pwords)]
     if events:
         # per-block automation: {sample: {knob: value}} -> block,p0..p11 lines,
         # each line the whole knob set from that block on (dsp_host -paramfile)
@@ -96,6 +98,8 @@ def _run(inter, n, slot="fx1", guard=False, stereo=True, events=None, **kw):
         sys.exit(f"dsp_host failed for {kw}:\n{r.stdout}\n{r.stderr}")
     if guard:
         _run.guard_out = r.stdout + r.stderr
+    m = re.search(r"r7 = X:0x([0-9a-fA-F]+)", r.stdout)
+    _run.r7 = int(m.group(1), 16) if m else None
     d = out.read_bytes()
     w = struct.unpack(f"<{len(d)//4}i", d)
     return list(w[0::2])[:n], list(w[1::2])[:n]
@@ -139,6 +143,14 @@ def inst_freq(x, start):
 def cents(f, f0=1000.0):
     return 1200 * math.log2(f / f0)
 
+
+# the reference's noise seed is the DSP's: payload A's word eor this
+# instance's r7 << 8, with r7 as dsp_host reports it
+render([0] * FRAMES)
+if _run.r7 is None:
+    sys.exit("dsp_host did not report the instance's r7")
+REF.DEFAULT_SEED = REF.lfsr_seed(_run.r7, "A")
+print(f"instance r7 = X:0x{_run.r7:04x}, LFSR seed 0x{REF.DEFAULT_SEED:06x}")
 
 # ---- 1. FX1: MIX=0 is a bit-exact passthrough in every shape -----------------
 N = 6000
@@ -356,6 +368,44 @@ for label, base, ev in (("SPD 80 -> 120, DEP 127 -> 110", dict(SHP=2, SPD=80, DE
     de = max(abs(d[i] - dq[i]) for i in range(1100, NJ))
     check(f"knob jump {label}: the DSP's walk matches the reference", de < DBAR,
           f"delay within {de:.4f} samples (bar {DBAR})")
+
+# ---- 8c. two RND instances do not step in lockstep ------------------------------
+# track 1's FX1 and track 2's FX1 (r7 0x6100 and 0x6400): different seeds,
+# so different random pitches; each the reference with its own seed.
+NI = 20000
+ti = tone(440, 0.4, NI)
+tq = [v / FS for v in ti]
+outs = []
+for slot in ("fx1", "fx1b"):
+    L, _ = render(ti, slot=slot, SHP=3, SPD=110, DEP=127, MIX=127)
+    seed = REF.lfsr_seed(_run.r7, "A")
+    rL, _ = REF.Vibrato(**{n: params(SHP=3, SPD=110, DEP=127, MIX=127)[i] for n, i in K.items()},
+                        seed=seed).process(tq, tq)
+    e = max(abs(L[i] / FS - rL[i]) for i in range(NI))
+    check(f"RND on r7 X:0x{_run.r7:04x}: matches the reference with its own seed (0x{seed:06x})",
+          e < 2.8e-3, f"max err {e:.2e}")
+    outs.append(L)
+# both sit on the centre until the first half-cycle boundary draws (u = 0
+# at init), so count from a full cycle in (SPD 110: ~4,800 samples)
+same = sum(1 for a, b in zip(outs[0][8000:], outs[1][8000:]) if a == b) / (NI - 8000)
+check("two RND instances step independently (different random pitches)", same < 0.01,
+      f"{100 * same:.1f}% of samples identical")
+
+# ---- 8d. knob words with an LFO's fraction (bits 15-8), as the unit sends them --
+# dsp_host -params writes clean words; -pword writes the dirty ones. The
+# continuous knobs read the fraction (the tables interpolate it, MIX and WID
+# scale by it); SHP must mask it (a garbage companion byte too).
+DIRTY = [(0x0, (80 << 16) | 0x8000), (0x1, (48 << 16) | 0x4000), (0x2, (40 << 16) | 0xC000),
+         (0x3, (64 << 16) | 0x2000), (0x5, (100 << 16) | 0x8000), (0xC, (2 << 16) | 0x5500)]
+kfrac = dict(SPD=80.5, DEP=48.25, SLEW=40.75, WID=64.125, MIX=100.5, SHP=2)
+L, R = render_stereo(rampx, rampx, pwords=DIRTY)
+ref = REF.Vibrato(**kfrac)
+qL, qR = ref.process(rampq, rampq)
+de = max(max(abs((L[i] / FS - qL[i]) / RSLOPE), abs((R[i] / FS - qR[i]) / RSLOPE)) for i in range(1100, NR))
+check("LFO-dirty knob words: the fraction reaches SPD DEP SLEW WID MIX, SHP masks it",
+      de < DBAR, f"delay within {de:.4f} samples of the reference at {kfrac}")
+L2, _ = render_stereo(rampx, rampx, pwords=DIRTY[:5] + [(0xC, 2 << 16)])
+check("LFO-dirty SHP word: the same output as the clean word", L2 == L)
 
 # ---- 9. every knob at both extremes ---------------------------------------------
 ok = True

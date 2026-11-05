@@ -55,17 +55,22 @@ block-based:
 - **RND**: on each block that crosses a half cycle, u = (x + n)/2 with n from
   a 24-bit Galois LFSR (mask 0xE10000, maximal; 16 steps a draw, bit 0 tested
   with `and`/`tne`), then x −= 4u·Δφ each block, so x ends each half cycle
-  near −n and stays in ±1 without a leak.
+  near −n and stays in ±1 without a leak. The seed is the payload's own odd
+  word eor the instance's r7 << 8, so no two RND instances (on either core)
+  step in lockstep.
+- **The SHP duck** snaps the delay to the new shape's knot on the block it
+  switches (unprimed, as at init), while the wet is out: otherwise the walk's
+  limit would chase the new centre after the wet came back.
 - **SLEW** divides (BBD's `do #$18` / `div` idiom): c = Δφ / q, 1 when Δφ ≥ q.
 - **Knots** are clamped to 2..1,016 samples (a shrinking H under a slewed
   offset could otherwise reach under 2).
 - **Memory**: two 1,024-word lines (L at the allocator base, R at +$400), AGU
   modulo rings; the r7 block's $00..$1f; a 103-word table (INC, PERW, DEV8,
-  33 words each, and the four FAC words). Code 556 words.
+  33 words each, and the four FAC words). Code 563 words.
 
 ## Measured
 
-- ✅ **Render gates, 4 Nov 2026** (`verify_vibrato`, 37 checks, this tree,
+- ✅ **Render gates, 4 Nov 2026** (`verify_vibrato`, 42 checks, this tree,
   dsp_host): MIX 0 bit-exact in every shape; an FX2 instance bit-exact dry at
   any setting and `-guard` clean on both slots; DEP 0 a pure 2-sample delay
   of a full-scale two-signed sawtooth within 5 LSB; the DSP's delay
@@ -77,7 +82,11 @@ block-based:
   by `-paramfile` with no step steeper than the input's own, matching the
   reference; SPD and DEP stepped in one block (80 -> 120, 120 -> 20, DEP
   127 -> 10) with the delay never moving faster than the walk's limit
-  (largest 0.069 samples a sample at the 80 -> 120 step, limit 0.087).
+  (largest 0.069 samples a sample at the 80 -> 120 step, limit 0.087);
+  two RND instances (r7 0x6100, 0x6400) never identical after the first draw,
+  each the reference with its own seed; knob words carrying an LFO's
+  fraction (`-pword`) moving SPD, DEP, SLEW, WID and MIX by it, and SHP
+  masking it.
 - ✅ `verify_dirty_state` (−138.5 dBFS from a garbage-filled block),
   `verify_init_regs`, `verify_menu`, `verify_replaces`, `norep`, the
   selftest, `verify_docs`.

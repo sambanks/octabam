@@ -71,6 +71,9 @@ MODULE = Module(
     dsp=DspSection(
         asm="modules/vibrato/vibrato.asm",
         ptable=_ref.TABLE,            # INC, PERW, DEV8 (33 words each), FACW (4)
+        # the LFSR's per-payload seed word (eor r7 << 8 at init): tracks on
+        # the two cores never share a random sequence
+        subst={p: {"@SEED@": f"${_ref.SEEDS[p]:06x}"} for p in ("A", "B")},
         priority=32,
         bus_role=BusRole.NONE,        # an insert; it writes nothing to the bus
         ybase=YBase.NEVER,

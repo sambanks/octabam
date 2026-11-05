@@ -38,7 +38,8 @@ The DSP's structure, mirrored here:
     pitch instead of spiking. No shape's own slope exceeds dev, so in steady
     state the limit never engages;
   * a SHP change ducks the wet to dry over 16 blocks, switches once the MIX
-    run (which lags the duck) is on 0, and fades back (LOFI2's MODE duck);
+    run (which lags the duck) is on 0, snaps the delay to the new shape on
+    that block (as at init), and fades back (LOFI2's MODE duck);
     init starts fully ducked;
   * MIX glides: per block the run moves 1/8 of the way to m (1 - e), in a
     straight line over the block (a 128th of the distance a sample), and
@@ -48,7 +49,7 @@ The DSP's structure, mirrored here:
     sample, the tap read at (phase - delay) blended toward the OLDER
     neighbour, then this sample written.
   * the noise is a 24-bit Galois LFSR (mask 0xE10000, maximal), 16 steps a
-    draw; R draws n_R = n1 + w (n2 - n1), w = WID/128, so WID decorrelates
+    draw, seeded per payload and per instance (the payload's word eor r7 << 8); R draws n_R = n1 + w (n2 - n1), w = WID/128, so WID decorrelates
     the random shape where it phase-offsets the periodic ones.
 """
 import math
@@ -68,8 +69,14 @@ SHAPES = {"SINE": 0, "TRI": 1, "SQR": 2, "RND": 3}
 FAC = (1 / (2 * math.pi), 1 / 8, 1 / 4, 1 / 4)
 
 LFSR_MASK = 0xE10000
-LFSR_SEED = 0x5EED01
 LFSR_STEPS = 16
+SEEDS = {"A": 0x5EED01, "B": 0x3C9A57}   # odd, per payload (the asm's subst)
+DEFAULT_SEED = SEEDS["A"] ^ (0x6100 << 8)   # FX1 track 1 on payload A
+
+
+def lfsr_seed(r7, payload="A"):
+    """the DSP's init: the payload's word eor r7 << 8 (odd, never zero)"""
+    return SEEDS[payload] ^ ((r7 << 8) & 0xFFFFFF)
 
 
 def _w(v):
@@ -112,8 +119,10 @@ T_INC, T_PERW, T_DEV8, T_FAC = 0, 33, 66, 99
 
 
 def lookup(table, k, floor=False):
-    """the DSP's read: entry k >> 2, interpolated by (k & 3)/4"""
-    i, f = k >> 2, (k & 3) / 4.0
+    """the DSP's read: entry k >> 2, interpolated by the rest of k (k & 3 and
+    an LFO's fraction, k in 1/256 steps)"""
+    i = int(k // 4)
+    f = (k - 4 * i) / 4.0
     if i >= 32:
         return float(table[32])
     d = f * (table[i + 1] - table[i])
@@ -126,7 +135,7 @@ def mix(k):
 
 def wid_cycles(k):
     """R's LFO lead in cycles: (k/128)/2, 0 .. 0.496"""
-    return (k << 15) / Q23
+    return int(round(k * 32768)) / Q23
 
 
 def signed24(s):
@@ -134,8 +143,8 @@ def signed24(s):
 
 
 class Lfsr:
-    def __init__(self):
-        self.s = LFSR_SEED
+    def __init__(self, seed):
+        self.s = seed
 
     def draw(self):
         for _ in range(LFSR_STEPS):
@@ -178,7 +187,7 @@ class Line:
 
 
 class Vibrato:
-    def __init__(self, SPD=80, DEP=48, SLEW=0, WID=0, MIX=127, SHP=0):
+    def __init__(self, SPD=80, DEP=48, SLEW=0, WID=0, MIX=127, SHP=0, seed=None):
         self.k = dict(SPD=SPD, DEP=DEP, SLEW=SLEW, WID=WID, MIX=MIX, SHP=SHP)
         self.lines = (Line(), Line())
         self.phase = 0                  # Q23 integer, cycles
@@ -188,7 +197,7 @@ class Vibrato:
         self.slope = [0.0, 0.0]
         self.x = [0.0, 0.0]
         self.u = [0.0, 0.0]
-        self.noise = Lfsr()
+        self.noise = Lfsr(DEFAULT_SEED if seed is None else seed)
         self.running = 0
         # the duck and the MIX run in the DSP's integers (Q23 words): the
         # shape switches on the block the run snaps to 0, so the reference
@@ -213,6 +222,7 @@ class Vibrato:
         if k["SHP"] != self.running:
             if self.ei >= 0x7FFFFF and self.mi == 0:
                 self.running = k["SHP"]
+                self.primed = False     # the knots snap on the switch block
             else:
                 self.ei = min(0x7FFFFF, self.ei + 0x80000)
         else:
@@ -256,7 +266,7 @@ class Vibrato:
             self.slope[ch] = max(-smax, min(smax, (knot[ch] - self.d[ch]) / LOOKAHEAD))
         self.trace.append((self.H, knot[0], knot[1]))
         # MIX
-        mw = 0x7FFFFF if k["MIX"] >= 127 else k["MIX"] << 16
+        mw = 0x7FFFFF if k["MIX"] >= 127 else int(round(k["MIX"] * 65536))
         meff = (mw * (0x7FFFFF - self.ei)) >> 23        # mpy, then a1
         if abs(meff - self.mi) < 128:
             self.mi, self.mstep_i = meff, 0

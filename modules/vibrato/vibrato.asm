@@ -29,7 +29,7 @@
 ;   $02 H (per block)                         $03/$04 slewed offset L/R (persistent)
 ;   $05/$06 delay L/R, Q11.12 (persistent)    $07/$08 slope L/R (per block)
 ;   $09/$0a RND x L/R (persistent)            $0b/$0c RND u L/R (persistent)
-;   $0d LFSR state (seeded at init)           $0e line base (init)
+;   $0d LFSR state (seeded at init from the payload and r7)           $0e line base (init)
 ;   $0f FX2 flag (init)                       $10 running shape << 16 (persistent)
 ;   $11 duck e (persistent; $7fffff at init)  $12 MIX run (persistent)
 ;   $13 MIX step (per block)                  $14 primed: 1 after the first block
@@ -79,9 +79,16 @@ vbinz:
 vbclrz:
         nop
 vbnoclr:
-; ---- the LFSR's seed, and the duck fully out (the wet fades in) ----------
-        move    #>$5eed01,x0
-        move    x0,x:(r7+$0d)
+; ---- the LFSR's seed: the payload's own odd word, eor this instance's r7 <<
+; 8 (low byte 0, so the seed stays odd and never zero): no two RND instances
+; step in lockstep, on either core. Then the duck fully out (the wet fades in).
+        move    r7,x0
+        move    x0,a                    ; a clean load: r7 is positive
+        asl     #$8,a,a
+        move    a1,x0
+        move    #>@SEED@,a
+        eor     x0,a
+        move    a1,x:(r7+$0d)
         move    #>$7fffff,x0
         move    x0,x:(r7+$11)
         rts
@@ -135,7 +142,8 @@ proc:
 ; ---- the SHP duck (LOFI2's MODE duck) --------------------------------------
 ; A shape change would step the delay. The wet fades to dry over 16 blocks,
 ; the running shape switches only once it is fully out (e full AND the MIX
-; run snapped to 0: the run lags e), and fades back.
+; run snapped to 0: the run lags e), the delay snaps to the new shape's knot
+; on that block (unprimed, as at init), and the wet fades back.
         move    x:(r6+$c),a             ; SHP, slot 6, the knob field
         and     #>$7f0000,a
         move    a1,x0                   ; the knob's shape << 16
@@ -151,7 +159,9 @@ proc:
         tst     b                       ; is out only once the run has
         bne     vb_rise                 ; glided down and snapped
         move    x0,x:(r7+$10)           ; fully out: switch
-        bra     vb_duckd
+        clr     b                       ; ... and unprime, so this block's knots
+        move    b,x:(r7+$14)            ; snap: the delay moves while the wet is
+        bra     vb_duckd                ; out, not after (the walk's limit would chase)
 vb_rise:
         add     #>$080000,a             ; + 1/16
         cmp     x1,a
