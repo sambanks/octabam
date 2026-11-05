@@ -11,4 +11,6 @@ SLEW rounds the shape: on SQR it turns the trill into a glide between the
 two notes. WID pushes the right channel ahead by up to half a cycle; on RND
 it gives the right channel its own random pitches instead.
 
-FX1 only: on FX2 it passes the audio through untouched.
+It runs on FX1, or on FX1 and FX2 when the remix is built with its SLOTS
+setting at FX1+FX2 (only in a remix without the delay and reverb bus). In a
+default build, VIBRATO on FX2 passes the audio through untouched.

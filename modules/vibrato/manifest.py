@@ -1,6 +1,6 @@
-"""VIBRATO -- a pitch vibrato: sine, triangle, square or random pitch, FX1.
+"""VIBRATO -- a pitch vibrato: sine, triangle, square or random pitch, on FX1 or FX2.
 
-A per-track insert (FX1 only): one modulated delay per channel, wet only,
+A per-track insert: one modulated delay per channel, wet only,
 MIX blends. DEP is a pitch depth in cents, held as SPD moves (the delay
 swing scales as 1/rate, capped by the 1,024-word lines). Each shape is a
 pitch trajectory and the delay its integral: SINE is a sine, TRI a triangle
@@ -10,18 +10,23 @@ swing. SLEW rounds the trajectory (a one-pole on the delay offset, up to a
 quarter cycle); WID offsets R's phase by up to half a cycle, and on RND
 decorrelates R's random stream instead.
 
-FX1 only, as MODULATION and RESONATOR are: two 1,024-word lines out of the
-FX1 slot's 3,072, the base read from the allocator at init; on an FX2 slot
-it is a dry pass and writes nothing (`Claims(fx1_only=True)`, proven by
-verify_vibrato). vibrato_ref.py is the float reference and the source of the
+FX1 or FX2. Two 1,024-word lines out of its slot, the base read from the
+allocator at init. The SLOTS build setting (the stations' own,
+tools/remix/stations.py) decides FX2: `FX1` (the default) makes an FX2
+instance a dry pass that writes nothing (`Claims(fx1_only=True)`), so the
+module can sit beside the bus servers, whose tanks fill the FX2 slots;
+`FX1+FX2` runs it live on both, for a remix without a server. verify_vibrato
+proves both. vibrato_ref.py is the float reference and the source of the
 P table (103 words). Prototyped in Faust (README, "Design").
 """
 
+import dataclasses
 import importlib.util
 import pathlib
 
+from remix import stations
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, Module, Param, Proof, YBase)
+                          Kind, MenuEntry, Module, Param, Proof, Store, YBase)
 
 _spec = importlib.util.spec_from_file_location("vibrato_ref",
                                                pathlib.Path(__file__).with_name("vibrato_ref.py"))
@@ -38,8 +43,8 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Bryan T", author_url="https://github.com/bryantysinger",
     proof=Proof.HARDWARE,
-    proof_note="Bryan T's MKII, _bt_oct with VIBRATO and LOAD METER, 4 Nov 2026: four FX1 instances on tracks 1-4, 4.5 % a slot (LOAD METER over USB)",
-    doc="FX1: pitch vibrato -- sine, triangle, square trill or random; depth in cents.",
+    proof_note="Bryan T's MKII, _bt_oct with VIBRATO and LOAD METER, 4 Nov 2026: four FX1 instances on tracks 1-4, 4.5 % a slot (LOAD METER over USB); FX1+FX2 not yet on a unit",
+    doc="Pitch vibrato on FX1, or FX1 and FX2 (SLOTS) -- sine, triangle, square trill or random; depth in cents.",
     menu=MenuEntry(
         # 0x0b: a free-pool id; WAVE (an experiment) prefers it too, and the
         # registry settles a remix carrying both (registry.assign_ids).
@@ -84,6 +89,20 @@ MODULE = Module(
     # the promise that an FX2 instance writes nothing (verify_vibrato).
     claims=Claims(stock_instance_buffer=True, buffer_words=2048, fx1_only=True),
     harness=Harness(layout_char="9", is_server=False, bus_client=False),
+    store=Store("octabam.vibrato"),
+    settings=(stations.setting(),),
+    variant=lambda values: _slots(values),
     gates=(Gate("tools/verify/verify_vibrato.py", remix_arg=False),),
     dear={"SPD": 127, "DEP": 127, "SLEW": 127, "WID": 127, "MIX": 127, "SHP": 3},
 )
+
+
+def _slots(values):
+    """SLOTS = FX1+FX2: the stations' variant (the dry flag's line becomes a
+    nop, fx1_only lifted), merged into VIBRATO's own substitutions so the
+    per-payload LFSR seed survives (stations.variant replaces them whole)."""
+    if values["SLOTS"] != "FX1+FX2":
+        return {}
+    subst = {p: {**MODULE.dsp.subst[p], stations.DRY_FLAG: stations.LIVE_FLAG} for p in ("A", "B")}
+    return {"dsp": dataclasses.replace(MODULE.dsp, subst=subst),
+            "claims": dataclasses.replace(MODULE.claims, fx1_only=False)}

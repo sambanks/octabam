@@ -417,6 +417,118 @@ for name, p in K.items():
             ok = False
 check("every knob renders at both extremes without dsp_host dying", ok)
 
+# ---- 10. SLOTS = FX1+FX2: an FX2 instance runs live, exactly as FX1 does -------
+# The remix vibrato-fx2 pins the build setting. The same input and knobs at
+# track 1's FX1 (r7 0x6100, Y:0x1000), track 1's FX2 (r7 0x6200, Y:0x4000)
+# and track 3's FX2 (r7 0x6800, the shared window: Y:0x30000 on payload A):
+# SINE, TRI and SQR bit-identical across the three and not the dry; RND each
+# the reference with its own seed (r7 differs); the guard clean on every
+# slot, the shared window policed too.
+import os
+FX2_MEM = "out/dsp/_vibrato_fx2_A.mem"
+env = dict(os.environ, REMIX="vibrato-fx2", XBUS="1", SPEC="1"); env.setdefault("BUILD", "0")
+r = subprocess.run([sys.executable, "tools/build/build_bus.py"], env=env, capture_output=True, text=True)
+if r.returncode:
+    sys.exit(f"building vibrato-fx2 failed:\n{(r.stdout + r.stderr)[-1500:]}")
+send_probe.dump_mem("out/mainos_bus.bin", FX2_MEM, "A")
+i2, p2 = send_probe.entry_points(FX2_MEM, FXID)
+SLOTS2 = {"track 1 FX1": ("1", "0"), "track 1 FX2": ("2", "1"), "track 3 FX2": ("8", "5")}
+
+
+def run_slot(slot, samples, guard=False, **kw):
+    r7, alloc = SLOTS2[slot]
+    src = TMP / "fx2_in.raw"
+    src.write_bytes(b"".join(struct.pack("<i", m) for m in samples))
+    out = TMP / "fx2_out.raw"
+    cmd = [HOST, "-mem", FX2_MEM, "-init", f"{i2:x}", "-proc", f"{p2:x}", "-inst", "1", "-r7", r7,
+           "-alloc", alloc, "-inmask", "1", "-frames", str(FRAMES), "-blocks", str(-(-len(samples) // FRAMES)),
+           "-in", str(src), "-out", str(out), "-params", ",".join(str(x) for x in params(**kw)),
+           *(["-guard", "-guard-shared"] if guard else [])]
+    q = subprocess.run(cmd, capture_output=True, text=True)
+    if q.returncode:
+        sys.exit(f"dsp_host failed ({slot}, {kw}):\n{q.stdout}\n{q.stderr}")
+    m = re.search(r"r7 = X:0x([0-9a-fA-F]+)", q.stdout)
+    d = out.read_bytes()
+    w = struct.unpack(f"<{len(d)//4}i", d)
+    return list(w[0::2])[:len(samples)], int(m.group(1), 16), q.stdout + q.stderr
+
+
+N10 = 12000
+t10 = tone(330, 0.4, N10)
+for name in ("SINE", "TRI", "SQR"):
+    kw = dict(SHP=SHAPES[name], DEP=127, SPD=110, SLEW=40, WID=64, MIX=127)
+    outs = {slot: run_slot(slot, t10, **kw)[0] for slot in SLOTS2}
+    a = outs["track 1 FX1"]
+    check(f"FX1+FX2 build, {name}: FX2 (Y:0x4000 and the shared window) bit-identical to FX1, and live",
+          all(o == a for o in outs.values()) and a != t10,
+          f"{sum(1 for o in outs.values() if o == a)}/3 identical, wet differs from dry: {a != t10}")
+tq10 = [v / FS for v in t10]
+for slot in SLOTS2:
+    kw = dict(SHP=3, DEP=127, SPD=110, MIX=127)
+    L, r7v, _ = run_slot(slot, t10, **kw)
+    rL, _ = REF.Vibrato(**{n: params(**kw)[i] for n, i in K.items()},
+                        seed=REF.lfsr_seed(r7v, "A")).process(tq10, tq10)
+    e = max(abs(L[i] / FS - rL[i]) for i in range(N10))
+    check(f"FX1+FX2 build, RND on {slot} (r7 X:0x{r7v:04x}): the reference with its own seed",
+          e < 2.8e-3, f"max err {e:.2e}")
+for slot in SLOTS2:
+    _, _, g = run_slot(slot, t10, guard=True, SHP=3, DEP=127, SPD=127, SLEW=127, WID=127, MIX=127)
+    clean = "nothing written" in g or "0 writes" in g or "guard: ok" in g.lower()
+    check(f"FX1+FX2 build, {slot}: -guard (and the shared window) sees no stray write", clean,
+          ([l for l in g.strip().splitlines() if "guard" in l.lower()] or ["no guard output"])[-1])
+
+# ---- 11. a full core: eight instances at once (FX1 and FX2 of four tracks) -----
+# Four tracks on one core, VIBRATO on both slots of each: eight state blocks
+# (r7 0x6100 .. 0x6b00), eight buffers (the four FX1 slots, Y:0x4000/0x8000
+# and the shared window's pair), each instance called in turn every block as
+# the dispatcher does. SQR at its dearest: every instance bit-identical to the
+# single-instance render (no instance reaches another's state or line); RND:
+# each the reference with its own seed; the guard clean throughout.
+R7S = [1, 2, 4, 5, 7, 8, 10, 11]
+ALLOCS = [0, 1, 2, 3, 4, 5, 6, 7]
+
+
+def run_core(samples, guard=False, **kw):
+    src = TMP / "core_in.raw"
+    src.write_bytes(b"".join(struct.pack("<i", m) for m in samples))
+    out = TMP / "core_out.raw"
+    cmd = [HOST, "-mem", FX2_MEM, "-init", f"{i2:x}", "-proc", f"{p2:x}", "-inst", "8",
+           "-r7", ",".join(map(str, R7S)), "-alloc", ",".join(map(str, ALLOCS)),
+           "-frames", str(FRAMES), "-blocks", str(-(-len(samples) // FRAMES)),
+           "-in", str(src), "-out", str(out), "-params", ",".join(str(x) for x in params(**kw)),
+           *(["-guard", "-guard-shared"] if guard else [])]
+    q = subprocess.run(cmd, capture_output=True, text=True)
+    if q.returncode:
+        sys.exit(f"dsp_host failed (eight instances, {kw}):\n{q.stdout}\n{q.stderr}")
+    r7s = [int(m, 16) for m in re.findall(r"r7 = X:0x([0-9a-fA-F]+)", q.stdout)]
+    outs = []
+    for k in range(8):
+        d = pathlib.Path(str(out) + (f".i{k}" if k else "")).read_bytes()
+        w = struct.unpack(f"<{len(d)//4}i", d)
+        outs.append(list(w[0::2])[:len(samples)])
+    return outs, r7s, q.stdout + q.stderr
+
+
+kw = dict(SHP=2, DEP=127, SPD=127, SLEW=127, WID=127, MIX=127)
+single = run_slot("track 1 FX1", t10, **kw)[0]
+outs, r7s, g = run_core(t10, guard=True, **kw)
+same = sum(1 for o in outs if o == single)
+check("eight instances on one core (FX1 + FX2 of four tracks), SQR dearest: each bit-identical to one alone",
+      same == 8 and len(set(r7s)) == 8, f"{same}/8 identical, r7 {', '.join(hex(v) for v in r7s)}")
+clean = "nothing written" in g or "0 writes" in g or "guard: ok" in g.lower()
+check("eight instances on one core: -guard (and the shared window) sees no stray write", clean,
+      ([l for l in g.strip().splitlines() if "guard" in l.lower()] or ["no guard output"])[-1])
+kw = dict(SHP=3, DEP=127, SPD=110, MIX=127)
+outs, r7s, _ = run_core(t10, **kw)
+worst = 0.0
+for o, r7v in zip(outs, r7s):
+    rL, _ = REF.Vibrato(**{n: params(**kw)[i] for n, i in K.items()},
+                        seed=REF.lfsr_seed(r7v, "A")).process(tq10, tq10)
+    worst = max(worst, max(abs(o[i] / FS - rL[i]) for i in range(N10)))
+distinct = len({tuple(o[6000:]) for o in outs})
+check("eight instances on one core, RND: each the reference with its own seed, all eight different",
+      worst < 2.8e-3 and distinct == 8, f"max err {worst:.2e}, {distinct}/8 distinct")
+
 print()
 print("ALL PASS" if fails == 0 else f"{fails} FAILED")
 sys.exit(1 if fails else 0)

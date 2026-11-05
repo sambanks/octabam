@@ -1,7 +1,7 @@
 # `vibrato` — VIBRATO
 
-A pitch vibrato on FX1: sine, triangle, a square trill or stepped random
-pitch, with the depth set in cents.
+A pitch vibrato on FX1 or FX2: sine, triangle, a square trill or stepped
+random pitch, with the depth set in cents.
 
 One modulated delay per channel, wet only, MIX blending it with the dry. DEP
 is a pitch depth: it holds as SPD moves, because the delay swing is scaled by
@@ -10,8 +10,21 @@ out of line first). Each shape is a pitch trajectory and the delay is its
 integral: SQR is a true two-note trill (a triangle in delay), TRI a triangle
 in pitch, RND a new random pitch every half cycle, the square's step rate.
 SLEW rounds whatever shape is selected; WID leads R by up to half a cycle,
-and on RND decorrelates R's random stream instead. FX1 only (an FX2
-instance is a dry pass).
+and on RND decorrelates R's random stream instead.
+
+**FX1 or FX2.** It runs on either slot, chosen when the remix is built by
+the SLOTS setting (store `octabam.vibrato`), the same setting SPECTRUM,
+CHARACTER and MODULATION carry (`tools/remix/stations.py`):
+
+- `FX1` (the default): VIBRATO is on the FX1 chooser; an FX2 instance is a
+  dry pass that writes nothing (`Claims(fx1_only=True)`). This is the
+  setting for a remix with the bus servers, whose tanks own the FX2 slots.
+- `FX1+FX2`: VIBRATO is on both choosers and runs live on both, for a remix
+  without a server: `settings={("octabam.vibrato", "SLOTS"): Pin("FX1+FX2")}`
+  (`remixes/test/vibrato-fx2`). An FX2 instance renders exactly what an FX1
+  instance does; on one track FX2 follows FX1, so both slots is a vibrato on
+  a vibrato. Eight instances on a core (FX1 and FX2 of its four tracks) are
+  about 36 % of a frame at the measured 4.5 % a slot.
 
 ## Knobs
 
@@ -65,12 +78,13 @@ block-based:
 - **Knots** are clamped to 2..1,016 samples (a shrinking H under a slewed
   offset could otherwise reach under 2).
 - **Memory**: two 1,024-word lines (L at the allocator base, R at +$400), AGU
-  modulo rings; the r7 block's $00..$1f; a 103-word table (INC, PERW, DEV8,
+  modulo rings (every FX1 and FX2 base is 1024-aligned, the shared window's
+  included); the r7 block's $00..$1f; a 103-word table (INC, PERW, DEV8,
   33 words each, and the four FAC words). Code 563 words.
 
 ## Measured
 
-- ✅ **Render gates, 4 Nov 2026** (`verify_vibrato`, 42 checks, this tree,
+- ✅ **Render gates, 4 Nov 2026** (`verify_vibrato`, 54 checks, this tree,
   dsp_host): MIX 0 bit-exact in every shape; an FX2 instance bit-exact dry at
   any setting and `-guard` clean on both slots; DEP 0 a pure 2-sample delay
   of a full-scale two-signed sawtooth within 5 LSB; the DSP's delay
@@ -86,7 +100,12 @@ block-based:
   two RND instances (r7 0x6100, 0x6400) never identical after the first draw,
   each the reference with its own seed; knob words carrying an LFO's
   fraction (`-pword`) moving SPD, DEP, SLEW, WID and MIX by it, and SHP
-  masking it.
+  masking it; with SLOTS = FX1+FX2 (remix `vibrato-fx2`), track 1's FX2
+  (Y:0x4000) and track 3's (the shared window) bit-identical to FX1 in SINE,
+  TRI and SQR and live, RND on each the reference with its own seed; eight
+  instances on one core (FX1 and FX2 of four tracks, r7 0x6100..0x6b00) each
+  bit-identical to one alone, eight distinct RND streams; `-guard` and
+  `-guard-shared` clean on every slot.
 - ✅ `verify_dirty_state` (−138.5 dBFS from a garbage-filled block),
   `verify_init_regs`, `verify_menu`, `verify_replaces`, `norep`, the
   selftest, `verify_docs`.
@@ -119,8 +138,9 @@ Bryan T's MKII, 4 Nov 2026, `_bt_oct` with VIBRATO on FX1 (DJ EQ given up):
   instances on tracks 1-4, defaults and dearest, read for the slot cost
   above (no bad records, 2,756 interrupts a second throughout).
 
-Still to check: an FX2 instance (dry), WID on RND across two tracks, and
-four instances on core 0 (tracks 5-8).
+Still to check: SLOTS = FX1+FX2 on a unit, sixteen instances (FX1 and FX2
+on all eight tracks) with LOAD METER's reading; with the default SLOTS, an
+FX2 instance's dry pass; WID on RND across two tracks.
 
 ## Open
 
@@ -132,4 +152,5 @@ four instances on core 0 (tracks 5-8).
 ## Gates
 
 `tools/verify/verify_vibrato.py` (the manifest's gate): the list above.
-`remixes/test/vibrato` carries it on FX1 for the gates and a check image.
+`remixes/test/vibrato` carries it on FX1 (the default SLOTS) and
+`remixes/test/vibrato-fx2` with SLOTS = FX1+FX2.

@@ -118,6 +118,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`usb-out-tracks-post`](usb-out-tracks-post/README.md) | stock + USB (TRACKS POST) (16 ch: the tracks after their own MAIN gain). | on hardware: allmyfriendsaresynths's MKII, P3, 5 Oct 2026 (smoke test: 16 channels, LEVEL/mute/solo/crossfader follow) |
 | [`varispeed`](varispeed/README.md) | stock effects with VARISPEED: TSTR VARI, QUAN on PTCH. | `make check` |
 | [`vibrato`](vibrato/README.md) | VIBRATO on FX1 beside the stock effects (all but PLATE REV). | `make check` |
+| [`vibrato-fx2`](vibrato-fx2/README.md) | VIBRATO live on FX1 and FX2 beside the stock effects (all but PLATE REV). | `make check` |
 | [`vocoder`](vocoder/README.md) | VOCODER beside the stock effects (all but PLATE REV, whose words it takes, and DJ EQ, so its table sits in X). | on hardware: Ignorato's MKII, OCTABAM12 (the earlier positions T1 T2 T5 T6), 4 Oct 2026; the current positions (T2 T4 T6 T8) not flashed |
 | [`vocoder-usb`](vocoder-usb/README.md) | The vocoder remix plus USB MIDI and USB audio out, TRACKS MAIN CUE (20 channels over USB: the tracks, MAIN, CUE). | port-gated: make check under the ColdFire port, 10 Oct 2026; not flashed |
 | [`void`](void/README.md) | VOID replaces COMB FILTER; PLATE REV words host its DSP. | on hardware: MKII VOID V9 (COLR/HPF tables tip dd89e2e2+); verify_void.py 3s rail |
