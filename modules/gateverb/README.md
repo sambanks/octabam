@@ -58,6 +58,31 @@ Under `dsp_host` (`tools/verify/verify_gateverb.py`, remix `test/gateverb`):
 
 Not measured: sound (no listening yet), hardware, the real allocator's bases on a unit.
 
+### The smear LFO is bipolar, and in the model the tail grows from TIME 94 up (5 Nov 2026, model only)
+
+Clouds' LFOs are unipolar: stmlib's `CosineOscillator::Next()` returns `y + 0.5`, 0 to 1, so
+Clouds reads `ap1` at 10..70 and `del2` at 4680..4780. This port's parabola is bipolar, ±1
+(`gateverb.asm`, "offset 10 + 60 * lfo1"): the smear reads `ap1` at −50..70, so up to 50 samples of
+its reads land behind line 0, in the far end of the last tank line, and are written back into the
+first input allpass. That is a second feedback path that TIME does not scale. The `del2` tap swings
+4531 ± 97, twice Clouds' excursion.
+
+In the float model the module matches to 58 dB (`tools/harness/gateverb_voice.py --impulse`, impulse
+after the knobs settle), with every other knob at its default:
+
+| TIME | RT60, the module's LFOs | RT60, Clouds' LFOs |
+|---|---|---|
+| 64 | 4.84 s | 2.86 s |
+| 80 | 6.87 s | 3.78 s |
+| 94 | grows | 5.20 s |
+| 127 | grows | 17.91 s |
+
+Making the smear alone unipolar removes the growth (TIME 127: 20.9 s, decaying). One click at TIME
+120, AMNT 80, gate off, is still at −18.6 dB RMS 11 s later with the module's LFOs and −90.8 dB with
+Clouds'. 🟡 Inferred for the module: the 58 dB match was measured over 48,000 samples at TIME 80, not
+over seconds at TIME 94 and up. A `dsp_host` render of one impulse at TIME 120 for 10 s, or the same on
+a unit, would confirm or falsify it.
+
 ## Credit
 
 Emilie Gillet, Mutable Instruments (`pichenettes/eurorack`, MIT). `THIRD_PARTY.md` has the licence row.

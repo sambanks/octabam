@@ -131,6 +131,18 @@ engine, every env var the builder branches on); a mismatch forces a
 rebuild. The knob table is derived from the manifest; audit the wrappers
 after every knob change.
 
+## gateverb_voice.py
+
+GATE VERB's float model with knobs the module does not have yet (SIZE, PRE,
+LOCUT), for choosing a voicing by ear before writing assembly. No build and
+no `dsp_host`: it is the model `verify_gateverb` checks the module against,
+and `--selftest` shows it equals that model sample for sample with the new
+knobs at their defaults. `--test drums|pluck|click|noise` or a wav in, a
+24-bit wav out; `--sweep NAME=a,b,c`; `--impulse` prints RT60, a tail-growth
+check and the memory the settings need against today's ring and the
+14,368-word window-slot cap; `--clouds-lfo` uses Clouds' unipolar LFOs
+instead of the module's bipolar ones (`modules/gateverb/README.md`).
+
 ## send_probe.py
 
 `make render` builds the DEV image and runs the real send path (SEND
