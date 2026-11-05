@@ -15,6 +15,9 @@ Defaults are the Clouds module's values. A sixth knob, GATE, holds the wet
 output for 2048 + 256 k samples after the input falls quiet, then releases it as
 a desk gate does (the gain falls 1/2048 a sample, -60 dB in about 320 ms) and,
 once shut, empties the tank so the next hit starts from silence (0 is off).
+Page 2 (this port's): SIZE moves the tank's read taps in, LCUT high-passes the
+tank, MOD and RATE set the long delay's swing and both LFOs' speed. At their
+defaults (127, 0, 64, 64) the module is exactly as it was without them.
 """
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness,
                           Kind, MenuEntry, Module, Param, Proof, YBase)
@@ -35,7 +38,15 @@ MODULE = Module(
         Param(b"TONE", 90, active=True, formatter=Formatter.PLAIN, doc="damping low-pass: lower is darker; 90 matches Clouds"),
         Param(b"GATE", 0, active=True, formatter=Formatter.PLAIN,
               doc="0 off; k holds the tail 2048 + 256 k samples after the input falls quiet, then releases it like a desk gate (-60 dB in about 320 ms) and empties the tank"),
-        *(Param() for _ in range(6)),
+        Param(b"SIZE", 127, count=128, active=True, formatter=Formatter.PLAIN,
+              doc="room size: the tank's delays from 20 % (0) to full (127); 127 is the original"),
+        Param(b"LCUT", 0, count=128, active=True, formatter=Formatter.PLAIN,
+              doc="low cut inside the tank: 0 off, up to about 1 kHz at 127 (250 Hz at 64)"),
+        Param(b"MOD", 64, count=128, active=True, formatter=Formatter.PLAIN,
+              doc="depth of the long delay's modulation: 0 static, 64 the original, 127 twice it"),
+        Param(b"RATE", 64, count=128, active=True, formatter=Formatter.PLAIN,
+              doc="speed of both modulation LFOs: 0 frozen, 64 the original, 127 twice it"),
+        *(Param() for _ in range(2)),
     ),
     dsp=DspSection(asm="modules/gateverb/gateverb.asm", priority=11,
                    bus_role=BusRole.NONE, ybase=YBase.NEVER,

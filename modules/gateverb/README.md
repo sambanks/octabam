@@ -18,8 +18,16 @@ smeared by an LFO and the second delay is modulated. Left and right are the two 
 | 3 | DIFF | 100 | allpass coefficient 0..0.8 (Clouds sets 0.625 at power-up and 0.7 in use: 100 is 0.625) |
 | 4 | TONE | 90 | damping lowpass coefficient 0.05..1 (Clouds: 0.7 at power-up: 90) |
 | 5 | GATE | 0 | 0 is off. k holds the wet for 2048 + 256 k samples (52 ms to 784 ms) after the input falls quiet, then releases it as a desk gate does (−60 dB in about 320 ms); once shut, the tank is flushed, so the next hit starts from silence |
+| 6 | SIZE | 127 | page 2 (`x:(r6+$c)` knob field). The tank's read taps move in to 20 % of each length at 0, smoothed: f = 0.8 (127 − SIZE)/127; 127 is the original lengths, exactly |
+| 7 | LCUT | 0 | page 2 (`$c` companion). A one-pole high-pass in each half of the tank, after the damping: c = 0.1447 LCUT², smoothed; about 1 kHz at 127, 250 Hz at 64, 63 Hz at 32; 0 passes the tank untouched |
+| 8 | MOD | 64 | page 2 (`$d` knob field). The long delay's swing: 0 static, 64 the original (97 samples, scaled by SIZE), 127 twice it; smoothed. The tap's centre moves down with the swing, so it never reads outside its line |
+| 9 | RATE | 64 | page 2 (`$d` companion). Both LFOs' speed: 0 frozen, 64 the original (0.5 and 0.3 Hz), 127 twice it |
 
-These are Clouds' five setters (`set_amount`, `set_input_gain`, `set_time`, `set_diffusion`, `set_lp`).
+Slots 0-4 are Clouds' five setters (`set_amount`, `set_input_gain`, `set_time`, `set_diffusion`, `set_lp`).
+Page 2 is this port's (5 Nov 2026); at its defaults the module computes exactly what it did before, and
+the ring layout does not move (SIZE shortens reads, not the layout). A Part saved before page 2
+existed holds 0 in those slots: SIZE 0, MOD 0, RATE 0, a small static room. Re-pick the effect or
+stamp the defaults to get the original sound back.
 The ranges and defaults are this port's, taken from the values Clouds sets in `granular_processor.cc`
 and `reverb.h`; they have not been compared by ear.
 
@@ -52,7 +60,8 @@ Under `dsp_host` (`verify_gateverb`, GATE 40): the wet is open for the whole hol
 ## Measured
 
 Under `dsp_host` (`tools/verify/verify_gateverb.py`, remix `test/gateverb`):
-- The pricer counts 228 cycles per sample (219 before the desk gate, 5 Nov 2026), a floor: it counts words, not memory stalls. Scaled from the 7.76 % measured on a unit at 219, about 8.1 % a slot (🟡 inferred, not read).
+- The pricer counts 242 cycles per sample (219 before the desk gate, 228 before page 2, 5 Nov 2026), a floor: it counts words, not memory stalls. Scaled from the 7.76 % measured on a unit at 219, about 8.6 % a slot (🟡 inferred, not read), under the 9.07 % that lets it sit on every FX2 slot.
+- Page 2 against the model: six settings (SIZE 30; SIZE 0 with MOD 127; LCUT 90; MOD and RATE 0; MOD and RATE 127; SIZE 60, LCUT 40, MOD 100, RATE 30) match to 57-82 dB over the first 8,000 samples, where a wrong integer tap would show at once, and 46-62 dB over the whole render, where the tail meets the 24-bit floor the float model has not got. SIZE 30 decays faster than 127 (−69.3 dB against −56.9 dB at 0.7-0.9 s); LCUT 90 takes 12 dB out under 150 Hz; SIZE 0 with MOD 127 writes nothing outside the ring.
 - The first 77 calls pass the input through while the ring is cleared (206 words a call).
 - AMNT 0 is bit-exact dry.
 - An impulse and a noise burst through 48,000 samples match a float model (gate off, and an impulse with the gate on) of the same algorithm (same lengths, the same integer LFO phases and

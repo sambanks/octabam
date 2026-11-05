@@ -29,9 +29,12 @@
 ; (smoothed), $29 $2a LFO phases, $2c $2d the smear and delay fractions, $2e $2f
 ; the smear and delay offsets, $30 $31 the damping states, $32 apout, $33 input envelope,
 ; $34 hold counter, $35 gate gain, $36 hold length (0x7fffff = gate off), $37 $38 the loop gain
-; and allpass coefficient in use (KRT and KAP, or 0 under a shut gate).
+; and allpass coefficient in use (KRT and KAP, or 0 under a shut gate), $39 LCUT's coefficient,
+; $3a $3b its states, $3c SIZE's f, $3d the long delay's swing, $3e $3f the LFO steps, $40..$44 the
+; tank's read offsets, $45 the long delay's centre, $46 MOD's smoothed offset.
 ; Knobs: p0 AMNT amount, p1 GAIN input gain, p2 TIME reverb time, p3 DIFF
-; diffusion, p4 TONE damping, p5 GATE hold (0 off).
+; diffusion, p4 TONE damping, p5 GATE hold (0 off); page 2: SIZE, LCUT, MOD, RATE
+; (slots 6-9).
 
 init:
         move    #>$ffffff,m4
@@ -39,7 +42,7 @@ init:
         move    #>$20,n4
         move    (r4)+n4
         clr     a
-        do      #32,>gv_zero
+        do      #39,>gv_zero
         move    a,x:(r4)+
 gv_zero:
         nop
@@ -123,6 +126,117 @@ gv_ready:
         asr     #$4,a,a
         add     b,a
         move    a,x:(r7+$28)
+; Page 2 (5 Nov 2026). At their defaults (SIZE 127, LCUT 0, MOD 64, RATE 64) every value below is
+; the one the code had as a constant before, exactly.
+; Page 2 is three words of two controls (docs/firmware/PARAM_PAGES.md): slot 6 is x:(r6+$c)'s
+; knob field (bits 16-23), slot 7 its companion (bits 8-15), slots 8 and 9 the same in x:(r6+$d).
+; SIZE (slot 6): f = 0.8 (127 - SIZE)/127, smoothed; the tank's read taps move in by f of each length.
+        move    x:(r6+$c),a
+        and     #>$7f0000,a
+        move    a1,x0
+        move    #>$7f0000,a
+        sub     x0,a
+        move    a1,x0
+        move    #>$6734ee,y1
+        mpy     x0,y1,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$3c),b
+        sub     b,a
+        asr     #$4,a,a
+        add     b,a
+        move    a,x:(r7+$3c)
+        move    x:(r7+$3c),y1
+        move    #>1600,x0
+        mpy     x0,y1,a
+        move    #>$fff648,x1
+        add     x1,a
+        move    a1,x:(r7+$40)
+        move    #>1973,x0
+        mpy     x0,y1,a
+        move    #>$ffee92,x1
+        add     x1,a
+        move    a1,x:(r7+$41)
+        move    #>3303,x0
+        mpy     x0,y1,a
+        move    #>$ffe1aa,x1
+        add     x1,a
+        move    a1,x:(r7+$42)
+        move    #>1852,x0
+        mpy     x0,y1,a
+        move    #>$ffda6d,x1
+        add     x1,a
+        move    a1,x:(r7+$43)
+        move    #>1610,x0
+        mpy     x0,y1,a
+        move    #>$ffd422,x1
+        add     x1,a
+        move    a1,x:(r7+$44)
+; MOD (slot 8): the long delay's swing, 2 dS m with dS its depth after SIZE and m = 1/2 + s, s smoothed
+; from 0 toward MOD - 1/2.
+        move    #>$061000,x0
+        mpy     x0,y1,a
+        move    a1,x1
+        move    #>$061000,a
+        sub     x1,a
+        asl     #$1,a,a
+        move    a1,x0
+        move    x:(r6+$d),a
+        and     #>$7f0000,a
+        move    a1,x1
+        move    x1,a
+        move    #>$400000,x1
+        sub     x1,a
+        move    x:(r7+$46),b
+        sub     b,a
+        asr     #$4,a,a
+        add     b,a
+        move    a,x:(r7+$46)
+        move    #>$400000,x1
+        add     x1,a
+        move    a1,y0
+        mpy     y0,x0,a
+        move    a1,x:(r7+$3d)
+; the long delay's centre: its length after SIZE, less 2, less the swing, so the tap stays inside it
+        move    #>4630,x0
+        mpy     x0,y1,a
+        move    a1,x1
+        move    #>4628,a
+        sub     x1,a
+        move    x:(r7+$3d),b
+        asr     #$c,b,b
+        move    b1,x1
+        sub     x1,a
+        move    a1,x:(r7+$45)
+; RATE (slot 9, x:(r6+$d)'s companion): both LFOs' steps, 2 RATE times today's
+        move    x:(r6+$d),a
+        and     #>$007f00,a
+        asl     #$8,a,a
+        move    a1,y0
+        move    #>380,x0
+        mpy     y0,x0,a
+        move    a1,x:(r7+$3e)
+        move    #>228,x0
+        mpy     y0,x0,a
+        move    a1,x:(r7+$3f)
+; LCUT (slot 7, x:(r6+$c)'s companion): a one-pole high-pass in each half of the tank, c = 0.1447 LCUT^2, smoothed (about
+; 1 kHz at 127, 250 Hz at 64; 0 passes the tank untouched)
+        move    x:(r6+$c),a
+        and     #>$007f00,a
+        asl     #$8,a,a
+        move    a1,x0
+        move    a1,y1
+        mpy     x0,y1,a
+        move    a1,x0
+        move    #>$12866a,y1
+        mpy     x0,y1,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$39),b
+        sub     b,a
+        asr     #$4,a,a
+        add     b,a
+        move    a,x:(r7+$39)
 ; GATE: 0 is off (hold length at maximum); k > 0 holds 2048 + 256 k samples.
         move    x:(r6+$5),a
         and     #>$7f0000,a
@@ -141,14 +255,14 @@ gv_gdone:
         move    a1,x:(r7+$36)
 ; LFO phases advance a block at a time; the parabola 4x(1-|x|) stands for the cosine.
         move    x:(r7+$29),a
-        move    #>190,x1
+        move    x:(r7+$3e),x1
         do      n7,>gv_p29
         add     x1,a
 gv_p29:
         nop
         move    a1,x:(r7+$29)
         move    x:(r7+$2a),a
-        move    #>114,x1
+        move    x:(r7+$3f),x1
         do      n7,>gv_p2a
         add     x1,a
 gv_p2a:
@@ -194,14 +308,14 @@ gv_p2a:
         mpy     x0,y1,a
         asl     #$2,a,a
         move    a,x0
-; delay 2: offset 4531 + 97 * lfo2 samples.
-        move    #>$061000,y1
+; delay 2: offset centre + swing * lfo2 samples (4531 + 97 at the defaults).
+        move    x:(r7+$3d),y1
         mpy     x0,y1,a
         move    a1,x0
         move    x0,a
         asr     #$c,a,b
         move    b1,x1
-        move    #>4531,b
+        move    x:(r7+$45),b
         add     x1,b
         move    b1,x1
         and     #>$000fff,a
@@ -358,8 +472,15 @@ gv_p2a:
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$30)
+        move    x:(r7+$3a),b
+        sub     b,a
+        move    a,x0
+        move    x:(r7+$39),y1
+        mac     -x0,y1,a
+        mac     x0,y1,b
+        move    b,x:(r7+$3a)
         move    x:(r7+$38),y1
-        move    #>$fff648,n5
+        move    x:(r7+$40),n5
         move    y:(r5+n5),x0
         mac     -x0,y1,a
         move    x0,b
@@ -368,7 +489,7 @@ gv_p2a:
         move    a,x0
         move    b,a
         mac     x0,y1,a
-        move    #>$ffee92,n5
+        move    x:(r7+$41),n5
         move    y:(r5+n5),x0
         mac     x0,y1,a
         move    x0,b
@@ -394,7 +515,7 @@ gv_p2a:
         move    a,x:(r0)+
 ; second half: delay 1 tail -> damping -> dap2a -> dap2b -> delay 2; right out
         move    x:(r7+$32),a
-        move    #>$ffe1aa,n5
+        move    x:(r7+$42),n5
         move    y:(r5+n5),x0
         move    x:(r7+$37),y1
         mac     x0,y1,a
@@ -405,8 +526,15 @@ gv_p2a:
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$31)
+        move    x:(r7+$3b),b
+        sub     b,a
+        move    a,x0
+        move    x:(r7+$39),y1
+        mac     -x0,y1,a
+        mac     x0,y1,b
+        move    b,x:(r7+$3b)
         move    x:(r7+$38),y1
-        move    #>$ffda6d,n5
+        move    x:(r7+$43),n5
         move    y:(r5+n5),x0
         mac     x0,y1,a
         move    x0,b
@@ -415,7 +543,7 @@ gv_p2a:
         move    a,x0
         move    b,a
         mac     -x0,y1,a
-        move    #>$ffd422,n5
+        move    x:(r7+$44),n5
         move    y:(r5+n5),x0
         mac     -x0,y1,a
         move    x0,b

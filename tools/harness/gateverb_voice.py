@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """GATE VERB voicing sandbox: the float model, with knobs the module does not have yet.
 
-    python3 tools/harness/gateverb_voice.py IN.wav -o OUT.wav [-p SIZE=80 -p PRE=20 ...]
+    python3 tools/harness/gateverb_voice.py IN.wav -o OUT.wav [-p SIZE=80 -p LCUT=40 ...]
     python3 tools/harness/gateverb_voice.py --test pluck -o out.wav -p SIZE=40
     python3 tools/harness/gateverb_voice.py --test click --sweep SIZE=127,90,60,30 -o size.wav
     python3 tools/harness/gateverb_voice.py --impulse [-p ...]      # RT60, memory, no file
@@ -10,15 +10,15 @@
 A place to choose a voicing by ear before any of it is written in DSP assembly. It is
 the float model `tools/verify/verify_gateverb.py` checks the module against (the
 module matches it to 58 dB), the same topology, lengths, LFOs, parameter laws and
-per-block smoothing, with three additions:
+per-block smoothing, and every knob the module has:
 
-  SIZE   0-127, default 127: every delay length and the second LFO's centre and depth
-         scaled by 0.2 + 0.8 SIZE/127 (127 is the module's lengths). The first LFO's
-         smear (10 +- 60 samples on the first input allpass) is not scaled.
-  PRE    0-127, default 0: a predelay of 32 PRE samples (0 to 92 ms) on the mono input,
-         ahead of the input allpasses.
-  LOCUT  0-127, default 0: a one-pole high-pass in each half of the tank, after the
-         damping low-pass; 0 is off, 1-127 run from 20 Hz to 1 kHz, exponentially.
+  SIZE, LCUT, MOD, RATE   page 2, as the module has them (5 Nov 2026): SIZE moves the tank's read
+         taps in to 20 % of each length at 0 (127 is full); LCUT a one-pole high-pass in each tank
+         half, c = 0.1447 LCUT^2 (about 1 kHz at 127); MOD the long delay's swing, 0 to twice
+         today's; RATE both LFOs' speed, 0 (frozen) to twice today's. At their defaults (127, 0, 64,
+         64) the module is as it was.
+  PRE    0-127, default 0, proposed only: a predelay of 32 PRE samples (0 to 92 ms) on the mono
+         input, ahead of the input allpasses.
 Two gate forms (--gate):
   module  as built (5 Nov 2026): when the hold runs out the gain falls 1/2^REL a sample, a straight
           line in dB like a desk gate's release (SSL channel gate, Drawmer DS201; the module's REL is
@@ -28,10 +28,9 @@ Two gate forms (--gate):
           the next hit starts from silence. --release-shift changes REL here only.
   old     the module before 5 Nov 2026: the wet closed in about 3 ms and the tank rang on.
 
-With the three at their defaults the output is the model's, sample for sample
-(`--selftest` runs verify_gateverb.model beside it). Everything else here is
-proposed, not built: no assembly exists for SIZE, PRE or LOCUT, and the costs and
-memory the tool prints are the model's own arithmetic, not a measurement.
+Without PRE the output is verify_gateverb's model, sample for sample (`--selftest` runs the
+two side by side, page 2 included). PRE is proposed, not built, and the memory the tool prints
+is the model's own arithmetic, not a measurement.
 
 The memory line is the words the chip would need (ring + predelay) against two
 limits: the module's 15,862-word ring today, and 14,368 words, the most a
@@ -48,8 +47,8 @@ Q = 1 << 23
 LEN = [109, 157, 233, 386, 1600, 1973, 3303, 1852, 1610, 4630]
 RING_TODAY = 15862
 RING_WINDOW = 0x3820          # 14,368
-NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "SIZE", "PRE", "LOCUT")
-DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, SIZE=127, PRE=0, LOCUT=0)
+NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "SIZE", "LCUT", "MOD", "RATE", "PRE")
+DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, SIZE=127, LCUT=0, MOD=64, RATE=64, PRE=0)
 
 
 def s24(v):
@@ -67,30 +66,10 @@ def parab(phase):
     return max(-Q, min(Q - 1, (x * t >> 23) * 4))
 
 
-def geometry(size):
-    """SIZE scales the tank (lines 4-9) only: the input allpasses are 20 ms of diffusion
-    either way, and the smear tap reads around line 0, which must keep its length."""
-    s = 0.2 + 0.8 * size / 127
-    lens = LEN[:4] + [round(l * s) for l in LEN[4:]]
-    base, b = [], 0
-    for l in lens:
-        base.append(b); b += l + 1
-    n = base[-1] + lens[-1]
-    depth = 0x061000 if size == 127 else int(0x061000 * s)
-    dsamp = depth >> 12
-    centre = 4531 if size == 127 else min(round(4531 * s), lens[9] - 2 - dsamp)
-    return s, lens, base, n, centre, depth
-
-
 def memory_words(p):
-    return geometry(p["SIZE"])[3] + 32 * p["PRE"]
-
-
-def locut_coef(k):
-    if k <= 0:
-        return 0.0
-    f = 20.0 * (1000.0 / 20.0) ** ((k - 1) / 126)
-    return 1.0 - math.exp(-2 * math.pi * f / SR)
+    """The ring is laid out at full size whatever SIZE is (SIZE moves the tank's read taps in), so
+    only the proposed predelay adds to it."""
+    return RING_TODAY + 32 * p["PRE"]
 
 
 def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
@@ -105,12 +84,15 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
     input; the tail grew from TIME 94 up (modules/gateverb/README.md).
     """
     p = dict(DEFAULTS, **params)
-    _s, LN, BASE, N, centre, depth = geometry(p["SIZE"])
+    BASE, b = [], 0
+    for l in LEN:
+        BASE.append(b); b += l + 1
+    N = BASE[-1] + LEN[-1]
     pre_n = 32 * p["PRE"]
     pre = [0.0] * (pre_n + 1)
     pw = 0
-    hc = locut_coef(p["LOCUT"])
     hp1 = hp2 = 0.0
+    sz_f = mod_s = lc = 0
     ring = [0.0] * N
     ph1 = ph2 = 0
     amt = gc = krt = kap = klp = 0
@@ -131,7 +113,16 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
         krt += ((mulf(k[2], 0x50A3D7) + 0x2CCCCD) - krt) >> 4
         kap += (mulf(k[3], 0x666666) - kap) >> 4
         klp += ((mulf(k[4], 0x79999A) + 0x066666) - klp) >> 4
-        ph1 = s24(ph1 + 190 * FRAMES); ph2 = s24(ph2 + 114 * FRAMES)
+        # page 2 as gateverb.asm computes it each block (verify_gateverb.model is the reference)
+        sz_f += (mulf((127 - p["SIZE"]) << 16, 0x6734EE) - sz_f) >> 4
+        LN = [LEN[j] - mulf(LEN[j], sz_f) for j in range(10)]
+        mod_s += (((p["MOD"] << 16) - 0x400000) - mod_s) >> 4
+        depth = mulf(2 * (0x061000 - mulf(0x061000, sz_f)), 0x400000 + mod_s)
+        centre = LN[9] - 2 - (depth >> 12)
+        u = p["LCUT"] << 16
+        lc += (mulf(mulf(u, u), 0x12866A) - lc) >> 4
+        C = lc / Q
+        ph1 = s24(ph1 + mulf(380, p["RATE"] << 16) * FRAMES); ph2 = s24(ph2 + mulf(228, p["RATE"] << 16) * FRAMES)
         u1 = parab(ph1) if lfo == "old" else (parab(ph1) + Q) >> 1     # 0..1 unless old
         u2 = (parab(ph2) + Q) >> 1 if lfo == "clouds" else parab(ph2)
         t1 = mulf(u1, 0x03C000) + 0x00A000
@@ -176,14 +167,13 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
                 x_in = pre[pw]
             acc = x_in * G
             for j in range(4):
-                r = rd(j, LN[j] - 1); acc += K * r; wr(j, 0, acc); acc = r - K * max(-1, min(1, acc))
+                r = rd(j, LEN[j] - 1); acc += K * r; wr(j, 0, acc); acc = r - K * max(-1, min(1, acc))
             apout = acc
             # first half
             a1 = rd(9, kint2); b1 = rd(9, kint2 + 1)
             acc = apout + (a1 + (b1 - a1) * fr2 / Q) * R
             lp1 += L * (acc - lp1); acc = lp1
-            if hc:
-                hp1 += hc * (acc - hp1); acc -= hp1
+            d = acc - hp1; acc = d - C * d; hp1 += C * d
             r = rd(4, LN[4] - 1); acc += -K * r; wr(4, 0, acc); acc = r + K * max(-1, min(1, acc))
             r = rd(5, LN[5] - 1); acc += K * r; wr(5, 0, acc); acc = r - K * max(-1, min(1, acc))
             wr(6, 0, acc); wet = max(-1, min(1, 2 * acc)) * G_
@@ -191,8 +181,7 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
             # second half
             acc = apout + rd(6, LN[6] - 1) * R
             lp2 += L * (acc - lp2); acc = lp2
-            if hc:
-                hp2 += hc * (acc - hp2); acc -= hp2
+            d = acc - hp2; acc = d - C * d; hp2 += C * d
             r = rd(7, LN[7] - 1); acc += K * r; wr(7, 0, acc); acc = r - K * max(-1, min(1, acc))
             r = rd(8, LN[8] - 1); acc += -K * r; wr(8, 0, acc); acc = r + K * max(-1, min(1, acc))
             wr(9, 0, acc); wet = max(-1, min(1, 2 * acc)) * G_
@@ -313,7 +302,7 @@ def impulse_report(p, seconds=8.0, lfo="module", gate="module", rel=11):
 
 
 def selftest():
-    """The model with SIZE/PRE/LOCUT at defaults against verify_gateverb.model, sample for sample."""
+    """The model without PRE against verify_gateverb.model, sample for sample."""
     src = pathlib.Path(__file__).resolve().parents[1] / "verify" / "verify_gateverb.py"
     # only the model is wanted: no build, no dsp_host, no registry (send_probe loads every manifest)
     code = src.read_text().replace("\nmain()\n", "\n").replace("import send_probe  # noqa: E402\n", "send_probe = None\n")
@@ -331,7 +320,8 @@ def selftest():
         mono[i] = int(0.3 * Q * (rnd.random() - 0.5))
     st = [v for s in mono for v in (s, s)]
     bad = 0
-    for prm in ([64, 51, 80, 100, 90, 0], [80, 51, 110, 100, 90, 40], [127, 20, 127, 30, 10, 0]):
+    for prm in ([64, 51, 80, 100, 90, 0], [80, 51, 110, 100, 90, 40], [127, 20, 127, 30, 10, 0],
+                [64, 51, 80, 100, 90, 0, 60, 40, 100, 30], [80, 51, 110, 100, 90, 40, 20, 90, 127, 0]):
         rL, rR = ns["model"](st, prm, 4)
         mL, mR = model(st, dict(zip(NAMES, prm)), 4)
         same = rL == mL and rR == mR

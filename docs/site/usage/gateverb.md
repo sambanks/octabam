@@ -31,3 +31,10 @@ then the reverb carries on from one hit to the next.
 | DIFF | 100 | how smeared the tail is |
 | TONE | 90 | damping: lower is darker, up is brighter |
 | GATE | 0 | 0 is off. Up: after the input falls quiet, hold the wet for 52–784 ms, then fade it out like a desk gate |
+| SIZE | 127 | page 2. The size of the space: down for a smaller room and a shorter, denser tail; 127 is the original |
+| LCUT | 0 | page 2. Low cut inside the reverb: up thins the tail's low end so it sits in a mix; 0 is off |
+| MOD | 64 | page 2. How much the tail is modulated: 0 is static, up is more chorus-like |
+| RATE | 64 | page 2. How fast the modulation moves: 0 frozen, 127 twice the original |
+
+A Part saved with GATE VERB before page 2 existed opens with SIZE, MOD and RATE at 0, a small, static
+room. Re-select the effect to get the defaults back.

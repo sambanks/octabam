@@ -48,6 +48,8 @@ for _l in LEN:
     BASE.append(_b); _b += _l + 1
 N = BASE[-1] + LEN[-1]
 Q = 1 << 23
+PAGE2 = [127, 0, 64, 64]                 # SIZE LCUT MOD RATE defaults: today's sound exactly
+TAIL = PAGE2 + [0, 0]                    # the knob words after GATE, as a Part with the defaults holds them
 fails = 0
 
 
@@ -104,6 +106,9 @@ def model(samples, params, blocks_skip):
     ph1 = ph2 = 0
     amt = gc = krt = kap = klp = 0
     lp1 = lp2 = 0.0
+    sz_f = mod_s = lc = 0                # page 2's smoothed values: SIZE's f, MOD's offset, LCUT's c
+    hp1 = hp2 = 0.0
+    size, lcut, mod, rate = (list(params[6:10]) + PAGE2[len(params[6:10]):])
     p = 0
     env = hold = gs = 0
     hmax = 0x7FFFFF if params[5] == 0 else 2048 + 256 * params[5]
@@ -121,11 +126,21 @@ def model(samples, params, blocks_skip):
         krt = smooth(krt, mulf(k[2], 0x50A3D7) + 0x2CCCCD)
         kap = smooth(kap, mulf(k[3], 0x666666))
         klp = smooth(klp, mulf(k[4], 0x79999A) + 0x066666)
-        ph1 = s24(ph1 + 190 * FRAMES); ph2 = s24(ph2 + 114 * FRAMES)
+        # page 2, as gateverb.asm computes it each block
+        sz_f = smooth(sz_f, mulf((127 - size) << 16, 0x6734EE))
+        ln = [LEN[j] - mulf(LEN[j], sz_f) for j in range(10)]      # read lengths (lines 4-9 used)
+        mod_s = smooth(mod_s, (mod << 16) - 0x400000)
+        d2 = mulf(2 * (0x061000 - mulf(0x061000, sz_f)), 0x400000 + mod_s)     # the swing, Q12 samples
+        centre = ln[9] - 2 - (d2 >> 12)
+        inc1, inc2 = mulf(380, rate << 16), mulf(228, rate << 16)
+        u = lcut << 16
+        lc = smooth(lc, mulf(mulf(u, u), 0x12866A))
+        C = lc / Q
+        ph1 = s24(ph1 + inc1 * FRAMES); ph2 = s24(ph2 + inc2 * FRAMES)
         t1 = mulf((parab(ph1) + Q) >> 1, 0x03C000) + 0x00A000     # unipolar, as Clouds' LFO: 10..70
         kint1, fr1 = t1 >> 12, (t1 & 0xFFF) << 11
-        t2 = mulf(parab(ph2), 0x061000)
-        kint2, fr2 = 4531 + (t2 >> 12), (t2 & 0xFFF) << 11
+        t2 = mulf(parab(ph2), d2)
+        kint2, fr2 = centre + (t2 >> 12), (t2 & 0xFFF) << 11
         K, G, R, L = kap / Q, gc / Q, krt / Q, klp / Q
         if gs == 0:                      # the gate shut at the block's start: the tank empties
             R = K = 0.0
@@ -165,15 +180,17 @@ def model(samples, params, blocks_skip):
             x = a1 + (b1 - a1) * fr2 / Q
             acc = apout + x * R
             lp1 += L * (acc - lp1); acc = lp1
-            r = rd(4, LEN[4] - 1); acc += -K * r; wr_i(4, acc); acc = r + K * max(-1, min(1, acc))
-            r = rd(5, LEN[5] - 1); acc += K * r; wr_i(5, acc); acc = r - K * max(-1, min(1, acc))
+            d = acc - hp1; acc = d - C * d; hp1 += C * d
+            r = rd(4, ln[4] - 1); acc += -K * r; wr_i(4, acc); acc = r + K * max(-1, min(1, acc))
+            r = rd(5, ln[5] - 1); acc += K * r; wr_i(5, acc); acc = r - K * max(-1, min(1, acc))
             wr_i(6, acc); wet = max(-1, min(1, 2 * acc)) * G_
             out_l.append(max(-1, min(1, l_in + (8 * wet - l_in) * A)) * Q)
             # second half
-            acc = apout + rd(6, LEN[6] - 1) * R
+            acc = apout + rd(6, ln[6] - 1) * R
             lp2 += L * (acc - lp2); acc = lp2
-            r = rd(7, LEN[7] - 1); acc += K * r; wr_i(7, acc); acc = r - K * max(-1, min(1, acc))
-            r = rd(8, LEN[8] - 1); acc += -K * r; wr_i(8, acc); acc = r + K * max(-1, min(1, acc))
+            d = acc - hp2; acc = d - C * d; hp2 += C * d
+            r = rd(7, ln[7] - 1); acc += K * r; wr_i(7, acc); acc = r - K * max(-1, min(1, acc))
+            r = rd(8, ln[8] - 1); acc += -K * r; wr_i(8, acc); acc = r + K * max(-1, min(1, acc))
             wr_i(9, acc); wet = max(-1, min(1, 2 * acc)) * G_
             out_r.append(max(-1, min(1, r_in + (8 * wet - r_in) * A)) * Q)
             p = (p + 1) % N
@@ -201,10 +218,10 @@ def main():
     for i in range((CLEAR_CALLS + 60) * FRAMES, (CLEAR_CALLS + 60) * FRAMES + 600):
         imp[i] = int(0.3 * Q * (random.random() - 0.5))
     params = [64, 51, 80, 100, 90, 0]
-    L, R, _ = host(imp, params + [0] * 6)
+    L, R, _ = host(imp, params + TAIL)
     check(f"clear: the first {CLEAR_CALLS} calls pass the input untouched",
           all(L[i] == imp[i] for i in range(CLEAR_CALLS * FRAMES)))
-    L0, R0, _ = host(imp, [0] + params[1:] + [0] * 6)
+    L0, R0, _ = host(imp, [0] + params[1:] + TAIL)
     check("dry: AMNT 0 is bit-exact dry", L0 == imp and R0 == imp)
     check("wet: AMNT 64 changes the output after the clearing", L != imp)
     # model: mono input to both channels
@@ -219,7 +236,7 @@ def main():
     check("tail: below full scale", max(abs(x) for x in L + R) < Q - 1)
     t1 = rms_db(L[n0 + 8000:n0 + 12000]); t2 = rms_db(L[n0 + 40000:n0 + 44000])
     check(f"tail: decays ({t1:.1f} dB then {t2:.1f} dB)", t2 < t1 - 6)
-    Lh, _, _ = host(imp, [64, 51, 127, 100, 90, 0] + [0] * 6)
+    Lh, _, _ = host(imp, [64, 51, 127, 100, 90, 0] + TAIL)
     th = rms_db(Lh[n0 + 40000:n0 + 44000])
     check(f"time: TIME 127 rings longer than TIME 80 ({th:.1f} dB against {t2:.1f} dB)", th > t2)
     # runaway: a long tail must keep falling (the bipolar smear grew it from TIME 94 up)
@@ -228,7 +245,7 @@ def main():
     r0 = (CLEAR_CALLS + 200) * FRAMES
     rimp[r0] = int(0.5 * Q)
     for tm in (120, 127):
-        Lr, _, _ = host(rimp, [80, 51, tm, 100, 90, 0] + [0] * 6)
+        Lr, _, _ = host(rimp, [80, 51, tm, 100, 90, 0] + TAIL)
         rr = [rms_db(Lr[i:i + seg]) for i in range(r0 + 1, len(Lr) - seg, seg)]
         rise = max(b - a for a, b in zip(rr, rr[1:]))
         check(f"runaway: TIME {tm}, 10 s: {rr[0]:.0f} dB to {rr[-1]:.0f} dB, largest rise {rise:+.1f} dB",
@@ -238,8 +255,8 @@ def main():
     gimp[(CLEAR_CALLS + 4) * FRAMES] = int(0.5 * Q)
     t0 = (CLEAR_CALLS + 4) * FRAMES
     gp = [80, 51, 110, 100, 90]
-    Lng, _, _ = host(gimp, gp + [0] * 7)
-    Lg, Rg, _ = host(gimp, gp + [40] + [0] * 6)
+    Lng, _, _ = host(gimp, gp + [0] + TAIL)
+    Lg, Rg, _ = host(gimp, gp + [40] + TAIL)
     hold = 2048 + 256 * 40
     pre_ng, pre_g = rms_db(Lng[t0 + 2000:t0 + 8000]), rms_db(Lg[t0 + 2000:t0 + 8000])
     # the envelope needs about 2,200 samples to fall from 0.5 to the threshold before the hold
@@ -259,8 +276,8 @@ def main():
     t1 = rel0 + 16200 + 8500
     gimp2 = list(gimp); gimp2[t1] = int(0.5 * Q)
     gimp3 = [0] * len(gimp); gimp3[t1] = int(0.5 * Q)
-    Lg2, _, _ = host(gimp2, gp + [40] + [0] * 6)
-    Lg3, _, _ = host(gimp3, gp + [40] + [0] * 6)
+    Lg2, _, _ = host(gimp2, gp + [40] + TAIL)
+    Lg3, _, _ = host(gimp3, gp + [40] + TAIL)
     res = rms_db([x - y for x, y in zip(Lg2[t1:t1 + 12000], Lg3[t1:t1 + 12000])])
     check(f"gate: the tank is empty when it reopens (a second hit less the same hit alone: {res:.1f} dBFS)", res < -110)
     stg = []
@@ -269,8 +286,38 @@ def main():
     mgL, _ = model(stg, gp + [40], CLEAR_CALLS)
     sg = snr_db(mgL[n0:], Lg[n0:])
     check(f"gate: left against the float model, {sg:.1f} dB", sg > 50)
+    # page 2 away from its defaults, against the model. SIZE's offsets and the long delay's tap are
+    # integers in both, so a wrong one is wrong from the first samples on: the first 8,000 must match
+    # to 50 dB. Later the tail decays toward the 24-bit truncation floor the float model has not got,
+    # and the match falls with it (57 dB to 20 dB over a second with LCUT 40), so the whole render is
+    # held to 40 dB.
+    p2 = {"SIZE 30": [30, 0, 64, 64], "SIZE 0, MOD 127": [0, 0, 127, 64], "LCUT 90": [127, 90, 64, 64],
+          "MOD 0, RATE 0": [127, 0, 0, 0], "MOD 127, RATE 127": [127, 0, 127, 127],
+          "SIZE 60, LCUT 40, MOD 100, RATE 30": [60, 40, 100, 30]}
+    lv = {}
+    for name, pg in p2.items():
+        Lp, Rp, _ = host(imp, params + pg + [0, 0])
+        mpL, mpR = model(st, params + pg, CLEAR_CALLS)
+        s8 = min(snr_db(mpL[n0:n0 + 8000], Lp[n0:n0 + 8000]), snr_db(mpR[n0:n0 + 8000], Rp[n0:n0 + 8000]))
+        sp = min(snr_db(mpL[n0:], Lp[n0:]), snr_db(mpR[n0:], Rp[n0:]))
+        lv[name] = Lp
+        check(f"page 2: {name} against the float model, {s8:.1f} dB over 8,000 samples, {sp:.1f} dB whole",
+              s8 > 50 and sp > 40)
+    late = lambda x: rms_db(x[n0 + 30000:n0 + 40000])
+    check(f"page 2: SIZE 30 decays faster than SIZE 127 ({late(lv['SIZE 30']):.1f} dB against {late(L):.1f} dB, 0.7-0.9 s in)",
+          late(lv["SIZE 30"]) < late(L) - 6)
+    def low_db(x):                       # the tail's energy under about 150 Hz (a 3 ms moving
+        w = 128; a0 = n0 + 4000           # average), from after the noise burst: wet only
+        s0 = sum(x[a0:a0 + w]); acc = []
+        for i in range(a0 + w, n0 + 40000):
+            s0 += x[i] - x[i - w]; acc.append(s0 / w)
+        return rms_db(acc)
+    check(f"page 2: LCUT 90 takes the low end out ({low_db(lv['LCUT 90']):.1f} dB against {low_db(L):.1f} dB under 150 Hz)",
+          low_db(lv["LCUT 90"]) < low_db(L) - 6)
+    _, _, logp = host(imp[:400 * FRAMES], params + [0, 0, 127, 127, 0, 0], extra=["-guard", str(N), "-guard-shared"])
+    check("page 2: SIZE 0, MOD 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logp)
     # bounds
-    _, _, log = host(imp[:200 * FRAMES], params + [0] * 6, extra=["-guard", str(N), "-guard-shared"])
+    _, _, log = host(imp[:200 * FRAMES], params + TAIL, extra=["-guard", str(N), "-guard-shared"])
     check(f"bounds: -guard {N}, no write outside the ring", "0 stray write regions, 0 CLOBBERING" in log, log.strip().splitlines()[-1][:100] if log.strip() else "")
     # dirty: garbage in X (state block) and Y (the ring), silent input
     data = pathlib.Path(MEM).read_bytes()
@@ -279,7 +326,7 @@ def main():
     body += struct.pack("<BII", 2, 0x4000, 0x4000) + struct.pack("<I", 0x320080) * 0x4000
     dm = TMP / "dirty.mem"; dm.write_bytes(body + term)
     z = [0] * (200 * FRAMES)
-    Ld, Rd, _ = host(z, params + [0] * 6, mem=str(dm))
+    Ld, Rd, _ = host(z, params + TAIL, mem=str(dm))
     check("dirty: garbage state and ring, silent input, silent output", not any(Ld) and not any(Rd))
     print(f"verify_gateverb: {'PASS' if not fails else f'FAIL ({fails})'}")
     sys.exit(1 if fails else 0)
