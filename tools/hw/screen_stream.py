@@ -76,7 +76,10 @@ def ensure_venv(d):
     if not os.path.exists(py):
         print("creating the Python environment" + (f" with uv (Python {PYTHON_VERSION})" if uv else ""))
         if uv:
-            run([uv, "venv", "--quiet", "--python", PYTHON_VERSION, os.path.join(d, ".venv")])
+            # only-managed: uv otherwise takes a matching Python already on the machine, such as an
+            # Intel Homebrew one under /usr/local on an Apple Silicon Mac.
+            run([uv, "venv", "--quiet", "--python-preference", "only-managed", "--python", PYTHON_VERSION,
+                 os.path.join(d, ".venv")])
         else:
             run([sys.executable, "-m", "venv", os.path.join(d, ".venv")])
     arch = subprocess.run([py, "-c", "import platform;print(platform.machine())"],

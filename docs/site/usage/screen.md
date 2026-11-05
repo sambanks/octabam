@@ -22,7 +22,7 @@ python3 tools/hw/screen_stream.py
 ```
 
 On the first run it clones elektron-screen-tool at a pinned commit into `~/.cache/octabam/elektron-screen-tool`
-(`OCTABAM_SCREEN_DIR` changes the place), creates a Python environment there and installs `python-rtmidi`. With uv installed (`brew install uv`) the environment uses uv's own Python 3.13, which includes tkinter and is built for the machine's architecture; without uv it uses the `python3` that runs the script. It then
+(`OCTABAM_SCREEN_DIR` changes the place), creates a Python environment there and installs `python-rtmidi`. With uv installed (`brew install uv`) the environment uses a Python 3.13 that uv downloads (`--python-preference only-managed`; uv would otherwise take a matching Homebrew Python, which can be the Intel one), which includes tkinter and is built for the machine's architecture; without uv it uses the `python3` that runs the script. It then
 finds the Octatrack's MIDI input and output and opens the window. Later runs go straight to the window.
 
 | Option | Does |
@@ -46,7 +46,7 @@ With uv (`brew install uv`), whose Python includes tkinter:
 ```bash
 git clone https://github.com/Fadedlimes/elektron-screen-tool.git ~/Downloads/elektron-screen-tool
 cd ~/Downloads/elektron-screen-tool
-uv venv --python 3.13 .venv
+uv venv --python-preference only-managed --python 3.13 .venv
 uv pip install --python .venv/bin/python python-rtmidi
 .venv/bin/python ./screendump --list-midi
 ```
