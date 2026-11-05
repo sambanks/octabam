@@ -6,6 +6,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 |---|---|---|
 | [`analog-bassdrum`](analog-bassdrum/README.md) | Analog BD source machine, switchable 808/909, stock AMP and FX. | port-gated: source/UI under the port; earlier ANALOGBD1 auditioned on MK1, current revision unflashed |
 | [`ata-write-guard`](ata-write-guard/README.md) | Stock effects with the first PIO card write guarded through bookkeeping. | port-gated: forced completion-interrupt gate under the port; not on hardware |
+| [`bar-led`](bar-led/README.md) | stock effects with BAR LED: the tempo LED flashes green on the pattern's 1 while playing. | `make check` |
 | [`batch-bugfixes`](batch-bugfixes/README.md) | stock effects with BATCH_BUGFIXES: the MIDI Plays-Free trig, empty-pattern LED and Part-change carryover fixes. | `make check` |
 | [`bbd`](bbd/README.md) | BBD beside the stock effects (all but SPRING REV and PLATE REV, whose words it takes). | on hardware: JamCones' MKII, BBDOB4 (BUILD 4), 17 Oct 2026 |
 | [`blackpyramids-303`](blackpyramids-303/README.md) | BLACKPYRAMIDS_303 (BLKPYRAMD, a TB-303 voice as a track machine) with the stock effects, SPRING REV given up. | `make check` |
