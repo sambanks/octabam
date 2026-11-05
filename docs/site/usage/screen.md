@@ -8,7 +8,7 @@ What is needed:
 
 - An image with the SCREEN module and, for USB, the USB module.
 - A USB cable (or DIN MIDI).
-- A computer with Python 3.10 or newer, git and tkinter.
+- A computer with git and either [uv](https://docs.astral.sh/uv/) or Python 3.10 or newer with tkinter.
 - OBS Studio, optional.
 
 Tested on macOS. Other platforms have not been tried.
@@ -22,7 +22,7 @@ python3 tools/hw/screen_stream.py
 ```
 
 On the first run it clones elektron-screen-tool at a pinned commit into `~/.cache/octabam/elektron-screen-tool`
-(`OCTABAM_SCREEN_DIR` changes the place), creates a Python environment there and installs `python-rtmidi`. It then
+(`OCTABAM_SCREEN_DIR` changes the place), creates a Python environment there and installs `python-rtmidi`. With uv installed (`brew install uv`) the environment uses uv's own Python 3.13, which includes tkinter and is built for the machine's architecture; without uv it uses the `python3` that runs the script. It then
 finds the Octatrack's MIDI input and output and opens the window. Later runs go straight to the window.
 
 | Option | Does |
@@ -33,11 +33,25 @@ finds the Octatrack's MIDI input and output and opens the window. Later runs go 
 | `--update` | Checks out the pinned commit again (`--ref` takes another). |
 | `-- ARGS` | Passes the rest to `screendump`, for example `-- --framerate 10 --save-video out.mp4`. |
 
-The window needs tkinter. On macOS: `brew install python-tk`.
+Without uv the window needs tkinter in that `python3`. On macOS: `brew install python-tk`.
+
+On an Apple Silicon Mac the script stops if the environment's Python is x86_64 (running under Rosetta) and says what to delete. `uname -m` in the terminal should print `arm64`.
 
 ### By hand
 
 The steps are from a guide by Tapepusher, who first ran the screen capture on a real Octatrack MKII.
+
+With uv (`brew install uv`), whose Python includes tkinter:
+
+```bash
+git clone https://github.com/Fadedlimes/elektron-screen-tool.git ~/Downloads/elektron-screen-tool
+cd ~/Downloads/elektron-screen-tool
+uv venv --python 3.13 .venv
+uv pip install --python .venv/bin/python python-rtmidi
+.venv/bin/python ./screendump --list-midi
+```
+
+Without uv, using Homebrew's Python:
 
 ```bash
 brew install python python-tk
@@ -47,6 +61,9 @@ python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip python-rtmidi
 .venv/bin/python ./screendump --list-midi
 ```
+
+On an Apple Silicon Mac, `.venv/bin/python -c "import platform; print(platform.machine())"` should print `arm64`. `x86_64` means
+the environment is running under Rosetta: delete `.venv` and recreate it from a terminal where `uname -m` prints `arm64`.
 
 `--list-midi` shows the Octatrack as an input and an output (macOS: `Elektron Octatrack DPS-1`). Then:
 

@@ -11,8 +11,10 @@ Needs an image with the SCREEN module (modules/screen/README.md) and, over USB, 
 
 First run: clones https://github.com/Fadedlimes/elektron-screen-tool at PINNED_REF into
 ~/.cache/octabam/elektron-screen-tool (OCTABAM_SCREEN_DIR overrides), makes a venv there and
-installs python-rtmidi. Later runs reuse both. The window needs tkinter (macOS: brew install
-python-tk). Python 3.10 or newer; the standard library only.
+installs python-rtmidi. Later runs reuse both. With uv on PATH the venv gets uv's own Python
+(PYTHON_VERSION, which includes tkinter and matches the machine's architecture); without uv it
+uses the Python running this script, which then needs tkinter (macOS: brew install python-tk).
+This script needs Python 3.10 or newer and the standard library only.
 """
 import argparse
 import os
@@ -25,6 +27,7 @@ REPO = "https://github.com/Fadedlimes/elektron-screen-tool.git"
 # 8081d4f is the first commit with --instrument OT.
 PINNED_REF = "8081d4f1724b7dd9a0d1705b44fb5d27b2ef149c"
 DEFAULT_PORT = "Octatrack"
+PYTHON_VERSION = "3.13"
 
 
 def die(msg, code=1):
@@ -59,15 +62,36 @@ def venv_python(d):
     return os.path.join(d, ".venv", "bin", "python")
 
 
+def host_is_arm64():
+    """True on an Apple Silicon Mac, even from an x86_64 (Rosetta) shell."""
+    if sys.platform != "darwin":
+        return False
+    r = subprocess.run(["sysctl", "-n", "hw.optional.arm64"], capture_output=True, text=True)
+    return r.stdout.strip() == "1"
+
+
 def ensure_venv(d):
     py = venv_python(d)
+    uv = shutil.which("uv")
     if not os.path.exists(py):
-        print("creating the Python environment")
-        run([sys.executable, "-m", "venv", os.path.join(d, ".venv")])
+        print("creating the Python environment" + (f" with uv (Python {PYTHON_VERSION})" if uv else ""))
+        if uv:
+            run([uv, "venv", "--quiet", "--python", PYTHON_VERSION, os.path.join(d, ".venv")])
+        else:
+            run([sys.executable, "-m", "venv", os.path.join(d, ".venv")])
+    arch = subprocess.run([py, "-c", "import platform;print(platform.machine())"],
+                          capture_output=True, text=True).stdout.strip()
+    if host_is_arm64() and arch != "arm64":
+        die(f"the environment's Python is {arch} on an Apple Silicon Mac (it runs under Rosetta). "
+            f"Delete {os.path.join(d, '.venv')}" + ("" if uv else ", install uv (brew install uv)") +
+            ", run from a terminal whose `uname -m` says arm64, and run again.")
     if subprocess.run([py, "-c", "import rtmidi"], capture_output=True).returncode != 0:
         print("installing python-rtmidi")
-        run([py, "-m", "pip", "install", "--quiet", "--upgrade", "pip"])
-        run([py, "-m", "pip", "install", "--quiet", "python-rtmidi"])
+        if uv:
+            run([uv, "pip", "install", "--quiet", "--python", py, "python-rtmidi"])
+        else:
+            run([py, "-m", "pip", "install", "--quiet", "--upgrade", "pip"])
+            run([py, "-m", "pip", "install", "--quiet", "python-rtmidi"])
     return py
 
 
