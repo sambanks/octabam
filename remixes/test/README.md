@@ -87,6 +87,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`screen-usb`](screen-usb/README.md) | stock + USB MIDI + SCREEN. | `make check` |
 | [`shatter`](shatter/README.md) | SHATTER beside the stock effects (all but PLATE REV, whose words it takes). | on hardware: Ilia's MKII, BUILD S6 (SHATTER S6.RMX), 21 Oct 2026: every SHATTER knob exercised; verify_shatter. Solo gate remix. |
 | [`sidechain-compressor`](sidechain-compressor/README.md) | stock effects with SIDECHAIN_COMPRESSOR in COMPRESSOR's row: MON, KEY, KGN, KBAS and KWID on page 2. | `make check` |
+| [`slow-lfo`](slow-lfo/README.md) | stock effects with SLOW LFO: LFO MULT gains 1/2X, 1/4X and 1/8X on audio and MIDI tracks. | `make check` |
 | [`sos-capture`](sos-capture/README.md) | recorder fixes + USB (TRACKS out, AB in) (stock effects minus SPATIALIZER). | port-gated: `make check` under the port; not on hardware in this form |
 | [`stations-fx2`](stations-fx2/README.md) | SPECTRUM, CHARACTER and MODULATION on FX1 and FX2, beside the stock DELAY. | port-gated: `verify_stations_fx2` (dsp_host); not on a unit |
 | [`stems`](stems/README.md) | STEM REC on the stock effects: multitrack recording to the card, each track, MAIN, CUE and the inputs as separate WAV files. | on hardware: Yves's MKII, 6 Oct 2026 (STEMS3) |
