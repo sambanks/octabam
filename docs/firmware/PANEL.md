@@ -551,11 +551,11 @@ Read from objdump of `0x40013abc` on 4 Nov 2026 (static, except where ✅):
 So between flushes `[0x400b970c]` holds the frame the panel shows. Its
 layout is the plane's: 128 rows of 8 bytes, byte `x*8 + p` = page p of
 column x, which is `+12`'s pixel (x, y) = column 63-y of row x. ✅ Under
-the port (SCREENSHOT, `verify_screenshot`), a copy of `[0x400b970c]` equals
+the port (SCREEN, `verify_screen`), a copy of `[0x400b970c]` equals
 the frame decoded from the UART1 stream to the pixel, with the boot's "NOT
 WORKING IN ANY PROJECT" popup up (the plane then differs by 2,314 pixels)
 and with MIXER up (3,132). On a unit, a copy of the plane showed the page
-screens and none of the windows (SCREENSHOT on Sam's MKII, 4 Nov 2026).
+screens and none of the windows (SCREEN on Sam's MKII, 4 Nov 2026).
 
 ### Traffic per action (empty card, stock image)
 

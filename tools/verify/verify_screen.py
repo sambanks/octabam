@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SCREENSHOT under the port: the Elektron screenshot SysEx request is
+"""SCREEN under the port: the Elektron screenshot SysEx request is
 answered on MIDI OUT with the frame the panel shows, and everything else
 still reaches stock.
 
@@ -22,7 +22,7 @@ some point, exactly (the reply is copied between two flushes), and be
 within NEAR pixels of the last frame (an early frame alone would let the
 page plane through: it is what the panel showed before the window).
 
-Then it boots the `screenshot` remix on a staged project, and injects at
+Then it boots the `screen` remix on a staged project, and injects at
 emulated frame 395 of 400 (the screen changes at the playhead, so it is
 read at the run's end):
 
@@ -35,7 +35,7 @@ read at the run's end):
      bit), are a frame the panel was sent, near the last.
   4. A request with a different cmd, a different manufacturer id and one
      stock SysEx message (`F0 00 20 3C 05 00 50 ...`) draw no reply.
-  5. The `screenshot-usb` remix (USB + SCREENSHOT): the request sent as USB-MIDI
+  5. The `screen-usb` remix (USB + SCREEN): the request sent as USB-MIDI
      events on EP2 OUT is answered on EP2 IN only (the same reply, 1,194 bytes
      in 1,592 bytes of events; nothing on DIN), the pixels are a frame the
      panel was sent, near the last, and a request on DIN in
@@ -154,15 +154,15 @@ def build(remix, work):
 
 
 def main():
-    work = pathlib.Path(tempfile.mkdtemp(prefix="screenshot_"))
-    image = build("screenshot", work) if gate_cache.project_dir() else None
+    work = pathlib.Path(tempfile.mkdtemp(prefix="screen_"))
+    image = build("screen", work) if gate_cache.project_dir() else None
     src = gate_cache.project_dir()
     have_project = src is not None and src.is_dir()
     if have_project:
         card, _ = emu_card.stage_project(src, "OCTABAM", "BASS", tree=work / "tree")
         (work / "card.img").write_bytes(card)
     else:
-        print("  [SKIP] verify_screenshot: the DIN checks need a project (OT_PROJECT=<dir> or ~/.octabam_project); the USB checks run without one")
+        print("  [SKIP] verify_screen: the DIN checks need a project (OT_PROJECT=<dir> or ~/.octabam_project); the USB checks run without one")
 
     fails = []
 
@@ -187,7 +187,7 @@ def main():
     import emu_card as ec
     (work / "empty" / "OCTABAM" / "AUDIO").mkdir(parents=True, exist_ok=True)
     (work / "empty.img").write_bytes(ec.build_image(str(work / "empty"), size_mb=64))
-    wimg = image or build("screenshot", work)
+    wimg = image or build("screen", work)
     req = f"midi f0 00 20 3c 10 00 {REQ_BODY} f7"
     # live-script key codes are (row - 0x20) * 8 + bit (tools/panel/key_map.json): YES 0x31, MIXER 0x30
     for name, script in (("popup", [f"1500 {req}", "3000 quit"]),
@@ -239,8 +239,8 @@ def main():
     import os
     sys.path.insert(0, str(ROOT / "tools/harness"))
     import usb_host
-    uimg = build("screenshot-usb", work)
-    sock = f"/tmp/ot-screenshot-{os.getpid()}.sock"
+    uimg = build("screen-usb", work)
+    sock = f"/tmp/ot-screen-{os.getpid()}.sock"
     din_out, fb, user = work / "usb.dout", work / "usb.fb", work / "usb.ser"
     with (work / "usb.log").open("w") as lf:
         emu = subprocess.Popen([str(EMU), "--image", str(uimg), "--usb-host", sock, "--usb-hold-ms", "60000",
@@ -272,7 +272,7 @@ def main():
     if have_project:
         got, _, _ = run("usbdin", [f"f0 00 20 3c 10 00 {REQ_BODY} f7"], img=uimg)
         check("usb image, request on DIN: answered on DIN", len(got) == 1194, f"{len(got)} bytes")
-    print("verify_screenshot:", "FAIL " + ", ".join(fails) if fails else "ok")
+    print("verify_screen:", "FAIL " + ", ".join(fails) if fails else "ok")
     return 1 if fails else 0
 
 

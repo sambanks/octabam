@@ -1242,7 +1242,7 @@ cannot establish that a user can see the edit.
 <a id="trap-page-plane"></a>
 ### The page plane `0x46c7e0ea` is not the screen
 
-SCREENSHOT copied the plane every drawer writes and passed its gate,
+SCREEN copied the plane every drawer writes and passed its gate,
 which compared the reply with that same plane. On Sam's MKII (4 Nov
 2026) it showed the SRC, AMP, LFO, FX1 and FX2 pages and none of MIXER,
 the PROJECT menu, a SETUP window, a popup, BRAIN or the REC MATRIX
@@ -1252,7 +1252,7 @@ and every window layer (list at `[0x460babf0]`) into the back buffer
 then holds the frame on the LCD (`docs/firmware/PANEL.md` section 9).
 Read the screen from `[0x400b970c]`, and check it against the panel
 UART stream decoded by `tools/panel/panel_link.py`, not against the
-plane. `verify_screenshot` does this with the boot popup and MIXER up,
+plane. `verify_screen` does this with the boot popup and MIXER up,
 on an empty card.
 
 <a name="trap-movem-sp"></a>

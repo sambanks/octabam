@@ -6,7 +6,7 @@ computer, for example as an OBS source.
 
 What is needed:
 
-- An image with the SCREENSHOT module and, for USB, the USB module.
+- An image with the SCREEN module and, for USB, the USB module.
 - A USB cable (or DIN MIDI).
 - A computer with Python 3.10 or newer, git and tkinter.
 - OBS Studio, optional.
@@ -67,7 +67,7 @@ A window opens with the Octatrack's display. Close the window or press Ctrl+C in
 ### If no ports are listed
 
 - USB: **PROJ > BRAIN > SETTINGS > USB > MIDI** is ON (MIDI OFF leaves the computer storage and audio only).
-- The flashed image contains the SCREENSHOT module, and the USB module for the USB cable.
+- The flashed image contains the SCREEN module, and the USB module for the USB cable.
 - DIN: a MIDI interface connects the Octatrack's MIDI OUT and IN to the computer.
 
 ## Operation

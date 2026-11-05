@@ -1,3 +1,3 @@
-# screenshot-usb test
+# screen-usb test
 
-Carrier for `SCREENSHOT` with `USB` and stock effects. Gate: `python3 tools/verify/verify_screenshot.py` (USB section).
+Carrier for `SCREEN` with `USB` and stock effects. Gate: `python3 tools/verify/verify_screen.py` (USB section).

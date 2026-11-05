@@ -1,3 +1,3 @@
-# screenshot test
+# screen test
 
-Carrier for `SCREENSHOT` with stock effects. Gate: `python3 tools/verify/verify_screenshot.py` (DIN; it builds this remix and `screenshot-usb`).
+Carrier for `SCREEN` with stock effects. Gate: `python3 tools/verify/verify_screen.py` (DIN; it builds this remix and `screen-usb`).

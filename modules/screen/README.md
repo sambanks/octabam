@@ -1,4 +1,4 @@
-# SCREENSHOT
+# SCREEN
 
 Answers Elektron's screenshot SysEx request on MIDI OUT with the 128 x 64 screen, so
 [elektron-screen-tool](https://github.com/Fadedlimes/elektron-screen-tool) (`screendump`) can read the unit.
@@ -47,7 +47,7 @@ The msgId field is a counter in `.bss`, which the DRAM reserve does not zero.
 
 ## Tested
 
-`tools/verify/verify_screenshot.py` under the port (29 checks). The pixels are held to the port's panel UART
+`tools/verify/verify_screen.py` under the port (29 checks). The pixels are held to the port's panel UART
 stream decoded by `tools/panel/panel_link.py`, not to the plane. On an empty card (no project needed, so CI
 runs it): a request with the boot's "NOT WORKING IN ANY PROJECT" popup up, and one after YES and MIXER, are
 each answered with a frame the panel was sent, byte for byte, within 200 pixels of the last one (0 measured),
@@ -56,7 +56,7 @@ USB pixel check (2,176-2,189 pixels off). "A frame the panel was sent" alone is 
 drawn the panel shows the page, so the plane matched an early frame and the pre-fix build passed.
 With a project: both ids draw one 1,194-byte reply on DIN; the header fields; the pixels are a frame the panel
 was sent, near the last; a wrong cmd, another manufacturer id and a stock-range message draw
-none. In the `screenshot-usb` remix: a request as USB-MIDI events is answered on EP2 IN
+none. In the `screen-usb` remix: a request as USB-MIDI events is answered on EP2 IN
 only (1,592 bytes, pixels a frame the panel was sent; 45-47 pixels from the last, redrawn after the reply), and a DIN request is still answered on DIN only.
 `verify_usbmidi_rx` passes on that image.
 
