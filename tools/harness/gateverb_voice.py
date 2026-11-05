@@ -19,10 +19,14 @@ per-block smoothing, with three additions:
          ahead of the input allpasses.
   LOCUT  0-127, default 0: a one-pole high-pass in each half of the tank, after the
          damping low-pass; 0 is off, 1-127 run from 20 Hz to 1 kHz, exponentially.
-  CHOKE  0-127, default 0: what a closed gate does to the tank. 0 is the module's gate, the wet
-         muted and the tank left ringing. Above 0 the loop gain follows the gate too, falling to
-         TIME's x (1 - CHOKE/127) while the gate is shut: at 127 the tank stops recirculating and
-         empties within one pass (about 0.2 s), so the next hit starts from silence.
+Two gate forms (--gate):
+  module  as built: when the hold runs out the wet closes in about 3 ms (128 samples and a 1/32
+          smoothing) and the tank rings on underneath.
+  desk    a desk gate's release (SSL channel gate, Drawmer DS201): when the hold runs out the gain
+          falls by 1/2^REL a sample, a straight line in dB (--release-shift REL, default 10: 23 ms
+          time constant, -60 dB in 160 ms). Once the gate is below -54 dB the tank's loop gain falls
+          to 0 within about 1 ms, inaudibly, so the next hit starts from an empty tank; it is back at
+          TIME's the moment the gate reopens.
 
 With the three at their defaults the output is the model's, sample for sample
 (`--selftest` runs verify_gateverb.model beside it). Everything else here is
@@ -44,8 +48,8 @@ Q = 1 << 23
 LEN = [109, 157, 233, 386, 1600, 1973, 3303, 1852, 1610, 4630]
 RING_TODAY = 15862
 RING_WINDOW = 0x3820          # 14,368
-NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "SIZE", "PRE", "LOCUT", "CHOKE")
-DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, SIZE=127, PRE=0, LOCUT=0, CHOKE=0)
+NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "SIZE", "PRE", "LOCUT")
+DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, SIZE=127, PRE=0, LOCUT=0)
 
 
 def s24(v):
@@ -89,7 +93,7 @@ def locut_coef(k):
     return 1.0 - math.exp(-2 * math.pi * f / SR)
 
 
-def model(samples, params, blocks_skip=0, lfo="module"):
+def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=10):
     """samples: interleaved stereo ints (24-bit scale). params: dict of NAMES.
     Returns (left, right) as floats on the 24-bit scale.
 
@@ -106,7 +110,7 @@ def model(samples, params, blocks_skip=0, lfo="module"):
     pre = [0.0] * (pre_n + 1)
     pw = 0
     hc = locut_coef(p["LOCUT"])
-    choke = p["CHOKE"] / 127
+    cg = Q - 1                         # desk gate: the tank's loop-gain multiplier
     hp1 = hp2 = 0.0
     ring = [0.0] * N
     ph1 = ph2 = 0
@@ -146,9 +150,17 @@ def model(samples, params, blocks_skip=0, lfo="module"):
             hold = max(hold - 1, 0)
             if hmax == 0x7FFFFF or env - 0x010000 > 0:
                 hold = hmax
-            gs += (min(hold << 16, Q - 1) - gs) >> 5
+            if gate == "desk" and hmax != 0x7FFFFF:
+                if hold:
+                    gs += ((Q - 1) - gs) >> 5; cg = Q - 1
+                else:
+                    gs -= gs >> rel
+                    if gs < Q >> 9:
+                        cg -= cg >> 5
+            else:
+                gs += (min(hold << 16, Q - 1) - gs) >> 5
             G_ = gs / Q
-            Rg = R if not choke else R * (1 - choke * (1 - G_))
+            Rg = R if cg == Q - 1 else R * cg / Q
 
             def rd(j, kk):
                 return ring[(w - BASE[j] - kk) % N]
@@ -276,7 +288,7 @@ def rt60(ir):
     return 60 * (i25 - i5) / 20 / SR
 
 
-def impulse_report(p, seconds=8.0, lfo="module"):
+def impulse_report(p, seconds=8.0, lfo="module", gate="module", rel=10):
     # 200 blocks of silence first: the knobs glide from 0 (a sixteenth a block), so an
     # impulse at the start would meet an input gain still near 0
     pre = 200 * FRAMES
@@ -284,7 +296,7 @@ def impulse_report(p, seconds=8.0, lfo="module"):
     st = [0] * (2 * n)
     st[2 * pre] = st[2 * pre + 1] = int(0.5 * Q)
     q = dict(p, AMNT=127)              # wet only: at 127 the dry is (1 - A), under -60 dB once settled
-    L, R = model(st, q, lfo=lfo)
+    L, R = model(st, q, lfo=lfo, gate=gate, rel=rel)
     ir = [a / Q for a in L[pre:]]
     t = rt60(ir)
     seg = int(0.5 * SR)
@@ -341,6 +353,9 @@ def main():
     ap.add_argument("--impulse", action="store_true", help="print RT60 and memory for the settings")
     ap.add_argument("--lfo", choices=("module", "clouds", "old"), default="module",
                     help="module: as built; clouds: both LFOs unipolar; old: before the smear fix (see model())")
+    ap.add_argument("--gate", choices=("module", "desk"), default="module",
+                    help="module: as built (a 3 ms close); desk: a desk gate's release, then the tank emptied")
+    ap.add_argument("--release-shift", type=int, default=10, help="desk gate release: gain falls 1/2^N a sample (default 10)")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -361,7 +376,7 @@ def main():
         sweep = [(k, int(v)) for v in vs.split(",")]
     if a.impulse:
         for k, v in sweep:
-            impulse_report(dict(p, **({k: v} if k else {})), lfo=a.lfo)
+            impulse_report(dict(p, **({k: v} if k else {})), lfo=a.lfo, gate=a.gate, rel=a.release_shift)
         return
     if a.test:
         st = test_signal(a.test, a.seconds)
@@ -375,7 +390,7 @@ def main():
     out = pathlib.Path(a.out)
     for k, v in sweep:
         q = dict(p, **({k: v} if k else {}))
-        L, R = model(st, q, lfo=a.lfo)
+        L, R = model(st, q, lfo=a.lfo, gate=a.gate, rel=a.release_shift)
         path = out if k is None else out.with_name(f"{out.stem}_{k}{v}{out.suffix}")
         write_wav(path, L, R)
         print(f"{path}: {' '.join(f'{n}={q[n]}' for n in NAMES)}; memory {memory_words(q)} words")
