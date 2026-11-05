@@ -58,30 +58,35 @@ Under `dsp_host` (`tools/verify/verify_gateverb.py`, remix `test/gateverb`):
 
 Not measured: sound (no listening yet), hardware, the real allocator's bases on a unit.
 
-### The smear LFO is bipolar, and in the model the tail grows from TIME 94 up (5 Nov 2026, model only)
+### The smear LFO was bipolar, and the tail grew from TIME 94 up (fixed 5 Nov 2026)
 
 Clouds' LFOs are unipolar: stmlib's `CosineOscillator::Next()` returns `y + 0.5`, 0 to 1, so
-Clouds reads `ap1` at 10..70 and `del2` at 4680..4780. This port's parabola is bipolar, ±1
-(`gateverb.asm`, "offset 10 + 60 * lfo1"): the smear reads `ap1` at −50..70, so up to 50 samples of
-its reads land behind line 0, in the far end of the last tank line, and are written back into the
-first input allpass. That is a second feedback path that TIME does not scale. The `del2` tap swings
-4531 ± 97, twice Clouds' excursion.
+Clouds reads `ap1` at 10..70 and `del2` at 4680..4780. Until 5 Nov 2026 this port's smear used the
+parabola bipolar, ±1: it read `ap1` at −50..70, so up to 50 samples of its reads landed behind line 0,
+in the far end of the last tank line, and were written back into the first input allpass. That was a
+second feedback path that TIME did not scale. The smear's LFO is now `(lfo1 + 1)/2`, as Clouds'.
 
-In the float model the module matches to 58 dB (`tools/harness/gateverb_voice.py --impulse`, impulse
-after the knobs settle), with every other knob at its default:
+✅ Under `dsp_host` (the module, one impulse after the knobs settle, AMNT 80, gate off), half-second
+RMS of the left output:
 
-| TIME | RT60, the module's LFOs | RT60, Clouds' LFOs |
+| TIME | before | after |
 |---|---|---|
-| 64 | 4.84 s | 2.86 s |
-| 80 | 6.87 s | 3.78 s |
-| 94 | grows | 5.20 s |
-| 127 | grows | 17.91 s |
+| 64 | −58 dB, then a floor near −85 dB that drifted up to −82 dB | −58 dB to −99 dB in 3 s, then steady |
+| 90 | −57 dB, a floor near −70 dB, rising | −57 dB to −95 dB |
+| 120 | −56 dB, **grew to −11 dB** in 11 s | −56 dB to −84 dB |
+| 127 | grew to −4 dB in 10 s (the gate's `runaway` check on the old code) | −56 dB to −77 dB in 11 s, still falling |
 
-Making the smear alone unipolar removes the growth (TIME 127: 20.9 s, decaying). One click at TIME
-120, AMNT 80, gate off, is still at −18.6 dB RMS 11 s later with the module's LFOs and −90.8 dB with
-Clouds'. 🟡 Inferred for the module: the 58 dB match was measured over 48,000 samples at TIME 80, not
-over seconds at TIME 94 and up. A `dsp_host` render of one impulse at TIME 120 for 10 s, or the same on
-a unit, would confirm or falsify it.
+RT60 from the float model (`tools/harness/gateverb_voice.py --impulse`): TIME 64 2.80 s (4.84 s
+before), 80 3.72 s (6.87 s), 94 5.08 s (grew), 127 17.92 s (grew). The extra path made every tail
+longer, not only the unstable ones, so a part voiced on the old code sounds shorter at the same TIME.
+`verify_gateverb`'s `runaway` check fails on the old code and passes on the new; the model match is
+58.0 / 58.1 dB, as before.
+
+Not changed: the `del2` tap still swings 4531 ± 97, twice Clouds' excursion, and stable
+(`gateverb_voice.py --lfo clouds` renders Clouds' form). What is left at the end of a long tail is a
+DC offset, not a tone: at TIME 120, the last second reads −84.4 dBFS DC and −97.2 dBFS AC. That is
+`mpy`'s truncation bias circulating in the loop; a high-pass in the tank (the LOCUT the sandbox
+proposes) would remove it. Not heard on a unit, before or after.
 
 ## Credit
 

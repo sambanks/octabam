@@ -162,6 +162,12 @@ gv_p2a:
         mpy     x0,y1,a
         asl     #$2,a,a
         move    a,x0
+; unipolar, as Clouds' LFO (0..1): (lfo1 + 1)/2. Bipolar, the reads reached 50 samples behind
+; line 0 into the last tank line and fed it back to the input: the tail grew from TIME 94 up.
+        move    x0,a
+        asr     #$1,a,a
+        add     #>$400000,a
+        move    a,x0
 ; smear: offset 10 + 60 * lfo1 samples in Q12; whole part and fraction.
         move    #>$03c000,y1
         mpy     x0,y1,a

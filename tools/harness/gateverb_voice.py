@@ -85,15 +85,17 @@ def locut_coef(k):
     return 1.0 - math.exp(-2 * math.pi * f / SR)
 
 
-def model(samples, params, blocks_skip=0, clouds_lfo=False):
+def model(samples, params, blocks_skip=0, lfo="module"):
     """samples: interleaved stereo ints (24-bit scale). params: dict of NAMES.
     Returns (left, right) as floats on the 24-bit scale.
 
-    clouds_lfo: the LFOs as Clouds has them, unipolar (stmlib CosineOscillator::Next()
-    returns 0..1): the smear reads line 0 at 10..70, the long-delay tap centre..centre+depth.
-    The module's (the default) are bipolar: the smear reads -50..70, so up to 50 samples of
-    its reads land outside line 0, in the far end of the last tank line; the long tap swings
-    centre +- depth, twice Clouds' excursion."""
+    lfo: "module" (the default) is GATE VERB as built: the smear LFO unipolar, 0..1, as Clouds'
+    (stmlib CosineOscillator::Next() returns 0..1), so the smear reads line 0 at 10..70; the
+    long-delay tap swings centre +- depth, twice Clouds' excursion. "clouds": both unipolar, the tap
+    at centre..centre+depth. "old": both bipolar, the module before 5 Nov 2026, whose smear read
+    -50..70: up to 50 samples behind line 0, in the far end of the last tank line, fed back to the
+    input; the tail grew from TIME 94 up (modules/gateverb/README.md).
+    """
     p = dict(DEFAULTS, **params)
     _s, LN, BASE, N, centre, depth = geometry(p["SIZE"])
     pre_n = 32 * p["PRE"]
@@ -122,10 +124,8 @@ def model(samples, params, blocks_skip=0, clouds_lfo=False):
         kap += (mulf(k[3], 0x666666) - kap) >> 4
         klp += ((mulf(k[4], 0x79999A) + 0x066666) - klp) >> 4
         ph1 = s24(ph1 + 190 * FRAMES); ph2 = s24(ph2 + 114 * FRAMES)
-        if clouds_lfo:
-            u1 = (parab(ph1) + Q) >> 1; u2 = (parab(ph2) + Q) >> 1      # 0..1
-        else:
-            u1, u2 = parab(ph1), parab(ph2)
+        u1 = parab(ph1) if lfo == "old" else (parab(ph1) + Q) >> 1     # 0..1 unless old
+        u2 = (parab(ph2) + Q) >> 1 if lfo == "clouds" else parab(ph2)
         t1 = mulf(u1, 0x03C000) + 0x00A000
         kint1, fr1 = t1 >> 12, (t1 & 0xFFF) << 11
         t2 = mulf(u2, depth)
@@ -270,7 +270,7 @@ def rt60(ir):
     return 60 * (i25 - i5) / 20 / SR
 
 
-def impulse_report(p, seconds=8.0, clouds_lfo=False):
+def impulse_report(p, seconds=8.0, lfo="module"):
     # 200 blocks of silence first: the knobs glide from 0 (a sixteenth a block), so an
     # impulse at the start would meet an input gain still near 0
     pre = 200 * FRAMES
@@ -278,7 +278,7 @@ def impulse_report(p, seconds=8.0, clouds_lfo=False):
     st = [0] * (2 * n)
     st[2 * pre] = st[2 * pre + 1] = int(0.5 * Q)
     q = dict(p, AMNT=127)              # wet only: at 127 the dry is (1 - A), under -60 dB once settled
-    L, R = model(st, q, clouds_lfo=clouds_lfo)
+    L, R = model(st, q, lfo=lfo)
     ir = [a / Q for a in L[pre:]]
     t = rt60(ir)
     seg = int(0.5 * SR)
@@ -333,8 +333,8 @@ def main():
     ap.add_argument("--tail", type=float, default=4.0, help="silence appended to a wav input (default 4 s)")
     ap.add_argument("--sweep", help="NAME=v1,v2,...: one output per value, the file name suffixed")
     ap.add_argument("--impulse", action="store_true", help="print RT60 and memory for the settings")
-    ap.add_argument("--clouds-lfo", action="store_true",
-                    help="unipolar LFOs as in Clouds (the module's are bipolar; see model())")
+    ap.add_argument("--lfo", choices=("module", "clouds", "old"), default="module",
+                    help="module: as built; clouds: both LFOs unipolar; old: before the smear fix (see model())")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -355,7 +355,7 @@ def main():
         sweep = [(k, int(v)) for v in vs.split(",")]
     if a.impulse:
         for k, v in sweep:
-            impulse_report(dict(p, **({k: v} if k else {})), clouds_lfo=a.clouds_lfo)
+            impulse_report(dict(p, **({k: v} if k else {})), lfo=a.lfo)
         return
     if a.test:
         st = test_signal(a.test, a.seconds)
@@ -369,7 +369,7 @@ def main():
     out = pathlib.Path(a.out)
     for k, v in sweep:
         q = dict(p, **({k: v} if k else {}))
-        L, R = model(st, q, clouds_lfo=a.clouds_lfo)
+        L, R = model(st, q, lfo=a.lfo)
         path = out if k is None else out.with_name(f"{out.stem}_{k}{v}{out.suffix}")
         write_wav(path, L, R)
         print(f"{path}: {' '.join(f'{n}={q[n]}' for n in NAMES)}; memory {memory_words(q)} words")

@@ -13,6 +13,10 @@ FX2 slot (`-r7 2 -alloc 1`, Y:0x4000). Gates:
             phases and offsets, the same parameter laws and smoothing); the
             difference is the 24-bit arithmetic
   tail      the impulse response decays (TIME up -> longer), stays below full scale
+  runaway   one impulse at TIME 120 and 127, 10 s: the tail falls by 15 dB or more and never
+            rises by 3 dB from one half second to the next (until 5 Nov 2026 the smear LFO was
+            bipolar, its reads fed the last tank line back to the input, and at TIME 120 the
+            tail grew from -56 dB to -11 dB in 11 s)
   bounds    -guard 15862: no write outside the ring (the top 256 words of the
             slot stay clear for the mailbox and LOAD METER), no stray write
   dirty     X and Y filled with garbage before the first call: the output
@@ -115,7 +119,7 @@ def model(samples, params, blocks_skip):
         kap = smooth(kap, mulf(k[3], 0x666666))
         klp = smooth(klp, mulf(k[4], 0x79999A) + 0x066666)
         ph1 = s24(ph1 + 190 * FRAMES); ph2 = s24(ph2 + 114 * FRAMES)
-        t1 = mulf(parab(ph1), 0x03C000) + 0x00A000
+        t1 = mulf((parab(ph1) + Q) >> 1, 0x03C000) + 0x00A000     # unipolar, as Clouds' LFO: 10..70
         kint1, fr1 = t1 >> 12, (t1 & 0xFFF) << 11
         t2 = mulf(parab(ph2), 0x061000)
         kint2, fr2 = 4531 + (t2 >> 12), (t2 & 0xFFF) << 11
@@ -209,6 +213,17 @@ def main():
     Lh, _, _ = host(imp, [64, 51, 127, 100, 90, 0] + [0] * 6)
     th = rms_db(Lh[n0 + 40000:n0 + 44000])
     check(f"time: TIME 127 rings longer than TIME 80 ({th:.1f} dB against {t2:.1f} dB)", th > t2)
+    # runaway: a long tail must keep falling (the bipolar smear grew it from TIME 94 up)
+    sr, seg = 44100, 22050
+    rimp = [0] * ((CLEAR_CALLS + 200) * FRAMES + 10 * sr // FRAMES * FRAMES)
+    r0 = (CLEAR_CALLS + 200) * FRAMES
+    rimp[r0] = int(0.5 * Q)
+    for tm in (120, 127):
+        Lr, _, _ = host(rimp, [80, 51, tm, 100, 90, 0] + [0] * 6)
+        rr = [rms_db(Lr[i:i + seg]) for i in range(r0 + 1, len(Lr) - seg, seg)]
+        rise = max(b - a for a, b in zip(rr, rr[1:]))
+        check(f"runaway: TIME {tm}, 10 s: {rr[0]:.0f} dB to {rr[-1]:.0f} dB, largest rise {rise:+.1f} dB",
+              rr[-1] < rr[0] - 15 and rise < 3)
     # gate: the wet is held for 2048 + 256 k samples after the input falls quiet, then closed
     gimp = [0] * (blocks * FRAMES)
     gimp[(CLEAR_CALLS + 4) * FRAMES] = int(0.5 * Q)
