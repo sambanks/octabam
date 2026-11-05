@@ -141,8 +141,8 @@ knobs at their defaults. `--test drums|pluck|click|noise` or a wav in, a
 24-bit wav out; `--sweep NAME=a,b,c`; `--impulse` prints RT60, a tail-growth
 check and the memory the settings need against today's ring and the
 14,368-word window-slot cap; `--lfo clouds` makes the long-delay LFO
-unipolar too, as in Clouds; `--lfo old` is the module before the smear fix
-(`modules/gateverb/README.md`).
+unipolar too, as in Clouds; `--lfo old` is the module before the smear fix,
+`--gate old` before the desk gate (`modules/gateverb/README.md`).
 
 ## send_probe.py
 

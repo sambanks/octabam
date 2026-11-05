@@ -19,6 +19,9 @@ FX2 slot (`-r7 2 -alloc 1`, Y:0x4000). Gates:
             tail grew from -56 dB to -11 dB in 11 s)
   bounds    -guard 15862: no write outside the ring (the top 256 words of the
             slot stay clear for the mailbox and LOAD METER), no stray write
+  gate      GATE 40: open during the hold; then a desk gate's release (70-110 ms in, 4 to 25 dB
+            under the ungated tail, not a cut); shut after it; the tank empty when it reopens
+            (a second impulse, 190 ms after the gate shuts, rings as it does alone); against the float model
   dirty     X and Y filled with garbage before the first call: the output
             from silence is silent
 What it cannot see: the real allocator's bases (dsp_host places the FX2 slot by
@@ -124,6 +127,8 @@ def model(samples, params, blocks_skip):
         t2 = mulf(parab(ph2), 0x061000)
         kint2, fr2 = 4531 + (t2 >> 12), (t2 & 0xFFF) << 11
         K, G, R, L = kap / Q, gc / Q, krt / Q, klp / Q
+        if gs == 0:                      # the gate shut at the block's start: the tank empties
+            R = K = 0.0
         A = amt / Q
         def cell(j, kk): return (p - BASE[j] - kk) % N
         def rd(j, kk): return ring[cell(j, kk)]
@@ -140,8 +145,12 @@ def model(samples, params, blocks_skip):
                 hold = hmax
             if env - 0x010000 > 0:
                 hold = hmax
-            tgt = min(hold << 16, Q - 1)
-            gs = gs + ((tgt - gs) >> 5)
+            if hold:                     # a desk gate: open, rise 1/32 a sample
+                gs = gs + (((Q - 1) - gs) >> 5)
+            else:                        # shut: fall 1/2048 a sample; 0 below 2^-11
+                gs = gs - (gs >> 11)
+                if gs - 0x001000 < 0:
+                    gs = 0
             G_ = gs / Q
             # smear
             a0 = rd(0, kint1); b0 = rd(0, kint1 + 1)
@@ -233,10 +242,27 @@ def main():
     Lg, Rg, _ = host(gimp, gp + [40] + [0] * 6)
     hold = 2048 + 256 * 40
     pre_ng, pre_g = rms_db(Lng[t0 + 2000:t0 + 8000]), rms_db(Lg[t0 + 2000:t0 + 8000])
-    # the envelope needs about 2,200 samples to fall from 0.5 to the threshold before the hold starts
-    post_ng, post_g = rms_db(Lng[t0 + hold + 3300:t0 + hold + 7300]), rms_db(Lg[t0 + hold + 3300:t0 + hold + 7300])
+    # the envelope needs about 2,200 samples to fall from 0.5 to the threshold before the hold
+    # starts; the release then takes about 15,600 samples (gain falling 1/2048 a sample to 2^-11)
+    rel0 = t0 + 2200 + hold
+    mid_ng, mid_g = rms_db(Lng[rel0 + 3000:rel0 + 5000]), rms_db(Lg[rel0 + 3000:rel0 + 5000])
+    post_ng, post_g = rms_db(Lng[rel0 + 17000:rel0 + 21000]), rms_db(Lg[rel0 + 17000:rel0 + 21000])
     check(f"gate: open during the hold ({pre_g:.1f} dB against {pre_ng:.1f} dB without)", abs(pre_g - pre_ng) < 3)
-    check(f"gate: closed after the hold ({post_g:.1f} dB against {post_ng:.1f} dB without)", post_g < post_ng - 30)
+    check(f"gate: a release, not a cut: 70-110 ms into it {mid_g:.1f} dB against {mid_ng:.1f} dB without",
+          mid_ng - 25 < mid_g < mid_ng - 4)
+    check(f"gate: closed after the release ({post_g:.1f} dB against {post_ng:.1f} dB without)", post_g < post_ng - 30)
+    # a shut gate empties the tank: the gain reaches 0 about 16,200 samples into the release, and
+    # with the loop gain and the allpass coefficient 0 every line is a plain delay, so the longest
+    # path (dap2a, dap2b, del2: 8,092 samples) has flushed 8,500 after that. A second impulse then
+    # rings as the same impulse does alone (same moment: the same LFO phases and knob glides), but for
+    # the truncation floor (a few LSB, mostly DC)
+    t1 = rel0 + 16200 + 8500
+    gimp2 = list(gimp); gimp2[t1] = int(0.5 * Q)
+    gimp3 = [0] * len(gimp); gimp3[t1] = int(0.5 * Q)
+    Lg2, _, _ = host(gimp2, gp + [40] + [0] * 6)
+    Lg3, _, _ = host(gimp3, gp + [40] + [0] * 6)
+    res = rms_db([x - y for x, y in zip(Lg2[t1:t1 + 12000], Lg3[t1:t1 + 12000])])
+    check(f"gate: the tank is empty when it reopens (a second hit less the same hit alone: {res:.1f} dBFS)", res < -110)
     stg = []
     for s_ in gimp:
         stg += [s_, s_]

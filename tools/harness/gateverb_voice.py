@@ -20,13 +20,13 @@ per-block smoothing, with three additions:
   LOCUT  0-127, default 0: a one-pole high-pass in each half of the tank, after the
          damping low-pass; 0 is off, 1-127 run from 20 Hz to 1 kHz, exponentially.
 Two gate forms (--gate):
-  module  as built: when the hold runs out the wet closes in about 3 ms (128 samples and a 1/32
-          smoothing) and the tank rings on underneath.
-  desk    a desk gate's release (SSL channel gate, Drawmer DS201): when the hold runs out the gain
-          falls by 1/2^REL a sample, a straight line in dB (--release-shift REL, default 10: 23 ms
-          time constant, -60 dB in 160 ms). Once the gate is below -54 dB the tank's loop gain falls
-          to 0 within about 1 ms, inaudibly, so the next hit starts from an empty tank; it is back at
-          TIME's the moment the gate reopens.
+  module  as built (5 Nov 2026): when the hold runs out the gain falls 1/2^REL a sample, a straight
+          line in dB like a desk gate's release (SSL channel gate, Drawmer DS201; the module's REL is
+          11: a 46 ms time constant, -60 dB in about 320 ms), and below 2^-11 it is 0. While it is 0
+          (tested at each block's start) the loop gain and the allpass coefficient are 0, so every
+          line is a plain delay and the tank flushes in one pass of its longest path (8,092 samples);
+          the next hit starts from silence. --release-shift changes REL here only.
+  old     the module before 5 Nov 2026: the wet closed in about 3 ms and the tank rang on.
 
 With the three at their defaults the output is the model's, sample for sample
 (`--selftest` runs verify_gateverb.model beside it). Everything else here is
@@ -93,7 +93,7 @@ def locut_coef(k):
     return 1.0 - math.exp(-2 * math.pi * f / SR)
 
 
-def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=10):
+def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
     """samples: interleaved stereo ints (24-bit scale). params: dict of NAMES.
     Returns (left, right) as floats on the 24-bit scale.
 
@@ -110,7 +110,6 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=10):
     pre = [0.0] * (pre_n + 1)
     pw = 0
     hc = locut_coef(p["LOCUT"])
-    cg = Q - 1                         # desk gate: the tank's loop-gain multiplier
     hp1 = hp2 = 0.0
     ring = [0.0] * N
     ph1 = ph2 = 0
@@ -140,6 +139,8 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=10):
         t2 = mulf(u2, depth)
         kint2, fr2 = centre + (t2 >> 12), (t2 & 0xFFF) << 11
         K, G, R, L, A = kap / Q, gc / Q, krt / Q, klp / Q, amt / Q
+        if gate == "module" and gs == 0:     # a shut gate: the tank flushes
+            R = K = 0.0
         for s in range(FRAMES):
             i0 = blk * FRAMES + s
             li, ri = samples[2 * i0], samples[2 * i0 + 1]
@@ -150,17 +151,16 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=10):
             hold = max(hold - 1, 0)
             if hmax == 0x7FFFFF or env - 0x010000 > 0:
                 hold = hmax
-            if gate == "desk" and hmax != 0x7FFFFF:
+            if gate == "module":
                 if hold:
-                    gs += ((Q - 1) - gs) >> 5; cg = Q - 1
+                    gs += ((Q - 1) - gs) >> 5
                 else:
                     gs -= gs >> rel
-                    if gs < Q >> 9:
-                        cg -= cg >> 5
+                    if gs - 0x001000 < 0:
+                        gs = 0
             else:
                 gs += (min(hold << 16, Q - 1) - gs) >> 5
             G_ = gs / Q
-            Rg = R if cg == Q - 1 else R * cg / Q
 
             def rd(j, kk):
                 return ring[(w - BASE[j] - kk) % N]
@@ -180,7 +180,7 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=10):
             apout = acc
             # first half
             a1 = rd(9, kint2); b1 = rd(9, kint2 + 1)
-            acc = apout + (a1 + (b1 - a1) * fr2 / Q) * Rg
+            acc = apout + (a1 + (b1 - a1) * fr2 / Q) * R
             lp1 += L * (acc - lp1); acc = lp1
             if hc:
                 hp1 += hc * (acc - hp1); acc -= hp1
@@ -189,7 +189,7 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=10):
             wr(6, 0, acc); wet = max(-1, min(1, 2 * acc)) * G_
             out_l.append(max(-1, min(1, l_in + (8 * wet - l_in) * A)) * Q)
             # second half
-            acc = apout + rd(6, LN[6] - 1) * Rg
+            acc = apout + rd(6, LN[6] - 1) * R
             lp2 += L * (acc - lp2); acc = lp2
             if hc:
                 hp2 += hc * (acc - hp2); acc -= hp2
@@ -288,7 +288,7 @@ def rt60(ir):
     return 60 * (i25 - i5) / 20 / SR
 
 
-def impulse_report(p, seconds=8.0, lfo="module", gate="module", rel=10):
+def impulse_report(p, seconds=8.0, lfo="module", gate="module", rel=11):
     # 200 blocks of silence first: the knobs glide from 0 (a sixteenth a block), so an
     # impulse at the start would meet an input gain still near 0
     pre = 200 * FRAMES
@@ -353,9 +353,9 @@ def main():
     ap.add_argument("--impulse", action="store_true", help="print RT60 and memory for the settings")
     ap.add_argument("--lfo", choices=("module", "clouds", "old"), default="module",
                     help="module: as built; clouds: both LFOs unipolar; old: before the smear fix (see model())")
-    ap.add_argument("--gate", choices=("module", "desk"), default="module",
-                    help="module: as built (a 3 ms close); desk: a desk gate's release, then the tank emptied")
-    ap.add_argument("--release-shift", type=int, default=10, help="desk gate release: gain falls 1/2^N a sample (default 10)")
+    ap.add_argument("--gate", choices=("module", "old"), default="module",
+                    help="module: as built, a desk gate's release, then the tank flushed; old: the 3 ms close")
+    ap.add_argument("--release-shift", type=int, default=11, help="the release: gain falls 1/2^N a sample (the module's is 11)")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:

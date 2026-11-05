@@ -17,7 +17,7 @@ smeared by an LFO and the second delay is modulated. Left and right are the two 
 | 2 | TIME | 64 | loop gain 0.35..0.98 (Clouds: 0.35 + 0.63 x its REVERB knob) |
 | 3 | DIFF | 100 | allpass coefficient 0..0.8 (Clouds sets 0.625 at power-up and 0.7 in use: 100 is 0.625) |
 | 4 | TONE | 90 | damping lowpass coefficient 0.05..1 (Clouds: 0.7 at power-up: 90) |
-| 5 | GATE | 0 | 0 is off. k holds the wet for 2048 + 256 k samples (52 ms to 784 ms) after the input falls quiet, then closes it over 128 samples (about 3 ms) and a 32-sample smoothing; the tank keeps ringing underneath, so the next hit reopens it |
+| 5 | GATE | 0 | 0 is off. k holds the wet for 2048 + 256 k samples (52 ms to 784 ms) after the input falls quiet, then releases it as a desk gate does (−60 dB in about 320 ms); once shut, the tank is flushed, so the next hit starts from silence |
 
 These are Clouds' five setters (`set_amount`, `set_input_gain`, `set_time`, `set_diffusion`, `set_lp`).
 The ranges and defaults are this port's, taken from the values Clouds sets in `granular_processor.cc`
@@ -25,9 +25,13 @@ and `reverb.h`; they have not been compared by ear.
 
 ## The gate
 
-Clouds' reverb has no gate; this part is new. The input (the mean of left and right, before GAIN) feeds an envelope follower with an instant attack and a 1/512 release per sample (about 12 ms). While the envelope is above 0.0078 (-42 dBFS) the hold counter is reloaded; once it falls below, the counter runs down and the wet gain follows `min(counter, 128) / 128`, smoothed. The wet output is multiplied by that gain after the reverb and before the AMNT mix, so the dry signal is untouched. Only the output is gated: the tank keeps ringing.
+Clouds' reverb has no gate; this part is new. The input (the mean of left and right, before GAIN) feeds an envelope follower with an instant attack and a 1/512 release per sample (about 12 ms). While the envelope is above 0.0078 (-42 dBFS) the hold counter is reloaded; once it falls below, the counter runs down. While it has time left the wet gain rises 1/32 of the way to 1 a sample (about 0.7 ms). When it runs out the gain falls by 1/2048 a sample: a straight line in dB, a desk gate's release (an SSL channel gate's or a Drawmer DS201's, the In the Air Tonight shape), 46 ms a time constant, −60 dB in about 320 ms. Below 2^-11 (−66 dB) it is 0. The wet output is multiplied by that gain after the reverb and before the AMNT mix, so the dry signal is untouched.
 
-That is the shape of the 1980s gated reverb: a dense, level wash that cuts off abruptly rather than decaying. Under `dsp_host` the wet is open for the whole hold and exactly silent after the closing ramp (-200 dB against -72 dB with the gate off, in `verify_gateverb`). Whether the wash is dense and flat enough to sound like one is not measured: for the classic effect set TIME and DIFF high, GAIN up and AMNT up, and GATE to taste. The threshold, the release of the envelope and the ramp lengths are constants in `gateverb.asm`, not knobs.
+A shut gate also empties the tank. In any block that starts with the gain at 0, the loop gain (TIME's) and the allpass coefficient (DIFF's) are 0. Every line is then a plain delay fed only by the quiet input, and the tank flushes in one pass of its longest path (dap2a, dap2b, del2: 8,092 samples, 183 ms). The next hit starts from silence, so every hit of a backbeat sounds the same instead of opening onto what the last one left. Both come back the moment the gain leaves 0; the first block of a new hit (at most 0.36 ms) runs without them, into an empty tank.
+
+Chosen by ear on 5 Nov 2026 (Sam, from sandbox renders of a backbeat snare and a tom fill; releases of 1/512, 1/1024 and 1/2048 a sample were compared, and the slowest was preferred). Until then the wet closed over 128 samples (about 3 ms), which read as a cut, and the tank rang on underneath.
+
+Under `dsp_host` (`verify_gateverb`, GATE 40): the wet is open for the whole hold (−68.5 dB against −68.3 dB with the gate off); 70 to 110 ms into the release it is −88.9 dB against −72.3 dB, a release, not a cut (the 3 ms gate read −200 dB there); after the release it is exactly silent (−200 dB against −75.7 dB); and a second impulse 190 ms after the gate shuts, less the same impulse alone, is −119.0 dBFS, the truncation floor (−77.7 dBFS with the old gate, whose tank rang on). Whether the wash is dense and flat enough to sound like one is not measured: for the classic effect set TIME and DIFF high, GAIN up and AMNT up, and GATE to taste. The threshold, the envelope's release, the attack and the gate's release are constants in `gateverb.asm`, not knobs.
 
 ## What differs from Clouds
 
@@ -48,7 +52,7 @@ That is the shape of the 1980s gated reverb: a dense, level wash that cuts off a
 ## Measured
 
 Under `dsp_host` (`tools/verify/verify_gateverb.py`, remix `test/gateverb`):
-- 425 DSP words on each payload; the pricer counts 219 cycles per sample, a floor (it counts words, not memory stalls).
+- The pricer counts 228 cycles per sample (219 before the desk gate, 5 Nov 2026), a floor: it counts words, not memory stalls. Scaled from the 7.76 % measured on a unit at 219, about 8.1 % a slot (🟡 inferred, not read).
 - The first 77 calls pass the input through while the ring is cleared (206 words a call).
 - AMNT 0 is bit-exact dry.
 - An impulse and a noise burst through 48,000 samples match a float model (gate off, and an impulse with the gate on) of the same algorithm (same lengths, the same integer LFO phases and

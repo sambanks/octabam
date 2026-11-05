@@ -12,8 +12,9 @@ extent (Claims.buffer_words) and never writes them.
 The five knobs are Clouds' own setters: AMNT (amount), GAIN (input gain), TIME
 (reverb time), DIFF (the allpass coefficient), TONE (the damping lowpass).
 Defaults are the Clouds module's values. A sixth knob, GATE, holds the wet
-output for 2048 + 256 k samples after the input falls quiet and then closes it
-over 128 samples; the tank keeps ringing underneath (0 is off).
+output for 2048 + 256 k samples after the input falls quiet, then releases it as
+a desk gate does (the gain falls 1/2048 a sample, -60 dB in about 320 ms) and,
+once shut, empties the tank so the next hit starts from silence (0 is off).
 """
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness,
                           Kind, MenuEntry, Module, Param, Proof, YBase)
@@ -33,7 +34,7 @@ MODULE = Module(
         Param(b"DIFF", 100, active=True, formatter=Formatter.PLAIN, doc="diffusion; 100 matches Clouds"),
         Param(b"TONE", 90, active=True, formatter=Formatter.PLAIN, doc="damping low-pass: lower is darker; 90 matches Clouds"),
         Param(b"GATE", 0, active=True, formatter=Formatter.PLAIN,
-              doc="0 off; k holds the tail 2048 + 256 k samples after the input falls quiet, then closes"),
+              doc="0 off; k holds the tail 2048 + 256 k samples after the input falls quiet, then releases it like a desk gate (-60 dB in about 320 ms) and empties the tank"),
         *(Param() for _ in range(6)),
     ),
     dsp=DspSection(asm="modules/gateverb/gateverb.asm", priority=11,

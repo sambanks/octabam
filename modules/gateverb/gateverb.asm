@@ -9,7 +9,8 @@
 ; 24-bit buffer words instead of Clouds' 12-bit (a value is held as value/8, so
 ; the buffer's range matches Clouds' +-8), parabolic LFOs updated once a block. A gate on the wet output
 ; (p5 GATE): hold 2048 + 256 k samples after the input falls under a threshold, then a
-; ramp to silence; the tank keeps ringing underneath.
+; desk gate's release (-60 dB in about 320 ms); once the gate is shut the tank's loop gain is 0,
+; so the tank empties and the next hit starts from silence.
 ;
 ; Layout (cell k of line j is y:(r5 - base_j - k), r5 the write pointer, modulo 15862):
 ;   ap1    base     0 length  109
@@ -27,7 +28,8 @@
 ; $23 clear pointer, $24 AMT, $25 GC (input gain/4), $26 KRT, $27 KAP, $28 KLP
 ; (smoothed), $29 $2a LFO phases, $2c $2d the smear and delay fractions, $2e $2f
 ; the smear and delay offsets, $30 $31 the damping states, $32 apout, $33 input envelope,
-; $34 hold counter, $35 gate gain (smoothed), $36 hold length (0x7fffff = gate off).
+; $34 hold counter, $35 gate gain, $36 hold length (0x7fffff = gate off), $37 $38 the loop gain
+; and allpass coefficient in use (KRT and KAP, or 0 under a shut gate).
 ; Knobs: p0 AMNT amount, p1 GAIN input gain, p2 TIME reverb time, p3 DIFF
 ; diffusion, p4 TONE damping, p5 GATE hold (0 off).
 
@@ -208,6 +210,19 @@ gv_p2a:
         move    #>$ffd420,a
         sub     x1,a
         move    a1,x:(r7+$2f)
+; the loop gain and the allpass coefficient this block: KRT and KAP, or 0 while the gate's gain
+; is 0 (shut). With both 0 every line is a plain delay fed only by the (quiet) input, so the tank
+; drains in one pass of its longest line and the next hit starts from silence.
+        move    x:(r7+$26),a
+        move    x:(r7+$35),b
+        move    #0,x0
+        tst     b
+        teq     x0,a
+        move    a1,x:(r7+$37)
+        move    x:(r7+$27),a
+        tst     b
+        teq     x0,a
+        move    a1,x:(r7+$38)
 ; block setup
         move    #>$1,n0
         move    #>15861,m4
@@ -255,24 +270,35 @@ gv_p2a:
         tst     a
         tgt     x1,b
         move    b1,x:(r7+$34)
-        move    #>128,x1
-        move    b,a
+; a desk gate: open (hold left), the gain rises 1/32 of the way a sample (y1); shut, it falls
+; 1/2048 a sample, a straight line in dB (-60 in about 320 ms), and below 2^-11 it is 0 (a); the
+; hold picks one. Straight-line, for the pricer. A shut gate empties the tank: x:(r7+$37), $38.
+        move    x:(r7+$35),x1
+        move    #>$7fffff,a
         sub     x1,a
-        tst     a
-        tge     x1,b
-        asl     #$10,b,a
-        move    a,x0
-        move    x:(r7+$35),b
-        move    x0,a
-        sub     b,a
         asr     #$5,a,a
-        add     b,a
+        add     x1,a
+        move    a1,y1
+        move    x1,a
+        asr     #$b,a,a
+        move    a1,x0
+        move    x1,a
+        sub     x0,a
+        move    a,b
+        move    #>$001000,x0
+        sub     x0,b
+        move    #0,x0
+        tst     b
+        tmi     x0,a
+        move    x:(r7+$34),b
+        tst     b
+        tne     y1,a
         move    a,x:(r7+$35)
         move    y0,x0
         move    x:(r7+$25),y1
         mpy     x0,y1,a
 ; four input allpasses
-        move    x:(r7+$27),y1
+        move    x:(r7+$38),y1
         move    #>$ffff94,n5
         move    y:(r5+n5),x0
         mac     x0,y1,a
@@ -321,7 +347,7 @@ gv_p2a:
         mpy     y0,x0,a
         add     b,a
         move    a,x0
-        move    x:(r7+$26),y1
+        move    x:(r7+$37),y1
         mpy     x0,y1,a
         move    x:(r7+$32),x0
         add     x0,a
@@ -332,7 +358,7 @@ gv_p2a:
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$30)
-        move    x:(r7+$27),y1
+        move    x:(r7+$38),y1
         move    #>$fff648,n5
         move    y:(r5+n5),x0
         mac     -x0,y1,a
@@ -370,7 +396,7 @@ gv_p2a:
         move    x:(r7+$32),a
         move    #>$ffe1aa,n5
         move    y:(r5+n5),x0
-        move    x:(r7+$26),y1
+        move    x:(r7+$37),y1
         mac     x0,y1,a
         move    x:(r7+$31),b
         sub     b,a
@@ -379,7 +405,7 @@ gv_p2a:
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$31)
-        move    x:(r7+$27),y1
+        move    x:(r7+$38),y1
         move    #>$ffda6d,n5
         move    y:(r5+n5),x0
         mac     x0,y1,a
