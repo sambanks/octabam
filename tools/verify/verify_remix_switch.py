@@ -12,7 +12,8 @@ Builds the remix (the HOME image: what NOR would hold), then:
            reserve reaches past it (a region may sit above the stage:
            STEM REC's 8 MiB ring has no room below it)
   ui       an MKII (`--mkii`: the reset sends the panel `60 02` first) with a
-           card holding STOCK 1.40C.RMX (the user's own stock MAIN OS, copied
+           card holding ABCDEFGHIJKLMNO.RMX (19 characters, the longest name `make image`
+           writes: 15 + .RMX; the user's own stock MAIN OS, copied
            at run time); PROJ opens MAIN MENU > BRAIN (the list in /BRAIN/REMIXES/, scanned),
            YES on the row, YES in the dialog. The row's action, the dialog's
            answer, the deferred load and the reset sequence each run; the
@@ -222,7 +223,7 @@ def main():
     # ---- ui: the row, the dialog, the load, the reset sequence ------------
     tree = work / "card"
     (tree / "BRAIN" / "REMIXES").mkdir(parents=True)
-    (tree / "BRAIN" / "REMIXES" / "STOCK 1.40C.RMX").write_bytes(stock)
+    (tree / "BRAIN" / "REMIXES" / "ABCDEFGHIJKLMNO.RMX").write_bytes(stock)
     unknown_value = brainfile.Value(99, brainfile.BLOB, b"keep future key")
     unknown_record = brainfile.Record(brainfile.SETTINGS, "absent.module", payload=b"future payload")
     initial = brainfile.File(brainfile.CARD_WORK, [unknown_record,
@@ -274,7 +275,7 @@ def main():
     check("ui: an MKII sends the panel its two start-up bytes (`60 02`) before the reset",
           hits.get(rt["putpanel"]) == 2, f"{hits.get(rt['putpanel'], 0)} byte(s)")
     mb, stage = d.get("mbox", b""), d.get("stage", b"")
-    check("ui: the stage reads back equal to STOCK 1.40C.RMX", stage == stock,
+    check("ui: the stage reads back equal to ABCDEFGHIJKLMNO.RMX", stage == stock,
           f"{len(stage):,} B")
     # MAIN MENU's rescan borrows the stock dir scan's global name pool and
     # cache and puts them back: the cache's extension is not ours after it
@@ -288,7 +289,7 @@ def main():
     ok = (len(mb) == 72 and magic(mb) == C["OSW_MAGIC"]
           and struct.unpack(">III", mb[4:16]) == (len(stock), roll(stock),
                                                    C["OSW_MAGIC"] ^ len(stock) ^ roll(stock))
-          and mb[C["MB_NAME"]:].split(b"\0")[0] == b"STOCK 1.40C.RMX")
+          and mb[C["MB_NAME"]:].split(b"\0")[0] == b"ABCDEFGHIJKLMNO.RMX")
     check("ui: the mailbox holds its length, hash, check word and name", ok, mb[:40].hex())
     check("ui: the port does not reset, so the switcher reached its RCR fallback and said so",
           mb[C["MB_RESET"]:C["MB_RESET"] + 4] == struct.pack(">I", C["RS_RCR"]),
@@ -300,7 +301,7 @@ def main():
     saved_file = brainfile.parse(saved)
     selected = saved_file.find(brainfile.SETTINGS, "octabam.remix-switch")
     check("ui: the selected filename is saved in BRAIN/card.work for the next boot",
-          selected is not None and selected.values()[0].data.rstrip(b"\0") == b"STOCK 1.40C.RMX")
+          selected is not None and selected.values()[0].data.rstrip(b"\0") == b"ABCDEFGHIJKLMNO.RMX")
     check("ui: saving the choice keeps an absent module's record and an unknown setting byte for byte",
           saved_file.find(brainfile.SETTINGS, "absent.module").encode() == unknown_record.encode()
           and next(v for v in selected.values() if v.key == 99).encode() == unknown_value.encode())
@@ -416,7 +417,7 @@ def main():
     (btree / "BRAIN" / "REMIXES").mkdir(parents=True)
     (btree / "BRAIN" / "REMIXES" / f"{self_name}.RMX").write_bytes(homeb)
     (btree / "BRAIN" / "REMIXES" / "OTHER.RMX").write_bytes(homeb)
-    (btree / "BRAIN" / "REMIXES" / "STOCK 1.40C.RMX").write_bytes(stock)
+    (btree / "BRAIN" / "REMIXES" / "ABCDEFGHIJKLMNO.RMX").write_bytes(stock)
     bcard = work / "bootcard.img"
     bcard.write_bytes(emu_card.build_image(str(btree), size_mb=64))
     POST, HANDLER = 0x40023c7c, 0x40085336
@@ -465,12 +466,12 @@ def main():
     already.write_bytes(b"\0" * C["MB_STATUS"] + struct.pack(">I", C["ST_BOOT"]))
     f_already = auto("already", [(MBOX, already)])
     # Missing target: hold no engine job forever and do not erase the choice.
-    (btree / "BRAIN" / "REMIXES" / "STOCK 1.40C.RMX").unlink()
+    (btree / "BRAIN" / "REMIXES" / "ABCDEFGHIJKLMNO.RMX").unlink()
     (work / "missing.img").write_bytes(emu_card.build_image(str(btree), size_mb=64))
     f_missing = auto("missing", cardname="missing.img")
     malformed = brainfile.File(brainfile.CARD_WORK, [brainfile.Record(
         brainfile.SETTINGS, "octabam.remix-switch",
-        payload=brainfile.Value(1, brainfile.BLOB, b"../STOCK 1.40C.RMX".ljust(24, b"\0")).encode())])
+        payload=brainfile.Value(1, brainfile.BLOB, b"../ABCDEFGHIJKLMNO.RMX".ljust(24, b"\0")).encode())])
     (btree / "BRAIN" / "card.work").write_bytes(malformed.encode())
     (work / "malformed.img").write_bytes(emu_card.build_image(str(btree), size_mb=64))
     f_malformed = auto("malformed", cardname="malformed.img")

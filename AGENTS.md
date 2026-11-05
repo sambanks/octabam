@@ -184,6 +184,8 @@ moment it costs real work, and add its line here.
 
 - [A nonzero popup pointer is not an open FX SETUP window](docs/contributing/TRAPS.md#trap-popup-redraw) — check the open flag and geometry; verify held-lock edits on the decoded LCD.
 
+- [The page plane `0x46c7e0ea` is not the screen](docs/contributing/TRAPS.md#trap-page-plane) — windows are other layers the flush composites; the shown frame is `[0x400b970c]`; check against the decoded panel stream.
+
 - [A shared string helper's bound cut the load's path](docs/contributing/TRAPS.md#trap-strcat-bound) — REMIX SWITCH's 30-byte `strcat` cut `/BRAIN/REMIXES/` + a name over 14 characters; bound each buffer at the buffer, and give a fixture the longest name the build writes.
 
 - [A branch can enter the middle of a displaced span](docs/contributing/TRAPS.md#trap-detour-interior) — whole instructions are insufficient: keep shared branch targets; the MIDI CHROMATIC gate exercises both paths.

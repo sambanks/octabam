@@ -933,6 +933,23 @@ def main():
                   f"{', '.join(_bus)}")
     print(f"  [PASS] every remix's fallback matches whether it has a bus")
 
+    # ---- the name REMIX SWITCH shows is also the .RMX file's: one per remix
+    # The 15-character cut loses the end of a long remix name, so remixes that
+    # share their first 12 characters would overwrite each other's file on the
+    # card (#888). Remix.image_name gives such a remix a short name of its own.
+    from remix import brain as _brain
+    for _build in ("79", "A0"):
+        _by = {}
+        for _n in registry.remix_names():
+            _by.setdefault(_brain.image_name(_n, _build), []).append(_n)
+        _dup = {k: v for k, v in _by.items() if len(v) > 1}
+        for _k, _v in _dup.items():
+            bad += 1
+            print(f"  [FAIL] remixes {', '.join(_v)} are all named {_k!r} at BUILD {_build}: "
+                  f"set image_name= on all but one (tools/remix/schema.py Remix)")
+        if not _dup:
+            print(f"  [PASS] every remix has its own REMIX SWITCH name at BUILD {_build} ({len(_by)})")
+
     # ---- dynamic donor regions (Remix.harvest) ---------------------------
     # The property the whole idea rests on: the thirteen DSP effects are
     # CONTIGUOUS in both payloads and their record sizes match what stock.py
@@ -1034,7 +1051,8 @@ def main():
                                   "euclid-fill", "varispeed", "copy-project",
                                   "pattern-mute-modes",  # PATTERN MUTE beside MUTE_MODES, stock effects
                                   "scope",  # SCOPE: ColdFire window, no DSP words
-                                  "cxosc", "cxosc-core")},  # CX OSC (+ CORE handoff); ColdFire, no DSP words
+                                  "cxosc", "cxosc-core",
+                                  "screen", "screen-usb")},  # CX OSC (+ CORE handoff); ColdFire, no DSP words
              "trackpatterns": (),   # pgstath's ColdFire module on the stock effects, no DSP words
              "trackpatterns-core": (),   # TRACK PATTERNS on the core modules and the 14 stock effects, which gives up nothing
              "free-loop": (),   # FREE LOOP: ColdFire, no DSP words, on the 14 stock effects
