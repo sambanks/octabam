@@ -23,7 +23,7 @@
 | entry (it replays the displaced `movel %d2,%sp@-` and `moveal %sp@(8),%a0`)
 | and passes every message that is not this request back to stock.
 |
-| The reply goes back on the transport the request came on. usbmidi_rx.s
+| The reply goes back on the transport the request came on. usbmidi.s
 | (modules/usb) sets usbmidi_rx_sysex when it enqueues an F0; the hook reads
 | and clears it at every SysEx, so it is 1 only for a message that began on
 | USB. USB: the 1,194 bytes go through the firmware's USB-MIDI encoder

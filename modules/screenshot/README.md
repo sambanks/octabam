@@ -36,7 +36,7 @@ One jmp detour on that entry. A message that is not this request goes on to stoc
 queued in the MIDI OUT ring the way `0x40010bc8` queues bytes, honours stock's MIDI OUT hold (`0x460ba978`),
 and clears the running-status byte (`0x460ba988`) so the next channel message carries its status.
 
-The reply goes back on the transport the request came on. `usbmidi_rx.s` (USB module) sets `usbmidi_rx_sysex`
+The reply goes back on the transport the request came on. `usbmidi.s` (USB module) sets `usbmidi_rx_sysex`
 when it enqueues an `F0`; the hook reads and clears it at every SysEx. On USB the 1,194 bytes go through the
 firmware's USB-MIDI encoder (`0x4001d204`) in one call: one EP2 IN transfer of 1,592 bytes, after claiming
 `usbmidi_tx_busy`. The USB symbols are weak, so an image without the USB module answers on DIN only. If the host
