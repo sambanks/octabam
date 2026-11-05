@@ -30,7 +30,11 @@ make rmx REMIX=<any remix> [RMX=NAME]     # out/<NAME>.RMX: any build, 15-charac
 
 An image names itself `<REMIX> <BUILD>` (`remix.brain.image_name`: upper
 case, A-Z 0-9 space . _ -, 15 characters); `make image` gives the `.RMX`
-the same name.
+the same name. A remix whose name is longer than 12 characters loses the end
+of it, so two remixes that share their first 12 characters would write one
+file: such a remix sets `image_name=` (at most 12 characters) in its
+`remix.py`, and `selftest` refuses two remixes with the same final name.
+The file name is at most 19 characters (15 and `.RMX`); the list keeps 23.
 
 1. Copy the `.RMX` files to `/BRAIN/REMIXES/` on the card. A Mac writes a
    `._<name>` file beside each copy; delete those, or they are listed too.

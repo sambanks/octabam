@@ -11,6 +11,7 @@ from remix.schema import Proof, Remix
 
 REMIX = Remix(
     name="usb-out-tracks-main-cue",
+    image_name="OUT-TRK-MC",
     family="mods", proof=Proof.PORT, proof_note="",
     doc="stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE); PLATE REV harvested for USB's words.",
     modules=("USB",

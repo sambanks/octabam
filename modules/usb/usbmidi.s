@@ -378,7 +378,7 @@ usbmidi_tx_ring: .space RING_CAP
 
     .global usbmidi_rx_setcfg_shim, usbmidi_rx_isr_shim
     .global usbmidi_rx_reset_shim, usbmidi_rx_sessend_shim, usbmidi_rx_bus_end
-    .global usbmidi_rx_state, usbmidi_rx_errs, usbmidi_rx_clk_t, usbmidi_rx_dropped
+    .global usbmidi_rx_state, usbmidi_rx_errs, usbmidi_rx_sysex, usbmidi_rx_clk_t, usbmidi_rx_dropped
 
 | ---- SET_CONFIGURATION hook (replaces usbmidi.s's detour) ------------------
 | Live at the hook: d0-d1 (usbmidi_setcfg_shim saves them). Records whether
@@ -648,7 +648,11 @@ usbmidi_rx_decode:
     movel   %d1,CLK_T
     movel   %d1,usbmidi_rx_clk_t
     mvzb    %a2@(1,%d2:l),%d0       | the 0xF8 again
-9:  movel   %d0,%sp@-
+9:  cmpil   #0xf0,%d0
+    bnes    12f
+    moveq   #1,%d1                  | a SysEx start came in over USB: usbmidi_rx_sysex
+    moveb   %d1,usbmidi_rx_sysex    | tells the SysEx consumer where to answer
+12: movel   %d0,%sp@-
     jsr     RX_ENQUEUE
     addql   #4,%sp
     addql   #1,%d2
@@ -657,7 +661,7 @@ usbmidi_rx_decode:
 11: movew   %d5,%sr
 5:  addql   #4,%a2
     subql   #1,%d3
-    bgts    3b
+    bgtw    3b
 8:  rts
 
 | usbmidi_rx_din_owns: at SR 0x2700, a2 = the event. Z clear (d0 = 1) when
@@ -706,6 +710,7 @@ usbmidi_rx_run_framer:
 usbmidi_rx_cin_len:
     .byte   0,0,2,3,3,1,2,3,3,3,3,3,2,2,3,1
 usbmidi_rx_state: .byte 0
+usbmidi_rx_sysex: .byte 0           | 1 = an F0 arrived over USB since the last read-and-clear (modules/screen)
     .balign 4
 usbmidi_rx_errs:  .long 0
 usbmidi_rx_snap:  .long 0           | ENDPTCOMPLETE's EP2 bits as read by the current usb_isr entry

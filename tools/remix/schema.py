@@ -13,6 +13,7 @@ worse than none, so a field exists only where a check consumes it.
 from __future__ import annotations
 
 from collections.abc import Mapping
+import re
 import dataclasses
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -2018,6 +2019,14 @@ class Remix:
     family: str = ""             # "rig", "effects", "mods", "reference"
     proof: Proof | None = None   # schema.Proof; as a module's
     proof_note: str = ""
+    # The name REMIX SWITCH shows for the image and its .RMX file is
+    # `<image_name or name> <BUILD>`, upper case, at most 15 characters
+    # (tools/remix/brain.py image_name). Left empty, the remix's own name is
+    # cut to fit and the tail is lost: remixes that share their first 12
+    # characters then share a file name and overwrite each other on the card.
+    # Set it (at most 12 characters, A-Z 0-9 space . _ -) where they do;
+    # selftest refuses two remixes with the same final name.
+    image_name: str = ""
     # ---- which of them ALSO get a row on FX1 ------------------------------
     # THE OTHER HALF OF "BOTH SLOTS", and it belongs to the REMIX rather than
     # to the module: which menu an effect appears on is a composition choice,
@@ -2187,6 +2196,9 @@ class Remix:
     defaults: Mapping = field(default_factory=dict, hash=False)
 
     def __post_init__(self):
+        if self.image_name and not re.fullmatch(r"[A-Z0-9 ._-]{1,12}", self.image_name):
+            raise ValueError(f"remix {self.name!r}: image_name={self.image_name!r}; it is 1-12 characters of "
+                             f"A-Z 0-9 space . _ - (the BUILD tag and a space follow, 15 in all)")
         if self.id_space not in ID_SPACES:
             raise ValueError(f"remix {self.name!r}: id_space={self.id_space}; "
                              f"it is one of {ID_SPACES}")
