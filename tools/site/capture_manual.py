@@ -430,7 +430,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','devilish','morph','free-loop'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','devilish','morph','free-loop','vibrato'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -459,11 +459,12 @@ def main():
         elif group=='free-loop':jobs=[('free-loop',capture_free_loop,[])]
         elif group=='machines':jobs=[('analog-bassdrum',capture_analog,[]),('octatrick',capture_synth,[]),('blackpyramids-303',capture_blackpyramids,[]),('octa303',capture_octa303,[]),('cxosc',capture_cxosc,[])]
         elif group=='devilish':jobs=[('devilish',capture_fx,[(2,'fx2','DEVILISH')])]
+        elif group=='vibrato':jobs=[('vibrato',capture_fx,[(2,'fx1','VIBRATO')])]
         elif group=='probes':jobs=[('cfmeter',capture_fx,[(8,'fx2','CF METER')])]
         elif group=='utilities':jobs=[('buffer-saver',capture_buffer_saver,[])]
         elif group=='varispeed':jobs=[('varispeed',capture_varispeed,[])]
         else:
-            jobs=[(r,capture_fx,[(2,'fx1' if r in ('character-txtr','testgen','resonator') else 'fx2',k)]) for r,k in [('character-txtr','CHARACTER TXTR'),('testgen','TESTGEN'),('resonator','RESONATOR'),('sidechain-compressor','SIDECHAIN_COMPRESSOR'),('miniverb','MINIVERB'),('bbd','BBD'),('tapeecho','TAPE ECHO'),('vocoder','VOCODER'),('wave','WAVE'),('shatter','SHATTER'),('void','VOID'),('stuttr','STUTTR'),('distorx','DISTORX'),('devilish','DEVILISH'),('transient','TRANSIENT'),('gateverb','GATE VERB')]]
+            jobs=[(r,capture_fx,[(2,'fx1' if r in ('character-txtr','testgen','resonator','vibrato') else 'fx2',k)]) for r,k in [('character-txtr','CHARACTER TXTR'),('testgen','TESTGEN'),('resonator','RESONATOR'),('vibrato','VIBRATO'),('sidechain-compressor','SIDECHAIN_COMPRESSOR'),('miniverb','MINIVERB'),('bbd','BBD'),('tapeecho','TAPE ECHO'),('vocoder','VOCODER'),('wave','WAVE'),('shatter','SHATTER'),('void','VOID'),('stuttr','STUTTR'),('distorx','DISTORX'),('devilish','DEVILISH'),('transient','TRANSIENT'),('gateverb','GATE VERB')]]
         for remix,fn,assignments in jobs:
             # Paths use a separate stable label even when registry selects a scratch file.
             label='manual-features' if remix.startswith('../') else remix
