@@ -102,6 +102,15 @@ The `unit.s` here differs from the copy that ran only in the local labels `.play
   PLAY).
 - Pattern scales other than 1x.
 - An MKII.
+- A pattern no longer than one beat (1, 2 or 4 steps at 1x) is green only
+  on the first flash after PLAY, then red on every beat: each flash sees
+  step 0, so the step never drops. ✅ 4 steps under the port (the gate's
+  length poke, reported in review of #1046: `G@0 r@0 r@0 r@0 …`); 8 steps
+  at 2x 🟡 inferred from the arithmetic, not run. Counting step ≤ the last
+  flash's as a new pass (`bhi` in place of `bcc`) would fix it, but would
+  also turn green every flash inside step 0 at a slow scale where one step
+  spans several beats. A fix that gets both right needs a second signal,
+  such as the tick within the step at other scales; not measured.
 
 ## Gates
 
