@@ -1,4 +1,4 @@
-| screenshot.s -- the Elektron screenshot SysEx RPC, answered on MIDI OUT.
+| screen.s -- the Elektron screenshot SysEx RPC, answered on MIDI OUT.
 |
 | Request (13 bytes):   F0 00 20 3C <id0> 00 <leader> m1 m2 r1 r2 cmd F7
 |   id0 = 05 (the OT's own) or 10 (the id Digitakt / Analog Four MKII /

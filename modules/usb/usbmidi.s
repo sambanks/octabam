@@ -710,7 +710,7 @@ usbmidi_rx_run_framer:
 usbmidi_rx_cin_len:
     .byte   0,0,2,3,3,1,2,3,3,3,3,3,2,2,3,1
 usbmidi_rx_state: .byte 0
-usbmidi_rx_sysex: .byte 0           | 1 = an F0 arrived over USB since the last read-and-clear (modules/screenshot)
+usbmidi_rx_sysex: .byte 0           | 1 = an F0 arrived over USB since the last read-and-clear (modules/screen)
     .balign 4
 usbmidi_rx_errs:  .long 0
 usbmidi_rx_snap:  .long 0           | ENDPTCOMPLETE's EP2 bits as read by the current usb_isr entry

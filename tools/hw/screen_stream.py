@@ -7,7 +7,7 @@
     python3 tools/hw/screen_stream.py -- --framerate 10 --save-video out.mp4
                                                        # everything after -- goes to screendump
 
-Needs an image with the SCREENSHOT module (modules/screenshot/README.md) and, over USB, the USB module.
+Needs an image with the SCREEN module (modules/screen/README.md) and, over USB, the USB module.
 
 First run: clones https://github.com/Fadedlimes/elektron-screen-tool at PINNED_REF into
 ~/.cache/octabam/elektron-screen-tool (OCTABAM_SCREEN_DIR overrides), makes a venv there and
@@ -125,7 +125,7 @@ def main():
     if len(mi) != 1 or len(mo) != 1:
         print(listing, end="", file=sys.stderr)
         die(f"expected one MIDI input and one output containing '{a.port}', found {len(mi)} and {len(mo)}. "
-            "Check the USB cable, that BRAIN > SETTINGS > USB > MIDI is ON, and that the image has the SCREENSHOT "
+            "Check the USB cable, that BRAIN > SETTINGS > USB > MIDI is ON, and that the image has the SCREEN "
             "and USB modules. With several matches, pass --port with more of the name.", 2)
 
     cmd = [py, os.path.join(d, "screendump"), "--external", "--instrument", "OT",
