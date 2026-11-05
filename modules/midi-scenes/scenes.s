@@ -607,6 +607,7 @@ mix_flat:
         movel   %d6,%sp@-
         jsr     CC_TX
         lea     %sp@(16),%sp
+        lea     scn_snap:l,%a1          | CC_TX saves d2-d7/a2-a5 only: a1 comes back clobbered
         bra.s   mix_ctl
 mix_free:                               | no lock on either side
         tstl    scn_only

@@ -225,6 +225,8 @@ moment it costs real work, and add its line here.
 - [`--watch-mem` given to a `--scenario` child logs nothing](docs/contributing/TRAPS.md#trap-scenario-watch) — watch with a direct run.
 - [Audio and MIDI playing Parts are independent](docs/contributing/TRAPS.md#trap-part-engine-context) — use the matching STORE context reader; seed different engine Parts in fixtures.
 - [A MIDI-only fixture leaves audio frame checks with no playing Part](docs/contributing/TRAPS.md#trap-midi-only-frame-fixture) — activate an audio trig within the probe and use the selected module's actual parameters.
+- [A stock call returns with a0, a1, d0 and d1 changed](docs/contributing/TRAPS.md#trap-stock-scratch-regs) — MIDI SCENES kept `scn_snap` in a1 across the CC sender; reload scratch registers after every stock `jsr`.
+- [A held scene replaces every encoder's handler](docs/contributing/TRAPS.md#trap-scene-encoders) — `0x40053498` over the SETUP editors; a panel gesture's gate drives the panel.
 
 ## How claims are written here
 

@@ -57,6 +57,10 @@ MODULE = Module(
                kind="jmp", pad_to=12),
         Detour(0x40038C30, H("4fefffd848d73cfc282f002c"), "p2scenes", "scene_clear_hook",
                "scene clear: the frame cache is dropped after it", kind="jmp", pad_to=12),
+        Detour(0x40053498, H("4fefffdc48d71cfc"), "p2scenes", "scene_knob_hook",
+               "stock's scene-lock knob handler, which a held scene installs over "
+               "every encoder: with an FX SETUP window open, a page-2 turn goes to the "
+               "edit hooks", kind="jmp", pad_to=8),
         Detour(0x40037840, H("d1fc0008f0841c10"), "p2scenes", "dial2_hook",
                "FX2 page-2 dial: with a scene held, draw that scene's lock", kind="jmp", pad_to=8),
         Detour(0x40037BDC, H("d1fc0008f07e1c10"), "p2scenes", "dial1_hook",
