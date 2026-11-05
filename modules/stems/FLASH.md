@@ -2,8 +2,39 @@
 
 ## Flash M — `octabam` + STEM REC: flat gain slots, whole clusters (staged 5 Nov 2026)
 
-**Staged, not flashed.** `STEMS13`, on branch `stems-gainflat` (on
-`stems-hookparts` at `13608e01`). It has two changes, both in STEM REC:
+**Flashed** on Yves's MKII. His card's logs of 5 Nov 2026 hold three
+takes, all at 24 bits (his folder, not the repository):
+
+| take | files | length | status | ring peak, frames | card while recording | hook mean, longest |
+|---|---|---|---|---|---|---|
+| `261105-1441` | 11: T1 to T7, MAIN, CUE, AB, CD | 24 s | OK | 2,889 of 7,922 (36%) | 212 µs a KB | 30, 51 µs |
+| `261105-1441-2` | T1 | 10 s | OK | 938 of 87,360 | 92 µs a KB | 9, 17 µs |
+| `261105-1442` | 13: T1 to T7, MAIN, CUE, A, B, C, D | 21 s | OK | 3,475 of 7,918 (44%) | 261 µs a KB | 31, 54 µs |
+
+- Every WAV holds its log's frame count (16 samples a frame) under a
+  header that says so, with its `.ot` beside it.
+- ✅ Eleven files recorded for 24 s without `RING FULL`. On STEMS12 the
+  same eleven sources filled the ring in 10 s. The card wrote at 212 µs a
+  KB, against 423 then (50% less), 255 on STEMS11's eleven-file take and
+  234 on STEMS12's nine. It was busy 60% of the take, against 89%.
+- ✅ The hook at eleven files: 30 µs on average against 33, at most 51
+  against 61. `mirror` fell from 6.9 to 4.1 µs and `gains` from 1.39 to
+  0.78. `buses` (8.7 µs) and `tracks` (16.6) are as they were, and
+  neither changed.
+- New: the inputs as four mono files (AB STEREO and CD STEREO off). Yves:
+  "everything works better so I was able to split AB and CD in mono
+  tracks." Thirteen files carry the same 1,056 bytes a frame as the
+  eleven, and the card took 261 µs a KB for them, 23% more. It was busy
+  73% of the take.
+- Not recorded: the nine-file take and the eleven files three times in a
+  row. 🟡 Not known yet: which samples the Static machines played. Flash
+  L's fourth and fifth takes differed only in those, at 252 and 387 µs a
+  KB, so the comparison with flash L holds for the same set only.
+- What the takes say about 20.10's and 20.11's questions is in
+  STEM_REC.md, under "On the unit" in each.
+
+`STEMS13`, on branch `stems-gainflat` (on `stems-hookparts` at
+`13608e01`). It has two changes, both in STEM REC:
 
 - **Flat gain slots** (`CLEANUP.md` 1.1's flat case, STEM_REC.md 20.10).
   While a track's fader rests, its gain slot holds one gain instead of

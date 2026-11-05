@@ -8525,6 +8525,35 @@ excess isn't the gain queue; if the `mirror` part falls by only its
 instructions, the rest is elsewhere (instruction-cache fills are the
 first candidate).
 
+**On the unit** (✅ STEMS13, flash M, 5 Nov 2026; one take each). The
+hook parts, in ns on average, against STEMS12's takes of 4 Nov:
+
+| take | `mirror` | `buses` | `gains` | `tracks` | hook |
+|---|---|---|---|---|---|
+| eleven files (seven tracks), STEMS12 | 6,939 | 8,969 | 1,393 | 16,553 | 33 µs |
+| eleven files, STEMS13 | 4,106 | 8,651 | 780 | 16,568 | 30 µs |
+| T1 alone, STEMS12 | 4,598 | 1,045 | 575 | 4,045 | 10 µs |
+| T1 alone, STEMS13 | 4,174 | 833 | 371 | 4,121 | 9 µs |
+
+- At seven tracks the gain path (`mirror` and `gains`) fell from 8.3 to
+  4.9 µs, 41% less, and the hook by 3 µs. `buses` and `tracks` are as
+  they were: neither changed.
+- `mirror` fell 2.8 µs, a little more than the 1.5 to 2.5 estimated. Its
+  instructions account for about 1.4 µs (about 490 fewer at seven slots,
+  at 2.9 ns). 🟡 The rest fits the 28 gain lines a frame it no longer
+  writes.
+- 🟡 `mirror` now costs 4.1 to 4.2 µs with one track or seven, against
+  about 1.2 µs of instructions (about 400). So about 3 µs of it doesn't
+  depend on the tracks, and it isn't the gain queue. Instruction-cache
+  fills at the hook's start remain the first candidate; the stock state
+  the mirror reads is the second.
+- 🟡 `gains` fell to 0.78 µs, not the 0.3 estimated. With one line (T1)
+  it reads 0.37 µs, the probe's own cost; the six more lines at seven
+  tracks add 0.41 µs, about 68 ns each, close to a miss each (CHIP.md:
+  about 80 ns). The estimate assumed STEMS12's share of hits. What's
+  left of the queue costs under 1 µs at seven tracks, so replacing it
+  (the descriptor of 20.9) is worth less than this round was.
+
 ### 20.11 Whole clusters while recording (4 Nov 2026)
 
 **Why.** STEMS12's takes (flash L) put the card's time per KB written at
@@ -8620,3 +8649,45 @@ nine to eleven files still write at 230 to 420 µs a KB, going back to
 half-written clusters wasn't the cost. Then the per-command time is the
 next candidate (a 24-bit stereo file now sends one or two commands of 64
 sectors a pass instead of two of 64 and 32).
+
+**On the unit** (✅ STEMS13, flash M, 5 Nov 2026; one take each, the
+Static machines' samples not yet known):
+
+| files | card while recording, µs a KB | busy, share of the take | a cluster's command |
+|---|---|---|---|
+| 1 (T1) | 92 (STEMS12: 54 to 82) | 2% | 3.0 ms |
+| 11: T1 to T7, MAIN, CUE, AB, CD | 212 (STEMS12: 423, `RING FULL`; STEMS11: 255) | 60% (STEMS12: 89%) | 6.8 ms |
+| 13: as 11, the inputs as four mono files | 261 | 73% | 8.4 ms |
+
+A cluster's command is the card's time while recording over the KB
+written in 32 KB clusters, one command each. Eleven and thirteen files
+carry the same 1,056 bytes a frame.
+
+- Eleven files wrote at 212 µs a KB, below the 230 to 420 that would
+  have falsified the change, but far above one file's 54 to 92. 🟡 So
+  going back to half-written clusters was part of the card's cost, not
+  all of it.
+- Thirteen files took 23% longer a KB than eleven for the same bytes,
+  and a command takes more than twice as long with eleven files as with
+  one.
+
+**The order of the writes** (✅ under the port, the `clusters` run's
+command log). With whole clusters, each of the take's 66 data writes
+continues the one before on the card: the file layer gives each file the
+next free cluster as it writes, so the four files' clusters lie in the
+order they were written and the card sees one stream going forward.
+Before the change 16 of 108 did. No FAT or directory write comes between
+them while the take records. 🟡 The port's card is FAT16; that the
+firmware's FAT32 path allocates the same way isn't checked.
+
+So on the port's evidence, a cost that still grows with the files isn't
+the order of the writes. 🟡 The first candidate is the stock's sample
+reads from the same card. BuMa measured a MKI's card writes at 4.7 to
+5.7 MB/s with the sequencer stopped and 1.4 to 2.1 MB/s with Static
+tracks streaming (19.1), and on STEMS12 other samples on the Static
+machines alone took ten files from 252 to 387 µs a KB (flash L). With one
+file the card is mostly idle and the reads fit between the writes; with
+eleven it's busy 60% of the time and the reads land among them. The
+test: the eleven files on a project whose machines don't stream from the
+card (Flex machines, which play from RAM). If the time a KB falls toward
+one file's, the reads are the rest of the cost.

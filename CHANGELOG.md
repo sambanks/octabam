@@ -195,6 +195,19 @@ Docs
 - Removed: `PLAN.md`, `docs/TIMESTRETCH_PIPELINE.md` (27 Sep).
 - Demand loader (`modules/dlpump`, `modules/dlcopy`, `modules/dlprobe`; `docs/contributing/DEMAND_LOADER.md`): `octabam` copies SPECTRUM, CHARACTER, MODULATION and TRANSIENT into the DSP's shared window while a track uses them and withdraws them 10 s after the last use. All 14 stock effects stay; the stock reverbs run behind a guard that keeps them off loaded code. A block is held by whoever has it first: the FX1 and FX2 choosers refuse an effect whose block is under PLATE, DARK or SPRING REV, and a reverb on the block of a loaded effect a track uses, each with a toast (`NEEDS Tn FX2 FREE`, `Tn HOLDS <effect>`); other routes toast at the next page key. `octabam` lists the stations on FX1 (it offered SPECTRUM and CHARACTER on FX2 only, where they render dry). GATE VERB is not in `octabam`. New builder fields `Remix.window_demand`, `window_guard`, `window_loader`; the build refuses an uploaded window record above `0x37f00`. DLPROBE and `tools/hw/dl_state.py` (USB `0xc0/0x57` block 3) read the counters on a unit. Gates `verify_dlstub`, `verify_dlwrap`, `verify_dlload`, `verify_dlprobe`.
 
+## STEMS13 — 5 Nov 2026 (local remix `lm-stems`, branch `stems-gainflat`)
+
+On the unit (Yves's MKII, flash M): three takes at 24 bits, every WAV
+whole. Eleven files recorded for 24 s without `RING FULL`, the card
+writing at 212 µs a KB against 423 on STEMS12's eleven-file take and 255
+on STEMS11's (`docs/firmware/STEM_REC.md` 20.11). At eleven files the
+hook took 30 µs against 33: `mirror` 4.1 µs against 6.9, `gains` 0.78
+against 1.39 (20.10). Thirteen files, the inputs as four mono files,
+recorded too, at 261 µs a KB. `lm-stems` is STEMS12's 48 modules on main
+`c9cadc82`, with SHATTER for TRANSIENT (`modules/stems/FLASH.md` flash M).
+- STEM REC: a resting fader's gain slot holds one gain, and the track loops multiply by it without a ramp.
+- STEM REC: while a take records, each file writes whole clusters only, so the card never goes back to a cluster it left half written.
+
 ## STEMS12 — 4 Nov 2026 (local remix `lm-stems`, branch `stems-hookparts`)
 
 On the unit (Yves's MKII, flash L): five takes at 24 bits, every WAV

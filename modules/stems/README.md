@@ -163,7 +163,8 @@ each waits for the RAM: 🟡 about 10 to 13 µs more a frame at eight tracks,
 with everything at 24 bits. Measured since: 30 to 33 µs on average at
 nine to eleven files at 24 bits (seven tracks), 62 µs at most (STEMS11 and
 STEMS12, 28 Oct and 4 Nov 2026). STEMS12's parts split that time
-(STEM_REC.md 20.9).
+(STEM_REC.md 20.9). With flat gain slots, eleven files took 30 µs on
+average and 51 at most (STEMS13, 5 Nov 2026, STEM_REC.md 20.10).
 STEMS3 recorded eleven files at 24 bits on the unit; clicks and the
 screen's response during a take aren't reported yet (STEM_REC.md 17.3).
 Before piece 5 the hook copied the tracks as they were and cost 743
@@ -308,9 +309,10 @@ yes gap 13159 ms, double taps 1
   card is the limit. The card takes one command a cluster (the file
   layer's), so a card formatted with larger clusters takes fewer, larger
   commands. While a take records, each file writes whole clusters only,
-  so the card never goes back to one it left half written; on STEMS12 the
+  so the card never goes back to one it left half written. On STEMS12 the
   card's time per KB rose from about 60 µs with one file to 230 to 420
-  with nine to eleven (STEM_REC.md 20.11).
+  with nine to eleven; on STEMS13 eleven files wrote at 212 (STEM_REC.md
+  20.11).
 - **The writer's longest sleep** far above the 10 ms it asks for: it
   waited for the processor. It runs at priority 1, in turn with the engine,
   the UI and one more stock task, below three tasks that by their code most
@@ -422,15 +424,18 @@ and STEM REC's writer named on the CPU tab (its task control block is
   RING FULL, cause open (STEM_REC.md 17.3). BuMa measured a MKI's card
   writes at 4.7–5.7 MB/s with the sequencer stopped and 1.4–2.1 MB/s with
   Static tracks streaming (STEM_REC.md 19.1).
-- **On a busy project, eight tracks at 24 bits is the most that keeps
-  up.** Zero copy on Yves's MKII, a project of eight Static tracks
-  playing (STEM_REC.md 17.6): T1 to T8 at 24 bits ran a minute with the
-  ring at most 21% full; twelve files at 24 bits (MAIN, CUE, AB and CD
-  added, 3.17 MB/s) stopped with `RING FULL` after 4.3 s, the card taking
-  2.1 MB/s while the writer, at priority 1, waited for the processor. A
-  lighter project leaves the writer more of it (not measured with zero
-  copy). The writer at priority 2 is built and kept as the next step
-  (`stems-prio2`, STEM_REC.md 20.6).
+- **On a busy project, eleven files at 24 bits keep up; twelve aren't
+  measured since.** On STEMS13 (whole clusters, 5 Nov 2026), Yves's
+  project recorded eleven files at 24 bits (T1 to T7,
+  MAIN, CUE, AB and CD, 2.91 MB/s) for 24 s with the ring at most 36%
+  full and the card busy 60% of the take, and thirteen (the inputs as
+  four mono files, the same bytes) for 21 s at 44% (STEM_REC.md 20.11).
+  Before, with zero copy (STEM_REC.md 17.6): T1 to T8 at 24 bits ran a
+  minute with the ring at most 21% full; twelve files at 24 bits (MAIN,
+  CUE, AB and CD added, 3.17 MB/s) stopped with `RING FULL` after 4.3 s,
+  the card taking 2.1 MB/s while the writer, at priority 1, waited for
+  the processor. The writer at priority 2 is built and kept as the next
+  step (`stems-prio2`, STEM_REC.md 20.6).
 - A power cut or a card pull before the end loses the take: each file is
   left at 0 bytes, because its length is set only at the end
   (STEM_REC.md 12.3).
