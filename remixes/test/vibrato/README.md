@@ -1,7 +1,7 @@
 # remix `vibrato`
 
 Carries `VIBRATO` on FX1 for its render gates and the hardware check image.
-Not a shipping remix. PLATE REV gives up its words (VIBRATO's code is 530 of
+Not a shipping remix. PLATE REV gives up its words (VIBRATO's code is 556 of
 its 594; the 103-word table goes in PLATE REV's X data).
 
 **Not yet on hardware.** The check on a unit: every page-1 knob and SHP's

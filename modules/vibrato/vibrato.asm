@@ -26,7 +26,7 @@
 ;
 ; The r7 block ($00..$3f, all zeroed at init):
 ;   $00 LFO phase, Q23 cycles (persistent)    $01 line write phase (persistent)
-;   $02 H, glided (persistent)                $03/$04 slewed offset L/R (persistent)
+;   $02 H (per block)                         $03/$04 slewed offset L/R (persistent)
 ;   $05/$06 delay L/R, Q11.12 (persistent)    $07/$08 slope L/R (per block)
 ;   $09/$0a RND x L/R (persistent)            $0b/$0c RND u L/R (persistent)
 ;   $0d LFSR state (seeded at init)           $0e line base (init)
@@ -35,7 +35,8 @@
 ;   $13 MIX step (per block)                  $14 primed: 1 after the first block
 ;   $15 P table base                          $16 inc   $17 dphi = n7 inc
 ;   $18 per/2^18   $19 8 dev per/2^18         $1a/$1b raw offset L/R
-;   $1c SLEW coefficient c                    $1d n1   $1f the phase at block start
+;   $1c SLEW coefficient c                    $1d n1   $1e the walk's limit S
+;   $1f the phase at block start
 ;   $20..$3f free
 ;
 ; Every mpy is `mpy x0,y1`, the order dsp_asm encodes signed (AGENTS.md).
@@ -119,6 +120,18 @@ proc:
         move    x:(r7+$18),y1           ; per / 2^18
         mpy     x0,y1,a
         move    a,x:(r7+$19)
+; ---- the walk's speed limit: 1.5 dev a sample, at least 0.006 (10.4 cents) --
+; A knob jump moves H, and with it the centre (2 + H), by tens of samples in
+; a block; unlimited, the walk to the new knot is a pitch spike (61 % at an
+; SPD 80 -> 120 step). No shape's own slope exceeds dev, so in steady state
+; the limit never engages; in a jump the delay chases its knot at 1.5 dev.
+        move    #>$180000,y1            ; 1.5/8 (x0 is still 8 dev)
+        mpy     x0,y1,a                 ; 1.5 dev
+        move    #>$00c49c,x0            ; the floor, 0.006
+        cmp     x0,a
+        tlt     x0,a
+        asr     #$b,a,a                 ; samples a sample -> Q11.12 (/2048)
+        move    a1,x:(r7+$1e)
 ; ---- the SHP duck (LOFI2's MODE duck) --------------------------------------
 ; A shape change would step the delay. The wet fades to dry over 16 blocks,
 ; the running shape switches only once it is fully out (e full AND the MIX
@@ -152,7 +165,7 @@ vb_same:
         tlt     b,a                     ; at least 0
         move    a,x:(r7+$11)
 vb_duckd:
-; ---- the swing: Ht = min(LIM, 4 p FAC'), H glides 1/16 a block ------------
+; ---- the swing: H = min(LIM, 4 p FAC') ------------------------------------
         move    x:(r7+$10),a
         asr     #$10,a,a
         move    a1,n5                   ; the running shape, 0..3
@@ -169,15 +182,7 @@ vb_duckd:
         move    #>$1f4000,a             ; LIM: 500 samples, Q11.12
         cmp     x0,a                    ; LIM - Ht
         tgt     x0,a                    ; Ht < LIM: Ht
-        move    a,x1                    ; Ht
-        move    x:(r7+$02),b            ; H
-        sub     b,a                     ; Ht - H
-        asr     #$4,a,a
-        add     a,b                     ; H + (Ht - H)/16
-        move    x:(r7+$14),a
-        tst     a
-        teq     x1,b                    ; the first block: on Ht
-        move    b,x:(r7+$02)
+        move    a,x:(r7+$02)            ; H, at once: the walk's limit smooths it
 ; ---- the phase, n7 on -----------------------------------------------------
         move    x:(r7+$16),a            ; inc
         asl     #$8,a,a
@@ -517,7 +522,8 @@ vblfz:
 ; vb_knot -- one channel: r1 -> its slewed offset, r3 -> its raw offset, r4
 ; -> its delay; the slope is at r4 + 2. off += c (raw - off) (the first
 ; block: off = raw); knot = 2 + H + off; the delay walks to it in 16 equal
-; steps from where it is (the first block starts on it). r1 r3 r4 step one.
+; steps from where it is (the first block starts on it), the step limited to
+; +-S. r1 r3 r4 step one.
 ; ---------------------------------------------------------------------------
 vb_knot:
         move    x:(r7+$1c),y1           ; c
@@ -549,6 +555,14 @@ vb_knot:
         sub     a,b
         add     #>$8,b                  ; rounded: a floor leaves the walk 8 LSB short
         asr     #$4,b,b                 ; the slope per sample
+        move    x:(r7+$1e),x0           ; ... limited to +-S
+        cmp     x0,b
+        tgt     x0,b
+        move    x:(r7+$1e),a
+        neg     a
+        move    a,x0
+        cmp     x0,b
+        tlt     x0,b
         move    b,x:(r4+$2)
         move    (r4)+
         rts

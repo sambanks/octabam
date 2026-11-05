@@ -32,7 +32,11 @@ The DSP's structure, mirrored here:
     interpolated by the rest (the DSP takes the rest from the knob word's
     bits 17-8, so an LFO's fraction moves it too). The phase increment is
     floored as the DSP's mpy leaves it (a1), since the phase accumulates;
-  * the swing H glides 1/16 of the way to its target per block;
+  * the swing H follows its knobs at once; the delay's walk is limited to
+    1.5 dev a sample (at least 0.006, 10.4 cents), so a knob jump (which
+    moves H and the centre 2 + H by tens of samples) is chased at a bounded
+    pitch instead of spiking. No shape's own slope exceeds dev, so in steady
+    state the limit never engages;
   * a SHP change ducks the wet to dry over 16 blocks, switches once the MIX
     run (which lags the duck) is on 0, and fades back (LOFI2's MODE duck);
     init starts fully ducked;
@@ -57,6 +61,7 @@ LIM = 500.0         # the largest swing, samples: delay = 2 + H + H F in 2 .. 10
 DMIN = 2.0
 DMAX = 1016.0
 Q23 = float(1 << 23)
+SLOPE_FLOOR = 0x00C49C / Q23    # 0.006 a sample, 10.4 cents: the walk's least limit
 
 SHAPES = {"SINE": 0, "TRI": 1, "SQR": 2, "RND": 3}
 # H = dev per FAC: the four shapes' swing per unit of dev * per
@@ -173,7 +178,7 @@ class Line:
 
 
 class Vibrato:
-    def __init__(self, SPD=94, DEP=70, SLEW=0, WID=0, MIX=127, SHP=0):
+    def __init__(self, SPD=80, DEP=48, SLEW=0, WID=0, MIX=127, SHP=0):
         self.k = dict(SPD=SPD, DEP=DEP, SLEW=SLEW, WID=WID, MIX=MIX, SHP=SHP)
         self.lines = (Line(), Line())
         self.phase = 0                  # Q23 integer, cycles
@@ -215,7 +220,9 @@ class Vibrato:
         shape = self.running
         # the swing
         Ht = min(LIM, dev8 / 8 * per * FAC[shape])
-        self.H = Ht if not self.primed else self.H + (Ht - self.H) / 16
+        self.H = Ht
+        # the walk's limit, as the DSP holds it: Q11.12 slope LSBs, floored
+        smax = math.floor(max(1.5 * dev8 / 8, SLOPE_FLOOR) * 4096) / 4096
         # the phase, n7 on
         p0 = self.phase
         p1 = (p0 + dphi_i) & 0x7FFFFF
@@ -246,7 +253,7 @@ class Vibrato:
         for ch in (0, 1):
             if not self.primed:
                 self.d[ch] = knot[ch]
-            self.slope[ch] = (knot[ch] - self.d[ch]) / LOOKAHEAD
+            self.slope[ch] = max(-smax, min(smax, (knot[ch] - self.d[ch]) / LOOKAHEAD))
         self.trace.append((self.H, knot[0], knot[1]))
         # MIX
         mw = 0x7FFFFF if k["MIX"] >= 127 else k["MIX"] << 16

@@ -17,8 +17,8 @@ instance is a dry pass).
 
 | page | slot | name | range | what it does |
 |---|---|---|---|---|
-| 1 | 0 | SPD | 0–127, default 94 | rate, 0.25 × 2^(3k/64) Hz: 0.25 Hz at 0, 2 Hz at 64, 5.3 Hz at 94, 15.5 Hz at 127 (21.3 steps an octave) |
-| 1 | 1 | DEP | 0–127, default 70 | peak deviation c = 100 (k/127)² cents: 6.3 at 32, 25 at 64, 30 at 70, 100 at 127. The two extremes are exactly 2c apart (a whole-tone trill at 127) |
+| 1 | 0 | SPD | 0–127, default 80 | rate, 0.25 × 2^(3k/64) Hz: 0.25 Hz at 0, 2 Hz at 64, 3.4 Hz at 80, 5.3 Hz at 94, 15.5 Hz at 127 (21.3 steps an octave) |
+| 1 | 1 | DEP | 0–127, default 48 | peak deviation c = 100 (k/127)² cents: 6.3 at 32, 14.3 at 48, 25 at 64, 30 at 70, 100 at 127. The two extremes are exactly 2c apart (a whole-tone trill at 127) |
 | 1 | 2 | SLEW | 0–127, default 0 | a one-pole on the delay offset, time constant (k/128)/4 of a cycle: 0 is none, 127 a quarter cycle. Rounds SQR's corners into a glide; also lowers the peak |
 | 1 | 3 | WID | 0–127, default 0 | R's LFO lead, (k/128)/2 of a cycle (64 quadrature, 127 antiphase). On RND: R's random pitch is n1 + (k/128)(n2 − n1), so 0 is mono and 127 independent |
 | 1 | 5 | MIX | 0–127, default 127 | dry/wet, k/128; 127 = 1.0, the vibrato alone; 0 is an exact passthrough. Glides (1/8 of the way a block, ~3 ms) |
@@ -44,7 +44,14 @@ block-based:
   swing H: SINE reads the stock sine at X:0x6c00 (1,024 points, interpolated);
   TRI is ±4u(1−u), u = 2φ mod 1; SQR is 1 − 4|v − ½|, v = φ + ¼. H = dev ·
   per · FAC (1/2π, 1/8, 1/4, 1/4), dev = tanh(c ln2 / 1200), capped at 500
-  samples; H glides 1/16 of the way a block.
+  samples. H follows the knobs at once.
+- **The walk's limit**: the delay may move at most 1.5 dev a sample (at
+  least 0.006, 10.4 cents). A knob jump (a p-lock, a scene, a fast twist)
+  moves H and the centre 2 + H by tens of samples in a block; before the
+  limit the walk to the new knot was a pitch spike, 61 % for a moment at an
+  SPD 80 -> 120 step, heard on the unit as an occasional pop. No shape's own
+  slope exceeds dev, so in steady state the limit never engages (the output
+  with no knob moves is identical to before it).
 - **RND**: on each block that crosses a half cycle, u = (x + n)/2 with n from
   a 24-bit Galois LFSR (mask 0xE10000, maximal; 16 steps a draw, bit 0 tested
   with `and`/`tne`), then x −= 4u·Δφ each block, so x ends each half cycle
@@ -54,11 +61,11 @@ block-based:
   offset could otherwise reach under 2).
 - **Memory**: two 1,024-word lines (L at the allocator base, R at +$400), AGU
   modulo rings; the r7 block's $00..$1f; a 103-word table (INC, PERW, DEV8,
-  33 words each, and the four FAC words). Code 547 words.
+  33 words each, and the four FAC words). Code 556 words.
 
 ## Measured
 
-- ✅ **Render gates, 4 Nov 2026** (`verify_vibrato`, 32 checks, this tree,
+- ✅ **Render gates, 4 Nov 2026** (`verify_vibrato`, 37 checks, this tree,
   dsp_host): MIX 0 bit-exact in every shape; an FX2 instance bit-exact dry at
   any setting and `-guard` clean on both slots; DEP 0 a pure 2-sample delay
   of a full-scale two-signed sawtooth within 5 LSB; the DSP's delay
@@ -68,7 +75,9 @@ block-based:
   99 % of periods on its two pitches; SPD 64/94/120 within 0.1 % of the
   law; SHP switched three times and every continuous knob moved mid-render
   by `-paramfile` with no step steeper than the input's own, matching the
-  reference.
+  reference; SPD and DEP stepped in one block (80 -> 120, 120 -> 20, DEP
+  127 -> 10) with the delay never moving faster than the walk's limit
+  (largest 0.069 samples a sample at the 80 -> 120 step, limit 0.087).
 - ✅ `verify_dirty_state` (−138.5 dBFS from a garbage-filled block),
   `verify_init_regs`, `verify_menu`, `verify_replaces`, `norep`, the
   selftest, `verify_docs`.
@@ -81,7 +90,12 @@ block-based:
 
 ## On the unit
 
-Not flashed. The check: every page-1 knob and SHP's four positions on FX1, a
+Bryan T's MKII, `_bt_oct` with VIBRATO on FX1 (DJ EQ given up), 4 Nov 2026,
+the build before the walk's limit: sounds right; an occasional pop or
+cutout, consistent with the knob-jump spike the limit removes (not yet
+re-checked). Defaults moved to SPD 80, DEP 48 by ear on the unit.
+
+Still to check: every page-1 knob and SHP's four positions on FX1, a
 SHP change while playing, SLEW 0 and 127, WID on SQR and on RND, an FX2
 instance (dry), four FX1 instances on one core, and LOAD METER's slot cost.
 

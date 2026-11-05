@@ -51,10 +51,10 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1: the LFO on top, WID and MIX beneath --------------------
-        Param(b"SPD", 94, active=True, formatter=_PLAIN,
-              doc="rate, 0.25 to 15.5 Hz, exponential (94 is 5.3 Hz; 21 steps an octave)"),
-        Param(b"DEP", 70, active=True, formatter=_PLAIN,
-              doc="peak pitch deviation, 100 (k/127)^2 cents: 25 at 64, 100 at 127"),
+        Param(b"SPD", 80, active=True, formatter=_PLAIN,
+              doc="rate, 0.25 to 15.5 Hz, exponential (80 is 3.4 Hz; 21 steps an octave)"),
+        Param(b"DEP", 48, active=True, formatter=_PLAIN,
+              doc="peak pitch deviation, 100 (k/127)^2 cents: 14 at 48, 25 at 64, 100 at 127"),
         Param(b"SLEW", 0, active=True, formatter=_PLAIN,
               doc="rounds the shape: 0 is none, 127 a quarter-cycle time constant"),
         Param(b"WID", 0, active=True, formatter=_PLAIN,

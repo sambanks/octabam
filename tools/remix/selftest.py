@@ -1066,7 +1066,7 @@ def main():
              "ids64": ("PLATE REV", "SPRING REV"),   # the bbd remix with id_space=64 and BBD pinned to 0x25
              "testgen": ("PLATE REV",),     # TESTGEN runs in its words; the other 13 stay
              "resonator": ("PLATE REV",),   # RESONATOR runs in its words; the other 13 stay
-             "vibrato": ("PLATE REV",),   # VIBRATO's 530 words run in PLATE REV's 594; its table in PLATE's X data
+             "vibrato": ("PLATE REV",),   # VIBRATO's 556 words run in PLATE REV's 594; its table in PLATE's X data
              "vocoder": ("PLATE REV", "DJ EQ"),   # VOCODER runs in PLATE's words; DJ EQ out so the tables sit in X
              "vocoder-usb": ("PLATE REV", "DJ EQ"),   # the vocoder remix + USB MIDI and USB AUDIO (ColdFire, no DSP words)
              "events-empty": ("SPRING REV", "DARK REV"),

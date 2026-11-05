@@ -2,7 +2,7 @@ A pitch vibrato on FX1: one modulated delay per channel, wet only by default
 (MIX 127). Pick the shape on page 2 (SHP): SINE, TRI, SQR (a two-note trill)
 or RND (a new random pitch every half cycle).
 
-DEP is the depth in cents (30 at the default 70, 100 at 127) and stays put
+DEP is the depth in cents (about 14 at the default 48, 100 at 127); SPD defaults to 80, 3.4 Hz and stays put
 as SPD changes, so a fast shallow shimmer and a slow wide wobble use the
 same DEP. At very slow rates and full depth the delay runs out of line and
 the depth is scaled down.

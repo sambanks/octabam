@@ -330,6 +330,33 @@ own = max(max(abs(x8L[i] - x8L[i - 1]), abs(x8R[i] - x8R[i - 1])) for i in range
 check("knobs automated per block: no step larger than the tones' own (no click)",
       steps <= 1.5 * own, f"largest step {steps:.4f} vs the tones' {own:.4f}")
 
+# ---- 8b. a knob jump cannot spike the pitch: the walk's limit ------------------
+# SPD and DEP stepped in one block (a p-lock, a scene): H, and with it the
+# centre 2 + H, moves by tens of samples. The delay, read off a ramp, must
+# never move faster than the limit, 1.5 dev a sample (at least 0.006): the
+# pitch stays within 1.5 DEP through the jump instead of spiking (61 % before
+# the limit, at SPD 80 -> 120). And it must settle on the new shape.
+NJ = 20000
+RS = 1.6 / NJ
+rj = [int((-0.8 + RS * i) * FS) for i in range(NJ)]
+for label, base, ev in (("SPD 80 -> 120, DEP 127 -> 110", dict(SHP=2, SPD=80, DEP=127), {6000: dict(SPD=120, DEP=110)}),
+                        ("SPD 120 -> 20 at DEP 127", dict(SHP=0, SPD=120, DEP=127), {6000: dict(SPD=20)}),
+                        ("DEP 127 -> 10 at SPD 60", dict(SHP=1, SPD=60, DEP=127), {6000: dict(DEP=10)})):
+    L, _ = render_stereo(rj, rj, events=ev, MIX=127, **base)
+    d = [(rj[i] - L[i]) / FS / RS for i in range(NJ)]
+    after = {**base, **ev[6000]}
+    lim = max(1.5 * REF.dev_of(REF.dep_cents(max(base["DEP"], after["DEP"]))), REF.SLOPE_FLOOR)
+    worst = max(abs(d[i] - d[i - 1]) for i in range(6000, 12000))
+    check(f"knob jump {label}: the pitch stays within 1.5 DEP (the walk's limit)",
+          worst <= lim * 1.05 + 0.002, f"largest delay step {worst:.4f} samples/sample (limit {lim:.4f})")
+    pv = params(**base)
+    ref = REF.Vibrato(**{n: pv[i] for n, i in K.items()})
+    qL, _ = ref.process([v / FS for v in rj], [v / FS for v in rj], changes=ev)
+    dq = [(rj[i] / FS - qL[i]) / RS for i in range(NJ)]
+    de = max(abs(d[i] - dq[i]) for i in range(1100, NJ))
+    check(f"knob jump {label}: the DSP's walk matches the reference", de < DBAR,
+          f"delay within {de:.4f} samples (bar {DBAR})")
+
 # ---- 9. every knob at both extremes ---------------------------------------------
 ok = True
 for name, p in K.items():
