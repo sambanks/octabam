@@ -19,6 +19,10 @@ per-block smoothing, with three additions:
          ahead of the input allpasses.
   LOCUT  0-127, default 0: a one-pole high-pass in each half of the tank, after the
          damping low-pass; 0 is off, 1-127 run from 20 Hz to 1 kHz, exponentially.
+  CHOKE  0-127, default 0: what a closed gate does to the tank. 0 is the module's gate, the wet
+         muted and the tank left ringing. Above 0 the loop gain follows the gate too, falling to
+         TIME's x (1 - CHOKE/127) while the gate is shut: at 127 the tank stops recirculating and
+         empties within one pass (about 0.2 s), so the next hit starts from silence.
 
 With the three at their defaults the output is the model's, sample for sample
 (`--selftest` runs verify_gateverb.model beside it). Everything else here is
@@ -40,8 +44,8 @@ Q = 1 << 23
 LEN = [109, 157, 233, 386, 1600, 1973, 3303, 1852, 1610, 4630]
 RING_TODAY = 15862
 RING_WINDOW = 0x3820          # 14,368
-NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "SIZE", "PRE", "LOCUT")
-DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, SIZE=127, PRE=0, LOCUT=0)
+NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "SIZE", "PRE", "LOCUT", "CHOKE")
+DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, SIZE=127, PRE=0, LOCUT=0, CHOKE=0)
 
 
 def s24(v):
@@ -102,6 +106,7 @@ def model(samples, params, blocks_skip=0, lfo="module"):
     pre = [0.0] * (pre_n + 1)
     pw = 0
     hc = locut_coef(p["LOCUT"])
+    choke = p["CHOKE"] / 127
     hp1 = hp2 = 0.0
     ring = [0.0] * N
     ph1 = ph2 = 0
@@ -143,6 +148,7 @@ def model(samples, params, blocks_skip=0, lfo="module"):
                 hold = hmax
             gs += (min(hold << 16, Q - 1) - gs) >> 5
             G_ = gs / Q
+            Rg = R if not choke else R * (1 - choke * (1 - G_))
 
             def rd(j, kk):
                 return ring[(w - BASE[j] - kk) % N]
@@ -162,7 +168,7 @@ def model(samples, params, blocks_skip=0, lfo="module"):
             apout = acc
             # first half
             a1 = rd(9, kint2); b1 = rd(9, kint2 + 1)
-            acc = apout + (a1 + (b1 - a1) * fr2 / Q) * R
+            acc = apout + (a1 + (b1 - a1) * fr2 / Q) * Rg
             lp1 += L * (acc - lp1); acc = lp1
             if hc:
                 hp1 += hc * (acc - hp1); acc -= hp1
@@ -171,7 +177,7 @@ def model(samples, params, blocks_skip=0, lfo="module"):
             wr(6, 0, acc); wet = max(-1, min(1, 2 * acc)) * G_
             out_l.append(max(-1, min(1, l_in + (8 * wet - l_in) * A)) * Q)
             # second half
-            acc = apout + rd(6, LN[6] - 1) * R
+            acc = apout + rd(6, LN[6] - 1) * Rg
             lp2 += L * (acc - lp2); acc = lp2
             if hc:
                 hp2 += hc * (acc - hp2); acc -= hp2
