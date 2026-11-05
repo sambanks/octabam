@@ -78,7 +78,7 @@ def _map_sections(map_path):
     per-input-file lines (` .text  addr  size  path.o`)."""
     out = {}
     for line in map_path.read_text(errors="replace").splitlines():
-        f = line.split()
+        f = line.rstrip().split(None, 3)   # the object path may contain spaces
         if len(f) == 4 and f[0].startswith(".") and f[3].endswith(".o"):
             key = (f[3], f[0])
             if key in out:
