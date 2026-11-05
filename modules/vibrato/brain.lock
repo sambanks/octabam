@@ -1,0 +1,21 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "labels": [
+    "FX1",
+    "FX1+FX2"
+   ],
+   "name": "SLOTS",
+   "type": "option"
+  }
+ },
+ "store": {
+  "id": "octabam.vibrato",
+  "major": 1
+ }
+}

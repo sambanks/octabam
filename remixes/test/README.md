@@ -6,6 +6,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 |---|---|---|
 | [`analog-bassdrum`](analog-bassdrum/README.md) | Analog BD source machine, switchable 808/909, stock AMP and FX. | port-gated: source/UI under the port; earlier ANALOGBD1 auditioned on MK1, current revision unflashed |
 | [`ata-write-guard`](ata-write-guard/README.md) | Stock effects with the first PIO card write guarded through bookkeeping. | port-gated: forced completion-interrupt gate under the port; not on hardware |
+| [`bar-led`](bar-led/README.md) | stock effects with BAR LED: the tempo LED flashes green on the pattern's 1 while playing. | `make check` |
 | [`batch-bugfixes`](batch-bugfixes/README.md) | stock effects with BATCH_BUGFIXES: the MIDI Plays-Free trig, empty-pattern LED and Part-change carryover fixes. | `make check` |
 | [`bbd`](bbd/README.md) | BBD beside the stock effects (all but SPRING REV and PLATE REV, whose words it takes). | on hardware: JamCones' MKII, BBDOB4 (BUILD 4), 17 Oct 2026 |
 | [`blackpyramids-303`](blackpyramids-303/README.md) | BLACKPYRAMIDS_303 (BLKPYRAMD, a TB-303 voice as a track machine) with the stock effects, SPRING REV given up. | `make check` |
@@ -86,6 +87,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`screen-usb`](screen-usb/README.md) | stock + USB MIDI + SCREEN. | `make check` |
 | [`shatter`](shatter/README.md) | SHATTER beside the stock effects (all but PLATE REV, whose words it takes). | on hardware: Ilia's MKII, BUILD S6 (SHATTER S6.RMX), 21 Oct 2026: every SHATTER knob exercised; verify_shatter. Solo gate remix. |
 | [`sidechain-compressor`](sidechain-compressor/README.md) | stock effects with SIDECHAIN_COMPRESSOR in COMPRESSOR's row: MON, KEY, KGN, KBAS and KWID on page 2. | `make check` |
+| [`slow-lfo`](slow-lfo/README.md) | stock effects with SLOW LFO: LFO MULT gains 1/2X, 1/4X and 1/8X on audio and MIDI tracks. | `make check` |
 | [`sos-capture`](sos-capture/README.md) | recorder fixes + USB (TRACKS out, AB in) (stock effects minus SPATIALIZER). | port-gated: `make check` under the port; not on hardware in this form |
 | [`stations-fx2`](stations-fx2/README.md) | SPECTRUM, CHARACTER and MODULATION on FX1 and FX2, beside the stock DELAY. | port-gated: `verify_stations_fx2` (dsp_host); not on a unit |
 | [`stems`](stems/README.md) | STEM REC on the stock effects: multitrack recording to the card, each track, MAIN, CUE and the inputs as separate WAV files. | on hardware: Yves's MKII, 6 Oct 2026 (STEMS3) |
@@ -119,6 +121,8 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`usb-out-tracks-main-cue`](usb-out-tracks-main-cue/README.md) | stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE); PLATE REV harvested for USB's words. | port-gated |
 | [`usb-out-tracks-post`](usb-out-tracks-post/README.md) | stock + USB (TRACKS POST) (16 ch: the tracks after their own MAIN gain). | on hardware: allmyfriendsaresynths's MKII, P3, 5 Oct 2026 (smoke test: 16 channels, LEVEL/mute/solo/crossfader follow) |
 | [`varispeed`](varispeed/README.md) | stock effects with VARISPEED: TSTR VARI, QUAN on PTCH. | `make check` |
+| [`vibrato`](vibrato/README.md) | VIBRATO on FX1 beside the stock effects (all but PLATE REV). | `make check` |
+| [`vibrato-fx2`](vibrato-fx2/README.md) | VIBRATO live on FX1 and FX2 beside the stock effects (all but PLATE REV). | `make check` |
 | [`vocoder`](vocoder/README.md) | VOCODER beside the stock effects (all but PLATE REV, whose words it takes, and DJ EQ, so its table sits in X). | on hardware: Ignorato's MKII, OCTABAM12 (the earlier positions T1 T2 T5 T6), 4 Oct 2026; the current positions (T2 T4 T6 T8) not flashed |
 | [`vocoder-usb`](vocoder-usb/README.md) | The vocoder remix plus USB MIDI and USB audio out, TRACKS MAIN CUE (20 channels over USB: the tracks, MAIN, CUE). | port-gated: make check under the ColdFire port, 10 Oct 2026; not flashed |
 | [`void`](void/README.md) | VOID replaces COMB FILTER; PLATE REV words host its DSP. | on hardware: MKII VOID V9 (COLR/HPF tables tip dd89e2e2+); verify_void.py 3s rail |

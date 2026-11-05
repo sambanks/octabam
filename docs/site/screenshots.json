@@ -1015,5 +1015,21 @@
       "source": "emulator panel UART",
       "firmware_sha256": "1fdf5741dd9155ee3fde885d6ba16f8e1b6214d3561c4d215aa50a5eab7f25b8"
     }
+  },
+  "vibrato": {
+    "setup": {
+      "image": "vibrato/setup.png",
+      "caption": "VIBRATO: effect selection and setup parameters.",
+      "remix": "vibrato",
+      "source": "emulator panel UART",
+      "firmware_sha256": "ba5e3644e5aea61b6816c65a8cfdd29dd03ba162979d95b64ce114c4994b8e45"
+    },
+    "main": {
+      "image": "vibrato/main.png",
+      "caption": "VIBRATO: main parameter page.",
+      "remix": "vibrato",
+      "source": "emulator panel UART",
+      "firmware_sha256": "ba5e3644e5aea61b6816c65a8cfdd29dd03ba162979d95b64ce114c4994b8e45"
+    }
   }
 }
