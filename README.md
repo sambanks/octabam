@@ -139,6 +139,7 @@ from the card (section 5).
 | [**SCENES P2**](modules/scenes-p2/README.md) | [sambanks](https://github.com/sambanks) | Scene locks and the crossfader on FX1/FX2 page 2 (hold a scene, turn a page-2 knob). | on hardware: cursory testing on Sam's MKII (owner report, 16 Oct 2026); 26 Sep 2026 |
 | [**STORE**](modules/store/README.md) | [sambanks](https://github.com/sambanks) | Platform: the stock save, load, copy, CS1 and Part sites STORE clients share. | on hardware: cursory testing on Sam's MKII (owner report, 16 Oct 2026); native Part access extension: hardware testing outstanding |
 | [**VERB PARTS**](modules/verb-parts/README.md) | [sambanks](https://github.com/sambanks) | A Part saved with PLATE, SPRING or DARK REV opens on its VERBERATION row (VERB PLATE, ROOM, HALL) at that row's defaults. | port-gated: verify_verb_parts (the port); not run on a unit |
+| [**XF CURVE**](modules/xfcurve/README.md) | [bryantysinger](https://github.com/bryantysinger) | The crossfader's curve, chosen in BRAIN: LINEAR (stock), four S-curves (S SOFT to S HARD), their inverses (INV SOFT to INV HARD), CUT, CUT A, CUT B, SLOW A or SLOW B. Applies to scene locks, XVOL and the playback morph alike. | on hardware: Bryan's MKII, his everyday remix, 6 Nov 2026 (panel crossfader, every curve including CUT A / CUT B); port gate tools/verify/verify_xfcurve.py |
 
 ### MIDI and USB
 
