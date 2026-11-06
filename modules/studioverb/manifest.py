@@ -38,7 +38,7 @@ MODULE = Module(
         Param(b"DIFF", 100, active=True, formatter=Formatter.PLAIN, doc="diffusion; 100 matches Clouds"),
         Param(b"TONE", 90, active=True, formatter=Formatter.PLAIN, doc="damping low-pass: lower is darker; 90 matches Clouds"),
         Param(b"GATE", 0, active=True, formatter=Formatter.PLAIN,
-              doc="0 off; k holds the tail 2048 + 256 k samples after the input falls quiet, then releases it like a desk gate (-60 dB in about 320 ms) and empties the tank"),
+              doc="0 off; holds the tail 52-784 ms after the input goes quiet, then a desk-gate release"),
         Param(b"SIZE", 127, count=128, active=True, formatter=Formatter.PLAIN,
               doc="room size: the tank's delays from 20 % (0) to full (127); 127 is the original"),
         Param(b"LCUT", 0, count=128, active=True, formatter=Formatter.PLAIN,
