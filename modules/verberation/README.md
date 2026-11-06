@@ -36,7 +36,12 @@ The defaults are PLATE's (MODE 1). The modes, chosen from renders of the module 
 | 0 ROOM | 45 | 60 | 70 | 90 | 105 | 0 | 30 | 30 | 64 | 35 | 0 | 1.15 s |
 | 1 PLATE | 45 | 51 | 82 | 100 | 90 | 0 | 20 | 64 | 64 | 127 | 0 | 3.42 s |
 | 2 HALL | 50 | 51 | 108 | 110 | 60 | 0 | 25 | 100 | 40 | 127 | 0 | 7.16 s |
-| 3 GATED | 90 | 80 | 118 | 110 | 80 | 26 | 40 | 64 | 64 | 90 | 0 | gated |
+| 3 GATED | 64 | 80 | 118 | 110 | 80 | 26 | 40 | 64 | 64 | 90 | 20 (14.5 ms) | gated |
+
+GATED was AMNT 90 with no predelay until 6 Nov 2026. AMNT is a crossfade, so at 90 the dry hit was down 10.5 dB and the
+wash, starting within milliseconds, buried it: on the backbeat the snare's first 5 ms peaked 6.0 dB over the wash
+(50-200 ms after the hit). At AMNT 64 with 14.5 ms of predelay it is 14.8 dB over (float model; chosen by ear from
+four renders).
 
 Slots 0-4 are Clouds' five setters (`set_amount`, `set_input_gain`, `set_time`, `set_diffusion`, `set_lp`).
 Page 2 is this port's (5 Nov 2026); at its defaults the module computes exactly what it did before, and

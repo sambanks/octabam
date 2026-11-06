@@ -66,8 +66,8 @@ MODULE = Module(
                  defaults={0: 45, 1: 51, 2: 82, 3: 100, 4: 90, 5: 0, 7: 20, 8: 64, 9: 64, 10: 127, 11: 0}),
         ModeView(mode=2,                        # HALL: long, dark, more and slower modulation
                  defaults={0: 50, 1: 51, 2: 108, 3: 110, 4: 60, 5: 0, 7: 25, 8: 100, 9: 40, 10: 127, 11: 0}),
-        ModeView(mode=3,                        # GATED: the desk-gated burst
-                 defaults={0: 90, 1: 80, 2: 118, 3: 110, 4: 80, 5: 26, 7: 40, 8: 64, 9: 64, 10: 90, 11: 0}),
+        ModeView(mode=3,                        # GATED: the desk-gated burst, the hit 15 ms ahead of it
+                 defaults={0: 64, 1: 80, 2: 118, 3: 110, 4: 80, 5: 26, 7: 40, 8: 64, 9: 64, 10: 90, 11: 20}),   # Sam, 6 Nov 2026: AMNT 90 PRE 0 buried the hit
     ),
     dsp=DspSection(asm="modules/verberation/verberation.asm", priority=11,
                    bus_role=BusRole.NONE, ybase=YBase.NEVER,
