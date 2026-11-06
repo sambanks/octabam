@@ -315,6 +315,12 @@ def _harvest_listed():
                       if _MODS[k].menu.fx2_id in stock_mod.fx1_ids()])
 
 
+# Remix.dry: stock effects whose ids dispatch to the null stub even where the placer left their code alone.
+for _dk in REMIX.dry:
+    if _dk not in stock_mod.harvested(_harvest_listed()):
+        sys.exit(f"Remix.dry names {_dk!r}, which is not a stock effect with DSP code off both choosers")
+
+
 # THE TAIL (schema.DspSection.tail): {payload: [module keys]} placed above
 # the payload's code in a load record of their own, which happens only
 # where nothing is harvested -- the case that refused to build before, so
@@ -4001,6 +4007,11 @@ hostquit:
             print(f"  {d}: code untouched, but the stock curve bank "
                   f"X:0x{_xt_base:05x} it reads now carries our tables -- "
                   f"dispatch nulled")
+        # Remix.dry: a stock effect off both choosers plays dry even where its code survived (a saved
+        # Part that selects it would otherwise run it).
+        for d in [d for d in kept if d in REMIX.dry]:
+            kept.remove(d)
+            print(f"  {d}: code untouched, but Remix.dry -- dispatch nulled")
         for donor, (a, _n) in _hv.items():
             if donor in kept or donor in _replaced:
                 continue

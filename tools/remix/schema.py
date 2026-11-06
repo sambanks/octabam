@@ -2128,6 +2128,13 @@ class Remix:
     # Where the stub and then the two wrapper copies are laid out, one after the other (P address, in a
     # run of window words no stock effect writes: docs/proposals/DEMAND_LOAD.md).
     window_loader: int = 0
+    # STOCK EFFECTS THAT PLAY DRY (6 Nov 2026): stock keys, each off both choosers and so harvested. A harvested
+    # effect the placer never writes over keeps its stock dispatch, so a saved Part that selects it still runs it
+    # (stock.harvested); one named here dispatches to the firmware's null stub, NONE's, whether or not its code
+    # survived, so the slot plays dry. For a remix whose window code a surviving stock effect would overwrite:
+    # octabam-verbs, where DARK REV, untouched by the placer, would write to slot offset 0x3da2, past the demand
+    # homes at 0x3820. The build refuses a key that is listed or has no DSP code to give up.
+    dry: tuple[str, ...] = ()
     # THE HOST PAGE DRAWS ITS FIRST SLOTS ONLY (26 Sep 2026, Sam: "want
     # all the tracks to look the same"): (key, n) pairs. The hidden
     # module's page draws slots 0..n-1 under their manifest names (the rig:
