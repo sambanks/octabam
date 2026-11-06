@@ -36,7 +36,8 @@ it, and each has its own page in this manual. This is version 0.4.
   [recorder trig mute](sequencer/rec-trig-mute.md),
   [mute modes](sequencer/mute-modes.md),
   [per-pattern mutes](sequencer/pattern-mute.md), a
-  [scale quantizer](sequencer/quantizer.md) and a [tuner](sequencer/tuner.md).
+  [scale quantizer](sequencer/quantizer.md), [52 scales](midi-usb/scales.md) for a
+  MIDI track's KEY and a [tuner](sequencer/tuner.md).
   Also [track patterns](sequencer/trackpatterns.md) (each track plays its own
   pattern), [Euclidean fills](sequencer/euclid-fill.md),
   [varispeed](sequencer/varispeed.md) for STATIC and FLEX tracks, a track's scene

@@ -25,7 +25,7 @@ OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER")
 # STEM REC, SCOPE, MIDI SCALES and RND NAME are not here either: images with them left program changes
 # unapplied in a loader soak (2 to 5 of 32 transitions; none in the images without them) on Sam's MKII, 1 Nov 2026.
 # FX2 LOCK is not here: it makes the FX2 chooser's YES close without selecting, and this remix has no engine to lock to a track.
-COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
+COLDFIRE = ("SCALES", "OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
             "TRACK PATTERNS", "VARISPEED")
 STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
              "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI")
