@@ -26,7 +26,7 @@ smeared by an LFO and the second delay is modulated. Left and right are the two 
 | 7 | LCUT | 0 | page 2 (`$c` companion). A one-pole high-pass in each half of the tank, after the damping: c = 0.1447 LCUT², smoothed; about 1 kHz at 127, 250 Hz at 64, 63 Hz at 32; 0 passes the tank untouched |
 | 8 | MOD | 64 | page 2 (`$d` knob field). The long delay's swing: 0 static, 64 the original (97 samples, scaled by SIZE), 127 twice it; smoothed. The tap's centre moves down with the swing, so it never reads outside its line |
 | 9 | RATE | 64 | page 2 (`$d` companion). Both LFOs' speed: 0 frozen, 64 the original (0.5 and 0.3 Hz), 127 twice it |
-| 11 | PRE | 0 | page 2 (`$e` companion; slot 10, an even slot, is kept free for a MODE). A predelay of 32 PRE samples (0 to 92 ms) on the mono input, held in the far end of the long delay that SIZE leaves unread: m = 4630 f words past the tap, m − 2 usable, so it clamps to the room SIZE leaves. None at SIZE 127, about 24 ms at 90, 44 ms at 60, 64 ms at 30. With no predelay the input goes through ap1's write cell, which ap1 overwrites later in the sample, so nothing in the ring moves. Turning SIZE up while PRE is engaged lets the long delay's tap read predelay cells briefly (not heard yet) |
+| 11 | PRE | 0 | page 2 (`$e` companion; slot 10, an even slot, is kept free for a MODE). A predelay of 32 PRE samples (0 to 92 ms) on the mono input, held in the far end of the long delay that SIZE leaves unread: m = 4167 f words past the tap, m − 2 usable, so it clamps to the room SIZE leaves. None at SIZE 127, about 22 ms at 90, 40 ms at 60, 58 ms at 30. With no predelay the input goes through ap1's write cell, which ap1 overwrites later in the sample, so nothing in the ring moves. Turning SIZE up while PRE is engaged lets the long delay's tap read predelay cells briefly (not heard yet) |
 
 Slots 0-4 are Clouds' five setters (`set_amount`, `set_input_gain`, `set_time`, `set_diffusion`, `set_lp`).
 Page 2 is this port's (5 Nov 2026); at its defaults the module computes exactly what it did before, and
@@ -40,7 +40,7 @@ and `reverb.h`; they have not been compared by ear.
 
 Clouds' reverb has no gate; this part is new. The input (the mean of left and right, before GAIN) feeds an envelope follower with an instant attack and a 1/512 release per sample (about 12 ms). While the envelope is above 0.0078 (-42 dBFS) the hold counter is reloaded; once it falls below, the counter runs down. While it has time left the wet gain rises 1/32 of the way to 1 a sample (about 0.7 ms). When it runs out the gain falls by 1/2048 a sample: a straight line in dB, a desk gate's release (an SSL channel gate's or a Drawmer DS201's, the In the Air Tonight shape), 46 ms a time constant, −60 dB in about 320 ms. Below 2^-11 (−66 dB) it is 0. The wet output is multiplied by that gain after the reverb and before the AMNT mix, so the dry signal is untouched.
 
-A shut gate also empties the tank. In any block that starts with the gain at 0, the loop gain (TIME's) and the allpass coefficient (DIFF's) are 0. Every line is then a plain delay fed only by the quiet input, and the tank flushes in one pass of its longest path (dap2a, dap2b, del2: 8,092 samples, 183 ms). The next hit starts from silence, so every hit of a backbeat sounds the same instead of opening onto what the last one left. Both come back the moment the gain leaves 0; the first block of a new hit (at most 0.36 ms) runs without them, into an empty tank.
+A shut gate also empties the tank. In any block that starts with the gain at 0, the loop gain (TIME's) and the allpass coefficient (DIFF's) are 0. Every line is then a plain delay fed only by the quiet input, and the tank flushes in one pass of its longest path (dap2a, dap2b, del2: 7,283 samples, 165 ms). The next hit starts from silence, so every hit of a backbeat sounds the same instead of opening onto what the last one left. Both come back the moment the gain leaves 0; the first block of a new hit (at most 0.36 ms) runs without them, into an empty tank.
 
 Chosen by ear on 5 Nov 2026 (Sam, from sandbox renders of a backbeat snare and a tom fill; releases of 1/512, 1/1024 and 1/2048 a sample were compared, and the slowest was preferred). Until then the wet closed over 128 samples (about 3 ms), which read as a cut, and the tank rang on underneath.
 
@@ -48,18 +48,21 @@ Under `dsp_host` (`verify_studioverb`, GATE 40): the wet is open for the whole h
 
 ## What differs from Clouds
 
-- **Lengths scaled by 0.9682.** The delay lines total 15,853 words (16,375 in Clouds); with the nine one-word gaps the ring is
-  15,862 words. An FX2 instance gets a 16,384-word slot; an effect's buffer stops at `+$3DFD` (octabam's FX2 rule, #785), because
-  the slot's last `$202` words are SIDECHAIN_COMPRESSOR's cross-core window in T3's and T7's slot, and the top 256 hold the stock
-  mailbox and LOAD METER (`Claims.buffer_words = 15862`, checked by the ledger and by `dsp_host -guard 15862`). Until 19 Oct 2026
-  the scale was 0.984 (a 16,120-word ring, to `+$3EF7`).
+- **Lengths scaled by 0.9682, and the tank by a further 0.9.** The four input allpasses keep 0.9682 of Clouds' lengths
+  (109, 157, 233, 386); the six tank lines are 0.9 of that again (1,440, 1,776, 2,973, 1,667, 1,449, 4,167). With the nine
+  one-word gaps the ring is 14,366 words and ends at slot offset `0x381D`, below `0x3820`, where `octabam`'s demand-loaded code
+  starts in the four window slots (T3, T4, T7, T8), with DLCOPY, LOAD METER, SIDECHAIN_COMPRESSOR's window and the mailbox above it
+  (`Claims.buffer_words = 14366`, checked by the ledger and by `dsp_host -guard 14366`). That is what lets `octabam-verbs` carry it
+  beside the loader. The extra 0.9 came on 6 Nov 2026 and shortens every tail by about 10 % at the same TIME (TIME 64: RT60 2.80 s
+  to 2.53 s, from the float model). Before it the ring was 15,862 words, to `+$3DF5` (octabam's FX2 rule `+$3DFD`, #785); until
+  19 Oct 2026 the scale was 0.984 (a 16,120-word ring, to `+$3EF7`).
 - **24-bit buffer, not 12-bit.** Clouds stores each value as a 12-bit fixed-point number with a range of +-8. Here a value is held as
   value/8 in a 24-bit word, so the range is the same and the quantisation noise is far lower. Clouds' grit is not reproduced.
 - **LFOs.** Clouds uses a cosine oscillator updated every 32 samples. This port uses a parabola `4x(1-|x|)` of a phase accumulator
   updated once a block (16 samples), at the same rates (0.5 Hz on the first allpass smear, 0.3 Hz on the second delay), with the
-  same depths scaled with the lengths (60 samples for the smear, 97 for the delay, centred at 4531).
+  same depths scaled with the lengths (60 samples for the smear, 97 for the delay, centred at 4068 since 6 Nov 2026, 4531 before).
 - **Smoothing.** The five coefficients move a sixteenth of the way to their target each block (Clouds changes them as they arrive).
-- **Memory.** A modulo ring of 15,862 words (`m5 = 15861`). It is not a power of two. Stock code uses small non-power-of-2 moduli
+- **Memory.** A modulo ring of 14,366 words (`m5 = 14365`). It is not a power of two. Stock code uses small non-power-of-2 moduli
   (6, 10 and 30), but nothing uses one this size with `(Rn+Nn)` addressing; this is the first thing to check on a unit.
 
 ## Measured
@@ -68,11 +71,11 @@ Under `dsp_host` (`tools/verify/verify_studioverb.py`, remix `test/studioverb`):
 - The pricer counts 247 cycles per sample (219 before the desk gate, 228 before page 2, 242 before PRE), a floor: it counts words, not memory stalls. Scaled from the 7.76 % GATE VERB measured on a unit at 219, about 8.8 % a slot (🟡 inferred, not read), under the 9.07 % that lets it sit on every FX2 slot. `tools/remix/slot_costs.json` carries no STUDIO VERB entry: GATE VERB's reading was of older code.
 - PRE: SIZE 60 with PRE 40 matches the model to 61.1 dB over 8,000 samples; it moves the wet onset by 1,279 samples (32 × 40 = 1,280; the onset is a threshold crossing); PRE 127 at SIZE 90 is clamped to the 1,077 samples of room; at SIZE 127 PRE 127 is bit-exact PRE 0; SIZE 0 with PRE 127 writes nothing outside the ring.
 - Page 2 against the model: six settings (SIZE 30; SIZE 0 with MOD 127; LCUT 90; MOD and RATE 0; MOD and RATE 127; SIZE 60, LCUT 40, MOD 100, RATE 30) match to 57-82 dB over the first 8,000 samples, where a wrong integer tap would show at once, and 46-62 dB over the whole render, where the tail meets the 24-bit floor the float model has not got. SIZE 30 decays faster than 127 (−69.3 dB against −56.9 dB at 0.7-0.9 s); LCUT 90 takes 12 dB out under 150 Hz; SIZE 0 with MOD 127 writes nothing outside the ring.
-- The first 77 calls pass the input through while the ring is cleared (206 words a call).
+- The first 22 calls pass the input through while the ring is cleared (653 words a call, exactly the ring: 77 × 206 would now write past it, into `octabam`'s window code).
 - AMNT 0 is bit-exact dry.
 - An impulse and a noise burst through 48,000 samples match a float model (gate off, and an impulse with the gate on) of the same algorithm (same lengths, the same integer LFO phases and
   offsets, the same parameter laws and smoothing) to 58 dB (the difference is the 24-bit arithmetic).
-- No write outside the 15,862-word ring (`-guard 15862`); a dirty state block and a dirty ring with silent input give silent output.
+- No write outside the 14,366-word ring (`-guard 14366`); a dirty state block and a dirty ring with silent input give silent output.
 - TIME 127 rings longer than TIME 80.
 
 Not measured: sound (no listening yet), hardware, the real allocator's bases on a unit.
@@ -95,7 +98,7 @@ RMS of the left output:
 | 120 | −56 dB, **grew to −11 dB** in 11 s | −56 dB to −84 dB |
 | 127 | grew to −4 dB in 10 s (the gate's `runaway` check on the old code) | −56 dB to −77 dB in 11 s, still falling |
 
-RT60 from the float model (`tools/harness/studioverb_voice.py --impulse`): TIME 64 2.80 s (4.84 s
+RT60 from the float model (`tools/harness/studioverb_voice.py --impulse`, on the 15,862-word ring of the time): TIME 64 2.80 s (4.84 s
 before), 80 3.72 s (6.87 s), 94 5.08 s (grew), 127 17.92 s (grew). The extra path made every tail
 longer, not only the unstable ones, so a part voiced on the old code sounds shorter at the same TIME.
 `verify_studioverb`'s `runaway` check fails on the old code and passes on the new; the model match is

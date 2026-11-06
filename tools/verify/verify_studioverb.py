@@ -5,7 +5,7 @@
 
 Builds remix `studioverb`, dumps payload A and runs one instance at track 1's
 FX2 slot (`-r7 2 -alloc 1`, Y:0x4000). Gates:
-  clear     the first 77 calls (the ring is cleared 206 words a call) pass the
+  clear     the first 22 calls (the ring is cleared 653 words a call) pass the
             input through untouched
   dry       AMNT 0 is bit-exact dry
   model     an impulse and a noise burst through the module, against a float
@@ -17,8 +17,8 @@ FX2 slot (`-r7 2 -alloc 1`, Y:0x4000). Gates:
             rises by 3 dB from one half second to the next (until 5 Nov 2026 the smear LFO was
             bipolar, its reads fed the last tank line back to the input, and at TIME 120 the
             tail grew from -56 dB to -11 dB in 11 s)
-  bounds    -guard 15862: no write outside the ring (the top 256 words of the
-            slot stay clear for the mailbox and LOAD METER), no stray write
+  bounds    -guard 14366: no write outside the ring (it ends below 0x3820 of the
+            slot, where octabam's window code starts), no stray write
   gate      GATE 40: open during the hold; then a desk gate's release (70-110 ms in, 4 to 25 dB
             under the ungated tail, not a cut); shut after it; the tank empty when it reopens
             (a second impulse, 190 ms after the gate shuts, rings as it does alone); against the float model
@@ -40,8 +40,8 @@ REMIX = "studioverb"
 IMAGE, MEM = "out/mainos_bus.bin", "out/dsp/_studioverb_A.mem"
 TMP = pathlib.Path("out/_cvgate"); TMP.mkdir(parents=True, exist_ok=True)
 FRAMES = 16
-CLEAR_CALLS = 77
-LEN = [109, 157, 233, 386, 1600, 1973, 3303, 1852, 1610, 4630]
+CLEAR_CALLS = 22
+LEN = [109, 157, 233, 386, 1440, 1776, 2973, 1667, 1449, 4167]
 BASE = []
 _b = 0
 for _l in LEN:
@@ -134,9 +134,9 @@ def model(samples, params, blocks_skip):
         d2 = mulf(2 * (0x061000 - mulf(0x061000, sz_f)), 0x400000 + mod_s)     # the swing, Q12 samples
         centre = ln[9] - 2 - (d2 >> 12)
         # PRE: in the long delay's far end, past its tap; m - 2 words of room, none at SIZE 127
-        m9 = mulf(4630, sz_f)
+        m9 = mulf(4167, sz_f)
         pd = min(32 * pre, max(0, m9 - 2))
-        pkw = 4631 - m9                  # the write cell, as an offset into line 9
+        pkw = 4168 - m9                  # the write cell, as an offset into line 9
         inc1, inc2 = mulf(380, rate << 16), mulf(228, rate << 16)
         u = lcut << 16
         lc = smooth(lc, mulf(mulf(u, u), 0x12866A))
@@ -324,7 +324,7 @@ def main():
           low_db(lv["LCUT 90"]) < low_db(L) - 6)
     _, _, logp = host(imp[:400 * FRAMES], params + [0, 0, 127, 127, 0, 0], extra=["-guard", str(N), "-guard-shared"])
     check("page 2: SIZE 0, MOD 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logp)
-    # PRE: a predelay in the long delay's unread far end (room = m - 2 words, m = 4630 f), so it
+    # PRE: a predelay in the long delay's unread far end (room = m - 2 words, m = 4167 f), so it
     # clamps to what SIZE leaves and is nothing at SIZE 127
     pim = [0] * (blocks * FRAMES)
     pt0 = (CLEAR_CALLS + 200) * FRAMES   # after the knobs (SIZE's f included) have settled
@@ -335,7 +335,7 @@ def main():
         return next(i for i in range(pt0 + 1, len(x)) if abs(x[i]) > 64) - pt0
     def room(size):                      # the model's arithmetic for the settled f
         f = mulf((127 - size) << 16, 0x6734EE)
-        return max(0, mulf(4630, f) - 2)
+        return max(0, mulf(4167, f) - 2)
     on = {}
     for size, pre in ((60, 0), (60, 40), (90, 127), (127, 0), (127, 127)):
         Lq, Rq, _ = host(pim, wetp + [size, 0, 64, 64, 0, pre])

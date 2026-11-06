@@ -4,11 +4,11 @@ Mutable Instruments Clouds. GATE VERB until 6 Nov 2026 (`git log -- modules/gate
 Clouds' reverb stage (clouds/dsp/fx/reverb.h, MIT, Emilie Gillet 2014): a
 Griesinger/Dattorro plate of four input allpasses and a loop of two halves,
 each two allpasses and a delay, with the first allpass smeared by an LFO and the
-second delay modulated. The delay lengths are scaled by 0.9682 so the ring is
-15,862 words, under the FX2 rule (+$3DFD, #785) that keeps the slot's last $202
-words for SIDECHAIN_COMPRESSOR's window; the allocator gives an FX2 instance 16,384, and the top 256 words
-of the slot carry the stock mailbox and LOAD METER, so the module declares its
-extent (Claims.buffer_words) and never writes them.
+second delay modulated. The delay lengths are scaled by 0.9682 and the six tank
+lines by a further 0.9, so the ring is 14,366 words and ends below slot offset
+0x3820, where octabam's demand-loaded window code starts in the four window
+slots; the module declares that extent (Claims.buffer_words) and never writes
+past it, which is what lets octabam-verbs carry it beside the loader.
 
 The five knobs are Clouds' own setters: AMNT (amount), GAIN (input gain), TIME
 (reverb time), DIFF (the allpass coefficient), TONE (the damping lowpass).
@@ -49,12 +49,12 @@ MODULE = Module(
               doc="speed of both modulation LFOs: 0 frozen, 64 the original, 127 twice it"),
         Param(),
         Param(b"PRE", 0, count=128, active=True, formatter=Formatter.PLAIN,
-              doc="predelay, 0 to 92 ms, in the room SIZE leaves: none at 127, about 24 ms at 90, 44 ms at 60"),
+              doc="predelay, 0 to 92 ms, in the room SIZE leaves: none at 127, about 22 ms at 90, 40 ms at 60"),
     ),
     dsp=DspSection(asm="modules/studioverb/studioverb.asm", priority=11,
                    bus_role=BusRole.NONE, ybase=YBase.NEVER,
                    r7_latch_slot=None, gate_label=None),
-    claims=Claims(stock_instance_buffer=True, buffer_words=15862),
+    claims=Claims(stock_instance_buffer=True, buffer_words=14366),
     harness=Harness(layout_char="H", is_server=False),
     dear={'AMNT': 127, 'GAIN': 127, 'TIME': 127, 'DIFF': 127, 'TONE': 127, 'GATE': 127},   # every knob at its maximum: the hardware matrix's dearest layout
     gates=(Gate('tools/verify/verify_studioverb.py', remix_arg=False, venv=True),),

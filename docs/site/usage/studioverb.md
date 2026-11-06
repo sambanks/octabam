@@ -40,7 +40,7 @@ then the reverb carries on from one hit to the next.
 | LCUT | 0 | page 2. Low cut inside the reverb: up thins the tail's low end so it sits in a mix; 0 is off |
 | MOD | 64 | page 2. How much the tail is modulated: 0 is static, up is more chorus-like |
 | RATE | 64 | page 2. How fast the modulation moves: 0 frozen, 127 twice the original |
-| PRE | 0 | page 2, last knob. Predelay, up to 92 ms, using the room SIZE leaves: none at SIZE 127, about 24 ms at 90, 44 ms at 60. Turn SIZE down to make room for it |
+| PRE | 0 | page 2, last knob. Predelay, up to 92 ms, using the room SIZE leaves: none at SIZE 127, about 22 ms at 90, 40 ms at 60. Turn SIZE down to make room for it |
 
 A Part saved with STUDIO VERB before page 2 existed opens with SIZE, MOD and RATE at 0, a small, static
 room. Re-select the effect to get the defaults back.

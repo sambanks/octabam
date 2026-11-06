@@ -30,7 +30,7 @@ Two gate forms (--gate):
   old     the module before 5 Nov 2026: the wet closed in about 3 ms and the tank rang on.
 
 The output is verify_studioverb's model, sample for sample (`--selftest` runs the two side by
-side, every knob included). The ring is 15,862 words whatever the knobs (SIZE moves read taps,
+side, every knob included). The ring is 14,366 words whatever the knobs (SIZE moves read taps,
 PRE borrows what SIZE frees); `--impulse` prints the predelay a setting actually gets.
 
 Sample rate 44,100 Hz, 16-sample blocks, mono input (left and right summed), stereo out.
@@ -40,8 +40,8 @@ import argparse, math, pathlib, random, struct, sys, wave
 SR = 44100
 FRAMES = 16
 Q = 1 << 23
-LEN = [109, 157, 233, 386, 1600, 1973, 3303, 1852, 1610, 4630]
-RING_TODAY = 15862
+LEN = [109, 157, 233, 386, 1440, 1776, 2973, 1667, 1449, 4167]
+RING_TODAY = 14366
 NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "SIZE", "LCUT", "MOD", "RATE", "PRE")
 DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, SIZE=127, LCUT=0, MOD=64, RATE=64, PRE=0)
 
@@ -63,9 +63,9 @@ def parab(phase):
 
 def pre_samples(p):
     """The predelay a setting gets: 32 PRE, clamped to the m - 2 words SIZE leaves past the long
-    delay's tap (m = 4630 f, f settled)."""
+    delay's tap (m = 4167 f, f settled)."""
     f = mulf((127 - p["SIZE"]) << 16, 0x6734EE)
-    return min(32 * p["PRE"], max(0, mulf(4630, f) - 2))
+    return min(32 * p["PRE"], max(0, mulf(4167, f) - 2))
 
 
 def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
@@ -112,8 +112,8 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
         mod_s += (((p["MOD"] << 16) - 0x400000) - mod_s) >> 4
         depth = mulf(2 * (0x061000 - mulf(0x061000, sz_f)), 0x400000 + mod_s)
         centre = LN[9] - 2 - (depth >> 12)
-        m9 = mulf(4630, sz_f)
-        pd = min(32 * p["PRE"], max(0, m9 - 2)); pkw = 4631 - m9
+        m9 = mulf(4167, sz_f)
+        pd = min(32 * p["PRE"], max(0, m9 - 2)); pkw = 4168 - m9
         u = p["LCUT"] << 16
         lc += (mulf(mulf(u, u), 0x12866A) - lc) >> 4
         C = lc / Q
