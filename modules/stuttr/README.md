@@ -46,7 +46,7 @@ dry ──RATE tick──► CHNC roll ──miss──► dry
 
 ## Ring length (SIDECHAIN window)
 
-`Claims.buffer_words = 15862` — same ceiling as STUDIO VERB (GATE VERB until 6 Nov 2026) / WAVE / BBD
+`Claims.buffer_words = 15862` — same ceiling as VERBERATION (GATE VERB until 6 Nov 2026) / WAVE / BBD
 (`+$3DFD`, #785). The last `$202` words of the T3/T7 FX2 slots are
 SIDECHAIN_COMPRESSOR's cross-core keybus; a 16,384-word ring would write
 into them. Init sets maxlen to 15,862 on FX2 (3,072 on FX1).

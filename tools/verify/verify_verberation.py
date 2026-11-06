@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""STUDIO VERB under dsp_host, against a float model of Clouds' reverb.
+"""VERBERATION under dsp_host, against a float model of Clouds' reverb.
 
-    .venv/bin/python3 tools/verify/verify_studioverb.py
+    .venv/bin/python3 tools/verify/verify_verberation.py
 
-Builds remix `studioverb`, dumps payload A and runs one instance at track 1's
+Builds remix `verberation`, dumps payload A and runs one instance at track 1's
 FX2 slot (`-r7 2 -alloc 1`, Y:0x4000). Gates:
   clear     the first 22 calls (the ring is cleared 653 words a call) pass the
             input through untouched
@@ -36,8 +36,8 @@ import send_probe  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 os.chdir(ROOT)
 HOST = "vendor/dsp56300/build/source/dsp_host/dsp_host"
-REMIX = "studioverb"
-IMAGE, MEM = "out/mainos_bus.bin", "out/dsp/_studioverb_A.mem"
+REMIX = "verberation"
+IMAGE, MEM = "out/mainos_bus.bin", "out/dsp/_verberation_A.mem"
 TMP = pathlib.Path("out/_cvgate"); TMP.mkdir(parents=True, exist_ok=True)
 FRAMES = 16
 CLEAR_CALLS = 22
@@ -74,13 +74,13 @@ def build_dump():
     env = dict(os.environ, REMIX=REMIX, XBUS="1", SPEC="1"); env.setdefault("BUILD", "0")
     r = subprocess.run([sys.executable, "tools/build/build_bus.py"], env=env, capture_output=True, text=True)
     if r.returncode:
-        sys.exit(f"verify_studioverb: building {REMIX} failed:\n{(r.stdout + r.stderr)[-1500:]}")
+        sys.exit(f"verify_verberation: building {REMIX} failed:\n{(r.stdout + r.stderr)[-1500:]}")
     send_probe.dump_mem(IMAGE, MEM, "A")
 
 
 def host(samples, params, *, mem=MEM, extra=()):
     from remix import registry
-    fxid = registry.by_key("STUDIO VERB").menu.fx2_id
+    fxid = registry.by_key("VERBERATION").menu.fx2_id
     init, proc = send_probe.entry_points(mem, fxid)
     (TMP / "in.raw").write_bytes(b"".join(struct.pack("<i", s) for s in samples))
     cmd = [HOST, "-mem", mem, "-init", f"{init:x}", "-proc", f"{proc:x}", "-inst", "1", "-r7", "2", "-alloc", "1",
@@ -132,7 +132,7 @@ def model(samples, params, blocks_skip):
         krt = smooth(krt, mulf(k[2], 0x50A3D7) + 0x2CCCCD)
         kap = smooth(kap, mulf(k[3], 0x666666))
         klp = smooth(klp, mulf(k[4], 0x79999A) + 0x066666)
-        # page 2, as studioverb.asm computes it each block
+        # page 2, as verberation.asm computes it each block
         sz_f = smooth(sz_f, mulf((127 - size) << 16, 0x6734EE))
         ln = [LEN[j] - mulf(LEN[j], sz_f) for j in range(10)]      # read lengths (lines 4-9 used)
         mod_s = smooth(mod_s, (mod << 16) - 0x400000)
@@ -370,7 +370,7 @@ def main():
     z = [0] * (200 * FRAMES)
     Ld, Rd, _ = host(z, params + TAIL, mem=str(dm))
     check("dirty: garbage state and ring, silent input, silent output", not any(Ld) and not any(Rd))
-    print(f"verify_studioverb: {'PASS' if not fails else f'FAIL ({fails})'}")
+    print(f"verify_verberation: {'PASS' if not fails else f'FAIL ({fails})'}")
     sys.exit(1 if fails else 0)
 
 

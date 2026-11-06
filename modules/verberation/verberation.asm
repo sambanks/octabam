@@ -1,4 +1,4 @@
-; STUDIO VERB: the reverb of Mutable Instruments Clouds (clouds/dsp/fx/reverb.h,
+; VERBERATION: the reverb of Mutable Instruments Clouds (clouds/dsp/fx/reverb.h,
 ; MIT, Copyright 2014 Emilie Gillet), a Griesinger/Dattorro plate: four input
 ; allpasses, then two halves of two allpasses and a delay, with a smeared first
 ; allpass and a modulated second delay. Port, not a copy: fixed point, the delay

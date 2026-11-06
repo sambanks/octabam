@@ -95,7 +95,6 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`stems-brain`](stems-brain/README.md) | STEM REC (UP+REC) with BRAIN on the root: coexistence without two menu growers. | port-gated: verify_stems_menu under ot_emu |
 | [`stock-meter-a`](stock-meter-a/README.md) | CORE with LOAD METER and the stock effects except PHASER. | `make check` |
 | [`stock-meter-b`](stock-meter-b/README.md) | CORE with LOAD METER and the stock effects except SPATIALIZER. | `make check` |
-| [`studioverb`](studioverb/README.md) | STUDIO VERB alone: the fixture of its render gate. | local render: `verify_studioverb`; not flashed |
 | [`stuttr`](stuttr/README.md) | STUTTR beside the stock effects (all but PLATE REV, whose words it takes). | local render: verify_stuttr; chance-engage redesign. |
 | [`tapeecho`](tapeecho/README.md) | Tape Echo replacing Spring Reverb, alone. | on hardware: the author's unit (OCTACLID4): six instances; a seventh freezes it, open |
 | [`testgen`](testgen/README.md) | TESTGEN on FX1 beside the stock effects (all but PLATE REV, whose words it takes). | on hardware: Ignorato's MKII, OCTABAM6, 4 Oct 2026 |
@@ -123,6 +122,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`usb-out-tracks-main-cue`](usb-out-tracks-main-cue/README.md) | stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE); PLATE REV harvested for USB's words. | port-gated |
 | [`usb-out-tracks-post`](usb-out-tracks-post/README.md) | stock + USB (TRACKS POST) (16 ch: the tracks after their own MAIN gain). | on hardware: allmyfriendsaresynths's MKII, P3, 5 Oct 2026 (smoke test: 16 channels, LEVEL/mute/solo/crossfader follow) |
 | [`varispeed`](varispeed/README.md) | stock effects with VARISPEED: TSTR VARI, QUAN on PTCH. | `make check` |
+| [`verberation`](verberation/README.md) | VERBERATION alone: the fixture of its render gate. | local render: `verify_verberation`; not flashed |
 | [`vibrato`](vibrato/README.md) | VIBRATO on FX1 beside the stock effects (all but PLATE REV). | `make check` |
 | [`vibrato-fx2`](vibrato-fx2/README.md) | VIBRATO live on FX1 and FX2 beside the stock effects (all but PLATE REV). | `make check` |
 | [`vocoder`](vocoder/README.md) | VOCODER beside the stock effects (all but PLATE REV, whose words it takes, and DJ EQ, so its table sits in X). | on hardware: Ignorato's MKII, OCTABAM12 (the earlier positions T1 T2 T5 T6), 4 Oct 2026; the current positions (T2 T4 T6 T8) not flashed |

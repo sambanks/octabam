@@ -1,11 +1,11 @@
-# `studioverb` — STUDIO VERB
+# `verberation` — VERBERATION
 
 A reverb for FX2, rooms to halls, with a desk-style gate, built on the reverb stage of Mutable Instruments Clouds
 ([`clouds/dsp/fx/reverb.h`](https://github.com/pichenettes/eurorack/blob/master/clouds/dsp/fx/reverb.h),
 MIT, Emilie Gillet 2014), ported to fixed point. On id `0x1a` (PLATE REV keeps `0x14`); one instance per FX2 slot.
 
-Until 6 Nov 2026 this module was GATE VERB (`modules/gateverb`; `git log --follow -- modules/studioverb/studioverb.asm`
-has its history). It keeps GATE VERB's id, so a Part that used GATE VERB opens STUDIO VERB. The sections below that
+Until 6 Nov 2026 this module was GATE VERB (`modules/gateverb`), then briefly STUDIO VERB (`modules/studioverb`, #1056; `git log --follow -- modules/verberation/verberation.asm`
+has its history). It keeps GATE VERB's id, so a Part that used GATE VERB opens VERBERATION. The sections below that
 describe GATE VERB's fixes (the smear LFO, the gate) are the record of how this code got here.
 
 The reverb is Clouds': a Griesinger plate (the Dattorro paper's layout) of four input
@@ -54,7 +54,21 @@ A shut gate also empties the tank. In any block that starts with the gain at 0, 
 
 Chosen by ear on 5 Nov 2026 (Sam, from sandbox renders of a backbeat snare and a tom fill; releases of 1/512, 1/1024 and 1/2048 a sample were compared, and the slowest was preferred). Until then the wet closed over 128 samples (about 3 ms), which read as a cut, and the tank rang on underneath.
 
-Under `dsp_host` (`verify_studioverb`, GATE 40): the wet is open for the whole hold (−68.5 dB against −68.3 dB with the gate off); 70 to 110 ms into the release it is −88.9 dB against −72.3 dB, a release, not a cut (the 3 ms gate read −200 dB there); after the release it is exactly silent (−200 dB against −75.7 dB); and a second impulse 190 ms after the gate shuts, less the same impulse alone, is −119.0 dBFS, the truncation floor (−77.7 dBFS with the old gate, whose tank rang on). Whether the wash is dense and flat enough to sound like one is not measured: for the classic effect set TIME and DIFF high, GAIN up and AMNT up, and GATE to taste. The threshold, the envelope's release, the attack and the gate's release are constants in `studioverb.asm`, not knobs.
+Under `dsp_host` (`verify_verberation`, GATE 40): the wet is open for the whole hold (−68.5 dB against −68.3 dB with the gate off); 70 to 110 ms into the release it is −88.9 dB against −72.3 dB, a release, not a cut (the 3 ms gate read −200 dB there); after the release it is exactly silent (−200 dB against −75.7 dB); and a second impulse 190 ms after the gate shuts, less the same impulse alone, is −119.0 dBFS, the truncation floor (−77.7 dBFS with the old gate, whose tank rang on). Whether the wash is dense and flat enough to sound like one is not measured: for the classic effect set TIME and DIFF high, GAIN up and AMNT up, and GATE to taste. The threshold, the envelope's release, the attack and the gate's release are constants in `verberation.asm`, not knobs.
+
+## The rows on the stock reverbs' ids
+
+[`octabam-verbs`](../../remixes/octabam-verbs/README.md) gives up PLATE REV, SPRING REV and DARK REV and puts three
+rows of this module on their ids: [VERB PLATE](../verberation-plate/README.md) (`0x14`, PLATE mode),
+[VERB ROOM](../verberation-room/README.md) (`0x15`, ROOM) and [VERB HALL](../verberation-hall/README.md) (`0x16`,
+HALL). Each is a chooser row with its own name and its mode's defaults and no code of its own: `MenuEntry.dsp_of`
+points the id at this module's init and proc (the build reports `id 0x14 -> VERBERATION's code`, and a dump of
+both payloads reads the same two entry points for 0x14, 0x15, 0x16 and 0x1a). One copy of the code, 644 words a
+payload, serves all four rows.
+
+A Part saved with a stock reverb opens on its row but keeps the stock knob values it held, which this module
+reads as its own (PLATE's TIME as AMNT, and so on). Resetting such a Part to its row's defaults on load is the
+next step and not built yet.
 
 ## What differs from Clouds
 
@@ -77,8 +91,8 @@ Under `dsp_host` (`verify_studioverb`, GATE 40): the wet is open for the whole h
 
 ## Measured
 
-Under `dsp_host` (`tools/verify/verify_studioverb.py`, remix `test/studioverb`):
-- The pricer counts 247 cycles per sample (219 before the desk gate, 228 before page 2, 242 before PRE), a floor: it counts words, not memory stalls. Scaled from the 7.76 % GATE VERB measured on a unit at 219, about 8.8 % a slot (🟡 inferred, not read), under the 9.07 % that lets it sit on every FX2 slot. `tools/remix/slot_costs.json` carries no STUDIO VERB entry: GATE VERB's reading was of older code.
+Under `dsp_host` (`tools/verify/verify_verberation.py`, remix `test/verberation`):
+- The pricer counts 247 cycles per sample (219 before the desk gate, 228 before page 2, 242 before PRE), a floor: it counts words, not memory stalls. Scaled from the 7.76 % GATE VERB measured on a unit at 219, about 8.8 % a slot (🟡 inferred, not read), under the 9.07 % that lets it sit on every FX2 slot. `tools/remix/slot_costs.json` carries no VERBERATION entry: GATE VERB's reading was of older code.
 - PRE: SIZE 60 with PRE 40 matches the model to 61.1 dB over 8,000 samples; it moves the wet onset by 1,279 samples (32 × 40 = 1,280; the onset is a threshold crossing); PRE 127 at SIZE 90 is clamped to the 1,077 samples of room; at SIZE 127 PRE 127 is bit-exact PRE 0; SIZE 0 with PRE 127 writes nothing outside the ring.
 - Page 2 against the model: six settings (SIZE 30; SIZE 0 with MOD 127; LCUT 90; MOD and RATE 0; MOD and RATE 127; SIZE 60, LCUT 40, MOD 100, RATE 30) match to 57-82 dB over the first 8,000 samples, where a wrong integer tap would show at once, and 46-62 dB over the whole render, where the tail meets the 24-bit floor the float model has not got. SIZE 30 decays faster than 127 (−69.3 dB against −56.9 dB at 0.7-0.9 s); LCUT 90 takes 12 dB out under 150 Hz; SIZE 0 with MOD 127 writes nothing outside the ring.
 - The first 22 calls pass the input through while the ring is cleared (653 words a call, exactly the ring: 77 × 206 would now write past it, into `octabam`'s window code).
@@ -108,14 +122,14 @@ RMS of the left output:
 | 120 | −56 dB, **grew to −11 dB** in 11 s | −56 dB to −84 dB |
 | 127 | grew to −4 dB in 10 s (the gate's `runaway` check on the old code) | −56 dB to −77 dB in 11 s, still falling |
 
-RT60 from the float model (`tools/harness/studioverb_voice.py --impulse`, on the 15,862-word ring of the time): TIME 64 2.80 s (4.84 s
+RT60 from the float model (`tools/harness/verberation_voice.py --impulse`, on the 15,862-word ring of the time): TIME 64 2.80 s (4.84 s
 before), 80 3.72 s (6.87 s), 94 5.08 s (grew), 127 17.92 s (grew). The extra path made every tail
 longer, not only the unstable ones, so a part voiced on the old code sounds shorter at the same TIME.
-`verify_studioverb`'s `runaway` check fails on the old code and passes on the new; the model match is
+`verify_verberation`'s `runaway` check fails on the old code and passes on the new; the model match is
 58.0 / 58.1 dB, as before.
 
 Not changed: the `del2` tap still swings 4531 ± 97, twice Clouds' excursion, and stable
-(`studioverb_voice.py --lfo clouds` renders Clouds' form). What is left at the end of a long tail is a
+(`verberation_voice.py --lfo clouds` renders Clouds' form). What is left at the end of a long tail is a
 DC offset, not a tone: at TIME 120, the last second reads −84.4 dBFS DC and −97.2 dBFS AC. That is
 `mpy`'s truncation bias circulating in the loop; a high-pass in the tank (the LOCUT the sandbox
 proposes) would remove it. Not heard on a unit, before or after.

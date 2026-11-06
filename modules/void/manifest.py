@@ -54,7 +54,7 @@ MODULE = Module(
     doc="Input↔noise BAL; LFO/nbr AM + DRV/FDBK on noise only; WID stereo grit.",
     menu=MenuEntry(
         # No free custom FX2 id left in-tree (SHATTER=0x0a, …). PLATE is
-        # STUDIO VERB's (GATE VERB's until 6 Nov 2026). Replace COMB FILTER; DSP still sits in harvested PLATE.
+        # VERBERATION's (GATE VERB's until 6 Nov 2026). Replace COMB FILTER; DSP still sits in harvested PLATE.
         fx2_id=0x13,
         replaces="COMB FILTER",
         donor_desc=0x400d58b8,  # DARK REV page layout (12 knobs)

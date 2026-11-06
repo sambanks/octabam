@@ -289,7 +289,7 @@ PAGE2_COUNTS = {m.key: {i: p.count for i, p in enumerate(m.params)
 STEPPED_SLOTS = {m.key: m.stepped_slots for m in _CLONED if m.stepped_slots}
 BIPOLAR_SLOTS = {m.key: m.bipolar_slots for m in _CLONED if m.bipolar_slots}
 PLAIN_SLOTS = {m.key: m.plain_slots for m in _CLONED if m.plain_slots}
-_DEF_ASM = {m.key: m.dsp.asm for m in _CLONED}
+_DEF_ASM = {m.key: m.dsp.asm for m in _CLONED if m.dsp is not None}   # a MenuEntry.dsp_of row has none
 # DSP code reached from STOCK code rather than a chooser row
 # (schema.DspSection.hooks with no MenuEntry): placed like an effect, on
 # the payloads it names, with no dispatch entry. USB's audio-in RX inject.

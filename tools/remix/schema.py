@@ -558,8 +558,8 @@ class MenuEntry:
     stock_dsp: bool = False
     # RUNS ANOTHER MODULE'S CODE (6 Nov 2026): the key of a module the remix carries whose DSP this row runs. The
     # module declares no DspSection; its id dispatches to that module's init and proc as placed on each payload.
-    # A chooser row with its own name, defaults and id over one copy of code: octabam-verbs' Studio Plate, Room
-    # and Hall on the stock reverbs' ids, each STUDIO VERB with its MODE preset. The build refuses a key the remix
+    # A chooser row with its own name, defaults and id over one copy of code: octabam-verbs' Verb Plate, Room
+    # and Hall on the stock reverbs' ids, each VERBERATION with its MODE preset. The build refuses a key the remix
     # does not carry or that has no dispatched code of its own.
     dsp_of: str | None = None
 

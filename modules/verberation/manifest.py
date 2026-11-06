@@ -1,5 +1,5 @@
-"""STUDIO VERB -- rooms, plates, halls and a desk-gated reverb for FX2, built on the reverb stage of
-Mutable Instruments Clouds. GATE VERB until 6 Nov 2026 (`git log -- modules/gateverb`).
+"""VERBERATION -- rooms, plates, halls and a desk-gated reverb for FX2, built on the reverb stage of
+Mutable Instruments Clouds. GATE VERB until 6 Nov 2026, then briefly STUDIO VERB (`git log -- modules/gateverb modules/studioverb`).
 
 Clouds' reverb stage (clouds/dsp/fx/reverb.h, MIT, Emilie Gillet 2014): a
 Griesinger/Dattorro plate of four input allpasses and a loop of two halves,
@@ -24,13 +24,13 @@ from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate
                           Kind, MenuEntry, Module, Param, Proof, YBase)
 
 MODULE = Module(
-    name="studioverb", key="STUDIO VERB", kind=Kind.DSP_EFFECT,
+    name="verberation", key="VERBERATION", kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Emilie Gillet (Mutable Instruments), ported here",
     author_url="https://github.com/pichenettes/eurorack",
-    proof=Proof.RENDER, proof_note="`verify_studioverb` (dsp_host, against a float model); not run on a unit. Its predecessor GATE VERB had cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
+    proof=Proof.RENDER, proof_note="`verify_verberation` (dsp_host, against a float model); not run on a unit. Its predecessor GATE VERB had cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
     doc="A plate reverb (Griesinger topology, after Mutable Instruments Clouds) for rooms to halls, with a desk-style gate: amount, gain, time, diffusion, tone, gate; size, low cut, modulation depth and rate. One FX2 slot per instance.",
     menu=MenuEntry(fx2_id=0x1a, donor_desc=0x400d5594,
-                   abbr=b"STVB", fullname=b"Studio Verb", build_tag=False),
+                   abbr=b"VRBN", fullname=b"Verberation", build_tag=False),
     # Page 1 and the defaults are PLATE's view (MODE 1). Page 2 in slots 6-11: MODE (slot 6, as on every
     # effect), LCUT, MOD on the top row; RATE, SIZE, PRE below.
     params=(
@@ -69,11 +69,11 @@ MODULE = Module(
         ModeView(mode=3,                        # GATED: the desk-gated burst
                  defaults={0: 90, 1: 80, 2: 118, 3: 110, 4: 80, 5: 26, 7: 40, 8: 64, 9: 64, 10: 90, 11: 0}),
     ),
-    dsp=DspSection(asm="modules/studioverb/studioverb.asm", priority=11,
+    dsp=DspSection(asm="modules/verberation/verberation.asm", priority=11,
                    bus_role=BusRole.NONE, ybase=YBase.NEVER,
                    r7_latch_slot=None, gate_label=None),
     claims=Claims(stock_instance_buffer=True, buffer_words=14366),
     harness=Harness(layout_char="H", is_server=False),
     dear={'AMNT': 127, 'GAIN': 127, 'TIME': 127, 'DIFF': 127, 'TONE': 127, 'GATE': 127},   # every knob at its maximum: the hardware matrix's dearest layout
-    gates=(Gate('tools/verify/verify_studioverb.py', remix_arg=False, venv=True),),
+    gates=(Gate('tools/verify/verify_verberation.py', remix_arg=False, venv=True),),
 )

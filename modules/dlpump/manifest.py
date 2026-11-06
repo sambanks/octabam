@@ -44,8 +44,8 @@ def table_inc(modules, remix):
     rows.append(f"        .equ    HAVE_SC_KEY, {int(sc >= 0)}")
     rows.append(f"        .equ    DL_SC, {max(sc, 0)}")
     addrs = {key: [dict(remix.window)[key]] + [a for hk, a in remix.window_homes if hk == key] for key in keys}
-    # A stock reverb whose id still runs stock code: not one a carried module replaces (octabam-verbs: STUDIO PLATE,
-    # ROOM and HALL take the three ids and run STUDIO VERB's code, which stops below every home). With its bit set
+    # A stock reverb whose id still runs stock code: not one a carried module replaces (octabam-verbs: VERB PLATE,
+    # ROOM and HALL take the three ids and run VERBERATION's code, which stops below every home). With its bit set
     # DLPUMP would refuse or evict for an id that never reaches the code.
     replaced = {modules[k].menu.replaces for k in remix.modules if k in modules and modules[k].menu is not None}
     live = [r for r in REVERBS if r not in replaced]

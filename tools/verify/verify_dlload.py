@@ -96,7 +96,7 @@ def main():
     # A remix whose stock reverbs are gone (octabam-verbs: Remix.dry, or a row of ours on their ids) builds no reverb
     # guard and its loader blocks for no id: the guard's scenarios do not apply, and three of its own replace them.
     GUARDED = bool(RX.window_guard)
-    VERB = registry.bound(RX).get("STUDIO VERB") if "STUDIO VERB" in RX.modules else None
+    VERB = registry.bound(RX).get("VERBERATION") if "VERBERATION" in RX.modules else None
     recs = [dict(next(r for key, r in recs if key == k), key=k) for k in order]
     rec = recs[0]
     mod_id = rec["id"]
@@ -270,7 +270,7 @@ def main():
     else:
         print("no guard (the stock reverbs are gone):")
         for tag, what in (("dark-id-ok", "DARK REV's id on its block's FX2"), ("dark-id-both-ok", "DARK REV's id on every home's FX2"),
-                          ("verb-ok", "STUDIO VERB on its block's FX2")):
+                          ("verb-ok", "VERBERATION on its block's FX2")):
             if tag not in texts:
                 continue
             entry = peek(tag, 1, "X", 0x33DA3)

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""STUDIO VERB voicing sandbox: the float model, with knobs the module does not have yet.
+"""VERBERATION voicing sandbox: the float model, with knobs the module does not have yet.
 
-    python3 tools/harness/studioverb_voice.py IN.wav -o OUT.wav [-p SIZE=80 -p LCUT=40 ...]
-    python3 tools/harness/studioverb_voice.py --test pluck -o out.wav -p SIZE=40
-    python3 tools/harness/studioverb_voice.py --test click --sweep SIZE=127,90,60,30 -o size.wav
-    python3 tools/harness/studioverb_voice.py --impulse -p MODE=2     # a mode's voicing (0 ROOM 1 PLATE 2 HALL 3 GATED)
-    python3 tools/harness/studioverb_voice.py --selftest              # defaults == verify_studioverb's model
+    python3 tools/harness/verberation_voice.py IN.wav -o OUT.wav [-p SIZE=80 -p LCUT=40 ...]
+    python3 tools/harness/verberation_voice.py --test pluck -o out.wav -p SIZE=40
+    python3 tools/harness/verberation_voice.py --test click --sweep SIZE=127,90,60,30 -o size.wav
+    python3 tools/harness/verberation_voice.py --impulse -p MODE=2     # a mode's voicing (0 ROOM 1 PLATE 2 HALL 3 GATED)
+    python3 tools/harness/verberation_voice.py --selftest              # defaults == verify_verberation's model
 
 A place to choose a voicing by ear before any of it is written in DSP assembly. It is
-the float model `tools/verify/verify_studioverb.py` checks the module against (the
+the float model `tools/verify/verify_verberation.py` checks the module against (the
 module matches it to 58 dB), the same topology, lengths, LFOs, parameter laws and
 per-block smoothing, and every knob the module has:
 
@@ -29,7 +29,7 @@ Two gate forms (--gate):
           the next hit starts from silence. --release-shift changes REL here only.
   old     the module before 5 Nov 2026: the wet closed in about 3 ms and the tank rang on.
 
-The output is verify_studioverb's model, sample for sample (`--selftest` runs the two side by
+The output is verify_verberation's model, sample for sample (`--selftest` runs the two side by
 side, every knob included). The ring is 14,366 words whatever the knobs (SIZE moves read taps,
 PRE borrows what SIZE frees); `--impulse` prints the predelay a setting actually gets.
 
@@ -47,11 +47,11 @@ DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, MODE=1, LC
 
 
 def mode_view(mode):
-    """A MODE's knob values from the manifest (modules/studioverb), as MODE DEFAULTS writes them on the panel."""
+    """A MODE's knob values from the manifest (modules/verberation), as MODE DEFAULTS writes them on the panel."""
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
     import toolpath  # noqa: F401
     from remix import registry
-    m = registry.by_key("STUDIO VERB")
+    m = registry.by_key("VERBERATION")
     v = next(v for v in m.mode_views if v.mode == mode)
     return {NAMES[slot]: val for slot, val in v.defaults.items()}
 
@@ -82,12 +82,12 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
     """samples: interleaved stereo ints (24-bit scale). params: dict of NAMES.
     Returns (left, right) as floats on the 24-bit scale.
 
-    lfo: "module" (the default) is STUDIO VERB as built: the smear LFO unipolar, 0..1, as Clouds'
+    lfo: "module" (the default) is VERBERATION as built: the smear LFO unipolar, 0..1, as Clouds'
     (stmlib CosineOscillator::Next() returns 0..1), so the smear reads line 0 at 10..70; the
     long-delay tap swings centre +- depth, twice Clouds' excursion. "clouds": both unipolar, the tap
     at centre..centre+depth. "old": both bipolar, the module before 5 Nov 2026, whose smear read
     -50..70: up to 50 samples behind line 0, in the far end of the last tank line, fed back to the
-    input; the tail grew from TIME 94 up (modules/studioverb/README.md).
+    input; the tail grew from TIME 94 up (modules/verberation/README.md).
     """
     p = dict(DEFAULTS, **params)
     BASE, b = [], 0
@@ -116,7 +116,7 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
         krt += ((mulf(k[2], 0x50A3D7) + 0x2CCCCD) - krt) >> 4
         kap += (mulf(k[3], 0x666666) - kap) >> 4
         klp += ((mulf(k[4], 0x79999A) + 0x066666) - klp) >> 4
-        # page 2 as studioverb.asm computes it each block (verify_studioverb.model is the reference)
+        # page 2 as verberation.asm computes it each block (verify_verberation.model is the reference)
         sz_f += (mulf((127 - p["SIZE"]) << 16, 0x6734EE) - sz_f) >> 4
         LN = [LEN[j] - mulf(LEN[j], sz_f) for j in range(10)]
         mod_s += (((p["MOD"] << 16) - 0x400000) - mod_s) >> 4
@@ -305,11 +305,11 @@ def impulse_report(p, seconds=8.0, lfo="module", gate="module", rel=11):
 
 
 def selftest():
-    """The model against verify_studioverb.model, sample for sample."""
-    src = pathlib.Path(__file__).resolve().parents[1] / "verify" / "verify_studioverb.py"
+    """The model against verify_verberation.model, sample for sample."""
+    src = pathlib.Path(__file__).resolve().parents[1] / "verify" / "verify_verberation.py"
     # only the model is wanted: no build, no dsp_host, no registry (send_probe loads every manifest)
     code = src.read_text().replace("\nmain()\n", "\n").replace("import send_probe  # noqa: E402\n", "send_probe = None\n")
-    ns = {"__name__": "studioverb_ref", "__file__": str(src)}
+    ns = {"__name__": "verberation_ref", "__file__": str(src)}
     cwd = pathlib.Path.cwd()
     try:
         exec(compile(code, str(src), "exec"), ns)
