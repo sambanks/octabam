@@ -44,6 +44,11 @@ def table_inc(modules, remix):
     rows.append(f"        .equ    HAVE_SC_KEY, {int(sc >= 0)}")
     rows.append(f"        .equ    DL_SC, {max(sc, 0)}")
     addrs = {key: [dict(remix.window)[key]] + [a for hk, a in remix.window_homes if hk == key] for key in keys}
+    # A stock reverb whose id still runs stock code: not one a carried module replaces (octabam-verbs: VERB PLATE,
+    # ROOM and HALL take the three ids and run VERBERATION's code, which stops below every home). With its bit set
+    # DLPUMP would refuse or evict for an id that never reaches the code.
+    replaced = {modules[k].menu.replaces for k in remix.modules if k in modules and modules[k].menu is not None}
+    live = [r for r in REVERBS if r not in replaced]
     rows.append("dl_tab:")
     for k, key in enumerate(keys):
         track = BLOCK_TRACK[(addrs[key][0] - WIN) >> 14 & 3]
@@ -54,7 +59,8 @@ def table_inc(modules, remix):
         rows.append(f"dl_hm{k}:")
         for h, addr in enumerate(addrs[key]):
             n = 7 + 2 * len(homes[h]["words"]) if h < len(homes) else 0
-            mask = sum(1 << i for i, r in enumerate(REVERBS) if (addr - WIN) % 0x4000 <= stock.SLOT_EXTENT[r])
+            mask = sum(1 << i for i, r in enumerate(REVERBS)
+                       if r in live and (addr - WIN) % 0x4000 <= stock.SLOT_EXTENT[r])
             rows.append(f"        .long   {BLOCK_TRACK[(addr - WIN) >> 14 & 3]}, dl_blk{k}_{h}, {n}, {mask}, {(addr - WIN) >> 14 & 3}, 0")
     for k, key in enumerate(keys):
         track = BLOCK_TRACK[(addrs[key][0] - WIN) >> 14 & 3]

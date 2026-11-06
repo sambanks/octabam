@@ -289,7 +289,7 @@ PAGE2_COUNTS = {m.key: {i: p.count for i, p in enumerate(m.params)
 STEPPED_SLOTS = {m.key: m.stepped_slots for m in _CLONED if m.stepped_slots}
 BIPOLAR_SLOTS = {m.key: m.bipolar_slots for m in _CLONED if m.bipolar_slots}
 PLAIN_SLOTS = {m.key: m.plain_slots for m in _CLONED if m.plain_slots}
-_DEF_ASM = {m.key: m.dsp.asm for m in _CLONED}
+_DEF_ASM = {m.key: m.dsp.asm for m in _CLONED if m.dsp is not None}   # a MenuEntry.dsp_of row has none
 # DSP code reached from STOCK code rather than a chooser row
 # (schema.DspSection.hooks with no MenuEntry): placed like an effect, on
 # the payloads it names, with no dispatch entry. USB's audio-in RX inject.
@@ -803,6 +803,13 @@ def main():
             _virt[a - idspace.VIRT:a - idspace.VIRT + 4] = v.to_bytes(4, "big")
             return
         img[a - BASE:a - BASE + 4] = v.to_bytes(4, "big")
+
+    def rdw_p(a):
+        if _virt is not None and a >= idspace.VIRT:
+            i = a - idspace.VIRT
+            return _virt[i] | _virt[i + 1] << 8 | _virt[i + 2] << 16
+        i = a - BASE
+        return img[i] | img[i + 1] << 8 | img[i + 2] << 16
 
     def wrw_p(a, v):
         if _virt is not None and a >= idspace.VIRT:
@@ -3908,6 +3915,20 @@ hostquit:
             print(f"  {_abs:13} NOT PLACED on this core -- id "
                   f"0x{NEW_IDS[_abs]:02x} aliased to SEND P:0x{fb_init:05x} "
                   f"(selecting it here makes the track a send, not silence)")
+
+        # MenuEntry.dsp_of: a row with no DSP of its own runs another module's code, so its id takes that
+        # module's entry points as placed on this payload (after every other write to the table above).
+        for _k in CARRIED:
+            _of = _MODS[_k].menu.dsp_of
+            if not _of:
+                continue
+            if _of not in NEW_IDS or _MODS[_of].dsp is None or _of in HOOKED or _of in STOCK_DSP:
+                sys.exit(f"{_k}: dsp_of={_of!r} is not a module this remix carries with dispatched code of its own")
+            _i = rdw_p(pp["xtab"] + NEW_IDS[_of] * 3)
+            _p = rdw_p(pp["xtab"] + (PROC_OFF + NEW_IDS[_of]) * 3)
+            wrw_p(pp["xtab"] + NEW_IDS[_k] * 3, _i)
+            wrw_p(pp["xtab"] + (PROC_OFF + NEW_IDS[_k]) * 3, _p)
+            print(f"  {_k:13} id 0x{NEW_IDS[_k]:02x} -> {_of}'s code P:0x{_i:05x}/0x{_p:05x} (MenuEntry.dsp_of)")
 
         if probe == "silence":
             words, init_a, proc_a = assemble(

@@ -38,6 +38,11 @@ def check(label, ok, detail=""):
 
 REMIX = sys.argv[1] if len(sys.argv) > 1 else "test/dlspike"
 R = registry.remix(REMIX)
+if not R.window_guard:
+    # A remix without stock reverbs (octabam-verbs: Remix.dry) builds no guard: nothing to check.
+    print(f"  [N/A] {REMIX} has no Remix.window_guard: no reverb guard is built")
+    print("PASS")
+    sys.exit(0)
 IMAGE = dlbuild.build(REMIX, "dlwrap")
 g_all = json.loads(pathlib.Path("out/dsp/guard_records.json").read_text())
 d_all = json.loads(pathlib.Path("out/dsp/demand_records.json").read_text())

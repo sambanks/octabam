@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""STUDIO VERB voicing sandbox: the float model, with knobs the module does not have yet.
+"""VERBERATION voicing sandbox: the float model, with knobs the module does not have yet.
 
-    python3 tools/harness/studioverb_voice.py IN.wav -o OUT.wav [-p SIZE=80 -p LCUT=40 ...]
-    python3 tools/harness/studioverb_voice.py --test pluck -o out.wav -p SIZE=40
-    python3 tools/harness/studioverb_voice.py --test click --sweep SIZE=127,90,60,30 -o size.wav
-    python3 tools/harness/studioverb_voice.py --impulse [-p ...]      # RT60, memory, no file
-    python3 tools/harness/studioverb_voice.py --selftest              # defaults == verify_studioverb's model
+    python3 tools/harness/verberation_voice.py IN.wav -o OUT.wav [-p SIZE=80 -p LCUT=40 ...]
+    python3 tools/harness/verberation_voice.py --test pluck -o out.wav -p SIZE=40
+    python3 tools/harness/verberation_voice.py --test click --sweep SIZE=127,90,60,30 -o size.wav
+    python3 tools/harness/verberation_voice.py --impulse -p MODE=2     # a mode's voicing (0 ROOM 1 PLATE 2 HALL 3 GATED)
+    python3 tools/harness/verberation_voice.py --selftest              # defaults == verify_verberation's model
 
 A place to choose a voicing by ear before any of it is written in DSP assembly. It is
-the float model `tools/verify/verify_studioverb.py` checks the module against (the
+the float model `tools/verify/verify_verberation.py` checks the module against (the
 module matches it to 58 dB), the same topology, lengths, LFOs, parameter laws and
 per-block smoothing, and every knob the module has:
 
@@ -29,8 +29,8 @@ Two gate forms (--gate):
           the next hit starts from silence. --release-shift changes REL here only.
   old     the module before 5 Nov 2026: the wet closed in about 3 ms and the tank rang on.
 
-The output is verify_studioverb's model, sample for sample (`--selftest` runs the two side by
-side, every knob included). The ring is 15,862 words whatever the knobs (SIZE moves read taps,
+The output is verify_verberation's model, sample for sample (`--selftest` runs the two side by
+side, every knob included). The ring is 14,366 words whatever the knobs (SIZE moves read taps,
 PRE borrows what SIZE frees); `--impulse` prints the predelay a setting actually gets.
 
 Sample rate 44,100 Hz, 16-sample blocks, mono input (left and right summed), stereo out.
@@ -40,10 +40,20 @@ import argparse, math, pathlib, random, struct, sys, wave
 SR = 44100
 FRAMES = 16
 Q = 1 << 23
-LEN = [109, 157, 233, 386, 1600, 1973, 3303, 1852, 1610, 4630]
-RING_TODAY = 15862
-NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "SIZE", "LCUT", "MOD", "RATE", "PRE")
-DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, SIZE=127, LCUT=0, MOD=64, RATE=64, PRE=0)
+LEN = [109, 157, 233, 386, 1440, 1776, 2973, 1667, 1449, 4167]
+RING_TODAY = 14366
+NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "MODE", "LCUT", "MOD", "RATE", "SIZE", "PRE")   # slots 0-11
+DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, MODE=1, LCUT=0, MOD=64, RATE=64, SIZE=127, PRE=0)
+
+
+def mode_view(mode):
+    """A MODE's knob values from the manifest (modules/verberation), as MODE DEFAULTS writes them on the panel."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    import toolpath  # noqa: F401
+    from remix import registry
+    m = registry.by_key("VERBERATION")
+    v = next(v for v in m.mode_views if v.mode == mode)
+    return {NAMES[slot]: val for slot, val in v.defaults.items()}
 
 
 def s24(v):
@@ -63,21 +73,21 @@ def parab(phase):
 
 def pre_samples(p):
     """The predelay a setting gets: 32 PRE, clamped to the m - 2 words SIZE leaves past the long
-    delay's tap (m = 4630 f, f settled)."""
+    delay's tap (m = 4167 f, f settled)."""
     f = mulf((127 - p["SIZE"]) << 16, 0x6734EE)
-    return min(32 * p["PRE"], max(0, mulf(4630, f) - 2))
+    return min(32 * p["PRE"], max(0, mulf(4167, f) - 2))
 
 
 def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
     """samples: interleaved stereo ints (24-bit scale). params: dict of NAMES.
     Returns (left, right) as floats on the 24-bit scale.
 
-    lfo: "module" (the default) is STUDIO VERB as built: the smear LFO unipolar, 0..1, as Clouds'
+    lfo: "module" (the default) is VERBERATION as built: the smear LFO unipolar, 0..1, as Clouds'
     (stmlib CosineOscillator::Next() returns 0..1), so the smear reads line 0 at 10..70; the
     long-delay tap swings centre +- depth, twice Clouds' excursion. "clouds": both unipolar, the tap
     at centre..centre+depth. "old": both bipolar, the module before 5 Nov 2026, whose smear read
     -50..70: up to 50 samples behind line 0, in the far end of the last tank line, fed back to the
-    input; the tail grew from TIME 94 up (modules/studioverb/README.md).
+    input; the tail grew from TIME 94 up (modules/verberation/README.md).
     """
     p = dict(DEFAULTS, **params)
     BASE, b = [], 0
@@ -106,14 +116,14 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
         krt += ((mulf(k[2], 0x50A3D7) + 0x2CCCCD) - krt) >> 4
         kap += (mulf(k[3], 0x666666) - kap) >> 4
         klp += ((mulf(k[4], 0x79999A) + 0x066666) - klp) >> 4
-        # page 2 as studioverb.asm computes it each block (verify_studioverb.model is the reference)
+        # page 2 as verberation.asm computes it each block (verify_verberation.model is the reference)
         sz_f += (mulf((127 - p["SIZE"]) << 16, 0x6734EE) - sz_f) >> 4
         LN = [LEN[j] - mulf(LEN[j], sz_f) for j in range(10)]
         mod_s += (((p["MOD"] << 16) - 0x400000) - mod_s) >> 4
         depth = mulf(2 * (0x061000 - mulf(0x061000, sz_f)), 0x400000 + mod_s)
         centre = LN[9] - 2 - (depth >> 12)
-        m9 = mulf(4630, sz_f)
-        pd = min(32 * p["PRE"], max(0, m9 - 2)); pkw = 4631 - m9
+        m9 = mulf(4167, sz_f)
+        pd = min(32 * p["PRE"], max(0, m9 - 2)); pkw = 4168 - m9
         u = p["LCUT"] << 16
         lc += (mulf(mulf(u, u), 0x12866A) - lc) >> 4
         C = lc / Q
@@ -295,11 +305,11 @@ def impulse_report(p, seconds=8.0, lfo="module", gate="module", rel=11):
 
 
 def selftest():
-    """The model against verify_studioverb.model, sample for sample."""
-    src = pathlib.Path(__file__).resolve().parents[1] / "verify" / "verify_studioverb.py"
+    """The model against verify_verberation.model, sample for sample."""
+    src = pathlib.Path(__file__).resolve().parents[1] / "verify" / "verify_verberation.py"
     # only the model is wanted: no build, no dsp_host, no registry (send_probe loads every manifest)
     code = src.read_text().replace("\nmain()\n", "\n").replace("import send_probe  # noqa: E402\n", "send_probe = None\n")
-    ns = {"__name__": "studioverb_ref", "__file__": str(src)}
+    ns = {"__name__": "verberation_ref", "__file__": str(src)}
     cwd = pathlib.Path.cwd()
     try:
         exec(compile(code, str(src), "exec"), ns)
@@ -314,10 +324,10 @@ def selftest():
     st = [v for s in mono for v in (s, s)]
     bad = 0
     for prm in ([64, 51, 80, 100, 90, 0], [80, 51, 110, 100, 90, 40], [127, 20, 127, 30, 10, 0],
-                [64, 51, 80, 100, 90, 0, 60, 40, 100, 30], [80, 51, 110, 100, 90, 40, 20, 90, 127, 0],
-                [64, 51, 80, 100, 90, 0, 60, 0, 64, 64, 0, 20], [80, 51, 110, 100, 90, 30, 0, 50, 90, 70, 0, 127]):
+                [64, 51, 80, 100, 90, 0, 1, 40, 100, 30, 60], [80, 51, 110, 100, 90, 40, 1, 90, 127, 0, 20],
+                [64, 51, 80, 100, 90, 0, 1, 0, 64, 64, 60, 20], [80, 51, 110, 100, 90, 30, 1, 50, 90, 70, 0, 127]):
         rL, rR = ns["model"](st, prm, 4)       # slots: 0-9 as NAMES, 10 blank, 11 PRE
-        mL, mR = model(st, dict(zip(NAMES[:10], prm[:10]), **({"PRE": prm[11]} if len(prm) > 11 else {})), 4)
+        mL, mR = model(st, dict(zip(NAMES, prm)), 4)
         same = rL == mL and rR == mR
         bad += not same
         print(f"  [{'ok' if same else 'FAIL'}] {prm}: sample for sample")
@@ -351,6 +361,12 @@ def main():
         if k not in p:
             sys.exit(f"-p {kv}: knobs are {', '.join(NAMES)}")
         p[k] = max(0, min(127, int(v)))
+        if k == "MODE":                  # landing on a MODE sets the other knobs, as MODE DEFAULTS does on the panel;
+            p.update(mode_view(p[k]))    # a -p after it still wins
+            for kv2 in a.param[a.param.index(kv) + 1:]:
+                k2, _, v2 = kv2.partition("=")
+                if k2.upper() in p:
+                    p[k2.upper()] = max(0, min(127, int(v2)))
     sweep = [(None, None)]
     if a.sweep:
         k, _, vs = a.sweep.partition("=")

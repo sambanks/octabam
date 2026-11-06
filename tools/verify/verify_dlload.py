@@ -33,7 +33,7 @@ Remix.window_demand (k):
 
 Cannot see: the hardware's host-write timing, other projects' use of X:0x2840..0x3fff.
 """
-import argparse, json, os, pathlib, re, shutil, subprocess, sys
+import argparse, json, os, pathlib, re, shutil, subprocess, sys, time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 
@@ -41,6 +41,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 EMU = ROOT / "out/emu/ot_emu"
 PY = ROOT / ".venv/bin/python3"
 OUT = ROOT / "out/dlload"
+JOBS = int(os.environ.get("OCTABAM_GATE_JOBS", "0") or 0)
 STAGE = 0x2900
 FX1_LIVE, FX2_LIVE = 0x80000EC4, 0x80000ECC
 FX1_PART, FX2_PART = 0x402A75E0, 0x402A75E8      # Part 1's FX ids of track 1 (bank + 0x8ed80 / 0x8ed88)
@@ -90,7 +91,12 @@ def main():
     shutil.copy2(ROOT / "out/mainos_bus.bin", image)
     recs = list(json.loads((ROOT / "out/dsp/demand_records.json").read_text()).items())
     from remix import registry
-    order = list(registry.remix(a.remix).window_demand)
+    RX = registry.remix(a.remix)
+    order = list(RX.window_demand)
+    # A remix whose stock reverbs are gone (octabam-verbs: Remix.dry, or a row of ours on their ids) builds no reverb
+    # guard and its loader blocks for no id: the guard's scenarios do not apply, and three of its own replace them.
+    GUARDED = bool(RX.window_guard)
+    VERB = registry.bound(RX).get("VERBERATION") if "VERBERATION" in RX.modules else None
     recs = [dict(next(r for key, r in recs if key == k), key=k) for k in order]
     rec = recs[0]
     mod_id = rec["id"]
@@ -149,6 +155,14 @@ def main():
         "reverb-takes": (poke(FX1_LIVE, FX1_PART, 0, mod_id),                           # unused at 2 s, a reverb arrives at 2.5 s
                          [(2000, poke(FX1_LIVE, FX1_PART, 0, FILTER)), (2500, poke(FX2_LIVE, FX2_PART, block_track, DARK))]),
     }
+    if not GUARDED:
+        for t in ("plate-ok", "spring-ok", "race", "reverb-late", "blocked", "both-blocked", "stuck", "pick-blocked", "pick-both-blocked", "moveback", "pick-reverb-t4", "pick-reverb", "pick-reverb-stuck", "pick-reverb-unused", "reverb-takes"):
+            del scenarios[t]
+        scenarios["dark-id-ok"] = (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";" + poke(FX2_LIVE, FX2_PART, block_track, DARK), [])
+        scenarios["dark-id-both-ok"] = (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";" + both, [])
+        if VERB is not None:
+            scenarios["verb-ok"] = (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";"
+                                    + poke(FX2_LIVE, FX2_PART, block_track, VERB.menu.fx2_id), [])
     watch = {}
     for k, r in enumerate(recs):                                   # every effect, on a track of each core
         scenarios[f"runs-b{k}"] = (poke(FX1_LIVE, FX1_PART, 0, r["id"]), [])      # T1 is on core B
@@ -179,7 +193,8 @@ def main():
             for k, gap in keys:
                 lines += [f"{t} key {KEYS[k]:#x} down", f"{t + 40} key {KEYS[k]:#x} up"]
                 t += 40 + gap
-        if tag in ("used", "blocked", "both-blocked", "stuck", "reverb-late", "plate-ok", "spring-ok"):               # a page key after the decision: where a deferred toast shows
+        if tag in ("used", "blocked", "both-blocked", "stuck", "reverb-late", "plate-ok", "spring-ok",
+                                             "dark-id-ok", "dark-id-both-ok", "verb-ok"):               # a page key after the decision: where a deferred toast shows
             lines += [f"{a.ms - 800} key {KEYS['fx1']:#x} down", f"{a.ms - 760} key {KEYS['fx1']:#x} up"]
         # the script is read in order, so a quit that is earlier than the last key waits for it; after a pick that moves
         # an effect, the reload (the debounce, then three sends) needs a few seconds past the last key
@@ -195,8 +210,13 @@ def main():
             cmd += ["--step", "-:poke:" + first]
         if tag in watch:
             cmd += ["--dsp-pcwatch", watch[tag]]
-        if tag.startswith("pick") or tag in ("used", "blocked", "both-blocked", "stuck", "reverb-late", "plate-ok", "spring-ok"):
+        if tag.startswith("pick") or tag in ("used", "blocked", "both-blocked", "stuck", "reverb-late", "plate-ok", "spring-ok",
+                                             "dark-id-ok", "dark-id-both-ok", "verb-ok"):
             cmd += ["--watch-pc", f"{TOAST:#x}"]
+        # OCTABAM_GATE_JOBS caps the emulators running at once (each holds about 1 GB; unset, every scenario starts
+        # together, as before): on a 16 GB machine the kernel's memory killer took runs with all of them at once
+        while JOBS and sum(p.poll() is None for p, _ in procs.values()) >= JOBS:
+            time.sleep(0.5)
         fh = open(OUT / f"{tag}.txt", "w")
         procs[tag] = (subprocess.Popen(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT), fh)
     texts = {}
@@ -241,6 +261,64 @@ def main():
     print("unused:")
     for k, r in enumerate(recs):
         check(f"{r['key']} was never bound", peek("unused", 1, "X", 0x33DA3 + 8 * k)[:1] == [0])
+    def toasts(tag):
+        m = re.search(r"watch-pc[^\n]*?(\d+) hit", texts[tag])
+        return int(m.group(1)) if m else -1
+
+    if GUARDED:
+        guard_checks(texts, peek, toasts, recs, rec, ALT, block_track, alt_track, chooser, slot, mod_id, OUT)
+    else:
+        print("no guard (the stock reverbs are gone):")
+        for tag, what in (("dark-id-ok", "DARK REV's id on its block's FX2"), ("dark-id-both-ok", "DARK REV's id on every home's FX2"),
+                          ("verb-ok", "VERBERATION on its block's FX2")):
+            if tag not in texts:
+                continue
+            entry = peek(tag, 1, "X", 0x33DA3)
+            check(f"{recs[0]['key']} loads in its first home with {what}, and no toast is shown",
+                  entry[:1] == [0xB0A5ED] and entry[3] == rec["addr"] and toasts(tag) == 0,
+                  f"{[hex(w) for w in entry[:8]]}, toast calls {toasts(tag)}")
+        print("pick:")
+        ids = (OUT / "pick_ids.bin").read_bytes()
+        check(f"T2's {chooser.upper()} chooser picks {recs[0]['key']}", ids[slot + 1] == mod_id, f"{chooser} of T2 = 0x{ids[slot + 1]:02x}")
+        check("no toast when nothing collides", toasts("used") == 0 and toasts("pick") == 0,
+              f"toast calls: used {toasts('used')}, pick {toasts('pick')}")
+    print("runs:")
+    for k, r in enumerate(recs):
+        for tag, core in ((f"runs-b{k}", 1), (f"runs-a{k}", 0)):
+            m = re.search(r"dsp pcwatch:[^\n]*\n((?: +\d+ [^\n]*\n)*)", texts[tag])
+            arrivals = len(m.group(1).splitlines()) if m else None
+            check(f"core {core}: {r['key']}'s loaded proc is reached on a track of that core", bool(arrivals),
+                  f"arrivals at P:0x{r['proc']:x}: {arrivals}")
+    print("instances:")
+    for tag, (tracks, core, want) in TWO.items():
+        m = re.search(r"dsp pcwatch:[^\n]*\n((?: +\d+ [^\n]*\n)*)", texts[tag])
+        rows = [ln.split() for ln in m.group(1).splitlines()] if m else []
+        bases = sorted({int(f[16], 16) for f in rows if len(f) > 16})
+        check(f"{rec['key']} on tracks {[t + 1 for t in tracks]}: core {core} runs {want} instance(s), each with its own r7",
+              len(bases) == want, f"{len(rows)} arrivals, r7 = {[hex(b) for b in bases]}")
+    print("toast text:")
+    inc = max((ROOT / "out/platform/runtime").glob("*_dlpump.inc/remix.inc"), key=lambda f: f.stat().st_mtime)
+    text = inc.read_text()
+    rows = [list(map(str.strip, m.split(","))) for m in re.findall(r"\.long\s+(0x[0-9a-f]+,\s*\d+,\s*dl_hm\d+[^\n]*)", text)]
+    for k, key in enumerate(order):
+        track = int(rows[k][1]) + 1
+        name = registry.modules()[key].menu.fullname.decode().upper()[:10]
+        need = re.search(rf'dl_need{k}: \.asciz "([^"]*)"', text).group(1)
+        hold = re.search(rf'dl_hold{k}: \.asciz "([^"]*)"', text).group(1)
+        soft = bool(registry.modules()[key].menu.stock_dsp)       # DLPUMP's soft effect (modules/dlpump/README.md)
+        if soft:
+            want_need, want_hold = f"SC KEY OFF: T{track} FX2", f"SC KEY OFF: T{track} REV"
+        else:
+            want_need, want_hold = f"EVICT T{track} FX2 1ST", f"EVICT {name} 1ST"
+        check(f"{key}: its toasts name its block's track T{track}{' (soft: nothing is refused)' if soft else ''}",
+              need == want_need and hold == want_hold, f"{need!r}, {hold!r}")
+        check(f"{key}: its table row's soft flag is {int(soft)}", rows[k][7] == str(int(soft)), f"{rows[k][7]!r}")
+    print("PASS" if not FAILS else "FAIL")
+    return 1 if FAILS else 0
+
+
+def guard_checks(texts, peek, toasts, recs, rec, ALT, block_track, alt_track, chooser, slot, mod_id, OUT):
+    """The reverb guard's scenarios: a remix with Remix.window_guard (the stock reverbs run beside loaded code)."""
     print("reverb-late:")
     entry = peek("reverb-late", 1, "X", 0x33DA3)
     check(f"{recs[0]['key']} moves to its second home when a stock reverb that reaches its code arrives on its block "
@@ -271,10 +349,6 @@ def main():
           ids["pick-blocked"][slot + 1] == mod_id, f"{chooser} of T2 = 0x{ids['pick-blocked'][slot + 1]:02x}")
     check("and leaves T2's effect as it was when every home is", ids["pick-both-blocked"][slot + 1] == 0,
           f"{chooser} of T2 = 0x{ids['pick-both-blocked'][slot + 1]:02x}")
-    def toasts(tag):
-        m = re.search(r"watch-pc[^\n]*?(\d+) hit", texts[tag])
-        return int(m.group(1)) if m else -1
-
     check("a refused pick shows a toast, an allowed one does not",
           toasts("pick-both-blocked") >= 1 and toasts("pick") == 0 and toasts("pick-blocked") == 0,
           f"toast calls: pick {toasts('pick')}, pick-blocked {toasts('pick-blocked')}, pick-both-blocked {toasts('pick-both-blocked')}")
@@ -318,39 +392,6 @@ def main():
     entry = peek("reverb-takes", 1, "X", 0x33DA3)
     check(f"a reverb arriving on an unused loaded effect's block takes it at once: {recs[0]['key']} is unbound 0.9 s later, inside the grace",
           entry[:1] == [0], f"{[hex(w) for w in entry]}")
-    print("runs:")
-    for k, r in enumerate(recs):
-        for tag, core in ((f"runs-b{k}", 1), (f"runs-a{k}", 0)):
-            m = re.search(r"dsp pcwatch:[^\n]*\n((?: +\d+ [^\n]*\n)*)", texts[tag])
-            arrivals = len(m.group(1).splitlines()) if m else None
-            check(f"core {core}: {r['key']}'s loaded proc is reached on a track of that core", bool(arrivals),
-                  f"arrivals at P:0x{r['proc']:x}: {arrivals}")
-    print("instances:")
-    for tag, (tracks, core, want) in TWO.items():
-        m = re.search(r"dsp pcwatch:[^\n]*\n((?: +\d+ [^\n]*\n)*)", texts[tag])
-        rows = [ln.split() for ln in m.group(1).splitlines()] if m else []
-        bases = sorted({int(f[16], 16) for f in rows if len(f) > 16})
-        check(f"{rec['key']} on tracks {[t + 1 for t in tracks]}: core {core} runs {want} instance(s), each with its own r7",
-              len(bases) == want, f"{len(rows)} arrivals, r7 = {[hex(b) for b in bases]}")
-    print("toast text:")
-    inc = max((ROOT / "out/platform/runtime").glob("*_dlpump.inc/remix.inc"), key=lambda f: f.stat().st_mtime)
-    text = inc.read_text()
-    rows = [list(map(str.strip, m.split(","))) for m in re.findall(r"\.long\s+(0x[0-9a-f]+,\s*\d+,\s*dl_hm\d+[^\n]*)", text)]
-    for k, key in enumerate(order):
-        track = int(rows[k][1]) + 1
-        name = registry.modules()[key].menu.fullname.decode().upper()[:10]
-        need = re.search(rf'dl_need{k}: \.asciz "([^"]*)"', text).group(1)
-        hold = re.search(rf'dl_hold{k}: \.asciz "([^"]*)"', text).group(1)
-        soft = bool(registry.modules()[key].menu.stock_dsp)       # DLPUMP's soft effect (modules/dlpump/README.md)
-        if soft:
-            want_need, want_hold = f"SC KEY OFF: T{track} FX2", f"SC KEY OFF: T{track} REV"
-        else:
-            want_need, want_hold = f"EVICT T{track} FX2 1ST", f"EVICT {name} 1ST"
-        check(f"{key}: its toasts name its block's track T{track}{' (soft: nothing is refused)' if soft else ''}",
-              need == want_need and hold == want_hold, f"{need!r}, {hold!r}")
-        check(f"{key}: its table row's soft flag is {int(soft)}", rows[k][7] == str(int(soft)), f"{rows[k][7]!r}")
-    print("PASS" if not FAILS else "FAIL")
-    return 1 if FAILS else 0
 
 
 if __name__ == "__main__":

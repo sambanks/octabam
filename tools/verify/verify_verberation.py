@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""STUDIO VERB under dsp_host, against a float model of Clouds' reverb.
+"""VERBERATION under dsp_host, against a float model of Clouds' reverb.
 
-    .venv/bin/python3 tools/verify/verify_studioverb.py
+    .venv/bin/python3 tools/verify/verify_verberation.py
 
-Builds remix `studioverb`, dumps payload A and runs one instance at track 1's
+Builds remix `verberation`, dumps payload A and runs one instance at track 1's
 FX2 slot (`-r7 2 -alloc 1`, Y:0x4000). Gates:
-  clear     the first 77 calls (the ring is cleared 206 words a call) pass the
+  clear     the first 22 calls (the ring is cleared 653 words a call) pass the
             input through untouched
   dry       AMNT 0 is bit-exact dry
   model     an impulse and a noise burst through the module, against a float
@@ -17,8 +17,8 @@ FX2 slot (`-r7 2 -alloc 1`, Y:0x4000). Gates:
             rises by 3 dB from one half second to the next (until 5 Nov 2026 the smear LFO was
             bipolar, its reads fed the last tank line back to the input, and at TIME 120 the
             tail grew from -56 dB to -11 dB in 11 s)
-  bounds    -guard 15862: no write outside the ring (the top 256 words of the
-            slot stay clear for the mailbox and LOAD METER), no stray write
+  bounds    -guard 14366: no write outside the ring (it ends below 0x3820 of the
+            slot, where octabam's window code starts), no stray write
   gate      GATE 40: open during the hold; then a desk gate's release (70-110 ms in, 4 to 25 dB
             under the ungated tail, not a cut); shut after it; the tank empty when it reopens
             (a second impulse, 190 ms after the gate shuts, rings as it does alone); against the float model
@@ -36,20 +36,26 @@ import send_probe  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 os.chdir(ROOT)
 HOST = "vendor/dsp56300/build/source/dsp_host/dsp_host"
-REMIX = "studioverb"
-IMAGE, MEM = "out/mainos_bus.bin", "out/dsp/_studioverb_A.mem"
+REMIX = "verberation"
+IMAGE, MEM = "out/mainos_bus.bin", "out/dsp/_verberation_A.mem"
 TMP = pathlib.Path("out/_cvgate"); TMP.mkdir(parents=True, exist_ok=True)
 FRAMES = 16
-CLEAR_CALLS = 77
-LEN = [109, 157, 233, 386, 1600, 1973, 3303, 1852, 1610, 4630]
+CLEAR_CALLS = 22
+LEN = [109, 157, 233, 386, 1440, 1776, 2973, 1667, 1449, 4167]
 BASE = []
 _b = 0
 for _l in LEN:
     BASE.append(_b); _b += _l + 1
 N = BASE[-1] + LEN[-1]
 Q = 1 << 23
-PAGE2 = [127, 0, 64, 64]                 # SIZE LCUT MOD RATE defaults: today's sound exactly
-TAIL = PAGE2 + [0, 0]                    # the knob words after GATE, as a Part with the defaults holds them
+def pg2(size=127, lcut=0, mod=64, rate=64, pre=0, mode=1):
+    """Page 2's slots 6-11 in order: MODE, LCUT, MOD, RATE, SIZE, PRE. The DSP does not read MODE (MODE DEFAULTS
+    applies a mode's knob values on the panel). SIZE 127, LCUT 0, MOD 64, RATE 64, PRE 0 are the constants the
+    code had before page 2, exactly."""
+    return [mode, lcut, mod, rate, size, pre]
+
+
+TAIL = pg2()                             # the knob words after GATE
 fails = 0
 
 
@@ -68,13 +74,13 @@ def build_dump():
     env = dict(os.environ, REMIX=REMIX, XBUS="1", SPEC="1"); env.setdefault("BUILD", "0")
     r = subprocess.run([sys.executable, "tools/build/build_bus.py"], env=env, capture_output=True, text=True)
     if r.returncode:
-        sys.exit(f"verify_studioverb: building {REMIX} failed:\n{(r.stdout + r.stderr)[-1500:]}")
+        sys.exit(f"verify_verberation: building {REMIX} failed:\n{(r.stdout + r.stderr)[-1500:]}")
     send_probe.dump_mem(IMAGE, MEM, "A")
 
 
 def host(samples, params, *, mem=MEM, extra=()):
     from remix import registry
-    fxid = registry.by_key("STUDIO VERB").menu.fx2_id
+    fxid = registry.by_key("VERBERATION").menu.fx2_id
     init, proc = send_probe.entry_points(mem, fxid)
     (TMP / "in.raw").write_bytes(b"".join(struct.pack("<i", s) for s in samples))
     cmd = [HOST, "-mem", mem, "-init", f"{init:x}", "-proc", f"{proc:x}", "-inst", "1", "-r7", "2", "-alloc", "1",
@@ -108,8 +114,7 @@ def model(samples, params, blocks_skip):
     lp1 = lp2 = 0.0
     sz_f = mod_s = lc = 0                # page 2's smoothed values: SIZE's f, MOD's offset, LCUT's c
     hp1 = hp2 = 0.0
-    size, lcut, mod, rate = (list(params[6:10]) + PAGE2[len(params[6:10]):])
-    pre = params[11] if len(params) > 11 else 0
+    _mode, lcut, mod, rate, size, pre = list(params[6:12]) + pg2()[len(params[6:12]):]
     p = 0
     env = hold = gs = 0
     hmax = 0x7FFFFF if params[5] == 0 else 2048 + 256 * params[5]
@@ -127,16 +132,16 @@ def model(samples, params, blocks_skip):
         krt = smooth(krt, mulf(k[2], 0x50A3D7) + 0x2CCCCD)
         kap = smooth(kap, mulf(k[3], 0x666666))
         klp = smooth(klp, mulf(k[4], 0x79999A) + 0x066666)
-        # page 2, as studioverb.asm computes it each block
+        # page 2, as verberation.asm computes it each block
         sz_f = smooth(sz_f, mulf((127 - size) << 16, 0x6734EE))
         ln = [LEN[j] - mulf(LEN[j], sz_f) for j in range(10)]      # read lengths (lines 4-9 used)
         mod_s = smooth(mod_s, (mod << 16) - 0x400000)
         d2 = mulf(2 * (0x061000 - mulf(0x061000, sz_f)), 0x400000 + mod_s)     # the swing, Q12 samples
         centre = ln[9] - 2 - (d2 >> 12)
         # PRE: in the long delay's far end, past its tap; m - 2 words of room, none at SIZE 127
-        m9 = mulf(4630, sz_f)
+        m9 = mulf(4167, sz_f)
         pd = min(32 * pre, max(0, m9 - 2))
-        pkw = 4631 - m9                  # the write cell, as an offset into line 9
+        pkw = 4168 - m9                  # the write cell, as an offset into line 9
         inc1, inc2 = mulf(380, rate << 16), mulf(228, rate << 16)
         u = lcut << 16
         lc = smooth(lc, mulf(mulf(u, u), 0x12866A))
@@ -299,12 +304,12 @@ def main():
     # to 50 dB. Later the tail decays toward the 24-bit truncation floor the float model has not got,
     # and the match falls with it (57 dB to 20 dB over a second with LCUT 40), so the whole render is
     # held to 40 dB.
-    p2 = {"SIZE 30": [30, 0, 64, 64], "SIZE 0, MOD 127": [0, 0, 127, 64], "LCUT 90": [127, 90, 64, 64],
-          "MOD 0, RATE 0": [127, 0, 0, 0], "MOD 127, RATE 127": [127, 0, 127, 127],
-          "SIZE 60, LCUT 40, MOD 100, RATE 30": [60, 40, 100, 30]}
+    p2 = {"SIZE 30": pg2(size=30), "SIZE 0, MOD 127": pg2(size=0, mod=127), "LCUT 90": pg2(lcut=90),
+          "MOD 0, RATE 0": pg2(mod=0, rate=0), "MOD 127, RATE 127": pg2(mod=127, rate=127),
+          "SIZE 60, LCUT 40, MOD 100, RATE 30": pg2(size=60, lcut=40, mod=100, rate=30)}
     lv = {}
     for name, pg in p2.items():
-        Lp, Rp, _ = host(imp, params + pg + [0, 0])
+        Lp, Rp, _ = host(imp, params + pg)
         mpL, mpR = model(st, params + pg, CLEAR_CALLS)
         s8 = min(snr_db(mpL[n0:n0 + 8000], Lp[n0:n0 + 8000]), snr_db(mpR[n0:n0 + 8000], Rp[n0:n0 + 8000]))
         sp = min(snr_db(mpL[n0:], Lp[n0:]), snr_db(mpR[n0:], Rp[n0:]))
@@ -322,9 +327,9 @@ def main():
         return rms_db(acc)
     check(f"page 2: LCUT 90 takes the low end out ({low_db(lv['LCUT 90']):.1f} dB against {low_db(L):.1f} dB under 150 Hz)",
           low_db(lv["LCUT 90"]) < low_db(L) - 6)
-    _, _, logp = host(imp[:400 * FRAMES], params + [0, 0, 127, 127, 0, 0], extra=["-guard", str(N), "-guard-shared"])
+    _, _, logp = host(imp[:400 * FRAMES], params + pg2(size=0, mod=127, rate=127), extra=["-guard", str(N), "-guard-shared"])
     check("page 2: SIZE 0, MOD 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logp)
-    # PRE: a predelay in the long delay's unread far end (room = m - 2 words, m = 4630 f), so it
+    # PRE: a predelay in the long delay's unread far end (room = m - 2 words, m = 4167 f), so it
     # clamps to what SIZE leaves and is nothing at SIZE 127
     pim = [0] * (blocks * FRAMES)
     pt0 = (CLEAR_CALLS + 200) * FRAMES   # after the knobs (SIZE's f included) have settled
@@ -335,12 +340,12 @@ def main():
         return next(i for i in range(pt0 + 1, len(x)) if abs(x[i]) > 64) - pt0
     def room(size):                      # the model's arithmetic for the settled f
         f = mulf((127 - size) << 16, 0x6734EE)
-        return max(0, mulf(4630, f) - 2)
+        return max(0, mulf(4167, f) - 2)
     on = {}
     for size, pre in ((60, 0), (60, 40), (90, 127), (127, 0), (127, 127)):
-        Lq, Rq, _ = host(pim, wetp + [size, 0, 64, 64, 0, pre])
+        Lq, Rq, _ = host(pim, wetp + pg2(size=size, pre=pre))
         on[(size, pre)] = (onset(Lq), Lq, Rq)
-    mq, _ = model(pst, wetp + [60, 0, 64, 64, 0, 40], CLEAR_CALLS)
+    mq, _ = model(pst, wetp + pg2(size=60, pre=40), CLEAR_CALLS)
     sq = snr_db(mq[pt0:pt0 + 8000], on[(60, 40)][1][pt0:pt0 + 8000])
     check(f"pre: SIZE 60, PRE 40 against the float model, {sq:.1f} dB over 8,000 samples", sq > 50)
     sh = on[(60, 40)][0] - on[(60, 0)][0]
@@ -351,7 +356,7 @@ def main():
           abs(sh90 - room(90)) <= 2 and room(90) < 32 * 127)
     check("pre: at SIZE 127 there is no room, and PRE 127 is bit-exact PRE 0",
           on[(127, 127)][1] == on[(127, 0)][1] and on[(127, 127)][2] == on[(127, 0)][2])
-    _, _, logq = host(imp[:400 * FRAMES], params + [0, 0, 64, 64, 0, 127], extra=["-guard", str(N), "-guard-shared"])
+    _, _, logq = host(imp[:400 * FRAMES], params + pg2(size=0, pre=127), extra=["-guard", str(N), "-guard-shared"])
     check("pre: SIZE 0, PRE 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logq)
     # bounds
     _, _, log = host(imp[:200 * FRAMES], params + TAIL, extra=["-guard", str(N), "-guard-shared"])
@@ -365,7 +370,7 @@ def main():
     z = [0] * (200 * FRAMES)
     Ld, Rd, _ = host(z, params + TAIL, mem=str(dm))
     check("dirty: garbage state and ring, silent input, silent output", not any(Ld) and not any(Rd))
-    print(f"verify_studioverb: {'PASS' if not fails else f'FAIL ({fails})'}")
+    print(f"verify_verberation: {'PASS' if not fails else f'FAIL ({fails})'}")
     sys.exit(1 if fails else 0)
 
 
