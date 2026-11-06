@@ -3,6 +3,7 @@ import os
 import json
 import shutil
 import pathlib
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -176,7 +177,7 @@ class CardRetention(unittest.TestCase):
                          "    g.finish(True)\n"
                          "assert Path('out/staged.img').exists()\n"
                          "assert not Path('out/new.img').exists()\n")
-        (self.root / "Makefile").write_text(f"all:\n\t{sys.executable} child.py\n")
+        (self.root / "Makefile").write_text(f"all:\n\t{shlex.quote(sys.executable)} child.py\n")
         with card_retention.Gate(self.root, "sequence") as outer:
             self.card("staged.img")
             result = subprocess.run(["make", "-j1"], cwd=self.root, env=outer.env,
