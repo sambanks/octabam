@@ -21,6 +21,8 @@ PART_CLIENTS = {
     # Reads each MIDI track's KEY (store_part_midi_key) and the engines' Part
     # contexts; writes no native byte (its scale IDs live in scales.work).
     'SCALES': (((MIDI_BASE, MIDI_SIZE),), ()),
+    # Reads the edited Part's CHAN of the UI track (the atelier's preview); writes nothing.
+    'CHORDS FACTORY': (((MIDI_BASE, MIDI_SIZE),), ()),
 }
 # Optional companions extend replacement handling without owning native hooks.
 # snapshot_pre gets d0=bank address before publication; replace_pre gets
