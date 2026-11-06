@@ -455,6 +455,40 @@ edone:  moveq   #0,%d0
         lea     %sp@(44),%sp
         rts
 
+| scene_knob_hook: 0x40053498(encoder, ticks), stock's scene-lock knob
+| handler. A scene key's press installs it as every encoder's handler
+| (0x46c7dede + 20 * encoder, written by 0x40031406), over the SETUP
+| window's page-2 editor, so with a scene held a SETUP turn never reaches
+| fx2_edit_hook / fx1_edit_hook (measured under the port, 5 Nov 2026: zero
+| calls of 0x4003a9dc with SCENE A held, three without). With the FX1 or
+| FX2 SETUP window open (0x460d175c, 0x460d1684 = 3 / 4), audio mode and a
+| knob 0..5, the turn goes to the matching edit hook; the entry state is
+| the editors' own (sp@(4) = slot, sp@(8) = ticks). Anything else replays
+| the displaced prologue and continues in stock.
+        .set    WINDOW,     0x460d175c
+        .set    PAGEKIND,   0x460d1684
+        .set    MIDIMODE,   0x80000012
+        .globl  scene_knob_hook
+scene_knob_hook:
+        tstl    WINDOW
+        beq.s   sk_stock
+        tstl    SCENE_HELD
+        beq.s   sk_stock
+        tstl    MIDIMODE
+        bne.s   sk_stock
+        movel   %sp@(4),%d1
+        cmpil   #5,%d1
+        bhi.s   sk_stock
+        movel   PAGEKIND,%d0
+        cmpil   #4,%d0
+        beq.w   fx2_edit_hook
+        cmpil   #3,%d0
+        beq.w   fx1_edit_hook
+sk_stock:
+        lea     %sp@(-36),%sp          | the displaced prologue, then on
+        movem.l %d2-%d7/%a2-%a4,%sp@
+        jmp     0x400534a0
+
 | ----------------------------------------------------------- the cells ----
 | cfind: a4 = a scene's cell 0, d0 = the key byte -> a5 = its cell, or 0.
 | Clobbers d1, a0.

@@ -55,6 +55,12 @@ at 0x015 and 100 at 0x815 and 0xff elsewhere, the track record holds 100 at
 +21, and the CC 1 messages on the wire are the ones the lock values and the
 lerp give (b7: 100, then 40, 69 = (40*64 + 100*63) / 127, 100, 40).
 
+The seq group adds `tt` (ours only, its own fixture): T1 (ch 11) and T2 (ch
+12) trig every step, CC 1 locked in scene B only (100 / 90 over Part values
+20 / 30), the fader swept from the B end to the A end: each channel's CC 1
+falls monotonically to its Part value. Before 5 Nov 2026 T2's went to 0 at
+the A end (TRAPS.md trap-stock-scratch-regs).
+
 Not covered: B5 and the LED half of B4 (the LED rows and levels the panel
 link carries are identical on stock, the oracle and this image in every
 scenario, so the compare cannot tell a lock LED from none; B4's grey cells
@@ -67,8 +73,10 @@ import argparse
 import os
 import pathlib
 import shutil
+import struct
 import subprocess
 import sys
+import zlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 from remix import registry, schema  # noqa: E402
@@ -226,13 +234,29 @@ def seq_fixture(src, dst, bank, trigs=False):
     fixture(src, dst)
     bf = dst / f"bank{bank + 1:02d}.work"
     dat = bytearray(bf.read_bytes())
-    for part, ents in (SEQ_PARTS if trigs != "trigs" else {p: TRIG_LOCKS for p in range(4)}).items():
+    for part, ents in ({} if trigs == "two" else SEQ_PARTS if trigs != "trigs"
+                       else {p: TRIG_LOCKS for p in range(4)}).items():
         o = FILE_PART + part * FILE_PSTRIDE + 9 + 0x17a2
         dat[o:o + len(blob(ents))] = blob(ents)
     if trigs == "notes":                           # T1: pattern 1 a trig on step 5, pattern 2 (Part 2) on step 1
         for pat, step in ((0, 5), (1, 1)):
             m = 0x16 + pat * 0x8eec + 0x4918 + 9
             dat[m:m + 8] = (1 << (step - 1)).to_bytes(8, "big")
+    if trigs == "two":                             # T1 (ch 11) and T2 (ch 12) trig on every step of pattern 1; CC 1
+        for part in range(NPARTS_FILE):            # is 20 on T1 and 30 on T2 in the Part, locked in scene B only
+            o = FILE_PART + part * FILE_PSTRIDE + 9
+            dat[o + MIDI_PARAMS + 21] = 20
+            dat[o + MIDI_SETUP + 36] = 12
+            dat[o + MIDI_PARAMS + 32 + 21] = 30
+            dat[o + MIDI_PARAMS + 32 + 30], dat[o + MIDI_PARAMS + 32 + 31] = 0x3c, 0x3f
+        for t in range(2):                         # MTRA t of pattern 1: 0x8b9 apart, the trig mask 9 into it
+            m = 0x16 + 0x4918 + 9 + t * 0x8b9
+            dat[m:m + 8] = (-1).to_bytes(8, "big", signed=True)
+        lib = bytearray([0xff]) * (64 * MSC_LEN)   # scenes.work: the bank's four Parts, scene B (index 8) only
+        for part in range(4):
+            for idx, v in TWO_LOCKS:
+                lib[(bank * 4 + part) * MSC_LEN + idx] = v
+        (dst / "scenes.work").write_bytes(struct.pack(">4sIII", b"MSCW", 1, len(lib), zlib.crc32(lib)) + lib)
     if trigs == "direct":                          # T1: pattern 1 on steps 1, 5, 9, 13 (a 4-step grid);
         for pat, bits in ((0, 0x8888), (1, -1)):   # pattern 2 on every step (the grid turns dense at the jump)
             m = 0x16 + pat * 0x8eec + 0x4918 + 9
@@ -290,10 +314,26 @@ def swd(s):
 swd.pokes = tg.pokes + [(0x8000004e, 1), (0x100b14ae, 1)]
 swd.fixture = "direct"
 swd.ours_only = True
-SEQ = dict(sw=sw, tg=tg, tg2=tg2, swn=swn, swd=swd)
+TWO_LOCKS = [(0x0815, 100), (0x0835, 90)]        # scene B: T1 CC 1 = 100, T2 CC 1 = 90; scene A none
+
+
+def tt(s):
+    """T1 and T2 play; the crossfader goes from the B end to the A end in steps of 8 (pot 0..255). Before
+    5 Nov 2026 the mix kept the trig-snapshot pointer in a1 across CC_TX, which saves d2-d7/a2-a5 only: T1's
+    send left a1 garbage, T2's unlocked side read it, and T2's CC 1 jumped to 0 at the A end."""
+    s.tap("no", 400); s.tap("midi", 300); s.tap("t1", 300); s.pot(0, 800); s.tap("play", 2000)
+    for v in range(0, 256, 8):
+        s.pot(v, 400)
+    s.pot(255, 3000)
+
+
+tt.pokes = tg.pokes
+tt.fixture = "two"
+tt.ours_only = True
+SEQ = dict(sw=sw, tg=tg, tg2=tg2, swn=swn, swd=swd, tt=tt)
 # CC 1 on the wire: the mix of Part 1 at XF 128 ((30 * 64 + 90 * 63) / 127 = 59), then of Part 2
 # ((50 * 64 + 110 * 63) / 127 = 79) when the pattern switch lands.
-SEQ_WIRE = dict(sw=[59, 79], tg=None, tg2=None, swn=None, swd=None)
+SEQ_WIRE = dict(sw=[59, 79], tg=None, tg2=None, swn=None, swd=None, tt=None)
 
 
 def decode(raw, st=0):
@@ -610,7 +650,7 @@ def persist(card, out, bank, lib, check, kimg=None, syms=None):
 
 def seq_group(a, images, out, bank, check):
     """Phase 3: scenarios on the playing sequencer, MIDI out compared with the oracle's."""
-    for fx in ("", "trigs", "notes", "direct"):
+    for fx in ("", "trigs", "notes", "direct", "two"):
         tags = [t for t in SEQ if getattr(SEQ[t], "fixture", "") == fx and (not a.only or t in a.only.split(","))]
         if tags:
             seq_run(a, images, out, bank, check, fx, tags)
@@ -645,6 +685,12 @@ def seq_run(a, images, out, bank, check, fx, tags):
         if SEQ_WIRE.get(t) is not None:
             cc1 = [int(m.split()[2], 16) for _f, m in o["midi"] if m.startswith("ba 01 ")]
             check(f"seq {t}: CC 1 on the wire {cc1} (predicted {SEQ_WIRE[t]})", cc1 == SEQ_WIRE[t])
+        if t == "tt":
+            for st, ch, lock, part in (("ba", 11, 100, 20), ("bb", 12, 90, 30)):
+                cc = [int(m.split()[2], 16) for _f, m in o["midi"] if m.startswith(st + " 01 ")]
+                check(f"seq tt: ch {ch} CC 1 fades {lock} -> {part} without a jump ({cc})",
+                      len(cc) > 8 and cc[0] == lock and cc[-1] == part
+                      and all(x >= y for x, y in zip(cc, cc[1:])) and min(cc) == part)
         if t == "swn":
             on = [f for f, m in o["midi"] if m.startswith("9a ") and not m.endswith(" 00")]
             f79 = next((f for f, m in o["midi"] if m == "ba 01 4f"), None)
