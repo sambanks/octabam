@@ -302,7 +302,7 @@ MODULES = (
            b"MULTIBCOMP", 0,
            "Stock multiband compressor stub -- null DSP, not in the stock "
            "chooser. Kept here so a module may replace its id.",
-           "B"),  # not W: RESONATOR; not H: GATE VERB
+           "B"),  # not W: RESONATOR; not H: STUDIO VERB
     # ---- THE THREE REVERBS, listable -------------------
     _stock("PLATE REV", "plate", 0x14, 0x400d5594, b"PLTE", b"PLATE REV", 594,
            "Stock plate reverb. Its 594 words are the FIRST of the donor "
