@@ -50,6 +50,10 @@ DIR CD. T1 and T3 are FREE, T2 and T4 GRID.
 - **The REC popup.** With POPUP ON, the whole screen shows the track,
   FIRST LOOP / ARMED / OVERDUB and the pass's progress, big enough to read
   from across the room, until the pass is over.
+- **Only FREE LOOP records a FREE or GRID track.** A recording it did not
+  start there (a stock REC key combination, or a recording left waiting
+  from before a reboot) is stopped at once and, on a track with no loop
+  yet, erased.
 - With the Octatrack slaved to MIDI clock, a free take is refused (EXT
   CLOCK: NO FREE). The settings are saved with the project
   (`freeloop.work`, `freeloop.strd` at SAVE PROJECT); a project without
