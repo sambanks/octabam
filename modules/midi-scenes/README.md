@@ -95,6 +95,18 @@ Paste and bank-copy rows.
 
 ## Measured
 
+✅ Under the port, 5 Nov 2026 (`octabam`, a fresh project; `verify_scenes`
+scenario `tt`): T1 on channel 11 and T2 on channel 12 both trig every
+step, CC 1 locked in scene B only (100 / 90, Part values 20 / 30), the
+fader swept from the B end to the A end. Before the fix T2's CC 1 went
+… 33, 31, **0**, 30, and stayed 0 with no T2 trigs; T1 was smooth. `mix`
+kept `scn_snap` in a1 across the stock CC sender `0x4009eec8`, which saves
+d2-d7/a2-a5 only: after the first send of a pass a1 was garbage
+(`0xffffffba`) and later unlocked sides read their snapshot through it. a1
+is reloaded after the call; both channels now fall monotonically to their
+Part values. The oracle scenarios have one MIDI track and could not see
+it (`TRAPS.md` "A stock call returns with a0, a1, d0 and d1 changed").
+
 ✅ Against the oracle image (stock + `release21.json`, built from his repository at
 `52eaab0`) under the port (`ot_emu`, OCTABAM89_setgate bank 3 Part 1, T1 a
 MIDI track on channel 11), remix `midi-scenes`, 10 Oct 2026: scenarios b1,

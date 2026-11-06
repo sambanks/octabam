@@ -5,6 +5,24 @@ one DRAM unit, seven detours, nothing on the DSP.
 
 ## Measured
 
+Under the port, 5 Nov 2026 (`octabam`, a fresh project, `verify_scenes_p2`'s
+`panel` scenario and a probe beside it):
+
+- From the panel: T1, FX2 SETUP open, SCENE A held, knob E turned three
+  times: scene 0 holds one cell (T1 FX2 slot 4 = LOCK, value 1), the Part
+  byte and the lane stay 0. Fader at the A end with the transport on: T1's
+  DSP record carries LOCK 1; at the B end, the knob's 0. FX1 SETUP, knob A:
+  the same (cell key 8, record 1 / 0).
+- Before the fix, the same gesture wrote no cell: a held scene installs
+  stock's scene-lock knob handler `0x40053498` over every encoder (the
+  dispatch table `0x46c7dede + 20·encoder`), so the page-2 editors and
+  their hooks were never called (`--watch-pc`: zero calls of `0x4003a9dc`
+  with SCENE A held, three without). The `editor` checks below call the
+  editor directly and could not see it (`TRAPS.md` "A held scene replaces
+  every encoder's handler"). `scene_knob_hook` at `0x40053498` sends a
+  turn to the edit hooks while an FX SETUP window is open; page-1 scene
+  locks with no window are unchanged (same scene-block byte as before).
+
 Under the port, 10 Oct 2026, the cells (`tools/verify/verify_scenes_p2.py`
 on `remixes/test/scenes-midisc`, MIDI SCENES + KITS + SCENES P2 + PLOCKS
 P2, OCTABAM89_setgate):
