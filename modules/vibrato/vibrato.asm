@@ -37,7 +37,8 @@
 ;   $18 per/2^18   $19 8 dev per/2^18         $1a/$1b raw offset L/R
 ;   $1c SLEW coefficient c                    $1d n1   $1e the walk's limit S
 ;   $1f the phase at block start
-;   $20..$3f free
+;   $20/$21 SPD's glide stages, $22/$23 DEP's (persistent)
+;   $24..$3f free
 ;
 ; Every mpy is `mpy x0,y1`, the order dsp_asm encodes signed (AGENTS.md).
 ; AND and ASL leave A2 stale: every value passing through one leaves via a1.
@@ -106,22 +107,34 @@ proc:
         move    #>$ffffff,m3
         move    #>$fab1e0,r5            ; the ptable's base, placed by the build
         move    r5,x:(r7+$15)           ; (the build wants the literal once)
+; ---- SPD and DEP glide: two one-poles of 1/32 a block on each knob word ---
+; Every SPD or DEP step resizes the swing H and moves the centre 2 + H; taken
+; at once, a twist is a train of jumps the walk chases at its limit (34 cents
+; block to block on SPD, 238 on DEP). Gliding the WORDS keeps rate and swing
+; consistent (the depth stays DEP's), and stock CHORUS slews SPD the same
+; way. 11.6 ms a stage on the unit; snapped within one LFO-fraction LSB, so a
+; held knob reads exactly; unprimed (init), on the knob at once.
+        lua     (r7+$20),r1
+        move    x:(r6+$0),a
+        bsr     vb_kglide               ; SPD -> $20, $21
+        move    x:(r6+$1),a
+        bsr     vb_kglide               ; DEP -> $22, $23
 ; ---- SPD -> inc (the floor: the phase accumulates it) and per ------------
         move    x:(r7+$15),r5
-        move    x:(r6+$0),a
+        move    x:(r7+$21),a
         bsr     vb_tab                  ; INC at +0
         move    a1,x:(r7+$16)
         move    x:(r7+$15),a
         add     #>$21,a
         move    a1,r5                   ; PERW at +33
-        move    x:(r6+$0),a
+        move    x:(r7+$21),a
         bsr     vb_tab
         move    a,x:(r7+$18)
 ; ---- DEP -> 8 dev, and the product p = 8 dev per / 2^18 ------------------
         move    x:(r7+$15),a
         add     #>$42,a
         move    a1,r5                   ; DEV8 at +66
-        move    x:(r6+$1),a
+        move    x:(r7+$23),a
         bsr     vb_tab
         move    a,x0                    ; 8 dev
         move    x:(r7+$18),y1           ; per / 2^18
@@ -413,6 +426,38 @@ vbloopz:
         move    y0,a
         move    a1,x:(r7+$01)           ; the write phase
 vb_dry:
+        rts
+
+; ---------------------------------------------------------------------------
+; vb_kglide -- a = a knob word, r1 -> its two glide stages -> each stage
+; s += (t - s)/32 (asr: a floor), t the word for the first and the first's s
+; for the second; snapped onto t within 0x100 (one LFO-fraction LSB) and when
+; unprimed. Two one-poles in a row: one alone has a corner in its VELOCITY at
+; every knob step, and the centre's velocity is pitch (10 cents a step on a
+; TRI twist). Straight-line in the loop (Tcc, no branch). r1 steps two; the
+; caller reads the second stage back. Uses a b x0 y1.
+; ---------------------------------------------------------------------------
+vb_kglide:
+        and     #>$7fff00,a             ; the knob and its LFO fraction
+        move    a1,x0                   ; t (A2 is stale after the and: via a1)
+        do      #2,>vbkgz
+        move    x:(r7+$14),a
+        tst     a                       ; primed?
+        move    x:(r1),b                ; s (moves keep the flags)
+        teq     x0,b                    ; unprimed (init): s = t
+        move    x0,a                    ; clean: a2 = a0 = 0
+        sub     b,a                     ; t - s
+        move    a,y1
+        asr     #$5,a,a                 ; (t - s)/32 in a1, the rest in a0
+        add     a,b                     ; s + (t - s)/32 in b1
+        move    y1,a                    ; t - s, clean
+        abs     a
+        cmp     #>$100,a                ; within one fraction LSB: snap
+        tlt     x0,b                    ; ... onto t
+        move    b,x:(r1)+
+        move    b,x0                    ; the next stage's t
+vbkgz:
+        nop
         rts
 
 ; ---------------------------------------------------------------------------

@@ -17,6 +17,8 @@ Gates:
   SQR           -> a two-note trill: the pitch sits at +-DEP most of the time
   SPD           -> the pitch modulation's period is SPD's law
   SHP change    -> the duck: no step larger than the signal's own (no click)
+  fast twist    -> SPD and DEP swept in 0.25 s: no pitch step over 10 cents
+                   block to block, and the DSP walks the reference's delay
   every knob    -> renders at both extremes without dsp_host dying
 
     python3 tools/verify/verify_vibrato.py
@@ -406,6 +408,49 @@ check("LFO-dirty knob words: the fraction reaches SPD DEP SLEW WID MIX, SHP mask
       de < DBAR, f"delay within {de:.4f} samples of the reference at {kfrac}")
 L2, _ = render_stereo(rampx, rampx, pwords=DIRTY[:5] + [(0xC, 2 << 16)])
 check("LFO-dirty SHP word: the same output as the clean word", L2 == L)
+
+# ---- 8e. a fast twist does not grit: no pitch step from block to block -------
+# A hand twist sends a knob step every few ms. Each SPD or DEP step resizes
+# the swing H, and with it the centre 2 + H; followed at once, every step is
+# a jump the walk chases at its limit, and a twist is a train of them (5 Nov
+# 2026, heard on the unit: 34 cents block to block on an SPD twist, 238 on
+# DEP, against under 1 in steady state). The walk's slope is constant within
+# a block, so the pitch a block plays is its slope; read off a ramp over
+# whole blocks it is exact to a fraction of a cent. The twist must keep the
+# block-to-block pitch change under TWIST_BAR, and the DSP must walk the
+# reference's delay through it.
+TWIST_BAR = 10.0        # cents, block to block; steady state is under 1
+NT = 26000
+RT = 1.6 / NT
+rt = [int((-0.8 + RT * i) * FS) for i in range(NT)]
+rtq = [v / FS for v in rt]
+T0 = 6000
+TWISTS = (("SPD 80 -> 127", dict(SHP=0, DEP=48), "SPD", 80, 127),
+          ("SPD 127 -> 40", dict(SHP=0, DEP=48), "SPD", 127, 40),
+          ("DEP 48 -> 127", dict(SHP=0, SPD=80), "DEP", 48, 127),
+          ("DEP 127 -> 20", dict(SHP=0, SPD=80), "DEP", 127, 20),
+          ("TRI, SPD 60 -> 110", dict(SHP=1, DEP=90), "SPD", 60, 110))   # not SQR: a trill steps by design
+for label, base, knob, a, b in TWISTS:
+    n = abs(b - a)
+    sgn = 1 if b > a else -1
+    ev = {T0 + int(i * 0.25 * SR / n): {knob: a + sgn * i} for i in range(1, n + 1)}
+    kw = dict(base, MIX=127, **{knob: a})
+    L, _ = render_stereo(rt, rt, events=ev, **kw)
+    d = [(rt[i] - L[i]) / FS / RT for i in range(NT)]
+    pv = params(**kw)
+    ref = REF.Vibrato(**{nm: pv[j] for nm, j in K.items()})
+    qL, _ = ref.process(rtq, rtq, changes=ev)
+    dq = [(rt[i] / FS - qL[i]) / RT for i in range(NT)]
+    de = max(abs(d[i] - dq[i]) for i in range(1100, NT))
+    # the pitch each whole block plays, from the delay's slope across it
+    blocks = range(T0 // FRAMES - 40, (NT - 1) // FRAMES)
+    p = [1200 * math.log2(1 - (d[(k + 1) * FRAMES] - d[k * FRAMES]) / FRAMES) for k in blocks]
+    jump = max(abs(p[k] - p[k - 1]) for k in range(1, len(p)))
+    quiet = max(abs(p[k] - p[k - 1]) for k in range(1, 30))
+    check(f"fast twist {label} (0.25 s): no pitch step over {TWIST_BAR:.0f} cents block to block",
+          jump <= TWIST_BAR, f"largest {jump:.1f} cents (steady state {quiet:.1f})")
+    check(f"fast twist {label}: the DSP's walk matches the reference", de < DBAR,
+          f"delay within {de:.4f} samples (bar {DBAR})")
 
 # ---- 9. every knob at both extremes ---------------------------------------------
 ok = True

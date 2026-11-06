@@ -41,6 +41,14 @@ SPD, DEP and SLEW read their tables with the knob word's LFO fraction (bits
 15–8), so an LFO on them moves smoothly between steps, and an LFO Designer
 "fine" offset reaches between them.
 
+SPD and DEP glide: each knob word runs through two one-poles in a row, each
+1/32 of the way a block (11.6 ms on the unit; together -0.7 dB and 32° of lag
+at 4 Hz, -2.5 dB at 8 Hz), snapped onto the knob within one LFO-fraction LSB,
+so a held knob reads exactly. Two, because one alone has a corner in its
+velocity at every knob step, and the centre's velocity is pitch. A hand
+twist, a p-lock and an LFO on either all pass through it; an LFO on SPD or
+DEP faster than a few Hz is softened, and a square LFO's edge is rounded.
+
 ## Design
 
 Prototyped in Faust (`vibrato.dsp` beside this file: the listening model,
@@ -57,7 +65,12 @@ block-based:
   swing H: SINE reads the stock sine at X:0x6c00 (1,024 points, interpolated);
   TRI is ±4u(1−u), u = 2φ mod 1; SQR is 1 − 4|v − ½|, v = φ + ¼. H = dev ·
   per · FAC (1/2π, 1/8, 1/4, 1/4), dev = tanh(c ln2 / 1200), capped at 500
-  samples. H follows the knobs at once.
+  samples. H follows SPD's and DEP's glided words at once: gliding the words,
+  not H, keeps the rate and the swing consistent (the depth stays DEP's
+  through an SPD move). Taken at once, each step of a twist resized H and
+  moved the centre 2 + H in one block, and the walk chased it at its limit:
+  30 cents block to block on an SPD twist, 175 on DEP (5 Nov 2026, heard on
+  the unit; gate 8e). With the glide: 5.8 at most.
 - **The walk's limit**: the delay may move at most 1.5 dev a sample (at
   least 0.006, 10.4 cents). A knob jump (a p-lock, a scene, a fast twist)
   moves H and the centre 2 + H by tens of samples in a block; before the
@@ -161,6 +174,10 @@ with VIBRATO at 4.5 % a slot.
 
 ## Open
 
+- The glide's cost on the slot: 75 instructions a block more in dsp_host's
+  block meter (1,840 to 1,915 at SINE, one instance, 16 frames, 5 Nov 2026;
+  two calls of 38), about 4 %; the 4.5 % a
+  slot and 63.0 % for eight instances above were measured before it.
 - The slot cost on a unit.
 - Whether the swing cap (500 samples) should be traded for the lines' whole
   3,072-word slot (1,536 a channel needs the linear-plus-mask idiom).

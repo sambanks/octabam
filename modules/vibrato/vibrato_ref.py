@@ -32,7 +32,11 @@ The DSP's structure, mirrored here:
     interpolated by the rest (the DSP takes the rest from the knob word's
     bits 17-8, so an LFO's fraction moves it too). The phase increment is
     floored as the DSP's mpy leaves it (a1), since the phase accumulates;
-  * the swing H follows its knobs at once; the delay's walk is limited to
+  * SPD's and DEP's knob words glide through two one-poles of 1/32 a block
+    (asr, in the word's integers), snapped onto the knob within one
+    LFO-fraction LSB and on it at once at init: a hand twist's steps would otherwise each resize
+    the swing and move the centre in one block, a train of jumps (gate 8e);
+    the swing H follows the glided words at once; the delay's walk is limited to
     1.5 dev a sample (at least 0.006, 10.4 cents), so a knob jump (which
     moves H and the centre 2 + H by tens of samples) is chased at a bounded
     pitch instead of spiking. No shape's own slope exceeds dev, so in steady
@@ -63,6 +67,8 @@ DMIN = 2.0
 DMAX = 1016.0
 Q23 = float(1 << 23)
 SLOPE_FLOOR = 0x00C49C / Q23    # 0.006 a sample, 10.4 cents: the walk's least limit
+GLIDE_SHIFT = 5     # SPD's and DEP's knob glide: two one-poles of 1/32 a block, 11.6 ms each on the unit
+GLIDE_STAGES = 2    # one alone has a corner in its velocity at every knob step, and velocity is pitch
 
 SHAPES = {"SINE": 0, "TRI": 1, "SQR": 2, "RND": 3}
 # H = dev per FAC: the four shapes' swing per unit of dev * per
@@ -206,18 +212,34 @@ class Vibrato:
         self.mi = 0
         self.mstep_i = 0
         self.primed = False
+        self.kw = {}                    # SPD's and DEP's glide stages
         self.trace = []                 # (H, knot L, knot R) per block, for the gates
 
     def set(self, **kw):
         self.k.update(kw)
 
+    def glide(self, name):
+        """the DSP's knob glide, in the knob word's own integers: GLIDE_STAGES
+        one-poles in a row, each s += (t - s)/32 a block (asr, a floor), t the
+        word for the first and the previous stage's s for the next, snapped
+        onto t within 0x100 (one LFO-fraction LSB) and when unprimed (init)"""
+        t = int(round(self.k[name] * 65536)) & 0x7FFF00
+        ss = self.kw.setdefault(name, [0] * GLIDE_STAGES)
+        for i in range(GLIDE_STAGES):
+            s = t if not self.primed else ss[i]
+            s = t if abs(t - s) < 0x100 else s + ((t - s) >> GLIDE_SHIFT)
+            ss[i] = t = s
+        return (t & 0x7FFF00) / 65536.0     # vb_tab reads bits 22-8, as for any word
+
     def block(self):
         k = self.k
-        inc = int(lookup(INC, k["SPD"], floor=True))
+        spd = self.glide("SPD")
+        dep = self.glide("DEP")
+        inc = int(lookup(INC, spd, floor=True))
         dphi_i = BLOCK * inc
         dphi = dphi_i / Q23
-        dev8 = lookup(DEV8, k["DEP"]) / Q23
-        per = lookup(PERW, k["SPD"]) / Q23 * (1 << 18)
+        dev8 = lookup(DEV8, dep) / Q23
+        per = lookup(PERW, spd) / Q23 * (1 << 18)
         # the duck
         if k["SHP"] != self.running:
             if self.ei >= 0x7FFFFF and self.mi == 0:

@@ -28,7 +28,9 @@ through untouched.
 - MIX below 127 blends the dry back in. Because the vibrato's delay is very
   short, a 50/50 blend sweeps comb notches, closer to a flanger than a chorus.
 - A SHP change fades the wet out, switches, and fades it back, so it never
-  clicks. Fast knob moves and p-locks glide into the new setting.
+  clicks. Fast knob moves and p-locks glide into the new setting: SPD and
+  DEP follow the knob over about 20 ms, so an LFO on them faster than a few
+  Hz is softened.
 
 ## Parameters
 
