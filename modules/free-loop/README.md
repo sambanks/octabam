@@ -294,6 +294,17 @@ REC_TRIG_MUTE and REC THRESHOLD share an image with FREE LOOP through
 - The tempo, mailbox and slot writes go through the stock routines the
   REC keys and the TEMPO window use; the clear waits for the recorders it
   stops.
+- A recording FREE LOOP did not start, on a FREE or GRID track, is stopped
+  at once (`0x40005178(track, 0x80, 0)`, not at QREC's next step) and, on
+  a track with no loop yet, its buffer cleared; the popup does not open for
+  it. FREE LOOP's own starts are the free take and the recorder trigs its
+  gate lets through or injects (`fl_takes`). On the owner's MKII (5 Nov
+  2026) the first PLAY after a reboot, in MIDI mode, filled R1 with T1 idle
+  (the popup said FINISHING), and a double STOP before it prevented it: a
+  QREC start staged at `0x800018be` / `0x800018de` (REC_POST's quantized
+  branch) is inferred, not measured; the port does not reproduce it. Under
+  the port, `REC_POST(T1, 0x9010)` after the load records for the whole run
+  without the guard, and is stopped within a tick, R1 empty, with it.
 
 A take starts and ends as the REC keys do (`0x40005178(track, word, 1)`,
 start word `(keys + 0x8000) | 0x10`, stop `0x80`); the tempo goes through

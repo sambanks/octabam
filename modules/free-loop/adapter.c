@@ -112,6 +112,10 @@ extern uint32_t fl_trim[FL_TRACKS];    /* a loop end to write once the take has 
 extern uint32_t fl_trim_t24[FL_TRACKS], fl_trim_bars[FL_TRACKS];   /* and its tempo, its bars x 100 */
 extern uint32_t fl_keep[FL_TRACKS][6]; /* recorder r's buffer kept whole through a cut (keep_buffer) */
 extern uint8_t  fl_keep_n[FL_TRACKS];  /* 0 none; 1 its stop awaited; then 1 + the ticks it has held */
+extern uint8_t  fl_auth[FL_TRACKS];    /* recorder t: FL_AUTH_RUN while a recording FREE LOOP let start runs,
+                                          FL_AUTH_STRAY(_KEEP) one it stopped, else the ticks left for one to start */
+extern uint32_t fl_takes_seen[FL_TRACKS];   /* fl_takes as the guard last saw it */
+enum { FL_AUTH_TICKS = 30, FL_AUTH_STRAY_KEEP = 0xfd, FL_AUTH_STRAY = 0xfe, FL_AUTH_RUN = 0xff };   /* 30 UI ticks: 1 s */
 extern FlAction fl_toast_act;
 extern uint8_t  fl_toast_up, fl_win_pushed;
 extern uint32_t fl_win;
@@ -601,6 +605,7 @@ static char *put_u(char *p, unsigned v) {
 }
 
 static unsigned pop_state(unsigned t) {
+    if (fl_auth[t] == FL_AUTH_STRAY || fl_auth[t] == FL_AUTH_STRAY_KEEP) return FL_POP_NONE;   /* a stray recording */
     return fl_pop_state(&fl_st, &fl_cfg, t, recording(pass_recorder(t)) || recording(t));
 }
 
@@ -843,6 +848,40 @@ static void lend_setup(unsigned t, unsigned r) {
     }
 }
 
+/* A recording FREE LOOP did not start, on a track it runs (FREE, GRID), is
+ * stopped at once and, on a track with no loop yet, its buffer cleared once
+ * the recorder is done. FREE LOOP starts a track's recorder three ways, each
+ * seen here: a free take (FL_TAKE), a recorder trig its gate lets through and
+ * an injected pass (both count fl_takes). On the owner's MKII (OCTABAM41,
+ * 5 Nov 2026), the first PLAY after a reboot, in MIDI mode, started T1's
+ * recorder by a path the step gate does not see (T1 idle: the popup said
+ * FINISHING), and a double STOP before it prevented it; a QREC start staged
+ * at 0x800018be / 0x800018de (REC_POST's quantized branch) is inferred, not
+ * measured: the port does not reproduce it. */
+static void stray_guard(unsigned t) {
+    if (fl_takes[t] != fl_takes_seen[t] || fl_st.st[t] == FL_TAKE) {
+        fl_takes_seen[t] = fl_takes[t];
+        if (fl_auth[t] < FL_AUTH_STRAY_KEEP) fl_auth[t] = FL_AUTH_TICKS;
+    }
+    if (recording(t)) {
+        if (fl_auth[t] && fl_auth[t] < FL_AUTH_STRAY_KEEP) fl_auth[t] = FL_AUTH_RUN;
+        else if (fl_cfg.role[t] != FL_ROLE_OFF && !fl_auth[t]) {
+            fl_auth[t] = fl_st.has[t] ? FL_AUTH_STRAY_KEEP : FL_AUTH_STRAY;   /* a loop before it: kept */
+            FN(REC_POST, uint32_t, uint32_t, uint32_t)(t, 0x80, 0);    /* now, not at QREC's next step */
+        }
+    } else if (fl_auth[t] == FL_AUTH_STRAY || fl_auth[t] == FL_AUTH_STRAY_KEEP) {
+        if (fl_auth[t] == FL_AUTH_STRAY) {
+            clear_buffer(t);
+            fl_st.has[t] = 0;
+        }
+        fl_auth[t] = 0;
+    } else if (fl_auth[t] == FL_AUTH_RUN) {
+        fl_auth[t] = 0;
+    } else if (fl_auth[t]) {
+        --fl_auth[t];
+    }
+}
+
 unsigned fl_ui_tick(void) {
     ++fl_now;
     unsigned run = playing();
@@ -853,6 +892,7 @@ unsigned fl_ui_tick(void) {
         fl_qany = 0;
         for (unsigned t = 0; t < FL_TRACKS; ++t) fl_pat_t[t] = fl_bpat[t] = 0xff;   /* PLAY: entered again */
     }
+    for (unsigned t = 0; t < FL_TRACKS; ++t) stray_guard(t);
     for (unsigned t = 0; t < FL_TRACKS; ++t) {                       /* a fade-out's end: the mute */
         if (!fl_fade[t] || --fl_fade[t]) continue;
         mute_bit(t, 1);
