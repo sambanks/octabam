@@ -4,7 +4,7 @@
     python3 tools/harness/studioverb_voice.py IN.wav -o OUT.wav [-p SIZE=80 -p LCUT=40 ...]
     python3 tools/harness/studioverb_voice.py --test pluck -o out.wav -p SIZE=40
     python3 tools/harness/studioverb_voice.py --test click --sweep SIZE=127,90,60,30 -o size.wav
-    python3 tools/harness/studioverb_voice.py --impulse [-p ...]      # RT60, memory, no file
+    python3 tools/harness/studioverb_voice.py --impulse -p MODE=2     # a mode's voicing (0 ROOM 1 PLATE 2 HALL 3 GATED)
     python3 tools/harness/studioverb_voice.py --selftest              # defaults == verify_studioverb's model
 
 A place to choose a voicing by ear before any of it is written in DSP assembly. It is
@@ -42,8 +42,18 @@ FRAMES = 16
 Q = 1 << 23
 LEN = [109, 157, 233, 386, 1440, 1776, 2973, 1667, 1449, 4167]
 RING_TODAY = 14366
-NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "SIZE", "LCUT", "MOD", "RATE", "PRE")
-DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, SIZE=127, LCUT=0, MOD=64, RATE=64, PRE=0)
+NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "MODE", "LCUT", "MOD", "RATE", "SIZE", "PRE")   # slots 0-11
+DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, MODE=1, LCUT=0, MOD=64, RATE=64, SIZE=127, PRE=0)
+
+
+def mode_view(mode):
+    """A MODE's knob values from the manifest (modules/studioverb), as MODE DEFAULTS writes them on the panel."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    import toolpath  # noqa: F401
+    from remix import registry
+    m = registry.by_key("STUDIO VERB")
+    v = next(v for v in m.mode_views if v.mode == mode)
+    return {NAMES[slot]: val for slot, val in v.defaults.items()}
 
 
 def s24(v):
@@ -314,10 +324,10 @@ def selftest():
     st = [v for s in mono for v in (s, s)]
     bad = 0
     for prm in ([64, 51, 80, 100, 90, 0], [80, 51, 110, 100, 90, 40], [127, 20, 127, 30, 10, 0],
-                [64, 51, 80, 100, 90, 0, 60, 40, 100, 30], [80, 51, 110, 100, 90, 40, 20, 90, 127, 0],
-                [64, 51, 80, 100, 90, 0, 60, 0, 64, 64, 0, 20], [80, 51, 110, 100, 90, 30, 0, 50, 90, 70, 0, 127]):
+                [64, 51, 80, 100, 90, 0, 1, 40, 100, 30, 60], [80, 51, 110, 100, 90, 40, 1, 90, 127, 0, 20],
+                [64, 51, 80, 100, 90, 0, 1, 0, 64, 64, 60, 20], [80, 51, 110, 100, 90, 30, 1, 50, 90, 70, 0, 127]):
         rL, rR = ns["model"](st, prm, 4)       # slots: 0-9 as NAMES, 10 blank, 11 PRE
-        mL, mR = model(st, dict(zip(NAMES[:10], prm[:10]), **({"PRE": prm[11]} if len(prm) > 11 else {})), 4)
+        mL, mR = model(st, dict(zip(NAMES, prm)), 4)
         same = rL == mL and rR == mR
         bad += not same
         print(f"  [{'ok' if same else 'FAIL'}] {prm}: sample for sample")
@@ -351,6 +361,12 @@ def main():
         if k not in p:
             sys.exit(f"-p {kv}: knobs are {', '.join(NAMES)}")
         p[k] = max(0, min(127, int(v)))
+        if k == "MODE":                  # landing on a MODE sets the other knobs, as MODE DEFAULTS does on the panel;
+            p.update(mode_view(p[k]))    # a -p after it still wins
+            for kv2 in a.param[a.param.index(kv) + 1:]:
+                k2, _, v2 = kv2.partition("=")
+                if k2.upper() in p:
+                    p[k2.upper()] = max(0, min(127, int(v2)))
     sweep = [(None, None)]
     if a.sweep:
         k, _, vs = a.sweep.partition("=")

@@ -315,12 +315,6 @@ def _harvest_listed():
                       if _MODS[k].menu.fx2_id in stock_mod.fx1_ids()])
 
 
-# Remix.dry: stock effects whose ids dispatch to the null stub even where the placer left their code alone.
-for _dk in REMIX.dry:
-    if _dk not in stock_mod.harvested(_harvest_listed()):
-        sys.exit(f"Remix.dry names {_dk!r}, which is not a stock effect with DSP code off both choosers")
-
-
 # THE TAIL (schema.DspSection.tail): {payload: [module keys]} placed above
 # the payload's code in a load record of their own, which happens only
 # where nothing is harvested -- the case that refused to build before, so
@@ -809,6 +803,13 @@ def main():
             _virt[a - idspace.VIRT:a - idspace.VIRT + 4] = v.to_bytes(4, "big")
             return
         img[a - BASE:a - BASE + 4] = v.to_bytes(4, "big")
+
+    def rdw_p(a):
+        if _virt is not None and a >= idspace.VIRT:
+            i = a - idspace.VIRT
+            return _virt[i] | _virt[i + 1] << 8 | _virt[i + 2] << 16
+        i = a - BASE
+        return img[i] | img[i + 1] << 8 | img[i + 2] << 16
 
     def wrw_p(a, v):
         if _virt is not None and a >= idspace.VIRT:
@@ -3915,6 +3916,20 @@ hostquit:
                   f"0x{NEW_IDS[_abs]:02x} aliased to SEND P:0x{fb_init:05x} "
                   f"(selecting it here makes the track a send, not silence)")
 
+        # MenuEntry.dsp_of: a row with no DSP of its own runs another module's code, so its id takes that
+        # module's entry points as placed on this payload (after every other write to the table above).
+        for _k in CARRIED:
+            _of = _MODS[_k].menu.dsp_of
+            if not _of:
+                continue
+            if _of not in NEW_IDS or _MODS[_of].dsp is None or _of in HOOKED or _of in STOCK_DSP:
+                sys.exit(f"{_k}: dsp_of={_of!r} is not a module this remix carries with dispatched code of its own")
+            _i = rdw_p(pp["xtab"] + NEW_IDS[_of] * 3)
+            _p = rdw_p(pp["xtab"] + (PROC_OFF + NEW_IDS[_of]) * 3)
+            wrw_p(pp["xtab"] + NEW_IDS[_k] * 3, _i)
+            wrw_p(pp["xtab"] + (PROC_OFF + NEW_IDS[_k]) * 3, _p)
+            print(f"  {_k:13} id 0x{NEW_IDS[_k]:02x} -> {_of}'s code P:0x{_i:05x}/0x{_p:05x} (MenuEntry.dsp_of)")
+
         if probe == "silence":
             words, init_a, proc_a = assemble(
                 pathlib.Path("dsp/silence_stub.asm").read_text(), cursor,
@@ -4007,11 +4022,6 @@ hostquit:
             print(f"  {d}: code untouched, but the stock curve bank "
                   f"X:0x{_xt_base:05x} it reads now carries our tables -- "
                   f"dispatch nulled")
-        # Remix.dry: a stock effect off both choosers plays dry even where its code survived (a saved
-        # Part that selects it would otherwise run it).
-        for d in [d for d in kept if d in REMIX.dry]:
-            kept.remove(d)
-            print(f"  {d}: code untouched, but Remix.dry -- dispatch nulled")
         for donor, (a, _n) in _hv.items():
             if donor in kept or donor in _replaced:
                 continue

@@ -556,8 +556,16 @@ class MenuEntry:
     # tap). Requires `replaces`; the build leaves both dispatch words of
     # the id as the pristine image has them and verify_replaces checks it.
     stock_dsp: bool = False
+    # RUNS ANOTHER MODULE'S CODE (6 Nov 2026): the key of a module the remix carries whose DSP this row runs. The
+    # module declares no DspSection; its id dispatches to that module's init and proc as placed on each payload.
+    # A chooser row with its own name, defaults and id over one copy of code: octabam-verbs' Studio Plate, Room
+    # and Hall on the stock reverbs' ids, each STUDIO VERB with its MODE preset. The build refuses a key the remix
+    # does not carry or that has no dispatched code of its own.
+    dsp_of: str | None = None
 
     def __post_init__(self):
+        if self.dsp_of and self.stock_dsp:
+            raise ValueError("dsp_of runs another module's code and stock_dsp keeps the stock effect's: one or the other")
         if self.stock_dsp and not self.replaces:
             raise ValueError(f"stock_dsp keeps the donor's dispatch entry, so "
                              f"it needs replaces=<the stock effect's key>")
@@ -1787,6 +1795,9 @@ class Module:
             raise ValueError(f"{self.name}: stock_dsp keeps {self.menu.replaces}'s "
                              f"dispatch entry, so its DspSection is reached only "
                              f"through DspHooks and must declare at least one")
+        if self.menu is not None and self.menu.dsp_of and self.dsp is not None:
+            raise ValueError(f"{self.name}: dsp_of={self.menu.dsp_of!r} runs that module's code, so it "
+                             f"declares no DspSection of its own")
         if self.dsp is not None and self.menu is None and not self.dsp.hooks:
             raise ValueError(f"{self.name}: DSP code with no menu entry and no "
                              f"DspHook is unreachable -- nothing dispatches it")
@@ -2128,13 +2139,6 @@ class Remix:
     # Where the stub and then the two wrapper copies are laid out, one after the other (P address, in a
     # run of window words no stock effect writes: docs/proposals/DEMAND_LOAD.md).
     window_loader: int = 0
-    # STOCK EFFECTS THAT PLAY DRY (6 Nov 2026): stock keys, each off both choosers and so harvested. A harvested
-    # effect the placer never writes over keeps its stock dispatch, so a saved Part that selects it still runs it
-    # (stock.harvested); one named here dispatches to the firmware's null stub, NONE's, whether or not its code
-    # survived, so the slot plays dry. For a remix whose window code a surviving stock effect would overwrite:
-    # octabam-verbs, where DARK REV, untouched by the placer, would write to slot offset 0x3da2, past the demand
-    # homes at 0x3820. The build refuses a key that is listed or has no DSP code to give up.
-    dry: tuple[str, ...] = ()
     # THE HOST PAGE DRAWS ITS FIRST SLOTS ONLY (26 Sep 2026, Sam: "want
     # all the tracks to look the same"): (key, n) pairs. The hidden
     # module's page draws slots 0..n-1 under their manifest names (the rig:

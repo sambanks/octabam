@@ -20,7 +20,7 @@ Page 2 (this port's): SIZE moves the tank's read taps in, LCUT high-passes the
 tank, MOD and RATE set the long delay's swing and both LFOs' speed. At their
 defaults (127, 0, 64, 64) the module is exactly as it was without them.
 """
-from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness,
+from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness, ModeView,
                           Kind, MenuEntry, Module, Param, Proof, YBase)
 
 MODULE = Module(
@@ -31,25 +31,43 @@ MODULE = Module(
     doc="A plate reverb (Griesinger topology, after Mutable Instruments Clouds) for rooms to halls, with a desk-style gate: amount, gain, time, diffusion, tone, gate; size, low cut, modulation depth and rate. One FX2 slot per instance.",
     menu=MenuEntry(fx2_id=0x1a, donor_desc=0x400d5594,
                    abbr=b"STVB", fullname=b"Studio Verb", build_tag=False),
+    # Page 1 and the defaults are PLATE's view (MODE 1). Page 2 in slots 6-11: MODE (slot 6, as on every
+    # effect), LCUT, MOD on the top row; RATE, SIZE, PRE below.
     params=(
-        Param(b"AMNT", 40, active=True, formatter=Formatter.PLAIN, doc="dry/wet; 0 is exactly dry"),
+        Param(b"AMNT", 45, active=True, formatter=Formatter.PLAIN, doc="dry/wet; 0 is exactly dry"),
         Param(b"GAIN", 51, active=True, formatter=Formatter.PLAIN, doc="input gain; 51 matches the original Clouds reverb"),
-        Param(b"TIME", 64, active=True, formatter=Formatter.PLAIN, doc="decay: loop gain 0.35 to 0.98"),
+        Param(b"TIME", 82, active=True, formatter=Formatter.PLAIN, doc="decay: loop gain 0.35 to 0.98"),
         Param(b"DIFF", 100, active=True, formatter=Formatter.PLAIN, doc="diffusion; 100 matches Clouds"),
         Param(b"TONE", 90, active=True, formatter=Formatter.PLAIN, doc="damping low-pass: lower is darker; 90 matches Clouds"),
         Param(b"GATE", 0, active=True, formatter=Formatter.PLAIN,
               doc="0 off; holds the tail 52-784 ms after the input goes quiet, then a desk-gate release"),
-        Param(b"SIZE", 127, count=128, active=True, formatter=Formatter.PLAIN,
-              doc="room size: the tank's delays from 20 % (0) to full (127); 127 is the original"),
-        Param(b"LCUT", 0, count=128, active=True, formatter=Formatter.PLAIN,
+        Param(b"MODE", 1, 4, active=True, formatter=Formatter.STEPPED,
+              labels=("ROOM", "PLAT", "HALL", "GATE"),
+              doc="a voicing: turning it sets the other knobs (ROOM, PLATE, HALL, GATED)"),
+        Param(b"LCUT", 20, count=128, active=True, formatter=Formatter.PLAIN,
               doc="low cut inside the tank: 0 off, up to about 1 kHz at 127 (250 Hz at 64)"),
         Param(b"MOD", 64, count=128, active=True, formatter=Formatter.PLAIN,
               doc="depth of the long delay's modulation: 0 static, 64 the original, 127 twice it"),
         Param(b"RATE", 64, count=128, active=True, formatter=Formatter.PLAIN,
               doc="speed of both modulation LFOs: 0 frozen, 64 the original, 127 twice it"),
-        Param(),
+        Param(b"SIZE", 127, count=128, active=True, formatter=Formatter.PLAIN,
+              doc="room size: the tank's delays from 20 % (0) to full (127); 127 is the original"),
         Param(b"PRE", 0, count=128, active=True, formatter=Formatter.PLAIN,
               doc="predelay, 0 to 92 ms, in the room SIZE leaves: none at 127, about 22 ms at 90, 40 ms at 60"),
+    ),
+    # ---- the voicings MODE lands on (MODE DEFAULTS writes them on the panel) --------------------------
+    # Chosen from renders of the module (6 Nov 2026, Sam: "those sound pretty good"): slots 0 AMNT, 1 GAIN,
+    # 2 TIME, 3 DIFF, 4 TONE, 5 GATE, 7 LCUT, 8 MOD, 9 RATE, 10 SIZE, 11 PRE.
+    mode_slot=6,
+    mode_views=(
+        ModeView(mode=0,                        # ROOM: small, bright, short
+                 defaults={0: 45, 1: 60, 2: 70, 3: 90, 4: 105, 5: 0, 7: 30, 8: 30, 9: 64, 10: 35, 11: 0}),
+        ModeView(mode=1,                        # PLATE: the full tank
+                 defaults={0: 45, 1: 51, 2: 82, 3: 100, 4: 90, 5: 0, 7: 20, 8: 64, 9: 64, 10: 127, 11: 0}),
+        ModeView(mode=2,                        # HALL: long, dark, more and slower modulation
+                 defaults={0: 50, 1: 51, 2: 108, 3: 110, 4: 60, 5: 0, 7: 25, 8: 100, 9: 40, 10: 127, 11: 0}),
+        ModeView(mode=3,                        # GATED: the desk-gated burst
+                 defaults={0: 90, 1: 80, 2: 118, 3: 110, 4: 80, 5: 26, 7: 40, 8: 64, 9: 64, 10: 90, 11: 0}),
     ),
     dsp=DspSection(asm="modules/studioverb/studioverb.asm", priority=11,
                    bus_role=BusRole.NONE, ybase=YBase.NEVER,

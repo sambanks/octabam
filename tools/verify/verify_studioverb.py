@@ -48,8 +48,14 @@ for _l in LEN:
     BASE.append(_b); _b += _l + 1
 N = BASE[-1] + LEN[-1]
 Q = 1 << 23
-PAGE2 = [127, 0, 64, 64]                 # SIZE LCUT MOD RATE defaults: today's sound exactly
-TAIL = PAGE2 + [0, 0]                    # the knob words after GATE, as a Part with the defaults holds them
+def pg2(size=127, lcut=0, mod=64, rate=64, pre=0, mode=1):
+    """Page 2's slots 6-11 in order: MODE, LCUT, MOD, RATE, SIZE, PRE. The DSP does not read MODE (MODE DEFAULTS
+    applies a mode's knob values on the panel). SIZE 127, LCUT 0, MOD 64, RATE 64, PRE 0 are the constants the
+    code had before page 2, exactly."""
+    return [mode, lcut, mod, rate, size, pre]
+
+
+TAIL = pg2()                             # the knob words after GATE
 fails = 0
 
 
@@ -108,8 +114,7 @@ def model(samples, params, blocks_skip):
     lp1 = lp2 = 0.0
     sz_f = mod_s = lc = 0                # page 2's smoothed values: SIZE's f, MOD's offset, LCUT's c
     hp1 = hp2 = 0.0
-    size, lcut, mod, rate = (list(params[6:10]) + PAGE2[len(params[6:10]):])
-    pre = params[11] if len(params) > 11 else 0
+    _mode, lcut, mod, rate, size, pre = list(params[6:12]) + pg2()[len(params[6:12]):]
     p = 0
     env = hold = gs = 0
     hmax = 0x7FFFFF if params[5] == 0 else 2048 + 256 * params[5]
@@ -299,12 +304,12 @@ def main():
     # to 50 dB. Later the tail decays toward the 24-bit truncation floor the float model has not got,
     # and the match falls with it (57 dB to 20 dB over a second with LCUT 40), so the whole render is
     # held to 40 dB.
-    p2 = {"SIZE 30": [30, 0, 64, 64], "SIZE 0, MOD 127": [0, 0, 127, 64], "LCUT 90": [127, 90, 64, 64],
-          "MOD 0, RATE 0": [127, 0, 0, 0], "MOD 127, RATE 127": [127, 0, 127, 127],
-          "SIZE 60, LCUT 40, MOD 100, RATE 30": [60, 40, 100, 30]}
+    p2 = {"SIZE 30": pg2(size=30), "SIZE 0, MOD 127": pg2(size=0, mod=127), "LCUT 90": pg2(lcut=90),
+          "MOD 0, RATE 0": pg2(mod=0, rate=0), "MOD 127, RATE 127": pg2(mod=127, rate=127),
+          "SIZE 60, LCUT 40, MOD 100, RATE 30": pg2(size=60, lcut=40, mod=100, rate=30)}
     lv = {}
     for name, pg in p2.items():
-        Lp, Rp, _ = host(imp, params + pg + [0, 0])
+        Lp, Rp, _ = host(imp, params + pg)
         mpL, mpR = model(st, params + pg, CLEAR_CALLS)
         s8 = min(snr_db(mpL[n0:n0 + 8000], Lp[n0:n0 + 8000]), snr_db(mpR[n0:n0 + 8000], Rp[n0:n0 + 8000]))
         sp = min(snr_db(mpL[n0:], Lp[n0:]), snr_db(mpR[n0:], Rp[n0:]))
@@ -322,7 +327,7 @@ def main():
         return rms_db(acc)
     check(f"page 2: LCUT 90 takes the low end out ({low_db(lv['LCUT 90']):.1f} dB against {low_db(L):.1f} dB under 150 Hz)",
           low_db(lv["LCUT 90"]) < low_db(L) - 6)
-    _, _, logp = host(imp[:400 * FRAMES], params + [0, 0, 127, 127, 0, 0], extra=["-guard", str(N), "-guard-shared"])
+    _, _, logp = host(imp[:400 * FRAMES], params + pg2(size=0, mod=127, rate=127), extra=["-guard", str(N), "-guard-shared"])
     check("page 2: SIZE 0, MOD 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logp)
     # PRE: a predelay in the long delay's unread far end (room = m - 2 words, m = 4167 f), so it
     # clamps to what SIZE leaves and is nothing at SIZE 127
@@ -338,9 +343,9 @@ def main():
         return max(0, mulf(4167, f) - 2)
     on = {}
     for size, pre in ((60, 0), (60, 40), (90, 127), (127, 0), (127, 127)):
-        Lq, Rq, _ = host(pim, wetp + [size, 0, 64, 64, 0, pre])
+        Lq, Rq, _ = host(pim, wetp + pg2(size=size, pre=pre))
         on[(size, pre)] = (onset(Lq), Lq, Rq)
-    mq, _ = model(pst, wetp + [60, 0, 64, 64, 0, 40], CLEAR_CALLS)
+    mq, _ = model(pst, wetp + pg2(size=60, pre=40), CLEAR_CALLS)
     sq = snr_db(mq[pt0:pt0 + 8000], on[(60, 40)][1][pt0:pt0 + 8000])
     check(f"pre: SIZE 60, PRE 40 against the float model, {sq:.1f} dB over 8,000 samples", sq > 50)
     sh = on[(60, 40)][0] - on[(60, 0)][0]
@@ -351,7 +356,7 @@ def main():
           abs(sh90 - room(90)) <= 2 and room(90) < 32 * 127)
     check("pre: at SIZE 127 there is no room, and PRE 127 is bit-exact PRE 0",
           on[(127, 127)][1] == on[(127, 0)][1] and on[(127, 127)][2] == on[(127, 0)][2])
-    _, _, logq = host(imp[:400 * FRAMES], params + [0, 0, 64, 64, 0, 127], extra=["-guard", str(N), "-guard-shared"])
+    _, _, logq = host(imp[:400 * FRAMES], params + pg2(size=0, pre=127), extra=["-guard", str(N), "-guard-shared"])
     check("pre: SIZE 0, PRE 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logq)
     # bounds
     _, _, log = host(imp[:200 * FRAMES], params + TAIL, extra=["-guard", str(N), "-guard-shared"])

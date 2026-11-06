@@ -16,22 +16,32 @@ smeared by an LFO and the second delay is modulated. Left and right are the two 
 
 | slot | name | default | what it does |
 |---|---|---|---|
-| 0 | AMNT | 40 | dry/wet. 0 is bit-exact dry. The wet is scaled to Clouds' range (the wet path is held at 1/8 internally) |
+| 0 | AMNT | 45 | dry/wet. 0 is bit-exact dry. The wet is scaled to Clouds' range (the wet path is held at 1/8 internally) |
 | 1 | GAIN | 51 | input gain, 0..0.5 (Clouds uses 0.2: 51) |
-| 2 | TIME | 64 | loop gain 0.35..0.98 (Clouds: 0.35 + 0.63 x its REVERB knob) |
+| 2 | TIME | 82 | loop gain 0.35..0.98 (Clouds: 0.35 + 0.63 x its REVERB knob) |
 | 3 | DIFF | 100 | allpass coefficient 0..0.8 (Clouds sets 0.625 at power-up and 0.7 in use: 100 is 0.625) |
 | 4 | TONE | 90 | damping lowpass coefficient 0.05..1 (Clouds: 0.7 at power-up: 90) |
 | 5 | GATE | 0 | 0 is off. k holds the wet for 2048 + 256 k samples (52 ms to 784 ms) after the input falls quiet, then releases it as a desk gate does (−60 dB in about 320 ms); once shut, the tank is flushed, so the next hit starts from silence |
-| 6 | SIZE | 127 | page 2 (`x:(r6+$c)` knob field). The tank's read taps move in to 20 % of each length at 0, smoothed: f = 0.8 (127 − SIZE)/127; 127 is the original lengths, exactly |
-| 7 | LCUT | 0 | page 2 (`$c` companion). A one-pole high-pass in each half of the tank, after the damping: c = 0.1447 LCUT², smoothed; about 1 kHz at 127, 250 Hz at 64, 63 Hz at 32; 0 passes the tank untouched |
+| 6 | MODE | PLATE | page 2 (`x:(r6+$c)` knob field, slot 6 as on every effect). A voicing: ROOM, PLATE, HALL, GATED. The DSP does not read it; turning it on the panel lands the other knobs on that mode's values (MODE DEFAULTS, the manifest's `mode_views`; table below). Without MODE DEFAULTS in the remix it only names the voicing |
+| 7 | LCUT | 20 | page 2 (`$c` companion). A one-pole high-pass in each half of the tank, after the damping: c = 0.1447 LCUT², smoothed; about 1 kHz at 127, 250 Hz at 64, 63 Hz at 32; 0 passes the tank untouched |
 | 8 | MOD | 64 | page 2 (`$d` knob field). The long delay's swing: 0 static, 64 the original (97 samples, scaled by SIZE), 127 twice it; smoothed. The tap's centre moves down with the swing, so it never reads outside its line |
 | 9 | RATE | 64 | page 2 (`$d` companion). Both LFOs' speed: 0 frozen, 64 the original (0.5 and 0.3 Hz), 127 twice it |
-| 11 | PRE | 0 | page 2 (`$e` companion; slot 10, an even slot, is kept free for a MODE). A predelay of 32 PRE samples (0 to 92 ms) on the mono input, held in the far end of the long delay that SIZE leaves unread: m = 4167 f words past the tap, m − 2 usable, so it clamps to the room SIZE leaves. None at SIZE 127, about 22 ms at 90, 40 ms at 60, 58 ms at 30. With no predelay the input goes through ap1's write cell, which ap1 overwrites later in the sample, so nothing in the ring moves. Turning SIZE up while PRE is engaged lets the long delay's tap read predelay cells briefly (not heard yet) |
+| 10 | SIZE | 127 | page 2 (`x:(r6+$e)` knob field). The tank's read taps move in to 20 % of each length at 0, smoothed: f = 0.8 (127 − SIZE)/127; 127 is the original lengths, exactly |
+| 11 | PRE | 0 | page 2 (`$e` companion, beside SIZE). A predelay of 32 PRE samples (0 to 92 ms) on the mono input, held in the far end of the long delay that SIZE leaves unread: m = 4167 f words past the tap, m − 2 usable, so it clamps to the room SIZE leaves. None at SIZE 127, about 22 ms at 90, 40 ms at 60, 58 ms at 30. With no predelay the input goes through ap1's write cell, which ap1 overwrites later in the sample, so nothing in the ring moves. Turning SIZE up while PRE is engaged lets the long delay's tap read predelay cells briefly (not heard yet) |
+
+The defaults are PLATE's (MODE 1). The modes, chosen from renders of the module (6 Nov 2026):
+
+| MODE | AMNT | GAIN | TIME | DIFF | TONE | GATE | LCUT | MOD | RATE | SIZE | PRE | RT60 (float model) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 ROOM | 45 | 60 | 70 | 90 | 105 | 0 | 30 | 30 | 64 | 35 | 0 | 1.15 s |
+| 1 PLATE | 45 | 51 | 82 | 100 | 90 | 0 | 20 | 64 | 64 | 127 | 0 | 3.42 s |
+| 2 HALL | 50 | 51 | 108 | 110 | 60 | 0 | 25 | 100 | 40 | 127 | 0 | 7.16 s |
+| 3 GATED | 90 | 80 | 118 | 110 | 80 | 26 | 40 | 64 | 64 | 90 | 0 | gated |
 
 Slots 0-4 are Clouds' five setters (`set_amount`, `set_input_gain`, `set_time`, `set_diffusion`, `set_lp`).
 Page 2 is this port's (5 Nov 2026); at its defaults the module computes exactly what it did before, and
 the ring layout does not move (SIZE shortens reads, not the layout). A Part saved before page 2
-existed holds 0 in those slots: SIZE 0, MOD 0, RATE 0, a small static room. Re-pick the effect or
+existed holds 0 in those slots: MODE ROOM, SIZE 0, MOD 0, RATE 0, a small static room. Re-pick the effect or
 stamp the defaults to get the original sound back.
 The ranges and defaults are this port's, taken from the values Clouds sets in `granular_processor.cc`
 and `reverb.h`; they have not been compared by ear.

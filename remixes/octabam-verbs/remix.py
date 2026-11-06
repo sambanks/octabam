@@ -1,4 +1,4 @@
-"""octabam-verbs -- octabam with STUDIO VERB in place of the three stock reverbs: the core ColdFire modules, every other ColdFire module that fits, the 11 other stock effects, and MODULATION, SPECTRUM, CHARACTER, SHATTER and COMPRESSOR's side-chain loaded on demand. PLATE REV, SPRING REV and DARK REV are off both choosers, so their DSP code is given up; a Part that selects one plays that slot dry."""
+"""octabam-verbs -- octabam with STUDIO VERB in place of the three stock reverbs: the core ColdFire modules, every other ColdFire module that fits, the 11 other stock effects, and MODULATION, SPECTRUM, CHARACTER, SHATTER and COMPRESSOR's side-chain loaded on demand. PLATE REV, SPRING REV and DARK REV are off both choosers and their ids are STUDIO PLATE, STUDIO ROOM and STUDIO HALL: STUDIO VERB's code starting in PLATE, ROOM and HALL mode."""
 from remix.schema import Pin, Proof, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
@@ -13,7 +13,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
 # with TRANSIENT and DISTORX, back 4 Nov 2026: KEY reads "--" while the side-chain is not loaded (#934).
 STOCK11 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
            "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI", "DELAY")
-OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER", "STUDIO VERB")
+OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER", "STUDIO VERB", "STUDIO PLATE", "STUDIO ROOM", "STUDIO HALL")
 # Every other ColdFire module that can share this image (the ledger; HOOKS joins the pairs that
 # share a stock site). Not here: ANALOG BD (its fixed pre-boot DSP scratch 0x40b00000 is under
 # this much DRAM code), SYNTH MACHINE (the cave 0x400d24d0 the stock DELAY reads, and OCTA303's
@@ -34,7 +34,7 @@ REMIX = Remix(
     name="octabam-verbs",
     family="mods", proof=Proof.CHECK,
     proof_note="not flashed; `make check` (CI)",
-    doc="octabam with STUDIO VERB in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand.",
+    doc="octabam with STUDIO VERB and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE") + STOCK11 + OURS
             + COLDFIRE,
     # The window layout is octabam's (docs/proposals/DEMAND_LOAD.md): DLCOPY, the stub and LOAD METER's DSP
@@ -64,10 +64,6 @@ REMIX = Remix(
                   ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820),
                   ("SHATTER", 0x33820), ("SHATTER", 0x3B820), ("SHATTER", 0x3F820)),
     window_loader=0x33E66,
-    # PLATE REV, SPRING REV and DARK REV play dry for a Part that still selects one. STUDIO VERB's 644 words cover
-    # PLATE's code and part of SPRING's, which nulls those two ids; DARK's code survives, and stock DARK on T3, T4,
-    # T7 or T8 writes to slot offset 0x3da2, over the demand homes and, on T7, DLCOPY. Remix.dry nulls it too.
-    dry=("PLATE REV", "SPRING REV", "DARK REV"),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,

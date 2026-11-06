@@ -34,8 +34,8 @@
 ; tank's read offsets, $45 the long delay's centre, $46 MOD's smoothed offset, $47 $48 the
 ; predelay's write and read offsets.
 ; Knobs: p0 AMNT amount, p1 GAIN input gain, p2 TIME reverb time, p3 DIFF
-; diffusion, p4 TONE damping, p5 GATE hold (0 off); page 2: SIZE, LCUT, MOD, RATE
-; (slots 6-9), PRE (slot 11).
+; diffusion, p4 TONE damping, p5 GATE hold (0 off); page 2: MODE, LCUT, MOD, RATE, SIZE, PRE
+; (slots 6-11).
 
 init:
         move    #>$ffffff,m4
@@ -130,9 +130,13 @@ gv_ready:
 ; Page 2 (5 Nov 2026). At their defaults (SIZE 127, LCUT 0, MOD 64, RATE 64) every value below is
 ; the one the code had as a constant before, exactly.
 ; Page 2 is three words of two controls (docs/firmware/PARAM_PAGES.md): slot 6 is x:(r6+$c)'s
-; knob field (bits 16-23), slot 7 its companion (bits 8-15), slots 8 and 9 the same in x:(r6+$d).
-; SIZE (slot 6): f = 0.8 (127 - SIZE)/127, smoothed; the tank's read taps move in by f of each length.
-        move    x:(r6+$c),a
+; knob field (bits 16-23), slot 7 its companion (bits 8-15); slots 8 and 9 the same in x:(r6+$d), 10 and
+; 11 in x:(r6+$e).
+; MODE (slot 6, x:(r6+$c)'s knob field) is not read here: it picks a voicing, whose knob values MODE DEFAULTS
+; writes on the panel (the manifest's mode_views).
+; SIZE (slot 10, x:(r6+$e)'s knob field): f = 0.8 (127 - SIZE)/127, smoothed; the tank's read taps move in by f
+; of each length.
+        move    x:(r6+$e),a
         and     #>$7f0000,a
         move    a1,x0
         move    #>$7f0000,a
@@ -209,7 +213,7 @@ gv_ready:
         move    b1,x1
         sub     x1,a
         move    a1,x:(r7+$45)
-; PRE (slot 11, x:(r6+$e)'s companion): a predelay of 32 PRE samples (0 to 92 ms) on the mono input,
+; PRE (slot 11, x:(r6+$e)'s companion, beside SIZE): a predelay of 32 PRE samples (0 to 92 ms) on the mono input,
 ; held in the far end of the long delay that SIZE leaves unread: m = 4167 f words past its tap, of
 ; which m - 2 are usable, written from the cell just past the tap. Clamped to that room, so none at
 ; SIZE 127. With no predelay both offsets are 0: ap1's write cell, which ap1 overwrites later in the
