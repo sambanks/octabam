@@ -296,16 +296,28 @@ REC_TRIG_MUTE and REC THRESHOLD share an image with FREE LOOP through
   REC keys and the TEMPO window use; the clear waits for the recorders it
   stops.
 - A recording FREE LOOP did not start, on a FREE or GRID track, is stopped
-  at once (`0x40005178(track, 0x80, 0)`, not at QREC's next step) and, on
-  a track with no loop yet, its buffer cleared; the popup does not open for
-  it. FREE LOOP's own starts are the free take and the recorder trigs its
-  gate lets through or injects (`fl_takes`). On the owner's MKII (5 Nov
-  2026) the first PLAY after a reboot, in MIDI mode, filled R1 with T1 idle
-  (the popup said FINISHING), and a double STOP before it prevented it: a
-  QREC start staged at `0x800018be` / `0x800018de` (REC_POST's quantized
-  branch) is inferred, not measured; the port does not reproduce it. Under
-  the port, `REC_POST(T1, 0x9010)` after the load records for the whole run
-  without the guard, and is stopped within a tick, R1 empty, with it.
+  at once (`0x40005178(track, 0x80, 0)`, not at QREC's next step), with the
+  toast REC: FREE LOOP ONLY; the popup does not open for it. On a track
+  with no loop yet its buffer is cleared. On a track with a loop, the
+  recorder writes its slot's end from its start (the take's LIMIT while it
+  runs, then the stop's position) and its input from the buffer's frame 0
+  until the stop lands: under the port (`verify_free_loop stray`, a stock
+  T1 + REC AB at 13 s on an 8 s loop) R1's end went from 352,678 to 536 and
+  frames 0-535 (~12 ms) were the input's. So the guard keeps a copy of the
+  recorder's end, tempo, bars and LIMIT from its last tick without a
+  recording and writes them back once the recorder is done (as UNDO's cut
+  does, `keep_tick`): the loop keeps its length and tempo; its first
+  ~12 ms (at most a UI tick) are overwritten. FREE LOOP's own starts are
+  the free take and the recorder trigs its gate lets through or injects
+  (`fl_takes`). On the owner's MKII (5 Nov 2026) the first PLAY after a
+  reboot, in MIDI mode, filled R1 with T1 idle (the popup said FINISHING),
+  and a double STOP before it prevented it: a QREC start staged at
+  `0x800018be` / `0x800018de` (REC_POST's quantized branch) is inferred,
+  not measured; the port does not reproduce it. The guard is not a fix at
+  the source, which is still open
+  (`docs/contributing/FAILURE_MODES.md`). Under the port,
+  `REC_POST(T1, 0x9010)` after the load records for the whole run without
+  the guard, and is stopped within a tick, R1 empty, with it.
 
 A take starts and ends as the REC keys do (`0x40005178(track, word, 1)`,
 start word `(keys + 0x8000) | 0x10`, stop `0x80`); the tempo goes through

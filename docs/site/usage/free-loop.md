@@ -52,8 +52,10 @@ DIR CD. T1 and T3 are FREE, T2 and T4 GRID.
   from across the room, until the pass is over.
 - **Only FREE LOOP records a FREE or GRID track.** A recording it did not
   start there (a stock REC key combination, or a recording left waiting
-  from before a reboot) is stopped at once and, on a track with no loop
-  yet, erased.
+  from before a reboot) is stopped at once, with REC: FREE LOOP ONLY on
+  screen. On a track with no loop yet it is erased; a loop already there
+  keeps its length and tempo, but its first few milliseconds take the
+  input's sound.
 - With the Octatrack slaved to MIDI clock, a free take is refused (EXT
   CLOCK: NO FREE). The settings are saved with the project
   (`freeloop.work`, `freeloop.strd` at SAVE PROJECT); a project without

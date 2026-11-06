@@ -3,6 +3,29 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
+## FREE LOOP: the first PLAY after a reboot, in MIDI mode, records T1 with T1 idle 🟡 guarded, cause inferred, open at the source
+
+- **Seen:** djib's MKII, live-djib rig (OCTABAM41), 5 Nov 2026: the first
+  PLAY after a power-on, in MIDI mode, started T1's recorder although
+  FREE LOOP had started nothing (T1 idle, its popup said FINISHING, R1
+  filled). A double STOP before that PLAY prevented it. Gone on images
+  42-43 with the guard below.
+- **Cause (inferred, not measured):** a quantized recording start left
+  staged in `0x800018be` / `0x800018de` (the QREC branch of REC_POST,
+  `0x40005178`) and fired by the first PLAY. The port does not reproduce
+  the boot state that leaves it there, so neither the writer of the staged
+  start nor why a double STOP clears it has been traced.
+- **Guard, not a fix at the source (#1044):** FREE LOOP's `stray_guard`
+  (`modules/free-loop/adapter.c`) stops any recording it did not start on a
+  FREE or GRID track within one UI tick (`REC_POST(t, 0x80, 0)`), clears the
+  buffer on a track with no loop yet, and says REC: FREE LOOP ONLY. Under
+  the port, `REC_POST(T1, 0x9010)` after the load records for the whole run
+  without the guard and is stopped within a tick, R1 empty, with it.
+  `verify_free_loop stray` covers a stock T1 + REC AB on a looping T1.
+- **Open:** the source of the staged start. It would also hit a track
+  FREE LOOP does not run (ROLE OFF), which the guard leaves alone; a probe
+  of `0x800018be` / `0x800018de` at boot on the unit is the next step.
+
 ## FX PAGE 2 LOCKS NOT LOADED at every load: SAVE PROJECT wrote empty page-2 lock files with no header ✅ measured, fixed
 
 - **Seen:** an MKII, 2 Nov 2026: STORE's prompt (FX PAGE 2 LOCKS NOT LOADED /

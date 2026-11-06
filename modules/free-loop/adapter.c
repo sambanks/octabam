@@ -112,6 +112,7 @@ extern uint32_t fl_trim[FL_TRACKS];    /* a loop end to write once the take has 
 extern uint32_t fl_trim_t24[FL_TRACKS], fl_trim_bars[FL_TRACKS];   /* and its tempo, its bars x 100 */
 extern uint32_t fl_keep[FL_TRACKS][6]; /* recorder r's buffer kept whole through a cut (keep_buffer) */
 extern uint8_t  fl_keep_n[FL_TRACKS];  /* 0 none; 1 its stop awaited; then 1 + the ticks it has held */
+extern uint32_t fl_snap[FL_TRACKS][6]; /* recorder r's slot as keep_buffer reads it, at the last tick it did not record */
 extern uint8_t  fl_auth[FL_TRACKS];    /* recorder t: FL_AUTH_RUN while a recording FREE LOOP let start runs,
                                           FL_AUTH_STRAY(_KEEP) one it stopped, else the ticks left for one to start */
 extern uint32_t fl_takes_seen[FL_TRACKS];   /* fl_takes as the guard last saw it */
@@ -369,10 +370,14 @@ static void stop_recorder(unsigned r) {
  * and written again once the recorder is done (fl_ui_tick). */
 static const uint16_t KEEP_AT[5] = {SLOT_END, SLOT_TEMPO, SLOT_TEMPOQ, SLOT_BARS, SLOT_BARS2};
 
-static void keep_buffer(unsigned r) {
+static void read_slot(unsigned r, uint32_t to[6]) {
     uint32_t slot = SLOT_REC + r * SLOT_STRIDE;
-    for (unsigned k = 0; k < 5; ++k) fl_keep[r][k] = U32(slot + KEEP_AT[k]);
-    fl_keep[r][5] = U32(LIMIT + 4 * r);
+    for (unsigned k = 0; k < 5; ++k) to[k] = U32(slot + KEEP_AT[k]);
+    to[5] = U32(LIMIT + 4 * r);
+}
+
+static void keep_buffer(unsigned r) {
+    read_slot(r, fl_keep[r]);
     fl_keep_n[r] = 1;
 }
 
@@ -866,14 +871,17 @@ static void stray_guard(unsigned t) {
     if (recording(t)) {
         if (fl_auth[t] && fl_auth[t] < FL_AUTH_STRAY_KEEP) fl_auth[t] = FL_AUTH_RUN;
         else if (fl_cfg.role[t] != FL_ROLE_OFF && !fl_auth[t]) {
-            fl_auth[t] = fl_st.has[t] ? FL_AUTH_STRAY_KEEP : FL_AUTH_STRAY;   /* a loop before it: kept */
+            fl_auth[t] = fl_st.has[t] ? FL_AUTH_STRAY_KEEP : FL_AUTH_STRAY;
             FN(REC_POST, uint32_t, uint32_t, uint32_t)(t, 0x80, 0);    /* now, not at QREC's next step */
+            if (fl_st.has[t]) {           /* a loop before it: its end, tempo, bars and LIMIT as they */
+                for (unsigned k = 0; k < 6; ++k) fl_keep[t][k] = fl_snap[t][k];   /* were before the */
+                fl_keep_n[t] = 1;         /* start (the recorder writes them from its start), put back */
+            }                             /* once it is done (keep_tick); its first frames are the input's */
+            FlAction why = act_toast(t, FL_T_STRAY);                    /* the UI task: the stock toast */
+            toast(&why);
         }
     } else if (fl_auth[t] == FL_AUTH_STRAY || fl_auth[t] == FL_AUTH_STRAY_KEEP) {
-        if (fl_auth[t] == FL_AUTH_STRAY) {
-            clear_buffer(t);
-            fl_st.has[t] = 0;
-        }
+        if (fl_auth[t] == FL_AUTH_STRAY) clear_buffer(t);   /* has[t] is 0 already: STRAY means no loop */
         fl_auth[t] = 0;
     } else if (fl_auth[t] == FL_AUTH_RUN) {
         fl_auth[t] = 0;
@@ -994,6 +1002,8 @@ unsigned fl_ui_tick(void) {
             fl_st.has[t] = U32(slot_end(r)) != 0;
     }
     for (unsigned r = 0; r < FL_TRACKS; ++r) keep_tick(r);
+    for (unsigned r = 0; r < FL_TRACKS; ++r)                         /* stray_guard's copy */
+        if (!recording(r) && !fl_keep_n[r]) read_slot(r, fl_snap[r]);
     for (unsigned r = 0; r < FL_TRACKS; ++r) {        /* a borrowed setup, until its pass is over */
         if (!fl_src[r] || fl_st.inj[r] || recording(r)) continue;
         unsigned t = fl_src[r] - 1;
