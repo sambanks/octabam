@@ -1,0 +1,33 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "labels": [
+    "LINEAR",
+    "S SOFT",
+    "S-CURVE",
+    "S FIRM",
+    "S HARD",
+    "INV SOFT",
+    "INV-CURVE",
+    "INV FIRM",
+    "INV HARD",
+    "CUT",
+    "CUT A",
+    "CUT B",
+    "SLOW A",
+    "SLOW B"
+   ],
+   "name": "CURVE",
+   "type": "option"
+  }
+ },
+ "store": {
+  "id": "octabam.xfcurve",
+  "major": 1
+ }
+}
