@@ -48,6 +48,7 @@ from panel_link import PanelLink  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LIVE = 0x46c76de0                         # MIDI track t's live setup record: + 68 * t
+STEP_REC = 0x46c76dc0                     # stock's output a5 for MIDI track t: + 32 * t
 KEY, EXT = 0x11, 0x12                     # EXT: a native byte SCALES must leave alone (MIDI HARMONY's)
 BANK0 = 0x400e21e0
 PART_SETUP = 0x400e21e0 + 0x8f262         # bank 1, Part 1, track 1's setup record
@@ -289,6 +290,8 @@ def machine_gate(remix):
 
     # Beside CHORDS FACTORY a chord step (its NOT2-4, a5 + 547..549, not all
     # 64) plays as written, on any KEY; without it SCALES snaps it as any step.
+    # a5 is stock's own: STEP_REC + 32 * track (set at 0x4009f9b8, stepped at
+    # 0x4009fffe), the record stock reads NOTE (544) and NOT2-4 from at 0x4009f9f2.
     beside_chords = "CHORDS FACTORY" in registry.remix(remix).modules
     CHORDLESS = (64, 64, 64)
     CHORDS = ((67, 71, 74), (64, 64, 63), (64, 76, 64), (40, 64, 64))
@@ -302,12 +305,12 @@ def machine_gate(remix):
                     for flag, nots in ((0, CHORDLESS), (1, CHORDLESS)) + tuple((1, c) for c in CHORDS):
                         u.mem_write(m.scratch - 1, bytes((0xa5, note, 0xa5)))           # snapped in place: again
                         u.mem_write(m.scratch + 0x100 - 64, flag.to_bytes(4, "big"))   # stock's -64(fp): a KEY to quantize
-                        u.mem_write(m.scratch + 0x200 + 547, bytes(nots))              # a5: the step's NOT2-4
+                        u.mem_write(STEP_REC + 32 * track + 547, bytes(nots))          # a5: the step's NOT2-4
                         chord = beside_chords and nots != CHORDLESS
                         dest = (0x4009fb5e if flag else 0x4009fb80) if stock and not chord else 0x4009fb80
                         m.call("sc_output", 0x12345678, 0xabcdef01, stop=dest,
                                regs={UC_M68K_REG_D7: track, UC_M68K_REG_A2: m.scratch,
-                                     UC_M68K_REG_A6: m.scratch + 0x100, UC_M68K_REG_A5: m.scratch + 0x200})
+                                     UC_M68K_REG_A6: m.scratch + 0x100, UC_M68K_REG_A5: STEP_REC + 32 * track})
                         ts = track_scale(key, ext)
                         want = note if stock or ts is None or chord else snap(note, *ts)
                         if bytes(u.mem_read(m.scratch - 1, 3)) != bytes((0xa5, want, 0xa5)):
