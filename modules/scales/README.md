@@ -18,7 +18,9 @@ MAIN MENU's size, and the CHROMATIC trig keys lit with the scale.
   tonic (OFF, C .. B), one a detent, the scale kept (no quick edit: a
   turn with F pushed is one step too); pressed and released without a
   turn, the chooser. The sequencer's and the arpeggiator's notes snap to
-  the scale (nearest note, ties downward). The field shows the tonic and
+  the scale (nearest note, ties downward); beside CHORDS FACTORY a chord
+  step (its NOT2-4 not all 64) plays as written, on any KEY, stock's Major /
+  Minor included (without it, a chord step snaps as any). The field shows the tonic and
   the scale's short name (`C#` `PHRD`).
 - **The CHROMATIC keys** light the track's scale in stock's colours: the
   tonic yellow, the scale's other notes red, the rest dark. On a MIDI
@@ -67,6 +69,7 @@ For other modules: register calls, d0-d1 / a0-a1 scratch, the rest kept.
 | `sc_family` | d0 ID | d0 = its family 0..8, -1 for no such ID |
 | `sc_snap` | d0 note 0..127, d1 = ID << 4 \| tonic | d0 = the nearest note of the scale, ties downward; every other register kept |
 | `sc_track` | d0 MIDI track 0..7 | d0 = ID << 4 \| tonic of its KEY, -1 for KEY OFF |
+| `sc_keyboard` | C call: track, first note, green mask (bit k = key k) | the sixteen trig LEDs as a keyboard from that note (key k sounds it + k), the CHROMATIC keys' colours for the track's scale, a masked key green (the caller's notes: CHORDS FACTORY's chord while FUNC types it); d0 = 1, or 0 and nothing drawn on KEY OFF; d2-d7 / a2-a6 kept |
 | `sc_pick` | d0 the ID shown first, a0 the routine to call | the chooser (UI task only); a0 is called with the chosen ID in d0, as a C routine |
 
 A module that needs a scale asks here rather than carrying its own table,

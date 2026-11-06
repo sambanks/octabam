@@ -18,7 +18,9 @@ Select a MIDI track and open MIDI ARP SETUP with **FUNC + AMP**. Encoder
 The KEY field then shows the tonic and the scale's short name, for
 example **C#** and **PHRD** for C# Phrygian Dominant. The sequencer's and
 the arpeggiator's notes move to the nearest note of the scale (the lower
-one when two are as near).
+one when two are as near). With CHORDS FACTORY in the remix, a step that
+holds a chord (NOT2, NOT3 or NOT4 set) plays as written instead, on any
+KEY, so a chord keeps its voicing.
 
 | family | scales |
 | --- | --- |
@@ -49,6 +51,10 @@ yellow.
 
 The keys follow a KEY, SCALE or ROOT you change while CHROMATIC is shown.
 KEY OFF and SCALE OFF keep stock's C major.
+
+Another module can light the trig keys as the same keyboard from any note
+(the `sc_keyboard` service) and mark its own notes green: CHORDS FACTORY
+does so while FUNC types a chord's notes.
 
 ## On stock firmware
 
