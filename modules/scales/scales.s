@@ -22,6 +22,11 @@
 |   sc_pick     d0 the ID shown first, a0 = a routine to call with the ID
 |               chosen (d0): the chooser (C call, UI task only)
 |   sc_track    d0 MIDI track 0..7 -> d0 = ID << 4 | tonic, -1 for KEY OFF
+|   sc_keyboard (C call) track, first note, green mask: the sixteen trig
+|               LEDs as a keyboard from that note, in the CHROMATIC keys'
+|               colours for the track's scale (tonic yellow, scale red,
+|               rest dark); a key whose mask bit is set green instead (the
+|               caller's notes). d0 = 1, or 0 and nothing drawn on KEY OFF
 |
 | The chooser is a window of MAIN MENU's size, drawn as PERSONALIZE: the
 | families, then the chosen family's scales; RIGHT / YES enters a family,
@@ -74,7 +79,7 @@
 
         .text
         .globl  sc_count, sc_mask, sc_name, sc_short, sc_family, sc_snap
-        .globl  sc_pick, sc_track, sc_win
+        .globl  sc_pick, sc_track, sc_win, sc_keyboard
         .globl  kl_chromatic, kl_source, kl_tick
         .globl  sc_encoder, sc_output, sc_format, sc_lib
         .globl  sc_st_loadall_pre, sc_st_loadmask_pre, sc_st_newproj, sc_st_bankw_post
@@ -952,6 +957,22 @@ sc_encoder:
 sc_output:
         lea     -12(%sp),%sp
         movem.l %d0-%d1/%a0,(%sp)
+        .if     HAVE_CHORDS             | beside CHORDS FACTORY: a chord step as written
+        moveq   #64,%d1
+        mvz.b   547(%a5),%d0
+        cmp.l   %d1,%d0
+        bne.s   5f
+        mvz.b   548(%a5),%d0
+        cmp.l   %d1,%d0
+        bne.s   5f
+        mvz.b   549(%a5),%d0
+        cmp.l   %d1,%d0
+        beq.s   4f
+5:      movem.l (%sp),%d0-%d1/%a0       | NOT2-4 not all 64: a chord, played as written
+        lea     12(%sp),%sp
+        jmp     OUT_DONE
+4:
+        .endif
         move.l  %d7,%d0
         jsr     store_part_midi_context | the Part the MIDI engine plays
         move.l  %d0,%d1
@@ -1068,6 +1089,74 @@ kl_chromatic:
         bne.s   5b
         moveq   #0,%d3
         jmp     LOOP_DONE
+
+| sc_keyboard(track, first note, green mask), a C call: the trig LEDs as a
+| keyboard from `first note` (key k sounds first + k), in kl_chromatic's
+| colours for the track's scale; a key whose bit is set in the green mask is
+| green (a module's own notes: CHORDS FACTORY's chord while FUNC types it).
+| d0 = 1 drawn, 0 (nothing drawn) on KEY OFF. d2-d6 kept.
+sc_keyboard:
+        lea     -20(%sp),%sp
+        movem.l %d2-%d6,(%sp)
+        move.l  24(%sp),%d0
+        bsr.w   sc_track
+        tst.l   %d0
+        bmi.w   7f
+        move.l  %d0,%d5
+        andi.l  #15,%d5                 | the tonic
+        lsr.l   #4,%d0
+        bsr.w   sc_mask
+        tst.l   %d0
+        beq.w   7f
+        move.l  %d0,%d6                 | the mask, bit 0 = the tonic
+        move.l  28(%sp),%d4
+        addi.l  #120,%d4
+        sub.l   %d5,%d4                 | key 1's degree, from the tonic
+1:      cmpi.l  #12,%d4
+        bcs.s   2f
+        subi.l  #12,%d4
+        bra.s   1b
+2:      moveq   #0,%d2                  | LED id: 2k red, 2k + 1 green
+3:      move.l  %d2,%d0
+        lsr.l   #1,%d0
+        move.l  32(%sp),%d1
+        moveq   #0,%d3                  | green
+        moveq   #0,%d5                  | red
+        btst    %d0,%d1
+        beq.s   4f
+        moveq   #FULL,%d3               | the caller's note: green
+        bra.s   6f
+4:      btst    %d4,%d6
+        beq.s   6f
+        moveq   #FULL,%d5               | in the scale: red
+        tst.l   %d4
+        bne.s   6f
+        moveq   #FULL,%d3               | the tonic: yellow
+6:      move.l  %d5,-(%sp)
+        move.l  %d2,-(%sp)
+        jsr     SET_LEVEL
+        move.l  %d2,(%sp)
+        jsr     LED_ON
+        addq.l  #1,%d2
+        move.l  %d3,4(%sp)
+        move.l  %d2,(%sp)
+        jsr     SET_LEVEL
+        move.l  %d2,(%sp)
+        jsr     LED_ON
+        addq.l  #8,%sp
+        addq.l  #1,%d2
+        addq.l  #1,%d4
+        cmpi.l  #12,%d4
+        bne.s   5f
+        moveq   #0,%d4
+5:      cmpi.l  #32,%d2
+        bne.w   3b
+        moveq   #1,%d0
+        bra.s   8f
+7:      moveq   #0,%d0
+8:      movem.l (%sp),%d2-%d6
+        lea     20(%sp),%sp
+        rts
 
 | No scale: stock's loop, whole.
 kl_stock:

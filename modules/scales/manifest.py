@@ -27,9 +27,11 @@ from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Pro
 
 def _sources(modules, _remix):
     """remix.inc: which modules answer kl_source on the audio side (README "Sources"),
-    and SCALES' number in STORE's refusal registry."""
+    whether CHORDS FACTORY is beside it (a chord step plays as written), and SCALES'
+    number in STORE's refusal registry."""
     ids = runpy.run_path(str(Path(__file__).parents[1] / "store/manifest.py"))["CLIENT_IDS"]
     return (f".set HAVE_SCALE_QUANTIZER, {int('SCALE QUANTIZER' in modules)}\n"
+            f".set HAVE_CHORDS, {int('CHORDS FACTORY' in modules)}\n"
             f".set SC_CLIENT, {ids['SCALES']}\n")
 
 
