@@ -14,6 +14,8 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
 STOCK11 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
            "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI", "DELAY")
 OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER", "VERBERATION", "VERB PLATE", "VERB ROOM", "VERB HALL")
+# VERB PARTS converts a Part saved with a stock reverb to its row's defaults as the firmware applies it.
+VERB_PARTS = ("VERB PARTS",)
 # Every other ColdFire module that can share this image (the ledger; HOOKS joins the pairs that
 # share a stock site). Not here: ANALOG BD (its fixed pre-boot DSP scratch 0x40b00000 is under
 # this much DRAM code), SYNTH MACHINE (the cave 0x400d24d0 the stock DELAY reads, and OCTA303's
@@ -36,7 +38,7 @@ REMIX = Remix(
     proof_note="not flashed; `make check` (CI)",
     doc="octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE") + STOCK11 + OURS
-            + COLDFIRE,
+            + COLDFIRE + VERB_PARTS,
     # The window layout is octabam's (docs/proposals/DEMAND_LOAD.md): DLCOPY, the stub and LOAD METER's DSP
     # half resident above offset 0x3da3 of the slots and below 0x37f00, where payload B's boot zero loop
     # starts; the demand effects at offset 0x3820 of the four FX2 slots in the window (core A tracks 7 and 8,

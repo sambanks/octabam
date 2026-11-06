@@ -10,15 +10,17 @@ this remix does not.
 
 | effect | FX1 | FX2 | id | |
 |---|---|---|---|---|
-| VERBERATION | | ✓ | 0x1a | rooms to halls with a desk-style gate; page 2 SIZE, LCUT, MOD, RATE, PRE |
-| PLATE REV, SPRING REV, DARK REV | | | 0x14, 0x15, 0x16 | off both choosers; a Part that still selects one plays that slot dry |
+| VERBERATION | | ✓ | 0x1a | rooms to halls with a desk-style gate; MODE (ROOM, PLATE, HALL, GATED), LCUT, MOD, RATE, SIZE, PRE on page 2 |
+| VERB PLATE | | ✓ | 0x14 (PLATE REV's) | VERBERATION starting in PLATE mode |
+| VERB ROOM | | ✓ | 0x15 (SPRING REV's) | VERBERATION starting in ROOM mode |
+| VERB HALL | | ✓ | 0x16 (DARK REV's) | VERBERATION starting in HALL mode |
 
-- **The stock reverbs are given up.** Off both choosers, their DSP code is harvested: VERBERATION's 644 words go
-  over PLATE's code and part of SPRING's, which points those two ids at the firmware's null stub (NONE's).
-  DARK REV's code survives, and stock DARK on T3, T4, T7 or T8 writes to slot offset `0x3da2`, over the demand
-  homes at `0x3820` and, on T7, DLCOPY; `Remix.dry` points its id at the null stub too. The build report says
-  `DARK REV: code untouched, but Remix.dry -- dispatch nulled` and `donor ids (PLATE/SPRING/DARK REV) -> null stub`
-  on both payloads.
+- **The stock reverbs are given up.** PLATE REV, SPRING REV and DARK REV are off both choosers; their DSP code is
+  harvested (VERBERATION's 644 words go over PLATE's and part of SPRING's) and their ids are the three rows,
+  which run VERBERATION's one copy of code (`MenuEntry.dsp_of`: the build reports `VERB PLATE id 0x14 ->
+  VERBERATION's code` on both payloads, and a dump reads one pair of entry points for 0x14, 0x15, 0x16, 0x1a).
+- **Old Parts.** A Part saved with a stock reverb opens on its row: [VERB PARTS](../../modules/verb-parts/README.md)
+  rewrites its FX2 pages to the row's defaults as the firmware applies it (`verify_verb_parts` under the port).
 - **No reverb guard.** In octabam the stock reverbs run behind a guard (`window_guard`, `modules/dlcopy/dlwrap.asm`)
   and the choosers refuse a reverb over loaded code, with a toast. Here nothing reaches the homes: VERBERATION's ring
   ends at slot offset `0x381d` (14,366 words; the tank was shortened by 0.9 for this, 6 Nov 2026), the other stock
@@ -31,4 +33,7 @@ The demand loader, the core modules and the ColdFire modules are octabam's; its 
 
 ## Where it has run
 
-Not flashed. `make check REMIX=octabam-verbs` in CI.
+Not flashed. `make check REMIX=octabam-verbs` in CI. Under the port: `verify_verb_parts` (old Parts convert),
+`verify_dlload`'s no-guard checks (MODULATION loads in its first home with DARK's id or VERBERATION on its block's
+track, no toast; on a generated empty project, which the gate otherwise skips: 2 of its other checks fail there, as
+it documents for such projects).

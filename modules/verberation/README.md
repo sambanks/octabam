@@ -71,9 +71,9 @@ points the id at this module's init and proc (the build reports `id 0x14 -> VERB
 both payloads reads the same two entry points for 0x14, 0x15, 0x16 and 0x1a). One copy of the code, 644 words a
 payload, serves all four rows.
 
-A Part saved with a stock reverb opens on its row but keeps the stock knob values it held, which this module
-reads as its own (PLATE's TIME as AMNT, and so on). Resetting such a Part to its row's defaults on load is the
-next step and not built yet.
+A Part saved with a stock reverb opens on its row at the row's defaults: [VERB PARTS](../verb-parts/README.md)
+rewrites its FX2 pages as the firmware applies it (the sign of such a Part: page-2 slots 9 and 10 both 0, which
+the stock reverbs never draw).
 
 ## What differs from Clouds
 
