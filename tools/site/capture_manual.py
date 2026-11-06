@@ -430,7 +430,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','devilish','morph','free-loop','vibrato'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','studioverb','devilish','morph','free-loop','vibrato'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -455,6 +455,7 @@ def main():
         elif group=='octa303':jobs=[('octa303',capture_octa303,[])]
         elif group=='cxosc':jobs=[('cxosc',capture_cxosc,[])]
         elif group=='distorx':jobs=[('distorx',capture_fx,[(2,'fx2','DISTORX')])]
+        elif group=='studioverb':jobs=[('studioverb',capture_fx,[(2,'fx2','STUDIO VERB')])]
         elif group=='morph':jobs=[('morph',capture_morph,[])]
         elif group=='free-loop':jobs=[('free-loop',capture_free_loop,[])]
         elif group=='machines':jobs=[('analog-bassdrum',capture_analog,[]),('octatrick',capture_synth,[]),('blackpyramids-303',capture_blackpyramids,[]),('octa303',capture_octa303,[]),('cxosc',capture_cxosc,[])]

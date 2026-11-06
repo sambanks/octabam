@@ -57,7 +57,7 @@ Groups and what each captures, from the `shot(...)` calls:
 | `features` | `octabam` with REC THRESHOLD, EUCLID FILL, RND NAME and STEM REC added and REC TRIG MUTE and LOAD METER removed (a scratch selection; THR and REC_TRIG_MUTE share a hook, and LOAD METER declares a conflict with STEM REC) | euclid-fill, rec-threshold, stems, rnd-name |
 | `inserts` | `octabam`, one effect per track (T1 to T3 FX1, T4 FX2) | setup and main pages of SPECTRUM, CHARACTER, MODULATION, DELAY |
 | `bus` | `octabam-bus` | fx2-lock, tempo-bus, load-meter, memory, usb, and the DELAY SERVER, SEND and REVERB SERVER pages |
-| `extras` | one test remix per module (character-txtr, testgen, resonator, vibrato, sidechain-compressor, miniverb, tapeecho, vocoder, wave, distorx, devilish, transient, gateverb; also alone as `distorx` and `vibrato`) | setup and main page of each |
+| `extras` | one test remix per module (character-txtr, testgen, resonator, vibrato, sidechain-compressor, miniverb, tapeecho, vocoder, wave, distorx, devilish, transient, studioverb; also alone as `distorx`, `vibrato` and `studioverb`) | setup and main page of each |
 | `machines` | `analog-bassdrum`, `octatrick`, `blackpyramids-303`, `octa303`, `cxosc` | analog-bassdrum, synth, direct-jump, blackpyramids-303, octa303, cxosc |
 | `octa303` | `octa303` (test remix) | octa303 alone (its two pages), without re-capturing the other machines |
 | `cxosc` | `cxosc` (test remix) | cxosc alone (PLAYBACK + SRC SETUP), without re-capturing the other machines |

@@ -9,6 +9,10 @@ Instruments Clouds; the gate is new. Dry stays dry.
 An effect on a track: select the track, press FX2, and pick STUDIO VERB from
 the chooser. It is not in an official remix; build the test remix `studioverb`.
 
+![FX2 SETUP with Studio Verb selected: SIZE, LCUT, MOD, RATE and PRE on its page 2.](../../img/studioverb/setup.png)
+
+*FX2 SETUP with Studio Verb selected: SIZE, LCUT, MOD, RATE and PRE on its page 2.*
+
 ## Operation
 
 For the classic 1980s gated sound: TIME and DIFF high, GAIN up, AMNT up,

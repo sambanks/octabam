@@ -238,17 +238,17 @@
   "studioverb": {
     "main": {
       "image": "studioverb/main.png",
-      "caption": "Studio verb: main parameter page.",
-      "remix": "octabam-inserts",
+      "caption": "STUDIO VERB: main parameter page.",
+      "remix": "studioverb",
       "source": "emulator panel UART",
-      "firmware_sha256": "ef2f2ccb670c7f2f09f48d2e07e46a394d791f1458f3eaa5e6d8807d51903482"
+      "firmware_sha256": "4be4c43c753f9af8ecc4972626da95844bf2b893ced8719b354afb7d5d36b7e1"
     },
     "setup": {
       "image": "studioverb/setup.png",
-      "caption": "Studio verb: effect selection and setup parameters.",
-      "remix": "octabam-inserts",
+      "caption": "STUDIO VERB: effect selection and setup parameters.",
+      "remix": "studioverb",
       "source": "emulator panel UART",
-      "firmware_sha256": "ef2f2ccb670c7f2f09f48d2e07e46a394d791f1458f3eaa5e6d8807d51903482"
+      "firmware_sha256": "4be4c43c753f9af8ecc4972626da95844bf2b893ced8719b354afb7d5d36b7e1"
     }
   },
   "delay": {
