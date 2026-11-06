@@ -436,24 +436,6 @@
     }
    }
   },
-  "GATE VERB": {
-   "costs": {
-    "FX2 dear": {
-     "cf_over_base": 0.0,
-     "core0": 7.74,
-     "core1": 7.75,
-     "remix": "test/cost-a",
-     "report": "costa"
-    },
-    "FX2 def": {
-     "cf_over_base": -0.0,
-     "core0": 7.75,
-     "core1": 7.76,
-     "remix": "test/cost-a",
-     "report": "costa"
-    }
-   }
-  },
   "LO-FI": {
    "costs": {
     "FX1 def": {

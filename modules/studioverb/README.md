@@ -1,8 +1,12 @@
-# `gateverb` — GATE VERB
+# `studioverb` — STUDIO VERB
 
-A gated reverb for FX2, built on the reverb stage of Mutable Instruments Clouds
+A reverb for FX2, rooms to halls, with a desk-style gate, built on the reverb stage of Mutable Instruments Clouds
 ([`clouds/dsp/fx/reverb.h`](https://github.com/pichenettes/eurorack/blob/master/clouds/dsp/fx/reverb.h),
 MIT, Emilie Gillet 2014), ported to fixed point. On id `0x1a` (PLATE REV keeps `0x14`); one instance per FX2 slot.
+
+Until 6 Nov 2026 this module was GATE VERB (`modules/gateverb`; `git log --follow -- modules/studioverb/studioverb.asm`
+has its history). It keeps GATE VERB's id, so a Part that used GATE VERB opens STUDIO VERB. The sections below that
+describe GATE VERB's fixes (the smear LFO, the gate) are the record of how this code got here.
 
 The reverb is Clouds': a Griesinger plate (the Dattorro paper's layout) of four input
 allpasses and a loop of two halves, each two allpasses and a delay. The first allpass is
@@ -22,6 +26,7 @@ smeared by an LFO and the second delay is modulated. Left and right are the two 
 | 7 | LCUT | 0 | page 2 (`$c` companion). A one-pole high-pass in each half of the tank, after the damping: c = 0.1447 LCUT², smoothed; about 1 kHz at 127, 250 Hz at 64, 63 Hz at 32; 0 passes the tank untouched |
 | 8 | MOD | 64 | page 2 (`$d` knob field). The long delay's swing: 0 static, 64 the original (97 samples, scaled by SIZE), 127 twice it; smoothed. The tap's centre moves down with the swing, so it never reads outside its line |
 | 9 | RATE | 64 | page 2 (`$d` companion). Both LFOs' speed: 0 frozen, 64 the original (0.5 and 0.3 Hz), 127 twice it |
+| 11 | PRE | 0 | page 2 (`$e` companion; slot 10, an even slot, is kept free for a MODE). A predelay of 32 PRE samples (0 to 92 ms) on the mono input, held in the far end of the long delay that SIZE leaves unread: m = 4630 f words past the tap, m − 2 usable, so it clamps to the room SIZE leaves. None at SIZE 127, about 24 ms at 90, 44 ms at 60, 64 ms at 30. With no predelay the input goes through ap1's write cell, which ap1 overwrites later in the sample, so nothing in the ring moves. Turning SIZE up while PRE is engaged lets the long delay's tap read predelay cells briefly (not heard yet) |
 
 Slots 0-4 are Clouds' five setters (`set_amount`, `set_input_gain`, `set_time`, `set_diffusion`, `set_lp`).
 Page 2 is this port's (5 Nov 2026); at its defaults the module computes exactly what it did before, and
@@ -39,7 +44,7 @@ A shut gate also empties the tank. In any block that starts with the gain at 0, 
 
 Chosen by ear on 5 Nov 2026 (Sam, from sandbox renders of a backbeat snare and a tom fill; releases of 1/512, 1/1024 and 1/2048 a sample were compared, and the slowest was preferred). Until then the wet closed over 128 samples (about 3 ms), which read as a cut, and the tank rang on underneath.
 
-Under `dsp_host` (`verify_gateverb`, GATE 40): the wet is open for the whole hold (−68.5 dB against −68.3 dB with the gate off); 70 to 110 ms into the release it is −88.9 dB against −72.3 dB, a release, not a cut (the 3 ms gate read −200 dB there); after the release it is exactly silent (−200 dB against −75.7 dB); and a second impulse 190 ms after the gate shuts, less the same impulse alone, is −119.0 dBFS, the truncation floor (−77.7 dBFS with the old gate, whose tank rang on). Whether the wash is dense and flat enough to sound like one is not measured: for the classic effect set TIME and DIFF high, GAIN up and AMNT up, and GATE to taste. The threshold, the envelope's release, the attack and the gate's release are constants in `gateverb.asm`, not knobs.
+Under `dsp_host` (`verify_studioverb`, GATE 40): the wet is open for the whole hold (−68.5 dB against −68.3 dB with the gate off); 70 to 110 ms into the release it is −88.9 dB against −72.3 dB, a release, not a cut (the 3 ms gate read −200 dB there); after the release it is exactly silent (−200 dB against −75.7 dB); and a second impulse 190 ms after the gate shuts, less the same impulse alone, is −119.0 dBFS, the truncation floor (−77.7 dBFS with the old gate, whose tank rang on). Whether the wash is dense and flat enough to sound like one is not measured: for the classic effect set TIME and DIFF high, GAIN up and AMNT up, and GATE to taste. The threshold, the envelope's release, the attack and the gate's release are constants in `studioverb.asm`, not knobs.
 
 ## What differs from Clouds
 
@@ -59,8 +64,9 @@ Under `dsp_host` (`verify_gateverb`, GATE 40): the wet is open for the whole hol
 
 ## Measured
 
-Under `dsp_host` (`tools/verify/verify_gateverb.py`, remix `test/gateverb`):
-- The pricer counts 242 cycles per sample (219 before the desk gate, 228 before page 2, 5 Nov 2026), a floor: it counts words, not memory stalls. Scaled from the 7.76 % measured on a unit at 219, about 8.6 % a slot (🟡 inferred, not read), under the 9.07 % that lets it sit on every FX2 slot.
+Under `dsp_host` (`tools/verify/verify_studioverb.py`, remix `test/studioverb`):
+- The pricer counts 247 cycles per sample (219 before the desk gate, 228 before page 2, 242 before PRE), a floor: it counts words, not memory stalls. Scaled from the 7.76 % GATE VERB measured on a unit at 219, about 8.8 % a slot (🟡 inferred, not read), under the 9.07 % that lets it sit on every FX2 slot. `tools/remix/slot_costs.json` carries no STUDIO VERB entry: GATE VERB's reading was of older code.
+- PRE: SIZE 60 with PRE 40 matches the model to 61.1 dB over 8,000 samples; it moves the wet onset by 1,279 samples (32 × 40 = 1,280; the onset is a threshold crossing); PRE 127 at SIZE 90 is clamped to the 1,077 samples of room; at SIZE 127 PRE 127 is bit-exact PRE 0; SIZE 0 with PRE 127 writes nothing outside the ring.
 - Page 2 against the model: six settings (SIZE 30; SIZE 0 with MOD 127; LCUT 90; MOD and RATE 0; MOD and RATE 127; SIZE 60, LCUT 40, MOD 100, RATE 30) match to 57-82 dB over the first 8,000 samples, where a wrong integer tap would show at once, and 46-62 dB over the whole render, where the tail meets the 24-bit floor the float model has not got. SIZE 30 decays faster than 127 (−69.3 dB against −56.9 dB at 0.7-0.9 s); LCUT 90 takes 12 dB out under 150 Hz; SIZE 0 with MOD 127 writes nothing outside the ring.
 - The first 77 calls pass the input through while the ring is cleared (206 words a call).
 - AMNT 0 is bit-exact dry.
@@ -89,14 +95,14 @@ RMS of the left output:
 | 120 | −56 dB, **grew to −11 dB** in 11 s | −56 dB to −84 dB |
 | 127 | grew to −4 dB in 10 s (the gate's `runaway` check on the old code) | −56 dB to −77 dB in 11 s, still falling |
 
-RT60 from the float model (`tools/harness/gateverb_voice.py --impulse`): TIME 64 2.80 s (4.84 s
+RT60 from the float model (`tools/harness/studioverb_voice.py --impulse`): TIME 64 2.80 s (4.84 s
 before), 80 3.72 s (6.87 s), 94 5.08 s (grew), 127 17.92 s (grew). The extra path made every tail
 longer, not only the unstable ones, so a part voiced on the old code sounds shorter at the same TIME.
-`verify_gateverb`'s `runaway` check fails on the old code and passes on the new; the model match is
+`verify_studioverb`'s `runaway` check fails on the old code and passes on the new; the model match is
 58.0 / 58.1 dB, as before.
 
 Not changed: the `del2` tap still swings 4531 ± 97, twice Clouds' excursion, and stable
-(`gateverb_voice.py --lfo clouds` renders Clouds' form). What is left at the end of a long tail is a
+(`studioverb_voice.py --lfo clouds` renders Clouds' form). What is left at the end of a long tail is a
 DC offset, not a tone: at TIME 120, the last second reads −84.4 dBFS DC and −97.2 dBFS AC. That is
 `mpy`'s truncation bias circulating in the loop; a high-pass in the tank (the LOCUT the sandbox
 proposes) would remove it. Not heard on a unit, before or after.

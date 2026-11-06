@@ -235,17 +235,17 @@
       "firmware_sha256": "ef2f2ccb670c7f2f09f48d2e07e46a394d791f1458f3eaa5e6d8807d51903482"
     }
   },
-  "gateverb": {
+  "studioverb": {
     "main": {
-      "image": "gateverb/main.png",
-      "caption": "Gate verb: main parameter page.",
+      "image": "studioverb/main.png",
+      "caption": "Studio verb: main parameter page.",
       "remix": "octabam-inserts",
       "source": "emulator panel UART",
       "firmware_sha256": "ef2f2ccb670c7f2f09f48d2e07e46a394d791f1458f3eaa5e6d8807d51903482"
     },
     "setup": {
-      "image": "gateverb/setup.png",
-      "caption": "Gateverb: effect selection and setup parameters.",
+      "image": "studioverb/setup.png",
+      "caption": "Studio verb: effect selection and setup parameters.",
       "remix": "octabam-inserts",
       "source": "emulator panel UART",
       "firmware_sha256": "ef2f2ccb670c7f2f09f48d2e07e46a394d791f1458f3eaa5e6d8807d51903482"

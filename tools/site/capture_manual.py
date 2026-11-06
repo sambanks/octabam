@@ -464,7 +464,7 @@ def main():
         elif group=='utilities':jobs=[('buffer-saver',capture_buffer_saver,[])]
         elif group=='varispeed':jobs=[('varispeed',capture_varispeed,[])]
         else:
-            jobs=[(r,capture_fx,[(2,'fx1' if r in ('character-txtr','testgen','resonator','vibrato') else 'fx2',k)]) for r,k in [('character-txtr','CHARACTER TXTR'),('testgen','TESTGEN'),('resonator','RESONATOR'),('vibrato','VIBRATO'),('sidechain-compressor','SIDECHAIN_COMPRESSOR'),('miniverb','MINIVERB'),('bbd','BBD'),('tapeecho','TAPE ECHO'),('vocoder','VOCODER'),('wave','WAVE'),('shatter','SHATTER'),('void','VOID'),('stuttr','STUTTR'),('distorx','DISTORX'),('devilish','DEVILISH'),('transient','TRANSIENT'),('gateverb','GATE VERB')]]
+            jobs=[(r,capture_fx,[(2,'fx1' if r in ('character-txtr','testgen','resonator','vibrato') else 'fx2',k)]) for r,k in [('character-txtr','CHARACTER TXTR'),('testgen','TESTGEN'),('resonator','RESONATOR'),('vibrato','VIBRATO'),('sidechain-compressor','SIDECHAIN_COMPRESSOR'),('miniverb','MINIVERB'),('bbd','BBD'),('tapeecho','TAPE ECHO'),('vocoder','VOCODER'),('wave','WAVE'),('shatter','SHATTER'),('void','VOID'),('stuttr','STUTTR'),('distorx','DISTORX'),('devilish','DEVILISH'),('transient','TRANSIENT'),('studioverb','STUDIO VERB')]]
         for remix,fn,assignments in jobs:
             # Paths use a separate stable label even when registry selects a scratch file.
             label='manual-features' if remix.startswith('../') else remix

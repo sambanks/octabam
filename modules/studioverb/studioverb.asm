@@ -1,4 +1,4 @@
-; GATE VERB: the reverb of Mutable Instruments Clouds (clouds/dsp/fx/reverb.h,
+; STUDIO VERB: the reverb of Mutable Instruments Clouds (clouds/dsp/fx/reverb.h,
 ; MIT, Copyright 2014 Emilie Gillet), a Griesinger/Dattorro plate: four input
 ; allpasses, then two halves of two allpasses and a delay, with a smeared first
 ; allpass and a modulated second delay. Port, not a copy: fixed point, the delay
@@ -31,10 +31,11 @@
 ; $34 hold counter, $35 gate gain, $36 hold length (0x7fffff = gate off), $37 $38 the loop gain
 ; and allpass coefficient in use (KRT and KAP, or 0 under a shut gate), $39 LCUT's coefficient,
 ; $3a $3b its states, $3c SIZE's f, $3d the long delay's swing, $3e $3f the LFO steps, $40..$44 the
-; tank's read offsets, $45 the long delay's centre, $46 MOD's smoothed offset.
+; tank's read offsets, $45 the long delay's centre, $46 MOD's smoothed offset, $47 $48 the
+; predelay's write and read offsets.
 ; Knobs: p0 AMNT amount, p1 GAIN input gain, p2 TIME reverb time, p3 DIFF
 ; diffusion, p4 TONE damping, p5 GATE hold (0 off); page 2: SIZE, LCUT, MOD, RATE
-; (slots 6-9).
+; (slots 6-9), PRE (slot 11).
 
 init:
         move    #>$ffffff,m4
@@ -42,7 +43,7 @@ init:
         move    #>$20,n4
         move    (r4)+n4
         clr     a
-        do      #39,>gv_zero
+        do      #41,>gv_zero
         move    a,x:(r4)+
 gv_zero:
         nop
@@ -208,6 +209,42 @@ gv_ready:
         move    b1,x1
         sub     x1,a
         move    a1,x:(r7+$45)
+; PRE (slot 11, x:(r6+$e)'s companion): a predelay of 32 PRE samples (0 to 92 ms) on the mono input,
+; held in the far end of the long delay that SIZE leaves unread: m = 4630 f words past its tap, of
+; which m - 2 are usable, written from the cell just past the tap. Clamped to that room, so none at
+; SIZE 127. With no predelay both offsets are 0: ap1's write cell, which ap1 overwrites later in the
+; sample, so the input passes untouched and the ring is not disturbed.
+        move    #>4630,x0
+        mpy     x0,y1,a
+        move    a1,x1
+        move    #>$ffc209,a
+        add     x1,a
+        move    a1,x:(r7+$47)
+        move    x1,b
+        move    #>2,x0
+        sub     x0,b
+        move    #0,x0
+        tst     b
+        tmi     x0,b
+        move    x:(r6+$e),a
+        and     #>$007f00,a
+        asr     #$3,a,a
+        move    a1,x0
+        move    b1,x1
+        move    x0,b
+        sub     x1,a
+        tgt     x1,b
+        move    b1,x1
+        move    x:(r7+$47),a
+        sub     x1,a
+        move    #0,x0
+        tst     b
+        teq     x0,a
+        move    a1,x:(r7+$48)
+        move    x:(r7+$47),a
+        tst     b
+        teq     x0,a
+        move    a1,x:(r7+$47)
 ; RATE (slot 9, x:(r6+$d)'s companion): both LFOs' steps, 2 RATE times today's
         move    x:(r6+$d),a
         and     #>$007f00,a
@@ -408,7 +445,10 @@ gv_p2a:
         tst     b
         tne     y1,a
         move    a,x:(r7+$35)
-        move    y0,x0
+        move    x:(r7+$47),n5
+        move    y0,y:(r5+n5)
+        move    x:(r7+$48),n5
+        move    y:(r5+n5),x0
         move    x:(r7+$25),y1
         mpy     x0,y1,a
 ; four input allpasses

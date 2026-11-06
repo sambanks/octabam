@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""GATE VERB voicing sandbox: the float model, with knobs the module does not have yet.
+"""STUDIO VERB voicing sandbox: the float model, with knobs the module does not have yet.
 
-    python3 tools/harness/gateverb_voice.py IN.wav -o OUT.wav [-p SIZE=80 -p LCUT=40 ...]
-    python3 tools/harness/gateverb_voice.py --test pluck -o out.wav -p SIZE=40
-    python3 tools/harness/gateverb_voice.py --test click --sweep SIZE=127,90,60,30 -o size.wav
-    python3 tools/harness/gateverb_voice.py --impulse [-p ...]      # RT60, memory, no file
-    python3 tools/harness/gateverb_voice.py --selftest              # defaults == verify_gateverb's model
+    python3 tools/harness/studioverb_voice.py IN.wav -o OUT.wav [-p SIZE=80 -p LCUT=40 ...]
+    python3 tools/harness/studioverb_voice.py --test pluck -o out.wav -p SIZE=40
+    python3 tools/harness/studioverb_voice.py --test click --sweep SIZE=127,90,60,30 -o size.wav
+    python3 tools/harness/studioverb_voice.py --impulse [-p ...]      # RT60, memory, no file
+    python3 tools/harness/studioverb_voice.py --selftest              # defaults == verify_studioverb's model
 
 A place to choose a voicing by ear before any of it is written in DSP assembly. It is
-the float model `tools/verify/verify_gateverb.py` checks the module against (the
+the float model `tools/verify/verify_studioverb.py` checks the module against (the
 module matches it to 58 dB), the same topology, lengths, LFOs, parameter laws and
 per-block smoothing, and every knob the module has:
 
@@ -17,8 +17,9 @@ per-block smoothing, and every knob the module has:
          half, c = 0.1447 LCUT^2 (about 1 kHz at 127); MOD the long delay's swing, 0 to twice
          today's; RATE both LFOs' speed, 0 (frozen) to twice today's. At their defaults (127, 0, 64,
          64) the module is as it was.
-  PRE    0-127, default 0, proposed only: a predelay of 32 PRE samples (0 to 92 ms) on the mono
-         input, ahead of the input allpasses.
+  PRE    0-127, default 0 (slot 11): a predelay of 32 PRE samples (0 to 92 ms) on the mono input,
+         held in the far end of the long delay that SIZE leaves unread, so clamped to that room:
+         none at SIZE 127, about 24 ms at 90, 44 ms at 60.
 Two gate forms (--gate):
   module  as built (5 Nov 2026): when the hold runs out the gain falls 1/2^REL a sample, a straight
           line in dB like a desk gate's release (SSL channel gate, Drawmer DS201; the module's REL is
@@ -28,14 +29,9 @@ Two gate forms (--gate):
           the next hit starts from silence. --release-shift changes REL here only.
   old     the module before 5 Nov 2026: the wet closed in about 3 ms and the tank rang on.
 
-Without PRE the output is verify_gateverb's model, sample for sample (`--selftest` runs the
-two side by side, page 2 included). PRE is proposed, not built, and the memory the tool prints
-is the model's own arithmetic, not a measurement.
-
-The memory line is the words the chip would need (ring + predelay) against two
-limits: the module's 15,862-word ring today, and 14,368 words, the most a
-reverb on T3, T4, T7 or T8 may use if nothing is to reach offset 0x3820 of the
-slot, where octabam's window code lives.
+The output is verify_studioverb's model, sample for sample (`--selftest` runs the two side by
+side, every knob included). The ring is 15,862 words whatever the knobs (SIZE moves read taps,
+PRE borrows what SIZE frees); `--impulse` prints the predelay a setting actually gets.
 
 Sample rate 44,100 Hz, 16-sample blocks, mono input (left and right summed), stereo out.
 """
@@ -46,7 +42,6 @@ FRAMES = 16
 Q = 1 << 23
 LEN = [109, 157, 233, 386, 1600, 1973, 3303, 1852, 1610, 4630]
 RING_TODAY = 15862
-RING_WINDOW = 0x3820          # 14,368
 NAMES = ("AMNT", "GAIN", "TIME", "DIFF", "TONE", "GATE", "SIZE", "LCUT", "MOD", "RATE", "PRE")
 DEFAULTS = dict(AMNT=40, GAIN=51, TIME=64, DIFF=100, TONE=90, GATE=0, SIZE=127, LCUT=0, MOD=64, RATE=64, PRE=0)
 
@@ -66,31 +61,29 @@ def parab(phase):
     return max(-Q, min(Q - 1, (x * t >> 23) * 4))
 
 
-def memory_words(p):
-    """The ring is laid out at full size whatever SIZE is (SIZE moves the tank's read taps in), so
-    only the proposed predelay adds to it."""
-    return RING_TODAY + 32 * p["PRE"]
+def pre_samples(p):
+    """The predelay a setting gets: 32 PRE, clamped to the m - 2 words SIZE leaves past the long
+    delay's tap (m = 4630 f, f settled)."""
+    f = mulf((127 - p["SIZE"]) << 16, 0x6734EE)
+    return min(32 * p["PRE"], max(0, mulf(4630, f) - 2))
 
 
 def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
     """samples: interleaved stereo ints (24-bit scale). params: dict of NAMES.
     Returns (left, right) as floats on the 24-bit scale.
 
-    lfo: "module" (the default) is GATE VERB as built: the smear LFO unipolar, 0..1, as Clouds'
+    lfo: "module" (the default) is STUDIO VERB as built: the smear LFO unipolar, 0..1, as Clouds'
     (stmlib CosineOscillator::Next() returns 0..1), so the smear reads line 0 at 10..70; the
     long-delay tap swings centre +- depth, twice Clouds' excursion. "clouds": both unipolar, the tap
     at centre..centre+depth. "old": both bipolar, the module before 5 Nov 2026, whose smear read
     -50..70: up to 50 samples behind line 0, in the far end of the last tank line, fed back to the
-    input; the tail grew from TIME 94 up (modules/gateverb/README.md).
+    input; the tail grew from TIME 94 up (modules/studioverb/README.md).
     """
     p = dict(DEFAULTS, **params)
     BASE, b = [], 0
     for l in LEN:
         BASE.append(b); b += l + 1
     N = BASE[-1] + LEN[-1]
-    pre_n = 32 * p["PRE"]
-    pre = [0.0] * (pre_n + 1)
-    pw = 0
     hp1 = hp2 = 0.0
     sz_f = mod_s = lc = 0
     ring = [0.0] * N
@@ -113,12 +106,14 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
         krt += ((mulf(k[2], 0x50A3D7) + 0x2CCCCD) - krt) >> 4
         kap += (mulf(k[3], 0x666666) - kap) >> 4
         klp += ((mulf(k[4], 0x79999A) + 0x066666) - klp) >> 4
-        # page 2 as gateverb.asm computes it each block (verify_gateverb.model is the reference)
+        # page 2 as studioverb.asm computes it each block (verify_studioverb.model is the reference)
         sz_f += (mulf((127 - p["SIZE"]) << 16, 0x6734EE) - sz_f) >> 4
         LN = [LEN[j] - mulf(LEN[j], sz_f) for j in range(10)]
         mod_s += (((p["MOD"] << 16) - 0x400000) - mod_s) >> 4
         depth = mulf(2 * (0x061000 - mulf(0x061000, sz_f)), 0x400000 + mod_s)
         centre = LN[9] - 2 - (depth >> 12)
+        m9 = mulf(4630, sz_f)
+        pd = min(32 * p["PRE"], max(0, m9 - 2)); pkw = 4631 - m9
         u = p["LCUT"] << 16
         lc += (mulf(mulf(u, u), 0x12866A) - lc) >> 4
         C = lc / Q
@@ -161,10 +156,8 @@ def model(samples, params, blocks_skip=0, lfo="module", gate="module", rel=11):
             a0 = rd(0, kint1); b0 = rd(0, kint1 + 1)
             wr(0, 100, a0 + (b0 - a0) * fr1 / Q)
             x_in = (l_in + r_in) / 2
-            if pre_n:
-                pre[pw] = x_in
-                pw = (pw + 1) % (pre_n + 1)
-                x_in = pre[pw]
+            if pd:
+                wr(9, pkw, x_in); x_in = rd(9, pkw + pd)
             acc = x_in * G
             for j in range(4):
                 r = rd(j, LEN[j] - 1); acc += K * r; wr(j, 0, acc); acc = r - K * max(-1, min(1, acc))
@@ -291,22 +284,22 @@ def impulse_report(p, seconds=8.0, lfo="module", gate="module", rel=11):
     seg = int(0.5 * SR)
     tail = [10 * math.log10(sum(v * v for v in ir[i:i + seg]) / seg + 1e-30) for i in range(1, len(ir) - seg, seg)]
     grows = any(b > a + 3 for a, b in zip(tail, tail[1:]) if a > -110)
-    words = memory_words(p)
+    pd = pre_samples(p)
     print(f"  {' '.join(f'{k}={p[k]}' for k in NAMES)}")
     print(f"  RT60 {'%.2f s' % t if t else 'n/a (decays past the window)'}; "
           f"peak wet {20 * math.log10(max(abs(v) for v in ir[1:]) + 1e-30):.1f} dBFS"
           f"{'; UNSTABLE: the tail grows (half-second RMS rises by over 3 dB)' if grows else ''}")
     print(f"  tail RMS by half second, dB: {' '.join('%.0f' % v for v in tail)}")
-    print(f"  memory {words} words: {'within' if words <= RING_TODAY else 'OVER'} today's ring ({RING_TODAY}), "
-          f"{'within' if words <= RING_WINDOW else 'OVER'} the window-slot cap ({RING_WINDOW})")
+    print(f"  predelay {pd} samples ({1000 * pd / SR:.1f} ms) of the {32 * p['PRE']} PRE asks for"
+          f"{' (clamped: SIZE leaves no more)' if pd < 32 * p['PRE'] else ''}")
 
 
 def selftest():
-    """The model without PRE against verify_gateverb.model, sample for sample."""
-    src = pathlib.Path(__file__).resolve().parents[1] / "verify" / "verify_gateverb.py"
+    """The model against verify_studioverb.model, sample for sample."""
+    src = pathlib.Path(__file__).resolve().parents[1] / "verify" / "verify_studioverb.py"
     # only the model is wanted: no build, no dsp_host, no registry (send_probe loads every manifest)
     code = src.read_text().replace("\nmain()\n", "\n").replace("import send_probe  # noqa: E402\n", "send_probe = None\n")
-    ns = {"__name__": "gateverb_ref", "__file__": str(src)}
+    ns = {"__name__": "studioverb_ref", "__file__": str(src)}
     cwd = pathlib.Path.cwd()
     try:
         exec(compile(code, str(src), "exec"), ns)
@@ -321,9 +314,10 @@ def selftest():
     st = [v for s in mono for v in (s, s)]
     bad = 0
     for prm in ([64, 51, 80, 100, 90, 0], [80, 51, 110, 100, 90, 40], [127, 20, 127, 30, 10, 0],
-                [64, 51, 80, 100, 90, 0, 60, 40, 100, 30], [80, 51, 110, 100, 90, 40, 20, 90, 127, 0]):
-        rL, rR = ns["model"](st, prm, 4)
-        mL, mR = model(st, dict(zip(NAMES, prm)), 4)
+                [64, 51, 80, 100, 90, 0, 60, 40, 100, 30], [80, 51, 110, 100, 90, 40, 20, 90, 127, 0],
+                [64, 51, 80, 100, 90, 0, 60, 0, 64, 64, 0, 20], [80, 51, 110, 100, 90, 30, 0, 50, 90, 70, 0, 127]):
+        rL, rR = ns["model"](st, prm, 4)       # slots: 0-9 as NAMES, 10 blank, 11 PRE
+        mL, mR = model(st, dict(zip(NAMES[:10], prm[:10]), **({"PRE": prm[11]} if len(prm) > 11 else {})), 4)
         same = rL == mL and rR == mR
         bad += not same
         print(f"  [{'ok' if same else 'FAIL'}] {prm}: sample for sample")
@@ -383,7 +377,7 @@ def main():
         L, R = model(st, q, lfo=a.lfo, gate=a.gate, rel=a.release_shift)
         path = out if k is None else out.with_name(f"{out.stem}_{k}{v}{out.suffix}")
         write_wav(path, L, R)
-        print(f"{path}: {' '.join(f'{n}={q[n]}' for n in NAMES)}; memory {memory_words(q)} words")
+        print(f"{path}: {' '.join(f'{n}={q[n]}' for n in NAMES)}; predelay {pre_samples(q)} samples")
 
 
 if __name__ == "__main__":
