@@ -953,7 +953,10 @@ sc_encoder:
 | Detour at 0x4009fb58 (`tstl %fp@(-64); bles 0x4009fb80`), stock's output
 | quantization: d7 the MIDI track, a2 the note. A scale stock does not play
 | (MIDI SCALES' modes, sc_lib's) snaps here; stock's Major / Minor and OFF
-| go on as stock's.
+| go on as stock's. a5 = 0x46c76dc0 + 32 * track: stock sets it at 0x4009f9b8
+| and steps it by 32 per track (`lea %a5@(32),%a5` at 0x4009fffe), nothing
+| writes it before here; it is the record stock reads NOTE (544) and NOT2-4
+| (547-549) from at 0x4009f9f2, building each voice as NOTE + NOTx - 64.
 sc_output:
         lea     -12(%sp),%sp
         movem.l %d0-%d1/%a0,(%sp)
