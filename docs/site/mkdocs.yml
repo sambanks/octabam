@@ -64,6 +64,7 @@ nav:
       - MIDI and USB:
           - CC Feedback: reference/manual/octabam/midi-usb/cc-feedback.md
           - CC Map: reference/manual/octabam/midi-usb/cc-map.md
+          - Scales: reference/manual/octabam/midi-usb/scales.md
           - USB: reference/manual/octabam/midi-usb/usb.md
       - BRAIN:
           - BRAIN: reference/manual/octabam/brain/index.md

@@ -105,11 +105,13 @@ def main():
     # Cold entries must use stock before the platform runtime is available.
     # Poisoning its first instruction makes any premature DRAM dispatch fail.
     first=bytes(u.mem_read(m.base,2));u.mem_write(m.base,b'\x4a\xfc')
-    # RIG HOSTS and BRAIN customize Part defaults in DRAM after boot.
+    # RIG HOSTS and BRAIN customize Part defaults in DRAM after boot, and
+    # OCTA303 reads a TB-303 track's FLEX bytes in the Part validator (0x40002318,
+    # which stock's init calls).
     # Isolate the cold dispatch contract from those independent downstream
     # hooks, then restore them for all warm copy/clear comparisons below.
     init_hooks={a:bytes(u.mem_read(a,n)) for a,n in
-                ((0x4000567e,24),(0x40005830,10),(0x40005840,10),(0x40005a38,8))}
+                ((0x4000567e,24),(0x40005830,10),(0x40005840,10),(0x40005a38,8),(0x40002318,8))}
     for a,data in init_hooks.items():
         u.mem_write(a,stock[a-0x40000400:a-0x40000400+len(data)])
         u.ctl_remove_cache(a,a+len(data))
