@@ -1,7 +1,7 @@
 # `dlpump` -- DLPUMP
 
 The ColdFire half of the demand loader (design, measurements and open items:
-[`docs/proposals/DEMAND_LOAD.md`](../../docs/proposals/DEMAND_LOAD.md)).
+[`docs/contributing/DEMAND_LOADER.md`](../../docs/contributing/DEMAND_LOADER.md)).
 
 `pump.s` is called from LOAD METER's entry code (`lm_in`, a weak symbol) on every frame
 interrupt. Idle, on frames whose ping word (`0x800000e0`) is 0, it compares the ids on the 16

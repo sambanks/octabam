@@ -22,7 +22,7 @@ REMIX = Remix(
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "DLPROBE") + STOCK14 + OURS,
     fx1=("DLPROBE", "SPECTRUM", "CHARACTER", "MODULATION", "FILTER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
          "COMB FILTER", "COMPRESSOR", "LO-FI"),
-    # The window words no stock effect writes (docs/proposals/DEMAND_LOAD.md): the top of each FX2
+    # The window words no stock effect writes (docs/contributing/DEMAND_LOADER.md): the top of each FX2
     # slot from 0x3da3 up, and below 0x37f00, where payload B's boot zero loop starts. DLCOPY is the
     # lowest upload; the stub and the reverb guards follow it (window_loader); LOAD METER's DSP half
     # fills the next gap. The four effects sit at offset 0x1000 of the four slots (core A tracks 7

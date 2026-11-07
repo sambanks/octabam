@@ -1,6 +1,6 @@
 """The brain file: the card store, the project store and a template file.
 
-docs/proposals/BRAIN.md section 7 is the format; this is its reference
+git show 76fd8466:docs/proposals/BRAIN.md section 7 is the format; this is its reference
 reader and writer, used by the build, tools/hw/ot_brain.py and the gates.
 Big-endian; CRC-32 is zlib's; padding is zero.
 

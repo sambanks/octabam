@@ -1,7 +1,7 @@
 # `dlcopy` -- DLCOPY
 
 The DSP half of the demand loader (design, measurements and open items:
-[`docs/proposals/DEMAND_LOAD.md`](../../docs/proposals/DEMAND_LOAD.md)).
+[`docs/contributing/DEMAND_LOADER.md`](../../docs/contributing/DEMAND_LOADER.md)).
 
 `dlcopy.asm` is a hook on payload B at `P:0x76` (the frame head, after the host handlers'
 address masks are set), placed in the shared window. When the doorbell at `X:0x2900` is `0xa55a`

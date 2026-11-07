@@ -18,7 +18,7 @@ a demand effect on a chooser is refused, with a toast, while the FX2 slot that s
 its memory is on a stock reverb, and choosing a stock reverb on that slot is refused while
 the effect is loaded. A song that sets both by another route leaves the reverb or the
 effect dry, and says which at the next page key. The design and what has been measured:
-[`DEMAND_LOAD.md`](../../docs/proposals/DEMAND_LOAD.md).
+[`DEMAND_LOAD.md`](../../docs/contributing/DEMAND_LOADER.md).
 
 | effect | FX1 | FX2 | id | what it is | module |
 |---|---|---|---|---|---|

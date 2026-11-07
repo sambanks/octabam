@@ -23,9 +23,11 @@ on. The four sections below carry the four modules' documentation.
 
 ## Settings
 
+The design of 14 Oct 2026, `git show 76fd8466:docs/proposals/USB.md`, proposed two settings (LAYOUT, INPUTS); the six below are what was built. Its section 9 listed what to find out: the order of card mount and USB enumeration at boot, the producer's size and per-frame dispatch cost with all six layouts, the parametric inject's cycles, re-enumeration after a replug with a changed value on each host OS, and the rule for an invalid combination. Their status was not re-checked when the page was removed.
+
 The inject (`rx_inject.asm`, 29 words on payload A) is placed whenever IN could be on: a remix that fixes IN at OFF (a `Pin`, or no BRAIN) carries no DSP section. In a remix that gives up a stock effect it goes in the donor region; in one that keeps all fourteen it goes above payload A's code, `P:$1fdf`, in a load record of its own carried by a pre-boot copy of the payload (`DspSection.tail`, `docs/contributing/PLACEMENT.md`; `remixes/test/usb-io-stock14`, on Bryan T's MKII 22 Oct 2026). `octabam-core` carries it in the tail; IN is selectable there (default OFF).
 
-Six NEXT_BOOT settings, early (`docs/proposals/BRAIN.md` 6.4: the CS1
+Six NEXT_BOOT settings, early (`git show 76fd8466:docs/proposals/BRAIN.md` 6.4: the CS1
 early block, read by cfgsel at the USB controller init, so they stand
 from the first enumeration):
 

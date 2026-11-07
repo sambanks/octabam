@@ -1,6 +1,6 @@
 """Demand-load spike: MODULATION loaded on demand (Remix.window_demand), beside the stock effects.
 
-A port-only instrument (docs/proposals/DEMAND_LOAD.md): MODULATION's id dispatches to a stub that is dry until DLCOPY
+A port-only instrument (docs/contributing/DEMAND_LOADER.md): MODULATION's id dispatches to a stub that is dry until DLCOPY
 has published the code, which DLPUMP stages when a track uses MODULATION. The guard wrappers front PLATE REV, DARK REV and SPRING REV."""
 from remix.schema import Pin, Proof, Remix
 REMIX = Remix(family="effects", proof=Proof.CHECK, proof_note="",

@@ -37,9 +37,11 @@ For each effect in FX1 and FX2 on a track playing the `hits`, `pink` and `sweep`
 | 2.5 | save the project, reload it | knobs, MODE and LFOs return |
 | 2.6 | the same effect on 4 tracks at once, 5 minutes | stable audio, LOAD METER below 95 % per core |
 
-Effects: the 14 stock effects and SPECTRUM, CHARACTER, MODULATION (`remixes/octabam/remix.py` has the current list).
+Effects: the 14 stock effects and the demand-loaded ones (`remixes/octabam/remix.py` has the current list).
 
-### 2a. Demand loader (SPECTRUM, CHARACTER, MODULATION)
+### 2a. Demand loader (SPECTRUM, CHARACTER, MODULATION, SHATTER, SIDECHAIN_COMPRESSOR)
+
+The loader's design and what has been measured on a unit: [DEMAND_LOADER.md](DEMAND_LOADER.md). SIDECHAIN_COMPRESSOR has run under the port and `dsp_host` only.
 
 | # | step | expected |
 |---|---|---|
@@ -51,6 +53,9 @@ Effects: the 14 stock effects and SPECTRUM, CHARACTER, MODULATION (`remixes/octa
 | 2a.6 | open a song that sets both by another route | the reverb or the effect is dry, and the next page key says which |
 | 2a.7 | CHARACTER KEY = T1 | keys on the track's own input (no BusDelay host in this remix) |
 | 2a.8 | stock reverb size and decay sweeps at each setting, then load and withdraw an effect | no reverb crash or silence |
+| 2a.9 | COMPRESSOR on a track, SIDECHAIN_COMPRESSOR not yet loaded | page 2 KEY reads `--`; the track runs as stock COMPRESSOR |
+| 2a.10 | COMPRESSOR on a track with no free home for SC's block | not refused; toast `SC KEY OFF: T4 FX2`; stock COMPRESSOR runs |
+| 2a.11 | a stock reverb picked on the FX2 slot of SC's loaded block | not refused; toast `SC KEY OFF: T4 REV`; SC is withdrawn, the reverb runs |
 
 ## 3. Sequencing
 
@@ -140,5 +145,4 @@ Effects: the 14 stock effects and SPECTRUM, CHARACTER, MODULATION (`remixes/octa
 ## Not run on any unit (1 Nov 2026)
 
 The suite and this plan have not been run. Open from [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md) and
-`remixes/octabam/README.md`: nothing of the demand loader has run on a unit (the host write to the DSP, copying
-into the window, the window's wait-state cost, the stock effects' buffer extents at other settings).
+`remixes/octabam/README.md`: the demand loader has run on a unit (host write, copy, homes, buffer extents at default knobs: `DEMAND_LOADER.md`). Not run on any unit: SIDECHAIN_COMPRESSOR's hook stubs, the window's wait-state cost, the stock effects' buffer extents at other settings, a move from T4's block (open freeze, `FAILURE_MODES.md`).

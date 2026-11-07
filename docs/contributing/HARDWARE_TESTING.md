@@ -7,6 +7,11 @@ matrix itself (flags, limits, measured results) is
 [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md); what has gone wrong on a unit is in
 [FAILURE_MODES.md](FAILURE_MODES.md).
 
+Four documents cover testing on a unit: this walk-through; [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), the reference for the
+matrix, the stress sequences, MIDI SCENES and DIRECT_JUMP_KYOTI runs, the flags and the limits;
+[HARDWARE_SUITE.md](HARDWARE_SUITE.md), the `octabam` remix's phases and results; [HARDWARE_MANUAL.md](HARDWARE_MANUAL.md), the plan
+for what the cable cannot reach.
+
 The rig needs one USB cable between the Mac and the unit. It sends USB MIDI
 (program change, START, a host clock, CCs), captures the unit's USB audio, and
 reads LOAD METER over a USB vendor request (`0xc0/0x57`). No audio interface,
@@ -146,18 +151,8 @@ replays sequences under the ColdFire port with no unit.
   its state back to the card when the project is replaced: copy the pristine
   project folder over the card's copy (step 3) before loading it again.
 - A project with no samples is silent: `--no-silence-check` skips the -80 dB check.
-- MIDI SCENES: `python3 tools/hw/ot_scenes.py stamp <project> [--all-scenes]` writes MIDI track 1 (channel 11,
-  CC1..CC10 on, scene A = 1, scene B = 9), MIDI trigs, CC 1 locks and the run settings (clock and transport receive
-  on) into a copy of a fresh project; `show` prints the locks. Use profile `scenes` (scene select over 0..15, the
-  range the unit takes) with `--all-scenes`. Record the track output with
-  `python3 tools/hw/ot_midi.py -p "Elektron Octatrack DPS-1" listen <seconds>` alongside the run.
-  `python3 tools/hw/ot_xflag.py` times a crossfader step to the lock CC (stopped, playing, with a CC flood).
-- DIRECT_JUMP_KYOTI: stamp with `--pattern-steps 2=1,2,4,7,8,11,13`, turn the toggle on by hand ([PTN] + [YES]; OFF
-  at every power-on, so after any restart), then `python3 tools/hw/ot_djump.py` prints the landing step and the
-  position pattern 2 plays from for each of a series of program changes. Run it once with the toggle off for the
-  control (landing at the pattern end).
-- The audio check needs at least three unmuted tracks, counted from the
-  sequence's own mute operations, and assumes every track starts unmuted.
+- MIDI SCENES and DIRECT_JUMP_KYOTI runs (`ot_scenes.py`, `ot_xflag.py`, `ot_djump.py`, the `scenes` profile, the toggle set by hand): [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), "MIDI SCENES on a unit" and "DIRECT_JUMP_KYOTI on a unit".
+- The audio check's rule (three unmuted tracks, every track starting unmuted) is in [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), "Stress sequences".
 - A 56-minute run crosses the 50.7-minute mark after power-up, which is where
   an unfixed frame counter stopped the unit (FAILURE_MODES.md).
 

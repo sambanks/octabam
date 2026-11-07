@@ -9,7 +9,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "ATA WRITE GUARD", "EVENTS",
         "LOAD METER")
 # COMPRESSOR's row is SIDECHAIN_COMPRESSOR's: stock COMPRESSOR with a side-chain KEY on page 2, its DSP
-# loaded on demand while a track uses COMPRESSOR (docs/proposals/SC_DEMAND_LOAD.md). Out 1 Nov 2026 (433e22e)
+# loaded on demand while a track uses COMPRESSOR (docs/contributing/DEMAND_LOADER.md). Out 1 Nov 2026 (433e22e)
 # with TRANSIENT and DISTORX, back 4 Nov 2026: KEY reads "--" while the side-chain is not loaded (#934).
 STOCK11 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
            "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI", "DELAY")
@@ -39,7 +39,7 @@ REMIX = Remix(
     doc="octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE") + STOCK11 + OURS
             + COLDFIRE + VERB_PARTS,
-    # The window layout is octabam's (docs/proposals/DEMAND_LOAD.md): DLCOPY, the stub and LOAD METER's DSP
+    # The window layout is octabam's (docs/contributing/DEMAND_LOADER.md): DLCOPY, the stub and LOAD METER's DSP
     # half resident above offset 0x3da3 of the slots and below 0x37f00, where payload B's boot zero loop
     # starts; the demand effects at offset 0x3820 of the four FX2 slots in the window (core A tracks 7 and 8,
     # core B tracks 3 and 4). What writes there is different. The stock reverbs are off both choosers, so

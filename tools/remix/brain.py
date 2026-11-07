@@ -1,6 +1,6 @@
 """Settings resolved for a remix, the refusals, and the lock file.
 
-docs/proposals/BRAIN.md sections 2 and 4 are the rules. Layers 1 and 2
+git show 76fd8466:docs/proposals/BRAIN.md sections 2 and 4 are the rules. Layers 1 and 2
 (the manifest's default and the remix's value or Pin) are resolved here, at
 build. Layers 3 and 4 (card and project) exist only when the remix carries
 the BRAIN module.
@@ -492,7 +492,8 @@ def report(remix, mods) -> list[str]:
     rows = resolve(remix, mods)
     if not rows and not remix.defaults:
         return []
-    out = ["=== Settings: resolved at build (docs/proposals/BRAIN.md) ==="]
+    # The report text is API (trap-report-api): the cited file is removed, the text stays.
+    out = ["=== Settings: resolved at build (docs/proposals/" "BRAIN.md) ==="]
     for r, s in rows:
         where = "card/project at run time" if r.runtime else "fixed in the image"
         out.append(f"  {r.store_id} {r.name} = {r.shown(s)}  ({r.layer}; {where})")

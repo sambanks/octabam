@@ -9,7 +9,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "ATA WRITE GUARD", "EVENTS",
         "LOAD METER")
 # COMPRESSOR's row is SIDECHAIN_COMPRESSOR's: stock COMPRESSOR with a side-chain KEY on page 2, its DSP
-# loaded on demand while a track uses COMPRESSOR (docs/proposals/SC_DEMAND_LOAD.md). Out 1 Nov 2026 (433e22e)
+# loaded on demand while a track uses COMPRESSOR (docs/contributing/DEMAND_LOADER.md). Out 1 Nov 2026 (433e22e)
 # with TRANSIENT and DISTORX, back 4 Nov 2026: KEY reads "--" while the side-chain is not loaded (#934).
 STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
            "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
@@ -40,7 +40,7 @@ REMIX = Remix(
     doc="The core ColdFire modules and every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE") + STOCK14 + OURS
             + COLDFIRE,
-    # The window words no stock effect writes (docs/proposals/DEMAND_LOAD.md): the top of each FX2
+    # The window words no stock effect writes (docs/contributing/DEMAND_LOADER.md): the top of each FX2
     # slot from 0x3da3 up, and below 0x37f00, where payload B's boot zero loop starts. DLCOPY is the
     # lowest upload; the stub and the reverb guards follow it (window_loader); LOAD METER's DSP half
     # fills the next gap. The three effects sit at offset 0x3820 of three of the four slots (core A tracks 7

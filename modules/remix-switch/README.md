@@ -14,8 +14,9 @@ fifth MAIN MENU category of its own, OS, reading `.OBI` files in the card
 root, in every image; it moved under BRAIN, which carries it, and was
 renamed for what it switches between.
 
-The design, and the firmware facts it rests on, are in
-[`docs/proposals/FIRMWARE_SWITCHER.md`](../../docs/proposals/FIRMWARE_SWITCHER.md).
+The firmware facts it rests on (reset path, OS entry, OS UPGRADE, the startup menu byte) are in
+[`docs/firmware/BOOT.md`](../../docs/firmware/BOOT.md). The original design records are
+`git show 76fd8466:docs/proposals/FIRMWARE_SWITCHER.md` and `git show 76fd8466:docs/proposals/BOOT_DEFAULT.md`.
 Markers as in `docs/firmware/CHIP.md`: ✅ measured (on the unit where it
 says so, else under the ColdFire port or read from the image), 🟡 inferred,
 with what would falsify it.
@@ -72,8 +73,10 @@ PR #542 also offered the card's images in a dialog at power-on, before the
 project loaded (3 s, then NO). REMIX SWITCH leaves it out (Sam Banks,
 8 Oct 2026): a power-on loads the project as stock does, and nothing of
 the module runs before it. Its design record is
-[`docs/proposals/BOOT_DEFAULT.md`](../../docs/proposals/BOOT_DEFAULT.md);
-its code is PR #542's `switch.s`.
+`git show 76fd8466:docs/proposals/BOOT_DEFAULT.md`;
+its code is PR #542's `switch.s`. A boot default costs two boots on every power-on (the gate runs before the
+filesystem exists; `docs/firmware/BOOT.md`); the chainload alone is ~190 ms, both DSP uploads ~60 ms (unit, build 14);
+power-on to a mounted card and the read of a 1.1-1.2 MB image are unmeasured.
 
 An `.RMX` is the raw image the bootstrap would unpack to `0x40000400`. It is
 Elektron's OS with your changes, so like the `.bin` it never leaves your

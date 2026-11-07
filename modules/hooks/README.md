@@ -8,8 +8,8 @@ and its bytes do not move, so a module proven alone on a unit stays exactly what
 was proven. A submodule participant's source is not edited; an in-tree
 participant builds a bridged form under a flag and is byte-identical alone.
 
-The design, and the conflicts it is meant to remove next:
-[docs/proposals/SHARED_HOOKS.md](../../docs/proposals/SHARED_HOOKS.md).
+How it relates to STORE, EVENTS and `Override`, and the conflicts still open:
+[docs/contributing/SHARED_SITES.md](../../docs/contributing/SHARED_SITES.md).
 
 ## Bridges
 

@@ -15,7 +15,7 @@ a fifth root category of its own, OS, in every image (PR #542).
 Two units: `chain.s` (the chainloader, a ROM cave: the DRAM runtime is not
 depacked yet when it runs) and `switch.s` (the rows, the load and
 the reset, DRAM). `osw.inc` is the layout both share.
-docs/proposals/FIRMWARE_SWITCHER.md is the design and what is measured;
+docs/firmware/BOOT.md is the firmware facts, modules/remix-switch/README.md the design and what is measured;
 README.md beside this file is the procedure.
 """
 

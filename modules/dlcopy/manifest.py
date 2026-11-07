@@ -1,5 +1,5 @@
 """DLCOPY -- the demand loader's copier: a frame hook on payload B that moves a block the ColdFire has
-staged into the shared window and publishes it (docs/proposals/DEMAND_LOAD.md).
+staged into the shared window and publishes it (docs/contributing/DEMAND_LOADER.md).
 """
 from remix.schema import Category, Claims, DspHook, DspRange, DspSection, Gate, Kind, Module, Proof
 

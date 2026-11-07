@@ -12,8 +12,8 @@ The code that turns `modules/<name>/manifest.py` files and a
 | `ledger.py` | cross-module resource collisions (FX2 id, declared conflict, every fixed-address write span, kept bytes, grown table, core-private Y, FX2 buffer region, DSP data range), refused by name before a byte is written |
 | `dsp_ranges.py` | who owns each DSP data word in a selection (the ledger's DSP data check), and the port census check `verify_set` runs on the shared window |
 | `keep.py` | the build's assert that kept stock bytes (`schema.Keep`) still hold stock, before the first write and on the finished image |
-| `store.py` | settings resolved for a remix through layers 1 and 2, the remix refusals, the CS1 budget for early settings, each module's `brain.lock` (`docs/proposals/BRAIN.md` sections 2 and 4) |
-| `brainfile.py` | the brain file: reader, writer, the `.work` / `.strd` pair rule (`docs/proposals/BRAIN.md` sections 6.2 and 7) |
+| `store.py` | settings resolved for a remix through layers 1 and 2, the remix refusals, the CS1 budget for early settings, each module's `brain.lock` (`git show 76fd8466:docs/proposals/BRAIN.md` sections 2 and 4) |
+| `brainfile.py` | the brain file: reader, writer, the `.work` / `.strd` pair rule (`git show 76fd8466:docs/proposals/BRAIN.md` sections 6.2 and 7) |
 | `stock.py` | the stock FX2 effects as rows a remix can keep in the chooser; what a remix harvests |
 | `costs.py`, `slot_costs.json` | slot costs measured on a unit per effect, merged from the matrix reports, and the worst-case DSP load of a remix bounded from them (`docs/contributing/COSTS.md`) |
 | `rig.py` | a module's category, track range and chooser, derived from the manifests |

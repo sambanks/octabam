@@ -59,7 +59,7 @@ MK1-era files (inferred); octabam images keep code 0178.
 UI → write flow: OS UPGRADE menu → confirm → `os_upgrade` (stops audio,
 "WORKING PLEASE WAIT", enqueues a task) → scans the CF, validates →
 `os_apply_flash` (critical section) → writes NOR → reboot. ✅ Read 29 Sep
-2026 (`docs/proposals/FIRMWARE_SWITCHER.md`): the menu handler
+2026 (`docs/firmware/BOOT.md`): the menu handler
 `0x400636bc` stops playback (`0x40063660`) and defers `0x4006370c` →
 `0x40080640`, which lists `/*.BIN` (`0x4007f598`) and keeps the best
 validation result; the file is read in 8-sector chunks through the
