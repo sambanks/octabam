@@ -51,7 +51,8 @@ MODULE = Module(
          "Octatrack's own FX and AMP follow."),
     proof=Proof.PORT,
     proof_note=("the engine and the note layer: Python model == host == ColdFire under Unicorn "
-                "(modules/wavecf/test_wavecf.py); the machine under the port: not yet. Not flashed"),
+                "(modules/wavecf/test_wavecf.py); the machine's rows, the shared limit and its sound under the "
+                "port (verify_wavecf_ui.py, verify_wavecf_port.py). Not flashed"),
     linked=(Linked("wavecf", os.path.join(_HERE, "wavecf.s"), dram=True, include=remix_inc),),
     symbol_refs=(_render_ref(),),
     detours=(
@@ -104,5 +105,9 @@ MODULE = Module(
         ("BLACKPYRAMIDS_303", "both are a machine on row 5: shared detour sites (the machine chooser, SRC "
                               "SETUP, the Part validator) and pokes (the chooser's row count)"),
     ),
-    gates=(Gate("modules/wavecf/test_wavecf.py", remix_arg=False),),
+    gates=(
+        Gate("modules/wavecf/test_wavecf.py", remix_arg=False, venv=True),
+        Gate("tools/verify/verify_wavecf_ui.py", remix_arg=False, stage="image", venv=True),
+        Gate("tools/verify/verify_wavecf_port.py", remix_arg=False, stage="image", venv=True),
+    ),
 )
