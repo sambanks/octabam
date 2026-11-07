@@ -169,7 +169,7 @@ from the card (section 5).
 
 | module | author | what it does | proof |
 |---|---|---|---|
-| [**BRAIN**](modules/brain/README.md) | [Sam Banks](https://github.com/sambanks) | The settings store on the unit: card-wide knob defaults read from BRAIN/card.work at each project load (docs/proposals/BRAIN.md). | on hardware: cursory testing on Sam's MKII (owner report, 16 Oct 2026); `verify_brain` under the port (6 Oct 2026) |
+| [**BRAIN**](modules/brain/README.md) | [Sam Banks](https://github.com/sambanks) | The settings store on the unit: card-wide knob defaults read from BRAIN/card.work at each project load (git show 76fd8466:docs/proposals/BRAIN.md). | on hardware: cursory testing on Sam's MKII (owner report, 16 Oct 2026); `verify_brain` under the port (6 Oct 2026) |
 | [**HOOKS**](modules/hooks/README.md) | [Sam Banks](https://github.com/sambanks) | Platform: owns a stock site two selected modules both claim, and calls each one's routine there. | port-gated: verify_hooks: the bridged tables and chains under Unicorn, and each bridged image's sites |
 | [**MEMORY**](modules/memory/README.md) | [Sam Banks](https://github.com/sambanks) | Platform: the DRAM reserve in stock's audio page arena, sized from what the remix's modules claim. | on hardware: cursory testing on Sam's MKII (owner report, 16 Oct 2026); the reserve's size per remix in the build report; `verify_dram_boot` under the port |
 | [**PAGES**](modules/pages/README.md) | [djib](https://github.com/Djibdjib) | System: the extra pages a page key cycles through (SRC again on MIDI NOTE: CHORDS FACTORY ...). | on hardware: the owner's MKII (live-djib, Oct-Nov 2026): SRC again on MIDI NOTE; verify_chords (the port): SRC 1/2/3 through PAGES |
@@ -233,7 +233,7 @@ files the module owns and formats. A module's settings (menu options, a USB
 profile) live in BRAIN (`modules/brain`), the settings, defaults and
 templates store: SETTINGS, MIDI LOG, DEFAULTS, the project pair and TOOLS,
 designed in
-[docs/proposals/BRAIN.md](docs/proposals/BRAIN.md) (6 Oct 2026, starting
+`git show 76fd8466:docs/proposals/BRAIN.md` (6 Oct 2026, starting
 from nordseele's
 OTX proposal, `git show 76fd8466:docs/proposals/OTX_PROJECT_PROPOSAL.md`). Measured under the
 port only; not on a unit.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""brain files on the computer (docs/proposals/BRAIN.md section 10).
+"""brain files on the computer (git show 76fd8466:docs/proposals/BRAIN.md section 10).
 
     python3 tools/hw/ot_brain.py dump FILE              a .work, .strd or .brain file as JSON
     python3 tools/hw/ot_brain.py build JSON OUT         JSON back to a file

@@ -57,10 +57,6 @@ REPITCH in [REPITCH.md](firmware/REPITCH.md)).
 
 ## Proposals
 
-[proposals/](proposals/): [BRAIN.md](proposals/BRAIN.md), the design for
-settings, defaults and templates (6 Oct 2026; `modules/brain` builds it and
-measures it under the port, not on a unit).
-
 [proposals/remixes/](proposals/remixes/README.md): remix proposals, each
 taken on hardware to verified stable before it lands under `remixes/`.
 
@@ -71,9 +67,10 @@ Removed proposals, each recovered with `git show 76fd8466:docs/proposals/<file>`
 | file | why removed | where it went |
 |---|---|---|
 | `FIRMWARE_SWITCHER.md`, `BOOT_DEFAULT.md` | REMIX SWITCH shipped | firmware facts in [firmware/BOOT.md](firmware/BOOT.md); behaviour in [REMIX SWITCH](../modules/remix-switch/README.md) |
-| `OTX_PROJECT_PROPOSAL.md`, `OTX_MODULE_GUIDELINES.md` | replaced by BRAIN and the modules that use it | [proposals/BRAIN.md](proposals/BRAIN.md) section 14 lists what BRAIN took from OTX |
+| `OTX_PROJECT_PROPOSAL.md`, `OTX_MODULE_GUIDELINES.md` | replaced by BRAIN and the modules that use it | BRAIN.md section 14 lists what BRAIN took from OTX |
 | `USB_HANDOFF.md`, `USB.md` | session handoff (15 Oct 2026) and the design that merged four USB modules into one with run-time settings; built, with six settings where it proposed two (LAYOUT, INPUTS) | [USB](../modules/usb/README.md) |
 | `SHARED_HOOKS.md` | built as HOOKS; PARTS dropped | [contributing/SHARED_SITES.md](contributing/SHARED_SITES.md) |
+| `BRAIN.md` | built: the settings, defaults and templates store; its section numbers are cited in `tools/remix/brain*.py`, `schema.py` and `modules/brain` | [BRAIN](../modules/brain/README.md), `tools/remix/brainfile.py` (the file format) |
 | `SCOPE.md` | shipped | [SCOPE](../modules/scope/README.md) |
 | `DEMAND_LOAD.md`, `SC_DEMAND_LOAD.md` | merged | [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) |
 
