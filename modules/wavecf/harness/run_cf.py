@@ -2,7 +2,10 @@
 usage: run_cf.py engine.elf engine.bin table.bin cmds.bin out.i32
 Writes the samples big-endian; prints instructions a sample (eng_render) and the worst block."""
 import bisect, os, re, struct, subprocess, sys
-os.environ.setdefault("LIBUNICORN_PATH", os.path.join(os.path.dirname(__file__), "../../../.venv/lib/unicorn-emac"))
+EMAC_LIB = os.path.join(os.path.dirname(__file__), "../../../.venv/lib/unicorn-emac")
+if not os.path.isdir(EMAC_LIB):          # stock Unicorn halves every fractional EMAC product: its answer would be wrong, not slow
+    sys.exit("run_cf.py needs the EMAC-fixed Unicorn at .venv/lib/unicorn-emac (make emu-unicorn)")
+os.environ.setdefault("LIBUNICORN_PATH", EMAC_LIB)
 from unicorn import Uc, UC_ARCH_M68K, UC_MODE_BIG_ENDIAN, UC_HOOK_BLOCK
 from unicorn.m68k_const import UC_M68K_REG_A7
 
