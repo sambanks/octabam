@@ -33,8 +33,10 @@ VARIANTS = (
     ("sine-c3", (64, 0, 0, 0, 0, 0), (0,), None, False, None, None, 0x1111),
     ("sine-e3", (68, 0, 0, 0, 0, 0), (4,), None, False, None, None, 0x1111),
     ("major-c3", (64, 0, 3, 2, 0, 0), (0, 4, 7), None, False, None, None, 0x1111),
-    ("gated-c3", (64, 0, 0, 0, 0, 0), (0,), (10, 20, 40), True, None, None, 0x1111),
-    ("gated-atk0", (64, 0, 0, 0, 0, 0), (0,), (0, 20, 40), True, None, None, 0x1111),     # the author's AMP ATK 0: WAVE holds it at 10
+    ("gated-c3", (64, 0, 0, 0, 0, 0), (0,), (0, 20, 40), True, None, None, 0x1111),
+    ("gated-atk40", (64, 0, 0, 0, 0, 0), (0,), (40, 20, 40), True, None, None, 0x1111),    # a slow attack
+    ("retrig-steady", (64, 0, 0, 0, 0, 0), (0,), None, False, None, None, 0x5555),        # one note re-pressed every 2 steps, the stock AMP
+    ("retrig-finite", (64, 0, 3, 2, 0, 0), (0, 4, 7), (0, 40, 56), False, None, None, 0x5555),   # a chord re-pressed, HOLD 40 REL 56
     ("oct-up", (64, 0, 0, 0, 0, 0), (12,), None, False, (0, 40, 2, 64, 0, 0), None, 0x1111),
     ("comp-harmonics", (64, 0, 0, 0, 0, 0), (0, 19.02), None, False, (0, 40, 1, 64, 100, 0), None, 0x1111),
     ("poly-chord", (64, 0, 0, 3, 0, 0), (0, 4, 7, 12), None, False, (0, 40, 1, 64, 0, 1), {0: 64, 1: 68, 2: 71, 3: 76}, 0x000F),
@@ -126,6 +128,14 @@ def main():
         print(("PASS " if ok else "FAIL ") + f"{name}: rms {rms:.4f}, peaks {[round(f, 1) for f in top]} Hz, want "
               f"{[round(C3 * 2 ** (s / 12.0), 1) for s in semis]}")
         fails += not ok
+        if name.startswith("retrig"):
+            # re-pressing must not step the tone: the DSP's AMP restarts from zero at each START, so it is held at ATK 0 / HOLD INF /
+            # REL INF and the engine applies the AMP page (an ATK of 10 forced in the DSP stepped the output to 0 at every START)
+            d2 = np.abs(x[2:] - 2 * x[1:-1] + x[:-2])
+            clean = float(np.max(np.abs(x))) * (2 * np.pi * 261.6 / sr) ** 2
+            ok4 = d2.max() < 12 * clean
+            print(("PASS " if ok4 else "FAIL ") + f"{name}: no step when the note is re-pressed (largest second difference {d2.max() / clean:.1f}x a clean sine's)")
+            fails += not ok4
         if gated:
             # trigs every 4 steps (1/4 note); the loudest 20 ms window of each period against the quietest
             win = int(sr * 0.02)

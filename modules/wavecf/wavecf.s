@@ -77,17 +77,16 @@
         .set    S_WRATE,12
         .set    S_POS,16                        | +16..+35: the voice's positions
         .set    S_INIT,36                       | the engine has been initialised
+        .set    S_STARTF,40                     | a START this frame (wc_start): wcf_amp's start
         .set    S_ENG,48
         .set    ST_SHIFT,9
         .set    ST_SIZE,512
 
-| a new WAVE track's AMP page: the stock one holds a note forever (HOLD INF, REL INF) and the voices run from the
-| START, so the track gets a finite HOLD and REL (Part' + 0x11a + 24 * track + 6: ATK HOLD REL; the live lane's
+| a new WAVE track's AMP page: the stock one holds a note forever (HOLD INF, REL INF), so the track gets a finite HOLD and REL (Part' + 0x11a + 24 * track + 6: ATK HOLD REL; the live lane's
 | flat slots 12, 13, 14)
         .set    SCALE_AT,        0x400d2ca8      | modules/quantizer/scale.s: `jmp qz_scale_mask`, d0 := the scale's pitch-class mask
         .set    AMP_PAGE,        0x120
-        .set    AMP_ATK_MIN,     10              | the DSP's AMP ATK is never below this on a WAVE track (see wc_amp)
-        .set    AMP_ATK,         10              | not 0: an instant attack steps the tone each time the envelope reopens (measured under the port)
+        .set    AMP_ATK,         0
         .set    AMP_HOLD,        40
         .set    AMP_REL,         56
         .set    P_CENTER,        16384
@@ -134,7 +133,7 @@
 
 
         .global wc_pgdesc, wc_page, wc_retrig, wc_chrom, wc_render
-        .global eng_init, eng_adsr, eng_pos, eng_on, eng_off, eng_setup, eng_render, wcf_note, wcf_init, wcf_knobs, wcf_scale, wcf_setup
+        .global eng_init, eng_adsr, eng_pos, eng_on, eng_off, eng_setup, eng_render, wcf_note, wcf_init, wcf_knobs, wcf_scale, wcf_setup, wcf_amp, wcf_clock
         .global wcf_table
 
         .align  4
@@ -230,7 +229,6 @@ wc_render:
         tst.l   S_LATCHED(%a3)
         beq     .Ldone                  | not a WAVE track: the stock samples stand
         bsr     wc_knobs                | a first call [0,n): the record is untouched
-        bsr     wc_amp
 .Lrender:
         moveq   #0,%d7
         move.b  3(%a2),%d7              | samples shipped by this call
@@ -327,6 +325,8 @@ wc_start:
         jsr     wcf_note
         lea     16(%sp),%sp
         EMAC_OFF
+        moveq   #1,%d0
+        move.l  %d0,S_STARTF(%a3)       | wcf_amp starts the track's envelope this frame
         rts
 
 | ---- wc_knobs: FRAM, SPRD, GLID from the record (raw << 8) and the SETUP bytes into the engine.  d2 = track, a3, a4.  Clobbers d0, d1, a0, a1.
@@ -574,25 +574,56 @@ wc_chrom:
         rts
 
 
-| ---- wc_amp: the DSP's AMP ATK for this track is at least AMP_ATK_MIN.  The voices run from the first START and the AMP
-|      envelope gates them: an attack of 0 steps the tone each time the envelope reopens (measured under the port: the second
-|      difference 900x a clean sine's; ATK 10: none).  The DSP voice record is VREC + ping * 0x200 + 64 * track, halfword 0 =
-|      ATK << 8 (the frame builder wrote it before this call; modules/cxosc po_amp_snap overrides it the same way).
-|      d2 = track.  Clobbers d0, d1, a0.
+| ---- wc_amp: the track's AMP envelope, once a frame (the frame's last call).  The DSP's own envelope restarts from zero at every
+|      START, and with any attack but 0 that is a step down and a fade-in on a tone that is still sounding (measured under the port:
+|      the output fell to 0 within one sample at each START).  So, as SYNTH MACHINE does (modules/cxosc po_amp_snap), the DSP is
+|      left at ATK 0 / HOLD INF / REL INF, where its restart is invisible, and the engine applies the AMP page's ATK, HOLD and REL
+|      with the DSP's own laws (wcf_amp; Tim Hastie's measurements).  The values are the frame builder's, in the DSP voice record
+|      (VREC + ping * 0x200 + 64 * track, halfwords 0..2 = ATK, HOLD, REL << 8: the locks, scenes and LFOs applied).
+|      d2 = track.  Clobbers d0, d1, a0, a1.
+        .macro  AMPB off, reg
+        mvz.w   \off(%a2),\reg
+        lsr.l   #8,\reg
+        cmp.l   #127,\reg
+        bls     .Lab\@
+        moveq   #127,\reg
+.Lab\@:
+        .endm
 wc_amp:
+        lea     -16(%sp),%sp
+        movem.l %d3-%d5/%a2,(%sp)
         move.l  PINGW,%d0
         lsl.l   #8,%d0
         add.l   %d0,%d0                 | ping * 0x200
         move.l  %d2,%d1
         lsl.l   #6,%d1                  | 64 * track
         add.l   %d1,%d0
-        lea     VREC,%a0
-        add.l   %d0,%a0
-        mvz.w   (%a0),%d0
-        cmp.l   #AMP_ATK_MIN<<8,%d0
-        bcc     .Lam_x
-        move.w  #AMP_ATK_MIN<<8,(%a0)
-.Lam_x:
+        lea     VREC,%a2
+        add.l   %d0,%a2
+        AMPB    0,%d3                   | ATK
+        AMPB    2,%d4                   | HOLD
+        AMPB    4,%d5                   | REL
+        mvz.w   STEPW,%d0               | wcf_clock(e, the sequencer's step word): frames a step, for HOLD
+        move.l  %d0,-(%sp)
+        pea     S_ENG(%a3)
+        jsr     wcf_clock
+        lea     8(%sp),%sp
+        EMAC_ON
+        move.l  S_STARTF(%a3),%d0       | wcf_amp(e, atk, hold, rel, start)
+        move.l  %d0,-(%sp)
+        move.l  %d5,-(%sp)
+        move.l  %d4,-(%sp)
+        move.l  %d3,-(%sp)
+        pea     S_ENG(%a3)
+        jsr     wcf_amp
+        lea     20(%sp),%sp
+        EMAC_OFF
+        clr.l   S_STARTF(%a3)
+        clr.w   (%a2)                   | the DSP: ATK 0, HOLD INF, REL INF
+        move.w  #0x7f00,2(%a2)
+        move.w  #0x7f00,4(%a2)
+        movem.l (%sp),%d3-%d5/%a2
+        lea     16(%sp),%sp
         rts
 
 | ---- wc_pword: d0 = PTCH frame word -> d0 = p (Q8 semitones above C3).  Raw 64 = 0; one raw unit a semitone;
@@ -1719,16 +1750,20 @@ eng_init:
 	move.l 4(%sp),%a1
 	move.l %a1,%d0
 	move.l %a1,%a0
-	add.l #208,%d0
+	add.l #240,%d0
 .L15:
 	clr.l (%a0)+
 	cmp.l %a0,%d0
 	jne .L15
 	move.l #268435456,%d0
+	move.l %d0,192(%a1)
+	move.l #345,%d0
+	move.l %d0,236(%a1)
+	moveq #-1,%d0
 	move.l 8(%sp),144(%a1)
 	move.l 12(%sp),156(%a1)
+	move.l %d0,232(%a1)
 	move.l 16(%sp),160(%a1)
-	move.l %d0,192(%a1)
 	rts
 	.size	eng_init, .-eng_init
 	.align	2
@@ -1811,12 +1846,12 @@ eng_off:
 	.globl	eng_render
 	.type	eng_render, @function
 eng_render:
-	lea (-52,%sp),%sp
+	lea (-64,%sp),%sp
 	movem.l #31996,(%sp)
-	move.l 56(%sp),%a2
+	move.l 68(%sp),%a2
 	move.l 172(%a2),%d1
 	tst.l %d1
-	jne .L73
+	jne .L82
 	move.l 192(%a2),%d3
 	move.l %a2,%d2
 	move.l #1073741824,%d1
@@ -1846,15 +1881,31 @@ eng_render:
 .L36:
 	lea (36,%a0),%a0
 	move.l %d0,-28(%a0)
-	cmp.l %a0,%d2
+	cmp.l %d2,%a0
 	jne .L37
-	tst.l 64(%sp)
-	jle .L34
-	move.l 144(%a2),%d0
+	move.l 208(%a2),%d0
+	move.l 212(%a2),%d1
+	move.l %d0,48(%sp)
+	move.l %d1,60(%sp)
+	tst.l %d0
+	jne .L38
+	tst.l %d1
+	jeq .L83
+.L39:
+	move.l 60(%sp),%d0
+	move.l 76(%sp),%d1
+	sub.l 48(%sp),%d0
+	move.l %d0,%d7
+	divs.l %d1,%d7
+	move.l %d7,52(%sp)
+.L42:
+	tst.l 76(%sp)
+	jle .L60
+	move.l 144(%a2),%d3
 	lea (144,%a2),%a0
 	move.l %a0,44(%sp)
-	move.l %d0,48(%sp)
-.L55:
+	move.l %d3,56(%sp)
+.L59:
 	move.l 148(%a2),%d0
 	moveq #15,%d2
 	move.l 152(%a2),%d1
@@ -1862,7 +1913,7 @@ eng_render:
 	asr.l #8,%d1
 	moveq #11,%d3
 	clr.l %d4
-	move.l 48(%sp),%a3
+	move.l 56(%sp),%a3
 	move.l %a2,%a0
 	add.l %d1,%d0
 	move.l %d0,%d1
@@ -1876,18 +1927,18 @@ eng_render:
 	add.l %d1,%a3
 	lea (2048,%a3),%a4
 	move.l %d7,%a6
-.L51:
+.L55:
 	move.l 28(%a0),%d0
 	move.l 32(%a0),%d1
 	tst.l %d0
-	jeq .L39
+	jeq .L43
 	tst.l %d1
-	jne .L69
+	jne .L77
 	move.l 20(%a0),%a1
 	moveq #1,%d7
 	move.l %d7,24(%a0)
 	move.l %d0,32(%a0)
-.L42:
+.L46:
 	move.l #135559905,%d1
 	move.l 156(%a2),%d0
 	sub.l %a1,%d1
@@ -1899,12 +1950,12 @@ eng_render:
 #NO_APP
 	add.l %d0,%a1
 	cmp.l #134217728,%a1
-	jle .L46
+	jle .L50
 	moveq #2,%d3
 	move.l #134217728,%a1
 	move.l %d3,24(%a0)
 	move.l %a1,20(%a0)
-.L47:
+.L51:
 	moveq #22,%d0
 	move.l (%a0),%d2
 	move.l %d2,%d1
@@ -1958,14 +2009,14 @@ eng_render:
 #NO_APP
 	lsl.l #4,%d0
 	add.l %d0,%d4
-.L49:
+.L53:
 	lea (36,%a0),%a0
 	cmp.l 44(%sp),%a0
-	jne .L51
-.L74:
+	jne .L55
+.L84:
 	move.l 176(%a2),%d0
 	tst.l %d0
-	jeq .L52
+	jeq .L56
 #APP
 | 10 "fx.h" 1
 	mac.l %d4,%d0,%acc0
@@ -1973,9 +2024,9 @@ eng_render:
 | 0 "" 2
 #NO_APP
 	cmp.l #-4194305,%d0
-	jgt .L53
+	jgt .L57
 	move.l #-4194304,%d0
-.L54:
+.L58:
 	lsl.l #8,%d0
 #APP
 | 10 "fx.h" 1
@@ -2003,41 +2054,53 @@ eng_render:
 	movclr.l %acc0,%d4
 | 0 "" 2
 #NO_APP
-.L52:
-	move.l 60(%sp),%a0
-	addq.l #4,60(%sp)
-	subq.l #1,64(%sp)
+.L56:
+	move.l 52(%sp),%d3
+	add.l %d3,48(%sp)
+	move.l 48(%sp),%d7
+#APP
+| 10 "fx.h" 1
+	mac.l %d4,%d7,%acc0
+	movclr.l %acc0,%d4
+| 0 "" 2
+#NO_APP
+	add.l %d4,%d4
+	move.l 72(%sp),%a0
+	subq.l #1,76(%sp)
+	addq.l #4,72(%sp)
 	move.l %d4,(%a0)+
-	tst.l 64(%sp)
-	jne .L55
+	tst.l 76(%sp)
+	jne .L59
+.L60:
+	move.l 60(%sp),208(%a2)
 .L34:
 	movem.l (%sp),#31996
-	lea (52,%sp),%sp
+	lea (64,%sp),%sp
 	rts
-.L69:
+.L77:
 	move.l 24(%a0),%d1
 	moveq #1,%d2
 	move.l 20(%a0),%a1
 	move.l %d0,32(%a0)
 	cmp.l %d1,%d2
-	jeq .L42
+	jeq .L46
 	moveq #3,%d7
 	cmp.l %d1,%d7
-	jeq .L44
+	jeq .L48
 	tst.l %d1
-	jne .L47
+	jne .L51
 	lea (36,%a0),%a0
 	cmp.l 44(%sp),%a0
-	jne .L51
-	jra .L74
-.L39:
+	jne .L55
+	jra .L84
+.L43:
 	tst.l %d1
-	jeq .L69
+	jeq .L77
 	move.l 20(%a0),%a1
 	moveq #3,%d0
 	move.l %d0,24(%a0)
 	clr.l 32(%a0)
-.L44:
+.L48:
 	move.l #-1342177,%d1
 	move.l 160(%a2),%d0
 	sub.l %a1,%d1
@@ -2049,8 +2112,8 @@ eng_render:
 #NO_APP
 	add.l %d0,%a1
 	tst.l %a1
-	jlt .L75
-.L46:
+	jlt .L85
+.L50:
 	moveq #22,%d0
 	move.l (%a0),%d2
 	move.l %d2,%d1
@@ -2105,17 +2168,17 @@ eng_render:
 #NO_APP
 	lsl.l #4,%d0
 	add.l %d0,%d4
-	jra .L49
-.L75:
+	jra .L53
+.L85:
 	clr.l 24(%a0)
 	clr.l 20(%a0)
 	lea (36,%a0),%a0
 	cmp.l 44(%sp),%a0
-	jne .L51
-	jra .L74
-.L53:
+	jne .L55
+	jra .L84
+.L57:
 	cmp.l #4194304,%d0
-	jle .L54
+	jle .L58
 	moveq #64,%d0
 	swap %d0
 	lsl.l #8,%d0
@@ -2145,8 +2208,14 @@ eng_render:
 	movclr.l %acc0,%d4
 | 0 "" 2
 #NO_APP
-	jra .L52
-.L73:
+	jra .L56
+.L38:
+	move.l 60(%sp),%d3
+	cmp.l 48(%sp),%d3
+	jne .L39
+	clr.l 52(%sp)
+	jra .L42
+.L82:
 	move.l 164(%a2),%d2
 	move.l %d2,%d3
 	add.l #-2147483648,%d3
@@ -2192,7 +2261,7 @@ eng_render:
 #NO_APP
 	move.l %d0,%d1
 	add.l #1073741824,%d1
-	move.l 64(%sp),%d0
+	move.l 76(%sp),%d0
 	add.l %a1,%d1
 	lea (168,%a2),%a3
 	add.l %a0,%d1
@@ -2204,6 +2273,20 @@ eng_render:
 	add.l #148,%d2
 	move.l %d0,164(%a2)
 	jra .L37
+.L83:
+	tst.l 76(%sp)
+	jle .L34
+	move.l 72(%sp),%a0
+	move.l 76(%sp),%d2
+	lea (%a0,%d2.l*4),%a1
+.L41:
+	clr.l (%a0)+
+	cmp.l %a1,%a0
+	jeq .L34
+	clr.l (%a0)+
+	cmp.l %a1,%a0
+	jne .L41
+	jra .L34
 	.size	eng_render, .-eng_render
 	.align	2
 	.globl	wcf_scale
@@ -2223,9 +2306,9 @@ wcf_inc:
 	move.l %d2,-(%sp)
 	move.l 12(%sp),%d0
 	cmp.l #12288,%d0
-	jle .L79
+	jle .L89
 	move.l #12288,%d0
-.L80:
+.L90:
 	move.l %d0,%d1
 	asr.l #3,%d1
 	moveq #7,%d2
@@ -2252,15 +2335,15 @@ wcf_inc:
 #NO_APP
 	asr.l #4,%d0
 	tst.l %d2
-	jlt .L81
-.L85:
+	jlt .L91
+.L95:
 	lsl.l %d2,%d0
 	move.l (%sp)+,%d2
 	move.l (%sp)+,%d3
 	rts
-.L79:
+.L89:
 	cmp.l #-12288,%d0
-	jge .L80
+	jge .L90
 	move.l #-12288,%d0
 	moveq #7,%d2
 	move.l %d0,%d1
@@ -2288,8 +2371,8 @@ wcf_inc:
 #NO_APP
 	asr.l #4,%d0
 	tst.l %d2
-	jge .L85
-.L81:
+	jge .L95
+.L91:
 	moveq #8,%d2
 	sub.l %d1,%d2
 	lsr.l %d2,%d0
@@ -2308,13 +2391,13 @@ wcf_note:
 	move.l %d4,%d3
 	move.l 36(%sp),%a3
 	cmp.l %d4,%d0
-	jge .L87
+	jge .L97
 	moveq #4,%d3
-.L88:
+.L98:
 	move.l 196(%a3),%d2
 	tst.l %d2
-	jne .L114
-.L89:
+	jne .L124
+.L99:
 	moveq #31,%d0
 	and.l 44(%sp),%d0
 	lea gain_n,%a0
@@ -2328,27 +2411,27 @@ wcf_note:
 	move.l %d0,%a4
 	add.l #wcf_chord,%a4
 	mvs.b (%a4),%d1
-.L95:
+.L105:
 	lsl.l #8,%d1
 	move.l 40(%sp),%d0
 	move.l 184(%a3),%a0
 	add.l 204(%a3),%d0
 	add.l %d1,%d0
 	tst.l %a0
-	jeq .L97
+	jeq .L107
 	move.l %a0,-(%sp)
 	move.l %d0,-(%sp)
 	jsr (snap.part.0)
 	addq.l #8,%sp
-.L97:
+.L107:
 	move.l %d0,-(%sp)
 	jsr (%a5)
 	addq.l #4,%sp
 	move.l %d0,4(%a2)
 	tst.l 20(%a2)
-	jne .L98
+	jne .L108
 	move.l %d0,(%a2)
-.L98:
+.L108:
 	moveq #1,%d0
 	addq.l #1,%d2
 	move.l %d0,24(%a2)
@@ -2357,53 +2440,53 @@ wcf_note:
 	clr.l 28(%a2)
 	lea (36,%a2),%a2
 	cmp.l %d2,%d1
-	jeq .L100
-.L115:
+	jeq .L110
+.L125:
 	mvs.b (%a4,%d2.l),%d1
 	cmp.l %d4,%d2
-	jgt .L102
+	jgt .L112
 	add.l #12,%d1
-.L102:
+.L112:
 	cmp.l %d2,%d3
-	jgt .L95
+	jgt .L105
 	clr.l 24(%a2)
 	moveq #4,%d1
 	addq.l #1,%d2
 	lea (36,%a2),%a2
 	cmp.l %d2,%d1
-	jne .L115
-.L100:
+	jne .L125
+.L110:
 	clr.l 200(%a3)
-.L86:
+.L96:
 	movem.l (%sp),#15388
 	lea (32,%sp),%sp
 	rts
-.L87:
+.L97:
 	tst.l %d4
-	jgt .L88
+	jgt .L98
 	move.l 196(%a3),%d2
 	moveq #1,%d3
 	tst.l %d2
-	jeq .L89
-.L114:
+	jeq .L99
+.L124:
 	move.l 200(%a3),%d2
 	cmp.l %d2,%d3
-	jgt .L116
+	jgt .L126
 	move.w #1,%a4
 	clr.l %d2
-.L90:
+.L100:
 	move.l 40(%sp),%d0
 	lea gain_n,%a0
 	move.l 184(%a3),%d1
 	move.l (%a0,%d3.l*4),%a2
 	add.l 204(%a3),%d0
 	tst.l %d1
-	jeq .L91
+	jeq .L101
 	move.l %d1,-(%sp)
 	move.l %d0,-(%sp)
 	jsr (snap.part.0)
 	addq.l #8,%sp
-.L91:
+.L101:
 	move.l %d0,-(%sp)
 	jsr wcf_inc
 	addq.l #4,%sp
@@ -2411,9 +2494,9 @@ wcf_note:
 	muls.l %d1,%d2
 	move.l %d0,8(%a3,%d2.l)
 	tst.l 24(%a3,%d2.l)
-	jne .L92
+	jne .L102
 	move.l %d0,4(%a3,%d2.l)
-.L92:
+.L102:
 	moveq #1,%d0
 	moveq #3,%d1
 	move.l %a2,16(%a3,%d2.l)
@@ -2421,25 +2504,25 @@ wcf_note:
 	clr.l 32(%a3,%d2.l)
 	move.l %a4,200(%a3)
 	cmp.l %d4,%d1
-	jlt .L86
+	jlt .L96
 	mulu.w #36,%d3
 	move.l %a3,%d0
 	add.l #172,%d0
 	lea 28(%a3,%d3.l),%a0
-.L94:
+.L104:
 	clr.l (%a0)
 	lea (36,%a0),%a0
 	cmp.l %a0,%d0
-	jeq .L86
+	jeq .L96
 	clr.l (%a0)
 	lea (36,%a0),%a0
 	cmp.l %a0,%d0
-	jne .L94
-	jra .L86
-.L116:
+	jne .L104
+	jra .L96
+.L126:
 	move.l %d2,%a4
 	addq.l #1,%a4
-	jra .L90
+	jra .L100
 	.size	wcf_note, .-wcf_note
 	.align	2
 	.globl	wcf_init
@@ -2448,18 +2531,22 @@ wcf_init:
 	move.l 4(%sp),%a1
 	move.l %a1,%d0
 	move.l %a1,%a0
-	add.l #208,%d0
-.L118:
+	add.l #240,%d0
+.L128:
 	clr.l (%a0)+
 	cmp.l %a0,%d0
-	jne .L118
+	jne .L128
 	move.l #32721410,%d0
 	move.l %d0,156(%a1)
 	move.l #3776253,%d0
 	move.l %d0,160(%a1)
 	move.l #268435456,%d0
-	move.l 8(%sp),144(%a1)
 	move.l %d0,192(%a1)
+	move.l #345,%d0
+	move.l %d0,236(%a1)
+	moveq #-1,%d0
+	move.l %d0,232(%a1)
+	move.l 8(%sp),144(%a1)
 	rts
 	.size	wcf_init, .-wcf_init
 	.align	2
@@ -2471,39 +2558,39 @@ wcf_knobs:
 	move.l 12(%sp),%d0
 	move.l 8(%sp),%a0
 	cmp.l %d0,%d1
-	jge .L123
+	jge .L133
 	moveq #127,%d0
-.L123:
+.L133:
 	moveq #7,%d2
 	swap %d2
 	muls.l %d2,%d0
 	moveq #127,%d2
 	divs.l %d2,%d0
 	tst.l %d0
-	jlt .L129
-.L124:
+	jlt .L139
+.L134:
 	move.l %d0,152(%a0)
 	moveq #127,%d1
 	move.l 16(%sp),%d0
 	cmp.l %d0,%d1
-	jge .L125
+	jge .L135
 	moveq #127,%d0
-.L125:
+.L135:
 	move.l %d0,188(%a0)
 	moveq #127,%d2
 	move.l 20(%sp),%d0
 	cmp.l %d0,%d2
-	jge .L126
+	jge .L136
 	moveq #127,%d0
-.L126:
+.L136:
 	lea wcf_glide,%a1
 	lea (%a1,%d0.l*4),%a1
 	move.l (%sp)+,%d2
 	move.l (%a1),192(%a0)
 	rts
-.L129:
+.L139:
 	clr.l %d0
-	jra .L124
+	jra .L134
 	.size	wcf_knobs, .-wcf_knobs
 	.align	2
 	.globl	wcf_setup
@@ -2516,9 +2603,9 @@ wcf_setup:
 	move.l 40(%sp),%d0
 	move.l 20(%sp),%a0
 	cmp.l %d0,%d1
-	jge .L131
+	jge .L141
 	moveq #127,%d0
-.L131:
+.L141:
 	lea wcf_comp_makeup,%a1
 	lea wcf_comp_drive,%a2
 	move.l (%a2,%d0.l*4),%d1
@@ -2527,18 +2614,18 @@ wcf_setup:
 	move.l %d1,8(%sp)
 	moveq #127,%d1
 	cmp.l %d0,%d1
-	jge .L132
+	jge .L142
 	moveq #127,%d0
-.L132:
+.L142:
 	lea wcf_lfo,%a2
 	moveq #127,%d1
 	move.l (%a2,%d0.l*4),%d0
 	move.l %d0,12(%sp)
 	move.l 24(%sp),%d0
 	cmp.l %d0,%d1
-	jge .L133
+	jge .L143
 	moveq #127,%d0
-.L133:
+.L143:
 	tst.l 44(%sp)
 	sne %d1
 	move.l #16909320,%d2
@@ -2553,18 +2640,18 @@ wcf_setup:
 	move.l %d1,196(%a0)
 	moveq #2,%d1
 	cmp.l %d0,%d1
-	jge .L134
+	jge .L144
 	moveq #2,%d0
-.L134:
+.L144:
 	move.l 36(%sp),%a1
 	subq.l #1,%d0
 	move.l #1536,%d2
 	moveq #127,%d1
 	muls.l %d2,%d0
 	cmp.l %a1,%d1
-	jge .L135
+	jge .L145
 	move.w #127,%a1
-.L135:
+.L145:
 	lea -64(%a1,%d0.l),%a1
 	move.l (%sp)+,%d2
 	move.l (%sp)+,%a2
@@ -2574,8 +2661,562 @@ wcf_setup:
 	addq.l #8,%sp
 	rts
 	.size	wcf_setup, .-wcf_setup
-	.globl	wcf_glide
+	.align	2
+	.globl	wcf_clock
+	.type	wcf_clock, @function
+wcf_clock:
+	move.l %d2,-(%sp)
+	move.l 8(%sp),%a0
+	move.l 232(%a0),%d1
+	move.l 224(%a0),%d0
+	addq.l #1,%d0
+	move.l %d0,224(%a0)
+	cmp.l 12(%sp),%d1
+	jeq .L148
+	move.l 228(%a0),%a1
+	move.l 12(%sp),232(%a0)
+	move.l %d0,228(%a0)
+	tst.l %d1
+	jlt .L148
+	sub.l %a1,%d0
+	moveq #15,%d1
+	cmp.l %d0,%d1
+	jge .L148
+	move.l %d0,236(%a0)
+.L148:
+	move.l (%sp)+,%d2
+	rts
+	.size	wcf_clock, .-wcf_clock
+	.align	2
+	.globl	wcf_amp
+	.type	wcf_amp, @function
+wcf_amp:
+	move.l %a2,-(%sp)
+	move.l %d2,-(%sp)
+	move.l 12(%sp),%a0
+	move.l 208(%a0),%d0
+	tst.l 28(%sp)
+	jeq .L153
+	moveq #1,%d1
+	moveq #126,%d2
+	move.l %d1,216(%a0)
+	cmp.l 20(%sp),%d2
+	jlt .L154
+	move.l 20(%sp),%d2
+	lea wcf_amp_hold,%a1
+	lea (236,%a0),%a2
+	move.l (%a1,%d2.l*4),%d1
+	muls.l (%a2),%d1
+	lsr.l #7,%d1
+	addq.l #1,%d1
+	move.l %d1,%a1
+	subq.l #1,%a1
+	move.l %a1,220(%a0)
+	subq.l #1,%d1
+	tst.l %d1
+	jeq .L174
+.L156:
+	cmp.l #1073741823,%d0
+	jgt .L161
+	moveq #127,%d2
+	move.l 16(%sp),%d1
+	cmp.l %d1,%d2
+	jlt .L175
+	lea wcf_amp_atk,%a1
+	moveq #15,%d2
+	move.l (%a1,%d1.l*4),%d1
+	lsl.l %d2,%d1
+	add.l %d1,%d0
+	cmp.l #1073741824,%d0
+	jgt .L176
+.L161:
+	move.l (%sp)+,%d2
+	move.l %d0,212(%a0)
+	move.l (%sp)+,%a2
+	rts
+.L153:
+	tst.l 216(%a0)
+	jne .L177
+	move.l 24(%sp),%d1
+	moveq #127,%d2
+	cmp.l %d1,%d2
+	jlt .L178
+.L158:
+	lea wcf_amp_rel,%a1
+	move.l (%a1,%d1.l*4),%d1
+	tst.l %d1
+	jeq .L161
+.L180:
+	moveq #15,%d2
+	lsl.l %d2,%d1
+#APP
+| 10 "fx.h" 1
+	mac.l %d0,%d1,%acc0
+	movclr.l %acc0,%d1
+| 0 "" 2
+#NO_APP
+	cmp.l #32768,%d1
+	jlt .L179
+	sub.l %d1,%d0
+	cmp.l #2097152,%d0
+	jgt .L161
+.L165:
+	move.l (%sp)+,%d2
+	clr.l %d0
+	move.l %d0,212(%a0)
+	move.l (%sp)+,%a2
+	rts
+.L178:
+	moveq #127,%d1
+	lea wcf_amp_rel,%a1
+	move.l (%a1,%d1.l*4),%d1
+	tst.l %d1
+	jeq .L161
+	jra .L180
+.L154:
+	clr.l 220(%a0)
+	jra .L156
+.L179:
+	move.l #32768,%d1
+	sub.l %d1,%d0
+	cmp.l #2097152,%d0
+	jle .L165
+	jra .L161
+.L174:
+	move.l 24(%sp),%d1
+	moveq #127,%d2
+	clr.l 216(%a0)
+	cmp.l %d1,%d2
+	jge .L158
+	jra .L178
+.L175:
+	moveq #127,%d1
+	moveq #15,%d2
+	lea wcf_amp_atk,%a1
+	move.l (%a1,%d1.l*4),%d1
+	lsl.l %d2,%d1
+	add.l %d1,%d0
+	cmp.l #1073741824,%d0
+	jle .L161
+.L176:
+	move.l (%sp)+,%d2
+	move.l #1073741824,%d0
+	move.l %d0,212(%a0)
+	move.l (%sp)+,%a2
+	rts
+.L177:
+	move.l 220(%a0),%d1
+	tst.l %d1
+	jeq .L156
+	move.l %d1,%a1
+	subq.l #1,%a1
+	move.l %a1,220(%a0)
+	subq.l #1,%d1
+	tst.l %d1
+	jne .L156
+	jra .L174
+	.size	wcf_amp, .-wcf_amp
+	.globl	wcf_amp_hold
 	.section	.rodata
+	.align	2
+	.type	wcf_amp_hold, @object
+	.size	wcf_amp_hold, 512
+wcf_amp_hold:
+	.long	1
+	.long	1
+	.long	2
+	.long	3
+	.long	4
+	.long	6
+	.long	8
+	.long	11
+	.long	16
+	.long	23
+	.long	32
+	.long	45
+	.long	64
+	.long	91
+	.long	128
+	.long	136
+	.long	144
+	.long	152
+	.long	160
+	.long	168
+	.long	176
+	.long	184
+	.long	192
+	.long	200
+	.long	208
+	.long	216
+	.long	224
+	.long	232
+	.long	240
+	.long	248
+	.long	256
+	.long	272
+	.long	288
+	.long	304
+	.long	320
+	.long	336
+	.long	352
+	.long	368
+	.long	384
+	.long	400
+	.long	416
+	.long	432
+	.long	448
+	.long	464
+	.long	480
+	.long	496
+	.long	512
+	.long	544
+	.long	576
+	.long	608
+	.long	640
+	.long	672
+	.long	704
+	.long	736
+	.long	768
+	.long	800
+	.long	832
+	.long	864
+	.long	896
+	.long	928
+	.long	960
+	.long	992
+	.long	1024
+	.long	1088
+	.long	1152
+	.long	1216
+	.long	1280
+	.long	1344
+	.long	1408
+	.long	1472
+	.long	1536
+	.long	1600
+	.long	1664
+	.long	1728
+	.long	1792
+	.long	1856
+	.long	1920
+	.long	1984
+	.long	2048
+	.long	2176
+	.long	2304
+	.long	2432
+	.long	2560
+	.long	2688
+	.long	2816
+	.long	2944
+	.long	3072
+	.long	3200
+	.long	3328
+	.long	3456
+	.long	3584
+	.long	3712
+	.long	3840
+	.long	3968
+	.long	4096
+	.long	4352
+	.long	4608
+	.long	4864
+	.long	5120
+	.long	5376
+	.long	5632
+	.long	5888
+	.long	6144
+	.long	6400
+	.long	6656
+	.long	6912
+	.long	7168
+	.long	7424
+	.long	7680
+	.long	7936
+	.long	8192
+	.long	8704
+	.long	9216
+	.long	9728
+	.long	10240
+	.long	10752
+	.long	11264
+	.long	11776
+	.long	12288
+	.long	12800
+	.long	13312
+	.long	13824
+	.long	14336
+	.long	14848
+	.long	15360
+	.long	15872
+	.long	16384
+	.long	65535
+	.globl	wcf_amp_rel
+	.align	2
+	.type	wcf_amp_rel, @object
+	.size	wcf_amp_rel, 512
+wcf_amp_rel:
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	19941
+	.long	18661
+	.long	17419
+	.long	16245
+	.long	15137
+	.long	14093
+	.long	13112
+	.long	12190
+	.long	11327
+	.long	10518
+	.long	9762
+	.long	9055
+	.long	8396
+	.long	7781
+	.long	7209
+	.long	6676
+	.long	6180
+	.long	5719
+	.long	5292
+	.long	4894
+	.long	4526
+	.long	4184
+	.long	3868
+	.long	3574
+	.long	3302
+	.long	3051
+	.long	2818
+	.long	2602
+	.long	2403
+	.long	2219
+	.long	2048
+	.long	1891
+	.long	1745
+	.long	1611
+	.long	1486
+	.long	1372
+	.long	1266
+	.long	1168
+	.long	1077
+	.long	994
+	.long	917
+	.long	846
+	.long	780
+	.long	720
+	.long	664
+	.long	612
+	.long	565
+	.long	521
+	.long	480
+	.long	443
+	.long	408
+	.long	377
+	.long	347
+	.long	320
+	.long	295
+	.long	272
+	.long	251
+	.long	232
+	.long	214
+	.long	197
+	.long	182
+	.long	167
+	.long	154
+	.long	142
+	.long	131
+	.long	121
+	.long	112
+	.long	103
+	.long	95
+	.long	87
+	.long	81
+	.long	74
+	.long	69
+	.long	63
+	.long	58
+	.long	54
+	.long	50
+	.long	46
+	.long	42
+	.long	39
+	.long	36
+	.long	33
+	.long	30
+	.long	28
+	.long	26
+	.long	24
+	.long	22
+	.long	20
+	.long	19
+	.long	17
+	.long	16
+	.long	15
+	.long	13
+	.long	12
+	.long	11
+	.long	11
+	.long	10
+	.long	9
+	.long	8
+	.long	8
+	.long	7
+	.long	6
+	.long	6
+	.long	6
+	.long	5
+	.long	5
+	.long	4
+	.long	4
+	.long	4
+	.long	3
+	.long	3
+	.long	3
+	.long	0
+	.globl	wcf_amp_atk
+	.align	2
+	.type	wcf_amp_atk, @object
+	.size	wcf_amp_atk, 512
+wcf_amp_atk:
+	.long	2048
+	.long	2048
+	.long	2048
+	.long	2048
+	.long	2048
+	.long	2048
+	.long	1896
+	.long	1748
+	.long	1612
+	.long	1486
+	.long	1370
+	.long	1263
+	.long	1165
+	.long	1074
+	.long	990
+	.long	913
+	.long	841
+	.long	776
+	.long	715
+	.long	659
+	.long	608
+	.long	560
+	.long	517
+	.long	476
+	.long	439
+	.long	405
+	.long	373
+	.long	344
+	.long	317
+	.long	293
+	.long	270
+	.long	249
+	.long	229
+	.long	211
+	.long	195
+	.long	180
+	.long	166
+	.long	153
+	.long	141
+	.long	130
+	.long	120
+	.long	110
+	.long	102
+	.long	94
+	.long	86
+	.long	80
+	.long	74
+	.long	68
+	.long	62
+	.long	58
+	.long	53
+	.long	49
+	.long	45
+	.long	42
+	.long	38
+	.long	35
+	.long	33
+	.long	30
+	.long	28
+	.long	26
+	.long	24
+	.long	22
+	.long	20
+	.long	18
+	.long	17
+	.long	16
+	.long	14
+	.long	13
+	.long	12
+	.long	11
+	.long	10
+	.long	10
+	.long	9
+	.long	8
+	.long	8
+	.long	7
+	.long	6
+	.long	6
+	.long	5
+	.long	5
+	.long	5
+	.long	4
+	.long	4
+	.long	4
+	.long	3
+	.long	3
+	.long	3
+	.long	3
+	.long	2
+	.long	2
+	.long	2
+	.long	2
+	.long	2
+	.long	2
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.long	1
+	.globl	wcf_glide
 	.align	2
 	.type	wcf_glide, @object
 	.size	wcf_glide, 512

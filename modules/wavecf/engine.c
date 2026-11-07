@@ -18,6 +18,8 @@ void eng_init(Engine *e, const int16_t *table, int32_t atk_d0, int32_t rel_d0)
     e->atk_d0 = atk_d0;
     e->rel_d0 = rel_d0;
     e->glide = 1 << 28;                    /* 1/8 a call: about 3 ms */
+    e->fps = 345;                          /* 120 BPM at 1x until a step has been timed */
+    e->last_step = -1;
 }
 
 void eng_adsr(Engine *e, int32_t atk_d0, int32_t rel_d0)
@@ -89,6 +91,13 @@ void eng_render(Engine *e, int32_t *out, int n)
         v->incm = pmul == (1 << 30) ? v->inc : (uint32_t)(mul((int32_t)v->inc, pmul) << 1);
     }
 
+    int32_t g = e->amp_cur, tgt = e->amp_tgt, dg = 0;
+    if (g == 0 && tgt == 0) {                       /* the AMP is closed: silence, and none of the voices' work */
+        for (int i = 0; i < n; ++i) out[i] = 0;
+        return;
+    }
+    if (tgt != g) dg = (tgt - g) / n;               /* a linear ramp across this call */
+
     for (; n > 0; --n) {
         e->pos += (e->pos_tgt - e->pos) >> POS_SLEW;
         int idx = e->pos >> 16;
@@ -136,6 +145,8 @@ void eng_render(Engine *e, int32_t *out, int n)
             int32_t y = t - (mul(t3, 715827883) << 2);         /* Q30 */
             sum = mul(y, e->makeup);                           /* Q27 */
         }
-        *out++ = sum;
+        g += dg;
+        *out++ = mul(sum, g) << 1;                 /* the AMP level, Q30 */
     }
+    e->amp_cur = tgt;
 }

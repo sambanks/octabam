@@ -49,6 +49,8 @@ while pos < len(data):
         elif op == 4: note_n[0] += call(syms["wcf_note"], ENG, a, b, c); note_n[1] += 1
         elif op == 5: knob_n[0] += call(syms["wcf_knobs"], ENG, a, b, c); knob_n[1] += 1
         elif op == 7: call(syms["wcf_scale"], ENG, a)
+        elif op == 8: call(syms["wcf_amp"], ENG, a & 0xff, (a >> 8) & 0xff, (a >> 16) & 0xff, (a >> 24) & 0xff)
+        elif op == 9: call(syms["wcf_clock"], ENG, a)
         elif op == 3: call(syms["eng_adsr"], ENG, a, b)
         elif op == 6: call(syms["wcf_setup"], ENG, a & 0xff, (a >> 8) & 0xff, (a >> 16) & 0xff, (a >> 24) & 0xff, b & 0xff, (b >> 8) & 0xff)
     r = call(syms["eng_render"], ENG, OUT, 16)

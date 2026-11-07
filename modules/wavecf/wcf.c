@@ -10,6 +10,9 @@ extern const int32_t wcf_lfo[128];
 extern const int32_t wcf_comp_drive[128];
 extern const int32_t wcf_comp_makeup[128];
 extern const int32_t wcf_glide[128];
+extern const int32_t wcf_amp_atk[128];
+extern const int32_t wcf_amp_rel[128];
+extern const int32_t wcf_amp_hold[128];
 
 /* 0.8 / n, Q31: four voices at the table amplitude sum to 0.36 at most */
 static const int32_t gain_n[5] = {0, 1717986918, 858993459, 572662306, 429496730};
@@ -99,4 +102,47 @@ void wcf_setup(Engine *e, int vibr, int vrat, int oct, int fine, int comp, int m
     eng_setup(e, vibr * 16909320,                              /* depth: vibr / 127, Q31 */
               (uint32_t)wcf_lfo[vrat], wcf_comp_drive[comp], wcf_comp_makeup[comp], mode ? 1 : 0,
               (oct - 1) * 12 * 256 + (f - 64) * 2);             /* OCT: -1 / 0 / +1 octave; FINE: +-1/2 semitone */
+}
+
+void wcf_clock(Engine *e, int step)
+{
+    e->frames++;
+    if (step == e->last_step) return;
+    int first = e->last_step < 0;
+    e->last_step = step;
+    int d = e->frames - e->fstep;
+    e->fstep = e->frames;
+    if (!first && d >= 16) e->fps = d;              /* a plausible step (not the first after a stop) */
+}
+
+/* the AMP envelope of the DSP as Tim Hastie measured it (modules/cxosc/poly.s po_mono_env): a linear attack, a HOLD timer in
+ * 1/128 steps from the START, an exponential release; a START on a sounding track re-attacks from its level */
+void wcf_amp(Engine *e, int atk, int hold, int rel, int start)
+{
+    if (atk > 127) atk = 127;
+    if (hold > 127) hold = 127;
+    if (rel > 127) rel = 127;
+    int32_t g = e->amp_cur;
+    if (start) {
+        e->amp_on = 1;
+        e->amp_htim = hold >= 127 ? 0 : (int32_t)(((uint32_t)wcf_amp_hold[hold] * (uint32_t)e->fps) >> 7) + 1;
+    }
+    int releasing = !e->amp_on;
+    if (e->amp_on && e->amp_htim && --e->amp_htim == 0) {
+        e->amp_on = 0;
+        releasing = 1;
+    }
+    if (releasing) {
+        int32_t k = wcf_amp_rel[rel];
+        if (k) {                                    /* 0 = INF: the level holds */
+            int32_t d = mul(g, k << 15);
+            if (d < (1 << 15)) d = 1 << 15;         /* a step below one Q15 unit still makes progress */
+            g -= d;
+            if (g <= (64 << 15)) g = 0;             /* -54 dB: silent, the next START is cold */
+        }
+    } else if (g < (1 << 30)) {
+        g += wcf_amp_atk[atk] << 15;
+        if (g > (1 << 30)) g = 1 << 30;
+    }
+    e->amp_tgt = g;
 }

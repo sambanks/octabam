@@ -32,6 +32,14 @@ def be32(path):
     return [int.from_bytes(d[i:i + 4], "big", signed=True) for i in range(0, len(d), 4)]
 
 
+def E():
+    """A model engine with its AMP open (the machine's opens with wcf_amp once a frame; these tests call the engine directly)."""
+    e = R.Engine()
+    e.amp_cur = e.amp_tgt = 1 << 30
+    e.amp_on = 1
+    return e
+
+
 def main():
     check(tables.text() == (HERE / "tables.s").read_text() and tables.text_c() == (HERE / "wcf_data.c").read_text(),
           "tables.s and wcf_data.c are what tables.py makes")
@@ -52,7 +60,8 @@ def main():
         subprocess.run(["m68k-elf-gcc", "-mcpu=54455", "-nostdlib", "-T", str(td / "link.ld"), *objs, "-o", str(td / "engine.elf")], check=True)
         subprocess.run(["m68k-elf-objcopy", "-O", "binary", str(td / "engine.elf"), str(td / "engine.bin")], check=True)
         py = ROOT / ".venv/bin/python"
-        for name, blocks in (("engine", R.scenario()), ("note", R.scenario_note())):
+        for name, blocks in (("engine", R.with_amp(R.scenario())), ("note", R.with_amp(R.scenario_note())),
+                             ("amp", R.scenario_amp())):
             R.write_stream(td / "cmds.bin", blocks)
             model = R.run(blocks)
             subprocess.run([str(td / "drive"), str(td / "cmds.bin"), str(td / "table.bin"), str(td / "host.i32")], check=True)
@@ -65,7 +74,7 @@ def main():
 
         # the sound: one voice on the sine frame at 440 Hz is a 440 Hz sine, at the gain it was given
         import numpy as np
-        e = R.Engine()
+        e = E()
         e.cmd(3, R.q31(1 - np.exp(-1 / (0.004 * R.SR))), R.q31(1 - np.exp(-1 / (0.05 * R.SR))), 0)
         e.cmd(1, 0, R.inc_of(440.0), R.q31(0.2))
         x = np.array(e.render(R.SR), dtype=np.float64)[R.SR // 4:] / (1 << 27)
@@ -75,28 +84,80 @@ def main():
         check(abs(peak - 440.0) < 2.0, f"a voice on frame 0 is a sine at 440 Hz (peak {peak:.1f} Hz)")
         want = 0.2 * tables.AMP
         check(abs(amp - want) < 0.003, f"its level is gain x table amplitude ({amp:.4f}, want {want:.4f})")
-        e2 = R.Engine()
+        e2 = E()
         e2.cmd(3, R.q31(1 - np.exp(-1 / (0.004 * R.SR))), R.q31(1 - np.exp(-1 / (0.05 * R.SR))), 0)
         e2.cmd(1, 0, R.inc_of(440.0), R.q31(0.2)); e2.cmd(0, 3 << 16, 0, 0)
         y = np.array(e2.render(R.SR), dtype=np.float64)[R.SR // 2:] / (1 << 27)
         check(abs(np.max(np.abs(y)) - want) < 0.004 and np.mean(np.abs(y)) > 0.8 * want, "frame 3 is the square: its level is the table amplitude")
-        e3 = R.Engine()
+        e3 = E()
         e3.cmd(3, R.q31(1 - np.exp(-1 / (0.004 * R.SR))), R.q31(1 - np.exp(-1 / (0.05 * R.SR))), 0)
         e3.cmd(1, 0, R.inc_of(440.0), R.q31(0.2)); e3.render(2000); e3.cmd(2, 0, 0, 0)
         z = np.array(e3.render(R.SR // 2), dtype=np.float64)
         check(z[-100:].max() == 0 and z[-100:].min() == 0, "a released voice ends in exact zero")
-    # SPRD lifts the upper chord notes an octave; GLID sets the pitch glide's time
+    # the AMP envelope (the DSP's laws, Tim Hastie's measurements): attack, hold, release, and no step at a START
+    def amp_frame(e, atk, hold, rel, start=0):
+        e.cmd(8, atk | hold << 8 | rel << 16 | start << 24, 0, 0)
+        e.render(16)                                                    # the call that ramps to the new level
+
     e = R.Engine()
+    amp_frame(e, 0, 127, 127, 1)
+    frames = 1
+    while e.amp_tgt < (1 << 30) and frames < 100:
+        amp_frame(e, 0, 127, 127)
+        frames += 1
+    check(frames == 16, f"AMP ATK 0 reaches full in 16 frames ({frames}): the DSP's floor of 5.8 ms")
+    e = R.Engine()
+    amp_frame(e, 70, 127, 127, 1)
+    f70 = 1
+    while e.amp_tgt < (1 << 30) and f70 < 100000:
+        amp_frame(e, 70, 127, 127)
+        f70 += 1
+    check(abs(f70 * 16 / R.SR - 3.85e-3 * 2 ** (70 / 8.53)) / (3.85e-3 * 2 ** (70 / 8.53)) < 0.1, f"AMP ATK 70 ramps in {f70 * 16 / R.SR:.2f} s (the DSP's law: {3.85e-3 * 2 ** (70 / 8.53):.2f} s)")
+    e = E()
+    e.fps = 345
+    amp_frame(e, 0, 32, 60, 1)
+    held = 1
+    while e.amp_tgt >= (1 << 30) and held < 5000:
+        amp_frame(e, 0, 32, 60)
+        held += 1
+    want = (R._AMP_HOLD[32] * 345 >> 7) + 1
+    check(held == want, f"AMP HOLD 32 holds {held} frames at 345 a step (the table says {want}): about {held * 16 / R.SR * 1000:.0f} ms")
+    for _ in range(4000):
+        amp_frame(e, 0, 32, 60)
+    check(e.amp_tgt == 0, "AMP REL 60 releases to silence after the hold")
+    e = E()
+    amp_frame(e, 0, 32, 127, 1)
+    for _ in range(3000):
+        amp_frame(e, 0, 32, 127)
+    check(e.amp_tgt == (1 << 30), "AMP REL 127 (INF) holds the level after HOLD")
+    # a START on a sounding track continues from its level: the output does not dip (the DSP's restart from 0 is hidden by its ATK 0 / HOLD INF)
+    e = E()
+    e.cmd(3, R.q31(1 - np.exp(-1 / (0.004 * R.SR))), R.q31(1 - np.exp(-1 / (0.05 * R.SR))), 0)
+    e.cmd(4, 0, 0, 1)
+    out = []
+    for i in range(300):
+        e.cmd(8, 0 | 127 << 8 | 127 << 16 | (1 << 24 if i in (100, 101, 160) else 0), 0, 0)
+        out += e.render(16)
+    y = np.array(out[2000:], dtype=np.float64) / (1 << 27)
+    d2 = np.abs(y[2:] - 2 * y[1:-1] + y[:-2])
+    check(d2.max() < 3.0 * float(np.max(np.abs(y))) * (2 * np.pi * 131.0 / R.SR) ** 2, "a START on a sounding track does not dip or step the output")
+    # the closed AMP is silent, and costs nothing
+    e = R.Engine()
+    e.cmd(4, 0, 0, 1)
+    check(not any(e.render(16)), "a closed AMP renders silence")
+
+    # SPRD lifts the upper chord notes an octave; GLID sets the pitch glide's time
+    e = E()
     e.cmd(5, 0, 32, 0)                                                  # SPRD 32: the 2nd note up an octave
     e.cmd(4, 0, 3, 3)                                                   # MAJ, 3 voices: C, E+12, G
     check([e.v[v]["inc_tgt"] for v in range(3)] == [R.inc_of_p(256 * k) for k in (0, 16, 7)], "SPRD 32: MAJ is C, E an octave up, G (open voicing)")
-    e = R.Engine()
+    e = E()
     e.cmd(5, 0, 127, 0)
     e.cmd(4, 0, 3, 4)
     check([e.v[v]["inc_tgt"] for v in range(4)] == [R.inc_of_p(256 * k) for k in (0, 16, 19, 24)], "SPRD 127: MAJ x4 is C, E, G, C all up an octave except the root")
 
     def glide_steps(glid):                                              # calls until a sounding voice is within 1 cent of its new pitch
-        e = R.Engine()
+        e = E()
         e.cmd(5, 0, 0, glid)
         e.cmd(4, 0, 0, 1)
         e.render(16)
@@ -114,7 +175,7 @@ def main():
 
     # SETUP: level, drive, octave and vibrato, on the model (the streams above hold it to the C builds)
     def tone(setup=None, p=0, secs=1, chrd=0, voic=1):
-        e = R.Engine()
+        e = E()
         e.cmd(3, R.q31(1 - np.exp(-1 / (0.004 * R.SR))), R.q31(1 - np.exp(-1 / (0.05 * R.SR))), 0)
         if setup:
             e.cmd(6, *setup, 0)
@@ -130,7 +191,7 @@ def main():
     base = tone(pack())
 
     def notes_poly(*ps, voic=4, mode=1):
-        e = R.Engine()
+        e = E()
         e.cmd(3, R.q31(1 - np.exp(-1 / (0.004 * R.SR))), R.q31(1 - np.exp(-1 / (0.05 * R.SR))), 0)
         e.cmd(6, *pack(mode=mode), 0)
         for p in ps:
@@ -149,23 +210,23 @@ def main():
     check(e.v[0]["inc_tgt"] == R.inc_of_p(256 * 4) and e.v[1]["inc_tgt"] == R.inc_of_p(256 * 8) and not e.v[2]["gate"],
           "CHORD mode (CHRD 3, VOIC 2, the second trig at +4): the chord's first two notes on voices 0 and 1, the earlier note replaced")
 
-    e = R.Engine()
+    e = E()
     e.cmd(7, 0xAB5, 0, 0)                                               # C major
     e.cmd(4, 0, 4, 4)                                                   # CHRD MIN: C Eb G C
     got = [e.v[v]["inc_tgt"] for v in range(4)]
     want = [R.inc_of_p(256 * k) for k in (0, 2, 7, 12)]                # Eb -> D (the lower neighbour first)
     check(got == want, "a scale snaps the chord: C minor in C major is C D G C (ties go down)")
-    e = R.Engine()
+    e = E()
     e.cmd(7, 0xAB5, 0, 0)
     e.cmd(4, 0, 3, 4)
     check([e.v[v]["inc_tgt"] for v in range(4)] == [R.inc_of_p(256 * k) for k in (0, 4, 7, 12)], "a scale that holds the chord leaves it as it is")
-    e = R.Engine()
+    e = E()
     e.cmd(7, 0xAB5, 0, 0)
     e.cmd(4, 256 * 3 + 100, 0, 1)
     check(e.v[0]["inc_tgt"] == R.inc_of_p(256 * 2 + 100), "the snap moves whole semitones: the fraction stays")
 
     # a pitch change on a sounding voice glides: no spike in the second difference (a step in the increment was ~20x a clean sine's)
-    e = R.Engine()
+    e = E()
     e.cmd(3, R.q31(1 - np.exp(-1 / (0.004 * R.SR))), R.q31(1 - np.exp(-1 / (0.05 * R.SR))), 0)
     e.cmd(4, 0, 0, 1)
     pre = []
@@ -188,7 +249,7 @@ def main():
     check(abs(peak_hz(tone(pack(oct_=2))) / peak_hz(base) - 2.0) < 0.01 and abs(peak_hz(tone(pack(oct_=0))) / peak_hz(base) - 0.5) < 0.01,
           "OCT 0 / 1 / 2 is an octave down / none / up")
     def inc_after(setup):                                                  # the note's phase step: no FFT resolution in the way
-        e = R.Engine()
+        e = E()
         e.cmd(6, *setup, 0)
         e.cmd(4, 0, 0, 1)
         return e.v[0]["inc_tgt"]
@@ -222,7 +283,7 @@ def main():
         worst = max(worst, abs(1200 * __import__("math").log2(got / hz)))
     check(worst < 0.5, f"wcf_inc is within {worst:.3f} cents of 2^(p/12) from C3 across -48..+48 semitones")
     check(abs(R.inc_of_p(0) - R.inc_of(tables.BASE_HZ)) <= 1 and R.inc_of_p(12 * 256) == 2 * R.inc_of_p(0), "TUNE 0 is C3 and +12 semitones doubles the increment")
-    e = R.Engine()
+    e = E()
     e.note(0, 3, 3)
     incs = [e.v[v]["inc_tgt"] for v in range(4)]
     want = [R.inc_of_p(256 * d) for d in tables.CHORDS[3][:3]]

@@ -126,7 +126,7 @@ def main():
     for nm, p in (("part", part), ("shadow", shadow)):
         assert list(p[0x1E0:0x1E6]) == want_su, (nm, "SETUP", list(p[0x1E0:0x1E6]))
     assert list(lane[0x20:0x26]) == want_su, ("live lane SETUP", list(lane[0x20:0x26]))
-    want_amp = [10, 40, 56]                  # ATK HOLD REL: finite, the stock page holds a note forever
+    want_amp = [0, 40, 56]                  # ATK HOLD REL: finite, the stock page holds a note forever
     for nm, p in (("part", part), ("shadow", shadow)):
         assert list(p[0x120:0x123]) == want_amp, (nm, "AMP ATK HOLD REL", list(p[0x120:0x123]))
     assert list(lane[12:15]) == want_amp, ("live lane AMP", list(lane[12:15]))

@@ -10,6 +10,8 @@ Stream: per 16-sample block, u32 n then n records of four big-endian u32 (op, a,
   3 init(a, b)        attack and release steps, Q31 (first block only)
   4 note(a, b, c)     wcf_note: p Q8 semitones (signed), chord shape, voices
   5 knobs(a, b, c)    wcf_knobs: frame position, voicing spread, pitch glide (raw 0..127)
+  8 amp(a)            wcf_amp: a = atk | hold << 8 | rel << 16 | start << 24 (raw 0..127, start 0/1)
+  9 clock(a)          wcf_clock: the sequencer's step word
   7 scale(a)          wcf_scale: the pitch-class mask notes snap onto, 0 = none
   6 setup(a, b)       wcf_setup: a = vibr | vrat << 8 | oct << 16 | fine << 24, b = comp | mode << 8
 """
@@ -20,6 +22,7 @@ import tables
 
 _EXP2, _TC = tables.exp2_tab(), tables.tc_tab()
 _LFO, _COMP, _GLIDE = tables.lfo_tab(), tables.comp_tab(), tables.glide_tab()
+_AMP_ATK, _AMP_REL, _AMP_HOLD = tables.AMP_ATK_STEP, tables.AMP_REL_K, tables.AMP_HOLD128
 _GAIN_N = [0, 1717986918, 858993459, 572662306, 429496730]
 
 NV, FLEN, NFR, BLOCK, SR = 4, 1024, 8, 16, 44100
@@ -49,6 +52,11 @@ class Engine:
         self.poly = self.next = 0
         self.spread = 0
         self.glide = 1 << 28
+        self.amp_cur = self.amp_tgt = 0
+        self.amp_on = self.amp_htim = 0
+        self.frames = self.fstep = 0
+        self.last_step = -1
+        self.fps = 345
         self.scale = 0
         self.tune_off = 0
 
@@ -71,6 +79,10 @@ class Engine:
             self.knobs(a, b, c)
         elif op == 7:
             self.scale = a & 0xfff
+        elif op == 8:
+            self.amp(a & 0xff, (a >> 8) & 0xff, (a >> 16) & 0xff, (a >> 24) & 0xff)
+        elif op == 9:
+            self.clock(a)
         elif op == 6:
             self.setup(a & 0xff, (a >> 8) & 0xff, (a >> 16) & 0xff, (a >> 24) & 0xff, b & 0xff, (b >> 8) & 0xff)
 
@@ -83,6 +95,44 @@ class Engine:
         self.drive, self.makeup = _COMP[comp]
         self.poly = 1 if mode else 0
         self.tune_off = (oct_ - 1) * 12 * 256 + (f - 64) * 2
+
+    def clock(self, step):
+        self.frames += 1
+        if step == self.last_step:
+            return
+        first = self.last_step < 0
+        self.last_step = step
+        d = self.frames - self.fstep
+        self.fstep = self.frames
+        if not first and d >= 16:
+            self.fps = d
+
+    def amp(self, atk, hold, rel, start):
+        atk, hold, rel = min(atk, 127), min(hold, 127), min(rel, 127)
+        g = self.amp_cur
+        if start:
+            self.amp_on = 1
+            self.amp_htim = 0 if hold >= 127 else ((_AMP_HOLD[hold] * self.fps) >> 7) + 1
+        releasing = not self.amp_on
+        if self.amp_on and self.amp_htim:
+            self.amp_htim -= 1
+            if self.amp_htim == 0:
+                self.amp_on = 0
+                releasing = True
+        if releasing:
+            k = _AMP_REL[rel]
+            if k:
+                d = mul(g, k << 15)
+                if d < (1 << 15):
+                    d = 1 << 15
+                g -= d
+                if g <= (64 << 15):
+                    g = 0
+        elif g < (1 << 30):
+            g += _AMP_ATK[atk] << 15
+            if g > (1 << 30):
+                g = 1 << 30
+        self.amp_tgt = g
 
     def snap(self, p):
         m = self.scale
@@ -139,6 +189,12 @@ class Engine:
         for v in self.v:
             v["inc"] = (v["inc"] + mul(s32(v["inc_tgt"]) - s32(v["inc"]), self.glide)) & 0xffffffff
             v["incm"] = v["inc"] if pmul == (1 << 30) else (mul(v["inc"], pmul) << 1) & 0xffffffff
+        ag, tgt, dg = self.amp_cur, self.amp_tgt, 0
+        if ag == 0 and tgt == 0:
+            return [0] * n
+        if tgt != ag:
+            q = abs(tgt - ag) // n
+            dg = -q if tgt < ag else q
         for _ in range(n):
             self.pos += (self.pos_tgt - self.pos) >> POS_SLEW
             idx = self.pos >> 16
@@ -183,7 +239,9 @@ class Engine:
                 t3 = mul(mul(tt, tt), tt)
                 yy = tt - (mul(t3, 715827883) << 2)
                 total = mul(yy, self.makeup)
-            out.append(total)
+            ag += dg
+            out.append(s32(mul(total, ag) << 1))
+        self.amp_cur = tgt
         return out
 
 
@@ -259,6 +317,37 @@ def scenario_note():
     blocks[1101] = [(4, 0, 0, 2)]
     blocks[1700] = [(6, 0 | 0 << 8 | 1 << 16 | 64 << 24, 0 | 0 << 8, 0)]
     blocks[1701] = [(4, 0, 0, 1)]
+    return blocks
+
+
+def with_amp(blocks, atk=0, hold=127, rel=127, starts=(), step_every=0):
+    """Every block is a frame: the machine calls wcf_clock and wcf_amp once a frame (start = a START this frame). The first block
+    starts the AMP (ATK 0, HOLD INF, REL INF opens in 16 frames)."""
+    out = []
+    for i, b in enumerate(blocks):
+        ops = list(b)
+        if step_every:
+            ops.append((9, i // step_every, 0, 0))
+        st = 1 if (i == 0 or i in starts) else 0
+        ops.append((8, atk | hold << 8 | rel << 16 | st << 24, 0, 0))
+        out.append(ops)
+    return out
+
+
+def scenario_amp():
+    """The AMP laws on a stream: notes with finite and infinite HOLD and REL, several ATKs, a warm START, the sequencer's step word
+    moving every 22 frames (fps)."""
+    n = 3200
+    blocks = [[] for _ in range(n)]
+    segs = [(0, 0, 127, 127), (400, 40, 24, 50), (1000, 70, 30, 90), (1600, 0, 127, 20), (2000, 10, 20, 127), (2600, 0, 36, 40)]
+    starts = {1: (4, 0, 3, 3), 401: (4, 3 * 256, 4, 3), 1001: (4, 7 * 256, 3, 2), 1601: (4, 0, 3, 3), 1620: (4, 4 * 256, 3, 3),
+              2001: (4, 12 * 256, 3, 3), 2601: (4, 0, 3, 4), 2640: (4, 5 * 256, 3, 4)}
+    for i in range(n):
+        atk, hold, rel = [sg[1:] for sg in segs if sg[0] <= i][-1]
+        blocks[i].append((9, i // 22, 0, 0))
+        if i in starts:
+            blocks[i].append(starts[i])
+        blocks[i].append((8, atk | hold << 8 | rel << 16 | (1 if i in starts else 0) << 24, 0, 0))
     return blocks
 
 

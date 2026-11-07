@@ -40,6 +40,9 @@ typedef struct {
     int32_t glide;              /* the pitch glide step a call, Q31 (GLID) */
     int32_t poly, next;         /* MODE: 1 = POLY (a START takes the next voice of the pool), and the voice it takes next */
     int32_t tune_off;           /* Q8 semitones added to every note: OCT and FINE, read at a START */
+    int32_t amp_cur, amp_tgt;   /* the track's AMP level, Q30 (1.0 = 1 << 30): ramps across a call (the DSP sees a fixed ATK 0 / HOLD INF / REL INF) */
+    int32_t amp_on, amp_htim;   /* 1: attack or hold; 0: releasing. HOLD frames left (0: none) */
+    int32_t frames, fstep, last_step, fps;   /* frames counted, at the last step change, the last step word, frames a step */
 } Engine;
 
 void eng_init(Engine *e, const int16_t *table, int32_t atk_d0, int32_t rel_d0);
@@ -48,4 +51,4 @@ void eng_pos(Engine *e, int32_t pos_q16);                       /* the target; c
 void eng_on(Engine *e, int v, uint32_t inc, int32_t gain);      /* gate on, phase kept */
 void eng_off(Engine *e, int v);                                 /* gate off */
 void eng_setup(Engine *e, int32_t lfo_amp, uint32_t lfo_inc, int32_t drive, int32_t makeup, int32_t poly, int32_t tune_off);
-void eng_render(Engine *e, int32_t *out, int n);                /* n Q27 samples, the four voices summed */
+void eng_render(Engine *e, int32_t *out, int n);                /* n Q27 samples: the voices summed, COMP, the AMP level */                /* n Q27 samples, the four voices summed */
