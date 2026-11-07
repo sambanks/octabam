@@ -41,6 +41,7 @@ nav:
           - Spectrum: reference/manual/octabam/effects/spectrum.md
       - Machines:
           - OCTA-303: reference/manual/octabam/machines/octa303.md
+          - WAVE: reference/manual/octabam/machines/wavecf.md
       - Sequencer and recording:
           - Direct Jump (Kyoti): reference/manual/octabam/sequencer/direct-jump-kyoti.md
           - Euclid Fill: reference/manual/octabam/sequencer/euclid-fill.md

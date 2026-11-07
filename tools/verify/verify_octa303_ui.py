@@ -181,6 +181,34 @@ def main():
     assert after[0x3C + 60:0x3F + 60] == bytes(3), ("limit-validate", "T3 still signed", after[0x3C + 60:0x3F + 60])
     print("PASS limit-validate: the Part validator keeps the first two signed tracks and unsigns the third")
 
+    # 6. beside another machine the limit counts every kind (modules/hooks MC_LIMIT, mc_sig_table):
+    #    T1 signed by ANALOG BD ('A','B',1) and T2 by OCTA303, so a third pick is refused; with T1 alone it is not
+    if rows - 5 >= 2:
+        absig = lambda base, t: [f"{base + 0x3C + 30 * t + i:#x}={v:#x}" for i, v in enumerate((0x41, 0x42, 1))]
+        for name, ours in (("limit-mixed", (1,)), ("limit-mixed-control", ())):
+            pokes = ";".join(x for base in (PART, SHADOW) for x in absig(base, 0) + [y for t in ours for y in sig(base, t)])
+            rd, log, d = run(name, card, image, [(0.5, f"poke {pokes}")] + pick_t3, extra=("--watch-pc", f"{NOTIFY:#x}"))
+            assert "ended on quit" in log, f"{name}: the script did not finish"
+            part, shadow = rd("part.bin"), rd("shadow.bin")
+            hits = [l for l in log.splitlines() if l.startswith("watch-pc") and "hit(s)" in l]
+            n = int(hits[0].split(":")[1].split()[0]) if hits else 0
+            t3 = (part[0x3C + 60:0x3F + 60], shadow[0x3C + 60:0x3F + 60])
+            if ours:
+                assert t3 == (bytes(3), bytes(3)), (name, "T3 was signed past the limit", t3)
+                assert n > 0, (name, "no toast: NOTIFY was not called")
+                print(f"PASS {name}: T1 ANALOG BD and T2 OCTA-303, T3 refused, toast called {n}x")
+            else:
+                assert t3 == (b"TB\x01", b"TB\x01"), (name, "control: T3 should be signed beside one ANALOG BD track", t3)
+                print(f"PASS {name}: T1 ANALOG BD alone, T3 is signed")
+        pk = [x for t in (0, 1, 2) for x in (absig(PART, t) if t == 0 else sig(PART, t))]
+        rd, log, _ = run("limit-mixed-validate", card, image, None,
+                         (f"-:poke:{';'.join(pk)}", f"-:call:0x40002318,{PART:#x}", f"-:dump:{PART:#x},6322={OUT}/limit-mixed-validate/after.bin"))
+        after = rd("after.bin")
+        assert after[0x3C:0x3F] == b"AB\x01", ("limit-mixed-validate", "T1 lost its signature", after[0x3C:0x3F])
+        assert after[0x3C + 30:0x3F + 30] == b"TB\x01", ("limit-mixed-validate", "T2 lost its signature")
+        assert after[0x3C + 60:0x3F + 60] == bytes(3), ("limit-mixed-validate", "T3 still signed", after[0x3C + 60:0x3F + 60])
+        print("PASS limit-mixed-validate: T1 ANALOG BD and T2 OCTA-303 kept, a third OCTA-303 track unsigned")
+
 
 if __name__ == "__main__":
     main()
