@@ -3116,6 +3116,22 @@ mkgo:""",
                     print(f"  SUBST: {_k} payload {tag} -- "
                           + ", ".join(f"{a} -> {b}" for a, b
                                       in sorted(_mk.dsp.subst[tag].items())))
+                if _mk is not None and _mk.harness is not None and _mk.harness.key_tap:
+                    for _mark in ("; KEYTAP_PRE\n", "; KEYTAP_BEGIN\n", "; KEYTAP_END\n"):
+                        if _src_k.count(_mark) != 1:
+                            sys.exit(f"{_k}: a keybus reader carries exactly one {_mark.strip()!r} line")
+                    if _mk.harness.key_tap in REMIX.modules:
+                        _src_k = _src_k.replace(
+                            "; KEYTAP_PRE\n",
+                            "        tst     a\n"
+                            "        beq     ch_kself                ; SELF\n"
+                            "        move    x:(r7+$25),b\n"
+                            "        tst     b\n"
+                            "        bne     ch_kself                ; the master keys on its own input\n"
+                            "        bra     ch_kbus                 ; the keybus\n")
+                    else:
+                        _src_k = re.sub(r"; KEYTAP_BEGIN\n.*?; KEYTAP_END\n", "", _src_k,
+                                        flags=re.S).replace("; KEYTAP_PRE\n", "")
                 if (_mk is not None and _mk.harness is not None
                         and _mk.harness.bus_reader and _src_k.count("; NOBUS_KEY\n") != 1):
                     sys.exit(f"{_k}: a bus reader carries exactly one '; NOBUS_KEY' line")

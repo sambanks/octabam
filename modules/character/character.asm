@@ -313,8 +313,64 @@ ch_pos3:
         move    b,x:(r7+$16)
         move    x:(r6+$c),a             ; KEY, the companion byte
         and     #>$00ff00,a
+; KEYTAP_PRE
         cmp     #>$000100,a
         bne     ch_kself
+; KEYTAP_BEGIN
+; Track 1..8 from the keybus a side-chain tap publishes (the key track's 32
+; input words per block, in Y): this core's tracks from their keybus slot,
+; the other core's from the shared-window relay two generations behind this
+; core's counter. a = the KEY byte << 8 on entry; the master and SELF were
+; sent to ch_kself before this. The peak of |(L + R) / 2| over the 16 frames
+; goes through KLVL as T1's host level does.
+ch_kbus:
+        cmp     #>$000800,a
+        bgt     ch_kself                ; a KEY byte above 8 reads as SELF
+        sub     #>$000100,a
+        asr     #$8,a,a                 ; the key track, 0..7
+        move    #>$ffffff,m1
+        move    a1,r4
+        move    r4,b
+        and     #>4,b
+        move    b1,a                    ; a clean 4-or-0
+        tst     a
+        @CK_FOREIGN@
+        move    r4,a
+        asl     #6,a,a
+        move    a1,n1
+        move    #>@KEYB@,r1
+        lua     (r1)+n1,r1              ; the keybus slot, gen 0
+        bra     ch_kscan
+ch_kfor:
+        move    r4,a
+        sub     #>@FCOREBASE@,a         ; the track's index on its own core
+        asl     #2,a,a
+        move    a1,x1
+        move    #>@GCNT@,r1
+        move    y:(r1),b                ; this core's counter, +2 = -2 mod 4
+        add     #>2,b
+        and     #>3,b
+        move    b1,a
+        add     x1,a
+        asl     #5,a,a
+        move    a1,n1
+        move    #>@FSBASE@,r1
+        lua     (r1)+n1,r1              ; the other core's slot for that generation
+ch_kscan:
+        clr     b
+        do      #<$10,>ch_kloop
+        move    y:(r1)+,x0              ; L
+        move    y:(r1)+,a               ; R
+        add     x0,a
+        asr     a
+        abs     a                       ; |mono|
+        move    a,x0                    ; the limiting move
+        cmp     x0,b
+        tlt     x0,b                    ; the peak so far
+ch_kloop:
+        move    b1,x0
+        bra     ch_klvl
+; KEYTAP_END
 ; NOBUS_KEY
         move    x:(r7+$25),a
         tst     a
@@ -323,6 +379,7 @@ ch_pos3:
         cmp     #>$4,a
         bge     ch_kzero                ; stale: silence
         move    y:>$990,x0              ; T1's peak |mono in|
+ch_klvl:
         move    x:(r6+$d),a             ; KLVL, the knob field
         and     #>$7f0000,a
         move    a,y1                    ; KLVL/128
