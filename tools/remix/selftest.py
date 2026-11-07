@@ -1074,7 +1074,6 @@ def main():
              "sos-capture": ("SPATIALIZER",),   # usb-io-tracks-ab + the recorder fixes
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",), "cfmeter-post": ("DARK REV",), "cfmeter-tracks": ("DARK REV",),   # the readout insert's words
              "waveload": ("DARK REV",), "waveload-port": ("DARK REV",),   # CF METER's readout insert, as cfmeter
-             "wave": ("SPRING REV", "DARK REV"),   # WAVE runs in their words
              "usb-out-tracks-main-cue": ("PLATE REV",),   # USB's inject is placed in its words (the remix lists 13)
              "transient": ("PLATE REV",),   # TRANSIENT runs in its words; the other 13 stay
              "void": ("PLATE REV",),        # VOID SCRAPE runs in its words; the other 13 stay

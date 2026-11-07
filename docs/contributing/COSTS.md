@@ -121,7 +121,7 @@ and STUTTR 0.49 on the mean, 0.60 on the maximum (its static count of 426 is abo
 
 Not read, and why:
 
-- WAVE: with audio triggering it on all 8 tracks the frame interrupt fell from 2,756 to 1,378 a second (the matrix's
+- WAVE (the DSP effect, removed 7 Nov 2026 for the ColdFire machine; `git show 755a02ac:modules/wave/README.md`): with audio triggering it on all 8 tracks the frame interrupt fell from 2,756 to 1,378 a second (the matrix's
   `OVERLOAD`): the DSP needed two frame periods per frame, and the unit stayed degraded until a power cycle. Idle, with the
   transport stopped, it reads about 8 % a slot. It is a synth, so its cost depends on its voices. LOAD METER returned no
   per-slot rows under the overload, so there is no catalog entry.
@@ -138,6 +138,6 @@ Not read, and why:
 
 No cost: TAPE ECHO, DEVILISH,
 SIDECHAIN_COMPRESSOR, MULTIBCOMP. Estimated from `make cycles` only (static
-price x about 1.4, inferred): WAVE about 33 %, VOCODER about 24 %, RESONATOR
+price x about 1.4, inferred): WAVE (the DSP effect, removed) about 33 %, VOCODER about 24 %, RESONATOR
 about 14 %, CHARACTER TXTR about 12 %.
 P words per effect are not in the catalog.

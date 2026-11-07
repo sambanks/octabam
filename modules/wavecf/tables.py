@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """WAVE's wavetable: eight 1,024-sample frames of int16, then frame 7 again (engine.h: frame + 1 needs no test).
 
-The shapes are modules/wave's (the DSP effect, generate.py): sine, triangle, saw, square, then the
+The shapes are those of the DSP effect `wave`, removed 7 Nov 2026 (`git show 755a02ac:modules/wave/generate.py`): sine, triangle, saw, square, then the
 zero-mean pulses 1/4, 1/8, 1/16, 1/32, all at its table amplitude AMP.
 
     python3 modules/wavecf/tables.py            # rewrites tables.s and wcf_data.c

@@ -8,8 +8,8 @@ SPECTRUM and its LFOs.
 
 Author: sambanks. **The code was written by Claude (Anthropic)**. Not affiliated with or endorsed by CHOMPI
 Club or Chase Bliss; CHOMPI is CHOMPI Club's trademark (their `TRADEMARKS.md`), used here only to say where
-the code comes from. The DSP effect with the same voice is [`wave`](../wave/README.md); this one is on the
-ColdFire.
+the code comes from. A DSP effect with the same voice, played by a sine carrier on FX2 (`wave`, on the unit as image 93), was removed
+on 7 Nov 2026 in favour of this machine (`git show 755a02ac:modules/wave/README.md`).
 
 Markers as in `CHIP.md`: ✅ measured, 🟡 inferred.
 
