@@ -235,7 +235,7 @@ templates store: SETTINGS, MIDI LOG, DEFAULTS, the project pair and TOOLS,
 designed in
 [docs/proposals/BRAIN.md](docs/proposals/BRAIN.md) (6 Oct 2026, starting
 from nordseele's
-[OTX proposal](docs/proposals/OTX_PROJECT_PROPOSAL.md)). Measured under the
+OTX proposal, `git show 76fd8466:docs/proposals/OTX_PROJECT_PROPOSAL.md`). Measured under the
 port only; not on a unit.
 
 ## Checking without a flash

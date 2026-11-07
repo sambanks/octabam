@@ -1,6 +1,6 @@
 """DLPUMP -- the demand loader's ColdFire half: watches which effects the tracks use, stages the
 blocks of the ones that are not loaded and withdraws the ones nobody uses. Called from LOAD
-METER's entry code (docs/proposals/DEMAND_LOAD.md, decision 9).
+METER's entry code (docs/contributing/DEMAND_LOADER.md, decision 9).
 """
 import json
 import pathlib

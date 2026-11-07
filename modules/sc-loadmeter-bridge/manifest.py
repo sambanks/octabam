@@ -4,7 +4,7 @@ Both hook the FX2 slot's per-track commit, `move x:>$206,r0` at P:0x50e (payload
 stands in for LOAD METER's hook there (schema.DspOverride): the build plants SIDECHAIN_COMPRESSOR's resident stub
 at the site, and the stub runs moncommit when the demand loader has it loaded, then jumps to LOAD METER's
 otop_e2, which stamps the slot's cost and replays the displaced instruction
-(docs/proposals/SC_DEMAND_LOAD.md). The build supports this for a Remix.window_demand module only.
+(docs/contributing/DEMAND_LOADER.md). The build supports this for a Remix.window_demand module only.
 """
 from remix.schema import Category, DspOverride, Kind, Module, Proof
 

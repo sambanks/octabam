@@ -1,7 +1,7 @@
 # `extprobe` -- EXT PROBE
 
 A measurement instrument: how far into its FX2 slot does a stock reverb (or any buffered effect) write?
-It matters because the demand loader ([`docs/proposals/DEMAND_LOAD.md`](../../docs/proposals/DEMAND_LOAD.md))
+It matters because the demand loader ([`docs/contributing/DEMAND_LOADER.md`](../../docs/contributing/DEMAND_LOADER.md))
 puts effect code at offset `0x1000` of a slot and trusts the figures in `tools/remix/stock.py`
 (`SLOT_EXTENT`: PLATE REV `0x37ff`, DARK REV `0x3da2`, SPRING REV `0xfff`, CHORUS `0xbfd`, COMB `0xbff`,
 SPATIALIZER `0xa5f`, FLANGER `0x7ff`), which were measured under the port at default settings.

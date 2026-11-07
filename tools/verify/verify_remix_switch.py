@@ -51,7 +51,7 @@ Builds the remix (the HOME image: what NOR would hold), then:
            8-10). Each core enters its payload's start a SECOND time (core 0
            P:$30000, core 1 P:$38000)
 
-What this cannot see (docs/proposals/FIRMWARE_SWITCHER.md): the reset
+What this cannot see (docs/firmware/BOOT.md): the reset
 itself (the port does not reset; the ui case stops at the reset sequence),
 whether SDRAM keeps the stage across it, caches (the port has none), and
 the DSP after a chainload (the port boots from reset state either way).

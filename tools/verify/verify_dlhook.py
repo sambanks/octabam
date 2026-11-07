@@ -3,7 +3,7 @@
 
     python3 tools/verify/verify_dlhook.py [REMIX]       (default octabam)
 
-For every hook stub the build placed (out/dsp/window_records.json, "hook stub ...": docs/proposals/SC_DEMAND_LOAD.md),
+For every hook stub the build placed (out/dsp/window_records.json, "hook stub ...": docs/contributing/DEMAND_LOADER.md),
 on each payload it serves, a wrapper in the window seeds x:$420 (the core's first track) and X:0..$1f (a counter, the
 track's block), calls the stub, and parks r0, r6, n6, r4, x0 and r1 in Y. The run must equal, word for word in
 all of X and Y and in those registers, a reference wrapper that does what the stub should:

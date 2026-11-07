@@ -8,5 +8,5 @@ loader has it loaded and then jumps to `otop_e2`, which stamps the slot's cost a
 instruction. MON's crossfade therefore lands before LOAD METER's end stamp, so the meter counts it.
 
 Only for SIDECHAIN_COMPRESSOR as a `Remix.window_demand` module (octabam):
-[`docs/proposals/SC_DEMAND_LOAD.md`](../../docs/proposals/SC_DEMAND_LOAD.md). The stub is
+[`docs/contributing/DEMAND_LOADER.md`](../../docs/contributing/DEMAND_LOADER.md). The stub is
 `verify_dlhook`'s.

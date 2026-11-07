@@ -1,6 +1,6 @@
 ; ---------------------------------------------------------------------------
 ; DLSTUB -- the lazy-binding stub in front of the demand-loaded effects
-; (docs/proposals/DEMAND_LOAD.md). One body serves them all; the build adds a
+; (docs/contributing/DEMAND_LOADER.md). One body serves them all; the build adds a
 ; trampoline per effect where the marker below is.
 ;
 ; Each effect's id dispatches to the stub. While the real code is not resident the

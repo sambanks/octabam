@@ -1,6 +1,6 @@
 ; ---------------------------------------------------------------------------
 ; DLCOPY -- the demand loader's copier, a frame hook on payload B
-; (docs/proposals/DEMAND_LOAD.md).
+; (docs/contributing/DEMAND_LOADER.md).
 ;
 ; Every frame, at the frame head, a block the ColdFire has staged in this core's X
 ; is moved into the shared window and published; or an effect's words are

@@ -10,7 +10,7 @@
 | (docs/contributing/PLACEMENT.md), and nothing between a reset and the OS
 | entry's `movea.l #0x48000000,%sp` writes SDRAM above the image the
 | bootstrap depacks (read from the bootstrap's copy in the image,
-| docs/proposals/FIRMWARE_SWITCHER.md). Every address is the UNCACHED
+| docs/firmware/BOOT.md). Every address is the UNCACHED
 | alias (+0x08000000): the running OS has the D-cache on, copyback, over
 | the cached window, and the stage must be in DRAM, not in a line, when the
 | unit resets.
@@ -50,7 +50,7 @@
         .set    RS_SPIN,     0x5350494e     | "SPIN" armed: interrupts masked, the panel being reset (build 1: a stock spin)
         .set    RS_RCR,      0x52435220     | "RCR " the reset controller's soft reset requested
 
-| the stock facts (docs/proposals/FIRMWARE_SWITCHER.md, read from the 1.40C image)
+| the stock facts (docs/firmware/BOOT.md, read from the 1.40C image)
         .set    OS_ENTRY,    0x40000400     | where the bootstrap depacks the OS and what it calls
         .set    OS_ARGCELL,  0x400b9650     | the entry parks the bootstrap's argument here first
         .set    OS_RESUME,   0x40000418     | the instruction after the entry's `movea.l #0x48000000,%sp`

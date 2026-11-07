@@ -7000,7 +7000,7 @@ recording. A growth without a ± had an error under 1 frame a second.
 - **Its limit.** The emulated card has one constant delay per sector. A
   real card stalls. OctaLab measured single card writes of up to 1.2 s
   while STATIC tracks play, and 1.4 to 2.1 MB/s while they read (their
-  `docs/proposals/OTX_PROJECT_PROPOSAL.md`, 26 Sep 2026). 🟡 Arithmetic, not
+  `git show 76fd8466:docs/proposals/OTX_PROJECT_PROPOSAL.md`, 26 Sep 2026). 🟡 Arithmetic, not
   measured: eight tracks need 1.41 MB/s, and the 4 MiB ring holds 8,192
   frames at eight tracks, about 3 s, so a 1.2 s stall fits in the ring if
   the card writes fast enough between stalls to empty it again. So this

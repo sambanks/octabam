@@ -21,6 +21,8 @@ Where each doc is, by who reads it. A module's own page is
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | the contract: the one rule, your first PR, the oracle rule, the gates before a PR |
 | [contributing/MODULES.md](contributing/MODULES.md) | writing a module: manifests, descriptors, DSP and ColdFire declarations, the ledger |
 | [contributing/PLACEMENT.md](contributing/PLACEMENT.md) | where a module's code goes and what is free, measured |
+| [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) | the demand loader: effects copied into the DSP's shared window while a track uses them; DLPUMP, DLCOPY, the stub, the reverb guard, SIDECHAIN_COMPRESSOR's hook stubs, the window layout, measurements on a unit |
+| [contributing/SHARED_SITES.md](contributing/SHARED_SITES.md) | two modules on one stock site: STORE, EVENTS, HOOKS and `Override`, which to use, the machine chain, what is open |
 | [contributing/COSTS.md](contributing/COSTS.md) | what each effect costs on a unit, per slot, and the worst-case DSP load of a remix; `tools/remix/costs.py` |
 | [contributing/TESTING.md](contributing/TESTING.md) | every gate, what it proves and cannot see; `make check`, `make reach`, shards, `make accept`, bit-identity, CI |
 | [contributing/TOOLING.md](contributing/TOOLING.md) | every tool by pipeline stage, and which README each tool directory has |
@@ -50,27 +52,30 @@ Where each doc is, by who reads it. A module's own page is
 is the silicon and the cycle budget, [DSP.md](firmware/DSP.md) the audio
 DSP, and the rest one subsystem each (kernel, tables, parameter pages,
 menus, panel, MIDI, LFO, level law, recorder, sample save, storage,
-the MIDI tracks' setup record, writers, outgoing MIDI and CTRL labels in [MIDI_TRACKS.md](firmware/MIDI_TRACKS.md), Parts and pattern changes in [PARTS.md](firmware/PARTS.md), step locks, the ColdFire delay routine in [COLDFIRE_DELAY.md](firmware/COLDFIRE_DELAY.md),
+the MIDI tracks' setup record, writers, outgoing MIDI and CTRL labels in [MIDI_TRACKS.md](firmware/MIDI_TRACKS.md), Parts and pattern changes in [PARTS.md](firmware/PARTS.md), step locks, the ColdFire delay routine in [COLDFIRE_DELAY.md](firmware/COLDFIRE_DELAY.md), the reset path and OS entry in [BOOT.md](firmware/BOOT.md),
 REPITCH in [REPITCH.md](firmware/REPITCH.md)).
 
 ## Proposals
 
 [proposals/](proposals/): [BRAIN.md](proposals/BRAIN.md), the design for
 settings, defaults and templates (6 Oct 2026; `modules/brain` builds it and
-measures it under the port, not on a unit), the two
-OTX documents it starts from, nordseele's shared settings store (draft, not
-implemented): [OTX_PROJECT_PROPOSAL.md](proposals/OTX_PROJECT_PROPOSAL.md)
-and [OTX_MODULE_GUIDELINES.md](proposals/OTX_MODULE_GUIDELINES.md), and
-[USB.md](proposals/USB.md), merging the four USB modules into one with
-run-time settings held by the brain (14 Oct 2026).
-[SHARED_HOOKS.md](proposals/SHARED_HOOKS.md): one owner per contested
-ColdFire site (STORE, EVENTS and a new PARTS), so conflicting modules can
-share an image (28 Oct 2026, not implemented).
+measures it under the port, not on a unit).
 
 [proposals/remixes/](proposals/remixes/README.md): remix proposals, each
 taken on hardware to verified stable before it lands under `remixes/`.
 
 ## History
+
+Removed proposals, each recovered with `git show 76fd8466:docs/proposals/<file>`:
+
+| file | why removed | where it went |
+|---|---|---|
+| `FIRMWARE_SWITCHER.md`, `BOOT_DEFAULT.md` | REMIX SWITCH shipped | firmware facts in [firmware/BOOT.md](firmware/BOOT.md); behaviour in [REMIX SWITCH](../modules/remix-switch/README.md) |
+| `OTX_PROJECT_PROPOSAL.md`, `OTX_MODULE_GUIDELINES.md` | replaced by BRAIN and the modules that use it | [proposals/BRAIN.md](proposals/BRAIN.md) section 14 lists what BRAIN took from OTX |
+| `USB_HANDOFF.md`, `USB.md` | session handoff (15 Oct 2026) and the design that merged four USB modules into one with run-time settings; built, with six settings where it proposed two (LAYOUT, INPUTS) | [USB](../modules/usb/README.md) |
+| `SHARED_HOOKS.md` | built as HOOKS; PARTS dropped | [contributing/SHARED_SITES.md](contributing/SHARED_SITES.md) |
+| `SCOPE.md` | shipped | [SCOPE](../modules/scope/README.md) |
+| `DEMAND_LOAD.md`, `SC_DEMAND_LOAD.md` | merged | [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) |
 
 [../CHANGELOG.md](../CHANGELOG.md) has one entry per image that reached a
 unit. Records that were closed and removed are cited in place as

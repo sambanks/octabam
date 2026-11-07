@@ -1,7 +1,7 @@
 # `dlprobe` -- DLPROBE
 
 A measurement instrument for the demand loader
-([`docs/proposals/DEMAND_LOAD.md`](../../docs/proposals/DEMAND_LOAD.md)): an insert that replaces its
+([`docs/contributing/DEMAND_LOADER.md`](../../docs/contributing/DEMAND_LOADER.md)): an insert that replaces its
 track's audio with a status word per 16-sample frame (the layout of
 [PEXT PROBE](../pextprobe/README.md)) carrying the loader's counters. It ships in no remix but
 `remixes/test/dl-probe` and `remixes/test/dl-probe-any`, which are `octabam` with DLPROBE on FX1 in

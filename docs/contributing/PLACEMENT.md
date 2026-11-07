@@ -98,6 +98,9 @@ code that is not in the image's P records has to run from the shared window,
 half. The window is one memory: the words are visible to both cores, so one copy
 of a routine serves both.
 
+The loader that copies effects into the window while a track uses them, the reverb guard and the window's
+layout are in [DEMAND_LOADER.md](DEMAND_LOADER.md).
+
 Which words are free, from `tools/remix/dsp_ranges.py` (the ledger's claims, not a
 measurement):
 
@@ -358,25 +361,13 @@ under the port and checks that the loader ran once, never hit its hang,
 and that every window reads back equal to its linked image except the
 bytes a runtime writes about itself.
 
-## Shared sites: the bridges
+## Shared sites
 
-In the free ROM, SCALE QUANTIZER's 2,916 B unit beside REPITCH's 576 B
-leaves CC MAP's 724 B cave no run (measured 28 Sep 2026), so `mods`
-carries REPITCH and CC MAP without the quantizer.
-
-A stock site claimed by two mods is refused by the ledger unless a bridge
-carries it. A bridge is a stub that does what both hooks did, in an order
-that respects each protocol, declared through `schema.Override` so the
-build skips the overridden detour.
-
-Until 6 Oct 2026 three bridges carried Octakit's shared sites:
-`scenes-kits` (the MIDI CC dispatch entry `0x400d64a0`, CC MAP's cave in
-front of her handler), `scenes-p2-kits` (the two page-2 editor entries)
-and `kits-reload` (OKMS1 trapped on the first Part Reload: her
-replacement of the stock reload validated its caller's return address and
-midisc's `reload` stub substitutes it; the ledger carried the class as
-`Runtime.pinned_returns` against `Detour.subst_return`). KITS leaves the
-stock Part routines and the CC dispatch as stock, so none is needed (`git show 2063370f:modules/kits-reload/README.md`).
+A stock site claimed by two modules is refused by the ledger unless a platform module or a bridge carries it:
+[SHARED_SITES.md](SHARED_SITES.md). In the free ROM, SCALE QUANTIZER's 2,916 B unit beside REPITCH's 576 B
+leaves CC MAP's 724 B cave no run (measured 28 Sep 2026), so `mods` carries REPITCH and CC MAP without the quantizer.
+Until 6 Oct 2026 three bridges carried Octakit's shared sites (`scenes-kits`, `scenes-p2-kits`, `kits-reload`); KITS
+leaves the stock Part routines and the CC dispatch as stock, so none is needed (`git show 2063370f:modules/kits-reload/README.md`).
 
 ## Open
 

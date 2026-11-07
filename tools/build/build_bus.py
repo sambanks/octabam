@@ -2644,7 +2644,7 @@ mkgo:""",
         print(f"  reverb guard  trampolines P:0x{loader_next:05x}..0x{_rat:05x} ({_lt} words), records P:0x{_rat:05x}..0x{_bat:05x} "
               f"({len(_recs)} words), body P:0x{_bat:05x}..0x{_bat + len(_bw):05x} ({len(_bw)} words)")
         loader_next = _bat + len(_bw)
-    # ---- HOOKED DEMAND MODULES (docs/proposals/SC_DEMAND_LOAD.md) --------------------------------------
+    # ---- HOOKED DEMAND MODULES (docs/contributing/DEMAND_LOADER.md) --------------------------------------
     # A Remix.window_demand module reached by DspHooks, not by an id (SIDECHAIN_COMPRESSOR): its hooks
     # run whether or not its code is loaded, so each jsr goes to a resident stub, reserved here and
     # assembled once the body's and any bridged hook's addresses are known (_hook_stub_words). The stub

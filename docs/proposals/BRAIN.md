@@ -3,7 +3,7 @@
 Design of 6 Oct 2026 (Sam Banks). Section 12 lists the phases and what of
 each is implemented; section 13 what has to be measured first.
 It starts from nordseele's OTX proposal
-([OTX_PROJECT_PROPOSAL.md](OTX_PROJECT_PROPOSAL.md)); section 14 lists what
+(`git show 76fd8466:docs/proposals/OTX_PROJECT_PROPOSAL.md`, removed; BRAIN replaces it); section 14 lists what
 is taken from it and what differs.
 
 Confidence markers: ✅ measured, 🟡 inferred with a falsifier stated,
@@ -265,7 +265,7 @@ copies `.work` to `.strd` (`0x4008ee74`) and back (`0x4008f180`); a
 `.work` that fails its CRC is never overwritten.
 
 What the brain does at a load depends on which files are on the card (the
-table of `OTX_PROJECT_PROPOSAL.md` section 3.3):
+table of OTX_PROJECT_PROPOSAL.md section 3.3):
 
 | `.work` | `.strd` | meaning | action |
 |---|---|---|---|
@@ -283,7 +283,7 @@ table of `OTX_PROJECT_PROPOSAL.md` section 3.3):
 A job on the stock engine job queue; the UI task does no file access for
 the store. `open("w")`, write, close through the stock buffered calls; edits coalesced about 2 s
 after the last one; deferred while a recorder is writing. ✅ on
-nordseele's MKI for Octalab's own files (`OTX_PROJECT_PROPOSAL.md` section
+nordseele's MKI for Octalab's own files (OTX_PROJECT_PROPOSAL.md section
 2.2); not measured under an octabam image.
 
 Each record and each `Blob` has a declared byte maximum and the build
@@ -635,7 +635,7 @@ AUTOSAVE and KEEP LEVELS in its own header.
 
 ## 14. Relation to OTX
 
-Taken from `OTX_PROJECT_PROPOSAL.md` (nordseele, draft 2.1, 26 Sep 2026):
+Taken from OTX_PROJECT_PROPOSAL.md (nordseele, draft 2.1, 26 Sep 2026):
 settings declared in the manifest with a stable id, a numeric key, a type,
 a default, a scope and an apply policy; keys never reused and Option
 labels append-only; an absent module's record and unknown keys written

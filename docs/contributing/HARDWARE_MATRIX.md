@@ -237,6 +237,8 @@ CC1..CC10 enabled, scene A = scene 1, scene B = scene 9, MIDI trigs on steps 4, 
 - **Not done.** Setting a lock by hand, copy / paste scene, scene locks inside Kits, a per-event comparison of the
   unit's CC values with the port's.
 
+Record a MIDI track's output alongside a run with `python3 tools/hw/ot_midi.py -p "Elektron Octatrack DPS-1" listen <seconds>`.
+
 ## DIRECT_JUMP_KYOTI on a unit
 
 25 Oct 2026, `octabam-inserts` tag J1, Sam's MKII, one cable, `ot_djump.py`. Project: a fresh project stamped with

@@ -1516,7 +1516,7 @@ class DspOverride:
     The build does not plant the overridden module's jsr there; the one other hook at the site,
     which must be a Remix.window_demand module's, gets a resident stub that runs its own body
     when the module is loaded and then jumps to the overridden hook's entry, which replays the
-    displaced instruction (docs/proposals/SC_DEMAND_LOAD.md: SIDECHAIN_COMPRESSOR's moncommit
+    displaced instruction (docs/contributing/DEMAND_LOADER.md: SIDECHAIN_COMPRESSOR's moncommit
     and LOAD METER's otop_e2 at P:0x50e / 0x303). `site` is one int for every payload or
     {"A": addr, "B": addr}, as DspHook.site."""
 
@@ -2118,7 +2118,7 @@ class Remix:
     # A module with DspHooks and no init/proc is reached by its hooks alone; its LFO table, ptable and ptable2 follow
     # the code in that order. It has no tail and no pins.
     window: tuple[tuple[str, int], ...] = ()
-    # DEMAND-LOADED WINDOW EFFECTS (docs/proposals/DEMAND_LOAD.md): module keys, each also in `window`
+    # DEMAND-LOADED WINDOW EFFECTS (docs/contributing/DEMAND_LOADER.md): module keys, each also in `window`
     # (at the address its code runs from). The module is assembled and placed as above but left out of
     # payload A's upload: its words, address, entry points and id go to out/dsp/demand_records.json for
     # the ColdFire loader (modules/dlpump). Its id's dispatch entries point at a trampoline of the stub
@@ -2137,7 +2137,7 @@ class Remix:
     # `window_demand` effect.
     window_guard: tuple[str, ...] = ()
     # Where the stub and then the two wrapper copies are laid out, one after the other (P address, in a
-    # run of window words no stock effect writes: docs/proposals/DEMAND_LOAD.md).
+    # run of window words no stock effect writes: docs/contributing/DEMAND_LOADER.md).
     window_loader: int = 0
     # THE HOST PAGE DRAWS ITS FIRST SLOTS ONLY (26 Sep 2026, Sam: "want
     # all the tracks to look the same"): (key, n) pairs. The hidden
