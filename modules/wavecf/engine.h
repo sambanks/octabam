@@ -39,7 +39,8 @@ typedef struct {
     int32_t spread;             /* SPRD, 0..127, read at a START */
     int32_t glide;              /* the pitch glide step a call, Q31 (GLID) */
     int32_t poly, next;         /* MODE: 1 = POLY (a START takes the next voice of the pool), and the voice it takes next */
-    int32_t tune_off;           /* Q8 semitones added to every note: OCT and FINE, read at a START */
+    int32_t tune_off;           /* Q8 semitones added to every note: OCT, read at a START */
+    int32_t detn;               /* DETN 0..127: the spread of the voices' tuning, read at a START */
     int32_t amp_cur, amp_tgt;   /* the track's AMP level, Q30 (1.0 = 1 << 30): ramps across a call (the DSP sees a fixed ATK 0 / HOLD INF / REL INF) */
     int32_t amp_on, amp_htim;   /* 1: attack or hold; 0: releasing. HOLD frames left (0: none) */
     int32_t frames, fstep, last_step, fps;   /* frames counted, at the last step change, the last step word, frames a step */

@@ -27,7 +27,7 @@ OUT = pathlib.Path(os.environ.get("WCF_OUT", ROOT / "out/wavecf/port-gate")).res
 C3 = 130.8127826502993
 # name, PLAYBACK bytes (TUNE FRAM CHRD VOIC SPRD GLID), expected semitones above C3 of the strongest peaks (all must sound),
 # the track's AMP bytes (ATK HOLD REL) or None for the stock page, whether to check the tone ends before the next trig,
-# the SETUP bytes (VIBR VRAT OCT FINE COMP MODE) or None for the defaults, TUNE locks {step index: raw} or None, the
+# the SETUP bytes (VIBR VRAT OCT DETN COMP MODE) or None for the defaults, TUNE locks {step index: raw} or None, the
 # trig mask (bit k = step k + 1). The sequencer is audible for about 1.1 s of the capture: trigs every 4 steps give 3.
 VARIANTS = (
     ("sine-c3", (64, 0, 0, 0, 0, 0), (0,), None, False, None, None, 0x1111),
@@ -37,9 +37,9 @@ VARIANTS = (
     ("gated-atk40", (64, 0, 0, 0, 0, 0), (0,), (40, 20, 40), True, None, None, 0x1111),    # a slow attack
     ("retrig-steady", (64, 0, 0, 0, 0, 0), (0,), None, False, None, None, 0x5555),        # one note re-pressed every 2 steps, the stock AMP
     ("retrig-finite", (64, 0, 3, 2, 0, 0), (0, 4, 7), (0, 40, 56), False, None, None, 0x5555),   # a chord re-pressed, HOLD 40 REL 56
-    ("oct-up", (64, 0, 0, 0, 0, 0), (12,), None, False, (0, 40, 2, 64, 0, 0), None, 0x1111),
-    ("comp-harmonics", (64, 0, 0, 0, 0, 0), (0, 19.02), None, False, (0, 40, 1, 64, 100, 0), None, 0x1111),
-    ("poly-chord", (64, 0, 0, 3, 0, 0), (0, 4, 7, 12), None, False, (0, 40, 1, 64, 0, 1), {0: 64, 1: 68, 2: 71, 3: 76}, 0x000F),
+    ("oct-up", (64, 0, 0, 0, 0, 0), (12,), None, False, (0, 40, 2, 0, 0, 0), None, 0x1111),
+    ("comp-harmonics", (64, 0, 0, 0, 0, 0), (0, 19.02), None, False, (0, 40, 1, 0, 100, 0), None, 0x1111),
+    ("poly-chord", (64, 0, 0, 3, 0, 0), (0, 4, 7, 12), None, False, (0, 40, 1, 0, 0, 1), {0: 64, 1: 68, 2: 71, 3: 76}, 0x000F),
 )
 FRAMES = int(os.environ.get("WCF_FRAMES", "3000"))
 
@@ -69,7 +69,7 @@ def run(name, play, fixture_src, amp=None, setup=None, locks=None, mask=0x1111):
                 data[base + 0x30:base + 0x36] = bytes(play)
                 if amp:
                     data[base + 0x120:base + 0x123] = bytes(amp)       # AMP ATK HOLD REL, track 1
-                data[base + 0x1E0:base + 0x1E6] = bytes(setup or (0, 40, 1, 64, 0, 0))     # SETUP
+                data[base + 0x1E0:base + 0x1E6] = bytes(setup or (0, 40, 1, 0, 0, 0))     # SETUP
             for pattern in range(16):
                 at = otp.trac_off(pattern, 0)
                 data[at:at + 8] = mask.to_bytes(8, "big")
@@ -133,7 +133,7 @@ def main():
             # REL INF and the engine applies the AMP page (an ATK of 10 forced in the DSP stepped the output to 0 at every START)
             d2 = np.abs(x[2:] - 2 * x[1:-1] + x[:-2])
             clean = float(np.max(np.abs(x))) * (2 * np.pi * 261.6 / sr) ** 2
-            ok4 = d2.max() < 12 * clean
+            ok4 = d2.max() < 25 * clean
             print(("PASS " if ok4 else "FAIL ") + f"{name}: no step when the note is re-pressed (largest second difference {d2.max() / clean:.1f}x a clean sine's)")
             fails += not ok4
         if gated:
@@ -148,7 +148,7 @@ def main():
             # and it comes back without a step: an AMP ATK of 0 stepped the tone 900x a clean sine's second difference
             d2 = np.abs(x[2:] - 2 * x[1:-1] + x[:-2])
             clean = float(np.max(np.abs(x))) * (2 * np.pi * 130.8 / sr) ** 2
-            ok3 = d2.max() < 12 * clean
+            ok3 = d2.max() < 25 * clean       # a step was 680-900x; the linear attack's corner at full is up to ~13x at this level
             print(("PASS " if ok3 else "FAIL ") + f"{name}: no step when the AMP reopens (largest second difference {d2.max() / clean:.1f}x a clean sine's)")
             fails += not ok3
     return 1 if fails else 0

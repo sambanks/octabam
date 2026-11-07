@@ -185,8 +185,8 @@ def main():
             out += e.render(16)
         return np.array(out, dtype=np.float64)[R.SR // 4:] / (1 << 27)
 
-    def pack(vibr=0, vrat=0, oct_=1, fine=64, comp=0, mode=0):
-        return (vibr | vrat << 8 | oct_ << 16 | fine << 24, comp | mode << 8)
+    def pack(vibr=0, vrat=0, oct_=1, detn=0, comp=0, mode=0):
+        return (vibr | vrat << 8 | oct_ << 16 | detn << 24, comp | mode << 8)
 
     base = tone(pack())
 
@@ -248,15 +248,18 @@ def main():
 
     check(abs(peak_hz(tone(pack(oct_=2))) / peak_hz(base) - 2.0) < 0.01 and abs(peak_hz(tone(pack(oct_=0))) / peak_hz(base) - 0.5) < 0.01,
           "OCT 0 / 1 / 2 is an octave down / none / up")
-    def inc_after(setup):                                                  # the note's phase step: no FFT resolution in the way
+    def detune_cents(detn, voic, chrd=0):                                # the voices' tuning against the unison, in cents
         e = E()
-        e.cmd(6, *setup, 0)
-        e.cmd(4, 0, 0, 1)
-        return e.v[0]["inc_tgt"]
+        e.cmd(6, *pack(detn=detn), 0)
+        e.cmd(4, 0, chrd, voic)
+        return [1200 * np.log2(e.v[v]["inc_tgt"] / R.inc_of_p(0)) for v in range(voic)]
 
-    cents = 1200 * np.log2(inc_after(pack(fine=127)) / inc_after(pack(fine=64)))
-    check(abs(cents - 49.2) < 0.2 and abs(1200 * np.log2(inc_after(pack(fine=0)) / inc_after(pack(fine=64))) + 50.0) < 0.2,
-          f"FINE 0 / 64 / 127 is -50 / 0 / +49 cents ({cents:.2f})")
+    d4 = detune_cents(127, 4)
+    check(abs(d4[0] + d4[3]) < 1.0 and abs(d4[1] + d4[2]) < 1.0 and abs(d4[3] - 25.6) < 1.0 and abs(d4[2] - 8.5) < 1.0,
+          f"DETN 127 on four voices spreads them {', '.join(f'{c:+.1f}' for c in d4)} cents, centred")
+    d3 = detune_cents(127, 3)
+    check(abs(d3[1]) < 0.01 and abs(d3[0] + d3[2]) < 1.0 and abs(d3[2] - 17.1) < 1.0, f"DETN 127 on three voices: {', '.join(f'{c:+.1f}' for c in d3)} cents, the middle one in tune")
+    check(detune_cents(127, 1) == [0.0] and all(abs(c) < 0.01 for c in detune_cents(0, 4)), "DETN leaves one voice, and DETN 0 every voice, in tune")
 
     def h3(x):                                                            # the 3rd harmonic against the fundamental
         sp = np.abs(np.fft.rfft(x * np.hanning(len(x))))

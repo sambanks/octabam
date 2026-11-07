@@ -15,7 +15,7 @@ answering while the audio keeps playing.
 Double-tap the [TRACK] key to open the machine list, choose **WAVE** (below OCTA-303 when both are in the
 image, and the list scrolls to it), [YES]. [FUNC] + [SRC] opens the same list; on a track with a sample it shows
 the sample list first, and [LEFT] reaches the machines. A new WAVE track starts at TUNE C3, FRAM 0, CHRD MAJ,
-VOIC 3, SPRD 0, GLID 0, and its AMP page at ATK 10, HOLD 40, REL 56 (the stock AMP page holds a note forever).
+VOIC 3, SPRD 0, GLID 0, and its AMP page at ATK 0, HOLD 40, REL 56 (the stock AMP page holds a note forever).
 
 ## Controls
 
@@ -31,7 +31,7 @@ VOIC 3, SPRD 0, GLID 0, and its AMP page at ATK 10, HOLD 40, REL 56 (the stock A
 | SETUP | VIBR | vibrato depth, up to ±2 semitones |
 | SETUP | VRAT | vibrato rate, 0.14 Hz to 65 Hz |
 | SETUP | OCT | −1, 0 or +1 octave |
-| SETUP | FINE | fine tune, ±½ semitone |
+| SETUP | DETN | detune spread between the chord's voices, centred: a chord thickens, one note is untouched (up to ±26 cents on four voices) |
 | SETUP | COMP | 0 off; above it, a drive into a soft clip (saturation) with makeup |
 | SETUP | MODE | CHORD: a trig plays the chord and replaces the last. POLY: each trig takes the next of the VOIC voices and plays one note; older notes keep sounding until the AMP page closes them |
 

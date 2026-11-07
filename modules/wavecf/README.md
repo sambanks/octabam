@@ -24,11 +24,17 @@ own choose-a-machine code is a submodule's and does not enforce it.
 ## Using it
 
 1. Double-tap the track key (the machine list), choose **WAVE**, **YES**. FUNC + SRC opens the same list.
-2. Sequence it like any track. The CHROMATIC keys play semitones. The track's AMP page shapes the notes: the voices
-   run from the first START and the AMP envelope in the DSP gates them (OCTA-303 with GATE OFF). A track newly
-   chosen as WAVE gets AMP ATK 10, HOLD 40, REL 56: the stock AMP page (HOLD INF, REL INF) holds a note forever
-   (measured on the unit, 7 Nov 2026: with REL left at full the tones never stopped), and an ATK of 0 steps the tone
-   each time the envelope reopens (measured under the port: 900x a clean sine's second difference; ATK 10: none).
+2. Sequence it like any track. The CHROMATIC keys play semitones. The track's AMP page (ATK, HOLD, REL) shapes the
+   notes, and WAVE applies it itself: the DSP's own AMP envelope restarts from zero at every START, which with any
+   attack but 0 drops the level to silence and fades back in on a tone that is still sounding (measured under the port:
+   the output fell to 0 within one sample at each START; heard on the unit as a click on every note). So, as
+   SYNTH MACHINE does, the DSP is left at ATK 0 / HOLD INF / REL INF, where its restart is invisible, and the engine
+   runs the AMP page's values with the DSP's measured laws (Tim Hastie, `modules/cxosc/poly.s`): ATK a linear ramp to
+   full in 3.85 ms x 2^(ATK / 8.53) with a floor of 16 frames (5.8 ms); HOLD a timer from the START in 1/128 steps
+   (frames a step timed from the sequencer); REL exponential, tau 0.295 ms x 2^(REL / 8.53) floored at 1 ms, 127 =
+   INF. A START on a sounding track continues from its level. A finished note stops the engine's voices. A track newly
+   chosen as WAVE gets AMP ATK 0, HOLD 40, REL 56: the stock page (HOLD INF, REL INF) holds a note forever
+   (measured on the unit, 7 Nov 2026: with REL left at full the tones never stopped).
 3. Notes follow SCALE QUANTIZER's scale when one is set: each chord note moves to the nearest degree, ties down
    (a MAJ shape in a minor scale comes out MIN), as SYNTH MACHINE and CX OSC do through the quantizer's pinned
    accessor. Without the quantizer in the image, or with SCALE OFF, notes play as they are.
@@ -55,16 +61,16 @@ like any PLAYBACK parameter.
 | 6 | VIBR | 0..127 | pitch LFO depth | vibrato, up to +-2 semitones, a triangle LFO |
 | 7 | VRAT | 0..127 | pitch LFO rate | 0.14 Hz .. 65 Hz, CHOMPI's rate law |
 | 8 | OCT | -1, 0, +1 | octave offset | read at each START |
-| 9 | FINE | -64..+63 | global pitch | fine tune, +-1/2 semitone, read at each START |
+| 9 | DETN | 0..127 | | detune spread between the voices, centred (four voices: -26, -9, +8, +25 cents at 127; one voice: none), read at each START |
 | 10 | COMP | 0..127 | final comp | 0 off; above it a drive into a cubic soft clip with makeup (its saturation half: CHOMPI's compressor half is not ported) |
 | 11 | MODE | CHORD, POLY | | CHORD: a trig plays the chord and replaces the last one. POLY: each trig takes the next of the VOIC voices, one note (CHRD ignored); older notes keep sounding until the track's AMP closes them |
 
-Defaults VIBR 0, VRAT 40, OCT 0, FINE 0, COMP 0, MODE CHORD. COMP and the others sit in the bytes where FLEX keeps
+Defaults VIBR 0, VRAT 40, OCT 0, DETN 0, COMP 0, MODE CHORD. COMP and the others sit in the bytes where FLEX keeps
 LOOP SLIC LEN RATE TSTR TSNS (OCTA-303 does the same with FINE SLID DRIV); the Part validator's clamp is undone for
 a signed track. 🟡 COMP is in FLEX's TSTR byte: values 1..3 are stock time-stretch modes and 4 is VARISPEED's on a
 track that has one; OCTA-303's DRIV is in the same place and has not been seen to matter.
 
-CHOMPI controls not carried over: the filter (cutoff, resonance, filter LFO), gain and pan (the AMP page's VOL and
+CHOMPI's global pitch is not carried over as a fine tune (the OCTATRACK's LFO moves TUNE by fractions of a semitone). CHOMPI controls not carried over: the filter (cutoff, resonance, filter LFO), gain and pan (the AMP page's VOL and
 BAL), the delay / reverb macro (DELAY and the reverbs), table select (one generated table).
 
 ## How it works
@@ -85,9 +91,9 @@ BAL), the delay / reverb macro (DELAY and the reverbs), table select (one genera
 ## Measured
 
 - ✅ `test_wavecf.py`: the Python model (`ref_wavecf.py`), the host build and the ColdFire build under Unicorn
-  give the same samples on two command streams (engine, 35,200 samples; note layer, 38,400); a voice on frame 0
+  give the same samples on three command streams (engine, 35,200 samples; note layer, 38,400; AMP, 51,200); the AMP laws against Tim's measurements (ATK 0: 16 frames; ATK 70: 1.19 s against 1.14 s; HOLD 32: 777 frames = 282 ms); a voice on frame 0
   is a 440 Hz sine at gain × table amplitude; frame 3 is the square; a released voice ends in exact zero;
-  `wcf_inc` is within 0.002 cent of 2^(p/12) from C3 over −48..+48 semitones; LEVL-free SETUP behaviour on the model: OCT, FINE (-50 / +49 cents), COMP's harmonics, VIBR's pitch spread, POLY's round-robin, scale snapping.
+  `wcf_inc` is within 0.002 cent of 2^(p/12) from C3 over −48..+48 semitones; SETUP and AMP behaviour on the model: OCT, DETN's spread, COMP's harmonics, VIBR's pitch spread, POLY's round-robin, scale snapping.
 - ✅ Instructions under Unicorn (not cycles): `eng_render` 316.9 per sample at the worst block of the engine stream and 330.4 with vibrato and COMP on (four
   voices); `wcf_note` 168 per START; `wcf_knobs` 39 per call.
 - ✅ Under the port (`tools/verify/verify_wavecf_port.py`, a WAVE track on T1, trigs on steps 1, 5, 9, 13):

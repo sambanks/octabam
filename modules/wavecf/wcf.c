@@ -19,6 +19,12 @@ static const int32_t gain_n[5] = {0, 1717986918, 858993459, 572662306, 429496730
 
 /* p (Q8 semitones above C3) moved to the nearest degree of the scale by whole semitones: the pitch class from C,
  * the lower candidate first at each distance (ties go down), as the quantizer does (modules/cxosc po_snap) */
+/* DETN: voice v of n is moved by (2 v - (n - 1)) units, a unit being detn * 11 / 64 of 1/256 semitone: +-25 cents at 127 for the outer voices of four */
+static int32_t detune(const Engine *e, int v, int n)
+{
+    return ((2 * v - (n - 1)) * e->detn * 11) >> 6;
+}
+
 static int32_t snap(int32_t p, uint32_t mask)
 {
     if (!mask) return p;
@@ -61,7 +67,7 @@ void wcf_note(Engine *e, int32_t p, int chrd, int voic)
     if (e->poly) {                                  /* POLY: one note on the next voice of the pool; the others keep sounding */
         int v = e->next;
         if (v >= voic) v = 0;
-        eng_on(e, v, wcf_inc(snap(p + e->tune_off, e->scale)), gain_n[voic]);
+        eng_on(e, v, wcf_inc(snap(p + e->tune_off, e->scale) + detune(e, v, voic)), gain_n[voic]);
         e->next = v + 1;
         for (v = voic; v < NV; ++v) eng_off(e, v);
         return;
@@ -70,7 +76,7 @@ void wcf_note(Engine *e, int32_t p, int chrd, int voic)
     int lift = e->spread >> 5;                      /* SPRD 0..127: 0..3 of the upper notes (the 2nd, then the 3rd, the 4th) go up an octave */
     for (int v = 0; v < NV; ++v) {
         int iv = c[v] + (v >= 1 && v <= lift ? 12 : 0);
-        if (v < voic) eng_on(e, v, wcf_inc(snap(p + e->tune_off + 256 * iv, e->scale)), gain_n[voic]);
+        if (v < voic) eng_on(e, v, wcf_inc(snap(p + e->tune_off + 256 * iv, e->scale) + detune(e, v, voic)), gain_n[voic]);
         else eng_off(e, v);
     }
     e->next = 0;
@@ -92,16 +98,17 @@ void wcf_knobs(Engine *e, int fram, int sprd, int glid)
 }
 
 
-void wcf_setup(Engine *e, int vibr, int vrat, int oct, int fine, int comp, int mode)
+void wcf_setup(Engine *e, int vibr, int vrat, int oct, int detn, int comp, int mode)
 {
     if (vibr > 127) vibr = 127;
     if (vrat > 127) vrat = 127;
     if (comp > 127) comp = 127;
+    if (detn > 127) detn = 127;
     if (oct > 2) oct = 2;
-    int f = fine > 127 ? 127 : fine;
+    e->detn = detn;
     eng_setup(e, vibr * 16909320,                              /* depth: vibr / 127, Q31 */
               (uint32_t)wcf_lfo[vrat], wcf_comp_drive[comp], wcf_comp_makeup[comp], mode ? 1 : 0,
-              (oct - 1) * 12 * 256 + (f - 64) * 2);             /* OCT: -1 / 0 / +1 octave; FINE: +-1/2 semitone */
+              (oct - 1) * 12 * 256);                            /* OCT: -1 / 0 / +1 octave */
 }
 
 void wcf_clock(Engine *e, int step)

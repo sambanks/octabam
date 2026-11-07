@@ -13,7 +13,7 @@ Stream: per 16-sample block, u32 n then n records of four big-endian u32 (op, a,
   8 amp(a)            wcf_amp: a = atk | hold << 8 | rel << 16 | start << 24 (raw 0..127, start 0/1)
   9 clock(a)          wcf_clock: the sequencer's step word
   7 scale(a)          wcf_scale: the pitch-class mask notes snap onto, 0 = none
-  6 setup(a, b)       wcf_setup: a = vibr | vrat << 8 | oct << 16 | fine << 24, b = comp | mode << 8
+  6 setup(a, b)       wcf_setup: a = vibr | vrat << 8 | oct << 16 | detn << 24, b = comp | mode << 8
 """
 import math
 import struct
@@ -59,6 +59,7 @@ class Engine:
         self.fps = 345
         self.scale = 0
         self.tune_off = 0
+        self.detn = 0
 
     def cmd(self, op, a, b, c):
         if op == 0:
@@ -86,15 +87,15 @@ class Engine:
         elif op == 6:
             self.setup(a & 0xff, (a >> 8) & 0xff, (a >> 16) & 0xff, (a >> 24) & 0xff, b & 0xff, (b >> 8) & 0xff)
 
-    def setup(self, vibr, vrat, oct_, fine, comp, mode):
+    def setup(self, vibr, vrat, oct_, detn, comp, mode):
         vibr, vrat, comp = min(vibr, 127), min(vrat, 127), min(comp, 127)
         oct_ = min(oct_, 2)
-        f = min(fine, 127)
+        self.detn = min(detn, 127)
         self.lfo_amp = vibr * 16909320
         self.lfo_inc = _LFO[vrat]
         self.drive, self.makeup = _COMP[comp]
         self.poly = 1 if mode else 0
-        self.tune_off = (oct_ - 1) * 12 * 256 + (f - 64) * 2
+        self.tune_off = (oct_ - 1) * 12 * 256
 
     def clock(self, step):
         self.frames += 1
@@ -134,6 +135,9 @@ class Engine:
                 g = 1 << 30
         self.amp_tgt = g
 
+    def detune(self, v, n):
+        return ((2 * v - (n - 1)) * self.detn * 11) >> 6
+
     def snap(self, p):
         m = self.scale
         if not m:
@@ -153,7 +157,7 @@ class Engine:
             v = self.next
             if v >= voic:
                 v = 0
-            self.cmd(1, v, inc_of_p(self.snap(p + self.tune_off)), _GAIN_N[voic])
+            self.cmd(1, v, inc_of_p(self.snap(p + self.tune_off) + self.detune(v, voic)), _GAIN_N[voic])
             self.next = v + 1
             for k in range(voic, NV):
                 self.cmd(2, k, 0, 0)
@@ -162,7 +166,7 @@ class Engine:
         for v in range(NV):
             if v < voic:
                 iv = tables.CHORDS[chrd & 31][v] + (12 if 1 <= v <= lift else 0)
-                self.cmd(1, v, inc_of_p(self.snap(p + self.tune_off + 256 * iv)), _GAIN_N[voic])
+                self.cmd(1, v, inc_of_p(self.snap(p + self.tune_off + 256 * iv) + self.detune(v, voic)), _GAIN_N[voic])
             else:
                 self.cmd(2, v, 0, 0)
         self.next = 0
