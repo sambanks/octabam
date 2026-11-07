@@ -20,8 +20,8 @@ measurements and what is open. Ten detours:
   after its store (0x4002f0b4) TRIG becoming THR sets an unset LEV to -40;
 - the track status icon renderer's state-cache load (0x4004bee2): an armed
   track's icon blinks, whatever it shows, and an armed track no longer on
-  THR loses its arm there (REC_TRIG_MUTE replaces the same load: beside it,
-  HOOKS owns the site and calls REC_TRIG_MUTE's fold, then this; modules/hooks,
+  THR loses its arm there (FREE LOOP replaces the same load: beside it,
+  HOOKS owns the site and calls this, then FREE LOOP's fold; modules/hooks,
   status_icon).
 
 Three pokes: the TRIG count 3 -> 4, which the setup editor clamps by, and
