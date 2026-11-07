@@ -26,7 +26,7 @@ bank/track, clipboard and undo scope; they are not a claim to intercept every
 firmware copy. Memcpy's entry is not patched because stock also calls it before
 the runtime is loaded. Client-owned RAM and storage provenance remains in the
 [PLOCKS reference](../../modules/plocks-p2/README.md#what-stock-does) and
-[development notes](../plocks-p2/DEVELOPMENT.md#stock-address-provenance).
+[development notes](../../modules/plocks-p2/DEVELOPMENT.md#stock-address-provenance).
 
 EVENTS owns no project fields, sidecars, battery-RAM records or saved values,
 so it introduces no saved-data migration or new stock value range. PLOCKS keeps

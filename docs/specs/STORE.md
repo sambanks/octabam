@@ -44,6 +44,7 @@ link cannot find stops the build. A client declares `requires=("STORE",)`.
 | FREE LOOP (`fl`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | SCALES (`sc`) | loadall_pre, loadmask_pre, newproj, bankw_post, pstore_pre/post, preload_post, partclear |
 | CHORDS FACTORY (`ch`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+| VARISPEED (`vs`) | partsaved, partclear |
 
 ## File calls
 

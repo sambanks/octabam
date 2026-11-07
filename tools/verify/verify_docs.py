@@ -17,12 +17,14 @@ renders them first (tools/site/gen_pages.py, gitignored output); CI's docs
 job runs the generator before this anyway. Every page of the published
 manual (tools/site/release.py) needs an entry in the site nav
 (docs/site/mkdocs.yml), and the nav names no page the manifests do not make.
+The specs under docs/specs/ name what the STORE, EVENTS and HOOKS manifests declare (tools/verify/specdrift.py).
 """
 import pathlib, re, sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "site"))  # gen_pages lives outside the toolpath groups
 from remix import index, registry
 import doclinks
+import specdrift
 import gen_manual
 import gen_pages
 import release
@@ -50,6 +52,7 @@ def main():
     for path in sorted(have - want):
         fails.append(f"docs/site/mkdocs.yml: nav entry {path} is not a page of a published manual")
     fails += doclinks.check()
+    fails += specdrift.check()
     for f in fails:
         print("  [FAIL]", f)
     n = len([m for m in registry.modules().values() if not m.is_stock])
