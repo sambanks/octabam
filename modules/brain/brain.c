@@ -1,4 +1,4 @@
-/* BRAIN -- the brain's run-time layers on the unit (git show 76fd8466:docs/proposals/BRAIN.md).
+/* BRAIN -- the brain's run-time layers on the unit (docs/specs/BRAIN.md).
  *
  * This increment: card-layer FX page defaults, read-only. At each project
  * load (and the power-up's bank load) brain_load() puts every effect's

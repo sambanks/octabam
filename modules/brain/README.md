@@ -1,6 +1,6 @@
 # `brain` — BRAIN
 
-The settings store's run-time side on the unit (`git show 76fd8466:docs/proposals/BRAIN.md`).
+The settings store's run-time side on the unit (`docs/specs/BRAIN.md`).
 A remix lists it to give the card layer to its knob defaults.
 
 It applies card-wide knob defaults and writes them: SAVE FX DEFAULT
@@ -137,7 +137,7 @@ and their setup pages); over SRC they say to open an LFO, AMP or FX page.
   (10 Oct 2026): holding FX1 shows the knob values under the knobs, and
   FUNC pressed then changes nothing (the FUNC handler sets its held flag
   and redraws); stock's FUNC-then-page gesture (the chooser) is the other
-  order and is unaffected. The keymap census is in `git show 76fd8466:docs/proposals/BRAIN.md`
+  order and is unaffected. The keymap census is in `docs/specs/BRAIN.md`
   section 9.
 - **The list** is stock's (`0x4006d94c(count, sel, &sel_out, labels,
   handlers)`): YES stores the row, closes it and calls the row's handler.

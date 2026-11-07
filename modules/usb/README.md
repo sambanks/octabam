@@ -27,7 +27,7 @@ The design of 14 Oct 2026, `git show 76fd8466:docs/proposals/USB.md`, proposed t
 
 The inject (`rx_inject.asm`, 29 words on payload A) is placed whenever IN could be on: a remix that fixes IN at OFF (a `Pin`, or no BRAIN) carries no DSP section. In a remix that gives up a stock effect it goes in the donor region; in one that keeps all fourteen it goes above payload A's code, `P:$1fdf`, in a load record of its own carried by a pre-boot copy of the payload (`DspSection.tail`, `docs/contributing/PLACEMENT.md`; `remixes/test/usb-io-stock14`, on Bryan T's MKII 22 Oct 2026). `octabam-core` carries it in the tail; IN is selectable there (default OFF).
 
-Six NEXT_BOOT settings, early (`git show 76fd8466:docs/proposals/BRAIN.md` 6.4: the CS1
+Six NEXT_BOOT settings, early (`docs/specs/BRAIN.md` 6.4: the CS1
 early block, read by cfgsel at the USB controller init, so they stand
 from the first enumeration):
 

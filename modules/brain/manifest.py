@@ -1,4 +1,4 @@
-"""BRAIN -- the brain's run-time layers on the unit (git show 76fd8466:docs/proposals/BRAIN.md).
+"""BRAIN -- the brain's run-time layers on the unit (docs/specs/BRAIN.md).
 
 This increment: card-layer FX page defaults, read-only. At each LOAD PROJECT
 and at the power-up's bank load the brain reads /BRAIN/card.work (card.strd
@@ -81,7 +81,7 @@ def func_keys_inc():
     counted here), with BRAIN's record for the LEVEL encoder's push (0x3e)
     after them: FUNC + LEVEL push opens TOOLS > LOAD (brain.c
     brain_load_chord). Stock's FUNC layer has no record for 0x3e, and the
-    push handler 0x4004ecfc ignores FUNC (git show 76fd8466:docs/proposals/BRAIN.md section
+    push handler 0x4004ecfc ignores FUNC (docs/specs/BRAIN.md section
     9). The MKI's encoders do not push and its FUNC layer is left alone."""
     stock = pathlib.Path(schema.__file__).resolve().parents[2] / "out/raw/section_3_MAIN_OS.bin"
     img = stock.read_bytes()
@@ -260,7 +260,7 @@ MODULE = Module(
     name="brain", key=schema.BRAIN_KEY, kind=Kind.CF_PATCH,
     category=Category.SETTINGS, author="Sam Banks", author_url="https://github.com/sambanks",
     proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "`verify_brain` under the port (6 Oct 2026)",
-    doc="The settings store on the unit: card-wide knob defaults read from BRAIN/card.work at each project load (git show 76fd8466:docs/proposals/BRAIN.md).",
+    doc="The settings store on the unit: card-wide knob defaults read from BRAIN/card.work at each project load (docs/specs/BRAIN.md).",
     # MODEDEF_TABLE: MODE DEFAULTS' view table, 0 without that module.
     # BRAIN's own settings (SETTINGS > BRAIN), read by brain.c
     store=Store("octabam.brain"),

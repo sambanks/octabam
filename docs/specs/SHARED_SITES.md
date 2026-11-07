@@ -21,7 +21,7 @@ tree let modules share a site. Choose by what the modules need:
   so a module proven alone on a unit stays what was proven. With two, HOOKS owns the site, calls each participant's own routine in a stated order, and
   the participants build a returning form under a flag (`HK_*`). A submodule participant's source is not edited. The bridges and their sites are listed in the module's README.
 - **`Override`** says a bridge's claim at a site stands in for another module's; the ledger and `build_bus.py` skip the overridden claim. It covers Detours, SymbolRefs,
-  Pokes and table refs. `schema.DspOverride` is the DSP form, per payload (SC LOAD METER BRIDGE; `DEMAND_LOADER.md`).
+  Pokes and table refs. `schema.DspOverride` is the DSP form, per payload (SC LOAD METER BRIDGE; [DEMAND_LOADER.md](../contributing/DEMAND_LOADER.md)).
   An `Override` is refused when the overridden module is not in the remix, so a bridge is a module of its own with `requires` on both.
 
 ## Machines
@@ -29,7 +29,7 @@ tree let modules share a site. Choose by what the modules need:
 The track's machine list, SRC SETUP, the Part validator, the FLEX renderer entry, the playback resolver and the LFO PMTR names are 23 sites shared by every
 machine module. HOOKS's `machine_rows` bridge chains them in row order (ANALOG BD, OCTA303, CX OSC). The first present is the head and keeps every shared site; the chain ceiling
 is three (PB_TABLE has one spare word, `0x400d5f54`) and the manifest refuses a fourth. The list's key handlers clamp the cursor to 5
-([TRAPS.md](TRAPS.md#trap-machine-clamp)). No machine registry exists: the in-tree machines needed none.
+([TRAPS.md](../contributing/TRAPS.md#trap-machine-clamp)). No machine registry exists: the in-tree machines needed none.
 
 ## Open
 
