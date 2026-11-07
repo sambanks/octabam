@@ -1,7 +1,7 @@
 """REC_TRIG_MUTE -- [TRACK]+[REC] mutes / unmutes each held track's recorder trigs; MIDI CC 80; '..' beside a muted track's tab letter.
 
 Source: `upstream/` is Zac Kyoti's repository (Zac-Kyoti/octatrack-kyoti-fw,
-submodule, pinned to `4d03a7c`). The declaration is
+submodule, pinned to `91a58e9`). The declaration is
 `upstream/octabam-modules/rec-trig-mute/manifest.py`: one DRAM unit (`patch_rec_trig_mute.s`,
 assembled with `--defsym OCTABAM_UNIT`), re-linked and compared with the author's own bytes
 (`reference`) every build. Its source paths are derived from its own directory, so it is
