@@ -36,6 +36,8 @@ typedef struct {
     int32_t lfo_amp;            /* its depth, Q31 (1.0 = +-2 semitones) */
     int32_t drive, makeup;      /* COMP: drive Q26 and makeup Q28 of the cubic soft clip; drive 0 = bypass */
     uint32_t scale;             /* the quantizer's pitch-class mask (bit k = pitch class k above C), 0 = no scale: notes snap onto it */
+    int32_t spread;             /* SPRD, 0..127, read at a START */
+    int32_t glide;              /* the pitch glide step a call, Q31 (GLID) */
     int32_t poly, next;         /* MODE: 1 = POLY (a START takes the next voice of the pool), and the voice it takes next */
     int32_t tune_off;           /* Q8 semitones added to every note: OCT and FINE, read at a START */
 } Engine;

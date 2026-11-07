@@ -35,7 +35,7 @@ def call(fn, *args):
     uc.emu_start(fn, RET)
     return count[0]
 
-call(syms["eng_init"], ENG, TABLE, 0, 0)
+call(syms["wcf_init"], ENG, TABLE)
 data = open(cmdsf, "rb").read()
 pos, out, blocks, total, worst = 0, open(outf, "wb"), 0, 0, 0
 note_n = [0, 0]; knob_n = [0, 0]

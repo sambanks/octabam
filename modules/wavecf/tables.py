@@ -93,6 +93,12 @@ def comp_tab():
     return out
 
 
+def glide_tab():
+    """GLID raw 0..127 -> the glide step per 16-sample call, Q31: 1 / (8 x 80^(raw / 127)). Raw 0 is 1/8 (about 3 ms: the anti-click
+    glide), raw 127 about 0.23 s (a time constant: it settles in about a second)."""
+    return [int(round((1 << 31) / (8.0 * 80.0 ** (r / 127.0)))) for r in range(128)]
+
+
 def base_inc():
     return int(round(BASE_HZ / SR * 4294967296.0))
 
@@ -116,7 +122,10 @@ def text_c():
                                                                                          "const int32_t wcf_comp_drive[128] = {"]
     L += ["    " + ", ".join(str(v[0]) for v in ct[k:k + 8]) + "," for k in range(0, 128, 8)] + ["};",
                                                                                               "const int32_t wcf_comp_makeup[128] = {"]
-    L += ["    " + ", ".join(str(v[1]) for v in ct[k:k + 8]) + "," for k in range(0, 128, 8)] + ["};", ""]
+    L += ["    " + ", ".join(str(v[1]) for v in ct[k:k + 8]) + "," for k in range(0, 128, 8)] + ["};",
+                                                                                              "const int32_t wcf_glide[128] = {"]
+    t = glide_tab()
+    L += ["    " + ", ".join(str(v) for v in t[k:k + 8]) + "," for k in range(0, 128, 8)] + ["};", ""]
     return "\n".join(L)
 
 

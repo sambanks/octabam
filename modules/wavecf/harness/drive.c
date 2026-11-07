@@ -15,7 +15,7 @@ int main(int argc, char **argv)
     fclose(ft);
     FILE *fc = fopen(argv[1], "rb"), *fo = fopen(argv[3], "wb");
     static Engine e;
-    eng_init(&e, table, 0, 0);
+    wcf_init(&e, table);
     unsigned char hdr[4], rec[16];
     int32_t blk[16];
     while (fread(hdr, 1, 4, fc) == 4) {

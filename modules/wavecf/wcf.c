@@ -9,6 +9,7 @@ extern const int8_t wcf_chord[32][4];
 extern const int32_t wcf_lfo[128];
 extern const int32_t wcf_comp_drive[128];
 extern const int32_t wcf_comp_makeup[128];
+extern const int32_t wcf_glide[128];
 
 /* 0.8 / n, Q31: four voices at the table amplitude sum to 0.36 at most */
 static const int32_t gain_n[5] = {0, 1717986918, 858993459, 572662306, 429496730};
@@ -63,22 +64,30 @@ void wcf_note(Engine *e, int32_t p, int chrd, int voic)
         return;
     }
     const int8_t *c = wcf_chord[chrd & 31];
+    int lift = e->spread >> 5;                      /* SPRD 0..127: 0..3 of the upper notes (the 2nd, then the 3rd, the 4th) go up an octave */
     for (int v = 0; v < NV; ++v) {
-        if (v < voic) eng_on(e, v, wcf_inc(snap(p + e->tune_off + 256 * c[v], e->scale)), gain_n[voic]);
+        int iv = c[v] + (v >= 1 && v <= lift ? 12 : 0);
+        if (v < voic) eng_on(e, v, wcf_inc(snap(p + e->tune_off + 256 * iv, e->scale)), gain_n[voic]);
         else eng_off(e, v);
     }
     e->next = 0;
 }
 
-void wcf_knobs(Engine *e, int fram, int atk, int rel)
+void wcf_init(Engine *e, const int16_t *table)
+{
+    eng_init(e, table, wcf_tc[20], wcf_tc[60]);
+}
+
+void wcf_knobs(Engine *e, int fram, int sprd, int glid)
 {
     if (fram > 127) fram = 127;
-    if (atk > 127) atk = 127;
-    if (rel > 127) rel = 127;
+    if (sprd > 127) sprd = 127;
+    if (glid > 127) glid = 127;
     eng_pos(e, (fram * POS_MAX) / 127);
-    e->atk_d0 = wcf_tc[atk];
-    e->rel_d0 = wcf_tc[rel];
+    e->spread = sprd;
+    e->glide = wcf_glide[glid];
 }
+
 
 void wcf_setup(Engine *e, int vibr, int vrat, int oct, int fine, int comp, int mode)
 {

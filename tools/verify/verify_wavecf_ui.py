@@ -5,7 +5,7 @@ Boots of the emulated unit on a fixture project (OT_PROJECT), with real key and 
 Part, its shadow, the live lane and the published page record:
 
 1. T1 -> FUNC+SRC -> the last row of the machine list -> YES: the track is FLEX signed 'W','V',1 in the Part
-   and its shadow with WAVE's PLAYBACK defaults (TUNE FRAM CHRD VOIC ATK REL = 64 0 3 2 20 60; SETUP VIBR VRAT OCT FINE COMP MODE = 0 40 1 64 0 0) and the live
+   and its shadow with WAVE's PLAYBACK defaults (TUNE FRAM CHRD VOIC SPRD GLID = 64 0 3 2 0 0; SETUP VIBR VRAT OCT FINE COMP MODE = 0 40 1 64 0 0) and the live
    lane; the row's UI type record is WAVE's.
 2. The same selection, then another machine: the signature is cleared in both copies.
 3. The Part validator (0x40002318) keeps a signed track's PLAYBACK and SETUP bytes, which the stock validator
@@ -116,7 +116,7 @@ def main():
         PART = bank + 0x8ED80
         rd, log, d = run("select", card, image, SELECT)
     part, shadow, lane = rd("part.bin"), rd("shadow.bin"), rd("lane.bin")
-    want_pb = [64, 0, 3, 2, 20, 60]
+    want_pb = [64, 0, 3, 2, 0, 0]
     for nm, p in (("part", part), ("shadow", shadow)):
         assert p[0x22] == 1, (nm, "machine byte", p[0x22])
         assert p[0x3C:0x3F] == b"WV\x01", (nm, "signature", p[0x3C:0x3F])
@@ -126,7 +126,7 @@ def main():
     for nm, p in (("part", part), ("shadow", shadow)):
         assert list(p[0x1E0:0x1E6]) == want_su, (nm, "SETUP", list(p[0x1E0:0x1E6]))
     assert list(lane[0x20:0x26]) == want_su, ("live lane SETUP", list(lane[0x20:0x26]))
-    want_amp = [0, 40, 56]                  # ATK HOLD REL: finite, the stock page holds a note forever
+    want_amp = [10, 40, 56]                  # ATK HOLD REL: finite, the stock page holds a note forever
     for nm, p in (("part", part), ("shadow", shadow)):
         assert list(p[0x120:0x123]) == want_amp, (nm, "AMP ATK HOLD REL", list(p[0x120:0x123]))
     assert list(lane[12:15]) == want_amp, ("live lane AMP", list(lane[12:15]))

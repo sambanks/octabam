@@ -85,6 +85,33 @@ def main():
         e3.cmd(1, 0, R.inc_of(440.0), R.q31(0.2)); e3.render(2000); e3.cmd(2, 0, 0, 0)
         z = np.array(e3.render(R.SR // 2), dtype=np.float64)
         check(z[-100:].max() == 0 and z[-100:].min() == 0, "a released voice ends in exact zero")
+    # SPRD lifts the upper chord notes an octave; GLID sets the pitch glide's time
+    e = R.Engine()
+    e.cmd(5, 0, 32, 0)                                                  # SPRD 32: the 2nd note up an octave
+    e.cmd(4, 0, 3, 3)                                                   # MAJ, 3 voices: C, E+12, G
+    check([e.v[v]["inc_tgt"] for v in range(3)] == [R.inc_of_p(256 * k) for k in (0, 16, 7)], "SPRD 32: MAJ is C, E an octave up, G (open voicing)")
+    e = R.Engine()
+    e.cmd(5, 0, 127, 0)
+    e.cmd(4, 0, 3, 4)
+    check([e.v[v]["inc_tgt"] for v in range(4)] == [R.inc_of_p(256 * k) for k in (0, 16, 19, 24)], "SPRD 127: MAJ x4 is C, E, G, C all up an octave except the root")
+
+    def glide_steps(glid):                                              # calls until a sounding voice is within 1 cent of its new pitch
+        e = R.Engine()
+        e.cmd(5, 0, 0, glid)
+        e.cmd(4, 0, 0, 1)
+        e.render(16)
+        e.cmd(4, 12 * 256, 0, 1)
+        tgt = e.v[0]["inc_tgt"]
+        n = 0
+        while abs(1200 * np.log2(e.v[0]["inc"] / tgt)) > 1.0 and n < 20000:
+            e.render(16)
+            n += 1
+        return n
+
+    g0, g64, g127 = glide_steps(0), glide_steps(64), glide_steps(127)
+    check(g0 < g64 < g127 and g0 * 16 / R.SR < 0.04 and 0.2 < g127 * 16 / R.SR < 4.0,
+          f"GLID 0 / 64 / 127 reaches the new pitch in {g0 * 16 / R.SR * 1000:.0f} / {g64 * 16 / R.SR * 1000:.0f} / {g127 * 16 / R.SR * 1000:.0f} ms")
+
     # SETUP: level, drive, octave and vibrato, on the model (the streams above hold it to the C builds)
     def tone(setup=None, p=0, secs=1, chrd=0, voic=1):
         e = R.Engine()

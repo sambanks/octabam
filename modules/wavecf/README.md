@@ -26,8 +26,9 @@ own choose-a-machine code is a submodule's and does not enforce it.
 1. Double-tap the track key (the machine list), choose **WAVE**, **YES**. FUNC + SRC opens the same list.
 2. Sequence it like any track. The CHROMATIC keys play semitones. The track's AMP page shapes the notes: the voices
    run from the first START and the AMP envelope in the DSP gates them (OCTA-303 with GATE OFF). A track newly
-   chosen as WAVE gets AMP ATK 0, HOLD 40, REL 56: the stock AMP page (HOLD INF, REL INF) holds a note forever.
-   (Measured on the unit, 7 Nov 2026: with REL left at full the tones never stopped.)
+   chosen as WAVE gets AMP ATK 10, HOLD 40, REL 56: the stock AMP page (HOLD INF, REL INF) holds a note forever
+   (measured on the unit, 7 Nov 2026: with REL left at full the tones never stopped), and an ATK of 0 steps the tone
+   each time the envelope reopens (measured under the port: 900x a clean sine's second difference; ATK 10: none).
 3. Notes follow SCALE QUANTIZER's scale when one is set: each chord note moves to the nearest degree, ties down
    (a MAJ shape in a minor scale comes out MIN), as SYNTH MACHINE and CX OSC do through the quantizer's pinned
    accessor. Without the quantizer in the image, or with SCALE OFF, notes play as they are.
@@ -40,10 +41,11 @@ own choose-a-machine code is a submodule's and does not enforce it.
 | 1 | FRAM | 0..127 | position in the table: sine, triangle, saw, square, pulses 1/4, 1/8, 1/16, 1/32; morphs between neighbours |
 | 2 | CHRD | 0..31 | one of 32 chord shapes (UNI OCT PWR MAJ MIN SUS2 SUS4 DIM AUG MAJ7 MIN7 DOM7 DIM7 M7B5 MAJ6 MIN6 ADD9 MADD9 ADD11 QRT 5TH OPEN SPRD LYD DOR MIX PNT PNTM 6/9 M9 M6/9 STCK) |
 | 3 | VOIC | 1..4 | how many notes of the chord sound; in POLY, the size of the voice pool |
-| 4 | ATK | 0..127 | the engine's attack, 0.5 ms .. 0.47 s |
-| 5 | REL | 0..127 | the engine's release, 0.5 ms .. 0.47 s |
+| 4 | SPRD | 0..127 | voicing spread: 0 close; each 32 steps lifts the next upper note of the chord an octave (the 2nd, then the 3rd, then the 4th); chord mode only |
+| 5 | GLID | 0..127 | pitch glide: 0 is about 3 ms (it removes the click of a pitch step), up to a time constant of about 0.23 s |
 
-A new WAVE track starts at TUNE C3, FRAM 0, CHRD MAJ, VOIC 3, ATK 20, REL 60 (a chord). CHRD and VOIC are lockable per step
+A new WAVE track starts at TUNE C3, FRAM 0, CHRD MAJ, VOIC 3, SPRD 0, GLID 0 (a chord). The engine's own attack
+(1.5 ms) and release (13 ms) are fixed: its voices run from the first START and the AMP page does the shaping. CHRD and VOIC are lockable per step
 like any PLAYBACK parameter.
 
 ### SETUP page (WAVE's own, from CHOMPI WAVE's controls)

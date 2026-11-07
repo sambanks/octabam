@@ -15,7 +15,7 @@ answering while the audio keeps playing.
 Double-tap the [TRACK] key to open the machine list, choose **WAVE** (below OCTA-303 when both are in the
 image, and the list scrolls to it), [YES]. [FUNC] + [SRC] opens the same list; on a track with a sample it shows
 the sample list first, and [LEFT] reaches the machines. A new WAVE track starts at TUNE C3, FRAM 0, CHRD MAJ,
-VOIC 3, ATK 20, REL 60, and its AMP page at ATK 0, HOLD 40, REL 56 (the stock AMP page holds a note forever).
+VOIC 3, SPRD 0, GLID 0, and its AMP page at ATK 10, HOLD 40, REL 56 (the stock AMP page holds a note forever).
 
 ## Controls
 
@@ -25,8 +25,8 @@ VOIC 3, ATK 20, REL 60, and its AMP page at ATK 0, HOLD 40, REL 56 (the stock AM
 | SRC | FRAM | position in the table: sine, triangle, saw, square, pulses 1/4, 1/8, 1/16, 1/32; between two positions it morphs |
 | SRC | CHRD | one of 32 chord shapes: UNI OCT PWR MAJ MIN SUS2 SUS4 DIM AUG MAJ7 MIN7 DOM7 DIM7 M7B5 MAJ6 MIN6 ADD9 MADD9 ADD11 QRT 5TH OPEN SPRD LYD DOR MIX PNT PNTM 6/9 M9 M6/9 STCK |
 | SRC | VOIC | 1–4: how many notes of the chord sound |
-| SRC | ATK | the voice's attack, 0.5 ms to 0.47 s |
-| SRC | REL | the voice's release, 0.5 ms to 0.47 s |
+| SRC | SPRD | voicing spread: 0 close; each step of 32 lifts the next upper note of the chord an octave (chord mode) |
+| SRC | GLID | pitch glide: 0 about 3 ms, up to about a quarter of a second |
 
 | SETUP | VIBR | vibrato depth, up to ±2 semitones |
 | SETUP | VRAT | vibrato rate, 0.14 Hz to 65 Hz |

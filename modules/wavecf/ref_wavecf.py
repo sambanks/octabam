@@ -9,7 +9,7 @@ Stream: per 16-sample block, u32 n then n records of four big-endian u32 (op, a,
   2 off(a)
   3 init(a, b)        attack and release steps, Q31 (first block only)
   4 note(a, b, c)     wcf_note: p Q8 semitones (signed), chord shape, voices
-  5 knobs(a, b, c)    wcf_knobs: frame position, attack, release (raw 0..127)
+  5 knobs(a, b, c)    wcf_knobs: frame position, voicing spread, pitch glide (raw 0..127)
   7 scale(a)          wcf_scale: the pitch-class mask notes snap onto, 0 = none
   6 setup(a, b)       wcf_setup: a = vibr | vrat << 8 | oct << 16 | fine << 24, b = comp | mode << 8
 """
@@ -19,7 +19,7 @@ import struct
 import tables
 
 _EXP2, _TC = tables.exp2_tab(), tables.tc_tab()
-_LFO, _COMP = tables.lfo_tab(), tables.comp_tab()
+_LFO, _COMP, _GLIDE = tables.lfo_tab(), tables.comp_tab(), tables.glide_tab()
 _GAIN_N = [0, 1717986918, 858993459, 572662306, 429496730]
 
 NV, FLEN, NFR, BLOCK, SR = 4, 1024, 8, 16, 44100
@@ -43,10 +43,12 @@ class Engine:
         self.table = flat
         self.v = [dict(phase=0, inc=0, inc_tgt=0, incm=0, gain=0, env=0, mode=IDLE, gate=0, gate_prev=0) for _ in range(NV)]
         self.pos = self.pos_tgt = 0
-        self.atk = self.rel = 0
+        self.atk, self.rel = _TC[20], _TC[60]            # wcf_init's fixed attack and release
         self.lfo_ph = self.lfo_inc = self.lfo_amp = 0
         self.drive = self.makeup = 0
         self.poly = self.next = 0
+        self.spread = 0
+        self.glide = 1 << 28
         self.scale = 0
         self.tune_off = 0
 
@@ -106,17 +108,20 @@ class Engine:
             for k in range(voic, NV):
                 self.cmd(2, k, 0, 0)
             return
+        lift = self.spread >> 5
         for v in range(NV):
             if v < voic:
-                self.cmd(1, v, inc_of_p(self.snap(p + self.tune_off + 256 * tables.CHORDS[chrd & 31][v])), _GAIN_N[voic])
+                iv = tables.CHORDS[chrd & 31][v] + (12 if 1 <= v <= lift else 0)
+                self.cmd(1, v, inc_of_p(self.snap(p + self.tune_off + 256 * iv)), _GAIN_N[voic])
             else:
                 self.cmd(2, v, 0, 0)
         self.next = 0
 
-    def knobs(self, fram, atk, rel):
-        fram, atk, rel = min(fram, 127), min(atk, 127), min(rel, 127)
+    def knobs(self, fram, sprd, glid):
+        fram, sprd, glid = min(fram, 127), min(sprd, 127), min(glid, 127)
         self.cmd(0, (fram * POS_MAX) // 127, 0, 0)
-        self.atk, self.rel = _TC[atk], _TC[rel]
+        self.spread = sprd
+        self.glide = _GLIDE[glid]
 
     def render(self, n):
         out = []
@@ -132,7 +137,7 @@ class Engine:
             pmul = (1 << 30) + y + y2 + mul(y3, 1431655765)
             self.lfo_ph = (self.lfo_ph + self.lfo_inc * n) & 0xffffffff
         for v in self.v:
-            v["inc"] = (v["inc"] + ((s32(v["inc_tgt"]) - s32(v["inc"])) >> 3)) & 0xffffffff
+            v["inc"] = (v["inc"] + mul(s32(v["inc_tgt"]) - s32(v["inc"]), self.glide)) & 0xffffffff
             v["incm"] = v["inc"] if pmul == (1 << 30) else (mul(v["inc"], pmul) << 1) & 0xffffffff
         for _ in range(n):
             self.pos += (self.pos_tgt - self.pos) >> POS_SLEW
@@ -223,11 +228,11 @@ def scenario():
 def scenario_note():
     """The note layer: knobs, then notes with chords and voice counts, a retrigger, an out-of-range pitch."""
     blocks = [[] for _ in range(2400)]
-    blocks[0] = [(5, 0, 40, 60)]
+    blocks[0] = [(5, 0, 0, 0)]
     blocks[1] = [(4, 0, 0, 1)]                               # C3, one voice
     blocks[300] = [(4, 12 * 256, 3, 3)]                      # C5 major, three voices
-    blocks[600] = [(5, 40, 10, 90), (4, -5 * 256 + 100, 11, 4)]    # a fractional pitch, dom7, four voices
-    blocks[900] = [(5, 127, 0, 40)]
+    blocks[600] = [(5, 40, 40, 20), (4, -5 * 256 + 100, 11, 4)]    # a fractional pitch, dom7, four voices
+    blocks[900] = [(5, 127, 70, 100)]
     blocks[1000] = [(4, 7 * 256, 31, 4)]
     blocks[1300] = [(4, 60 * 256, 5, 4)]                     # past the clamp
     blocks[1600] = [(4, -60 * 256, 0, 0)]                    # below it, voic 0 -> 1

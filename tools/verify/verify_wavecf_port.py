@@ -25,18 +25,18 @@ from ab_fixture import prepare  # noqa: E402
 
 OUT = pathlib.Path(os.environ.get("WCF_OUT", ROOT / "out/wavecf/port-gate")).resolve()
 C3 = 130.8127826502993
-# name, PLAYBACK bytes (TUNE FRAM CHRD VOIC ATK REL), expected semitones above C3 of the strongest peaks (all must sound),
+# name, PLAYBACK bytes (TUNE FRAM CHRD VOIC SPRD GLID), expected semitones above C3 of the strongest peaks (all must sound),
 # the track's AMP bytes (ATK HOLD REL) or None for the stock page, whether to check the tone ends before the next trig,
 # the SETUP bytes (VIBR VRAT OCT FINE COMP MODE) or None for the defaults, TUNE locks {step index: raw} or None, the
 # trig mask (bit k = step k + 1). The sequencer is audible for about 1.1 s of the capture: trigs every 4 steps give 3.
 VARIANTS = (
-    ("sine-c3", (64, 0, 0, 0, 5, 80), (0,), None, False, None, None, 0x1111),
-    ("sine-e3", (68, 0, 0, 0, 5, 80), (4,), None, False, None, None, 0x1111),
-    ("major-c3", (64, 0, 3, 2, 5, 80), (0, 4, 7), None, False, None, None, 0x1111),
-    ("gated-c3", (64, 0, 0, 0, 5, 80), (0,), (0, 20, 40), True, None, None, 0x1111),
-    ("oct-up", (64, 0, 0, 0, 5, 80), (12,), None, False, (0, 40, 2, 64, 0, 0), None, 0x1111),
-    ("comp-harmonics", (64, 0, 0, 0, 5, 80), (0, 19.02), None, False, (0, 40, 1, 64, 100, 0), None, 0x1111),
-    ("poly-chord", (64, 0, 0, 3, 5, 80), (0, 4, 7, 12), None, False, (0, 40, 1, 64, 0, 1), {0: 64, 1: 68, 2: 71, 3: 76}, 0x000F),
+    ("sine-c3", (64, 0, 0, 0, 0, 0), (0,), None, False, None, None, 0x1111),
+    ("sine-e3", (68, 0, 0, 0, 0, 0), (4,), None, False, None, None, 0x1111),
+    ("major-c3", (64, 0, 3, 2, 0, 0), (0, 4, 7), None, False, None, None, 0x1111),
+    ("gated-c3", (64, 0, 0, 0, 0, 0), (0,), (10, 20, 40), True, None, None, 0x1111),
+    ("oct-up", (64, 0, 0, 0, 0, 0), (12,), None, False, (0, 40, 2, 64, 0, 0), None, 0x1111),
+    ("comp-harmonics", (64, 0, 0, 0, 0, 0), (0, 19.02), None, False, (0, 40, 1, 64, 100, 0), None, 0x1111),
+    ("poly-chord", (64, 0, 0, 3, 0, 0), (0, 4, 7, 12), None, False, (0, 40, 1, 64, 0, 1), {0: 64, 1: 68, 2: 71, 3: 76}, 0x000F),
 )
 FRAMES = int(os.environ.get("WCF_FRAMES", "3000"))
 
@@ -131,6 +131,12 @@ def main():
             print(("PASS " if ok2 else "FAIL ") + f"{name}: the tone ends between trigs (quietest 5 % of the envelope {lo:.5f}, "
                   f"loudest {hi:.4f})")
             fails += not ok2
+            # and it comes back without a step: an AMP ATK of 0 stepped the tone 900x a clean sine's second difference
+            d2 = np.abs(x[2:] - 2 * x[1:-1] + x[:-2])
+            clean = float(np.max(np.abs(x))) * (2 * np.pi * 130.8 / sr) ** 2
+            ok3 = d2.max() < 12 * clean
+            print(("PASS " if ok3 else "FAIL ") + f"{name}: no step when the AMP reopens (largest second difference {d2.max() / clean:.1f}x a clean sine's)")
+            fails += not ok3
     return 1 if fails else 0
 
 

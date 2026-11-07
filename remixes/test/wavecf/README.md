@@ -5,7 +5,7 @@ One ColdFire module and the stock effects.
 ## What is in it
 
 - **WAVE CF** — a row of the track's machine list, **WAVE**: a 4-voice wavetable voice (PLAYBACK: TUNE FRAM
-  CHRD VOIC ATK REL). `modules/wavecf/README.md`.
+  CHRD VOIC SPRD GLID). `modules/wavecf/README.md`.
 - the 14 stock FX2 effects, listed so the chooser is stock's.
 
 ## Status

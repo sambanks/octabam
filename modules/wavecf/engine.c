@@ -17,6 +17,7 @@ void eng_init(Engine *e, const int16_t *table, int32_t atk_d0, int32_t rel_d0)
     e->table = table;
     e->atk_d0 = atk_d0;
     e->rel_d0 = rel_d0;
+    e->glide = 1 << 28;                    /* 1/8 a call: about 3 ms */
 }
 
 void eng_adsr(Engine *e, int32_t atk_d0, int32_t rel_d0)
@@ -84,7 +85,7 @@ void eng_render(Engine *e, int32_t *out, int n)
     }
     for (int k = 0; k < NV; ++k) {
         Voice *v = &e->v[k];
-        v->inc += (uint32_t)(((int32_t)v->inc_tgt - (int32_t)v->inc) >> 3);   /* ~3 ms to the new pitch (16-sample calls) */
+        v->inc += (uint32_t)mul((int32_t)v->inc_tgt - (int32_t)v->inc, e->glide);   /* the glide to the new pitch, a step a call */
         v->incm = pmul == (1 << 30) ? v->inc : (uint32_t)(mul((int32_t)v->inc, pmul) << 1);
     }
 
