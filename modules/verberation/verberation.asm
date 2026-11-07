@@ -1,28 +1,28 @@
-; STUDIO VERB: the reverb of Mutable Instruments Clouds (clouds/dsp/fx/reverb.h,
+; VERBERATION: the reverb of Mutable Instruments Clouds (clouds/dsp/fx/reverb.h,
 ; MIT, Copyright 2014 Emilie Gillet), a Griesinger/Dattorro plate: four input
 ; allpasses, then two halves of two allpasses and a delay, with a smeared first
 ; allpass and a modulated second delay. Port, not a copy: fixed point, the delay
-; lengths scaled by 0.9682 (15,862 words in one ring, so the slot's last $202
-; words, +$3DFE.., are never written: octabam's rule for an FX2 buffer (#785),
-; SIDECHAIN_COMPRESSOR's window in T3's and T7's slot; the mailbox and LOAD METER
-; sit in the top 256),
+; lengths scaled by 0.9682 and the six tank lines by a further 0.9 (6 Nov 2026),
+; 14,366 words in one ring: it ends at slot offset 0x381D, below 0x3820, where
+; octabam's demand-loaded window code starts on T3, T4, T7 and T8 (and below
+; DLCOPY, LOAD METER, SIDECHAIN_COMPRESSOR's window and the mailbox above it),
 ; 24-bit buffer words instead of Clouds' 12-bit (a value is held as value/8, so
 ; the buffer's range matches Clouds' +-8), parabolic LFOs updated once a block. A gate on the wet output
 ; (p5 GATE): hold 2048 + 256 k samples after the input falls under a threshold, then a
 ; desk gate's release (-60 dB in about 320 ms); once the gate is shut the tank's loop gain is 0,
 ; so the tank empties and the next hit starts from silence.
 ;
-; Layout (cell k of line j is y:(r5 - base_j - k), r5 the write pointer, modulo 15862):
+; Layout (cell k of line j is y:(r5 - base_j - k), r5 the write pointer, modulo 14366):
 ;   ap1    base     0 length  109
 ;   ap2    base   110 length  157
 ;   ap3    base   268 length  233
 ;   ap4    base   502 length  386
-;   dap1a  base   889 length 1600
-;   dap1b  base  2490 length 1973
-;   del1   base  4464 length 3303
-;   dap2a  base  7768 length 1852
-;   dap2b  base  9621 length 1610
-;   del2   base 11232 length 4630
+;   dap1a  base   889 length 1440
+;   dap1b  base  2330 length 1776
+;   del1   base  4107 length 2973
+;   dap2a  base  7081 length 1667
+;   dap2b  base  8749 length 1449
+;   del2   base 10199 length 4167
 ;
 ; Scalars at x:(r7+n): $20 ring base, $21 write pointer, $22 clear calls left,
 ; $23 clear pointer, $24 AMT, $25 GC (input gain/4), $26 KRT, $27 KAP, $28 KLP
@@ -34,8 +34,8 @@
 ; tank's read offsets, $45 the long delay's centre, $46 MOD's smoothed offset, $47 $48 the
 ; predelay's write and read offsets.
 ; Knobs: p0 AMNT amount, p1 GAIN input gain, p2 TIME reverb time, p3 DIFF
-; diffusion, p4 TONE damping, p5 GATE hold (0 off); page 2: SIZE, LCUT, MOD, RATE
-; (slots 6-9), PRE (slot 11).
+; diffusion, p4 TONE damping, p5 GATE hold (0 off); page 2: MODE, LCUT, MOD, RATE, SIZE, PRE
+; (slots 6-11).
 
 init:
         move    #>$ffffff,m4
@@ -52,12 +52,12 @@ gv_zero:
         move    a,x:(r7+$20)
         move    a,x:(r7+$21)
         move    a,x:(r7+$23)
-        move    #>77,a
+        move    #>22,a
         move    a,x:(r7+$22)
         rts
 
 proc:
-; Bounded clearing: 206 words a call, 77 calls, the output dry until the ring is clean.
+; Bounded clearing: 653 words a call, 22 calls (exactly the ring), the output dry until it is clean.
         move    x:(r7+$22),a
         tst     a
         beq     gv_ready
@@ -66,7 +66,7 @@ proc:
         move    x:(r7+$23),r4
         move    #>$ffffff,m4
         clr     a
-        do      #>206,>gv_clear
+        do      #>653,>gv_clear
         move    a,y:(r4)+
 gv_clear:
         nop
@@ -130,9 +130,13 @@ gv_ready:
 ; Page 2 (5 Nov 2026). At their defaults (SIZE 127, LCUT 0, MOD 64, RATE 64) every value below is
 ; the one the code had as a constant before, exactly.
 ; Page 2 is three words of two controls (docs/firmware/PARAM_PAGES.md): slot 6 is x:(r6+$c)'s
-; knob field (bits 16-23), slot 7 its companion (bits 8-15), slots 8 and 9 the same in x:(r6+$d).
-; SIZE (slot 6): f = 0.8 (127 - SIZE)/127, smoothed; the tank's read taps move in by f of each length.
-        move    x:(r6+$c),a
+; knob field (bits 16-23), slot 7 its companion (bits 8-15); slots 8 and 9 the same in x:(r6+$d), 10 and
+; 11 in x:(r6+$e).
+; MODE (slot 6, x:(r6+$c)'s knob field) is not read here: it picks a voicing, whose knob values MODE DEFAULTS
+; writes on the panel (the manifest's mode_views).
+; SIZE (slot 10, x:(r6+$e)'s knob field): f = 0.8 (127 - SIZE)/127, smoothed; the tank's read taps move in by f
+; of each length.
+        move    x:(r6+$e),a
         and     #>$7f0000,a
         move    a1,x0
         move    #>$7f0000,a
@@ -148,29 +152,29 @@ gv_ready:
         add     b,a
         move    a,x:(r7+$3c)
         move    x:(r7+$3c),y1
-        move    #>1600,x0
+        move    #>1440,x0
         mpy     x0,y1,a
-        move    #>$fff648,x1
+        move    #>$fff6e8,x1
         add     x1,a
         move    a1,x:(r7+$40)
-        move    #>1973,x0
+        move    #>1776,x0
         mpy     x0,y1,a
-        move    #>$ffee92,x1
+        move    #>$ffeff7,x1
         add     x1,a
         move    a1,x:(r7+$41)
-        move    #>3303,x0
+        move    #>2973,x0
         mpy     x0,y1,a
-        move    #>$ffe1aa,x1
+        move    #>$ffe459,x1
         add     x1,a
         move    a1,x:(r7+$42)
-        move    #>1852,x0
+        move    #>1667,x0
         mpy     x0,y1,a
-        move    #>$ffda6d,x1
+        move    #>$ffddd5,x1
         add     x1,a
         move    a1,x:(r7+$43)
-        move    #>1610,x0
+        move    #>1449,x0
         mpy     x0,y1,a
-        move    #>$ffd422,x1
+        move    #>$ffd82b,x1
         add     x1,a
         move    a1,x:(r7+$44)
 ; MOD (slot 8): the long delay's swing, 2 dS m with dS its depth after SIZE and m = 1/2 + s, s smoothed
@@ -199,25 +203,25 @@ gv_ready:
         mpy     y0,x0,a
         move    a1,x:(r7+$3d)
 ; the long delay's centre: its length after SIZE, less 2, less the swing, so the tap stays inside it
-        move    #>4630,x0
+        move    #>4167,x0
         mpy     x0,y1,a
         move    a1,x1
-        move    #>4628,a
+        move    #>4165,a
         sub     x1,a
         move    x:(r7+$3d),b
         asr     #$c,b,b
         move    b1,x1
         sub     x1,a
         move    a1,x:(r7+$45)
-; PRE (slot 11, x:(r6+$e)'s companion): a predelay of 32 PRE samples (0 to 92 ms) on the mono input,
-; held in the far end of the long delay that SIZE leaves unread: m = 4630 f words past its tap, of
+; PRE (slot 11, x:(r6+$e)'s companion, beside SIZE): a predelay of 32 PRE samples (0 to 92 ms) on the mono input,
+; held in the far end of the long delay that SIZE leaves unread: m = 4167 f words past its tap, of
 ; which m - 2 are usable, written from the cell just past the tap. Clamped to that room, so none at
 ; SIZE 127. With no predelay both offsets are 0: ap1's write cell, which ap1 overwrites later in the
 ; sample, so the input passes untouched and the ring is not disturbed.
-        move    #>4630,x0
+        move    #>4167,x0
         mpy     x0,y1,a
         move    a1,x1
-        move    #>$ffc209,a
+        move    #>$ffc7e1,a
         add     x1,a
         move    a1,x:(r7+$47)
         move    x1,b
@@ -345,7 +349,7 @@ gv_p2a:
         mpy     x0,y1,a
         asl     #$2,a,a
         move    a,x0
-; delay 2: offset centre + swing * lfo2 samples (4531 + 97 at the defaults).
+; delay 2: offset centre + swing * lfo2 samples (4068 + 97 at the defaults).
         move    x:(r7+$3d),y1
         mpy     x0,y1,a
         move    a1,x0
@@ -358,7 +362,7 @@ gv_p2a:
         and     #>$000fff,a
         asl     #$b,a,a
         move    a1,x:(r7+$2d)
-        move    #>$ffd420,a
+        move    #>$ffd829,a
         sub     x1,a
         move    a1,x:(r7+$2f)
 ; the loop gain and the allpass coefficient this block: KRT and KAP, or 0 while the gate's gain
@@ -376,8 +380,8 @@ gv_p2a:
         move    a1,x:(r7+$38)
 ; block setup
         move    #>$1,n0
-        move    #>15861,m4
-        move    #>15861,m5
+        move    #>14365,m4
+        move    #>14365,m5
         move    x:(r7+$21),r5
         do      n7,>gv_end
 ; smear: the first allpass line read at 10 + 60 lfo1, written back at 100
@@ -533,12 +537,12 @@ gv_p2a:
         move    y:(r5+n5),x0
         mac     x0,y1,a
         move    x0,b
-        move    #>$fff646,n5
+        move    #>$fff6e6,n5
         move    a,y:(r5+n5)
         move    a,x0
         move    b,a
         mac     -x0,y1,a
-        move    #>$ffee90,n5
+        move    #>$ffeff5,n5
         move    a,y:(r5+n5)
         asl     #$1,a,a
         move    a,x0
@@ -578,7 +582,7 @@ gv_p2a:
         move    y:(r5+n5),x0
         mac     x0,y1,a
         move    x0,b
-        move    #>$ffe1a8,n5
+        move    #>$ffe457,n5
         move    a,y:(r5+n5)
         move    a,x0
         move    b,a
@@ -587,12 +591,12 @@ gv_p2a:
         move    y:(r5+n5),x0
         mac     -x0,y1,a
         move    x0,b
-        move    #>$ffda6b,n5
+        move    #>$ffddd3,n5
         move    a,y:(r5+n5)
         move    a,x0
         move    b,a
         mac     x0,y1,a
-        move    #>$ffd420,n5
+        move    #>$ffd829,n5
         move    a,y:(r5+n5)
         asl     #$1,a,a
         move    a,x0
