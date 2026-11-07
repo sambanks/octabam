@@ -86,6 +86,7 @@
 | flat slots 12, 13, 14)
         .set    SCALE_AT,        0x400d2ca8      | modules/quantizer/scale.s: `jmp qz_scale_mask`, d0 := the scale's pitch-class mask
         .set    AMP_PAGE,        0x120
+        .set    AMP_ATK_MIN,     10              | the DSP's AMP ATK is never below this on a WAVE track (see wc_amp)
         .set    AMP_ATK,         10              | not 0: an instant attack steps the tone each time the envelope reopens (measured under the port)
         .set    AMP_HOLD,        40
         .set    AMP_REL,         56
@@ -182,6 +183,7 @@ wc_render:
         tst.l   S_LATCHED(%a3)
         beq     .Lstock
         bsr     wc_knobs                | this call's knobs, before the record is neutralised
+        bsr     wc_amp                  | and the DSP's AMP attack, never instant
         move.w  (%a4),%d0
         move.w  %d0,S_WPTCH+2(%a3)
         move.w  6(%a4),%d0
@@ -228,6 +230,7 @@ wc_render:
         tst.l   S_LATCHED(%a3)
         beq     .Ldone                  | not a WAVE track: the stock samples stand
         bsr     wc_knobs                | a first call [0,n): the record is untouched
+        bsr     wc_amp
 .Lrender:
         moveq   #0,%d7
         move.b  3(%a2),%d7              | samples shipped by this call
@@ -570,6 +573,27 @@ wc_chrom:
         mvz.b   PART_IDX,%d0            | displaced: the part
         rts
 
+
+| ---- wc_amp: the DSP's AMP ATK for this track is at least AMP_ATK_MIN.  The voices run from the first START and the AMP
+|      envelope gates them: an attack of 0 steps the tone each time the envelope reopens (measured under the port: the second
+|      difference 900x a clean sine's; ATK 10: none).  The DSP voice record is VREC + ping * 0x200 + 64 * track, halfword 0 =
+|      ATK << 8 (the frame builder wrote it before this call; modules/cxosc po_amp_snap overrides it the same way).
+|      d2 = track.  Clobbers d0, d1, a0.
+wc_amp:
+        move.l  PINGW,%d0
+        lsl.l   #8,%d0
+        add.l   %d0,%d0                 | ping * 0x200
+        move.l  %d2,%d1
+        lsl.l   #6,%d1                  | 64 * track
+        add.l   %d1,%d0
+        lea     VREC,%a0
+        add.l   %d0,%a0
+        mvz.w   (%a0),%d0
+        cmp.l   #AMP_ATK_MIN<<8,%d0
+        bcc     .Lam_x
+        move.w  #AMP_ATK_MIN<<8,(%a0)
+.Lam_x:
+        rts
 
 | ---- wc_pword: d0 = PTCH frame word -> d0 = p (Q8 semitones above C3).  Raw 64 = 0; one raw unit a semitone;
 |      clamped to P_LO..P_HI (-36..+36).  Clobbers d1.

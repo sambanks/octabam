@@ -34,6 +34,7 @@ VARIANTS = (
     ("sine-e3", (68, 0, 0, 0, 0, 0), (4,), None, False, None, None, 0x1111),
     ("major-c3", (64, 0, 3, 2, 0, 0), (0, 4, 7), None, False, None, None, 0x1111),
     ("gated-c3", (64, 0, 0, 0, 0, 0), (0,), (10, 20, 40), True, None, None, 0x1111),
+    ("gated-atk0", (64, 0, 0, 0, 0, 0), (0,), (0, 20, 40), True, None, None, 0x1111),     # the author's AMP ATK 0: WAVE holds it at 10
     ("oct-up", (64, 0, 0, 0, 0, 0), (12,), None, False, (0, 40, 2, 64, 0, 0), None, 0x1111),
     ("comp-harmonics", (64, 0, 0, 0, 0, 0), (0, 19.02), None, False, (0, 40, 1, 64, 100, 0), None, 0x1111),
     ("poly-chord", (64, 0, 0, 3, 0, 0), (0, 4, 7, 12), None, False, (0, 40, 1, 64, 0, 1), {0: 64, 1: 68, 2: 71, 3: 76}, 0x000F),
@@ -103,7 +104,10 @@ def main():
         print("[SKIP] WAVE port: no port (make emu-cf)")
         return 0
     fails = 0
+    only = set(filter(None, os.environ.get("WCF_ONLY", "").split(",")))        # WCF_ONLY=name,name runs a subset
     for name, play, semis, amp, gated, setup, locks, mask in VARIANTS:
+        if only and name not in only:
+            continue
         path = run(name, play, src, amp, setup, locks, mask)
         with wave.open(str(path)) as w:
             sr, ch, width, n = w.getframerate(), w.getnchannels(), w.getsampwidth(), w.getnframes()
