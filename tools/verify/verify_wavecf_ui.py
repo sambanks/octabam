@@ -5,11 +5,11 @@ Boots of the emulated unit on a fixture project (OT_PROJECT), with real key and 
 Part, its shadow, the live lane and the published page record:
 
 1. T1 -> FUNC+SRC -> the last row of the machine list -> YES: the track is FLEX signed 'W','V',1 in the Part
-   and its shadow with WAVE's PLAYBACK defaults (TUNE FRAM CHRD VOIC ATK REL = 64 0 0 0 20 60) and the live
+   and its shadow with WAVE's PLAYBACK defaults (TUNE FRAM CHRD VOIC ATK REL = 64 0 3 2 20 60; SETUP VIBR VRAT OCT FINE COMP MODE = 0 40 1 64 0 0) and the live
    lane; the row's UI type record is WAVE's.
 2. The same selection, then another machine: the signature is cleared in both copies.
-3. The Part validator (0x40002318) keeps a signed track's six PLAYBACK bytes (the stock validator clamps none
-   of WAVE's values; its hook is for the limit, 5).
+3. The Part validator (0x40002318) keeps a signed track's PLAYBACK and SETUP bytes, which the stock validator
+   clamps on an unsigned track (SETUP: FLEX's ranges).
 4. The limit: a Part holds at most MC_LIMIT machines, counted over every kind; a third pick is refused.
 5. The validator unsigns a third signed track of a loaded Part.
 6. Beside OCTA303 (image of remix wavecf-octa303): T1 OCTA-303 and T2 WAVE, a third pick is refused; with
@@ -44,7 +44,8 @@ SELECT = key(0x10) + FUNC_SRC + [e for _ in range(6) for e in key(0x20, 0.25, 0.
 
 def symbols():
     nm = shutil.which("m68k-elf-nm") or "m68k-elf-nm"
-    out = subprocess.check_output([nm, str(ROOT / "out/platform/runtime/runtime.elf")], text=True)
+    # the runtime.elf of the image under test (WCF_RUNTIME_ELF), else the last build's
+    out = subprocess.check_output([nm, os.environ.get("WCF_RUNTIME_ELF", str(ROOT / "out/platform/runtime/runtime.elf"))], text=True)
     return {l.split()[-1]: int(l.split()[0], 16) for l in out.splitlines() if len(l.split()) == 3}
 
 
@@ -115,15 +116,34 @@ def main():
         PART = bank + 0x8ED80
         rd, log, d = run("select", card, image, SELECT)
     part, shadow, lane = rd("part.bin"), rd("shadow.bin"), rd("lane.bin")
-    want_pb = [64, 0, 0, 0, 20, 60]
+    want_pb = [64, 0, 3, 2, 20, 60]
     for nm, p in (("part", part), ("shadow", shadow)):
         assert p[0x22] == 1, (nm, "machine byte", p[0x22])
         assert p[0x3C:0x3F] == b"WV\x01", (nm, "signature", p[0x3C:0x3F])
         assert list(p[0x30:0x36]) == want_pb, (nm, "PLAYBACK", list(p[0x30:0x36]))
     assert list(lane[0:6]) == want_pb, ("live lane", list(lane[0:6]))
+    want_su = [0, 40, 1, 64, 0, 0]          # SETUP: VIBR VRAT OCT FINE COMP MODE
+    for nm, p in (("part", part), ("shadow", shadow)):
+        assert list(p[0x1E0:0x1E6]) == want_su, (nm, "SETUP", list(p[0x1E0:0x1E6]))
+    assert list(lane[0x20:0x26]) == want_su, ("live lane SETUP", list(lane[0x20:0x26]))
+    want_amp = [0, 40, 56]                  # ATK HOLD REL: finite, the stock page holds a note forever
+    for nm, p in (("part", part), ("shadow", shadow)):
+        assert list(p[0x120:0x123]) == want_amp, (nm, "AMP ATK HOLD REL", list(p[0x120:0x123]))
+    assert list(lane[12:15]) == want_amp, ("live lane AMP", list(lane[12:15]))
     assert int.from_bytes(rd("page.bin"), "big") == rec, (f"UI type {o3_row}'s record", rd("page.bin").hex(), hex(rec))
-    print(f"PASS select: FLEX signed W V 1, PLAYBACK defaults {want_pb} in the Part, its shadow and the live lane; "
+    print(f"PASS select: FLEX signed W V 1, PLAYBACK defaults {want_pb} and SETUP {want_su}, AMP ATK HOLD REL {want_amp} in the Part, its shadow and the live lane; "
           f"UI type {o3_row} = WAVE's record")
+
+    # 1b. the SRC page: the page resolver (0x40031ed6, after its table load) hands back WAVE's record, not FLEX's
+    #     (OCTA303's resolver once clobbered a1 and, for an empty slot, never passed the track on: stock labels)
+    rd, log, d = run("srcpage", card, image, SELECT + key(0x32, 1.5, 0.4) + key(0x22, 1.5, 0.5) + [(4.0, "poke 0x100b14cf=0")],
+                     extra=("--watch-pc", "0x40031ed6"))
+    assert "ended on quit" in log, "srcpage: the script did not finish"
+    import re as _re
+    ret = [int(m.group(1), 16) for m in _re.finditer(r"at 0x40031ed6 d0=(?:0x)?([0-9a-f]+)", log)]
+    assert ret, ("srcpage: the page resolver was never reached", log[-800:])
+    assert rec in ret, ("srcpage: the resolver never returned WAVE's record", hex(rec), sorted({hex(x) for x in ret})[:6])
+    print(f"PASS srcpage: pressing SRC on the WAVE track, the page resolver returns WAVE's record ({ret.count(rec)} of {len(ret)} calls)")
 
     # 2. select, then another machine
     rd, log, _ = run("unsign", card, image, SELECT + key(0x32) + FUNC_SRC +
@@ -136,16 +156,23 @@ def main():
     # 3. the Part validator
     P = PART
     values = [70, 127, 31, 3, 127, 127]
+    setup = [127, 127, 2, 127, 127, 1]
     pk = [f"{P + 0x3C:#x}=0x57", f"{P + 0x3D:#x}=0x56", f"{P + 0x3E:#x}=1"]
     for i, v in enumerate(values):
         pk.append(f"{P + 0x30 + i:#x}={v}")                   # T1, signed
         pk.append(f"{P + 0x30 + 30 + i:#x}={v}")              # T2, the same bytes unsigned
+    for i, v in enumerate(setup):
+        pk.append(f"{P + 0x1E0 + i:#x}={v}")
+        pk.append(f"{P + 0x1E0 + 30 + i:#x}={v}")
     rd, log, _ = run("validate", card, image, None,
                      (f"-:poke:{';'.join(pk)}", f"-:call:0x40002318,{P:#x}", f"-:dump:{P:#x},6322={OUT}/validate/after.bin"))
     after = rd("after.bin")
     assert list(after[0x30:0x36]) == values, ("a signed track's PLAYBACK was clamped", list(after[0x30:0x36]))
-    print(f"PASS validate: a signed track keeps {values}; the stock validator clamps none of WAVE's values "
-          f"(unsigned: {list(after[0x30 + 30:0x36 + 30])}), the hook is for the limit")
+    assert list(after[0x1E0:0x1E6]) == setup, ("a signed track's SETUP was clamped", list(after[0x1E0:0x1E6]))
+    assert list(after[0x1E0 + 30:0x1E6 + 30]) != setup, ("the validator clamps no SETUP byte: this check proves nothing",
+                                                         list(after[0x1E0 + 30:0x1E6 + 30]))
+    print(f"PASS validate: a signed track keeps PLAYBACK {values} and SETUP {setup}; the same SETUP bytes unsigned become "
+          f"{list(after[0x1E0 + 30:0x1E6 + 30])} (the stock validator's FLEX ranges)")
 
     # 4. the limit: at most MC_LIMIT machines a Part, a third pick is refused with the stock toast
     NOTIFY = 0x4005A2B8

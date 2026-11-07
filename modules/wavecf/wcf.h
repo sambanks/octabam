@@ -3,5 +3,7 @@
 #include "engine.h"
 
 uint32_t wcf_inc(int32_t p_q8);                            /* phase increment of p (Q8 semitones above C3, clamped to +-48) */
-void wcf_note(Engine *e, int32_t p_q8, int chrd, int voic);  /* a START: the first voic voices on the chord's notes, the rest off */
+void wcf_note(Engine *e, int32_t p_q8, int chrd, int voic);  /* a START: CHORD: the first voic voices on the chord's notes, the rest off; POLY: the next of the voic voices, one note */
+void wcf_scale(Engine *e, uint32_t mask);                      /* the scale to snap notes onto, 0 = none (read at a START) */
 void wcf_knobs(Engine *e, int fram, int atk, int rel);       /* raw 0..127 each: frame position, attack, release */
+void wcf_setup(Engine *e, int vibr, int vrat, int oct, int fine, int comp, int mode);   /* SETUP: raw 0..127 each, oct 0..2 (-1, 0, +1), mode 0 CHORD / 1 POLY */

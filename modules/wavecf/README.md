@@ -24,8 +24,13 @@ own choose-a-machine code is a submodule's and does not enforce it.
 ## Using it
 
 1. Double-tap the track key (the machine list), choose **WAVE**, **YES**. FUNC + SRC opens the same list.
-2. Sequence it like any track. The CHROMATIC keys play semitones. The AMP page shapes each note: the voices run
-   from the first START and the track's AMP envelope in the DSP gates them (OCTA-303 with GATE OFF).
+2. Sequence it like any track. The CHROMATIC keys play semitones. The track's AMP page shapes the notes: the voices
+   run from the first START and the AMP envelope in the DSP gates them (OCTA-303 with GATE OFF). A track newly
+   chosen as WAVE gets AMP ATK 0, HOLD 40, REL 56: the stock AMP page (HOLD INF, REL INF) holds a note forever.
+   (Measured on the unit, 7 Nov 2026: with REL left at full the tones never stopped.)
+3. Notes follow SCALE QUANTIZER's scale when one is set: each chord note moves to the nearest degree, ties down
+   (a MAJ shape in a minor scale comes out MIN), as SYNTH MACHINE and CX OSC do through the quantizer's pinned
+   accessor. Without the quantizer in the image, or with SCALE OFF, notes play as they are.
 
 ### PLAYBACK page
 
@@ -34,13 +39,31 @@ own choose-a-machine code is a submodule's and does not enforce it.
 | 0 | TUNE | C1..C5 (raw 40..88) | semitones, shown as note names; raw 64 = C3 |
 | 1 | FRAM | 0..127 | position in the table: sine, triangle, saw, square, pulses 1/4, 1/8, 1/16, 1/32; morphs between neighbours |
 | 2 | CHRD | 0..31 | one of 32 chord shapes (UNI OCT PWR MAJ MIN SUS2 SUS4 DIM AUG MAJ7 MIN7 DOM7 DIM7 M7B5 MAJ6 MIN6 ADD9 MADD9 ADD11 QRT 5TH OPEN SPRD LYD DOR MIX PNT PNTM 6/9 M9 M6/9 STCK) |
-| 3 | VOIC | 1..4 | how many notes of the chord sound |
+| 3 | VOIC | 1..4 | how many notes of the chord sound; in POLY, the size of the voice pool |
 | 4 | ATK | 0..127 | the engine's attack, 0.5 ms .. 0.47 s |
 | 5 | REL | 0..127 | the engine's release, 0.5 ms .. 0.47 s |
 
-A new WAVE track starts at TUNE C3, FRAM 0, CHRD UNI, VOIC 1, ATK 20, REL 60. SETUP is FLEX's own. A level of
-0.8 / VOIC is shared between the voices. LFO SETUP names a WAVE track's destinations as FLEX's (PTCH STRT LEN
-RATE RTRG RTIM), not the page's names.
+A new WAVE track starts at TUNE C3, FRAM 0, CHRD MAJ, VOIC 3, ATK 20, REL 60 (a chord). CHRD and VOIC are lockable per step
+like any PLAYBACK parameter.
+
+### SETUP page (WAVE's own, from CHOMPI WAVE's controls)
+
+| slot | name | range | CHOMPI control | what it does |
+|---|---|---|---|---|
+| 6 | VIBR | 0..127 | pitch LFO depth | vibrato, up to +-2 semitones, a triangle LFO |
+| 7 | VRAT | 0..127 | pitch LFO rate | 0.14 Hz .. 65 Hz, CHOMPI's rate law |
+| 8 | OCT | -1, 0, +1 | octave offset | read at each START |
+| 9 | FINE | -64..+63 | global pitch | fine tune, +-1/2 semitone, read at each START |
+| 10 | COMP | 0..127 | final comp | 0 off; above it a drive into a cubic soft clip with makeup (its saturation half: CHOMPI's compressor half is not ported) |
+| 11 | MODE | CHORD, POLY | | CHORD: a trig plays the chord and replaces the last one. POLY: each trig takes the next of the VOIC voices, one note (CHRD ignored); older notes keep sounding until the track's AMP closes them |
+
+Defaults VIBR 0, VRAT 40, OCT 0, FINE 0, COMP 0, MODE CHORD. COMP and the others sit in the bytes where FLEX keeps
+LOOP SLIC LEN RATE TSTR TSNS (OCTA-303 does the same with FINE SLID DRIV); the Part validator's clamp is undone for
+a signed track. 🟡 COMP is in FLEX's TSTR byte: values 1..3 are stock time-stretch modes and 4 is VARISPEED's on a
+track that has one; OCTA-303's DRIV is in the same place and has not been seen to matter.
+
+CHOMPI controls not carried over: the filter (cutoff, resonance, filter LFO), gain and pan (the AMP page's VOL and
+BAL), the delay / reverb macro (DELAY and the reverbs), table select (one generated table).
 
 ## How it works
 
@@ -62,9 +85,9 @@ RATE RTRG RTIM), not the page's names.
 - ✅ `test_wavecf.py`: the Python model (`ref_wavecf.py`), the host build and the ColdFire build under Unicorn
   give the same samples on two command streams (engine, 35,200 samples; note layer, 38,400); a voice on frame 0
   is a 440 Hz sine at gain × table amplitude; frame 3 is the square; a released voice ends in exact zero;
-  `wcf_inc` is within 0.002 cent of 2^(p/12) from C3 over −48..+48 semitones.
-- ✅ Instructions under Unicorn (not cycles): `eng_render` 303.8 to 311.8 per sample at the worst block with four
-  voices (279.0 mean over the engine stream); `wcf_note` 240 per START; `wcf_knobs` 39 per call.
+  `wcf_inc` is within 0.002 cent of 2^(p/12) from C3 over −48..+48 semitones; LEVL-free SETUP behaviour on the model: OCT, FINE (-50 / +49 cents), COMP's harmonics, VIBR's pitch spread, POLY's round-robin, scale snapping.
+- ✅ Instructions under Unicorn (not cycles): `eng_render` 316.9 per sample at the worst block of the engine stream and 330.4 with vibrato and COMP on (four
+  voices); `wcf_note` 168 per START; `wcf_knobs` 39 per call.
 - ✅ Under the port (`tools/verify/verify_wavecf_port.py`, a WAVE track on T1, trigs on steps 1, 5, 9, 13):
   TUNE 64 gives 130.6 Hz (C3 130.8), TUNE 68 164.7 Hz (E3 164.8), CHRD MAJ with VOIC 3 gives 130.6, 164.7 and
   196.0 Hz.
@@ -79,14 +102,17 @@ RATE RTRG RTIM), not the page's names.
 - 🟡 ColdFire cost: 311.8 instructions per sample is 48 % of the stock `waveload` engine's 646.2 worst path
   (69.2 µs of the 362.8 µs frame on the unit, image 92); at that ratio about 33 µs, 9 % of the frame, for four
   voices sounding. Falsified by CF METER on the unit with a WAVE track playing.
-- 🟡 The stock Part validator clamps none of the six PLAYBACK values WAVE stores (the gate's validate scenario
-  poked 70 127 31 3 127 127 and they came back unchanged on an unsigned track too).
+- 🟡 The stock Part validator clamps none of the six PLAYBACK values WAVE stores (poked 70 127 31 3 127 127: unchanged
+  on an unsigned track too). It does clamp SETUP bytes to FLEX's ranges, which the hook undoes.
 
 ## Open
 
 - Not flashed. The load with two machines playing, and with a stream open, is not measured.
 - CHROMATIC keys on a WAVE track follow OCTA303's law (`raw = 52 + key index`); not exercised under the port.
-- No LFO-destination names, no UP / DOWN octave and no SETUP page of its own.
+- No LFO-destination names and no UP / DOWN octave. A note's own hold is the AMP page's: the engine's voices are not gated
+  by it, so a WAVE track keeps the engine running (its cost) after the note has faded.
+- Clicks on key presses and on SRC, reported on the unit with the first build (W1): not explained. With W1 the SETUP
+  page was FLEX's (TSTR AUTO) and AMP held forever.
 
 ## Credits and sources
 

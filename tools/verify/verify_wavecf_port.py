@@ -25,11 +25,18 @@ from ab_fixture import prepare  # noqa: E402
 
 OUT = pathlib.Path(os.environ.get("WCF_OUT", ROOT / "out/wavecf/port-gate")).resolve()
 C3 = 130.8127826502993
-# name, PLAYBACK bytes (TUNE FRAM CHRD VOIC ATK REL), expected semitones above C3 of the strongest peaks (all must sound)
+# name, PLAYBACK bytes (TUNE FRAM CHRD VOIC ATK REL), expected semitones above C3 of the strongest peaks (all must sound),
+# the track's AMP bytes (ATK HOLD REL) or None for the stock page, whether to check the tone ends before the next trig,
+# the SETUP bytes (VIBR VRAT OCT FINE COMP MODE) or None for the defaults, TUNE locks {step index: raw} or None, the
+# trig mask (bit k = step k + 1). The sequencer is audible for about 1.1 s of the capture: trigs every 4 steps give 3.
 VARIANTS = (
-    ("sine-c3", (64, 0, 0, 0, 5, 80), (0,)),
-    ("sine-e3", (68, 0, 0, 0, 5, 80), (4,)),
-    ("major-c3", (64, 0, 3, 2, 5, 80), (0, 4, 7)),
+    ("sine-c3", (64, 0, 0, 0, 5, 80), (0,), None, False, None, None, 0x1111),
+    ("sine-e3", (68, 0, 0, 0, 5, 80), (4,), None, False, None, None, 0x1111),
+    ("major-c3", (64, 0, 3, 2, 5, 80), (0, 4, 7), None, False, None, None, 0x1111),
+    ("gated-c3", (64, 0, 0, 0, 5, 80), (0,), (0, 20, 40), True, None, None, 0x1111),
+    ("oct-up", (64, 0, 0, 0, 5, 80), (12,), None, False, (0, 40, 2, 64, 0, 0), None, 0x1111),
+    ("comp-harmonics", (64, 0, 0, 0, 5, 80), (0, 19.02), None, False, (0, 40, 1, 64, 100, 0), None, 0x1111),
+    ("poly-chord", (64, 0, 0, 3, 5, 80), (0, 4, 7, 12), None, False, (0, 40, 1, 64, 0, 1), {0: 64, 1: 68, 2: 71, 3: 76}, 0x000F),
 )
 FRAMES = int(os.environ.get("WCF_FRAMES", "3000"))
 
@@ -46,7 +53,7 @@ def peaks(x, sr, n=4):
     return out
 
 
-def run(name, play, fixture_src):
+def run(name, play, fixture_src, amp=None, setup=None, locks=None, mask=0x1111):
     d = OUT / name
     d.mkdir(parents=True, exist_ok=True)
     fixture = prepare(fixture_src, d / "project")
@@ -57,9 +64,14 @@ def run(name, play, fixture_src):
                 data[base + 0x22] = 1
                 data[base + 60:base + 63] = b"WV\x01"
                 data[base + 0x30:base + 0x36] = bytes(play)
+                if amp:
+                    data[base + 0x120:base + 0x123] = bytes(amp)       # AMP ATK HOLD REL, track 1
+                data[base + 0x1E0:base + 0x1E6] = bytes(setup or (0, 40, 1, 64, 0, 0))     # SETUP
             for pattern in range(16):
                 at = otp.trac_off(pattern, 0)
-                data[at:at + 8] = (0x1111).to_bytes(8, "big")
+                data[at:at + 8] = mask.to_bytes(8, "big")
+                for step, raw in (locks or {}).items():
+                    data[at + 0x59 + step * 32] = raw                  # a TUNE lock on that step
         otp._bank_write(fixture, int(bank.stem[4:]), mutate, guard=False)
     card = d / "card.img"
     subprocess.run([sys.executable, str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(fixture), "OCTABAM", "RIG",
@@ -91,8 +103,8 @@ def main():
         print("[SKIP] WAVE port: no port (make emu-cf)")
         return 0
     fails = 0
-    for name, play, semis in VARIANTS:
-        path = run(name, play, src)
+    for name, play, semis, amp, gated, setup, locks, mask in VARIANTS:
+        path = run(name, play, src, amp, setup, locks, mask)
         with wave.open(str(path)) as w:
             sr, ch, width, n = w.getframerate(), w.getnchannels(), w.getsampwidth(), w.getnframes()
             assert width == 3, (name, "expected 24-bit core audio", width)
@@ -101,7 +113,7 @@ def main():
         v = np.where(v & 0x800000, v - (1 << 24), v) / float(1 << 23)
         x = v[:, int(np.argmax(np.sqrt((v ** 2).mean(axis=0))))]       # the core's loudest channel (the track's L)
         act = np.nonzero(np.abs(x) > 1e-4)[0]
-        assert len(act) > sr, (name, "less than a second of sound", len(act))
+        assert len(act) > (0.1 if gated else 1.0) * sr, (name, "too little sound", len(act))
         x = x[act[0]:act[0] + 3 * sr]
         rms = float(np.sqrt(np.mean(x ** 2)))
         pk = peaks(x, sr)
@@ -110,6 +122,15 @@ def main():
         print(("PASS " if ok else "FAIL ") + f"{name}: rms {rms:.4f}, peaks {[round(f, 1) for f in top]} Hz, want "
               f"{[round(C3 * 2 ** (s / 12.0), 1) for s in semis]}")
         fails += not ok
+        if gated:
+            # trigs every 4 steps (1/4 note); the loudest 20 ms window of each period against the quietest
+            win = int(sr * 0.02)
+            env = np.sqrt(np.convolve(x ** 2, np.ones(win) / win, mode="valid"))
+            lo, hi = float(np.percentile(env, 5)), float(env.max())
+            ok2 = hi > 1e-3 and lo < 0.05 * hi
+            print(("PASS " if ok2 else "FAIL ") + f"{name}: the tone ends between trigs (quietest 5 % of the envelope {lo:.5f}, "
+                  f"loudest {hi:.4f})")
+            fails += not ok2
     return 1 if fails else 0
 
 

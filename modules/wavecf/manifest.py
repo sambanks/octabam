@@ -3,8 +3,9 @@
 A FLEX track chosen as WAVE (the machine list or SRC SETUP, signature 'W','V',1 in the Part) plays
 modules/wavecf's engine instead of a sample: 4 voices over 8 generated frames (sine, triangle, saw, square,
 four pulses), no filter. PLAYBACK: TUNE FRAM CHRD VOIC ATK REL. CHRD picks one of 32 chord shapes and VOIC how
-many of its four notes sound; FRAM morphs between neighbouring frames. The Octatrack's own AMP envelope,
-FX and LFOs act on it as on any track.
+many of its four notes sound; FRAM morphs between neighbouring frames. SETUP carries CHOMPI WAVE's controls
+(VIBR, VRAT, OCT, FINE, COMP) and MODE (CHORD or POLY). Notes follow SCALE QUANTIZER's scale. The Octatrack's
+own AMP envelope, FX and LFOs act on it as on any track.
 
 The engine is a fixed-point port of CHOMPI WAVE's voice (MIT, Copyright (c) 2026 CHOMPI Club,
 LICENSE-CHOMPI), reduced to what the Octatrack does not already have. The machine scaffold -- the list row,
@@ -47,8 +48,9 @@ MODULE = Module(
     category=Category.MACHINES,
     author="sambanks", author_url="https://github.com/sambanks",
     doc=("WAVE: a 4-voice wavetable machine, a row of the track's machine list. PLAYBACK: TUNE FRAM CHRD VOIC "
-         "ATK REL: FRAM morphs eight frames, CHRD one of 32 chords, VOIC 1-4 of its notes. No filter: the "
-         "Octatrack's own FX and AMP follow."),
+         "ATK REL: FRAM morphs eight frames, CHRD one of 32 chords, VOIC 1-4 of its notes. SETUP: VIBR VRAT OCT "
+         "FINE COMP MODE (CHORD or POLY). Notes follow SCALE QUANTIZER's scale. No filter: the Octatrack's own FX "
+         "and AMP follow."),
     proof=Proof.PORT,
     proof_note=("the engine and the note layer: Python model == host == ColdFire under Unicorn "
                 "(modules/wavecf/test_wavecf.py); the machine's rows, the shared limit and its sound under the "

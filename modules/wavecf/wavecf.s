@@ -81,6 +81,14 @@
         .set    ST_SHIFT,9
         .set    ST_SIZE,512
 
+| a new WAVE track's AMP page: the stock one holds a note forever (HOLD INF, REL INF) and the voices run from the
+| START, so the track gets a finite HOLD and REL (Part' + 0x11a + 24 * track + 6: ATK HOLD REL; the live lane's
+| flat slots 12, 13, 14)
+        .set    SCALE_AT,        0x400d2ca8      | modules/quantizer/scale.s: `jmp qz_scale_mask`, d0 := the scale's pitch-class mask
+        .set    AMP_PAGE,        0x120
+        .set    AMP_ATK,         0
+        .set    AMP_HOLD,        40
+        .set    AMP_REL,         56
         .set    P_CENTER,        16384
         .set    P_LO,            7168
         .set    P_HI,            25600
@@ -125,7 +133,7 @@
 
 
         .global wc_pgdesc, wc_page, wc_retrig, wc_chrom, wc_render
-        .global eng_init, eng_pos, eng_on, eng_off, eng_render, wcf_note, wcf_knobs
+        .global eng_init, eng_adsr, eng_pos, eng_on, eng_off, eng_setup, eng_render, wcf_note, wcf_knobs, wcf_scale, wcf_setup
         .global wcf_table
 
         .align  4
@@ -300,6 +308,16 @@ wc_start:
         move.l  %d1,%d0
 .Lst_c:
         move.l  %d0,%d6
+        moveq   #0,%d0                  | the quantizer's scale mask: bit k = pitch class k in the scale, 0 = OFF
+        mvz.w   SCALE_AT,%d1            | its accessor is there (a `jmp`; a remix without the quantizer has zeros here)
+        cmpi.l  #0x4ef9,%d1
+        bne     .Lst_ns
+        jsr     SCALE_AT                | clobbers d0, a0
+.Lst_ns:
+        move.l  %d0,-(%sp)
+        pea     S_ENG(%a3)
+        jsr     wcf_scale
+        lea     8(%sp),%sp
         EMAC_ON
         move.l  %d5,-(%sp)              | wcf_note(e, p, chrd, voic)
         move.l  %d6,-(%sp)
@@ -314,6 +332,26 @@ wc_start:
 wc_knobs:
         tst.l   S_INIT(%a3)
         beq     .Lkb_x
+        moveq   #CV_STRIDE,%d0          | SETUP (the live lane's +0x20..+0x25): VIBR VRAT OCT FINE COMP MODE
+        muls.l  %d2,%d0
+        lea     CURVALS,%a0
+        add.l   %d0,%a0
+        moveq   #0,%d0
+        move.b  LANE_SETUP+5(%a0),%d0
+        move.l  %d0,-(%sp)              | mode
+        move.b  LANE_SETUP+4(%a0),%d0
+        move.l  %d0,-(%sp)              | comp
+        move.b  LANE_SETUP+3(%a0),%d0
+        move.l  %d0,-(%sp)              | fine
+        move.b  LANE_SETUP+2(%a0),%d0
+        move.l  %d0,-(%sp)              | oct
+        move.b  LANE_SETUP+1(%a0),%d0
+        move.l  %d0,-(%sp)              | vrat
+        move.b  LANE_SETUP(%a0),%d0
+        move.l  %d0,-(%sp)              | vibr
+        pea     S_ENG(%a3)
+        jsr     wcf_setup
+        lea     28(%sp),%sp
         moveq   #0,%d0
         move.w  10(%a4),%d0
         lsr.l   #8,%d0
@@ -834,10 +872,24 @@ wc_sigwrite:
         lea     0x30(%a1),%a1           | the FLEX PLAYBACK bytes
         moveq   #6,%d0
 .Lsw_l:
+        move.b  PAGE2_GAP(%a1),%d2
+        move.b  %d2,LANE_SETUP(%a0)
         move.b  (%a1)+,%d2
         move.b  %d2,(%a0)+
         subq.l  #1,%d0
         bne     .Lsw_l
+        move.l  12(%sp),%a1             | Part': the AMP bytes (seeded above, or the author's) into the lane's slots 12..14
+        move.l  (%sp),%d0
+        moveq   #24,%d2
+        muls.l  %d0,%d2
+        lea     AMP_PAGE(%a1),%a1
+        adda.l  %d2,%a1
+        move.b  (%a1),%d2
+        move.b  %d2,6(%a0)
+        move.b  1(%a1),%d2
+        move.b  %d2,7(%a0)
+        move.b  2(%a1),%d2
+        move.b  %d2,8(%a0)
 .Lsw_done:
         movem.l (%sp),%d0-%d2/%a0-%a1
         lea     20(%sp),%sp
@@ -864,11 +916,26 @@ wc_sigwrite:
         lea     -12(%a1),%a1            | the FLEX PLAYBACK bytes (Part' + 0x30 + 30*track)
         moveq   #6,%d0
 .Lsw_d:
+        move.b  6(%a0),%d2
+        move.b  %d2,PAGE2_GAP(%a1)      | SETUP
         move.b  (%a0)+,%d2
         move.b  %d2,(%a1)+              | PLAYBACK
         subq.l  #1,%d0
         bne     .Lsw_d
         lea     6(%a1),%a1
+        move.l  4(%sp),%d2              | the track (the caller's saved d0, below the return address)
+        move.l  %d2,%d0
+        add.l   %d0,%d0
+        add.l   %d2,%d0
+        add.l   %d0,%d0                 | 6 * track
+        lea     AMP_PAGE-SIG_OFF(%a1),%a0
+        suba.l  %d0,%a0                 | Part' + AMP_PAGE + 24 * track: a1 = Part' + SIG_OFF + 30 * track
+        moveq   #AMP_ATK,%d2
+        move.b  %d2,(%a0)
+        moveq   #AMP_HOLD,%d2
+        move.b  %d2,1(%a0)
+        moveq   #AMP_REL,%d2
+        move.b  %d2,2(%a0)
         moveq   #0x57,%d2
         move.b  %d2,(%a1)
         moveq   #0x56,%d2
@@ -888,7 +955,7 @@ wc_sigwrite:
 | ---- wc_mdesc: d0 = the machine's record (built once).  Clobbers d0, d1, a0, a1.
 wc_mdesc:
         lea     FLEX_P,%a0
-        lea     wc_over,%a1
+        lea     wc_mover,%a1
         moveq   #1,%d1
         bra     wc_clone
 
@@ -1151,8 +1218,12 @@ wc_validate:
 .Lv_s:
         move.b  (%a0),%d0
         move.b  %d0,(%a1)
+        move.b  PAGE2_GAP(%a0),%d0
+        move.b  %d0,6(%a1)
         move.b  (%a3),%d0
         move.b  %d0,(%a0)
+        move.b  6(%a3),%d0
+        move.b  %d0,PAGE2_GAP(%a0)
         addq.l  #1,%a0
         addq.l  #1,%a1
         addq.l  #1,%a3
@@ -1176,6 +1247,8 @@ wc_validate:
 .Lv_rr:
         move.b  (%a1),%d0
         move.b  %d0,(%a0)
+        move.b  6(%a1),%d0
+        move.b  %d0,PAGE2_GAP(%a0)
         addq.l  #1,%a0
         addq.l  #1,%a1
         subq.l  #1,%d1
@@ -1283,7 +1356,7 @@ wc_clone:                               | a0 = stock record, a1 = list, d1 = 0 P
 |      defaults P+0x5f (slots 1..5), minimums P+0x6a and counts P+0x9a (longs), formatters P+0xca, knob
 |      handlers P+0x12a (0: one raw a detent).  TUNE is semitones: raw 40..88 = -24..+24, 64 = C3.
         .align  4
-wc_over:
+wc_mover:
         .short  0x009, 9
         .long   wc_title
         .short  0x016, 36
@@ -1298,8 +1371,54 @@ wc_over:
         .long   wc_fmts
         .short  0x12a, 24
         .long   wc_zero6
+        .short  0x03a, 36                       | SETUP's names
+        .long   wc_snames
+        .short  0x064, 6                        | defaults
+        .long   wc_mdefs+6
+        .short  0x082, 24                       | minimums
+        .long   wc_zero6
+        .short  0x0b2, 24                       | counts
+        .long   wc_scnt
+        .short  0x0e2, 24                       | formatters
+        .long   wc_sfmts
+        .short  0x112, 24                       | no list handlers
+        .long   wc_zero6
+        .short  0x142, 24
+        .long   wc_zero6
+        .short  0x18a, 8                        | slot flags: SETUP's six plain, PLAYBACK's as FLEX's
+        .long   wc_mflags
         .short  -1, 0
         .long   0
+wc_scnt:                                | VIBR VRAT OCT FINE COMP MODE
+        .long   128, 128, 3, 128, 128, 2
+wc_sfmts:
+        .long   FMT_PLAIN, FMT_PLAIN, wc_fmt_oct, wc_fmt_fine, FMT_PLAIN, wc_fmt_mode
+wc_mflags:
+        .long   0x00001111, 0x11311311
+wc_snames:
+        .ascii  "VIBR"
+        .byte   0, 0
+        .ascii  "VRAT"
+        .byte   0, 0
+        .ascii  "OCT"
+        .byte   0, 0, 0
+        .ascii  "FINE"
+        .byte   0, 0
+        .ascii  "COMP"
+        .byte   0, 0
+        .ascii  "MODE"
+        .byte   0, 0
+wc_loct:
+        .asciz  "-1"
+        .byte   0, 0, 0
+        .asciz  "0"
+        .byte   0, 0, 0, 0
+        .asciz  "+1"
+        .byte   0, 0, 0
+wc_lmode:
+        .asciz  "CHORD"
+        .asciz  "POLY"
+        .byte   0, 0
 wc_mins:
         .long   64 + TUNE_LO, 0, 0, 0, 0, 0
 wc_cnts:
@@ -1324,12 +1443,13 @@ wc_names:
         .byte   0, 0, 0
         .ascii  "REL"
         .byte   0, 0, 0
-wc_defaults:                            | FRAM CHRD VOIC ATK REL
-        .byte   0, 0, 0, 20, 60
-wc_mdefs:                               | a new WAVE track: PLAYBACK (TUNE 0 = C3)
-        .byte   64, 0, 0, 0, 20, 60
-        .byte   0, 0
+wc_defaults:                            | FRAM CHRD VOIC ATK REL: a chord, MAJ on three voices (VOIC raw 2)
+        .byte   0, 3, 2, 20, 60
+wc_mdefs:                               | a new WAVE track: PLAYBACK (TUNE 0 = C3), SETUP
+        .byte   64, 0, 3, 2, 20, 60
+        .byte   0, 40, 1, 64, 0, 0
 
+        .align  4
 | ---- wc_fmt_chrd / wc_fmt_voic: fmt(buf, value) -> length, C convention (octa303.s wc_fmt_tune)
 wc_fmt_chrd:
         move.l  8(%sp),%d0
@@ -1368,8 +1488,52 @@ wc_fmt_voic:
         moveq   #1,%d0
         rts
 
+wc_fmt_oct:
+        lea     wc_loct,%a1
+        moveq   #2,%d1
+        bra     wc_fmt_lbl
+wc_fmt_mode:
+        lea     wc_lmode,%a1
+        moveq   #1,%d1
+wc_fmt_lbl:                             | a1 = labels, 6 bytes each, d1 = the last
+        move.l  8(%sp),%d0
+        bpl     .Lfl_1
+        moveq   #0,%d0
+.Lfl_1:
+        cmp.l   %d1,%d0
+        ble     .Lfl_2
+        move.l  %d1,%d0
+.Lfl_2:
+        moveq   #6,%d1
+        muls.l  %d1,%d0
+        add.l   %d0,%a1
+        move.l  4(%sp),%a0
+        moveq   #0,%d0
+.Lfl_3:
+        move.b  (%a1)+,%d1
+        move.b  %d1,(%a0)+
+        beq     .Lfl_4
+        addq.l  #1,%d0
+        bra     .Lfl_3
+.Lfl_4:
+        rts
+wc_fmt_fine:                            | raw - 64: "-64" .. "0" .. "+63"
+        move.l  8(%sp),%d0
+        sub.l   #64,%d0
+        lea     FMT_D,%a0
+        tst.l   %d0
+        ble     .Lff_1
+        lea     wc_f_plus,%a0
+.Lff_1:
+        move.l  %d0,-(%sp)
+        move.l  %a0,-(%sp)
+        move.l  12(%sp),-(%sp)
+        jsr     SPRINTF
+        lea     12(%sp),%sp
+        rts
 wc_f_plus:
         .asciz  "+%d"
+        .align  4
 wc_notes:                               | wc_fmt_tune's names, two bytes each
         .ascii  "C C#D D#E F F#G G#A A#B "
         .align  4
@@ -1457,41 +1621,133 @@ wc_built:
 	.file	"<stdin>"
 	.text
 	.align	2
+	.type	snap.part.0, @function
+snap.part.0:
+	lea (-24,%sp),%sp
+	moveq #12,%d1
+	move.l 28(%sp),%d0
+	add.l #30848,%d0
+	asr.l #8,%d0
+	movem.l #252,(%sp)
+	move.l 32(%sp),%d5
+	add.l #1080,%d0
+	rems.l %d1,%d6:%d0
+	move.l %d6,%d7
+	move.l %d6,%a0
+	subq.l #7,%d7
+	move.l %d6,%d1
+.L8:
+	move.l %d1,%d3
+	moveq #1,%d4
+	add.l #12,%d3
+	lsl.l %d3,%d4
+	moveq #1,%d0
+	move.l %d6,%a1
+	move.l %a0,%d3
+	lsl.l %d1,%d0
+	sub.l %d1,%a1
+	tst.l %d1
+	jlt .L12
+	and.l %d5,%d0
+	tst.l %d0
+	jne .L6
+	moveq #11,%d0
+	cmp.l %a0,%d0
+	jge .L5
+	add.l #-12,%d3
+.L5:
+	moveq #1,%d0
+	subq.l #1,%d1
+	lsl.l %d3,%d0
+	addq.l #1,%a0
+	and.l %d5,%d0
+	tst.l %d0
+	jne .L13
+	cmp.l %d1,%d7
+	jne .L8
+	movem.l (%sp),#252
+	move.l 28(%sp),%d0
+	lea (24,%sp),%sp
+	rts
+.L12:
+	and.l %d5,%d4
+	tst.l %d4
+	jeq .L5
+.L6:
+	mvs.w %a1,%d0
+	movem.l (%sp),#252
+	lsl.l #8,%d0
+	sub.l %d0,28(%sp)
+	move.l 28(%sp),%d0
+	lea (24,%sp),%sp
+	rts
+.L13:
+	mvs.w %a1,%d0
+	movem.l (%sp),#252
+	lsl.l #8,%d0
+	add.l %d0,28(%sp)
+	move.l 28(%sp),%d0
+	lea (24,%sp),%sp
+	rts
+	.size	snap.part.0, .-snap.part.0
+	.align	2
 	.globl	eng_init
 	.type	eng_init, @function
 eng_init:
 	move.l 4(%sp),%a1
 	move.l %a1,%d0
 	move.l %a1,%a0
-	add.l #132,%d0
-.L2:
+	add.l #200,%d0
+.L15:
 	clr.l (%a0)+
 	cmp.l %a0,%d0
-	jne .L2
-	move.l 8(%sp),112(%a1)
-	move.l 12(%sp),124(%a1)
-	move.l 16(%sp),128(%a1)
+	jne .L15
+	move.l 8(%sp),144(%a1)
+	move.l 12(%sp),156(%a1)
+	move.l 16(%sp),160(%a1)
 	rts
 	.size	eng_init, .-eng_init
+	.align	2
+	.globl	eng_adsr
+	.type	eng_adsr, @function
+eng_adsr:
+	move.l 4(%sp),%a0
+	move.l 8(%sp),156(%a0)
+	move.l 12(%sp),160(%a0)
+	rts
+	.size	eng_adsr, .-eng_adsr
+	.align	2
+	.globl	eng_setup
+	.type	eng_setup, @function
+eng_setup:
+	move.l 4(%sp),%a0
+	move.l 8(%sp),172(%a0)
+	move.l 12(%sp),168(%a0)
+	move.l 16(%sp),176(%a0)
+	move.l 20(%sp),180(%a0)
+	move.l 24(%sp),188(%a0)
+	move.l 28(%sp),196(%a0)
+	rts
+	.size	eng_setup, .-eng_setup
 	.align	2
 	.globl	eng_pos
 	.type	eng_pos, @function
 eng_pos:
 	move.l 8(%sp),%d0
 	cmp.l #458752,%d0
-	jle .L7
+	jle .L24
 	moveq #7,%d0
 	swap %d0
-.L8:
+.L25:
 	move.l 4(%sp),%a0
-	move.l %d0,120(%a0)
+	move.l %d0,152(%a0)
 	rts
-.L7:
+.L24:
 	tst.l %d0
-	jge .L8
+	jge .L25
 	move.l 4(%sp),%a0
 	clr.l %d0
-	move.l %d0,120(%a0)
+	move.l %d0,152(%a0)
 	rts
 	.size	eng_pos, .-eng_pos
 	.align	2
@@ -1499,15 +1755,21 @@ eng_pos:
 	.type	eng_on, @function
 eng_on:
 	move.l 8(%sp),%d0
-	moveq #28,%d1
+	moveq #36,%d1
 	move.l 4(%sp),%a0
 	muls.l %d1,%d0
+	move.l 12(%sp),%d1
+	move.l %d1,8(%a0,%d0.l)
+	tst.l 24(%a0,%d0.l)
+	jne .L29
+	move.l %d1,4(%a0,%d0.l)
+.L29:
+	move.l 4(%sp),%a0
 	add.l %d0,%a0
 	moveq #1,%d0
-	move.l 12(%sp),4(%a0)
-	move.l 16(%sp),8(%a0)
-	move.l %d0,20(%a0)
-	clr.l 24(%a0)
+	move.l %d0,28(%a0)
+	move.l 16(%sp),16(%a0)
+	clr.l 32(%a0)
 	rts
 	.size	eng_on, .-eng_on
 	.align	2
@@ -1515,10 +1777,10 @@ eng_on:
 	.type	eng_off, @function
 eng_off:
 	move.l 8(%sp),%d0
-	moveq #28,%d1
+	moveq #36,%d1
 	move.l 4(%sp),%a0
 	muls.l %d1,%d0
-	clr.l 20(%a0,%d0.l)
+	clr.l 28(%a0,%d0.l)
 	rts
 	.size	eng_off, .-eng_off
 	.align	2
@@ -1527,49 +1789,77 @@ eng_off:
 eng_render:
 	lea (-52,%sp),%sp
 	movem.l #31996,(%sp)
-	move.l 56(%sp),%a3
+	move.l 56(%sp),%a2
+	move.l 172(%a2),%d1
+	tst.l %d1
+	jne .L73
+	move.l %a2,%d2
+	move.l #1073741824,%a1
+	lea (4,%a2),%a0
+	add.l #148,%d2
+.L37:
+	move.l (%a0),%d0
+	move.l 4(%a0),%d1
+	sub.l %d0,%d1
+	asr.l #3,%d1
+	add.l %d1,%d0
+	move.l %d0,(%a0)
+	cmp.l #1073741824,%a1
+	jeq .L36
+#APP
+| 10 "fx.h" 1
+	mac.l %d0,%a1,%acc0
+	movclr.l %acc0,%d0
+| 0 "" 2
+#NO_APP
+	add.l %d0,%d0
+.L36:
+	lea (36,%a0),%a0
+	move.l %d0,-28(%a0)
+	cmp.l %a0,%d2
+	jne .L37
 	tst.l 64(%sp)
-	jle .L15
-	move.l 112(%a3),%d0
-	lea (112,%a3),%a0
+	jle .L34
+	move.l 144(%a2),%d0
+	lea (144,%a2),%a0
 	move.l %a0,44(%sp)
 	move.l %d0,48(%sp)
-.L30:
-	move.l 116(%a3),%d0
+.L55:
+	move.l 148(%a2),%d0
 	moveq #15,%d2
-	move.l 120(%a3),%d1
+	move.l 152(%a2),%d1
 	sub.l %d0,%d1
 	asr.l #8,%d1
 	moveq #11,%d3
-	clr.l %d6
-	move.l 48(%sp),%a2
-	move.l %a3,%a0
+	clr.l %d4
+	move.l 48(%sp),%a3
+	move.l %a2,%a0
 	add.l %d1,%d0
 	move.l %d0,%d1
 	move.l %d0,%d7
 	swap %d1
 	ext.l %d1
 	lsl.l %d2,%d7
-	move.l %d0,116(%a3)
+	move.l %d0,148(%a2)
 	lsl.l %d3,%d1
 	and.l #2147450880,%d7
-	add.l %d1,%a2
-	lea (2048,%a2),%a4
+	add.l %d1,%a3
+	lea (2048,%a3),%a4
 	move.l %d7,%a6
-.L29:
-	move.l 20(%a0),%d0
-	move.l 24(%a0),%d1
+.L51:
+	move.l 28(%a0),%d0
+	move.l 32(%a0),%d1
 	tst.l %d0
-	jeq .L17
+	jeq .L39
 	tst.l %d1
-	jne .L36
-	move.l 12(%a0),%a1
+	jne .L69
+	move.l 20(%a0),%a1
 	moveq #1,%d7
-	move.l %d7,16(%a0)
-	move.l %d0,24(%a0)
-.L20:
+	move.l %d7,24(%a0)
+	move.l %d0,32(%a0)
+.L42:
 	move.l #135559905,%d1
-	move.l 124(%a3),%d0
+	move.l 156(%a2),%d0
 	sub.l %a1,%d1
 #APP
 | 10 "fx.h" 1
@@ -1579,12 +1869,12 @@ eng_render:
 #NO_APP
 	add.l %d0,%a1
 	cmp.l #134217728,%a1
-	jle .L24
+	jle .L46
 	moveq #2,%d3
 	move.l #134217728,%a1
-	move.l %d3,16(%a0)
-	move.l %a1,12(%a0)
-.L25:
+	move.l %d3,24(%a0)
+	move.l %a1,20(%a0)
+.L47:
 	moveq #22,%d0
 	move.l (%a0),%d2
 	move.l %d2,%d1
@@ -1596,20 +1886,20 @@ eng_render:
 	add.l %d0,%d0
 	and.l #1023,%d1
 	and.l #16383,%d3
-	mvs.w (%a2,%d0.l),%d5
-	mvs.w (%a4,%d0.l),%d4
+	mvs.w (%a3,%d0.l),%d6
+	mvs.w (%a4,%d0.l),%d5
 	moveq #12,%d0
-	move.l %d5,%d7
+	move.l %d6,%d7
 	lsl.l %d0,%d7
 	add.l %d1,%d1
 	move.l %d7,%a5
-	move.l %d4,%d7
+	move.l %d5,%d7
 	lsl.l %d0,%d7
-	mvs.w (%a2,%d1.l),%d0
+	mvs.w (%a3,%d1.l),%d0
 	mvs.w (%a4,%d1.l),%d1
-	sub.l %d5,%d0
+	sub.l %d6,%d0
 	muls.l %d3,%d0
-	sub.l %d4,%d1
+	sub.l %d5,%d1
 	muls.l %d3,%d1
 	asr.l #2,%d0
 	asr.l #2,%d1
@@ -1622,9 +1912,9 @@ eng_render:
 	movclr.l %acc0,%d1
 | 0 "" 2
 #NO_APP
-	add.l 4(%a0),%d2
+	add.l 12(%a0),%d2
 	add.l %d1,%d0
-	move.l 8(%a0),%d1
+	move.l 16(%a0),%d1
 	move.l %d2,(%a0)
 #APP
 | 10 "fx.h" 1
@@ -1637,48 +1927,89 @@ eng_render:
 | 0 "" 2
 #NO_APP
 	lsl.l #4,%d0
-	add.l %d0,%d6
-.L27:
-	lea (28,%a0),%a0
+	add.l %d0,%d4
+.L49:
+	lea (36,%a0),%a0
 	cmp.l 44(%sp),%a0
-	jne .L29
-.L40:
+	jne .L51
+.L74:
+	move.l 176(%a2),%d0
+	tst.l %d0
+	jeq .L52
+#APP
+| 10 "fx.h" 1
+	mac.l %d4,%d0,%acc0
+	movclr.l %acc0,%d0
+| 0 "" 2
+#NO_APP
+	cmp.l #-4194305,%d0
+	jgt .L53
+	move.l #-4194304,%d0
+.L54:
+	lsl.l #8,%d0
+#APP
+| 10 "fx.h" 1
+	mac.l %d0,%d0,%acc0
+	movclr.l %acc0,%d1
+| 0 "" 2
+| 10 "fx.h" 1
+	mac.l %d1,%d0,%acc0
+	movclr.l %acc0,%d1
+| 0 "" 2
+#NO_APP
+	move.l #715827883,%d2
+#APP
+| 10 "fx.h" 1
+	mac.l %d1,%d2,%acc0
+	movclr.l %acc0,%d1
+| 0 "" 2
+#NO_APP
+	lsl.l #2,%d1
+	move.l 180(%a2),%d4
+	sub.l %d1,%d0
+#APP
+| 10 "fx.h" 1
+	mac.l %d0,%d4,%acc0
+	movclr.l %acc0,%d4
+| 0 "" 2
+#NO_APP
+.L52:
 	move.l 60(%sp),%a0
 	addq.l #4,60(%sp)
 	subq.l #1,64(%sp)
-	move.l %d6,(%a0)+
+	move.l %d4,(%a0)+
 	tst.l 64(%sp)
-	jne .L30
-.L15:
+	jne .L55
+.L34:
 	movem.l (%sp),#31996
 	lea (52,%sp),%sp
 	rts
-.L36:
-	move.l 16(%a0),%d1
+.L69:
+	move.l 24(%a0),%d1
 	moveq #1,%d2
-	move.l 12(%a0),%a1
-	move.l %d0,24(%a0)
+	move.l 20(%a0),%a1
+	move.l %d0,32(%a0)
 	cmp.l %d1,%d2
-	jeq .L20
+	jeq .L42
 	moveq #3,%d7
 	cmp.l %d1,%d7
-	jeq .L22
+	jeq .L44
 	tst.l %d1
-	jne .L25
-	lea (28,%a0),%a0
+	jne .L47
+	lea (36,%a0),%a0
 	cmp.l 44(%sp),%a0
-	jne .L29
-	jra .L40
-.L17:
+	jne .L51
+	jra .L74
+.L39:
 	tst.l %d1
-	jeq .L36
-	move.l 12(%a0),%a1
+	jeq .L69
+	move.l 20(%a0),%a1
 	moveq #3,%d0
-	move.l %d0,16(%a0)
-	clr.l 24(%a0)
-.L22:
+	move.l %d0,24(%a0)
+	clr.l 32(%a0)
+.L44:
 	move.l #-1342177,%d1
-	move.l 128(%a3),%d0
+	move.l 160(%a2),%d0
 	sub.l %a1,%d1
 #APP
 | 10 "fx.h" 1
@@ -1688,34 +2019,34 @@ eng_render:
 #NO_APP
 	add.l %d0,%a1
 	tst.l %a1
-	jlt .L41
-.L24:
+	jlt .L75
+.L46:
 	moveq #22,%d0
 	move.l (%a0),%d2
 	move.l %d2,%d1
 	lsr.l %d0,%d1
 	move.l %d2,%d3
 	lsr.l #8,%d3
-	move.l %a1,12(%a0)
+	move.l %a1,20(%a0)
 	move.l %d1,%d0
 	addq.l #1,%d1
 	add.l %d0,%d0
 	and.l #1023,%d1
 	and.l #16383,%d3
-	mvs.w (%a2,%d0.l),%d5
-	mvs.w (%a4,%d0.l),%d4
+	mvs.w (%a3,%d0.l),%d6
+	mvs.w (%a4,%d0.l),%d5
 	moveq #12,%d0
-	move.l %d5,%d7
+	move.l %d6,%d7
 	lsl.l %d0,%d7
 	add.l %d1,%d1
 	move.l %d7,%a5
-	move.l %d4,%d7
+	move.l %d5,%d7
 	lsl.l %d0,%d7
-	mvs.w (%a2,%d1.l),%d0
+	mvs.w (%a3,%d1.l),%d0
 	mvs.w (%a4,%d1.l),%d1
-	sub.l %d5,%d0
+	sub.l %d6,%d0
 	muls.l %d3,%d0
-	sub.l %d4,%d1
+	sub.l %d5,%d1
 	muls.l %d3,%d1
 	asr.l #2,%d0
 	asr.l #2,%d1
@@ -1728,9 +2059,9 @@ eng_render:
 	movclr.l %acc0,%d1
 | 0 "" 2
 #NO_APP
-	add.l 4(%a0),%d2
+	add.l 12(%a0),%d2
 	add.l %d1,%d0
-	move.l 8(%a0),%d1
+	move.l 16(%a0),%d1
 	move.l %d2,(%a0)
 #APP
 | 10 "fx.h" 1
@@ -1743,16 +2074,116 @@ eng_render:
 | 0 "" 2
 #NO_APP
 	lsl.l #4,%d0
-	add.l %d0,%d6
-	jra .L27
-.L41:
-	clr.l 16(%a0)
-	clr.l 12(%a0)
-	lea (28,%a0),%a0
+	add.l %d0,%d4
+	jra .L49
+.L75:
+	clr.l 24(%a0)
+	clr.l 20(%a0)
+	lea (36,%a0),%a0
 	cmp.l 44(%sp),%a0
-	jne .L29
-	jra .L40
+	jne .L51
+	jra .L74
+.L53:
+	cmp.l #4194304,%d0
+	jle .L54
+	moveq #64,%d0
+	swap %d0
+	lsl.l #8,%d0
+#APP
+| 10 "fx.h" 1
+	mac.l %d0,%d0,%acc0
+	movclr.l %acc0,%d1
+| 0 "" 2
+| 10 "fx.h" 1
+	mac.l %d1,%d0,%acc0
+	movclr.l %acc0,%d1
+| 0 "" 2
+#NO_APP
+	move.l #715827883,%d2
+#APP
+| 10 "fx.h" 1
+	mac.l %d1,%d2,%acc0
+	movclr.l %acc0,%d1
+| 0 "" 2
+#NO_APP
+	lsl.l #2,%d1
+	move.l 180(%a2),%d4
+	sub.l %d1,%d0
+#APP
+| 10 "fx.h" 1
+	mac.l %d0,%d4,%acc0
+	movclr.l %acc0,%d4
+| 0 "" 2
+#NO_APP
+	jra .L52
+.L73:
+	move.l 164(%a2),%d2
+	move.l %d2,%d3
+	add.l #-2147483648,%d3
+	move.l %d3,%d0
+	add.l %d0,%d0
+	subx.l %d0,%d0
+	eor.l %d3,%d0
+	add.l #-1073741824,%d0
+#APP
+| 10 "fx.h" 1
+	mac.l %d0,%d1,%acc0
+	movclr.l %acc0,%d0
+| 0 "" 2
+#NO_APP
+	move.l #357913941,%d1
+#APP
+| 10 "fx.h" 1
+	mac.l %d0,%d1,%acc0
+	movclr.l %acc0,%d0
+| 0 "" 2
+#NO_APP
+	move.l #1488522236,%d1
+#APP
+| 10 "fx.h" 1
+	mac.l %d0,%d1,%acc0
+	movclr.l %acc0,%d0
+| 0 "" 2
+| 10 "fx.h" 1
+	mac.l %d0,%d0,%acc0
+	movclr.l %acc0,%a0
+| 0 "" 2
+| 10 "fx.h" 1
+	mac.l %a0,%d0,%acc0
+	movclr.l %acc0,%d1
+| 0 "" 2
+#NO_APP
+	move.l #1431655765,%a1
+#APP
+| 10 "fx.h" 1
+	mac.l %d1,%a1,%acc0
+	movclr.l %acc0,%d1
+| 0 "" 2
+#NO_APP
+	move.l %d0,%a1
+	add.l #1073741824,%a1
+	move.l 64(%sp),%d0
+	add.l %a0,%a1
+	lea (168,%a2),%a3
+	add.l %d1,%a1
+	lea (4,%a2),%a0
+	muls.l (%a3),%d0
+	add.l %d2,%d0
+	move.l %a2,%d2
+	add.l #148,%d2
+	move.l %d0,164(%a2)
+	jra .L37
 	.size	eng_render, .-eng_render
+	.align	2
+	.globl	wcf_scale
+	.type	wcf_scale, @function
+wcf_scale:
+	move.l 8(%sp),%d0
+	move.l 4(%sp),%a0
+	and.l #4095,%d0
+	move.l %d0,184(%a0)
+	rts
+	.size	wcf_scale, .-wcf_scale
 	.align	2
 	.globl	wcf_inc
 	.type	wcf_inc, @function
@@ -1761,9 +2192,9 @@ wcf_inc:
 	move.l %d2,-(%sp)
 	move.l 12(%sp),%d0
 	cmp.l #12288,%d0
-	jle .L43
+	jle .L79
 	move.l #12288,%d0
-.L44:
+.L80:
 	move.l %d0,%d1
 	asr.l #3,%d1
 	moveq #7,%d2
@@ -1790,15 +2221,15 @@ wcf_inc:
 #NO_APP
 	asr.l #4,%d0
 	tst.l %d2
-	jlt .L45
-.L49:
+	jlt .L81
+.L85:
 	lsl.l %d2,%d0
 	move.l (%sp)+,%d2
 	move.l (%sp)+,%d3
 	rts
-.L43:
+.L79:
 	cmp.l #-12288,%d0
-	jge .L44
+	jge .L80
 	move.l #-12288,%d0
 	moveq #7,%d2
 	move.l %d0,%d1
@@ -1826,8 +2257,8 @@ wcf_inc:
 #NO_APP
 	asr.l #4,%d0
 	tst.l %d2
-	jge .L49
-.L45:
+	jge .L85
+.L81:
 	moveq #8,%d2
 	sub.l %d1,%d2
 	lsr.l %d2,%d0
@@ -1839,69 +2270,138 @@ wcf_inc:
 	.globl	wcf_note
 	.type	wcf_note, @function
 wcf_note:
-	lea (-28,%sp),%sp
+	lea (-32,%sp),%sp
 	moveq #4,%d0
-	movem.l #15388,(%sp)
-	move.l 44(%sp),%d3
+	movem.l #31772,(%sp)
+	move.l 48(%sp),%d3
+	move.l %d3,%d4
+	move.l 36(%sp),%a6
 	cmp.l %d3,%d0
-	jge .L51
-	moveq #4,%d3
-.L52:
+	jge .L87
+	moveq #4,%d4
+.L88:
+	move.l 188(%a6),%d2
+	tst.l %d2
+	jne .L112
+.L89:
 	moveq #31,%d0
-	clr.l %d2
-	and.l 40(%sp),%d0
-	move.l 32(%sp),%a2
-	addq.l #4,%a2
+	and.l 44(%sp),%d0
+	lea (4,%a6),%a2
 	lea gain_n,%a5
+	lea wcf_inc,%a4
 	lsl.l #2,%d0
 	move.l %d0,%a3
 	add.l #wcf_chord,%a3
-.L55:
-	cmp.l %d3,%d2
-	jlt .L59
-	clr.l 16(%a2)
-	moveq #4,%d0
-	addq.l #1,%d2
-	lea (28,%a2),%a2
-	cmp.l %d2,%d0
-	jne .L55
-.L60:
-	movem.l (%sp),#15388
-	lea (28,%sp),%sp
-	rts
-.L59:
-	mvs.b (%a3,%d2.l),%d0
-	move.l 36(%sp),%a0
-	addq.l #1,%d2
-	move.l (%a5,%d3.l*4),%d4
-	lsl.l #8,%d0
-	lea (28,%a2),%a2
-	pea (%a0,%d0.l)
-	jsr wcf_inc
-	move.l %d4,-24(%a2)
-	clr.l -8(%a2)
+.L99:
+	cmp.l %d4,%d2
+	jge .L95
+	mvs.b (%a3,%d2.l),%d1
+	move.l 40(%sp),%d0
+	move.l 184(%a6),%a0
+	move.l (%a5,%d4.l*4),%d3
+	lsl.l #8,%d1
+	add.l 196(%a6),%d0
+	add.l %d1,%d0
+	tst.l %a0
+	jeq .L96
+	move.l %a0,-(%sp)
+	move.l %d0,-(%sp)
+	jsr (snap.part.0)
+	addq.l #8,%sp
+.L96:
+	move.l %d0,-(%sp)
+	jsr (%a4)
 	addq.l #4,%sp
-	move.l %d0,-28(%a2)
+	move.l %d0,4(%a2)
+	tst.l 20(%a2)
+	jne .L97
+	move.l %d0,(%a2)
+.L97:
 	moveq #1,%d0
-	move.l %d0,-12(%a2)
-	moveq #4,%d0
-	cmp.l %d2,%d0
-	jne .L55
-	jra .L60
-.L51:
+	addq.l #1,%d2
+	move.l %d3,12(%a2)
+	moveq #4,%d1
+	move.l %d0,24(%a2)
+	clr.l 28(%a2)
+	lea (36,%a2),%a2
+	cmp.l %d2,%d1
+	jne .L99
+.L113:
+	clr.l 192(%a6)
+.L86:
+	movem.l (%sp),#31772
+	lea (32,%sp),%sp
+	rts
+.L95:
+	clr.l 24(%a2)
+	moveq #4,%d1
+	addq.l #1,%d2
+	lea (36,%a2),%a2
+	cmp.l %d2,%d1
+	jne .L99
+	jra .L113
+.L87:
 	tst.l %d3
-	jgt .L52
-	moveq #31,%d0
-	moveq #1,%d3
-	and.l 40(%sp),%d0
-	move.l 32(%sp),%a2
+	jgt .L88
+	move.l 188(%a6),%d2
+	moveq #1,%d4
+	tst.l %d2
+	jeq .L89
+.L112:
+	move.l 192(%a6),%d2
+	cmp.l %d2,%d4
+	jgt .L114
+	move.w #1,%a3
 	clr.l %d2
-	addq.l #4,%a2
-	lea gain_n,%a5
-	lsl.l #2,%d0
-	move.l %d0,%a3
-	add.l #wcf_chord,%a3
-	jra .L55
+.L90:
+	move.l 40(%sp),%d0
+	lea gain_n,%a0
+	move.l 184(%a6),%d1
+	move.l (%a0,%d4.l*4),%a2
+	add.l 196(%a6),%d0
+	tst.l %d1
+	jeq .L91
+	move.l %d1,-(%sp)
+	move.l %d0,-(%sp)
+	jsr (snap.part.0)
+	addq.l #8,%sp
+.L91:
+	move.l %d0,-(%sp)
+	jsr wcf_inc
+	addq.l #4,%sp
+	moveq #36,%d1
+	muls.l %d1,%d2
+	move.l %d0,8(%a6,%d2.l)
+	tst.l 24(%a6,%d2.l)
+	jne .L92
+	move.l %d0,4(%a6,%d2.l)
+.L92:
+	moveq #1,%d0
+	moveq #3,%d1
+	move.l %a2,16(%a6,%d2.l)
+	move.l %d0,28(%a6,%d2.l)
+	clr.l 32(%a6,%d2.l)
+	move.l %a3,192(%a6)
+	cmp.l %d3,%d1
+	jlt .L86
+	mulu.w #36,%d4
+	move.l %a6,%d0
+	add.l #172,%d0
+	lea 28(%a6,%d4.l),%a0
+.L94:
+	clr.l (%a0)
+	lea (36,%a0),%a0
+	cmp.l %a0,%d0
+	jeq .L86
+	clr.l (%a0)
+	lea (36,%a0),%a0
+	cmp.l %a0,%d0
+	jne .L94
+	jra .L86
+.L114:
+	move.l %d2,%a3
+	addq.l #1,%a3
+	jra .L90
 	.size	wcf_note, .-wcf_note
 	.align	2
 	.globl	wcf_knobs
@@ -1913,44 +2413,512 @@ wcf_knobs:
 	move.l 16(%sp),%d0
 	move.l 12(%sp),%a0
 	cmp.l %d0,%d1
-	jge .L62
+	jge .L116
 	moveq #127,%d0
-.L62:
+.L116:
 	moveq #7,%d2
 	swap %d2
 	muls.l %d2,%d0
 	moveq #127,%d2
 	divs.l %d2,%d0
 	tst.l %d0
-	jlt .L68
-.L63:
-	move.l %d0,120(%a0)
+	jlt .L122
+.L117:
+	move.l %d0,152(%a0)
 	moveq #127,%d1
 	move.l 20(%sp),%d0
 	lea wcf_tc,%a1
 	cmp.l %d0,%d1
-	jge .L64
+	jge .L118
 	moveq #127,%d0
-.L64:
+.L118:
 	lea (%a1,%d0.l*4),%a2
 	move.l 24(%sp),%d0
 	moveq #127,%d1
-	move.l (%a2),124(%a0)
+	move.l (%a2),156(%a0)
 	cmp.l %d0,%d1
-	jge .L65
+	jge .L119
 	moveq #127,%d0
-.L65:
+.L119:
 	lea (%a1,%d0.l*4),%a1
 	move.l (%sp)+,%d2
 	move.l (%sp)+,%a2
-	move.l (%a1),128(%a0)
+	move.l (%a1),160(%a0)
 	rts
-.L68:
+.L122:
 	clr.l %d0
-	jra .L63
+	jra .L117
 	.size	wcf_knobs, .-wcf_knobs
-	.globl	wcf_chord
+	.align	2
+	.globl	wcf_setup
+	.type	wcf_setup, @function
+wcf_setup:
+	subq.l #8,%sp
+	move.l %a2,-(%sp)
+	moveq #127,%d1
+	move.l %d2,-(%sp)
+	move.l 40(%sp),%d0
+	move.l 20(%sp),%a0
+	cmp.l %d0,%d1
+	jge .L124
+	moveq #127,%d0
+.L124:
+	lea wcf_comp_makeup,%a1
+	lea wcf_comp_drive,%a2
+	move.l (%a2,%d0.l*4),%d1
+	move.l (%a1,%d0.l*4),%a1
+	move.l 28(%sp),%d0
+	move.l %d1,8(%sp)
+	moveq #127,%d1
+	cmp.l %d0,%d1
+	jge .L125
+	moveq #127,%d0
+.L125:
+	lea wcf_lfo,%a2
+	moveq #127,%d1
+	move.l (%a2,%d0.l*4),%d0
+	move.l %d0,12(%sp)
+	move.l 24(%sp),%d0
+	cmp.l %d0,%d1
+	jge .L126
+	moveq #127,%d0
+.L126:
+	tst.l 44(%sp)
+	sne %d1
+	move.l #16909320,%d2
+	muls.l %d0,%d2
+	move.l 32(%sp),%d0
+	move.l 12(%sp),168(%a0)
+	move.l 8(%sp),176(%a0)
+	move.l %a1,180(%a0)
+	move.l %d2,172(%a0)
+	mvs.b %d1,%d1
+	neg.l %d1
+	move.l %d1,188(%a0)
+	moveq #2,%d1
+	cmp.l %d0,%d1
+	jge .L127
+	moveq #2,%d0
+.L127:
+	move.l 36(%sp),%a1
+	subq.l #1,%d0
+	move.l #1536,%d2
+	moveq #127,%d1
+	muls.l %d2,%d0
+	cmp.l %a1,%d1
+	jge .L128
+	move.w #127,%a1
+.L128:
+	lea -64(%a1,%d0.l),%a1
+	move.l (%sp)+,%d2
+	move.l (%sp)+,%a2
+	move.l %a1,%d0
+	add.l %d0,%d0
+	move.l %d0,196(%a0)
+	addq.l #8,%sp
+	rts
+	.size	wcf_setup, .-wcf_setup
+	.globl	wcf_comp_makeup
 	.section	.rodata
+	.align	2
+	.type	wcf_comp_makeup, @object
+	.size	wcf_comp_makeup, 512
+wcf_comp_makeup:
+	.long	0
+	.long	280555452
+	.long	274567461
+	.long	268737484
+	.long	263062452
+	.long	257539404
+	.long	252165487
+	.long	246937956
+	.long	241854174
+	.long	236911615
+	.long	232107863
+	.long	227440615
+	.long	222907683
+	.long	218506997
+	.long	214236608
+	.long	210094691
+	.long	206079551
+	.long	202189626
+	.long	198423495
+	.long	194779886
+	.long	191257679
+	.long	187855921
+	.long	184573836
+	.long	181410832
+	.long	178366525
+	.long	175440746
+	.long	172633568
+	.long	169945324
+	.long	167376636
+	.long	164928444
+	.long	162602041
+	.long	160399118
+	.long	158321810
+	.long	156372758
+	.long	154555172
+	.long	152872919
+	.long	151330620
+	.long	149933763
+	.long	148688853
+	.long	147603579
+	.long	146687029
+	.long	145949949
+	.long	145405067
+	.long	145067499
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.long	144955146
+	.globl	wcf_comp_drive
+	.align	2
+	.type	wcf_comp_drive, @object
+	.size	wcf_comp_drive, 512
+wcf_comp_drive:
+	.long	0
+	.long	67108864
+	.long	68723540
+	.long	70377066
+	.long	72070377
+	.long	73804429
+	.long	75580204
+	.long	77398705
+	.long	79260961
+	.long	81168023
+	.long	83120970
+	.long	85120906
+	.long	87168961
+	.long	89266294
+	.long	91414090
+	.long	93613563
+	.long	95865957
+	.long	98172544
+	.long	100534629
+	.long	102953547
+	.long	105430666
+	.long	107967386
+	.long	110565140
+	.long	113225398
+	.long	115949663
+	.long	118739475
+	.long	121596412
+	.long	124522088
+	.long	127518158
+	.long	130586314
+	.long	133728292
+	.long	136945868
+	.long	140240861
+	.long	143615133
+	.long	147070591
+	.long	150609190
+	.long	154232930
+	.long	157943858
+	.long	161744074
+	.long	165635725
+	.long	169621011
+	.long	173702185
+	.long	177881555
+	.long	182161483
+	.long	186544388
+	.long	191032748
+	.long	195629100
+	.long	200336043
+	.long	205156238
+	.long	210092409
+	.long	215147348
+	.long	220323911
+	.long	225625025
+	.long	231053686
+	.long	236612964
+	.long	242306002
+	.long	248136017
+	.long	254106305
+	.long	260220242
+	.long	266481283
+	.long	272892968
+	.long	279458923
+	.long	286182857
+	.long	293068573
+	.long	300119964
+	.long	307341014
+	.long	314735807
+	.long	322308523
+	.long	330063442
+	.long	338004949
+	.long	346137533
+	.long	354465792
+	.long	362994433
+	.long	371728277
+	.long	380672263
+	.long	389831446
+	.long	399211004
+	.long	408816239
+	.long	418652581
+	.long	428725592
+	.long	439040964
+	.long	449604530
+	.long	460422261
+	.long	471500272
+	.long	482844827
+	.long	494462338
+	.long	506359372
+	.long	518542656
+	.long	531019076
+	.long	543795685
+	.long	556879707
+	.long	570278537
+	.long	583999751
+	.long	598051105
+	.long	612440541
+	.long	627176196
+	.long	642266398
+	.long	657719679
+	.long	673544775
+	.long	689750630
+	.long	706346408
+	.long	723341489
+	.long	740745481
+	.long	758568223
+	.long	776819789
+	.long	795510498
+	.long	814650916
+	.long	834251863
+	.long	854324419
+	.long	874879932
+	.long	895930022
+	.long	917486589
+	.long	939561818
+	.long	962168190
+	.long	985318483
+	.long	1009025785
+	.long	1033303497
+	.long	1058165345
+	.long	1083625382
+	.long	1109698001
+	.long	1136397942
+	.long	1163740299
+	.long	1191740527
+	.long	1220414456
+	.long	1249778296
+	.long	1279848645
+	.long	1310642504
+	.long	1342177280
+	.globl	wcf_lfo
+	.align	2
+	.type	wcf_lfo, @object
+	.size	wcf_lfo, 512
+wcf_lfo:
+	.long	13635
+	.long	14311
+	.long	15021
+	.long	15766
+	.long	16547
+	.long	17368
+	.long	18229
+	.long	19133
+	.long	20082
+	.long	21078
+	.long	22123
+	.long	23220
+	.long	24372
+	.long	25580
+	.long	26849
+	.long	28180
+	.long	29578
+	.long	31045
+	.long	32584
+	.long	34200
+	.long	35896
+	.long	37676
+	.long	39544
+	.long	41505
+	.long	43564
+	.long	45724
+	.long	47992
+	.long	50371
+	.long	52869
+	.long	55491
+	.long	58243
+	.long	61131
+	.long	64163
+	.long	67345
+	.long	70684
+	.long	74190
+	.long	77869
+	.long	81730
+	.long	85783
+	.long	90037
+	.long	94502
+	.long	99189
+	.long	104107
+	.long	109270
+	.long	114689
+	.long	120376
+	.long	126346
+	.long	132611
+	.long	139188
+	.long	146090
+	.long	153335
+	.long	160938
+	.long	168919
+	.long	177296
+	.long	186088
+	.long	195317
+	.long	205002
+	.long	215168
+	.long	225839
+	.long	237038
+	.long	248793
+	.long	261131
+	.long	274080
+	.long	287672
+	.long	301938
+	.long	316911
+	.long	332627
+	.long	349122
+	.long	366435
+	.long	384606
+	.long	403679
+	.long	423698
+	.long	444709
+	.long	466762
+	.long	489909
+	.long	514204
+	.long	539703
+	.long	566467
+	.long	594559
+	.long	624043
+	.long	654989
+	.long	687471
+	.long	721562
+	.long	757345
+	.long	794902
+	.long	834321
+	.long	875696
+	.long	919122
+	.long	964701
+	.long	1012541
+	.long	1062753
+	.long	1115455
+	.long	1170771
+	.long	1228830
+	.long	1289768
+	.long	1353728
+	.long	1420860
+	.long	1491321
+	.long	1565276
+	.long	1642898
+	.long	1724370
+	.long	1809882
+	.long	1899635
+	.long	1993838
+	.long	2092713
+	.long	2196492
+	.long	2305416
+	.long	2419743
+	.long	2539738
+	.long	2665685
+	.long	2797877
+	.long	2936625
+	.long	3082253
+	.long	3235103
+	.long	3395532
+	.long	3563918
+	.long	3740654
+	.long	3926154
+	.long	4120853
+	.long	4325207
+	.long	4539696
+	.long	4764821
+	.long	5001109
+	.long	5249116
+	.long	5509421
+	.long	5782635
+	.long	6069398
+	.long	6370381
+	.globl	wcf_chord
 	.type	wcf_chord, @object
 	.size	wcf_chord, 128
 wcf_chord:

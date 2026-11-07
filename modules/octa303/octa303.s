@@ -900,9 +900,9 @@ o3_retrig:
 | ============================================================================
 o3_page:
         .if     HK_MACHINE_ROWS
-        .if     MC_HAS_PAGE             | the entry state, for the next machine's resolver
-        lea     -12(%sp),%sp
-        movem.l %d0-%d1/%a0,(%sp)
+        .if     MC_HAS_PAGE             | the entry state, for the next machine's resolver (a1: the bank blob, which
+        lea     -16(%sp),%sp            | o3_basename below clobbers)
+        movem.l %d0-%d1/%a0-%a1,(%sp)
         .endif
         .endif
         move.l  0(%a0,%d0.l*4),%d0      | displaced: the machine's descriptor
@@ -939,7 +939,11 @@ o3_page:
         moveq   #0,%d2
         move.b  (%a0),%d2               | the track's FLEX slot
         cmp.l   #127,%d2
+        .if     HK_MACHINE_ROWS
+        bhi     .Lpg_stock              | 0xff = none; 128.. = the recorder buffers: not ours, the next machine's resolver (a machine
+        .else                           | with no sample, WAVE's, has an empty slot)
         bhi     .Lpg_done               | 0xff = none; 128.. = the recorder buffers
+        .endif
         move.l  %a0,-(%sp)              | v6.9: the slot byte, for o3_stamp
         move.l  #SETTINGS_STRIDE,%d4
         muls.l  %d2,%d4
@@ -959,8 +963,8 @@ o3_page:
         .if     HK_MACHINE_ROWS
         .if     MC_HAS_PAGE
 .Lpg_not:                               | not ours: the next machine's resolver, as its own detour
-        movem.l (%sp),%d0-%d1/%a0
-        lea     12(%sp),%sp
+        movem.l (%sp),%d0-%d1/%a0-%a1
+        lea     16(%sp),%sp
         jmp     MC_NEXT_PAGE
         .endif
         .endif
@@ -968,7 +972,7 @@ o3_page:
 .Lpg_done:
         .if     HK_MACHINE_ROWS
         .if     MC_HAS_PAGE
-        lea     12(%sp),%sp
+        lea     16(%sp),%sp
         .endif
         .endif
         jmp     RESOLVER_RET

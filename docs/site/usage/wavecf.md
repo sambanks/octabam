@@ -14,8 +14,8 @@ answering while the audio keeps playing.
 
 Double-tap the [TRACK] key to open the machine list, choose **WAVE** (below OCTA-303 when both are in the
 image, and the list scrolls to it), [YES]. [FUNC] + [SRC] opens the same list; on a track with a sample it shows
-the sample list first, and [LEFT] reaches the machines. A new WAVE track starts at TUNE C3, FRAM 0, CHRD UNI,
-VOIC 1, ATK 20, REL 60.
+the sample list first, and [LEFT] reaches the machines. A new WAVE track starts at TUNE C3, FRAM 0, CHRD MAJ,
+VOIC 3, ATK 20, REL 60, and its AMP page at ATK 0, HOLD 40, REL 56 (the stock AMP page holds a note forever).
 
 ## Controls
 
@@ -28,9 +28,17 @@ VOIC 1, ATK 20, REL 60.
 | SRC | ATK | the voice's attack, 0.5 ms to 0.47 s |
 | SRC | REL | the voice's release, 0.5 ms to 0.47 s |
 
-The notes start with each trig and keep sounding; the AMP page (ATK, HOLD, REL) shapes how long you hear each
-one. SETUP is the stock FLEX page. LFO SETUP names a WAVE track's destinations as a FLEX track's (PTCH STRT LEN
-RATE RTRG RTIM), though the knobs they move are the six above.
+| SETUP | VIBR | vibrato depth, up to ±2 semitones |
+| SETUP | VRAT | vibrato rate, 0.14 Hz to 65 Hz |
+| SETUP | OCT | −1, 0 or +1 octave |
+| SETUP | FINE | fine tune, ±½ semitone |
+| SETUP | COMP | 0 off; above it, a drive into a soft clip (saturation) with makeup |
+| SETUP | MODE | CHORD: a trig plays the chord and replaces the last. POLY: each trig takes the next of the VOIC voices and plays one note; older notes keep sounding until the AMP page closes them |
+
+If SCALE QUANTIZER has a scale set, every note, chord notes included, moves to the nearest note of the scale (ties
+go down, so a major chord in a minor scale comes out minor). The AMP page (ATK, HOLD, REL) shapes how long you hear
+each note. LFO SETUP names a WAVE track's destinations as a FLEX track's (PTCH STRT LEN RATE RTRG RTIM), though the
+knobs they move are the six above.
 
 ## Checked
 

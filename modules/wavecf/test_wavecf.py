@@ -85,6 +85,108 @@ def main():
         e3.cmd(1, 0, R.inc_of(440.0), R.q31(0.2)); e3.render(2000); e3.cmd(2, 0, 0, 0)
         z = np.array(e3.render(R.SR // 2), dtype=np.float64)
         check(z[-100:].max() == 0 and z[-100:].min() == 0, "a released voice ends in exact zero")
+    # SETUP: level, drive, octave and vibrato, on the model (the streams above hold it to the C builds)
+    def tone(setup=None, p=0, secs=1, chrd=0, voic=1):
+        e = R.Engine()
+        e.cmd(3, R.q31(1 - np.exp(-1 / (0.004 * R.SR))), R.q31(1 - np.exp(-1 / (0.05 * R.SR))), 0)
+        if setup:
+            e.cmd(6, *setup, 0)
+        e.cmd(4, p, chrd, voic)
+        out = []
+        for _ in range(R.SR * secs // 16):            # 16-sample calls, as the frame interrupt makes them (the LFO moves once a call)
+            out += e.render(16)
+        return np.array(out, dtype=np.float64)[R.SR // 4:] / (1 << 27)
+
+    def pack(vibr=0, vrat=0, oct_=1, fine=64, comp=0, mode=0):
+        return (vibr | vrat << 8 | oct_ << 16 | fine << 24, comp | mode << 8)
+
+    base = tone(pack())
+
+    def notes_poly(*ps, voic=4, mode=1):
+        e = R.Engine()
+        e.cmd(3, R.q31(1 - np.exp(-1 / (0.004 * R.SR))), R.q31(1 - np.exp(-1 / (0.05 * R.SR))), 0)
+        e.cmd(6, *pack(mode=mode), 0)
+        for p in ps:
+            e.cmd(4, 256 * p, 3, voic)
+        return e
+
+    e = notes_poly(0, 4, 7, 12)
+    check([bool(v["gate"]) for v in e.v] == [True] * 4 and sorted(v["inc_tgt"] for v in e.v) == sorted(R.inc_of_p(256 * k) for k in (0, 4, 7, 12)),
+          "POLY: four trigs take four voices, each its own pitch, all still gated")
+    e = notes_poly(0, 4, 7, 12, 16)
+    check(e.v[0]["inc_tgt"] == R.inc_of_p(16 * 256) and e.v[1]["inc_tgt"] == R.inc_of_p(4 * 256), "POLY: the fifth trig takes voice 0 again (round-robin)")
+    e = notes_poly(0, 4, 7, voic=2)
+    check(e.v[0]["inc_tgt"] == R.inc_of_p(7 * 256) and e.v[1]["inc_tgt"] == R.inc_of_p(4 * 256) and not e.v[2]["gate"] and not e.v[3]["gate"],
+          "POLY with VOIC 2: a pool of two voices, the others off")
+    e = notes_poly(0, 4, voic=2, mode=0)
+    check(e.v[0]["inc_tgt"] == R.inc_of_p(256 * 4) and e.v[1]["inc_tgt"] == R.inc_of_p(256 * 8) and not e.v[2]["gate"],
+          "CHORD mode (CHRD 3, VOIC 2, the second trig at +4): the chord's first two notes on voices 0 and 1, the earlier note replaced")
+
+    e = R.Engine()
+    e.cmd(7, 0xAB5, 0, 0)                                               # C major
+    e.cmd(4, 0, 4, 4)                                                   # CHRD MIN: C Eb G C
+    got = [e.v[v]["inc_tgt"] for v in range(4)]
+    want = [R.inc_of_p(256 * k) for k in (0, 2, 7, 12)]                # Eb -> D (the lower neighbour first)
+    check(got == want, "a scale snaps the chord: C minor in C major is C D G C (ties go down)")
+    e = R.Engine()
+    e.cmd(7, 0xAB5, 0, 0)
+    e.cmd(4, 0, 3, 4)
+    check([e.v[v]["inc_tgt"] for v in range(4)] == [R.inc_of_p(256 * k) for k in (0, 4, 7, 12)], "a scale that holds the chord leaves it as it is")
+    e = R.Engine()
+    e.cmd(7, 0xAB5, 0, 0)
+    e.cmd(4, 256 * 3 + 100, 0, 1)
+    check(e.v[0]["inc_tgt"] == R.inc_of_p(256 * 2 + 100), "the snap moves whole semitones: the fraction stays")
+
+    # a pitch change on a sounding voice glides: no spike in the second difference (a step in the increment was ~20x a clean sine's)
+    e = R.Engine()
+    e.cmd(3, R.q31(1 - np.exp(-1 / (0.004 * R.SR))), R.q31(1 - np.exp(-1 / (0.05 * R.SR))), 0)
+    e.cmd(4, 0, 0, 1)
+    pre = []
+    for _ in range(R.SR // 2 // 16):
+        pre += e.render(16)
+    e.cmd(4, 7 * 256, 0, 1)                                              # C3 -> G3 on a sounding voice
+    post = []
+    for _ in range(R.SR // 4 // 16):
+        post += e.render(16)
+    y = np.array(pre[-2000:] + post, dtype=np.float64) / (1 << 27)
+    A = float(np.max(np.abs(y)))
+    d2 = np.abs(y[2:] - 2 * y[1:-1] + y[:-2])
+    clean = A * (2 * np.pi * 196.0 / R.SR) ** 2
+    check(d2.max() < 3.0 * clean, f"a pitch change glides: the largest second difference is {d2.max() / clean:.1f}x a clean sine's (a step was ~20x)")
+
+    def peak_hz(x):
+        sp = np.abs(np.fft.rfft(x * np.hanning(len(x))))
+        return float(np.argmax(sp) * R.SR / len(x))
+
+    check(abs(peak_hz(tone(pack(oct_=2))) / peak_hz(base) - 2.0) < 0.01 and abs(peak_hz(tone(pack(oct_=0))) / peak_hz(base) - 0.5) < 0.01,
+          "OCT 0 / 1 / 2 is an octave down / none / up")
+    def inc_after(setup):                                                  # the note's phase step: no FFT resolution in the way
+        e = R.Engine()
+        e.cmd(6, *setup, 0)
+        e.cmd(4, 0, 0, 1)
+        return e.v[0]["inc_tgt"]
+
+    cents = 1200 * np.log2(inc_after(pack(fine=127)) / inc_after(pack(fine=64)))
+    check(abs(cents - 49.2) < 0.2 and abs(1200 * np.log2(inc_after(pack(fine=0)) / inc_after(pack(fine=64))) + 50.0) < 0.2,
+          f"FINE 0 / 64 / 127 is -50 / 0 / +49 cents ({cents:.2f})")
+
+    def h3(x):                                                            # the 3rd harmonic against the fundamental
+        sp = np.abs(np.fft.rfft(x * np.hanning(len(x))))
+        f0 = int(np.argmax(sp))
+        return float(sp[3 * f0 - 3:3 * f0 + 4].max() / sp[f0 - 3:f0 + 4].max())
+
+    check(h3(base) < 0.002 and h3(tone(pack(comp=100))) > 0.02, f"COMP adds odd harmonics (3rd: {h3(base):.4f} -> {h3(tone(pack(comp=100))):.4f})")
+    lv = [np.sqrt(np.mean(tone(pack(comp=c)) ** 2)) for c in (1, 60, 127)]
+    check(max(lv) / min(lv) < 1.5, f"COMP's makeup holds the peak; the RMS stays within 1.5x as the wave squares ({max(lv) / min(lv):.2f})")
+
+    def zc_std(x):                                                         # the spread of the period lengths, as a fraction
+        z = np.nonzero((x[:-1] < 0) & (x[1:] >= 0))[0]
+        d = np.diff(z).astype(np.float64)
+        return float(d.std() / d.mean())
+
+    check(zc_std(tone(pack(vibr=127, vrat=60), secs=3)) > 0.005 and zc_std(base) < 0.002,
+          f"VIBR moves the pitch (period spread {zc_std(tone(pack(vibr=127, vrat=60), secs=3)):.4f}, off {zc_std(base):.5f})")
+
     # the note layer
     worst = 0.0
     for p in range(-48 * 256, 48 * 256 + 1, 13):
@@ -95,7 +197,7 @@ def main():
     check(abs(R.inc_of_p(0) - R.inc_of(tables.BASE_HZ)) <= 1 and R.inc_of_p(12 * 256) == 2 * R.inc_of_p(0), "TUNE 0 is C3 and +12 semitones doubles the increment")
     e = R.Engine()
     e.note(0, 3, 3)
-    incs = [e.v[v]["inc"] for v in range(4)]
+    incs = [e.v[v]["inc_tgt"] for v in range(4)]
     want = [R.inc_of_p(256 * d) for d in tables.CHORDS[3][:3]]
     check(incs[:3] == want and e.v[3]["gate"] == 0 and all(e.v[v]["gate"] for v in range(3)), "CHRD 3 with VOIC 3 gates the first three chord notes and no fourth")
     print("FAIL" if FAILS else "ALL PASS")

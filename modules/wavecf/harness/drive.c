@@ -26,7 +26,9 @@ int main(int argc, char **argv)
             if (op == 0) eng_pos(&e, (int32_t)a);
             else if (op == 1) eng_on(&e, (int)a, b, (int32_t)c);
             else if (op == 2) eng_off(&e, (int)a);
-            else if (op == 3) { e.atk_d0 = (int32_t)a; e.rel_d0 = (int32_t)b; }
+            else if (op == 3) eng_adsr(&e, (int32_t)a, (int32_t)b);
+            else if (op == 6) wcf_setup(&e, a & 0xff, (a >> 8) & 0xff, (a >> 16) & 0xff, (a >> 24) & 0xff, b & 0xff, (b >> 8) & 0xff);
+            else if (op == 7) wcf_scale(&e, a);
             else if (op == 4) wcf_note(&e, (int32_t)a, (int)b, (int)c);
             else if (op == 5) wcf_knobs(&e, (int)a, (int)b, (int)c);
         }

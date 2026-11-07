@@ -8,6 +8,10 @@ Stream: per 16-sample block, u32 n then n records of four big-endian u32 (op, a,
   1 on(a, b, c)       voice a, increment b, gain c (Q31)
   2 off(a)
   3 init(a, b)        attack and release steps, Q31 (first block only)
+  4 note(a, b, c)     wcf_note: p Q8 semitones (signed), chord shape, voices
+  5 knobs(a, b, c)    wcf_knobs: frame position, attack, release (raw 0..127)
+  7 scale(a)          wcf_scale: the pitch-class mask notes snap onto, 0 = none
+  6 setup(a, b)       wcf_setup: a = vibr | vrat << 8 | oct << 16 | fine << 24, b = comp | mode << 8
 """
 import math
 import struct
@@ -15,6 +19,7 @@ import struct
 import tables
 
 _EXP2, _TC = tables.exp2_tab(), tables.tc_tab()
+_LFO, _COMP = tables.lfo_tab(), tables.comp_tab()
 _GAIN_N = [0, 1717986918, 858993459, 572662306, 429496730]
 
 NV, FLEN, NFR, BLOCK, SR = 4, 1024, 8, 16, 44100
@@ -36,16 +41,24 @@ class Engine:
     def __init__(self):
         flat = [s for f in tables.frames() for s in f]
         self.table = flat
-        self.v = [dict(phase=0, inc=0, gain=0, env=0, mode=IDLE, gate=0, gate_prev=0) for _ in range(NV)]
+        self.v = [dict(phase=0, inc=0, inc_tgt=0, incm=0, gain=0, env=0, mode=IDLE, gate=0, gate_prev=0) for _ in range(NV)]
         self.pos = self.pos_tgt = 0
         self.atk = self.rel = 0
+        self.lfo_ph = self.lfo_inc = self.lfo_amp = 0
+        self.drive = self.makeup = 0
+        self.poly = self.next = 0
+        self.scale = 0
+        self.tune_off = 0
 
     def cmd(self, op, a, b, c):
         if op == 0:
             self.pos_tgt = max(0, min(POS_MAX, s32(a)))
         elif op == 1:
             v = self.v[a]
-            v["inc"], v["gain"], v["gate"], v["gate_prev"] = b & 0xffffffff, s32(c), 1, 0
+            v["inc_tgt"] = b & 0xffffffff
+            if v["mode"] == IDLE:
+                v["inc"] = v["inc_tgt"]
+            v["gain"], v["gate"], v["gate_prev"] = s32(c), 1, 0
         elif op == 2:
             self.v[a]["gate"] = 0
         elif op == 3:
@@ -54,14 +67,51 @@ class Engine:
             self.note(s32(a), b, c)
         elif op == 5:
             self.knobs(a, b, c)
+        elif op == 7:
+            self.scale = a & 0xfff
+        elif op == 6:
+            self.setup(a & 0xff, (a >> 8) & 0xff, (a >> 16) & 0xff, (a >> 24) & 0xff, b & 0xff, (b >> 8) & 0xff)
+
+    def setup(self, vibr, vrat, oct_, fine, comp, mode):
+        vibr, vrat, comp = min(vibr, 127), min(vrat, 127), min(comp, 127)
+        oct_ = min(oct_, 2)
+        f = min(fine, 127)
+        self.lfo_amp = vibr * 16909320
+        self.lfo_inc = _LFO[vrat]
+        self.drive, self.makeup = _COMP[comp]
+        self.poly = 1 if mode else 0
+        self.tune_off = (oct_ - 1) * 12 * 256 + (f - 64) * 2
+
+    def snap(self, p):
+        m = self.scale
+        if not m:
+            return p
+        n = ((p + 128 + 120 * 256) >> 8) + 1080
+        pc = n % 12
+        for d in range(7):
+            if m & (1 << ((pc - d) % 12)):
+                return p - 256 * d
+            if m & (1 << ((pc + d) % 12)):
+                return p + 256 * d
+        return p
 
     def note(self, p, chrd, voic):
         voic = max(1, min(NV, voic))
+        if self.poly:
+            v = self.next
+            if v >= voic:
+                v = 0
+            self.cmd(1, v, inc_of_p(self.snap(p + self.tune_off)), _GAIN_N[voic])
+            self.next = v + 1
+            for k in range(voic, NV):
+                self.cmd(2, k, 0, 0)
+            return
         for v in range(NV):
             if v < voic:
-                self.cmd(1, v, inc_of_p(p + 256 * tables.CHORDS[chrd & 31][v]), _GAIN_N[voic])
+                self.cmd(1, v, inc_of_p(self.snap(p + self.tune_off + 256 * tables.CHORDS[chrd & 31][v])), _GAIN_N[voic])
             else:
                 self.cmd(2, v, 0, 0)
+        self.next = 0
 
     def knobs(self, fram, atk, rel):
         fram, atk, rel = min(fram, 127), min(atk, 127), min(rel, 127)
@@ -70,6 +120,20 @@ class Engine:
 
     def render(self, n):
         out = []
+        pmul = 1 << 30
+        if self.lfo_amp:
+            sgn = s32(self.lfo_ph ^ 0x80000000)
+            tri = (sgn ^ (sgn >> 31)) - (1 << 30)
+            pl = mul(tri, self.lfo_amp)
+            x = mul(pl, 357913941)
+            y = mul(x, 1488522236)
+            y2 = mul(y, y)
+            y3 = mul(y2, y)
+            pmul = (1 << 30) + y + y2 + mul(y3, 1431655765)
+            self.lfo_ph = (self.lfo_ph + self.lfo_inc * n) & 0xffffffff
+        for v in self.v:
+            v["inc"] = (v["inc"] + ((s32(v["inc_tgt"]) - s32(v["inc"])) >> 3)) & 0xffffffff
+            v["incm"] = v["inc"] if pmul == (1 << 30) else (mul(v["inc"], pmul) << 1) & 0xffffffff
         for _ in range(n):
             self.pos += (self.pos_tgt - self.pos) >> POS_SLEW
             idx = self.pos >> 16
@@ -104,9 +168,17 @@ class Engine:
                 a = (a1 << 12) + ((fr * (a2 - a1)) >> 2)
                 b = (b1 << 12) + ((fr * (b2 - b1)) >> 2)
                 s = a + mul(b - a, fa)
-                v["phase"] = (ph + v["inc"]) & 0xffffffff
+                v["phase"] = (ph + v["incm"]) & 0xffffffff
                 total += s32(mul(mul(s, v["gain"]), env) << 4)
-            out.append(s32(total))
+            total = s32(total)
+            if self.drive:
+                tt = mul(total, self.drive)
+                tt = max(-(1 << 22), min(1 << 22, tt))
+                tt <<= 8
+                t3 = mul(mul(tt, tt), tt)
+                yy = tt - (mul(t3, 715827883) << 2)
+                total = mul(yy, self.makeup)
+            out.append(total)
         return out
 
 
@@ -161,6 +233,27 @@ def scenario_note():
     blocks[1600] = [(4, -60 * 256, 0, 0)]                    # below it, voic 0 -> 1
     blocks[1800] = [(4, 3 * 256, 7, 9)]                      # voic 9 -> 4
     blocks[2000] = [(5, 0, 127, 127)]
+    # SETUP: vibrato, an octave up and a fine tune, then drive and a lower level, then back to neutral
+    blocks[1200] = [(7, 0xAB5, 0, 0)]                      # C major
+    blocks[1201] = [(4, 0, 4, 4)]                          # a minor chord snaps
+    blocks[1260] = [(4, 2 * 256, 7, 3)]
+    blocks[1320] = [(7, 0x5AD, 0, 0)]                      # another mask
+    blocks[1321] = [(4, 5 * 256, 3, 4)]
+    blocks[1380] = [(7, 0, 0, 0)]                          # no scale
+    blocks[1381] = [(4, 5 * 256, 4, 4)]
+    blocks[100] = [(6, 60 | 50 << 8 | 2 << 16 | 70 << 24, 0 | 0 << 8, 0)]
+    blocks[101] = [(4, 0, 4, 3)]
+    blocks[700] = [(6, 0 | 30 << 8 | 0 << 16 | 64 << 24, 80 | 1 << 8, 0)]
+    blocks[701] = [(4, 5 * 256, 3, 4)]
+    blocks[760] = [(4, 7 * 256, 3, 4)]                       # POLY: notes on the next voices
+    blocks[820] = [(4, 12 * 256, 3, 4)]
+    blocks[880] = [(4, 16 * 256, 3, 4)]
+    blocks[940] = [(4, 19 * 256, 3, 4)]                      # the fifth takes voice 0 again
+    blocks[1000] = [(4, -5 * 256, 3, 2)]                     # a pool of two
+    blocks[1100] = [(6, 127 | 127 << 8 | 1 << 16 | 20 << 24, 127 | 0 << 8, 0)]
+    blocks[1101] = [(4, 0, 0, 2)]
+    blocks[1700] = [(6, 0 | 0 << 8 | 1 << 16 | 64 << 24, 0 | 0 << 8, 0)]
+    blocks[1701] = [(4, 0, 0, 1)]
     return blocks
 
 

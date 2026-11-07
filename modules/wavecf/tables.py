@@ -76,6 +76,23 @@ def tc_tab():
     return out
 
 
+def lfo_tab():
+    """Pitch LFO phase step a sample for rate raw 0..127: CHOMPI's rate law, 0.14 Hz x (65.41 / 0.14)^(raw / 127)."""
+    return [int(round(0.14 * (65.41 / 0.14) ** (r / 127.0) / SR * 4294967296.0)) for r in range(128)]
+
+
+def comp_tab():
+    """COMP raw 0..127 -> (drive Q26, makeup Q28). Raw 0 is bypass. Drive 1 .. 20 exponentially; the makeup keeps a
+    nominal peak (0.36: four voices) at its level through the cubic soft clip y = x - x^3 / 3 (|x| <= 1)."""
+    out = [(0, 0)]
+    for r in range(1, 128):
+        d = 20.0 ** ((r - 1) / 126.0)
+        x = min(1.0, d * 0.36)
+        y = x - x ** 3 / 3.0
+        out.append((int(round(d * (1 << 26))), int(round(0.36 / y * (1 << 28)))))
+    return out
+
+
 def base_inc():
     return int(round(BASE_HZ / SR * 4294967296.0))
 
@@ -91,7 +108,15 @@ def text_c():
     t = tc_tab()
     L += ["    " + ", ".join(str(v) for v in t[k:k + 8]) + "," for k in range(0, len(t), 8)] + ["};",
                                                                                           "const int8_t wcf_chord[32][4] = {"]
-    L += ["    {" + ", ".join(str(v) for v in c) + "}," for c in CHORDS] + ["};", ""]
+    L += ["    {" + ", ".join(str(v) for v in c) + "}," for c in CHORDS] + ["};"]
+    ct = comp_tab()
+    L += ["const int32_t wcf_lfo[128] = {"]
+    t = lfo_tab()
+    L += ["    " + ", ".join(str(v) for v in t[k:k + 8]) + "," for k in range(0, 128, 8)] + ["};",
+                                                                                         "const int32_t wcf_comp_drive[128] = {"]
+    L += ["    " + ", ".join(str(v[0]) for v in ct[k:k + 8]) + "," for k in range(0, 128, 8)] + ["};",
+                                                                                              "const int32_t wcf_comp_makeup[128] = {"]
+    L += ["    " + ", ".join(str(v[1]) for v in ct[k:k + 8]) + "," for k in range(0, 128, 8)] + ["};", ""]
     return "\n".join(L)
 
 

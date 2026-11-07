@@ -19,6 +19,38 @@ void eng_init(Engine *e, const int16_t *table, int32_t atk_d0, int32_t rel_d0)
     e->rel_d0 = rel_d0;
 }
 
+void eng_adsr(Engine *e, int32_t atk_d0, int32_t rel_d0)
+{
+    e->atk_d0 = atk_d0;
+    e->rel_d0 = rel_d0;
+}
+
+void eng_setup(Engine *e, int32_t lfo_amp, uint32_t lfo_inc, int32_t drive, int32_t makeup, int32_t poly, int32_t tune_off)
+{
+    e->lfo_amp = lfo_amp;
+    e->lfo_inc = lfo_inc;
+    e->drive = drive;
+    e->makeup = makeup;
+    e->poly = poly;
+    e->tune_off = tune_off;
+}
+
+/* a triangle, Q30, -1 .. 1 */
+static inline int32_t tri30(uint32_t ph)
+{
+    int32_t s = (int32_t)(ph ^ 0x80000000u);
+    return (s ^ (s >> 31)) - (1 << 30);
+}
+
+/* 2^x for |x| <= 1/6 (x Q30), cubic, result Q30 */
+static inline int32_t exp2_30(int32_t x)
+{
+    int32_t y = mul(x, 1488522236);                /* x ln2, Q30 */
+    int32_t y2 = mul(y, y);                        /* y^2 / 2, Q30 */
+    int32_t y3 = mul(y2, y);                       /* y^3, Q28 */
+    return (1 << 30) + y + y2 + mul(y3, 1431655765);   /* + y^3 / 6, Q30 */
+}
+
 void eng_pos(Engine *e, int32_t pos)
 {
     if (pos < 0) pos = 0;
@@ -29,7 +61,8 @@ void eng_pos(Engine *e, int32_t pos)
 void eng_on(Engine *e, int v, uint32_t inc, int32_t gain)
 {
     Voice *p = &e->v[v];
-    p->inc = inc;
+    p->inc_tgt = inc;
+    if (p->mode == IDLE) p->inc = inc;      /* a silent voice starts at its pitch; a sounding one glides to it */
     p->gain = gain;
     p->gate = 1;
     p->gate_prev = 0;           /* a rising edge for the next render, also on a sounding voice */
@@ -42,6 +75,19 @@ void eng_off(Engine *e, int v)
 
 void eng_render(Engine *e, int32_t *out, int n)
 {
+    /* the pitch LFO, once a call: +-2 semitones at full depth (CHOMPI's pitchLfo, 2^(lfo * 2 / 12)) */
+    int32_t pmul = 1 << 30;
+    if (e->lfo_amp) {
+        int32_t pl = mul(tri30(e->lfo_ph), e->lfo_amp);
+        pmul = exp2_30(mul(pl, 357913941));        /* x 1/6 */
+        e->lfo_ph += e->lfo_inc * (uint32_t)n;
+    }
+    for (int k = 0; k < NV; ++k) {
+        Voice *v = &e->v[k];
+        v->inc += (uint32_t)(((int32_t)v->inc_tgt - (int32_t)v->inc) >> 3);   /* ~3 ms to the new pitch (16-sample calls) */
+        v->incm = pmul == (1 << 30) ? v->inc : (uint32_t)(mul((int32_t)v->inc, pmul) << 1);
+    }
+
     for (; n > 0; --n) {
         e->pos += (e->pos_tgt - e->pos) >> POS_SLEW;
         int idx = e->pos >> 16;
@@ -77,8 +123,17 @@ void eng_render(Engine *e, int32_t *out, int n)
             int32_t a = (a1 << 12) + ((fr * (a2 - a1)) >> 2);
             int32_t b = (b1 << 12) + ((fr * (b2 - b1)) >> 2);
             int32_t s = a + mul(b - a, fa);
-            v->phase = ph + v->inc;
+            v->phase = ph + v->incm;
             sum += mul(mul(s, v->gain), env) << 4;
+        }
+        if (e->drive) {                                        /* COMP: drive into the cubic soft clip y = x - x^3 / 3 */
+            int32_t t = mul(sum, e->drive);                    /* Q22 */
+            if (t > (1 << 22)) t = 1 << 22;
+            if (t < -(1 << 22)) t = -(1 << 22);
+            t <<= 8;                                           /* Q30 */
+            int32_t t3 = mul(mul(t, t), t);                    /* Q28 */
+            int32_t y = t - (mul(t3, 715827883) << 2);         /* Q30 */
+            sum = mul(y, e->makeup);                           /* Q27 */
         }
         *out++ = sum;
     }
