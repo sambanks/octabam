@@ -1,6 +1,6 @@
 """Settings resolved for a remix, the refusals, and the lock file.
 
-git show 76fd8466:docs/proposals/BRAIN.md sections 2 and 4 are the rules. Layers 1 and 2
+docs/specs/BRAIN.md sections 2 and 4 are the rules. Layers 1 and 2
 (the manifest's default and the remix's value or Pin) are resolved here, at
 build. Layers 3 and 4 (card and project) exist only when the remix carries
 the BRAIN module.

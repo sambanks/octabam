@@ -83,7 +83,7 @@ the gate. A remix declares `family` (`rig`, `effects`, `mods`,
 `reference`, `probes`) and the same `proof` pair.
 
 Settings a module keeps on the card (a checkbox, a profile) go in BRAIN
-(`modules/brain`; `git show 76fd8466:docs/proposals/BRAIN.md` is the design), and in no
+(`modules/brain`; `docs/specs/BRAIN.md` is the design), and in no
 file of the module's own; `docs/contributing/MODULES.md` "Settings on the
 card".
 

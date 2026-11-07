@@ -14,7 +14,7 @@ participants in it (registry.remix), as it appends MEMORY; no remix lists
 it. The participants' sources are not edited: a submodule's stays its
 author's (REC_TRIG_MUTE), an in-tree module's keeps its proven bytes.
 
-docs/contributing/SHARED_SITES.md says how HOOKS relates to STORE, EVENTS and Override. Bridges:
+docs/specs/SHARED_SITES.md says how HOOKS relates to STORE, EVENTS and Override. Bridges:
 
   * track_key -- the [TRACK]-held key layer 0x400d164a. Its keys field
     0x400d164e points at stock's six records at 0x400d1594 (0x1a bytes

@@ -4,7 +4,7 @@ from its descriptor in RAM at the moment of the select.
 
     python3 tools/verify/verify_desc_defaults.py [REMIX] [--project DIR]
 
-The BRAIN module's card-layer defaults rest on it (git show 76fd8466:docs/proposals/BRAIN.md
+The BRAIN module's card-layer defaults rest on it (docs/specs/BRAIN.md
 section 5.1): it writes the card's values over the descriptor
 bytes (P+0x5e, 12 bytes) after the boot, and nothing else is patched.
 

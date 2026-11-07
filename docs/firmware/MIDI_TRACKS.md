@@ -2,7 +2,7 @@
 
 Where a MIDI track's setup lives in the Part, what the UI writers store when
 a setup value changes, how the unit sends it out, and where the CTRL pages
-draw their knob labels. Written for BRAIN (`git show 76fd8466:docs/proposals/BRAIN.md`) and
+draw their knob labels. Written for BRAIN (`docs/specs/BRAIN.md`) and
 for any module that applies a template to the eight MIDI tracks.
 
 Markers: ✅ read from `out/raw/section_3_MAIN_OS.bin` in

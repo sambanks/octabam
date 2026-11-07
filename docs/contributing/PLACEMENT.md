@@ -364,7 +364,7 @@ bytes a runtime writes about itself.
 ## Shared sites
 
 A stock site claimed by two modules is refused by the ledger unless a platform module or a bridge carries it:
-[SHARED_SITES.md](SHARED_SITES.md). In the free ROM, SCALE QUANTIZER's 2,916 B unit beside REPITCH's 576 B
+[SHARED_SITES.md](../specs/SHARED_SITES.md). In the free ROM, SCALE QUANTIZER's 2,916 B unit beside REPITCH's 576 B
 leaves CC MAP's 724 B cave no run (measured 28 Sep 2026), so `mods` carries REPITCH and CC MAP without the quantizer.
 Until 6 Oct 2026 three bridges carried Octakit's shared sites (`scenes-kits`, `scenes-p2-kits`, `kits-reload`); KITS
 leaves the stock Part routines and the CC dispatch as stock, so none is needed (`git show 2063370f:modules/kits-reload/README.md`).

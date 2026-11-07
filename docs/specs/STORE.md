@@ -1,0 +1,227 @@
+# STORE: events, side files and native Part access
+
+The contract for modules that save, load or copy with a project, and for modules that keep settings in working Parts. A client declares
+`requires=("STORE",)` and is called by STORE at the stock sites below, so a site is held once. Behaviour, measurements and
+provenance are in the [STORE module](../../modules/store/README.md). Which of STORE, EVENTS and HOOKS fits a site:
+[SHARED_SITES.md](SHARED_SITES.md).
+
+## Events
+
+| event | stock site | arguments to a handler |
+|---|---|---|
+| loadall_pre / post | `0x40090504` (load of every bank) | none |
+| loadmask_pre / post | `0x400905d4` (masked bank load) | d1 = mask, d2 = return address |
+| newproj | `0x400909d8` (new, empty project) | none |
+| bankw_pre | `0x400918aa` (inside the bank writer, after the project directory exists) | d1 = mask of banks written |
+| bankw_post | `0x400917c8` (bank writer, after it returns) | none |
+| pstore_pre / post | `0x4008ee74` (project store) | none |
+| preload_post | `0x4008f180` (project reload) | none |
+| bankcopy | `0x4008ee42`, `0x4008f14e`, and the four `d5` loads at `0x4008ef9a`, `0x4008f02e`, `0x4008f2a6`, `0x4008f33a` (stock `.work` / `.strd` file copy) | d0 = destination path, d1 = source path; after stock's copy |
+| tocs1 | `0x4000faf0` (current bank into CS1) | d0 = bank; before stock's copy |
+| fromcs1 | `0x40025808` (power-up bank from CS1) | d0 = bank; after stock's call |
+| partsaved | `0x4004a9c4` (Part Save tail) | d0 = part |
+| partclear | `0x4004a9d0` (Part Clear entry) | d0 = part |
+| ctl (not an event) | `0x40061e00` (the encoder dispatch call) | opens the refusal prompt, scrolls it; else KITS' list scroll or stock's dispatch |
+
+A handler may clobber every register. Handlers of one event run in the order
+of `CLIENTS` in `manifest.py`. Wrappers keep one return slot per event and do
+not re-enter.
+
+## Clients
+
+`CLIENTS` in `manifest.py` lists, per module key, the symbol prefix and the
+events it handles; the handler for event `e` is `<prefix>_st_<e>`. A client not
+in the remix is left out of the tables, and a handler named there that the
+link cannot find stops the build. A client declares `requires=("STORE",)`.
+
+| client | events |
+|---|---|
+| PLOCKS P2 (`plk`) | loadall_pre, loadmask_pre, newproj, bankw_pre, bankcopy, tocs1, fromcs1 |
+| KITS (`kits`) | loadall_pre/post, loadmask_pre/post, newproj, bankw_post, pstore_pre/post, preload_post, partsaved, partclear |
+| MIDI SCENES (`scn`) | loadall_pre/post, loadmask_pre/post, newproj, bankw_post, pstore_pre/post, preload_post, tocs1, fromcs1, partclear |
+| PERSISTENT BUFFERS (`pbf`) | loadall_post, loadmask_post, pstore_pre, preload_post |
+| MORPH (`mrp`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+| FREE LOOP (`fl`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+| SCALES (`sc`) | loadall_pre, loadmask_pre, newproj, bankw_post, pstore_pre/post, preload_post, partclear |
+| CHORDS FACTORY (`ch`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+| VARISPEED (`vs`) | partsaved, partclear |
+
+## File calls
+
+`store_path`, `store_fopen`, `store_fread`, `store_fwrite`, `store_fclose`
+and `store_crc32` (running value in d1, 0 to start). A client owns a 4,120-byte
+context (stock file object and its 4 KB buffer), so one client's open file is
+never another's. `scenes.work` uses them; KITS and PLOCKS P2 keep their own
+copies.
+
+## Refused files
+
+A client that cannot use a file (unknown version, bad length or CRC) calls
+`store_refuse(client id, argument)` and leaves the file alone: it is never
+written over. STORE lists up to 16 refusals (`store_pend`, `store_npend`,
+cleared at a load of every bank). At the first encoder turn after the load
+(the only UI-task site STORE holds; a list cannot be opened from the engine
+task) a dialog names the file and explains which saved data could not be
+loaded: FX page 2 locks, saved Kits or MIDI scenes. It says UNREADABLE OR
+INCOMPATIBLE and offers NO: KEEP FILE / YES: OPTIONS.
+YES opens the three recovery choices. NO keeps the
+file protected and dismisses the prompt until the next project load:
+
+| row | answer | what the client does |
+|---|---|---|
+| KEEP FILE / SKIP SAVED DATA | `ANS_IGNORE` | keeps the file protected and does not load its saved data |
+| START FRESH / REPLACE FILE | `ANS_OVERWRITE` | starts empty (KITS: as a missing file, the stock Parts become Kits); the next save replaces the original file |
+| BACKUP FILE THEN START FRESH | `ANS_BACKUP` | starts fresh, and the next save first copies the original file to `.bak` |
+
+This is recovery, not a format upgrade: the old saved data is not converted.
+The prompt can also appear for damaged or incomplete files, not just files
+from development builds. The exact cause needs the refused file to be examined.
+
+LEVEL scrolls the list; YES answers; NO closes it without an answer, leaving the
+entries listed and asking no more until the next load. No answer touches the
+card: the callbacks run in the UI task and the save in the engine task (a file
+copy called through the port's `--call` never returned). Client ids: 0 PLOCKS P2
+(argument = the bank), 1 KITS, 2 MIDI SCENES, 3 PERSISTENT BUFFERS, 4 MORPH, 5 FREE LOOP, 6 SCALES, 7 CHORDS FACTORY. PLOCKS P2 used
+to read a refused `p2lkNN.work` as empty and overwrite it at the next bank write.
+
+## Native Part access
+
+STORE also owns the native copy/reset boundaries used by modules that keep
+settings in working Parts. The native Part service is selected only when a
+registered Part client is in the remix; other STORE
+compositions retain their existing code and hooks.
+
+Use this service when a module needs to edit native Part bytes, read a track's
+playing Part independently of the editor, or discard temporary history after
+Part replacement. Continue using the side-file events above for companion
+files. A module that only reacts to transport or editor gestures uses EVENTS.
+
+### Adding a client
+
+1. Declare `requires=('STORE',)` in the module manifest.
+2. Add one entry to `PART_CLIENTS` in `modules/store/parts.py`: the native
+   Part-relative read windows and writable byte offsets. Read windows are
+   merged and snapshotted once. Write offsets must belong to a read window;
+   out-of-Part ranges and invalid registrations fail before linking.
+3. Declare ownership of custom bytes in the module's `Claims.part_window`.
+   STORE's access registration does not allocate storage or grant two modules
+   independent ownership of the same field. The shared MIDI SETUP flags byte
+   remains owned once by STORE; clients preserve the other bits.
+4. Use the explicit context API below. Validate the field's meaning and range
+   in the client. Keep note ownership, routing and other musical state there.
+5. Test the client alone and alongside existing clients, including native
+   save/reload/clear, interrupted replacement and disabled behavior. Declare
+   the client gate in its own manifest.
+6. A client that uses a MIDI SETUP byte adds it to the table below in the
+   same PR, merged or not yet.
+
+### The MIDI SETUP record's bytes
+
+Each MIDI track's setup record is 36 bytes at Part `+0x4e2 + 36*t`
+(layout: [MIDI tracks](../firmware/MIDI_TRACKS.md) section 1). The
+table says which module uses which byte, so that two modules never pick the
+same one; it lists modules not yet merged too. The "unused" bytes are
+unused by stock's pages; the record has no byte left that no module uses.
+
+| byte | offset | stock | module | state |
+| --- | --- | --- | --- | --- |
+| 0-2 | `+0x00..0x02` | CHAN, BANK, PROG | — | stock |
+| 3 | `+0x03` | unused (NOTE SETUP slot D) | MIDI FOLLOW: source | #824 |
+| 4 | `+0x04` | SBNK | — | stock |
+| 5 | `+0x05` | unused (NOTE SETUP slot F) | MIDI HARMONY: OFF / NOTE / CHORD | radiohagen's repo |
+| 6-11 | `+0x06..0x0b` | LFO PMTR, WAVE | — | stock |
+| 12 | `+0x0c` | unused (ARP SETUP slot A) | the shared flags byte, owned by STORE: MIDI FOLLOW mode / response (bits 0-1), MIDI LOOPBACK DEST (bits 2-3) | #824; merged |
+| 13 | `+0x0d` | unused (ARP SETUP slot B) | MIDI FOLLOW: remembered fixed octave | #824 |
+| 14 | `+0x0e` | ARP LEN | — | stock |
+| 15 | `+0x0f` | unused (ARP SETUP slot D) | MIDI FOLLOW: remembered relative octave | #824 |
+| 16 | `+0x10` | unused (ARP SETUP slot E) | MIDI HARMONY: VOIC / SPRD / ROOT | radiohagen's repo |
+| 17 | `+0x11` | ARP KEY | MIDI SCALES and SCALES write it (values 25-84 past stock's 0-24); MIDI FOLLOW, MIDI HARMONY and SCALES read it (`store_part_midi_key`) | merged; SCALES PR |
+| 18 | `+0x12` | unused (CTRL1 SETUP slot A) | MIDI HARMONY: CHRD (bits 0-2), SIZE (bits 3-4) | radiohagen's repo |
+| 19 | `+0x13` | unused (CTRL1 SETUP slot B) | MIDI HARMONY: DEG, 0-83 | radiohagen's repo |
+| 20-29 | `+0x14..0x1d` | CC1..CC10 numbers | — | stock |
+| 30-35 | `+0x1e..0x23` | LFO MULT, TRIG | — | stock |
+
+Measured on stock 1.40C for `+0x12` (SCALES, 30 Oct 2026, under the port):
+the load keeps the byte (a value past 127 loads as 127), SAVE PROJECT
+writes it back, and CTRL1 SETUP's YES (`0x4003fe14`) writes back the value
+its window read when it opened (`0x40059620`), so a value no page shows
+survives a CTRL1 SETUP edit. `+0x13`, the same window's other slot, is
+inferred to behave the same and is not measured. The other unused bytes
+were not measured by SCALES; MIDI FOLLOW's and MIDI HARMONY's gates cover
+theirs. An unused byte can still be rewritten on a save
+([trap](../contributing/TRAPS.md#trap-unused-bytes)): mark, load,
+save and diff before taking one. Byte numbers: radiohagen's MIDI HARMONY
+`KITS.md`; the pages' empty slots: SCALES, read from the pages drawn under
+the port.
+
+Current clients read the native MIDI SETUP window; the general byte API also
+supports declared non-MIDI Part windows. A synthetic regression exercises two
+separate non-MIDI windows, odd packed-snapshot stride and the last Part byte.
+No untested audio-field layout or audio parameter semantics are claimed.
+
+### Register ABI
+
+All entries preserve registers other than d0 and condition codes. A context
+is `bank * 4 + Part` (0–63), with no dependence on the current UI selection
+after it is captured. Offsets are relative to a native working Part, not a
+bank file's serialized header. No raw writable pointer is returned.
+
+| entry | input | result in d0 |
+| --- | --- | --- |
+| `store_part_ui_context` | none | edited bank/Part, or −1 |
+| `store_part_audio_context` | d0 = audio track 0–7 | audio-engine bank/Part; applied-context fallback while unlatched, or −1 |
+| `store_part_midi_context` | d0 = MIDI track 0–7 | MIDI-engine bank/Part; applied-context fallback while unlatched, or −1 |
+| `store_part_read` | d0 = Part byte offset, d1 = context | coherent byte, or −1 outside a registered read window/context |
+| `store_part_write` | d0 = Part byte offset, d1 = context, d3 = byte | 1 accepted; 0 for invalid/unregistered input or a Part currently being replaced |
+| `store_part_epoch` | d0 = context | wrapping 32-bit replacement counter; invalid context returns −1 |
+| `store_part_midi_read` | d0 = MIDI track, d1 = context, d2 = SETUP byte 0–35 | layout adapter for the general read API |
+| `store_part_midi_write` | same, d3 = value 0–127 | layout adapter for the general write API |
+| `store_part_midi_key` | d0 = MIDI track, d1 = context | read-only KEY byte; no writable permission is added |
+
+The MIDI readers share the general reader's register frame. Valid track/field
+pairs already prove the Part bounds; context, registered-window and snapshot
+checks still use the shared service. The ordinary MIDI read and KEY paths take
+44 and 42 executed instructions respectively with the current MIDI window,
+down from 48 and 53 before this optimization (`verify_store_part` checks the
+ceilings). These are instruction counts under the CPU harness, not hardware
+cycle or utilization measurements.
+
+Native replacement and setting writes use the native single UI-writer path;
+playback/interrupt readers may interrupt it. This API does not serialize
+competing writers: a client must not write from a playback interrupt or another
+concurrent writer.
+
+Writes update the working byte, its current-bank battery-backed CS1 mirror
+and native Part/bank dirty markers in one short interrupt-masked section.
+Saved Parts and card files remain owned by the native save operations.
+Unchanged writes do not mark clean state dirty. A busy write returns zero;
+the client must not report success or spin waiting for the replacement; retry
+from the UI after the native operation returns.
+
+Native copy and initialization run with their original interrupt state.
+Readers of affected contexts see the outgoing snapshot until publication;
+unaffected Parts continue to read their native data. Publication increments
+the counters for exactly the affected Parts and exposes the incoming bytes
+in one short critical section. Compare counter inequality, not ordering;
+ordinary single-setting edits do not increment it. Snapshot state and counters
+are runtime-only and initialized by the existing loader. Existing saved
+settings and stock-firmware fallback behavior do not change.
+
+Replacement notifications are polling through `store_part_epoch`; there is no
+runtime subscriber list. Optional build-time companion callbacks in
+`PART_CALLBACKS` can prepare side data before replacement. They run outside
+the publication critical section, must not re-enter replacement or yield, and
+cannot veto the native operation. Read-only `store_part_snapshot_bank` and
+`store_part_snapshot_parts` expose the currently replacing bank and Part mask
+for companion snapshots; only STORE may write them. Bulk copies spanning
+multiple native banks are outside this contract.
+
+When a composition selects no companion callback, the build omits its setup
+and replacement walk. STORE's shared APIs and publication rules stay available.
+
+The cold resident gates use stock copy/init before the runtime is loaded.
+The original post-loader activation point publishes the DRAM targets. The
+new names and generic windows do not remove this cold-start protection.
+When BOOT TRACE is also selected, HOOKS calls its boot notification and then
+STORE's activation. Without a registered native Part client, STORE adds no
+boot hook and needs no bridge.

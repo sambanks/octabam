@@ -1,5 +1,5 @@
 """Settings declarations, layer 1 and 2 resolution, the remix refusals and
-the lock file (git show 76fd8466:docs/proposals/BRAIN.md sections 2 and 4), on fixture
+the lock file (docs/specs/BRAIN.md sections 2 and 4), on fixture
 modules; no firmware."""
 import pathlib
 import sys

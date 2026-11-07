@@ -22,7 +22,6 @@ Where each doc is, by who reads it. A module's own page is
 | [contributing/MODULES.md](contributing/MODULES.md) | writing a module: manifests, descriptors, DSP and ColdFire declarations, the ledger |
 | [contributing/PLACEMENT.md](contributing/PLACEMENT.md) | where a module's code goes and what is free, measured |
 | [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) | the demand loader: effects copied into the DSP's shared window while a track uses them; DLPUMP, DLCOPY, the stub, the reverb guard, SIDECHAIN_COMPRESSOR's hook stubs, the window layout, measurements on a unit |
-| [contributing/SHARED_SITES.md](contributing/SHARED_SITES.md) | two modules on one stock site: STORE, EVENTS, HOOKS and `Override`, which to use, the machine chain, what is open |
 | [contributing/COSTS.md](contributing/COSTS.md) | what each effect costs on a unit, per slot, and the worst-case DSP load of a remix; `tools/remix/costs.py` |
 | [contributing/TESTING.md](contributing/TESTING.md) | every gate, what it proves and cannot see; `make check`, `make reach`, shards, `make accept`, bit-identity, CI |
 | [contributing/TOOLING.md](contributing/TOOLING.md) | every tool by pipeline stage, and which README each tool directory has |
@@ -34,6 +33,19 @@ Where each doc is, by who reads it. A module's own page is
 | [contributing/FAILURE_MODES.md](contributing/FAILURE_MODES.md) | what has gone wrong on a unit: symptom, cause, fix, the gate that catches it |
 | [contributing/TRAPS.md](contributing/TRAPS.md) | the trap register: what has cost real work in the code, build, emulators and harness — symptom, fix, the gate that catches it |
 | [../AGENTS.md](../AGENTS.md) | working rules, worktrees, build and check, and the trap index (for people and coding agents) |
+
+## Specs
+
+[specs/](specs/README.md): the contracts between modules, and between modules and tools. A spec says what is guaranteed and what a client must do;
+measurements and history stay in the module's README.
+
+| doc | what it is |
+|---|---|
+| [specs/SHARED_SITES.md](specs/SHARED_SITES.md) | two modules on one stock site: STORE, EVENTS, HOOKS and `Override`, which to use, the machine chain, what is open |
+| [specs/STORE.md](specs/STORE.md) | save/load/copy events, side-file calls, refused files, native Part access, the MIDI SETUP byte table, the register ABI |
+| [specs/EVENTS.md](specs/EVENTS.md) | transport, accepted-MIDI, held-editor and copy boundaries; the registration form and each family's contract |
+| [specs/HOOKS.md](specs/HOOKS.md) | every bridge, its site and participants; adding one |
+| [specs/BRAIN.md](specs/BRAIN.md) | settings declarations, the four layers, the files on the card and in the project, the brain file's byte format |
 
 ## The tools
 
@@ -67,10 +79,10 @@ Removed proposals, each recovered with `git show 76fd8466:docs/proposals/<file>`
 | file | why removed | where it went |
 |---|---|---|
 | `FIRMWARE_SWITCHER.md`, `BOOT_DEFAULT.md` | REMIX SWITCH shipped | firmware facts in [firmware/BOOT.md](firmware/BOOT.md); behaviour in [REMIX SWITCH](../modules/remix-switch/README.md) |
-| `OTX_PROJECT_PROPOSAL.md`, `OTX_MODULE_GUIDELINES.md` | replaced by BRAIN and the modules that use it | BRAIN.md section 14 lists what BRAIN took from OTX |
+| `OTX_PROJECT_PROPOSAL.md`, `OTX_MODULE_GUIDELINES.md` | replaced by BRAIN and the modules that use it | section 14 of the removed BRAIN design lists what BRAIN took from OTX |
 | `USB_HANDOFF.md`, `USB.md` | session handoff (15 Oct 2026) and the design that merged four USB modules into one with run-time settings; built, with six settings where it proposed two (LAYOUT, INPUTS) | [USB](../modules/usb/README.md) |
-| `SHARED_HOOKS.md` | built as HOOKS; PARTS dropped | [contributing/SHARED_SITES.md](contributing/SHARED_SITES.md) |
-| `BRAIN.md` | built: the settings, defaults and templates store; its section numbers are cited in `tools/remix/brain*.py`, `schema.py` and `modules/brain` | [BRAIN](../modules/brain/README.md), `tools/remix/brainfile.py` (the file format) |
+| `SHARED_HOOKS.md` | built as HOOKS; PARTS dropped | [specs/SHARED_SITES.md](specs/SHARED_SITES.md) |
+| `BRAIN.md` | built | sections 1-8 (declarations, layers, files, format) are [specs/BRAIN.md](specs/BRAIN.md); sections 9-15 (menu, tooling, gates, phases, OTX) stay in git; [BRAIN module](../modules/brain/README.md) |
 | `SCOPE.md` | shipped | [SCOPE](../modules/scope/README.md) |
 | `DEMAND_LOAD.md`, `SC_DEMAND_LOAD.md` | merged | [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) |
 
