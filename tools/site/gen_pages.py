@@ -83,6 +83,7 @@ def _label(m) -> str:
         "distorx": "DisTorX",
         "lofi-amf-fix": "Lo-Fi AMF fix",
         "octa303": "OCTA-303",
+        "wavecf": "WAVE",
         "plocks-p2": "Page 2 parameter locks",
         "rec-cs1-skip": "Recorder CS1 skip",
         "rec-trig-mute": "Recorder trig mute",
