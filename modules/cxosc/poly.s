@@ -1276,59 +1276,58 @@ sy_wl_done:
         rts
 
 | ---- WIDTH ramp-balance (saw): d1=saw Q14, d2=WIDTH → d1. 64 = classic. --
-| Full-amp rise/fall skew (not bias — bias only got quieter on the unit).
-| Phase proxy p = saw+16384; peak = WIDTH<<8. Lerp asym↔saw by |WIDTH-64|/64
-| so 64 is bit-identical to the input saw. Keeps d2=WIDTH. Parks d0/d3/d7.
+| Full-amp rise/fall skew. Phase proxy p = saw+16384; peak = WIDTH<<8.
+| Lerp asym↔saw by |WIDTH-64|/64. Keeps d0 (square!) and d2=WIDTH.
+| Parks d3/d7 + scratch. CX 51 left d0=0 after the k test → CMOR 127 silent.
 sy_wramp:
+        move.l  %d0,-(%sp)               | MUST keep square / caller d0
         move.l  %d2,-(%sp)
         andi.l  #127,%d2
-        move.l  %d2,%d0
-        subi.l  #64,%d0                  | k
+        move.l  %d2,%d3
+        subi.l  #64,%d3                  | k in d3
         beq     sy_wr_done
-        move.l  %d0,-(%sp)               | k
-        move.l  %d3,-(%sp)
         move.l  %d7,-(%sp)
         move.l  %d1,%d7                  | original saw
         addi.l  #16384,%d1               | p ∈ 0..32768
-        move.l  %d2,%d3
-        lsl.l   #8,%d3                   | peak = WIDTH<<8
-        cmpi.l  #256,%d3
+        move.l  %d2,%d0
+        lsl.l   #8,%d0                   | peak = WIDTH<<8
+        cmpi.l  #256,%d0
         bge     sy_wr_pk
-        move.l  #256,%d3                 | avoid /0; WIDTH 0 → near falling saw
+        move.l  #256,%d0
 sy_wr_pk:
-        cmpi.l  #32512,%d3
+        cmpi.l  #32512,%d0
         ble     sy_wr_pk2
-        move.l  #32512,%d3
+        move.l  #32512,%d0
 sy_wr_pk2:
-        cmp.l   %d3,%d1
+        cmp.l   %d0,%d1
         bge     sy_wr_fall
         | rise: p * 32768 / peak − 16384
         lsl.l   #8,%d1
         lsl.l   #7,%d1
-        divs.l  %d3,%d1
+        divs.l  %d0,%d1
         subi.l  #16384,%d1
         bra     sy_wr_blend
 sy_wr_fall:
         | 16384 − (p−peak) * 32768 / (32768−peak)
-        move.l  #32768,%d0
-        sub.l   %d3,%d0                  | denom
-        sub.l   %d3,%d1                  | p − peak
+        move.l  #32768,%d2
+        sub.l   %d0,%d2                  | denom
+        sub.l   %d0,%d1                  | p − peak
         lsl.l   #8,%d1
         lsl.l   #7,%d1
-        divs.l  %d0,%d1
+        divs.l  %d2,%d1
         move.l  #16384,%d0
         sub.l   %d1,%d0
         move.l  %d0,%d1                  | asym
 sy_wr_blend:
         | out = saw + (asym − saw) * |k| / 64
-        move.l  8(%sp),%d0               | k (under d7,d3)
+        move.l  %d3,%d0                  | k
         bpl     sy_wr_abs
         neg.l   %d0
 sy_wr_abs:
         move.l  %d1,%d3                  | asym
         sub.l   %d7,%d3                  | asym − saw
         muls.l  %d0,%d3
-        asr.l   #6,%d3                   | /64
+        asr.l   #6,%d3
         move.l  %d7,%d1
         add.l   %d3,%d1
         cmpi.l  #16384,%d1
@@ -1340,10 +1339,9 @@ sy_wr_hi:
         move.l  #-16384,%d1
 sy_wr_lo:
         move.l  (%sp)+,%d7
-        move.l  (%sp)+,%d3
-        move.l  (%sp)+,%d0               | drop k
 sy_wr_done:
         move.l  (%sp)+,%d2               | restore WIDTH
+        move.l  (%sp)+,%d0               | restore square / caller d0
         rts
 
 | ---- DPW saw (MMOR): d6=φ, d1=Δφ, a4=&z1 → d2 Q14. Parks d3/d7. ----------
