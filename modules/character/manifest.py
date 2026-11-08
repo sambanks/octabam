@@ -90,8 +90,7 @@ MODULE = Module(
               doc="saturation: TAPE (TapeHead), TUBE (DaTube, asymmetric) or INFL (OInflator); JClones, MIT"),
         Param(b"KEY", 0, 9, active=True, formatter=Formatter.WIDE_STEPPED,
               labels=("SELF", "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"),
-              doc="compressor key: SELF is this track's input, T1..T8 a track's level (not on master). "
-                  "T2..T8 need SIDECHAIN_COMPRESSOR in the remix; T1 also works from BusDelay"),
+              doc="key: SELF (own input) or T1..T8's level, not on master; T2..T8 need SIDECHAIN_COMPRESSOR"),
         Param(b"KLVL", 64, 128, active=True, formatter=_PLAIN,
               doc="how hard the keyed track drives the compressor: 64 is unity, 127 is x2"),
         _BLANK, _BLANK, _BLANK,
