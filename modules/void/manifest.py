@@ -51,7 +51,7 @@ MODULE = Module(
     author_url="https://github.com/ilia-murzinov",
     proof=Proof.HARDWARE,
     proof_note="MKII LATEST NP / VRCS VJ: SRC LFO|NBR, COLR/HPF main, SHPE/DPTH SETUP, DPTH default 127; verify_void",
-    doc="Input↔noise BAL; LFO/nbr AM + DRV/FDBK on noise only; WID stereo grit.",
+    doc="Scrape grit: dry↔noise BAL; LFO/nbr AM + DRV/FDBK on noise only; WID stereo.",
     menu=MenuEntry(
         # No free custom FX2 id left in-tree (SHATTER=0x0a, …). PLATE is
         # VERBERATION's (GATE VERB's until 6 Nov 2026). Replace COMB FILTER; DSP still sits in harvested PLATE.

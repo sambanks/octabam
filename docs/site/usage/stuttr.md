@@ -1,31 +1,26 @@
-A chance grain repeater. Input writes into the stock FX instance ring;
-RATE ticks roll CHNC to grab a SIZE grain and HOLD-loop it. Miss stays
-dry. MODE picks 1× / ½× / ¼× / random rate; REV is reverse chance per
-repeat. MIX 0 is exact dry.
+**Chance grain repeater** — input always writes the stock FX ring; on each
+RATE tick, CHNC may grab a SIZE grain and HOLD-loop it. Miss stays dry.
+Think probabilistic stutter / buffer grab, not a fixed delay. MODE sets
+1× / ½× / ¼× / random playback rate; REV is reverse chance per repeat.
+**MIX 0** is exact dry.
+
+![STUTTR: RATE → CHNC hit/miss → grab+HOLD or dry → MIX.](../../img/stuttr/path.svg)
 
 ## Access
 
-An effect on a track: select the track, press FX2 (or FX1 in remixes that
-list it there), and pick Stuttr from the chooser.
-
-![FX2 SETUP with Stuttr selected.](../../img/stuttr/setup.png)
-
-*FX2 SETUP with Stuttr selected.*
+Select a track, press FX2 (or FX1 in remixes that list it there), pick
+**Stuttr**.
 
 ## Operation
 
-Defaults leave CHNC at 0 (fully dry). Raise CHNC so grabs can fire; RATE
-sets how often attempts happen. HOLD keeps the grain repeating after a
-hit; engage and release each crossfade ~2 ms so the edges do not click.
-Try MODE HALF or QUART for pitched-down repeats; RND varies rate per wrap.
-REV at 0 is always forward; higher rolls reverse more often. SYNC defaults
+Defaults leave **CHNC** at 0 (never grabs). Raise CHNC so grabs can fire;
+**RATE** sets how often attempts happen. **HOLD** keeps the grain
+repeating after a hit; engage/release each crossfade ~2 ms so edges do
+not click. Try MODE **HALF** or **QUART** for pitched-down repeats; **RND**
+varies rate per wrap. **REV** at 0 is always forward. **SYNC** defaults
 to 8.
 
 ## Parameters
-
-![STUTTR main page.](../../img/stuttr/main.png)
-
-*STUTTR main page.*
 
 | Knob | Default | What it does |
 |---|---|---|

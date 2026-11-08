@@ -1,8 +1,8 @@
 # `scope` — SCOPE
 
 Full-screen **OSC**, **XY**, or **ALL** (4×2 mini OSC: T1–T4 left column,
-T5–T8 right, centre divider). Use it to see which tracks are actually
-making sound and to catch clipping before it hits the main out.
+T5–T8 right, centre divider; track-pad layout). G/P HUD and clip `!` on
+OSC / XY.
 
 **DOWN + TEMPO** opens; **UP + TEMPO** = [TUNER](../tuner/README.md).
 **UP** / **DOWN** cycle. **RIGHT** help; **LEFT** back.
