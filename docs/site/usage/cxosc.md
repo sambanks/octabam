@@ -1,7 +1,8 @@
 A **Buchla-style complex oscillator** as an Octatrack track machine: two
 operators in FM, a sine wavefolder after them, modulator feedback, and
-sine→saw morphs on each operator. West Coast voice — timbre from folding
-and index, not a filter ladder. Up to **four** mono tracks per Part.
+**sine → saw → square** morphs on each operator (SETUP **PWM** for the
+square end). West Coast voice — timbre from folding and index, not a
+filter ladder. Up to **four** mono tracks per Part.
 
 Built on Tim Hastie’s FM SYNTH ColdFire engine (local fork); remixes that
 ship CX OSC omit SYNTH MACHINE (same seat).
@@ -9,6 +10,10 @@ ship CX OSC omit SYNTH MACHINE (same seat).
 ![CX OSC signal path: mod → FM → carrier → MIX → FOLD → out.](../../img/cxosc/path.svg)
 
 ![MIX crossfades carrier and modulator into FOLD.](../../img/cxosc/mix.svg)
+
+![CX OSC PLAYBACK: PTCH RATO INDX FINE FOLD MIX.](../../img/cxosc/source.png)
+
+![SRC SETUP: CMOR MMOR DEC SYMM FDBK PWM.](../../img/cxosc/setup.png)
 
 ## Signal path
 
@@ -61,7 +66,7 @@ list first — **LEFT** reaches the machines.
 ### Pages
 
 - **PLAYBACK** — PTCH RATO INDX FINE FOLD MIX
-- **FUNC + PLAYBACK** — **SRC SETUP** — CMOR MMOR DEC SYMM FDBK (F blank)
+- **FUNC + PLAYBACK** — **SRC SETUP** — CMOR MMOR DEC SYMM FDBK PWM
 - **AMP** — ATK / HOLD / REL (engine-owned). Selecting CX seeds ATK 0 /
   HOLD INF / REL 0 and LEG MONO
 - **LFO** — PMTR 30..33 reach SETUP morphs / feedback (below). No VOIC /
@@ -87,12 +92,12 @@ work as usual.
 | PLAYBACK | FINE | −64..+63 ¢ | 0c (raw 64) | cents |
 | PLAYBACK | FOLD | 0..127 | 0 | wavefolder dry/wet after MIX; **0 = bypass** |
 | PLAYBACK | MIX | 0..127 | 0 | **folder input:** carrier↔modulator crossfade; **0 = carrier only** |
-| SETUP | CMOR | 0..127 | 0 | carrier morph: table sine → hard (phase-aligned) saw |
-| SETUP | MMOR | 0..127 | 0 | modulator morph: sine → bandlimited (DPW) saw — needs **INDX** |
+| SETUP | CMOR | 0..127 | 0 | carrier morph: **0** sine → **64** saw → **127** square |
+| SETUP | MMOR | 0..127 | 0 | modulator morph (same map; DPW saw/pulse) — needs **INDX** |
 | SETUP | DEC | 0..127 | 127 | index envelope after a trig; **127 = HOLD** (INDX stays with the knob) |
 | SETUP | SYMM | 0..127 | 64 | fold half-wave skew; **64 = even**; needs **FOLD** up |
 | SETUP | FDBK | 0..127 | 0 | modulator feedback (always the unmorphed mod sine) |
-| SETUP | F | — | — | blank |
+| SETUP | PWM | 0..127 | 64 | pulse width for square end (**64** ≈ 50%) |
 
 ### How the knobs interact
 
@@ -102,11 +107,12 @@ work as usual.
 - **Folder:** raise FOLD first. MIX chooses *what* gets folded (carrier
   vs modulator). SYMM tips which polarity the folder emphasises.
 - **Morph while folding:** high FOLD can make a saw-ish CMOR still sound
-  sine-ish — drop FOLD near 0 when auditioning CMOR.
+  sine-ish — drop FOLD near 0 when auditioning CMOR/PWM.
 - **DEC vs MIX:** DEC is SETUP C (index envelope). MIX is PLAYBACK F
   (folder input blend). Different jobs.
-- **CMOR vs MMOR:** same idea, different target. Carrier = hard saw on
-  the out; modulator = DPW so the FM path stays continuous.
+- **CMOR vs MMOR:** same **0** sine / **64** saw / **127** square map;
+  carrier = hard saw/pulse, modulator = DPW saw/pulse. **PWM** shapes
+  the square end only.
 
 ## LFO
 
@@ -125,8 +131,8 @@ scenes).
 1. INDX mid, DEC at HOLD, FOLD / MIX / FDBK / morphs at 0 — plain FM.
 2. Open **FOLD** — still folding the carrier only.
 3. Raise **MIX** — modulator enters the folder.
-4. CMOR for carrier brightness; MMOR only with INDX still up.
-5. FDBK last for growl.
+4. CMOR 0→64→127 (sine/saw/square); PWM with CMOR at 127.
+5. MMOR only with INDX still up; FDBK last for growl.
 
 ## Saved Parts
 

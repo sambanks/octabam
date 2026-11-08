@@ -241,8 +241,8 @@ def plant_part(uc, track=0):
 
 
 def plant_fp(uc, ptch=64, rato=32, indx=40, fine=64, fold=0, mix=0,
-             dec=127, symm=64, fdbk=40, cmor=0, mmor=0, track=0):
-    """PLAYBACK: PTCH RATO INDX FINE FOLD MIX; SETUP: CMOR MMOR DEC SYMM FDBK."""
+             dec=127, symm=64, fdbk=40, cmor=0, mmor=0, pwm=64, track=0):
+    """PLAYBACK: PTCH RATO INDX FINE FOLD MIX; SETUP: CMOR MMOR DEC SYMM FDBK PWM."""
     words = [ptch, rato, indx, fine, fold, mix]
     blob = b"".join(struct.pack(">H", (v & 0xFF) << 8) for v in words)
     uc.mem_write(FP_REC, blob + bytes(64))
@@ -251,7 +251,7 @@ def plant_fp(uc, ptch=64, rato=32, indx=40, fine=64, fold=0, mix=0,
     uc.mem_write(RS_PTR_AT, struct.pack(">I", RS_REC))
     lane = CURVALS + 72 * track + 32  # CV_SETUP
     uc.mem_write(lane, bytes([
-        cmor & 0xFF, mmor & 0xFF, dec & 0xFF, symm & 0xFF, fdbk & 0xFF, 0,
+        cmor & 0xFF, mmor & 0xFF, dec & 0xFF, symm & 0xFF, fdbk & 0xFF, pwm & 0xFF,
     ]))
 
 
@@ -385,7 +385,7 @@ def main():
     check("page names include FOLD", b"FOLD" in names, names[:24].decode("ascii", "replace"))
     check("page names include MIX", b"MIX" in names, names[:24].decode("ascii", "replace"))
 
-    # SETUP: CMOR MMOR DEC SYMM FDBK; nibbles C/D/E=1 F=0; DEC decay widget.
+    # SETUP: CMOR MMOR DEC SYMM FDBK PWM; nibbles C/D/E/F=1; DEC decay widget.
     if "po_setup_cx" in symbols:
         flex_p, flex_len, setup_buf = 0x400D31AE, 0x192, 0x80013000
         map_range(uc, setup_buf, 0x200)
@@ -399,16 +399,18 @@ def main():
             die(f"po_setup_cx fault: {e}")
         n18a = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0x18A, 4)))[0]
         check(
-            "SETUP nibbles: C/D/E=1 F=0",
-            (n18a & 0xFFFF) == 0x0111,
-            f"0x18a low={n18a & 0xFFFF:#06x} (want 0x0111)",
+            "SETUP nibbles: C/D/E/F=1",
+            (n18a & 0xFFFF) == 0x1111,
+            f"0x18a low={n18a & 0xFFFF:#06x} (want 0x1111)",
         )
         dec_nm = bytes(uc.mem_read(setup_buf + 0x46, 4))
         symm_nm = bytes(uc.mem_read(setup_buf + 0x4C, 4))
         fdbk_nm = bytes(uc.mem_read(setup_buf + 0x52, 4))
+        pwm_nm = bytes(uc.mem_read(setup_buf + 0x58, 4))
         check("SETUP C named DEC", dec_nm.rstrip(b"\0") == b"DEC", dec_nm)
         check("SETUP D named SYMM", symm_nm == b"SYMM", symm_nm)
         check("SETUP E named FDBK", fdbk_nm == b"FDBK", fdbk_nm)
+        check("SETUP F named PWM", pwm_nm.rstrip(b"\0") == b"PWM", pwm_nm)
         if "pg_wid_decay" in symbols:
             w_dec = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0xFA + 32, 4)))[0]
             check("SETUP DEC widget = decay icon", w_dec == symbols["pg_wid_decay"], f"{w_dec:#x}")

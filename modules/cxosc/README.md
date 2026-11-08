@@ -37,21 +37,22 @@ See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagram
 
 ## SETUP — morph, index env, feedback
 
-**FUNC + PLAYBACK** (LCD header **SRC SETUP**). Slot F blank.
+**FUNC + PLAYBACK** (LCD header **SRC SETUP**).
 
 | Knob | Name | What it does |
 |------|------|----------------|
-| A | CMOR | Carrier morph 0..127 (sine → saw) |
-| B | MMOR | Modulator morph 0..127 (sine → saw) |
+| A | CMOR | Carrier morph 0..127 (**0** sine → **64** saw → **127** square) |
+| B | MMOR | Modulator morph 0..127 (same; needs **INDX**) |
 | C | DEC | Index envelope; **127 = HOLD** |
 | D | SYMM | Fold half-wave skew (**64** = even) |
 | E | FDBK | Modulator feedback (default **0** = off) |
+| F | PWM | Pulse width for the square end (**64** ≈ 50%) |
 
 LFO PMTR **30 = CMOR**, **31 = MMOR**, **32 = SYMM**, **33 = FDBK**.
-DEC is not an LFO destination. Mono only — AMP HOLD owns note length
+DEC/PWM are not LFO destinations. Mono only — AMP HOLD owns note length
 (**HOLD INF** = until STOP); select seeds ATK 0 / HOLD INF / REL 0 / LEG MONO.
 
-CMOR/MMOR saw targets and traps: [`MORPH.md`](MORPH.md).
+CMOR/MMOR targets and traps: [`MORPH.md`](MORPH.md).
 
 ## Icons (SETUP LCD) — do not invert
 
@@ -97,7 +98,7 @@ ROM hooks, e.g. MIDI note-on). Not an FX2 id — machine signature `"CX", 1`.
 
 ## Cost
 
-One mono voice under Unicorn: about **1662** instructions/frame (peak ~1701;
+One mono voice under Unicorn: about **1669** instructions/frame (peak ~1708;
 `verify_cxosc`). Up to **four** CX OSC tracks per Part by `ml_guard`.
 ColdFire headroom on a loaded Part on the unit is still **open**
 ([#852](https://github.com/sambanks/octabam/issues/852)).

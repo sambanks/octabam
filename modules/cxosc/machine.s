@@ -21,8 +21,8 @@
 | "C", "X", 1 in NEIGHBOR PLAYBACK: bank + part * 6322 + 0x8edbc + 30 *
 | track (and the battery-RAM shadow). Seed PLAYBACK: PTCH 0, RATO ~1,
 | INDX 0, FINE 0c, FOLD 0, MIX 0; SETUP CMOR/MMOR 0, DEC HOLD, SYMM 64,
-| FDBK 0 (fm_defaults); choosing it again keeps the patch; choosing any
-| other row clears the signature.
+| FDBK 0, PWM 50% (fm_defaults); choosing it again keeps the patch; choosing
+| any other row clears the signature.
 |
 | THE MACHINE CHANGE (2.12). A change of the machine a track plays, where the old or the
 | new machine is a row's (CX OSC, SY DRUM), sets the track to the new machine's init:
@@ -314,7 +314,7 @@ ml_flexslot:
 | page shows it at once, the next frame plays it and SAVE keeps it:
 |   * PLAYBACK and PLAYBACK SETUP: a row's machine -- its twelve seeds in the FLEX column (CX
 |     OSC: PTCH 0, RATO ~1, INDX 0, FINE 0c, FOLD 0, MIX 0; SETUP CMOR/MMOR 0, DEC HOLD,
-|     SYMM 64, FDBK 0 — fm_defaults; SY DRUM: PTCH 0, MODE
+|     SYMM 64, FDBK 0, PWM 64 — fm_defaults; SY DRUM: PTCH 0, MODE
 |     A, WDTH 64, SWEP 0, SPED 64, DEC 64, LSPD 64, LDEP 0, WAVE OFF, S&H OFF); a stock
 |     machine -- its column at the defaults of its stock PLAYBACK descriptor, and the FLEX
 |     column at FLEX's (the FLEX bytes a row's machine had used: they are no sample settings);
@@ -1168,7 +1168,7 @@ fm_setup_edit6:
         cmpi.l  #2,%d0
         beq     fm_e6_morph
         tst.l   %d0
-        bne     fm_e6_handled            | E-F blanked on the CX page
+        bne     fm_e6_handled            | inert control (none on CX A-F)
         cmpi.l  #FM_ROW,%d2
         blt     fm_e6
         moveq   #FLEX,%d2
@@ -1205,7 +1205,7 @@ fm_setup_draw6:
         cmpi.l  #FM_ROW,%d6
         blt     fm_d6
         bne     fm_d6_flex
-        bsr     fm_d6_frame              | CX OSC SETUP: blank F frame only (A-E live)
+        | CX OSC SETUP A-F all live (PWM on F); no blank-frame wipe
 fm_d6_flex:
         moveq   #FLEX,%d6
 fm_d6:
@@ -1493,7 +1493,7 @@ ml_msg_both:
         .balign 2
 fm_defaults:
         .byte   64, 25, 0, 64, 0, 0      | PLAYBACK: PTCH 0, RATO ~1, INDX 0, FINE 0c, FOLD 0, MIX 0
-        .byte   0, 0, 127, 64, 0, 0      | SETUP: CMOR MMOR DEC HOLD SYMM even FDBK off
+        .byte   0, 0, 127, 64, 0, 64     | SETUP: CMOR MMOR DEC HOLD SYMM even FDBK off PWM 50%
 fm_name:
         .asciz  "CX OSC"
         .balign 4

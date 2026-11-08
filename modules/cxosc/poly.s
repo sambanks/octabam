@@ -10,8 +10,9 @@
 | sin(phi_m + fb * m_prev)), optional MIX, then a sine fold with SYMM.
 | PLAYBACK: PTCH RATO INDX FINE FOLD MIX. RATO free 0.25..4 (FUNC snaps).
 | FINE = cents (RATE slot, 64=0c). FOLD = sine fold. MIX = carrier↔mod
-| into fold (0 = carrier). SETUP: CMOR MMOR DEC SYMM FDBK (F blank).
-| DEC index env HOLD@127; SYMM fold skew (64=even); FDBK mod feedback.
+| into fold (0 = carrier). SETUP: CMOR MMOR DEC SYMM FDBK PWM.
+| DEC index env HOLD@127; SYMM fold skew (64=even); FDBK mod feedback;
+| CMOR/MMOR = sine→saw→square; PWM = pulse width for the square end (64=50%).
 | PTCH −32..+32.
 
 | Mono only -- T_POLY
@@ -179,7 +180,7 @@
         .set    SCALE_AT, 0x400d2ca8     | modules/quantizer/scale.s: `jmp qz_scale_mask` -- d0 := the scale's pitch-class mask, 0 = OFF
         .set    CURVALS, 0x80000810      | the frame builder's per-track current values, 72 B a track, locks applied
         .set    CV_STRIDE, 72
-        .set    CV_SETUP, 32             | SETUP: +0 CMOR +1 MMOR +2 DEC +3 SYMM +4 FDBK
+        .set    CV_SETUP, 32             | SETUP: +0 CMOR +1 MMOR +2 DEC +3 SYMM +4 FDBK +5 PWM
         .set    CV_MIX, 5                | flat slot 5 = PLAYBACK F (RTIM) = MIX
         .set    PLAY_SETUP, 0x8ef60      | Part + track*30: CMOR/MMOR/DEC/SYMM/FDBK
         .set    PLAY_SLOTS, 0x8edaa      | Part PLAYBACK columns (+ machine*6 + track*30)
@@ -231,8 +232,8 @@
                                          | sequencer HOLD INF (otherwise INF sounds like HOLD 0), but honor key-up.
         .set    S_GPREV, 38              | word: the gain the last rendered call ended at (sy_loop ramps S_GPREV -> S_GAIN across the call; every start clears it with the phases -- BUILD 26)
         .set    S_CUR, 40                | the slewed PTCH word, Q12 (GLIDE)
-        .set    S_DPWM, 44               | DPW z1 (φ²) modulator — was T_REF (CX mono)
-        .set    S_DPWC, 48               | DPW z1 carrier — was T_LAST
+        .set    S_DPWM, 44               | DPW z1 (φ²) modulator saw — was T_REF (CX mono)
+        .set    S_DPWC, 48               | DPW z1 modulator pulse (φ+duty) — was T_LAST / carrier DPW
         .set    T_REF, 44                | paraphonic: the PTCH word at the last voice start (alias S_DPWM)
         .set    T_LAST, 48               | paraphonic: the PTCH word seen last frame (alias S_DPWC)
         .set    T_MASK, 52               | paraphonic: the held-key mask seen last frame
@@ -441,6 +442,7 @@ sy_cold1:
         move.l  %d1,(%a0,%d0.l)
         clr.l   S_DPWM(%a3)
         clr.l   S_DPWC(%a3)
+        clr.l   S_DPWC(%a3)
         clr.l   S_GAIN(%a3)
         clr.w   S_GPREV(%a3)
         clr.l   S_IEFF(%a3)              | the index climbs to I * E within the first frame, under the gain from 0
@@ -631,7 +633,7 @@ sy_mono_inc:
         move.l  %d0,S_INC(%a3)           | carrier increment: the true pitch
 
 | ---- the parameters ---------------------------------------------------------
-| PLAYBACK: PTCH RATO INDX FINE FOLD MIX. SETUP: CMOR MMOR DEC SYMM FDBK.
+| PLAYBACK: PTCH RATO INDX FINE FOLD MIX. SETUP: CMOR MMOR DEC SYMM FDBK PWM.
         move.l  %d0,-(%sp)               | park carrier inc (sy_rato_q8 clobbers d0)
         mvz.w   2(%a4),%d1               | STRT -> ratio (free: raw 0..127 -> Q8 0.25..16)
         lsr.l   #8,%d1
@@ -656,7 +658,7 @@ sy_mono_inc:
         move.l  %d2,%d1
         move.l  #CV_STRIDE,%d3
         mulu.l  %d3,%d1
-        lea     CURVALS+CV_SETUP,%a1     | SETUP: CMOR MMOR DEC SYMM FDBK
+        lea     CURVALS+CV_SETUP,%a1     | SETUP: CMOR MMOR DEC SYMM FDBK PWM
         mvz.b   3(%a1,%d1.l),%d3         | SETUP D -> SYMM
         bne     sy_symm_nz               | 0 = pre-migrate / unset Part -> even
         moveq   #64,%d3
@@ -668,6 +670,9 @@ sy_symm_nz:
         mvz.b   1(%a1,%d1.l),%d3
         move.b  %d3,3(%a0,%d0.l)         | MMOR
         bsr     cx_lfo_morph             | PMTR 30..33 -> CMOR/MMOR/SYMM + sy_cxfb (d2 = track)
+        mvz.b   5(%a1,%d1.l),%d3         | SETUP F -> PWM (0..127; default 64 from Part)
+        lea     sy_cxpwm(%pc),%a0
+        move.b  %d3,(%a0,%d2.l)
         mvz.w   10(%a4),%d0              | RTIM -> MIX
         lsr.l   #8,%d0
         move.l  %d2,%d1
@@ -1004,11 +1009,14 @@ sy_mono:
         mvz.b   1(%a6,%d1.l),%d2         | SYMM (FOLD amount comes from Q8 slew, not the byte)
         move.l  %d2,-(%sp)
         move.l  64(%sp),%d1              | track (52+12 after header/morph/symm)
+        lea     sy_cxpwm(%pc),%a6
+        mvz.b   (%a6,%d1.l),%d2          | PWM 0..127
+        move.l  %d2,-(%sp)
         lsl.l   #2,%d1
         lea     sy_foldq(%pc),%a6        | Q8 FOLD/MIX — fractional through the loop (sustained knob turns)
         move.l  (%a6,%d1.l),-(%sp)
         lea     sy_mixq(%pc),%a6
-        move.l  (%a6,%d1.l),-(%sp)       | 0=MIX_Q8, 4=FOLD_Q8, 8=SYMM, 12=morph, 16=header
+        move.l  (%a6,%d1.l),-(%sp)       | 0=MIX_Q8, 4=FOLD_Q8, 8=PWM, 12=SYMM, 16=morph, 20=header
         move.l  S_PHC(%a3),%d0
         move.l  S_PHM(%a3),%d6
         move.l  S_INC(%a3),%d5
@@ -1048,24 +1056,37 @@ sy_loop:
         asr.l   #8,%d2
         asr.l   #8,%d2
         add.l   %d2,%d4                  | m sine, Q14
-        | Stack: 0=MIX_Q8, 4=FOLD_Q8, 8=SYMM, 12=morph 00 00 CMOR MMOR, 16=header.
-        | MMOR into FM cannot use a naive saw edge (jumps ~46..48). DPW target
-        | + fb always sine. CMOR (carrier) still hard naive — audible saw OK.
+        | Stack: 0=MIX_Q8, 4=FOLD_Q8, 8=PWM, 12=SYMM, 16=morph 00 00 CMOR MMOR, 20=header.
+        | MMOR: DPW saw → DPW pulse (PWM); CMOR: naive saw → hard pulse. fb = sine.
         move.l  %d4,S_LASTM(%a3)         | fb source = sine
-        mvz.b   15(%sp),%d2              | MMOR
+        mvz.b   19(%sp),%d2              | MMOR
         beq     sy_mod_ok
+        | d0 = carrier phase for the whole loop — pulse helpers write d0, so park it.
+        move.l  %d0,-(%sp)               | park φc
         move.l  %d6,%d1                  | raw φm
         move.l  %a4,%d6                  | DPW phase = φm_eff
         move.l  %d2,-(%sp)               | amt
         move.l  %d1,-(%sp)               | raw φm
-        move.l  %a2,%d1                  | Δφ
+        move.l  %a2,%d1                  | Δφ (sy_dpw / sy_dpw_pulse keep it)
         lea     S_DPWM(%a3),%a4
         bsr     sy_dpw                   | d2 = continuous saw
         move.l  S_LASTM(%a3),%d4         | sine
-        move.l  %d2,%d1
+        move.l  4(%sp),%d0               | amt (0=φm, 4=amt, 8=φc)
+        cmpi.l  #64,%d0
+        blt     sy_mod_lo                | low half: square unused
+        move.l  %d2,-(%sp)               | park saw (d7 = sample count — do not touch)
+        move.l  8+16(%sp),%d2            | PWM (under amt+φm+φc+saw; was at 8)
+        bsr     sy_dpw_pulse             | d0 = pulse; needs saw at 0(sp)
+        move.l  (%sp)+,%d1               | saw
+        bra     sy_mod_mix
+sy_mod_lo:
+        move.l  %d2,%d1                  | saw
+        move.l  %d1,%d0                  | dummy square
+sy_mod_mix:
         move.l  (%sp)+,%d6               | raw φm
         move.l  (%sp)+,%d2               | amt
-        bsr     sy_epmix                 | d4 → FM
+        bsr     sy_wshape                | d4 → FM (sine→saw→square)
+        move.l  (%sp)+,%d0               | restore φc
 sy_mod_ok:
         move.l  S_LASTM(%a3),%a4         | m_prev = sine
         mvs.w   S_ISTEP(%a3),%d1
@@ -1074,7 +1095,7 @@ sy_mod_ok:
         muls.l  %d1,%d4                  | m * I
         add.l   %d0,%d4                  | carrier phase, modulated
         move.l  %d6,-(%sp)               | park mod phase
-        move.l  %d4,%d6                  | φc
+        move.l  %d4,%d6                  | φc_mod (table lookup)
         move.l  %d6,%d2
         lsr.l   %d3,%d2
         add.l   %d2,%d2
@@ -1088,17 +1109,23 @@ sy_mod_ok:
         asr.l   #8,%d2
         asr.l   #8,%d2
         add.l   %d2,%d1                  | c sine, Q14
-        mvz.b   18(%sp),%d2              | CMOR (morph at 12+4 park)
+        mvz.b   22(%sp),%d2              | CMOR (morph at 16+4 park)
         beq     sy_car_ok
+        | d0 = running carrier phase — park it (sy_sq_saw writes d0).
+        move.l  %d0,-(%sp)               | park φc
         move.l  %d1,%d4                  | sine
         move.l  %d6,%d1
         lsr.l   #8,%d1
         lsr.l   #8,%d1
-        lsr.l   #1,%d1                   | φc>>17
+        lsr.l   #1,%d1                   | φc_mod>>17
         neg.l   %d1
         addi.l  #16384,%d1              | aligned naive saw
-        bsr     sy_epmix
+        move.l  12+4(%sp),%d2            | PWM (under modφ+φc; was at 8)
+        bsr     sy_sq_saw                | d0 = hard square from saw+PWM (d1 kept)
+        mvz.b   22+4(%sp),%d2            | CMOR (morph under φc park)
+        bsr     sy_wshape                | 127 → pure d0 square; linear saw→sq
         move.l  %d4,%d1
+        move.l  (%sp)+,%d0               | restore φc
 sy_car_ok:
         move.l  (%sp)+,%d6               | restore mod phase
         | ---- MIX (PLAYBACK F): c' = c + (m - c) * MIX_Q8 / 32768; 0 = carrier ----
@@ -1125,7 +1152,7 @@ sy_mix_done:
         asr.l   #8,%d4
         addi.l  #256,%d4                 | drive_q8
         move.l  4(%sp),%d1               | c
-        move.l  16(%sp),%d2              | SYMM (under the two parks; was at 8)
+        move.l  20(%sp),%d2              | SYMM (under the two parks; was at 12)
         mvz.b   %d2,%d2                  | SYMM 0..127
         tstl    %d1
         bmi     sy_skew_lo
@@ -1183,6 +1210,7 @@ sy_gend:
         move.w  %d1,S_GPREV(%a3)
         move.l  (%sp)+,%d1               | drop MIX_Q8
         move.l  (%sp)+,%d1               | drop FOLD_Q8
+        move.l  (%sp)+,%d1               | drop PWM
         move.l  (%sp)+,%d1               | drop SYMM
         move.l  (%sp)+,%d1               | drop morph
         move.l  (%sp)+,%a2               | the header
@@ -1232,27 +1260,127 @@ sy_dpw_lo:
         move.l  (%sp)+,%d3
         rts
 
-| ---- sine→saw mix: d4=sine, d1=saw, d2=amt 0..127 → d4. Parks d3. ---------
-| Exact /127 so amt 127 is bit-identical to saw (no /128 residual at 126).
-sy_epmix:
-        tstl    %d2
-        beq     sy_ep_done
+| ---- hard square from saw: d1=saw Q14, d2=PWM 0..127 → d0 ±16384. -------
+| thresh = (pw-64)<<8 (64 → 0 = 50%). pw is PWM clamped to 1..126 so
+| 0/127 stay narrow/wide pulses — not DC (silent). Keeps d1.
+sy_sq_saw:
+        andi.l  #127,%d2
+        bne     sy_sqs_nz
+        moveq   #1,%d2                   | 0 → narrow, not 0% duty
+sy_sqs_nz:
         cmpi.l  #127,%d2
-        beq     sy_ep_saw
-        move.l  %d3,-(%sp)               | d3 = #24 in sy_loop — must live
+        blt     sy_sqs_pw
+        moveq   #126,%d2                 | 127 → wide, not 100% duty
+sy_sqs_pw:
+        subi.l  #64,%d2
+        lsl.l   #8,%d2                   | thresh
+        move.l  %d1,%d0
+        cmp.l   %d2,%d0
+        ble     sy_sqs_lo
+        move.l  #16384,%d0
+        rts
+sy_sqs_lo:
+        move.l  #-16384,%d0
+        rts
+
+| ---- DPW pulse (MMOR): d6=φ, d1=Δφ, d2=PWM, a3; saw(φ) at 0(sp) → d0. ----
+| pulse = ½ (saw(φ) − saw(φ+duty)); S_DPWC is the second differentiator.
+| Caller stack: 0=saw, then return. Parks d2/d3/d6/a4; keeps d1.
+sy_dpw_pulse:
+        move.l  %d3,-(%sp)
         move.l  %d6,-(%sp)
-        move.l  %d1,%d3
-        sub.l   %d4,%d3                  | saw − sine
-        muls.l  %d2,%d3                  | * amt
-        moveq   #127,%d6
-        divs.l  %d6,%d3                  | / 127 (no #imm form on CF gas)
-        add.l   %d3,%d4
+        move.l  %a4,-(%sp)               | after parks: 0 a4, 4 φ, 8 d3, 12 ret, 16 saw
+        andi.l  #127,%d2
+        bne     sy_dpp_nz
+        moveq   #1,%d2                   | 0 → narrow, not null pulse
+sy_dpp_nz:
+        cmpi.l  #127,%d2
+        blt     sy_dpp_pw
+        moveq   #126,%d2
+sy_dpp_pw:
+        lsl.l   #8,%d2
+        lsl.l   #8,%d2
+        lsl.l   #8,%d2
+        lsl.l   #1,%d2                   | PWM<<25 → 64 ⇒ 2^31 (50%)
+        add.l   %d2,%d6                  | φ + duty
+        lea     S_DPWC(%a3),%a4
+        bsr     sy_dpw                   | d2 = saw(φ+duty)
+        move.l  16(%sp),%d0              | saw(φ)
+        sub.l   %d2,%d0
+        asr.l   #1,%d0
+        cmpi.l  #16384,%d0
+        ble     sy_dpp_hi
+        move.l  #16384,%d0
+sy_dpp_hi:
+        cmpi.l  #-16384,%d0
+        bge     sy_dpp_lo
+        move.l  #-16384,%d0
+sy_dpp_lo:
+        move.l  (%sp)+,%a4
         move.l  (%sp)+,%d6
         move.l  (%sp)+,%d3
         rts
-sy_ep_saw:
+
+| ---- sine→saw→square: d4=sine, d1=saw, d0=square, d2=amt 0..127 → d4. ----
+| 0 = sine, 64 = saw, 127 = square. Keep CX 44's gradual colour (no
+| clip-drive). Sine→saw still uses t². Saw→square is LINEAR in (amt-64)/63
+| so amt 127 is bit-identical to d0 (full pulse) — t² on this half left
+| too much saw at the top. Parks d3/d6/d7.
+sy_wshape:
+        tstl    %d2
+        beq     sy_ws_done
+        cmpi.l  #127,%d2
+        beq     sy_ws_sq
+        cmpi.l  #64,%d2
+        beq     sy_ws_saw
+        move.l  %d3,-(%sp)
+        move.l  %d6,-(%sp)
+        move.l  %d7,-(%sp)
+        cmpi.l  #64,%d2
+        bge     sy_ws_hi
+        | ---- sine→saw: t = amt*127/63, then t²/127 ----
+        move.l  %d2,%d3
+        moveq   #127,%d6
+        muls.l  %d6,%d3
+        moveq   #63,%d6
+        divs.l  %d6,%d3
+        move.l  %d3,%d2
+        muls.l  %d3,%d2
+        moveq   #127,%d6
+        divs.l  %d6,%d2
+        move.l  %d1,%d3
+        sub.l   %d4,%d3                  | saw − sine
+        muls.l  %d2,%d3
+        moveq   #127,%d6
+        divs.l  %d6,%d3
+        add.l   %d3,%d4
+        bra     sy_ws_out
+sy_ws_hi:
+        | ---- saw→square: t = (amt-64)*127/63  (linear → full at 127) ----
+        subi.l  #64,%d2                  | 1..62 for amt 65..126
+        move.l  %d2,%d3
+        moveq   #127,%d6
+        muls.l  %d6,%d3
+        moveq   #63,%d6
+        divs.l  %d6,%d3                  | t
+        move.l  %d1,%d4                  | start at saw
+        move.l  %d0,%d2
+        sub.l   %d1,%d2                  | square − saw
+        muls.l  %d3,%d2
+        moveq   #127,%d6
+        divs.l  %d6,%d2
+        add.l   %d2,%d4
+sy_ws_out:
+        move.l  (%sp)+,%d7
+        move.l  (%sp)+,%d6
+        move.l  (%sp)+,%d3
+        rts
+sy_ws_saw:
         move.l  %d1,%d4
-sy_ep_done:
+        rts
+sy_ws_sq:
+        move.l  %d0,%d4                  | pure pulse
+sy_ws_done:
         rts
 
 | ---- po_tick: the sequencer clock, once an audio frame -------------------------
@@ -3146,13 +3274,13 @@ po_pg_have:
         lea     8(%sp),%sp
         rts
 
-| a0 = PLAYBACK descriptor clone: SETUP A..E = CMOR MMOR DEC SYMM FDBK,
-| F blanked. min/count 0/128. DEC uses decay icon; SYMM/FDBK their icons.
+| a0 = PLAYBACK descriptor clone: SETUP A..F = CMOR MMOR DEC SYMM FDBK PWM.
+| min/count 0/128. DEC uses decay icon; SYMM/FDBK their icons; PWM plain.
 | Nibbles: 0x18e high = A/B; 0x18a low 16 = C..F (C=0..3 … F=12..15).
 | Edit: po_setup_edit + fm_e6_morph (stock SETUP_STEP bypassed; stack padded).
 | Clobbers d0/a0/a1; a2 (clone) preserved by caller frame.
         .set    FMT_PLAIN, 0x4003c178
-        .set    PLAY_SETUP, 0x8ef60      | Part + track*30: CMOR/MMOR/DEC/SYMM/FDBK
+        .set    PLAY_SETUP, 0x8ef60      | Part + track*30: CMOR/MMOR/DEC/SYMM/FDBK/PWM
         .global po_setup_edit, po_setup_cur
 po_setup_cx:
         lea     -8(%sp),%sp
@@ -3173,7 +3301,7 @@ po_setup_cx:
         lea     po_fdbk(%pc),%a0
         move.l  (%a0),0x52(%a1)
         move.w  4(%a0),0x56(%a1)
-        lea     po_blank6(%pc),%a0       | F: kill stock TSNS name
+        lea     po_pwm(%pc),%a0
         move.l  (%a0),0x58(%a1)
         move.w  4(%a0),0x5c(%a1)
         move.l  #FMT_PLAIN,%d0
@@ -3184,24 +3312,26 @@ po_setup_cx:
         move.l  #FMT_PLAIN,%d0
         move.l  %d0,0xca+36(%a1)         | SYMM
         move.l  %d0,0xca+40(%a1)         | FDBK
-        lea     po_fmt_blank(%pc),%a0
-        move.l  %a0,0xca+44(%a1)         | F blank
+        move.l  %d0,0xca+44(%a1)         | PWM
         clr.l   0x6a+24(%a1)
         clr.l   0x6a+28(%a1)
         clr.l   0x6a+32(%a1)
         clr.l   0x6a+36(%a1)
         clr.l   0x6a+40(%a1)
+        clr.l   0x6a+44(%a1)
         move.l  #128,%d0
         move.l  %d0,0x9a+24(%a1)
         move.l  %d0,0x9a+28(%a1)
         move.l  %d0,0x9a+32(%a1)
         move.l  %d0,0x9a+36(%a1)
         move.l  %d0,0x9a+40(%a1)
+        move.l  %d0,0x9a+44(%a1)
         clr.b   0x5e+6(%a1)              | CMOR/MMOR default 0
         clr.b   0x5e+7(%a1)
         move.b  #127,0x5e+8(%a1)         | DEC HOLD
         move.b  #64,0x5e+9(%a1)          | SYMM even
         move.b  #0,0x5e+10(%a1)          | FDBK off (raise to hear mod feedback)
+        move.b  #64,0x5e+11(%a1)         | PWM 50%
         clr.l   0xfa+24(%a1)             | CMOR/MMOR plain
         clr.l   0xfa+28(%a1)
         lea     pg_wid_decay:l,%a0       | DEC decay icon
@@ -3210,28 +3340,28 @@ po_setup_cx:
         move.l  %a0,0xfa+36(%a1)
         lea     pg_wid_fdbk:l,%a0
         move.l  %a0,0xfa+40(%a1)
-        clr.l   0xfa+44(%a1)             | F no widget
+        clr.l   0xfa+44(%a1)             | PWM plain dial
         move.l  0x18e(%a1),%d0
         andi.l  #0x00ffffff,%d0
         ori.l   #0x11000000,%d0          | SETUP A/B live
         move.l  %d0,0x18e(%a1)
         move.l  0x18a(%a1),%d0
         andi.l  #0xffff0000,%d0
-        ori.l   #0x00000111,%d0          | C/D/E = 1; F = 0
+        ori.l   #0x00001111,%d0          | C/D/E/F live
         move.l  %d0,0x18a(%a1)
         movem.l (%sp),%d0/%a1
         lea     8(%sp),%sp
         rts
 
 | SRC SETUP edit site (a5=descriptor, a3=control, d2=row).
-| d0: 0 stock row*6, 1 inert (F), 2 A-E continuous (caller stores).
+| d0: 0 stock row*6, 1 inert (unused), 2 A-F continuous (caller stores).
 po_setup_edit:
         move.l  %a0,-(%sp)
         lea     po_pgdesc_buf(%pc),%a0
         cmpa.l  %a0,%a5
         movea.l (%sp)+,%a0
         bne     po_se_no
-        cmpa.l  #5,%a3
+        cmpa.l  #6,%a3
         bcc     po_se_inert
         moveq   #2,%d0
         rts
@@ -3242,7 +3372,7 @@ po_se_no:
         moveq   #0,%d0
         rts
 
-| d2=track, a3=control 0..4 -> d0 = Part SETUP byte. Other regs kept.
+| d2=track, a3=control 0..5 -> d0 = Part SETUP byte. Other regs kept.
 po_setup_cur:
         lea     -8(%sp),%sp
         movem.l %d1/%a0,(%sp)
@@ -5649,6 +5779,8 @@ po_symm:
         .ascii  "SYMM\0\0"
 po_fdbk:
         .ascii  "FDBK\0\0"
+po_pwm:
+        .ascii  "PWM\0\0\0"
 po_blank6:
         .ascii  "\0\0\0\0\0\0"
 po_chrd:
@@ -5912,6 +6044,8 @@ sy_cxparm:                               | 8 tracks x (FOLD, SYMM, CMOR, MMOR) -
 sy_cxmix:                                | 8 tracks: PLAYBACK F MIX (S_MIX@86 aliases T_GMAX)
         .fill   8, 1, 0
 sy_cxfb:                                 | 8 tracks: effective FDBK (SETUP E + LFO PMTR 33)
+        .fill   8, 1, 0
+sy_cxpwm:                                | 8 tracks: SETUP F PWM 0..127 (64 = 50%)
         .fill   8, 1, 0
         .align  4
 sy_mixq:                                 | 8 tracks x Q8 current MIX (sy_knob_slew)

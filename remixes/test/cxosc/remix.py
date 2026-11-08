@@ -10,10 +10,10 @@ REMIX = Remix(
     name="cxosc",
     family="mods", proof=Proof.HARDWARE,
     proof_note=(
-        "same module proof: MKII CX 41 (full tip) + CX 28 / VRCS-CX VS; "
-        "gate remix for verify_cxosc (PLAYBACK FINE/FOLD/MIX, SETUP morphs, 4 MAX)"
+        "same module proof: MKII CX 48 (sine→saw→square + PWM) + CX 41 / CX 28 / VS; "
+        "gate remix for verify_cxosc (PLAYBACK FINE/FOLD/MIX, SETUP + PWM, 4 MAX)"
     ),
-    doc="CX OSC (machine list, no marker): PLAYBACK PTCH RATO INDX FINE FOLD MIX; SETUP CMOR MMOR DEC SYMM FDBK; stock FX.",
+    doc="CX OSC (machine list, no marker): PLAYBACK PTCH RATO INDX FINE FOLD MIX; SETUP CMOR MMOR DEC SYMM FDBK PWM; stock FX.",
     modules=("CX OSC",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
