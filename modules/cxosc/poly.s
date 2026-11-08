@@ -1292,50 +1292,54 @@ sy_wl_done:
         move.l  (%sp)+,%d2               | restore WIDTH_Q8
         rts
 
-| ---- WIDTH ramp-balance (saw): d1=saw Q14, d2=WIDTH_Q8 → d1. ------------
-| Peak from sy_wduty (eff_q8 = 16<<8..110<<8). Blend |panel-64|/64.
-| Keeps d0 (square), d2, d3. Parks d3/d7.
+| ---- WIDTH ramp-balance (saw): d1=saw Q14, d2=WIDTH_Q8, d6=φ → d1. ----
+| Rise/fall from UNIFORM phase (φ>>17), not from the saw sample — using
+| the sample as phase warped DPW/naive and sounded wrong (unit). Peak =
+| sy_wduty eff_q8. Blend by |WIDTH_Q8 − 64<<8| / (64<<8) for Q8-smooth
+| travel. Keeps d0/d2/d6; parks d3/d7.
 sy_wramp:
         move.l  %d0,-(%sp)               | square / caller
         move.l  %d3,-(%sp)               | sy_loop table shift
         move.l  %d2,-(%sp)               | WIDTH_Q8
         move.l  %d2,%d0
-        lsr.l   #8,%d0
-        andi.l  #127,%d0
-        subi.l  #64,%d0                  | k from panel
+        subi.l  #(64<<8),%d0             | k_q8
         beq     sy_wr_done
-        move.l  %d0,-(%sp)               | k
+        move.l  %d0,-(%sp)               | k_q8
         move.l  %d7,-(%sp)
         bsr     sy_wduty                 | d2 = eff_q8 peak
-        move.l  %d1,%d7                  | original saw
-        addi.l  #16384,%d1               | p ∈ 0..32768
-        move.l  %d2,%d3                  | peak = eff_q8 (4096..~28160)
+        move.l  %d1,%d7                  | original saw (DPW or naive)
+        move.l  %d6,%d1
+        lsr.l   #8,%d1
+        lsr.l   #8,%d1
+        lsr.l   #1,%d1                   | p = φ>>17 ∈ 0..32767
+        move.l  %d2,%d3                  | peak
         cmp.l   %d3,%d1
         bge     sy_wr_fall
         lsl.l   #8,%d1
-        lsl.l   #7,%d1
+        lsl.l   #7,%d1                   | p * 32768
         divs.l  %d3,%d1
-        subi.l  #16384,%d1
+        subi.l  #16384,%d1               | rise −1..+1
         bra     sy_wr_blend
 sy_wr_fall:
         move.l  #32768,%d0
-        sub.l   %d3,%d0                  | denom
+        sub.l   %d3,%d0                  | denom = 32768 − peak
         sub.l   %d3,%d1                  | p − peak
         lsl.l   #8,%d1
         lsl.l   #7,%d1
         divs.l  %d0,%d1
         move.l  #16384,%d0
         sub.l   %d1,%d0
-        move.l  %d0,%d1                  | asym
+        move.l  %d0,%d1                  | fall +1..−1
 sy_wr_blend:
-        move.l  4(%sp),%d0               | k (under d7)
+        move.l  4(%sp),%d0               | k_q8 (under d7)
         bpl     sy_wr_abs
         neg.l   %d0
 sy_wr_abs:
         move.l  %d1,%d3
-        sub.l   %d7,%d3
-        muls.l  %d0,%d3
-        asr.l   #6,%d3
+        sub.l   %d7,%d3                  | asym − saw
+        muls.l  %d0,%d3                  | * |k_q8|
+        asr.l   #8,%d3
+        asr.l   #6,%d3                   | / (64<<8)
         move.l  %d7,%d1
         add.l   %d3,%d1
         cmpi.l  #16384,%d1
@@ -1347,7 +1351,7 @@ sy_wr_hi:
         move.l  #-16384,%d1
 sy_wr_lo:
         move.l  (%sp)+,%d7
-        addq.l  #4,%sp                   | drop k
+        addq.l  #4,%sp                   | drop k_q8
 sy_wr_done:
         move.l  (%sp)+,%d2               | WIDTH_Q8
         move.l  (%sp)+,%d3               | table shift
@@ -1426,10 +1430,10 @@ sy_sq_out:
         rts
 
 | ---- DPW pulse (MMOR): d6=φ, d1=Δφ, d2=WIDTH_Q8, a3; saw(φ)@0(sp) → d0. -
-| pulse = ½ (saw(φ) − saw(φ+duty)). Duty = eff_q8<<17. When duty phase
-| changes, reprime S_DPWC and hold S_LASTP for one sample — otherwise the
-| differentiator sees a φ-jump and clicks (unit WIDTH on MMOR saw/square).
-| Parks d2/d3/d6/a4; keeps d1.
+| pulse = ½ (saw(φ) − saw(φ+duty)). Duty = eff_q8<<17 (Q8-smooth).
+| Reprime S_DPWC only on a LARGE duty jump (|Δ| ≥ 1<<24); per-sample Q8
+| steps must take the continuous path — CX 59 reprimes every step and
+| froze S_LASTP for the whole slew (unit zipper on MMOR). Parks d2/d3/d6/a4.
 sy_dpw_pulse:
         move.l  %d3,-(%sp)
         move.l  %d6,-(%sp)
@@ -1438,9 +1442,14 @@ sy_dpw_pulse:
         lsl.l   #8,%d2
         lsl.l   #8,%d2
         lsl.l   #1,%d2                   | duty phase
-        cmp.l   S_DUTY(%a3),%d2
-        beq     sy_dpp_go
-        move.l  %d2,S_DUTY(%a3)          | track new duty
+        move.l  %d2,%d0
+        sub.l   S_DUTY(%a3),%d0
+        bpl     sy_dpp_ad
+        neg.l   %d0
+sy_dpp_ad:
+        cmpi.l  #(1<<24),%d0             | ~0.4% of a cycle
+        bcs     sy_dpp_go                | small / Q8 step — stay continuous
+        move.l  %d2,S_DUTY(%a3)
         add.l   %d2,%d6                  | φ + duty
         move.l  %d6,%d0                  | prime z1 = p² at new phase
         lsr.l   #8,%d0
@@ -1450,9 +1459,10 @@ sy_dpw_pulse:
         lsr.l   #8,%d3
         lsr.l   #8,%d3
         move.l  %d3,S_DPWC(%a3)
-        move.l  S_LASTP(%a3),%d0         | hold last pulse (no zipper spike)
+        move.l  S_LASTP(%a3),%d0         | hold one sample across the jump
         bra     sy_dpp_out
 sy_dpp_go:
+        move.l  %d2,S_DUTY(%a3)          | track (even when continuous)
         add.l   %d2,%d6                  | φ + duty
         lea     S_DPWC(%a3),%a4
         bsr     sy_dpw                   | d2 = saw(φ+duty)
