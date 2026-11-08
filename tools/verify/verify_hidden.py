@@ -150,7 +150,9 @@ def main():
     # (build_bus.py, "with NONE at row 0"), so the listed modules start at 1
     skip = 1 if remix.fallback == NO_FALLBACK else 0
     for cand in ((NEW_LIST, LONG_LIST) if listed_p else ()):
-        row = [u32(cand + 4 * (i + skip)) for i in range(16)]
+        # read one row past the expected count, so a list longer than expected shows (octabam-verbs lists 21
+        # since #1067; the read was 16 rows)
+        row = [u32(cand + 4 * (i + skip)) for i in range(max(16, len(listed_p) + 1))]
         if row[0] in clones.values():
             entries = []
             for v in row:
