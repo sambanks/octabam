@@ -1051,6 +1051,7 @@ def main():
                                   "euclid-fill", "varispeed", "copy-project",
                                   "pattern-mute-modes",  # PATTERN MUTE beside MUTE_MODES, stock effects
                                   "scope",  # SCOPE: ColdFire window, no DSP words
+                                  "scope-screen",  # SCOPE + SCREEN (+ USB) probe, stock FX kept
                                   "cxosc", "cxosc-core",
                                   "screen", "screen-usb")},  # CX OSC (+ CORE handoff); ColdFire, no DSP words
              "trackpatterns": (),   # pgstath's ColdFire module on the stock effects, no DSP words
