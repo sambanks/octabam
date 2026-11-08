@@ -28,6 +28,7 @@ except ImportError:
 from remix import app as A, registry  # noqa: E402
 
 A.RemixerScreen.ensure_sync = lambda self, probs=None: None     # no image builds
+A.RemixerScreen.measure_all = lambda self: None  # library cost worker also builds into out/
 
 
 async def run():

@@ -1668,3 +1668,14 @@ lock". The fix detours `0x40053498` itself. Rule: a gate for a panel gesture
 drives the panel (`--live-script`), not the routine you think it reaches; and
 in FX SETUP the first encoder event only shows the readout, the next ones
 edit. **Gate:** `verify_scenes_p2`'s `panel` scenario.
+
+<a id="trap-remixer-cost-worker"></a>
+### Headless remixer checks can still rebuild the candidate
+
+Disabling `ensure_sync` alone does not make the remixer gate read-only:
+`on_mount` also starts `measure_all`, whose module-cost builds replace
+`out/mainos_bus.bin` and its runtime symbols. During the Harmony rebase
+(8 Nov 2026), a subsequent UART gate saw a different composition and skipped.
+`verify_remixer.py` now disables both build workers; cost measurement is not
+part of its pane/selection contract. Rebuild the named remix before image
+gates, and keep the full-firmware candidate and symbols frozen together.

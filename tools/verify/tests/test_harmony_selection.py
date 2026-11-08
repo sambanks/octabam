@@ -61,14 +61,11 @@ class HarmonySelectionTests(unittest.TestCase):
 
     def test_chords_factory_is_refused_before_linking(self):
         # Both modules replace the native MIDI trig modes and export ch_*.
-        from remix.state import State
-        state = State()
-        state.load('midi-harmony')
-        state.toggle('PAGES')
-        state.toggle('CHORDS FACTORY')
-        self.assertIn('CHORDS FACTORY', dict(registry.modules()['MIDI HARMONY'].conflicts))
-        self.assertTrue(any('conflict' in p.lower() and 'chords' in p.lower()
-                            for p in state.problems()), state.problems())
+        from remix import ledger
+        modules = registry.modules()
+        problems = ledger.check([modules['MIDI HARMONY'], modules['CHORDS FACTORY']])
+        self.assertTrue(any('declared conflict' in p and 'chords' in p.lower()
+                            for p in problems), problems)
 
     def test_other_store_clients_do_not_install_retained_storage(self):
         for name in ('octabam', 'events-clients', 'midi-follow', 'midi-follow-events', 'midi-loopback'):

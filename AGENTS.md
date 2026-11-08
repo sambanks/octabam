@@ -130,6 +130,8 @@ moment it costs real work, and add its line here.
 - [Uninitialized retention can hide the real edit cost](docs/contributing/TRAPS.md#trap-retention-budget) — initialize Harmony and native bank data before bounding lifecycle work; rejected packing is not a successful save.
 - [A refused candidate can crash the remixer before selection](docs/contributing/TRAPS.md#trap-selection-refusal) — render selection-callback errors as compatibility problems; keep build rejection intact.
 
+- [Headless remixer checks can still rebuild the candidate](docs/contributing/TRAPS.md#trap-remixer-cost-worker) — disable both sync and library cost workers in the UI-only gate.
+
 **DSP side**
 
 - [The assembler mis-encodes instructions, silently](docs/contributing/TRAPS.md#trap-asm) — `tfr a,b`→`rnd b`; unknown `mpy` operand orders→`mpysu` (second operand unsigned); `cmp a,b`→`max a,b`. Disassemble what you assemble.
