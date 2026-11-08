@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 340" role="img">
+  <title>VOID SRC=NBR</title>
+  <rect width="880" height="340" fill="#fff"/>
+  <style>
+    .box { fill:#fff; stroke:#111; stroke-width:2; }
+    .fill { fill:#111; stroke:#111; stroke-width:2; }
+    .t { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
+    .t-inv { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#fff; }
+    .t-sm { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
+    .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
+    .side { fill:none; stroke:#111; stroke-width:1.5; stroke-dasharray:4 3; }
+  </style>
+  <defs>
+    <marker id="a" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="440" y="28" text-anchor="middle">SRC = NBR</text>
+  <text class="t-sm" x="440" y="48" text-anchor="middle">prev-track keybus envelope opens the noise — not neighbour audio</text>
+
+  <!-- this track dry → BAL (same as LFO mode; NBR never replaces the dry source) -->
+  <text class="t" x="24" y="94">in</text>
+  <line class="arr" x1="48" y1="90" x2="100" y2="90"/>
+  <rect class="box" x="102" y="68" width="70" height="44" rx="2"/>
+  <text class="t" x="137" y="95" text-anchor="middle">dry</text>
+  <path class="arr" d="M172 90 L760 90 L760 168"/>
+  <text class="t-sm" x="460" y="82" text-anchor="middle">untouched — BAL still blends this track</text>
+
+  <!-- internal noise; no audio in -->
+  <rect class="box" x="40" y="174" width="90" height="44" rx="2"/>
+  <text class="t" x="85" y="201" text-anchor="middle">noise</text>
+  <line class="arr" x1="130" y1="196" x2="172" y2="196"/>
+  <rect class="box" x="174" y="174" width="70" height="44" rx="2"/>
+  <text class="t" x="209" y="201" text-anchor="middle">HPF</text>
+  <line class="arr" x1="244" y1="196" x2="282" y2="196"/>
+  <rect class="box" x="284" y="174" width="70" height="44" rx="2"/>
+  <text class="t" x="319" y="201" text-anchor="middle">COLR</text>
+  <line class="arr" x1="354" y1="196" x2="392" y2="196"/>
+  <rect class="box" x="394" y="174" width="70" height="44" rx="2"/>
+  <text class="t" x="429" y="201" text-anchor="middle">DRV</text>
+  <line class="arr" x1="464" y1="196" x2="502" y2="196"/>
+  <rect class="box" x="504" y="174" width="70" height="44" rx="2"/>
+  <text class="t" x="539" y="201" text-anchor="middle">FDBK</text>
+  <path class="side" d="M516 174 C516 150 562 150 562 174"/>
+  <line class="arr" x1="574" y1="196" x2="620" y2="196"/>
+
+  <rect class="fill" x="622" y="174" width="90" height="44" rx="2"/>
+  <text class="t-inv" x="667" y="201" text-anchor="middle">AM</text>
+
+  <!-- prev track: keybus envelope only → AM (replaces LFO; not audio) -->
+  <rect class="box" x="575" y="258" width="184" height="52" rx="2"/>
+  <text class="t" x="667" y="280" text-anchor="middle">prev track keybus</text>
+  <text class="t-sm" x="667" y="298" text-anchor="middle">envelope only — not audio</text>
+  <line x1="667" y1="258" x2="667" y2="228" stroke="#111" stroke-width="2.5"/>
+  <polygon points="667,212 659,228 675,228" fill="#111"/>
+
+  <text class="t-sm" x="770" y="250" text-anchor="start">quiet → noise off</text>
+  <text class="t-sm" x="770" y="268" text-anchor="start">T1 reads own Y:$800</text>
+  <text class="t-sm" x="770" y="286" text-anchor="start">RATE/SHPE idle</text>
+
+  <line class="arr" x1="712" y1="196" x2="748" y2="196"/>
+  <rect class="fill" x="750" y="168" width="90" height="56" rx="2"/>
+  <text class="t-inv" x="795" y="202" text-anchor="middle">BAL</text>
+  <line class="arr" x1="840" y1="196" x2="870" y2="196"/>
+  <text class="t" x="872" y="200">out</text>
+</svg>

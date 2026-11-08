@@ -964,10 +964,24 @@
   "scope": {
     "main": {
       "image": "scope/osc.png",
-      "caption": "SCOPE OSC with G/P HUD (quiet ring under the live path).",
+      "caption": "SCOPE OSC with G/P HUD (unit).",
       "remix": "scope",
-      "source": "emulator panel UART (live_shots.py + scope.script)",
-      "firmware_sha256": "1c63417e490ed070ee86170461b3740f4536b4bad89ad17e2fb546e49f841949"
+      "source": "unit SysEx (screendump / SCREEN module), inverted to black-on-white",
+      "firmware_sha256": "b801f1106f82f90f21dcd5de33c3ad21e163dad510eb38fb7acfabeaed30b1bd"
+    },
+    "xy": {
+      "image": "scope/xy.png",
+      "caption": "SCOPE XY (L\u00d7R Lissajous) with G/P HUD (unit).",
+      "remix": "scope",
+      "source": "unit SysEx (screendump / SCREEN module), inverted to black-on-white",
+      "firmware_sha256": "b801f1106f82f90f21dcd5de33c3ad21e163dad510eb38fb7acfabeaed30b1bd"
+    },
+    "all": {
+      "image": "scope/all.png",
+      "caption": "SCOPE ALL: 4\u00d72 mini OSC grid T1\u2013T8 (unit).",
+      "remix": "scope",
+      "source": "unit SysEx (screendump / SCREEN module), inverted to black-on-white",
+      "firmware_sha256": "b801f1106f82f90f21dcd5de33c3ad21e163dad510eb38fb7acfabeaed30b1bd"
     },
     "help": {
       "image": "scope/help.png",

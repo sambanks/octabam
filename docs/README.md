@@ -28,6 +28,7 @@ Where each doc is, by who reads it. A module's own page is
 | [contributing/HARDWARE_TESTING.md](contributing/HARDWARE_TESTING.md) | testing a remix on your own unit: the session step by step, stress sequences, recovering from a failure |
 | [contributing/HARDWARE_MATRIX.md](contributing/HARDWARE_MATRIX.md) | one remix in many configurations on a unit over one USB cable: project generation, the run, the flags, the limits |
 | [contributing/HARDWARE_SUITE.md](contributing/HARDWARE_SUITE.md) | the `octabam` remix's hardware suite: projects with generated audio, the phases over the one cable, what each measures |
+| [contributing/HARDWARE_PLAN.md](contributing/HARDWARE_PLAN.md) | the run sheet for the next unit session: `octabam`, `octabam-bus` and `octabam-verbs` after #1067, the control images, the soak's decision rule, the checks by hand, where results go |
 | [contributing/HARDWARE_MANUAL.md](contributing/HARDWARE_MANUAL.md) | the manual test plan for what the cable cannot reach: panel gestures, listening, card, MIDI controllers |
 | [contributing/SCREENSHOTS.md](contributing/SCREENSHOTS.md) | re-capturing the manual site's LCD screenshots: when, `capture_manual.py` groups, the records and coverage page, the probe scripts, FX page behaviour |
 | [contributing/FAILURE_MODES.md](contributing/FAILURE_MODES.md) | what has gone wrong on a unit: symptom, cause, fix, the gate that catches it |

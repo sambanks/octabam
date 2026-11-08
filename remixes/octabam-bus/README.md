@@ -5,7 +5,8 @@ A remix of Octatrack OS 1.40C, built from your own copy of it, that adds a
 effects, and the [core modules](../octabam/README.md#the-core-modules)
 (KITS, scene and parameter locks on page 2, USB MIDI and USB audio, BRAIN and
 the rest) and the extra ColdFire modules of `octabam` (OCTA303, MORPH,
-REC THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, TRACK PATTERNS). The USB settings are at their defaults here (TRACKS PRE, MAIN, CUE, MIDI on). See [Where it has run](#where-it-has-run).
+REC THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, TRACK PATTERNS, SCALES, VARISPEED, CHORDS FACTORY
+with PAGES, SCREEN, SLOW LFO, BAR LED, REC CS1 SKIP). The USB settings are at their defaults here (TRACKS PRE, MAIN, CUE, MIDI on). See [Where it has run](#where-it-has-run).
 
 ## The bus
 

@@ -24,7 +24,7 @@ def registrations():
     assert set(writes)=={0x4e2+36*t+f for t in range(8) for f in (3,12,13,15)}
     base=registry.modules()['STORE']
     # Real registry binding must omit *all* optional code, hooks and claims.
-    for remix in ('octabam-bus','events-clients'):
+    for remix in ('octabam-full','events-clients'):   # octabam-bus carries SCALES since #1067
         chosen=registry.bound(registry.remix(remix))['STORE']
         assert chosen.linked==base.linked and chosen.detours==base.detours
         assert chosen.pokes==base.pokes and chosen.claims==base.claims
@@ -36,7 +36,7 @@ def registrations():
         assert len(m.pokes)==1 and len(m.claims.part_window)==8
         assert all('MIDI PART STATE' not in x.requires for x in registry.selected(r))
     # SCALES only reads the Part window: the copy/init wrappers, no setup walk, no poke, no window claim.
-    for remix in ('octabam','scales'):
+    for remix in ('octabam','octabam-bus','octabam-verbs','scales'):
         r=registry.remix(remix);m=registry.bound(r)['STORE']
         assert len(m.detours)==len(base.detours)+3
         assert len({d.site for d in m.detours})==len(m.detours)

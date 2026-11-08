@@ -134,3 +134,5 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`waveload-port`](waveload-port/README.md) | waveload without the idle loop: the port gate for the wave engines in the frame interrupt. | port-gated: the load path under the port |
 | [`window-ctl`](window-ctl/README.md) | CORE with LOAD METER and MODULATION in the shared window beside the stock effects (all but CHORUS, whose id it takes, and the three reverbs). | `make check` |
 | [`window-mod`](window-mod/README.md) | CORE with LOAD METER and MODULATION in the shared window beside the stock effects (all but CHORUS, whose id it takes, and the three reverbs). | `make check` |
+| [`xfcurve`](xfcurve/README.md) | XF CURVE (the crossfader's curve, a BRAIN setting) with BRAIN, STORE and the stock effects. | `make check`: builds; tools/verify/verify_xfcurve.py |
+| [`xfcurve-scurve`](xfcurve-scurve/README.md) | XF CURVE pinned to S-CURVE, without BRAIN, on the stock effects. | `make check`: tools/verify/verify_xfcurve.py |
