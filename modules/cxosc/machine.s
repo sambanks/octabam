@@ -1242,16 +1242,6 @@ fm_e6_nofunc:
 fm_e6_plain:
         move.l  %d3,%d0
 fm_e6_delta:
-        | PWM (SETUP F): dirty CAR/MOD knobs so morph icons refresh with duty/skew.
-        cmpa.l  #5,%a3
-        bne     fm_e6_pad
-        move.l  %d0,-(%sp)
-        lea     0x46c7d244,%a0           | knob redraw records (slot*20 + 4 = 0x14)
-        moveq   #0x14,%d0
-        move.l  %d0,4(%a0)               | slot A (CAR)
-        move.l  %d0,24(%a0)              | slot B (MOD)
-        move.l  (%sp)+,%d0
-fm_e6_pad:
         clr.l   -(%sp)                   | stand in for SETUP_STEP's two pushes
         clr.l   -(%sp)                   | (stock addql #8,sp still runs)
         jmp     EDIT6_CLAMP
