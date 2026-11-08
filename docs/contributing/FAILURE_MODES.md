@@ -876,11 +876,21 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   BASE is program 0, PLATE REV FX2 def 48, MODULATION FX2 def 51); A01, D01 and D04 switched by hand during play and
   from STOP, about 20 switches with no USB cable and about 20 with LOAD METER read 313 to 433 times a second (no MIDI,
   no audio).
-- **Not established (8 Nov):** STEM REC's code or the layout its reserve brings (`dsp_tail_A` 15,360 bytes lower); why
-  the host's clock and a change landing during play are both needed; whether this host's partial audio read or its
-  USB timing take part. One control run: 3 stalls landing on the test image's 19 transitions against none in the
-  control's 32 is about a 1-in-20 result by chance alone. Inferred, not measured: STEM REC's frame hook
-  (`0x40004b12`) runs in the frame routine that hands the effect swap to the DSP. What would separate it: the same
-  soak on `OCTABAMS4` with the hook reduced to the stock call, the layout unchanged.
+- **Not established (8 Nov): whose fault it is.** Two readings fit, and they can both hold.
+  - STEM REC: the stops came only on the image with it, 3 of 9 switches between BASE and MODULATION against 0 of 16 on
+    `OCTABAM04`. Its frame hook (`0x40004b12`) runs in the frame routine that hands the effect swap to the DSP, and its
+    18 MiB reserve puts `dsp_tail_A` 15,360 bytes lower. Both are inferred, not measured, to matter.
+  - The demand loader's BASE/MODULATION transition: every stop was a switch between BASE and MODULATION, while the 10
+    switches between MODULATION and PLATE REV on `OCTABAMS4`, which also load and withdraw MODULATION, ran clean. On
+    2 Nov `C0`, with none of the five modules, left 3 of 32 unapplied, and all four of `V1`'s and four of `V4`'s five
+    were BASE to MODULATION (above). So that transition misbehaves without STEM REC, which may only widen it.
+  - Also open: why the host's clock and a change landing during play are both needed; whether this host's partial
+    audio read or its USB timing take part.
+  - The counts are small. One control run: 3 stops on the test image's 19 transitions against none in the control's 32
+    is about a 1-in-20 result by chance; 3 of 9 against 0 of 10 between the two kinds of switch, about 1 in 11.
+  - What would separate them, on `OCTABAMS4` unless named: the same soak with another demand-loaded effect (SPECTRUM,
+    CHARACTER or SHATTER) in MODULATION's place; with STEM REC's hook reduced to the stock call, the layout unchanged;
+    `v0.4` with another ColdFire module in STEM REC's place; DLPUMP's `DL_DIAG` words (`tools/hw/dl_poll.py`) read in
+    the soak's own poll, so a stop shows where the loader was.
 - **Fix:** those five modules are left out of `octabam`; `R3` (`K1`'s set) applied 18 of 18 `loader01` transitions and
   the 2 of `loader02`. 2 Nov 2026: VARISPEED is back in `octabam`, since `C0` without it also left unapplied changes.
