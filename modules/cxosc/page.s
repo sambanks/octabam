@@ -465,10 +465,10 @@ pg_fb_lsl:
         bge     pg_fb_lsl
         bra     pg_blit
 
-| CMOR/MMOR: one-cycle silhouette that morphs with the knob — 0 sine, 64 saw,
-| 127 square (same landmarks as sy_wshape). Same fill-to-midline style as
-| FOLD so landmarks read on the 17×13 widget (thin scope stroke looked like
-| scribble on unit CX 64).
+| CMOR/MMOR: one-cycle outline that morphs with the knob — 0 sine, 64 saw,
+| 127 square (same landmarks as sy_wshape). Line only (no fill under). Amp
+| ±4 (was ±5) so the crest clears the widget top; span prev→cur for a
+| connected stroke without a solid lobe.
 pg_ic_morph:
         lea     pg_data(%pc),%a0
         moveq   #16,%d0
@@ -476,6 +476,7 @@ pg_mo_clr:
         clrl    %a0@+
         subql   #1,%d0
         bge     pg_mo_clr
+        moveq   #-1,%d2                  | previous centre row (none yet)
         moveq   #1,%d7                   | columns 1..15
 pg_mo_col:
         lea     pg_morph_sin(%pc),%a0
@@ -503,25 +504,33 @@ pg_mo_hi:
         asrl    #6,%d1
         addl    %d4,%d1
 pg_mo_draw:
-        cmpil   #5,%d1                   | clamp ±5
+        cmpil   #4,%d1                   | clamp ±4 (1px under old ±5 — no top clip)
         ble     pg_mo_hiok
-        moveq   #5,%d1
+        moveq   #4,%d1
 pg_mo_hiok:
-        cmpil   #-5,%d1
+        cmpil   #-4,%d1
         bge     pg_mo_row
-        moveq   #-5,%d1
+        moveq   #-4,%d1
 pg_mo_row:
-        moveq   #6,%d2                   | sample row = 6 − h
-        subl    %d1,%d2
-        moveq   #6,%d1                   | fill sample → midline (FOLD-style lobe)
-        cmpl    %d1,%d2
-        bge     pg_mo_ord
-        movel   %d1,%d0
+        moveq   #6,%d3
+        subl    %d1,%d3                  | centre row = 6 − h
+        movel   %d3,%d1                  | lo = this sample
+        movel   %d3,%d4                  | hi = this sample
+        tstl    %d2                      | connect prev→cur (outline, not fill-to-zero)
+        bmi     pg_mo_stroke
+        cmpl    %d2,%d1
+        ble     pg_mo_span
         movel   %d2,%d1
-        movel   %d0,%d2
-pg_mo_ord:
+pg_mo_span:
+        cmpl    %d2,%d4
+        bge     pg_mo_stroke
+        movel   %d2,%d4
+pg_mo_stroke:
+        movel   %d3,%d5                  | park centre (vline uses d2 = hi)
+        movel   %d4,%d2
         movel   %d7,%d0
         bsr     pg_vline
+        movel   %d5,%d2                  | prev = this centre
         addql   #1,%d7
         cmpil   #15,%d7
         ble     pg_mo_col
@@ -592,6 +601,7 @@ pg_fo_ord:
 | SYMM: half-wave amplitude skew. Midline + solid half-cycle fills;
 | height = full half-box * gain (upper ∝ value, lower ∝ 128−value).
 | 64 = equal blocks; off-center one side dominates — reads as imbalance.
+| Midline at row 7 (was 6): whole cartoon 1px lower so the top does not clip.
 pg_ic_symm:
         lea     pg_data(%pc),%a0
         moveq   #16,%d0
@@ -601,30 +611,30 @@ pg_sy_clr:
         bge     pg_sy_clr
         moveq   #1,%d7                   | zero line
 pg_sy_ax:
-        moveq   #6,%d1
-        moveq   #6,%d2
+        moveq   #7,%d1
+        moveq   #7,%d2
         movel   %d7,%d0
         bsr     pg_vline
         addql   #1,%d7
         cmpil   #15,%d7
         ble     pg_sy_ax
-        | h_up = value*6/64, h_lo = (128−value)*6/64 (0..6)
+        | h_up = value*5/64, h_lo = (128−value)*5/64 (0..5) — 1px under old 6
         movel   %d6,%d4
-        moveq   #6,%d0
+        moveq   #5,%d0
         mulul   %d0,%d4
         asrl    #6,%d4                   | h_up
-        cmpil   #6,%d4
+        cmpil   #5,%d4
         ble     pg_sy_hu
-        moveq   #6,%d4
+        moveq   #5,%d4
 pg_sy_hu:
         movel   #128,%d5
         subl    %d6,%d5
-        moveq   #6,%d0
+        moveq   #5,%d0
         mulul   %d0,%d5
         asrl    #6,%d5                   | h_lo
-        cmpil   #6,%d5
+        cmpil   #5,%d5
         ble     pg_sy_hl
-        moveq   #6,%d5
+        moveq   #5,%d5
 pg_sy_hl:
         moveq   #1,%d7
 pg_sy_col:
@@ -634,16 +644,16 @@ pg_sy_col:
         bmi     pg_sy_lo
         tstl    %d4
         beq     pg_sy_next
-        moveq   #6,%d1
-        subl    %d4,%d1                  | top = 6 − h_up
-        moveq   #6,%d2
+        moveq   #7,%d1
+        subl    %d4,%d1                  | top = 7 − h_up
+        moveq   #7,%d2
         bra     pg_sy_draw
 pg_sy_lo:
         tstl    %d5
         beq     pg_sy_next
-        moveq   #6,%d1
-        moveq   #6,%d2
-        addl    %d5,%d2                  | bottom = 6 + h_lo
+        moveq   #7,%d1
+        moveq   #7,%d2
+        addl    %d5,%d2                  | bottom = 7 + h_lo
 pg_sy_draw:
         movel   %d7,%d0
         bsr     pg_vline
@@ -793,12 +803,12 @@ pg_env:                                  | 11 * exp(-i/5), i = 0..16; the floor 
         .byte   11, 9, 7, 6, 5, 4, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1
 pg_fold_sin:                             | signed sine half-amp for FOLD + SYMM (cols 0..16)
         .byte   0, 3, 5, 6, 5, 3, 0, -3, -5, -6, -5, -3, 0, 3, 5, 3, 0
-pg_morph_sin:                            | rounder sine for CMOR/MMOR landmark 0
-        .byte   0, 2, 4, 5, 5, 4, 2, 0, -2, -4, -5, -5, -4, -2, 0, 2, 0
-pg_morph_saw:                            | rising ramp landmark 64 (cols 0..16)
-        .byte   -5, -4, -4, -3, -2, -2, -1, 0, 1, 2, 2, 3, 4, 4, 5, 5, 5
-pg_morph_sqr:                            | hard square landmark 127 (cols 0..16)
-        .byte   5, 5, 5, 5, 5, 5, 5, 5, -5, -5, -5, -5, -5, -5, -5, -5, -5
+pg_morph_sin:                            | sine landmark 0 (amp ±4 — clears widget top)
+        .byte   0, 2, 3, 4, 4, 3, 2, 0, -2, -3, -4, -4, -3, -2, 0, 2, 0
+pg_morph_saw:                            | rising ramp landmark 64 (amp ±4)
+        .byte   -4, -3, -3, -2, -2, -1, -1, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4
+pg_morph_sqr:                            | hard square landmark 127 (amp ±4)
+        .byte   4, 4, 4, 4, 4, 4, 4, 4, -4, -4, -4, -4, -4, -4, -4, -4, -4
         .align  2
 pg_snap_q8:                              | classic FM ratios <= 4.01 (Q8); matches poly.s sy_rato_snap
         .short  64, 128, 192, 256, 259, 320, 362, 384
