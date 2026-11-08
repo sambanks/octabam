@@ -33,7 +33,8 @@ MIDI interface or second device is involved.
   - Your user in the `audio` group, for `/dev/snd`, and a udev rule for LOAD
     METER's vendor request:
     `SUBSYSTEM=="usb", ATTR{idVendor}=="1935", MODE="0666"` in
-    `/etc/udev/rules.d/50-elektron.rules`.
+    `/etc/udev/rules.d/99-elektron.rules` (a name that sorts after
+    `50-udev-default.rules`, which otherwise resets the mode to 0664).
 - An Octatrack MKI or MKII with the user's own 1.40C OS, and a CF card.
 - `.venv/bin/python3 -m pip install pyusb libusb-package sounddevice numpy`, and, on a Mac,
   `brew install portaudio` for `sounddevice`.
