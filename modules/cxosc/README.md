@@ -41,12 +41,12 @@ See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagram
 
 | Knob | Name | What it does |
 |------|------|----------------|
-| A | CMOR | Carrier morph 0..127 (**0** sine → **64** saw → **127** square); **FUNC** snaps |
-| B | MMOR | Modulator morph 0..127 (same; needs **INDX**); **FUNC** snaps |
+| A | CMOR | Carrier morph 0..127 (**0** sine → **64** saw → **127** square); icon tracks the shape; **FUNC** snaps |
+| B | MMOR | Modulator morph 0..127 (same; needs **INDX**); icon tracks the shape; **FUNC** snaps |
 | C | DEC | Index envelope; **127 = HOLD** |
 | D | SYMM | Fold half-wave skew (**64** = even) |
 | E | FDBK | Modulator feedback (default **0** = off) |
-| F | WIDTH | Cycle lean (**64** = neutral): sine soft lean; saw phase-skew (8%..92% φ warp); square duty (**64** ≈ 50%) |
+| F | WIDTH | Cycle lean — LCD **−64..+63** (**0** = neutral; byte 64): sine soft lean; saw phase-skew (8%..92%); square duty (**0** ≈ 50%) |
 
 LFO PMTR **30 = CMOR**, **31 = MMOR**, **32 = SYMM**, **33 = FDBK**.
 DEC/WIDTH are not LFO destinations. Mono only — AMP HOLD owns note length

@@ -3447,8 +3447,9 @@ po_pg_have:
         rts
 
 | a0 = PLAYBACK descriptor clone: SETUP A..F = CMOR MMOR DEC SYMM FDBK WIDTH.
-| min/count 0/128. DEC uses decay icon; SYMM/FDBK their icons; WIDTH plain.
-| Nibbles: 0x18e high = A/B; 0x18a low 16 = C..F (C=0..3 … F=12..15).
+| min/count 0/128. DEC uses decay icon; SYMM/FDBK their icons; WIDTH dial
+| prints bipolar (pg_fmt_ptch: raw−64 → −64..+63, 0 = neutral) — byte still
+| 0..127. Nibbles: 0x18e high = A/B; 0x18a low 16 = C..F.
 | Edit: po_setup_edit + fm_e6_morph (stock SETUP_STEP bypassed; stack padded).
 | Clobbers d0/a0/a1; a2 (clone) preserved by caller frame.
         .set    FMT_PLAIN, 0x4003c178
@@ -3484,7 +3485,8 @@ po_setup_cx:
         move.l  #FMT_PLAIN,%d0
         move.l  %d0,0xca+36(%a1)         | SYMM
         move.l  %d0,0xca+40(%a1)         | FDBK
-        move.l  %d0,0xca+44(%a1)         | WIDTH
+        lea     pg_fmt_ptch:l,%a0        | WIDTH: LCD −64..+63 (0 = centre)
+        move.l  %a0,0xca+44(%a1)
         clr.l   0x6a+24(%a1)
         clr.l   0x6a+28(%a1)
         clr.l   0x6a+32(%a1)
@@ -3504,15 +3506,16 @@ po_setup_cx:
         move.b  #64,0x5e+9(%a1)          | SYMM even
         move.b  #0,0x5e+10(%a1)          | FDBK off (raise to hear mod feedback)
         move.b  #64,0x5e+11(%a1)         | WIDTH neutral / 50% duty
-        clr.l   0xfa+24(%a1)             | CMOR/MMOR plain
-        clr.l   0xfa+28(%a1)
+        lea     pg_wid_morph:l,%a0       | CMOR/MMOR: live sine→saw→square
+        move.l  %a0,0xfa+24(%a1)
+        move.l  %a0,0xfa+28(%a1)
         lea     pg_wid_decay:l,%a0       | DEC decay icon
         move.l  %a0,0xfa+32(%a1)
         lea     pg_wid_symm:l,%a0
         move.l  %a0,0xfa+36(%a1)
         lea     pg_wid_fdbk:l,%a0
         move.l  %a0,0xfa+40(%a1)
-        clr.l   0xfa+44(%a1)             | WIDTH plain dial
+        clr.l   0xfa+44(%a1)             | WIDTH plain dial (value is bipolar)
         move.l  0x18e(%a1),%d0
         andi.l  #0x00ffffff,%d0
         ori.l   #0x11000000,%d0          | SETUP A/B live

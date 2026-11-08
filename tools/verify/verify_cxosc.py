@@ -414,6 +414,14 @@ def main():
         if "pg_wid_decay" in symbols:
             w_dec = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0xFA + 32, 4)))[0]
             check("SETUP DEC widget = decay icon", w_dec == symbols["pg_wid_decay"], f"{w_dec:#x}")
+        if "pg_wid_morph" in symbols:
+            w_cmor = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0xFA + 24, 4)))[0]
+            w_mmor = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0xFA + 28, 4)))[0]
+            check("SETUP CMOR widget = morph icon", w_cmor == symbols["pg_wid_morph"], f"{w_cmor:#x}")
+            check("SETUP MMOR widget = morph icon", w_mmor == symbols["pg_wid_morph"], f"{w_mmor:#x}")
+        if "pg_fmt_ptch" in symbols:
+            fmt_w = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0xCA + 44, 4)))[0]
+            check("SETUP WIDTH formatter = bipolar signed", fmt_w == symbols["pg_fmt_ptch"], f"{fmt_w:#x}")
 
     base = dict(ptch=64, rato=32, indx=48, fine=64, fold=0, mix=0, dec=127, symm=64, fdbk=40)
     variants = {

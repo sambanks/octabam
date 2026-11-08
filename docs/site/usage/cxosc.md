@@ -94,7 +94,7 @@ work as usual.
 | SETUP | DEC | 0..127 | 127 | index envelope after a trig; **127 = HOLD** (INDX stays with the knob) |
 | SETUP | SYMM | 0..127 | 64 | fold half-wave skew; **64 = even**; needs **FOLD** up |
 | SETUP | FDBK | 0..127 | 0 | modulator feedback (always the unmorphed mod sine) |
-| SETUP | WIDTH | 0..127 | 64 | cycle lean (**64** = neutral): sine soft lean; saw phase-skew (steep↔shallow ramp, still a saw); square duty (**64** ≈ 50%) |
+| SETUP | WIDTH | **−64..+63** (byte 0..127) | **0** (byte 64) | cycle lean: sine soft lean; saw phase-skew (steep↔shallow ramp, still a saw); square duty (**0** ≈ 50%) |
 
 ### How the knobs interact
 
