@@ -81,7 +81,8 @@ resumes (it runs the stock init first if its init never ran).
   Idle: on ping-0 frames it compares the ids on the 16 live FX slots with the effects loaded and arms one message: a load when
   an effect has been used, not loaded, and its block not under a reverb for 200 idle calls in a row (about 145 ms: a project load writes the ids over a stretch of frames, and a reverb that arrives within it keeps the block; `DEBOUNCE` in `pump.s`, port-gated by `verify_dlload` `race`, not measured on a unit); a withdrawal when it is loaded and no slot uses it for 10 s in a row (a project load leaves every id at its default for about 4 s, measured on a unit; the `GRACE` build setting, 2 S for the port gates), or at once when a stock reverb is on the FX2 slot of its block.
   Sending: 100 halfwords per ping-0 frame to core B's `X:0x2901..`, then the doorbell `0xa55a` to `X:0x2900` two frames later.
-  A load is sent three times, 30 idle calls apart, if the effect is still loaded each time. The table of effects, their blocks and the toast
+  A load is sent three times, 30 idle calls apart, if the effect is still loaded each time; the copier copies only a send whose
+  entry is not already bound at that address, so a load costs one copy when its first send arrives whole. The table of effects, their blocks and the toast
   strings is generated per remix (`remix.inc`, `Linked.include`) from `out/dsp/demand_records.json`; the unit reserves 2,600 code
   words an effect on every link. The FX1 and FX2 choosers' "same effect" test is detoured (the refusals above, with the popup
   `FUN_4005a2b8`, which runs in the key handler). The idle loop cannot call the popup, so it leaves its message in `dl_pend`,
@@ -89,7 +90,9 @@ resumes (it runs the stock init first if its init never ran).
 - **DLCOPY** (DSP, `modules/dlcopy/dlcopy.asm`), a hook on payload B at `P:0x76` (the frame head, after the masks are set), in
   the window. When the doorbell is set it clears the effect's BOUND word, copies the block to the window while summing the code
   words, compares the sum with the one staged after the code, and only then writes the effect's init and proc and BOUND last. A
-  block whose sum is wrong is not published; the second send replaces it. A message with N = 0 only clears BOUND and the span.
+  block whose sum is wrong is not published; the second send replaces it. A message for an entry that is BOUND with the same first
+  word (a repeat send) is consumed without a copy: BOUND stays set, and a repeat that arrives damaged cannot unbind resident code
+  (since 8 Nov 2026; `verify_dlstub`, not on a unit). A message with N = 0 only clears BOUND and the span.
 - **The stub** (`modules/dlcopy/dlstub.asm`), assembled once by the build with a trampoline per effect. The effect's id
   dispatches to it. BOUND clear: the audio passes through (the stock null stub's loop). BOUND set: each instance runs the real
   init once, with `r0 n0 r6 r7 n7 m0 m1` kept, then jumps to the real proc.
@@ -222,7 +225,9 @@ still need resident stubs. Moving `otop_e2` to another dispatcher site: changes 
 - SPECTRUM and CHARACTER on an FX2 slot cost a dry slot's 116..119 counts: they are `fx1_only` and render dry there. `octabam` had no FX1 list, so it offered them on FX2 only; it lists them on FX1 now.
 - A project load leaves every id at its default for about 3.8 s (polled over USB every 0.25 s: ids reset at 36.2 s, back at 40.05 s). With a 2 s grace the pump withdrew all four effects at 38.3 s and loaded them again at 40.05 s; the grace is 10 s.
 - Sending on every frame (`DLPANYJ9`, `test/dl-probe-any`, the same project): the copier refused blocks for their sum on the unit (MODULATION received 4, refused 3, published 1; SPECTRUM received 2, refused 2, published 0; TRANSIENT received 2, refused 1, published 1; CHARACTER received nothing) and ran no bad copy. The ping-0 rule holds on the unit as in the port; with it, no block was refused in the rounds on `DLPROBEJ5` and `J7` (about 16 blocks over several loads).
-- A repeat send that is refused leaves the effect unbound: the copier clears BOUND before it copies and publishes nothing for a bad sum, and the ColdFire cannot see the counters to send again. Not seen with the ping-0 gate. The pump sends each load a third time since 26 Oct 2026: a refusal of the second send is followed by a good third; a refusal of the last send still leaves the effect unbound (dry). Each repeat holds the pump's idle comparison for 30 ping-0 frames, about 22 ms at 1,378 ping-0 frames a second (inferred from the frame rate, not measured). The unit did freeze once during the first rounds (13:27); it was on `DLPROBEJ3`, the build with the stale-byte bug, and the cause was not found.
+- A repeat send that is refused leaves the effect unbound: the copier clears BOUND before it copies and publishes nothing for a bad sum, and the ColdFire cannot see the counters to send again. Not seen with the ping-0 gate. The pump sends each load a third time since 26 Oct 2026: a refusal of the second send is followed by a good third; a refusal of the last send still leaves the effect unbound (dry). Since 8 Nov 2026 a repeat of a block that was bound is not copied
+(`verify_dlstub`; not on a unit), so the effect stays dry only when every send is refused, and a load copies once when its first send
+arrives whole instead of three times. Each repeat holds the pump's idle comparison for 30 ping-0 frames, about 22 ms at 1,378 ping-0 frames a second (inferred from the frame rate, not measured). The unit did freeze once during the first rounds (13:27); it was on `DLPROBEJ3`, the build with the stale-byte bug, and the cause was not found.
 
 - The collision toasts on the unit (27 Oct 2026, images T1 to T4, projects `MXTST_A`, `MXTST_B`): the firmware popup (`FUN_4005a2b8`) draws one line of about 23 characters, centred, and clips what does not fit at both edges. A newline in the text is dropped, not drawn as a break (`BUFFER SPACE IN USE` + newline + `BY MODULATION` read `ER SPACE IN USEBY MODUL`). Image T1's strings all read `T4` because the table's second loop reused the last effect's track; the gate now compares each string with its effect's block track and chooser name. `EVICT T8 FX2 FIRST` (18 characters) showed whole; `EVICT MODULATION FIRST` (22) ran slightly off the screen. Both now end in `1ST` (`EVICT MODULATION 1ST` is 20). The duration was 48 ticks (0.8 s) and read as too short; it is 120 (2 s) from image T5.
 - `EVICT T8 FX2 FIRST` showed on the AMP page after a page key (text now `EVICT T8 FX2 1ST`); which of the two projects was loaded for that photo was not recorded.
@@ -284,6 +289,11 @@ DSP 1's peak since reset read 99.8 % with an effect loaded (also 91.7 % and 99.8
 ## Open
 
 - OPEN, hardware: a move from T4's block freezes the DSP frame loop (`FAILURE_MODES.md`, "DARK REV picked on T4's FX2 ..."). `octabam` still has `window_homes`. A poll caught DSP 1 at 99.8 % in a single frame at the copy of a send (15.544 s, 28 Oct 2026): copying a block in one frame takes core B close to a frame.
+  Since 8 Nov 2026 the loop is 9 instructions and 10 words a code word instead of 11 and 13, and the two repeats of a send that
+  arrived whole are not copied. Estimated from the code (2 cycles a one-word instruction, as `CHIP.md` measures; 4 assumed for a
+  two-word one; wait states for fetches and P writes in the window not counted): MODULATION's 1,561 words went from about 41,000
+  cycles to about 31,000, against a frame of 72,512. 🟡 not measured on a unit. Copying a slice per frame (a cursor in the entry,
+  BOUND after the last slice) is the change that would bound it; not made.
 - The unit: the audible dropout while an effect loads (about 25 ms), and a reverb meeting a loaded effect's block.
 - Core A's stall when sent to, and the mask at the frames that lose their chunk.
 - How long the deferred toasts wait for a page key; whether 2 s (120 ticks) is long enough to read.
