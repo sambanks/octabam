@@ -59,7 +59,7 @@ Same linear mix on paper is **not** the same in the instrument:
 ## Perception traps (still true on a correct 127)
 
 - A mathematical saw’s strongest partial **is** a sine (~60% energy). “Sine completely gone” at 127 is not the same as “pure Fourier saw” — stripping the fund leaves a thinner buzz.
-- **FOLD (RATE)** defaults non-zero (seed **40**; stock RATE heritage). Fold is a **sine-table** waveshape on the carrier. Testing morph with FOLD up re-injects sine character. Use **RATE/FOLD ≈ 1** (`po_fine_reset` avoids 0).
+- **FOLD** defaults **0** (bypass). Fold is a **sine-table** waveshape on the carrier. Testing morph with FOLD up re-injects sine character — open FOLD a little, or set FOLD ≈ 1, when auditioning CMOR.
 - **INDX** must be up to hear MMOR; CMOR is audible at INDX 0.
 
 ## Implementation map (CX 15)

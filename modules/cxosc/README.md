@@ -68,6 +68,40 @@ FDBK nudge after Tim art + loop OR: **`lsll #1`**. DEC HOLD is a **single**
 hollow line at row **h=10** (h=11 clips on SETUP; a filled box reads as a
 white square). See `docs/contributing/TRAPS.md#trap-icon-bit31`.
 
+## Saved Parts
+
+Seeds (`fm_defaults`: FINE 0c, FOLD/MIX/INDX/FDBK 0, DEC HOLD, SYMM 64) are
+written **only when CX OSC is chosen**. A project / Part reload / paste keeps
+the bytes that were saved — no remap.
+
+PLAYBACK D/E/F moved since the VRCS-CX VS layout (then FOLD / SYMM / DEC):
+
+| Saved under VS (D/E/F) | Loads on this tip as |
+|---|---|
+| FOLD | **FINE** (raw; 64 = 0c) |
+| SYMM | **FOLD** |
+| DEC | **MIX** |
+
+Example: VS defaults FOLD 40 / SYMM 64 / DEC 127 → FINE raw 40 (−24c), FOLD
+64, MIX 127. Re-choose CX OSC on the track to re-seed, or edit the knobs.
+
+Earlier still: slot F was once FDBK and SYMM’s even centre was 0 — a Part
+saved with FDBK 0 / SYMM 0 under that layout loaded as DEC 0 / SYMM 0 when
+DEC lived on PLAYBACK F (#1001 note).
+
+## Conflicts
+
+Cannot share an image with **SYNTH MACHINE** (same FLEX/STATIC renderers /
+page cave / machine-list sites) or **BLACKPYRAMIDS_303** (shared ColdFire
+ROM hooks, e.g. MIDI note-on). Not an FX2 id — machine signature `"CX", 1`.
+
+## Cost
+
+One mono voice under Unicorn: about **1662** instructions/frame (peak ~1701;
+`verify_cxosc`). Up to **four** CX OSC tracks per Part by `ml_guard`.
+ColdFire headroom on a loaded Part on the unit is still **open**
+([#852](https://github.com/sambanks/octabam/issues/852)).
+
 ## Build
 
 ```bash

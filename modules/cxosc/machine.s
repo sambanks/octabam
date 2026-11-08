@@ -313,7 +313,8 @@ ml_flexslot:
 | machine's INIT into the Part, its battery-RAM shadow and the track's live lane, so the
 | page shows it at once, the next frame plays it and SAVE keeps it:
 |   * PLAYBACK and PLAYBACK SETUP: a row's machine -- its twelve seeds in the FLEX column (CX
-|     OSC: PTCH 0, RATO 1, INDX 32, FOLD 40, SYMM 64, DEC HOLD, SETUP CMOR/MMOR 0; SY DRUM: PTCH 0, MODE
+|     OSC: PTCH 0, RATO ~1, INDX 0, FINE 0c, FOLD 0, MIX 0; SETUP CMOR/MMOR 0, DEC HOLD,
+|     SYMM 64, FDBK 0 — fm_defaults; SY DRUM: PTCH 0, MODE
 |     A, WDTH 64, SWEP 0, SPED 64, DEC 64, LSPD 64, LDEP 0, WAVE OFF, S&H OFF); a stock
 |     machine -- its column at the defaults of its stock PLAYBACK descriptor, and the FLEX
 |     column at FLEX's (the FLEX bytes a row's machine had used: they are no sample settings);

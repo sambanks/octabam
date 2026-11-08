@@ -8,8 +8,11 @@ from remix.schema import Proof, Remix
 
 REMIX = Remix(
     name="cxosc",
-    family="mods", proof=Proof.CHECK,
-    proof_note="port check: marker-less machine list; PLAYBACK PTCH RATO INDX FINE FOLD MIX; SETUP CMOR/MMOR/DEC/SYMM/FDBK",
+    family="mods", proof=Proof.HARDWARE,
+    proof_note=(
+        "same module proof: MKII VRCS-CX VS @ 32316200 + CX 28 layout/icons; "
+        "gate remix for verify_cxosc (PLAYBACK FINE/FOLD/MIX, SETUP CMOR/MMOR/DEC/SYMM/FDBK, 4 MAX)"
+    ),
     doc="CX OSC (machine list, no marker): PLAYBACK PTCH RATO INDX FINE FOLD MIX; SETUP CMOR MMOR DEC SYMM FDBK; stock FX.",
     modules=("CX OSC",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

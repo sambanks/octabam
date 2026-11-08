@@ -127,3 +127,13 @@ scenes).
 3. Raise **MIX** — modulator enters the folder.
 4. CMOR for carrier brightness; MMOR only with INDX still up.
 5. FDBK last for growl.
+
+## Saved Parts
+
+New seeds apply only when you **choose** CX OSC. Reloaded Parts keep their
+saved bytes.
+
+PLAYBACK D/E/F used to be FOLD / SYMM / DEC (VRCS-CX VS). On this tip those
+bytes are **FINE / FOLD / MIX** — a VS Part with DEC at HOLD loads as MIX
+127, and old FOLD 40 becomes FINE raw 40 (−24c). Re-select the machine or
+edit the knobs after loading an older project.
