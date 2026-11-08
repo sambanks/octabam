@@ -194,12 +194,27 @@ def module_page(m, mods, manual_page: dict) -> str:
         lines += [f"This feature is in Octabam {v}: see its [manual page](../manual/{target}).", ""]
     else:
         lines += [f'!!! note "Not in Octabam {v}"', f"    This feature is not in the {v} image.", ""]
-    lines += hero(m)
-    if fragment.is_file():
+    # Usage that leads with architecture diagrams: prose + path first, LCD
+    # shots under ## Screens. Everyone else keeps a hero screen under the title.
+    _DIAGRAM_FIRST = frozenset({"void", "resonator", "shatter", "stuttr"})
+    if m.name in _DIAGRAM_FIRST and fragment.is_file():
         lines += [f'--8<-- "usage/{m.name}.md"', ""]
+        recs = _records(m)
+        if recs:
+            lines += ["## Screens", ""]
+            for record in recs.values():
+                lines += _figure(record)
+        notes_path = OUT.parent / "screen-notes.json"
+        notes = json.loads(notes_path.read_text()) if notes_path.exists() else {}
+        if m.name in notes:
+            lines += ["## Display behaviour", "", notes[m.name], ""]
     else:
-        lines += [m.doc, ""]
-    lines += screen_reference(m)
+        lines += hero(m)
+        if fragment.is_file():
+            lines += [f'--8<-- "usage/{m.name}.md"', ""]
+        else:
+            lines += [m.doc, ""]
+        lines += screen_reference(m)
     rows = [f"| Author | {_author(m)} |",
             f"| Category | {CATEGORY_TITLE[m.category or Category.REFERENCE]} |"]
     if m.requires:

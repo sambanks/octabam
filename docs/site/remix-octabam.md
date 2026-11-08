@@ -39,6 +39,9 @@ change that puts one on all eight tracks, or takes it off them, leaves about
 - [OCTA-303](reference/manual/octabam/machines/octa303.md): a TB-303 voice as a machine.
 - [WAVE](reference/manual/octabam/machines/wavecf.md): a 4-voice wavetable voice with chords as a machine; a Part holds two machines of either kind.
 - [Pattern mute](reference/manual/octabam/sequencer/pattern-mute.md): double-press FUNC to mute tracks per pattern as well as globally.
+- [Scales](reference/manual/octabam/midi-usb/scales.md) and [Chords factory](reference/manual/octabam/midi-usb/chords.md): 52 scales for every module, and chord progressions for a MIDI track.
+- [Slow LFO](reference/manual/octabam/sequencer/slow-lfo.md) (LFO MULT down to 1/8X) and [bar LED](reference/manual/octabam/sequencer/bar-led.md) (the tempo LED green on the 1).
+- [Screen](reference/manual/octabam/midi-usb/screen.md): screenshots over MIDI, with Elektron's screenshot request.
 - Sequencer and recording features, utilities and fixes: see the manual's contents.
 
 ## Install
