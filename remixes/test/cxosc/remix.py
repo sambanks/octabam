@@ -10,8 +10,8 @@ REMIX = Remix(
     name="cxosc",
     family="mods", proof=Proof.HARDWARE,
     proof_note=(
-        "same module proof: MKII VRCS-CX VS @ 32316200 + CX 28 layout/icons; "
-        "gate remix for verify_cxosc (PLAYBACK FINE/FOLD/MIX, SETUP CMOR/MMOR/DEC/SYMM/FDBK, 4 MAX)"
+        "same module proof: MKII CX 41 (full tip) + CX 28 / VRCS-CX VS; "
+        "gate remix for verify_cxosc (PLAYBACK FINE/FOLD/MIX, SETUP morphs, 4 MAX)"
     ),
     doc="CX OSC (machine list, no marker): PLAYBACK PTCH RATO INDX FINE FOLD MIX; SETUP CMOR MMOR DEC SYMM FDBK; stock FX.",
     modules=("CX OSC",

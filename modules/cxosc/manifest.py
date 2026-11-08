@@ -302,12 +302,11 @@ MODULE = Module(
     author_url="https://github.com/ilia-murzinov",
     proof=Proof.HARDWARE,
     proof_note=(
-        "MKII VRCS-CX VS @ 32316200 (author): Tim AMP snap; DEC HOLD@127; bipolar "
-        "SYMM (then PLAYBACK FOLD/SYMM/DEC layout). MKII CX 28 (author, 6 Nov 2026): "
-        "PLAYBACK PTCH RATO INDX FINE FOLD MIX + SETUP CMOR/MMOR/DEC/SYMM/FDBK icons "
-        "(FDBK lsll#1, DEC HOLD hollow h=10); INDX/FOLD/FDBK default 0. Prior BUILD CS "
-        "@ 052bb14d smoke. HOLD-INF / max4 / MIX-FOLD slew: port+flash only — not "
-        "HW-confirmed on tip. verify_cxosc + make check REMIX=cxosc"
+        "MKII CX 41 (author): full tip — PLAYBACK FINE/FOLD/MIX + SETUP "
+        "CMOR/MMOR/DEC/SYMM/FDBK; HOLD INF owns length; 4 tracks/Part; MIX/FOLD slew; "
+        "icons (FDBK lsll#1, DEC HOLD h=10). Prior: CX 28 layout/icons; VRCS-CX VS @ "
+        "32316200 AMP snap / DEC HOLD / SYMM; BUILD CS @ 052bb14d smoke. "
+        "verify_cxosc + make check REMIX=cxosc"
     ),
     doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CMOR/MMOR/DEC/SYMM/FDBK, LFO PMTR 30..33, up to 4 mono / Part. Local fork of FM SYNTH.",
     conflicts=(
