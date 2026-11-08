@@ -10,7 +10,7 @@ Working notes from the CX OSC morph pass. Code: `poly.s` (`sy_wshape`,
 |------|------|------|
 | **CMOR** | PLAYBACK SETUP A | Carrier waveshape 0..127; **FUNC** snaps 0 / 64 / 127 |
 | **MMOR** | PLAYBACK SETUP B | Modulator waveshape 0..127 (heard through FM; needs **INDX**); **FUNC** snaps 0 / 64 / 127 |
-| **WIDTH** | PLAYBACK SETUP F | Cycle lean (**64** = neutral): sine+saw soft lean / square duty (**64** = 50%; duty maps 0..127 → 16..110) |
+| **WIDTH** | PLAYBACK SETUP F | Cycle lean (**64** = neutral): sine soft lean / saw phase-skew / square duty (**64** = 50%; duty maps 0..127 → 16..110) |
 
 Morph map (both oscillators):
 
@@ -30,11 +30,12 @@ LFO SETUP PMTR **30 = CMOR**, **31 = MMOR**. WIDTH is panel-only (not an LFO des
 | Morph region | What WIDTH does |
 |--------------|-----------------|
 | sine | soft half-cycle lean (`sy_wlean`) — odd harmonics |
-| saw | same soft lean on the ramp (`sy_wlean`) — not rise/fall balance |
+| saw | phase-skew asymmetric ramp (`sy_wramp`) — one discontinuity; **64** = clean saw |
 | square | pulse duty (**64** ≈ 50%; MMOR = DPW pulse) |
 
-Rise/fall “ramp-balance” on saw was too harsh (unit). MMOR WIDTH reprimes
-`S_DPWC` only on `|Δduty| ≥ 1<<24` so Q8 slews stay continuous.
+Saw WIDTH is not sine lean (too subtle / wrong shape) and not a triangle
+morph. φ is warped 25%..75% then taken as a saw. MMOR pulse reprimes
+`S_DPWC` only on `|Δduty| ≥ 1<<24`.
 
 Old Parts that saved the F byte as “PWM” load as WIDTH (same slot — no remap).
 
@@ -56,7 +57,8 @@ the same way MIX 0 solos the carrier.
 |-------|------|
 | `sy_cxparm` | FOLD SYMM CMOR MMOR |
 | `sy_cxpwm` | SETUP F WIDTH per track |
-| `sy_wlean` | WIDTH lean on sine and saw |
+| `sy_wlean` | WIDTH lean on sine |
+| `sy_wramp` | WIDTH phase-skew on saw (asymmetric ramp) |
 | `sy_wshape` | `d4=sine, d1=saw, d0=square, d2=amt` → morph |
 | `sy_dpw` / `S_DPWM` | MMOR saw |
 | `sy_dpw_pulse` / `S_DPWC` / `S_DUTY` | MMOR square; large-jump reprime only |
@@ -69,11 +71,12 @@ Stack in `sy_loop`: `0=MIX_Q8, 4=FOLD_Q8, 8=WIDTH, 12=SYMM, 16=morph (00 00 CMOR
 1. FOLD ≈ 0, SYMM 64, DEC 127, WIDTH 64.
 2. **CMOR** 0→64→127, INDX 0: sine → hard saw → WIDTH square.
 3. **FUNC + CMOR/MMOR**: lands on 0 / 64 / 127 only.
-4. **WIDTH** with CMOR 0 / 64: soft lean (same character); CMOR 127: duty, 64 ≈ 50%.
-5. **WIDTH** with MIX 127, MMOR 64 / 127: saw lean + square duty slew without zipper.
-6. **MMOR** 0→127, INDX ~40, CMOR 0: smooth FM colour; no jump mid-travel.
-7. **MIX 127**, INDX 0, MMOR 0→64→127: hear mod sine → DPW saw → DPW square.
-8. One morph at a time when comparing.
+4. **WIDTH** with CMOR 64: **64** = clean saw; 0 / 127 = steep-then-shallow (or flip) — still a saw, not sine mush.
+5. **WIDTH** with CMOR 0: sine lean; CMOR 127: duty, 64 ≈ 50%.
+6. **WIDTH** with MIX 127, MMOR 64 / 127: saw skew + square duty without zipper.
+7. **MMOR** 0→127, INDX ~40, CMOR 0: smooth FM colour; no jump mid-travel.
+8. **MIX 127**, INDX 0, MMOR 0→64→127: hear mod sine → DPW saw → DPW square.
+9. One morph at a time when comparing.
 
 ## Proof status
 

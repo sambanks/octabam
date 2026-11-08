@@ -12,8 +12,8 @@
 | FINE = cents (RATE slot, 64=0c). FOLD = sine fold. MIX = carrier↔heard
 | mod (MMOR morph; 0 = carrier). SETUP: CMOR MMOR DEC SYMM FDBK WIDTH.
 | DEC index env HOLD@127; SYMM fold skew (64=even); FDBK mod feedback;
-| CMOR/MMOR = sine→saw→square; WIDTH leans the cycle (64=neutral): sine
-| and saw soft lean (sy_wlean), square duty (64≈50%).
+| CMOR/MMOR = sine→saw→square; WIDTH (64=neutral): sine lean, saw phase-skew
+| (asymmetric ramp, one discontinuity), square duty (64≈50%).
 | PTCH −32..+32.
 
 | Mono only -- T_POLY
@@ -1076,7 +1076,7 @@ sy_loop:
         asr.l   #8,%d2
         add.l   %d2,%d4                  | m sine, Q14
         | Stack: 0=MIX_Q8, 4=FOLD_Q8, 8=WIDTH, 12=SYMM, 16=morph 00 00 CMOR MMOR, 20=header.
-        | WIDTH: sine+saw lean (sy_wlean); square = duty. (Ramp-balance was too harsh.)
+        | WIDTH: sine lean (sy_wlean); saw phase-skew (sy_wramp); square = duty.
         | Feedback = CLEAN mod sine (WIDTH must not cook FDBK — that drifted alone).
         | MMOR: DPW saw → DPW pulse; CMOR: naive saw → hard pulse.
         move.l  %d4,S_LASTM(%a3)         | fb = clean sine
@@ -1103,7 +1103,7 @@ sy_loop:
         bsr     sy_dpw_pulse             | d0 = pulse; needs saw at 0(sp)
         move.l  (%sp)+,%d1               | saw
         move.l  20(%sp),%d2              | WIDTH (under amt+φm+φc; base slot 8)
-        bsr     sy_wlean                 | same soft lean as sine (not ramp-balance)
+        bsr     sy_wramp                 | phase-skew saw (d6=φm_eff)
         move.l  (%sp)+,%d6               | raw φm
         move.l  (%sp)+,%d2               | amt
         bsr     sy_wshape                | d4 → FM (sine→saw→square)
@@ -1152,7 +1152,7 @@ sy_mod_ok:
         bsr     sy_sq_phi                | d0 = pulse from φ (stable; not stepped saw)
         move.l  (%sp)+,%d1               | saw
         move.l  20(%sp),%d2              | WDTH (under φc+φm+heard)
-        bsr     sy_wlean                 | same soft lean as sine (not ramp-balance)
+        bsr     sy_wramp                 | phase-skew saw (d6=φc_mod)
         mvz.b   26+4(%sp),%d2            | CMOR (morph under φc+φm+heard)
         bsr     sy_wshape                | 127 → pure d0 square; linear saw→sq
         move.l  %d4,%d1
@@ -1290,6 +1290,77 @@ sy_wl_lo:
         move.l  (%sp)+,%d0
 sy_wl_done:
         move.l  (%sp)+,%d2               | restore WIDTH_Q8
+        rts
+
+| ---- WIDTH phase-skew (saw): d1=saw Q14, d2=WIDTH_Q8, d6=φ → d1. --------
+| Warp φ so the ramp is steep then shallow (or vice versa) — still ONE
+| discontinuity per cycle (asymmetric saw), not a triangle morph and not
+| sine lean. d = 25%..~75% via 8192+(WIDTH_Q8>>1); 64→50%. Blend by
+| |WIDTH−64|/(64) so 64 keeps the DPW/naive saw. Keeps d0/d2/d6; parks d3/d7.
+sy_wramp:
+        move.l  %d0,-(%sp)
+        move.l  %d3,-(%sp)
+        move.l  %d2,-(%sp)               | WIDTH_Q8
+        move.l  %d2,%d0
+        subi.l  #(64<<8),%d0             | k_q8
+        beq     sy_wr_done
+        move.l  %d0,-(%sp)               | k_q8
+        move.l  %d7,-(%sp)
+        move.l  %d1,%d7                  | original saw
+        move.l  %d6,%d1
+        lsr.l   #8,%d1
+        lsr.l   #8,%d1
+        lsr.l   #1,%d1                   | p = φ>>17 ∈ 0..32767
+        move.l  8(%sp),%d2               | WIDTH_Q8 (under k + d7)
+        lsr.l   #1,%d2
+        addi.l  #8192,%d2                | d ∈ 8192..24448 (25%..~75%)
+        cmp.l   %d2,%d1
+        bge     sy_wr_hihalf
+        | p' = p * 16384 / d
+        move.l  %d1,%d0
+        lsl.l   #8,%d0
+        lsl.l   #6,%d0                   | p * 16384
+        divs.l  %d2,%d0
+        move.l  %d0,%d1
+        bra     sy_wr_saw
+sy_wr_hihalf:
+        | p' = 16384 + (p−d) * 16384 / (32768−d)
+        move.l  #32768,%d3
+        sub.l   %d2,%d3                  | denom
+        sub.l   %d2,%d1                  | p − d
+        lsl.l   #8,%d1
+        lsl.l   #6,%d1
+        divs.l  %d3,%d1
+        addi.l  #16384,%d1
+sy_wr_saw:
+        move.l  #16384,%d0
+        sub.l   %d1,%d0                  | warped naive saw
+        move.l  %d0,%d1
+        move.l  4(%sp),%d0               | k_q8
+        bpl     sy_wr_abs
+        neg.l   %d0
+sy_wr_abs:
+        move.l  %d1,%d3
+        sub.l   %d7,%d3                  | warped − original
+        muls.l  %d0,%d3
+        asr.l   #8,%d3
+        asr.l   #6,%d3                   | * |k| / (64<<8)
+        move.l  %d7,%d1
+        add.l   %d3,%d1
+        cmpi.l  #16384,%d1
+        ble     sy_wr_cliph
+        move.l  #16384,%d1
+sy_wr_cliph:
+        cmpi.l  #-16384,%d1
+        bge     sy_wr_clipl
+        move.l  #-16384,%d1
+sy_wr_clipl:
+        move.l  (%sp)+,%d7
+        addq.l  #4,%sp                   | drop k_q8
+sy_wr_done:
+        move.l  (%sp)+,%d2
+        move.l  (%sp)+,%d3
+        move.l  (%sp)+,%d0
         rts
 
 | ---- DPW saw (MMOR): d6=φ, d1=Δφ, a4=&z1 → d2 Q14. Parks d3/d7. ----------

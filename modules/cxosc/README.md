@@ -46,7 +46,7 @@ See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagram
 | C | DEC | Index envelope; **127 = HOLD** |
 | D | SYMM | Fold half-wave skew (**64** = even) |
 | E | FDBK | Modulator feedback (default **0** = off) |
-| F | WIDTH | Cycle lean: sine+saw soft lean / square duty (**64** = neutral / ≈50%) |
+| F | WIDTH | Cycle lean: sine lean / saw phase-skew / square duty (**64** = neutral / ≈50%) |
 
 LFO PMTR **30 = CMOR**, **31 = MMOR**, **32 = SYMM**, **33 = FDBK**.
 DEC/WIDTH are not LFO destinations. Mono only — AMP HOLD owns note length
