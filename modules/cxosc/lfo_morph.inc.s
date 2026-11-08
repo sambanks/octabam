@@ -1,21 +1,49 @@
-| CX OSC LFO destinations (PLAYBACK SETUP):
-|   PMTR 30 = CMOR, 31 = MMOR, 32 = SYMM, 33 = FDBK.
-| DEC (SETUP C) is not a destination. Tim private-word pattern
+| CX OSC LFO destinations:
+|   Stock 0..29: PLAYBACK / AMP / LFO / FX names via po_lfdname (Tim 2.10) so
+|   a CX track lists PTCH RATO INDX FINE FOLD MIX, not Flex STRT/LEN/... .
+|   PMTR 30 = CAR, 31 = MOD, 32 = SYMM, 33 = FDBK (private words).
+| DEC / PWM are not destinations. Tim private-word pattern
 | (octatrick-modules lfo_destinations.inc.s): offsets apply every audio
 | frame into sy_cxparm / sy_cxfb. LFO_P / LFO_DESC_LEN / LFO_STATE /
-| UI_TRACK / CURVALS / CV_STRIDE / CV_SETUP come from poly.s.
+| UI_TRACK / CURVALS / CV_STRIDE / CV_SETUP / FLEX_P come from poly.s.
         .set    LF_MID, 16256            | 63.5 << 8
-        .set    LF_LAST, 33              | CMOR..FDBK (DEC skipped)
+        .set    LF_LAST, 33              | CAR..FDBK (DEC skipped)
         .set    LFD_ENC, 0x4003249c
         .set    LFD_STORE, 0x4003932c
+        .set    LFD_RESOLVER, 0x40031da4 | page resolver (track, kind) -> descriptor
+        .set    LFD_MACHTAB, 0x400d5f38  | PLAYBACK descriptors by machine
+        .set    LFD_MASTER, 0x400d2e8a   | resolver answer for the master track
+        .set    LFD_FMT_RET, 0x4003c058  | stock PMTR formatter after descriptor pick
         .global cx_lfo_standalone, cx_lfo_frame, cx_lfo_apply, cx_lfo_page
         .global cx_lfo_stage, cx_lfo_move, cx_lfo_draw, cx_lfo_edit, cx_lfo_pmtr_edit
-        .global cx_lfo_morph
+        .global cx_lfo_morph, po_lfdname
+
+| po_lfdname: 0x4003bff2 (jmp, 8 B). Stock loads LFD_MACHTAB into a0 then picks
+| a2 = tbl[machine]. A FLEX pick becomes the page resolver's PLAYBACK descriptor
+| (CX OSC's page on a CX track) so LFO SETUP prints PTCH RATO INDX FINE FOLD MIX.
+po_lfdname:
+        lea     LFD_MACHTAB,%a0
+        movea.l (%a0,%d0.l*4),%a2        | displaced: the stock pick
+        cmpa.l  #FLEX_P,%a2
+        bne     cx_ln_out
+        clr.l   -(%sp)                   | page kind 0: PLAYBACK
+        move.l  %d1,-(%sp)               | the track
+        jsr     LFD_RESOLVER             | d0 = descriptor (d0/d1/a0/a1 clobber; d2-d5 kept)
+        addq.l  #8,%sp
+        cmpi.l  #LFD_MASTER,%d0
+        beq     cx_ln_out
+        tst.l   %d0
+        beq     cx_ln_out
+        movea.l %d0,%a2
+cx_ln_out:
+        jmp     LFD_FMT_RET
 
 | Depth-hook: d2 LFO, d4 PMTR, a4 track state, a2 page. d0 depth / a1 dest out.
 cx_lfo_apply:
         mvs.w   0x12(%a2,%d2.l*2),%d0
         lea     (%a0,%d4.l*2),%a1
+        tst.l   %d4
+        beq     cx_la_ptch               | (Tim 2.20) PMTR 0 = PTCH: synth unit is 5× sample
         cmpi.l  #30,%d4
         bcs     cx_la_out
         lea     -20(%sp),%sp
@@ -50,6 +78,35 @@ cx_la_mid:
         movem.l (%sp),%d0-%d3/%a0
         lea     20(%sp),%sp
 cx_la_out:
+        rts
+
+| PTCH on a CX OSC track: one semitone = five sample PTCH units (sy_word), so
+| stock DEP was 5× too deep. Scale depth ÷5 (0.2 semitone / unit, as FLEX).
+| Full DEP 0x7f00 → 0x8000 first, matching stock's full-depth correction.
+cx_la_ptch:
+        tst.l   %d0
+        beq     cx_la_out
+        lea     -12(%sp),%sp
+        movem.l %d1-%d2/%a0,(%sp)
+        move.l  %d0,%d1
+        move.l  %a4,%d2
+        subi.l  #LFO_STATE,%d2
+        lsr.l   #3,%d2
+        cmpi.l  #8,%d2
+        bcc     cx_lap_keep
+        jsr     po_signed:l
+        tst.l   %d0
+        beq     cx_lap_keep
+        cmpi.l  #0x7f00,%d1
+        bne     cx_lap_fifth
+        move.l  #0x8000,%d1
+cx_lap_fifth:
+        moveq   #5,%d0
+        divs.l  %d0,%d1
+cx_lap_keep:
+        move.l  %d1,%d0
+        movem.l (%sp),%d1-%d2/%a0
+        lea     12(%sp),%sp
         rts
 
 cx_lfo_standalone:

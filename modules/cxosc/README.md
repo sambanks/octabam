@@ -11,8 +11,7 @@ Human manual (params + shots): [`docs/site/usage/cxosc.md`](../../docs/site/usag
 ## Select
 
 Same sixth list row (**CX OSC**, under PICKUP). No marker file. Stored as
-FLEX with Part signature `"CX", 1`. At most **four CX OSC tracks per Part**
-(`ml_guard` / `ML_FM_MAX 4`).
+FLEX with Part signature `"CX", 1`. No marker-file select; Part signature `"CX", 1`.
 
 - Double-tap the track key → machine list → **CX OSC** → YES
 - **FUNC + SRC** → **SELECT MACHINE TYPE** → **CX OSC** → YES
@@ -46,11 +45,13 @@ See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagram
 | C | DEC | Index envelope; **127 = HOLD** |
 | D | SYMM | Fold half-wave skew (**64** = even) |
 | E | FDBK | Modulator feedback (default **0** = off) |
-| F | WIDTH | Cycle lean — LCD **−64..+63** (**0** = neutral; byte 64): sine soft lean; saw phase-skew (8%..92%); square duty (**0** ≈ 50%) |
+| F | PWM | Cycle lean — LCD **−64..+63** (**0** = neutral; byte 64): sine soft lean; saw phase-skew (8%..92%); square duty (**0** ≈ 50%) |
 
-LFO PMTR **30 = CAR**, **31 = MOD**, **32 = SYMM**, **33 = FDBK**.
-DEC/WIDTH are not LFO destinations. Mono only — AMP HOLD owns note length
-(**HOLD INF** = until STOP); select seeds ATK 0 / HOLD INF / REL 0 / LEG MONO.
+LFO SETUP PMTR lists the PLAYBACK names (**PTCH RATO INDX FINE FOLD MIX**)
+plus AMP / stock FX, then **30 = CAR**, **31 = MOD**, **32 = SYMM**,
+**33 = FDBK**. PTCH LFO depth matches FLEX (÷5). DEC/PWM are not LFO destinations. Mono only — AMP HOLD
+owns note length (**HOLD INF** = until STOP); select seeds ATK 0 / HOLD INF /
+REL 0 / LEG MONO.
 
 CMOR/MMOR targets and traps: [`MORPH.md`](MORPH.md).
 
@@ -99,8 +100,7 @@ ROM hooks, e.g. MIDI note-on). Not an FX2 id — machine signature `"CX", 1`.
 ## Cost
 
 One mono voice under Unicorn: about **2035** instructions/frame (peak ~2074;
-`verify_cxosc`). Up to **four** CX OSC tracks per Part by `ml_guard`.
-ColdFire headroom on a loaded Part on the unit is still **open**
+`verify_cxosc`). ColdFire headroom on a loaded Part on the unit is still **open**
 ([#852](https://github.com/sambanks/octabam/issues/852)).
 
 ## Build

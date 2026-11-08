@@ -1,8 +1,8 @@
 A **Buchla-style complex oscillator** as an Octatrack track machine: two
 operators in FM, a sine wavefolder after them, modulator feedback, and
-**sine → saw → square** morphs on each operator (SETUP **WIDTH**: sine lean /
+**sine → saw → square** morphs on each operator (SETUP **PWM**: sine lean /
 saw phase-skew / square duty). West Coast voice — timbre from folding and
-index, not a filter ladder. Up to **four** mono tracks per Part.
+index, not a filter ladder. Any audio track in the Part may be CX OSC.
 
 Built on Tim Hastie’s FM SYNTH ColdFire engine (local fork); remixes that
 ship CX OSC omit SYNTH MACHINE (same seat).
@@ -43,10 +43,6 @@ Open **FOLD** to hear the folder; raise **MIX** when you want the
 modulator smashed through it too. FOLD at 0 bypasses the folder — MIX
 still solos / blends the dry waves.
 
-## Limit
-
-A fifth CX OSC track shows `CX OSC: 4 MAX`. Each track is one mono voice.
-
 ## Access
 
 ### Select
@@ -63,10 +59,11 @@ list first — **LEFT** reaches the machines.
 ### Pages
 
 - **PLAYBACK** — PTCH RATO INDX FINE FOLD MIX
-- **FUNC + PLAYBACK** — **SRC SETUP** — CAR MOD DEC SYMM FDBK WIDTH
+- **FUNC + PLAYBACK** — **SRC SETUP** — CAR MOD DEC SYMM FDBK PWM
 - **AMP** — ATK / HOLD / REL (engine-owned). Selecting CX seeds ATK 0 /
   HOLD INF / REL 0 and LEG MONO
-- **LFO** — PMTR 30..33 reach SETUP morphs / feedback (below). No VOIC /
+- **LFO** — PMTR lists PLAYBACK (**PTCH RATO INDX FINE FOLD MIX**) then
+  AMP / FX; **30..33** reach SETUP CAR / MOD / SYMM / FDBK. No VOIC /
   CHRD — LFO 3 stays SPD3 / DEP3
 
 **FUNC** on PLAYBACK knobs: PTCH snaps −32 / 0 / +32; RATO snaps classic
@@ -94,7 +91,7 @@ work as usual.
 | SETUP | DEC | 0..127 | 127 | index envelope after a trig; **127 = HOLD** (INDX stays with the knob) |
 | SETUP | SYMM | 0..127 | 64 | fold half-wave skew; **64 = even**; needs **FOLD** up |
 | SETUP | FDBK | 0..127 | 0 | modulator feedback (always the unmorphed mod sine) |
-| SETUP | WIDTH | **−64..+63** (byte 0..127) | **0** (byte 64) | cycle lean: sine soft lean; saw phase-skew (steep↔shallow ramp, still a saw); square duty (**0** ≈ 50%) |
+| SETUP | PWM | **−64..+63** (byte 0..127) | **0** (byte 64) | cycle lean: sine soft lean; saw phase-skew (steep↔shallow ramp, still a saw); square duty (**0** ≈ 50%) |
 
 ### How the knobs interact
 
@@ -105,15 +102,18 @@ work as usual.
 - **Folder:** raise FOLD first. MIX chooses *what* gets folded (carrier
   vs modulator). SYMM tips which polarity the folder emphasises.
 - **Morph while folding:** high FOLD can make a saw-ish CMOR still sound
-  sine-ish — drop FOLD near 0 when auditioning CMOR/WIDTH.
+  sine-ish — drop FOLD near 0 when auditioning CMOR/PWM.
 - **DEC vs MIX:** DEC is SETUP C (index envelope). MIX is PLAYBACK F
   (folder input blend). Different jobs.
 - **CMOR vs MMOR:** same **0** sine / **64** saw / **127** square map;
-  carrier = hard saw/pulse, modulator = DPW saw/pulse. **WIDTH** is
+  carrier = hard saw/pulse, modulator = DPW saw/pulse. **PWM** is
   region-specific (sine lean / saw skew / square duty) — audition with
   FOLD near 0.
 
 ## LFO
+
+Stock destinations first (PLAYBACK names, not Flex): **PTCH RATO INDX FINE
+FOLD MIX**, then AMP / LFO speeds / FX1 / FX2. Extra SETUP destinations:
 
 | PMTR | Destination |
 |---|---|
@@ -122,15 +122,15 @@ work as usual.
 | 32 | SYMM |
 | 33 | FDBK |
 
-DEC is not an LFO destination — it stays under the DEC knob (and locks /
-scenes).
+PTCH LFO depth matches FLEX (÷5 vs raw synth semitone units, Tim 2.20). DEC and PWM are not LFO destinations — they stay under their knobs (and
+locks / scenes).
 
 ### A short listen path
 
 1. INDX mid, DEC at HOLD, FOLD / MIX / FDBK / morphs at 0 — plain FM.
 2. Open **FOLD** — still folding the carrier only.
 3. Raise **MIX** — modulator enters the folder.
-4. CMOR 0→64→127 (sine/saw/square); WIDTH at each landmark.
+4. CMOR 0→64→127 (sine/saw/square); PWM at each landmark.
 5. MMOR only with INDX still up; FDBK last for growl.
 
 ## Saved Parts

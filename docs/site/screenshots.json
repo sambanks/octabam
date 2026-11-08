@@ -907,7 +907,7 @@
     },
     "setup": {
       "image": "cxosc/setup.png",
-      "caption": "SRC SETUP with CX OSC: CAR MOD DEC SYMM FDBK WIDTH.",
+      "caption": "SRC SETUP with CX OSC: CAR MOD DEC SYMM FDBK PWM.",
       "remix": "cxosc",
       "source": "emulator panel UART",
       "firmware_sha256": "bf5ed4fdd94c6150e684e4587c5295700de9b45355507b945ed54fe0dba5bcc1"
