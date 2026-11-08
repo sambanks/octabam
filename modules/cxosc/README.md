@@ -40,8 +40,8 @@ See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagram
 
 | Knob | Name | What it does |
 |------|------|----------------|
-| A | CAR | Carrier morph 0..127 (**0** sine → **64** saw → **127** square); icon tracks the shape; **FUNC** snaps |
-| B | MOD | Modulator morph 0..127 (same; needs **INDX**); icon tracks the shape; **FUNC** snaps |
+| A | CAR | Carrier morph 0..127 (**0** sine → **64** saw → **127** square); icon tracks morph **and** PWM edge; **FUNC** snaps |
+| B | MOD | Modulator morph 0..127 (same; needs **INDX**); icon tracks morph **and** PWM edge; **FUNC** snaps |
 | C | DEC | Index envelope; **127 = HOLD** |
 | D | SYMM | Fold half-wave skew (**64** = even) |
 | E | FDBK | Modulator feedback (default **0** = off) |
@@ -56,6 +56,10 @@ REL 0 / LEG MONO.
 CMOR/MMOR targets and traps: [`MORPH.md`](MORPH.md).
 
 ## Icons (SETUP LCD) — do not invert
+
+CAR/MOD: one-cycle outline; morph picks family, **PWM** sets the edge column
+(duty / saw break / sine crest). Turning PWM dirties A and B so both refresh.
+Details: [`MORPH.md`](MORPH.md).
 
 Stock blit `0x400128a8` column longs: **bit 31 = bottom row**, bit 19 = top
 (mask `0xfff80000`, 13 rows). `pg_vline` row `0` is the bottom; higher row

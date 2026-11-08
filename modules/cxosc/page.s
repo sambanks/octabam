@@ -81,6 +81,10 @@
         .set    FMT_PLAIN, 0x4003c178    | the stock formatter fmt(buf, value) -> sprintf(buf, "%d", value)
 
         .set    SIG_OFF, 0x8edbc         | Part NEIGHBOR PLAYBACK: "CX", 1 (machine.s)
+        .set    UI_TRACK, 0x100b14cc     | active track (byte)
+        .set    CURVALS, 0x80000810      | live lane, 72 B/track
+        .set    CV_SETUP, 32             | +0 CAR +1 MOD … +5 PWM
+        .set    CV_STRIDE, 72
 
 | ---- CX OSC machine descriptor (machine.s fm_row RD_DESC; DRAM or cave) --------
 fm_descriptor:
@@ -465,11 +469,27 @@ pg_fb_lsl:
         bge     pg_fb_lsl
         bra     pg_blit
 
-| CMOR/MMOR: one-cycle outline that morphs with the knob — 0 sine, 64 saw,
-| 127 square (same landmarks as sy_wshape). Line only (no fill under). Amp
-| ±4 (was ±5) so the crest clears the widget top; span prev→cur for a
-| connected stroke without a solid lobe.
+| CAR/MOD: one-cycle outline. Morph picks family (0 sine / 64 saw / 127
+| square); PWM sets a shared edge column 1..15 (byte 64 → 8). Square =
+| duty at edge; saw = two ramps breaking at edge; sine = crest shifted to
+| edge (no soft lean). Amp ±4; outline prev→cur.
 pg_ic_morph:
+        | a6 = edge from live SETUP F PWM (d6 = morph stays)
+        mvz.b   UI_TRACK,%d0
+        cmpil   #8,%d0
+        bcs     pg_mo_trk
+        moveq   #0,%d0
+pg_mo_trk:
+        moveq   #CV_STRIDE,%d1
+        mulu.l  %d1,%d0                  | track * 72
+        lea     CURVALS+CV_SETUP,%a0
+        mvz.b   5(%a0,%d0.l),%d0         | PWM 0..127
+        moveq   #14,%d1
+        mulu.l  %d1,%d0                  | pwm * 14
+        moveq   #127,%d1
+        divul   %d1,%d0                  | /127 → 0..14
+        addql   #1,%d0                   | edge 1..15
+        moveal  %d0,%a6
         lea     pg_data(%pc),%a0
         moveq   #16,%d0
 pg_mo_clr:
@@ -479,16 +499,73 @@ pg_mo_clr:
         moveq   #-1,%d2                  | previous centre row (none yet)
         moveq   #1,%d7                   | columns 1..15
 pg_mo_col:
+        | square d5: +4 left of edge, -4 at/after
+        move.l  %a6,%d0
+        cmp.l   %d0,%d7
+        blt     pg_mo_sqhi
+        moveq   #-4,%d5
+        bra     pg_mo_saw
+pg_mo_sqhi:
+        moveq   #4,%d5
+pg_mo_saw:
+        | saw d4: ramp −4..+4 on each side of edge (discontinuity = PWM)
+        move.l  %a6,%d0                  | edge
+        cmp.l   %d0,%d7
+        bge     pg_mo_sawr
+        move.l  %d0,%d1
+        subql   #1,%d1                   | n = edge-1
+        ble     pg_mo_sawlm
+        cmpil   #1,%d1
+        beq     pg_mo_sawlm
+        move.l  %d7,%d4
+        subql   #1,%d4                   | col-1
+        lsll    #3,%d4                   | *8
+        move.l  %d1,%d0
+        subql   #1,%d0                   | n-1
+        divul   %d0,%d4
+        subil   #4,%d4                   | -4 + 8*(col-1)/(n-1)
+        bra     pg_mo_sin
+pg_mo_sawlm:
+        moveq   #-4,%d4
+        bra     pg_mo_sin
+pg_mo_sawr:
+        move.l  #16,%d1
+        sub.l   %d0,%d1                  | n = 16-edge
+        cmpil   #1,%d1
+        ble     pg_mo_sawrp
+        move.l  %d7,%d4
+        sub.l   %d0,%d4                  | col-edge
+        lsll    #3,%d4
+        move.l  %d1,%d0
+        subql   #1,%d0
+        divul   %d0,%d4
+        subil   #4,%d4
+        bra     pg_mo_sin
+pg_mo_sawrp:
+        moveq   #4,%d4
+pg_mo_sin:
+        | sine d3: crest at edge — idx = ((col-edge+3) mod 15)+1
+        move.l  %d7,%d3
+        sub.l   %a6,%d3
+        addql   #3,%d3
+pg_mo_smodn:
+        tstl    %d3
+        bpl     pg_mo_smodp
+        addil   #15,%d3
+        bra     pg_mo_smodn
+pg_mo_smodp:
+        cmpil   #15,%d3
+        blt     pg_mo_sidx
+        subil   #15,%d3
+        bra     pg_mo_smodp
+pg_mo_sidx:
+        addql   #1,%d3
         lea     pg_morph_sin(%pc),%a0
-        mvsb    %a0@(0,%d7:l),%d3        | sine
-        lea     pg_morph_saw(%pc),%a0
-        mvsb    %a0@(0,%d7:l),%d4        | saw
-        lea     pg_morph_sqr(%pc),%a0
-        mvsb    %a0@(0,%d7:l),%d5        | square
-        movel   %d6,%d0                  | morph 0..127
+        mvsb    %a0@(0,%d3:l),%d3
+        | morph blend: 0..63 sine→saw, 64..127 saw→square
+        movel   %d6,%d0
         cmpil   #64,%d0
         bge     pg_mo_hi
-        | 0..63: sine → saw; h = sine + (saw−sine)*v/64
         movel   %d4,%d1
         subl    %d3,%d1
         mulsl   %d0,%d1
@@ -496,7 +573,6 @@ pg_mo_col:
         addl    %d3,%d1
         bra     pg_mo_draw
 pg_mo_hi:
-        | 64..127: saw → square; /64 (same as low half — landmark 127 is exact)
         subil   #64,%d0
         movel   %d5,%d1
         subl    %d4,%d1
@@ -504,7 +580,7 @@ pg_mo_hi:
         asrl    #6,%d1
         addl    %d4,%d1
 pg_mo_draw:
-        cmpil   #4,%d1                   | clamp ±4 (1px under old ±5 — no top clip)
+        cmpil   #4,%d1
         ble     pg_mo_hiok
         moveq   #4,%d1
 pg_mo_hiok:
@@ -514,9 +590,9 @@ pg_mo_hiok:
 pg_mo_row:
         moveq   #6,%d3
         subl    %d1,%d3                  | centre row = 6 − h
-        movel   %d3,%d1                  | lo = this sample
-        movel   %d3,%d4                  | hi = this sample
-        tstl    %d2                      | connect prev→cur (outline, not fill-to-zero)
+        movel   %d3,%d1
+        movel   %d3,%d4
+        tstl    %d2
         bmi     pg_mo_stroke
         cmpl    %d2,%d1
         ble     pg_mo_span
@@ -526,11 +602,11 @@ pg_mo_span:
         bge     pg_mo_stroke
         movel   %d2,%d4
 pg_mo_stroke:
-        movel   %d3,%d5                  | park centre (vline uses d2 = hi)
+        movel   %d3,%d5
         movel   %d4,%d2
         movel   %d7,%d0
         bsr     pg_vline
-        movel   %d5,%d2                  | prev = this centre
+        movel   %d5,%d2
         addql   #1,%d7
         cmpil   #15,%d7
         ble     pg_mo_col
@@ -803,12 +879,8 @@ pg_env:                                  | 11 * exp(-i/5), i = 0..16; the floor 
         .byte   11, 9, 7, 6, 5, 4, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1
 pg_fold_sin:                             | signed sine half-amp for FOLD + SYMM (cols 0..16)
         .byte   0, 3, 5, 6, 5, 3, 0, -3, -5, -6, -5, -3, 0, 3, 5, 3, 0
-pg_morph_sin:                            | sine landmark 0 (amp ±4 — clears widget top)
+pg_morph_sin:                            | sine samples (amp ±4); crest-shifted by PWM edge
         .byte   0, 2, 3, 4, 4, 3, 2, 0, -2, -3, -4, -4, -3, -2, 0, 2, 0
-pg_morph_saw:                            | rising ramp landmark 64 (amp ±4)
-        .byte   -4, -3, -3, -2, -2, -1, -1, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4
-pg_morph_sqr:                            | hard square landmark 127 (amp ±4)
-        .byte   4, 4, 4, 4, 4, 4, 4, 4, -4, -4, -4, -4, -4, -4, -4, -4, -4
         .align  2
 pg_snap_q8:                              | classic FM ratios <= 4.01 (Q8); matches poly.s sy_rato_snap
         .short  64, 128, 192, 256, 259, 320, 362, 384

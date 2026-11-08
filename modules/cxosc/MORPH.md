@@ -62,10 +62,24 @@ the same way MIX 0 solos the carrier.
 | `sy_wshape` | `d4=sine, d1=saw, d0=square, d2=amt` → morph |
 | `sy_dpw` / `S_DPWM` | MMOR saw |
 | `sy_dpw_pulse` / `S_DPWC` / `S_DUTY` | MMOR square; large-jump reprime only |
-| `fm_e6_morph` | FUNC → landmark snap 0/64/127 on CMOR/MMOR |
-| `pg_wid_morph` | SETUP A/B icon: live sine→saw→square outline |
+| `fm_e6_morph` | FUNC → landmark snap 0/64/127 on CMOR/MMOR; PWM edit dirties CAR/MOD redraw marks |
+| `pg_ic_morph` | SETUP A/B icon: one-cycle cartoons from `(morph, PWM)`; shared edge col 1..15 |
 
 Stack in `sy_loop`: `0=MIX_Q8, 4=FOLD_Q8, 8=PWM, 12=SYMM, 16=morph (00 00 CMOR MMOR)`.
+
+## Icons (CAR / MOD)
+
+Still **one cycle** in the 17×13 box (±4 amp). Soft lean of old landmarks did
+not show PWM, so the cartoons are procedural:
+
+| Morph | Icon |
+|-------|------|
+| sine | crest shifted to the PWM edge column (no soft lean) |
+| saw | two ramps that **break** at the edge (phase-skew cartoon) |
+| square | high then low; transition at the edge (duty) |
+
+PWM byte **64** → edge column **8** (centre). Turning SETUP F marks slots A and
+B dirty (`0x46c7d244 + slot*20 + 4 = 0x14`) so both icons refresh live.
 
 ## On-unit check
 
@@ -78,6 +92,7 @@ Stack in `sy_loop`: `0=MIX_Q8, 4=FOLD_Q8, 8=PWM, 12=SYMM, 16=morph (00 00 CMOR M
 7. **MMOR** 0→127, INDX ~40, CMOR 0: smooth FM colour; no jump mid-travel.
 8. **MIX 127**, INDX 0, MMOR 0→64→127: hear mod sine → DPW saw → DPW square.
 9. One morph at a time when comparing.
+10. **PWM** while watching CAR/MOD icons: edge moves across the box; A and B both redraw without leaving SETUP F.
 
 ## Proof status
 
