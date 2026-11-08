@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Drive the Octatrack over CoreMIDI from the command line (macOS, no deps).
+"""Drive the Octatrack over CoreMIDI from the command line (macOS, no deps), or over ALSA raw MIDI
+on Linux (ot_midi_alsa.py: the same commands; the unit's port is named as on macOS).
 
     python3 tools/hw/ot_midi.py list
     python3 tools/hw/ot_midi.py -p A cc  <ch> <cc> <val>      # e.g. -p A cc 1 40 64
@@ -16,25 +17,26 @@ chromatic = notes 72-96 (84 = unison).
 """
 import ctypes, ctypes.util, platform, sys, time
 
-cm = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/CoreMIDI.framework/CoreMIDI')
-cf = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
 UTF8 = 0x08000100
-for f in (cm.MIDIGetNumberOfSources, cm.MIDIGetNumberOfDestinations):
-    f.restype = ctypes.c_ulong
-for f in (cm.MIDIGetSource, cm.MIDIGetDestination):
-    f.restype = ctypes.c_uint32
-cf.CFStringCreateWithCString.restype = ctypes.c_void_p
-cf.CFStringGetCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32]
-cm.MIDIObjectGetStringProperty.argtypes = [ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p]
-cm.MIDIClientCreate.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
-cm.MIDIOutputPortCreate.argtypes = [ctypes.c_uint32, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
-cm.MIDIPacketListInit.restype = ctypes.c_void_p
-cm.MIDIPacketListAdd.restype = ctypes.c_void_p
-cm.MIDIPacketListAdd.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_uint64, ctypes.c_ulong, ctypes.c_char_p]
-cm.MIDISend.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
-cm.MIDIInputPortCreate.argtypes = [ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
-cm.MIDIPortConnectSource.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
 READPROC = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+if sys.platform == "darwin":                            # Linux: ALSA raw MIDI, at the end of this file
+    cm = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/CoreMIDI.framework/CoreMIDI')
+    cf = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
+    for f in (cm.MIDIGetNumberOfSources, cm.MIDIGetNumberOfDestinations):
+        f.restype = ctypes.c_ulong
+    for f in (cm.MIDIGetSource, cm.MIDIGetDestination):
+        f.restype = ctypes.c_uint32
+    cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+    cf.CFStringGetCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32]
+    cm.MIDIObjectGetStringProperty.argtypes = [ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p]
+    cm.MIDIClientCreate.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+    cm.MIDIOutputPortCreate.argtypes = [ctypes.c_uint32, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+    cm.MIDIPacketListInit.restype = ctypes.c_void_p
+    cm.MIDIPacketListAdd.restype = ctypes.c_void_p
+    cm.MIDIPacketListAdd.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_uint64, ctypes.c_ulong, ctypes.c_char_p]
+    cm.MIDISend.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+    cm.MIDIInputPortCreate.argtypes = [ctypes.c_uint32, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+    cm.MIDIPortConnectSource.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
 
 
 def find(kind, name, wait=3.0):
@@ -137,7 +139,7 @@ def cfstr(s):
     return cf.CFStringCreateWithCString(None, s.encode(), UTF8)
 
 
-_NAME = cfstr("name")                                   # one key for every lookup: each cfstr is a copy
+_NAME = cfstr("name") if sys.platform == "darwin" else None  # one key for every lookup: each cfstr is a copy
 
 
 def name_of(ep):
@@ -175,6 +177,10 @@ class Out:
         pkt = cm.MIDIPacketListInit(buf)
         cm.MIDIPacketListAdd(buf, 1024, pkt, 0, len(data), bytes(data))
         cm.MIDISend(self.port, self.dest, buf)
+
+
+if sys.platform.startswith("linux"):                    # the same four calls over ALSA raw MIDI
+    from ot_midi_alsa import endpoints, find, In, Out  # noqa: E402,F401,F811
 
 
 def main():
