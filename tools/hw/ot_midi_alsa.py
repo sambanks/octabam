@@ -9,10 +9,9 @@ macOS-only.
 
 The unit's USB MIDI port is a raw MIDI device, /dev/snd/midiC<card>D<device>, which
 snd-usb-audio creates when the unit is plugged in (on WSL2: attached with usbipd-win). A
-port's name is its card's long name up to " at " in /proc/asound/cards, for example
-"Elektron Octatrack DPS-1" from "Elektron Octatrack DPS-1 at usb-vhci_hcd.0-1, high
-speed". A card's second and later devices add " 2", " 3" and so on. Every port is both a
-source and a destination. Reading and writing /dev/snd needs the audio group
+port's name is its card's short name in /proc/asound/cards, for the unit "Elektron
+Octatrack DPS-1", as CoreMIDI names it. A card's second and later devices add " 2", " 3"
+and so on. Every port is both a source and a destination. Reading and writing /dev/snd needs the audio group
 (docs/contributing/HARDWARE_TESTING.md, "What you need").
 
     python3 tools/hw/ot_midi_alsa.py selftest      # the message parser, no device
@@ -27,17 +26,20 @@ import time
 
 
 def _cards():
-    """{card number: long name up to ' at '}, from /proc/asound/cards: a card's first line is
-    ' N [id ]: driver - short name', its second the long name."""
+    """{card number: short name}, from /proc/asound/cards, whose line for a card is
+    ' N [id ]: driver - short name'. A USB card's short name is the device's product string,
+    the name CoreMIDI gives its port ("Elektron Octatrack DPS-1"); the long name on the next
+    line puts the maker first ("Elektron Music Machines Elektron Octatrack DPS-1 at ...",
+    WSL2, 8 Nov 2026)."""
     try:
         lines = open("/proc/asound/cards").read().splitlines()
     except OSError:
         return {}
     out = {}
-    for i, line in enumerate(lines[:-1]):
-        m = re.match(r"\s*(\d+)\s+\[", line)
+    for line in lines:
+        m = re.match(r"\s*(\d+)\s+\[[^\]]*\]:\s*(.*)$", line)
         if m:
-            out[int(m.group(1))] = lines[i + 1].strip().split(" at ")[0]
+            out[int(m.group(1))] = m.group(2).split(" - ", 1)[-1].strip()
     return out
 
 
