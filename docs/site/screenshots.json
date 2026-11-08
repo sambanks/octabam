@@ -964,22 +964,22 @@
   "scope": {
     "main": {
       "image": "scope/osc.png",
-      "caption": "SCOPE OSC with G/P HUD (unit, SC SCOPE).",
-      "remix": "test/scope-screen",
+      "caption": "SCOPE OSC with G/P HUD (unit).",
+      "remix": "scope",
       "source": "unit SysEx (screendump / SCREEN module), inverted to black-on-white",
       "firmware_sha256": "b801f1106f82f90f21dcd5de33c3ad21e163dad510eb38fb7acfabeaed30b1bd"
     },
     "xy": {
       "image": "scope/xy.png",
-      "caption": "SCOPE XY (L×R Lissajous) with G/P HUD (unit, SC SCOPE).",
-      "remix": "test/scope-screen",
+      "caption": "SCOPE XY (L\u00d7R Lissajous) with G/P HUD (unit).",
+      "remix": "scope",
       "source": "unit SysEx (screendump / SCREEN module), inverted to black-on-white",
       "firmware_sha256": "b801f1106f82f90f21dcd5de33c3ad21e163dad510eb38fb7acfabeaed30b1bd"
     },
     "all": {
       "image": "scope/all.png",
-      "caption": "SCOPE ALL: 4×2 mini OSC grid T1–T8 (unit, SC SCOPE).",
-      "remix": "test/scope-screen",
+      "caption": "SCOPE ALL: 4\u00d72 mini OSC grid T1\u2013T8 (unit).",
+      "remix": "scope",
       "source": "unit SysEx (screendump / SCREEN module), inverted to black-on-white",
       "firmware_sha256": "b801f1106f82f90f21dcd5de33c3ad21e163dad510eb38fb7acfabeaed30b1bd"
     },
