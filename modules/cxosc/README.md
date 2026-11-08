@@ -46,7 +46,7 @@ See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagram
 | C | DEC | Index envelope; **127 = HOLD** |
 | D | SYMM | Fold half-wave skew (**64** = even) |
 | E | FDBK | Modulator feedback (default **0** = off) |
-| F | WIDTH | Cycle lean: sine lean / saw phase-skew / square duty (**64** = neutral / ≈50%) |
+| F | WIDTH | Cycle lean (**64** = neutral): sine soft lean; saw phase-skew (8%..92% φ warp); square duty (**64** ≈ 50%) |
 
 LFO PMTR **30 = CMOR**, **31 = MMOR**, **32 = SYMM**, **33 = FDBK**.
 DEC/WIDTH are not LFO destinations. Mono only — AMP HOLD owns note length
@@ -98,7 +98,7 @@ ROM hooks, e.g. MIDI note-on). Not an FX2 id — machine signature `"CX", 1`.
 
 ## Cost
 
-One mono voice under Unicorn: about **1669** instructions/frame (peak ~1708;
+One mono voice under Unicorn: about **2035** instructions/frame (peak ~2074;
 `verify_cxosc`). Up to **four** CX OSC tracks per Part by `ml_guard`.
 ColdFire headroom on a loaded Part on the unit is still **open**
 ([#852](https://github.com/sambanks/octabam/issues/852)).

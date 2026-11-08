@@ -1,8 +1,8 @@
 A **Buchla-style complex oscillator** as an Octatrack track machine: two
 operators in FM, a sine wavefolder after them, modulator feedback, and
-**sine → saw → square** morphs on each operator (SETUP **WIDTH** leans
-sine/saw/square). West Coast voice — timbre from folding and index, not a
-filter ladder. Up to **four** mono tracks per Part.
+**sine → saw → square** morphs on each operator (SETUP **WIDTH**: sine lean /
+saw phase-skew / square duty). West Coast voice — timbre from folding and
+index, not a filter ladder. Up to **four** mono tracks per Part.
 
 Built on Tim Hastie’s FM SYNTH ColdFire engine (local fork); remixes that
 ship CX OSC omit SYNTH MACHINE (same seat).
@@ -94,7 +94,7 @@ work as usual.
 | SETUP | DEC | 0..127 | 127 | index envelope after a trig; **127 = HOLD** (INDX stays with the knob) |
 | SETUP | SYMM | 0..127 | 64 | fold half-wave skew; **64 = even**; needs **FOLD** up |
 | SETUP | FDBK | 0..127 | 0 | modulator feedback (always the unmorphed mod sine) |
-| SETUP | WIDTH | 0..127 | 64 | cycle lean: sine lean / saw phase-skew / square duty (**64** = neutral / ≈50%) |
+| SETUP | WIDTH | 0..127 | 64 | cycle lean (**64** = neutral): sine soft lean; saw phase-skew (steep↔shallow ramp, still a saw); square duty (**64** ≈ 50%) |
 
 ### How the knobs interact
 
@@ -109,8 +109,9 @@ work as usual.
 - **DEC vs MIX:** DEC is SETUP C (index envelope). MIX is PLAYBACK F
   (folder input blend). Different jobs.
 - **CMOR vs MMOR:** same **0** sine / **64** saw / **127** square map;
-  carrier = hard saw/pulse, modulator = DPW saw/pulse. **WIDTH** leans
-  every region (sine/saw/square).
+  carrier = hard saw/pulse, modulator = DPW saw/pulse. **WIDTH** is
+  region-specific (sine lean / saw skew / square duty) — audition with
+  FOLD near 0.
 
 ## LFO
 

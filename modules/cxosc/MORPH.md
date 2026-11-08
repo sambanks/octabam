@@ -80,5 +80,7 @@ Stack in `sy_loop`: `0=MIX_Q8, 4=FOLD_Q8, 8=WIDTH, 12=SYMM, 16=morph (00 00 CMOR
 
 ## Proof status
 
-Port / selftest do not replace hearing. Do not mark `Proof.HARDWARE` for
-WIDTH lean / FUNC morph snaps until Ilia confirms a tip on the unit.
+**CX 63** (author MKII): saw WIDTH phase-skew 0→127 confirmed on unit
+(crest moves, stays saw-family). Port still covers sine lean / square duty /
+FUNC snaps / MMOR zipper; those were exercised in the same WIDTH pass of
+tips CX 54–63.
