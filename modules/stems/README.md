@@ -474,6 +474,31 @@ effects. [BUILDING.md](../../docs/guide/BUILDING.md) has every step.
    knobs.
 4. Back to stock: [BUILDING.md section 8](../../docs/guide/BUILDING.md#8-back-to-stock-or-another-remix).
 
+## On Modwerk
+
+STEM REC is also on [Modwerk](https://modwerk.app) as a card build:
+`sdk/octabam/modules/stem-rec` in `repeat98/modwerk`, version
+`0.1.0-experimental`, built from STEMS13's code (commit `00a23502`).
+Modwerk imports this folder from one pinned commit, recorded in
+`sdk/imports/stem-rec-<commit>.json`. It copies `stems.s` unchanged. Its own
+`manifest.py` adapts this one in four ways, each for Modwerk's builder:
+
+1. **No `requires`.** Modwerk's builder places the DRAM regions at the top
+   of its own reserve, where octabam's MEMORY sizes them.
+2. **No YES detour at `0x4005e4c8`.** Modwerk's APPLY SCENE patches the
+   same site, so Modwerk's build leaves out the main page's YES double tap.
+   UP + REC and the YES on STEM REC's own row work the same.
+3. **The gain table from stock copies.** Modwerk fills it at build time
+   from a guarded span of the user's OS, instead of an `.incbin` of the OS
+   slice.
+4. **Stock guards for the displaced instructions.** Modwerk names them by
+   address, length and SHA-256 instead of writing them out.
+
+The module is developed and tested here first. A Modwerk release copies
+`stems.s` from a commit on this repository's main and moves the pin. A
+change to this folder's `manifest.py` needs the matching change in
+Modwerk's adapter.
+
 ## How it works
 
 - **The frame hook.** A detour at the per-frame routine's only call site,
