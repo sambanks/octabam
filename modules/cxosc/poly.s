@@ -1058,13 +1058,14 @@ sy_loop:
         asr.l   #8,%d2
         add.l   %d2,%d4                  | m sine, Q14
         | Stack: 0=MIX_Q8, 4=FOLD_Q8, 8=WIDTH, 12=SYMM, 16=morph 00 00 CMOR MMOR, 20=header.
-        | WIDTH: sine lean + saw ramp-lean (sy_wlean); square = pulse duty.
-        | MMOR: DPW saw → DPW pulse; CMOR: naive saw → hard pulse. fb = sine.
-        move.l  %d4,%d1                  | WIDTH lean on modulator sine (audible at MMOR 0)
+        | WIDTH: sine lean (sy_wlean); saw ramp-balance (sy_wramp); square = duty.
+        | Feedback = CLEAN mod sine (WIDTH must not cook FDBK — that drifted alone).
+        | MMOR: DPW saw → DPW pulse; CMOR: naive saw → hard pulse.
+        move.l  %d4,S_LASTM(%a3)         | fb = clean sine
+        move.l  %d4,%d1                  | heard morph sine gets WIDTH lean
         move.l  8(%sp),%d2
         bsr     sy_wlean
         move.l  %d1,%d4
-        move.l  %d4,S_LASTM(%a3)         | fb source = leaned sine
         mvz.b   19(%sp),%d2              | MMOR
         beq     sy_mod_ok
         | d0 = carrier phase for the whole loop — pulse helpers write d0, so park it.
@@ -1090,13 +1091,13 @@ sy_mod_lo:
         move.l  %d1,%d0                  | dummy square
 sy_mod_mix:
         move.l  20(%sp),%d2              | WIDTH (under amt+φm+φc; base slot 8)
-        bsr     sy_wlean                 | ramp-lean the saw (d1)
+        bsr     sy_wramp                 | ramp-balance the saw (d1)
         move.l  (%sp)+,%d6               | raw φm
         move.l  (%sp)+,%d2               | amt
         bsr     sy_wshape                | d4 → FM (sine→saw→square)
         move.l  (%sp)+,%d0               | restore φc
 sy_mod_ok:
-        move.l  S_LASTM(%a3),%a4         | m_prev = sine
+        move.l  S_LASTM(%a3),%a4         | m_prev = clean sine
         mvs.w   S_ISTEP(%a3),%d1
         add.l   S_IEFF(%a3),%d1
         move.l  %d1,S_IEFF(%a3)
@@ -1131,7 +1132,7 @@ sy_mod_ok:
         neg.l   %d1
         addi.l  #16384,%d1              | aligned naive saw
         move.l  12+4(%sp),%d2            | WIDTH (under modφ+φc; was at 8)
-        bsr     sy_wlean                 | ramp-lean saw (d1; d2 kept = WIDTH)
+        bsr     sy_wramp                 | ramp-balance saw (d1; d2 kept = WIDTH)
         bsr     sy_sq_saw                | d0 = hard square from saw+WIDTH duty
         mvz.b   22+4(%sp),%d2            | CMOR (morph under φc park)
         bsr     sy_wshape                | 127 → pure d0 square; linear saw→sq
@@ -1232,9 +1233,8 @@ sy_done:
         lea     48(%sp),%sp
         rts
 
-| ---- WIDTH lean: d1=sample Q14, d2=WIDTH 0..127 → d1. 64 = identity. ------
-| Soft half-cycle lean (sine warp / saw ramp-balance). Keeps d2=WIDTH.
-| Parks d0/d3. Clamp ±16384.
+| ---- WIDTH lean (sine): d1=sample Q14, d2=WIDTH → d1. 64 = identity. ----
+| Soft half-cycle lean → odd harmonics. Keeps d2=WIDTH. Parks d0/d3.
 sy_wlean:
         move.l  %d2,-(%sp)
         andi.l  #127,%d2
@@ -1253,10 +1253,10 @@ sy_wl_abs:
 sy_wl_t:
         move.l  %d1,%d0
         muls.l  %d2,%d0                  | x * k
-        asr.l   #6,%d0
+        asr.l   #5,%d0                   | stronger than CX 49 (/32 vs /64)
         muls.l  %d3,%d0
         asr.l   #8,%d0
-        asr.l   #7,%d0                   | scale into Q14
+        asr.l   #6,%d0
         add.l   %d0,%d1
         cmpi.l  #16384,%d1
         ble     sy_wl_hi
@@ -1270,6 +1270,31 @@ sy_wl_lo:
         move.l  (%sp)+,%d0
 sy_wl_done:
         move.l  (%sp)+,%d2               | restore WIDTH
+        rts
+
+| ---- WIDTH ramp-balance (saw): d1=saw Q14, d2=WIDTH → d1. 64 = fwd. ----
+| Bias + clamp toward one rail: audible rise/fall lean (CX 49 sy_wlean was
+| silent on a full-scale saw). 0 and 127 are opposite leans, both full amp.
+| Keeps d2=WIDTH. Parks d0.
+sy_wramp:
+        move.l  %d2,-(%sp)
+        andi.l  #127,%d2
+        subi.l  #64,%d2                  | k ∈ [-64, +63]
+        beq     sy_wr_done
+        move.l  %d0,-(%sp)
+        lsl.l   #8,%d2                   | k<<8: ±64 → ±16384
+        sub.l   %d2,%d1                  | saw − bias
+        cmpi.l  #16384,%d1
+        ble     sy_wr_hi
+        move.l  #16384,%d1
+sy_wr_hi:
+        cmpi.l  #-16384,%d1
+        bge     sy_wr_lo
+        move.l  #-16384,%d1
+sy_wr_lo:
+        move.l  (%sp)+,%d0
+sy_wr_done:
+        move.l  (%sp)+,%d2
         rts
 
 | ---- DPW saw (MMOR): d6=φ, d1=Δφ, a4=&z1 → d2 Q14. Parks d3/d7. ----------
@@ -1312,25 +1337,26 @@ sy_dpw_lo:
         rts
 
 | ---- hard square from saw: d1=saw Q14, d2=WIDTH 0..127 → d0 ±16384. -----
-| thresh = (pw-64)<<8 (64 → 0 = 50%). pw is WIDTH clamped to 1..126 so
-| 0/127 stay narrow/wide pulses — not DC (silent). Keeps d1.
+| thresh = (pw-64)<<8 (64 → 0 = 50%). pw clamped to 16..111 — WIDTH 0/127
+| as 1..126 was a hair-thin pulse (unstable / zipper on the unit). Keeps d1.
 sy_sq_saw:
         andi.l  #127,%d2
-        bne     sy_sqs_nz
-        moveq   #1,%d2                   | 0 → narrow, not 0% duty
-sy_sqs_nz:
-        cmpi.l  #127,%d2
-        blt     sy_sqs_pw
-        moveq   #126,%d2                 | 127 → wide, not 100% duty
+        cmpi.l  #16,%d2
+        bge     sy_sqs_flo
+        moveq   #16,%d2                  | floor: still narrow, not a tick
+sy_sqs_flo:
+        cmpi.l  #111,%d2
+        ble     sy_sqs_pw
+        move.l  #111,%d2                 | ceiling: still wide, not DC
 sy_sqs_pw:
         subi.l  #64,%d2
         lsl.l   #8,%d2                   | thresh
         move.l  %d1,%d0
         cmp.l   %d2,%d0
-        ble     sy_sqs_lo
+        ble     sy_sqs_neg
         move.l  #16384,%d0
         rts
-sy_sqs_lo:
+sy_sqs_neg:
         move.l  #-16384,%d0
         rts
 
@@ -1342,12 +1368,13 @@ sy_dpw_pulse:
         move.l  %d6,-(%sp)
         move.l  %a4,-(%sp)               | after parks: 0 a4, 4 φ, 8 d3, 12 ret, 16 saw
         andi.l  #127,%d2
-        bne     sy_dpp_nz
-        moveq   #1,%d2                   | 0 → narrow, not null pulse
-sy_dpp_nz:
-        cmpi.l  #127,%d2
-        blt     sy_dpp_pw
-        moveq   #126,%d2
+        cmpi.l  #16,%d2
+        bge     sy_dpp_flo
+        moveq   #16,%d2                  | same floor as sy_sq_saw (stable)
+sy_dpp_flo:
+        cmpi.l  #111,%d2
+        ble     sy_dpp_pw
+        move.l  #111,%d2
 sy_dpp_pw:
         lsl.l   #8,%d2
         lsl.l   #8,%d2
