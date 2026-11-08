@@ -34,8 +34,8 @@ LFO SETUP PMTR **30 = CMOR**, **31 = MMOR**. WIDTH is panel-only (not an LFO des
 | square | pulse duty (**64** ≈ 50%; MMOR = DPW pulse) |
 
 Saw WIDTH is not sine lean (too subtle / wrong shape) and not a triangle
-morph. φ is warped 25%..75% then taken as a saw. MMOR pulse reprimes
-`S_DPWC` only on `|Δduty| ≥ 1<<24`.
+morph. φ is warped **8%..92%** (CX 62’s 25%..75% barely moved on a full
+0→127 sweep). MMOR pulse reprimes `S_DPWC` only on `|Δduty| ≥ 1<<24`.
 
 Old Parts that saved the F byte as “PWM” load as WIDTH (same slot — no remap).
 

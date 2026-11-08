@@ -1294,9 +1294,12 @@ sy_wl_done:
 
 | ---- WIDTH phase-skew (saw): d1=saw Q14, d2=WIDTH_Q8, d6=φ → d1. --------
 | Warp φ so the ramp is steep then shallow (or vice versa) — still ONE
-| discontinuity per cycle (asymmetric saw), not a triangle morph and not
-| sine lean. d = 25%..~75% via 8192+(WIDTH_Q8>>1); 64→50%. Blend by
-| |WIDTH−64|/(64) so 64 keeps the DPW/naive saw. Keeps d0/d2/d6; parks d3/d7.
+| discontinuity per cycle (asymmetric saw). CX 62 used 25%..75% and a
+| full 0→127 sweep only moved H2/H1 0.50→0.62 (unit). Now d = 8%..92%:
+|   d = 2621 + (WIDTH_Q8 * 27525) / (128<<8)
+| 64 → ~50%. Always take the warped saw (at 50% it matches naive φ→saw);
+| DPW at centre is restored by blending with |k| so MMOR keeps bandlimiting
+| near 64. Keeps d0/d2/d6; parks d3/d7.
 sy_wramp:
         move.l  %d0,-(%sp)
         move.l  %d3,-(%sp)
@@ -1306,14 +1309,19 @@ sy_wramp:
         beq     sy_wr_done
         move.l  %d0,-(%sp)               | k_q8
         move.l  %d7,-(%sp)
-        move.l  %d1,%d7                  | original saw
+        move.l  %d1,%d7                  | original saw (DPW or naive)
         move.l  %d6,%d1
         lsr.l   #8,%d1
         lsr.l   #8,%d1
         lsr.l   #1,%d1                   | p = φ>>17 ∈ 0..32767
-        move.l  8(%sp),%d2               | WIDTH_Q8 (under k + d7)
-        lsr.l   #1,%d2
-        addi.l  #8192,%d2                | d ∈ 8192..24448 (25%..~75%)
+        | d = 2621 + WIDTH_Q8 * 27525 / 32768  → ~8% .. ~92%, 64→~50%
+        move.l  8(%sp),%d2               | WIDTH_Q8
+        move.l  #27525,%d0
+        mulu.l  %d2,%d0
+        lsr.l   #8,%d0
+        lsr.l   #7,%d0                   | /32768
+        addi.l  #2621,%d0
+        move.l  %d0,%d2                  | d
         cmp.l   %d2,%d1
         bge     sy_wr_hihalf
         | p' = p * 16384 / d
@@ -1336,6 +1344,7 @@ sy_wr_saw:
         move.l  #16384,%d0
         sub.l   %d1,%d0                  | warped naive saw
         move.l  %d0,%d1
+        | Near 64 keep original (DPW); toward 0/127 commit to the skew.
         move.l  4(%sp),%d0               | k_q8
         bpl     sy_wr_abs
         neg.l   %d0
