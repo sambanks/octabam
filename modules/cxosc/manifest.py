@@ -302,10 +302,10 @@ MODULE = Module(
     author_url="https://github.com/ilia-murzinov",
     proof=Proof.HARDWARE,
     proof_note=(
-        "MKII CX 63 (author): WIDTH = sine lean / saw phase-skew 8%..92% / square duty; "
-        "saw 0→127 liked on unit. CX 48: sine→saw→square + PWM map; PLAYBACK FINE/FOLD/MIX; "
-        "HOLD INF; 4 tracks/Part; MIX/FOLD slew; icons. Prior CX 41 / CX 28 / VRCS-CX VS. "
-        "verify_cxosc + make check REMIX=cxosc"
+        "MKII CX 67 (author): CAR/MOD labels; outline morph icons (±4 amp); bipolar WDTH LCD; "
+        "SYMM 1px lower. CX 66 outline; CX 65 silhouettes; CX 63 saw WIDTH skew liked on unit. "
+        "CX 48: sine→saw→square + PWM; FINE/FOLD/MIX; HOLD INF; 4 tracks; slew. "
+        "Prior CX 41 / CX 28 / VRCS-CX VS. verify_cxosc + make check REMIX=cxosc"
     ),
     doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/WIDTH (sine→saw→square; WIDTH sine lean / saw phase-skew / square duty), LFO PMTR 30..33, up to 4 mono / Part. Local fork of FM SYNTH.",
     conflicts=(
