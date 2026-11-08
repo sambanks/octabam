@@ -6,7 +6,8 @@
 For each Remix.window_demand effect k the same input is rendered through the effect's own code (the reference),
 through the stock null stub (the dry reference: dsp_host shapes its input, so a pass-through does not return it bit
 for bit), through its stub unbound (must equal the null stub) and bound (must equal the reference, from the first
-block); with the entry's words written into a copy of the dump. Then the copier (modules/dlcopy/dlcopy.asm) is run as
+block); with the entry's words written into a copy of the dump. Each effect's dump carries its own block: two demand
+effects may share one (DLPUMP loads one at a time), and dsp_modmap's dump carries only the first. Then the copier (modules/dlcopy/dlcopy.asm) is run as
 an init over a staged block: with the doorbell it publishes the code and the stub runs it, without the doorbell it
 leaves the stub dry, and a block with a wrong sum is not published, and a withdraw message (N = 0) makes the stub dry again. dsp_host maps P and X separately outside
 the window's alias, so this proves the stub's and the copier's logic and register handling, not the hardware.
@@ -84,6 +85,27 @@ def write_records(path, recs):
 base_recs = records(mem)
 
 
+def own_dump(key, tag):
+    """The dump with `key`'s own block in it. Two demand effects may share a block (DLPUMP loads one at a time:
+    octabam-full puts MODULATION and DISTORX both at P:0x3b820), and dsp_modmap carries only the first of them, so
+    the other's entry points would land in its neighbour's code. Any other demand effect's record over the block is
+    taken out and this one's put in; an overlap with anything else is resident code under a demand block, refused."""
+    a0, w0 = RECS[key]["addr"], RECS[key]["words"]
+    ours = {(r["addr"], len(r["words"])) for k, r in RECS.items() if k != key}
+    recs, foreign = [], []
+    for sp, a, w in base_recs:
+        if sp == 0 and a < a0 + len(w0) and a0 < a + len(w):
+            if (a, len(w)) not in ours and (a, w) != (a0, list(w0)):
+                foreign.append(f"P:0x{a:05x}+{len(w)}")
+            continue
+        recs.append((sp, a, w))
+    check("the block overlaps no resident code (another demand effect's block only)", not foreign, ", ".join(foreign))
+    recs.append((0, a0, list(w0)))
+    path = TMP / f"own_{tag}.mem"
+    write_records(path, recs)
+    return path, recs
+
+
 def run(memfile, init, proc, tag, vals, slot="fx1"):
     r7, alloc = {"fx1": ("1", "0"), "fx2": ("2", "1")}[slot]
     out = TMP / f"{tag}.raw"
@@ -104,23 +126,24 @@ for k, key in enumerate(R.window_demand):
     print(f"{key} (effect {k}):")
     mod = registry.modules()[key]
     rec = RECS[key]
+    kmem, krecs = own_dump(key, f"{k}")
     init_m, proc_m = rec["init"], rec["proc"]                          # the real code, loaded on demand
     init_s, proc_s = send_probe.entry_points(mem, BOUND[key].menu.fx2_id)   # its id in this remix dispatches to the stub
     entry = ENTRY + 8 * k
     code_at, n = rec["addr"], len(rec["words"])
     vals = [(p.default or 0) if p.name else 0 for p in mod.params]
-    direct = run(mem, init_m, proc_m, f"direct{k}", vals)
-    dry = run(mem, init_n, proc_n, f"null{k}", vals)
+    direct = run(kmem, init_m, proc_m, f"direct{k}", vals)
+    dry = run(kmem, init_n, proc_n, f"null{k}", vals)
     if direct == dry:                                                  # an identity at its defaults: turn the knobs up
         vals = [100 if p.name else 0 for p in mod.params]
-        direct = run(mem, init_m, proc_m, f"direct{k}", vals)
+        direct = run(kmem, init_m, proc_m, f"direct{k}", vals)
     check("the reference is not a pass-through", direct != dry)
 
-    unbound = run(mem, init_s, proc_s, f"unbound{k}", vals)
+    unbound = run(kmem, init_s, proc_s, f"unbound{k}", vals)
     check("unbound: the stub's output equals the null stub's", unbound == dry)
 
     def with_words(name, words):
-        write_records(TMP / f"{name}.mem", base_recs + [(1, entry, words)])
+        write_records(TMP / f"{name}.mem", krecs + [(1, entry, words)])
         return TMP / f"{name}.mem"
 
     bound = run(with_words(f"bound{k}", [MAGIC, init_m, proc_m]), init_s, proc_s, f"bound{k}", vals)
@@ -129,9 +152,10 @@ for k, key in enumerate(R.window_demand):
     check("wrong magic: still dry", run(with_words(f"wrongmagic{k}", [MAGIC ^ 1, init_m, proc_m]), init_s, proc_s,
                                          f"wrongmagic{k}", vals) == dry)
 
-    code = next(w for sp, a, w in base_recs if sp == 0 and a == code_at)
-    check("the dump holds the effect's code", len(code) == n and n > 100, f"{n} words at P:0x{code_at:05x}")
-    gone = [(sp, a, [0] * len(w) if (sp == 0 and a == code_at) else w) for sp, a, w in base_recs]    # not resident at boot
+    code = next(w for sp, a, w in krecs if sp == 0 and a == code_at)
+    check("the build's record holds the effect's code, and its dump carries it", len(code) == n and n > 100,
+          f"{n} words at P:0x{code_at:05x}")
+    gone = [(sp, a, [0] * len(w) if (sp == 0 and a == code_at) else w) for sp, a, w in krecs]    # not resident at boot
     halves = []
     for w in code:
         halves += [w >> 8, w & 0xFF]
@@ -165,8 +189,8 @@ for k, key in enumerate(R.window_demand):
     if claims is not None and claims.fx1_only:
         print("  (FX1 only here: no FX2 render)")
     else:
-        direct2 = run(mem, init_m, proc_m, f"direct2_{k}", vals, "fx2")
-        dry2 = run(mem, init_n, proc_n, f"null2_{k}", vals, "fx2")
+        direct2 = run(kmem, init_m, proc_m, f"direct2_{k}", vals, "fx2")
+        dry2 = run(kmem, init_n, proc_n, f"null2_{k}", vals, "fx2")
         check("FX2: the effect's own code renders what it renders on FX1, sample for sample", direct2 == direct,
               f"{sum(a != b for a, b in zip(direct2, direct))} of {len(direct)} samples differ")
         check("FX2: the render is not the dry pass", direct2 != dry2)
@@ -175,9 +199,9 @@ for k, key in enumerate(R.window_demand):
         loaded2 = run(variant(f"loaded2_{k}"), DLC, proc_s, f"loaded2_{k}", vals, "fx2")
         check("FX2: staged with the doorbell, the copier binds it and the stub runs the real code from block 0",
               loaded2 == direct2, f"{sum(x != y for x, y in zip(loaded2, direct2))} of {len(direct2)} samples differ")
-        check("FX2: unbound, the stub is the dry pass", run(mem, init_s, proc_s, f"unbound2_{k}", vals, "fx2") == dry2)
+        check("FX2: unbound, the stub is the dry pass", run(kmem, init_s, proc_s, f"unbound2_{k}", vals, "fx2") == dry2)
     others = [(1, ENTRY + 8 * j, [MAGIC, 1, 2, 3, 4]) for j in range(len(R.window_demand)) if j != k]
-    write_records(TMP / f"withdraw{k}.mem", base_recs + [(1, entry, [MAGIC, init_m, proc_m, code_at, code_at + n])]
+    write_records(TMP / f"withdraw{k}.mem", krecs + [(1, entry, [MAGIC, init_m, proc_m, code_at, code_at + n])]
                   + others + [(1, STAGE, [0xA55A, k, 0, 0, 0, 0])])
     check("withdrawn after a bind: the stub is dry again",
           run(TMP / f"withdraw{k}.mem", DLC, proc_s, f"withdraw{k}", vals) == dry)
