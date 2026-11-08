@@ -70,21 +70,26 @@ def find(kind, name, wait=3.0):
 class Out:
     """Sends to port `port_name`. Opened with O_APPEND, ALSA's shared open: several writers may
     hold the port at once (ot_ladder.Clock's thread beside another Out), and each write goes out
-    whole. The lock keeps one object's sends from interleaving across its threads."""
+    whole. ALSA refuses O_APPEND without O_NONBLOCK (EINVAL, WSL2, 8 Nov 2026), so a write
+    that finds the buffer full waits for room. The lock keeps one object's sends from
+    interleaving across its threads."""
 
     def __init__(self, port_name):
         self.dest = find("dst", port_name)
         if self.dest is None:
             sys.exit(f"no MIDI destination named {port_name!r}; have "
                      f"{[n for n, _ in endpoints('dst')]}")
-        self.fd = os.open(self.dest, os.O_WRONLY | os.O_APPEND)
+        self.fd = os.open(self.dest, os.O_WRONLY | os.O_APPEND | os.O_NONBLOCK)
         self.lock = threading.Lock()
 
     def send(self, data):
         b = bytes(data)
         with self.lock:
             while b:
-                b = b[os.write(self.fd, b):]
+                try:
+                    b = b[os.write(self.fd, b):]
+                except BlockingIOError:
+                    select.select([], [self.fd], [], 0.01)
 
 
 class Parser:
