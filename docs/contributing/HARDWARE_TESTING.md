@@ -20,13 +20,16 @@ MIDI interface or second device is involved.
 ## What you need
 
 - A Mac. `tools/hw/ot_midi.py` and the tools that use it drive the unit over
-  CoreMIDI. On Linux they use ALSA raw MIDI instead (`tools/hw/ot_midi_alsa.py`,
-  8 Nov 2026, written for WSL2; not yet run against a unit). `ot_djump.py` and
-  `ot_xflag.py` call CoreMIDI directly and stay macOS-only. A native Windows host
-  has not been tried. On Linux or WSL2:
+  CoreMIDI. On Linux they use ALSA raw MIDI instead (`tools/hw/ot_midi_alsa.py`).
+  `ot_djump.py` and `ot_xflag.py` call CoreMIDI directly and stay macOS-only. A
+  native Windows host has not been tried. On Linux or WSL2:
   - On Windows, for WSL2: `winget install usbipd`, then in an admin terminal
-    `usbipd list`, `usbipd bind --busid <id>` once, and
-    `usbipd attach --wsl --busid <id>` after each power-up.
+    `usbipd list` and `usbipd bind --busid <id>` once. Then
+    `usbipd attach --wsl --busid <id> --auto-attach` (no admin), left running:
+    it attaches the unit again after each power-cycle. WSL2 shuts down when no
+    WSL session is open, and the unit detaches with it; keep a terminal or a
+    `wsl.exe -- sleep 86400` open for the whole session. The bus id changes
+    with the USB port.
   - `sudo apt install libportaudio2 libusb-1.0-0 usbutils alsa-utils`, and
     `sudo modprobe snd-usb-audio` if `/dev/snd` has no `midiC*` once the unit
     is attached.
@@ -35,6 +38,15 @@ MIDI interface or second device is involved.
     `SUBSYSTEM=="usb", ATTR{idVendor}=="1935", MODE="0666"` in
     `/etc/udev/rules.d/99-elektron.rules` (a name that sorts after
     `50-udev-default.rules`, which otherwise resets the mode to 0664).
+  - What ran, 8 Nov 2026 (Yves's MKII, WSL2 on Windows 11, usbipd-win 5.3.0):
+    `ot_matrix.py switch` (3 runs and a 32-transition run), `ot_dspwatch.py`
+    (100 cycles, with and without `--audio`, polling at 20 and 400 a second),
+    `load_meter.py` (313 to 433 reads a second, 0 read errors), `ot_suite.py
+    build` and `ot_matrix.py audit`. MIDI, transport and LOAD METER worked. The
+    USB audio capture did not keep up: over usbip it delivered about a quarter
+    of the frames (1.27 s of audio in 5 s, no PortAudio status flag), so every
+    measure that reads the audio (`switch`'s silence, `run`'s CRASH, FREEZE,
+    CLICKS and the rest) is not usable on this host.
 - An Octatrack MKI or MKII with the user's own 1.40C OS, and a CF card.
 - `.venv/bin/python3 -m pip install pyusb libusb-package sounddevice numpy`, and, on a Mac,
   `brew install portaudio` for `sounddevice`.
