@@ -427,7 +427,7 @@ sy_cold1:
         clr.l   S_PHC(%a3)               | silent: phase 0, the gain from 0
         clr.l   S_PHM(%a3)
         clr.l   S_LASTM(%a3)
-        move.l  %d2,%d0                  | snap MIX/FOLD Q8 to the panel (was clr → click every START)
+        move.l  %d2,%d0                  | snap MIX/FOLD/WIDTH Q8 to the panel (was clr → click every START)
         lsl.l   #2,%d0
         mvz.w   10(%a4),%d1              | RTIM -> MIX
         lsr.l   #8,%d1
@@ -440,6 +440,16 @@ sy_cold1:
         lsr.l   #8,%d1
         lsl.l   #8,%d1
         lea     sy_foldq(%pc),%a0
+        move.l  %d1,(%a0,%d0.l)
+        move.l  %d2,%d1                  | WIDTH from SETUP F
+        move.l  #CV_STRIDE,%d3
+        mulu.l  %d3,%d1
+        lea     CURVALS+CV_SETUP,%a0
+        mvz.b   5(%a0,%d1.l),%d1         | WIDTH 0..127
+        lea     sy_cxpwm(%pc),%a0
+        move.b  %d1,(%a0,%d2.l)
+        lsl.l   #8,%d1
+        lea     sy_pwmq(%pc),%a0
         move.l  %d1,(%a0,%d0.l)
         clr.l   S_DPWM(%a3)
         clr.l   S_DPWC(%a3)
@@ -672,8 +682,14 @@ sy_symm_nz:
         move.b  %d3,3(%a0,%d0.l)         | MMOR
         bsr     cx_lfo_morph             | PMTR 30..33 -> CMOR/MMOR/SYMM + sy_cxfb (d2 = track)
         mvz.b   5(%a1,%d1.l),%d3         | SETUP F -> WIDTH (0..127; default 64 from Part)
+        move.l  %d3,%d0                  | target — slew like MIX/FOLD (MMOR DPW duty clicked raw)
+        move.l  %d2,%d3
+        lea     sy_pwmq(%pc),%a0
+        lsl.l   #2,%d3
+        adda.l  %d3,%a0
+        bsr     sy_knob_slew             | d0 := slewed WIDTH
         lea     sy_cxpwm(%pc),%a0
-        move.b  %d3,(%a0,%d2.l)
+        move.b  %d0,(%a0,%d2.l)
         mvz.w   10(%a4),%d0              | RTIM -> MIX
         lsr.l   #8,%d0
         move.l  %d2,%d1
@@ -6171,6 +6187,8 @@ sy_cxfb:                                 | 8 tracks: effective FDBK (SETUP E + L
 sy_cxpwm:                                | 8 tracks: SETUP F WIDTH 0..127 (64 = neutral / 50% duty)
         .fill   8, 1, 0
         .align  4
+sy_pwmq:                                 | 8 tracks x Q8 current WIDTH (sy_knob_slew)
+        .fill   8, 4, 0
 sy_mixq:                                 | 8 tracks x Q8 current MIX (sy_knob_slew)
         .fill   8, 4, 0
 sy_foldq:                                | 8 tracks x Q8 current FOLD
