@@ -18,9 +18,10 @@ Every sample:
 1. **Modulator** runs (RATO, MMOR, FDBK into its own phase).
 2. **INDX** (scaled by the DEC envelope) FM’s that into the **carrier**
    phase (PTCH, FINE, CMOR).
-3. **MIX** crossfades the FM’d **carrier** with the **modulator sine**
-   (same tap as FDBK — not the MMOR’d FM shape). That blend is the
-   **folder input**, not a wet/dry of the final sound.
+3. **MIX** crossfades the FM’d **carrier** with the **heard modulator**
+   (MMOR morph — sine / DPW saw / DPW square). FDBK still uses the clean
+   mod sine. That blend is the **folder input**, not a wet/dry of the
+   final sound.
 4. **FOLD** (+ SYMM) wavefolds that blend and dry/wets the folder against
    the pre-fold signal → out.
 
@@ -28,7 +29,7 @@ Every sample:
 
 **MIX does not set how hard you fold.** FOLD does that.
 
-After FM you have two samples: the FM’d carrier, and the modulator sine.
+After FM you have two samples: the FM’d carrier, and the MMOR’d modulator.
 MIX lerps between them (`c + (m − c) · mix`). Whatever comes out is what
 the wavefolder hears.
 
@@ -36,11 +37,11 @@ the wavefolder hears.
 |---|---|
 | **0** (default) | carrier only — classic FM into the folder |
 | mid | carrier blended with modulator |
-| **127** | modulator only |
+| **127** | modulator only (MMOR shape — solo it like CMOR on the carrier) |
 
 Open **FOLD** to hear the folder; raise **MIX** when you want the
 modulator smashed through it too. FOLD at 0 bypasses the folder — MIX
-has nowhere to go.
+still solos / blends the dry waves.
 
 ## Limit
 
@@ -89,7 +90,7 @@ work as usual.
 | PLAYBACK | FOLD | 0..127 | 0 | wavefolder dry/wet after MIX; **0 = bypass** |
 | PLAYBACK | MIX | 0..127 | 0 | **folder input:** carrier↔modulator crossfade; **0 = carrier only** |
 | SETUP | CMOR | 0..127 | 0 | carrier morph: **0** sine → **64** saw → **127** square; **FUNC** snaps landmarks |
-| SETUP | MMOR | 0..127 | 0 | modulator morph (same map; DPW saw/pulse) — needs **INDX**; **FUNC** snaps |
+| SETUP | MMOR | 0..127 | 0 | modulator morph (same map; DPW saw/pulse); hear via **INDX** (FM) or **MIX 127** (solo); **FUNC** snaps |
 | SETUP | DEC | 0..127 | 127 | index envelope after a trig; **127 = HOLD** (INDX stays with the knob) |
 | SETUP | SYMM | 0..127 | 64 | fold half-wave skew; **64 = even**; needs **FOLD** up |
 | SETUP | FDBK | 0..127 | 0 | modulator feedback (always the unmorphed mod sine) |
@@ -99,7 +100,8 @@ work as usual.
 
 - **Clean sine carrier:** INDX, FOLD, FDBK, CMOR, MMOR at 0.
 - **Hear FM:** raise INDX. RATO sets sideband spacing (1 = octaves;
-  non-integers clang). MMOR and FDBK are silent until INDX is up.
+  non-integers clang). FDBK needs INDX; MMOR also colours FM then, or
+  solo the MMOR wave with **MIX 127** / INDX 0.
 - **Folder:** raise FOLD first. MIX chooses *what* gets folded (carrier
   vs modulator). SYMM tips which polarity the folder emphasises.
 - **Morph while folding:** high FOLD can make a saw-ish CMOR still sound

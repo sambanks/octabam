@@ -472,6 +472,21 @@ def main():
         )
         differ(mid, lean, f"WIDTH changes output at CMOR={cmor} ({label})")
 
+    # MIX 127 solos the heard MMOR morph (not the clean FDBK sine).
+    for label, mmor in (("sine", 0), ("saw", 64), ("square", 127)):
+        if "sy_state" in symbols:
+            uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+        pure, _ = render_frames(
+            uc,
+            symbols,
+            {**base, "mix": 127, "indx": 0, "fold": 0, "cmor": 0, "mmor": mmor},
+            frames=32,
+        )
+        if label == "sine":
+            mix_sine = pure
+            continue
+        differ(mix_sine, pure, f"MIX=127 hears MMOR={mmor} ({label})")
+
     # Prove knob → engine maps.
     if "sy_state" in symbols and "sy_cxparm" in symbols and "sy_cxmix" in symbols:
         uc.mem_write(symbols["sy_state"], bytes(128 * 8))

@@ -9,8 +9,8 @@
 | every frame (16 samples, rate 1.0): carrier = sin(phi_c + I *
 | sin(phi_m + fb * m_prev)), optional MIX, then a sine fold with SYMM.
 | PLAYBACK: PTCH RATO INDX FINE FOLD MIX. RATO free 0.25..4 (FUNC snaps).
-| FINE = cents (RATE slot, 64=0c). FOLD = sine fold. MIX = carrier↔mod
-| into fold (0 = carrier). SETUP: CMOR MMOR DEC SYMM FDBK WIDTH.
+| FINE = cents (RATE slot, 64=0c). FOLD = sine fold. MIX = carrier↔heard
+| mod (MMOR morph; 0 = carrier). SETUP: CMOR MMOR DEC SYMM FDBK WIDTH.
 | DEC index env HOLD@127; SYMM fold skew (64=even); FDBK mod feedback;
 | CMOR/MMOR = sine→saw→square; WIDTH leans the cycle (64=neutral): sine
 | phase-warp, saw ramp-balance, square duty (64≈50%).
@@ -1097,6 +1097,10 @@ sy_mod_mix:
         bsr     sy_wshape                | d4 → FM (sine→saw→square)
         move.l  (%sp)+,%d0               | restore φc
 sy_mod_ok:
+        | Park heard mod (MMOR morph / WIDTH-leaned sine) for MIX. FDBK still
+        | uses clean sine in a4/S_LASTM — MIX used to tap that and soloing the
+        | mod never showed saw/square (unit ask).
+        move.l  %d4,-(%sp)               | heard mod (under: MIX FOLD WDTH …)
         move.l  S_LASTM(%a3),%a4         | m_prev = clean sine
         mvs.w   S_ISTEP(%a3),%d1
         add.l   S_IEFF(%a3),%d1
@@ -1118,9 +1122,9 @@ sy_mod_ok:
         asr.l   #8,%d2
         asr.l   #8,%d2
         add.l   %d2,%d1                  | c sine, Q14
-        move.l  12(%sp),%d2              | WIDTH (under modφ)
+        move.l  16(%sp),%d2              | WIDTH (under φm+heard)
         bsr     sy_wlean                 | WIDTH lean on carrier sine (audible at CMOR 0)
-        mvz.b   22(%sp),%d2              | CMOR (morph at 16+4 park)
+        mvz.b   26(%sp),%d2              | CMOR (morph under φm+heard)
         beq     sy_car_ok
         | d0 = running carrier phase — park it (sy_sq_phi writes d0).
         move.l  %d0,-(%sp)               | park φc
@@ -1132,22 +1136,22 @@ sy_mod_ok:
         neg.l   %d1
         addi.l  #16384,%d1              | aligned naive saw (morph only)
         move.l  %d1,-(%sp)               | park saw
-        move.l  20(%sp),%d2              | WDTH (under saw+φc+modφ)
+        move.l  24(%sp),%d2              | WDTH (under saw+φc+φm+heard)
         bsr     sy_sq_phi                | d0 = pulse from φ (stable; not stepped saw)
         move.l  (%sp)+,%d1               | saw
-        move.l  16(%sp),%d2              | WDTH (under φc)
+        move.l  20(%sp),%d2              | WDTH (under φc+φm+heard)
         bsr     sy_wramp                 | full-amp rise/fall balance for morph
-        mvz.b   22+4(%sp),%d2            | CMOR (morph under φc park)
+        mvz.b   26+4(%sp),%d2            | CMOR (morph under φc+φm+heard)
         bsr     sy_wshape                | 127 → pure d0 square; linear saw→sq
         move.l  %d4,%d1
         move.l  (%sp)+,%d0               | restore φc
 sy_car_ok:
         move.l  (%sp)+,%d6               | restore mod phase
+        move.l  (%sp)+,%d4               | heard mod (MMOR shape)
         | ---- MIX (PLAYBACK F): c' = c + (m - c) * MIX_Q8 / 32768; 0 = carrier ----
         move.l  (%sp),%d2                | MIX Q8 (slewed)
         beq     sy_mix_done
-        move.l  %a4,%d4                  | modulator (sine / last m)
-        sub.l   %d1,%d4
+        sub.l   %d1,%d4                  | m − c (m = MMOR morph, not clean sine)
         muls.l  %d2,%d4
         asr.l   #8,%d4                   | /32768 (CF asr #imm is 1..8)
         asr.l   #7,%d4

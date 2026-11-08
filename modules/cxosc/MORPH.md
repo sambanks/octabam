@@ -42,7 +42,9 @@ Old Parts that saved the F byte as “PWM” load as WIDTH (same slot — no rem
 | → square | **hard** pulse (`sy_sq_phi` + WIDTH map) | **DPW pulse** = ½(saw(φ)−saw(φ+duty)), same WIDTH→duty map |
 
 Hard edges on the modulator explode carrier phase (naive saw did at ~46–48).
-Feedback (`S_LASTM`) stays the **modulator sine** (WIDTH-leaned).
+Feedback (`S_LASTM`) stays the **clean modulator sine**. **MIX** crossfades
+to the **heard** MMOR morph (sine/saw/square), so MIX 127 solos the mod
+the same way MIX 0 solos the carrier.
 
 ## Control path
 
@@ -65,7 +67,8 @@ Stack in `sy_loop`: `0=MIX_Q8, 4=FOLD_Q8, 8=WIDTH, 12=SYMM, 16=morph (00 00 CMOR
 3. **FUNC + CMOR/MMOR**: lands on 0 / 64 / 127 only.
 4. **WIDTH** with CMOR 0: sine colour moves; with CMOR 64: ramp lean; with CMOR 127: duty, 64 ≈ 50%.
 5. **MMOR** 0→127, INDX ~40, CMOR 0: smooth FM colour; no jump mid-travel.
-6. One morph at a time when comparing.
+6. **MIX 127**, INDX 0, MMOR 0→64→127: hear mod sine → DPW saw → DPW square.
+7. One morph at a time when comparing.
 
 ## Proof status
 

@@ -30,7 +30,7 @@ reaches the machines.
 | C | INDX | FM depth (default **0**) |
 | D | FINE | Cents (−64..+63; raw **64** = 0c) |
 | E | FOLD | Wavefolder dry/wet after MIX (default **0** = bypass) |
-| F | MIX | Folder **input** crossfade carrier↔mod (**0** = carrier only). Not the fold amount. |
+| F | MIX | Folder **input** crossfade carrier↔**MMOR morph** (**0** = carrier, **127** = mod solo). Not the fold amount. |
 
 Signal path: **mod → FM → carrier → MIX (fold input) → FOLD → out**.
 See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagrams.
