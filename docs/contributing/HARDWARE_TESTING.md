@@ -20,9 +20,22 @@ MIDI interface or second device is involved.
 ## What you need
 
 - A Mac. `tools/hw/ot_midi.py` and the tools that use it drive the unit over
-  CoreMIDI; a Linux or Windows host has not been tried.
+  CoreMIDI. On Linux they use ALSA raw MIDI instead (`tools/hw/ot_midi_alsa.py`,
+  8 Nov 2026, written for WSL2; not yet run against a unit). `ot_djump.py` and
+  `ot_xflag.py` call CoreMIDI directly and stay macOS-only. A native Windows host
+  has not been tried. On Linux or WSL2:
+  - On Windows, for WSL2: `winget install usbipd`, then in an admin terminal
+    `usbipd list`, `usbipd bind --busid <id>` once, and
+    `usbipd attach --wsl --busid <id>` after each power-up.
+  - `sudo apt install libportaudio2 libusb-1.0-0 usbutils alsa-utils`, and
+    `sudo modprobe snd-usb-audio` if `/dev/snd` has no `midiC*` once the unit
+    is attached.
+  - Your user in the `audio` group, for `/dev/snd`, and a udev rule for LOAD
+    METER's vendor request:
+    `SUBSYSTEM=="usb", ATTR{idVendor}=="1935", MODE="0666"` in
+    `/etc/udev/rules.d/50-elektron.rules`.
 - An Octatrack MKI or MKII with the user's own 1.40C OS, and a CF card.
-- `.venv/bin/python3 -m pip install pyusb libusb-package sounddevice numpy`, and
+- `.venv/bin/python3 -m pip install pyusb libusb-package sounddevice numpy`, and, on a Mac,
   `brew install portaudio` for `sounddevice`.
 - A fresh project made on the unit (PROJECT > NEW), copied off the card to your
   machine. `python3 tools/hw/ot_matrix.py audit <dir>` must find nothing. A
