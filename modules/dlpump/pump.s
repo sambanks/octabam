@@ -16,8 +16,8 @@
 | Whether the unit loses the same frames is open. The PHASE build setting ANY sends on every
 | frame (remixes/test/dl-probe-any), to measure it: the copier's sum check counts what arrives.
 |
-| State, set by whoever arms the pump (dl_state last):
-|   dl_core  0 = core A, 1 = core B
+| State, set by arm (dl_state last); every message goes to core B, whose copy is resident for
+| core A too (the window is one memory):
 |   dl_dest  X word address of the first halfword (0x0000..0x3fff)
 |   dl_src   address of the first halfword (.word)
 |   dl_left  halfwords to send
@@ -34,7 +34,6 @@
         .equ    DEBOUNCE, 200                   | idle calls (about 145 ms) an effect is used on a free block before it is loaded
         .equ    REPEAT, 30                      | idle calls (ping-0 frames) between a load and its second send
         .equ    RING,   0xa55a
-        .equ    PING,   0                       | the frames whose host writes the port delivers (below)
 
         .data
         .include "remix.inc"
@@ -44,23 +43,23 @@
 dl_pump:
         lea     dl_dg,%a1
         addq.l  #1,%a1@                         | DL_DIAG[0]: calls
-        move.l  0x800000e0,%d1
+        move.l  0x800000e0,%d1                  | the frame's ping word
         beq.w   dg_p0
         subq.l  #1,%d1
         beq.w   dg_p1
         addq.l  #1,%a1@(12)                     | [3]: ping neither 0 nor 1
-        bra.w   dg_ok
-dg_p0:  addq.l  #1,%a1@(4)                      | [1]: ping 0
-        bra.w   dg_ok
+        bra.w   dg_pn
 dg_p1:  addq.l  #1,%a1@(8)                      | [2]: ping 1
+dg_pn:
+        .if     PHASE_ANY == 0
+        rts                                     | only a ping-0 frame's host writes arrive (above): send and compare on those
+        .else
+        bra.w   dg_ok
+        .endif
+dg_p0:  addq.l  #1,%a1@(4)                      | [1]: ping 0
 dg_ok:  move.l  dl_state,%d0
         beq.w   idle
-        .if     PHASE_ANY == 0
-        moveq   #PING,%d1
-        cmp.l   0x800000e0,%d1                  | the frame's ping word
-        bne.w   9f
-        .endif
-        move.l  dl_core,%d4
+        moveq   #1,%d4                          | core B
         subq.l  #1,%d0
         bne.w   2f
         move.l  dl_left,%d2                     | state 1: the next chunk
@@ -103,11 +102,6 @@ dg_ok:  move.l  dl_state,%d0
 | under a stock reverb) or a withdrawal (loaded and used by no track for GRACE idle calls). Whoever holds a block
 | keeps it: a loaded effect is not withdrawn for a reverb, and a reverb is not moved for an effect.
 idle:
-        .if     PHASE_ANY == 0
-        moveq   #PING,%d1
-        cmp.l   0x800000e0,%d1
-        bne.w   9b
-        .endif
         move.l  dl_rwait,%d0                    | a load is sent three times: a later copy replaces one the DSP
         beq.w   4f                              | refused for its checksum
         subq.l  #1,%d0
@@ -144,14 +138,7 @@ idle:
 3:      cmp.l   #DL_N,%d6
         bcc.w   9b
         move.l  %a2@,%d2                        | its id
-        moveq   #0,%d3                          | used by a track
-        lea     LIVE,%a1                        | FX1 ids of tracks 1-8, then FX2's
-        moveq   #15,%d4
-4:      cmp.b   %a1@+,%d2
-        bne.w   5f
-        moveq   #1,%d3
-5:      subq.l  #1,%d4
-        bpl.w   4b
+        bsr.w   dl_used                         | d3: used by a track
         move.l  dl_loaded,%d0
         btst    %d6,%d0
         sne     %d4                             | d4.b: loaded
@@ -165,11 +152,7 @@ idle:
         moveq   #1,%d5
         bra.w   dl_tc
 dl_ld:  bsr.w   dl_cur                          | a1 = the current home
-        move.l  %a1@(0),%d1
-        lea     LIVE+8,%a0
-        move.b  %a0@(0,%d1:l),%d2
-        bsr.w   dl_rvm
-        and.l   %a1@(12),%d2                    | does a reverb on that slot reach the code?
+        bsr.w   dl_reach                        | does a reverb on its slot reach the code?
         beq.w   dl_tc
         moveq   #1,%d5
         bsr.w   dl_pick                         | another home (this one is busy)
@@ -327,22 +310,13 @@ dl_pick:
         moveq   #0,%d4
 1:      cmp.l   %a2@(12),%d4
         bcc.w   9f
-        move.l  %a2@(8),%a0
-        move.l  %d4,%d5
-        lsl.l   #3,%d5                          | home index * 24
-        move.l  %d5,%d3
-        add.l   %d5,%d3
-        add.l   %d3,%d5
-        adda.l  %d5,%a0
-        move.l  %a0@(16),%d5
+        move.l  %d4,%d1
+        bsr.w   dl_hrec                         | a1 = home d4's record
+        move.l  %a1@(16),%d5
         move.l  dl_busy,%d3
         btst    %d5,%d3
         bne.w   2f                              | another effect's code is there
-        move.l  %a0@(0),%d3
-        lea     LIVE+8,%a1
-        move.b  %a1@(0,%d3:l),%d2
-        bsr.w   dl_rvm
-        and.l   %a0@(12),%d2
+        bsr.w   dl_reach
         bne.w   2f                              | a reverb reaches the code
         move.l  %d4,%d1
         bra.w   8f
@@ -351,6 +325,28 @@ dl_pick:
 9:      moveq   #-1,%d1
 8:      movem.l %sp@,%d2-%d5/%a0-%a1
         lea     %sp@(24),%sp
+        rts
+
+| d2 = an effect's id: d3 = 1 when the FX1 or FX2 slot of a track holds it, else 0. d4 and a0 clobbered.
+dl_used:
+        moveq   #1,%d3
+        lea     LIVE,%a0                        | FX1 ids of tracks 1-8, then FX2's
+        moveq   #15,%d4
+1:      cmp.b   %a0@+,%d2
+        beq.w   2f
+        subq.l  #1,%d4
+        bpl.w   1b
+        moveq   #0,%d3
+2:      rts
+
+| a1 = a home's record: d2 = the bits of the stock reverb on its track's FX2 slot that reach its code (Z set:
+| none does). d1 and a0 clobbered.
+dl_reach:
+        move.l  %a1@(0),%d1
+        lea     LIVE+8,%a0
+        move.b  %a0@(0,%d1:l),%d2
+        bsr.w   dl_rvm
+        and.l   %a1@(12),%d2
         rts
 
 | d7 = a track: d2 = 1 if it is the track of one of the effect's homes.
@@ -376,8 +372,6 @@ dl_ishome:
 arm:    move.l  %d0,dl_loaded
         move.l  %d1,dl_src
         move.l  %d2,dl_left
-        moveq   #1,%d0
-        move.l  %d0,dl_core
         move.l  #STAGE1,%d0
         move.l  %d0,dl_dest
         moveq   #1,%d0
@@ -479,15 +473,9 @@ dl_veto:
         cmp.l   %a1@(0),%d7
         bne.w   7f
         move.l  %a2@,%d2                        | ... that a track uses
-        lea     LIVE,%a0
-        moveq   #15,%d3
-dv_scan:
-        cmp.b   %a0@+,%d2
-        beq.w   dv_used
-        subq.l  #1,%d3
-        bpl.w   dv_scan
-        bra.w   7f                              | unused: it is about to be withdrawn, not a holder
-dv_used:
+        bsr.w   dl_used
+        tst.l   %d3
+        beq.w   7f                              | unused: it is about to be withdrawn, not a holder
         move.l  %sp@,%d2                        | the reverb chosen: does it reach this home's code?
         bsr.w   dl_rvm
         and.l   %a1@(12),%d2
@@ -515,10 +503,7 @@ dl_key:
         cmp.l   %sp@(8),%d1                     | the press, not the release
         bne.w   1f
         clr.l   dl_pend
-        pea     (TOAST_TIME).w
-        move.l  %d0,%sp@-
-        jsr     TOAST
-        addq.l  #8,%sp
+        bsr.w   dl_toast
 1:      move.l  %d3,%sp@-
         move.l  %d2,%sp@-
         move.l  %sp@(12),%a1
@@ -577,9 +562,8 @@ dl_keyfmt:
         .data
 dl_dash:  .asciz  "--"
         .balign 4
-        .globl  dl_state, dl_core, dl_dest, dl_src, dl_left, dl_loaded
+        .globl  dl_state, dl_dest, dl_src, dl_left, dl_loaded
 dl_state: .long 0
-dl_core:  .long 0
 dl_dest:  .long 0
 dl_src:   .long 0
 dl_left:  .long 0
