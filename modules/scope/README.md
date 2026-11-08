@@ -1,8 +1,9 @@
 # `scope` — SCOPE
 
 Full-screen **OSC**, **XY**, or **ALL** (4×2 mini OSC: T1–T4 left column,
-T5–T8 right, centre divider). Use it to see which tracks are actually
-making sound and to catch clipping before it hits the main out.
+T5–T8 right, centre divider). Stock OT has no convenient waveform view —
+SCOPE puts the wave on the unit so you can see which tracks are actually
+making sound and catch clipping before MAIN.
 
 **DOWN + TEMPO** opens; **UP + TEMPO** = [TUNER](../tuner/README.md).
 **UP** / **DOWN** cycle. **RIGHT** help; **LEFT** back.
