@@ -312,17 +312,19 @@ class _Fat32(_Fat16):
 
 
 def build_image(tree_dir, size_mb=64, label="OCTABAM", part_start=2048, log=None, fat=16,
-                part_type=None):
+                part_type=None, spc=None):
     """MBR + one FAT16 partition holding the directory tree at `tree_dir`;
     fat=32 builds FAT32 instead (512-byte clusters, partition type 0x0c
-    unless `part_type` says otherwise)."""
+    unless `part_type` says otherwise). `spc`: FAT16's sectors a cluster
+    instead of the size's default, e.g. 64 for the unit's 32 KB clusters
+    (STEM_REC.md 20.11; FAT16 needs 4,085 clusters, so 160 MB at 64)."""
     total = size_mb * 1024 * 1024 // SECTOR
     part_sectors = total - part_start
     if fat == 32:
         fs = _Fat32(part_sectors, 1, part_start)
         ptype = 0x0C if part_type is None else part_type
     elif fat == 16:
-        spc = 4 if size_mb <= 128 else (8 if size_mb <= 256 else 16)
+        spc = spc or (4 if size_mb <= 128 else (8 if size_mb <= 256 else 16))
         fs = _Fat16(part_sectors, spc, part_start)
         ptype = 0x06 if part_type is None else part_type
     else:
@@ -342,7 +344,7 @@ def build_image(tree_dir, size_mb=64, label="OCTABAM", part_start=2048, log=None
 
 
 def stage_project(project, set_name, name, tree="out/_stage_tree",
-                  audio=(), image_mb=64, fat=16, root_files=()):
+                  audio=(), image_mb=64, fat=16, root_files=(), spc=None):
     """Copy a project directory into <tree>/<SET>/<NAME> and build a card
     image from it -- the same staging emu_frames does.
 
@@ -375,7 +377,7 @@ def stage_project(project, set_name, name, tree="out/_stage_tree",
         out = tree / rel
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(pathlib.Path(f).expanduser(), out)
-    return build_image(str(tree), image_mb, fat=fat), name
+    return build_image(str(tree), image_mb, fat=fat, spc=spc), name
 
 def extract_image(img, out_dir=None, clusters=None):
     """Read a card image back (the one `ot_emu --card-out` writes after a

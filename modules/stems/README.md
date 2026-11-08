@@ -143,10 +143,11 @@ measures the ring against the emulated card's speed (STEM_REC.md 15.4).
 
 | Measured under the port | Since the perf round | Before it | STEM_REC.md |
 |---|---|---|---|
-| The frame hook, not recording (the gain mirror) | 394 instructions per frame | 1,001 | 20.1 |
-| The frame hook, eight tracks at 16 bits | 3,401 instructions per frame | 5,579 | 20.7 |
-| The frame hook, eight tracks at 24 bits | 3,969 instructions per frame | 6,219 | 20.7 |
-| The frame hook, everything at 24 bits | 4,972 instructions per frame | 7,415 | 20.7 |
+| The frame hook, not recording (the gain mirror) | 396 instructions per frame (394 in the perf round) | 1,001 | 20.1, 20.10 |
+| The frame hook, T1 alone at 24 bits | 937 instructions per frame, every fader at rest (the mirror 407 of them; 1,035 and 477 before flat gain slots, 968 before the mirror's slot mask) | | 20.9, 20.10 |
+| The frame hook, eight tracks at 16 bits | 3,401 instructions per frame, without `stems_zframe` (about 15 a file), before flat gain slots | 5,579 | 20.7 |
+| The frame hook, eight tracks at 24 bits | 3,969 instructions per frame, without `stems_zframe`, before flat gain slots | 6,219 | 20.7 |
+| The frame hook, everything at 24 bits | 4,468 instructions per frame, every fader at rest (5,252 before flat gain slots; 4,972 as counted until 29 Oct 2026, without `stems_zframe`) | 7,415 | 20.9, 20.10 |
 | The writer's copy | none: the card reads each file's ring (zero copy) | 737 a frame at eight tracks, 16 bits; 1,067 everything at 24 bits | 20.7 |
 | The writer task's stack peak | 1,560 of 8,192 bytes (the most seen; `full`, 8 Oct 2026) | 1,244 | 20.3 |
 
@@ -159,7 +160,11 @@ bits, 4,059 instructions then, about 1.8 cycles an instruction on the
 266 MHz core. Since zero copy the hook's stores go to uncached memory and
 each waits for the RAM: 🟡 about 10 to 13 µs more a frame at eight tracks,
 24 bits, estimated from flash E's copy, so about 37 µs, and about 45 µs
-with everything at 24 bits.
+with everything at 24 bits. Measured since: 30 to 33 µs on average at
+nine to eleven files at 24 bits (seven tracks), 62 µs at most (STEMS11 and
+STEMS12, 28 Oct and 4 Nov 2026). STEMS12's parts split that time
+(STEM_REC.md 20.9). With flat gain slots, eleven files took 30 µs on
+average and 51 at most (STEMS13, 5 Nov 2026, STEM_REC.md 20.10).
 STEMS3 recorded eleven files at 24 bits on the unit; clicks and the
 screen's response during a take aren't reported yet (STEM_REC.md 17.3).
 Before piece 5 the hook copied the tracks as they were and cost 743
@@ -276,22 +281,25 @@ can't (a file in the way, or the card refuses), only the log is missing:
 the take's status and files don't change. The log is still called
 STATS.TXT in this document, its name before 27 Oct 2026, when it sat in
 the take's folder. It's there to tell why a take fell behind, without an
-emulator:
+emulator. This one is from a ten-file take on Yves's MKII (STEMS12,
+4 Nov 2026):
 
 ```
-STEM REC STATS 261007-2015
+STEM REC STATS 261104-2034
 status OK
-165375 frames, 60 s, 11 files, 24 bits
-ring peak 1234 of 7922 frames
-card writes 2584, 41234 ms in all, longest 62300 us
-card fastest write 21000 KB/s
-card rec 36800 ms 81500 KB 451 us/KB
-card save 4434 ms 9300 KB 476 us/KB
-writer longest sleep 12000 us, asks 10000
-hook mean 41 us, longest 88 us
-hook and frame routine mean 290 us, longest 335 us, 165375 frames
-card udma 4 mwdma 0, cluster 64 sectors
-yes gap 312 ms, double taps 1
+136892 frames, 49 s, 10 files, 24 bits
+ring peak 7147 of 8716 frames
+card writes 2840, 50190 ms in all, longest 123331 us
+card fastest write 26742 KB/s
+card rec 48280 ms 124608 KB 387 us/KB
+card save 1909 ms 3732 KB 511 us/KB
+writer longest sleep 10138 us, asks 10000
+hook mean 32 us, longest 62 us
+hook parts mean ns: mirror 7272, buses 7272, gains 1553, tracks 16825
+hook parts longest ns: mirror 12916, buses 17530, gains 6545, tracks 40863
+hook and frame routine mean 79 us, longest 112 us, 136892 frames
+card udma 5 mwdma 4, cluster 64 sectors
+yes gap 13159 ms, double taps 1
 ```
 
 - **Yes gap** is the time between the last two presses of YES on the main
@@ -300,7 +308,11 @@ yes gap 312 ms, double taps 1
 - **Card writes** fill most of the take's time, with long outliers: the
   card is the limit. The card takes one command a cluster (the file
   layer's), so a card formatted with larger clusters takes fewer, larger
-  commands.
+  commands. While a take records, each file writes whole clusters only,
+  so the card never goes back to one it left half written. On STEMS12 the
+  card's time per KB rose from about 60 µs with one file to 230 to 420
+  with nine to eleven. On STEMS13 eleven files wrote at 212, on Static
+  samples where STEMS12's ten took 387 (STEM_REC.md 20.11).
 - **The writer's longest sleep** far above the 10 ms it asks for: it
   waited for the processor. It runs at priority 1, in turn with the engine,
   the UI and one more stock task, below three tasks that by their code most
@@ -315,6 +327,14 @@ yes gap 312 ms, double taps 1
 - **The fastest write** is a write that nothing interrupted: the card's
   own speed. A mean far below it (1,024 over the µs a KB, in KB/s) spent
   its time waiting for the processor, not for the card.
+- **Hook parts** split the hook's time into four, in ns: `mirror` (the
+  gain mirror), `buses` (MAIN, CUE and the inputs into their rings, and
+  the frame's publish), `gains` (the gain probe) and `tracks` (the next
+  frame's tracks into their rings). The means add up to the hook's mean.
+  The probe reads one long from each 16-byte cache line of the gains the
+  tracks then use: about 0.1 µs at eight tracks when those lines are in
+  the data cache, about 3 µs when each one has to come from the RAM
+  (STEM_REC.md 20.9).
 - **The hook and frame routine** near the frame's 362.8 µs: the audio
   interrupt left little for any task.
 - **The card line** gives the DMA modes the card's driver chose (both 0
@@ -380,8 +400,10 @@ and STEM REC's writer named on the CPU tab (its task control block is
   track is in that track's file too, after its fader, 80 samples later
   (the THRU track's own delay, STEM_REC.md 18.7).
 - **More work in the audio interrupt.** While a take records, the frame
-  hook runs 3,401 to 4,972 instructions per frame (eight tracks at 16
-  bits to everything at 24 bits), and 394 while nothing records.
+  hook runs 937 to 4,468 instructions per frame (T1 alone at 24 bits
+  to everything at 24 bits, every fader at rest; on a frame where a
+  fader moves, its track costs what it did before flat gain slots, about
+  100 instructions more than at rest), and 396 while nothing records.
   `STATS.TXT` gives its time on the unit.
 - The status doesn't tick on its own: it's current as of the last key.
 - The name has no seconds. A second take in the same minute is refused, and
@@ -402,15 +424,19 @@ and STEM REC's writer named on the CPU tab (its task control block is
   RING FULL, cause open (STEM_REC.md 17.3). BuMa measured a MKI's card
   writes at 4.7–5.7 MB/s with the sequencer stopped and 1.4–2.1 MB/s with
   Static tracks streaming (STEM_REC.md 19.1).
-- **On a busy project, eight tracks at 24 bits is the most that keeps
-  up.** Zero copy on Yves's MKII, a project of eight Static tracks
-  playing (STEM_REC.md 17.6): T1 to T8 at 24 bits ran a minute with the
-  ring at most 21% full; twelve files at 24 bits (MAIN, CUE, AB and CD
-  added, 3.17 MB/s) stopped with `RING FULL` after 4.3 s, the card taking
-  2.1 MB/s while the writer, at priority 1, waited for the processor. A
-  lighter project leaves the writer more of it (not measured with zero
-  copy). The writer at priority 2 is built and kept as the next step
-  (`stems-prio2`, STEM_REC.md 20.6).
+- **On a busy project, eleven files at 24 bits keep up; twelve aren't
+  measured since.** On STEMS13 (whole clusters, 5 Nov 2026), Yves's
+  project, with the slowest Static samples measured on STEMS12, recorded
+  eleven files at 24 bits (T1 to T7,
+  MAIN, CUE, AB and CD, 2.91 MB/s) for 24 s with the ring at most 36%
+  full and the card busy 60% of the take, and thirteen (the inputs as
+  four mono files, the same bytes) for 21 s at 44% (STEM_REC.md 20.11).
+  Before, with zero copy (STEM_REC.md 17.6): T1 to T8 at 24 bits ran a
+  minute with the ring at most 21% full; twelve files at 24 bits (MAIN,
+  CUE, AB and CD added, 3.17 MB/s) stopped with `RING FULL` after 4.3 s,
+  the card taking 2.1 MB/s while the writer, at priority 1, waited for
+  the processor. The writer at priority 2 is built and kept as the next
+  step (`stems-prio2`, STEM_REC.md 20.6).
 - A power cut or a card pull before the end loses the take: each file is
   left at 0 bytes, because its length is set only at the end
   (STEM_REC.md 12.3).
@@ -447,6 +473,31 @@ effects. [BUILDING.md](../../docs/guide/BUILDING.md) has every step.
 3. Existing projects need nothing: the remix adds no effects and moves no
    knobs.
 4. Back to stock: [BUILDING.md section 8](../../docs/guide/BUILDING.md#8-back-to-stock-or-another-remix).
+
+## On Modwerk
+
+STEM REC is also on [Modwerk](https://modwerk.app) as a card build:
+`sdk/octabam/modules/stem-rec` in `repeat98/modwerk`, version
+`0.1.0-experimental`, built from STEMS13's code (commit `00a23502`).
+Modwerk imports this folder from one pinned commit, recorded in
+`sdk/imports/stem-rec-<commit>.json`. It copies `stems.s` unchanged. Its own
+`manifest.py` adapts this one in four ways, each for Modwerk's builder:
+
+1. **No `requires`.** Modwerk's builder places the DRAM regions at the top
+   of its own reserve, where octabam's MEMORY sizes them.
+2. **No YES detour at `0x4005e4c8`.** Modwerk's APPLY SCENE patches the
+   same site, so Modwerk's build leaves out the main page's YES double tap.
+   UP + REC and the YES on STEM REC's own row work the same.
+3. **The gain table from stock copies.** Modwerk fills it at build time
+   from a guarded span of the user's OS, instead of an `.incbin` of the OS
+   slice.
+4. **Stock guards for the displaced instructions.** Modwerk names them by
+   address, length and SHA-256 instead of writing them out.
+
+The module is developed and tested here first. A Modwerk release copies
+`stems.s` from a commit on this repository's main and moves the pin. A
+change to this folder's `manifest.py` needs the matching change in
+Modwerk's adapter.
 
 ## How it works
 

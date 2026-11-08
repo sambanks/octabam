@@ -135,10 +135,13 @@
         .equ    GAIN_LAG,      1            | frames before the newest mirrored page, when the tracks are staged
         .equ    TRACK_HALF,    1            | the samples core 0 mixes: the half PING doesn't name (18.5)
         .equ    GQ_N,          4            | frames of per-sample gains kept; GAIN_LAG < GQ_N
-        .equ    GQ_SLOT,       0x80         | one slot's gains: their bound (stems_mirror), 16 gains, padding
+        .equ    GQ_SLOT,       0x80         | one slot's gains: its flag, their bound (stems_mirror), 16 gains, padding
+        .equ    GQ_FLAT,       0            | the flag: non-zero, a flat slot, every gain the first (STEM_REC.md 20.10)
+        .equ    GQ_BOUND,      4
+        .equ    GQ_GAINS,      8
         .equ    GQ_FRAME,      8*GQ_SLOT    | one frame of gains: 8 slots, at k * 0x80 like the samples
         .equ    LIM_FREE,      0x200000     | 0 <= g <= this: lim(floor(g*x / 2^21)) never limits (design 1.3)
-        .if     GQ_FRAME != 1024            | stems_stage multiplies by a shift
+        .if     GQ_FRAME != 1024            | GQ_READ multiplies by a shift
         .error  "GQ_FRAME is not 1024"
         .endif
         .equ    MACSR_FRAC,    0x20         | fractional, truncating: the frame interrupt's own mode
@@ -163,6 +166,19 @@
         bsr.w   stems_emac_in
         addq.l  #1,stems_gemac
 .Le\@:
+        .endm
+
+| A time for the readout, \reg in DTCN3 counts, into its longest and its
+| 64-bit sum (hi:lo). Keeps \reg.
+        .macro  ST_ACC reg, max, sum
+        cmp.l   \max,\reg
+        bls.s   .Lsa\@
+        move.l  \reg,\max
+.Lsa\@:
+        add.l   \reg,\sum+4
+        bcc.s   .Lsb\@
+        addq.l  #1,\sum
+.Lsb\@:
         .endm
 
 | A value limited to 16 bits: one compare on the common path. Uses d0.
@@ -269,6 +285,7 @@ stems_gstate:    .space  2*8*12     | two states, used in turn: per slot split, 
                                     | (core 0's X:0x3dd+5k words 0, 2, 4); the other is the frame before
 stems_gqn:       .long   0          | frames written to stems_gq
 stems_gqok:      .long   0          | frames written to stems_gq since IDLE: the start edge needs 2
+        .balign 16                  | a slot's 72 bytes in five cache lines, a flat slot's 12 in one
 stems_gq:        .space  GQ_N*GQ_FRAME
 stems_emac_save: .space  16         | the caller's MACSR, ACC0, ACC1, ACCEXT01
 stems_gemac:     .long   0          | 1 while the mirror holds the EMAC (EMAC_ON)
@@ -320,7 +337,13 @@ stems_m8last:    .long   0          | the MASTER TRACK byte T8's row was last dr
         .global stems_st, stems_st_n, stems_st_wn
 stems_st:
 stems_st_on:     .long   0          | 1 while this frame records: the hook times it
+| The hook's marks, in order (the hook takes the four parts at its end):
 stems_st_t0:     .long   0          | DTCN3 at the hook's entry
+stems_st_t1:     .long   0          | after the mirror: the buses start
+stems_st_t2:     .long   0          | before the gain probe
+stems_st_t3:     .long   0          | before the stage
+stems_st_pmax:   .space  4*4        | each part's longest: mirror, buses, gains, tracks
+stems_st_psum:   .space  4*8        | each part's frames, summed
 stems_st_hmax:   .long   0          | the hook's longest frame
 stems_st_hsum:   .long   0, 0       | the hook's frames, summed
 stems_st_fmax:   .long   0          | the hook and the stock frame routine after it, longest
@@ -1184,6 +1207,8 @@ st_f_wrec:      .asciz  "card rec %d ms %d KB %d us/KB\r\n"
 st_f_wsav:      .asciz  "card save %d ms %d KB %d us/KB\r\n"
 st_f_sleep:     .asciz  "writer longest sleep %d us, asks %d\r\n"
 st_f_hook:      .asciz  "hook mean %d us, longest %d us\r\n"
+st_f_pmean:     .asciz  "hook parts mean ns: mirror %d, buses %d, gains %d, tracks %d\r\n"
+st_f_plong:     .asciz  "hook parts longest ns: mirror %d, buses %d, gains %d, tracks %d\r\n"
 st_f_frame:     .asciz  "hook and frame routine mean %d us, longest %d us, %d frames\r\n"
 st_f_card:      .asciz  "card udma %d mwdma %d, cluster %d sectors\r\n"
 st_f_yes:       .asciz  "yes gap %d ms, double taps %d\r\n"
@@ -1482,6 +1507,10 @@ stems_switch_action:
 |
 | A recording frame is timed on DTCN3 for the readout: the hook from its
 | entry, and the hook with the stock frame routine after it (stems_st_on).
+| Four marks split the hook into parts that add up to it: the mirror, the
+| buses (the state, this frame's buses and the publish), the gain probe
+| and the tracks (the stage). A frame without a stage (the take's last)
+| counts what follows the mirror as buses.
         .global stems_frame_hook
 stems_frame_hook:
         tst.l   stems_state
@@ -1499,6 +1528,8 @@ stems_frame_hook:
         bsr.w   stems_m8check
         lea     -56(%sp),%sp
         movem.l %d0-%d7/%a0-%a5,(%sp)
+        move.l  DTCN3,%d0           | the mirror's end (a timed frame sets the other marks
+        move.l  %d0,stems_st_t1     | at .Lh_stage or .Lh_fin)
         move.l  stems_state,%d0
         moveq   #ST_FINISHING,%d1
         cmp.l   %d1,%d0
@@ -1549,25 +1580,39 @@ stems_frame_hook:
         moveq   #ERR_OVERFLOW,%d0   | the card fell behind: stop at the last whole frame
         move.l  %d0,stems_status
 .Lh_fin:
+        move.l  DTCN3,%d0           | no stage: the buses end here
+        move.l  %d0,stems_st_t2
+        move.l  %d0,stems_st_t3
         moveq   #ST_FINISHING,%d0
         move.l  %d0,stems_state
         bra.s   .Lh_out
 .Lh_stage:
+        move.l  DTCN3,%d0
+        move.l  %d0,stems_st_t2
+        bsr.w   stems_gprobe        | the gains the stage reads, into the cache
+        move.l  DTCN3,%d0
+        move.l  %d0,stems_st_t3
         bsr.w   stems_stage         | the tracks of the next frame, into their rings
         moveq   #1,%d0
         move.l  %d0,stems_staged
 .Lh_out:
         tst.l   stems_st_on
-        beq.s   .Lh_rest
-        move.l  DTCN3,%d0
+        beq.w   .Lh_rest
+        move.l  DTCN3,%d1           | the hook's end
+        move.l  %d1,%d0
         sub.l   stems_st_t0,%d0     | the hook's own time this frame
-        cmp.l   stems_st_hmax,%d0
-        bls.s   .Lh_hm
-        move.l  %d0,stems_st_hmax
-.Lh_hm:
-        add.l   %d0,stems_st_hsum+4
-        bcc.s   .Lh_rest
-        addq.l  #1,stems_st_hsum
+        ST_ACC  %d0, stems_st_hmax, stems_st_hsum
+        move.l  stems_st_t1,%d0     | and its four parts, mark to mark, so they add up to it
+        sub.l   stems_st_t0,%d0
+        ST_ACC  %d0, stems_st_pmax, stems_st_psum
+        move.l  stems_st_t2,%d0
+        sub.l   stems_st_t1,%d0
+        ST_ACC  %d0, stems_st_pmax+4, stems_st_psum+8
+        move.l  stems_st_t3,%d0
+        sub.l   stems_st_t2,%d0
+        ST_ACC  %d0, stems_st_pmax+8, stems_st_psum+16
+        sub.l   stems_st_t3,%d1
+        ST_ACC  %d1, stems_st_pmax+12, stems_st_psum+24
 .Lh_rest:
         movem.l (%sp),%d0-%d7/%a0-%a5
         lea     56(%sp),%sp
@@ -1578,14 +1623,7 @@ stems_frame_hook:
         move.l  %d0,-(%sp)
         move.l  DTCN3,%d0
         sub.l   stems_st_t0,%d0     | with the stock frame routine
-        cmp.l   stems_st_fmax,%d0
-        bls.s   .Lh_fm
-        move.l  %d0,stems_st_fmax
-.Lh_fm:
-        add.l   %d0,stems_st_fsum+4
-        bcc.s   .Lh_fc
-        addq.l  #1,stems_st_fsum
-.Lh_fc:
+        ST_ACC  %d0, stems_st_fmax, stems_st_fsum
         addq.l  #1,stems_st_n
         move.l  (%sp)+,%d0
 .Lh_ret:
@@ -1638,7 +1676,8 @@ stems_m8check:
 | OUT_BITS leave out), a frame of every file and the rings'
 | capacity; then each file's ring (stems_zlayout), its routine and argument
 | (stems_ffn, stems_farg), the track files' count and their bytes in a
-| frame. Uses d0-d4 and a0-a2.
+| frame. stems_lsrc's T1-T8 bits are exactly the track files, a file each:
+| stems_mirror writes the gains of those slots only. Uses d0-d4 and a0-a2.
 stems_layout:
         clr.l   stems_tfr           | the take's frames, counted by the hook from here
         move.l  TEMPO_PUB,%d0       | the tempo at the start edge, for the .ot files
@@ -1878,8 +1917,15 @@ stems_emac_out:
 | recording or saving, and while the sequencer is stopped (so the frame
 | before a take's first playing frame always has them, however late it was
 | armed: the take starts as it did before the perf round), also each track
-| slot's 16 gains into stems_gq, after
+| slot's 16 gains into stems_gq, after a flag and
 | their bound: the largest end of the three parts that write them, unsigned.
+| A slot with no slope before its split and none after it is flat (its
+| fader rests): the flag is set and only the first gain is written, with
+| the bound equal to it (STEM_REC.md 20.10).
+| While a take records or finishes, only the slots its track files read
+| (stems_lsrc's T1-T8); the others advance their state in closed form, as IDLE's
+| do (a take of T1 alone wrote seven slots no one read until 29 Oct 2026:
+| about 520 instructions a frame under the port).
 | Each part is linear, so the bound is at most LIM_FREE only when every gain
 | is in 0..LIM_FREE (an end below 0 reads as large). stems_gqok counts
 | those frames; IDLE while playing sets it to 0. An index above 3 is the
@@ -1963,7 +2009,19 @@ stems_mirror:
         adda.l  %d0,%a1
         lea     stems_gcache,%a3
         lea     2(%a0),%a5                  | slot 0's w1
-        moveq   #0,%d6                      | slot k
+        move.l  #0x100,%d6                  | d6: the slots whose gains go to the queue, slot 0
+        move.l  %a4,%d0                     | in bit 0; bit 8 ends the loop. No queue: none
+        beq.s   .Lg_sel
+        moveq   #ST_RECORDING,%d0
+        cmp.l   stems_state,%d0
+        bls.s   .Lg_take
+        move.l  #0x1ff,%d6                  | stopped or armed: every slot, the take's first
+        bra.s   .Lg_sel                     | stage reads them before the layout latches
+.Lg_take:                                   | recording or finishing: the take's track slots
+        moveq   #0,%d0
+        move.b  stems_lsrc+3,%d0            | T1-T8 as stems_layout latched them
+        or.l    %d0,%d6
+.Lg_sel:
 .Lg_slot:
         moveq   #0,%d1
         move.w  (%a5),%d1                   | w1: the track level
@@ -2031,9 +2089,32 @@ stems_mirror:
         bcc.s   .Lg_m                       | s >= last split: m = last split
         move.l  %d3,%d1                     | m = s
 .Lg_m:
+        lsr.l   #1,%d6
+        bcs.s   .Lg_wr                      | this slot's gains go to the queue
         move.l  %a4,%d2
-        beq.s   .Lg_fast
-        addq.l  #4,%a4                      | the slot's first long: the gains' bound, below
+        beq.s   .Lg_fast                    | no queue
+        lea     GQ_SLOT(%a4),%a4            | a slot the take doesn't read: the state only
+        bra.s   .Lg_fast
+.Lg_wr:                                     | flat: no slope before the split, none after it
+        move.l  %d4,%d2
+        beq.s   .Lg_fl0                     | no old increment
+        tst.l   %d1
+        bne.s   .Lg_rmp                     | m samples of a sloping old ramp
+.Lg_fl0:
+        move.l  %d0,%d2
+        sub.l   %d5,%d2
+        asr.l   #4,%d2                      | the new increment, from the gain as it is
+        bne.s   .Lg_rmp
+        moveq   #1,%d7                      | a flat slot: every gain is d5, and so is the bound
+        move.l  %d7,(%a4)+                  | GQ_FLAT
+        move.l  %d5,(%a4)+                  | GQ_BOUND
+        move.l  %d5,(%a4)                   | GQ_GAINS: the first, the only one written
+        lea     GQ_SLOT-GQ_GAINS(%a4),%a4   | the next slot
+        moveq   #0,%d4                      | the increment: none
+        bra.s   .Lg_store
+.Lg_rmp:
+        clr.l   (%a4)+                      | GQ_FLAT: a ramp
+        addq.l  #4,%a4                      | GQ_BOUND, below
         move.l  %d5,%d7                     | d7: the largest end so far, unsigned. Each part is
                                             | linear, so its ends bound it: the old ramp and the
                                             | hold lie between d5 now and d5 after them, the new
@@ -2072,8 +2153,8 @@ stems_mirror:
         bcc.s   .Lg_mx2
         move.l  %d5,%d7
 .Lg_mx2:
-        move.l  %d7,-68(%a4)                | the slot's bound
-        lea     GQ_SLOT-68(%a4),%a4         | the next slot
+        move.l  %d7,GQ_BOUND-GQ_GAINS-64(%a4) | the slot's bound
+        lea     GQ_SLOT-GQ_GAINS-64(%a4),%a4 | the next slot
         bra.s   .Lg_store
 .Lg_fast:                                   | the state only: the same sums, multiplied
         move.l  %d4,%d2
@@ -2092,10 +2173,8 @@ stems_mirror:
         lea     12(%a2),%a2
         addq.l  #8,%a3
         addq.l  #8,%a5
-        addq.l  #1,%d6
-        moveq   #8,%d0
-        cmp.l   %d0,%d6
-        bne.w   .Lg_slot
+        cmpi.l  #1,%d6
+        bne.w   .Lg_slot                    | until the end bit reaches bit 0: eight slots
         move.l  stems_gsel,%d0
         eori.l  #96,%d0
         move.l  %d0,stems_gsel              | the state this page made is the current one
@@ -2130,8 +2209,9 @@ stems_half:
 | ---- a track's inputs: d4 = stems_half's, d5 = k * 0x80, d7 = the gains'
 | frame in stems_gq. a2 = the 16 samples core 0 mixes for track k (the half
 | PING doesn't name, TRACK_HALF), a0 = their end, a3 = the slot's 16 gains,
-| d0 = their bound (stems_mirror writes it first): at most LIM_FREE only
-| when every gain is in 0..LIM_FREE.
+| d0 = their bound (stems_mirror writes it): at most LIM_FREE only when
+| every gain is in 0..LIM_FREE; d1 = the slot's flag, non-zero when it is
+| flat (every gain the first).
         .macro  TRACK_IN
         move.l  %d4,%d0
         .if     TRACK_HALF
@@ -2142,73 +2222,107 @@ stems_half:
         lea     0x80(%a2),%a0
         movea.l %d7,%a3
         adda.l  %d5,%a3
-        move.l  (%a3)+,%d0
+        move.l  (%a3)+,%d1                  | GQ_FLAT
+        move.l  (%a3)+,%d0                  | GQ_BOUND; a3 at GQ_GAINS
         .endm
 
-| ---- one track's frame after the fader, 16-bit (d4, d5, d7 as
-| TRACK_IN takes them; a1 = its place in the ring). Each sample: floor(g*x / 2^15) on the
-| EMAC (MACSR_FRAC, set by the caller), its top 16 bits as floor(g*x / 2^29),
-| limited to 16 bits as core 0 limits MAIN to 24 (STEM_REC.md 18.2). With
-| every gain in 0..LIM_FREE the limit can't act, so that loop has none, two
-| samples a pass. Uses d0-d3, a0, a2, a3.
-        .global stems_track16
-stems_track16:
-        TRACK_IN
-        cmpi.l  #LIM_FREE,%d0
-        bhi.s   .Lp_lim                     | a gain above a quarter, or below 0
-        moveq   #14,%d3
-.Lp_f:
-        move.l  (%a3)+,%d0
-        lsl.l   #8,%d0                      | g << 8
-        move.l  (%a2)+,%d1                  | L, left-justified 24 bits
-        move.l  (%a2)+,%d2                  | R
-        clr.b   %d1                         | the top 24 bits only (18.5)
-        clr.b   %d2
-        mac.l   %d0,%d1,%acc0
-        mac.l   %d0,%d2,%acc1
-        movclr.l %acc0,%d1                  | floor(g*x / 2^15)
-        movclr.l %acc1,%d2
-        asr.l   %d3,%d1                     | floor(g*x / 2^29)
-        asr.l   %d3,%d2
-        LE16PAIR                            | L, R in file order
-        move.l  (%a3)+,%d0                  | the next sample, the same
+| A flat slot's gain, g << 8, into a3, where the loops' multiplies take it
+| (mac.l takes an address register, as tapeecho's and waveload's do). The
+| other 15 gains aren't read: the mirror didn't write them.
+        .macro  FLAT_IN
+        move.l  (%a3),%d0
         lsl.l   #8,%d0
-        move.l  (%a2)+,%d1
-        move.l  (%a2)+,%d2
-        clr.b   %d1
-        clr.b   %d2
-        mac.l   %d0,%d1,%acc0
-        mac.l   %d0,%d2,%acc1
-        movclr.l %acc0,%d1
-        movclr.l %acc1,%d2
-        asr.l   %d3,%d1
-        asr.l   %d3,%d2
-        LE16PAIR
-        cmpa.l  %a0,%a2
-        bcs.s   .Lp_f
-        rts
-.Lp_lim:
-        moveq   #16,%d3
-.Lp_s:
+        movea.l %d0,%a3
+        .endm
+
+| One sample, L and R from (a2)+, after the fader: d1, d2 =
+| floor(g*x / 2^15) on the EMAC (MACSR_FRAC, set by the caller), from the
+| top 24 bits only (18.5). \g holds g << 8: %d0, loaded from the slot's
+| next gain, or %a3 for a flat slot.
+        .macro  T_MUL g
+        .ifc    \g,%d0
         move.l  (%a3)+,%d0
         lsl.l   #8,%d0                      | g << 8
+        .endif
         move.l  (%a2)+,%d1                  | L, left-justified 24 bits
         move.l  (%a2)+,%d2                  | R
         clr.b   %d1                         | the DSP takes the top 24 bits; the half core 0
         clr.b   %d2                         | mixes has 0xff here on positive samples (18.5)
-        mac.l   %d0,%d1,%acc0
-        mac.l   %d0,%d2,%acc1
-        movclr.l %acc0,%d1                  | floor(g*x / 2^15)
+        mac.l   \g,%d1,%acc0
+        mac.l   \g,%d2,%acc1
+        movclr.l %acc0,%d1
         movclr.l %acc1,%d2
-        moveq   #14,%d0
-        asr.l   %d0,%d1                     | floor(g*x / 2^29)
-        asr.l   %d0,%d2
+        .endm
+
+| 16-bit: floor(g*x / 2^29), the top 16 bits (d3 = 14), \lim 1 to limit
+| it to 16 bits as core 0 limits MAIN to 24 (STEM_REC.md 18.2).
+        .macro  T16 g, lim
+        T_MUL   \g
+        asr.l   %d3,%d1
+        asr.l   %d3,%d2
+        .if     \lim
         LIM16   %d1
         LIM16   %d2
+        .endif
+        .endm
+
+| 24-bit: the whole 24-bit share, floor(g*x / 2^21), \lim as T16's.
+        .macro  T24 g, lim
+        T_MUL   \g
+        asr.l   #6,%d1
+        asr.l   #6,%d2
+        .if     \lim
+        LIM24   %d1
+        LIM24   %d2
+        .endif
+        .endm
+
+| One track loop and its return: two samples a pass into the ring at (a1)+
+| until a2 reaches a0. \fam 16 or 24; \g and \lim as T16 and T24 take
+| them. With every gain in 0..LIM_FREE the limit can't act, so that loop
+| has none.
+        .macro  TRACK_LOOP fam, g, lim
+.Ltl\@:
+        .if     \fam == 16
+        T16     \g, \lim
+        LE16PAIR                            | L, R in file order
+        T16     \g, \lim                    | the next sample, the same
         LE16PAIR
-        subq.l  #1,%d3
-        bne.s   .Lp_s
+        .else
+        T24     \g, \lim
+        PACK12A
+        T24     \g, \lim
+        PACK12B
+        .endif
+        cmpa.l  %a0,%a2
+        bcs.w   .Ltl\@
         rts
+        .endm
+
+| ---- one track's frame after the fader, 16-bit (d4, d5, d7 as
+| TRACK_IN takes them; a1 = its place in the ring). Each sample's top 16
+| bits of g*x, limited when a gain can push it past them. Four loops: the
+| slot's 16 gains or a flat slot's one, each with and without the limit.
+| Uses d0-d3, a0, a2, a3.
+        .global stems_track16
+stems_track16:
+        TRACK_IN
+        moveq   #14,%d3                     | floor(g*x / 2^15) to floor(g*x / 2^29)
+        cmpi.l  #LIM_FREE,%d0
+        bhi.w   .Lp_lim                     | a gain above a quarter, or below 0
+        tst.l   %d1
+        bne.w   .Lp_ff
+        TRACK_LOOP 16, %d0, 0
+.Lp_ff:
+        FLAT_IN
+        TRACK_LOOP 16, %a3, 0
+.Lp_lim:
+        tst.l   %d1
+        bne.w   .Lp_fl
+        TRACK_LOOP 16, %d0, 1
+.Lp_fl:
+        FLAT_IN
+        TRACK_LOOP 16, %a3, 1
 
 | ---- MAIN, CUE or an input, 16-bit: d5 = the kind (8-15), a1 = its place.
 | MAIN and CUE from channel 6's buffer (STEM_REC.md 18.6); the inputs from
@@ -2259,76 +2373,25 @@ stems_bus16:
         rts
 
 | ---- one track's frame after the fader, 24-bit: as stems_track16, but
-| the whole 24-bit share, floor(g*x / 2^21), limited as MAIN is.
+| the whole 24-bit share, limited as MAIN is.
         .global stems_track24
 stems_track24:
         TRACK_IN
         cmpi.l  #LIM_FREE,%d0
-        bhi.s   .Lq_lim                     | a gain above a quarter, or below 0
-.Lq_f:
-        move.l  (%a3)+,%d0
-        lsl.l   #8,%d0
-        move.l  (%a2)+,%d1
-        move.l  (%a2)+,%d2
-        clr.b   %d1                         | the top 24 bits, as the DSP takes them (18.5)
-        clr.b   %d2
-        mac.l   %d0,%d1,%acc0
-        mac.l   %d0,%d2,%acc1
-        movclr.l %acc0,%d1
-        movclr.l %acc1,%d2
-        asr.l   #6,%d1                      | floor(g*x / 2^21)
-        asr.l   #6,%d2
-        PACK12A
-        move.l  (%a3)+,%d0                  | the next sample, the same
-        lsl.l   #8,%d0
-        move.l  (%a2)+,%d1
-        move.l  (%a2)+,%d2
-        clr.b   %d1
-        clr.b   %d2
-        mac.l   %d0,%d1,%acc0
-        mac.l   %d0,%d2,%acc1
-        movclr.l %acc0,%d1
-        movclr.l %acc1,%d2
-        asr.l   #6,%d1
-        asr.l   #6,%d2
-        PACK12B
-        cmpa.l  %a0,%a2
-        bcs.s   .Lq_f
-        rts
-.Lq_lim:                                    | the same, limited
-        move.l  (%a3)+,%d0
-        lsl.l   #8,%d0
-        move.l  (%a2)+,%d1
-        move.l  (%a2)+,%d2
-        clr.b   %d1                         | the top 24 bits, as the DSP takes them (18.5)
-        clr.b   %d2
-        mac.l   %d0,%d1,%acc0
-        mac.l   %d0,%d2,%acc1
-        movclr.l %acc0,%d1
-        movclr.l %acc1,%d2
-        asr.l   #6,%d1                      | floor(g*x / 2^21)
-        asr.l   #6,%d2
-        LIM24   %d1
-        LIM24   %d2
-        PACK12A
-        move.l  (%a3)+,%d0
-        lsl.l   #8,%d0
-        move.l  (%a2)+,%d1
-        move.l  (%a2)+,%d2
-        clr.b   %d1
-        clr.b   %d2
-        mac.l   %d0,%d1,%acc0
-        mac.l   %d0,%d2,%acc1
-        movclr.l %acc0,%d1
-        movclr.l %acc1,%d2
-        asr.l   #6,%d1
-        asr.l   #6,%d2
-        LIM24   %d1
-        LIM24   %d2
-        PACK12B
-        cmpa.l  %a0,%a2
-        bcs.w   .Lq_lim
-        rts
+        bhi.w   .Lq_lim                     | a gain above a quarter, or below 0
+        tst.l   %d1
+        bne.w   .Lq_ff
+        TRACK_LOOP 24, %d0, 0
+.Lq_ff:
+        FLAT_IN
+        TRACK_LOOP 24, %a3, 0
+.Lq_lim:
+        tst.l   %d1
+        bne.w   .Lq_fl
+        TRACK_LOOP 24, %d0, 1
+.Lq_fl:
+        FLAT_IN
+        TRACK_LOOP 24, %a3, 1
 
 | ---- MAIN, CUE or an input, 24-bit (d5 = the kind, a1 = its place) -----
 | Uses d0-d3, a0, a2.
@@ -2368,6 +2431,18 @@ stems_bus24:
         bcs.s   .Lu_mono
         rts
 
+| \d = the frame of stems_gq the stage reads: the gains of the page
+| GAIN_LAG before the newest (design 1.1). Uses \t.
+        .macro  GQ_READ d, t
+        move.l  stems_gqn,\d
+        subq.l  #1+GAIN_LAG,\d
+        moveq   #GQ_N-1,\t
+        and.l   \t,\d
+        moveq   #10,\t
+        lsl.l   \t,\d                       | * GQ_FRAME
+        addi.l  #stems_gq,\d
+        .endm
+
 | ---- stage: the tracks of the next frame, each into its ring ---------------
 | From the half PING doesn't name now and the gains of the page GAIN_LAG
 | before the newest (design 1.1); each track file's routine and argument
@@ -2376,13 +2451,7 @@ stems_bus24:
 stems_stage:
         bsr.w   stems_emac_in
         bsr.w   stems_half                  | d4
-        move.l  stems_gqn,%d7
-        subq.l  #1+GAIN_LAG,%d7
-        moveq   #GQ_N-1,%d0
-        and.l   %d0,%d7
-        moveq   #10,%d0
-        lsl.l   %d0,%d7                     | * GQ_FRAME
-        addi.l  #stems_gq,%d7               | d7: the gains' frame
+        GQ_READ %d7, %d0                    | d7: the gains' frame
         lea     stems_ffn,%a4
         move.l  stems_ntrk,%d6
         beq.s   .Lc_done
@@ -2392,6 +2461,35 @@ stems_stage:
         bne.s   .Lc_file
 .Lc_done:
         bsr.w   stems_emac_out
+        rts
+
+| ---- the gain probe, STATS.TXT's gains part: one long of each 16-byte
+| line of the gains stems_stage reads next (its d7 frame), for every track
+| file. Its time is what those lines cost to bring into the data cache: a
+| hit is ~2.9 ns, a line fill ~80 ns (docs/firmware/CHIP.md), so about
+| 0.1 us at eight tracks when the mirror's lines are still cached and about
+| 3 us when none is (STEM_REC.md 20.9). The stage then finds them cached.
+| A slot's 72 bytes are five lines (stems_gq is 16-aligned); a flat slot's
+| flag, bound and gain are the first, the only one the stage reads
+| (20.10). Uses d0-d2, a0, a1.
+stems_gprobe:
+        move.l  stems_ntrk,%d1
+        beq.s   .Lgp_out
+        GQ_READ %d0, %d2                    | the gains' frame, as stems_stage takes it
+        lea     stems_farg,%a0              | each track file's k * 0x80
+.Lgp_file:
+        movea.l (%a0)+,%a1                  | its slot, from the frame
+        adda.l  %d0,%a1
+        tst.l   (GQ_FLAT,%a1)
+        bne.s   .Lgp_next                   | flat: one line
+        tst.l   (16,%a1)
+        tst.l   (32,%a1)
+        tst.l   (48,%a1)
+        tst.l   (64,%a1)
+.Lgp_next:
+        subq.l  #1,%d1
+        bne.s   .Lgp_file
+.Lgp_out:
         rts
 
 | ---- the buses of this frame, each into its ring: MAIN, CUE and the inputs
@@ -2508,6 +2606,13 @@ stems_trace_frame:
         movem.l (%sp),%d0-%d1/%a0-%a1
         lea     16(%sp),%sp
         rts
+
+| ---- the hook's code ends here --------------------------------------------
+| From stems_frame_hook to this label sits every routine the hook calls, and
+| nothing else: verify_stems counts every instruction in that block as the
+| hook's (its cost gate), so a routine the hook calls belongs above.
+        .global stems_hook_end
+stems_hook_end:
 
 | ---- the stock PIO write's first sector (docs/firmware/STEM_REC.md 11.7) --
 | Reached by `jmp` from 0x40014cfe, in the task that issued a WRITE SECTORS,
@@ -3166,7 +3271,12 @@ stems_drain:
 
 | ---- file d1's waiting sectors to the card, a chunk's at most -------------
 | The sectors the hook has published in full, from the writer's place in
-| the file's ring: one write, or two when they cross its end. d0 = the
+| the file's ring: one write, or two when they cross its end. While a take
+| records, whole clusters of the mounted volume only: at most a chunk
+| rounded up to whole clusters, ending on one. The file layer sends the
+| card a command a cluster, so a write that ended inside one sent the rest
+| of it later, after the other files' writes: the card went back to it
+| (STEM_REC.md 20.11). The finish writes every whole sector. d0 = the
 | sectors written, or -1 (stems_zput's).
         .if     CHUNK_FRAMES != 512             | a chunk's sectors = the file's bytes a frame
         .error  "CHUNK_FRAMES is not 512"
@@ -3188,6 +3298,31 @@ stems_zwrite:
 .Lzw_wait:
         lsr.l   #8,%d2
         lsr.l   #1,%d2              | whole sectors waiting
+        moveq   #ST_RECORDING,%d0
+        cmp.l   stems_state,%d0
+        bne.s   .Lzw_sec            | finishing: every whole sector
+        moveq   #0,%d0
+        move.b  CARD_SPC,%d0
+        subq.l  #1,%d0              | a cluster's sectors - 1
+        bls.s   .Lzw_sec            | 0 or 1: a sector is a cluster
+        add.l   %d0,%d5
+        not.l   %d0                 | -(a cluster's sectors)
+        and.l   %d0,%d5             | a chunk, up to whole clusters: at least one
+        cmp.l   %d5,%d2
+        bls.s   .Lzw_cap
+        move.l  %d5,%d2
+.Lzw_cap:
+        lea     stems_fpos,%a0
+        move.l  (%a0,%d4.l*4),%d3
+        lsr.l   #8,%d3
+        lsr.l   #1,%d3              | the file's sectors on the card: whole clusters
+        add.l   %d3,%d2
+        and.l   %d0,%d2             | the write's end, down to a cluster
+        sub.l   %d3,%d2             | whole clusters, or none yet
+        bcc.s   .Lzw_n
+        moveq   #0,%d2
+        bra.s   .Lzw_n
+.Lzw_sec:
         cmp.l   %d5,%d2
         bls.s   .Lzw_n
         move.l  %d5,%d2             | a chunk's at most
@@ -3528,7 +3663,8 @@ stems_div64:
         bne.s   .Ldv_bit
         rts
 
-| ---- d1 = the mean of a 64-bit sum at a0 over stems_st_n, in microseconds
+| ---- d1 = the mean of a 64-bit sum at a0 over stems_st_n, in DTCN3 counts
+| (the caller converts: stems_st_us, stems_st_ns). Keeps a0.
 stems_st_mean:
         moveq   #0,%d1
         move.l  stems_st_n,%d2
@@ -3536,11 +3672,16 @@ stems_st_mean:
         move.l  (%a0),%d0
         move.l  4(%a0),%d1
         bsr.w   stems_div64         | counts a frame
-        move.l  #BUS_MHZ,%d0
-        divu.l  %d0,%d1
 .Lsm_out:
         rts
 
+| ---- d1 = d1 DTCN3 counts in nanoseconds (below 32 ms: 1,000 x counts),
+| through stems_st_us's division
+stems_st_ns:
+        move.l  %d0,-(%sp)
+        move.l  #1000,%d0
+        mulu.l  %d0,%d1
+        move.l  (%sp)+,%d0
 | ---- d1 = d1 DTCN3 counts in microseconds ---------------------------------
 stems_st_us:
         move.l  %d0,-(%sp)
@@ -3693,11 +3834,39 @@ stems_stats:
         move.l  %d1,-(%sp)
         lea     stems_st_hsum,%a0
         bsr.w   stems_st_mean
+        bsr.w   stems_st_us
         move.l  %d1,-(%sp)
         pea     st_f_hook
         move.l  %a3,-(%sp)
         jsr     SPRINTF
         lea     16(%sp),%sp
+        bsr.w   stems_st_tail
+        lea     stems_st_psum+32,%a0                | its parts' means, the last pushed first
+        moveq   #3,%d4
+.Lo_pm:
+        subq.l  #8,%a0
+        bsr.w   stems_st_mean
+        bsr.w   stems_st_ns
+        move.l  %d1,-(%sp)
+        subq.l  #1,%d4
+        bpl.s   .Lo_pm
+        pea     st_f_pmean
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     24(%sp),%sp
+        bsr.w   stems_st_tail
+        lea     stems_st_pmax+16,%a0                | ... and their longest
+        moveq   #3,%d4
+.Lo_pl:
+        move.l  -(%a0),%d1
+        bsr.w   stems_st_ns
+        move.l  %d1,-(%sp)
+        subq.l  #1,%d4
+        bpl.s   .Lo_pl
+        pea     st_f_plong
+        move.l  %a3,-(%sp)
+        jsr     SPRINTF
+        lea     24(%sp),%sp
         bsr.w   stems_st_tail
         move.l  stems_st_n,-(%sp)                   | the hook and the stock frame routine
         move.l  stems_st_fmax,%d1
@@ -3705,6 +3874,7 @@ stems_stats:
         move.l  %d1,-(%sp)
         lea     stems_st_fsum,%a0
         bsr.w   stems_st_mean
+        bsr.w   stems_st_us
         move.l  %d1,-(%sp)
         pea     st_f_frame
         move.l  %a3,-(%sp)

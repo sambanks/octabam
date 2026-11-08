@@ -8,7 +8,7 @@ mirror; T1's FX1 and FX2 = SEND; slot 1's TSMODE=0, so "the record IS the
 file" (no timestretch grains to fit around). The kick itself is ours
 (`scripts/make_test_audio.py kick`), never Elektron's.
 
-    python3 tools/verify/stems_fixture.py [--eight | --fat32 | --thru | --thru1 | --thru1hot | --thru1master] [PROJECT_DIR]
+    python3 tools/verify/stems_fixture.py [--eight | --fat32 | --thru | --thru64 | --thru1 | --thru1hot | --thru1master] [PROJECT_DIR]
 
 PROJECT_DIR defaults to `out/projects/Ultimate FX 1.5.3`. The template is
 copied into a scratch folder first and only the copy is edited -- the
@@ -296,12 +296,13 @@ def set_master_track(pdir):
 
 
 def build_thru(project_dir=DEFAULT_PROJECT, inputs=None, input_wav=INPUT_WAV, amp=8192, master_track=False,
-               amp_vol=None):
+               amp_vol=None, image_mb=64, spc=None):
     """Every track a THRU machine (every part of banks 1 and 2), a trig on
     step 1 of every pattern, FX1 and FX2 SEND, each track's inputs in its
     part records (THRU_INPUTS, or `inputs`); the card and the input WAV
     (`input_wav`, noise of peak `amp`). `master_track`: MASTER_TRACK=1 in
-    the project's settings (STEM_REC.md 18.8). `amp_vol`: {track: AMP VOL}."""
+    the project's settings (STEM_REC.md 18.8). `amp_vol`: {track: AMP VOL}.
+    `image_mb`, `spc`: the card's size and FAT16 sectors a cluster."""
     import shutil
     if SCRATCH_THRU.exists():
         shutil.rmtree(SCRATCH_THRU)
@@ -323,7 +324,7 @@ def build_thru(project_dir=DEFAULT_PROJECT, inputs=None, input_wav=INPUT_WAV, am
     for t, v in (amp_vol or {}).items():
         set_amp_vol(SCRATCH_THRU, t, v)
     card_bytes, name = emu_card.stage_project(SCRATCH_THRU, SET_NAME, PROJECT_NAME,
-                                              tree=str(STAGE_TREE))
+                                              tree=str(STAGE_TREE), image_mb=image_mb, spc=spc)
     THRU_CARD.write_bytes(card_bytes)
     write_input_wav(input_wav, amp=amp)
     result = {"card": str(THRU_CARD), "set": SET_NAME, "project": name, "staged": [],
@@ -332,6 +333,23 @@ def build_thru(project_dir=DEFAULT_PROJECT, inputs=None, input_wav=INPUT_WAV, am
     print(f"card:    {result['card']}")
     print(f"-> {THRU_JSON}")
     return result
+
+
+THRU64_JSON = ROOT / "out" / "stems_fixture_thru64.json"
+THRU64_CARD = ROOT / "out" / "stems_fixture_thru64_card.img"
+
+
+def build_thru64(project_dir=DEFAULT_PROJECT):
+    """The THRU fixture on a card of 32 KB clusters, as the unit's card is
+    formatted (64 sectors a cluster; FAT16, so 160 MB for its 4,085
+    clusters): a write that ends inside a cluster shows here, where the
+    THRU card's 2 KB clusters hide it (STEM_REC.md 20.11)."""
+    res = build_thru(project_dir, image_mb=160, spc=64)
+    THRU64_CARD.write_bytes(pathlib.Path(res["card"]).read_bytes())
+    res = {**res, "card": str(THRU64_CARD)}
+    THRU64_JSON.write_text(json.dumps(res, indent=2) + "\n")
+    print(f"-> {THRU64_JSON}")
+    return res
 
 
 THRU1_JSON = ROOT / "out" / "stems_fixture_thru1.json"
@@ -384,6 +402,8 @@ if __name__ == "__main__":
                             project_dir=sys.argv[2] if len(sys.argv) > 2 else DEFAULT_PROJECT)
     elif len(sys.argv) > 1 and sys.argv[1] == "--thru":
         build_thru(sys.argv[2] if len(sys.argv) > 2 else DEFAULT_PROJECT)
+    elif len(sys.argv) > 1 and sys.argv[1] == "--thru64":
+        build_thru64(sys.argv[2] if len(sys.argv) > 2 else DEFAULT_PROJECT)
     elif len(sys.argv) > 1 and sys.argv[1] == "--fat32":
         build(sys.argv[2] if len(sys.argv) > 2 else DEFAULT_PROJECT, fat=32)
     else:

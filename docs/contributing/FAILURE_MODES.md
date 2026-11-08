@@ -858,5 +858,39 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   before it. `bad 0` and 300 to 340 ms of silence throughout. The 0-of-32 figures above are from 1 Nov; no image of
   that set was run on 2 Nov. All four of `V1`'s and four of `V4`'s five are BASE to MODULATION. Run-to-run spread is not
   measured (one run per image).
+- **8 Nov 2026, Yves's MKII, the same probe on `v0.4`, STEM REC alone added:** `OCTABAM04` (`v0.4` as the web builder
+  publishes it: patch sha256 `9159aca1…` reproduced) against `OCTABAMS4` (the same remix plus STEM REC at `00a23502`,
+  STEMS13's code, a local remix; its reserve 18 MiB against 10). Projects from `ot_suite.py build` on Yves's fresh
+  project, each run on a copy loaded from the card. Host: WSL2 with usbipd-win (`ot_midi_alsa.py`); its USB audio
+  capture delivered about a quarter of the frames (1.27 s of audio in 5 s), so no row has a silence figure.
+  `OCTABAM04`: 32 of 32 applied (busy core 0 / core 1: BASE 0.240 / 0.163, MODULATION 0.266 / 0.189, PLATE REV 0.470 /
+  0.392), no stall. `OCTABAMS4`: three runs, each ended by the DSP's frame count stopping, `healthy()` failing at the
+  next transition. Run 1 at its first START (program 51 sent while stopped, the project on BASE since the load), the
+  count's last advance 0.023 s after START. Runs 2 and 3 at a MODULATION to BASE switch during play (transitions 3 and
+  15): the count's last advance 8.014 and 8.026 s after START (the switch lands at 8.0), LOAD METER's `bad` up 2 at
+  that reading, the change unapplied. MODULATION to BASE during play stalled 2 of 5 times on `OCTABAMS4`, 0 of 8 on
+  `OCTABAM04`. After a stall the panel and MIDI answered and the sequencer stopped at step 1 or 2 at every START (Yves);
+  a power-cycle cleared it. At rest both images read 2,756 records a second (the CX OSC images 2,745 to 2,748).
+- **Not stalled, `OCTABAMS4`, same day:** `ot_dspwatch.py` (STOP, program change, START; no change during play), 20
+  cycles each of programs 0,1 and 0,51 with and without `--audio`, and 0,51 with `--audio --poll-hz 400` (100 cycles;
+  BASE is program 0, PLATE REV FX2 def 48, MODULATION FX2 def 51); A01, D01 and D04 switched by hand during play and
+  from STOP, about 20 switches with no USB cable and about 20 with LOAD METER read 313 to 433 times a second (no MIDI,
+  no audio).
+- **Not established (8 Nov): whose fault it is.** Two readings fit, and they can both hold.
+  - STEM REC: the stops came only on the image with it, 3 of 9 switches between BASE and MODULATION against 0 of 16 on
+    `OCTABAM04`. Its frame hook (`0x40004b12`) runs in the frame routine that hands the effect swap to the DSP, and its
+    18 MiB reserve puts `dsp_tail_A` 15,360 bytes lower. Both are inferred, not measured, to matter.
+  - The demand loader's BASE/MODULATION transition: every stop was a switch between BASE and MODULATION, while the 10
+    switches between MODULATION and PLATE REV on `OCTABAMS4`, which also load and withdraw MODULATION, ran clean. On
+    2 Nov `C0`, with none of the five modules, left 3 of 32 unapplied, and all four of `V1`'s and four of `V4`'s five
+    were BASE to MODULATION (above). So that transition misbehaves without STEM REC, which may only widen it.
+  - Also open: why the host's clock and a change landing during play are both needed; whether this host's partial
+    audio read or its USB timing take part.
+  - The counts are small. One control run: 3 stops on the test image's 19 transitions against none in the control's 32
+    is about a 1-in-20 result by chance; 3 of 9 against 0 of 10 between the two kinds of switch, about 1 in 11.
+  - What would separate them, on `OCTABAMS4` unless named: the same soak with another demand-loaded effect (SPECTRUM,
+    CHARACTER or SHATTER) in MODULATION's place; with STEM REC's hook reduced to the stock call, the layout unchanged;
+    `v0.4` with another ColdFire module in STEM REC's place; DLPUMP's `DL_DIAG` words (`tools/hw/dl_poll.py`) read in
+    the soak's own poll, so a stop shows where the loader was.
 - **Fix:** those five modules are left out of `octabam`; `R3` (`K1`'s set) applied 18 of 18 `loader01` transitions and
   the 2 of `loader02`. 2 Nov 2026: VARISPEED is back in `octabam`, since `C0` without it also left unapplied changes.
