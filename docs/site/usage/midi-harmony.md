@@ -5,13 +5,17 @@ Supported scales are the seven diatonic modes: Major, Dorian, Phrygian,
 Lydian, Mixolydian, natural Minor and Locrian. The selected scale module must
 provide a compatible integration; additional catalogue scales are not yet
 supported by Harmony. Existing project formats are unchanged.
-The remixer reports the separate **SCALES** prototype as incompatible with
+The remixer reports the separate **SCALES** module as incompatible with
 these MIDI consumers; use **MIDI SCALES** for the seven modes above.
 
 The **midi** remix brings Harmony, Follow, Scales and Loopback together.
 Harmony also works **without Follow**: each track uses its own degree pattern,
 KEY and chord settings. With Follow installed, **RFOL OFF** gives the same
 independent musical workflow. The smaller combinations are test carriers.
+
+CHORDS FACTORY is incompatible with MIDI HARMONY: both replace the native
+MIDI trig-mode list and keyboard behavior. Choose Harmony’s CHORD PLAY or
+CHORDS FACTORY in a remix; selecting both is refused before linking.
 
 ## Start playing
 

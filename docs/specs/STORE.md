@@ -25,7 +25,22 @@ provenance are in the [STORE module](../../modules/store/README.md). Which of ST
 
 A handler may clobber every register. Handlers of one event run in the order
 of `CLIENTS` in `manifest.py`. Wrappers keep one return slot per event and do
-not re-enter.
+not re-enter. Checked callbacks return negative d0 to stop the phase;
+nonnegative results allow the next client. Arguments are restored before each
+client even if the previous callback clobbered all registers. Native file-copy
+failure skips all companion notifications. With no subscribers, checked phases
+and the post-new-project return slot are omitted.
+
+### Optional checked phases
+
+These entries in `EXTRA_EVENTS` are emitted only for selected subscribers.
+
+| event | stock boundary | arguments to a handler |
+|---|---|---|
+| newproj_post | after the native new-project routine returns | none; optional |
+| bankw_guard | before bankw_pre | d1 = bank mask; negative d0 refuses the write |
+| bankcopy_guard | before native file copy | d0 = destination, d1 = source, d2 = 0; negative d0 refuses |
+| bankcopy_done | after native copy and bankcopy notifications succeed | d0 = destination, d1 = source, d2 = native result; negative d0 propagates companion failure |
 
 ## Clients
 
@@ -44,6 +59,7 @@ link cannot find stops the build. A client declares `requires=("STORE",)`.
 | FREE LOOP (`fl`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | SCALES (`sc`) | loadall_pre, loadmask_pre, newproj, bankw_post, pstore_pre/post, preload_post, partclear |
 | CHORDS FACTORY (`ch`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+| MIDI HARMONY (`ch`) | loadall_post, loadmask_post, newproj, newproj_post, bankw_guard, bankcopy_guard, bankcopy_done, tocs1, fromcs1 |
 | VARISPEED (`vs`) | partsaved, partclear |
 
 ## File calls
@@ -88,7 +104,7 @@ to read a refused `p2lkNN.work` as empty and overwrite it at the next bank write
 
 STORE also owns the native copy/reset boundaries used by modules that keep
 settings in working Parts. The native Part service is selected only when a
-registered Part client is in the remix; other STORE
+registered Part or retained-storage client is in the remix; other STORE
 compositions retain their existing code and hooks.
 
 Use this service when a module needs to edit native Part bytes, read a track's
@@ -223,5 +239,46 @@ The cold resident gates use stock copy/init before the runtime is loaded.
 The original post-loader activation point publishes the DRAM targets. The
 new names and generic windows do not remove this cold-start protection.
 When BOOT TRACE is also selected, HOOKS calls its boot notification and then
-STORE's activation. Without a registered native Part client, STORE adds no
+STORE's activation. Without a registered native Part or retained-storage client, STORE adds no
 boot hook and needs no bridge.
+
+## Retained byte storage
+
+STORE owns an optional 16,384-byte retained pool and its native copy/clear
+protection. Any module can register as a client; no MIDI HARMONY, MIDI FOLLOW
+or separately selectable MIDI SRAM module is required. With no registered
+client selected, the build omits the pool, reservations and protection.
+A retained-only client activates the native copy service even if it uses no
+Part fields. That activation composes with HOOKS/BOOT TRACE as Part clients do.
+
+### Registering a client
+
+1. Require STORE and add an entry to `RETAINED_CLIENTS` in `retained.py`:
+   `module key: (stable numeric client ID, logical byte offset, length)`.
+2. Reserve a fixed range. Selection never shifts existing ranges. IDs must
+   be unique, sizes positive, and ranges within 16,384 bytes. Two selected
+   clients with overlapping ranges fail before linking; adjacent ranges work.
+3. Use `store_retained_read(destination, client, offset, length)` and
+   `store_retained_write(source, client, offset, length)`. These use the C
+   stack ABI and return 1 on success, 0 on an absent client or out-of-range
+   transfer. Offsets are relative to the client's reservation. Overflowing
+   ranges reject before any byte is read or written. Zero-length access at
+   the end of a registered range succeeds; absent IDs always reject.
+4. Keep encoding, checksums, generation markers, save policy and recovery in
+   the client. These byte transfers are not atomic checkpoint publication,
+   do not mask interrupts, and do not serialize writers. Clients must supply
+   their own publication and concurrency protocol. Bounds prevent accidental
+   cross-client transfers; this is not a security boundary between firmware
+   modules. Never write outside the registered reservation.
+5. Add lifecycle and interruption checks for the client. A reset of CS1 may
+   destroy retained data; validate it before use and provide a safe fallback.
+
+The existing Harmony HMT2 layout reserves client 0, offset 0, all 16,384 bytes.
+It uses aligned physical words directly for its established atomic commit
+protocol; the registration pins that entire layout rather than relocating or
+re-encoding it. STORE contains none of its degree/chord encoding or checkpoint
+policy. Additional clients can use disjoint reservations in other compositions,
+but no positive-size client fits alongside this version of Harmony in this
+pool. Such a combination is refused explicitly. PLOCKS and MIDI Scenes keep
+their separate allocations. Sharing this pool with Harmony would require a
+separate storage-format change; this integration does not make one.

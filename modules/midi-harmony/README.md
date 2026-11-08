@@ -223,3 +223,7 @@ formats and commit ordering are unchanged. Incomplete checkpoints retain the
 existing validated-companion fallback. Emulator instruction counts do not
 establish processor cycles or hardware latency; physical qualification remains
 open.
+
+CHORDS FACTORY is incompatible with MIDI HARMONY: both replace the native
+MIDI trig-mode list and keyboard behavior. Choose Harmony’s CHORD PLAY or
+CHORDS FACTORY in a remix; selecting both is refused before linking.

@@ -59,6 +59,17 @@ class HarmonySelectionTests(unittest.TestCase):
         self.assertIn('jmp store_retained_copy', inc)
         self.assertEqual(fields['layout'](set(remix.modules))[1], ((0x4e2, 288),))
 
+    def test_chords_factory_is_refused_before_linking(self):
+        # Both modules replace the native MIDI trig modes and export ch_*.
+        from remix.state import State
+        state = State()
+        state.load('midi-harmony')
+        state.toggle('PAGES')
+        state.toggle('CHORDS FACTORY')
+        self.assertIn('CHORDS FACTORY', dict(registry.modules()['MIDI HARMONY'].conflicts))
+        self.assertTrue(any('conflict' in p.lower() and 'chords' in p.lower()
+                            for p in state.problems()), state.problems())
+
     def test_other_store_clients_do_not_install_retained_storage(self):
         for name in ('octabam', 'events-clients', 'midi-follow', 'midi-follow-events', 'midi-loopback'):
             with self.subTest(remix=name):
