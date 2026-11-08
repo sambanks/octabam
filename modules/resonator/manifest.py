@@ -43,7 +43,7 @@ MODULE = Module(
     proof_note="Ilia's MKII, remix resonator BUILD RR as RESON RR.RMX, 19 Oct 2026: "
                "page-1 GN1–4/DECY/MIX, page-2 PIT1–4/SCAL 8 and 127, DECY low and high, "
                "FX2 dry-pass, two FX1 instances",
-    doc="FX1: 4 Chamberlin BPs, per-band gains, SCALE makeup, DECY rings.",
+    doc="FX1 Torso S-4 RING-style filter bank: 4 pitched BPs, SCAL makeup, DECY.",
     menu=MenuEntry(
         # Custom id 0x1e (BBD 0x1b). Selftest fixtures use DELAY 0x08.
         fx2_id=0x1e,

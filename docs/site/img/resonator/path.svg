@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 320" role="img">
+  <title>RESONATOR signal path</title>
+  <rect width="820" height="320" fill="#fff"/>
+
+  <style>
+    .box { fill:#fff; stroke:#111; stroke-width:2; }
+    .fill { fill:#111; stroke:#111; stroke-width:2; }
+    .t { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
+    .t-inv { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#fff; }
+    .t-sm { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
+    .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
+    .wire { fill:none; stroke:#111; stroke-width:2.5; }
+  </style>
+  <defs>
+    <marker id="a" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <!-- in → left bus (midline y=150); wire, not arrow — bus is a T, not a sink -->
+  <text class="t" x="24" y="154">in</text>
+  <line class="wire" x1="48" y1="150" x2="110" y2="150"/>
+  <line class="wire" x1="110" y1="60" x2="110" y2="240"/>
+
+  <!-- four parallel BPs -->
+  <line class="wire" x1="110" y1="60" x2="128" y2="60"/>
+  <rect class="box" x="130" y="38" width="200" height="44" rx="2"/>
+  <text class="t" x="230" y="56" text-anchor="middle">BP1</text>
+  <text class="t-sm" x="230" y="72" text-anchor="middle">PIT1 / GN1</text>
+
+  <line class="wire" x1="110" y1="120" x2="128" y2="120"/>
+  <rect class="box" x="130" y="98" width="200" height="44" rx="2"/>
+  <text class="t" x="230" y="116" text-anchor="middle">BP2</text>
+  <text class="t-sm" x="230" y="132" text-anchor="middle">PIT2 / GN2</text>
+
+  <line class="wire" x1="110" y1="180" x2="128" y2="180"/>
+  <rect class="box" x="130" y="158" width="200" height="44" rx="2"/>
+  <text class="t" x="230" y="176" text-anchor="middle">BP3</text>
+  <text class="t-sm" x="230" y="192" text-anchor="middle">PIT3 / GN3</text>
+
+  <line class="wire" x1="110" y1="240" x2="128" y2="240"/>
+  <rect class="box" x="130" y="218" width="200" height="44" rx="2"/>
+  <text class="t" x="230" y="236" text-anchor="middle">BP4</text>
+  <text class="t-sm" x="230" y="252" text-anchor="middle">PIT4 / GN4</text>
+
+  <!-- BP outs → right bus → sum -->
+  <line class="wire" x1="330" y1="60" x2="350" y2="60"/>
+  <line class="wire" x1="330" y1="120" x2="350" y2="120"/>
+  <line class="wire" x1="330" y1="180" x2="350" y2="180"/>
+  <line class="wire" x1="330" y1="240" x2="350" y2="240"/>
+  <line class="wire" x1="350" y1="60" x2="350" y2="240"/>
+  <line class="arr" x1="350" y1="150" x2="388" y2="150"/>
+
+  <rect class="box" x="390" y="128" width="70" height="44" rx="2"/>
+  <text class="t" x="425" y="155" text-anchor="middle">sum</text>
+  <line class="arr" x1="460" y1="150" x2="500" y2="150"/>
+
+  <rect class="box" x="502" y="128" width="70" height="44" rx="2"/>
+  <text class="t" x="537" y="155" text-anchor="middle">SCAL</text>
+  <line class="arr" x1="572" y1="150" x2="612" y2="150"/>
+
+  <rect class="fill" x="614" y="128" width="80" height="44" rx="2"/>
+  <text class="t-inv" x="654" y="155" text-anchor="middle">MIX</text>
+  <line class="arr" x1="694" y1="150" x2="740" y2="150"/>
+  <text class="t" x="748" y="154">out</text>
+
+  <!-- dry tap under the bank; tip ends inside MIX -->
+  <path class="arr" d="M70 150 L70 290 L654 290 L654 160"/>
+  <text class="t-sm" x="360" y="282" text-anchor="middle">dry</text>
+
+  <text class="t-sm" x="410" y="28" text-anchor="middle">DECY = bandwidth (high = narrower / more ring). Not a reverb tail.</text>
+</svg>

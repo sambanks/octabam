@@ -22,7 +22,7 @@ MODULE = Module(
     proof_note="Ilia's MKII, remix shatter BUILD S6 (SHATTER S6.RMX), 21 Oct 2026: "
                "every page-1/page-2 knob exercised (CLIP open + FDBK for MODE/"
                "TONE/RATE); verify_shatter",
-    doc="Crush insert: fold, clip, bit/SRR crush, chaotic feedback.",
+    doc="Crush insert: drive, fold, clip, bit/SRR crush, self-modulating FDBK (CHAOS).",
     menu=MenuEntry(
         fx2_id=0x0a,
         donor_desc=0x400d58b8,        # DARK REV

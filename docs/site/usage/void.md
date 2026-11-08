@@ -1,42 +1,39 @@
-Scrape: this track’s input with internal noise, amplitude-modulated by an
-audio-rate LFO — or, with SETUP **SRC=NBR**, by the previous track’s
-envelope. HPF/COLR shape the **noise** only; dry stays unfiltered.
-Soft clip + **FDBK** on the noise only, then BAL dry↔noise. Always wet —
-there is no dry/wet MIX.
+**Scrape / grit on FX2** — dry input blended with shaped noise that an
+audio-rate LFO (or a neighbour track’s envelope) chops open. Think vinyl
+crackle and AM dirt that rides the beat, not a reverb or a filter on the
+dry. Replaces **COMB FILTER** (id `0x13`); DSP words sit in harvested
+**PLATE REV**.
 
-Replaces **COMB FILTER** on FX2 (id `0x13`). DSP words sit in harvested **PLATE REV**.
+Noise gets HPF → COLR → DRV → FDBK → AM. Dry stays clean. **BAL** is the
+blend (there is no separate dry/wet MIX). SETUP **SRC** picks what opens
+the noise:
+
+![VOID SRC=LFO: RATE/SHPE LFO amplitude-modulates the noise.](../../img/void/path.svg)
+
+![VOID SRC=NBR: prev-track keybus envelope opens the noise (not neighbour audio); dry still this track.](../../img/void/nbr.svg)
 
 ## Access
 
-Select a track, press FX2, pick **VOID**. Page 1: BAL, RATE, COLR, HPF, DRV, FDBK.
-Page 2 (SETUP): SHPE, DPTH, WID on the top row; **SRC** bottom left.
+Select a track, press FX2, pick **VOID**.
 
-![FX2 SETUP with VOID selected.](../../img/void/setup.png)
-
-*FX2 SETUP: SHPE, DPTH, WID (top); SRC bottom left.*
-
-![VOID main page.](../../img/void/main.png)
-
-*VOID main page: BAL, RATE, COLR, HPF, DRV, FDBK.*
-
-A Part saved under an older VOID layout will not match — re-pick VOID or
-stamp defaults after flashing.
+- Page 1: BAL, RATE, COLR, HPF, DRV, FDBK
+- Page 2 (SETUP): SHPE, DPTH, WID; **SRC** bottom left
 
 ## Operation
 
-- **BAL** — dry↔noise (**0 = full dry always**, **127 = pure noise**). AM, DRV and
-  FDBK never touch the dry.
-- **COLR** / **HPF** — darken or thin the **noise** only; dry is untouched.
-  COLR open (127) is bright; HPF 0 bypasses.
-- **SRC** (SETUP): **LFO** (default) uses RATE/SHPE; **NBR** AM’s the **noise**
-  from the previous track’s keybus — quiet → noise stops (RATE idle). On
-  track 1, NBR reads T1’s own keybus lane (`Y:$800`) — it follows itself.
-- **DPTH** (SETUP): same in both modes — how hard the modulator opens the noise.
-- **WID** (SETUP): stereo grit from a second noise through the same
-  HPF/COLR/DRV (no FDBK) and AM — `L/R = mid ± (w/2)·side` (mono keeps
-  the LFO’d mid); **0 = mono**.
-- **FDBK** with **DRV** screams; past ~50 with drive used to rail to DC silence —
-  feedback is AC-coupled now so it keeps scraping.
+- **BAL** — dry↔noise (**0 = exact dry**, **127 = pure noise**). AM, DRV
+  and FDBK never touch the dry.
+- **COLR** / **HPF** — darken or thin the **noise** only. COLR 127 = open;
+  HPF 0 = bypass.
+- **SRC** (SETUP): **LFO** (default) uses RATE/SHPE; **NBR** replaces that
+  LFO with the previous track’s **keybus envelope** (level only — no
+  neighbour audio into VOID). Quiet neighbour → noise stops. Dry/BAL is
+  still this track. On track 1, NBR reads T1’s own keybus (`Y:$800`).
+- **DPTH** — how hard the modulator opens the noise (both SRC modes).
+- **WID** — stereo grit from a second noise through the same HPF/COLR/DRV
+  (no FDBK); **0 = mono**.
+- **FDBK** + **DRV** screams; feedback is AC-coupled so it keeps scraping
+  instead of railing to silence.
 
 ## Parameters
 
