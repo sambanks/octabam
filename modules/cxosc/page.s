@@ -8,7 +8,7 @@
 | WHAT: PLAYBACK presents PTCH RATO INDX FINE FOLD MIX (four-character
 | names; boxes 19 px). RATO free 0.25..4; INDX/FOLD 0..127; FINE cents
 | (64=0c); MIX 0..127. Icons: operators (RATO), sidebands (INDX), folded
-| sine (FOLD); FINE+MIX = stock dials. SETUP: CMOR MMOR DEC SYMM FDBK PWM.
+| sine (FOLD); FINE+MIX = stock dials. SETUP: CMOR MMOR DEC SYMM FDBK WIDTH.
 | Footer CX OSC>FLEX.
 | Knobs: po_knob — one unit a detent; PTCH pressed ×3 (others ×7); FUNC:
 | PTCH snaps −32/0/+32, FINE/FOLD/INDX/MIX 16, RATO next classic snap ≤4.01.

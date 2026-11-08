@@ -21,7 +21,7 @@
 | "C", "X", 1 in NEIGHBOR PLAYBACK: bank + part * 6322 + 0x8edbc + 30 *
 | track (and the battery-RAM shadow). Seed PLAYBACK: PTCH 0, RATO ~1,
 | INDX 0, FINE 0c, FOLD 0, MIX 0; SETUP CMOR/MMOR 0, DEC HOLD, SYMM 64,
-| FDBK 0, PWM 50% (fm_defaults); choosing it again keeps the patch; choosing
+| FDBK 0, WIDTH 64 (fm_defaults); choosing it again keeps the patch; choosing
 | any other row clears the signature.
 |
 | THE MACHINE CHANGE (2.12). A change of the machine a track plays, where the old or the
@@ -98,6 +98,8 @@
         .set    DRAW6_RET, 0x4003cda0    | after row*6 in the SETUP drawer
         .set    EDIT6_EXIT, 0x4003a624   | that editor's movem epilogue
         .set    EDIT6_CLAMP, 0x4003a56c  | after SETUP_STEP (must keep its 8 B stack)
+        .set    FUNC_HELD, 0x46c7dd26    | nonzero while [FUNCTION] is down
+        .set    FUNC_ENC_OFF, 0x800000a0 | PERSONALIZE: DISABLE FUNCTION + ENCODER
         .set    SRC_COMMIT_RET, 0x4005a61c
         .set    SRC_COMMIT2_RET, 0x4005a856
         .set    TICK_A, 0x4005213c       | the UI tick's two calls fm_tick replays (the first is PC-relative
@@ -314,7 +316,7 @@ ml_flexslot:
 | page shows it at once, the next frame plays it and SAVE keeps it:
 |   * PLAYBACK and PLAYBACK SETUP: a row's machine -- its twelve seeds in the FLEX column (CX
 |     OSC: PTCH 0, RATO ~1, INDX 0, FINE 0c, FOLD 0, MIX 0; SETUP CMOR/MMOR 0, DEC HOLD,
-|     SYMM 64, FDBK 0, PWM 64 — fm_defaults; SY DRUM: PTCH 0, MODE
+|     SYMM 64, FDBK 0, WIDTH 64 — fm_defaults; SY DRUM: PTCH 0, MODE
 |     A, WDTH 64, SWEP 0, SPED 64, DEC 64, LSPD 64, LDEP 0, WAVE OFF, S&H OFF); a stock
 |     machine -- its column at the defaults of its stock PLAYBACK descriptor, and the FLEX
 |     column at FLEX's (the FLEX bytes a row's machine had used: they are no sample settings);
@@ -1161,8 +1163,9 @@ fm_chooser_open:
 
 | ---- 0x4003a52e / 0x4003cd98 (jmp, 8 B each): SRC SETUP editor/drawer row*6.
 | a5 already = PB_TABLE[row] (CX clone: count 128). Remap row 5.. -> FLEX for
-| Part addressing; stock clamp uses a5. CMOR/MMOR: raw delta + stock store
-| (pad 8 B -- stock addql #8 still runs after SETUP_STEP's pushes).
+| Part addressing; stock clamp uses a5. CMOR/MMOR: continuous, or FUNC
+| snaps 0/64/127; encoder-pressed coarsens other rows. Pad 8 B — stock
+| addql #8 still runs after SETUP_STEP's pushes.
 fm_setup_edit6:
         jsr     po_setup_edit:l
         cmpi.l  #2,%d0
@@ -1183,7 +1186,50 @@ fm_e6_morph:
         lea     (%a3,%d0.l),%a4
         move.l  %d4,%d2
         jsr     po_setup_cur:l           | d0 = current Part SETUP byte
-        move.l  %d0,%d2
+        move.l  %d0,%d2                  | CLAMP base = current
+        | FUNC + CMOR/MMOR (A/B): directional snap to 0 / 64 / 127
+        tst.l   FUNC_HELD
+        beq     fm_e6_nofunc
+        tst.l   FUNC_ENC_OFF
+        bne     fm_e6_nofunc
+        cmpa.l  #2,%a3
+        bge     fm_e6_nofunc
+        tst.l   %d3
+        beq     fm_e6_snap0
+        move.l  %d2,%d1                  | walking landmark
+        move.l  %d3,%d0                  | detent count
+        moveq   #1,%d3                   | direction +1 / −1
+        tst.l   %d0
+        bgt     fm_e6_sn_abs
+        neg.l   %d3
+        neg.l   %d0
+fm_e6_sn_abs:
+        tst.l   %d3
+        bgt     fm_e6_sn_up
+        cmpi.l  #64,%d1
+        bgt     fm_e6_sn_to64
+        clr.l   %d1                      | ≤64 → 0
+        bra     fm_e6_sn_next
+fm_e6_sn_to64:
+        moveq   #64,%d1                  | >64 → 64
+        bra     fm_e6_sn_next
+fm_e6_sn_up:
+        cmpi.l  #64,%d1
+        blt     fm_e6_sn_up64
+        move.l  #127,%d1                 | ≥64 → 127
+        bra     fm_e6_sn_next
+fm_e6_sn_up64:
+        moveq   #64,%d1                  | <64 → 64
+fm_e6_sn_next:
+        subq.l  #1,%d0
+        bne     fm_e6_sn_abs
+        move.l  %d1,%d0
+        sub.l   %d2,%d0                  | delta = landmark − current
+        bra     fm_e6_delta
+fm_e6_snap0:
+        moveq   #0,%d0
+        bra     fm_e6_delta
+fm_e6_nofunc:
         move.l  %a3,%d0
         mulu.w  #24,%d0
         lea     0x46c7de2e,%a0           | encoder-pressed flag a control
@@ -1205,7 +1251,7 @@ fm_setup_draw6:
         cmpi.l  #FM_ROW,%d6
         blt     fm_d6
         bne     fm_d6_flex
-        | CX OSC SETUP A-F all live (PWM on F); no blank-frame wipe
+        | CX OSC SETUP A-F all live (WIDTH on F); no blank-frame wipe
 fm_d6_flex:
         moveq   #FLEX,%d6
 fm_d6:
@@ -1493,7 +1539,7 @@ ml_msg_both:
         .balign 2
 fm_defaults:
         .byte   64, 25, 0, 64, 0, 0      | PLAYBACK: PTCH 0, RATO ~1, INDX 0, FINE 0c, FOLD 0, MIX 0
-        .byte   0, 0, 127, 64, 0, 64     | SETUP: CMOR MMOR DEC HOLD SYMM even FDBK off PWM 50%
+        .byte   0, 0, 127, 64, 0, 64     | SETUP: CMOR MMOR DEC HOLD SYMM even FDBK off WIDTH 64
 fm_name:
         .asciz  "CX OSC"
         .balign 4
