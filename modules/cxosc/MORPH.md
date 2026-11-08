@@ -20,7 +20,8 @@ Morph map (both oscillators):
 | **64** | saw |
 | **127** | square |
 
-0..63 linear sine→saw; 64..127 linear saw→square. Exact `/127` endpoints.
+0..63 linear sine→saw; 64..127 linear saw→square (both `/63`). MMOR always
+builds the DPW pulse (no dummy-square below 64 — that stepped at the landmark).
 
 LFO SETUP PMTR **30 = CMOR**, **31 = MMOR**. WIDTH is panel-only (not an LFO dest).
 

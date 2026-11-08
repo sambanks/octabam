@@ -1078,18 +1078,12 @@ sy_loop:
         lea     S_DPWM(%a3),%a4
         bsr     sy_dpw                   | d2 = continuous saw
         move.l  S_LASTM(%a3),%d4         | sine
-        move.l  4(%sp),%d0               | amt (0=φm, 4=amt, 8=φc)
-        cmpi.l  #64,%d0
-        blt     sy_mod_lo                | low half: square unused
+        | Always build DPW pulse (even MMOR < 64). Old path set square=saw
+        | below 64 then swapped in a real pulse at 64 — unit: steppy 60..70.
         move.l  %d2,-(%sp)               | park saw (d7 = sample count — do not touch)
         move.l  8+16(%sp),%d2            | WIDTH (under amt+φm+φc+saw; was at 8)
         bsr     sy_dpw_pulse             | d0 = pulse; needs saw at 0(sp)
         move.l  (%sp)+,%d1               | saw
-        bra     sy_mod_mix
-sy_mod_lo:
-        move.l  %d2,%d1                  | saw
-        move.l  %d1,%d0                  | dummy square
-sy_mod_mix:
         move.l  20(%sp),%d2              | WIDTH (under amt+φm+φc; base slot 8)
         bsr     sy_wramp                 | ramp-balance the saw (d1)
         move.l  (%sp)+,%d6               | raw φm
@@ -1456,10 +1450,9 @@ sy_dpp_lo:
         rts
 
 | ---- sine→saw→square: d4=sine, d1=saw, d0=square, d2=amt 0..127 → d4. ----
-| 0 = sine, 64 = saw, 127 = square. Keep CX 44's gradual colour (no
-| clip-drive). Sine→saw still uses t². Saw→square is LINEAR in (amt-64)/63
-| so amt 127 is bit-identical to d0 (full pulse) — t² on this half left
-| too much saw at the top. Parks d3/d6/d7.
+| 0 = sine, 64 = saw, 127 = square. Both halves LINEAR in /63 so the
+| mid landmark is not a plateau (t² sine→saw stalled ~60 then pulse
+| hard-switched at 64 — unit steppy 60..70 on MMOR). Parks d3/d6/d7.
 sy_wshape:
         tstl    %d2
         beq     sy_ws_done
@@ -1472,22 +1465,18 @@ sy_wshape:
         move.l  %d7,-(%sp)
         cmpi.l  #64,%d2
         bge     sy_ws_hi
-        | ---- sine→saw: t = amt*127/63, then t²/127 ----
+        | ---- sine→saw: t = amt*127/63 ----
         move.l  %d2,%d3
         moveq   #127,%d6
         muls.l  %d6,%d3
         moveq   #63,%d6
-        divs.l  %d6,%d3
-        move.l  %d3,%d2
+        divs.l  %d6,%d3                  | t
+        move.l  %d1,%d2
+        sub.l   %d4,%d2                  | saw − sine
         muls.l  %d3,%d2
         moveq   #127,%d6
         divs.l  %d6,%d2
-        move.l  %d1,%d3
-        sub.l   %d4,%d3                  | saw − sine
-        muls.l  %d2,%d3
-        moveq   #127,%d6
-        divs.l  %d6,%d3
-        add.l   %d3,%d4
+        add.l   %d2,%d4
         bra     sy_ws_out
 sy_ws_hi:
         | ---- saw→square: t = (amt-64)*127/63  (linear → full at 127) ----
