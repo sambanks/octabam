@@ -29,6 +29,8 @@ def variant(module):
         if values["SLOTS"] != "FX1+FX2":
             return {}
         m = module()
-        return {"dsp": dataclasses.replace(m.dsp, subst={p: {DRY_FLAG: LIVE_FLAG} for p in ("A", "B")}),
+        # merged into the station's own subst (CHARACTER's keybus addresses), never in place of it
+        own = m.dsp.subst or {}
+        return {"dsp": dataclasses.replace(m.dsp, subst={p: {**own.get(p, {}), DRY_FLAG: LIVE_FLAG} for p in ("A", "B")}),
                 "claims": dataclasses.replace(m.claims, fx1_only=False)}
     return _variant
