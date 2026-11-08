@@ -19,10 +19,10 @@
 |
 | THE STORAGE. Chosen track = FLEX (machine byte 1) with signature
 | "C", "X", 1 in NEIGHBOR PLAYBACK: bank + part * 6322 + 0x8edbc + 30 *
-| track (and the battery-RAM shadow). Seed PLAYBACK: PTCH 0, RATO 1,
-| INDX 0, FOLD 0, FDBK 0, MIX 0; SETUP CMOR/MMOR/DEC/SYMM/FDBK (
-| blank×4); choosing it again keeps the patch; choosing any other
-| row clears the signature.
+| track (and the battery-RAM shadow). Seed PLAYBACK: PTCH 0, RATO ~1,
+| INDX 0, FINE 0c, FOLD 0, MIX 0; SETUP CMOR/MMOR 0, DEC HOLD, SYMM 64,
+| FDBK 0 (fm_defaults); choosing it again keeps the patch; choosing any
+| other row clears the signature.
 |
 | THE MACHINE CHANGE (2.12). A change of the machine a track plays, where the old or the
 | new machine is a row's (CX OSC, SY DRUM), sets the track to the new machine's init:
