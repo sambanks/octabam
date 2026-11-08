@@ -8,10 +8,15 @@ grid (T1–T4 left, T5–T8 right, centre divider; T1 top-left). **A** GAIN,
 
 **Hardware (author MKII, `LSCOPE BJ`, 24 Oct 2026):** busy 8-track play +
 CF METER — SCOPE open ISR mean 291 µs / closed 288 µs, TUE 0 / ROE 0;
-several minutes ALL open with no glitch. Emulator captures
-(`tools/site/shots/scope.script`). Live waveform needs track audio; under
-the port the ring stays quiet (same class as TUNER `--`).
+several minutes ALL open with no glitch. OSC / XY / ALL shots below are
+from the unit over SysEx (`SCREEN` + `screendump`, remix `SC SCOPE`),
+inverted to the manual's black-on-white; RIGHT help is still the emulator
+capture (`tools/site/shots/scope.script`).
 
 ![SCOPE OSC with G/P HUD.](../../img/scope/osc.png)
+
+![SCOPE XY (L×R) with G/P HUD.](../../img/scope/xy.png)
+
+![SCOPE ALL: 4×2 mini OSC (T1–T8).](../../img/scope/all.png)
 
 ![RIGHT help: A GAIN, B TIME.](../../img/scope/help.png)

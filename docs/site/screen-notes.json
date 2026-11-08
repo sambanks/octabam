@@ -14,5 +14,5 @@
   "tempo-sync": "Changes the existing delay TIME readout and MIDI note handling. It has no separate screen; see the bus delay and TEMPO controls.",
   "waveload": "Uses CF Meter's BURN control to select the number of wave engines. It has no separate screen. See the CF Meter captures.",
   "events": "System event dispatch for sequencing and editing. It adds no LCD page or panel control.",
-  "scope": "Emulator live_shots: OSC chrome + help after the open toast clears. Waveform/ALL need track audio (quiet under the live path, like TUNER --)."
+  "scope": "OSC / XY / ALL shots are from the unit over SysEx (SCREEN + screendump), inverted black-on-white. RIGHT help remains the emulator live_shots capture."
 }
