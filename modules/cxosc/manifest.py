@@ -1,8 +1,8 @@
 """CX OSC -- Buchla-flavoured complex oscillator (marker-less machine list).
 
 Choose CX OSC in FUNC+SRC / SELECT MACHINE TYPE (FLEX + Part signature "CX",1).
-Mono only; stock LFO page (no VOIC/CHRD). PLAYBACK: PTCH RATO INDX FOLD SYMM DEC
-(HOLD at 127; SYMM bipolar half-wave skew, 64 = even).
+Mono voice; up to ML_FM_MAX=4 tracks per Part. PLAYBACK: PTCH (−32..+32) RATO INDX FINE FOLD MIX. SETUP:
+CMOR/MMOR/DEC/SYMM/FDBK (F blank); LFO PMTR 30..33 (no DEC). No Tim VOIC/CHRD.
 
 Machine list adapted from timhastie/octatrick-modules v2.15 SYNTH MACHINE
 (MIT / Modwerk chooser lineage). Conflicts with SYNTH MACHINE and
@@ -66,7 +66,18 @@ def _hooks_inc(modules):
 
 
 def poly_include(modules, remix=None):
-    return _hooks_inc(modules)
+    """First pass: hooks. Second pass (poly.s before RAM state): LFO morph."""
+    with open(os.path.join(_HERE, "lfo_morph.inc.s"), encoding="utf-8") as _lf:
+        morph = _lf.read()
+    return "\n".join((
+        ".ifndef CX_PASS1",
+        ".set CX_PASS1, 1",
+        _hooks_inc(modules),
+        ".else",
+        morph,
+        ".endif",
+        "",
+    ))
 
 
 def machine_include(modules, remix=None):
@@ -90,6 +101,15 @@ LFO_DEPTH_HOOK2 = 0x4000d03e
 LFO_DEPTH_STOCK = bytes.fromhex("71722a12" "43f04a00")
 LFO_PAGE_HOOK = 0x40031e62
 LFO_PAGE_STOCK = bytes.fromhex("203c400d37f6" "606c")
+LFD_EDIT_HOOK = 0x400392cc
+LFD_EDIT_STOCK = bytes.fromhex("2003" "7406" "4c420807")
+LFD_STAGE_HOOK = 0x40058488
+LFD_MOVE_HOOK = 0x4003a45c
+LFD_DRAW_HOOK = 0x400574cc
+LFD_EDITUI_HOOK = 0x40039020
+LFD_PEA_STOCK = bytes.fromhex("4879400d37f6")          # pea LFO_P
+LFD_LEA_STOCK = bytes.fromhex("49f9400d37f6")          # lea LFO_P,a4 (draw)
+LFD_LEA3_STOCK = bytes.fromhex("47f9400d37f6")         # lea LFO_P,a3 (edit)
 MIDI_MAP_HOOK = 0x4000e746
 MIDI_MAP_STOCK = bytes.fromhex("721d" "2b812c00")
 MIDI_OFF_HOOK = 0x4000dfd4
@@ -148,6 +168,7 @@ FM_SETUP_OPEN_HOOK = 0x400585dc
 FM_SETUP_OPEN_STOCK = bytes.fromhex("1610" "7903" "4879400bb704")
 FM_CHOOSER_OPEN_HOOK = 0x40078886
 FM_CHOOSER_OPEN_STOCK = bytes.fromhex("7110" "2f00" "4879460e7386")
+# SRC SETUP editor/drawer row*6 (BASE 0x40000400 -> file +0x3a12e / +0x3c998).
 FM_EDIT6_HOOK = 0x4003a52e
 FM_EDIT6_STOCK = bytes.fromhex("2002" "e788" "d482" "9082")
 FM_DRAW6_HOOK = 0x4003cd98
@@ -267,7 +288,7 @@ def _variant(values):
         "cf_patches": (),
         "detours": MODULE.detours + (Detour(
             RESOLVER_HOOK, RESOLVER_STOCK, "page", "pg_resolve",
-            "PLAYBACK page resolver: CX OSC track reads PTCH/RATO/INDX/FOLD/SYMM/DEC "
+            "PLAYBACK page resolver: CX OSC track reads PTCH/RATO/INDX/FINE/FOLD/MIX "
             "(DRAM form; leaves the stock DELAY table tail alone)", kind="jmp"),),
     }
 
@@ -281,13 +302,14 @@ MODULE = Module(
     author_url="https://github.com/ilia-murzinov",
     proof=Proof.HARDWARE,
     proof_note=(
-        "MKII VRCS-CX VS @ 32316200 (author): Tim v2.22 AMP snap; DEC HOLD@127; "
-        "bipolar SYMM half-wave skew (64=even) + icons; FOLD default 40; PLAYBACK "
-        "knobs; FUNC RATO snaps. Prior MKII BUILD CS @ 052bb14d (cxosc-core) smoked "
-        "machine select / PLAYBACK then FDBK / MIDI / STOP / Part. verify_cxosc + "
-        "make check REMIX=cxosc"
+        "MKII VRCS-CX VS @ 32316200 (author): Tim AMP snap; DEC HOLD@127; bipolar "
+        "SYMM (then PLAYBACK FOLD/SYMM/DEC layout). MKII CX 28 (author, 6 Nov 2026): "
+        "PLAYBACK PTCH RATO INDX FINE FOLD MIX + SETUP CMOR/MMOR/DEC/SYMM/FDBK icons "
+        "(FDBK lsll#1, DEC HOLD hollow h=10); INDX/FOLD/FDBK default 0. Prior BUILD CS "
+        "@ 052bb14d smoke. HOLD-INF / max4 / MIX-FOLD slew: port+flash only — not "
+        "HW-confirmed on tip. verify_cxosc + make check REMIX=cxosc"
     ),
-    doc="CX OSC in the machine list (no marker file): PTCH RATO INDX FOLD SYMM DEC (HOLD@127; SYMM half-wave skew 64=even), mono, stock LFOs. Local fork of FM SYNTH.",
+    doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CMOR/MMOR/DEC/SYMM/FDBK, LFO PMTR 30..33, up to 4 mono / Part. Local fork of FM SYNTH.",
     conflicts=(
         ("SYNTH MACHINE", "both own the FLEX/STATIC kind-table renderers, page cave 0x400d24d0, and machine-list sites"),
         ("BLACKPYRAMIDS_303", "shares ColdFire ROM hooks (e.g. MIDI note-on 0x4000e746) — build refuses the pair"),
@@ -308,7 +330,26 @@ MODULE = Module(
                   "FLEX START -> po_fmstart (sample-free when CX OSC chosen)"),
     ),
     detours=(
-        # LFO page/depth NOT stolen -- stock LFO 1/2/3 on a CX OSC track
+        Detour(LFO_DEPTH_HOOK, LFO_DEPTH_STOCK, "poly", "cx_lfo_standalone",
+               "PMTR 30..33 (CMOR/MMOR/SYMM/FDBK) private LFO words; stock depth otherwise",
+               kind="jmp", pad_to=8),
+        Detour(LFO_DEPTH_HOOK2, LFO_DEPTH_STOCK, "poly", "cx_lfo_frame",
+               "frame-builder LFO depth: CMOR/MMOR/SYMM/FDBK private words",
+               kind="jmp", pad_to=8),
+        Detour(LFO_PAGE_HOOK, LFO_PAGE_STOCK, "poly", "cx_lfo_page",
+               "LFO page: PMTR count 34 on CX OSC (CMOR/MMOR/SYMM/FDBK)",
+               kind="jmp", pad_to=8),
+        Detour(LFD_EDIT_HOOK, LFD_EDIT_STOCK, "poly", "cx_lfo_pmtr_edit",
+               "LFO SETUP PMTR walk includes 30/31 on CX OSC",
+               kind="jmp", pad_to=8),
+        Detour(LFD_STAGE_HOOK, LFD_PEA_STOCK, "poly", "cx_lfo_stage",
+               "LFO SETUP stages CX PMTR destination count", kind="jmp"),
+        Detour(LFD_MOVE_HOOK, LFD_PEA_STOCK, "poly", "cx_lfo_move",
+               "LFO SETUP row move stages CX PMTR count", kind="jmp"),
+        Detour(LFD_DRAW_HOOK, LFD_LEA_STOCK, "poly", "cx_lfo_draw",
+               "LFO SETUP draws CMOR/MMOR/SYMM/FDBK PMTR labels", kind="jmp"),
+        Detour(LFD_EDITUI_HOOK, LFD_LEA3_STOCK, "poly", "cx_lfo_edit",
+               "LFO SETUP edits CX PMTR destination count", kind="jmp"),
         Detour(MIDI_MAP_HOOK, MIDI_MAP_STOCK, "poly", "po_mon",
                "MIDI IN note-on", kind="jmp"),
         Detour(MIDI_OFF_HOOK, MIDI_OFF_STOCK, "poly", "po_moff",

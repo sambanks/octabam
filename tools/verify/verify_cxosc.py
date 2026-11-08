@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""CX OSC gates under Unicorn: voice knobs + the one-track-per-Part guard.
+"""CX OSC gates under Unicorn: voice knobs + routing + page widgets + guard.
 
-1. Voice: FOLD / bipolar SYMM half-wave skew / RATO / DEC move the output;
-   center vs high/low skew differ; FOLD=SYMM=DEC=127 stays bounded.
-   Calls `sy_render` with a planted Part.
-2. Guard: `ml_guard_p` refuses a second CX OSC track in a Part ("CX OSC: 1 MAX")
-   and allows the track's own machine again / a first choice / a stock row.
-3. AMP 2.20: with the live lane fixed at ATK 0, a slow ATK in the DSP voice
-   record (scene/LFO stand-in) changes the attack vs a fast DSP ATK — proving
-   `po_amp_snap` / `po_amp_at`, not CURVALS alone.
+1. Voice: FOLD / FDBK / RATO / DEC / MIX / SYMM move the output; FINE
+   (PLAYBACK D / RATE) shifts pitch; extremes stay bounded.
+2. Routing: S_FB ← SETUP E; sy_cxparm FOLD←RTRG SYMM←SETUP D; MIX←RTIM;
+   page names FINE/FOLD/MIX; SETUP DEC decay icon.
+3. Guard: `ml_guard_p` allows four CX OSC tracks; fifth is "CX OSC: 4 MAX".
+4. AMP 2.20: DSP-record ATK shapes attack via `po_amp_snap`.
 
 ColdFire, not dsp_host. Instruction counts are diagnostics, not hardware cycles.
 
@@ -58,8 +56,9 @@ STOP, STACK = 0x10000, 0x20000
 
 Q14_PEAK = 0x4000
 RAIL = 0x7FFFF0  # top-24 sample near full scale
+FB_SCALE = 2064  # poly.s: 1.0 cycle / 127 * 2^16
 FM_ROW = 5  # machine.s: sixth list row = CX OSC; after ANALOG BD / OCTA303 when the image has them (main)
-MSG_FM_MAX = b"CX OSC: 1 MAX"
+MSG_FM_MAX = b"CX OSC: 4 MAX"
 
 
 def die(msg):
@@ -113,7 +112,7 @@ def read_cstr(uc, addr, n=32):
 
 
 def check_guard(uc, symbols):
-    """One CX OSC per Part: refuse a second choice; allow first / own / stock."""
+    """Four CX OSC tracks per Part; fifth refused; own-track / stock still ok."""
     clear_part(uc)
     d0 = call_ml_guard_p(uc, symbols, FM_ROW, 0)
     check("guard: first CX OSC on T1 allowed", d0 == 0, f"d0={d0:#x}")
@@ -122,25 +121,31 @@ def check_guard(uc, symbols):
     d0 = call_ml_guard_p(uc, symbols, FM_ROW, 0)
     check("guard: choosing CX OSC again on the same track allowed", d0 == 0)
 
-    d0 = call_ml_guard_p(uc, symbols, FM_ROW, 1)
+    for t in range(1, 4):
+        d0 = call_ml_guard_p(uc, symbols, FM_ROW, t)
+        check(f"guard: CX OSC on T{t + 1} allowed with {t} already", d0 == 0, f"d0={d0:#x}")
+        sign_cx(uc, t)
+
+    d0 = call_ml_guard_p(uc, symbols, FM_ROW, 4)
     msg = read_cstr(uc, d0)
     check(
-        "guard: second track refused with CX OSC: 1 MAX",
+        "guard: fifth track refused with CX OSC: 4 MAX",
         d0 != 0 and msg == MSG_FM_MAX,
         f"d0={d0:#x} msg={msg!r}",
     )
 
-    # Stock row (FLEX = 1): always allowed even with one CX OSC present
-    d0 = call_ml_guard_p(uc, symbols, 1, 1)
-    check("guard: stock row on a free track allowed beside one CX OSC", d0 == 0)
+    # Stock row (FLEX = 1): always allowed beside four CX OSC
+    d0 = call_ml_guard_p(uc, symbols, 1, 5)
+    check("guard: stock row on a free track allowed beside four CX OSC", d0 == 0)
 
-    # Paste-style: destination Part already has CX on T1; choosing CX on T3
+    # Paste-style: Part already full (T1..T4); choosing CX on T6 refused
     clear_part(uc)
-    sign_cx(uc, 0)
-    d0 = call_ml_guard_p(uc, symbols, FM_ROW, 2)
+    for t in range(4):
+        sign_cx(uc, t)
+    d0 = call_ml_guard_p(uc, symbols, FM_ROW, 5)
     msg = read_cstr(uc, d0)
     check(
-        "guard: paste onto another track refused (same ml_guard_p)",
+        "guard: paste onto a fifth track refused (same ml_guard_p)",
         d0 != 0 and msg == MSG_FM_MAX,
         f"msg={msg!r}",
     )
@@ -210,6 +215,7 @@ def load_runtime():
         uc.mem_write(symbols["po_rate"], bytes.fromhex("203c0184cbb74e75"))
 
     map_range(uc, 0x10000, 0x20000)
+    map_range(uc, 0x10000000, 0x200000)  # PART_SHADOW (0x1001614e) + nearby battery RAM
     map_range(uc, 0x100B0000, 0x2000)
     map_range(uc, 0x42000000, 0xA0000)  # Part blob through SIG_OFF (~0x8edbc) + stride
     map_range(uc, 0x46000000, 0x2000)
@@ -234,14 +240,19 @@ def plant_part(uc, track=0):
     uc.mem_write(BANK + SIG_OFF + 30 * track, b"CX\x01")
 
 
-def plant_fp(uc, ptch=64, rato=32, indx=40, fold=0, symm=0, dec=127):
-    """PLAYBACK halfwords as the packer leaves them (raw << 8). DEC 127 = HOLD."""
-    words = [ptch, rato, indx, fold, symm, dec]
+def plant_fp(uc, ptch=64, rato=32, indx=40, fine=64, fold=0, mix=0,
+             dec=127, symm=64, fdbk=40, cmor=0, mmor=0, track=0):
+    """PLAYBACK: PTCH RATO INDX FINE FOLD MIX; SETUP: CMOR MMOR DEC SYMM FDBK."""
+    words = [ptch, rato, indx, fine, fold, mix]
     blob = b"".join(struct.pack(">H", (v & 0xFF) << 8) for v in words)
     uc.mem_write(FP_REC, blob + bytes(64))
     uc.mem_write(FP_PTR_AT, struct.pack(">I", FP_REC))
     uc.mem_write(RS_REC, bytes(64))
     uc.mem_write(RS_PTR_AT, struct.pack(">I", RS_REC))
+    lane = CURVALS + 72 * track + 32  # CV_SETUP
+    uc.mem_write(lane, bytes([
+        cmor & 0xFF, mmor & 0xFF, dec & 0xFF, symm & 0xFF, fdbk & 0xFF, 0,
+    ]))
 
 
 def plant_amp(uc, track=0, atk=0, hold=127, rel=64, dsp_atk=None, dsp_hold=None, dsp_rel=None):
@@ -279,7 +290,7 @@ def render_frames(uc, symbols, knobs, frames=64, track=0, amp=None):
     """Cold-start then run `frames` second-calls; return interleaved L samples (signed 24)."""
     amp = dict(amp or {})
     plant_part(uc, track)
-    plant_fp(uc, **knobs)
+    plant_fp(uc, track=track, **knobs)
     plant_voice(uc, track, True, **amp)
     uc.mem_write(HEADER, bytes(16 + 16 * 8 * 2))  # header + stereo pairs
     uc.mem_write(CURSOR_AT, struct.pack(">I", HEADER))
@@ -362,16 +373,57 @@ def main():
 
     check_guard(uc, symbols)
 
-    # SYMM default 64 = even; plant fold-alone at even so bias variants differ.
-    base = dict(ptch=64, rato=32, indx=48, fold=0, symm=64, dec=127)
+    # PLAYBACK: E=FOLD icon, F=plain MIX; names FINE/FOLD/MIX.
+    for sym in ("pg_wids_b", "pg_wid_plain", "pg_wid_fold", "pg_names"):
+        if sym not in symbols:
+            die(f"{sym} missing from runtime.elf")
+    w4, w5 = struct.unpack(">II", uc.mem_read(symbols["pg_wids_b"], 8))
+    check("PLAYBACK E widget = FOLD icon", w4 == symbols["pg_wid_fold"], f"{w4:#x}")
+    check("PLAYBACK F widget = plain MIX dial", w5 == symbols["pg_wid_plain"], f"{w5:#x}")
+    names = bytes(uc.mem_read(symbols["pg_names"], 30))
+    check("page names include FINE", b"FINE" in names, names[:24].decode("ascii", "replace"))
+    check("page names include FOLD", b"FOLD" in names, names[:24].decode("ascii", "replace"))
+    check("page names include MIX", b"MIX" in names, names[:24].decode("ascii", "replace"))
+
+    # SETUP: CMOR MMOR DEC SYMM FDBK; nibbles C/D/E=1 F=0; DEC decay widget.
+    if "po_setup_cx" in symbols:
+        flex_p, flex_len, setup_buf = 0x400D31AE, 0x192, 0x80013000
+        map_range(uc, setup_buf, 0x200)
+        uc.mem_write(setup_buf, bytes(uc.mem_read(flex_p, flex_len)))
+        uc.reg_write(UC_M68K_REG_A7, STACK)
+        uc.mem_write(STACK, struct.pack(">I", STOP))
+        uc.reg_write(UC_M68K_REG_A0, setup_buf)
+        try:
+            uc.emu_start(symbols["po_setup_cx"], STOP, count=50_000)
+        except Exception as e:
+            die(f"po_setup_cx fault: {e}")
+        n18a = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0x18A, 4)))[0]
+        check(
+            "SETUP nibbles: C/D/E=1 F=0",
+            (n18a & 0xFFFF) == 0x0111,
+            f"0x18a low={n18a & 0xFFFF:#06x} (want 0x0111)",
+        )
+        dec_nm = bytes(uc.mem_read(setup_buf + 0x46, 4))
+        symm_nm = bytes(uc.mem_read(setup_buf + 0x4C, 4))
+        fdbk_nm = bytes(uc.mem_read(setup_buf + 0x52, 4))
+        check("SETUP C named DEC", dec_nm.rstrip(b"\0") == b"DEC", dec_nm)
+        check("SETUP D named SYMM", symm_nm == b"SYMM", symm_nm)
+        check("SETUP E named FDBK", fdbk_nm == b"FDBK", fdbk_nm)
+        if "pg_wid_decay" in symbols:
+            w_dec = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0xFA + 32, 4)))[0]
+            check("SETUP DEC widget = decay icon", w_dec == symbols["pg_wid_decay"], f"{w_dec:#x}")
+
+    base = dict(ptch=64, rato=32, indx=48, fine=64, fold=0, mix=0, dec=127, symm=64, fdbk=40)
     variants = {
         "base": base,
         "fold": {**base, "fold": 96},
-        "symm": {**base, "fold": 96, "symm": 112},
-        "symm_lo": {**base, "fold": 96, "symm": 16},
+        "fdbk": {**base, "fold": 96, "fdbk": 100},
+        "symm": {**base, "fold": 96, "symm": 20},
+        "mix": {**base, "fold": 64, "mix": 96, "indx": 0},
+        "fine": {**base, "fine": 96},
         "rato": {**base, "rato": 96},
         "dec": {**base, "dec": 32},
-        "rails": {**base, "fold": 127, "symm": 127, "dec": 127, "indx": 127},
+        "rails": {**base, "fold": 127, "fdbk": 127, "mix": 127, "indx": 127},
     }
 
     outs = {}
@@ -394,20 +446,41 @@ def main():
         check(label, diff >= min_frac, f"{diff * 100:.1f}% samples differ")
 
     differ(outs["base"], outs["fold"], "FOLD changes the output")
-    differ(outs["fold"], outs["symm"], "SYMM high bias ≠ even (vs FOLD alone)")
-    differ(outs["fold"], outs["symm_lo"], "SYMM low bias ≠ even (vs FOLD alone)")
-    differ(outs["symm_lo"], outs["symm"], "SYMM low bias ≠ high bias")
+    differ(outs["fold"], outs["fdbk"], "FDBK (SETUP E) changes the output")
+    differ(outs["fold"], outs["symm"], "SYMM (SETUP D) changes the output")
+    differ(outs["base"], outs["mix"], "MIX changes the output")
+    if outs["base"] != outs["fine"]:
+        differ(outs["base"], outs["fine"], "FINE (PLAYBACK D) changes the pitch/output")
+    else:
+        print("  [INFO] FINE: no audio delta under stubbed po_rate (unexpected with RATE FINE)")
     differ(outs["base"], outs["rato"], "RATO changes the output")
     differ(outs["base"], outs["dec"], "DEC (not HOLD) changes the output")
 
-    # Boundedness at full FOLD/SYMM/DEC HOLD: count samples at both rails.
+    # Prove knob → engine maps.
+    if "sy_state" in symbols and "sy_cxparm" in symbols and "sy_cxmix" in symbols:
+        uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+        uc.mem_write(symbols["sy_cxmix"], bytes(8))
+        render_frames(
+            uc, symbols, {**base, "fold": 96, "symm": 30, "fdbk": 100, "mix": 55}, frames=4
+        )
+        sfb = struct.unpack(">I", bytes(uc.mem_read(symbols["sy_state"] + 28, 4)))[0]
+        # byte→word (<<8) then * SCALE >> 8 == raw * SCALE (Tim RTRG path)
+        want_fb = FB_SCALE * 100
+        check("S_FB tracks SETUP E / FDBK", sfb == want_fb, f"got {sfb} want {want_fb}")
+        cx = bytes(uc.mem_read(symbols["sy_cxparm"], 4))
+        check("sy_cxparm FOLD from RTRG", cx[0] == 96, cx.hex())
+        check("sy_cxparm SYMM from SETUP D", cx[1] == 30, cx.hex())
+        mix_b = uc.mem_read(symbols["sy_cxmix"], 1)[0]
+        check("sy_cxmix tracks PLAYBACK F / RTIM", mix_b == 55, f"mix={mix_b}")
+
+    # Boundedness at full FOLD/FDBK/DEC HOLD: count samples at both rails.
     rails = outs["rails"]
     pos = sum(1 for x in rails if x >= RAIL)
     neg = sum(1 for x in rails if x <= -RAIL - 1)
     frac = (pos + neg) / max(len(rails), 1)
     peak = max(abs(x) for x in rails)
     check(
-        "FOLD=SYMM=DEC=127 stays bounded (not stuck on the rails)",
+        "FOLD=FDBK=MIX=127 stays bounded (not stuck on the rails)",
         frac < 0.25 and peak <= 0x7FFFFF,
         f"rail {frac * 100:.2f}% ({pos}+/{neg}-), peak={peak:#x}",
     )

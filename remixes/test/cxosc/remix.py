@@ -9,8 +9,8 @@ from remix.schema import Proof, Remix
 REMIX = Remix(
     name="cxosc",
     family="mods", proof=Proof.CHECK,
-    proof_note="port check: marker-less machine list, FOLD/SYMM/FDBK in the voice",
-    doc="CX OSC (machine list, no marker): PTCH RATO INDX FOLD SYMM FDBK on the stock effects.",
+    proof_note="port check: marker-less machine list; PLAYBACK PTCH RATO INDX FINE FOLD MIX; SETUP CMOR/MMOR/DEC/SYMM/FDBK",
+    doc="CX OSC (machine list, no marker): PLAYBACK PTCH RATO INDX FINE FOLD MIX; SETUP CMOR MMOR DEC SYMM FDBK; stock FX.",
     modules=("CX OSC",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
