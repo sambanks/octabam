@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 310" role="img">
+  <title>VOID SRC=LFO</title>
+  <rect width="820" height="310" fill="#fff"/>
+
+  <style>
+    .box { fill:#fff; stroke:#111; stroke-width:2; }
+    .fill { fill:#111; stroke:#111; stroke-width:2; }
+    .t { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
+    .t-inv { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#fff; }
+    .t-sm { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
+    .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
+    .side { fill:none; stroke:#111; stroke-width:1.5; stroke-dasharray:4 3; }
+  </style>
+  <defs>
+    <marker id="a" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="410" y="28" text-anchor="middle">SRC = LFO (default)</text>
+
+  <text class="t" x="40" y="56">in</text>
+  <line class="arr" x1="60" y1="52" x2="110" y2="52"/>
+  <rect class="box" x="112" y="32" width="70" height="40" rx="2"/>
+  <text class="t" x="147" y="57" text-anchor="middle">dry</text>
+  <path class="arr" d="M182 52 L700 52 L700 134"/>
+  <text class="t-sm" x="430" y="44" text-anchor="middle">untouched</text>
+
+  <text class="t" x="40" y="166">noise</text>
+  <line class="arr" x1="80" y1="162" x2="130" y2="162"/>
+  <rect class="box" x="132" y="140" width="70" height="44" rx="2"/>
+  <text class="t" x="167" y="167" text-anchor="middle">HPF</text>
+  <line class="arr" x1="202" y1="162" x2="232" y2="162"/>
+  <rect class="box" x="234" y="140" width="70" height="44" rx="2"/>
+  <text class="t" x="269" y="167" text-anchor="middle">COLR</text>
+  <line class="arr" x1="304" y1="162" x2="334" y2="162"/>
+  <rect class="box" x="336" y="140" width="70" height="44" rx="2"/>
+  <text class="t" x="371" y="167" text-anchor="middle">DRV</text>
+  <line class="arr" x1="406" y1="162" x2="436" y2="162"/>
+  <rect class="box" x="438" y="140" width="70" height="44" rx="2"/>
+  <text class="t" x="473" y="167" text-anchor="middle">FDBK</text>
+  <path class="side" d="M450 140 C450 116 496 116 496 140"/>
+  <line class="arr" x1="508" y1="162" x2="548" y2="162"/>
+
+  <!-- LFO into AM -->
+  <rect class="box" x="550" y="210" width="90" height="44" rx="2"/>
+  <text class="t" x="595" y="230" text-anchor="middle">LFO</text>
+  <text class="t-sm" x="595" y="246" text-anchor="middle">RATE / SHPE</text>
+  <line class="arr" x1="595" y1="210" x2="595" y2="186"/>
+
+  <rect class="fill" x="550" y="140" width="90" height="44" rx="2"/>
+  <text class="t-inv" x="595" y="167" text-anchor="middle">AM</text>
+  <line class="arr" x1="640" y1="162" x2="688" y2="162"/>
+
+  <rect class="fill" x="690" y="116" width="90" height="56" rx="2"/>
+  <text class="t-inv" x="735" y="150" text-anchor="middle">BAL</text>
+  <line class="arr" x1="780" y1="144" x2="810" y2="144"/>
+  <text class="t" x="812" y="148">out</text>
+
+  <text class="t-sm" x="410" y="290" text-anchor="middle">DPTH = AM depth. WID adds a stereo noise side. BAL=0 exact dry.</text>
+</svg>

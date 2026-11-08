@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 300" role="img">
+  <title>STUTTR signal path</title>
+  <rect width="820" height="300" fill="#fff"/>
+
+  <style>
+    .box { fill:#fff; stroke:#111; stroke-width:2; }
+    .fill { fill:#111; stroke:#111; stroke-width:2; }
+    .t { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
+    .t-inv { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#fff; }
+    .t-sm { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
+    .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
+    .side { fill:none; stroke:#111; stroke-width:1.5; stroke-dasharray:4 3; }
+  </style>
+  <defs>
+    <marker id="a" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="30" y="60">in</text>
+  <line class="arr" x1="55" y1="56" x2="120" y2="56"/>
+  <rect class="box" x="122" y="34" width="120" height="44" rx="2"/>
+  <text class="t" x="182" y="61" text-anchor="middle">ring write</text>
+  <text class="t-sm" x="182" y="100" text-anchor="middle">always</text>
+
+  <line class="arr" x1="182" y1="78" x2="182" y2="130"/>
+  <rect class="box" x="122" y="132" width="120" height="44" rx="2"/>
+  <text class="t" x="182" y="159" text-anchor="middle">RATE tick</text>
+
+  <line class="arr" x1="242" y1="154" x2="300" y2="154"/>
+  <rect class="fill" x="302" y="132" width="100" height="44" rx="2"/>
+  <text class="t-inv" x="352" y="159" text-anchor="middle">CHNC</text>
+
+  <line class="arr" x1="402" y1="140" x2="460" y2="90"/>
+  <text class="t-sm" x="440" y="80" text-anchor="middle">hit</text>
+  <line class="arr" x1="402" y1="168" x2="460" y2="220"/>
+  <text class="t-sm" x="440" y="240" text-anchor="middle">miss</text>
+
+  <rect class="box" x="462" y="60" width="160" height="56" rx="2"/>
+  <text class="t" x="542" y="84" text-anchor="middle">grab SIZE</text>
+  <text class="t-sm" x="542" y="102" text-anchor="middle">HOLD loop</text>
+  <text class="t-sm" x="542" y="140" text-anchor="middle">MODE rate / REV</text>
+
+  <rect class="box" x="462" y="198" width="160" height="44" rx="2"/>
+  <text class="t" x="542" y="225" text-anchor="middle">stay dry</text>
+
+  <line class="arr" x1="622" y1="88" x2="680" y2="154"/>
+  <line class="arr" x1="622" y1="220" x2="680" y2="154"/>
+
+  <rect class="fill" x="682" y="132" width="80" height="44" rx="2"/>
+  <text class="t-inv" x="722" y="159" text-anchor="middle">MIX</text>
+  <line class="arr" x1="762" y1="154" x2="800" y2="154"/>
+  <text class="t" x="805" y="158">out</text>
+
+  <text class="t-sm" x="410" y="280" text-anchor="middle">CHNC=0 never grabs. SYNC divides the attempt clock. Edges crossfade ~2 ms.</text>
+</svg>

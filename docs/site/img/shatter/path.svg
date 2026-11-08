@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 280" role="img">
+  <title>SHATTER signal path</title>
+  <rect width="860" height="280" fill="#fff"/>
+
+  <style>
+    .box { fill:#fff; stroke:#111; stroke-width:2; }
+    .fill { fill:#111; stroke:#111; stroke-width:2; }
+    .t { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
+    .t-inv { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#fff; }
+    .t-sm { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
+    .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
+    .side { fill:none; stroke:#111; stroke-width:1.5; stroke-dasharray:4 3; }
+  </style>
+  <defs>
+    <marker id="a" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="24" y="120">dry</text>
+  <line class="arr" x1="55" y1="116" x2="100" y2="116"/>
+
+  <rect class="box" x="102" y="94" width="70" height="44" rx="2"/>
+  <text class="t" x="137" y="121" text-anchor="middle">DRV</text>
+  <line class="arr" x1="172" y1="116" x2="210" y2="116"/>
+  <rect class="box" x="212" y="94" width="70" height="44" rx="2"/>
+  <text class="t" x="247" y="121" text-anchor="middle">FOLD</text>
+  <line class="arr" x1="282" y1="116" x2="320" y2="116"/>
+  <rect class="box" x="322" y="94" width="70" height="44" rx="2"/>
+  <text class="t" x="357" y="121" text-anchor="middle">CLIP</text>
+  <line class="arr" x1="392" y1="116" x2="430" y2="116"/>
+  <rect class="box" x="432" y="94" width="70" height="44" rx="2"/>
+  <text class="t" x="467" y="121" text-anchor="middle">CRSH</text>
+
+  <path class="side" d="M502 94 C520 50 400 50 390 94"/>
+  <text class="t-sm" x="450" y="42" text-anchor="middle">FDBK + TONE</text>
+  <text class="t-sm" x="450" y="58" text-anchor="middle">CHAOS flips polarity (RATE)</text>
+
+  <line class="arr" x1="502" y1="116" x2="560" y2="116"/>
+  <rect class="fill" x="562" y="94" width="90" height="44" rx="2"/>
+  <text class="t-inv" x="607" y="121" text-anchor="middle">MIX</text>
+
+  <path class="arr" d="M70 116 L70 200 L607 200 L607 138"/>
+  <text class="t-sm" x="300" y="192" text-anchor="middle">dry tap</text>
+
+  <line class="arr" x1="652" y1="116" x2="710" y2="116"/>
+  <text class="t" x="720" y="120">out</text>
+
+  <text class="t-sm" x="400" y="250" text-anchor="middle">MIX=0 exact dry. Beside CHARACTER (channel dirt) and LOFI2 - this one self-modulates.</text>
+</svg>
