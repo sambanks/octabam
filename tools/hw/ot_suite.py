@@ -57,6 +57,20 @@ def demand(remix):
     return tuple(registry.remix(remix).window_demand)
 
 
+def reverbs(remix):
+    """The reverbs a demand effect's block can meet on its FX2 slot: the stock ones the remix keeps, and the rows
+    that take their ids (`MenuEntry.replaces`) with the code they run (`MenuEntry.dsp_of`) -- octabam-verbs'
+    VERB PLATE/ROOM/HALL and VERBERATION, which run with no guard."""
+    from remix import registry
+    r, mods = registry.remix(remix), registry.modules()
+    out = [k for k in REVERBS if k in r.modules]
+    for k in r.modules:
+        menu = getattr(mods.get(k), "menu", None)
+        if menu is not None and getattr(menu, "replaces", None) in REVERBS:
+            out += [k] + [d for d in (getattr(menu, "dsp_of", None),) if d and d not in out]
+    return tuple(dict.fromkeys(out))
+
+
 def transitions(names, remix="octabam"):
     """Per project, `switch` pairs 'slotA:slotB' that put a loaded effect on a slot and take it away, change it for a
     stock reverb, and exchange one loaded effect for another; every pair is inside one project."""
@@ -70,7 +84,7 @@ def transitions(names, remix="octabam"):
             by_proj[loc[a][0]].append(f"{loc[b][1]}:{loc[a][1]}")
 
     for d in DEMAND:
-        for rev in REVERBS:
+        for rev in reverbs(remix):
             add(f"{d} FX2 def", f"{rev} FX2 def")
             add(f"{d} FX1 def", f"{rev} FX2 def")
         for e in DEMAND:
@@ -85,6 +99,46 @@ def transitions(names, remix="octabam"):
                 by_proj.setdefault(p, []).extend([f"0:{loc[n][1]}", f"{loc[n][1]}:0"])
     # the heaviest layouts against BASE and against each other come from a run's report (`switch --report`)
     return {p: sorted(set(v)) for p, v in by_proj.items()}
+
+
+SOAK_REPEAT = 8                     # FAILURE_MODES.md "Program changes left unapplied in a loader soak": 4 x 8 = 32
+
+
+def soak(names, remix="octabam"):
+    """The loader soak of FAILURE_MODES.md, per remix: A:B,B:A,A:0,0:A repeated SOAK_REPEAT times, every pair in one
+    project. A transition counts as unapplied when the DSP busy after it stays at the previous layout's, so A, B and
+    BASE must differ by several points of busy:
+    - a reverb in the first demand effect's project: A is that effect's `FX2 def`, B the reverb's `FX2 def`. In
+      `octabam` this is the probe of 1-2 Nov 2026 (`15:12,12:15,15:0,0:15`, MODULATION and PLATE REV, SFX_01), so the
+      counts compare;
+    - else (`octabam-verbs`): A and B are two demand effects' `FX2 dear` in one project (a station's `def` costs
+      0.25 to 0.64 % a slot, too little to see);
+    - no demand loader (`octabam-bus`): two effects' `FX1 dear` in SFX_01 (`RIG + T8 DELAY` differs from RIG by the
+      stock DELAY, which runs on the ColdFire and reads 0 on the DSP).
+    -> {project: [pairs]}"""
+    loc = locate(names)
+    dem = [d for d in demand(remix) if f"{d} FX2 def" in loc]
+    a = b = None
+    if dem:
+        a0 = f"{dem[0]} FX2 def"
+        revs = [f"{r} FX2 def" for r in reverbs(remix) if r in REVERBS]
+        same = [n for n in revs if n in loc and loc[n][0] == loc[a0][0]]
+        if same:
+            a, b = a0, same[0]
+        else:
+            dear = [f"{d} FX2 dear" for d in dem if f"{d} FX2 dear" in loc]
+            for x in dear:
+                for y in dear:
+                    if x != y and a is None and loc[x][0] == loc[y][0]:
+                        a, b = x, y
+    else:
+        dear = [n for n, v in loc.items() if v[0] == 1 and n.endswith("FX1 dear")]
+        if len(dear) >= 2:
+            a, b = dear[0], dear[1]
+    if a is None:
+        return {}
+    p, sa, sb = loc[a][0], loc[a][1], loc[b][1]
+    return {p: [f"{sa}:{sb}", f"{sb}:{sa}", f"{sa}:0", f"0:{sa}"] * SOAK_REPEAT}
 
 
 def lean(ph):
@@ -121,6 +175,7 @@ def build(a):
     suite = {"lean": a.lean, "remix": a.remix, "src": str(a.src), "projects": {"SFX": nproj},
              "layouts": names, "where": {n: list(v) for n, v in locate(names).items()},
              "transitions": {str(k): v for k, v in transitions(names, a.remix).items()},
+             "soak": {str(k): v for k, v in soak(names, a.remix).items()},
              "per_project": PER_PROJECT}
     (dest / "suite.json").write_text(json.dumps(suite, indent=1))
     print(f"{len(names)} layouts, {nproj} SFX project(s)" + ("" if a.lean else ", SSCN, SDJ") + f" -> {dest}/suite.json")
@@ -151,6 +206,11 @@ def phases(suite):
             ph.append(dict(id=f"loader{k:02d}", title=f"demand loader and reverb transitions, SFX_{k:02d}", project=f"SFX_{k:02d}",
                            needs="", minutes=max(2, len(pairs.split(",")) * 20 // 60 + 1),
                            cmd="{py} {hw}/ot_matrix.py switch {proj} {label}-{id} --pairs " + pairs))
+    for k, pairs in sorted((suite.get("soak") or {}).items()):
+        ph.append(dict(id="pc-soak", title=f"loader soak: {len(pairs)} program changes, the FAILURE_MODES.md probe, SFX_{int(k):02d}",
+                       project=f"SFX_{int(k):02d}", needs="USB TRACKS PRE; capture open; count transitions whose DSP busy stays at the previous layout's",
+                       minutes=len(pairs) * 20 // 60 + 1,
+                       cmd="{py} {hw}/ot_matrix.py switch {proj} {label}-{id} --pairs " + ",".join(pairs)))
     ph += [
         dict(id="kits-identity", title="program-change walk over all Kits (firmware-migrated, identity)", project="SFX_01",
              needs="fresh load so the firmware migrates the stock Parts", minutes=10,

@@ -1,4 +1,4 @@
-"""octabam-verbs -- octabam with VERBERATION in place of the three stock reverbs: the core ColdFire modules, every other ColdFire module that fits, the 11 other stock effects, and MODULATION, SPECTRUM, CHARACTER, SHATTER and COMPRESSOR's side-chain loaded on demand. PLATE REV, SPRING REV and DARK REV are off both choosers and their ids are VERB PLATE, VERB ROOM and VERB HALL: VERBERATION's code starting in PLATE, ROOM and HALL mode."""
+"""octabam-verbs -- octabam with VERBERATION in place of the three stock reverbs: the core ColdFire modules, every other ColdFire module that fits, the 11 other stock effects, and MODULATION, SPECTRUM, CHARACTER, SHATTER and COMPRESSOR's side-chain loaded on demand, and VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words. PLATE REV, SPRING REV and DARK REV are off both choosers and their ids are VERB PLATE, VERB ROOM and VERB HALL: VERBERATION's code starting in PLATE, ROOM and HALL mode."""
 from remix.schema import Pin, Proof, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
@@ -14,6 +14,10 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
 STOCK11 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
            "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI", "DELAY")
 OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER", "VERBERATION", "VERB PLATE", "VERB ROOM", "VERB HALL")
+# Resident beside VERBERATION in the stock reverbs' harvested words (2,724 a payload; with these, about 560 free on
+# each): not demand-loaded, so the window layout below is octabam's unchanged. VIBRATO and TRANSIENT on FX1 and
+# FX2, RESONATOR on FX1 (its FX2 instance is a dry pass). octabam keeps every stock effect, so it has no such words.
+RESIDENT = ("VIBRATO", "TRANSIENT", "RESONATOR")
 # VERB PARTS converts a Part saved with a stock reverb to its row's defaults as the firmware applies it.
 VERB_PARTS = ("VERB PARTS",)
 # Every other ColdFire module that can share this image (the ledger; HOOKS joins the pairs that
@@ -27,8 +31,11 @@ VERB_PARTS = ("VERB PARTS",)
 # STEM REC, SCOPE, MIDI SCALES and RND NAME are not here either: images with them left program changes
 # unapplied in a loader soak (2 to 5 of 32 transitions; none in the images without them) on Sam's MKII, 1 Nov 2026.
 # FX2 LOCK is not here: it makes the FX2 chooser's YES close without selecting, and this remix has no engine to lock to a track.
-COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
-            "TRACK PATTERNS", "VARISPEED")
+# Added 7 Nov 2026 (each builds beside the rest; not yet soaked here): SCALES, as in octabam; CHORDS FACTORY with PAGES, the page
+# key it cycles; SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP.
+COLDFIRE = ("SCALES", "OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
+            "TRACK PATTERNS", "VARISPEED",
+            "CHORDS FACTORY", "PAGES", "SCREEN", "SLOW LFO", "BAR LED", "REC CS1 SKIP")
 STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
              "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI")
 
@@ -36,9 +43,9 @@ REMIX = Remix(
     name="octabam-verbs",
     family="mods", proof=Proof.CHECK,
     proof_note="not flashed; `make check` (CI)",
-    doc="octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand.",
+    doc="octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand, with VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE") + STOCK11 + OURS
-            + COLDFIRE + VERB_PARTS,
+            + RESIDENT + COLDFIRE + VERB_PARTS,
     # The window layout is octabam's (docs/contributing/DEMAND_LOADER.md): DLCOPY, the stub and LOAD METER's DSP
     # half resident above offset 0x3da3 of the slots and below 0x37f00, where payload B's boot zero loop
     # starts; the demand effects at offset 0x3820 of the four FX2 slots in the window (core A tracks 7 and 8,
@@ -47,7 +54,7 @@ REMIX = Remix(
     # MODULATION's FX2 buffer is 2,048 words, and VERBERATION's ring is 14,366 words, to offset 0x381d,
     # just below the homes (modules/verberation/README.md). So every home is always free of a reverb, and
     # SIDECHAIN_COMPRESSOR's one home, the fourth block's top, is never under one either.
-    fx1=("SPECTRUM", "CHARACTER", "MODULATION") + STOCK_FX1,   # the chooser order on FX1; the stations also run live on FX2 (SLOTS pin below)
+    fx1=("SPECTRUM", "CHARACTER", "MODULATION") + RESIDENT + STOCK_FX1,   # the chooser order on FX1; the stations also run live on FX2 (SLOTS pin below)
     # DLCOPY follows the five demand entries (x:$33da3 + 8 k, k = 0..4).
     window=(("DLCOPY", 0x33DCB), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
             ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820),
@@ -75,5 +82,5 @@ REMIX = Remix(
               ("octabam.sidechain-compressor", "PLACE"): Pin("DRAM"),
               # no bus here, so the cycle envelope is not priced with the stations on FX1 only
               **{(f"octabam.{k.lower()}", "SLOTS"): Pin("FX1+FX2")
-                 for k in ("SPECTRUM", "CHARACTER", "MODULATION")}},
+                 for k in ("SPECTRUM", "CHARACTER", "MODULATION", "VIBRATO")}},
 )

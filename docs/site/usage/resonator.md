@@ -1,31 +1,26 @@
-Four pitched bandpasses on the input (Torso S-4 RING–style filter bank).
-Not a reverb or modal body: wet tracks the dry through four peaks.
+**Four pitched bandpasses** on the input — a Torso S-4 **RING**-style
+filter bank, not a modal / Rings body and not a reverb. Wet is the dry
+pushed through four constant-peak bandpasses; pitches and a makeup scale
+live on SETUP. FX1 only (id `0x1e`); an FX2 instance is a dry pass.
+
+![RESONATOR: four BPs sum into SCAL, then MIX with dry.](../../img/resonator/path.svg)
 
 ## Access
 
-FX1 only: select the track, press FX1, and pick RESONATOR. The FX2 chooser
-does not list it (id 0x1e); an FX2 instance is a dry pass.
-
-![FX1 SETUP with RESONATOR: PIT1–4 and SCAL.](../../img/resonator/setup.png)
-
-*FX1 SETUP with RESONATOR: PIT1–4 and SCAL.*
+Select a track, press FX1, pick **RESONATOR**. The FX2 chooser does not
+list it.
 
 ## Operation
 
-- GN1–GN4 set each band’s relative level (64 = unity when SCAL is 8).
-- PIT1–PIT4 set each band centre (~40 Hz to ~4 kHz).
-- SCAL on FX SETUP is the overall gain scale: 8 = tame, 127 ≈ the hot
-  build-TN makeup (~×16 at GN 64). SCAL 127 hard-clips on ordinary
-  input levels (most samples at the rail); stay near 8 unless you want
-  that smash.
-- DECY high = narrower peaks / more bite (still short — not a reverb tail).
-- MIX 127 = bands only; MIX 0 = exact passthrough.
+- **GN1–GN4** — per-band level (64 = unity when SCAL is 8).
+- **PIT1–PIT4** — band centres (~40 Hz to ~4 kHz).
+- **SCAL** — overall gain scale: **8 = tame**, 127 ≈ hot smash (~×16 at
+  GN 64). SCAL 127 hard-clips ordinary input; stay near 8 unless you want
+  that.
+- **DECY** — high = narrower peaks / more ring (still short — not a tail).
+- **MIX** — 127 = bands only; **0 = exact passthrough**.
 
 ## Parameters
-
-![RESONATOR main page: GN1–4, DECY, MIX.](../../img/resonator/main.png)
-
-*RESONATOR main page: GN1–4, DECY, MIX.*
 
 | Knob | Range | Default | What it does |
 |---|---|---|---|
@@ -39,4 +34,4 @@ does not list it (id 0x1e); an FX2 instance is a dry pass.
 | PIT2 | 0..127 | 48 | band 2 centre |
 | PIT3 | 0..127 | 64 | band 3 centre |
 | PIT4 | 0..127 | 80 | band 4 centre |
-| SCAL | 0..127 | 8 | gain scale; 8=tame, 127≈build-TN |
+| SCAL | 0..127 | 8 | gain scale; 8=tame, 127≈smash |
