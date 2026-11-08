@@ -17,12 +17,16 @@
 ;   x:$2906.. 2 N + 2 words: each 24-bit code word as its high 16 bits, then its low 8; the last
 ;   pair is the sum of the N code words, modulo 2^24, in the same form
 ; The doorbell is cleared when the block is consumed. A block whose sum does not match is
-; not published (BOUND stays clear); the ColdFire sends every load three times.
+; not published (BOUND stays clear); the ColdFire sends every load three times. A repeat
+; of the block the entry already holds (BOUND set, the same first word) is consumed
+; without a copy: only a send that was refused is copied again, and a repeat that
+; arrives damaged cannot unbind code that is already resident.
 ;
 ; The effect's entry in the window, x:$33da3 + 8 k (five words used):
 ;   +0 BOUND  $b0a5ed while the code is resident   +1 the real init   +2 the real proc
 ;   +3 the first window word the code occupies     +4 the word after its last
-;   +5 blocks received   +6 blocks refused for their sum   +7 blocks published (counters, read by DLPROBE)
+;   +5 blocks received   +6 blocks refused for their sum   +7 blocks published (counters, read by DLPROBE;
+;   a repeat consumed without a copy is not counted)
 ; BOUND is cleared before any other word of the entry or the code changes and set
 ; last, so a stub on either core sees the code whole or not at all.
 ;
@@ -51,6 +55,15 @@ dlc_hn:
         move    x0,a
         tst     a
         beq     dlc_off
+        move    x:(r1),a                 ; already bound at this destination: a repeat send
+        cmp     #>$b0a5ed,a
+        bne     dlc_new
+        move    x:>$2902,a
+        add     #>$30000,a
+        move    x:(r1+3),x1
+        cmp     x1,a
+        beq     dlc_done                 ; consumed, not copied: the code there is the block's
+dlc_new:
         clr     a
         move    a,x:(r1)                 ; unbound while its words change
         move    x:(r1+5),a
