@@ -237,7 +237,9 @@
         .set    S_DPWC, 48               | DPW z1 modulator pulse (φ+duty) — was T_LAST / carrier DPW
         .set    T_REF, 44                | paraphonic: the PTCH word at the last voice start (alias S_DPWM)
         .set    T_LAST, 48               | paraphonic: the PTCH word seen last frame (alias S_DPWC)
+        .set    S_DUTY, 52               | last DPW pulse duty phase (mono); aliases T_MASK
         .set    T_MASK, 52               | paraphonic: the held-key mask seen last frame
+        .set    S_LASTP, 56              | last DPW pulse sample Q14 (mono); aliases T_DK
         .set    T_DK, 56                 | paraphonic: the index decay k this frame (0 = hold)
         .set    T_RK, 60                 | paraphonic: the release k this frame (Q16)
         .set    T_RATIO, 64              | paraphonic: the ratio this frame (Q8)
@@ -453,7 +455,8 @@ sy_cold1:
         move.l  %d1,(%a0,%d0.l)
         clr.l   S_DPWM(%a3)
         clr.l   S_DPWC(%a3)
-        clr.l   S_DPWC(%a3)
+        clr.l   S_DUTY(%a3)              | DPW pulse duty tracker (WIDTH zipper)
+        clr.l   S_LASTP(%a3)
         clr.l   S_GAIN(%a3)
         clr.w   S_GPREV(%a3)
         clr.l   S_IEFF(%a3)              | the index climbs to I * E within the first frame, under the gain from 0
@@ -1026,14 +1029,13 @@ sy_mono:
         mvz.b   1(%a6,%d1.l),%d2         | SYMM (FOLD amount comes from Q8 slew, not the byte)
         move.l  %d2,-(%sp)
         move.l  64(%sp),%d1              | track (52+12 after header/morph/symm)
-        lea     sy_cxpwm(%pc),%a6
-        mvz.b   (%a6,%d1.l),%d2          | WIDTH 0..127
-        move.l  %d2,-(%sp)
         lsl.l   #2,%d1
+        lea     sy_pwmq(%pc),%a6         | WIDTH Q8 (slew) — byte steps clicked DPW duty
+        move.l  (%a6,%d1.l),-(%sp)
         lea     sy_foldq(%pc),%a6        | Q8 FOLD/MIX — fractional through the loop (sustained knob turns)
         move.l  (%a6,%d1.l),-(%sp)
         lea     sy_mixq(%pc),%a6
-        move.l  (%a6,%d1.l),-(%sp)       | 0=MIX_Q8, 4=FOLD_Q8, 8=WIDTH, 12=SYMM, 16=morph, 20=header
+        move.l  (%a6,%d1.l),-(%sp)       | 0=MIX_Q8, 4=FOLD_Q8, 8=WIDTH_Q8, 12=SYMM, 16=morph, 20=header
         move.l  S_PHC(%a3),%d0
         move.l  S_PHM(%a3),%d6
         move.l  S_INC(%a3),%d5
@@ -1250,10 +1252,11 @@ sy_done:
         lea     48(%sp),%sp
         rts
 
-| ---- WIDTH lean (sine): d1=sample Q14, d2=WIDTH → d1. 64 = identity. ----
-| Soft half-cycle lean → odd harmonics. Keeps d2=WIDTH. Parks d0/d3.
+| ---- WIDTH lean (sine): d1=sample Q14, d2=WIDTH_Q8 → d1. 64<<8 = id. ----
+| Soft half-cycle lean → odd harmonics. Keeps d2. Parks d0/d3.
 sy_wlean:
         move.l  %d2,-(%sp)
+        lsr.l   #8,%d2                   | panel 0..127
         andi.l  #127,%d2
         subi.l  #64,%d2                  | k ∈ [-64, +63]
         beq     sy_wl_done
@@ -1286,30 +1289,27 @@ sy_wl_lo:
         move.l  (%sp)+,%d3
         move.l  (%sp)+,%d0
 sy_wl_done:
-        move.l  (%sp)+,%d2               | restore WIDTH
+        move.l  (%sp)+,%d2               | restore WIDTH_Q8
         rts
 
-| ---- WIDTH ramp-balance (saw): d1=saw Q14, d2=WIDTH → d1. 64 = classic. --
-| Full-amp rise/fall skew. Phase proxy p = saw+16384; peak from mapped
-| WIDTH (sy_wduty 16..110) so 0..10 / 110..127 keep moving — raw WIDTH<<8
-| + floor/ceiling plateaus there (unit CX 54). Blend still |panel-64|/64
-| so knob ends stay fully engaged. Keeps d0 (square), d2=WIDTH, d3
-| (#24 table shift). Parks d3/d7.
+| ---- WIDTH ramp-balance (saw): d1=saw Q14, d2=WIDTH_Q8 → d1. ------------
+| Peak from sy_wduty (eff_q8 = 16<<8..110<<8). Blend |panel-64|/64.
+| Keeps d0 (square), d2, d3. Parks d3/d7.
 sy_wramp:
         move.l  %d0,-(%sp)               | square / caller
         move.l  %d3,-(%sp)               | sy_loop table shift
-        move.l  %d2,-(%sp)               | WIDTH
-        andi.l  #127,%d2
+        move.l  %d2,-(%sp)               | WIDTH_Q8
         move.l  %d2,%d0
+        lsr.l   #8,%d0
+        andi.l  #127,%d0
         subi.l  #64,%d0                  | k from panel
         beq     sy_wr_done
         move.l  %d0,-(%sp)               | k
         move.l  %d7,-(%sp)
-        bsr     sy_wduty                 | d2 = 16..110 peak pos; d3 free
+        bsr     sy_wduty                 | d2 = eff_q8 peak
         move.l  %d1,%d7                  | original saw
         addi.l  #16384,%d1               | p ∈ 0..32768
-        move.l  %d2,%d3
-        lsl.l   #8,%d3                   | peak = mapped<<8 (4096..28160)
+        move.l  %d2,%d3                  | peak = eff_q8 (4096..~28160)
         cmp.l   %d3,%d1
         bge     sy_wr_fall
         lsl.l   #8,%d1
@@ -1319,7 +1319,7 @@ sy_wramp:
         bra     sy_wr_blend
 sy_wr_fall:
         move.l  #32768,%d0
-        sub.l   %d3,%d0                  | denom ≥ 4608
+        sub.l   %d3,%d0                  | denom
         sub.l   %d3,%d1                  | p − peak
         lsl.l   #8,%d1
         lsl.l   #7,%d1
@@ -1349,7 +1349,7 @@ sy_wr_lo:
         move.l  (%sp)+,%d7
         addq.l  #4,%sp                   | drop k
 sy_wr_done:
-        move.l  (%sp)+,%d2               | WIDTH
+        move.l  (%sp)+,%d2               | WIDTH_Q8
         move.l  (%sp)+,%d3               | table shift
         move.l  (%sp)+,%d0               | square
         rts
@@ -1393,35 +1393,26 @@ sy_dpw_lo:
         move.l  (%sp)+,%d3
         rts
 
-| ---- WDTH 0..127 → duty 16..110 (full knob travel, no end plateau). --------
-| eff = 16 + round(w*95/128); 64 → 64 (50%). Shift approx — no per-sample
-| divu. In: d2=WIDTH. Out: d2=duty. Clobbers d0; needs d3 free (callers park).
+| ---- WDTH_Q8 → eff_q8 (16<<8 .. ~110<<8), full travel, no end plateau. ----
+| eff = (16<<8) + (w_q8*95)>>7; 64<<8 → ~63.5<<8. Clobbers d0; needs d3 free.
 sy_wduty:
-        andi.l  #127,%d2
         move.l  %d2,%d0
-        move.l  %d2,%d3
-        lsl.l   #6,%d0                   | 64w
-        lsl.l   #5,%d3                   | 32w
-        add.l   %d3,%d0                  | 96w
-        sub.l   %d2,%d0                  | 95w
-        addi.l  #64,%d0                  | round /128
-        lsr.l   #7,%d0
-        addi.l  #16,%d0                  | 16..110
-        move.l  %d0,%d2
+        move.l  #95,%d3
+        mulu.l  %d0,%d3                  | w_q8 * 95
+        lsr.l   #7,%d3                   | /128
+        addi.l  #(16<<8),%d3             | 4096..~28200
+        move.l  %d3,%d2
         rts
 
-| ---- hard square from carrier phase: d6=φ, d2=WIDTH → d0 ±16384. --------
-| Duty from sy_wduty, threshold = duty<<25 (64 → 2^31 = 50%). Unsigned φ
-| compare — no stepped-saw jitter at the extremes (unit: static WIDTH
-| still “breathed” with sy_sq_saw). Keeps d1/d6. Parks d2/d3.
+| ---- hard square from carrier phase: d6=φ, d2=WIDTH_Q8 → d0 ±16384. -----
+| thresh = eff_q8<<17 (64<<8 → 2^31). Keeps d1/d6. Parks d2/d3.
 sy_sq_phi:
         move.l  %d3,-(%sp)
         move.l  %d2,-(%sp)
-        bsr     sy_wduty                 | d2 = 16..111
+        bsr     sy_wduty                 | d2 = eff_q8
         lsl.l   #8,%d2
         lsl.l   #8,%d2
-        lsl.l   #8,%d2
-        lsl.l   #1,%d2                   | duty<<25
+        lsl.l   #1,%d2                   | eff_q8<<17
         move.l  %d6,%d0
         sub.l   %d2,%d0                  | φ − thresh (unsigned via C)
         bcc     sy_sq_lo                 | φ >= thresh → low
@@ -1434,18 +1425,34 @@ sy_sq_out:
         move.l  (%sp)+,%d3
         rts
 
-| ---- DPW pulse (MMOR): d6=φ, d1=Δφ, d2=WIDTH, a3; saw(φ) at 0(sp) → d0. --
-| pulse = ½ (saw(φ) − saw(φ+duty)); S_DPWC is the second differentiator.
-| Duty via sy_wduty (same 16..111 map). Parks d2/d3/d6/a4; keeps d1.
+| ---- DPW pulse (MMOR): d6=φ, d1=Δφ, d2=WIDTH_Q8, a3; saw(φ)@0(sp) → d0. -
+| pulse = ½ (saw(φ) − saw(φ+duty)). Duty = eff_q8<<17. When duty phase
+| changes, reprime S_DPWC and hold S_LASTP for one sample — otherwise the
+| differentiator sees a φ-jump and clicks (unit WIDTH on MMOR saw/square).
+| Parks d2/d3/d6/a4; keeps d1.
 sy_dpw_pulse:
         move.l  %d3,-(%sp)
         move.l  %d6,-(%sp)
         move.l  %a4,-(%sp)               | after parks: 0 a4, 4 φ, 8 d3, 12 ret, 16 saw
-        bsr     sy_wduty                 | d2 = 16..111
+        bsr     sy_wduty                 | d2 = eff_q8
         lsl.l   #8,%d2
         lsl.l   #8,%d2
-        lsl.l   #8,%d2
-        lsl.l   #1,%d2                   | duty<<25 → 64-map ⇒ ~2^31
+        lsl.l   #1,%d2                   | duty phase
+        cmp.l   S_DUTY(%a3),%d2
+        beq     sy_dpp_go
+        move.l  %d2,S_DUTY(%a3)          | track new duty
+        add.l   %d2,%d6                  | φ + duty
+        move.l  %d6,%d0                  | prime z1 = p² at new phase
+        lsr.l   #8,%d0
+        lsr.l   #8,%d0
+        move.l  %d0,%d3
+        mulu.l  %d0,%d3
+        lsr.l   #8,%d3
+        lsr.l   #8,%d3
+        move.l  %d3,S_DPWC(%a3)
+        move.l  S_LASTP(%a3),%d0         | hold last pulse (no zipper spike)
+        bra     sy_dpp_out
+sy_dpp_go:
         add.l   %d2,%d6                  | φ + duty
         lea     S_DPWC(%a3),%a4
         bsr     sy_dpw                   | d2 = saw(φ+duty)
@@ -1460,6 +1467,8 @@ sy_dpp_hi:
         bge     sy_dpp_lo
         move.l  #-16384,%d0
 sy_dpp_lo:
+        move.l  %d0,S_LASTP(%a3)
+sy_dpp_out:
         move.l  (%sp)+,%a4
         move.l  (%sp)+,%d6
         move.l  (%sp)+,%d3
