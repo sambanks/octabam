@@ -410,7 +410,7 @@ def main():
         check("SETUP C named DEC", dec_nm.rstrip(b"\0") == b"DEC", dec_nm)
         check("SETUP D named SYMM", symm_nm == b"SYMM", symm_nm)
         check("SETUP E named FDBK", fdbk_nm == b"FDBK", fdbk_nm)
-        check("SETUP F named WIDTH", width_nm.rstrip(b"\0") == b"WIDTH", width_nm)
+        check("SETUP F named WDTH", width_nm.rstrip(b"\0") == b"WDTH", width_nm)
         if "pg_wid_decay" in symbols:
             w_dec = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0xFA + 32, 4)))[0]
             check("SETUP DEC widget = decay icon", w_dec == symbols["pg_wid_decay"], f"{w_dec:#x}")
