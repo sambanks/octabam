@@ -1276,31 +1276,26 @@ sy_wl_done:
         rts
 
 | ---- WIDTH ramp-balance (saw): d1=saw Q14, d2=WIDTH → d1. 64 = classic. --
-| Full-amp rise/fall skew. Phase proxy p = saw+16384; peak = WIDTH<<8.
-| Lerp asym↔saw by |WIDTH-64|/64. Keeps d0 (square), d2=WIDTH, d3 (#24
-| table shift in sy_loop — clobber → unmapped). Parks d3/d7.
+| Full-amp rise/fall skew. Phase proxy p = saw+16384; peak from mapped
+| WIDTH (sy_wduty 16..110) so 0..10 / 110..127 keep moving — raw WIDTH<<8
+| + floor/ceiling plateaus there (unit CX 54). Blend still |panel-64|/64
+| so knob ends stay fully engaged. Keeps d0 (square), d2=WIDTH, d3
+| (#24 table shift). Parks d3/d7.
 sy_wramp:
         move.l  %d0,-(%sp)               | square / caller
         move.l  %d3,-(%sp)               | sy_loop table shift
         move.l  %d2,-(%sp)               | WIDTH
         andi.l  #127,%d2
         move.l  %d2,%d0
-        subi.l  #64,%d0                  | k
+        subi.l  #64,%d0                  | k from panel
         beq     sy_wr_done
         move.l  %d0,-(%sp)               | k
         move.l  %d7,-(%sp)
+        bsr     sy_wduty                 | d2 = 16..110 peak pos; d3 free
         move.l  %d1,%d7                  | original saw
         addi.l  #16384,%d1               | p ∈ 0..32768
         move.l  %d2,%d3
-        lsl.l   #8,%d3                   | peak = WIDTH<<8
-        cmpi.l  #256,%d3
-        bge     sy_wr_pk
-        move.l  #256,%d3
-sy_wr_pk:
-        cmpi.l  #32512,%d3
-        ble     sy_wr_pk2
-        move.l  #32512,%d3
-sy_wr_pk2:
+        lsl.l   #8,%d3                   | peak = mapped<<8 (4096..28160)
         cmp.l   %d3,%d1
         bge     sy_wr_fall
         lsl.l   #8,%d1
@@ -1310,7 +1305,7 @@ sy_wr_pk2:
         bra     sy_wr_blend
 sy_wr_fall:
         move.l  #32768,%d0
-        sub.l   %d3,%d0                  | denom
+        sub.l   %d3,%d0                  | denom ≥ 4608
         sub.l   %d3,%d1                  | p − peak
         lsl.l   #8,%d1
         lsl.l   #7,%d1

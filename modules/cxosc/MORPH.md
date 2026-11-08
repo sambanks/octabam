@@ -10,7 +10,7 @@ Working notes from the CX OSC morph pass. Code: `poly.s` (`sy_wshape`,
 |------|------|------|
 | **CMOR** | PLAYBACK SETUP A | Carrier waveshape 0..127; **FUNC** snaps 0 / 64 / 127 |
 | **MMOR** | PLAYBACK SETUP B | Modulator waveshape 0..127 (heard through FM; needs **INDX**); **FUNC** snaps 0 / 64 / 127 |
-| **WIDTH** | PLAYBACK SETUP F | Cycle lean (**64** = neutral): sine lean / saw ramp-balance / square duty (**64** = 50%; knob maps 0..127 → duty 16..110) |
+| **WIDTH** | PLAYBACK SETUP F | Cycle lean (**64** = neutral): sine lean / saw ramp-balance / square duty (**64** = 50%; knob maps 0..127 → peak/duty 16..110) |
 
 Morph map (both oscillators):
 
