@@ -13,7 +13,7 @@
 | mod (MMOR morph; 0 = carrier). SETUP: CMOR MMOR DEC SYMM FDBK WIDTH.
 | DEC index env HOLD@127; SYMM fold skew (64=even); FDBK mod feedback;
 | CMOR/MMOR = sine→saw→square; WIDTH leans the cycle (64=neutral): sine
-| phase-warp, saw ramp-balance, square duty (64≈50%).
+| and saw soft lean (sy_wlean), square duty (64≈50%).
 | PTCH −32..+32.
 
 | Mono only -- T_POLY
@@ -1076,7 +1076,7 @@ sy_loop:
         asr.l   #8,%d2
         add.l   %d2,%d4                  | m sine, Q14
         | Stack: 0=MIX_Q8, 4=FOLD_Q8, 8=WIDTH, 12=SYMM, 16=morph 00 00 CMOR MMOR, 20=header.
-        | WIDTH: sine lean (sy_wlean); saw ramp-balance (sy_wramp); square = duty.
+        | WIDTH: sine+saw lean (sy_wlean); square = duty. (Ramp-balance was too harsh.)
         | Feedback = CLEAN mod sine (WIDTH must not cook FDBK — that drifted alone).
         | MMOR: DPW saw → DPW pulse; CMOR: naive saw → hard pulse.
         move.l  %d4,S_LASTM(%a3)         | fb = clean sine
@@ -1103,7 +1103,7 @@ sy_loop:
         bsr     sy_dpw_pulse             | d0 = pulse; needs saw at 0(sp)
         move.l  (%sp)+,%d1               | saw
         move.l  20(%sp),%d2              | WIDTH (under amt+φm+φc; base slot 8)
-        bsr     sy_wramp                 | ramp-balance the saw (d1)
+        bsr     sy_wlean                 | same soft lean as sine (not ramp-balance)
         move.l  (%sp)+,%d6               | raw φm
         move.l  (%sp)+,%d2               | amt
         bsr     sy_wshape                | d4 → FM (sine→saw→square)
@@ -1152,7 +1152,7 @@ sy_mod_ok:
         bsr     sy_sq_phi                | d0 = pulse from φ (stable; not stepped saw)
         move.l  (%sp)+,%d1               | saw
         move.l  20(%sp),%d2              | WDTH (under φc+φm+heard)
-        bsr     sy_wramp                 | full-amp rise/fall balance for morph
+        bsr     sy_wlean                 | same soft lean as sine (not ramp-balance)
         mvz.b   26+4(%sp),%d2            | CMOR (morph under φc+φm+heard)
         bsr     sy_wshape                | 127 → pure d0 square; linear saw→sq
         move.l  %d4,%d1
@@ -1290,72 +1290,6 @@ sy_wl_lo:
         move.l  (%sp)+,%d0
 sy_wl_done:
         move.l  (%sp)+,%d2               | restore WIDTH_Q8
-        rts
-
-| ---- WIDTH ramp-balance (saw): d1=saw Q14, d2=WIDTH_Q8, d6=φ → d1. ----
-| Rise/fall from UNIFORM phase (φ>>17), not from the saw sample — using
-| the sample as phase warped DPW/naive and sounded wrong (unit). Peak =
-| sy_wduty eff_q8. Blend by |WIDTH_Q8 − 64<<8| / (64<<8) for Q8-smooth
-| travel. Keeps d0/d2/d6; parks d3/d7.
-sy_wramp:
-        move.l  %d0,-(%sp)               | square / caller
-        move.l  %d3,-(%sp)               | sy_loop table shift
-        move.l  %d2,-(%sp)               | WIDTH_Q8
-        move.l  %d2,%d0
-        subi.l  #(64<<8),%d0             | k_q8
-        beq     sy_wr_done
-        move.l  %d0,-(%sp)               | k_q8
-        move.l  %d7,-(%sp)
-        bsr     sy_wduty                 | d2 = eff_q8 peak
-        move.l  %d1,%d7                  | original saw (DPW or naive)
-        move.l  %d6,%d1
-        lsr.l   #8,%d1
-        lsr.l   #8,%d1
-        lsr.l   #1,%d1                   | p = φ>>17 ∈ 0..32767
-        move.l  %d2,%d3                  | peak
-        cmp.l   %d3,%d1
-        bge     sy_wr_fall
-        lsl.l   #8,%d1
-        lsl.l   #7,%d1                   | p * 32768
-        divs.l  %d3,%d1
-        subi.l  #16384,%d1               | rise −1..+1
-        bra     sy_wr_blend
-sy_wr_fall:
-        move.l  #32768,%d0
-        sub.l   %d3,%d0                  | denom = 32768 − peak
-        sub.l   %d3,%d1                  | p − peak
-        lsl.l   #8,%d1
-        lsl.l   #7,%d1
-        divs.l  %d0,%d1
-        move.l  #16384,%d0
-        sub.l   %d1,%d0
-        move.l  %d0,%d1                  | fall +1..−1
-sy_wr_blend:
-        move.l  4(%sp),%d0               | k_q8 (under d7)
-        bpl     sy_wr_abs
-        neg.l   %d0
-sy_wr_abs:
-        move.l  %d1,%d3
-        sub.l   %d7,%d3                  | asym − saw
-        muls.l  %d0,%d3                  | * |k_q8|
-        asr.l   #8,%d3
-        asr.l   #6,%d3                   | / (64<<8)
-        move.l  %d7,%d1
-        add.l   %d3,%d1
-        cmpi.l  #16384,%d1
-        ble     sy_wr_hi
-        move.l  #16384,%d1
-sy_wr_hi:
-        cmpi.l  #-16384,%d1
-        bge     sy_wr_lo
-        move.l  #-16384,%d1
-sy_wr_lo:
-        move.l  (%sp)+,%d7
-        addq.l  #4,%sp                   | drop k_q8
-sy_wr_done:
-        move.l  (%sp)+,%d2               | WIDTH_Q8
-        move.l  (%sp)+,%d3               | table shift
-        move.l  (%sp)+,%d0               | square
         rts
 
 | ---- DPW saw (MMOR): d6=φ, d1=Δφ, a4=&z1 → d2 Q14. Parks d3/d7. ----------
