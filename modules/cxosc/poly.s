@@ -1122,7 +1122,7 @@ sy_mod_ok:
         bsr     sy_wlean                 | WIDTH lean on carrier sine (audible at CMOR 0)
         mvz.b   22(%sp),%d2              | CMOR (morph at 16+4 park)
         beq     sy_car_ok
-        | d0 = running carrier phase — park it (sy_sq_saw writes d0).
+        | d0 = running carrier phase — park it (sy_sq_phi writes d0).
         move.l  %d0,-(%sp)               | park φc
         move.l  %d1,%d4                  | sine (already WIDTH-leaned)
         move.l  %d6,%d1
@@ -1130,12 +1130,12 @@ sy_mod_ok:
         lsr.l   #8,%d1
         lsr.l   #1,%d1                   | φc_mod>>17
         neg.l   %d1
-        addi.l  #16384,%d1              | aligned naive saw (RAW — square duty)
-        move.l  %d1,-(%sp)               | park raw saw
-        move.l  20(%sp),%d2              | WIDTH (under raw+φc+modφ)
-        bsr     sy_sq_saw                | d0 = pulse from RAW saw (not ramp-biased)
-        move.l  (%sp)+,%d1               | raw saw
-        move.l  16(%sp),%d2              | WIDTH (under φc)
+        addi.l  #16384,%d1              | aligned naive saw (morph only)
+        move.l  %d1,-(%sp)               | park saw
+        move.l  20(%sp),%d2              | WDTH (under saw+φc+modφ)
+        bsr     sy_sq_phi                | d0 = pulse from φ (stable; not stepped saw)
+        move.l  (%sp)+,%d1               | saw
+        move.l  16(%sp),%d2              | WDTH (under φc)
         bsr     sy_wramp                 | full-amp rise/fall balance for morph
         mvz.b   22+4(%sp),%d2            | CMOR (morph under φc park)
         bsr     sy_wshape                | 127 → pure d0 square; linear saw→sq
@@ -1384,51 +1384,59 @@ sy_dpw_lo:
         move.l  (%sp)+,%d3
         rts
 
-| ---- hard square from saw: d1=saw Q14, d2=WIDTH 0..127 → d0 ±16384. -----
-| thresh = (pw-64)<<8 (64 → 0 = 50%). Caller must pass the RAW saw (not
-| ramp-balanced) — bias+duty stacked went DC on the unit for WIDTH 0..32 /
-| 96..127. Soft floor/ceiling 8..119. Keeps d1.
-sy_sq_saw:
+| ---- WDTH 0..127 → duty 16..110 (full knob travel, no end plateau). --------
+| eff = 16 + round(w*95/128); 64 → 64 (50%). Shift approx — no per-sample
+| divu. In: d2=WIDTH. Out: d2=duty. Clobbers d0; needs d3 free (callers park).
+sy_wduty:
         andi.l  #127,%d2
-        cmpi.l  #8,%d2
-        bge     sy_sqs_flo
-        moveq   #8,%d2
-sy_sqs_flo:
-        cmpi.l  #119,%d2
-        ble     sy_sqs_pw
-        move.l  #119,%d2
-sy_sqs_pw:
-        subi.l  #64,%d2
-        lsl.l   #8,%d2                   | thresh
-        move.l  %d1,%d0
-        cmp.l   %d2,%d0
-        ble     sy_sqs_neg
-        move.l  #16384,%d0
+        move.l  %d2,%d0
+        move.l  %d2,%d3
+        lsl.l   #6,%d0                   | 64w
+        lsl.l   #5,%d3                   | 32w
+        add.l   %d3,%d0                  | 96w
+        sub.l   %d2,%d0                  | 95w
+        addi.l  #64,%d0                  | round /128
+        lsr.l   #7,%d0
+        addi.l  #16,%d0                  | 16..110
+        move.l  %d0,%d2
         rts
-sy_sqs_neg:
+
+| ---- hard square from carrier phase: d6=φ, d2=WIDTH → d0 ±16384. --------
+| Duty from sy_wduty, threshold = duty<<25 (64 → 2^31 = 50%). Unsigned φ
+| compare — no stepped-saw jitter at the extremes (unit: static WIDTH
+| still “breathed” with sy_sq_saw). Keeps d1/d6. Parks d2/d3.
+sy_sq_phi:
+        move.l  %d3,-(%sp)
+        move.l  %d2,-(%sp)
+        bsr     sy_wduty                 | d2 = 16..111
+        lsl.l   #8,%d2
+        lsl.l   #8,%d2
+        lsl.l   #8,%d2
+        lsl.l   #1,%d2                   | duty<<25
+        move.l  %d6,%d0
+        sub.l   %d2,%d0                  | φ − thresh (unsigned via C)
+        bcc     sy_sq_lo                 | φ >= thresh → low
+        move.l  #16384,%d0
+        bra     sy_sq_out
+sy_sq_lo:
         move.l  #-16384,%d0
+sy_sq_out:
+        move.l  (%sp)+,%d2
+        move.l  (%sp)+,%d3
         rts
 
 | ---- DPW pulse (MMOR): d6=φ, d1=Δφ, d2=WIDTH, a3; saw(φ) at 0(sp) → d0. --
 | pulse = ½ (saw(φ) − saw(φ+duty)); S_DPWC is the second differentiator.
-| Caller stack: 0=saw, then return. Parks d2/d3/d6/a4; keeps d1.
+| Duty via sy_wduty (same 16..111 map). Parks d2/d3/d6/a4; keeps d1.
 sy_dpw_pulse:
         move.l  %d3,-(%sp)
         move.l  %d6,-(%sp)
         move.l  %a4,-(%sp)               | after parks: 0 a4, 4 φ, 8 d3, 12 ret, 16 saw
-        andi.l  #127,%d2
-        cmpi.l  #8,%d2
-        bge     sy_dpp_flo
-        moveq   #8,%d2                   | same floor as sy_sq_saw
-sy_dpp_flo:
-        cmpi.l  #119,%d2
-        ble     sy_dpp_pw
-        move.l  #119,%d2
-sy_dpp_pw:
+        bsr     sy_wduty                 | d2 = 16..111
         lsl.l   #8,%d2
         lsl.l   #8,%d2
         lsl.l   #8,%d2
-        lsl.l   #1,%d2                   | WIDTH<<25 → 64 ⇒ 2^31 (50%)
+        lsl.l   #1,%d2                   | duty<<25 → 64-map ⇒ ~2^31
         add.l   %d2,%d6                  | φ + duty
         lea     S_DPWC(%a3),%a4
         bsr     sy_dpw                   | d2 = saw(φ+duty)

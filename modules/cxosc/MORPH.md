@@ -10,7 +10,7 @@ Working notes from the CX OSC morph pass. Code: `poly.s` (`sy_wshape`,
 |------|------|------|
 | **CMOR** | PLAYBACK SETUP A | Carrier waveshape 0..127; **FUNC** snaps 0 / 64 / 127 |
 | **MMOR** | PLAYBACK SETUP B | Modulator waveshape 0..127 (heard through FM; needs **INDX**); **FUNC** snaps 0 / 64 / 127 |
-| **WIDTH** | PLAYBACK SETUP F | Cycle lean (**64** = neutral): sine lean / saw ramp-balance / square duty (**64** ≈ 50%; extremes clamped ~16..111) |
+| **WIDTH** | PLAYBACK SETUP F | Cycle lean (**64** = neutral): sine lean / saw ramp-balance / square duty (**64** = 50%; knob maps 0..127 → duty 16..110) |
 
 Morph map (both oscillators):
 
@@ -39,7 +39,7 @@ Old Parts that saved the F byte as “PWM” load as WIDTH (same slot — no rem
 | Range | **CMOR** (carrier) | **MMOR** (FM modulator) |
 |-------|--------------------|-------------------------|
 | → saw | phase-aligned **naive** ramp | **DPW** bandlimited saw |
-| → square | **hard** pulse (`sy_sq_saw` + WIDTH) | **DPW pulse** = ½(saw(φ)−saw(φ+duty)) |
+| → square | **hard** pulse (`sy_sq_phi` + WIDTH map) | **DPW pulse** = ½(saw(φ)−saw(φ+duty)), same WIDTH→duty map |
 
 Hard edges on the modulator explode carrier phase (naive saw did at ~46–48).
 Feedback (`S_LASTM`) stays the **modulator sine** (WIDTH-leaned).
