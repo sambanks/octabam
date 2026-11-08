@@ -11,10 +11,6 @@ ship CX OSC omit SYNTH MACHINE (same seat).
 
 ![MIX crossfades carrier and modulator into FOLD.](../../img/cxosc/mix.svg)
 
-![CX OSC PLAYBACK: PTCH RATO INDX FINE FOLD MIX.](../../img/cxosc/source.png)
-
-![SRC SETUP: CMOR MMOR DEC SYMM FDBK PWM.](../../img/cxosc/setup.png)
-
 ## Signal path
 
 Every sample:

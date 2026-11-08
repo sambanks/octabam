@@ -88,6 +88,23 @@ A new module is therefore one of: a capture step in `capture_manual.py` and
 its PNGs, or an entry in `screen-notes.json`. Without either it shows as
 "Capture pending."
 
+## Never duplicate panel screenshots
+
+`tools/site/gen_pages.py` already embeds every `screenshots.json` image for a
+module (hero under the title, then **Screen reference**). Do **not** also
+`![](../../img/<module>/….png)` those same panel shots in
+`docs/site/usage/<module>.md` — the module page shows them twice (burned CX
+OSC, Nov 2026).
+
+| Put here | Do not put here |
+|---|---|
+| `screenshots.json` + `docs/site/img/<module>/*.png` | `usage/<module>.md` embeds of those same PNGs |
+| Diagrams / SVGs only in usage (path, mix, etc.) | A second copy of source.png / setup.png in usage |
+| PR body **Screenshots** (raw.githubusercontent.com) for Sam | Re-embedding the same PNGs again inside usage for the site |
+
+PR descriptions still embed changed PNGs once (ritual). That is for GitHub
+reviewers — not a second site copy.
+
 ## Review each capture
 
 A key sequence that ran does not show that it reached the intended page.
