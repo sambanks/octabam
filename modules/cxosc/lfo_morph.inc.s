@@ -265,17 +265,17 @@ cx_lf_pmtr_fmt:
         move.b  #'B',(%a0)+
         move.b  #'K',(%a0)+
         bra     cx_lf_pmtr_tag
-cx_lf_pmtr_cmor:
+cx_lf_pmtr_cmor:                         | PMTR 30 = CAR (matches SETUP A)
         move.b  #'C',(%a0)+
-        move.b  #'M',(%a0)+
-        move.b  #'O',(%a0)+
+        move.b  #'A',(%a0)+
         move.b  #'R',(%a0)+
+        clr.b   (%a0)+
         bra     cx_lf_pmtr_tag
-cx_lf_pmtr_mmor:
-        move.b  #'M',(%a0)+
+cx_lf_pmtr_mmor:                         | PMTR 31 = MOD (matches SETUP B)
         move.b  #'M',(%a0)+
         move.b  #'O',(%a0)+
-        move.b  #'R',(%a0)+
+        move.b  #'D',(%a0)+
+        clr.b   (%a0)+
         bra     cx_lf_pmtr_tag
 cx_lf_pmtr_symm:
         move.b  #'S',(%a0)+

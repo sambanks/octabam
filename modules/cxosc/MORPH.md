@@ -8,8 +8,8 @@ Working notes from the CX OSC morph pass. Code: `poly.s` (`sy_wshape`,
 
 | Knob | Page | Role |
 |------|------|------|
-| **CMOR** | PLAYBACK SETUP A | Carrier waveshape 0..127; **FUNC** snaps 0 / 64 / 127 |
-| **MMOR** | PLAYBACK SETUP B | Modulator waveshape 0..127 (heard through FM; needs **INDX**); **FUNC** snaps 0 / 64 / 127 |
+| **CAR** (was CMOR) | PLAYBACK SETUP A | Carrier waveshape 0..127; **FUNC** snaps 0 / 64 / 127 |
+| **MOD** (was MMOR) | PLAYBACK SETUP B | Modulator waveshape 0..127 (heard through FM; needs **INDX**); **FUNC** snaps 0 / 64 / 127 |
 | **WIDTH** | PLAYBACK SETUP F | Cycle lean — LCD **−64..+63** (**0** = neutral, byte 64): sine soft lean / saw phase-skew / square duty (**0** ≈ 50%; duty maps byte 0..127 → 16..110) |
 
 Morph map (both oscillators):
@@ -23,7 +23,7 @@ Morph map (both oscillators):
 0..63 linear sine→saw; 64..127 linear saw→square (both `/63`). MMOR always
 builds the DPW pulse (no dummy-square below 64 — that stepped at the landmark).
 
-LFO SETUP PMTR **30 = CMOR**, **31 = MMOR**. WIDTH is panel-only (not an LFO dest).
+LFO SETUP PMTR **30 = CAR**, **31 = MOD**. WIDTH is panel-only (not an LFO dest).
 
 ## WIDTH through the morph
 

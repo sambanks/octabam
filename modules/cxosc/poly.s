@@ -5944,10 +5944,10 @@ po_ls_out:
 | ---- data ----------------------------------------------------------------------
 sy_name:
         .ascii  "CXOSC"
-po_cmor:
-        .ascii  "CMOR\0\0"
-po_mmor:
-        .ascii  "MMOR\0\0"
+po_cmor:                                 | SETUP A label (carrier morph)
+        .ascii  "CAR\0\0\0"
+po_mmor:                                 | SETUP B label (modulator morph)
+        .ascii  "MOD\0\0\0"
 po_dec:
         .ascii  "DEC\0\0\0"
 po_symm:

@@ -403,10 +403,14 @@ def main():
             (n18a & 0xFFFF) == 0x1111,
             f"0x18a low={n18a & 0xFFFF:#06x} (want 0x1111)",
         )
+        car_nm = bytes(uc.mem_read(setup_buf + 0x3A, 4))
+        mod_nm = bytes(uc.mem_read(setup_buf + 0x40, 4))
         dec_nm = bytes(uc.mem_read(setup_buf + 0x46, 4))
         symm_nm = bytes(uc.mem_read(setup_buf + 0x4C, 4))
         fdbk_nm = bytes(uc.mem_read(setup_buf + 0x52, 4))
         width_nm = bytes(uc.mem_read(setup_buf + 0x58, 6))
+        check("SETUP A named CAR", car_nm.rstrip(b"\0") == b"CAR", car_nm)
+        check("SETUP B named MOD", mod_nm.rstrip(b"\0") == b"MOD", mod_nm)
         check("SETUP C named DEC", dec_nm.rstrip(b"\0") == b"DEC", dec_nm)
         check("SETUP D named SYMM", symm_nm == b"SYMM", symm_nm)
         check("SETUP E named FDBK", fdbk_nm == b"FDBK", fdbk_nm)
@@ -417,8 +421,8 @@ def main():
         if "pg_wid_morph" in symbols:
             w_cmor = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0xFA + 24, 4)))[0]
             w_mmor = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0xFA + 28, 4)))[0]
-            check("SETUP CMOR widget = morph icon", w_cmor == symbols["pg_wid_morph"], f"{w_cmor:#x}")
-            check("SETUP MMOR widget = morph icon", w_mmor == symbols["pg_wid_morph"], f"{w_mmor:#x}")
+            check("SETUP CAR widget = morph icon", w_cmor == symbols["pg_wid_morph"], f"{w_cmor:#x}")
+            check("SETUP MOD widget = morph icon", w_mmor == symbols["pg_wid_morph"], f"{w_mmor:#x}")
         if "pg_fmt_ptch" in symbols:
             fmt_w = struct.unpack(">I", bytes(uc.mem_read(setup_buf + 0xCA + 44, 4)))[0]
             check("SETUP WIDTH formatter = bipolar signed", fmt_w == symbols["pg_fmt_ptch"], f"{fmt_w:#x}")

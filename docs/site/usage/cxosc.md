@@ -15,11 +15,11 @@ ship CX OSC omit SYNTH MACHINE (same seat).
 
 Every sample:
 
-1. **Modulator** runs (RATO, MMOR, FDBK into its own phase).
+1. **Modulator** runs (RATO, MOD, FDBK into its own phase).
 2. **INDX** (scaled by the DEC envelope) FM’s that into the **carrier**
-   phase (PTCH, FINE, CMOR).
+   phase (PTCH, FINE, CAR).
 3. **MIX** crossfades the FM’d **carrier** with the **heard modulator**
-   (MMOR morph — sine / DPW saw / DPW square). FDBK still uses the clean
+   (MOD morph — sine / DPW saw / DPW square). FDBK still uses the clean
    mod sine. That blend is the **folder input**, not a wet/dry of the
    final sound.
 4. **FOLD** (+ SYMM) wavefolds that blend and dry/wets the folder against
@@ -63,14 +63,14 @@ list first — **LEFT** reaches the machines.
 ### Pages
 
 - **PLAYBACK** — PTCH RATO INDX FINE FOLD MIX
-- **FUNC + PLAYBACK** — **SRC SETUP** — CMOR MMOR DEC SYMM FDBK WIDTH
+- **FUNC + PLAYBACK** — **SRC SETUP** — CAR MOD DEC SYMM FDBK WIDTH
 - **AMP** — ATK / HOLD / REL (engine-owned). Selecting CX seeds ATK 0 /
   HOLD INF / REL 0 and LEG MONO
 - **LFO** — PMTR 30..33 reach SETUP morphs / feedback (below). No VOIC /
   CHRD — LFO 3 stays SPD3 / DEP3
 
 **FUNC** on PLAYBACK knobs: PTCH snaps −32 / 0 / +32; RATO snaps classic
-FM ratios. **FUNC** on SETUP CMOR / MMOR snaps 0 / 64 / 127.
+FM ratios. **FUNC** on SETUP CAR / MOD snaps 0 / 64 / 127.
 
 ### Play
 
@@ -89,8 +89,8 @@ work as usual.
 | PLAYBACK | FINE | −64..+63 ¢ | 0c (raw 64) | cents |
 | PLAYBACK | FOLD | 0..127 | 0 | wavefolder dry/wet after MIX; **0 = bypass** |
 | PLAYBACK | MIX | 0..127 | 0 | **folder input:** carrier↔modulator crossfade; **0 = carrier only** |
-| SETUP | CMOR | 0..127 | 0 | carrier morph: **0** sine → **64** saw → **127** square; **FUNC** snaps landmarks |
-| SETUP | MMOR | 0..127 | 0 | modulator morph (same map; DPW saw/pulse); hear via **INDX** (FM) or **MIX 127** (solo); **FUNC** snaps |
+| SETUP | CAR | 0..127 | 0 | carrier morph: **0** sine → **64** saw → **127** square; **FUNC** snaps landmarks |
+| SETUP | MOD | 0..127 | 0 | modulator morph (same map; DPW saw/pulse); hear via **INDX** (FM) or **MIX 127** (solo); **FUNC** snaps |
 | SETUP | DEC | 0..127 | 127 | index envelope after a trig; **127 = HOLD** (INDX stays with the knob) |
 | SETUP | SYMM | 0..127 | 64 | fold half-wave skew; **64 = even**; needs **FOLD** up |
 | SETUP | FDBK | 0..127 | 0 | modulator feedback (always the unmorphed mod sine) |
@@ -117,8 +117,8 @@ work as usual.
 
 | PMTR | Destination |
 |---|---|
-| 30 | CMOR |
-| 31 | MMOR |
+| 30 | CAR |
+| 31 | MOD |
 | 32 | SYMM |
 | 33 | FDBK |
 

@@ -274,7 +274,7 @@ def capture_octa303(p,r):
 
 def capture_cxosc(p,r):
     # Sixth machine-list row → CX OSC. PLAYBACK: PTCH RATO INDX FINE FOLD MIX.
-    # FUNC+PLAYBACK SETUP: CMOR MMOR DEC SYMM FDBK WIDTH.
+    # FUNC+PLAYBACK SETUP: CAR MOD DEC SYMM FDBK WIDTH.
     press(p,'t1')
     p.chord('func','pg_playback')
     press(p,'down',5)
@@ -286,13 +286,13 @@ def capture_cxosc(p,r):
     enc(p,5,40)   # MIX mid: dial off the left stop
     shot(p,'cxosc','source','CX OSC PLAYBACK: PTCH RATO INDX FINE FOLD MIX.',r)
     p.chord('func','pg_playback')
-    enc(p,0,40)   # CMOR off sine
-    enc(p,1,40)   # MMOR off sine
+    enc(p,0,40)   # CAR off sine
+    enc(p,1,40)   # MOD off sine
     enc(p,2,-40)  # DEC off HOLD so the fall shows
     enc(p,3,20)   # SYMM off 64 (skew)
     enc(p,4,24)   # FDBK above 0 so the loop OR shows
     enc(p,5,0)    # WIDTH stays mid (~64)
-    shot(p,'cxosc','setup','SRC SETUP with CX OSC: CMOR MMOR DEC SYMM FDBK WIDTH.',r)
+    shot(p,'cxosc','setup','SRC SETUP with CX OSC: CAR MOD DEC SYMM FDBK WIDTH.',r)
 
 
 def capture_synth(p,r):
