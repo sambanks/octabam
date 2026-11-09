@@ -60,7 +60,7 @@ SECTIONS = (
 # Where a module's page goes, by registry key. A module not named here goes by its
 # category (BY_CATEGORY), so a new module is never left out of the manual.
 PLACE = {
-    "OCTA303": "machines",
+    "OCTA303": "machines", "WAVE CF": "machines",
     "DIRECT_JUMP_KYOTI": "sequencer", "RELOAD_FROM_PROJECT": "sequencer", "RLEN PLEN": "sequencer",
     "REC_TRIG_MUTE": "sequencer", "REC THRESHOLD": "sequencer", "PATTERN MUTE": "sequencer",
     "MUTE_MODES": "sequencer", "SCALE QUANTIZER": "sequencer", "QUANTIZE_LIVE_REC_TOGGLE": "sequencer",

@@ -513,8 +513,8 @@ def chromatic():
                     f"BLACKPYRAMIDS's sanitize then SCALE QUANTIZER's, stack and continuations as the sites expect")
 
 
-SIGS = {"ANALOG BD": b"AB\x01", "OCTA303": b"TB\x01", "CX OSC": b"CX\x01"}
-TITLES = {"ANALOG BD": "ab_name", "OCTA303": "o3_title", "CX OSC": "fm_name"}
+SIGS = {"ANALOG BD": b"AB\x01", "OCTA303": b"TB\x01", "CX OSC": b"CX\x01", "WAVE CF": b"WV\x01"}
+TITLES = {"ANALOG BD": "ab_name", "OCTA303": "o3_title", "CX OSC": "fm_name", "WAVE CF": "wc_title"}
 
 
 def _machine_units(k):
@@ -759,13 +759,17 @@ def installed(name):
                     out = subprocess.check_output(["m68k-elf-nm", str(ue)], text=True)
                     rom.update({f[2]: int(f[0], 16) for line in out.splitlines() if len(f := line.split()) == 3})
     if "chrom_pitch" in DECL["bridged"](set(sel)):
-        # codeless: OCTA303's own jsr at the site, its every-other-track path
-        # built to jmp qz_chrom (SCALE QUANTIZER's detour overridden)
+        # codeless: the first participant's own jsr at the site, each one's every-other-track path built to
+        # jmp the next participant's routine (the last, SCALE QUANTIZER's, has the stock lea in it); the
+        # later participants' detours are overridden
         site = DECL["PITCH_SITE"]
-        o3 = sym["o3_chrom"] - base
-        check(img[site - BASE_IMG:site - BASE_IMG + 6] == b"\x4e\xb9" + sym["o3_chrom"].to_bytes(4, "big")
-              and b"\x4e\xf9" + sym["qz_chrom"].to_bytes(4, "big") in rt[o3:o3 + 0x100],
-              "0x4004fc58: jsr o3_chrom, and o3_chrom hands every other track to qz_chrom")
+        chain = [(k, s_) for k, s_ in DECL["CHROM_PITCH"] if k in sel]
+        check(img[site - BASE_IMG:site - BASE_IMG + 6] == b"\x4e\xb9" + sym[chain[0][1]].to_bytes(4, "big"),
+              f"0x4004fc58: jsr {chain[0][1]}")
+        for (ka, sa), (kb, sb) in zip(chain, chain[1:]):
+            at = sym[sa] - base
+            check(b"\x4e\xf9" + sym[sb].to_bytes(4, "big") in rt[at:at + 0x100],
+                  f"{sa} hands every other track to {sb}")
     if "machine_rows" in DECL["bridged"](set(sel)):
         # the head's hooks at every shared site it claims; each machine's flagged not-ours
         # paths reach the next one's routine; the FLEX kind entry is the render chain's head;
@@ -819,7 +823,8 @@ def main():
     chromatic()
     print("verify_hooks: machine rows under Unicorn")
     for on in (("ANALOG BD", "OCTA303"), ("OCTA303", "CX OSC"), ("ANALOG BD", "CX OSC"),
-               ("ANALOG BD", "OCTA303", "CX OSC")):
+               ("ANALOG BD", "OCTA303", "CX OSC"), ("OCTA303", "WAVE CF"), ("ANALOG BD", "WAVE CF"),
+               ("ANALOG BD", "OCTA303", "WAVE CF")):
         machines(on)
     print("verify_hooks: FREE LOOP beside REC_TRIG_MUTE under Unicorn")
     free_loop()

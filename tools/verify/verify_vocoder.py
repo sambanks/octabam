@@ -65,7 +65,7 @@ FS = REF.FS
 
 # The image of the `vocoder` remix, not the audition's: VOCODER claims its allocator slot
 # (GEND's coefficients), and the audition's scratch remix carries SEND, a bus participant
-# the ledger will not seat beside a slot user (verify_wave builds the same way).
+# the ledger will not seat beside a slot user (verify_wave, removed with the DSP WAVE, built the same way: `git show 755a02ac:tools/verify/verify_wave.py`).
 import os
 pathlib.Path(MEM).unlink(missing_ok=True)
 subprocess.run([sys.executable, "tools/build/build_bus.py"], cwd=ROOT, check=True, capture_output=True,

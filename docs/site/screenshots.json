@@ -498,22 +498,6 @@
       "firmware_sha256": "ef7031498307f77c34f0eaa48d1fd88a87a70c61790eb4e191f342c615431aaf"
     }
   },
-  "wave": {
-    "main": {
-      "image": "wave/main.png",
-      "caption": "Wave: main parameter page.",
-      "remix": "wave",
-      "source": "emulator panel UART",
-      "firmware_sha256": "08105e38c1b2eff697d6251b74f477875d9e7d2855ad964d22861d16f54dba38"
-    },
-    "setup": {
-      "image": "wave/setup.png",
-      "caption": "Wave: effect selection and setup parameters.",
-      "remix": "wave",
-      "source": "emulator panel UART",
-      "firmware_sha256": "08105e38c1b2eff697d6251b74f477875d9e7d2855ad964d22861d16f54dba38"
-    }
-  },
   "analog-bassdrum": {
     "source": {
       "image": "analog-bassdrum/source.png",
