@@ -188,7 +188,7 @@ for k, key in enumerate(R.window_demand):
     check("staged with one bit wrong: the copier does not publish it, the stub stays dry",
           run(TMP / f"badsum{k}.mem", DLC, proc_s, f"badsum{k}", vals) == dry)
     # A repeat send (DLPUMP sends each load three times): the entry is bound at this destination and the code resident.
-    held = base_recs + [(1, entry, [MAGIC, init_m, proc_m, code_at, code_at + n])]
+    held = krecs + [(1, entry, [MAGIC, init_m, proc_m, code_at, code_at + n])]
     write_records(TMP / f"repeat{k}.mem", held + [(1, STAGE, staged)])
     check("a repeat of the block the entry holds: the stub runs the real code",
           run(TMP / f"repeat{k}.mem", DLC, proc_s, f"repeat{k}", vals) == direct)
