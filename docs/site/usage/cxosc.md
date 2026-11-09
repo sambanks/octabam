@@ -65,8 +65,8 @@ list first — **LEFT** reaches the machines.
 - **AMP** — ATK / HOLD / REL (engine-owned). Selecting CX seeds ATK 0 /
   HOLD INF / REL 0 and LEG MONO
 - **LFO** — PMTR lists PLAYBACK (**PTCH RATO INDX FINE FOLD MIX**) then
-  AMP / FX; **30..33** reach SETUP CAR / MOD / SYMM / FDBK. No VOIC /
-  CHRD — LFO 3 stays SPD3 / DEP3
+  AMP / FX; **30..34** reach SETUP CAR / MOD / SYMM / FDBK / PWM (not
+  DEC). No VOIC / CHRD — LFO 3 stays SPD3 / DEP3
 
 **FUNC** on PLAYBACK knobs: PTCH snaps −32 / 0 / +32; RATO snaps classic
 FM ratios. **FUNC** on SETUP CAR / MOD snaps 0 / 64 / 127.
@@ -123,9 +123,9 @@ FOLD MIX**, then AMP / LFO speeds / FX1 / FX2. Extra SETUP destinations:
 | 31 | MOD |
 | 32 | SYMM |
 | 33 | FDBK |
+| 34 | PWM |
 
-PTCH LFO depth matches FLEX (÷5 vs raw synth semitone units, Tim 2.20). DEC and PWM are not LFO destinations — they stay under their knobs (and
-locks / scenes).
+PTCH LFO depth matches FLEX (÷5 vs raw synth semitone units, Tim 2.20). DEC is not an LFO destination — it stays under its knob (and locks / scenes).
 
 ### A short listen path
 

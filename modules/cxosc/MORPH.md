@@ -23,7 +23,7 @@ Morph map (both oscillators):
 0..63 linear sine→saw; 64..127 linear saw→square (both `/63`). MMOR always
 builds the DPW pulse (no dummy-square below 64 — that stepped at the landmark).
 
-LFO SETUP PMTR **30 = CAR**, **31 = MOD**. PWM is panel-only (not an LFO dest).
+LFO SETUP PMTR **30 = CAR**, **31 = MOD**, **34 = PWM**. DEC is not an LFO destination.
 
 ## PWM through the morph
 

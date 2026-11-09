@@ -1,13 +1,14 @@
 | CX OSC LFO destinations:
 |   Stock 0..29: PLAYBACK / AMP / LFO / FX names via po_lfdname (Tim 2.10) so
 |   a CX track lists PTCH RATO INDX FINE FOLD MIX, not Flex STRT/LEN/... .
-|   PMTR 30 = CAR, 31 = MOD, 32 = SYMM, 33 = FDBK (private words).
-| DEC / PWM are not destinations. Tim private-word pattern
+|   PMTR 30 = CAR, 31 = MOD, 32 = SYMM, 33 = FDBK, 34 = PWM (private words).
+| DEC is not a destination. Tim private-word pattern
 | (octatrick-modules lfo_destinations.inc.s): offsets apply every audio
-| frame into sy_cxparm / sy_cxfb. LFO_P / LFO_DESC_LEN / LFO_STATE /
-| UI_TRACK / CURVALS / CV_STRIDE / CV_SETUP / FLEX_P come from poly.s.
+| frame into sy_cxparm / sy_cxfb / sy_cxpwm. LFO_P / LFO_DESC_LEN /
+| LFO_STATE / UI_TRACK / CURVALS / CV_STRIDE / CV_SETUP / FLEX_P come from
+| poly.s.
         .set    LF_MID, 16256            | 63.5 << 8
-        .set    LF_LAST, 33              | CAR..FDBK (DEC skipped)
+        .set    LF_LAST, 34              | CAR..PWM (DEC skipped)
         .set    LFD_ENC, 0x4003249c
         .set    LFD_STORE, 0x4003932c
         .set    LFD_RESOLVER, 0x40031da4 | page resolver (track, kind) -> descriptor
@@ -126,12 +127,13 @@ cx_lfo_frame:                            | frame-builder depth site (0x4000d03e)
         bsr     cx_lfo_apply
         jmp     0x4000d046
 
-| d2 = track: add live PMTR 30..33 offsets into sy_cxparm CMOR/MMOR/SYMM and
-| sy_cxfb (FDBK). Clobbers d0/d1/d3/a0; d2 preserved.
+| d2 = track: add live PMTR 30..34 offsets into sy_cxparm CMOR/MMOR/SYMM,
+| sy_cxfb (FDBK) and sy_cxpwm (PWM). Clobbers d0/d1/d3/a0; d2 preserved.
 cx_lfo_morph:
         cmpi.l  #8,%d2
         bcc     cx_lm_out
-        lea     -24(%sp),%sp
+        lea     -28(%sp),%sp
+        clr.l   24(%sp)                  | PWM offset (<<8)
         movem.l %d2/%d4-%d7/%a1,(%sp)    | 0=track; d4..d7 accumulators live
         move.l  %d2,%d3
         add.l   %d3,%d3
@@ -157,7 +159,9 @@ cx_lm_each:
         beq     cx_lm_add_mmor
         cmpi.l  #32,%d0
         beq     cx_lm_add_symm
-        add.l   %d2,%d7                  | 33 FDBK
+        cmpi.l  #33,%d0
+        beq     cx_lm_add_fdbk
+        add.l   %d2,24(%sp)              | 34 PWM
         bra     cx_lm_next
 cx_lm_add_cmor:
         add.l   %d2,%d4
@@ -167,6 +171,9 @@ cx_lm_add_mmor:
         bra     cx_lm_next
 cx_lm_add_symm:
         add.l   %d2,%d6
+        bra     cx_lm_next
+cx_lm_add_fdbk:
+        add.l   %d2,%d7                  | 33 FDBK
 cx_lm_next:
         addq.l  #1,%d3
         addq.l  #1,%d1
@@ -190,19 +197,26 @@ cx_lm_next:
         add.l   %d6,%d0
         bsr     cx_lm_clamp
         move.b  %d0,1(%a0,%d2.l)
-        move.l  (%sp),%d2                | track -> FDBK from CURVALS + LFO
+        move.l  (%sp),%d2                | track -> FDBK / PWM from CURVALS + LFO
         move.l  %d2,%d1
         move.l  #CV_STRIDE,%d0
         mulu.l  %d0,%d1
         lea     CURVALS+CV_SETUP,%a1
-        mvz.b   4(%a1,%d1.l),%d0         | SETUP E
+        mvz.b   4(%a1,%d1.l),%d0         | SETUP E FDBK
         asr.l   #8,%d7
         add.l   %d7,%d0
         bsr     cx_lm_clamp
         lea     sy_cxfb(%pc),%a0
         move.b  %d0,(%a0,%d2.l)
+        mvz.b   5(%a1,%d1.l),%d0         | SETUP F PWM
+        move.l  24(%sp),%d7
+        asr.l   #8,%d7
+        add.l   %d7,%d0
+        bsr     cx_lm_clamp
+        lea     sy_cxpwm(%pc),%a0
+        move.b  %d0,(%a0,%d2.l)          | target for the panel slew below
         movem.l (%sp),%d2/%d4-%d7/%a1
-        lea     24(%sp),%sp
+        lea     28(%sp),%sp
 cx_lm_out:
         rts
 
@@ -251,7 +265,7 @@ cx_lf_copy:
         subq.l  #1,%d0
         bne     cx_lf_copy
         lea     cx_lf_desc:l,%a1
-        moveq   #34,%d0                  | PMTR count 34 (0..33)
+        moveq   #35,%d0                  | PMTR count 35 (0..34)
         move.l  %d0,0x9a+24(%a1)
         lea     cx_lf_pmtr_fmt:l,%a0
         move.l  %a0,0xca+24(%a1)
@@ -326,10 +340,12 @@ cx_lf_pmtr_fmt:
         beq     cx_lf_pmtr_mmor
         cmpi.l  #32,%d0
         beq     cx_lf_pmtr_symm
-        move.b  #'F',(%a0)+              | 33 FDBK
-        move.b  #'D',(%a0)+
-        move.b  #'B',(%a0)+
-        move.b  #'K',(%a0)+
+        cmpi.l  #33,%d0
+        beq     cx_lf_pmtr_fdbk
+        move.b  #'P',(%a0)+              | 34 PWM (matches SETUP F)
+        move.b  #'W',(%a0)+
+        move.b  #'M',(%a0)+
+        clr.b   (%a0)+
         bra     cx_lf_pmtr_tag
 cx_lf_pmtr_cmor:                         | PMTR 30 = CAR (matches SETUP A)
         move.b  #'C',(%a0)+
@@ -348,6 +364,12 @@ cx_lf_pmtr_symm:
         move.b  #'Y',(%a0)+
         move.b  #'M',(%a0)+
         move.b  #'M',(%a0)+
+        bra     cx_lf_pmtr_tag
+cx_lf_pmtr_fdbk:
+        move.b  #'F',(%a0)+              | 33 FDBK
+        move.b  #'D',(%a0)+
+        move.b  #'B',(%a0)+
+        move.b  #'K',(%a0)+
 cx_lf_pmtr_tag:
         clr.b   (%a0)
         move.b  #'S',1(%a0)

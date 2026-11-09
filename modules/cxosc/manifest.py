@@ -2,7 +2,7 @@
 
 Choose CX OSC in FUNC+SRC / SELECT MACHINE TYPE (FLEX + Part signature "CX",1).
 Mono voice. PLAYBACK: PTCH (−32..+32) RATO INDX FINE FOLD MIX. SETUP:
-CAR/MOD/DEC/SYMM/FDBK/PWM; LFO PMTR lists PLAYBACK names + 30..33 CAR/MOD/SYMM/FDBK (no DEC/PWM). No Tim VOIC/CHRD.
+CAR/MOD/DEC/SYMM/FDBK/PWM; LFO PMTR lists PLAYBACK names + 30..34 CAR/MOD/SYMM/FDBK/PWM (no DEC). No Tim VOIC/CHRD.
 
 Machine list adapted from timhastie/octatrick-modules v2.15 SYNTH MACHINE
 (MIT / Modwerk chooser lineage). Conflicts with SYNTH MACHINE and
@@ -314,7 +314,7 @@ MODULE = Module(
         "7× idle 0%/355 max 446 (wall) → ML_FM_MAX=6; author confirmed 6 MAX toast on unit. Prior CX 41 / CX 28 / VRCS-CX VS. "
         "verify_cxosc + make check REMIX=cxosc"
     ),
-    doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..33 CAR/MOD/SYMM/FDBK. Local fork of FM SYNTH.",
+    doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..34 CAR/MOD/SYMM/FDBK/PWM (DEC not a destination). Local fork of FM SYNTH.",
     conflicts=(
         ("SYNTH MACHINE", "both own the FLEX/STATIC kind-table renderers, page cave 0x400d24d0, and machine-list sites"),
         ("BLACKPYRAMIDS_303", "shares ColdFire ROM hooks (e.g. MIDI note-on 0x4000e746) — build refuses the pair"),

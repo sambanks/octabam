@@ -49,7 +49,7 @@ See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagram
 
 LFO SETUP PMTR lists the PLAYBACK names (**PTCH RATO INDX FINE FOLD MIX**)
 plus AMP / stock FX, then **30 = CAR**, **31 = MOD**, **32 = SYMM**,
-**33 = FDBK**. PTCH LFO depth matches FLEX (÷5). DEC/PWM are not LFO destinations. Mono only — AMP HOLD
+**33 = FDBK**, **34 = PWM**. PTCH LFO depth matches FLEX (÷5). DEC is not an LFO destination. Mono only — AMP HOLD
 owns note length (**HOLD INF** = until STOP); select seeds ATK 0 / HOLD INF /
 REL 0 / LEG MONO. Beside OCTA303, HOOKS `machine_rows` bridges the LFO
 PMTR name site (`0x4003bff0`): each machine names its own track.

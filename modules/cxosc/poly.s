@@ -683,8 +683,9 @@ sy_symm_nz:
         move.b  %d3,2(%a0,%d0.l)         | CMOR
         mvz.b   1(%a1,%d1.l),%d3
         move.b  %d3,3(%a0,%d0.l)         | MMOR
-        bsr     cx_lfo_morph             | PMTR 30..33 -> CMOR/MMOR/SYMM + sy_cxfb (d2 = track)
-        mvz.b   5(%a1,%d1.l),%d3         | SETUP F -> PWM (0..127; default 64 from Part)
+        bsr     cx_lfo_morph             | PMTR 30..34 -> CMOR/MMOR/SYMM + sy_cxfb + sy_cxpwm
+        lea     sy_cxpwm(%pc),%a0        | SETUP F + LFO PMTR 34 (morph wrote the target)
+        mvz.b   (%a0,%d2.l),%d3
         move.l  %d3,%d0                  | target — slew like MIX/FOLD (MMOR DPW duty clicked raw)
         move.l  %d2,%d3
         lea     sy_pwmq(%pc),%a0
