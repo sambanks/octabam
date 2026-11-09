@@ -215,8 +215,10 @@ keep the FX tails, which a post-FX level cut would kill.
 Beside each FREE / GRID track's status icon at the screen's edge: a dot
 while it overdubs (whichever recorder records its pass), a ring blinking at
 2 Hz while armed; the stock `+` while its own recorder runs and it is not
-overdubbing. The renderer's two sites are REC_TRIG_MUTE's, and the code
-takes its form (`rtm_glyph` / `rtm_draw`, Zac-Kyoti/octatrack-kyoti-fw, MIT).
+overdubbing. The code takes the form of REC_TRIG_MUTE's former status icons
+(`rtm_glyph` / `rtm_draw`, Zac-Kyoti/octatrack-kyoti-fw, MIT); REC_TRIG_MUTE's own
+mute dots now sit beside the tab's machine letter, so the two marks no longer share a
+cell.
 
 ## The REC popup
 
@@ -265,16 +267,15 @@ by name (one key, two meanings: not a site a bridge can share).
 
 REC_TRIG_MUTE and REC THRESHOLD share an image with FREE LOOP through
 [HOOKS](../hooks/README.md) (1 Nov 2026):
-- `status_icon` (`0x4004bee2`): `rtm_glyph`, `blink_gate`, then `fl_glyph`,
-  so on a track FREE LOOP manages its ring or dot is drawn over the mute
-  dots and the blink.
-- `rec_gate` (`0x4009d9a4`) and `icon_draw` (`0x4004c00c`), codeless: this
-  detour stays, and the unit, assembled with `HK_REC_GATE` / `HK_ICON_DRAW`
-  (the manifest's `select`), hands on to `rtm_gate` / `rtm_draw` where it
-  replayed stock. A recorder trig fires only when FREE LOOP lets it and
-  REC_TRIG_MUTE has not muted the track; the drawer draws this module's
-  states 10..13, then REC_TRIG_MUTE's 8 / 9. FREE LOOP alone builds the same
-  bytes.
+- `status_icon` (`0x4004bee2`): `blink_gate`, then `fl_glyph`, so on a track
+  FREE LOOP manages its ring or dot is drawn over the blink.
+- `rec_gate` (`0x4009d9a4`), codeless: this detour stays, and the unit,
+  assembled with `HK_REC_GATE` (the manifest's `select`), hands on to
+  `rtm_gate` where it replayed stock. A recorder trig fires only when FREE
+  LOOP lets it and REC_TRIG_MUTE has not muted the track. FREE LOOP alone
+  builds the same bytes.
+- The icon drawer `0x4004c00c` is FREE LOOP's alone since REC_TRIG_MUTE's
+  mute dots moved beside the tab's machine letter (its pin after `553d8d2`).
 
 ## Guards
 

@@ -1,4 +1,244 @@
-# STEM REC: flashes A to K, and crosscheck's flash plan as a record
+# STEM REC: flashes A to M, and crosscheck's flash plan as a record
+
+## Flash M — `octabam` + STEM REC: flat gain slots, whole clusters (staged 5 Nov 2026)
+
+**Flashed** on Yves's MKII. His card's logs of 5 Nov 2026 hold three
+takes, all at 24 bits (his folder, not the repository):
+
+| take | files | length | status | ring peak, frames | card while recording | hook mean, longest |
+|---|---|---|---|---|---|---|
+| `261105-1441` | 11: T1 to T7, MAIN, CUE, AB, CD | 24 s | OK | 2,889 of 7,922 (36%) | 212 µs a KB | 30, 51 µs |
+| `261105-1441-2` | T1 | 10 s | OK | 938 of 87,360 | 92 µs a KB | 9, 17 µs |
+| `261105-1442` | 13: T1 to T7, MAIN, CUE, A, B, C, D | 21 s | OK | 3,475 of 7,918 (44%) | 261 µs a KB | 31, 54 µs |
+
+- Every WAV holds its log's frame count (16 samples a frame) under a
+  header that says so, with its `.ot` beside it.
+- The Static machines played the samples of flash L's fifth take
+  (`261104-2034`), the slowest of flash L's two sets (Yves, 5 Nov 2026).
+- ✅ Eleven files recorded for 24 s without `RING FULL`, the card writing
+  at 212 µs a KB. On the same samples STEMS12's ten files (T1 to T7,
+  MAIN, CUE, AB) wrote at 387: 45% less here, with one file more. On the
+  lighter samples STEMS12's eleven files wrote at 423 and filled the ring
+  in 10 s, busy 89% of the take; here the card was busy 60%.
+- ✅ The hook at eleven files: 30 µs on average against 33, at most 51
+  against 61. `mirror` fell from 6.9 to 4.1 µs and `gains` from 1.39 to
+  0.78. `buses` (8.7 µs) and `tracks` (16.6) are as they were, and
+  neither changed.
+- New: the inputs as four mono files (AB STEREO and CD STEREO off). Yves:
+  "everything works better so I was able to split AB and CD in mono
+  tracks." Thirteen files carry the same 1,056 bytes a frame as the
+  eleven, and the card took 261 µs a KB for them, 23% more. It was busy
+  73% of the take.
+- T1 alone wrote at 92 µs a KB, against 54 to 82 on lighter samples.
+- Not recorded: the nine-file take and the eleven files three times in a
+  row.
+- What the takes say about 20.10's and 20.11's questions is in
+  STEM_REC.md, under "On the unit" in each.
+
+`STEMS13`, on branch `stems-gainflat` (on `stems-hookparts` at
+`13608e01`). It has two changes, both in STEM REC:
+
+- **Flat gain slots** (`CLEANUP.md` 1.1's flat case, STEM_REC.md 20.10).
+  While a track's fader rests, its gain slot holds one gain instead of
+  sixteen, and the track loop multiplies by it without a ramp. Under the
+  port, hook instructions a frame went from 5,252 to 4,468 (15% fewer)
+  with everything at 24 bits, and from 1,035 to 937 with T1 alone. The
+  "before" is STEMS12's code after the simplify round (20.9), which
+  changed only instruction counts; STEMS12's image ran 5,316 with
+  everything at 24 bits.
+- **Whole clusters while recording** (`CLEANUP.md` 2.1, STEM_REC.md
+  20.11). While a take records, each file writes whole clusters only, so
+  the card never goes back to a cluster it left half written. Under the
+  port, a 4-file take at 24 bits on a card of 32 KB clusters went from
+  109 card commands to 66 (39% fewer), and from 43 half-written clusters
+  to 0. `RING FULL` can come up to one cluster's frames sooner: 341
+  frames of a 24-bit stereo file, about 4% of its ring at eleven files.
+
+**The modules.** The image has STEMS12's 48 modules, with one swap:
+SHATTER for TRANSIENT. Both are DSP effects loaded on demand, and main's
+octabam now has SHATTER where TRANSIENT was. Main's octabam itself is no
+longer STEMS12's set:
+
+- It took on ten more modules after STEMS12 (OCTA303, MORPH, REC
+  THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, TRACK PATTERNS,
+  VARISPEED, PATTERN MUTE and SHATTER).
+- It leaves STEM REC out: in Sam's loader soak of 1 Nov 2026, images
+  with STEM REC left 2 to 5 of 32 program changes unapplied
+  (`remixes/octabam/remix.py`).
+
+So the local remix `remixes/test/lm-stems` is octabam without its
+`COLDFIRE` tuple and PATTERN MUTE, plus STEM REC and MEMORY. That way the
+takes compare with flash L's on the same modules.
+
+🟡 **The base moved, too.** STEMS12 was built on `stems-next`
+(`ecfbb2ff`); STEMS13 is on main at `c9cadc82` (v0.4). Main has 36
+commits since then in the folders of this image's modules. Among them
+are USB MIDI's interrupt rework (#1029, #944) and a cut in STORE's read
+overhead (`2d3d44d7`). So a change in the card's time or the hook's
+isn't STEM REC's alone until the takes say which part moved: the `hook
+parts` lines split STEM REC's own time from the rest.
+
+**The image.** Built 5 Nov 2026 at `9a820ff0` with the local remix:
+`make image REMIX=lm-stems BUILD=13 VERSION=STEMS13`. The unit's OS
+version reads `STEMS13`.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS13.bin` | 617,184 | `0703e27792e200ac29c9c0deb072a6d9f2041cae414a545b801bf43ee7856b14` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS13.syx` | 862,106 | `114ae01018d8de8705fb968f881d369510ab6e4f08af46c028a7254fa65cdad6` |
+| remix switch | `out/LM-STEMS 13.RMX` | 1,284,604 | `6812af379bd216780b67d03727c2ea5bb7eba2f4f3f358a80f89ba02ffbf7684` |
+
+Copies are in `/home/yvez/xcheck/stems13`. Under the port, on this code
+(4 to 5 Nov 2026):
+
+- `verify_stems` 340 PASS, 1 FAIL. The failure is `sources`' CUE check,
+  the port's timing of 20.9 again: each of `CUE.wav`'s channels equals
+  the port's capture at every one of its 3,280 frames, but the capture's
+  left channel sits one sample off its right. The check passed on the
+  flat gain slots alone.
+- The four input checks that failed on STEMS12 pass: main reverted the
+  port's DMA arm change (#975).
+- `verify_stems_units` 126 PASS, `verify_stems_menu` 93 PASS,
+  `verify_docs` 0 problems.
+- The image itself: `verify_dram_boot --existing-image` on this build
+  (`REMIX=lm-stems`, `out/` checked to hold STEMS13) boots to the
+  handoff, the loader ran once and its fatal hang never. The DRAM
+  runtime reads back equal to the linked one (579,328 bytes), except 28
+  declared mutable bytes and 43 the runtime wrote itself.
+
+**The tests, in order.** Use the project and the card of flash L's takes,
+with one set of samples on the Static machines for every take: those of
+flash L's third and fourth takes (`261104-2033`, `261104-2033-2`). Record
+every take at 24 bits, for about 30 to 60 seconds.
+
+1. T1 alone.
+2. Nine files, as `261104-2033`: T1 to T7, MAIN and CUE.
+3. Eleven files, as `261104-2032-2`: T1 to T7, MAIN, CUE, AB and CD.
+4. The eleven files again, twice more in a row.
+
+Then copy the logs (`/BRAIN/STEMS/<take>.TXT`) to `C:\Projects\Stem
+recordings`. In disk mode, keep USB MIDI on (#1039: with USB MIDI off,
+disk mode fails; it's open on main).
+
+**What the logs answer.**
+
+- The card's time a KB at nine and eleven files. Flash L's takes wrote at
+  234 and 423 µs a KB. If it falls toward the 1-file figure (54 to 82),
+  the card's cost was going back to half-written clusters. If it stays
+  at 230 to 420, it wasn't, and the per-command time is next (20.11).
+- `RING FULL` at eleven files: flash L's came 10 s into the take. Three
+  takes in a row also tell the card's own state apart from the take's
+  start (flash L's open question).
+- The `hook parts` lines. At seven tracks or more, `gains` should fall to
+  about 0.3 µs (STEMS12: about 1.4), and `mirror` by about 1.5 to
+  2.5 µs (20.10, inferred). If `mirror` falls only by its instructions,
+  the rest of its excess is elsewhere: instruction-cache fills are the
+  first candidate.
+- Take 1's hook mean against flash L's 10 µs.
+
+## Flash L — `octabam` + STEM REC: the hook's parts, the gain probe, the slot mask (staged 29 Oct 2026)
+
+**Flashed** on Yves's MKII. His card's logs of 4 Nov 2026 hold five takes,
+all at 24 bits (his folder, not the repository):
+
+| take | files | length | status | ring peak, frames | card while recording | hook mean, longest |
+|---|---|---|---|---|---|---|
+| `261104-2032` | T1 | 1 s | OK | 851 of 87,360 | 54 µs a KB | 10, 18 µs |
+| `261104-2032-2` | 11: T1 to T7, MAIN, CUE, AB, CD | 10 s | `RING FULL` | 7,922 of 7,922 | 423 µs a KB | 33, 61 µs |
+| `261104-2033` | 9: T1 to T7, MAIN, CUE | 20 s | OK | 2,565 of 9,687 | 234 µs a KB | 30, 55 µs |
+| `261104-2033-2` | 10: as 9, and AB | 19 s | OK | 2,766 of 8,716 | 252 µs a KB | 32, 57 µs |
+| `261104-2034` | 10: as 9, and AB | 49 s | OK | 7,147 of 8,716 (82%) | 387 µs a KB | 32, 62 µs |
+
+- Every WAV's length is its log's frame count × 16, with its `.ot` beside
+  it.
+- The hook parts add up to the hook's mean in every take. What they say
+  about the gain queue is in STEM_REC.md 20.9: it misses the cache in
+  part, and the queue is to go (`CLEANUP.md` 1.1).
+- `CUE.wav` is silent in every take: the project sends nothing to CUE
+  (Yves), as on STEMS11's 28 Oct take. So test 4 shows only that CUE
+  stays silent; the port's CUE question needs a take with a track sent to
+  CUE.
+- New: the card fell behind. STEMS11's eleven-file take
+  (`261028-2008-2`) wrote at 255 µs a KB and peaked at 34% in 49 s. Here
+  eleven files wrote at 423 µs a KB and filled the ring in 10 s, and ten
+  files peaked at 82% in 49 s at 387. Eleven files at 24 bits need
+  2.9 MB/s and ten 2.65 MB/s; the card gave 2.4 and 2.65 while recording.
+  The hook costs what it did (33 µs against 32), and STEM REC's writer is
+  unchanged since STEMS11.
+- What changed between the takes (Yves, 4 Nov 2026): AB and CD off for
+  the third take, one pair back on for the fourth, and other audio files
+  on the Static machines for the fifth. So the fourth and fifth takes
+  differ only in the samples the Static machines stream from the same
+  card: ✅ with them the card took 387 µs a KB against 252, 54% longer,
+  and the ring peaked at 82% against 32%. 🟡 Why those samples cost more
+  (their length, their channels, or where they lie on the card) isn't
+  measured.
+- 🟡 The `RING FULL` take isn't explained by that: it came before the
+  change, with the samples of the third and fourth takes, and its eleven
+  files are 10% more data than their ten. Open: the card's own state
+  (a flash card slows while it reorganizes, and this one took about
+  0.9 GB of takes on 2 and 3 Nov), the cost of a take's start (eleven new files at
+  once, in a 10-second take), or the image's other changes since
+  STEMS11's base (68 module files, among them USB #956 and HOOKS'
+  frame-interrupt entry and epilogue). Recording the eleven-file take two
+  or three times on one set of samples would tell the first two apart.
+
+`STEMS12`, the same remix as flashes I to K, on branch `stems-hookparts`
+(from `stems-next` at `ecfbb2ff`). It records as STEMS11 did; what's new
+is measurement, and one saving:
+
+- `STATS.TXT` has two more lines, `hook parts mean ns` and `hook parts
+  longest ns`. They split the hook's time into `mirror`, `buses`,
+  `gains` and `tracks`, and the means add up to the hook's mean
+  (STEM_REC.md 20.9).
+- `gains` is a probe: it times one load from each cache line of the gains
+  the tracks then use. About 0.1 µs at eight tracks means those lines stay
+  in the cache; about 2 µs or more means they don't.
+- The gain mirror writes only the gains of the tracks a take records. A
+  take of T1 alone ran about 1,553 hook instructions a frame on STEMS11
+  and runs 1,078 here (under the port).
+
+**The image.** Built 29 Oct 2026 at `83ac96ec` with the local remix
+`remixes/test/lm-stems` (as before): `make image REMIX=lm-stems BUILD=12
+VERSION=STEMS12`. The unit's OS version reads `STEMS12`. The simplify
+round after it (`d365fad3`) changes only instruction counts (STEM_REC.md
+20.9) and isn't in this image.
+
+| file | path | bytes | sha256 |
+|---|---|---|---|
+| card image | `out/OCTATRACK_STEMS12.bin` | 615,604 | `682234ba1fe58aebe85584439e0f7dc1cd44e2afc531caef0913d6edbdb9af46` |
+| MIDI image | `out/OCTATRACK_OS1.40C_STEMS12.syx` | 859,900 | `ee0322adc0d0fc9561e49f1c53078743d9e57ae90d0769f59c5120da97ed7ae4` |
+| remix switch | `out/LM-STEMS 12.RMX` | 1,283,078 | `daa3373b2019b83d6b20eeddc04f694bc3eb6ac873bd7f6dfe12a810327215df` |
+
+Copies are in `/home/yvez/xcheck/stems12`, checked against these sha256s
+after WSL's disk recovered (29 Oct 2026, 12:29). Under the port:
+
+- `verify_stems` 334 PASS, 5 FAIL. Four are the input checks main's port
+  fails since its re-pin, as on `stems-next`.
+- The fifth is `CUE.wav` against the port's audio-out capture. In that
+  capture, the cue's left word sits one sample off its right word;
+  `CUE.wav`'s left and right come from one sample, as `stems_bus16`
+  reads them. The same check passes on `stems-next` and on the simplify
+  round, with the same port and the same bus code: only the hook's length
+  differs. 🟡 So it's the port's timing, not the file. A listen on the
+  unit settles it (test 4).
+- `verify_stems_units` 120 PASS, `verify_stems_menu` 93 PASS,
+  `verify_docs` 0 problems.
+
+**The tests, in order.** The project of 28 Oct (STEMS11), every take at
+24 bits and about 30 to 60 seconds:
+
+1. T1 alone.
+2. Seven files.
+3. Eleven files, as `261028-2008-2`: T1 to T7, MAIN, CUE, AB, CD, every
+   track a Static machine with every trig filled.
+4. The same eleven with the Static tracks muted. Listen to that take's
+   `CUE.wav`: it should play the cue, with nothing out of place.
+
+Then send the four logs (`/BRAIN/STEMS/<take>.TXT`). Their `hook parts`
+lines answer STEM_REC.md 20.9: whether the gain queue misses the cache
+(`gains` at eleven files), and the slot mask's saving on the unit (take
+1's hook mean against STEMS11's 8 µs).
 
 ## Flash K — `octabam` + STEM REC: a folder for each take, T1 at 24 bits (staged 27 Oct 2026)
 
@@ -1003,7 +1243,7 @@ each would buy and its size. None is measured. (Moved from STEM_REC 20.8,
 | The writer at priority 2 (`stems-prio2`, STEM_REC 20.6) | Twelve files at 24 bits on a busy project: flash G's writer still waited 4.8 times its fastest write there | One constant; built, not flashed. A flash must listen to the Static voices and try the keys during a take |
 | Bigger writes per file when the writer is behind | Fewer switches between the files' streams on the card: its fastest write fell from 28 to 10 MB/s with twelve files (STEM_REC 17.6), cause unknown | Small: the per-pass cap in `stems_zwrite` |
 | One card command for a run of contiguous clusters | The file layer sends one command a cluster (STEM_REC 20.2); a run of clusters in one WRITE DMA cuts the per-command cost | Large: a write path beside the file layer's, keeping its FAT right |
-| The hook's stores cached, then one `cpushl` a line | About a quarter of the uncached stores' time in the audio interrupt (one burst a 16-byte line); the hook runs in supervisor mode, so the instruction is allowed there | Medium: a hardware probe first (STEM_REC 20.5); USB's audio-out packet build would gain the same |
+| ❌ The hook's stores cached, then one `cpushl` a line | ❌ Nothing, measured: Bryan T timed it on a unit (`docs/firmware/CHIP.md`, 26 Oct 2026). A dirty `cpushl` costs 80 ns and a cached store that misses fills its line first (~80 ns), against 36 ns an uncached store, so cache plus push costs about what the stores do. Until then: about a quarter of the uncached stores' time, inferred | Withdrawn 29 Oct 2026 |
 | A bounded wait on the card | A card that stops answering would end the take with an error instead of hanging the writer on the PIO path (STEM_REC 11.4) | Medium |
 | WRITE MULTIPLE (`0xC5`) for PIO cards | One interrupt a block of sectors instead of one a sector | Medium: PIO cards only; Yves's card writes by DMA |
 | Pre-shifted gains | The mirror stores `g << 8`, saving one shift a sample in the track loops: 128 instructions a frame at T1–T8 | Small |
@@ -1014,3 +1254,4 @@ each would buy and its size. None is measured. (Moved from STEM_REC 20.8,
 | T8's label stored with interrupts off | `stems_source_action` restores SR before it stores the label; a MASTER TRACK change in those few instructions leaves a stale `T8 [X]` or `T8 [ ]` until the next change. Who writes the MASTER TRACK byte isn't traced | One line moved |
 | A port gate that fills the ring and checks the samples | The hook writing up to the writer's place, checked sample for sample under the port. Today only flash G's take 1858 checks it, on the unit (STEM_REC 17.6) | Medium |
 | `RAW_WRITE`'s return value | `stems_zput` tests only its sign, as the writer did before this round; what a positive value means is open (STEM_REC 12.1) | Small, once STEM_REC 12.1 is answered |
+| A debug build | A release build without STATS.TXT, the hook's timing and the gain probe: about 140 instructions a frame at eight tracks under the port (the parts' marks and sums 56, the probe 84; 29 Oct 2026), the hook's own timing besides, and the log's code. Yves (29 Oct 2026): the diagnostics stay in STEM REC, not in BRAIN, and every build is a debug build for now | Small: one assembler symbol around the timing, the probe and `stems_stats`; the gates that read STATS.TXT run on the debug build |

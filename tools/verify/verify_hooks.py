@@ -4,14 +4,15 @@
 1. Selection: a bridge is on only with two or more of its participants; the
    registry appends HOOKS exactly then; the ledger refuses a bridged pair
    without it and accepts it with it; a malformed registration is refused.
-2. Behaviour, under Unicorn: the participants' own sources (REC_TRIG_MUTE's
-   submodule source unchanged, REC THRESHOLD, MORPH) linked with bridge.s
-   as the platform links them. hk_status_icon is run over every track
-   state, mute, arm, TRIG and blink phase, and compared with the model of
-   the two routines in HOOKS's order, and with the two routines called one
-   after the other; the opposite order is shown to lose the blink. The
-   [TRACK]-layer table is decoded and compared with track_key_records, with
-   REC_TRIG_MUTE standing in as a second track_key participant.
+2. Behaviour, under Unicorn: the participants' own sources (REC THRESHOLD,
+   FREE LOOP, MORPH, and REC_TRIG_MUTE's submodule source unchanged) linked
+   with bridge.s as the platform links them. hk_status_icon is run over
+   every track state, arm, TRIG, blink phase and FREE LOOP state, and
+   compared with the model of the two routines in HOOKS's order, and with
+   the two routines called one after the other; the opposite order is shown
+   to lose FREE LOOP's mark. The [TRACK]-layer table is decoded and compared
+   with track_key_records, with REC_TRIG_MUTE standing in as a second
+   track_key participant.
    The frame interrupt's entry and epilogue chains and the boot chain are
    run with LOAD METER, CF METER, BOOT TRACE and STORE built with
    HOOKS's flags: one prologue and one epilogue, every participant's work
@@ -40,6 +41,7 @@ from remix import ledger, registry, schema  # noqa: E402
 DECL = runpy.run_path(str(ROOT / "modules/hooks/manifest.py"))
 RTM = "REC_TRIG_MUTE"
 THR = "REC THRESHOLD"
+FL = "FREE LOOP"
 BASE_IMG = 0x40000400
 fails = 0
 
@@ -65,20 +67,23 @@ def selection():
     check(ledger.check(m("STORE", "BOOT TRACE", "MIDI LOOPBACK", "EVENTS", "HOOKS")) == [],
           "STORE native Part boot bridge: claims and requirements are clean")
     check(bridged({RTM, "MORPH"}) == (), "REC_TRIG_MUTE + MORPH: no bridge (REC_TRIG_MUTE leaves the [TRACK] layer alone)")
-    check(bridged({RTM, THR}) == ("status_icon",), "REC_TRIG_MUTE + REC THRESHOLD: status_icon only")
-    check(bridged({RTM, THR, "MORPH"}) == ("status_icon",), "all three: status_icon only")
+    check(bridged({RTM, THR}) == () and bridged({RTM, THR, "MORPH"}) == (),
+          "REC_TRIG_MUTE + REC THRESHOLD (+ MORPH): no bridge (REC_TRIG_MUTE's mute dots are at the tab letter)")
+    check(bridged({THR, FL}) == ("status_icon",), "REC THRESHOLD + FREE LOOP: status_icon only")
+    check(bridged({RTM, FL}) == ("rec_gate",), "REC_TRIG_MUTE + FREE LOOP: rec_gate only (the icon drawer is FREE LOOP's)")
+    check(bridged({RTM, THR, FL}) == ("status_icon", "rec_gate"), "all three: status_icon and rec_gate")
     check(bridged({"ANALOG BD", "OCTA303"}) == ("machine_rows",), "ANALOG BD + OCTA303: machine_rows only")
     check(DECL["select"](set()) == {"linked": (), "detours": (), "symbol_refs": (), "overrides": (), "pokes": ()},
           "an empty selection: HOOKS has no unit, claim or override")
-    check(not registry.hooks_needed(known, {RTM, THR} - {THR}) and
-          registry.hooks_needed(known, {RTM, THR}), "registry.hooks_needed follows the bridges")
+    check(not registry.hooks_needed(known, {THR}) and not registry.hooks_needed(known, {RTM, THR}) and
+          registry.hooks_needed(known, {THR, FL}), "registry.hooks_needed follows the bridges")
     for name, want in (("octabam", True), ("morph", False), ("rec-threshold", False), ("hooks", True)):
         try:
             has = "HOOKS" in registry.remix(name).modules
         except SystemExit:
             continue
         check(has == want, f"remix {name}: HOOKS {'appended' if want else 'not appended'}")
-    for sel in ((RTM, THR), ("ANALOG BD", "OCTA303")):
+    for sel in ((THR, FL, "STORE"), (RTM, FL, "STORE"), ("ANALOG BD", "OCTA303")):
         bad = ledger.check(m(*sel))
         check(any(p.startswith("hooks:") for p in bad), f"{' + '.join(sel)} without HOOKS is refused")
         check(ledger.check(m(*sel, "HOOKS")) == [], f"{' + '.join(sel)} with HOOKS is clean")
@@ -108,11 +113,11 @@ def selection():
 @contextlib.contextmanager
 def standin_track_key():
     """track_key has one real participant (MORPH). The table is built and linked
-    with REC_TRIG_MUTE standing in as a second one: it replaces YES with rtm_glyph
+    with REC_TRIG_MUTE standing in as a second one: it replaces YES with rtm_dots
     and NO with rtm_trel, routines its source defines."""
     g = DECL["track_key_records"].__globals__
     real = g["TRACK_KEY"]
-    both = (("REC_TRIG_MUTE", ((0x31, "rtm_glyph", "rtm_glyph"), (0x32, "rtm_trel", "rtm_trel")), (), False),) + real
+    both = (("REC_TRIG_MUTE", ((0x31, "rtm_dots", "rtm_dots"), (0x32, "rtm_trel", "rtm_trel")), (), False),) + real
     g["TRACK_KEY"] = DECL["BRIDGES"]["track_key"] = both
     try:
         yield
@@ -121,13 +126,16 @@ def standin_track_key():
 
 
 def _link(work):
-    """bridge.s, REC_TRIG_MUTE, REC THRESHOLD and MORPH linked as one runtime,
-    as platform_build.link_runtime links DRAM units: each assembled for the
-    chip, one ld. Returns (image bytes, base, symbols)."""
-    keys = {RTM, THR, "MORPH"}
+    """bridge.s, REC_TRIG_MUTE, REC THRESHOLD, FREE LOOP and MORPH linked as one
+    runtime, as platform_build.link_runtime links DRAM units: each assembled for
+    the chip (FREE LOOP as its select builds it beside REC_TRIG_MUTE), one ld.
+    Returns (image bytes, base, symbols)."""
+    from remix.schema import apply_select
+    keys = {RTM, THR, FL, "MORPH"}
     (work / "remix.inc").write_text(DECL["hooks_inc"](keys))
     known = registry.modules()
-    units = [(k, u) for k in (RTM, THR, "MORPH") for u in known[k].linked] + [("HOOKS", DECL["UNIT"])]
+    units = [(k, u) for k in (RTM, THR, FL, "MORPH") for u in apply_select(known[k], keys).linked] + \
+        [("HOOKS", DECL["UNIT"])]
     objs = []
     for i, (_k, u) in enumerate(units):
         obj = work / f"{i}_{u.label}.o"
@@ -136,8 +144,8 @@ def _link(work):
                         "-o", str(obj), str(ROOT / u.source)], check=True, capture_output=True)
         objs.append(str(obj))
     base = 0x41000000
-    # MORPH calls STORE's file routines, which nothing here runs: only its key
-    # handlers' addresses are read, so those references are left unresolved.
+    # MORPH and FREE LOOP call STORE's file routines, which nothing here runs:
+    # only their hooks are run, so those references are left unresolved.
     subprocess.run(["m68k-elf-ld", f"-Ttext=0x{base:x}", "--unresolved-symbols=ignore-all",
                     "-o", str(work / "rt.elf"), *objs],
                    check=True, capture_output=True)
@@ -165,7 +173,7 @@ def behaviour():
     u.mem_write(DONE, b"\x4e\x71")
     u.mem_write(BANK_PTR, BANK.to_bytes(4, "big"))
     u.mem_write(PART_IDX, b"\x00")
-    mask, armed, blink = sym["RTM_MASK"], sym["armed"], sym["blink"]
+    armed, blink, fl_armed, fl_odub = sym["armed"], sym["blink"], sym["fl_armed"], sym["fl_odub"]
 
     def trig_addr(t):                                  # thresh.s rec_addr, Part 0, +3
         return BANK + 0x8F382 + 12 * t + 3
@@ -181,46 +189,50 @@ def behaviour():
         return (u.reg_read(UC_M68K_REG_A4), u.reg_read(UC_M68K_REG_A0),
                 int.from_bytes(u.mem_read(armed + 4 * t, 4), "big"))
 
-    def state(t, muted, arm, trig, off):
-        u.mem_write(mask, bytes([(1 << t) if muted else 0]))
+    def state(t, fl, arm, trig, off):
+        u.mem_write(fl_armed, bytes([(1 << t) if fl == "armed" else 0]))
+        u.mem_write(fl_odub, bytes([(1 << t) if fl == "odub" else 0]))
         u.mem_write(armed + 4 * t, (0x8010 if arm else 0).to_bytes(4, "big"))
         u.mem_write(trig_addr(t), bytes([trig]))
         u.mem_write(blink, ((1 << 10) if off else 0).to_bytes(4, "big"))
 
-    def model(t, a4, muted, arm, trig, off, order=("rtm", "thr")):
+    def model(t, a4, fl, arm, trig, off, order=("thr", "fl")):
         armed_after = 0x8010 if arm else 0
         for step in order:
-            if step == "rtm" and muted and not a4 & 2:
-                a4 = (a4 & 1) + 8
             if step == "thr" and arm:
                 if trig != 3:
                     armed_after = 0
                 elif off:
                     a4 |= 0x10
+            if step == "fl":           # overdubbing: a dot; armed and not recording: a ring
+                if fl == "odub":
+                    a4 = (a4 & 1) | 12
+                elif fl == "armed" and not a4 & 2:
+                    a4 = (a4 & 1) | 10
         return a4, armed_after
 
     n = bad = bad_seq = 0
     lost = False
     for t in (0, 5):
         for a4 in range(4):
-            for muted in (0, 1):
+            for fl in (None, "armed", "odub"):
                 for arm in (0, 1):
                     for trig in (3, 1):
                         for off in (0, 1):
-                            state(t, muted, arm, trig, off)
+                            state(t, fl, arm, trig, off)
                             got = run(sym["hk_status_icon"], t, a4)
-                            want = model(t, a4, muted, arm, trig, off)
-                            state(t, muted, arm, trig, off)
-                            mid = run(sym["rtm_glyph"], t, a4)
-                            seq = run(sym["blink_gate"], t, mid[0])
+                            want = model(t, a4, fl, arm, trig, off)
+                            state(t, fl, arm, trig, off)
+                            mid = run(sym["blink_gate"], t, a4)
+                            seq = run(sym["fl_glyph"], t, mid[0])[:2] + mid[2:]
                             n += 1
                             bad += (got[0], got[2]) != want or got[1] != CACHE
                             bad_seq += got != seq
-                            rev = model(t, a4, muted, arm, trig, off, ("thr", "rtm"))
-                            lost |= rev[0] != want[0]
+                            rev = model(t, a4, fl, arm, trig, off, ("fl", "thr"))
+                            lost |= rev[0] != want[0] and not 10 <= rev[0] <= 13
     check(bad == 0, f"hk_status_icon matches the model in all {n} states (a0 = the cache on return)")
-    check(bad_seq == 0, "hk_status_icon equals rtm_glyph then blink_gate, called one after the other")
-    check(lost, "the opposite order loses the blink on a muted, armed track (why HOOKS folds first)")
+    check(bad_seq == 0, "hk_status_icon equals blink_gate then fl_glyph, called one after the other")
+    check(lost, "the opposite order loses FREE LOOP's mark on a track REC THRESHOLD blinks (why HOOKS calls it last)")
 
     with standin_track_key():
         recs = DECL["track_key_records"]({RTM, THR, "MORPH"})
@@ -230,7 +242,7 @@ def behaviour():
     decoded = [(table[i * 0x1A], int.from_bytes(table[i * 0x1A + 2:i * 0x1A + 6], "big"),
                 int.from_bytes(table[i * 0x1A + 6:i * 0x1A + 10], "big")) for i in range(len(recs))]
     check(decoded == [(c, resolve(p), resolve(r)) for c, p, r in recs],
-          f"the [TRACK]-layer table: {len(recs)} records, YES/NO -> rtm_glyph/rtm_trel (REC_TRIG_MUTE standing in), UP/DOWN -> MORPH")
+          f"the [TRACK]-layer table: {len(recs)} records, YES/NO -> rtm_dots/rtm_trel (REC_TRIG_MUTE standing in), UP/DOWN -> MORPH")
     check(all(not any(table[i * 0x1A + 10:i * 0x1A + 0x1A]) and table[i * 0x1A + 1] == 0
               for i in range(len(recs))) and table[len(recs) * 0x1A] == 0xFF,
           "each record's padding is zero and stock's terminator follows")
@@ -628,10 +640,10 @@ def machines(on=("ANALOG BD", "OCTA303")):
 
 
 def free_loop():
-    """rec_gate and icon_draw (codeless), under Unicorn: FREE LOOP built with
-    HK_REC_GATE / HK_ICON_DRAW (its select) and REC_TRIG_MUTE, linked as the
-    platform links them. The recorder-trig test is an AND of the two; the
-    drawer draws FREE LOOP's states 10..13, then REC_TRIG_MUTE's 8 / 9."""
+    """rec_gate (codeless), under Unicorn: FREE LOOP built with HK_REC_GATE
+    (its select) and REC_TRIG_MUTE, linked as the platform links them. The
+    recorder-trig test is an AND of the two. The icon drawer is FREE LOOP's
+    alone: its states 10..13, stock's 3, nothing else."""
     from unicorn import m68k_const as mc
     from remix.schema import apply_select
     known = registry.modules()
@@ -681,16 +693,15 @@ def free_loop():
     check(bad == 0, f"rec_gate: {n} cases -- a recorder trig fires only when FREE LOOP's role lets it and "
                     f"REC_TRIG_MUTE has not muted the track; d2 = 0x91a on both exits")
     bad = n = 0
-    descs = {8: sym.get("D_DOTSS"), 9: sym.get("D_DOTSP"), 10: sym["fl_ring_stop"], 11: sym["fl_ring_play"],
-             12: sym["fl_dot_stop"], 13: sym["fl_dot_play"]}
+    descs = {10: sym["fl_ring_stop"], 11: sym["fl_ring_play"], 12: sym["fl_dot_stop"], 13: sym["fl_dot_play"]}
     for state in (0, 1, 3, 8, 9, 10, 11, 12, 13, 14):
         want = GO if state == 3 else BLIT if state in descs else SKIP
         pc, _ = run(sym["fl_draw"], (want,) + tuple(x for x in (GO, BLIT, SKIP) if x != want), {12: state})
         drawn = int.from_bytes(u.mem_read(u.reg_read(mc.UC_M68K_REG_A7), 4), "big") if pc == BLIT else None
         n += 1
         bad += pc != want or (pc == BLIT and descs[state] is not None and drawn != descs[state])
-    check(bad == 0, f"icon_draw: {n} states -- 3 stock's, 10..13 FREE LOOP's marks, 8 / 9 REC_TRIG_MUTE's mute "
-                    f"dots, any other nothing drawn")
+    check(bad == 0, f"fl_draw: {n} states -- 3 stock's, 10..13 FREE LOOP's marks, any other (8 / 9 included: "
+                    f"REC_TRIG_MUTE's dots are at the tab letter now) nothing drawn")
 
 
 def installed(name):

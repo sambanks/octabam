@@ -257,15 +257,15 @@ fire:
 
 | ---- the track's mark at the screen edge, beside its status icon: a dot
 | over it while it overdubs, a ring blinking at 2 Hz while armed. The form of
-| REC_TRIG_MUTE's rtm_glyph and rtm_draw (Zac-Kyoti/octatrack-kyoti-fw, MIT),
-| with FREE LOOP's states.
+| REC_TRIG_MUTE's former rtm_glyph and rtm_draw (Zac-Kyoti/octatrack-kyoti-fw,
+| MIT, before its pin moved past 553d8d2), with FREE LOOP's states.
 |
 | The edge renderer 0x4004bee2: `jsr fl_glyph` replaces `lea 0x400c0cb8,%a0`.
 | d3 = track, a4 = state (bit 0 playing, bit 1 the recorder live); folded in:
 | 12 | playing overdubbing (the pass may be another recorder's), 10 | playing
 | armed (blink on) and not recording, so the stock cache
 | redraws on each change.
-fl_glyph:                               | d0 / d1 only, as rtm_glyph: the rest is the renderer's
+fl_glyph:                               | d0 / d1 only: the rest is the renderer's
         mvz.b   fl_odub,%d0
         btst    %d3,%d0
         beq.s   1f
@@ -307,11 +307,7 @@ fl_draw:
         lea     fl_dot_play,%a0         | 13: overdubbing, playing
         subq.l  #1,%d0
         beq.s   2f
-        .ifdef  HK_ICON_DRAW            | beside REC_TRIG_MUTE (modules/hooks icon_draw):
-        jmp     rtm_draw                | its mute dots (8 / 9), else nothing to draw
-        .else
         jmp     0x4004c02a              | nothing to draw
-        .endif
 2:      pea     49(%a2)
         move.l  %a3,-(%sp)              | 7 wide, at x like stock's "+>"
         pea     0x400bf10a              | the plane

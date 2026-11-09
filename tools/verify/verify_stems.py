@@ -40,6 +40,7 @@ chip (the port has its own), and how a take plays back (its level, its
 tempo). A run ends at a fixed frame count, so a writer that got slower
 fails it before its files are complete (21 Oct 2026, the take folder).
 """
+import bisect
 import json
 import os
 import pathlib
@@ -1232,11 +1233,15 @@ def cut(s):
     # set only at the end, so a cut-off take is a 0-byte file even though
     # the writer had streamed most of it. A change here means the writer
     # started setting the length during the take.
-    # Two chunks streamed: since zero copy rd counts the whole frames in the
-    # sectors written, and the header takes 44 bytes of the first, so two
-    # chunks of T1 (128 sectors) hold 1,023 frames (STEM_REC.md 20.7).
+    # Two passes streamed: since zero copy rd counts the whole frames in the
+    # sectors written, and the header takes 44 bytes of the first, so the
+    # first chunk of T1 (64 sectors) holds 511 frames (STEM_REC.md 20.7).
+    # The second pass writes the whole sectors waiting when it runs, which
+    # the writer's timing under the port decides: 64 until the flat gains'
+    # shorter hook, 63 since (4 Nov 2026), and while recording it rounds
+    # down to the card's cluster (20.11). So more than a chunk, not exactly two.
     check("cut: a take cut off mid-way is a 0-byte T1.wav, its streamed audio unreachable (known)",
-          st == ST_RECORDING and rd >= (2 * CHUNK_FRAMES * 64 - 44) // 64 and data is not None and len(data) == 0,
+          st == ST_RECORDING and rd > CHUNK_FRAMES and data is not None and len(data) == 0,
           f"state {st}, {nfr} frames recorded, {rd} streamed, T1.wav {None if data is None else len(data)} bytes")
 
 
@@ -1321,11 +1326,12 @@ def same_as_alone(s):
               a[3] == g[3] and fa == fg and len(fa) > 0, f"{a[3]} vs {g[3]}, {len(fa)} and {len(fg)} files")
 
 
-HOOK_SIDE = ("stems_frame_hook", "stems_mirror", "stems_emac_in", "stems_emac_out", "stems_half",
-             "stems_track16", "stems_track24", "stems_bus_src",
-             "stems_bus16", "stems_bus24", "stems_stage", "stems_bus_frame", "stems_layout",
-             "stems_trace_frame", "stems_m8check")
-HOOK_CEILING = 4972   # the measured worst case, everything at 24 bits, since zero copy (5,012 in STEMS5)
+HOOK_CEILING = 4468   # the measured worst case, everything at 24 bits, counted over the hook's whole
+                      # block, with every fader at rest as the port's are: flat gain slots (4 Nov 2026,
+                      # STEM_REC.md 20.10; a fader that moves costs its slot what it did before);
+                      # 5,252 after 20.9's simplify round (29 Oct 2026), 5,316 with the mirror's slot mask before
+                      # the simplify round, 5,294 with the gain probe, 5,210 with the hook's parts;
+                      # 4,972 since zero copy left out stems_zframe's 182 (5,154 with it); 5,012 in STEMS5
                       # (7 Oct 2026; STEM_REC.md 20.1); 7,415 before it, and 5,000 until
                       # Yves's decision of 4 Oct 2026 to test the cost on the unit (spec 4.6)
 
@@ -1333,28 +1339,27 @@ HOOK_CEILING = 4972   # the measured worst case, everything at 24 bits, since ze
 def hook_cost(s, cov):
     """Instructions the hook runs a frame, from a --coverage file (one
     `hexaddr count` line per instruction from the transport start): the
-    counts inside the hook's routines (each from its symbol to the next
-    symbol), over the times its first instruction ran (STEM_REC.md 10.0).
-    Returns (per frame, frames, {routine: per frame})."""
-    starts = sorted(set(s.values()))
-    spans = []
-    for name in HOOK_SIDE:
-        a = s[name]
-        nxt = next((x for x in starts if x > a), a + 0x1000)
-        spans.append((name, a, nxt))
+    counts inside the hook's block, stems_frame_hook up to stems_hook_end,
+    where stems.s keeps every routine the hook calls (a list of names
+    missed stems_zframe from zero copy to 29 Oct 2026, STEM_REC.md 20.9),
+    over the times its first instruction ran (STEM_REC.md 10.0). Returns
+    (per frame, frames, {routine: per frame}), each routine from its
+    symbol to the next."""
+    lo, hi = s["stems_frame_hook"], s["stems_hook_end"]
+    routines = sorted((a, name) for name, a in s.items() if lo <= a < hi)
+    starts = [a for a, _ in routines]
     total, frames, split = 0, 0, {}
     for line in pathlib.Path(cov).read_text().splitlines():
         f = line.split()
         if len(f) != 2:
             continue
         a, n = int(f[0], 16), int(f[1])
-        if a == s["stems_frame_hook"]:
+        if a == lo:
             frames = n
-        for name, lo, hi in spans:
-            if lo <= a < hi:
-                total += n
-                split[name] = split.get(name, 0) + n
-                break
+        if lo <= a < hi:
+            total += n
+            name = routines[bisect.bisect_right(starts, a) - 1][1]
+            split[name] = split.get(name, 0) + n
     per = {k: v // frames for k, v in split.items()} if frames else {}
     return (total // frames if frames else None), frames, per
 
@@ -1362,9 +1367,13 @@ def hook_cost(s, cov):
 def cost(s):
     """Gate 7: everything on at 24 bits, the eight-track THRU fixture, a take
     armed before play: at most HOOK_CEILING instructions a frame; and the
-    cost with the recorder idle (the mirror alone), recorded. The detail
-    splits the count by routine."""
-    for tag, before, src, fmt in (("costrec", None, 0xfff, 0b001), ("costidle", (), 0x0ff, 0b110)):
+    cost with the recorder idle (the mirror alone), and of a take of T1 alone
+    at 24 bits (the default: the mirror writes one slot's gains, 29 Oct
+    2026), recorded. The detail splits the count by routine."""
+    runs = (("costrec", None, 0xfff, 0b001, HOOK_CEILING, "everything on at 24 bits"),
+            ("costidle", (), 0x0ff, 0b110, None, "with the recorder idle (the mirror)"),
+            ("costt1", None, 0x001, 0b111, None, "recording T1 alone at 24 bits"))
+    for tag, before, src, fmt, ceiling, what in runs:
         cov = run_path(tag, "cov")
         log, *_ = port(s, 400, tag=tag, fixture=FIXTURE_THRU, mask=None, dump_blocks=False, calls_before=before,
                        pokes_before=[(s["stems_tracks"] + 2, src >> 8), (s["stems_tracks"] + 3, src & 0xff),
@@ -1372,12 +1381,91 @@ def cost(s):
                        extra=("--coverage", str(cov)))
         per, frames, split = hook_cost(s, cov) if cov.exists() else (None, 0, {})
         top = ", ".join(f"{k} {v}" for k, v in sorted(split.items(), key=lambda kv: -kv[1]) if v)
-        if tag == "costrec":
-            check(f"cost: at most {HOOK_CEILING} hook instructions a frame, everything on at 24 bits",
-                  per is not None and per <= HOOK_CEILING, f"{per} a frame over {frames} frames ({top})")
-        else:
-            check("cost: the hook with the recorder idle (the mirror) is measured", per is not None,
-                  f"{per} a frame over {frames} frames ({top})")
+        name = (f"cost: at most {ceiling} hook instructions a frame, {what}" if ceiling
+                else f"cost: the hook {what} is measured")
+        check(name, per is not None and (ceiling is None or per <= ceiling),
+              f"{per} a frame over {frames} frames ({top})")
+
+
+def wav_writes(cmds, card_path, card_in):
+    """A --cmd-log-end log's writes to the take's WAV files, against the
+    card's clusters (FAT16): (writes, leaving a cluster half written: ending
+    inside it with the next write elsewhere, coming back to one: starting
+    inside a cluster the write before didn't end in, so the card was
+    elsewhere in between, the card's sectors a cluster). Two writes in turn,
+    as at a ring's end, are one run on the card. A take still recording
+    has no WAV chains yet (a file's entry gets its cluster when it closes),
+    so the WAVs' clusters are those free on the card before the run
+    (`card_in`) that no directory on the card after it holds; directory
+    and FAT writes don't count."""
+    img, old = pathlib.Path(card_path).read_bytes(), pathlib.Path(card_in).read_bytes()
+    part = struct.unpack_from("<I", img, 0x1c6)[0] if img[0x1fe:0x200] == b"\x55\xaa" and img[0x1c2] else 0
+    b = part * 512
+    spc, rsv, nfat = img[b + 13], struct.unpack_from("<H", img, b + 14)[0], img[b + 16]
+    nroot, spf = struct.unpack_from("<H", img, b + 17)[0], struct.unpack_from("<H", img, b + 22)[0]
+    fat0 = part + rsv
+    root = fat0 + nfat * spf
+    data = root + (nroot * 32 + 511) // 512
+    entry = lambda m, c: struct.unpack_from("<H", m, fat0 * 512 + 2 * c)[0]    # noqa: E731
+    dirs, todo = set(), [img[root * 512:data * 512]]
+    while todo:                                     # every directory's clusters, from the root down
+        ents = todo.pop()
+        for o in range(0, len(ents) - 31, 32):
+            e = ents[o:o + 32]
+            if e[0] == 0:
+                break
+            if e[0] == 0xe5 or e[11] == 0x0f or not e[11] & 0x10 or e[0] == 0x2e:
+                continue
+            c, body = struct.unpack_from("<H", e, 26)[0], b""
+            while 2 <= c < 0xfff8 and c not in dirs:
+                dirs.add(c)
+                at = (data + (c - 2) * spc) * 512
+                body += img[at:at + spc * 512]
+                c = entry(img, c)
+            todo.append(body)
+    n = inside = back = 0
+    prev_end = None
+    for line in pathlib.Path(cmds).read_text().splitlines():
+        f = line.split()
+        if len(f) < 3 or f[0] != "WRITE":
+            continue
+        lba, count = int(f[1]), int(f[2])
+        c = (lba - data) // spc + 2
+        if lba < data or c in dirs or entry(old, c) != 0:
+            continue
+        start, end = lba - data, lba - data + count
+        n += 1
+        inside += prev_end is not None and prev_end % spc != 0 and start != prev_end
+        back += start % spc != 0 and start != prev_end
+        prev_end = end
+    inside += prev_end is not None and prev_end % spc != 0
+    return n, inside, back, spc
+
+
+def clusters(s):
+    """STEM_REC.md 20.11, CLEANUP.md 2.1: on a card of 32 KB clusters, as
+    the unit's card is formatted, a take of T1 and T2 in stereo and A and
+    B in mono, at 24 bits (chunks of 96 and 48 sectors against a cluster's
+    64), writes whole clusters while it records: no write to a WAV ends
+    inside a cluster, and none comes back to a cluster it left half
+    written. The 2 KB clusters of the other fixtures hide both. Four files
+    and 8,000 frames: the port's card takes about 18 ms a command, and each
+    file's creation reads whole 32 KB directory clusters, so a 14-file take
+    of 3,000 frames was still creating its files (4 Nov 2026)."""
+    cmds = run_path("clusters", "cmds")
+    _, _, card, words, _ = port(s, 8000, tag="clusters", fixture=FIXTURE_THRU64, mask=None, dump_blocks=False,
+                                pokes_before=[(s["stems_tracks"] + 2, 0x34), (s["stems_tracks"] + 3, 0x03),
+                                              (s["stems_fmt"] + 3, 0b001)],
+                                extra=("--cmd-log-end", str(cmds)))
+    card_in = json.loads(FIXTURE_THRU64.read_text())["card"]
+    n, inside, back, spc = (wav_writes(cmds, card, card_in) if cmds.exists() and pathlib.Path(card).exists()
+                            else (0, 0, 0, 0))
+    check("clusters: the card has 32 KB clusters and the take streamed its WAVs", spc == 64 and n >= 20,
+          f"{spc} sectors a cluster, {n} writes to the WAVs, state {words[0] if words else None}, "
+          f"{words[4] if words else None} of {words[5] if words else None} frames on the card")
+    check("clusters: recording, every write to a WAV ends on a cluster and none comes back to one",
+          n > 0 and inside == 0 and back == 0,
+          f"{n} writes, {inside} ending inside a cluster, {back} coming back to one")
 
 
 def nocard(s):
@@ -1397,6 +1485,7 @@ def nocard(s):
 FIXTURE8 = pathlib.Path("out/stems_fixture8.json")   # tools/verify/stems_fixture.py --eight
 FIXTURE32 = pathlib.Path("out/stems_fixture32.json")   # tools/verify/stems_fixture.py --fat32
 FIXTURE_THRU = pathlib.Path("out/stems_fixture_thru.json")   # stems_fixture.py --thru
+FIXTURE_THRU64 = pathlib.Path("out/stems_fixture_thru64.json")   # --thru64: the THRU card, 32 KB clusters
 FIXTURE_THRU1 = pathlib.Path("out/stems_fixture_thru1.json")   # stems_fixture.py --thru1
 FIXTURE_THRU1_HOT = pathlib.Path("out/stems_fixture_thru1hot.json")         # --thru1hot: a full-scale input
 FIXTURE_THRU1_MASTER = pathlib.Path("out/stems_fixture_thru1master.json")   # --thru1master: MASTER TRACK on
@@ -1407,8 +1496,8 @@ LEVEL_STEPS = ((60, 64), (61, 100), (90, 20), (120, 127))   # two steps a frame 
 GTAB_OFF, GTAB_LEN = 0xe9d8a, 258 * 3      # STEM_REC.md 18.4: X:0x6c00's words in the stock slice
 FIXTURE_MODES = [("", FIXTURE), ("--eight", FIXTURE8), ("--fat32", FIXTURE32),
                  ("--thru1", FIXTURE_THRU1), ("--thru1hot", FIXTURE_THRU1_HOT),
-                 ("--thru1master", FIXTURE_THRU1_MASTER),
-                 ("--thru", FIXTURE_THRU)]   # the --thru1 builds pass through the THRU card: before --thru
+                 ("--thru1master", FIXTURE_THRU1_MASTER), ("--thru64", FIXTURE_THRU64),
+                 ("--thru", FIXTURE_THRU)]   # the --thru1 and --thru64 builds pass through the THRU card: before --thru
 CARD_READY = 0x460d1cb8     # emu_card.FW_CARD_READY: := 1 after the firmware's card init and mount
 SUFFIX = ""                 # appended to every run's tag: "32" while the FAT32 checks run
 
@@ -1507,6 +1596,9 @@ def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE,
     ring = nums(r"ring peak (\d+) of (\d+) frames")
     wr = nums(r"card writes (\d+), (\d+) ms in all, longest (\d+) us")
     hook = nums(r"hook mean (\d+) us, longest (\d+) us")
+    part_re = r"mirror (\d+), buses (\d+), gains (\d+), tracks (\d+)"
+    pmean = nums(r"hook parts mean ns: " + part_re)
+    plong = nums(r"hook parts longest ns: " + part_re)
     frame = nums(r"routine mean (\d+) us, longest (\d+) us, (\d+) frames")
     check(f"{tag}: STATS.TXT names the take and its status",
           t.startswith(f"STEM REC STATS {names[0]}\r\n") and f"\r\nstatus {status}\r\n" in t, repr(t[:60]))
@@ -1519,6 +1611,14 @@ def stats_check(card_path, tag, nfr, nfiles, bits, status="OK", fixture=FIXTURE,
           ring is not None and hook is not None and frame is not None and 0 < hook[0] <= hook[1]
           and hook[0] <= frame[0] <= frame[1] and abs(frame[2] - nfr) <= 2,
           f"ring {ring}, hook {hook}, frame {frame}")
+    # The parts are differences of marks between the hook's entry and end, so
+    # their means add up to the hook's mean; each figure is truncated, the
+    # hook's to whole µs.
+    check(f"{tag}: STATS.TXT splits the hook into four parts that add up to it",
+          hook is not None and pmean is not None and plong is not None
+          and abs(sum(pmean) / 1000 - hook[0]) <= 1
+          and all(m <= l for m, l in zip(pmean, plong)) and max(plong) < (hook[1] + 1) * 1000,
+          f"hook {hook}, parts mean {pmean}, longest {plong}")
     img = pathlib.Path(card_path).read_bytes()        # the volume's boot sector: MBR entry 0, else sector 0
     part = struct.unpack_from("<I", img, 0x1c6)[0] if img[0x1fe:0x200] == b"\x55\xaa" and img[0x1c2] else 0
     spc = img[part * 512 + 13]
@@ -2314,7 +2414,7 @@ def main():
             ("stream", stream), ("wrap", wrap), ("cap", cap), ("eight", eight)]
     runs += [(f"mask{m:02x}", lambda s, m=m: mask_take(s, m, f"mask{m:02x}"))
              for m in (0x01, 0x03, 0x0F, 0xFF, 0xA5)]
-    runs += [("cost", cost), ("same_as_alone", same_as_alone), ("cut", cut), ("labels", labels), ("labelsbehind", labelsbehind), ("nocard", nocard), ("exists", exists),
+    runs += [("cost", cost), ("clusters", clusters), ("same_as_alone", same_as_alone), ("cut", cut), ("labels", labels), ("labelsbehind", labelsbehind), ("nocard", nocard), ("exists", exists),
              ("logblocked", logblocked), ("logtaken", logtaken), ("tempochange", tempochange), ("crowded", crowded),
              ("overflow", overflow), ("cardfail", cardfail)]
     if "--long" in sys.argv:
