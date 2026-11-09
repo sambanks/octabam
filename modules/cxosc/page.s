@@ -10,8 +10,9 @@
 | (64=0c); MIX 0..127. Icons: operators (RATO), sidebands (INDX), folded
 | sine (FOLD); FINE+MIX = stock dials. SETUP: CMOR MMOR DEC SYMM FDBK PWM.
 | Footer CX OSC>FLEX.
-| Knobs: po_knob — one unit a detent; PTCH pressed ×3 (others ×7); FUNC:
-| PTCH snaps −32/0/+32, FINE/FOLD/INDX/MIX 16, RATO next classic snap ≤4.01.
+| Knobs: po_knob — one unit a detent (PTCH never pressed-accel); other
+| slots pressed ×7; FUNC: PTCH ±12 (octave), FINE/FOLD/INDX/MIX ×16,
+| RATO next classic snap ≤4.01.
 | Non-CX tracks draw as stock.
 |
 | HOW: the page descriptor resolver 0x40031da4(track, page kind) returns
@@ -33,7 +34,7 @@
 | formatters (P+0xca), the five B widgets (P+0xfe slots 1..2, P+0x106
 | slot 3 FOLD, P+0x10a slots 4..5), the enable nibbles (P+0x18e: 5/7 =
 | bit 2 "always show the value") and, since the tuning system, PTCH's
-| minimum and count (P+0x6a, P+0x9a: 32 and 65 → −32..+32), FINE's default
+| minimum and count (P+0x6a, P+0x9a: 0 and 128 → −64..+63), FINE's default
 | (P+0x5e+3: 64) and the two knob handlers (P+0x12a, +12: 0) -- storage,
 | locks, scenes, LFOs and MIDI reach the bytes exactly as before. The
 | stock record itself is never written, and this file carries none of
@@ -127,9 +128,9 @@ pg_over:
         .short  0x061, 1
         .long   pg_def64                 | P+0x05e+3: FINE's default, 64 = 0 cents
         .short  0x06a, 4
-        .long   pg_l32                   | P+0x06a: PTCH's minimum, 32 (raw 64 = 0) ...
+        .long   pg_zero                  | P+0x06a: PTCH's minimum, 0 (raw 64 = 0) ...
         .short  0x09a, 4
-        .long   pg_l65                   | P+0x09a: ... and count, 65: raw 32..96 = -32..+32 semitones
+        .long   pg_l128                  | P+0x09a: ... and count, 128: raw 0..127 = -64..+63 semitones
         .short  0x0ca, 24
         .long   pg_fmts                  | P+0x0ca: the six A formatters
         .short  0x0fe, 8
@@ -156,10 +157,8 @@ pg_def64:
         .align  4
 pg_zero:
         .long   0
-pg_l32:
-        .long   32
-pg_l65:
-        .long   65
+pg_l128:
+        .long   128
 pg_fmts:
         .long   pg_fmt_ptch, pg_fmt_ratio, FMT_PLAIN, pg_fmt_fine, FMT_PLAIN, FMT_PLAIN
 pg_wids_a:

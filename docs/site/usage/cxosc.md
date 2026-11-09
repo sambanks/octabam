@@ -68,8 +68,8 @@ list first — **LEFT** reaches the machines.
   AMP / FX; **30..34** reach SETUP CAR / MOD / SYMM / FDBK / PWM (not
   DEC). No VOIC / CHRD — LFO 3 stays SPD3 / DEP3
 
-**FUNC** on PLAYBACK knobs: PTCH snaps −32 / 0 / +32; RATO snaps classic
-FM ratios. **FUNC** on SETUP CAR / MOD snaps 0 / 64 / 127.
+**FUNC** on PLAYBACK knobs: PTCH ±12 (octave); RATO snaps classic FM
+ratios. **FUNC** on SETUP CAR / MOD snaps 0 / 64 / 127.
 
 ### Play
 
@@ -82,7 +82,7 @@ work as usual.
 
 | Page | Knob | Range | Default | What it does |
 |---|---|---|---|---|
-| PLAYBACK | PTCH | −32..+32 | 0 | coarse pitch (semitones); chromatic / MIDI add on top |
+| PLAYBACK | PTCH | −64..+63 | 0 | coarse pitch (semitones); chromatic / MIDI add on top |
 | PLAYBACK | RATO | 0.25..4 | ~1 | modulator∶carrier; free on the knob, **FUNC** snaps classic FM ratios |
 | PLAYBACK | INDX | 0..127 | 0 | FM depth; **0 = no FM** (carrier / fold only) |
 | PLAYBACK | FINE | −64..+63 ¢ | 0c (raw 64) | cents |

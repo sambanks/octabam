@@ -24,7 +24,7 @@ reaches the machines.
 
 | Knob | Name | What it does |
 |------|------|----------------|
-| A | PTCH | Semitones (−32..+32); **FUNC** snaps −32 / 0 / +32 |
+| A | PTCH | Semitones (−64..+63); **FUNC** ±12 (octave); one unit a detent |
 | B | RATO | Mod∶carrier ratio, free 0.25..4; **FUNC** snaps the classic table |
 | C | INDX | FM depth (default **0**) |
 | D | FINE | Cents (−64..+63; raw **64** = 0c) |

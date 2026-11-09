@@ -14,7 +14,7 @@
 | DEC index env HOLD@127; SYMM fold skew (64=even); FDBK mod feedback;
 | CMOR/MMOR = sine→saw→square; PWM (64=neutral): sine lean, saw phase-skew
 | (asymmetric ramp, one discontinuity), square duty (64≈50%).
-| PTCH −32..+32.
+| PTCH −64..+63.
 
 | Mono only -- T_POLY
 | is cleared; stock LFO page (no VOIC/CHRD). GLIDE still slews pitch.
@@ -3607,10 +3607,11 @@ po_f_dc:
 
 | ==== po_knob(slot, detents, value) -> d0 = the new raw value ==================
 | Stock caller 0x40055008 clamps to the slot's [min, min+count-1]. CX:
-|   plain           one unit
-|   knob pressed    PTCH ×3; other slots ×7
-|   FUNC held       PTCH snaps −32 / 0 / +32 (raw 32 / 64 / 96); INDX FINE
-|                   FOLD MIX ×16; RATO next classic snap ≤4.01
+|   plain           one unit (PTCH always — never pressed-accel; a sticky
+|                   encoder-A push made the old PTCH ×3 fire un-pressed)
+|   knob pressed    ×7 on slots 1..5 only
+|   FUNC held       PTCH ±12 (octave); INDX FINE FOLD MIX ×16; RATO next
+|                   classic snap ≤4.01
 | SCALE ON: qz_knob still recomputes PTCH by scale degree (existing path).
 | Clobbers d0/d1/a0 (C scratch); d2-d5 saved.
 po_knob:
@@ -3625,43 +3626,14 @@ po_knob:
         bne     po_kn_plain
         cmpi.l  #KN_RATIO,%d2
         beq     po_kn_ratio
-        tst.l   %d2                      | PTCH: stock-style cardinal snap
-        beq     po_kn_ptch
         lea     po_kn_jump(%pc),%a0
-        mvz.b   (%a0,%d2.l),%d3          | the slot's jump: . 0 16 16 16 16
+        mvz.b   (%a0,%d2.l),%d3          | the slot's jump: 12 . 16 16 16 16
         muls.l  %d3,%d1
         add.l   %d1,%d0
         bra     po_kn_out
-| FUNC + PTCH: one detent walks 32 / 64 / 96 (−32 / 0 / +32). Caller clamps.
-po_kn_ptch:
-        moveq   #1,%d3                   | direction +1 / −1
-        tst.l   %d1
-        beq     po_kn_out
-        bgt     po_kn_pt_abs
-        neg.l   %d3
-        neg.l   %d1
-po_kn_pt_abs:
-        tst.l   %d3
-        bgt     po_kn_pt_up
-        cmpi.l  #64,%d0
-        bgt     po_kn_pt_to64
-        moveq   #32,%d0                  | at/below 0 -> −32
-        bra     po_kn_pt_next
-po_kn_pt_to64:
-        moveq   #64,%d0                  | above 0 -> 0
-        bra     po_kn_pt_next
-po_kn_pt_up:
-        cmpi.l  #64,%d0
-        blt     po_kn_pt_up64
-        move.l  #96,%d0                  | at/above 0 -> +32
-        bra     po_kn_pt_next
-po_kn_pt_up64:
-        moveq   #64,%d0                  | below 0 -> 0
-po_kn_pt_next:
-        subq.l  #1,%d1
-        bne     po_kn_pt_abs             | more detents; d3 keeps the direction
-        bra     po_kn_out
 po_kn_plain:
+        tst.l   %d2                      | PTCH: one unit always (ignore push)
+        beq     po_kn_one
         move.l  %d2,%d3
         addi.l  #PUSH_CODE,%d3           | the push switch's key code ...
         move.l  %d3,%a0
@@ -3671,14 +3643,7 @@ po_kn_plain:
         lea     KEY_HELD,%a0
         tst.l   (%a0,%d3.l)
         beq     po_kn_one
-        tst.l   %d2                      | PTCH pressed: ×3 (softer than stock ×7)
-        bne     po_kn_x7
-        move.l  %d1,%d3
-        add.l   %d1,%d1
-        add.l   %d3,%d1                  | * 3
-        bra     po_kn_one
-po_kn_x7:
-        move.l  %d1,%d3                  | other slots pressed: ×7
+        move.l  %d1,%d3                  | slots 1..5 pressed: ×7
         lsl.l   #3,%d1
         sub.l   %d3,%d1
 po_kn_one:
@@ -3746,7 +3711,7 @@ po_kn_out:
         lea     16(%sp),%sp
         rts
 po_kn_jump:                              | FUNC's jump a detent, by slot: PTCH RATO INDX FINE FOLD MIX
-        .byte   0, 0, 16, 16, 16, 16     | PTCH uses po_kn_ptch (cardinals); RATO its own path
+        .byte   12, 0, 16, 16, 16, 16    | PTCH octave (Tim); RATO its own path
         .align  4
 
 | ==== FINGERED CHORDS: po_keyrec / po_keyrel (UI task; 26 Sep 2026, the second pass) ==
