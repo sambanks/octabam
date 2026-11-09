@@ -498,13 +498,18 @@ pg_mo_col:
         addl    %d3,%d1
         bra     pg_mo_draw
 pg_mo_hi:
-        | 64..127: saw → square; /64 (same as low half — landmark 127 is exact)
+        | 64..127: saw → square. Landmark 127 is pure square (*63/64 was short).
+        cmpil   #127,%d6
+        beq     pg_mo_sqr
         subil   #64,%d0
         movel   %d5,%d1
         subl    %d4,%d1
         mulsl   %d0,%d1
         asrl    #6,%d1
         addl    %d4,%d1
+        bra     pg_mo_draw
+pg_mo_sqr:
+        movel   %d5,%d1
 pg_mo_draw:
         cmpil   #4,%d1                   | clamp ±4 (1px under old ±5 — no top clip)
         ble     pg_mo_hiok
@@ -603,7 +608,7 @@ pg_fo_ord:
 | SYMM: half-wave amplitude skew. Midline + solid half-cycle fills;
 | height = full half-box * gain (upper ∝ value, lower ∝ 128−value).
 | 64 = equal blocks; off-center one side dominates — reads as imbalance.
-| Midline at row 7 (was 6): whole cartoon 1px lower so the top does not clip.
+| Midline at row 6 (same as CAR/MOD morph / FOLD); amp ±4 so the top clears.
 pg_ic_symm:
         lea     pg_data(%pc),%a0
         moveq   #16,%d0
@@ -613,30 +618,30 @@ pg_sy_clr:
         bge     pg_sy_clr
         moveq   #1,%d7                   | zero line
 pg_sy_ax:
-        moveq   #7,%d1
-        moveq   #7,%d2
+        moveq   #6,%d1
+        moveq   #6,%d2
         movel   %d7,%d0
         bsr     pg_vline
         addql   #1,%d7
         cmpil   #15,%d7
         ble     pg_sy_ax
-        | h_up = value*5/64, h_lo = (128−value)*5/64 (0..5) — 1px under old 6
+        | h_up = value*4/64, h_lo = (128−value)*4/64 (0..4) — match CAR/MOD amp
         movel   %d6,%d4
-        moveq   #5,%d0
+        moveq   #4,%d0
         mulul   %d0,%d4
         asrl    #6,%d4                   | h_up
-        cmpil   #5,%d4
+        cmpil   #4,%d4
         ble     pg_sy_hu
-        moveq   #5,%d4
+        moveq   #4,%d4
 pg_sy_hu:
         movel   #128,%d5
         subl    %d6,%d5
-        moveq   #5,%d0
+        moveq   #4,%d0
         mulul   %d0,%d5
         asrl    #6,%d5                   | h_lo
-        cmpil   #5,%d5
+        cmpil   #4,%d5
         ble     pg_sy_hl
-        moveq   #5,%d5
+        moveq   #4,%d5
 pg_sy_hl:
         moveq   #1,%d7
 pg_sy_col:
@@ -646,16 +651,16 @@ pg_sy_col:
         bmi     pg_sy_lo
         tstl    %d4
         beq     pg_sy_next
-        moveq   #7,%d1
-        subl    %d4,%d1                  | top = 7 − h_up
-        moveq   #7,%d2
+        moveq   #6,%d1
+        subl    %d4,%d1                  | top = 6 − h_up
+        moveq   #6,%d2
         bra     pg_sy_draw
 pg_sy_lo:
         tstl    %d5
         beq     pg_sy_next
-        moveq   #7,%d1
-        moveq   #7,%d2
-        addl    %d5,%d2                  | bottom = 7 + h_lo
+        moveq   #6,%d1
+        moveq   #6,%d2
+        addl    %d5,%d2                  | bottom = 6 + h_lo
 pg_sy_draw:
         movel   %d7,%d0
         bsr     pg_vline
@@ -807,8 +812,8 @@ pg_fold_sin:                             | signed sine half-amp for FOLD + SYMM 
         .byte   0, 3, 5, 6, 5, 3, 0, -3, -5, -6, -5, -3, 0, 3, 5, 3, 0
 pg_morph_sin:                            | sine landmark 0 (amp ±4 — clears widget top)
         .byte   0, 2, 3, 4, 4, 3, 2, 0, -2, -3, -4, -4, -3, -2, 0, 2, 0
-pg_morph_saw:                            | rising ramp landmark 64 (amp ±4)
-        .byte   -4, -3, -3, -2, -2, -1, -1, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4
+pg_morph_saw:                            | saw landmark 64 (amp ±4): left drop + linear rise
+        .byte   4, 4, -4, -3, -3, -2, -2, -1, 0, 0, 1, 2, 2, 3, 3, 4, 4
 pg_morph_sqr:                            | hard square landmark 127 (amp ±4)
         .byte   4, 4, 4, 4, 4, 4, 4, 4, -4, -4, -4, -4, -4, -4, -4, -4, -4
         .align  2
