@@ -34,6 +34,9 @@ insertion onto a HARM-enabled track with **CHORDS NEEDS HARM OFF**. Its atelier
 preview remains an audition. Turning KEY changes a Harmony progression; it does
 not rewrite the absolute chords stored by Factory.
 
+On the combined remix, **SRC** again from MIDI NOTE opens Factory's atelier;
+press **SRC** again to return to NOTE before editing Harmony's DEG/CHRD.
+
 ## Start playing
 
 1. Set the MIDI track's output channel and choose **KEY** on **ARP SETUP**

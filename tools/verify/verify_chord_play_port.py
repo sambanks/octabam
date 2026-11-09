@@ -131,7 +131,7 @@ def record_save(source,root_mode=0):
 
 def edit_and_resume(work):
     # The saved project is already on MIDI. REC alone selects the grid layout.
-    setup='100 key 0x32 down\n150 key 0x32 up\n500 key 0x22 down\n550 key 0x22 up\n700 key 0x29 down\n800 key 0x29 up\n'
+    setup=key(100,0x32)+note_page(500)+key(700,0x29)
     edit='1200 key 2 down\n1800 enc 3 1\n2200 key 2 up\n'
     run(work,'edit',setup+edit+'2700 quit\n',work/'save-card.img')
     q=(work/'edit-locks.bin').read_bytes()
@@ -243,13 +243,19 @@ def key(t,k):
     return f'{t} key {k} down\n{t+80} key {k} up\n'
 
 
+def note_page(t):
+    # SRC again on NOTE opens a PAGES client. Visit ARP first so a loaded
+    # project's previous page cannot turn a NOTE-editor test into Factory.
+    return key(t-200,0x23)+key(t,0x22)
+
+
 def combo(t,k,modifier=0x2d):
     return f'{t} key {modifier} down\n'+key(t+100,k)+f'{t+250} key {modifier} up\n'
 
 
 def edit_lifecycle(work):
     original=(work/'save-locks.bin').read_bytes()
-    base=key(100,0x31)+key(500,0x22)
+    base=key(100,0x31)+note_page(500)
     cases={
         'copy-track':(key(800,0x29)+combo(1200,0x29)+key(1700,0x11)+combo(2100,0x27),64,original[:64]),
         'clear-track':(key(800,0x29)+combo(1200,0x28),0,b'\xff'*64),
@@ -295,7 +301,7 @@ def same_step(work):
 
 
 def delete_replace_trig(work):
-    setup=key(100,0x31)+key(500,0x22)+key(700,0x29)
+    setup=key(100,0x31)+note_page(500)+key(700,0x29)
     original=(work/'save-locks.bin').read_bytes()
     expected=bytearray(original);expected[11]=255
     for name,actions in [('delete-trig',key(1200,11)),
@@ -332,7 +338,7 @@ def unlocked_isolation(work):
     data[16:20]=struct.pack('>I',checksum);(project/'chrd01.work').write_bytes(data)
     card,_=p.emu_card.stage_project(project,'OCTABAM','BASS',tree=case/'tree')
     (case/'card.img').write_bytes(card)
-    script=key(100,0x31)+key(500,0x22)+'800 enc 3 7\n'+key(1200,0x28)+key(10000,0x27)+'11000 quit\n'
+    script=key(100,0x31)+note_page(500)+'800 enc 3 7\n'+key(1200,0x28)+key(10000,0x27)+'11000 quit\n'
     events=run(case,'play',script)
     assert [e[2] for e in events if e[:2]==('on',1)]==EXPECTED,events
     assert (case/'play-locks.bin').read_bytes()[19]==255

@@ -125,7 +125,7 @@ def record_save(source):
 
 
 def panel(work):
-    setup='100 key 0x32 down\n150 key 0x32 up\n500 key 0x22 down\n550 key 0x22 up\n700 key 0x29 down\n800 key 0x29 up\n'
+    setup=cp.key(100,0x32)+cp.note_page(500)+cp.key(700,0x29)
     # Existing explicit root: one encoder detent advances one scale degree.
     edit='1200 key 7 down\n1800 enc 0 1\n2200 key 7 up\n'
     run(work,'degree-edit',setup+edit+'2700 quit\n',work/'save-card.img')
@@ -139,7 +139,7 @@ def panel(work):
     octave='1200 key 7 down\n1500 key 0x2d down\n1800 enc 0 1\n2000 key 0x2d up\n2200 key 7 up\n2700 quit\n'
     run(work,'degree-octave',setup+octave,work/'save-card.img')
     assert (work/'degree-octave-degrees.bin').read_bytes()[7]==42
-    live_octave=cp.key(100,0x32)+cp.key(500,0x22)+'1100 key 0x2d down\n1400 enc 0 1\n1600 key 0x2d up\n2200 quit\n'
+    live_octave=cp.key(100,0x32)+cp.note_page(500)+'1100 key 0x2d down\n1400 enc 0 1\n1600 key 0x2d up\n2200 quit\n'
     run(work,'default-octave',live_octave,work/'save-card.img')
     base=(work/'save-bank.bin').read_bytes()[0x8ed80+0x4e2+19]
     assert (work/'default-octave-bank.bin').read_bytes()[0x8ed80+0x4e2+19]==base+7
@@ -154,7 +154,7 @@ def panel(work):
     run(work,'degree-copy',setup+copy,work/'save-card.img')
     copied=(work/'degree-copy-degrees.bin').read_bytes()
     assert copied[4]==copied[11]==35
-    live=cp.key(100,0x32)+cp.key(500,0x22)+'800 enc 0 1\n1200 enc 3 1\n1500 enc 4 1\n1800 enc 5 1\n2300 quit\n'
+    live=cp.key(100,0x32)+cp.note_page(500)+'800 enc 0 1\n1200 enc 3 1\n1500 enc 4 1\n1800 enc 5 1\n2300 quit\n'
     # Edit while the native page-change notification is still visible.
     # This must reach the degree editor, never the stock semitone editor.
     for mode,extra in (('chord',()),('note',('--step',f'-:call:{SYMBOLS.get("bf_encoder", SYMBOLS["mh_note_encoder"]):#x},5,0xfffffffc'))):
