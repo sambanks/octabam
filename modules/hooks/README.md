@@ -16,10 +16,12 @@ Spec: [docs/specs/HOOKS.md](../../docs/specs/HOOKS.md) — every bridge with its
 ## Measured
 
 - `tools/verify/verify_hooks.py`: the selection rules; under Unicorn, the
-  three participants' own sources linked with `bridge.s`, `hk_status_icon`
-  over 128 states (track, state, mute, arm, TRIG, blink phase) against the
-  model and against the two routines called in turn, the opposite order
-  losing the blink; the [TRACK]-layer table decoded; the frame interrupt's
+  participants' own sources linked with `bridge.s`, `hk_status_icon` (REC
+  THRESHOLD, then FREE LOOP) over 192 states (track, state, FREE LOOP's
+  armed / overdub, arm, TRIG, blink phase) against the model and against the
+  two routines called in turn, the opposite order losing FREE LOOP's mark
+  (REC_TRIG_MUTE's fold was the first participant until its pin moved past
+  `553d8d2`, 6 Nov 2026); the [TRACK]-layer table decoded; the frame interrupt's
   entry and epilogue chains (one prologue, one epilogue, each participant's
   work done, registers and stack as found) and the boot chain (the stock
   call made once, STORE's targets set). With a built image of
