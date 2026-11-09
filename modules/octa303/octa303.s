@@ -900,9 +900,9 @@ o3_retrig:
 | ============================================================================
 o3_page:
         .if     HK_MACHINE_ROWS
-        .if     MC_HAS_PAGE             | the entry state, for the next machine's resolver
-        lea     -12(%sp),%sp
-        movem.l %d0-%d1/%a0,(%sp)
+        .if     MC_HAS_PAGE             | the entry state, for the next machine's resolver (a1: the bank blob, which
+        lea     -16(%sp),%sp            | o3_basename below clobbers)
+        movem.l %d0-%d1/%a0-%a1,(%sp)
         .endif
         .endif
         move.l  0(%a0,%d0.l*4),%d0      | displaced: the machine's descriptor
@@ -939,7 +939,11 @@ o3_page:
         moveq   #0,%d2
         move.b  (%a0),%d2               | the track's FLEX slot
         cmp.l   #127,%d2
+        .if     HK_MACHINE_ROWS
+        bhi     .Lpg_stock              | 0xff = none; 128.. = the recorder buffers: not ours, the next machine's resolver (a machine
+        .else                           | with no sample, WAVE's, has an empty slot)
         bhi     .Lpg_done               | 0xff = none; 128.. = the recorder buffers
+        .endif
         move.l  %a0,-(%sp)              | v6.9: the slot byte, for o3_stamp
         move.l  #SETTINGS_STRIDE,%d4
         muls.l  %d2,%d4
@@ -959,8 +963,8 @@ o3_page:
         .if     HK_MACHINE_ROWS
         .if     MC_HAS_PAGE
 .Lpg_not:                               | not ours: the next machine's resolver, as its own detour
-        movem.l (%sp),%d0-%d1/%a0
-        lea     12(%sp),%sp
+        movem.l (%sp),%d0-%d1/%a0-%a1
+        lea     16(%sp),%sp
         jmp     MC_NEXT_PAGE
         .endif
         .endif
@@ -968,7 +972,7 @@ o3_page:
 .Lpg_done:
         .if     HK_MACHINE_ROWS
         .if     MC_HAS_PAGE
-        lea     12(%sp),%sp
+        lea     16(%sp),%sp
         .endif
         .endif
         jmp     RESOLVER_RET
@@ -1366,8 +1370,8 @@ o3_chrom:
         lea     64-12(%a2),%a2          | a 303: raw = 64 + (idx - 12) = 52 + idx (semitones)
         bra     .Lch_out
 .Lch_stock:
-        .if     HK_CHROM_PITCH          | beside SCALE QUANTIZER (modules/hooks, chrom_pitch):
-        jmp     qz_chrom                | every other track is its, with the stock lea in it
+        .if     HK_CHROM_PITCH          | beside SCALE QUANTIZER / WAVE CF (modules/hooks, chrom_pitch):
+        hk_chrom_next                   | every other track is the next one's (SCALE QUANTIZER's has the stock lea in it)
         .else
         move.l  %a2,%d0                 | displaced (as plain arithmetic): raw = 5 * idx + 4
         lsl.l   #2,%d0
@@ -1540,7 +1544,62 @@ o3_sigcur:
 | ---- the limit: O3_MAX signed tracks in a Part.  Each voice costs about 9 points of the ColdFire's frame interrupt
 |      and the first about 21 more (one MKII, 2 Nov 2026: 2 machines 65 %, 4 machines 83 %, ~102 % extrapolated for 6),
 |      and the panel starves near 98 %.
+        .if     HK_MACHINE_ROWS
+        .set    O3_MAX,         MC_LIMIT        | beside other machines: one limit for all of them (modules/hooks)
+        .else
         .set    O3_MAX,         2
+        .endif
+
+| ---- o3_anysig: a0 = Part', d0 = track -> d0 = 1 when the track is FLEX and signed by ANY machine on
+|      the list (the three signature bytes against mc_sig_table), else 0 (flags set).  Clobbers d1; a0, a1 kept.
+|      The limit counts these, so a Part holds O3_MAX machines of every kind together.
+        .if     HK_MACHINE_ROWS
+o3_anysig:
+        lea     -8(%sp),%sp
+        movem.l %a0-%a1,(%sp)
+        moveq   #7,%d1
+        cmp.l   %d1,%d0
+        bhi     .Lmca_no
+        moveq   #0,%d1
+        move.b  0x22(%a0,%d0.l),%d1
+        subq.l  #1,%d1                  | FLEX
+        bne     .Lmca_no
+        moveq   #30,%d1
+        muls.l  %d0,%d1
+        move.l  %a0,%a1
+        add.l   %d1,%a1
+        mvz.b   SIG_OFF(%a1),%d0
+        lsl.l   #8,%d0
+        mvz.b   SIG_OFF+1(%a1),%d1
+        or.l    %d1,%d0
+        lsl.l   #8,%d0
+        mvz.b   SIG_OFF+2(%a1),%d1
+        or.l    %d1,%d0                 | d0 = the 24-bit signature
+        lea     o3_sigtab,%a0
+.Lmca_l:
+        move.l  (%a0)+,%d1
+        beq     .Lmca_no
+        cmp.l   %d1,%d0
+        bne     .Lmca_l
+        moveq   #1,%d0
+        bra     .Lmca_x
+.Lmca_no:
+        moveq   #0,%d0
+.Lmca_x:
+        movem.l (%sp),%a0-%a1
+        lea     8(%sp),%sp
+        tst.l   %d0
+        rts
+o3_sigtab:
+        mc_sig_table
+        .macro  O3_ANYSIG
+        bsr     o3_anysig
+        .endm
+        .else
+        .macro  O3_ANYSIG
+        bsr     o3_sig
+        .endm
+        .endif
 
 | ---- o3_nsigned: a0 = Part', d0 = a track -> d0 = the signed tracks of the Part other than that one.  Saves all else.
 o3_nsigned:
@@ -1553,7 +1612,7 @@ o3_nsigned:
         cmp.l   %d3,%d4
         beq     .Lnsg_n
         move.l  %d4,%d0
-        bsr     o3_sig
+        O3_ANYSIG
         add.l   %d0,%d2
 .Lnsg_n:
         subq.l  #1,%d4
@@ -1579,7 +1638,7 @@ o3_sigcur_lim:
         bmi     .Llim_cnt
 .Llim_l:
         move.l  %d3,%d0
-        bsr     o3_sig
+        O3_ANYSIG
         add.l   %d0,%d2
         subq.l  #1,%d3
         bpl     .Llim_l
@@ -2315,6 +2374,9 @@ o3_validate:
         move.l  %a2,%a0
         bsr     o3_sig
         beq     .Lv_n
+        .if     HK_MACHINE_ROWS
+        bsr     o3_vcount               | the limit: every machine's tracks below this one (d0 = their count)
+        .else
         move.l  %d3,%d1                 | the limit: d3 holds the signed tracks kept so far, all below this one
         moveq   #0,%d0
 .Lv_pc:
@@ -2324,6 +2386,7 @@ o3_validate:
 .Lv_nc:
         tst.l   %d1
         bne     .Lv_pc
+        .endif
         cmp.l   #O3_MAX,%d0
         bcs     .Lv_keep
         moveq   #30,%d0                 | a third signed track (a loaded project): unsign it, the stock
@@ -2398,6 +2461,28 @@ o3_vptr:                                | d2 = track, a2 = Part' -> a0 = Part' +
         lea     4(%sp),%a1
         add.l   %d0,%a1
         rts
+        .if     HK_MACHINE_ROWS
+| ---- o3_vcount: d2 = track, a2 = Part' -> d0 = the tracks below d2 signed by any machine.  Saves all else.
+|      (o3_validate's limit: one count for every kind of machine; an own track past it was unsigned in place.)
+o3_vcount:
+        lea     -12(%sp),%sp
+        movem.l %d2-%d3/%a0,(%sp)
+        moveq   #0,%d3
+        subq.l  #1,%d2
+        bmi     .Lvcn_x
+.Lvcn_l:
+        move.l  %d2,%d0
+        move.l  %a2,%a0
+        bsr     o3_anysig
+        add.l   %d0,%d3
+        subq.l  #1,%d2
+        bpl     .Lvcn_l
+.Lvcn_x:
+        move.l  %d3,%d0
+        movem.l (%sp),%d2-%d3/%a0
+        lea     12(%sp),%sp
+        rts
+        .endif
 o3_stock_validate:
         .if     HK_MACHINE_ROWS
         .if     MC_HAS_VALIDATE
@@ -4201,7 +4286,11 @@ o3_notes:                               | v7.0: o3_fmt_tune's names, two bytes e
         .ascii  "C C#D D#E F F#G G#A A#B "
         .align  4
 o3_maxmsg:
+        .if     HK_MACHINE_ROWS
+        .asciz  "MAX 2 MACHINES"         | one limit for every kind of machine (modules/hooks MC_LIMIT)
+        .else
         .asciz  "MAX 2 OCTA-303"
+        .endif
         .align  4
 o3_obuf:                                | v7.1: o3_octave's toast
         .space  16

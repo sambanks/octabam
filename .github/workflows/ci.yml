@@ -221,6 +221,27 @@ jobs:
       - name: 📦 Install Remixer Dependencies
         run: pip install uv && make emu-setup && git checkout -- uv.lock   # uv sync rewrites it; reach would read it as a change
 
+      # The ColdFire gates that run fractional EMAC code under Unicorn (modules/wavecf/test_wavecf.py) need the EMAC-fixed
+      # library: stock 2.1.4 halves every fractional product (scripts/build_unicorn.sh). Built once per script and patch,
+      # into .venv/lib/unicorn-emac, where the gates pick it up.
+      - name: 💾 Restore the EMAC-fixed Unicorn
+        id: unicorn
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .venv/lib/unicorn-emac
+          key: unicorn-emac-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build_unicorn.sh', 'tools/patches/unicorn_emac_fractional.patch') }}
+
+      - name: 🦄 Build the EMAC-fixed Unicorn
+        if: steps.unicorn.outputs.cache-hit != 'true'
+        run: make emu-unicorn
+
+      - name: 💾 Save the EMAC-fixed Unicorn
+        if: steps.unicorn.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .venv/lib/unicorn-emac
+          key: unicorn-emac-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build_unicorn.sh', 'tools/patches/unicorn_emac_fractional.patch') }}
+
       # the ColdFire port, built once per source state into .git/octabam-port
       # (tools/emu/port_store.py); `reach` and its shards install from there
       - name: 🔑 Key the ColdFire Port

@@ -19,6 +19,7 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 ## Unreleased
 
 - **New modules in the octabam remixes.** `octabam`, `octabam-bus` and `octabam-verbs` gain CHORDS FACTORY (with PAGES), SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP; `octabam-bus` and `octabam-verbs` gain SCALES, and `octabam-bus` VARISPEED, as `octabam` has them. `octabam-verbs` also gains VIBRATO, TRANSIENT and RESONATOR, resident in the stock reverbs' harvested words beside VERBERATION (559 words left on payload A, 588 on B); FX1 lists 17 rows. octabam has no harvested words (all 14 stock effects stay) and octabam-bus's internal P is 584 words short of VIBRATO alone, so the three are in neither. Each module's own proof is in its README; none has run on a unit in these compositions, and the loader soak has not been run on them. Not flashed.
+- **WAVE is a ColdFire machine; the DSP WAVE effect is removed** (#1062; `modules/wavecf`, key `WAVE CF`). A row of the track's machine list: 4 voices over 8 generated frames, no filter. PLAYBACK TUNE FRAM CHRD VOIC SPRD GLID; SETUP VIBR VRAT OCT DETN COMP MODE (CHORD or POLY); notes follow SCALE QUANTIZER's scale; a new track starts as a MAJ chord on 3 voices. The track's AMP page is applied in the engine with the DSP's measured laws, the DSP being held at ATK 0 / HOLD INF / REL INF (its AMP restarts from zero at every START: a click on every note otherwise). A Part holds at most two machines of any kind, OCTA-303 and WAVE together (`MAX 2 MACHINES`; HOOKS `MC_LIMIT`). OCTA303's page resolver, beside another machine, handed nothing on for a track with an empty FLEX slot and clobbered `a1`: fixed. The FX2 effect `wave` (Wave Synth, FX2 id `0x0b`, played by a sine carrier; image 93 on the unit, 3 Oct 2026), its test remix `wave`, `verify_wave` and the manual page are removed (`git show 755a02ac:modules/wave/README.md`). On the unit: builds W1 to W6, 7 Nov 2026 (W5: clicks gone).
 - **CHARACTER's KEY reads T1–T8** (SELF / T1–T8, `WIDE_STEPPED`; a stored T1 is unchanged). With SIDECHAIN_COMPRESSOR in the remix the key is read from its keybus (`sctap`'s per-core slots and the cross-core window), no claims of the tap's, so the two do not conflict; without it T1 comes from the BusDelay host as before and T2–T8 are SELF. New `Harness.key_tap`, `; KEYTAP_*` markers in `character.asm` (removed when the tap is absent: the Character words are byte-identical with the build before), `remixes/test/character-key`, `tools/verify/verify_char_keybus.py` (words planted with `-pokey`; `sctap` does not run under `dsp_host`). `CHARACTER TXTR` is unchanged. Not flashed.
 - **VERBERATION replaces GATE VERB** (named STUDIO VERB in #1056; `modules/verberation`, id `0x1a`, so a Part that used GATE VERB opens VERBERATION; `modules/gateverb` is in git history). Fixes carried over from GATE VERB: the smear LFO was bipolar where Clouds' is 0..1, so its reads fed the far end of the tank back into the input (under `dsp_host` one impulse at TIME 120 grew from −56 dB to −11 dB in 11 s; every tail ran long, TIME 64 RT60 4.84 s, now 2.80 s); the gate's 3 ms close is a desk gate's release (−60 dB in about 320 ms, chosen by ear) and a shut gate empties the tank. New: page 2, SIZE (the tank's read taps), LCUT (a high-pass in the tank), MOD and RATE (the modulation), PRE (a predelay in the room SIZE leaves, none at SIZE 127); at their defaults the sound is GATE VERB's after the fixes, exactly. `verify_verberation` gains `runaway`, release, empty-tank, page-2 and predelay checks. Cost 219 → 247 counted cycles a sample, an estimated 8.8 % a slot; GATE VERB's unit reading is out of `slot_costs.json`. New: `tools/harness/verberation_voice.py`, the float voicing sandbox. Not flashed.
 - **`octabam-verbs`: octabam with VERBERATION in place of the stock reverbs** (`remixes/octabam-verbs`). VERBERATION gains MODE (ROOM, PLATE, HALL, GATED; MODE DEFAULTS lands the knobs on each voicing, chosen by ear from renders) and its tank is shortened by 0.9 so its ring (14,366 words) ends below `octabam`'s demand-loaded window code at slot offset `0x3820`. PLATE, SPRING and DARK REV leave both choosers and their ids become VERB PLATE, VERB ROOM and VERB HALL: rows that run VERBERATION's one copy of code (new `MenuEntry.dsp_of`) starting in their mode. [VERB PARTS](modules/verb-parts/README.md) converts a Part saved with a stock reverb to its row's defaults as the firmware applies it (`verify_verb_parts`, under the port). No reverb guard is built; DLPUMP's reverb mask leaves out a reverb a carried module replaces; `verify_dlload` checks a guardless remix's case and `OCTABAM_GATE_JOBS` caps its emulators. Not flashed.
@@ -195,6 +196,35 @@ Docs
 - ColdFire load on a unit: Bryan T's CF METER takes (4 Oct; `docs/firmware/ARCHITECTURE.md` section 6): ~16.5 µs per playing voice at CPI ~4.4 against the port, no first-voice premium (the morning's +37 µs retracted the same evening), the USB stack ~14 µs idle / ~25 µs playing, no crossbar contention; OUT TRACKS MAIN CUE costs 27–50 µs of frame interrupt over OUT MAIN CUE, most of it with no host connected; TSTR and the stock DELAY not measurable; interrupt levels from the ICR writes in `KERNEL.md`.
 - Removed: `PLAN.md`, `docs/TIMESTRETCH_PIPELINE.md` (27 Sep).
 - Demand loader (`modules/dlpump`, `modules/dlcopy`, `modules/dlprobe`; `docs/contributing/DEMAND_LOADER.md`): `octabam` copies SPECTRUM, CHARACTER, MODULATION and TRANSIENT into the DSP's shared window while a track uses them and withdraws them 10 s after the last use. All 14 stock effects stay; the stock reverbs run behind a guard that keeps them off loaded code. A block is held by whoever has it first: the FX1 and FX2 choosers refuse an effect whose block is under PLATE, DARK or SPRING REV, and a reverb on the block of a loaded effect a track uses, each with a toast (`NEEDS Tn FX2 FREE`, `Tn HOLDS <effect>`); other routes toast at the next page key. `octabam` lists the stations on FX1 (it offered SPECTRUM and CHARACTER on FX2 only, where they render dry). GATE VERB is not in `octabam`. New builder fields `Remix.window_demand`, `window_guard`, `window_loader`; the build refuses an uploaded window record above `0x37f00`. DLPROBE and `tools/hw/dl_state.py` (USB `0xc0/0x57` block 3) read the counters on a unit. Gates `verify_dlstub`, `verify_dlwrap`, `verify_dlload`, `verify_dlprobe`.
+
+## STEMS13 — 5 Nov 2026 (local remix `lm-stems`, branch `stems-gainflat`)
+
+On the unit (Yves's MKII, flash M): three takes at 24 bits, every WAV
+whole. Eleven files recorded for 24 s without `RING FULL`, the card
+writing at 212 µs a KB. On the same Static samples STEMS12's ten files
+wrote at 387, and on lighter ones its eleven at 423 before `RING FULL`
+(`docs/firmware/STEM_REC.md` 20.11). At eleven files the
+hook took 30 µs against 33: `mirror` 4.1 µs against 6.9, `gains` 0.78
+against 1.39 (20.10). Thirteen files, the inputs as four mono files,
+recorded too, at 261 µs a KB. `lm-stems` is STEMS12's 48 modules on main
+`c9cadc82`, with SHATTER for TRANSIENT (`modules/stems/FLASH.md` flash M).
+- STEM REC: a resting fader's gain slot holds one gain, and the track loops multiply by it without a ramp.
+- STEM REC: while a take records, each file writes whole clusters only, so the card never goes back to a cluster it left half written.
+
+## STEMS12 — 4 Nov 2026 (local remix `lm-stems`, branch `stems-hookparts`)
+
+On the unit (Yves's MKII, flash L): five takes at 24 bits, every WAV
+whole. STATS.TXT's new hook parts add up to the hook's mean; at eleven
+files they read mirror 6.9 µs, buses 9.0, gains 1.4 and tracks 16.6. The
+gain probe shows the gain queue missing the cache in part (about 40% of its
+lines at seven tracks), and the mirror runs 3 to 4.5 µs over its
+instruction count, so the queue is to go (`docs/firmware/STEM_REC.md`
+20.9). Eleven files filled the ring in 10 s (`RING FULL`) with the card
+writing at 423 µs a KB, against 255 on STEMS11's eleven-file take; why
+isn't established (`modules/stems/FLASH.md` flash L). With the same ten
+files, other samples on the Static machines slowed the card from 252 to
+387 µs a KB. `lm-stems` as for STEMS11.
+- STEM REC: STATS.TXT splits the hook into four parts and probes the gain queue's cache lines; the mirror writes only the gains of the tracks a take records.
 
 ## STEMS11 — 28 Oct 2026 (local remix `lm-stems`, branch `stems-next`, PR #965)
 

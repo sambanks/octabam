@@ -33,16 +33,15 @@ Detours (INVESTIGATION.md):
                modes, clears, loop ends, toasts
   fl_rec_stub  the recorder routine's setup pointer 0x40006d1a (`adda.l
                #0x80000cf4,%a4`): a free take records with RLEN MAX
-  fl_glyph,    the track status icon renderer 0x4004bee2 / 0x4004c00c,
-  fl_draw      REC_TRIG_MUTE's sites: a ring while armed, a dot while overdubbing
+  fl_glyph,    the track status icon renderer 0x4004bee2 / 0x4004c00c:
+  fl_draw      a ring while armed, a dot while overdubbing
 and the [TRACK]-held key layer's table pointer 0x400d164e (MORPH's site),
 pointed at a copy of stock's table with UP added (the window).
 
-Beside REC_TRIG_MUTE and REC THRESHOLD the shared sites go through HOOKS
-(modules/hooks): the status icon chain calls fl_glyph last; at the step
-handler and the icon drawer this detour stays and, assembled with
-HK_REC_GATE / HK_ICON_DRAW (select below), hands on to rtm_gate / rtm_draw
-where it replayed stock. MORPH stays a conflict: both want [TRACK]+UP.
+Beside REC THRESHOLD and REC_TRIG_MUTE the shared sites go through HOOKS
+(modules/hooks): the status icon chain calls fl_glyph last (after REC
+THRESHOLD's blink_gate); at the step handler this detour stays and, assembled
+with HK_REC_GATE (select below), hands on to rtm_gate where it replayed stock. MORPH stays a conflict: both want [TRACK]+UP.
 """
 
 import dataclasses
@@ -72,10 +71,10 @@ _UNIT = Linked("fl", "modules/free-loop/free_loop.s", cpu="5475", dram=True)
 
 
 def select(modules):
-    """Beside REC_TRIG_MUTE (modules/hooks rec_gate / icon_draw) the unit is assembled
-    with HK_REC_GATE / HK_ICON_DRAW: its not-ours paths jump to rtm_gate / rtm_draw."""
+    """Beside REC_TRIG_MUTE (modules/hooks rec_gate) the unit is assembled with
+    HK_REC_GATE: its not-ours path jumps to rtm_gate."""
     from remix import hooks_flags
-    defs = tuple((flag, 1) for bridge, flag in (("rec_gate", "HK_REC_GATE"), ("icon_draw", "HK_ICON_DRAW"))
+    defs = tuple((flag, 1) for bridge, flag in (("rec_gate", "HK_REC_GATE"),)
                  if hooks_flags.on(bridge, "FREE LOOP", modules))
     return {"linked": (dataclasses.replace(_UNIT, defsyms=defs),)} if defs else {}
 
@@ -111,9 +110,9 @@ MODULE = Module(
                "record builder's machine-trig test: a PLAY STOP track's trigs dropped (a stock empty step)",
                pad_to=8),
         Detour(GLYPH, GLYPH_STOCK, "fl", "fl_glyph",
-               "edge renderer: armed / overdubbing folded into the cached state (REC_TRIG_MUTE's site)", kind="jsr"),
+               "edge renderer: armed / overdubbing folded into the cached state", kind="jsr"),
         Detour(DRAW, DRAW_STOCK, "fl", "fl_draw",
-               "edge renderer: a ring while armed, a dot while overdubbing (REC_TRIG_MUTE's site)"),
+               "edge renderer: a ring while armed, a dot while overdubbing"),
     ),
     symbol_refs=(
         SymbolRef(KEYS_FIELD, KEYS_STOCK, "fl", "fl_keys",

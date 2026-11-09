@@ -619,7 +619,7 @@ mask a page word with `and #>$7f0000` before any shift, compare, select or
 `asr` then leaves a clean low word. After `and`, store from `a1`/`b1`
 (`move a1,x:`), not `move a,x:` (the A2-staleness trap above). The
 `dsp_host -pword k:off=hex` option writes a raw word after `-params`, and
-`verify_wave` / `verify_one_bus` render dirty words.
+`verify_wave` (removed with the DSP WAVE: `git show 755a02ac:tools/verify/verify_wave.py`) / `verify_one_bus` render dirty words.
 
 <a name="trap-name-nul"></a>
 

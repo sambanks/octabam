@@ -24,7 +24,7 @@ def registrations():
     assert set(writes)=={0x4e2+36*t+f for t in range(8) for f in (3,12,13,15)}
     base=registry.modules()['STORE']
     # Real registry binding must omit *all* optional code, hooks and claims.
-    for remix in ('octabam-full','events-clients'):   # octabam-bus carries SCALES since #1067
+    for remix in ('events-clients',):   # octabam-bus carries SCALES since #1067
         chosen=registry.bound(registry.remix(remix))['STORE']
         assert chosen.linked==base.linked and chosen.detours==base.detours
         assert chosen.pokes==base.pokes and chosen.claims==base.claims

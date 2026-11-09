@@ -8184,6 +8184,12 @@ ISA, `byterev` in ISA_A+ (the V4e's) and `movem`'s memory operand at
 `(Ay)` or `(d16,Ay)`, the forms STEMS5 uses. USB AUDIO OUT would gain
 from the same copy: its packet build stores 320 longs a frame uncached
 inside the frame interrupt (14 to 25 µs a frame on Bryan T's unit).
+❌ Answered on a unit (Bryan T, `docs/firmware/CHIP.md`, 26 Oct 2026):
+a dirty `cpushl` costs 80 ns, a cached store that misses fills its line
+first (~80 ns), and an uncached store costs 36 ns, so cache plus push
+costs about what the uncached stores do. The idea is withdrawn (29 Oct
+2026), and USB OUT went the other way in #956: no copy, its packets
+written straight through the alias.
 
 ### 20.6 The writer at priority 2: kept as a fallback
 
@@ -8303,9 +8309,13 @@ most capacity × its frame's bytes + 44 ≤ its ring's size.
   and on FAT32.
 - The hook, in instructions a frame: 3,401 at T1–T8, 16 bits (STEMS5
   3,427), 3,969 at 24 bits (3,995), 4,972 with everything at 24 bits
-  (5,012), the new `HOOK_CEILING`: the per-file wrapper costs less than
-  the shared frame's offsets did. The whole processor while recording,
-  everything at 24 bits: 36,889 (37,019).
+  (5,012), the new `HOOK_CEILING`. ❌ (29 Oct 2026, 20.9) These counts
+  leave out `stems_zframe`, the per-file wrapper itself: the cost gate's
+  routine list didn't name it. It runs 182 instructions a frame with
+  everything at 24 bits (twelve files, about 15 a file), so that case is
+  5,154, above STEMS5's 5,012, and "the per-file wrapper costs less than
+  the shared frame's offsets did" does not hold. The whole processor
+  while recording, everything at 24 bits: 36,889 (37,019).
 - The writer's copy, 206 and 284 instructions a frame in STEMS5, is gone.
   What the writer still does is a few dozen instructions a file per
   512-frame pass (counted from the code) beside the file layer's own.
@@ -8317,4 +8327,373 @@ most capacity × its frame's bytes + 44 ≤ its ring's size.
 
 The ideas from the perf round and from Sam's review of it (#644) that
 weren't needed for its goal are in `modules/stems/FLASH.md`, "For later —
-ideas from the perf round".
+ideas from the perf round". The review of the hook and the writer of
+29 Oct 2026, ranked with its savings and risks, is
+`modules/stems/CLEANUP.md`.
+
+### 20.9 The hook's parts, the gain probe and the mirror's slot mask (29 Oct 2026)
+
+**Why.** STEMS11 on Yves's MKII (28 Oct 2026, `/BRAIN/STEMS/*.TXT`, every
+take at 24 bits) measured the hook's mean at 8 µs with T1 alone, 24 µs
+with seven files and 32 µs with eleven (longest 18, 39 and 69 µs). Bryan
+T's access costs (`docs/firmware/CHIP.md`) price what the eleven-file
+hook does: about 5,000 instructions at ~2.9 ns, about 14 µs, and 264
+uncached ring stores at 36 ns, about 9.5 µs. 🟡 That leaves about 8 µs
+unexplained.
+
+**The candidate: the gain queue** (🟡 inferred). `stems_mirror` writes
+each track slot's 16 gains and their bound, 68 bytes, into `stems_gq`:
+cached SDRAM, four 1 KB frames in rotation. `stems_stage` reads them a
+frame later. A copyback write miss first fills the line from memory
+(MCF54455RM 6.4.2.2), and a miss costs ~80 ns, so the 40 lines of eight
+tracks could cost about 3 µs each way.
+
+**What STATS.TXT measures since STEMS12.** Four marks split each recorded
+frame's hook into parts that add up to it: `mirror`, `buses` (the state,
+this frame's buses and the publish), `gains` and `tracks` (the stage).
+`gains` is a probe: before the stage, one long of each 16-byte line of
+the slots the stage reads next. That costs ~0.1 µs at eight tracks if the
+lines are cached, and ~3 µs if none is.
+
+**What would falsify it.** At eight tracks, a `gains` part near 0.1 µs
+and a `mirror` part within about 1 µs of its prediction (its port
+instructions × 2.9 ns) mean the queue doesn't miss. The gap is then
+elsewhere, and SDRAM contention with the card's DMA is the next
+candidate. A `gains` part of about 2 µs or more means it misses. The next
+step would then be to compute each slot's ramp in registers and drop
+`stems_gq`.
+
+**On the unit** (STEMS12, Yves's MKII, 4 Nov 2026; flash L lists the
+takes). The parts add up to the logged hook mean in all five takes. At
+eleven files the means are mirror 6.9 µs, buses 9.0, gains 1.4 and tracks
+16.6, against a hook mean of 33 µs.
+
+- ✅ **The gain queue misses the cache, in part.** At seven tracks the
+  probe's 35 lines cost 1.36 to 1.55 µs. Cached, with the probe's own
+  instructions, they'd cost about 0.3 µs; all missing, about 3 µs. So
+  roughly 40% of the lines miss. With T1 alone, the five lines cost
+  0.58 µs: they all miss.
+- 🟡 **The mirror runs over its count.** It takes 6.8 to 7.3 µs at seven
+  tracks and 4.6 µs with T1 alone. Its port counts (about 920 and 493
+  instructions) at 2.9 ns predict 2.7 and 1.4 µs. The rest, 3 to 4.5 µs,
+  is part line misses (its writes to the same lines, its state words) and
+  part instructions that take more than one cycle, since 2.9 ns is a
+  floor. The two aren't separated.
+- **The verdict, by the rule above:** the mirror's excess passes 2 µs, so
+  the next step is to compute each slot's ramp in registers and drop
+  `stems_gq` (`modules/stems/CLEANUP.md` 1.1). The gain path, mirror and
+  gains together, is about 8.3 µs at seven tracks: a quarter of the hook.
+- Not measurable from these takes: the slot mask's own saving. T1 alone
+  ran 10 µs on average in a 1-second take, against 7 to 10 µs on STEMS11
+  (four takes, other projects), and STEMS12 adds about 1 µs of
+  instrumentation (the probe, four timer reads, the sums).
+
+**The mirror's slot mask** (✅ under the port). Until now, on every
+recorded frame, the mirror wrote all eight slots' gains, whatever the
+take recorded: 968 instructions a frame against 378 at idle (the 28 Oct
+coverage). The stage reads only the track files' slots, so a take of T1
+alone, the default, wrote seven slots that nothing read.
+
+- The slots are `stems_lsrc`'s T1-T8 bits, which `stems_layout` latches
+  at the start edge: each set bit is exactly one track file. While a take
+  records or finishes, the mirror writes only those slots; the others
+  advance their state in closed form, as at idle. The mirror walks the
+  slots as a shifting mask in a register, so a slot costs no memory test.
+- A stopped or armed frame still writes every slot, because the take's
+  first stage reads it before the layout latches.
+- With T1 alone at 24 bits, the hook runs 1,035 instructions a frame
+  and the mirror 477 of them. Before the mask, the mirror ran 968 there,
+  because its path didn't depend on what the take records. So the mask
+  saves 491 a frame. 🟡 On the unit that's about 1.4 µs at 2.9 ns, plus
+  35 line writes if they miss; STEMS12's log measures it against
+  STEMS11's 8 µs. (STEMS12 itself carries the mask's first form, before
+  the simplify round below: 1,078 and 493.)
+- With every slot recorded, the mirror runs 960, 8 fewer than before the
+  mask.
+
+The unit test `mirror_mask` checks the written slots against the model
+and the others for their old bytes.
+
+**The cost gate** (✅ under the port). Since zero copy (20.7) the gate's
+routine list didn't name `stems_zframe`, so `HOOK_CEILING` left out its
+182 instructions a frame with everything at 24 bits. The gate now counts
+every instruction from `stems_frame_hook` to `stems_hook_end`, the block
+where `stems.s` keeps every routine the hook calls, so a new routine
+can't be left out (the list also missed `stems_zlayout`). With everything
+at 24 bits:
+
+| state of the hook | instructions a frame |
+|---|---|
+| before this round, `stems_zframe` counted | 5,154 |
+| with the parts' marks and sums | 5,210 |
+| with the probe | 5,294 |
+| with the mask (STEMS12's code) | 5,316 |
+| after the simplify round (the new `HOOK_CEILING`) | 5,252 |
+
+**CUE.wav and the port's capture** (🟡 inferred from three runs). On
+STEMS12's code (`83ac96ec`), `verify_stems`' `sources` check failed:
+`CUE.wav` matched the port's audio-out capture only with the capture's
+left cue word one sample off its right one. `CUE.wav`'s own left and right
+come from one sample, as `stems_bus16` reads them from the bus buffer. The
+same check passes on `stems-next` and on the simplify round, with the same
+port binary and the same bus code; only the hook's length differs. So it
+is the port's timing (the re-pin's arm rule, as with the inputs in 18.7),
+not the file. A listen to a take's `CUE.wav` on the unit settles it
+(flash L, test 4).
+
+The simplify round (a review of this round's own code): the parts are
+taken inline with one macro (`ST_ACC`) instead of a loop, two dead mark
+stores go, the probe and the stage share `GQ_READ`, and the mask lives
+in a register instead of two state words.
+
+### 20.10 Flat gain slots: one gain while a fader rests (4 Nov 2026)
+
+**Why.** STEMS12 (20.9) put the gain path, `stems_mirror` and the gain
+probe together, at about 8.3 µs of the 33 µs hook at seven tracks, and
+found about 40% of the gain queue's lines missing the cache. Most frames
+of a take have every fader at rest. Then core 0's ramp for a slot is flat:
+its 16 gains are one value. Until now the mirror still wrote all 16 and
+their bound (68 bytes, five cache lines a slot), and the track loop loaded
+and shifted each of them again.
+
+**The rule.** A slot is flat on a page when its gain doesn't move on it:
+no slope before the split (the old increment is 0, or the old ramp has no
+samples left, `m` = 0) and none after it (the new increment, computed from
+the gain as it is, is 0). Every gain is then the current one, and the
+state the page leaves is the split, an increment of 0 and that gain, as
+the full path would leave it. A ramp of one sample, a split of 15 for
+example, has 16 equal gains too but an increment that isn't 0; it takes
+the full path, which is still exact.
+
+**What changed.**
+
+- A slot of `stems_gq` is now a flag, the bound and the 16 gains:
+  72 bytes, `GQ_FLAT`, `GQ_BOUND` and `GQ_GAINS` in `stems.s`.
+  `stems_gq` starts on a 16-byte line, so a slot is five lines and a flat
+  slot's 12 bytes are one.
+- `stems_mirror` tests the rule before its three loops. A flat slot gets
+  its flag set, the bound and the first gain, and nothing else is written.
+  A ramp slot clears the flag and is written as before.
+- `stems_track16` and `stems_track24` read the flag. A flat slot's gain,
+  shifted once, stays in `a3`, and the multiplies take it from there
+  (`mac.l %a3,…`, the form tapeecho and waveload use). So the loops have
+  four forms each: the 16 gains or one, with and without the limit. One
+  macro, `TRACK_LOOP`, writes all eight, so the arithmetic is in one place
+  (`modules/stems/CLEANUP.md` 1.6, for the track loops). The 16-bit
+  limited loop now does two samples a pass and keeps its shift in a
+  register, as the free one does.
+- `stems_gprobe` reads what the stage reads: one line for a flat slot,
+  five for a ramp.
+
+**What it doesn't change.** The samples: each loop does the same
+arithmetic on the same gain, and the units compare every form with the
+model. A frame where a fader moves: that slot costs what it did, plus the
+flag's test and store.
+
+**Under the port** (✅, 4 Nov 2026; the port's faders rest, so every
+written slot is flat after the first frames):
+
+| the hook, a frame | before (20.9) | flat slots |
+|---|---|---|
+| everything at 24 bits (the new `HOOK_CEILING`) | 5,252 | 4,468 |
+| its mirror, eight slots written | 960 | 400 |
+| T1 alone at 24 bits | 1,035 | 937 |
+| its mirror, one slot written | 477 | 407 |
+| the recorder idle, the sequencer playing (no slot written) | | 396 |
+
+- With everything at 24 bits the routines read `stems_track24` 2,632,
+  `stems_bus24` 910, `stems_mirror` 400, `stems_zframe` 182 and
+  `stems_gprobe` 59.
+- The units: `mirror_flat` checks each written slot's flag against the
+  model (48 pages: 352 flat slots and 32 ramps), and that a flat slot
+  writes only its 12 bytes; every track loop has a flat case, with junk
+  where the 15 unread gains would be. `stems_gq` sits at `0x40a96730`
+  in the build: 16-aligned.
+- `verify_stems`' `cut` check had asked for exactly two chunks streamed
+  before its run ends. With the shorter hook the port runs the writer's
+  second pass a few frames earlier, and it found 63 whole sectors waiting,
+  not 64 (1,015 frames on the card, not 1,023). The check now asks for a
+  second pass, which is what it is there to show.
+
+🟡 **On the unit,** inferred until STEMS13 measures it: at seven tracks
+the instructions alone save about 2 µs at 2.9 ns, and the gain lines
+touched fall from 70 (35 written, 35 read) to 14. STEMS12's probe priced
+its 35 lines at 1.4 µs, so the `gains` part should fall to about 0.3 µs
+and the `mirror` part by about 1.5 to 2.5 µs. With T1 alone the mirror
+ran 3.2 µs over its count while writing only five lines, so most of its
+excess isn't the gain queue; if the `mirror` part falls by only its
+instructions, the rest is elsewhere (instruction-cache fills are the
+first candidate).
+
+**On the unit** (✅ STEMS13, flash M, 5 Nov 2026; one take each). The
+hook parts, in ns on average, against STEMS12's takes of 4 Nov:
+
+| take | `mirror` | `buses` | `gains` | `tracks` | hook |
+|---|---|---|---|---|---|
+| eleven files (seven tracks), STEMS12 | 6,939 | 8,969 | 1,393 | 16,553 | 33 µs |
+| eleven files, STEMS13 | 4,106 | 8,651 | 780 | 16,568 | 30 µs |
+| T1 alone, STEMS12 | 4,598 | 1,045 | 575 | 4,045 | 10 µs |
+| T1 alone, STEMS13 | 4,174 | 833 | 371 | 4,121 | 9 µs |
+
+- At seven tracks the gain path (`mirror` and `gains`) fell from 8.3 to
+  4.9 µs, 41% less, and the hook by 3 µs. `buses` and `tracks` are as
+  they were: neither changed.
+- `mirror` fell 2.8 µs, a little more than the 1.5 to 2.5 estimated. Its
+  instructions account for about 1.4 µs (about 490 fewer at seven slots,
+  at 2.9 ns). 🟡 The rest fits the 28 gain lines a frame it no longer
+  writes.
+- 🟡 `mirror` now costs 4.1 to 4.2 µs with one track or seven, against
+  about 1.2 µs of instructions (about 400). So about 3 µs of it doesn't
+  depend on the tracks, and it isn't the gain queue. Instruction-cache
+  fills at the hook's start remain the first candidate; the stock state
+  the mirror reads is the second.
+- 🟡 `gains` fell to 0.78 µs, not the 0.3 estimated. With one line (T1)
+  it reads 0.37 µs, the probe's own cost; the six more lines at seven
+  tracks add 0.41 µs, about 68 ns each, close to a miss each (CHIP.md:
+  about 80 ns). The estimate assumed STEMS12's share of hits. What's
+  left of the queue costs under 1 µs at seven tracks, so replacing it
+  (the descriptor of 20.9) is worth less than this round was.
+
+### 20.11 Whole clusters while recording (4 Nov 2026)
+
+**Why.** STEMS12's takes (flash L) put the card's time per KB written at
+54 to 82 µs with one file and 142 to 423 µs with two to eleven, on one
+card. The steepest step is from one file to two, and the 1-file and
+9-file takes of 4 Nov played the same project:
+
+| files | card while recording, µs a KB (STATS.TXT) |
+|---|---|
+| 1 | 54 (4 Nov), 62, 65, 82 (3 Nov) |
+| 2 | 142 (3 Nov), 176 (2 Nov) |
+| 4 | 182 (3 Nov) |
+| 9, 10 | 234, 252 (4 Nov); 387 with other samples on the Static machines |
+| 11 | 423 (4 Nov, `RING FULL`); 255 on STEMS11 (28 Oct) |
+
+At ten or eleven files the card is then busy 65% to 120% of the take
+(files × 258 KB a second × the time a KB), and above 100% the ring only
+decides when `RING FULL` comes.
+
+**The writer's pattern before this round.** Yves's card has 32 KB
+clusters (`cluster 64 sectors` in every log). A pass writes each file a
+chunk at most: 512 frames, 96 sectors (48 KB) for a 24-bit stereo file
+and 48 for a mono one. The file layer sends a command a cluster (20.2),
+so a write that ends inside a cluster sends the rest of it on the file's
+next pass, after the other files' writes: the card goes back to a cluster
+it left half written. With one file the next write continues where the
+last ended, and the card sees one stream. 🟡 Inferred: flash cards are
+slow at going back, and that is the cost that grows with the files. 20.2
+measured one stream under the port on a card of 2 KB clusters, where a
+chunk is whole clusters and the pattern can't show.
+
+**The card's layout** (the card in disk mode on Windows, 4 Nov 2026: the
+partition table from Windows' partition log, and the volume's first
+sector read with an elevated PowerShell). One FAT32 partition
+from sector 63, 67 reserved sectors, two FATs of 15,263 sectors: the
+first cluster is at sector 30,656, on a 4 KB and a 32 KB boundary (not on
+4 MB: remainder 6,080 sectors). A cluster on a 32 KB boundary lies inside
+the card's flash pages and blocks, so the layout isn't the cost, and a
+write of whole clusters is aligned at every level that matters. The FAT
+is 93% of the 16,384 sectors the firmware keeps (14.1): a 128 GB card
+would need 64 KB clusters.
+
+**What changed.** While a take records, `stems_zwrite` writes whole
+clusters of the mounted volume only (`CARD_SPC`): at most a chunk rounded
+up to whole clusters, ending on one. The rest waits in the ring for the
+file's next pass. The finish writes every whole sector, as before. The
+rings are as they were; a file holds back up to a cluster less one
+sector, so `RING FULL` comes up to a cluster's frames sooner (341 frames
+of a 24-bit stereo file, about 4% of its ring at eleven files), and
+STATS.TXT's ring peak reads up to that much higher.
+
+**The gate.** A new fixture, `stems_fixture.py --thru64`, is the THRU
+card with 32 KB clusters (FAT16, 160 MB). `verify_stems`' `clusters` run
+records everything at 24 bits, the inputs mono (14 files, chunks of 96
+and 48 sectors), logs every card command (`--cmd-log-end`) and counts,
+in the WAVs' cluster chains, the writes that leave a cluster half written
+and the writes that come back to one.
+
+**Under the port** (✅, 4 Nov 2026). `clusters` records T1 and T2 in
+stereo and A and B in mono, at 24 bits (chunks of 96 and 48 sectors
+against a cluster's 64), for 8,000 frames:
+
+| the take's writes to its WAVs | the writer before | whole clusters |
+|---|---|---|
+| card commands | 109 | 66 (39% fewer) |
+| leaving a cluster half written | 43 | 0 |
+| coming back to a half-written cluster | 39 | 0 |
+| frames on the card at the end | 7,668 | 7,508 |
+
+- Both runs read the take's new clusters 12 times, 705 sectors: the
+  directory lookups of the files' creation. The file layer reads nothing
+  back to rewrite a cluster, so the cost of coming back is the card's.
+- The first run of the check, everything at 24 bits for 3,000 frames,
+  wrote no audio at all (`rd` 0 of 3,028 frames): the port's card takes
+  about 18 ms a command, and each of the fourteen files' creation reads
+  whole 32 KB directory clusters. The check records four files for
+  8,000 frames since.
+- On the other fixtures' 2 KB clusters a full chunk is whole clusters,
+  so their takes stream as before; a pass that writes less than a chunk
+  now ends on a cluster too (`cut` streams 1,503 frames in its run where
+  it streamed 1,015).
+- The other gates on this code (4 to 5 Nov 2026): `verify_stems` 340
+  PASS and 1 FAIL, `verify_stems_units` 126 PASS, `verify_stems_menu` 93
+  PASS, `verify_docs` 0 problems. The failure is `sources`' CUE check,
+  20.9's port timing again: each of `CUE.wav`'s channels equals the
+  port's capture at every one of its 3,280 frames, the left at offset
+  523,985 and the right at 523,986. It passed on the flat gain slots
+  alone, so the writer's pattern moves the port's timing as the hook's
+  length did.
+
+**What would falsify it.** On STEMS13, the same card and samples: if
+nine to eleven files still write at 230 to 420 µs a KB, going back to
+half-written clusters wasn't the cost. Then the per-command time is the
+next candidate (a 24-bit stereo file now sends one or two commands of 64
+sectors a pass instead of two of 64 and 32).
+
+**On the unit** (✅ STEMS13, flash M, 5 Nov 2026; one take each). The
+Static machines played the samples of flash L's fifth take
+(`261104-2034`), the slower of its two sets (Yves):
+
+| files | STEMS13, µs a KB | busy, share of the take | a cluster's command | STEMS12, same samples | STEMS12, lighter samples |
+|---|---|---|---|---|---|
+| 1 (T1) | 92 | 2% | 3.0 ms | | 54 to 82 |
+| 10: T1 to T7, MAIN, CUE, AB | | | | 387 | 252 |
+| 11: as 10, and CD | 212 | 60% | 6.8 ms | | 423, `RING FULL` (busy 89%) |
+| 13: as 11, the inputs as four mono files | 261 | 73% | 8.4 ms | | |
+
+A cluster's command is the card's time while recording over the KB
+written in 32 KB clusters, one command each. Eleven and thirteen files
+carry the same 1,056 bytes a frame.
+
+- On the same samples, eleven files wrote at 212 µs a KB where STEMS12's
+  ten wrote at 387: 45% less, with one file more. That is also below the
+  230 to 420 that would have falsified the change. But it is far above
+  one file's 92 on these samples. 🟡 So going back to half-written
+  clusters was much of the card's cost, not all of it.
+- The samples raise even one file's time: 92 µs a KB here against 54 to
+  82 on the lighter set.
+- Thirteen files took 23% longer a KB than eleven for the same bytes,
+  and a command takes more than twice as long with eleven files as with
+  one.
+
+**The order of the writes** (✅ under the port, the `clusters` run's
+command log). With whole clusters, each of the take's 66 data writes
+continues the one before on the card: the file layer gives each file the
+next free cluster as it writes, so the four files' clusters lie in the
+order they were written and the card sees one stream going forward.
+Before the change 16 of 108 did. No FAT or directory write comes between
+them while the take records. 🟡 The port's card is FAT16; that the
+firmware's FAT32 path allocates the same way isn't checked.
+
+So on the port's evidence, a cost that still grows with the files isn't
+the order of the writes. 🟡 The first candidate is the stock's sample
+reads from the same card. BuMa measured a MKI's card writes at 4.7 to
+5.7 MB/s with the sequencer stopped and 1.4 to 2.1 MB/s with Static
+tracks streaming (19.1), and on STEMS12 other samples on the Static
+machines alone took ten files from 252 to 387 µs a KB (flash L). On
+STEMS13 the same slower samples put one file at 92 against 54 to 82.
+With one file the card is mostly idle and the reads fit between the
+writes; with eleven it's busy 60% of the time and the reads land among
+them. The test: the eleven files on a project whose machines don't
+stream from the card (Flex machines, which play from RAM). If the time a
+KB falls toward one file's, the reads are the rest of the cost.

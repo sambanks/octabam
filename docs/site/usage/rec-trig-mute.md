@@ -16,8 +16,10 @@ Hold [TRACK] and press [REC]: that track's recorder trigs stop firing
 - Works on any screen.
 - Holds across pattern changes until you unmute.
 - Every track starts unmuted at power-on.
-- A muted track shows two dots beside its play/stop icon at the screen
-  edge.
+- A muted track's tab at the screen edge shows two dots, one above the
+  other, beside its machine letter on the inner side: right of the
+  letter on tracks 1–4, left of it on tracks 5–8. The play/stop icon
+  below stays as on stock.
 - MIDI CC 80 on a track's channel: 0 unmutes, 1–127 mutes (AUTO channel =
   the active track), with AUDIO CC IN on. The keys send CC 80 on each
   held track's channel (1 muted, 0 unmuted), with AUDIO CC OUT on.

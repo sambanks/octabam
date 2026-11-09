@@ -86,9 +86,9 @@ base_recs = records(mem)
 
 
 def own_dump(key, tag):
-    """The dump with `key`'s own block in it. Two demand effects may share a block (DLPUMP loads one at a time:
-    octabam-full puts MODULATION and DISTORX both at P:0x3b820), and dsp_modmap carries only the first of them, so
-    the other's entry points would land in its neighbour's code. Any other demand effect's record over the block is
+    """The dump with `key`'s own block in it. Two demand effects may share a block (DLPUMP loads one at a time), and dsp_modmap carries only the first of them, so
+    the other's entry points would land in its neighbour's code (octabam-full, retired 9 Nov 2026, put MODULATION
+    and DISTORX both at P:0x3b820: `git show 07568af:remixes/test/octabam-full/remix.py`). Any other demand effect's record over the block is
     taken out and this one's put in; an overlap with anything else is resident code under a demand block, refused."""
     a0, w0 = RECS[key]["addr"], RECS[key]["words"]
     ours = {(r["addr"], len(r["words"])) for k, r in RECS.items() if k != key}
