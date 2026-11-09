@@ -3610,9 +3610,11 @@ po_f_dc:
 |   plain           one unit (PTCH always — never pressed-accel; a sticky
 |                   encoder-A push made the old PTCH ×3 fire un-pressed)
 |   knob pressed    ×7 on slots 1..5 only
-|   FUNC held       PTCH ±12 (octave); INDX FINE FOLD MIX ×16; RATO next
-|                   classic snap ≤4.01
-| SCALE ON: qz_knob still recomputes PTCH by scale degree (existing path).
+|   FUNC held       PTCH snaps to the next octave landmark (−60..+60 step
+|                   12; raw 4..124); from +4 → 0 / +12. INDX FINE FOLD MIX
+|                   ×16; RATO next classic snap ≤4.01
+| SCALE ON: qz_knob recomputes PTCH by scale degree, except FUNC keeps this
+| handler's octave snap (quantizer wrapper).
 | Clobbers d0/d1/a0 (C scratch); d2-d5 saved.
 po_knob:
         lea     -16(%sp),%sp
@@ -3626,10 +3628,61 @@ po_knob:
         bne     po_kn_plain
         cmpi.l  #KN_RATIO,%d2
         beq     po_kn_ratio
+        tst.l   %d2                      | PTCH: octave landmarks, not +12
+        beq     po_kn_ptch
         lea     po_kn_jump(%pc),%a0
-        mvz.b   (%a0,%d2.l),%d3          | the slot's jump: 12 . 16 16 16 16
+        mvz.b   (%a0,%d2.l),%d3          | the slot's jump: . 0 16 16 16 16
         muls.l  %d3,%d1
         add.l   %d1,%d0
+        bra     po_kn_out
+| FUNC + PTCH: one detent walks the next/prev multiple of 12 semitones
+| (display −60..+60). Strictly above/below current raw so a value already on
+| a landmark advances; off either end the value stays. Caller clamps.
+po_kn_ptch:
+        move.l  %d1,%d3                  | detent count
+        tst.l   %d3
+        beq     po_kn_out
+        moveq   #1,%d2                   | direction +1 / −1
+        tst.l   %d3
+        bgt     po_kn_pt_det
+        neg.l   %d2
+        neg.l   %d3
+po_kn_pt_det:
+        lea     po_kn_oct(%pc),%a0
+        moveq   #0,%d1                   | snap index
+        move.l  #0x100,%d4               | best (none = 0x100 up / −1 down)
+        tst.l   %d2
+        bgt     po_kn_pt_up
+        moveq   #-1,%d4
+po_kn_pt_up:
+po_kn_pt_scan:
+        mvz.b   (%a0,%d1.l),%d5          | landmark raw
+        tst.l   %d2
+        bgt     po_kn_pt_sup
+        cmp.l   %d0,%d5                  | down: want raw < current
+        bge     po_kn_pt_next
+        cmp.l   %d4,%d5
+        ble     po_kn_pt_next
+        move.l  %d5,%d4
+        bra     po_kn_pt_next
+po_kn_pt_sup:
+        cmp.l   %d0,%d5                  | up: want raw > current
+        ble     po_kn_pt_next
+        cmp.l   %d4,%d5
+        bge     po_kn_pt_next
+        move.l  %d5,%d4
+po_kn_pt_next:
+        addq.l  #1,%d1
+        cmpi.l  #KN_OCT_N,%d1
+        bcs     po_kn_pt_scan
+        cmpi.l  #0x100,%d4
+        beq     po_kn_pt_none
+        tst.l   %d4
+        bmi     po_kn_pt_none
+        move.l  %d4,%d0
+po_kn_pt_none:
+        subq.l  #1,%d3
+        bne     po_kn_pt_det
         bra     po_kn_out
 po_kn_plain:
         tst.l   %d2                      | PTCH: one unit always (ignore push)
@@ -3711,7 +3764,11 @@ po_kn_out:
         lea     16(%sp),%sp
         rts
 po_kn_jump:                              | FUNC's jump a detent, by slot: PTCH RATO INDX FINE FOLD MIX
-        .byte   12, 0, 16, 16, 16, 16    | PTCH octave (Tim); RATO its own path
+        .byte   0, 0, 16, 16, 16, 16     | PTCH uses po_kn_ptch; RATO its own path
+        .align  4
+        .set    KN_OCT_N, 11             | −60..+60 step 12 (raw 4 + 12·k)
+po_kn_oct:                               | FUNC+PTCH landmarks (display = raw − 64)
+        .byte   4, 16, 28, 40, 52, 64, 76, 88, 100, 112, 124
         .align  4
 
 | ==== FINGERED CHORDS: po_keyrec / po_keyrel (UI task; 26 Sep 2026, the second pass) ==

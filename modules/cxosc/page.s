@@ -11,7 +11,7 @@
 | sine (FOLD); FINE+MIX = stock dials. SETUP: CMOR MMOR DEC SYMM FDBK PWM.
 | Footer CX OSC>FLEX.
 | Knobs: po_knob — one unit a detent (PTCH never pressed-accel); other
-| slots pressed ×7; FUNC: PTCH ±12 (octave), FINE/FOLD/INDX/MIX ×16,
+| slots pressed ×7; FUNC: PTCH snaps …/−12/0/+12…, FINE/FOLD/INDX/MIX ×16,
 | RATO next classic snap ≤4.01.
 | Non-CX tracks draw as stock.
 |
