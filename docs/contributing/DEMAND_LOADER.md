@@ -109,7 +109,7 @@ Layout (words are `X:` or `P:` as in the window, which aliases):
 | `x:$33da3 + 8 k` (k = 0..4 in octabam, in the clear gap; DLCOPY follows the last) | effect k's entry: +0 BOUND (`$b0a5ed`), +1 real init, +2 real proc, +3 first window word, +4 the word after |
 | `x:$2900` | staging: doorbell, k, destination offset, N, init offset, proc offset, then 2 N halfwords (code word as high 16 bits, then low 8), then the sum of the code words modulo 2^24 in the same form. Addresses are offsets into the window |
 | `x:$3f00..$3f4c` | the stub's per-instance flags and saved registers; `x:$3dc0..$3e3f` the guard's state words and base cells, `x:$3fd0..$3fea` the trampolines' words, the guard's scratch and the copier's saved `b` |
-| `P:0x33dcb..0x33e55` | DLCOPY (138 words; in `test/dlspike`, with four entries, `0x33dc3..0x33e4d`); the stub follows at `window_loader` (`0x33e66`; `0x33e56` in `test/dlspike`), then the guard's trampolines for payload A and B with their two shared loaders, the reverbs' records (stock init, stock proc, extent; three words a reverb and payload), then its body, then the hook stubs (to `0x33ff3` in octabam, build report of 8 Nov 2026: 17 words free between DLCOPY and the stub, 13 at the top) |
+| `P:0x33dcb..0x33e55` | DLCOPY (138 words; in `test/dlspike`, with four entries, `0x33dc3..0x33e4d`); in octabam KEYBUS at `0x33e5e..0x33e6f`; the stub follows at `window_loader` (`0x33e6f`; `0x33e56` in `test/dlspike`), then the guard's trampolines for payload A and B with their two shared loaders, the reverbs' records (stock init, stock proc, extent; three words a reverb and payload), then its body, then the hook stubs (to `0x33ffd` in octabam, build report of 9 Nov 2026: 9 words free between DLCOPY and KEYBUS, 3 at the top) |
 | `P:0x37da3..0x37eff` | LOAD METER's DSP half (A and B) |
 | top of each slot | the effects, not uploaded: SPECTRUM `0x33820` (slot of T7), CHARACTER `0x37820` (T8), MODULATION `0x3b820` (T3), TRANSIENT `0x3fe00` (T4). The loader and LOAD METER sit above `0x33da3` and `0x37da3` in the first two slots, so those hold at most 1,411 words from `0x3820` (SPECTRUM, the larger of the two placed there, is 1,399); the third and fourth hold 2,016 |
 
@@ -286,14 +286,57 @@ Not measured: the dry gap while an effect moves and whether it is audible; wheth
 
 DSP 1's peak since reset read 99.8 % with an effect loaded (also 91.7 % and 99.8 % on cores 0 and 1 in an earlier round with four effects loaded, 26 Oct 2026) and 43.1 % when nothing had loaded. LOAD METER cannot reset the peak, so which frame made it is not measured: the load is the common factor, and the copy of a whole block in one frame hook (DLCOPY, up to 2,600 words) is the candidate.
 
+## Next changes
+
+Found in the review of 8-9 Nov 2026 (the simplify pass whose changes are in `CHANGELOG.md`, "Unreleased"). None is made.
+Each says what it removes and what it costs.
+
+- **An acknowledgement from the copier.** The pump sends each load three times because it cannot see a refusal. LOAD
+  METER's core 0 publish already reads core 1's cells in the shared window, and its record has two reserved bytes. A mask of
+  the entries' BOUND words there would let the pump send once and send again only while the effect is not bound. That
+  removes five state words (`dl_rwait`, `dl_rk`, `dl_rn`, `dl_rsrc`, `dl_rlen`), `REPEAT` and the repeat branch. It also
+  ends the case where every send is refused and the effect stays dry until it is withdrawn. It changes LOAD METER's record,
+  which `COSTS.md`, `verify_load_meter` and BRAIN's LOAD view read, and a hook on payload A, so it needs a unit run.
+- **A slice of the copy per frame.** The copy of a whole block in one frame hook still reads DSP busy 99.7 % (9 Nov). A
+  cursor in the entry (source, destination, words left, the partial sum) and a fixed number of words a frame would bound
+  it: 256 words a frame is about 7,000 to 10,000 cycles (estimated). BOUND is set after the last slice and the sum. The
+  guard would key on the span (+3, +4, written at the first slice) instead of BOUND, or a reverb that arrives during the copy
+  runs over the code. About 15 to 20 more resident words, and the pump waits for the copy before it sends the next message.
+- **A time limit on the pump's wait for each host word** (`dl_xfer`). A DSP that stops taking host words spins the frame
+  interrupt for good: a candidate for the freeze of 9 Nov (`FAILURE_MODES.md`). With a limit, the message is dropped and the
+  drop counted in `DL_DIAG`; the effect stays dry until it is withdrawn and used again. It is not enough alone: stock's wait
+  for the frame's `0x8c` host command has no limit either. What the DSP's host DMA does with a half-sent block is not known,
+  so this is checked under the port first.
+- **The doorbell compare.** `and #>$ffff,a` leaves A2 holding the sign of the stale byte above the host's 16 bits, so a stale
+  byte of `0x80` or above makes `cmp #>$a55a,a` miss the doorbell. `0x40` was measured, so this has not happened. A clean
+  reload of `a1` before the compare closes it (the A2 trap in `AGENTS.md`).
+- **A load flag instead of the DEBOUNCE and GRACE timers.** GRACE (10 s) rests on one unit measurement (3.8 s of default ids
+  during a project load) and DEBOUNCE (about 145 ms) on none. STORE owns the load and Part sites. A flag set there while a
+  load runs would let the pump decide once, after it. Every route has to set it: project load, pattern with a Part, Part
+  reload, paste, program change.
+- **No idle pass when nothing changed.** The pass costs about 1,000 instructions every ping-0 frame with five effects
+  (estimated), about 1 % of a frame. It can be skipped while the 16 live ids equal the last pass's and no counter runs.
+- **Smaller blocks.** A block's send and copy cost grows with its words. SIDECHAIN_COMPRESSOR's block is 1,711 words, and
+  1,026 of them are its key window and counters as zero words. A fill in the message instead of those words would cut its
+  send by 60 %, and the copier would write the zeros in a one-instruction loop instead of decoding them (estimated). Each
+  effect's code, tables and zero data are not yet measured.
+- **The demand records in the schema.** `Remix.window_demand` carrying each effect's homes, with `Remix.window` holding only
+  uploaded records, would remove the build's `not in DEMAND` exceptions (the boot zero loop, `_loader_check`,
+  `window_records.pop`). A refactor that `scripts/refhash.sh` proves.
+- **PHASE ANY retired.** Its measurement is done (`DLPANYJ9`, section "Measured on a unit"). Removing it removes the
+  `PHASE_ANY` branches and the setting; `test/dl-probe-any` loses its instrument.
+
 ## Open
 
 - OPEN, hardware: a move from T4's block freezes the DSP frame loop (`FAILURE_MODES.md`, "DARK REV picked on T4's FX2 ..."). `octabam` still has `window_homes`. A poll caught DSP 1 at 99.8 % in a single frame at the copy of a send (15.544 s, 28 Oct 2026): copying a block in one frame takes core B close to a frame.
   Since 8 Nov 2026 the loop is 9 instructions and 10 words a code word instead of 11 and 13, and the two repeats of a send that
   arrived whole are not copied. Estimated from the code (2 cycles a one-word instruction, as `CHIP.md` measures; 4 assumed for a
   two-word one; wait states for fetches and P writes in the window not counted): MODULATION's 1,561 words went from about 41,000
-  cycles to about 31,000, against a frame of 72,512. 🟡 not measured on a unit. Copying a slice per frame (a cursor in the entry,
-  BOUND after the last slice) is the change that would bound it; not made.
+  cycles to about 31,000, against a frame of 72,512. 🟡 not measured on a unit. On a unit, 9 Nov 2026 (`OCTABAMS5`, which has
+  these changes): a switch to MODULATION still read DSP busy 99.7 % in the window of its copy. At full polling the unit stopped
+  once in 118 switches, where `OCTABAMS4` stopped the DSP 3 times in 19 (`FAILURE_MODES.md`, the loader soak). The busy figure
+  is at its ceiling in both images (99.8 % before), so it cannot show the copy's shorter time. Copying a slice per frame (a cursor in the entry, BOUND after the last slice) is the change that
+  would bound it; not made.
 - The unit: the audible dropout while an effect loads (about 25 ms), and a reverb meeting a loaded effect's block.
 - Core A's stall when sent to, and the mask at the frames that lose their chunk.
 - How long the deferred toasts wait for a page key; whether 2 s (120 ticks) is long enough to read.
