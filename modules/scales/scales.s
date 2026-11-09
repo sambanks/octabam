@@ -300,6 +300,42 @@ sc_key_decode:
 9:      moveq   #-1,%d0
         rts
 
+| Native KEY descriptor, independent of Part storage. This immutable table
+| avoids repeated division/decoding for the seven directly encoded modes.
+| d0 raw KEY -> mask | tonic<<12 | native-snap<<16; OFF/invalid -> 0.
+| Preserves every other register. Extra catalogue IDs require sc_decode_at.
+        .globl sc_key_descriptor
+sc_key_descriptor:
+        tst.l %d0
+        beq.s .descriptor_done
+        cmpi.l #LAST_KEY,%d0
+        bhi.s .descriptor_off
+        move.l %a0,-(%sp)
+        subq.l #1,%d0
+        lea sc_key_descriptors,%a0
+        move.l (%a0,%d0.l*4),%d0
+        move.l (%sp)+,%a0
+.descriptor_done:
+        rts
+.descriptor_off:
+        moveq #0,%d0
+        rts
+        .balign 4
+sc_key_descriptors:
+        .set .tonic,0
+        .rept 12
+        .long 0x10000 + (.tonic<<12) + 0xab5
+        .long 0x10000 + (.tonic<<12) + 0x5ad
+        .set .tonic,.tonic+1
+        .endr
+        .set .tonic,0
+        .rept 12
+        .irp mask,0x6ad,0x5ab,0xad5,0x6b5,0x56b
+        .long (.tonic<<12) + \mask
+        .endr
+        .set .tonic,.tonic+1
+        .endr
+
 | d0 = mode << 4 | tonic -> d0 = the KEY value (the inverse of sc_key_decode).
 sc_key_encode:
         move.l  %d0,%d1
@@ -363,42 +399,129 @@ sc_track:
         jsr     store_part_ui_context
         move.l  %d0,%d1
         move.l  (%sp)+,%d0
-                                        | on into sc_track_ctx
+        bsr.w   sc_source_context
+        bra.w   sc_track_ctx
 
-| d0 MIDI track 0..7, d1 a STORE context (bank * 4 + Part, -1 none) -> d0 =
-| ID << 4 | tonic, -1 for KEY OFF: that Part's KEY (the live one without a
-| context) and the ID sc_lib keeps for it. Clobbers d1 and a0.
-sc_track_ctx:
+| d0 local track,d1 its context -> effective source track/context. The
+| local sc_track_at reader never calls this routing adapter.
+sc_source_context:
         lea     -8(%sp),%sp
         movem.l %d2-%d3,(%sp)
         move.l  %d0,%d2
         move.l  %d1,%d3
-        bsr.w   sc_ext                  | the ID, 0 the KEY's own
-        move.l  %d2,%d1
-        move.l  %d0,%d2                 | d2 the ID
-        move.l  %d1,%d0                 | d0 the track
+        sc_resolve_source
+        cmp.l   %d2,%d0
+        beq.s   .source_local
+        move.l  %d0,-(%sp)
+        jsr     store_part_midi_context
+        move.l  %d0,%d3
+        move.l  (%sp)+,%d0
+.source_local:
         move.l  %d3,%d1
-        bsr.w   sc_key_of
-        bsr.w   sc_key_decode
-        tst.l   %d0
-        bmi.s   9f                      | KEY OFF
-        move.l  %d2,%d1
-        subq.l  #1,%d1
-        cmpi.l  #SC_COUNT,%d1
-        bcs.s   1f                      | sc_lib names a scale
-        move.l  %d0,%d1
-        lsr.l   #4,%d1                  | else the KEY's mode: ID - 1
-1:      addq.l  #1,%d1
-        lsl.l   #4,%d1
-        andi.l  #15,%d0
-        or.l    %d1,%d0
-9:      movem.l (%sp),%d2-%d3
+        movem.l (%sp),%d2-%d3
         lea     8(%sp),%sp
+        rts
+
+| UI edits are local; an inherited scale is displayed but read-only.
+sc_can_edit:
+        move.l  %d2,-(%sp)
+        mvz.b   UI_TRACK,%d2
+        jsr     store_part_ui_context
+        move.l  %d0,%d1
+        move.l  %d2,%d0
+        sc_resolve_source
+        cmp.l   %d2,%d0
+        seq     %d0
+        andi.l  #1,%d0
+        move.l  (%sp)+,%d2
+        rts
+
+| d0 MIDI track 0..7, d1 a STORE context (bank * 4 + Part, -1 none) -> d0 =
+| ID << 4 | tonic, -1 for KEY OFF: that Part's KEY (the live one without a
+| context) and the ID sc_lib keeps for it. Clobbers d1 and a0.
+| Explicit-context service: 0..63 working KEY, 64..127 saved KEY.
+| Extra IDs retain SCALES' existing destination-Part semantics for both.
+| Invalid track/context and KEY OFF return -1; clobbers d1 and a0.
+        .globl sc_track_at
+sc_track_at:
+        cmpi.l #7,%d0
+        bhi.s .track_invalid
+        cmpi.l #127,%d1
+        bls.s sc_track_ctx
+.track_invalid:
+        moveq #-1,%d0
+        rts
+
+sc_track_ctx:
+        move.l %d0,-(%sp)
+        bsr.w sc_key_of
+        move.l %d2,-(%sp)
+        move.l 4(%sp),%d2
+        bsr.w sc_decode_at
+        move.l (%sp)+,%d2
+        addq.l #4,%sp
+        rts
+
+| Resolve an already-read KEY without a second Part read. d0 raw KEY,
+| d1 context, d2 track -> ID<<4|tonic or -1. Only d0/d1/a0 scratch.
+| This is also the scale-provider adapter's decode boundary.
+        .globl sc_decode_at
+sc_decode_at:
+        lea -12(%sp),%sp
+        movem.l %d2-%d4,(%sp)
+        move.l %d1,%d4
+        bsr.w sc_key_decode
+        tst.l %d0
+        bmi.s .decoded
+        move.l %d0,%d3
+        tst.l %d4
+        bmi.s .native_id
+        move.l %d2,%d0
+        move.l %d4,%d1
+        bsr.w sc_slot
+        mvz.b (%a0),%d2
+        cmpi.l #DIATONIC,%d2
+        bls.s .native_id
+        cmpi.l #SC_COUNT,%d2
+        bhi.s .native_id
+        move.l %d2,%d0
+        bsr.w sc_key_mode
+        move.l %d3,%d1
+        lsr.l #4,%d1
+        cmp.l %d1,%d0
+        beq.s .resolved_id
+.native_id:
+        move.l %d3,%d2
+        lsr.l #4,%d2
+        addq.l #1,%d2
+.resolved_id:
+        lsl.l #4,%d2
+        move.l %d3,%d0
+        andi.l #15,%d0
+        or.l %d2,%d0
+.decoded:
+        movem.l (%sp),%d2-%d4
+        lea 12(%sp),%sp
         rts
 
 | d0 MIDI track 0..7, d1 a STORE context -> d0 = that Part's KEY (STORE's
 | coherent read), the live KEY without a context. Clobbers a0.
 sc_key_of:
+        cmpi.l  #64,%d1
+        bcs.s   .key_working
+        cmpi.l  #127,%d1
+        bhi.s   .key_working
+        lea     -8(%sp),%sp
+        movem.l %d1-%d2,(%sp)
+        subi.l  #64,%d1
+        moveq   #36,%d2
+        mulu.l  %d2,%d0
+        addi.l  #0x4e2+17,%d0
+        jsr     store_part_saved_read
+        movem.l (%sp),%d1-%d2
+        lea     8(%sp),%sp
+        rts
+.key_working:
         tst.l   %d1
         bmi.s   1f
         jsr     store_part_midi_key
@@ -441,7 +564,7 @@ sc_ext:
         bhi.s   8f
         move.l  %d2,%d0
         move.l  %d4,%d1
-        bsr.s   sc_key_of
+        bsr.w   sc_key_of
         tst.l   %d0
         beq.s   7f                      | OFF: the ID waits for a tonic
         bsr.w   sc_key_decode
@@ -842,6 +965,9 @@ sc_key_chosen:
         lea     -12(%sp),%sp
         movem.l %d2-%d4,(%sp)
         move.l  %d0,%d2                 | the ID
+        bsr.w   sc_can_edit
+        tst.l   %d0
+        beq.w   3f
         mvz.b   UI_TRACK,%d0
         bsr.w   sc_live
         mvz.b   KEY(%a0),%d0
@@ -891,6 +1017,14 @@ sc_encoder:
         movem.l %d0-%d3/%a0,(%sp)
         moveq   #1,%d0
         move.l  %d0,sc_turned           | a turn while pushed is no press
+        bsr.w   sc_can_edit
+        tst.l   %d0
+        bne.s   .encoder_local
+        movem.l (%sp),%d0-%d3/%a0
+        lea     20(%sp),%sp
+        clr.l   %d5
+        jmp     KEY_DONE
+.encoder_local:
         jsr     store_part_ui_context
         move.l  %d0,%d1
         mvz.b   UI_TRACK,%d0
@@ -960,6 +1094,8 @@ sc_encoder:
 sc_output:
         lea     -12(%sp),%sp
         movem.l %d0-%d1/%a0,(%sp)
+        move.l  %d7,%d0
+        sc_owned_pitch
         .if     HAVE_CHORDS             | beside CHORDS FACTORY: a chord step as written
         moveq   #64,%d1
         mvz.b   547(%a5),%d0
@@ -971,9 +1107,7 @@ sc_output:
         mvz.b   549(%a5),%d0
         cmp.l   %d1,%d0
         beq.s   4f
-5:      movem.l (%sp),%d0-%d1/%a0       | NOT2-4 not all 64: a chord, played as written
-        lea     12(%sp),%sp
-        jmp     OUT_DONE
+5:      bra.w   .output_owned
 4:
         .endif
         move.l  %d7,%d0
@@ -1014,6 +1148,11 @@ sc_output:
         ble.s   9f
         jmp     OUT_STOCK
 9:      jmp     OUT_DONE
+
+.output_owned:
+        movem.l (%sp),%d0-%d1/%a0
+        lea     12(%sp),%sp
+        jmp     OUT_DONE
 
 | Stock's KEY formatter (pointer at 0x400d40c6): two five-byte strings, the
 | tonic and the scale's 4-character name.
@@ -1201,6 +1340,9 @@ kl_tick:
         bne.s   6f
         tst.l   TEXT_OPEN
         bne.s   6f
+        bsr.w   sc_can_edit
+        tst.l   %d0
+        beq.w   6f
         mvz.b   UI_TRACK,%d0
         bsr.w   sc_track
         lsr.l   #4,%d0                  | the ID shown first (OFF: none)

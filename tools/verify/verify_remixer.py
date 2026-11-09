@@ -28,6 +28,7 @@ except ImportError:
 from remix import app as A, registry  # noqa: E402
 
 A.RemixerScreen.ensure_sync = lambda self, probs=None: None     # no image builds
+A.RemixerScreen.measure_all = lambda self: None  # library cost worker also builds into out/
 
 
 async def run():
@@ -49,6 +50,18 @@ async def run():
                     await pilot.pause()
             except Exception as e:                      # noqa: BLE001
                 fails.append(f"{name}: drawing raised {type(e).__name__}: {e}")
+        # Unsupported scale adapters must remain refused both in AVAILABLE
+        # and after selection, without taking the remixer down.
+        app.state.load("midi")
+        if "qualified MIDI scale adapter" not in scr._mod_verdicts(app.state).get("SCALES", ""):
+            fails.append("SCALES candidate did not report its unsupported adapter")
+        app.state.toggle("SCALES")
+        if not any("qualified MIDI scale adapter" in p for p in app.state.problems()):
+            fails.append("selected SCALES did not block the incompatible MIDI composition")
+        for pane in (A.AVAILABLE, A.LOADED, A.UNIT):
+            scr.pane, scr.cur = pane, [0, 0, 0]
+            scr.rerender()
+            await pilot.pause()
         app.state.load("mods")
         scr.pane, scr.cur = A.AVAILABLE, [3, 0, 0]
         await pilot.press("k")

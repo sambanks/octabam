@@ -54,7 +54,7 @@ class Fixture:
         self.hooks = tuple(d for hooks in declaration['HOOKS'].values() for d in hooks)
         assert not any(f'test{i}_' in fn(()) for i in range(count)), 'absent clients must be omitted'
         self.callbacks = {}
-        suffixes = events if slug == 'sequencer' else ('claim','handle','copy_pre')
+        suffixes = events if slug == 'sequencer' else ('claim','handle','copy_pre','copy_post')
         for i in range(count):
             for suffix in suffixes:
                 address = 0x47002000 + len(self.callbacks)*16

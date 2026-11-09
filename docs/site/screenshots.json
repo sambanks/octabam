@@ -1029,5 +1029,58 @@
       "source": "emulator panel UART",
       "firmware_sha256": "ba5e3644e5aea61b6816c65a8cfdd29dd03ba162979d95b64ce114c4994b8e45"
     }
+  },
+  "midi-harmony": {
+    "note-setup": {
+      "image": "midi-harmony/note-setup.png",
+      "caption": "MIDI NOTE SETUP: HARM CHORD.",
+      "remix": "midi-harmony",
+      "source": "emulator panel UART",
+      "firmware_sha256": "badd9c956eb9d9902ffe88435231a795e470ab246dd153b7328502bd1b68c5d0"
+    },
+    "chord": {
+      "image": "midi-harmony/chord.png",
+      "caption": "HARMONY: chord voicing, spread, root and size.",
+      "remix": "midi-harmony",
+      "source": "emulator panel UART",
+      "firmware_sha256": "badd9c956eb9d9902ffe88435231a795e470ab246dd153b7328502bd1b68c5d0"
+    },
+    "accum": {
+      "image": "midi-harmony/accum.png",
+      "caption": "HARMONY: degree accumulator bounds and reset.",
+      "remix": "midi-harmony",
+      "source": "emulator panel UART",
+      "firmware_sha256": "badd9c956eb9d9902ffe88435231a795e470ab246dd153b7328502bd1b68c5d0"
+    },
+    "note-main": {
+      "image": "midi-harmony/note-main.png",
+      "caption": "MIDI NOTE: degree, chord and accumulator controls.",
+      "remix": "midi-harmony",
+      "source": "emulator panel UART",
+      "firmware_sha256": "badd9c956eb9d9902ffe88435231a795e470ab246dd153b7328502bd1b68c5d0"
+    },
+    "unsupported-key": {
+      "image": "midi-harmony/unsupported-key.png",
+      "caption": "SCALES keeps its extended choice on a HARM track.",
+      "remix": "midi",
+      "source": "emulator panel UART",
+      "firmware_sha256": "64b9aa427cb75e79f9e3b367a71ac9f129301d7ee34e04c91c135e8b7793dad3"
+    },
+    "unsupported-scale": {
+      "image": "midi-harmony/unsupported-scale.png",
+      "caption": "Harmony requires a diatonic scale and preserves degree intent.",
+      "remix": "midi",
+      "source": "emulator panel UART",
+      "firmware_sha256": "64b9aa427cb75e79f9e3b367a71ac9f129301d7ee34e04c91c135e8b7793dad3"
+    }
+  },
+  "trig-modes": {
+    "combined": {
+      "image": "trig-modes/combined.png",
+      "caption": "MIDI trig modes: CHORDS and CHORD PLAY together.",
+      "remix": "midi",
+      "source": "emulator panel UART",
+      "firmware_sha256": "64b9aa427cb75e79f9e3b367a71ac9f129301d7ee34e04c91c135e8b7793dad3"
+    }
   }
 }

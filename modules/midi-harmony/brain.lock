@@ -1,0 +1,12 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": [1]
+ },
+ "settings": {},
+ "store": {
+  "id": "mattias.midi-harmony",
+  "major": 1
+ }
+}

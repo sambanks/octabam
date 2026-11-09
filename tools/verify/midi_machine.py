@@ -62,7 +62,7 @@ class Machine:
         if symbol_loader is None:
             def symbol_loader():
                 raw=subprocess.check_output(['m68k-elf-nm',str(ROOT/'out/platform/runtime/runtime.elf')],text=True)
-                return {name:int(address,16) for address,name in re.findall(r'^([0-9a-f]+) [TtBb] ((?:bf|mh|hd|ms|ch)_\w+)$',raw,re.M)}
+                return {name:int(address,16) for address,name in re.findall(r'^([0-9a-f]+) [TtBb] ((?:bf|mh|hd|ms|sc|mhc)_\w+)$',raw,re.M)}
         self.sym=symbol_loader(); self.uc=Uc(UC_ARCH_M68K,UC_MODE_BIG_ENDIAN)
         out = artifact_root or ROOT/'out'
         layout = json.loads((out/'platform/layout.json').read_text())

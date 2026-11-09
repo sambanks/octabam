@@ -1,3 +1,4 @@
+        .include "remix.inc"
 | MIDI SCENES -- scene locks for the eight MIDI tracks, phase 1.
 |
 | Original author of the behaviour: bkkbrls-del (midisc, MIDISC2.1). This
@@ -606,6 +607,7 @@ mix_flat:
         movel   %d7,%sp@-
         movel   %d6,%sp@-
         jsr     CC_TX
+scn_control_sent:
         lea     %sp@(16),%sp
         lea     scn_snap:l,%a1          | CC_TX saves d2-d7/a2-a5 only: a1 comes back clobbered
         bra.s   mix_ctl
@@ -1046,7 +1048,7 @@ cc_pass:
         moveb   %d3,MSGBUF+2
         pea     MSGBUF
         pea     3
-        jsr     MIDI_TX
+        jsr     SCN_MIDI_TX
         movel   %d5,%d0
         lsll    #7,%d0
         addl    %d2,%d0
@@ -1921,3 +1923,23 @@ scn_ctx:        .space  4120            | STORE_CTX
 scn_hdr:        .space  16
 scn_path:       .space  260
 scn_psrc:       .space  260
+
+| Public output provenance. Native CC_TX's exact return site identifies the
+| Scenes producer; the context reader owns the mix-state representation.
+| d0 = bank*4+Part, or -1 before a valid mix. Preserves every other register.
+        .text
+        .globl scn_control_sent, scn_midi_context
+scn_midi_context:
+        movel %d1,%sp@-
+        movel scn_pbi,%d0
+        cmpl #15,%d0
+        bhi.s 1f
+        movel scn_pp,%d1
+        cmpl #3,%d1
+        bhi.s 1f
+        lsll #2,%d0
+        addl %d1,%d0
+        bra.s 2f
+1:      moveq #-1,%d0
+2:      movel %sp@+,%d1
+        rts

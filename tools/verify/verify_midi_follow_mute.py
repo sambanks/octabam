@@ -34,14 +34,14 @@ def port_gate(image, project, out):
     candidate.write_bytes(image.read_bytes())
     raw = subprocess.check_output(['m68k-elf-nm', str(follow.ROOT/'out/platform/runtime/runtime.elf')], text=True)
     sym = {name: int(addr, 16) for addr, name in
-           re.findall(r'^([0-9a-f]+) [TtBb] ((?:bf|mh|ms|ch)_\w+)$', raw, re.M)}
+           re.findall(r'^([0-9a-f]+) [TtBb] ((?:bf|mh|ms|mhc)_\w+)$', raw, re.M)}
     (out/'symbols.json').write_text(json.dumps(sym, indent=2)+'\n')
     modes = [('plain', 0, False), ('reverse', 7, False), ('arp', 0, True)]
     if 'ms_decode' in sym:
         modes.append(('scales', 0, False))
     if 'mh_sequence' in sym:
         modes.extend([('harmony', 0, False), ('harmony-arp', 0, True)])
-    if 'ch_lock_table' in sym:
+    if 'mhc_lock_table' in sym:
         modes.insert(0, ('chord-locks', 0, False))
     cases = {}
     for mode, leader, arp in modes:
@@ -87,7 +87,7 @@ def port_gate(image, project, out):
                 # Change source KEY during the mute interval in all controls.
                 args += ['--step', f'1600:poke:{0x46c76df1+68*leader:#x}=2;{0x400e21e0+0x8ed80+0x4e2+36*leader+17:#x}=2;{0x100a4ece+0x4e2+36*leader+17:#x}=2']
             if mode == 'chord-locks':
-                table = sym['ch_lock_table'] + leader*64
+                table = sym['mhc_lock_table'] + leader*64
                 args += ['--step', f'-:poke:{table+2:#x}=1;{table+4:#x}=5;{table+8:#x}=7']
             capture, log = work/f'{state}.midi', work/f'{state}.log'
             command = [str(follow.ROOT/'out/emu/ot_emu'), '--image', str(candidate),

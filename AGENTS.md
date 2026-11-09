@@ -127,6 +127,13 @@ The traps that have already cost real work live in
 it cost, the fix, and what now gates each one. Add a new trap there the
 moment it costs real work, and add its line here.
 
+- [Uninitialized retention can hide the real edit cost](docs/contributing/TRAPS.md#trap-retention-budget) — initialize Harmony and native bank data before bounding lifecycle work; rejected packing is not a successful save.
+- [Rewriting a fixture bank invalidates its companion](docs/contributing/TRAPS.md#trap-companion-fixture) — remove stale companions only from generated musical fixtures; preserve real project and reload data.
+- [Stable mode IDs do not fix menu row positions](docs/contributing/TRAPS.md#trap-composed-mode-fixture) — select the composed row and freeze all participating client symbols.
+- [A refused candidate can crash the remixer before selection](docs/contributing/TRAPS.md#trap-selection-refusal) — render selection-callback errors as compatibility problems; keep build rejection intact.
+
+- [Headless remixer checks can still rebuild the candidate](docs/contributing/TRAPS.md#trap-remixer-cost-worker) — disable both sync and library cost workers in the UI-only gate.
+
 **DSP side**
 
 - [The assembler mis-encodes instructions, silently](docs/contributing/TRAPS.md#trap-asm) — `tfr a,b`→`rnd b`; unknown `mpy` operand orders→`mpysu` (second operand unsigned); `cmp a,b`→`max a,b`. Disassemble what you assemble.

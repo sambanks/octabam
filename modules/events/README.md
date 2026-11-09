@@ -3,10 +3,14 @@
 System owner of shared native event boundaries. Select **EVENTS** once; clients
 declare `requires=('EVENTS',)` and register only the events they consume.
 EUCLID uses transport notifications. MIDI Follow uses transport and accepted-note
-notifications. PLOCKS P2 uses held-edit ownership and
-copy notifications. The module adds no controls, persistent data or FX slots.
+notifications. Harmony uses those notifications plus held-edit ownership and
+copy pre/post notifications. PLOCKS P2 uses held-edit ownership and copy-pre
+notifications. The module adds no controls, persistent data or FX slots.
 
 Spec: [docs/specs/EVENTS.md](../../docs/specs/EVENTS.md) — the stock boundaries, the registration form and each family's contract and timing.
+
+Harmony takes held-edit precedence ahead of PLOCKS only when its predicate
+claims the edit. Both copy phases retain their registration order.
 
 ## Selection and performance
 
@@ -38,6 +42,9 @@ includes the two displaced native prologue instructions:
 | 1 | 13 | 16 | 12 | 30 |
 | 3 | 21 | 26 | 16 | 34 |
 
+The copy column measures pre-only subscriptions. Post-copy behavior has separate
+native-output preservation tests; these numbers do not describe its cost.
+
 Zero-client EVENTS has no dispatcher: tests execute stock code. Both MIDI
 acceptance sites have the same count. These are emulator instruction counts,
 **not** ColdFire cycles, elapsed time, hardware CPU headroom or MIDI latency.
@@ -57,10 +64,10 @@ synthetic clients, independent transport subscriptions, and native MIDI packet
 construction/arbitration. `verify_edit_events.py` checks first-owner precedence,
 native fallback, register/stack/condition-code preservation, callback ordering,
 copy results and counts. A second pass executes native memcpy for 12 lengths
-and four alignments, comparing zero/one/three clients' copy bytes, entry frame,
+and four alignments, comparing zero/one/three pre clients, post-only and pre/post clients' copy bytes, entry frame,
 return registers, stack and condition codes. Synthetic callbacks deliberately
 clobber registers.
-`verify_events_selection.py` checks all 32 event subsets, absent code/hooks,
+`verify_events_selection.py` checks all 64 event subsets, absent code/hooks,
 invalid registrations and the registry's bound real-client selections. A
 16-subscriber MIDI case also checks branch reach and constant stack depth.
 `verify_event_clients.py` checks executable callbacks, exclusive installed hook

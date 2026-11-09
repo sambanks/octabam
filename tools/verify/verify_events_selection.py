@@ -34,7 +34,7 @@ def main():
                         clients[family] = [('SYNTHETIC', f'probe_{family}', handled)]
                 select.__globals__['CLIENTS'] = clients
                 selected = select({'SYNTHETIC'})
-                expected = tuple(d for event in events if event in subset for d in ns['HOOKS'][event])
+                expected = tuple(dict.fromkeys(d for event in events if event in subset for d in ns['HOOKS'][event]))
                 assert selected['detours'] == expected
                 assert {u.label for u in selected['linked']} == {d.unit for d in expected}
                 assert select(set()) == {'linked': (), 'detours': ()}
@@ -46,7 +46,8 @@ def main():
                         if (event[0] == 'edit') != (slug == 'edit'):
                             continue
                         for d in hooks:
-                            assert (d.symbol in f.production_symbols) == (event in subset), (subset, d.symbol)
+                            required = any(d in ns['HOOKS'][ev] for ev in subset)
+                            assert (d.symbol in f.production_symbols) == required, (subset, d.symbol)
                 cases += 1
     # A larger fanout catches short-branch range assumptions and stack growth.
     with tempfile.TemporaryDirectory(prefix='octabam-events-fanout-') as td:

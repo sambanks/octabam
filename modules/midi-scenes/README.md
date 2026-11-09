@@ -151,3 +151,12 @@ cover.
 - The oracle image is not in the repository and is not built by `make`: `verify_scenes.py --oracle MAIN21.raw` (or `OT_MSC21_IMAGE`) takes one made from his repository at `52eaab0` (his own build; not re-run here after the submodule left). `make check` runs the scenarios on our image and stock's.
 - Hardware: MIDISC 2.0 ran on bkkbrls-del's unit in the `ok-ms` image
   (14 Sep 2026). The MIDISC 2.1 reimplementation has not run on hardware.
+
+## Loopback output
+
+When MIDI LOOPBACK is selected, the sequence CC loop calls its packet adapter
+explicitly. The native control emitter's exported `scn_control_sent` continuation
+identifies mixer output, and `scn_midi_context` supplies its actual mix Part
+(d0 = bank*4+Part, or -1; other registers preserved). The adapter reads no private
+Scenes offsets and does not replace the global USB/DIN sender. Invalid contexts
+fall back to EXT. Ordinary senders retain their own routing.

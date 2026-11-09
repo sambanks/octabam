@@ -17,7 +17,7 @@ Selection determines which sites are installed. The address-load sites
 | Transport | `0x4009c3d4` / `0x4009c4d4` write PLAYING at `0x800065b8`; continue at `0x4009c3da` / `0x4009c4da` |
 | Accepted MIDI | `0x4009fbb2` / `0x4009fcfa`, after native sender `0x40010bc8` returns; continue at `0x4009fbb8` / `0x4009fd00` |
 | Held editor | Entry `0x400508e4`; unclaimed edits replay its prologue and continue at `0x400508ec` |
-| Copy | The 22 call/address-load sites listed in `manifest.py` target native memcpy `0x40020898`; callbacks finish before entering it with the original frame |
+| Copy | The 22 call/address-load sites listed in `manifest.py` target native memcpy `0x40020898`; pre callbacks run before the native copy; optional post callbacks run after it |
 
 These addresses and instructions are observed; the event names describe their
 roles, not firmware symbols. Native-code tests check transport writes, MIDI
@@ -61,6 +61,7 @@ Missing callback implementations fail linking.
 | `midi.note_accepted` | Notify all: d0 = MIDI track 0–7, d1 = native pool kind, d2 = packet velocity, d3 = packet note; after the sender returns, before ownership bookkeeping |
 | `edit.held` | First owner: `<prefix>_claim(d0=encoder, d1=delta)` returns zero to pass or nonzero to select `<prefix>_handle` with the original native entry frame |
 | `edit.copy_pre` | Notify all: d0 = destination, d1 = source, d2 = length; before exactly one native copy with its original arguments |
+| `edit.copy_post` | Same arguments, after native memcpy; native return registers and CCR survive the callbacks |
 
 Notification symbols are `<prefix>_<event>` (for example `eu_seq_start` or
 `observer_note_accepted`). Family names describe contracts; there is no runtime
@@ -87,5 +88,8 @@ handler receives the untouched native function frame. No match falls through
 to the native editor exactly once. New editors must define their context and
 test overlap with existing owners. Neither predicates nor handlers may re-enter
 held dispatch. Copy observers own their side data and filter addresses/lengths
-themselves; native memcpy runs once after all observers. Trig clear/paste hooks
+themselves; native memcpy runs once between pre and post observers. With no
+post subscriber, the original native tail call remains. With post subscribers,
+the wrapper copies the three stack arguments for the native call, then restores
+its output registers and CCR after dispatch. Trig clear/paste hooks
 remain feature-owned. Persistence remains STORE's responsibility.

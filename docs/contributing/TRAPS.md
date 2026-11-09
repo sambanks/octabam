@@ -10,6 +10,60 @@ states the symptom, what it cost, the fix, and what now gates it.
 Add a new trap here the moment it costs real work, and add its one-line
 index entry in `AGENTS.md`'s trap index.
 
+<a id="trap-companion-fixture"></a>
+### Rewriting a fixture bank invalidates its companion
+
+**Seen:** Harmony/Factory integration, 9 Nov 2026: a fresh project made by
+the combined image already contained `hdegNN` files. Rewriting its MIDI
+notes left the old fingerprints beside the new banks. Harmony correctly
+rejected the load; the later SAVE reported no active project.
+
+**Fix and gate:** `verify_midi_harmony_port.fixture` removes Harmony's
+companions only from its generated copy before creating the new musical
+fixture. Save/reload tests then use the exact firmware-produced companions;
+corrupt-file rejection remains separately tested. Never remove companions
+from the source project to make a fixture pass.
+
+<a id="trap-composed-mode-fixture"></a>
+### Stable mode IDs do not fix menu row positions
+
+**Seen:** the combined Factory/Harmony recording fixture selected CHORDS
+instead of CHORD PLAY. Factory adds a row ahead of Harmony; an old frozen
+symbol filter also hid Factory, so the adjusted gesture was not selected.
+
+**Fix and gate:** the panel helper selects the row for the actual composition,
+and the frozen Harmony symbol receipt includes shared-mode clients. The
+record/save gate still requires the same complete live and replayed MIDI
+sequence. Mode 6 remains Harmony's ID regardless of its menu position.
+
+<a id="trap-retention-budget"></a>
+### Uninitialized retention can hide the real edit cost
+
+**Seen:** Harmony integration, PR #1019: generic Follow fixtures measured a
+HARM mode edit at 31,784 instructions because uninitialized Harmony roots
+made packing reject. Initializing retention exposed roughly 649,000
+instructions of full-bank serialization. Raising the fixture allowance to
+40,000 would neither preserve the original limit nor bound the real path.
+
+**Fix and gate:** mode edits now request the existing UI poll to checkpoint;
+Part replacement indexes attached provenance. `verify_harmony_lifecycle`
+initializes retention and native bank data, enforces the original 20,000
+limit on edits/copies, and checks deferred save/recovery. Previous source
+fails its negative control. Background serialization and dense copies still
+have separate costs; these fixture counts are not hardware latency.
+
+<a id="trap-selection-refusal"></a>
+### A refused candidate can crash the remixer before selection
+
+**Seen:** PR #1019 CI, 4 Nov 2026: drawing the valid `midi` remix failed when
+AVAILABLE tested the incompatible SCALES prototype. Its selection callback
+raised `ValueError` before the ledger could return collision descriptions.
+
+**Fix and gate:** the candidate preview and selected-state problem list
+display that rejection instead of terminating the UI. Build compatibility
+is unchanged. `verify_remixer` checks both the candidate verdict and all
+three panes after selecting the rejected combination.
+
 <a id="trap-detour-interior"></a>
 ### A branch can enter the middle of a displaced instruction span
 
@@ -1640,3 +1694,14 @@ lock". The fix detours `0x40053498` itself. Rule: a gate for a panel gesture
 drives the panel (`--live-script`), not the routine you think it reaches; and
 in FX SETUP the first encoder event only shows the readout, the next ones
 edit. **Gate:** `verify_scenes_p2`'s `panel` scenario.
+
+<a id="trap-remixer-cost-worker"></a>
+### Headless remixer checks can still rebuild the candidate
+
+Disabling `ensure_sync` alone does not make the remixer gate read-only:
+`on_mount` also starts `measure_all`, whose module-cost builds replace
+`out/mainos_bus.bin` and its runtime symbols. During the Harmony rebase
+(8 Nov 2026), a subsequent UART gate saw a different composition and skipped.
+`verify_remixer.py` now disables both build workers; cost measurement is not
+part of its pane/selection contract. Rebuild the named remix before image
+gates, and keep the full-firmware candidate and symbols frozen together.

@@ -284,3 +284,21 @@ two sites; not run until that line is pinned.
   copy would need a CS1 range no module holds; none is claimed.
 - A Part reload or paste that leaves the KEY on the same Major / Minor
   keeps the destination's ID: `sc_lib` follows Part Clear, not copies.
+
+## Harmony and Follow
+
+The collected `midi` remix retains all 52 scales. FOLLOW inherits the source
+track's scale and displays it read-only; RFOL OFF restores the track's local
+choice. Harmony accepts the seven diatonic modes only. Unsupported local or
+inherited scales show a message, suppress new Harmony notes and preserve degree
+intent. Select a supported scale before changing HARM, including turning it OFF.
+Harmony-generated chord tones keep their explicit intervals rather than being
+quantized a second time. Factory absolute chords belong on HARM OFF tracks.
+
+`sc_track_at` reads a local explicit STORE context (0..63 working, 64..127 saved)
+and never follows a source. Saved KEY follows the existing destination-Part ID
+semantics described above; this does not introduce a separate saved ID snapshot.
+`sc_decode_at` resolves an already-read KEY (d0), context (d1) and track (d2),
+returning ID<<4|tonic or -1, with only d0/d1/a0 scratch. `sc_key_descriptor`
+returns the seven-mode native KEY's mask/tonic/native-snap descriptor; it does
+not consult Part IDs. These read-only services do not own MIDI emission.
