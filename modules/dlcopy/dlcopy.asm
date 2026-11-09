@@ -25,8 +25,9 @@
 ; The effect's entry in the window, x:$33da3 + 8 k (five words used):
 ;   +0 BOUND  $b0a5ed while the code is resident   +1 the real init   +2 the real proc
 ;   +3 the first window word the code occupies     +4 the word after its last
-;   +5 blocks received   +6 blocks refused for their sum   +7 blocks published (counters, read by DLPROBE;
-;   a repeat consumed without a copy is not counted)
+;   +5 blocks received   +6 blocks refused for their sum   +7 blocks published (counters, read by DLPROBE
+;   and verify_dlload, which counts DLPUMP's three sends a load by them: a repeat consumed without a copy
+;   counts as received and published, since the entry holds that block's code, bound)
 ; BOUND is cleared before any other word of the entry or the code changes and set
 ; last, so a stub on either core sees the code whole or not at all.
 ;
@@ -55,6 +56,9 @@ dlc_hn:
         move    x0,a
         tst     a
         beq     dlc_off
+        move    x:(r1+5),a               ; received: every block that arrives whole, a repeat too
+        add     #>$1,a
+        move    a1,x:(r1+5)
         move    x:(r1),a                 ; already bound at this destination: a repeat send
         cmp     #>$b0a5ed,a
         bne     dlc_new
@@ -62,13 +66,10 @@ dlc_hn:
         add     #>$30000,a
         move    x:(r1+3),x1
         cmp     x1,a
-        beq     dlc_done                 ; consumed, not copied: the code there is the block's
+        beq     dlc_pub                  ; consumed without a copy: the code there is the block's, bound
 dlc_new:
         clr     a
         move    a,x:(r1)                 ; unbound while its words change
-        move    x:(r1+5),a
-        add     #>$1,a
-        move    a1,x:(r1+5)
         lua     (r1+3),r1
         move    x:>$2902,a
         move    #>$30000,x1
@@ -102,6 +103,9 @@ dlc_cpy:
         and     #>$ff,a
         add     x1,a
         move    b1,x0
+        move    x:>$3fe8,b2              ; b back: the running sum is in x0
+        move    x:>$3fe9,b1
+        move    x:>$3fea,b0
         sub     x0,a
         move    a1,a
         tst     a
@@ -115,18 +119,15 @@ dlc_cpy:
         move    a1,x:(r1+2)              ; the real proc
         move    #>$b0a5ed,x0
         move    x0,x:(r1)                ; BOUND, after the code and both entries
-        move    x:(r1+7),a
+dlc_pub:
+        move    x:(r1+7),a               ; published: the entry holds the block's code, bound
         add     #>$1,a
         move    a1,x:(r1+7)
-        bra     dlc_bad
+        bra     dlc_done
 dlc_refused:
         move    x:(r1+6),a
         add     #>$1,a
         move    a1,x:(r1+6)
-dlc_bad:
-        move    x:>$3fe8,b2
-        move    x:>$3fe9,b1
-        move    x:>$3fea,b0
         bra     dlc_done
 dlc_off:
         move    a,x:(r1)                 ; withdrawn: unbound, and the span is empty too
