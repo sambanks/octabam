@@ -18,25 +18,34 @@
         .global cx_lfo_stage, cx_lfo_move, cx_lfo_draw, cx_lfo_edit, cx_lfo_pmtr_edit
         .global cx_lfo_morph, po_lfdname
 
-| po_lfdname: 0x4003bff2 (jmp, 8 B). Stock loads LFD_MACHTAB into a0 then picks
-| a2 = tbl[machine]. A FLEX pick becomes the page resolver's PLAYBACK descriptor
-| (CX OSC's page on a CX track) so LFO SETUP prints PTCH RATO INDX FINE FOLD MIX.
+| po_lfdname: 0x4003bff0 (jmp, 8 B; HOOKS LFO_NAME chain with OCTA303). Stock
+| `mvs.b (a0),d0; lea LFD_MACHTAB,a0` then picks a2 = tbl[machine]. A FLEX pick
+| becomes the page resolver's PLAYBACK descriptor (CX OSC's page on a CX track)
+| so LFO SETUP prints PTCH RATO INDX FINE FOLD MIX. Entered as at the site
+| (a0 = machine byte, d1 = track); last in the LFO_NAME chain — no MC_NEXT.
 po_lfdname:
-        lea     LFD_MACHTAB,%a0
-        movea.l (%a0,%d0.l*4),%a2        | displaced: the stock pick
+        mvs.b   (%a0),%d0                | displaced: the machine
+        lea     LFD_MACHTAB,%a0          | displaced
+        movea.l (%a0,%d0.l*4),%a2        | stock pick
         cmpa.l  #FLEX_P,%a2
-        bne     cx_ln_out
+        bne     cx_ln_stock              | not FLEX table: stock resume after lea
+        move.l  %d1,-(%sp)               | keep track across resolver
         clr.l   -(%sp)                   | page kind 0: PLAYBACK
         move.l  %d1,-(%sp)               | the track
         jsr     LFD_RESOLVER             | d0 = descriptor (d0/d1/a0/a1 clobber; d2-d5 kept)
         addq.l  #8,%sp
+        move.l  (%sp)+,%d1
         cmpi.l  #LFD_MASTER,%d0
-        beq     cx_ln_out
+        beq     cx_ln_flex
         tst.l   %d0
-        beq     cx_ln_out
-        movea.l %d0,%a2
-cx_ln_out:
+        beq     cx_ln_flex
+        movea.l %d0,%a2                  | CX (or other) PLAYBACK page
         jmp     LFD_FMT_RET
+cx_ln_flex:
+        movea.l #FLEX_P,%a2              | plain FLEX names
+        jmp     LFD_FMT_RET
+cx_ln_stock:
+        jmp     0x4003c054               | after the lea: index PB_TABLE
 
 | Depth-hook: d2 LFO, d4 PMTR, a4 track state, a2 page. d0 depth / a1 dest out.
 cx_lfo_apply:

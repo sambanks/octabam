@@ -10,7 +10,7 @@ Working notes from the CX OSC morph pass. Code: `poly.s` (`sy_wshape`,
 |------|------|------|
 | **CAR** (was CMOR) | PLAYBACK SETUP A | Carrier waveshape 0..127; **FUNC** snaps 0 / 64 / 127 |
 | **MOD** (was MMOR) | PLAYBACK SETUP B | Modulator waveshape 0..127 (heard through FM; needs **INDX**); **FUNC** snaps 0 / 64 / 127 |
-| **PWM** | PLAYBACK SETUP F | Cycle lean — LCD **−64..+63** (**0** = neutral, byte 64): sine soft lean / saw phase-skew / square duty (**0** ≈ 50%; duty maps byte 0..127 → 16..110) |
+| **PWM** | PLAYBACK SETUP F | Cycle lean — LCD **−64..+63** (**0** = neutral, byte 64): sine soft lean / saw phase-skew / square duty (**0** ≈ 50%; duty maps byte 0..127 → 16..110). Panel only — does **not** move CAR/MOD morph icons. |
 
 Morph map (both oscillators):
 

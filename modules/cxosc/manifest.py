@@ -66,7 +66,9 @@ def _hooks_inc(modules):
 
 
 def poly_include(modules, remix=None):
-    """First pass: hooks. Second pass (poly.s before RAM state): LFO morph."""
+    """First pass: hooks. Second pass (poly.s before RAM state): LFO morph.
+    po_lfdname is last in the LFO_NAME chain — no MC_NEXT — so the morph
+    unit does not re-include hooks (macros would redefine)."""
     with open(os.path.join(_HERE, "lfo_morph.inc.s"), encoding="utf-8") as _lf:
         morph = _lf.read()
     return "\n".join((
@@ -103,8 +105,8 @@ LFO_PAGE_HOOK = 0x40031e62
 LFO_PAGE_STOCK = bytes.fromhex("203c400d37f6" "606c")
 LFD_EDIT_HOOK = 0x400392cc
 LFD_EDIT_STOCK = bytes.fromhex("2003" "7406" "4c420807")
-LFD_NAME_HOOK = 0x4003bff2               # PMTR PLAYBACK names: machine table -> page resolver
-LFD_NAME_STOCK = bytes.fromhex("41f9400d5f38" "605a")  # lea LFD_MACHTAB,a0; bras 0x4003c054
+LFD_NAME_HOOK = 0x4003bff0               # PMTR PLAYBACK names (HOOKS LFO_NAME chain with OCTA303)
+LFD_NAME_STOCK = bytes.fromhex("711041f9400d5f38")  # mvs.b (a0),d0; lea LFD_MACHTAB,a0
 LFD_STAGE_HOOK = 0x40058488
 LFD_MOVE_HOOK = 0x4003a45c
 LFD_DRAW_HOOK = 0x400574cc
@@ -307,7 +309,9 @@ MODULE = Module(
         "MKII CX 67 (author): CAR/MOD labels; outline morph icons (±4 amp); bipolar PWM LCD; "
         "SYMM 1px lower. CX 66 outline; CX 65 silhouettes; CX 63 saw PWM skew liked on unit. "
         "CX 48: sine→saw→square + PWM; FINE/FOLD/MIX; HOLD INF; slew. "
-        "Prior CX 41 / CX 28 / VRCS-CX VS. verify_cxosc + make check REMIX=cxosc"
+        "MKII CX-CF 69 (9 Nov 2026): CF METER — 4× CX idle 22%/ISR 272 us; 6× ~12%/309; "
+        "7× idle 0%/355 max 446 (wall) → ML_FM_MAX=6. Prior CX 41 / CX 28 / VRCS-CX VS. "
+        "verify_cxosc + make check REMIX=cxosc"
     ),
     doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..33 CAR/MOD/SYMM/FDBK. Local fork of FM SYNTH.",
     conflicts=(
@@ -343,7 +347,8 @@ MODULE = Module(
                "LFO SETUP PMTR walk includes 30/31 on CX OSC",
                kind="jmp", pad_to=8),
         Detour(LFD_NAME_HOOK, LFD_NAME_STOCK, "poly", "po_lfdname",
-               "LFO SETUP PMTR PLAYBACK names: page resolver (PTCH RATO INDX FINE FOLD MIX on CX) instead of Flex machine-table names",
+               "LFO SETUP PMTR PLAYBACK names at 0x4003bff0 (HOOKS LFO_NAME with OCTA303): "
+               "page resolver → PTCH RATO INDX FINE FOLD MIX on a CX track",
                kind="jmp", pad_to=8),
         Detour(LFD_STAGE_HOOK, LFD_PEA_STOCK, "poly", "cx_lfo_stage",
                "LFO SETUP stages CX PMTR destination count", kind="jmp"),

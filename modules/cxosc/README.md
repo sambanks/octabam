@@ -45,13 +45,14 @@ See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagram
 | C | DEC | Index envelope; **127 = HOLD** |
 | D | SYMM | Fold half-wave skew (**64** = even) |
 | E | FDBK | Modulator feedback (default **0** = off) |
-| F | PWM | Cycle lean — LCD **−64..+63** (**0** = neutral; byte 64): sine soft lean; saw phase-skew (8%..92%); square duty (**0** ≈ 50%) |
+| F | PWM | Cycle lean — LCD **−64..+63** (**0** = neutral; byte 64): sine soft lean; saw phase-skew (8%..92%); square duty (**0** ≈ 50%). Does **not** move the CAR/MOD icons. |
 
 LFO SETUP PMTR lists the PLAYBACK names (**PTCH RATO INDX FINE FOLD MIX**)
 plus AMP / stock FX, then **30 = CAR**, **31 = MOD**, **32 = SYMM**,
 **33 = FDBK**. PTCH LFO depth matches FLEX (÷5). DEC/PWM are not LFO destinations. Mono only — AMP HOLD
 owns note length (**HOLD INF** = until STOP); select seeds ATK 0 / HOLD INF /
-REL 0 / LEG MONO.
+REL 0 / LEG MONO. Beside OCTA303, HOOKS `machine_rows` bridges the LFO
+PMTR name site (`0x4003bff0`): each machine names its own track.
 
 CMOR/MMOR targets and traps: [`MORPH.md`](MORPH.md).
 
@@ -97,11 +98,23 @@ Cannot share an image with **SYNTH MACHINE** (same FLEX/STATIC renderers /
 page cave / machine-list sites) or **BLACKPYRAMIDS_303** (shared ColdFire
 ROM hooks, e.g. MIDI note-on). Not an FX2 id — machine signature `"CX", 1`.
 
-## Cost
+## Cost / how many CX tracks
 
 One mono voice under Unicorn: about **2035** instructions/frame (peak ~2074;
-`verify_cxosc`). ColdFire headroom on a loaded Part on the unit is still **open**
-([#852](https://github.com/sambanks/octabam/issues/852)).
+`verify_cxosc`).
+
+Selection guard **`ML_FM_MAX = 6`** (Part popup `CX OSC: 6 MAX`). Measured on
+author MKII with remix `cx-cf` + CF METER (USB decode, 9 Nov 2026, tip
+`CX-CF 69`):
+
+| CX tracks sounding | idle % | ISR mean | ISR max | notes |
+|---|---:|---:|---:|---|
+| 0 (baseline) | 44.7 | 125 µs | 212 µs | |
+| 4 | 21.8 | 272 µs | 325 µs | comfortable |
+| 6 | ~12 | 309 µs | 376 µs | max past the 363 µs frame |
+| 7 | 0 | 355 µs | 446 µs | wall — MAIN clipped; do not ship as a cap |
+
+Eight tracks were not safe. [#852](https://github.com/sambanks/octabam/issues/852).
 
 ## Build
 

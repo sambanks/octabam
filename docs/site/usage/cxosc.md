@@ -1,8 +1,10 @@
 A **Buchla-style complex oscillator** as an Octatrack track machine: two
 operators in FM, a sine wavefolder after them, modulator feedback, and
 **sine → saw → square** morphs on each operator (SETUP **PWM**: sine lean /
-saw phase-skew / square duty). West Coast voice — timbre from folding and
-index, not a filter ladder. Any audio track in the Part may be CX OSC.
+saw phase-skew / square duty; does **not** move the CAR/MOD icons). West
+Coast voice — timbre from folding and index, not a filter ladder. Up to
+**six** CX OSC tracks per Part (`ML_FM_MAX=6`; seven saturates the
+ColdFire — measured MKII with CF METER).
 
 Built on Tim Hastie’s FM SYNTH ColdFire engine (local fork); remixes that
 ship CX OSC omit SYNTH MACHINE (same seat).

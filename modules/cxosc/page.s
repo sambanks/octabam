@@ -320,6 +320,8 @@ pg_wid_symm:
 pg_wid_fold:
         moveq   #5,%d0
         bra     pg_wid
+| CAR / MOD morph icon: value = CMOR/MMOR only. PWM (SETUP F) must not move
+| these outlines (reverted CX PWM-icon-edge; panel PWM is audio-only lean).
 pg_wid_morph:                            | CMOR / MMOR: live sine→saw→square cartoon
         moveq   #6,%d0
         bra     pg_wid

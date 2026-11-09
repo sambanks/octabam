@@ -221,21 +221,21 @@ MACHINES = {
     "ANALOG BD": dict(TYPE="ab_row_type", NAME="ab_machine_name", MAIN_COMMIT="ab_main_commit",
                       SRC_COMMIT="ab_src_commit", SRC_COMMIT2="ab_src_commit2",
                       VALIDATE="ab_validate", RENDER="ab_render", PAGE=None, RETRIG=None,
-                      publish=None, title=None),
+                      LFO_NAME=None, publish=None, title=None),
     "OCTA303": dict(TYPE="o3_type", NAME="o3_machine_name", MAIN_COMMIT="o3_main_commit",
                     SRC_COMMIT="o3_src_commit", SRC_COMMIT2="o3_src_commit2",
                     VALIDATE="o3_validate", RENDER="o3_render", PAGE="o3_page", RETRIG="o3_retrig",
-                    publish="o3_publish", title="o3_title"),
+                    LFO_NAME="o3_lfo_name", publish="o3_publish", title="o3_title"),
     # CX OSC's commit is at 0x40079816, before the others' 0x4007981c: fm_main_commit_hk
     # undoes the stock `adda` the chain's head site follows (modules/cxosc/machine.s)
     "CX OSC": dict(TYPE="fm_type", NAME="fm_machine_name", MAIN_COMMIT="fm_main_commit_hk",
                    SRC_COMMIT="fm_src_commit", SRC_COMMIT2="fm_src_commit2",
                    VALIDATE="fm_validate", RENDER="sy_render", PAGE="pg_resolve", RETRIG="po_retrig",
-                   publish="fm_publish", title="fm_name"),
+                   LFO_NAME="po_lfdname", publish="fm_publish", title="fm_name"),
     "WAVE CF": dict(TYPE="wc_type", NAME="wc_machine_name", MAIN_COMMIT="wc_main_commit",
                     SRC_COMMIT="wc_src_commit", SRC_COMMIT2="wc_src_commit2",
                     VALIDATE="wc_validate", RENDER="wc_render", PAGE="wc_page", RETRIG="wc_retrig",
-                    publish="wc_publish", title="wc_title"),
+                    LFO_NAME=None, publish="wc_publish", title="wc_title"),
 }
 # The hooks whose chain is not the row order. CX OSC heads the render chain:
 # its page code and SCALE QUANTIZER find its records in the words before the
@@ -244,10 +244,13 @@ MACHINES = {
 # calls stock's 0x40004008 itself, so it is the last. CX OSC's STATIC entry
 # chains the same way: OCTA303 claims a voice only by a FLEX signature or a
 # TB303* sample's settings record (o3_marker), and stock renders the rest.
+# LFO_NAME: OCTA303 then CX OSC at 0x4003bff0 — each names its own track's
+# PMTRs and hands every other track on (Sam #1068).
 MC_ORDER = {"RENDER": ("CX OSC", "OCTA303", "WAVE CF", "ANALOG BD"),
-            "PAGE": ("OCTA303", "WAVE CF", "CX OSC"), "RETRIG": ("OCTA303", "WAVE CF", "CX OSC")}
+            "PAGE": ("OCTA303", "WAVE CF", "CX OSC"), "RETRIG": ("OCTA303", "WAVE CF", "CX OSC"),
+            "LFO_NAME": ("OCTA303", "CX OSC")}
 MC_CHAINED = ("TYPE", "NAME", "MAIN_COMMIT", "SRC_COMMIT", "SRC_COMMIT2", "VALIDATE",
-              "RENDER", "PAGE", "RETRIG")
+              "RENDER", "PAGE", "RETRIG", "LFO_NAME")
 # The row chain's head-owned sites, and the machines that claim each (CX OSC
 # has no second name lookup and commits at 0x40079816).
 _ALL3, _AO = ("ANALOG BD", "OCTA303", "CX OSC", "WAVE CF"), ("ANALOG BD", "OCTA303", "WAVE CF")
@@ -261,6 +264,7 @@ MC_HEAD_SITES = {
 MC_KIND_FLEX = 0x400D6438               # the FLEX kind entry: the render chain's head
 MC_PAGE_SITE = 0x40031ECE               # the PLAYBACK page resolver (CX OSC: PLACE=DRAM's)
 MC_RETRIG_SITE = 0x4000C634
+MC_LFO_NAME_SITE = 0x4003BFF0           # LFO SETUP PMTR PLAYBACK names (OCTA303 / CX OSC)
 MC_CX_COMMIT = 0x40079816               # CX OSC's machine-window commit, never a head
 # The list's count and bound sites, HOOKS's for any number of rows: each
 # machine's own six-row pokes (CX OSC: detours, and five cursor clamps).
@@ -340,7 +344,8 @@ def _mc_overrides(modules):
         out += [Override(site, k) for k in on]
     if "CX OSC" in on:
         out += [Override(site, "CX OSC") for site in MC_CLAMPS + (MC_CX_COMMIT,)]
-    for hook, site in (("RENDER", MC_KIND_FLEX), ("PAGE", MC_PAGE_SITE), ("RETRIG", MC_RETRIG_SITE)):
+    for hook, site in (("RENDER", MC_KIND_FLEX), ("PAGE", MC_PAGE_SITE),
+                       ("RETRIG", MC_RETRIG_SITE), ("LFO_NAME", MC_LFO_NAME_SITE)):
         out += [Override(site, k) for k in _chain(hook, modules)[1:]]
     return out
 
