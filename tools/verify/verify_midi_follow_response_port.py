@@ -90,7 +90,7 @@ def main():
                 otp._bank_write(project,int(bank.stem[4:]),mutate_live,guard=False)
             card,_=emu_card.stage_project(project,'OCTABAM','BASS',tree=work/'tree');(work/'card.img').write_bytes(card)
             script=work/'panel.txt'
-            script.write_text(chord.PANEL+'1600 key 0 down\n1750 key 0 up\n1900 key 0x28 down\n1950 key 0x28 up\n2600 key 3 down\n2750 key 3 up\n3300 key 4 down\n3450 key 4 up\n4200 key 0x27 down\n4250 key 0x27 up\n4500 quit\n')
+            script.write_text(chord.panel()+'1600 key 0 down\n1750 key 0 up\n1900 key 0x28 down\n1950 key 0x28 up\n2600 key 3 down\n2750 key 3 up\n3300 key 4 down\n3450 key 4 up\n4200 key 0x27 down\n4250 key 0x27 up\n4500 quit\n')
             cmd=[str(ROOT/'out/emu/ot_emu'),'--image',str(image),'--card',str(work/'card.img'),'--set','OCTABAM','--project','BASS','--load-ms','90000','--mkii','--rtc','1800000000','--internal-clock','--live-script',str(script),'--midi-out',str(work/'notes.midi')]
             with (work/'run.log').open('w') as log:r=subprocess.run(cmd,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT)
             assert r.returncode==0,work

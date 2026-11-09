@@ -20,6 +20,13 @@ def fixture(source, name, records, arp=False, reverse=False, key_raw=1, first_no
     work=OUT/name;work.mkdir(parents=True,exist_ok=True)
     leader=7 if reverse else 0
     follow.fixture(source,work/'project',arp=arp,leader=leader,offsets=locks)
+    # This fixture rewrites the musical bank, so a template's companion no
+    # longer describes it. Start without Harmony data; save/reload cases below
+    # subsequently use the exact companion produced by the firmware.
+    for pattern in ('hdeg*.*', 'chrd*.*'):
+        for path in (work/'project').glob(pattern):
+            if path.suffix in ('.work', '.strd'):
+                path.unlink()
     for path in (work/'project').glob('bank*.work'):
         def mutate(data):
             for part in range(8):
@@ -405,9 +412,17 @@ def persistence(source,voic=1,omit=0):
                   f'2630 enc 2 {omit}','2640 enc 3 3','2650 enc 4 1','2660 enc 5 4'])
     key(2700,0x32,50)
     key(2800,0x32)
-    lines.extend(['3300 key 0x2d down','3400 key 0x23 down','3550 key 0x23 up','3650 key 0x2d up',f'4000 enc 5 {4 if expected_key==25 else 1}'])
-    key(4500,0x32)
-    for at,k in zip(range(5000,9200,700),[0x1c,0x21,0x20,0x31,0x31]):key(at,k)
+    lines.extend(['3300 key 0x2d down','3400 key 0x23 down','3550 key 0x23 up','3650 key 0x2d up'])
+    if 'sc_track_at' in harmony.symbols():
+        # SCALES turns the tonic; its chooser selects Dorian. Exercise that
+        # actual UI rather than applying MIDI SCALES' mode-turn gesture.
+        for at,k in ((3900,0x3d),(4100,0x31),(4300,0x20),(4500,0x31)):
+            key(at,k,50)
+        key(4800,0x32)
+    else:
+        lines.append(f'4000 enc 5 {4 if expected_key==25 else 1}')
+        key(4500,0x32)
+    for at,k in zip(range(5300,9500,700),[0x1c,0x21,0x20,0x31,0x31]):key(at,k)
     lines.append('40000 quit')
     script=work/'save.txt';script.write_text('\n'.join(lines)+'\n')
     extra=['--rtc','1800000000','--live-script',script,'--lcd',work/'save.lcd',
@@ -700,7 +715,7 @@ def live_transpose(source):
         sym=harmony.symbols()
         extra=['--step',f'-:poke:0x400beba5={octave}']
         if mode=='chord-play':
-            script=chord.PANEL+f'1700 key {8+q} down\n2000 key 0 down\n'+chord.key(2400,0x23)
+            script=chord.panel()+f'1700 key {8+q} down\n2000 key 0 down\n'+chord.key(2400,0x23)
         else:
             extra+=['--step','-:poke:0x80000015=1','--step','-:poke:0x460d16f3=1','--step','-:poke:0x100b14cc=0','--step',f'-:poke:{sym["mhc_live"]:#x}={q}']
             script=chord.key(100,0x31)+chord.key(500,0x23)+'2000 key 0 down\n'
@@ -745,7 +760,7 @@ def live_transpose_cleanup(source):
     ):
         work=fixture(source,f'transpose-leave-{name}',{0:2},key_raw=2,arp=True)
         script=work/'keys.txt'
-        script.write_text(chord.PANEL+'1700 key 9 down\n2000 key 0 down\n'+chord.key(2400,0x23)+'3000 enc 0 7\n'+end+'4500 quit\n')
+        script.write_text(chord.panel()+'1700 key 9 down\n2000 key 0 down\n'+chord.key(2400,0x23)+'3000 enc 0 7\n'+end+'4500 quit\n')
         # TRAN is a native pitch control. Its raw report must not be expanded
         # into the four-count choices used by HARM/DEG/CHRD enumerations.
         events=run(work,'keys',['--rtc','1800000000','--internal-clock','--live-script',script,

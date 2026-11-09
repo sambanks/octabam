@@ -1025,6 +1025,7 @@ def main():
                  "DJ EQ", "COMB FILTER")
     _want = {"chords": (), "chords-alone": (), "scales": (), "scales-quantizer": (), "midi": (), "midi-harmony": (), "midi-harmony-follow": (),
              "harmony-follow-native-review": (), "harmony-scales-provider": (),
+             "midi-chords": (), "midi-chords-scales": (), "harmony-scales-catalogue": (),
              "midi-follow": (), "midi-loopback": (), "midi-scales": (), "mods": (), "ata-write-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
              "usb-out-tracks-post": (),
              "remix-switch": (), "remix-switch-trace": (),   # REMIX SWITCH's park in dead vectors, no region words

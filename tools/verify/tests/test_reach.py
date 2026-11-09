@@ -433,7 +433,8 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(context.gate_owners[script], ["STORE"])
         expected = {"chords", "chords-alone", "octabam", "octabam-bus", "octabam-verbs", "scales", "scales-quantizer", "hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback",
                     "midi", "midi-harmony", "midi-harmony-follow",
-                    "harmony-follow-native-review", "harmony-scales-provider"}
+                    "harmony-follow-native-review", "harmony-scales-provider",
+                    "midi-chords", "midi-chords-scales", "harmony-scales-catalogue"}
         self.assertEqual(context.gate_remixes[script], expected)
         rows = reach.classify([script], context)
         self.assertEqual(reach.remixes_reached(rows), sorted(expected))

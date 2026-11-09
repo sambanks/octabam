@@ -94,7 +94,7 @@ def record_save(source):
         p.otp._bank_write(work/'project',int(path.stem[4:]),blank,guard=False)
     card,_=p.emu_card.stage_project(work/'project','OCTABAM','BASS',tree=work/'blank-tree')
     (work/'card.img').write_bytes(card)
-    events=run(work,'save',cp.PANEL+cp.RECORD+cp.SAVE)
+    events=run(work,'save',cp.panel()+cp.RECORD+cp.SAVE)
     actual=[e[2] for e in events if e[:2]==('on',1)]
     assert actual==cp.EXPECTED*2,(actual,cp.EXPECTED*2)
     bank=(work/'save-bank.bin').read_bytes()

@@ -17,7 +17,7 @@ OUT=c.ROOT/'out/chord-play-port'
 SYMBOLS={}
 EXPECTED=[48,51,55,48,51,55,58,48,53,55,53,56,60]
 # Dismiss the startup dialog with NO; YES can accept a project action.
-PANEL='''100 key 0x32 down
+_PANEL='''100 key 0x32 down
 150 key 0x32 up
 300 key 0x35 down
 350 key 0x35 up
@@ -32,6 +32,15 @@ PANEL='''100 key 0x32 down
 1200 key 0x20 up
 1300 key 0x2d up
 '''
+
+
+def panel():
+    """Select CHORD PLAY through the composed menu, not its stable mode ID."""
+    if 'ch_trig_key' in p.harmony.symbols():
+        return _PANEL.replace('1300 key', '1225 key 0x20 down\n1275 key 0x20 up\n1300 key')
+    return _PANEL
+
+
 RECORD='''1600 key 0x29 down
 1700 key 0x28 down
 1800 key 0x28 up
@@ -93,7 +102,7 @@ def record_save(source,root_mode=0):
         p.otp._bank_write(work/'project',int(path.stem[4:]),blank,guard=False)
     card,_=p.emu_card.stage_project(work/'project','OCTABAM','BASS',tree=work/'blank-tree')
     (work/'card.img').write_bytes(card)
-    events=run(work,'save',PANEL+RECORD+SAVE)
+    events=run(work,'save',panel()+RECORD+SAVE)
     actual=[e[2] for e in events if e[:2]==('on',1)]
     assert actual==expected*2,(actual,expected*2)
     bank=(work/'save-bank.bin').read_bytes();locks=(work/'save-locks.bin').read_bytes()
@@ -189,10 +198,10 @@ def invalid_files(work):
 def playing_layout(source):
     p.OUT=OUT
     work=p.fixture(source,'playing-layout',{0:2},key_raw=2)
-    run(work,'groups',PANEL+'1800 quit\n')
+    run(work,'groups',panel()+'1800 quit\n')
     leds=(work/'groups-leds.bin').read_bytes()
     assert leds==bytes.fromhex('5555aaaa'),leds.hex()
-    script=PANEL+"""1600 key 0 down
+    script=panel()+"""1600 key 0 down
 2000 enc 3 1
 2400 key 12 down
 2700 key 9 down
@@ -209,15 +218,15 @@ def playing_layout(source):
               55,58,62,65, 55,58,62,68, 55,56,62, 55,60,62,
               55,59,62, 55,58,62, 55,59,62,65]
     assert [e[2] for e in events if e[:2]==('on',1)]==expected,events
-    run(work,'held-groups',PANEL+'1600 key 0 down\n1700 key 9 down\n1800 key 0 up\n1900 key 9 up\n2000 quit\n')
+    run(work,'held-groups',panel()+'1600 key 0 down\n1700 key 9 down\n1800 key 0 up\n1900 key 9 up\n2000 quit\n')
     # Native cleanup must release captured notes when leaving the playing layout.
     for name,end in [
         ('leave-grid','2000 key 0x29 down\n2100 key 0x29 up\n'),
         ('leave-mode','2000 key 0x2d down\n2100 key 0x20 down\n2150 key 0x20 up\n2300 key 0x20 down\n2350 key 0x20 up\n2500 key 0x2d up\n'),
     ]:
-        run(work,name,PANEL+'1600 key 0 down\n1700 key 9 down\n'+end+'3000 key 0 up\n3100 key 9 up\n3500 quit\n')
+        run(work,name,panel()+'1600 key 0 down\n1700 key 9 down\n'+end+'3000 key 0 up\n3100 key 9 up\n3500 quit\n')
     script=work/'cm7.txt'
-    script.write_text(PANEL+'1600 key 0 down\n1700 key 9 down\n2300 quit\n')
+    script.write_text(panel()+'1600 key 0 down\n1700 key 9 down\n2300 quit\n')
     events=p.run(work,'cm7',['--rtc','1800000000','--live-script',script,
         '--lcd',work/'cm7.lcd','--mem-dump',dump(work,'cm7')])
     # This capture intentionally stops with two physical keys held. The
@@ -260,7 +269,7 @@ def edit_lifecycle(work):
 
 
 def same_step(work):
-    script=PANEL+"""1600 key 0x29 down
+    script=panel()+"""1600 key 0x29 down
 1700 key 0x28 down
 1800 key 0x28 up
 1900 key 0x29 up
@@ -303,7 +312,7 @@ def delete_replace_trig(work):
 def explicit_arp(source):
     p.OUT=OUT
     work=p.fixture(source,'explicit-arp',{0:2},key_raw=2,arp=True)
-    script=PANEL+'1700 key 15 down\n1800 key 4 down\n5300 key 4 up\n5400 key 15 up\n6200 quit\n'
+    script=panel()+'1700 key 15 down\n1800 key 4 down\n5300 key 4 up\n5400 key 15 up\n6200 quit\n'
     events=run(work,'held-dom7',script)
     pitches=[e[2] for e in events if e[:2]==('on',1)]
     assert set(pitches)=={55,59,62,65},pitches
@@ -388,7 +397,7 @@ def new_project(work):
 def octave_layout(source):
     p.OUT=OUT
     work=p.fixture(source,'octave-layout',{0:2},key_raw=2)
-    script=PANEL+key(1600,0)+combo(2100,0x21)+key(2700,0)+combo(3200,0x34)+key(3800,0)+'4400 quit\n'
+    script=panel()+key(1600,0)+combo(2100,0x21)+key(2700,0)+combo(3200,0x34)+key(3800,0)+'4400 quit\n'
     events=run(work,'octaves',script)
     assert [e[2] for e in events if e[:2]==('on',1)]==[48,51,55,60,63,67,48,51,55],events
     print('[ok] CHORD PLAY FUNC+RIGHT/LEFT changes octave and returns; captured notes release correctly',flush=True)
@@ -402,7 +411,7 @@ def root_chord_play(source):
     for mode in (2,3):
         drop=12*(mode-1)
         work=p.fixture(source,f'root-chord-play-{mode}',{0:2},key_raw=2,roots={0:mode})
-        script=PANEL
+        script=panel()
         for quality in range(8):
             t=1600+quality*700
             script+=f'{t} key {8+quality} down\n{t+100} key 0 down\n{t+400} key 0 up\n{t+500} key {8+quality} up\n'
@@ -410,7 +419,7 @@ def root_chord_play(source):
         expected=[n for chord in qualities for n in (chord[0]-drop,*chord[1:])]
         assert [e[2] for e in events if e[:2]==('on',1)]==expected,(mode,events)
         work=p.fixture(source,f'root-chord-arp-{mode}',{0:2},key_raw=2,roots={0:mode},arp=True)
-        script=PANEL+'''1600 key 10 down
+        script=panel()+'''1600 key 10 down
 1700 key 0 down
 4700 key 0 up
 4800 key 10 up
@@ -437,7 +446,7 @@ def native_page_chords(source):
         ('page-arp',True,{},None),
     ):
         work=p.fixture(source,name,{0:2},arp=arp,**opts)
-        script=PANEL+'1500 key 0x1b down\n1600 key 0 down\n'
+        script=panel()+'1500 key 0x1b down\n1600 key 0 down\n'
         end=2600 if arp else 1610
         script+=f'{end} key 0 up\n{end+100} key 0x1b up\n{end+400} quit\n'
         path=work/'page.txt';path.write_text(script)

@@ -12,7 +12,7 @@ def main():
     raw=subprocess.check_output(['m68k-elf-nm',str(ROOT/'out/platform/runtime/runtime.elf')],text=True)
     syms={f[2]:int(f[0],16) for line in raw.splitlines() if len(f:=line.split())==3}
     if 'lb_scenes_send' not in syms:
-        print('[skip] MIDI Scenes and Loopback are not both selected')
+        print('[SKIP] MIDI Scenes and Loopback are not both selected')
         return
     m=prepare(0,0)
     def caller(first,last,target):

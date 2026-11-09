@@ -10,6 +10,32 @@ states the symptom, what it cost, the fix, and what now gates it.
 Add a new trap here the moment it costs real work, and add its one-line
 index entry in `AGENTS.md`'s trap index.
 
+<a id="trap-companion-fixture"></a>
+### Rewriting a fixture bank invalidates its companion
+
+**Seen:** Harmony/Factory integration, 9 Nov 2026: a fresh project made by
+the combined image already contained `hdegNN` files. Rewriting its MIDI
+notes left the old fingerprints beside the new banks. Harmony correctly
+rejected the load; the later SAVE reported no active project.
+
+**Fix and gate:** `verify_midi_harmony_port.fixture` removes Harmony's
+companions only from its generated copy before creating the new musical
+fixture. Save/reload tests then use the exact firmware-produced companions;
+corrupt-file rejection remains separately tested. Never remove companions
+from the source project to make a fixture pass.
+
+<a id="trap-composed-mode-fixture"></a>
+### Stable mode IDs do not fix menu row positions
+
+**Seen:** the combined Factory/Harmony recording fixture selected CHORDS
+instead of CHORD PLAY. Factory adds a row ahead of Harmony; an old frozen
+symbol filter also hid Factory, so the adjusted gesture was not selected.
+
+**Fix and gate:** the panel helper selects the row for the actual composition,
+and the frozen Harmony symbol receipt includes shared-mode clients. The
+record/save gate still requires the same complete live and replayed MIDI
+sequence. Mode 6 remains Harmony's ID regardless of its menu position.
+
 <a id="trap-retention-budget"></a>
 ### Uninitialized retention can hide the real edit cost
 
