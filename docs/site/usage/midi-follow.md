@@ -25,7 +25,7 @@ The follower also inherits the source's KEY for correction after its own TRAN.
 Its KEY display shows the source setting and cannot be edited while following.
 KEY OFF leaves transposition chromatic. For example, C with TRAN +1 gives C♯
 with KEY OFF, but C with KEY C major. Stock major/minor scales work with
-Follow alone; MIDI Scales adds more choices. The follower's saved KEY returns
+Follow alone; MIDI SCALES adds seven modes and SCALES offers all 52 scales. The follower's saved KEY returns
 when RFOL is switched OFF.
 
 ## Share a progression with Harmony

@@ -149,7 +149,7 @@ def protected_state(m):
             ('phases', 1120), ('ha_lanes', 75776),
             ('mh_voice_history', 64), ('mh_voice_context', 32), ('mh_voice_epoch', 32),
             ('mh_held', 4096), ('mh_refs', 1024), ('mh_key_tokens', 2048),
-            ('ch_sequence_quality', 8), ('ch_pressed', 32),
+            ('mhc_sequence_quality', 8), ('mhc_pressed', 32),
         ):
             assert name in m.sym, ('missing protected state', name)
             regions[name] = (m.sym[name], size)
@@ -168,7 +168,7 @@ def setup(symbols, tones=(36,), *, source_mode=0, follower_mode=0, key=0,
     m.set_key(0, key)
     m.set_key(RECEIVER, 24 if key != 24 else 1)  # deliberately different own KEY
     if 'mh_generate' in m.sym:
-        u.mem_write(m.sym['ch_sequence_quality'] + RECEIVER, bytes((quality,)))
+        u.mem_write(m.sym['mhc_sequence_quality'] + RECEIVER, bytes((quality,)))
         # An unsounded valid ACC event makes accidental accepted-note/advance
         # observable even when its first offset is zero.
         m.call('ha_runtime_reset_c')
@@ -184,7 +184,7 @@ def setup(symbols, tones=(36,), *, source_mode=0, follower_mode=0, key=0,
     # A response is not a new trig, generated chord, arp rebuild or ACC event.
     forbidden = {symbols[name]: name for name in (
         'mh_generate', 'mh_sequence', 'mh_voice', 'ha_fire_c', 'ha_sounded_c',
-        'mh_seq_note_accepted', 'ch_sequence_context') if name in symbols}
+        'mh_seq_note_accepted', 'mhc_sequence_context') if name in symbols}
     forbidden[0x40099c08] = 'native arp rebuild'
     def guard(uc, pc, size, data):
         assert pc not in forbidden, ('LIVE entered ordinary event path', forbidden.get(pc))

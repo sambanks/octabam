@@ -1058,6 +1058,29 @@
       "remix": "midi-harmony",
       "source": "emulator panel UART",
       "firmware_sha256": "badd9c956eb9d9902ffe88435231a795e470ab246dd153b7328502bd1b68c5d0"
+    },
+    "unsupported-key": {
+      "image": "midi-harmony/unsupported-key.png",
+      "caption": "SCALES keeps its extended choice on a HARM track.",
+      "remix": "midi",
+      "source": "emulator panel UART",
+      "firmware_sha256": "64b9aa427cb75e79f9e3b367a71ac9f129301d7ee34e04c91c135e8b7793dad3"
+    },
+    "unsupported-scale": {
+      "image": "midi-harmony/unsupported-scale.png",
+      "caption": "Harmony requires a diatonic scale and preserves degree intent.",
+      "remix": "midi",
+      "source": "emulator panel UART",
+      "firmware_sha256": "64b9aa427cb75e79f9e3b367a71ac9f129301d7ee34e04c91c135e8b7793dad3"
+    }
+  },
+  "trig-modes": {
+    "combined": {
+      "image": "trig-modes/combined.png",
+      "caption": "MIDI trig modes: CHORDS and CHORD PLAY together.",
+      "remix": "midi",
+      "source": "emulator panel UART",
+      "firmware_sha256": "64b9aa427cb75e79f9e3b367a71ac9f129301d7ee34e04c91c135e8b7793dad3"
     }
   }
 }

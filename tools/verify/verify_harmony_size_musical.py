@@ -30,7 +30,7 @@ class MusicalMachine(h.Machine):
             self.call('mh_'+name+'_set',0,value)
 
     def sound(self,root,quality):
-        self.uc.mem_write(self.sym['ch_current'],bytes([quality]))
+        self.uc.mem_write(self.sym['mhc_current'],bytes([quality]))
         raw=self.chord(0,root)
         self.uc.mem_write(self.scratch,bytes(raw))
         self.call('mh_voice',0,a0=self.scratch)

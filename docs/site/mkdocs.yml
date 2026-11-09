@@ -104,6 +104,7 @@ nav:
           - Sc Keybus Bridge: reference/manual/octabam/inside/sc-keybus-bridge.md
           - Sc Load Meter Bridge: reference/manual/octabam/inside/sc-loadmeter-bridge.md
           - Store: reference/manual/octabam/inside/store.md
+          - Trig Modes: reference/manual/octabam/inside/trig-modes.md
       - Credits: reference/manual/octabam/credits.md
   - More:
       - Feature Directory: reference/modules.md

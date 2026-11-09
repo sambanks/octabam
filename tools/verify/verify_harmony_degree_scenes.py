@@ -21,7 +21,7 @@ def machine():
     m.sym.update({name:int(addr,16) for addr,name in re.findall(r'^([0-9a-f]+) \w (\w+)$', nm, re.M)})
     assert 'scn_lib' in m.sym, 'build the MIDI SCENES degree carrier first'
     m.sym['native_pending'] = 0x400a19ce
-    m.call('ch_lock_init')
+    m.call('mhc_lock_init')
     def put(a, v, n=1): m.uc.mem_write(a, v.to_bytes(n, 'big'))
     m.put = put
     m.get = lambda a,n=1: int.from_bytes(m.uc.mem_read(a,n),'big')
@@ -60,12 +60,12 @@ def pending():
             note=m.c('hd_decode_c',degree,320)
             payload=bytes([note,100])+bytes(range(2,32))
             u.mem_write(source,payload)
-            m.put(m.sym['ch_pending']+index,track)
-            m.put(m.sym['ch_pending_context']+index,0)
+            m.put(m.sym['mhc_pending']+index,track)
+            m.put(m.sym['mhc_pending_context']+index,0)
             m.put(m.stack+136,target,4)
             m.call('native_pending',source,stop=0x400a19e2,regs={UC_M68K_REG_D5:track})
             assert bytes(u.mem_read(target,32))==payload,(slot,track)
-            assert m.get(m.sym['ch_sequence_quality']+track)==track
+            assert m.get(m.sym['mhc_sequence_quality']+track)==track
             assert u.reg_read(UC_M68K_REG_A7)==m.stack
             assert m.c('hd_prepare_c',note,track)==note
     return {'pending_slots':32,'native_copy':'unchanged','stack':'balanced'}

@@ -48,7 +48,7 @@ CLIENTS = (
     # No side file: partclear holds its per-track state and the partsaved that ends
     # the clear lets it go (stock Part Clear tail-jumps into Part Save).
     ("VARISPEED", "vs", ("partsaved", "partclear")),
-    ("MIDI HARMONY", "ch", ("loadall_post", "loadmask_post", "newproj", "newproj_post",
+    ("MIDI HARMONY", "mhc", ("loadall_post", "loadmask_post", "newproj", "newproj_post",
                            "bankw_guard", "bankcopy_guard", "bankcopy_done", "tocs1", "fromcs1")),
 )
 

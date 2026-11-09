@@ -21,18 +21,18 @@ OUT = ROOT / 'out/chord-play-suite'
 
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
-    return {n: int(a, 16) for a, n in re.findall(r'^([0-9a-f]+) [TtBbAa] ((?:hd|ch|mh|bf|ms)_\w+)$', raw, re.M)}
+    return {n: int(a, 16) for a, n in re.findall(r'^([0-9a-f]+) [TtBbAa] ((?:hd|mhc|mh|bf|ms|sc)_\w+)$', raw, re.M)}
 
 
 def extra_voicings(m):
     count = 0
     for mode in range(7):
         # Without MIDI Scales, the native KEY selector exposes major/minor.
-        if 'ms_decode' not in m.sym and mode not in (0, 5):
+        if not ({'ms_decode', 'sc_track_at'} & m.sym.keys()) and mode not in (0, 5):
             continue
         for quality in range(8):
             m.setting(0,2,0,mode)
-            m.uc.mem_write(m.sym['ch_current'],bytes((quality,)))
+            m.uc.mem_write(m.sym['mhc_current'],bytes((quality,)))
             size=4 if quality in (1,2,7) else 3
             for choice in range(5):
                 m.call('mh_voic_set',0,choice)
@@ -62,12 +62,12 @@ def extra_voicings(m):
     for root,q,want in [(48,0,'Cm'),(48,1,'Cm7'),(50,1,'Dm7b5'),(51,1,'D#maj7'),
                          (55,7,'G7'),(48,2,'Cm(add9)'),(50,2,'Ddim(addb9)'),
                          (48,3,'Csus2'),(50,3,'Dsusb2b5'),(53,4,'Fsus4')]:
-        m.uc.mem_write(m.sym['ch_last_root'],bytes((root,)))
-        m.uc.mem_write(m.sym['ch_pressed'],root.to_bytes(4,'big')+b'\xff'*28)
+        m.uc.mem_write(m.sym['mhc_last_root'],bytes((root,)))
+        m.uc.mem_write(m.sym['mhc_pressed'],root.to_bytes(4,'big')+b'\xff'*28)
         m.uc.mem_write(m.sym['mh_held']+4*root,bytes((root,root,root,255)))
-        m.uc.mem_write(m.sym['ch_live'],bytes((q,)))
-        m.uc.mem_write(m.sym['ch_pressed_quality'],bytes((q,)))
-        m.call('ch_chord_name',0)
+        m.uc.mem_write(m.sym['mhc_live'],bytes((q,)))
+        m.uc.mem_write(m.sym['mhc_pressed_quality'],bytes((q,)))
+        m.call('mhc_chord_name',0)
         actual=bytes(m.uc.mem_read(m.uc.reg_read(UC_M68K_REG_A0),32)).split(b'\0')[0].decode()
         assert actual==want,(actual,want)
     print(f'[ok] {count} quality/voicing/spread/bounds cases and actual chord names',flush=True)
@@ -77,14 +77,14 @@ def extra_voicings(m):
 def root_qualities(m):
     count=0
     for scale in range(7):
-        if 'ms_decode' not in m.sym and scale not in (0, 5):
+        if not ({'ms_decode', 'sc_track_at'} & m.sym.keys()) and scale not in (0, 5):
             continue
         for quality in range(8):
             for voic in range(5):
                 for spread in range(3):
                     for note in (0,11,12,23,24,48,60,116,127):
                         m.setting(0,2,0,scale)
-                        m.uc.mem_write(m.sym['ch_current'],bytes((quality,)))
+                        m.uc.mem_write(m.sym['mhc_current'],bytes((quality,)))
                         m.call('mh_voic_set',0,voic);m.call('mh_sprd_set',0,spread)
                         raw=m.chord(0,note);root=raw[0]
                         m.call('mh_root_set',0,0);m.uc.mem_write(m.scratch,bytes(raw))
@@ -119,7 +119,7 @@ def machine():
                 mask = sum(1 << n for n in degrees)
                 for quality, offsets in enumerate(intervals):
                     m.uc.mem_write(m.scratch, b'\xaa'*4)
-                    m.call('ch_build', root, quality, a0=m.scratch,
+                    m.call('mhc_build', root, quality, a0=m.scratch,
                            regs={UC_M68K_REG_D2: mask, UC_M68K_REG_D3: key})
                     wanted = [scale[i] if quality < 5 else root+i for i in offsets]
                     wanted = [n for n in wanted if n <= 127]
@@ -129,10 +129,10 @@ def machine():
                     count += 1
     # Actual Harmony entry: explicit dominant preserves the B natural in C minor.
     m.setting(0, 2, 0, 5)
-    m.uc.mem_write(m.sym['ch_current'], b'\x07')
+    m.uc.mem_write(m.sym['mhc_current'], b'\x07')
     assert m.chord(0, 55) == [55, 59, 62, 65]
     assert m.call('mh_final', 59, 0) == 59
-    m.uc.mem_write(m.sym['ch_current'], b'\x01')
+    m.uc.mem_write(m.sym['mhc_current'], b'\x01')
     assert m.chord(0, 55) == [55, 58, 62, 65]
     assert m.call('mh_final', 59, 0) == 58
     print(f'[ok] {count} linked chord cases; explicit DOM7 preserves B natural', flush=True)
@@ -153,8 +153,8 @@ def release_and_default_gate():
         u.mem_write(0x100b14cc,bytes((track,)))
         u.mem_write(m.stack,m.done.to_bytes(4,'big')+key.to_bytes(4,'big')+down.to_bytes(4,'big'))
         u.reg_write(UC_M68K_REG_A7,m.stack);u.reg_write(UC_M68K_REG_SR,0x2700)
-        m.stops={m.done,s['mh_keyboard'],s['ch_play_leds'],s['ch_play_guide']}
-        pc=s['ch_play_key'];calls=[]
+        m.stops={m.done,s['mh_keyboard'],s['mhc_play_leds'],s['mhc_play_guide']}
+        pc=s['mhc_play_key'];calls=[]
         for _ in range(30):
             m.arrival=None;u.emu_start(pc,0,count=50000)
             assert m.arrival in m.stops
@@ -162,13 +162,13 @@ def release_and_default_gate():
             sp=u.reg_read(UC_M68K_REG_A7)
             if m.arrival==s['mh_keyboard']:
                 args=[int.from_bytes(u.mem_read(sp+4+4*i,4),'big') for i in range(4)]
-                calls.append((*args,u.mem_read(s['ch_live']+args[0],1)[0]))
+                calls.append((*args,u.mem_read(s['mhc_live']+args[0],1)[0]))
             pc=int.from_bytes(u.mem_read(sp,4),'big');u.reg_write(UC_M68K_REG_A7,sp+4)
         raise AssertionError('unbounded panel dispatch')
     # G minor -> explicit MAJ -> release -> DOM7: no intermediate G minor.
     assert edge(4,1)==[(0,55,100,1,0)]
     assert edge(13,1)==[(0,55,100,1,5)]
-    assert edge(13,0)==[] and u.mem_read(s['ch_live'],1)==b'\x05'
+    assert edge(13,0)==[] and u.mem_read(s['mhc_live'],1)==b'\x05'
     assert edge(15,1)==[(0,55,100,1,7)]
     assert edge(15,0)==[]
     assert edge(4,0)==[(0,55,0,1,7)]
@@ -181,9 +181,9 @@ def release_and_default_gate():
     assert edge(9,0)==[]
     assert edge(3,0)[0][2]==0
     u.mem_write(s['mh_held']+55*4,bytes((55,60,62,55)))
-    m.call('ch_display_snapshot',0)
-    assert u.mem_read(s['ch_display_root'],1)==bytes((55,))
-    assert u.mem_read(s['ch_display_quality'],1)==bytes((4,)), 'older held G retains SUS4 after newer F used 7TH'
+    m.call('mhc_display_snapshot',0)
+    assert u.mem_read(s['mhc_display_root'],1)==bytes((55,))
+    assert u.mem_read(s['mhc_display_quality'],1)==bytes((4,)), 'older held G retains SUS4 after newer F used 7TH'
     assert edge(4,0)[0][2]==0
     # Release roots first, or extensions first: neither ordering creates notes.
     for root_first in (True,False):
@@ -200,12 +200,12 @@ def release_and_default_gate():
     frame=m.scratch+0x200;descriptor=m.scratch+0x300
     u.mem_write(frame-52,descriptor.to_bytes(4,'big'))
     u.mem_write(frame+8,bytes(4))
-    assert m.call('ch_base_set',0,2)==1
-    u.mem_write(s['ch_live'],b'\x07')
+    assert m.call('mhc_base_set',0,2)==1
+    u.mem_write(s['mhc_live'],b'\x07')
     def draw(inspect,lock):
         u.mem_write(0x460d173a,int(inspect).to_bytes(4,'big'))
-        u.mem_write(s['ch_lock_table']+7,bytes((lock,)))
-        m.call('ch_draw_value',stop=0x4004e38a,regs={UC_M68K_REG_A4:3,UC_M68K_REG_A6:frame,UC_M68K_REG_D5:1})
+        u.mem_write(s['mhc_lock_table']+7,bytes((lock,)))
+        m.call('mhc_draw_value',stop=0x4004e38a,regs={UC_M68K_REG_A4:3,UC_M68K_REG_A6:frame,UC_M68K_REG_D5:1})
         return u.reg_read(UC_M68K_REG_D0),u.reg_read(UC_M68K_REG_D5)&1
     # Stub the stock held-step resolver only; CHRD lookup and flags are linked code.
     u.mem_write(0x40041760,bytes.fromhex('70074e75'))
@@ -251,11 +251,23 @@ def main():
     ap.add_argument('--project', type=pathlib.Path)
     args = ap.parse_args()
     image = (ROOT/'out/mainos_bus.bin').read_bytes()
+    # Harmony must leave these sites to stock or their declared owner.
+    from remix import registry
+    selected = registry.selected(registry.remix(args.remix or 'midi-harmony'))
+    detours = {d.site: (mod.key, d) for mod in selected for d in mod.detours}
+    import verify_midi_scale_provider
+    all_symbols = verify_midi_scale_provider.symbols()
     for address, native in ((0x4004ffc4, '4feffff048d7041c'),
                             (0x40062d1c, '4ab946c7c72c')):
         offset = address - 0x40000400
-        assert image[offset:offset+len(bytes.fromhex(native))] == bytes.fromhex(native), hex(address)
-    print('[ok] native PAGE handler and system-task dispatch remain intact', flush=True)
+        if address in detours:
+            owner, detour = detours[address]
+            assert owner != 'MIDI HARMONY', (owner, hex(address))
+            target = detour.target or all_symbols[detour.symbol]
+            assert image[offset:offset+6] == b'\x4e\xf9' + target.to_bytes(4, 'big'), (owner, hex(address))
+        else:
+            assert image[offset:offset+len(bytes.fromhex(native))] == bytes.fromhex(native), hex(address)
+    print('[ok] PAGE and system-task sites retain stock or their declared non-Harmony owner', flush=True)
     result = machine()
     release_and_default_gate()
     if args.project:

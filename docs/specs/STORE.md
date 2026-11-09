@@ -59,7 +59,7 @@ link cannot find stops the build. A client declares `requires=("STORE",)`.
 | FREE LOOP (`fl`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | SCALES (`sc`) | loadall_pre, loadmask_pre, newproj, bankw_post, pstore_pre/post, preload_post, partclear |
 | CHORDS FACTORY (`ch`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
-| MIDI HARMONY (`ch`) | loadall_post, loadmask_post, newproj, newproj_post, bankw_guard, bankcopy_guard, bankcopy_done, tocs1, fromcs1 |
+| MIDI HARMONY (`mhc`) | loadall_post, loadmask_post, newproj, newproj_post, bankw_guard, bankcopy_guard, bankcopy_done, tocs1, fromcs1 |
 | VARISPEED (`vs`) | partsaved, partclear |
 
 ## File calls
@@ -187,6 +187,7 @@ bank file's serialized header. No raw writable pointer is returned.
 | `store_part_ui_context` | none | edited bank/Part, or −1 |
 | `store_part_audio_context` | d0 = audio track 0–7 | audio-engine bank/Part; applied-context fallback while unlatched, or −1 |
 | `store_part_midi_context` | d0 = MIDI track 0–7 | MIDI-engine bank/Part; applied-context fallback while unlatched, or −1 |
+| `store_part_saved_read` | d0 = Part byte offset, d1 = context | saved byte, or −1 outside the same registered window/context; working-copy snapshots do not replace saved data |
 | `store_part_read` | d0 = Part byte offset, d1 = context | coherent byte, or −1 outside a registered read window/context |
 | `store_part_write` | d0 = Part byte offset, d1 = context, d3 = byte | 1 accepted; 0 for invalid/unregistered input or a Part currently being replaced |
 | `store_part_epoch` | d0 = context | wrapping 32-bit replacement counter; invalid context returns −1 |

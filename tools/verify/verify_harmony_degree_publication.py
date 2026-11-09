@@ -75,11 +75,11 @@ def main():
     put(bank+0x8ed80+0x4e2+5,1)
     put(note,48);put(degree,35);put(snapshot,48)
     put(h+128,2);put(h+129,0);put(h+130,0)
-    put(m.sym['ch_record_active'],0,4);put(m.sym['hd_record_active'],35,4)
+    put(m.sym['mhc_record_active'],0,4);put(m.sym['hd_record_active'],35,4)
     put(m.scratch+8,0,4);put(m.scratch+16,100,4)
     expected={35};watch=True;pending=False;check_duration=False;check_nv=True
     mask_trace.ipl=0
-    m.call('ch_record_commit',stop=0x400420fa,regs={UC_M68K_REG_SR:0x2000,
+    m.call('mhc_record_commit',stop=0x400420fa,regs={UC_M68K_REG_SR:0x2000,
         UC_M68K_REG_D6:0,UC_M68K_REG_D5:0,UC_M68K_REG_A3:0,
         UC_M68K_REG_A4:50,UC_M68K_REG_A6:m.scratch})
     watch=False
@@ -94,7 +94,7 @@ def main():
     u.mem_write(h,b'\xff'*128+b'\0\0\xff')
     expected={35};pending=False;watch=True;check_duration=True
     mask_trace.ipl=0;max_masked=masked=0
-    m.call('ch_record_commit',stop=0x400420fa,regs={UC_M68K_REG_SR:0x2000,
+    m.call('mhc_record_commit',stop=0x400420fa,regs={UC_M68K_REG_SR:0x2000,
         UC_M68K_REG_D6:0,UC_M68K_REG_D5:0,UC_M68K_REG_A3:0,
         UC_M68K_REG_A4:50,UC_M68K_REG_A6:m.scratch})
     watch=False

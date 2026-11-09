@@ -41,6 +41,12 @@ class HarmonyCpuBudgetTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'measured EXT instruction profile'):
             cpu.instruction_budgets({'mh_pitch_owned': 1, 'lb_track_send': 3})
 
+    def test_scales_has_identical_limits_to_midi_scales(self):
+        for routing in ({}, {'lb_track_send': 3}):
+            old, _ = cpu.instruction_budgets({'mh_pitch_owned': 1, 'ms_output': 2, **routing})
+            new, _ = cpu.instruction_budgets({'mh_pitch_owned': 1, 'sc_output': 2, **routing})
+            self.assertEqual(new, {k.replace('_ms_output.', '_sc_output.'): v for k, v in old.items()})
+
     def test_inactive_policy_cost_is_explicit(self):
         limits, _ = cpu.instruction_budgets({'mh_pitch_owned': 1})
         self.assertEqual(limits['off_tick.warm'], 1776)

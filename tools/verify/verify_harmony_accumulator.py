@@ -22,7 +22,7 @@ BANK=0x400e21e0
 def machine():
     """Harmony-only fixture; this gate must not require optional PLOCKS."""
     m=Files();u=m.uc
-    m.call('ch_lock_init')
+    m.call('mhc_lock_init')
     u.mem_write(BANK,b'\xff'*0x9b340)
     for pattern in range(16):u.mem_write(BANK+pattern*0x8ed8+0x8e57,b'\0')
     for part in range(8):
@@ -95,7 +95,7 @@ def c_minor_follow(m):
     for quality,expected in (
             (0,((48,51,55,48),(50,53,56,50),(51,55,58,51))),
             (5,((48,52,55,48),(50,54,57,50),(51,55,58,51)))):
-        u.mem_write(s['ch_current']+1,bytes((quality,)))
+        u.mem_write(s['mhc_current']+1,bytes((quality,)))
         m.c('ha_runtime_reset_c')
         assert tuple(generate() for _ in range(3))==expected,quality
     print(f'[ok] C minor Follow: {count} NOTE outputs in scale; source KEY and explicit CHRD behavior',flush=True)
@@ -116,7 +116,7 @@ def c_minor_follow(m):
                      2:((48,51,55,48),(50,53,56,50))}
     for follower_mode,expected in follower_chords.items():
         u.mem_write(part+36+5,bytes((follower_mode,)))
-        u.mem_write(s['ch_current']+1,b'\0') # Follower chooses its own TRI.
+        u.mem_write(s['mhc_current']+1,b'\0') # Follower chooses its own TRI.
         for quality,source_expected in source_chords.items():
             m.c('ha_bank_reset_c',0)
             m.c('ha_set_c',0,0,1,0,9) # Follower ACC +1 scale degree.
@@ -124,7 +124,7 @@ def c_minor_follow(m):
             m.c('bf_reset_c')
             u.mem_write(s['bf_pitches'],b'\x30')
             u.mem_write(s['bf_roots'],b'\x30')
-            u.mem_write(s['ch_current'],bytes((quality,)))
+            u.mem_write(s['mhc_current'],bytes((quality,)))
             u.mem_write(m.scratch,b'\x30'*4)
             assert m.call('mh_generate',0,0,a0=m.scratch)==1
             assert tuple(u.mem_read(m.scratch,4))==source_expected,quality
@@ -291,7 +291,7 @@ def main():
         expected.extend(row)
     u.mem_write(s['ha_lanes'],bytes(expected))
     m.c('hd_nv_save_c',0)
-    roots=bytes(u.mem_read(s['hd_banks'],16768));q=bytes(u.mem_read(s['ch_lock_table'],8192))
+    roots=bytes(u.mem_read(s['hd_banks'],16768));q=bytes(u.mem_read(s['mhc_lock_table'],8192))
     payload=oracle(roots,q)+expected
     snap=retained.snapshot(m);h=header(snap)
     assert snap==encode(payload,0,int.from_bytes(h[3:7],'big'),h[2])
@@ -306,19 +306,19 @@ def main():
         assert bytes(u.mem_read(s['ha_lanes'],4736))==expected
     retained.install(m,snap)
     print('[ok] 8192 ACC nibbles and all settings: physical mapping, dense restore, corrupt-config rejection',flush=True)
-    assert m.call('ch_file_write',0)==1
+    assert m.call('mhc_file_write',0)==1
     path='/SET/PROJECT/hdeg01.work';new=m.files[path]
     assert new[:8]==b'HDP4\0\0\0\4' and len(new)==15136
-    m.c('ha_bank_reset_c',0);m.call('ch_file_read',0)
+    m.c('ha_bank_reset_c',0);m.call('mhc_file_read',0)
     assert bytes(u.mem_read(s['ha_lanes'],4736))==expected
     old_payload=new[32:32+10368]
     old=struct.pack('>8I',0x48445033,3,0,10368,fnv(old_payload),int.from_bytes(new[20:24],'big'),0,0)+old_payload
-    m.files[path]=old;m.call('ch_file_read',0)
-    assert u.mem_read(s['ch_lock_status'],1)==b'\2'
-    assert m.call('ch_file_write',0)==0xfffffff9 and m.files[path]==old
-    m.files[path]=new;m.call('ch_file_read',0)
+    m.files[path]=old;m.call('mhc_file_read',0)
+    assert u.mem_read(s['mhc_lock_status'],1)==b'\2'
+    assert m.call('mhc_file_write',0)==0xfffffff9 and m.files[path]==old
+    m.files[path]=new;m.call('mhc_file_read',0)
     assert bytes(u.mem_read(s['ha_lanes'],4736))==expected
-    assert bytes(u.mem_read(s['ch_lock_table'],8192))==q
+    assert bytes(u.mem_read(s['mhc_lock_table'],8192))==q
     print('[ok] HDP4 round trip; obsolete HDP3 rejected and protected from overwrite',flush=True)
     legacy=bytearray()
     for lane in range(128):
@@ -333,14 +333,14 @@ def main():
     retained.install(m,legacy);u.mem_write(s['ha_lanes'],bytes(expected))
     assert m.c('hd_nv_restore_c',0)==0
     assert bytes(u.mem_read(s['ha_lanes'],4736))==expected
-    assert bytes(u.mem_read(s['ch_lock_table'],8192))==q
+    assert bytes(u.mem_read(s['mhc_lock_table'],8192))==q
     print('[ok] obsolete HMT1 checkpoint rejected without publication',flush=True)
     # Carry actual musical config through the existing native memcpy bridge.
     u.mem_write(s['ha_lanes'],bytes(expected))
     for dst,src,length in ((BANK+0x8ed8+0x48d0,BANK+0x48d0,0x8b0),
                            (0x460c8122,BANK,0x8ed8),
                            (BANK+2*0x8ed8,0x460c8122,0x8ed8)):
-        m.c('ch_memcpy',dst,src,length)
+        m.c('mhc_memcpy',dst,src,length)
     assert bytes(u.mem_read(s['ha_lanes']+8*37,37))==expected[:37]
     assert bytes(u.mem_read(s['ha_lanes']+16*37,8*37))==expected[:8*37]
     before=bytes(u.mem_read(s['ha_lanes'],4736))

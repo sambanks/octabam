@@ -96,6 +96,16 @@ def generic_window(ns):
         u.mem_write(part,old);u.mem_write(0x47002000,new)
         for offset in (0x10,0x11,0x12,0x13,0x14,0x18b0,0x18b1):assert m.call('store_part_read',offset,context)==old[offset]
         for offset in (0,0x15,0x18af,0x18b2):assert m.call('store_part_read',offset,context)==0xffffffff
+        # Saved reads use the same registered windows, with distinct bytes
+        # and no alias to the working copy or its replacement snapshot.
+        saved_part=bank+0x9504a+3*0x18b2
+        u.mem_write(saved_part,new)
+        for offset in (0x10,0x14,0x18b0,0x18b1):
+            assert m.call('store_part_saved_read',offset,context)==new[offset]
+        for offset in (0,0x15,0x18af,0x18b2):
+            assert m.call('store_part_saved_read',offset,context)==0xffffffff
+        for bad in (64,127,0xffffffff):
+            assert m.call('store_part_saved_read',0x10,bad)==0xffffffff
         # MIDI adapter bounds do not grant access to an unregistered window.
         assert m.call('store_part_midi_read',0,context)==0xffffffff
         assert m.call('store_part_midi_key',0,context)==0xffffffff
@@ -115,6 +125,7 @@ def generic_window(ns):
         saved=u.context_save();m.stack-=0x1000
         for offset in (0x10,0x11,0x12,0x13,0x14,0x18b0,0x18b1):assert m.call('store_part_read',offset,context)==old[offset]
         assert m.call('store_part_epoch',context)==0
+        assert m.call('store_part_saved_read',0x10,context)==new[0x10]
         assert m.call('store_part_write',0x11,context,regs={UC_M68K_REG_D3:33})==0
         m.stack+=0x1000;u.context_restore(saved);m.arrival=None
         u.emu_start(u.reg_read(UC_M68K_REG_PC),0,count=1000000)

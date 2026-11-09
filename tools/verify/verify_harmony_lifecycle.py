@@ -3,6 +3,7 @@
 import json
 from unicorn import UC_HOOK_CODE
 from harmony_midi_machine import Machine, ROOT
+from verify_midi_scale_provider import symbols
 
 LIMIT = 20_000  # The native MIDI harness limit, unchanged for this composition.
 B, PS = 0x400e21e0, 0x18b2
@@ -10,9 +11,14 @@ RETAINED_COMMIT = 0x1001614e + 0x4900 + 30
 
 
 def main():
-    m = Machine(); u = m.uc; s = m.sym
+    m = Machine(symbols); u = m.uc; s = m.sym
     m.call('store_part_activate', stop=0x4000f938)
-    m.call('ch_lock_init')  # Boot initialization is outside the per-operation measurement.
+    m.call('mhc_lock_init')  # Boot initialization is outside the per-operation measurement.
+    if 'scn_slot_ptr' in s:
+        # A loaded project has initialized Scenes before interactive edits.
+        # Run its real public initialization, including the 256 KiB fill;
+        # never count cold boot as an interactive mode edit or raise LIMIT.
+        m.call('scn_slot_ptr', 0, 0)
     # A loaded empty bank: mapped firmware bytes are not a native pattern.
     for pattern in range(16):
         u.mem_write(B+pattern*0x8ed8+0x8e57, b'\x00')

@@ -14,7 +14,7 @@ class HarmonySelectionTests(unittest.TestCase):
         harmony = registry.modules()['MIDI HARMONY']
         self.assertNotIn('MIDI FOLLOW', harmony.requires)
         self.assertNotIn('MIDI SCALES', harmony.requires)
-        self.assertEqual(harmony.requires, ('STORE', 'EVENTS'))
+        self.assertEqual(harmony.requires, ('STORE', 'EVENTS', 'TRIG MODES'))
         self.assertNotIn('MIDI SRAM', registry.modules())
 
     def test_four_compositions_have_one_scale_reader_and_optional_pitch_policy(self):
@@ -44,8 +44,11 @@ class HarmonySelectionTests(unittest.TestCase):
 
     def test_combined_midi_remix_and_test_only_controls(self):
         remix = registry.remix('midi')
-        self.assertTrue({'MIDI HARMONY', 'MIDI FOLLOW', 'MIDI SCALES',
-                         'MIDI LOOPBACK', 'STORE', 'EVENTS'} <= set(remix.modules))
+        self.assertTrue({'MIDI HARMONY', 'MIDI FOLLOW', 'SCALES', 'CHORDS FACTORY',
+                         'MIDI LOOPBACK', 'MIDI SCENES', 'STORE', 'EVENTS'} <= set(remix.modules))
+        self.assertTrue(set(registry.remix('octabam').modules) <= set(remix.modules))
+        self.assertEqual(remix.fx1, registry.remix('octabam').fx1)
+        self.assertNotIn('MIDI SCALES', remix.modules)
         self.assertEqual(registry.remix_dir('midi'), ROOT / 'remixes/midi')
         for name in ('midi-harmony', 'midi-harmony-follow',
                      'harmony-scales-provider', 'harmony-follow-native-review'):
@@ -59,13 +62,17 @@ class HarmonySelectionTests(unittest.TestCase):
         self.assertIn('jmp store_retained_copy', inc)
         self.assertEqual(fields['layout'](set(remix.modules))[1], ((0x4e2, 288),))
 
-    def test_chords_factory_is_refused_before_linking(self):
-        # Both modules replace the native MIDI trig modes and export ch_*.
+    def test_chords_factory_shares_modes_and_keeps_its_own_storage_callbacks(self):
         from remix import ledger
-        modules = registry.modules()
-        problems = ledger.check([modules['MIDI HARMONY'], modules['CHORDS FACTORY']])
-        self.assertTrue(any('declared conflict' in p and 'chords' in p.lower()
-                            for p in problems), problems)
+        remix = registry.remix('midi-chords')
+        selected = registry.selected(remix)
+        self.assertEqual(ledger.check(selected), [])
+        modes = next(m for m in selected if m.key == 'TRIG MODES')
+        self.assertEqual(len([d for d in modes.detours if d.site == 0x400501d8]), 1)
+        inc = runpy.run_path(str(ROOT / 'modules/store/manifest.py'))['store_inc'](remix.modules, remix)
+        for event in ('loadall_post', 'loadmask_post', 'newproj'):
+            self.assertIn('ch_st_' + event, inc)
+            self.assertIn('mhc_st_' + event, inc)
 
     def test_other_store_clients_do_not_install_retained_storage(self):
         for name in ('octabam', 'events-clients', 'midi-follow', 'midi-follow-events', 'midi-loopback'):

@@ -64,7 +64,7 @@ SAVE='''16000 key 0x1c down
 
 
 def dump(work,name):
-    return f'{SYMBOLS["ch_lock_table"]:#x},131072={work}/{name}-locks.bin;0x400e21e0,0x9b340={work}/{name}-bank.bin;{SYMBOLS["ch_lock_status"]:#x},16={work}/{name}-status.bin;{SYMBOLS["ch_record_overflow"]:#x},4={work}/{name}-overflow.bin;0x10000000,0x100000={work}/{name}-cs1.bin;0x460ba98c,4={work}/{name}-leds.bin'
+    return f'{SYMBOLS["mhc_lock_table"]:#x},131072={work}/{name}-locks.bin;0x400e21e0,0x9b340={work}/{name}-bank.bin;{SYMBOLS["mhc_lock_status"]:#x},16={work}/{name}-status.bin;{SYMBOLS["mhc_record_overflow"]:#x},4={work}/{name}-overflow.bin;0x10000000,0x100000={work}/{name}-cs1.bin;0x460ba98c,4={work}/{name}-leds.bin'
 
 
 def run(work,name,script,card=None,extra=()):

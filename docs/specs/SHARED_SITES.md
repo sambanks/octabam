@@ -1,13 +1,14 @@
-# Shared stock sites: STORE, EVENTS, HOOKS and `Override`
+# Shared stock sites: STORE, EVENTS, TRIG MODES, HOOKS and `Override`
 
 The ledger allows one claim on a stock site (`tools/remix/ledger.py`). Two ColdFire modules that detour the same
-instruction, poke the same word or repoint the same table record are refused as a pair, by name. Four mechanisms in the
+instruction, poke the same word or repoint the same table record are refused as a pair, by name. Five mechanisms in the
 tree let modules share a site. Choose by what the modules need:
 
 | the need | use | a module declares | where |
 |---|---|---|---|
 | save, load, copy, CS1, Part save/clear: persistence events, and native Part access (edited / playing Part reads and writes) | **STORE** | `requires=("STORE",)`, an entry in STORE's `CLIENTS`, handlers named `<prefix>_st_<event>` | [STORE](../../modules/store/README.md) |
 | transport, accepted MIDI, the held-step editor, native copy | **EVENTS** | `requires=("EVENTS",)`, an entry per family in EVENTS's `CLIENTS` | [EVENTS](../../modules/events/README.md) |
+| MIDI playing-mode list, names/icons, navigation, keys, LEDs, guide and cleanup | **TRIG MODES** | `requires=("TRIG MODES",)`, a stable ID and callbacks in `CLIENTS` | [TRIG MODES](../../modules/trig-modes/README.md) |
 | a site that two named in-tree or submodule modules already hook, each proven alone | **HOOKS** | nothing: the registry appends HOOKS when a remix carries two participants of one bridge | [HOOKS](../../modules/hooks/README.md) |
 | two modules share a site that no platform module owns | `schema.Override` in a bridge module of its own | `overrides=(Override(site, "<KEY>"),)`, `requires` both | `docs/contributing/MODULES.md`, "Claims" |
 
@@ -17,6 +18,7 @@ tree let modules share a site. Choose by what the modules need:
   remix is left out, and an event with no client installs no detour, so the stock bytes stay. Clients must not also claim a site the owner holds.
   EVENTS's held editor takes the first owner whose `_claim` returns non-zero; its other families notify every client. STORE runs the handlers of one
   event in `CLIENTS` order and lets each clobber every register.
+- **TRIG MODES separates mode identity from menu order.** It dispatches only the selected client and releases every client on native cleanup. Musical engines, recording and note ownership remain in clients. No clients means no patches.
 - **HOOKS is a bridge between fixed participants.** Nobody selects it. With one participant, or none, a remix gets nothing from HOOKS and the module's own bytes stand,
   so a module proven alone on a unit stays what was proven. With two, HOOKS owns the site, calls each participant's own routine in a stated order, and
   the participants build a returning form under a flag (`HK_*`). A submodule participant's source is not edited. The bridges and their sites are listed in the module's README.

@@ -1,31 +1,43 @@
 Turns scale-degree roots into notes or chords using the MIDI ARP KEY, with
 inversions, automatic voice leading, spread and root placement.
 
-Supported scales are the seven diatonic modes: Major, Dorian, Phrygian,
-Lydian, Mixolydian, natural Minor and Locrian. The selected scale module must
-provide a compatible integration; additional catalogue scales are not yet
-supported by Harmony. Existing project formats are unchanged.
-The remixer reports the separate **SCALES** module as incompatible with
-these MIDI consumers; use **MIDI SCALES** for the seven modes above.
+Harmony supports seven diatonic modes: Major, Dorian, Phrygian, Lydian,
+Mixolydian, natural Minor and Locrian. Use either **SCALES** or **MIDI SCALES**;
+without either, native Major/Minor remain available. Existing project formats
+are unchanged.
 
-The **midi** remix brings Harmony, Follow, Scales and Loopback together.
-Harmony also works **without Follow**: each track uses its own degree pattern,
-KEY and chord settings. With Follow installed, **RFOL OFF** gives the same
-independent musical workflow. The smaller combinations are test carriers.
+The **midi** remix extends the full **OCTABAM** instrument with Harmony, Follow
+and Loopback. It retains SCALES, CHORDS FACTORY, MIDI Scenes and the OCTABAM
+effects. Harmony also works **without Follow**: each track uses its own degree
+pattern, KEY and chord settings. With Follow installed, **RFOL OFF** keeps
+that independent workflow.
 
-CHORDS FACTORY and MIDI HARMONY cannot currently be selected together.
-They provide different trig modes: Factory’s **CHORDS** uses mode 2, while
-Harmony’s **CHORD PLAY** uses mode 6. Their current implementations replace
-the same MIDI mode list and overlap in the mode-name patches. Factory’s live
-chord notes also enter the keyboard routine that Harmony replaces, so a
-combined menu alone would not establish compatible playback and recording.
-This is an implementation limitation, not an inherent conflict between the
-musical features. Selecting both is refused before linking.
+SCALES offers all 52 scales on ordinary tracks. A HARM track needs one of the
+seven modes, including when it inherits KEY through FOLLOW. An unsupported
+combination shows **HARM NEEDS DIATONIC SCALE**; the Harmony window shows
+**DIATONIC SCALE REQUIRED**. New Harmony notes are suppressed and stored degree
+intent is preserved. Select a supported scale on the track or its source before
+changing HARM, including turning it OFF: that conversion needs a valid scale.
+Existing note releases still run.
+
+![Harmony scale compatibility message](../../img/midi-harmony/unsupported-scale.png)
+
+CHORDS FACTORY's **CHORDS** mode and Harmony's **CHORD PLAY** both appear in the
+trig-mode menu.
+
+![Both MIDI chord modes](../../img/trig-modes/combined.png)
+
+Factory stores absolute pitches: use it on **HARM OFF** tracks.
+Harmony stores degrees and chord choices: use it on other tracks for
+key-relative progressions. Factory refuses live playing/recording and pattern
+insertion onto a HARM-enabled track with **CHORDS NEEDS HARM OFF**. Its atelier
+preview remains an audition. Turning KEY changes a Harmony progression; it does
+not rewrite the absolute chords stored by Factory.
 
 ## Start playing
 
 1. Set the MIDI track's output channel and choose **KEY** on **ARP SETUP**
-   (**FUNC + AMP**). MIDI Scales adds five more modes to Major and Minor.
+   (**FUNC + AMP**). SCALES and MIDI SCALES both include all seven modes.
 2. Open **NOTE SETUP** with **FUNC + SRC** and turn **F: HARM**:
 
 | HARM | Result |
@@ -69,7 +81,7 @@ The resulting voices feed the stock arp, so the same progression can become
 held harmony, short stabs or an arpeggiated line.
 
 Existing held notes retain their original releases.
-See [Voicing](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/VOICING.md) for the musical rules.
+See [Voicing](https://github.com/radiohagen/octatrack-modules/blob/9da50248a263650afcad41895b7f6fc83e0296d5/modules/midi-harmony/VOICING.md) for the musical rules.
 
 ## Degree accumulator
 
@@ -211,7 +223,7 @@ NOTE fields are storage mirrors and can play different pitches on stock.
 Stock also resets voicing/spread/root choices and clamps extended KEY modes
 to B Minor; saving persists those changes for the bank written.
 
-Requires **STORE** and **EVENTS**. STORE automatically includes native Part
+Requires **STORE**, **EVENTS** and **TRIG MODES**. STORE automatically includes native Part
 access and retained MIDI storage when Harmony is selected; there is no extra
 storage module to select. Harmony is a client of STORE’s retained-memory
 service and currently reserves its full 16 KB pool. MIDI Follow and MIDI Scales
@@ -219,6 +231,6 @@ remain optional.
 HARM and PLOCKS P2 register independently with EVENTS;
 no combination-specific bridge is selected. KITS libraries are per
 project; recalling a kit supplies Part defaults while pattern locks stay with
-the patterns. See [storage](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/DEVELOPMENT.md#compact-harmony-storage) and [KITS](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/KITS.md).
+the patterns. See [storage](https://github.com/radiohagen/octatrack-modules/blob/9da50248a263650afcad41895b7f6fc83e0296d5/modules/midi-harmony/DEVELOPMENT.md#compact-harmony-storage) and [KITS](https://github.com/radiohagen/octatrack-modules/blob/9da50248a263650afcad41895b7f6fc83e0296d5/modules/midi-harmony/KITS.md).
 
-[Implementation, provenance and verification](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/DEVELOPMENT.md).
+[Implementation, provenance and verification](https://github.com/radiohagen/octatrack-modules/blob/9da50248a263650afcad41895b7f6fc83e0296d5/modules/midi-harmony/DEVELOPMENT.md).

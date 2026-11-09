@@ -27,11 +27,11 @@ class Combined(Files):
         self.sym.update({f[2]: int(f[0], 16) for f in (line.split() for line in nm.splitlines()) if len(f) == 3})
         assert 'ed_copy' in self.sym, 'build a remix selecting EDIT EVENTS and PLOCKS P2'
         self.call('plk_init')
-        self.call('ch_lock_init')
+        self.call('mhc_lock_init')
 
     def io(self, u, pc, size, user):
         for name in ('plk_st_newproj', 'kits_st_newproj', 'scn_st_newproj',
-                     'ch_st_newproj', 'ch_st_newproj_post'):
+                     'mhc_st_newproj', 'mhc_st_newproj_post'):
             if pc == self.sym.get(name):
                 self.calls[name] += 1
         if pc in (0x40020898, 0x400909d8, 0x4000fbb4, 0x40016388):
@@ -108,12 +108,12 @@ def main():
     m.c('native_copy',0x1001614e,BANK,STRIDE)
     u.mem_write(s['STORE'], b'\xcc'*98304)
     u.mem_write(s['hd_banks'], b'\xcc'*16768)
-    u.mem_write(s['ch_lock_table'], b'\xcc'*8192)
+    u.mem_write(s['mhc_lock_table'], b'\xcc'*8192)
     m.c('store_fromcs1', 0)
     assert m.calls[0x4000fbb4] == 1
     assert bytes(u.mem_read(s['STORE'],98304)) == p2
     assert bytes(u.mem_read(s['hd_banks'],16768)) == roots
-    assert bytes(u.mem_read(s['ch_lock_table'],8192)) == qualities
+    assert bytes(u.mem_read(s['mhc_lock_table'],8192)) == qualities
     if not upstream_p2:
         # The old full-length P2NV occupies the new Harmony range. Decode and
         # migrate it before Harmony touches that range; all 10,234 locks survive.
@@ -138,7 +138,7 @@ def main():
         assert bytes(u.mem_read(dst,PATTERN)) == expected_native
     assert bytes(u.mem_read(s['STORE']+6144,6144)) == p2[:6144]
     assert bytes(u.mem_read(s['hd_banks']+1048,1048)) == bytes(u.mem_read(s['hd_banks'],1048))
-    assert bytes(u.mem_read(s['ch_lock_table']+512,512)) == qualities[:512]
+    assert bytes(u.mem_read(s['mhc_lock_table']+512,512)) == qualities[:512]
     # Audio track copy must move P2, MIDI track copy must move CHRD and DEG.
     for dst, src, length in ((BANK+2*PATTERN,BANK,0x91a),
                              (BANK+2*PATTERN+0x48d0,BANK+0x48d0,0x8b0)):
@@ -146,7 +146,7 @@ def main():
         m.c('ed_copy',dst,src,length)
         assert m.calls[0x40020898] == before+1
     assert bytes(u.mem_read(s['STORE']+12288,768)) == p2[:768]
-    assert bytes(u.mem_read(s['ch_lock_table']+1024,64)) == qualities[:64]
+    assert bytes(u.mem_read(s['mhc_lock_table']+1024,64)) == qualities[:64]
     assert bytes(u.mem_read(s['hd_banks']+2096,130)) == bytes(u.mem_read(s['hd_banks'],130))
     print('[ok] pattern/track/clipboard/undo copies preserve both mirrors; native memcpy once', flush=True)
 
@@ -178,7 +178,7 @@ def main():
     # track type; ordinary audio/MIDI pages must still reach native editing.
     s['installed_editor'] = 0x400508e4
     for midi, page, window, modal, target in (
-            (0,3,1,0,s['plk_edit']), (1,0,0,m.scratch,s['ch_step_encoder']),
+            (0,3,1,0,s['plk_edit']), (1,0,0,m.scratch,s['mhc_step_encoder']),
             (0,0,0,0,0x400508ec), (1,1,0,0,0x400508ec)):
         for addr,value in ((0x80000012,midi),(0x460d1684,page),
                            (0x460d175c,window),(s['mh_page_win'],modal)):
@@ -191,10 +191,10 @@ def main():
     m.c('store_newproj')
     assert m.calls[0x400909d8] == before+1
     for name in ('plk_st_newproj', 'kits_st_newproj', 'scn_st_newproj',
-                     'ch_st_newproj', 'ch_st_newproj_post'):
+                     'mhc_st_newproj', 'mhc_st_newproj_post'):
         if name in s: assert m.calls[name] == 1, name
     assert u.mem_read(s['STORE'],1572864) == b'\xff'*1572864
-    assert u.mem_read(s['ch_lock_table'],131072) == b'\xff'*131072
+    assert u.mem_read(s['mhc_lock_table'],131072) == b'\xff'*131072
     if 'scn_lib' in s: assert u.mem_read(s['scn_lib'],64*4096) == b'\xff'*(64*4096)
     assert not retained.committed(m)
     report = dict(p2_retained_locks=len(records),harmony_steps=8192,legacy_migration=not upstream_p2,

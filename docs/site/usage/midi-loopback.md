@@ -47,3 +47,8 @@ compute their own reservation from all selected modules.
 Sequenced routing follows each MIDI track's applied Part, independently of
 an audio voice retaining another Part or a Part selected for editing. Matching
 audio and MIDI track numbers do not imply shared playback state.
+
+With MIDI Scenes in the full `midi` remix, sequence and crossfader CC output
+uses the same EXT/INT/BOTH route for the actual mix Part. This remains separate
+from other modules' global MIDI output and does not infer track identity from
+a shared MIDI channel.

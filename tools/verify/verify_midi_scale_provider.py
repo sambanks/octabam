@@ -88,7 +88,7 @@ def main():
     sym = symbols()
     for name in ('msp_quant', 'msp_legacy'):
         assert name in sym, ('missing scale service', name)
-    extended = 'ms_snap' in sym
+    extended = 'ms_snap' in sym or 'msp_scales_read' in sym
     m = Machine(lambda: sym.copy())
     m.initial_sr = 0x2300
     counts = dict(reads=0, native_quant=0, extension_quant=0,
@@ -105,7 +105,8 @@ def main():
         counts['abi'] += 1
         return got
 
-    native_key_adapter = 'msp_key_read' in sym
+    reader = 'msp_scales_read' if 'msp_scales_read' in sym else 'msp_key_read'
+    native_key_adapter = reader in sym
     # A future adapter must qualify its own explicit-context reader. The
     # common arithmetic contract remains testable without a KEY reader.
     if native_key_adapter:
@@ -117,16 +118,16 @@ def main():
         for context in (0, 7, 64, 127):
             for key in range(256):
                 m.uc.mem_write(field(context, 3), bytes((key,)))
-                assert call('msp_key_read', 3, context) == descriptor(key, extended), (context, key)
+                assert call(reader, 3, context) == descriptor(key, extended), (context, key)
                 counts['reads'] += 1
         for context in range(128):
             for track in range(8):
                 key = (context * 8 + track) % 85
                 m.uc.mem_write(field(context, track), bytes((key,)))
-                assert call('msp_key_read', track, context) == descriptor(key, extended), (context, track, key)
+                assert call(reader, track, context) == descriptor(key, extended), (context, track, key)
                 counts['reads'] += 1
         for track, context in ((8, 0), (255, 0), (U32, 0), (0, 128), (0, 255), (0, U32)):
-            assert call('msp_key_read', track, context) == U32, (track, context)
+            assert call(reader, track, context) == U32, (track, context)
             counts['guards'] += 1
 
     # Execute stock's own correction instructions, including their edge cases.
@@ -225,7 +226,7 @@ def main():
                    boundary=__doc__, hardware_tested=False)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(receipt, indent=2) + '\n')
-    print('[ok] scale service:', counts, 'MIDI Scales' if extended else 'stock KEY', flush=True)
+    print('[ok] scale service:', counts, 'SCALES' if 'msp_scales_read' in sym else 'MIDI Scales' if extended else 'stock KEY', flush=True)
 
 
 if __name__ == '__main__':

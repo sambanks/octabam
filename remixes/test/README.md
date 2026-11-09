@@ -38,6 +38,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`ext-probe`](ext-probe/README.md) | octabam's core and stock effects (EQUALIZER's id is the probe's) with EXTPROBE on FX1: the highest window word a reverb writes. | `make check` |
 | [`free-loop`](free-loop/README.md) | stock effects with FREE LOOP: a loop pedal per track, the first free loop sets the tempo. | `make check` |
 | [`harmony-follow-native-review`](harmony-follow-native-review/README.md) | Harmony native-KEY control composition for the EVENTS/STORE migration. | port-gated |
+| [`harmony-scales-catalogue`](harmony-scales-catalogue/README.md) | Harmony and Factory with all SCALES choices and no Follow. | port-gated: Combined emulator qualification; not tested on hardware |
 | [`harmony-scales-provider`](harmony-scales-provider/README.md) | Harmony native-KEY control composition for the EVENTS/STORE migration. | port-gated |
 | [`hooks`](hooks/README.md) | REC THRESHOLD and FREE LOOP together (HOOKS bridges the status icons) with STORE and the stock effects. | port-gated: verify_hooks: the bridged chain and table under Unicorn, and this image's sites |
 | [`hooks-boot`](hooks-boot/README.md) | BOOT TRACE beside STORE and MIDI LOOPBACK: HOOKS runs both at the boot's post-loader call. | port-gated: verify_hooks: the boot chain under Unicorn and in this image |
@@ -56,6 +57,8 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`kyoti-mute-sidechain`](kyoti-mute-sidechain/README.md) | stock effects with MUTE_MODES and SIDECHAIN_COMPRESSOR together: a muted KEY track keeps feeding the compressor (SC_KEY). | `make check` |
 | [`lofi-amf-fix`](lofi-amf-fix/README.md) | Reference minimal build: the LO-FI AMF mpysu->mpyuu fix, alone. | `make check` |
 | [`lofi2`](lofi2/README.md) | LOFI2 beside the stock effects (all but PLATE REV and SPRING REV, whose words it takes). | `make check` |
+| [`midi-chords`](midi-chords/README.md) | Harmony, Follow, Scales and Loopback together with all stock effects. | port-gated: Combined emulator qualification; not tested on hardware |
+| [`midi-chords-scales`](midi-chords-scales/README.md) | Factory, Harmony and Follow with the SCALES catalogue. | port-gated: Combined emulator qualification; not tested on hardware |
 | [`midi-follow`](midi-follow/README.md) | Per-track RFOL source selection on MIDI NOTE SETUP; Part-owned bass following. | port-gated |
 | [`midi-follow-events`](midi-follow-events/README.md) | MIDI Follow with EUCLID and PLOCKS P2 sharing EVENTS notifications. | port-gated |
 | [`midi-harmony`](midi-harmony/README.md) | Scale-degree notes, chords and accumulator with native KEY; no Follow. | port-gated |

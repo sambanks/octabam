@@ -376,6 +376,25 @@ def capture_midi_harmony(p,r):
     shot(p,'midi-harmony','note-main','MIDI NOTE: degree, chord and accumulator controls.',r)
 
 
+def capture_midi_systems(p,r):
+    from verify_scales import CATALOGUE
+    press(p,'midi');press(p,'t1')
+    p.key('func',True);press(p,'down',4)
+    shot(p,'trig-modes','combined','MIDI trig modes: CHORDS and CHORD PLAY together.',r)
+    p.key('func',False);p.run(150)
+    p.chord('func','pg_playback')
+    for _ in range(4): enc(p,5,4)
+    # Change KEY after HARM is enabled, through the real scale chooser.
+    p.chord('func','pg_amp')
+    press_encoder(p,5)
+    family,row=CATALOGUE[8][:2]
+    press(p,'up',12);press(p,'down',family);press(p,'yes')
+    press(p,'up',12);press(p,'down',row);press(p,'yes')
+    shot(p,'midi-harmony','unsupported-key','SCALES keeps its extended choice on a HARM track.',r)
+    p.chord('func','pg_playback');press_encoder(p,5)
+    shot(p,'midi-harmony','unsupported-scale','Harmony requires a diatonic scale and preserves degree intent.',r)
+
+
 def prepare(remix,project,assignments):
     label='manual-features' if remix.startswith('../') else remix
     work=OUT/label;work.mkdir(parents=True,exist_ok=True)
@@ -444,7 +463,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','midi-harmony','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','midi-harmony','midi-systems','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -453,6 +472,7 @@ def main():
         if group=='core': jobs=[('octabam',capture_core,[])]
         elif group=='midi-loopback':jobs=[('midi-loopback',capture_midi_loopback,[])]
         elif group=='midi-follow':jobs=[('midi-follow',capture_midi_follow,[])]
+        elif group=='midi-systems':jobs=[('midi',capture_midi_systems,[])]
         elif group=='midi-harmony':jobs=[('midi-harmony',capture_midi_harmony,[])]
         elif group=='plocks': jobs=[('octabam',capture_plocks,[(1,'fx2','PLATE REV')])]
         elif group=='midi-scales':jobs=[('midi-scales',capture_midi_scales,[])]

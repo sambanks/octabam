@@ -102,12 +102,16 @@ def instruction_budgets(symbols):
     """
     if 'mh_pitch_owned' not in symbols:
         return BUDGETS, 'standalone Follow optimization targets'
-    profile = 'midi-scales' if 'ms_output' in symbols else 'native-key'
+    profile = 'midi-scales' if ('ms_output' in symbols or 'sc_output' in symbols) else 'native-key'
     reference = json.loads((ROOT / 'tools/verify/harmony_follow_cpu_baseline.json').read_text())
     limits = reference['profiles'][profile]['ceilings'].copy()
     for name, baseline in LIVE_BATCH_BASELINE.items():
         if name in limits:
             limits[name] = min(limits[name], baseline * 8 // 10)
+    # SCALES must meet the existing MIDI SCALES ceilings, including its
+    # output adapter. Only the symbol name changes; no ceiling is increased.
+    if 'sc_output' in symbols:
+        limits = {name.replace('_ms_output.', '_sc_output.'): cap for name, cap in limits.items()}
     basis = 'Harmony composition ceiling: ' + profile
     if 'lb_track_send' in symbols:
         # Execute the route adapter; only native enqueue/transmit stays stubbed.
@@ -210,10 +214,11 @@ def route(m, chain, grav, key=0):
 
 
 def notes(probe):
+    output = 'sc_output' if 'sc_output' in probe.symbols else 'ms_output' if 'ms_output' in probe.symbols else None
     for chain in (False, True):
         for grav in (False, True):
-            for key in (0, 25) if 'ms_output' in probe.symbols else (0,):
-                for entry in ('bf_note', 'ms_output') if key else ('bf_note',):
+            for key in (0, 25) if output else (0,):
+                for entry in ('bf_note', output) if key else ('bf_note',):
                     m = probe.machine()
                     route(m, chain, grav, key)
                     frame, lane = m.scratch+0x3000, m.scratch+0x1000

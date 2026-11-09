@@ -83,6 +83,11 @@ def main():
                     decoded += 1
         for value in range(128):
             assert call('hd_encode', value, -1) == call('hd_encode', value, 0)
+        # A provider refusal is not KEY OFF and must never become C major.
+        for value in range(128):
+            assert call('hd_encode', value, -2) == 0xffffffff
+        for degree in range(84):
+            assert call('hd_decode', degree, -2) == 0xffffffff
         for value in (128, 255, -1, 0x7fffffff):
             assert call('hd_encode', value, 0) == 0xffffffff
         for value in (84, 127, 255, -1):

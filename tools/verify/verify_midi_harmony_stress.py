@@ -77,7 +77,7 @@ def ownership(seed, steps):
     m = k.m
     rng = random.Random(seed)
     owners, refs = {}, Counter()
-    modes = tuple(range(7)) if 'ms_decode' in m.sym else (0, 5)
+    modes = tuple(range(7)) if ({'ms_decode', 'sc_track_at'} & m.sym.keys()) else (0, 5)
     settings = [(2, t % 12, modes[t % len(modes)]) for t in range(8)]
     for t, (kind, key, mode) in enumerate(settings):
         m.setting(t, kind, key, mode)

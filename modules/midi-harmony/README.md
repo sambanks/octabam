@@ -44,7 +44,7 @@ at bottom left. Empty E/F cells ignore turns.
 
 These are track settings affecting CHORD, not NOTE.
 Existing held notes retain their original releases.
-See [Voicing](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/VOICING.md) for the musical rules.
+See [Voicing](https://github.com/radiohagen/octatrack-modules/blob/9da50248a263650afcad41895b7f6fc83e0296d5/modules/midi-harmony/VOICING.md) for the musical rules.
 
 ## Degree accumulator
 
@@ -92,7 +92,7 @@ volatile and start at zero after project load or power-on.
 
 ## MIDI Follow
 
-Both modules register with [EVENTS](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/docs/SYSTEM_EVENTS.md)
+Both modules register with [EVENTS](https://github.com/radiohagen/octatrack-modules/blob/9da50248a263650afcad41895b7f6fc83e0296d5/docs/SYSTEM_EVENTS.md)
 to share transport and successful-note events. Follow supplies a source note set.
 A HARM OFF source supplies N1–4; a HARM NOTE/CHORD source supplies only its
 resolved degree:oct root as Note 1. HARM OFF on the follower plays the supplied
@@ -144,9 +144,9 @@ checks independently of Harmony. MIDI Follow and MIDI Scales remain optional.
 HARM and PLOCKS P2 register independently with EVENTS;
 no combination-specific bridge is selected. KITS libraries are per
 project; recalling a kit supplies Part defaults while pattern locks stay with
-the patterns. See [storage](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/DEVELOPMENT.md#compact-harmony-storage) and [KITS](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/KITS.md).
+the patterns. See [storage](https://github.com/radiohagen/octatrack-modules/blob/9da50248a263650afcad41895b7f6fc83e0296d5/modules/midi-harmony/DEVELOPMENT.md#compact-harmony-storage) and [KITS](https://github.com/radiohagen/octatrack-modules/blob/9da50248a263650afcad41895b7f6fc83e0296d5/modules/midi-harmony/KITS.md).
 
-[Implementation, provenance and verification](https://github.com/radiohagen/octatrack-modules/blob/3e5ac07a090699c6a092d00de32d30239dea1a8b/modules/midi-harmony/DEVELOPMENT.md).
+[Implementation, provenance and verification](https://github.com/radiohagen/octatrack-modules/blob/9da50248a263650afcad41895b7f6fc83e0296d5/modules/midi-harmony/DEVELOPMENT.md).
 
 ## Verification boundary
 
@@ -186,13 +186,13 @@ hardware capacity or imply that the added policy is free.
 
 ## Lifecycle instruction bounds
 
-Harmony source is pinned to `3e5ac07a090699c6a092d00de32d30239dea1a8b`. Its lifecycle changes are
-[reviewable against the prior pin](https://github.com/radiohagen/octatrack-modules/compare/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b...3e5ac07a090699c6a092d00de32d30239dea1a8b).
+Harmony source is pinned to `9da50248a263650afcad41895b7f6fc83e0296d5`. Its lifecycle changes are
+[reviewable against the prior pin](https://github.com/radiohagen/octatrack-modules/compare/cb11475731eab5dc35f1ec6a93a497e6dcaaf77b...9da50248a263650afcad41895b7f6fc83e0296d5).
 The original **20,000-instruction** call limits are unchanged. The temporary
 40,000 override has been removed; the previously failing lifecycle gates now
 pass through implementation changes.
 
-| Operation in the combined MIDI remix | Before | After |
+| Operation in the earlier MIDI-only composition | Before | After |
 | --- | ---: | ---: |
 | Follow fixture: same-Part replacement | 32,514 | 6,704 |
 | Follow fixture: unrelated-Part replacement | 32,526 | 6,716 |
@@ -224,11 +224,15 @@ existing validated-companion fallback. Emulator instruction counts do not
 establish processor cycles or hardware latency; physical qualification remains
 open.
 
-CHORDS FACTORY and MIDI HARMONY cannot currently be selected together.
-They provide different trig modes: Factory’s **CHORDS** uses mode 2, while
-Harmony’s **CHORD PLAY** uses mode 6. Their current implementations replace
-the same MIDI mode list and overlap in the mode-name patches. Factory’s live
-chord notes also enter the keyboard routine that Harmony replaces, so a
-combined menu alone would not establish compatible playback and recording.
-This is an implementation limitation, not an inherent conflict between the
-musical features. Selecting both is refused before linking.
+CHORDS FACTORY and Harmony coexist through TRIG MODES. Factory's CHORDS
+(mode 2) stores absolute pitches on HARM OFF tracks; Harmony's CHORD PLAY
+(mode 6) stores degrees and chord choices on other tracks. Factory refuses
+live playing/recording and pattern insertion on HARM-enabled tracks with
+CHORDS NEEDS HARM OFF. Atelier preview remains an audition.
+
+SCALES and MIDI SCALES are both supported providers. SCALES retains all 52
+choices on ordinary tracks; HARM requires one of the seven diatonic modes,
+including when KEY is inherited through FOLLOW. Unsupported combinations show
+HARM NEEDS DIATONIC SCALE and suppress new Harmony notes while retaining degree
+data. Choose a supported scale before changing HARM, including turning it OFF.
+Existing note releases remain valid. No persisted layout changes.

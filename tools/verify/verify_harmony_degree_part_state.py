@@ -17,7 +17,7 @@ COPY, INIT = 0x40020898, 0x40005638
 
 def main():
     m=DegreeMachine();u=m.uc;s=m.sym
-    m.call('ch_lock_init')
+    m.call('mhc_lock_init')
     h=s['hd_banks']
     def put(a,v,n=1):u.mem_write(a,v.to_bytes(n,'big'))
     def get(a,n=1):return int.from_bytes(u.mem_read(a,n),'big')

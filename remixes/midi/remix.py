@@ -1,12 +1,10 @@
-"""Harmony, Follow, Scales and Loopback together with all stock effects."""
-from remix.schema import Proof, Remix
+"""The OCTABAM instrument with the collected MIDI modules."""
+from dataclasses import replace
+from remix import registry
+from remix.schema import Proof
 
-REMIX = Remix(
-    name="midi", family="mods", proof=Proof.PORT,
-    proof_note='Combined emulator qualification; not tested on hardware',
-    doc="Harmony, Follow, Scales and Loopback together with all stock effects.",
-    modules=("STORE", "MIDI HARMONY", "EVENTS", "MIDI SCALES",  "MIDI FOLLOW", "MIDI LOOPBACK", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-             "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-             "DELAY", "PLATE REV", "SPRING REV", "DARK REV"),
-    fallback="NONE",
-)
+BASE = registry.remix('octabam')
+REMIX = replace(BASE, name='midi', family='mods', proof=Proof.PORT,
+                modules=(*BASE.modules, 'MIDI HARMONY', 'MIDI FOLLOW', 'MIDI LOOPBACK'),
+                doc='OCTABAM with Harmony, Follow and Loopback; SCALES and Chords Factory remain available.',
+                proof_note='Combined software qualification in progress; no hardware acceptance')

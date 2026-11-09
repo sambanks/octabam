@@ -24,18 +24,18 @@ def machine():
         m.call('mh_root_set',0,0)
     assert not any(name.startswith('mh_width') for name in m.sym)
     count=0
-    qualities=range(8) if 'ch_current' in m.sym else range(2)
+    qualities=range(8) if 'mhc_current' in m.sym else range(2)
     walks=([60,62,64,65,67,69,71,72,71,69,67,65,64,62,60]*2+
            [60,65,70,63,68,61,66,71,64,69,62,67,60]*2+
            [48,60,84,36,59,60,61,60,0,1,11,12,23,24,115,116,120,126,127])
     for spread in range(3):
         for mode in (-1,*range(7)):
-            if 'ms_decode' not in m.sym and mode not in (-1,0,5):continue
+            if not ({'ms_decode', 'sc_track_at'} & m.sym.keys()) and mode not in (-1,0,5):continue
             for key in range(12):
                 for quality in qualities:
-                    m.setting(0,2 if 'ch_current' in m.sym else quality+2,key,max(0,mode))
+                    m.setting(0,2 if 'mhc_current' in m.sym else quality+2,key,max(0,mode))
                     if mode<0:m.set_key(0,0)
-                    if 'ch_current' in m.sym:u.mem_write(m.sym['ch_current'],bytes((quality,)))
+                    if 'mhc_current' in m.sym:u.mem_write(m.sym['mhc_current'],bytes((quality,)))
                     m.call('mh_voic_set',0,1);m.call('mh_sprd_set',0,spread)
                     for note in walks:
                         raw=m.chord(0,note);actual=voiced(raw)

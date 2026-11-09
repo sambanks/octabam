@@ -73,6 +73,14 @@ int32_t ch_scale(unsigned t);           /* hooks.s: SCALES' scale of track t, or
 int32_t ch_keyboard(unsigned t, unsigned first, unsigned green);   /* hooks.s: SCALES' sc_keyboard, 0 none drawn */
 int32_t ch_channel(unsigned t);         /* hooks.s: the edited Part's CHAN of MIDI track t (0 off, else ch + 1), -1 */
 
+unsigned ch_accepts_absolute(unsigned track);
+
+static unsigned absolute_track(unsigned track) {
+    if (ch_accepts_absolute(track)) return 1;
+    FN(NOTIFY, const char *, unsigned)("CHORDS NEEDS HARM OFF", 0x30);
+    return 0;
+}
+
 static void ready(void) {
     if (ch_ready) return;
     for (unsigned b = 0; b < CH_BANKS; b++)
@@ -155,7 +163,7 @@ void ch_chord_key(unsigned key, unsigned edge) {
     if (edge) {
         const ChVoicing *v = &ch_bank[U8(BANK) & 15][key].v;
         unsigned t = U8(UI_TRACK) & 7;
-        if (ch_held_n[key] || !v->n) return;
+        if (ch_held_n[key] || !v->n || !absolute_track(t)) return;
         /* the track's VEL, as stock's CHROMATIC note reads it (0x400436ac) */
         unsigned vel = U8(U32(BANK_RAM) + U8(UI_PART) * 0x18b2u + t * 0x20u + 0x8f163u);
         for (unsigned k = 0; k < v->n; k++) {      /* the lowest first: live recording's NOTE, the rest NOT2-4 */
@@ -175,6 +183,18 @@ void ch_chord_key(unsigned key, unsigned edge) {
         post(0x4a, ch_held[key][k], 0, length);
     }
     ch_held_n[key] = 0;
+}
+
+/* TRIG MODES callbacks. Cleanup receives the old track even when the UI
+ * already shows another track or playing mode. */
+unsigned ch_trig_key(unsigned key, unsigned edge) {
+    ch_chord_key(key, edge);
+    return 1;
+}
+
+void ch_trig_release(unsigned track) {
+    for (unsigned k = 0; k < CH_SLOTS; k++)
+        if (ch_held_n[k] && ch_held_t[k] == track) ch_chord_key(k, 0);
 }
 
 /* The trig LEDs in CHORDS: a slot that holds a chord green, a key held
@@ -689,7 +709,7 @@ void ch_box_picture(void) {
 
 /* With the page open and FUNC held the trig keys type notes (ch_key_down:
  * key k = the slot's octave's C + k), so the LED pass shows them as a
- * keyboard (hooks.s ch_kbd_pass), the chord's notes green: SCALES draws it
+ * keyboard (TRIG MODES overlay), the chord's notes green: SCALES draws it
  * (sc_keyboard: the track's scale in the CHROMATIC keys' colours, tonic
  * yellow, scale red). Without SCALES in the remix, or on KEY OFF, CHORDS
  * draws the same colours for C major (stock's CHROMATIC keyboard). */
@@ -701,14 +721,23 @@ void ch_kbd_leds(void) {
         for (unsigned v = 0; v < c->v.n; v++)
             if (c->v.note[v] == first + k) green |= 1u << k;
     if (ch_keyboard(ch_win_t, first, green)) return;
+    int32_t scale = ch_scale(ch_win_t);
+    unsigned tonic = scale < 0 ? 0u : (unsigned)scale & 15u;
+    unsigned mask = scale < 0 ? 0xab5u : (unsigned)scale >> 4;
     for (unsigned k = 0; k < CH_SLOTS; k++) {
-        unsigned deg = (first + k) % 12u, in = green >> k & 1;
-        unsigned red = !in && (0xab5u >> deg & 1), grn = in || (red && deg == 0);
+        unsigned deg = (first + k + 12u - tonic) % 12u, in = green >> k & 1;
+        unsigned red = !in && (mask >> deg & 1), grn = in || (red && deg == 0);
         FN(SET_LEVEL, unsigned, unsigned)(2 * k, red ? 15 : 0);
         FN(LED_ON, unsigned)(2 * k);
         FN(SET_LEVEL, unsigned, unsigned)(2 * k + 1, grn ? 15 : 0);
         FN(LED_ON, unsigned)(2 * k + 1);
     }
+}
+
+unsigned ch_trig_overlay(void) {
+    if (!ch_win || !U32(FUNC_HELD)) return 0;
+    ch_kbd_leds();
+    return 1;
 }
 
 /* ---- TRIG + UP in GRID RECORDING: the chord chooser ----
@@ -848,6 +877,7 @@ void ch_trig_up(void) {
     ready();
     unsigned held = U8(HELD) << 8 | U8(HELD + 1);
     if (!held || ch_pk_win || !U32(MIDI_MODE)) return;
+    if (!absolute_track(U8(UI_TRACK) & 7)) return;
     const ChSlot *bank = ch_bank[U8(BANK) & 15];
     ch_pk_n = 0;
     for (unsigned i = 0; i < CH_SLOTS; i++)
@@ -895,6 +925,7 @@ void ch_pk_ud(unsigned key) {
 void ch_pk_yes(void) {
     if (!ch_pk_win) { ch_pk_closed(); return; }
     unsigned i = ch_pk_rows[ch_pk_sel], t = ch_pk_t;
+    if (!absolute_track(t)) { ch_pk_close(); return; }
     const ChVoicing *v = &ch_bank[ch_pk_b][i].v;
     for (unsigned k = 0; k < 16; k++)
         if (ch_pk_held >> k & 1 && ch_pk_page + k < 64) lock_step(t, ch_pk_page + k, v);

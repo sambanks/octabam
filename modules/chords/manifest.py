@@ -27,7 +27,7 @@ generate.py builds chords_unit.s from it, adapter.c and hooks.s.
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 
 H = bytes.fromhex
 MIDI_MODES = 0x400A74C0                 # stock's MIDI trig modes: 0, 1, 4 (TRACKS, CHROMATIC, QUICK MUTE)
@@ -37,7 +37,7 @@ def _inc(modules, _remix):
     """remix.inc: whether SCALES answers ch_scale, and the module's number in
     STORE's refusal registry."""
     ids = runpy.run_path(str(Path(__file__).parents[1] / "store/manifest.py"))["CLIENT_IDS"]
-    return f".set HAVE_SCALES, {int('SCALES' in modules)}\n.set CH_CLIENT, {ids['CHORDS FACTORY']}\n"
+    return f".set HAVE_MIDI_SCALES, {int('MIDI SCALES' in modules)}\n.set HAVE_HARMONY, {int('MIDI HARMONY' in modules)}\n.set HAVE_SCALES, {int('SCALES' in modules)}\n.set CH_CLIENT, {ids['CHORDS FACTORY']}\n"
 
 
 MODULE = Module(
@@ -50,7 +50,8 @@ MODULE = Module(
     proof=Proof.HARDWARE,
     proof_note="the owner's MKII, OCTABAM36-43 (3-5 Nov 2026, the live-djib rig, with SCALES): the page, "
                "the slots, voice leading, the trig mode, live recording, TRIG + UP, the FUNC keyboard; "
-               "verify_chords (the port), verify.py (the engine)",
+               "verify_chords (the port), verify.py (the engine). Shared TRIG MODES and Harmony/provider "
+               "integration: emulator checks only; those changes have not been flashed",
     doc="Chord progressions for a MIDI track: sixteen slots per bank on the trig keys, each chord "
         "built (root, type, inversion, spread, octave), typed on the trig keys (FUNC) or voiced from "
         "the slot before by voice leading (the smoothest first, then the next ones); a voice moved by "
@@ -61,29 +62,16 @@ MODULE = Module(
         "live recording or TRIG + UP (a chooser window) puts a chord on a trig.",
     linked=(Linked("ch", "modules/chords/chords_unit.s", cpu="5475", dram=True, include=_inc),),
     detours=(
-        Detour(0x400359FA, H("2c3c400beb72"), "ch", "ch_lbl_list",
-               "the trig modes' list: mode 2 named CHORDS in MIDI mode"),
-        Detour(0x40036046, H("41f9400beb72"), "ch", "ch_lbl_bar",
-               "the trig mode's name on the screen: CHORDS in MIDI mode"),
-        Detour(0x40050294, H("2f022039460d16f8"), "ch", "ch_mode_key",
-               "the trig key handler's mode 2: a slot's chord in MIDI mode, SLOTS in audio", pad_to=8),
-        Detour(0x400441F6, H("71b9100b14cc"), "ch", "ch_mode_led",
-               "the trig LED pass's mode 2: the slots' LEDs in MIDI mode, SLOTS' in audio"),
         Detour(0x40035F92, H("2039460d16f8"), "ch", "ch_box_head",
                "the trig mode box's header for mode 2: the slots holding a chord, n/16, in MIDI mode"),
         Detour(0x40044B74, H("4878000a4878003d"), "ch", "ch_box_pic",
                "the trig mode box's picture for mode 2: the chord last played and the sixteen slots, in MIDI mode",
                pad_to=8),
-        Detour(0x40044006, H("2039460d16f0"), "ch", "ch_kbd_pass",
-               "the trig LED pass's trig mode test: the keyboard while CHORDS' page types notes (FUNC held)"),
         Detour(0x40045502, H("4878000148780009"), "ch", "ch_box_bar",
                "the trig mode box's sample bar for modes 2 / 3: none in MIDI mode (CHORDS plays no sample)",
                pad_to=8),
     ),
-    pokes=(Poke(0x4005872E, H("7003"), H("7004"), "the MIDI trig modes' list has four rows"),),
-    symbol_refs=tuple(SymbolRef(a, MIDI_MODES, "ch", "ch_midimodes", "the MIDI trig modes: 0, 1, 2 (CHORDS), 4")
-                      for a in (0x40035A24, 0x40051EFC, 0x40051F6C)),
-    requires=("STORE", "PAGES"),
+    requires=("STORE", "PAGES", "TRIG MODES"),
     gates=(Gate("modules/chords/verify.py", remix_arg=False),
            Gate("tools/verify/verify_chords.py", venv=True, stage="image")),
 )

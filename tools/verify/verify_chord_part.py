@@ -28,7 +28,7 @@ def main():
         put(0x46c82456, BANK+bank*STRIDE, 4)
         put(0x100b14cf, part)
     def lock(bank, pattern, track, step):
-        return m.call('ch_lock_get', bank, pattern,
+        return m.call('mhc_lock_get', bank, pattern,
                       regs={UC_M68K_REG_D2: track, UC_M68K_REG_D3: step})
     # Simultaneous selected, engine, captured and pattern contexts differ.
     ui(2, 1)
@@ -38,27 +38,27 @@ def main():
     put(0x8000666e, 5)
     put(0x80006676, 2)
     put(BANK+7*STRIDE+4*0x8ed8+0x8e57, 3)
-    assert m.call('ch_base_get', 0) == 2
-    assert m.call('ch_base_play', 0) == 5
-    assert m.call('ch_base_at', 0, 31) == 7
-    assert m.call('ch_base_pattern', 7, 4, regs={UC_M68K_REG_D2: 0}) == 7
-    assert m.call('ch_pattern_context', 7, 4) == 31
+    assert m.call('mhc_base_get', 0) == 2
+    assert m.call('mhc_base_play', 0) == 5
+    assert m.call('mhc_base_at', 0, 31) == 7
+    assert m.call('mhc_base_pattern', 7, 4, regs={UC_M68K_REG_D2: 0}) == 7
+    assert m.call('mhc_pattern_context', 7, 4) == 31
     # Boot RAM is not guaranteed zero: compressed staging may overlap BSS.
     # First init frees every message; repeated init must retain queued owners.
-    u.mem_write(m.sym['ch_messages'], b'\xa5'*4096)
-    put(m.sym['ch_record_overflow'], 123, 4)
-    m.call('ch_lock_init')
-    assert bytes(u.mem_read(m.sym['ch_messages'], 4096)) == b'\0'*4096
-    assert bytes(u.mem_read(m.sym['ch_record_overflow'], 4)) == b'\0'*4
-    put(m.sym['ch_messages']+14, 1)
-    m.call('ch_lock_init')
-    assert u.mem_read(m.sym['ch_messages']+14, 1)[0] == 1
-    m.call('ch_record_free', stop=0x40045614,
-           regs={UC_M68K_REG_A2: m.sym['ch_messages']})
-    assert u.mem_read(m.sym['ch_messages']+14, 1)[0] == 0
+    u.mem_write(m.sym['mhc_messages'], b'\xa5'*4096)
+    put(m.sym['mhc_record_overflow'], 123, 4)
+    m.call('mhc_lock_init')
+    assert bytes(u.mem_read(m.sym['mhc_messages'], 4096)) == b'\0'*4096
+    assert bytes(u.mem_read(m.sym['mhc_record_overflow'], 4)) == b'\0'*4
+    put(m.sym['mhc_messages']+14, 1)
+    m.call('mhc_lock_init')
+    assert u.mem_read(m.sym['mhc_messages']+14, 1)[0] == 1
+    m.call('mhc_record_free', stop=0x40045614,
+           regs={UC_M68K_REG_A2: m.sym['mhc_messages']})
+    assert u.mem_read(m.sym['mhc_messages']+14, 1)[0] == 0
     assert lock(7, 4, 0, 6) == 7
     index = ((7*16+4)*8)*64+6
-    put(m.sym['ch_lock_table']+index, 3)
+    put(m.sym['mhc_lock_table']+index, 3)
     assert lock(7, 4, 0, 6) == 3
     put(at(7, 3, 0), 1)
     assert lock(7, 4, 0, 6) == 3, 'Part changes must not overwrite explicit CHRD'
@@ -68,14 +68,14 @@ def main():
     def stage(step, slot):
         put(m.stack+48, 7, 4)
         put(m.stack+60, slot & 0xffffffff, 4)
-        m.call('ch_stage_fill', stop=0x4009d188,
+        m.call('mhc_stage_fill', stop=0x4009d188,
                regs={UC_M68K_REG_D3: 0, UC_M68K_REG_D7: step,
                      UC_M68K_REG_A3: 4, UC_M68K_REG_A5: m.scratch})
     def fire(slot):
-        m.call('ch_pending_fire', stop=0x400a19e2,
+        m.call('mhc_pending_fire', stop=0x400a19e2,
                regs={UC_M68K_REG_A0: 0x46c78960+slot*8*32,
                      UC_M68K_REG_A1: m.scratch, UC_M68K_REG_D5: 0})
-        return u.mem_read(m.sym['ch_sequence_quality'], 1)[0]
+        return u.mem_read(m.sym['mhc_sequence_quality'], 1)[0]
     stage(6, 0)  # explicit quality 3
     stage(7, 1)  # inherit captured bank 7, Part 3
     put(at(7, 3, 0), 6)
@@ -83,8 +83,8 @@ def main():
     put(0x80006676, 0)
     assert fire(0) == 3
     assert fire(1) == 6
-    for name, track_reg, continuation in (('ch_stage_copy_a', UC_M68K_REG_D2, 0x4009b922),
-                                          ('ch_stage_copy_b', UC_M68K_REG_D1, 0x4009c10e)):
+    for name, track_reg, continuation in (('mhc_stage_copy_a', UC_M68K_REG_D2, 0x4009b922),
+                                          ('mhc_stage_copy_b', UC_M68K_REG_D1, 0x4009c10e)):
         stage(7, -1)
         m.call(name, stop=continuation, regs={track_reg: 0, UC_M68K_REG_A0: 0})
         put(at(7, 3, 0), 4)
@@ -97,33 +97,33 @@ def main():
             for track in range(8):
                 value = (bank+part+track) % 8
                 put(at(bank, part, track), 255)
-                assert m.call('ch_base_set', track, value) == 1
+                assert m.call('mhc_base_set', track, value) == 1
                 allowed = {at(bank, part, track), BANK+bank*STRIDE+0x95048,
                            BANK+bank*STRIDE+0x9b332,
                            0x100a4ece+part*PART+0x4e2+track*36+18,
                            0x100b145e, 0x100f8598}
                 assert all(a in allowed or m.stack-128 <= a and a+n <= m.stack+4
                            for a, n in m.writes), m.writes
-                assert m.call('ch_base_get', track) == value
-                assert m.call('ch_base_at', track, bank*4+part) == value
+                assert m.call('mhc_base_get', track) == value
+                assert m.call('mhc_base_at', track, bank*4+part) == value
                 assert u.mem_read(0x100a4ece+part*PART+0x4e2+track*36+18, 1)[0] == value
                 writes += 1
     # Native Part bytes are authoritative on recall; a volatile live override
     # and an earlier default cannot conceal a new Part in the same slot.
     ui(2, 1)
     put(at(2, 1, 0), 6)
-    put(m.sym['ch_live'], 7)
-    assert m.call('ch_base_get', 0) == 6
+    put(m.sym['mhc_live'], 7)
+    assert m.call('mhc_base_get', 0) == 6
     put(at(2, 1, 0), 4)
-    assert m.call('ch_base_get', 0) == 4
+    assert m.call('mhc_base_get', 0) == 4
     # Corrupt values resolve to TRI, invalid edits never touch Part memory.
     for value in (32, 127, 255):
         put(at(2, 1, 0), value)
-        assert m.call('ch_base_get', 0) == 0
-        assert m.call('ch_base_set', 0, value) == 0
+        assert m.call('mhc_base_get', 0) == 0
+        assert m.call('mhc_base_set', 0, value) == 0
         assert bytes(u.mem_read(at(2, 1, 0), 1)) == bytes([value])
     for track, context in ((8, 0), (0, 64), (0, 0xffffffff)):
-        assert m.call('ch_base_at', track, context) == 0
+        assert m.call('mhc_base_at', track, context) == 0
     for bank, pattern, track, step in ((16, 0, 0, 0), (0, 16, 0, 0),
                                        (0, 0, 8, 0), (0, 0, 0, 64)):
         assert lock(bank, pattern, track, step) == 0
@@ -132,9 +132,9 @@ def main():
             UC_M68K_REG_D4, UC_M68K_REG_D5, UC_M68K_REG_D6, UC_M68K_REG_D7,
             UC_M68K_REG_A0, UC_M68K_REG_A1, UC_M68K_REG_A2,
             UC_M68K_REG_A3, UC_M68K_REG_A4, UC_M68K_REG_A5, UC_M68K_REG_A6)
-    for name, d0, d1, d2 in (('ch_base_get', 0, 9, 13), ('ch_base_play', 0, 9, 13),
-                             ('ch_base_at', 0, 9, 13), ('ch_base_set', 0, 3, 13),
-                             ('ch_pattern_context', 7, 4, 13), ('ch_base_pattern', 7, 4, 0)):
+    for name, d0, d1, d2 in (('mhc_base_get', 0, 9, 13), ('mhc_base_play', 0, 9, 13),
+                             ('mhc_base_at', 0, 9, 13), ('mhc_base_set', 0, 3, 13),
+                             ('mhc_pattern_context', 7, 4, 13), ('mhc_base_pattern', 7, 4, 0)):
         regs = {reg: 0x12345678 for reg in kept}
         regs[UC_M68K_REG_D1] = d1
         regs[UC_M68K_REG_D2] = d2
@@ -166,16 +166,16 @@ def main():
             put(at(5, 2, track), (quality+5) % 8)
             put(0x8000666e+track, 5)
             put(0x80006676+track, 2)
-            put(m.sym['ch_live']+track, latched)
+            put(m.sym['mhc_live']+track, latched)
             expected = latched if mode == 6 and not grid else quality
-            assert m.call('ch_live_get', track) == expected
-            m.call('ch_live_context', track)
-            assert u.mem_read(m.sym['ch_current']+track, 1)[0] == expected
-            assert u.mem_read(m.sym['ch_live']+track, 1)[0] == expected
+            assert m.call('mhc_live_get', track) == expected
+            m.call('mhc_live_context', track)
+            assert u.mem_read(m.sym['mhc_current']+track, 1)[0] == expected
+            assert u.mem_read(m.sym['mhc_live']+track, 1)[0] == expected
             u.mem_write(0x46c77bea, bytes((70, 8, 48, 100))+b'\0'*8)
-            m.call('ch_record_post', stop=0x40000c3c, regs={UC_M68K_REG_D5: track})
+            m.call('mhc_record_post', stop=0x40000c3c, regs={UC_M68K_REG_D5: track})
             message = int.from_bytes(u.mem_read(m.stack+36, 4), 'big')
-            assert m.sym['ch_messages'] <= message < m.sym['ch_messages']+4096
+            assert m.sym['mhc_messages'] <= message < m.sym['mhc_messages']+4096
             put(at(2, 1, track), (quality+1) % 8)
             assert bytes(u.mem_read(message+12, 2)) == bytes((expected, track))
             assert bytes(u.mem_read(message, 12)) == bytes((70, 8, 48, 100))+b'\0'*8

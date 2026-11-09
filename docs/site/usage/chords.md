@@ -5,9 +5,14 @@ sequencer and through the arpeggiator.
 
 ## Access
 
-Not in an official remix; build the test remix `chords` (with SCALES) or
-`chords-alone`. Needs STORE (the chords are saved with the project) and
-PAGES.
+Included in OCTABAM and the collected **midi** remix. The focused test remixes
+are `chords` (with SCALES) and `chords-alone`. Needs STORE, PAGES and TRIG MODES.
+
+With Harmony installed, Factory's absolute chords belong on **HARM OFF** tracks.
+Its CHORDS mode and Harmony's CHORD PLAY remain separate menu choices. Factory
+refuses live playing/recording and pattern insertion on HARM-enabled tracks with
+**CHORDS NEEDS HARM OFF**; the atelier can still audition a chord. Use Harmony
+on other tracks for progressions that transpose by scale degree.
 
 ## The atelier
 
@@ -26,9 +31,9 @@ the sixteen slots and six settings:
 Hold a **trig key** to choose its slot and hear it. Hold **FUNC** and the
 trig keys become a keyboard from the slot's octave (trig 1 = C): a key adds
 or removes its note. The keys show the chord's notes green and, with
-SCALES, the track's scale (tonic yellow, scale red). With FUNC held, A-D
+SCALES or MIDI SCALES, the track's scale (tonic yellow, scale red). With FUNC held, A-D
 move one voice a semitone, E keeps the bass on the root or frees it, and F
-steps through the scale's chords (with SCALES).
+steps through the scale's chords (with either scale provider).
 
 ## Playing the chords
 
@@ -39,7 +44,7 @@ main screen shows the last chord, its bass and how it was made.
 
 To put chords in a pattern: record live (REC + PLAY, play the trig keys),
 or in GRID RECORDING hold the trigs and press **UP**: choose a chord in the
-list (UP / DOWN, each heard) and press **YES**. With SCALES, a chord step
+list (UP / DOWN, each heard) and press **YES**. With either scale provider, a chord step
 plays as written, whatever the KEY.
 
 The chords are saved with the project (`chords.work`).

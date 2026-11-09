@@ -45,14 +45,14 @@ def check():
                     u.reg_write(UC_M68K_REG_D0,result)
                     u.reg_write(UC_M68K_REG_PC,int.from_bytes(u.mem_read(sp+328,4),'big'))
                     u.reg_write(UC_M68K_REG_A7,sp+332)
-                elif address == sym['ch_file_read']:
+                elif address == sym['mhc_file_read']:
                     banks.append(u.reg_read(UC_M68K_REG_D0))
                     u.reg_write(UC_M68K_REG_D0,0xdeadbeef)
                 elif address in other:
                     clients.append((other[address],u.reg_read(UC_M68K_REG_D1),u.reg_read(UC_M68K_REG_D2)))
             u.hook_add(UC_HOOK_CODE,observe)
             # Only I/O/helpers are substituted; STORE and Harmony's loops run.
-            for address in (*other, sym['ch_lock_init'],sym['ch_file_read'],sym['ch_nv_save']):
+            for address in (*other, sym['mhc_lock_init'],sym['mhc_file_read'],sym['mhc_nv_save']):
                 u.mem_write(address,b'\x4e\x75')
             args=struct.pack('>8I',0x100b14f0,mask or 0,3,4,5,6,7,8)
             u.reg_write(UC_M68K_REG_SR,0x2700);u.reg_write(UC_M68K_REG_A7,m.stack)

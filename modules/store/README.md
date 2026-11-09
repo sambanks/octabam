@@ -91,3 +91,11 @@ checks generated assembly against the maintained C source; Harmony's separate
 author-reference gate no longer claims these locally maintained STORE units.
 Physical battery retention, power-cycle behavior and hardware timing remain
 unverified for this integration.
+
+## Saved Part byte reads
+
+`store_part_saved_read` takes the same registered Part-relative offset and
+0..63 bank/Part context as `store_part_read`, and returns a saved byte or -1.
+It preserves every register except d0 and condition codes. Working-copy
+snapshots do not replace the saved array. Any registered client can use it;
+STORE assigns no musical interpretation to the byte.

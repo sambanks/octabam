@@ -9,6 +9,23 @@
         .globl  ch_file_path, ch_file_open, ch_file_read, ch_file_write, ch_file_close
         .globl  ch_file_crc, ch_file_refuse, ch_st_answer, ch_path, ch_path2, ch_fbuf, ch_fsaved
 
+| CHORDS stores absolute pitches. A track whose native NOTE lane belongs
+| to Harmony cannot record those as degrees. This is a musical constraint
+| of these two clients; TRIG MODES does not interpret note formats.
+        .globl ch_accepts_absolute
+ch_accepts_absolute:
+        .if HAVE_HARMONY
+        move.l 4(%sp),%d0
+        jsr mh_get
+        tst.l %d0
+        beq.s 1f
+        moveq #0,%d0
+        rts
+1:
+        .endif
+        moveq #1,%d0
+        rts
+
 | int32_t ch_scale(unsigned t): SCALES' scale of MIDI track t as
 | mask << 4 | tonic, or -1 (KEY OFF, or no SCALES in the remix). TURING's tm_scale.
 ch_scale:
@@ -30,8 +47,13 @@ ch_scale:
 8:      moveq   #-1,%d0
         rts
         .else
+        .if HAVE_MIDI_SCALES
+        move.l 4(%sp),%d0
+        jmp ms_track
+        .else
         moveq   #-1,%d0
         rts
+        .endif
         .endif
 
 | int32_t ch_keyboard(unsigned t, unsigned first, unsigned green): SCALES'
@@ -113,81 +135,9 @@ ch_st_answer:                           | d0 = IGNORE / OVERWRITE / BACKUP
         addq.l  #4,%sp
         rts
 
-| ---- CHORDS, a trig mode of the MIDI tracks (FUNC + DOWN's list) ----------
-|
-| The MIDI list is TRACKS, CHROMATIC, CHORDS, QUICK MUTE: modes 0, 1, 2, 4
-| (stock's is 0, 1, 4; mode 2 is SLOTS, which MIDI never had). Stock places
-| the list's cursor at min(mode, rows - 1) (0x4007edb0), so CHORDS goes in
-| row 2 and QUICK MUTE stays the last. In MIDI mode, mode 2's keys and LEDs
-| are CHORDS'; in audio mode they stay SLOTS'.
-        .globl  ch_midimodes, ch_labels, ch_lbl_list, ch_lbl_bar, ch_mode_key, ch_mode_led
-        .balign 4
-ch_midimodes:
-        .long   0, 1, 2, 4
-| Stock's names (0x400beb72) with mode 2 CHORDS, read in MIDI mode only.
-ch_labels:
-        .long   0x400b5f4b, 0x400b5366, ch_chords_name, 0x400b6cb9, 0x400b5376, 0x400b5381
-ch_chords_name:
-        .asciz  "CHORDS"
-        .balign 2
-
-| 0x400359fa, the list's drawer: `move.l #0x400beb72,%d6`, the names.
-ch_lbl_list:
-        move.l  #0x400beb72,%d6
-        tst.l   0x80000012              | MIDI mode
-        beq.s   1f
-        move.l  #ch_labels,%d6
-1:      jmp     0x40035a00
-
-| 0x40036046, the mode's name drawn on the screen: `lea 0x400beb72,%a0`.
-ch_lbl_bar:
-        lea     0x400beb72,%a0
-        tst.l   0x80000012
-        beq.s   1f
-        lea     ch_labels,%a0
-1:      jmp     0x4003604c
-
-| 0x40050294, the trig key handler's mode 2 (its jump table at 0x4005020a;
-| a0 = the key, d2 = 1 pressed, 0 let go): in MIDI mode the key's chord, then stock's tail (the LEDs
-| asked again); in audio mode SLOTS, as displaced.
-ch_mode_key:
-        tst.l   0x80000012
-        beq.s   1f
-        move.l  %d2,-(%sp)
-        move.l  %a0,-(%sp)
-        jsr     ch_chord_key
-        addq.l  #8,%sp
-        jmp     0x400502d4
-1:      move.l  %d2,-(%sp)
-        move.l  0x460d16f8,%d0
-        jmp     0x4005029c
-
-| 0x400441f6, the trig LED pass's mode 2: in MIDI mode the slots' LEDs, then
-| where stock's SLOTS branch goes when it is done (0x400444f8).
-ch_mode_led:
-        tst.l   0x80000012
-        beq.s   1f
-        jsr     ch_leds
-        jmp     0x400444f8
-1:      mvz.b   0x100b14cc,%d0
-        jmp     0x400441fc
-
-| 0x40035f92, the trig mode box's header for mode 2 (SLOTS' page, 1-16): in
-| MIDI mode CHORDS' count, n/16, then stock's end of the header.
-        .globl  ch_box_head, ch_box_pic, ch_box_bar, ch_kbd_pass
-
-| 0x40044006, the trig LED pass's trig mode test: with CHORDS' page open and
-| FUNC held (the trig keys type notes), its keyboard (ch_kbd_leds), then the
-| pass's common end, as the mode 2 branch (ch_mode_led); else stock's test.
-ch_kbd_pass:
-        tst.l   ch_win
-        beq.s   1f
-        tst.l   0x46c7dd26
-        beq.s   1f
-        jsr     ch_kbd_leds
-        jmp     0x400444f8
-1:      move.l  0x460d16f0,%d0
-        jmp     0x4004400c
+| CHORDS' mode-2 guide uses the native SLOTS layout. TRIG MODES owns
+| menu registration, key/LED dispatch and held-note cleanup.
+        .globl ch_box_head, ch_box_pic, ch_box_bar
 ch_box_head:
         tst.l   0x80000012
         beq.s   1f

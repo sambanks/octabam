@@ -42,10 +42,10 @@ def degree_positions(data):
 
 def dump(work,name):
     return (f'{SYMBOLS["hd_banks"]:#x},{SIZE*16}={work}/{name}-degrees.bin;'
-            f'{SYMBOLS["ch_lock_table"]:#x},131072={work}/{name}-locks.bin;'
+            f'{SYMBOLS["mhc_lock_table"]:#x},131072={work}/{name}-locks.bin;'
             f'{BANK:#x},0x9b340={work}/{name}-bank.bin;'
-            f'{SYMBOLS["ch_lock_status"]:#x},16={work}/{name}-status.bin;'
-            f'{SYMBOLS["ch_record_overflow"]:#x},4={work}/{name}-overflow.bin;'
+            f'{SYMBOLS["mhc_lock_status"]:#x},16={work}/{name}-status.bin;'
+            f'{SYMBOLS["mhc_record_overflow"]:#x},4={work}/{name}-overflow.bin;'
             f'0x10000000,0x100000={work}/{name}-cs1.bin;'
             f'0x460ba98c,4={work}/{name}-leds.bin')
 

@@ -16,7 +16,7 @@ def main():
     cases = 0
     scales = [(0, 0, 0)] + [(raw_scale(t, mode), t, mode)
                            for t in range(12) for mode in range(7)
-                           if 'ms_snap' in m.sym or mode in (0, 5)]
+                           if ({'ms_snap', 'sc_track_at'} & m.sym.keys()) or mode in (0, 5)]
     for key, tonic, mode in scales:
         m.set_key(0, key)
         m.set_key(1, 24 if key != 24 else 1)
@@ -24,7 +24,7 @@ def main():
         valid = [n for n in members if 0 <= n <= 127]
         roots = [n for n in valid if 36 <= n <= 60][:4]
         for quality in (0, 5, 6, 7):
-            m.uc.mem_write(m.sym['ch_sequence_quality'] + 1, bytes((quality,)))
+            m.uc.mem_write(m.sym['mhc_sequence_quality'] + 1, bytes((quality,)))
             for old, new in ((roots[0], roots[1]), (roots[1], roots[3]), (roots[3], roots[0])):
                 for voice in range(128):
                     if not key or quality >= 5:

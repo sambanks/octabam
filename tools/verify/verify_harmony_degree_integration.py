@@ -9,7 +9,7 @@ from harmony_midi_machine import Machine, ROOT
 
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
-    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBbDdAa] ((?:seq|ed|ha|hd|ch|mh|bf|ms|store_part)_\w+)$',raw,re.M)}
+    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBbDdAa] ((?:seq|ed|ha|hd|mhc|mh|bf|ms|store_part)_\w+)$',raw,re.M)}
 
 
 class DegreeMachine(Machine):
@@ -37,7 +37,7 @@ def main():
                 assert m.c('hd_ui_advance_c',code,delta)==expected,(held,code,delta)
     put(0x46100b1d,0)
     print('[ok] FUNC DEG changes octaves and preserves degree at both limits',flush=True)
-    m.call('ch_lock_init')
+    m.call('mhc_lock_init')
     bank=0x400e21e0
     u.mem_write(bank,b'\xff'*0x9b340)
     for p in range(16): put(bank+p*0x8ed8+0x8e57,p%4)
@@ -60,13 +60,13 @@ def main():
     # Execute the real detours, carrying a root from staging through native
     # pending payload copy and fire. Change KEY after staging, before fire.
     put(m.stack+48,0,4);put(m.stack+60,0xffffffff,4)
-    m.call('ch_stage_fill',stop=0x4009d188,regs={UC_M68K_REG_D3:0,UC_M68K_REG_D7:0,
+    m.call('mhc_stage_fill',stop=0x4009d188,regs={UC_M68K_REG_D3:0,UC_M68K_REG_D7:0,
             UC_M68K_REG_A3:0,UC_M68K_REG_A5:m.scratch})
-    m.call('ch_stage_copy_a',stop=0x4009b922,regs={UC_M68K_REG_D2:0,UC_M68K_REG_A0:0})
+    m.call('mhc_stage_copy_a',stop=0x4009b922,regs={UC_M68K_REG_D2:0,UC_M68K_REG_A0:0})
     put(bank+0x8ed80+0x4e2+17,6) # D minor
     put(0x46c76df1,6)
     u.mem_write(0x46c78960,bytes((48,100))+b'\0'*30)
-    m.call('ch_pending_fire',stop=0x400a19e2,regs={UC_M68K_REG_D5:0,
+    m.call('mhc_pending_fire',stop=0x400a19e2,regs={UC_M68K_REG_D5:0,
            UC_M68K_REG_A0:0x46c78960,UC_M68K_REG_A1:0x46c76fe0})
     assert m.call('mh_prepare',48,0)==50
     u.mem_write(m.scratch,bytes((48,11,12,13)))
@@ -78,7 +78,7 @@ def main():
     assert get(0x1001614e+0x4900)==50
     assert m.call('mh_prepare',50,0)==50
     # A queued root is converted too; it cannot overwrite D3 with stale C3.
-    m.call('ch_pending_fire',stop=0x400a19e2,regs={UC_M68K_REG_D5:0,
+    m.call('mhc_pending_fire',stop=0x400a19e2,regs={UC_M68K_REG_D5:0,
            UC_M68K_REG_A0:0x46c78960,UC_M68K_REG_A1:0x46c76fe0})
     assert get(0x46c76fe0)==50
     put(bank+0x8ed80+0x4e2+17,1) # KEY change while OFF
@@ -104,10 +104,10 @@ def main():
     put(0x46c76df1,1);put(bank+0x8ed80+0x4e2+17,1)
     assert m.call('hd_capture',50,0)==36
     # Combined current-bank retention uses a separate identity.
-    m.call('ch_nv_save',0)
+    m.call('mhc_nv_save',0)
     from harmony_retained import committed
     assert committed(m)
-    assert m.call('ch_nv_restore',0)==1
+    assert m.call('mhc_nv_restore',0)==1
     # Copy a degree while the native NOTE snapshot is stale, then paste into
     # another Part/key and an OFF track. Exercise actual native memcpy too.
     put(bank+0x8ed80+0x4e2+17,2)
@@ -148,9 +148,9 @@ def main():
     # message. Boundary conversion must leave the physical release pitch.
     put(0x46c76df1,6)
     u.mem_write(0x46c77bea,bytes((70,8,50,100))+b'\0'*8)
-    m.call('ch_record_post',stop=0x40000c3c,regs={UC_M68K_REG_D5:0})
+    m.call('mhc_record_post',stop=0x40000c3c,regs={UC_M68K_REG_D5:0})
     message=get(m.stack+36,4)
-    assert s['ch_messages'] <= message < s['ch_messages']+4096
+    assert s['mhc_messages'] <= message < s['mhc_messages']+4096
     assert get(message+15)==35 and get(message+2)==50
     put(bank+0x8ed80+0x4e2+17,10)
     put(0x46c76df1,10)
@@ -165,7 +165,7 @@ def main():
     # Native SETUP slices carry both defaults. NOTE-only slices do not
     # overwrite DEG or CHRD; there is no second defaults clipboard to repair.
     m.c('hd_edit_base_c',0,0,0,40)
-    m.call('ch_base_set',0,4)
+    m.call('mhc_base_set',0,4)
     put(bank+0x8ed80+0x4e2+17,6)
     m.c('hd_memcpy',clip,source,0x8b0)
     m.c('hd_memcpy',clip+0x8b0,bank+0x8ed80+0x3e2,0xf0)
@@ -178,7 +178,7 @@ def main():
     assert get(setup+0x18b2+18)==4
     # Editing another bank must not replace the currently retained bank.
     m.c('hd_memcpy',bank+0x9b340+0x48d0,clip,0x8b0)
-    assert get(s['ch_nv_bank'],4)==0
+    assert get(s['mhc_nv_bank'],4)==0
     # A sustained sequence arp pool changes representation on the engine
     # task, without adding TRAN twice or modifying held live-key pools.
     frame=m.scratch+0x2000
@@ -233,9 +233,9 @@ def main():
     # with the same byte must never resurrect the pre-clear scale identity.
     put(bank+0x8e57,0)
     for name,stop,args,regs in (
-        ('ch_clear_locks',0x40040d4c,(0,0,0,1),{}),
-        ('ch_clear_track',0x40039b08,(0,0,1),{}),
-        ('ch_place',0x4005fd90,(),{UC_M68K_REG_D6:0,UC_M68K_REG_A5:0})):
+        ('mhc_clear_locks',0x40040d4c,(0,0,0,1),{}),
+        ('mhc_clear_track',0x40039b08,(0,0,1),{}),
+        ('mhc_place',0x4005fd90,(),{UC_M68K_REG_D6:0,UC_M68K_REG_A5:0})):
         m.c('hd_edit_step_c',0,0,0,0,40)
         u.mem_write(m.stack+4,b''.join(v.to_bytes(4,'big') for v in args))
         m.call(name,stop=stop,regs=regs)
@@ -252,15 +252,15 @@ def main():
         for rows,want in ((16,True),(18,True),(64,False)):
             put(0x460d175c,m.scratch,4);put(m.scratch+40,rows,4)
             assert bool(m.call('hd_ui_owned',d1=0))==want,(mode,rows)
-            assert bool(m.call('ch_ui_owned',d1=3))==(want and mode==2),(mode,rows)
+            assert bool(m.call('mhc_ui_owned',d1=3))==(want and mode==2),(mode,rows)
     put(0x460d175c,0,4)
     m.call('mh_set',0,1)
     before=bytes(u.mem_read(bank,0x9b340))
     degree_before=bytes(u.mem_read(s['hd_banks'],16768))
     for slot in (3,5):
-        m.c('ch_encoder',slot,4)
-        m.c('ch_step_encoder',slot,4)
-        m.c('ch_step_push',slot+56,1)
+        m.c('mhc_encoder',slot,4)
+        m.c('mhc_step_encoder',slot,4)
+        m.c('mhc_step_push',slot+56,1)
     assert bytes(u.mem_read(bank,0x9b340))==before
     assert bytes(u.mem_read(s['hd_banks'],16768))==degree_before
     result={'note_hidden_controls_do_not_edit_stock':'passed','native_clear_place_invalidation':'passed','pending_captured_part_context':'passed','invalid_degree_follow_and_transpose':'passed',

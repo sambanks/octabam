@@ -17,7 +17,7 @@ from harmony_midi_machine import MODES, raw_scale, Machine as LinkedMidiMachine
 
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
-    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBbAa] ((?:ha|hd|ch|mh|bf|ms)_\w+)$',raw,re.M)}
+    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBbAa] ((?:ha|hd|mhc|mh|bf|ms|sc)_\w+)$',raw,re.M)}
 
 class Machine(LinkedMidiMachine):
     def __init__(self):
@@ -29,9 +29,9 @@ class Machine(LinkedMidiMachine):
         # not project-bank transitions. The degree integration gate exercises
         # the interactive setter with real banks and retention separately.
         self.call('mh_set_native' if 'hd_set' in self.sym else 'mh_set',t,min(kind,2))
-        for name in ('ch_current','ch_live','ch_sequence_quality'):
+        for name in ('mhc_current','mhc_live','mhc_sequence_quality'):
             self.uc.mem_write(self.sym[name]+t, bytes((1 if kind==3 else 0,)))
-        self.call('ch_base_set',t,int(kind==3))
+        self.call('mhc_base_set',t,int(kind==3))
         self.set_key(t,raw_scale(key,scale))
     def chord(self,t,n,offset=0,direct=False):
         self.uc.mem_write(self.scratch,bytes((n,11,12,13)))
@@ -63,7 +63,7 @@ def machine_gate():
         m.call('mh_set',t,values[t])
     m.call('mh_defaults',stop=0x40025ace)
     for mode,degrees in enumerate(MODES):
-        if "ms_decode" not in m.sym and mode not in (0,5):continue
+        if not ({'ms_decode', 'sc_track_at'} & m.sym.keys()) and mode not in (0,5):continue
         for key in range(12):
             valid=[n for n in range(128) if (n-key)%12 in degrees]
             for kind in (1,2,3):
@@ -101,7 +101,7 @@ def machine_gate():
         assert m.chord(2,61)==[60,64,67,60] # unknown source: own note, inherited scale
         u.mem_write(m.sym['bf_roots'],bytes((37,255,255,255,255,255,255,255)))
         assert m.chord(2,72)==[36,40,43,36] # followed chromatic root snaps before stacking thirds
-        m.setting(0,1,0,1 if 'ms_decode' in m.sym else 0)
+        m.setting(0,1,0,1 if ({'ms_decode', 'sc_track_at'} & m.sym.keys()) else 0)
         u.mem_write(m.sym['bf_roots'],bytes((41,255,255,255,255,255,255,255)))
         assert m.chord(2,72)==[41,45,48,41] # F major in C dorian
         m.follow_write('source',bytes((2,1,0,0,0,0,0,0)),0)
@@ -128,7 +128,7 @@ def machine_gate():
 def final_note_gate():
     m=Machine();u=m.uc
     for mode,degrees in enumerate(MODES):
-        if 'ms_decode' not in m.sym and mode not in (0,5):continue
+        if not ({'ms_decode', 'sc_track_at'} & m.sym.keys()) and mode not in (0,5):continue
         for tonic in range(12):
             for kind in (1,2,3):
                 m.setting(0,kind,tonic,mode)
@@ -389,7 +389,7 @@ def voicing_gate():
     def cost(notes,prev):return (sum(abs(a-b) for a,b in zip(notes,prev)),sum(a!=b for a,b in zip(notes,prev)))
     for kind in (2,3):
         for mode,degrees in enumerate(MODES):
-            if 'ms_decode' not in m.sym and mode not in (0,5):continue
+            if not ({'ms_decode', 'sc_track_at'} & m.sym.keys()) and mode not in (0,5):continue
             for tonic in range(12):
                 m.setting(0,kind,tonic,mode);m.call('mh_voic_set',0,1)
                 previous=None
@@ -474,7 +474,7 @@ def spread_gate():
             for kind in (2,3):
                 count=kind+1
                 for mode in range(7):
-                    if 'ms_decode' not in m.sym and mode not in (0,5):continue
+                    if not ({'ms_decode', 'sc_track_at'} & m.sym.keys()) and mode not in (0,5):continue
                     for tonic in range(12):
                         m.setting(0,kind,tonic,mode)
                         m.call('mh_voic_set',0,auto);m.call('mh_sprd_set',0,spread)
@@ -531,7 +531,7 @@ def inversion_gate():
     for kind in (2,3):
         count=kind+1
         for mode in range(7):
-            if 'ms_decode' not in m.sym and mode not in (0,5):continue
+            if not ({'ms_decode', 'sc_track_at'} & m.sym.keys()) and mode not in (0,5):continue
             for key in range(12):
                 m.setting(0,kind,key,mode)
                 for choice in (2,3,4):
