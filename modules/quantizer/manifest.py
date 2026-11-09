@@ -1,58 +1,156 @@
-"""SCALE QUANTIZER -- a SCALE row in PROJECT > CONTROL > SEQUENCER (OFF, then
-24 scales) and, since 2.9, a ROOT row under it (C .. B): the PTCH knob,
-parameter locks and CHROMATIC trig keys snap to the scale built on the root,
-key 1 of the CHROMATIC keyboard sounds the root, and a sample track's
-keyboard plays the one complete root-to-root octave; a GLIDE row (OFF,
-1..127) is the slide time of the synth's and a sample track's legato (the
-LEG box on AMP SETUP); polyphonic chromatic keys on a synth track whose VOIC
-is 2..4; the three bytes survive a power cycle in battery RAM.
+"""SCALE QUANTIZER -- SCALE / ROOT / GLIDE + TRACK/FOLLOW (v2.22).
 
-Source: `upstream/` is Tim Hastie's repository (timhastie/octatrick-modules,
-submodule, pinned to v2.9 (525f4b1) = Octatrick 2.9, 29 Sep 2026; the test builds 2.3 .. 2.8 and the 2.9
-line up to its previous build flashed on his MKI, the last two 2.9 fixes
-emulator-verified). The declaration is
-`upstream/quantizer/manifest.py`: since 2.9 the quantizer itself is a DRAM
-unit (`quantizer.s`, `Linked(dram=True)`, in the platform reserve with the
-synth's engine), and the OS image keeps a 192-byte ROM core (`core.s`: the
-boot clamps, the defaults, the root-rotated scale mask) and the two pinned
-stubs (`keys.s` at KEYS_AT, `scale.s` at SCALE_AT, the trampolines the
-synth's engine reads); detours, pokes and a TableGrow for the menu rows
-(3 + 3 since ROOT). SCALE, GLIDE and ROOT are battery-RAM bytes
-(0x100b14ec / ed / ee). The ROM footprint went from 3,319 B at 2.8 to 243 B.
-Its source paths are derived from its own directory, so it is executed here
-from the source on disk, as the registry does for every manifest, and this
-file only re-exports its MODULE. Nothing inside `upstream/` is edited here.
+Source: `upstream/` pinned to v2.22 with SYNTH MACHINE. Nothing inside
+`upstream/` is edited here.
 
-On hardware as OCTATRICK9 (remix octatrick-usb) on Tim's MKI, 26 Sep 2026,
-and every test build 2.3 .. 2.8 since; the 2.9 line up to the build before its
-last two fixes (ROOT, the DRAM quantizer, FINE 0c, the envelope engine, no
-limiter) has run on the same MKI; the last two fixes (sequencer trigs, the
-index ramp) are emulator-verified only.
+Octabam CX OSC writes Part signature "CX",1 (not Tim's "FM",1). Without
+teaching qz_is_synth that CX is a synth track, SCALE ON drives the sample
+PTCH path (raw = 64 + 5*n) against CX's 1-raw = 1-semitone page -- MAJOR
+etc. jump by ~5 / ~10 a detent. This wrapper assembles a generated copy
+of quantizer.s that also accepts "CX" (same return as "FM").
+
+Also: with SCALE ON, qz_knob recomputes from raw encoder detents and drops
+po_knob's FUNC ×12 (octave). Keep the clamped handler value while
+[FUNCTION] is active so FUNC+PTCH stays ±12.
 """
 
 import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Gate, Keep, Proof
+from remix.schema import Category, Gate, Proof
 
-_UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "quantizer" / "manifest.py"
+_HERE = pathlib.Path(__file__).resolve().parent
+_UPSTREAM = _HERE / "upstream" / "quantizer" / "manifest.py"
+_UP_QZ = _HERE / "upstream" / "quantizer" / "quantizer.s"
+_GEN = _HERE / "_generated" / "quantizer.s"
+
+# Stock panel flags (same addresses CX / Tim po_knob use).
+_FUNC_HELD = "0x46c7dd26"
+_FUNC_ENC_OFF = "0x800000a0"
 
 MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_quantizer")["MODULE"]
-# The MIDI branch at 0x400449b6 enters the final word of the author's
-# eight-byte audio hook: `movel d0,sp@-`. Keep that shared instruction.
-# qz_octnum already pushes the audio value and resumes at 0x400449c0, so
-# the six-byte jump needs only the preceding audio-only load. #741.
+
+
+def _patch_once(text: str, old: str, new: str, what: str) -> str:
+    if new.strip() in text:
+        return text
+    if old not in text:
+        raise RuntimeError(
+            f"quantizer CX patch: {what} not found -- "
+            "Tim pin moved; update modules/quantizer/manifest.py")
+    return text.replace(old, new, 1)
+
+
+def _cx_aware_quantizer_s() -> str:
+    """Return quantizer.s with CX sig + FUNC+SCALE octave keep."""
+    text = _UP_QZ.read_text(encoding="utf-8")
+
+    # HAVE_SYDRUM branch: after "FM" match, also accept "CX" as kind 1.
+    text = _patch_once(
+        text,
+        (
+            "        cmpi.l  #0x464d,%d0             | \"FM\": 1\n"
+            "        jbeq    qz_is_fmsig\n"
+            "        cmpi.l  #0x5359,%d0             | \"SY\": 2\n"
+        ),
+        (
+            "        cmpi.l  #0x464d,%d0             | \"FM\": 1\n"
+            "        jbeq    qz_is_fmsig\n"
+            "        cmpi.l  #0x4358,%d0             | \"CX\": 1 (octabam CX OSC)\n"
+            "        jbeq    qz_is_fmsig\n"
+            "        cmpi.l  #0x5359,%d0             | \"SY\": 2\n"
+        ),
+        "HAVE_SYDRUM FM/SY block",
+    )
+
+    # Non-SYDRUM branch: FM-only compare -> FM or CX.
+    text = _patch_once(
+        text,
+        (
+            "        mvz.w   (%a1),%d0\n"
+            "        cmpi.l  #0x464d,%d0\n"
+            "        jbne    qz_is_no\n"
+            "        mvz.b   2(%a1),%d0\n"
+            "        subq.l  #1,%d0\n"
+            "        jbne    qz_is_no\n"
+        ),
+        (
+            "        mvz.w   (%a1),%d0\n"
+            "        cmpi.l  #0x464d,%d0             | \"FM\"\n"
+            "        jbeq    qz_is_sigok\n"
+            "        cmpi.l  #0x4358,%d0             | \"CX\" (octabam CX OSC)\n"
+            "        jbne    qz_is_no\n"
+            "qz_is_sigok:\n"
+            "        mvz.b   2(%a1),%d0\n"
+            "        subq.l  #1,%d0\n"
+            "        jbne    qz_is_no\n"
+        ),
+        "non-SYDRUM FM-only block",
+    )
+
+    # Doc comment: name CX beside FM.
+    text = _patch_once(
+        text,
+        '| machine is chosen (the Part\'s "FM", 1; 2.11: 2 for SY DRUM\'s "SY", 1) -- the',
+        '| machine is chosen (the Part\'s "FM", 1; octabam "CX", 1; 2.11: 2 for SY DRUM\'s "SY", 1) -- the',
+        "qz_is_synth doc line",
+    )
+
+    # SCALE ON + FUNC: keep po_knob's ±12 instead of re-quantizing raw detents.
+    text = _patch_once(
+        text,
+        (
+            "        move.l  %a4,%d1                 | delta: detents, signed\n"
+            "        jbeq     qz_k_store\n"
+            "        mvz.b   %d6,%d2                 | start from the value the knob was turned from\n"
+            "        jbsr     qz_quant\n"
+            "qz_k_store:\n"
+        ),
+        (
+            "        move.l  %a4,%d1                 | delta: detents, signed\n"
+            "        jbeq     qz_k_store\n"
+            f"        tst.l   {_FUNC_HELD}              | [FUNCTION] held: keep po_knob (±12)\n"
+            "        jbeq     qz_k_doquant\n"
+            f"        tst.l   {_FUNC_ENC_OFF}              | PERSONALIZE: FUNC+ENC off\n"
+            "        jbne     qz_k_doquant\n"
+            "        jbra     qz_k_store             | octabam: octave, not scale degrees\n"
+            "qz_k_doquant:\n"
+            "        mvz.b   %d6,%d2                 | start from the value the knob was turned from\n"
+            "        jbsr     qz_quant\n"
+            "qz_k_store:\n"
+        ),
+        "qz_knob FUNC keep",
+    )
+
+    return text
+
+
+def _ensure_generated() -> str:
+    body = _cx_aware_quantizer_s()
+    _GEN.parent.mkdir(parents=True, exist_ok=True)
+    if not _GEN.exists() or _GEN.read_text(encoding="utf-8") != body:
+        _GEN.write_text(body, encoding="utf-8")
+    return str(_GEN)
+
+
+def _adapt_unit(_unit):
+    kwargs = {}
+    if _unit.label == "qz":
+        kwargs["source"] = _ensure_generated()
+    if callable(getattr(_unit, "include", None)):
+        kwargs["include"] = (
+            lambda modules, remix=None, _inc=_unit.include: _inc(modules))
+    return dataclasses.replace(_unit, **kwargs) if kwargs else _unit
+
+
 MODULE = dataclasses.replace(
     MODULE,
-    detours=tuple(dataclasses.replace(d, expect=d.expect[:6], pad_to=6)
-                  if d.site == 0x400449B8 else d for d in MODULE.detours),
-    keeps=MODULE.keeps + (Keep(0x400449BE, bytes.fromhex("2f00"),
-                               "MIDI CHROMATIC octave argument: branch enters after the audio hook"),),
+    linked=tuple(_adapt_unit(_u) for _u in MODULE.linked),
     gates=MODULE.gates + (Gate("tools/verify/verify_quantizer_ui.py", once=True, venv=True),),
+    category=Category.MACHINES, author="timhastie/octatrick-modules",
+    author_url="https://github.com/timhastie/octatrick-modules",
+    proof=Proof.HARDWARE,
+    proof_note="v2.22 with SYNTH MACHINE on Tim's MKI, 1 Nov 2026; "
+               "octabam qz_is_synth accepts CX; FUNC+PTCH keeps octave under SCALE",
 )
-# The module table's fields are octabam's (README.md, `make docs`), so they
-# are added here rather than in his manifest.
-MODULE = dataclasses.replace(
-    MODULE, category=Category.MACHINES, author="timhastie/octatrick-modules", author_url="https://github.com/timhastie/octatrick-modules",
-    proof=Proof.HARDWARE, proof_note="`octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) through 2.9; the last two 2.9 fixes under the port")
