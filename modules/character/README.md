@@ -26,7 +26,7 @@ stamp-defaults` writes ours.
 | 1 | 4 | TONE | bipolar, default 64 | a tilt after the saturator in every mode, drawn −64..+63: 0 flat and bit-exact, + bright, − dark: +3.5 dB above / −6 dB below the 1.2 kHz pivot at 127, the mirror at 0. It was RET, the bus return level, from 13 to 20 Sep 2026 (on T8 by dispatch position the last live engine's wet entered at the front of the chain and the hosts were stamped quiet; degraded on the unit, clean under the port, `docs/contributing/FAILURE_MODES.md`, removed) |
 | 1 | 5 | MIX | 0–127, default 127 | out = x + MIX·(w − x); MIX 127 is 127/128 |
 | 2 | 6 | SAT | TAPE / TUBE / INFL | TAPE = TapeHead: a state-variable split at TONE, the low and band parts through a cubic smoothstep, the top clean; drive 0.8× → 8× from a 17-word P table. TUBE = DaTube: u − u^P with the negative half driven twice as hard, level-compensated (a per-block division); the curve is a 17-pair P table. INFL = OInflator: a signed cubic, DRV is its Effect |
-| 2 | 7 | KEY | SELF / T1–T8 | the compressor's key (29 Sep 2026; T2–T8 added 7 Nov 2026). SELF: the track's own mono input, per sample. T1–T8: the peak of \|mono\| (mono = (L + R) / 2) over a block of that track's input, × KLVL/64, held across the block into the same attack / release smoother. Two sources, chosen at build: with SIDECHAIN_COMPRESSOR in the remix, the keybus its `sctap` hook publishes (a track on this core from its keybus slot, a track on the other core from the shared-window relay two generations behind this core's counter, as that module's KEY does); the module claims nothing of the tap's. Without it, T1 from the BusDelay host's peak (`y:$990`, a count at `y:$991` that has not moved for 4 blocks reads as silence) and T2–T8 as SELF. No host and no tap: T1 is SELF (the `; NOBUS_KEY` line of `character.asm`). On the master (T8) KEY is ignored. A KEY byte above 8 reads as SELF |
+| 2 | 7 | KEY | SELF / T1–T8 | the compressor's key (29 Sep 2026; T2–T8 added 7 Nov 2026). SELF: the track's own mono input, per sample. T1–T8: the peak of \|mono\| (mono = (L + R) / 2) over a block of that track's input, × KLVL/64, held across the block into the same attack / release smoother. Two sources, chosen at build: with KEYBUS in the remix (modules/keybus), its key word for that track, X:$37F60 + track in the shared window (the peak of \|mono\| over the track's block, written each block by KEYBUS's dispatcher hook on the track's own core; the same read on both cores, so one window copy serves both). Without it, T1 from the BusDelay host's peak (`y:$990`, a count at `y:$991` that has not moved for 4 blocks reads as silence) and T2–T8 as SELF. No host and no tap: T1 is SELF (the `; NOBUS_KEY` line of `character.asm`). On the master (T8) KEY is ignored. A KEY byte above 8 reads as SELF |
 | 2 | 8 | KLVL | 0–127, default 64 | scales the keyed track's level, 64 = unity |
 
 Page layout history: 16 Sep 2026 put MIX bottom right and SAT top left.
@@ -54,17 +54,17 @@ Page layout history: 16 Sep 2026 put MIX bottom right and SAT top left.
   `make verify-ident MOD=character` against the build before it: 9 of 9
   settings bit-identical with KEY = SELF (the matrix's `max` case sets
   KEY = T1 and differs by design).
-- KEY = T1..T8 from the keybus (7 Nov 2026), `tools/verify/verify_char_keybus.py`
-  (`remixes/test/character-key`: SIDECHAIN_COMPRESSOR and CHARACTER; dsp_host
-  calls `proc` directly, so `sctap` does not run and its words are planted with
-  `-pokey`): a 0.25 key ducks a 0.05 tone 9.3 dB at COMP 127, KLVL 64, from a
-  same-core slot (T6 <- T5, payload A) and from the other core's window
-  (T6 <- T1; T3 <- T5, payload B); an unplanted slot and an own-core track
-  with the window planted duck -0.19 dB; 0.125 at KLVL 127 ducks 9.2 dB;
-  KEY = SELF and KEY 9 are bit-identical with SELF whatever is planted.
-  Not covered: `sctap`'s writes and the timing between the cores under this
-  module, the master (the image has no BusVerb), and a unit. Without the tap
-  the Character words are byte-identical with the build before.
+- KEY = T1..T8 from KEYBUS (7 Nov 2026, KEYBUS 9 Nov 2026), `tools/verify/verify_char_keybus.py`
+  (`remixes/test/character-key`: KEYBUS and CHARACTER; dsp_host calls `proc`
+  directly, so KEYBUS's tap does not run and its eight words are planted as an X
+  record in each payload's dump): a 0.25 key ducks a 0.05 tone 9.3 dB at COMP 127,
+  KLVL 64, from a same-core track and from the other core's on both payloads
+  (A T6 <- T5, A T6 <- T1, B T3 <- T5, B T3 <- T1); an unplanted word ducks
+  -0.19 dB; 0.125 at KLVL 127 ducks 9.2 dB; KEY = SELF and KEY 9 are bit-identical
+  with SELF whatever is planted. KEYBUS's tap itself: `tools/verify/verify_keybus.py`.
+  Not covered: the timing between the cores, the master (the image has no BusVerb),
+  and a unit. Without KEYBUS the Character words are byte-identical with the build
+  before.
 - KEY latency under the port (3 Oct 2026, `ot_emu` with a project on the
   bottleservice image, Characters on T3 and T6 FX1, `--dsp-lazy 0`): the
   counter T3 reads (core 1, after the host) and the one T6 reads (core 0)

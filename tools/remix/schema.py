@@ -1066,7 +1066,7 @@ class Harness:
     # remix of readers alone may use fallback NONE.
     bus_reader: bool = False
     # Key of the module whose published keybus this module reads (CHARACTER's
-    # KEY = T1..T8 reads SIDECHAIN_COMPRESSOR's). The source carries the read
+    # KEY = T1..T8 reads KEYBUS's words, modules/keybus). The source carries the read
     # between `; KEYTAP_BEGIN` and `; KEYTAP_END` and the entry at
     # `; KEYTAP_PRE`; the build keeps them when that module is in the remix
     # and removes them otherwise. The module claims nothing of the tap's.

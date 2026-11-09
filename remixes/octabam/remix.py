@@ -41,7 +41,8 @@ REMIX = Remix(
                "(74 layouts, no crash), loader01-02, kits-identity, scenes-sweep, scenes-latency, djump-off/on/burst; "
                "mix-soak and the manual plan not run (docs/contributing/HARDWARE_SUITE.md). With it: not flashed",
     doc="The core ColdFire modules and every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain.",
-    modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE") + STOCK14 + OURS
+    modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE",
+                     "KEYBUS", "SC KEYBUS BRIDGE") + STOCK14 + OURS
             + COLDFIRE,
     # The window words no stock effect writes (docs/contributing/DEMAND_LOADER.md): the top of each FX2
     # slot from 0x3da3 up, and below 0x37f00, where payload B's boot zero loop starts. DLCOPY is the
@@ -53,7 +54,7 @@ REMIX = Remix(
     # which only DARK REV on T4's FX2 reaches; its four hooks go to resident stubs.
     fx1=("SPECTRUM", "CHARACTER", "MODULATION") + STOCK_FX1,   # the chooser order on FX1; the stations also run live on FX2 (SLOTS pin below)
     # DLCOPY follows the five demand entries (x:$33da3 + 8 k, k = 0..4).
-    window=(("DLCOPY", 0x33DCB), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
+    window=(("DLCOPY", 0x33DCB), ("KEYBUS", 0x33E5E), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
             ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820),
             ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x37C10)),
     # DLPUMP loads in this order, and the first free home wins: SIDECHAIN_COMPRESSOR has one home, the fourth
@@ -71,7 +72,9 @@ REMIX = Remix(
                   ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820),
                   ("SHATTER", 0x33820), ("SHATTER", 0x3B820), ("SHATTER", 0x3F820)),
     window_guard=("PLATE REV", "DARK REV", "SPRING REV"),
-    window_loader=0x33E66,
+    # KEYBUS (17 words) fills DLCOPY's tail gap and the loader follows it; SC's bridged stubs then
+    # end at 0x33FFF, the block's last resident word.
+    window_loader=0x33E6F,
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,

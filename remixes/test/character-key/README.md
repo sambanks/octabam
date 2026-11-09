@@ -1,8 +1,8 @@
-# `character-key` -- CHARACTER with SIDECHAIN_COMPRESSOR's keybus
+# `character-key` -- CHARACTER with KEYBUS
 
-CHARACTER and SIDECHAIN_COMPRESSOR with the stock effects less SPRING REV, PLATE REV and DARK REV (SIDECHAIN_COMPRESSOR's and CHARACTER's DSP words need their space).
+CHARACTER and KEYBUS with the stock effects less SPRING REV, PLATE REV and DARK REV (KEYBUS's and CHARACTER's DSP words need their space).
 
-- CHARACTER's KEY = T1..T8 reads the keybus SIDECHAIN_COMPRESSOR's `sctap` hook publishes; `tools/verify/verify_char_keybus.py` renders it.
+- CHARACTER's KEY = T1..T8 reads KEYBUS's key words; `tools/verify/verify_char_keybus.py` renders it with the words planted.
 - Not flashed.
 
 ```bash

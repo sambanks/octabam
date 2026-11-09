@@ -32,5 +32,5 @@ Press FX1 or FX2 on a track; CHARACTER is in the chooser with the stock effects.
 | 1 | TONE | bipolar | 64 | tilt: +3.5 dB above / -6 dB below 1.2 kHz at 127, mirrored at 0; 64 is flat |
 | 1 | MIX | 0–127 | 127 | dry/wet |
 | 2 | SAT | TAPE / TUBE / INFL | — | Saturation model. |
-| 2 | KEY | SELF / T1–T8 | — | Compressor key: this track's input, or a track's level. T2–T8 need SIDECHAIN_COMPRESSOR in the remix (its key tap); T1 also works from the bus delay host. Without a tap, SELF. |
+| 2 | KEY | SELF / T1–T8 | — | Compressor key: this track's input, or a track's level. T1–T8 come from KEYBUS where the remix carries it (`octabam`, `octabam-verbs`); without it T1 comes from the bus delay host (`octabam-bus`) and T2–T8 are SELF. |
 | 2 | KLVL | 0–127 | 64 | scales the keyed track's level; 64 is unity |
