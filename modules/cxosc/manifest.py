@@ -310,7 +310,7 @@ MODULE = Module(
         "SYMM 1px lower. CX 66 outline; CX 65 silhouettes; CX 63 saw PWM skew liked on unit. "
         "CX 48: sine→saw→square + PWM; FINE/FOLD/MIX; HOLD INF; slew. "
         "MKII CX-CF 69 (9 Nov 2026): CF METER — 4× CX idle 22%/ISR 272 us; 6× ~12%/309; "
-        "7× idle 0%/355 max 446 (wall) → ML_FM_MAX=6. Prior CX 41 / CX 28 / VRCS-CX VS. "
+        "7× idle 0%/355 max 446 (wall) → ML_FM_MAX=6; author confirmed 6 MAX toast on unit. Prior CX 41 / CX 28 / VRCS-CX VS. "
         "verify_cxosc + make check REMIX=cxosc"
     ),
     doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..33 CAR/MOD/SYMM/FDBK. Local fork of FM SYNTH.",

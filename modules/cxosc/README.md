@@ -114,7 +114,7 @@ author MKII with remix `cx-cf` + CF METER (USB decode, 9 Nov 2026, tip
 | 6 | ~12 | 309 µs | 376 µs | max past the 363 µs frame |
 | 7 | 0 | 355 µs | 446 µs | wall — MAIN clipped; do not ship as a cap |
 
-Eight tracks were not safe. [#852](https://github.com/sambanks/octabam/issues/852).
+Eight tracks were not safe. Author confirmed **6 MAX** toast on unit (CX 70). [#852](https://github.com/sambanks/octabam/issues/852).
 
 ## Build
 
