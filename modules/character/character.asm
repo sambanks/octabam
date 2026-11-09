@@ -313,8 +313,25 @@ ch_pos3:
         move    b,x:(r7+$16)
         move    x:(r6+$c),a             ; KEY, the companion byte
         and     #>$00ff00,a
+; KEYTAP_PRE
         cmp     #>$000100,a
         bne     ch_kself
+; KEYTAP_BEGIN
+; Track 1..8 from KEYBUS (modules/keybus): every track's key level, the peak
+; of |(L + R) / 2| over its 16-frame block, one word at X:$37F60 + track in
+; the shared window, rewritten each block by the dispatcher's per-track hook
+; on its own core. The same read on either core, so one copy serves both.
+; a = the KEY byte << 8 on entry; the master and SELF were sent to ch_kself
+; before this. The level goes through KLVL as T1's host level does.
+ch_kbus:
+        cmp     #>$000800,a
+        bgt     ch_kself                ; a KEY byte above 8 reads as SELF
+        sub     #>$000100,a
+        asr     #$8,a,a                 ; the key track, 0..7, in a1
+        move    a1,r1
+        move    x:(r1+$37f60),x0        ; its key word
+        bra     ch_klvl
+; KEYTAP_END
 ; NOBUS_KEY
         move    x:(r7+$25),a
         tst     a
@@ -323,6 +340,7 @@ ch_pos3:
         cmp     #>$4,a
         bge     ch_kzero                ; stale: silence
         move    y:>$990,x0              ; T1's peak |mono in|
+ch_klvl:
         move    x:(r6+$d),a             ; KLVL, the knob field
         and     #>$7f0000,a
         move    a,y1                    ; KLVL/128

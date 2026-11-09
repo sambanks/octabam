@@ -260,9 +260,11 @@ def main():
     pa, la, ma, _ = send1(2, CHAR, FX1[2], 120)
     l = uc.mem_read(la, 1)[0]; good = (l == 120); ok &= good
     print(f"  knob: Character KLVL (slot 8, count 128) value 120 -> live={l} (want 120)  {'ok' if good else 'FAIL'}")
+    # KEY's count from CHARACTER's manifest, which the descriptor is built from (2 until T2..T8, 9 since)
+    key_n = next(q.count for q in registry.modules()["CHARACTER"].params if q.name == b"KEY")
     pa, la, ma, _ = send1(2, CHAR, FX1[1], 99)
-    l = uc.mem_read(la, 1)[0]; good = (l == 1); ok &= good
-    print(f"  clamp: Character KEY (slot 7, count 2) value 99 -> live={l} (want 1)  {'ok' if good else 'FAIL'}")
+    l = uc.mem_read(la, 1)[0]; good = (l == key_n - 1); ok &= good
+    print(f"  clamp: Character KEY (slot 7, count {key_n}) value 99 -> live={l} (want {key_n - 1})  {'ok' if good else 'FAIL'}")
     # FX1 = NONE (id 0): nothing written anywhere
     pa, la, ma, _ = send1(5, 0x00, FX1[1], 77)
     vals = [uc.mem_read(a, 1)[0] for a in (pa, la, ma)]

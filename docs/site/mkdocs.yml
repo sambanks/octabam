@@ -97,9 +97,11 @@ nav:
           - Effect Loader (Sender): reference/manual/octabam/inside/dlpump.md
           - Events: reference/manual/octabam/inside/events.md
           - Hooks: reference/manual/octabam/inside/hooks.md
+          - Keybus: reference/manual/octabam/inside/keybus.md
           - Load Meter: reference/manual/octabam/inside/load-meter.md
           - Memory: reference/manual/octabam/inside/memory.md
           - Pages: reference/manual/octabam/inside/pages.md
+          - Sc Keybus Bridge: reference/manual/octabam/inside/sc-keybus-bridge.md
           - Sc Load Meter Bridge: reference/manual/octabam/inside/sc-loadmeter-bridge.md
           - Store: reference/manual/octabam/inside/store.md
       - Credits: reference/manual/octabam/credits.md

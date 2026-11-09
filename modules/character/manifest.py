@@ -88,11 +88,11 @@ MODULE = Module(
         Param(b"SAT", 0, 3, active=True, formatter=_STEP,
               labels=("TAPE", "TUBE", "INFL"),
               doc="saturation: TAPE (TapeHead), TUBE (DaTube, asymmetric) or INFL (OInflator); JClones, MIT"),
-        Param(b"KEY", 0, 2, active=True, formatter=_STEP,
-              labels=("SELF", "T1"),
-              doc="compressor key: SELF is this track's input, T1 is track 1's level (not on master)"),
+        Param(b"KEY", 0, 9, active=True, formatter=Formatter.WIDE_STEPPED,
+              labels=("SELF", "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"),
+              doc="key: SELF (own input) or T1..T8's level, not on master; T2..T8 need KEYBUS"),
         Param(b"KLVL", 64, 128, active=True, formatter=_PLAIN,
-              doc="how hard T1 drives the compressor when KEY is T1: 64 is unity, 127 is x2"),
+              doc="how hard the keyed track drives the compressor: 64 is unity, 127 is x2"),
         _BLANK, _BLANK, _BLANK,
     ),
     # SAT names itself by its value (tools/build/mode_names.with_selfname).
@@ -119,12 +119,14 @@ MODULE = Module(
     # bus_reader: KEY reads two words of the bus scratch (y:$990/$991), so
     # the build moves its `$9xx` literals to the shared window under XBUS.
     # It writes nothing there and never registers.
-    harness=Harness(layout_char="2", is_server=False, bus_reader=True),
+    harness=Harness(layout_char="2", is_server=False, bus_reader=True,
+                    key_tap="KEYBUS"),
     store=Store("octabam.character"),
     settings=(stations.setting(),),
     variant=stations.variant(lambda: MODULE),
     gates=(Gate('tools/verify/verify_character.py', remix_arg=False),
            Gate('tools/verify/verify_stations_fx2.py', remix_arg=False),
-           Gate('tools/verify/verify_char_key.py', remix_arg=False)),
+           Gate('tools/verify/verify_char_key.py', remix_arg=False),
+           Gate('tools/verify/verify_char_keybus.py', remix_arg=False)),
     dear={'DRV': 127, 'FOLD': 127, 'COMP': 127, 'MIX': 127, 'WDTH': 127, 'SAT': 0},
 )

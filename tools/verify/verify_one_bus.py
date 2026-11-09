@@ -100,7 +100,7 @@ class Inst:
         self.params = knobs(key, **kw)
 
 
-def run(mems, insts, skew=None, tag="r", tone="tone.raw"):
+def run(mems, insts, skew=None, tag="r", tone="tone.raw", extra=()):
     ep = {}
     for c, m in mems.items():
         ep[c] = {}
@@ -131,6 +131,7 @@ def run(mems, insts, skew=None, tag="r", tone="tone.raw"):
         cmd += ["-pword", ",".join(pw)]
     if skew is not None:
         cmd += ["-skew", str(skew)]
+    cmd += list(extra)
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"dsp_host failed:\n{r.stdout[-2500:]}{r.stderr[-1000:]}")

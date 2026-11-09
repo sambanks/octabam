@@ -2676,7 +2676,13 @@ mkgo:""",
             _groups = {}
             for _t in _tags:
                 _br = (_t, _h.site_on(_t)) in DSP_OVR
-                _groups.setdefault(("bridge", _t) if _br else ("plain", tuple(_h.stock_on(_t))), []).append(_t)
+                # A bridge to a module with ONE window copy (no "KEY:B" entry, e.g. KEYBUS) jumps to the
+                # same entry from both payloads, so one stub serves both; one with a copy per payload
+                # (LOAD METER, LOAD METER:B) gets a stub per payload.
+                _ovr = DSP_OVR.get((_t, _h.site_on(_t)))
+                _one = _br and _ovr in WINDOW_KEYS and f"{_ovr}:B" not in WINDOW
+                _groups.setdefault(("bridge", _ovr if _one else _t) if _br
+                                   else ("plain", tuple(_h.stock_on(_t))), []).append(_t)
             for (_kind, _), _ts in _groups.items():
                 _n = BRIDGE_WORDS if _kind == "bridge" else STUB_WORDS
                 _rk = f"hook stub {_k} {_h.label} {''.join(_ts)}"
@@ -3116,6 +3122,22 @@ mkgo:""",
                     print(f"  SUBST: {_k} payload {tag} -- "
                           + ", ".join(f"{a} -> {b}" for a, b
                                       in sorted(_mk.dsp.subst[tag].items())))
+                if _mk is not None and _mk.harness is not None and _mk.harness.key_tap:
+                    for _mark in ("; KEYTAP_PRE\n", "; KEYTAP_BEGIN\n", "; KEYTAP_END\n"):
+                        if _src_k.count(_mark) != 1:
+                            sys.exit(f"{_k}: a keybus reader carries exactly one {_mark.strip()!r} line")
+                    if _mk.harness.key_tap in REMIX.modules:
+                        _src_k = _src_k.replace(
+                            "; KEYTAP_PRE\n",
+                            "        tst     a\n"
+                            "        beq     ch_kself                ; SELF\n"
+                            "        move    x:(r7+$25),b\n"
+                            "        tst     b\n"
+                            "        bne     ch_kself                ; the master keys on its own input\n"
+                            "        bra     ch_kbus                 ; the keybus\n")
+                    else:
+                        _src_k = re.sub(r"; KEYTAP_BEGIN\n.*?; KEYTAP_END\n", "", _src_k,
+                                        flags=re.S).replace("; KEYTAP_PRE\n", "")
                 if (_mk is not None and _mk.harness is not None
                         and _mk.harness.bus_reader and _src_k.count("; NOBUS_KEY\n") != 1):
                     sys.exit(f"{_k}: a bus reader carries exactly one '; NOBUS_KEY' line")
@@ -4224,6 +4246,9 @@ hostquit:
         if bridged:
             t = tags[0]
             chain = hook_chain.get((t, hook.site_on(t)))
+            if any(hook_chain.get((_u, hook.site_on(_u))) != chain for _u in tags):
+                sys.exit(f"hook stub {key} {hook.label}: one stub serves payloads {'/'.join(tags)}, but the "
+                         f"bridged hook's entries differ between them")
             if chain is None:
                 sys.exit(f"hook stub {key} {hook.label}: the bridged hook at P:0x{hook.site_on(t):05x} on payload "
                          f"{t} was not placed in the window, so the stub has no entry to jump to")

@@ -1065,6 +1065,12 @@ class Harness:
     # literals as for a client, but `on_the_bus` does not count it, so a
     # remix of readers alone may use fallback NONE.
     bus_reader: bool = False
+    # Key of the module whose published keybus this module reads (CHARACTER's
+    # KEY = T1..T8 reads KEYBUS's words, modules/keybus). The source carries the read
+    # between `; KEYTAP_BEGIN` and `; KEYTAP_END` and the entry at
+    # `; KEYTAP_PRE`; the build keeps them when that module is in the remix
+    # and removes them otherwise. The module claims nothing of the tap's.
+    key_tap: str | None = None
     # THE STATE BLOCK A LOCAL RENDER RUNS THE MODULE AT: dsp_host's -r7
     # index n (X:0x6000 + 0x100 n; R7_ALLOC gives its allocator entry).
     # None = the default, FX2 position 0 (n = 2), or FX1 (n = 1) for an

@@ -18,6 +18,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`cfmeter-port`](cfmeter-port/README.md) | cfmeter without the idle loop: the port gate for the readout chain and the interrupt timing. | port-gated: the readout chain under the port |
 | [`cfmeter-post`](cfmeter-post/README.md) | octatrick (less TUNER and the USB input) + CF METER on T8's FX2, with USB TRACKS POST in place of TRACKS MAIN CUE: POST's ColdFire cost, over USB. | port-gated: the readout chain under the port |
 | [`cfmeter-tracks`](cfmeter-tracks/README.md) | octatrick (less TUNER and the USB input) + CF METER on T8's FX2, with USB TRACKS in place of TRACKS MAIN CUE: the 16-channel-only stream's ColdFire cost, over USB. | port-gated: the readout chain under the port |
+| [`character-key`](character-key/README.md) | stock effects with KEYBUS and CHARACTER: CHARACTER's KEY reads T1..T8 from KEYBUS's shared key words. | `make check` |
 | [`character-txtr`](character-txtr/README.md) | octabam-bus with CHARACTER TXTR (Character + Airwindows Pockey2 texture) on FX1 in place of CHARACTER: the image for measuring the texture stage's cost on a unit. | `make check` |
 | [`chords`](chords/README.md) | CHORDS FACTORY with SCALES, on the 14 stock effects: the chord atelier on SRC, a chord step played as written, the FUNC keyboard in the scale's colours. | `make check`: verify_chords |
 | [`chords-alone`](chords-alone/README.md) | CHORDS FACTORY without SCALES, on the 14 stock effects: the atelier alone on SRC, chords played as written (no scale). | `make check`: verify_chords |
@@ -46,6 +47,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`hooks-machines-all`](hooks-machines-all/README.md) | ANALOG BD, OCTA303 and CX OSC in one image: HOOKS gives the track's machine list eight rows, ANALOG BD on row 5, OCTA-303 on row 6 and CX OSC on row 7, and the list scrolls. | port-gated: verify_hooks: the bridged machine sites in this image; the three machines' UI gates under the port |
 | [`hooks-machines-cx`](hooks-machines-cx/README.md) | OCTA303 and CX OSC in one image: HOOKS gives the track's machine list seven rows, OCTA-303 on row 5 and CX OSC on row 6, and the list scrolls. | port-gated: verify_hooks: the bridged machine sites in this image; the two machines' UI gates under the port |
 | [`ids64`](ids64/README.md) | BBD on FX2 id 0x25 in a 64-id image (DSP dispatch and ColdFire tables grown). | `make check`: port only; not flashed |
+| [`keybus`](keybus/README.md) | KEYBUS alone (every track's key level in eight shared words) on the stock effects. | `make check` |
 | [`kits`](kits/README.md) | KITS (255 Kits per project) on the stock effects. | port-gated: verify_kits under the port |
 | [`kyoti-fixes`](kyoti-fixes/README.md) | stock effects with QUANTIZE_LIVE_REC_TOGGLE, ERASE_EMPTY_TRIGLESS_LOCKS and BATCH_BUGFIXES together. | `make check` |
 | [`kyoti-mute-jump`](kyoti-mute-jump/README.md) | stock effects with MUTE_MODES and DIRECT_JUMP_KYOTI together. | `make check` |
