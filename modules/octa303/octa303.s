@@ -1853,9 +1853,10 @@ o3_name_pick:
 | and indexes PB_TABLE, so an OCTA-303 track (stored FLEX) drew FLEX's PTCH STRT LEN RATE RTRG
 | RTIM.  On a signed track the machine's record goes to a2 (its names TUNE CUT RES ENV DEC ACC,
 | as o3_page gives the SRC page) and the formatter resumes after its own lookup, 0x4003c058;
-| every other track: HOOKS LFO_NAME next (CX OSC's po_lfdname) when present, else the displaced
-| instructions and 0x4003c054.  The formatter keeps d1 (the track), d2 (the slot) and a4 (the
-| buffer) across here; scratch d0, a0, a1.
+| every other track: HOOKS LFO_NAME next (CX OSC's po_lfdname) when present, else reload the
+| machine into d0 (o3_sig clobbered it on an unsigned FLEX miss), the displaced lea, and
+| 0x4003c054.  The formatter keeps d1 (the track), d2 (the slot) and a4 (the buffer) across
+| here; scratch d0, a0, a1.
 o3_lfo_name:
         move.l  %a0,-(%sp)              | entry a0 (machine byte) for the next machine
         mvs.b   (%a0),%d0               | displaced: the machine
@@ -1882,6 +1883,7 @@ o3_lfo_name:
         jmp     MC_NEXT_LFO_NAME        | CX OSC (or next): entered as at the site
         .endif
         .endif
+        mvs.b   (%a0),%d0               | machine again (o3_sig clobbered d0 on FLEX miss)
         lea     PB_TABLE,%a0            | displaced
         jmp     0x4003c054
 
