@@ -224,6 +224,11 @@ existing validated-companion fallback. Emulator instruction counts do not
 establish processor cycles or hardware latency; physical qualification remains
 open.
 
-CHORDS FACTORY is incompatible with MIDI HARMONY: both replace the native
-MIDI trig-mode list and keyboard behavior. Choose Harmony’s CHORD PLAY or
-CHORDS FACTORY in a remix; selecting both is refused before linking.
+CHORDS FACTORY and MIDI HARMONY cannot currently be selected together.
+They provide different trig modes: Factory’s **CHORDS** uses mode 2, while
+Harmony’s **CHORD PLAY** uses mode 6. Their current implementations replace
+the same MIDI mode list and overlap in the mode-name patches. Factory’s live
+chord notes also enter the keyboard routine that Harmony replaces, so a
+combined menu alone would not establish compatible playback and recording.
+This is an implementation limitation, not an inherent conflict between the
+musical features. Selecting both is refused before linking.
