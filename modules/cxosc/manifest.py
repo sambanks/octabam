@@ -336,7 +336,7 @@ MODULE = Module(
     ),
     detours=(
         Detour(LFO_DEPTH_HOOK, LFO_DEPTH_STOCK, "poly", "cx_lfo_standalone",
-               "PMTR 30..33 (CMOR/MMOR/SYMM/FDBK) private LFO words; stock depth otherwise",
+               "PMTR 30..34 (CMOR/MMOR/SYMM/FDBK/PWM) private LFO words; stock depth otherwise",
                kind="jmp", pad_to=8),
         Detour(LFO_DEPTH_HOOK2, LFO_DEPTH_STOCK, "poly", "cx_lfo_frame",
                "frame-builder LFO depth: CMOR/MMOR/SYMM/FDBK private words",
@@ -356,7 +356,7 @@ MODULE = Module(
         Detour(LFD_MOVE_HOOK, LFD_PEA_STOCK, "poly", "cx_lfo_move",
                "LFO SETUP row move stages CX PMTR count", kind="jmp"),
         Detour(LFD_DRAW_HOOK, LFD_LEA_STOCK, "poly", "cx_lfo_draw",
-               "LFO SETUP draws CAR/MOD/SYMM/FDBK PMTR labels", kind="jmp"),
+               "LFO SETUP draws CAR/MOD/SYMM/FDBK/PWM PMTR labels", kind="jmp"),
         Detour(LFD_EDITUI_HOOK, LFD_LEA3_STOCK, "poly", "cx_lfo_edit",
                "LFO SETUP edits CX PMTR destination count", kind="jmp"),
         Detour(MIDI_MAP_HOOK, MIDI_MAP_STOCK, "poly", "po_mon",
