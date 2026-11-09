@@ -35,8 +35,7 @@ proc:
         move    a1,x:>$3f4b              ; proc is called with a = 0 or 1 in a: kept for the real code
         move    x:>$3f4c,r2
         move    x:(r2),a
-        move    #>$b0a5ed,x0
-        cmp     x0,a
+        cmp     #>$b0a5ed,a
         bne     dl_pass
         move    r7,a
         asr     #$8,a,a

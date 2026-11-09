@@ -149,6 +149,7 @@ HOMES = {}                                                              # key ->
 for _hk, _ha in REMIX.window_homes:
     HOMES.setdefault(_hk, []).append(_ha)
 DL_ENTRY, DL_STRIDE = 0x33DA3, 8         # effect k's entry is x:$33da3 + 8 k (modules/dlcopy/dlcopy.asm)
+DL_BOUND = 0xB0A5ED                      # the entry's +0 while the code is resident (dlcopy.asm, dlstub.asm, dlwrap.asm)
 DL_SLOTS = max(4, len(DEMAND))          # entries the reverb guard checks: 4 as before, more when the remix has more
 if DEMAND and DL_ENTRY + DL_STRIDE * len(DEMAND) > WINDOW.get("DLCOPY", 0x33DC3):
     sys.exit(f"Remix.window_demand: {len(DEMAND)} effects; their entries end at x:${DL_ENTRY + DL_STRIDE * len(DEMAND):x}, "
@@ -2571,7 +2572,7 @@ mkgo:""",
     stub_syms = {}
     if DEMAND:
         # one stub body for every demand effect; INIT[id] is `init`, PROCESS[id] a trampoline that names the entry
-        _tr = "".join(f"dls_p{k}:\n        move    #>${0x33DA3 + 8 * k:x},x0\n        move    x0,x:>$3f4c\n        bra     proc\n"
+        _tr = "".join(f"dls_p{k}:\n        move    #>${DL_ENTRY + DL_STRIDE * k:x},x0\n        move    x0,x:>$3f4c\n        bra     proc\n"
                       for _dk2, k in DEMAND.items() if not remix_modules()[_dk2].dsp.hooks)   # a hooked one has no id
         _sw, stub_syms = assemble_syms(pathlib.Path("modules/dlcopy/dlstub.asm").read_text().replace("; TRAMPOLINES\n", _tr),
                                        loader_next, label="demand stub")
@@ -2583,11 +2584,6 @@ mkgo:""",
     if GUARD:
         # One body (modules/dlcopy/dlwrap.asm) for both payloads, behind each payload's trampolines; the
         # trampolines hold the stock entries, which differ between payloads, and point at the body.
-        def _rdx(tag, a):
-            _x = PP[tag]["xtab"] + a
-            buf, i = (_virt, _x - idspace.VIRT) if (_virt is not None and _x >= idspace.VIRT) else (img, _x - BASE)
-            return buf[i] | (buf[i + 1] << 8) | (buf[i + 2] << 16)
-
         _body_src = pathlib.Path("modules/dlcopy/dlwrap.asm").read_text()
         if _body_src.count("        do      #4,>dw_next\n") != 1:
             sys.exit("modules/dlcopy/dlwrap.asm: dw_over's entry loop (`do #4,>dw_next`) is not where the build expects it")
@@ -2602,7 +2598,7 @@ mkgo:""",
         for _tag in ("A", "B"):
             for _n, _gk in enumerate(GUARD):
                 _gid = stock_mod.BY_KEY[_gk].menu.fx2_id
-                _gi, _gq = _rdx(_tag, _gid * 3), _rdx(_tag, (PROC_OFF + _gid) * 3)
+                _gi, _gq = rdw_p(PP[_tag]["xtab"] + _gid * 3), rdw_p(PP[_tag]["xtab"] + (PROC_OFF + _gid) * 3)
                 _gx = stock_mod.SLOT_EXTENT[_gk] + 1
                 guard_records[f"{_gk}:{_tag}"] = {"stock_init": _gi, "stock_proc": _gq, "extent": _gx}
                 _recs += [_gi, _gq, _gx]
@@ -4242,7 +4238,7 @@ hostquit:
         as target - the branch's own address."""
         bound = DL_ENTRY + DL_STRIDE * DEMAND[key]
         body = hook_bodies[(key, hook.label)]
-        head = (f"zqhs:\n        move    x:>${bound:x},a\n        cmp     #>$b0a5ed,a\n")
+        head = (f"zqhs:\n        move    x:>${bound:x},a\n        cmp     #>${DL_BOUND:x},a\n")
         if bridged:
             t = tags[0]
             chain = hook_chain.get((t, hook.site_on(t)))

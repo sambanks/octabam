@@ -892,5 +892,53 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
     CHARACTER or SHATTER) in MODULATION's place; with STEM REC's hook reduced to the stock call, the layout unchanged;
     `v0.4` with another ColdFire module in STEM REC's place; DLPUMP's `DL_DIAG` words (`tools/hw/dl_poll.py`) read in
     the soak's own poll, so a stop shows where the loader was.
+- **9 Nov 2026, Yves's MKII, the same probe on `OCTABAMS5`:** `OCTABAMS4`'s code (`00a23502`) with the demand
+  loader's copy-loop, repeat and pump changes (`CHANGELOG.md`, "Unreleased"), the same remix. The two images differ
+  only in the loader. Each run used a pristine copy of the project from the card. `DL_DIAG` is DLPUMP's counter block,
+  read over USB (`tools/hw/dl_state.py`).
+
+  | run | project copy | `DL_DIAG` read | polls a second | DSP stops | changes one cycle late |
+  |---|---|---|---|---|---|
+  | `s5-run1` | SOAK5 | every poll | 224 | none in 32 | 1 (transition 26) |
+  | `s5-run2` | SOAK6 | every poll | 226 | none in 32 | 2 (21, 25) |
+  | `s5-run3` | SOAK1 | every poll | 225 | none in 32 | 1 (2) |
+  | `s5-full1` | SOAK2 | never | 430 | none in 32 | 0 |
+  | `s5-full2` | SOAK3 | never | not recorded | **froze at transition 22** | 2 of 21 (1, 21) |
+  | `s5-dl10-1` | SOAK4 | every 10th poll | 393 | none in 32 | 1 (23) |
+  | `s5-dl10-2` | SOAK5 | every 10th poll | 384 | none in 32 | 1 (10) |
+
+  Reading `DL_DIAG` on every poll halves the poll rate (`soak_dl.py`); the 8 Nov runs polled at 401 to 447 a second
+  with plain `ot_matrix.py`, as `s5-full1` and `s5-full2` did. `soak_dl10.py` reads it on every 10th poll and appends
+  each reading to `dl.jsonl` as it reads it, so a freeze still leaves the record. This rig reaches about 500 polls a
+  second at most (two or three polling threads; one thread 340 at rest). In every run but `s5-run1` a switch to
+  MODULATION read DSP busy 99.7 % in the window of its copy (`s5-run1`'s highest: 64.0 %); none of those stopped the
+  DSP. A late change shows no ColdFire spike in its window, and the next transition starts from the new layout's level.
+- **The freeze, `s5-full2`:** at transition 22 (PLATE REV to MODULATION, just after transition 21's change landed late)
+  the unit stopped answering everything: the panel, the audio, USB. LOAD METER's request (`0xc0/0x57`) timed out at 1 s,
+  and the host's next USB transfer hung until the power-cycle. On 8 Nov the panel, MIDI and LOAD METER still answered
+  after the DSP stopped. A power-cycle cleared it. Why the ColdFire froze is not established. Two waits in the frame
+  interrupt have no time limit: DLPUMP's wait before every host word (`dl_xfer`, `HOST+8`), and stock's spin at
+  `0x4000ab26` until the DSP takes the frame's `0x8c` host command (`docs/firmware/STEM_REC.md`). If the DSP stops
+  taking host words, either spins for good; on 8 Nov the DSP must still have taken the host commands (inferred).
+- **Reading (9 Nov):** at full polling (384 to 447 a second) `OCTABAMS4` stopped the DSP in 19 switches 3 times (3
+  runs), `OCTABAMS5` once in 118 (4 runs), `OCTABAM04` (no STEM REC) never in 32. At about 224 a second `OCTABAMS5`
+  had no stop in 96.
+  - The loader is the larger factor. Changing only the loader took the rate from about 1 stop in 6 switches to 1 in
+    118. At `OCTABAMS4`'s rate, one stop or fewer in 118 switches would come far less than once in a million (each
+    switch treated as independent).
+  - STEM REC is not cleared. With the old loader, `OCTABAM04` ran 32 switches clean, which at `OCTABAMS4`'s rate comes
+    about 4 times in 1,000: STEM REC, or the 18 MiB layout it brings, seems to take part beside the old loader. The one
+    `OCTABAMS5` stop had STEM REC in the image too.
+  - The `OCTABAMS5` stop was a total freeze and the `OCTABAMS4` stops were the DSP's alone, so it may be another fault,
+    or the same one with the pump caught mid-send (above).
+  - Which loader change made the difference is not separated. The candidate is the repeat: the old copier cleared
+    BOUND and rewrote MODULATION's code twice more after every load, while core A could run it (inferred). That does
+    not explain why the 8 Nov stops came at MODULATION to BASE switches, where the pump sends nothing.
+  - Whether the poll rate takes part is not separated: no stop in 96 switches at 224 a second against 1 in 118 at full
+    rate is no difference at these counts.
+  - The late changes are a separate fault: `C0` had them without STEM REC on 2 Nov.
+- **Not yet run:** more `OCTABAM04` runs at full polling, which would show STEM REC's part (`octabam` 0.5 would take
+  STEM REC on that evidence); a stop caught by `soak_dl10.py`; images with each loader change alone; the changes listed
+  under "Next changes" in `DEMAND_LOADER.md`.
 - **Fix:** those five modules are left out of `octabam`; `R3` (`K1`'s set) applied 18 of 18 `loader01` transitions and
   the 2 of `loader02`. 2 Nov 2026: VARISPEED is back in `octabam`, since `C0` without it also left unapplied changes.

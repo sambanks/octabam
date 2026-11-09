@@ -7,7 +7,8 @@ The DSP half of the demand loader (design, measurements and open items:
 address masks are set), placed in the shared window. When the doorbell at `X:0x2900` is `0xa55a`
 it clears the effect's BOUND word, copies the staged block to the window summing the code words,
 and publishes it (init, proc, span, BOUND last) only if the sum matches the one staged after the
-code; it clears the doorbell either way. A message with N = 0 clears BOUND
+code; it clears the doorbell either way. A message for an entry already BOUND at the same
+first word (DLPUMP's repeat sends) is consumed without a copy. A message with N = 0 clears BOUND
 and the span only. The window is one memory, so the copy is resident for core A's tracks.
 
 The build also assembles two templates in this directory from `Remix.window_demand` and
