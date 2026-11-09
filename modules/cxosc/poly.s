@@ -336,6 +336,7 @@
         .set    PUSH_CODE, 0x38           | the encoder push switches: key codes 0x38..0x3d = A..F
         .set    KN_SLOTS, 0x12a           | the descriptor's six knob handler pointers
         .set    KN_RATIO, 1               | slot B = RATO
+        .set    KN_OCT_N, 11              | FUNC+PTCH octave landmarks (−60..+60)
         .set    KN_RATO_SPAN, 960         | Q8 span 0.25..4: 1024 - 64
         .set    KN_RATO_MAX, 127          | raw 0..127
         .set    KN_RATO_SNAPS, 16         | classic table entries with ratio <= 4.01
@@ -3766,8 +3767,7 @@ po_kn_out:
 po_kn_jump:                              | FUNC's jump a detent, by slot: PTCH RATO INDX FINE FOLD MIX
         .byte   0, 0, 16, 16, 16, 16     | PTCH uses po_kn_ptch; RATO its own path
         .align  4
-        .set    KN_OCT_N, 11             | −60..+60 step 12 (raw 4 + 12·k)
-po_kn_oct:                               | FUNC+PTCH landmarks (display = raw − 64)
+po_kn_oct:                               | FUNC+PTCH landmarks −60..+60 step 12 (raw = 64+n)
         .byte   4, 16, 28, 40, 52, 64, 76, 88, 100, 112, 124
         .align  4
 
