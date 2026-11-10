@@ -2,40 +2,42 @@
 ; MODULATION -- a modulation pedal: JUNO, DIM, FLNG, COMB, PHSR, each a
 ; transcription of the source modules/modulation/modulation_ref.py names
 ; (modules/modulation/README.md "Sources"), proven against that float reference. Three sample
-; loops, one chosen per block: LINE (JUNO, DIM and FLNG differ only in five
-; per-block mix weights bl bd ff kc kb), PHSR, COMB. Insert contract
+; loops, one chosen per block: LINE (JUNO, DIM and FLNG differ in five
+; per-block mix weights bl bd ff kc kb, and in which of the fixed taps and
+; the highpass and lift they run), PHSR, COMB. Insert contract
 ; (frames in place, knobs from r6, state in the r7 block). FX1 only: init reads the allocator base
 ; (X:0x213 -> this instance's entry, valid at init and nowhere else); a base
 ; >= 0x4000 is an FX2 slot and proc runs the dry path, which writes nothing
-; to Y. Two 1,024-word lines (L, R) out of the FX1 slot's 3,072; the read
-; offset is masked, not the address. MIX 0 is an exact passthrough; a
-; change of MODE clears the walk, $23..$3f ($20, $21, $41 and the lines
+; to Y. Two 1,024-word lines (L, R) out of the FX1 slot's 3,072, each a
+; modulo-1024 ring in the loops (m5 = $3ff). MIX 0 is an exact passthrough;
+; a change of MODE clears the walk, $23..$3f ($20, $21, $41 and the lines
 ; persist).
 ;
 ; The r7 block:
 ;   $00..$0b   per block: MIX, LFO inc, DLY centre, DPTH, FDBK, TONE c, WDTH,
-;              bl bd ff kc kb (the LINE weights)
-;   $0c        the mode 0..4; $0d the FX2 flag (init); $0e the line base
-;              (init); $0f the P table base
-;   $10..$1e   PHSR per block: u, bm/dbm/bf/dbf L and R, v L, fb, w2 w4 w6 w8;
+;              then $07 unused (bl is an immediate), bd ff kc kb (the LINE
+;              weights)
+;   $0d        the FX2 flag (init); $0e the line base (init); $0f the P
+;              table base
+;   $10..$1e   PHSR per block: u, bm run/dbm/bf run/dbf L ($11..$14) and R
+;              ($15..$18), fb $1a, w2 w4 w6 w8 $1b..$1e;
 ;              COMB per block: gain $1a, h0 $1b, h1 $1c, polarity $1d,
-;              period $1e; PHSR's v R at $1f
+;              period $1e
 ;   $20        the line write phase (persistent)
 ;   $21        the LFO phase (persistent)
+;   $22        MIX's run value between blocks (26 Sep 2026)
 ;   $23..$3f   the per-sample walk on r3, cleared on a MODE change: LINE
 ;              $23..$2d, PHSR $25..$3f (y previous L/R at $23/$24, the ramps'
-;              block copies at $25/$26 and $33/$34), COMB $23..$39
-;   $40        the last block's MODE select word
+;              block copies at $25/$26 and $33/$34), COMB $23..$2b
+;   $40        the last block's MODE select word (the dispatch reads it)
 ;   $41        the LOFI hold counter (persistent)
-;   $42        the LOFI hold length; $45 its mask; $46 the TONE knob word;
-;              $47 mo_para's park (per block)
-;   $48..$68   the block's constant stream on r4/r1: LINE 33 words, PHSR 19,
-;              COMB 17 (each loop's header lists the order); each ends in
-;              MIX's run value and step, then the mode's other steps
-;   $22        MIX's run value between blocks (26 Sep 2026)
+;   $42        the LOFI hold length; $45 its mask; $46 the TONE knob word
 ;   $43        1 once the run values started at their targets (0 at init and
 ;              on a MODE change; mo_rset)
-;   $73..$83 free
+;   $48..$60   the block's constant stream on r4/r1: LINE 25 words, PHSR 19,
+;              COMB 17 (each loop's header lists the order); each ends in
+;              MIX's run value and step, then the mode's other steps
+;   free       $07, $0c, $19, $1f, $44, $47, $61..$83
 ; init zeroes $11..$46 and, on FX1, the lines.
 ; ---------------------------------------------------------------------------
 
@@ -492,11 +494,11 @@ mo_line:
         move    a,n6                    ; wo R
 ; ---- wet L = bl*fixed + bd*dry + ff*wo + kc*HP(wo of the other side) + kb*LPb(dry)
 ; both fixed taps read the centre's run value (after this sample's write:
-; a delay >= 8 never sees it), so its split into i and f is done once here
-; and kept for R in n3 and $44 (n3 is free until the MIX below)
-; n4 = the mode: only FLNG reads the fixed taps (bl), only DIM the
-; highpass and the lift's lowpass (kc, kb); the others branch past them and
-; their states
+; a delay >= 8 never sees it), so L's mo_tap splits it into i and f once
+; and R reuses f (kept in n3, free until the MIX below) and L's offset in n5
+; n4 = the arm flag: only FLNG (+) reads the fixed taps (bl), only DIM (-)
+; the highpass and the lift's lowpass (kc, kb); the others branch past them
+; and their states
 ; MODEARM_BEGIN FIXED
         move    n4,a
         tst     a                       ; + FLNG
