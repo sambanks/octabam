@@ -36,7 +36,7 @@ import math
 
 FS = 44100.0
 BLOCK = 15
-LOOKAHEAD = 16      # the swept delays' slope is a 16th of the way to the knot (the unit's block is 16; the gates' is 15)
+LOOKAHEAD = 16      # the swept delays' slope and PHSR's coefficient steps: a 16th of the way to the target (the DSP's asr #4; the unit's block is 16, the gates' 15)
 LINE = 1024
 
 MODES = {"JUNO": 0, "DIM": 1, "FLNG": 2, "COMB": 3, "PHSR": 4}
@@ -147,16 +147,17 @@ def clamp(v, lo, hi):
 # LOFI: hold + quantise, one counter for both channels. At the LINE WRITE in
 # the line modes and COMB (the taps read through the stairs, the ring
 # recirculates them), on the wet in PHSR. hold = 1 + floor(k^2 / 256) samples
-# (the DSP's mpy + asr 17); the mask on k >> 3 from the manifest's table. The
-# and on the 24-bit word is a floor toward -inf, as the DSP's.
+# (the DSP's mpy + asr 17); the mask on k >> 3 from LOFI_MASK, the DSP's
+# P table. The and on the 24-bit word is a floor toward -inf, as the DSP's.
 # =============================================================================
-LOFI_BITS = (24, 24, 24, 24, 24, 24, 24, 24, 16, 12, 10, 9, 8, 7, 6, 5)
+LOFI_BITS = (24, 24, 24, 24, 24, 24, 24, 24, 16, 12, 10, 9, 8, 7, 6, 5)   # 24 below 64, then 16 12 10 9 8 7 6 5
+LOFI_MASK = tuple((0xffffff << (24 - b)) & 0xffffff for b in LOFI_BITS)
 
 
 class Lofi:
     def __init__(self, k):
         self.hold = 1 + (k * k) // 256
-        self.mask = (0xffffff << (24 - LOFI_BITS[k >> 3])) & 0xffffff
+        self.mask = LOFI_MASK[k >> 3]
         self.cnt = 0
         self.held = [0.0, 0.0]
 
@@ -224,29 +225,25 @@ class LineModes:
             self.d = list(end)
         self.slope = [(end[ch] - self.d[ch]) / LOOKAHEAD for ch in (0, 1)]
 
-    def process(self, L, R, exact=False):
-        """exact: the per-sample LFO of the sources' laws; otherwise the block-linear sweep the DSP runs."""
+    def process(self, L, R):
+        """The block-linear sweep the DSP runs. self.dev is its largest distance, in samples, from the sources'
+        per-sample LFO (centre + depth * tri(phase))."""
         outL, outR = [], []
         self.d = None
-        self.dev = 0.0                  # the block-linear sweep's largest distance from the per-sample LFO's
+        self.dev = 0.0
         for n in range(len(L)):
             if n % BLOCK == 0:
                 self.block()
-                if not exact:
-                    self.knots()
+                self.knots()
             self.phase = (self.phase + self.inc) % 1.0
             dry = (L[n], R[n])
             for ln in self.lines:
                 ln.advance()
-            if exact:
-                lfo = (tri(self.phase), tri(self.phase + self.wid))
-                dl = [self.centre + self.depth * lfo[ch] for ch in (0, 1)]
-            else:
-                self.d = [self.d[ch] + self.slope[ch] for ch in (0, 1)]
-                dl = self.d
-                for ch in (0, 1):
-                    ex = self.centre + self.depth * tri(self.phase + ch * self.wid)
-                    self.dev = max(self.dev, abs(dl[ch] - ex))
+            self.d = [self.d[ch] + self.slope[ch] for ch in (0, 1)]
+            dl = self.d
+            for ch in (0, 1):
+                ex = self.centre + self.depth * tri(self.phase + ch * self.wid)
+                self.dev = max(self.dev, abs(dl[ch] - ex))
             taps = [self.lines[ch].read(dl[ch]) for ch in (0, 1)]
             fixed = [self.lines[ch].read(self.centre) for ch in (0, 1)]
             wo = [self.lpo[ch].lp(taps[ch]) for ch in (0, 1)]
@@ -314,10 +311,10 @@ class Allpass1:
 class Phaser:
     STAGES = 8
 
-    def __init__(self, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY, tables=True, LOFI=0):
+    def __init__(self, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY, LOFI=0):
         self.lofi = Lofi(LOFI)
         self.k = dict(RATE=RATE, DPTH=DPTH, FDBK=FDBK, MIX=MIX, WDTH=WDTH, DLY=DLY)
-        self.tables = phsr_tables() if tables else None
+        self.tables = phsr_tables()
         self.phase = 0.0
         self.fbs = [[Allpass1(), Allpass1()] for _ in (0, 1)]
         self.mod = [[Allpass1() for _ in range(self.STAGES)] for _ in (0, 1)]
@@ -326,11 +323,9 @@ class Phaser:
         self.bf_run = [0.0, 0.0]
 
     def coefs(self, lfo):
-        if self.tables:
-            u = (lfo + 1.0) * 0.5
-            return table_read(self.tables[0], u), table_read(self.tables[1], u)
-        R = ldr_ohms(lfo)
-        return allpass_b0(R, 25e-9), allpass_b0(R, 15e-9)
+        """allpass_b0(ldr_ohms(lfo), 25 nF / 15 nF), read through the tables as the DSP does"""
+        u = (lfo + 1.0) * 0.5
+        return table_read(self.tables[0], u), table_read(self.tables[1], u)
 
     def block(self):
         k = self.k
@@ -347,8 +342,8 @@ class Phaser:
             bm, bf = self.coefs(clamp(depth * para(ph), -1.0, 1.0))
             self.bm_tgt.append(bm)
             self.bf_tgt.append(bf)
-        self.dbm = [(self.bm_tgt[ch] - self.bm_run[ch]) / 16.0 for ch in (0, 1)]
-        self.dbf = [(self.bf_tgt[ch] - self.bf_run[ch]) / 16.0 for ch in (0, 1)]
+        self.dbm = [(self.bm_tgt[ch] - self.bm_run[ch]) / LOOKAHEAD for ch in (0, 1)]
+        self.dbf = [(self.bf_tgt[ch] - self.bf_run[ch]) / LOOKAHEAD for ch in (0, 1)]
 
     def process(self, L, R):
         outL, outR = [], []
@@ -397,31 +392,26 @@ def pow2_table(n=33):
 class Comb:
     RT60_1 = 0.07 * FS          # rt60 at lf = 0, in samples (3,087)
 
-    def __init__(self, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY, tables=True, LOFI=0):
+    def __init__(self, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY, LOFI=0):
         self.lofi = Lofi(LOFI)
         self.k = dict(FDBK=FDBK, MIX=MIX, TONE=TONE, DLY=DLY)
-        self.tables = (period_table(), pow2_table()) if tables else None
+        self.tables = (period_table(), pow2_table())
         self.lines = (Line(), Line())
         self.x1 = [0.0, 0.0]
         self.x2 = [0.0, 0.0]
 
     def block(self):
+        """period = 1000 (8/1000)^(DLY/128); rt60 = RT60_1 2^(8 lf) and gain = 2^(-10 period / rt60), each read
+        through the 33-word tables as the DSP does (T(u) = 2^(-8u): 256 T(1 - lf) = 2^(8 lf), T(q) = 2^(-8q))"""
         k = self.k
-        if self.tables:
-            self.period = table_read(self.tables[0], k["DLY"] / 128.0)
-        else:
-            self.period = 1000.0 * (8.0 / 1000.0) ** (k["DLY"] / 128.0)
+        self.period = table_read(self.tables[0], k["DLY"] / 128.0)
         fbk = feedback(k["FDBK"])
         self.sign = -1.0 if fbk < 0 else 1.0
         d = abs(fbk)
         lf = d * (2.0 - d)
-        if self.tables:
-            rt60 = self.RT60_1 * 256.0 * table_read(self.tables[1], 1.0 - lf)
-            q = min(1.25 * self.period / rt60, 1.0)
-            self.gain = table_read(self.tables[1], q)
-        else:
-            rt60 = self.RT60_1 * 2.0 ** (8.0 * lf)
-            self.gain = 2.0 ** (-10.0 * self.period / rt60)
+        rt60 = self.RT60_1 * 256.0 * table_read(self.tables[1], 1.0 - lf)
+        q = min(1.25 * self.period / rt60, 1.0)
+        self.gain = table_read(self.tables[1], q)
         b = k["TONE"] / 128.0
         self.h0 = (1.0 + b) * 0.5
         self.h1 = (1.0 - b) * 0.25
@@ -449,6 +439,23 @@ class Comb:
             outL.append(outs[0])
             outR.append(outs[1])
         return outL, outR
+
+
+# =============================================================================
+# The P table the build loads (manifest.py: DspSection.ptable), each table at
+# the offset the DSP reads it: PHSR_MOD 0, PHSR_FB 33, PERIOD 66, POW2 99,
+# LOFI_MASK 132. Each word is its value rounded; the nearest sits 0.0049 LSB
+# from a rounding boundary, so a last-bit libm difference cannot move one.
+# =============================================================================
+def q23(v):
+    """a fraction to its 24-bit word, rounded; +1.0 is 0x7fffff"""
+    return min(round(v * (1 << 23)), 0x7fffff)
+
+
+PHSR_MOD, PHSR_FB = (tuple(q23(v) for v in t) for t in phsr_tables())
+PERIOD = tuple(round(v * 4096) for v in period_table())     # Q11.12 samples
+POW2 = tuple(q23(v) for v in pow2_table())
+TABLE = PHSR_MOD + PHSR_FB + PERIOD + POW2 + LOFI_MASK
 
 
 def make(mode, **knobs):

@@ -121,8 +121,7 @@ dw_over:
         move    #>$33da3,r5
         do      #4,>dw_next
         move    x:(r5),a
-        move    #>$b0a5ed,x0
-        cmp     x0,a
+        cmp     #>$b0a5ed,a
         bne     dw_skip
         move    x1,a
         move    x:(r5+4),x0

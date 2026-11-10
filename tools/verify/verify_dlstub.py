@@ -9,7 +9,9 @@ for bit), through its stub unbound (must equal the null stub) and bound (must eq
 block); with the entry's words written into a copy of the dump. Each effect's dump carries its own block: two demand
 effects may share one (DLPUMP loads one at a time), and dsp_modmap's dump carries only the first. Then the copier (modules/dlcopy/dlcopy.asm) is run as
 an init over a staged block: with the doorbell it publishes the code and the stub runs it, without the doorbell it
-leaves the stub dry, and a block with a wrong sum is not published, and a withdraw message (N = 0) makes the stub dry again. dsp_host maps P and X separately outside
+leaves the stub dry, and a block with a wrong sum is not published, and a withdraw message (N = 0) makes the stub dry again. A repeat of
+the block an entry already holds (bound at the same destination) is consumed without a copy, so a damaged repeat leaves the resident code
+bound; a block for an entry bound at another destination is copied. dsp_host maps P and X separately outside
 the window's alias, so this proves the stub's and the copier's logic and register handling, not the hardware.
 
 ON FX2. An effect that is live on an FX2 slot (its Claims.fx1_only lifted: the stations with SLOTS FX1+FX2, as in octabam) is
@@ -185,6 +187,18 @@ for k, key in enumerate(R.window_demand):
     write_records(TMP / f"badsum{k}.mem", gone + [(1, STAGE, bad)])
     check("staged with one bit wrong: the copier does not publish it, the stub stays dry",
           run(TMP / f"badsum{k}.mem", DLC, proc_s, f"badsum{k}", vals) == dry)
+    # A repeat send (DLPUMP sends each load three times): the entry is bound at this destination and the code resident.
+    held = krecs + [(1, entry, [MAGIC, init_m, proc_m, code_at, code_at + n])]
+    write_records(TMP / f"repeat{k}.mem", held + [(1, STAGE, staged)])
+    check("a repeat of the block the entry holds: the stub runs the real code",
+          run(TMP / f"repeat{k}.mem", DLC, proc_s, f"repeat{k}", vals) == direct)
+    write_records(TMP / f"repeatbad{k}.mem", held + [(1, STAGE, bad)])
+    check("a repeat with one bit wrong: not copied, so the resident code stays bound and runs",
+          run(TMP / f"repeatbad{k}.mem", DLC, proc_s, f"repeatbad{k}", vals) == direct)
+    write_records(TMP / f"elsewhere{k}.mem", gone + [(1, entry, [MAGIC, init_m, proc_m, code_at + 1, code_at + n + 1]),
+                                                     (1, STAGE, staged)])
+    check("bound at another destination, the code absent: the block is copied and the stub runs it",
+          run(TMP / f"elsewhere{k}.mem", DLC, proc_s, f"elsewhere{k}", vals) == direct)
     claims = BOUND[key].claims
     if claims is not None and claims.fx1_only:
         print("  (FX1 only here: no FX2 render)")
