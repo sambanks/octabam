@@ -13,7 +13,7 @@ REMIX = Remix(
     doc="REC THRESHOLD and FREE LOOP together (HOOKS bridges the status icons) with STORE and the stock effects.",
     # ATA WRITE GUARD: stock's first-sector card write has an IRQ window a timing shift
     # can land a port run in (TRAPS.md trap-first-sector-irq; it hung hooks-free-loop)
-    modules=("REC THRESHOLD", "FREE LOOP", "STORE", "ATA WRITE GUARD",
+    modules=("REC THRESHOLD", "FREE LOOP", "STORE", "RLEN PLEN", "ATA WRITE GUARD",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
              "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
              "DELAY", "PLATE REV", "SPRING REV", "DARK REV"),
