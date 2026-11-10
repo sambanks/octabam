@@ -60,7 +60,6 @@ print(f"entries from dispatch tables: init=P:0x{init:04x} proc=P:0x{proc:04x}")
 
 DEFAULTS = [(p.default or 0) for p in MOD.params]
 MODES = REF.MODES
-VIEW = {v.mode: v.defaults for v in MOD.mode_views}
 
 
 def params(**kw):
@@ -73,8 +72,8 @@ def params(**kw):
 def mode_knobs(mode, **over):
     """a mode's ModeView defaults, then the overrides -- as a knob dict"""
     d = {name: DEFAULTS[i] for name, i in K.items()}
-    for slot, val in VIEW[MODES[mode]].items():
-        d[[n for n, i in K.items() if i == slot][0]] = val
+    for slot, val in MOD.view_for(MODES[mode]).defaults.items():
+        d[MOD.canon_name(slot)] = val
     d["MODE"] = MODES[mode]
     d.update(over)
     return d

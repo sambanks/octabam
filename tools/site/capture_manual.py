@@ -150,6 +150,36 @@ def capture_free_loop(p,r):
     shot(p,'free-loop','popup','CC 90 on channel 1, 3 s into the free take: T1\'s REC popup, FIRST LOOP.',r)
 
 
+def capture_drummer(p,r):
+    # The project is modules/drummer/manual_fixture.py's: T1 FLEX on a sliced synthetic loop.
+    p.press('t1',settle=300)
+    p.chord('func','pg_playback',settle=400)
+    press(p,'down',6)
+    shot(p,'drummer','machines','FUNC + SRC on T1: the machine list, DRUMMER the last row.',r)
+    p.press('yes',settle=1500)
+    shot(p,'drummer','config','DRUMMER chosen: its CONFIG knobs STYL VEL ALT SWNG HUMN VAR.',r)
+    p.press('no',settle=1500)
+    shot(p,'drummer','ask','DRUMMER asks to make a kit from the slices (AUTO).',r)
+    p.press('yes',settle=600)
+    shot(p,'drummer','auto','AUTO done: the toast says how many slices were sorted.',r)
+    p.run(3000)                    # the toast gone: the track is on its LIVE page already
+    shot(p,'drummer','live','The LIVE page: SEED DENS CPLX ORN BRK GHST.',r)
+    p.press('pg_playback',settle=600)
+    shot(p,'drummer','balance','SRC again: KIT BALANCE, the mix of the drums.',r)
+    p.press('pg_playback',settle=600)
+    shot(p,'drummer','fills','SRC a third time: FILLS.',r)
+    p.press('pg_playback',settle=600)
+    p.key('trig1',True);p.run(200);p.press('bank',settle=200);p.key('trig1',False);p.run(800)
+    shot(p,'drummer','kit-zones','Trig 1 held + BANK: the KIT window, page 1 (zone, role).',r)
+    p.press('right',settle=600)
+    shot(p,'drummer','kit-align','KIT window page 2: ALIGN, GAIN, SCENE, DOSE.',r)
+    p.press('right',settle=600)
+    shot(p,'drummer','kit-track','KIT window page 3: the track\'s settings.',r)
+    enc(p,5,1);p.run(600)
+    shot(p,'drummer','redrum','Page 3, F turned once: REDRUM AUTO, the loop read as 1 bar of 16 slices.',r)
+    p.press('no',settle=600)
+
+
 def capture_features(p,r):
     p.chord('t1','page')
     shot(p,'euclid-fill','fill','Euclidean trig fill: STEPS, PULSE, ROT, RAND VEL, RAND PTCH.',r)
@@ -400,6 +430,11 @@ def prepare(remix,project,assignments):
     if assignments and not any(fixture.glob('bank*.work')):
         raise SystemExit(f'{fixture}: set_fx had no banks to write')
     audio=[]
+    if remix=='drummer':
+        # A synthetic drum loop on T1 (modules/drummer/manual_fixture.py), made at capture time.
+        sys.path.insert(0,str(ROOT/'modules/drummer'))
+        import manual_fixture
+        audio=manual_fixture.build(fixture)
     if remix=='octatrick':
         import re,wave
         marker=fixture/'FMSYNTH.WAV'
@@ -430,7 +465,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','drummer'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -458,6 +493,7 @@ def main():
         elif group=='verberation':jobs=[('verberation',capture_fx,[(2,'fx2','VERBERATION')])]
         elif group=='morph':jobs=[('morph',capture_morph,[])]
         elif group=='free-loop':jobs=[('free-loop',capture_free_loop,[])]
+        elif group=='drummer':jobs=[('drummer',capture_drummer,[])]
         elif group=='machines':jobs=[('analog-bassdrum',capture_analog,[]),('octatrick',capture_synth,[]),('blackpyramids-303',capture_blackpyramids,[]),('octa303',capture_octa303,[]),('cxosc',capture_cxosc,[])]
         elif group=='devilish':jobs=[('devilish',capture_fx,[(2,'fx2','DEVILISH')])]
         elif group=='vibrato':jobs=[('vibrato',capture_fx,[(2,'fx1','VIBRATO')])]

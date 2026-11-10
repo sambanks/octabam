@@ -1,4 +1,4 @@
-"""MODULATION -- a modulation pedal, five modes, on stock CHORUS's id 0x12.
+"""MODULATION -- a modulation pedal, five modes, on id 0x0e (stock CHORUS keeps 0x12).
 
 A per-track insert (FX1 only). Each mode transcribes a published,
 permissively licensed source (sources: modules/modulation/README.md, licences THIRD_PARTY.md;
@@ -25,13 +25,24 @@ its base from the host's bump allocator at init (docs/firmware/DSP.md
 section 10); if that base is an FX2 slot (>= 0x4000) it runs as a dry pass
 and writes nothing. `Claims(fx1_only=True)` declares that and the render
 gate proves it. Two lines of 1,024 words out of the 3,072 an FX1 slot
-gives; the read offset is masked, not the address.
+gives, each a modulo-1024 ring.
 
 Not a bus client: does not housekeep, does not write the bus."""
+
+import importlib.util
+import pathlib
 
 from remix import stations
 from remix.schema import (Store, Gate, Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, YBase)
+
+# The float reference is also the source of the P table and the MODE labels,
+# so the build, the DSP and the gate read one copy (vibrato's manifest does
+# the same).
+_spec = importlib.util.spec_from_file_location("modulation_ref",
+                                               pathlib.Path(__file__).with_name("modulation_ref.py"))
+_ref = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_ref)
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
@@ -39,49 +50,16 @@ _BIPOL = Formatter.BIPOLAR   # drawn -64..+63 around 64
 
 _BLANK = Param(b"", 0)
 
-# The P tables (modulation_ref.py generates them; 33 words each, read at
-# idx = u >> 18 and interpolated on the 18 bits under it):
-#   PHSR_MOD  ChowPhaser's mod-stage allpass coefficient b0 = (RCK-1)/(RCK+1)
-#             over lfo = -1..1, R = 100k (light/0.1)^-0.75, light = 20.1 -
-#             20 lfo, C = 25 nF, K = 2 fs
-#   PHSR_FB   the same for the feedback stages, C = 15 nF
-#   PERIOD    COMB's period in Q11.12 samples: 1,000 .. 8, exponential
-#   POW2      T(u) = 2^(-8u): COMB's decay (rt60 and the per-pass gain)
-PHSR_MOD = (
-    0x360688, 0x3744bd, 0x3889f1, 0x39d676, 0x3b2aa0, 0x3c86cc,
-    0x3deb5e, 0x3f58c2, 0x40cf6e, 0x424fe1, 0x43daa7, 0x457059,
-    0x4711a0, 0x48bf36, 0x4a79ea, 0x4c42a4, 0x4e1a68, 0x50025e,
-    0x51fbd5, 0x540850, 0x562990, 0x5861a6, 0x5ab307, 0x5d20ad,
-    0x5fae47, 0x62607b, 0x653d5b, 0x684d26, 0x6b9ba8, 0x6f3b29,
-    0x734baa, 0x78138a, 0x7ed820,
-    )
-PHSR_FB = (
-    0x189fb0, 0x1a158e, 0x1b95c1, 0x1d20d0, 0x1eb74e, 0x2059d8,
-    0x220919, 0x23c5cd, 0x2590be, 0x276acc, 0x2954eb, 0x2b5028,
-    0x2d5dad, 0x2f7ec6, 0x31b4e5, 0x3401a8, 0x3666e3, 0x38e6ac,
-    0x3b8364, 0x3e3fca, 0x411f11, 0x442501, 0x47561b, 0x4ab7d6,
-    0x4e50f4, 0x522a00, 0x564e1b, 0x5acc56, 0x5fba2a, 0x6538a3,
-    0x6b8108, 0x730f94, 0x7e145b,
-    )
-PERIOD = (
-    0x3e8000, 0x35bf26, 0x2e3822, 0x27bf02, 0x222df7, 0x1d6481,
-    0x1946ac, 0x15bc6f, 0x12b11e, 0x1012f2, 0x0dd2a2, 0x0be309,
-    0x0a38d9, 0x08ca5a, 0x078f2f, 0x068027, 0x059715, 0x04cea8,
-    0x04224c, 0x038e15, 0x030e9f, 0x02a103, 0x0242c1, 0x01f1b3,
-    0x01abfe, 0x01700d, 0x013c81, 0x01102d, 0x00ea0f, 0x00c947,
-    0x00ad17, 0x0094d9, 0x008000,
-    )
-# LOFI's bit mask by k >> 3: 24 bits below 64, then 16 12 10 9 8 7 6 5
-LOFI_BITS = (24, 24, 24, 24, 24, 24, 24, 24, 16, 12, 10, 9, 8, 7, 6, 5)
-LOFI_MASK = tuple((0xffffff << (24 - b)) & 0xffffff for b in LOFI_BITS)
-POW2 = (
-    0x7fffff, 0x6ba27e, 0x5a827a, 0x4c1bf8, 0x400000, 0x35d13f,
-    0x2d413d, 0x260dfc, 0x200000, 0x1ae8a0, 0x16a09e, 0x1306fe,
-    0x100000, 0x0d7450, 0x0b504f, 0x09837f, 0x080000, 0x06ba28,
-    0x05a828, 0x04c1c0, 0x040000, 0x035d14, 0x02d414, 0x0260e0,
-    0x020000, 0x01ae8a, 0x016a0a, 0x013070, 0x010000, 0x00d745,
-    0x00b505, 0x009838, 0x008000,
-    )
+# The P table, _ref.TABLE (33 words a table, read at idx = u >> 18 and
+# interpolated on the 18 bits under it; the masks are read whole):
+#   PHSR_MOD   ChowPhaser's mod-stage allpass coefficient b0 = (RCK-1)/(RCK+1)
+#              over lfo = -1..1, R = 100k (light/0.1)^-0.75, light = 20.1 -
+#              20 lfo, C = 25 nF, K = 2 fs
+#   PHSR_FB    the same for the feedback stages, C = 15 nF
+#   PERIOD     COMB's period in Q11.12 samples: 1,000 .. 8, exponential
+#   POW2       T(u) = 2^(-8u): COMB's decay (rt60 and the per-pass gain)
+#   LOFI_MASK  LOFI's bit mask by k >> 3: 24 bits below 64, then 16 12 10 9
+#              8 7 6 5 (16 words)
 
 MODULE = Module(
     name="modulation",
@@ -116,7 +94,7 @@ MODULE = Module(
         # ---- page 2, filled from the top left: MODE (slot 6 as on every
         # effect), TONE, WDTH ----------------------------------------------
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("JUNO", "DIM", "FLNG", "COMB", "PHSR"),
+              labels=tuple(_ref.MODES),      # JUNO DIM FLNG COMB PHSR, the gate's names too
               doc="which pedal: JUNO, DIM, FLNG, COMB or PHSR"),
         Param(b"TONE", 80, 128, active=True, formatter=_PLAIN,
               doc="BBD filters in and out of the line: 0 dark (2 kHz), 127 open; COMB brightness; not PHSR"),
@@ -148,7 +126,7 @@ MODULE = Module(
     ),
     dsp=DspSection(
         asm="modules/modulation/modulation.asm",
-        ptable=PHSR_MOD + PHSR_FB + PERIOD + POW2 + LOFI_MASK,
+        ptable=_ref.TABLE,            # PHSR_MOD PHSR_FB PERIOD POW2 (33 words each), LOFI_MASK (16)
         priority=14,                  # after the Character station
         bus_role=BusRole.NONE,        # an insert; it writes nothing to the bus
         ybase=YBase.NEVER,

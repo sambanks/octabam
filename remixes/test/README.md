@@ -30,6 +30,8 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`dl-probe`](dl-probe/README.md) | octabam with DLPROBE on FX1 in place of EQUALIZER (the loader as in octabam). | `make check` |
 | [`dl-probe-any`](dl-probe-any/README.md) | octabam with DLPROBE on FX1 in place of EQUALIZER, and the loader sending on every frame. | `make check` |
 | [`dlspike`](dlspike/README.md) | Demand-load spike: MODULATION loaded on demand. | `make check` |
+| [`drummer`](drummer/README.md) | DRUMMER alone: T1's sliced loop played as a drummer. | on hardware: the author's MKII, images 52-78 (Nov 2026); modules/drummer/verify_port.py and the module's gates |
+| [`drummer-probe`](drummer-probe/README.md) | DRUMMER PROBE alone: trigs added and moved after the step builder, the FLEX start's slice forced. | `make check`: port only: modules/drummer/probe_steps.py DR_PROBE=1 |
 | [`erase-empty-trigless-locks`](erase-empty-trigless-locks/README.md) | stock effects with ERASE_EMPTY_TRIGLESS_LOCKS: an emptied trigless lock disappears. | `make check` |
 | [`euclid`](euclid/README.md) | Euclid rhythmic modulation: 12 dB LP/BP/HP or AMP, both FX slots. | port-gated: EVENTS: firmware/render gates |
 | [`euclid-fill`](euclid-fill/README.md) | stock effects with EUCLID FILL: TRACK+PAGE Euclidean trig-fill page. | `make check` |

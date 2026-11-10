@@ -36,6 +36,24 @@ WDTH. `stamp-defaults` before play.
 
 ## Measured
 
+- **10 Nov 2026, the simplify pass** (bit-identical: `make verify-ident
+  MOD=modulation` 13/13; `verify_modulation` 30/30, `verify_stations_fx2`
+  PASS, `verify-knobs` 131 cases 0 flagged). Instructions per sample from
+  `dsp_host -meter` (LOFI 40, MIX 100, 16-sample blocks, the per-block work
+  included; the same figures as the cost pass below on origin/main): JUNO
+  212.9 → 206.2, DIM 258.8 → 252.1, FLNG 253.6 → 245.9, COMB 262.5 →
+  256.1, PHSR 296.8 → 288.1. `cycle_count.py`: LINE 260 → 252, PHSR 298 →
+  290, COMB 255 → 249; the priced worst core (four MODULATION beside the
+  reverb and three sends) 2,331 → 2,299. Words 1,413 → 1,318. Not measured
+  on the unit. Per sample: the frame advance is one `lua`; the write address
+  goes straight into n5; `mo_tap` and `mo_herm` lost their entry reload
+  (every caller enters with a0 = 0); LINE's four arm tests are one-word
+  `tst`s on a flag the dispatch sets in n4 (+ FLNG, − DIM); LOFI's compare
+  and PHSR's ramps carry their moves in parallel slots. Per block: the
+  loops' shared registers are set once, before the dispatch; PHSR's two
+  channels share `mo_pco`; the mode copy at $0c and reloads of values still
+  in registers are gone. The P table is `modulation_ref.TABLE`, the same 148
+  words the manifest used to list.
 - **25 Oct 2026, the cost pass** (not bit-identical; `verify_modulation` 29/29
   at its original bars, `verify-knobs` 131 cases 0 flagged,
   `verify_stations_fx2` PASS). Instructions per sample from `dsp_host -meter`
@@ -57,7 +75,8 @@ WDTH. `stamp-defaults` before play.
   block there, and L and R read one copy of `bd ff`; (3) `mo_herm` works from
   the successive differences in registers, 71 → 54 words and one scratch word
   instead of eight (the COMB walk is 9 words, not 17). `modulation_ref.py`
-  models the block-linear sweep (`process(exact=True)` is the per-sample LFO).
+  models the block-linear sweep (`process(exact=True)` was the per-sample LFO
+  until 10 Nov 2026; `LineModes.dev` measures the distance from it).
 - **25 Oct 2026, on the unit** (I3 = hw/usb-standalone-transport + the pass above,
   MODULATION on all 8 tracks in one slot, per-slot cost = (layout - BASE) / 4, BASE
   22.5 % / 14.9 %; core 0 = core 1, FX1 = FX2): JUNO 7.2 %, DIM 8.76 %, FLNG 9.22 %,
@@ -120,7 +139,7 @@ WDTH. `stamp-defaults` before play.
   parabola sine is 17 instructions a call, six calls in ENS — and the
   one-poles are the difference). PHSR was retired 13 Sep 2026 at 464
   cycles and brought back on ChowPhaser's law.
-- `tools/verify/verify_modulation.py`, **29 gates, all PASS**: MIX 0
+- `tools/verify/verify_modulation.py`, **30 checks, all PASS** (10 Nov 2026): MIX 0
   bit-exact in every mode; an FX2 instance a bit-exact dry pass with the
   guard clean; every mode against `modulation_ref.py` on a stereo signal
   (max error ≤ 1e-4 where the law is linear; COMB's ring recirculates its
@@ -202,14 +221,18 @@ inline at its three sites per channel (L advances the shared counter and
 latches on its compare, R latches on the counter reading 0; the mask keeps
 bit 23 so the extension byte stays consistent and the store does not
 saturate), as is the MIX. LINE's swept delays come from `mo_knot` once per
-block (`mo_dly`: the triangle, depth and centre). Straight-line callees: `mo_tap` (the linear read,
+block (`mo_dly`: the triangle, depth and centre). Which of LINE's arms run is
+a flag the dispatch sets in n4: + FLNG (the fixed taps), − DIM (the highpass
+and the lift), 0 JUNO. Straight-line callees: `mo_tap` (the linear read,
 blending toward the older sample; the fixed taps use it too since 26 Sep
-2026, split per sample from the centre's run value; `mo_itap` is its
-second entry), `mo_herm` (the 4-point Hermite read from the successive differences,
+2026, split per sample from the centre's run value, and R's fixed tap reuses
+L's split through `mo_itrd`), `mo_herm` (the 4-point Hermite read from the successive differences,
 scaled 1/16 inside), `mo_apst` (one allpass stage, x in and y out in x0 so a chain
 passes it straight through; PHSR's eight mod stages carry it inline, two
 per trip of a counted loop, since 27 Sep 2026), `mo_para` (the parabola
-sine), `mo_tab` (the table read, per block). The one-poles are
+sine), `mo_pco` (one channel's PHSR coefficient ramps, per block),
+`mo_tab` (the table read, per block; the P table is `modulation_ref.TABLE`,
+which the manifest loads). The one-poles are
 `s' = c x + c' s` with `c' = 1 − c` streamed beside `c`. The PHSR chain runs at half scale for headroom (an
 allpass cascade peaks above its input).
 
