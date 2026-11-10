@@ -7,10 +7,12 @@ stock page again. Each client keeps its own window, key layer and drawing;
 PAGES only asks it whether its page is shown, and opens, closes and ticks it.
 PAGES enters a remix only with a client in it.
 
-Today one key is declared: **SRC on a MIDI track** (MIDI NOTE), with CHORDS
-FACTORY as its client. The mechanism is the same for every page key (AMP,
-LFO, FX1, FX2 ...) and for audio mode; each new key is declared when a
-client needs it and a gate has measured what stock does with it there.
+Two keys are declared: **SRC on a MIDI track** (MIDI NOTE), with CHORDS
+FACTORY as its client, and **SRC on an audio track**, with DRUMMER (KIT BALANCE,
+on a DRUMMER track only; its page_open does nothing on another track, which
+is stock's answer to that press). The mechanism is the same for every page
+key (AMP, LFO, FX1, FX2 ...); each new key is declared when a client needs it
+and a gate has measured what stock does with it there.
 
 ## Clients
 
@@ -54,6 +56,14 @@ more at a gap) ✅:
 | 60 ms | MIDI NOTE SETUP (CHAN, BANK, PROG, SBNK) |
 | 300 ms | MIDI NOTE, unchanged |
 | 800 ms | MIDI NOTE, unchanged |
+
+Audio mode, under the port (7 Nov 2026, MKII, a FLEX track, SRC then SRC
+again; `--watch-pc 0x400322f0`) 🟡: the opener is called with mode 1 at a
+300 ms and an 800 ms gap and the PLAYBACK page stays as it was; at 60 ms
+with mode 3, and SRC SETUP opens. A track's selection already shows its SRC
+page, so SRC once is the press again. Gate: `modules/drummer/verify_live2.py`
+(KIT BALANCE opens on a DRUMMER track, closes on SRC again or AMP, a FLEX track
+gets nothing, the double press still opens SRC SETUP).
 
 So a second single press of SRC on MIDI NOTE does nothing visible in stock
 and a double press opens NOTE SETUP: PAGES takes the single press

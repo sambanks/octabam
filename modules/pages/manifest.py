@@ -13,7 +13,8 @@ A client registers (module key, prefix) on a page; it exports
 clobbered). Registration is build-time: the cycle is direct calls, no table.
 
 Measured so far: SRC in MIDI mode (README "Measured": mode 1 = a single
-press again, mode 3 = the double press, NOTE SETUP). The opener 0x400322f0
+press again, mode 3 = the double press, NOTE SETUP) and in audio mode (mode 1
+leaves the track's PLAYBACK page as it was, mode 3 opens SRC SETUP). The opener 0x400322f0
 is every page key's (code, mode); the other keys and audio mode are declared
 when a client needs them and a gate has measured them.
 """
@@ -24,9 +25,10 @@ from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 H = bytes.fromhex
 
 # The page keys PAGES may own: (mode, key) -> the key code at the opener.
-KEYS = {('midi', 'src'): 0x22}
+KEYS = {('midi', 'src'): 0x22, ('audio', 'src'): 0x22}
 CLIENTS = {
     ('midi', 'src'): (('CHORDS FACTORY', 'ch'),),
+    ('audio', 'src'): (('DRUMMER', 'dr'),),
 }
 
 # The page key's setup opener: movel %sp@(4),%d0 ; moveq #3,%d1
