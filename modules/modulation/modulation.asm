@@ -427,8 +427,7 @@ mo_line:
         mpy     x0,y1,a
         add     b,a
         move    a,x0                    ; LIMITING: the loop cannot rail
-        move    y0,a
-        move    a1,n5
+        move    y0,n5
         move    r2,r5
         move    (r5)+n5                 ; line L at the write phase
 ; ---- mo_lofl, inline (23 Sep 2026; three sites each, FREE allows it) ----
@@ -476,8 +475,7 @@ mo_line:
         mpy     x0,y1,a
         add     b,a
         move    a,x0                    ; LIMITING: the loop cannot rail
-        move    y0,a
-        move    a1,n5
+        move    y0,n5
         move    r6,r5
         move    (r5)+n5                 ; line R at the write phase
 ; ---- mo_lofr, inline (23 Sep 2026; three sites each, FREE allows it) ----
@@ -509,18 +507,10 @@ mo_line:
         move    n4,a
         cmp     #>$2,a
         bne     mo_nfl
-        move    x:(r4+$1),a             ; the fixed taps' delay
-        move    a,x0
-        move    x0,a                    ; clean: a0 = 0
-        and     #>$fff,a
-        asl     #$b,a,a
-        move    a1,y1                   ; f
-        move    y1,n3                   ; kept for R
-        move    x0,a
-        asr     #$c,a,a
-        move    a1,x0                   ; i
+        move    x:(r4+$1),a             ; the fixed taps' delay (a0 = 0)
         move    r2,r5
-        bsr     mo_itap
+        bsr     mo_tap                  ; leaves f in y1
+        move    y1,n3                   ; f, kept for R
         move    a,x0                    ; fixed L
         move    #>$286dc6,y1            ; bl = 0.7071 x 0.447, the -7 dB trim
         mpy     x0,y1,a x:(r0),x0       ; dry L
@@ -655,8 +645,7 @@ mo_whr:
         asl     #$1,a,a
         add     b,a
         move    a,x:(r0+n0)
-        move    (r0)+n0                 ; the frame advance: n0 is 1 for the
-        move    (r0)+n0                 ; whole loop, so two steps, no reload
+        lua     (r0+$2),r0              ; the frame advance: one stereo frame
 molinz:
         nop
         move    #>$ffffff,m5
@@ -825,6 +814,7 @@ mo_padv:
         move    a1,n6
         move    x:(r7+$41),a
         move    a1,n1
+        move    #$e,n3                  ; wet L is fourteen back from the MIX's cursor
         do      n7,>mophsz
         move    r4,r1
         lua     (r7+$25),r3
@@ -904,8 +894,7 @@ mo_pml:
         move    a,x1                    ; bf (limited)
         move    n6,x0                   ; y previous (halved, as the chain runs)
         move    x:(r1)+,y1              ; fb
-        mpy     x0,y1,a
-        move    x:(r0+n0),b        
+        mpy     x0,y1,a     x:(r0+n0),b
         asr     #$1,b,b
         add     b,a                     ; u = x/2 + fb * yprev: the chain runs at
         move    a,x0                    ; HALF scale (an allpass cascade peaks
@@ -949,7 +938,6 @@ mo_pmr:
         move    a,x:(r3)+
         move    x:(r1)+,x0
         and     x0,a
-        move    #$e,n3                  ; wet L is fourteen back from the cursor
 ; ---- momixs, inline (23 Sep 2026; three sites each, FREE allows it) ----
         move    a,x1                    ; wet R (limited)
         move    (r3)-n3
@@ -976,8 +964,7 @@ mo_pmr:
         asl     #$1,a,a
         add     b,a
         move    a,x:(r0+n0)
-        move    (r0)+n0
-        move    (r0)+n0
+        lua     (r0+$2),r0              ; the frame advance
 mophsz:
         nop
         move    x:(r4+$11),x0           ; MIX's run value, for the next block
@@ -1177,8 +1164,7 @@ norep_md_01:
         move    x:(r1)+,x0              ; the mask
         and     x0,a
         move    a,x1                    ; wet L = the sample written
-        move    y0,a
-        move    a1,n5
+        move    y0,n5
         move    r2,r5
         move    (r5)+n5
         move    x1,y:(r5)               ; write line L
@@ -1221,8 +1207,7 @@ norep_md_01:
         move    x:(r1)+,x0
         and     x0,a
         move    a,x1                    ; wet R = the sample written
-        move    y0,a
-        move    a1,n5
+        move    y0,n5
         move    r6,r5
         move    (r5)+n5
         move    x1,y:(r5)               ; write line R
@@ -1256,8 +1241,7 @@ norep_md_01:
         asl     #$1,a,a
         add     b,a
         move    a,x:(r0+n0)
-        move    (r0)+n0
-        move    (r0)+n0
+        lua     (r0+$2),r0              ; the frame advance
 mocmbz:
         nop
         move    #>$ffffff,m5
@@ -1396,24 +1380,23 @@ mo_knot:
         rts
 
 ; ---------------------------------------------------------------------------
-; mo_tap -- a = the delay in Q11.12 (8 .. 1,015), y0 = the write phase, r5 =
-; the line's base -> a = the tap, the fraction blended toward the OLDER
-; neighbour: a delay of i + f lies between the samples at i and i + 1
-; (blended toward the newer one it reads i - f and clicks at every integer
-; crossing). Uses x0 y1 b n5; x1 is kept. mo_itap enters with the split
-; already done: x0 = i, y1 = f. Straight-line.
+; mo_tap -- a = the delay in Q11.12 (8 .. 1,015) with a0 = 0 (every caller
+; loads it from memory, or adds a word to one so loaded: the asl below
+; would shift a0 into the fraction), y0 = the write phase, r5 = the line's
+; base -> a = the tap, the fraction blended toward the OLDER neighbour: a
+; delay of i + f lies between the samples at i and i + 1 (blended toward
+; the newer one it reads i - f and clicks at every integer crossing). Out:
+; y1 = f, n5 = delay i's offset (the fixed taps' R reuses both through
+; mo_itrd). Uses x0 b; x1 is kept. Straight-line.
 ; ---------------------------------------------------------------------------
 mo_tap:
         move    a,x0                    ; the total (positive, under 1: not limited)
-        move    x0,a                    ; clean: a0 = 0
         and     #>$fff,a
         asl     #$b,a,a                 ; the fraction, Q23
         move    a1,y1
         move    x0,a
         asr     #$c,a,a
         move    a1,x0                   ; i
-mo_itap:
-; the fixed taps enter here, their split done per block: x0 = i, y1 = f
         move    y0,a                    ; the write phase
         sub     x0,a
         and     #>$3ff,a                ; (a2 may be stale: a1 is what is read)
@@ -1429,7 +1412,8 @@ mo_itrd:
         rts
 
 ; ---------------------------------------------------------------------------
-; mo_herm -- a = the delay in Q11.12 (>= 4), y0 = the write phase, r5 = the
+; mo_herm -- a = the delay in Q11.12 (>= 4) with a0 = 0 (both callers load
+; it from memory; mo_tap's note), y0 = the write phase, r5 = the
 ; line's base, r3 -> one word of scratch -> a = the 4-point Hermite read
 ; (stmlib's ReadHermite: xm1 one sample NEWER than i, x1 and x2 older),
 ; from the successive differences e = x0 - xm1, g = x1 - x0, h = x2 - x1,
@@ -1443,7 +1427,6 @@ mo_itrd:
 ; ---------------------------------------------------------------------------
 mo_herm:
         move    a,x0                    ; the total
-        move    x0,a                    ; clean
         and     #>$fff,a
         asl     #$b,a,a
         move    a1,y1                   ; f, Q23
