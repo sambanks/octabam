@@ -58,9 +58,10 @@ depth/plock free·mask + per-track LANE) on SAVE PROJECT / bank write. Multi-tar
 **Pattern length** shows in the title gutter (`LEN n`), not as a row.
 Defaults: TRIG PULSE 5, DEST = AMP VOL, ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
 
-On open / track switch, if the track already has sample trigs in the fill
-range, those bits seed the TRIG grid (`ef_free`). Empty tracks keep the
-Euclidean PULSE/ROT preview. There is no live pad sync while FILL is open.
+On open / track switch / LANE switch, if the track already has sample trigs
+in the fill range, those bits seed the TRIG grid (`ef_free`). Empty tracks
+keep the Euclidean PULSE/ROT preview (`free=0`). While open, an emptied
+live mask drops a stale free mirror (stock clear).
 
 **CUE** keeps **PULSE** as density on the focused lane and only randomizes
 *which* steps are on. Changing **PULSE** leaves free mode and returns to
@@ -81,7 +82,10 @@ use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 **LANE = TRIG:** YES writes DEST/DEPTH locks on the sample-trig steps
 and syncs that DEST's plock recipe to the TRIG rhythm (lock layer = trigs).
 **LANE = PLCK:** independent plock rhythm; plock-only → trigless (+0x10);
-miss / PULSE 0 clears this DEST only (other DEST trigless stay).
+miss / PULSE 0 clears this DEST only (other DEST locks stay). PULSE 0 also
+drops orphan trigless bits when no other DEST remains on the step. To erase
+TRIG-baked locks, zero that DEST's PLCK PULSE and YES on **PLCK** (TRIG YES
+with DEPTH > 0 re-applies and re-syncs the recipe).
 
 
 YES writes **only** the selected DEST's lock bytes (plus the TRIG mask).

@@ -28,11 +28,11 @@
 |   DEC is not a dest (LFO skips it too).
 | DEPTH (0..127): lock uniform in [Part-DEPTH .. Part+DEPTH] (clamped).
 | DEST=AMP VOL is unipolar below Part VOL (never louder than AMP). DEST=PTCH
-| in-scale. Editing PULSE leaves free mode. On open / track switch, if the
-| track already has sample trigs (any source), seed ef_mask from them so
-| the grid matches the sequencer; empty tracks stay Euclidean. No live
-| pad sync while open — close and reopen FILL to re-seed after editing
-| trigs on the sequencer.
+| in-scale. Editing PULSE leaves free mode. On open / track switch / LANE
+| switch, if the track already has sample trigs (any source), seed ef_mask
+| from them so the grid matches the sequencer; empty -> free=0 Euclidean
+| preview. While open, empty-live drift drops a stale free mask (clear).
+| PLOCK PULSE 0 YES clears this DEST and drops orphan TL (stack-safe).
 |
 | Params: TRIG PULSE/ROT/DEST/DEPTH/free mask per track (ef_bank). DEPTH
 | and PLOCK PULSE/ROT/free/mask per track × DEST (ef_dep_mem / ef_plk_mem);
@@ -1019,6 +1019,11 @@ ln0:    moveq   #1,%d3
         movel   %d3,%d0
 ln1:    movel   %d0,ef_lane
         bsr.w   ef_lane_save
+        | Re-read live sample trigs so TRIG grid matches the sequencer
+        | after PLCK edits / external clears (not a stale bake).
+        bsr.w   ef_sync_len
+        bsr.w   ef_seed_from_trk
+        bsr.w   ef_store_slot
         bra.w   ef_draw
 nd_ab:
         | A/B -> focused rhythm (TRIG: ef_pulses/rot; PLOCK: ppulses/prot)
@@ -1198,6 +1203,7 @@ ef_draw:
         beq.w   d9
         bsr.w   ef_follow_ui
         bsr.w   ef_sync_len
+        bsr.w   ef_mask_drift           | clear/undo while open → honest TRIG
         lea     %sp@(-48),%sp
         movem.l %d2-%d7/%a2-%a6,%sp@
         movel   ef_win,%a2
@@ -1910,7 +1916,7 @@ wm_plock:
 wm_tl:  tstl    ef_thit
         bne.s   wm_clr_tl
         tstl    ef_depth
-        beq.s   8f
+        beq.w   wm_mtl                  | DEST cleared; drop orphan TL
         bsr.w   ef_tl_set               | trigless stack
         bra.s   8f
 wm_clr_tl:
@@ -1944,9 +1950,10 @@ wm_dest_clr:
         bra.s   wm_mtl
 miss_cx:
         bsr.w   ef_cx_clear
-wm_mtl: tstl    ef_thit
-        beq.s   8f
-        bsr.w   ef_tl_clr
+| After clearing this DEST: drop TL when a note owns the step, or when no
+| other page-1 / CX lock remains (stack-safe). Fixes PULSE0 YES leaving
+| empty trigless — including after TRIG-lane locks were synced into PLCK.
+wm_mtl: bsr.w   ef_tl_reconcile
 8:      addql   #1,%d2
         bra.w   1b
 9:      | LANE=TRIG: copy TRIG rhythm into this DEST's plock recipe.
@@ -1998,6 +2005,38 @@ ef_tl_clr:
         and.l   %d3,%d1
         moveb   %d1,%a0@
         rts
+
+| ef_tl_reconcile: d2=step, a2=trac. Clear TL if thit, or if every page-1
+| lock byte is 0xff and no CX bit remains on this step. Clobbers d0/d1/a0.
+ef_tl_reconcile:
+        tstl    ef_thit
+        bne.s   tr_clr
+        movel   %d2,%d1
+        lsll    #5,%d1
+        addil   #LOCK0,%d1
+        lea     %a2@(0,%d1:l),%a0
+        moveq   #DEST_LAST,%d1
+        moveq   #-1,%d0
+tr_scan:
+        cmp.b   %a0@,%d0
+        bne.s   tr_rts                  | another DEST still locked
+        addql   #1,%a0
+        subql   #1,%d1
+        bpl.s   tr_scan
+        | CX SETUP bits for this step (if any) also keep TL.
+        movel   %d2,%d0
+        moveq   #63,%d1
+        cmpl    %d1,%d0
+        bhi.s   tr_clr
+        movel   ef_trk,%d1
+        andil   #7,%d1
+        lsll    #6,%d1                  | trk * CX_STEPS
+        addl    %d2,%d1
+        lea     ef_cx_bits,%a0
+        tst.b   %a0@(0,%d1:l)
+        bne.s   tr_rts
+tr_clr: bsr.w   ef_tl_clr
+tr_rts: rts
 
 | ef_write_dest: on hit step d2 / trac a2. DEPTH=0 -> clear. DEST=PTCH ->
 | in-scale. DEST=AMP VOL -> unipolar below Part VOL (never louder).
@@ -2777,17 +2816,44 @@ pm_done: rts
 | ef_seed_from_trk: if focus TRAC has sample trigs on 0..STEPS-1, copy them
 | into ef_mask, set ef_free, ef_rot=0, ef_pulses=popcount — grid matches
 | the sequencer even when trigs were not written by Euclid. Empty range:
-| leave bank Euclid params alone (mask unused while free=0).
+| free=0 (Euclidean preview); keep saved PULSE/ROT (mask unused).
 | Caller: ef_sync_len first. Clobbers d0-d4/a0-a2.
 ef_seed_from_trk:
         bsr.w   ef_pull_mask            | d4 = popcount; ef_mask filled
         tstl    %d4
-        beq.s   sf_rts                  | empty: keep bank Euclid
+        beq.s   sf_empty
         moveq   #1,%d0
         movel   %d0,ef_free
         clrl    ef_rot                  | 1:1 step ↔ mask bit
         movel   %d4,ef_pulses           | density matches the track
-sf_rts: rts
+        rts
+sf_empty:
+        clrl    ef_free                 | clear/empty: not a stale free mask
+        rts
+
+| ef_mask_drift: while FILL open, if the live TRIG mask went empty but the
+| working grid is still free-mirroring, drop free so the bar shows the
+| Euclidean preview (stock clear / pad wipe). Does not fight CUE edits
+| over a non-empty track. Clobbers d0-d4/a0-a2.
+ef_mask_drift:
+        tstl    ef_win
+        beq.s   md_rts
+        tstl    ef_free
+        beq.s   md_rts                  | already Euclid preview
+        bsr.w   ef_trac_focus           | a2 = TRAC, d3 = n
+        moveq   #0,%d2
+md_lp:  cmpl    %d3,%d2
+        bcc.s   md_empty                | no sample trigs in range
+        bsr.w   ef_bit_addr
+        moveb   %a0@,%d1
+        and.l   %d0,%d1
+        bne.s   md_rts                  | still has trigs: leave free mask
+        addql   #1,%d2
+        bra.s   md_lp
+md_empty:
+        clrl    ef_free
+        bsr.w   ef_store_slot
+md_rts: rts
 
 | ---- layer --------------------------------------------------------------
         .balign 4

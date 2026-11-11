@@ -28,9 +28,10 @@ Euclid (stock step banks while open). FUNC + PAGE (SCALE SETUP) stays stock.
 - Each DEST keeps its own PLOCK PULSE/ROT (and DEPTH), like a stack of
   fill recipes. Scroll DEST to load that DEST's plock rhythm into the
   working knobs when LANE is PLCK.
-- On open (and track switch), the TRIG grid mirrors existing sample trigs
-  when any are present. Empty tracks stay on the Euclidean PULSE/ROT
-  preview.
+- On open, track switch, and **LANE** switch, the TRIG grid mirrors existing
+  sample trigs when any are present. Empty tracks stay on the Euclidean
+  PULSE/ROT preview (`free=0`). While FILL is open, a stock clear that
+  empties the live mask drops a stale free mirror so the bar matches.
 - PULSE / ROT / DEST / LANE / free mask / per-DEST DEPTH and PLOCK rhythms
   persist in `euclid.work` (bank, per-DEST depth/plock incl. free mask, per-track LANE).
   Defaults: TRIG PULSE 5, DEST = AMP VOL,
@@ -42,6 +43,12 @@ Euclid (stock step banks while open). FUNC + PAGE (SCALE SETUP) stays stock.
   DEST is cleared on silent steps so the lock layer matches the trig set;
   that DEST's PLOCK recipe is synced to the TRIG rhythm. With **LANE =
   PLCK**, the plock rhythm is independent (trigless stacks per DEST).
+- To **remove** locks (including ones baked from TRIG and synced into that
+  DEST's PLCK recipe): **LANE = PLCK**, set that DEST's **PULSE to 0**,
+  **YES**. That clears this DEST over the fill range and drops orphan
+  trigless bits when no other DEST still holds a lock on the step. YES on
+  **LANE = TRIG** with DEPTH > 0 **re-applies** locks on the trigs (and
+  re-syncs the PLCK recipe) — it does not honour a zeroed PLCK PULSE.
 - DEPTH 0 clears **this DEST** (TRIG path: on every step in range via
   hit/miss; PLOCK path: via write/clear). Non-zero: PTCH in-scale; AMP VOL
   unipolar below Part; else `[Part±DEPTH]`. Other DESTs stay stacked.

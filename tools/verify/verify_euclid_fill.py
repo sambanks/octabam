@@ -595,6 +595,17 @@ def check_ui(src: str) -> None:
           "wm_plock:" in _block(src, "ef_write_mask:", "ef_tl_bit_addr:")
           and "ef_tl_set" in _block(src, "wm_tl:", "wm_miss:")
           and "ef_phit" in _block(src, "wm_plock:", "wm_miss:"))
+    check("PULSE0 / dest-clear drops orphan TL (ef_tl_reconcile, stack-safe)",
+          "ef_tl_reconcile:" in src
+          and "ef_tl_reconcile" in _block(src, "wm_mtl:", "9:")
+          and "ef_cx_bits" in _block(src, "ef_tl_reconcile:", "ef_write_dest:")
+          and "DEST_LAST" in _block(src, "ef_tl_reconcile:", "ef_write_dest:"))
+    check("LANE switch re-seeds live sample trigs into TRIG grid",
+          "ef_seed_from_trk" in _block(src, "ln1:", "nd_ab:"))
+    check("draw empty-live drift drops stale free mask",
+          "ef_mask_drift" in _block(src, "ef_draw:", "ef_draw_pat:")
+          and "ef_mask_drift:" in src
+          and "sf_empty:" in src)
     check("PTCH carry on bare note trigs after plock miss",
           "ef_ptch_carry" in _block(src, "ef_write_mask:", "ef_write_dest:")
           and "ef_part_ptch" in _block(src, "ef_write_mask:", "ef_write_dest:"))
