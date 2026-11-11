@@ -18,6 +18,9 @@ input a steady tone (--audio-in tones).
            take's LIMIT), close to 120; A1's length 64, scale 1X; the
            transport runs; R1's loop end is cut to L <= the take; the
            first step comes within a few frames of the stop
+  stray    the same, then a stock T1 + REC AB at 13 s: FREE LOOP stops that recording
+           within a UI tick, puts R1's end, tempo, bars and LIMIT back (the loop
+           kept; its first frames are the input's) and shows REC: FREE LOOP ONLY
   overdub  the same, then T2's REC (channel 2): T2's recorder trig on
            the next step 1 fires (fl_takes, counted for FREE / GRID tracks only)
   mute     the same, then T1's PLAY/STOP (CC 91) tapped (MUTE NOW: at the
@@ -100,7 +103,7 @@ MAILBOX, LIMIT, REC_POS = 0x46C7E9FA, 0x46C7FE24, 0x46C802C8
 TRANSPORT, TEMPO = 0x800065B8, 0x80001814
 A1 = 0x400E21E0                                   # bank A, pattern 1
 SLOT_END_R1 = 0x100B14F0 + 0x448 * 128 + 0x130
-T1, UP, DOWN, RIGHT, NO, YES = 0x10, 0x33, 0x20, 0x21, 0x32, 0x31
+T1, UP, DOWN, RIGHT, NO, YES, REC_AB = 0x10, 0x33, 0x20, 0x21, 0x32, 0x31, 0x2B
 
 
 def cc(ms, channel, value):
@@ -273,6 +276,11 @@ def main():
              "lane": (0x8000082F, 1), "flex1": (A1 + 0x8ed80 + 0x2cb, 1), "src": (sym["fl_src"], 8),
              "lim8": (LIMIT, 32), "pos8": (REC_POS, 32),
              "ends": (0x100B14F0 + 0x448 * 128, 0x448 * 8)}
+    def shot(tag):                                     # the screen at the quit, as a PNG beside the dumps
+        subprocess.run([str(PY), str(ROOT / "tools/emu/lcd_view.py"), str(OUT / f"{tag}.lcd"),
+                        "--png", str(OUT / f"{tag}.png")], cwd=ROOT, capture_output=True)
+        print(f"         screen: {OUT / (tag + '.png')}")
+
     FREE = [cc(2000, 0, 127), cc(2100, 0, 0), cc(10000, 0, 127), cc(10100, 0, 0)]
     run = lambda n: not a.only or a.only == n
 
@@ -309,6 +317,36 @@ def main():
         steps = [t for t, v, _ in writes(log, 0x800065b5) if run_at and t >= run_at[0]]
         if stop and run_at:
             print(f"         stop posted at {stop[0]:.1f}, transport 1 at {run_at[0]:.1f} (port clock units)")
+
+    if run("stray"):
+        lines = FREE + key(12500, NO) + [                 # NO: the boot's SET DATE/TIME closed, the toast seen
+                        f"13000 key {T1:#x} down", f"13040 key {REC_AB:#x} down",   # stock T1 + REC AB
+                        f"13100 key {REC_AB:#x} up", f"13140 key {T1:#x} up"]
+        d, log = boot("stray", lines, 13300, dict(STATE, toast=(sym["fl_toast_act"], 16)),
+                      watch=f"{MAILBOX:#x},4;{REC_POS:#x},4;{SLOT_END_R1:#x},4;{sym['fl_toast_up']:#x},1", lcd=True)
+        shot("stray")
+        mail = writes(log, MAILBOX)
+        start = [t for t, v, _ in mail if v & 0x8000 and t > 0]
+        start = start[-1] if len(start) > 1 else None    # the take's start, then the stray's
+        ends = writes(log, SLOT_END_R1)
+        kept = [v for t, v, _ in ends if start and t < start]
+        pos = [v for t, v, _ in writes(log, REC_POS) if start and t > start]
+        end = u32(d["end1"])
+        print(f"         R1 end before {kept[-1] if kept else None}, during the stray "
+              f"{sorted(set(v for t, v, _ in ends if start and t > start))}, at 13.3 s {end}; "
+              f"the stray recorder wrote {max(pos) if pos else 0} samples from 0")
+        check("stray: stock T1 + REC AB on a looping T1: started, then stopped",
+              start is not None and any(v == 0x80 and t > start for t, v, _ in mail),
+              f"mailbox {[hex(v) for _, v, _ in mail if v][-3:]}")
+        check("stray: stopped within a UI tick (< 1,470 samples written)", 0 < max(pos or [0]) < 1470,
+              f"{max(pos or [0])} samples")
+        check("stray: T1's loop kept: R1's end, tempo, bars, LIMIT back as before", kept and end == kept[-1]
+              and end > 300000 and u32(d["limit"]) > end and d["st"][0] == 0,
+              f"end {end}, before {kept[-1] if kept else None}, LIMIT {u32(d['limit'])}, st {d['st'][0]}")
+        up = [v for t, v, _ in writes(log, sym["fl_toast_up"]) if start and t > start]
+        check("stray: the toast REC: FREE LOOP ONLY for T1, handed to stock's (fl_toast_up 1 then 0)",
+              d["toast"][:3] == bytes([7, 0, 21]) and up[:2] == [1, 0],
+              f"fl_toast_act {d['toast'][:4].hex()}, fl_toast_up {up[:4]}")
 
     if run("overdub"):
         lines = FREE + [cc(11000, 1, 127), cc(11100, 1, 0)]
@@ -542,11 +580,6 @@ def main():
               f"T5 recorder byte without UNDO {d0['voice'][0xA8 * 4 + 1]}, with {d['voice'][0xA8 * 4 + 1]}")
         check("undocut: T1 on R1, overdub off", d["lane"][0] == 0x80 and st_field(d, 0) == 0 and d["st"][0] == 0
               and st_field(d, 1) == 0, f"lane {d['lane'][0]:#x}, cur {st_field(d, 0)}, st {d['st'][0]}")
-
-    def shot(tag):                                     # the screen at the quit, as a PNG beside the dumps
-        subprocess.run([str(PY), str(ROOT / "tools/emu/lcd_view.py"), str(OUT / f"{tag}.lcd"),
-                        "--png", str(OUT / f"{tag}.png")], cwd=ROOT, capture_output=True)
-        print(f"         screen: {OUT / (tag + '.png')}")
 
     POP = {"take": (FREE[:2], 5000, 1), "armed": (FREE + [cc(11000, 0, 127), cc(11100, 0, 0)], 12500, 2),
            "over": (FREE + [cc(11000, 0, 127), cc(11100, 0, 0)], 21000, 3),
