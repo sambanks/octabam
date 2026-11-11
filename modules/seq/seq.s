@@ -112,7 +112,7 @@
         .set    X_C0,      X_GRID+CELL_W/2
         .set    X_C1,      X_GRID+CELL_W+CELL_W/2
         .set    X_C2,      X_GRID+2*CELL_W+CELL_W/2
-        .set    ICON_W,    29          | left-gutter Euclid mark (ring + E3)
+        .set    ICON_W,    29          | left-gutter SEQ mark (3-ring LED)
         .set    ICON_H,    29
         .set    PAT_COLS,  16          | steps per row
         .set    PAT_ROWS,  4           | 4×16 = 64 max
@@ -2817,8 +2817,8 @@ L_PLOCK:  .asciz "PLCK"
 L_DEPTH:  .asciz "DPTH"
 VFMT:     .asciz "%d"
         .balign 4
-| Euclid mark 29×29: ring + 16 step-dots; E(3,16) hits fat on the ring;
-| uneven triangle joins those hits. Column-major; bit 31 = bottom row.
+| SEQ mark 29×29: 3 rings E(4,12) LED; mid hollow squares at 45°.
+| Column-major; bit 31 = bottom row.
 ef_icon_bmp:
         .long   ICON_W, ICON_H, 1, ef_icon_data, ef_icon_mask
 ef_icon_mask:
@@ -2826,34 +2826,34 @@ ef_icon_mask:
         .long   0xfffffff8              | rows 0..28
         .endr
 ef_icon_data:
-        .long   0x00000000
-        .long   0x00020000
-        .long   0x005fd000
-        .long   0x00e23800
-        .long   0x01c01f00
-        .long   0x02000f80
-        .long   0x07001f80
-        .long   0x3a07ff80
-        .long   0x7ff807c0
-        .long   0x7e0004e0
-        .long   0x7c000c40
-        .long   0x3c000820
-        .long   0x24001820
-        .long   0x26001020
-        .long   0x72001070
-        .long   0x21003020
-        .long   0x21802020
-        .long   0x20806020
-        .long   0x10404040
-        .long   0x386040e0
-        .long   0x1820c0c0
-        .long   0x0a108280
-        .long   0x07198700
-        .long   0x02090200
-        .long   0x01cf1c00
-        .long   0x00efb800
-        .long   0x005fd000
-        .long   0x000f8000
+        .long   0x00070000
+        .long   0x001dc000
+        .long   0x00e73800
+        .long   0x03800e00
+        .long   0x06000300
+        .long   0x0c1fc180
+        .long   0x187070c0
+        .long   0x11c01c40
+        .long   0x31401460
+        .long   0x23c21e20
+        .long   0x220d8220
+        .long   0x461ac310
+        .long   0x44306110
+        .long   0xe4202138
+        .long   0xa4505128
+        .long   0xe4202138
+        .long   0x44306110
+        .long   0x461ac310
+        .long   0x220d8220
+        .long   0x23c21e20
+        .long   0x31401460
+        .long   0x11c01c40
+        .long   0x187070c0
+        .long   0x0c1fc180
+        .long   0x06000300
+        .long   0x03800e00
+        .long   0x00e73800
+        .long   0x001dc000
         .long   0x00070000
 | Static DEST name fallback (PAGE + PARAM) when the page resolver /
 | FX table miss. Live path uses descriptors (+4 / +0x16) + LFD_RESOLVER.
