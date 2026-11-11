@@ -100,9 +100,9 @@
     "fill": {
       "image": "seq/fill.png",
       "caption": "SEQ: title SEQ, C=LANE (TRIG/PLCK), A/B PULSE/ROT, D/E DEST/DEPTH, 4\u00d716 focused grid, LEN gutter.",
-      "remix": "cx",
-      "source": "unit LCD (USB SCREEN), CX EUCL93",
-      "firmware_sha256": ""
+      "remix": "seq-port",
+      "source": "emulator panel UART",
+      "firmware_sha256": "cf6c4a638641fcb36133dfc369385ddfb4f334c94be11438dd5b065a7401aace"
     }
   },
   "rec-threshold": {
