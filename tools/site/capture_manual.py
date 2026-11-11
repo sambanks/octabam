@@ -182,7 +182,7 @@ def capture_drummer(p,r):
 
 def capture_features(p,r):
     p.chord('t1','page')
-    shot(p,'euclid-fill','fill','Euclidean trig fill: STEPS, PULSE, ROT, RAND VEL, RAND PTCH.',r)
+    shot(p,'euclid-fill','fill','EUCLID FILL: ring icon + LEN, stock 3×2 PULSE/ROT / DEST/DEPTH (C/F empty), 4×16 step squares.',r)
     close(p)
     p.chord('func','recab');enc(p,3,12);close(p)
     p.chord('func','recab')
