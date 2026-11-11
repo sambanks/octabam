@@ -82,13 +82,14 @@ use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 - **Any other DEST:** uniform `[Part−DEPTH .. Part+DEPTH]` clamped 0..127.
 
 **LANE = TRIG:** YES writes DEST/DEPTH locks on the sample-trig steps
-and syncs that DEST's plock recipe to the TRIG rhythm (lock layer = trigs).
-**LANE = PLCK:** independent plock rhythm; plock-only → trigless (+0x10);
-miss / PULSE 0 clears this DEST on every step in range — including note
-trigs — so a PLCK YES **overwrites** TRIG-baked locks for that DEST
-(other DEST locks stay). PULSE 0 also drops orphan trigless bits when no
-other DEST remains on the step. TRIG YES with DEPTH > 0 re-applies locks
-on the trigs and re-syncs the PLCK recipe.
+and syncs that DEST's plock recipe to the TRIG rhythm. Only **this DEST**
+is reshaped — other DEST locks stay; if a step loses its note trig but
+still holds another DEST, it becomes trigless so those locks remain
+audible. **LANE = PLCK:** independent plock rhythm; plock-only → trigless
+(+0x10); miss / PULSE 0 clears this DEST on every step in range —
+including note trigs — so a PLCK YES **overwrites** TRIG-baked locks for
+that DEST (other DEST locks stay). PULSE 0 also drops orphan trigless
+bits when no other DEST remains on the step.
 
 
 YES writes **only** the selected DEST's lock bytes (plus the TRIG mask).

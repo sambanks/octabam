@@ -1796,8 +1796,9 @@ ef_drop_clr_undo:
 
 | ef_write_mask(trac, rot, k, n) -- stack: TRIG rot/k/n. Rewrites mask 0
 | from TRIG. DEST/DEPTH:
-|   LANE=TRIG: locks on TRIG hits (same steps); clear this DEST on !thit;
-|   sync that DEST's plock recipe to the TRIG rhythm after the loop.
+|   LANE=TRIG: locks on TRIG hits (same steps); clear this DEST on !thit
+|   (other DEST locks kept — promote to TL if the note drops); sync that
+|   DEST's plock recipe to the TRIG rhythm after the loop.
 |   LANE=PLOCK: independent plock rhythm; plock∩¬trig sets TL; miss clears
 |   this DEST on every step (incl. note trigs / PTCH) so a PLCK YES
 |   overwrites TRIG-baked locks for that DEST. Other DEST trigless stay.
@@ -1945,9 +1946,10 @@ ef_tl_clr:
         moveb   %d1,%a0@
         rts
 
-| ef_tl_reconcile: d2=step, a2=trac. Clear TL if thit, or if every #1 lock
-| byte (32 flats, incl. sample-lock) is 0xff and no CX bit remains.
-| Matches stock's empty-row scan (0x40038a5c path). Clobbers d0/d1/a0.
+| ef_tl_reconcile: d2=step, a2=trac. Note trig -> clear TL. Else if any
+| #1 lock (32 flats) or CX bit remains -> SET TL so other DEST stacks
+| survive a TRIG reshape that drops the note (else locks go orphan /
+| invisible). No locks left -> clear TL. Clobbers d0/d1/a0.
 ef_tl_reconcile:
         tstl    ef_thit
         bne.s   tr_clr
@@ -1959,7 +1961,7 @@ ef_tl_reconcile:
         moveq   #-1,%d0
 tr_scan:
         cmp.b   %a0@,%d0
-        bne.s   tr_rts                  | another flat still locked
+        bne.s   tr_keep                 | another DEST still locked -> TL
         addql   #1,%a0
         subql   #1,%d1
         bpl.s   tr_scan
@@ -1974,9 +1976,12 @@ tr_scan:
         addl    %d2,%d1
         lea     ef_cx_bits,%a0
         tst.b   %a0@(0,%d1:l)
-        bne.s   tr_rts
+        bne.s   tr_keep
 tr_clr: bsr.w   ef_tl_clr
-tr_rts: rts
+        rts
+tr_keep:
+        bsr.w   ef_tl_set
+        rts
 
 | ef_write_dest: on hit step d2 / trac a2. DEPTH=0 -> clear. DEST=PTCH ->
 | in-scale. DEST=AMP VOL -> unipolar below Part VOL (never louder).

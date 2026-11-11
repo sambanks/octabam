@@ -604,6 +604,10 @@ def check_ui(src: str) -> None:
           and "ef_tl_reconcile" in _block(src, "wm_mtl:", "9:")
           and "ef_cx_bits" in _block(src, "ef_tl_reconcile:", "ef_write_dest:")
           and "moveq   #31,%d1" in _block(src, "ef_tl_reconcile:", "ef_write_dest:"))
+    check("TRIG reshape keeps other DEST locks (reconcile SETs TL when !thit)",
+          "tr_keep:" in _block(src, "ef_tl_reconcile:", "ef_write_dest:")
+          and "ef_tl_set" in _block(src, "tr_keep:", "ef_write_dest:")
+          and "bne.s   tr_keep" in _block(src, "ef_tl_reconcile:", "tr_clr:"))
     check("fill rebuilds plock LED bitmap (LOCK_COLL) after NOTIFY",
           re.search(r"\.set\s+LOCK_COLL,\s*0x400339d8", src) is not None
           and "jsr     LOCK_COLL" in _block(src, "ef_fill:", "fout:")

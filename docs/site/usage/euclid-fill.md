@@ -38,11 +38,12 @@ Euclid (stock step banks while open). FUNC + PAGE (SCALE SETUP) stays stock.
 - DEST matches LFO SETUP PMTR (PAGE / PARAM). 0..29 page-1 flats (AMP XVOL
   skipped); on CX OSC also 30..34 SETUP slots (stackable in DRAM).
 - **DEST / DEPTH** always apply on YES. With **LANE = TRIG**, locks land on
-  the **same steps as the sample trigs** (DEPTH randomizes that DEST); this
-  DEST is cleared on silent steps so the lock layer matches the trig set;
-  that DEST's PLOCK recipe is synced to the TRIG rhythm. With **LANE =
-  PLCK**, the plock rhythm is independent (trigless stacks per DEST); a
-  PLCK **YES** clears this DEST on misses — including on note trigs — so
+  the **same steps as the sample trigs** (DEPTH randomizes that DEST); only
+  **this DEST** is cleared on silent steps (other DEST locks stay — a step
+  that loses its note but still has another DEST becomes trigless); that
+  DEST's PLOCK recipe is synced to the TRIG rhythm. With **LANE = PLCK**,
+  the plock rhythm is independent (trigless stacks per DEST); a PLCK
+  **YES** clears this DEST on misses — including on note trigs — so
   regenerating the same DEST from PLCK **overwrites** TRIG-baked locks
   (e.g. pitch on trigs goes away when PLCK ROT changes).
 - To **clear** a DEST without rewriting: **LANE = PLCK**, set that DEST's
