@@ -24,6 +24,9 @@ EVENTS = (
 
 # (module key, symbol prefix, events handled). Table order is run order. A key may
 # be a tuple of module keys: the client is in when all of them are.
+PAGES_LOCKS = ("PAGES", "EVENTS", "DRUMMER")
+
+
 def present(key, modules):
     return all(k in modules for k in (key if isinstance(key, tuple) else (key,)))
 
@@ -51,6 +54,11 @@ CLIENTS = (
                        "pstore_pre", "pstore_post", "preload_post")),
     ("SEQ", "ef", ("loadall_post", "loadmask_post", "newproj", "bankw_post",
                            "pstore_pre", "pstore_post", "preload_post")),
+    # PAGES' locks (pages/locks.c, PGLOCKS.WORK): a tuple key is present when every
+    # one of its modules is -- PAGES' locks unit is linked with PAGES, EVENTS and a
+    # LOCKS client (pages/manifest.py lock_clients; DRUMMER today).
+    (PAGES_LOCKS, "pg", ("loadall_pre", "loadall_post", "loadmask_post", "newproj", "bankw_post",
+                         "pstore_pre", "pstore_post", "preload_post")),
     # No side file: partclear holds its per-track state and the partsaved that ends
     # the clear lets it go (stock Part Clear tail-jumps into Part Save).
     ("VARISPEED", "vs", ("partsaved", "partclear")),
@@ -60,18 +68,18 @@ CLIENTS = (
 # A client's number in the refusal registry (store_refuse) and in ans_tab: only the
 # clients that keep a side file (VARISPEED keeps none and has no entry).
 CLIENT_IDS = {"PLOCKS P2": 0, "KITS": 1, "MIDI SCENES": 2, "PERSISTENT BUFFERS": 3, "MORPH": 4,
-              "FREE LOOP": 5, "SCALES": 6, "CHORDS FACTORY": 7, "DRUMMER": 8, "SEQ": 9}
+              "FREE LOOP": 5, "SCALES": 6, "CHORDS FACTORY": 7, "DRUMMER": 8, "SEQ": 9, PAGES_LOCKS: 10}
 
 
 def store_inc(modules, remix):
     out = ["ev_ctl:", "        .long   kits_level" if "KITS" in modules else "        .long   0",
            "cp_cbs:", "        .long   name_fp" if "COPY PROJECT" in modules else "        .long   0",
-           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn, nm_pbf, nm_mrp, nm_fl, nm_sc, nm_ch, nm_dr, nm_ef",
+           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn, nm_pbf, nm_mrp, nm_fl, nm_sc, nm_ch, nm_dr, nm_ef, nm_pg",
            'nm_plk: .asciz "P2LK%02d.WORK"', 'nm_kits: .asciz "KITS.WORK"',
            'nm_scn: .asciz "SCENES.WORK"', 'nm_pbf: .asciz "BUFFERS/REC%d.WAV"',
            'nm_mrp: .asciz "MORPH.WORK"', 'nm_fl: .asciz "FREELOOP.WORK"',
            'nm_sc: .asciz "SCALES.WORK"', 'nm_ch: .asciz "CHORDS.WORK"',
-           'nm_dr: .asciz "DRUMMER.WORK"', 'nm_ef: .asciz "EUCLID.WORK"',
+           'nm_dr: .asciz "DRUMMER.WORK"', 'nm_ef: .asciz "EUCLID.WORK"', 'nm_pg: .asciz "PGLOCKS.WORK"',
            ".balign 2", "ans_tab:"]
     for key, _prefix, _events in sorted((c for c in CLIENTS if c[0] in CLIENT_IDS),
                                         key=lambda c: CLIENT_IDS[c[0]]):
