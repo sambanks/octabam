@@ -71,16 +71,18 @@ Euclidean. PULSE / ROT / CUE with sample trigs already present open stock
 (**AMP XVOL** skipped). On **CX OSC**, **30..34** SETUP knobs stack in DRAM.
 
 **DEPTH** (0..127): at 0 with an active plock lane, YES clears that DEST's
-locks on the fill range. Non-zero:
+locks and trigless bits on every step in the fill range. Non-zero:
 
 - **DEST = PTCH:** in-scale around Part PLAYBACK PTCH. Bare note trigs
   without a plock hit carry the last plock pitch (else Part).
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
 - **Any other DEST:** uniform `[Part−DEPTH .. Part+DEPTH]` clamped 0..127.
 
-PLOCK PULSE 0 = plock lane inactive: YES writes trigs only and leaves DEST
-locks alone. PLOCK hits without a TRIG hit set the trigless-lock mask
-(+0x10).
+PLOCK PULSE 0 (not free): YES still clears **this DEST** and trigless bits
+over the fill range (TRIG rewrite unchanged). PLOCK active: both hits →
+note + lock; plock-only → trigless-lock (+0x10); miss → clear this DEST
+(PTCH carry on bare note when DEPTH>0). DEPTH 0 clears DEST+TL on every
+step in range.
 
 YES writes **only** the selected DEST's lock bytes (plus the TRIG mask).
 A later fill with another DEST leaves earlier locks alone.

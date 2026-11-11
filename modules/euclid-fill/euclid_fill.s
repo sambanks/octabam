@@ -41,8 +41,9 @@
 | open retargets YES and loads its slot. Multi-target YES writes each
 | target's own stored params.
 |
-| YES write: mask 0 from TRIG; current DEST locks from that DEST's PLOCK
-| seq; plock∩¬trig sets trigless-lock (+0x10). Battery mirror covers
+| YES write: mask 0 from TRIG; PLOCK on -> DEST locks + TL; PLOCK off
+| (PULSE=0) clears this DEST + TL over the fill range. plock∩¬trig =
+| trigless-lock (+0x10). Battery mirror covers
 | masks 0..2 + DEST lock bytes; dirty + 0x40027e00.
 
         .set    HELD,      0x460fab40   | held track keys, bit t
@@ -1802,9 +1803,12 @@ ef_drop_clr_undo:
 1:      rts
 
 | ef_write_mask(trac, rot, k, n) -- stack: TRIG rot/k/n. Rewrites mask 0
-| from TRIG; DEST locks from PLOCK (ef_ppulses/prot); plock∩¬trig sets
-| trigless-lock (+0x10). DEST=PTCH + trig∩¬plock: carry last PTCH (or Part).
-| Leaves n..63 alone. Other DEST locks stack across fills.
+| from TRIG. When PLOCK active: DEST locks from plock rhythm; plock∩¬trig
+| sets trigless-lock (+0x10). When PLOCK off (PULSE=0, not free): still
+| clears this DEST + TL over 0..n-1 (authoritative wipe). DEST=PTCH +
+| trig∩¬plock + DEPTH>0: carry last PTCH (or Part). Leaves n..63 alone.
+| Other DEST locks stack across fills. DEPTH 0 + PLOCK on: clear DEST and
+| TL on every step in range (never leave orphan TL on cleared locks).
 ef_write_mask:
         lea     -28(%sp),%sp
         movem.l %d2-%d7/%a2,(%sp)
@@ -1825,7 +1829,7 @@ ef_write_mask:
         movel   (%sp)+,%d6
         movel   (%sp)+,%d5
         movel   (%sp)+,%d4
-wm0:    | Plock inactive (PULSE=0, not free): trigs only — leave DEST/TL.
+wm0:    | Plock active iff free mask or PULSE>0.
         clrl    ef_plock_on
         tstl    ef_pfree
         bne.s   wm_on
@@ -1856,7 +1860,7 @@ wm_off: moveq   #0,%d2
 wm_t0:  movel   (%sp)+,%d6
         movel   (%sp)+,%d4
         tstl    ef_plock_on
-        beq.w   8f                      | trig-only fill
+        beq.w   wm_dest_clr             | PLOCK off: clear this DEST + TL
         movel   %d4,-(%sp)
         movel   %d6,-(%sp)
         bsr.w   ef_phit                 | d7 = phit
@@ -1864,7 +1868,7 @@ wm_t0:  movel   (%sp)+,%d6
         movel   (%sp)+,%d4
         tstl    %d7
         beq.w   wm_miss
-        | PLOCK hit: write DEST lock; TL if no sample trig
+        | PLOCK hit: write DEST lock; TL if no sample trig (unless DEPTH 0)
         bsr.w   ef_write_dest
         movel   ef_dest,%d0
         tstl    %d0
@@ -1880,7 +1884,9 @@ wm_t0:  movel   (%sp)+,%d6
         cmpl    %d3,%d0
         beq.s   wm_tl
         movel   %d0,ef_ptch_carry
-wm_tl:  tstl    ef_thit
+wm_tl:  tstl    ef_depth
+        beq.s   wm_clr_tl               | DEPTH 0: never leave TL
+        tstl    ef_thit
         bne.s   wm_clr_tl               | note trig: clear trigless bit
         bsr.w   ef_tl_set
         bra.s   8f
@@ -1891,11 +1897,11 @@ wm_miss:
         | no plock: clear DEST, or PTCH-carry on bare note trig
         movel   ef_dest,%d0
         tstl    %d0
-        bne.s   wm_mclr
+        bne.s   wm_dest_clr
         tstl    ef_thit
-        beq.s   wm_mclr
+        beq.s   wm_dest_clr
         tstl    ef_depth
-        beq.s   wm_mclr                 | DEPTH 0: clear, no carry
+        beq.s   wm_dest_clr             | DEPTH 0: clear, no carry
         | write carried PTCH onto the note trig
         movel   %d2,%d1
         lsll    #5,%d1
@@ -1903,7 +1909,8 @@ wm_miss:
         movel   ef_ptch_carry,%d0
         moveb   %d0,%a2@(0,%d1:l)
         bra.s   wm_mtl
-wm_mclr:
+| Clear this DEST lock (page-1 0xff or CX bank) and trigless bit.
+wm_dest_clr:
         movel   ef_dest,%d0
         moveq   #DEST_LAST,%d1
         cmpl    %d1,%d0
