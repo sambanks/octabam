@@ -176,6 +176,27 @@ milieu.
 KIT BALANCE est enregistré dans la Part : chaque Part a son mélange, et un
 changement de Part l'amène. Les trigs de la piste jouent toujours.
 
+**Des locks sur les pas et les scènes.** KIT BALANCE prend des P-LOCK,
+comme une page de stock (les locks de PAGES ; le remix doit contenir
+EVENTS) :
+
+- **Sur un pas.** En GRID RECORDING, posez un trig (TRIG, ou FUNC + TRIG
+  pour un trigless), tenez-le et tournez A-F : le pas verrouille
+  l'élément. Le titre affiche `STEP n` ; un élément verrouillé montre sa
+  valeur, les autres `--`. FUNC tenu en tournant efface le lock. Comme sur
+  stock, le lock joue de son pas jusqu'au trig suivant de la piste.
+- **Sur une scène.** Tenez SCENE A ou B et tournez A-F : la scène
+  verrouille l'élément (titre `SCENE n`), et le crossfader passe d'un
+  mélange à l'autre. FUNC tenu en tournant l'efface.
+
+![KIT BALANCE : les locks du pas 3, trig 3 tenu](../../docs/site/img/drummer/balance-step.png)
+
+![KIT BALANCE : le lock de la scène A, SCENE A tenue](../../docs/site/img/drummer/balance-scene.png)
+
+Les locks suivent leurs trigs comme ceux de stock : retirer un trig retire
+ses locks, trig + PLAY les efface, et copier un trig, une piste ou un
+pattern les emporte. Ils sont enregistrés avec le projet (`pglocks.work`).
+
 ### NEXT : des ordres sur le temps
 
 ![NEXT, un ordre armé](../../docs/site/img/drummer/next-armed.png)
