@@ -29,6 +29,11 @@ DETOURS = (
 )
 
 
+def drummer_inc(modules, remix=None):
+    """HAVE_PAGELOCKS: KIT BALANCE takes PAGES' locks (PAGES and EVENTS in the remix)."""
+    return f".set HAVE_PAGELOCKS, {int('PAGES' in modules and 'EVENTS' in modules)}\n"
+
+
 MODULE = Module(
     name="drummer",
     key="DRUMMER",
@@ -42,7 +47,7 @@ MODULE = Module(
                "verify_kitmaker.py, verify_autokit.py, verify_live2.py, verify_next.py (NEXT's orders on the beat)",
     doc="DRUMMER machine: a sliced FLEX drum loop played as a drummer (styles, humanisation, BRK breaks on the crossfader).",
     requires=("STORE",),                # drummer.work (store.c), client 8
-    linked=(Linked("drummer", "modules/drummer/drummer_unit.s", cpu="5475", dram=True),),
+    linked=(Linked("drummer", "modules/drummer/drummer_unit.s", cpu="5475", dram=True, include=drummer_inc),),
     # The machine row (machine.s; ANALOG BD's seams, measured on the unit by repeat98)
     detours=DETOURS + (
         Detour(0x400334D8, H("2f02222f0008"), "drummer", "dr_machine_name", "format machine row 5 as DRUMMER"),

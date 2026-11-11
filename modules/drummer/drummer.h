@@ -38,6 +38,7 @@ enum { DR_ACCENT, DR_NORMAL, DR_SOFT, DR_ROLES };
                                  * FTWK HILF */
 
 enum { DR_MIX_KICK, DR_MIX_SNARE, DR_MIX_HATS, DR_MIX_CYMB, DR_MIX_TOMS, DR_MIX_PERC, DR_MIXES };
+#define DR_LK_PAGE 1u            /* KIT BALANCE's page id in PAGES' locks (pages/manifest.py LOCKS) */
                                  /* KIT BALANCE's groups: KICK; SNARE GHOST; HAT C HAT O; RIDE CRASH; TOM; PERC */
 
 #define DR_GAIN_MIN (-24)        /* a slice's GAIN in the KIT window, dB */

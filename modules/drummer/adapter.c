@@ -552,6 +552,11 @@ unsigned dr_loop_view(unsigned t, unsigned *slices)
                              loop_bars100(t, set), U32(set + 276u)) : 0;
 }
 
+/* PAGES' locks (hooks.s: PAGES' functions when the remix has them, else the
+ * Part's values as they are): KIT BALANCE takes step and scene locks. */
+void dr_pl_step(unsigned page, unsigned track, unsigned bank, unsigned pattern, unsigned step, unsigned trig);
+unsigned dr_pl_value(unsigned page, unsigned track, unsigned slot, unsigned base);
+
 static void params_of(unsigned t, DrParams *p)
 {
     const uint8_t *k = dr_knob[t];
@@ -576,8 +581,8 @@ static void params_of(unsigned t, DrParams *p)
          * bytes, once marked (kit.c seeds them at 64); 64 before */
         const volatile uint8_t *part = bank_ok() ? part_base() : 0;
         unsigned i, marked = part && part[MIX_MARK + 30u * t] == MIX_MAGIC;
-        for (i = 0; i < DR_MIXES; i++)
-            p->mix[i] = marked ? (uint8_t)(part[MIX_AT + 30u * t + i] & 0x7f) : 64;
+        for (i = 0; i < DR_MIXES; i++)          /* a step lock, then the scenes (PAGES' locks) */
+            p->mix[i] = (uint8_t)(dr_pl_value(DR_LK_PAGE, t, i, marked ? part[MIX_AT + 30u * t + i] & 0x7fu : 64u) & 0x7fu);
         marked = part && part[FILLS_MARK + 30u * t] == FILLS_MAGIC;   /* FILLS: AUTO each before */
         for (i = 0; i < DR_FILLS; i++)
             p->fill[i] = marked ? (uint8_t)(part[FILLS_AT + 30u * t + i] & 0x0f) : 0;
@@ -615,7 +620,7 @@ static void scene_locks(unsigned t, unsigned slice, uint32_t blk)
  * transport start and after an edit: idx = the step it builds, lock_slot
  * -1). A second call for the step already decided replays that decision
  * (the engine moves once per step); the transport start resets once. */
-static void on_build(unsigned t, unsigned idx, int lock_slot)
+static void on_build(unsigned t, unsigned idx, int lock_slot, unsigned bank, unsigned ptn, unsigned step)
 {
     unsigned bar, forced, kind, n, restart, dup;
     DrParams p;
@@ -656,6 +661,9 @@ static void on_build(unsigned t, unsigned idx, int lock_slot)
 
     kind = U32(KIND + 4u * t);
     forced = kind == 29;
+    /* the builder's step: its page locks, and its trig (a call again for the
+     * same step, a dup, is no trig: KIND is then the hit DRUMMER added) */
+    dr_pl_step(DR_LK_PAGE, t, bank, ptn, step, !dup && (kind == 29 || kind == 1));
     dr_dbg[3] = kind;
     dr_dbg[4] = U32(SEQ_TRANSPORT);
     dr_dbg[5] = idx;
@@ -761,16 +769,16 @@ static void on_build(unsigned t, unsigned idx, int lock_slot)
     dr_count[t]++;
 }
 
-void dr_on_step(unsigned t, int lock_slot)
+void dr_on_step(unsigned t, int lock_slot, unsigned bank, unsigned ptn, unsigned step)
 {
     dr_dbg[0]++;
-    on_build(t, U8(STEPCTR + t), lock_slot);
+    on_build(t, U8(STEPCTR + t), lock_slot, bank, ptn, step);
 }
 
-void dr_on_rebuild(unsigned t, unsigned idx)
+void dr_on_rebuild(unsigned t, unsigned idx, unsigned bank, unsigned ptn, unsigned step)
 {
     dr_stats[7]++;
-    on_build(t, idx, -1);
+    on_build(t, idx, -1, bank, ptn, step);
 }
 
 void dr_frame(void)
