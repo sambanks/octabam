@@ -186,6 +186,8 @@ moment it costs real work, and add its line here.
 
 - [The page plane `0x46c7e0ea` is not the screen](docs/contributing/TRAPS.md#trap-page-plane) — windows are other layers the flush composites; the shown frame is `[0x400b970c]`; check against the decoded panel stream.
 
+- [Stock icon blit: bit 31 is the bottom row](docs/contributing/TRAPS.md#trap-icon-bit31) — `lsll` nudges DOWN, `lsrl` UP; CX OSC FDBK = `lsll #1`, DEC HOLD = hollow h=10.
+
 - [A shared string helper's bound cut the load's path](docs/contributing/TRAPS.md#trap-strcat-bound) — REMIX SWITCH's 30-byte `strcat` cut `/BRAIN/REMIXES/` + a name over 14 characters; bound each buffer at the buffer, and give a fixture the longest name the build writes.
 
 - [A branch can enter the middle of a displaced span](docs/contributing/TRAPS.md#trap-detour-interior) — whole instructions are insufficient: keep shared branch targets; the MIDI CHROMATIC gate exercises both paths.

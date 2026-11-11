@@ -187,6 +187,36 @@ def capture_free_loop(p,r):
     shot(p,'free-loop','marks-overdub','T2 overdubbing: a dot left of its icon.',r)
 
 
+def capture_drummer(p,r):
+    # The project is modules/drummer/manual_fixture.py's: T1 FLEX on a sliced synthetic loop.
+    p.press('t1',settle=300)
+    p.chord('func','pg_playback',settle=400)
+    press(p,'down',6)
+    shot(p,'drummer','machines','FUNC + SRC on T1: the machine list, DRUMMER the last row.',r)
+    p.press('yes',settle=1500)
+    shot(p,'drummer','config','DRUMMER chosen: its CONFIG knobs STYL VEL ALT SWNG HUMN VAR.',r)
+    p.press('no',settle=1500)
+    shot(p,'drummer','ask','DRUMMER asks to make a kit from the slices (AUTO).',r)
+    p.press('yes',settle=600)
+    shot(p,'drummer','auto','AUTO done: the toast says how many slices were sorted.',r)
+    p.run(3000)                    # the toast gone: the track is on its LIVE page already
+    shot(p,'drummer','live','The LIVE page: SEED DENS CPLX ORN BRK GHST.',r)
+    p.press('pg_playback',settle=600)
+    shot(p,'drummer','balance','SRC again: KIT BALANCE, the mix of the drums.',r)
+    p.press('pg_playback',settle=600)
+    shot(p,'drummer','fills','SRC a third time: FILLS.',r)
+    p.press('pg_playback',settle=600)
+    p.key('trig1',True);p.run(200);p.press('bank',settle=200);p.key('trig1',False);p.run(800)
+    shot(p,'drummer','kit-zones','Trig 1 held + BANK: the KIT window, page 1 (zone, role).',r)
+    p.press('right',settle=600)
+    shot(p,'drummer','kit-align','KIT window page 2: ALIGN, GAIN, SCENE, DOSE.',r)
+    p.press('right',settle=600)
+    shot(p,'drummer','kit-track','KIT window page 3: the track\'s settings.',r)
+    enc(p,5,1);p.run(600)
+    shot(p,'drummer','redrum','Page 3, F turned once: REDRUM AUTO, the loop read as 1 bar of 16 slices.',r)
+    p.press('no',settle=600)
+
+
 def capture_features(p,r):
     p.chord('t1','page')
     shot(p,'euclid-fill','fill','Euclidean trig fill: STEPS, PULSE, ROT, RAND VEL, RAND PTCH.',r)
@@ -310,21 +340,26 @@ def capture_octa303(p,r):
 
 
 def capture_cxosc(p,r):
-    # Same choreography as blackpyramids: pick the sixth row, then reopen
-    # SRC SETUP so the list highlights the assigned machine (visible 6 keeps
-    # STATIC..CX OSC on screen). Right-hand knobs stay stock FLEX.
+    # Sixth machine-list row → CX OSC. PLAYBACK: PTCH RATO INDX FINE FOLD MIX.
+    # FUNC+PLAYBACK SETUP: CAR MOD DEC SYMM FDBK PWM.
     press(p,'t1')
     p.chord('func','pg_playback')
     press(p,'down',5)
     press(p,'yes')
     close(p)
     press(p,'pg_playback')
-    enc(p,3,40)   # FOLD default 40 → ~80: mid-high zig-zags
-    enc(p,4,36)   # SYMM default 64 → ~100: upper half dominates (skew off-center)
-    enc(p,5,-64)  # DEC: from HOLD (127) toward mid so the envelope icon shows a fall
-    shot(p,'cxosc','source','CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.',r)
+    enc(p,2,48)   # INDX 0 → ~48: sideband icon readable
+    enc(p,4,64)   # FOLD 0 → ~64: folder zig-zags
+    enc(p,5,40)   # MIX mid: dial off the left stop
+    shot(p,'cxosc','source','CX OSC PLAYBACK: PTCH RATO INDX FINE FOLD MIX.',r)
     p.chord('func','pg_playback')
-    shot(p,'cxosc','setup','SRC SETUP: CX OSC selected in the machine list.',r)
+    enc(p,0,40)   # CAR off sine
+    enc(p,1,40)   # MOD off sine
+    enc(p,2,-40)  # DEC off HOLD so the fall shows
+    enc(p,3,20)   # SYMM off 64 (skew)
+    enc(p,4,24)   # FDBK above 0 so the loop OR shows
+    enc(p,5,0)    # PWM stays mid (~64)
+    shot(p,'cxosc','setup','SRC SETUP with CX OSC: CAR MOD DEC SYMM FDBK PWM.',r)
 
 
 def capture_synth(p,r):
@@ -440,6 +475,11 @@ def prepare(remix,project,assignments):
     if assignments and not any(fixture.glob('bank*.work')):
         raise SystemExit(f'{fixture}: set_fx had no banks to write')
     audio=[]
+    if remix=='drummer':
+        # A synthetic drum loop on T1 (modules/drummer/manual_fixture.py), made at capture time.
+        sys.path.insert(0,str(ROOT/'modules/drummer'))
+        import manual_fixture
+        audio=manual_fixture.build(fixture)
     if remix=='octatrick':
         import re,wave
         marker=fixture/'FMSYNTH.WAV'
@@ -470,7 +510,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','drummer'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -498,6 +538,7 @@ def main():
         elif group=='verberation':jobs=[('verberation',capture_fx,[(2,'fx2','VERBERATION')])]
         elif group=='morph':jobs=[('morph',capture_morph,[])]
         elif group=='free-loop':jobs=[('free-loop',capture_free_loop,[])]
+        elif group=='drummer':jobs=[('drummer',capture_drummer,[])]
         elif group=='machines':jobs=[('analog-bassdrum',capture_analog,[]),('octatrick',capture_synth,[]),('blackpyramids-303',capture_blackpyramids,[]),('octa303',capture_octa303,[]),('cxosc',capture_cxosc,[])]
         elif group=='devilish':jobs=[('devilish',capture_fx,[(2,'fx2','DEVILISH')])]
         elif group=='vibrato':jobs=[('vibrato',capture_fx,[(2,'fx1','VIBRATO')])]

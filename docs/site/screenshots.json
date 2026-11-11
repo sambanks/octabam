@@ -900,17 +900,17 @@
   "cxosc": {
     "source": {
       "image": "cxosc/source.png",
-      "caption": "CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.",
-      "remix": "cxosc",
-      "source": "emulator panel UART",
-      "firmware_sha256": "4e612b3b898b1002d7428f6c1dae7808e7d852a766616a996f0fb27eb392743a"
+      "caption": "CX OSC PLAYBACK: PTCH RATO INDX FINE FOLD MIX.",
+      "remix": "cxosc-core",
+      "source": "unit USB MIDI (SCREEN SysEx, CX 75)",
+      "firmware_sha256": "0fa154b82e630a2bc229d1da389847a36b8aac337eb4681807a41aa024c631d2"
     },
     "setup": {
       "image": "cxosc/setup.png",
-      "caption": "SRC SETUP: CX OSC selected in the machine list.",
-      "remix": "cxosc",
-      "source": "emulator panel UART",
-      "firmware_sha256": "4e612b3b898b1002d7428f6c1dae7808e7d852a766616a996f0fb27eb392743a"
+      "caption": "SRC SETUP with CX OSC: CAR MOD DEC SYMM FDBK PWM.",
+      "remix": "cxosc-core",
+      "source": "unit USB MIDI (SCREEN SysEx, CX 75)",
+      "firmware_sha256": "0fa154b82e630a2bc229d1da389847a36b8aac337eb4681807a41aa024c631d2"
     }
   },
   "morph": {
@@ -1084,6 +1084,85 @@
       "remix": "vibrato",
       "source": "emulator panel UART",
       "firmware_sha256": "ba5e3644e5aea61b6816c65a8cfdd29dd03ba162979d95b64ce114c4994b8e45"
+    }
+  },
+  "drummer": {
+    "machines": {
+      "image": "drummer/machines.png",
+      "caption": "FUNC + SRC on T1: the machine list, DRUMMER the last row.",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "ask": {
+      "image": "drummer/ask.png",
+      "caption": "DRUMMER asks to make a kit from the slices (AUTO).",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "auto": {
+      "image": "drummer/auto.png",
+      "caption": "AUTO done: the toast says how many slices were sorted.",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "config": {
+      "image": "drummer/config.png",
+      "caption": "DRUMMER chosen: its CONFIG knobs STYL VEL ALT SWNG HUMN VAR.",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "live": {
+      "image": "drummer/live.png",
+      "caption": "The LIVE page: SEED DENS CPLX ORN BRK GHST.",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "balance": {
+      "image": "drummer/balance.png",
+      "caption": "SRC again: KIT BALANCE, the mix of the drums.",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "fills": {
+      "image": "drummer/fills.png",
+      "caption": "SRC a third time: FILLS.",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "kit-zones": {
+      "image": "drummer/kit-zones.png",
+      "caption": "Trig 1 held + BANK: the KIT window, page 1 (zone, role).",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "kit-align": {
+      "image": "drummer/kit-align.png",
+      "caption": "KIT window page 2: ALIGN, GAIN, SCENE, DOSE.",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "kit-track": {
+      "image": "drummer/kit-track.png",
+      "caption": "KIT window page 3: the track's settings.",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "redrum": {
+      "image": "drummer/redrum.png",
+      "caption": "Page 3, F turned once: REDRUM AUTO, the loop read as 1 bar of 16 slices.",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     }
   }
 }

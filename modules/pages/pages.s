@@ -29,6 +29,15 @@ pg_opener:
         pg_cycle_midi_src               | returns to 0x40055720
 2:
         .endif
+        .if     pg_audio_src
+        moveq   #pg_audio_src_code,%d1
+        cmp.l   4(%sp),%d1
+        bne.s   3f
+        tst.l   0x80000012              | audio mode
+        bne.s   3f
+        pg_cycle_audio_src              | returns to 0x40055720
+3:
+        .endif
 1:      move.l  4(%sp),%d0
         moveq   #3,%d1
         jmp     0x400322f6

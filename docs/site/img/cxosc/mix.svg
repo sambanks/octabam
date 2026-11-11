@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 260" role="img" aria-labelledby="title desc">
+  <title id="title">What MIX does</title>
+  <desc id="desc">MIX crossfades carrier and modulator into the wavefolder. FOLD is a separate dry/wet after that.</desc>
+  <rect width="720" height="260" fill="#fff"/>
+  <style>
+    .box { fill:#fff; stroke:#111; stroke-width:2; }
+    .fill { fill:#111; stroke:#111; stroke-width:2; }
+    .t { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
+    .t-inv { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#fff; }
+    .t-sm { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
+    .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
+    .dim { fill:none; stroke:#999; stroke-width:1.5; stroke-dasharray:3 3; }
+  </style>
+  <defs>
+    <marker id="a" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="360" y="28" text-anchor="middle">MIX is the folder input crossfade - not the fold amount</text>
+
+  <rect class="box" x="40" y="56" width="110" height="44" rx="2"/>
+  <text class="t" x="95" y="83" text-anchor="middle">carrier</text>
+
+  <rect class="box" x="40" y="156" width="110" height="44" rx="2"/>
+  <text class="t" x="95" y="183" text-anchor="middle">mod sine</text>
+
+  <!-- callouts beside the arrows -->
+  <text class="t-sm" x="190" y="68" text-anchor="middle">0</text>
+  <text class="t-sm" x="190" y="198" text-anchor="middle">127</text>
+
+  <!-- MIX -->
+  <rect class="fill" x="240" y="56" width="150" height="144" rx="2"/>
+  <text class="t-inv" x="315" y="118" text-anchor="middle">MIX 0..127</text>
+  <text class="t-inv" x="315" y="142" text-anchor="middle" style="font-size:11px">c + (m - c) * mix</text>
+
+  <!-- solid joins: tip overlaps MIX left edge -->
+  <line class="arr" x1="150" y1="78" x2="248" y2="78"/>
+  <line class="arr" x1="150" y1="178" x2="248" y2="178"/>
+
+  <line class="arr" x1="390" y1="128" x2="466" y2="128"/>
+
+  <rect class="box" x="458" y="100" width="110" height="56" rx="2"/>
+  <text class="t" x="513" y="124" text-anchor="middle">FOLD</text>
+  <text class="t-sm" x="513" y="142" text-anchor="middle">dry/wet</text>
+
+  <line class="arr" x1="568" y1="128" x2="630" y2="128"/>
+  <text class="t" x="660" y="132" text-anchor="middle">out</text>
+
+  <path class="dim" d="M513 156 L513 230 L95 230"/>
+  <text class="t-sm" x="330" y="248" text-anchor="middle">FOLD=0 bypasses the folder - MIX then has nowhere to go</text>
+</svg>
