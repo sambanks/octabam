@@ -30,7 +30,9 @@
 | DEST=AMP VOL is unipolar below Part VOL (never louder than AMP). DEST=PTCH
 | in-scale. Editing PULSE leaves free mode. Write-only: open/track switch
 | load bank Euclid params only — never seed from live sample trigs. PLOCK
-| PULSE 0 YES clears this DEST and drops orphan TL (stack-safe).
+| PULSE 0 YES clears this DEST and drops orphan TL (stack-safe). After
+| fill, LOCK_COLL rebuilds the step-has-plock LED bitmap so emptied note
+| trigs stop blinking yellow and emptied trigless leave the row.
 |
 | Params: TRIG PULSE/ROT/DEST/DEPTH/free mask per track (ef_bank). DEPTH
 | and PLOCK PULSE/ROT/free/mask per track × DEST (ef_dep_mem / ef_plk_mem);
@@ -55,6 +57,7 @@
         .set    DIRTY_G,   0x100f8598
         .set    DIRTY_OFF, 0x9b332
         .set    NOTIFY,    0x40027e00
+        .set    LOCK_COLL, 0x400339d8   | rebuild step-has-plock LED bitmaps
         | CLEAR TRACK TRIGS undo: bit t in CLR_UNDO (set by 0x40029560).
         | Clipboard kind CLIP_KIND == 0xa is the matching undo tag
         | (0x40029f30 restore path). Either left armed -> next clear only
@@ -78,7 +81,7 @@
         .set    FONT,      0x400ba876   | small UI font, 6 px (tuner.s)
         .set    TEXT,      0x40012bd8   | (font, surf, x, y, limit, str)
         .set    TWIDTH,    0x40012f30   | (font, limit, str) -> pixels
-        .set    RULE,      0x40011910   | (surf, x, y, x2, 1)
+        .set    RULE,      0x40011910   | (surf, x, y, w, h)
         .set    VLINE,     0x40011b94   | (surf, x, y0, y1, 1) solid
         .set    HLINE,     0x40012004   | (surf, x0, y0, x1, y1, mode) dotted
         .set    BOX,       0x40012254   | (surf, x1, y1, x2, y2, mode)
@@ -1287,15 +1290,17 @@ df_skip: tstb   %a0@+
         lea     %sp@(48),%sp
 d9:     rts
 
-| ef_grid: 1px top+bottom rim, solid left table edge (VLINE), dotted
-| internal divs + mid (HLINE), solid floor above the pattern grid (RULE).
+| ef_grid: 1px top+bottom rim, solid window left edge + table edge (VLINE),
+| dotted internal divs + mid (HLINE), solid floor above the pattern (RULE).
+| RULE is (surf, x, y, w, h) — w=WINW for true edge-to-edge (WINW-1 left a
+| 1px gap at the left window border above the squares).
 ef_grid:
         lea     -8(%sp),%sp
         movem.l %d2/%a2,(%sp)
 
         | 1px top rim (Y-up: WINH-1).
         pea     1
-        pea     WINW-1
+        pea     WINW
         pea     WINH-1
         pea     0
         movel   %a5,-(%sp)
@@ -1303,11 +1308,20 @@ ef_grid:
         lea     %sp@(20),%sp
         | 1px bottom rim.
         pea     1
-        pea     WINW-1
+        pea     WINW
         pea     0
         pea     0
         movel   %a5,-(%sp)
         jsr     RULE
+        lea     %sp@(20),%sp
+
+        | Solid left window edge (meets floor + top/bottom rims).
+        pea     1
+        pea     WINH-1
+        pea     0
+        pea     0
+        movel   %a5,-(%sp)
+        jsr     VLINE
         lea     %sp@(20),%sp
 
         | Solid vertical left of PULS (stock EFFECT SETUP left edge).
@@ -1333,9 +1347,9 @@ ef_grid:
         subql   #1,%d2
         bne.s   1b
 
-        | Floor above pattern squares — edge to edge (same as top/bottom rim).
+        | Floor above pattern squares — edge to edge (w=WINW).
         pea     1
-        pea     WINW-1
+        pea     WINW
         pea     Y_GRID0
         pea     0
         movel   %a5,-(%sp)
@@ -1748,6 +1762,11 @@ tnext:  addql   #1,%d2
         moveal  #DIRTY_G,%a0
         movel   %d0,%a0@
         jsr     NOTIFY
+        | Rebuild 0x46c7d48c / 0x46c7d2e4 from #1 lock bytes. Without this,
+        | clearing the last plock leaves the step yellow (bitmap stale) and
+        | a emptied trigless can stay lit on the row. Stock erase path does
+        | the same refresh after writing 0xff.
+        jsr     LOCK_COLL
         | After NOTIFY: drop CLEAR TRACK TRIGS undo. Filling rewrote trigs,
         | so a prior clear's undo arm must not steal the next stock
         | FUNC+PLAY (toast UNDO TRACK TRIGS, trigs stay). EUCL24 only
@@ -1920,11 +1939,12 @@ wm_dest_clr:
         bra.s   wm_mtl
 miss_cx:
         bsr.w   ef_cx_clear
-| After clearing this DEST: drop TL when a note owns the step, or when no
-| other page-1 / CX lock remains (stack-safe). Fixes PULSE0 YES leaving
-| empty trigless — including after TRIG-lane locks were synced into PLCK.
-wm_mtl: bsr.w   ef_tl_reconcile
-8:      addql   #1,%d2
+| After every step: drop TL when a note owns the step, or when no page-1
+| / sample-lock / CX lock remains (stack-safe). PULSE0 YES and DEST miss
+| both land here; hit paths that used to skip reconcile do too.
+wm_mtl:
+8:      bsr.w   ef_tl_reconcile
+        addql   #1,%d2
         bra.w   1b
 9:      | LANE=TRIG: copy TRIG rhythm into this DEST's plock recipe.
         tstl    ef_lane
@@ -1976,8 +1996,9 @@ ef_tl_clr:
         moveb   %d1,%a0@
         rts
 
-| ef_tl_reconcile: d2=step, a2=trac. Clear TL if thit, or if every page-1
-| lock byte is 0xff and no CX bit remains on this step. Clobbers d0/d1/a0.
+| ef_tl_reconcile: d2=step, a2=trac. Clear TL if thit, or if every #1 lock
+| byte (32 flats, incl. sample-lock) is 0xff and no CX bit remains.
+| Matches stock's empty-row scan (0x40038a5c path). Clobbers d0/d1/a0.
 ef_tl_reconcile:
         tstl    ef_thit
         bne.s   tr_clr
@@ -1985,11 +2006,11 @@ ef_tl_reconcile:
         lsll    #5,%d1
         addil   #LOCK0,%d1
         lea     %a2@(0,%d1:l),%a0
-        moveq   #DEST_LAST,%d1
+        moveq   #31,%d1                 | flats 0..31 (DEST_LAST is 29 only)
         moveq   #-1,%d0
 tr_scan:
         cmp.b   %a0@,%d0
-        bne.s   tr_rts                  | another DEST still locked
+        bne.s   tr_rts                  | another flat still locked
         addql   #1,%a0
         subql   #1,%d1
         bpl.s   tr_scan

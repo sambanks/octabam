@@ -555,11 +555,15 @@ def check_ui(src: str) -> None:
           and "ef_ctext" in draw and "ef_grid" in draw
           and "ef_draw_pat" in draw
           and "WINX" in src)
+    grid = _block(src, "ef_grid:", "ef_fmt_track:")
     check("grid has 1px top+bottom RULE + left VLINE + divs + mid + floor",
-          "VLINE" in _block(src, "ef_grid:", "ef_fmt_track:")
-          and "moveq   #3,%d2" in _block(src, "ef_grid:", "ef_fmt_track:")
-          and _block(src, "ef_grid:", "ef_fmt_track:").count("jsr     RULE") >= 3
-          and "WINH-1" in _block(src, "ef_grid:", "ef_fmt_track:")
+          "VLINE" in grid
+          and "moveq   #3,%d2" in grid
+          and grid.count("jsr     RULE") >= 3
+          and "WINH-1" in grid
+          and "pea     WINW\n" in grid
+          and "pea     WINW-1" not in grid
+          and grid.count("jsr     VLINE") >= 2
           and re.search(r"\.set\s+VLINE,\s*0x40011b94", src) is not None)
     mkw = _block(src, "ef_mkwin:", "mkw_rts:")
     check("window parked left (WINX=0, WINW=109) so T5-8 keep ~19px",
@@ -598,7 +602,11 @@ def check_ui(src: str) -> None:
           "ef_tl_reconcile:" in src
           and "ef_tl_reconcile" in _block(src, "wm_mtl:", "9:")
           and "ef_cx_bits" in _block(src, "ef_tl_reconcile:", "ef_write_dest:")
-          and "DEST_LAST" in _block(src, "ef_tl_reconcile:", "ef_write_dest:"))
+          and "moveq   #31,%d1" in _block(src, "ef_tl_reconcile:", "ef_write_dest:"))
+    check("fill rebuilds plock LED bitmap (LOCK_COLL) after NOTIFY",
+          re.search(r"\.set\s+LOCK_COLL,\s*0x400339d8", src) is not None
+          and "jsr     LOCK_COLL" in _block(src, "ef_fill:", "fout:")
+          and "jsr     NOTIFY" in _block(src, "ef_fill:", "fout:"))
     check("draw does not re-read live trigs (no mask_drift)",
           "ef_mask_drift" not in _block(src, "ef_draw:", "ef_draw_pat:")
           and "ef_mask_drift" not in src)

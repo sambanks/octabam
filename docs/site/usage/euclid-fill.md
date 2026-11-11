@@ -29,7 +29,9 @@ Euclid (stock step banks while open). FUNC + PAGE (SCALE SETUP) stays stock.
   working knobs when LANE is PLCK.
 - Write-only: open / track switch load bank Euclid params only — never
   re-read live sample trigs into the grid. **YES** bakes from PULSE/ROT
-  (or a CUE mask) and overwrites the track.
+  (or a CUE mask) and overwrites the track. Clearing the last lock on a
+  step drops orphan trigless bits and refreshes the plock LED bitmap
+  (note trigs stop blinking yellow when empty).
 - PULSE / ROT / DEST / LANE / free mask / per-DEST DEPTH and PLOCK rhythms
   persist in `euclid.work (bank + per-DEST depth/plock + per-track LANE)`. Defaults: TRIG PULSE 5, DEST = AMP VOL,
   ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.

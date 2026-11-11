@@ -34,7 +34,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`drummer-probe`](drummer-probe/README.md) | DRUMMER PROBE alone: trigs added and moved after the step builder, the FLEX start's slice forced. | `make check`: port only: modules/drummer/probe_steps.py DR_PROBE=1 |
 | [`erase-empty-trigless-locks`](erase-empty-trigless-locks/README.md) | stock effects with ERASE_EMPTY_TRIGLESS_LOCKS: an emptied trigless lock disappears. | `make check` |
 | [`euclid`](euclid/README.md) | Euclid rhythmic modulation: 12 dB LP/BP/HP or AMP, both FX slots. | port-gated: EVENTS: firmware/render gates |
-| [`euclid-fill`](euclid-fill/README.md) | stock effects with EUCLID FILL: TRACK+PAGE Euclidean trig-fill page. | `make check` |
+| [`euclid-fill`](euclid-fill/README.md) | STORE + EUCLID FILL (euclid.work client) with the stock effects. | `make check` |
 | [`events-clients`](events-clients/README.md) | EVENTS with EUCLID in both FX slots, PLOCKS P2, USB MAIN/CUE and LOAD METER. | `make check`: Tested on radiohagen's MKII (25 Oct 2026): controlled trig undo, CONTINUE and 600-second audio capture. |
 | [`events-empty`](events-empty/README.md) | EVENTS with no clients: no event hooks or dispatcher code. | `make check`: Empty EVENTS selection: stock boundaries checked in the built image. |
 | [`ext-probe`](ext-probe/README.md) | octabam's core and stock effects (EQUALIZER's id is the probe's) with EXTPROBE on FX1: the highest window word a reverb writes. | `make check` |

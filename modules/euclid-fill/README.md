@@ -60,7 +60,9 @@ Defaults: TRIG PULSE 5, DEST = AMP VOL, ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
 
 Write-only: open / track switch load bank Euclid params only — the grid
 never mirrors live sample trigs. Edits outside FILL are not re-read;
-YES overwrites from PULSE/ROT (or a CUE mask).
+YES overwrites from PULSE/ROT (or a CUE mask). When a step's last lock
+is cleared, orphan trigless bits drop and stock's plock LED bitmap is
+rebuilt (`0x400339d8`) so empty note trigs are not left yellow.
 
 **CUE** keeps **PULSE** as density on the focused lane and only randomizes
 *which* steps are on. Changing **PULSE** leaves free mode and returns to
