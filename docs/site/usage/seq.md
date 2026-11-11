@@ -1,6 +1,6 @@
 **Euclidean sample trigs and p-locks.** The name **SEQ** is from the SEQ
 submenu on Digitakt II and Digitone II — same idea here as a dedicated
-track+PAGE window, not a new PROJECT menu.
+TRACK+PAGE window, not a new PROJECT menu.
 
 Hold a **TRACK** key and press **PAGE**: SEQ opens for that track. Stock
 3×2 knobs (PULSE / ROT / LANE / DEST / DEPTH; F empty), LEN on the left,
@@ -15,7 +15,6 @@ Hold a **TRACK** key and press **PAGE** — SEQ opens on that track.
 
 - **NO** closes the window.
 - Bare **PAGE** stays stock (step banks) and does not close SEQ.
-- **FUNC + PAGE** (SCALE SETUP) stays stock.
 - Hold another **TRACK** while SEQ is open: YES retargets that track and
   the panel loads its saved SEQ params from `euclid.work`.
 
@@ -36,11 +35,15 @@ The grid is **write-only**. Open and track-switch load the bank SEQ recipe
 only — they never pull live sample trigs into the grid. **YES** writes from
 PULSE / ROT (or a CUE mask) and overwrites the track.
 
+On TRIG, if the track already has sample trigs, PULSE / ROT / CUE first
+open **ARE YOU SURE?**. Dialog YES only unlocks the knobs — writing the
+pattern is a separate YES.
+
 ## DEST and DEPTH
 
 DEST matches LFO SETUP PMTR (PAGE / PARAM). **0..29** page-1 flats
-(**AMP XVOL** skipped); on CX OSC also **30..34** SETUP slots (stackable in
-DRAM).
+(**AMP XVOL** skipped); on CX OSC also **30..34** SETUP slots (CAR / MOD /
+SYMM / FDBK / PWM).
 
 **DEPTH** (0..127): at 0, YES clears that DEST for the path in use.
 Non-zero:
@@ -55,11 +58,10 @@ PULSE / ROT / DEST / LANE / free mask / per-DEST DEPTH and PLOCK rhythms
 persist in `euclid.work` (STORE client). Defaults: TRIG PULSE 5, DEST =
 AMP VOL, ROT / DEPTH / PLOCK PULSE 0, LANE = TRIG.
 
-CUE randomizes the focused lane only (density = PULSE). PLOCK edits do not
-prompt.
+CUE randomizes the focused lane only (density = PULSE).
 
 When a step's last lock is cleared, orphan trigless bits drop and the
-plock LED bitmap refreshes (empty note trigs stop blinking yellow).
+plock LED bitmap refreshes.
 
 ## Controls
 
@@ -79,9 +81,7 @@ plock LED bitmap refreshes (empty note trigs stop blinking yellow).
 
 ## Examples
 
-Step numbers in the diagrams are **1-based** (same as the unit). Black =
-lock on a note. Hatched = trigless lock. White = no lock. Inverted cells
-on the 3×2 are the knobs that matter for that example.
+Black = lock on a note. Hatched = trigless lock. White = no lock.
 
 ### Notes only (no DEST locks)
 
@@ -145,20 +145,3 @@ drop when nothing else remains on the step.
 Focus the lane (TRIG or PLCK), set **PULSE** to the hit count you want,
 press **CUE** (places exactly that many hits at random on that lane only),
 then **YES** to write.
-
-On TRIG, if the track already has sample trigs, PULSE / ROT / CUE first
-open **ARE YOU SURE?**. Dialog YES only unlocks the knobs — writing the
-pattern is a separate YES.
-
-### Write-only gotcha
-
-The live pattern on the track is **not** pulled into the grid when you open
-SEQ or switch tracks. The grid always shows the saved bank recipe. Edit
-PULSE / ROT (or CUE), then **YES** to overwrite the track.
-
-### CX OSC SETUP destinations
-
-On a CX OSC track, DEST can also target SETUP slots **CAR / MOD / SYMM /
-FDBK / PWM** (LFO PMTR 30..34). Same TRIG / PLCK rules: TRIG locks them onto
-notes; PLCK can stack them trigless; PLCK miss clears that DEST even on
-notes.

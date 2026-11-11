@@ -14,25 +14,16 @@ rhythm for the current DEST. **YES** writes TRIG → sample-trig mask 0 and
 PLOCK → locks on the chosen DEST (trigless on plock-only steps). **NO**
 closes. Bare **PAGE** stays stock and does not close SEQ.
 
-**HW evidence (author's MKII):**
-
-| tip | what was confirmed |
-|---|---|
-| **CX EUCL93** (11 Nov 2026) | dual LANE / write-only YES / LOCK_COLL + floor / PLCK overwrite / TRIG reshape keeps other DEST (TL promote) — `Proof.HARDWARE` |
-| **CX EUCL98** | panel LCD only: mid45 icon, single left VLINE, `X_PAT=1`, icon 2px up — not a behavior re-proof |
-| tip panel hero | port capture (`test/seq`), not a unit dump |
-
-**Layout tip (HW, CX EUCL52, Ilia 2026-11-10):** `WINW=109` @ `WINX=0`
-(19px for T5-8), no `WFRAME`, 1px top+bottom `RULE`, DEST = PAGE+PARAM
-(no PMTR caption). Do not “center” or widen back over the track types.
+**Proof.HARDWARE** on author's MKII (CX EUCL93, 11 Nov 2026): dual LANE /
+write-only YES / LOCK_COLL + floor / PLCK overwrite / TRIG reshape keeps
+other DEST (TL promote).
 
 Not the DSP [EUCLID](../euclid/README.md) effect (filter/amp modulation).
 This module only edits sequencer trigs. It does not grow
 `PROJECT > CONTROL > SEQUENCER`, so it coexists with SCALE QUANTIZER.
 
 Rhythm names, ranges, and the TRIG PULSE default match filter EUCLID; length
-comes from pattern length (not a knob). Encoders **A** / **B** / **C** /
-**D** / **E** map to the five active cells.
+comes from pattern length (not a knob).
 
 ## Controls
 
@@ -40,7 +31,6 @@ comes from pattern length (not a knob). Encoders **A** / **B** / **C** /
 |---|---|
 | TRACK + PAGE | open SEQ on that track |
 | TRACK (while open) | switch to that track's params / YES target |
-| LEFT / RIGHT | unused (all steps visible) |
 | A | PULSE of the focused lane |
 | B | ROT of the focused lane |
 | C | LANE — TRIG ↔ PLCK |
@@ -68,8 +58,7 @@ DEST = AMP VOL, ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
 Write-only: open / track switch load bank SEQ params only — the grid never
 mirrors live sample trigs. YES overwrites from PULSE/ROT (or a CUE mask).
 When a step's last lock is cleared, orphan trigless bits drop and stock's
-plock LED bitmap is rebuilt (`0x400339d8`) so empty note trigs are not left
-yellow.
+plock LED bitmap is rebuilt (`0x400339d8`).
 
 **CUE** keeps **PULSE** as density on the focused lane and only randomizes
 *which* steps are on. Changing **PULSE** leaves free mode and returns to
