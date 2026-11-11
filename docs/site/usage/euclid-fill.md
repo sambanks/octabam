@@ -1,14 +1,12 @@
 A Euclidean fill for sample trigs and per-destination p-locks. Hold a TRACK
 key and press PAGE: a window opens (stock 3×2 grid with PULSE / ROT / LANE /
 DEST / DEPTH, F empty, LEN on the left, and a 4×16 grid of hollow/filled
-squares for every step up to 64). YES writes the **TRIG** rhythm onto the
-held tracks' sample-trig mask, and locks for the current DEST from that
-DEST's **PLOCK** rhythm. Steps that get a lock without a sample trig become
-trigless locks. CUE places a random k-subset with density PULSE on the
-focused lane.
+squares for every step up to 64).
 
 This edits sequencer trigs; it is not the DSP EUCLID effect. It leaves
 PROJECT > CONTROL > SEQUENCER alone, so it coexists with SCALE QUANTIZER.
+
+![Two recipes: LANE=TRIG vs LANE=PLCK, and the per-DEST stack.](../../img/euclid-fill/lanes.svg)
 
 ## Access
 
@@ -18,45 +16,89 @@ while the window is open retargets YES to that track and loads its saved
 params. TRACK + PAGE again closes it, as does NO. Bare PAGE never closes
 Euclid (stock step banks while open). FUNC + PAGE (SCALE SETUP) stays stock.
 
-## Operation
+## Lanes
 
-- Pattern length shows as `LEN n` in the left gutter; it is not a knob.
-- **LANE** (C) selects what A/B and the grid edit: **TRIG** (sample trigs)
-  or **PLCK** (locks for the current DEST). DEST and DEPTH always work,
-  even while LANE is TRIG — they do not steal focus.
-- Each DEST keeps its own PLOCK PULSE/ROT (and DEPTH), like a stack of
-  fill recipes. Scroll DEST to load that DEST's plock rhythm into the
-  working knobs when LANE is PLCK.
-- Write-only: open / track switch load bank Euclid params only — never
-  re-read live sample trigs into the grid. **YES** bakes from PULSE/ROT
-  (or a CUE mask) and overwrites the track. Clearing the last lock on a
-  step drops orphan trigless bits and refreshes the plock LED bitmap
-  (note trigs stop blinking yellow when empty).
-- PULSE / ROT / DEST / LANE / free mask / per-DEST DEPTH and PLOCK rhythms
-  persist in `euclid.work (bank + per-DEST depth/plock + per-track LANE)`. Defaults: TRIG PULSE 5, DEST = AMP VOL,
-  ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
-- DEST matches LFO SETUP PMTR (PAGE / PARAM). 0..29 page-1 flats (AMP XVOL
-  skipped); on CX OSC also 30..34 SETUP slots (stackable in DRAM).
-- **DEST / DEPTH** always apply on YES. With **LANE = TRIG**, locks land on
-  the **same steps as the sample trigs** (DEPTH randomizes that DEST); only
-  **this DEST** is cleared on silent steps (other DEST locks stay — a step
-  that loses its note but still has another DEST becomes trigless); that
-  DEST's PLOCK recipe is synced to the TRIG rhythm. With **LANE = PLCK**,
-  the plock rhythm is independent (trigless stacks per DEST); a PLCK
-  **YES** clears this DEST on misses — including on note trigs — so
-  regenerating the same DEST from PLCK **overwrites** TRIG-baked locks
-  (e.g. pitch on trigs goes away when PLCK ROT changes).
-- To **clear** a DEST without rewriting: **LANE = PLCK**, set that DEST's
-  **PULSE to 0**, **YES**. That clears this DEST over the fill range and
-  drops orphan trigless bits when no other DEST still holds a lock on the
-  step. YES on **LANE = TRIG** with DEPTH > 0 **re-applies** locks on the
-  trigs (and re-syncs the PLCK recipe).
-- DEPTH 0 clears **this DEST** (TRIG path: on every step in range via
-  hit/miss; PLOCK path: via write/clear). Non-zero: PTCH in-scale; AMP VOL
-  unipolar below Part; else `[Part±DEPTH]`. Other DESTs stay stacked.
-- CUE randomizes the focused lane only. PULSE / ROT / CUE on TRIG with
-  existing sample trigs open ARE YOU SURE?; dialog YES only unlocks
-  knobs — fill is a separate YES. PLOCK edits do not prompt.
+**LANE** (C) selects what A/B and the grid edit:
+
+| LANE | A / B / grid | What YES does |
+|---|---|---|
+| **TRIG** | sample-trig PULSE / ROT | Rewrites note trigs; reshapes **only the current DEST** onto those notes; syncs that DEST's PLCK recipe to the TRIG rhythm |
+| **PLCK** | this DEST's PLOCK PULSE / ROT | Leaves the note pattern; rewrites **only this DEST's** locks (trigless where there is no note); clears this DEST on misses — including on notes |
+
+DEST and DEPTH always apply on YES, even while LANE is TRIG — they do not
+steal focus. Scroll DEST to load that DEST's plock recipe into A/B when
+LANE is PLCK. Each DEST keeps its own PULSE / ROT / DEPTH (and free mask).
+
+Write-only: open / track switch load bank Euclid params only — never
+re-read live sample trigs into the grid. **YES** bakes from PULSE/ROT
+(or a CUE mask) and overwrites the track.
+
+## Examples
+
+### 1. Trig fill with pitch on the notes
+
+1. LANE = **TRIG**, set PULSE / ROT, DEST = **PTCH**, DEPTH as wanted.
+2. **YES** — notes land; PTCH locks sit on those same steps; this DEST's
+   PLCK recipe is synced to the TRIG rhythm.
+
+### 2. Stack a second DEST without touching the notes
+
+1. LANE = **PLCK**, DEST = **AMP VOL**, set a different PULSE / ROT.
+2. **YES** — VOL locks write on that plock rhythm (trigless where there is
+   no note). Notes and PTCH stay.
+
+### 3. Regenerate trigs — keep other DEST locks
+
+You have notes with PTCH + VOL. Change TRIG PULSE (DEST still PTCH) and
+**YES**:
+
+![TRIG YES reshapes only PTCH; VOL survives as trigless where notes drop.](../../img/euclid-fill/trig-reshape.svg)
+
+- **PTCH** (current DEST) is cleared on silent steps and rewritten on the
+  new notes.
+- **VOL** (other DEST) is **kept**. Where a note disappears but VOL remains,
+  the step becomes **trigless** so VOL stays audible.
+
+### 4. Regenerate the same DEST from PLCK — overwrite the TRIG bake
+
+You baked PTCH on the notes from TRIG. Switch to LANE = **PLCK**, DEST =
+**PTCH**, change ROT, **YES**:
+
+![PLCK YES clears TRIG-baked PTCH on note misses; other DEST stacks stay.](../../img/euclid-fill/plck-overwrite.svg)
+
+- **PTCH** is cleared on every miss — including on notes that still fire —
+  then written on the new PLCK hits (trigless if no note).
+- Other DEST stacks (VOL, …) are untouched.
+
+### 5. Clear one DEST
+
+LANE = **PLCK**, that DEST's **PULSE = 0**, **YES**. Clears this DEST over
+the fill range and drops orphan trigless bits when nothing else remains on
+the step.
+
+## DEPTH
+
+At 0, YES clears that DEST for the path in use. Non-zero:
+
+- **PTCH** — in-scale around Part PLAYBACK PTCH (misses fall back to Part).
+- **AMP VOL** — unipolar below Part AMP VOL.
+- **Any other DEST** — uniform `[Part±DEPTH]` clamped 0..127.
+
+DEST matches LFO SETUP PMTR (PAGE / PARAM). 0..29 page-1 flats (AMP XVOL
+skipped); on CX OSC also 30..34 SETUP slots (stackable in DRAM).
+
+## Persistence and CUE
+
+PULSE / ROT / DEST / LANE / free mask / per-DEST DEPTH and PLOCK rhythms
+persist in `euclid.work` (STORE client). Defaults: TRIG PULSE 5, DEST =
+AMP VOL, ROT / DEPTH / PLOCK PULSE 0, LANE = TRIG.
+
+CUE randomizes the focused lane only (density = PULSE). PULSE / ROT / CUE
+on TRIG with existing sample trigs open **ARE YOU SURE?**; dialog YES only
+unlocks knobs — fill is a separate YES. PLOCK edits do not prompt.
+
+When a step's last lock is cleared, orphan trigless bits drop and the
+plock LED bitmap refreshes (empty note trigs stop blinking yellow).
 
 ## Controls
 

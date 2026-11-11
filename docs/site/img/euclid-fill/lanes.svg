@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 420" role="img" aria-labelledby="title desc">
+  <title id="title">EUCLID FILL lanes</title>
+  <desc id="desc">TRIG lane owns sample trigs; each DEST has its own PLCK recipe. YES always rewrites the TRIG mask and the current DEST locks.</desc>
+  <rect width="860" height="420" fill="#fff"/>
+  <style>
+    .box { fill:#fff; stroke:#111; stroke-width:2; }
+    .fill { fill:#111; stroke:#111; stroke-width:2; }
+    .t { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
+    .t-inv { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#fff; }
+    .t-sm { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
+    .t-xs { font: 10px ui-monospace, Menlo, Consolas, monospace; fill:#555; }
+    .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
+    .cell { fill:#fff; stroke:#111; stroke-width:1.5; }
+    .on { fill:#111; stroke:#111; stroke-width:1.5; }
+    .tl { fill:#fff; stroke:#111; stroke-width:1.5; stroke-dasharray:3 2; }
+  </style>
+  <defs>
+    <marker id="a" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <text class="t" x="430" y="28" text-anchor="middle">Two recipes, one YES</text>
+  <text class="t-sm" x="430" y="48" text-anchor="middle">LANE picks which recipe A/B/grid edit. DEST/DEPTH always apply on YES.</text>
+
+  <!-- TRIG box -->
+  <rect class="box" x="40" y="70" width="360" height="150" rx="2"/>
+  <rect class="fill" x="40" y="70" width="360" height="28" rx="2"/>
+  <text class="t-inv" x="220" y="89" text-anchor="middle">LANE = TRIG</text>
+  <text class="t-sm" x="56" y="116">edits: sample-trig PULSE / ROT</text>
+  <text class="t-sm" x="56" y="136">YES writes: mask 0 (notes)</text>
+  <text class="t-sm" x="56" y="156">+ locks for current DEST on those notes</text>
+  <text class="t-sm" x="56" y="176">+ syncs this DEST's PLCK recipe ê TRIG</text>
+  <text class="t-xs" x="56" y="200">other DEST locks are kept (see reshape)</text>
+
+  <!-- PLCK box -->
+  <rect class="box" x="460" y="70" width="360" height="150" rx="2"/>
+  <rect class="fill" x="460" y="70" width="360" height="28" rx="2"/>
+  <text class="t-inv" x="640" y="89" text-anchor="middle">LANE = PLCK</text>
+  <text class="t-sm" x="476" y="116">edits: this DEST's PLOCK PULSE / ROT</text>
+  <text class="t-sm" x="476" y="136">YES writes: that DEST's locks only</text>
+  <text class="t-sm" x="476" y="156">plock)¨note í trigless (+0x10)</text>
+  <text class="t-sm" x="476" y="176">miss / PULSE 0 í clear this DEST</text>
+  <text class="t-xs" x="476" y="200">also clears it off note trigs (overwrite)</text>
+
+  <!-- stack -->
+  <text class="t" x="430" y="250" text-anchor="middle">Per-DEST stack (same track)</text>
+  <rect class="box" x="120" y="270" width="140" height="50" rx="2"/>
+  <text class="t" x="190" y="292" text-anchor="middle">PTCH</text>
+  <text class="t-xs" x="190" y="308" text-anchor="middle">own PULSE/ROT/DEPTH</text>
+  <rect class="box" x="290" y="270" width="140" height="50" rx="2"/>
+  <text class="t" x="360" y="292" text-anchor="middle">AMP VOL</text>
+  <text class="t-xs" x="360" y="308" text-anchor="middle">own PULSE/ROT/DEPTH</text>
+  <rect class="box" x="460" y="270" width="140" height="50" rx="2"/>
+  <text class="t" x="530" y="292" text-anchor="middle">FILTER&</text>
+  <text class="t-xs" x="530" y="308" text-anchor="middle">own PULSE/ROT/DEPTH</text>
+  <rect class="box" x="630" y="270" width="140" height="50" rx="2"/>
+  <text class="t" x="700" y="292" text-anchor="middle">+ CX 30..34</text>
+  <text class="t-xs" x="700" y="308" text-anchor="middle">SETUP stack</text>
+
+  <text class="t-sm" x="430" y="350" text-anchor="middle">Scroll DEST to load that recipe into A/B when LANE is PLCK.</text>
+  <text class="t-sm" x="430" y="372" text-anchor="middle">YES always also rewrites the TRIG mask from the TRIG recipe.</text>
+  <text class="t-xs" x="430" y="400" text-anchor="middle">legend later: filled = note ∑ dashed = trigless lock ∑ empty = clear</text>
+</svg>

@@ -53,7 +53,7 @@ held, the current audio track is used. Selecting a track while open
 retargets YES to that track and loads its per-track params. DEPTH and
 PLOCK PULSE/ROT are remembered **per DEST** on that track. D/E stay live
 even when LANE is TRIG (no auto-focus switch). Slots + DEST tables live in
-DRAM and in `euclid.work (bank + per-DEST depth/plock + per-track LANE)` (STORE client, `EF_VER` 3) on SAVE PROJECT /
+DRAM and in `euclid.work (bank + per-DEST depth/plock + per-track LANE)` (STORE client, `EF_VER` 4) on SAVE PROJECT /
 bank write. Multi-target YES writes each target's own stored params.
 **Pattern length** shows in the title gutter (`LEN n`), not as a row.
 Defaults: TRIG PULSE 5, DEST = AMP VOL, ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
@@ -94,3 +94,6 @@ bits when no other DEST remains on the step.
 
 YES writes **only** the selected DEST's lock bytes (plus the TRIG mask).
 A later fill with another DEST leaves earlier locks alone.
+
+Manual site: [`docs/site/usage/euclid-fill.md`](../../docs/site/usage/euclid-fill.md)
+(lane diagrams + worked examples).
