@@ -33,6 +33,47 @@ The grid is **write-only**. Open and track-switch load the bank SEQ recipe
 only — they never pull live sample trigs into the grid. **YES** writes from
 PULSE / ROT (or a CUE mask) and overwrites the track.
 
+## DEST and DEPTH
+
+DEST matches LFO SETUP PMTR (PAGE / PARAM). **0..29** page-1 flats
+(**AMP XVOL** skipped); on CX OSC also **30..34** SETUP slots (stackable in
+DRAM).
+
+**DEPTH** (0..127): at 0, YES clears that DEST for the path in use.
+Non-zero:
+
+- **PTCH** — in-scale around Part PLAYBACK PTCH (misses fall back to Part).
+- **AMP VOL** — unipolar below Part AMP VOL.
+- **Any other DEST** — uniform `[Part±DEPTH]` clamped 0..127.
+
+## Persistence
+
+PULSE / ROT / DEST / LANE / free mask / per-DEST DEPTH and PLOCK rhythms
+persist in `euclid.work` (STORE client). Defaults: TRIG PULSE 5, DEST =
+AMP VOL, ROT / DEPTH / PLOCK PULSE 0, LANE = TRIG.
+
+CUE randomizes the focused lane only (density = PULSE). PLOCK edits do not
+prompt.
+
+When a step's last lock is cleared, orphan trigless bits drop and the
+plock LED bitmap refreshes (empty note trigs stop blinking yellow).
+
+## Controls
+
+| Control | Does |
+|---|---|
+| TRACK + PAGE | open SEQ on that track |
+| TRACK (while open) | switch to that track's params / YES target |
+| A | PULSE of the focused lane |
+| B | ROT of the focused lane |
+| C | LANE — TRIG / PLCK |
+| D | DEST |
+| E | DEPTH |
+| F | empty |
+| CUE | random placement of exactly PULSE hits on the focused lane |
+| YES | write TRIG mask + current DEST locks (and trigless where needed) |
+| NO | close |
+
 ## Examples
 
 Step numbers in the diagrams are **1-based** (same as the unit). Black =
@@ -118,44 +159,3 @@ On a CX OSC track, DEST can also target SETUP slots **CAR / MOD / SYMM /
 FDBK / PWM** (LFO PMTR 30..34). Same TRIG / PLCK rules: TRIG locks them onto
 notes; PLCK can stack them trigless; PLCK miss clears that DEST even on
 notes.
-
-## DEST and DEPTH
-
-DEST matches LFO SETUP PMTR (PAGE / PARAM). **0..29** page-1 flats
-(**AMP XVOL** skipped); on CX OSC also **30..34** SETUP slots (stackable in
-DRAM).
-
-**DEPTH** (0..127): at 0, YES clears that DEST for the path in use.
-Non-zero:
-
-- **PTCH** — in-scale around Part PLAYBACK PTCH (misses fall back to Part).
-- **AMP VOL** — unipolar below Part AMP VOL.
-- **Any other DEST** — uniform `[Part±DEPTH]` clamped 0..127.
-
-## Persistence
-
-PULSE / ROT / DEST / LANE / free mask / per-DEST DEPTH and PLOCK rhythms
-persist in `euclid.work` (STORE client). Defaults: TRIG PULSE 5, DEST =
-AMP VOL, ROT / DEPTH / PLOCK PULSE 0, LANE = TRIG.
-
-CUE randomizes the focused lane only (density = PULSE). PLOCK edits do not
-prompt.
-
-When a step's last lock is cleared, orphan trigless bits drop and the
-plock LED bitmap refreshes (empty note trigs stop blinking yellow).
-
-## Controls
-
-| Control | Does |
-|---|---|
-| TRACK + PAGE | open SEQ on that track |
-| TRACK (while open) | switch to that track's params / YES target |
-| A | PULSE of the focused lane |
-| B | ROT of the focused lane |
-| C | LANE — TRIG / PLCK |
-| D | DEST |
-| E | DEPTH |
-| F | empty |
-| CUE | random placement of exactly PULSE hits on the focused lane |
-| YES | write TRIG mask + current DEST locks (and trigless where needed) |
-| NO | close |
