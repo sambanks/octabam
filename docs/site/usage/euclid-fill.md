@@ -37,15 +37,14 @@ Euclid (stock step banks while open). FUNC + PAGE (SCALE SETUP) stays stock.
   ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
 - DEST matches LFO SETUP PMTR (PAGE / PARAM). 0..29 page-1 flats (AMP XVOL
   skipped); on CX OSC also 30..34 SETUP slots (stackable in DRAM).
-- DEPTH 0 clears **this DEST's** locks on the fill range when plock is
-  active (leaves trigless bits for other DESTs). Non-zero: PTCH in-scale;
-  AMP VOL unipolar below Part; else `[Part±DEPTH]`.
-- YES always rewrites TRIG (mask 0). **Per-DEST trigless stacks:** a START
-  fill does not move PTCH trigless (and vice versa). Same step / this DEST:
-  both hits → note + DEST lock (clear TL — note owns the step); plock-only
-  → DEST lock + set TL; miss / PLOCK PULSE 0 → clear **this DEST only**,
-  leave TL so other DEST trigless stay. PTCH carry still on note+miss when
-  DEPTH>0.
+- **DEST / DEPTH** always apply on YES. With **LANE = TRIG**, locks land on
+  the **same steps as the sample trigs** (DEPTH randomizes that DEST); this
+  DEST is cleared on silent steps so the lock layer matches the trig set;
+  that DEST's PLOCK recipe is synced to the TRIG rhythm. With **LANE =
+  PLCK**, the plock rhythm is independent (trigless stacks per DEST).
+- DEPTH 0 clears **this DEST** (TRIG path: on every step in range via
+  hit/miss; PLOCK path: via write/clear). Non-zero: PTCH in-scale; AMP VOL
+  unipolar below Part; else `[Part±DEPTH]`. Other DESTs stay stacked.
 - CUE randomizes the focused lane only. PULSE / ROT / CUE on TRIG with
   existing sample trigs open ARE YOU SURE?; PLOCK edits do not.
 

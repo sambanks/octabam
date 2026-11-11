@@ -587,14 +587,14 @@ def check_ui(src: str) -> None:
           and "ef_tl_set" in _block(src, "ef_write_mask:", "ef_write_dest:")
           and "ef_phit" in _block(src, "ef_write_mask:", "ef_write_dest:")
           and "ef_plock_on" in _block(src, "ef_write_mask:", "ef_write_dest:"))
-    check("PLOCK off / miss clear this DEST only; TL cleared only on thit",
-          "wm_dest_clr:" in _block(src, "ef_write_mask:", "ef_write_dest:")
-          and "beq.w   wm_dest_clr" in _block(src, "ef_write_mask:", "ef_write_dest:")
-          and "ef_thit" in _block(src, "wm_mtl:", "ef_write_dest:")
-          and "ef_tl_clr" in _block(src, "wm_mtl:", "ef_write_dest:"))
-    check("plock-only sets TL; DEPTH 0 does not wipe other DEST TL",
-          "ef_tl_set" in _block(src, "wm_tl:", "wm_miss:")
-          and "ef_depth" in _block(src, "wm_tl:", "wm_miss:"))
+    check("LANE=TRIG: DEST on thit + plock recipe sync (ef_plk_save)",
+          "wm_tclr:" in src
+          and "ef_plk_save" in _block(src, "ef_write_mask:", "ef_tl_bit_addr:")
+          and "ef_ppulses" in _block(src, "9:", "ef_tl_bit_addr:"))
+    check("LANE=PLOCK: independent trigless via wm_plock / ef_tl_set",
+          "wm_plock:" in _block(src, "ef_write_mask:", "ef_tl_bit_addr:")
+          and "ef_tl_set" in _block(src, "wm_tl:", "wm_miss:")
+          and "ef_phit" in _block(src, "wm_plock:", "wm_miss:"))
     check("PTCH carry on bare note trigs after plock miss",
           "ef_ptch_carry" in _block(src, "ef_write_mask:", "ef_write_dest:")
           and "ef_part_ptch" in _block(src, "ef_write_mask:", "ef_write_dest:"))

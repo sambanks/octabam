@@ -70,19 +70,19 @@ Euclidean. PULSE / ROT / CUE with sample trigs already present open stock
 **DEST** matches LFO SETUP PMTR targets. **0..29** page-1 lock flats
 (**AMP XVOL** skipped). On **CX OSC**, **30..34** SETUP knobs stack in DRAM.
 
-**DEPTH** (0..127): at 0 with an active plock lane, YES clears that DEST's
-locks on the fill range (other DEST trigless stay). Non-zero:
+**DEPTH** (0..127): at 0, YES clears that DEST's locks for the path in
+use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
 - **DEST = PTCH:** in-scale around Part PLAYBACK PTCH. Bare note trigs
   without a plock hit carry the last plock pitch (else Part).
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
 - **Any other DEST:** uniform `[Part−DEPTH .. Part+DEPTH]` clamped 0..127.
 
-PLOCK PULSE 0 (not free): YES clears **this DEST** only (TRIG rewrite
-unchanged; TL left alone so other DEST trigless stacks stay). PLOCK
-active: both hits → note + lock (clear TL); plock-only → set TL; miss →
-clear this DEST only. DEPTH 0 clears this DEST's values; does not wipe TL
-for other DESTs.
+**LANE = TRIG:** YES writes DEST/DEPTH locks on the sample-trig steps
+and syncs that DEST's plock recipe to the TRIG rhythm (lock layer = trigs).
+**LANE = PLCK:** independent plock rhythm; plock-only → trigless (+0x10);
+miss / PULSE 0 clears this DEST only (other DEST trigless stay).
+
 
 YES writes **only** the selected DEST's lock bytes (plus the TRIG mask).
 A later fill with another DEST leaves earlier locks alone.
