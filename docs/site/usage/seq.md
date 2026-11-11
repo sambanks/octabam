@@ -34,8 +34,8 @@ mask) and overwrites the track.
 ## Examples
 
 Step numbers below are **1-based** (same as the unit). Black = lock on a
-note. Hatched **TL** = trigless lock. White = no lock. Inverted cells on
-the 3x2 panel are the knobs that matter for that example.
+note. Hatched = trigless lock. White = no lock. Inverted cells on the 3x2
+panel are the knobs that matter for that example.
 
 ### 1. Notes only (no DEST locks)
 

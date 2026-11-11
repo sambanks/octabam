@@ -91,7 +91,10 @@ def knobs_svg(cells: list[dict], y0: int = 16) -> tuple[str, int]:
 
 
 def grid_svg(x0: int, y0: int, rows: list, title: str) -> tuple[str, int]:
-    parts = [f'<text class="t" x="{x0}" y="{y0 - 16}">{esc(title)}</text>']
+    # Title centred over the grid, clear of the first row.
+    parts = [
+        f'<text class="t" x="{x0 + GRID_W / 2}" y="{y0 - 28}" text-anchor="middle">{esc(title)}</text>'
+    ]
     for ri, (lab, kinds) in enumerate(rows):
         y = y0 + ri * ROW_H
         parts.append(
@@ -104,14 +107,9 @@ def grid_svg(x0: int, y0: int, rows: list, title: str) -> tuple[str, int]:
                     f'<rect x="{x}" y="{y}" width="{CELL}" height="{CELL}" fill="#111" stroke="#111" stroke-width="2"/>'
                 )
             elif kind == "tl":
+                # Hatched square only — no "TL" letters on the cell.
                 parts.append(
                     f'<rect x="{x}" y="{y}" width="{CELL}" height="{CELL}" fill="url(#hatch)" stroke="#111" stroke-width="2"/>'
-                )
-                parts.append(
-                    f'<rect x="{x+7}" y="{y+9}" width="{CELL-14}" height="16" fill="#fff" opacity="0.92"/>'
-                )
-                parts.append(
-                    f'<text class="tl" x="{x+CELL/2}" y="{y+CELL*0.68}" text-anchor="middle">TL</text>'
                 )
             else:
                 parts.append(
@@ -126,37 +124,30 @@ def grid_svg(x0: int, y0: int, rows: list, title: str) -> tuple[str, int]:
     return "\n".join(parts), y0 + len(rows) * ROW_H + 32
 
 
-def mid_svg(y_mid: float, lines: list[str]) -> str:
+def mid_svg(y_mid: float) -> str:
+    # YES + arrow only — mid captions were redundant with the headline / after notes.
     cx = MID_X + MID_W / 2
-    parts = [f'<text class="t" x="{cx}" y="{y_mid - 22}" text-anchor="middle">YES</text>']
     x1, x2 = MID_X + 22, MID_X + MID_W - 22
-    parts.append(f'<line class="arr" x1="{x1}" y1="{y_mid}" x2="{x2}" y2="{y_mid}"/>')
-    for i, line in enumerate(lines):
-        parts.append(
-            f'<text class="t-sm" x="{cx}" y="{y_mid + 26 + i*18}" text-anchor="middle">{esc(line)}</text>'
-        )
-    return "\n".join(parts)
+    return "\n".join(
+        [
+            f'<text class="t" x="{cx}" y="{y_mid - 18}" text-anchor="middle">YES</text>',
+            f'<line class="arr" x1="{x1}" y1="{y_mid}" x2="{x2}" y2="{y_mid}"/>',
+        ]
+    )
 
 
 def legend_svg(y: float) -> str:
     items = [
-        ("#111", None, "lock on a note"),
-        ("url(#hatch)", "TL", "trigless lock (TL)"),
-        ("#fff", None, "no lock"),
+        ("#111", "lock on a note"),
+        ("url(#hatch)", "trigless lock"),
+        ("#fff", "no lock"),
     ]
     x = MARGIN
     parts = []
-    for fill, tl, lab in items:
+    for fill, lab in items:
         parts.append(
             f'<rect x="{x}" y="{y}" width="22" height="22" fill="{fill}" stroke="#111" stroke-width="2"/>'
         )
-        if tl:
-            parts.append(
-                f'<rect x="{x+4}" y="{y+5}" width="14" height="12" fill="#fff" opacity="0.92"/>'
-            )
-            parts.append(
-                f'<text class="tl" x="{x+11}" y="{y+16}" text-anchor="middle">{tl}</text>'
-            )
         parts.append(f'<text class="t-sm" x="{x+30}" y="{y+16}">{esc(lab)}</text>')
         x += 250
     return "\n".join(parts)
@@ -181,7 +172,6 @@ def wrap(title: str, body: str, h: int) -> str:
     .t-sm {{ font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#222; }}
     .t-xs {{ font: 12px ui-monospace, Menlo, Consolas, monospace; fill:#333; }}
     .lab {{ font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }}
-    .tl {{ font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }}
     .kn {{ font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#111; }}
     .kn-inv {{ font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#fff; font-weight:700; }}
     .kn-val {{ font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }}
@@ -200,7 +190,6 @@ def make(
     headline: str,
     before: list,
     after: list,
-    mid_lines: list[str],
     after_note: list[str],
     footer: str,
 ) -> Path:
@@ -210,12 +199,13 @@ def make(
     parts.append(
         f'<text class="t" x="{W/2}" y="{y+30}" text-anchor="middle">{esc(headline)}</text>'
     )
-    y_grid = y + 80
+    # Extra room so BEFORE/AFTER titles sit clear of the headline and grids.
+    y_grid = y + 96
     g1, yb = grid_svg(LEFT_X0, y_grid, before, "BEFORE")
     g2, ya = grid_svg(RIGHT_X0, y_grid, after, "AFTER")
     parts += [g1, g2]
     y_mid = y_grid + (3 * ROW_H - 18) / 2
-    parts.append(mid_svg(y_mid, mid_lines))
+    parts.append(mid_svg(y_mid))
     for i, line in enumerate(after_note):
         parts.append(
             f'<text class="t-sm" x="{RIGHT_X0}" y="{ya + 12 + i*18}">{esc(line)}</text>'
@@ -246,9 +236,8 @@ SPECS = [
         "TRIG with DEPTH 0: rewrite notes, clear this DEST locks.",
         [("note", empty8()), ("PTCH", empty8()), ("VOL", empty8())],
         [("note", locks({1, 3, 5, 7})), ("PTCH", empty8()), ("VOL", empty8())],
-        ["DPTH 0", "notes only"],
         ["notes on 1 3 5 7", "PTCH cleared (DEPTH 0)"],
-        "DEPTH 0 means YES clears the current DEST while still baking notes.",
+        "DEPTH 0 means YES clears the current DEST while still placing notes.",
     ),
     (
         "stack-vol",
@@ -271,8 +260,7 @@ SPECS = [
             ("PTCH", locks({1, 3, 5, 7})),
             ("VOL", tls({2, 4, 6, 8})),
         ],
-        ["LANE=PLCK", "DEST=VOL"],
-        ["VOL on 2 4 6 8 as TL (no note there)", "notes + PTCH untouched"],
+        ["VOL on 2 4 6 8 (no note there)", "notes + PTCH untouched"],
         "Use PLCK to stack another DEST on its own rhythm.",
     ),
     (
@@ -296,8 +284,10 @@ SPECS = [
             ("PTCH", locks({1, 5})),
             ("VOL", mix(lock_idxs={1, 5}, tl_idxs={3, 7})),
         ],
-        ["PULS 4 to 2", "notes 1+5"],
-        ["PTCH: cleared on 3+7, written on 1+5", "VOL: still on 1+5; steps 3+7 kept as TL"],
+        [
+            "PTCH: cleared on 3+7, written on 1+5",
+            "VOL: still on 1+5; steps 3+7 kept trigless",
+        ],
         "DEST=PTCH follows the notes. Other DEST locks (VOL) survive as trigless.",
     ),
     (
@@ -321,10 +311,9 @@ SPECS = [
             ("PTCH", tls({2, 4, 6, 8})),
             ("VOL", tls({2, 4, 6, 8})),
         ],
-        ["ROT to 1", "hits 2 4 6 8"],
         [
-            "PTCH: gone from notes 1 3 5 7; TL on 2 4 6 8",
-            "VOL: unchanged (still TL on 2 4 6 8)",
+            "PTCH: gone from notes 1 3 5 7; trigless on 2 4 6 8",
+            "VOL: unchanged (still trigless on 2 4 6 8)",
         ],
         "PLCK YES overwrites this DEST even on notes. Other DEST stacks do not move.",
     ),
@@ -349,7 +338,6 @@ SPECS = [
             ("PTCH", empty8()),
             ("VOL", tls({2, 4, 6, 8})),
         ],
-        ["PULS 0", "DEST=PTCH"],
         ["PTCH gone everywhere in range", "notes and VOL still there"],
         "PULSE 0 + YES on PLCK is a DEST eraser. Notes stay.",
     ),
