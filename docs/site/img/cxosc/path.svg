@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" role="img" aria-labelledby="title desc">
+  <title id="title">CX OSC signal path</title>
+  <desc id="desc">Modulator FM into carrier, then MIX into FOLD to out.</desc>
+  <rect width="800" height="300" fill="#fff"/>
+  <style>
+    .box { fill:#fff; stroke:#111; stroke-width:2; }
+    .box-emph { fill:#111; stroke:#111; stroke-width:2; }
+    .t { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
+    .t-inv { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#fff; }
+    .t-sm { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
+    .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
+    .side { fill:none; stroke:#111; stroke-width:1.5; stroke-dasharray:4 3; }
+  </style>
+  <defs>
+    <marker id="a" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <rect class="box" x="24" y="100" width="110" height="56" rx="2"/>
+  <text class="t" x="79" y="124" text-anchor="middle">MOD</text>
+  <text class="t-sm" x="79" y="142" text-anchor="middle">RATO / MMOR</text>
+  <path class="side" d="M40 100 C20 100 20 58 79 58 C138 58 138 100 118 100"/>
+  <text class="t-sm" x="79" y="52" text-anchor="middle">FDBK</text>
+
+  <line class="arr" x1="134" y1="128" x2="174" y2="128"/>
+
+  <rect class="box" x="150" y="32" width="92" height="42" rx="2"/>
+  <text class="t" x="196" y="50" text-anchor="middle">INDX</text>
+  <text class="t-sm" x="196" y="66" text-anchor="middle">x DEC env</text>
+  <line class="arr" x1="196" y1="74" x2="196" y2="104"/>
+
+  <rect class="box" x="170" y="104" width="70" height="48" rx="2"/>
+  <text class="t" x="205" y="133" text-anchor="middle">FM</text>
+
+  <line class="arr" x1="240" y1="128" x2="282" y2="128"/>
+
+  <!-- CARRIER: taller; text block optically centered -->
+  <rect class="box" x="278" y="78" width="170" height="100" rx="2"/>
+  <text class="t" x="363" y="116" text-anchor="middle">CARRIER</text>
+  <text class="t-sm" x="363" y="136" text-anchor="middle">PTCH / FINE</text>
+  <text class="t-sm" x="363" y="152" text-anchor="middle">CMOR</text>
+
+  <line class="arr" x1="448" y1="128" x2="496" y2="128"/>
+
+  <rect class="box-emph" x="488" y="100" width="100" height="56" rx="2"/>
+  <text class="t-inv" x="538" y="124" text-anchor="middle">MIX</text>
+  <text class="t-inv" x="538" y="142" text-anchor="middle" style="font-size:10px">fold input</text>
+
+  <path class="arr" d="M79 156 L79 220 L538 220 L538 150"/>
+  <text class="t-sm" x="310" y="212" text-anchor="middle">mod sine (FDBK source, not MMOR FM tap)</text>
+
+  <line class="arr" x1="588" y1="128" x2="628" y2="128"/>
+
+  <rect class="box" x="624" y="100" width="120" height="56" rx="2"/>
+  <text class="t" x="684" y="124" text-anchor="middle">FOLD</text>
+  <text class="t-sm" x="684" y="142" text-anchor="middle">+ SYMM to out</text>
+
+  <text class="t-sm" x="400" y="280" text-anchor="middle">MIX=0: folder hears carrier only. MIX up: blend mod into that input. FOLD is the folder dry/wet.</text>
+</svg>

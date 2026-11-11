@@ -900,17 +900,17 @@
   "cxosc": {
     "source": {
       "image": "cxosc/source.png",
-      "caption": "CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.",
-      "remix": "cxosc",
-      "source": "emulator panel UART",
-      "firmware_sha256": "4e612b3b898b1002d7428f6c1dae7808e7d852a766616a996f0fb27eb392743a"
+      "caption": "CX OSC PLAYBACK: PTCH RATO INDX FINE FOLD MIX.",
+      "remix": "cxosc-core",
+      "source": "unit USB MIDI (SCREEN SysEx, CX 75)",
+      "firmware_sha256": "0fa154b82e630a2bc229d1da389847a36b8aac337eb4681807a41aa024c631d2"
     },
     "setup": {
       "image": "cxosc/setup.png",
-      "caption": "SRC SETUP: CX OSC selected in the machine list.",
-      "remix": "cxosc",
-      "source": "emulator panel UART",
-      "firmware_sha256": "4e612b3b898b1002d7428f6c1dae7808e7d852a766616a996f0fb27eb392743a"
+      "caption": "SRC SETUP with CX OSC: CAR MOD DEC SYMM FDBK PWM.",
+      "remix": "cxosc-core",
+      "source": "unit USB MIDI (SCREEN SysEx, CX 75)",
+      "firmware_sha256": "0fa154b82e630a2bc229d1da389847a36b8aac337eb4681807a41aa024c631d2"
     }
   },
   "morph": {

@@ -303,21 +303,26 @@ def capture_octa303(p,r):
 
 
 def capture_cxosc(p,r):
-    # Same choreography as blackpyramids: pick the sixth row, then reopen
-    # SRC SETUP so the list highlights the assigned machine (visible 6 keeps
-    # STATIC..CX OSC on screen). Right-hand knobs stay stock FLEX.
+    # Sixth machine-list row → CX OSC. PLAYBACK: PTCH RATO INDX FINE FOLD MIX.
+    # FUNC+PLAYBACK SETUP: CAR MOD DEC SYMM FDBK PWM.
     press(p,'t1')
     p.chord('func','pg_playback')
     press(p,'down',5)
     press(p,'yes')
     close(p)
     press(p,'pg_playback')
-    enc(p,3,40)   # FOLD default 40 → ~80: mid-high zig-zags
-    enc(p,4,36)   # SYMM default 64 → ~100: upper half dominates (skew off-center)
-    enc(p,5,-64)  # DEC: from HOLD (127) toward mid so the envelope icon shows a fall
-    shot(p,'cxosc','source','CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.',r)
+    enc(p,2,48)   # INDX 0 → ~48: sideband icon readable
+    enc(p,4,64)   # FOLD 0 → ~64: folder zig-zags
+    enc(p,5,40)   # MIX mid: dial off the left stop
+    shot(p,'cxosc','source','CX OSC PLAYBACK: PTCH RATO INDX FINE FOLD MIX.',r)
     p.chord('func','pg_playback')
-    shot(p,'cxosc','setup','SRC SETUP: CX OSC selected in the machine list.',r)
+    enc(p,0,40)   # CAR off sine
+    enc(p,1,40)   # MOD off sine
+    enc(p,2,-40)  # DEC off HOLD so the fall shows
+    enc(p,3,20)   # SYMM off 64 (skew)
+    enc(p,4,24)   # FDBK above 0 so the loop OR shows
+    enc(p,5,0)    # PWM stays mid (~64)
+    shot(p,'cxosc','setup','SRC SETUP with CX OSC: CAR MOD DEC SYMM FDBK PWM.',r)
 
 
 def capture_synth(p,r):

@@ -1255,6 +1255,28 @@ UART stream decoded by `tools/panel/panel_link.py`, not against the
 plane. `verify_screen` does this with the boot popup and MIXER up,
 on an empty card.
 
+<a id="trap-icon-bit31"></a>
+### Stock icon blit: bit 31 is the bottom row
+
+**Seen:** CX OSC SETUP icons (6 Nov 2026, flashes CX 24–28). Agents
+nudged FDBK with `lsrl` expecting “down”, and the icon climbed the box;
+`lsll` moved it down. DEC HOLD filled the column or used row h=11 and
+read as a white square / clipped top stroke on SETUP.
+
+**Cost:** five remix flashes chasing one pixel of vertical position and
+a hollow HOLD line, because screen-y intuition was applied to the blit
+word.
+
+**Rule:** the column long for blit `0x400128a8` (mask `0xfff80000`, 13
+rows) has **bit 31 = bottom**, bit 19 = top. `pg_vline`-style row `0` is
+that bottom bit; higher row indices are higher on the LCD. On a column
+long, **`lsll` moves content down**, **`lsrl` moves it up**. Do not
+invert from “y grows up on the page”. CX OSC settled values (unit OK on
+CX 28): FDBK after Tim art + loop OR → `lsll #1`; DEC HOLD → single
+hollow line at **h=10** (not h=11, not a fill). Documented in
+`modules/cxosc/page.s` (header + `pg_ic_fdbk` / `pg_ic_decay`) and
+`modules/cxosc/README.md`.
+
 <a name="trap-movem-sp"></a>
 
 ### `moveml %sp@` is the mode-2 form: it stores at sp and leaves sp unchanged

@@ -1,99 +1,120 @@
 # `cxosc` — CX OSC
 
-Buchla-flavoured **complex oscillator** as a machine-list machine (sibling to
-SYNTH MACHINE). Local fork of Tim Hastie's FM SYNTH ColdFire engine; not an
-edit of the `modules/synth` submodule. Provenance: `NOTICE`, `LICENSE-TIM`,
-and the `THIRD_PARTY.md` row.
+Buchla-style **complex oscillator** as a track machine: two-operator FM,
+sine wavefolder, modulator feedback, sine→saw morphs. West Coast timbre
+path — fold and index, not a filter. Local fork of Tim Hastie's FM SYNTH
+ColdFire engine (not an edit of `modules/synth`). Provenance: `NOTICE`,
+`LICENSE-TIM`, `THIRD_PARTY.md`.
+
+Human manual (params + shots): [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md).
 
 ## Select
 
-**FUNC + SRC** or **SELECT MACHINE TYPE** → **CX OSC** (sixth row). No marker
-file. Stored as FLEX with Part signature `"CX", 1`. At most **one CX OSC track
-per Part** (`ml_guard` / `ML_FM_MAX 1`) — so **one track can sound** as CX OSC
-at a time on the active Part. A second choice (machine window, SRC SETUP,
-track/Part paste) shows **CX OSC: 1 MAX**. `verify_cxosc` exercises the
-refusal under Unicorn.
+Same sixth list row (**CX OSC**, under PICKUP). No marker file. Stored as
+FLEX with Part signature `"CX", 1`. No marker-file select; Part signature `"CX", 1`.
 
-## Provenance
+- Double-tap the track key → machine list → **CX OSC** → YES
+- **FUNC + SRC** → **SELECT MACHINE TYPE** → **CX OSC** → YES
+- From **SRC SETUP**’s left machine list → **CX OSC** → YES
 
-| File | Upstream pin |
-|------|----------------|
-| `poly.s` | timhastie/octatrick-modules **v2.9** `525f4b1` + AMP snap (`po_amp_snap` / `po_amp_at` / `po_alaw`) from **v2.22** `73686de` (`po_amp_at` without the SY DRUM branch; Tim's source comments still say 2.10 / 2.20) |
-| `page.s`, `machine.s` | **v2.15** `17ba281` (`machine.s` via Modwerk FM Synth `1c1d938`) |
+On a sample track, **FUNC + SRC** may open the sample list first — **LEFT**
+reaches the machines.
 
-CX-specific: marker-less list row, FOLD + SYMM waveshape, free/snap RATO,
-DEC on the index (HOLD at **127**, Tim 5 Oct polarity), fixed mid FDBK in the
-engine, mono + stock LFOs (no VOIC/CHRD). AMP ATK / HOLD / REL are the
-engine's (plan B); scenes and LFOs on those knobs apply via the **v2.22**
-DSP-record snapshot (not the live lane alone).
+## PLAYBACK — carrier, mod, fold
 
-## PLAYBACK
+| Knob | Name | What it does |
+|------|------|----------------|
+| A | PTCH | Semitones (−64..+63); **FUNC** snaps to …/−12/0/+12…; one unit a detent |
+| B | RATO | Mod∶carrier ratio, free 0.25..4; **FUNC** snaps the classic table |
+| C | INDX | FM depth (default **0**) |
+| D | FINE | Cents (−64..+63; raw **64** = 0c) |
+| E | FOLD | Wavefolder dry/wet after MIX (default **0** = bypass) |
+| F | MIX | Folder **input** crossfade carrier↔**MMOR morph** (**0** = carrier, **127** = mod solo). Not the fold amount. |
 
-| Slot | Name | Role |
-|------|------|------|
-| A | PTCH | Semitones (−64..+63) |
-| B | RATO | Mod:carrier ratio (free 0.25..4; FUNC snaps classic table ≤4.01) |
-| C | INDX | FM index |
-| D | FOLD | Sine waveshape fold (dry/wet; moderate drive) |
-| E | SYMM | Bipolar half-wave skew into the folder (64 = even; extremes mute one polarity) |
-| F | DEC | Index envelope; **127 = HOLD**, 0 = shortest (not the old min=HOLD) |
+Signal path: **mod → FM → carrier → MIX (fold input) → FOLD → out**.
+See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagrams.
 
-Mono only. Stock LFO page (all three LFOs). No VOIC/CHRD. AMP page ATK / HOLD /
-REL shape the note in the engine (locks, scenes, LFOs). Modulator feedback is
-a fixed mid (no FDBK knob).
+## SETUP — morph, index env, feedback
 
-**Saved Parts.** Slot F was FDBK; SYMM's even centre was 0. Seeds FOLD 40 /
-SYMM 64 / DEC 127 are written only when CX OSC is chosen. A Part saved under
-the older layout with FDBK 0 and SYMM 0 loads as **DEC 0** (shortest index
-decay) and **SYMM 0** (one half-wave muted). Re-select CX OSC on the track, or
-set DEC 127 and SYMM 64 by hand.
+**FUNC + PLAYBACK** (LCD header **SRC SETUP**).
 
-## Cost
+| Knob | Name | What it does |
+|------|------|----------------|
+| A | CAR | Carrier morph 0..127 (**0** sine → **64** saw → **127** square); icon tracks the shape; **FUNC** snaps |
+| B | MOD | Modulator morph 0..127 (same; needs **INDX**); icon tracks the shape; **FUNC** snaps |
+| C | DEC | Index envelope; **127 = HOLD** |
+| D | SYMM | Fold half-wave skew (**64** = even) |
+| E | FDBK | Modulator feedback (default **0** = off) |
+| F | PWM | Cycle lean — LCD **−64..+63** (**0** = neutral; byte 64): sine soft lean; saw phase-skew (8%..92%); square duty (**0** ≈ 50%). Does **not** move the CAR/MOD icons. |
 
-Unicorn executed instructions for one mono CX OSC track (`tools/verify/verify_cxosc.py`,
-`sy_render`, base knobs; pitch curve stubbed — EMAC): **~1352 instructions/frame**
-(~85/sample; was ~1290 before the v2.22 AMP snap), peak ~1391. Not hardware
-cycles. One track per Part by the selection guard; ColdFire headroom on a
-loaded Part on the unit is still **open** ([#852](https://github.com/sambanks/octabam/issues/852)).
+LFO SETUP PMTR lists the PLAYBACK names (**PTCH RATO INDX FINE FOLD MIX**)
+plus AMP / stock FX, then **30 = CAR**, **31 = MOD**, **32 = SYMM**,
+**33 = FDBK**, **34 = PWM**. PTCH LFO depth matches FLEX (÷5). DEC is not an LFO destination. Mono only — AMP HOLD
+owns note length (**HOLD INF** = until STOP); select seeds ATK 0 / HOLD INF /
+REL 0 / LEG MONO. Beside OCTA303, HOOKS `machine_rows` bridges the LFO
+PMTR name site (`0x4003bff0`): each machine names its own track.
+
+CMOR/MMOR targets and traps: [`MORPH.md`](MORPH.md).
+
+## Icons (SETUP LCD) — do not invert
+
+Stock blit `0x400128a8` column longs: **bit 31 = bottom row**, bit 19 = top
+(mask `0xfff80000`, 13 rows). `pg_vline` row `0` is the bottom; higher row
+indices climb the screen.
+
+| Shift on a column long | Content moves |
+|------------------------|---------------|
+| `lsll #k` | **DOWN** (toward bit 31) |
+| `lsrl #k` | **UP** |
+
+FDBK nudge after Tim art + loop OR: **`lsll #1`**. DEC HOLD is a **single**
+hollow line at row **h=10** (h=11 clips on SETUP; a filled box reads as a
+white square). See `docs/contributing/TRAPS.md#trap-icon-bit31`.
+
+## Saved Parts
+
+Seeds (`fm_defaults`: FINE 0c, FOLD/MIX/INDX/FDBK 0, DEC HOLD, SYMM 64) are
+written **only when CX OSC is chosen**. A project / Part reload / paste keeps
+the bytes that were saved — no remap.
+
+PLAYBACK D/E/F moved since the VRCS-CX VS layout (then FOLD / SYMM / DEC):
+
+| Saved under VS (D/E/F) | Loads on this tip as |
+|---|---|
+| FOLD | **FINE** (raw; 64 = 0c) |
+| SYMM | **FOLD** |
+| DEC | **MIX** |
+
+Example: VS defaults FOLD 40 / SYMM 64 / DEC 127 → FINE raw 40 (−24c), FOLD
+64, MIX 127. Re-choose CX OSC on the track to re-seed, or edit the knobs.
+
+Earlier still: slot F was once FDBK and SYMM’s even centre was 0 — a Part
+saved with FDBK 0 / SYMM 0 under that layout loaded as DEC 0 / SYMM 0 when
+DEC lived on PLAYBACK F (#1001 note).
 
 ## Conflicts
 
-**SYNTH MACHINE**, **BLACKPYRAMIDS_303** (shared ROM hooks such
-as MIDI note-on `0x4000e746`). The build refuses the pair.
+Cannot share an image with **SYNTH MACHINE** (same FLEX/STATIC renderers /
+page cave / machine-list sites) or **BLACKPYRAMIDS_303** (shared ColdFire
+ROM hooks, e.g. MIDI note-on). Not an FX2 id — machine signature `"CX", 1`.
 
-Beside **ANALOG BD** or **OCTA303** the machine list is shared through
-[HOOKS](../hooks/README.md) (`machine_rows`): CX OSC takes the row after
-theirs (6, or 7 with both), the first machine's hooks keep the list's sites
-and hand CX OSC's row on to its routines. CX OSC's renderer heads the
-FLEX kind entry's chain (its page code finds its records in the words before
-the renderer that entry names), then OCTA303's and ANALOG BD's; its PLAYBACK
-page resolver and START rewrite follow OCTA303's. Built that
-way (`HK_MACHINE_ROWS`) `machine.s` adds `fm_main_commit_hk` (the chain
-enters after stock's `adda` at `0x40079816`) and `fm_publish` (its page
-record, from the first machine's tick); `poly.s`'s `po_machwin` replays the
-first machine's two displaced instructions. CX OSC alone builds the same
-bytes. With OCTA303, PLACE must be DRAM (the CAVE form's jump at the
-resolver cannot be chained).
+## Cost / how many CX tracks
 
-## PLACE
+One mono voice under Unicorn: about **2035** instructions/frame (peak ~2074;
+`verify_cxosc`).
 
-Setting `ilia.cxosc` / `PLACE` (Apply.BUILD, default **DRAM**): the PLAYBACK
-page lives in the platform runtime with `poly.s`, and the resolver at
-`0x40031ece` is a detour to `pg_resolve`. That leaves the stock DELAY curve
-table tail at `0x400d24d0` alone (issue #771). **CAVE** is the pinned ROM
-form at that address; the ledger refuses it in a remix that lists DELAY.
+Selection guard **`ML_FM_MAX = 6`** (Part popup `CX OSC: 6 MAX`). Measured on
+author MKII with remix `cx-cf` + CF METER (USB decode, 9 Nov 2026, tip
+`CX-CF 69`):
 
-## Proof / hardware
+| CX tracks sounding | idle % | ISR mean | ISR max | notes |
+|---|---:|---:|---:|---|
+| 0 (baseline) | 44.7 | 125 µs | 212 µs | |
+| 4 | 21.8 | 272 µs | 325 µs | comfortable |
+| 6 | ~12 | 309 µs | 376 µs | max past the 363 µs frame |
+| 7 | 0 | 355 µs | 446 µs | wall — MAIN clipped; do not ship as a cap |
 
-**Port:** `make check REMIX=cxosc` runs `verify_cxosc` (FOLD/SYMM/RATO/DEC
-change the waveform; FOLD=SYMM=DEC=127 stays off the rails; DSP-record ATK
-shapes the attack via the v2.22 snap).
-
-**Hardware (author MKII):** remix **VRCS-CX VS**, tip **`32316200`** — AMP
-snap, DEC (HOLD@127), bipolar SYMM skew + icons, FOLD default 40; PLAYBACK
-knobs and FUNC RATO snaps OK. Earlier **BUILD CS** @ **`052bb14d`**
-(`cxosc-core`) smoked machine select / PLAYBACK then FDBK / MIDI / STOP /
-Part.
+Eight tracks were not safe. Author confirmed **6 MAX** toast on unit (CX 70). [#852](https://github.com/sambanks/octabam/issues/852).
 
 ## Build
 

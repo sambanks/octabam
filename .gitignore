@@ -36,3 +36,4 @@ tools/tone
 downloads
 # Control and bisect remixes for a unit (tools/hw/remix_variant.py)
 /remixes/_hw-*.py
+modules/quantizer/_generated/
