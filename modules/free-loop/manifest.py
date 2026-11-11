@@ -41,7 +41,9 @@ pointed at a copy of stock's table with UP added (the window).
 Beside REC THRESHOLD and REC_TRIG_MUTE the shared sites go through HOOKS
 (modules/hooks): the status icon chain calls fl_glyph last (after REC
 THRESHOLD's blink_gate); at the step handler this detour stays and, assembled
-with HK_REC_GATE (select below), hands on to rtm_gate where it replayed stock. MORPH stays a conflict: both want [TRACK]+UP.
+with HK_REC_GATE (select below), hands on to rtm_gate where it replayed stock. Beside
+RELOAD_FROM_PROJECT the UI tick goes through HOOKS too (ui_tick): this detour stays and,
+assembled with HK_UI_TICK, jumps to rl_uitick where it replayed stock. MORPH stays a conflict: both want [TRACK]+UP.
 """
 
 import dataclasses
@@ -72,9 +74,10 @@ _UNIT = Linked("fl", "modules/free-loop/free_loop.s", cpu="5475", dram=True)
 
 def select(modules):
     """Beside REC_TRIG_MUTE (modules/hooks rec_gate) the unit is assembled with
-    HK_REC_GATE: its not-ours path jumps to rtm_gate."""
+    HK_REC_GATE: its not-ours path jumps to rtm_gate. Beside RELOAD_FROM_PROJECT
+    (ui_tick) with HK_UI_TICK: its UI tick jumps to rl_uitick where it replayed stock."""
     from remix import hooks_flags
-    defs = tuple((flag, 1) for bridge, flag in (("rec_gate", "HK_REC_GATE"),)
+    defs = tuple((flag, 1) for bridge, flag in (("rec_gate", "HK_REC_GATE"), ("ui_tick", "HK_UI_TICK"))
                  if hooks_flags.on(bridge, "FREE LOOP", modules))
     return {"linked": (dataclasses.replace(_UNIT, defsyms=defs),)} if defs else {}
 

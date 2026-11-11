@@ -25,4 +25,4 @@ Built from [Zac-Kyoti/octatrack-kyoti-fw](https://github.com/Zac-Kyoti/octatrack
 
 - All-tracks and whole-bank reload are not implemented.
 - Octakit's conflict is dropped: Octakit is not in octabam since 6 Oct 2026 (KITS replaces it and plays through the stock Part slots). Since `27ab725` `[BANK]` + `[TRACK n]` no longer calls stock Part RELOAD (`0x4004aab4`); it calls stock's per-track Part apply (`0x40001f18`) and, for a whole pattern, stock's cue (`0x4009a404`, `0x400a1030`). These calls are not `Detour`s, so the ledger cannot see them. KITS also uses `0x400a1030` and `0x4004aab4`; the two have never been run together.
-- FREE LOOP is a conflict: both detour the UI task's toast countdown `0x40056c28`.
+- Beside FREE LOOP, the UI task's tick `0x40056c28` (both detour it) goes through [HOOKS](../hooks/README.md) (`ui_tick`): FREE LOOP's detour stays and jumps to `rl_uitick` where it replayed stock, and this module's own detour there is overridden. On a tick where FREE LOOP shows a toast, RELOAD's UI half runs on the next tick, 1/60 s later.

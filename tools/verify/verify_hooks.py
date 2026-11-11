@@ -42,6 +42,7 @@ DECL = runpy.run_path(str(ROOT / "modules/hooks/manifest.py"))
 RTM = "REC_TRIG_MUTE"
 THR = "REC THRESHOLD"
 FL = "FREE LOOP"
+RL = "RELOAD_FROM_PROJECT"
 BASE_IMG = 0x40000400
 fails = 0
 
@@ -72,6 +73,8 @@ def selection():
     check(bridged({THR, FL}) == ("status_icon",), "REC THRESHOLD + FREE LOOP: status_icon only")
     check(bridged({RTM, FL}) == ("rec_gate",), "REC_TRIG_MUTE + FREE LOOP: rec_gate only (the icon drawer is FREE LOOP's)")
     check(bridged({RTM, THR, FL}) == ("status_icon", "rec_gate"), "all three: status_icon and rec_gate")
+    check(bridged({RL, FL}) == ("ui_tick",), "RELOAD_FROM_PROJECT + FREE LOOP: ui_tick only")
+    check(bridged({RL}) == () and bridged({RL, RTM, THR}) == (), "RELOAD_FROM_PROJECT without FREE LOOP: no bridge")
     check(bridged({"ANALOG BD", "OCTA303"}) == ("machine_rows",), "ANALOG BD + OCTA303: machine_rows only")
     check(DECL["select"](set()) == {"linked": (), "detours": (), "symbol_refs": (), "overrides": (), "pokes": ()},
           "an empty selection: HOOKS has no unit, claim or override")
@@ -83,7 +86,7 @@ def selection():
         except SystemExit:
             continue
         check(has == want, f"remix {name}: HOOKS {'appended' if want else 'not appended'}")
-    for sel in ((THR, FL, "STORE"), (RTM, FL, "STORE"), ("ANALOG BD", "OCTA303")):
+    for sel in ((THR, FL, "STORE"), (RTM, FL, "STORE"), (RL, FL, "STORE"), ("ANALOG BD", "OCTA303")):
         bad = ledger.check(m(*sel))
         check(any(p.startswith("hooks:") for p in bad), f"{' + '.join(sel)} without HOOKS is refused")
         check(ledger.check(m(*sel, "HOOKS")) == [], f"{' + '.join(sel)} with HOOKS is clean")
@@ -704,6 +707,58 @@ def free_loop():
                     f"REC_TRIG_MUTE's dots are at the tab letter now) nothing drawn")
 
 
+def ui_tick():
+    """ui_tick (codeless), under Unicorn: FREE LOOP built with HK_UI_TICK (its
+    select) and RELOAD_FROM_PROJECT, linked as the platform links them. Entered
+    as at 0x40056c28: a tick FREE LOOP lets through reaches rl_uitick, which
+    reads the toast countdown into d0 and goes on at 0x40056c2e (stock's beq);
+    a tick on which FREE LOOP shows a toast returns, as alone. fl_ui_tick is
+    stubbed (move.l SHOWN,%d0 ; rts; written once: Unicorn keeps translated
+    code, so the case is the data word): the hand-off is what is tested."""
+    from unicorn import m68k_const as mc
+    from remix.schema import apply_select
+    known = registry.modules()
+    keys = {FL, RL, "STORE", "HOOKS"}
+    units = [(k, u) for k in (FL, RL) for u in apply_select(known[k], keys).linked]
+    with tempfile.TemporaryDirectory(prefix="octabam-hooks-ui-") as td:
+        segs, sym = _link_units(Path(td), keys, units)
+    u = _uc(segs)
+    u.mem_map(0x80000000, 0x100000)
+    STACK, RET, ON, TOAST_CD, SHOWN = 0x47008000, 0x47001000, 0x40056C2E, 0x460D1E6C, 0x47002000
+    for stop in (RET, ON):
+        u.mem_write(stop, b"\x4e\x71")
+    u.mem_write(sym["fl_ui_tick"], b"\x20\x39" + SHOWN.to_bytes(4, "big") + b"\x4e\x75")   # move.l SHOWN,%d0 ; rts
+    for flag in ("rl_arm", "rl_spn", "rl_post", "rl_lnk"):   # nothing pending: rl_uitick's own path is the read
+        u.mem_write(sym[flag], b"\x00")
+    bad = n = 0
+    for shown in (0, 1):
+        for cd in (0, 7):
+            u.mem_write(SHOWN, shown.to_bytes(4, "big"))
+            u.reg_write(mc.UC_M68K_REG_SR, 0x2000)
+            u.mem_write(TOAST_CD, cd.to_bytes(4, "big"))
+            u.reg_write(mc.UC_M68K_REG_A7, STACK - 4)
+            u.mem_write(STACK - 4, RET.to_bytes(4, "big"))                         # the task loop's return
+            u.reg_write(mc.UC_M68K_REG_D0, 0x5A5A5A5A)
+            want = RET if shown else ON
+            pc = None
+            for stop in (want, ON if want == RET else RET):
+                try:
+                    u.emu_start(sym["fl_ui_stub"], stop, count=20000)
+                except Exception:
+                    break
+                if u.reg_read(mc.UC_M68K_REG_PC) == stop:
+                    pc = stop
+                    break
+            n += 1
+            bad += pc != want or (pc == ON and u.reg_read(mc.UC_M68K_REG_D0) != cd)
+    rt = b"".join(d for _a, d in segs if _a == 0x41000000)
+    jmp = b"\x4e\xf9" + sym["rl_uitick"].to_bytes(4, "big")
+    check(jmp in rt[sym["fl_ui_stub"] - 0x41000000:sym["fl_ui_stub"] - 0x41000000 + 0x40],
+          "fl_ui_stub (HK_UI_TICK) jumps to rl_uitick at its linked address")
+    check(bad == 0, f"ui_tick: {n} cases -- a tick FREE LOOP lets through reaches rl_uitick, d0 = the toast "
+                    f"countdown at 0x40056c2e; a tick that showed FREE LOOP's toast returns to the task loop")
+
+
 def installed(name):
     img_path = ROOT / "out/mainos_bus.bin"
     raw = ROOT / "out/raw/section_3_MAIN_OS.bin"
@@ -770,6 +825,15 @@ def installed(name):
             at = sym[sa] - base
             check(b"\x4e\xf9" + sym[sb].to_bytes(4, "big") in rt[at:at + 0x100],
                   f"{sa} hands every other track to {sb}")
+    if "ui_tick" in DECL["bridged"](set(sel)):
+        # codeless: FREE LOOP's own jmp at the site, its flagged tick path a jmp to rl_uitick;
+        # RELOAD_FROM_PROJECT's detour there is overridden
+        site = DECL["UI_TICK_SITE"]
+        check(img[site - BASE_IMG:site - BASE_IMG + 6] == b"\x4e\xf9" + sym["fl_ui_stub"].to_bytes(4, "big"),
+              "0x40056c28: jmp fl_ui_stub (not RELOAD_FROM_PROJECT's rl_uitick)")
+        at = sym["fl_ui_stub"] - base
+        check(b"\x4e\xf9" + sym["rl_uitick"].to_bytes(4, "big") in rt[at:at + 0x40],
+              "fl_ui_stub hands the tick to rl_uitick")
     if "machine_rows" in DECL["bridged"](set(sel)):
         # the head's hooks at every shared site it claims; each machine's flagged not-ours
         # paths reach the next one's routine; the FLEX kind entry is the render chain's head;
@@ -828,6 +892,8 @@ def main():
         machines(on)
     print("verify_hooks: FREE LOOP beside REC_TRIG_MUTE under Unicorn")
     free_loop()
+    print("verify_hooks: FREE LOOP beside RELOAD_FROM_PROJECT under Unicorn")
+    ui_tick()
     print(f"verify_hooks: installed ({name})")
     installed(name)
     print(f"verify_hooks: {'all passed' if not fails else f'{fails} failed'}")
