@@ -4,13 +4,13 @@
 | pattern-page / SCALE path. FUNC + PAGE (SCALE SETUP) stays stock: it
 | rides the FUNC layer, not this opener.
 |
-| Window: "SEQ" top-left. LEN BR (SCALE length — not a knob). Stock
+| Window: "SEQ" top-left. LEN BR (SCALE length - not a knob). Stock
 | SETUP-style 3x2 dotted grid right-aligned: A=PULSE B=ROT C=LANE /
 | D=DEST E=DEPTH; F empty. LANE = TRIG|PLOCK (grid + A/B follow).
 | DEST cell = PAGE + PARAM (no PMTR caption). Per-DEST plock PULSE/ROT
 | in ef_plk_mem (like DEPTH). YES: TRIG->mask0; PLOCK->DEST locks;
 | plock-only -> trigless-lock mask +0x10; PLCK miss clears this DEST
-| (no PTCH carry onto bare note trigs — regenerating from PLCK overwrites
+| (no PTCH carry onto bare note trigs - regenerating from PLCK overwrites
 | TRIG-baked locks for that DEST).
 | Pattern: 4×16 hollow/filled squares at the bottom (all ≤64
 | steps; last row = n mod 16). Do NOT bind PAGE / arrows / PROJ /
@@ -24,14 +24,14 @@
 | DEST = LFO SETUP PMTR targets that Euclid can drive:
 |   0..29 page-1 lock flats (skip AMP XVOL=17). Labels PAGE+PARAM.
 |   30..34 on CX OSC: SRC CAR/MOD/SYMM/FDBK/PWM (same as LFO). These are
-|   PLAYBACK SETUP knobs — not stock p-lock flats. YES stores per-step
+|   PLAYBACK SETUP knobs - not stock p-lock flats. YES stores per-step
 |   values in ef_cx_bank / ef_cx_bits (DRAM); CX OSC applies them to SETUP
 |   each frame. Slots stack: a later FOLD/CAR fill does not erase PWM.
 |   DEC is not a dest (LFO skips it too).
 | DEPTH (0..127): lock uniform in [Part-DEPTH .. Part+DEPTH] (clamped).
 | DEST=AMP VOL is unipolar below Part VOL (never louder than AMP). DEST=PTCH
 | in-scale. Editing PULSE leaves free mode. Write-only: open/track switch
-| load bank Euclid params only — never seed from live sample trigs. PLOCK
+| load bank Euclid params only - never seed from live sample trigs. PLOCK
 | PULSE 0 YES clears this DEST and drops orphan TL (stack-safe). After
 | fill, LOCK_COLL rebuilds the step-has-plock LED bitmap so emptied note
 | trigs stop blinking yellow and emptied trigless leave the row.
@@ -96,14 +96,14 @@
         .set    CLOCKEST,  0x80001818
 
         .set    PAGE_GO,   0x4004ffcc   | after the displaced 8-byte prologue
-        | HW tip CX EUCL52 (Ilia, 2026-11-10) — keep this geometry:
-        | WINW=109 @ WINX=0 (19px for T5–8), no WFRAME, 1px top+bottom RULE,
+        | HW tip CX EUCL52 (Ilia, 2026-11-10) - keep this geometry:
+        | WINW=109 @ WINX=0 (19px for T5-8), no WFRAME, 1px top+bottom RULE,
         | DEST = PAGE+PARAM (no PMTR caption), 3x2 with C=LANE F empty.
         | Title top-left. Left gutter icon + right-aligned 3x2. Pattern at
         | bottom: top-left origin, centered, wider gap every 4 steps.
         .set    WINW,      109
         .set    WINH,      64
-        .set    WINX,      0           | left 0; right 128-109 = 19 (T5–8)
+        .set    WINX,      0           | left 0; right 128-109 = 19 (T5-8)
         .set    CELL_W,    0x14
         .set    ROW_PITCH, 0x1b
         .set    X_GRID,    WINW-1-(3*CELL_W) | right-aligned (margin 1; +3 vs EUCL52)
@@ -126,19 +126,19 @@
         .set    X_PAT,     2
         .set    Y_PATT,    22          | +1px bottom clearance for row 3 squares
         .set    X_LEN_R,   WINW-2      | LEN stack right-aligned here
-        .set    Y_LAB0,    0x38        | 56 — top cell labels (PULS/ROT)
+        .set    Y_LAB0,    0x38        | 56 - top cell labels (PULS/ROT)
         .set    Y_VAL0,    0x2f        | 47
-        .set    Y_LEN_VAL, 5           | length digits — BR pocket (+2 vs floor)
+        .set    Y_LEN_VAL, 5           | length digits - BR pocket (+2 vs floor)
         .set    Y_LEN_LAB, 14          | "LEN" tight above digits (same gap as PULS)
-        .set    Y_GMID,    0x2b        | 43 — mid raised 1px (top −1 / bottom +1)
-        | Bottom row: DEST = PAGE + PARAM (no PMTR — 3 lines crush into PULS).
-        .set    Y_LAB1,    0x24        | 36 — PAGE / DPTH
-        .set    Y_VAL1,    0x1e        | 30 — kept for grid math / docs
+        .set    Y_GMID,    0x2b        | 43 - mid raised 1px (top −1 / bottom +1)
+        | Bottom row: DEST = PAGE + PARAM (no PMTR - 3 lines crush into PULS).
+        .set    Y_LAB1,    0x24        | 36 - PAGE / DPTH
+        .set    Y_VAL1,    0x1e        | 30 - kept for grid math / docs
         .set    Y_DEST_P,  Y_LAB1      | PAGE (AMP/SRC)
-        .set    Y_DEST_V,  Y_LAB1-(Y_LAB0-Y_VAL0) | PARAM — same gap as PULS/ROT
+        .set    Y_DEST_V,  Y_LAB1-(Y_LAB0-Y_VAL0) | PARAM - same gap as PULS/ROT
         | DEPTH value: same label→value gap as PULS/ROT.
         .set    Y_DEPTH_V, Y_LAB1-(Y_LAB0-Y_VAL0)
-        .set    Y_GRID1,   WINH-2      | 62 — leave top rim free
+        .set    Y_GRID1,   WINH-2      | 62 - leave top rim free
         .set    Y_GRID0,   23          | floor above pattern (+1 with Y_PATT)
         | Icon centred in the left gutter (after Y_GRID* exist).
         | BLIT y = glyph BOTTOM (Y-up); bit31 = bottom row.
@@ -178,7 +178,7 @@
         .set    FLEX_P,    0x400d31ae  | stock FLEX PLAYBACK descriptor
         .set    DEST_LAST, 29          | last page-1 flat
         .set    DEST_CXLAST, 34        | CX SETUP CAR..PWM (LFO PMTR)
-        .set    DEST_XVOL, 17          | AMP XVOL — skipped in DEST list
+        .set    DEST_XVOL, 17          | AMP XVOL - skipped in DEST list
         .set    PLAY_SETUP, 0x8ef60    | Part + t·30: CAR MOD DEC SYMM FDBK PWM
         .set    CX_STEPS,  64          | per-track CX SETUP fill bank (OT max)
         .set    CX_NSLOT,  5           | CAR MOD SYMM FDBK PWM
@@ -211,7 +211,7 @@
 | ---- 0x4004ffc4: PAGE press/release. Track held -> toggle Euclid. --------
 | Displaced prologue: lea -16(sp),sp ; movem.l d2-d4/a2,(sp).
 | On entry the stack is still stock's (keycode @4, event @8).
-| Bare PAGE (no track held) always stock — never closes Euclid.
+| Bare PAGE (no track held) always stock - never closes Euclid.
 ef_page:
         tstl    HELD
         beq.s   9f                      | no track held: stock PAGE
@@ -228,7 +228,7 @@ ef_page:
 
 | ---- open / close -------------------------------------------------------
 | Open: YES targets = HELD bitmask (else UI_TRACK). Focus/bank = first
-| held track — T4+PAGE must open T4's slot even if UI_TRACK is still T1
+| held track - T4+PAGE must open T4's slot even if UI_TRACK is still T1
 | (EUCL13 loaded UI_TRACK and ignored the chord).
 ef_open:
         movel   HELD,%d0
@@ -288,14 +288,14 @@ ef_mkwin:
         pea     ef_close
         pea     5                       | TEMPO class: mutual eviction
         clrl    %sp@-                   | y = 0
-        clrl    %sp@-                   | x = 0 (T5–8 keep the right 19px)
+        clrl    %sp@-                   | x = 0 (T5-8 keep the right 19px)
         pea     WINH
         pea     WINW
         jsr     WCREATE
         lea     %sp@(24),%sp
         movel   %d0,ef_win
         beq.s   mkw_rts
-        | No WFRAME — top/bottom 1px drawn in ef_grid (RULE).
+        | No WFRAME - top/bottom 1px drawn in ef_grid (RULE).
         tstl    ef_layer_on             | soft dialog kept the layer
         bne.s   mkw_on
         pea     EF_LAYER
@@ -323,7 +323,7 @@ ft_ui:  moveq   #0,%d0
 ft_ok:  rts
 
 | Store working params into bank[ef_focus]. Clobbers d0/d1/a0/a1.
-| ColdFire has no memory-to-memory move.l — stage each long through d1
+| ColdFire has no memory-to-memory move.l - stage each long through d1
 | (open called load_slot first; mem-to-mem illegal-insn hung TRACK+PAGE).
 ef_store_slot:
         moveq   #0,%d0
@@ -578,7 +578,7 @@ ls1:    moveb   %d1,%a0@(0,%d0:l)
         rts
 
 | While open: apply ef_pending (from T1..T8) or fall back to UI_TRACK.
-| No CUR_TRACK read/write here — that path bricked hardware.
+| No CUR_TRACK read/write here - that path bricked hardware.
 ef_follow_ui:
         tstl    ef_win
         beq.s   fu_rts
@@ -666,7 +666,7 @@ sl4:    clrl    ef_pat_off              | all steps fit; scroll unused
         rts
 
 | Close callback / NO / ef_page. Soft dialog (dlg_guard): destroy the
-| window only and KEEP EF_LAYER — encoders stay on ef_enc/ef_ask so
+| window only and KEEP EF_LAYER - encoders stay on ef_enc/ef_ask so
 | knobs stay locked while ARE YOU SURE? is up. Answer restores via
 | ef_mkwin (layer already on). User close / orphan: LPOP via layer_on.
 ef_close:
@@ -773,7 +773,7 @@ cue_mz: moveq   #7,%d0
 cplace: cmpl    %d4,%d2
         bcc.w   cdone
         | pick among the (n - placed) free slots.
-        | ef_rng clobbers d0/d1 — park the divisor; a live d1 here was
+        | ef_rng clobbers d0/d1 - park the divisor; a live d1 here was
         | 1664525 and remul made an unreachable rank → cwalk spun forever.
         move.l  %d5,%d1
         sub.l   %d2,%d1                 | free count > 0
@@ -781,7 +781,7 @@ cplace: cmpl    %d4,%d2
         bsr.w   ef_rng
         move.l  %d0,%d3                 | dividend
         movel   (%sp)+,%d1              | divisor
-        | ColdFire: remul Dr,Du_rem,Dc_div — NOT divu.w (illegal on 5407)
+        | ColdFire: remul Dr,Du_rem,Dc_div - NOT divu.w (illegal on 5407)
         remul   %d1,%d0,%d3             | d0 = d3 % d1
         move.l  %d0,%d3                 | target rank 0..free-1
         moveq   #0,%d6                  | step
@@ -953,7 +953,7 @@ ef_enc:
 ef_level:
         rts
 | Encoder path: d0 = ±delta already. Edits the last A/B/D/E param.
-| ef_sync_len clobbers d0-d3/a0/a1 — park the signed delta on the stack
+| ef_sync_len clobbers d0-d3/a0/a1 - park the signed delta on the stack
 | first. Without that, every encoder turn nudges upward only.
 | While CLEAR PATTERN? is up: every knob locked. Else PULSE/ROT (and CUE)
 | need unlock when baked; DEST/DEPTH free once the dialog is gone.
@@ -1294,7 +1294,7 @@ d9:     rts
 
 | ef_grid: 1px top+bottom rim, solid window left edge + table edge (VLINE),
 | dotted internal divs + mid (HLINE), solid floor above the pattern (RULE).
-| RULE is (surf, x, y, w, h) — w=WINW for true edge-to-edge (WINW-1 left a
+| RULE is (surf, x, y, w, h) - w=WINW for true edge-to-edge (WINW-1 left a
 | 1px gap at the left window border above the squares).
 ef_grid:
         lea     -8(%sp),%sp
@@ -1349,7 +1349,7 @@ ef_grid:
         subql   #1,%d2
         bne.s   1b
 
-        | Floor above pattern squares — edge to edge (w=WINW).
+        | Floor above pattern squares - edge to edge (w=WINW).
         pea     1
         pea     WINW
         pea     Y_GRID0
@@ -1412,7 +1412,7 @@ tk_rts: rts
 
 | ef_dest_label: LFO SETUP PMTR style PAGE\0PARAM\0 into ef_buf
 | (two lines: AMP/VOL, SRC/PTCH, SRC/CAR…). Via ef_dest_name; static
-| tables only on miss. Keeps d2/d3 (draw row / y) — EUCL9/10.
+| tables only on miss. Keeps d2/d3 (draw row / y) - EUCL9/10.
 ef_dest_label:
         movel   %d2,-(%sp)
         movel   %d3,-(%sp)
@@ -1772,7 +1772,7 @@ tnext:  addql   #1,%d2
         | After NOTIFY: drop CLEAR TRACK TRIGS undo. Filling rewrote trigs,
         | so a prior clear's undo arm must not steal the next stock
         | FUNC+PLAY (toast UNDO TRACK TRIGS, trigs stay). EUCL24 only
-        | cleared CLR_UNDO bits — also kill clipboard kind 0xa / CLIP_KEY.
+        | cleared CLR_UNDO bits - also kill clipboard kind 0xa / CLIP_KEY.
         bsr.w   ef_drop_clr_undo
 fout:   movem.l %sp@,%d2-%d7/%a2-%a4
         lea     %sp@(36),%sp
@@ -1797,7 +1797,7 @@ ef_drop_clr_undo:
 | ef_write_mask(trac, rot, k, n) -- stack: TRIG rot/k/n. Rewrites mask 0
 | from TRIG. DEST/DEPTH:
 |   LANE=TRIG: locks on TRIG hits (same steps); clear this DEST on !thit
-|   (other DEST locks kept — promote to TL if the note drops); sync that
+|   (other DEST locks kept - promote to TL if the note drops); sync that
 |   DEST's plock recipe to the TRIG rhythm after the loop.
 |   LANE=PLOCK: independent plock rhythm; plock∩¬trig sets TL; miss clears
 |   this DEST on every step (incl. note trigs / PTCH) so a PLCK YES
@@ -1997,7 +1997,7 @@ ef_write_dest:
         cmpl    %d1,%d0
         beq.w   ef_write_vol            | velocity: ceiling = AMP VOL
         | generic: uniform in [Part-DEPTH .. Part+DEPTH] clamped 0..127
-        | (remul — not muls/divs (r-64)*D/64, which collapsed to 2 values).
+        | (remul - not muls/divs (r-64)*D/64, which collapsed to 2 values).
         bsr.w   ef_part_flat            | d0 = Part value for ef_dest
         movel   %d0,%d3                 | base
         movel   ef_depth,%d1
@@ -2041,7 +2041,7 @@ ed_store:
         moveb   %d0,%a2@(0,%d1:l)
         rts
 
-| ef_write_vol: DEST=AMP VOL. Ceiling is Part AMP VOL — locks never go
+| ef_write_vol: DEST=AMP VOL. Ceiling is Part AMP VOL - locks never go
 | louder. drop = r*DEPTH/127 (r 0..127) -> lock = max(0, Part - drop).
 | DEPTH=0 already cleared above. Clobbers d0/d1/d3.
 ef_write_vol:
@@ -2063,13 +2063,13 @@ ev1:    movel   %d1,%d0
 | ef_write_ptch: on hit step d2 / trac a2 when DEST=PTCH.
 | DEPTH=0 / no quantizer / SCALE OFF -> clear PTCH.
 | Else rad = max(1, max_rad*DEPTH/127): EVERY hit gets a lock (range).
-| Center is the track's Part PLAYBACK PTCH (overall knob), not unison —
+| Center is the track's Part PLAYBACK PTCH (overall knob), not unison  - 
 | same byte stock unlocks fall back to (po_part_ptch).
 | Pick uniform among delta in [-rad..+rad] whose absolute PC
 | (ROOT + base_st + delta) mod 12 is in SCALE_AT; lock encodes base_st+delta.
 | FM/SY: raw=64+st (max_rad=PIT_RAD). Sample: raw=64+5·st (max_rad=PIT_SAMP).
 | Clamp raw to 0..127 before store.
-| Caller keeps n in d5 and rot in d6 — park across the pick.
+| Caller keeps n in d5 and rot in d6 - park across the pick.
 ef_write_ptch:
         movel   ef_depth,%d3            | 0..127
         tstl    %d3
@@ -2230,7 +2230,7 @@ ep_store:
 
 | ef_part_flat: d0 := Part value for ef_dest on ef_trk.
 | 0..5 PLAYBACK p1; 6..29 LFO/AMP/FX1/FX2 p1; 30..34 PLAYBACK SETUP
-| (CAR MOD SYMM FDBK PWM — DEC skipped). Clobbers d0/d1/a0/a1.
+| (CAR MOD SYMM FDBK PWM - DEC skipped). Clobbers d0/d1/a0/a1.
 ef_part_flat:
         movel   ef_dest,%d0
         moveq   #DEST_LAST,%d1
@@ -2450,7 +2450,7 @@ dn_idx: lsll    #2,%d2
         moveal  %a1@(0,%d2:l),%a0
 dn_got: tstl    %a0
         beq.w   dn_miss
-        | PAGE\0PARAM\0 — title at +4, param at +0x16 + slot*6
+        | PAGE\0PARAM\0 - title at +4, param at +0x16 + slot*6
         lea     ef_buf,%a1
         movel   %a0,-(%sp)              | keep descriptor base
         addal   #TITLE_OFF,%a0
@@ -2483,12 +2483,12 @@ dn_miss: lea     ef_buf,%a1
         moveb   %d0,(%a1)+
         moveb   %d0,(%a1)+
         moveb   %d0,(%a1)+
-        clrb    (%a1)+                  | "----\0\0" — empty PARAM line
+        clrb    (%a1)+                  | "----\0\0" - empty PARAM line
         clrb    (%a1)
         rts
 
 | ef_dest_max: d0 := DEST_LAST (29) or DEST_CXLAST (34) when ef_trk is CX.
-| Clobbers d0/d1/a0/a1 — callers must park a0 (EUCL19/20).
+| Clobbers d0/d1/a0/a1 - callers must park a0 (EUCL19/20).
 ef_dest_max:
         bsr.w   ef_is_cx
         tstl    %d0
@@ -2588,7 +2588,7 @@ ecc_done:
 
 | ef_is_synth: d0 := 1 when ef_trk's Part NEIGHBOR sig is "FM",1 or "SY",1
 | (machine-list synth; same encoding as qz_fmtrack). Else 0. Clobbers
-| d0/d1/a0/a1 only — caller parks what it needs.
+| d0/d1/a0/a1 only - caller parks what it needs.
 ef_is_synth:
         moveal  DBPTR,%a0
         moveq   #0,%d0
@@ -2629,7 +2629,7 @@ ef_bit_addr:
         rts
 
 | ef_rhythm_gate: for PULSE/ROT/CUE. d0 := 1 if blocked (baked, not
-| unlocked) — stock ARE YOU SURE? dialog. YES unlocks knobs/CUE only;
+| unlocked) - stock ARE YOU SURE? dialog. YES unlocks knobs/CUE only;
 | NO cancels. Trig rewrite stays on fill YES. Class-1 dialog evicts
 | this window; ef_close soft-restores after the answer.
 ef_rhythm_gate:
@@ -2698,7 +2698,7 @@ bkd0:   moveq   #0,%d0
 bkd1:   moveq   #1,%d0
         rts
 
-| ef_trac_focus: a2 := focus track's TRAC in the bank blob (DBPTR) —
+| ef_trac_focus: a2 := focus track's TRAC in the bank blob (DBPTR)  - 
 | same base fill YES writes. d3 := STEPS clamped 1..64.
 | Caller must ef_sync_len first. Clobbers d0/d1/a2.
 ef_trac_focus:
@@ -2728,7 +2728,7 @@ tf2:    rts
 EF_LAYER:
         .long   0, EF_KEYS, EF_ENCS, 0, 0, -1, -1
 EF_KEYS:
-        | PAGE (0x1b): omit — ef_page: TRACK+PAGE toggles; bare PAGE is
+        | PAGE (0x1b): omit - ef_page: TRACK+PAGE toggles; bare PAGE is
         | stock (never closes). Listing PAGE here swallows step banks.
 
         .byte   0x31, 0                 | YES
@@ -2791,7 +2791,7 @@ EF_ENCS:
         .byte   0xff, 0
         .long   0, 0, 0, 0, 0
 
-| Dotted internals only — left edge is solid VLINE above.
+| Dotted internals only - left edge is solid VLINE above.
         .balign 4
 EF_GRID:
         .long   X_DIV0, Y_GRID0, X_DIV0, Y_GRID1
@@ -2807,7 +2807,7 @@ T_CLRMSG2:  .asciz "WILL BE CLEARED ON NEXT FILL"
         .balign 4
 ef_clr_lines:
         .long   T_CLRMSG1, T_CLRMSG2
-| 4-char max — stock page-1 cells are 20 px (PANEL.md).
+| 4-char max - stock page-1 cells are 20 px (PANEL.md).
 L_LEN:    .asciz "LEN"
 L_PULSES: .asciz "PULS"
 L_ROT:    .asciz "ROT"
@@ -2874,7 +2874,7 @@ ef_dparam_tab:
         .ascii  "A\0\0\0\0\0B\0\0\0\0\0C\0\0\0\0\0D\0\0\0\0\0E\0\0\0\0\0F\0\0\0\0\0"
         .ascii  "A\0\0\0\0\0B\0\0\0\0\0C\0\0\0\0\0D\0\0\0\0\0E\0\0\0\0\0F\0\0\0\0\0"
         .balign 4
-ef_cxpriv_tab:                          | PMTR 30..34 — matches cx_lf_pmtr_fmt
+ef_cxpriv_tab:                          | PMTR 30..34 - matches cx_lf_pmtr_fmt
         .ascii  "CAR\0\0\0"
         .ascii  "MOD\0\0\0"
         .ascii  "SYMM\0\0"

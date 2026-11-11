@@ -2,7 +2,7 @@
 
 Hold any track key and press PAGE: title SEQ, LEN gutter, stock 3x2
 grid A=PULSE B=ROT C=LANE / D=DEST E=DEPTH (F empty). LANE focuses TRIG
-or PLOCK; YES writes sample trigs and DEST locks (write-only — never
+or PLOCK; YES writes sample trigs and DEST locks (write-only - never
 re-reads live trigs). Per-track / per-DEST params in euclid.work (STORE).
 CUE places a random k-subset with density PULSE. NO or TRACK+PAGE closes;
 bare PAGE does not.
@@ -43,7 +43,7 @@ MODULE = Module(
         "A/B=PULSE/ROT of focused LANE, C=TRIG|PLCK, D/E=DEST/DEPTH; "
         "CUE = focused-lane random k-subset; DEST = LFO PMTR 0..29 + CX "
         "30..34; per-DEST depth/plock + per-track LANE in euclid.work; "
-        "write-only — YES overwrites, never re-reads live trigs).",
+        "write-only - YES overwrites, never re-reads live trigs).",
     linked=(Linked("ef", "modules/seq/seq.s", dram=True,
                    include=_sources),),
     detours=(

@@ -1,4 +1,4 @@
-# `seq` — SEQ
+# `seq` - SEQ
 
 Author: [ilia-murzinov](https://github.com/ilia-murzinov). Rhythm math matches
 filter [EUCLID](../euclid/README.md) ([repeat98](https://github.com/repeat98)).
@@ -14,7 +14,7 @@ on plock-only steps); **NO** or TRACK+PAGE again closes. Bare **PAGE** stays
 stock (step banks) and does **not** close the window.
 
 **Layout tip (HW, CX EUCL52, Ilia 2026-11-10):** `WINW=109` @ `WINX=0`
-(19px for T5–8), no `WFRAME`, 1px top+bottom `RULE`, DEST = PAGE+PARAM
+(19px for T5-8), no `WFRAME`, 1px top+bottom `RULE`, DEST = PAGE+PARAM
 (no PMTR caption). Do not “center” or widen back over the track types.
 
 Not the DSP [EUCLID](../euclid/README.md) effect (filter/amp modulation).
@@ -34,16 +34,16 @@ is sourced from pattern length (not a knob). Encoders **A** / **B** / **C** /
 | LEFT / RIGHT | unused (all steps visible) |
 | A | PULSE of the focused lane |
 | B | ROT of the focused lane |
-| C | LANE — TRIG ↔ PLCK |
-| D | DEST — page-1 flat; same name as LFO PMTR |
-| E | DEPTH — 0..127, lock span around Part |
+| C | LANE - TRIG ↔ PLCK |
+| D | DEST - page-1 flat; same name as LFO PMTR |
+| E | DEPTH - 0..127, lock span around Part |
 | F | empty |
 | CUE | random placement of exactly PULSE hits on the focused lane |
 | YES | write TRIG mask + current DEST locks (trigless where needed) |
 | NO | close |
 
 PAGE / UP / DOWN / LEFT / RIGHT / PROJ / PART / AED / ARR are **omitted**
-from `EF_KEYS` (not listed — a `0` swallows; a `-1` row still clears the
+from `EF_KEYS` (not listed - a `0` swallows; a `-1` row still clears the
 sub-map). `ef_page` only toggles on TRACK+PAGE; bare PAGE is stock even
 while open. Soft dialog keeps the layer so knobs stay locked (`ef_ask`);
 user/orphan close pops it (`ef_layer_on`). LEVEL does nothing.
@@ -58,7 +58,7 @@ bank write. Multi-target YES writes each target's own stored params.
 **Pattern length** shows in the title gutter (`LEN n`), not as a row.
 Defaults: TRIG PULSE 5, DEST = AMP VOL, ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
 
-Write-only: open / track switch load bank Euclid params only — the grid
+Write-only: open / track switch load bank Euclid params only - the grid
 never mirrors live sample trigs. Edits outside FILL are not re-read;
 YES overwrites from PULSE/ROT (or a CUE mask). When a step's last lock
 is cleared, orphan trigless bits drop and stock's plock LED bitmap is
@@ -83,11 +83,11 @@ use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
 **LANE = TRIG:** YES writes DEST/DEPTH locks on the sample-trig steps
 and syncs that DEST's plock recipe to the TRIG rhythm. Only **this DEST**
-is reshaped — other DEST locks stay; if a step loses its note trig but
+is reshaped - other DEST locks stay; if a step loses its note trig but
 still holds another DEST, it becomes trigless so those locks remain
 audible. **LANE = PLCK:** independent plock rhythm; plock-only → trigless
-(+0x10); miss / PULSE 0 clears this DEST on every step in range —
-including note trigs — so a PLCK YES **overwrites** TRIG-baked locks for
+(+0x10); miss / PULSE 0 clears this DEST on every step in range  - 
+including note trigs - so a PLCK YES **overwrites** TRIG-baked locks for
 that DEST (other DEST locks stay). PULSE 0 also drops orphan trigless
 bits when no other DEST remains on the step.
 

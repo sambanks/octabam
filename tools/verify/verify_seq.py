@@ -64,7 +64,7 @@ def vol_lock(depth: int, r: int, part_vol: int = 100) -> int:
 
 
 class CueHang(Exception):
-    """cwalk walked past n — the hardware hang when remul's divisor is wrong."""
+    """cwalk walked past n - the hardware hang when remul's divisor is wrong."""
 
 
 def lcg(state: int) -> tuple[int, int]:
@@ -404,7 +404,7 @@ def check_ui(src: str) -> None:
           and "ef_layer_on" in close and "LPOP" in close
           and "LPUSH" in _block(src, "ef_mkwin:", "mkw_rts:")
           and "ef_soft_layer" not in src)
-    check("A–D / L/R dead while dialog (ef_ask) is up",
+    check("A-D / L/R dead while dialog (ef_ask) is up",
           "ef_ask" in _block(src, "ef_enc:", "ef_level:")
           and "ef_ask" in _block(src, "ef_nudge:", "nudge_go:"))
     check("ef_trk_baked scans mask 0 via ef_bit_addr",
@@ -759,7 +759,7 @@ def check_ui(src: str) -> None:
     check("ef_cue never remuls live d1 straight after ef_rng", bare is None)
 
     rng = _block(src, "ef_rng:", "ef_hit:")
-    check("ef_rng writes d1 (LCG mul — callers must not keep a divisor there)",
+    check("ef_rng writes d1 (LCG mul - callers must not keep a divisor there)",
           re.search(r"move\.l\s+#1664525,%d1", rng) is not None
           and re.search(r"mulu\.l\s+%d1,%d0", rng) is not None)
 
@@ -813,7 +813,7 @@ def check_ui(src: str) -> None:
 
 
 def check_cue_behavior() -> None:
-    """Executable model of ef_cue — catches the d1/ef_rng hang without hardware."""
+    """Executable model of ef_cue - catches the d1/ef_rng hang without hardware."""
     print("CUE k-subset behavior:")
     for n, k in ((8, 3), (16, 5), (16, 1), (16, 16), (32, 7), (64, 9), (1, 1), (16, 0)):
         m = cue_ksubset(n, k, seed=0xC0FFEE ^ (n * 17 + k))
@@ -843,7 +843,7 @@ def check_cue_behavior() -> None:
     check("cue with d1 clobber hangs (documents the bug the park fixes)",
           bug_hung >= 40, f"hung={bug_hung}/49")
 
-    # k=0 is a no-op walk (cplace never entered) — must not hang either way.
+    # k=0 is a no-op walk (cplace never entered) - must not hang either way.
     check("cue k=0 empty", cue_ksubset(16, 0) == [0] * 16)
 
 
@@ -895,7 +895,7 @@ def check_pitch_behavior() -> None:
     raw_bad = 64 + 5 * (-24)  # -56
     check("unclamped sample st=-24 is negative (would become -64 on synth)",
           raw_bad < 0)
-    check("clamped sample st=-24 -> 0 (still wrong musically — rad must be 12)",
+    check("clamped sample st=-24 -> 0 (still wrong musically - rad must be 12)",
           encode_ptch(-24, synth=False) == 0)
 
 
