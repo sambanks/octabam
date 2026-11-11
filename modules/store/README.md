@@ -36,6 +36,10 @@ project LISTPOP only (`M_CBS == name_fp`, the same gate `kits_level` uses
 for KITS' own lists). Other stock LISTPOPs are left to stock / `kits_level`.
 
 
+## Side-file clients
+
+Refusal / `name_tab` ids: 0 PLOCKS P2, 1 KITS, 2 MIDI SCENES, 3 PERSISTENT BUFFERS, 4 MORPH, 5 FREE LOOP, 6 SCALES, 7 CHORDS FACTORY, 8 DRUMMER (`DRUMMER.WORK`), 9 EUCLID FILL (`EUCLID.WORK`).
+
 ## Provenance and verification
 
 The initial copy/reset implementation comes from radiohagen's MIDI PART STATE

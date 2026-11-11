@@ -3,94 +3,84 @@
 Author: [ilia-murzinov](https://github.com/ilia-murzinov). Rhythm math matches
 filter [EUCLID](../euclid/README.md) ([repeat98](https://github.com/repeat98)).
 
-A standalone Euclidean **sample-trig** fill page. Hold a **TRACK** key and
-press **PAGE**: a TUNER-style window opens (title + target tracks, STEPS /
-PULSE (A) / ROT (B) / RAND VEL (C) / RAND PTCH (D), live pattern bar). STEPS
-is the pattern length (PER TRACK: the first target track's length). **YES**
-writes the rhythm onto the held track(s)' sample-trig mask (and optional
-VOL/PTCH locks); **NO** or TRACK+PAGE again closes.
+A standalone Euclidean **sample-trig + p-lock** fill page. Hold a **TRACK**
+key and press **PAGE**: a window opens with title **EUCLID** (unchanged when LANE switches), a stock
+SETUP-style 3×2 dotted grid (A=PULSE B=ROT C=LANE / D=DEST E=DEPTH; **F** empty),
+and a live pattern grid (4×16 hollow/filled squares for all ≤64 steps; last row
+= length mod 16). **LANE** selects whether A/B and the grid edit the **TRIG**
+rhythm or the **PLOCK** rhythm for the current DEST. **YES** writes TRIG →
+sample-trig mask 0 and PLOCK → locks on the chosen DEST (trigless-lock bits
+on plock-only steps); **NO** or TRACK+PAGE again closes. Bare **PAGE** stays
+stock (step banks) and does **not** close the window.
+
+**Layout tip (HW, CX EUCL52, Ilia 2026-11-10):** `WINW=109` @ `WINX=0`
+(19px for T5–8), no `WFRAME`, 1px top+bottom `RULE`, DEST = PAGE+PARAM
+(no PMTR caption). Do not “center” or widen back over the track types.
 
 Not the DSP [EUCLID](../euclid/README.md) effect (filter/amp modulation).
 This module only edits sequencer trigs. It does not grow
 `PROJECT > CONTROL > SEQUENCER`, so it coexists with SCALE QUANTIZER.
 
-Rhythm names, ranges, and the PULSE default match filter EUCLID; STEPS is
-sourced from pattern length instead of a stored knob. Encoders **A**–**D**
-turn the matching rows (same input-layer pattern as TEMPO BUS); labels show
-the letter in parentheses.
+Rhythm names, ranges, and the TRIG PULSE default match filter EUCLID; length
+is sourced from pattern length (not a knob). Encoders **A** / **B** / **C** /
+**D** / **E** map to the five filled cells.
 
 ## Controls
 
 | control | does |
 |---|---|
-| TRACK + PAGE | open / close |
-| UP / DOWN | move the cursor (invert bar on the focused row) |
-| LEFT / RIGHT | step the focused value by 1 |
-| A | PULSE (A) (focus follows) |
-| B | ROT (B) (focus follows) |
-| C | RAND VEL (C) (focus follows) |
-| D | RAND PTCH (D) (focus follows) |
-| LEVEL | turn the focused value (signed detents) |
-| CUE | random placement of exactly PULSE hits (not Euclidean) |
-| YES | write the current bar + VOL/PTCH locks on the targets |
+| TRACK + PAGE | open / close (bare PAGE does not close) |
+| TRACK (while open) | switch to that track's params / YES target |
+| LEFT / RIGHT | unused (all steps visible) |
+| A | PULSE of the focused lane |
+| B | ROT of the focused lane |
+| C | LANE — TRIG ↔ PLCK |
+| D | DEST — page-1 flat; same name as LFO PMTR |
+| E | DEPTH — 0..127, lock span around Part |
+| F | empty |
+| CUE | random placement of exactly PULSE hits on the focused lane |
+| YES | write TRIG mask + current DEST locks (trigless where needed) |
 | NO | close |
 
+PAGE / UP / DOWN / LEFT / RIGHT / PROJ / PART / AED / ARR are **omitted**
+from `EF_KEYS` (not listed — a `0` swallows; a `-1` row still clears the
+sub-map). `ef_page` only toggles on TRACK+PAGE; bare PAGE is stock even
+while open. Soft dialog keeps the layer so knobs stay locked (`ef_ask`);
+user/orphan close pops it (`ef_layer_on`). LEVEL does nothing.
+
 Targets are the track keys held when the window opened. If none were
-held, the current audio track is used. **STEPS is the pattern length**
-(SCALE SETUP; PER TRACK: first target track's length) — shown, not
-edited. PULSE defaults to 5, ROT/RAND VEL/RAND PTCH to 0 (DRAM, not saved).
+held, the current audio track is used. Selecting a track while open
+retargets YES to that track and loads its per-track params. DEPTH and
+PLOCK PULSE/ROT are remembered **per DEST** on that track. D/E stay live
+even when LANE is TRIG (no auto-focus switch). Slots + DEST tables live in
+DRAM and in `euclid.work` (STORE client id 9, `EF_VER` 4: bank + per-DEST
+depth/plock free·mask + per-track LANE) on SAVE PROJECT / bank write. Multi-target YES writes each target's own stored params.
+**Pattern length** shows in the title gutter (`LEN n`), not as a row.
+Defaults: TRIG PULSE 5, DEST = AMP VOL, ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
 
-**CUE** keeps **PULSE** as density and only randomizes *which* steps are
-on (uniform k-subset). **ROT** still shifts that mask. Changing **PULSE**
-leaves free mode and returns to Euclidean.
+On open / track switch, if the track already has sample trigs in the fill
+range, those bits seed the TRIG grid (`ef_free`). Empty tracks keep the
+Euclidean PULSE/ROT preview. There is no live pad sync while FILL is open.
 
-**RAND VEL** (0..100) scales random AMP VOL locks on written hits relative
-to the track's **Part AMP VOL** (the overall knob):
-`VOL = base − (r·pct)/100` with `r` in 0..63, floored at 0 (never louder
-than the Part). At 0% no VOL lock is written. Values draw with a trailing
-`%` (stock `sprintf` gets `"%"` as a `%s` arg — `%%` is untested there).
+**CUE** keeps **PULSE** as density on the focused lane and only randomizes
+*which* steps are on. Changing **PULSE** leaves free mode and returns to
+Euclidean. PULSE / ROT / CUE with sample trigs already present open stock
+**ARE YOU SURE?** only when LANE is TRIG.
 
-**RAND PTCH** (0..100) is the **range** of random in-scale PTCH on every
-hit (not a probability — that left most hits on the Part root). Center is
-the track's **Part PLAYBACK PTCH** (the overall knob), not unison. 100 =
-±24 semitones (±2 octaves) on FM/SY; sample tracks ±12 (PLAYBACK max).
-0 = no PTCH lock. Degrees use `(ROOT + base_st + delta) mod 12` against
-SCALE QUANTIZER. Sample: `raw = 64+5·st`; FM/SY (`"FM",1` / `"SY",1`):
-`raw = 64+st`. No quantizer / SCALE OFF: no pitch locks. Same `%` draw.
+**DEST** matches LFO SETUP PMTR targets. **0..29** page-1 lock flats
+(**AMP XVOL** skipped). On **CX OSC**, **30..34** SETUP knobs stack in DRAM.
 
-FUNC + PAGE (SCALE SETUP) and PAGE alone stay stock.
+**DEPTH** (0..127): at 0 with an active plock lane, YES clears that DEST's
+locks on the fill range. Non-zero:
 
-## Measured
+- **DEST = PTCH:** in-scale around Part PLAYBACK PTCH. Bare note trigs
+  without a plock hit carry the last plock pitch (else Part).
+- **DEST = AMP VOL:** unipolar below Part AMP VOL.
+- **Any other DEST:** uniform `[Part−DEPTH .. Part+DEPTH]` clamped 0..127.
 
-- Not yet: the fill writer follows the bank-blob + battery-mirror + dirty
-  recipe from ERASE_EMPTY_TRIGLESS_LOCKS; the window stack follows TUNER.
-- `make check REMIX=euclid-fill` builds and boots under the ColdFire port.
-- `tools/verify/verify_euclid_fill.py` checks the Euclidean bit pattern
-  against the same `(i·k) % n < k` law as `modules/euclid/control.c`, plus
-  the CUE/`ef_rng` d1-clobber hang model and relative RAND VEL / RAND PTCH
-  math.
+PLOCK PULSE 0 = plock lane inactive: YES writes trigs only and leaves DEST
+locks alone. PLOCK hits without a TRIG hit set the trigless-lock mask
+(+0x10).
 
-## On the unit
-
-Author BUILD **34** (`minimal` remix carrying this module), CF, MKII,
-16 Oct 2026 (earlier flashes 27–33 while landing the features). Tried:
-
-| | sample track | FM track | SY track |
-|---|---|---|---|
-| YES, RAND PTCH > 0, SCALE on | yes — locks in-scale around Part PTCH | yes — encoding was ±60 until the sample/FM split; after fix, ±range around Part PTCH | not tried — source uses the same `64+st` branch as FM (`"SY",1`) |
-| CUE, RAND PTCH > 0 | yes — earlier hang (d1/`ef_rng`) fixed | yes | not tried |
-| SCALE off | yes — no PTCH locks written | yes | not tried |
-| RAND VEL relative to Part AMP VOL + `%` draw | yes | yes | not tried |
-
-Also: cursory testing on Sam's MKII (owner report, 16 Oct 2026) for the
-STEPS / PULSE / ROT base page.
-
-## Gates
-
-`tools/verify/verify_euclid_fill.py` (stage `image`) — fast, no port:
-
-- Euclidean bit patterns (`(i·k) % n < k`, same as filter EUCLID)
-- UI contract on `euclid_fill.s`: STEPS / PULSE (A) / ROT (B) / RAND VEL (C) /
-  RAND PTCH (D) labels, layout, PULSE default 5, STEPS locked via `ef_sync_len`,
-  key layer (= TEMPO BUS arrow codes), encoders A–D + LEVEL, AMP VOL +
-  in-scale PTCH lock writers
+YES writes **only** the selected DEST's lock bytes (plus the TRIG mask).
+A later fill with another DEST leaves earlier locks alone.
