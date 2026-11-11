@@ -38,7 +38,10 @@ MODULE = Module(
     proof=Proof.HARDWARE,
     proof_note="author's MKII, CX EUCL93, 11 Nov 2026: dual LANE, write-only, "
                "LOCK_COLL + floor, PLCK overwrites TRIG bake, TRIG reshape "
-               "keeps other DEST locks (TL promote); also verify_seq.",
+               "keeps other DEST locks (TL promote). Panel cosmetics after "
+               "that (mid45 icon, single left VLINE, X_PAT=1, icon 2px up) "
+               "LCD-confirmed on CX EUCL98; tip panel hero is a port capture. "
+               "Also verify_seq.",
     doc="TRACK + PAGE: Euclidean sample-trig + p-lock fill (title SEQ; "
         "A/B=PULSE/ROT of focused LANE, C=TRIG|PLCK, D/E=DEST/DEPTH; "
         "CUE = focused-lane random k-subset; DEST = LFO PMTR 0..29 + CX "

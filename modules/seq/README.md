@@ -13,6 +13,14 @@ sample-trig mask 0 and PLOCK → locks on the chosen DEST (trigless-lock bits
 on plock-only steps); **NO** or TRACK+PAGE again closes. Bare **PAGE** stays
 stock (step banks) and does **not** close the window.
 
+**HW evidence (author's MKII):**
+
+| tip | what was confirmed |
+|---|---|
+| **CX EUCL93** (11 Nov 2026) | dual LANE / write-only YES / LOCK_COLL + floor / PLCK overwrite / TRIG reshape keeps other DEST (TL promote) — `Proof.HARDWARE` |
+| **CX EUCL98** | panel LCD only: mid45 icon, single left VLINE, `X_PAT=1`, icon 2px up — not a behavior re-proof |
+| tip panel hero | port capture (`test/seq`), not a unit dump |
+
 **Layout tip (HW, CX EUCL52, Ilia 2026-11-10):** `WINW=109` @ `WINX=0`
 (19px for T5-8), no `WFRAME`, 1px top+bottom `RULE`, DEST = PAGE+PARAM
 (no PMTR caption). Do not “center” or widen back over the track types.
