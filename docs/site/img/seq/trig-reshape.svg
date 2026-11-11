@@ -16,18 +16,14 @@
     .t-sm { font: 12px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
     .t-xs { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#555; }
     .lab { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
-    .hdr { font: 14px ui-monospace, Menlo, Consolas, monospace; fill:#fff; }
     .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
-    .box { fill:#fff; stroke:#111; stroke-width:2; }
-    .fillhdr { fill:#111; stroke:#111; stroke-width:2; }
   </style>
 
   <text class="t" x="460" y="26" text-anchor="middle">TRIG YES · DEST=PTCH · change PULSE</text>
   <text class="t-sm" x="460" y="46" text-anchor="middle">Only PTCH follows the new notes. VOL is kept (trigless where a note drops).</text>
 
-  <!-- BEFORE -->
   <text class="t" x="40" y="78">BEFORE</text>
-  <text class="t-xs" x="120" y="78">notes on even steps, each with PTCH + VOL</text>
+  <text class="t-xs" x="120" y="78">notes on steps 1 3 5 7, each with PTCH + VOL</text>
   <text class="lab" x="80" y="121.12" text-anchor="end">note</text>
 <rect x="90" y="98" width="34" height="34" fill="#111" stroke="#111" stroke-width="1.8"/>
 <rect x="130" y="98" width="34" height="34" fill="#fff" stroke="#111" stroke-width="1.8"/>
@@ -55,24 +51,22 @@
 <rect x="290" y="190" width="34" height="34" fill="#fff" stroke="#111" stroke-width="1.8"/>
 <rect x="330" y="190" width="34" height="34" fill="#111" stroke="#111" stroke-width="1.8"/>
 <rect x="370" y="190" width="34" height="34" fill="#fff" stroke="#111" stroke-width="1.8"/>
-<text class="t-xs" x="107.0" y="234" text-anchor="middle">0</text>
-<text class="t-xs" x="147.0" y="234" text-anchor="middle">1</text>
-<text class="t-xs" x="187.0" y="234" text-anchor="middle">2</text>
-<text class="t-xs" x="227.0" y="234" text-anchor="middle">3</text>
-<text class="t-xs" x="267.0" y="234" text-anchor="middle">4</text>
-<text class="t-xs" x="307.0" y="234" text-anchor="middle">5</text>
-<text class="t-xs" x="347.0" y="234" text-anchor="middle">6</text>
-<text class="t-xs" x="387.0" y="234" text-anchor="middle">7</text>
+<text class="t-xs" x="107.0" y="234" text-anchor="middle">1</text>
+<text class="t-xs" x="147.0" y="234" text-anchor="middle">2</text>
+<text class="t-xs" x="187.0" y="234" text-anchor="middle">3</text>
+<text class="t-xs" x="227.0" y="234" text-anchor="middle">4</text>
+<text class="t-xs" x="267.0" y="234" text-anchor="middle">5</text>
+<text class="t-xs" x="307.0" y="234" text-anchor="middle">6</text>
+<text class="t-xs" x="347.0" y="234" text-anchor="middle">7</text>
+<text class="t-xs" x="387.0" y="234" text-anchor="middle">8</text>
 
-  <!-- arrow -->
   <line class="arr" x1="430" y1="180" x2="490" y2="180"/>
   <text class="t-sm" x="460" y="168" text-anchor="middle">YES</text>
   <text class="t-xs" x="460" y="206" text-anchor="middle">new notes</text>
-  <text class="t-xs" x="460" y="220" text-anchor="middle">0 and 4</text>
+  <text class="t-xs" x="460" y="220" text-anchor="middle">1 and 5</text>
 
-  <!-- AFTER -->
   <text class="t" x="520" y="78">AFTER</text>
-  <text class="t-xs" x="600" y="78">PTCH reshaped · VOL kept as TL on 2 and 6</text>
+  <text class="t-xs" x="600" y="78">PTCH reshaped · VOL kept as TL on 3 and 7</text>
   <text class="lab" x="560" y="121.12" text-anchor="end">note</text>
 <rect x="570" y="98" width="34" height="34" fill="#111" stroke="#111" stroke-width="1.8"/>
 <rect x="610" y="98" width="34" height="34" fill="#fff" stroke="#111" stroke-width="1.8"/>
@@ -100,18 +94,17 @@
 <rect x="770" y="190" width="34" height="34" fill="url(#hatch)" stroke="#111" stroke-width="1.8"/>
 <rect x="810" y="190" width="34" height="34" fill="#111" stroke="#111" stroke-width="1.8"/>
 <rect x="850" y="190" width="34" height="34" fill="#fff" stroke="#111" stroke-width="1.8"/>
-<text class="t-xs" x="587.0" y="234" text-anchor="middle">0</text>
-<text class="t-xs" x="627.0" y="234" text-anchor="middle">1</text>
-<text class="t-xs" x="667.0" y="234" text-anchor="middle">2</text>
-<text class="t-xs" x="707.0" y="234" text-anchor="middle">3</text>
-<text class="t-xs" x="747.0" y="234" text-anchor="middle">4</text>
-<text class="t-xs" x="787.0" y="234" text-anchor="middle">5</text>
-<text class="t-xs" x="827.0" y="234" text-anchor="middle">6</text>
-<text class="t-xs" x="867.0" y="234" text-anchor="middle">7</text>
+<text class="t-xs" x="587.0" y="234" text-anchor="middle">1</text>
+<text class="t-xs" x="627.0" y="234" text-anchor="middle">2</text>
+<text class="t-xs" x="667.0" y="234" text-anchor="middle">3</text>
+<text class="t-xs" x="707.0" y="234" text-anchor="middle">4</text>
+<text class="t-xs" x="747.0" y="234" text-anchor="middle">5</text>
+<text class="t-xs" x="787.0" y="234" text-anchor="middle">6</text>
+<text class="t-xs" x="827.0" y="234" text-anchor="middle">7</text>
+<text class="t-xs" x="867.0" y="234" text-anchor="middle">8</text>
 
-  <!-- callouts -->
   <text class="t-sm" x="40" y="280">PTCH (current DEST): cleared on silent steps, rewritten on new notes</text>
-  <text class="t-sm" x="40" y="302">VOL (other DEST): kept -- steps 2 and 6 become trigless so VOL stays audible</text>
+  <text class="t-sm" x="40" y="302">VOL (other DEST): kept -- steps 3 and 7 become trigless so VOL stays audible</text>
 
   
   <g transform="translate(230,340)">
