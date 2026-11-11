@@ -60,7 +60,7 @@ octabam now has SHATTER where TRANSIENT was. Main's octabam itself is no
 longer STEMS12's set:
 
 - It took on ten more modules after STEMS12 (OCTA303, MORPH, REC
-  THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, TRACK PATTERNS,
+  THRESHOLD, BUFFER SAVER, COPY PROJECT, SEQ, TRACK PATTERNS,
   VARISPEED, PATTERN MUTE and SHATTER).
 - It leaves STEM REC out: in Sam's loader soak of 1 Nov 2026, images
   with STEM REC left 2 to 5 of 32 program changes unapplied

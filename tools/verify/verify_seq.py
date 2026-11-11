@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""EUCLID FILL: Euclidean bit patterns + UI contract (fast, no port).
+"""SEQ: Euclidean bit patterns + UI contract (fast, no port).
 
-Math matches modules/euclid/control.c. UI checks audit euclid_fill.s so the
+Math matches modules/euclid/control.c. UI checks audit seq.s so the
 popup keeps filter-EUCLID names (PULSE / ROT) plus LANE / DEST / DEPTH,
 length in the title, stock 3x2 dotted grid (A/B/C/D/E filled; F empty),
 LEVEL noop; arrows unbound (no invert), and the key layer.
@@ -16,7 +16,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT), str(ROOT / "tools")]
 
-SRC = ROOT / "modules/euclid-fill/euclid_fill.s"
+SRC = ROOT / "modules/seq/seq.s"
 
 FAILS = 0
 
@@ -167,7 +167,7 @@ def _block(src: str, start: str, end: str | None = None) -> str:
 
 
 def check_ui(src: str) -> None:
-    print("UI contract (euclid_fill.s):")
+    print("UI contract (seq.s):")
 
     for lab, text in (
         ("L_LEN", "LEN"),
@@ -911,18 +911,18 @@ def main() -> int:
     check_cue_behavior()
     check_pitch_behavior()
 
-    remix = sys.argv[1] if len(sys.argv) > 1 else "euclid-fill"
+    remix = sys.argv[1] if len(sys.argv) > 1 else "seq"
     from remix import registry
-    if "EUCLID FILL" not in registry.remix(remix).modules:
-        print(f"  [ -- ] verify_euclid_fill: {remix} carries no EUCLID FILL")
+    if "SEQ" not in registry.remix(remix).modules:
+        print(f"  [ -- ] verify_seq: {remix} carries no SEQ")
         return FAILS
 
     if not SRC.is_file():
-        check("euclid_fill.s present", False, str(SRC))
+        check("seq.s present", False, str(SRC))
     else:
         check_ui(SRC.read_text())
 
-    print(f"EUCLID FILL: {FAILS} failed checks")
+    print(f"SEQ: {FAILS} failed checks")
     return FAILS
 
 

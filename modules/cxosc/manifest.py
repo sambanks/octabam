@@ -69,8 +69,8 @@ def poly_include(modules, remix=None):
     """First pass: hooks. Second pass (poly.s before RAM state): LFO morph.
     po_lfdname is last in the LFO_NAME chain — no MC_NEXT — so the morph
     unit does not re-include hooks (macros would redefine).
-    HAVE_EF_CX: EUCLID FILL's ef_cx_bank/bits — apply per-step SETUP fills."""
-    have_ef = 1 if "EUCLID FILL" in modules else 0
+    HAVE_EF_CX: SEQ's ef_cx_bank/bits — apply per-step SETUP fills."""
+    have_ef = 1 if "SEQ" in modules else 0
     with open(os.path.join(_HERE, "lfo_morph.inc.s"), encoding="utf-8") as _lf:
         morph = _lf.read()
     return "\n".join((

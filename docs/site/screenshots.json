@@ -96,10 +96,10 @@
       "firmware_sha256": "f87679c92ddc36c09728279a8940f51f0c6d86cbce5b1c42b3c6dc39da1c0ca0"
     }
   },
-  "euclid-fill": {
+  "seq": {
     "fill": {
-      "image": "euclid-fill/fill.png",
-      "caption": "EUCLID FILL: title EUCLID, C=LANE (TRIG/PLCK), A/B PULSE/ROT, D/E DEST/DEPTH, 4\u00d716 focused grid, LEN gutter.",
+      "image": "seq/fill.png",
+      "caption": "SEQ: title SEQ, C=LANE (TRIG/PLCK), A/B PULSE/ROT, D/E DEST/DEPTH, 4\u00d716 focused grid, LEN gutter.",
       "remix": "cx",
       "source": "unit LCD (USB SCREEN), CX EUCL93",
       "firmware_sha256": ""

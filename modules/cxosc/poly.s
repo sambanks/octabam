@@ -6233,7 +6233,7 @@ sy_tab:
         .short  -3196, -2801, -2404, -2006, -1606, -1205, -804, -402
         .short  0
 
-| ---- Euclid FILL → CX SETUP (HAVE_EF_CX when EUCLID FILL is in the remix) ------
+| ---- Euclid FILL → CX SETUP (HAVE_EF_CX when SEQ is in the remix) ------
 | YES stores per-step values in ef_cx_bank / ef_cx_bits (slots stack). Apply
 | every armed slot for SEQ_STEP into CURVALS SETUP before LFO morph.
         .if     HAVE_EF_CX

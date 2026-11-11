@@ -838,7 +838,7 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   layout's figure; the silence reads 1,480 ms, the ColdFire longest run in the window about 240 us (a plain switch:
   340 ms and 440 to 500 us).
 - **Unapplied in 32:** `F1` 0, `L1` 0, `A1` (`L1` plus PATTERN MUTE and TRACK PATTERNS) 0, `H2` (`L1` plus OCTA303, MORPH,
-  REC THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, FX2 LOCK) 0, `K1` (the stations, PATTERN MUTE, TRACK PATTERNS and
+  REC THRESHOLD, BUFFER SAVER, COPY PROJECT, SEQ, FX2 LOCK) 0, `K1` (the stations, PATTERN MUTE, TRACK PATTERNS and
   those seven) 0; `C1` (`L1` plus STEM REC) 2, `B1` (STEM REC and VARISPEED) 2, `H1` (`L1` plus PATTERN MUTE, STEM REC,
   SCOPE, TRACK PATTERNS, VARISPEED, MIDI SCALES, RND NAME) 5, `R2` (the extra ColdFire modules but CX OSC and STEM REC)
   4. `R1` (all 14 extra ColdFire modules but CX OSC): the unit stopped answering USB within 3 transitions of a

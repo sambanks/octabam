@@ -1,10 +1,10 @@
-| euclid_fill.s -- EUCLID FILL: TRACK + PAGE opens a standalone Euclid page.
+| seq.s -- SEQ: TRACK + PAGE opens a standalone Euclid page.
 |
 | With any track key held, PAGE toggles this window instead of stock's
 | pattern-page / SCALE path. FUNC + PAGE (SCALE SETUP) stays stock: it
 | rides the FUNC layer, not this opener.
 |
-| Window: "EUCLID" top-left. LEN BR (SCALE length — not a knob). Stock
+| Window: "SEQ" top-left. LEN BR (SCALE length — not a knob). Stock
 | SETUP-style 3x2 dotted grid right-aligned: A=PULSE B=ROT C=LANE /
 | D=DEST E=DEPTH; F empty. LANE = TRIG|PLOCK (grid + A/B follow).
 | DEST cell = PAGE + PARAM (no PMTR caption). Per-DEST plock PULSE/ROT
@@ -145,7 +145,7 @@
         .set    ICON_X,    (X_GRID-ICON_W)/2
         .set    ICON_Y,    (Y_GRID0+Y_GRID1-ICON_H)/2-1 | 1px down (Y-up)
 
-        .set    X_TITLE,   2           | "EUCLID" top-left, next to the icon
+        .set    X_TITLE,   2           | "SEQ" top-left, next to the icon
         .set    Y_TITLE,   WINH-7      | 1px down with the icon
         .set    LOCK0,     0x59        | step records (STEP_LOCKS.md)
         .set    LOCK_STEP, 32
@@ -1185,7 +1185,7 @@ ef_draw:
         bsr.w   ef_draw_pat
         bsr.w   ef_grid
         bsr.w   ef_draw_icon            | mid left gutter
-        moveq   #X_TITLE,%d0            | title always EUCLID (LANE is C)
+        moveq   #X_TITLE,%d0            | title always SEQ (LANE is C)
         moveq   #Y_TITLE,%d1
         lea     T_TITLE,%a0
         bsr.w   ef_text
@@ -2798,7 +2798,7 @@ EF_GRID:
         .long   X_DIV1, Y_GRID0, X_DIV1, Y_GRID1
         .long   X_GRID, Y_GMID, X_GRID+3*CELL_W, Y_GMID
 
-T_TITLE:  .asciz "EUCLID"
+T_TITLE:  .asciz "SEQ"
 T_TRK:    .asciz "T%d"
 T_FILLED: .asciz "TRIGS CREATED"
 T_CLRTITLE: .asciz "ARE YOU SURE?"

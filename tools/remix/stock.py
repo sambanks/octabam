@@ -235,7 +235,7 @@ SLOT_BASES = (0x30000, 0x34000, 0x38000, 0x3C000)
 DELAY_TABLE_END = 0x400d24d0
 DELAY_TABLE_READ_END = 0x400d2ce0    # entry 1024: past the last word DELAY reads
 # ... less SCALE QUANTIZER's two pinned units (Tim Hastie's ABI, fixed
-# addresses his SYNTH, EUCLID FILL and SCALES call): `qzs` at 0x400d2ca8
+# addresses his SYNTH, SEQ and SCALES call): `qzs` at 0x400d2ca8
 # (entries 1010-1011, `jmp qz_scale_mask`) and `qzk` at 0x400d2cb0..0x400d2cdd
 # (entries 1012-1023, the paraphonic key mailbox, written at run time). Until
 # they move out of the run, DELAY keeps 0x400d24d0..0x400d2ca8 and the rest is

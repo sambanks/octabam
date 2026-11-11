@@ -1,4 +1,4 @@
-# `euclid-fill` — EUCLID FILL
+# `seq` — SEQ
 
 Author: [ilia-murzinov](https://github.com/ilia-murzinov). Rhythm math matches
 filter [EUCLID](../euclid/README.md) ([repeat98](https://github.com/repeat98)).
@@ -95,5 +95,5 @@ bits when no other DEST remains on the step.
 YES writes **only** the selected DEST's lock bytes (plus the TRIG mask).
 A later fill with another DEST leaves earlier locks alone.
 
-Manual site: [`docs/site/usage/euclid-fill.md`](../../docs/site/usage/euclid-fill.md)
+Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md)
 (lane diagrams + worked examples).

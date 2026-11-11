@@ -27,7 +27,7 @@ OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER")
 # FX2 LOCK is not here: it makes the FX2 chooser's YES close without selecting, and this remix has no engine to lock to a track.
 # Added 7 Nov 2026 (each builds beside the rest; not yet soaked here): CHORDS FACTORY with PAGES, the page
 # key it cycles; SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP.
-COLDFIRE = ("SCALES", "OCTA303", "WAVE CF", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
+COLDFIRE = ("SCALES", "OCTA303", "WAVE CF", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "SEQ",
             "TRACK PATTERNS", "VARISPEED",
             "CHORDS FACTORY", "PAGES", "SCREEN", "SLOW LFO", "BAR LED", "REC CS1 SKIP")
 STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",

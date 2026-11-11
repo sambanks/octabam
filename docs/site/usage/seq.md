@@ -50,7 +50,7 @@ re-read live sample trigs into the grid. **YES** bakes from PULSE/ROT
 You have notes with PTCH + VOL. Change TRIG PULSE (DEST still PTCH) and
 **YES**:
 
-![TRIG YES reshapes only PTCH; VOL survives as trigless where notes drop.](../../img/euclid-fill/trig-reshape.png)
+![TRIG YES reshapes only PTCH; VOL survives as trigless where notes drop.](../../img/seq/trig-reshape.png)
 
 - **PTCH** (current DEST) is cleared on silent steps and rewritten on the
   new notes.
@@ -62,7 +62,7 @@ You have notes with PTCH + VOL. Change TRIG PULSE (DEST still PTCH) and
 You baked PTCH on the notes from TRIG. Switch to LANE = **PLCK**, DEST =
 **PTCH**, change ROT, **YES**:
 
-![PLCK YES clears TRIG-baked PTCH on note misses; other DEST stacks stay.](../../img/euclid-fill/plck-overwrite.png)
+![PLCK YES clears TRIG-baked PTCH on note misses; other DEST stacks stay.](../../img/seq/plck-overwrite.png)
 
 - **PTCH** is cleared on every miss — including on notes that still fire —
   then written on the new PLCK hits (trigless if no note).

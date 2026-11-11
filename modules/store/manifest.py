@@ -44,7 +44,7 @@ CLIENTS = (
                               "pstore_pre", "pstore_post", "preload_post")),
     ("DRUMMER", "dr", ("loadall_pre", "loadall_post", "loadmask_pre", "loadmask_post", "newproj", "bankw_post",
                        "pstore_pre", "pstore_post", "preload_post")),
-    ("EUCLID FILL", "ef", ("loadall_post", "loadmask_post", "newproj", "bankw_post",
+    ("SEQ", "ef", ("loadall_post", "loadmask_post", "newproj", "bankw_post",
                            "pstore_pre", "pstore_post", "preload_post")),
     # No side file: partclear holds its per-track state and the partsaved that ends
     # the clear lets it go (stock Part Clear tail-jumps into Part Save).
@@ -55,7 +55,7 @@ CLIENTS = (
 # A client's number in the refusal registry (store_refuse) and in ans_tab: only the
 # clients that keep a side file (VARISPEED keeps none and has no entry).
 CLIENT_IDS = {"PLOCKS P2": 0, "KITS": 1, "MIDI SCENES": 2, "PERSISTENT BUFFERS": 3, "MORPH": 4,
-              "FREE LOOP": 5, "SCALES": 6, "CHORDS FACTORY": 7, "DRUMMER": 8, "EUCLID FILL": 9}
+              "FREE LOOP": 5, "SCALES": 6, "CHORDS FACTORY": 7, "DRUMMER": 8, "SEQ": 9}
 
 
 def store_inc(modules, remix):
