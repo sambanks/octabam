@@ -45,7 +45,7 @@ it, and each has its own page in this manual. This is version 0.4.
   waits for the input ([rec threshold](sequencer/rec-threshold.md)).
 - **Utilities.** [Copy a project](utilities/copy-project.md) without loading
   it, [save the recorder buffers](utilities/buffer-saver.md) with the project,
-  and [SEQ](utilities/seq.md) (TRACK + PAGE).
+  and [SEQ](sequencer/seq.md) (TRACK + PAGE).
 - **Fixes.** The recorder loop click, stock LO-FI's AMF knob and a few
   sequencer and card-write faults are [corrected](fixes/recorder-loop-fix.md).
 
