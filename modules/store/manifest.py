@@ -22,7 +22,12 @@ EVENTS = (
     "bankcopy", "tocs1", "fromcs1", "partsaved", "partclear",
 )
 
-# (module key, symbol prefix, events handled). Table order is run order.
+# (module key, symbol prefix, events handled). Table order is run order. A key may
+# be a tuple of module keys: the client is in when all of them are.
+def present(key, modules):
+    return all(k in modules for k in (key if isinstance(key, tuple) else (key,)))
+
+
 CLIENTS = (
     ("PLOCKS P2", "plk", ("loadall_pre", "loadmask_pre", "newproj", "bankw_pre",
                           "bankcopy", "tocs1", "fromcs1")),
@@ -71,11 +76,11 @@ def store_inc(modules, remix):
     for key, _prefix, _events in sorted((c for c in CLIENTS if c[0] in CLIENT_IDS),
                                         key=lambda c: CLIENT_IDS[c[0]]):
         pre = {k: p for k, p, _e in CLIENTS}[key]
-        out.append(f"        .long   {pre}_st_answer" if key in modules else "        .long   0")
+        out.append(f"        .long   {pre}_st_answer" if present(key, modules) else "        .long   0")
     for ev in EVENTS:
         out.append(f"ev_{ev}:")
         for key, prefix, handled in CLIENTS:
-            if key in modules and ev in handled:
+            if present(key, modules) and ev in handled:
                 out.append(f"        .long   {prefix}_st_{ev}")
         out.append("        .long   0")
     return "\n".join(out) + "\n"
