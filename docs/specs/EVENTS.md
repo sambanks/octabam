@@ -17,6 +17,8 @@ Selection determines which sites are installed. The address-load sites
 | Transport | `0x4009c3d4` / `0x4009c4d4` write PLAYING at `0x800065b8`; continue at `0x4009c3da` / `0x4009c4da` |
 | Accepted MIDI | `0x4009fbb2` / `0x4009fcfa`, after native sender `0x40010bc8` returns; continue at `0x4009fbb8` / `0x4009fd00` |
 | Held editor | Entry `0x400508e4`; unclaimed edits replay its prologue and continue at `0x400508ec` |
+| Held scene | Stock's scene knob handlers, installed over every encoder while a scene key is held (`0x46c7dede + 20 * encoder`): SCENE A's entry `0x40053498`, SCENE B's `0x40052e98`; unclaimed turns replay the prologue and continue at `0x400534a0` / `0x40052ea0` |
+| Steps | Stock's routines that move or clear a step's page-1 locks (`docs/firmware/STEP_LOCKS.md` section 4): a trig taken off `0x4006036e` (after its `d3 = a5 + d6·16`), clear the held steps' locks `0x40040e14`, clear a track `0x40039df4`, trig copy `0x4002bf38`, trig paste `0x4002cb52` (before the step's lock copy); each replays what it displaced and goes on (`0x40060374`, `0x40040e1c`, `0x40039dfc`, `0x4002bf40`, `0x4002cb58`) |
 | Copy | The 22 call/address-load sites listed in `manifest.py` target native memcpy `0x40020898`; callbacks finish before entering it with the original frame |
 
 These addresses and instructions are observed; the event names describe their
@@ -48,7 +50,8 @@ CLIENTS = {
 }
 ```
 
-Each entry is `(module key, callback prefix, handled events)`. A client may
+Each entry is `(module key, callback prefix, handled events)`; a module key may be a
+tuple of keys, present when all of them are (PAGES' locks: PAGES with a LOCKS client). A client may
 register in several families. Prefixes must yield unique callback symbols;
 invalid events, duplicate clients within a family, duplicate callbacks and
 invalid assembler names fail at build time, even for absent clients.
@@ -60,6 +63,8 @@ Missing callback implementations fail linking.
 | `transport.resume` | Notify all: d0 = native PLAYING value, after its resume write |
 | `midi.note_accepted` | Notify all: d0 = MIDI track 0–7, d1 = native pool kind, d2 = packet velocity, d3 = packet note; after the sender returns, before ownership bookkeeping |
 | `edit.held` | First owner: `<prefix>_claim(d0=encoder, d1=delta)` returns zero to pass or nonzero to select `<prefix>_handle` with the original native entry frame |
+| `edit.scene_held` | First owner: `<prefix>_scene_claim(d0=encoder, d1=delta)` returns zero to pass or nonzero to select `<prefix>_scene_handle` with the original native entry frame; SCENES P2 detours SCENE A's entry privately, so the two cannot share a remix until it registers here |
+| `edit.steps` | Notify all: d0 = op, d1-d5 its arguments; 0 TRIG_CLEAR (step, the UI's bank, pattern and track), 1 LOCKS_CLEAR (pattern, track, page, mask), 2 TRACK_CLEAR (pattern, track, flags), 3 TRIG_COPY (clip, pattern, track, page, mask), 4 TRIG_PASTE (clip, pattern, track, source record, destination step); before the stock routine goes on. PLOCKS P2 detours the same five sites privately, so the two cannot share a remix until it registers here |
 | `edit.copy_pre` | Notify all: d0 = destination, d1 = source, d2 = length; before exactly one native copy with its original arguments |
 
 Notification symbols are `<prefix>_<event>` (for example `eu_seq_start` or
