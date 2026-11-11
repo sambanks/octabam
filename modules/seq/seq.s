@@ -123,7 +123,7 @@
         | Width = 16*SQ + 15*GAP + 3*SEP. Left-biased so LEN fits after
         | the squares in the window's bottom-right corner.
         .set    PAT_W,     PAT_COLS*PAT_SQ+(PAT_COLS-1)*PAT_GAP+3*PAT_SEP
-        .set    X_PAT,     2
+        .set    X_PAT,     1
         .set    Y_PATT,    22          | +1px bottom clearance for row 3 squares
         .set    X_LEN_R,   WINW-2      | LEN stack right-aligned here
         .set    Y_LAB0,    0x38        | 56 - top cell labels (PULS/ROT)
