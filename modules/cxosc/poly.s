@@ -673,6 +673,9 @@ sy_mono_inc:
         move.l  %d2,%d1
         move.l  #CV_STRIDE,%d3
         mulu.l  %d3,%d1
+        .if     HAVE_EF_CX
+        bsr     cx_ef_live               | Euclid DEST CAR..PWM -> CURVALS SETUP
+        .endif
         lea     CURVALS+CV_SETUP,%a1     | SETUP: CMOR MMOR DEC SYMM FDBK PWM
         mvz.b   3(%a1,%d1.l),%d3         | SETUP D -> SYMM
         bne     sy_symm_nz               | 0 = pre-migrate / unset Part -> even
@@ -6229,6 +6232,72 @@ sy_tab:
         .short  -6270, -5897, -5520, -5139, -4756, -4370, -3981, -3590
         .short  -3196, -2801, -2404, -2006, -1606, -1205, -804, -402
         .short  0
+
+
+| ---- Euclid FILL → CX SETUP (HAVE_EF_CX when EUCLID FILL is in the remix) ------
+| YES stores per-step values in ef_cx_bank / ef_cx_bits (slots stack). Apply
+| every armed slot for SEQ_STEP into CURVALS SETUP before LFO morph.
+        .if     HAVE_EF_CX
+        .global cx_ef_live
+        .set    CX_STEPS, 64
+        .set    CX_NSLOT, 5
+| d2=track, d0=sy_cxparm index (track*4), d1=CV_STRIDE*track, a0=sy_cxparm.
+| Preserves d0/d1/d2/a0; clobbers d3/d4/d5/d6/d7/a1.
+cx_ef_live:
+        cmpi.l  #8,%d2
+        bcc     cel_out
+        move.l  %d0,-(%sp)
+        move.l  %d1,-(%sp)
+        move.l  %a0,-(%sp)
+        mvz.w   SEQ_STEP,%d3
+        cmpi.l  #CX_STEPS,%d3
+        bcc     cel_done
+        | d4 = bits[trk*64+step]
+        move.l  %d2,%d0
+        lsl.l   #6,%d0
+        add.l   %d3,%d0
+        lea     ef_cx_bits,%a1
+        mvz.b   (%a1,%d0.l),%d4
+        tst.l   %d4
+        beq     cel_done
+        | d5 = bank base: trk*320 + step*5
+        move.l  %d2,%d0
+        move.l  #CX_STEPS*CX_NSLOT,%d5
+        mulu.l  %d5,%d0
+        move.l  %d3,%d5
+        add.l   %d5,%d5
+        add.l   %d3,%d5
+        add.l   %d5,%d5
+        add.l   %d3,%d5                  | step*5
+        add.l   %d0,%d5
+        lea     ef_cx_bank,%a1
+        move.l  4(%sp),%d1               | CV_STRIDE*track (parked under a0)
+        moveq   #0,%d6                   | slot index 0..4
+cel_each:
+        btst    %d6,%d4
+        beq     cel_next
+        mvz.b   (%a1,%d5.l),%d0          | bank[trk][step][slot]
+        lea     ef_cx_slots_cx,%a0
+        mvz.b   (%a0,%d6.l),%d7          | SETUP flat 0/1/3/4/5
+        add.l   %d1,%d7                  | + stride*t
+        lea     CURVALS+CV_SETUP,%a0
+        move.b  %d0,(%a0,%d7.l)
+cel_next:
+        addq.l  #1,%d5                   | next bank slot
+        addq.l  #1,%d6
+        cmpi.l  #CX_NSLOT,%d6
+        bcs     cel_each
+cel_done:
+        move.l  (%sp)+,%a0
+        move.l  (%sp)+,%d1
+        move.l  (%sp)+,%d0
+cel_out:
+        rts
+| DEST 30..34 -> PLAYBACK SETUP slot (DEC skipped); must match euclid ef_cx_slots.
+ef_cx_slots_cx:
+        .byte   0, 1, 3, 4, 5
+        .align  2
+        .endif
 
 | ---- SETUP LFO destinations (PMTR 30..33; remix.inc second pass) ---------------
         .include "remix.inc"
