@@ -45,7 +45,7 @@ enum {
     SLOT_STATE = 0x46c922c4u,   /* + 44 slot: flags (bit 0 stereo, bit 1 16-bit), +16 frames (SAMPLE_SAVE.md) */
 };
 enum { KW_W = 118, KW_H = 64, KW_DX = -1, KW_CLASS = 5, KW_ROWS = 4, KW_PITCH = 7, KW_ROW0 = 34,
-       KW_BAR1 = 3, KW_BAR2 = 107, KW_FOOT = 4, KW_PAGES = 3,
+       KW_BAR1 = 3, KW_BAR2 = 107, KW_FOOT = 4, KW_PAGES = 4,
        KW_X_ZONE = 16, KW_X_ROLE = 52, KW_X_LNK = 80 };   /* page 1's columns (image 60's ROLE and LNK sat off their titles) */
 
 /* The ZONE column: the nine zones, combos of two, out of the kit. */
@@ -81,7 +81,7 @@ DATA uint8_t  dr_simtol[TRACKS] = { 6, 6, 6, 6, 6, 6, 6, 6 };   /* SIMILAR: AUTO
 DATA uint8_t  dr_simmode[TRACKS] = { 0 };       /* 0 the copies OUT, 1 LINKED */
 DATA uint8_t  dr_link[TRACKS][DR_SLICES] = { { 0 } };   /* the group's kept slice + 1, 0 alone */
 DATA uint8_t  dr_kw_rprev;        /* RIGHT's key row bit at the last UI tick */
-DATA uint8_t  dr_kw_page;         /* 0 ZONE ROLE, 1 ALIGN GAIN SCENE DOSE, 2 the track's settings */
+DATA uint8_t  dr_kw_page;         /* 0 ZONE ROLE, 1 ALIGN GAIN SCENE DOSE, 2 the track's settings, 3 FILLS */
 DATA char     dr_kw_band[40];      /* the title, "KIT T1 BRKB SHFT P4 2/2" at most (image 55's
                                   * "... SHIFT PHR4 2/2", 27 bytes in 24, overflowed into
                                   * the page state with SHIFT on: reported on the unit) */
@@ -92,6 +92,9 @@ static void kw_text(uint32_t s, int x, int y, const char *t)
 }
 static void dots(uint32_t s, int x, int y, int w, int h);
 static void centred(uint32_t s, int cx, int y, const char *t);
+static void fills_rows(uint32_t s, unsigned t, int y, int pitch);
+static void fills_enc(unsigned t, unsigned index, int delta);
+static void fills_seed(unsigned t);
 
 static char *put_s(char *p, const char *s)
 {
@@ -251,7 +254,7 @@ static void kw_draw(void)
     p = put_u(p, dr_phrase[dr_kw_t], 1);
     *p++ = ' ';
     p = put_u(p, dr_kw_page + 1u, 1);
-    p = put_s(p, "/3");
+    p = put_s(p, "/4");
     *p = 0;
     FN(WTITLE, uint32_t, const char *, int)(dr_kw, dr_kw_band, 0);
     FN(WINSIDE, uint32_t)(s);
@@ -265,12 +268,17 @@ static void kw_draw(void)
     } else if (dr_kw_page == 1) {
         kw_text(s, 4, top + 2, "SL ALGN GAIN SCN DOSE");
     }
-    if (dr_kw_page != 2)                         /* page 3: its five rows from the top (image 68) */
+    if (dr_kw_page < 2)                          /* pages 3 and 4: their rows from the top (image 68) */
         FN(RULE, uint32_t, int, int, int, int)(s, 4, top - 1, w - 6, 1);
     dots(s, 4, KW_FOOT + 7, w - 10, 1);          /* the footer: AUTO's chord, on every page */
     centred(s, w / 2, KW_FOOT, "FUNC + RIGHT TO AUTO KIT");
     if (dr_kw_page == 2) {
         kw_settings(s);
+        U32(SCRDIRTY) = 1;
+        return;
+    }
+    if (dr_kw_page == 3) {                       /* FILLS: the fills' vocabulary, set once (no longer on SRC) */
+        fills_rows(s, dr_kw_t, KW_ROW0 + 11, 6);
         U32(SCRDIRTY) = 1;
         return;
     }
@@ -423,11 +431,17 @@ void dr_kw_enc(unsigned index, int delta)
         dr_kw_closed();
         return;
     }
+    if (dr_kw_page == 3) {                       /* FILLS */
+        fills_seed(dr_kw_t);
+        fills_enc(dr_kw_t, index, delta);
+        kw_draw();
+        return;
+    }
     k = &dr_kit[dr_kw_t];
     i = dr_kw_sel;
     {                                            /* every page on one set of handlers */
-        static const uint8_t AS[KW_PAGES][6] = { { 0, 1, 9, 9, 9, 9 }, { 2, 5, 9, 9, 6, 7 }, { 3, 4, 10, 11, 12, 13 } };
-        index = AS[dr_kw_page < KW_PAGES ? dr_kw_page : 0][index < 6 ? index : 2];
+        static const uint8_t AS[3][6] = { { 0, 1, 9, 9, 9, 9 }, { 2, 5, 9, 9, 6, 7 }, { 3, 4, 10, 11, 12, 13 } };
+        index = AS[dr_kw_page < 3 ? dr_kw_page : 0][index < 6 ? index : 2];
     }
     if (index == 0) {
         int z = (int)zone_index(k, i) + (delta > 0 ? 1 : -1);
@@ -918,6 +932,8 @@ void dr_kw_right(void)
 {
     if (dr_kw && !dr_asking && dr_kw_page + 1u < KW_PAGES) {
         dr_kw_page++;
+        if (dr_kw_page == 3)
+            fills_seed(dr_kw_t);
         kw_draw();
     }
 }
@@ -941,7 +957,9 @@ enum { PAGE_SHOWN = 0x460d1684u,                  /* the page key shown: 0 SRC, 
        PART_DIRTY = 0x9b332u, SRAM_PART = 0x100a4eceu, SRAM_DIRTY = 0x100f8598u, EDITED = 0x40027e00u };
 extern const uint8_t dr_l2_layer[];
 DATA uint32_t dr_l2;              /* the window, 0 closed */
-DATA uint8_t  dr_l2_t, dr_l2_pushed, dr_l2_view;   /* view: 0 KIT BALANCE, 1 FILLS (SRC once more) */
+DATA uint8_t  dr_l2_t, dr_l2_pushed, dr_l2_view;   /* view: 0 KIT BALANCE, 1 NEXT (SRC once more) */
+DATA uint32_t dr_nx_sig;         /* NEXT: what was drawn last (redrawn when it moves) */
+DATA uint8_t  dr_nx_tick;        /* NEXT: UI ticks, the armed orders' blink */
 static const char *const MIXN[DR_MIXES] = { "KICK", "SNARE", "HATS", "CYMB", "TOMS", "PERC" };
 
 /* A Part byte of the current Part and its battery copy, marked edited (stock's
@@ -1047,39 +1065,44 @@ static unsigned fills_max(unsigned i, unsigned fam)
     return i == DR_F_STIK ? dr_fill_sticks(fam ? fam - 1u : 0) : MAX[i];
 }
 
-static void fills_draw(uint32_t s)
+/* The six rows "A FILL  AUTO  FAMILY" from y down by pitch (KIT page 4). */
+static void fills_rows(uint32_t s, unsigned t, int y0, int pitch)
 {
     const volatile uint8_t *part = part_base();
-    unsigned i, fam = part[FILLS_AT + 30u * dr_l2_t] & 0x0fu;
-    int top = (int)U32(s + 4) - 20 + 2;
+    unsigned i, fam = part[FILLS_AT + 30u * t] & 0x0fu;
+    char name[8];
     for (i = 0; i < DR_FILLS; i++) {
-        unsigned v = part[FILLS_AT + 30u * dr_l2_t + i] & 0x0fu;
-        const char *t = "AUTO";
-        int y = top - 7 * (int)i;
+        unsigned v = part[FILLS_AT + 30u * t + i] & 0x0fu;
+        const char *tx = "AUTO";
+        int y = y0 - pitch * (int)i;
         if (i == DR_F_FILL)
-            t = FILL_V[v <= DR_FILL_MAX ? v : 0];
+            tx = FILL_V[v <= DR_FILL_MAX ? v : 0];
         else if (i == DR_F_FREQ)
-            t = FREQ_V[v <= DR_FREQ_MAX ? v : 0];
+            tx = FREQ_V[v <= DR_FREQ_MAX ? v : 0];
         else if (i == DR_F_LONG)
-            t = LONG_V[v <= DR_LONG_MAX ? v : 0];
+            tx = LONG_V[v <= DR_LONG_MAX ? v : 0];
         else if (i == DR_F_ORCH)
-            t = ORCH_V[v <= DR_ORCH_MAX ? v : 0];
+            tx = ORCH_V[v <= DR_ORCH_MAX ? v : 0];
         else if (i == DR_F_TRIP)
-            t = TRIP_V[v <= DR_TRIP_MAX ? v : 0];
+            tx = TRIP_V[v <= DR_TRIP_MAX ? v : 0];
         else if (fam < 2 || fam > DR_FILL_MAX)
-            t = "--";                            /* STIK: a family set first (RUDI, TRIP, 3:4) */
+            tx = "--";                           /* STIK: a family set first (RUDI, TRIP, 3:4) */
         else if (v)
-            t = dr_fill_stick_name(fam - 1u, v - 1u);
-        kw_text(s, 4, y, FILLN[i]);
-        kw_text(s, 28, y, t);
-        kw_text(s, 56, y, FILL_HELP[i]);
+            tx = dr_fill_stick_name(fam - 1u, v - 1u);
+        name[0] = (char)('A' + i);
+        name[1] = ' ';
+        *put_s(name + 2, FILLN[i]) = 0;
+        kw_text(s, 4, y, name);
+        kw_box(s, 36, y, v != 0 && !(i == DR_F_STIK && (fam < 2 || fam > DR_FILL_MAX)));
+        kw_text(s, 44, y, tx);
+        kw_text(s, 72, y, FILL_HELP[i]);
     }
 }
 
 /* A-F: one choice a detent; STIK only under a family set (its stickings). */
-static void fills_enc(unsigned index, int delta)
+static void fills_enc(unsigned t, unsigned index, int delta)
 {
-    unsigned off = FILLS_AT + 30u * dr_l2_t, fam = part_base()[off] & 0x0fu, max;
+    unsigned off = FILLS_AT + 30u * t, fam = part_base()[off] & 0x0fu, max;
     int v;
     if (index >= DR_FILLS)
         return;
@@ -1092,6 +1115,192 @@ static void fills_enc(unsigned index, int delta)
         part_put(off + DR_F_STIK, 0);            /* another family: its sticking AUTO */
 }
 
+
+/* ---- NEXT: the orders (SRC after KIT BALANCE) ---------------------------
+ *
+ *   |> PLAYING > STOP                BAR 2/4 |   what the armed order will do; the bar
+ *   |[#####|###__|_____|_____]                |   the phrase, the whole width, to the playhead
+ *   |       ^ 10 BEATS                        |   where it fires, the beats to go
+ *   +.............+.............+.............+
+ *   : A WHEN      : B RUN       : C HOW       :   the knobs as they sit on the panel, A B C
+ *   : PHRASE      : STOP        : FILL+CR     :   over D E F, in dotted cells; an armed
+ *   +.............+.............+.............+   order's values inverted (blinking through
+ *   : D FILL      : E STYL      : F BRK       :   its last four beats), '*' a value set and
+ *   : TRIP        : --          : --          :   waiting for WHEN. WHEN arms once the knob
+ *   +.............+.............+.............+   rests (passing BEAT does not send it)
+ */
+DATA uint8_t dr_nx_pend[TRACKS];   /* WHEN turned, not armed yet: its value, */
+DATA uint8_t dr_nx_quiet[TRACKS];  /* and the UI ticks left before it arms (the knob at rest) */
+DATA int8_t  dr_nx_acc[TRACKS];    /* WHEN's detents towards the next value */
+enum { NX_SETTLE = 30,             /* half a second at 60 Hz */
+       NX_DETENTS = 4 };           /* WHEN's detents a value (image 84: one was too short a travel) */
+static const char *const NX_LABEL[NX_N] = { "A WHEN", "B RUN", "C HOW", "D FILL", "E STYL", "F BRK" };
+static const char *const NXV_WHEN[] = { "--", "BEAT", "BAR", "PHRASE", "2 PHR" };
+static const char *const NXV_HOW[]  = { "DRY", "CRASH", "FILL", "FILL+CR", "PICKUP" };
+static const char *const NXV_FILL[] = { "--", "TRIP", "6LET", "RUDI", "3:4", "LONG" };
+static const char *const NXV_BRK[]  = { "--", "1 BEAT", "2 BEATS", "BAR", "STUTTER" };
+static const uint8_t NX_MAX[NX_N] = { NXW_MAX, 2, HOW_MAX, NXF_MAX, DR_STYLES, NXB_MAX };
+
+static const char *nx_value(unsigned t, unsigned i)
+{
+    unsigned v = dr_nx_get(t, i);
+    switch (i) {
+    case NX_WHEN: return NXV_WHEN[v <= NXW_MAX ? v : 0];
+    case NX_RUN:  return !v ? "--" : dr_stopped[t] ? "RESUME" : v == 1 ? "STOP" : "SILENT";
+    case NX_HOW:  return NXV_HOW[v < 5 ? v : 0];
+    case NX_FILL: return NXV_FILL[v < 6 ? v : 0];
+    case NX_STYL: return v && v <= DR_STYLES ? dr_style_name(v - 1u) : "--";
+    default:      return NXV_BRK[v < 5 ? v : 0];
+    }
+}
+
+/* Text right-aligned on x (4 pixels a character). */
+static void right(uint32_t s, int x, int y, const char *t)
+{
+    int n = 0;
+    while (t[n])
+        n++;
+    kw_text(s, x - 4 * n, y, t);
+}
+
+static void nx_draw(uint32_t s)
+{
+    unsigned t = dr_l2_t, armed = dr_nx_when[t] != 0, blink = 0;
+    unsigned run = U32(SEQ_TRANSPORT) == 1 && dr_pos[t];
+    unsigned len = dr_vlen[t] ? dr_vlen[t] : DR_STEPS, ph = dr_phrase[t] == 8 ? 8u : 4u;
+    unsigned bi = run ? dr_vbar[t] % ph : 0, span = ph * len, at = run ? bi * len + dr_vstep[t] + 1u : 0;
+    int w = (int)U32(s), T = (int)U32(s + 4) - 18, x, i, x0 = 2, tw = w - 9, cw = (w - 3) / 3;
+    char line[24], *p;
+    /* the line: the state and what the armed order will do on the left, the bar on the right */
+    if (dr_stopped[t]) {
+        for (i = 0; i < 4; i++)
+            FN(RULE, uint32_t, int, int, int, int)(s, 2, T + i, 5, 1);
+    } else {
+        vline(s, 2, T, 5);
+        vline(s, 3, T + 1, 3);
+        vline(s, 4, T + 2, 1);
+    }
+    p = put_s(line, dr_stopped[t] ? (dr_stopped[t] == 2 ? "SILENT" : "STOPPED") : "PLAYING");
+    if (armed && dr_nx_get(t, NX_RUN)) {
+        p = put_s(p, " > ");
+        p = put_s(p, nx_value(t, NX_RUN));
+    } else if (armed) {
+        p = put_s(p, " > ORDER");
+    }
+    *p = 0;
+    kw_text(s, 9, T, line);
+    p = put_s(line, "BAR ");
+    p = put_u(p, bi + 1u, 1);
+    *p++ = '/';
+    p = put_u(p, ph, 1);
+    *p = 0;
+    right(s, x0 + tw + 1, T, line);
+    if (dr_nx_flash[t])                          /* just done: the line flashes */
+        FN(FILLR, uint32_t, int, int, int, int, int)(s, 0, T - 1, w - 4, T + 5, -1);
+    /* the phrase, the whole width: a cell a bar, the beats ticked, filled to the playhead */
+    FN(RULE, uint32_t, int, int, int, int)(s, x0, T - 3, x0 + tw, 1);
+    FN(RULE, uint32_t, int, int, int, int)(s, x0, T - 8, x0 + tw, 1);
+    for (i = 0; i <= (int)ph; i++)
+        vline(s, x0 + i * tw / (int)ph, T - 8, 6);
+    {
+        unsigned bs = len == 12 ? 3u : 4u, b;
+        for (b = bs; b < span; b += bs)
+            if (b % len)
+                FN(RULE, uint32_t, int, int, int, int)(s, x0 + (int)(b * (unsigned)tw / span), T - 4, x0 + (int)(b * (unsigned)tw / span), 1);
+    }
+    if (at)
+        for (i = 0; i < 3; i++)
+            FN(RULE, uint32_t, int, int, int, int)(s, x0 + 1, T - 7 + i, x0 + (int)(at * (unsigned)tw / span), 1);
+    /* where the order fires (a mark under the phrase), and the beats to go beside it */
+    if (armed) {
+        unsigned left = run && dr_nx_at[t] > dr_pos[t] ? dr_nx_at[t] - dr_pos[t] : 0;
+        unsigned tgt = at + left, bs = len == 12 ? 3u : 4u, beats = (left + bs - 1u) / bs;
+        x = x0 + (int)((tgt > span ? span : tgt) * (unsigned)tw / span);
+        FN(RULE, uint32_t, int, int, int, int)(s, x, T - 10, x, 1);
+        FN(RULE, uint32_t, int, int, int, int)(s, x - 1, T - 11, x + 1, 1);
+        FN(RULE, uint32_t, int, int, int, int)(s, x - 2, T - 12, x + 2, 1);
+        if (!run) {
+            p = put_s(line, "AT PLAY");
+        } else {
+            if (beats > 99)
+                beats = 99;
+            blink = beats <= 4 && (dr_nx_tick >> 3 & 1u);   /* the last four beats: everything armed blinks */
+            p = put_u(line, beats, 1);
+            p = put_s(p, beats == 1 ? " BEAT" : " BEATS");
+            if (tgt > span + 1u)
+                p = put_s(p, " >>");             /* past this phrase */
+        }
+        *p = 0;
+        if (x + 4 + 4 * (int)(p - line) <= x0 + tw)
+            kw_text(s, x + 4, T - 13, line);
+        else
+            right(s, x - 4, T - 13, line);
+    }
+    /* the six knobs, A B C over D E F, in dotted cells */
+    dots(s, 0, T - 15, w - 3, 1);
+    dots(s, 0, T - 28, w - 3, 1);
+    dots(s, 0, T - 41, w - 3, 1);
+    for (i = 1; i < 3; i++)
+        dots(s, i * cw, T - 41, 1, 27);
+    for (i = 0; i < NX_N; i++) {
+        int bx = (i % 3) * cw + 4, by = T - 15 - 13 * (i / 3);
+        /* in the order: WHEN, the orders set, HOW when the order stops or resumes */
+        unsigned in = i == NX_HOW ? dr_nx_get(t, NX_RUN) != 0 : dr_nx_get(t, i) != 0;
+        kw_text(s, bx, by - 6, NX_LABEL[i]);
+        kw_text(s, bx, by - 12, i == NX_WHEN && dr_nx_quiet[t] ? NXV_WHEN[dr_nx_pend[t] <= NXW_MAX ? dr_nx_pend[t] : 0]
+                                                               : nx_value(t, (unsigned)i));
+        if (armed && in && !blink)
+            FN(FILLR, uint32_t, int, int, int, int, int)(s, bx - 2, by - 13, bx + cw - 6, by - 7, -1);
+        else if (!armed && i != NX_WHEN && in)
+            kw_text(s, bx + cw - 10, by - 6, "*");   /* set, waiting for WHEN */
+    }
+}
+
+/* B-F's bytes 0 the first time (marked after FILLS' 'F'). */
+static void nx_seed(unsigned t)
+{
+    unsigned i;
+    if (part_base()[NX_MARK + 30u * t] == NX_MAGIC)
+        return;
+    for (i = 1; i < NX_N; i++)
+        part_put(NX_AT + 30u * t + i - 1u, 0);
+    part_put(NX_MARK + 30u * t, NX_MAGIC);
+}
+
+/* A-F on NEXT: one value a detent. WHEN arms (from now) or disarms; B-F into the Part. */
+static void nx_enc(unsigned t, unsigned index, int delta)
+{
+    int v;
+    if (index >= NX_N || !bank_ok())
+        return;
+    v = (int)dr_nx_get(t, index) + delta;
+    v = v < 0 ? 0 : v > (int)NX_MAX[index] ? (int)NX_MAX[index] : v;
+    if (index == NX_WHEN) {                     /* armed once the knob rests: passing BEAT does not send it */
+        int cur = (int)(dr_nx_quiet[t] ? dr_nx_pend[t] : dr_nx_when[t]), steps;
+        if ((dr_nx_acc[t] < 0 && delta > 0) || (dr_nx_acc[t] > 0 && delta < 0))
+            dr_nx_acc[t] = 0;                    /* the other way: from scratch */
+        v = dr_nx_acc[t] + delta;
+        steps = v / NX_DETENTS;                  /* NX_DETENTS detents a value: a long travel, no slip */
+        dr_nx_acc[t] = (int8_t)(v - steps * NX_DETENTS);
+        if (!steps) {
+            if (dr_nx_quiet[t])
+                dr_nx_quiet[t] = NX_SETTLE;      /* still turning */
+            return;
+        }
+        v = cur + steps;
+        v = v < 0 ? 0 : v > NXW_MAX ? NXW_MAX : v;
+        dr_nx_acc[t] = 0;
+        if (v == cur)
+            return;                              /* at an end */
+        dr_nx_arm(t, 0);
+        dr_nx_pend[t] = (uint8_t)v;
+        dr_nx_quiet[t] = (uint8_t)(v ? NX_SETTLE : 0);
+        return;
+    }
+    nx_seed(t);
+    part_put(NX_AT + 30u * t + index - 1u, (unsigned)v);
+}
+
 static void l2_draw(void)
 {
     uint32_t s;
@@ -1102,12 +1311,12 @@ static void l2_draw(void)
         return;
     if (dr_l2_view) {
         s = dr_l2 + 36;
-        p = put_s(dr_kw_band, "FILLS T");
+        p = put_s(dr_kw_band, "NEXT T");
         p = put_u(p, dr_l2_t + 1u, 1);
         *p = 0;
         FN(WTITLE, uint32_t, const char *, int)(dr_l2, dr_kw_band, 0);
         FN(WINSIDE, uint32_t)(s);
-        fills_draw(s);
+        nx_draw(s);
         U32(SCRDIRTY) = 1;
         return;
     }
@@ -1178,7 +1387,7 @@ void dr_l2_enc(unsigned index, int delta)
     if (!dr_l2 || index >= DR_MIXES)
         return;
     if (dr_l2_view) {
-        fills_enc(index, delta);
+        nx_enc(dr_l2_t, index, delta);
         l2_draw();
         return;
     }
@@ -1206,7 +1415,6 @@ unsigned dr_page_shown(void)
 void dr_page_close(void)
 {
     if (dr_l2 && !dr_l2_view) {
-        fills_seed(dr_l2_t);
         dr_l2_view = 1;
         l2_draw();
         return;
@@ -1235,6 +1443,24 @@ void dr_page_tick(void)
     if (dr_l2 && (ui_drummer_track() != dr_l2_t || U32(PAGE_SHOWN) != 0 || dr_kw || dr_asking
                   || U32(DIALOG_OPEN) || U32(U32(SETUP_WIN) + 8)))
         l2_close();
+    {   /* NEXT moves with the playhead, the order's countdown and its blink */
+        unsigned t = dr_l2_t, r;
+        for (r = 0; r < TRACKS; r++)            /* WHEN at rest: the order armed */
+            if (dr_nx_quiet[r] && !--dr_nx_quiet[r])
+                dr_nx_arm(r, dr_nx_pend[r]);
+        dr_nx_tick++;
+        if (t < TRACKS && dr_nx_flash[t])
+            dr_nx_flash[t]--;
+        if (dr_l2 && dr_l2_view && t < TRACKS) {
+            uint32_t sig = dr_pos[t] * 2654435761u ^ (uint32_t)dr_nx_when[t] << 1 ^ (uint32_t)dr_stopped[t] << 4
+                           ^ (uint32_t)((dr_nx_tick >> 3) & 1u) ^ (uint32_t)(dr_nx_flash[t] != 0) << 7 ^ (uint32_t)dr_nx_pend[t] << 11 ^ (uint32_t)(dr_nx_quiet[t] != 0) << 15
+                           ^ U32(SEQ_TRANSPORT) << 9;
+            if (sig != dr_nx_sig) {
+                dr_nx_sig = sig;
+                l2_draw();
+            }
+        }
+    }
 }
 
 /* Each UI tick: dr_up_layer (BANK only) pushed while a trig key is held on a

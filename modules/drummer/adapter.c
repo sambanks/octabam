@@ -310,6 +310,159 @@ int dr_validate_part(uint8_t *part)
     return result;
 }
 
+/* ---- NEXT (SRC after KIT BALANCE, kit.c): the orders ----------------------
+ *
+ * A WHEN is the trigger: armed, the order fires on the next beat, bar,
+ * phrase or two phrases, then WHEN is back to none (RAM: an order is a live
+ * gesture). B-F stay set, in the Part (THRU's SETUP column of the track,
+ * unused on FLEX, marked 'N' after FILLS' 'F'): the musician turns WHEN alone
+ * for the next one.
+ *   B RUN   STOP (the grid's trigs still play) or SILENT (they do not); while
+ *           stopped, either resumes. The engine runs on unheard, so a resume
+ *           lands in the groove.
+ *   C HOW   how B stops or resumes: DRY, CRASH (on the 1), FILL (ending on
+ *           the 1), FILL+CR, PICKUP (a half-beat lead-in, then the crash on
+ *           a resume)
+ *   D FILL  the order's fill (it plays one even without B): TRIP, 6LET,
+ *           RUDI, 3:4 the family, LONG a whole bar
+ *   E STYL  the style from the 1 on, until the STYL knob is turned
+ *   F BRK   a break from the 1: a beat, two, a bar of BRK cuts, or a bar of
+ *           stutter
+ * A fill needs the order on a bar's 1 (BEAT mid-bar: no fill). */
+enum { NX_WHEN, NX_RUN, NX_HOW, NX_FILL, NX_STYL, NX_BRK, NX_N };
+enum { NXW_NONE, NXW_BEAT, NXW_BAR, NXW_PHRS, NXW_2PHR, NXW_MAX = NXW_2PHR };
+enum { HOW_DRY, HOW_CRASH, HOW_FILL, HOW_FILLCR, HOW_PICKUP, HOW_MAX = HOW_PICKUP };
+enum { NXF_NONE, NXF_TRIP, NXF_6LET, NXF_RUDI, NXF_34, NXF_LONG, NXF_MAX = NXF_LONG };
+enum { NXB_NONE, NXB_BEAT, NXB_2BEAT, NXB_BAR, NXB_STUT, NXB_MAX = NXB_STUT };
+enum { NX_AT = 0x1e6u,             /* B-F: THRU's SETUP column, Part + 0x1da + 12 + 30t (no THRU setup knob; FILLS is NEIGHBOR's, + 18) */
+       NX_MARK = 65u, NX_MAGIC = 'N',   /* NEIGHBOR's PLAYBACK 6th byte, after 'F' */
+       BRK_CUTS = 76u, BRK_STUTTER = 112u };
+__attribute__((section(".data"))) uint8_t  dr_nx_when[TRACKS];   /* A, armed (RAM) */
+__attribute__((section(".data"))) uint32_t dr_nx_at[TRACKS];     /* dr_pos of the step it fires on */
+__attribute__((section(".data"))) uint8_t  dr_stopped[TRACKS];   /* 0 playing, else B's value that stopped it */
+__attribute__((section(".data"))) uint8_t  dr_nx_flash[TRACKS];  /* UI ticks the page shows "done" */
+__attribute__((section(".data"))) uint32_t dr_vbar[TRACKS];      /* the step decided last: its bar, */
+__attribute__((section(".data"))) uint8_t  dr_vstep[TRACKS], dr_vlen[TRACKS];   /* step in it, bar length */
+__attribute__((section(".data"))) uint8_t  dr_nx_fz[TRACKS];     /* this bar ends in the order's fill (heard while stopped) */
+__attribute__((section(".data"))) uint8_t  dr_nx_let[TRACKS];    /* the order's 1 plays though it stops (its crash) */
+__attribute__((section(".data"))) uint8_t  dr_nx_land[TRACKS];   /* on the order's 1: 0 the engine's landing, 1 a crash, 2 none */
+__attribute__((section(".data"))) uint8_t  dr_sty_ovr[TRACKS];   /* E's style + 1 in force, 0 none */
+__attribute__((section(".data"))) uint8_t  dr_sty_knob[TRACKS];  /* the STYL knob when it came (0xff: read at the next step) */
+__attribute__((section(".data"))) uint8_t  dr_brk_left[TRACKS], dr_brk_val[TRACKS];   /* F: steps to go, its BRK */
+
+/* B-F's value (0 for an unmarked Part); WHEN's from RAM. */
+unsigned dr_nx_get(unsigned t, unsigned i)
+{
+    const volatile uint8_t *part;
+    if (i == NX_WHEN)
+        return dr_nx_when[t];
+    if (i >= NX_N || !bank_ok())
+        return 0;
+    part = part_base();
+    return part[NX_MARK + 30u * t] == NX_MAGIC ? part[NX_AT + 30u * t + i - 1u] & 0x3fu : 0;
+}
+
+/* Steps from the step decided last to WHEN's next boundary (beat, bar, phrase, two). */
+static unsigned nx_steps(unsigned t, unsigned when)
+{
+    unsigned len = dr_vlen[t] ? dr_vlen[t] : DR_STEPS, s = dr_vstep[t], ph = dr_phrase[t] == 8 ? 8u : 4u;
+    unsigned bs = len == 12 ? 3u : 4u;
+    if (when == NXW_BEAT)
+        return bs - s % bs;
+    if (when == NXW_BAR)
+        return len - s;
+    if (when == NXW_2PHR)
+        ph *= 2;
+    return (ph - 1u - dr_vbar[t] % ph) * len + (len - s);
+}
+
+/* A WHEN turned: the order's step, from now (the first step when the transport is stopped). */
+void dr_nx_arm(unsigned t, unsigned when)
+{
+    dr_nx_when[t] = (uint8_t)(when > NXW_MAX ? NXW_MAX : when);
+    if (when)
+        dr_nx_at[t] = U32(SEQ_TRANSPORT) == 1 && dr_pos[t] ? dr_pos[t] + nx_steps(t, when) : 1u;
+}
+
+/* The step being decided (dr_pos) is the order's 1: B, E and F take effect,
+ * WHEN back to none. Before params_of, so the style and the break play on it. */
+static void nx_fire(unsigned t)
+{
+    unsigned run, how, brk, len = dr_vlen[t] ? dr_vlen[t] : DR_STEPS, beat = len == 12 ? 3u : 4u;
+    dr_nx_let[t] = 0;
+    dr_nx_land[t] = 0;
+    if (!dr_nx_when[t] || dr_pos[t] < dr_nx_at[t])
+        return;
+    run = dr_nx_get(t, NX_RUN);
+    how = dr_nx_get(t, NX_HOW);
+    if (run) {
+        unsigned crash = how == HOW_CRASH || how == HOW_FILLCR || (how == HOW_PICKUP && dr_stopped[t]);
+        dr_nx_land[t] = (uint8_t)(crash ? 1 : 2);
+        if (dr_stopped[t]) {
+            dr_stopped[t] = 0;
+        } else {
+            dr_stopped[t] = (uint8_t)(run > 2 ? 2 : run);
+            dr_nx_let[t] = (uint8_t)crash;
+        }
+    }
+    if (dr_nx_get(t, NX_STYL)) {
+        dr_sty_ovr[t] = (uint8_t)dr_nx_get(t, NX_STYL);
+        dr_sty_knob[t] = 0xff;
+    }
+    brk = dr_nx_get(t, NX_BRK);
+    if (brk) {
+        dr_brk_left[t] = (uint8_t)(brk == NXB_BEAT ? beat : brk == NXB_2BEAT ? 2u * beat : len);
+        dr_brk_val[t] = (uint8_t)(brk == NXB_STUT ? BRK_STUTTER : BRK_CUTS);
+    }
+    dr_nx_when[t] = NXW_NONE;
+    dr_nx_flash[t] = 40;
+}
+
+/* The order's knobs over the step's: E's style (until STYL turns), F's break,
+ * and the fill on the bar before the order's 1. */
+static void nx_params(unsigned t, DrParams *p, unsigned knob_styl)
+{
+    if (dr_sty_ovr[t]) {
+        if (dr_sty_knob[t] == 0xff)
+            dr_sty_knob[t] = (uint8_t)knob_styl;
+        if (knob_styl != dr_sty_knob[t])
+            dr_sty_ovr[t] = 0;                   /* the knob turned: the knob's style */
+        else if (dr_sty_ovr[t] <= DR_STYLES)
+            p->style = (uint8_t)(dr_sty_ovr[t] - 1u);
+    }
+    if (dr_brk_left[t])
+        p->brk = dr_brk_val[t];
+}
+
+static void nx_fill(unsigned t, DrParams *p, unsigned step, unsigned len)
+{
+    unsigned run = dr_nx_get(t, NX_RUN), how = dr_nx_get(t, NX_HOW), f = dr_nx_get(t, NX_FILL), z;
+    unsigned k = dr_nx_when[t] && dr_nx_at[t] > dr_pos[t] ? dr_nx_at[t] - dr_pos[t] : 0;
+    dr_nx_fz[t] = 0;
+    if (!k || k + step != len || !(f || (run && how >= HOW_FILL)))
+        return;                                  /* not the bar before the order's 1, or no fill */
+    if (f == NXF_LONG)
+        z = 3;
+    else if (run && how == HOW_PICKUP && !f)
+        z = 0;                                   /* half a beat */
+    else if (p->fill[DR_F_LONG] && p->fill[DR_F_LONG] <= DR_LONG_MAX)
+        z = p->fill[DR_F_LONG];                  /* FILLS' LONG: 1BT 2BT BAR */
+    else
+        z = 1;                                   /* a beat */
+    p->brk = (uint8_t)(32u + 8u * z + 4u);       /* BRK's fill zone of that length, this bar */
+    p->fill[DR_F_FREQ] = 1;                      /* BRK's fill alone (no VAR one besides) */
+    p->fill[DR_F_LONG] = 0;
+    if (f == NXF_TRIP || f == NXF_6LET)
+        p->fill[DR_F_FILL] = 3;
+    if (f == NXF_6LET)
+        p->fill[DR_F_TRIP] = 2;
+    if (f == NXF_RUDI)
+        p->fill[DR_F_FILL] = 2;
+    if (f == NXF_34)
+        p->fill[DR_F_FILL] = 4;
+    dr_nx_fz[t] = 1;
+}
+
 static void reset_track(unsigned t)
 {
     unsigned i;
@@ -322,6 +475,9 @@ static void reset_track(unsigned t)
     dr_len[t] = 0;
     dr_head[t] = 0;
     dr_count[t] = 0;
+    dr_brk_left[t] = 0;
+    if (dr_nx_when[t])                           /* an order armed: on the first step played */
+        dr_nx_at[t] = 1;
 }
 
 static unsigned slice_count(unsigned t)
@@ -411,6 +567,7 @@ static void params_of(unsigned t, DrParams *p)
     /* LIVE (page 1): SEED DENS CPLX ORN BRK GHST; CONFIG (SETUP): STYL VEL ALT SWNG HUMN VAR */
     p->style = (uint8_t)style_of_knob(k[DR_K_STYL]);
     p->seed = k[0]; p->dens = k[1]; p->cplx = k[2]; p->orn = k[3]; p->brk = k[4]; p->ghost = k[5];
+    nx_params(t, p, k[DR_K_STYL]);
     p->vel = k[7]; p->round = k[8]; p->time = k[9]; p->human = k[10]; p->var = k[11];
     p->shift = dr_shift[t]; p->phrase = dr_phrase[t] == 8 ? 8 : 4; p->reserved[0] = p->reserved[1] = 0;
     p->loop = loop_of(t);
@@ -520,12 +677,29 @@ static void on_build(unsigned t, unsigned idx, int lock_slot)
          * (counted from the transport start, the bars drifted from the
          * pattern's: reported on the unit) */
         unsigned len, plen = dr_len[t] ? dr_len[t] : 16u;
+        nx_fire(t);                              /* NEXT's order, on its 1 */
         params_of(t, &p);
         len = p.loop ? DR_STEPS : dr_style_len(p.style);   /* REDRUM: 4/4 bars */
         bar = dr_pass[t] * ((plen + len - 1u) / len) + idx / len;
+        nx_fill(t, &p, idx % len, len);
+        if (dr_nx_land[t] == 1 && dr_state[t].fill_len < 4)
+            dr_state[t].fill_len = 4;            /* C's crash: the engine's landing on this 1 */
+        else if (dr_nx_land[t] == 2)
+            dr_state[t].fill_len = 0;            /* C without one: no landing */
         dr_cur_style[t] = p.style;
         dr_step(&dr_kit[t], &p, &dr_state[t], bar, idx % len, forced, &h);
+        dr_vbar[t] = bar;
+        dr_vstep[t] = (uint8_t)(idx % len);
+        dr_vlen[t] = (uint8_t)len;
+        if (dr_brk_left[t])
+            dr_brk_left[t]--;
+        if (dr_stopped[t] && !dr_nx_let[t] && !forced && !(dr_nx_fz[t] && (h.flags & DRF_FILL)))
+            h.play = 0;                          /* stopped: the groove runs on, unheard (the order's fill heard) */
         dr_last_hit[t] = h;
+    }
+    if (forced && dr_stopped[t] == 2 && !dr_nx_let[t]) {
+        U32(KIND + 4u * t) = 1;                  /* SILENT: the grid's trig made trigless (its locks only) */
+        return;
     }
     if (!h.play)
         return;
