@@ -101,7 +101,7 @@
       "image": "euclid-fill/fill.png",
       "caption": "EUCLID FILL: title EUCLID, C=LANE (TRIG/PLCK), A/B PULSE/ROT, D/E DEST/DEPTH, 4\u00d716 focused grid, LEN gutter.",
       "remix": "cx",
-      "source": "unit LCD (USB SCREEN), CX EUCL84",
+      "source": "unit LCD (USB SCREEN), CX EUCL93",
       "firmware_sha256": ""
     }
   },
