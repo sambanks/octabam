@@ -246,7 +246,7 @@ def check_ui(src: str) -> None:
         ("PAT_W", pat_w), ("Y_PATT", 22),
         ("ICON_W", 29), ("ICON_H", 29),
         ("X_LEN_R", 109 - 2), ("Y_LEN_LAB", 14), ("Y_LEN_VAL", 5),
-        ("X_PAT", 2),
+        ("X_PAT", 1),
         ("Y_LAB0", 0x38), ("Y_VAL0", 0x2f), ("Y_GMID", 0x2b),
         ("Y_LAB1", 0x24), ("Y_VAL1", 0x1e),
         ("Y_DEST_P", 0x24),
@@ -556,14 +556,15 @@ def check_ui(src: str) -> None:
           and "ef_draw_pat" in draw
           and "WINX" in src)
     grid = _block(src, "ef_grid:", "ef_fmt_track:")
-    check("grid has 1px top+bottom RULE + left VLINE + divs + mid + floor",
+    check("grid has 1px top+bottom RULE + table VLINE + divs + mid + floor",
           "VLINE" in grid
           and "moveq   #3,%d2" in grid
           and grid.count("jsr     RULE") >= 3
           and "WINH-1" in grid
           and "pea     WINW\n" in grid
           and "pea     WINW-1" not in grid
-          and grid.count("jsr     VLINE") >= 2
+          and grid.count("jsr     VLINE") == 1
+          and "X_GRID" in grid
           and re.search(r"\.set\s+VLINE,\s*0x40011b94", src) is not None)
     mkw = _block(src, "ef_mkwin:", "mkw_rts:")
     check("window parked left (WINX=0, WINW=109) so T5-8 keep ~19px",
