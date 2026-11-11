@@ -143,7 +143,7 @@
         | Icon centred in the left gutter (after Y_GRID* exist).
         | BLIT y = glyph BOTTOM (Y-up); bit31 = bottom row.
         .set    ICON_X,    (X_GRID-ICON_W)/2
-        .set    ICON_Y,    (Y_GRID0+Y_GRID1-ICON_H)/2-1 | 1px down (Y-up)
+        .set    ICON_Y,    (Y_GRID0+Y_GRID1-ICON_H)/2+1 | 2px up from EUCL97 (Y-up)
 
         .set    X_TITLE,   2           | "SEQ" top-left, next to the icon
         .set    Y_TITLE,   WINH-7      | 1px down with the icon
