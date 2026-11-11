@@ -35,10 +35,11 @@ MODULE = Module(
     category=Category.MACHINES,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="author's MKII, CX EUCL91, 11 Nov 2026: dual LANE TRIG/PLCK, "
-               "write-only bake, PULSE0 orphan-TL + plock LED refresh, "
-               "full-width floor; also port gate verify_euclid_fill.",
+    proof=Proof.CHECK,
+    proof_note="EUCL91 HW (dual LANE / write-only / LOCK_COLL / floor) on "
+               "author's MKII 11 Nov 2026; PLCK miss clears DEST on note "
+               "trigs (overwrite TRIG bake, no PTCH carry) port-gated — "
+               "not unit-confirmed on this tip.",
     doc="TRACK + PAGE: Euclidean sample-trig + p-lock fill (title EUCLID; "
         "A/B=PULSE/ROT of focused LANE, C=TRIG|PLCK, D/E=DEST/DEPTH; "
         "CUE = focused-lane random k-subset; DEST = LFO PMTR 0..29 + CX "

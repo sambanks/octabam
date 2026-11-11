@@ -591,13 +591,14 @@ def check_ui(src: str) -> None:
           and "ef_phit" in _block(src, "ef_write_mask:", "ef_write_dest:")
           and "ef_plock_on" in _block(src, "ef_write_mask:", "ef_write_dest:"))
     check("LANE=TRIG: DEST on thit + plock recipe sync (ef_plk_save)",
-          "wm_tclr:" in src
+          "ef_write_dest" in _block(src, "ef_write_mask:", "wm_plock:")
+          and "ef_tl_clr" in _block(src, "ef_write_mask:", "wm_plock:")
           and "ef_plk_save" in _block(src, "ef_write_mask:", "ef_tl_bit_addr:")
           and "ef_ppulses" in _block(src, "9:", "ef_tl_bit_addr:"))
     check("LANE=PLOCK: independent trigless via wm_plock / ef_tl_set",
           "wm_plock:" in _block(src, "ef_write_mask:", "ef_tl_bit_addr:")
-          and "ef_tl_set" in _block(src, "wm_tl:", "wm_miss:")
-          and "ef_phit" in _block(src, "wm_plock:", "wm_miss:"))
+          and "ef_tl_set" in _block(src, "wm_plock:", "wm_dest_clr:")
+          and "ef_phit" in _block(src, "wm_plock:", "wm_dest_clr:"))
     check("PULSE0 / dest-clear drops orphan TL (ef_tl_reconcile, stack-safe)",
           "ef_tl_reconcile:" in src
           and "ef_tl_reconcile" in _block(src, "wm_mtl:", "9:")
@@ -617,9 +618,10 @@ def check_ui(src: str) -> None:
     check("ARE YOU SURE? dialog YES unlocks only (no fill in callback)",
           "ef_fill" not in _block(src, "ef_dlg_answer:", "ef_trk_baked:")
           and "ef_unlocked" in _block(src, "ef_dlg_answer:", "ef_trk_baked:"))
-    check("PTCH carry on bare note trigs after plock miss",
-          "ef_ptch_carry" in _block(src, "ef_write_mask:", "ef_write_dest:")
-          and "ef_part_ptch" in _block(src, "ef_write_mask:", "ef_write_dest:"))
+    check("PLCK miss clears DEST on note trigs (overwrites TRIG bake, no PTCH carry)",
+          "ef_ptch_carry" not in src
+          and _block(src, "wm_plock:", "wm_dest_clr:").count("wm_dest_clr") >= 2
+          and "beq.w   wm_dest_clr" in _block(src, "wm_plock:", "wm_clr_tl:"))
     check("D/E live regardless of LANE (no auto-switch)",
           "ef_dep_load" in _block(src, "ef_nudge:", "ef_nudge_rts:")
           and "ef_lane" in _block(src, "ef_nudge:", "ef_nudge_rts:"))

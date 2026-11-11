@@ -41,13 +41,15 @@ Euclid (stock step banks while open). FUNC + PAGE (SCALE SETUP) stays stock.
   the **same steps as the sample trigs** (DEPTH randomizes that DEST); this
   DEST is cleared on silent steps so the lock layer matches the trig set;
   that DEST's PLOCK recipe is synced to the TRIG rhythm. With **LANE =
-  PLCK**, the plock rhythm is independent (trigless stacks per DEST).
-- To **remove** locks (including ones baked from TRIG and synced into that
-  DEST's PLCK recipe): **LANE = PLCK**, set that DEST's **PULSE to 0**,
-  **YES**. That clears this DEST over the fill range and drops orphan
-  trigless bits when no other DEST still holds a lock on the step. YES on
-  **LANE = TRIG** with DEPTH > 0 **re-applies** locks on the trigs (and
-  re-syncs the PLCK recipe) — it does not honour a zeroed PLCK PULSE.
+  PLCK**, the plock rhythm is independent (trigless stacks per DEST); a
+  PLCK **YES** clears this DEST on misses — including on note trigs — so
+  regenerating the same DEST from PLCK **overwrites** TRIG-baked locks
+  (e.g. pitch on trigs goes away when PLCK ROT changes).
+- To **clear** a DEST without rewriting: **LANE = PLCK**, set that DEST's
+  **PULSE to 0**, **YES**. That clears this DEST over the fill range and
+  drops orphan trigless bits when no other DEST still holds a lock on the
+  step. YES on **LANE = TRIG** with DEPTH > 0 **re-applies** locks on the
+  trigs (and re-syncs the PLCK recipe).
 - DEPTH 0 clears **this DEST** (TRIG path: on every step in range via
   hit/miss; PLOCK path: via write/clear). Non-zero: PTCH in-scale; AMP VOL
   unipolar below Part; else `[Part±DEPTH]`. Other DESTs stay stacked.

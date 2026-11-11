@@ -76,18 +76,19 @@ only; fill is a separate YES.
 **DEPTH** (0..127): at 0, YES clears that DEST's locks for the path in
 use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
-- **DEST = PTCH:** in-scale around Part PLAYBACK PTCH. Bare note trigs
-  without a plock hit carry the last plock pitch (else Part).
+- **DEST = PTCH:** in-scale around Part PLAYBACK PTCH (silent steps /
+  PLCK misses fall back to Part).
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
 - **Any other DEST:** uniform `[Part−DEPTH .. Part+DEPTH]` clamped 0..127.
 
 **LANE = TRIG:** YES writes DEST/DEPTH locks on the sample-trig steps
 and syncs that DEST's plock recipe to the TRIG rhythm (lock layer = trigs).
 **LANE = PLCK:** independent plock rhythm; plock-only → trigless (+0x10);
-miss / PULSE 0 clears this DEST only (other DEST locks stay). PULSE 0 also
-drops orphan trigless bits when no other DEST remains on the step. To erase
-TRIG-baked locks, zero that DEST's PLCK PULSE and YES on **PLCK** (TRIG YES
-with DEPTH > 0 re-applies and re-syncs the recipe).
+miss / PULSE 0 clears this DEST on every step in range — including note
+trigs — so a PLCK YES **overwrites** TRIG-baked locks for that DEST
+(other DEST locks stay). PULSE 0 also drops orphan trigless bits when no
+other DEST remains on the step. TRIG YES with DEPTH > 0 re-applies locks
+on the trigs and re-syncs the PLCK recipe.
 
 
 YES writes **only** the selected DEST's lock bytes (plus the TRIG mask).

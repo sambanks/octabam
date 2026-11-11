@@ -9,7 +9,9 @@
 | D=DEST E=DEPTH; F empty. LANE = TRIG|PLOCK (grid + A/B follow).
 | DEST cell = PAGE + PARAM (no PMTR caption). Per-DEST plock PULSE/ROT
 | in ef_plk_mem (like DEPTH). YES: TRIG->mask0; PLOCK->DEST locks;
-| plock-only -> trigless-lock mask +0x10; PTCH carry on bare note trigs.
+| plock-only -> trigless-lock mask +0x10; PLCK miss clears this DEST
+| (no PTCH carry onto bare note trigs — regenerating from PLCK overwrites
+| TRIG-baked locks for that DEST).
 | Pattern: 4×16 hollow/filled squares at the bottom (all ≤64
 | steps; last row = n mod 16). Do NOT bind PAGE / arrows / PROJ /
 | PART / AED / ARR in EF_KEYS (a 0 swallows; a -1 still writes
@@ -1797,8 +1799,9 @@ ef_drop_clr_undo:
 |   LANE=TRIG: locks on TRIG hits (same steps); clear this DEST on !thit;
 |   sync that DEST's plock recipe to the TRIG rhythm after the loop.
 |   LANE=PLOCK: independent plock rhythm; plock∩¬trig sets TL; miss clears
-|   this DEST only (other DEST trigless stay). Clear TL on note trigs.
-| Leaves n..63 alone. Other DEST locks stack across fills.
+|   this DEST on every step (incl. note trigs / PTCH) so a PLCK YES
+|   overwrites TRIG-baked locks for that DEST. Other DEST trigless stay.
+|   Clear TL on note trigs. Leaves n..63 alone. Other DEST locks stack.
 ef_write_mask:
         lea     -28(%sp),%sp
         movem.l %d2-%d7/%a2,(%sp)
@@ -1806,19 +1809,6 @@ ef_write_mask:
         movel   36(%sp),%d6             | TRIG rot
         movel   40(%sp),%d4             | TRIG k
         movel   44(%sp),%d5             | n
-        | PTCH carry seed = Part PLAYBACK PTCH (raw byte).
-        clrl    ef_ptch_carry
-        movel   ef_dest,%d0
-        tstl    %d0
-        bne.s   wm0
-        movel   %d4,-(%sp)
-        movel   %d5,-(%sp)
-        movel   %d6,-(%sp)
-        bsr.w   ef_part_ptch
-        movel   %d0,ef_ptch_carry
-        movel   (%sp)+,%d6
-        movel   (%sp)+,%d5
-        movel   (%sp)+,%d4
 wm0:    | Free/pmask bake only after CUE (ef_from_cue); else PULSE/ROT.
         tstl    ef_from_cue
         bne.s   wm0b
@@ -1862,20 +1852,6 @@ wm_t0:  movel   (%sp)+,%d6
         tstl    ef_thit
         beq.w   wm_dest_clr             | reshape this DEST to the trig set
         bsr.w   ef_write_dest
-        movel   ef_dest,%d0
-        tstl    %d0
-        bne.s   wm_tclr
-        movel   %d2,%d1
-        lsll    #5,%d1
-        addil   #LOCK0,%d1
-        moveq   #0,%d0
-        moveb   %a2@(0,%d1:l),%d0
-        moveq   #-1,%d3
-        andil   #0xff,%d3
-        cmpl    %d3,%d0
-        beq.s   wm_tclr
-        movel   %d0,ef_ptch_carry
-wm_tclr:
         bsr.w   ef_tl_clr               | note owns the step
         bra.w   8f
 wm_plock:
@@ -1887,22 +1863,9 @@ wm_plock:
         movel   (%sp)+,%d6
         movel   (%sp)+,%d4
         tstl    %d7
-        beq.w   wm_miss
+        beq.w   wm_dest_clr             | miss: drop TRIG-baked DEST too
         bsr.w   ef_write_dest
-        movel   ef_dest,%d0
-        tstl    %d0
-        bne.s   wm_tl
-        movel   %d2,%d1
-        lsll    #5,%d1
-        addil   #LOCK0,%d1
-        moveq   #0,%d0
-        moveb   %a2@(0,%d1:l),%d0
-        moveq   #-1,%d3
-        andil   #0xff,%d3
-        cmpl    %d3,%d0
-        beq.s   wm_tl
-        movel   %d0,ef_ptch_carry
-wm_tl:  tstl    ef_thit
+        tstl    ef_thit
         bne.s   wm_clr_tl
         tstl    ef_depth
         beq.w   wm_mtl                  | DEST cleared; drop orphan TL
@@ -1911,20 +1874,6 @@ wm_tl:  tstl    ef_thit
 wm_clr_tl:
         bsr.w   ef_tl_clr
         bra.s   8f
-wm_miss:
-        movel   ef_dest,%d0
-        tstl    %d0
-        bne.s   wm_dest_clr
-        tstl    ef_thit
-        beq.s   wm_dest_clr
-        tstl    ef_depth
-        beq.s   wm_dest_clr
-        movel   %d2,%d1
-        lsll    #5,%d1
-        addil   #LOCK0,%d1
-        movel   ef_ptch_carry,%d0
-        moveb   %d0,%a2@(0,%d1:l)
-        bra.s   wm_mtl
 wm_dest_clr:
         movel   ef_dest,%d0
         moveq   #DEST_LAST,%d1
@@ -3272,7 +3221,6 @@ ef_lane:    .long 0                     | 0=TRIG 1=PLOCK
 ef_pfree:   .long 0
 ef_thit:    .long 0                     | write: trig hit this step
 ef_plock_on:.long 0                     | scratch: plock lane active this fill
-ef_ptch_carry: .long 0                  | last PTCH lock byte this fill
 ef_dest:    .long LOCK_VOL              | default AMP VOL (flat 15)
 ef_depth:   .long 0                     | 0..127; 0 = clear DEST locks
 ef_cursor:  .long 0
