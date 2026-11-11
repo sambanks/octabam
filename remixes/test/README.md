@@ -34,7 +34,6 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`drummer-probe`](drummer-probe/README.md) | DRUMMER PROBE alone: trigs added and moved after the step builder, the FLEX start's slice forced. | `make check`: port only: modules/drummer/probe_steps.py DR_PROBE=1 |
 | [`erase-empty-trigless-locks`](erase-empty-trigless-locks/README.md) | stock effects with ERASE_EMPTY_TRIGLESS_LOCKS: an emptied trigless lock disappears. | `make check` |
 | [`euclid`](euclid/README.md) | Euclid rhythmic modulation: 12 dB LP/BP/HP or AMP, both FX slots. | port-gated: EVENTS: firmware/render gates |
-| [`seq`](seq/README.md) | STORE + SEQ (euclid.work client) with the stock effects. | `make check` |
 | [`events-clients`](events-clients/README.md) | EVENTS with EUCLID in both FX slots, PLOCKS P2, USB MAIN/CUE and LOAD METER. | `make check`: Tested on radiohagen's MKII (25 Oct 2026): controlled trig undo, CONTINUE and 600-second audio capture. |
 | [`events-empty`](events-empty/README.md) | EVENTS with no clients: no event hooks or dispatcher code. | `make check`: Empty EVENTS selection: stock boundaries checked in the built image. |
 | [`ext-probe`](ext-probe/README.md) | octabam's core and stock effects (EQUALIZER's id is the probe's) with EXTPROBE on FX1: the highest window word a reverb writes. | `make check` |
@@ -89,6 +88,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`scope`](scope/README.md) | stock effects with SCOPE + TUNER (shared TEMPO detours). | on hardware: MKII: LSCOPE BJ 24 Oct 2026 (CF METER + busy soak); also make check REMIX=test/scope |
 | [`screen`](screen/README.md) | stock effects with SCREEN. | `make check` |
 | [`screen-usb`](screen-usb/README.md) | stock + USB MIDI + SCREEN. | `make check` |
+| [`seq`](seq/README.md) | STORE + SEQ (euclid.work client) with the stock effects. | `make check` |
 | [`shatter`](shatter/README.md) | SHATTER beside the stock effects (all but PLATE REV, whose words it takes). | on hardware: Ilia's MKII, BUILD S6 (SHATTER S6.RMX), 21 Oct 2026: every SHATTER knob exercised; verify_shatter. Solo gate remix. |
 | [`sidechain-compressor`](sidechain-compressor/README.md) | stock effects with SIDECHAIN_COMPRESSOR in COMPRESSOR's row: MON, KEY, KGN, KBAS and KWID on page 2. | `make check` |
 | [`slow-lfo`](slow-lfo/README.md) | stock effects with SLOW LFO: LFO MULT gains 1/2X, 1/4X and 1/8X on audio and MIDI tracks. | `make check` |
