@@ -1292,10 +1292,11 @@ df_skip: tstb   %a0@+
         lea     %sp@(48),%sp
 d9:     rts
 
-| ef_grid: 1px top+bottom rim, solid window left edge + table edge (VLINE),
-| dotted internal divs + mid (HLINE), solid floor above the pattern (RULE).
-| RULE is (surf, x, y, w, h) - w=WINW for true edge-to-edge (WINW-1 left a
-| 1px gap at the left window border above the squares).
+| ef_grid: 1px top+bottom rim, table edge (VLINE), dotted internal divs +
+| mid (HLINE), solid floor above the pattern (RULE).
+| No left VLINE - WCREATE/stock already puts the window's left edge; drawing
+| another at surface x=0 made a double line with a 1px gap (CX EUCL95 LCD).
+| RULE is (surf, x, y, w, h) - w=WINW for true edge-to-edge.
 ef_grid:
         lea     -8(%sp),%sp
         movem.l %d2/%a2,(%sp)
@@ -1315,15 +1316,6 @@ ef_grid:
         pea     0
         movel   %a5,-(%sp)
         jsr     RULE
-        lea     %sp@(20),%sp
-
-        | Solid left window edge (meets floor + top/bottom rims).
-        pea     1
-        pea     WINH-1
-        pea     0
-        pea     0
-        movel   %a5,-(%sp)
-        jsr     VLINE
         lea     %sp@(20),%sp
 
         | Solid vertical left of PULS (stock EFFECT SETUP left edge).
