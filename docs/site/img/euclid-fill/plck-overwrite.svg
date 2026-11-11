@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 460" role="img" aria-labelledby="title desc">
-  <title id="title">PLCK overwrites TRIG-baked DEST</title>
-  <desc id="desc">Example: PTCH baked on notes from TRIG lane; PLCK YES with a new ROT clears PTCH on note misses and places PTCH on the PLCK hits.</desc>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 460" role="img">
+  <title>PLCK overwrites TRIG-baked DEST</title>
   <rect width="860" height="460" fill="#fff"/>
   <style>
     .t { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
@@ -19,70 +19,60 @@
     </marker>
   </defs>
 
-  <text class="t" x="430" y="26" text-anchor="middle">Example  LANE=PLCK, DEST=PTCH, change ROT, YES</text>
+  <text class="t" x="430" y="26" text-anchor="middle">Example -- LANE=PLCK, DEST=PTCH, change ROT, YES</text>
   <text class="t-sm" x="430" y="46" text-anchor="middle">Regenerating PTCH from PLCK clears the old TRIG-baked PTCH on notes.</text>
 
-  <!-- BEFORE -->
   <text class="t" x="40" y="78">BEFORE</text>
   <text class="t-xs" x="120" y="78">TRIG bake: notes 0 2 4 6 each carry PTCH (VOL untouched elsewhere)</text>
 
   <text class="lab" x="40" y="108">note</text>
-  <g>
-    <rect class="fill" x="100" y="92" width="22" height="22"/><rect class="cell" x="128" y="92" width="22" height="22"/>
-    <rect class="fill" x="156" y="92" width="22" height="22"/><rect class="cell" x="184" y="92" width="22" height="22"/>
-    <rect class="fill" x="212" y="92" width="22" height="22"/><rect class="cell" x="240" y="92" width="22" height="22"/>
-    <rect class="fill" x="268" y="92" width="22" height="22"/><rect class="cell" x="296" y="92" width="22" height="22"/>
-  </g>
+  <rect class="fill" x="100" y="92" width="22" height="22"/><rect class="cell" x="128" y="92" width="22" height="22"/>
+  <rect class="fill" x="156" y="92" width="22" height="22"/><rect class="cell" x="184" y="92" width="22" height="22"/>
+  <rect class="fill" x="212" y="92" width="22" height="22"/><rect class="cell" x="240" y="92" width="22" height="22"/>
+  <rect class="fill" x="268" y="92" width="22" height="22"/><rect class="cell" x="296" y="92" width="22" height="22"/>
+
   <text class="lab" x="40" y="142">PTCH</text>
-  <g>
-    <rect class="fill" x="100" y="126" width="22" height="22"/><rect class="cell" x="128" y="126" width="22" height="22"/>
-    <rect class="fill" x="156" y="126" width="22" height="22"/><rect class="cell" x="184" y="126" width="22" height="22"/>
-    <rect class="fill" x="212" y="126" width="22" height="22"/><rect class="cell" x="240" y="126" width="22" height="22"/>
-    <rect class="fill" x="268" y="126" width="22" height="22"/><rect class="cell" x="296" y="126" width="22" height="22"/>
-  </g>
+  <rect class="fill" x="100" y="126" width="22" height="22"/><rect class="cell" x="128" y="126" width="22" height="22"/>
+  <rect class="fill" x="156" y="126" width="22" height="22"/><rect class="cell" x="184" y="126" width="22" height="22"/>
+  <rect class="fill" x="212" y="126" width="22" height="22"/><rect class="cell" x="240" y="126" width="22" height="22"/>
+  <rect class="fill" x="268" y="126" width="22" height="22"/><rect class="cell" x="296" y="126" width="22" height="22"/>
+
   <text class="lab" x="40" y="176">VOL</text>
-  <g>
-    <rect class="tl" x="100" y="160" width="22" height="22"/><rect class="cell" x="128" y="160" width="22" height="22"/>
-    <rect class="cell" x="156" y="160" width="22" height="22"/><rect class="tl" x="184" y="160" width="22" height="22"/>
-    <rect class="cell" x="212" y="160" width="22" height="22"/><rect class="tl" x="240" y="160" width="22" height="22"/>
-    <rect class="cell" x="268" y="160" width="22" height="22"/><rect class="tl" x="296" y="160" width="22" height="22"/>
-  </g>
+  <rect class="tl" x="100" y="160" width="22" height="22"/><rect class="cell" x="128" y="160" width="22" height="22"/>
+  <rect class="cell" x="156" y="160" width="22" height="22"/><rect class="tl" x="184" y="160" width="22" height="22"/>
+  <rect class="cell" x="212" y="160" width="22" height="22"/><rect class="tl" x="240" y="160" width="22" height="22"/>
+  <rect class="cell" x="268" y="160" width="22" height="22"/><rect class="tl" x="296" y="160" width="22" height="22"/>
   <text class="t-xs" x="100" y="204">0</text>
   <text class="t-xs" x="156" y="204">2</text>
   <text class="t-xs" x="212" y="204">4</text>
   <text class="t-xs" x="268" y="204">6</text>
 
   <rect class="box" x="400" y="100" width="420" height="90" rx="2"/>
-  <text class="t" x="610" y="128" text-anchor="middle">PLCK · DEST=PTCH · new ROT ’ hits 1 3 5 7</text>
+  <text class="t" x="610" y="128" text-anchor="middle">PLCK | DEST=PTCH | new ROT -&gt; hits 1 3 5 7</text>
   <text class="t-sm" x="610" y="150" text-anchor="middle">YES</text>
-  <text class="t-xs" x="610" y="172" text-anchor="middle">miss clears PTCH on notes · hits write PTCH (TL if no note)</text>
+  <text class="t-xs" x="610" y="172" text-anchor="middle">miss clears PTCH on notes | hits write PTCH (TL if no note)</text>
   <line class="arr" x1="610" y1="190" x2="610" y2="230"/>
 
-  <!-- AFTER -->
   <text class="t" x="40" y="256">AFTER</text>
-  <text class="t-xs" x="120" y="256">notes unchanged · PTCH only on PLCK hits · VOL stack untouched</text>
+  <text class="t-xs" x="120" y="256">notes unchanged | PTCH only on PLCK hits | VOL stack untouched</text>
 
   <text class="lab" x="40" y="286">note</text>
-  <g>
-    <rect class="fill" x="100" y="270" width="22" height="22"/><rect class="cell" x="128" y="270" width="22" height="22"/>
-    <rect class="fill" x="156" y="270" width="22" height="22"/><rect class="cell" x="184" y="270" width="22" height="22"/>
-    <rect class="fill" x="212" y="270" width="22" height="22"/><rect class="cell" x="240" y="270" width="22" height="22"/>
-    <rect class="fill" x="268" y="270" width="22" height="22"/><rect class="cell" x="296" y="270" width="22" height="22"/>
-  </g>
+  <rect class="fill" x="100" y="270" width="22" height="22"/><rect class="cell" x="128" y="270" width="22" height="22"/>
+  <rect class="fill" x="156" y="270" width="22" height="22"/><rect class="cell" x="184" y="270" width="22" height="22"/>
+  <rect class="fill" x="212" y="270" width="22" height="22"/><rect class="cell" x="240" y="270" width="22" height="22"/>
+  <rect class="fill" x="268" y="270" width="22" height="22"/><rect class="cell" x="296" y="270" width="22" height="22"/>
+
   <text class="lab" x="40" y="320">PTCH</text>
-  <g>
-    <rect class="cell" x="100" y="304" width="22" height="22"/><rect class="tl" x="128" y="304" width="22" height="22"/>
-    <rect class="cell" x="156" y="304" width="22" height="22"/><rect class="tl" x="184" y="304" width="22" height="22"/>
-    <rect class="cell" x="212" y="304" width="22" height="22"/><rect class="tl" x="240" y="304" width="22" height="22"/>
-    <rect class="cell" x="268" y="304" width="22" height="22"/><rect class="tl" x="296" y="304" width="22" height="22"/>
-  </g>
+  <rect class="cell" x="100" y="304" width="22" height="22"/><rect class="tl" x="128" y="304" width="22" height="22"/>
+  <rect class="cell" x="156" y="304" width="22" height="22"/><rect class="tl" x="184" y="304" width="22" height="22"/>
+  <rect class="cell" x="212" y="304" width="22" height="22"/><rect class="tl" x="240" y="304" width="22" height="22"/>
+  <rect class="cell" x="268" y="304" width="22" height="22"/><rect class="tl" x="296" y="304" width="22" height="22"/>
+
   <text class="lab" x="40" y="354">VOL</text>
-  <g>
-    <rect class="tl" x="100" y="338" width="22" height="22"/><rect class="cell" x="128" y="338" width="22" height="22"/>
-    <rect class="cell" x="156" y="338" width="22" height="22"/><rect class="tl" x="184" y="338" width="22" height="22"/>
-    <rect class="cell" x="212" y="338" width="22" height="22"/><rect class="tl" x="240" y="338" width="22" height="22"/>
-    <rect class="cell" x="268" y="338" width="22" height="22"/><rect class="tl" x="296" y="338" width="22" height="22"/>
-  </g>
+  <rect class="tl" x="100" y="338" width="22" height="22"/><rect class="cell" x="128" y="338" width="22" height="22"/>
+  <rect class="cell" x="156" y="338" width="22" height="22"/><rect class="tl" x="184" y="338" width="22" height="22"/>
+  <rect class="cell" x="212" y="338" width="22" height="22"/><rect class="tl" x="240" y="338" width="22" height="22"/>
+  <rect class="cell" x="268" y="338" width="22" height="22"/><rect class="tl" x="296" y="338" width="22" height="22"/>
   <text class="t-xs" x="100" y="382">0</text>
   <text class="t-xs" x="128" y="382">1</text>
   <text class="t-xs" x="156" y="382">2</text>
@@ -92,6 +82,6 @@
   <text class="t-xs" x="268" y="382">6</text>
   <text class="t-xs" x="296" y="382">7</text>
 
-  <text class="t-sm" x="430" y="420" text-anchor="middle">filled = lock on a note · dashed = trigless · empty = cleared</text>
-  <text class="t-xs" x="430" y="442" text-anchor="middle">PTCH left the notes (0 2 4 6). VOL's independent PLCK stack is unchanged.</text>
+  <text class="t-sm" x="430" y="420" text-anchor="middle">filled = lock on a note | dashed = trigless | empty = cleared</text>
+  <text class="t-xs" x="430" y="442" text-anchor="middle">PTCH left the notes (0 2 4 6). VOL independent PLCK stack is unchanged.</text>
 </svg>

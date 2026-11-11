@@ -6,7 +6,7 @@ squares for every step up to 64).
 This edits sequencer trigs; it is not the DSP EUCLID effect. It leaves
 PROJECT > CONTROL > SEQUENCER alone, so it coexists with SCALE QUANTIZER.
 
-![Two recipes: LANE=TRIG vs LANE=PLCK, and the per-DEST stack.](../../img/euclid-fill/lanes.svg)
+![Two recipes: LANE=TRIG vs LANE=PLCK, and the per-DEST stack.](../../img/euclid-fill/lanes.png)
 
 ## Access
 
@@ -52,7 +52,7 @@ re-read live sample trigs into the grid. **YES** bakes from PULSE/ROT
 You have notes with PTCH + VOL. Change TRIG PULSE (DEST still PTCH) and
 **YES**:
 
-![TRIG YES reshapes only PTCH; VOL survives as trigless where notes drop.](../../img/euclid-fill/trig-reshape.svg)
+![TRIG YES reshapes only PTCH; VOL survives as trigless where notes drop.](../../img/euclid-fill/trig-reshape.png)
 
 - **PTCH** (current DEST) is cleared on silent steps and rewritten on the
   new notes.
@@ -64,7 +64,7 @@ You have notes with PTCH + VOL. Change TRIG PULSE (DEST still PTCH) and
 You baked PTCH on the notes from TRIG. Switch to LANE = **PLCK**, DEST =
 **PTCH**, change ROT, **YES**:
 
-![PLCK YES clears TRIG-baked PTCH on note misses; other DEST stacks stay.](../../img/euclid-fill/plck-overwrite.svg)
+![PLCK YES clears TRIG-baked PTCH on note misses; other DEST stacks stay.](../../img/euclid-fill/plck-overwrite.png)
 
 - **PTCH** is cleared on every miss — including on notes that still fire —
   then written on the new PLCK hits (trigless if no note).

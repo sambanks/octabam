@@ -1,16 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 460" role="img" aria-labelledby="title desc">
-  <title id="title">TRIG reshape keeps other DEST</title>
-  <desc id="desc">Example: notes with PTCH and VOL; TRIG YES with DEST=PTCH and a new pulse pattern only reshapes PTCH; VOL survives as trigless where notes drop.</desc>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 460" role="img">
+  <title>TRIG reshape keeps other DEST</title>
   <rect width="860" height="460" fill="#fff"/>
   <style>
     .t { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
     .t-sm { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
     .t-xs { font: 10px ui-monospace, Menlo, Consolas, monospace; fill:#555; }
-    .t-inv { font: 12px ui-monospace, Menlo, Consolas, monospace; fill:#fff; }
+    .lab { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
     .fill { fill:#111; stroke:#111; stroke-width:1.5; }
     .cell { fill:#fff; stroke:#111; stroke-width:1.5; }
     .tl { fill:#fff; stroke:#111; stroke-width:1.5; stroke-dasharray:3 2; }
-    .lab { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
     .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
     .box { fill:#fff; stroke:#111; stroke-width:2; }
   </style>
@@ -20,77 +19,65 @@
     </marker>
   </defs>
 
-  <text class="t" x="430" y="26" text-anchor="middle">Example  LANE=TRIG, DEST=PTCH, change PULSE, YES</text>
+  <text class="t" x="430" y="26" text-anchor="middle">Example -- LANE=TRIG, DEST=PTCH, change PULSE, YES</text>
   <text class="t-sm" x="430" y="46" text-anchor="middle">Only PTCH is reshaped onto the new notes. VOL stays.</text>
 
-  <!-- BEFORE -->
   <text class="t" x="40" y="78">BEFORE</text>
-  <text class="t-xs" x="120" y="78">notes on 0 2 4 6 · each note has PTCH + VOL</text>
+  <text class="t-xs" x="120" y="78">notes on 0 2 4 6 | each note has PTCH + VOL</text>
 
   <text class="lab" x="40" y="108">note</text>
-  <!-- steps 0..7: on off on off on off on off -->
-  <g id="b-note">
-    <rect class="fill" x="100" y="92" width="22" height="22"/><rect class="cell" x="128" y="92" width="22" height="22"/>
-    <rect class="fill" x="156" y="92" width="22" height="22"/><rect class="cell" x="184" y="92" width="22" height="22"/>
-    <rect class="fill" x="212" y="92" width="22" height="22"/><rect class="cell" x="240" y="92" width="22" height="22"/>
-    <rect class="fill" x="268" y="92" width="22" height="22"/><rect class="cell" x="296" y="92" width="22" height="22"/>
-  </g>
+  <rect class="fill" x="100" y="92" width="22" height="22"/><rect class="cell" x="128" y="92" width="22" height="22"/>
+  <rect class="fill" x="156" y="92" width="22" height="22"/><rect class="cell" x="184" y="92" width="22" height="22"/>
+  <rect class="fill" x="212" y="92" width="22" height="22"/><rect class="cell" x="240" y="92" width="22" height="22"/>
+  <rect class="fill" x="268" y="92" width="22" height="22"/><rect class="cell" x="296" y="92" width="22" height="22"/>
+
   <text class="lab" x="40" y="142">PTCH</text>
-  <g>
-    <rect class="fill" x="100" y="126" width="22" height="22"/><rect class="cell" x="128" y="126" width="22" height="22"/>
-    <rect class="fill" x="156" y="126" width="22" height="22"/><rect class="cell" x="184" y="126" width="22" height="22"/>
-    <rect class="fill" x="212" y="126" width="22" height="22"/><rect class="cell" x="240" y="126" width="22" height="22"/>
-    <rect class="fill" x="268" y="126" width="22" height="22"/><rect class="cell" x="296" y="126" width="22" height="22"/>
-  </g>
+  <rect class="fill" x="100" y="126" width="22" height="22"/><rect class="cell" x="128" y="126" width="22" height="22"/>
+  <rect class="fill" x="156" y="126" width="22" height="22"/><rect class="cell" x="184" y="126" width="22" height="22"/>
+  <rect class="fill" x="212" y="126" width="22" height="22"/><rect class="cell" x="240" y="126" width="22" height="22"/>
+  <rect class="fill" x="268" y="126" width="22" height="22"/><rect class="cell" x="296" y="126" width="22" height="22"/>
+
   <text class="lab" x="40" y="176">VOL</text>
-  <g>
-    <rect class="fill" x="100" y="160" width="22" height="22"/><rect class="cell" x="128" y="160" width="22" height="22"/>
-    <rect class="fill" x="156" y="160" width="22" height="22"/><rect class="cell" x="184" y="160" width="22" height="22"/>
-    <rect class="fill" x="212" y="160" width="22" height="22"/><rect class="cell" x="240" y="160" width="22" height="22"/>
-    <rect class="fill" x="268" y="160" width="22" height="22"/><rect class="cell" x="296" y="160" width="22" height="22"/>
-  </g>
+  <rect class="fill" x="100" y="160" width="22" height="22"/><rect class="cell" x="128" y="160" width="22" height="22"/>
+  <rect class="fill" x="156" y="160" width="22" height="22"/><rect class="cell" x="184" y="160" width="22" height="22"/>
+  <rect class="fill" x="212" y="160" width="22" height="22"/><rect class="cell" x="240" y="160" width="22" height="22"/>
+  <rect class="fill" x="268" y="160" width="22" height="22"/><rect class="cell" x="296" y="160" width="22" height="22"/>
   <text class="t-xs" x="100" y="204">0</text>
   <text class="t-xs" x="156" y="204">2</text>
   <text class="t-xs" x="212" y="204">4</text>
   <text class="t-xs" x="268" y="204">6</text>
 
-  <!-- action -->
   <rect class="box" x="400" y="100" width="420" height="90" rx="2"/>
-  <text class="t" x="610" y="128" text-anchor="middle">TRIG · DEST=PTCH · new PULSE ’ notes 0 4</text>
+  <text class="t" x="610" y="128" text-anchor="middle">TRIG | DEST=PTCH | new PULSE -&gt; notes 0 4</text>
   <text class="t-sm" x="610" y="150" text-anchor="middle">YES</text>
-  <text class="t-xs" x="610" y="172" text-anchor="middle">clears PTCH on silent steps · writes PTCH on new notes</text>
+  <text class="t-xs" x="610" y="172" text-anchor="middle">clears PTCH on silent steps | writes PTCH on new notes</text>
   <line class="arr" x1="610" y1="190" x2="610" y2="230"/>
 
-  <!-- AFTER -->
   <text class="t" x="40" y="256">AFTER</text>
-  <text class="t-xs" x="120" y="256">notes 0 4 · PTCH only there · VOL kept (TL on 2 6)</text>
+  <text class="t-xs" x="120" y="256">notes 0 4 | PTCH only there | VOL kept (TL on 2 6)</text>
 
   <text class="lab" x="40" y="286">note</text>
-  <g>
-    <rect class="fill" x="100" y="270" width="22" height="22"/><rect class="cell" x="128" y="270" width="22" height="22"/>
-    <rect class="cell" x="156" y="270" width="22" height="22"/><rect class="cell" x="184" y="270" width="22" height="22"/>
-    <rect class="fill" x="212" y="270" width="22" height="22"/><rect class="cell" x="240" y="270" width="22" height="22"/>
-    <rect class="cell" x="268" y="270" width="22" height="22"/><rect class="cell" x="296" y="270" width="22" height="22"/>
-  </g>
+  <rect class="fill" x="100" y="270" width="22" height="22"/><rect class="cell" x="128" y="270" width="22" height="22"/>
+  <rect class="cell" x="156" y="270" width="22" height="22"/><rect class="cell" x="184" y="270" width="22" height="22"/>
+  <rect class="fill" x="212" y="270" width="22" height="22"/><rect class="cell" x="240" y="270" width="22" height="22"/>
+  <rect class="cell" x="268" y="270" width="22" height="22"/><rect class="cell" x="296" y="270" width="22" height="22"/>
+
   <text class="lab" x="40" y="320">PTCH</text>
-  <g>
-    <rect class="fill" x="100" y="304" width="22" height="22"/><rect class="cell" x="128" y="304" width="22" height="22"/>
-    <rect class="cell" x="156" y="304" width="22" height="22"/><rect class="cell" x="184" y="304" width="22" height="22"/>
-    <rect class="fill" x="212" y="304" width="22" height="22"/><rect class="cell" x="240" y="304" width="22" height="22"/>
-    <rect class="cell" x="268" y="304" width="22" height="22"/><rect class="cell" x="296" y="304" width="22" height="22"/>
-  </g>
+  <rect class="fill" x="100" y="304" width="22" height="22"/><rect class="cell" x="128" y="304" width="22" height="22"/>
+  <rect class="cell" x="156" y="304" width="22" height="22"/><rect class="cell" x="184" y="304" width="22" height="22"/>
+  <rect class="fill" x="212" y="304" width="22" height="22"/><rect class="cell" x="240" y="304" width="22" height="22"/>
+  <rect class="cell" x="268" y="304" width="22" height="22"/><rect class="cell" x="296" y="304" width="22" height="22"/>
+
   <text class="lab" x="40" y="354">VOL</text>
-  <g>
-    <rect class="fill" x="100" y="338" width="22" height="22"/><rect class="cell" x="128" y="338" width="22" height="22"/>
-    <rect class="tl" x="156" y="338" width="22" height="22"/><rect class="cell" x="184" y="338" width="22" height="22"/>
-    <rect class="fill" x="212" y="338" width="22" height="22"/><rect class="cell" x="240" y="338" width="22" height="22"/>
-    <rect class="tl" x="268" y="338" width="22" height="22"/><rect class="cell" x="296" y="338" width="22" height="22"/>
-  </g>
+  <rect class="fill" x="100" y="338" width="22" height="22"/><rect class="cell" x="128" y="338" width="22" height="22"/>
+  <rect class="tl" x="156" y="338" width="22" height="22"/><rect class="cell" x="184" y="338" width="22" height="22"/>
+  <rect class="fill" x="212" y="338" width="22" height="22"/><rect class="cell" x="240" y="338" width="22" height="22"/>
+  <rect class="tl" x="268" y="338" width="22" height="22"/><rect class="cell" x="296" y="338" width="22" height="22"/>
   <text class="t-xs" x="100" y="382">0</text>
   <text class="t-xs" x="156" y="382">2</text>
   <text class="t-xs" x="212" y="382">4</text>
   <text class="t-xs" x="268" y="382">6</text>
 
-  <text class="t-sm" x="430" y="420" text-anchor="middle">filled = lock on a note · dashed = trigless lock · empty = no lock</text>
-  <text class="t-xs" x="430" y="442" text-anchor="middle">Steps 2 and 6 lost their notes ’ VOL promoted to trigless so it stays audible.</text>
+  <text class="t-sm" x="430" y="420" text-anchor="middle">filled = lock on a note | dashed = trigless lock | empty = no lock</text>
+  <text class="t-xs" x="430" y="442" text-anchor="middle">Steps 2 and 6 lost their notes -&gt; VOL promoted to trigless so it stays audible.</text>
 </svg>
