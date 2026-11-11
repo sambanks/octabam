@@ -46,7 +46,7 @@
 <text class="t-xs" x="582" y="118" text-anchor="end">E</text>
 <rect x="596" y="77" width="80" height="48" fill="#fff" stroke="#111" stroke-width="2"/>
 <text class="t-xs" x="668" y="118" text-anchor="end">F</text>
-<text class="t" x="550.0" y="162" text-anchor="middle">PLCK PULS=0 clears this DEST over the fill range.</text>
+<text class="t" x="550.0" y="162" text-anchor="middle">PLCK PULS=0 clears this DEST over the pattern length.</text>
 <text class="t" x="262.0" y="200" text-anchor="middle">BEFORE</text>
 <text class="lab" x="86" y="251.12" text-anchor="end">note</text>
 <rect x="98" y="228" width="34" height="34" fill="#111" stroke="#111" stroke-width="2"/>

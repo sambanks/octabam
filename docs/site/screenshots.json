@@ -97,8 +97,8 @@
     }
   },
   "seq": {
-    "fill": {
-      "image": "seq/fill.png",
+    "panel": {
+      "image": "seq/panel.png",
       "caption": "SEQ: title SEQ, C=LANE (TRIG/PLCK), A/B PULSE/ROT, D/E DEST/DEPTH, 4\u00d716 focused grid, LEN gutter.",
       "remix": "seq-port",
       "source": "emulator panel UART",

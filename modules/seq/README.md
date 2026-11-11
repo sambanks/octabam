@@ -3,15 +3,13 @@
 Author: [ilia-murzinov](https://github.com/ilia-murzinov). Rhythm math matches
 filter [EUCLID](../euclid/README.md) ([repeat98](https://github.com/repeat98)).
 
-A standalone Euclidean **sample-trig + p-lock** fill page. Hold a **TRACK**
-key and press **PAGE**: a window opens (no title band), a stock SETUP-style
-3×2 dotted grid (A=PULSE B=ROT C=LANE / D=DEST E=DEPTH; **F** empty), and a
-live pattern grid (4×16 hollow/filled squares for all ≤64 steps; last row
-= length mod 16). **LANE** selects whether A/B and the grid edit the **TRIG**
-rhythm or the **PLOCK** rhythm for the current DEST. **YES** writes TRIG →
-sample-trig mask 0 and PLOCK → locks on the chosen DEST (trigless-lock bits
-on plock-only steps); **NO** or TRACK+PAGE again closes. Bare **PAGE** stays
-stock (step banks) and does **not** close the window.
+Hold a **TRACK** key and press **PAGE**: SEQ opens for that track — title
+SEQ, LEN gutter, stock 3×2 (A=PULSE B=ROT C=LANE / D=DEST E=DEPTH; **F**
+empty), and a 4×16 step grid (hollow / solid) for all ≤64 steps. **LANE**
+selects whether A/B and the grid edit the **TRIG** rhythm or the **PLOCK**
+rhythm for the current DEST. **YES** writes TRIG → sample-trig mask 0 and
+PLOCK → locks on the chosen DEST (trigless on plock-only steps). **NO**
+closes. Bare **PAGE** stays stock and does not close SEQ.
 
 **HW evidence (author's MKII):**
 
@@ -30,53 +28,51 @@ This module only edits sequencer trigs. It does not grow
 `PROJECT > CONTROL > SEQUENCER`, so it coexists with SCALE QUANTIZER.
 
 Rhythm names, ranges, and the TRIG PULSE default match filter EUCLID; length
-is sourced from pattern length (not a knob). Encoders **A** / **B** / **C** /
-**D** / **E** map to the five filled cells.
+comes from pattern length (not a knob). Encoders **A** / **B** / **C** /
+**D** / **E** map to the five active cells.
 
 ## Controls
 
 | control | does |
 |---|---|
-| TRACK + PAGE | open / close (bare PAGE does not close) |
+| TRACK + PAGE | open SEQ on that track |
 | TRACK (while open) | switch to that track's params / YES target |
 | LEFT / RIGHT | unused (all steps visible) |
 | A | PULSE of the focused lane |
 | B | ROT of the focused lane |
-| C | LANE - TRIG ↔ PLCK |
-| D | DEST - page-1 flat; same name as LFO PMTR |
-| E | DEPTH - 0..127, lock span around Part |
+| C | LANE — TRIG ↔ PLCK |
+| D | DEST — page-1 flat; same name as LFO PMTR |
+| E | DEPTH — 0..127, lock span around Part |
 | F | empty |
 | CUE | random placement of exactly PULSE hits on the focused lane |
 | YES | write TRIG mask + current DEST locks (trigless where needed) |
 | NO | close |
 
 PAGE / UP / DOWN / LEFT / RIGHT / PROJ / PART / AED / ARR are **omitted**
-from `EF_KEYS` (not listed - a `0` swallows; a `-1` row still clears the
-sub-map). `ef_page` only toggles on TRACK+PAGE; bare PAGE is stock even
-while open. Soft dialog keeps the layer so knobs stay locked (`ef_ask`);
+from `EF_KEYS` (not listed — a `0` swallows; a `-1` row still clears the
+sub-map). Soft dialog keeps the layer so knobs stay locked (`ef_ask`);
 user/orphan close pops it (`ef_layer_on`). LEVEL does nothing.
 
-Targets are the track keys held when the window opened. If none were
-held, the current audio track is used. Selecting a track while open
-retargets YES to that track and loads its per-track params. DEPTH and
+Hold TRACK + PAGE opens SEQ on that track. Selecting another track while
+open retargets YES and loads that track's per-track params. DEPTH and
 PLOCK PULSE/ROT are remembered **per DEST** on that track. D/E stay live
 even when LANE is TRIG (no auto-focus switch). Slots + DEST tables live in
-DRAM and in `euclid.work (bank + per-DEST depth/plock + per-track LANE)` (STORE client, `EF_VER` 4) on SAVE PROJECT /
-bank write. Multi-target YES writes each target's own stored params.
-**Pattern length** shows in the title gutter (`LEN n`), not as a row.
-Defaults: TRIG PULSE 5, DEST = AMP VOL, ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
+DRAM and in `euclid.work` (bank + per-DEST depth/plock + per-track LANE)
+(STORE client, `EF_VER` 4) on SAVE PROJECT / bank write. **Pattern length**
+shows in the title gutter (`LEN n`), not as a row. Defaults: TRIG PULSE 5,
+DEST = AMP VOL, ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
 
-Write-only: open / track switch load bank Euclid params only - the grid
-never mirrors live sample trigs. Edits outside FILL are not re-read;
-YES overwrites from PULSE/ROT (or a CUE mask). When a step's last lock
-is cleared, orphan trigless bits drop and stock's plock LED bitmap is
-rebuilt (`0x400339d8`) so empty note trigs are not left yellow.
+Write-only: open / track switch load bank SEQ params only — the grid never
+mirrors live sample trigs. YES overwrites from PULSE/ROT (or a CUE mask).
+When a step's last lock is cleared, orphan trigless bits drop and stock's
+plock LED bitmap is rebuilt (`0x400339d8`) so empty note trigs are not left
+yellow.
 
 **CUE** keeps **PULSE** as density on the focused lane and only randomizes
 *which* steps are on. Changing **PULSE** leaves free mode and returns to
 Euclidean. PULSE / ROT / CUE with sample trigs already present open stock
 **ARE YOU SURE?** only when LANE is TRIG. Dialog YES unlocks knobs/CUE
-only; fill is a separate YES.
+only; writing the pattern is a separate YES.
 
 **DEST** matches LFO SETUP PMTR targets. **0..29** page-1 lock flats
 (**AMP XVOL** skipped). On **CX OSC**, **30..34** SETUP knobs stack in DRAM.
@@ -91,17 +87,15 @@ use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
 **LANE = TRIG:** YES writes DEST/DEPTH locks on the sample-trig steps
 and syncs that DEST's plock recipe to the TRIG rhythm. Only **this DEST**
-is reshaped - other DEST locks stay; if a step loses its note trig but
+is reshaped — other DEST locks stay; if a step loses its note trig but
 still holds another DEST, it becomes trigless so those locks remain
 audible. **LANE = PLCK:** independent plock rhythm; plock-only → trigless
-(+0x10); miss / PULSE 0 clears this DEST on every step in range  - 
-including note trigs - so a PLCK YES **overwrites** TRIG-baked locks for
-that DEST (other DEST locks stay). PULSE 0 also drops orphan trigless
-bits when no other DEST remains on the step.
-
+(+0x10); miss / PULSE 0 clears this DEST on every step in range —
+including note trigs — so a PLCK YES **overwrites** locks previously placed
+from TRIG for that DEST (other DEST locks stay). PULSE 0 also drops orphan
+trigless bits when no other DEST remains on the step.
 
 YES writes **only** the selected DEST's lock bytes (plus the TRIG mask).
-A later fill with another DEST leaves earlier locks alone.
+A later YES with another DEST leaves earlier locks alone.
 
-Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md)
-(lane diagrams + worked examples).
+Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md).

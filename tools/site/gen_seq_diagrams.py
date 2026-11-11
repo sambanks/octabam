@@ -327,7 +327,7 @@ SPECS = [
             {"lab": "DPTH", "val": "0", "inv": False},
             {"lab": "", "val": "", "inv": False},
         ],
-        "PLCK PULS=0 clears this DEST over the fill range.",
+        "PLCK PULS=0 clears this DEST over the pattern length.",
         [
             ("note", locks({1, 3, 5, 7})),
             ("PTCH", locks({1, 3, 5, 7})),
