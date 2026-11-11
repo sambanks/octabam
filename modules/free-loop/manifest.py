@@ -121,7 +121,7 @@ MODULE = Module(
         SymbolRef(KEYS_FIELD, KEYS_STOCK, "fl", "fl_keys",
                   "[TRACK]-held key layer: the stock table plus UP (the FREE LOOP window)"),
     ),
-    requires=("STORE",),
+    requires=("STORE", "RLEN PLEN"),   # freeloop.work; RLEN = PLEN: an overdub is the loop the free take set
     conflicts=(
         ("MORPH", "both replace the [TRACK]-held key table 0x400d1594"),
     ),

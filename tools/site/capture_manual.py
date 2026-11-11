@@ -140,14 +140,51 @@ def capture_morph(p,r):
     p.key('t1',False);p.run(300)
 
 
+def _cc(p,ch,cc,v):
+    p.proc.command(f'midi {0xb0+ch:02x} {cc:02x} {v:02x}','ok')
+
+
+def _pedal(p,ch,cc=0x5a):
+    _cc(p,ch,cc,0x7f);p.run(60);_cc(p,ch,cc,0)
+
+
 def capture_free_loop(p,r):
-    # The project is modules/free-loop/make_template.py's (T1 FREE, POPUP ON).
-    p.key('t1',True);p.run(60);p.press('up',settle=120)
+    # The project is modules/free-loop/make_template.py's (prepare): T1 / T3 FREE, T2 / T4 GRID,
+    # UNDO buffers R5-R8, POPUP ON on T1-T4. T1's pedals are CC 90 / 92 on channel 1, T2's on 2.
+    p.key('t1',True);p.run(60);p.press('up',settle=120);p.key('t1',False);p.run(60)
     shot(p,'free-loop','window','T1 + UP: the FREE LOOP window for T1, ROLE FREE, 4/4, BARS AUTO, 70-160 BPM.',r)
-    p.key('t1',False);p.press('no',settle=200)
-    p.proc.command('midi b0 5a 7f','ok');p.run(60);p.proc.command('midi b0 5a 00','ok')
-    p.run(3000)
+    press(p,'down',6)
+    shot(p,'free-loop','window-pattern','The window scrolled to ENTRY and PLAY: how T1 enters the pattern in the header (A01).',r)
+    press(p,'down',4)
+    shot(p,'free-loop','window-undo','The last rows: UNDO buffer R5, UNDO TO LAST, MUTE NOW, POPUP ON.',r)
+    p.press('no',settle=200)
+    # T2: POPUP OFF, so its marks show on the main screen.
+    p.key('t2',True);p.run(60);p.press('up',settle=120);p.key('t2',False);p.run(60)
+    press(p,'down',10);press(p,'left');p.press('no',settle=200)
+    _pedal(p,0);p.run(3000)
     shot(p,'free-loop','popup','CC 90 on channel 1, 3 s into the free take: T1\'s REC popup, FIRST LOOP.',r)
+    p.run(1000);_pedal(p,0);p.run(1500)
+    _pedal(p,0);p.run(1500)
+    shot(p,'free-loop','armed','CC 90 again, the loop playing: T1 ARMED, waiting for its loop start.',r)
+    p.run(2700)
+    shot(p,'free-loop','overdub','The overdub pass: OVERDUB, the bar and the pass\'s progress.',r)
+    _pedal(p,0);p.run(1200)
+    shot(p,'free-loop','finishing','CC 90 during the pass: FINISHING, the pass ends at the loop\'s end.',r)
+    p.run(2000);_pedal(p,0,0x5c);p.run(400)
+    shot(p,'free-loop','undo','CC 92: UNDO, the last pass taken back from the next loop start.',r)
+    p.press('t1',settle=200);p.run(1300)     # T1 selected: T2's tab drawn plain, its mark readable
+    def mark():                              # T2's mark, left of its icon: x 0-2, y 26-28
+        rows=p.link.lcd_rows();return rows[27][0],rows[27][1]
+    _pedal(p,1)
+    for _ in range(40):                      # the ring blinks at 2 Hz: catch it lit (hollow)
+        p.run(25)
+        if mark()==(True,False):break
+    shot(p,'free-loop','marks-armed','CC 90 on channel 2: T2 armed (POPUP OFF), a ring blinking left of its icon.',r)
+    for _ in range(200):                     # the pass starts at T2's loop start: the dot
+        p.run(25)
+        if mark()==(True,True):break
+    p.run(300)
+    shot(p,'free-loop','marks-overdub','T2 overdubbing: a dot left of its icon.',r)
 
 
 def capture_drummer(p,r):
@@ -408,7 +445,10 @@ def prepare(remix,project,assignments):
     fixture=work/'project'
     if fixture.exists():
         shutil.rmtree(fixture)
-    shutil.copytree(project,fixture)
+    if remix=='free-loop':     # FREE LOOP's own template, made by this image: no project needed
+        subprocess.run([str(ROOT/'.venv/bin/python3'),'modules/free-loop/make_template.py','--image',str(work/'image.bin'),'--out',str(work),'--name','project'],cwd=ROOT,check=True)
+    else:
+        shutil.copytree(project,fixture)
     # Hybrid/card dumps often land read-only; .strd copies and ot_project writes need u+w.
     for root, dirs, files in __import__('os').walk(fixture):
         __import__('os').chmod(root, 0o755)

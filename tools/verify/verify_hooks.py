@@ -86,7 +86,8 @@ def selection():
         except SystemExit:
             continue
         check(has == want, f"remix {name}: HOOKS {'appended' if want else 'not appended'}")
-    for sel in ((THR, FL, "STORE"), (RTM, FL, "STORE"), (RL, FL, "STORE"), ("ANALOG BD", "OCTA303")):
+    for sel in ((THR, FL, "STORE", "RLEN PLEN"), (RTM, FL, "STORE", "RLEN PLEN"), (RL, FL, "STORE", "RLEN PLEN"),
+                ("ANALOG BD", "OCTA303")):   # FREE LOOP requires STORE and RLEN PLEN
         bad = ledger.check(m(*sel))
         check(any(p.startswith("hooks:") for p in bad), f"{' + '.join(sel)} without HOOKS is refused")
         check(ledger.check(m(*sel, "HOOKS")) == [], f"{' + '.join(sel)} with HOOKS is clean")

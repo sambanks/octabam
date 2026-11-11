@@ -257,3 +257,12 @@ Stock reads part of the setup from the Part itself (the arm at
 Part setup said RLEN MAX. FREE LOOP therefore keeps the UNDO buffer's
 track's Part setup equal to its loop track's (four Parts, RAM and CS1), and
 the template writes T5-T8's setups as T1-T4's.
+
+## A recording FREE LOOP did not start (5 Nov 2026) ❓
+
+The first PLAY after a reboot, in MIDI mode, recorded T1 on the owner's
+MKII with T1 idle. The guard (`stray_guard`, adapter.c) stops such a
+recording; the cause, a QREC start staged at `0x800018be` / `0x800018de`,
+is inferred and still open at the source: see
+[FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md), "FREE LOOP:
+the first PLAY after a reboot".

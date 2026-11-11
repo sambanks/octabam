@@ -224,6 +224,11 @@ static void test_session(void) {
     a = fl_hold(&s, &c, 0, 9000 + FL_LONG, 0, 0);
     CHECK(a.kind == FL_DO_CLEAR && !s.has[0] && s.st[0] == FL_IDLE, "the sequencer stopped (nothing plays): REC held clears");
     CHECK(strcmp(fl_label(&a, buf), "T1 CLEARED") == 0, "label %s", buf);
+    {   /* the stray guard's toast (adapter.c stray_guard) */
+        FlAction w = {0};
+        w.kind = FL_DO_TOAST; w.track = 2; w.toast = FL_T_STRAY;
+        CHECK(strcmp(fl_label(&w, buf), "T3 REC: FREE LOOP ONLY") == 0, "label %s", buf);
+    }
     fl_release(&s, 0, FL_HELD_REC);
 
     fl_reset(&s);

@@ -21,7 +21,7 @@
         .globl  fl_toast_up, fl_win_pushed, fl_win, fl_text, fl_path, fl_path2, fl_layer, fl_takes
         .globl  fl_keep, fl_keep_n
         .globl  fl_keys, fl_st_answer, fl_settle, fl_stock_cc, fl_msg, fl_trim_t24, fl_trim_bars
-        .globl  fl_auth, fl_takes_seen
+        .globl  fl_auth, fl_takes_seen, fl_snap
         .globl  fl_qany, fl_qrefresh, fl_qinj, fl_src, fl_injd3, fl_glyph, fl_draw
         .globl  fl_pop, fl_pop_key, fl_pop_t, fl_pop_idle, fl_pop_last, fl_pop_closed
         .globl  fl_armed, fl_odub, fl_qplay, fl_stopm, fl_pop_msg, fl_pop_mt, fl_pop_mticks, fl_pat_t, fl_fade, fl_fade_lv, fl_bpat
@@ -520,6 +520,7 @@ fl_trim:        .space  32
 fl_trim_t24:    .space  32
 fl_trim_bars:   .space  32
 fl_keep:        .space  192
+fl_snap:        .space  192
 fl_takes:       .space  32
 fl_win:         .long   0
 fl_toast_act:   .space  16

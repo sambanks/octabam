@@ -594,6 +594,7 @@ char *fl_label(const FlAction *a, char *out) {
     case FL_T_UNDO_CUT:    p = put(put_track(p, a->track), "OVERDUB UNDONE"); break;
     case FL_T_NO_UNDO:     p = put(put_track(p, a->track), "NOTHING TO UNDO"); break;
     case FL_T_NO_BUFFER:   p = put(put_track(p, a->track), "NO UNDO BUFFER"); break;
+    case FL_T_STRAY:       p = put(put_track(p, a->track), "REC: FREE LOOP ONLY"); break;
     default:               return 0;
     }
     *p = 0;
