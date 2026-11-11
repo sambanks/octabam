@@ -3,6 +3,9 @@
 Author: [ilia-murzinov](https://github.com/ilia-murzinov). Rhythm math matches
 filter [EUCLID](../euclid/README.md) ([repeat98](https://github.com/repeat98)).
 
+The name **SEQ** is from the SEQ submenu on Digitakt II and Digitone II —
+a dedicated window, not a PROJECT menu entry.
+
 Hold a **TRACK** key and press **PAGE**: SEQ opens for that track — title
 SEQ, LEN gutter, stock 3×2 (A=PULSE B=ROT C=LANE / D=DEST E=DEPTH; **F**
 empty), and a 4×16 step grid (hollow / solid) for all ≤64 steps. **LANE**

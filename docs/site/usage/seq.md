@@ -1,7 +1,10 @@
-**Euclidean sample trigs and p-locks.** Hold a **TRACK** key and press
-**PAGE**: SEQ opens for that track. Stock 3×2 knobs (PULSE / ROT / LANE /
-DEST / DEPTH; F empty), LEN on the left, and a 4×16 step grid (hollow =
-off, solid = on) for every step up to 64.
+**Euclidean sample trigs and p-locks.** The name **SEQ** is from the SEQ
+submenu on Digitakt II and Digitone II — same idea here as a dedicated
+track+PAGE window, not a new PROJECT menu.
+
+Hold a **TRACK** key and press **PAGE**: SEQ opens for that track. Stock
+3×2 knobs (PULSE / ROT / LANE / DEST / DEPTH; F empty), LEN on the left,
+and a 4×16 step grid (hollow = off, solid = on) for every step up to 64.
 
 Edits sequencer trigs only. Not the DSP **EUCLID** effect. Leaves
 `PROJECT > CONTROL > SEQUENCER` alone, so it coexists with SCALE QUANTIZER.
