@@ -6,8 +6,6 @@ squares for every step up to 64).
 This edits sequencer trigs; it is not the DSP EUCLID effect. It leaves
 PROJECT > CONTROL > SEQUENCER alone, so it coexists with SCALE QUANTIZER.
 
-![Two recipes: LANE=TRIG vs LANE=PLCK, and the per-DEST stack.](../../img/euclid-fill/lanes.png)
-
 ## Access
 
 Hold a TRACK key and press PAGE. Targets are the track keys held when the
