@@ -1,167 +1,147 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 760" role="img">
-  <title>Notes stay. PTCH cleared on misses (even on notes), then rewritten.</title>
-  <rect width="700" height="760" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 476" role="img">
+  <title>plck-overwrite</title>
+  <rect width="920" height="476" fill="#fff"/>
   
   <defs>
     <pattern id="hatch" patternUnits="userSpaceOnUse" width="5" height="5">
       <path d="M0 5 L5 0" stroke="#111" stroke-width="1.6"/>
     </pattern>
-    <marker id="a" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+    <marker id="a" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="10" markerHeight="10" orient="auto">
       <path d="M0 0 L10 5 L0 10 Z" fill="#111"/>
     </marker>
   </defs>
   <style>
-    .t { font: 16px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }
-    .t-sm { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#222; }
-    .t-xs { font: 12px ui-monospace, Menlo, Consolas, monospace; fill:#444; }
-    .lab { font: 14px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }
-    .tl { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }
-    .kn { font: 12px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
-    .kn-inv { font: 12px ui-monospace, Menlo, Consolas, monospace; fill:#fff; font-weight:700; }
-    .kn-val { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }
-    .kn-val-inv { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#fff; font-weight:700; }
-    .arr { fill:none; stroke:#111; stroke-width:3; marker-end:url(#a); }
-    .ring { fill:none; stroke:#111; stroke-width:3; }
+    .t { font: 15px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }
+    .t-sm { font: 12px ui-monospace, Menlo, Consolas, monospace; fill:#222; }
+    .t-xs { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#333; }
+    .lab { font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }
+    .tl { font: 10px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }
+    .kn { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#111; }
+    .kn-inv { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#fff; font-weight:700; }
+    .kn-val { font: 12px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }
+    .kn-val-inv { font: 12px ui-monospace, Menlo, Consolas, monospace; fill:#fff; font-weight:700; }
+    .tag { font: 11px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }
+    .arr { fill:none; stroke:#111; stroke-width:2.5; marker-end:url(#a); }
     .panel { fill:#fff; stroke:#111; stroke-width:2; }
+    .box { fill:#fff; stroke:#111; stroke-width:2; }
   </style>
 
-  <rect class="panel" x="202" y="36" width="296" height="128" rx="2"/>
-<rect x="210" y="44" width="88" height="52" fill="#fff" stroke="#111" stroke-width="2"/>
-<text class="kn" x="216" y="60">PULS</text>
-<text class="kn-val" x="254.0" y="82" text-anchor="middle">4</text>
-<text class="t-xs" x="292" y="90" text-anchor="end">A</text>
-<rect x="306" y="44" width="88" height="52" fill="#111" stroke="#111" stroke-width="2"/>
-<text class="kn-inv" x="312" y="60">ROT</text>
-<text class="kn-val-inv" x="350.0" y="82" text-anchor="middle">new</text>
-<text class="kn-inv" x="388" y="90" text-anchor="end">B</text>
-<rect x="402" y="44" width="88" height="52" fill="#111" stroke="#111" stroke-width="2"/>
-<text class="kn-inv" x="408" y="60">LANE</text>
-<text class="kn-val-inv" x="446.0" y="82" text-anchor="middle">PLCK</text>
-<text class="kn-inv" x="484" y="90" text-anchor="end">C</text>
-<rect x="210" y="104" width="88" height="52" fill="#111" stroke="#111" stroke-width="2"/>
-<text class="kn-inv" x="216" y="120">DEST</text>
-<text class="kn-val-inv" x="254.0" y="142" text-anchor="middle">PTCH</text>
-<text class="kn-inv" x="292" y="150" text-anchor="end">D</text>
-<rect x="306" y="104" width="88" height="52" fill="#fff" stroke="#111" stroke-width="2"/>
-<text class="kn" x="312" y="120">DPTH</text>
-<text class="kn-val" x="350.0" y="142" text-anchor="middle"></text>
-<text class="t-xs" x="388" y="150" text-anchor="end">E</text>
-<rect x="402" y="104" width="88" height="52" fill="#fff" stroke="#111" stroke-width="2"/>
-<text class="t-xs" x="484" y="150" text-anchor="end">F</text>
-  <text class="t-sm" x="350.0" y="186" text-anchor="middle">Notes stay. PTCH cleared on misses (even on notes), then rewritten.</text>
 
-  <text class="t" x="40" y="222">BEFORE</text>
-  <text class="t-xs" x="140" y="222">TRIG bake: PTCH on every note. VOL is its own stack.</text>
-  <text class="lab" x="108" y="263.2" text-anchor="end">note</text>
-<rect x="120" y="236" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="168" y="236" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="216" y="236" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="264" y="236" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="312" y="236" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="360" y="236" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="408" y="236" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="456" y="236" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<text class="lab" x="108" y="321.2" text-anchor="end">PTCH</text>
-<rect x="120" y="294" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="168" y="294" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="216" y="294" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="264" y="294" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="312" y="294" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="360" y="294" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="408" y="294" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="456" y="294" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<text class="lab" x="108" y="379.2" text-anchor="end">VOL</text>
-<rect x="120" y="352" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="168" y="352" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="188.0" y="379.2" text-anchor="middle">TL</text>
-<rect x="216" y="352" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="264" y="352" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="284.0" y="379.2" text-anchor="middle">TL</text>
-<rect x="312" y="352" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="360" y="352" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="380.0" y="379.2" text-anchor="middle">TL</text>
-<rect x="408" y="352" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="456" y="352" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="476.0" y="379.2" text-anchor="middle">TL</text>
-<text class="t-xs" x="140.0" y="406" text-anchor="middle">1</text>
-<text class="t-xs" x="188.0" y="406" text-anchor="middle">2</text>
-<text class="t-xs" x="236.0" y="406" text-anchor="middle">3</text>
-<text class="t-xs" x="284.0" y="406" text-anchor="middle">4</text>
-<text class="t-xs" x="332.0" y="406" text-anchor="middle">5</text>
-<text class="t-xs" x="380.0" y="406" text-anchor="middle">6</text>
-<text class="t-xs" x="428.0" y="406" text-anchor="middle">7</text>
-<text class="t-xs" x="476.0" y="406" text-anchor="middle">8</text>
+  <rect class="panel" x="330" y="24" width="260" height="112" rx="2"/>
+<rect x="337" y="31" width="78" height="46" fill="#fff" stroke="#111" stroke-width="2"/>
+<text class="kn" x="342" y="45">PULS</text>
+<text class="kn-val" x="376.0" y="65" text-anchor="middle">4</text>
+<text class="t-xs" x="410" y="72" text-anchor="end">A</text>
+<rect x="421" y="31" width="78" height="46" fill="#111" stroke="#111" stroke-width="2"/>
+<text class="kn-inv" x="426" y="45">ROT</text>
+<text class="kn-val-inv" x="460.0" y="65" text-anchor="middle">1</text>
+<text class="kn-inv" x="494" y="72" text-anchor="end">B</text>
+<rect x="505" y="31" width="78" height="46" fill="#111" stroke="#111" stroke-width="2"/>
+<text class="kn-inv" x="510" y="45">LANE</text>
+<text class="kn-val-inv" x="544.0" y="65" text-anchor="middle">PLCK</text>
+<text class="kn-inv" x="578" y="72" text-anchor="end">C</text>
+<rect x="337" y="83" width="78" height="46" fill="#111" stroke="#111" stroke-width="2"/>
+<text class="kn-inv" x="342" y="97">DEST</text>
+<text class="kn-val-inv" x="376.0" y="117" text-anchor="middle">PTCH</text>
+<text class="kn-inv" x="410" y="124" text-anchor="end">D</text>
+<rect x="421" y="83" width="78" height="46" fill="#fff" stroke="#111" stroke-width="2"/>
+<text class="kn" x="426" y="97">DPTH</text>
+<text class="kn-val" x="460.0" y="117" text-anchor="middle">64</text>
+<text class="t-xs" x="494" y="124" text-anchor="end">E</text>
+<rect x="505" y="83" width="78" height="46" fill="#fff" stroke="#111" stroke-width="2"/>
+<text class="t-xs" x="578" y="124" text-anchor="end">F</text>
+  <text class="t" x="460.0" y="164" text-anchor="middle">Notes stay put. PTCH is fully replaced by the PLCK rhythm.</text>
 
-  <line class="arr" x1="350.0" y1="444" x2="350.0" y2="482"/>
-  <text class="t" x="368.0" y="470">YES</text>
-  <text class="t-xs" x="368.0" y="490">PLCK hits: 2 4 6 8</text>
+  <text class="t" x="40" y="180">BEFORE</text>
+  <text class="t" x="470" y="180">AFTER</text>
 
-  <text class="t" x="40" y="524">AFTER</text>
-  <text class="t-xs" x="140" y="524">notes unchanged. PTCH only on PLCK hits (TL). VOL untouched.</text>
-  <text class="lab" x="108" y="565.2" text-anchor="end">note</text>
-<rect x="120" y="538" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="168" y="538" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="216" y="538" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="264" y="538" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="312" y="538" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="360" y="538" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="408" y="538" width="40" height="40" fill="#111" stroke="#111" stroke-width="2"/>
-<rect x="456" y="538" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<text class="lab" x="108" y="623.2" text-anchor="end">PTCH</text>
-<rect x="120" y="596" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect class="ring" x="117" y="593" width="46" height="46"/>
-<rect x="168" y="596" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="188.0" y="623.2" text-anchor="middle">TL</text>
-<rect class="ring" x="165" y="593" width="46" height="46"/>
-<rect x="216" y="596" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect class="ring" x="213" y="593" width="46" height="46"/>
-<rect x="264" y="596" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="284.0" y="623.2" text-anchor="middle">TL</text>
-<rect class="ring" x="261" y="593" width="46" height="46"/>
-<rect x="312" y="596" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect class="ring" x="309" y="593" width="46" height="46"/>
-<rect x="360" y="596" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="380.0" y="623.2" text-anchor="middle">TL</text>
-<rect class="ring" x="357" y="593" width="46" height="46"/>
-<rect x="408" y="596" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect class="ring" x="405" y="593" width="46" height="46"/>
-<rect x="456" y="596" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="476.0" y="623.2" text-anchor="middle">TL</text>
-<rect class="ring" x="453" y="593" width="46" height="46"/>
-<text class="lab" x="108" y="681.2" text-anchor="end">VOL</text>
-<rect x="120" y="654" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="168" y="654" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="188.0" y="681.2" text-anchor="middle">TL</text>
-<rect x="216" y="654" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="264" y="654" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="284.0" y="681.2" text-anchor="middle">TL</text>
-<rect x="312" y="654" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="360" y="654" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="380.0" y="681.2" text-anchor="middle">TL</text>
-<rect x="408" y="654" width="40" height="40" fill="#fff" stroke="#111" stroke-width="2"/>
-<rect x="456" y="654" width="40" height="40" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="476.0" y="681.2" text-anchor="middle">TL</text>
-<text class="t-xs" x="140.0" y="708" text-anchor="middle">1</text>
-<text class="t-xs" x="188.0" y="708" text-anchor="middle">2</text>
-<text class="t-xs" x="236.0" y="708" text-anchor="middle">3</text>
-<text class="t-xs" x="284.0" y="708" text-anchor="middle">4</text>
-<text class="t-xs" x="332.0" y="708" text-anchor="middle">5</text>
-<text class="t-xs" x="380.0" y="708" text-anchor="middle">6</text>
-<text class="t-xs" x="428.0" y="708" text-anchor="middle">7</text>
-<text class="t-xs" x="476.0" y="708" text-anchor="middle">8</text>
+  <text class="lab" x="82" y="216.48" text-anchor="end">note</text>
+<rect x="90" y="192" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="132" y="192" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="174" y="192" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="216" y="192" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="258" y="192" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="300" y="192" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="342" y="192" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="384" y="192" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<text class="lab" x="82" y="266.48" text-anchor="end">PTCH</text>
+<rect x="90" y="242" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="132" y="242" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="174" y="242" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="216" y="242" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="258" y="242" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="300" y="242" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="342" y="242" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="384" y="242" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<text class="lab" x="82" y="316.48" text-anchor="end">VOL</text>
+<rect x="90" y="292" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="132" y="292" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="150.0" y="316.48" text-anchor="middle">TL</text>
+<rect x="174" y="292" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="216" y="292" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="234.0" y="316.48" text-anchor="middle">TL</text>
+<rect x="258" y="292" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="300" y="292" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="318.0" y="316.48" text-anchor="middle">TL</text>
+<rect x="342" y="292" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="384" y="292" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="402.0" y="316.48" text-anchor="middle">TL</text>
+<text class="t-xs" x="108.0" y="340" text-anchor="middle">1</text>
+<text class="t-xs" x="150.0" y="340" text-anchor="middle">2</text>
+<text class="t-xs" x="192.0" y="340" text-anchor="middle">3</text>
+<text class="t-xs" x="234.0" y="340" text-anchor="middle">4</text>
+<text class="t-xs" x="276.0" y="340" text-anchor="middle">5</text>
+<text class="t-xs" x="318.0" y="340" text-anchor="middle">6</text>
+<text class="t-xs" x="360.0" y="340" text-anchor="middle">7</text>
+<text class="t-xs" x="402.0" y="340" text-anchor="middle">8</text>
+  <text class="lab" x="512" y="216.48" text-anchor="end">note</text>
+<rect x="520" y="192" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="562" y="192" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="604" y="192" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="646" y="192" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="688" y="192" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="730" y="192" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="772" y="192" width="36" height="36" fill="#111" stroke="#111" stroke-width="2"/>
+<rect x="814" y="192" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<text class="lab" x="512" y="266.48" text-anchor="end">PTCH</text>
+<rect x="520" y="242" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="562" y="242" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="580.0" y="266.48" text-anchor="middle">TL</text>
+<rect x="604" y="242" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="646" y="242" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="664.0" y="266.48" text-anchor="middle">TL</text>
+<rect x="688" y="242" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="730" y="242" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="748.0" y="266.48" text-anchor="middle">TL</text>
+<rect x="772" y="242" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="814" y="242" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="832.0" y="266.48" text-anchor="middle">TL</text>
+<text class="lab" x="512" y="316.48" text-anchor="end">VOL</text>
+<rect x="520" y="292" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="562" y="292" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="580.0" y="316.48" text-anchor="middle">TL</text>
+<rect x="604" y="292" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="646" y="292" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="664.0" y="316.48" text-anchor="middle">TL</text>
+<rect x="688" y="292" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="730" y="292" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="748.0" y="316.48" text-anchor="middle">TL</text>
+<rect x="772" y="292" width="36" height="36" fill="#fff" stroke="#111" stroke-width="2"/>
+<rect x="814" y="292" width="36" height="36" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="832.0" y="316.48" text-anchor="middle">TL</text>
+<text class="t-xs" x="538.0" y="340" text-anchor="middle">1</text>
+<text class="t-xs" x="580.0" y="340" text-anchor="middle">2</text>
+<text class="t-xs" x="622.0" y="340" text-anchor="middle">3</text>
+<text class="t-xs" x="664.0" y="340" text-anchor="middle">4</text>
+<text class="t-xs" x="706.0" y="340" text-anchor="middle">5</text>
+<text class="t-xs" x="748.0" y="340" text-anchor="middle">6</text>
+<text class="t-xs" x="790.0" y="340" text-anchor="middle">7</text>
+<text class="t-xs" x="832.0" y="340" text-anchor="middle">8</text>
 
-  <text class="t-sm" x="40" y="700">PTCH (current DEST) was overwritten. VOL (other DEST) did not move.</text>
+  <line class="arr" x1="442" y1="264.0" x2="460" y2="264.0"/>
+  <text class="t" x="443.0" y="254.0" text-anchor="middle">YES</text>
+  <text class="t-xs" x="443.0" y="278.0" text-anchor="middle">ROT to 1</text><text class="t-xs" x="443.0" y="292.0" text-anchor="middle">hits 2 4 6 8</text>
+
+  <text class="t-sm" x="520" y="374">PTCH: gone from notes 1 3 5 7; TL on 2 4 6 8</text><text class="t-sm" x="520" y="390">VOL: unchanged (still TL on 2 4 6 8)</text>
+
+  <text class="t-sm" x="460.0" y="428" text-anchor="middle">PLCK YES overwrites this DEST even on notes. Other DEST stacks do not move.</text>
   
-  <g transform="translate(40,720)">
-    <rect x="0" y="0" width="22" height="22" fill="#111" stroke="#111" stroke-width="2"/>
-    <text class="t-xs" x="30" y="16">lock on note</text>
-    <rect x="160" y="0" width="22" height="22" fill="url(#hatch)" stroke="#111" stroke-width="2"/>
-<text class="tl" x="171.0" y="14.96" text-anchor="middle">TL</text>
-    <text class="t-xs" x="190" y="16">trigless (TL)</text>
-    <rect x="340" y="0" width="22" height="22" fill="#fff" stroke="#111" stroke-width="2"/>
-    <text class="t-xs" x="370" y="16">empty</text>
-    <rect class="ring" x="470" y="-3" width="28" height="28"/>
-    <text class="t-xs" x="508" y="16">changed</text>
+  <g transform="translate(220,448)">
+    <rect x="0" y="0" width="18" height="18" fill="#111" stroke="#111" stroke-width="2"/>
+    <text class="t-xs" x="26" y="14">lock on a note</text>
+    <rect x="150" y="0" width="18" height="18" fill="url(#hatch)" stroke="#111" stroke-width="2"/><text class="tl" x="159.0" y="12.24" text-anchor="middle">TL</text>
+    <text class="t-xs" x="176" y="14">trigless lock (TL)</text>
+    <rect x="340" y="0" width="18" height="18" fill="#fff" stroke="#111" stroke-width="2"/>
+    <text class="t-xs" x="366" y="14">no lock</text>
   </g>
 </svg>
