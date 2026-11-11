@@ -35,10 +35,10 @@ MODULE = Module(
     category=Category.MACHINES,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.CHECK,
-    proof_note="EUCL92 HW on author's MKII 11 Nov 2026; TRIG reshape now "
-               "promotes leftover DEST locks to TL (other plock lanes kept) "
-               "— port-gated, not unit-confirmed on this tip.",
+    proof=Proof.HARDWARE,
+    proof_note="author's MKII, CX EUCL93, 11 Nov 2026: dual LANE, write-only, "
+               "LOCK_COLL + floor, PLCK overwrites TRIG bake, TRIG reshape "
+               "keeps other DEST locks (TL promote); also verify_euclid_fill.",
     doc="TRACK + PAGE: Euclidean sample-trig + p-lock fill (title EUCLID; "
         "A/B=PULSE/ROT of focused LANE, C=TRIG|PLCK, D/E=DEST/DEPTH; "
         "CUE = focused-lane random k-subset; DEST = LFO PMTR 0..29 + CX "
