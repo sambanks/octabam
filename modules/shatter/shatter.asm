@@ -17,8 +17,8 @@
 ; CHAOS: a block-rate phase advances by RATE; each wrap flips polarity (+/-1).
 ;
 ; LIM (page-2 slot 9): hard ceiling after MIX. No envelope, no div (a
-; per-sample div froze the unit on CX LIM). thresh = 1 - LIM*0.875/128
-; (floor 0.125); LIM 0 leaves the mix untouched.
+; per-sample div froze the unit on CX LIM). Block-rate thresh =
+; (127-LIM)<<16 into $19 (0 = off), same abs/cmp/tgt shape as CLIP.
 ;
 ; r7: $00 fb L  $01 fb R  $02 hold L  $03 hold R  $04 srr phase
 ;     $05 tone L  $06 tone R  $07 polarity (+1/-1)  $08 chaos phase
@@ -150,8 +150,20 @@ shc0:
         add     x0,a
         move    a,x:(r7+$18)
         move    x:(r6+$d),a             ; LIM slot 9 = $d bits 8-15
-        and     #>$7f00,a               ; 0 = off; else LIM<<8
+        and     #>$7f00,a               ; LFO dirt; 0 = off
+        beq     shlim0
+        asl     #$8,a,a                 ; LIM<<16
+        move    #>$7f0000,b             ; not #$800000 (signed -1.0)
+        sub     a,b                     ; (127-LIM)<<16
+        move    #>$010000,x0            ; floor: LIM 127 still a hair open
+        cmp     x0,b
+        tlt     x0,b
+        move    b,x:(r7+$19)
+        bra     shlim1
+shlim0:
+        clr     a
         move    a,x:(r7+$19)
+shlim1:
 ; ---- CHAOS polarity (block rate) ------------------------------------------
         move    x:(r7+$16),a
         move    #>$2,x0
@@ -390,16 +402,11 @@ sh15:
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$1c)            ; mixed R stash (LIM)
-; ---- LIM hard ceiling after MIX (0 skips). No div, no bsr inside DO. --------
-; thresh = (127-LIM)<<16. Never use #$800000 (signed -1.0). Fall into sh16.
-        move    x:(r7+$19),a            ; LIM<<8; 0 = off
+; ---- LIM hard ceiling after MIX (0 skips). thresh from block rate in $19. --
+        move    x:(r7+$19),a
         tst     a
         beq     sh20
-        asl     #$8,a,a
-        move    #>$7f0000,b
-        sub     a,b
-        move    b,x0                    ; thresh
-
+        move    a,x0                    ; thresh (CLIP-shaped clamp)
         move    x:(r7+$1b),a            ; clamp L
         move    a,y0
         abs     a

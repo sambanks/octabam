@@ -22,7 +22,7 @@ this one is self-modulating destruction.
 | 2 | 6 | MODE | HARD / SOFT / CHAOS | clip flavour; CHAOS flips FDBK polarity |
 | 2 | 7 | TONE | 0–127 | feedback shelf |
 | 2 | 8 | RATE | 0–127 | CHAOS flip rate |
-| 2 | 9 | LIM | 0–127 | brickwall after MIX; 0 = off, higher lowers the ceiling |
+| 2 | 9 | LIM | 0–127 | brickwall after MIX; 0 = off, higher lowers the ceiling (count=128 overrides DARK GATE's 0/1) |
 
 **DRV 127 clips at ordinary input levels** (dsp_host: 0.25 FS tone → ~35% of
 samples at the 24-bit rail). Keep DRV down, follow with CLIP, or raise LIM,

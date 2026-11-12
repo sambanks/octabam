@@ -54,7 +54,8 @@ MODULE = Module(
               doc="shelf in the feedback loop: 0 dark, 127 bright"),
         Param(b"RATE", 64, active=True, **_W("wid_rate"),
               doc="CHAOS: how fast the polarity flips; ignored in HARD and SOFT"),
-        Param(b"LIM", 0, active=True, formatter=_P,
+        # count=128 overrides DARK GATE's 0/1 companion (count None = donor).
+        Param(b"LIM", 0, 128, active=True, formatter=_P,
               doc="hard ceiling after MIX; 0 is off, higher lowers the ceiling"),
         _BLANK, _BLANK,
     ),
