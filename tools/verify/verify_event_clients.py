@@ -28,9 +28,13 @@ def main():
                     assert name in symbols and symbols[name][1] in 'Tt', (name,symbols.get(name),'callback must be executable text')
                     callbacks.append(name)
         installed = {d.site for d in selected[key].detours}
+        # An unused boundary another selected module detours privately (PLOCKS P2's
+        # trig-off site 0x4006036e, SCENES P2's scene handler 0x40053498) carries
+        # that module's bytes; the claims ledger gives a site one owner.
+        others = {d.site for k, m in selected.items() if k != key for d in m.detours}
         for hooks in declaration['HOOKS'].values():
             for d in hooks:
-                if d.site not in installed:
+                if d.site not in installed and d.site not in others:
                     offset=d.site-0x40000400
                     assert image[offset:offset+len(d.expect)] == d.expect, (hex(d.site), 'unused event changed stock bytes')
                     assert d.symbol not in symbols, (d.symbol, 'unused event code was linked')
