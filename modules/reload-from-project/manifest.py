@@ -10,8 +10,9 @@ re-exports its MODULE. Nothing inside `upstream/` is edited here.
 
 On hardware: the author's MKI (standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image with all six KYOTI modules; 9 Nov 2026 the card reloads and the quantized landing, from DRAM in the KYOTI V1.7 image (this octabam form not flashed).
 
-FREE LOOP is declared a conflict here: since `27ab725` both detour the UI task's
-toast countdown 0x40056c28 (the same six bytes), and neither chains to the other.
+Beside FREE LOOP the UI task's tick 0x40056c28, which both detour, goes through
+HOOKS (ui_tick): FREE LOOP's detour stays and jumps to rl_uitick where it replayed
+stock; this unit's own detour there is overridden and its bytes are unchanged.
 """
 
 import dataclasses
@@ -27,6 +28,5 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_reload_from_pro
 # are added here rather than in his manifest. His conflict with OCTAKIT is
 # dropped: Octakit is not in octabam since 6 Oct 2026 (KITS replaces it).
 MODULE = dataclasses.replace(
-    MODULE, conflicts=tuple(c for c in MODULE.conflicts if c[0] != "OCTAKIT") + (
-        ("FREE LOOP", "both detour the UI task's toast countdown 0x40056c28 -- take one"),), category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
+    MODULE, conflicts=tuple(c for c in MODULE.conflicts if c[0] != "OCTAKIT"), category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
     proof=Proof.HARDWARE, proof_note="the author's MKI (standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image with all six KYOTI modules; 9 Nov 2026 the card reloads and quantized landing from DRAM in the KYOTI V1.7 image (this octabam form not flashed)")

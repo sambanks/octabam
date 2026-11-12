@@ -37,6 +37,17 @@ docs/specs/SHARED_SITES.md says how HOOKS relates to STORE, EVENTS and Override.
     FREE LOOP's mark is drawn over the blink on a track it manages.
     REC_TRIG_MUTE left this site at its pin after 553d8d2: its mute dots are
     drawn beside the tab's machine letter (0x40040146), a site of its own.
+  * ui_tick -- the UI task's 1/60 s tick 0x40056c28, the toast countdown's
+    `move.l 0x460d1e6c,%d0` (the routine's first instruction: a leaf called
+    through a register from the task loop, d0 its only register). FREE LOOP
+    (fl_ui_stub: its pattern entry modes, clears, loop ends, toasts) and
+    RELOAD_FROM_PROJECT (rl_uitick: a landing while stopped, the landed
+    reload's toast and redraw, a deferred Part apply) are both jmp detours that
+    replay the read and go on at 0x40056c2e. RELOAD_FROM_PROJECT is a
+    submodule, so it goes last: FREE LOOP's detour stays and, built with
+    HK_UI_TICK, jumps to rl_uitick where it replayed stock. A tick on which
+    FREE LOOP shows a toast returns before stock's countdown, as alone; RELOAD's
+    UI half then runs on the next tick, 1/60 s later.
   * frame_tail -- the frame interrupt's epilogue 0x4000d9a6 (`movem.l
     (%sp),%d0-%d7/%a0-%a6 ; lea 252(%sp),%sp ; rte`, every exit path).
     LOAD METER (lm_out), CF METER (m_tail) and BOOT TRACE (tr_frame_end)
@@ -147,6 +158,16 @@ STATUS_ICON = (
 # the tab's letter: FREE LOOP is now its only claimant.)
 REC_GATE_SITE = 0x4009D9A4
 REC_GATE = (("FREE LOOP", "fl_gate_stub"), ("REC_TRIG_MUTE", "rtm_gate"))
+
+# ---- ui_tick (codeless) -----------------------------------------------------
+# The UI task's tick 0x40056c28 (`move.l 0x460d1e6c,%d0`, the toast countdown),
+# which FREE LOOP and RELOAD_FROM_PROJECT both detour (jmp, each replaying the
+# read and going on at 0x40056c2e). RELOAD_FROM_PROJECT is pinned to its
+# author's bytes, so it goes last: FREE LOOP's detour stays and, built with
+# HK_UI_TICK (its own defsym, FREE LOOP's select), jumps to rl_uitick where it
+# replayed stock.
+UI_TICK_SITE = 0x40056C28
+UI_TICK = (("FREE LOOP", "fl_ui_stub"), ("RELOAD_FROM_PROJECT", "rl_uitick"))
 
 
 # ---- frame_tail, frame_entry, boot -----------------------------------------
@@ -353,12 +374,12 @@ def _mc_overrides(modules):
 BRIDGES = {"track_key": TRACK_KEY, "status_icon": STATUS_ICON, "frame_tail": FRAME_TAIL,
            "frame_entry": FRAME_ENTRY, "boot": BOOT, "chrom_pitch": CHROM_PITCH,
            "chromatic": CHROMATIC, "machine_rows": MACHINE_ROWS,
-           "rec_gate": REC_GATE}
+           "rec_gate": REC_GATE, "ui_tick": UI_TICK}
 # The flag each bridge sets in its participants' remix.inc (flags_inc).
 FLAGS = {"frame_tail": "HK_FRAME_TAIL", "frame_entry": "HK_FRAME_ENTRY", "boot": "HK_BOOT",
          "chrom_pitch": "HK_CHROM_PITCH", "machine_rows": "HK_MACHINE_ROWS"}
 # Bridges that need no code of HOOKS's own: a participant's flagged build does it.
-CODELESS = {"chrom_pitch", "rec_gate"}
+CODELESS = {"chrom_pitch", "rec_gate", "ui_tick"}
 
 
 _STORE_PARTS = runpy.run_path(str(Path(__file__).resolve().parents[1] / "store" / "parts.py"))
@@ -507,6 +528,8 @@ def select(modules):
         overrides += [Override(PITCH_SITE, key) for key, _sym in _present(CHROM_PITCH, modules)[1:]]
     if "rec_gate" in on:
         overrides.append(Override(REC_GATE_SITE, "REC_TRIG_MUTE"))  # FREE LOOP's detour stays
+    if "ui_tick" in on:
+        overrides.append(Override(UI_TICK_SITE, "RELOAD_FROM_PROJECT"))  # FREE LOOP's detour stays
     if "chromatic" in on:
         for site, stock, sym in CHROMATIC_SITES:
             detours.append(Detour(site, stock, "hooks", sym,
