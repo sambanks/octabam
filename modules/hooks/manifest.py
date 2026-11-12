@@ -186,6 +186,7 @@ FRAME_TAIL = (
 )
 FRAME_ENTRY = (
     ("BOOT TRACE", "tr_frame"),
+    ("FRAME GUARD", "fg_in"),                    # before LOAD METER: the demand loader's pump runs after the wait
     ("LOAD METER", "lm_in"),
 )
 BOOT = (

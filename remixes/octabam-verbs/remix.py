@@ -7,7 +7,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES", "PATTERN MUTE",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
-        "LOAD METER")
+        "LOAD METER", "FRAME GUARD")
 # COMPRESSOR's row is SIDECHAIN_COMPRESSOR's: stock COMPRESSOR with a side-chain KEY on page 2, its DSP
 # loaded on demand while a track uses COMPRESSOR (docs/contributing/DEMAND_LOADER.md). Out 1 Nov 2026 (433e22e)
 # with TRANSIENT and DISTORX, back 4 Nov 2026: KEY reads "--" while the side-chain is not loaded (#934).
