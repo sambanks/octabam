@@ -230,44 +230,50 @@ def module_page(m, mods, manual_page: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _ensure_site_stock_stub() -> None:
+def _ensure_site_stock_stub() -> pathlib.Path | None:
     """Tim manifests call stock_guard at import; Pages CI has no MAIN OS.
 
     If the recon section is missing, write an ephemeral zero stub so the
-    registry can load author metadata for credits. Site pages only — never
-    a substitute for a real build. SITE_MODULES themselves do not need it.
+    registry can load author metadata for credits. Returns the path when
+    this process created the stub (caller must delete it afterward) so a
+    later acceptance harvest does not treat zeros as stock.
     """
     section = ROOT / "out" / "raw" / "section_3_MAIN_OS.bin"
     if section.exists():
-        return
+        return None
     section.parent.mkdir(parents=True, exist_ok=True)
     section.write_bytes(b"\0" * (8 * 1024 * 1024))
     print("gen_pages: no MAIN OS section; wrote ephemeral stock_guard stub "
           "(site/credits only)", file=sys.stderr)
-
+    return section
 
 
 def main(quiet: bool = False) -> int:
     import gen_manual
     import release
-    _ensure_site_stock_stub()
-    mods = registry.modules()
-    official = [(n, registry.remix(n)) for n in release.REMIXES]
-    OUT.mkdir(parents=True, exist_ok=True)
-    jobs = {}
-    manual_page = gen_manual.published_pages(mods, official)
-    jobs["modules.md"] = directory_page(mods, manual_page)
-    for m in mods.values():
-        if not m.is_stock:
-            jobs[f"modules/{m.name}.md"] = module_page(m, mods, manual_page)
-    for name, r in official:
-        jobs[f"_remix-{name}.md"] = "\n".join(gen_manual.remix_table(name, r, mods)) + "\n"
-    jobs.update(gen_manual.main(mods, official))
-    for name, text in sorted(jobs.items()):
-        (OUT / name).parent.mkdir(parents=True, exist_ok=True)
-        (OUT / name).write_text(text)
-        if not quiet:
-            print(f"wrote docs/site/reference/{name}")
+    stub = _ensure_site_stock_stub()
+    try:
+        mods = registry.modules()
+        official = [(n, registry.remix(n)) for n in release.REMIXES]
+        OUT.mkdir(parents=True, exist_ok=True)
+        jobs = {}
+        manual_page = gen_manual.published_pages(mods, official)
+        jobs["modules.md"] = directory_page(mods, manual_page)
+        for m in mods.values():
+            if not m.is_stock:
+                jobs[f"modules/{m.name}.md"] = module_page(m, mods, manual_page)
+        for name, r in official:
+            jobs[f"_remix-{name}.md"] = "\n".join(gen_manual.remix_table(name, r, mods)) + "\n"
+        jobs.update(gen_manual.main(mods, official))
+        for name, text in sorted(jobs.items()):
+            (OUT / name).parent.mkdir(parents=True, exist_ok=True)
+            (OUT / name).write_text(text)
+            if not quiet:
+                print(f"wrote docs/site/reference/{name}")
+    finally:
+        if stub is not None and stub.exists():
+            stub.unlink()
+            print("gen_pages: removed ephemeral stock_guard stub", file=sys.stderr)
     return 0
 
 
