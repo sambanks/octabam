@@ -65,6 +65,7 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 | recorder and fixes | [RECORDER LOOP FIX](../../modules/recorder-loop-fix/README.md), [RLEN PLEN](../../modules/rlen-plen/README.md) | the loop click; RLEN value PLEN |
 | | [BATCH_BUGFIXES](../../modules/batch-bugfixes/README.md), [ERASE_EMPTY_TRIGLESS_LOCKS](../../modules/erase-empty-trigless-locks/README.md), [QUANTIZE_LIVE_REC_TOGGLE](../../modules/quantize-live-rec-toggle/README.md), [REC_TRIG_MUTE](../../modules/rec-trig-mute/README.md), [MUTE_MODES](../../modules/mute-modes/README.md) | Zac-Kyoti's fixes and mute modes (MUTE_MODES runs from DRAM) |
 | | [ATA WRITE GUARD](../../modules/ata-write-guard/README.md) | keeps the first PIO card write and its bookkeeping atomic against the completion interrupt |
+| | [FRAME GUARD](../../modules/frame-guard/README.md) | a frame interrupt that enters late at START or a program change waits out the window in which the DSP's frame exchange stalls |
 | | [REC CS1 SKIP](../../modules/rec-cs1-skip/README.md) | the recorder's per-frame update without its redundant CS1 writes |
 
 ## Where it has run
