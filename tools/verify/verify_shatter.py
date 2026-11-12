@@ -6,7 +6,7 @@
   DRV+FOLD    -> both signs fold (negated in ~= negated out)
   FDBK        -> raises energy vs FDBK 0 on a tone
   CHAOS       -> non-silent with FDBK up
-  LIM         -> lowers peak and rail frac on a hot drive; LIM 0 == off path
+  LIM         -> transparent GR lowers hot peak; LIM 0 == off; LIM 1 quiet ~match
   every knob  -> renders without dsp_host dying
   max knobs   -> ~3 s no runaway; rail fraction bounded
   DRV 127     -> clips at ordinary input (rail fraction in band)
@@ -193,9 +193,9 @@ d_rate = max(abs(a - b) for a, b in zip(Lr0, Lr1))
 check("CHAOS RATE 0 vs 127 differs (page-2 on $d)", d_rate > (1 << 12),
       f"max|d|={d_rate}")
 
-# LIM after MIX: slot 9 = $d companion. Off path bit-matches LIM 0; on path
-# lowers peak and rail frac on a hot drive. Keep the render short: CI's
-# module-gate wall clock is tight, and peak/rail only need a few blocks.
+# LIM after MIX: slot 9 = $d companion. Stereo-linked envelope + block-rate
+# g = thresh/max(level, thresh). Off path stable; on path lowers a hot peak
+# to the ceiling (transparent GR — makeup-to-FS cancelled the GR on hot).
 N_LIM = FRAMES * 32
 drive_lim = [int(0.25 * (1 << 23) * __import__("math").sin(
     2 * 3.14159265 * 220 * i / FS)) for i in range(N_LIM)]
@@ -208,21 +208,29 @@ L100, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
                  MODE=0, TONE=64, RATE=64, LIM=100)
 L127, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
                  MODE=0, TONE=64, RATE=64, LIM=127)
-p0 = max(abs(x) for x in Loff)
-p100 = max(abs(x) for x in L100)
-p127 = max(abs(x) for x in L127)
-rf0 = rail_frac(Loff)
-rf100 = rail_frac(L100)
-rf127 = rail_frac(L127)
-check("LIM 100 lowers peak vs LIM 0", p100 < p0 * 0.95,
+p0 = max(abs(x) for x in Loff[FRAMES:])
+p100 = max(abs(x) for x in L100[FRAMES:])
+p127 = max(abs(x) for x in L127[FRAMES:])
+check("LIM 100 lowers peak vs LIM 0", p100 < p0 * 0.85,
       f"p0={p0} p100={p100}")
-check("LIM 127 rail frac lower than LIM 0", rf127 < rf0,
-      f"rf0={rf0:.3f} rf127={rf127:.3f}")
-check("LIM 127 peak <= LIM 100 peak", p127 <= p100 * 1.02,
+check("LIM 127 peak below LIM 100", p127 < p100 * 0.95,
       f"p100={p100} p127={p127}")
+# Floor ~0.125 FS: max LIM is quiet, not mute.
+check("LIM 127 still audible (floor ~0.125)", p127 > (RAIL >> 4),
+      f"p127={p127}")
 d_lim = max(abs(a - b) for a, b in zip(Loff, L100))
-check("LIM 100 changes vs LIM 0 (page-2 $d companion)", d_lim > (1 << 12),
+check("LIM 100 changes vs LIM 0 (page-2 $d companion)", d_lim > (1 << 16),
       f"max|d|={d_lim}")
+# Quiet below ceiling: g=1, near bit-match to LIM 0.
+quiet_lim = [int(0.05 * (1 << 23) * __import__("math").sin(
+    2 * 3.14159265 * 220 * i / FS)) for i in range(N_LIM)]
+Q0, _ = render(quiet_lim, MIX=127, DRV=0, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+               MODE=0, TONE=64, RATE=64, LIM=0)
+Q1, _ = render(quiet_lim, MIX=127, DRV=0, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+               MODE=0, TONE=64, RATE=64, LIM=32)
+d_q = max(abs(a - b) for a, b in zip(Q0[FRAMES:], Q1[FRAMES:]))
+check("LIM 32 quiet near-matches LIM 0 (under ceiling)", d_q < (1 << 14),
+      f"max|d|={d_q}")
 
 for name in K:
     render(ramp[:FRAMES * 4], **{name: 64})

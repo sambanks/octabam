@@ -16,17 +16,20 @@
 ;
 ; CHAOS: a block-rate phase advances by RATE; each wrap flips polarity (+/-1).
 ;
-; LIM (page-2 slot 9): hard ceiling after MIX. No envelope, no div (a
-; per-sample div froze the unit on CX LIM). Block-rate thresh =
-; (127-LIM)<<16 into $19 (0 = off), same abs/cmp/tgt shape as CLIP.
+; LIM (page-2 slot 9): stereo-linked peak envelope after MIX. Instant attack,
+; release ~63 ms. thresh = 0.75 - LIM*0.625/128 (floor 0.125) into $19
+; (0 = off). Range is musical: LIM 1 already ~-2.5 dB, LIM 127 ~-18 dB —
+; not (127-LIM)<<16 which left min open and max near mute. One block-rate
+; div sets g = thresh/max(level_s, thresh) into $1a. Nested do+div inside
+; the sample DO froze CX LIM; rep in proc is refused. TONE stays FB-only.
 ;
 ; r7: $00 fb L  $01 fb R  $02 hold L  $03 hold R  $04 srr phase
 ;     $05 tone L  $06 tone R  $07 polarity (+1/-1)  $08 chaos phase
 ;     $09 srr wrap (1 this sample)  $0a brr n (0..12)  $0b srr inc
-;     $0c clip thresh  $19 lim thresh (0 = LIM off)
-;     $1b mixed L  $1c mixed R (post-MIX stash for the ceiling)
+;     $0c clip thresh  $0d lim level_s  $19 lim thresh (0 = LIM off)
+;     $1a lim gain  $1b mixed L  $1c mixed R
 ;     $10..$18 per-block: drv, fold, clip, crsh, fdbk, mix, mode, tone, rate
-; Every mpy is x0,y1 or y0,x0 (signed). No rep. No div. init preserves r1.
+; Every mpy is x0,y1 or y0,x0 (signed). No rep. init preserves r1.
 ; SRR phase is stored from a1 (never move a,x: -- that saturates and sticks).
 ; ---------------------------------------------------------------------------
 
@@ -44,7 +47,9 @@ init:
         move    a,x:(r7+$0a)
         move    a,x:(r7+$0b)            ; srr inc (set each block)
         move    a,x:(r7+$0c)            ; clip thresh
+        move    a,x:(r7+$0d)            ; lim level_s
         move    a,x:(r7+$19)            ; lim thresh (0 = off)
+        move    a,x:(r7+$1a)            ; lim gain
         move    a,x:(r7+$1b)            ; mixed L stash
         move    a,x:(r7+$1c)            ; mixed R stash
         move    #>$7fffff,x0            ; polarity +1
@@ -153,16 +158,33 @@ shc0:
         and     #>$7f00,a               ; LFO dirt; 0 = off
         beq     shlim0
         asl     #$8,a,a                 ; LIM<<16
-        move    #>$7f0000,b             ; not #$800000 (signed -1.0)
-        sub     a,b                     ; (127-LIM)<<16
-        move    #>$010000,x0            ; floor: LIM 127 still a hair open
+        move    a,x0
+        move    #>$500000,y1            ; 0.625
+        mpy     x0,y1,a                 ; LIM*0.625/128
+        move    #>$600000,b             ; 0.75
+        sub     a,b                     ; 0.75 - LIM*0.625/128
+        move    #>$100000,x0            ; floor 0.125 (~-18 dB)
         cmp     x0,b
         tlt     x0,b
-        move    b,x:(r7+$19)
+        move    b,x:(r7+$19)            ; thresh
+; g = thresh/max(level_s, thresh) <= 1
+        move    x:(r7+$0d),a            ; level_s
+        cmp     b,a
+        tlt     b,a                     ; a = max(level_s, thresh)
+        move    a,x0                    ; denom > 0
+        move    x:(r7+$19),y1           ; thresh
+        move    y1,a                    ; clean load: a0 = 0
+        andi    #$fe,ccr
+        do      #$18,>shlimdv           ; block-rate only (never inside sample DO)
+        div     x0,a
+shlimdv:
+        move    a0,x:(r7+$1a)           ; g
         bra     shlim1
 shlim0:
         clr     a
-        move    a,x:(r7+$19)
+        move    a,x:(r7+$19)            ; 0 = skip brickwall
+        move    #>$7fffff,x0            ; g = 1 if a stale read lands
+        move    x0,x:(r7+$1a)
 shlim1:
 ; ---- CHAOS polarity (block rate) ------------------------------------------
         move    x:(r7+$16),a
@@ -402,32 +424,37 @@ sh15:
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$1c)            ; mixed R stash (LIM)
-; ---- LIM hard ceiling after MIX (0 skips). thresh from block rate in $19. --
-        move    x:(r7+$19),a
-        tst     a
+; ---- LIM after MIX: envelope + block-rate g (0 skips, bit-exact mix). -----
+        move    x:(r7+$19),b            ; thresh; 0 = off
+        tst     b
         beq     sh20
-        move    a,x0                    ; thresh (CLIP-shaped clamp)
-        move    x:(r7+$1b),a            ; clamp L
-        move    a,y0
+        move    x:(r7+$1b),a            ; |L|
         abs     a
-        cmp     x0,a
-        tgt     x0,a
-        move    y0,b
-        tst     b
-        bpl     sh24
-        neg     a
-sh24:
+        move    a,x1
+        move    x:(r7+$1c),a            ; |R|
+        abs     a
+        cmp     x1,a
+        tlt     x1,a                    ; peak = max(|L|,|R|)
+        move    a,x0                    ; peak
+        move    x:(r7+$0d),b            ; level_s
+        tfr     x0,a
+        sub     b,a                     ; d = peak - level_s
+        move    #>$7fffff,x1            ; attack = 1 (instant)
+        move    #>$000bd0,b             ; release ~63 ms
+        tst     a
+        move    a,x0                    ; d (moves keep the flags)
+        tpl     x1,b                    ; rising: attack
+        move    b,y1
+        mpy     x0,y1,a
+        move    x:(r7+$0d),b
+        add     b,a
+        move    a,x:(r7+$0d)            ; level_s
+        move    x:(r7+$1a),y1           ; g from block rate
+        move    x:(r7+$1b),x0           ; L *= g
+        mpy     x0,y1,a
         move    a,x:(r7+$1b)
-        move    x:(r7+$1c),a            ; clamp R
-        move    a,y0
-        abs     a
-        cmp     x0,a
-        tgt     x0,a
-        move    y0,b
-        tst     b
-        bpl     sh25
-        neg     a
-sh25:
+        move    x:(r7+$1c),x0           ; R *= g
+        mpy     x0,y1,a
         move    a,x:(r7+$1c)
 sh20:
         move    x:(r7+$1b),a

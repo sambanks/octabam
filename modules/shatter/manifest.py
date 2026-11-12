@@ -2,8 +2,9 @@
 
 A per-track insert: DRV into a wavefolder, hard or soft clip, combined
 bit/sample-rate crush, then a feedback loop with a tone shelf. MODE CHAOS
-flips feedback polarity from a free-running ramp. LIM is a hard ceiling
-after MIX (no envelope, no div). MIX 0 is bit-exact dry when LIM is 0.
+flips feedback polarity from a free-running ramp. LIM is a stereo-linked
+transparent brickwall after MIX (envelope + one block-rate div). MIX 0 is
+bit-exact dry when LIM is 0.
 """
 
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
@@ -21,10 +22,11 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.CHECK,
-    proof_note="verify_shatter (incl. LIM peak/rail). Pre-LIM tip SHATTER S6 was "
-               "HW on Ilia's MKII 21 Oct 2026; this tip not yet on hardware.",
-    doc="Crush insert: fold, clip, crush, chaotic FDBK, hard ceiling after MIX.",
+    proof=Proof.HARDWARE,
+    proof_note="Ilia's MKII, remix cx CX LIM11, 12 Nov 2026: LIM transparent GR "
+               "(ceiling ~-2.5..-18 dB), page-2 0..127, TONE/FB unchanged, icons. "
+               "verify_shatter on the tip. Pre-LIM SHATTER S6 HW 21 Oct 2026.",
+    doc="Crush insert: fold, clip, crush, chaotic FDBK, transparent brickwall after MIX.",
     menu=MenuEntry(
         fx2_id=0x0a,
         donor_desc=0x400d58b8,        # DARK REV
@@ -56,7 +58,7 @@ MODULE = Module(
               doc="CHAOS: how fast the polarity flips; ignored in HARD and SOFT"),
         # count=128 overrides DARK GATE's 0/1 companion (count None = donor).
         Param(b"LIM", 0, 128, active=True, formatter=_P,
-              doc="hard ceiling after MIX; 0 is off, higher lowers the ceiling"),
+              doc="transparent brickwall after MIX; 0 off, 1..127 ceiling ~-2.5..-18 dB"),
         _BLANK, _BLANK,
     ),
     mode_slot=6,

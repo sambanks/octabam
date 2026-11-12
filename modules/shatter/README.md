@@ -4,7 +4,8 @@ A per-track crush insert: drive into a wavefolder, hard or soft clip,
 combined bit-depth and sample-rate crush, then a feedback loop with a tone
 shelf. MODE CHAOS flips feedback polarity from a free-running ramp so the
 loop self-modulates into hash and dropouts. LIM is a stereo-linked
-brickwall after MIX. MIX 0 is bit-exact dry when LIM is 0.
+transparent brickwall after MIX (envelope + one block-rate div). MIX 0 is
+bit-exact dry when LIM is 0.
 
 Sits beside CHARACTER (channel-strip dirt) and LOFI2 (modulator + SRR/BRR):
 this one is self-modulating destruction.
@@ -22,7 +23,7 @@ this one is self-modulating destruction.
 | 2 | 6 | MODE | HARD / SOFT / CHAOS | clip flavour; CHAOS flips FDBK polarity |
 | 2 | 7 | TONE | 0–127 | feedback shelf |
 | 2 | 8 | RATE | 0–127 | CHAOS flip rate |
-| 2 | 9 | LIM | 0–127 | brickwall after MIX; 0 = off, higher lowers the ceiling (count=128 overrides DARK GATE's 0/1) |
+| 2 | 9 | LIM | 0–127 | transparent brickwall after MIX; 0 off, ceiling ~-2.5..-18 dB (count=128 overrides DARK GATE's 0/1) |
 
 **DRV 127 clips at ordinary input levels** (dsp_host: 0.25 FS tone → ~35% of
 samples at the 24-bit rail). Keep DRV down, follow with CLIP, or raise LIM,
@@ -70,14 +71,15 @@ CRSH 40, FDBK 40, MIX 127, MODE HARD, TONE 64, RATE 64, LIM 0):
 | `cycle_count.py` (static) | 213 cycles/sample | 852 cycles/sample |
 
 Four FX2 slots per core; 852 ≪ 3120 usable (`cycle_count` USABLE). All four
-slots fit at those settings. LIM on is a hard ceiling (no `div`).
-(still well under the budget at four instances).
+slots fit at those settings. LIM on uses one block-rate `div` for
+transparent GR (still well under the budget at four instances).
 
 ## On the unit
 
-Pre-LIM tip: Ilia's MKII, 21 Oct 2026, remix `shatter` **BUILD S6**
-(`SHATTER S6.RMX`): every page-1/page-2 knob then present exercised.
-This tip adds LIM and is not yet hardware-confirmed.
+Ilia's MKII, 12 Nov 2026, remix `cx` **CX LIM11**: LIM transparent GR
+(ceiling about -2.5..-18 dB), LIM 0..127, other knobs unchanged vs
+pre-LIM tip, live icons. Pre-LIM tip: same unit, remix `shatter`
+**BUILD S6** (`SHATTER S6.RMX`), 21 Oct 2026.
 
 No build tag on the panel.
 
@@ -90,6 +92,6 @@ No build tag on the panel.
 
 `tools/verify/verify_shatter.py` (manifest `Gate`): MIX 0 bit-exact (LIM 0);
 DRV+FOLD both signs; FDBK raises energy; CHAOS non-silent; HARD vs SOFT /
-TONE / RATE page-2 diffs; LIM lowers peak and rail frac on a hot drive;
+TONE / RATE page-2 diffs; LIM transparent GR on a hot drive;
 max-knob rail fraction + no runaway; DRV 127 rail-fraction band; two
 instances.
