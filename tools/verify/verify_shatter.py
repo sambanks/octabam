@@ -194,9 +194,9 @@ check("CHAOS RATE 0 vs 127 differs (page-2 on $d)", d_rate > (1 << 12),
       f"max|d|={d_rate}")
 
 # LIM after MIX: slot 9 = $d companion. Off path bit-matches LIM 0; on path
-# lowers peak and rail frac on a hot drive.
-N_LIM = int(1.0 * FS)
-N_LIM -= N_LIM % FRAMES
+# lowers peak and rail frac on a hot drive. Keep the render short: CI's
+# module-gate wall clock is tight, and peak/rail only need a few blocks.
+N_LIM = FRAMES * 32
 drive_lim = [int(0.25 * (1 << 23) * __import__("math").sin(
     2 * 3.14159265 * 220 * i / FS)) for i in range(N_LIM)]
 Loff, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
@@ -234,9 +234,10 @@ N_LONG = int(3.0 * FS)
 N_LONG -= N_LONG % FRAMES
 drive = [int(0.25 * (1 << 23) * __import__("math").sin(
     2 * 3.14159265 * 220 * i / FS)) for i in range(N_LONG)]
+# LIM 127 bricks to silence ((127-LIM)<<16 = 0); runaway is FDBK/CHAOS, so LIM 0.
 Lmax, Rmax = render(
     drive, MIX=127, DRV=127, FOLD=127, CLIP=127, CRSH=127, FDBK=127,
-    MODE=2, TONE=127, RATE=127, LIM=127)
+    MODE=2, TONE=127, RATE=127, LIM=0)
 rf_max = max(rail_frac(Lmax), rail_frac(Rmax))
 check(f"max-knob rail frac bounded ({rf_max:.3f} < 0.50)", rf_max < 0.50)
 half = len(Lmax) // 2
