@@ -34,7 +34,7 @@ lock. `flat` is the MIDI page × 6 + knob (NOTE, LFO, ARP, CTRL1, CTRL2;
 | B8 | scene recall completion: mix at the XF | phase 1 |
 | B9 | scene pad release: the held flags clear, no mix | stock's own sequence, no site |
 | B11 | track `t`'s locks affect track `t` only | phase 1 |
-| B29 | CLEAR / COPY / PASTE SCENE rows carry MSC | phase 1 (the gate scenarios need them) |
+| B29 | CLEAR / COPY / PASTE SCENE rows carry MSC | phase 1, in either track mode (differences below) |
 | B30 | encoder press in MIDI mode: overlay refresh | phase 1 |
 | B10, B15–B18, B28 | the mix follows the Part that plays; a panel write re-mixes | `verify_scenes` seq group (`sw`); `swd` measures the same-step re-mix at a DIRECT pattern jump |
 | B12–B14 | trig snapshot as the unlocked side, a trig-locked flat left alone, the CC loop before the note-on | `verify_scenes` seq group (`tg`, `tg2`) |
@@ -88,6 +88,7 @@ Paste and bank-copy rows.
 | 2.1 | here | why |
 |---|---|---|
 | a lock edit marks the Part unsaved and the project dirty, and writes the Part into its saved copy (B31) | the flags are set; no saved-copy write | the locks are in `scenes.work` and CS1, not in the Part |
+| CLEAR / COPY / PASTE SCENE carry MSC only in MIDI mode; from the audio tracks they move the audio locks alone, and `scn_clip` keeps the last MIDI-mode copy | the rows carry MSC in either mode: the whole scene, both halves | a copy from the audio side then a paste from the MIDI side joined two scenes' locks (one scene's audio, an older scene's MIDI); user report, 12 Nov 2026. The two lock tables stay separate. `b29acopy`, `b29aclear` check it, against the predicted values only |
 | the scene clipboard starts as zeros | starts as `0xff` | a PASTE SCENE after an audio-only COPY SCENE gives his table zeros (a lock at 0 on every flat), here none |
 | the mix follows the Part the sequencer plays: `engine_follow` reads the engine latch (bank `0x80001828`, Part `0x80001829`) each playback step and re-mixes in the same step | the same latch, read each playback step while SCHED `0x800065b8` is 1, the mix in the same step | `sw`/`swn` match his MIDI out except the switch burst: ours at the take (79 at frame 51,229), his at the sequencer commit (50,490), 739 frames earlier; `tg`/`tg2` match frame for frame; `swd` measures the same-step re-mix at a DIRECT pattern jump |
 | a context key (the sparse blob's contents) decides whether a mix may reuse its state; the XF-changed test runs only once a mix has run | a due flag (set by a target change, a load, a Kit load, Part Clear) and the XF-changed test | the tables are in `scn_lib`, not in a Part blob |
