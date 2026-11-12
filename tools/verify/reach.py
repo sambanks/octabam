@@ -1137,12 +1137,16 @@ SPLIT_REMIX_JOBS = {"octabam": {"long": ("remix-switch",), "project": ("set", "m
 # verify_brain runs as five units, one per `--section` group (4 Nov 2026: 1026 s locally in one process, about 40
 # boots; `brain` keeps the name of the whole gate and runs the eight card cases; in CI the `cards` group took 782 and
 # 784 s with the stock-store sections in it, the others 308-786 s).
+# `scenes`: MIDI SCENES' gate, verify_scenes, SKIPs without a project; as a once=True gate it ran only in the shared
+# half's module gates, which have none, so CI never ran it (12 Nov 2026). Here it reads the generated project; it
+# stages its own fixture from it (the scene locks, the MIDI setup), so the project's content is not assumed.
 _BRAIN = ".venv/bin/python3 tools/verify/verify_brain.py octabam --section "
 SPLIT_EXTRA_UNITS = {"octabam": {"brain": ("BRAIN", _BRAIN + "cards"),
                                  "brain-stores": ("BRAIN", _BRAIN + "stores"),
                                  "brain-templates": ("BRAIN", _BRAIN + "templates"),
                                  "brain-panes": ("BRAIN", _BRAIN + "panes"),
-                                 "brain-screens": ("BRAIN", _BRAIN + "screens")}}
+                                 "brain-screens": ("BRAIN", _BRAIN + "screens"),
+                                 "scenes": ("MIDI SCENES", ".venv/bin/python3 tools/verify/verify_scenes.py octabam")}}
 
 
 # Shared module gates that are slow beside the rest, each a unit of its own: `check-shared (<part>)` is

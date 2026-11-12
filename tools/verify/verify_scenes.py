@@ -300,6 +300,12 @@ def seq_fixture(src, dst, bank, trigs=False):
         shutil.copy2(tmp / "bank02.work", tmp / f"bank{bank + 1:02d}.work")
         src = tmp
     fixture(src, dst)
+    if trigs != "two":
+        # The blobs model a 2.x project, which has no scenes.work: the module converts a Part's blob only
+        # when there is none. A project saved on an image with MIDI SCENES has one (every generated project
+        # does, tools/hw/ot_fresh.py), and with it kept the Parts load with no locks: sw put nothing on the
+        # wire and swn found no CC 79 (12 Nov 2026).
+        (dst / "scenes.work").unlink(missing_ok=True)
     bf = dst / f"bank{bank + 1:02d}.work"
     dat = bytearray(bf.read_bytes())
     for part, ents in ({} if trigs == "two" else SEQ_PARTS if trigs != "trigs"
