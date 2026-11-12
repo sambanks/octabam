@@ -200,7 +200,9 @@ the only Part key in the fixture's project.work (inferred, not traced).
 `0x40062e84`. Each checks `arg == 1`, picks the held scene's index from
 Part `+0x8ed90` (A) or `+0x8ed91` (B), and calls stock `0x400274cc`
 (copy), `0x40027578` (paste, after an undo snapshot `0x400275a0`) or
-`0x40038c30` (clear); his R21 hooks the three `jsr`s. Measured: b29copy
+`0x40038c30` (clear); his R21 hooks the three `jsr`s, and each hook acts on MSC only in MIDI
+mode (📖). octabam's acts in either mode (`modules/midi-scenes/README.md`,
+differences; gate scenarios `b29acopy`, `b29aclear`). Measured: b29copy
 and b29clear above.
 
 ## 9. Which hook sites need a ROM-resident target
