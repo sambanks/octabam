@@ -432,9 +432,13 @@ sh24:
         bpl     sh25
         neg     a
 sh25:
-        move    a,x:(r0)-               ; write R, r0 -> L
+        ; r0 on R. No (r0)-: pre-dec from a modulo audio base hangs
+        ; the host (trap-agu-modulo). Write R in place, L via n0=-1.
+        move    a,x:(r0)                ; clamped R
+        move    #>-1,n0
         move    x:(r7+$1b),a
-        move    a,x:(r0)+n0             ; write L, r0 -> R
+        move    a,x:(r0+n0)             ; clamped L (overwrite early write)
+        move    #$1,n0                  ; restore stereo stride
         move    (r0)+                   ; past R
         bra     sh16
 sh20:
