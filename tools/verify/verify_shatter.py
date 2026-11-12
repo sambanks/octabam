@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """SHATTER render gates.
 
-  MIX=0       -> bit-exact passthrough
+  MIX=0       -> bit-exact passthrough (LIM default 0)
   defaults    -> near-passthrough (dirt knobs 0)
   DRV+FOLD    -> both signs fold (negated in ~= negated out)
   FDBK        -> raises energy vs FDBK 0 on a tone
   CHAOS       -> non-silent with FDBK up
+  LIM         -> lowers peak and rail frac on a hot drive; LIM 0 == off path
   every knob  -> renders without dsp_host dying
   max knobs   -> ~3 s no runaway; rail fraction bounded
   DRV 127     -> clips at ordinary input (rail fraction in band)
@@ -192,6 +193,37 @@ d_rate = max(abs(a - b) for a, b in zip(Lr0, Lr1))
 check("CHAOS RATE 0 vs 127 differs (page-2 on $d)", d_rate > (1 << 12),
       f"max|d|={d_rate}")
 
+# LIM after MIX: slot 9 = $d companion. Off path bit-matches LIM 0; on path
+# lowers peak and rail frac on a hot drive.
+N_LIM = int(1.0 * FS)
+N_LIM -= N_LIM % FRAMES
+drive_lim = [int(0.25 * (1 << 23) * __import__("math").sin(
+    2 * 3.14159265 * 220 * i / FS)) for i in range(N_LIM)]
+Loff, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+                 MODE=0, TONE=64, RATE=64, LIM=0)
+Loff2, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+                  MODE=0, TONE=64, RATE=64, LIM=0)
+check("LIM 0 path stable (two runs match)", Loff == Loff2)
+L100, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+                 MODE=0, TONE=64, RATE=64, LIM=100)
+L127, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+                 MODE=0, TONE=64, RATE=64, LIM=127)
+p0 = max(abs(x) for x in Loff)
+p100 = max(abs(x) for x in L100)
+p127 = max(abs(x) for x in L127)
+rf0 = rail_frac(Loff)
+rf100 = rail_frac(L100)
+rf127 = rail_frac(L127)
+check("LIM 100 lowers peak vs LIM 0", p100 < p0 * 0.95,
+      f"p0={p0} p100={p100}")
+check("LIM 127 rail frac lower than LIM 0", rf127 < rf0,
+      f"rf0={rf0:.3f} rf127={rf127:.3f}")
+check("LIM 127 peak <= LIM 100 peak", p127 <= p100 * 1.02,
+      f"p100={p100} p127={p127}")
+d_lim = max(abs(a - b) for a, b in zip(Loff, L100))
+check("LIM 100 changes vs LIM 0 (page-2 $d companion)", d_lim > (1 << 12),
+      f"max|d|={d_lim}")
+
 for name in K:
     render(ramp[:FRAMES * 4], **{name: 64})
 check("every named knob renders", True)
@@ -204,7 +236,7 @@ drive = [int(0.25 * (1 << 23) * __import__("math").sin(
     2 * 3.14159265 * 220 * i / FS)) for i in range(N_LONG)]
 Lmax, Rmax = render(
     drive, MIX=127, DRV=127, FOLD=127, CLIP=127, CRSH=127, FDBK=127,
-    MODE=2, TONE=127, RATE=127)
+    MODE=2, TONE=127, RATE=127, LIM=127)
 rf_max = max(rail_frac(Lmax), rail_frac(Rmax))
 check(f"max-knob rail frac bounded ({rf_max:.3f} < 0.50)", rf_max < 0.50)
 half = len(Lmax) // 2

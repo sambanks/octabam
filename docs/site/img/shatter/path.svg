@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 280" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 280" role="img">
   <title>SHATTER signal path</title>
-  <rect width="860" height="280" fill="#fff"/>
+  <rect width="960" height="280" fill="#fff"/>
 
   <style>
     .box { fill:#fff; stroke:#111; stroke-width:2; }
@@ -37,14 +37,18 @@
   <text class="t-sm" x="450" y="58" text-anchor="middle">CHAOS flips polarity (RATE)</text>
 
   <line class="arr" x1="502" y1="116" x2="560" y2="116"/>
-  <rect class="fill" x="562" y="94" width="90" height="44" rx="2"/>
-  <text class="t-inv" x="607" y="121" text-anchor="middle">MIX</text>
+  <rect class="fill" x="562" y="94" width="70" height="44" rx="2"/>
+  <text class="t-inv" x="597" y="121" text-anchor="middle">MIX</text>
 
-  <path class="arr" d="M70 116 L70 200 L607 200 L607 138"/>
+  <path class="arr" d="M70 116 L70 200 L597 200 L597 138"/>
   <text class="t-sm" x="300" y="192" text-anchor="middle">dry tap</text>
 
-  <line class="arr" x1="652" y1="116" x2="710" y2="116"/>
-  <text class="t" x="720" y="120">out</text>
+  <line class="arr" x1="632" y1="116" x2="670" y2="116"/>
+  <rect class="box" x="672" y="94" width="70" height="44" rx="2"/>
+  <text class="t" x="707" y="121" text-anchor="middle">LIM</text>
 
-  <text class="t-sm" x="400" y="250" text-anchor="middle">MIX=0 exact dry. CHAOS flips FDBK polarity at RATE.</text>
+  <line class="arr" x1="742" y1="116" x2="800" y2="116"/>
+  <text class="t" x="810" y="120">out</text>
+
+  <text class="t-sm" x="450" y="250" text-anchor="middle">MIX=0 exact dry when LIM=0. LIM is a stereo brickwall after MIX.</text>
 </svg>
