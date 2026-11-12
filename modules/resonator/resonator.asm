@@ -32,7 +32,9 @@
 ;     $29 lim thresh (0 = off)  $2a lim level_s  $2b lim gain
 ;     $2c mixed L  $2d mixed R
 ;     $30..$33 f0..f3  $34..$37 g0..g3  $38 SCALE  $40..$43 pit<<16
-;     $4b i  $5a P-base
+;     $4b i  $58 wet-acc  $5a P-base
+;
+; CYCLES_FORWARD_BRANCHES -- LIM 0 skips the envelope/GR path after MIX
 ; ---------------------------------------------------------------------------
 
 init:
@@ -329,9 +331,7 @@ rs_fbd:
         abs     a
         cmp     x1,a
         tlt     x1,a                    ; peak
-        move    a,x0
-        move    x:(r7+$2a),b            ; level_s
-        tfr     x0,a
+        move    x:(r7+$2a),b            ; level_s (A still peak)
         sub     b,a                     ; d = peak - level_s
         move    #>$7fffff,x1            ; attack = 1
         move    #>$000bd0,b             ; release ~63 ms
@@ -351,38 +351,36 @@ rs_fbd:
         mpy     x0,y1,a
         move    a,x:(r7+$2d)
 rs_lim0:
-        move    #>$ffffff,n0            ; -1: r0 on R → back to L
-        move    (r0)+n0
-        move    x:(r7+$2c),a
-        move    a,x:(r0)+               ; write L
+        ; r0 on R: write R, back to L, write L, step past R (no n0 #>)
         move    x:(r7+$2d),a
-        move    a,x:(r0)+               ; write R
-        move    #>$1,n0
+        move    a,x:(r0)-               ; write R, r0 → L
+        move    x:(r7+$2c),a
+        move    a,x:(r0)+               ; write L, r0 → R
+        lua     (r0+1),r0               ; past R for next frame
 rs_sz:
 rs_end:
         rts
 
 ; one Chamberlin BP: state at r4, f at r3+, gain at r2+, drive $27, damp $22
+; f stays in y0 (signed mpy y0,x0); no $59 spill; 2 words x 8 calls.
 rs_one:
-        move    x:(r3)+,x0
-        move    x0,x:(r7+$59)
-        move    x:(r4)+,a
-        move    x:(r4)-,y1
-        mpy     x0,y1,b
+        move    x:(r3)+,y0              ; f
+        move    x:(r4)+,a               ; low
+        move    x:(r4)-,x0              ; band
+        mpy     y0,x0,b                 ; f*band (signed)
         add     b,a
-        move    a,x:(r4)+
-        move    a,x0
-        move    x:(r7+$27),a
+        move    a,x:(r4)+               ; store low, r4 → band
+        move    a,x0                    ; low
+        move    x:(r7+$27),a            ; drive/exc
         move    x0,b
-        sub     b,a
+        sub     b,a                     ; high = exc - low
         move    x:(r7+$22),x0
         move    x:(r4),y1
         mpy     x0,y1,b                 ; damp*band (x0,y1 encodes as mpy)
         sub     b,a
-        move    a,y1
-        move    x:(r7+$59),x0
-        move    x:(r4),a
-        mpy     x0,y1,b
+        move    a,x0                    ; high
+        move    x:(r4),a                ; band
+        mpy     y0,x0,b                 ; f*high (signed; y0 still f)
         add     b,a
         move    a,x:(r4)+
         move    a,x0
