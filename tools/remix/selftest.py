@@ -1050,7 +1050,7 @@ def main():
              **{_k: () for _k in ("direct-jump-kyoti", "batch-bugfixes", "reload-from-project",
                                   "quantize-live-rec-toggle", "erase-empty-trigless-locks",
                                   "mute-modes", "kyoti-mute-jump", "kyoti-fixes", "rec-trig-mute",
-                                  "euclid-fill", "varispeed", "copy-project",
+                                  "seq", "varispeed", "copy-project",
                                   "pattern-mute-modes",  # PATTERN MUTE beside MUTE_MODES, stock effects
                                   "scope",  # SCOPE: ColdFire window, no DSP words
                                   "cxosc", "cxosc-core",

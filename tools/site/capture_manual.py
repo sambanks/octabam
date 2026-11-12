@@ -204,7 +204,18 @@ def capture_drummer(p,r):
     p.press('pg_playback',settle=600)
     shot(p,'drummer','balance','SRC again: KIT BALANCE, the mix of the drums.',r)
     p.press('pg_playback',settle=600)
-    shot(p,'drummer','fills','SRC a third time: FILLS.',r)
+    shot(p,'drummer','next','SRC a third time: NEXT, the orders, nothing armed, the sequencer stopped.',r)
+    enc(p,1,1);enc(p,2,3);enc(p,3,1);p.run(400)
+    shot(p,'drummer','next-ready','NEXT: STOP, FILL+CR, a TRIP fill set, each marked * while it waits for WHEN.',r)
+    p.press('play',settle=2600)
+    shot(p,'drummer','next-playing','PLAY: the phrase fills up to the playhead, bar 2 of 4.',r)
+    enc(p,0,4);enc(p,0,4);enc(p,0,4);p.run(800)   # WHEN: four detents a value, PHRASE
+    shot(p,'drummer','next-armed','A WHEN on PHRASE, the knob at rest: the order armed, ^ where it fires, the beats to go.',r)
+    p.run(3800)
+    shot(p,'drummer','next-close','The last beat before the phrase: the armed values blink.',r)
+    p.run(1500)
+    shot(p,'drummer','next-stopped','Done: the drummer stopped, WHEN back to --, B now reads RESUME.',r)
+    p.press('stop',settle=300);p.press('stop',settle=300)
     p.press('pg_playback',settle=600)
     p.key('trig1',True);p.run(200);p.press('bank',settle=200);p.key('trig1',False);p.run(800)
     shot(p,'drummer','kit-zones','Trig 1 held + BANK: the KIT window, page 1 (zone, role).',r)
@@ -214,12 +225,16 @@ def capture_drummer(p,r):
     shot(p,'drummer','kit-track','KIT window page 3: the track\'s settings.',r)
     enc(p,5,1);p.run(600)
     shot(p,'drummer','redrum','Page 3, F turned once: REDRUM AUTO, the loop read as 1 bar of 16 slices.',r)
+    p.press('right',settle=600)
+    shot(p,'drummer','kit-fills','KIT window page 4: FILLS, the fills\' vocabulary (all AUTO).',r)
+    enc(p,0,2);enc(p,3,1);enc(p,5,2);p.run(600)
+    shot(p,'drummer','kit-fills-set','FILLS: RUDI, its first sticking, 6LET triplets (boxed: set by hand).',r)
     p.press('no',settle=600)
 
 
 def capture_features(p,r):
     p.chord('t1','page')
-    shot(p,'euclid-fill','fill','Euclidean trig fill: STEPS, PULSE, ROT, RAND VEL, RAND PTCH.',r)
+    shot(p,'seq','panel','SEQ: ring icon + LEN, stock 3×2 PULSE/ROT / DEST/DEPTH (C/F empty), 4×16 step squares.',r)
     close(p)
     p.chord('func','recab');enc(p,3,12);close(p)
     p.chord('func','recab')
@@ -525,7 +540,7 @@ def main():
             # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist, and
             # LOAD METER declares a conflict with STEM REC (11 Oct 2026); its screens are the bus group's.
             scratch=OUT/'features.py'
-            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k not in ("REC_TRIG_MUTE","LOAD METER"))+("REC THRESHOLD","EUCLID FILL","RND NAME","STEM REC"),window=tuple(w for w in base.window if not w[0].startswith("LOAD METER")))\n')
+            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k not in ("REC_TRIG_MUTE","LOAD METER"))+("REC THRESHOLD","SEQ","RND NAME","STEM REC"),window=tuple(w for w in base.window if not w[0].startswith("LOAD METER")))\n')
             jobs=[('../out/manual-captures/features',capture_features,[])]
         elif group=='inserts':
             assignments=[(1,'fx1','SPECTRUM'),(2,'fx1','CHARACTER'),(3,'fx1','MODULATION'),(4,'fx2','DELAY')]

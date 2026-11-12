@@ -44,7 +44,7 @@ une simple piste FLEX.
 ## Où le trouver
 
 DRUMMER est dans le remix de test `drummer`. Il a besoin de STORE (les kits
-sont enregistrés avec le projet) et de PAGES (KIT BALANCE et FILLS). Les
+sont enregistrés avec le projet) et de PAGES (KIT BALANCE et NEXT). Les
 huit pistes peuvent être des pistes DRUMMER, chacune avec son kit.
 
 ## Démarrage rapide
@@ -77,16 +77,16 @@ caisse claire).
 ## Les pages
 
 Une piste DRUMMER a cinq écrans à elle. **SRC** fait défiler les trois
-premiers (LIVE, KIT BALANCE, FILLS) ; **FUNC + SRC** ouvre CONFIG ; **une
+premiers (LIVE, KIT BALANCE, NEXT) ; **FUNC + SRC** ouvre CONFIG ; **une
 touche de trig maintenue + BANK** ouvre la fenêtre KIT.
 
 | écran | ouverture | contenu |
 |---|---|---|
 | LIVE | SRC | les six potentiomètres de jeu : SEED DENS CPLX ORN BRK GHST |
 | KIT BALANCE | SRC à nouveau | combien joue chaque groupe d'éléments |
-| FILLS | SRC une troisième fois | les fills, réglés à la main |
+| NEXT | SRC une troisième fois | des ordres sur le temps : arrêter, reprendre, un fill, un style, un break |
 | CONFIG | FUNC + SRC | le style et le feeling : STYL VEL ALT SWNG HUMN VAR |
-| Fenêtre KIT | maintenir un trig, appuyer sur BANK | le kit : l'élément, le niveau et le calage de chaque slice ; les réglages de la piste et REDRUM |
+| Fenêtre KIT | maintenir un trig, appuyer sur BANK | le kit : l'élément, le niveau et le calage de chaque slice ; les réglages de la piste et REDRUM ; les fills |
 
 ### LIVE : les potentiomètres de jeu
 
@@ -176,38 +176,61 @@ milieu.
 KIT BALANCE est enregistré dans la Part : chaque Part a son mélange, et un
 changement de Part l'amène. Les trigs de la piste jouent toujours.
 
-### FILLS : les fills à la main
+### NEXT : des ordres sur le temps
 
-![FILLS](../../docs/site/img/drummer/fills.png)
+![NEXT, un ordre armé](../../docs/site/img/drummer/next-armed.png)
 
-Six choix, chacun commençant par AUTO (AUTO laisse le style, VAR et ORN
-décider) :
+NEXT donne un ordre au batteur, comme un chef d'orchestre : « à la
+prochaine phrase, un fill en triolets, et on coupe ». L'ordre attend le
+temps, la mesure ou la phrase choisis et s'exécute exactement là, que tu
+aies tourné le potard tôt ou tard. Les six cases sont disposées comme les
+potentiomètres : A B C en haut, D E F en bas.
 
-| potard | choix |
-|---|---|
-| **A FILL** | le type de chaque fill : WRIT (le fill écrit du style), RUDI (rudiments), TRIP (triolets), 3:4 (groupes de trois sur quatre) |
-| **B FREQ** | quand : AUTO (les fills de BRK, et ceux de VAR), BRK (seulement quand BRK le demande), 2BAR (ceux de BRK, une mesure sur deux), PHRS (ceux de BRK, en fin de phrase) |
-| **C LONG** | combien de temps : AUTO (la zone de BRK décide), 1BT, 2BT, BAR |
-| **D STIK** | un doigté du type choisi en A (`--` tant que A est sur AUTO ou WRIT) |
-| **E ORCH** | quels éléments : TOMS (main droite autour des toms, gauche sur la caisse claire), SNR (tout sur la caisse claire), SWAP |
-| **F TRIP** | les triolets : 8TH (triolets de croches), 6LET (sextolets), 8>6 (des croches qui passent en sextolets sur le dernier temps). Réglé alors que A est sur AUTO, les fills passent en triolets |
+| potard | rôle | valeurs |
+|---|---|---|
+| **A WHEN** | envoie l'ordre | `--` (rien d'armé), BEAT, BAR, PHRASE, 2 PHR |
+| **B RUN** | arrêter ou reprendre | `--`, STOP (les trigs de la piste jouent encore), SILENT (eux aussi se taisent) ; batteur arrêté, la case affiche RESUME |
+| **C HOW** | comment il s'arrête ou revient | DRY (sec), CRASH (une crash sur le 1), FILL (un fill qui finit sur le 1), FILL+CR, PICKUP (une levée d'un demi-temps ; à la reprise, puis la crash) |
+| **D FILL** | le fill de l'ordre (joué même avec B sur `--`) | `--`, TRIP, 6LET, RUDI, 3:4, LONG (une mesure entière) |
+| **E STYL** | un autre style à partir du 1 | `--` ou un style ; gardé jusqu'à ce que tu tournes STYL dans CONFIG |
+| **F BRK** | un break à partir du 1 | `--`, 1 BEAT, 2 BEATS, BAR (les coupes de BRK), STUTTER (une mesure de bégaiement) |
 
-Les doigtés (D) : rudiments SNGL coups simples, DBLE coups doubles, PARA
-paradiddle, INVP paradiddle inversé, PDDL paradiddle-diddle, SIXS
-roulement de six, DPAR double paradiddle, LIN3 / LIN4 linéaire avec le
-kick, FTAP flam tap, DRAG single drag tap, RTMQ ratamacue, FIVE roulement de
-cinq ; triolets TRPL coups simples, RLL, SIXS six coups, PDDL
-paradiddle-diddle, LIN linéaire, SWIS swiss army triplet, FACC flam accent ;
-3:4 TSS (tom caisse caisse), LIN, KSS (kick caisse caisse), FSS (fla caisse
-caisse).
+**A demande quatre crans par valeur et s'arme quand le potard s'arrête**
+(une demi-seconde) : un petit mouvement ne change rien, et passer par BEAT
+pour aller sur PHRASE envoie PHRASE, pas BEAT. **Seul A revient à `--`.**
+Règle B à F une fois ; chaque tour de A renvoie
+le même ordre (STOP, puis RESUME, puis STOP...). Une `*` marque les cases
+réglées qui attendent A. Remets A à `--` avant l'exécution pour annuler.
 
-FILLS est enregistré dans la Part, comme KIT BALANCE. Modifié pendant que
-le pattern joue, le fill suivant en tient compte.
+![NEXT : l'ordre préparé, en attente de WHEN](../../docs/site/img/drummer/next-ready.png)
+
+En haut de la page : l'état du batteur (PLAYING, STOPPED) et ce que fera
+l'ordre armé, la mesure de la phrase à droite ; dessous, la phrase sur toute
+la largeur, une case par mesure, qui se remplit avec la tête de lecture ;
+une marque sous l'endroit où l'ordre s'exécute, et les temps restants à
+côté. Les valeurs de l'ordre passent en inversé quand il est
+armé et clignotent pendant les quatre derniers temps. À l'exécution, la
+ligne flashe et A revient à `--`.
+
+![NEXT : le dernier temps avant l'ordre](../../docs/site/img/drummer/next-close.png)
+
+![NEXT : l'ordre exécuté, le batteur arrêté](../../docs/site/img/drummer/next-stopped.png)
+
+À l'arrêt, le batteur continue de compter en silence : une reprise retombe
+dans le groove, sur le 1. Un fill (C sur FILL, FILL+CR ou PICKUP, ou D
+réglé) demande un ordre sur le 1 d'une mesure : avec A sur BEAT au milieu
+d'une mesure, l'ordre s'exécute sans son fill. Le fill dure ce que dit LONG
+dans FILLS (fenêtre KIT page 4), un temps sur AUTO, une mesure avec D LONG.
+
+Armé séquenceur arrêté, un ordre s'exécute au premier pas : un STOP armé
+avant PLAY lance le pattern sans le batteur, prêt à entrer au prochain
+ordre. B à F sont enregistrés dans la Part ; A ne l'est pas (un ordre est un
+geste : un projet se charge toujours sans rien d'armé).
 
 ### La fenêtre KIT
 
 Maintiens n'importe quelle **touche de trig** et appuie sur **BANK** (BANK
-seul choisit toujours une banque). Une ligne par slice, trois pages :
+seul choisit toujours une banque). Une ligne par slice, quatre pages :
 **LEFT / RIGHT** changent de page, **UP / DOWN** passent d'une slice à
 l'autre et la jouent, une **touche de trig** saute à cette slice et la joue,
 **YES** ou **NO** ferme. **FUNC + RIGHT** refait le kit d'après le son
@@ -265,6 +288,35 @@ l'autre et la jouent, une **touche de trig** saute à cette slice et la joue,
 SIMILAR et COPIES s'appliquent au prochain AUTO. Le kit, GAIN, ALIGN,
 SCENE, DOSE et les réglages de la page 3 sont enregistrés avec le projet,
 par piste.
+
+**Page 4 : FILLS, le vocabulaire des fills.**
+
+![Fenêtre KIT, page 4](../../docs/site/img/drummer/kit-fills-set.png)
+
+Six choix, chacun commençant par AUTO (AUTO laisse le style, VAR et ORN
+décider). Une case pleine marque un choix fait à la main :
+
+| potard | choix |
+|---|---|
+| **A FILL** | le type de chaque fill : WRIT (le fill écrit du style), RUDI (rudiments), TRIP (triolets), 3:4 (groupes de trois sur quatre) |
+| **B FREQ** | quand : AUTO (les fills de BRK, et ceux de VAR), BRK (seulement quand BRK le demande), 2BAR (ceux de BRK, une mesure sur deux), PHRS (ceux de BRK, en fin de phrase) |
+| **C LONG** | combien de temps : AUTO (la zone de BRK décide), 1BT, 2BT, BAR |
+| **D STIK** | un doigté du type choisi en A (`--` tant que A est sur AUTO ou WRIT) |
+| **E ORCH** | quels éléments : TOMS (main droite autour des toms, gauche sur la caisse claire), SNR (tout sur la caisse claire), SWAP |
+| **F TRIP** | les triolets : 8TH (triolets de croches), 6LET (sextolets), 8>6 (des croches qui passent en sextolets sur le dernier temps). Réglé alors que A est sur AUTO, les fills passent en triolets |
+
+Les doigtés (D) : rudiments SNGL coups simples, DBLE coups doubles, PARA
+paradiddle, INVP paradiddle inversé, PDDL paradiddle-diddle, SIXS
+roulement de six, DPAR double paradiddle, LIN3 / LIN4 linéaire avec le
+kick, FTAP flam tap, DRAG single drag tap, RTMQ ratamacue, FIVE roulement de
+cinq ; triolets TRPL coups simples, RLL, SIXS six coups, PDDL
+paradiddle-diddle, LIN linéaire, SWIS swiss army triplet, FACC flam accent ;
+3:4 TSS (tom caisse caisse), LIN, KSS (kick caisse caisse), FSS (fla caisse
+caisse).
+
+FILLS est enregistré dans la Part, comme KIT BALANCE. Modifié pendant que
+le pattern joue, le fill suivant en tient compte. Pour un seul fill
+différent de ceux-ci, utilise D FILL dans NEXT.
 
 ## Comment le kit est fait
 
@@ -346,13 +398,26 @@ tourne BRK à 56 (une mesure de fill) ou 110 (bégaiements) ; SCENE A garde
 BRK à 0. Le crossfader fait alors passer le batteur du groove au break et
 retour, et un fill d'un temps ou plus retombe sur une crash.
 
-**Des fills seulement quand tu veux.** FILLS : FREQ sur BRK (aucun fill
+**Des fills seulement quand tu veux.** Fenêtre KIT page 4 (FILLS) : FREQ sur BRK (aucun fill
 sauf si BRK le demande), LONG 1BT ; une scène avec BRK 40 au crossfader
 donne alors un fill d'un temps à la demande. FREQ 2BAR ou PHRS : une mesure
 sur deux, ou en fin de phrase.
 
-**Des fills en triolets.** FILLS : TRIP 6LET (sextolets), FILL sur AUTO ou
-TRIP.
+**Des fills en triolets.** Fenêtre KIT page 4 (FILLS) : TRIP 6LET
+(sextolets), FILL sur AUTO ou TRIP.
+
+**Une fin de morceau.** NEXT : B STOP, C FILL+CR, D LONG. Vers la fin, tourne
+A sur PHRASE : une mesure de fill, une crash sur le 1 de la phrase suivante,
+puis le silence. A encore sur PHRASE (B affiche maintenant RESUME), C
+PICKUP : le batteur revient sur une levée et une crash.
+
+**Couper la batterie une mesure.** NEXT : B STOP, C DRY. A sur BAR arrête à
+la mesure suivante ; A sur BAR encore la fait revenir à celle d'après. Avec
+B SILENT, les trigs de la piste se taisent aussi.
+
+**Changer de style sur la phrase.** NEXT : E sur le style suivant, B `--`.
+A sur PHRASE : le nouveau style dès le 1 de la phrase ; tourner STYL dans
+CONFIG rend la main au potentiomètre.
 
 **Une slice, un effet.** Fenêtre KIT page 2 : donne SCN 9 au charley
 ouvert, et sur la scène 9 verrouille le filtre de la piste ; le charley
@@ -392,13 +457,17 @@ Il te faut une boucle de batterie d'une ou deux mesures sur la carte.
    LIVE : GHST 50, ORN 32. La caisse claire traîne, les charleys swinguent,
    les ghosts et les flas arrivent.
 7. **Mixer les éléments.** SRC encore (KIT BALANCE). Charleys à `-40`, kick
-   à `+20`. SRC encore (FILLS) : FILL RUDI, ORCH TOMS.
+   à `+20`. Fenêtre KIT page 4 (FILLS) : FILL RUDI, ORCH TOMS.
 8. **Les breaks.** Maintiens SCENE B et tourne BRK à 56 sur LIVE ; relâche.
    Maintiens SCENE A, BRK 0. Pousse le crossfader vers B vers la fin d'une
    mesure : un fill aux toms, qui retombe sur une crash. Sur une deuxième
    scène, BRK 110 : des bégaiements.
-9. **Enregistrer.** SAVE PROJECT garde le kit, les potentiomètres, KIT
-   BALANCE et FILLS. Fenêtre KIT page 3, E : le fichier de kit, pour que
+9. **Arrêter sur la phrase.** SRC encore (NEXT) : B STOP, C FILL+CR.
+   Tourne A sur PHRASE : le compte à rebours défile, un fill, une crash sur
+   le 1, le silence. A encore sur PHRASE : le batteur revient à la phrase
+   suivante.
+10. **Enregistrer.** SAVE PROJECT garde le kit, les potentiomètres, KIT
+   BALANCE, FILLS et les ordres de NEXT. Fenêtre KIT page 3, E : le fichier de kit, pour que
    cette boucle n'ait plus jamais besoin de la question.
 
 ## Tuto 2 : REDRUM, re-jouer ton break
@@ -428,7 +497,7 @@ Il te faut une boucle dont tu aimes le groove, découpée un coup par slice.
    charleys house sur les pas qu'elle laisse libres. DENS 30 : une version
    clairsemée.
 6. **Fills et breaks.** STYL choisit la couleur des fills (ROCK, FUNK,
-   JUNG...). FILLS : TRIP 6LET pour des fills en sextolets. Mets BRK 56 sur
+   JUNG...). Fenêtre KIT page 4 (FILLS) : TRIP 6LET pour des fills en sextolets. Mets BRK 56 sur
    une scène pour une mesure de fill au crossfader, BRK 110 pour des
    bégaiements ; un fill retombe sur une crash.
 7. **Le feeling.** VEL 60 redonne des nuances sur les temps ; GHST 40

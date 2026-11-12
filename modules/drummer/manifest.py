@@ -39,7 +39,7 @@ MODULE = Module(
     proof_note="the author's MKII, images 52-78 (Nov 2026; REDRUM images 77-78, 9 Nov 2026); "
                "verify_port.py (12 cases, the firmware plays what the engine "
                "says, step by step), verify_store.py (drummer.work saved and read back), verify_drk.py (the kit file beside the sample), "
-               "verify_kitmaker.py, verify_autokit.py, verify_live2.py",
+               "verify_kitmaker.py, verify_autokit.py, verify_live2.py, verify_next.py (NEXT's orders on the beat)",
     doc="DRUMMER machine: a sliced FLEX drum loop played as a drummer (styles, humanisation, BRK breaks on the crossfader).",
     requires=("STORE",),                # drummer.work (store.c), client 8
     linked=(Linked("drummer", "modules/drummer/drummer_unit.s", cpu="5475", dram=True),),

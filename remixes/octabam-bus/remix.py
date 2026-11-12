@@ -1,7 +1,7 @@
 """octabam-bus -- the core ColdFire modules plus the delay and reverb bus.
 
 CORE and the extra ColdFire modules of octabam (OCTA303, MORPH, REC THRESHOLD, BUFFER SAVER,
-COPY PROJECT, EUCLID FILL, FX2 LOCK, TRACK PATTERNS, SCALES, VARISPEED, CHORDS FACTORY
+COPY PROJECT, SEQ, FX2 LOCK, TRACK PATTERNS, SCALES, VARISPEED, CHORDS FACTORY
 with PAGES, SCREEN, SLOW LFO, BAR LED, REC CS1 SKIP) with the bus effects: BusDelay on T1's FX2, BusVerb on T5's FX2,
 SEND on every other track's FX2, the stock DELAY on T8, TEMPO SYNC, TEMPO BUS, MODE
 DEFAULTS, RIG HOSTS and FX2 LOCK, and LOFI AMF FIX. USB is MAIN CUE.
@@ -24,7 +24,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVEN
 # The ColdFire modules octabam carries beyond CORE (FX2 LOCK is in MODULES below).
 # Added 7 Nov 2026 (each builds beside the rest; not yet soaked here): SCALES and VARISPEED, as in octabam; CHORDS FACTORY with PAGES, the page
 # key it cycles; SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP.
-COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
+COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "SEQ",
             "TRACK PATTERNS", "SCALES", "VARISPEED",
             "CHORDS FACTORY", "PAGES", "SCREEN", "SLOW LFO", "BAR LED", "REC CS1 SKIP")
 
