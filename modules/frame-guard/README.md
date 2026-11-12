@@ -53,7 +53,17 @@ the interval between entries less a frame, floored at 0, modulo a frame;
 DMA timer 3 at 132 MHz). An entry more than 110 and less than 190 µs late
 spins until it is 190 µs late, then the stock handler runs. The DSP then
 skips one frame, as it does without the guard for an entry that late.
-`fg_waits` counts the waits.
+`fg_waits` counts the waits. After the skipped frame the next entry is on
+time: a lateness within 20 µs of a whole frame counts as that frame.
+
+Until 13 Nov 2026 (PR #1093 as merged) that reduction was at exactly one
+grid frame, the lateness after a skip stayed at 362.7 µs, decayed 0.5 µs a
+frame into the window about 0.12 s later, and about 150 on-time entries in
+a row waited up to 80 µs each. A never-freezing frame log caught a stall
+inside such a run of waits (`octabam`, program-change bursts, 20-channel
+capture, 353 s into `kits-identity`); `kits-identity` stalled in 3 of 4
+runs on images with that arithmetic. The unit results in this file were
+taken with it.
 
 Beside LOAD METER or BOOT TRACE, HOOKS owns the site and calls `fg_in`
 before LOAD METER's entry, so LOAD METER's frame time leaves the wait out

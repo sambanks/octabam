@@ -48,6 +48,11 @@ CASES = (
      [(FRAME, False), (FRAME + 149, True), (2 * FRAME - 149, False), (FRAME, False)]),
     ("two late entries in a row: lateness carries", [(FRAME, False), (FRAME + 60, False), (FRAME + 60, True)]),
     ("a gap of five frames is on time", [(FRAME, False), (5 * FRAME + 150, False), (FRAME, False)]),
+    # the lateness after a skipped frame must not decay into the window (13 Nov 2026: it did, 0.12 s later)
+    ("800 on-grid entries after a guarded entry and its skipped frame",
+     [(FRAME, False), (FRAME + 149, True), (2 * FRAME - 149, False)] + [(FRAME, False)] * 800),
+    ("800 on-grid entries after an entry 250 us late and its skipped frame",
+     [(FRAME, False), (FRAME + 250, False), (2 * FRAME - 250, False)] + [(FRAME, False)] * 800),
 )
 
 
@@ -117,8 +122,10 @@ def check(bridged):
             if first or interval > 4 * FRAME:
                 late = 0.0
             else:
-                late = max(0.0, late + interval - 363.33)
-                late -= 363.33 * int(late // 363.33)
+                late = late + interval - 363.33
+                while late >= 363.33 - 20:              # TNEAR: a skipped frame, on time
+                    late -= 363.33
+                late = max(0.0, late)
             first = False
             n0 = r.word("fg_waits")
             left, moved = r.enter(t)
@@ -132,6 +139,7 @@ def check(bridged):
             ok = ok and moved == (-4 if bridged else 252)               # rts popped / the prologue's frame
             if not ok:
                 bad += 1
+            if not ok and bad <= 5:                 # a long sequence fails at every entry: the first few say why
                 print(f"  [FAIL] {'bridged' if bridged else 'alone'}: {name}: entry {late:.1f} us late, "
                       f"waited {waited}, spent {spent:.1f} us, sp moved {moved}")
     print(f"  [{'FAIL' if bad else ' OK '}] FRAME GUARD {'bridged by HOOKS' if bridged else 'alone'}: "
