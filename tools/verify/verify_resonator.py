@@ -169,21 +169,20 @@ def _rail_frac(L, R):
     return hit / n
 
 
-# SCAL 8 + every other knob max, ~3 s / 0.25 FS: rail fraction must stay low
-# (can fail). SCAL 127 hard-clips at ordinary levels — documented in README;
-# that case only checks no runaway growth.
+# SCAL 8 + every other knob max, LIM 0: rail fraction must stay low.
+# SCAL 127 + LIM 1: smash caught under ~0.8 FS.
 N_LONG = int(3.0 * FS)
 N_LONG -= N_LONG % FRAMES
 drive = tone(220, N_LONG, amp=0.25)
 Ltame, Rtame = render(
-    drive, MIX=127, SCAL=8, DECY=127,
+    drive, MIX=127, SCAL=8, LIM=0, DECY=127,
     GN1=127, GN2=127, GN3=127, GN4=127,
     PIT1=0, PIT2=0, PIT3=127, PIT4=127)
 frac_tame = _rail_frac(Ltame, Rtame)
 check(f"SCAL8 max-knob rail frac {frac_tame:.1%} < 5%", frac_tame < 0.05)
 
 Lmax, Rmax = render(
-    drive, MIX=127, SCAL=127, DECY=127,
+    drive, MIX=127, SCAL=127, LIM=1, DECY=127,
     GN1=127, GN2=127, GN3=127, GN4=127,
     PIT1=0, PIT2=0, PIT3=127, PIT4=127)
 half = len(Lmax) // 2
@@ -191,6 +190,12 @@ e0 = sum(abs(x) for x in Lmax[:half]) / half
 e1 = sum(abs(x) for x in Lmax[half:]) / half
 check(f"max-knob no runaway (late/early={e1 / e0 if e0 else 0:.2f} < 4)",
       e0 > 0 and e1 < e0 * 4)
+# Skip first block (g from level_s=0).
+p127 = max(max(abs(x) for x in Lmax[FRAMES:]), max(abs(x) for x in Rmax[FRAMES:]))
+frac127 = _rail_frac(Lmax[FRAMES:], Rmax[FRAMES:])
+check(f"SCAL127+LIM1 peak under ceiling ({p127} <= {int(0.8 * RAIL)})",
+      p127 <= int(0.8 * RAIL))
+check(f"SCAL127+LIM1 rail frac {frac127:.1%} < 5%", frac127 < 0.05)
 
 # Two FX1 instances, same knobs: both produce audio (rail fraction is the
 # one-instance SCAL8 gate above; stacking can clip harder at the same amp).
