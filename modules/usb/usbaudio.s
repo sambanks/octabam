@@ -68,6 +68,7 @@
 .set SETUP_BREQ,     0x46c8ce09     | SETUP bRequest
 .set SETUP_WVALL,    0x46c8ce0a     | SETUP wValue low
 .set SETUP_WVALH,    0x46c8ce0b     | SETUP wValue high = control selector
+.set RMT_BYTES,      32+256*8       | REMOTE's block: a 32-byte header, 256 records (modules/remote/remote.s)
 .set SETUP_WIDXL,    0x46c8ce0c     | SETUP wIndex low
 .set SETUP_WIDXH,    0x46c8ce0d     | SETUP wIndex high = entity id
 .set EP0_SEND_TAIL,  0x4001de5c     | jsr usb_ep0_send(len, buf); addq; done
@@ -1926,7 +1927,7 @@ audio_ctrl_shim:
     | from the new offset.
 .Lctrl_lm:
     cmpil   #0x57,%d0
-    bne     .Lctrl_stock
+    bne     .Lctrl_rmt
     lea     %sp@(-12),%sp
     movem.l %d3/%a2-%a3,%sp@
     mvzb    SETUP_WVALL,%d0
@@ -1953,10 +1954,14 @@ audio_ctrl_shim:
     bcc     9f                      | at or past its end
     subl    %d0,%d1                 | bytes left
     addl    %d0,%d3                 | source
+.Lctrl_blk:
     cmpl    %d2,%d1                 | min(wLength, bytes left)
     bls     4f
     movel   %d2,%d1
-4:  tstl    %d1
+4:  cmpil   #256,%d1                | lm_reply's size (REMOTE's block is longer)
+    bcss    8f
+    movel   #255,%d1
+8:  tstl    %d1
     beqs    5f
     movel   %d1,%d0
     andil   #63,%d0
@@ -1977,6 +1982,58 @@ audio_ctrl_shim:
 9:  movem.l %sp@,%d3/%a2-%a3
     lea     %sp@(12),%sp
     bra     .Lctrl_stock
+    | 0xc0/0x5a reads REMOTE's ring (modules/remote: a 32-byte header, 256 records of
+    | 8 bytes) from byte offset wValue, at most 255 bytes a reply; it STALLs
+    | without REMOTE and at or past the block's end.
+.Lctrl_rmt:
+    cmpil   #0x5a,%d0
+    bne     .Lctrl_peek
+    lea     %sp@(-12),%sp
+    movem.l %d3/%a2-%a3,%sp@
+    movel   #RMT_RING,%d3
+    beqs    9b
+    mvzb    SETUP_WVALH,%d0
+    lsll    #8,%d0
+    mvzb    SETUP_WVALL,%d1
+    orl     %d1,%d0                 | byte offset into the block
+    movel   #RMT_BYTES,%d1
+    cmpl    %d1,%d0
+    bcc     9b
+    subl    %d0,%d1                 | bytes left
+    addl    %d0,%d3                 | source
+    bra     .Lctrl_blk
+    | 0xc0/0x58 PEEK (with REMOTE): memory from the address wValue:wIndex,
+    | read-only, inside one window of peek_tab (SDRAM's cached view, the
+    | on-chip SRAM, CS1); at most 255 bytes a reply and never past the
+    | window's end. Any other address STALLs: no peripheral, no flash.
+.Lctrl_peek:
+    cmpil   #0x58,%d0
+    bne     .Lctrl_stock
+    lea     %sp@(-12),%sp
+    movem.l %d3/%a2-%a3,%sp@
+    movel   #RMT_RING,%d0
+    tstl    %d0
+    beq     9b
+    mvzb    SETUP_WVALH,%d3
+    lsll    #8,%d3
+    mvzb    SETUP_WVALL,%d0
+    orl     %d0,%d3
+    swap    %d3                     | wValue = the address's high word
+    mvzb    SETUP_WIDXH,%d0
+    lsll    #8,%d0
+    orl     %d0,%d3
+    mvzb    SETUP_WIDXL,%d0
+    orl     %d0,%d3
+    lea     peek_tab,%a2
+1:  movel   %a2@+,%d0               | a window's start; 0 ends the table
+    beq     9b
+    movel   %a2@+,%d1               | its end
+    cmpl    %d0,%d3
+    bcss    1b
+    cmpl    %d1,%d3
+    bccs    1b
+    subl    %d3,%d1                 | bytes left in the window
+    bra     .Lctrl_blk
 .Lctrl_class:
     cmpil   #0x21,%d0               | class SET, interface recipient
     beq     .Lctrl_set
@@ -2134,6 +2191,10 @@ aud_step:          .long STEP_HS    | frames per packet x1000, set by the speed
     .global aud_ring, aud_sum
 aud_sum:           .space AUD_FRAMES*SUM_BYTES   | 1024 x stereo sum (the priority pair)
     .balign 4
+peek_tab:          .long 0x40000000, 0x48000000    | SDRAM, cached view
+                   .long 0x80000000, 0x80008000    | on-chip SRAM
+                   .long 0x10000000, 0x10100000    | CS1
+                   .long 0
 lm_reply:          .space 256       | 0xc0/0x57's reply, written only through the uncached alias
 usbaudio_alt:      .byte 0          | alt setting the host asked for
 uac2_set_pending:  .byte 0          | a clock SET CUR's data stage is primed

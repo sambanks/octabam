@@ -188,6 +188,7 @@ FRAME_ENTRY = (
     ("BOOT TRACE", "tr_frame"),
     ("FRAME GUARD", "fg_in"),                    # before LOAD METER: the demand loader's pump runs after the wait
     ("LOAD METER", "lm_in"),
+    ("REMOTE", "rmt_in"),                           # last: LOAD METER's duration includes the watch
 )
 BOOT = (
     ("BOOT TRACE", "tr_dsp_done"),
