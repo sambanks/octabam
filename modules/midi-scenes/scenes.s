@@ -36,6 +36,8 @@
 |   B29 0x40062f24 0x40062fbe  CLEAR / COPY / PASTE SCENE rows
 |       0x40062e3c
 |   B30 0x400434ca             encoder press, MIDI mode: overlay refresh
+|       0x40055670             MIDI key with a scene held: the lock view
+|                              of the new mode (not in MIDISC2.1)
 |
 | B9 (scene pad release) is stock's own sequence at 0x40054cb6..0x40054cd2
 | and needs no site. Not here: B10, B12..B28, B31..B33.
@@ -60,6 +62,7 @@
         .set    PART_LIVE,      0x8f162         | bank: MIDI track params, 32 B per track
         .set    MIDI_MODE,      0x80000012      | long: nonzero in MIDI track mode
         .set    SCENE_HELD,     0x460d169c      | long: 1 scene A held, 2 scene B held
+        .set    SCENE_VIEW,     0x460d1694      | long: the audio lock view, 1 scene A, 2 scene B, 0 none
         .set    PAGE_MODE,      0x460d1684      | long: 0 NOTE .. 4 CTRL2
         .set    XF_RAM,         0x460d16c8      | long: crossfader position
         .set    PART_DISP,      0x100b14cf      | byte: displayed Part
@@ -444,6 +447,30 @@ scn_press:
         addql   #4,%sp
 1:      movel   %sp@+,%d2
         jmp     0x4007e8d8
+
+| 0x40055670: `jmp 0x4007e998`, the MIDI key handler's tail (0x40055548:
+| the mode long flipped, the page redrawn). A scene press on the audio side
+| sets SCENE_VIEW to the held scene (stock 0x40054c80 / 0x40054c5c, which
+| return at once in MIDI mode) and the lock cells and the XLV header read
+| it; nothing else sets it, so a scene pressed on the MIDI side and held
+| across MIDI drew the audio page with no locks (stock does the same). With
+| a scene held the view becomes what a fresh press leaves in the new mode:
+| the held scene on the audio side, 0 on the MIDI side; the overlay redraws.
+scn_mkey:
+        lea     %sp@(-16),%sp
+        movem.l %d0-%d1/%a0-%a1,%sp@
+        movel   SCENE_HELD,%d0
+        beq.s   9f
+        tstl    MIDI_MODE
+        beq.s   1f
+        moveq   #0,%d0
+1:      movel   %d0,SCENE_VIEW
+        pea     0xffffffff
+        jsr     UI_OVERLAY
+        addql   #4,%sp
+9:      movem.l %sp@,%d0-%d1/%a0-%a1
+        lea     %sp@(16),%sp
+        jmp     0x4007e998
 
 | 0x40052a10, 0x40052ae0: `jmp 0x4007e8d8` at the end of the scene recall
 | paths: the mix at the current XF, in any mode.

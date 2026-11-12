@@ -31,6 +31,11 @@ Scenarios (all start: NO for the date prompt, MIDI, T1, FX1 = CTRL1):
   b29copy  b1, SCENE A held + REC (copy), SCENE B held + STOP (paste),
            then the fader 1 / 255.
   b29clear b1, SCENE A held + PLAY (clear), then the fader 1 / 255.
+  hm, ha, hb  a scene held while MIDI switches the track mode (hm: A, audio
+           -> MIDI; ha: A, MIDI -> audio; hb: B, MIDI -> audio), over a
+           lock on each side (held_base); each against its _ref run, the
+           same scene pressed fresh in the new mode: LCD plane, LED rows and
+           levels equal (ours only; stock's result printed as information).
 
 Per scenario, against the oracle (PASS needs all of them):
 
@@ -176,7 +181,43 @@ def b29clear(s):
     b1(s); s.chord("scene_a", "play"); sweep(s, (1, 255))
 
 
-SCENARIOS = dict(b1=b1, b2=b2, b7=b7, b7play=b7play, b3=b3, b29copy=b29copy, b29clear=b29clear)
+def held_base(s):
+    """b1, then MIDI (to the audio tracks), T1, FX1, SCENE A held + knob D +20:
+    scene A has a lock on each side, scene B a MIDI lock only."""
+    b1(s); s.tap("midi", 300); s.tap("t1", 300); s.tap("fx1", 400); s.turn("scene_a", 3, 20)
+
+
+def held(scene, then_midi):
+    """held_base; MIDI then_midi times (0: stay on the audio side, 1: to the MIDI side);
+    the scene pressed and held; MIDI once more while it is held."""
+    def f(s):
+        held_base(s)
+        for _ in range(then_midi):
+            s.tap("midi", 600)
+        s.send(f"key {K[scene]:#x} down", 600); s.tap("midi", 1500)
+    return f
+
+
+def fresh(scene, midi_taps):
+    """held_base; MIDI midi_taps times; then the scene pressed and held: the reference."""
+    def f(s):
+        held_base(s)
+        for _ in range(midi_taps):
+            s.tap("midi", 600)
+        s.send(f"key {K[scene]:#x} down", 1500)
+    return f
+
+
+SCENARIOS = dict(b1=b1, b2=b2, b7=b7, b7play=b7play, b3=b3, b29copy=b29copy, b29clear=b29clear,
+                 hm=held("scene_a", 0), hm_ref=fresh("scene_a", 1),
+                 ha=held("scene_a", 1), ha_ref=fresh("scene_a", 2),
+                 hb=held("scene_b", 1), hb_ref=fresh("scene_b", 2))
+# A scene held while MIDI switches the track mode (hm: audio -> MIDI; ha, hb:
+# MIDI -> audio): the end-of-scenario LCD plane and LEDs must be the ones a
+# fresh press of that scene in the new mode leaves (the _ref run). Stock and
+# MIDISC2.1 leave the audio side without its lock view (scenes.s, scn_mkey):
+# ours only, stock reported as information.
+HELD_SWITCH = dict(hm="hm_ref", ha="ha_ref", hb="hb_ref")
 
 # What each scenario must put on the wire, from the lock values and the
 # lerp: the CC 1 messages (`ba 01 vv`), in order. 69 = (40*64 + 100*63) / 127.
@@ -846,6 +887,15 @@ def main():
         check(f"{t}: ours ran ({len(o['midi'] or [])} MIDI messages, table {'read' if o['msc'] else 'MISSING'})",
               o["midi"] is not None and o["msc"] is not None and o["trk"] is not None)
         if o["msc"] is None or o["midi"] is None:
+            continue
+        if t in HELD_SWITCH or t in HELD_SWITCH.values():
+            for name in [n for n in ("ours", "stock") if n in res] if t in HELD_SWITCH else ():
+                x, y = res[name][t], res[name].get(HELD_SWITCH[t])
+                ok = bool(x and y and x["screen"] and y["screen"]) and x["screen"] == y["screen"]
+                if name == "ours":
+                    check(f"{t}: the LCD and LEDs equal a fresh press in the new mode ({HELD_SWITCH[t]})", ok)
+                else:
+                    print(f"  [info] {t}: {name}: the screen {'equals' if ok else 'differs from'} {HELD_SWITCH[t]}'s")
             continue
         cc1 = [int(m.split()[2], 16) for _f, m in o["midi"] if m.startswith("ba 01 ")]
         check(f"{t}: CC 1 on the wire {cc1} (predicted {WIRE_CC1[t]})", cc1 == WIRE_CC1[t])

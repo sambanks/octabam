@@ -23,3 +23,6 @@ CLEAR, COPY and PASTE SCENE carry the MIDI locks with the audio ones.
   current bank's copy survives a power-off.
 - A Kit does not carry a Part's MIDI locks.
 - Page 2 of FX1 and FX2 has its own scene locks (SCENES P2).
+- Holding a scene while pressing MIDI shows that scene's locks for the
+  tracks you switch to, as if you had pressed the scene there (stock does
+  not show them when you switch from the MIDI to the audio tracks).

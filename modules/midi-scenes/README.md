@@ -1,7 +1,7 @@
 # `midi-scenes` — MIDI SCENES
 
 Scene locks for the eight MIDI tracks. `Kind.CF_PATCH`: one linked DRAM
-unit (`scenes.s`), 21 detours and two pokes in the OS, nothing on the DSP,
+unit (`scenes.s`), 32 detours and two pokes in the OS, nothing on the DSP,
 no menu row.
 
 Credit: bkkbrls-del ([midisc](https://github.com/bkkbrls-del/midisc), MIT)
@@ -36,6 +36,7 @@ lock. `flat` is the MIDI page × 6 + knob (NOTE, LFO, ARP, CTRL1, CTRL2;
 | B11 | track `t`'s locks affect track `t` only | phase 1 |
 | B29 | CLEAR / COPY / PASTE SCENE rows carry MSC | phase 1 (the gate scenarios need them) |
 | B30 | encoder press in MIDI mode: overlay refresh | phase 1 |
+| — | MIDI key with a scene held: the new mode's lock view | here only (differences below) |
 | B10, B15–B18, B28 | the mix follows the Part that plays; a panel write re-mixes | `verify_scenes` seq group (`sw`); `swd` measures the same-step re-mix at a DIRECT pattern jump |
 | B12–B14 | trig snapshot as the unlocked side, a trig-locked flat left alone, the CC loop before the note-on | `verify_scenes` seq group (`tg`, `tg2`) |
 | B33 | his crash fixes need no counterpart | the module writes no stock bytes outside its listed detours and two pokes, and its scratch is its own DRAM unit (📖 from the manifest) |
@@ -91,6 +92,7 @@ Paste and bank-copy rows.
 | the scene clipboard starts as zeros | starts as `0xff` | a PASTE SCENE after an audio-only COPY SCENE gives his table zeros (a lock at 0 on every flat), here none |
 | the mix follows the Part the sequencer plays: `engine_follow` reads the engine latch (bank `0x80001828`, Part `0x80001829`) each playback step and re-mixes in the same step | the same latch, read each playback step while SCHED `0x800065b8` is 1, the mix in the same step | `sw`/`swn` match his MIDI out except the switch burst: ours at the take (79 at frame 51,229), his at the sequencer commit (50,490), 739 frames earlier; `tg`/`tg2` match frame for frame; `swd` measures the same-step re-mix at a DIRECT pattern jump |
 | a context key (the sparse blob's contents) decides whether a mix may reuse its state; the XF-changed test runs only once a mix has run | a due flag (set by a target change, a load, a Kit load, Part Clear) and the XF-changed test | the tables are in `scn_lib`, not in a Part blob |
+| a scene pressed on the MIDI tracks and held across MIDI: the audio page shows no locks and LEV, as stock does | the audio page shows the held scene's locks and XLV, as a fresh press does | stock sets the audio lock view (`0x460d1694`: 1 A, 2 B) only in the scene press handlers `0x40054c80` / `0x40054c5c`, which return at once in MIDI mode, and the MIDI key's handler (`0x40055548`) does not set it. `scn_mkey` on the handler's tail sets it as a fresh press in the new mode would (the held scene on the audio side, 0 on the MIDI side) and redraws the overlay. ✅ `verify_scenes` `hm`, `ha`, `hb` under the port, 12 Nov 2026: LCD plane, LED rows and levels equal to a fresh press, and the UI block `0x460d1680..+0x180` equal; stock differs in `ha` and `hb` and matches in `hm` (the MIDI side does not read the view). User report, 12 Nov 2026 |
 | the mix refreshes the MIDI track records' setup bytes (`+0x1e..+0x43`) from the Part | not done | stock's apply already copies them; no scenario differs |
 
 ## Measured
