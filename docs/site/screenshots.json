@@ -807,14 +807,14 @@
       "caption": "RESONATOR: effect selection and setup parameters.",
       "remix": "resonator",
       "source": "emulator panel UART",
-      "firmware_sha256": "3f208b1219b80976754360f3df0ddce569130aad207b4530da43ba17e21c7029"
+      "firmware_sha256": "5651d659e428360cf30e631338f09e9e330a04ab171ce43b77a9f5fca0685e7f"
     },
     "main": {
       "image": "resonator/main.png",
       "caption": "RESONATOR: main parameter page.",
       "remix": "resonator",
       "source": "emulator panel UART",
-      "firmware_sha256": "3f208b1219b80976754360f3df0ddce569130aad207b4530da43ba17e21c7029"
+      "firmware_sha256": "5651d659e428360cf30e631338f09e9e330a04ab171ce43b77a9f5fca0685e7f"
     }
   },
   "distorx": {
