@@ -361,8 +361,12 @@ fl_ui_stub:
         beq     tick
         rts
 tick:
+        .ifdef  HK_UI_TICK              | beside RELOAD_FROM_PROJECT (modules/hooks ui_tick): its
+        jmp     rl_uitick               | tick replays the displaced read and goes on at 0x40056c2e
+        .else
         move.l  0x460d1e6c,%d0          | displaced
         jmp     0x40056c2e
+        .endif
 
 | The recorder routine's setup pointer, 0x40006d1a: `adda.l #0x80000cf4,%a4`
 | displaced (a4 = the track's published RECORDING SETUP, 12 bytes: INAB
