@@ -31,6 +31,12 @@ Scenarios (all start: NO for the date prompt, MIDI, T1, FX1 = CTRL1):
   b29copy  b1, SCENE A held + REC (copy), SCENE B held + STOP (paste),
            then the fader 1 / 255.
   b29clear b1, SCENE A held + PLAY (clear), then the fader 1 / 255.
+  b29acopy b1, MIDI (to the audio tracks), the b29copy copy and paste, MIDI
+           (back), then the fader 1 / 255: the rows carry the MIDI locks
+           from the audio side too (ours only; MIDISC2.1 gates them on MIDI
+           mode, README differences).
+  b29aclear b1, MIDI, the b29clear clear, MIDI, then the fader 1 / 255
+           (ours only).
   hm, ha, hb  a scene held while MIDI switches the track mode (hm: A, audio
            -> MIDI; ha: A, MIDI -> audio; hb: B, MIDI -> audio), over a
            lock on each side (held_base); each against its _ref run, the
@@ -181,6 +187,15 @@ def b29clear(s):
     b1(s); s.chord("scene_a", "play"); sweep(s, (1, 255))
 
 
+def b29acopy(s):
+    b1(s); s.tap("midi", 300); s.chord("scene_a", "rec"); s.chord("scene_b", "stop"); s.tap("midi", 300)
+    sweep(s, (1, 255))
+
+
+def b29aclear(s):
+    b1(s); s.tap("midi", 300); s.chord("scene_a", "play"); s.tap("midi", 300); sweep(s, (1, 255))
+
+
 def held_base(s):
     """b1, then MIDI (to the audio tracks), T1, FX1, SCENE A held + knob D +20:
     scene A has a lock on each side, scene B a MIDI lock only."""
@@ -209,9 +224,13 @@ def fresh(scene, midi_taps):
 
 
 SCENARIOS = dict(b1=b1, b2=b2, b7=b7, b7play=b7play, b3=b3, b29copy=b29copy, b29clear=b29clear,
+                 b29acopy=b29acopy, b29aclear=b29aclear,
                  hm=held("scene_a", 0), hm_ref=fresh("scene_a", 1),
                  ha=held("scene_a", 1), ha_ref=fresh("scene_a", 2),
                  hb=held("scene_b", 1), hb_ref=fresh("scene_b", 2))
+# Scenarios whose rows differ from MIDISC2.1 by design (README, differences):
+# checked against the predicted values only, never against the oracle.
+OURS_ONLY = ("b29acopy", "b29aclear")
 # A scene held while MIDI switches the track mode (hm: audio -> MIDI; ha, hb:
 # MIDI -> audio): the end-of-scenario LCD plane and LEDs must be the ones a
 # fresh press of that scene in the new mode leaves (the _ref run). Stock and
@@ -222,7 +241,15 @@ HELD_SWITCH = dict(hm="hm_ref", ha="ha_ref", hb="hb_ref")
 # What each scenario must put on the wire, from the lock values and the
 # lerp: the CC 1 messages (`ba 01 vv`), in order. 69 = (40*64 + 100*63) / 127.
 WIRE_CC1 = dict(b1=[100], b2=[100], b7=[100, 40, 69, 100, 40], b7play=[100, 40, 69, 100, 40],
-                b3=[100, 40, 69, 100, 40, 0, 100, 0], b29copy=[100, 40], b29clear=[100, 0])
+                b3=[100, 40, 69, 100, 40, 0, 100, 0], b29copy=[100, 40], b29clear=[100, 0],
+                b29acopy=[100, 40], b29aclear=[100, 0])
+# What each scene-row scenario leaves in the lock table (offset: value, the
+# rest 0xff) and the clipboard. Scene A = index 0, scene B = index 8; b1
+# locks flat 21 to 40 in A and 100 in B.
+TABLE = dict(b1={0x015: 40, 0x815: 100}, b7={0x015: 40, 0x815: 100},
+             b29copy={0x015: 40, 0x815: 40}, b29clear={0x815: 100},
+             b29acopy={0x015: 40, 0x815: 40}, b29aclear={0x815: 100})
+CLIP = dict(b29copy={0x15: 40}, b29acopy={0x15: 40}, b29aclear={})
 
 
 def fixture(src, dst):
@@ -899,13 +926,17 @@ def main():
             continue
         cc1 = [int(m.split()[2], 16) for _f, m in o["midi"] if m.startswith("ba 01 ")]
         check(f"{t}: CC 1 on the wire {cc1} (predicted {WIRE_CC1[t]})", cc1 == WIRE_CC1[t])
-        if t in ("b1", "b7"):
-            want = {0x015: 40, 0x815: 100}
+        if t in TABLE:
             held = {i: v for i, v in enumerate(o["msc"]) if v != 0xff}
-            check(f"{t}: lock table holds {held} (predicted {want})", held == want)
+            check(f"{t}: lock table holds {held} (predicted {TABLE[t]})", held == TABLE[t])
+        if t in CLIP:
+            held = {i: v for i, v in enumerate(o["clip"] or b"") if v != 0xff}
+            check(f"{t}: clipboard holds {held} (predicted {CLIP[t]})",
+                  o["clip"] is not None and len(o["clip"]) == CLIP_LEN and held == CLIP[t])
+        if t in ("b1", "b7"):
             check(f"{t}: track record +21 = {o['trk'][21]} (predicted {100 if t == 'b1' else 40})",
                   o["trk"][21] == (100 if t == "b1" else 40))
-        for other in ("his",):
+        for other in (() if t in OURS_ONLY else ("his",)):
             h = res.get(other, {}).get(t)
             if h is None:
                 continue

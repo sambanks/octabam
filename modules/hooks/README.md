@@ -41,6 +41,10 @@ Spec: [docs/specs/HOOKS.md](../../docs/specs/HOOKS.md) — every bridge with its
   with an octave of 2 or 3 left by a BLACKPYRAMIDS track lands on 1, not 0.
   BLACKPYRAMIDS's manifest's conflict with SCALE QUANTIZER named `0x4000e746`, which
   SCALE QUANTIZER no longer claims; its wrapper drops that one conflict.
+- The UI tick (`ui_tick`): under Unicorn, FREE LOOP's `fl_ui_stub` built with `HK_UI_TICK` and
+  RELOAD_FROM_PROJECT's unit linked together: a tick FREE LOOP lets through reaches `rl_uitick`, which
+  reads the toast countdown and goes on at `0x40056c2e`; a tick on which FREE LOOP shows a toast
+  returns to the task loop, as alone (4 cases); in [`test/hooks-reload`](../../remixes/test/hooks-reload/README.md).
 - The boot bridge: under Unicorn, and in [`test/hooks-boot`](../../remixes/test/hooks-boot/README.md)
   (BOOT TRACE beside STORE and MIDI LOOPBACK).
 - Machine rows: under Unicorn, each track's row type (static, FLEX, ANALOG BD,

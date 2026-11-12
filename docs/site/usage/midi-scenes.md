@@ -14,7 +14,10 @@ In MIDI mode (MIDI SEQUENCER), with scene A or B held:
 - Move the crossfader (the panel's or CC 48): each locked parameter goes
   A↔B, and CCs are sent when a value changes.
 
-CLEAR, COPY and PASTE SCENE carry the MIDI locks with the audio ones.
+CLEAR, COPY and PASTE SCENE act on the whole scene, its MIDI locks and its
+audio locks together, whether the audio or the MIDI tracks are shown. The
+locks themselves stay separate: a MIDI lock never moves an audio track, and
+the reverse.
 
 ## Notes
 
