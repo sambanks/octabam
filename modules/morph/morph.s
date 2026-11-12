@@ -46,7 +46,7 @@
         .globl  morph_frame, morph_up, morph_down, mp_keys
 
 | a key record, 0x1a bytes: code, 0, press, release, 16 zero bytes (repeat 0: replaces the layer
-| below's, as stock's and EUCLID FILL's records do)
+| below's, as stock's and SEQ's records do)
         .macro  KEYREC code, press, release
         .byte   \code, 0
         .long   \press, \release
@@ -359,7 +359,7 @@ ms_2:   rts
 
 | ---------------------------------------------------------------- the window
 | [TRACK]+[UP] opens a TEMPO-class window over the page for the tracks held at that moment (the
-| structure of ilia-murzinov's EUCLID FILL, modules/euclid-fill: WCREATE / WFRAME / WDESTROY, an
+| structure of ilia-murzinov's SEQ, modules/seq: WCREATE / WFRAME / WDESTROY, an
 | input layer pushed over everything, the stock text and box routines, y counted up from the
 | bottom). While it is open:
 |   A  STEPS (0 = TRK, the track's length, 1..64)     B  x (1..8)     C  MODE (SMOOTH / HOLD)
@@ -367,7 +367,7 @@ ms_2:   rts
 |   NO or UP  close; releasing every window track key closes it too (a soft timer, ~60 Hz,
 |   watches the held keys and redraws the state and the step when they change).
 | The settings shown are the first window track's; an edit sets every window track to the value.
-| From a key handler, as EUCLID FILL opens its window from the PAGE handler.
+| From a key handler, as SEQ opens its window from the PAGE handler.
 
         .set    WCREATE,  0x4005829c    | (w, h, 0, 0, class, closed) -> window
         .set    WFRAME,   0x40056f4c    | (window)
@@ -756,7 +756,7 @@ mw_text:
         lea     24(%sp),%sp
         rts
 
-| mw_rtext -- a0 right-aligned at x = d0, row d1 (the pointer parked across TWIDTH, as EUCLID FILL
+| mw_rtext -- a0 right-aligned at x = d0, row d1 (the pointer parked across TWIDTH, as SEQ
 | learnt). Clobbers d0, d1, a0, a1.
 mw_rtext:
         move.l  %a0,mw_rstr

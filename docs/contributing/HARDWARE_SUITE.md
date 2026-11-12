@@ -72,7 +72,7 @@ program change with the toggle on, at the pattern end with it off).
 ## Results on a unit
 
 1 Nov 2026, Sam's MKII, image `OCTABAMR3` (`octabam` 0.1: the stations, PATTERN MUTE and the ColdFire modules
-OCTA303, MORPH, REC THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, FX2 LOCK and TRACK PATTERNS), USB TRACKS PRE, the
+OCTA303, MORPH, REC THRESHOLD, BUFFER SAVER, COPY PROJECT, SEQ, FX2 LOCK and TRACK PATTERNS), USB TRACKS PRE, the
 projects of `ot_suite.py build` (74 layouts + BASE). Each project loaded from a pristine copy.
 
 | phase | result |

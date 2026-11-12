@@ -1,12 +1,12 @@
-"""stock effects with EUCLID FILL: TRACK+PAGE Euclidean trig-fill page."""
+"""STORE + SEQ (euclid.work client) with the stock effects."""
 
 from remix.schema import Proof, Remix
 
 REMIX = Remix(
-    name="euclid-fill",
+    name="seq",
     family="mods", proof=Proof.CHECK, proof_note="",
-    doc="stock effects with EUCLID FILL: TRACK+PAGE Euclidean trig-fill page.",
-    modules=("EUCLID FILL",
+    doc="STORE + SEQ (euclid.work client) with the stock effects.",
+    modules=("STORE", "SEQ",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
              "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
              "DELAY", "PLATE REV", "SPRING REV", "DARK REV"),

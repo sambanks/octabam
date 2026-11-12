@@ -45,6 +45,7 @@ link cannot find stops the build. A client declares `requires=("STORE",)`.
 | SCALES (`sc`) | loadall_pre, loadmask_pre, newproj, bankw_post, pstore_pre/post, preload_post, partclear |
 | CHORDS FACTORY (`ch`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | DRUMMER (`dr`) | loadall_pre, loadall_post, loadmask_pre, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+| SEQ (`ef`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | VARISPEED (`vs`) | partsaved, partclear |
 
 ## File calls
@@ -82,7 +83,7 @@ LEVEL scrolls the list; YES answers; NO closes it without an answer, leaving the
 entries listed and asking no more until the next load. No answer touches the
 card: the callbacks run in the UI task and the save in the engine task (a file
 copy called through the port's `--call` never returned). Client ids: 0 PLOCKS P2
-(argument = the bank), 1 KITS, 2 MIDI SCENES, 3 PERSISTENT BUFFERS, 4 MORPH, 5 FREE LOOP, 6 SCALES, 7 CHORDS FACTORY, 8 DRUMMER. PLOCKS P2 used
+(argument = the bank), 1 KITS, 2 MIDI SCENES, 3 PERSISTENT BUFFERS, 4 MORPH, 5 FREE LOOP, 6 SCALES, 7 CHORDS FACTORY, 8 DRUMMER, 9 SEQ. PLOCKS P2 used
 to read a refused `p2lkNN.work` as empty and overwrite it at the next bank write.
 
 ## Native Part access

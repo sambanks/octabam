@@ -113,7 +113,7 @@ SCENES keeps `scenes.work`. MORPH is a client of STORE (`modules/store`), which 
   (`0x20`) added, and the layer's keys field `0x400d164e` points at it. The handlers follow stock's
   convention (`handler(keycode, event)`, event 1 = press; Zac Kyoti's REC_TRIG_MUTE uses the same
   table).
-- ✅ **The window** has the structure of ilia-murzinov's EUCLID FILL (`modules/euclid-fill`): a
+- ✅ **The window** has the structure of ilia-murzinov's SEQ (`modules/seq`): a
   TEMPO-class window (`0x4005829c` create, `0x40056f4c` frame, `0x40055db4` destroy, class 5:
   another TEMPO-class window takes its place and closes it), an input layer pushed over everything
   while it is open (YES, NO, UP, DOWN; encoders A, B, C; `0x40031494` / `0x4003146c`), the stock
@@ -172,7 +172,7 @@ SCENES keeps `scenes.work`. MORPH is a client of STORE (`modules/store`), which 
 - Korg, the Electribe's Motion Sequence: the idea.
 - Zac Kyoti, REC_TRIG_MUTE (`modules/rec-trig-mute`): the [TRACK]-held layer, its handler
   convention and the toast call.
-- ilia-murzinov, EUCLID FILL (`modules/euclid-fill`): the window's structure, its firmware calls and
+- ilia-murzinov, SEQ (`modules/seq`): the window's structure, its firmware calls and
   their argument orders, the right-aligned text idiom.
 - sambanks, STORE (`modules/store`), and MIDI SCENES' storage (`modules/midi-scenes`,
   bkkbrls-del/midisc): the side file beside the bank files, its `.strd` copy, the refusal and its

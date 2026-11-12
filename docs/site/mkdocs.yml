@@ -53,6 +53,7 @@ nav:
           - Reload from Project: reference/manual/octabam/sequencer/reload-from-project.md
           - RLEN PLEN: reference/manual/octabam/sequencer/rlen-plen.md
           - Scale Quantizer: reference/manual/octabam/sequencer/quantizer.md
+          - SEQ: reference/manual/octabam/sequencer/seq.md
           - Slow LFO: reference/manual/octabam/sequencer/slow-lfo.md
           - Track Patterns: reference/manual/octabam/sequencer/trackpatterns.md
           - Tuner: reference/manual/octabam/sequencer/tuner.md
@@ -82,7 +83,6 @@ nav:
       - Utilities:
           - Buffer Saver: reference/manual/octabam/utilities/buffer-saver.md
           - Copy Project: reference/manual/octabam/utilities/copy-project.md
-          - Euclid Fill: reference/manual/octabam/utilities/euclid-fill.md
           - Mode Defaults: reference/manual/octabam/utilities/mode-defaults.md
           - Remix Switch: reference/manual/octabam/utilities/remix-switch.md
       - Fixes to stock behaviour:
