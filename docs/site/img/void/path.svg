@@ -57,5 +57,5 @@
   <line class="arr" x1="780" y1="144" x2="810" y2="144"/>
   <text class="t" x="812" y="148">out</text>
 
-  <text class="t-sm" x="410" y="290" text-anchor="middle">DPTH = AM depth. WID adds a stereo noise side. BAL=0 exact dry.</text>
+  <text class="t-sm" x="410" y="290" text-anchor="middle">DPTH = AM depth. WID adds stereo noise. BAL=0 exact dry.</text>
 </svg>

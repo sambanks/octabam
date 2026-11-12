@@ -17,7 +17,7 @@
     </marker>
   </defs>
 
-  <text class="t" x="360" y="28" text-anchor="middle">MIX is the folder input crossfade - not the fold amount</text>
+  <text class="t" x="360" y="28" text-anchor="middle">MIX is the folder input crossfade. FOLD sets the fold amount.</text>
 
   <rect class="box" x="40" y="56" width="110" height="44" rx="2"/>
   <text class="t" x="95" y="83" text-anchor="middle">carrier</text>
@@ -48,5 +48,5 @@
   <text class="t" x="660" y="132" text-anchor="middle">out</text>
 
   <path class="dim" d="M513 156 L513 230 L95 230"/>
-  <text class="t-sm" x="330" y="248" text-anchor="middle">FOLD=0 bypasses the folder - MIX then has nowhere to go</text>
+  <text class="t-sm" x="330" y="248" text-anchor="middle">FOLD=0 bypasses the folder. MIX still blends the dry waves.</text>
 </svg>

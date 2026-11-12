@@ -48,7 +48,7 @@
   <text class="t-inv" x="538" y="142" text-anchor="middle" style="font-size:10px">fold input</text>
 
   <path class="arr" d="M79 156 L79 220 L538 220 L538 150"/>
-  <text class="t-sm" x="310" y="212" text-anchor="middle">mod sine (FDBK source, not MMOR FM tap)</text>
+  <text class="t-sm" x="310" y="212" text-anchor="middle">mod sine (FDBK source; clean sine)</text>
 
   <line class="arr" x1="588" y1="128" x2="628" y2="128"/>
 

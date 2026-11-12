@@ -46,5 +46,5 @@
   <line class="arr" x1="652" y1="116" x2="710" y2="116"/>
   <text class="t" x="720" y="120">out</text>
 
-  <text class="t-sm" x="400" y="250" text-anchor="middle">MIX=0 exact dry. Beside CHARACTER (channel dirt) and LOFI2 - this one self-modulates.</text>
+  <text class="t-sm" x="400" y="250" text-anchor="middle">MIX=0 exact dry. CHAOS flips FDBK polarity at RATE.</text>
 </svg>

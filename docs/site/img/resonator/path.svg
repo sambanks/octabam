@@ -17,7 +17,7 @@
     </marker>
   </defs>
 
-  <!-- in → left bus (midline y=150); wire, not arrow — bus is a T, not a sink -->
+  <!-- in → left bus (midline y=150); wire, not arrow .  bus is a T, not a sink -->
   <text class="t" x="24" y="154">in</text>
   <line class="wire" x1="48" y1="150" x2="110" y2="150"/>
   <line class="wire" x1="110" y1="60" x2="110" y2="240"/>
@@ -68,5 +68,5 @@
   <path class="arr" d="M70 150 L70 290 L654 290 L654 160"/>
   <text class="t-sm" x="360" y="282" text-anchor="middle">dry</text>
 
-  <text class="t-sm" x="410" y="28" text-anchor="middle">DECY = bandwidth (high = narrower / more ring). Not a reverb tail.</text>
+  <text class="t-sm" x="410" y="28" text-anchor="middle">DECY = bandwidth (high = narrower / more ring). Short ring.</text>
 </svg>
