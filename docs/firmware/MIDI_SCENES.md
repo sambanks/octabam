@@ -200,8 +200,26 @@ the only Part key in the fixture's project.work (inferred, not traced).
 `0x40062e84`. Each checks `arg == 1`, picks the held scene's index from
 Part `+0x8ed90` (A) or `+0x8ed91` (B), and calls stock `0x400274cc`
 (copy), `0x40027578` (paste, after an undo snapshot `0x400275a0`) or
-`0x40038c30` (clear); his R21 hooks the three `jsr`s. Measured: b29copy
+`0x40038c30` (clear); his R21 hooks the three `jsr`s, and each hook acts on MSC only in MIDI
+mode (📖). octabam's acts in either mode (`modules/midi-scenes/README.md`,
+differences; gate scenarios `b29acopy`, `b29aclear`). Measured: b29copy
 and b29clear above.
+
+### A scene held across the MIDI key ✅
+
+Under the port, 12 Nov 2026 (`verify_scenes` `ha`, stock image): a scene
+pressed on the MIDI tracks and held while MIDI switches to the audio tracks
+draws the audio page with no lock cells and LEV, where a fresh press draws
+the locks and XLV. Of the UI block `0x460d1680..+0x180` only `0x460d1694`
+differs: the audio lock view, 1 = scene A, 2 = scene B, read by the cell and
+header draws (`0x4004d9fe`, `0x4004e29a`, ...). Its writers are the
+hold-and-turn paths and the two scene press handlers `0x40054c80` (A) and
+`0x40054c5c` (B), which return at once when `0x80000012` is set; the MIDI
+key's handler `0x40055548..0x40055676` (📖) flips the mode, redraws the
+page and returns through `jmp 0x4007e998` (`0x40055670`) without it. The
+other direction keeps the view at the held scene, which no MIDI-side draw
+reads: the screen equals a fresh press (`hm`). octabam's `scn_mkey` hooks
+`0x40055670` (`modules/midi-scenes/README.md`, differences).
 
 ## 9. Which hook sites need a ROM-resident target
 

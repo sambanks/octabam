@@ -31,6 +31,17 @@ Scenarios (all start: NO for the date prompt, MIDI, T1, FX1 = CTRL1):
   b29copy  b1, SCENE A held + REC (copy), SCENE B held + STOP (paste),
            then the fader 1 / 255.
   b29clear b1, SCENE A held + PLAY (clear), then the fader 1 / 255.
+  b29acopy b1, MIDI (to the audio tracks), the b29copy copy and paste, MIDI
+           (back), then the fader 1 / 255: the rows carry the MIDI locks
+           from the audio side too (ours only; MIDISC2.1 gates them on MIDI
+           mode, README differences).
+  b29aclear b1, MIDI, the b29clear clear, MIDI, then the fader 1 / 255
+           (ours only).
+  hm, ha, hb  a scene held while MIDI switches the track mode (hm: A, audio
+           -> MIDI; ha: A, MIDI -> audio; hb: B, MIDI -> audio), over a
+           lock on each side (held_base); each against its _ref run, the
+           same scene pressed fresh in the new mode: LCD plane, LED rows and
+           levels equal (ours only; stock's result printed as information).
 
 Per scenario, against the oracle (PASS needs all of them):
 
@@ -92,6 +103,11 @@ BANK0, BANK_STRIDE, PART_WINDOW, PART_STRIDE = 0x400e21e0, 0x9b340, 0x8ed80, 0x1
 # Part window = bank base + 0x8ed80 + part * 0x18b2; bank file Part p at
 # 0x8eed6 + p * 0x18bb, RAM offset + 9 (the chunk header).
 FILE_PART, FILE_PSTRIDE, NPARTS_FILE = 0x8eed6, 0x18bb, 8
+# A pattern's Part byte: RAM bank + p * 0x8ed8 + 0x8e57 (scenes.s PTN_PART); in the bank file, pattern p's
+# chunk is at 0x16 + p * 0x8eec and the byte at +0x8ee7. The tail of the chunk is the RAM pattern's tail
+# 0x90 on (RAM 0x8e51..0x8e5b = chunk 0x8ee1..0x8eeb, a generated project, 12 Nov 2026), not the chunk
+# header's 9: the head of a chunk is not laid out as in RAM.
+FILE_PTN_PART = 0x8ee7
 MIDI_SETUP, MIDI_PARAMS = 0x4e2, 0x3e2            # Part offsets: setup 36 B per track (byte 0 = channel + 1), params 32 B per track
 SCENE_B = 0x11                                    # Part offset: scene B's index (scene A at +0x10)
 K = dict(no=0x32, midi=0x35, t1=0x10, t2=0x11, fx1=0x25, fx2=0x26, amp=0x23, play=0x28, stop=0x27,
@@ -176,12 +192,69 @@ def b29clear(s):
     b1(s); s.chord("scene_a", "play"); sweep(s, (1, 255))
 
 
-SCENARIOS = dict(b1=b1, b2=b2, b7=b7, b7play=b7play, b3=b3, b29copy=b29copy, b29clear=b29clear)
+def b29acopy(s):
+    b1(s); s.tap("midi", 300); s.chord("scene_a", "rec"); s.chord("scene_b", "stop"); s.tap("midi", 300)
+    sweep(s, (1, 255))
+
+
+def b29aclear(s):
+    b1(s); s.tap("midi", 300); s.chord("scene_a", "play"); s.tap("midi", 300); sweep(s, (1, 255))
+
+
+def held_base(s):
+    """b1, then MIDI (to the audio tracks), T1, FX1, SCENE A held + knob D +20:
+    scene A has a lock on each side, scene B a MIDI lock only."""
+    b1(s); s.tap("midi", 300); s.tap("t1", 300); s.tap("fx1", 400); s.turn("scene_a", 3, 20)
+
+
+def held(scene, then_midi):
+    """held_base; MIDI then_midi times (0: stay on the audio side, 1: to the MIDI side);
+    the scene pressed and held; MIDI once more while it is held."""
+    def f(s):
+        held_base(s)
+        for _ in range(then_midi):
+            s.tap("midi", 600)
+        s.send(f"key {K[scene]:#x} down", 600); s.tap("midi", 1500)
+    return f
+
+
+def fresh(scene, midi_taps):
+    """held_base; MIDI midi_taps times; then the scene pressed and held: the reference."""
+    def f(s):
+        held_base(s)
+        for _ in range(midi_taps):
+            s.tap("midi", 600)
+        s.send(f"key {K[scene]:#x} down", 1500)
+    return f
+
+
+SCENARIOS = dict(b1=b1, b2=b2, b7=b7, b7play=b7play, b3=b3, b29copy=b29copy, b29clear=b29clear,
+                 b29acopy=b29acopy, b29aclear=b29aclear,
+                 hm=held("scene_a", 0), hm_ref=fresh("scene_a", 1),
+                 ha=held("scene_a", 1), ha_ref=fresh("scene_a", 2),
+                 hb=held("scene_b", 1), hb_ref=fresh("scene_b", 2))
+# Scenarios whose rows differ from MIDISC2.1 by design (README, differences):
+# checked against the predicted values only, never against the oracle.
+OURS_ONLY = ("b29acopy", "b29aclear")
+# A scene held while MIDI switches the track mode (hm: audio -> MIDI; ha, hb:
+# MIDI -> audio): the end-of-scenario LCD plane and LEDs must be the ones a
+# fresh press of that scene in the new mode leaves (the _ref run). Stock and
+# MIDISC2.1 leave the audio side without its lock view (scenes.s, scn_mkey):
+# ours only, stock reported as information.
+HELD_SWITCH = dict(hm="hm_ref", ha="ha_ref", hb="hb_ref")
 
 # What each scenario must put on the wire, from the lock values and the
 # lerp: the CC 1 messages (`ba 01 vv`), in order. 69 = (40*64 + 100*63) / 127.
 WIRE_CC1 = dict(b1=[100], b2=[100], b7=[100, 40, 69, 100, 40], b7play=[100, 40, 69, 100, 40],
-                b3=[100, 40, 69, 100, 40, 0, 100, 0], b29copy=[100, 40], b29clear=[100, 0])
+                b3=[100, 40, 69, 100, 40, 0, 100, 0], b29copy=[100, 40], b29clear=[100, 0],
+                b29acopy=[100, 40], b29aclear=[100, 0])
+# What each scene-row scenario leaves in the lock table (offset: value, the
+# rest 0xff) and the clipboard. Scene A = index 0, scene B = index 8; b1
+# locks flat 21 to 40 in A and 100 in B.
+TABLE = dict(b1={0x015: 40, 0x815: 100}, b7={0x015: 40, 0x815: 100},
+             b29copy={0x015: 40, 0x815: 40}, b29clear={0x815: 100},
+             b29acopy={0x015: 40, 0x815: 40}, b29aclear={0x815: 100})
+CLIP = dict(b29copy={0x15: 40}, b29acopy={0x15: 40}, b29aclear={})
 
 
 def fixture(src, dst):
@@ -232,12 +305,21 @@ def seq_fixture(src, dst, bank, trigs=False):
         shutil.copy2(tmp / "bank02.work", tmp / f"bank{bank + 1:02d}.work")
         src = tmp
     fixture(src, dst)
+    if trigs != "two":
+        # The blobs model a 2.x project, which has no scenes.work: the module converts a Part's blob only
+        # when there is none. A project saved on an image with MIDI SCENES has one (every generated project
+        # does, tools/hw/ot_fresh.py), and with it kept the Parts load with no locks: sw put nothing on the
+        # wire and swn found no CC 79 (12 Nov 2026).
+        (dst / "scenes.work").unlink(missing_ok=True)
     bf = dst / f"bank{bank + 1:02d}.work"
     dat = bytearray(bf.read_bytes())
     for part, ents in ({} if trigs == "two" else SEQ_PARTS if trigs != "trigs"
                        else {p: TRIG_LOCKS for p in range(4)}).items():
         o = FILE_PART + part * FILE_PSTRIDE + 9 + 0x17a2
         dat[o:o + len(blob(ents))] = blob(ents)
+    if trigs in ("", False, "notes", "direct"):   # sw, swn, swd switch to pattern 2, whose Part is Part 2: say so,
+        m = 0x16 + 1 * 0x8eec + FILE_PTN_PART      # a generated project leaves every pattern on Part 1
+        dat[m] = 1
     if trigs == "notes":                           # T1: pattern 1 a trig on step 5, pattern 2 (Part 2) on step 1
         for pat, step in ((0, 5), (1, 1)):
             m = 0x16 + pat * 0x8eec + 0x4918 + 9
@@ -694,14 +776,18 @@ def seq_run(a, images, out, bank, check, fx, tags):
         if t == "swn":
             on = [f for f, m in o["midi"] if m.startswith("9a ") and not m.endswith(" 00")]
             f79 = next((f for f, m in o["midi"] if m == "ba 01 4f"), None)
-            period = on[1] - on[0] if len(on) > 1 else 0          # one pass of pattern 1
+            # One pass from pattern 2's own repeats (its step-1 notes, the last two on the wire; both patterns
+            # are 16 steps). Pattern 1's step-5 notes are a pass apart, and pattern 2's first step-1 note
+            # comes 12 steps after pattern 1's last: the first gap of three quarters of a pass. Until 12 Nov
+            # 2026 the pass was the first gap, which is that three-quarter gap itself when pattern 1 plays
+            # once before the switch (a generated project), and the check named the wrong note.
+            period = on[-1] - on[-2] if len(on) > 2 else 0
             p1, first2 = on[:1], None
-            for f in on[1:]:                                       # pattern 1's step-5 notes are a pass apart;
-                if abs(f - p1[-1] - period) <= period // 16:       # pattern 2's step 1 comes a quarter pass early
-                    p1.append(f)
-                else:
+            for f in on[1:]:
+                if period and abs(f - p1[-1] - period * 3 // 4) <= period // 16:
                     first2 = f
                     break
+                p1.append(f)
             check(f"seq swn: CC 79 (frame {f79}) lands at pattern 2's step-1 note ({first2}) -- the take step, "
                   f"{f79 - p1[-1] if f79 is not None and p1 else '-'} frames after pattern 1's last note ({p1[-1]})",
                   f79 is not None and first2 is not None and p1[-1] < f79 == first2)
@@ -847,15 +933,28 @@ def main():
               o["midi"] is not None and o["msc"] is not None and o["trk"] is not None)
         if o["msc"] is None or o["midi"] is None:
             continue
+        if t in HELD_SWITCH or t in HELD_SWITCH.values():
+            for name in [n for n in ("ours", "stock") if n in res] if t in HELD_SWITCH else ():
+                x, y = res[name][t], res[name].get(HELD_SWITCH[t])
+                ok = bool(x and y and x["screen"] and y["screen"]) and x["screen"] == y["screen"]
+                if name == "ours":
+                    check(f"{t}: the LCD and LEDs equal a fresh press in the new mode ({HELD_SWITCH[t]})", ok)
+                else:
+                    print(f"  [info] {t}: {name}: the screen {'equals' if ok else 'differs from'} {HELD_SWITCH[t]}'s")
+            continue
         cc1 = [int(m.split()[2], 16) for _f, m in o["midi"] if m.startswith("ba 01 ")]
         check(f"{t}: CC 1 on the wire {cc1} (predicted {WIRE_CC1[t]})", cc1 == WIRE_CC1[t])
-        if t in ("b1", "b7"):
-            want = {0x015: 40, 0x815: 100}
+        if t in TABLE:
             held = {i: v for i, v in enumerate(o["msc"]) if v != 0xff}
-            check(f"{t}: lock table holds {held} (predicted {want})", held == want)
+            check(f"{t}: lock table holds {held} (predicted {TABLE[t]})", held == TABLE[t])
+        if t in CLIP:
+            held = {i: v for i, v in enumerate(o["clip"] or b"") if v != 0xff}
+            check(f"{t}: clipboard holds {held} (predicted {CLIP[t]})",
+                  o["clip"] is not None and len(o["clip"]) == CLIP_LEN and held == CLIP[t])
+        if t in ("b1", "b7"):
             check(f"{t}: track record +21 = {o['trk'][21]} (predicted {100 if t == 'b1' else 40})",
                   o["trk"][21] == (100 if t == "b1" else 40))
-        for other in ("his",):
+        for other in (() if t in OURS_ONLY else ("his",)):
             h = res.get(other, {}).get(t)
             if h is None:
                 continue

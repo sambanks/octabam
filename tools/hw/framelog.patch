@@ -1,0 +1,169 @@
+diff --git a/modules/load-meter/meter.s b/modules/load-meter/meter.s
+index b9093c3d..389ce0db 100644
+--- a/modules/load-meter/meter.s
++++ b/modules/load-meter/meter.s
+@@ -13,6 +13,7 @@
+ | the sums are not shared with anything that can preempt them.
+ 
+         .equ    DTCN3,  0xfc07c00c
++        .equ    FL_DELAY, 0                  | test: 60 us added to every frame interrupt
+         .equ    WIN,    66000000                | 0.5 s at 132 MHz
+         .equ    BODY,   0x4000aad8              | the handler after its displaced prologue
+         .include "remix.inc"                    | HK_FRAME_ENTRY, HK_FRAME_TAIL (modules/hooks)
+@@ -42,6 +43,13 @@ lm_in:
+ | d0-a6 are saved at (sp) and restored below, so every register is free.
+         .globl  lm_out
+ lm_out:
++        .if     FL_DELAY
++        move.l  DTCN3,%d0                       | FRAMELOG test: a longer frame interrupt
++1:      move.l  DTCN3,%d1
++        sub.l   %d0,%d1
++        cmp.l   #FL_DELAY,%d1
++        bcs.s   1b
++        .endif
+         move.l  DTCN3,%d2                       | now
+         move.l  %d2,%d0
+         sub.l   lm_t0,%d0                       | this interrupt's duration
+@@ -51,7 +59,72 @@ lm_out:
+         cmp.l   lm_max,%d0
+         bls.s   1f
+         move.l  %d0,lm_max
+-1:      move.l  %d2,%d1
++1:
++| FRAMELOG (test image, not for merge): lm_ot holds frame-interrupt records
++| instead of OTOP's costs. Longs: 0 count of frame interrupts; 1 the USB
++| shim's entry stamp (audio_frame_shim writes it, cleared here); 2 the next
++| entry's index (20..62, even); 3 the next chain-end index (0..15), bit 31
++| = frozen; 4..19 the last 16 chain-end stamps (state 7, raw DTCN3, written
++| by fl_s7 in usbaudio.s); 20..63 the last 22 frame interrupts, two longs
++| each: the entry stamp (raw DTCN3), then duration << 16 | USB share, both
++| in 64-count units (0.485 us).
++| A frame interrupt of 440 us or more unfreezes the log and starts a
++| 12-frame countdown; at its end the log freezes, so the frames around the
++| last long one stay readable.
++        lea     lm_ot,%a0
++        addq.l  #1,%a0@
++        cmp.l   #58080,%d0                      | 440 us
++        bcs.s   3f
++        move.l  %a0@(12),%d3
++        and.l   #0x7fffffff,%d3
++        move.l  %d3,%a0@(12)
++        moveq   #13,%d3
++        move.l  %d3,lm_fz
++        bra.s   4f
++3:      tst.l   %a0@(12)
++        bmi.w   8f                              | frozen
++4:      move.l  %d0,%d4
++        lsr.l   #6,%d4
++        and.l   #0xffff,%d4
++        swap    %d4
++        move.l  %a0@(4),%d3
++        beq.s   5f
++        clr.l   %a0@(4)
++        move.l  %d2,%d5
++        sub.l   %d3,%d5
++        lsr.l   #6,%d5
++        and.l   #0xffff,%d5
++        or.l    %d5,%d4
++5:      .weak   fg_waits                        | bit 15 of the USB share: this entry waited (FRAME GUARD)
++        move.l  #fg_waits,%d3
++        beq.s   9f
++        move.l  %d3,%a1
++        move.l  %a1@,%d3
++        cmp.l   lm_gf,%d3
++        beq.s   9f
++        move.l  %d3,lm_gf
++        or.l    #0x8000,%d4
++9:      move.l  %a0@(8),%d3
++        cmp.l   #20,%d3
++        bcs.s   6f
++        cmp.l   #62,%d3
++        bls.s   7f
++6:      moveq   #20,%d3
++7:      move.l  lm_t0,%d5
++        move.l  %d5,%a0@(0,%d3:l:4)
++        move.l  %d4,%a0@(4,%d3:l:4)
++        addq.l  #2,%d3
++        move.l  %d3,%a0@(8)
++        move.l  lm_fz,%d3
++        beq.s   8f
++        subq.l  #1,%d3
++        move.l  %d3,lm_fz
++        bne.s   8f
++        move.l  %a0@(12),%d3
++        or.l    #0x80000000,%d3
++        move.l  %d3,%a0@(12)
++8:
++        move.l  %d2,%d1
+         sub.l   lm_w0,%d1                       | the window so far
+         cmp.l   #WIN,%d1
+         bcs.s   2f
+@@ -151,7 +224,7 @@ lm_scrub:
+         add.l   %d0,lm_dsum+4
+         addq.l  #1,lm_dsum+8
+         addq.l  #1,lm_dsp                       | seq: a good record
+-        bsr.w   lm_otop
++        | FRAMELOG: lm_otop not called, lm_ot is the frame log
+         bra.s   8f
+ 9:      addq.l  #1,lm_dsp+4                     | bad
+ 8:      movem.l %sp@,%d0-%d3/%a0-%a1
+@@ -282,3 +355,5 @@ lm_w0:  .long   0
+ lm_sum: .long   0
+ lm_cnt: .long   0
+ lm_max: .long   0
++lm_gf:  .long   0
++lm_fz:  .long   0                               | FRAMELOG: frames until the log freezes
+diff --git a/modules/usb/usbaudio.s b/modules/usb/usbaudio.s
+index 35d3f4d5..20a97397 100644
+--- a/modules/usb/usbaudio.s
++++ b/modules/usb/usbaudio.s
+@@ -958,6 +958,23 @@ audio_ep3_flush:
+     movel   %d2,%a3@+
+ .endm
+ 
++| FRAMELOG (test image): a chain-end stamp into LOAD METER's log, called at
++| stock state 7. Clobbers d0/d1/a0 (the transfer interrupt saved them).
++    .global fl_s7
++fl_s7:
++    movel   #LM_OT,%d0
++    beqs    1f
++    moveal  %d0,%a0
++    movel   %a0@(12),%d0
++    bmis    1f                      | frozen
++    andil   #15,%d0
++    movel   0xfc07c00c,%d1          | DTCN3
++    movel   %d1,%a0@(16,%d0:l:4)
++    addql   #1,%d0
++    andil   #15,%d0
++    movel   %d0,%a0@(12)
++1:  rts
++
+     .global audio_frame_shim
+ audio_frame_shim:
+     | The producer runs only while the host asks for the stream (usbaudio_alt,
+@@ -975,7 +992,12 @@ audio_frame_shim:
+     | always-on producer cost 13-25 us of frame interrupt per frame with no
+     | host attached (OUT TRACKS MAIN CUE against OUT MAIN CUE). Not on a
+     | unit since.
+-    tstb    usbaudio_alt
++    movel   #LM_OT,%d0              | FRAMELOG (test image): this shim's entry stamp
++    beqs    0f
++    moveal  %d0,%a0
++    movel   0xfc07c00c,%d0          | DTCN3
++    movel   %d0,%a0@(4)
++0:  tstb    usbaudio_alt
+     bnes    .Lproduce
+     tstb    aud_force               | the harness's switch (usb_align): produce
+     bnes    .Lproduce               | with no host and EP3 left alone
+diff --git a/modules/usb/usbaudio_in.s b/modules/usb/usbaudio_in.s
+index 4b1d16ff..61315bb0 100644
+--- a/modules/usb/usbaudio_in.s
++++ b/modules/usb/usbaudio_in.s
+@@ -241,6 +241,7 @@ in_state7_shim:
+     addql   #1,%d0
+     moveb   %d0,in_zero_sent
+ .Ls7_stock:
++    jsr     fl_s7                   | FRAMELOG (test image)
+     moveq   #1,%d1                  | stock state 7, displaced
+     moveb   %d1,FRAME_UNMASK
+     jmp     STATE7_DONE

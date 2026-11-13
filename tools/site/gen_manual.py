@@ -71,7 +71,7 @@ PLACE = {
     "COPY PROJECT": "utilities", "BUFFER SAVER": "utilities", "FX2 LOCK": "utilities",
     "MODE DEFAULTS": "utilities", "REMIX SWITCH": "utilities",
     "LOFI AMF FIX": "fixes", "RECORDER LOOP FIX": "fixes", "BATCH_BUGFIXES": "fixes",
-    "ERASE_EMPTY_TRIGLESS_LOCKS": "fixes", "ATA WRITE GUARD": "fixes",
+    "ERASE_EMPTY_TRIGLESS_LOCKS": "fixes", "ATA WRITE GUARD": "fixes", "FRAME GUARD": "fixes",
     "EVENTS": "inside", "STORE": "inside", "HOOKS": "inside", "MEMORY": "inside",
     "DLPUMP": "inside", "DLCOPY": "inside", "LOAD METER": "inside",
 }

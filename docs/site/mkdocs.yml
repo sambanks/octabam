@@ -89,6 +89,7 @@ nav:
           - ATA Write Guard: reference/manual/octabam/fixes/ata-write-guard.md
           - Batch Bugfixes: reference/manual/octabam/fixes/batch-bugfixes.md
           - Erase Empty Trigless Locks: reference/manual/octabam/fixes/erase-empty-trigless-locks.md
+          - Frame Guard: reference/manual/octabam/fixes/frame-guard.md
           - Lo-Fi AMF Fix: reference/manual/octabam/fixes/lofi-amf-fix.md
           - Recorder CS1 Skip: reference/manual/octabam/fixes/rec-cs1-skip.md
           - Recorder Loop Fix: reference/manual/octabam/fixes/recorder-loop-fix.md

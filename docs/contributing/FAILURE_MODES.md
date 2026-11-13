@@ -965,3 +965,29 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   under "Next changes" in `DEMAND_LOADER.md`.
 - **Fix:** those five modules are left out of `octabam`; `R3` (`K1`'s set) applied 18 of 18 `loader01` transitions and
   the 2 of `loader02`. 2 Nov 2026: VARISPEED is back in `octabam`, since `C0` without it also left unapplied changes.
+
+## The DSP's frame exchange stops at START or a program change: the frame interrupt after a long one enters about 150 µs late ✅ window measured, fixed by FRAME GUARD; the DSP-side mechanism inferred
+
+- **Seen:** Sam's MKII, 12 Nov 2026, `octabam` builds A1 and E1 and the `_hw-oct-pre` control C1, a USB audio capture
+  open. The sequencer holds step 1 at PLAY, LOAD METER's DSP count is constant, the frame-interrupt count stops 3 to 5
+  above it, the panel and USB answer; a power-cycle clears it. First START after boot and load: 5 of 8 (A1 and C1, 20
+  channels), 5 of 8 (E1, 4 channels); program changes: 1 in 27 (E1, 20 channels). No capture: 0 in 13 first STARTs
+  and 64 program changes.
+- **Measured (frame log, `tools/hw/framelog.patch`, read by `tools/hw/ot_stall.py`):** the transfer chain's last
+  state comes 224 to 245 µs after the frame interrupt's entry on every frame. The START frame interrupt runs 473 to
+  481 µs with no capture, 488 to 527 µs with one. The next entry 128 to 149 µs late: one back-to-back frame
+  interrupt, runs on (8 STARTs). 155 to 223 µs late: one frame skipped, runs on (23). The two stalls logged: 149 and
+  155 µs late, two back-to-back frame interrupts, the second 16 and 36 µs before its grid time, then none.
+- **Ruled out on the unit:** the channel count at first START (4 channels stalled as often as 20); frame-interrupt
+  time by itself (60 µs added to every frame interrupt, no capture: 0 of 8, START frames 524 to 541 µs); the USB
+  controller's crossbar priority (stock priorities, 20 channels: 1 of 8, the same signature).
+- **Inferred:** at that lateness the transfer chain is still sending when the DSP starts its next frame (a core A log
+  from a STALL PROBE build reported a 513th word in the 512-word block).
+- **Fix:** FRAME GUARD (`modules/frame-guard/README.md`), in `octabam`, `octabam-bus` and `octabam-verbs`: 32 first
+  STARTs and 192 program changes at 20 channels without a stall. **Gate:** `verify_frame_guard`.
+- **Open:** on the test image with 60 µs added and 20 channels (frame interrupt 91 % of the ColdFire), 1 of 16 first
+  STARTs stalled with the next entry 209 µs late, and 7 of 16 froze the whole unit 8.2 s after START at the pattern's
+  wrap; not seen without the added delay. `octabam-bus` and `octabam-verbs` not run with the guard. The whole-unit
+  freezes, the USB device absent after a REMIX SWITCH double boot and the boot freezes of 12 Nov are not explained by
+  this. Audio through the skipped frame is not measured.
+

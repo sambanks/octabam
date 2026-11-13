@@ -1662,3 +1662,28 @@ lock". The fix detours `0x40053498` itself. Rule: a gate for a panel gesture
 drives the panel (`--live-script`), not the routine you think it reaches; and
 in FX SETUP the first encoder event only shows the readout, the next ones
 edit. **Gate:** `verify_scenes_p2`'s `panel` scenario.
+
+<a id="trap-late-frame"></a>
+**A FRAME INTERRUPT THAT ENTERS ABOUT 150 µs LATE STOPS THE DSP'S FRAME
+EXCHANGE.** At START and at a program change one frame interrupt runs 475 to
+585 µs on every image measured, so the next enters late. Sam's MKII, 12 Nov
+2026, a log of the last frame interrupts read over USB: an entry up to 149 µs
+late is followed by one back-to-back frame interrupt and the unit runs on; an
+entry 155 µs or more late by one skipped frame; the two stalls logged entered
+149 and 155 µs late (two back-to-back frame interrupts, the second before its
+grid time, then none; the sequencer holds step 1). A USB capture adds 25 to
+30 µs to the START frame and moved it onto that boundary: 5 of 8 first STARTs
+stalled with a capture open, 0 of 8 without, and 0 of 8 with 60 µs MORE in
+every frame interrupt and no capture. Cost: the 0.5 hardware suite parked, a
+day of first-START trials, and stalls earlier put down to the modules that
+happened to move the timing (the CX OSC and STEM REC entries in
+`FAILURE_MODES.md` have the same signature; not re-run). The mechanism on the
+DSP side is inferred, not measured. Fix: FRAME GUARD holds an entry 110 to
+190 µs late until it is 190 µs late (`modules/frame-guard/README.md`); with
+it, 32 first STARTs and 192 program changes without a stall. Rule: ColdFire
+time added to the frame interrupt can cause or cure a DSP stall by a few
+microseconds either way, so an A/B that only adds or removes a module is not
+evidence about that module; read the frame log (`tools/hw/framelog.patch`,
+`tools/hw/ot_stall.py`) for the entry lateness before the stop. **Gate:**
+`verify_frame_guard` (the guard's arithmetic; the window itself is a unit
+measurement).
