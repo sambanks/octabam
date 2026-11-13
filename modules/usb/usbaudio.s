@@ -2008,7 +2008,7 @@ audio_ctrl_shim:
     | window's end. Any other address STALLs: no peripheral, no flash.
 .Lctrl_peek:
     cmpil   #0x58,%d0
-    bne     .Lctrl_stock
+    bne     .Lctrl_cmd
     lea     %sp@(-12),%sp
     movem.l %d3/%a2-%a3,%sp@
     movel   #RMT_RING,%d0
@@ -2034,6 +2034,31 @@ audio_ctrl_shim:
     bccs    1b
     subl    %d3,%d1                 | bytes left in the window
     bra     .Lctrl_blk
+    | 0xc0/0x59 COMMAND (with REMOTE): id wValue, argument wIndex, to
+    | RMT_COMMAND (modules/remote/remote.s), which posts the id's routine to the UI
+    | task. The reply is one byte: 0 taken, 1 refused.
+.Lctrl_cmd:
+    cmpil   #0x59,%d0
+    bne     .Lctrl_stock
+    movel   #RMT_COMMAND,%d0
+    tstl    %d0
+    beq     .Lctrl_stock
+    movel   %d2,%sp@-
+    mvzb    SETUP_WIDXH,%d1
+    lsll    #8,%d1
+    mvzb    SETUP_WIDXL,%d0
+    orl     %d0,%d1
+    mvzb    SETUP_WVALH,%d0
+    lsll    #8,%d0
+    mvzb    SETUP_WVALL,%d2
+    orl     %d2,%d0
+    moveal  #RMT_COMMAND,%a0
+    jsr     %a0@
+    movel   %sp@+,%d2
+    moveb   %d0,(lm_reply+UNCACHED)
+    pea     lm_reply
+    moveq   #1,%d0
+    bra     .Lctrl_send
 .Lctrl_class:
     cmpil   #0x21,%d0               | class SET, interface recipient
     beq     .Lctrl_set

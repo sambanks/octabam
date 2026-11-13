@@ -11,6 +11,8 @@ Needs pyusb and a libusb (load_meter.py's note). The image must carry REMOTE and
 The block is a 32-byte header {magic "RMT1", head, screen count, screen stamp, RMT_TRACE's address} and 256
 records; a record is seq (16 bits), kind (8), arg (8), stamp (32 bits of
 DMA timer 3, 132 MHz, so it wraps every 32.5 s). `head` counts every record written; record n is at index n & 255.
+COMMAND (0xc0/0x59, id in wValue): 1 enters USB DISK MODE, 2 leaves it (the project reloads). Nothing else.
+
 `Events` keeps the last head it saw and returns the records since, with `lost` the number overwritten before they
 were read. A scenario calls `wait_for` instead of sleeping: it returns the first record that matches, or raises.
 
@@ -29,7 +31,7 @@ NTRACE = 512
 BYTES = HEADER + NREC * 8
 TIMER_HZ = 132e6
 
-KINDS = {1: "LOADALL", 2: "LOADMASK", 3: "NEWPROJ", 4: "BANKW", 5: "PSTORE", 6: "PRELOAD",
+KINDS = {1: "LOADALL", 2: "LOADMASK", 3: "NEWPROJ", 4: "BANKW", 5: "PSTORE", 6: "PRELOAD", 8: "COMMAND",
          16: "PLAYING", 17: "BANK", 18: "PATTERN", 19: "QBANK", 20: "QPATTERN"}
 BY_NAME = {v: k for k, v in KINDS.items()}
 
@@ -109,28 +111,43 @@ class Events:
         return out
 
     def wait_for(self, kind, arg=None, timeout=10.0, tick=None, strict=False):
-        """The first record of `kind` (a name or a number), with `arg` when given. `tick` is called between
+        """The first record of `kind` (a name or a number, or several), with `arg` when given. `tick` is called between
         polls (the port's gate advances the machine there; on a unit it defaults to a 5 ms sleep). With
         `strict`, records lost while waiting raise Lost instead of being counted."""
-        k = BY_NAME[kind] if isinstance(kind, str) else kind
+        ks = {BY_NAME[k] if isinstance(k, str) else k for k in (kind if isinstance(kind, (tuple, list, set)) else (kind,))}
         end = time.monotonic() + timeout
         passed = []
         while True:
             for r in self.poll():
                 passed.append(r)
-                if r["kind"] == k and (arg is None or r["arg"] == arg):
+                if r["kind"] in ks and (arg is None or r["arg"] == arg):
                     r["passed"] = passed[:-1]
                     return r
             if strict and self.lost:
                 raise Lost(f"{self.lost} record(s) overwritten before they were read")
             if time.monotonic() >= end:
-                raise TimeoutError(f"no {KINDS.get(k, k)}{'' if arg is None else f' arg {arg}'} in {timeout} s; "
+                raise TimeoutError(f"no {'/'.join(KINDS.get(k, str(k)) for k in sorted(ks))}{'' if arg is None else f' arg {arg}'} in {timeout} s; "
                                    f"passed: {[(p['name'], p['arg']) for p in passed]}")
             (tick or (lambda: time.sleep(0.005)))()
 
 
 def unit_ctrl(dev):
     return lambda off, n: bytes(dev.ctrl_transfer(0xc0, 0x5a, off, 0, n, timeout=1000))
+
+
+CMD_DISK_ENTER, CMD_DISK_LEAVE = 1, 2
+LOADS = ("LOADALL", "LOADMASK", "PRELOAD")
+
+
+def unit_command(dev):
+    return lambda cid, arg=0: bytes(dev.ctrl_transfer(0xc0, 0x59, cid, arg, 1, timeout=1000))
+
+
+def command(cmd1, cid, arg=0):
+    """COMMAND (0xc0/0x59) through cmd1(id, arg) -> the reply byte. True when the unit took it: its routine
+    then runs in the UI task and a COMMAND record with arg = id follows. False for an id the unit does not
+    have or while an earlier command is still waiting."""
+    return cmd1(cid, arg) == b"\x00"
 
 
 def unit_peek(dev):

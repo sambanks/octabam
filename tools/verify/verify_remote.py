@@ -18,6 +18,9 @@ firmware makes, tools/hw/ot_fresh.py), enumerates over the scripted host and che
   peek       PEEK (0xc0/0x58) at RMT_RING returns the header; a peripheral register, flash and the uncached
              view STALL; a read stops at a window's end
   trace      the last 64 frame interrupts read back; every interrupted PC is in SDRAM; the count rises
+  command    rmt_cmds is ids 1 and 2 and holds none of OS UPGRADE's routines; ids 0 and 3 are refused; 2 outside
+             the mode changes nothing; 1 enters USB DISK MODE and the ring still answers; 1 again does not enter
+             twice; 2 leaves, the project reloads and no dialog stays open
   file       the card log (/LOG <date>.txt) holds a "RMT seq kind arg stamp" line for each record the load
              flushed, equal to the record read over USB
 
@@ -47,6 +50,9 @@ IMAGE = ROOT / "out/mainos_bus.bin"
 ELF = ROOT / "out/platform/runtime/runtime.elf"
 OUT = ROOT / "out/rmt_gate"
 PY = ROOT / ".venv/bin/python3"
+DISK_FLAG = 0x460e76a0          # 1 while USB DISK MODE is active (docs/firmware/STEM_REC.md, octemu's usb_diskmode_active)
+DIALOG_OPEN = 0x460e5cd0        # non-zero while a dialog of 0x4006d57c's is open (read from 0x4006d4a8)
+FORBIDDEN = {0x400636bc, 0x40063660, 0x4006370c, 0x40080640}    # OS UPGRADE: the menu handler, its stop, its deferred step, the flash write
 
 
 def symbol(name):
@@ -231,6 +237,36 @@ def main():
         want = {n: v for n, v in by_n.items() if n <= max((r["n"] for r in loads), default=-1)}
         check(f"the card log holds the {len(want)} record(s) up to the load's last, as read over USB",
               bool(want) and all(logged.get(n) == v for n, v in want.items()), f"log {logged}, usb {want}")
+
+        def cmd1(cid, arg=0):
+            return bytes(serve(lambda: b.ctrl_in(0xc0, 0x59, cid, arg, 1)))
+
+        flag = lambda: p.long(DISK_FLAG)                              # noqa: E731
+        table = [p.long(symbol("rmt_cmds") + 4 * i) for i in range(3)]
+        check("rmt_cmds holds ids 1 and 2 only and none of OS UPGRADE's routines",
+              table[0] == 0 and table[1] == symbol("rmt_enter") and table[2] == 0x4007eb18
+              and not set(table) & FORBIDDEN,
+              str([hex(x) for x in table]))
+        check("COMMAND ids 0 and 3 are refused", not ot_events.command(cmd1, 0) and not ot_events.command(cmd1, 3))
+        check("COMMAND 2 outside the mode is taken and changes nothing",
+              ot_events.command(cmd1, 2) and ev.wait_for("COMMAND", 2, 30.0, tick)["arg"] == 2 and flag() == 0)
+        ok = ot_events.command(cmd1, ot_events.CMD_DISK_ENTER)
+        try:
+            ev.wait_for("COMMAND", 1, 30.0, tick)
+            run(1500)
+            check("COMMAND 1: the unit is in USB DISK MODE (0x460e76a0 = 1) and still answers the ring",
+                  ok and flag() == 1 and ev.head() > 0, f"taken {ok}, flag {flag()}")
+            check("COMMAND 1 again is taken and does not enter twice",
+                  ot_events.command(cmd1, 1) and ev.wait_for("COMMAND", 1, 30.0, tick)["arg"] == 1 and flag() == 1)
+            ok = ot_events.command(cmd1, ot_events.CMD_DISK_LEAVE)
+            t0 = ms[0]
+            r = ev.wait_for(ot_events.LOADS, None, 120.0, tick)
+            check(f"COMMAND 2: the mode is left (flag 0) and the project reloads: {r['name']} {r['arg']} after "
+                  f"{ms[0] - t0} emulated ms", ok and flag() == 0)
+            run(3000)
+            check("no dialog is left open (0x460e5cd0 = 0)", p.long(DIALOG_OPEN) == 0, hex(p.long(DIALOG_OPEN)))
+        except TimeoutError as e:
+            check("COMMAND 1 and 2", False, str(e))
     except Exception as e:  # noqa: BLE001 -- a hang or a stall is the finding
         check(f"the run completed ({type(e).__name__}: {e})", False)
     finally:

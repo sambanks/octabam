@@ -35,6 +35,8 @@
         .equ    LCDFRONT, 0x400b970c            | the frame the panel was last sent
         .equ    NREC,    256
         .equ    NTRACE,  512
+        .equ    DEFER,   0x40000c3c             | (queue, record {byte 21, 0, long fn}): fn runs in the UI task
+        .equ    UIQUEUE, 0x460d17ce
         .equ    LOGF,    0x4001ffe4             | stock's log printf (level, format, ...)
         .equ    LOG_WARNING, 2                  | its level table 0x400abf28: CRITICAL, ERROR, WARNING
         .include "remix.inc"                    | HK_FRAME_ENTRY (modules/hooks)
@@ -46,6 +48,7 @@
         .equ    K_BANKW,    4                   | STORE bankw_post
         .equ    K_PSTORE,   5                   | STORE pstore_post
         .equ    K_PRELOAD,  6                   | STORE preload_post
+        .equ    K_COMMAND,  8                   | a COMMAND ran in the UI task, arg = its id
         .equ    K_WATCH,    16                  | 16 + the row of rmt_wtab, arg = the byte's new value
 
         .text
@@ -134,6 +137,66 @@ rmt_put:
         lea     %sp@(8),%sp
         rts
 
+| RMT_COMMAND: d0 = id, d1 = argument; returns d0 = 0 taken, 1 refused (an
+| id outside rmt_cmds, or a command still waiting for the UI task). Called
+| by the USB module's control handler (0xc0/0x59), in the USB interrupt:
+| it only posts rmt_run to the UI task's queue, as stock's frame interrupt
+| posts (0x4000b092, 0x4000b194, 0x4000b254, 0x4000c858 call DEFER) and as
+| USB DISK MODE's and OS UPGRADE's menu handlers defer their work.
+| rmt_cmds is the whole of what a host can make the unit do.
+        .globl  RMT_COMMAND
+RMT_COMMAND:
+        tst.l   %d0
+        beq.s   1f
+        cmp.l   #NCMD,%d0
+        bcc.s   1f
+        tst.b   rmt_pending
+        bne.s   1f
+        move.l  %d0,rmt_cmd_id
+        move.l  %d1,rmt_cmd_arg
+        moveq   #1,%d0
+        move.b  %d0,rmt_pending
+        pea     rmt_rec
+        pea     UIQUEUE
+        jsr     DEFER
+        addq.l  #8,%sp
+        moveq   #0,%d0
+        rts
+1:      moveq   #1,%d0
+        rts
+
+| rmt_run: in the UI task. A record, then the command's stock routine.
+rmt_run:
+        moveq   #K_COMMAND,%d0
+        move.l  rmt_cmd_id,%d1
+        bsr.w   rmt_put
+        move.l  rmt_cmd_id,%d0
+        clr.b   rmt_pending
+        lea     rmt_cmds,%a0
+        move.l  %a0@(0,%d0:l:4),%a0
+        jmp     %a0@
+
+        .balign 4
+        .globl  rmt_cmds
+rmt_cmds:
+        .long   0
+        .long   rmt_enter                       | 1 enter USB DISK MODE
+        .long   0x4007eb18                      | 2 leave it: stock's own routine, which does nothing outside the
+                                                |   mode and else closes the mode's dialog (0x4006d4a8), whose
+                                                |   callback 0x4007ebf0 leaves the mode and reloads the project
+        .equ    NCMD, (. - rmt_cmds) / 4
+
+| 0x4007eb34 is what the SYSTEM menu's USB DISK MODE row reaches (0x40063728 ->
+| 0x40063718(0)): it stops the sequencer and defers the mode's dialog.
+| Not entered twice: 0x460e76a0 is 1 while the mode is active.
+| Calling the callback 0x4007ebf0 itself left the mode and reloaded the
+| project with the dialog still on the screen (the port, 13 Nov 2026).
+rmt_enter:
+        tst.l   0x460e76a0
+        bne.s   1f
+        jmp     0x4007eb34
+1:      rts
+
 | STORE's handlers (docs/specs/STORE.md): a handler may change every register.
 | Each writes its record, then rmt_flush.
         .globl  rmt_st_loadall_post, rmt_st_loadmask_post, rmt_st_newproj
@@ -217,6 +280,12 @@ rmt_wtab:
 rmt_shadow:
         .space  8                               | each watched byte at the previous entry
 rmt_lcd: .long  0                               | LCDFRONT at the previous entry
+rmt_cmd_id: .long 0                             | the pending COMMAND
+rmt_cmd_arg: .long 0
+rmt_rec: .byte  21, 0                           | DEFER's record
+        .long   rmt_run
+rmt_pending: .byte 0
+        .balign 4
 rmt_flushed: .long 0                            | the count of records rmt_flush has passed
         .globl  RMT_RING
 RMT_RING:
