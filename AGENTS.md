@@ -62,8 +62,15 @@ Never claim something works because it assembled or linked. `make check` (run by
 the floor; `docs/contributing/TESTING.md` says what each gate proves and what
 none of them can see.
 
-**Before opening a PR, and again before merging one:** rebase onto
-`origin/main`. CI's reach job runs the gates the diff reaches, and the
+**Before opening a PR:** rebase onto `origin/main`. **Merging:** one PR at
+a time, oldest ready first. Update a PR's branch once, just before its
+merge, and only when main has moved under it since its last green run: a
+file both changed (`git diff --name-only $(git merge-base origin/main
+HEAD) origin/main` against the PR's files), or a module, hook, cave or
+remix its gates build with. Otherwise merge it as it stands. Updating every
+open PR after every merge is a full CI run each (`check-remix octabam`
+took 72 min on sambanks/octabam#1087, 12 Nov 2026) that re-proves what no
+merge touched (owner's rule, 13 Nov 2026). CI's reach job runs the gates the diff reaches, and the
 `refhash` bit-identity pass for a build change, on every push to `main` and every
 PR, fork PRs included, on a runner that downloads the 1.40C for that run
 (`CONTRIBUTING.md` "Before you open a PR" is the rule and the reason); the
