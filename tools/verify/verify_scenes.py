@@ -103,6 +103,11 @@ BANK0, BANK_STRIDE, PART_WINDOW, PART_STRIDE = 0x400e21e0, 0x9b340, 0x8ed80, 0x1
 # Part window = bank base + 0x8ed80 + part * 0x18b2; bank file Part p at
 # 0x8eed6 + p * 0x18bb, RAM offset + 9 (the chunk header).
 FILE_PART, FILE_PSTRIDE, NPARTS_FILE = 0x8eed6, 0x18bb, 8
+# A pattern's Part byte: RAM bank + p * 0x8ed8 + 0x8e57 (scenes.s PTN_PART); in the bank file, pattern p's
+# chunk is at 0x16 + p * 0x8eec and the byte at +0x8ee7. The tail of the chunk is the RAM pattern's tail
+# 0x90 on (RAM 0x8e51..0x8e5b = chunk 0x8ee1..0x8eeb, a generated project, 12 Nov 2026), not the chunk
+# header's 9: the head of a chunk is not laid out as in RAM.
+FILE_PTN_PART = 0x8ee7
 MIDI_SETUP, MIDI_PARAMS = 0x4e2, 0x3e2            # Part offsets: setup 36 B per track (byte 0 = channel + 1), params 32 B per track
 SCENE_B = 0x11                                    # Part offset: scene B's index (scene A at +0x10)
 K = dict(no=0x32, midi=0x35, t1=0x10, t2=0x11, fx1=0x25, fx2=0x26, amp=0x23, play=0x28, stop=0x27,
@@ -300,12 +305,21 @@ def seq_fixture(src, dst, bank, trigs=False):
         shutil.copy2(tmp / "bank02.work", tmp / f"bank{bank + 1:02d}.work")
         src = tmp
     fixture(src, dst)
+    if trigs != "two":
+        # The blobs model a 2.x project, which has no scenes.work: the module converts a Part's blob only
+        # when there is none. A project saved on an image with MIDI SCENES has one (every generated project
+        # does, tools/hw/ot_fresh.py), and with it kept the Parts load with no locks: sw put nothing on the
+        # wire and swn found no CC 79 (12 Nov 2026).
+        (dst / "scenes.work").unlink(missing_ok=True)
     bf = dst / f"bank{bank + 1:02d}.work"
     dat = bytearray(bf.read_bytes())
     for part, ents in ({} if trigs == "two" else SEQ_PARTS if trigs != "trigs"
                        else {p: TRIG_LOCKS for p in range(4)}).items():
         o = FILE_PART + part * FILE_PSTRIDE + 9 + 0x17a2
         dat[o:o + len(blob(ents))] = blob(ents)
+    if trigs in ("", False, "notes", "direct"):   # sw, swn, swd switch to pattern 2, whose Part is Part 2: say so,
+        m = 0x16 + 1 * 0x8eec + FILE_PTN_PART      # a generated project leaves every pattern on Part 1
+        dat[m] = 1
     if trigs == "notes":                           # T1: pattern 1 a trig on step 5, pattern 2 (Part 2) on step 1
         for pat, step in ((0, 5), (1, 1)):
             m = 0x16 + pat * 0x8eec + 0x4918 + 9
@@ -762,14 +776,18 @@ def seq_run(a, images, out, bank, check, fx, tags):
         if t == "swn":
             on = [f for f, m in o["midi"] if m.startswith("9a ") and not m.endswith(" 00")]
             f79 = next((f for f, m in o["midi"] if m == "ba 01 4f"), None)
-            period = on[1] - on[0] if len(on) > 1 else 0          # one pass of pattern 1
+            # One pass from pattern 2's own repeats (its step-1 notes, the last two on the wire; both patterns
+            # are 16 steps). Pattern 1's step-5 notes are a pass apart, and pattern 2's first step-1 note
+            # comes 12 steps after pattern 1's last: the first gap of three quarters of a pass. Until 12 Nov
+            # 2026 the pass was the first gap, which is that three-quarter gap itself when pattern 1 plays
+            # once before the switch (a generated project), and the check named the wrong note.
+            period = on[-1] - on[-2] if len(on) > 2 else 0
             p1, first2 = on[:1], None
-            for f in on[1:]:                                       # pattern 1's step-5 notes are a pass apart;
-                if abs(f - p1[-1] - period) <= period // 16:       # pattern 2's step 1 comes a quarter pass early
-                    p1.append(f)
-                else:
+            for f in on[1:]:
+                if period and abs(f - p1[-1] - period * 3 // 4) <= period // 16:
                     first2 = f
                     break
+                p1.append(f)
             check(f"seq swn: CC 79 (frame {f79}) lands at pattern 2's step-1 note ({first2}) -- the take step, "
                   f"{f79 - p1[-1] if f79 is not None and p1 else '-'} frames after pattern 1's last note ({p1[-1]})",
                   f79 is not None and first2 is not None and p1[-1] < f79 == first2)
