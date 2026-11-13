@@ -679,6 +679,12 @@ def route_tool(path, ctx):
         if ctx.gate_shared.get(script) or ctx.gate_once.get(script):
             # remix_arg=False or once=True: run by the shared half
             gates.append(cmd_check_shared(remixes, owners))
+            # The shared half has no project, so a gate that needs one SKIPs there and its split unit
+            # (SPLIT_EXTRA_UNITS) is where it runs: plan the remix's line too, scoped to the owners, as a
+            # change to the owning module does. Until 13 Nov 2026 a change to verify_scenes.py planned only the
+            # shared half, which printed the SKIP (sambanks/octabam#1091's own run).
+            gates += [cmd_check_remix(r, owners) for r in remixes
+                      if any(script in command.split() for _, command in SPLIT_EXTRA_UNITS.get(r, {}).values())]
         else:
             gates += [cmd_check_remix(r, owners) for r in remixes]
         notes.append(f"{pathlib.PurePosixPath(script).stem}, a gate of " + ", ".join(owners))

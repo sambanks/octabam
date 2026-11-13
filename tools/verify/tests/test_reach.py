@@ -202,6 +202,11 @@ class DependencyTests(unittest.TestCase):
         self.assertEqual(commands(["tools/verify/verify_burn.py"], c=c),
                          ['make check-shared REMIXES="bamsep26 usb" MODULES="SEND"'])
         self.assertIn("a gate of SEND", note("tools/verify/verify_burn.py"))
+        # once=True and the command of a split unit (it needs a project): that remix's line as well
+        with mock.patch.dict(reach.SPLIT_EXTRA_UNITS, {"usb": {"burn": ("SEND", "python3 tools/verify/verify_burn.py usb")}}):
+            self.assertEqual(commands(["tools/verify/verify_burn.py"], c=c),
+                             ['make check-shared REMIXES="bamsep26 usb" MODULES="SEND"',
+                              'make check-remix REMIX=usb MODULES="SEND"'])
 
     def test_a_harness_file_reaches_what_runs_it(self):
         # send_probe: the knob census (shared), Character's gate (shared), the burn (SEND's remixes), the acceptance machinery via pressure
