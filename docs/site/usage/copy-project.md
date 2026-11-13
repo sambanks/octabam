@@ -27,6 +27,7 @@ COPY copies the **folder on the card**, not what is in memory. Stock already
 saves banks as you edit, so most trig edits are on the card without an
 explicit SAVE. OPEN IT? does not ask to save the live project.
 
-Copying works within the mounted set only. It refuses when the set has more
-than 64 projects, a folder has more than 256 entries, or a name inside the
-project is longer than 32 characters.
+Copying works within the mounted set only. It refuses (rather than cut
+anything short) when the set has more than 64 projects, a folder has more
+than 256 entries, or a name inside the project is longer than 32
+characters.

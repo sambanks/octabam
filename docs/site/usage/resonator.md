@@ -1,12 +1,14 @@
 **Four pitched bandpasses** on the input. A Torso S-4 **RING**-style filter
 bank. Wet is the dry pushed through four constant-peak bandpasses. Pitches
-and a makeup scale live on SETUP. **`[FX1]`** only.
+and a makeup scale live on SETUP. **`[FX1]`** only, id `0x1e`. An
+**`[FX2]`** instance is a dry pass.
 
 ![RESONATOR: four BPs sum into SCAL, then MIX with dry.](../../img/resonator/path.svg)
 
 ## Access
 
-Select a track, press **`[FX1]`**, pick **RESONATOR**.
+Select a track, press **`[FX1]`**, pick **RESONATOR**. The **`[FX2]`**
+chooser does not list it.
 
 ## Operation
 

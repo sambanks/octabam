@@ -7,3 +7,7 @@ peak HUD and a clip `!` sit on OSC and XY.
 **`[UP]`** / **`[DOWN]`** cycle the three modes. **A** GAIN, **B** TIME.
 **`[CUE]`** release toggles the G/P HUD on OSC / XY (ALL has none).
 Push **A** resets GAIN and clears the peak.
+
+**Hardware (author MKII, `LSCOPE BJ`, 24 Oct 2026):** busy 8-track play +
+CF METER. SCOPE open ISR mean 291 µs / closed 288 µs, TUE 0 / ROE 0.
+Several minutes ALL open with no glitch.

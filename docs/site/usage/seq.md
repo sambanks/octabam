@@ -1,14 +1,17 @@
 **SEQ** places Euclidean **sample trigs** and **parameter locks** on one
 audio track. Named after the SEQ submenu on Digitakt II / Digitone II. On
-Octatrack it is its own window on the track.
+Octatrack it is its own window on the track via **`[TRACK]`** + **`[PAGE]`**.
+It is separate from the DSP **EUCLID** effect, and it leaves
+`PROJECT > CONTROL > SEQUENCER` alone, so SCALE QUANTIZER stays beside it.
 
 Hold a **`[TRACK]`** key and press **`[PAGE]`**. SEQ opens for that track:
 title **SEQ**, the rings icon, a stock 3x2 DATA ENTRY grid, a step grid
 (hollow = off, solid = on; up to 4 rows of 16 for length 64), and **LEN**
 with the **pattern** step count at the bottom right.
 
-It writes **pattern** sequencer data. Settings save with the **project** /
-bank.
+It writes **pattern** sequencer data. Settings live in `euclid.work` and
+save with the **project** / bank. Defaults: TRIG **PULS** 5, destination
+**AMP** / **VOL**, **ROT** / **DPTH** / PLCK **PULS** 0, **LANE** = **TRIG**.
 
 ## Mental model
 
@@ -65,7 +68,7 @@ Same 3x2 cells as stock SETUP pages:
 | **A** | **PULS** | Hit count of the focused lane |
 | **B** | **ROT** | Rotation of the focused lane |
 | **C** | **LANE** | **TRIG** or **PLCK** |
-| **D** | page + param | Lock destination. Two lines, LFO SETUP **PMTR** style (**AMP** / **VOL**, **SRC** / **PTCH**, …). On **CX OSC** also **SRC** / **CAR** **MOD** **SYMM** **FDBK** **PWM** |
+| **D** | page + param | Lock destination. Two lines, LFO SETUP **PMTR** style (**AMP** / **VOL**, **SRC** / **PTCH**, …). **AMP** / **XVOL** is skipped. On **CX OSC** also **SRC** / **CAR** **MOD** **SYMM** **FDBK** **PWM** |
 | **E** | **DPTH** | How far locks swing from the Part value. **0** clears that destination. **SRC** / **PTCH** stays in scale around the Part's **PLAYBACK** **PTCH**. **AMP** / **VOL** sits at or below the Part's **AMP** **VOL**. Anything else swings ± **DPTH** |
 | **F** | | Empty |
 
@@ -74,8 +77,9 @@ Same 3x2 cells as stock SETUP pages:
 ## Writing the pattern
 
 Open and track-switch load the track's saved SEQ settings into the knobs
-and grid. The grid shows those settings. Nothing hits the **pattern** until
-**`[YES]`**.
+and grid. The grid is write-only: it shows those settings, and never reads
+live sample trigs back from the **pattern**. Nothing hits the **pattern**
+until **`[YES]`**.
 
 **`[YES]`** overwrites from **PULS** / **ROT**, or from a free **`[CUE]`**
 mask.
@@ -110,7 +114,7 @@ white = no lock.
 Empty track. **LANE** = **TRIG**, **D** = **SRC** / **PTCH**, **DPTH** = 0,
 set **PULS**, **`[YES]`**:
 
-![Place sample trigs](../../img/seq/notes-only.png)
+![TRIG DPTH 0 writes sample trigs and clears PTCH.](../../img/seq/notes-only.png)
 
 Sample trigs land. Current destination locks clear because **DPTH** is 0.
 
@@ -126,7 +130,7 @@ rhythm.
 You already have sample trigs + **PTCH**. Switch to **LANE** = **PLCK**,
 **D** = **AMP** / **VOL**, set a different **PULS** / **ROT**, **`[YES]`**:
 
-![Add volume locks on another rhythm](../../img/seq/stack-vol.png)
+![PLCK writes only VOL; sample trigs and PTCH stay.](../../img/seq/stack-vol.png)
 
 **VOL** locks follow that destination's PLCK rhythm (**trigless trigs**
 where there is no sample trig). Sample trigs and **PTCH** stay.
@@ -136,7 +140,7 @@ where there is no sample trig). Sample trigs and **PTCH** stay.
 Sample trigs with **PTCH** + **VOL**. Keep **D** = **SRC** / **PTCH**,
 change TRIG **PULS**, **`[YES]`**:
 
-![Change the sample-trig rhythm](../../img/seq/trig-reshape.png)
+![TRIG YES reshapes only PTCH; VOL survives as trigless where sample trigs drop.](../../img/seq/trig-reshape.png)
 
 - **PTCH** (current destination) clears on silent steps and rewrites on the
   new sample trigs.
@@ -148,7 +152,7 @@ change TRIG **PULS**, **`[YES]`**:
 **PTCH** was placed from **TRIG**. Switch to **LANE** = **PLCK**, **D** =
 **SRC** / **PTCH**, change **ROT**, **`[YES]`**:
 
-![Rewrite one destination's locks](../../img/seq/plck-overwrite.png)
+![PLCK YES clears PTCH on sample-trig misses; other destinations stay.](../../img/seq/plck-overwrite.png)
 
 - **PTCH** clears on every miss, including on sample trigs that still fire,
   then writes on the new PLCK hits (**trigless trig** if no sample trig).
@@ -158,7 +162,7 @@ change TRIG **PULS**, **`[YES]`**:
 
 **LANE** = **PLCK**, that destination's **PULS** = 0, **`[YES]`**:
 
-![Clear one destination's locks](../../img/seq/clear-dest.png)
+![PLCK PULS 0 clears PTCH; sample trigs and other destinations stay.](../../img/seq/clear-dest.png)
 
 Clears this destination over the pattern length. Sample trigs stay. Orphan
 trigless bits drop when nothing else remains on the step.

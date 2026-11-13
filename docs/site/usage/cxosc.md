@@ -117,10 +117,18 @@ hit PLAYBACK / SETUP like any machine. Stock FX1 / FX2 and quantizer
 
 Stock destinations first (PLAYBACK names): **PTCH** **RATO** **INDX**
 **FINE** **FOLD** **MIX**, then AMP / LFO speeds / FX1 / FX2. Extra SETUP
-destinations: **CAR**, **MOD**, **SYMM**, **FDBK**, **PWM**.
+destinations:
 
-**PTCH** LFO depth matches FLEX. **DEC** stays under its knob (and locks /
-scenes).
+| PMTR | Destination |
+|---|---|
+| 30 | CAR |
+| 31 | MOD |
+| 32 | SYMM |
+| 33 | FDBK |
+| 34 | PWM |
+
+**PTCH** LFO depth matches FLEX. **DEC** is not an LFO destination; it
+stays under its knob (and locks / scenes).
 
 ### A short listen path
 
