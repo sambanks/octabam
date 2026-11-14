@@ -3,10 +3,11 @@
 A per-track insert: DRV into a wavefolder, hard or soft clip, combined
 bit/sample-rate crush, then a feedback loop with a tone shelf. MODE CHAOS
 flips feedback polarity from a free-running ramp. LIM is a stereo-linked
-transparent brickwall after MIX (envelope + one block-rate div). MIX 0 is
+peak limiter after MIX (current-block peak + one block-rate div). MIX 0 is
 bit-exact dry when LIM is 0.
 """
 
+from remix.peak_limiter import source as peak_limiter_source
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
                           Kind, Linked, MenuEntry, Module, Param, Proof, YBase)
 
@@ -22,11 +23,11 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="Ilia's MKII, remix cx CX LIM11, 12 Nov 2026: LIM transparent GR "
-               "(ceiling ~-2.5..-18 dB), page-2 0..127, TONE/FB unchanged, icons. "
-               "verify_shatter on the tip. Pre-LIM SHATTER S6 HW 21 Oct 2026.",
-    doc="Crush insert: fold, clip, crush, chaotic FDBK, transparent brickwall after MIX.",
+    proof=Proof.CHECK,
+    proof_note="Current-block stereo limiter gated in verify_shatter; "
+               "unity below ceiling; LIM 127 about -2.5 dBFS. "
+               "New limiter awaits hardware confirmation; prior LIM tests used the old curve.",
+    doc="Crush insert: fold, clip, crush, chaotic FDBK, stereo peak limiter after MIX.",
     menu=MenuEntry(
         fx2_id=0x0a,
         donor_desc=0x400d58b8,        # DARK REV
@@ -58,12 +59,13 @@ MODULE = Module(
               doc="CHAOS: how fast the polarity flips; ignored in HARD and SOFT"),
         # count=128 overrides DARK GATE's 0/1 companion (count None = donor).
         Param(b"LIM", 0, 128, active=True, formatter=_P,
-              doc="transparent brickwall after MIX; 0 off, 1..127 ceiling ~-2.5..-18 dB"),
+              doc="stereo peak limiter after MIX; 0 off, 1..127 ceiling ~0..-2.5 dB"),
         _BLANK, _BLANK,
     ),
     mode_slot=6,
     dsp=DspSection(
         asm="modules/shatter/shatter.asm",
+        subst={pl: peak_limiter_source("shpk", 0x19, 0xd, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, knob=0xd) for pl in ("A", "B")},
         priority=18,
         bus_role=BusRole.NONE,
         ybase=YBase.NEVER,

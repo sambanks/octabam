@@ -1,7 +1,7 @@
 **Crush insert.** Drive into a wavefolder, hard/soft clip, then combined
 bit-depth + sample-rate crush, with a feedback loop and tone shelf. MODE
 **CHAOS** flips feedback polarity from a free-running ramp so the loop
-self-modulates into hash and dropouts. **LIM** is a transparent brickwall
+self-modulates into hash and dropouts. **LIM** is a stereo peak limiter
 after **MIX**. **MIX 0** is exact dry when **LIM** is 0.
 
 ![SHATTER: DRV → FOLD → CLIP → CRSH with FDBK loop into MIX, then LIM.](../../img/shatter/path.svg)
@@ -36,4 +36,8 @@ MODE/**TONE**/**RATE** are easiest with **CLIP** open and **FDBK** up.
 | MODE | HARD | HARD / SOFT / CHAOS (CHAOS flips FDBK polarity) |
 | TONE | 64 | feedback shelf: 0 dark, 127 bright |
 | RATE | 64 | CHAOS polarity flip rate; ignored in HARD/SOFT |
-| LIM | 0 | brickwall after MIX; 0 off, 1..127 ≈ -2.5..-18 dB ceiling |
+| LIM | 0 | peak limiter after MIX; 0 off, 1..127 ≈ 0..-2.5 dB ceiling |
+
+**LIM** leaves quiet passages at their original level. Higher settings lower
+the peak ceiling from near full scale to about -2.5 dBFS. It adds no makeup
+gain. A hot passage may become quieter while its peaks are controlled.

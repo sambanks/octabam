@@ -53,10 +53,12 @@ def params(**kw):
     return v
 
 
-def render(samples, inst=1, **kw):
+def render(samples, inst=1, right_samples=None, **kw):
     n = len(samples) - len(samples) % FRAMES
     src, out = TMP / "in.raw", TMP / "out.raw"
-    src.write_bytes(b"".join(struct.pack("<i", m) for m in samples[:n]))
+    words = samples[:n] if right_samples is None else [
+        v for pair in zip(samples[:n], right_samples[:n]) for v in pair]
+    src.write_bytes(b"".join(struct.pack("<i", m) for m in words))
     pcsv = ",".join(str(x) for x in params(**kw))
     # FX2: r7 = 2+3*pos, alloc = 1+2*pos (dsp_host header).
     r7 = ",".join(str(2 + 3 * k) for k in range(inst))
@@ -69,6 +71,8 @@ def render(samples, inst=1, **kw):
            "-inmask", str((1 << inst) - 1),
            "-frames", str(FRAMES), "-blocks", str(n // FRAMES),
            "-in", str(src), "-out", str(out)]
+    if right_samples is not None:
+        cmd += ["-stereo"]
     for _ in range(inst):
         cmd += ["-params", pcsv]
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -242,7 +246,7 @@ N_LONG = int(3.0 * FS)
 N_LONG -= N_LONG % FRAMES
 drive = [int(0.25 * (1 << 23) * __import__("math").sin(
     2 * 3.14159265 * 220 * i / FS)) for i in range(N_LONG)]
-# LIM 127 bricks to silence ((127-LIM)<<16 = 0); runaway is FDBK/CHAOS, so LIM 0.
+# Test feedback stability with the limiter bypassed.
 Lmax, Rmax = render(
     drive, MIX=127, DRV=127, FOLD=127, CLIP=127, CRSH=127, FDBK=127,
     MODE=2, TONE=127, RATE=127, LIM=0)
@@ -275,6 +279,9 @@ for i, (Li, Ri) in enumerate(pair):
     e = sum(abs(x) for x in Li[512:])
     check(f"two-instance[{i}] has energy ({e})", e > 10_000)
     check(f"two-instance[{i}] rail frac bounded ({rf:.3f} < 0.50)", rf < 0.50)
+
+from peak_limiter_gate import verify as verify_limiter
+verify_limiter(render, check, FRAMES, RAIL)
 
 if FAILS:
     sys.exit(f"verify_shatter: {len(FAILS)} FAILED: {', '.join(FAILS)}")

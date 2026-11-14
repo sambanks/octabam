@@ -2,6 +2,7 @@
 import pathlib
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 import toolpath  # noqa: E402,F401
@@ -33,6 +34,34 @@ class CeilingTests(unittest.TestCase):
                 DspSection(asm="x.asm", priority=1, max_per_core=bad)
         for ok in (None, 1, 4):
             DspSection(asm="x.asm", priority=1, max_per_core=ok)
+
+
+class SequentialLoopTests(unittest.TestCase):
+    SOURCE = """init:
+        rts
+proc:
+        do n7,>first
+        nop
+first:
+        nop
+        do n7,>second
+        nop
+        nop
+second:
+        nop
+        rts
+"""
+
+    def test_modes_take_the_maximum(self):
+        with patch.object(cycle_count, "prep", return_value=self.SOURCE):
+            measured = cycle_count.measure("loop_fixture")
+        self.assertEqual(measured["cycles"], 2)
+
+    def test_sequential_passes_add(self):
+        src = "; CYCLES_SEQUENTIAL_LOOPS\n" + self.SOURCE
+        with patch.object(cycle_count, "prep", return_value=src):
+            measured = cycle_count.measure("loop_fixture")
+        self.assertEqual(measured["cycles"], 3)
 
 
 if __name__ == "__main__":

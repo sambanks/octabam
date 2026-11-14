@@ -61,8 +61,7 @@ REMIX = Remix(
     # block, which the others reach only as their second or later home.
     # SHATTER (FX2 only) used to sit behind CHARACTER at 0x37c10 (378 words). CHARACTER grew to
     # 1,029 words (ends 0x37c25) and LIM pushed SHATTER over the LOAD METER floor at 0x37da3, so
-    # its window record now sits after MODULATION (ends 0x3bdda) at 0x3be00. Demand homes below
-    # are unchanged; fourth block (SC's only home) stays last.
+    # its window record now sits after MODULATION (ends 0x3bdda) at 0x3be00. Demand homes omit the same block; the fourth block (SC's only home) stays last.
     window_demand=("MODULATION", "SPECTRUM", "CHARACTER", "SIDECHAIN_COMPRESSOR", "SHATTER"),
     # The other homes: each effect can be loaded into any block it fits (the code is assembled once per home). The loader
     # sends the first home whose block holds no other demand effect and whose FX2 slot is not a stock reverb that reaches
