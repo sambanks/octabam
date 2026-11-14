@@ -16,12 +16,26 @@ The trig keys light up while you chop: red for the slices made on this page, gre
 
 | key | does |
 |---|---|
-| a red trig | plays that slice |
-| the last red trig, held | removes that slice |
+| a red trig, short press | plays that slice |
+| the last red trig, held | removes that slice (undo) |
+| the green TRIG 1, held at a page start | goes back to the page before |
 | the green trig after listening | carries on from the last cut |
 | [SCALE] (MKI) / [PAGE] (MKII) | ZERO SNAP on or off |
 | [CUE] | LIVE CHOP or STUDIO CHOP |
 | [YES] / [NO] | keep / cancel |
+
+## Listening back and undoing
+
+You don't have to get every cut right first time. While LAZY CHOP is open:
+
+- **Listen to a slice:** a short press on a red trig plays that slice.
+- **Undo the last cut:** hold the last red trig for just under a second (0.7 s). The slice is removed and that trig turns green again, ready to cut once more.
+- **Undo across a page:** at the start of a new page, hold the green TRIG 1 to go back to the last slice of the page before. Keep holding red trigs to undo further.
+- **Carry on:** after listening or undoing, press the green trig. Playback resumes from the last cut and the next press cuts as usual.
+
+In LIVE CHOP, while the recording runs, red trigs don't play their slices, and holding the last red trig undoes it silently.
+
+## Options
 
 - **ZERO SNAP** moves every cut to the nearest zero crossing, so slices start without a click. It stays as you left it.
 - **STUDIO CHOP** chops a sample that is already there. **LIVE CHOP** chops while you record: on a recorder buffer, TRIG 1 starts the recording and every cut lands at the record head. [YES] stops the recording and keeps the slices. Your choice stays across power-off.
