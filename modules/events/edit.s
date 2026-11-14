@@ -55,7 +55,7 @@ ed_scene_held_b:
     EV_RESTORE
     .endm
     .global ed_steps_trig, ed_steps_locks, ed_steps_track, ed_steps_copy, ed_steps_paste
-ed_steps_trig:                       /* 0x4006036e: d3 = d5 + d6 * 16, the step */
+ed_steps_trig:                       /* 0x4006036e: d3 = a5 + d6 * 16, the step */
     lsl.l #4,%d6
     move.l %a5,%d3
     add.l %d6,%d3

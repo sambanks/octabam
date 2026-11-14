@@ -77,7 +77,6 @@ enum {
 
 #define POOL 4096u
 #define CLIP_POOL 1024u                            /* the clipboard's and the undo buffer's locks */
-#define TMP 1024u
 #define PAGES 8u
 #define SLOTS 8u
 #define TRACKS 8u
@@ -90,8 +89,13 @@ DATA uint32_t pg_lk_pool[POOL];
 DATA uint32_t pg_lk_count;
 DATA uint32_t pg_lk_clip[CLIP_POOL], pg_lk_clip_n;  /* stock's clipboard's page locks (bank, pattern 0) */
 DATA uint32_t pg_lk_undo[CLIP_POOL], pg_lk_undo_n;  /* its undo buffer's */
-DATA uint32_t pg_lk_tmp[TMP];                       /* a copy's entries, between the two pools */
-DATA uint32_t pg_lk_full;                          /* turns refused: the pool full */
+DATA uint32_t pg_lk_full;                          /* locks refused: a pool full (a turn, a copy) */
+/* The project pool's generation: odd while a write moves its entries. The
+ * engine reads the pool (pg_lk_step, pg_lk_value) and the UI task writes it
+ * (a knob, a copy, a clear) and may run in the middle of a read: a read that
+ * sees the generation odd or changed is not used (it retries, else keeps
+ * what it had). */
+DATA volatile uint32_t pg_lk_gen;
 DATA uint16_t pg_lk_active[PAGES][TRACKS][SLOTS];  /* the step locks playing */
 DATA uint8_t  pg_lk_ready;
 DATA uint8_t  pg_lk_dirty;                         /* the pool differs from PGLOCKS.WORK */
@@ -141,6 +145,18 @@ static unsigned p_lower(const uint32_t *e, unsigned n, uint32_t key)
     return lo;
 }
 
+static void w_begin(const uint32_t *e)
+{
+    if (e == pg_lk_pool)
+        pg_lk_gen++;
+}
+
+static void w_end(const uint32_t *e)
+{
+    if (e == pg_lk_pool)
+        pg_lk_gen++;
+}
+
 static unsigned p_put(uint32_t *e, uint32_t *n, unsigned cap, uint32_t key, unsigned value)
 {
     unsigned i = p_lower(e, *n, key), j;
@@ -154,10 +170,12 @@ static unsigned p_put(uint32_t *e, uint32_t *n, unsigned cap, uint32_t key, unsi
         pg_lk_full++;
         return 0;
     }
+    w_begin(e);
     for (j = *n; j > i; j--)
         e[j] = e[j - 1];
     e[i] = key | (value & 0xffu);
     (*n)++;
+    w_end(e);
     if (e == pg_lk_pool)
         pg_lk_dirty = 1;
     return 1;
@@ -171,24 +189,50 @@ static void p_del(uint32_t *e, uint32_t *n, uint32_t lo, uint32_t span)
         j++;
     if (j == i)
         return;
+    w_begin(e);
     for (k = i; j < *n; k++, j++)
         e[k] = e[j];
     *n = k;
+    w_end(e);
     if (e == pg_lk_pool)
         pg_lk_dirty = 1;
 }
 
+/* The entries in [base, base + span) of e[0..n). */
+static unsigned p_count(const uint32_t *e, unsigned n, uint32_t base, uint32_t span)
+{
+    unsigned i = p_lower(e, n, base), m = 0;
+    while (i + m < n && (e[i + m] & KEYMASK) - base < span)
+        m++;
+    return m;
+}
+
 /* The entries of [sbase, sbase + span) in one pool become those of
- * [dbase, dbase + span) in another (or the same): the destination's go first. */
-static void p_copy(const uint32_t *se, unsigned sn, uint32_t sbase,
+ * [dbase, dbase + span) in another (or the same, another range): the
+ * destination's go first. All or nothing: when the destination pool cannot
+ * take them, nothing changes and pg_lk_full counts it. */
+static void p_copy(const uint32_t *se, const uint32_t *sn, uint32_t sbase,
                    uint32_t *de, uint32_t *dn, unsigned dcap, uint32_t dbase, uint32_t span)
 {
-    unsigned i = p_lower(se, sn, sbase), m = 0;
-    for (; i < sn && (se[i] & KEYMASK) - sbase < span && m < TMP; i++)
-        pg_lk_tmp[m++] = se[i] - sbase;           /* the offset in the range, the value kept */
+    unsigned m = p_count(se, *sn, sbase, span), i;
+    uint32_t key, k;
+    if (se == de && sbase == dbase)
+        return;
+    if (*dn - p_count(de, *dn, dbase, span) + m > dcap) {
+        pg_lk_full++;
+        return;
+    }
     p_del(de, dn, dbase, span);
-    for (i = 0; i < m; i++)
-        p_put(de, dn, dcap, dbase + (pg_lk_tmp[i] & KEYMASK), pg_lk_tmp[i] & 0xffu);
+    /* by key, not by index: inserting into the same pool moves the source */
+    for (key = sbase; ; key = (k & KEYMASK) + (1u << 8)) {
+        i = p_lower(se, *sn, key);
+        if (i >= *sn || (se[i] & KEYMASK) - sbase >= span)
+            break;
+        k = se[i];                                /* before the put moves it */
+        p_put(de, dn, dcap, dbase + ((k & KEYMASK) - sbase), k & 0xffu);
+        if ((k & KEYMASK) - sbase >= span - (1u << 8))
+            break;                                /* the range's last key: no next */
+    }
 }
 
 static unsigned lk_lower(uint32_t key)
@@ -319,27 +363,41 @@ void pg_scene_handle(unsigned encoder, int delta)
 void pg_lk_step(unsigned page, unsigned track, unsigned bank, unsigned pattern, unsigned step, unsigned trig)
 {
     uint32_t key;
-    unsigned i, s;
+    unsigned i, s, tries;
     volatile uint16_t *act;
     lk_ready();
     if (page >= PAGES || track >= TRACKS)
         return;
     act = pg_lk_active[page][track];
-    if (trig || pg_lk_hold[page] == HOLD_STEP)   /* a trig: its locks, the others the Part's */
-        for (s = 0; s < SLOTS; s++)
-            act[s] = NONE;
-    if (!trig)
+    if (!trig) {
+        if (pg_lk_hold[page] == HOLD_STEP)
+            for (s = 0; s < SLOTS; s++)
+                act[s] = NONE;
         return;
+    }
     key = lk_key_of(0, bank, pattern, track, step, page, 0);
-    for (i = lk_lower(key); i < pg_lk_count && (pg_lk_pool[i] & 0xfffff800u) == key; i++)
-        act[(pg_lk_pool[i] >> 8) & 7u] = (uint16_t)(pg_lk_pool[i] & 0xffu);
+    for (tries = 0; tries < 4u; tries++) {        /* a trig: its locks, the others the Part's */
+        uint32_t gen = pg_lk_gen;
+        uint16_t got[SLOTS];
+        for (s = 0; s < SLOTS; s++)
+            got[s] = NONE;
+        if (gen & 1u)
+            continue;                             /* a write under way (pg_lk_gen) */
+        for (i = lk_lower(key); i < pg_lk_count && (pg_lk_pool[i] & 0xfffff800u) == key; i++)
+            got[(pg_lk_pool[i] >> 8) & 7u] = (uint16_t)(pg_lk_pool[i] & 0xffu);
+        if (pg_lk_gen != gen)
+            continue;
+        for (s = 0; s < SLOTS; s++)
+            act[s] = got[s];
+        return;
+    }                                             /* no clean read: the last step's stay */
 }
 
 /* The value the client plays: its step lock or `base` (the Part's), then
  * the playing Part's scene locks on the crossfader. */
 unsigned pg_lk_value(unsigned page, unsigned track, unsigned slot, unsigned base)
 {
-    unsigned v = base, bank, part, sa, sb, a, b, off;
+    unsigned v = base, bank, part, sa, sb, a = NONE, b = NONE, off, tries;
     uint32_t win;
     int32_t wa;
     if (!pg_lk_ready || page >= PAGES || track >= TRACKS || slot >= SLOTS)
@@ -354,8 +412,17 @@ unsigned pg_lk_value(unsigned page, unsigned track, unsigned slot, unsigned base
     sa = U8(win) & 15u;
     sb = U8(win + 1u) & 15u;
     off = (U8(SCENE_A_OFF) ? 1u : 0u) | (U8(SCENE_B_OFF) ? 2u : 0u);
-    a = off & 1u ? NONE : lk_get(lk_key_of(1, bank, part, track, sa, page, slot));
-    b = off & 2u ? NONE : lk_get(lk_key_of(1, bank, part, track, sb, page, slot));
+    for (tries = 0; ; tries++) {                  /* a clean read of the pool (pg_lk_gen) */
+        uint32_t gen = pg_lk_gen;
+        if (tries == 4u)
+            return v;                             /* none: the scenes' locks skipped this once */
+        if (gen & 1u)
+            continue;
+        a = off & 1u ? NONE : lk_get(lk_key_of(1, bank, part, track, sa, page, slot));
+        b = off & 2u ? NONE : lk_get(lk_key_of(1, bank, part, track, sb, page, slot));
+        if (pg_lk_gen == gen)
+            break;
+    }
     if (a == NONE && b == NONE)
         return v;
     if (a == NONE)
@@ -428,7 +495,9 @@ static int32_t lk_copy(const char *to, const char *from)
 static void lk_clear(void)
 {
     unsigned p, t, s;
+    w_begin(pg_lk_pool);
     pg_lk_count = 0;
+    w_end(pg_lk_pool);
     for (p = 0; p < PAGES; p++)
         for (t = 0; t < TRACKS; t++)
             for (s = 0; s < SLOTS; s++)
@@ -477,6 +546,7 @@ static void lk_load(void)
     pg_lk_backup = 0;
     lk_clear();
     pg_file_path(WORK, pg_lk_path);
+    w_begin(pg_lk_pool);                          /* the file straight into the pool */
     if (pg_file_open(pg_lk_path, "r") >= 0) {
         good = pg_file_read(head, sizeof head) == 1 && head[0] == PG_MAGIC && head[1] == PG_VERSION
                && head[2] <= POOL && (!head[2] || pg_file_read(pg_lk_pool, 4u * head[2]) == 1)
@@ -490,6 +560,7 @@ static void lk_load(void)
             pg_file_refuse();
         }
     }
+    w_end(pg_lk_pool);
     pg_lk_dirty = 0;
 }
 
@@ -589,7 +660,7 @@ void pg_lk_copy(uint32_t dst, uint32_t src, uint32_t len)
             return;
         span = 8u << 20;
     }
-    p_copy(se, *sn, sbase, de, dn, dcap, dbase, span);
+    p_copy(se, sn, sbase, de, dn, dcap, dbase, span);
 }
 
 static uint32_t *lk_clip(uint32_t clip, uint32_t **n)
@@ -626,13 +697,13 @@ void pg_lk_steps(unsigned op, uint32_t a, uint32_t b, uint32_t c, uint32_t d, ui
             break;
         for (i = 0; i < 16u; i++)
             if ((e & 0xffffu) >> i & 1u)
-                p_copy(pg_lk_pool, pg_lk_count, lk_key_of(0, bank, b, c, (d & 3u) * 16u + i, 0, 0),
+                p_copy(pg_lk_pool, &pg_lk_count, lk_key_of(0, bank, b, c, (d & 3u) * 16u + i, 0, 0),
                        ce, cn, CLIP_POOL, lk_key_of(0, 0, 0, 0, i, 0, 0), 1u << 14);
         break;
     case 4:                                       /* trig paste: record d -> step e */
         ce = lk_clip(a, &cn);
         if (ce && d < 64u && e < 64u)
-            p_copy(ce, *cn, lk_key_of(0, 0, 0, 0, d, 0, 0),
+            p_copy(ce, cn, lk_key_of(0, 0, 0, 0, d, 0, 0),
                    pg_lk_pool, &pg_lk_count, POOL, lk_key_of(0, bank, b, c, e, 0, 0), 1u << 14);
         break;
     }
