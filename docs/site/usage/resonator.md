@@ -35,8 +35,9 @@ chooser does not list it.
 | PIT3 | 0..127 | 64 | band 3 centre |
 | PIT4 | 0..127 | 80 | band 4 centre |
 | SCAL | 0..127 | 8 | gain scale; 8=tame, 127≈smash |
-| LIM | 0..127 | 0 | peak limiter after MIX; 0 off, 1..127 ≈ 0..-2.5 dB |
+| LIM | 0..127 | 0 | peak limiter after MIX; 0 off, 1..127 ≈ -2.5..-12 dB |
 
 **LIM** leaves quiet passages at their original level. Higher settings lower
-the peak ceiling from near full scale to about -2.5 dBFS. It adds no makeup
-gain. A hot passage may become quieter while its peaks are controlled.
+the peak ceiling from about -2.5 to -12 dBFS. It adds no makeup
+gain. Hot signals see progressive gain reduction. At LIM max, block peaks cap
+at about -12 dBFS.

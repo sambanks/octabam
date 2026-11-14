@@ -43,7 +43,7 @@ MODULE = Module(
     author_url="https://github.com/ilia-murzinov",
     proof=Proof.CHECK,
     proof_note="Current-block stereo limiter gated in verify_resonator; "
-               "unity below ceiling; LIM 127 about -2.5 dBFS. "
+               "unity below ceiling; LIM 127 about -12 dBFS. "
                "New limiter awaits hardware confirmation; prior LIM tests used the old curve.",
     doc="FX1 Torso S-4 RING-style filter bank: 4 pitched BPs, SCAL makeup, DECY, LIM.",
     menu=MenuEntry(
@@ -78,7 +78,7 @@ MODULE = Module(
         Param(b"SCAL", 8, 128, active=True, formatter=_PLAIN,
               doc="gain scale: 8 is tame, 127 is a smash"),
         Param(b"LIM", 0, 128, active=True, formatter=_PLAIN,
-              doc="peak limiter after MIX; 0 off, 1..127 ≈ 0..-2.5 dB ceiling"),
+              doc="peak limiter after MIX; 0 off, 1..127 ≈ -2.5..-12 dB ceiling"),
     ),
     dsp=DspSection(
         asm="modules/resonator/resonator.asm",

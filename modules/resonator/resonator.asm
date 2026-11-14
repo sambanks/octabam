@@ -22,7 +22,7 @@
 ; DECY high → low damp.
 ;
 ; LIM: shared current-block stereo peak limiter, one div outside sample DO.
-; Ceiling = 1 - LIM*0.25/128 (LIM 0 bypass), near 0..-2.5 dBFS.
+; Ceiling = 0.75 - LIM*0.5/128 (LIM 0 bypass), near -2.5..-12 dBFS.
 ; Unity below ceiling, no makeup gain; approximately 63 ms block release.
 ; The second pass controls the first transient without nested DO/div.
 ;

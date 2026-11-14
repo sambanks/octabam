@@ -58,8 +58,8 @@ the Part.
 - Render gates in `tools/verify/verify_resonator.py` (SCAL 8 max-knob rail
   fraction < 5%, SCAL 127 + LIM 127 peak under ~0.76 FS with rail fraction
   < 5%, no-runaway, two FX1 instances).
-- LIM curve: ceiling `1 - LIM*0.25/128` (≈ 0..-2.5 dB).
-  Same as SHATTER. LIM 0 skips GR so MIX 0 stays bit-exact dry.
+- LIM curve: ceiling `0.75 - LIM*0.5/128` (≈ -2.5..-12 dB).
+  Same as SHATTER. LIM 0 bypasses attenuation so MIX 0 stays bit-exact dry.
 - Earlier hardware (pre-LIM): Ilia's MKII, tip of PR #806 as **`RESON RR`**
   / BUILD RR, 19 Oct 2026. Page-1 GN1–4, DECY low and high, MIX; page-2
   PIT1–4; SCAL 8 and 127; FX2 dry-pass; two FX1 instances. This tip is
@@ -81,7 +81,7 @@ channels of the current mixed block, then applies one attenuation in a
 second pass. This catches the first transient, including at block boundaries.
 No makeup gain is applied. Below the ceiling, dry input stays bit-exact
 unless a preceding hot block is still releasing. LIM 0 bypasses attenuation
-and clears the release state. LIM 1..127 sets a ceiling near 0..-2.5 dBFS.
+and clears the release state. LIM 1..127 sets a ceiling from about -2.5 to -12 dBFS.
 The release is approximately 63 ms at 15 frames per block.
 
 The earlier -18 dB maximum and previous-block gain are superseded. Hardware
