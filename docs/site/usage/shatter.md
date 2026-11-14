@@ -36,8 +36,9 @@ MODE/**TONE**/**RATE** are easiest with **CLIP** open and **FDBK** up.
 | MODE | HARD | HARD / SOFT / CHAOS (CHAOS flips FDBK polarity) |
 | TONE | 64 | feedback shelf: 0 dark, 127 bright |
 | RATE | 64 | CHAOS polarity flip rate; ignored in HARD/SOFT |
-| LIM | 0 | peak limiter after MIX; 0 off, 1..127 ≈ 0..-2.5 dB ceiling |
+| LIM | 0 | peak limiter after MIX; 0 off, 1..127 ≈ -2.5..-12 dB ceiling |
 
 **LIM** leaves quiet passages at their original level. Higher settings lower
-the peak ceiling from near full scale to about -2.5 dBFS. It adds no makeup
-gain. A hot passage may become quieter while its peaks are controlled.
+the peak ceiling from about -2.5 to -12 dBFS. It adds no makeup
+gain. Hot signals see progressive gain reduction. At LIM max, block peaks cap
+at about -12 dBFS.

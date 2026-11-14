@@ -2,7 +2,8 @@
 
 The effect writes its mixed block first. A second pass applies one linked
 attenuation, computed from that same block, so the first transient is covered.
-No makeup gain: signals below the ceiling retain unity gain.
+No makeup gain. LIM spans a useful 0.75 to 0.25 FS ceiling; quiet input
+below the active ceiling retains unity gain.
 """
 
 
@@ -15,10 +16,10 @@ def source(prefix, threshold, level, gain, left, right, peak, start, knob):
         beq     {prefix}off
         asl     #$8,a,a
         move    a,x0
-        move    #>$200000,y1            ; ceiling 1 - LIM*0.25/128
+        move    #>$400000,y1            ; ceiling range 0.75 to 0.25 FS
         mpy     x0,y1,a
-        move    #>$7fffff,b
-        sub     a,b
+        move    #>$600000,b            ; 0.75 FS base ceiling
+        sub     a,b                     ; LIM*0.5/128, max ceiling 0.25 FS
         move    b,{t}
         bra     {prefix}ready
 {prefix}off:

@@ -25,7 +25,7 @@ MODULE = Module(
     author_url="https://github.com/ilia-murzinov",
     proof=Proof.CHECK,
     proof_note="Current-block stereo limiter gated in verify_shatter; "
-               "unity below ceiling; LIM 127 about -2.5 dBFS. "
+               "unity below ceiling; LIM 127 about -12 dBFS. "
                "New limiter awaits hardware confirmation; prior LIM tests used the old curve.",
     doc="Crush insert: fold, clip, crush, chaotic FDBK, stereo peak limiter after MIX.",
     menu=MenuEntry(
@@ -59,7 +59,7 @@ MODULE = Module(
               doc="CHAOS: how fast the polarity flips; ignored in HARD and SOFT"),
         # count=128 overrides DARK GATE's 0/1 companion (count None = donor).
         Param(b"LIM", 0, 128, active=True, formatter=_P,
-              doc="stereo peak limiter after MIX; 0 off, 1..127 ceiling ~0..-2.5 dB"),
+              doc="stereo peak limiter after MIX; 0 off, 1..127 ceiling ~-2.5..-12 dB"),
         _BLANK, _BLANK,
     ),
     mode_slot=6,

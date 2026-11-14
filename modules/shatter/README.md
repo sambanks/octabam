@@ -23,7 +23,7 @@ this one is self-modulating destruction.
 | 2 | 6 | MODE | HARD / SOFT / CHAOS | clip flavour; CHAOS flips FDBK polarity |
 | 2 | 7 | TONE | 0–127 | feedback shelf |
 | 2 | 8 | RATE | 0–127 | CHAOS flip rate |
-| 2 | 9 | LIM | 0–127 | stereo peak limiter after MIX; 0 off, ceiling ~0..-2.5 dB (count=128 overrides DARK GATE's 0/1) |
+| 2 | 9 | LIM | 0–127 | stereo peak limiter after MIX; 0 off, ceiling ~-2.5..-12 dB (count=128 overrides DARK GATE's 0/1) |
 
 **DRV 127 clips at ordinary input levels** (dsp_host: 0.25 FS tone → ~35% of
 samples at the 24-bit rail). Keep DRV down, follow with CLIP, or raise LIM,
@@ -96,7 +96,7 @@ channels of the current mixed block, then applies one attenuation in a
 second pass. This catches the first transient, including at block boundaries.
 No makeup gain is applied. Below the ceiling, dry input stays bit-exact
 unless a preceding hot block is still releasing. LIM 0 bypasses attenuation
-and clears the release state. LIM 1..127 sets a ceiling near 0..-2.5 dBFS.
+and clears the release state. LIM 1..127 sets a ceiling from about -2.5 to -12 dBFS.
 The release is approximately 63 ms at 15 frames per block.
 
 The earlier -18 dB maximum and previous-block gain are superseded. Hardware
