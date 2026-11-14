@@ -11,7 +11,8 @@ Needs pyusb and a libusb (load_meter.py's note). The image must carry REMOTE and
 The block is a 32-byte header {magic "RMT1", head, screen count, screen stamp, RMT_TRACE's address} and 256
 records; a record is seq (16 bits), kind (8), arg (8), stamp (32 bits of
 DMA timer 3, 132 MHz, so it wraps every 32.5 s). `head` counts every record written; record n is at index n & 255.
-COMMAND (0xc0/0x59, id in wValue): 1 enters USB DISK MODE, 2 leaves it (the project reloads). Nothing else.
+COMMAND (0xc0/0x59, id in wValue's low byte): 1 enters USB DISK MODE, 2 leaves it (the project reloads), 3 boots
+a file of REMIX SWITCH's list (`boot`), 4 rescans that list. Nothing else.
 
 `Events` keeps the last head it saw and returns the records since, with `lost` the number overwritten before they
 were read. A scenario calls `wait_for` instead of sleeping: it returns the first record that matches, or raises.
@@ -135,7 +136,38 @@ def unit_ctrl(dev):
     return lambda off, n: bytes(dev.ctrl_transfer(0xc0, 0x5a, off, 0, n, timeout=1000))
 
 
-CMD_DISK_ENTER, CMD_DISK_LEAVE = 1, 2
+CMD_DISK_ENTER, CMD_DISK_LEAVE, CMD_BOOT, CMD_SCAN = 1, 2, 3, 4
+NLEN = 24                       # bytes a name of REMIX SWITCH's list (modules/remix-switch/switch.s)
+
+
+def name_hash(name):
+    h = 0
+    for c in name:
+        h = (h * 33 + c) & 0xffff
+    return h
+
+
+def remixes(ctrl, peek1):
+    """REMIX SWITCH's list as the unit holds it, in its order: the .RMX names of /BRAIN/REMIXES at the last
+    scan (MAIN MENU's opening, or COMMAND 4). [] in an image without REMIX SWITCH."""
+    names, count = struct.unpack(">II", read_bytes(ctrl, 20, 8))
+    if not names:
+        return []
+    n = struct.unpack(">I", peek(peek1, count, 4))[0]
+    raw = peek(peek1, names, NLEN * n)
+    return [raw[NLEN * i:NLEN * (i + 1)].split(b"\0")[0] for i in range(n)]
+
+
+def boot(cmd1, ctrl, peek1, name):
+    """Boot /BRAIN/REMIXES/<name> through REMIX SWITCH (COMMAND 3: the file's index in the unit's list and
+    the hash of its name, which the unit checks against that list). True when taken: the unit stops the
+    sequencer, syncs the card, stages the file and resets, so it leaves the bus. False when the name is
+    not in the list (send COMMAND 4 first after writing a file) or the unit refuses."""
+    name = name.encode() if isinstance(name, str) else name
+    names = remixes(ctrl, peek1)
+    if name not in names:
+        return False
+    return command(cmd1, CMD_BOOT | names.index(name) << 8, name_hash(name))
 LOADS = ("LOADALL", "LOADMASK", "PRELOAD")
 
 

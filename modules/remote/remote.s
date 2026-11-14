@@ -3,7 +3,8 @@
 | A record is 8 bytes: seq (16 bits, the low half of the count of records
 | written), kind (8), arg (8), then DMA timer 3's count (32 bits, 132 MHz).
 | RMT_RING is a 32-byte header {magic "RMT1", head, screen count, screen
-| stamp, the address of RMT_TRACE, three zero longs} and 256 records:
+| stamp, the addresses of RMT_TRACE and of REMIX SWITCH's names and count,
+| a zero long} and 256 records:
 | head counts every record written, record n is at index n & 255, so a host
 | that last saw head H reads records H..head-1 and has lost head-H-256 of
 | them when that is positive. The screen's redraws are a count and the last
@@ -137,23 +138,64 @@ rmt_put:
         lea     %sp@(8),%sp
         rts
 
-| RMT_COMMAND: d0 = id, d1 = argument; returns d0 = 0 taken, 1 refused (an
-| id outside rmt_cmds, or a command still waiting for the UI task). Called
-| by the USB module's control handler (0xc0/0x59), in the USB interrupt:
-| it only posts rmt_run to the UI task's queue, as stock's frame interrupt
-| posts (0x4000b092, 0x4000b194, 0x4000b254, 0x4000c858 call DEFER) and as
-| USB DISK MODE's and OS UPGRADE's menu handlers defer their work.
+| RMT_COMMAND: d0 = wValue (the id in its low byte, a parameter in its high
+| byte), d1 = wIndex; returns d0 = 0 taken, 1 refused (an id outside
+| rmt_cmds, a command still waiting for the UI task, an id that needs REMIX
+| SWITCH in an image without it, or a file check that fails). Called by the
+| USB module's control handler (0xc0/0x59), in the USB interrupt: it only
+| posts rmt_run to the UI task's queue, as stock's frame interrupt posts
+| (0x4000b092, 0x4000b194, 0x4000b254, 0x4000c858 call DEFER) and as USB
+| DISK MODE's and OS UPGRADE's menu handlers defer their work.
 | rmt_cmds is the whole of what a host can make the unit do.
+|
+| Id 3 boots a file of REMIX SWITCH's list (modules/remix-switch/switch.s:
+| osw_names, 24 bytes a name, sorted; osw_count). The parameter is the
+| file's index and wIndex the 16-bit hash of its name (h = h * 33 + byte,
+| from 0, to the NUL): the host reads the list with PEEK (the header's
+| longs 5 and 6 are the addresses of osw_names and osw_count), so it sends
+| the unit's own index and never sorts; a list that changed since, or an
+| index of another list, fails the hash and is refused here.
+        .weak   osw_names, osw_count, osw_idx, osw_scan, osw_answer
         .globl  RMT_COMMAND
 RMT_COMMAND:
-        tst.l   %d0
-        beq.s   1f
+        lea     %sp@(-12),%sp
+        movem.l %d2-%d4,%sp@
+        move.l  %d0,%d2
+        lsr.l   #8,%d2
+        and.l   #0xff,%d2                       | the parameter
+        and.l   #0xff,%d0                       | the id
+        beq.w   9f
         cmp.l   #NCMD,%d0
-        bcc.s   1f
+        bcc.w   9f
         tst.b   rmt_pending
-        bne.s   1f
-        move.l  %d0,rmt_cmd_id
-        move.l  %d1,rmt_cmd_arg
+        bne.w   9f
+        cmp.l   #3,%d0
+        bcs.s   5f
+        lea     osw_scan,%a0                    | ids 3 and 4 are REMIX SWITCH's
+        tst.l   %a0
+        beq.s   9f
+        cmp.l   #3,%d0
+        bne.s   5f
+        cmp.l   osw_count,%d2
+        bcc.s   9f
+        move.l  %d2,%d3
+        mulu.w  #24,%d3
+        lea     osw_names,%a0
+        add.l   %d3,%a0
+        moveq   #0,%d3                          | the hash
+1:      mvz.b   %a0@+,%d4
+        tst.l   %d4
+        beq.s   2f
+        move.l  %d3,%a1
+        lsl.l   #5,%d3
+        add.l   %a1,%d3
+        add.l   %d4,%d3
+        bra.s   1b
+2:      and.l   #0xffff,%d3
+        cmp.l   %d1,%d3
+        bne.s   9f
+5:      move.l  %d0,rmt_cmd_id
+        move.l  %d2,rmt_cmd_arg
         moveq   #1,%d0
         move.b  %d0,rmt_pending
         pea     rmt_rec
@@ -161,20 +203,23 @@ RMT_COMMAND:
         jsr     DEFER
         addq.l  #8,%sp
         moveq   #0,%d0
-        rts
-1:      moveq   #1,%d0
+        bra.s   8f
+9:      moveq   #1,%d0
+8:      movem.l %sp@,%d2-%d4
+        lea     %sp@(12),%sp
         rts
 
-| rmt_run: in the UI task. A record, then the command's stock routine.
+| rmt_run: in the UI task. The command's routine, then a record.
 rmt_run:
+        move.l  rmt_cmd_id,%d0
+        lea     rmt_cmds,%a0
+        lsl.l   #2,%d0
+        move.l  %a0@(0,%d0:l),%a0
+        jsr     %a0@
         moveq   #K_COMMAND,%d0
         move.l  rmt_cmd_id,%d1
-        bsr.w   rmt_put
-        move.l  rmt_cmd_id,%d0
         clr.b   rmt_pending
-        lea     rmt_cmds,%a0
-        move.l  %a0@(0,%d0:l:4),%a0
-        jmp     %a0@
+        bra.w   rmt_put
 
         .balign 4
         .globl  rmt_cmds
@@ -184,6 +229,8 @@ rmt_cmds:
         .long   0x4007eb18                      | 2 leave it: stock's own routine, which does nothing outside the
                                                 |   mode and else closes the mode's dialog (0x4006d4a8), whose
                                                 |   callback 0x4007ebf0 leaves the mode and reloads the project
+        .long   rmt_boot                        | 3 boot a file of REMIX SWITCH's list
+        .long   rmt_scan                        | 4 rescan /BRAIN/REMIXES
         .equ    NCMD, (. - rmt_cmds) / 4
 
 | 0x4007eb34 is what the SYSTEM menu's USB DISK MODE row reaches (0x40063728 ->
@@ -195,6 +242,27 @@ rmt_enter:
         tst.l   0x460e76a0
         bne.s   1f
         jmp     0x4007eb34
+1:      rts
+
+| The dialog's YES for file rmt_cmd_arg: osw_answer(0) stops the sequencer,
+| syncs the card and defers the load and the reset, with REMIX SWITCH's own
+| checks of the file.
+rmt_boot:
+        move.l  rmt_cmd_arg,%d0
+        move.l  %d0,osw_idx
+        clr.l   %sp@-
+        jsr     osw_answer
+        addq.l  #4,%sp
+        rts
+
+| The list as MAIN MENU's opening rebuilds it (osw_menu's guard: no scan
+| before the file system's vectors are set).
+rmt_scan:
+        tst.l   0x46c8240e
+        beq.s   1f
+        tst.l   0x46c8242a
+        beq.s   1f
+        jsr     osw_scan
 1:      rts
 
 | STORE's handlers (docs/specs/STORE.md): a handler may change every register.
@@ -294,7 +362,9 @@ RMT_RING:
         .long   0                               | LCD front-buffer changes
         .long   0                               | the last one's stamp
         .long   RMT_TRACE
-        .long   0, 0, 0
+        .long   osw_names                       | REMIX SWITCH's list, 0 without it
+        .long   osw_count
+        .long   0
         .space  NREC*8
         .globl  RMT_TRACE
 RMT_TRACE:

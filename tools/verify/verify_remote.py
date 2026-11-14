@@ -18,7 +18,11 @@ firmware makes, tools/hw/ot_fresh.py), enumerates over the scripted host and che
   peek       PEEK (0xc0/0x58) at RMT_RING returns the header; a peripheral register, flash and the uncached
              view STALL; a read stops at a window's end
   trace      the last 64 frame interrupts read back; every interrupted PC is in SDRAM; the count rises
-  command    rmt_cmds is ids 1 and 2 and holds none of OS UPGRADE's routines; ids 0 and 3 are refused; 2 outside
+  boot       with REMIX SWITCH: COMMAND 4 rescans and the list read with PEEK is the card's two .RMX files; 3
+             with another name's hash, an index past the list or an absent name is refused; 3 for a listed file
+             stages it (the mailbox's name and length) and reaches the reset sequence. Without REMIX SWITCH 3
+             and 4 are refused. Last: the port does not reset and its frames stop there
+  command    rmt_cmds is enter, leave, boot, scan and holds none of OS UPGRADE's routines; ids 0 and 5 are refused; 2 outside
              the mode changes nothing; 1 enters USB DISK MODE and the ring still answers; 1 again does not enter
              twice; 2 leaves, the project reloads and no dialog stays open
   file       the card log (/LOG <date>.txt) holds a "RMT seq kind arg stamp" line for each record the load
@@ -30,6 +34,7 @@ interrupt's added time on a unit, and a flush at a save (no save is driven here)
 """
 import os
 import pathlib
+import re
 import shutil
 import struct
 import subprocess
@@ -50,6 +55,9 @@ IMAGE = ROOT / "out/mainos_bus.bin"
 ELF = ROOT / "out/platform/runtime/runtime.elf"
 OUT = ROOT / "out/rmt_gate"
 PY = ROOT / ".venv/bin/python3"
+STOCK = ROOT / "out/raw/section_3_MAIN_OS.bin"
+OSW = {m[0]: int(m[1], 0) for m in re.findall(r"^\s*\.set\s+(\w+),\s*(0x[0-9a-fA-F]+|\d+)",
+                                              (ROOT / "modules/remix-switch/osw.inc").read_text(), re.M)}
 DISK_FLAG = 0x460e76a0          # 1 while USB DISK MODE is active (docs/firmware/STEM_REC.md, octemu's usb_diskmode_active)
 DIALOG_OPEN = 0x460e5cd0        # non-zero while a dialog of 0x4006d57c's is open (read from 0x4006d4a8)
 FORBIDDEN = {0x400636bc, 0x40063660, 0x4006370c, 0x40080640}    # OS UPGRADE: the menu handler, its stop, its deferred step, the flash write
@@ -104,6 +112,13 @@ def main():
                        cwd=ROOT, capture_output=True, text=True)
     if r.returncode:
         sys.exit(f"verify_remote: stage_card failed:\n{(r.stdout + r.stderr)[-800:]}")
+    names = ()
+    if "REMIX SWITCH" in mods:                       # two images for COMMAND 3: the user's own stock OS, copied at run time
+        names = (b"AAA.RMX", b"REMOTEGATE.RMX")
+        (tree / "BRAIN" / "REMIXES").mkdir(parents=True, exist_ok=True)
+        for n in names:
+            shutil.copy(STOCK, tree / "BRAIN" / "REMIXES" / n.decode())
+        card.write_bytes(emu_card.build_image(str(tree), size_mb=64))
     sock = f"/tmp/ot-remote-{os.getpid()}.sock"
     fails = []
 
@@ -242,12 +257,12 @@ def main():
             return bytes(serve(lambda: b.ctrl_in(0xc0, 0x59, cid, arg, 1)))
 
         flag = lambda: p.long(DISK_FLAG)                              # noqa: E731
-        table = [p.long(symbol("rmt_cmds") + 4 * i) for i in range(3)]
-        check("rmt_cmds holds ids 1 and 2 only and none of OS UPGRADE's routines",
-              table[0] == 0 and table[1] == symbol("rmt_enter") and table[2] == 0x4007eb18
+        table = [p.long(symbol("rmt_cmds") + 4 * i) for i in range(5)]
+        check("rmt_cmds is enter, leave, boot, scan and holds none of OS UPGRADE's routines",
+              table == [0, symbol("rmt_enter"), 0x4007eb18, symbol("rmt_boot"), symbol("rmt_scan")]
               and not set(table) & FORBIDDEN,
               str([hex(x) for x in table]))
-        check("COMMAND ids 0 and 3 are refused", not ot_events.command(cmd1, 0) and not ot_events.command(cmd1, 3))
+        check("COMMAND ids 0 and 5 are refused", not ot_events.command(cmd1, 0) and not ot_events.command(cmd1, 5))
         check("COMMAND 2 outside the mode is taken and changes nothing",
               ot_events.command(cmd1, 2) and ev.wait_for("COMMAND", 2, 30.0, tick)["arg"] == 2 and flag() == 0)
         ok = ot_events.command(cmd1, ot_events.CMD_DISK_ENTER)
@@ -267,6 +282,32 @@ def main():
             check("no dialog is left open (0x460e5cd0 = 0)", p.long(DIALOG_OPEN) == 0, hex(p.long(DIALOG_OPEN)))
         except TimeoutError as e:
             check("COMMAND 1 and 2", False, str(e))
+
+        if not names:
+            check("COMMAND 3 and 4 are refused without REMIX SWITCH",
+                  not ot_events.command(cmd1, 3) and not ot_events.command(cmd1, 4)
+                  and ot_events.remixes(ctrl, peek1) == [])
+        else:
+            ok = ot_events.command(cmd1, ot_events.CMD_SCAN)
+            ev.wait_for("COMMAND", 4, 60.0, tick)
+            got = ot_events.remixes(ctrl, peek1)
+            check("COMMAND 4: the unit's list is the card's two files, sorted", ok and got == list(names), str(got))
+            mbox = (OSW["OSW_MBOX"] & ~0x08000000)
+            pick = names[1]
+            check("COMMAND 3 with another name's hash, an index past the list and a name not in it are refused",
+                  not ot_events.command(cmd1, 3 | 1 << 8, ot_events.name_hash(names[0]))
+                  and not ot_events.command(cmd1, 3 | 2 << 8, ot_events.name_hash(pick))
+                  and not ot_events.boot(cmd1, ctrl, peek1, b"ABSENT.RMX") and p.long(mbox) != OSW["OSW_MAGIC"])
+            ok = ot_events.boot(cmd1, ctrl, peek1, pick)
+            for _ in range(600):                          # the port does not reset: the switcher's RCR fallback ends it
+                if p.long(mbox + OSW["MB_RESET"]) == 0x52435220:
+                    break
+                p.run(100)
+            name = p.peek(mbox + OSW["MB_NAME"], 32).split(b"\0")[0]
+            check(f"COMMAND 3: REMIX SWITCH staged {pick.decode()} (the mailbox's name and length) and reached its reset",
+                  ok and name == pick and p.long(mbox + OSW["MB_LEN"]) == STOCK.stat().st_size
+                  and p.long(mbox + OSW["MB_RESET"]) == 0x52435220,
+                  f"taken {ok}, name {name}, len {p.long(mbox + OSW['MB_LEN'])}, reset {p.long(mbox + OSW['MB_RESET']):#x}")
     except Exception as e:  # noqa: BLE001 -- a hang or a stall is the finding
         check(f"the run completed ({type(e).__name__}: {e})", False)
     finally:
