@@ -169,7 +169,8 @@ stock page does (PAGES' locks; the remix needs EVENTS):
 
 The locks follow their trigs like stock's: a trig taken off takes its
 locks, trig + PLAY clears them, and copying a trig, a track or a pattern
-carries them. They are saved with the project (`pglocks.work`).
+carries them. They are saved with the project (`pglocks.work`). Part and
+bank operations (RELOAD PART, a Part or bank copy) do not move them yet.
 
 ### NEXT: orders on the beat
 

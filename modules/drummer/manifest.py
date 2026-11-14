@@ -15,6 +15,9 @@ window and drummer.work come in phases 4b-4d (INVESTIGATION.md).
 
 All three were measured under the port (INVESTIGATION.md, phases 2 and 4).
 """
+import runpy
+from pathlib import Path
+
 from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, SymbolRef
 
 H = bytes.fromhex
@@ -30,8 +33,10 @@ DETOURS = (
 
 
 def drummer_inc(modules, remix=None):
-    """HAVE_PAGELOCKS: KIT BALANCE takes PAGES' locks (PAGES and EVENTS in the remix)."""
-    return f".set HAVE_PAGELOCKS, {int('PAGES' in modules and 'EVENTS' in modules)}\n"
+    """HAVE_PAGELOCKS: KIT BALANCE takes PAGES' locks (pages/manifest.py: its locks unit linked)."""
+    pages = runpy.run_path(str(Path(__file__).parents[1] / "pages/manifest.py"))
+    have = any(entry[0] == "DRUMMER" for entry in pages["lock_clients"](modules))
+    return f".set HAVE_PAGELOCKS, {int(have)}\n"
 
 
 MODULE = Module(
@@ -99,5 +104,8 @@ MODULE = Module(
         ("ANALOG BD", "row 5 of the machine list and its seams, until DRUMMER joins HOOKS machine_rows"),
         ("OCTA303", "row 5 of the machine list and its seams, until DRUMMER joins HOOKS machine_rows"),
     ),
-    gates=(Gate("modules/drummer/verify.py", remix_arg=False),),
+    gates=(Gate("modules/drummer/verify.py", remix_arg=False),
+           # PAGES' locks on KIT BALANCE: the panel, the steps' life, SAVE PROJECT and a boot
+           # (its own synthetic card; SKIPs without PAGES' locks)
+           Gate("modules/pages/verify_locks.py", venv=True, stage="image"),),
 )

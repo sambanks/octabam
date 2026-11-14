@@ -196,6 +196,8 @@ EVENTS) :
 Les locks suivent leurs trigs comme ceux de stock : retirer un trig retire
 ses locks, trig + PLAY les efface, et copier un trig, une piste ou un
 pattern les emporte. Ils sont enregistrés avec le projet (`pglocks.work`).
+Les opérations sur les Parts et les banques (RELOAD PART, copie de Part ou
+de banque) ne les déplacent pas encore.
 
 ### NEXT : des ordres sur le temps
 

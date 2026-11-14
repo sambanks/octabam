@@ -56,6 +56,23 @@ saved with the project in `pglocks.work` (`pglocks.strd` at SAVE PROJECT).
 With a trig or a scene held, a knob on any PAGES page that takes no lock is
 dropped, rather than stock locking the page under the window.
 
+### Limits
+
+- **Parts and banks.** The locks follow steps, tracks and patterns, not
+  Parts or banks: RELOAD PART, a Part copy and a bank copy leave PAGES'
+  locks as they were (a Part's scene locks are not put back by its reload;
+  a copied bank's step locks stay with the bank they were on). A follow-up.
+- **Sizes.** 4096 locks for the project, 1024 each for the clipboard and
+  the undo buffer. A turn on a full pool, and a copy that does not fit, are
+  dropped whole (nothing changes) and counted in `pg_lk_full`.
+- **Reading while writing.** The engine reads the pool at its steps while
+  the UI task writes it (a knob, a copy, a clear). Every write of the
+  project's pool runs between two increments of a generation counter
+  (`pg_lk_gen`, odd while entries move); a read that saw it odd or changed
+  is retried, then dropped for that step (the last step's locks stay).
+  Measured under the port: DRUMMER's step builds run in a task the port
+  names `main`, the knob turns in the UI task (`sys`).
+
 ### Declaring locks
 
 In `manifest.py`, `LOCKS` lists `(module key, prefix, page id, page name,
@@ -79,7 +96,10 @@ The locks unit (`locks.c` + `locks.s`, built by `generate.py` into
 `locks_unit.s`) enters a remix with PAGES, EVENTS, STORE and a client that
 declares locks. It uses EVENTS' `edit.held`, `edit.scene_held`,
 `edit.copy_pre` and `edit.steps`, and STORE's side-file events (client 10,
-the key `("PAGES", "EVENTS", "DRUMMER")`). PLOCKS P2 and SCENES P2 detour
+the key `LOCKS_KEY`). `LOCKS_KEY` is built from `LOCKS` in PAGES' manifest
+(PAGES, EVENTS, STORE and any one of the LOCKS clients); EVENTS' and
+STORE's registrations and DRUMMER's `HAVE_PAGELOCKS` read it, so a client
+added to `LOCKS` alone is wired everywhere. PLOCKS P2 and SCENES P2 detour
 the same stock sites privately, so they do not share a remix with PAGES'
 locks until they register on those boundaries.
 

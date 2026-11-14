@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """PAGES' locks under the port (MKII): DRUMMER's KIT BALANCE takes step locks and scene locks.
 
-    .venv/bin/python3 modules/pages/verify_locks.py [--image out/mainos_bus.bin]
-        [--card out/drummer/port/groove/card.img]
+    .venv/bin/python3 modules/pages/verify_locks.py [REMIX] [--image out/mainos_bus.bin] [--card CARD]
 
-The card is DRUMMER's verify_port.py groove card (T1 a DRUMMER track). The image is a remix with
-DRUMMER, PAGES and EVENTS (remixes/test/drummer). Each run answers the date prompt, selects T1,
+The image is a remix with PAGES' locks (DRUMMER, PAGES, EVENTS, STORE: remixes/test/drummer); a
+remix without them SKIPs. With no --card the gate makes its own (no sample of anyone's): an empty
+project made by the image (tools/hw/ot_fresh.py), DRUMMER's manual loop (manual_fixture.py: 16
+synthetic hits, one slice each) on FLEX slot 1, T1 signed a DRUMMER track with a kit in
+drummer.work (so no AUTO question at the load). It first checks that the two generated units are
+current (pages/generate.py and drummer/generate.py --check). Each run answers the date prompt, selects T1,
 opens KIT BALANCE (SRC again), then:
 
   lock    GRID RECORDING (REC), trig 3 placed, then held, A -64, C +6, let go: step 3 of bank 1's
@@ -28,9 +31,8 @@ opens KIT BALANCE (SRC again), then:
           knob handler (0x40052e98, not A's 0x40053498: image 86 on the unit locked LIVE's SEED)
   free    no REC, trig 3 held, A +3: stock's knob (no held editor out of GRID RECORDING): the Part
           turns (KICK +15 = 73), no lock
-  fills   the page after KIT BALANCE (FILLS here, NEXT on a branch with it: SRC again), REC, trig 3 held,
-          A +2: no lock, and stock's held editor never runs (it would lock LIVE under the window:
-          reported on image 87, NEXT)
+  fills   the page after KIT BALANCE (NEXT: SRC again), REC, trig 3 held, A +2: no lock, and stock's
+          held editor never runs (it would lock LIVE under the window: reported on image 87)
   fillsc  the same page, SCENE A held, A +2: no lock, stock's scene handler never runs
 
   save    lock's step locks and scene's scene lock, then PROJECT > SAVE PROJECT (the card kept): the
@@ -66,12 +68,61 @@ def check(name, ok, detail=""):
         FAILS.append(name)
 
 
-def symbol(name):
+def symbol(name, need=True):
     for line in (ROOT / "out/platform/runtime/runtime.map").read_text().splitlines():
         w = line.split()
         if len(w) == 2 and w[1] == name and w[0].startswith("0x"):
             return int(w[0], 16)
-    sys.exit(f"verify_locks: {name} not in the runtime map (build a remix with DRUMMER, PAGES and EVENTS)")
+    if need:
+        sys.exit(f"verify_locks: {name} not in the runtime map (build a remix with DRUMMER, PAGES and EVENTS)")
+    return None
+
+
+def fixture(image):
+    """The gate's own card: an empty project by the image, DRUMMER's manual loop, T1 a DRUMMER track."""
+    import shutil
+    import struct
+    import zlib
+    sys.path.insert(0, str(ROOT / "modules/drummer"))
+    import manual_fixture as mf
+    import probe_slices as ps
+    work = OUT / "fixture"
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+    r = subprocess.run([str(ROOT / ".venv/bin/python3"), str(ROOT / "tools/hw/ot_fresh.py"), "--image", image,
+                        "--out", str(work / "fresh")], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_locks: ot_fresh failed:\n{(r.stdout + r.stderr)[-1500:]}")
+    src = next(p.parent for p in (work / "fresh").rglob("project.work"))
+    wav = work / "loop.wav"
+    frames = mf.loop_wav(wav)
+    slices = [(i * mf.STEP, (i + 1) * mf.STEP, 0xFFFFFFFF) for i in range(mf.STEPS)] + [(0, 0, 0)] * (64 - mf.STEPS)
+    proj = work / "project"
+    ps.build_project(src, proj, frames, slices, mf.STEPS, mf.TEMPO)
+
+    def mut(data):                       # T1 a DRUMMER track ("DR",1 in NEIGHBOR's PLAYBACK bytes), no trig
+        for p in range(ps.otp.NPARTS_ALL):
+            part = ps.otp.PART_BASE + p * ps.otp.PART_STRIDE
+            data[part + 9 + 60:part + 9 + 63] = b"DR\x01"
+        off = ps.otp.trac_off(0, 0)
+        data[off:off + 64] = bytes(64)
+        data[off + 0x59:off + 0x59 + 64 * 32] = bytes([0xFF]) * (64 * 32)
+    ps.otp._bank_write(proj, 1, mut, guard=False)
+    t1 = (bytes(16) + bytes([15] * 48) + bytes(16) + bytes(48) + bytes(128) + bytes(64)
+          + bytes((0, 1, 6, 4, 3, 5, 7, 8, 2)) + bytes((0, 4, 1)))     # drummer.work v1: T1's kit ready
+    assert len(t1) == 332
+    body = t1 + bytes(332 * 7)
+    data = struct.pack(">4I", 0x44524D4B, 1, len(body), zlib.crc32(body)) + body
+    for name in ("drummer.work", "drummer.strd"):
+        (proj / name).write_bytes(data)
+    card = work / "card.img"
+    r = subprocess.run([str(ROOT / ".venv/bin/python3"), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(proj),
+                        "OCTABAM", "RIG", "--tree", str(work / "tree"), "--out", str(card),
+                        "--audio", f"{wav}:{ps.SAMPLE_REL}"], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_locks: stage_card failed:\n{(r.stdout + r.stderr)[-1500:]}")
+    return str(card)
 
 
 def tap(code, gap=0.5):
@@ -161,11 +212,20 @@ def lock(scene, track, ss, slot, value, page=1, bank=0, pp=0):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("remix", nargs="?", default="", help="the remix built (make check passes it)")
     ap.add_argument("--image", default=str(ROOT / "out/mainos_bus.bin"))
-    ap.add_argument("--card", default=str(ROOT / "out/drummer/port/groove/card.img"))
+    ap.add_argument("--card", default="", help="a card with T1 a DRUMMER track (default: the gate's own)")
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     print("PAGES locks: DRUMMER's KIT BALANCE (port, MKII)")
+    for gen in ("modules/pages/generate.py", "modules/drummer/generate.py"):
+        r = subprocess.run([sys.executable, str(ROOT / gen), "--check"], cwd=ROOT, capture_output=True, text=True)
+        check(f"{gen} --check: the generated unit is current", r.returncode == 0, (r.stdout + r.stderr).strip()[-200:])
+    if symbol("pg_lk_pool", need=False) is None or symbol("dr_l2_where", need=False) is None:
+        print(f"  [SKIP] verify_locks: {a.remix or 'this image'} has no PAGES locks with DRUMMER")
+        return 1 if FAILS else 0
+    if not a.card:
+        a.card = fixture(a.image)
     first = [n for n in CASES if n != "boot2"]
     with cf.ThreadPoolExecutor(len(first)) as ex:
         res = {r[0]: r[1:] for r in ex.map(lambda n: run(a, n), first)}
