@@ -53,7 +53,7 @@ MODULE = Module(
         fx2_id=0x1e,
         donor_desc=0x400d58b8,
         abbr=b"RESO",
-        fullname=b"Resonator",
+        fullname=b"RESONATOR",
         build_tag=False,
     ),
     params=(
