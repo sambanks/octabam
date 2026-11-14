@@ -52,16 +52,21 @@ second:
         rts
 """
 
+    def measure(self, source):
+        # Loop measurement requires dsp_asm. This unit tests the choice between
+        # two independently measured costs; real remix pricing covers assembly.
+        costs = [dict(cycles=n, words=n, inner="", modes=[("loop", "", n)])
+                 for n in (1, 2)]
+        with patch.object(cycle_count, "prep", return_value=source), \
+             patch.object(cycle_count, "_measure_loop", side_effect=costs):
+            return cycle_count.measure("loop_fixture")
+
     def test_modes_take_the_maximum(self):
-        with patch.object(cycle_count, "prep", return_value=self.SOURCE):
-            measured = cycle_count.measure("loop_fixture")
-        self.assertEqual(measured["cycles"], 2)
+        self.assertEqual(self.measure(self.SOURCE)["cycles"], 2)
 
     def test_sequential_passes_add(self):
         src = "; CYCLES_SEQUENTIAL_LOOPS\n" + self.SOURCE
-        with patch.object(cycle_count, "prep", return_value=src):
-            measured = cycle_count.measure("loop_fixture")
-        self.assertEqual(measured["cycles"], 3)
+        self.assertEqual(self.measure(src)["cycles"], 3)
 
 
 if __name__ == "__main__":
