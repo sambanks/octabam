@@ -87,8 +87,10 @@ resumes (it runs the stock init first if its init never ran).
   words an effect on every link. The FX1 and FX2 choosers' "same effect" test is detoured (the refusals above, with the popup
   `FUN_4005a2b8`, which runs in the key handler). The idle loop cannot call the popup, so it leaves its message in `dl_pend`,
   and a detour at the UI task's page-key handler (`FUN_4005578c`) shows it at the next press.
-- **DLCOPY** (DSP, `modules/dlcopy/dlcopy.asm`), a hook on payload B at `P:0x76` (the frame head, after the masks are set), in
-  the window. When the doorbell is set it clears the effect's BOUND word, copies the block to the window while summing the code
+- **DLCOPY** (DSP, `modules/dlcopy/dlcopy.asm`), a hook on payload B at `P:0x342` (the frame's end, after the last track and
+  before the jump back to the frame wait), in the window. Until 15 Nov 2026 the hook was at `P:0x76`, the frame head: the copy
+  held core B between its two handshakes with core A, and on a unit core B stopped in the first track of that frame
+  (`FAILURE_MODES.md`, "DSP stall after a demand load during play"). When the doorbell is set it clears the effect's BOUND word, copies the block to the window while summing the code
   words, compares the sum with the one staged after the code, and only then writes the effect's init and proc and BOUND last. A
   block whose sum is wrong is not published; the second send replaces it. A message for an entry that is BOUND with the same first
   word (a repeat send) is consumed without a copy: BOUND stays set, and a repeat that arrives damaged cannot unbind resident code
@@ -328,6 +330,9 @@ Each says what it removes and what it costs.
 
 ## Open
 
+- OPEN, hardware: why a copy at the frame head that bound an effect stopped core B in the first track of that frame (15 Nov
+  2026, `FAILURE_MODES.md`, "DSP stall after a demand load during play"). The hook's move to the frame's end removed the
+  stall in 12 runs of 12; the mechanism is not known, and the copy still takes core B to about 80 % of a frame.
 - OPEN, hardware: a move from T4's block freezes the DSP frame loop (`FAILURE_MODES.md`, "DARK REV picked on T4's FX2 ..."). `octabam` still has `window_homes`. A poll caught DSP 1 at 99.8 % in a single frame at the copy of a send (15.544 s, 28 Oct 2026): copying a block in one frame takes core B close to a frame.
   Since 8 Nov 2026 the loop is 9 instructions and 10 words a code word instead of 11 and 13, and the two repeats of a send that
   arrived whole are not copied. Estimated from the code (2 cycles a one-word instruction, as `CHIP.md` measures; 4 assumed for a

@@ -3,8 +3,9 @@
 The DSP half of the demand loader (design, measurements and open items:
 [`docs/contributing/DEMAND_LOADER.md`](../../docs/contributing/DEMAND_LOADER.md)).
 
-`dlcopy.asm` is a hook on payload B at `P:0x76` (the frame head, after the host handlers'
-address masks are set), placed in the shared window. When the doorbell at `X:0x2900` is `0xa55a`
+`dlcopy.asm` is a hook on payload B at `P:0x342` (the frame's end, after the last track and before
+the jump back to the frame wait), placed in the shared window. Until 15 Nov 2026 it was at `P:0x76`,
+the frame head, where the copy held core B between its two handshakes with core A. When the doorbell at `X:0x2900` is `0xa55a`
 it clears the effect's BOUND word, copies the staged block to the window summing the code words,
 and publishes it (init, proc, span, BOUND last) only if the sum matches the one staged after the
 code; it clears the doorbell either way. A message for an entry already BOUND at the same

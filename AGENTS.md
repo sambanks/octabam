@@ -186,6 +186,7 @@ moment it costs real work, and add its line here.
 - [A gate that models a setting must boot that setting](docs/contributing/TRAPS.md#trap-post-cs1) — `--cs1-in` the block; an empty run reports which watch was empty, never crashes.
 - [The bench socket drops a large reply on EAGAIN](docs/contributing/TRAPS.md#trap-bench-socket) — poll POLLOUT in the write loop; a short line in the port log is display-only.
 - [Payload B's frame routine writes `x:$3f7f..$3fbf` every frame](docs/contributing/TRAPS.md#trap-stock-x-scratch) — the guard's base cells were there; read what the stock writes before putting state in X, and read the cells back on a unit.
+- [A frame hook that holds core B at its frame head can stop the core](docs/contributing/TRAPS.md#trap-frame-head) — DLCOPY's copy between core B's two handshakes with core A; long work on core B goes at the frame's end (`P:$342`); read a stalled DSP with `tools/hw/dlprobe.patch` and `dl_probe.py`.
 
 **ColdFire / DRAM side**
 
