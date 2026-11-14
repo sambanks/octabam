@@ -17,7 +17,7 @@
   </defs>
 
   <text class="t" x="440" y="28" text-anchor="middle">SRC = NBR</text>
-  <text class="t-sm" x="440" y="48" text-anchor="middle">prev-track keybus envelope opens the noise — not neighbour audio</text>
+  <text class="t-sm" x="440" y="48" text-anchor="middle">prev-track keybus envelope opens the noise (level only)</text>
 
   <!-- this track dry → BAL (same as LFO mode; NBR never replaces the dry source) -->
   <text class="t" x="24" y="94">in</text>
@@ -25,7 +25,7 @@
   <rect class="box" x="102" y="68" width="70" height="44" rx="2"/>
   <text class="t" x="137" y="95" text-anchor="middle">dry</text>
   <path class="arr" d="M172 90 L760 90 L760 168"/>
-  <text class="t-sm" x="460" y="82" text-anchor="middle">untouched — BAL still blends this track</text>
+  <text class="t-sm" x="460" y="82" text-anchor="middle">untouched. BAL still blends this track</text>
 
   <!-- internal noise; no audio in -->
   <rect class="box" x="40" y="174" width="90" height="44" rx="2"/>
@@ -51,12 +51,12 @@
   <!-- prev track: keybus envelope only → AM (replaces LFO; not audio) -->
   <rect class="box" x="575" y="258" width="184" height="52" rx="2"/>
   <text class="t" x="667" y="280" text-anchor="middle">prev track keybus</text>
-  <text class="t-sm" x="667" y="298" text-anchor="middle">envelope only — not audio</text>
+  <text class="t-sm" x="667" y="298" text-anchor="middle">envelope only</text>
   <line x1="667" y1="258" x2="667" y2="228" stroke="#111" stroke-width="2.5"/>
   <polygon points="667,212 659,228 675,228" fill="#111"/>
 
   <text class="t-sm" x="770" y="250" text-anchor="start">quiet → noise off</text>
-  <text class="t-sm" x="770" y="268" text-anchor="start">T1 reads own Y:$800</text>
+  <text class="t-sm" x="770" y="268" text-anchor="start">T1 reads its own keybus</text>
   <text class="t-sm" x="770" y="286" text-anchor="start">RATE/SHPE idle</text>
 
   <line class="arr" x1="712" y1="196" x2="748" y2="196"/>

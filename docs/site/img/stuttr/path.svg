@@ -52,5 +52,5 @@
   <line class="arr" x1="762" y1="154" x2="800" y2="154"/>
   <text class="t" x="805" y="158">out</text>
 
-  <text class="t-sm" x="410" y="280" text-anchor="middle">CHNC=0 never grabs. SYNC divides the attempt clock. Edges crossfade ~2 ms.</text>
+  <text class="t-sm" x="410" y="280" text-anchor="middle">CHNC=0: no grabs. SYNC divides the attempt clock. Edges crossfade ~2 ms.</text>
 </svg>
