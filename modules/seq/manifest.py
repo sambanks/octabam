@@ -49,10 +49,12 @@ MODULE = Module(
     category=Category.MACHINES,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.PORT,
-    proof_note="verify_seq, verify_seq_func_bank and verify_seq_scenarios: "
-               "MKII clear menu, dialog ordering, lock writes and stock "
-               "TRACK/CUE gestures under the port. Current changes not flashed.",
+    proof=Proof.HARDWARE,
+    proof_note="author's MKII, CX CJ.RMX, 14 Nov 2026: all six reported "
+               "device checks passed: PLCK PULS 0 clearing; all FUNC+BANK "
+               "clear rows and NO cancel; ARE YOU SURE? layering and lock; "
+               "stock TRACK shortcuts; CUE chord vs bare tap; SCALE-off "
+               "Part PTCH. Does not claim audio testing.",
     doc="TRACK + PAGE: Euclidean sample-trig + p-lock window (title SEQ; "
         "A/B=PULSE/ROT of focused LANE, C=TRIG|PLCK, D/E=DEST/DEPTH; "
         "CUE = focused-lane random k-subset; DEST = LFO PMTR 0..29 + CX "
