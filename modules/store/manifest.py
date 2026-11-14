@@ -10,6 +10,9 @@ the detours and calls each client's handler at the event
 client that is not in the remix is left out of the tables.
 """
 
+import runpy
+from pathlib import Path
+
 from remix.schema import Category, Detour, Kind, Linked, Module, Proof
 
 H = bytes.fromhex
@@ -24,11 +27,15 @@ EVENTS = (
 
 # (module key, symbol prefix, events handled). Table order is run order. A key may
 # be a tuple of module keys: the client is in when all of them are.
-PAGES_LOCKS = ("PAGES", "EVENTS", "DRUMMER")
+# PAGES' locks: PAGES, EVENTS, STORE and one of its LOCKS clients (one key, from LOCKS).
+PAGES_LOCKS = runpy.run_path(str(Path(__file__).parents[1] / "pages/manifest.py"))["LOCKS_KEY"]
 
 
 def present(key, modules):
-    return all(k in modules for k in (key if isinstance(key, tuple) else (key,)))
+    """A registration's module key in the remix: a tuple needs each of its keys, a
+    tuple nested in it any one of its (pages/manifest.py LOCKS_KEY)."""
+    return all((any(m in modules for m in k) if isinstance(k, tuple) else k in modules)
+               for k in (key if isinstance(key, tuple) else (key,)))
 
 
 CLIENTS = (
@@ -54,9 +61,8 @@ CLIENTS = (
                        "pstore_pre", "pstore_post", "preload_post")),
     ("SEQ", "ef", ("loadall_post", "loadmask_post", "newproj", "bankw_post",
                            "pstore_pre", "pstore_post", "preload_post")),
-    # PAGES' locks (pages/locks.c, PGLOCKS.WORK): a tuple key is present when every
-    # one of its modules is -- PAGES' locks unit is linked with PAGES, EVENTS and a
-    # LOCKS client (pages/manifest.py lock_clients; DRUMMER today).
+    # PAGES' locks (pages/locks.c, PGLOCKS.WORK): present when PAGES links its locks
+    # unit -- PAGES, EVENTS, STORE and a LOCKS client (pages/manifest.py LOCKS_KEY).
     (PAGES_LOCKS, "pg", ("loadall_pre", "loadall_post", "loadmask_post", "newproj", "bankw_post",
                          "pstore_pre", "pstore_post", "preload_post")),
     # No side file: partclear holds its per-track state and the partsaved that ends

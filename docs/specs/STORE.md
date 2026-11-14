@@ -33,10 +33,12 @@ not re-enter.
 events it handles; the handler for event `e` is `<prefix>_st_<e>`. A client not
 in the remix is left out of the tables, and a handler named there that the
 link cannot find stops the build. A client declares `requires=("STORE",)`.
-A client's key may be a tuple of module keys, present when all of them are:
-PAGES' locks (`pglocks.work`, client 10) are in only with PAGES, EVENTS and a
-page that declares locks (DRUMMER's KIT BALANCE), the condition PAGES links its
-locks unit on.
+A client's key may be a tuple of module keys, present when all of them are; a
+tuple nested in it is present when any one of its keys is. PAGES' locks
+(`pglocks.work`, client 10) take PAGES' `LOCKS_KEY`: PAGES, EVENTS, STORE and
+one of the clients in its `LOCKS` (DRUMMER's KIT BALANCE today), the condition
+PAGES links its locks unit on. The clients table writes such a key `A + B + C`,
+a nested tuple of one key as that key.
 
 | client | events |
 |---|---|
@@ -50,7 +52,7 @@ locks unit on.
 | CHORDS FACTORY (`ch`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | DRUMMER (`dr`) | loadall_pre, loadall_post, loadmask_pre, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | SEQ (`ef`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
-| PAGES + EVENTS + DRUMMER (`pg`) | loadall_pre/post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+| PAGES + EVENTS + STORE + DRUMMER (`pg`) | loadall_pre/post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | VARISPEED (`vs`) | partsaved, partclear |
 
 ## File calls

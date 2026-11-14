@@ -54,6 +54,16 @@ LOCKS = (
     ('DRUMMER', 'dr', 1, 'KIT BALANCE', 'trig'),
 )
 HOLDS = {'trig': 0, 'step': 1}
+# The locks' presence, one key for every manifest that wires them (EVENTS'
+# registration, STORE's client, DRUMMER's HAVE_PAGELOCKS): PAGES, EVENTS and
+# STORE, and any one of the LOCKS clients (a nested tuple reads "any of").
+LOCKS_KEY = ('PAGES', 'EVENTS', 'STORE', tuple(dict.fromkeys(entry[0] for entry in LOCKS)))
+
+
+def key_present(key, modules):
+    """A key's modules in the remix: a string must be, a nested tuple needs one of its."""
+    return all((any(m in modules for m in k) if isinstance(k, tuple) else k in modules)
+               for k in (key if isinstance(key, tuple) else (key,)))
 
 # The page key's setup opener: movel %sp@(4),%d0 ; moveq #3,%d1
 OPENER = 0x400322F0
@@ -115,7 +125,7 @@ def lock_clients(modules):
             raise ValueError(f'PAGES LOCKS {key!r}: not a PAGES client')
         ids.add(page)
         prefixes.add(prefix)
-    if not {'PAGES', 'EVENTS', 'STORE'} <= set(modules):   # STORE: PGLOCKS.WORK (client 10)
+    if not key_present(LOCKS_KEY, modules):     # STORE: PGLOCKS.WORK (client 10)
         return []
     return [entry for entry in LOCKS if entry[0] in modules]
 
@@ -135,7 +145,7 @@ def locks_inc(modules, remix=None):
         out += [f'    jsr {prefix}_page_shown', '    tst.l %d0', '    bne.s 9f']
     out += ['    bra.s 8f', '9:  moveq #1,%d0', '    rts', '8:']
     ids = runpy.run_path(str(Path(__file__).parents[1] / 'store/manifest.py'))['CLIENT_IDS']
-    out += ['.endm', f".set PG_CLIENT, {ids[('PAGES', 'EVENTS', 'DRUMMER')]}", '.macro pg_lk_holds']
+    out += ['.endm', f".set PG_CLIENT, {ids[LOCKS_KEY]}", '.macro pg_lk_holds']
     holds = [0] * 8
     for _key, _prefix, page, _name, hold in present:
         holds[page] = HOLDS[hold]

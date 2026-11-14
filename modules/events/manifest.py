@@ -1,5 +1,7 @@
 """One system dependency, separately selected native event contracts."""
 import re
+import runpy
+from pathlib import Path
 
 from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 
@@ -8,6 +10,8 @@ from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 # a key may be a tuple of module keys, present when every one of them is (PAGES'
 # locks: PAGES with a client that declares LOCKS, pages/manifest.py).
 # edit.held and edit.scene_held use first-owner precedence. Registration is entirely build-time.
+# PAGES' locks: PAGES, EVENTS, STORE and one of its LOCKS clients (one key, from LOCKS).
+LOCKS_KEY = runpy.run_path(str(Path(__file__).parents[1] / 'pages/manifest.py'))['LOCKS_KEY']
 FAMILIES = {
     'transport': ('start', 'resume'),
     'midi': ('note_accepted',),
@@ -18,13 +22,15 @@ CLIENTS = {
                   ('MIDI FOLLOW', 'bf_seq', ('start', 'resume'))),
     'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),),
     'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre')),
-             (('PAGES', 'DRUMMER'), 'pg', ('held', 'scene_held', 'copy_pre', 'steps'))),
+             (LOCKS_KEY, 'pg', ('held', 'scene_held', 'copy_pre', 'steps'))),
 }
 
 
 def present(key, modules):
-    """A registration's module key, or every key of a tuple, in the remix."""
-    return all(k in modules for k in (key if isinstance(key, tuple) else (key,)))
+    """A registration's module key in the remix: a tuple needs each of its keys, a
+    tuple nested in it any one of its (pages/manifest.py LOCKS_KEY)."""
+    return all((any(m in modules for m in k) if isinstance(k, tuple) else k in modules)
+               for k in (key if isinstance(key, tuple) else (key,)))
 
 
 def registrations(modules):

@@ -47,12 +47,14 @@ CLIENTS = {
                   ('MIDI FOLLOW', 'bf_seq', ('start', 'resume'))),
     'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),),
     'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre')),
-             (('PAGES', 'DRUMMER'), 'pg', ('held', 'scene_held', 'copy_pre', 'steps'))),
+             (LOCKS_KEY, 'pg', ('held', 'scene_held', 'copy_pre', 'steps'))),
 }
 ```
 
 Each entry is `(module key, callback prefix, handled events)`; a module key may be a
-tuple of keys, present when all of them are (PAGES' locks: PAGES with a LOCKS client). A client may
+tuple of keys, present when all of them are, and a tuple nested in it is present
+when any one of its keys is (PAGES' `LOCKS_KEY`: PAGES, EVENTS, STORE and one of
+the clients in PAGES' `LOCKS`). A client may
 register in several families. Prefixes must yield unique callback symbols;
 invalid events, duplicate clients within a family, duplicate callbacks and
 invalid assembler names fail at build time, even for absent clients.
