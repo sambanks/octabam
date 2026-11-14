@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -334,17 +335,21 @@ def check_ui(src: str) -> None:
           re.search(r"movel\s+%a0@\+,ef_pulses", load) is None
           and re.search(r"movel\s+%a0@\+,%d1", load) is not None
           and re.search(r"movel\s+%d1,ef_pulses", load) is not None)
-    # Object-level: refuse MOVE.L (An)+,(xxx).L (0x23d8) in the packed unit.
+    # Inspect decoded load instructions, not ELF metadata or relocation
+    # offsets, which can contain 0x23d8 without executing it.
     ef_objs = sorted((ROOT / "out/platform/runtime").glob("*_ef.o"))
     if ef_objs:
         newest = max(ef_objs, key=lambda p: p.stat().st_mtime)
-        blob = newest.read_bytes()
+        dis = subprocess.check_output(
+            ["m68k-elf-objdump", "-d", "--disassemble=ef_load_slot", str(newest)],
+            text=True,
+        )
+        opcodes = re.findall(r"^\s*[0-9a-f]+:\s+([0-9a-f]{4})\b", dis, re.M)
         # after adda to bank: must stage via Dn (2218), never 23d8 mem-to-mem
         check(f"assembled {newest.name}: no load mem-to-mem 23d8",
-              bytes.fromhex("23d8") not in blob,
-              f"23d8 at {blob.find(bytes.fromhex('23d8'))}")
+              bool(opcodes) and "23d8" not in opcodes)
         check(f"assembled {newest.name}: load stages via d1 (2218)",
-              bytes.fromhex("2218") in blob)
+              "2218" in opcodes)
     else:
         print("  [ -- ] assembled ef.o absent (skip mem-to-mem opcode check)")
     check("ef_follow_ui avoids CUR_TRACK (HW brick; pending/UI_TRACK only)",
@@ -379,6 +384,7 @@ def check_ui(src: str) -> None:
           "ef_rhythm_gate" in nudge and "ARE YOU SURE?" in src)
     check("CUE gates through ef_rhythm_gate when baked",
           "ef_rhythm_gate" in _block(src, "ef_cue:", "cue_go:"))
+    gate = _block(src, "\nef_rhythm_gate:", "\nef_dlg_answer:")
     check("ARE YOU SURE? stock DIALOG; YES unlocks only; soft-restore",
           "DIALOG" in src and "ef_dlg_answer" in src and "ef_unlocked" in src
           and "ef_dlg_guard" in src and "ef_need_restore" in src
@@ -390,6 +396,13 @@ def check_ui(src: str) -> None:
           and "ef_clr_trigs" not in src
           and "ef_soft_layer" not in src
           and "ef_fill" not in _block(src, "ef_dlg_answer:", "ef_trk_baked:"))
+    check("ARE YOU SURE? soft-hides SEQ before DIALOG (not under SEQ)",
+          "jsr     WDESTROY" in gate and "ef_need_restore" in gate
+          and "jsr     DIALOG" in gate
+          and gate.find("jsr     WDESTROY") < gate.find("jsr     DIALOG"))
+    poll = _block(src, "\nef_cl_poll:", "\nef_cl_close:")
+    check("ef_cl_poll skips restore while ARE YOU SURE? (ef_ask)",
+          "ef_ask" in poll and poll.find("ef_ask") < poll.find("ef_cl_ours"))
     close = _block(src, "ef_close:", "ef_no:")
     soft = re.search(
         r"tstl\s+ef_dlg_guard\s*\n\s*beq\.s\s+close_nosoft\n(.*?)close_nosoft:",
@@ -497,6 +510,20 @@ def check_ui(src: str) -> None:
           "ef_trkkey:" in src
           and "ef_pending" in _block(src, "ef_trkkey:", "ef_dest_label:")
           and "ef_load_slot" not in _block(src, "ef_trkkey:", "ef_dest_label:"))
+    check("ef_trkkey forwards to stock TRACK + CUE overlay",
+          ("TRK_STOCK" in _block(src, "ef_trkkey:", "ef_dest_label:")
+           or "0x40040250" in _block(src, "ef_trkkey:", "ef_dest_label:"))
+          and ("CUE_TRK" in _block(src, "ef_trkkey:", "ef_dest_label:")
+               or "0x40083dc4" in _block(src, "ef_trkkey:", "ef_dest_label:"))
+          and "ef_cue_chord" in _block(src, "ef_trkkey:", "ef_dest_label:")
+          and ("CUE_HELD" in _block(src, "ef_trkkey:", "ef_dest_label:")
+               or "0x460d168c" in _block(src, "ef_trkkey:", "ef_dest_label:")))
+    check("ef_trkkey skips SEQ redraw when stock stole UI_WINDOW",
+          "UI_WINDOW" in _block(src, "ef_trkkey:", "ef_dest_label:")
+          or "0x460d175c" in _block(src, "ef_trkkey:", "ef_dest_label:"))
+    check("EF_KEYS CUE/TRACK wire press and release (not swallow release)",
+          re.search(r"\.byte\s+0x2a,.*?\n\s*\.long\s+ef_cue,\s*ef_cue\b", keys, re.S)
+          and re.search(r"\.byte\s+0x10,.*?\n\s*\.long\s+ef_trkkey,\s*ef_trkkey\b", keys, re.S))
     check("ef_trkkey calls stock SEL_TRACK (sequencer view)",
           ("0x40083bf8" in _block(src, "ef_trkkey:", "ef_dest_label:")
            or "SEL_TRACK" in _block(src, "ef_trkkey:", "ef_dest_label:")))
@@ -511,11 +538,18 @@ def check_ui(src: str) -> None:
           and "ef_load_slot" in _block(src, "ef_follow_ui:", "ef_sync_len:"))
 
     cue = _block(src, "ef_cue:", "ef_rng:")
-    check("ef_cue fills focused mask", "ef_mask" in cue and "ef_pmask" in cue)
-    check("ef_cue sets focused free", "ef_free" in cue and "ef_pfree" in cue)
-    check("ef_cue uses LCG (ef_rng)", "ef_rng" in cue)
+    check("ef_cue press/release poke CUE_HELD (stock modifier byte)",
+          "CUE_HELD" in cue or "0x460d168c" in cue)
+    check("ef_cue random on bare release (ef_cue_random)",
+          "ef_cue_random:" in src
+          and "ef_cue_chord" in cue
+          and ("ef_cue_snap" in cue or "MUTE_CUE" in cue))
+    rnd = _block(src, "ef_cue_random:", "ef_rng:")
+    check("ef_cue fills focused mask", "ef_mask" in rnd and "ef_pmask" in rnd)
+    check("ef_cue sets focused free", "ef_free" in rnd and "ef_pfree" in rnd)
+    check("ef_cue uses LCG (ef_rng)", "ef_rng" in rnd)
     check("ef_cue respects ef_pulses (k-subset)",
-          "ef_pulses" in cue and "clrl    ef_pulses" not in cue)
+          "ef_pulses" in rnd and "clrl    ef_pulses" not in rnd)
     check("ef_hit serves free + Euclid",
           "ef_hit:" in src and "ef_free" in _block(src, "ef_hit:", "ef_enc:"))
 
@@ -600,11 +634,71 @@ def check_ui(src: str) -> None:
           "wm_plock:" in _block(src, "ef_write_mask:", "ef_tl_bit_addr:")
           and "ef_tl_set" in _block(src, "wm_plock:", "wm_dest_clr:")
           and "ef_phit" in _block(src, "wm_plock:", "wm_dest_clr:"))
+    check("LANE=PLOCK leaves sample trigs alone (wm_keep_trig, no mask-0 rewrite)",
+          "wm_keep_trig:" in _block(src, "ef_write_mask:", "ef_tl_bit_addr:")
+          and "bne.w   wm_keep_trig" in _block(src, "ef_write_mask:", "wm_plock:")
+          and "ef_hit" not in _block(src, "wm_keep_trig:", "wm_dest_clr:")
+          and "ef_bit_addr" in _block(src, "wm_keep_trig:", "wm_plock:"))
     check("PULSE0 / dest-clear drops orphan TL (ef_tl_reconcile, stack-safe)",
           "ef_tl_reconcile:" in src
           and "ef_tl_reconcile" in _block(src, "wm_mtl:", "9:")
           and "ef_cx_bits" in _block(src, "ef_tl_reconcile:", "ef_write_dest:")
           and "moveq   #31,%d1" in _block(src, "ef_tl_reconcile:", "ef_write_dest:"))
+    check("PULSE 0 shares ef_clear_dest_step with DEPTH 0 / miss (ignore stale pfree)",
+          "ef_clear_dest_step:" in src
+          and "ef_clear_dest_step" in _block(src, "wm_dest_clr:", "wm_mtl:")
+          and "bra.w   ef_clear_dest_step" in _block(src, "ed_clear:", "ed_store:")
+          and "tstl    ef_ppulses" in _block(src, "wm0b:", "wm_on:")
+          and "beq.s   wm_off" in _block(src, "wm0b:", "wm_on:")
+          and "ef_pfree" not in _block(src, "wm0b:", "wm_on:"))
+    man = (ROOT / "modules/seq/manifest.py").read_text()
+    check("FUNC+BANK clear LISTPOP (soft-close SEQ; restore on list close)",
+          "ef_clear_menu:" in src
+          and "M_OPEN" in src and "EF_CL_CBS" in src
+          and "ef_cl_dest:" in src and "ef_cl_all:" in src
+          and "ef_cl_all_trigs:" in src
+          and "ef_dlg_guard" in _block(src, "ef_clear_menu:", "ef_cl_rest:")
+          and "ef_mkwin" not in _block(src, "ecm_open:", "ef_cl_rest:")
+          and "ef_cl_rest:" in src and "ef_mkwin" in _block(src, "ef_cl_rest:", "ef_cl_dest:")
+          and "ef_close" not in _block(src, "ef_clear_menu:", "ef_cl_rest:")
+          and "ef_fb_mki:" in src and "ef_fb_mkii:" in src
+          and "ef_layer_on" in _block(src, "ef_fb_mkii:", "ef_cl_ours:")
+          and "FUNC_BANK_STOCK_MKI" in src and "MKII_TRIG_EDIT_CONT" in src
+          and "0x400bf4a4" in man and "0x4007c0d0" in man
+          and "brain_func_keys" in man
+          and "verify_seq_func_bank.py" in man)
+    keys = _block(src, "EF_KEYS:", "EF_ENCS:")
+    check("EF_KEYS omits BANK (Detour-only FUNC+BANK; no double-fire)",
+          "ef_bank_key" not in src
+          and ".byte   0x2f" not in keys
+          and "ef_fb_mkii:" in src)
+    check("NO over clear LISTPOP: cancel layer closes list and restores SEQ",
+          "ef_cl_cancel:" in src
+          and "EF_CL_NO_LAYER:" in src
+          and "ef_cl_nolayer" in src
+          and "ef_cl_nolayer_off:" in src
+          and "LPUSH" in _block(src, "ecm_do:", "ef_cl_rest:")
+          and "LPOP" in _block(src, "ef_cl_nolayer_off:", "ef_cl_cancel:")
+          and "ef_cl_nolayer_off" in _block(src, "ef_cl_rest:", "ef_cl_dest:")
+          and "ef_cl_cancel" in _block(src, "EF_CL_NO_KEYS:", "L_LEN:")
+          and "ef_cl_rest" in _block(src, "ef_cl_cancel:", "ef_clear_menu:")
+          and "ef_cl_ours" in _block(src, "ef_no:", "ef_yes:")
+          and "ef_cl_rest" in _block(src, "ef_no:", "ef_yes:"))
+    check("clear LISTPOP YES rows restore SEQ via ef_cl_rest",
+          "ef_cl_rest" in _block(src, "ef_cl_done:", "ef_trac_n:")
+          and "M_CLOSE" in _block(src, "ef_cl_done:", "ef_trac_n:")
+          and "ef_cl_done" in _block(src, "ef_cl_dest:", "ef_cl_all:")
+          and "ef_cl_done" in _block(src, "ef_cl_all:", "ef_cl_all_trigs:")
+          and "ef_cl_done:" in src
+          and _block(src, "ef_cl_all_trigs:", "ef_cl_done:").strip() != "")
+    check("clear DEST resets DEPTH/PULSE/ROT to 0 immediately (list YES)",
+          "ef_reset_cur_plk:" in src
+          and "ef_reset_cur_plk" in _block(src, "ef_clear_cur_dest:", "ef_clear_all_dest:")
+          and "clrl    ef_depth" in _block(src, "ef_reset_cur_plk:", "ef_clear_all_dest:")
+          and "clrl    ef_ppulses" in _block(src, "ef_reset_cur_plk:", "ef_clear_all_dest:")
+          and "clrl    ef_prot" in _block(src, "ef_reset_cur_plk:", "ef_clear_all_dest:")
+          and "ef_clear_finish" in _block(src, "ef_clear_cur_dest:", "ef_clear_all_dest:")
+          and "LOCK_COLL" in _block(src, "ef_clear_finish:", "EF_LAYER:"))
     check("TRIG reshape keeps other DEST locks (reconcile SETs TL when !thit)",
           "tr_keep:" in _block(src, "ef_tl_reconcile:", "ef_write_dest:")
           and "ef_tl_set" in _block(src, "tr_keep:", "ef_write_dest:")
@@ -689,7 +783,8 @@ def check_ui(src: str) -> None:
           and "ef_rng" in dest
           and "subi.l  #64,%d0" not in dest)
     check("sequential: page-1 lock or ef_cx_store (CX SETUP stacks)",
-          "ef_cx_store" in dest and "ef_cx_clear" in dest
+          "ef_cx_store" in dest
+          and ("ef_cx_clear" in dest or "ef_clear_dest_step" in dest)
           and "LOCK_PTCH" not in dest)
     vol = _block(src, "ef_write_vol:", "ef_write_ptch:")
     check("ef_write_vol unipolar below Part VOL (r*DEPTH/127)",
@@ -703,7 +798,15 @@ def check_ui(src: str) -> None:
     ptch = _block(src, "ef_write_ptch:", "ef_part_flat:")
     check("ef_write_ptch guards SCALE_AT",
           "SCALE_AT" in ptch and "0x4ef9" in ptch)
+    check("ef_write_ptch SCALE OFF / no qz -> base Part PTCH (ep_base)",
+          "ep_base:" in ptch
+          and "ef_part_ptch" in _block(src, "ep_base:", "ep_clear:")
+          and "beq.w   ep_base" in ptch
+          and "bne.w   ep_base" in ptch)
     check("ef_write_ptch writes LOCK_PTCH", "LOCK_PTCH" in ptch)
+    check("ef_is_synth accepts CX with FM/SY",
+          "0x4358" in _block(src, "ef_is_synth:", "ef_bit_addr:")
+          and "0x464d" in _block(src, "ef_is_synth:", "ef_bit_addr:"))
     check("ef_write_ptch rad = max_rad*DEPTH/127",
           "ef_depth" in ptch
           and re.search(r"moveq\s+#127,%d1", ptch) is not None

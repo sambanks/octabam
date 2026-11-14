@@ -17,9 +17,14 @@
 | PART / AED / ARR in EF_KEYS (a 0 swallows; a -1 still writes
 | aux/sub-map 0 and can break DOWN / step-bank PAGE). Bare PAGE never
 | closes Euclid (stock step banks while open); only TRACK+PAGE toggles
-| and NO closes. Soft dialog KEEPS EF_LAYER so ef_ask still locks
-| knobs; user/orphan close LPOPs. LEVEL encoder dead; no cursor
-| invert. CUE = free random k-subset.
+| and NO closes. ARE YOU SURE? soft-hides the SEQ window (WDESTROY)
+| but KEEPS EF_LAYER so ef_ask still locks knobs; answer restores.
+| ef_cl_poll must not recreate SEQ while ef_ask (dialog behind).
+| User/orphan close LPOPs. LEVEL encoder dead; no cursor invert.
+| CUE: press = stock hold; release without a TRACK chord = free
+| random k-subset. TRACK keys forward to stock (double-tap QUICK
+| ASSIGN, FUNC+TRACK mute, TRACK+PLAY/STOP/BANK) then SEQ retarget;
+| CUE+TRACK = stock cue-a-track.
 |
 | DEST = LFO SETUP PMTR targets that Euclid can drive:
 |   0..29 page-1 lock flats (skip AMP XVOL=17). Labels PAGE+PARAM.
@@ -32,8 +37,11 @@
 | DEST=AMP VOL is unipolar below Part VOL (never louder than AMP). DEST=PTCH
 | in-scale. Editing PULSE leaves free mode. Write-only: open/track switch
 | load bank Euclid params only - never seed from live sample trigs. PLOCK
-| PULSE 0 YES clears this DEST and drops orphan TL (stack-safe). After
-| fill, LOCK_COLL rebuilds the step-has-plock LED bitmap so emptied note
+| PULSE 0 YES clears this DEST (same helper as DEPTH 0) and drops orphan
+| TL (stack-safe). FUNC+BANK while open: LISTPOP CLEAR DEST / CLEAR ALL
+| DEST / CLEAR ALL+TRIGS (keymap SymbolRef; runs on list YES immediately,
+| resets knobs / recipes; SEQ stays under the list). After fill / clear,
+| LOCK_COLL rebuilds the step-has-plock LED bitmap so emptied note
 | trigs stop blinking yellow and emptied trigless leave the row.
 |
 | Params: TRIG PULSE/ROT/DEST/DEPTH/free mask per track (ef_bank). DEPTH
@@ -52,6 +60,11 @@
         .set    CUR_TRACK, 0x80000000   | UI-selected track 0..7
         .set    UI_TRACK,  0x100b14cc   | setup mirror of CUR_TRACK
         .set    SEL_TRACK, 0x40083bf8   | (track 0..7) CUR/UI + sequencer view
+        .set    TRK_STOCK, 0x40040250   | base TRACK press/release (QA/mute/…)
+        .set    CUE_TRK,   0x40083dc4   | CUE overlay TRACK → cue-a-track
+        .set    CUE_HELD,  0x460d168c   | stock CUE modifier byte (press=1)
+        .set    MUTE_CUE,  0x80000008   | mute bit8+t / cue bit16+t
+        .set    UI_WINDOW, 0x460d175c   | current top window handle
         .set    SLOT_B,    28           | per-track: 5 longs + 8-byte mask
         .set    UI_PTN,    0x100b14d0
         .set    DBPTR,     0x46c82456
@@ -70,6 +83,13 @@
         .set    KIND_CTRG, 10           | CLEAR TRACK TRIGS
         .set    TOAST,     0x4005a2b8
         .set    DIALOG,    0x4006d57c   | (title, nlines, lines*, 3, cb); 0=YES
+        .set    M_OPEN,    0x4006d94c   | (count, sel, &sel, labels, cbs)
+        .set    M_CLOSE,   0x4006d754
+        .set    M_OBJ,     0x460e5e30   | open LISTPOP object
+        .set    M_CBS,     0x460e5e28   | callbacks pointer M_OPEN stored
+        | FUNC+BANK / TRACK TRIG EDIT (PARTS.md MKI; MKII entry bra.b here).
+        .set    FUNC_BANK_STOCK_MKI,  0x40058a64
+        .set    MKII_TRIG_EDIT_CONT,  0x4007c0c0
         .set    PTN_STR,   0x8ed8
         .set    TRK_STR,   0x91a
         .set    PAT_LEN,   0x8e53       | pattern length (NORMAL scale)
@@ -203,7 +223,8 @@
         .text
         .globl  ef_page, ef_open, ef_close, ef_draw, ef_fill
         .globl  ef_yes, ef_no, ef_level, ef_enc
-        .globl  ef_cue
+        .globl  ef_cue, ef_fb_mki, ef_fb_mkii
+        .globl  ef_cl_dest, ef_cl_all, ef_cl_all_trigs
         .globl  ef_st_loadall_post, ef_st_loadmask_post, ef_st_newproj
         .globl  ef_st_bankw_post, ef_st_pstore_pre, ef_st_pstore_post
         .globl  ef_st_preload_post, ef_st_answer
@@ -273,7 +294,10 @@ op_go:
         clrl    ef_unlocked
         clrl    ef_dlg_guard
         clrl    ef_need_restore
+        bsr.w   ef_cl_nolayer_off       | drop stuck CLEAR cancel layer
         clrl    ef_from_cue
+        clrl    ef_cue_chord
+        clrl    ef_cue_snap
         clrl    ef_cursor
         clrl    ef_pat_off              | scroll unused (4×16 shows all)
         bsr.w   ef_mkwin
@@ -672,10 +696,10 @@ sl4:    clrl    ef_pat_off              | all steps fit; scroll unused
 ef_close:
         tstl    ef_dlg_guard
         beq.s   close_nosoft
+        moveq   #1,%d0
+        movel   %d0,ef_need_restore     | even if win already 0 (LISTPOP race)
         tstl    ef_win
         beq.s   soft_rts                | re-enter after zero: keep layer
-        moveq   #1,%d0
-        movel   %d0,ef_need_restore     | answer restores via ef_mkwin
         pea     ef_win
         jsr     WDESTROY
         addql   #4,%sp
@@ -688,6 +712,8 @@ close_nosoft:
         clrl    ef_unlocked
         clrl    ef_need_restore
         bsr.w   ef_store_slot
+        bsr.w   ef_cl_close             | drop clear LISTPOP if still up
+        bsr.w   ef_cl_nolayer_off
         pea     ef_win
         jsr     WDESTROY
         addql   #4,%sp
@@ -706,6 +732,19 @@ ef_no:
         moveq   #1,%d0
         cmpl    8(%sp),%d0
         bne.s   9f
+        bsr.w   ef_cl_ours              | our CLEAR list still up?
+        tstl    %d0
+        beq.s   en_soft
+        jsr     M_CLOSE
+        clrl    ef_dlg_guard
+        bra.w   ef_cl_rest
+en_soft:
+        | LISTPOP may have already eaten NO and closed; still restore.
+        tstl    ef_dlg_guard
+        beq.s   en_close
+        clrl    ef_dlg_guard
+        bra.w   ef_cl_rest
+en_close:
         bra.w   ef_close
 9:      rts
 
@@ -722,13 +761,43 @@ ef_yes:
         bra.w   ef_draw
 9:      rts
 
-| ---- CUE: free random k-subset on the focused lane (TRIG or PLOCK) ----
-| PULSE unchanged; ROT still applies. Press only. TRIG lane + baked:
-| ARE YOU SURE? first. PLOCK lane skips that prompt.
+| ---- CUE: stock hold + SEQ random on bare release ----------------------
+| Press: stock CUE (hold / cue LED). Release with no TRACK while held:
+| free random k-subset on the focused lane (TRIG: ARE YOU SURE? when
+| baked; PLOCK: no prompt). CUE+TRACK sets ef_cue_chord so release
+| skips random and only runs stock CUE release.
 ef_cue:
         moveq   #1,%d0
         cmpl    8(%sp),%d0
-        bne.w   ef_cue_rts
+        beq.s   cue_down
+        | release: drop modifier; skip random if cue bits moved
+        | (CUE+TRACK). Stock's CUE sub-map often owns TRACK while CUE
+        | is held, so ef_trkkey may never see the chord - compare the
+        | cue mask snapshot from press instead.
+        clrl    CUE_HELD
+        movel   MUTE_CUE,%d0
+        swap    %d0                     | cue bits in low 16
+        andil   #0xff,%d0
+        cmpl    ef_cue_snap,%d0
+        bne.s   cue_rel_done            | CUE+TRACK changed a cue bit
+        tstl    ef_cue_chord
+        bne.s   cue_rel_done            | layer saw the chord
+        bsr.w   ef_cue_random
+cue_rel_done:
+        clrl    ef_cue_chord
+        rts
+cue_down:
+        clrl    ef_cue_chord
+        moveq   #1,%d0
+        moveb   %d0,CUE_HELD            | same byte stock CUE press writes
+        movel   MUTE_CUE,%d0
+        swap    %d0
+        andil   #0xff,%d0
+        movel   %d0,ef_cue_snap         | cue mask before possible TRACK
+        rts
+
+| SEQ random k-subset (former bare-CUE press body). Clobbers many regs.
+ef_cue_random:
         bsr.w   ef_sync_len
         tstl    ef_lane
         bne.s   cue_go                  | PLOCK cue: no trig-clear prompt
@@ -936,7 +1005,11 @@ ph5:    tstl    %d4
 | Encoders: A=PULSE B=ROT C=LANE D=DEST E=DEPTH F=empty.
 | Cursor: 0=PULSE 1=ROT 2=LANE 3=DEST 4=DEPTH. F rejected.
 ef_enc:
+        bsr.w   ef_cl_poll              | LISTPOP may have closed on NO already
         tstl    ef_ask                  | CLEAR PATTERN? dialog: all knobs dead
+        bne.s   9f
+        bsr.w   ef_cl_ours              | clear LISTPOP: knobs locked
+        tstl    %d0
         bne.s   9f
         movel   4(%sp),%d1              | encoder index 0..5
         moveq   #5,%d0
@@ -960,7 +1033,13 @@ ef_level:
 ef_nudge:
         tstl    ef_ask                  | dialog up: knobs dead
         bne.w   ef_nudge_rts
-        movel   %d0,-(%sp)              | park signed delta
+        movel   %d0,-(%sp)              | park signed delta (cl_ours clobbers)
+        bsr.w   ef_cl_ours
+        tstl    %d0
+        beq.s   ef_nudge_go
+        addql   #4,%sp
+        bra.w   ef_nudge_rts
+ef_nudge_go:
         bsr.w   ef_sync_len             | STEPS stays = pattern length
         movel   (%sp)+,%d2              | restore delta
         movel   ef_cursor,%d1
@@ -1376,30 +1455,60 @@ ef_fmt_len:
         lea     %sp@(12),%sp
         rts
 
-| Track key T1..T8 while open: retarget our bank/badge, then call stock's
-| select-track. Poking CUR/UI alone left the sequencer grid on the
-| pre-open track (EUCL13); SEL_TRACK refreshes the grid/LEDs too.
+| Track key T1..T8 while open: forward every edge to stock (press and
+| release share 0x40040250), so double-tap QUICK ASSIGN, FUNC+TRACK
+| mute, TRACK+PLAY/STOP/BANK keep working. CUE held -> CUE overlay
+| TRACK handler (cue-a-track) and mark ef_cue_chord. On press also
+| retarget SEQ (ef_pending + SEL_TRACK + draw); poking CUR/UI alone
+| left the sequencer grid on the pre-open track (EUCL13).
 ef_trkkey:
-        moveq   #1,%d0
-        cmpl    8(%sp),%d0
-        bne.s   tk_rts                  | press only
-        movel   4(%sp),%d0              | keycode
-        andil   #0xff,%d0
-        subi.l  #0x10,%d0               | T1..T8 -> 0..7
-        bmi.s   tk_rts
-        moveq   #7,%d1
-        cmpl    %d1,%d0
-        bhi.s   tk_rts
-        movel   %d0,ef_pending
         lea     -44(%sp),%sp            | ColdFire: no predec movem
         movem.l %d2-%d7/%a2-%a6,(%sp)
-        movel   ef_pending,-(%sp)
+        movel   44+4(%sp),%d2           | keycode
+        movel   44+8(%sp),%d3           | event
+        | CUE_HELD byte: our ef_cue press sets it (stock CUE modifier).
+        tstb    CUE_HELD
+        beq.s   tk_base
+        moveq   #1,%d0
+        movel   %d0,ef_cue_chord        | bare CUE release: skip random
+        clrl    ef_from_cue             | never randomize after a cue chord
+        movel   %d3,-(%sp)
+        movel   %d2,-(%sp)
+        jsr     CUE_TRK
+        addql   #8,%sp
+        bra.s   tk_after
+tk_base:
+        movel   %d3,-(%sp)
+        movel   %d2,-(%sp)
+        jsr     TRK_STOCK
+        addql   #8,%sp
+tk_after:
+        moveq   #1,%d0
+        cmpl    %d3,%d0
+        bne.s   tk_done                 | release: stock only
+        | Stock stole the UI (QUICK ASSIGN, audio editor, …): do not
+        | SEL_TRACK / redraw SEQ over it.
+        movel   UI_WINDOW,%d0
+        cmpl    ef_win,%d0
+        bne.s   tk_done
+        movel   %d2,%d0
+        andil   #0xff,%d0
+        subi.l  #0x10,%d0               | T1..T8 -> 0..7
+        bmi.s   tk_done
+        moveq   #7,%d1
+        cmpl    %d1,%d0
+        bhi.s   tk_done
+        movel   %d0,ef_pending
+        movel   %d0,-(%sp)
         jsr     SEL_TRACK
         addql   #4,%sp
         movem.l (%sp),%d2-%d7/%a2-%a6
         lea     44(%sp),%sp
         bra.w   ef_draw
-tk_rts: rts
+tk_done:
+        movem.l (%sp),%d2-%d7/%a2-%a6
+        lea     44(%sp),%sp
+        rts
 
 
 | ef_dest_label: LFO SETUP PMTR style PAGE\0PARAM\0 into ef_buf
@@ -1786,14 +1895,14 @@ ef_drop_clr_undo:
         clrl    CLIP_KEY
 1:      rts
 
-| ef_write_mask(trac, rot, k, n) -- stack: TRIG rot/k/n. Rewrites mask 0
-| from TRIG. DEST/DEPTH:
-|   LANE=TRIG: locks on TRIG hits (same steps); clear this DEST on !thit
-|   (other DEST locks kept - promote to TL if the note drops); sync that
-|   DEST's plock recipe to the TRIG rhythm after the loop.
-|   LANE=PLOCK: independent plock rhythm; plock∩¬trig sets TL; miss clears
-|   this DEST on every step (incl. note trigs / PTCH) so a PLCK YES
-|   overwrites TRIG-baked locks for that DEST. Other DEST trigless stay.
+| ef_write_mask(trac, rot, k, n) -- stack: TRIG rot/k/n. DEST/DEPTH:
+|   LANE=TRIG: rewrite mask 0 from TRIG; locks on TRIG hits; clear this
+|   DEST on !thit (other DEST locks kept - promote to TL if the note
+|   drops); sync that DEST's plock recipe to the TRIG rhythm after loop.
+|   LANE=PLOCK: leave sample trigs alone (read mask 0 as thit only);
+|   independent plock rhythm; plock∩¬trig sets TL; miss clears this DEST
+|   on every step (incl. note trigs / PTCH) so a PLCK YES overwrites
+|   TRIG-baked locks for that DEST. Other DEST trigless stay.
 |   Clear TL on note trigs. Leaves n..63 alone. Other DEST locks stack.
 ef_write_mask:
         lea     -28(%sp),%sp
@@ -1807,27 +1916,28 @@ wm0:    | Free/pmask bake only after CUE (ef_from_cue); else PULSE/ROT.
         bne.s   wm0b
         clrl    ef_free
         clrl    ef_pfree
-wm0b:   | PLOCK-lane active iff LANE=PLOCK and (free or PULSE>0).
+wm0b:   | PLOCK-lane active iff LANE=PLOCK and PULSE>0.
+        | PULSE 0 always clears (ignore stale pfree / empty CUE mask).
         clrl    ef_plock_on
         tstl    ef_lane
         beq.s   wm_off                  | TRIG lane: DEST follows thit
-        tstl    ef_pfree
-        bne.s   wm_on
         tstl    ef_ppulses
-        beq.s   wm_off
+        beq.s   wm_off                  | PULSE 0: clear path, not hits
 wm_on:  moveq   #1,%d0
         movel   %d0,ef_plock_on
 wm_off: moveq   #0,%d2
 1:      cmpl    %d5,%d2
         bcc.w   9f
-        | --- TRIG bit (mask 0) ---
+        tstl    ef_lane
+        bne.w   wm_keep_trig            | PLCK: do not rewrite sample trigs
+        | --- LANE=TRIG: rewrite mask 0 from TRIG rhythm ---
         bsr.w   ef_bit_addr
         moveb   %a0@,%d1
         move.l  %d0,%d3
         not.l   %d3
         and.l   %d3,%d1
         moveb   %d1,%a0@
-        movel   %d4,-(%sp)              | park TRIG k/rot across phit
+        movel   %d4,-(%sp)              | park TRIG k/rot across hit
         movel   %d6,-(%sp)
         bsr.w   ef_hit                  | d7 = thit (uses d4/d6/ef_free)
         movel   %d7,ef_thit
@@ -1839,17 +1949,23 @@ wm_off: moveq   #0,%d2
         moveb   %d1,%a0@
 wm_t0:  movel   (%sp)+,%d6
         movel   (%sp)+,%d4
-        tstl    ef_lane
-        bne.w   wm_plock                | LANE=PLOCK: independent rhythm
-        | --- LANE=TRIG: DEST locks on the same trigs ---
+        | --- DEST locks on the same trigs ---
         tstl    ef_thit
         beq.w   wm_dest_clr             | reshape this DEST to the trig set
         bsr.w   ef_write_dest
         bsr.w   ef_tl_clr               | note owns the step
         bra.w   8f
+wm_keep_trig:
+        | Existing sample trig (if any) -> thit; mask 0 untouched.
+        bsr.w   ef_bit_addr
+        moveb   %a0@,%d1
+        and.l   %d0,%d1
+        sne     %d1
+        andil   #1,%d1
+        movel   %d1,ef_thit
 wm_plock:
         tstl    ef_plock_on
-        beq.w   wm_dest_clr             | PLOCK PULSE 0: clear this DEST only
+        beq.w   wm_dest_clr             | PLOCK PULSE 0: clear this DEST
         movel   %d4,-(%sp)
         movel   %d6,-(%sp)
         bsr.w   ef_phit                 | d7 = phit
@@ -1867,23 +1983,9 @@ wm_plock:
 wm_clr_tl:
         bsr.w   ef_tl_clr
         bra.s   8f
+| PULSE 0 / miss: clear this DEST (shared with DEPTH 0 / ed_clear).
 wm_dest_clr:
-        movel   ef_dest,%d0
-        moveq   #DEST_LAST,%d1
-        cmpl    %d1,%d0
-        bhi.s   miss_cx
-        movel   %d2,%d1
-        lsll    #5,%d1
-        addil   #LOCK0,%d1
-        addl    ef_dest,%d1
-        moveq   #-1,%d0
-        moveb   %d0,%a2@(0,%d1:l)
-        bra.s   wm_mtl
-miss_cx:
-        bsr.w   ef_cx_clear
-| After every step: drop TL when a note owns the step, or when no page-1
-| / sample-lock / CX lock remains (stack-safe). PULSE0 YES and DEST miss
-| both land here; hit paths that used to skip reconcile do too.
+        bsr.w   ef_clear_dest_step
 wm_mtl:
 8:      bsr.w   ef_tl_reconcile
         addql   #1,%d2
@@ -1908,6 +2010,22 @@ wm_cp:  moveb   %a0@(0,%d0:l),%d1
 wm_done:
         movem.l (%sp),%d2-%d7/%a2
         lea     28(%sp),%sp
+        rts
+
+| ef_clear_dest_step: d2=step, a2=trac. Clear ef_dest lock (page-1 0xff
+| or CX bit). Same bytes DEPTH 0 / PULSE 0 / miss write. Clobbers d0/d1/a0;
+| ef_cx_clear saves/restores d2.
+ef_clear_dest_step:
+        movel   ef_dest,%d0
+        moveq   #DEST_LAST,%d1
+        cmpl    %d1,%d0
+        bhi.w   ef_cx_clear
+        movel   %d2,%d1
+        lsll    #5,%d1
+        addil   #LOCK0,%d1
+        addl    ef_dest,%d1
+        moveq   #-1,%d0
+        moveb   %d0,%a2@(0,%d1:l)
         rts
 
 | Trigless-lock bit (+0x10). d2=step, a2=trac. Clobbers d0/d1/a0.
@@ -2016,11 +2134,7 @@ ed_hi:  movel   (%sp),%d1               | lo
         addl    %d1,%d0                 | lock
         bra.w   ed_store
 ed_clear:
-        movel   ef_dest,%d0
-        moveq   #DEST_LAST,%d1
-        cmpl    %d1,%d0
-        bhi.w   ef_cx_clear             | CX SETUP: clear bank slot
-        moveq   #-1,%d0                 | 0xff = no lock
+        bra.w   ef_clear_dest_step      | same clear as PULSE 0 / miss
 ed_store:
         movel   ef_dest,%d1
         moveq   #DEST_LAST,%d3
@@ -2053,13 +2167,13 @@ ev1:    movel   %d1,%d0
         bra.w   ed_store
 
 | ef_write_ptch: on hit step d2 / trac a2 when DEST=PTCH.
-| DEPTH=0 / no quantizer / SCALE OFF -> clear PTCH.
-| Else rad = max(1, max_rad*DEPTH/127): EVERY hit gets a lock (range).
-| Center is the track's Part PLAYBACK PTCH (overall knob), not unison  - 
-| same byte stock unlocks fall back to (po_part_ptch).
-| Pick uniform among delta in [-rad..+rad] whose absolute PC
-| (ROOT + base_st + delta) mod 12 is in SCALE_AT; lock encodes base_st+delta.
-| FM/SY: raw=64+st (max_rad=PIT_RAD). Sample: raw=64+5·st (max_rad=PIT_SAMP).
+| DEPTH=0 -> clear PTCH. No quantizer / SCALE OFF -> lock = Part PLAYBACK
+| PTCH (base; every hit the same). SCALE ON: rad =
+| max(1, max_rad*DEPTH/127); pick uniform among delta in [-rad..+rad]
+| whose absolute PC (ROOT + base_st + delta) mod 12 is in SCALE_AT;
+| lock encodes base_st+delta. Center is Part PLAYBACK PTCH (overall
+| knob), not unison - same byte stock unlocks fall back to.
+| FM/SY/CX: raw=64+st (max_rad=PIT_RAD). Sample: raw=64+5·st (PIT_SAMP).
 | Clamp raw to 0..127 before store.
 | Caller keeps n in d5 and rot in d6 - park across the pick.
 ef_write_ptch:
@@ -2070,7 +2184,7 @@ ef_write_ptch:
         andil   #0xffff,%d0
         move.l  #0x4ef9,%d1
         cmpl    %d1,%d0
-        bne.w   ep_clear
+        bne.w   ep_base                 | no quantizer: base Part PTCH
         movel   %d2,-(%sp)
         movel   %d3,-(%sp)
         movel   %d4,-(%sp)
@@ -2085,7 +2199,7 @@ ef_write_ptch:
         movel   (%sp)+,%d3
         movel   (%sp)+,%d2
         tstl    %d0
-        beq.w   ep_clear
+        beq.w   ep_base                 | SCALE OFF: base Part PTCH
         movel   %d2,-(%sp)              | park step
         movel   %d5,-(%sp)              | park n
         movel   %d6,-(%sp)              | park rot
@@ -2210,6 +2324,17 @@ ep_clear_rad:
         movel   (%sp)+,%d5
         movel   (%sp)+,%d2
         moveq   #-1,%d0
+        bra.s   ep_store
+| SCALE OFF / no quantizer: every hit locks Part PLAYBACK PTCH as-is.
+ep_base:
+        bsr.w   ef_part_ptch            | d0 = Part PTCH raw
+        tstl    %d0
+        bpl.s   ep_b1
+        clrl    %d0
+ep_b1:  moveq   #127,%d1
+        cmpl    %d1,%d0
+        ble.s   ep_store
+        moveq   #127,%d0
         bra.s   ep_store
 ep_clear:
         moveq   #-1,%d0
@@ -2578,9 +2703,9 @@ ecc_done:
         movel   (%sp)+,%d2
         rts
 
-| ef_is_synth: d0 := 1 when ef_trk's Part NEIGHBOR sig is "FM",1 or "SY",1
-| (machine-list synth; same encoding as qz_fmtrack). Else 0. Clobbers
-| d0/d1/a0/a1 only - caller parks what it needs.
+| ef_is_synth: d0 := 1 when ef_trk's Part NEIGHBOR sig is "FM",1 / "SY",1
+| / "CX",1 (same semitone encoding as qz_is_synth / qz_fmtrack). Else 0.
+| Clobbers d0/d1/a0/a1 only - caller parks what it needs.
 ef_is_synth:
         moveal  DBPTR,%a0
         moveq   #0,%d0
@@ -2601,6 +2726,8 @@ ef_is_synth:
         cmpil   #0x464d,%d0             | "FM"
         beq.s   eis_yes
         cmpil   #0x5359,%d0             | "SY"
+        beq.s   eis_yes
+        cmpil   #0x4358,%d0             | "CX"
         bne.s   eis_no
 eis_yes: moveq   #1,%d0
         rts
@@ -2622,8 +2749,9 @@ ef_bit_addr:
 
 | ef_rhythm_gate: for PULSE/ROT/CUE. d0 := 1 if blocked (baked, not
 | unlocked) - stock ARE YOU SURE? dialog. YES unlocks knobs/CUE only;
-| NO cancels. Trig rewrite stays on fill YES. Class-1 dialog evicts
-| this window; ef_close soft-restores after the answer.
+| NO cancels. Trig rewrite stays on fill YES. Soft-hide SEQ before
+| DIALOG (class-1 alone left SEQ on top / dialog behind on HW). Keep
+| EF_LAYER; answer restores via ef_mkwin.
 ef_rhythm_gate:
         tstl    ef_unlocked
         bne.s   erg_ok
@@ -2636,8 +2764,14 @@ ef_rhythm_gate:
         bne.s   erg_block
         moveq   #1,%d0
         movel   %d0,ef_ask
-        movel   %d0,ef_dlg_guard        | soft-close if class-5 is evicted
-        pea     ef_dlg_answer
+        movel   %d0,ef_dlg_guard        | soft-close keeps EF_LAYER
+        tstl    ef_win
+        beq.s   erg_dlg
+        movel   %d0,ef_need_restore
+        pea     ef_win
+        jsr     WDESTROY                | hide SEQ under ARE YOU SURE?
+        addql   #4,%sp
+erg_dlg: pea     ef_dlg_answer
         pea     3
         pea     ef_clr_lines
         pea     2                       | two body lines (no YES/NO crib)
@@ -2715,6 +2849,382 @@ tf1:    moveq   #64,%d0
         moveq   #64,%d3
 tf2:    rts
 
+| ---- FUNC+BANK clear menu (LISTPOP over SEQ; no WDESTROY) ----------------
+| MKI: SymbolRef FUNC-held BANK press (ROM table). MKII: BRAIN clones that
+| table into DRAM (brain_func_keys), so Detour TRACK TRIG EDIT 0x4007c0d0
+| instead. Do NOT also list BANK in EF_KEYS - layer + Detour both fire and
+| the clear list toggles open/closed (lag / "does nothing" on unit).
+
+| MKI FUNC+BANK press. SEQ session (win or layer) -> clear LISTPOP;
+| else 0x40058a64. Soft-closed clear list leaves ef_win=0 but layer_on.
+ef_fb_mki:
+        bsr.w   ef_cl_poll
+        tstl    ef_win
+        bne.s   efb_mki_go
+        tstl    ef_layer_on
+        beq.s   efb_mki_st
+efb_mki_go:
+        bra.w   ef_clear_menu
+efb_mki_st:
+        jmp     FUNC_BANK_STOCK_MKI
+
+| MKII FUNC+BANK / TRACK TRIG EDIT. SEQ session -> clear; else stock.
+ef_fb_mkii:
+        bsr.w   ef_cl_poll              | stranded soft-close: bring SEQ back
+        tstl    ef_win
+        bne.s   efb_mkii_go
+        tstl    ef_layer_on
+        beq.s   efb_mkii_st
+efb_mkii_go:
+        bra.w   ef_clear_menu
+efb_mkii_st:
+        jmp     MKII_TRIG_EDIT_CONT     | stock bra.b target (entry was 60ee)
+
+| Lock knobs while our LISTPOP is up (M_CBS == EF_CL_CBS).
+ef_cl_ours:
+        tstl    M_OBJ
+        beq.s   eco_no
+        movel   M_CBS,%d0
+        cmpil   #EF_CL_CBS,%d0
+        bne.s   eco_no
+        moveq   #1,%d0
+        rts
+eco_no: moveq   #0,%d0
+        rts
+
+| Safety net: LISTPOP NO without our cancel layer. If dlg_guard is set
+| and our CLEAR list is gone, recreate SEQ. Do NOT treat ARE YOU SURE?
+| the same way: ef_enc polls every knob turn, and restoring SEQ while
+| ef_ask is set stacked the window on top of the dialog (HW: dialog
+| behind SEQ).
+ef_cl_poll:
+        tstl    ef_dlg_guard
+        beq.s   ecp_rts
+        tstl    ef_ask                  | stock dialog still owns the screen
+        bne.s   ecp_rts
+        bsr.w   ef_cl_ours
+        tstl    %d0
+        bne.s   ecp_rts
+        clrl    ef_dlg_guard
+        bra.w   ef_cl_rest
+ecp_rts: rts
+
+ef_cl_close:
+        bsr.w   ef_cl_ours
+        tstl    %d0
+        beq.s   ecc2_rts
+        jsr     M_CLOSE
+        clrl    ef_dlg_guard
+ecc2_rts: rts
+
+| Drop the NO-only cancel layer pushed over CLEAR LISTPOP.
+ef_cl_nolayer_off:
+        tstl    ef_cl_nolayer
+        beq.s   ecn_rts
+        clrl    ef_cl_nolayer
+        pea     EF_CL_NO_LAYER
+        jsr     LPOP
+        addql   #4,%sp
+ecn_rts: rts
+
+| NO while CLEAR list is up (cancel layer on top of LISTPOP). One press:
+| close list + restore SEQ. Stock LISTPOP would eat NO and leave SEQ
+| soft-closed on the main screen.
+ef_cl_cancel:
+        moveq   #1,%d0
+        cmpl    8(%sp),%d0
+        bne.s   ecc_rts
+        bsr.w   ef_cl_ours
+        tstl    %d0
+        beq.s   ecc_rest
+        jsr     M_CLOSE
+ecc_rest:
+        clrl    ef_dlg_guard
+        bra.w   ef_cl_rest
+ecc_rts: rts
+
+| Open / toggle the 3-row clear LISTPOP. M_OPEN evicts class-5 SEQ
+| (dlg_guard soft-close). Do NOT ef_mkwin while the list is up: WCREATE
+| stacks SEQ on top of LISTPOP and the clear menu is invisible (HW:
+| "FUNC+BANK does nothing"). After M_OPEN, LPUSH a NO-only layer so one
+| NO closes the list and restores SEQ (LISTPOP alone eats NO).
+ef_clear_menu:
+        tstl    ef_win
+        bne.s   ecm_have
+        tstl    ef_layer_on             | soft-closed: still our session
+        beq.s   ecm_rts
+ecm_have:
+        bsr.w   ef_cl_ours
+        tstl    %d0
+        beq.s   ecm_open
+        jsr     M_CLOSE
+        clrl    ef_dlg_guard
+        bra.w   ef_cl_rest
+ecm_open:
+        moveq   #1,%d0
+        movel   %d0,ef_dlg_guard        | soft-close if LISTPOP evicts class 5
+        tstl    ef_win
+        beq.s   ecm_do
+        movel   %d0,ef_need_restore     | M_OPEN will soft-close; restore on list close
+ecm_do: clrl    ef_cl_sel
+        pea     EF_CL_CBS
+        pea     EF_CL_LBL
+        pea     ef_cl_sel
+        clrl    -(%sp)                  | initial sel 0
+        pea     3
+        jsr     M_OPEN
+        lea     20(%sp),%sp
+        bsr.w   ef_cl_nolayer_off       | idempotent if a prior push stuck
+        pea     EF_CL_NO_LAYER
+        jsr     LPUSH
+        addql   #4,%sp
+        moveq   #1,%d0
+        movel   %d0,ef_cl_nolayer
+ecm_rts: rts
+
+| Recreate SEQ after clear LISTPOP / ARE YOU SURE? soft-close.
+ef_cl_rest:
+        bsr.w   ef_cl_nolayer_off
+        tstl    ef_need_restore
+        beq.s   ecm_draw
+        clrl    ef_need_restore
+        bsr.w   ef_mkwin
+        tstl    %d0
+        beq.s   ecr_rts
+ecm_draw:
+        tstl    ef_win
+        beq.s   ecr_rts
+        bra.w   ef_draw
+ecr_rts: rts
+
+| LISTPOP YES callbacks: clear immediately + reset params (no SEQ YES).
+ef_cl_dest:
+        bsr.w   ef_clear_cur_dest
+        pea     0x30
+        pea     T_CL_DEST
+        jsr     TOAST
+        addql   #8,%sp
+        bra.w   ef_cl_done
+ef_cl_all:
+        bsr.w   ef_clear_all_dest
+        pea     0x30
+        pea     T_CL_ALL
+        jsr     TOAST
+        addql   #8,%sp
+        bra.w   ef_cl_done
+ef_cl_all_trigs:
+        bsr.w   ef_clear_all_dest
+        bsr.w   ef_clear_trigs
+        pea     0x30
+        pea     T_CL_SEQ
+        jsr     TOAST
+        addql   #8,%sp
+ef_cl_done:
+        jsr     M_CLOSE
+        clrl    ef_dlg_guard
+        bra.w   ef_cl_rest
+
+| a2 := focused TRAC, d5 := n steps. Clobbers d0-d3/a0-a2.
+ef_trac_n:
+        bsr.w   ef_sync_len
+        bsr.w   ef_trac_focus           | a2, d3 = n
+        movel   ef_focus,%d0
+        andil   #7,%d0
+        movel   %d0,ef_trk
+        movel   %d3,%d5
+        rts
+
+| Clear focused DEST over 0..n-1 + reset that DEST's depth/plock recipe.
+ef_clear_cur_dest:
+        lea     -28(%sp),%sp
+        movem.l %d2-%d7/%a2,(%sp)
+        bsr.w   ef_trac_n
+        moveq   #0,%d2
+ccd_lp: cmpl    %d5,%d2
+        bcc.s   ccd_done
+        bsr.w   ef_bit_addr
+        moveb   %a0@,%d1
+        and.l   %d0,%d1
+        sne     %d1
+        andil   #1,%d1
+        movel   %d1,ef_thit
+        bsr.w   ef_clear_dest_step
+        bsr.w   ef_tl_reconcile
+        addql   #1,%d2
+        bra.s   ccd_lp
+ccd_done:
+        bsr.w   ef_reset_cur_plk
+        bsr.w   ef_clear_finish
+        movem.l (%sp),%d2-%d7/%a2
+        lea     28(%sp),%sp
+        rts
+
+| Reset working + mem for current DEST: DEPTH/PULSE/ROT/free/mask = 0.
+ef_reset_cur_plk:
+        clrl    ef_depth
+        clrl    ef_ppulses
+        clrl    ef_prot
+        clrl    ef_pfree
+        clrl    ef_from_cue
+        lea     ef_pmask,%a0
+        moveq   #7,%d0
+rcp_z:  clrb    %a0@(0,%d0:l)
+        subql   #1,%d0
+        bpl.s   rcp_z
+        bsr.w   ef_dep_save
+        bsr.w   ef_plk_save
+        bra.w   ef_store_slot
+
+| Clear every DEST SEQ knows on the focused track; leave sample trigs.
+ef_clear_all_dest:
+        lea     -32(%sp),%sp
+        movem.l %d2-%d7/%a2-%a3,(%sp)
+        bsr.w   ef_trac_n
+        movel   ef_dest,-(%sp)          | restore after
+        moveq   #0,%d6                  | dest
+cad_d:  moveq   #DEST_CXLAST,%d0
+        cmpl    %d0,%d6
+        bhi.s   cad_fin
+        moveq   #DEST_XVOL,%d0
+        cmpl    %d0,%d6
+        beq.s   cad_nx
+        movel   %d6,ef_dest
+        moveq   #0,%d2
+cad_s:  cmpl    %d5,%d2
+        bcc.s   cad_nx
+        bsr.w   ef_bit_addr
+        moveb   %a0@,%d1
+        and.l   %d0,%d1
+        sne     %d1
+        andil   #1,%d1
+        movel   %d1,ef_thit
+        bsr.w   ef_clear_dest_step
+        bsr.w   ef_tl_reconcile
+        addql   #1,%d2
+        bra.s   cad_s
+cad_nx: addql   #1,%d6
+        bra.s   cad_d
+cad_fin:
+        movel   (%sp)+,ef_dest
+        bsr.w   ef_reset_all_plk
+        bsr.w   ef_clear_finish
+        movem.l (%sp),%d2-%d7/%a2-%a3
+        lea     32(%sp),%sp
+        rts
+
+| Zero all depth + plock slots for focused track; working DEST params 0.
+ef_reset_all_plk:
+        moveq   #0,%d0
+        movel   ef_focus,%d0
+        andil   #7,%d0
+        movel   %d0,%d1
+        lsll    #5,%d0                  | t*32
+        lsll    #2,%d1                  | t*4
+        addl    %d1,%d0                 | t*36
+        lea     ef_dep_mem,%a0
+        addal   %d0,%a0
+        moveq   #DEST_NSLOT-1,%d1
+rap_d:  clrb    %a0@(0,%d1:l)
+        subql   #1,%d1
+        bpl.s   rap_d
+        | plock: slot index = t*36 + dest; each 12 B
+        moveq   #0,%d0
+        movel   ef_focus,%d0
+        andil   #7,%d0
+        movel   %d0,%d1
+        lsll    #5,%d0
+        lsll    #2,%d1
+        addl    %d1,%d0                 | t*36
+        movel   %d0,%d1
+        lsll    #3,%d0                  | *8
+        lsll    #2,%d1                  | *4
+        addl    %d1,%d0                 | *12 = byte off of first dest slot
+        lea     ef_plk_mem,%a0
+        addal   %d0,%a0
+        movel   #DEST_NSLOT*EF_PLK_SLOT,%d0
+        subql   #1,%d0
+rap_p:  clrb    %a0@(0,%d0:l)
+        subql   #1,%d0
+        bpl.s   rap_p
+        clrl    ef_depth
+        clrl    ef_ppulses
+        clrl    ef_prot
+        clrl    ef_pfree
+        clrl    ef_from_cue
+        lea     ef_pmask,%a0
+        moveq   #7,%d0
+rap_m:  clrb    %a0@(0,%d0:l)
+        subql   #1,%d0
+        bpl.s   rap_m
+        moveq   #1,%d0
+        movel   %d0,ef_dirty
+        bra.w   ef_store_slot
+
+| Wipe sample trigs 0..n-1 + reset TRIG recipe defaults (PULSE 5).
+ef_clear_trigs:
+        lea     -28(%sp),%sp
+        movem.l %d2-%d7/%a2,(%sp)
+        bsr.w   ef_trac_n
+        moveq   #0,%d2
+ctr_lp: cmpl    %d5,%d2
+        bcc.s   ctr_done
+        bsr.w   ef_bit_addr
+        moveb   %a0@,%d1
+        move.l  %d0,%d3
+        not.l   %d3
+        and.l   %d3,%d1
+        moveb   %d1,%a0@
+        clrl    ef_thit
+        bsr.w   ef_tl_reconcile
+        addql   #1,%d2
+        bra.s   ctr_lp
+ctr_done:
+        moveq   #5,%d0
+        movel   %d0,ef_pulses
+        clrl    ef_rot
+        clrl    ef_free
+        clrl    ef_from_cue
+        lea     ef_mask,%a0
+        moveq   #7,%d0
+ctr_m:  clrb    %a0@(0,%d0:l)
+        subql   #1,%d0
+        bpl.s   ctr_m
+        bsr.w   ef_store_slot
+        bsr.w   ef_drop_clr_undo
+        | mirror masks 0..2
+        moveq   #0,%d0
+        moveb   UI_PTN,%d0
+        movel   #PTN_STR,%d1
+        mulu.l  %d1,%d0
+        movel   ef_focus,%d1
+        andil   #7,%d1
+        movel   #TRK_STR,%d3
+        mulu.l  %d3,%d1
+        addl    %d1,%d0
+        addil   #MIRROR,%d0
+        moveal  %d0,%a4
+        moveq   #23,%d0
+ctr_c:  moveb   %a2@(0,%d0:l),%d1
+        moveb   %d1,%a4@(0,%d0:l)
+        subql   #1,%d0
+        bpl.s   ctr_c
+        bsr.w   ef_clear_finish
+        movem.l (%sp),%d2-%d7/%a2
+        lea     28(%sp),%sp
+        rts
+
+| Dirty + NOTIFY + LOCK_COLL after a clear. Clobbers d0/a0.
+ef_clear_finish:
+        moveal  DBPTR,%a0
+        addal   #DIRTY_OFF,%a0
+        moveq   #1,%d0
+        movel   %d0,%a0@
+        moveal  #DIRTY_G,%a0
+        movel   %d0,%a0@
+        jsr     NOTIFY
+        jsr     LOCK_COLL
+        rts
+
 | ---- layer --------------------------------------------------------------
         .balign 4
 EF_LAYER:
@@ -2732,35 +3242,35 @@ EF_KEYS:
         | UP/DOWN/LEFT/RIGHT / PROJ/PART/AED/ARR: omit (do not list).
         | Listing with 0 swallows; listing with -1 still stores aux=0
         | and has been seen to break DOWN after Euclid → PROJECT.
-        .byte   0x2a, 0                 | CUE = random PULSE
-        .long   ef_cue, 0, 0, 0, 0
+        .byte   0x2a, 0                 | CUE: press+release (0 swallows release)
+        .long   ef_cue, ef_cue, 0, 0, 0
         .word   0, 0
-| T1..T8: layer owns them while open (stock never updates UI_TRACK, and
-| without a redraw follow_ui never runs). Handler only stashes ef_pending;
-| store/load happens in draw. Safe without dest_label (EUCL9/10 brick).
+        | BANK (0x2f): omit - FUNC+BANK is Detour / MKI SymbolRef only.
+| T1..T8: press+release both ef_trkkey (stock needs release to clear
+| HELD). On press, retarget SEQ only if UI_WINDOW still ef_win.
         .byte   0x10, 0
-        .long   ef_trkkey, 0, 0, 0, 0
+        .long   ef_trkkey, ef_trkkey, 0, 0, 0
         .word   0, 0
         .byte   0x11, 0
-        .long   ef_trkkey, 0, 0, 0, 0
+        .long   ef_trkkey, ef_trkkey, 0, 0, 0
         .word   0, 0
         .byte   0x12, 0
-        .long   ef_trkkey, 0, 0, 0, 0
+        .long   ef_trkkey, ef_trkkey, 0, 0, 0
         .word   0, 0
         .byte   0x13, 0
-        .long   ef_trkkey, 0, 0, 0, 0
+        .long   ef_trkkey, ef_trkkey, 0, 0, 0
         .word   0, 0
         .byte   0x14, 0
-        .long   ef_trkkey, 0, 0, 0, 0
+        .long   ef_trkkey, ef_trkkey, 0, 0, 0
         .word   0, 0
         .byte   0x15, 0
-        .long   ef_trkkey, 0, 0, 0, 0
+        .long   ef_trkkey, ef_trkkey, 0, 0, 0
         .word   0, 0
         .byte   0x16, 0
-        .long   ef_trkkey, 0, 0, 0, 0
+        .long   ef_trkkey, ef_trkkey, 0, 0, 0
         .word   0, 0
         .byte   0x17, 0
-        .long   ef_trkkey, 0, 0, 0, 0
+        .long   ef_trkkey, ef_trkkey, 0, 0, 0
         .word   0, 0
         .byte   0xff, 0
         .long   0, 0, 0, 0, 0
@@ -2796,9 +3306,30 @@ T_FILLED: .asciz "TRIGS CREATED"
 T_CLRTITLE: .asciz "ARE YOU SURE?"
 T_CLRMSG1:  .asciz "EXISTING TRIGS IN THE PATTERN"
 T_CLRMSG2:  .asciz "WILL BE CLEARED ON NEXT FILL"
+T_CL_DEST:  .asciz "DEST CLEARED"
+T_CL_ALL:   .asciz "DESTS CLEARED"
+T_CL_SEQ:   .asciz "SEQ CLEARED"
+L_CL_DEST:  .asciz "CLEAR DEST"
+L_CL_ALL:   .asciz "CLEAR ALL DEST"
+L_CL_ATRG:  .asciz "CLEAR ALL+TRIGS"
         .balign 4
 ef_clr_lines:
         .long   T_CLRMSG1, T_CLRMSG2
+EF_CL_LBL:
+        .long   L_CL_DEST, L_CL_ALL, L_CL_ATRG
+EF_CL_CBS:
+        .long   ef_cl_dest, ef_cl_all, ef_cl_all_trigs
+| NO-only layer above CLEAR LISTPOP: one NO closes + restores SEQ.
+        .balign 4
+EF_CL_NO_LAYER:
+        .long   0, EF_CL_NO_KEYS, 0, 0, 0, -1, -1
+EF_CL_NO_KEYS:
+        .byte   0x32, 0                 | NO
+        .long   ef_cl_cancel, 0, 0, 0, 0
+        .word   0, 0
+        .byte   0xff, 0
+        .long   0, 0, 0, 0, 0
+        .word   0, 0
 | 4-char max - stock page-1 cells are 20 px (PANEL.md).
 L_LEN:    .asciz "LEN"
 L_PULSES: .asciz "PULS"
@@ -3207,6 +3738,7 @@ ea_rts: rts
         .globl  ef_win, ef_steps, ef_pulses, ef_rot, ef_dest, ef_depth
         .globl  ef_cursor, ef_targets, ef_focus, ef_bank, ef_dep_mem
         .globl  ef_plk_mem, ef_lane_mem, ef_lane, ef_ppulses, ef_prot
+        .globl  ef_ask, ef_unlocked, ef_from_cue, ef_cue_chord, ef_cue_snap, ef_free
         .globl  ef_cx_bank, ef_cx_bits  | CX OSC SETUP fills (stackable)
 ef_win:     .long 0
 ef_steps:   .long 16
@@ -3231,6 +3763,8 @@ ef_fill_tgts:  .long 0                  | scratch: targets across ef_fill
 ef_rng_state: .long 0                   | LCG; 0 -> seed from tempo/clock
 ef_free:    .long 0                     | nonzero: draw/write ef_mask + ROT
 ef_from_cue: .long 0                    | 1: free/pmask from CUE (bake may use)
+ef_cue_chord: .long 0                   | 1: layer saw CUE+TRACK (no random)
+ef_cue_snap: .long 0                    | cue-byte snapshot at CUE press
 ef_mask:    .space 8                    | TRIG free pattern bits 0..63
 ef_pmask:   .space 8                    | PLOCK free pattern bits 0..63
 ef_trk:     .long 0                     | current fill target track (0..7)
@@ -3265,6 +3799,8 @@ ef_unlocked: .long 0                    | 1: PULSE/ROT/CUE free until next bake
 ef_dlg_guard: .long 0                   | 1: soft-close on class-5 eviction
 ef_need_restore: .long 0                | 1: recreate window after dialog
 ef_layer_on: .long 0                    | 1: EF_LAYER registered (LPOP even if ef_win=0)
+ef_cl_nolayer: .long 0                  | 1: EF_CL_NO_LAYER pushed over CLEAR
+ef_cl_sel:  .long 0                     | clear LISTPOP cursor
 ef_nowrite: .long 0                     | refused file: do not overwrite
 ef_backup:  .long 0                     | next write copies to euclid.bak first
 ef_hdr:     .space 16                   | magic, ver, len, crc

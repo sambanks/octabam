@@ -55,6 +55,7 @@ Groups and what each captures, from the `shot(...)` calls:
 | `core` | `octabam` | rec-trig-mute, quantize-live-rec-toggle, mute-modes, quantizer, rlen-plen, midi-scenes, scenes-p2, plocks-p2, direct-jump-kyoti, reload-from-project |
 | `plocks` | `octabam`, PLATE REV on track 1 | plocks-p2 held lock and released Part value; use a disposable project with trig 1 empty |
 | `features` | `octabam` with REC THRESHOLD, SEQ, RND NAME and STEM REC added and REC TRIG MUTE and LOAD METER removed (a scratch selection; THR and REC_TRIG_MUTE share a hook, and LOAD METER declares a conflict with STEM REC) | seq, rec-threshold, stems, rnd-name |
+| `seq` | `test/seq` | SEQ window and FUNC + BANK clear menu, without capturing the other features |
 | `inserts` | `octabam`, one effect per track (T1 to T3 FX1, T4 FX2) | setup and main pages of SPECTRUM, CHARACTER, MODULATION, DELAY |
 | `bus` | `octabam-bus` | fx2-lock, tempo-bus, load-meter, memory, usb, and the DELAY SERVER, SEND and REVERB SERVER pages |
 | `extras` | one test remix per module (character-txtr, testgen, resonator, vibrato, sidechain-compressor, miniverb, tapeecho, vocoder, wave, distorx, devilish, transient, verberation; also alone as `distorx`, `vibrato` and `verberation`) | setup and main page of each |
