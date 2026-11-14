@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 320" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 320" role="img">
   <title>RESONATOR signal path</title>
-  <rect width="820" height="320" fill="#fff"/>
+  <rect width="900" height="320" fill="#fff"/>
 
   <style>
     .box { fill:#fff; stroke:#111; stroke-width:2; }
@@ -59,13 +59,17 @@
   <text class="t" x="537" y="155" text-anchor="middle">SCAL</text>
   <line class="arr" x1="572" y1="150" x2="612" y2="150"/>
 
-  <rect class="fill" x="614" y="128" width="80" height="44" rx="2"/>
-  <text class="t-inv" x="654" y="155" text-anchor="middle">MIX</text>
-  <line class="arr" x1="694" y1="150" x2="740" y2="150"/>
-  <text class="t" x="748" y="154">out</text>
+  <rect class="fill" x="614" y="128" width="70" height="44" rx="2"/>
+  <text class="t-inv" x="649" y="155" text-anchor="middle">MIX</text>
+  <line class="arr" x1="684" y1="150" x2="724" y2="150"/>
+
+  <rect class="box" x="726" y="128" width="70" height="44" rx="2"/>
+  <text class="t" x="761" y="155" text-anchor="middle">LIM</text>
+  <line class="arr" x1="796" y1="150" x2="842" y2="150"/>
+  <text class="t" x="850" y="154">out</text>
 
   <!-- dry tap under the bank; tip ends inside MIX -->
-  <path class="arr" d="M70 150 L70 290 L654 290 L654 160"/>
+  <path class="arr" d="M70 150 L70 290 L649 290 L649 160"/>
   <text class="t-sm" x="360" y="282" text-anchor="middle">dry</text>
 
   <text class="t-sm" x="410" y="28" text-anchor="middle">DECY = bandwidth (high = narrower / more ring). Short ring.</text>
