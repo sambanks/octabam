@@ -23,10 +23,9 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.CHECK,
-    proof_note="Current-block stereo limiter gated in verify_shatter; "
-               "unity below ceiling; LIM 127 about -12 dBFS. "
-               "New limiter awaits hardware confirmation; prior LIM tests used the old curve.",
+    proof=Proof.HARDWARE,
+    proof_note="Ilia's MKII, SHTR LM4.RMX from PR tip 366e1bcd, 14 Nov 2026: "
+               "LIM confirmed working; verify_shatter passed.",
     doc="Crush insert: fold, clip, crush, chaotic FDBK, stereo peak limiter after MIX.",
     menu=MenuEntry(
         fx2_id=0x0a,

@@ -69,6 +69,10 @@ mutually exclusive modes. These static counts do not prove hardware margin.
 
 ## On the unit
 
+Ilia's MKII, **`SHTR LM4.RMX`**, built from PR tip `366e1bcd`, 14 Nov 2026:
+LIM confirmed working. This check confirms limiter operation on the tested
+setup; it does not measure the exact ceiling.
+
 Ilia's MKII, 12 Nov 2026, remix `cx` **CX LIM11**: LIM transparent GR
 (earlier ceiling about -2.5..-18 dB), LIM 0..127, other knobs unchanged vs
 pre-LIM tip, live icons. Pre-LIM tip: same unit, remix `shatter`
