@@ -43,10 +43,10 @@ MODULE = Module(
     category=Category.TRACK,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.CHECK,
-    proof_note="Current-block stereo limiter gated in verify_resonator; "
-               "unity below ceiling; LIM 127 about -12 dBFS. "
-               "New limiter awaits hardware confirmation; prior LIM tests used the old curve.",
+    proof=Proof.HARDWARE,
+    proof_note="Ilia's MKII, RESO LM4.RMX from PR tip 0808651e, 14 Nov 2026: "
+               "low SCAL settings remained clean and the current-block LIM "
+               "reduced hot output; verify_resonator passed.",
     doc="FX1 Torso S-4 RING-style filter bank: 4 pitched BPs, SCAL makeup, DECY, LIM.",
     menu=MenuEntry(
         # Custom id 0x1e (BBD 0x1b). Selftest fixtures use DELAY 0x08.

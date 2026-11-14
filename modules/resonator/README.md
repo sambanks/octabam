@@ -65,10 +65,11 @@ the Part.
   Same as SHATTER. LIM 0 bypasses attenuation so MIX 0 stays bit-exact dry.
 - SCAL 127 may overload the filter-bank sum before the output limiter. Lower
   SCAL or band gains to avoid that pre-limiter distortion.
+- Hardware: Ilia's MKII, **`RESO LM4.RMX`**, built from PR tip `0808651e`,
+  14 Nov 2026. Low SCAL settings stayed clean and LIM reduced hot output.
 - Earlier hardware (pre-LIM): Ilia's MKII, tip of PR #806 as **`RESON RR`**
   / BUILD RR, 19 Oct 2026. Page-1 GN1–4, DECY low and high, MIX; page-2
-  PIT1–4; SCAL 8 and 127; FX2 dry-pass; two FX1 instances. This tip is
-  Proof.CHECK until LIM is confirmed on a unit.
+  PIT1–4; SCAL 8 and 127; FX2 dry-pass; two FX1 instances.
 
 ## Gates
 
@@ -89,7 +90,6 @@ unless a preceding hot block is still releasing. LIM 0 bypasses attenuation
 and clears the release state. LIM 1..127 sets a ceiling from about -2.5 to -12 dBFS.
 The release is approximately 63 ms at 15 frames per block.
 
-The earlier -18 dB maximum and previous-block gain are superseded. Hardware
-reports above describe that earlier implementation. The new limiter awaits
-a unit test. Regression renders cover signed transients at block boundaries,
-quiet unity gain, stereo balance, and bypass.
+Regression renders cover signed transients at block boundaries, quiet unity
+gain, stereo balance, and bypass. The LM4 hardware check confirms the limiter
+works in the tested RESONATOR setup; it does not measure its exact ceiling.
