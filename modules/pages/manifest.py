@@ -19,6 +19,8 @@ is every page key's (code, mode); the other keys and audio mode are declared
 when a client needs them and a gate has measured them.
 """
 import re
+import runpy
+from pathlib import Path
 
 from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 
@@ -30,6 +32,38 @@ CLIENTS = {
     ('midi', 'src'): (('CHORDS FACTORY', 'ch'),),
     ('audio', 'src'): (('DRUMMER', 'dr'),),
 }
+
+# LOCKS: the pages whose parameters take step locks and scene locks (locks.c).
+# (module key, prefix, page id, page name, hold). The page id (1..7) is the
+# page's in every lock entry, fixed once given (a saved lock names it); hold is
+# how long a step's locks play: 'trig' (stock's: until the track's next trig)
+# or 'step' (that step only). The client exports, C convention:
+#   <prefix>_lk_ctx()                          0, or 0x8000 | page << 8 | track while
+#                                              its lockable page is in front
+#   <prefix>_lk_turn(page, slot, value, delta) the value a turn gives, -1 when the
+#                                              slot takes no lock (delta 0: pure)
+#   <prefix>_lk_part(page, track, slot)        the edited Part's value of the slot
+#   <prefix>_lk_redraw(page)                   draw the page again
+# With a trig (GRID RECORDING) or a scene held, a knob on ANY PAGES page is
+# PAGES': a page that takes no lock (or none on that knob) drops the turn,
+# rather than stock locking the page under it (reported on image 87: NEXT).
+# and calls pg_lk_step / pg_lk_value / pg_lk_shown / pg_lk_where (locks.c).
+# The locks enter a remix with PAGES, EVENTS (edit.held, edit.scene_held) and
+# a client of them; without EVENTS the pages work without locks.
+LOCKS = (
+    ('DRUMMER', 'dr', 1, 'KIT BALANCE', 'trig'),
+)
+HOLDS = {'trig': 0, 'step': 1}
+# The locks' presence, one key for every manifest that wires them (EVENTS'
+# registration, STORE's client, DRUMMER's HAVE_PAGELOCKS): PAGES, EVENTS and
+# STORE, and any one of the LOCKS clients (a nested tuple reads "any of").
+LOCKS_KEY = ('PAGES', 'EVENTS', 'STORE', tuple(dict.fromkeys(entry[0] for entry in LOCKS)))
+
+
+def key_present(key, modules):
+    """A key's modules in the remix: a string must be, a nested tuple needs one of its."""
+    return all((any(m in modules for m in k) if isinstance(k, tuple) else k in modules)
+               for k in (key if isinstance(key, tuple) else (key,)))
 
 # The page key's setup opener: movel %sp@(4),%d0 ; moveq #3,%d1
 OPENER = 0x400322F0
@@ -80,14 +114,54 @@ def pages_inc(modules, remix=None):
     return '\n'.join(out) + '\n'
 
 
+def lock_clients(modules):
+    """Validate every LOCKS entry, present or not; the present ones (EVENTS in the remix)."""
+    ids, prefixes = set(), set()
+    for key, prefix, page, name, hold in LOCKS:
+        if (not key or not 1 <= page <= 7 or page in ids or prefix in prefixes or hold not in HOLDS
+                or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', prefix) or not name):
+            raise ValueError(f'invalid PAGES LOCKS registration: {key!r}')
+        if not any(key == k for regs in CLIENTS.values() for k, _p in regs):
+            raise ValueError(f'PAGES LOCKS {key!r}: not a PAGES client')
+        ids.add(page)
+        prefixes.add(prefix)
+    if not key_present(LOCKS_KEY, modules):     # STORE: PGLOCKS.WORK (client 10)
+        return []
+    return [entry for entry in LOCKS if entry[0] in modules]
+
+
+def locks_inc(modules, remix=None):
+    """The clients' callbacks by page id, their pages' hold."""
+    present = lock_clients(modules)
+    out = ['.macro pg_lk_ctx_calls']
+    for _key, prefix, _page, _name, _hold in present:
+        out += [f'    jsr {prefix}_lk_ctx', '    tst.l %d0', '    bne.s 9f']
+    out += ['    bra.s 8f', '9:  rts', '8:', '.endm', '.macro pg_lk_by_page name']
+    for _key, prefix, page, _name, _hold in present:
+        out += ['    moveq #%d,%%d0' % page, '    cmp.l 4(%sp),%d0', '    bne.s 1f',
+                f'    jmp {prefix}_lk_\\name', '1:']
+    out += ['.endm', '.macro pg_lk_shown_calls']      # every PAGES page of the remix, locks or not
+    for prefix in dict.fromkeys(p for prefixes in registrations(modules).values() for p in prefixes):
+        out += [f'    jsr {prefix}_page_shown', '    tst.l %d0', '    bne.s 9f']
+    out += ['    bra.s 8f', '9:  moveq #1,%d0', '    rts', '8:']
+    ids = runpy.run_path(str(Path(__file__).parents[1] / 'store/manifest.py'))['CLIENT_IDS']
+    out += ['.endm', f".set PG_CLIENT, {ids[LOCKS_KEY]}", '.macro pg_lk_holds']
+    holds = [0] * 8
+    for _key, _prefix, page, _name, hold in present:
+        holds[page] = HOLDS[hold]
+    out += ['    .byte ' + ', '.join(map(str, holds)), '.endm']
+    return '\n'.join(out) + '\n'
+
+
 def select(modules):
-    """PAGES enters a remix only with a client in it."""
-    if any(registrations(modules).values()):
-        return {'linked': (UNIT,), 'detours': DETOURS}
-    return {'linked': (), 'detours': ()}
+    """PAGES enters a remix only with a client in it; its locks with EVENTS and a LOCKS client."""
+    if not any(registrations(modules).values()):
+        return {'linked': (), 'detours': ()}
+    return {'linked': (UNIT, LOCKS_UNIT) if lock_clients(modules) else (UNIT,), 'detours': DETOURS}
 
 
 UNIT = Linked('pages', 'modules/pages/pages.s', dram=True, include=pages_inc)
+LOCKS_UNIT = Linked('pagelocks', 'modules/pages/locks_unit.s', cpu='5475', dram=True, include=locks_inc)
 DETOURS = (
     Detour(OPENER, OPENER_STOCK, 'pages', 'pg_opener',
            "a page key pressed again on its page (mode 1): the next registered page"),

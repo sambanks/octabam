@@ -12,10 +12,13 @@
 dr_step_stub:
         lea     -16(%sp),%sp
         movem.l %d0-%d1/%a0-%a1,(%sp)
-        move.l  32(%sp),-(%sp)          | n, the builder's 5th argument (16(%sp) at the site)
+        move.l  28(%sp),-(%sp)          | the builder's (track, bank, pattern, step, n) at 16(%sp): step
+        move.l  28(%sp),-(%sp)          | pattern
+        move.l  28(%sp),-(%sp)          | bank
+        move.l  44(%sp),-(%sp)          | n
         move.l  %d5,-(%sp)
-        jsr     dr_on_step
-        addq.l  #8,%sp
+        jsr     dr_on_step              | (track, n, bank, pattern, step)
+        lea     20(%sp),%sp
         movem.l (%sp),%d0-%d1/%a0-%a1
         lea     16(%sp),%sp
         mvz.b   0x8000668d,%d0
@@ -27,15 +30,50 @@ dr_step_stub:
 dr_rebuild_stub:
         lea     -12(%sp),%sp
         movem.l %d0-%d1/%a1,(%sp)
+        move.l  24(%sp),-(%sp)          | the builder's (track, bank, pattern, step, n) at 12(%sp): step
+        move.l  24(%sp),-(%sp)          | pattern
+        move.l  24(%sp),-(%sp)          | bank
         move.l  %d2,-(%sp)
         move.l  %d6,-(%sp)
-        jsr     dr_on_rebuild
-        addq.l  #8,%sp
+        jsr     dr_on_rebuild           | (track, step, bank, pattern, step)
+        lea     20(%sp),%sp
         movem.l (%sp),%d0-%d1/%a1
         lea     12(%sp),%sp
         lea     20(%sp),%sp
         move.l  106(%sp),%a0
         jmp     0x4009dcaa
+
+| PAGES' locks (pages/locks.c) when the remix has them (PAGES, EVENTS:
+| HAVE_PAGELOCKS from manifest.py), else KIT BALANCE as it is: no lock.
+        .include "remix.inc"
+        .globl  dr_pl_step, dr_pl_value, dr_pl_shown, dr_pl_where
+dr_pl_step:                             | (page, track, bank, pattern, step, trig)
+        .if     HAVE_PAGELOCKS
+        jmp     pg_lk_step
+        .else
+        rts
+        .endif
+dr_pl_value:                            | (page, track, slot, base) -> the value played
+        .if     HAVE_PAGELOCKS
+        jmp     pg_lk_value
+        .else
+        move.l  16(%sp),%d0
+        rts
+        .endif
+dr_pl_shown:                            | (page, track, slot) -> 0xffff nothing held
+        .if     HAVE_PAGELOCKS
+        jmp     pg_lk_shown
+        .else
+        move.l  #0xffff,%d0
+        rts
+        .endif
+dr_pl_where:                            | () -> the held step / scene, 0 none
+        .if     HAVE_PAGELOCKS
+        jmp     pg_lk_where
+        .else
+        moveq   #0,%d0
+        rts
+        .endif
 
 | 0x4000d3ae, the packer, after `movel %d1,0x800062a8` (the frame's page
 | records). Displaced: movel #32,%macsr (6), re-run last.

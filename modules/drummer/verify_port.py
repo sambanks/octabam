@@ -26,6 +26,14 @@ engine.py predicts for the same kit and knobs:
            hits, halfway from the Part's value on slice 3's, the Part's own on the others
   mix      HIP-HOP, HUMAN 0, KIT BALANCE (the zones' mix in the Part's STATIC PLAYBACK bytes, marked 'M'):
            KICK 0, SNARE 64, HATS 127, the others 64: the steps as the engine says with that mix
+  lockmix  mix's run with the Part's KIT BALANCE at 64 and the mix as PAGES' step locks on step 2 (pg_lk_pool
+           poked before the transport), step 2 a trigless trig (a lock needs a trig; no other trig on the
+           track): hold 'trig', step 2's locks play from step 2 on, through the pattern's wrap: bar 1's step 1 with the Part's mix, every later step with the
+           locks, as the engine says (the sequencer's bank, pattern and step reach pg_lk_step). Step 2, not
+           1: under the port the load's rebuilds decide step 1 before any poke lands
+  lockscene  the same mix as PAGES' scene locks of T1 in every scene of Part 1 (whatever scenes A and B and
+           the crossfader are, the scenes give it): bar 1's step 1 with the Part's (decided before the poke),
+           every later step with the scene locks
   redrum   REDRUM on (image 77, in a drummer.work of version 5): HUMN 0, SEED 0, CPLX 64 -- the sample's own loop, each
            slice on the step its start falls on in the 2-bar trim (TRIM_BARS 200, the slot's settings read
            by the adapter), as engine.py's dr_loop_build places it from the .ot
@@ -64,6 +72,8 @@ CASES = {
     "live": ((0, 64, 40, 0, 0, 0), (1, 64, 64, 64, 0, 64), ()),
     "scene": ((0, 64, 40, 0, 0, 0), (1, 64, 64, 64, 0, 64), ()),
     "mix": ((6, 64, 40, 0, 0, 0), (1, 64, 64, 64, 0, 64), ()),
+    "lockmix": ((6, 64, 40, 0, 0, 0), (1, 64, 64, 64, 0, 64), ()),
+    "lockscene": ((6, 64, 40, 0, 0, 0), (1, 64, 64, 64, 0, 64), ()),
     "redrum": ((0, 64, 64, 0, 0, 0), (0, 64, 64, 64, 0, 64), ()),
 }
 # REDRUM on (drummer.work version 5, T1's byte; a poke after the load comes after the first step): the loop from the slot (build_project: TRIM_BARSx100=200, BPMx24=2232)
@@ -71,6 +81,9 @@ REDRUM = {"redrum": (200, 2232)}
 LOOP_SRC = {}                                  # the .ot's slices and the WAV's frames, set by main()
 # KIT BALANCE written into every Part (STATIC's PLAYBACK bytes of the track, and the mark after "DR",1)
 MIXES = {"mix": (0, 64, 127, 64, 64, 64)}
+LOCKMIX = {"lockmix": (0, 64, 127, 64, 64, 64)}   # PAGES' step locks on step 2 (page 1, KIT BALANCE)
+LOCK_STEP = 1
+LOCKSCENE = {"lockscene": (0, 64, 127, 64, 64, 64)}   # PAGES' scene locks, every scene of Part 1
 # SCENE / DOSE poked into the KIT's RAM (slice: (scene 1..16, dose % or 0 = 100)); the scene's cell
 SCENES = {"scene": {4: (1, 0), 2: (1, 50)}}
 SCENE_K, SCENE_V = 18, 100                     # FX1's first knob (scene byte numbering), locked to 100
@@ -121,6 +134,15 @@ def predict(case, bars):
                  shift=0, phrase=4)
     if case in MIXES:
         p.mix[:] = list(MIXES[case])
+    if case in LOCKMIX or case in LOCKSCENE:   # the Part's mix up to the locked step, then the locks
+        import ctypes
+        out, st, h = [], E.State(), E.Hit()
+        for bar in range(bars):
+            for step in range(16):
+                p.mix[:] = list({**LOCKMIX, **LOCKSCENE}[case]) if (bar, step) >= (0, LOCK_STEP) else [64] * 6
+                E.lib().dr_step(ctypes.byref(kit), ctypes.byref(p), ctypes.byref(st), bar, step, 0, ctypes.byref(h))
+                out.append((bar, step, h.as_tuple()))
+        return out
     if case in REDRUM:
         slices, count, frames = LOOP_SRC["v"]
         lp = E.loop([s[0] for s in slices[:count]], frames, bars100=REDRUM[case][0], tempo24=REDRUM[case][1])
@@ -158,14 +180,16 @@ def run(a, case, wav, slices, count, frames, out):
             su = part + ps.SETUP_OFF + 30 * t + 6 * ps.FLEX
             data[su:su + 6] = bytes(row2)
             data[part + 9 + 60 + 30 * t:part + 9 + 63 + 30 * t] = b"DR\x01"   # the track is a DRUMMER track
-            if case in MIXES:
-                data[part + 9 + 0x2a + 30 * t:part + 9 + 0x30 + 30 * t] = bytes(MIXES[case])
+            if case in MIXES or case in LOCKMIX or case in LOCKSCENE:
+                data[part + 9 + 0x2a + 30 * t:part + 9 + 0x30 + 30 * t] = bytes(MIXES.get(case, [64] * 6))
                 data[part + 9 + 63 + 30 * t] = ord("M")
         off = ps.otp.trac_off(0, t)
         data[off:off + 64] = bytes(64)
         data[off + 0x59:off + 0x59 + 64 * 32] = bytes([0xff]) * (64 * 32)
         for s in forced:
             data[off + 7 - s // 8] |= 1 << (s % 8)
+        if case in LOCKMIX:              # a step's page locks need a trig: a trigless one (FUNC + TRIG), +0x10
+            data[off + 0x10 + 7 - LOCK_STEP // 8] |= 1 << (LOCK_STEP % 8)
         if case in SCENES:
             for p in range(ps.otp.NPARTS_ALL):
                 part = ps.otp.PART_BASE + p * ps.otp.PART_STRIDE + 9
@@ -198,6 +222,17 @@ def run(a, case, wav, slices, count, frames, out):
         cmd += ["--poke", ";".join(f"{sb + 64 * t + sl:#x}={sc};{db + 64 * t + sl:#x}={d}"
                                    for sl, (sc, d) in SCENES[case].items())]
         cmd[cmd.index("--watch-mem") + 1] += f";{0x80000810 + 72 * t + SCENE_K:#x},1"
+    if case in LOCKMIX or case in LOCKSCENE:   # pg_lk_pool's sorted entries (pages/locks.c), page 1, slot k
+        pool, cnt = symbol("pg_lk_pool"), symbol("pg_lk_count")
+        if case in LOCKMIX:             # step locks: bank 0, pattern 0, track t, step LOCK_STEP
+            ent = [(t << 20 | LOCK_STEP << 14 | 1 << 11 | k << 8 | v) for k, v in enumerate(LOCKMIX[case])]
+        else:                           # scene locks: bank 0, Part 1, track t, scenes 1-16
+            ent = [(1 << 31 | t << 20 | sc << 14 | 1 << 11 | k << 8 | v)
+                   for sc in range(16) for k, v in enumerate(LOCKSCENE[case])]
+        # before the transport starts (--poke lands after the load's rebuilds and the first step's)
+        cmd += ["--poke-before-play", ";".join([f"{pool + 4 * i + j:#x}={(e >> (24 - 8 * j)) & 0xff:#x}"
+                                    for i, e in enumerate(ent) for j in range(4)]
+                                   + [f"{cnt + 3:#x}={len(ent):#x}"])]
     if case in ALIGNS:
         base = symbol("dr_align")                       # dr_align[track][64]: T1's row first
         cmd += ["--poke", ";".join(f"{base + 64 * t + sl:#x}={ms}" for sl, ms in ALIGNS[case].items())]

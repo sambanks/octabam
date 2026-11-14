@@ -1,22 +1,36 @@
 """One system dependency, separately selected native event contracts."""
 import re
+import runpy
+from pathlib import Path
 
 from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 
 # Explicit families prevent a notification from being confused with an owner.
 # Each tuple is (module key, callback prefix, events). Order is dispatch order;
-# edit.held uses first-owner precedence. Registration is entirely build-time.
+# a key may be a tuple of module keys, present when every one of them is (PAGES'
+# locks: PAGES with a client that declares LOCKS, pages/manifest.py).
+# edit.held and edit.scene_held use first-owner precedence. Registration is entirely build-time.
+# PAGES' locks: PAGES, EVENTS, STORE and one of its LOCKS clients (one key, from LOCKS).
+LOCKS_KEY = runpy.run_path(str(Path(__file__).parents[1] / 'pages/manifest.py'))['LOCKS_KEY']
 FAMILIES = {
     'transport': ('start', 'resume'),
     'midi': ('note_accepted',),
-    'edit': ('held', 'copy_pre'),
+    'edit': ('held', 'copy_pre', 'scene_held', 'steps'),
 }
 CLIENTS = {
     'transport': (('EUCLID', 'eu_seq', ('start', 'resume')),
                   ('MIDI FOLLOW', 'bf_seq', ('start', 'resume'))),
     'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),),
-    'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre')),),
+    'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre')),
+             (LOCKS_KEY, 'pg', ('held', 'scene_held', 'copy_pre', 'steps'))),
 }
+
+
+def present(key, modules):
+    """A registration's module key in the remix: a tuple needs each of its keys, a
+    tuple nested in it any one of its (pages/manifest.py LOCKS_KEY)."""
+    return all((any(m in modules for m in k) if isinstance(k, tuple) else k in modules)
+               for k in (key if isinstance(key, tuple) else (key,)))
 
 
 def registrations(modules):
@@ -37,12 +51,14 @@ def registrations(modules):
                 raise ValueError(f'invalid EVENTS {family} registration: {key!r}')
             seen.add(key)
             for event in handled:
-                suffixes = ('claim', 'handle') if (family, event) == ('edit', 'held') else (event,)
+                suffixes = (('claim', 'handle') if (family, event) == ('edit', 'held')
+                            else ('scene_claim', 'scene_handle') if (family, event) == ('edit', 'scene_held')
+                            else (event,))
                 names = tuple(f'{prefix}_{suffix}' for suffix in suffixes)
                 if symbols.intersection(names):
                     raise ValueError(f'duplicate EVENTS callback: {names}')
                 symbols.update(names)
-                if key in modules:
+                if present(key, modules):
                     out[family, event].append(names)
     return out
 
@@ -58,14 +74,16 @@ def event_inc(modules, remix=None):
                 out += ['    move.l (%sp),%d0', f'    jsr {names[0]}']
             elif family == 'midi':
                 out += ['    movem.l (%sp),%d0-%d3', f'    jsr {names[0]}']
+            elif event == 'steps':           # the site's record: op, then up to five arguments
+                out += ['    movem.l (%sp),%d0-%d5', f'    jsr {names[0]}']
             elif event == 'copy_pre':
                 out += ['    move.l 68(%sp),%d0', '    move.l 72(%sp),%d1',
                         '    move.l 76(%sp),%d2', f'    jsr {names[0]}']
             else:
                 out += ['    move.l 68(%sp),%d0', '    move.l 72(%sp),%d1',
                         f'    jsr {names[0]}', '    tst.l %d0',
-                        f'    beq.w .Lev_held_next_{i}', '    EV_RESTORE',
-                        f'    jmp {names[1]}', f'.Lev_held_next_{i}:']
+                        f'    beq.w .Lev_{event}_next_{i}_\\@', '    EV_RESTORE',
+                        f'    jmp {names[1]}', f'.Lev_{event}_next_{i}_\\@:']   # \\@: one per expansion
         out += ['.endm']
     return '\n'.join(out) + '\n'
 
@@ -97,6 +115,8 @@ HOOKS = {
 
 _EDIT_HOOKS = (
         Detour(0x400508e4, bytes.fromhex('4fefffb048d77cfc'), 'eventsedit', 'ed_held', 'held-step editor ownership', pad_to=8),
+        Detour(0x40053498, bytes.fromhex('4fefffdc48d71cfc'), 'eventsedit', 'ed_scene_held', 'held-scene knob ownership (SCENE A)', pad_to=8),
+        Detour(0x40052e98, bytes.fromhex('4fefffe048d70cfc'), 'eventsedit', 'ed_scene_held_b', 'held-scene knob ownership (SCENE B)', pad_to=8),
         Detour(0x400267e8, bytes.fromhex('4eb940020898'), 'eventsedit', 'ed_copy', 'pattern/track data movement, including clipboard and undo', kind='jsr'),
         Detour(0x40026884, bytes.fromhex('4eb940020898'), 'eventsedit', 'ed_copy', 'pattern/track data movement, including clipboard and undo', kind='jsr'),
         Detour(0x40026ece, bytes.fromhex('4eb940020898'), 'eventsedit', 'ed_copy', 'pattern/track data movement, including clipboard and undo', kind='jsr'),
@@ -120,8 +140,25 @@ _EDIT_HOOKS = (
         Detour(0x4003de14, bytes.fromhex('47f940020898'), 'eventsedit', 'ed_copy', 'pattern/track data movement, including clipboard and undo', kind='lea'),
         Detour(0x4003e036, bytes.fromhex('47f940020898'), 'eventsedit', 'ed_copy', 'pattern/track data movement, including clipboard and undo', kind='lea'),
     )
+# edit.steps: a step's locks move or go, at the stock routines that move or
+# clear page-1 locks (docs/firmware/STEP_LOCKS.md section 4); d0 = op:
+#   0 TRIG_CLEAR   d1 step (the UI's bank, pattern, track): a trig taken off clears its locks
+#   1 LOCKS_CLEAR  d1 pattern, d2 track, d3 page, d4 mask: hold trigs + PLAY
+#   2 TRACK_CLEAR  d1 pattern, d2 track, d3 flags (bit 0: the steps and locks)
+#   3 TRIG_COPY    d1 clip, d2 pattern, d3 track, d4 page, d5 mask: record b = bit b
+#   4 TRIG_PASTE   d1 clip, d2 pattern, d3 track, d4 source record, d5 destination step
+# Notify all, before the stock routine goes on (TRIG_PASTE: before the step's lock copy).
+_STEPS_HOOKS = (
+    Detour(0x4006036E, bytes.fromhex('e98e260dd686'), 'eventsedit', 'ed_steps_trig', 'a trig taken off: its locks', pad_to=6),
+    Detour(0x40040E14, bytes.fromhex('4fefffd448d77cfc'), 'eventsedit', 'ed_steps_locks', 'clear the held steps\' locks', pad_to=8),
+    Detour(0x40039DF4, bytes.fromhex('4fefffc448d77cfc'), 'eventsedit', 'ed_steps_track', 'clear a track (and, per track, a pattern)', pad_to=8),
+    Detour(0x4002BF38, bytes.fromhex('4fefffc048d77cfc'), 'eventsedit', 'ed_steps_copy', 'trig copy into the clipboard or the undo buffer', pad_to=8),
+    Detour(0x4002CB52, bytes.fromhex('d1fc1001614f'), 'eventsedit', 'ed_steps_paste', 'trig paste, before the step\'s lock copy', pad_to=6),
+)
+HOOKS['edit', 'steps'] = _STEPS_HOOKS
 HOOKS['edit', 'held'] = _EDIT_HOOKS[:1]
-HOOKS['edit', 'copy_pre'] = _EDIT_HOOKS[1:]
+HOOKS['edit', 'scene_held'] = _EDIT_HOOKS[1:3]
+HOOKS['edit', 'copy_pre'] = _EDIT_HOOKS[3:]
 
 MODULE = Module(
     name='events', key='EVENTS', kind=Kind.CF_PATCH,

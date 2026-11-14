@@ -7,7 +7,7 @@ REMIX = Remix(
     family="mods", proof=Proof.HARDWARE,
     proof_note="the author's MKII, images 52-78 (Nov 2026); modules/drummer/verify_port.py and the module's gates",
     doc="DRUMMER alone: T1's sliced loop played as a drummer.",
-    modules=("DRUMMER", "STORE", "PAGES",
+    modules=("DRUMMER", "STORE", "PAGES", "EVENTS",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),

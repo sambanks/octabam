@@ -15,6 +15,9 @@ window and drummer.work come in phases 4b-4d (INVESTIGATION.md).
 
 All three were measured under the port (INVESTIGATION.md, phases 2 and 4).
 """
+import runpy
+from pathlib import Path
+
 from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, SymbolRef
 
 H = bytes.fromhex
@@ -27,6 +30,13 @@ DETOURS = (
         Detour(0x4000D3AE, H("a93c00000020"), "drummer", "dr_frame_stub",
                "packer, page records set: DRUMMER knobs out, playback values in"),
 )
+
+
+def drummer_inc(modules, remix=None):
+    """HAVE_PAGELOCKS: KIT BALANCE takes PAGES' locks (pages/manifest.py: its locks unit linked)."""
+    pages = runpy.run_path(str(Path(__file__).parents[1] / "pages/manifest.py"))
+    have = any(entry[0] == "DRUMMER" for entry in pages["lock_clients"](modules))
+    return f".set HAVE_PAGELOCKS, {int(have)}\n"
 
 
 MODULE = Module(
@@ -42,7 +52,7 @@ MODULE = Module(
                "verify_kitmaker.py, verify_autokit.py, verify_live2.py, verify_next.py (NEXT's orders on the beat)",
     doc="DRUMMER machine: a sliced FLEX drum loop played as a drummer (styles, humanisation, BRK breaks on the crossfader).",
     requires=("STORE",),                # drummer.work (store.c), client 8
-    linked=(Linked("drummer", "modules/drummer/drummer_unit.s", cpu="5475", dram=True),),
+    linked=(Linked("drummer", "modules/drummer/drummer_unit.s", cpu="5475", dram=True, include=drummer_inc),),
     # The machine row (machine.s; ANALOG BD's seams, measured on the unit by repeat98)
     detours=DETOURS + (
         Detour(0x400334D8, H("2f02222f0008"), "drummer", "dr_machine_name", "format machine row 5 as DRUMMER"),
@@ -94,5 +104,8 @@ MODULE = Module(
         ("ANALOG BD", "row 5 of the machine list and its seams, until DRUMMER joins HOOKS machine_rows"),
         ("OCTA303", "row 5 of the machine list and its seams, until DRUMMER joins HOOKS machine_rows"),
     ),
-    gates=(Gate("modules/drummer/verify.py", remix_arg=False),),
+    gates=(Gate("modules/drummer/verify.py", remix_arg=False),
+           # PAGES' locks on KIT BALANCE: the panel, the steps' life, SAVE PROJECT and a boot
+           # (its own synthetic card; SKIPs without PAGES' locks)
+           Gate("modules/pages/verify_locks.py", venv=True, stage="image"),),
 )

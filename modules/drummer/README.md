@@ -167,6 +167,27 @@ dotted) any free step for the light drums (hats, perc, ghosts) and the
 KIT BALANCE is saved in the Part: each Part has its own mix, and a Part
 change brings it. The track's own trigs always play.
 
+**Locks on steps and scenes.** KIT BALANCE takes parameter locks, as a
+stock page does (PAGES' locks; the remix needs EVENTS):
+
+- **On a step.** GRID RECORDING on, place a trig (TRIG, or FUNC + TRIG for
+  a trigless one), hold it and turn A-F: that step locks the zone. The
+  title reads `STEP n`; a zone with a lock shows its value, the others
+  `--`. FUNC held while turning removes the lock. As on stock, the lock
+  plays from its step to the track's next trig.
+- **On a scene.** Hold SCENE A or B and turn A-F: the scene locks the
+  zone (title `SCENE n`), and the crossfader morphs between the two
+  scenes' mixes. FUNC held while turning removes it.
+
+![KIT BALANCE: step 3's locks, trig 3 held](../../docs/site/img/drummer/balance-step.png)
+
+![KIT BALANCE: scene A's lock, SCENE A held](../../docs/site/img/drummer/balance-scene.png)
+
+The locks follow their trigs like stock's: a trig taken off takes its
+locks, trig + PLAY clears them, and copying a trig, a track or a pattern
+carries them. They are saved with the project (`pglocks.work`). Part and
+bank operations (RELOAD PART, a Part or bank copy) do not move them yet.
+
 ### NEXT: orders on the beat
 
 ![NEXT, an order armed](../../docs/site/img/drummer/next-armed.png)
@@ -521,7 +542,8 @@ the other levels' hits; past the small tick (the bar dotted) free steps come in
 too. A detent is 5 % and a turn stops once on the middle. The
 track's own trigs always play. KIT BALANCE lives in the Part (the track's STATIC
 PLAYBACK bytes, unused on a FLEX track; seeded at 100 % the first time it
-opens), saved and reloaded with it; it takes no lock, LFO or scene. Without
+opens), saved and reloaded with it; it takes step and scene locks through
+PAGES (no LFO): `modules/pages/README.md`, *Locks*. Without
 PAGES in the remix there is no KIT BALANCE (the engine plays every zone at 100 %).
 
 **The fill library (image 72).** ORN also sends a share of the fills to a

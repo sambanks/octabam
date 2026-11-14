@@ -10,6 +10,9 @@ the detours and calls each client's handler at the event
 client that is not in the remix is left out of the tables.
 """
 
+import runpy
+from pathlib import Path
+
 from remix.schema import Category, Detour, Kind, Linked, Module, Proof
 
 H = bytes.fromhex
@@ -22,7 +25,19 @@ EVENTS = (
     "bankcopy", "tocs1", "fromcs1", "partsaved", "partclear",
 )
 
-# (module key, symbol prefix, events handled). Table order is run order.
+# (module key, symbol prefix, events handled). Table order is run order. A key may
+# be a tuple of module keys: the client is in when all of them are.
+# PAGES' locks: PAGES, EVENTS, STORE and one of its LOCKS clients (one key, from LOCKS).
+PAGES_LOCKS = runpy.run_path(str(Path(__file__).parents[1] / "pages/manifest.py"))["LOCKS_KEY"]
+
+
+def present(key, modules):
+    """A registration's module key in the remix: a tuple needs each of its keys, a
+    tuple nested in it any one of its (pages/manifest.py LOCKS_KEY)."""
+    return all((any(m in modules for m in k) if isinstance(k, tuple) else k in modules)
+               for k in (key if isinstance(key, tuple) else (key,)))
+
+
 CLIENTS = (
     ("PLOCKS P2", "plk", ("loadall_pre", "loadmask_pre", "newproj", "bankw_pre",
                           "bankcopy", "tocs1", "fromcs1")),
@@ -46,6 +61,10 @@ CLIENTS = (
                        "pstore_pre", "pstore_post", "preload_post")),
     ("SEQ", "ef", ("loadall_post", "loadmask_post", "newproj", "bankw_post",
                            "pstore_pre", "pstore_post", "preload_post")),
+    # PAGES' locks (pages/locks.c, PGLOCKS.WORK): present when PAGES links its locks
+    # unit -- PAGES, EVENTS, STORE and a LOCKS client (pages/manifest.py LOCKS_KEY).
+    (PAGES_LOCKS, "pg", ("loadall_pre", "loadall_post", "loadmask_post", "newproj", "bankw_post",
+                         "pstore_pre", "pstore_post", "preload_post")),
     # No side file: partclear holds its per-track state and the partsaved that ends
     # the clear lets it go (stock Part Clear tail-jumps into Part Save).
     ("VARISPEED", "vs", ("partsaved", "partclear")),
@@ -55,27 +74,27 @@ CLIENTS = (
 # A client's number in the refusal registry (store_refuse) and in ans_tab: only the
 # clients that keep a side file (VARISPEED keeps none and has no entry).
 CLIENT_IDS = {"PLOCKS P2": 0, "KITS": 1, "MIDI SCENES": 2, "PERSISTENT BUFFERS": 3, "MORPH": 4,
-              "FREE LOOP": 5, "SCALES": 6, "CHORDS FACTORY": 7, "DRUMMER": 8, "SEQ": 9}
+              "FREE LOOP": 5, "SCALES": 6, "CHORDS FACTORY": 7, "DRUMMER": 8, "SEQ": 9, PAGES_LOCKS: 10}
 
 
 def store_inc(modules, remix):
     out = ["ev_ctl:", "        .long   kits_level" if "KITS" in modules else "        .long   0",
            "cp_cbs:", "        .long   name_fp" if "COPY PROJECT" in modules else "        .long   0",
-           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn, nm_pbf, nm_mrp, nm_fl, nm_sc, nm_ch, nm_dr, nm_ef",
+           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn, nm_pbf, nm_mrp, nm_fl, nm_sc, nm_ch, nm_dr, nm_ef, nm_pg",
            'nm_plk: .asciz "P2LK%02d.WORK"', 'nm_kits: .asciz "KITS.WORK"',
            'nm_scn: .asciz "SCENES.WORK"', 'nm_pbf: .asciz "BUFFERS/REC%d.WAV"',
            'nm_mrp: .asciz "MORPH.WORK"', 'nm_fl: .asciz "FREELOOP.WORK"',
            'nm_sc: .asciz "SCALES.WORK"', 'nm_ch: .asciz "CHORDS.WORK"',
-           'nm_dr: .asciz "DRUMMER.WORK"', 'nm_ef: .asciz "EUCLID.WORK"',
+           'nm_dr: .asciz "DRUMMER.WORK"', 'nm_ef: .asciz "EUCLID.WORK"', 'nm_pg: .asciz "PGLOCKS.WORK"',
            ".balign 2", "ans_tab:"]
     for key, _prefix, _events in sorted((c for c in CLIENTS if c[0] in CLIENT_IDS),
                                         key=lambda c: CLIENT_IDS[c[0]]):
         pre = {k: p for k, p, _e in CLIENTS}[key]
-        out.append(f"        .long   {pre}_st_answer" if key in modules else "        .long   0")
+        out.append(f"        .long   {pre}_st_answer" if present(key, modules) else "        .long   0")
     for ev in EVENTS:
         out.append(f"ev_{ev}:")
         for key, prefix, handled in CLIENTS:
-            if key in modules and ev in handled:
+            if present(key, modules) and ev in handled:
                 out.append(f"        .long   {prefix}_st_{ev}")
         out.append("        .long   0")
     return "\n".join(out) + "\n"

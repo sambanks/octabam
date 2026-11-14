@@ -41,7 +41,7 @@ class Fixture:
         declaration = runpy.run_path(str(ROOT / 'modules/events/manifest.py'))
         fn = declaration['event_inc']
         keys = tuple(f'CLIENT {i}' for i in range(count))
-        events = ('start', 'resume', 'midi_note_accepted') if slug == 'sequencer' else ('held', 'copy_pre')
+        events = ('start', 'resume', 'midi_note_accepted') if slug == 'sequencer' else ('held', 'copy_pre', 'scene_held', 'steps')
         handled = events if handled is None else handled
         clients = {family: [] for family in declaration['FAMILIES']}
         for family, family_events in declaration['FAMILIES'].items():
@@ -54,7 +54,7 @@ class Fixture:
         self.hooks = tuple(d for hooks in declaration['HOOKS'].values() for d in hooks)
         assert not any(f'test{i}_' in fn(()) for i in range(count)), 'absent clients must be omitted'
         self.callbacks = {}
-        suffixes = events if slug == 'sequencer' else ('claim','handle','copy_pre')
+        suffixes = events if slug == 'sequencer' else ('claim','handle','copy_pre','scene_claim','scene_handle','steps')
         for i in range(count):
             for suffix in suffixes:
                 address = 0x47002000 + len(self.callbacks)*16
@@ -104,12 +104,12 @@ class Fixture:
             self.instructions+=1
         if pc in self.callbacks:
             client,event=self.callbacks[pc]
-            args=tuple(u.reg_read(r) for r in REGS[:4])
+            args=tuple(u.reg_read(r) for r in REGS[:6 if event=='steps' else 4])
             self.log.append((client,event,args))
             if event=='midi_note_accepted' and self.sent is not None:
                 assert self.sent, 'notification must follow native send'
                 assert args[2:] == (self.sent[-1][2],self.sent[-1][1])
-            if event=='handle':
+            if event in ('handle','scene_handle'):
                 assert [u.reg_read(r) for r in REGS]==self.before, 'handler native registers'
                 assert u.reg_read(UC_M68K_REG_A7)==STACK, 'handler native stack'
                 assert bytes(u.mem_read(STACK+4,8))==struct.pack('>II',4,7)
@@ -118,7 +118,7 @@ class Fixture:
                 assert bytes(u.mem_read(0x47005000,4))==b'old!'
             for i,r in enumerate(REGS):u.reg_write(r,0xdead0000+i)
             u.reg_write(UC_M68K_REG_SR,0x271f)
-            self.ret(int(client in self.claims) if event=='claim' else 0xabcdef01)
+            self.ret(int(client in self.claims) if event in ('claim','scene_claim') else 0xabcdef01)
         elif pc==0x40010bc8 and self.sent is not None:
             sp=u.reg_read(UC_M68K_REG_A7)
             length,address=struct.unpack('>II',u.mem_read(sp+4,8))
@@ -332,6 +332,35 @@ def main():
                     if claims:f.preserved({0:91},STACK+4)
                     else:f.preserved(sp=STACK-80)
                     cases+=1
+                # edit.scene_held: the same first-owner contract at stock's scene knob
+                # handler 0x40053498; unclaimed, its prologue (36-byte frame) then 0x400534a0
+                # SCENE A's handler 0x40053498 (36-byte frame) and SCENE B's 0x40052e98 (32)
+                for entry,native,frame in (('ed_scene_held',0x400534a0,36),('ed_scene_held_b',0x40052ea0,32)):
+                  for claims in [set(),*({i} for i in range(count)),set(range(count))]:
+                    f.claims=claims
+                    stop=DONE if claims else native
+                    f.call(entry,stop,args=(4,7))
+                    owner=min(claims) if claims else None
+                    assert [(i,e) for i,e,a in f.log]==([(i,'scene_claim') for i in range(owner+1)]+[(owner,'scene_handle')] if claims else [(i,'scene_claim') for i in range(count)])
+                    assert all(a[:2]==(4,7) for i,e,a in f.log if e=='scene_claim')
+                    if claims:f.preserved({0:91},STACK+4)
+                    else:f.preserved(sp=STACK-frame)
+                    cases+=1
+                # edit.steps: every client sees each site's (op, arguments), then the
+                # displaced instructions run and stock goes on, registers native
+                d3=0x10+(2<<4)
+                f.call('ed_steps_trig',0x40060374,values={13:0x10,6:2})
+                assert f.log==[(i,'steps',(0,d3)+f.log[i][2][2:]) for i in range(count)],f.log
+                f.preserved({3:d3,6:2<<4});cases+=1
+                for entry,native,frame,op,args in (('ed_steps_locks',0x40040e1c,44,1,(1,2,3,0x8001)),
+                                                   ('ed_steps_track',0x40039dfc,60,2,(1,2,1)),
+                                                   ('ed_steps_copy',0x4002bf40,64,3,(0x460c8122,1,2,3,0x8001))):
+                    f.call(entry,native,args=args)
+                    assert [(i,e,a[:1+len(args)]) for i,e,a in f.log]==[(i,'steps',(op,)+args) for i in range(count)],(entry,f.log)
+                    f.preserved(sp=STACK-frame);cases+=1
+                f.call('ed_steps_paste',0x4002cb58,values={4:5,5:9,8:0x100},args=(0,)*23+(0x460bf218,1,2))
+                assert f.log==[(i,'steps',(4,0x460bf218,1,2,5,9)) for i in range(count)],f.log
+                f.preserved({8:0x100+0x1001614f});cases+=1
     native_cases=0
     if (ROOT/'modules/events/manifest.py').exists():
         with tempfile.TemporaryDirectory(prefix='octabam-native-events-') as td:
