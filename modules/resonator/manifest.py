@@ -8,6 +8,7 @@ post-MIX transparent GR (0 = off).
 """
 import math as _m
 
+from remix.peak_limiter import source as peak_limiter_source
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate,
                           Harness, Kind, MenuEntry, Module, Param, Proof,
                           YBase)
@@ -41,9 +42,9 @@ MODULE = Module(
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
     proof=Proof.CHECK,
-    proof_note="LIM post-MIX GR gated in verify_resonator; earlier HW "
-               "(PR #806 BUILD RR, 19 Oct 2026) was pre-LIM. "
-               "Await unit confirm of LIM catch on SCAL smash.",
+    proof_note="Current-block stereo limiter gated in verify_resonator; "
+               "unity below ceiling; LIM 127 about -2.5 dBFS. "
+               "New limiter awaits hardware confirmation; prior LIM tests used the old curve.",
     doc="FX1 Torso S-4 RING-style filter bank: 4 pitched BPs, SCAL makeup, DECY, LIM.",
     menu=MenuEntry(
         # Custom id 0x1e (BBD 0x1b). Selftest fixtures use DELAY 0x08.
@@ -77,10 +78,11 @@ MODULE = Module(
         Param(b"SCAL", 8, 128, active=True, formatter=_PLAIN,
               doc="gain scale: 8 is tame, 127 is a smash"),
         Param(b"LIM", 0, 128, active=True, formatter=_PLAIN,
-              doc="brickwall after MIX; 0 off, 1..127 ≈ -2.5..-18 dB ceiling"),
+              doc="peak limiter after MIX; 0 off, 1..127 ≈ 0..-2.5 dB ceiling"),
     ),
     dsp=DspSection(
         asm="modules/resonator/resonator.asm",
+        subst={pl: peak_limiter_source("rspk", 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, knob=0xe) for pl in ("A", "B")},
         ptable=F_TAB + DAMP_TAB,
         priority=31,
         bus_role=BusRole.NONE,

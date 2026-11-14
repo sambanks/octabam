@@ -1,3 +1,4 @@
+; CYCLES_SEQUENTIAL_LOOPS
 ; ---------------------------------------------------------------------------
 ; RESONATOR -- 4-band Chamberlin SVF filter bank (FX1 station).
 ;
@@ -20,17 +21,16 @@
 ;   SCALE 8 → tame (GN 64 = 0dB); SCALE 127 → build-TN smash (~×16 at GN64).
 ; DECY high → low damp.
 ;
-; LIM (slot 11): stereo-linked peak GR after MIX. Instant attack, release
-; ~63 ms. thresh = 0.75 - LIM*0.625/128 (floor 0.125) into $29 (0 = off).
-; LIM 1 ≈ -2.5 dB, LIM 127 ≈ -18 dB (SHATTER curve). Block-rate
-; g = thresh/max(level,thresh) into $2b. Nested do+div inside the sample
-; DO is forbidden; no rep in proc. MIX 0 is bit-exact dry when LIM is 0.
+; LIM: shared current-block stereo peak limiter, one div outside sample DO.
+; Ceiling = 1 - LIM*0.25/128 (LIM 0 bypass), near 0..-2.5 dBFS.
+; Unity below ceiling, no makeup gain; approximately 63 ms block release.
+; The second pass controls the first transient without nested DO/div.
 ;
 ; r7: $00..$0f L 4*(low,band), $10..$1f R same,
 ;     $20 fx2-dry  $21 MIX  $22 damp  $23 exc
 ;     $25/$26 prev L/R  $27 drive  $28 edge scratch
 ;     $29 lim thresh (0 = off)  $2a lim level_s  $2b lim gain
-;     $2c mixed L  $2d mixed R
+;     $2c mixed L  $2d mixed R  $2e block peak  $2f block start
 ;     $30..$33 f0..f3  $34..$37 g0..g3  $38 SCALE  $40..$43 pit<<16
 ;     $4b i  $58 wet-acc  $5a P-base
 ;
@@ -151,37 +151,7 @@ proc:
         move    x:(r6+$e),a
         and     #>$7f0000,a
         move    a,x:(r7+$38)
-        move    x:(r6+$e),a             ; LIM slot 11 = $e bits 8-15
-        and     #>$7f00,a               ; LFO dirt; 0 = off
-        beq     rslim0
-        asl     #$8,a,a                 ; LIM<<16
-        move    a,x0
-        move    #>$500000,y1            ; 0.625
-        mpy     x0,y1,a                 ; LIM*0.625/128
-        move    #>$600000,b             ; 0.75
-        sub     a,b                     ; 0.75 - LIM*0.625/128
-        move    #>$100000,x0            ; floor 0.125 (~-18 dB)
-        cmp     x0,b
-        tlt     x0,b
-        move    b,x:(r7+$29)            ; thresh
-        move    x:(r7+$2a),a            ; level_s
-        cmp     b,a
-        tlt     b,a                     ; max(level, thresh)
-        move    a,x0
-        move    x:(r7+$29),y1           ; thresh
-        move    y1,a                    ; clean load: a0 = 0
-        andi    #$fe,ccr
-        do      #$18,>rslimdv
-        div     x0,a
-rslimdv:
-        move    a0,x:(r7+$2b)           ; g
-        bra     rslim1
-rslim0:
-        clr     a
-        move    a,x:(r7+$29)            ; 0 = skip GR
-        move    #>$7fffff,x0
-        move    x0,x:(r7+$2b)
-rslim1:
+; LIMIT_THRESHOLD
 ; f0..f3 from parked pits
         clr     a
         move    a,x:(r7+$4b)
@@ -196,6 +166,7 @@ rslim1:
 rs_fbd:
 ; samples
         move    #>$1,n0
+; LIMIT_PREPARE
         do      n7,>rs_sz
         move    x:(r0),x1
         move    x:(r7+$25),y1
@@ -320,37 +291,7 @@ rs_fbd:
         move    x1,y0
         teq     y0,a
         move    a,x:(r7+$2d)            ; stash R (r0 still on R)
-; ---- LIM after MIX: envelope + block-rate g (0 skips, bit-exact mix) -----
-        move    x:(r7+$29),b            ; thresh; 0 = off
-        tst     b
-        beq     rs_lim0
-        move    x:(r7+$2c),a            ; |L|
-        abs     a
-        move    a,x1
-        move    x:(r7+$2d),a            ; |R|
-        abs     a
-        cmp     x1,a
-        tlt     x1,a                    ; peak
-        move    x:(r7+$2a),b            ; level_s (A still peak)
-        sub     b,a                     ; d = peak - level_s
-        move    #>$7fffff,x1            ; attack = 1
-        move    #>$000bd0,b             ; release ~63 ms
-        tst     a
-        move    a,x0
-        tpl     x1,b
-        move    b,y1
-        mpy     x0,y1,a
-        move    x:(r7+$2a),b
-        add     b,a
-        move    a,x:(r7+$2a)            ; level_s
-        move    x:(r7+$2b),y1           ; g
-        move    x:(r7+$2c),x0
-        mpy     x0,y1,a
-        move    a,x:(r7+$2c)
-        move    x:(r7+$2d),x0
-        mpy     x0,y1,a
-        move    a,x:(r7+$2d)
-rs_lim0:
+; LIMIT_COLLECT
         ; r0 on R: write R, back to L, write L, step past R (no n0 #>)
         move    x:(r7+$2d),a
         move    a,x:(r0)-               ; write R, r0 → L
@@ -358,6 +299,8 @@ rs_lim0:
         move    a,x:(r0)+               ; write L, r0 → R
         lua     (r0+1),r0               ; past R for next frame
 rs_sz:
+        nop
+; LIMIT_FINISH
 rs_end:
         rts
 

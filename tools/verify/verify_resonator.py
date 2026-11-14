@@ -41,10 +41,12 @@ def params(**kw):
     return v
 
 
-def render(samples, fx2=False, inst=1, **kw):
+def render(samples, fx2=False, inst=1, right_samples=None, **kw):
     n = len(samples) - len(samples) % FRAMES
     src, out = TMP / "in.raw", TMP / "out.raw"
-    src.write_bytes(b"".join(struct.pack("<i", m) for m in samples[:n]))
+    words = samples[:n] if right_samples is None else [
+        v for pair in zip(samples[:n], right_samples[:n]) for v in pair]
+    src.write_bytes(b"".join(struct.pack("<i", m) for m in words))
     pcsv = ",".join(str(x) for x in params(**kw))
     # FX1: r7 = 1+3*pos, alloc = 0+2*pos (dsp_host header). FX2 dry-pass: alloc 4000.
     if fx2:
@@ -61,6 +63,8 @@ def render(samples, fx2=False, inst=1, **kw):
            "-inmask", str((1 << inst) - 1),
            "-frames", str(FRAMES), "-blocks", str(n // FRAMES),
            "-in", str(src), "-out", str(out)]
+    if right_samples is not None:
+        cmd += ["-stereo"]
     for _ in range(inst):
         cmd += ["-params", pcsv]
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -170,7 +174,7 @@ def _rail_frac(L, R):
 
 
 # SCAL 8 + every other knob max, LIM 0: rail fraction must stay low.
-# SCAL 127 + LIM 1: smash caught under ~0.8 FS.
+# SCAL 127 + LIM 127: smash caught under ~0.76 FS.
 N_LONG = int(3.0 * FS)
 N_LONG -= N_LONG % FRAMES
 drive = tone(220, N_LONG, amp=0.25)
@@ -182,7 +186,7 @@ frac_tame = _rail_frac(Ltame, Rtame)
 check(f"SCAL8 max-knob rail frac {frac_tame:.1%} < 5%", frac_tame < 0.05)
 
 Lmax, Rmax = render(
-    drive, MIX=127, SCAL=127, LIM=1, DECY=127,
+    drive, MIX=127, SCAL=127, LIM=127, DECY=127,
     GN1=127, GN2=127, GN3=127, GN4=127,
     PIT1=0, PIT2=0, PIT3=127, PIT4=127)
 half = len(Lmax) // 2
@@ -190,12 +194,12 @@ e0 = sum(abs(x) for x in Lmax[:half]) / half
 e1 = sum(abs(x) for x in Lmax[half:]) / half
 check(f"max-knob no runaway (late/early={e1 / e0 if e0 else 0:.2f} < 4)",
       e0 > 0 and e1 < e0 * 4)
-# Skip first block (g from level_s=0).
-p127 = max(max(abs(x) for x in Lmax[FRAMES:]), max(abs(x) for x in Rmax[FRAMES:]))
-frac127 = _rail_frac(Lmax[FRAMES:], Rmax[FRAMES:])
-check(f"SCAL127+LIM1 peak under ceiling ({p127} <= {int(0.8 * RAIL)})",
-      p127 <= int(0.8 * RAIL))
-check(f"SCAL127+LIM1 rail frac {frac127:.1%} < 5%", frac127 < 0.05)
+# Include the first block: its own peak controls its gain.
+p127 = max(max(abs(x) for x in Lmax), max(abs(x) for x in Rmax))
+frac127 = _rail_frac(Lmax, Rmax)
+check(f"SCAL127+LIM127 peak under ceiling ({p127} <= {int(0.76 * RAIL)})",
+      p127 <= int(0.76 * RAIL))
+check(f"SCAL127+LIM127 rail frac {frac127:.1%} < 5%", frac127 < 0.05)
 
 # Two FX1 instances, same knobs: both produce audio (rail fraction is the
 # one-instance SCAL8 gate above; stacking can clip harder at the same amp).
@@ -207,6 +211,9 @@ pair = render(
 for i, (Li, Ri) in enumerate(pair):
     e = sum(abs(x) for x in Li[512:])
     check(f"two-instance[{i}] has energy ({e})", e > 10_000)
+
+from peak_limiter_gate import verify as verify_limiter
+verify_limiter(render, check, FRAMES, RAIL)
 
 if FAILS:
     sys.exit(f"{len(FAILS)} FAIL: {FAILS}")
