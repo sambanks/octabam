@@ -100,9 +100,16 @@
     "panel": {
       "image": "seq/panel.png",
       "caption": "SEQ: title SEQ, rings icon, A/B PULS/ROT, C=LANE TRIG/PLCK, D=page+param, E=DPTH, step grid, LEN bottom-right.",
-      "remix": "seq-port",
+      "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "cf6c4a638641fcb36133dfc369385ddfb4f334c94be11438dd5b065a7401aace"
+      "firmware_sha256": "e8a894a6fbc8e4c579aacc244940e7bc6f933d661693a556b46dc4bfcffc6bdb"
+    },
+    "clear": {
+      "image": "seq/clear.png",
+      "caption": "SEQ clear menu: CLEAR DEST, CLEAR ALL DEST, CLEAR ALL+TRIGS.",
+      "remix": "test/seq",
+      "source": "emulator panel UART",
+      "firmware_sha256": "e8a894a6fbc8e4c579aacc244940e7bc6f933d661693a556b46dc4bfcffc6bdb"
     }
   },
   "rec-threshold": {

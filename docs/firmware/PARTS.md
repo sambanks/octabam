@@ -145,6 +145,7 @@ nothing there.
 | MKII FUNC + PART | `0x4002dc9c`, the Part edit menu (`0x4006d94c`, four rows) |
 | MKI FUNC + MIDI (`0x35`) | `0x4002e7b8` |
 | MKI FUNC + BANK (`0x2f`) | `0x40058a64`, which opens the Part edit menu only while the PART window is open (`0x4002dc3c`); otherwise PATTERN SETTINGS (`0x40083440`) or one of two targets chosen by `0x460d1aec` / `0x460d1736`. RECORDING SETUP has its own key map (`0x400b9e36`) and does not reach it |
+| MKII FUNC + BANK (`0x2f`) | FUNC-held keys table (FUNC.sub → map+4 → `0x400bf628`, or BRAIN's `brain_func_keys` clone): press `0x4007c0d0` opens **TRACK TRIG EDIT**. Not the MKI site above. |
 | FUNC + CUE, both | `0x4004aab4` from `0x4005e05a` (return `0x4005e060`) |
 | FUNC + YES | `0x4005e3d8` (press, then release), not an open list's YES |
 

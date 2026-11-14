@@ -38,6 +38,12 @@ grid, then write.
 | **`[NO]`** | Close the window |
 | Bare **`[PAGE]`** | Stock pattern pages / step banks; SEQ stays open |
 | Another **`[TRACK]`** while open | Switch SEQ to that track |
+| Double-tap **`[TRACK]`** | Stock **QUICK ASSIGN** |
+| **`[FUNC]`** + **`[TRACK]`** | Stock mute |
+| **`[TRACK]`** + **`[PLAY]`** / **`[STOP]`** / **`[BANK]`** | Stock preview / stop / audio editor |
+| **`[CUE]`** + **`[TRACK]`** | Stock cue that track |
+| Bare **`[CUE]`** (tap) | Random **PULS** hits on the focused lane |
+| **`[FUNC]`** + **`[BANK]`** | Open the clear menu |
 
 ## Lanes
 
@@ -74,6 +80,10 @@ Same 3x2 cells as stock SETUP pages:
 
 **LEN** shows the active **pattern** length.
 
+For **SRC** / **PTCH**, **SCALE OFF** places the Part's **PLAYBACK PTCH**
+on every hit. With **SCALE** enabled, **DPTH** spreads pitches within
+that scale around the Part's pitch. **DPTH** 0 clears the pitch locks.
+
 ## Writing the pattern
 
 Open and track-switch load the track's saved SEQ settings into the knobs
@@ -90,9 +100,10 @@ mask.
 **`"WILL BE CLEARED ON NEXT FILL"`**. Dialog **`[YES]`** only unlocks the
 knobs. Writing the pattern is a second **`[YES]`**.
 
-**`[CUE]`.** Keeps **PULS** as the hit count and picks *which* steps are on
-at random on the focused lane. Editing **PULS** after that returns to
-Euclidean.
+**`[CUE]`** tap (release with no **`[TRACK]`**). Keeps **PULS** as the hit
+count and picks *which* steps are on at random on the focused lane.
+**`[CUE]`** + **`[TRACK]`** is stock cue. Editing **PULS** after a random
+tap returns to Euclidean.
 
 **TRIG write.** Sample trigs follow the TRIG lane. Locks for the current
 destination land on those steps (**DPTH** 0 clears them). Other destination
@@ -167,8 +178,23 @@ change TRIG **PULS**, **`[YES]`**:
 Clears this destination over the pattern length. Sample trigs stay. Orphan
 trigless bits drop when nothing else remains on the step.
 
+### Clear from the menu
+
+While SEQ is open, press **`[FUNC]`** + **`[BANK]`**. Choose a row and
+press **`[YES]`**. The clear happens immediately and SEQ returns.
+
+| Row | What clears |
+|---|---|
+| **CLEAR DEST** | The current destination's locks and its PLCK settings |
+| **CLEAR ALL DEST** | Every SEQ destination's locks and PLCK settings on this track |
+| **CLEAR ALL+TRIGS** | All of the above, plus sample trigs on this track. TRIG returns to **PULS** 5 and **ROT** 0 |
+
+The first two rows keep sample trigs. Steps with no sample trig or
+remaining locks become empty. Press **`[NO]`** once to cancel and
+return to SEQ. Pressing **`[FUNC]`** + **`[BANK]`** again also cancels.
+
 ### Place random trigs
 
 Focus the lane (**TRIG** or **PLCK**), set **PULS** to the hit count you
-want, press **`[CUE]`** (exactly that many hits at random on that lane),
+want, tap **`[CUE]`** (exactly that many hits at random on that lane),
 then **`[YES]`** to write.

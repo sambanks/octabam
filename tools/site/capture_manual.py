@@ -232,10 +232,17 @@ def capture_drummer(p,r):
     p.press('no',settle=600)
 
 
-def capture_features(p,r):
+def capture_seq(p,r):
     p.chord('t1','page')
-    shot(p,'seq','panel','SEQ: ring icon + LEN, stock 3×2 PULSE/ROT / DEST/DEPTH (C/F empty), 4×16 step squares.',r)
+    shot(p,'seq','panel','SEQ: title SEQ, rings icon, A/B PULS/ROT, C=LANE TRIG/PLCK, D=page+param, E=DPTH, step grid, LEN bottom-right.',r)
+    p.chord('func','bank')
+    shot(p,'seq','clear','SEQ clear menu: CLEAR DEST, CLEAR ALL DEST, CLEAR ALL+TRIGS.',r)
+    p.press('no',settle=400)
     close(p)
+
+
+def capture_features(p,r):
+    capture_seq(p,r)
     p.chord('func','recab');enc(p,3,12);close(p)
     p.chord('func','recab')
     shot(p,'rec-threshold','trigger','TRIG set to THR in RECORDING SETUP 1.',r)
@@ -525,7 +532,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','drummer'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','seq','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','drummer'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -542,6 +549,7 @@ def main():
             scratch=OUT/'features.py'
             scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k not in ("REC_TRIG_MUTE","LOAD METER"))+("REC THRESHOLD","SEQ","RND NAME","STEM REC"),window=tuple(w for w in base.window if not w[0].startswith("LOAD METER")))\n')
             jobs=[('../out/manual-captures/features',capture_features,[])]
+        elif group=='seq':jobs=[('test/seq',capture_seq,[])]
         elif group=='inserts':
             assignments=[(1,'fx1','SPECTRUM'),(2,'fx1','CHARACTER'),(3,'fx1','MODULATION'),(4,'fx2','DELAY')]
             jobs=[('octabam',capture_fx,assignments)]
