@@ -228,6 +228,11 @@ Rebase onto current main. Gates run before the rebase are not a result: a
 branch that merges without a conflict can still fail on main (PR #396's
 stress fixture named a knob that #415 had renamed).
 
+PRs merge one at a time. Before a merge, the maintainer updates the branch
+only when main has moved under it since its last green run, in a file the
+PR also changed or in a module, hook, cave or remix its gates build with;
+a PR main has not moved under merges as it stands.
+
 CI's `Gates — make reach` job runs the `make reach RUN=1 KEEP=1` line below
 on every PR push, against the 1.40C it downloads for that run; link the run
 in the PR body. A first-time contributor's run waits for maintainer approval.

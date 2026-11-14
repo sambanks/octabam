@@ -99,7 +99,7 @@
   "seq": {
     "panel": {
       "image": "seq/panel.png",
-      "caption": "SEQ: title SEQ, C=LANE (TRIG/PLCK), A/B PULSE/ROT, D/E DEST/DEPTH, 4\u00d716 focused grid, LEN gutter.",
+      "caption": "SEQ: title SEQ, rings icon, A/B PULS/ROT, C=LANE TRIG/PLCK, D=page+param, E=DPTH, step grid, LEN bottom-right.",
       "remix": "seq-port",
       "source": "emulator panel UART",
       "firmware_sha256": "cf6c4a638641fcb36133dfc369385ddfb4f334c94be11438dd5b065a7401aace"

@@ -107,7 +107,7 @@ def grid_svg(x0: int, y0: int, rows: list, title: str) -> tuple[str, int]:
                     f'<rect x="{x}" y="{y}" width="{CELL}" height="{CELL}" fill="#111" stroke="#111" stroke-width="2"/>'
                 )
             elif kind == "tl":
-                # Hatched square only — no "TL" letters on the cell.
+                # Hatched square only. No "TL" letters on the cell.
                 parts.append(
                     f'<rect x="{x}" y="{y}" width="{CELL}" height="{CELL}" fill="url(#hatch)" stroke="#111" stroke-width="2"/>'
                 )
@@ -125,7 +125,7 @@ def grid_svg(x0: int, y0: int, rows: list, title: str) -> tuple[str, int]:
 
 
 def mid_svg(y_mid: float) -> str:
-    # YES + arrow only — mid captions were redundant with the headline / after notes.
+    # YES + arrow only. Mid captions were redundant with the headline / after notes.
     cx = MID_X + MID_W / 2
     x1, x2 = MID_X + 22, MID_X + MID_W - 22
     return "\n".join(
@@ -138,8 +138,8 @@ def mid_svg(y_mid: float) -> str:
 
 def legend_svg(y: float) -> str:
     items = [
-        ("#111", "lock on a note"),
-        ("url(#hatch)", "trigless lock"),
+        ("#111", "lock on a sample trig"),
+        ("url(#hatch)", "trigless trig"),
         ("#fff", "no lock"),
     ]
     x = MARGIN
@@ -168,6 +168,7 @@ def wrap(title: str, body: str, h: int) -> str:
     </marker>
   </defs>
   <style>
+    .title {{ font: 22px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }}
     .t {{ font: 15px ui-monospace, Menlo, Consolas, monospace; fill:#111; font-weight:700; }}
     .t-sm {{ font: 13px ui-monospace, Menlo, Consolas, monospace; fill:#222; }}
     .t-xs {{ font: 12px ui-monospace, Menlo, Consolas, monospace; fill:#333; }}
@@ -186,6 +187,7 @@ def wrap(title: str, body: str, h: int) -> str:
 
 def make(
     name: str,
+    example_title: str,
     knobs: list[dict],
     headline: str,
     before: list,
@@ -194,7 +196,10 @@ def make(
     footer: str,
 ) -> Path:
     parts: list[str] = []
-    kn, y = knobs_svg(knobs, 16)
+    parts.append(
+        f'<text class="title" x="{W/2}" y="36" text-anchor="middle">{esc(example_title)}</text>'
+    )
+    kn, y = knobs_svg(knobs, 52)
     parts.append(kn)
     parts.append(
         f'<text class="t" x="{W/2}" y="{y+30}" text-anchor="middle">{esc(headline)}</text>'
@@ -217,129 +222,136 @@ def make(
     parts.append(legend_svg(y_leg + 24))
     h = y_leg + 66
     path = OUT / f"{name}.svg"
-    path.write_text(wrap(name, "\n".join(parts), int(h)))
+    path.write_text(wrap(example_title, "\n".join(parts), int(h)))
     print(f"{name}.svg h={int(h)}")
     return path
 
 
+# Knob D on the unit is PAGE + PARAM (no "DEST" caption): SRC/PTCH, AMP/VOL, …
+# example_title matches the ### headings in docs/site/usage/seq.md
 SPECS = [
     (
         "notes-only",
+        "Place sample trigs",
         [
             {"lab": "PULS", "val": "4", "inv": True},
             {"lab": "ROT", "val": "0", "inv": False},
             {"lab": "LANE", "val": "TRIG", "inv": True},
-            {"lab": "DEST", "val": "PTCH", "inv": False},
+            {"lab": "SRC", "val": "PTCH", "inv": False},
             {"lab": "DPTH", "val": "0", "inv": True},
             {"lab": "", "val": "", "inv": False},
         ],
-        "TRIG with DEPTH 0: rewrite notes, clear this DEST locks.",
-        [("note", empty8()), ("PTCH", empty8()), ("VOL", empty8())],
-        [("note", locks({1, 3, 5, 7})), ("PTCH", empty8()), ("VOL", empty8())],
-        ["notes on 1 3 5 7", "PTCH cleared (DEPTH 0)"],
-        "DEPTH 0 means YES clears the current DEST while still placing notes.",
+        "TRIG with DPTH 0. Place sample trigs and clear this destination.",
+        [("trig", empty8()), ("PTCH", empty8()), ("VOL", empty8())],
+        [("trig", locks({1, 3, 5, 7})), ("PTCH", empty8()), ("VOL", empty8())],
+        ["sample trigs on 1 3 5 7", "PTCH cleared (DPTH 0)"],
+        "DPTH 0. YES clears the current destination and still places sample trigs.",
     ),
     (
         "stack-vol",
+        "Add volume locks on another rhythm",
         [
             {"lab": "PULS", "val": "4", "inv": True},
             {"lab": "ROT", "val": "1", "inv": False},
             {"lab": "LANE", "val": "PLCK", "inv": True},
-            {"lab": "DEST", "val": "VOL", "inv": True},
+            {"lab": "AMP", "val": "VOL", "inv": True},
             {"lab": "DPTH", "val": "64", "inv": False},
             {"lab": "", "val": "", "inv": False},
         ],
-        "PLCK writes only VOL. Notes and PTCH stay.",
+        "PLCK writes only VOL. Sample trigs and PTCH stay.",
         [
-            ("note", locks({1, 3, 5, 7})),
+            ("trig", locks({1, 3, 5, 7})),
             ("PTCH", locks({1, 3, 5, 7})),
             ("VOL", empty8()),
         ],
         [
-            ("note", locks({1, 3, 5, 7})),
+            ("trig", locks({1, 3, 5, 7})),
             ("PTCH", locks({1, 3, 5, 7})),
             ("VOL", tls({2, 4, 6, 8})),
         ],
-        ["VOL on 2 4 6 8 (no note there)", "notes + PTCH untouched"],
-        "Use PLCK to stack another DEST on its own rhythm.",
+        ["VOL on 2 4 6 8 as trigless trigs", "sample trigs and PTCH stay"],
+        "PLCK stacks another destination on its own rhythm.",
     ),
     (
         "trig-reshape",
+        "Change the sample-trig rhythm",
         [
             {"lab": "PULS", "val": "2", "inv": True},
             {"lab": "ROT", "val": "0", "inv": False},
             {"lab": "LANE", "val": "TRIG", "inv": True},
-            {"lab": "DEST", "val": "PTCH", "inv": True},
+            {"lab": "SRC", "val": "PTCH", "inv": True},
             {"lab": "DPTH", "val": "64", "inv": False},
             {"lab": "", "val": "", "inv": False},
         ],
-        "Only PTCH (DEST) is rewritten onto the new notes. VOL is kept.",
+        "SRC/PTCH rewrites onto the new sample trigs. VOL stays.",
         [
-            ("note", locks({1, 3, 5, 7})),
+            ("trig", locks({1, 3, 5, 7})),
             ("PTCH", locks({1, 3, 5, 7})),
             ("VOL", locks({1, 3, 5, 7})),
         ],
         [
-            ("note", locks({1, 5})),
+            ("trig", locks({1, 5})),
             ("PTCH", locks({1, 5})),
             ("VOL", mix(lock_idxs={1, 5}, tl_idxs={3, 7})),
         ],
         [
-            "PTCH: cleared on 3+7, written on 1+5",
-            "VOL: still on 1+5; steps 3+7 kept trigless",
+            "PTCH cleared on 3+7, written on 1+5",
+            "VOL stays on 1+5. Steps 3+7 stay as trigless trigs",
         ],
-        "DEST=PTCH follows the notes. Other DEST locks (VOL) survive as trigless.",
+        "SRC/PTCH follows the sample trigs. VOL stays as trigless where trigs drop.",
     ),
     (
         "plck-overwrite",
+        "Rewrite one destination's locks",
         [
             {"lab": "PULS", "val": "4", "inv": False},
             {"lab": "ROT", "val": "1", "inv": True},
             {"lab": "LANE", "val": "PLCK", "inv": True},
-            {"lab": "DEST", "val": "PTCH", "inv": True},
+            {"lab": "SRC", "val": "PTCH", "inv": True},
             {"lab": "DPTH", "val": "64", "inv": False},
             {"lab": "", "val": "", "inv": False},
         ],
-        "Notes stay put. PTCH is fully replaced by the PLCK rhythm.",
+        "Sample trigs stay. PTCH is replaced by the PLCK rhythm.",
         [
-            ("note", locks({1, 3, 5, 7})),
+            ("trig", locks({1, 3, 5, 7})),
             ("PTCH", locks({1, 3, 5, 7})),
             ("VOL", tls({2, 4, 6, 8})),
         ],
         [
-            ("note", locks({1, 3, 5, 7})),
+            ("trig", locks({1, 3, 5, 7})),
             ("PTCH", tls({2, 4, 6, 8})),
             ("VOL", tls({2, 4, 6, 8})),
         ],
         [
-            "PTCH: gone from notes 1 3 5 7; trigless on 2 4 6 8",
-            "VOL: unchanged (still trigless on 2 4 6 8)",
+            "PTCH cleared on sample trigs 1 3 5 7. Trigless on 2 4 6 8",
+            "VOL stays (trigless on 2 4 6 8)",
         ],
-        "PLCK YES overwrites this DEST even on notes. Other DEST stacks do not move.",
+        "PLCK YES rewrites this destination on sample trigs too. Other stacks stay.",
     ),
     (
         "clear-dest",
+        "Clear one destination's locks",
         [
             {"lab": "PULS", "val": "0", "inv": True},
             {"lab": "ROT", "val": "0", "inv": False},
             {"lab": "LANE", "val": "PLCK", "inv": True},
-            {"lab": "DEST", "val": "PTCH", "inv": True},
+            {"lab": "SRC", "val": "PTCH", "inv": True},
             {"lab": "DPTH", "val": "0", "inv": False},
             {"lab": "", "val": "", "inv": False},
         ],
-        "PLCK PULS=0 clears this DEST over the pattern length.",
+        "PLCK with PULS 0 clears this destination over the pattern length.",
         [
-            ("note", locks({1, 3, 5, 7})),
+            ("trig", locks({1, 3, 5, 7})),
             ("PTCH", locks({1, 3, 5, 7})),
             ("VOL", tls({2, 4, 6, 8})),
         ],
         [
-            ("note", locks({1, 3, 5, 7})),
+            ("trig", locks({1, 3, 5, 7})),
             ("PTCH", empty8()),
             ("VOL", tls({2, 4, 6, 8})),
         ],
-        ["PTCH gone everywhere in range", "notes and VOL still there"],
-        "PULSE 0 + YES on PLCK is a DEST eraser. Notes stay.",
+        ["PTCH cleared across the pattern", "sample trigs and VOL stay"],
+        "PLCK with PULS 0 clears this destination. Sample trigs stay.",
     ),
 ]
 

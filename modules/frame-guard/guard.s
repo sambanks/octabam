@@ -20,12 +20,20 @@
 | previous lateness plus the interval between entries less a frame (TGRID,
 | 0.5 us over the nominal so an error decays), floored at 0 and taken modulo
 | a frame. An entry between LLO and LHI late waits until it is LHI late.
+| After a skipped frame the interval is two frames less the lateness, so the
+| sum comes to one frame less TGRID's 0.5 us: lateness within 20 us of a
+| whole frame is taken as that frame (TNEAR). Until 13 Nov 2026 the modulo
+| was at TGRID exactly, the sum stayed 362.7 us and decayed 0.5 us a frame
+| into the window 0.12 s later, and about 150 on-time entries in a row
+| waited up to 80 us each; a stall was logged inside that run of waits
+| (program-change bursts, Sam's MKII, 13 Nov 2026).
 | Interrupts are masked at level 5 here, as in the rest of the handler.
 | SPDX-License-Identifier: MIT
 
         .equ    DTCN3,  0xfc07c00c              | DMA timer 3's count, 132 MHz
         .equ    BODY,   0x4000aad8              | the handler after its displaced prologue
         .equ    TGRID,  47960                   | a frame + 0.5 us
+        .equ    TNEAR,  TGRID-2640              | a frame less 20 us
         .equ    LLO,    14520                   | 110 us
         .equ    LHI,    25080                   | 190 us
         .include "remix.inc"                    | HK_FRAME_ENTRY (modules/hooks)
@@ -47,10 +55,11 @@ fg_in:
         sub.l   #TGRID,%d1
         bpl.s   3f
 2:      moveq   #0,%d1
-3:      cmp.l   #TGRID,%d1
-        bcs.s   4f
+3:      cmp.l   #TNEAR,%d1                      | a whole frame, or within 20 us of one: the DSP
+        bcs.s   4f                              | skipped that frame and this entry is on time
         sub.l   #TGRID,%d1
-        bra.s   3b
+        bpl.s   3b
+        moveq   #0,%d1
 4:      move.l  %d1,fg_late
         cmp.l   #LLO,%d1
         bls.s   6f

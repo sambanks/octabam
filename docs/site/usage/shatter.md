@@ -1,27 +1,25 @@
-**Crush insert** — drive into a wavefolder, hard/soft clip, then combined
+**Crush insert.** Drive into a wavefolder, hard/soft clip, then combined
 bit-depth + sample-rate crush, with a feedback loop and tone shelf. MODE
 **CHAOS** flips feedback polarity from a free-running ramp so the loop
-self-modulates into hash and dropouts. Beside CHARACTER (channel-strip
-dirt) and LOFI2 (modulator + SRR/BRR): this one is the self-eating
-destroyer. **MIX 0** is exact dry.
+self-modulates into hash and dropouts. **MIX 0** is exact dry.
 
 ![SHATTER: DRV → FOLD → CLIP → CRSH with FDBK loop into MIX.](../../img/shatter/path.svg)
 
 ## Access
 
-Select a track, press FX2 (or FX1 in remixes that list it there), pick
-**Shatter**.
+Select a track, press **`[FX2]`** (or **`[FX1]`** when the remix lists it
+there), pick **Shatter**.
 
 ## Operation
 
-Start with MIX up and everything else at 0. Raise **DRV** into the folder,
-**FOLD** for folds, **CLIP** for the brick, **CRSH** for bit/SRR grit.
-**FDBK** recirculates the crush path; **TONE** shelves that loop. MODE
-**CHAOS** flips FDBK polarity at **RATE**.
+Start with **MIX** up and everything else at 0. Raise **DRV** into the
+folder, **FOLD** for folds, **CLIP** for the brick, **CRSH** for bit/SRR
+grit. **FDBK** recirculates the crush path. **TONE** shelves that loop.
+MODE **CHAOS** flips **FDBK** polarity at **RATE**.
 
-DRV 127 clips ordinary input levels — keep it down, or follow with CLIP,
-when the source is already hot. MODE/TONE/RATE are easiest with CLIP open
-and FDBK up.
+**DRV** 127 clips ordinary input levels. Keep it down, or follow with
+**CLIP**, when the source is already hot. MODE/**TONE**/**RATE** are
+easiest with **CLIP** open and **FDBK** up.
 
 ## Parameters
 

@@ -36,6 +36,8 @@
 |   B29 0x40062f24 0x40062fbe  CLEAR / COPY / PASTE SCENE rows
 |       0x40062e3c
 |   B30 0x400434ca             encoder press, MIDI mode: overlay refresh
+|       0x40055670             MIDI key with a scene held: the lock view
+|                              of the new mode (not in MIDISC2.1)
 |
 | B9 (scene pad release) is stock's own sequence at 0x40054cb6..0x40054cd2
 | and needs no site. Not here: B10, B12..B28, B31..B33.
@@ -60,6 +62,7 @@
         .set    PART_LIVE,      0x8f162         | bank: MIDI track params, 32 B per track
         .set    MIDI_MODE,      0x80000012      | long: nonzero in MIDI track mode
         .set    SCENE_HELD,     0x460d169c      | long: 1 scene A held, 2 scene B held
+        .set    SCENE_VIEW,     0x460d1694      | long: the audio lock view, 1 scene A, 2 scene B, 0 none
         .set    PAGE_MODE,      0x460d1684      | long: 0 NOTE .. 4 CTRL2
         .set    XF_RAM,         0x460d16c8      | long: crossfader position
         .set    PART_DISP,      0x100b14cf      | byte: displayed Part
@@ -444,6 +447,30 @@ scn_press:
         addql   #4,%sp
 1:      movel   %sp@+,%d2
         jmp     0x4007e8d8
+
+| 0x40055670: `jmp 0x4007e998`, the MIDI key handler's tail (0x40055548:
+| the mode long flipped, the page redrawn). A scene press on the audio side
+| sets SCENE_VIEW to the held scene (stock 0x40054c80 / 0x40054c5c, which
+| return at once in MIDI mode) and the lock cells and the XLV header read
+| it; nothing else sets it, so a scene pressed on the MIDI side and held
+| across MIDI drew the audio page with no locks (stock does the same). With
+| a scene held the view becomes what a fresh press leaves in the new mode:
+| the held scene on the audio side, 0 on the MIDI side; the overlay redraws.
+scn_mkey:
+        lea     %sp@(-16),%sp
+        movem.l %d0-%d1/%a0-%a1,%sp@
+        movel   SCENE_HELD,%d0
+        beq.s   9f
+        tstl    MIDI_MODE
+        beq.s   1f
+        moveq   #0,%d0
+1:      movel   %d0,SCENE_VIEW
+        pea     0xffffffff
+        jsr     UI_OVERLAY
+        addql   #4,%sp
+9:      movem.l %sp@,%d0-%d1/%a0-%a1
+        lea     %sp@(16),%sp
+        jmp     0x4007e998
 
 | 0x40052a10, 0x40052ae0: `jmp 0x4007e8d8` at the end of the scene recall
 | paths: the mix at the current XF, in any mode.
@@ -1074,11 +1101,15 @@ cp_next:
 
 | ====================================================== B29: scene rows ====
 
-| 0x40062f24: CLEAR SCENE, jsr 0x40038c30(scene). In MIDI mode MSC[scene] is
-| wiped and the mix runs; stock clears the audio scene in either mode.
+| The three scene rows act on the whole scene in either track mode: the MIDI
+| half (MSC, scn_clip) here, the audio half by stock after. The two lock
+| tables stay separate; only the rows join them (MIDISC2.1 gates each row on
+| MIDI mode, so a copy from the audio tracks left scn_clip holding an older
+| scene's MIDI locks; README, differences).
+
+| 0x40062f24: CLEAR SCENE, jsr 0x40038c30(scene). MSC[scene] is wiped and
+| the mix runs; stock clears the audio scene.
 scn_clear:
-        tstl    MIDI_MODE
-        beq.s   scn_stock_clear
         movel   %d0,%sp@-
         movel   %d1,%sp@-
         movel   %a0,%sp@-
@@ -1097,15 +1128,11 @@ scn_clear:
         movel   %sp@+,%d0
         bsr.w   msc_edited
         bsr.w   mix
-scn_stock_clear:
         jmp     0x40038c30
 
-| 0x40062fbe: COPY SCENE, jsr 0x400274cc(part, scene). In MIDI mode
-| MSC[scene] goes to the clipboard; stock copies the audio scene in either
-| mode.
+| 0x40062fbe: COPY SCENE, jsr 0x400274cc(part, scene). MSC[scene] goes to
+| scn_clip; stock copies the audio scene.
 scn_copy:
-        tstl    MIDI_MODE
-        beq.s   scn_stock_copy
         movel   %d0,%sp@-
         movel   %d1,%sp@-
         movel   %a0,%sp@-
@@ -1125,15 +1152,11 @@ scn_copy:
         moveal  %sp@+,%a0
         movel   %sp@+,%d1
         movel   %sp@+,%d0
-scn_stock_copy:
         jmp     0x400274cc
 
-| 0x40062e3c: PASTE SCENE, jsr 0x40027578(part, scene). In MIDI mode, when a
-| scene is on the clipboard the clipboard goes to MSC[scene]; stock pastes
-| the audio scene in either mode.
+| 0x40062e3c: PASTE SCENE, jsr 0x40027578(part, scene). When a scene is on
+| the clipboard scn_clip goes to MSC[scene]; stock pastes the audio scene.
 scn_paste:
-        tstl    MIDI_MODE
-        beq.s   2f
         movel   CLIPBOARD_TYPE,%d0
         cmpil   #0x10,%d0
         bne.s   2f
