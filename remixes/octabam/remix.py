@@ -56,12 +56,12 @@ REMIX = Remix(
     # DLCOPY follows the five demand entries (x:$33da3 + 8 k, k = 0..4).
     window=(("DLCOPY", 0x33DCB), ("KEYBUS", 0x33E5E), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
             ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820),
-            ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x37C10)),
+            ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x3BE00)),
     # DLPUMP loads in this order, and the first free home wins: SIDECHAIN_COMPRESSOR has one home, the fourth
     # block, which the others reach only as their second or later home.
-    # SHATTER (378 words, FX2 only) first goes to the second block behind CHARACTER's 1,008 words, so its first
-    # address is no other demand effect's (each id-dispatched effect needs its own); the fourth block, SC's only
-    # home, is its last.
+    # SHATTER (FX2 only) used to sit behind CHARACTER at 0x37c10 (378 words). CHARACTER grew to
+    # 1,029 words (ends 0x37c25) and LIM pushed SHATTER over the LOAD METER floor at 0x37da3, so
+    # its window record now sits after MODULATION (ends 0x3bdda) at 0x3be00. Demand homes omit the same block; the fourth block (SC's only home) stays last.
     window_demand=("MODULATION", "SPECTRUM", "CHARACTER", "SIDECHAIN_COMPRESSOR", "SHATTER"),
     # The other homes: each effect can be loaded into any block it fits (the code is assembled once per home). The loader
     # sends the first home whose block holds no other demand effect and whose FX2 slot is not a stock reverb that reaches
@@ -70,7 +70,7 @@ REMIX = Remix(
     window_homes=(("MODULATION", 0x3F820),
                   ("SPECTRUM", 0x37820), ("SPECTRUM", 0x3B820), ("SPECTRUM", 0x3F820),
                   ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820),
-                  ("SHATTER", 0x33820), ("SHATTER", 0x3B820), ("SHATTER", 0x3F820)),
+                  ("SHATTER", 0x33820), ("SHATTER", 0x3F820)),
     window_guard=("PLATE REV", "DARK REV", "SPRING REV"),
     # KEYBUS (17 words) fills DLCOPY's tail gap and the loader follows it; SC's bridged stubs then
     # end at 0x33FFF, the block's last resident word.

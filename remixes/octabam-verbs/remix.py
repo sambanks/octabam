@@ -59,12 +59,11 @@ REMIX = Remix(
     # DLCOPY follows the five demand entries (x:$33da3 + 8 k, k = 0..4).
     window=(("DLCOPY", 0x33DCB), ("KEYBUS", 0x33E5E), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
             ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820),
-            ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x37C10)),
+            ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x3BE00)),
     # DLPUMP loads in this order, and the first free home wins: SIDECHAIN_COMPRESSOR has one home, the fourth
     # block, which the others reach only as their second or later home.
-    # SHATTER (378 words, FX2 only) first goes to the second block behind CHARACTER's 1,008 words, so its first
-    # address is no other demand effect's (each id-dispatched effect needs its own); the fourth block, SC's only
-    # home, is its last.
+    # SHATTER window record at 0x3be00 (after MODULATION); was behind CHARACTER until LIM + CHARACTER growth
+    # overlapped LOAD METER. Demand homes: 0x33820 and 0x3f820 (not 0x3b820 — same block as 0x3be00).
     window_demand=("MODULATION", "SPECTRUM", "CHARACTER", "SIDECHAIN_COMPRESSOR", "SHATTER"),
     # The other homes: each effect can be loaded into any block it fits (the code is assembled once per home). The loader
     # sends the first home whose block holds no other demand effect (no reverb here reaches a home). MODULATION (1,561 words) needs a block with 2,016
@@ -72,7 +71,7 @@ REMIX = Remix(
     window_homes=(("MODULATION", 0x3F820),
                   ("SPECTRUM", 0x37820), ("SPECTRUM", 0x3B820), ("SPECTRUM", 0x3F820),
                   ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820),
-                  ("SHATTER", 0x33820), ("SHATTER", 0x3B820), ("SHATTER", 0x3F820)),
+                  ("SHATTER", 0x33820), ("SHATTER", 0x3F820)),
     # KEYBUS (17 words) fills DLCOPY's tail gap and the loader follows it; SC's bridged stubs then
     # end at 0x33FFF, the block's last resident word.
     window_loader=0x33E6F,
