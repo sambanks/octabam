@@ -173,8 +173,21 @@ def _rail_frac(L, R):
     return hit / n
 
 
+# LIM=0 intentionally bypasses output attenuation, but ordinary SCAL/GN
+# settings must not create a rail-flat output on a moderate tone.
+lim0_probe = tone(220, N, amp=0.10)
+for gains in ((0, 0, 0, 0), (64, 0, 0, 0)):
+    Llim0, Rlim0 = render(
+        lim0_probe, MIX=127, SCAL=8, LIM=0, DECY=64,
+        GN1=gains[0], GN2=gains[1], GN3=gains[2], GN4=gains[3],
+        PIT1=24, PIT2=48, PIT3=72, PIT4=96)
+    frac_lim0 = _rail_frac(Llim0, Rlim0)
+    check(f"LIM 0 SCAL 8 GN {gains}: rail fraction {frac_lim0:.1%} < 0.1%",
+          frac_lim0 < 0.001)
+
 # SCAL 8 + every other knob max, LIM 0: rail fraction must stay low.
-# SCAL 127 + LIM 127: smash caught under ~0.76 FS.
+# SCAL 127 + LIM 127: output peak reduction is measured after the bank sum;
+# distortion created inside an overloaded filter bank is not reversible.
 N_LONG = int(3.0 * FS)
 N_LONG -= N_LONG % FRAMES
 drive = tone(220, N_LONG, amp=0.25)

@@ -1,10 +1,12 @@
 """RESONATOR -- 4 Chamberlin BPs with per-band gains.
 
 Page 1: GN1..GN4, DECY, MIX. Page 2 (FX SETUP): PIT1..PIT4, SCAL, LIM.
-GN = relative band level (64 = unity at SCAL 8). SCAL is the makeup
-multiplier: 8 = tame (build-after-TN), 127 ≈ build-TN smash (~×16 at GN64).
+GN = per-band level. SCAL multiplies the bank sum: 8 is the conservative
+starting point, 127 restores build-TN smash (~×16 at GN64). Four bands at
+GN64 can overload the output even at SCAL 8; use fewer/lower GN values.
 g = (GN/128)*(SCAL/128)*32. DECY raises Q; weak drive at 127. LIM is
-post-MIX transparent GR (0 = off).
+post-MIX peak reduction (0 = off); SCAL 127 can clip in the filter bank
+before LIM sees the signal.
 """
 import math as _m
 

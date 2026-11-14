@@ -18,13 +18,16 @@
 ;        page 2: r6+$c/$d = PIT1|PIT2, PIT3|PIT4; r6+$e = SCAL|LIM
 ; REPLACE: out = lim(dry + MIX*(wet-dry)); MIX 127 forces wet only.
 ; wet = sum(g*band)*4. g = (GN/128)*(SCALE/128)*32.
-;   SCALE 8 → tame (GN 64 = 0dB); SCALE 127 → build-TN smash (~×16 at GN64).
+;   SCALE 8 → conservative; four GN 64 bands can still overload the sum.
+;   SCALE 127 → build-TN smash (~×16 at GN64).
 ; DECY high → low damp.
 ;
 ; LIM: shared current-block stereo peak limiter, one div outside sample DO.
 ; Ceiling = 0.75 - LIM*0.5/128 (LIM 0 bypass), near -2.5..-12 dBFS.
 ; Unity below ceiling, no makeup gain; approximately 63 ms block release.
 ; The second pass controls the first transient without nested DO/div.
+; SCAL can overload the 24-bit band sum before this output limiter; LIM cannot
+; undo distortion created earlier in the chain.
 ;
 ; r7: $00..$0f L 4*(low,band), $10..$1f R same,
 ;     $20 fx2-dry  $21 MIX  $22 damp  $23 exc

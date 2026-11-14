@@ -3,9 +3,12 @@
 FX1 station: **4 pitched bandpasses** (Torso S-4 RING filterbank idea, not
 a modal / Rings body). Wet is the input through four constant-peak bandpass
 peaks. Per-band **GN** levels sit on page 1; pitches, **SCAL** (gain scale),
-and **LIM** (post-MIX peak limiter) live on FX SETUP. SCAL 8 is the tame
-default (GN 64 = 0 dB); SCAL 127 restores build-TN smash headroom. LIM 0 is
-off; raise it to catch smash peaks. DECY narrows the bands.
+and **LIM** (post-MIX peak limiter) live on FX SETUP. SCAL 8 is the
+conservative starting point; four bands at GN 64 can still overload the sum.
+SCAL 127 restores build-TN smash headroom. The filter-bank sum can distort
+before LIM; LIM only controls the post-MIX output peak. Lower SCAL or GN1–GN4
+to avoid pre-limiter distortion.
+DECY narrows the bands.
 
 Buffer-free (state in r7). `Claims(fx1_only=True)`: FX2 instances dry-pass;
 the FX2 chooser hides the row. FX id **`0x1e`**.
@@ -60,6 +63,8 @@ the Part.
   < 5%, no-runaway, two FX1 instances).
 - LIM curve: ceiling `0.75 - LIM*0.5/128` (≈ -2.5..-12 dB).
   Same as SHATTER. LIM 0 bypasses attenuation so MIX 0 stays bit-exact dry.
+- SCAL 127 may overload the filter-bank sum before the output limiter. Lower
+  SCAL or band gains to avoid that pre-limiter distortion.
 - Earlier hardware (pre-LIM): Ilia's MKII, tip of PR #806 as **`RESON RR`**
   / BUILD RR, 19 Oct 2026. Page-1 GN1–4, DECY low and high, MIX; page-2
   PIT1–4; SCAL 8 and 127; FX2 dry-pass; two FX1 instances. This tip is

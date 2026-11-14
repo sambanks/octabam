@@ -11,12 +11,15 @@ chooser does not list it.
 
 ## Operation
 
-- **GN1-GN4.** Per-band level (64 = unity when **SCAL** is 8).
+- **GN1-GN4.** Per-band level. Four bands at 64 can overload their summed
+  output; lower or mute bands for a cleaner sound.
 - **PIT1-PIT4.** Band centres (~40 Hz to ~4 kHz).
-- **SCAL.** Overall gain scale. **8 = tame**, 127 ≈ hot smash (~×16 at
-  GN 64).
-- **LIM.** Stereo peak limiter after **MIX**. **0** is off. Raise it when
-  **SCAL** smash (or a hot source) would park on the rail.
+- **SCAL.** Overall gain scale. **8 = conservative starting point**, 127 ≈
+  hot smash (~×16 at GN 64). The filter-bank sum can distort before **LIM**;
+  lower **SCAL** or **GN1–GN4** if that happens.
+- **LIM.** Stereo peak limiter after **MIX**. **0** is off. It catches hot
+  output peaks, but cannot remove distortion already created by high **SCAL**
+  inside the filter bank.
 - **DECY.** High = narrower peaks / more ring. Still short.
 - **MIX.** 127 = bands only. **0 = exact passthrough** when **LIM** is 0.
 
