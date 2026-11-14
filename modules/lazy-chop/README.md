@@ -22,7 +22,7 @@ Companion modules, each its own module and each optional: **LOCK EDIT** ([TRIG]+
 | TRIG 1..16 | TRIG 1 starts; the next key in order cuts at the playhead |
 | a red trig (a slice made), short press | auditions that slice (as a slice: no timestretch for the moment) |
 | the last red trig, held 0.7 s | undoes that slice; holding the green TRIG 1 at a page start goes back across the page |
-| the green trig after an audition | resumes from the last marker; the next press cuts |
+| the green trig after an audition or an undo | resumes from the start of the previous slice (a run-up to get back on the beat); the next press cuts |
 | [YES] | writes the slices and ends the mode (in a LIVE take: stops the recording first) |
 | [NO] | puts the old slices back and ends the mode |
 | [SCALE] (MKI) / [PAGE] (MKII) | ZERO SNAP on / off |
