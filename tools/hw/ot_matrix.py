@@ -884,7 +884,7 @@ def cmd_run(a):
                                         "metrics": {}, "load": None, "why": why})
                         break
                 clock.stop(); ot_events.wait_stopped(clock.remote, 0.3)
-                clock.pc(pc_ch, e["program"]); time.sleep(0.8)  # waits for: the program change; not measured stopped (PATTERN)
+                clock.pc_wait(pc_ch, e["program"], 0.8)
                 t_settle = time.time()
                 while live["db"] > SETTLE_DBFS and time.time() - t_settle < SETTLE_MAX_S:
                     time.sleep(0.25)  # waits for: audio level settling
@@ -1187,7 +1187,7 @@ def cmd_switch(a):
                     results.append({"from": ea["name"], "to": eb["name"], "flags": ["UNHEALTHY"], "why": why})
                     break
                 clock.stop(); ot_events.wait_stopped(clock.remote, 0.5)
-                clock.pc(pc_ch, ea["program"]); time.sleep(1.0)  # waits for: the program change; not measured stopped (PATTERN)
+                clock.pc_wait(pc_ch, ea["program"], 1.0)
                 n0 = len(rows)
                 with lock:
                     seg["chunks"] = []

@@ -184,8 +184,12 @@ the sequencer was already stopped, so a stop is waited for through the playing b
 (`ot_events.wait_stopped(remote, fallback)`: the old sleep without REMOTE, else PEEK of `0x800065bb` until it
 leaves 1, within the same `fallback`). `ot_events.connect()` gives the `Remote` or None. A program change while
 playing writes QPATTERN at once and PATTERN at the pattern's end (7.9 and 8.0 s at 120 BPM); with the sequencer
-stopped both arrive 4.5 to 5.9 ms after the send. The program-change sleeps are not converted yet. `ot_matrix.py` (run, switch) and `ot_ladder.py`
-(through `Clock.stop_wait`) wait for stops this way; every other `time.sleep` in `ot_matrix.py`, `ot_stall.py` and
+stopped both arrive 4.5 to 5.9 ms after the send. A program change sent stopped is waited for through the
+bank and pattern bytes (`ot_events.wait_pattern(remote, program, fallback)`: PEEK of `0x800065bd` and `0x800065be`
+until they are bank `p // 16`, pattern `p % 16`; a change to the current pattern writes no record). `ot_matrix.py`
+(run, switch) and `ot_ladder.py` (through `Clock.stop_wait` and `Clock.pc_wait`) wait for stops and stopped
+program changes this way, each with the old sleep as the fallback; the program changes sent while playing
+(`ot_matrix.py` switch) are timed by the run. Every other `time.sleep` in `ot_matrix.py`, `ot_stall.py` and
 `ot_ladder.py` carries a comment naming what it waits for. `ot_suite.py` has none.
 
 ## Stress sequences

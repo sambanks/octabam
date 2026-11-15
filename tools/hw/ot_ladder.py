@@ -294,6 +294,12 @@ class Clock:
     def stop(self):
         self.out.send([0xFC])
 
+    def pc_wait(self, ch, prog, limit):
+        """A program change sent with the sequencer stopped, then return when the unit's bank and pattern are
+        the program's (REMOTE), within `limit` seconds; without REMOTE, sleep `limit`."""
+        self.pc(ch, prog)
+        ot_events.wait_pattern(self.remote, prog, limit)
+
     def stop_wait(self, limit):
         """STOP, then return when the unit reports it stopped (REMOTE's playing byte), within `limit` seconds;
         without REMOTE, sleep `limit`."""
@@ -549,7 +555,7 @@ def run(args):
             prog = (BANKS.index(bank)) * 16
             print(f"\n== rung {bank} {name}: {what}")
             clock.stop_wait(1.0)
-            clock.pc(args.pc_channel, prog); time.sleep(1.5)  # waits for: the program change; not measured stopped (PATTERN)
+            clock.pc_wait(args.pc_channel, prog, 1.5)
             if not args.no_assert:
                 assert_connections(clock, layout)
             clock.start()
@@ -745,7 +751,7 @@ def stress(args):
     try:
         print(f"== stress rung {bank} {name}: {len(script)} moves over {total:.0f} s")
         clock.stop_wait(1.0)
-        clock.pc(args.pc_channel, BANKS.index(bank) * 16); time.sleep(1.5)  # waits for: the program change; not measured stopped (PATTERN, BANK)
+        clock.pc_wait(args.pc_channel, BANKS.index(bank) * 16, 1.5)
         assert_connections(clock, layout)
         clock.start()
         t0 = time.time()
@@ -814,7 +820,7 @@ def probe(args):
             bank, name, what, layout = rung_by_bank(args.rung)
             tag = f"{bank}_"
             clock.stop_wait(1.0)
-            clock.pc(args.pc_channel, BANKS.index(bank) * 16); time.sleep(1.5)  # waits for: the program change; not measured stopped (PATTERN, BANK)
+            clock.pc_wait(args.pc_channel, BANKS.index(bank) * 16, 1.5)
             assert_connections(clock, layout, verbose=False)
             print(f"== probe rung {bank} {name}: {what}")
         clock.start(); time.sleep(args.secs)  # waits for: the run's length

@@ -19,9 +19,12 @@ were read. A scenario calls `wait_for` instead of sleeping: it returns the first
 
 `connect()` gives a `Remote` or None (an image without REMOTE, or no libusb in this python); `wait_stopped(remote,
 fallback)` is the wait after a MIDI STOP: the old sleep when `remote` is None, else the playing byte (PEEK
-`0x800065bb`; 1 while playing) until it leaves 1, within the same `fallback`. A program change is not waited
-for through a record: QPATTERN comes at once and PATTERN at the pattern's end while playing (7.9 and 8.0 s at
-120 BPM), and neither is measured with the sequencer stopped.
+`0x800065bb`; 1 while playing) until it leaves 1, within the same `fallback`; `wait_pattern(remote, program,
+fallback)` is the wait after a program change sent with the sequencer stopped: the bank and pattern bytes
+(`0x800065bd`, `0x800065be`) until they are the program's (bank `p // 16`, pattern `p % 16`), within `fallback`.
+It reads the bytes, not a record, because a change to the current pattern writes none. While playing,
+QPATTERN comes at once and PATTERN at the pattern's end (7.9 and 8.0 s at 120 BPM); stopped, both come
+4.5 to 5.9 ms after the send.
 
 As a library the transport is a function ctrl(offset, wLength) -> bytes, so the same reader runs on a unit
 (`unit_ctrl`) and under the port's scripted host (tools/verify/verify_remote.py).
@@ -225,6 +228,7 @@ def trace(ctrl, peek1, last=NTRACE):
 
 
 PLAYING_ADDR = 0x800065bb          # the byte the watch reads for PLAYING (modules/remote/remote.s, rmt_wtab)
+BANK_ADDR = 0x800065bd             # the current bank, then the current pattern (the watch's kinds 17 and 18)
 
 
 class Remote:
@@ -237,6 +241,11 @@ class Remote:
     def playing(self):
         """True while the sequencer plays (the byte is 1; a MIDI STOP leaves 2)."""
         return peek(self.peek1, PLAYING_ADDR, 1)[0] == 1
+
+    def pattern(self):
+        """(bank, pattern), both from 0: a program change p selects bank p // 16, pattern p % 16."""
+        b = peek(self.peek1, BANK_ADDR, 2)
+        return b[0], b[1]
 
     def wait(self, kind, arg=None, timeout=10.0):
         """The first matching record, or None at the timeout."""
@@ -256,6 +265,30 @@ def connect(dev=None):
         return Remote(unit_ctrl(dev), unit_peek(dev))
     except (SystemExit, Exception):  # noqa: BLE001
         return None
+
+
+def wait_pattern(remote, program, fallback):
+    """Return once the unit's bank and pattern are those of MIDI program change `program`, after the caller
+    sent it. Without REMOTE, or when the unit cannot be read, this sleeps `fallback` seconds, as the
+    scenarios did; with it, it returns when the two bytes match (at once when they already do: a program
+    change to the current pattern writes no record) and never waits longer than `fallback`. With the
+    sequencer stopped the change lands 4.5 to 5.9 ms after the send; while playing, at the pattern's end.
+    True when the bytes matched, False after a sleep or at the limit."""
+    if remote is None:
+        time.sleep(fallback)
+        return False
+    want = (program // 16, program % 16)
+    end = time.monotonic() + fallback
+    while True:
+        try:
+            if remote.pattern() == want:
+                return True
+        except Exception:  # noqa: BLE001
+            time.sleep(max(0.0, end - time.monotonic()))
+            return False
+        if time.monotonic() >= end:
+            return False
+        time.sleep(0.005)
 
 
 def wait_stopped(remote, fallback):

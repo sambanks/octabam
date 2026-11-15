@@ -286,14 +286,16 @@ class Remixes(unittest.TestCase):
 
 
 class Stopped(unittest.TestCase):
-    def remote(self, byte):
+    def remote(self, byte, bank=0, pattern=0):
         u = Unit()
-        state = {"byte": byte}
+        state = {"byte": byte, "bank": bank, "pattern": pattern}
         base = u.peek1
 
         def peek1(addr, n):
             if addr == ev.PLAYING_ADDR:
                 return bytes([state["byte"]])
+            if addr == ev.BANK_ADDR:
+                return bytes([state["bank"], state["pattern"]])[:n]
             return base(addr, n)
         return ev.Remote(u.ctrl, peek1), state
 
@@ -333,6 +335,42 @@ class Stopped(unittest.TestCase):
         r = ev.Remote(Unit().ctrl, bad)
         t = time.monotonic()
         self.assertFalse(ev.wait_stopped(r, 0.05))
+        self.assertGreaterEqual(time.monotonic() - t, 0.05)
+
+    def test_pattern_bytes(self):
+        r, _ = self.remote(0, bank=2, pattern=5)
+        self.assertEqual(r.pattern(), (2, 5))
+
+    def test_wait_pattern_without_remote_sleeps_the_fallback(self):
+        t = time.monotonic()
+        self.assertFalse(ev.wait_pattern(None, 37, 0.05))
+        self.assertGreaterEqual(time.monotonic() - t, 0.05)
+
+    def test_wait_pattern_already_there_returns_at_once(self):
+        r, _ = self.remote(0, bank=2, pattern=5)          # program 37 = bank 2, pattern 5
+        t = time.monotonic()
+        self.assertTrue(ev.wait_pattern(r, 37, 5.0))
+        self.assertLess(time.monotonic() - t, 0.5)
+
+    def test_wait_pattern_returns_when_both_bytes_match(self):
+        r, st = self.remote(0, bank=0, pattern=5)         # the pattern matches, the bank does not yet
+        threading.Timer(0.05, lambda: st.update(bank=2)).start()
+        t = time.monotonic()
+        self.assertTrue(ev.wait_pattern(r, 37, 5.0))
+        self.assertLess(time.monotonic() - t, 1.0)
+
+    def test_wait_pattern_never_arrives_at_the_limit(self):
+        r, _ = self.remote(0, bank=0, pattern=0)
+        t = time.monotonic()
+        self.assertFalse(ev.wait_pattern(r, 37, 0.1))
+        self.assertGreaterEqual(time.monotonic() - t, 0.1)
+
+    def test_wait_pattern_unreadable_sleeps_the_fallback(self):
+        def bad(addr, n):
+            raise OSError("pipe")
+        r = ev.Remote(Unit().ctrl, bad)
+        t = time.monotonic()
+        self.assertFalse(ev.wait_pattern(r, 3, 0.05))
         self.assertGreaterEqual(time.monotonic() - t, 0.05)
 
     def test_connect_without_a_unit_is_none(self):
