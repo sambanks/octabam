@@ -151,6 +151,27 @@ dotted) any free step for the light drums (hats, perc, ghosts) and the
 KIT BALANCE is saved in the Part: each Part has its own mix, and a Part
 change brings it. The track's own trigs always play.
 
+**Locks on steps and scenes.** KIT BALANCE takes parameter locks, as a
+stock page does (PAGES' locks; the remix needs EVENTS):
+
+- **On a step.** GRID RECORDING on, place a trig (TRIG, or FUNC + TRIG for
+  a trigless one), hold it and turn A-F: that step locks the zone. The
+  title reads `STEP n`; a zone with a lock shows its value, the others
+  `--`. FUNC held while turning removes the lock. As on stock, the lock
+  plays from its step to the track's next trig.
+- **On a scene.** Hold SCENE A or B and turn A-F: the scene locks the
+  zone (title `SCENE n`), and the crossfader morphs between the two
+  scenes' mixes. FUNC held while turning removes it.
+
+![KIT BALANCE: step 3's locks, trig 3 held](../../img/drummer/balance-step.png)
+
+![KIT BALANCE: scene A's lock, SCENE A held](../../img/drummer/balance-scene.png)
+
+The locks follow their trigs like stock's: a trig taken off takes its
+locks, trig + PLAY clears them, and copying a trig, a track or a pattern
+carries them. They are saved with the project (`pglocks.work`). Part and
+bank operations (RELOAD PART, a Part or bank copy) do not move them yet.
+
 ### NEXT: orders on the beat
 
 ![NEXT, an order armed](../../img/drummer/next-armed.png)

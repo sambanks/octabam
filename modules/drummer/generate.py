@@ -34,7 +34,9 @@ STOCK_CALLS = {'0x400a2d88', '0x4000d3b4', '0x4000f450', '0x4009dcaa',
                # the kit file: the engine task's receive, its continuations, the queue post
                '0x40000d00', '0x4008484e', '0x4008485e', '0x40000c3c',
                # AUTO: stock's pool walk, the YES/NO box, the toast
-               '0x4009499c', '0x4006d57c', '0x4005a2b8'}
+               '0x4009499c', '0x4006d57c', '0x4005a2b8',
+               # PAGES' locks (hooks.s, HAVE_PAGELOCKS)
+               'pg_lk_step', 'pg_lk_value', 'pg_lk_shown', 'pg_lk_where'}
 OUT = 'drummer_unit.s'
 
 
@@ -78,8 +80,9 @@ def assemble(source):
     with tempfile.TemporaryDirectory() as td:
         src = pathlib.Path(td) / OUT
         src.write_text(source)
+        (pathlib.Path(td) / 'remix.inc').write_text('.set HAVE_PAGELOCKS, 1\n')   # manifest.py's drummer_inc
         r = subprocess.run([compiler(), '-mcpu=5475', '-c', '-x', 'assembler', str(src),
-                            '-o', str(pathlib.Path(td) / 'u.o')], capture_output=True, text=True)
+                            '-o', str(pathlib.Path(td) / 'u.o')], capture_output=True, text=True, cwd=td)
         if r.returncode:
             sys.exit(f'{OUT} does not assemble for the 5475:\n' + r.stderr)
 
