@@ -1092,18 +1092,22 @@ rec_load:
         .byte   21, 0
         .long   osw_load
         .align  4
+        .global osw_count, osw_idx, osw_names   | REMOTE's COMMAND 3 (modules/remote/remote.s)
+osw_count:
 count:  .long   0
 boot_done: .long 0
 boot_pending: .long 0
 boot_project: .long 0
 boot_files: .long 0
 boot_name: .space NLEN
+osw_idx:
 idx:    .long   0
 nhead:  .long   0
 lines:  .long   line1, str_stops, str_home
 line1:  .space  32
 path:   .space  48                  | "/BRAIN/REMIXES/" + a name of NLEN bytes
 head1:  .space  32
+osw_names:
 names:  .space  NMAX*NLEN
 labels: .space  NMAX*NLEN
         .align  4

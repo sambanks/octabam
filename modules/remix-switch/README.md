@@ -190,6 +190,12 @@ exchange"; the hang was the DSP (above). Whether `60 02` is needed at all
 is not measured; it is harmless (the OS sends it at boot). An MKI's panel
 is sent nothing (untested on an MKI).
 
+## Exported labels
+
+`osw_names` (the list's 24-byte names, 32 of them), `osw_count` and `osw_idx` are global labels: REMOTE
+reads the list and sets the index for its COMMAND 3 (boot a file) and calls `osw_scan` and `osw_answer(0)`
+for 4 and 3 (`modules/remote/README.md`).
+
 ## Measured ✅ (under the ColdFire port, `tools/verify/verify_remix_switch.py`)
 
 - **The menu, the load and the reset sequence run from the panel.** Keys
