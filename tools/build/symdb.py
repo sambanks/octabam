@@ -6,7 +6,7 @@
 
 Writes out/symbols.sqlite (never committed). Rows come from, in order: `layout` (tools/ghidra/ot_ghidra.py's
 tables), `equ` (every `.set`/`.equ` of a stock address in modules), `map` (the build's runtime.elf at runtime
-addresses), `build` (the remix's detour sites and cave hooks), `cite` (tools/build/where.py's scan), `ghidra`
+addresses), `build` (the remix's detour sites and cave hooks; the build's DSP window, demand and guard records), `cite` (tools/build/where.py's scan), `ghidra`
 (out/ghidra/symbols.tsv and xrefs.tsv when present). Two names at one address are two rows. The DB holds no
 image bytes and no disassembly.
 """
@@ -70,16 +70,21 @@ def ingest_equ(add):
 def _units(platform):
     import json
     p = platform / "layout.json"
-    return [u[0] for u in json.loads(p.read_text())["units"]] if p.exists() else []
+    # the generated clones unit is filed under whichever module the build listed it with: name it "build"
+    return [("build" if u[1] == "clones" else u[0]) for u in json.loads(p.read_text())["units"]] if p.exists() else []
 
 
 def ingest_map(add, platform):
-    """Module symbols at their runtime addresses, from the link's ELF. A CLONE_<key> export is a staging
-    address (TRAPS trap-dram-clone-stage), not a runtime one: left out."""
+    """Module symbols at their runtime addresses, from the final link's ELF. A symbol inside the clones'
+    staging range (layout.json's stage..stage_end; TRAPS trap-dram-clone-stage) is not a runtime address and
+    is left out; the final ELF's CLONE_<key> symbols are in the runtime (measured on octabam, 15 Nov 2026:
+    all five between base and runtime_end)."""
     elf, mp = platform / "runtime/runtime.elf", platform / "runtime/runtime.map"
     if not elf.exists():
         return None
     owners = _units(platform)
+    lay = platform / "layout.json"
+    stage = (lambda j: (j.get("stage", 0), j.get("stage_end", 0)))(__import__("json").loads(lay.read_text())) if lay.exists() else (0, 0)
     ranges = []
     if mp.exists():
         for line in mp.read_text(errors="replace").splitlines():
@@ -100,7 +105,7 @@ def ingest_map(add, platform):
             addr, size, t, name = int(f[0], 16), None, f[1], f[2]
         else:
             continue
-        if t in "aA" or name.startswith(".L") or name.startswith("CLONE_"):
+        if t in "aA" or name.startswith(".L") or stage[0] <= addr < stage[1]:
             continue
         owner = next((o for lo, hi, o in ranges if lo <= addr < hi), "module")
         add("cf", addr, size, name, "func" if t in "Tt" else "data", owner, "map", "out/platform/runtime/runtime.elf"); n += 1
@@ -119,6 +124,40 @@ def ingest_build(add, remix):
                 add("cf", c.hook_addr, len(c.hook_stock) or None, f"hook {c.label}", "hook", m.key, "build", f"modules/{m.name}/manifest.py"); n += 1
             if c.cave_addr:
                 add("cf", c.cave_addr, len(c.pinned), c.label, "cave", m.key, "build", f"modules/{m.name}/manifest.py"); n += 1
+    return n
+
+
+def ingest_dsp(add, dsp):
+    """The build's DSP records (out/dsp/*_records.json): the shared window's blocks, each demand-loaded
+    module's homes with init and proc, and the guard wrappers. A window address is the same word on both
+    cores (CHIP.md section 3); a record is filed under core A unless its name ends in :B or " B"."""
+    import json
+    n = 0
+
+    def cores(name):
+        if name.endswith(" AB"):
+            return "AB"
+        return "B" if name.endswith((":B", " B")) else "A"
+    f = dsp / "window_records.json"
+    if f.exists():
+        for name, (addr, words) in json.loads(f.read_text()).items():
+            for c in cores(name):
+                add(f"dsp{c}:P", addr, len(words), name, "block", name.split(":")[0], "build", "out/dsp/window_records.json"); n += 1
+    f = dsp / "demand_records.json"
+    if f.exists():
+        for key, r in json.loads(f.read_text()).items():
+            for i, h in enumerate(r["homes"]):
+                add("dspA:P", h["addr"], len(h["words"]), f"{key} home {i}", "block", key, "build", "out/dsp/demand_records.json")
+                add("dspA:P", h["init"], None, f"{key} init (home {i})", "func", key, "build", "out/dsp/demand_records.json")
+                add("dspA:P", h["proc"], None, f"{key} proc (home {i})", "func", key, "build", "out/dsp/demand_records.json")
+                n += 3
+    f = dsp / "guard_records.json"
+    if f.exists():
+        for name, r in json.loads(f.read_text()).items():
+            key, _, c = name.partition(":")
+            for k in ("init", "proc"):
+                if k in r:
+                    add(f"dsp{c or 'A'}:P", r[k], None, f"{key} guard {k}", "func", key, "build", "out/dsp/guard_records.json"); n += 1
     return n
 
 
@@ -161,6 +200,7 @@ def build(remix, platform, out, ghidra):
 
     counts = {"layout": ingest_layout(add), "equ": ingest_equ(add), "map": ingest_map(add, platform)}
     counts["build"] = ingest_build(add, remix) if remix else None
+    counts["dsp"] = ingest_dsp(add, platform.parent / "dsp") or None
     counts["cite"] = ingest_cite(db)
     counts["ghidra"] = ingest_ghidra(db, add) if ghidra else None
     img = ROOT / "out/raw/section_3_MAIN_OS.bin"

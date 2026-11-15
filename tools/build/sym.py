@@ -6,6 +6,8 @@
     sym.py --range LO HI           every symbol in [LO, HI)
     sym.py --callers 0x40054cd8    xrefs to an address (needs the ghidra ingester; exit 2 without it)
     sym.py --resolve               filter: rewrites each 0x4xxxxxxx on stdin to `0x4xxxxxxx <name+0xoff>`
+    sym.py --histogram [--top N]   every 0x4xxxxxxx on stdin counted per symbol and per owner (PC samples:
+                                   REMOTE's frame trace, ot_emu --profile)
     --json                         on every form (not --resolve)
     --space SPACE                  default cf; dspA:P, dspB:X, ...
 DSP addresses are not rewritten by --resolve (ambiguous without a space).
@@ -69,12 +71,33 @@ def resolve_line(db, line, cache):
     return ADDR.sub(sub, line)
 
 
+def histogram(db, addrs):
+    """PC samples counted per symbol and per owner. A sample with no covering or exact symbol is counted under
+    the nearest symbol below marked `?`, owner `unknown`."""
+    syms, owners, total, cache = {}, {}, 0, {}
+    for a in addrs:
+        total += 1
+        if a not in cache:
+            r = at(db, a)
+            good = [x for x in r if x.get("covers", True)]
+            pick = (good or r or [None])[0]
+            cache[a] = ("(none)", "unknown") if pick is None else \
+                ((pick["name"], pick["owner"]) if good else (pick["name"] + " ?", "unknown"))
+        name, owner = cache[a]
+        syms[name] = syms.get(name, 0) + 1
+        owners[owner] = owners.get(owner, 0) + 1
+    order = lambda d: sorted(d.items(), key=lambda kv: (-kv[1], kv[0]))  # noqa: E731
+    return {"samples": total, "owners": order(owners), "symbols": order(syms)}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("query", nargs="?")
     ap.add_argument("--range", nargs=2, metavar=("LO", "HI"))
     ap.add_argument("--callers", metavar="ADDR")
     ap.add_argument("--resolve", action="store_true")
+    ap.add_argument("--histogram", action="store_true")
+    ap.add_argument("--top", type=int, default=30)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--space", default="cf")
     ap.add_argument("--db", default=str(DB))
@@ -84,6 +107,18 @@ def main():
         cache = {}
         for line in sys.stdin:
             sys.stdout.write(resolve_line(db, line.rstrip("\n"), cache) + "\n")
+        return 0
+    if a.histogram:
+        out = histogram(db, (int(m, 16) for line in sys.stdin for m in ADDR.findall(line)))
+        if a.json:
+            print(json.dumps(out, indent=1))
+        else:
+            n = out["samples"] or 1
+            print(f"{out['samples']} samples")
+            for title, rows_ in (("by owner", out["owners"]), ("by symbol", out["symbols"][:a.top])):
+                print(title)
+                for name, c in rows_:
+                    print(f"  {c:7d} {100 * c / n:5.1f}%  {name}")
         return 0
     if a.callers:
         ing = (db.execute("SELECT value FROM meta WHERE key='ingesters'").fetchone() or [""])[0]
