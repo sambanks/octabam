@@ -21,7 +21,7 @@ MODULE = Module(
     category=Category.UTILITIES,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-10-24",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-10-24",
         note="LSCOPE BJ 24 Oct 2026 (OSC/XY/ALL; owner busy 8-track: CF METER SCOPE open ISR mean 291 µs / closed "
              "288 µs, TUE 0 ROE 0; several min ALL soak no glitch); also make check REMIX=test/scope"),),
     doc="DOWN+TEMPO OSC/XY/ALL; UP/DOWN switch; A GAIN B TIME; bridges TUNER.",
