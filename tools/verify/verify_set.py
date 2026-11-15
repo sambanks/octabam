@@ -518,8 +518,17 @@ def main():
     print("        " + "  ".join(rows[:4]) + "\n        " + "  ".join(rows[4:]))
     check("audio: every track with record audio has a chain output", not silent_chain,
           f"silent chain: {', '.join(silent_chain)}" if silent_chain else "")
+    # T2's send needs T2 to make sound: a generated project (tools/hw/ot_fresh.py, CI's (project) units since
+    # sambanks/octabam#1051) has STATIC machines with no sample, every track's input at -200 dBFS, and the port
+    # feeds no input audio. Then the hosts' check cannot be made: it says so instead of failing (octabam-bus,
+    # 15 Nov 2026) or passing.
+    t2_in = db(rms(rl.track_audio(c, 2)[-2000:]))
     for key, t in hosts:
         wet = db(rms(rl.readback_audio(c, t + 1)[-2000:]))
+        if t2_in <= -120:
+            print(f"  [SKIP] audio: {key}'s host T{t + 1} carries T2's send: T2 makes no sound in this project "
+                  f"(input {t2_in:.1f} dBFS); a project with a sample on T2 runs it")
+            continue
         check(f"audio: {key}'s host T{t + 1} carries T2's send", wet > -60,
               f"T{t + 1} chain output {wet:.1f} dBFS in the last 2000 samples")
     # the report prints both cores' audio lines at the boot, the load and
