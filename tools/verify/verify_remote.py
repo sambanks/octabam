@@ -179,7 +179,10 @@ def main():
         except Exception as e:  # noqa: BLE001
             check("an offset at the block's end STALLs", True, type(e).__name__)
 
-        ev = ot_events.Events(ctrl, from_start=True)
+        # The waits time out in emulated seconds (ms[0]), not wall seconds: a wall timeout cut the reload after
+        # COMMAND 2 short on a loaded runner (main, 15 Nov 2026: NEWPROJ seen, no LOADALL in 120 wall s; the
+        # same tree passed on its PR's run in half the time).
+        ev = ot_events.Events(ctrl, from_start=True, clock=lambda: ms[0] / 1000)
         head = ev.head()
         cell = p.long(symbol("RMT_RING") + 4)
         check("the head over USB is the cell at RMT_RING + 4", 0 <= cell - head <= 4, f"usb {head}, dram {cell}")

@@ -127,6 +127,20 @@ def assert_success(files: dict, src_work: bytes, log: pathlib.Path) -> None:
           f"{sum(1 for k in files if k.startswith(src_prefix))} files)")
 
 
+def wait_job(p, slice_ms=5000, limit_ms=180000):
+    """Run until the screen changes from the confirm box (the engine job ended: OPEN IT?, or COPY FAILED), at most
+    limit_ms. A fixed 20 s ended before the copy of a generated project (tools/hw/ot_fresh.py, 29 MB, 90 files)
+    did: it finished between 20 and 40 s of the port's time, 15 Nov 2026, the first run CI gave this gate a
+    project (sambanks/octabam#1051)."""
+    before = p.screen()
+    for _ in range(limit_ms // slice_ms):
+        p.run(slice_ms)
+        if p.screen() != before:
+            p.run(1000)                      # the new prompt drawn and its keys live
+            return
+    raise SystemExit(f"verify_copy_project: the engine job's dialog did not change in {limit_ms // 1000} s")
+
+
 def run_success(image: pathlib.Path, pdir: pathlib.Path) -> None:
     fixture = OUT / "src"
     if fixture.exists():
@@ -147,7 +161,7 @@ def run_success(image: pathlib.Path, pdir: pathlib.Path) -> None:
         press(p, "yes", settle=600)          # COPY -> name editor
         press(p, "yes", settle=400)          # accept PROJECT YYMMDD
         press(p, "yes", settle=400)          # confirm COPY SRC -> DST?
-        p.run(20000)                         # engine job 21
+        wait_job(p)                          # engine job 21
         press(p, "no", settle=400)           # OPEN IT? -> leave live project
         p.card_flush()
 
@@ -178,7 +192,7 @@ def run_fail_cleanup(image: pathlib.Path, pdir: pathlib.Path) -> None:
         press(p, "yes", settle=600)          # COPY -> name editor
         press(p, "yes", settle=400)          # accept PROJECT YYMMDD
         press(p, "yes", settle=400)          # confirm
-        p.run(20000)                         # COPY FAILED + rm_tree
+        wait_job(p)                          # COPY FAILED + rm_tree
         p.card_flush()
 
     files = card_files(card)
@@ -213,7 +227,7 @@ def run_fail_cleanup(image: pathlib.Path, pdir: pathlib.Path) -> None:
               f"(dest still absent after name YES)")
 
         press(p, "yes", settle=400)          # confirm again -> FAIL + cleanup
-        p.run(20000)
+        wait_job(p)
         p.card_flush()
 
     files = card_files(card)
