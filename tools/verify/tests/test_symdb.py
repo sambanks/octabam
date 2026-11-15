@@ -115,7 +115,7 @@ class Histogram(unittest.TestCase):
         self.assertEqual(h["samples"], 5)
         self.assertEqual(dict(h["owners"]), {"stock": 2, "REMOTE": 1, "unknown": 2})
         self.assertEqual(dict(h["symbols"])["func_a"], 2)
-        self.assertEqual(dict(h["symbols"])["nosize ?"], 1)
+        self.assertEqual(dict(h["symbols"])["0x40002000.. (below: nosize)"], 1)
         self.assertEqual(dict(h["symbols"])["(none)"], 1)
 
 

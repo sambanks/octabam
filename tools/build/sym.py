@@ -73,7 +73,8 @@ def resolve_line(db, line, cache):
 
 def histogram(db, addrs):
     """PC samples counted per symbol and per owner. A sample with no covering or exact symbol is counted under
-    the nearest symbol below marked `?`, owner `unknown`."""
+    its 256-byte page, `0x40098800.. (below: name)`, owner `unknown`: the symbol below is where to start
+    looking, not the routine."""
     syms, owners, total, cache = {}, {}, 0, {}
     for a in addrs:
         total += 1
@@ -82,7 +83,7 @@ def histogram(db, addrs):
             good = [x for x in r if x.get("covers", True)]
             pick = (good or r or [None])[0]
             cache[a] = ("(none)", "unknown") if pick is None else \
-                ((pick["name"], pick["owner"]) if good else (pick["name"] + " ?", "unknown"))
+                ((pick["name"], pick["owner"]) if good else (f"{a & ~0xff:#x}.. (below: {pick['name']})", "unknown"))
         name, owner = cache[a]
         syms[name] = syms.get(name, 0) + 1
         owners[owner] = owners.get(owner, 0) + 1
