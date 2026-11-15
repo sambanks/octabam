@@ -22,6 +22,7 @@ Where each doc is, by who reads it. A module's own page is
 | [contributing/MODULES.md](contributing/MODULES.md) | writing a module: manifests, descriptors, DSP and ColdFire declarations, the ledger |
 | [contributing/PLACEMENT.md](contributing/PLACEMENT.md) | where a module's code goes and what is free, measured |
 | [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) | the demand loader: effects copied into the DSP's shared window while a track uses them; DLPUMP, DLCOPY, the stub, the reverb guard, SIDECHAIN_COMPRESSOR's hook stubs, the window layout, measurements on a unit |
+| [contributing/COLDFIRE_FORMS.md](contributing/COLDFIRE_FORMS.md) | the ColdFire instruction forms of a remix's runtime units, which stock code has run, the register of the rest |
 | [contributing/COSTS.md](contributing/COSTS.md) | what each effect costs on a unit, per slot, and the worst-case DSP load of a remix; `tools/remix/costs.py` |
 | [contributing/TESTING.md](contributing/TESTING.md) | every gate, what it proves and cannot see; `make check`, `make reach`, shards, `make accept`, bit-identity, CI |
 | [contributing/TOOLING.md](contributing/TOOLING.md) | every tool by pipeline stage, and which README each tool directory has |

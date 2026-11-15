@@ -253,7 +253,9 @@ everything else uses.
 
 What now gates it: `verify_dsp_forms` in `make check` refuses a form with
 no stock site, no register row and no module at `Level.UNIT`
-(`docs/contributing/TESTING.md`).
+(`docs/contributing/TESTING.md`). `verify_cf_forms` reports the ColdFire
+forms with none of the three (`docs/contributing/COLDFIRE_FORMS.md`); it does
+not refuse them yet.
 
 <a name="trap-rep-dma"></a>
 
