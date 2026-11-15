@@ -8,7 +8,8 @@ MODULE = Module(
     key="DLCOPY",
     kind=Kind.HYBRID,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    evidence=(Evidence(Level.EMULATOR),),
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-11-15", ref="#1100", commit="5cdd9787",
+                       note="the copy at the end of core B's frame: 12 of 12 mixed-walk runs without a stall, 251 loads"),),
     doc="Frame hook on payload B: copies a staged block into the shared window (demand loader).",
     claims=Claims(dsp_ranges=(
         DspRange("x", 0x2900, 0x1456, "the staging area the ColdFire's host write fills: doorbell, header, 2 words per code word"),

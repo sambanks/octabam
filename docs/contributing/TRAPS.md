@@ -251,6 +251,10 @@ form, grep it in `out/dsp/payload_*.asm`
 first and then a PR adding the register row with the evidence, or the form
 everything else uses.
 
+What now gates it: `verify_dsp_forms` in `make check` refuses a form with
+no stock site, no register row and no module at `Level.UNIT`
+(`docs/contributing/TESTING.md`).
+
 <a name="trap-rep-dma"></a>
 
 ### No `rep` in an effect's `init` or `proc`, and no dense X work in a DMA's 8K block

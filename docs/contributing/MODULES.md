@@ -96,6 +96,10 @@ cannot hold:
                        commit="1a2b3c4d", note="a fourth instance beside the reverb"),),
 ```
 
+`bench_only=True` marks a module not for a release image (a probe, an
+effect not yet run on a unit): in a test remix `verify_dsp_forms` reports
+its unproven instruction forms, in any other remix it refuses them.
+
 `python3 tools/build/evidence.py` prints every module's level;
 `evidence.py stale` lists the modules at `UNIT` or above whose sources
 have a commit after the evidence's `commit` (or `date`). It reports and
