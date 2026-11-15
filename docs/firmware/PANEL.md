@@ -177,7 +177,13 @@ through; a null encoder handler swallows the turn. The image's keymaps
 `0x46c8d18c`. (Until 25 Sep 2026 this read "`0x400bfbf6` (59 records)":
 `0x400bfbf6` is 0x1a before the table the MKI layer points at, inside the
 record before it.) Record, 0x1a bytes: `+0 code, +2 press, +6 release,
-+0xa, +0xe sub-map, +0x12, +0x16`; the table ends at a code `0xff`. Double press: `0x400c0aac` last keycode,
++0xa, +0xe sub-map, +0x12, +0x16`; the table ends at a code `0xff`.
+FUNC's sub-map field is a 20-byte layer map `{next, keys, …}`: MKI keys
+`0x400bf2b4`, MKII keys `0x400bf628`. BRAIN rewrites the MKII keys pointer
+at `0x400bfa36` to a DRAM clone (`brain_func_keys`) with LEVEL push added;
+ROM patches of the stock MKII FUNC key table do not affect that clone
+(SEQ's FUNC+BANK clear menu Detours TRACK TRIG EDIT `0x4007c0d0` instead).
+MKI FUNC+BANK press still lands on `0x40058a64` (`PARTS.md`). Double press: `0x400c0aac` last keycode,
 `0x460d5de0` ticks (display loop `0x40052204`, reset `0x40033e20`), window
 14 ticks. LEVEL press `0x3e` special-cased at `0x4004ecfc`. Popups: yes/no
 `0x4006d57c(title, n, lines[], 3, handler)`; scrolling list
