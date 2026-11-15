@@ -71,5 +71,5 @@ MODULE = Module(
     # + 0x20*track + 30
     claims=Claims(part_window=tuple((0x8f400 + 0x20 * i, 2, f"page-2 scene cell {i}")
                                     for i in range(128))),
-    gates=(Gate('tools/verify/verify_scenes_p2.py'),),
+    gates=(Gate('tools/verify/verify_scenes_p2.py', project=True),),
 )

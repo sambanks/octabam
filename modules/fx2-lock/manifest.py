@@ -33,5 +33,5 @@ MODULE = Module(
         Poke(0x400BC374, expect=H("40052474"), write=H("4003d440"),
              note="FX2 chooser key table: YES -> the NO (close) handler, not the select"),
     ),
-    gates=(Gate("tools/verify/verify_fx2_lock.py", venv=True, stage="image"),),
+    gates=(Gate("tools/verify/verify_fx2_lock.py", venv=True, stage="image", project=True),),
 )

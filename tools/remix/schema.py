@@ -1215,6 +1215,10 @@ class Gate:
     venv: bool = False               # prefer .venv/bin/python3 (the port's python) when present
     stage: str = "isolated"          # "isolated" | "image"
     once: bool = False               # once per run, on one carrying remix of the selection (the shared half)
+    project: bool = False            # SKIPs without OT_PROJECT: reach plans a unit that runs it with a project made by
+                                     # tools/hw/ot_fresh.py (sambanks/octabam#1051): a job of `check-remix <r> (project)`
+                                     # for a per-remix gate, `check-shared (project: <gate> on <r>)` for a once or
+                                     # remix_arg=False one (reach.project_gate_jobs, reach.project_shared_gates)
 
     def __post_init__(self):
         if self.stage not in ("isolated", "image"):

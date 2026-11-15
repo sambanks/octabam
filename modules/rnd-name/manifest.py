@@ -37,5 +37,5 @@ MODULE = Module(
             "name-editor FUNC-held keys: stock + CUE -> rnd_chord",
         ),
     ),
-    gates=(Gate("tools/verify/verify_rnd_name.py", venv=True, once=True),),
+    gates=(Gate("tools/verify/verify_rnd_name.py", venv=True, once=True, project=True),),
 )

@@ -131,6 +131,6 @@ MODULE = Module(
     # twice (MKII, MKI) under `ot_emu --interactive` and presses UP+REC /
     # the STEMS keys; it SKIPs by name without the port or the template.
     gates=(Gate("tools/verify/verify_card_reader.py", remix_arg=False, venv=True),
-           Gate("tools/verify/verify_stems.py", venv=True),
-           Gate("tools/verify/verify_stems_menu.py", venv=True)),
+           Gate("tools/verify/verify_stems.py", venv=True, project=True),
+           Gate("tools/verify/verify_stems_menu.py", venv=True, project=True)),
 )

@@ -50,5 +50,5 @@ MODULE = Module(
              write=(3).to_bytes(2, "big"),
              note="FUNC+BANK LISTPOP count 2 -> 3 (RENAME/DELETE/COPY)"),
     ),
-    gates=(Gate("tools/verify/verify_copy_project.py", venv=True, once=True),),
+    gates=(Gate("tools/verify/verify_copy_project.py", venv=True, once=True, project=True),),
 )

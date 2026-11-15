@@ -305,17 +305,23 @@ jobs:
 
       # The set gates (mode-defaults, plocks-p2, set, ...) SKIP without a project. An empty one is made by the
       # firmware itself under the port from the runner's own OS (tools/hw/ot_fresh.py), on the unit's remix, and kept
-      # in .git/octabam-fresh-cache by image, port and script. Only the `(project)` unit of a remix (reach.SPLIT_REMIX_JOBS)
-      # runs the jobs that read it; the `image:` jobs are not among them: with a project they ran 2869 s and verify_brain failed.
+      # in .git/octabam-fresh-cache by image, port and script. Only the `(project)` unit of a remix (reach.SPLIT_REMIX_JOBS,
+      # and a remix whose module has a Gate(project=True), reach.project_gate_jobs) runs the jobs that read it; the `image:` jobs are not among them: with a project they ran 2869 s and verify_brain failed.
+      # A `check-shared (project: <gate> on <remix>)` unit (reach.project_shared_gates: a once or remix_arg=False gate with
+      # Gate(project=True)) runs that gate alone on a project made on <remix>.
       # The `(brain)`, `(brain-templates)`, `(brain-panes)` and `(brain-screens)` units (reach.SPLIT_EXTRA_UNITS) run verify_brain's
       # sections with one, through check_shards (gate cache); the `(scenes)` unit runs verify_scenes (MIDI SCENES) with one.
       - name: 📁 Fresh Project
-        if: contains(matrix.name, ' (project)') || contains(matrix.name, ' (brain') || contains(matrix.name, ' (scenes)')
+        if: contains(matrix.name, ' (project)') || contains(matrix.name, ' (brain') || contains(matrix.name, ' (scenes)') || contains(matrix.name, ' (project: ')
         env:
           UNIT: ${{ matrix.name }}
         run: |
           remix="${UNIT#check-remix }"
-          remix="$(echo "$remix" | sed -E 's/ \((project|scenes|brain[a-z-]*)\)$//')"
+          # `check-shared (project: <gate> on <remix>)` (reach.project_shared_gates): the project is made on <remix>
+          case "$UNIT" in
+            "check-shared (project: "*) remix="$(echo "$UNIT" | sed -E 's/^.* on ([^ ]+)\)$/\1/')" ;;
+            *) remix="$(echo "$remix" | sed -E 's/ \((project|scenes|brain[a-z-]*)\)$//')" ;;
+          esac
           make emu-get
           .venv/bin/python3 tools/hw/ot_fresh.py --remix "$remix" --out out/fresh
           echo "OT_PROJECT=$PWD/out/fresh/$remix/NOPROJ" >> "$GITHUB_ENV"

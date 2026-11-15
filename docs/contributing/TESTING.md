@@ -199,6 +199,14 @@ dear={"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
   `"image"` runs last, on the finished `out/mainos_bus.bin` (and after
   `verify_set` has staged its card).
 - `venv=True` runs it under `.venv/bin/python3` when the venv exists.
+- `project=True`: the gate prints `[SKIP] ... no project` and exits 0 without `OT_PROJECT`. `reach` plans a unit that runs it
+  with a project made by `tools/hw/ot_fresh.py` (`.github/workflows/ci.yml`'s "Fresh Project" step): a per-remix gate is a job of
+  `check-remix <remix> (project)` (its name is the gate's, `image:` in front for the image stage; the remix's other unit
+  skips it); a `once` gate or an isolated `remix_arg=False` one, which runs in the shared half, is
+  `check-shared (project: <gate> on <remix>)`, run alone with `MODULE_GATES_ONLY`, the project made on <remix> (the carrier
+  of a `once` gate, the first remix of the line otherwise). `test_reach` refuses a gate that has the SKIP line and no flag,
+  except those with a unit of `reach.SPLIT_EXTRA_UNITS` (BRAIN, MIDI SCENES) and two that fail with a generated project and are
+  left unflagged until fixed (`verify_ids64_load`, #1120; `verify_dlload`, #1075) (sambanks/octabam#1051). A job that exited 0 with `[SKIP]` lines reads `ok, N SKIP` in `check_shards`'s table.
 - `once=True` (with `remix_arg=True`, isolated): the gate checks the
   module's own code, the same in every carrier, so it runs once per run
   in the shared half, on the named remix with the fewest modules that
