@@ -101,14 +101,19 @@ reviewed; the falsifier is a hardware measurement of the unit's tick rate.
 
 ### The instruction-form register
 
-A DSP form ships if a stock payload runs it or a row here approves it.
+A DSP form ships if a stock payload runs it, its module has run on a unit
+(`Evidence` at `Level.UNIT` or above in its manifest), or a row here
+approves it. `tools/verify/verify_dsp_forms.py` refuses any other form in
+`make check`; a module declared `bench_only` is exempt in a test remix and
+refused in a release one.
 The precedent grep is `out/dsp/payload_*.asm`
 (`tools/build/dsp_disasm_all.py`); a form with no site there gets a row
 only by PR, with the hardware evidence in the row: probe, image, date,
 what was measured, what would falsify it, and the confidence marker the
 evidence earned. A form without a row does not ship
 (TRAPS.md #trap-chip-form). Forms a payload runs are not listed here; the
-payloads are their record.
+payloads are their record. Forms of a module proven on a unit need no row;
+the rows below from before 15 Nov 2026 stay as the record of their evidence.
 
 A form here is an instruction's disassembled text with its immediates,
 addresses, displacements and branch targets blanked, its registers, memory
@@ -209,6 +214,18 @@ ships, and the row names the test that settles it.
 | `tgt x0,a` (1w) | MODULATION (before #1080), e.g. `tgt x0,a` | 🟡 run on Sam's MKII in MODULATION many times (owner report, 10 Nov 2026; the module's proof, image 88, 27 Sep 2026: a fourth MODULATION beside the reverb). Falsifier: a unit fault traced to the form. |
 | `tgt x1,a` (1w) | MODULATION (before #1080), e.g. `tgt x1,a` | 🟡 run on Sam's MKII in MODULATION many times (owner report, 10 Nov 2026; the module's proof, image 88, 27 Sep 2026: a fourth MODULATION beside the reverb). Falsifier: a unit fault traced to the form. |
 | `tmi x1,b` (1w) | MODULATION (before #1080), e.g. `tmi x1,b` | 🟡 run on Sam's MKII in MODULATION many times (owner report, 10 Nov 2026; the module's proof, image 88, 27 Sep 2026: a fourth MODULATION beside the reverb). Falsifier: a unit fault traced to the form. |
+| `lua (r5)+n5,r4` (1w) | VERBERATION, e.g. `lua (r5)+n5,r4` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `move a,y:(r5+n5)` (1w) | VERBERATION, e.g. `move a,y:(r5+n5)` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `move b,a` (1w) | VERBERATION, e.g. `move b,a` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `move b1,x:(r7+N)` (1w) | VERBERATION, e.g. `move b1,x:(r7+$34)` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `move y0,y:(r5+n5)` (1w) | VERBERATION, e.g. `move y0,y:(r5+n5)` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `move y:(r4),a` (1w) | VERBERATION, e.g. `move y:(r4),a` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `move y:(r4)-,b` (1w) | VERBERATION, e.g. `move y:(r4)-,b` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `move y:(r5+n5),x0` (1w) | VERBERATION, e.g. `move y:(r5+n5),x0` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `tgt x1,b` (1w) | VERBERATION, e.g. `tgt x1,b` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `tmi x0,a` (1w) | VERBERATION, e.g. `tmi x0,a` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `tmi x0,b` (1w) | VERBERATION, e.g. `tmi x0,b` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
+| `tne y1,a` (1w) | VERBERATION, e.g. `tne y1,a` | ⏳ pending hardware test: `octabam-verbs` with VERBERATION on a unit, every page-1 and page-2 knob through its range. Not run on a unit. Under dsp_host: `verify_verberation` (against a float model). Falsifier: a wedge or wrong output on the unit. |
 
 ## 2. Cycles
 

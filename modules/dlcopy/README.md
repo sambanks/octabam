@@ -25,4 +25,4 @@ checked to reassemble to them) and returns. At a site a bridge overrides (`schem
 BRIDGE) the stub calls the body when loaded and then jumps to the overridden hook's entry. `verify_dlhook`
 compares every stub, in each BOUND state, with what it stands for (`dsp_host`, both payloads).
 
-Claims: `X:0x2900..0x3d55` (staging), `X:0x3f00..0x3f4f` (stub tables), `X:0x3dc0..0x3e3f` (guard state words and base cells), `X:0x3fd0..0x3fea` (reverb trampoline words, guard scratch, the copier's saved `b`). Gates: `verify_dlstub`, `verify_dlwrap`, `verify_dlhook` (`dsp_host`). Not run on a unit.
+Claims: `X:0x2900..0x3d55` (staging), `X:0x3f00..0x3f4f` (stub tables), `X:0x3dc0..0x3e3f` (guard state words and base cells), `X:0x3fd0..0x3fea` (reverb trampoline words, guard scratch, the copier's saved `b`). Gates: `verify_dlstub`, `verify_dlwrap`, `verify_dlhook` (`dsp_host`). On a unit (Sam's MKII, 15 Nov 2026, #1100): 12 of 12 mixed-walk runs without a stall, 251 loads.

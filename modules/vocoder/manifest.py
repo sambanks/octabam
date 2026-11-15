@@ -47,6 +47,7 @@ MODULE = Module(
     key="VOCODER",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Ignorato", author_url="https://github.com/Ignorato",
+    bench_only=True,
     evidence=(Evidence(Level.RENDER,
         note="0.2 at T2 T4 T6 T8 in dsp_host and under the ColdFire port (verify_vocoder, make check), 11 Oct "
              "2026; SCAL, KEY and RANG in dsp_host and under the port, 18 Oct 2026 (value 0 bit for bit the build "

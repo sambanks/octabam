@@ -20,6 +20,7 @@ MODULE = Module(
     key="PEXT PROBE",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
+    bench_only=True,
     evidence=(Evidence(Level.EMULATOR),),
     doc="Measurement instrument: tests P memory above P:0x2000 and code in the shared window, and reports it in the track's audio.",
     menu=MenuEntry(

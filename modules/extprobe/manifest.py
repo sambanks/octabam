@@ -15,6 +15,7 @@ MODULE = Module(
     key="EXTPROBE",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
+    bench_only=True,
     evidence=(Evidence(Level.EMULATOR),),
     doc="Measurement instrument: the highest window word a reverb on T8's FX2 writes, in the track's audio.",
     menu=MenuEntry(

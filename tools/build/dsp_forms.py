@@ -133,7 +133,7 @@ def census(remix):
         new = {f: ex.split(";")[0].strip() for f, ex in mine.items() if f not in stock}
         used |= set(new)
         ev = best(m.evidence)
-        out[m.key] = {"source": d.asm, "status": "listing", "forms": len(mine), "level": ev.level.name if ev else None, "payloads": sorted(d.payloads),
+        out[m.key] = {"source": d.asm, "status": "listing", "forms": len(mine), "level": ev.level.name if ev else None, "bench_only": m.bench_only, "payloads": sorted(d.payloads),
                       "no_stock_site": {f: {"example": ex, "row": f in rows} for f, ex in sorted(new.items())}}
     return out, sorted(set(rows) - used)
 
