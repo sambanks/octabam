@@ -236,7 +236,7 @@ def capture_seq(p,r):
     p.chord('t1','page')
     shot(p,'seq','panel','SEQ page 1/2: rings icon, PULS, ROT, LANE, page+param, DPTH, step grid and LEN.',r)
     p.press('right',settle=400)
-    shot(p,'seq','tonal','SEQ page 2/2: SCAL, ROOT, MODE, RANG, PHRS and INTV.',r)
+    shot(p,'seq','tonal','SEQ audio page 2/2: SCAL, ROOT, RANG and PHRS; C and F are empty.',r)
     p.press('left',settle=400)
     p.chord('func','bank')
     shot(p,'seq','clear','SEQ clear menu: CLEAR DEST, CLEAR ALL DEST, CLEAR ALL+TRIGS.',r)

@@ -1716,6 +1716,8 @@ ef_draw_tonal:
         lea     ef_root_names,%a1
         moveal  (%a1,%d2.l*4),%a0
         bsr.w   ef_tonal_cell
+        tstl    MIDI_MODE
+        beq.w   edt_range
         lea     L_MODE,%a0
         moveq   #2,%d0
         movel   ef_tone_mode,%d2
@@ -1731,6 +1733,7 @@ ef_draw_tonal:
         moveal  (%a1,%d2.l*4),%a0
 2:
         bsr.w   ef_tonal_cell
+edt_range:
         lea     L_RANGE,%a0
         moveq   #3,%d0
         movel   ef_tone_range,%d2
@@ -1741,6 +1744,8 @@ ef_draw_tonal:
         lea     ef_phrase_names,%a1
         moveal  (%a1,%d2.l*4),%a0
         bsr.w   ef_tonal_cell
+        tstl    MIDI_MODE
+        beq.w   da_midi_done
         lea     L_HARMONY,%a0
         moveq   #5,%d0
         movel   ef_tone_harm,%d2
@@ -1826,6 +1831,14 @@ ef_tonal_draw_cell:
         rts
 
 ef_tonal_nudge:
+        tstl    MIDI_MODE
+        bne.s   9f
+        movel   ef_cursor,%d1
+        cmpi.l  #2,%d1
+        beq.w   etn_done
+        cmpi.l  #5,%d1
+        beq.w   etn_done
+9:
         movel   %d0,%d2
         movel   ef_cursor,%d1
         lea     ef_tonal_index,%a0
@@ -2932,16 +2945,6 @@ ef_degree_interval:
 | d3=available pitch count, d2=step. Return a phrase rank 0..count-1.
 | Phrase 0 rises, 1 falls, 2 reflects, 3 repeats a short triangle, 4 random.
 ef_pitch_rank:
-        | Audio ARP is a straight rising scale walk; PHRS shapes melody mode.
-        tstl    ef_tone_midi
-        bne.s   0f
-        tstl    ef_tone_mode
-        beq.s   0f
-        movel   %d2,%d1
-        movel   %d3,%d5
-        remul   %d5,%d0,%d1
-        rts
-0:
         movel   ef_tone_phrase,%d1
         cmpi.l  #4,%d1
         beq.s   epr_random
@@ -3306,17 +3309,6 @@ ef_write_ptch:
         beq.w   ep_clear
         tstl    ef_tone_range
         beq.w   ep_base
-        tstl    ef_tone_midi
-        bne.s   8f
-        lea     -24(%sp),%sp
-        moveml %d2-%d7,%sp@
-        movel   ef_tone_harm,%d0
-        addql   #1,%d0
-        bsr.w   ef_degree_interval
-        movel   %d0,ef_pitch_offset
-        moveml %sp@,%d2-%d7
-        lea     24(%sp),%sp
-8:
         movel   %d2,-(%sp)
         movel   %d3,-(%sp)
         movel   %d4,-(%sp)

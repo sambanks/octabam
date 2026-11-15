@@ -102,28 +102,28 @@
       "caption": "SEQ page 1/2: rings icon, PULS, ROT, LANE, page+param, DPTH, step grid and LEN.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "b0c051780fe11b1300269d63df05b7c9db6ec48d56382a12cf67e405ff8ff9cc"
+      "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"
     },
     "clear": {
       "image": "seq/clear.png",
       "caption": "SEQ clear menu: CLEAR DEST, CLEAR ALL DEST, CLEAR ALL+TRIGS.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "b0c051780fe11b1300269d63df05b7c9db6ec48d56382a12cf67e405ff8ff9cc"
+      "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"
     },
     "tonal": {
       "image": "seq/tonal.png",
-      "caption": "SEQ page 2/2: SCAL, ROOT, MODE, RANG, PHRS and INTV.",
+      "caption": "SEQ audio page 2/2: SCAL, ROOT, RANG and PHRS; C and F are empty.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "b0c051780fe11b1300269d63df05b7c9db6ec48d56382a12cf67e405ff8ff9cc"
+      "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"
     },
     "midi-tonal": {
       "image": "seq/midi-tonal.png",
       "caption": "SEQ page 2/2 on a MIDI track: SCAL, ROOT, VOIC, RANG, PHRS and CHRD.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "b0c051780fe11b1300269d63df05b7c9db6ec48d56382a12cf67e405ff8ff9cc"
+      "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"
     }
   },
   "rec-threshold": {

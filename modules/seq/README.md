@@ -10,8 +10,8 @@ Hold a **TRACK** key and press **PAGE**: SEQ opens for that track — title
 SEQ, LEN at bottom right, a stock 3×2 grid, and a 4×16 step grid (hollow / solid) for
 all ≤64 steps. **`[LEFT]`** / **`[RIGHT]`** switch two knob pages; the step grid
 stays visible. Page **1/2** has A=PULS B=ROT C=LANE / D=DEST E=DPTH;
-**F** is empty. Page **2/2** has A=SCAL B=ROOT C=MODE / D=RANG E=PHRS
-F=CHRD on MIDI or INTV on audio. MIDI C is VOIC 1-4. The page count sits at the top-right of the
+**F** is empty. Page **2/2** has A=SCAL B=ROOT / D=RANG E=PHRS.
+MIDI C is VOIC 1-4 and F is CHRD. Audio C and F are empty and inactive. The page count sits at the top-right of the
 SEQ logo panel.
 **LANE**
 selects whether A/B and the grid edit the **TRIG** rhythm or the **PLOCK**
@@ -94,8 +94,7 @@ only; writing the pattern is a separate YES.
 use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
 - **DEST = PTCH:** RANG 0 uses the Part PLAYBACK PTCH. Above zero, SEQ picks
-  pitches inside RANG around the Part value using SCAL and ROOT. Audio INTV
-  offsets the selected scale degree. Silent / PLCK misses fall back to Part.
+  pitches inside RANG around the Part value using SCAL and ROOT. Silent / PLCK misses fall back to Part.
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
 - **Any other DEST:** uniform `[Part−DEPTH .. Part+DEPTH]` clamped 0..127.
 
@@ -148,18 +147,13 @@ Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md).
 ## MIDI tracks
 
 The tonal page applies to audio and MIDI tracks. **SCAL** selects MAJ, MIN,
-PENT, DOR, PHR, MIX, WHOL or CHRO; **ROOT** selects C through B. **MODE** is
-MELO or ARP on audio. On MIDI, **VOIC** selects one to four notes and **CHRD**
+PENT, DOR, PHR, MIX, WHOL or CHRO; **ROOT** selects C through B. Audio C and F are empty and inactive. On MIDI, **VOIC** selects one to four notes and **CHRD**
 selects one of the FM SYNTH chord types and its inversion. **RANG** controls
 the pitch radius around the Part value, from unison to four octaves, and
-**PHRS** selects UP, DOWN, ALT, TRI or WAVE. Audio ARP rises through the
-available scale notes. MIDI **VOIC** 1 writes one note. Higher values add
+**PHRS** selects UP, DOWN, ALT, TRI or WAVE. MIDI **VOIC** 1 writes one note. Higher values add
 notes from **CHRD**. Filling with **VOIC** 1 clears NOT2, NOT3 and NOT4 on
 hit trigs. The Octatrack MIDI arp can play the generated notes when enabled
-on that track. Audio **INTV** transposes the generated PTCH line by a scale
-degree (unison through seventh), so separate tracks can form a harmony.
-Audio interval only applies when **RANG** is nonzero; at RANG 0, PTCH follows
-the Part value.
+on that track.
 
 Hardware report, 15 Nov 2026: the author tested SEQ 83 on the MKII and
 confirmed it works, including the fix that leaves unused NOTE3/4 slots empty

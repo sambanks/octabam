@@ -132,12 +132,16 @@ def main() -> int:
             p.press("midi", settle=300)
             s.open_seq("t1")
             p.press("right", settle=150)
-            for enc, delta in ((1, 2), (2, 1)):
+            for enc, delta in ((1, 2), (2, 127), (5, 127)):
                 p.proc.command(f"knob {0x30 + enc:#x} {delta}", "ok")
                 p.run(250)
             check("audio tonal controls use a separate T1 record",
-                  p.peek(tone_mem, 6) == bytes((0, 2, 1, 12, 0, 0)),
+                  p.peek(tone_mem, 6) == bytes((0, 2, 0, 12, 0, 0)),
                   p.peek(tone_mem, 6).hex())
+            rows = p.link.lcd_rows()
+            check("audio C and F cells are blank",
+                  not any(rows[y][x] for y in (*range(3, 18), *range(23, 38))
+                          for x in range(101, 118)))
             s.close_seq()
 
         print(f"SEQ tonal port: {fails} failed checks")

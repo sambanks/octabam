@@ -91,13 +91,13 @@ SEQ keeps these scale settings separate from the PROJECT SCALE QUANTIZER.
 |---|---|---|
 | **A** | **SCAL** | MAJ, MIN, PENT, DOR, PHR, MIX, WHOL or CHRO |
 | **B** | **ROOT** | Root note C through B |
-| **C** | **VOIC** | MIDI: 1-4 notes. Audio: **MODE**, MELO or ARP |
+| **C** | **VOIC** | MIDI: 1-4 notes. Audio: empty, inactive |
 | **D** | **RANG** | Pitch radius around the Part pitch, from unison to four octaves |
 | **E** | **PHRS** | UP, DOWN, ALT, TRI or WAVE; shapes MIDI notes and audio melody |
-| **F** | **CHRD** / **INTV** | MIDI CHRD selects one of FM SYNTH's chord types and inversion. Audio INTV transposes its PTCH line by a scale degree, unison through seventh. |
+| **F** | **CHRD** | MIDI CHRD selects one of FM SYNTH's chord types and inversion. Audio: empty, inactive. |
 
-Audio INTV applies when RANG is above zero. At RANG 0, PTCH follows the Part
-value. Set different intervals on separate audio tracks to play a harmony.
+On audio tracks, including synth machines, C and F are empty and inactive.
+SCAL, ROOT, RANG and PHRS control a single pitch line.
 The author tested SEQ 83 on an Octatrack MKII, including clearing unused
 MIDI voices when reducing VOIC.
 
@@ -105,7 +105,7 @@ MIDI **VOIC** 1 writes one note. Higher values add notes from the selected
 **CHRD** shape. Filling with **VOIC** 1 clears the NOT2, NOT3 and NOT4 locks on
 hit trigs, clearing extra voices left by an earlier chord fill. The
 Octatrack MIDI arpeggiator can play the generated notes when enabled on that
-track. Audio ARP mode walks upward through the available scale pitches.
+track.
 **RANG** sets the pitch radius for melody generation and audio PTCH variation.
 
 ## Writing the pattern

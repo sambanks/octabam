@@ -132,7 +132,7 @@ def main() -> int:
     tonal = block(src, "ef_write_midi_pitch:", "ef_midi_chord_locks:")
     chord = block(src, "ef_midi_chord_locks:", "ef_midi_clear_chord_locks:")
     chord_clear = block(src, "ef_midi_clear_chord_locks:", "ef_write_ptch:")
-    ptch = block(src, "ef_write_ptch:", "ef_part_flat:")
+    ptch = block(src, "\nef_write_ptch:\n", "\nef_part_flat:\n")
     check("page indicator stays at logo-panel top-right and grid draws on both pages",
           "X_PAGE_R" in draw and ".set    X_PAGE_R,  X_GRID-1" in src
           and "T_PAGE1" in draw and "T_PAGE2" in draw
@@ -167,13 +167,9 @@ def main() -> int:
           and "movel   (%sp)+,%d4" in chord
           and "movel   %d4,-(%sp)" in chord_clear
           and "movel   (%sp)+,%d4" in chord_clear)
-    check("audio melody uses SEQ scale/root and audio ARP rises",
-          "ef_tone_mask" in ptch and "ef_tone_root" in ptch
-          and "negl    %d0" in ptch and "ef_pitch_rank" in ptch
-          and "ef_tone_mode" in block(src, "ef_pitch_rank:", "ef_snap_note:"))
-    check("audio INTV shifts PTCH before scale filtering",
-          "ef_pitch_offset" in ptch and "ef_degree_interval" in ptch
-          and "ep_dst: addl    ef_pitch_offset" in ptch)
+    check("audio pitch ignores disabled mode and interval settings",
+          "ef_tone_harm" not in ptch
+          and "ef_tone_mode" not in block(src, "ef_pitch_rank:", "ef_snap_note:"))
     check("tonal settings persist per audio and MIDI track with v8 migration",
           "EF_TONE_B, 16*EF_TONE_REC" in src
           and "EF_VER,    9" in src and "ef_tone_addr:" in src
