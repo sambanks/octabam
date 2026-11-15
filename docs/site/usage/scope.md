@@ -3,7 +3,8 @@ Full-screen track audio on the LCD: **OSC** (mono polyline), **XY**
 centre divider. T1 top-left, same layout as the track pads). Gain /
 peak HUD and a clip `!` sit on OSC and XY.
 
-**`[DOWN]` + `[TEMPO]`** opens. **`[UP]` + `[TEMPO]`** is still TUNER.
+**`[DOWN]` + `[TEMPO]`** opens SCOPE. In builds with TUNER,
+**`[UP]` + `[TEMPO]`** opens the tuner.
 **`[UP]`** / **`[DOWN]`** cycle the three modes. **A** GAIN, **B** TIME.
 **`[CUE]`** release toggles the G/P HUD on OSC / XY (ALL has none).
 Push **A** resets GAIN and clears the peak.

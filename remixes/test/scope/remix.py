@@ -1,13 +1,12 @@
-"""scope -- SCOPE + TUNER on stock FX (shared TEMPO opener)."""
+"""scope -- SCOPE and TUNER on stock FX through the HOOKS dispatcher."""
 
 from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="scope",
     family="mods",
-    evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-10-24",
-        note="LSCOPE BJ 24 Oct 2026 (CF METER + busy soak); also make check REMIX=test/scope"),),
-    doc="stock effects with SCOPE + TUNER (shared TEMPO detours).",
+    evidence=(Evidence(Level.BUILD, ref="shared TEMPO/frame/UI dispatcher"),),
+    doc="stock effects with SCOPE and TUNER sharing the TEMPO, frame and UI hooks.",
     modules=(
         "TUNER",
         "SCOPE",

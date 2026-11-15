@@ -22,7 +22,7 @@ OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER")
 # CF METER IDLE and WAVE LOAD (CF METER's FX2 id is MODULATION's),
 # MIDI LOOPBACK (MIDI SCENES), DIRECT JUMP and PERSISTENT BUFFERS (DIRECT_JUMP_KYOTI and BUFFER
 # SAVER do their jobs), and the bus and diagnostic modules (TEMPO SYNC, TEMPO BUS, RIG HOSTS, BOOT TRACE).
-# STEM REC, SCOPE, MIDI SCALES and RND NAME are not here either: images with them left program changes
+# STEM REC, SCOPE, MIDI SCALES and RND NAME are omitted: images with them left program changes
 # unapplied in a loader soak (2 to 5 of 32 transitions; none in the images without them) on Sam's MKII, 1 Nov 2026.
 # FX2 LOCK is not here: it makes the FX2 chooser's YES close without selecting, and this remix has no engine to lock to a track.
 # Added 7 Nov 2026 (each builds beside the rest; not yet soaked here): CHORDS FACTORY with PAGES, the page
