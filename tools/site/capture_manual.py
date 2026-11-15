@@ -245,7 +245,7 @@ def capture_features(p,r):
     p.press('midi',settle=300)
     p.chord('t1','page')
     p.press('right',settle=400)
-    shot(p,'seq','midi-tonal','SEQ page 2/2 on a MIDI track: SCAL, ROOT, MODE, RANG, PHRS and HARM.',r)
+    shot(p,'seq','midi-tonal','SEQ page 2/2 on a MIDI track: SCAL, ROOT, VOIC, RANG, PHRS and CHRD.',r)
     close(p)
     p.press('midi',settle=300)
     p.chord('func','recab');enc(p,3,12);close(p)

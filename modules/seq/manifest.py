@@ -3,8 +3,8 @@
 Hold a track key and press PAGE: title SEQ, LEN gutter, stock 3x2 grid.
 `[LEFT]` / `[RIGHT]` switches between two knob pages; the step grid stays fixed.
 Page 1 is A=PULSE B=ROT C=LANE / D=DEST E=DEPTH (F empty). Page 2 has
-SEQ-owned SCALE, ROOT, MODE, RANGE, PHRASE and MIDI HARM / audio INTV.
-MIDI MELO/CHRD/ARP writes scale-based note locks; audio MELO/ARP writes
+SEQ-owned SCAL, ROOT, RANG and PHRS, MIDI VOIC 1-4 and CHRD,
+and audio MODE and INTV. MIDI writes a melody with FM SYNTH chord shapes; audio MELO/ARP writes
 PTCH locks and INTV transposes the generated audio pitch line. SEQ keeps its
 scale settings separate from SCALE QUANTIZER. LANE focuses TRIG or
 PLOCK; YES writes sample trigs and DEST locks (write-only - never

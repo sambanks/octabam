@@ -705,6 +705,7 @@ def run_scenarios() -> int:
         s.open_seq("t1")
         check("MIDI mode opens SEQ on the MIDI track",
               port.long(0x80000012) != 0 and port.long(s.ef) != 0)
+        poke32(port, local_sym("ef_tone_midi"), 1)
         poke32(port, sym("ef_dest"), 20)
         poke32(port, sym("ef_depth"), 4)
         poke32(port, s.lane, 0)
@@ -796,8 +797,10 @@ def run_scenarios() -> int:
         note_dest_ok = True
         poke8(port, midi_lane, 0)
         poke32(port, sym("ef_lane"), 0)
-        poke32(port, local_sym("ef_tone_mode"), 1)  # CHRD writes NOT2/NOT3/NOT4 from NOTE
-        poke32(port, local_sym("ef_tone_harm"), 1)  # HARM enables the seventh in NOT4
+        poke32(port, local_sym("ef_tone_mode"), 0)
+        poke32(port, local_sym("ef_tone_midi"), 1)
+        poke32(port, local_sym("ef_tone_harm"), 4)  # VOIC 4
+        poke32(port, local_sym("ef_tone_style"), 4)  # FM SYNTH MAJ
         for flat, base in ((0, 60), (1, 100), (18, 64), (19, 67), (29, 72)):
             port.poke(midi_part + flat, bytes((base,)))
             poke32(port, sym("ef_dest"), flat)
@@ -823,14 +826,40 @@ def run_scenarios() -> int:
                     note_dest_ok &= value == 0xFF
         chord_values = [u8(port, midi_lock_base + step * 32 + flat)
                         for flat in (3, 4, 5) for step in (0, 6, 11)]
-        check("CHRD NOTE fills add scale-derived NOT2/NOT3/NOT4 locks",
-              all(value != 0xFF for value in chord_values), str(chord_values))
+        check("VOIC 4 NOTE fills add NOTE2/NOTE3/NOTE4 locks",
+              len(chord_values) == 9 and all(value != 0xFF for value in chord_values), str(chord_values))
         note_vals = {
             flat: [u8(port, midi_lock_base + step * 32 + flat) for step in (0, 6, 11)]
             for flat in (0, 3, 4, 5)
         }
-        check("NOTE, NOT2, NOT3 and NOT4 locks are available on TRIG fills",
+        check("NOTE and MIDI parameter locks remain available on TRIG fills",
               note_dest_ok, f"hit-values={note_vals}")
+        # Refill existing four-note chords at each smaller voice count.
+        # Unused intervals must be 0xff (empty), not raw 0 (-64).
+        for voices in (2, 3, 1, 4):
+            poke32(port, sym("ef_dest"), 0)
+            poke32(port, sym("ef_depth"), 2)
+            poke8(port, midi_dep, 2)
+            poke32(port, local_sym("ef_tone_harm"), voices)
+            poke32(port, s.unlocked, 1)
+            poke32(port, s.ask, 0)
+            s.yes()
+            intervals = {
+                flat: [u8(port, midi_lock_base + step * 32 + flat)
+                       for step in (0, 6, 11)]
+                for flat in (3, 4, 5)
+            }
+            check(f"VOIC {voices} leaves unused MIDI voices empty",
+                  all(all(value == 0xff for value in values)
+                      if flat - 2 >= voices else
+                      all(value not in (0, 0xff) for value in values)
+                      for flat, values in intervals.items()), str(intervals))
+            check(f"VOIC {voices} mirrors all generated and cleared intervals",
+                  all(u8(port, 0x1001614E + u8(port, UI_PTN) * PTN_STR
+                         + 0x4900 + step * 32 + flat) ==
+                      u8(port, midi_lock_base + step * 32 + flat)
+                      for step in (0, 6, 11) for flat in (3, 4, 5)))
+
         mirror = 0x1001614E + u8(port, UI_PTN) * PTN_STR + 0x48D0
         check("MIDI note-trig mask reaches the battery mirror",
               port.peek(mirror, 8) == midi_bytes)

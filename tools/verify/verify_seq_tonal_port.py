@@ -97,9 +97,19 @@ def main() -> int:
                 p.run(250)
             tone_mem = seq.local_sym("ef_tone_mem")
             midi_record = tone_mem + 64
-            check("MIDI tonal controls persist scale/root/ARP/range",
-                  p.peek(midi_record, 6) == bytes((1, 2, 2, 0, 0, 0)),
-                  p.peek(midi_record, 6).hex())
+            check("MIDI tonal controls persist scale/root/VOIC/range",
+                  p.peek(midi_record, 7) == bytes((1, 2, 0, 0, 0, 3, 0)),
+                  p.peek(midi_record, 7).hex())
+            p.proc.command("knob 0x32 -127", "ok")
+            p.run(250)
+            check("MIDI VOIC stops at one when turned below minimum",
+                  p.long(seq.local_sym("ef_tone_harm")) == 1)
+            p.proc.command("knob 0x32 127", "ok")
+            p.run(250)
+            check("MIDI VOIC stops at four when turned above maximum",
+                  p.long(seq.local_sym("ef_tone_harm")) == 4)
+            p.proc.command("knob 0x32 -1", "ok")
+            p.run(250)
             s.close_seq()
             s.open_seq("t2")
             check("MIDI tonal settings are isolated per track",
@@ -112,7 +122,8 @@ def main() -> int:
             check("reopening MIDI T1 restores tonal settings",
                   p.long(seq.local_sym("ef_tone_scale")) == 1
                   and p.long(seq.local_sym("ef_tone_root")) == 2
-                  and p.long(seq.local_sym("ef_tone_mode")) == 2
+                  and p.long(seq.local_sym("ef_tone_mode")) == 0
+                  and p.long(seq.local_sym("ef_tone_harm")) == 3
                   and p.long(seq.local_sym("ef_tone_range")) == 0)
 
             s.close_seq()

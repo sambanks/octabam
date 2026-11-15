@@ -91,19 +91,21 @@ SEQ keeps these scale settings separate from the PROJECT SCALE QUANTIZER.
 |---|---|---|
 | **A** | **SCAL** | MAJ, MIN, PENT, DOR, PHR, MIX, WHOL or CHRO |
 | **B** | **ROOT** | Root note C through B |
-| **C** | **MODE** | MIDI: MELO, CHRD or ARP. Audio: MELO or ARP |
+| **C** | **VOIC** | MIDI: 1-4 notes. Audio: **MODE**, MELO or ARP |
 | **D** | **RANG** | Pitch radius around the Part pitch, from unison to four octaves |
-| **E** | **PHRS** | UP, DOWN, ALT, TRI or WAVE; shapes MIDI melody/ARP and audio melody |
-| **F** | **HARM** / **INTV** | MIDI HARM enables the seventh chord tone. Audio INTV transposes its PTCH line by a scale degree, unison through seventh. |
+| **E** | **PHRS** | UP, DOWN, ALT, TRI or WAVE; shapes MIDI notes and audio melody |
+| **F** | **CHRD** / **INTV** | MIDI CHRD selects one of FM SYNTH's chord types and inversion. Audio INTV transposes its PTCH line by a scale degree, unison through seventh. |
 
 Audio INTV applies when RANG is above zero. At RANG 0, PTCH follows the Part
 value. Set different intervals on separate audio tracks to play a harmony.
 The tonal page has not yet been confirmed on hardware.
 
-In MIDI ARP mode, notes walk the selected scale from the Part NOTE; PHRS
-sets the direction or pattern. Audio ARP mode walks upward through the
-available scale pitches. RANG sets the pitch radius for melody generation
-and audio PTCH variation; MIDI ARP uses scale degrees from the Part NOTE.
+MIDI **VOIC** 1 writes one note. Higher values add notes from the selected
+**CHRD** shape. Filling with **VOIC** 1 clears the NOT2, NOT3 and NOT4 locks on
+hit trigs, clearing extra voices left by an earlier chord fill. The
+Octatrack MIDI arpeggiator can play the generated notes when enabled on that
+track. Audio ARP mode walks upward through the available scale pitches.
+**RANG** sets the pitch radius for melody generation and audio PTCH variation.
 
 ## Writing the pattern
 
@@ -159,13 +161,12 @@ patterns keep their data.
 
 ## MIDI tracks
 
-On MIDI tracks, **D** selects **NOTE**, **VEL**, **LEN**, **NOT2**, **NOT3**,
-**NOT4**, LFO and ARP parameters, pitch bend, channel pressure, and **CC1**
+On MIDI tracks, **D** selects **NOTE**, **VEL**, **LEN**, LFO and ARP parameters, pitch bend, channel pressure, and **CC1**
 through **CC10**. Each destination has its own **DPTH** and PLCK rhythm.
 MIDI SEQ settings save separately from audio SEQ settings.
 
-**NOTE** is the main pitch. **NOT2**, **NOT3** and **NOT4** add voices at
-semitone offsets from NOTE. **DPTH** varies each destination around its value
+**NOTE** is the main pitch. **VOIC** and **CHRD** generate **NOT2**, **NOT3**
+and **NOT4** together with NOTE. **DPTH** varies each destination around its value
 in the playing Part when you write. The resulting locks store those values.
 Changing the Part later does not change existing locks. Set the Part value
 first, then write each destination that should use it.
@@ -236,12 +237,11 @@ the selected destination's locks.
 
 ### Write a MIDI chord
 
-For voices centered on C3, E3 and G3, set the MIDI Part's **NOTE** to C3,
-**NOT2** to +4 and **NOT3** to +7. In SEQ, choose **LANE** = **TRIG**,
-**D** = **NOTE**, set **PULS** and a nonzero **DPTH**, then press **`[YES]`**.
-This writes note trigs and NOTE locks. Select **NOT2**, set its **DPTH**
-above 0, and press **`[YES]`** to write its locks on the same steps. Repeat
-for **NOT3**. Each destination needs its own fill and nonzero **DPTH**.
+Set the MIDI Part's **NOTE** to C3. In SEQ, select **TRIG**, choose
+**NOTE** with **D**, and set **PULS** and a nonzero **DPTH**.
+Press **`[RIGHT]`**, set **VOIC** to 3, **CHRD** to MAJ0 and **RANG** to 0.
+Press **`[YES]`** to write C3, E3 and G3 on each hit. Set **VOIC** to 1
+and fill again to replace those chords with single notes.
 
 Changing **D** alone does not write locks. If note trigs already exist,
 changing TRIG **PULS**, **ROT** or tapping **`[CUE]`** opens the confirmation

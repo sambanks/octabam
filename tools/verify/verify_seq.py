@@ -311,12 +311,12 @@ def check_ui(src: str) -> None:
           re.search(r"\.set\s+SLOT_B,\s*28\b", src) is not None)
     check("ef_bank has 8 slots",
           re.search(r"ef_bank:\s*\n\s*\.rept\s+8\b", src) is not None)
-    check("per-DEST depth + audio/MIDI PLOCK recipes and tonal state in euclid.work v8",
+    check("per-DEST depth + audio/MIDI PLOCK recipes and tonal state in euclid.work v9",
           "ef_dep_mem:" in src and "ef_dep_load:" in src and "ef_dep_save:" in src
           and "ef_plk_mem:" in src and "ef_plk_load:" in src and "ef_plk_save:" in src
           and "ef_lane_mem:" in src and "ef_lane_load:" in src and "ef_lane_save:" in src
           and "ef_plk_expand_v3:" in src
-          and re.search(r"\.set\s+EF_VER,\s*8\b", src) is not None
+          and re.search(r"\.set\s+EF_VER,\s*9\b", src) is not None
           and "EF_FILE_V4" in src and "el_v4:" in src
           and "EF_FILE_V5" in src and "el_v5:" in src
           and "ef_midi_bank" in src and "ef_midi_dep_mem" in src

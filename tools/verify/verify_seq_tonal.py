@@ -115,12 +115,12 @@ def main() -> int:
         check("scale degrees resolve unison through seventh",
               offsets == [0, 2, 4, 5, 7, 9, 11])
         arp = [60 + degree_interval(major, d) for d in range(1, 8)]
-        check("MIDI ARP walks the selected scale from Part NOTE",
+        check("scale degree helper remains available to audio pitch generation",
               arp == [60, 62, 64, 65, 67, 69, 71]
               and all(on_scale(n, 0, major) for n in arp))
         chord = offsets[2], offsets[4], offsets[6]
         interval_map = [degree_interval(major, d) for d in range(1, 8)]
-        check("CHRD adds scale thirds/fifths and optional seventh",
+        check("legacy scale intervals are still calculated for audio INTV",
               chord == (4, 7, 11) and interval_map[:3] == [0, 2, 4])
         check("audio INTV selects unison through seventh scale degrees",
               interval_map == [0, 2, 4, 5, 7, 9, 11])
@@ -146,13 +146,20 @@ def main() -> int:
           and "ef_tone_harm" in block(src, "ef_tonal_nudge:", "ef_grid:"))
     check("numeric tonal cells restore their index after SPRINTF",
           "movel   ef_tonal_index,%d0     | SPRINTF returns its character count" in src)
-    check("MIDI MELO honors phrase rank and MIDI ARP uses scale degrees",
+    check("MIDI MONO pitch generation uses phrase rank and range",
           "ef_pitch_rank" in tonal and "ef_tone_range" in tonal
           and "ewmp_arp:" in tonal and "ef_degree_interval" in tonal
           and "ef_tonal_index" in tonal and "ef_tonal_value" in tonal)
-    check("MIDI chord mode writes NOT2/NOT3 and optional NOT4",
-          "ef_midi_chord_locks:" in src and "ef_degree_interval" in src
-          and "ef_tone_harm" in block(src, "ef_midi_chord_locks:", "ef_midi_clear_chord_locks:"))
+    chord_table = block(src, "ef_chord_shapes:", "ef_scale_masks:")
+    chord_names = block(src, "ef_chord_names:", "ef_scale_masks:")
+    check("MIDI VOIC uses all 31 FM SYNTH chord shapes",
+          len(re.findall(r"CH_[A-Z0-9]+", chord_names)) == 31
+          and "ef_chord_shapes" in src and "ef_tone_style" in block(src, "ef_midi_chord_locks:", "ef_midi_clear_chord_locks:")
+          and "0,10,14,4" in chord_table)
+    check("MIDI VOIC 1 clears NOT2..NOT4 and higher counts write shape tones",
+          "bsr.w   ef_midi_chord_locks" in block(src, "ewmp_arp:", "ef_midi_chord_locks:")
+          and "ef_tone_harm" in block(src, "ef_midi_chord_locks:", "ef_midi_clear_chord_locks:")
+          and "moveq   #-1,%d0" in block(src, "ef_midi_chord_locks:", "ef_midi_clear_chord_locks:"))
     check("MIDI pitch and chord helpers preserve the fill pulse count",
           "movem.l %d4-%d7,%sp@" in tonal
           and "movem.l %sp@,%d4-%d7" in tonal
@@ -167,11 +174,11 @@ def main() -> int:
     check("audio INTV shifts PTCH before scale filtering",
           "ef_pitch_offset" in ptch and "ef_degree_interval" in ptch
           and "ep_dst: addl    ef_pitch_offset" in ptch)
-    check("tonal settings persist per audio and MIDI track with v7 migration",
+    check("tonal settings persist per audio and MIDI track with v8 migration",
           "EF_TONE_B, 16*EF_TONE_REC" in src
-          and "EF_VER,    8" in src and "ef_tone_addr:" in src
+          and "EF_VER,    9" in src and "ef_tone_addr:" in src
           and "addil   #8,%d0" in block(src, "ef_tone_addr:", "ef_tone_save:")
-          and "ef_tone_defaults" in block(src, "el_v7:", "el_v6:"))
+          and "el_v8:" in src and "TON_STYLE" in block(src, "el_v8:", "el_v7:"))
     check("32-bit working values save their low byte to the tonal record",
           all(f"movel   ef_tone_{field},%d1" in save
               for field in ("scale", "root", "mode", "range", "phrase", "harm", "style")))

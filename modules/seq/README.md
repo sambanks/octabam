@@ -11,7 +11,7 @@ SEQ, LEN at bottom right, a stock 3×2 grid, and a 4×16 step grid (hollow / sol
 all ≤64 steps. **`[LEFT]`** / **`[RIGHT]`** switch two knob pages; the step grid
 stays visible. Page **1/2** has A=PULS B=ROT C=LANE / D=DEST E=DPTH;
 **F** is empty. Page **2/2** has A=SCAL B=ROOT C=MODE / D=RANG E=PHRS
-F=HARM on MIDI or INTV on audio. The page count sits at the top-right of the
+F=CHRD on MIDI or INTV on audio. MIDI C is VOIC 1-4. The page count sits at the top-right of the
 SEQ logo panel.
 **LANE**
 selects whether A/B and the grid edit the **TRIG** rhythm or the **PLOCK**
@@ -149,30 +149,37 @@ Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md).
 
 The tonal page applies to audio and MIDI tracks. **SCAL** selects MAJ, MIN,
 PENT, DOR, PHR, MIX, WHOL or CHRO; **ROOT** selects C through B. **MODE** is
-MELO, CHRD or ARP on MIDI and MELO or ARP on audio. **RANG** controls the
-pitch radius around the Part value, from unison to four octaves, and **PHRS** selects
-UP, DOWN, ALT, TRI or WAVE. MIDI melody and ARP use PHRS; audio ARP rises
-through the available scale notes. MIDI **HARM** adds the seventh chord tone
-in chord mode. Audio **INTV** transposes the generated PTCH line by a scale
+MELO or ARP on audio. On MIDI, **VOIC** selects one to four notes and **CHRD**
+selects one of the FM SYNTH chord types and its inversion. **RANG** controls
+the pitch radius around the Part value, from unison to four octaves, and
+**PHRS** selects UP, DOWN, ALT, TRI or WAVE. Audio ARP rises through the
+available scale notes. MIDI **VOIC** 1 writes one note. Higher values add
+notes from **CHRD**. Filling with **VOIC** 1 clears NOT2, NOT3 and NOT4 on
+hit trigs. The Octatrack MIDI arp can play the generated notes when enabled
+on that track. Audio **INTV** transposes the generated PTCH line by a scale
 degree (unison through seventh), so separate tracks can form a harmony.
 Audio interval only applies when **RANG** is nonzero; at RANG 0, PTCH follows
 the Part value.
 
-These new tonal controls have not yet been confirmed on hardware.
+SEQ 82 was copied to the author's MKII card on 15 Nov 2026. The author
+reported that VOIC 2 displayed -64 in unused NOTE3/4 slots. This tip clears
+those locks to empty; the fix passes the port scenarios and awaits a unit retest.
+The report confirms the controls were exercised, not complete audio validation.
 
 MIDI mode has separate TRIG/PLOCK rhythms, per-destination depth and
-settings stored in `euclid.work` version 8. The reader migrates earlier
+settings stored in `euclid.work` version 9. The reader migrates earlier
 versions. The Part page-1 read window is registered with STORE;
 `store_part_midi_context` selects the playing MIDI Part independently of
 the audio engine and UI selection. All MIDI writes update the bank and
 its CS1 mirror.
 
-**D** selects NOTE, VEL, LEN, NOT2-4, LFO, ARP, pitch bend, channel
+**D** selects NOTE, VEL, LEN, LFO, ARP, pitch bend, channel
 pressure or CC1-10. **E** varies that parameter around its Part value.
 TRIG rewrites the note mask and selected destination only. PLOCK keeps
 the note mask and uses that destination's own rhythm. Other destinations
 retain their stored locks, including when the note rhythm changes.
-NOTE is an absolute MIDI pitch; NOT2-4 are intervals from it.
+NOTE is an absolute MIDI pitch. VOIC and CHRD generate NOT2-4 as intervals
+from NOTE; these secondary notes are omitted from the destination chooser.
 
 With existing trigs, confirmation **`[YES]`** unlocks the pending MIDI
 encoder or CUE edit in the preview. A second explicit **`[YES]`** writes
