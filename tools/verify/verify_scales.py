@@ -751,10 +751,10 @@ def persist(out, image, card, lib, alib):
 
     audio = (36, 7)                       # bank 1 Part 1's audio scale, written with the pick
 
-    def boot(tag, card_, script, card_out, extra=""):
+    def boot(tag, card_, script, card_out, extra="", watch=""):
         cmd = [ROOT / "out/emu/ot_emu", "--image", image, "--card", card_, "--set", "SCSET",
                "--project", "SCPRJ", "--load-ms", "90000", "--mkii", "--live-script", script,
-               "--poke", modes + extra, "--mem-dump",
+               "--poke", modes + extra, *(["--watch-mem", watch] if watch else []), "--mem-dump",
                f"{lib:#x},{0x200}={d / (tag + '.lib')};{LIVE:#x},{0x24}={d / (tag + '.live')};"
                f"{alib:#x},{128}={d / (tag + '.alib')}"]
         if card_out:
@@ -797,11 +797,14 @@ def persist(out, image, card, lib, alib):
     subprocess.run([str(ROOT / ".venv/bin/python3"), "tools/emu/ot_emu/stage_card.py", str(v1), "SCSET", "SCPRJ",
                     "--out", str(card1), "--tree", str(out / "v1-tree")], cwd=ROOT,
                    stdout=subprocess.DEVNULL, check=True)
-    rc = boot("v1", card1, d / "idle.script", False, f";{alib:#x}=9;{alib + 1:#x}=9")  # alib poked: the read must clear it
+    # The poke options all land after the load, so a poked sc_alib cannot show the read clearing it:
+    # the watch shows the load itself writing zeros into the first entry (the bank copy), and it ends zero.
+    rc = boot("v1", card1, d / "idle.script", False, watch=f"{alib:#x},2")
     v1_lib, v1_alib = (d / "v1.lib").read_bytes(), (d / "v1.alib").read_bytes()
-    if rc or v1_lib[0] != 47 or v1_lib[40] != 5 or any(v1_alib):
+    wrote = re.findall(rf"\[{alib:#x}\] <- 0 \(4\) at pc", (d / "v1.txt").read_text())
+    if rc or v1_lib[0] != 47 or v1_lib[40] != 5 or any(v1_alib) or not wrote:
         bad.append(f"version 1 file: exited {rc}, sc_lib[0] {v1_lib[0]} (47), sc_lib[40] {v1_lib[40]} (5), "
-                   f"sc_alib {v1_alib[:4].hex()} (zeros)")
+                   f"sc_alib {v1_alib[:4].hex()} (zeros), {len(wrote)} load writes to sc_alib (want some)")
     print(f"  [{'FAIL' if bad else 'PASS'}] verify_scales: scales.work, MKII (SAVE PROJECT writes .work and "
           f".strd with the ID and the audio scale; the saved card boots them back; a version 1 file reads with "
           f"the audio scales OFF; no save, no file)")
