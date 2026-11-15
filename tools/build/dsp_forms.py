@@ -79,11 +79,21 @@ def register_rows(path=CHIP):
     return rows
 
 
+def assemble_text(src):
+    """(hex words string, error) of source text assembled at P:$800."""
+    return _assemble(src)
+
+
 def assemble_words(src_path, subst=None):
     """(hex words string, error) of a module source assembled at P:$800, a payload's DspSection.subst applied."""
-    src = pathlib.Path(src_path).read_text().replace("$fab1e0", "$000400").replace("$fab2e0", "$000400")
+    src = pathlib.Path(src_path).read_text()
     for k, v in (subst or {}).items():
         src = src.replace(k, v)
+    return _assemble(src)
+
+
+def _assemble(src):
+    src = src.replace("$fab1e0", "$000400").replace("$fab2e0", "$000400")
     with tempfile.TemporaryDirectory(prefix="dspforms.") as d:
         d = pathlib.Path(d)
         (d / "s.asm").write_text(src)
@@ -98,6 +108,7 @@ def assemble_words(src_path, subst=None):
 def census(remix):
     sys.path.insert(0, str(ROOT / "tools"))
     from remix import registry
+    from remix.schema import best
     stock = stock_forms([ROOT / "out/dsp/payload_A.asm", ROOT / "out/dsp/payload_B.asm"])
     rows = register_rows()
     out = {}
@@ -121,7 +132,8 @@ def census(remix):
             continue
         new = {f: ex.split(";")[0].strip() for f, ex in mine.items() if f not in stock}
         used |= set(new)
-        out[m.key] = {"source": d.asm, "status": "listing", "forms": len(mine), "payloads": sorted(d.payloads),
+        ev = best(m.evidence)
+        out[m.key] = {"source": d.asm, "status": "listing", "forms": len(mine), "level": ev.level.name if ev else None, "payloads": sorted(d.payloads),
                       "no_stock_site": {f: {"example": ex, "row": f in rows} for f, ex in sorted(new.items())}}
     return out, sorted(set(rows) - used)
 
