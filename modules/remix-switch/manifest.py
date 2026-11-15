@@ -60,11 +60,14 @@ MODULE = Module(
     key="REMIX SWITCH",
     kind=Kind.HYBRID,
     category=Category.UTILITIES, author="sanderlegit", author_url="https://github.com/sanderlegit",
-    evidence=(Evidence(Level.UNIT, unit="MKII", image="OCTABAM14", date="2026-09-29",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", image="OCTABAM14", date="2026-09-29",
         note="(OCTABAM14 with BOOT TRACE): switched to its own image and to stock 1.40C, audio and play working; "
              "and with the park moved into the dead vector run (BSRETVEC) booted, played and switched away again "
              "-- 40 region words down to 18; `verify_remix_switch`. The list in BRAIN's pane and /BRAIN/REMIXES/ "
-             "(8 Oct 2026), and the persisted selection (#743): under the port only"),),
+             "(8 Oct 2026), and the persisted selection (#743): under the port only"),
+        Evidence(Level.UNIT, unit="MKII", who="sambanks", image="N1", date="2026-11-15", ref="#1101",
+                 note="REMOTE's COMMAND 3 booted /BRAIN/REMIXES files through the YES path: 9 of 10 boots returned in "
+                      "7 to 8 s; the saved selection booted at the next power-up (a double boot)")),
     doc="MAIN MENU > BRAIN lists the raw OS images (.RMX) in /BRAIN/REMIXES/ and boots the one "
         "picked without writing the flash; remembers the choice across reboots.",
     store=Store("octabam.remix-switch"),
