@@ -1,11 +1,11 @@
-"""octabam -- the core ColdFire modules, every other ColdFire module that fits, all 14 stock effects, and MODULATION, SPECTRUM, CHARACTER and SHATTER loaded on demand, with COMPRESSOR's side-chain (SIDECHAIN_COMPRESSOR) loaded the same way. TRANSIENT and DISTORX are not in this remix."""
+"""octabam -- the core ColdFire modules, SCOPE and TUNER, every other ColdFire module that fits, all 14 stock effects, and MODULATION, SPECTRUM, CHARACTER and SHATTER loaded on demand, with COMPRESSOR's side-chain (SIDECHAIN_COMPRESSOR) loaded the same way. TRANSIENT and DISTORX are not in this remix."""
 from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
         "RECORDER LOOP FIX", "BATCH_BUGFIXES", "ERASE_EMPTY_TRIGLESS_LOCKS",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES", "PATTERN MUTE",
-        "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
+        "SCALE QUANTIZER", "TUNER", "SCOPE", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
         "LOAD METER", "FRAME GUARD", "REMOTE")
 # COMPRESSOR's row is SIDECHAIN_COMPRESSOR's: stock COMPRESSOR with a side-chain KEY on page 2, its DSP
@@ -22,7 +22,7 @@ OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER")
 # CF METER IDLE and WAVE LOAD (CF METER's FX2 id is MODULATION's),
 # MIDI LOOPBACK (MIDI SCENES), DIRECT JUMP and PERSISTENT BUFFERS (DIRECT_JUMP_KYOTI and BUFFER
 # SAVER do their jobs), and the bus and diagnostic modules (TEMPO SYNC, TEMPO BUS, RIG HOSTS, BOOT TRACE).
-# STEM REC, SCOPE, MIDI SCALES and RND NAME are omitted: images with them left program changes
+# STEM REC, MIDI SCALES and RND NAME are omitted: images with them left program changes
 # unapplied in a loader soak (2 to 5 of 32 transitions; none in the images without them) on Sam's MKII, 1 Nov 2026.
 # FX2 LOCK is not here: it makes the FX2 chooser's YES close without selecting, and this remix has no engine to lock to a track.
 # Added 7 Nov 2026 (each builds beside the rest; not yet soaked here): CHORDS FACTORY with PAGES, the page
@@ -41,7 +41,7 @@ REMIX = Remix(
              "watch, fx01-fx03 (74 layouts, no crash), loader01-02, kits-identity, scenes-sweep, scenes-latency, "
              "djump-off/on/burst; mix-soak and the manual plan not run (docs/contributing/HARDWARE_SUITE.md). With"
              " it: not flashed"),),
-    doc="The core ColdFire modules and every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain.",
+    doc="The core ColdFire modules, SCOPE and TUNER, every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE",
                      "KEYBUS", "SC KEYBUS BRIDGE") + STOCK14 + OURS
             + COLDFIRE,
