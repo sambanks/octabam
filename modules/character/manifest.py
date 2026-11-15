@@ -59,7 +59,9 @@ MODULE = Module(
     key="CHARACTER",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
-    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks"),),
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-11-15",
+                       note="loaded as a demand effect in octabam during the 15 Nov 2026 mixed-walk runs (12 of 12 without a stall, "
+                  "251 loads; #1100)"),),
     doc="FX1 station: fold, saturation, tilt, compressor, width.",
     menu=MenuEntry(
         fx2_id=0x17,

@@ -70,7 +70,9 @@ MODULE = Module(
     key="SPECTRUM",
     kind=Kind.HYBRID,                 # the engine + SHPE's display formatter
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
-    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks"),),
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-11-15",
+                       note="loaded as a demand effect in octabam during the 15 Nov 2026 mixed-walk runs (12 of 12 without a stall, "
+                  "251 loads; #1100)"),),
     doc="FX1 station: a filter pedal -- the Moog ladder, SEM (LP -> BP -> HP by SHPE), Airwindows Capacitor2, formants; ENV and LFO onto the cutoff; width.",
     menu=MenuEntry(
         fx2_id=0x0f,
