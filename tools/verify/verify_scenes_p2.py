@@ -9,7 +9,10 @@ Stages a disposable project copy and boots the remix's image in `ot_emu`.
 For EUCLID compositions the fixture selects RATE/MIX on T1, sets unclamped
 knob values, enables scenes and starts T1 on step 1; a MIDI-only template
 otherwise leaves the audio track's playing-Part pointer unset during the
-120-frame probe. Other remixes retain the MODE/TIME fixture below.
+120-frame probe. A remix without the bus (RIG HOSTS puts its DELAY on T1,
+whose page 2 holds MODE and TIME) does the same with an effect of its own
+that has a page-2 MODE and value (MODULATION's MODE and TONE in octabam):
+on stock DELAY, T1's default, the cells reach nothing.
 
 The checks are:
 
@@ -28,7 +31,7 @@ The checks are:
           needs the machine as it was after the load: the port loads once
           and forks one child per run (`ot_emu --scenario`), the editor
           pass a fourth.
-  editor  calls the FX2 page-2 editor `0x4003a9dc(5, 2 ticks)` on T1 with
+  editor  calls the FX2 page-2 editor `0x4003a9dc(value slot, 2 ticks)` on T1 with
           scene A held (0x460d169c = 1): the Part byte and the live lane
           must not move; scene 0's cells in the Part DB's part-0 window
           and its SRAM twin must hold one lock (track 0, FX2 slot 5) whose
@@ -153,11 +156,29 @@ def main():
     # whose page-two MODE/TIME layout this gate originally assumed. Select
     # its real RATE/MIX pair in the disposable copy: a stepped selector and
     # a continuous value exercise the same snap/interpolation contract.
-    select_slot, select_name, value_name = 0, "MODE", "TIME"
+    select_slot, select_name, value_slot, value_name = 0, "MODE", 5, "TIME"
+    # Without the bus's DELAY on T1 (RIG HOSTS wires a new project so) and without EUCLID, T1's FX2 is stock DELAY,
+    # which has no page 2: the cells reached nothing and the records of all three runs were equal (octabam, a
+    # generated project, 15 Nov 2026, the first run CI gave this gate a project: sambanks/octabam#1051). Put an
+    # effect of the remix with a page-2 MODE and a page-2 value on T1 instead.
+    fixture = None
+    bound = registry.bound(remix)
     if "EUCLID" in remix.modules:
+        fixture = (bound["EUCLID"], "RATE", 1, "MIX", 5, {"RATE": 0, "MIX": 64})
+    elif "RIG HOSTS" not in remix.modules:
+        for key in ("MODULATION", "SPECTRUM", "SHATTER", "VERBERATION"):
+            m = bound.get(key)
+            if key not in remix.modules or m is None or getattr(m, "mode_slot", None) != 6 or m.menu.fx2_id is None:
+                continue
+            named = [(i - 6, p.name.decode()) for i, p in enumerate(m.params) if i > 6 and p.name]
+            if named:
+                v_slot, v_name = named[0]
+                fixture = (m, "MODE", 0, v_name, v_slot, {"MODE": 0, v_name: 64})
+                break
+    if fixture is not None:
         from hw import ot_project as otp
-        effect = registry.bound(remix)["EUCLID"]
-        defaults = otp.module_defaults(effect, {"RATE": 0, "MIX": 64})
+        effect, select_name, select_slot, value_name, value_slot, knobs = fixture
+        defaults = otp.module_defaults(effect, knobs)
         otp.set_fx(copy, "fx2", 1, str(effect.menu.fx2_id),
                    page=defaults[:6], page2=defaults[6:], guard=False)
         # The 120-frame probe ends before step 2 at 120 BPM. Activate T1
@@ -167,10 +188,9 @@ def main():
             def activate(data):
                 data[otp.trac_off(0, 0) + 7] |= 1
             otp._bank_write(copy, int(bank_file.stem[4:]), activate, guard=False)
-        select_slot, select_name, value_name = 1, "RATE", "MIX"
         project_file = copy / "project.work"
         project_file.write_bytes(re.sub(rb"(SCENE_[AB]_MUTE=)1", rb"\g<1>0", project_file.read_bytes()))
-    select_byte = 48 + select_slot
+    select_byte, value_byte = 48 + select_slot, 48 + value_slot
     card = OUT / "card.img"
     r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
                         "--tree", str(OUT / "tree"), "--out", str(card)], cwd=ROOT, capture_output=True, text=True)
@@ -189,7 +209,7 @@ def main():
     # the cells (key = track<<4 | fx1<<3 | slot2): scene 0 / T1 / FX2 slot 5
     # (TIME) = 100 and slot 0 (MODE) = 1, scene 1 / T1 / slot 5 = 20 -- in
     # part 0 of every bank (the playing bank is the saved one, not bank 0)
-    cells = {(0, 0): (0x05, 100), (1, 0): (0x05, 20), (0, 3): (select_slot, 1)}
+    cells = {(0, 0): (value_slot, 100), (1, 0): (value_slot, 20), (0, 3): (select_slot, 1)}
 
     def frames(tag, cells, xf):
         """One frame run as a scenario: (log, args, dump)."""
@@ -227,14 +247,14 @@ def main():
         steps = []
         for seed in SEEDS:
             pokes = early
-            seeded = ({(0, 0): (0x05, seed)} if isinstance(seed, int) else {(0, 0): (0x05, 50)} if seed == "func"
+            seeded = ({(0, 0): (value_slot, seed)} if isinstance(seed, int) else {(0, 0): (value_slot, 50)} if seed == "func"
                       else FULL if seed == "full" else {})
             pokes += f";{KFUNC_ROW:#x}={0x20 if seed == 'func' else 0}"
             for b in range(16):
                 pk = cell_pokes(BLOB + b * BANK_STRIDE, seeded)
                 if pk:
                     pokes += ";" + ";".join(pk)
-            steps += ["--step", f"-:poke:{pokes}", "--step", f"-:call:{FX2_EDITOR:#x},5,2",
+            steps += ["--step", f"-:poke:{pokes}", "--step", f"-:call:{FX2_EDITOR:#x},{value_slot},2",
                       "--step", f"-:dump:{dumps_for(seed)[1]}"]
         return OUT / "editor.txt", steps
 
@@ -314,7 +334,8 @@ def main():
         for ping, r in enumerate(recs[f"fader {xf}"]):
             check(f"fader {xf}: ping {ping} T1 {select_name} (record byte {select_byte}) = {r[select_byte]} (want {want_mode}: {why})",
                   r[select_byte] == want_mode)
-            check(f"fader {xf}: ping {ping} T1 {value_name} (hw 26 lo) = {r[53]} (want {want_time})", r[53] == want_time)
+            check(f"fader {xf}: ping {ping} T1 {value_name} (record byte {value_byte}) = {r[value_byte]} (want {want_time})",
+                  r[value_byte] == want_time)
 
     # ---- the editor's checks ------------------------------------------------
     check(f"editor: all {len(SEEDS)} calls returned", editor_text.count("returned, d0") == len(SEEDS))
@@ -326,24 +347,24 @@ def main():
         sram = cells_of((d / "scene_sram.bin").read_bytes())
         lane = (d / "lane.bin").read_bytes()
         part = (d / f"p2_{bank}.bin").read_bytes()
-        knob = part[5]
+        knob = part[value_slot]
         if seed == "full":
             want = [FULL[(0, c)] for c in range(8)]
             check(f"editor (seed full): eight locks held, the turn dropped ({got})", got == want)
-            check(f"editor (seed full): the Part byte ({knob}) and the lane ({lane[5]}) did not take the turn",
-                  knob == lane[5])
+            check(f"editor (seed full): the Part byte ({knob}) and the lane ({lane[value_slot]}) did not take the turn",
+                  knob == lane[value_slot])
             continue
         check(f"editor (seed {seed}): the SRAM twin's scene 0 cells match bank {bank}'s part 0", sram == got)
         if seed == "func":
             check(f"editor (seed func): FUNCTION + turn removed the lock ({got[0]})", got[0][0] & 0x80 and
                   got[1:] == [EMPTY] * 7)
             continue
-        check(f"editor (seed {seed}): cell 0 = T1 FX2 slot 5 ({got[0][0]:#04x}), cells 1-7 empty",
-              got[0][0] == 0x05 and got[1:] == [EMPTY] * 7)
+        check(f"editor (seed {seed}): cell 0 = T1 FX2 slot {value_slot} ({got[0][0]:#04x}), cells 1-7 empty",
+              got[0][0] == value_slot and got[1:] == [EMPTY] * 7)
         start = seed if seed is not None else knob
         check(f"editor (seed {seed}): value {got[0][1]} moved up from {start} by the ticks", start < got[0][1] <= start + 4)
-        check(f"editor (seed {seed}): the Part byte ({knob}) and the lane ({lane[5]}) did not take the turn",
-              knob == lane[5] and knob != got[0][1])
+        check(f"editor (seed {seed}): the Part byte ({knob}) and the lane ({lane[value_slot]}) did not take the turn",
+              knob == lane[value_slot] and knob != got[0][1])
 
     # ---- copy and paste -------------------------------------------------------
     ptext = plog.read_text()
