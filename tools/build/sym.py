@@ -7,7 +7,8 @@
     sym.py --callers 0x40054cd8    xrefs to an address (needs the ghidra ingester; exit 2 without it)
     sym.py --resolve               filter: rewrites each 0x4xxxxxxx on stdin to `0x4xxxxxxx <name+0xoff>`
     sym.py --histogram [--top N]   every 0x4xxxxxxx on stdin counted per symbol and per owner (PC samples:
-                                   REMOTE's frame trace, ot_emu --profile)
+                                   REMOTE's frame trace; a line of only `addr count` counts `count` times:
+                                   ot_emu --profile's table, OT_PROFILE_ALL=FILE's dump)
     --json                         on every form (not --resolve)
     --space SPACE                  default cf; dspA:P, dspB:X, ...
 DSP addresses are not rewritten by --resolve (ambiguous without a space).
@@ -21,6 +22,19 @@ import sys
 
 DB = pathlib.Path(__file__).resolve().parents[2] / "out/symbols.sqlite"
 ADDR = re.compile(r"\b0x4[0-9a-fA-F]{7}\b")
+WEIGHTED = re.compile(r"^\s*(0x4[0-9a-fA-F]{7})\s+(\d+)\s*$")   # "addr count": OT_PROFILE_ALL, the --profile table
+
+
+def samples(lines):
+    """(address, weight) from text: a line that is only an address and a count counts that many times (the
+    port's profile tables), any other address on a line once."""
+    for line in lines:
+        m = WEIGHTED.match(line)
+        if m:
+            yield int(m.group(1), 16), int(m.group(2))
+        else:
+            for x in ADDR.findall(line):
+                yield int(x, 16), 1
 # --resolve rewrites only an exact address or one inside a symbol's size: a nearest-below symbol without a size is a guess.
 COLS = "space, addr, size, name, kind, owner, source, ref"
 
@@ -77,7 +91,8 @@ def histogram(db, addrs):
     looking, not the routine."""
     syms, owners, total, cache = {}, {}, 0, {}
     for a in addrs:
-        total += 1
+        a, w = a if isinstance(a, tuple) else (a, 1)
+        total += w
         if a not in cache:
             r = at(db, a)
             good = [x for x in r if x.get("covers", True)]
@@ -85,8 +100,8 @@ def histogram(db, addrs):
             cache[a] = ("(none)", "unknown") if pick is None else \
                 ((pick["name"], pick["owner"]) if good else (f"{a & ~0xff:#x}.. (below: {pick['name']})", "unknown"))
         name, owner = cache[a]
-        syms[name] = syms.get(name, 0) + 1
-        owners[owner] = owners.get(owner, 0) + 1
+        syms[name] = syms.get(name, 0) + w
+        owners[owner] = owners.get(owner, 0) + w
     order = lambda d: sorted(d.items(), key=lambda kv: (-kv[1], kv[0]))  # noqa: E731
     return {"samples": total, "owners": order(owners), "symbols": order(syms)}
 
@@ -110,7 +125,7 @@ def main():
             sys.stdout.write(resolve_line(db, line.rstrip("\n"), cache) + "\n")
         return 0
     if a.histogram:
-        out = histogram(db, (int(m, 16) for line in sys.stdin for m in ADDR.findall(line)))
+        out = histogram(db, samples(sys.stdin))
         if a.json:
             print(json.dumps(out, indent=1))
         else:

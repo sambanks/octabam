@@ -121,6 +121,19 @@ class Dispatch(unittest.TestCase):
         self.assertEqual(names[("dspA:X", 0x215)], "fx_init_table")
 
 
+class Weighted(unittest.TestCase):
+    def test_a_count_line_counts_that_many_times(self):
+        got = list(sym.samples(["   0x40001010     90487  ", "0x40001020 5", "pc 0x40001010 and 0x40001020 x9", "text"]))
+        self.assertEqual(got, [(0x40001010, 90487), (0x40001020, 5), (0x40001010, 1), (0x40001020, 1)])
+
+    def test_histogram_takes_weights(self):
+        with tempfile.TemporaryDirectory() as t:
+            db = make(pathlib.Path(t) / "s.sqlite")
+            h = sym.histogram(db, sym.samples(["0x40001010 7", "0x40001020 3"]))
+        self.assertEqual(h["samples"], 10)
+        self.assertEqual(dict(h["symbols"])["func_a"], 10)
+
+
 class Histogram(unittest.TestCase):
     def test_counts_per_symbol_and_owner(self):
         with tempfile.TemporaryDirectory() as t:
