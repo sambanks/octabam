@@ -6,10 +6,11 @@ Digitone II.
 The window shows the title **SEQ**, the rings icon, a stock 3x2 DATA ENTRY
 grid, a step grid (hollow = off, solid = on; up to 4 rows of 16 for length
 64), and **LEN** with the **pattern** step count at the bottom right. The
-top-right corner of the SEQ logo panel shows the active page number, **1/2**
-or **2/2**. This guide calls the pages **Rhythm** and **Harmony**. Press
-**`[LEFT]`** or **`[RIGHT]`** to switch between them. The step grid remains
-visible.
+top-right corner of the SEQ logo panel shows the active page hint. On the
+**Rhythm** page, select **PTCH** on an audio track or **NOTE** on a MIDI track
+to show **` 1>`** and enable **`[RIGHT]`**. Other destinations hide the hint
+and **`[RIGHT]`** leaves SEQ on Rhythm. On **Harmony**, **`<2 `** marks
+**`[LEFT]`** as the return key. The step grid remains visible.
 
 It writes **pattern** sequencer data. SEQ settings save with the
 **project** and bank. Audio tracks default to **AMP** / **VOL**. MIDI tracks

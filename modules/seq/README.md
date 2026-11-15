@@ -8,12 +8,14 @@ a dedicated window, not a PROJECT menu entry.
 
 Hold a **TRACK** key and press **PAGE**: SEQ opens for that track — title
 SEQ, LEN at bottom right, a stock 3×2 grid, and a 4×16 step grid (hollow / solid) for
-all ≤64 steps. **`[LEFT]`** / **`[RIGHT]`** switch between the **Rhythm** and
-**Harmony** pages; the step grid stays visible. Rhythm has A=PULS B=ROT
+all ≤64 steps. **`[LEFT]`** returns from **Harmony** to **Rhythm**. On Rhythm,
+select **PTCH** on audio or **NOTE** on MIDI to show **` 1>`** and enable
+**`[RIGHT]`**; other destinations hide the hint and keep the page on Rhythm.
+Harmony shows **`<2 `**. The step grid stays visible. Rhythm has A=PULS B=ROT
 C=LANE / D=DEST E=DPTH; **F** is empty. Harmony has A=SCAL B=ROOT /
 D=RANG E=PHRS.
-MIDI C is VOIC 1-4 and F is CHRD. Audio C and F are empty and inactive. The page count sits at the top-right of the
-SEQ logo panel.
+MIDI C is VOIC 1-4 and F is CHRD. Audio C and F are empty and inactive. The
+page hint sits at the top-right of the SEQ logo panel.
 **LANE**
 selects whether A/B and the grid edit the **TRIG** rhythm or the **PLOCK**
 rhythm for the current DEST. **YES** writes TRIG → sample-trig mask 0 and

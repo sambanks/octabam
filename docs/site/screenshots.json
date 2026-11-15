@@ -99,31 +99,31 @@
   "seq": {
     "panel": {
       "image": "seq/panel.png",
-      "caption": "SEQ Rhythm page (1/2): rings icon, PULS, ROT, LANE, page+param, DPTH, step grid and LEN.",
+      "caption": "SEQ Rhythm page with PTCH selected: PULS, ROT, LANE, DEST, DPTH, step grid and LEN.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"
+      "firmware_sha256": "3aab2128d8ced64fde5ef2e2ac47de6d92d717a58b6d40c0bc26f59b8ce104f2"
     },
     "clear": {
       "image": "seq/clear.png",
       "caption": "SEQ clear menu: CLEAR DEST, CLEAR ALL DEST, CLEAR ALL+TRIGS.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"
+      "firmware_sha256": "3aab2128d8ced64fde5ef2e2ac47de6d92d717a58b6d40c0bc26f59b8ce104f2"
     },
     "tonal": {
       "image": "seq/tonal.png",
-      "caption": "SEQ Harmony page (2/2) on audio: SCAL, ROOT, RANG and PHRS; C and F are empty.",
+      "caption": "SEQ Harmony page on audio: SCAL, ROOT, RANG and PHRS; C and F are empty.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"
+      "firmware_sha256": "3aab2128d8ced64fde5ef2e2ac47de6d92d717a58b6d40c0bc26f59b8ce104f2"
     },
     "midi-tonal": {
       "image": "seq/midi-tonal.png",
-      "caption": "SEQ Harmony page (2/2) on MIDI: SCAL, ROOT, VOIC, RANG, PHRS and CHRD.",
+      "caption": "SEQ Harmony page on MIDI: SCAL, ROOT, VOIC, RANG, PHRS and CHRD.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"
+      "firmware_sha256": "3aab2128d8ced64fde5ef2e2ac47de6d92d717a58b6d40c0bc26f59b8ce104f2"
     }
   },
   "rec-threshold": {
