@@ -651,6 +651,15 @@ class PlanJsonTests(unittest.TestCase):
         self.assertIn("check-remix slow-lfo (project)", units(""))       # an unscoped run reaches it
         self.assertEqual(list(units("KITS")), ["check-remix slow-lfo"])  # a change to another module: no project unit
 
+    def test_a_job_that_fails_as_a_project_unit_on_one_remix_is_left_out_there_only(self):
+        """#1127: plocks-p2 and mode-defaults fail on octabam-verbs with a generated project and pass elsewhere."""
+        verbs = {n for _, n in reach.project_gate_jobs("octabam-verbs")}
+        bus = {n for _, n in reach.project_gate_jobs("octabam-bus")}
+        for job in reach.PROJECT_GATE_SKIP["octabam-verbs"]:
+            self.assertNotIn(job, verbs)
+            self.assertIn(job, bus)
+        self.assertIn("verb-parts", verbs)                  # the others stay
+
     def test_a_remix_without_such_a_gate_stays_one_unit(self):
         items = [("check-remix", "python3 tools/verify/check_shards.py --jobs 3 not-a-remix", ["e"])]
         self.assertEqual([e["name"] for e in reach.entries(items, 3)], ["check-remix not-a-remix"])

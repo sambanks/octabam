@@ -1166,6 +1166,11 @@ SPLIT_SHARED_GATES = {"morph": ("MORPH", "tools/morph/test_morph.py"),
                       "octa303": ("OCTA303", "tools/octa303/sim/test_octa303.py")}
 
 
+# Jobs left out of one remix's `(project)` unit because they fail there with a generated project though they pass on
+# others (sambanks/octabam#1051): remix -> {job: issue}. They SKIP there as before. Remove an entry when fixed.
+PROJECT_GATE_SKIP = {"octabam-verbs": {"plocks-p2": "#1127", "mode-defaults": "#1127"}}
+
+
 def project_gate_jobs(remix_name):
     """[(module key, check_shards job)] of the remix's gates that SKIP without a project (`Gate.project`), the
     per-remix ones: a `once` gate runs in the shared half, which has no project (SPLIT_EXTRA_UNITS gives it a unit).
@@ -1178,10 +1183,10 @@ def project_gate_jobs(remix_name):
         selected = registry.selected(registry.remix(remix_name))
     except (KeyError, ValueError, FileNotFoundError, SystemExit):
         return []
-    out = []
+    out, left = [], PROJECT_GATE_SKIP.get(remix_name, {})
     for stage in ("isolated", "image"):
         out += [(key, module_gates.job_name(g)) for key, g in module_gates.collect(selected, stage, once=False)
-                if g.project]
+                if g.project and module_gates.job_name(g) not in left]
     return out
 
 

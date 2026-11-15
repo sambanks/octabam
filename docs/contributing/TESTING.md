@@ -207,7 +207,8 @@ dear={"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
   of a `once` gate, the first remix of the line otherwise). `test_reach` refuses a gate that has the SKIP line and no flag,
   except those with a unit of `reach.SPLIT_EXTRA_UNITS` (BRAIN, MIDI SCENES) and five that fail with a generated project (or, for
   `verify_cfmeter`, reach a remix where another gate fails) and are left unflagged until fixed: `verify_ids64_load` #1120,
-  `verify_dlload` #1075, `verify_cfmeter` #1124, `verify_kits` #1125, `verify_load_meter` #1126 (`KNOWN_RED` in `test_reach`) (sambanks/octabam#1051). A job that exited 0 with `[SKIP]` lines reads `ok, N SKIP` in `check_shards`'s table.
+  `verify_dlload` #1075, `verify_cfmeter` #1124, `verify_kits` #1125, `verify_load_meter` #1126 (`KNOWN_RED` in `test_reach`). A job that fails in one remix's `(project)` unit and passes in others is left out of that
+  unit only (`reach.PROJECT_GATE_SKIP`: `plocks-p2` and `mode-defaults` on `octabam-verbs`, #1127) (sambanks/octabam#1051). A job that exited 0 with `[SKIP]` lines reads `ok, N SKIP` in `check_shards`'s table.
 - `once=True` (with `remix_arg=True`, isolated): the gate checks the
   module's own code, the same in every carrier, so it runs once per run
   in the shared half, on the named remix with the fewest modules that
