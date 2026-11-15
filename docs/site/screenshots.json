@@ -855,14 +855,14 @@
       "caption": "SHATTER: effect selection and setup parameters.",
       "remix": "shatter",
       "source": "emulator panel UART",
-      "firmware_sha256": "d656861d68141f0b039034c1dda14a915bec6e527150c6a0cb24b6cb593a3201"
+      "firmware_sha256": "0302777c40fcece37dfcf3e664024bb149c7b53f74853afec3520f4b1390e159"
     },
     "main": {
       "image": "shatter/main.png",
       "caption": "SHATTER: main parameter page.",
       "remix": "shatter",
       "source": "emulator panel UART",
-      "firmware_sha256": "d656861d68141f0b039034c1dda14a915bec6e527150c6a0cb24b6cb593a3201"
+      "firmware_sha256": "0302777c40fcece37dfcf3e664024bb149c7b53f74853afec3520f4b1390e159"
     }
   },
   "void": {
