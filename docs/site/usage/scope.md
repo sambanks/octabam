@@ -20,7 +20,7 @@ Several minutes ALL open with no glitch.
 **Loader comparison (S2 build, 15 Nov 2026):** 30 transitions with SCOPE closed
 and 30 with it open. Both runs had zero bad records and a 340 ms median audio
 gap. Median transition-window CF peak was 537.36 µs closed and 544.96 µs open;
-median steady CF was 355.77 and 359.37 µs. Median DSP window maximum was 0.49%
-closed and 0.48% open; median steady DSP maximum was 0.49% and 0.48%. The closed
+median steady CF was 355.77 and 359.37 µs. Median DSP window maximum was 49%
+closed and 48% open; median steady DSP maximum was 49% and 48%. The closed
 run's maximum gap was 1,480 ms, compared with 360 ms open. This single comparison
 does not cover other images, workloads, or longer sessions.

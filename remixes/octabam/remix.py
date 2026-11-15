@@ -42,13 +42,13 @@ REMIX = Remix(
              "djump-off/on/burst; mix-soak and the manual plan not run (docs/contributing/HARDWARE_SUITE.md). With"
              " it: not flashed. SCOPE/TUNER loader A/B on the S2 unit image, 15 Nov 2026: 30 transitions closed "
              "and 30 open; zero bad records in both. Median window CF peak 537.36/544.96 us, steady CF "
-             "355.77/359.37 us, DSP window max 0.49/0.48%, DSP steady max 0.49/0.48%, and audio gap 340/340 ms "
+             "355.77/359.37 us, DSP window max 49/48%, DSP steady max 49/48%, and audio gap 340/340 ms "
              "(closed/open). Maximum gap 1,480/360 ms; all transitions carried the 40 ms GAP flag because the "
              "loader silence is about 340 ms. This compares SCOPE closed/open on that image only."),
         Evidence(Level.UNIT_MEASURED, image="OCTA S2", date="2026-11-15",
-            note="User confirmed this S2 image was flashed. With SCOPE closed/open, 30 loader transitions per state "
+            note="Flashed S2 image. With SCOPE closed/open, 30 loader transitions per state "
                  "had zero bad records. Median CF window peak 537.36/544.96 us, steady 355.77/359.37 us; median "
-                 "DSP window max 0.49/0.48%, steady max 0.49/0.48%; median audio gap 340/340 ms. Maximum gap "
+                 "DSP window max 49/48%, steady max 49/48%; median audio gap 340/340 ms. Maximum gap "
                  "1,480/360 ms. The 40 ms GAP flag appeared on all transitions because the loader silence is "
                  "about 340 ms. These results cover this flashed image and transition set.")),
     doc="The core ColdFire modules, SCOPE and TUNER, every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain.",

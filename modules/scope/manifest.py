@@ -21,7 +21,11 @@ MODULE = Module(
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
     evidence=(Evidence(Level.BUILD, ref="REMIX=test/scope-alone"),
-              Evidence(Level.BUILD, ref="REMIX=test/scope")),
+              Evidence(Level.BUILD, ref="REMIX=test/scope"),
+              Evidence(Level.UNIT_MEASURED, image="OCTA S2", date="2026-11-15",
+                  note="Flashed image. SCOPE open during 30 loader transitions: zero bad records. The paired "
+                       "closed/open comparison had a 340 ms median audio gap in both states and median DSP "
+                       "window maxima of 49%/48%.")),
     doc="DOWN+TEMPO OSC/XY/ALL; UP/DOWN switch; A GAIN B TIME.",
     linked=(Linked("scope", "modules/scope/scope.s", cpu="5475", dram=True),),
     detours=(
