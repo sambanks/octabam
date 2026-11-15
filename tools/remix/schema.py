@@ -1694,6 +1694,11 @@ class Module:
     evidence: tuple[Evidence, ...] = ()   # schema.Evidence, one per proof; the table shows the strongest
     proof: Proof | None = None            # old form, submodule manifests only: becomes `evidence` (from_proof)
     proof_note: str = ""
+    # Not for a release image: a probe, or an effect that has not run on a
+    # unit. In a remix under remixes/test, verify_dsp_forms reports this
+    # module's forms that have no stock site, register row or unit run
+    # instead of refusing them; in any other remix it refuses them.
+    bench_only: bool = False
     # ---- the checks (make check, make accept) ------------------------------
     # The verifiers `make check` runs when a remix carries this module
     # (schema.Gate). Shared gates -- the ledger selftest, the menu, the

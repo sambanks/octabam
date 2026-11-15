@@ -409,48 +409,6 @@ def dsp_host_render():
     return render
 
 
-def precedent():
-    """Every instruction FORM DISTORX uses, looked up in stock's own payloads
-    (AGENTS.md: "an instruction form the chip has never run is not proven by
-    the port"). A form with no stock site is REPORTED, not failed."""
-    import re
-    import tempfile
-    stock = pathlib.Path("out/dsp/payload_A.asm")
-    if not stock.exists():
-        subprocess.run([sys.executable, "tools/build/dsp_disasm_all.py"], capture_output=True)
-    if not stock.exists():
-        print("  [SKIP] precedent: out/dsp/payload_A.asm missing (tools/build/dsp_disasm_all.py)")
-        return
-
-    def norm(line):
-        m = re.match(r"^[0-9a-f]{6}: (\S+)(?:\s+(.*?))?\s*;", line)
-        if not m:
-            return None
-        ops = (m.group(2) or "")
-        ops = re.sub(r"\$[0-9a-f]+|\b\d+\b", "#", ops)
-        ops = re.sub(r"\br[0-7]\b", "rN", ops)
-        ops = re.sub(r"\bn[0-7]\b", "nN", ops)
-        ops = re.sub(r"\bm[0-7]\b", "mN", ops)
-        return f"{m.group(1)} {ops}".strip()
-    have = set()
-    for tag in ("A", "B"):
-        f = pathlib.Path(f"out/dsp/payload_{tag}.asm")
-        if f.exists():
-            have |= {n for n in map(norm, f.read_text().splitlines()) if n}
-    src = pathlib.Path("modules/distorx/distorx.asm").read_text().replace("$fab1e0", "$000400")
-    d = pathlib.Path(tempfile.mkdtemp(prefix="dtxprec."))
-    (d / "s.asm").write_text(src)
-    r = subprocess.run(["vendor/dsp56300/build/source/dsp_host/dsp_asm", "-in", str(d / "s.asm"),
-                        "-org", "800", "-out", str(d / "s.bin"), "-sym", str(d / "s.sym"), "-list"],
-                       capture_output=True, text=True)
-    ours = {n for n in map(norm, r.stdout.splitlines()) if n}
-    missing = sorted(ours - have)
-    print(f"  [info] instruction forms: {len(ours)} used, {len(ours) - len(missing)} with a stock site"
-          + ("" if not missing else "; WITHOUT one (watch these on the first flash):"))
-    for m in missing:
-        print(f"           {m}")
-
-
 def loop_ends():
     """No DO loop of DISTORX ends (its LA) on a change of flow. The chip decides
     the loop-back when it reaches LA; a bsr there rendered one junk block every
@@ -483,7 +441,6 @@ def main():
     check("distorx.asm is generated from the template and the manifest", r.returncode == 0,
           (r.stdout + r.stderr).strip())
     loop_ends()
-    precedent()
     src = pathlib.Path("tools/harness/dsp_host/dsp_host.cpp")
     dirty = src.exists() and "-pword" in src.read_text()
     fails = run_gates(dsp_host_render(), dirty_words=dirty)

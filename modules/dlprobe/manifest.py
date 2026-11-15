@@ -15,6 +15,7 @@ MODULE = Module(
     key="DLPROBE",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
+    bench_only=True,
     evidence=(Evidence(Level.EMULATOR),),
     doc="Measurement instrument: the demand loader's per-effect counters, in the track's audio.",
     menu=MenuEntry(
