@@ -80,7 +80,7 @@ sc_tempo:
         btst    #(KDOWN&7),%d0
         beq.s   tempo_stock
 sc_tempo_down:
-        tstl    sc_win
+        tstl    scope_win
         bne.w   sc_close
         bra.w   sc_open
 tempo_stock:
@@ -93,7 +93,7 @@ sc_frame:
         bsr.w   sc_frame_body
         jmp     ISR_GO
 sc_frame_body:
-        tstl    sc_win
+        tstl    scope_win
         beq.w   frame_stock
         movel   RB_PREV,%d0
         lsll    #8,%d0
@@ -175,7 +175,7 @@ sc_tick:
         pea     UIQUEUE
         jmp     UI_GO
 sc_tick_body:
-        tstl    sc_win
+        tstl    scope_win
         beq.s   tick_done
         movel   sc_frames,%d0
         cmpil   #SC_PERIOD,%d0
@@ -322,7 +322,7 @@ sc_open:
         pea     WINW
         jsr     WCREATE
         lea     %sp@(24),%sp
-        movel   %d0,sc_win
+        movel   %d0,scope_win
         beq.w   9f
         pea     SC_LAYER
         jsr     LPUSH
@@ -359,10 +359,10 @@ sc_open:
 9:      rts
 
 sc_close:
-        tstl    sc_win
+        tstl    scope_win
         beq.s   9f
         clrl    sc_help
-        pea     sc_win
+        pea     scope_win
         jsr     WDESTROY
         addql   #4,%sp
         pea     SC_LAYER
@@ -566,7 +566,7 @@ sc_start:
 sc_draw:
         lea     %sp@(-44),%sp
         movem.l %d2-%d7/%a2-%a6,%sp@
-        movel   sc_win,%d0
+        movel   scope_win,%d0
         beq.w   dexit
         moveal  %d0,%a5
         lea     %a5@(36),%a5
@@ -1144,7 +1144,7 @@ SC_ENCS:
 
         .data
         .balign 4
-        .globl  sc_win, sc_wr, sc_frames, sc_viz
+        .globl  scope_win, sc_wr, sc_frames, sc_viz
 sc_p:
 sc_gain:     .long GAIN_DEF
 sc_time:     .long TIME_DEF
@@ -1152,7 +1152,7 @@ sc_c:        .long 0
 sc_d:        .long 0
 sc_e:        .long 0
 sc_f:        .long 0
-sc_win:      .long 0
+scope_win:   .long 0
 sc_wr:       .long 0
 sc_frames:   .long 0
 sc_viz:      .long 0
