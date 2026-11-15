@@ -88,7 +88,7 @@ def snapshot(dev, framelog):
 
 def up(dev):
     try:
-        a = lm.read_fast(dev)["dsp"]["seq"]; time.sleep(0.4)
+        a = lm.read_fast(dev)["dsp"]["seq"]; time.sleep(0.4)  # waits for: the interval of one frame-count rate sample
         return lm.read_fast(dev)["dsp"]["seq"] != a
     except Exception:
         return False
@@ -112,7 +112,7 @@ def one(a):
         cap = sd.InputStream(samplerate=44100, channels=nch, dtype="float32", device=di[0], callback=lambda *x: None)
         cap.start()
         res["channels"] = nch
-        time.sleep(2.0)
+        time.sleep(2.0)  # waits for: the host's capture stream opening
         if not up(dev):                 # the capture alone, before any START
             res["result"] = "STALLED before START"
             res["after"] = snapshot(dev, a.framelog)
@@ -125,19 +125,19 @@ def one(a):
             out.send([0xF8]); n += 1
             d = t0 + n * period - time.time()
             if d > 0:
-                time.sleep(d)
+                time.sleep(d)  # waits for: MIDI clock pacing
     out.send([0xFA])
     th = threading.Thread(target=clock); th.start()
     t0 = time.time(); last = None; still = 0; longest = []; verdict = "ok"
     while time.time() - t0 < a.play:
-        time.sleep(0.25)
+        time.sleep(0.25)  # waits for: poll cadence
         try:
             r = lm.read_fast(dev)
         except Exception as e:
             res["no_answer_at_s"] = round(time.time() - t0, 2)
             back = None
             for k in range(6):          # does the unit answer again, and is the DSP running then?
-                time.sleep(1.0)
+                time.sleep(1.0)  # waits for: the unit answering again after a reset; no record exists while it is off USB
                 try:
                     d2 = find_dev()
                     if d2 is not None:
@@ -182,15 +182,15 @@ def run(a):
         if need_cycle:
             print(f"[{done}/{a.trials}] power-cycle the unit", flush=True)
             while find_dev() is not None:
-                time.sleep(0.5)
+                time.sleep(0.5)  # waits for: the unit leaving USB
             print("  unit left USB", flush=True)
         while True:
             dev = find_dev()
             if dev is not None and up(dev):
                 break
-            time.sleep(1.0)
+            time.sleep(1.0)  # waits for: the unit on USB with the DSP counting
         print(f"  unit up, settling {a.settle:.0f} s", flush=True)
-        time.sleep(a.settle)
+        time.sleep(a.settle)  # waits for: the project load after power-up; whether the boot writes LOADMASK records is not established
         cmd = [sys.executable, __file__, "one", "--play", str(a.play)] + (["--no-capture"] if a.no_capture else []) \
             + (["--framelog"] if a.framelog else [])
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=a.play + 60)

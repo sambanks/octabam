@@ -49,6 +49,8 @@ CLIENTS = (
     # No side file: partclear holds its per-track state and the partsaved that ends
     # the clear lets it go (stock Part Clear tail-jumps into Part Save).
     ("VARISPEED", "vs", ("partsaved", "partclear")),
+    # No side file: a record in REMOTE's ring at each event (modules/remote).
+    ("REMOTE", "rmt", ("loadall_post", "loadmask_post", "newproj", "bankw_post", "pstore_post", "preload_post")),
 )
 
 
