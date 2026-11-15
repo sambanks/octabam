@@ -586,7 +586,8 @@ def cmd_import(args):
         if args.no_analysis:
             cmd.append("-noanalysis")
         else:
-            cmd += ["-postScript", "OtReport.java", "-postScript", "OtExport.java"]
+            cmd += ["-postScript", "OtReport.java", "-postScript", "OtExport.java",
+                    "-postScript", "OtCode.java"]
         print(f"[ghidra] {name} ({lang}) ...", flush=True)
         log(" ".join(cmd))
         with open(logf, "w") as fh:
@@ -599,7 +600,7 @@ def cmd_import(args):
             else:
                 rc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, env=env).returncode
         text = logf.read_text(errors="replace")
-        rx = re.compile(r"(Ot(?:Layout|Report|Export): .*?)(?:\s+\(GhidraScript\))?\s*$")
+        rx = re.compile(r"(Ot(?:Layout|Report|Export|Code): .*?)(?:\s+\(GhidraScript\))?\s*$")
         summary = [m.group(1) for m in map(rx.search, text.splitlines()) if m]
         for s in summary:
             print(f"    {s}")

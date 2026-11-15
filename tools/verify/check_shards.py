@@ -374,6 +374,7 @@ def remix_jobs(remix_name, shard):
         job("dirty-state", [[py, f"{V}/verify_dirty_state.py", remix_name]], f"{V}/verify_dirty_state.py"),
         job("init-regs", [[py, f"{V}/verify_init_regs.py", remix_name]], f"{V}/verify_init_regs.py"),
         job("dsp-forms", [[py, f"{V}/verify_dsp_forms.py", remix_name]], f"{V}/verify_dsp_forms.py"),
+        job("cf-forms", [[py, f"{V}/verify_cf_forms.py", remix_name]], f"{V}/verify_cf_forms.py"),
         job("dram-boot", [[py, f"{V}/verify_dram_boot.py"]], f"{V}/verify_dram_boot.py"),
     ]
     for name in ("labels", "mode_names", "hidden"):
