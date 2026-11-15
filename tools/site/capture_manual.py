@@ -232,7 +232,7 @@ def capture_drummer(p,r):
     p.press('no',settle=600)
 
 
-def capture_features(p,r):
+def capture_seq(p,r):
     p.chord('t1','page')
     shot(p,'seq','panel','SEQ page 1/2: rings icon, PULS, ROT, LANE, page+param, DPTH, step grid and LEN.',r)
     p.press('right',settle=400)
@@ -248,6 +248,10 @@ def capture_features(p,r):
     shot(p,'seq','midi-tonal','SEQ page 2/2 on a MIDI track: SCAL, ROOT, VOIC, RANG, PHRS and CHRD.',r)
     close(p)
     p.press('midi',settle=300)
+
+
+def capture_features(p,r):
+    capture_seq(p,r)
     p.chord('func','recab');enc(p,3,12);close(p)
     p.chord('func','recab')
     shot(p,'rec-threshold','trigger','TRIG set to THR in RECORDING SETUP 1.',r)
@@ -537,13 +541,14 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','resonator','drummer'])
+    ap.add_argument('groups',nargs='+',choices=['seq','core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','resonator','drummer'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
     for group in a.groups:
         assignments=[]
-        if group=='core': jobs=[('octabam',capture_core,[])]
+        if group=='seq': jobs=[('test/seq',capture_seq,[])]
+        elif group=='core': jobs=[('octabam',capture_core,[])]
         elif group=='midi-loopback':jobs=[('midi-loopback',capture_midi_loopback,[])]
         elif group=='midi-follow':jobs=[('midi-follow',capture_midi_follow,[])]
         elif group=='plocks': jobs=[('octabam',capture_plocks,[(1,'fx2','PLATE REV')])]
