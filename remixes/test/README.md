@@ -130,6 +130,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`usb-io-tracks-main-cue-abcd`](usb-io-tracks-main-cue-abcd/README.md) | stock - SPATIALIZER + USB (TRACKS MAIN CUE out, ABCD in). |
 | [`usb-io-tracks-main-cue-cd`](usb-io-tracks-main-cue-cd/README.md) | stock - SPATIALIZER + USB (TRACKS MAIN CUE out, CD in). |
 | [`usb-midi`](usb-midi/README.md) | stock + USB MIDI (class-compliant, mirrors DIN). |
+| [`usb-midi-tracks`](usb-midi-tracks/README.md) | stock + USB MIDI + audio-track trigs as USB MIDI (USB only). |
 | [`usb-out-main`](usb-out-main/README.md) | stock + USB (MAIN) (2 ch: MAIN L/R). |
 | [`usb-out-main-cue`](usb-out-main-cue/README.md) | stock + USB (MAIN CUE) (4 ch: MAIN + CUE). |
 | [`usb-out-master`](usb-out-master/README.md) | stock + USB (MASTER) (2 ch: track 8). |
