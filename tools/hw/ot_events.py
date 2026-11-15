@@ -70,8 +70,11 @@ def decode(raw, n):
 
 
 class Events:
-    def __init__(self, ctrl, from_start=False):
+    def __init__(self, ctrl, from_start=False, clock=time.monotonic):
+        """`clock` measures the waits' timeouts: wall seconds on a unit; under the port, the machine's emulated
+        seconds, so a loaded runner advances the same emulated time before a wait gives up."""
         self.ctrl = ctrl
+        self.clock = clock
         self.lost = 0
         self.seen = max(0, self.head() - NREC) if from_start else self.head()
 
@@ -88,12 +91,12 @@ class Events:
     def wait_screen(self, since=None, timeout=10.0, tick=None):
         """The screen count once it has passed `since` (default: its value now): the LCD was redrawn."""
         since = self.header()[1] if since is None else since
-        end = time.monotonic() + timeout
+        end = self.clock() + timeout
         while True:
             n = self.header()[1]
             if n != since:
                 return n
-            if time.monotonic() >= end:
+            if self.clock() >= end:
                 raise TimeoutError(f"no screen redraw in {timeout} s")
             (tick or (lambda: time.sleep(0.005)))()
 
@@ -125,7 +128,7 @@ class Events:
         polls (the port's gate advances the machine there; on a unit it defaults to a 5 ms sleep). With
         `strict`, records lost while waiting raise Lost instead of being counted."""
         ks = {BY_NAME[k] if isinstance(k, str) else k for k in (kind if isinstance(kind, (tuple, list, set)) else (kind,))}
-        end = time.monotonic() + timeout
+        end = self.clock() + timeout
         passed = []
         while True:
             for r in self.poll():
@@ -135,7 +138,7 @@ class Events:
                     return r
             if strict and self.lost:
                 raise Lost(f"{self.lost} record(s) overwritten before they were read")
-            if time.monotonic() >= end:
+            if self.clock() >= end:
                 raise TimeoutError(f"no {'/'.join(KINDS.get(k, str(k)) for k in sorted(ks))}{'' if arg is None else f' arg {arg}'} in {timeout} s; "
                                    f"passed: {[(p['name'], p['arg']) for p in passed]}")
             (tick or (lambda: time.sleep(0.005)))()
