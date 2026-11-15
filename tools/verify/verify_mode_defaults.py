@@ -34,6 +34,18 @@ from remix import registry  # noqa: E402
 import ot_project  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+def _cc_map_ccs():
+    """CC MAP's page-2 CCs (FX2, FX1), slot 6..11 order, from its manifest (as verify_cc_map reads them)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ccmap_manifest_md", ROOT / "modules/cc-map/manifest.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.FX2_CCS, mod.FX1_CCS
+
+
+CC_MAP_FX2, CC_MAP_FX1 = _cc_map_ccs()
 EMU = ROOT / "out/emu/ot_emu"
 PY = ROOT / ".venv/bin/python3"
 OUT = ROOT / "out/modedefverify"
@@ -168,7 +180,9 @@ def main():
             slot2 = m0.mode_slot - 6
             want_mode = 1 if expect_view(m0, 1) else (2 if expect_view(m0, 2) else None)
             if want_mode is not None:
-                cc = (62 if kind0 == "fx2" else 68) + slot2
+                # CC MAP's own numbers (modules/cc-map/manifest.py FX2_CCS, FX1_CCS): page 2 moved off the pedal
+                # CCs on 1 Nov 2026 (#981; 62-67 and 68-73 before), and the gate sent the old ones until 15 Nov
+                cc = (CC_MAP_FX2 if kind0 == "fx2" else CC_MAP_FX1)[slot2]
                 midi = OUT / "cc.midi"
                 midi.write_text(f"40 B0 {cc:02X} {want_mode:02X}\n")   # MIDI channel 1: T1's MIDI_TRIG_CH1 = 0 in the fixture; T2 (the FX1 case) proved on the same channel before LOFI2 joined the FX2 cases
                 cc_dump = OUT / f"cc_{kind0}_lanes.bin"

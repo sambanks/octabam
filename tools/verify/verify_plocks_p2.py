@@ -577,11 +577,25 @@ def main():
         o = addr - BASE
         return int.from_bytes(img[o:o + 4], "big") if 0 <= o < len(img) - 4 else 0
 
+    # A row whose descriptor is a DRAM clone (octabam-verbs' VERB PLATE, ROOM and HALL on the reverbs' ids) is not
+    # in the image file: rd32 of its pointer reads 0. Its page-2 slot 0 count is the manifest's (Param.count, the
+    # value the build writes at +0x9a + 4 * 6). Until 15 Nov 2026 the gate exited "no FX2 page-2 slot 0 available"
+    # on octabam-verbs, the first run CI gave it a project there (sambanks/octabam#1051).
+    reg_count = {}
+    for key, m in registry.bound(registry.remix(a.remix)).items():
+        menu, params = getattr(m, "menu", None), getattr(m, "params", ())
+        if menu is not None and menu.fx2_id is not None and len(params) > 6 and params[6].count:
+            reg_count[menu.fx2_id] = params[6].count
+
+    def p2count(fx_id):
+        """FX2 id fx_id's page-2 slot 0 value count: the image's descriptor, else the manifest's."""
+        p = rd32(DESC2 + 4 * fx_id)
+        return (rd32(p + 0x9a + 4 * 6) if p else 0) or reg_count.get(fx_id, 0)
+
     def page2_ok(fx_id):
         if fx_id == 0:
             return False
-        p = rd32(DESC2 + 4 * fx_id)
-        return p and rd32(p + 0x9a + 4 * 6) >= 2
+        return p2count(fx_id) >= 2
 
     # ---- the card -------------------------------------------------------------
     copy = OUT / "project"
@@ -626,7 +640,7 @@ def main():
                     # limit clamps to the same value (e.g. a reverb id reused
                     # for a three-choice selector in Inserts), falsely making
                     # a correctly recorded lock look like an unedited Part.
-                    count = rd32(rd32(DESC2 + 4 * data[at]) + 0x9a + 4 * 6)
+                    count = p2count(data[at])
                     knob_at = part_start + ot_project.P2_OFF + track * ot_project.P2_STRIDE + 6
                     if data[knob_at] >= count - 1:
                         data[knob_at] = 0
@@ -682,7 +696,7 @@ def main():
     ot_project.set_fx(display_project, "fx1", 1, "COMPRESSOR", page2=[0] * 6, guard=False)
     # Inserts may reuse a reverb id for a small-range selector. The pixel
     # oracle needs a numeric slot covering 20..53, not that selector.
-    display_fx2 = fallback if rd32(rd32(DESC2 + 4 * fallback) + 0x9a + 4 * 6) >= 54 else "COMPRESSOR"
+    display_fx2 = fallback if p2count(fallback) >= 54 else "COMPRESSOR"
     ot_project.set_fx(display_project, "fx2", 1, display_fx2, page2=[0] * 6, guard=False)
     display_card = OUT / "display-card.img"
     run([PY, ROOT / "tools/emu/ot_emu/stage_card.py", display_project, a.set_name, a.name,
