@@ -44,7 +44,13 @@ OUT = ROOT / "out/dlload"
 JOBS = int(os.environ.get("OCTABAM_GATE_JOBS", "0") or 0)
 STAGE = 0x2900
 FX1_LIVE, FX2_LIVE = 0x80000EC4, 0x80000ECC
-FX1_PART, FX2_PART = 0x402A75E0, 0x402A75E8      # Part 1's FX ids of track 1 (bank + 0x8ed80 / 0x8ed88)
+FX1_PART, FX2_PART = 0x8ED80, 0x8ED88            # a Part's FX ids of track 1, from its bank's base (Part p: + p * PART_STRIDE)
+# Every Part of every bank (TRAPS.md trap-otemu-part): the bank the load edits is the one at [0x46c82456], and the chooser
+# opens on the Part's id, not the live array's. Until 15 Nov 2026 the gate wrote one Part, 0x402A75E0: bank index 2's
+# Part 1. The load edits bank index 0 (a generated project and a unit-made one, 15 Nov 2026), so every chooser pick
+# started from the track's own effect instead of NONE and walked past its row (sambanks/octabam#1075).
+BANK0, BANK_STRIDE, PART_STRIDE = 0x400E21E0, 0x9B340, 0x18B2
+PARTS = [BANK0 + b * BANK_STRIDE + p * PART_STRIDE for b in range(16) for p in range(4)]
 FILTER, PLATE, SPRING, DARK = 0x01, 0x14, 0x15, 0x16      # DARK REV is the reverb whose buffer reaches the demand effect's code
 KEYS = dict(no=0x32, fx1=0x25, fx2=0x26, down=0x20, yes=0x31, **{f"t{i + 1}": 0x10 + i for i in range(8)})
 TOAST = 0x4005A2B8          # the firmware's message popup: every decision the loader makes on a chooser ends here
@@ -58,7 +64,8 @@ def check(what, ok, detail=""):
 
 
 def poke(live, part, track, value):
-    return f"{live + track:#x}={value:#x};{part + track:#x}={value:#x}"
+    """The live id and the same track's id in every Part of every bank (`part` is the offset in a bank)."""
+    return ";".join([f"{live + track:#x}={value:#x}"] + [f"{base + part + track:#x}={value:#x}" for base in PARTS])
 
 
 def main():
