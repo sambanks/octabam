@@ -1528,6 +1528,34 @@ whose behaviour leans on the changed rule (here, anything reading the ESAI's
 input pages), not only the one the change was made for. Gate:
 `verify_rec_threshold` and `verify_remix_switch`, both under the reverted port.
 
+<a name="trap-wall-timeout"></a>
+
+### A wall-clock timeout in a port gate failed on a loaded runner
+
+**THE SAME TREE PASSED ON ITS PR AND FAILED ON MAIN.** On 15 Nov 2026 main's
+merge of #1116 (`636460a`, a tree bit-identical to the PR head `1d7d96e`)
+failed `verify_remote`'s `COMMAND 1 and 2`: NEWPROJ and the PATTERN records
+arrived after COMMAND 2, the LOADALL did not "in 120.0 s". The PR's run had
+passed the shard in 474 s; main's took 958 s. The 120 s was wall time
+(`ot_events.Events.wait_for` read `time.monotonic()`) while each tick advanced
+the port 10 emulated ms, so a slower runner gave the reload fewer emulated
+seconds. Every PR whose image moved then failed the same check
+(sambanks/octabam#1130). `MenuPort.run` had the same blind spot: it passed the
+port a soft wall cap (`run <ms> wall <s>`), and a capped slice "advances less
+than ms" with nothing said. (`verify_copy_project`'s "no PROJECT
+261014/project.work on card" on sambanks/octabam#1119 was first put down to
+that cap; retracted -- it failed again with the cap fixed. Its cause is a fixed
+20 s of emulated time for a copy of the generated project that takes 20-40 s:
+`4a0e9e0` waits for the job's dialog instead.)
+Measured: the identical-tree pass and fail, and the two shard times. Inferred:
+that runner load is the cause (no run was repeated on one runner).
+Fix: `Events(..., clock=)` -- `verify_remote` passes the emulated clock, so its
+timeouts are emulated seconds -- and `MenuPort.run` runs further capped slices
+until the asked emulated ms have passed (a slice that advances nothing ends
+it). Rule: under the port, a timeout or a settle is emulated time; a wall cap
+only bounds a slice, and the caller checks what the slice advanced. Gate:
+`test_ot_events.test_wait_for_times_out_on_the_given_clock`.
+
 <a name="trap-cf-frame"></a>
 
 ### A ColdFire save frame sized for the wrong register count overwrites the return address
