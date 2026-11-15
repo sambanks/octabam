@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Port checks for SEQ's two knob pages and per-track tonal persistence."""
+"""Port checks for SEQ page gating, labels, and per-track tonal persistence."""
 
 from __future__ import annotations
 
@@ -47,11 +47,17 @@ def main() -> int:
             # Audio track: page switch leaves the rhythm grid untouched.
             s.open_seq("t1")
             page = seq.local_sym("ef_page_no")
+            dest = seq.local_sym("ef_dest")
+            s.prime(lane=0, dest=15, depth=0, pulses=3, trig_pulses=3)
+            p.press("right", settle=150)
+            check("RIGHT stays on Rhythm for non-pitch destination",
+                  p.long(page) == 0 and p.long(dest) == 15,
+                  f"page={p.long(page)} dest={p.long(dest)}")
             s.prime(lane=0, dest=0, depth=0, pulses=3, trig_pulses=3)
             s.yes()
             grid = seq.mask_of(p)
             p.press("right", settle=150)
-            check("RIGHT selects page 2/2 without changing the grid",
+            check("RIGHT opens Harmony for NOTE/PTCH without changing the grid",
                   p.long(page) == 1 and seq.mask_of(p) == grid,
                   f"grid={seq.mask_of(p).hex()} original={grid.hex()}")
             range_value = seq.local_sym("ef_tone_range")

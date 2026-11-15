@@ -138,7 +138,7 @@
         .set    X_C0,      X_GRID+CELL_W/2
         .set    X_C1,      X_GRID+CELL_W+CELL_W/2
         .set    X_C2,      X_GRID+2*CELL_W+CELL_W/2
-        .set    X_PAGE_R,  X_GRID-1     | page count at the logo panel's top-right
+        .set    X_PAGE_R,  X_GRID-1     | page affordance at the logo panel's top-right
         .set    ICON_W,    29          | left-gutter SEQ mark (3-ring LED)
         .set    ICON_H,    29
         .set    PAT_COLS,  16          | steps per row
@@ -1253,6 +1253,8 @@ ef_page_left:
 ef_page_right:
         tstl    ef_ask
         bne.s   9f
+        tstl    ef_dest                 | only NOTE (MIDI) / PTCH (audio) opens Harmony
+        bne.s   9f
         moveq   #1,%d0
         movel   %d0,ef_page_no
         bra.w   ef_draw
@@ -1584,16 +1586,19 @@ ef_draw:
         lea     T_TITLE,%a0
         bsr.w   ef_text
 
-        | Page number sits in the logo panel's top-right corner.
+        | Page affordance sits in the logo panel's top-right corner.
         tstl    ef_page_no
         beq.s   d_page1
         lea     T_PAGE2,%a0
         bra.s   d_page
 d_page1:
+        tstl    ef_dest                 | hide RIGHT affordance off NOTE/PTCH
+        bne.s   d_page_done
         lea     T_PAGE1,%a0
 d_page: moveq   #X_PAGE_R,%d0
         moveq   #Y_TITLE,%d1
         bsr.w   ef_rtext
+d_page_done:
 
         | Window bottom-right, past the pattern squares: LEN / n.
         moveq   #X_LEN_R,%d0
@@ -4679,8 +4684,8 @@ EF_GRID:
         .long   X_GRID, Y_GMID, X_GRID+3*CELL_W, Y_GMID
 
 T_TITLE:  .asciz "SEQ"
-T_PAGE1:  .asciz "1/2"
-T_PAGE2:  .asciz "2/2"
+T_PAGE1:  .asciz " 1>"
+T_PAGE2:  .asciz "<2 "
 T_TRK:    .asciz "T%d"
 T_FILLED: .asciz "TRIGS CREATED"
 T_CLRTITLE: .asciz "ARE YOU SURE?"
