@@ -1,10 +1,9 @@
 """VIBRATO on FX1 beside the stock effects: PLATE REV gives up its words."""
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     family="effects",
-    proof=Proof.CHECK,
-    proof_note="",
+    evidence=(Evidence(Level.EMULATOR),),
     name="vibrato",
     doc="VIBRATO on FX1 beside the stock effects (all but PLATE REV).",
     modules=("VIBRATO",

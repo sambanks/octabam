@@ -22,7 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 from remix import ledger, registry, schema, state, stock  # noqa: E402
 from remix.schema import (BusRole, CavePatch, Claims, Detour, DramRegion, DspHook,  # noqa: E402
                           DspRange, DspSection, Formatter, Keep, Kind, Linked, MenuEntry,
-                          Module, Override, Param, Poke, Proof, Remix, SymbolRef, TableGrow, YBase)
+                          Module, Override, Param, Poke, Evidence, Level, Remix, SymbolRef, TableGrow, YBase)
 
 
 _PRIORITY = iter(range(100, 1000))      # distinct unless a case sets one
@@ -436,7 +436,7 @@ def main():
                       ("a pin above 0x1f for a module in fx1", dict(id_space=64, ids={"ALPHA": 0x25}, fx1=("ALPHA",))),
                       ("two modules pinned to one id", dict(id_space=64, ids={"ALPHA": 0x25, "BETA": 0x25}))):
         try:
-            Remix(family="effects", proof=Proof.CHECK, proof_note="fixture", name="pins", doc="fixture",
+            Remix(family="effects", evidence=(Evidence(Level.EMULATOR, note="fixture"),), name="pins", doc="fixture",
                   modules=("ALPHA", "BETA"), fallback="NONE", **kw)
             bad += 1
             print(f"  [FAIL] {label} was accepted")
@@ -673,12 +673,12 @@ def main():
     for mod in registry.modules().values():
         if mod.is_stock:
             continue
-        missing = [f for f in ("category", "author", "author_url", "proof")
+        missing = [f for f in ("category", "author", "author_url", "evidence")
                    if not getattr(mod, f)]
         if missing:
             bad += 1
             print(f"  [FAIL] {mod.name}: manifest declares no {', '.join(missing)}")
-    print("  [PASS] every module declares category, author, author_url, proof")
+    print("  [PASS] every module declares category, author, author_url, evidence")
     # ---- every module has a remix ----------------------------------------
     # Every check starts from a remix (make check, make accept, the module
     # gates, make reach): a module no selection carries is never built or

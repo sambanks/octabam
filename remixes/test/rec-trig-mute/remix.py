@@ -1,10 +1,10 @@
 """stock effects with REC_TRIG_MUTE: [TRACK]+[REC] mutes/unmutes a track's recorder trigs."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="rec-trig-mute",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock effects with REC_TRIG_MUTE: [TRACK]+[REC] mutes/unmutes a track's recorder trigs.",
     modules=("REC_TRIG_MUTE",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",

@@ -6,7 +6,7 @@ UP + TEMPO still opens Tim's tuner. OSC = mono polyline; XY = L×R
 Lissajous. A=GAIN B=TIME; CUE release toggles the G/P HUD.
 """
 
-from remix.schema import Category, Detour, Kind, Linked, Module, Override, Proof
+from remix.schema import Category, Detour, Kind, Linked, Module, Override, Evidence, Level
 
 H = bytes.fromhex
 
@@ -21,8 +21,9 @@ MODULE = Module(
     category=Category.UTILITIES,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="MKII: LSCOPE BJ 24 Oct 2026 (OSC/XY/ALL; owner busy 8-track: CF METER SCOPE open ISR mean 291 µs / closed 288 µs, TUE 0 ROE 0; several min ALL soak no glitch); also make check REMIX=test/scope",
+    evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-10-24",
+        note="LSCOPE BJ 24 Oct 2026 (OSC/XY/ALL; owner busy 8-track: CF METER SCOPE open ISR mean 291 µs / closed "
+             "288 µs, TUE 0 ROE 0; several min ALL soak no glitch); also make check REMIX=test/scope"),),
     doc="DOWN+TEMPO OSC/XY/ALL; UP/DOWN switch; A GAIN B TIME; bridges TUNER.",
     requires=("TUNER",),
     overrides=(

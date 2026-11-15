@@ -8,7 +8,7 @@ Re-homed from PROJECT menu TableGrow (issue #931): the RENAME/DELETE LISTPOP
 grows 2→3 instead of PROJECT 15→16.
 """
 
-from remix.schema import Category, Gate, Kind, Linked, Module, Poke, Proof, TableGrow
+from remix.schema import Category, Gate, Kind, Linked, Module, Poke, Evidence, Level, TableGrow
 
 # CHANGE → FUNC+BANK LISTPOP (docs/firmware/PANEL.md)
 HANDLERS = 0x400CBAAC
@@ -24,8 +24,8 @@ MODULE = Module(
     category=Category.UTILITIES,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="FUNC+BANK (#931); CORE CP on MKII 27 Oct 2026: COPY + OPEN IT? loads/closes CHOOSE, no save prompt",
+    evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-10-27",
+        note="FUNC+BANK (#931); CORE CP on MKII 27 Oct 2026: COPY + OPEN IT? loads/closes CHOOSE, no save prompt"),),
     doc="CHANGE project list > FUNC+BANK > COPY: duplicate the selected project folder on the card.",
     requires=("STORE",),  # STORE's encoder hook: LEVEL scrolls LISTPOP (name pick unused now; keep for confirm paths)
     linked=(Linked("cp", "modules/copy-project/copyproj.s", cpu="5475", dram=True),),

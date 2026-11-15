@@ -20,14 +20,16 @@ Until 11 Oct 2026 the reserve was a fixed 1,707 pages (10 MiB) in every
 remix with a DRAM unit.
 """
 
-from remix.schema import Category, Gate, Kind, Module, Proof
+from remix.schema import Category, Gate, Kind, Module, Evidence, Level
 
 MODULE = Module(
     name="memory",
     key="MEMORY",
     kind=Kind.CF_PATCH,
     category=Category.SETTINGS, author="Sam Banks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "the reserve's size per remix in the build report; `verify_dram_boot` under the port",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); the reserve's size per remix in the build"
+             " report; `verify_dram_boot` under the port"),),
     doc="Platform: the DRAM reserve in stock's audio page arena, sized from what the remix's modules claim.",
     # nothing but stock writes the pages the reserve gave back, under the
     # gate project, on bottleservice and bus (gate.py)

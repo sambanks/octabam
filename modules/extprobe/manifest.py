@@ -6,7 +6,7 @@ words differ per 1,024-word bucket. modules/extprobe/README.md is the procedure.
 ships in no remix but remixes/test/ext-probe.
 """
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness, Kind, MenuEntry, Module, Param,
-                          Proof, YBase)
+                          Evidence, Level, YBase)
 
 _BLANK = Param(b"", 0)
 
@@ -15,7 +15,7 @@ MODULE = Module(
     key="EXTPROBE",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.CHECK, proof_note="",
+    evidence=(Evidence(Level.EMULATOR),),
     doc="Measurement instrument: the highest window word a reverb on T8's FX2 writes, in the track's audio.",
     menu=MenuEntry(
         fx2_id=12,                    # EQUALIZER's id: every id 4..31 is taken, so the probe replaces one stock effect

@@ -726,7 +726,8 @@ def route_makefile(ctx):
     return gates, "; ".join(notes)
 
 
-DISPLAY_FIELDS = {"doc", "proof", "proof_note", "author", "author_url", "category"}
+DISPLAY_FIELDS = {"doc", "evidence", "proof", "proof_note", "author", "author_url", "category"}
+DISPLAY_NAMES = {"Proof", "Evidence", "Level"}     # schema names only the display fields use
 
 
 def manifest_display_only(base_src, head_src):
@@ -746,6 +747,8 @@ def manifest_display_only(base_src, head_src):
                 del body[0]
             if isinstance(node, ast.Call):
                 node.keywords = [k for k in node.keywords if k.arg not in DISPLAY_FIELDS]
+            if isinstance(node, ast.ImportFrom) and node.module == "remix.schema":
+                node.names = [n for n in node.names if n.name not in DISPLAY_NAMES]
         return ast.dump(tree)
     try:
         return normal(base_src) == normal(head_src)
@@ -844,7 +847,7 @@ def classify(paths, ctx):
             elif parts[-1] == "manifest.py" and d in ctx.module_key and \
                     manifest_display_only(ctx.read_base(path), ctx.read(path)):
                 # Only the fields the README table and the remixer draw
-                # changed (doc, proof, proof_note, author, author_url,
+                # changed (doc, evidence, author, author_url,
                 # category, a docstring): the image, the gates and the
                 # dearest settings are what they were.
                 gates = [CMD["verify_docs"]]

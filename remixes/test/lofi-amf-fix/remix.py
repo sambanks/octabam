@@ -3,11 +3,11 @@
 Two DSP-word pokes, no cave, no menu, no FX2 id, no free-space claim.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="lofi-amf-fix",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="Reference minimal build: the LO-FI AMF mpysu->mpyuu fix, alone.",
     modules=("LOFI AMF FIX",),
     fallback="NONE",

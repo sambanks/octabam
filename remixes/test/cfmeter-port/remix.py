@@ -2,11 +2,12 @@
 port advances its clock only at main's stock `bras .`, which the idle loop
 replaces. The idle slot reads 0."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="cfmeter-port",
-    family="probes", proof=Proof.PORT, proof_note="the readout chain under the port",
+    family="probes", evidence=(Evidence(Level.EMULATOR,
+        note="the readout chain under the port"),),
     doc="cfmeter without the idle loop: the port gate for the readout chain and the interrupt timing.",
     modules=("DIRECT JUMP", "SCALE QUANTIZER", "SYNTH MACHINE",
              "USB", "CF METER",

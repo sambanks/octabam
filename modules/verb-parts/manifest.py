@@ -7,7 +7,7 @@ and the pattern-change apply (0x40009e00), every route a Part reaches the engine
 in registers and before the Part is read. The sign of a
 stock reverb's Part is FX2 page-2 slots 9 and 10 both 0: the stock reverbs never draw them.
 """
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 ROWS = ("VERB PLATE", "VERB ROOM", "VERB HALL")      # ids 0x14, 0x15, 0x16, in that order: vp_tab's rows
 
@@ -30,7 +30,8 @@ MODULE = Module(
     name="verb-parts", key="VERB PARTS", kind=Kind.CF_PATCH,
     category=Category.PARTS, author="sambanks", author_url="https://github.com/sambanks",
     doc="A Part saved with PLATE, SPRING or DARK REV opens on its VERBERATION row (VERB PLATE, ROOM, HALL) at that row's defaults.",
-    proof=Proof.PORT, proof_note="verify_verb_parts (the port); not run on a unit",
+    evidence=(Evidence(Level.EMULATOR, ref="verify_verb_parts",
+        note="verify_verb_parts (the port); not run on a unit"),),
     requires=ROWS,
     linked=(Linked("verbparts", "modules/verb-parts/verbparts.s", cpu="5475", include=table_inc, dram=True),),
     gates=(Gate("tools/verify/verify_verb_parts.py", venv=True),),

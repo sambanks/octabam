@@ -21,7 +21,7 @@ Stock 1.40C keeps no "unsaved take" flag (port, 15 Oct 2026: a take
 writes only the slot's length and trim), hence the marks.
 """
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 H = bytes.fromhex
 
@@ -30,7 +30,11 @@ MODULE = Module(
     key="BUFFER SAVER",
     kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="Chupitnik", author_url="https://github.com/Chupitnik",
-    proof=Proof.HARDWARE, proof_note="Chupitnik's MKII, 15-16 Oct 2026, AUTOSAVE1 and AUTOSAVE2 from the card (the module under its first name): after a take FUNC + PROJ and PROJECT > SAVE ask SAVE SAMPLES?; YES saves R<n>-YYMMDD-HHMM and assigns it to its buffer, two buffers in one save, an immediate re-save does not ask, a reload brings the takes back, NO saves as stock",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Chupitnik", date="2026-10-16",
+        note="15-16 Oct 2026, AUTOSAVE1 and AUTOSAVE2 from the card (the module under its first name): after a "
+             "take FUNC + PROJ and PROJECT > SAVE ask SAVE SAMPLES?; YES saves R<n>-YYMMDD-HHMM and assigns it to "
+             "its buffer, two buffers in one save, an immediate re-save does not ask, a reload brings the takes "
+             "back, NO saves as stock"),),
     doc="SAVE PROJECT (and SAVE TO NEW) offers to save unsaved recorder takes, each back into its own buffer, so they reload with the project.",
     linked=(Linked("bufsave", "modules/buffer-saver/bufsave.s", dram=True),),
     detours=(

@@ -19,7 +19,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Proof
+from remix.schema import Category, Evidence, Level
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "octabam-modules" / "sidechain-compressor" / "manifest.py"
 
@@ -28,4 +28,11 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_sidechain_compr
 # are added here rather than in the author's manifest.
 MODULE = dataclasses.replace(
     MODULE, category=Category.TRACK, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="this pin's octabam form (remixes/test/sidechain-compressor) on the author's MKI as OCTABAM33, 26 Oct 2026: KBAS/KWID, MON's switch and its OFF on older projects, KEY's pressed turn, the fades, all good; the key-filter table fix alone as OCTABAM32, 25 Oct 2026. The author's standalone image (140C_SCKF4) and KYOTI V1.6 on the author's MKI, 22 Oct 2026, and KEY's rotary switch and KWID's clip in the standalone image, 23 Oct 2026: page 2, KBAS/KWID ranges and readouts, a kick fundamental keyed at short attack and release, MON and KEY declick, load with 1 + 7 and 4 + 4 COMPRESSOR/DJ EQ per core. The previous version's octabam form ran on the unit on 4 Oct 2026")
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", image="OCTABAM33", date="2026-10-26",
+        note="this pin's octabam form (remixes/test/sidechain-compressor) on the author's MKI as OCTABAM33, 26 Oct"
+             " 2026: KBAS/KWID, MON's switch and its OFF on older projects, KEY's pressed turn, the fades, all "
+             "good; the key-filter table fix alone as OCTABAM32, 25 Oct 2026. The author's standalone image "
+             "(140C_SCKF4) and KYOTI V1.6 on the author's MKI, 22 Oct 2026, and KEY's rotary switch and KWID's "
+             "clip in the standalone image, 23 Oct 2026: page 2, KBAS/KWID ranges and readouts, a kick fundamental"
+             " keyed at short attack and release, MON and KEY declick, load with 1 + 7 and 4 + 4 COMPRESSOR/DJ EQ "
+             "per core. The previous version's octabam form ran on the unit on 4 Oct 2026"),))

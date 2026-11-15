@@ -8,7 +8,7 @@ g = (GN/128)*(SCALE/128)*32. DECY raises Q; weak drive at 127.
 import math as _m
 
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate,
-                          Harness, Kind, MenuEntry, Module, Param, Proof,
+                          Harness, Kind, MenuEntry, Module, Param, Evidence, Level,
                           YBase)
 
 _FS = 44100.0
@@ -39,10 +39,9 @@ MODULE = Module(
     category=Category.TRACK,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="Ilia's MKII, remix resonator BUILD RR as RESON RR.RMX, 19 Oct 2026: "
-               "page-1 GN1–4/DECY/MIX, page-2 PIT1–4/SCAL 8 and 127, DECY low and high, "
-               "FX2 dry-pass, two FX1 instances",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Ilia", date="2026-10-19",
+        note="remix resonator BUILD RR as RESON RR.RMX, 19 Oct 2026: page-1 GN1–4/DECY/MIX, page-2 PIT1–4/SCAL 8 "
+             "and 127, DECY low and high, FX2 dry-pass, two FX1 instances"),),
     doc="FX1 Torso S-4 RING-style filter bank: 4 pitched BPs, SCAL makeup, DECY.",
     menu=MenuEntry(
         # Custom id 0x1e (BBD 0x1b). Selftest fixtures use DELAY 0x08.

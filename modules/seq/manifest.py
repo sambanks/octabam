@@ -14,7 +14,7 @@ DSP effect. FUNC + PAGE (SCALE SETUP) stays stock.
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 H = bytes.fromhex
 
@@ -35,10 +35,9 @@ MODULE = Module(
     category=Category.MACHINES,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="author's MKII, CX EUCL93, 11 Nov 2026: dual LANE, write-only, "
-               "LOCK_COLL + floor, PLCK overwrites TRIG-placed locks, TRIG "
-               "reshape keeps other DEST locks (TL promote); also verify_seq.",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-11-11",
+        note="CX EUCL93, 11 Nov 2026: dual LANE, write-only, LOCK_COLL + floor, PLCK overwrites TRIG-placed locks,"
+             " TRIG reshape keeps other DEST locks (TL promote); also verify_seq."),),
     doc="TRACK + PAGE: Euclidean sample-trig + p-lock window (title SEQ; "
         "A/B=PULSE/ROT of focused LANE, C=TRIG|PLCK, D/E=DEST/DEPTH; "
         "CUE = focused-lane random k-subset; DEST = LFO PMTR 0..29 + CX "

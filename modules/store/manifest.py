@@ -10,7 +10,7 @@ the detours and calls each client's handler at the event
 client that is not in the remix is left out of the tables.
 """
 
-from remix.schema import Category, Detour, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Kind, Linked, Module, Evidence, Level
 
 H = bytes.fromhex
 
@@ -86,7 +86,8 @@ MODULE = Module(
     key="STORE",
     kind=Kind.CF_PATCH,
     category=Category.PARTS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)"),),
     doc="Platform: the stock save, load, copy, CS1 and Part sites STORE clients share.",
     linked=(Linked("store", "modules/store/store.s", dram=True, include=store_inc),),
     detours=(

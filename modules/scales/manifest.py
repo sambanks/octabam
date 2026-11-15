@@ -22,7 +22,7 @@ its ROOT when the remix has it. KEY OFF, SCALE OFF: stock's C major.
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Evidence, Level, SymbolRef
 
 
 def _sources(modules, _remix):
@@ -42,10 +42,9 @@ MODULE = Module(
     category=Category.MIDI_USB,
     author="djib",
     author_url="https://github.com/Djibdjib",
-    proof=Proof.HARDWARE,
-    proof_note="djib's MKII, OCTABAM26 (live-djib, BUILD 26), 31 Oct 2026: the chooser, the "
-               "snapped notes and LEDs, scales.work across SAVE PROJECT and a power cycle; "
-               "verify_scales on MKI and MKII",
+    evidence=(Evidence(Level.UNIT, unit="MKII", image="OCTABAM26", date="2026-10-31",
+        note="(live-djib, BUILD 26), 31 Oct 2026: the chooser, the snapped notes and LEDs, scales.work across SAVE"
+             " PROJECT and a power cycle; verify_scales on MKI and MKII"),),
     doc="One catalogue of 52 scales in 9 families for every module; ARP SETUP's KEY turns the "
         "tonic and, pressed, opens the scale chooser (the families, then their scales); the "
         "sequencer and the arpeggiator play the scale; the CHROMATIC trig keys light it "

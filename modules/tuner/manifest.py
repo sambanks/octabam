@@ -29,7 +29,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Proof
+from remix.schema import Category, Evidence, Level
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "tuner" / "manifest.py"
 
@@ -38,4 +38,6 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_tuner")["MODULE
 # are added here rather than in his manifest.
 MODULE = dataclasses.replace(
     MODULE, category=Category.MACHINES, author="timhastie/octatrick-modules", author_url="https://github.com/timhastie/octatrick-modules",
-    proof=Proof.HARDWARE, proof_note="Tim's MKI, test build 3.0 b40 (`octatrick` at BUILD 40), 29 Sep 2026: UP + TEMPO opens the window and tunes; sources unchanged since 26 Sep")
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="Tim", date="2026-09-29",
+        note="test build 3.0 b40 (`octatrick` at BUILD 40), 29 Sep 2026: UP + TEMPO opens the window and tunes; "
+             "sources unchanged since 26 Sep"),))

@@ -1,10 +1,10 @@
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="rnd-name",
     family="test",
-    proof=Proof.RENDER,
-    proof_note="RND NAME smoke",
+    evidence=(Evidence(Level.RENDER,
+        note="RND NAME smoke"),),
     doc="smoke: RND NAME alone",
     modules=("RND NAME",),
     fallback="NONE",

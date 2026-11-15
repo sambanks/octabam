@@ -4,11 +4,11 @@ scripts/refhash.sh builds it (case tempocave-replay). BusDelay's panel name
 reads BusDlyRPL. Not a remix to flash for playing.
 """
 
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 REMIX = Remix(
     name="bus-tempo-replay",
-    family="reference", proof=Proof.PORT, proof_note="",
+    family="reference", evidence=(Evidence(Level.EMULATOR),),
     doc="bus with TEMPO SYNC's CAVE pinned REPLAY (diagnostic).",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "TEMPO SYNC"),
     fallback="SEND",

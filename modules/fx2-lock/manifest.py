@@ -16,7 +16,7 @@ on T1, BusVerb on T5, the stock DELAY on T8): on image 99 an FX2 change on
 T5 took the reverb off the track with no row to put it back (4 Oct 2026).
 """
 
-from remix.schema import Category, Gate, Kind, Module, Poke, Proof
+from remix.schema import Category, Gate, Kind, Module, Poke, Evidence, Level
 
 H = bytes.fromhex
 
@@ -25,7 +25,9 @@ MODULE = Module(
     key="FX2 LOCK",
     kind=Kind.CF_PATCH,
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "verify_fx2_lock under the port, 4 Oct 2026",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); verify_fx2_lock under the port, 4 Oct "
+             "2026"),),
     doc="The FX2 chooser cannot change a track's effect: YES's key-table entry points at NO's close handler, so the select handler never runs.",
     pokes=(
         Poke(0x400BC374, expect=H("40052474"), write=H("4003d440"),

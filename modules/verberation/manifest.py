@@ -21,13 +21,15 @@ tank, MOD and RATE set the long delay's swing and both LFOs' speed. At their
 defaults (127, 0, 64, 64) the module is exactly as it was without them.
 """
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness, ModeView,
-                          Kind, MenuEntry, Module, Param, Proof, YBase)
+                          Kind, MenuEntry, Module, Param, Evidence, Level, YBase)
 
 MODULE = Module(
     name="verberation", key="VERBERATION", kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Emilie Gillet (Mutable Instruments), ported here",
     author_url="https://github.com/pichenettes/eurorack",
-    proof=Proof.RENDER, proof_note="`verify_verberation` (dsp_host, against a float model); not run on a unit. Its predecessor GATE VERB had cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
+    evidence=(Evidence(Level.RENDER,
+        note="`verify_verberation` (dsp_host, against a float model); not run on a unit. Its predecessor GATE VERB"
+             " had cursory testing on Sam's MKII (owner report, 16 Oct 2026)"),),
     doc="A plate reverb (Griesinger topology, after Mutable Instruments Clouds) for rooms to halls, with a desk-style gate: amount, gain, time, diffusion, tone, gate; size, low cut, modulation depth and rate. One FX2 slot per instance.",
     menu=MenuEntry(fx2_id=0x1a, donor_desc=0x400d5594,
                    abbr=b"VRBN", fullname=b"Verberation", build_tag=False),

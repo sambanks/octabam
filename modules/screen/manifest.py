@@ -10,14 +10,18 @@ order) as a 1,194-byte 7-bit-encoded reply, and hands every other message
 back to stock. The reply goes back on the transport the request came on (DIN, or
 USB-MIDI when the USB module is in the image). See screen.s."""
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 MODULE = Module(
     name="screen",
     key="SCREEN",
     kind=Kind.CF_PATCH,
     category=Category.MIDI_USB, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.PORT, proof_note="`verify_screen` under the port (29 checks, DIN and USB, the pixels against the decoded panel stream with a popup and MIXER up); on a unit, the build before the frame fix (a9f0d3d5): Sam's MKII, a looping remix BUILD 40, USB MIDI with `screendump` (`--trace`, `-x --framerate 10`), 4 Nov 2026: answered, upright, page screens only; the frame fix has not run on a unit",
+    evidence=(Evidence(Level.EMULATOR, ref="verify_screen",
+        note="`verify_screen` under the port (29 checks, DIN and USB, the pixels against the decoded panel stream "
+             "with a popup and MIXER up); on a unit, the build before the frame fix (a9f0d3d5): Sam's MKII, a "
+             "looping remix BUILD 40, USB MIDI with `screendump` (`--trace`, `-x --framerate 10`), 4 Nov 2026: "
+             "answered, upright, page screens only; the frame fix has not run on a unit"),),
     doc="Answers the Elektron screenshot SysEx request on MIDI OUT with the 128x64 screen, windows and popups included.",
     linked=(Linked("screen", "modules/screen/screen.s", dram=True),),
     gates=(Gate("tools/verify/verify_screen.py", remix_arg=False, venv=True),),

@@ -12,7 +12,7 @@ import sys as _sys
 from pathlib import Path as _Path
 
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, Module, Param, Proof, YBase)
+                          Kind, MenuEntry, Module, Param, Evidence, Level, YBase)
 
 _sys.path.insert(0, str(_Path(__file__).resolve().parent))
 import vocoder_law as _ref  # noqa: E402  (numpy-free: the build runs on plain python3)
@@ -47,7 +47,11 @@ MODULE = Module(
     key="VOCODER",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Ignorato", author_url="https://github.com/Ignorato",
-    proof=Proof.RENDER, proof_note="0.2 at T2 T4 T6 T8 in dsp_host and under the ColdFire port (verify_vocoder, make check), 11 Oct 2026; SCAL, KEY and RANG in dsp_host and under the port, 18 Oct 2026 (value 0 bit for bit the build before them); not flashed, T4 and T8 not heard, the selectors not heard. The 0.2 code before the de-zipper was heard on Ignorato's MKII at T2 T3 (OCTABAM20, 5 Oct 2026, by ear); 0.1 ran on OCTABAM12",
+    evidence=(Evidence(Level.RENDER,
+        note="0.2 at T2 T4 T6 T8 in dsp_host and under the ColdFire port (verify_vocoder, make check), 11 Oct "
+             "2026; SCAL, KEY and RANG in dsp_host and under the port, 18 Oct 2026 (value 0 bit for bit the build "
+             "before them); not flashed, T4 and T8 not heard, the selectors not heard. The 0.2 code before the de-"
+             "zipper was heard on Ignorato's MKII at T2 T3 (OCTABAM20, 5 Oct 2026, by ear); 0.1 ran on OCTABAM12"),),
     doc="Ten-band vocoder after the Roland VP-330: the track's voice, a built-in carrier at NOTE or input B. FX2 of tracks 2, 4, 6 and 8 only.",
     menu=MenuEntry(
         fx2_id=0x1a,

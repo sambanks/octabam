@@ -4,7 +4,7 @@ Unit handoff for the complex-oscillator machine. Not folded into ilia/latest.
 Conflicts with SYNTH MACHINE (not included).
 """
 
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVENTS",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -17,8 +17,8 @@ STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATI
 
 REMIX = Remix(
     name="cxosc-core",
-    family="mods", proof=Proof.CHECK,
-    proof_note="unit handoff: CORE + CX OSC; marker-less machine list, mono, stock LFOs",
+    family="mods", evidence=(Evidence(Level.EMULATOR,
+        note="unit handoff: CORE + CX OSC; marker-less machine list, mono, stock LFOs"),),
     doc="CORE + REMIX SWITCH + CX OSC on the 14 stock effects.",
     modules=CORE + ("REMIX SWITCH", "CX OSC", "LOFI AMF FIX") + STOCK14,
     fallback="NONE",

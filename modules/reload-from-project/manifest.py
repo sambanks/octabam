@@ -19,7 +19,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Proof
+from remix.schema import Category, Evidence, Level
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "octabam-modules" / "reload-from-project" / "manifest.py"
 
@@ -29,4 +29,7 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_reload_from_pro
 # dropped: Octakit is not in octabam since 6 Oct 2026 (KITS replaces it).
 MODULE = dataclasses.replace(
     MODULE, conflicts=tuple(c for c in MODULE.conflicts if c[0] != "OCTAKIT"), category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="the author's MKI (standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image with all six KYOTI modules; 9 Nov 2026 the card reloads and quantized landing from DRAM in the KYOTI V1.7 image (this octabam form not flashed)")
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", date="2026-10-01",
+        note="(standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image "
+             "with all six KYOTI modules; 9 Nov 2026 the card reloads and quantized landing from DRAM in the KYOTI"
+             " V1.7 image (this octabam form not flashed)"),))

@@ -33,7 +33,7 @@ TXTR, Pockey2; 29 Sep 2026:
 KEY and KLVL; 22 Sep 2026: TXTR removed,
 WDTH in its slot; 20 Sep 2026: TONE back on page 1 in the return's slot)."""
 
-from remix.schema import (Gate, Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
+from remix.schema import (Gate, Category, Evidence, Level, BusRole, Claims, DspSection, Formatter, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
@@ -76,7 +76,8 @@ MODULE = Module(
     key="CHARACTER TXTR",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)"),),
     doc="Character plus TXTR (Airwindows Pockey2): fold, texture, saturation, tilt, compressor, width.",
     menu=MenuEntry(
         fx2_id=0x0d,                  # DJ EQ's: Character keeps LO-FI's 0x1c

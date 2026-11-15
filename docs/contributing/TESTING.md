@@ -313,8 +313,8 @@ than the binary.
 | changed | reaches |
 |---|---|
 | `modules/<name>/` | the shared half scoped to the module (`MODULES=<key>`: its own shared module gates and its knob census, plus the registry steps), the per-remix half and `make accept` for every remix that carries the module |
-| `modules/<name>/README.md`, or a manifest edit to display fields only (`doc`, `proof`, `proof_note`, `author`, `author_url`, `category`, docstrings) | `verify_docs` |
-| `remixes/<name>/remix.py` (or `remixes/test/...`) | `make check` and `make accept` for that remix; an edit to `doc`, `proof`, `proof_note` or a docstring only, or a README alone, reaches `verify_docs`; a removed remix the selftest and `verify_docs` |
+| `modules/<name>/README.md`, or a manifest edit to display fields only (`doc`, `evidence`, `author`, `author_url`, `category`, docstrings) | `verify_docs` |
+| `remixes/<name>/remix.py` (or `remixes/test/...`) | `make check` and `make accept` for that remix; an edit to `doc`, `evidence` or a docstring only, or a README alone, reaches `verify_docs`; a removed remix the selftest and `verify_docs` |
 | the build (`build_bus.py`, `cycle_count.py`, `dsp/`) or anything it imports | `scripts/refhash.sh check`, `make identity`, `make test-acceptance`, `make check-shared` for the cover |
 | a gate of the shared half | `make check-shared` for the cover |
 | a gate of the per-remix half | `make check-remix` for the cover |

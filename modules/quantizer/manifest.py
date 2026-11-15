@@ -14,7 +14,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Gate, Keep, Proof
+from remix.schema import Category, Gate, Keep, Evidence, Level
 
 _HERE = pathlib.Path(__file__).resolve().parent
 _UPSTREAM = _HERE / "upstream" / "quantizer" / "manifest.py"
@@ -179,6 +179,6 @@ MODULE = dataclasses.replace(
     gates=MODULE.gates + (Gate("tools/verify/verify_quantizer_ui.py", once=True, venv=True),),
     category=Category.MACHINES, author="timhastie/octatrick-modules",
     author_url="https://github.com/timhastie/octatrick-modules",
-    proof=Proof.HARDWARE,
-    proof_note="Tim pin; octabam qz_is_synth accepts CX OSC; FUNC+PTCH keeps octave under SCALE",
+    evidence=(Evidence(Level.UNIT,
+        note="Tim pin; octabam qz_is_synth accepts CX OSC; FUNC+PTCH keeps octave under SCALE"),),
 )

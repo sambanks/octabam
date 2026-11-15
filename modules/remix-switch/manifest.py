@@ -22,7 +22,7 @@ README.md beside this file is the procedure.
 import pathlib
 import re
 
-from remix.schema import ArenaReserve, Blob, Category, Detour, DspHook, DspSection, Gate, Kind, Linked, Module, Proof, Setting, Store
+from remix.schema import ArenaReserve, Blob, Category, Detour, DspHook, DspSection, Gate, Kind, Linked, Module, Evidence, Level, Setting, Store
 
 H = bytes.fromhex
 HERE = pathlib.Path(__file__).resolve().parent
@@ -60,12 +60,11 @@ MODULE = Module(
     key="REMIX SWITCH",
     kind=Kind.HYBRID,
     category=Category.UTILITIES, author="sanderlegit", author_url="https://github.com/sanderlegit",
-    proof=Proof.HARDWARE,
-    proof_note="an MKII, 29 Sep 2026 (OCTABAM14 with BOOT TRACE): switched to its own "
-               "image and to stock 1.40C, audio and play working; and with the park "
-               "moved into the dead vector run (BSRETVEC) booted, played and switched "
-               "away again -- 40 region words down to 18; `verify_remix_switch`. The list in "
-               "BRAIN's pane and /BRAIN/REMIXES/ (8 Oct 2026), and the persisted selection (#743): under the port only",
+    evidence=(Evidence(Level.UNIT, unit="MKII", image="OCTABAM14", date="2026-09-29",
+        note="(OCTABAM14 with BOOT TRACE): switched to its own image and to stock 1.40C, audio and play working; "
+             "and with the park moved into the dead vector run (BSRETVEC) booted, played and switched away again "
+             "-- 40 region words down to 18; `verify_remix_switch`. The list in BRAIN's pane and /BRAIN/REMIXES/ "
+             "(8 Oct 2026), and the persisted selection (#743): under the port only"),),
     doc="MAIN MENU > BRAIN lists the raw OS images (.RMX) in /BRAIN/REMIXES/ and boots the one "
         "picked without writing the flash; remembers the choice across reboots.",
     store=Store("octabam.remix-switch"),

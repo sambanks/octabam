@@ -1,10 +1,10 @@
 """stock effects with COPY PROJECT: duplicate a project on the card without loading it."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="copy-project",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock effects with COPY PROJECT: duplicate a project on the card without loading it.",
     modules=("STORE", "COPY PROJECT", "RND NAME",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",

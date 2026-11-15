@@ -2,7 +2,7 @@
 CORE's LOAD METER); MORPH and REC THRESHOLD, bridged with CORE's REC_TRIG_MUTE until its pin after
 553d8d2, stay in. The registry appends HOOKS, which owns the shared sites (modules/hooks). PHASER gives up its words for
 LOAD METER's DSP half (as stock-meter-a); DARK REV's hold CF METER's readout insert (as cfmeter)."""
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -18,8 +18,8 @@ DROPPED = ("PHASER", "DARK REV")
 
 REMIX = Remix(
     name="hooks-core",
-    family="mods", proof=Proof.PORT,
-    proof_note="verify_hooks: the bridged sites in this image; the chains under Unicorn",
+    family="mods", evidence=(Evidence(Level.EMULATOR, ref="verify_hooks",
+        note="verify_hooks: the bridged sites in this image; the chains under Unicorn"),),
     doc="CORE + MORPH, REC THRESHOLD, CF METER, CF METER IDLE and BOOT TRACE: HOOKS owns the sites they share with CORE.",
     modules=CORE + BRIDGED + ("LOFI AMF FIX",) + tuple(e for e in STOCK if e not in DROPPED),
     fx1=tuple(e for e in STOCK[:10] if e not in DROPPED),

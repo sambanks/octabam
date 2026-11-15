@@ -6,7 +6,7 @@ reverse probability. MIX 0 is bit-exact dry.
 """
 
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate,
-                          Harness, Kind, MenuEntry, Module, Param, Proof, YBase)
+                          Harness, Kind, MenuEntry, Module, Param, Evidence, Level, YBase)
 
 _P = Formatter.PLAIN
 _S = Formatter.STEPPED
@@ -18,11 +18,9 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="Ilia's MKII, STUT NS.RMX (latest−SHATTER; BRAIN switch), "
-               "21 Oct 2026: empty-project play; every page-1/page-2 knob, "
-               "MODE/SYNC, trig splits, two instances/core, engage/release "
-               "fades click-free; verify_stuttr",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Ilia", date="2026-10-21",
+        note="STUT NS.RMX (latest−SHATTER; BRAIN switch), 21 Oct 2026: empty-project play; every page-1/page-2 "
+             "knob, MODE/SYNC, trig splits, two instances/core, engage/release fades click-free; verify_stuttr"),),
     doc="Chance grain repeater: RATE/CHNC grab, HOLD loop, MODE rate, REV.",
     menu=MenuEntry(
         # MULTIBCOMP 0x19 — stock null stub, FX2-only; page clone still from

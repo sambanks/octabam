@@ -7,14 +7,16 @@ The ColdFire port advances its clock only at main's stock `bras .`
 loop does not load a project under the port; CF METER alone is port-gated.
 """
 
-from remix.schema import Category, Detour, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Kind, Linked, Module, Evidence, Level
 
 MODULE = Module(
     name="cfmeter-idle",
     key="CF METER IDLE",
     kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "boots and loads a project under the port (28 Sep 2026)",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); boots and loads a project under the port "
+             "(28 Sep 2026)"),),
     doc="Probe: main's idle loop timed, for CF METER's idle-time slot.",
     requires=("CF METER",),
     linked=(Linked("cfmeter_idle", "modules/cfmeter-idle/idle.s", dram=True),),

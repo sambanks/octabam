@@ -1,7 +1,7 @@
 """LOAD METER beside 13 stock effects: PHASER gives up its words for the meter's DSP half
 (193 words a payload; payload A has 33 spare in the stock layout). The two stock-meter remixes
 together carry all 14 stock effects with the meter, so every stock effect's slot cost can be read."""
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -16,7 +16,7 @@ DROPPED = ("PHASER",)
 
 REMIX = Remix(
     name="stock-meter-a",
-    family="effects", proof=Proof.CHECK, proof_note="",
+    family="effects", evidence=(Evidence(Level.EMULATOR),),
     doc="CORE with LOAD METER and the stock effects except PHASER.",
     modules=CORE + ("LOFI AMF FIX",) + tuple(e for e in STOCK if e not in DROPPED),
     fx1=tuple(e for e in STOCK[:10] if e not in DROPPED),

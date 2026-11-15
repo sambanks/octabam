@@ -5,7 +5,7 @@ METER's entry code (docs/contributing/DEMAND_LOADER.md, decision 9).
 import json
 import pathlib
 
-from remix.schema import Apply, Category, Detour, FormatterReg, Gate, Kind, Linked, Module, Option, Proof, Setting, Store
+from remix.schema import Apply, Category, Detour, FormatterReg, Gate, Kind, Linked, Module, Option, Evidence, Level, Setting, Store
 
 RECORDS = pathlib.Path("out/dsp/demand_records.json")
 CAPACITY = 2600                 # code words a block may hold: the staging area X:0x2906..0x3d55 takes 2 per word; the table is this size on every link
@@ -106,7 +106,7 @@ MODULE = Module(
     key="DLPUMP",
     kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.CHECK, proof_note="",
+    evidence=(Evidence(Level.EMULATOR),),
     doc="Host-writes a staged block to a DSP core, a chunk per frame interrupt (demand loader).",
     # dl_keyfmt wraps SIDECHAIN_COMPRESSOR's KEY formatter (sc_cf's key_fmt, named as a defsym:
     # its ROM cave's export, or the same link's label when PLACE is DRAM): "--" while the

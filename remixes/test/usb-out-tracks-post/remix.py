@@ -5,13 +5,13 @@ usb-out-tracks with each track's channels after that track's own MAIN gain
 unit that runs stock projects.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="usb-out-tracks-post",
     image_name="OUT-TRK-POST",
-    family="mods", proof=Proof.HARDWARE,
-    proof_note="allmyfriendsaresynths's MKII, P3, 5 Oct 2026 (smoke test: 16 channels, LEVEL/mute/solo/crossfader follow)",
+    family="mods", evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-10-05",
+        note="P3, 5 Oct 2026 (smoke test: 16 channels, LEVEL/mute/solo/crossfader follow)"),),
     doc="stock + USB (TRACKS POST) (16 ch: the tracks after their own MAIN gain).",
     modules=("USB",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

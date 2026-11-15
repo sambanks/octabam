@@ -6,11 +6,12 @@ stream on a unit that runs stock projects; `usb-io-main-ab` adds the stereo
 return.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="usb-out-main",
-    family="mods", proof=Proof.PORT, proof_note="`verify_usb` under the port, 28 Sep 2026",
+    family="mods", evidence=(Evidence(Level.EMULATOR, ref="verify_usb",
+        note="`verify_usb` under the port, 28 Sep 2026"),),
     doc="stock + USB (MAIN) (2 ch: MAIN L/R).",
     modules=("USB",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

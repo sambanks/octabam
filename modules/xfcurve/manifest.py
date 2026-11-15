@@ -53,7 +53,7 @@ the table and the weights keep the previous curve.
 
 import os
 
-from remix.schema import (Apply, Category, Detour, Gate, Kind, Linked, Module, Option, Proof, Scope,
+from remix.schema import (Apply, Category, Detour, Gate, Kind, Linked, Module, Option, Evidence, Level, Scope,
                           Setting, Store)
 
 H = bytes.fromhex
@@ -147,9 +147,9 @@ MODULE = Module(
     author_url="https://github.com/bryantysinger",
     doc=("The crossfader's curve, chosen in BRAIN: LINEAR (stock), four S-curves (S SOFT to S HARD), their inverses (INV SOFT to INV HARD), CUT, CUT A, CUT B, SLOW A or SLOW B. "
          "Applies to scene locks, XVOL and the playback morph alike."),
-    proof=Proof.HARDWARE,
-    proof_note=("Bryan's MKII, his everyday remix, 6 Nov 2026 (panel crossfader, every curve "
-                "including CUT A / CUT B); port gate tools/verify/verify_xfcurve.py"),
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Bryan", date="2026-11-06",
+        note="his everyday remix, 6 Nov 2026 (panel crossfader, every curve including CUT A / CUT B); port gate "
+             "tools/verify/verify_xfcurve.py"),),
     linked=(
         Linked("xfcurve", os.path.join(_HERE, "xfcurve.s"), dram=True, include=curves_inc),
     ),

@@ -1,14 +1,14 @@
 """DLCOPY -- the demand loader's copier: a frame hook on payload B that moves a block the ColdFire has
 staged into the shared window and publishes it (docs/contributing/DEMAND_LOADER.md).
 """
-from remix.schema import Category, Claims, DspHook, DspRange, DspSection, Gate, Kind, Module, Proof
+from remix.schema import Category, Claims, DspHook, DspRange, DspSection, Gate, Kind, Module, Evidence, Level
 
 MODULE = Module(
     name="dlcopy",
     key="DLCOPY",
     kind=Kind.HYBRID,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.CHECK, proof_note="",
+    evidence=(Evidence(Level.EMULATOR),),
     doc="Frame hook on payload B: copies a staged block into the shared window (demand loader).",
     claims=Claims(dsp_ranges=(
         DspRange("x", 0x2900, 0x1456, "the staging area the ColdFire's host write fills: doorbell, header, 2 words per code word"),

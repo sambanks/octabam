@@ -7,7 +7,7 @@ reserved for a longer FEED delay / MODE=VOID later.
 import math as _m
 
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, Module, Param, Proof, YBase)
+                          Kind, MenuEntry, Module, Param, Evidence, Level, YBase)
 
 _FS = 44100.0
 _P = Formatter.PLAIN
@@ -49,8 +49,8 @@ MODULE = Module(
     category=Category.TRACK,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="MKII LATEST NP / VRCS VJ: SRC LFO|NBR, COLR/HPF main, SHPE/DPTH SETUP, DPTH default 127; verify_void",
+    evidence=(Evidence(Level.UNIT, unit="MKII",
+        note="LATEST NP / VRCS VJ: SRC LFO|NBR, COLR/HPF main, SHPE/DPTH SETUP, DPTH default 127; verify_void"),),
     doc="Scrape grit: dry↔noise BAL; LFO/nbr AM + DRV/FDBK on noise only; WID stereo.",
     menu=MenuEntry(
         # No free custom FX2 id left in-tree (SHATTER=0x0a, …). PLATE is

@@ -16,7 +16,7 @@ Every default is the TB-303 ("Limiting the Devil Fish to TB-303 sounds", p. 8).
 """
 
 from remix.schema import (BusRole, Category, DspSection, Formatter, Harness, Kind, MenuEntry,
-                          Module, Param, Proof, YBase)
+                          Module, Param, Evidence, Level, YBase)
 
 # The FX id. OCTA303's unit compares the track's FX1/FX2 id bytes with it (DEVIL_ID in
 # modules/octa303/manifest.py, through remix.inc); test_octa303 checks the two agree.
@@ -33,11 +33,11 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK,
     author="MaMarko", author_url="https://github.com/braikomarko-hub",
-    proof=Proof.HARDWARE,
-    proof_note="the owner's MKI, image DEVPR2 (BUILD 93, remix devilish, on 0x10), 22 Oct 2026: every knob of both "
-               "pages, FX1 and FX2, an LFO on a knob moving the 303, a scene and a lock, a non-303 track passing, two "
-               "303 tracks for five minutes, save and reload. Before, in daily use in the acidtrack images up to "
-               "ACIDV71 (on 0x1f / 0x1e). The Devil Fish engine is bit-exact in OCTA303's source simulator",
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="MaMarko", date="2026-10-22",
+        note="image DEVPR2 (BUILD 93, remix devilish, on 0x10), 22 Oct 2026: every knob of both pages, FX1 and "
+             "FX2, an LFO on a knob moving the 303, a scene and a lock, a non-303 track passing, two 303 tracks "
+             "for five minutes, save and reload. Before, in daily use in the acidtrack images up to ACIDV71 (on "
+             "0x1f / 0x1e). The Devil Fish engine is bit-exact in OCTA303's source simulator"),),
     doc="The Devil Fish mods (Robin Whittle) for an OCTA303 track: twelve knobs read by the 303 "
         "voice; the DSP passes the audio through.",
     menu=MenuEntry(
