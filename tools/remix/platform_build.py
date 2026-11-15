@@ -12,6 +12,7 @@ not arithmetic in Python.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import subprocess
 import sys
@@ -193,12 +194,16 @@ def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int, includes=N
         # bytes (refhash: every runtime bit-identical, 25 Sep 2026).
         # `Linked.cpu` still governs the ROM-cave form.
         mine = tuple((unit_defs or {}).get(u.label, ()))
-        _run(["m68k-elf-as", "-mcpu=54455", *inc, "-I", ROOT, *as_defsyms(mine), "-o", obj, ROOT / u.source], work)
+        # -almn: the unit's listing beside its object (tools/build/cf_forms.py reads the instruction lines)
+        _run(["m68k-elf-as", "-mcpu=54455", *inc, "-I", ROOT, *as_defsyms(mine), f"-almn={obj.with_suffix('.lst')}",
+              "-o", obj, ROOT / u.source], work)
         own = redefined(obj, mine) if mine else []
         if own:
             sys.exit(f"platform build: {u.source} defines {', '.join(own)}, which its "
                      f"Linked.defsyms also declares")
         objs.append(obj)
+    # which unit each listing is (tools/build/cf_forms.py checks this against layout.json and the registry)
+    (work / "listings.json").write_text(json.dumps([[i, u.label, str(u.source)] for i, (_k, u) in enumerate(units)]))
     elf, raw = work / "runtime.elf", work / "runtime.bin"
     _run(["m68k-elf-ld", f"-Ttext=0x{base:x}",
           *[f"--defsym={n}=0x{v:x}" for n, v in defsyms.items()],

@@ -329,6 +329,7 @@ verify-remix-impl:
 	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_dirty_state.py $(REMIX)
 	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_init_regs.py $(REMIX)
 	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_dsp_forms.py $(REMIX)
+	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_cf_forms.py $(REMIX)
 	REMIX=$(REMIX) $(PY) tools/verify/step.py --cards python3 tools/verify/verify_dram_boot.py
 	@# The three ColdFire-port checks need the .venv (make emu-setup). Without
 	@# it they SKIP; with it a failure FAILS (until 16 Sep 2026 `|| echo SKIP`
