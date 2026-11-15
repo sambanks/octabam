@@ -34,7 +34,7 @@ MODULE = Module(
         note="verify_verb_parts (the port); not run on a unit"),),
     requires=ROWS,
     linked=(Linked("verbparts", "modules/verb-parts/verbparts.s", cpu="5475", include=table_inc, dram=True),),
-    gates=(Gate("tools/verify/verify_verb_parts.py", venv=True),),
+    gates=(Gate("tools/verify/verify_verb_parts.py", venv=True, project=True),),
     detours=(
         # A few instructions in, not at the entries: those are VARISPEED's (rp_apply1, rp_apply2), whose stubs
         # replay the prologue and come back. Nothing before these reads the Part.
