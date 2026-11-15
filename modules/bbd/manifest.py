@@ -21,7 +21,7 @@ The stop kill (STOP, STOP, STOP) reaches BBD as it reaches the stock reverbs:
 kill.s adds BBD's id to the ColdFire pass that zeroes their slots, BBD's only
 (hidden slot 11, 127 otherwise), and BBD cuts to dry and clears its line."""
 
-from remix.schema import (Gate, Category, Proof, BusRole, Claims, Detour, DspSection, Formatter, Harness,
+from remix.schema import (Gate, Category, Evidence, Level, BusRole, Claims, Detour, DspSection, Formatter, Harness,
                           Kind, Linked, MenuEntry, Module, Param, YBase)
 
 FX2_ID = 0x1b
@@ -34,7 +34,8 @@ def id_inc(modules, remix):
 MODULE = Module(
     name="bbd", key="BBD", kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="JamCones", author_url="https://github.com/JamCones",
-    proof=Proof.HARDWARE, proof_note="JamCones' MKII, BBDOB4 (remixes/test/bbd, BUILD 4), 17 Oct 2026",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="JamCones", date="2026-10-17",
+        note="JamCones' MKII, BBDOB4 (remixes/test/bbd, BUILD 4), 17 Oct 2026"),),
     doc="Clocked BBD delay: compander, clock/3 filters, bucket noise, freeze, governor; FX2.",
     menu=MenuEntry(fx2_id=FX2_ID, donor_desc=0x400d58b8,
                    abbr=b"BBD", fullname=b"BBD DELAY", build_tag=False),

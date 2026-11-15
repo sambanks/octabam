@@ -5,11 +5,11 @@ image 69 ran. For testing USB AUDIO OUT TRACKS on a unit that runs stock
 projects. Local test remix (27 Sep 2026).
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="usb-out-tracks",
-    family="mods", proof=Proof.PORT, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock + USB (TRACKS) (16 ch: the tracks).",
     modules=("USB",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

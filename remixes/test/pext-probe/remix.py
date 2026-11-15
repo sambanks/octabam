@@ -3,8 +3,8 @@
 A measurement instrument for one hardware run (modules/pextprobe/README.md): it tests how far P
 memory reaches above P:0x2000 on each DSP core and reports it in the audio of the track it sits on; USB
 carries the tracks (16 channels, PRE) to the host, which is where the report is read."""
-from remix.schema import Proof, Remix
-REMIX = Remix(family="effects", proof=Proof.CHECK, proof_note="",
+from remix.schema import Evidence, Level, Remix
+REMIX = Remix(family="effects", evidence=(Evidence(Level.EMULATOR),),
               name="pext-probe", doc="PEXT PROBE on FX1 and USB audio out (TRACKS) beside the stock effects (all but EQUALIZER, whose id it takes, and PLATE REV and SPRING REV, whose words it takes).",
               modules=("USB", "PEXT PROBE",
                        "FILTER", "DJ EQ", "PHASER", "FLANGER",

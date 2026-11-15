@@ -21,7 +21,7 @@ Sites, measured from the user's 1.40C (base 0x40000400; modules/morph/README.md)
 
 import os
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level, SymbolRef
 
 H = bytes.fromhex
 _HERE = os.path.relpath(os.path.dirname(os.path.realpath(__file__)))
@@ -42,11 +42,10 @@ MODULE = Module(
          "A -> B -> A over STEPS x x steps, starting on A; the other tracks keep the crossfader. "
          "Track + DOWN finishes the cycle on A and parks the track there until the crossfader reaches "
          "A. Settings saved with the project. Inspired by the Korg Electribe's Motion Sequence."),
-    proof=Proof.HARDWARE,
-    proof_note=("the owner's MKI, image MRPPR1 (BUILD 98, remix morph), 23 Oct 2026: the window, the "
-                "start on the release, x to 16 and 41.625, saving (SAVE PROJECT, power cycle, RELOAD, "
-                "another project and back), stop and parking on A; before, inside aCiDtRacK (ACIDV74MP, "
-                "22 Oct): several tracks at once, SMOOTH and TRIG HOLD"),
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="MaMarko", date="2026-10-23",
+        note="image MRPPR1 (BUILD 98, remix morph), 23 Oct 2026: the window, the start on the release, x to 16 and"
+             " 41.625, saving (SAVE PROJECT, power cycle, RELOAD, another project and back), stop and parking on "
+             "A; before, inside aCiDtRacK (ACIDV74MP, 22 Oct): several tracks at once, SMOOTH and TRIG HOLD"),),
     linked=(
         Linked("morph", os.path.join(_HERE, "morph.s"), dram=True),
     ),

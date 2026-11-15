@@ -328,6 +328,7 @@ verify-remix-impl:
 	@# RAM is not zeroed.
 	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_dirty_state.py $(REMIX)
 	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_init_regs.py $(REMIX)
+	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_dsp_forms.py $(REMIX)
 	REMIX=$(REMIX) $(PY) tools/verify/step.py --cards python3 tools/verify/verify_dram_boot.py
 	@# The three ColdFire-port checks need the .venv (make emu-setup). Without
 	@# it they SKIP; with it a failure FAILS (until 16 Sep 2026 `|| echo SKIP`
@@ -577,6 +578,15 @@ ghidra: ## One Ghidra project: the MAIN OS and both DSP payloads (out/ghidra). G
 ghidra-install: ## A copy of a stock Ghidra 12.1.4 with the DSP56300 module and the ColdFire EMAC patch. GHIDRA=<stock install> [GHIDRA_DEST=dir]
 	@test -n "$(GHIDRA)" || { echo "usage: make ghidra-install GHIDRA=<stock Ghidra 12.1.4 install> [GHIDRA_DEST=dir]"; exit 1; }
 	tools/ghidra/install.sh $(GHIDRA) $(GHIDRA_DEST)
+
+.PHONY: evidence
+evidence: ## Every module's proof level, then the modules whose sources changed after their unit run
+	python3 tools/build/evidence.py
+	python3 tools/build/evidence.py stale
+
+.PHONY: symbols
+symbols: ## Build out/symbols.sqlite (addresses, names, sizes, doc citations): make symbols [REMIX=] ; then tools/build/sym.py
+	python3 tools/build/symdb.py build $(if $(REMIX),--remix $(REMIX))
 
 .PHONY: where
 where: ## Every doc paragraph citing one ColdFire address + a disasm window. make where A=0x40004d40 [N=128]

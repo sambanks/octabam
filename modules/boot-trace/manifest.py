@@ -9,7 +9,7 @@ MIDI OUT receives names the stage that hangs. trace.s has the table.
 Note 1 is sent by REMIX SWITCH's chainloader when both are in the image.
 """
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 H = bytes.fromhex
 
@@ -26,7 +26,8 @@ MODULE = Module(
     key="BOOT TRACE",
     kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="sanderlegit", author_url="https://github.com/sanderlegit",
-    proof=Proof.HARDWARE, proof_note="an MKII, 29 Sep 2026 (OCTABAM4-14); `verify_boot_trace`",
+    evidence=(Evidence(Level.UNIT, unit="MKII", image="OCTABAM4", date="2026-09-29",
+        note="(OCTABAM4-14); `verify_boot_trace`"),),
     doc="Probe: a MIDI note on MIDI OUT at each boot stage, the DSP upload's record "
         "echoes and any stall, for finding where a boot hangs.",
     linked=(Linked("boot_trace", "modules/boot-trace/trace.s", cpu="5475", include=_hooks_inc),),

@@ -112,3 +112,11 @@ cave the build fills (`0x400d6b00`..`0x400d7c3c`, `tools/remix/state.py`).
   host-port handlers (`DSP.md` section 6c).
 - `fx_null_init`/`fx_null_process` is the passthrough every unused id
   points at, DELAY (`0x08`) included: the stock DELAY runs on the ColdFire.
+
+## Export for the symbol database
+
+`OtExport.java` is a post-script beside `OtReport.java`: it writes `out/ghidra/symbols.tsv` (`cf`, address, size,
+name) for each function of MAIN_OS or REMIX and `xrefs.tsv` (`cf`, from, to, kind) for the references to each
+function's entry. `python3 tools/build/symdb.py build --ghidra` reads them (`docs/contributing/TOOLING.md`).
+`ot_ghidra.py import` runs it after `OtReport.java` on MAIN_OS and, with `--image`, REMIX (the last one imported leaves the files; `--no-analysis` skips it). Run in Ghidra 12.1.4 (this machine, 15 Nov 2026), MAIN_OS: 2,179 functions and 13,654 references to them; `symdb.py build --ghidra` loads them and `sym.py --callers 0x4001ffe4` lists the 43 references to the stock logger.
+

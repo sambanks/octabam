@@ -18,7 +18,7 @@ not carry makes the firmware create one; its live FX2 ids read
 6 9 9 9 7 9 9 8, FX1 0 x8 (NONE).
 """
 
-from remix.schema import Category, Proof, Detour, Kind, Linked, Module
+from remix.schema import Category, Evidence, Level, Detour, Kind, Linked, Module
 import idspace
 
 H = bytes.fromhex
@@ -42,7 +42,8 @@ MODULE = Module(
     key="RIG HOSTS",
     kind=Kind.CF_PATCH,
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "a new project born hosted under the port",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); a new project born hosted under the port"),),
     doc="A new part is born hosted: T1 FX2 = BusDelay, T5 = BusVerb, T8 = the stock DELAY, the rest SEND.",
     linked=(Linked("righosts", "modules/rig-hosts/righosts.s", include=ids_inc, dram=True),),
     detours=(

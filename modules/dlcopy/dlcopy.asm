@@ -2,9 +2,11 @@
 ; DLCOPY -- the demand loader's copier, a frame hook on payload B
 ; (docs/contributing/DEMAND_LOADER.md).
 ;
-; Every frame, at the frame head, a block the ColdFire has staged in this core's X
-; is moved into the shared window and published; or an effect's words are
-; withdrawn. The window is one memory for both cores, so a copy made here is
+; Every frame, at the frame's end (P:$342, after the last track and before the jump
+; back to the frame wait), a block the ColdFire has staged in this core's X is moved
+; into the shared window and published; or an effect's words are withdrawn. Not at the
+; frame head: a copy there held this core between its two handshakes with core A, and
+; on a unit the core stopped in the first track of that frame (FAILURE_MODES.md). The window is one memory for both cores, so a copy made here is
 ; resident for the tracks of core A as well.
 ;
 ; Staging (X, written by the ColdFire's host transfer, 16 bits a word: the byte above them is whatever
@@ -31,8 +33,10 @@
 ; BOUND is cleared before any other word of the entry or the code changes and set
 ; last, so a stub on either core sees the code whole or not at all.
 ;
-; Registers: a, x0, x1, r0, r1 only, and b, kept in x:$3fe8..$3fea; the stock code after the hook
-; site (P:$7a) writes the others before it reads them.
+; Registers: a, x0, x1, r0, r1 only, and b, kept in x:$3fe8..$3fea. The stock code after the hook
+; site writes each before it reads it: x0 at P:$344, r1 at P:$4b, a at P:$59, r0 at P:$7a; r6 (set by
+; the instruction before the site) is not touched and r7 takes the displaced instruction's value.
+; r0 and r1 are linear here, as the stock code at P:$4b and P:$7a needs them.
 ; ---------------------------------------------------------------------------
 
 dlc_start:
@@ -138,5 +142,5 @@ dlc_done:
         clr     a
         move    a,x:>$2900               ; consumed
 dlc_exit:
-        move    r6,x:>$207               ; the displaced stock instruction
+        move    #>$426,r7                ; the displaced stock instruction
         rts

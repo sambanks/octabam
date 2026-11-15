@@ -4,11 +4,12 @@ Page-2 parameter locks need SCENES P2 (its dial hooks draw a held step's
 lock). No DSP module; the 14 stock effects keep the FX choosers stock's.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="plocks-p2",
-    family="mods", proof=Proof.PORT, proof_note="verify_plocks_p2 under the port",
+    family="mods", evidence=(Evidence(Level.EMULATOR, ref="verify_plocks_p2",
+        note="verify_plocks_p2 under the port"),),
     doc="Page-2 parameter locks (PLOCKS P2) and page-2 scene locks (SCENES P2), stock effects.",
     modules=("SCENES P2", "STORE", "EVENTS", "PLOCKS P2",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

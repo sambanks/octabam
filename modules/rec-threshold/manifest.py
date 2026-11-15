@@ -35,7 +35,7 @@ TRIG is set to THR, in the Part, its SRAM mirror and the published copy.
 IN is the peak of inputs A-D, held ~0.5 s, then falling ~29 dB/s.
 """
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Evidence, Level
 
 H = bytes.fromhex
 
@@ -48,7 +48,11 @@ MODULE = Module(
     key="REC THRESHOLD",
     kind=Kind.CF_PATCH,
     category=Category.MACHINES, author="Chupitnik", author_url="https://github.com/Chupitnik",
-    proof=Proof.HARDWARE, proof_note="Chupitnik's MKII, 11-13 Oct 2026, THR1 to THR9 from the card: armed with TRACK 1 + REC AB, silence never records, the input starts the take, a second press cancels, LEV and IN on RECORDING SETUP 2, TRIG moved off THR while armed drops the arm and the blink, an armed track's icon blinks, armed inside RECORDING SETUP 1 it records; THR9 is this code",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Chupitnik", date="2026-10-13",
+        note="11-13 Oct 2026, THR1 to THR9 from the card: armed with TRACK 1 + REC AB, silence never records, the "
+             "input starts the take, a second press cancels, LEV and IN on RECORDING SETUP 2, TRIG moved off THR "
+             "while armed drops the arm and the blink, an armed track's icon blinks, armed inside RECORDING SETUP "
+             "1 it records; THR9 is this code"),),
     doc="Recorder TRIG value THR: a REC press arms, and recording starts when the input passes the track's LEV (RECORDING SETUP 2, beside a live IN meter).",
     linked=(Linked("thresh", "modules/rec-threshold/thresh.s", dram=True),),
     detours=(

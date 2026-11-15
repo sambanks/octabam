@@ -74,13 +74,14 @@ registers it: the registry discovers every `modules/*/manifest.py`, and
 refuses two modules on one key. A module's `fx2_id` is its preferred id;
 the remix settles clashes (`registry.assign_ids`).
 
-The manifest's `category`, `author`, `author_url`, `proof` and `proof_note`
+The manifest's `category`, `author`, `author_url` and `evidence`
 are the README's module table (`make docs` renders it and the remix index
 from the manifests and the selections; the selftest refuses a module
-without them, `verify_docs` a stale copy). `proof` is one of `CHECK`,
-`RENDER`, `PORT`, `HARDWARE`; the note names the unit, image and date, or
-the gate. A remix declares `family` (`rig`, `effects`, `mods`,
-`reference`, `probes`) and the same `proof` pair.
+without them, `verify_docs` a stale copy). `evidence` is a tuple of
+`Evidence(Level.X, unit, who, image, date, ref, commit, note)`; `Level` is
+`BUILD`, `EMULATOR`, `RENDER`, `UNIT` or `UNIT_MEASURED`
+(`docs/contributing/MODULES.md`). A remix declares `family` (`rig`,
+`effects`, `mods`, `reference`, `probes`) and `evidence` the same way.
 
 Settings a module keeps on the card (a checkbox, a profile) go in BRAIN
 (`modules/brain`; `docs/specs/BRAIN.md` is the design), and in no
@@ -227,6 +228,11 @@ is seen.
 Rebase onto current main. Gates run before the rebase are not a result: a
 branch that merges without a conflict can still fail on main (PR #396's
 stress fixture named a knob that #415 had renamed).
+
+PRs merge one at a time. Before a merge, the maintainer updates the branch
+only when main has moved under it since its last green run, in a file the
+PR also changed or in a module, hook, cave or remix its gates build with;
+a PR main has not moved under merges as it stands.
 
 CI's `Gates — make reach` job runs the `make reach RUN=1 KEEP=1` line below
 on every PR push, against the 1.40C it downloads for that run; link the run

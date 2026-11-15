@@ -1,10 +1,10 @@
 """stock effects with KEYBUS and CHARACTER on FX1: CHARACTER's KEY reads T1..T8 from KEYBUS's words."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="character-key",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock effects with KEYBUS and CHARACTER: CHARACTER's KEY reads T1..T8 from KEYBUS's shared key words.",
     modules=(
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",

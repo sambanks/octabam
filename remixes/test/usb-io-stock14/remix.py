@@ -6,15 +6,17 @@ payload A's code, P:$1fdf, in a load record of its own that a pre-boot copy
 of the payload carries (schema.DspSection.tail).
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
            "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
 
 REMIX = Remix(
     name="usb-io-stock14",
-    family="mods", proof=Proof.HARDWARE,
-    proof_note="Bryan T's MKII, OCTABAM4, 22 Oct 2026, macOS: tools/hw/usb_in_tones.py, each input at unity on its own side, the rest within +-1.5 LSB, the same as the 29- and 39-word injects in their donor regions; `make check` (verify_usb, verify_usb_in) under the port",
+    family="mods", evidence=(Evidence(Level.UNIT, unit="MKII", who="Bryan T", image="OCTABAM4", date="2026-10-22",
+        note="macOS: tools/hw/usb_in_tones.py, each input at unity on its own side, the rest within +-1.5 LSB, the"
+             " same as the 29- and 39-word injects in their donor regions; `make check` (verify_usb, "
+             "verify_usb_in) under the port"),),
     doc="stock (all 14) + USB (MAIN CUE out, ABCD in), the inject at payload A's tail.",
     modules=("USB",) + STOCK14,
     fallback="NONE",

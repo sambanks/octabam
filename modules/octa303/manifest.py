@@ -16,7 +16,7 @@ the stock record (a Detour at the resolver's table load -- in DRAM, no ROM cave)
 """
 import os
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Evidence, Level, SymbolRef
 
 # This module's own directory relative to octabam's root (the build's cwd), as poly.s's manifest.
 _HERE = os.path.relpath(os.path.dirname(os.path.realpath(__file__)))
@@ -78,12 +78,15 @@ MODULE = Module(
          "of the machine list, no sample needed) with a SETUP page WAVE GATE FINE SLID DRIV ACCV; "
          "GATE 303 = the 303's own gate, 3.5 of the step's 6 clocks (Whittle). v7.1: held trig + UP / DOWN = "
          "an octave, a new slide takes the note it slides from."),
-    proof=Proof.HARDWARE,
-    proof_note=("v7.1 on the author's MKI, image O3V71 (BUILD A0, remix octa303), 23 Oct 2026: held trig + UP / DOWN an octave (several trigs at once, C5 stays), FUNC + TRIG's slide tied into the previous note, then turned to another note and an octave up, a FLEX track's TRIG + UP stock, LFO SETUP's names, save / power-cycle / reload; v7.0 on the author's MKI, image ACIDV70 (BUILD 87, remix acidtrack), 19 Oct 2026: the OCTA-303 "
-                "machine chosen from the list, its SETUP page, save / power-cycle / reload, the 303 gate; "
-                "v6.3-v6.9 played for hours (two or three tracks, with dEVILish and DisTorX). The engine is "
-                "bit-exact against tools/octa303/ref303.py (test_octa303); the panel under the port in "
-                "verify_octa303_ui. The ColdFire load is not measured on the unit."),
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="MaMarko", date="2026-10-23",
+        note="v7.1 on the author's MKI, image O3V71 (BUILD A0, remix octa303), 23 Oct 2026: held trig + UP / DOWN "
+             "an octave (several trigs at once, C5 stays), FUNC + TRIG's slide tied into the previous note, then "
+             "turned to another note and an octave up, a FLEX track's TRIG + UP stock, LFO SETUP's names, save / "
+             "power-cycle / reload; v7.0 on the author's MKI, image ACIDV70 (BUILD 87, remix acidtrack), 19 Oct "
+             "2026: the OCTA-303 machine chosen from the list, its SETUP page, save / power-cycle / reload, the "
+             "303 gate; v6.3-v6.9 played for hours (two or three tracks, with dEVILish and DisTorX). The engine is"
+             " bit-exact against tools/octa303/ref303.py (test_octa303); the panel under the port in "
+             "verify_octa303_ui. The ColdFire load is not measured on the unit."),),
     linked=(
         Linked("octa303", os.path.join(_HERE, "octa303.s"), dram=True, include=remix_inc),
     ),

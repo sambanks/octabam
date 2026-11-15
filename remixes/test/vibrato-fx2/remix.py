@@ -1,11 +1,10 @@
 """VIBRATO live on FX1 and FX2 (SLOTS = FX1+FX2) beside the stock effects:
 PLATE REV gives up its words. The fixture of verify_vibrato's FX2 checks."""
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 REMIX = Remix(
     family="effects",
-    proof=Proof.CHECK,
-    proof_note="",
+    evidence=(Evidence(Level.EMULATOR),),
     name="vibrato-fx2",
     doc="VIBRATO live on FX1 and FX2 beside the stock effects (all but PLATE REV).",
     modules=("VIBRATO",

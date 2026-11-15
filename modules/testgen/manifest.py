@@ -13,7 +13,7 @@ CHAN routing. An FX1 effect (buffer-free); on FX2 it passes its input untouched.
 import math as _m
 
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, Module, Param, Proof, YBase)
+                          Kind, MenuEntry, Module, Param, Evidence, Level, YBase)
 
 _FS = 44100.0
 
@@ -59,7 +59,9 @@ MODULE = Module(
     key="TESTGEN",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Ignorato", author_url="https://github.com/Ignorato",
-    proof=Proof.HARDWARE, proof_note="Ignorato's MKII, images OCTABAM4-6 and 10 (remix testgen), 3-4 Oct 2026; 0.1 measured at the main outs; FX1-only in the emulator so far",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Ignorato", image="OCTABAM4", date="2026-10-04",
+        note="images OCTABAM4-6 and 10 (remix testgen), 3-4 Oct 2026; 0.1 measured at the main outs; FX1-only in "
+             "the emulator so far"),),
     doc="Measurement source: a sine, sweep, pink or white noise, impulses, a needle pulse train or DC replace the track's audio.",
     menu=MenuEntry(
         fx2_id=0x17,

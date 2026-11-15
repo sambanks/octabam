@@ -6,11 +6,12 @@ and 31 of the stock scene block. The 14 stock effects keep the FX choosers
 stock's.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="scenes-midisc",
-    family="mods", proof=Proof.PORT, proof_note="verify_scenes_p2 and verify_plocks_p2 under the port",
+    family="mods", evidence=(Evidence(Level.EMULATOR, ref="verify_scenes_p2",
+        note="verify_scenes_p2 and verify_plocks_p2 under the port"),),
     doc="MIDI SCENES + KITS + page-2 scene locks (SCENES P2) + page-2 parameter locks (PLOCKS P2), stock effects.",
     modules=("MIDI SCENES", "STORE", "KITS", "SCENES P2", "EVENTS", "PLOCKS P2",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

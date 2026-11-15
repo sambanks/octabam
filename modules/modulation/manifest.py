@@ -33,7 +33,7 @@ import importlib.util
 import pathlib
 
 from remix import stations
-from remix.schema import (Store, Gate, Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
+from remix.schema import (Store, Gate, Category, Evidence, Level, BusRole, Claims, DspSection, Formatter, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, YBase)
 
 # The float reference is also the source of the P table and the MODE labels,
@@ -66,7 +66,7 @@ MODULE = Module(
     key="MODULATION",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="Sam's MKII",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-25"),),
     doc="FX1 station: a modulation pedal -- Juno, Dimension, flanger, phaser, comb; FX1 only.",
     menu=MenuEntry(
         fx2_id=0x0e,

@@ -40,7 +40,7 @@ import pathlib
 
 from remix import schema, stock
 from remix.schema import (Apply, Binary, Category, Claims, Detour, DspHook, DspSection, Gate,
-                          Kind, Linked, Module, Option, Poke, Proof, Setting, Store)
+                          Kind, Linked, Module, Option, Poke, Evidence, Level, Setting, Store)
 
 H = bytes.fromhex
 
@@ -115,7 +115,8 @@ LINKED = (
     # and geometry cfgsel writes before the handoff (40 B, contiguous)
     Linked("usbaudio", f"{SOURCE}/usbaudio.s", cpu="5475", dram=True,
            include=audio_inc, boot_mutable=(("usb_trk", 40),),
-           defsyms=(("LM_STATS", 0), ("LM_DSP", 0), ("LM_OT", 0), ("DL_DIAG", 0))),   # LOAD METER's blocks, 0 without it
+           defsyms=(("LM_STATS", 0), ("LM_DSP", 0), ("LM_OT", 0), ("DL_DIAG", 0),   # LOAD METER's blocks, 0 without it
+                    ("RMT_RING", 0), ("RMT_COMMAND", 0))),                                            # REMOTE's ring, 0 without it
     Linked("usbcrossbar", f"{SOURCE}/usbcrossbar.s", cpu="5475", dram=True),
     Linked("usbaudio_in", f"{SOURCE}/usbaudio_in.s", cpu="5475", dram=True),
 )
@@ -248,8 +249,21 @@ POKE_COMPOSITE = Poke(0x400e2004, H("000000"), H("ef0201"),
 MODULE = Module(
     name="usb", key="USB", kind=Kind.HYBRID,
     category=Category.MIDI_USB, author="markandrus/octemu", author_url="https://github.com/markandrus/octemu",
-    proof=Proof.HARDWARE,
-    proof_note="Sam's MKII, octabam-core OCTABAMB5 (main 11d9f129), macOS on an arm64 Mac, 19 Oct 2026, with TRACKS PRE, MAIN, CUE and MIDI at their defaults (20 channels): enumeration (the MIDI port and a 20-channel input); MIDI in (notes trig tracks 3, 4, 5 and 8 on their own channels, and again after a replug); MIDI out clock at 48-49 per second, back after each of three cable replugs; audio after a replug with 0 overruns and 0 underruns; DISK MODE in and out (the image read back off the card, `cmp` equal, then MIDI, audio and counters clean); not run on a unit that day: TRACKS OFF and POST, MASTER, MAIN or CUE off, MIDI off, IN (octabam-core fixes it OFF), a Windows host, an MKI; earlier: cursory testing on Sam's MKII (owner report, 16 Oct 2026); `verify_usb` for every combination and `verify_usb_in` for every IN value under the port; on units: MIDI in/out on Sam's MKII (image 64, 25 Sep 2026), Tim's MKI (OCTATRICK9, 26 Sep 2026) and Ignorato's MKII (OCTABAM21, 9 Oct 2026, transmit after three replugs, macOS and Windows 10), USB clock tempo on Kazeko's MKI (#633, 6 Oct 2026); TRACKS MAIN CUE on Sam's MKII and Tim's MKI, MAIN CUE and the ABCD inject on Bryan T's MKII (build 16, 27 Sep 2026), TRACKS POST on allmyfriendsaresynths's MKII (P3, 5 Oct 2026); the crossbar values at stream-up on Bryan T's MKII (usbin-test 12-16, 26-27 Sep 2026); README.md per combination and direction",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", image="OCTABAMB5", date="2026-10-19",
+        note="octabam-core OCTABAMB5 (main 11d9f129), macOS on an arm64 Mac, 19 Oct 2026, with TRACKS PRE, MAIN, "
+             "CUE and MIDI at their defaults (20 channels): enumeration (the MIDI port and a 20-channel input); "
+             "MIDI in (notes trig tracks 3, 4, 5 and 8 on their own channels, and again after a replug); MIDI out "
+             "clock at 48-49 per second, back after each of three cable replugs; audio after a replug with 0 "
+             "overruns and 0 underruns; DISK MODE in and out (the image read back off the card, `cmp` equal, then "
+             "MIDI, audio and counters clean); not run on a unit that day: TRACKS OFF and POST, MASTER, MAIN or "
+             "CUE off, MIDI off, IN (octabam-core fixes it OFF), a Windows host, an MKI; earlier: cursory testing "
+             "on Sam's MKII (owner report, 16 Oct 2026); `verify_usb` for every combination and `verify_usb_in` "
+             "for every IN value under the port; on units: MIDI in/out on Sam's MKII (image 64, 25 Sep 2026), "
+             "Tim's MKI (OCTATRICK9, 26 Sep 2026) and Ignorato's MKII (OCTABAM21, 9 Oct 2026, transmit after three"
+             " replugs, macOS and Windows 10), USB clock tempo on Kazeko's MKI (#633, 6 Oct 2026); TRACKS MAIN CUE"
+             " on Sam's MKII and Tim's MKI, MAIN CUE and the ABCD inject on Bryan T's MKII (build 16, 27 Sep "
+             "2026), TRACKS POST on allmyfriendsaresynths's MKII (P3, 5 Oct 2026); the crossbar values at stream-"
+             "up on Bryan T's MKII (usbin-test 12-16, 26-27 Sep 2026); README.md per combination and direction"),),
     doc="Class-compliant USB-MIDI in/out plus UAC2 audio to and from the host on the OT's own USB port (markandrus/octemu; the input path and crossbar bryantysinger's; the TRACKS POST stems allmyfriendsaresynths's), by its TRACKS / MAIN / CUE / MASTER / IN / MIDI checkboxes.",
     linked=LINKED,
     detours=tuple(_AUDIO_AT_SITE.get(d.site, d) for d in MIDI_DETOURS) + _AUDIO_EXTRA

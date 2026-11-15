@@ -11,7 +11,7 @@ states its renderer. TIME's formatter is the tempo-sync cave, registered
 over slot 0 by that module.
 """
 
-from remix.schema import (Gate, Category, Proof, ModeView, BusRole, Claims, DspRange, YBase, DspSection, Formatter, Harness, Kind,
+from remix.schema import (Gate, Category, Evidence, Level, ModeView, BusRole, Claims, DspRange, YBase, DspSection, Formatter, Harness, Kind,
                           MenuEntry, Module, Param)
 
 _PLAIN = Formatter.PLAIN
@@ -56,7 +56,7 @@ MODULE = Module(
     key="DELAY SERVER",
     kind=Kind.DSP_EFFECT,
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="Sam's MKII",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks"),),
     doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow.",
     menu=MenuEntry(
         fx2_id=0x06,

@@ -15,7 +15,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Proof
+from remix.schema import Category, Evidence, Level
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "octabam-modules" / "direct-jump-kyoti" / "manifest.py"
 
@@ -25,4 +25,7 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_direct_jump_kyo
 # dropped: Octakit is not in octabam since 6 Oct 2026 (KITS replaces it).
 MODULE = dataclasses.replace(
     MODULE, conflicts=tuple(c for c in MODULE.conflicts if c[0] != "OCTAKIT"), category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="the author's MKI, 27-28 Sep 2026 (standalone 140C_KDJ7 and the KYOTI V1.0 combined image) and 1 Oct 2026 from DRAM (an octabam image with all six KYOTI modules); Program Change re-cues, MIDI tracks, START SILENT and the trig-condition reset emulator-verified")
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", date="2026-09-28",
+        note="27-28 Sep 2026 (standalone 140C_KDJ7 and the KYOTI V1.0 combined image) and 1 Oct 2026 from DRAM (an"
+             " octabam image with all six KYOTI modules); Program Change re-cues, MIDI tracks, START SILENT and "
+             "the trig-condition reset emulator-verified"),))

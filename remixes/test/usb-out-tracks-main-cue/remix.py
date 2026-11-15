@@ -7,12 +7,12 @@ chooser is the only source of words (the placer refuses a remix that
 harvests nothing in payload A). Local test remix (Bryan T, 25 Sep 2026).
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="usb-out-tracks-main-cue",
     image_name="OUT-TRK-MC",
-    family="mods", proof=Proof.PORT, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE); PLATE REV harvested for USB's words.",
     modules=("USB",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

@@ -1,8 +1,8 @@
 """MIDI Follow with both production EVENTS clients."""
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
-    name="midi-follow-events", family="probes", proof=Proof.PORT,
+    name="midi-follow-events", family="probes", evidence=(Evidence(Level.EMULATOR),),
     doc="MIDI Follow with EUCLID and PLOCKS P2 sharing EVENTS notifications.",
     modules=("EVENTS", "MIDI FOLLOW", "STORE", "EUCLID",
              "BRAIN", "SCENES P2", "PLOCKS P2",

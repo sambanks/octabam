@@ -62,8 +62,15 @@ Never claim something works because it assembled or linked. `make check` (run by
 the floor; `docs/contributing/TESTING.md` says what each gate proves and what
 none of them can see.
 
-**Before opening a PR, and again before merging one:** rebase onto
-`origin/main`. CI's reach job runs the gates the diff reaches, and the
+**Before opening a PR:** rebase onto `origin/main`. **Merging:** one PR at
+a time, oldest ready first. Update a PR's branch once, just before its
+merge, and only when main has moved under it since its last green run: a
+file both changed (`git diff --name-only $(git merge-base origin/main
+HEAD) origin/main` against the PR's files), or a module, hook, cave or
+remix its gates build with. Otherwise merge it as it stands. Updating every
+open PR after every merge is a full CI run each (`check-remix octabam`
+took 72 min on sambanks/octabam#1087, 12 Nov 2026) that re-proves what no
+merge touched (owner's rule, 13 Nov 2026). CI's reach job runs the gates the diff reaches, and the
 `refhash` bit-identity pass for a build change, on every push to `main` and every
 PR, fork PRs included, on a runner that downloads the 1.40C for that run
 (`CONTRIBUTING.md` "Before you open a PR" is the rule and the reason); the
@@ -139,7 +146,7 @@ moment it costs real work, and add its line here.
 - [`lua (rN+d)` takes d in −64..63 and wraps silently](docs/contributing/TRAPS.md#trap-lua) — past ±63: `move r7,r5 / move #imm,n5 / move (r5)+n5`.
 - [`dsp_asm` resolves labels by prefix](docs/contributing/TRAPS.md#trap-label-prefix) — no new label may have an existing label as its prefix (`warmz2` next to `warmz` branched into hyperspace).
 - [Build-time markers and base literals count in comments](docs/contributing/TRAPS.md#trap-markers) — don't spell `$30000` or the `; X` markers in comments.
-- [A form the chip has never run is not proven by the port](docs/contributing/TRAPS.md#trap-chip-form) — grep stock payloads before using a form.
+- [A form the chip has never run is not proven by the port](docs/contributing/TRAPS.md#trap-chip-form) — `verify_dsp_forms` refuses a form with no stock site, register row or unit-proven module.
 - [No `rep` in `init`/`proc`; no dense X work in a DMA's 8K block](docs/contributing/TRAPS.md#trap-rep-dma) — `tools/build/norep.py` refuses the former; the port models neither.
 - [`SPEC=1` requires `XBUS=1`](docs/contributing/TRAPS.md#trap-spec-xbus) — build-guarded; do not ungate.
 - [The track↔core mapping is inverted](docs/contributing/TRAPS.md#trap-track-core) — A = tracks 5-8 (BusVerb), B = 1-4 (BusDelay). Test reverb on track 5.
@@ -180,6 +187,7 @@ moment it costs real work, and add its line here.
 - [A gate that models a setting must boot that setting](docs/contributing/TRAPS.md#trap-post-cs1) — `--cs1-in` the block; an empty run reports which watch was empty, never crashes.
 - [The bench socket drops a large reply on EAGAIN](docs/contributing/TRAPS.md#trap-bench-socket) — poll POLLOUT in the write loop; a short line in the port log is display-only.
 - [Payload B's frame routine writes `x:$3f7f..$3fbf` every frame](docs/contributing/TRAPS.md#trap-stock-x-scratch) — the guard's base cells were there; read what the stock writes before putting state in X, and read the cells back on a unit.
+- [A frame hook that holds core B at its frame head can stop the core](docs/contributing/TRAPS.md#trap-frame-head) — DLCOPY's copy between core B's two handshakes with core A; long work on core B goes at the frame's end (`P:$342`); read a stalled DSP with `tools/hw/dlprobe.patch` and `dl_probe.py`.
 
 **ColdFire / DRAM side**
 

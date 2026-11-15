@@ -1,10 +1,10 @@
 """stock effects with SLOW LFO: LFO MULT 1/2X, 1/4X and 1/8X. Its gate's remix."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="slow-lfo",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock effects with SLOW LFO: LFO MULT gains 1/2X, 1/4X and 1/8X on audio and MIDI tracks.",
     modules=("SLOW LFO",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",

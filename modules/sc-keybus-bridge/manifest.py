@@ -6,14 +6,14 @@ publishes the track's key word and replays the displaced instruction. sctap's ow
 is the same load, so the second is harmless. The build supports this for a Remix.window_demand module only, as
 for SC LOAD METER BRIDGE (modules/sc-loadmeter-bridge).
 """
-from remix.schema import Category, DspOverride, Kind, Module, Proof
+from remix.schema import Category, DspOverride, Kind, Module, Evidence, Level
 
 MODULE = Module(
     name="sc-keybus-bridge",
     key="SC KEYBUS BRIDGE",
     kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.CHECK, proof_note="",
+    evidence=(Evidence(Level.EMULATOR),),
     doc="Shares the dispatcher's per-track site between SIDECHAIN_COMPRESSOR's sctap and KEYBUS's tap.",
     requires=("SIDECHAIN_COMPRESSOR", "KEYBUS"),
     dsp_overrides=(DspOverride({"A": 0x4A7, "B": 0x29C}, "KEYBUS"),),

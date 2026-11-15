@@ -170,8 +170,8 @@ Record PASS, FAIL or NOT RUN with the image tag, the unit (MKI or MKII) and the 
 ## Where results go
 
 - The soak counts: FAILURE_MODES.md, the "loader soak" entry (a row per image).
-- Each remix's `README.md` "Where it has run", and its `remix.py` `proof` and `proof_note` when a whole suite
-  passes (`Proof.HARDWARE` needs the suite on that composition).
+- Each remix's `README.md` "Where it has run", and its `remix.py` `evidence` when a whole suite
+  passes (`Level.UNIT` needs the suite on that composition).
 - The costs: `tools/remix/slot_costs.json` through `costs.py import`, and the figure in `modules/verberation/README.md`
   (the 8.8 % estimate replaced by the reading).
 - HARDWARE_SUITE.md "Results on a unit": a table per remix, as for `OCTABAMR3`.

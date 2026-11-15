@@ -14,7 +14,7 @@ bytes (so project.work keeps the GLOBAL layer), the UI-side pattern commit
 (0x40062142), and FUNC's press record in the MKI and MKII key tables.
 """
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level, SymbolRef
 
 # (site, register of the stock store) of `move.l %dN,0x100b14d4` / `...d8`.
 # 0x4000fe6c / 0x4000fe82 clamp the mirror at power-up and are not hooked.
@@ -47,8 +47,8 @@ MODULE = Module(
     category=Category.MACHINES,
     author="sambanks",
     author_url="https://github.com/sambanks",
-    proof=Proof.PORT,
-    proof_note="verify_pattern_mute under the port on octabam, 30 Oct 2026; not flashed",
+    evidence=(Evidence(Level.EMULATOR, ref="verify_pattern_mute",
+        note="verify_pattern_mute under the port on octabam, 30 Oct 2026; not flashed"),),
     doc="Double-press FUNC: mute edits go to a PATTERN layer saved with the pattern, "
         "beside the GLOBAL layer (Digitakt II PATTERN MUTE / GLOBAL MUTE).",
     linked=(Linked("pm", "modules/pattern-mute/pm.s", dram=True, include=lambda modules, remix: ""),),

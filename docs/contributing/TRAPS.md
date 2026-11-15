@@ -251,6 +251,10 @@ form, grep it in `out/dsp/payload_*.asm`
 first and then a PR adding the register row with the evidence, or the form
 everything else uses.
 
+What now gates it: `verify_dsp_forms` in `make check` refuses a form with
+no stock site, no register row and no module at `Level.UNIT`
+(`docs/contributing/TESTING.md`).
+
 <a name="trap-rep-dma"></a>
 
 ### No `rep` in an effect's `init` or `proc`, and no dense X work in a DMA's 8K block
@@ -1687,6 +1691,18 @@ evidence about that module; read the frame log (`tools/hw/framelog.patch`,
 `tools/hw/ot_stall.py`) for the entry lateness before the stop. **Gate:**
 `verify_frame_guard` (the guard's arithmetic; the window itself is a unit
 measurement).
+
+<a id="trap-frame-head"></a>
+**A FRAME HOOK THAT HOLDS CORE B AT ITS FRAME HEAD CAN STOP THE CORE.** Core B has no idle of its own: its frame
+head (`P:$51..$8d`) is two word-by-word handshakes with core A, and DLCOPY's hook sat between them at `P:$76`. A copy
+there takes most of a frame. On Sam's MKII (12 to 15 Nov 2026) core B stopped in the first track of the frame of a
+copy that bound an effect, about 2 runs in 3 of a 10-minute program-change walk; core A then waits at `P:$a3` for
+good and the audio stops. Cost: three days of unit runs and eleven test images; a frame overrun, the copy's
+destination, the stack and the effect's own code were each ruled out by measurement before the hook's place was
+tried. Fix: the hook is at `P:$342`, the frame's end (12 of 12 runs clean). What core B does in that first track is
+not known, and the port and `dsp_host` run one core, so no gate sees it. Rule: long work on core B goes at the end of
+its frame, after the last track; to see a stalled DSP, read it (`tools/hw/dlprobe.patch`, `tools/hw/dl_probe.py`: the shared
+window through the core that still takes host commands), do not infer it from the ColdFire's side.
 
 <a id="trap-sequential-limiter"></a>
 

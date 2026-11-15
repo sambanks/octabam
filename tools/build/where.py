@@ -70,6 +70,12 @@ def main():
     cites = scan()
 
     print(f"=== 0x{ival:08x} ===")
+    db = ROOT / "out/symbols.sqlite"
+    if db.is_file():
+        r = subprocess.run([sys.executable, str(ROOT / "tools/build/sym.py"), "--db", str(db), s], capture_output=True, text=True)
+        if r.stdout.strip():
+            print("  symbols (tools/build/sym.py):")
+            print("\n".join("    " + l for l in r.stdout.splitlines()))
     for src, para in cites.get(ival, []):
         print(f"  ({src}) {' '.join(para.split())}")
     if ival not in cites:

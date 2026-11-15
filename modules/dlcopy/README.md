@@ -3,8 +3,9 @@
 The DSP half of the demand loader (design, measurements and open items:
 [`docs/contributing/DEMAND_LOADER.md`](../../docs/contributing/DEMAND_LOADER.md)).
 
-`dlcopy.asm` is a hook on payload B at `P:0x76` (the frame head, after the host handlers'
-address masks are set), placed in the shared window. When the doorbell at `X:0x2900` is `0xa55a`
+`dlcopy.asm` is a hook on payload B at `P:0x342` (the frame's end, after the last track and before
+the jump back to the frame wait), placed in the shared window. Until 15 Nov 2026 it was at `P:0x76`,
+the frame head, where the copy held core B between its two handshakes with core A. When the doorbell at `X:0x2900` is `0xa55a`
 it clears the effect's BOUND word, copies the staged block to the window summing the code words,
 and publishes it (init, proc, span, BOUND last) only if the sum matches the one staged after the
 code; it clears the doorbell either way. A message for an entry already BOUND at the same
@@ -24,4 +25,4 @@ checked to reassemble to them) and returns. At a site a bridge overrides (`schem
 BRIDGE) the stub calls the body when loaded and then jumps to the overridden hook's entry. `verify_dlhook`
 compares every stub, in each BOUND state, with what it stands for (`dsp_host`, both payloads).
 
-Claims: `X:0x2900..0x3d55` (staging), `X:0x3f00..0x3f4f` (stub tables), `X:0x3dc0..0x3e3f` (guard state words and base cells), `X:0x3fd0..0x3fea` (reverb trampoline words, guard scratch, the copier's saved `b`). Gates: `verify_dlstub`, `verify_dlwrap`, `verify_dlhook` (`dsp_host`). Not run on a unit.
+Claims: `X:0x2900..0x3d55` (staging), `X:0x3f00..0x3f4f` (stub tables), `X:0x3dc0..0x3e3f` (guard state words and base cells), `X:0x3fd0..0x3fea` (reverb trampoline words, guard scratch, the copier's saved `b`). Gates: `verify_dlstub`, `verify_dlwrap`, `verify_dlhook` (`dsp_host`). On a unit (Sam's MKII, 15 Nov 2026, #1100): 12 of 12 mixed-walk runs without a stall, 251 loads.

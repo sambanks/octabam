@@ -7,7 +7,7 @@ before LOAD METER's entry so the demand loader's pump keeps its place after
 the wait). guard.s has the measurements and the arithmetic.
 """
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 H = bytes.fromhex
 
@@ -22,9 +22,9 @@ def _hooks_inc(modules, remix):
 MODULE = Module(
     name="frame-guard", key="FRAME GUARD", kind=Kind.CF_PATCH,
     category=Category.FIXES, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE,
-    proof_note="Sam's MKII, 12 Nov 2026, octabam with a 20-channel USB capture open: 16 first STARTs and 96 program "
-               "changes without a stall (1 in 8 and 1 in 27 without it); as test code inside LOAD METER's entry",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-11-12",
+        note="octabam with a 20-channel USB capture open: 16 first STARTs and 96 program changes without a stall "
+             "(1 in 8 and 1 in 27 without it); as test code inside LOAD METER's entry"),),
     doc="A late frame interrupt waits out the window in which the DSP's frame exchange stalls at START "
         "and at a program change.",
     linked=(Linked("frameguard", "modules/frame-guard/guard.s", cpu="5475", dram=True, include=_hooks_inc),),

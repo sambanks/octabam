@@ -10,16 +10,16 @@ Stopped, nothing changes. unit.s has the ground; README.md what was
 measured and what ran on a unit.
 """
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 MODULE = Module(
     name="bar-led",
     key="BAR LED",
     kind=Kind.CF_PATCH,
     category=Category.MACHINES, author="nathangroth", author_url="https://github.com/nathangroth",
-    proof=Proof.HARDWARE, proof_note="the author's MKI (author's report): a private octabam remix through "
-        "REMIX SWITCH, 2 Nov 2026, and the same unit.s loaded over USB by Modwerk's loader, 4 Nov 2026; "
-        "`verify_bar_led` under the port",
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="nathangroth", date="2026-11-02",
+        note="(author's report): a private octabam remix through REMIX SWITCH, 2 Nov 2026, and the same unit.s "
+             "loaded over USB by Modwerk's loader, 4 Nov 2026; `verify_bar_led` under the port"),),
     doc="The tempo LED flashes green on the pattern's 1 while playing; the other beats stay red.",
     linked=(Linked("bar_led", "modules/bar-led/unit.s", dram=True),),
     detours=(

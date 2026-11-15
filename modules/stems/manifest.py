@@ -44,7 +44,7 @@ section 17) used the earlier root placement; the chord is port-gated.
 
 import pathlib
 
-from remix.schema import Category, Detour, DramRegion, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, DramRegion, Gate, Kind, Linked, Module, Evidence, Level
 
 # The per-frame routine's only call site, inside the audio interrupt at
 # IPL 5: `jsr %pc@(0x400031a0)` then `move.w #0x2700,%sr` (cfprobe's site).
@@ -98,8 +98,9 @@ MODULE = Module(
     key="STEM REC",
     kind=Kind.CF_PATCH,
     category=Category.MACHINES, author="yvesrosius", author_url="https://github.com/yvesrosius",
-    proof=Proof.HARDWARE, proof_note="Yves's MKII: STEMS1 (30 Sep 2026), T1-T8 for about two minutes; "
-        "STEMS3 (6 Oct 2026), T1-T8 after the fader, MAIN and AB at 16 and 24 bits",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Yves", date="2026-09-30",
+        note="STEMS1 (30 Sep 2026), T1-T8 for about two minutes; STEMS3 (6 Oct 2026), T1-T8 after the fader, MAIN "
+             "and AB at 16 and 24 bits"),),
     doc="Multitrack recording to the card: each track (after its fader), MAIN, CUE and the "
         "inputs as separate WAV files, 16 or 24 bits, up to 60 minutes. UP + REC opens STEMS.",
     linked=(Linked("stems", "modules/stems/stems.s", dram=True, include=gtab_inc),),

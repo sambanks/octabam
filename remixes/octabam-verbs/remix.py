@@ -1,5 +1,5 @@
 """octabam-verbs -- octabam with VERBERATION in place of the three stock reverbs: the core ColdFire modules, every other ColdFire module that fits, the 11 other stock effects, and MODULATION, SPECTRUM, CHARACTER, SHATTER and COMPRESSOR's side-chain loaded on demand, and VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words. PLATE REV, SPRING REV and DARK REV are off both choosers and their ids are VERB PLATE, VERB ROOM and VERB HALL: VERBERATION's code starting in PLATE, ROOM and HALL mode."""
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -7,7 +7,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES", "PATTERN MUTE",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
-        "LOAD METER", "FRAME GUARD")
+        "LOAD METER", "FRAME GUARD", "REMOTE")
 # COMPRESSOR's row is SIDECHAIN_COMPRESSOR's: stock COMPRESSOR with a side-chain KEY on page 2, its DSP
 # loaded on demand while a track uses COMPRESSOR (docs/contributing/DEMAND_LOADER.md). Out 1 Nov 2026 (433e22e)
 # with TRANSIENT and DISTORX, back 4 Nov 2026: KEY reads "--" while the side-chain is not loaded (#934).
@@ -41,8 +41,8 @@ STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPA
 
 REMIX = Remix(
     name="octabam-verbs",
-    family="mods", proof=Proof.CHECK,
-    proof_note="not flashed; `make check` (CI)",
+    family="mods", evidence=(Evidence(Level.EMULATOR,
+        note="not flashed; `make check` (CI)"),),
     doc="octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand, with VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE",
                      "KEYBUS", "SC KEYBUS BRIDGE") + STOCK11 + OURS

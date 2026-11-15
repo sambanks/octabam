@@ -1,10 +1,10 @@
 """stock effects with SCREEN: the Elektron screenshot SysEx request answered on MIDI OUT."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="screen",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock effects with SCREEN.",
     modules=("SCREEN",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",

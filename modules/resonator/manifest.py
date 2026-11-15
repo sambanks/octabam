@@ -12,7 +12,7 @@ import math as _m
 
 from remix.peak_limiter import source as peak_limiter_source
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate,
-                          Harness, Kind, MenuEntry, Module, Param, Proof,
+                          Harness, Kind, MenuEntry, Module, Param, Evidence, Level,
                           YBase)
 
 _FS = 44100.0
@@ -43,10 +43,11 @@ MODULE = Module(
     category=Category.TRACK,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="Ilia's MKII, RESO LM4.RMX from PR tip 0808651e, 14 Nov 2026: "
-               "low SCAL settings remained clean and the current-block LIM "
-               "reduced hot output; verify_resonator passed.",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Ilia", date="2026-10-19",
+        note="remix resonator BUILD RR as RESON RR.RMX, 19 Oct 2026: page-1 GN1–4/DECY/MIX, page-2 PIT1–4/SCAL 8 "
+             "and 127, DECY low and high, FX2 dry-pass, two FX1 instances"),
+              Evidence(Level.UNIT, unit="MKII", who="Ilia", image="RESO LM4.RMX", date="2026-11-14", commit="0808651e",
+        note="low SCAL settings remained clean and the current-block LIM reduced hot output; verify_resonator passed"),),
     doc="FX1 Torso S-4 RING-style filter bank: 4 pitched BPs, SCAL makeup, DECY, LIM.",
     menu=MenuEntry(
         # Custom id 0x1e (BBD 0x1b). Selftest fixtures use DELAY 0x08.

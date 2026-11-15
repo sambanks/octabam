@@ -15,7 +15,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Proof
+from remix.schema import Category, Evidence, Level
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "octabam-modules" / "batch-bugfixes" / "manifest.py"
 
@@ -24,4 +24,6 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_batch_bugfixes"
 # are added here rather than in his manifest.
 MODULE = dataclasses.replace(
     MODULE, category=Category.FIXES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="the author's MKI (bugs 1 and 3, and bug 2's [BANK]-held stall ended); bug 2's [PTN] answers emulator-verified identical to its earlier hardware-confirmed version")
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti",
+        note="(bugs 1 and 3, and bug 2's [BANK]-held stall ended); bug 2's [PTN] answers emulator-verified "
+             "identical to its earlier hardware-confirmed version"),))

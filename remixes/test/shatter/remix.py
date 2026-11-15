@@ -1,13 +1,13 @@
 """SHATTER beside stock FX (PLATE REV harvested for its words)."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="shatter",
     family="effects",
-    proof=Proof.HARDWARE,
-    proof_note="Ilia's MKII, BUILD S6 (SHATTER S6.RMX), 21 Oct 2026: every "
-               "SHATTER knob exercised; verify_shatter. Solo gate remix.",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Ilia", date="2026-10-21",
+        note="BUILD S6 (SHATTER S6.RMX), 21 Oct 2026: every SHATTER knob exercised; verify_shatter. Solo gate "
+             "remix."),),
     doc="SHATTER beside the stock effects (all but PLATE REV, whose words it takes).",
     modules=(
         "SHATTER",

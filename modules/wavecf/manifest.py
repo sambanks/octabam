@@ -15,7 +15,7 @@ MC_LIMIT machines in a Part.
 """
 import os
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Evidence, Level, SymbolRef
 
 _HERE = os.path.relpath(os.path.dirname(os.path.realpath(__file__)))
 H = bytes.fromhex
@@ -51,10 +51,10 @@ MODULE = Module(
          "SPRD GLID: FRAM morphs eight frames, CHRD one of 32 chords, VOIC 1-4 of its notes, SPRD opens the voicing. SETUP: VIBR VRAT OCT "
          "DETN COMP MODE (CHORD or POLY). Notes follow SCALE QUANTIZER's scale. No filter: the Octatrack's own FX "
          "and AMP follow."),
-    proof=Proof.PORT,
-    proof_note=("the engine and the note layer: Python model == host == ColdFire under Unicorn "
-                "(modules/wavecf/test_wavecf.py); the machine's rows, the shared limit and its sound under the "
-                "port (verify_wavecf_ui.py, verify_wavecf_port.py). Not flashed"),
+    evidence=(Evidence(Level.EMULATOR, ref="verify_wavecf_ui",
+        note="the engine and the note layer: Python model == host == ColdFire under Unicorn "
+             "(modules/wavecf/test_wavecf.py); the machine's rows, the shared limit and its sound under the port "
+             "(verify_wavecf_ui.py, verify_wavecf_port.py). Not flashed"),),
     linked=(Linked("wavecf", os.path.join(_HERE, "wavecf.s"), dram=True, include=remix_inc),),
     symbol_refs=(_render_ref(),),
     detours=(
