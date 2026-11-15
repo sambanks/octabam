@@ -312,7 +312,7 @@ jobs:
       # The `(brain)`, `(brain-templates)`, `(brain-panes)` and `(brain-screens)` units (reach.SPLIT_EXTRA_UNITS) run verify_brain's
       # sections with one, through check_shards (gate cache); the `(scenes)` unit runs verify_scenes (MIDI SCENES) with one.
       - name: 📁 Fresh Project
-        if: contains(matrix.name, ' (project)') || contains(matrix.name, ' (brain') || contains(matrix.name, ' (scenes)') || contains(matrix.name, ' (project: ')
+        if: contains(matrix.name, ' (project)') || contains(matrix.name, ' (brain') || contains(matrix.name, ' (scenes)') || contains(matrix.name, ' (project:')
         env:
           UNIT: ${{ matrix.name }}
         run: |
