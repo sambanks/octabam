@@ -107,6 +107,33 @@ class Dsp(unittest.TestCase):
         self.assertIn(("dspA:P", 0x33ee2, None, "PLATE REV guard proc", "func", "PLATE REV", "build", "out/dsp/guard_records.json"), rows)
 
 
+@unittest.skipUnless((ROOT / "out/raw/section_3_MAIN_OS.bin").exists(), "needs the user's stock image")
+class Dispatch(unittest.TestCase):
+    def test_both_payloads_name_their_dispatch_entries(self):
+        with tempfile.TemporaryDirectory() as t:
+            db = sqlite3.connect(pathlib.Path(t) / "s.sqlite")
+            db.executescript(symdb.DDL)
+            n = symdb.ingest_dispatch(lambda *r: db.execute("INSERT INTO symbol VALUES (?,?,?,?,?,?,?,?)", r))
+            names = {(r[0], r[1]): r[2] for r in db.execute("SELECT space, addr, name FROM symbol")}
+        self.assertGreater(n, 100)
+        self.assertEqual(names[("dspA:P", 0x7dd)], "fx_filter_process")
+        self.assertEqual(names[("dspB:P", 0x59d)], "fx_filter_process")
+        self.assertEqual(names[("dspA:X", 0x215)], "fx_init_table")
+
+
+class Weighted(unittest.TestCase):
+    def test_a_count_line_counts_that_many_times(self):
+        got = list(sym.samples(["   0x40001010     90487  ", "0x40001020 5", "pc 0x40001010 and 0x40001020 x9", "text"]))
+        self.assertEqual(got, [(0x40001010, 90487), (0x40001020, 5), (0x40001010, 1), (0x40001020, 1)])
+
+    def test_histogram_takes_weights(self):
+        with tempfile.TemporaryDirectory() as t:
+            db = make(pathlib.Path(t) / "s.sqlite")
+            h = sym.histogram(db, sym.samples(["0x40001010 7", "0x40001020 3"]))
+        self.assertEqual(h["samples"], 10)
+        self.assertEqual(dict(h["symbols"])["func_a"], 10)
+
+
 class Histogram(unittest.TestCase):
     def test_counts_per_symbol_and_owner(self):
         with tempfile.TemporaryDirectory() as t:
@@ -115,7 +142,7 @@ class Histogram(unittest.TestCase):
         self.assertEqual(h["samples"], 5)
         self.assertEqual(dict(h["owners"]), {"stock": 2, "REMOTE": 1, "unknown": 2})
         self.assertEqual(dict(h["symbols"])["func_a"], 2)
-        self.assertEqual(dict(h["symbols"])["nosize ?"], 1)
+        self.assertEqual(dict(h["symbols"])["0x40002000.. (below: nosize)"], 1)
         self.assertEqual(dict(h["symbols"])["(none)"], 1)
 
 
