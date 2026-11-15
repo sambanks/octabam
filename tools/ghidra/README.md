@@ -112,3 +112,11 @@ cave the build fills (`0x400d6b00`..`0x400d7c3c`, `tools/remix/state.py`).
   host-port handlers (`DSP.md` section 6c).
 - `fx_null_init`/`fx_null_process` is the passthrough every unused id
   points at, DELAY (`0x08`) included: the stock DELAY runs on the ColdFire.
+
+## Export for the symbol database
+
+`OtExport.java` is a post-script beside `OtReport.java`: it writes `out/ghidra/symbols.tsv` (`cf`, address, size,
+name) for each function of MAIN_OS or REMIX and `xrefs.tsv` (`cf`, from, to, kind) for the references to each
+function's entry. `python3 tools/build/symdb.py build --ghidra` reads them (`docs/contributing/TOOLING.md`).
+`ot_ghidra.py import` does not run it yet; not run in Ghidra.
+

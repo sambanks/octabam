@@ -583,6 +583,10 @@ evidence: ## Every module's proof level, then the modules whose sources changed 
 	python3 tools/build/evidence.py
 	python3 tools/build/evidence.py stale
 
+.PHONY: symbols
+symbols: ## Build out/symbols.sqlite (addresses, names, sizes, doc citations): make symbols [REMIX=] ; then tools/build/sym.py
+	python3 tools/build/symdb.py build $(if $(REMIX),--remix $(REMIX))
+
 .PHONY: where
 where: ## Every doc paragraph citing one ColdFire address + a disasm window. make where A=0x40004d40 [N=128]
 	@test -n "$(A)" || { echo "usage: make where A=0x40004d40 [N=bytes]"; exit 1; }
