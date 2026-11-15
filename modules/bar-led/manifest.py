@@ -28,5 +28,5 @@ MODULE = Module(
                "tempo LED beat flash (set_led(38, 3)): id 39, green, on the pattern's 1 while playing",
                kind="jsr"),
     ),
-    gates=(Gate("tools/verify/verify_bar_led.py", venv=True, stage="image"),),
+    gates=(Gate("tools/verify/verify_bar_led.py", venv=True, stage="image", project=True),),
 )

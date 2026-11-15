@@ -71,7 +71,7 @@ MODULE = Module(
     ),
     # per remix, not once: the gate reads OT_PROJECT, which CI gives only octabam's `(project)` unit
     # (tools/verify/reach.py SPLIT_REMIX_JOBS); elsewhere it SKIPs
-    gates=(Gate("tools/verify/verify_pattern_mute.py", venv=True),),
+    gates=(Gate("tools/verify/verify_pattern_mute.py", venv=True, project=True),),
     symbol_refs=(
         SymbolRef(0x400BFC12, 0x4004E954, "pm", "pm_func_press", "MKI key table: FUNC press"),
         SymbolRef(0x400C01F6, 0x4004E954, "pm", "pm_func_press", "MKII key table: FUNC press"),
