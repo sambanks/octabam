@@ -115,6 +115,7 @@ import time
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent)); import toolpath  # noqa: E402,F401
+import ot_events  # noqa: E402
 
 DEAD_DBFS = -80.0
 WIN_S = 0.25
@@ -882,11 +883,11 @@ def cmd_run(a):
                         results.append({"slot": e["slot"], "program": e["program"], "name": e["name"], "flags": ["UNHEALTHY"],
                                         "metrics": {}, "load": None, "why": why})
                         break
-                clock.stop(); time.sleep(0.3)
-                clock.pc(pc_ch, e["program"]); time.sleep(0.8)
+                clock.stop(); ot_events.wait_stopped(clock.remote, 0.3)
+                clock.pc(pc_ch, e["program"]); time.sleep(0.8)  # waits for: the program change; not measured stopped (PATTERN)
                 t_settle = time.time()
                 while live["db"] > SETTLE_DBFS and time.time() - t_settle < SETTLE_MAX_S:
-                    time.sleep(0.25)
+                    time.sleep(0.25)  # waits for: audio level settling
                 settled = round(time.time() - t_settle, 1)
                 with lock:
                     seg["chunks"] = []
@@ -894,9 +895,9 @@ def cmd_run(a):
                 t_play = time.time()
                 while time.time() - t_play < a.play:
                     lm.poll()
-                    time.sleep(0.25)
+                    time.sleep(0.25)  # waits for: LOAD METER poll cadence
                 clock.stop()
-                time.sleep(a.tail)
+                time.sleep(a.tail)  # waits for: the audio tail
                 with lock:
                     chunks, seg["chunks"] = seg["chunks"], None
                 x = np.concatenate(chunks).astype(np.float64) if chunks else np.zeros((0, nch))
@@ -946,7 +947,7 @@ def cmd_run(a):
                     print("NO AUDIO CAPTURED twice running: the unit or its USB stream is not delivering. Stopping.")
                     break
                 if "FREEZE" in flags:
-                    clock.stop(); time.sleep(0.5)
+                    clock.stop(); ot_events.wait_stopped(clock.remote, 0.5)
     finally:
         clock.stop()
         clock.close()
@@ -1165,7 +1166,7 @@ def cmd_switch(a):
                 r["t"] = time.time()
                 rows.append(r)
             except Exception:  # noqa: BLE001
-                time.sleep(0.05)
+                time.sleep(0.05)  # waits for: retry back-off
 
     th = threading.Thread(target=poll, daemon=True)
     th.start()
@@ -1185,16 +1186,16 @@ def cmd_switch(a):
                     print(f"The unit is not running normally: {why}. Stopping; power-cycle it.")
                     results.append({"from": ea["name"], "to": eb["name"], "flags": ["UNHEALTHY"], "why": why})
                     break
-                clock.stop(); time.sleep(0.5)
-                clock.pc(pc_ch, ea["program"]); time.sleep(1.0)
+                clock.stop(); ot_events.wait_stopped(clock.remote, 0.5)
+                clock.pc(pc_ch, ea["program"]); time.sleep(1.0)  # waits for: the program change; not measured stopped (PATTERN)
                 n0 = len(rows)
                 with lock:
                     seg["chunks"] = []
                 t0 = time.time()
                 clock.start()
-                time.sleep(a.pc_at)
+                time.sleep(a.pc_at)  # waits for: the instant of the switch inside the run
                 clock.pc(pc_ch, eb["program"])
-                time.sleep(SW_RUN_S - a.pc_at)
+                time.sleep(SW_RUN_S - a.pc_at)  # waits for: the rest of the run
                 clock.stop()
                 with lock:
                     chunks, seg["chunks"] = seg["chunks"], None

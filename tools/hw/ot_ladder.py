@@ -61,6 +61,7 @@ import wave
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import ot_events                                      # noqa: E402
 import ot_midi                                        # noqa: E402
 import ot_project as P                                # noqa: E402
 
@@ -272,6 +273,7 @@ class Clock:
 
     def __init__(self, bpm, port):
         self.out = ot_midi.Out(port)
+        self.remote = ot_events.connect()               # None: no libusb here, or an image without REMOTE
         self.period = 60.0 / (bpm * 24.0)
         self._stop = threading.Event()
         self.th = threading.Thread(target=self._run, daemon=True)
@@ -283,7 +285,7 @@ class Clock:
             n += 1
             dt = t0 + n * self.period - time.time()
             if dt > 0:
-                time.sleep(dt)
+                time.sleep(dt)  # waits for: MIDI clock pacing
             self.out.send([0xF8])
 
     def start(self):
@@ -291,6 +293,12 @@ class Clock:
 
     def stop(self):
         self.out.send([0xFC])
+
+    def stop_wait(self, limit):
+        """STOP, then return when the unit reports it stopped (REMOTE's playing byte), within `limit` seconds;
+        without REMOTE, sleep `limit`."""
+        self.stop()
+        ot_events.wait_stopped(self.remote, limit)
 
     def cc(self, ch, cc, val):
         self.out.send([0xB0 | (ch - 1), cc & 0x7f, val & 0x7f])
@@ -335,7 +343,7 @@ def capture_with_stop(secs, path, device, clock, stop_at):
             break
     if t_live is None:
         p.wait(); sys.exit("recorder never reported START")
-    time.sleep(stop_at)
+    time.sleep(stop_at)  # waits for: the scheduled stop
     t_stop = time.time()
     clock.stop()
     p.wait()
@@ -377,7 +385,7 @@ def assert_connections(clock, layout, verbose=True):
                     continue                  # a blank slot publishes nothing
                 clock.cc(t, base + slot, vals[slot])
                 sent.append(f"T{t} CC{base + slot}={vals[slot]}")
-                time.sleep(0.02)
+                time.sleep(0.02)  # waits for: CC spacing
     if verbose and sent:
         print("  asserted: " + " ".join(sent))
 
@@ -540,8 +548,8 @@ def run(args):
         for bank, name, what, layout in rungs:
             prog = (BANKS.index(bank)) * 16
             print(f"\n== rung {bank} {name}: {what}")
-            clock.stop(); time.sleep(1.0)
-            clock.pc(args.pc_channel, prog); time.sleep(1.5)
+            clock.stop_wait(1.0)
+            clock.pc(args.pc_channel, prog); time.sleep(1.5)  # waits for: the program change; not measured stopped (PATTERN)
             if not args.no_assert:
                 assert_connections(clock, layout)
             clock.start()
@@ -564,12 +572,12 @@ def run(args):
                         break
                     # a freeze that began in an earlier chunk's last frame
                     freezes.append(time.time() - t0 - args.chunk)
-                    print("  >>> transport restart"); clock.stop(); time.sleep(1.0); clock.start()
+                    print("  >>> transport restart"); clock.stop_wait(1.0); clock.start()
                 elif a["freeze_at"] is not None:
                     at = time.time() - t0 - args.chunk + a["freeze_at"]
                     freezes.append(at)
                     print(f"  chunk {c}: FREEZE at t={at:.0f}s  >>> transport restart")
-                    clock.stop(); time.sleep(1.0); clock.start()
+                    clock.stop_wait(1.0); clock.start()
                 else:
                     print(f"  chunk {c}: rms {a['rms']:.1f} peak {a['peak']:.1f} "
                           + ("ok" if not a["dropouts"] else f"{a['dropouts']} dropouts"))
@@ -590,11 +598,11 @@ def run(args):
                 # leaves that engine's wet under its host's own audio.
                 solos = {}
                 for t in range(1, 9):
-                    clock.cc(t, 50, 127); time.sleep(0.5)
+                    clock.cc(t, 50, 127); time.sleep(0.5)  # waits for: the CC applied; a parameter change writes no record
                     xs, sr = capture(8, out / f"{bank}_{name}_solo{t}.wav", args.device)
                     a = analyse_play(xs[2 * sr:, 2], sr)
                     solos[t] = dict(rms=a["rms"], peak=a["peak"])
-                    clock.cc(t, 50, 0); time.sleep(0.3)
+                    clock.cc(t, 50, 0); time.sleep(0.3)  # waits for: the CC applied; a parameter change writes no record
                 print("  solos rms: " + " ".join(f"T{t}={v['rms']:.1f}" for t, v in solos.items()))
             tail = None
             if not crashed:
@@ -736,8 +744,8 @@ def stress(args):
     log = []
     try:
         print(f"== stress rung {bank} {name}: {len(script)} moves over {total:.0f} s")
-        clock.stop(); time.sleep(1.0)
-        clock.pc(args.pc_channel, BANKS.index(bank) * 16); time.sleep(1.5)
+        clock.stop_wait(1.0)
+        clock.pc(args.pc_channel, BANKS.index(bank) * 16); time.sleep(1.5)  # waits for: the program change; not measured stopped (PATTERN, BANK)
         assert_connections(clock, layout)
         clock.start()
         t0 = time.time()
@@ -746,11 +754,11 @@ def stress(args):
         def driver():
             for t, phase, moves in script:
                 while time.time() - t0 < t and not stop.is_set():
-                    time.sleep(0.05)
+                    time.sleep(0.05)  # waits for: the driver's schedule
                 if stop.is_set():
                     return
                 for tr, cc, v in moves:
-                    clock.cc(tr, cc, v); time.sleep(0.01)
+                    clock.cc(tr, cc, v); time.sleep(0.01)  # waits for: CC spacing
                 log.append((round(time.time() - t0, 1), phase))
                 print(f"  t={time.time() - t0:5.0f}s  {phase}")
             # the rung's own values back
@@ -774,7 +782,7 @@ def stress(args):
                 at = tc + (a["freeze_at"] or 0)
                 events.append((at, "FREEZE"))
                 print(f"  *** FREEZE at t={at:.0f}s during '{[p for tt, p in log if tt <= at][-1:]}'  >>> transport restart")
-                clock.stop(); time.sleep(1.0); clock.start()
+                clock.stop_wait(1.0); clock.start()
             print(f"  chunk {c} (t={tc:.0f}s): rms {a['rms']:.1f} peak {a['peak']:.1f}"
                   + (f"  bands up: {hot}" if hot else "") + (f"  {a['dropouts']} dropouts" if a["dropouts"] else ""))
         stop.set(); th.join(timeout=2)
@@ -805,17 +813,17 @@ def probe(args):
         if args.rung:
             bank, name, what, layout = rung_by_bank(args.rung)
             tag = f"{bank}_"
-            clock.stop(); time.sleep(1.0)
-            clock.pc(args.pc_channel, BANKS.index(bank) * 16); time.sleep(1.5)
+            clock.stop_wait(1.0)
+            clock.pc(args.pc_channel, BANKS.index(bank) * 16); time.sleep(1.5)  # waits for: the program change; not measured stopped (PATTERN, BANK)
             assert_connections(clock, layout, verbose=False)
             print(f"== probe rung {bank} {name}: {what}")
-        clock.start(); time.sleep(args.secs)
+        clock.start(); time.sleep(args.secs)  # waits for: the run's length
         stop_nominal = capture_with_stop(args.tail, out / f"{tag}probe_tail.wav", args.device, clock, 3.0)
         xt, sr = read_wav(out / f"{tag}probe_tail.wav")
         tail = analyse_tail(xt[:, 2], sr, stop_nominal)
         print("tail:", {k: (round(v, 2) if isinstance(v, float) else v) for k, v in tail.items()
                         if k in ("tail_s", "t60_s", "repeat_ms", "repeat_corr", "pre_level", "floor")})
-        time.sleep(1.0)
+        time.sleep(1.0)  # waits for: the capture closing
         xi, sr = capture(args.idle, out / f"{tag}probe_idle.wav", args.device)
         c = xi[:, 2]
         win = int(0.05 * sr)

@@ -17,6 +17,12 @@ a file of REMIX SWITCH's list (`boot`), 4 rescans that list. Nothing else.
 `Events` keeps the last head it saw and returns the records since, with `lost` the number overwritten before they
 were read. A scenario calls `wait_for` instead of sleeping: it returns the first record that matches, or raises.
 
+`connect()` gives a `Remote` or None (an image without REMOTE, or no libusb in this python); `wait_stopped(remote,
+fallback)` is the wait after a MIDI STOP: the old sleep when `remote` is None, else the playing byte (PEEK
+`0x800065bb`; 1 while playing) until it leaves 1, within the same `fallback`. A program change is not waited
+for through a record: QPATTERN comes at once and PATTERN at the pattern's end while playing (7.9 and 8.0 s at
+120 BPM), and neither is measured with the sequencer stopped.
+
 As a library the transport is a function ctrl(offset, wLength) -> bytes, so the same reader runs on a unit
 (`unit_ctrl`) and under the port's scripted host (tools/verify/verify_remote.py).
 """
@@ -216,6 +222,62 @@ def trace(ctrl, peek1, last=NTRACE):
         hi = lo
     now = struct.unpack(">I", peek(peek1, base, 4))[0]
     return sorted(e for e in out if e[0] > now - NTRACE)
+
+
+PLAYING_ADDR = 0x800065bb          # the byte the watch reads for PLAYING (modules/remote/remote.s, rmt_wtab)
+
+
+class Remote:
+    """What a scenario needs of REMOTE: the ring, and the playing byte through PEEK."""
+
+    def __init__(self, ctrl, peek1):
+        self.ev = Events(ctrl)
+        self.peek1 = peek1
+
+    def playing(self):
+        """True while the sequencer plays (the byte is 1; a MIDI STOP leaves 2)."""
+        return peek(self.peek1, PLAYING_ADDR, 1)[0] == 1
+
+    def wait(self, kind, arg=None, timeout=10.0):
+        """The first matching record, or None at the timeout."""
+        try:
+            return self.ev.wait_for(kind, arg, timeout)
+        except TimeoutError:
+            return None
+
+
+def connect(dev=None):
+    """A Remote for the unit on USB, or None: no pyusb or libusb, no unit, or an image without REMOTE (its
+    0xc0/0x5a STALLs)."""
+    try:
+        if dev is None:
+            import load_meter
+            dev = load_meter.libusb_device()
+        return Remote(unit_ctrl(dev), unit_peek(dev))
+    except (SystemExit, Exception):  # noqa: BLE001
+        return None
+
+
+def wait_stopped(remote, fallback):
+    """Return once the sequencer has stopped, after the caller sent STOP. Without REMOTE, or when the unit
+    cannot be read, this sleeps `fallback` seconds, as the scenarios did; with it, it returns when the
+    playing byte leaves 1, and never waits longer than `fallback`. A stop of a sequencer that was not
+    playing writes no record, so the byte is the state. True when the byte was seen to leave 1 (or was
+    not 1), False after a sleep or at the limit."""
+    if remote is None:
+        time.sleep(fallback)
+        return False
+    end = time.monotonic() + fallback
+    while True:
+        try:
+            if not remote.playing():
+                return True
+        except Exception:  # noqa: BLE001
+            time.sleep(max(0.0, end - time.monotonic()))
+            return False
+        if time.monotonic() >= end:
+            return False
+        time.sleep(0.005)
 
 
 def show(r, t0=None):

@@ -2,6 +2,8 @@
 import pathlib
 import struct
 import sys
+import threading
+import time
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -281,6 +283,69 @@ class Remixes(unittest.TestCase):
             return bytes(n)
         self.assertEqual(len(ev.peek(p, 0x40000000, 600)), 600)
         self.assertEqual([n for _, n in calls], [255, 255, 90])
+
+
+class Stopped(unittest.TestCase):
+    def remote(self, byte):
+        u = Unit()
+        state = {"byte": byte}
+        base = u.peek1
+
+        def peek1(addr, n):
+            if addr == ev.PLAYING_ADDR:
+                return bytes([state["byte"]])
+            return base(addr, n)
+        return ev.Remote(u.ctrl, peek1), state
+
+    def test_playing_byte(self):
+        r, st = self.remote(1)
+        self.assertTrue(r.playing())
+        st["byte"] = 2
+        self.assertFalse(r.playing())
+
+    def test_without_remote_it_sleeps_the_fallback(self):
+        t = time.monotonic()
+        self.assertFalse(ev.wait_stopped(None, 0.05))
+        self.assertGreaterEqual(time.monotonic() - t, 0.05)
+
+    def test_already_stopped_returns_at_once(self):
+        r, _ = self.remote(2)
+        t = time.monotonic()
+        self.assertTrue(ev.wait_stopped(r, 5.0))
+        self.assertLess(time.monotonic() - t, 0.5)
+
+    def test_returns_when_the_byte_leaves_1(self):
+        r, st = self.remote(1)
+        threading.Timer(0.05, lambda: st.update(byte=2)).start()
+        t = time.monotonic()
+        self.assertTrue(ev.wait_stopped(r, 5.0))
+        self.assertLess(time.monotonic() - t, 1.0)
+
+    def test_still_playing_at_the_limit(self):
+        r, _ = self.remote(1)
+        t = time.monotonic()
+        self.assertFalse(ev.wait_stopped(r, 0.1))
+        self.assertGreaterEqual(time.monotonic() - t, 0.1)
+
+    def test_an_unreadable_unit_sleeps_the_fallback(self):
+        def bad(addr, n):
+            raise OSError("pipe")
+        r = ev.Remote(Unit().ctrl, bad)
+        t = time.monotonic()
+        self.assertFalse(ev.wait_stopped(r, 0.05))
+        self.assertGreaterEqual(time.monotonic() - t, 0.05)
+
+    def test_connect_without_a_unit_is_none(self):
+        class Dev:
+            def ctrl_transfer(self, *a, **k):
+                raise OSError("STALL")
+        self.assertIsNone(ev.connect(Dev()))
+
+    def test_remote_wait_returns_none_at_the_timeout(self):
+        r, _ = self.remote(1)
+        self.assertIsNone(r.wait("PLAYING", 1, timeout=0.05))
+        r.ev.ctrl.__self__.add(ev.BY_NAME["PLAYING"], 1)
+        self.assertEqual(r.wait("PLAYING", 1, timeout=0.5)["arg"], 1)
 
 
 if __name__ == "__main__":
