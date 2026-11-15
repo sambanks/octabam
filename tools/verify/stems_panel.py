@@ -71,9 +71,9 @@ class MenuPort:
 
     def run(self, ms, wall=None):
         # Soft wall cap per slice so a stuck interactive run cannot outlast the gate. A slice the cap ends
-        # advances less than `ms` (the port's `run <ms> wall <s>`): on a loaded runner that cut a gate's
-        # emulated time short (15 Nov 2026: COPY PROJECT's 20 s copy job, sambanks/octabam#1119). So the rest
-        # runs as further slices until `ms` emulated ms have passed; a slice that advances nothing ends it.
+        # advances less than `ms` (the port's `run <ms> wall <s>`), so on a loaded runner a gate's emulated
+        # time would be cut short with nothing said. The rest runs as further slices until `ms` emulated ms
+        # have passed; a slice that advances nothing ends it.
         if wall is None:
             wall = max(5.0, float(ms) / 50.0)
         left = float(ms)

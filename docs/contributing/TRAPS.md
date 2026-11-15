@@ -1540,10 +1540,13 @@ passed the shard in 474 s; main's took 958 s. The 120 s was wall time
 (`ot_events.Events.wait_for` read `time.monotonic()`) while each tick advanced
 the port 10 emulated ms, so a slower runner gave the reload fewer emulated
 seconds. Every PR whose image moved then failed the same check
-(sambanks/octabam#1130), and `verify_copy_project` failed on
-sambanks/octabam#1119 the same way: `MenuPort.run` passed the port a soft wall
-cap (`run <ms> wall <s>`), a capped slice "advances less than ms", and the 20 s
-copy job ended before the copy did ("no PROJECT 261014/project.work on card").
+(sambanks/octabam#1130). `MenuPort.run` had the same blind spot: it passed the
+port a soft wall cap (`run <ms> wall <s>`), and a capped slice "advances less
+than ms" with nothing said. (`verify_copy_project`'s "no PROJECT
+261014/project.work on card" on sambanks/octabam#1119 was first put down to
+that cap; retracted -- it failed again with the cap fixed. Its cause is a fixed
+20 s of emulated time for a copy of the generated project that takes 20-40 s:
+`4a0e9e0` waits for the job's dialog instead.)
 Measured: the identical-tree pass and fail, and the two shard times. Inferred:
 that runner load is the cause (no run was repeated on one runner).
 Fix: `Events(..., clock=)` -- `verify_remote` passes the emulated clock, so its
