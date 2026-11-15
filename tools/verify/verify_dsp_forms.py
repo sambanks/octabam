@@ -16,8 +16,10 @@ must not. Register rows no module of this remix needs are counted as [info].
 
 What it cannot see: a stock listing decodes tables as code, so a form can have a "site" the chip never ran; a
 module's unit run proves the paths that ran, not every instruction of its source, and a source changed after
-the run keeps its level (tools/build/evidence.py stale lists those); the build's own stubs, hook stubs and
-trampolines are not assembled here. SKIPs without dsp_asm or dsp56kDisassemble.
+the run keeps its level (tools/build/evidence.py stale lists those); the build's own window code (the
+demand stub, the reverb guard's trampolines and body, hook stubs: out/dsp/window_records.json of the last build,
+decoded from the placed words) has no module whose evidence could clear its forms, so its forms with no stock
+site or row are counted as [info] and not refused. SKIPs without dsp_asm or dsp56kDisassemble.
 """
 import pathlib
 import subprocess
@@ -75,10 +77,16 @@ def main():
                       f"{r['level'] or 'no level'}  e.g. {v['example']}")
     for key, n in bench.items():
         print(f"  [info] {key} is bench_only: {n} form(s) with no stock site, row or unit run, not refused in a test remix")
+    built = df.census_records(set(res))
+    for name, r in built.items():
+        n = r["no_stock_site"]
+        print(f"  [info] build {name} (P:0x{r['addr']:05x}, {r['words']} words): {len(n)} of {r['forms']} form(s) with no stock site, "
+              f"{sum(1 for v in n.values() if not v['row'])} with no register row; not refused")
     if unused:
         print(f"  [info] {len(unused)} register row(s) no module of {remix} needs" + (": " + "; ".join(f.strip() for f in unused) if len(unused) <= 4 else ""))
     print(f"  [{'PASS' if not counts[3] else 'FAIL'}] {remix}: {len(res)} DSP modules, {counts[0]} forms; without a stock site: "
-          f"{counts[1]} by a register row, {counts[2]} by the module's unit run, {counts[3]} refused")
+          f"{counts[1]} by a register row, {counts[2]} by the module's unit run, {counts[3]} refused; "
+          f"build window code: {len(built)} record(s), {sum(len(r['no_stock_site']) for r in built.values())} form(s) with no stock site (not refused)")
     print("verify_dsp_forms: " + ("OK" if not bad else f"{bad} FAILED"))
     return 1 if bad else 0
 

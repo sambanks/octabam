@@ -50,5 +50,31 @@ class Rows(unittest.TestCase):
         self.assertIn(df.form("move b,x:(r1+$37f60)", 2), rows)
 
 
+@unittest.skipUnless(df.DIS.exists() and (ROOT / "out/dsp/payload_A.asm").exists(), "needs dsp56kDisassemble and the stock listing")
+class Records(unittest.TestCase):
+    def write(self, d):
+        import json
+        p = pathlib.Path(d) / "window_records.json"
+        p.write_text(json.dumps({
+            "demand stub": [0x33e6f, [0x0a7010, 0x000000]],                    # a jmp-free pair is enough to decode
+            "LOAD METER": [0x37da3, [0x000000]],                               # a module's own code: skipped
+            "LOAD METER:B": [0x37e50, [0x000000]],
+            "guard trampolines": [0x33ede, [0x000000, 0x001000]]}))
+        return p
+
+    def test_a_record_named_after_a_module_is_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            got = df.census_records({"LOAD METER"}, self.write(d))
+        self.assertEqual(sorted(got), ["demand stub", "guard trampolines"])
+
+    def test_missing_file_is_empty(self):
+        self.assertEqual(df.census_records(set(), pathlib.Path("/nonexistent/window_records.json")), {})
+
+    def test_record_reports_address_and_word_count(self):
+        with tempfile.TemporaryDirectory() as d:
+            got = df.census_records(set(), self.write(d))
+        self.assertEqual((got["demand stub"]["addr"], got["demand stub"]["words"]), (0x33e6f, 2))
+
+
 if __name__ == "__main__":
     unittest.main()
