@@ -1715,3 +1715,22 @@ the maximum, silently omitting the gain pass. Mark such modules with
 The original limiter also used the previous block's level, allowing the
 first transient through. The shared render gates now inject signed impulses
 at and around block boundaries and check the actual first-block peak.
+
+<a id="trap-no-sample-voice"></a>
+
+### A voice with no sample stops on its first frame and takes the retrig count with it
+
+**A VOICE WITH NO SAMPLE ON THE CARD IS STOPPED ON ITS FIRST FRAME, AND THE
+STOP ROUTINE ZEROES THE RETRIG COUNT.** USB MIDI TRACKS read "a retrig count for
+one frame, no repeat ever" under the port (3 Nov 2026) and the search went
+through the renderer for what cleared it. The renderer's sample reader
+`0x40007960` calls the stop routine `0x40006820` when the voice's descriptor
+(voice +4) has +8 non-zero (read 3 for a missing file, +12 = -12) or an empty
+sample (read 1 for an empty slot), and it does so every frame; the routine
+clears render state +4 (`0x8000489c + 40*t`). Note numbers still come out, so
+the trig looks healthy. The fixture staged the slot the file's Part named, and
+an old-layout project's Part reads as garbage while the engine plays another
+machine, and sample locks point elsewhere again. Check voice +4 before reading
+anything downstream of a voice, and put a sample behind every slot the track can
+reach. `--watch-mem`'s PC found this in one run after reading had not.
+**Gate:** `verify_usbmidi_tracks` with OT_PROJECT requires repeats on the wire.

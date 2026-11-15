@@ -285,6 +285,7 @@ usbmidi_prio_shim:
 | ---- data -----------------------------------------------------------------
     .balign 2
     .global usbmidi_up, usbmidi_tx_busy, usbmidi_tx_drops, usbmidi_tx_reset
+    .global usbmidi_tx_append
 usbmidi_up:      .byte 0
 usbmidi_tx_busy: .byte 0
 usbmidi_tmpbyte: .byte 0

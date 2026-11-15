@@ -1028,7 +1028,7 @@ def main():
              "remix-switch": (), "remix-switch-trace": (),   # REMIX SWITCH's park in dead vectors, no region words
              "rs64": (),   # remix-switch with BBD placed in the shared window: no region words
              "usb-io-stock14": (),   # USB's RX inject at payload A's tail (DspSection.tail), no region words
-             "usb-out-main-cue": (), "usb-out-main": (), "usb-midi": (), "stems": (),     # stock effects + ColdFire modules, no DSP words
+             "usb-out-main-cue": (), "usb-out-main": (), "usb-midi": (), "usb-midi-tracks": (), "stems": (),     # stock effects + ColdFire modules, no DSP words
              "stems-brain": (),   # STEM REC under PROJECT + BRAIN/REMIX SWITCH; no DSP words
              "octa303": (), "rec-threshold": (), "buffer-saver": (), "plocks-p2": (), "scenes-midisc": (), "kits": (),
              "persistent-buffers": (),   # STORE + PERSISTENT BUFFERS on the stock effects, no DSP words

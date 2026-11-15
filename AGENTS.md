@@ -205,6 +205,7 @@ moment it costs real work, and add its line here.
 - [The boot verifier booted the wrong image](docs/contributing/TRAPS.md#trap-boot-verifier) — a verifier that reads `out/` must know who wrote it last.
 - [`make … | grep | tail` reports tail's exit code](docs/contributing/TRAPS.md#trap-pipe-exit) — `> log; echo $?`.
 - [Matching an author's bytes with GNU as](docs/contributing/TRAPS.md#trap-gnu-as) — `lea SYM:l` for same-unit labels; `moveq`; the `-Ttext` 2-mod-4 `nop`.
+- [A voice with no sample stops on its first frame and takes the retrig count with it](docs/contributing/TRAPS.md#trap-no-sample-voice) — check voice +4 first; a sample behind every slot the track can reach.
 - [A bank-file fixture edits the file; the firmware parses it into a different RAM layout](docs/contributing/TRAPS.md#trap-work-file-ram) — anchor fixture edits to a known-good write; RAM addresses from the routine's arithmetic.
 - [A loader draft clobbered d0 and reused a0 after the hash](docs/contributing/TRAPS.md#trap-loader-regs) — `verify_dram_boot` watches entry and `fatal`.
 - [Fixed `/tmp` names corrupted parallel builds](docs/contributing/TRAPS.md#trap-tmp-race) — mkdtemp per process now; a failure moving between remixes is a shared-scratch race.
