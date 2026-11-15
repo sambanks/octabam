@@ -62,10 +62,12 @@ Scroll **D** on **PLCK** to load that destination's **PULS** / **ROT** into
 
 **D** / **E** stay live on **`[YES]`** even when **LANE** is **TRIG**.
 
-## Knob pages
+## Controls
 
 Page **1/2** keeps the rhythm controls. Page **2/2** changes only the knob
 assignments; the rhythm grid remains visible and unchanged.
+
+![SEQ page 1/2 on an audio track.](../../img/seq/panel.png)
 
 ### Page 1/2
 
@@ -86,6 +88,9 @@ The second page controls melody and harmony for both audio and MIDI tracks.
 SEQ keeps these scale settings separate from the PROJECT SCALE QUANTIZER.
 
 **LEN** shows the active **pattern** length.
+
+![SEQ page 2/2 on an audio track.](../../img/seq/tonal.png)
+![SEQ page 2/2 on a MIDI track.](../../img/seq/midi-tonal.png)
 
 | Knob | Label | Role |
 |---|---|---|
