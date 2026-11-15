@@ -10,7 +10,7 @@ Remix.window_demand (k):
 
   used       T1.. use effects 0..3 on FX1 from the start (one a block) -> each bound, its entry and code in the window
                                                           word for word, seen from both cores
-  withdrawn  the same, T1's FX1 back to FILTER at 2 s  -> effect 0 unbound after the 2 s grace, its span empty, the rest bound
+  withdrawn  the same, T1's FX1 back to FILTER at 2 s  -> effect 0 unbound after DLPUMP's GRACE (the remix's: 2 s or 10 s), its span empty, the rest bound
   grace      effect 0 unused at 2 s and used again at 3 s -> still bound, loaded once
   reverb-takes  effect 0 unused at 2 s, a reverb on its block at 2.5 s -> unbound by 3.4 s, well inside the grace
   pick-reverb-unused  effect 0 loaded and unused: the FX2 chooser accepts a reverb on its block, no toast, effect withdrawn
@@ -51,7 +51,7 @@ FX1_PART, FX2_PART = 0x8ED80, 0x8ED88            # a Part's FX ids of track 1, f
 # started from the track's own effect instead of NONE and walked past its row (sambanks/octabam#1075).
 BANK0, BANK_STRIDE, PART_STRIDE = 0x400E21E0, 0x9B340, 0x18B2
 PARTS = [BANK0 + b * BANK_STRIDE + p * PART_STRIDE for b in range(16) for p in range(4)]
-FILTER, PLATE, SPRING, DARK = 0x01, 0x14, 0x15, 0x16      # DARK REV is the reverb whose buffer reaches the demand effect's code
+FILTER, PLATE, SPRING, DARK = 0x04, 0x14, 0x15, 0x16      # DARK REV is the reverb whose buffer reaches the demand effect's code
 KEYS = dict(no=0x32, fx1=0x25, fx2=0x26, down=0x20, yes=0x31, **{f"t{i + 1}": 0x10 + i for i in range(8)})
 TOAST = 0x4005A2B8          # the firmware's message popup: every decision the loader makes on a chooser ends here
 FAILS = []
@@ -103,6 +103,11 @@ def main():
     # A remix whose stock reverbs are gone (octabam-verbs: Remix.dry, or a row of ours on their ids) builds no reverb
     # guard and its loader blocks for no id: the guard's scenarios do not apply, and three of its own replace them.
     GUARDED = bool(RX.window_guard)
+    # DLPUMP's GRACE (modules/dlpump/manifest.py): 10 s unless the remix pins 2 s (test/dlspike does, for the port
+    # gates). `withdrawn` runs past it. Until 15 Nov 2026 every scenario assumed 2 s, and on octabam (10 s) MODULATION
+    # was still bound when the run ended at 7 s (sambanks/octabam#1075).
+    pin = (RX.settings or {}).get(("octabam.dlpump", "GRACE"))
+    GRACE_MS = 2000 if str(getattr(pin, "value", pin)) == "2 S" else 10000
     VERB = registry.bound(RX).get("VERBERATION") if "VERBERATION" in RX.modules else None
     recs = [dict(next(r for key, r in recs if key == k), key=k) for k in order]
     rec = recs[0]
@@ -134,7 +139,7 @@ def main():
     reverb_row = int.from_bytes(img[0x400D6150 + 4 * DARK - 0x40000400:][:4], "big")     # DARK REV's row on the FX2 chooser
     scenarios = {
         "used": (every, []),
-        "withdrawn": (every, [(2000, poke(FX1_LIVE, FX1_PART, 0, FILTER))]),
+        "withdrawn": (every, [(2000, poke(FX1_LIVE, FX1_PART, 0, FILTER))]),          # quits past the grace (below)
         "unused": ("", []),
         "plate-ok": (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";" + poke(FX2_LIVE, FX2_PART, block_track, PLATE), []),      # reverbs the code is clear of
         "spring-ok": (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";" + poke(FX2_LIVE, FX2_PART, block_track, SPRING), []),
@@ -153,7 +158,9 @@ def main():
         "moveback": (poke(FX1_LIVE, FX1_PART, 0, mod_id) + ";" + poke(FX2_LIVE, FX2_PART, block_track, DARK),
                      [(3000, poke(FX2_LIVE, FX2_PART, block_track, 0x08)), (5000, poke(FX2_LIVE, FX2_PART, alt_track, DARK))]),
         # the same with the panel's keys, as on the unit: the reverb is picked on the second home's track from the chooser
-        "pick-reverb-t4": (every_first + ";" + poke(FX2_LIVE, FX2_PART, block_track, DARK),
+        # the second home's track starts on NONE, as pick-reverb's does: the chooser opens on the Part's id
+        "pick-reverb-t4": (every_first + ";" + poke(FX2_LIVE, FX2_PART, block_track, DARK) + ";"
+                           + poke(FX2_LIVE, FX2_PART, alt_track, 0),
                            [(3000, poke(FX2_LIVE, FX2_PART, block_track, 0x08))]),
         "pick-reverb": (every_first + ";" + poke(FX2_LIVE, FX2_PART, block_track, 0), []),
         "pick-reverb-stuck": (every_first + ";" + poke(FX2_LIVE, FX2_PART, block_track, 0) + ";" + poke(FX2_LIVE, FX2_PART, alt_track, DARK), []),
@@ -205,7 +212,10 @@ def main():
             lines += [f"{a.ms - 800} key {KEYS['fx1']:#x} down", f"{a.ms - 760} key {KEYS['fx1']:#x} up"]
         # the script is read in order, so a quit that is earlier than the last key waits for it; after a pick that moves
         # an effect, the reload (the debounce, then three sends) needs a few seconds past the last key
-        lines.append(f"{(t + 3000) if tag in ('pick-reverb', 'pick-reverb-t4') else (3400 if tag == 'reverb-takes' else a.ms)} quit")
+        end = (t + 3000) if tag in ('pick-reverb', 'pick-reverb-t4') else 3400 if tag == 'reverb-takes' else a.ms
+        if tag == "withdrawn":
+            end = max(end, 2000 + GRACE_MS + 1500)          # unused from 2 s; the withdraw lands in the frames after
+        lines.append(f"{end} quit")
         (OUT / f"{tag}.script").write_text("\n".join(lines) + "\n")
         dump = OUT / f"{tag}_ids.bin"
         peeks = ";".join(f"{c}:X:{STAGE:x},1;{c}:X:{0x33DA3 + 8 * k:x},8;{c}:P:{r['addr']:x},{len(r['words'])}"
