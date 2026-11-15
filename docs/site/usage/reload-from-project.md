@@ -15,11 +15,21 @@ the transport.
 ## Timing
 
 - While playing, a reload lands on the track's next step, in time with
-  everything else. A whole pattern lands on the next step its tracks
-  share.
+  everything else, and that step already plays the reloaded sequence. A
+  whole pattern lands on the next step its tracks share.
+- With [BANK] + [TRACK n], the track's machine and settings change with
+  the first trig of the reloaded sequence that plays a sample; with no
+  such trig, on the landing step.
 - A saved length or scale comes back the same way, with every track
   carried on where the saved pattern would be.
 - Several reloads before a landing all count; the latest one for a
   track wins.
 - Stopped, a reload applies at once.
 - A toast confirms each reload as it lands.
+
+## Trig conditions
+
+- A reloaded track's trig conditions carry on as if the saved sequence
+  had always played: A:B conditions count from where the pattern's
+  conditions last started again (PLAY, a pattern change, a Direct Jump),
+  PRE starts again as it does on a pattern change, and FILL is kept.
