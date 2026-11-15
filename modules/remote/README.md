@@ -122,6 +122,10 @@ TRACKS PRE; the control N2 is `octabam` without REMOTE.
 - A MIDI STOP writes PLAYING 2. PLAYING 0 follows one frame before the next START, and on entering USB DISK
   MODE.
 - The trace: 461 consecutive entries 354.0 to 372.5 µs apart, mean 362.8 µs.
+- Where the frame interrupt lands (`sym.py --histogram` on the trace's PCs, symbols from the build): stopped,
+  444 of 453 entries (98.0 %) interrupted `main_idle` (`0x4001fc9c`, main's `bras .`); playing, 322 of 462
+  (69.7 %), and 140 in stock pages with no symbol, most of them `0x40098300` to `0x40098bff` (the per-voice
+  work, inferred from the CF cost notes' `0x40098a5c`).
 - The file sink: `/LOG 261115.txt` held records 0 to 16 as `RMT` lines, equal to the ring; lines written in
   one flush carry that flush's time.
 - COMMAND 1: the card mounted on the host 4.5 s later. COMMAND 2: the project reloaded, LOADMASK 255 after
