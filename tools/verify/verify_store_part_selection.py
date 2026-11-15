@@ -22,6 +22,8 @@ def registrations():
     active,windows,writes=ns['layout']({'MIDI FOLLOW','MIDI LOOPBACK'})
     assert windows==((0x4e2,288),)
     assert set(writes)=={0x4e2+36*t+f for t in range(8) for f in (3,12,13,15)}
+    active,windows,writes=ns['layout']({'SEQ'})
+    assert active==('SEQ',) and windows==((0x3e2,256),) and writes==()
     base=registry.modules()['STORE']
     # Real registry binding must omit *all* optional code, hooks and claims.
     for remix in ('events-clients',):   # octabam-bus carries SCALES since #1067

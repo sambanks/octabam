@@ -2,6 +2,7 @@
 """Native Part copy/clear ABI and interrupt-point settings publication gate."""
 import json
 import re
+import runpy
 import subprocess
 from midi_machine import Machine, ROOT
 B, BS, PS = 0x400e21e0, 0x9b340, 0x18b2
@@ -18,6 +19,11 @@ REGS = tuple(range(UC_M68K_REG_D0, UC_M68K_REG_D7+1)) + tuple(range(UC_M68K_REG_
 
 def main():
     m=Machine(symbols);u=m.uc
+    units = {row[0] for row in json.loads((ROOT/'out/platform/layout.json').read_text())['units']}
+    windows = runpy.run_path(str(ROOT/'modules/store/parts.py'))['layout'](units)[1]
+    stride = sum(length for _, length in windows)
+    read_offsets = tuple(offset for start, length in windows for offset in range(start, start + length))
+    assert stride and read_offsets
     stock=(ROOT/'out/raw/section_3_MAIN_OS.bin').read_bytes()
     originals={a:stock[a-0x40000400:a-0x40000400+n] for a,n in ((COPY,6),(INIT,8))}
     patched_entries={a:bytes(u.mem_read(a,n)) for a,n in ((COPY,6),(INIT,8))}
@@ -36,7 +42,7 @@ def main():
         if cold:
             assert not m.base<=pc<runtime_end, f'early entry executed DRAM at {pc:#x}'
         if active and not interrupted and int.from_bytes(u.mem_read(m.sym['store_part_snapshot_bank'],4),'big'):
-            if (pc==0x400208ae and u.reg_read(UC_M68K_REG_A1)>=target+0x4e2+144) or (pc==0x400058da and u.reg_read(UC_M68K_REG_D3)==3):
+            if (pc==0x400208ae and u.reg_read(UC_M68K_REG_A1)>=target+windows[0][0]+windows[0][1]//2) or (pc==0x400058da and u.reg_read(UC_M68K_REG_D3)==3):
                 interrupted=True;u.emu_stop()
     u.hook_add(UC_HOOK_CODE,observe)
     def install(on):
@@ -52,7 +58,7 @@ def main():
         # of the wrapper's snapshot/epoch implementation.
         epochs = bytes(u.mem_read(m.sym['store_part_epochs'], 64*4))
         expected_epochs = bytearray(epochs)
-        expected_snapshot = bytes(u.mem_read(m.sym['store_part_snapshot'], 4*288))
+        expected_snapshot = bytes(u.mem_read(m.sym['store_part_snapshot'], 4*stride))
         length = args[2] if entry == COPY else PS
         bank = (target-B)//BS
         if wrapped and not cold and length > 0 and 0 <= bank < 16:
@@ -62,7 +68,8 @@ def main():
                         and target+length > bank_base+0x8ed80+p*PS]
             if target+length <= bank_base+BS and affected:
                 expected_snapshot = b''.join(bytes(u.mem_read(
-                    bank_base+0x8ed80+p*PS+0x4e2, 288)) for p in range(4))
+                    bank_base+0x8ed80+p*PS+offset, length)) for p in range(4)
+                    for offset, length in windows)
                 for part in affected:
                     at = (bank*4+part)*4
                     value = (int.from_bytes(epochs[at:at+4], 'big')+1) & 0xffffffff
@@ -75,7 +82,7 @@ def main():
         if pause:
             assert interrupted and m.arrival is None
             assert m.read_sr()&0xff00==sr, 'native operation masked interrupts'
-            assert bytes(u.mem_read(m.sym['store_part_snapshot'], 4*288)) == expected_snapshot, 'outgoing snapshot mismatch'
+            assert bytes(u.mem_read(m.sym['store_part_snapshot'], 4*stride)) == expected_snapshot, 'outgoing snapshot mismatch'
             assert bytes(u.mem_read(m.sym['store_part_epochs'], 64*4)) == epochs
             saved=u.context_save();oldstack=m.stack;m.stack-=0x1000
             bank=(target-B)//BS
@@ -86,18 +93,16 @@ def main():
             # This is the state a playback interruption sees after native bytes
             # have already begun changing, including KEY and other Parts.
             for part in range(4):
-                for track in range(8):
-                    for field in FIELDS:
-                        if field==17:got=m.call('store_part_midi_key',track,bank*4+part)
-                        else:got=m.call('store_part_midi_read',track,bank*4+part,regs={UC_M68K_REG_D2:field})
-                        assert got==old_settings[part,track,field],(part,track,field,got)
+                for offset in read_offsets:
+                    got = m.call('store_part_read', offset, bank*4+part)
+                    assert got == old_settings[part, offset], (part, offset, got)
             m.stack=oldstack;u.context_restore(saved);m.arrival=None;m.stops={m.done}
             active=False
             u.emu_start(u.reg_read(UC_M68K_REG_PC),0,count=1000000)
         assert m.arrival==m.done,(hex(entry),hex(u.reg_read(UC_M68K_REG_PC)))
         assert u.reg_read(UC_M68K_REG_A7)==m.stack+4
         assert bytes(u.mem_read(m.stack+4,4*len(args)))==b''.join(x.to_bytes(4,'big') for x in args)
-        assert bytes(u.mem_read(m.sym['store_part_snapshot'], 4*288)) == expected_snapshot, 'outgoing snapshot mismatch'
+        assert bytes(u.mem_read(m.sym['store_part_snapshot'], 4*stride)) == expected_snapshot, 'outgoing snapshot mismatch'
         assert bytes(u.mem_read(m.sym['store_part_epochs'], 64*4)) == bytes(expected_epochs), 'Part epoch publication mismatch'
         assert bytes(u.mem_read(m.sym['store_part_snapshot_bank'],4))==bytes(4)
         assert bytes(u.mem_read(m.sym['store_part_snapshot_parts'],4))==bytes(4)
@@ -210,18 +215,16 @@ def main():
         for entry,length in ((COPY,PS),(COPY,2*PS),(INIT,PS)):
             old_settings={}
             for p in range(4):
-                for t in range(8):
-                    for field in FIELDS:
-                        value=(13+p*19+t*11+field)%128
-                        old_settings[p,t,field]=value
-                        u.mem_write(B+bank*BS+0x8ed80+p*PS+0x4e2+t*36+field,bytes((value,)))
+                for offset in read_offsets:
+                    value=(13+p*19+offset)%128
+                    old_settings[p,offset]=value
+                    u.mem_write(B+bank*BS+0x8ed80+p*PS+offset,bytes((value,)))
             u.mem_write(source,bytes((i*3+1)&127 for i in range(length)))
             run(entry,(dest,source,length) if entry==COPY else (dest,),pause=True)
-            for t in range(8):
-                for field in FIELDS:
-                    native=u.mem_read(dest+0x4e2+t*36+field,1)[0]
-                    got=m.call('store_part_midi_key',t,bank*4+part) if field==17 else m.call('store_part_midi_read',t,bank*4+part,regs={UC_M68K_REG_D2:field})
-                    assert got==native,(entry,bank,part,t,field)
+            for offset in read_offsets:
+                native=u.mem_read(dest+offset,1)[0]
+                got=m.call('store_part_read',offset,bank*4+part)
+                assert got==native,(entry,bank,part,offset)
     # Negative control: execute the real wrapper with its epoch increment
     # disabled. The state assertions must reject it even though copy succeeds.
     start, end = m.sym['store_part_native_init'], m.sym['store_part_snapshot_bank']
@@ -245,7 +248,7 @@ def main():
     print(json.dumps({'cold_stock_vs_wrapped_operations':cold_cases,
                       'cold_register_corruption_rejected':True,
                       'stock_vs_wrapped_operations':cases,'interrupted_copy_clear_publications':9,
-                      'outgoing_reads_per_interruption':4*8*len(FIELDS),'interrupts_remain_enabled':True,
+                      'outgoing_reads_per_interruption':4*len(read_offsets),'interrupts_remain_enabled':True,
                       'missing_epoch_publication_rejected':True,'full_snapshot_and_all_epochs_checked':True,'production_hooks_installed':True,'hardware_tested':False}))
 
 if __name__=='__main__':main()
