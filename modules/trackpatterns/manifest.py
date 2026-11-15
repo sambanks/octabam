@@ -39,7 +39,7 @@ MODULE = Module(
     kind=Kind.CF_PATCH,
     category=Category.MACHINES,
     author="pgstath", author_url="https://github.com/pgstath",
-    evidence=(Evidence(Level.UNIT, unit="MKII", image="OCTABAM3", date="2026-10-21",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="pgstath", image="OCTABAM3", date="2026-10-21",
         note="(remix trackpatterns), 21 Oct 2026: functional tests and trig LEDs passed (contributor's report)"),),
     doc="Each track plays its own pattern of the playing bank; changes land at the track's loop end.",
     linked=(Linked("trackpatterns", "modules/trackpatterns/trackpatterns.s", cpu="5475", dram=True),),
