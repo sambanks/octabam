@@ -66,7 +66,7 @@ MODULE = Module(
     key="MODULATION",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
-    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks"),),
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-25"),),
     doc="FX1 station: a modulation pedal -- Juno, Dimension, flanger, phaser, comb; FX1 only.",
     menu=MenuEntry(
         fx2_id=0x0e,

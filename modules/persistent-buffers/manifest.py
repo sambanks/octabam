@@ -16,7 +16,7 @@ MODULE = Module(
     category=Category.SETTINGS,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-10-17",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-10-17",
         note="verify_persistent_buffers port; author MKII R2–R6 (17 Oct 2026); R7 PBUF R7.RMX (22 Oct 2026): "
              "short/long save UI immediate, 8 slots, empty skip, load/reload, reopen+play, overwrite, save≡load "
              "play"),),
