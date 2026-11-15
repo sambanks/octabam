@@ -56,6 +56,9 @@ def main():
         def isolated(name, before, flat, trig):
             after = snapshots()
             allowed = {record_offset + 0x30 + step * 32 + flat for step in range(16)}
+            if flat == 0:
+                allowed.update(record_offset + 0x30 + step * 32 + voice
+                               for step in range(16) for voice in (3, 4, 5))
             if trig:
                 allowed.update(range(record_offset, record_offset + 8))
             for tag, old, new in zip(('RAM', 'CS1'), before, after):
@@ -91,7 +94,7 @@ def main():
 
         # Select CC1 through D, then confirm a CUE gesture. It must only
         # change the preview until the separate fill YES.
-        knob(3, 20)
+        knob(3, 17)
         knob(4, -127)
         knob(4, 5)
         before = snapshots()
@@ -110,7 +113,7 @@ def main():
         check('confirmation NO cancels and stays locked', field('ef_ask') == 0 and field('ef_unlocked') == 0)
         unchanged('confirmation NO preserves every pattern and mirror byte', before)
 
-        knob(3, -19)  # VEL
+        knob(3, -16)  # VEL
         knob(4, -127)
         before = snapshots()
         knob(0, -1)
@@ -122,7 +125,7 @@ def main():
         check('DPTH zero clears only the selected VEL locks',
               all(u8(p, record + 0x30 + step * 32 + 1) == 255 for step in range(16)))
 
-        knob(3, 19)  # CC1
+        knob(3, 16)  # CC1
         knob(4, 5)
         knob(2, 1)  # PLCK
         knob(0, 3)
@@ -133,7 +136,7 @@ def main():
         isolated('CC1 PLOCK fill', before, 20, False)
         # Exercise destination boundaries and each MIDI page family through D.
         selected = 20
-        for flat in (3, 4, 5, 18, 19, 29):
+        for flat in (18, 19, 29):
             knob(3, flat - selected)
             selected = flat
             knob(4, -127)
