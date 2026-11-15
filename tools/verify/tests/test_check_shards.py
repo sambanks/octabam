@@ -87,6 +87,21 @@ class FailureExcerpt(unittest.TestCase):
         self.assertEqual(check_shards.failure_excerpt("a\nb", tail=40), ["a", "b"])
 
 
+class StatusOf(unittest.TestCase):
+    """A job that exited 0 with SKIP lines is not reported as a plain `ok` (sambanks/octabam#1051)."""
+
+    def test_plain_ok_and_cached(self):
+        self.assertEqual(check_shards.status_of(dict(rc=0, skips=[])), "ok")
+        self.assertEqual(check_shards.status_of(dict(rc=0, skips=[], cached={"head": "x"})), "cached")
+
+    def test_skips_are_in_the_status(self):
+        self.assertEqual(check_shards.status_of(dict(rc=0, skips=["[SKIP] a", "[SKIP] b"])), "ok, 2 SKIP")
+        self.assertEqual(check_shards.status_of(dict(rc=0, skips=["[SKIP] a"], cached={"head": "x"})), "cached, 1 SKIP")
+
+    def test_a_failure_stays_a_failure(self):
+        self.assertEqual(check_shards.status_of(dict(rc=2, skips=["[SKIP] a"])), "FAILED (2)")
+
+
 if __name__ == "__main__":
     unittest.main()
 

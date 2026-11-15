@@ -374,6 +374,7 @@ def remix_jobs(remix_name, shard):
         job("dirty-state", [[py, f"{V}/verify_dirty_state.py", remix_name]], f"{V}/verify_dirty_state.py"),
         job("init-regs", [[py, f"{V}/verify_init_regs.py", remix_name]], f"{V}/verify_init_regs.py"),
         job("dsp-forms", [[py, f"{V}/verify_dsp_forms.py", remix_name]], f"{V}/verify_dsp_forms.py"),
+        job("cf-forms", [[py, f"{V}/verify_cf_forms.py", remix_name]], f"{V}/verify_cf_forms.py"),
         job("dram-boot", [[py, f"{V}/verify_dram_boot.py"]], f"{V}/verify_dram_boot.py"),
     ]
     for name in ("labels", "mode_names", "hidden"):
@@ -398,7 +399,7 @@ def remix_jobs(remix_name, shard):
         cmd = module_gates.command(g, remix_name, root=ROOT)
         cmd[0] = cmd[0] if g.venv else PY
         cmd[1] = str(g.script)
-        jobs.append(job(pathlib.Path(g.script).stem.removeprefix("verify_").replace("_", "-"), [cmd], f"{V}/module_gates.py"))
+        jobs.append(job(module_gates.job_name(g), [cmd], f"{V}/module_gates.py"))
     jobs.append(job("menu", [[py, f"{V}/verify_menu.py"], [py, f"{V}/verify_replaces.py", "--image", remix_name]],
                     f"{V}/verify_menu.py", f"{V}/verify_replaces.py"))
     jobs.append(job("set", [[py, f"{V}/verify_set.py", remix_name]], f"{V}/verify_set.py"))
@@ -414,7 +415,7 @@ def remix_jobs(remix_name, shard):
         except OSError:
             boots_card = True       # unreadable: stage it, as the single job did
         stage = [[py, f"{V}/verify_set.py", remix_name, "--stage-only"]] if boots_card else []
-        jobs.append(job("image:" + pathlib.Path(g.script).stem.removeprefix("verify_").replace("_", "-"),
+        jobs.append(job(module_gates.job_name(g),
                         stage + [[PY, f"{V}/module_gates.py", remix_name, "--stage", "image", "--only-script", str(g.script)]],
                         f"{V}/module_gates.py"))
     jobs.append(job("usb", [[py, f"{V}/verify_usb.py"]], f"{V}/verify_usb.py"))
@@ -564,9 +565,13 @@ def write_times(path, run):
 
 
 def status_of(res):
+    """FAILED, or ok / cached; a job that printed SKIP lines says so in its status: it did not run
+    what it skipped, and `ok` alone reads as a pass (sambanks/octabam#1051)."""
     if res["rc"]:
         return f"FAILED ({res['rc']})"
-    return "cached" if res.get("cached") else "ok"
+    base = "cached" if res.get("cached") else "ok"
+    n = len(res.get("skips") or ())
+    return f"{base}, {n} SKIP" if n else base
 
 
 def main(argv=None):
@@ -760,8 +765,16 @@ def _main(argv, owners):
     if bad:
         print(f"check_shards: {len(bad)} of {len(results)} {unit} failed")
         return 1
-    print(f"check_shards: every {'gate of ' + remixes[0] if a.by_gate else 'remix'} passed"
-          + ("" if a.by_gate else " its per-remix half"))
+    skipped = {n: results[n]["skips"] for n in names if results[n]["skips"]}
+    nskip = sum(len(v) for v in skipped.values())
+    if skipped:
+        # exit 0 stays: a SKIP is a gate that needs an input this run lacked (a project, the port), not a failure;
+        # but "passed" would claim what did not run (sambanks/octabam#1051)
+        print(f"check_shards: {len(skipped)} of {len(results)} {unit} exited 0 with {nskip} SKIP line(s): "
+              f"{', '.join(skipped)} -- what a SKIP names did NOT run")
+    what = f"gate of {remixes[0]}" if a.by_gate else "remix"
+    verb = "exited 0" if skipped else "passed"
+    print(f"check_shards: every {what} {verb}" + ("" if a.by_gate else " in its per-remix half"))
     return 0
 
 

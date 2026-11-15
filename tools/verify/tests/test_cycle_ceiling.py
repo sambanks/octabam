@@ -2,6 +2,7 @@
 import pathlib
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 import toolpath  # noqa: E402,F401
@@ -33,6 +34,39 @@ class CeilingTests(unittest.TestCase):
                 DspSection(asm="x.asm", priority=1, max_per_core=bad)
         for ok in (None, 1, 4):
             DspSection(asm="x.asm", priority=1, max_per_core=ok)
+
+
+class SequentialLoopTests(unittest.TestCase):
+    SOURCE = """init:
+        rts
+proc:
+        do n7,>first
+        nop
+first:
+        nop
+        do n7,>second
+        nop
+        nop
+second:
+        nop
+        rts
+"""
+
+    def measure(self, source):
+        # Loop measurement requires dsp_asm. This unit tests the choice between
+        # two independently measured costs; real remix pricing covers assembly.
+        costs = [dict(cycles=n, words=n, inner="", modes=[("loop", "", n)])
+                 for n in (1, 2)]
+        with patch.object(cycle_count, "prep", return_value=source), \
+             patch.object(cycle_count, "_measure_loop", side_effect=costs):
+            return cycle_count.measure("loop_fixture")
+
+    def test_modes_take_the_maximum(self):
+        self.assertEqual(self.measure(self.SOURCE)["cycles"], 2)
+
+    def test_sequential_passes_add(self):
+        src = "; CYCLES_SEQUENTIAL_LOOPS\n" + self.SOURCE
+        self.assertEqual(self.measure(src)["cycles"], 3)
 
 
 if __name__ == "__main__":

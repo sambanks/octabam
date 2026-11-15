@@ -253,7 +253,9 @@ everything else uses.
 
 What now gates it: `verify_dsp_forms` in `make check` refuses a form with
 no stock site, no register row and no module at `Level.UNIT`
-(`docs/contributing/TESTING.md`).
+(`docs/contributing/TESTING.md`). `verify_cf_forms` reports the ColdFire
+forms with none of the three (`docs/contributing/COLDFIRE_FORMS.md`); it does
+not refuse them yet.
 
 <a name="trap-rep-dma"></a>
 
@@ -1704,3 +1706,14 @@ not known, and the port and `dsp_host` run one core, so no gate sees it. Rule: l
 its frame, after the last track; to see a stalled DSP, read it (`tools/hw/dlprobe.patch`, `tools/hw/dl_probe.py`: the shared
 window through the core that still takes host commands), do not infer it from the ColdFire's side.
 
+<a id="trap-sequential-limiter"></a>
+
+### Sequential sample loops were priced as alternative modes
+
+A two-pass limiter runs both `do n7` loops. The counter previously took
+the maximum, silently omitting the gain pass. Mark such modules with
+`; CYCLES_SEQUENTIAL_LOOPS`; `cycle_count.measure` adds every loop.
+`test_cycle_ceiling.py` checks sequential sums and preserves mode maxima.
+The original limiter also used the previous block's level, allowing the
+first transient through. The shared render gates now inject signed impulses
+at and around block boundaries and check the actual first-block peak.

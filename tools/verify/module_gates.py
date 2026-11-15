@@ -107,6 +107,12 @@ def reached(keys, modules):
     return out
 
 
+def job_name(gate):
+    """The check_shards job of a module gate: the script's stem, `image:` in front for the image stage."""
+    stem = pathlib.PurePosixPath(gate.script).stem.removeprefix("verify_").replace("_", "-")
+    return ("image:" if gate.stage == "image" else "") + stem
+
+
 def collect(modules, stage, remix_arg=None, once=None):
     """The gates of `modules` for one stage, in selection order, each script
     once. `remix_arg` True/False keeps only the gates that take / do not
