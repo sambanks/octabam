@@ -174,21 +174,22 @@ def main():
                 v_slot, v_name = named[0]
                 fixture = (m, "MODE", 0, v_name, v_slot, {"MODE": 0, v_name: 64})
                 break
+    from hw import ot_project as otp
     if fixture is not None:
-        from hw import ot_project as otp
         effect, select_name, select_slot, value_name, value_slot, knobs = fixture
         defaults = otp.module_defaults(effect, knobs)
         otp.set_fx(copy, "fx2", 1, str(effect.menu.fx2_id),
                    page=defaults[:6], page2=defaults[6:], guard=False)
-        # The 120-frame probe ends before step 2 at 120 BPM. Activate T1
-        # on the first step so its native playing-Part pointer is valid even
-        # when the supplied template contains only MIDI trigs.
-        for bank_file in copy.glob("bank*.work"):
-            def activate(data):
-                data[otp.trac_off(0, 0) + 7] |= 1
-            otp._bank_write(copy, int(bank_file.stem[4:]), activate, guard=False)
-        project_file = copy / "project.work"
-        project_file.write_bytes(re.sub(rb"(SCENE_[AB]_MUTE=)1", rb"\g<1>0", project_file.read_bytes()))
+    # The 120-frame probe ends before step 2 at 120 BPM. Activate T1 on the first step so its native playing-Part
+    # pointer is valid even when the supplied template has no audio trig (a MIDI-only one, or a generated empty
+    # project: on octabam-bus's, 15 Nov 2026, fader 64 read B's values, MODE 0 and TIME 20, until T1 was active;
+    # with it, MODE 1 and TIME 60). Every remix, the bus's MODE/TIME fixture too.
+    for bank_file in copy.glob("bank*.work"):
+        def activate(data):
+            data[otp.trac_off(0, 0) + 7] |= 1
+        otp._bank_write(copy, int(bank_file.stem[4:]), activate, guard=False)
+    project_file = copy / "project.work"
+    project_file.write_bytes(re.sub(rb"(SCENE_[AB]_MUTE=)1", rb"\g<1>0", project_file.read_bytes()))
     select_byte, value_byte = 48 + select_slot, 48 + value_slot
     card = OUT / "card.img"
     r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
