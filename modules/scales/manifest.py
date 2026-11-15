@@ -42,7 +42,7 @@ MODULE = Module(
     category=Category.MIDI_USB,
     author="djib",
     author_url="https://github.com/Djibdjib",
-    evidence=(Evidence(Level.UNIT, unit="MKII", image="OCTABAM26", date="2026-10-31",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="djib", image="OCTABAM26", date="2026-10-31",
         note="(live-djib, BUILD 26), 31 Oct 2026: the chooser, the snapped notes and LEDs, scales.work across SAVE"
              " PROJECT and a power cycle; verify_scales on MKI and MKII"),),
     doc="One catalogue of 52 scales in 9 families for every module; ARP SETUP's KEY turns the "
