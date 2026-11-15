@@ -43,8 +43,10 @@ lock. `flat` is the MIDI page × 6 + knob (NOTE, LFO, ARP, CTRL1, CTRL2;
 
 The mix (`scenes.s`, `mix`) reads scenes A and B from the displayed Part's
 assignment bytes (Part `+0x10`, `+0x11`, bank offset `0x8ed90`). For each
-track and flat: both sides unlocked, the record takes the Part's value and,
-when that changed it (a lock had left its value there), the value is sent;
+track and flat: both sides unlocked, the record takes the Part's value and
+(**octabam, not MIDISC 2.1**) the Part's value is sent if the record held
+something else, so a CC a lock left behind returns to the Part's value
+(2.1 sends nothing there; sambanks/octabam#1096; unmeasured on hardware);
 otherwise an unlocked side reads the Part's value and the
 result is `A + ((B − A)·w >> 7)` with `w = 127 − (xf & 127)` (weight 0 =
 A end, 127 = B end). The result goes to the track record `0x46c76dc0 +

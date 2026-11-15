@@ -510,7 +510,7 @@ scn_morph:
 |     lock A, lock B   -> (A, B), the unlocked side (no lock) reading the
 |                         Part's value
 |     one lock         -> that lock on its end; the Part's value on the other
-|     none             -> the Part's value (record written; sent when it changed the record)
+|     none             -> the Part's value (record written, nothing sent)
 |
 | v = A at weight 0, B at weight 127, A + ((B - A) * w >> 7) between, with
 | w = 127 - (x & 127). Scenes A and B are the displayed Part's assignments.
@@ -622,12 +622,11 @@ mix_flat:
         mvzb    %a0@,%d1
         moveb   %d2,%a0@
         tstl    %d3
-        beq.s   1f
+        beq.s   mix_send
         lea     scn_sdirty:l,%a0
         tstb    %a0@(0,%d6:l)
         bne.s   mix_ctl                 | between the ends, a trig playing: the CC loop sends it
-1:
-mix_send:                               | d1 = the record's old byte, d2 = its new one
+mix_send:
         cmpl    %d2,%d1
         beq.s   mix_ctl
         clrl    %sp@-                   | CC_TX (track, flat, value, 0)
@@ -658,9 +657,9 @@ mix_free:                               | no lock on either side
         addl    %d7,%d1
         lea     REC,%a0
         addal   %d1,%a0
-        mvzb    %a0@,%d1                | the value a lock left in the record goes back to the Part's on the wire
-        moveb   %d2,%a0@                | (MIDISC2.1 writes the record and sends nothing: #1096)
-        bra.s   mix_send
+        mvzb    %a0@,%d1                | octabam: MIDISC 2.1 sends nothing here (#1096)
+        moveb   %d2,%a0@
+        bra.s   mix_send                | a value a lock left behind returns to the Part's
 mix_ctl:
         cmpil   #18,%d7
         bcs.s   mix_next
