@@ -24,7 +24,7 @@ MODULE = Module(
     key="SEND",
     kind=Kind.DSP_CLIENT,
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
-    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks"),),
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-09-27"),),
     doc="Bus client: DEL into the delay, REV into the reverb, from any track. The default effect.",
     menu=MenuEntry(
         fx2_id=0x09,

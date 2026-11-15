@@ -307,7 +307,7 @@ MODULE = Module(
     category=Category.MACHINES,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-11-09",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-11-09",
         note="CX 75 (author): unit PLAYBACK/SETUP shots via SCREEN; saw landmark left-drop+linear rise; SYMM "
              "midline row 6 (±4, matches CAR/MOD). CX 67 CAR/MOD labels + outline ±4 + bipolar PWM LCD. CX 66 "
              "outline; CX 65 silhouettes; CX 63 saw PWM skew liked on unit. CX 48: sine→saw→square + PWM; "

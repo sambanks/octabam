@@ -5,7 +5,7 @@
     make symbols [REMIX=]
 
 Writes out/symbols.sqlite (never committed). Rows come from, in order: `layout` (tools/ghidra/ot_ghidra.py's
-tables), `equ` (every `.set`/`.equ` of a stock address in modules), `map` (the build's runtime.elf at runtime
+tables), `dispatch` (both payloads' effect dispatch tables and what they point at, from the stock image), `equ` (every `.set`/`.equ` of a stock address in modules), `map` (the build's runtime.elf at runtime
 addresses), `build` (the remix's detour sites and cave hooks; the build's DSP window, demand and guard records), `cite` (tools/build/where.py's scan), `ghidra`
 (out/ghidra/symbols.tsv and xrefs.tsv when present). Two names at one address are two rows. The DB holds no
 image bytes and no disassembly.
@@ -55,6 +55,29 @@ def ingest_layout(add):
         for addr, name in regs.items():
             for core in "AB":
                 add(f"dsp{core}:{sp}", addr, 1, name, "io", "stock", "layout", "tools/ghidra/ot_ghidra.py:DSP_IO"); n += 1
+    return n
+
+
+DSP_LINE = re.compile(r"^(func|label) ([PXY]):0x([0-9a-f]+) (\S+)")
+
+
+def ingest_dispatch(add):
+    """Both payloads' dispatch tables and the entries they point at (`fx_filter_process`, `fx_null_init`, the
+    two tables themselves, the payload entries), named by ot_ghidra.dsp_layout from the stock image. Needs
+    out/raw/section_3_MAIN_OS.bin; names and addresses only."""
+    import ot_ghidra as g
+    if not g.IMG.exists():
+        return None
+    cores, _shared = g.dsp_images(g.IMG.read_bytes())
+    n = 0
+    for tag, (mem, recs, entry) in cores.items():
+        other = cores["B"][2] if tag == "A" else None
+        for line in g.dsp_layout(tag, mem, recs, entry, other):
+            m = DSP_LINE.match(line)
+            if m and m.group(4) not in {x[2] for x in g.DSP_A_NAMES}:
+                kind, sp, addr, name = m.groups()
+                add(f"dsp{tag}:{sp}", int(addr, 16), None, name, kind, "stock", "dispatch",
+                    "tools/ghidra/ot_ghidra.py:dsp_layout"); n += 1
     return n
 
 
@@ -198,7 +221,8 @@ def build(remix, platform, out, ghidra):
     def add(space, addr, size, name, kind, owner, source, ref):
         db.execute("INSERT INTO symbol VALUES (?,?,?,?,?,?,?,?)", (space, addr, size, name, kind, owner, source, ref))
 
-    counts = {"layout": ingest_layout(add), "equ": ingest_equ(add), "map": ingest_map(add, platform)}
+    counts = {"layout": ingest_layout(add), "dispatch": ingest_dispatch(add), "equ": ingest_equ(add),
+              "map": ingest_map(add, platform)}
     counts["build"] = ingest_build(add, remix) if remix else None
     counts["dsp"] = ingest_dsp(add, platform.parent / "dsp") or None
     counts["cite"] = ingest_cite(db)

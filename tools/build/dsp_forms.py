@@ -13,7 +13,13 @@ addressing modes kept) plus the instruction's word count, so a short and a long 
 whether a register row of CHIP.md matches. Code words come from assembling the module's source with dsp_asm
 (`-org 800`, the ptable literals set to a placeholder, each payload's DspSection.subst applied) and decoding them with dsp56kDisassemble: every word of
 an assembled source is code (dsp_asm has no data directive). Modules with no source on disk (a generated one
-the build writes) and the build's own stubs and trampolines are reported as not covered.
+the build writes) are reported as not covered.
+
+--census also reads the last build's out/dsp/window_records.json: the code words the build placed in the shared
+window (the demand stub, the reverb guard's trampolines and body, hook stubs, and the modules' own resident code).
+A record named after a module of the remix is that module's code, already in the census from its source; the
+others are the build's own, listed under "build" with their forms. A `dc` the disassembler prints is data (the
+guard's trampolines carry their records after the code) and is not counted.
 """
 import json
 import pathlib
@@ -138,6 +144,28 @@ def census(remix):
     return out, sorted(set(rows) - used)
 
 
+def census_records(module_keys, path=None):
+    """The build's own window code, {record name: {addr, words, forms, no_stock_site: {form: {example, row}}, data}},
+    from out/dsp/window_records.json of the last build. {} when the build wrote none. A record named after a
+    module of the remix (or `KEY:B`) is skipped: its source is in the census."""
+    path = pathlib.Path(path or ROOT / "out/dsp/window_records.json")
+    if not path.exists():
+        return {}
+    stock = stock_forms([ROOT / "out/dsp/payload_A.asm", ROOT / "out/dsp/payload_B.asm"])
+    rows = register_rows()
+    out = {}
+    for name, (addr, words) in json.loads(path.read_text()).items():
+        if name.split(":")[0] in module_keys:
+            continue
+        mine = disassemble(" ".join(f"{w:06x}" for w in words), f"{addr:x}")
+        data = [f for f, ex in mine.items() if ex.split(";")[0].split(":", 1)[-1].strip().startswith("dc ")]
+        mine = {f: ex for f, ex in mine.items() if f not in data}
+        out[name] = {"addr": addr, "words": len(words), "forms": len(mine), "data_forms": len(data),
+                     "no_stock_site": {f: {"example": ex.split(";")[0].strip(), "row": f in rows}
+                                       for f, ex in sorted(mine.items()) if f not in stock}}
+    return out
+
+
 def print_census(remix, res, unused):
     for key, r in res.items():
         if r["status"] != "listing":
@@ -149,6 +177,10 @@ def print_census(remix, res, unused):
         for f, v in n.items():
             print(f"  {'row ' if v['row'] else 'NONE'} {f:56s} e.g. {v['example']}")
     print(f"register rows no census module uses: {len(unused)}")
+    for name, r in census_records(set(res)).items():
+        n = r["no_stock_site"]
+        print(f"build {name} (P:0x{r['addr']:05x}, {r['words']} words): {r['forms']} forms, {len(n)} with no stock site, "
+              f"{sum(1 for v in n.values() if not v['row'])} of them with no row")
 
 
 def main(argv):

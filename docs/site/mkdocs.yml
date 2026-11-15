@@ -53,7 +53,7 @@ nav:
           - Reload from Project: reference/manual/octabam/sequencer/reload-from-project.md
           - RLEN PLEN: reference/manual/octabam/sequencer/rlen-plen.md
           - Scale Quantizer: reference/manual/octabam/sequencer/quantizer.md
-          - SEQ: reference/manual/octabam/sequencer/seq.md
+          - Seq: reference/manual/octabam/sequencer/seq.md
           - Slow LFO: reference/manual/octabam/sequencer/slow-lfo.md
           - Track Patterns: reference/manual/octabam/sequencer/trackpatterns.md
           - Tuner: reference/manual/octabam/sequencer/tuner.md
@@ -102,6 +102,7 @@ nav:
           - Load Meter: reference/manual/octabam/inside/load-meter.md
           - Memory: reference/manual/octabam/inside/memory.md
           - Pages: reference/manual/octabam/inside/pages.md
+          - Remote: reference/manual/octabam/inside/remote.md
           - Sc Keybus Bridge: reference/manual/octabam/inside/sc-keybus-bridge.md
           - Sc Load Meter Bridge: reference/manual/octabam/inside/sc-loadmeter-bridge.md
           - Store: reference/manual/octabam/inside/store.md

@@ -136,20 +136,29 @@ CF_FUNCS = [
     (0x40001e50, "dsp_boot", "boots both cores (DSP.md 1)"),
     (0x400031a0, "stock_delay_frame", "the stock DELAY's frame routine (COLDFIRE_DELAY.md)"),
     (0x40005178, "voice_command", "emits a voice command (ARCHITECTURE.md 6)"),
+    (0x40005540, "task_midi_mailbox", "task entry, prio 6: MIDI / voice mailbox (KERNEL.md Tasks)"),
     (0x4000aad0, "isr_dsp_frame", "vector 0x41, INTC0 1, level 5"),
-    (0x40010efc, "uart1_init", "312,500 baud"),
     (0x400106ec, "isr_uart0_midi_rx", "vector 0x5a, INTC0 26 (MIDI.md)"),
     (0x400109bc, "isr_uart1_panel", "vector 0x5b, INTC0 27"),
     (0x40010b88, "isr_uart2_rx", "vector 0x5c, INTC0 28"),
+    (0x40010efc, "uart1_init", "312,500 baud"),
     (0x40015304, "isr_ata", "vector 0xb6, INTC1 54: one sector per interrupt"),
     (0x400160f8, "ata_init", ""),
     (0x4001c244, "isr_intc1_49", "vector 0xb1: counter + ack of 0xfc0bc008"),
     (0x4001e594, "isr_intc1_47", "vector 0xaf"),
+    (0x4001ee30, "task_storage", "task entry, prio 5: FAT/ATA (KERNEL.md Tasks)"),
+    (0x4001f834, "task_main", "task entry, prio 0: runs the init list, then spins at main_idle (KERNEL.md Tasks)"),
+    (0x4001fc9c, "main_idle", "main's `bras .` after the init list (KERNEL.md Tasks)"),
     (0x4001fca0, "isr_halt", "vector 0x47: SR 0x2700, bras ."),
     (0x40020c7c, "storage_delay", "waits on PIT1"),
     (0x40020d38, "isr_pit1_storage", "vector 0xac, INTC1 44"),
     (0x400409f4, "isr_intc0_34", "vector 0x62"),
+    (0x4005593c, "task_key_repeat", "task entry, prio 4: key-repeat timer (KERNEL.md Tasks)"),
     (0x40055cb8, "isr_intc0_33", "vector 0x61"),
+    (0x40056c40, "task_ui", "task entry, prio 3: queue_receive(UI_QUEUE) (KERNEL.md Tasks)"),
+    (0x40061a94, "task_sys_init", "task entry, prio 1: serial + SPI start-up, then creates storage, UI, p3 (KERNEL.md Tasks)"),
+    (0x4008445c, "task_engine", "task entry, prio 1: the 46-opcode dispatcher (KERNEL.md Tasks)"),
+    (0x4009203c, "task_machine_params", "task entry, prio 2: machine parameters (KERNEL.md Tasks)"),
     (0x4009228c, "isr_intc0_37", "vector 0x65"),
     (0x40092bf4, "isr_midi_framer", "vector 0x64, INTC0 36 (MIDI.md)"),
     (0x40097168, "machine_state", "the track's machine state, 0-4"),
@@ -566,6 +575,7 @@ def cmd_import(args):
     if cf.endswith(":Coldfire"):
         print("[ghidra] no ColdFire EMAC fractional variant here: MAIN_OS uses 68000:BE:32:Coldfire (tools/ghidra/README.md)")
     failed = []
+    env = {**os.environ, "OT_EXPORT_DIR": str(OUT)}     # OtExport writes symbols.tsv and xrefs.tsv here
     for name, lang, base in plan:
         if name not in only:
             continue
@@ -576,20 +586,20 @@ def cmd_import(args):
         if args.no_analysis:
             cmd.append("-noanalysis")
         else:
-            cmd += ["-postScript", "OtReport.java"]
+            cmd += ["-postScript", "OtReport.java", "-postScript", "OtExport.java"]
         print(f"[ghidra] {name} ({lang}) ...", flush=True)
         log(" ".join(cmd))
         with open(logf, "w") as fh:
             if DEBUG:
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
                 for line in p.stdout:
                     sys.stderr.write(line)
                     fh.write(line)
                 rc = p.wait()
             else:
-                rc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT).returncode
+                rc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, env=env).returncode
         text = logf.read_text(errors="replace")
-        rx = re.compile(r"(Ot(?:Layout|Report): .*?)(?:\s+\(GhidraScript\))?\s*$")
+        rx = re.compile(r"(Ot(?:Layout|Report|Export): .*?)(?:\s+\(GhidraScript\))?\s*$")
         summary = [m.group(1) for m in map(rx.search, text.splitlines()) if m]
         for s in summary:
             print(f"    {s}")

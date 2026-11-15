@@ -34,7 +34,7 @@ def id_inc(modules, remix):
 MODULE = Module(
     name="bbd", key="BBD", kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="JamCones", author_url="https://github.com/JamCones",
-    evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-10-17",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="JamCones", date="2026-10-17",
         note="JamCones' MKII, BBDOB4 (remixes/test/bbd, BUILD 4), 17 Oct 2026"),),
     doc="Clocked BBD delay: compander, clock/3 filters, bucket noise, freeze, governor; FX2.",
     menu=MenuEntry(fx2_id=FX2_ID, donor_desc=0x400d58b8,

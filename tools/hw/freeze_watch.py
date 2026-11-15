@@ -18,7 +18,7 @@ STALL marks it absent, and one that times out is asked again.
   aud   USB audio's counters, 0xc0/0x55 (usb_counters.py), any image with USB audio out: `produced` advances
         44,100 a second, but only while a host has the stream open, so it is a heartbeat only with --audio.
   midi  the unit's MIDI source: clock (CLOCK SEND on) and START / STOP (TRANSPORT SEND on).
-REMOTE's PEEK (issue #978) is not in an image yet; PROBES is where it goes.
+REMOTE's PEEK (0xc0/0x58, tools/hw/ot_events.py `peek`) is in the octabam images; PROBES is where it goes.
 
 TRIGGERS (--trigger, comma-separated; default: every one the handshake arms). Each fires once and re-arms when its
 signal recovers.

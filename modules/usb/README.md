@@ -1322,6 +1322,14 @@ bytes, measured on a unit), so `lm_ot` comes as 255 bytes and 1.
 `verify_usb_load_meter` checks the request under the port (not the cache or
 the stale status, which only a unit shows; `docs/contributing/TRAPS.md`).
 
+REMOTE's three vendor GETs (`modules/remote`; `RMT_RING` and `RMT_COMMAND` are `defsyms`, 0 without the module,
+and a request then STALLs as stock does), each through the same uncached `lm_reply` and clamped to 255 bytes:
+`0xc0/0x5a` returns the event block from byte offset `wValue`; `0xc0/0x58` (PEEK) returns memory at
+`wValue:wIndex` inside `0x40000000..0x48000000`, `0x80000000..0x80008000` and `0x10000000..0x10100000`, any
+other address STALLs; `0xc0/0x59` (COMMAND) runs `RMT_COMMAND` with the id in `wValue` and the argument in
+`wIndex` and returns one byte, 0 taken and 1 refused. The ids and the block are in
+[`modules/remote/README.md`](../remote/README.md); `tools/hw/ot_events.py` reads them.
+
 #### Bus reset and session end
 
 The stock USBSTS.URI handler (`jsr 0x4001d6b8` at `0x4001e91c`: flush, dTD
