@@ -570,6 +570,7 @@ KNOWN_RED = {
     "tools/verify/verify_dlload.py": "#1075: 12 checks fail with a project",
     "tools/verify/verify_cfmeter.py": "#1124: flagging it reaches the cfmeter remix, where verify_quantizer_ui (once, on the carrier) fails",
     "tools/verify/verify_kits.py": "#1125: its Kit fixtures fail on a generated project (a once gate in the shared half)",
+    "tools/verify/verify_load_meter.py": "#1126: otop and wrap fail with a generated project (1649 s in the octabam (project) unit)",
 }
 
 

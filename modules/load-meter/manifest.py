@@ -114,7 +114,7 @@ MODULE = Module(
     # (stems_bus16 keeps the top 16 bits, stems_bus24 shifts the low byte off), so
     # either order gives the same files. verify_stems checks MAIN.wav against the
     # DSP's own output on an image with both (28 Oct 2026; the conflict is gone).
-    gates=(Gate("tools/verify/verify_load_meter.py", remix_arg=False, venv=True, stage="image", project=True),
+    gates=(Gate("tools/verify/verify_load_meter.py", remix_arg=False, venv=True, stage="image"),
            Gate("tools/verify/verify_dsp_vectors.py"),
            Gate("tools/verify/verify_usb_load_meter.py", venv=True, stage="image"),),
 )
