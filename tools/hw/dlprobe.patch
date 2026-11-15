@@ -1,0 +1,479 @@
+diff --git a/modules/load-meter/dsp_meter.asm b/modules/load-meter/dsp_meter.asm
+index 186caf84..8c33addc 100644
+--- a/modules/load-meter/dsp_meter.asm
++++ b/modules/load-meter/dsp_meter.asm
+@@ -84,6 +84,7 @@
+ ; gate-checked by verify_load_meter.
+ 
+ lm_start:
++        bset    #3,x:<<$ffffc2          ; TEST S9: host flag HF2 from the frame's start to its end
+         move    r5,x:>$206              ; the displaced instruction
+         move    x:>$ffff8c,x1           ; TCR0 now
+         bsr     lm_blk
+@@ -113,6 +114,7 @@ lms_t:
+         rts
+ 
+ lm_end:
++        bclr    #3,x:<<$ffffc2          ; TEST S9
+ ; LM_BURN
+         move    x:>$ffff8c,x1           ; TCR0 now
+         bsr     lm_blk
+@@ -135,6 +137,7 @@ otop_s2:
+         move    x:>$ffff8c,b            ; TCR0 now (no address update: m2 may be modulo)
+         bsr     lm_blk
+         move    a,r2
++        move    r7,x:(r2+7)             ; TEST S9: the instance whose slot starts
+         move    b,x:(r2+3)              ; the start stamp
+         move    x:>$20a,a
+         rts
+diff --git a/modules/load-meter/meter.s b/modules/load-meter/meter.s
+index b9093c3d..8973067d 100644
+--- a/modules/load-meter/meter.s
++++ b/modules/load-meter/meter.s
+@@ -13,6 +13,7 @@
+ | the sums are not shared with anything that can preempt them.
+ 
+         .equ    DTCN3,  0xfc07c00c
++        .equ    FL_DELAY, 0                  | test: 60 us added to every frame interrupt
+         .equ    WIN,    66000000                | 0.5 s at 132 MHz
+         .equ    BODY,   0x4000aad8              | the handler after its displaced prologue
+         .include "remix.inc"                    | HK_FRAME_ENTRY, HK_FRAME_TAIL (modules/hooks)
+@@ -42,6 +43,13 @@ lm_in:
+ | d0-a6 are saved at (sp) and restored below, so every register is free.
+         .globl  lm_out
+ lm_out:
++        .if     FL_DELAY
++        move.l  DTCN3,%d0                       | FRAMELOG test: a longer frame interrupt
++1:      move.l  DTCN3,%d1
++        sub.l   %d0,%d1
++        cmp.l   #FL_DELAY,%d1
++        bcs.s   1b
++        .endif
+         move.l  DTCN3,%d2                       | now
+         move.l  %d2,%d0
+         sub.l   lm_t0,%d0                       | this interrupt's duration
+@@ -51,7 +59,87 @@ lm_out:
+         cmp.l   lm_max,%d0
+         bls.s   1f
+         move.l  %d0,lm_max
+-1:      move.l  %d2,%d1
++1:
++| FRAMELOG (test image, not for merge): lm_ot holds frame-interrupt records
++| instead of OTOP's costs. Longs: 0 count of frame interrupts; 1 the USB
++| shim's entry stamp (audio_frame_shim writes it, cleared here); 2 the next
++| entry's index (20..62, even); 3 the next chain-end index (0..15), bit 31
++| = frozen; 4..19 the last 16 chain-end stamps (state 7, raw DTCN3, written
++| by fl_s7 in usbaudio.s); 20..63 the last 22 frame interrupts, two longs
++| each: the entry stamp (raw DTCN3), then duration << 16 | USB share, both
++| in 64-count units (0.485 us).
++| A frame interrupt of 440 us or more unfreezes the log and starts a
++| 12-frame countdown; at its end the log freezes, so the frames around the
++| last long one stay readable.
++        lea     lm_ot,%a0
++        addq.l  #1,%a0@
++        cmp.l   #58080,%d0                      | 440 us
++        bcs.s   3f
++        move.l  %a0@(12),%d3
++        and.l   #0x7fffffff,%d3
++        move.l  %d3,%a0@(12)
++        moveq   #0,%d3                          | never freezes
++        move.l  %d3,lm_fz
++        bra.s   4f
++3:      tst.l   %a0@(12)
++        bmi.w   8f                              | frozen
++4:      move.l  %d0,%d4                         | DLLOG: duration (12 bits, 64-count units) under four flag bits
++        lsr.l   #6,%d4
++        and.l   #0xfff,%d4
++        .weak   dl_state
++        move.l  #dl_state,%d3
++        beq.s   5f
++        move.l  %d3,%a1
++        move.l  %a1@,%d3                        | the pump's state as this interrupt ends: 1 sending, 2 doorbell due
++        and.l   #3,%d3
++        lsl.l   #8,%d3
++        lsl.l   #4,%d3
++        or.l    %d3,%d4
++5:      move.l  lm_dsp+4,%d3                    | bit 14: a bad DSP record since the last entry
++        cmp.l   lm_gb,%d3
++        beq.s   5f
++        move.l  %d3,lm_gb
++        or.l    #0x4000,%d4
++5:      .weak   fg_waits                        | bit 15: this entry waited (FRAME GUARD)
++        move.l  #fg_waits,%d3
++        beq.s   5f
++        move.l  %d3,%a1
++        move.l  %a1@,%d3
++        cmp.l   lm_gf,%d3
++        beq.s   5f
++        move.l  %d3,lm_gf
++        or.l    #0x8000,%d4
++5:      swap    %d4
++        move.l  lm_dsp+8,%d3                    | the last good record's busy, 256-count units: core 0, core 1
++        lsr.l   #8,%d3
++        and.l   #0xff,%d3
++        lsl.l   #8,%d3
++        or.l    %d3,%d4
++        move.l  lm_dsp+16,%d3
++        lsr.l   #8,%d3
++        and.l   #0xff,%d3
++        or.l    %d3,%d4
++9:      move.l  %a0@(8),%d3
++        cmp.l   #20,%d3
++        bcs.s   6f
++        cmp.l   #62,%d3
++        bls.s   7f
++6:      moveq   #20,%d3
++7:      move.l  lm_t0,%d5
++        move.l  %d5,%a0@(0,%d3:l:4)
++        move.l  %d4,%a0@(4,%d3:l:4)
++        addq.l  #2,%d3
++        move.l  %d3,%a0@(8)
++        move.l  lm_fz,%d3
++        beq.s   8f
++        subq.l  #1,%d3
++        move.l  %d3,lm_fz
++        bne.s   8f
++        move.l  %a0@(12),%d3
++        or.l    #0x80000000,%d3
++        move.l  %d3,%a0@(12)
++8:
++        move.l  %d2,%d1
+         sub.l   lm_w0,%d1                       | the window so far
+         cmp.l   #WIN,%d1
+         bcs.s   2f
+@@ -151,7 +239,7 @@ lm_scrub:
+         add.l   %d0,lm_dsum+4
+         addq.l  #1,lm_dsum+8
+         addq.l  #1,lm_dsp                       | seq: a good record
+-        bsr.w   lm_otop
++        | FRAMELOG: lm_otop not called, lm_ot is the frame log
+         bra.s   8f
+ 9:      addq.l  #1,lm_dsp+4                     | bad
+ 8:      movem.l %sp@,%d0-%d3/%a0-%a1
+@@ -282,3 +370,6 @@ lm_w0:  .long   0
+ lm_sum: .long   0
+ lm_cnt: .long   0
+ lm_max: .long   0
++lm_gf:  .long   0
++lm_gb:  .long   0
++lm_fz:  .long   0                               | FRAMELOG: frames until the log freezes
+diff --git a/modules/remix-switch/dsp_park.asm b/modules/remix-switch/dsp_park.asm
+index c603c877..cc86e57a 100644
+--- a/modules/remix-switch/dsp_park.asm
++++ b/modules/remix-switch/dsp_park.asm
+@@ -38,90 +38,33 @@
+ ; register where the stock payloads have that form (`movep r3,x:<<M_HOTX`
+ ; 08d307 for the DMA registers; `movep a,x:<<M_TX0` 04cec0 for ESAI's in
+ ; x:qq), ESAI_1's in y:qq as immediates still.
+-osw_dsp:
+-        move    #0,r3
+-        movep   r3,x:<<$ffffec          ; DMA0 off: the host-port receive DMA
+-        movep   r3,x:<<$ffffe8          ; DMA1 off: the host-port transmit DMA
+-        movep   r3,x:<<$ffffe4          ; DMA2 off: the ESAI feed
+-        movep   r3,x:<<$ffffe0          ; DMA3 off
+-; DMA4 and DMA5 are NOT stopped: ✅ measured from the user's own image (29
+-; Sep 2026, tools/build/dsp_disasm_all.py), neither payload writes M_DCR4 or
+-; M_DCR5 anywhere, so 1.40C never enables them and the two stores were two
+-; words spent on nothing. verify_dsp_vectors' peripheral allowlist refuses a
+-; payload that starts writing either, which is what keeps this true.
+-        movep   r3,x:<<$ffffb5          ; ESAI transmitter off
+-        movep   r3,x:<<$ffffb7          ; ESAI receiver off
+-        movep   #>$0,y:<<$ffff95        ; ESAI_1 transmitter off (the immediate: a
+-        movep   #>$0,y:<<$ffff97        ; register into y:qq has no stock site; build 14's form)
+-; The host port back into the mode the boot ROM leaves it in. The payload's
+-; start (P:$30016..$30018, both payloads) disables it, sets HPCR bit 7 and
+-; enables it again; the stock upload's reads assume the ROM's mode. MEASURED
+-; on the unit (build 12, BOOT TRACE notes 17/19): after a switch the first
+-; record's echo read back $010101 on both cores where a power-on boot reads
+-; $000001 -- the low byte right, repeated in every lane -- and the record
+-; sender abandoned both uploads; with this, build 14's switch completed both
+-; (final echo 3 on each core). That bit 7 is the lane mode is INFERRED
+-; (bit 5, cleared at P:$3001b, is left as the payload has it).
+-        bclr    #6,x:<<$ffffc4          ; HPCR: HEN off
+-        bclr    #7,x:<<$ffffc4
+-        bset    #6,x:<<$ffffc4          ; HEN on
+-; Leave the interrupt before loading: the host command made this a LONG
+-; interrupt (the vector's jsr), and the vendored emulator runs no
+-; peripheral until that interrupt's rti -- its HI08 then never raised HTDE
+-; for the stock bootstrap's first echo, and the upload stalled there under
+-; the port (29 Sep 2026). The chip has no such state (the DSP56300 nests by
+-; the IPL in SR alone), but a clean exit costs a few words: pop the return
+-; address the interrupt stacked, push the loader's in its place -- the
+-; slot's SSL still holds the interrupted SR -- and rti into the loader.
+-; move ssh,x0 / move x0,ssh are the stock frame handler's (P:$5c8, $5c1).
+-        move    ssh,x0                  ; drop the interrupted PC
+-        move    #>osw_ldr,x0
+-        move    x0,ssh                  ; the loader, as the return address
++; STALL PEEK (test image, not for merge). Host commands on a core that still takes them return words of the
++; shared window a byte at a time (the host port delivers a word's low byte): $03 (P:$06) points r3 at
++; X:$30000, $0F (the hook at P:$1e) sends the low byte of x:(r3), $10 (P:$20) the middle, $11 (P:$22) the
++; high and steps r3. They clobber a, r2, r3 and m3. The park is gone: this image cannot switch remixes.
++        jsr     $28                     ; P:$20, host command $10: the middle byte
++        nop
++        jsr     $2b                     ; P:$22, host command $11: the high byte
+         nop
++osw_dsp:
++        move    x:(r3),a                ; P:$24
++        move    a1,r2                   ; P:$25: send
++        movep   r2,x:<<$ffffc7          ; HOTX
+         rti
+-; The whole SR, not only the interrupt mask: rti restored the payload's mode
+-; bits (it sets SR bit $14 at P:$77f), and under them `movep x:HORX,a`
+-; landed the word count shifted left by 8 under the port (29 Sep 2026).
+-; $300 is the payload's own start (P:$30000): IPL 3, every mode off.
+-osw_ldr:
+-        move    #>$300,sr
+-; The ROM's protocol, as the firmware's upload (FUN_40001d4c) drives it: a
+-; word count, a load address, that many words, then the jump. The HRDF
+-; waits are `brclr #0,x:<<$ffffc3,0`: a displacement of 0, a branch to
+-; itself -- the stock bootstraps' exact word pair (0cc300 000000); dsp_asm
+-; encodes a LABEL there as an absolute address, and the build refuses every
+-; other bit-test branch. The copy is a DO loop (dsp_asm encodes no backward
+-; Bcc). The bootstrap lands in the shared window, written through X: the
+-; window is one memory in P, X and Y (CHIP.md), and movep HORX,x:(r0)+ is
+-; the stock bootstrap's own form (P:$31024).
+-        brclr   #0,x:<<$ffffc3,0        ; wait: the word count
+-        movep   x:<<$ffffc6,a
+-        brclr   #0,x:<<$ffffc3,0        ; wait: the load address
+-        movep   x:<<$ffffc6,r0
+-        move    r0,r1
+-        move    a1,x0
+-; ---- the bridge -------------------------------------------------------------
+-; The park lives in stock's dead interrupt vectors, and they come in runs
+-; that are not long enough for it whole: the rest of this loader runs in the
+-; second run. A ONE-word short jump ($0c00xx) is the only jmp form dsp_asm
+-; encodes, which is lucky -- the bridge costs a word, not two -- and the
+-; build rewrites its placeholder target to wherever it put the second piece
+-; (schema.DspSection.pins, build_bus.PIN_BRIDGE -- do not spell that literal
+-; here, the census counts it in comments too). The cut is HERE, before the
+-; `do`: a hardware DO
+-; loop cannot be entered or left by a jump, so the whole loop stays in one
+-; piece.
+-        jmp     $fab
++        move    x:(r3),a                ; P:$28
++        asr     #$8,a,a
++        jmp     $25
++        move    x:(r3)+,a               ; P:$2b
++        asr     #$10,a,a
++        jmp     $25
++        jmp     $fab                    ; (the build's bridge placeholder; not reached)
+ osw_tail:
+-        do      x0,osw_xend
+-        brclr   #0,x:<<$ffffc3,0        ; wait: a word
+-        movep   x:<<$ffffc6,x:(r0)+
+-osw_xend:
+-; The payload's start (P:$30019/$3001a) sets bit 14 of y:$fffffd and
+-; y:$fffffe, which a power-on leaves clear; bootstrap A's own first
+-; instructions set the rest it needs. Then the ROM's exit: jump to the
+-; address the bootstrap was loaded at, with r1 = that address (bootstrap A
+-; then loads the payload over everything, this included).
+-        bclr    #$e,y:<<$fffffd
+-        bclr    #$e,y:<<$fffffe
+-        jmp     (r1)
++        jmp     $02                     ; P:$02: stock's stack-error trap
++        nop
++        jmp     $04                     ; P:$04: stock's illegal-instruction trap
++        nop
++        jsr     $08                     ; P:$06, host command $03: the pointer
++        nop
++        move    #>$30000,r3             ; P:$08
++        move    #>$ffffff,m3
++        rti
+diff --git a/modules/remix-switch/manifest.py b/modules/remix-switch/manifest.py
+index 367f14a1..c6570dc3 100644
+--- a/modules/remix-switch/manifest.py
++++ b/modules/remix-switch/manifest.py
+@@ -94,7 +94,7 @@ MODULE = Module(
+         # stock's freeze-traps: those two fire when something is already
+         # wrong, and a frozen core is more diagnosable than one running park
+         # words. verify_dsp_vectors audits every slot on every build.
+-        pins=(0x20, 0x06),
++        pins=(0x20, 0x02),
+         pin_split_label="osw_tail",
+     ),
+     detours=(
+diff --git a/modules/usb/usbaudio.s b/modules/usb/usbaudio.s
+index 35d3f4d5..8a6720bc 100644
+--- a/modules/usb/usbaudio.s
++++ b/modules/usb/usbaudio.s
+@@ -958,6 +958,129 @@ audio_ep3_flush:
+     movel   %d2,%a3@+
+ .endm
+ 
++| FRAMELOG (test image): a chain-end stamp into LOAD METER's log, called at
++| stock state 7. Clobbers d0/d1/a0 (the transfer interrupt saved them).
++    .global fl_s7
++fl_s7:
++    movel   #LM_OT,%d0
++    beqs    1f
++    moveal  %d0,%a0
++    movel   %a0@(12),%d0
++    bmis    1f                      | frozen
++    andil   #15,%d0
++    movel   0xfc07c00c,%d1          | DTCN3
++    movel   %d1,%a0@(16,%d0:l:4)
++    addql   #1,%d0
++    andil   #15,%d0
++    movel   %d0,%a0@(12)
++1:  rts
++
++| STALL PEEK (test image). sp_buf: long 0 = core A's CVR, ISR, core B's CVR, ISR as found (a byte each); then
++| 63 longs: X:$37f11..$37f4f read through core A's host commands (dsp_park.asm), 0xffffffff where a command
++| was not taken, 0xfffffffe where no reply came. Interrupts are masked throughout. For a stalled DSP only.
++    .global sp_probe
++sp_probe:
++    lea     %sp@(-24),%sp
++    movem.l %d2-%d5/%a0-%a1,%sp@
++    movew   %sr,%d0
++    movew   %d0,sp_sr
++    movew   #0x2700,%sr
++    lea     sp_buf,%a1
++    moveq   #1,%d0
++    moveb   %d0,0xfc0a400c          | core B's registers
++    nop
++    movew   0x20000004,%d4          | CVR
++    andil   #0xff,%d4
++    lsll    #8,%d4
++    movew   0x20000008,%d0          | ISR
++    andil   #0xff,%d0
++    orl     %d0,%d4
++    moveq   #0,%d0
++    moveb   %d0,0xfc0a400c          | core A
++    nop
++    movew   0x20000004,%d5
++    andil   #0xff,%d5
++    lsll    #8,%d5
++    movew   0x20000008,%d0
++    andil   #0xff,%d0
++    orl     %d0,%d5
++    swap    %d5
++    orl     %d4,%d5
++    movel   %d5,%a1@+
++2:  movew   0x20000008,%d0          | drain core A's receive register
++    btst    #0,%d0
++    beqs    3f
++    movew   0x2000001c,%d0
++    bras    2b
++3:  movel   #0x83,%d0               | the pointer: X:$30000, the shared window's first word
++    bsr     sp_cmd
++    mvzb    SETUP_WVALH,%d3         | the first word to read: wValue high << 8 | wIndex high, from $30000
++    lsll    #8,%d3
++    mvzb    SETUP_WIDXH,%d0
++    orl     %d0,%d3
++    beqs    5f
++    bsr     sp_skip
++5:  moveq   #63,%d3
++    bsr     sp_read
++    movew   sp_sr,%d0
++    movew   %d0,%sr
++    movem.l %sp@,%d2-%d5/%a0-%a1
++    lea     %sp@(24),%sp
++    rts
++
++| d3 words from the pointer into a1@+ (three commands a word); d3 words stepped over (the high-byte command).
++sp_read:
++4:  moveq   #0,%d1
++    movel   #0x8f,%d0
++    bsr     sp_cmd
++    bmis    8f
++    moveb   %d0,%d1
++    movel   #0x90,%d0
++    bsr     sp_cmd
++    bmis    8f
++    lsll    #8,%d0
++    orl     %d0,%d1
++    movel   #0x91,%d0
++    bsr     sp_cmd
++    bmis    8f
++    swap    %d0
++    orl     %d1,%d0
++8:  movel   %d0,%a1@+
++    subql   #1,%d3
++    bne     4b
++    rts
++sp_skip:
++1:  movel   #0x91,%d0
++    bsr     sp_cmd
++    bmis    2f
++    subql   #1,%d3
++    bne     1b
++2:  rts
++
++| d0 = the host command: d0 = the reply's low byte, or negative (-1 not taken, -2 no reply; N set). d2 clobbered.
++sp_cmd:
++    movew   %d0,0x20000004
++    movel   #4000,%d2
++1:  movew   0x20000004,%d0
++    tstb    %d0
++    bpls    2f
++    subql   #1,%d2
++    bnes    1b
++    moveq   #-1,%d0
++    rts
++2:  movel   #4000,%d2
++3:  movew   0x20000008,%d0
++    btst    #0,%d0
++    bnes    4f
++    subql   #1,%d2
++    bnes    3b
++    moveq   #-2,%d0
++    rts
++4:  moveq   #0,%d0
++    movew   0x2000001c,%d0          | the read that takes the word
++    andil   #0xff,%d0
++    rts
++
+     .global audio_frame_shim
+ audio_frame_shim:
+     | The producer runs only while the host asks for the stream (usbaudio_alt,
+@@ -975,7 +1098,12 @@ audio_frame_shim:
+     | always-on producer cost 13-25 us of frame interrupt per frame with no
+     | host attached (OUT TRACKS MAIN CUE against OUT MAIN CUE). Not on a
+     | unit since.
+-    tstb    usbaudio_alt
++    movel   #LM_OT,%d0              | FRAMELOG (test image): this shim's entry stamp
++    beqs    0f
++    moveal  %d0,%a0
++    movel   0xfc07c00c,%d0          | DTCN3
++    movel   %d0,%a0@(4)
++0:  tstb    usbaudio_alt
+     bnes    .Lproduce
+     tstb    aud_force               | the harness's switch (usb_align): produce
+     bnes    .Lproduce               | with no host and EP3 left alone
+@@ -1945,7 +2073,15 @@ audio_ctrl_shim:
+     moveq   #64,%d1                 | block 3: DLPUMP's counters (16 longs)
+     movel   #DL_DIAG,%d3
+     cmpil   #3,%d0
++    beqs    3f
++    cmpil   #4,%d0                  | STALL PROBE (test image): block 4, each core's interrupted PC
+     bne     9f
++    mvzb    SETUP_WIDXL,%d0
++    tstl    %d0
++    bnes    2f
++    bsr     sp_probe                | sampled at offset 0 only
++2:  movel   #256,%d1
++    movel   #sp_buf,%d3
+ 3:  tstl    %d3
+     beq     9f                      | the remix has no LOAD METER (or, for block 3, no DLPUMP)
+     mvzb    SETUP_WIDXL,%d0         | byte offset into the block
+@@ -2134,6 +2270,8 @@ aud_step:          .long STEP_HS    | frames per packet x1000, set by the speed
+     .global aud_ring, aud_sum
+ aud_sum:           .space AUD_FRAMES*SUM_BYTES   | 1024 x stereo sum (the priority pair)
+     .balign 4
++sp_sr:             .word 0, 0
++sp_buf:            .space 256
+ lm_reply:          .space 256       | 0xc0/0x57's reply, written only through the uncached alias
+ usbaudio_alt:      .byte 0          | alt setting the host asked for
+ uac2_set_pending:  .byte 0          | a clock SET CUR's data stage is primed
+diff --git a/modules/usb/usbaudio_in.s b/modules/usb/usbaudio_in.s
+index 4b1d16ff..61315bb0 100644
+--- a/modules/usb/usbaudio_in.s
++++ b/modules/usb/usbaudio_in.s
+@@ -241,6 +241,7 @@ in_state7_shim:
+     addql   #1,%d0
+     moveb   %d0,in_zero_sent
+ .Ls7_stock:
++    jsr     fl_s7                   | FRAMELOG (test image)
+     moveq   #1,%d1                  | stock state 7, displaced
+     moveb   %d1,FRAME_UNMASK
+     jmp     STATE7_DONE

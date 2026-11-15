@@ -991,3 +991,35 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   freezes, the USB device absent after a REMIX SWITCH double boot and the boot freezes of 12 Nov are not explained by
   this. Audio through the skipped frame is not measured.
 
+## DSP stall after a demand load during play: the copier ran at the frame head, between core B's two handshakes with core A ✅ place measured, fixed by moving the hook; the mechanism inside core B's first track not known
+
+- **Seen:** Sam's MKII, 12 to 15 Nov 2026, `octabam` with FRAME GUARD, 20-channel USB capture, sequencer playing. A
+  program change at a pattern wrap switches the tracks to a demand effect that is not loaded (SPECTRUM and
+  SIDECHAIN_COMPRESSOR logged; none after a switch to MODULATION). The audio stops, the panel and USB answer, a
+  power-cycle clears it. `ot_fuzz.py` profile pc, seed 3101 (`ot_suite.py` phase kits-identity, 76 changes and about 21
+  loads in 10 min) on `SFX_01`: a stall in roughly 2 runs of 3 on eleven test images; the longest clean streak was 3
+  runs.
+- **Measured (frame log, and test images that read the stalled DSP; the window read-back is `tools/hw/dlprobe.patch`, read by `tools/hw/dl_probe.py`):**
+  - The pump's last chunk, two frames with the doorbell due, the doorbell, two more frame interrupts, then none. Every
+    frame on the grid, none bad, none held by FRAME GUARD.
+  - Core A takes host commands and sits at `P:$a3`, its wait on the link to core B. Core B takes no host command.
+  - The loaded effect's entry is BOUND, published = received, refused 0. Its words in the window equal the staged
+    block, and the resident code equals the image.
+  - Core B's last frame: its frame-start hook ran, it left the copier, passed the second link wait and reached
+    `P:$268` in the first track; it entered no effect slot. The frame before was 18 % busy.
+  - A core in the illegal-instruction trap answers host commands with `P:$04`; core B's stack-error vector was not
+    taken (a flag set there read clear).
+- **Ruled out on the unit:** a frame running over its time (a copy plus 40 % of a frame burnt, about 200 times, no
+  stall); the copy alone (an image that copies and never binds: none of this kind in 6 runs); a copy landing outside
+  its span; the stub's stale `x:$213`.
+- **Not known:** what core B does between `P:$268` and `P:$2a7` in that frame, and why binding is needed (the copy
+  alone at the same place did not stall).
+- **Fix:** DLCOPY's hook moved from `P:0x76` (the frame head) to `P:0x342` (the frame's end, before the jump back to
+  the frame wait). The same test image with only that change: 12 runs of 12 without a stall, 251 loads (15 Nov 2026).
+  **Gates:** `verify_dlstub`, `verify_dlhook`, `verify_dlwrap`, `verify_dlload`; none of them can see this fault (the
+  port and `dsp_host` run one core).
+- **Open:** one stall with no loader activity, the same end state (core A at `P:$a3`, core B deaf): a program-change
+  frame of 564 µs with the next entry 205 µs late, past FRAME GUARD's 190 µs. One whole-unit freeze on an image that
+  never binds (panel frozen, USB gone), cause not established. 27 to 35 bad DSP records per 10 min at pattern wraps
+  while MODULATION's code runs, with and without this fix.
+
