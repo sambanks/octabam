@@ -112,12 +112,37 @@ Frame interrupt entries 47,891 timer counts apart (362.8 µs) under the port, bo
 
 ## On the unit
 
-Nothing yet.
+MKII, 15 Nov 2026, image N1 (`octabam` at commit 95e52aee), project `RMT_SFX_01` (the suite's `SFX_01`), USB
+TRACKS PRE; the control N2 is `octabam` without REMOTE.
+
+- The ring over `0xc0/0x5a`: header and records, 0 lost. A menu load of the project reads LOADMASK 254,
+  BANKW, LOADALL, NEWPROJ, LOADMASK 255.
+- `wait_for` after a MIDI START (host clock): PLAYING 1 in 7 to 8 ms; after a program change: PATTERN in 7.9
+  and 8.0 s (the pattern's end), QPATTERN first.
+- A MIDI STOP writes PLAYING 2. PLAYING 0 follows one frame before the next START, and on entering USB DISK
+  MODE.
+- The trace: 461 consecutive entries 354.0 to 372.5 µs apart, mean 362.8 µs.
+- The file sink: `/LOG 261115.txt` held records 0 to 16 as `RMT` lines, equal to the ring; lines written in
+  one flush carry that flush's time.
+- COMMAND 1: the card mounted on the host 4.5 s later. COMMAND 2: the project reloaded, LOADMASK 255 after
+  9.9 s; the command stays pending until then, so a command sent before it is refused.
+- COMMAND 4: the list over PEEK holds the card's 10 files. The list is empty after a boot until MAIN MENU
+  opens or COMMAND 4 runs.
+- COMMAND 3: 6 boots (5 of N1's file, 1 of N2's); the ring answered 7.0 and 8.0 s after the command. It
+  saves the selection as the panel's YES does: a power-cycle then boots the commanded file. One of the 6
+  stopped on the boot screen and did not return to USB (`docs/contributing/FAILURE_MODES.md`).
+- The ring does not survive a boot: its cells are the runtime's `.data`, which a boot loads again (read
+  from the source; the head after each boot was 0 or 1).
+- LOAD METER's ColdFire share, N1 against N2: playing, 30 s, 64.48 % and 64.94 % (two runs) against
+  64.85 %; fresh after the load, stopped, 26.08 % (15 s) against 25.7 % (one reading). The longest run
+  playing: 492 and 485 µs against 424 µs.
+- FRAME GUARD's first-START assay (`ot_stall.py`, 20 channels, one trial a power-cycle): 8 of 8 ok.
 
 ## Open
 
-- The watch's and the trace's added time in the frame interrupt on a unit.
-- The stock logger called from a module on a unit; a call as the main routine under the port does not return.
-- Whether DRAM survives a soft reset (the ring across a command 3 boot).
+- The freeze after one COMMAND 3 boot: not repeated in 5 more; its cause is not known.
+- The file sink's write time: not measured.
+- N2's stopped share from more than one reading.
+- A host cannot leave an image without REMOTE: the panel's FLASHED row or FUNC at power-on.
 - EMPTY RESET, project delete and card format are not located, so the command table's forbidden set holds OS
   UPGRADE's four routines only.

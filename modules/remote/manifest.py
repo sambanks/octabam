@@ -23,9 +23,14 @@ def _hooks_inc(modules, remix):
 MODULE = Module(
     name="remote", key="REMOTE", kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    evidence=(Evidence(Level.EMULATOR, ref="verify_remote", date="2026-11-15",
+    evidence=(Evidence(Level.UNIT_MEASURED, unit="MKII", who="sambanks", image="N1", date="2026-11-15",
+                       commit="95e52aee",
+                       note="records, the trace, the card log and COMMAND 1 to 4 read on the unit; ColdFire share "
+                            "playing 64.48 % and 64.94 % against 64.85 % without the module; 1 of 6 COMMAND 3 "
+                            "boots stopped on the boot screen"),
+              Evidence(Level.EMULATOR, ref="verify_remote", date="2026-11-15",
                        note="a project load, a save, a transport start and a program change read back as records "
-                            "over 0xc0/0x5a; PEEK, the frame trace and COMMAND 1 to 4; not run on a unit"),),
+                            "over 0xc0/0x5a; PEEK, the frame trace and COMMAND 1 to 4"),),
     doc="Project loads, saves, transport, pattern changes and screen redraws as timestamped records a host "
         "reads over USB.",
     requires=("STORE", "USB"),
