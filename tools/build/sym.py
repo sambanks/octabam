@@ -141,7 +141,8 @@ def main():
         return 0 if out else 1
     if not a.query:
         ap.error("an address, a name, --range, --callers or --resolve")
-    if re.fullmatch(r"(0x)?[0-9a-fA-F]{6,8}", a.query) and (a.query.startswith("0x") or a.query.isdigit()):
+    if (re.fullmatch(r"(0x)?[0-9a-fA-F]{6,8}", a.query) and (a.query.startswith("0x") or a.query.isdigit())) \
+            or (a.space != "cf" and re.fullmatch(r"0x[0-9a-fA-F]{1,8}", a.query)):      # a DSP address is short
         addr = int(a.query, 16 if a.query.startswith("0x") else 10)
         r = at(db, addr, a.space)
         n = cites(db, addr, a.space)
