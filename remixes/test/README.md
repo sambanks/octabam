@@ -88,8 +88,8 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`scales`](scales/README.md) | SCALES alone, on the 14 stock effects: ARP SETUP's KEY, the chooser, the snapped notes and the CHROMATIC keys. | emulator (verify_scales): verify_scales |
 | [`scales-quantizer`](scales-quantizer/README.md) | SCALES beside SCALE QUANTIZER: the audio tracks' CHROMATIC keys light SCALE on ROOT. | emulator (verify_scales): verify_scales |
 | [`scenes-midisc`](scenes-midisc/README.md) | MIDI SCENES + KITS + page-2 scene locks (SCENES P2) + page-2 parameter locks (PLOCKS P2), stock effects. | emulator (verify_scenes_p2): verify_scenes_p2 and verify_plocks_p2 under the port |
-| [`scope`](scope/README.md) | stock effects with SCOPE and TUNER sharing the TEMPO, frame and UI hooks. | builds (shared TEMPO/frame/UI dispatcher) |
-| [`scope-alone`](scope-alone/README.md) | stock effects with standalone SCOPE and no TUNER module. | builds (SCOPE standalone hooks) |
+| [`scope`](scope/README.md) | stock effects with SCOPE and TUNER sharing the TEMPO, frame and UI hooks. | on a unit (Ilia, SCOPE T1.RMX, 2026-11-15): Ilia reports SCOPE and TUNER both work through the shared hooks. |
+| [`scope-alone`](scope-alone/README.md) | stock effects with standalone SCOPE and no TUNER module. | on a unit (Ilia, SCOPE S1.RMX, 2026-11-15): Ilia reports SCOPE works without TUNER. |
 | [`screen`](screen/README.md) | stock effects with SCREEN. | emulator |
 | [`screen-usb`](screen-usb/README.md) | stock + USB MIDI + SCREEN. | emulator |
 | [`seq`](seq/README.md) | STORE + SEQ (euclid.work client) with the stock effects. | emulator |
