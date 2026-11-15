@@ -47,6 +47,7 @@ link cannot find stops the build. A client declares `requires=("STORE",)`.
 | DRUMMER (`dr`) | loadall_pre, loadall_post, loadmask_pre, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | SEQ (`ef`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | VARISPEED (`vs`) | partsaved, partclear |
+| REMOTE (`rmt`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_post, preload_post |
 
 ## File calls
 

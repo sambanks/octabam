@@ -60,8 +60,9 @@ docs/specs/SHARED_SITES.md says how HOOKS relates to STORE, EVENTS and Override.
     -252(%sp),%sp ; movem.l %d0-%d7/%a0-%a6,(%sp)`). BOOT TRACE (tr_frame)
     and LOAD METER (lm_in) each replay the prologue and jmp to 0x4000aad8.
     Bridged (HK_FRAME_ENTRY), each enters after its replay and ends in
-    `rts`; HOOKS replays the prologue once, calls BOOT TRACE's note, then
-    LOAD METER's stamp last, so the duration it measures excludes the note.
+    `rts`; HOOKS replays the prologue once, calls BOOT TRACE's note,
+    FRAME GUARD's wait, LOAD METER's stamp, then REMOTE's watch, so LOAD
+    METER's duration includes the watch.
   * boot -- 0x40000512, the boot's `jsr 0x4000f938` after the DSP upload.
     BOOT TRACE (tr_dsp_done, a jmp) sends note 3 and replays the call; STORE
     (store_part_resident_activate, a jsr, selected only with a native Part

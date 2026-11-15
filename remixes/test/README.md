@@ -80,6 +80,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`reload-from-project`](reload-from-project/README.md) | stock effects with RELOAD_FROM_PROJECT: reload one track's sequence from the card while the transport runs. | emulator |
 | [`remix-switch`](remix-switch/README.md) | stock effects with BRAIN and REMIX SWITCH: MAIN MENU > BRAIN boots a .RMX from /BRAIN/REMIXES/, no flash write. | emulator (verify_remix_switch): the chainload under the port (verify_remix_switch) |
 | [`remix-switch-trace`](remix-switch-trace/README.md) | remix-switch + BOOT TRACE: a MIDI note per boot stage, to find where a boot after a switch hangs. | emulator (verify_boot_trace): the notes under the port (verify_boot_trace) |
+| [`remote`](remote/README.md) | Stock effects with REMOTE's event ring, read over USB. | emulator (verify_remote): not run on a unit |
 | [`resonator`](resonator/README.md) | RESONATOR on FX1 beside the stock effects (all but PLATE REV). | on a unit (MKII, Ilia, 2026-10-19): BUILD RR / RESON RR.RMX, 19 Oct 2026: page-1 GN1–4/DECY/MIX, page-2 PIT1–4/SCAL 8 and 127, DECY low and high, FX2 dry-pass, two FX1 instances |
 | [`rig`](rig/README.md) | octabam-bus's delay and reverb bus and FX1 stations, without USB, Octakit or the scene modules: the fixture of the CC MAP, Character and one-aux gates. | emulator |
 | [`rnd-name`](rnd-name/README.md) | smoke: RND NAME alone | local render: RND NAME smoke |

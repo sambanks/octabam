@@ -8,7 +8,7 @@ STORE's load and save events as a STORE client. The records go to a ring
 the USB module answers 0xc0/0x5a with. remote.s has the record and the cells.
 """
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Evidence, Gate, Kind, Level, Linked, Module
 
 H = bytes.fromhex
 
@@ -23,9 +23,9 @@ def _hooks_inc(modules, remix):
 MODULE = Module(
     name="remote", key="REMOTE", kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.PORT,
-    proof_note="under the port (verify_remote): a project load, a transport start and a program change each read "
-               "back as records over 0xc0/0x5a; not run on a unit",
+    evidence=(Evidence(Level.EMULATOR, ref="verify_remote", date="2026-11-15",
+                       note="a project load, a save, a transport start and a program change read back as records "
+                            "over 0xc0/0x5a; PEEK, the frame trace and COMMAND 1 to 4; not run on a unit"),),
     doc="Project loads, saves, transport, pattern changes and screen redraws as timestamped records a host "
         "reads over USB.",
     requires=("STORE", "USB"),

@@ -161,6 +161,27 @@ BASE (8 FLEX tracks, a hit on step 1) read 29.9 % with nothing reading the strea
 67.7 % with a capture open, TRACKS PRE, on one MKII (2 Nov 2026). Compare layouts
 within one state.
 
+## Reading events on a unit
+
+An image with REMOTE (`octabam`, `octabam-bus`, `octabam-verbs`) keeps a ring of timestamped records (project
+load and save events, PLAYING, BANK, PATTERN, the queued pair, a COMMAND having run) and the last 512 frame
+interrupts' interrupted PCs, read over USB (`modules/remote/README.md`). Not run on a unit yet.
+
+```
+python3 tools/hw/ot_events.py                          # every record the ring holds
+python3 tools/hw/ot_events.py --follow                 # then each new one
+python3 tools/hw/ot_events.py --wait PATTERN --arg 3 --timeout 20   # exit 0 when it arrives, 1 at the timeout
+```
+
+In a script, `Events.wait_for(kind, arg, timeout)` returns the first record that matches and raises
+`TimeoutError` otherwise; `Events.lost` counts records overwritten before they were read. `trace` and `peek`
+read the PC samples and memory; `command` enters and leaves USB DISK MODE, `boot` starts a `.RMX` of
+REMIX SWITCH's list (`remixes` lists it as the unit holds it). On an image without REMOTE every request
+STALLs. The stamps are DMA timer 3's count (132 MHz, wrapping every 32.5 s).
+
+The conversion of the sleeps in `ot_suite.py`, `ot_matrix.py`, `ot_stall.py` and `ot_ladder.py` to `wait_for`
+waits for a run on a unit: the watch's added time in the frame interrupt is not measured.
+
 ## Stress sequences
 
 `python3 tools/hw/ot_fuzz.py gen <seed> <out.json> --profile mix --minutes 10 --layouts <n>`
