@@ -60,8 +60,9 @@ docs/specs/SHARED_SITES.md says how HOOKS relates to STORE, EVENTS and Override.
     -252(%sp),%sp ; movem.l %d0-%d7/%a0-%a6,(%sp)`). BOOT TRACE (tr_frame)
     and LOAD METER (lm_in) each replay the prologue and jmp to 0x4000aad8.
     Bridged (HK_FRAME_ENTRY), each enters after its replay and ends in
-    `rts`; HOOKS replays the prologue once, calls BOOT TRACE's note, then
-    LOAD METER's stamp last, so the duration it measures excludes the note.
+    `rts`; HOOKS replays the prologue once, calls BOOT TRACE's note,
+    FRAME GUARD's wait, LOAD METER's stamp, then REMOTE's watch, so LOAD
+    METER's duration includes the watch.
   * boot -- 0x40000512, the boot's `jsr 0x4000f938` after the DSP upload.
     BOOT TRACE (tr_dsp_done, a jmp) sends note 3 and replays the call; STORE
     (store_part_resident_activate, a jsr, selected only with a native Part
@@ -109,7 +110,7 @@ import os
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Override, Poke, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Override, Poke, Evidence, Level, SymbolRef
 
 H = bytes.fromhex
 _HERE = os.path.relpath(os.path.dirname(os.path.realpath(__file__)))
@@ -188,6 +189,7 @@ FRAME_ENTRY = (
     ("BOOT TRACE", "tr_frame"),
     ("FRAME GUARD", "fg_in"),                    # before LOAD METER: the demand loader's pump runs after the wait
     ("LOAD METER", "lm_in"),
+    ("REMOTE", "rmt_in"),                           # last: LOAD METER's duration includes the watch
 )
 BOOT = (
     ("BOOT TRACE", "tr_dsp_done"),
@@ -559,7 +561,8 @@ MODULE = Module(
     key="HOOKS",
     kind=Kind.CF_PATCH,
     category=Category.SETTINGS, author="Sam Banks", author_url="https://github.com/sambanks",
-    proof=Proof.PORT, proof_note="verify_hooks: the bridged tables and chains under Unicorn, and each bridged image's sites",
+    evidence=(Evidence(Level.EMULATOR, ref="verify_hooks",
+        note="verify_hooks: the bridged tables and chains under Unicorn, and each bridged image's sites"),),
     doc="Platform: owns a stock site two selected modules both claim, and calls each one's routine there.",
     linked=_ALL["linked"], detours=_ALL["detours"], symbol_refs=_ALL["symbol_refs"],
     overrides=_ALL["overrides"], pokes=_ALL["pokes"],

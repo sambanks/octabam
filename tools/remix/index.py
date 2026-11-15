@@ -19,7 +19,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 
 from remix import registry  # noqa: E402
-from remix.schema import CATEGORY_TITLE, PROOF_TEXT, Category, Proof  # noqa: E402
+from remix.schema import CATEGORY_TITLE, Category, best  # noqa: E402
 
 
 from remix.rig import touches_coldfire  # noqa: E402
@@ -115,9 +115,8 @@ FAMILIES = (("rig", "The delay and reverb bus"), ("effects", "Effects"),
 
 
 def proof_text(x) -> str:
-    if x.proof is None:
-        return "?"
-    return PROOF_TEXT[x.proof] + (f": {x.proof_note}" if x.proof_note else "")
+    e = best(x.evidence)
+    return e.text() if e else "?"
 
 
 def by_category(mods):

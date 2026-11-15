@@ -28,7 +28,7 @@ SYNC drawn from memory dumps (`--mem-dump` of the window planes). The
 screen itself: see the PR.
 """
 
-from remix.schema import Gate, Category, Proof, Detour, Kind, Linked, Module, Poke
+from remix.schema import Gate, Category, Evidence, Level, Detour, Kind, Linked, Module, Poke
 import idspace
 
 H = bytes.fromhex
@@ -92,7 +92,9 @@ MODULE = Module(
     key="TEMPO BUS",
     kind=Kind.CF_PATCH,
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "`verify_set`; carried by image 88 on Sam's MKII",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); `verify_set`; carried by image 88 on "
+             "Sam's MKII"),),
     doc="The TEMPO window lists and edits BusDelay's and BusVerb's knobs "
         "(UP/DOWN = row, A or B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM).",
     # DRAM units (8 Oct 2026; pinned in the ROM zero runs at 0x400d24d0 and

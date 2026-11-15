@@ -12,7 +12,7 @@ no window pins. The three stock reverbs have no chooser row: FX2 is locked and B
 replaces them.
 """
 
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVENTS",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -20,7 +20,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVEN
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES", "PATTERN MUTE",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD",
-        "LOAD METER", "FRAME GUARD")
+        "LOAD METER", "FRAME GUARD", "REMOTE")
 # The ColdFire modules octabam carries beyond CORE (FX2 LOCK is in MODULES below).
 # Added 7 Nov 2026 (each builds beside the rest; not yet soaked here): SCALES and VARISPEED, as in octabam; CHORDS FACTORY with PAGES, the page
 # key it cycles; SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP.
@@ -30,7 +30,7 @@ COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT",
 
 REMIX = Remix(
     name="octabam-bus",
-    family="rig", proof=Proof.CHECK, proof_note="",
+    family="rig", evidence=(Evidence(Level.EMULATOR),),
     doc="CORE + the extra ColdFire modules of octabam + the delay and reverb bus (BusDelay on T1's FX2, BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8) + SPECTRUM, CHARACTER and MODULATION on FX1.",
     modules=("LOFI AMF FIX", "REVERB SERVER", "DELAY SERVER", "SEND", "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",

@@ -5,11 +5,12 @@ spare time with SYNTH MACHINE voices running, read out over USB audio from
 track 8.
 DARK REV is off the chooser: its words hold the readout insert."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="cfmeter-tracks",
-    family="probes", proof=Proof.PORT, proof_note="the readout chain under the port",
+    family="probes", evidence=(Evidence(Level.EMULATOR,
+        note="the readout chain under the port"),),
     doc="octatrick (less TUNER and the USB input) + CF METER on T8's FX2, with USB TRACKS in place of TRACKS MAIN CUE: the 16-channel-only stream's ColdFire cost, over USB.",
     modules=("DIRECT JUMP", "SCALE QUANTIZER", "SYNTH MACHINE",
              "USB", "CF METER", "CF METER IDLE",

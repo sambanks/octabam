@@ -13,7 +13,7 @@ client that is not in the remix is left out of the tables.
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Kind, Linked, Module, Evidence, Level
 
 H = bytes.fromhex
 
@@ -68,6 +68,8 @@ CLIENTS = (
     # No side file: partclear holds its per-track state and the partsaved that ends
     # the clear lets it go (stock Part Clear tail-jumps into Part Save).
     ("VARISPEED", "vs", ("partsaved", "partclear")),
+    # No side file: a record in REMOTE's ring at each event (modules/remote).
+    ("REMOTE", "rmt", ("loadall_post", "loadmask_post", "newproj", "bankw_post", "pstore_post", "preload_post")),
 )
 
 
@@ -105,7 +107,8 @@ MODULE = Module(
     key="STORE",
     kind=Kind.CF_PATCH,
     category=Category.PARTS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)"),),
     doc="Platform: the stock save, load, copy, CS1 and Part sites STORE clients share.",
     linked=(Linked("store", "modules/store/store.s", dram=True, include=store_inc),),
     detours=(

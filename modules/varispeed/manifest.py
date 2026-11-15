@@ -22,7 +22,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Proof
+from remix.schema import Category, Evidence, Level
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "octabam-modules" / "varispeed" / "manifest.py"
 
@@ -49,4 +49,5 @@ def _adapted_variant(values):
 MODULE = dataclasses.replace(
     MODULE, linked=tuple(_adapt_unit(_u) for _u in MODULE.linked), variant=_adapted_variant,
     category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="the author's MKI, 15 Oct 2026 (the VARI1 build, standalone image); QUAN's rotary switch, 23 Oct 2026 (standalone image)")
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", date="2026-10-15",
+        note="(the VARI1 build, standalone image); QUAN's rotary switch, 23 Oct 2026 (standalone image)"),))

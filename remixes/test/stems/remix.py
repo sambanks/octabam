@@ -8,11 +8,12 @@ alone and drew a one-row chooser with nothing in it (Yves's MKII, 30 Sep
 can own the root's fifth category.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="stems",
-    family="mods", proof=Proof.HARDWARE, proof_note="Yves's MKII, 6 Oct 2026 (STEMS3)",
+    family="mods", evidence=(Evidence(Level.UNIT, unit="MKII", who="Yves", date="2026-10-06",
+        note="(STEMS3)"),),
     doc="STEM REC on the stock effects: multitrack recording to the card, each track, MAIN, CUE and the inputs as separate WAV files.",
     modules=("STEM REC",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

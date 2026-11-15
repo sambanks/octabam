@@ -55,7 +55,7 @@ SHIFT follows the Bode 1630 (2 Hz / 31.25 Hz, six octaves to 2 kHz).
 import math
 
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, ModeView, Module, Param, Proof, YBase)
+                          Kind, MenuEntry, ModeView, Module, Param, Evidence, Level, YBase)
 
 
 def _srr_inc(k):
@@ -114,8 +114,9 @@ MODULE = Module(
     key="LOFI2",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Bryan T", author_url="https://github.com/bryantysinger",
-    proof=Proof.HARDWARE,
-    proof_note="Bryan T's MKII, images 96-99 (Oct 2026, this tree): tracks 1 and 5, five instances at once; `_bt_oct` build 11 (12 Oct 2026, the 414-cycle loop): eight in SHIFT at once, four per core, UP/DOWN switched while playing",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Bryan T", date="2026-10-12",
+        note="images 96-99 (Oct 2026, this tree): tracks 1 and 5, five instances at once; `_bt_oct` build 11 (12 "
+             "Oct 2026, the 414-cycle loop): eight in SHIFT at once, four per core, UP/DOWN switched while playing"),),
     doc="Ring mod or frequency shifter, then sample-rate and bit reduction.",
 
     menu=MenuEntry(

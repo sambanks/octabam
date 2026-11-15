@@ -23,7 +23,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Proof
+from remix.schema import Category, Evidence, Level
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "octabam-modules" / "blackpyramids-303" / "manifest.py"
 
@@ -39,4 +39,6 @@ MODULE = dataclasses.replace(MODULE, conflicts=tuple(
 # are added here rather than in the author's manifest.
 MODULE = dataclasses.replace(
     MODULE, category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="the author's MKI: standalone images 14 Oct - 3 Nov 2026; this octabam form 19 Oct 2026 and, with the recalibrated voice, 21 Oct 2026 (the 23 Oct link clips and the 3 Nov 936 / 932-word voice: standalone only)")
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", date="2026-11-03",
+        note="standalone images 14 Oct - 3 Nov 2026; this octabam form 19 Oct 2026 and, with the recalibrated "
+             "voice, 21 Oct 2026 (the 23 Oct link clips and the 3 Nov 936 / 932-word voice: standalone only)"),))

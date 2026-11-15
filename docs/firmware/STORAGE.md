@@ -151,3 +151,12 @@ image: `CHOOSE PROJECT` `0x400b5ce0`, `<CREATE EMPTY PROJECT>`
 `0x400b5bf1`, `RENAME PROJECT` `0x400b5c5c`, `DELETE THIS PROJECT?`
 `0x400b5d39`, `CHECKING PROJECT` nearby in the same cluster.
 
+## 7. The stock card logger (read from disassembly; the load's lines measured under the port, 13 Nov 2026)
+
+`0x4001ffe4(level, format, ...)` formats `<date> <LEVEL> <text>` and calls `0x4001ff2c(line)`, which opens
+`/LOG <date>.txt`, appends the line and closes it. The level table is at `0x400abf28`: CRITICAL, ERROR,
+WARNING, DEBUG; levels 0 to 2 are accepted. Under the port a project load writes lines to `/LOG 000000.txt`.
+REMOTE calls it at level 2 from STORE's handlers (`modules/remote/README.md`, "The file sink").
+Measured under the port: `0x4001ff2c` called as the main routine (`--call`) does not return (unimplemented
+opcode at `0x4003b108`); from a STORE handler it writes the line. Not measured: a write from the engine task
+during play, or on a unit.

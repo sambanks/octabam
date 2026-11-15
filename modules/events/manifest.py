@@ -3,7 +3,7 @@ import re
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 # Explicit families prevent a notification from being confused with an owner.
 # Each tuple is (module key, callback prefix, events). Order is dispatch order;
@@ -163,7 +163,8 @@ HOOKS['edit', 'copy_pre'] = _EDIT_HOOKS[3:]
 MODULE = Module(
     name='events', key='EVENTS', kind=Kind.CF_PATCH,
     category=Category.PARTS, author='radiohagen', author_url='https://github.com/radiohagen',
-    proof=Proof.CHECK, proof_note="Tested on radiohagen's MKII (25 Oct 2026): transport and trig-paste undo.",
+    evidence=(Evidence(Level.EMULATOR,
+        note="Tested on radiohagen's MKII (25 Oct 2026): transport and trig-paste undo."),),
     doc='System: transport and MIDI notifications, held-step ownership and copy notifications.',
     linked=UNITS, detours=tuple(d for hooks in HOOKS.values() for d in hooks),
     select=select,

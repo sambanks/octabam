@@ -6,11 +6,12 @@ This minimal remix contains the CPU engine in isolation. Stock DELAY remains
 available for the verifier's patched-firmware baseline comparison.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="tapeecho",
-    family="effects", proof=Proof.HARDWARE, proof_note="the author's unit (OCTACLID4): six instances; a seventh freezes it, open",
+    family="effects", evidence=(Evidence(Level.UNIT,
+        note="the author's unit (OCTACLID4): six instances; a seventh freezes it, open"),),
     doc="Tape Echo replacing Spring Reverb, alone.",
     modules=("TAPE ECHO",),
     fallback="NONE",

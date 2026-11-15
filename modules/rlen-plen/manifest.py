@@ -47,7 +47,7 @@ bytes (position-independent: the one self-reference is a pc-relative pea).
 
 import hashlib
 
-from remix.schema import Category, Proof, Detour, Kind, Linked, Module, Poke
+from remix.schema import Category, Evidence, Level, Detour, Kind, Linked, Module, Poke
 
 CONV_HOOK = 0x40006da6
 CONV_HOOK_STOCK = bytes.fromhex("712c0002" "5280")   # mvs.b 2(a4),d0; addq.l #1,d0
@@ -103,7 +103,8 @@ MODULE = Module(
     key="RLEN PLEN",
     kind=Kind.CF_PATCH,
     category=Category.MACHINES, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "26 Sep 2026",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); 26 Sep 2026"),),
     doc="ColdFire cave: RLEN value PLEN (past MAX) = one loop of the track's "
         "pattern on its own scale, so TRIG ONE + QREC PLEN records the next "
         "pass and stops.",

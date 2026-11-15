@@ -43,7 +43,7 @@ BusDlyRPL).
 import dataclasses
 import hashlib
 
-from remix.schema import (Apply, Category, Detour, FormatterReg, Kind, Linked, Module, Option, Proof,
+from remix.schema import (Apply, Category, Detour, FormatterReg, Kind, Linked, Module, Option, Evidence, Level,
                           Setting, Store)
 
 # The per-frame voice-record writer, at the instruction that publishes the
@@ -87,7 +87,7 @@ MODULE = Module(
     key="TEMPO SYNC",
     kind=Kind.CF_PATCH,
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="Sam's MKII",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks"),),
     doc="ColdFire DRAM units: publishes the held MIDI note to BusDelay, and draws "
         "BusDelay TIME as a tempo division.",
     # BusDelay TIME's formatter: a DRAM unit since 8 Oct 2026 (a floating

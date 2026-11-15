@@ -161,6 +161,37 @@ BASE (8 FLEX tracks, a hit on step 1) read 29.9 % with nothing reading the strea
 67.7 % with a capture open, TRACKS PRE, on one MKII (2 Nov 2026). Compare layouts
 within one state.
 
+## Reading events on a unit
+
+An image with REMOTE (`octabam`, `octabam-bus`, `octabam-verbs`) keeps a ring of timestamped records (project
+load and save events, PLAYING, BANK, PATTERN, the queued pair, a COMMAND having run) and the last 512 frame
+interrupts' interrupted PCs, read over USB (`modules/remote/README.md`). Run on an MKII on 15 Nov 2026.
+
+```
+python3 tools/hw/ot_events.py                          # every record the ring holds
+python3 tools/hw/ot_events.py --follow                 # then each new one
+python3 tools/hw/ot_events.py --wait PATTERN --arg 3 --timeout 20   # exit 0 when it arrives, 1 at the timeout
+```
+
+In a script, `Events.wait_for(kind, arg, timeout)` returns the first record that matches and raises
+`TimeoutError` otherwise; `Events.lost` counts records overwritten before they were read. `trace` and `peek`
+read the PC samples and memory; `command` enters and leaves USB DISK MODE, `boot` starts a `.RMX` of
+REMIX SWITCH's list (`remixes` lists it as the unit holds it). On an image without REMOTE every request
+STALLs. The stamps are DMA timer 3's count (132 MHz, wrapping every 32.5 s).
+
+After a MIDI START the PLAYING 1 record arrives in 7 to 8 ms. A MIDI STOP writes PLAYING 2 and nothing when
+the sequencer was already stopped, so a stop is waited for through the playing byte, not a record
+(`ot_events.wait_stopped(remote, fallback)`: the old sleep without REMOTE, else PEEK of `0x800065bb` until it
+leaves 1, within the same `fallback`). `ot_events.connect()` gives the `Remote` or None. A program change while
+playing writes QPATTERN at once and PATTERN at the pattern's end (7.9 and 8.0 s at 120 BPM); with the sequencer
+stopped both arrive 4.5 to 5.9 ms after the send. A program change sent stopped is waited for through the
+bank and pattern bytes (`ot_events.wait_pattern(remote, program, fallback)`: PEEK of `0x800065bd` and `0x800065be`
+until they are bank `p // 16`, pattern `p % 16`; a change to the current pattern writes no record). `ot_matrix.py`
+(run, switch) and `ot_ladder.py` (through `Clock.stop_wait` and `Clock.pc_wait`) wait for stops and stopped
+program changes this way, each with the old sleep as the fallback; the program changes sent while playing
+(`ot_matrix.py` switch) are timed by the run. Every other `time.sleep` in `ot_matrix.py`, `ot_stall.py` and
+`ot_ladder.py` carries a comment naming what it waits for. `ot_suite.py` has none.
+
 ## Stress sequences
 
 `python3 tools/hw/ot_fuzz.py gen <seed> <out.json> --profile mix --minutes 10 --layouts <n>`

@@ -17,7 +17,7 @@ import os
 import pathlib
 
 from remix.schema import (Category, Claims, Detour, DspHook, DspRange, DspSection, Gate, Kind, Linked,
-                          Module, Proof, YBase)
+                          Module, Evidence, Level, YBase)
 
 H = bytes.fromhex
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -68,7 +68,9 @@ def _hooks_inc(modules, remix):
 MODULE = Module(
     name="load-meter", key="LOAD METER", kind=Kind.HYBRID,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "the window and both DSP cores' figures under the port (verify_load_meter, verify_brain)",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); the window and both DSP cores' figures "
+             "under the port (verify_load_meter, verify_brain)"),),
     doc="The frame interrupt's share of the ColdFire, each DSP core's busy time per frame and each effect call's cost, for BRAIN's OTOP screen.",
     linked=(Linked("loadmeter", "modules/load-meter/meter.s", cpu="5475", dram=True, include=_hooks_inc),),
     # Each core's busy time per frame (dsp_meter.asm): stamps of timer 0 at

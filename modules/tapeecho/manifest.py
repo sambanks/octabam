@@ -8,7 +8,7 @@ physical-cell tape transport and spring reverb remain omitted. See README for me
 and the outstanding hardware cycle/listening checks.
 """
 
-from remix.schema import (Gate, Category, Proof, BusRole, CavePatch, Detour, DspSection, Formatter, FormatterReg, Harness,
+from remix.schema import (Gate, Category, Evidence, Level, BusRole, CavePatch, Detour, DspSection, Formatter, FormatterReg, Harness,
                           Kind, Linked, MenuEntry, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
@@ -19,7 +19,8 @@ MODULE = Module(
     key="TAPE ECHO",
     kind=Kind.HYBRID,
     category=Category.TRACK, author="repeat98", author_url="https://github.com/repeat98",
-    proof=Proof.HARDWARE, proof_note="the author's unit (OCTACLID4): six instances run, a seventh freezes it, open",
+    evidence=(Evidence(Level.UNIT,
+        note="the author's unit (OCTACLID4): six instances run, a seventh freezes it, open"),),
     doc="Economy CPU tape echo: two biquads, simple FREE slew, snapped BEAT TIME and page-1 AGE.",
     menu=MenuEntry(
         fx2_id=0x15,

@@ -26,7 +26,7 @@ import pathlib
 
 from remix import stations
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, Module, Param, Proof, Store, YBase)
+                          Kind, MenuEntry, Module, Param, Evidence, Level, Store, YBase)
 
 _spec = importlib.util.spec_from_file_location("vibrato_ref",
                                                pathlib.Path(__file__).with_name("vibrato_ref.py"))
@@ -42,8 +42,9 @@ MODULE = Module(
     key="VIBRATO",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Bryan T", author_url="https://github.com/bryantysinger",
-    proof=Proof.HARDWARE,
-    proof_note="Bryan T's MKII, _bt_oct with VIBRATO and LOAD METER, 4 Nov 2026: 4.5 % a slot (LOAD METER over USB); SLOTS FX1+FX2: sixteen instances, FX1 and FX2 of all eight tracks, both cores at 59 % / 51 %",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Bryan T", date="2026-11-04",
+        note="_bt_oct with VIBRATO and LOAD METER, 4 Nov 2026: 4.5 % a slot (LOAD METER over USB); SLOTS FX1+FX2: "
+             "sixteen instances, FX1 and FX2 of all eight tracks, both cores at 59 % / 51 %"),),
     doc="Pitch vibrato on FX1, or FX1 and FX2 (SLOTS) -- sine, triangle, square trill or random; depth in cents.",
     menu=MenuEntry(
         # 0x0b: a free-pool id; WAVE (an experiment) prefers it too, and the

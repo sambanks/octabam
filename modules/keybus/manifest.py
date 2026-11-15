@@ -9,7 +9,7 @@ Beside SIDECHAIN_COMPRESSOR loaded on demand, SC KEYBUS BRIDGE shares the site (
 then this hook). Beside SIDECHAIN_COMPRESSOR in its per-core form there is no bridge (schema.DspOverride needs a
 demand module), so the build refuses the two hooks at one site.
 """
-from remix.schema import Category, Claims, DspHook, DspRange, DspSection, Gate, Kind, Module, Proof
+from remix.schema import Category, Claims, DspHook, DspRange, DspSection, Gate, Kind, Module, Evidence, Level
 
 KEY_WORDS = 0x37F60                     # X, shared window: track t's key word at KEY_WORDS + t
 SITE = {"A": 0x4A7, "B": 0x29C}
@@ -20,7 +20,7 @@ MODULE = Module(
     key="KEYBUS",
     kind=Kind.HYBRID,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.CHECK, proof_note="",
+    evidence=(Evidence(Level.EMULATOR),),
     doc="Every track's key level (block peak of |mono|) each block, in eight shared words for DSP readers on either core.",
     claims=Claims(dsp_ranges=(
         DspRange("x", KEY_WORDS, 8, "every track's key word, track t at +t, rewritten each block"),

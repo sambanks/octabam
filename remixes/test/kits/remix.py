@@ -4,11 +4,12 @@
 stock effects keep the FX choosers stock's.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="kits",
-    family="mods", proof=Proof.PORT, proof_note="verify_kits under the port",
+    family="mods", evidence=(Evidence(Level.EMULATOR, ref="verify_kits",
+        note="verify_kits under the port"),),
     doc="KITS (255 Kits per project) on the stock effects.",
     modules=("STORE", "KITS",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

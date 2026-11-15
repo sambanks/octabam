@@ -22,7 +22,7 @@ KEY and KLVL; 22 Sep 2026: TXTR removed,
 WDTH in its slot; 20 Sep 2026: TONE back on page 1 in the return's slot)."""
 
 from remix import stations
-from remix.schema import (Store, Gate, Category, Proof, BusRole, Claims, DspSection, Formatter, Harness,
+from remix.schema import (Store, Gate, Category, Evidence, Level, BusRole, Claims, DspSection, Formatter, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
@@ -59,7 +59,9 @@ MODULE = Module(
     key="CHARACTER",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="Sam's MKII",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-11-15",
+                       note="loaded as a demand effect in octabam during the 15 Nov 2026 mixed-walk runs (12 of 12 without a stall, "
+                  "251 loads; #1100)"),),
     doc="FX1 station: fold, saturation, tilt, compressor, width.",
     menu=MenuEntry(
         fx2_id=0x17,

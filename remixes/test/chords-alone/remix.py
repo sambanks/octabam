@@ -1,10 +1,10 @@
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="chords-alone",
     family="mods",
-    proof=Proof.CHECK,
-    proof_note="verify_chords",
+    evidence=(Evidence(Level.EMULATOR, ref="verify_chords",
+        note="verify_chords"),),
     doc="CHORDS FACTORY without SCALES, on the 14 stock effects: the atelier alone "
         "on SRC, chords played as written (no scale).",
     modules=("CHORDS FACTORY", "STORE", "PAGES", "FILTER", "EQUALIZER",

@@ -22,7 +22,7 @@ import re
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 H = bytes.fromhex
 
@@ -172,8 +172,8 @@ DETOURS = (
 MODULE = Module(
     name='pages', key='PAGES', kind=Kind.CF_PATCH,
     category=Category.SETTINGS, author='djib', author_url='https://github.com/Djibdjib',
-    proof=Proof.HARDWARE, proof_note="the owner's MKII (live-djib, Oct-Nov 2026): SRC again on MIDI NOTE; "
-                                     "verify_chords (the port): SRC 1/2/3 through PAGES",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="djib",
+        note="(live-djib, Oct-Nov 2026): SRC again on MIDI NOTE; verify_chords (the port): SRC 1/2/3 through PAGES"),),
     doc='System: the extra pages a page key cycles through (SRC again on MIDI NOTE: CHORDS FACTORY ...).',
     linked=(UNIT,), detours=DETOURS,
     select=select,

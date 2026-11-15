@@ -15,7 +15,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Proof
+from remix.schema import Category, Evidence, Level
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "octabam-modules" / "mute-modes" / "manifest.py"
 
@@ -42,4 +42,6 @@ def _adapted_variant(values):
 MODULE = dataclasses.replace(
     MODULE, linked=tuple(_adapt_unit(_u) for _u in MODULE.linked), variant=_adapted_variant,
     category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="the author's MKI (standalone image, the KYOTI V1.7 combined image, and this octabam form beside SIDECHAIN_COMPRESSOR as OCTABAM39, 3 Nov 2026)")
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", image="OCTABAM39", date="2026-11-03",
+        note="(standalone image, the KYOTI V1.7 combined image, and this octabam form beside SIDECHAIN_COMPRESSOR "
+             "as OCTABAM39, 3 Nov 2026)"),))

@@ -8,7 +8,7 @@ compared with the values the routine reads anyway; [r+276], [r+280],
 keeps honest. skip.s has the routine and the argument; README.md what was
 measured.
 """
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 H = bytes.fromhex
 U = "rec_cs1_skip"
@@ -18,10 +18,10 @@ MODULE = Module(
     key="REC CS1 SKIP",
     kind=Kind.CF_PATCH,
     category=Category.FIXES, author="bryantysinger", author_url="https://github.com/bryantysinger",
-    proof=Proof.HARDWARE,
-    proof_note="Bryan T's MKII, test builds recording up to eight tracks at once (1-2 Nov 2026); "
-               "verify_rec_cs1_skip against stock's routine under unicorn; under the port, a project "
-               "recording through pattern changes, a stop and a start leaves all of CS1 as stock does",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Bryan T", date="2026-11-02",
+        note="test builds recording up to eight tracks at once (1-2 Nov 2026); verify_rec_cs1_skip against stock's"
+             " routine under unicorn; under the port, a project recording through pattern changes, a stop and a "
+             "start leaves all of CS1 as stock does"),),
     doc="The recorder's per-frame control-record update without its redundant CS1 writes: less ColdFire "
         "time per recording track.",
     linked=(Linked(U, "modules/rec-cs1-skip/skip.s", cpu="5475", dram=True),),

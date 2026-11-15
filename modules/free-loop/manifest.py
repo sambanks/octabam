@@ -48,7 +48,7 @@ assembled with HK_UI_TICK, jumps to rl_uitick where it replayed stock. MORPH sta
 
 import dataclasses
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level, SymbolRef
 
 H = bytes.fromhex
 
@@ -89,10 +89,9 @@ MODULE = Module(
     category=Category.MIDI_USB,
     author="djib",
     author_url="https://github.com/Djibdjib",
-    proof=Proof.HARDWARE,
-    proof_note="the owner's MKII, OCTABAM8-OCTABAM17 (a rig remix, with REC MUTE), 26-28 Oct 2026: free take and tempo, "
-               "overdub, PLAY/STOP and clear, UNDO / REDO, END, PLAY entries, the popup; "
-               "tools/verify/verify_free_loop.py",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="djib", image="OCTABAM8", date="2026-10-28",
+        note="-OCTABAM17 (a rig remix, with REC MUTE), 26-28 Oct 2026: free take and tempo, overdub, PLAY/STOP and"
+             " clear, UNDO / REDO, END, PLAY entries, the popup; tools/verify/verify_free_loop.py"),),
     doc="Loop pedals per track on its channel: CC 90 REC (a FREE track's first free loop sets the tempo, "
         "the pattern length and starts the sequencer; then arm / cut the overdub; held: clear a muted or stopped loop), "
         "CC 91 PLAY/STOP (play, mute / unmute, held: END), CC 92 UNDO / REDO, CC 93 END (mute / unmute at the loop's start). "

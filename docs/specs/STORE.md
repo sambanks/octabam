@@ -54,6 +54,7 @@ a nested tuple of one key as that key.
 | SEQ (`ef`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | PAGES + EVENTS + STORE + DRUMMER (`pg`) | loadall_pre/post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | VARISPEED (`vs`) | partsaved, partclear |
+| REMOTE (`rmt`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_post, preload_post |
 
 ## File calls
 

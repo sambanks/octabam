@@ -7,11 +7,11 @@ ports. The chooser is stock. remixes/test/usb-midi/README.md has the build
 and use steps.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="usb-midi",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock + USB MIDI (class-compliant, mirrors DIN).",
     modules=("USB",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

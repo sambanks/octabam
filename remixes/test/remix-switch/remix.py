@@ -1,11 +1,12 @@
 """Stock effects plus BRAIN and REMIX SWITCH: boot a raw OS image from the card without
 writing the flash."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="remix-switch",
-    family="probes", proof=Proof.PORT, proof_note="the chainload under the port (verify_remix_switch)",
+    family="probes", evidence=(Evidence(Level.EMULATOR, ref="verify_remix_switch",
+        note="the chainload under the port (verify_remix_switch)"),),
     doc="stock effects with BRAIN and REMIX SWITCH: MAIN MENU > BRAIN boots a .RMX from /BRAIN/REMIXES/, no flash write.",
     modules=("BRAIN", "REMIX SWITCH", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
              "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",

@@ -6,14 +6,15 @@ is wrapped to force the slice of chosen starts. modules/drummer/probe_steps.py (
 it under the port and reads the voice starts back. Findings: modules/drummer/INVESTIGATION.md.
 """
 
-from remix.schema import Category, Detour, Kind, Linked, Module, Proof, SymbolRef
+from remix.schema import Category, Detour, Kind, Linked, Module, Evidence, Level, SymbolRef
 
 MODULE = Module(
     name="drummer-probe",
     key="DRUMMER PROBE",
     kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="djib", author_url="https://github.com/Djibdjib",
-    proof=Proof.PORT, proof_note="modules/drummer/probe_steps.py (DR_PROBE): measurement only, never shipped",
+    evidence=(Evidence(Level.EMULATOR,
+        note="modules/drummer/probe_steps.py (DR_PROBE): measurement only, never shipped"),),
     doc="DRUMMER phase 2 probe: trigs added and moved after the step builder, the FLEX start's slice forced (measurement only).",
     linked=(Linked("probe", "modules/drummer-probe/probe.s", dram=True),),
     detours=(

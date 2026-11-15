@@ -14,7 +14,7 @@ plain-numeric zeros (hardware-confirmed). REV took blank slot 1 on 25 Sep
 (`ot_project.py stamp-slot <project> SEND REV`).
 """
 
-from remix.schema import (Category, Proof, BusRole, YBase, DspSection, Harness, Kind, MenuEntry,
+from remix.schema import (Category, Evidence, Level, BusRole, YBase, DspSection, Harness, Kind, MenuEntry,
                           Module, Param)
 
 _BLANK = Param(b"", None, active=False)
@@ -24,7 +24,7 @@ MODULE = Module(
     key="SEND",
     kind=Kind.DSP_CLIENT,
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="Sam's MKII",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-09-27"),),
     doc="Bus client: DEL into the delay, REV into the reverb, from any track. The default effect.",
     menu=MenuEntry(
         fx2_id=0x09,

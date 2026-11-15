@@ -6,11 +6,12 @@ compared with the same input under the port
 (`tools/hw/sos_capture.py`).
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="sos-capture",
-    family="mods", proof=Proof.PORT, proof_note="`make check` under the port; not on hardware in this form",
+    family="mods", evidence=(Evidence(Level.EMULATOR,
+        note="`make check` under the port; not on hardware in this form"),),
     doc="recorder fixes + USB (TRACKS out, AB in) (stock effects minus SPATIALIZER).",
     modules=("RECORDER LOOP FIX",
              "USB",

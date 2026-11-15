@@ -6,11 +6,12 @@ FX2 chooser order. TEMPO SYNC takes no row; it is the cave that makes
 BusDelay's TIME read "1/8" rather than milliseconds.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="bus",
-    family="reference", proof=Proof.HARDWARE, proof_note="under earlier names",
+    family="reference", evidence=(Evidence(Level.UNIT,
+        note="under earlier names"),),
     doc="The plain two-server image: BusVerb + BusDelay + send bus + tempo sync.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "TEMPO SYNC"),
     fallback="SEND",
