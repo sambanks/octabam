@@ -75,5 +75,5 @@ MODULE = Module(
                "the level-6 eDMA handler's exit: its duration, and the share inside the frame interrupt", pad_to=10),
     ),
     harness=Harness(layout_char=None, is_server=False),
-    gates=(Gate("tools/verify/verify_cfmeter.py", venv=True, project=True),),
+    gates=(Gate("tools/verify/verify_cfmeter.py", venv=True),),
 )

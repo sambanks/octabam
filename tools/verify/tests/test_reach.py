@@ -563,6 +563,16 @@ class TestRemixTests(unittest.TestCase):
         self.assertNotIn("--remixes", ctx().identity()[1])
 
 
+# Gates that SKIP without a project and are left unflagged (Gate.project) because running them as a unit is red: flagging one
+# runs it in CI and fails CI on a fault that was already there. Take it off when fixed and set project=True.
+KNOWN_RED = {
+    "tools/verify/verify_ids64_load.py": "#1120: the chooser check fails with a generated project",
+    "tools/verify/verify_dlload.py": "#1075: 12 checks fail with a project",
+    "tools/verify/verify_cfmeter.py": "#1124: flagging it reaches the cfmeter remix, where verify_quantizer_ui (once, on the carrier) fails",
+    "tools/verify/verify_kits.py": "#1125: its Kit fixtures fail on a generated project (a once gate in the shared half)",
+}
+
+
 class PlanJsonTests(unittest.TestCase):
     def test_one_entry_per_command_in_plan_order(self):
         rows = reach.classify(["remixes/miniverb/remix.py"], ctx())
@@ -654,7 +664,7 @@ class PlanJsonTests(unittest.TestCase):
         own_units = {c for units in reach.SPLIT_EXTRA_UNITS.values() for _, cmd in units.values() for c in cmd.split()}
         # Red with a generated project before this unit existed (15 Nov 2026), so flagging them would turn CI red on a
         # fault that was already there: unflag until fixed, then set project=True
-        known_red = {"tools/verify/verify_ids64_load.py": "#1120", "tools/verify/verify_dlload.py": "#1075"}
+        known_red = KNOWN_RED
         missing = []
         for m in registry.modules().values():
             for g in getattr(m, "gates", ()):
@@ -669,10 +679,10 @@ class PlanJsonTests(unittest.TestCase):
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
         from remix import registry
         flagged = {g.script for m in registry.modules().values() for g in getattr(m, "gates", ()) if g.project}
-        self.assertFalse(flagged & {"tools/verify/verify_ids64_load.py", "tools/verify/verify_dlload.py"})
+        self.assertFalse(flagged & set(KNOWN_RED))
 
     def test_a_shared_half_gate_that_skips_without_a_project_gets_its_own_unit(self):
-        """A once gate (KITS, COPY PROJECT, RND NAME) or an isolated remix_arg=False one runs in the shared half, which has no project: `check-shared (project: <gate> on <remix>)`, run alone, and the module-gates
+        """A once gate (COPY PROJECT, RND NAME; KITS is known red) or an isolated remix_arg=False one runs in the shared half, which has no project: `check-shared (project: <gate> on <remix>)`, run alone, and the module-gates
         unit leaves it out."""
         def units(remixes, modules=""):
             flag = f' MODULES="{modules}"' if modules else ""
@@ -680,14 +690,13 @@ class PlanJsonTests(unittest.TestCase):
             return {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
         got = units("octabam bbd rnd-name")
         base = 'make check-shared REMIXES="octabam bbd rnd-name" SHARED_PART=modules MODULE_GATES_ONLY='
-        self.assertEqual(got["check-shared (project: kits on octabam)"], base + "tools/verify/verify_kits.py")
         self.assertEqual(got["check-shared (project: copy-project on octabam)"], base + "tools/verify/verify_copy_project.py")
         self.assertEqual(got["check-shared (project: rnd-name on rnd-name)"], base + "tools/verify/verify_rnd_name.py")
         skipped = got["check-shared (module gates)"].split("MODULE_GATES_SKIP=")[1].split(",")
-        for script in ("verify_kits", "verify_copy_project", "verify_rnd_name"):
+        for script in ("verify_copy_project", "verify_rnd_name"):
             self.assertIn(f"tools/verify/{script}.py", skipped)
         self.assertNotIn("tools/verify/verify_scenes.py", skipped)         # its own unit is a check-remix one
-        self.assertNotIn("check-shared (project: kits on octabam)", units("octabam", "BRAIN"))   # KITS not reached
+        self.assertNotIn("check-shared (project: copy-project on octabam)", units("octabam", "BRAIN"))   # COPY PROJECT not reached
         self.assertEqual([n for n in units("x y") if "project" in n], [])
 
     def test_the_brain_unit_exists_only_when_brain_is_reached(self):

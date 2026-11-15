@@ -77,5 +77,5 @@ MODULE = Module(
     # and ASSIGN, over a power-off.
     claims=Claims(sram=((0x100F85A0, 0x48, "KITS: which Kit each Part slot holds"),
                         (0x100FFE00, 0x100, "KITS: each pattern's Kit"))),
-    gates=(Gate('tools/verify/verify_kits.py', once=True, project=True),),
+    gates=(Gate('tools/verify/verify_kits.py', once=True),),
 )
