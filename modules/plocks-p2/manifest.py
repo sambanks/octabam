@@ -14,7 +14,7 @@ them into the live lane and puts the Part's value back at the next trig.
 Requires SCENES P2: its page-2 dial hooks show a held step's lock.
 """
 
-from remix.schema import Category, Claims, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Claims, Detour, Gate, Kind, Linked, Module, Evidence, Level
 import idspace
 
 
@@ -29,7 +29,9 @@ MODULE = Module(
     key="PLOCKS P2",
     kind=Kind.CF_PATCH,
     category=Category.MACHINES, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="Tested on Sam's MKII (16 Oct 2026) and radiohagen's MKII (17, 22 and 25 Oct 2026): held edits, copy operations and controlled trig-paste undo.",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="Tested on Sam's MKII (16 Oct 2026) and radiohagen's MKII (17, 22 and 25 Oct 2026): held edits, copy "
+             "operations and controlled trig-paste undo."),),
     doc="Parameter locks on FX1/FX2 page 2 (hold trigs, turn a knob on the SETUP page).",
     linked=(Linked("p2locks", "modules/plocks-p2/p2locks.s", dram=True, include=ids_inc),),
     detours=(

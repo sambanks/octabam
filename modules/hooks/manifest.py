@@ -109,7 +109,7 @@ import os
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Override, Poke, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Override, Poke, Evidence, Level, SymbolRef
 
 H = bytes.fromhex
 _HERE = os.path.relpath(os.path.dirname(os.path.realpath(__file__)))
@@ -559,7 +559,8 @@ MODULE = Module(
     key="HOOKS",
     kind=Kind.CF_PATCH,
     category=Category.SETTINGS, author="Sam Banks", author_url="https://github.com/sambanks",
-    proof=Proof.PORT, proof_note="verify_hooks: the bridged tables and chains under Unicorn, and each bridged image's sites",
+    evidence=(Evidence(Level.EMULATOR, ref="verify_hooks",
+        note="verify_hooks: the bridged tables and chains under Unicorn, and each bridged image's sites"),),
     doc="Platform: owns a stock site two selected modules both claim, and calls each one's routine there.",
     linked=_ALL["linked"], detours=_ALL["detours"], symbol_refs=_ALL["symbol_refs"],
     overrides=_ALL["overrides"], pokes=_ALL["pokes"],

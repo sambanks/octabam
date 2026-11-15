@@ -1,10 +1,10 @@
 """stock effects with BAR LED: the tempo LED green on the pattern's 1. Its gate's remix."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="bar-led",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock effects with BAR LED: the tempo LED flashes green on the pattern's 1 while playing.",
     modules=("BAR LED",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",

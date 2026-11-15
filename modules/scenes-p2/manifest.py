@@ -19,7 +19,7 @@ page-2 editor (0x4003a9dc) and FX1's (0x4003abe4), all at instruction
 boundaries with the displaced instructions replayed.
 """
 
-from remix.schema import Gate, Category, Proof, Claims, Detour, Kind, Linked, Module
+from remix.schema import Gate, Category, Evidence, Level, Claims, Detour, Kind, Linked, Module
 import idspace
 
 H = bytes.fromhex
@@ -39,7 +39,8 @@ MODULE = Module(
     key="SCENES P2",
     kind=Kind.CF_PATCH,
     category=Category.PARTS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "26 Sep 2026",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); 26 Sep 2026"),),
     doc="Scene locks and the crossfader on FX1/FX2 page 2 "
         "(hold a scene, turn a page-2 knob).",
     linked=(Linked("p2scenes", "modules/scenes-p2/p2scenes.s", dram=True, include=next_inc),),

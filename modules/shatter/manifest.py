@@ -6,7 +6,7 @@ flips feedback polarity from a free-running ramp. MIX 0 is bit-exact dry.
 """
 
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, Module, Param, Proof, YBase)
+                          Kind, MenuEntry, Module, Param, Evidence, Level, YBase)
 
 _P = Formatter.PLAIN
 _S = Formatter.STEPPED
@@ -18,10 +18,9 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="Ilia's MKII, remix shatter BUILD S6 (SHATTER S6.RMX), 21 Oct 2026: "
-               "every page-1/page-2 knob exercised (CLIP open + FDBK for MODE/"
-               "TONE/RATE); verify_shatter",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Ilia", date="2026-10-21",
+        note="remix shatter BUILD S6 (SHATTER S6.RMX), 21 Oct 2026: every page-1/page-2 knob exercised (CLIP open "
+             "+ FDBK for MODE/TONE/RATE); verify_shatter"),),
     doc="Crush insert: drive, fold, clip, bit/SRR crush, self-modulating FDBK (CHAOS).",
     menu=MenuEntry(
         fx2_id=0x0a,

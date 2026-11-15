@@ -28,7 +28,7 @@ import pathlib
 
 import hashlib
 
-from remix.schema import Gate, Category, Proof, Kind, Linked, Module, SymbolRef
+from remix.schema import Gate, Category, Evidence, Level, Kind, Linked, Module, SymbolRef
 from remix.midi_cc import refuse_stateful
 
 # The CC numbers, slot 6..11 order. cc_map.s's CAVE decodes them (102..111
@@ -104,7 +104,8 @@ MODULE = Module(
     key="CC MAP",
     kind=Kind.CF_PATCH,
     category=Category.MIDI_USB, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="Sam's MKII (image 96, 13 Sep 2026), on CC 62-73; the 1 Nov 2026 numbers are not flashed yet",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-09-13",
+        note="(image 96, 13 Sep 2026), on CC 62-73; the 1 Nov 2026 numbers are not flashed yet"),),
     doc="MIDI CC 102-107 drive the FX2 engine's page-2 slots 6-11; CC 108-111, 14 and 15 the FX1 station's.",
     # A DRAM unit (8 Oct 2026; a floating ROM cave until then): the CC
     # dispatch entry points at its entry symbol.

@@ -17,7 +17,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Proof
+from remix.schema import Category, Evidence, Level
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "octabam-modules" / "quantize-live-rec-toggle" / "manifest.py"
 
@@ -26,5 +26,6 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_quantize_live_r
 # are added here rather than in his manifest.
 MODULE = dataclasses.replace(
     MODULE, category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="the author's MKI, 25 Sep 2026 (gesture) and 30 Sep 2026 (setting survives a power cycle); "
-               "22 Oct 2026 (toast text, PERSONALIZE redraw; standalone and KYOTI V1.6 images, not this octabam form)")
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", date="2026-09-25",
+        note="(gesture) and 30 Sep 2026 (setting survives a power cycle); 22 Oct 2026 (toast text, PERSONALIZE "
+             "redraw; standalone and KYOTI V1.6 images, not this octabam form)"),))

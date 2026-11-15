@@ -77,15 +77,32 @@ Five fields are the README's module table, rendered by `make docs`
 ```python
     category=Category.TRACK,            # BUS, TRACK, MACHINES, PARTS, MIDI_USB, FIXES, SETTINGS, UTILITIES, REFERENCE
     author="repeat98", author_url="https://github.com/repeat98",
-    proof=Proof.RENDER,                 # CHECK, RENDER, PORT, HARDWARE
-    proof_note="its own render gates; not on hardware",   # the unit, image, date; or the gate
+    evidence=(Evidence(Level.RENDER, ref="verify_myeffect", note="its own render gates"),),
 ```
 
 `category` is where the module sits in the table, the index and the
-index. `proof` is the vocabulary of the last column:
-`CHECK` builds and boots under the port, `RENDER` was heard or measured
-locally and never flashed, `PORT` has a gate under the ColdFire port that
-pins its behaviour, `HARDWARE` ran on a unit. The selftest refuses a
+index. `evidence` is the one record of how far the module is proven: a
+tuple of `schema.Evidence`, one per proof, the strongest shown in the last
+column. `Level`, lowest first: `BUILD` assembles and links, `EMULATOR`
+boots or passes a gate under the port or `dsp_host` (`ref` names the
+gate), `RENDER` was heard or measured locally and never flashed, `UNIT`
+ran on a unit, `UNIT_MEASURED` had a number read off a unit. The fields
+are `unit` (`MKI`, `MKII`), `who`, `image`, `date` (ISO), `ref` (a gate, a
+PR, an issue), `commit` (the tree proven) and `note` for what the fields
+cannot hold:
+
+```python
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", image="OCTABAM88", date="2026-09-27",
+                       commit="1a2b3c4d", note="a fourth instance beside the reverb"),),
+```
+
+`python3 tools/build/evidence.py` prints every module's level;
+`evidence.py stale` lists the modules at `UNIT` or above whose sources
+have a commit after the evidence's `commit` (or `date`). It reports and
+does not fail: the level stays, the module is due a rerun. A manifest
+executed from an author's repository may still declare the old
+`proof=Proof.X, proof_note="..."`; the schema turns it into one
+`Evidence` (`schema.from_proof`). The selftest refuses a
 module without all of them. A module whose manifest is executed from an
 author's repository adds them with `dataclasses.replace` (`modules/synth`).
 

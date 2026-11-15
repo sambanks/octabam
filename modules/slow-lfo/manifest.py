@@ -9,7 +9,7 @@ still from the project tempo. unit.s has the ground; README.md what was
 measured and what ran on a unit.
 """
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Evidence, Level
 
 RATE = bytes.fromhex("4c036800" "203c000021d1")   # mulsl %d3,%d6; movel #8657,%d0
 MULT = bytes.fromhex("79b22824" "bc83")           # mvzb 0x24(%a2,%d2:l),%d4; cmpl %d3,%d6
@@ -20,9 +20,9 @@ MODULE = Module(
     key="SLOW LFO",
     kind=Kind.CF_PATCH,
     category=Category.MACHINES, author="nathangroth", author_url="https://github.com/nathangroth",
-    proof=Proof.HARDWARE, proof_note="the author's MKI (author's report, rates by ear): the same unit.s loaded "
-        "over USB by Modwerk's loader, 4 Nov 2026, audio and MIDI tracks; this octabam form not flashed; "
-        "`verify_slow_lfo` under the port",
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="nathangroth", date="2026-11-04",
+        note="(author's report, rates by ear): the same unit.s loaded over USB by Modwerk's loader, 4 Nov 2026, "
+             "audio and MIDI tracks; this octabam form not flashed; `verify_slow_lfo` under the port"),),
     doc="LFO MULT gains 1/2X, 1/4X and 1/8X on audio and MIDI tracks: LFOs up to eight times slower.",
     linked=(Linked("slow_lfo", "modules/slow-lfo/unit.s", dram=True),),
     detours=(

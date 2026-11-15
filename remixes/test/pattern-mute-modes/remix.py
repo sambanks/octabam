@@ -1,10 +1,10 @@
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="pattern-mute-modes",
     family="test",
-    proof=Proof.CHECK,
-    proof_note="PATTERN MUTE beside MUTE_MODES",
+    evidence=(Evidence(Level.EMULATOR,
+        note="PATTERN MUTE beside MUTE_MODES"),),
     doc="smoke: PATTERN MUTE and MUTE_MODES together, stock effects",
     modules=("PATTERN MUTE", "MUTE_MODES",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",

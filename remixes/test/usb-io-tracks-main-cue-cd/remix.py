@@ -7,12 +7,13 @@ effects minus SPATIALIZER, whose words on payload A hold the IN module's RX
 inject: listed on neither chooser, so neither menu offers it.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="usb-io-tracks-main-cue-cd",
     image_name="IO-TMC-CD",
-    family="mods", proof=Proof.PORT, proof_note="`make check` (verify_usb, verify_usb_in) under the port, 28 Sep 2026; not on hardware in this form",
+    family="mods", evidence=(Evidence(Level.EMULATOR, ref="verify_usb",
+        note="`make check` (verify_usb, verify_usb_in) under the port, 28 Sep 2026; not on hardware in this form"),),
     doc="stock - SPATIALIZER + USB (TRACKS MAIN CUE out, CD in).",
     modules=("USB",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

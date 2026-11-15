@@ -18,7 +18,7 @@ pokes, not a cave. If a remix ever harvested LO-FI's code, each poke's
 `expect` refuses the build.
 """
 
-from remix.schema import Category, Proof, CavePatch, Kind, Module
+from remix.schema import Category, Evidence, Level, CavePatch, Kind, Module
 
 # Image vaddr of each DSP word: payload_va + module_data_offset
 # + (dsp_word_addr - module_p_addr) * 3, as dsp_modmap.py resolves it.
@@ -46,7 +46,8 @@ MODULE = Module(
     key="LOFI AMF FIX",
     kind=Kind.CF_PATCH,
     category=Category.FIXES, author="bryantysinger/octa-bt-pt", author_url="https://github.com/bryantysinger/octa-bt-pt",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "both words disassembled against stock",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
+        note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); both words disassembled against stock"),),
     doc="Fixes stock LO-FI's AMF knob: mpysu -> mpyuu, both payloads. "
         "Ported from bryantysinger/octa-bt-pt.",
     cf_patches=(

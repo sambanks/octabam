@@ -17,7 +17,7 @@ The law (modules/transient/DESIGN.md, float reference transient_ref.py):
 import math as _m
 
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, Module, Param, Proof, YBase)
+                          Kind, MenuEntry, Module, Param, Evidence, Level, YBase)
 
 _FS = 44100.0
 
@@ -50,7 +50,8 @@ MODULE = Module(
     key="TRANSIENT",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="Ignorato", author_url="https://github.com/Ignorato",
-    proof=Proof.HARDWARE, proof_note="Ignorato's MKII, images OCTABAM2 and OCTABAM3 (remix transient), 3 Oct 2026",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Ignorato", image="OCTABAM2", date="2026-10-03",
+        note="images OCTABAM2 and OCTABAM3 (remix transient), 3 Oct 2026"),),
     doc="Transient shaper: ATCK and SUST reshape onsets and tails, level-independent.",
     menu=MenuEntry(
         fx2_id=0x0a,

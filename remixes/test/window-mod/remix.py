@@ -5,7 +5,7 @@ words octabam-bus leaves free) instead of two in the harvested region, so its sl
 the cost of running from the window, to set against the same code in internal P (window-ctl,
 modules/modulation/README.md). PLATE REV, SPRING REV and DARK REV give up their words to LOAD METER's DSP
 half and the CORE modules; no module here has an FX2 buffer, so the window words are not another effect's."""
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -16,7 +16,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "LOAD METER")
 
 REMIX = Remix(
-    name="window-mod", family="effects", proof=Proof.CHECK, proof_note="",
+    name="window-mod", family="effects", evidence=(Evidence(Level.EMULATOR),),
     doc="CORE with LOAD METER and MODULATION in the shared window beside the stock effects (all but CHORUS, whose id it takes, and the three reverbs).",
     modules=CORE + ("MODULATION", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
                     "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY"),

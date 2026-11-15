@@ -6,13 +6,14 @@ tools/verify/verify_stations_fx2.py. Stock DELAY is listed; every other stock
 effect gives up its words. No bus: fallback NONE, no SEND.
 """
 
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 STATIONS = ("SPECTRUM", "CHARACTER", "MODULATION")
 
 REMIX = Remix(
     name="stations-fx2",
-    family="effects", proof=Proof.PORT, proof_note="`verify_stations_fx2` (dsp_host); not on a unit",
+    family="effects", evidence=(Evidence(Level.EMULATOR, ref="verify_stations_fx2",
+        note="`verify_stations_fx2` (dsp_host); not on a unit"),),
     doc="SPECTRUM, CHARACTER and MODULATION on FX1 and FX2, beside the stock DELAY.",
     modules=STATIONS + ("DELAY",),
     fallback="NONE",

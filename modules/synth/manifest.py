@@ -57,7 +57,7 @@ import os
 import pathlib
 import runpy
 
-from remix.schema import Apply, Category, Detour, Linked, Option, Proof, Setting, Store
+from remix.schema import Apply, Category, Detour, Linked, Option, Evidence, Level, Setting, Store
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "synth" / "manifest.py"
 
@@ -66,7 +66,9 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_synth")["MODULE
 # are added here rather than in his manifest.
 MODULE = dataclasses.replace(
     MODULE, category=Category.MACHINES, author="timhastie/octatrick-modules", author_url="https://github.com/timhastie/octatrick-modules",
-    proof=Proof.HARDWARE, proof_note="`octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) through 2.9; the last two 2.9 fixes under the port")
+    evidence=(Evidence(Level.UNIT, unit="MKI", date="2026-09-26",
+        note="`octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) through 2.9; the last two 2.9 fixes under the "
+             "port"),))
 
 
 # PLACE: where the PLAYBACK page lives. DRAM (the default) links page.s into the platform

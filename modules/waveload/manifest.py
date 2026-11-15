@@ -9,14 +9,16 @@ EMAC state the engine uses. No detour of its own: CF METER's interrupt hook
 calls it (CF METER's remix.inc sets WAVE_LOAD).
 """
 
-from remix.schema import Category, Kind, Linked, Module, Proof
+from remix.schema import Category, Kind, Linked, Module, Evidence, Level
 
 MODULE = Module(
     name="waveload",
     key="WAVE LOAD",
     kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="image 92, Sam's MKII, 3 Oct 2026: one 4-voice engine 69.2 us of the 362.8 us frame, clean beside four sample tracks",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-03",
+        note="image 92, Sam's MKII, 3 Oct 2026: one 4-voice engine 69.2 us of the 362.8 us frame, clean beside "
+             "four sample tracks"),),
     doc="Probe: K 4-voice wave engines per frame interrupt (CF METER's BURN), for CF METER's duration readout.",
     requires=("CF METER",),
     linked=(Linked("waveload", "modules/waveload/load.s", dram=True),

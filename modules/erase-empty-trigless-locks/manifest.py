@@ -15,7 +15,7 @@ import dataclasses
 import pathlib
 import runpy
 
-from remix.schema import Category, Proof
+from remix.schema import Category, Evidence, Level
 
 _UPSTREAM = pathlib.Path(__file__).resolve().parent / "upstream" / "octabam-modules" / "erase-empty-trigless-locks" / "manifest.py"
 
@@ -24,4 +24,5 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_erase_empty_tri
 # are added here rather than in his manifest.
 MODULE = dataclasses.replace(
     MODULE, category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="the author's MKI (standalone image)")
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti",
+        note="(standalone image)"),))

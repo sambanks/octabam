@@ -15,11 +15,11 @@ KITS migrates the Parts into kits.work on the first load: back up projects
 first.
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="mods",
-    family="mods", proof=Proof.PORT, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="Every ColdFire mod in one image on the stock effects: MIDI SCENES, "
         "KITS, the recorder fixes, the KYOTI direct jump and reload, USB.",
     modules=("MIDI SCENES", "STORE", "KITS", "LOFI AMF FIX", "CC MAP",

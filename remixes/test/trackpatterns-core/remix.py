@@ -2,7 +2,7 @@
 DIRECT_JUMP_KYOTI among them) and the 14 stock effects, for running the
 module beside the modules it shares handlers with."""
 
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVENTS",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -15,8 +15,8 @@ STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATI
 
 REMIX = Remix(
     name="trackpatterns-core",
-    family="mods", proof=Proof.HARDWARE,
-    proof_note="MKII, OCTABAM8, 22 Oct 2026: gesture on T1 and M1, global change, save and power cycle passed (contributor's report)",
+    family="mods", evidence=(Evidence(Level.UNIT, unit="MKII", image="OCTABAM8", date="2026-10-22",
+        note="gesture on T1 and M1, global change, save and power cycle passed (contributor's report)"),),
     doc="TRACK PATTERNS on the core modules (KITS, DIRECT_JUMP_KYOTI and the other core modules).",
     modules=("TRACK PATTERNS",) + CORE + ("LOFI AMF FIX",) + STOCK14,
     fallback="NONE",

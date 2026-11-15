@@ -27,7 +27,7 @@ generate.py builds chords_unit.s from it, adapter.c and hooks.s.
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Evidence, Level, SymbolRef
 
 H = bytes.fromhex
 MIDI_MODES = 0x400A74C0                 # stock's MIDI trig modes: 0, 1, 4 (TRACKS, CHROMATIC, QUICK MUTE)
@@ -47,10 +47,9 @@ MODULE = Module(
     category=Category.MIDI_USB,
     author="djib",
     author_url="https://github.com/Djibdjib",
-    proof=Proof.HARDWARE,
-    proof_note="the owner's MKII, OCTABAM36-43 (3-5 Nov 2026, the live-djib rig, with SCALES): the page, "
-               "the slots, voice leading, the trig mode, live recording, TRIG + UP, the FUNC keyboard; "
-               "verify_chords (the port), verify.py (the engine)",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="djib", image="OCTABAM36", date="2026-11-05",
+        note="-43 (3-5 Nov 2026, the live-djib rig, with SCALES): the page, the slots, voice leading, the trig "
+             "mode, live recording, TRIG + UP, the FUNC keyboard; verify_chords (the port), verify.py (the engine)"),),
     doc="Chord progressions for a MIDI track: sixteen slots per bank on the trig keys, each chord "
         "built (root, type, inversion, spread, octave), typed on the trig keys (FUNC) or voiced from "
         "the slot before by voice leading (the smoothest first, then the next ones); a voice moved by "

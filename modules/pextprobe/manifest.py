@@ -11,7 +11,7 @@ the core freezes on the way. modules/pextprobe/README.md is the procedure.
 A test instrument: it ships in no remix but remixes/test/pext-probe.
 """
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness, Kind, MenuEntry, Module,
-                          Param, Proof, YBase)
+                          Param, Evidence, Level, YBase)
 
 _BLANK = Param(b"", 0)
 
@@ -20,7 +20,7 @@ MODULE = Module(
     key="PEXT PROBE",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.CHECK, proof_note="",
+    evidence=(Evidence(Level.EMULATOR),),
     doc="Measurement instrument: tests P memory above P:0x2000 and code in the shared window, and reports it in the track's audio.",
     menu=MenuEntry(
         fx2_id=12,                    # EQUALIZER's id: every id 4..31 is taken, so the probe replaces one stock effect

@@ -3,7 +3,7 @@
 A measurement build (modules/extprobe/README.md). EXTPROBE takes EQUALIZER's id and sits in the window gap below LOAD METER; no
 demand loader is in this image, so nothing but the reverb under test writes the slot at T8.
 """
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -17,7 +17,7 @@ STOCK13 = ("FILTER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
 
 REMIX = Remix(
     name="ext-probe",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="octabam's core and stock effects (EQUALIZER's id is the probe's) with EXTPROBE on FX1: the highest window word a reverb writes.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS") + STOCK13 + ("EXTPROBE",),
     fx1=("EXTPROBE", "FILTER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI"),

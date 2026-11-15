@@ -2,7 +2,7 @@
 
 A measurement build (modules/dlprobe/README.md). The loader sends on the frames the port delivers.
 """
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -17,7 +17,7 @@ OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "TRANSIENT")
 
 REMIX = Remix(
     name="dl-probe",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="octabam with DLPROBE on FX1 in place of EQUALIZER (the loader as in octabam).",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "DLPROBE") + STOCK14 + OURS,
     fx1=("DLPROBE", "SPECTRUM", "CHARACTER", "MODULATION", "FILTER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",

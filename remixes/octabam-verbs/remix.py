@@ -1,5 +1,5 @@
 """octabam-verbs -- octabam with VERBERATION in place of the three stock reverbs: the core ColdFire modules, every other ColdFire module that fits, the 11 other stock effects, and MODULATION, SPECTRUM, CHARACTER, SHATTER and COMPRESSOR's side-chain loaded on demand, and VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words. PLATE REV, SPRING REV and DARK REV are off both choosers and their ids are VERB PLATE, VERB ROOM and VERB HALL: VERBERATION's code starting in PLATE, ROOM and HALL mode."""
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -41,8 +41,8 @@ STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPA
 
 REMIX = Remix(
     name="octabam-verbs",
-    family="mods", proof=Proof.CHECK,
-    proof_note="not flashed; `make check` (CI)",
+    family="mods", evidence=(Evidence(Level.EMULATOR,
+        note="not flashed; `make check` (CI)"),),
     doc="octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand, with VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE",
                      "KEYBUS", "SC KEYBUS BRIDGE") + STOCK11 + OURS

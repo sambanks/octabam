@@ -67,19 +67,109 @@ CATEGORY_TITLE = {
 }
 
 
+class Level(Enum):
+    """How far a module or a remix has been proven, lowest first. A later
+    member is stronger evidence: `Level.UNIT.rank > Level.RENDER.rank`."""
+
+    BUILD = "build"                     # assembles and links
+    EMULATOR = "emulator"               # boots, or a gate passes, under the port or dsp_host; `ref` names the gate
+    RENDER = "render"                   # audio heard or measured in a local render, never flashed
+    UNIT = "unit"                       # ran on a unit
+    UNIT_MEASURED = "unit-measured"     # a number was read off a unit
+
+    @property
+    def rank(self) -> int:
+        return list(type(self)).index(self)
+
+
+LEVEL_TEXT = {Level.BUILD: "builds", Level.EMULATOR: "emulator", Level.RENDER: "local render",
+              Level.UNIT: "on a unit", Level.UNIT_MEASURED: "measured on a unit"}
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """One proof of a module or a remix. The module table, the remix index
+    and the DSP form gate read these; nothing else records a proof level.
+
+    `unit` is "MKI" or "MKII"; `who` a GitHub handle or a name; `image` the
+    image or BUILD tag that ran; `date` ISO (YYYY-MM-DD); `ref` a gate, a PR
+    or an issue; `commit` the tree that was proven. tools/build/evidence.py
+    reports a module whose sources changed after `commit` (or after `date`
+    when no commit is recorded). `note` holds what the fields cannot."""
+
+    level: Level
+    unit: str = ""
+    who: str = ""
+    image: str = ""
+    date: str = ""
+    ref: str = ""
+    commit: str = ""
+    note: str = ""
+
+    def __post_init__(self):
+        if self.unit not in ("", "MKI", "MKII"):
+            raise ValueError(f"Evidence.unit {self.unit!r}: MKI or MKII")
+        if self.date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", self.date):
+            raise ValueError(f"Evidence.date {self.date!r}: YYYY-MM-DD")
+        if self.unit and self.level.rank < Level.UNIT.rank:
+            raise ValueError(f"Evidence names a unit at level {self.level.name}")
+
+    def text(self) -> str:
+        """`on a unit (MKII, sambanks, OCTABAM88, 2026-09-27, #1080): note`."""
+        f = ", ".join(x for x in (self.unit, self.who, self.image, self.date, self.ref) if x)
+        return LEVEL_TEXT[self.level] + (f" ({f})" if f else "") + (f": {self.note}" if self.note else "")
+
+
 class Proof(Enum):
-    """How far a module or a remix has been proven. The vocabulary of the
-    module table's last column and the remix index's; `proof_note` names the
-    unit, image and date for HARDWARE, or the gate for the rest."""
+    """The old vocabulary, kept so a submodule's manifest that still declares
+    `proof=Proof.X, proof_note="..."` loads: Module and Remix turn the pair
+    into one Evidence (from_proof). In-tree manifests declare `evidence`."""
 
-    CHECK = "check"             # builds and boots under the port (make check)
-    RENDER = "render"           # heard or measured in a local render, never flashed
-    PORT = "port"               # a gate under the ColdFire port pins its behaviour
-    HARDWARE = "hardware"       # ran on a unit
+    CHECK = "check"
+    RENDER = "render"
+    PORT = "port"
+    HARDWARE = "hardware"
 
 
-PROOF_TEXT = {Proof.CHECK: "`make check`", Proof.RENDER: "local render",
-              Proof.PORT: "port-gated", Proof.HARDWARE: "on hardware"}
+_PROOF_LEVEL = {Proof.CHECK: Level.EMULATOR, Proof.PORT: Level.EMULATOR,
+                Proof.RENDER: Level.RENDER, Proof.HARDWARE: Level.UNIT}
+_MONTHS = {m: i + 1 for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
+
+
+def from_proof(proof, note: str, author: str = "") -> Evidence:
+    """One Evidence from an old (Proof, proof_note) pair: the unit, the image
+    tag, the date and the gate are read out of the note where it names them;
+    the note is kept whole."""
+    level, f = _PROOF_LEVEL[proof], {}
+    if level is Level.UNIT:
+        m = re.search(r"\bMK(II|I)\b", note)
+        if m:
+            f["unit"] = "MK" + m.group(1)
+        m = re.search(r"\b([A-Z][\w.]*(?: [A-Z]\w*)?)'s MKI", note)
+        if m:
+            f["who"] = m.group(1)
+        elif re.search(r"\b(author|owner)'s MKI", note) and author:
+            f["who"] = author
+        m = re.search(r"\b(OCTABAM\w+)\b", note)
+        if m:
+            f["image"] = m.group(1)
+        m = re.search(r"\b(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (20\d\d)\b", note)
+        if m:
+            f["date"] = f"{m.group(3)}-{_MONTHS[m.group(2)]:02d}-{int(m.group(1)):02d}"
+    else:
+        m = re.search(r"\b(verify_\w+)\b", note)
+        if m and level is Level.EMULATOR:
+            f["ref"] = m.group(1)
+    return Evidence(level, note=note, **f)
+
+
+def best(evidence):
+    """The strongest Evidence of a tuple (the latest-declared among equals), or None."""
+    out = None
+    for e in evidence:
+        if out is None or e.level.rank >= out.level.rank:
+            out = e
+    return out
 
 
 STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
@@ -1601,8 +1691,9 @@ class Module:
     category: Category | None = None
     author: str = ""             # a GitHub handle or a name, as the table credits it
     author_url: str = ""         # the author's repository or profile
-    proof: Proof | None = None
-    proof_note: str = ""         # the unit, image and date; or the gate
+    evidence: tuple[Evidence, ...] = ()   # schema.Evidence, one per proof; the table shows the strongest
+    proof: Proof | None = None            # old form, submodule manifests only: becomes `evidence` (from_proof)
+    proof_note: str = ""
     # ---- the checks (make check, make accept) ------------------------------
     # The verifiers `make check` runs when a remix carries this module
     # (schema.Gate). Shared gates -- the ledger selftest, the menu, the
@@ -1693,6 +1784,8 @@ class Module:
             yield "poke", p.addr, len(p.expect), p.note or hex(p.addr)
 
     def __post_init__(self):
+        if self.proof is not None and not self.evidence:
+            object.__setattr__(self, "evidence", (from_proof(self.proof, self.proof_note, getattr(self, "author", "")),))
         for need in self.requires:
             if need in {k for k, _why in self.conflicts}:
                 raise ValueError(f"{self.name}: {need!r} is in both requires and conflicts")
@@ -2034,7 +2127,8 @@ class Remix:
                                  # or NO_FALLBACK for the firmware's own NONE
     # ---- the remix index (remixes/README.md, `make docs`) -----------
     family: str = ""             # "rig", "effects", "mods", "reference"
-    proof: Proof | None = None   # schema.Proof; as a module's
+    evidence: tuple[Evidence, ...] = ()   # schema.Evidence; as a module's
+    proof: Proof | None = None            # old form: becomes `evidence` (from_proof)
     proof_note: str = ""
     # The name REMIX SWITCH shows for the image and its .RMX file is
     # `<image_name or name> <BUILD>`, upper case, at most 15 characters
@@ -2213,6 +2307,8 @@ class Remix:
     defaults: Mapping = field(default_factory=dict, hash=False)
 
     def __post_init__(self):
+        if self.proof is not None and not self.evidence:
+            object.__setattr__(self, "evidence", (from_proof(self.proof, self.proof_note, getattr(self, "author", "")),))
         if self.image_name and not re.fullmatch(r"[A-Z0-9 ._-]{1,12}", self.image_name):
             raise ValueError(f"remix {self.name!r}: image_name={self.image_name!r}; it is 1-12 characters of "
                              f"A-Z 0-9 space . _ - (the BUILD tag and a space follow, 15 in all)")

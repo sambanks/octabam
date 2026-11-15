@@ -12,7 +12,7 @@ no window pins. The three stock reverbs have no chooser row: FX2 is locked and B
 replaces them.
 """
 
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVENTS",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -30,7 +30,7 @@ COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT",
 
 REMIX = Remix(
     name="octabam-bus",
-    family="rig", proof=Proof.CHECK, proof_note="",
+    family="rig", evidence=(Evidence(Level.EMULATOR),),
     doc="CORE + the extra ColdFire modules of octabam + the delay and reverb bus (BusDelay on T1's FX2, BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8) + SPECTRUM, CHARACTER and MODULATION on FX1.",
     modules=("LOFI AMF FIX", "REVERB SERVER", "DELAY SERVER", "SEND", "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",

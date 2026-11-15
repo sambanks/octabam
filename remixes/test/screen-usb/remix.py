@@ -1,10 +1,10 @@
 """stock effects with USB MIDI and SCREEN: the Elektron screenshot SysEx request answered over USB (or DIN)."""
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="screen-usb",
-    family="mods", proof=Proof.CHECK, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock + USB MIDI + SCREEN.",
     modules=("USB", "SCREEN",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

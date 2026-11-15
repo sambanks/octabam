@@ -190,6 +190,7 @@ Two instruction sets, two toolchains:
 | `scripts/disasm.sh` (`make disasm`) | ColdFire | radare2 on the decompressed MAIN OS with the right arch and base (m68k BE @ `0x40000400`); `emac` uses objdump, the only decoder that reads the ColdFire V4e extensions |
 | `tools/ghidra/ot_ghidra.py` (`make ghidra GHIDRA=<dir> [IMAGE=out/mainos_bus.bin]`) | both | one Ghidra project holding the MAIN OS and both DSP payloads, each with its memory map, peripheral names and vectors, and the dispatch tables' effects named, plus a built image with its DRAM runtimes unpacked (`tools/ghidra/README.md`). The DSP programs need the DSP56300 processor module in `tools/ghidra/processors/`: `make ghidra-install GHIDRA=<stock 12.1.4>` makes a copy of your Ghidra with it and the ColdFire EMAC patch |
 | `tools/build/where.py` (`make where A=<addr> [N=bytes]`) | ColdFire | every doc paragraph citing that address (file:line first), the nearest other cited addresses, and a `scripts/disasm.sh emac` window, in one command (Jannik Aßfalg, PR #380). The docs are scanned on each call; there is no index file to keep in step, and a finding about an address goes in its topical doc |
+| `tools/build/evidence.py` (`make evidence`) | both | every module's proof level from its manifest's `Evidence` records (level, unit, who, image, date, ref); `evidence.py stale` lists the modules proven on a unit whose DSP, linked or cave sources have a commit after the evidence's `commit` or `date` (a report: exit 0) |
 
 ### Disassembling the ColdFire ✅ (Bryan T, 30 Aug 2026; re-read here)
 

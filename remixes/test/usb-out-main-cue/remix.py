@@ -5,11 +5,11 @@ USB AUDIO OUT MASTER's 1 ms). For testing USB AUDIO OUT MAIN CUE on a unit that 
 stock projects. Local test remix (27 Sep 2026).
 """
 
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="usb-out-main-cue",
-    family="mods", proof=Proof.PORT, proof_note="",
+    family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock + USB (MAIN CUE) (4 ch: MAIN + CUE).",
     modules=("USB",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
