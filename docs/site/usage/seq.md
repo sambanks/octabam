@@ -6,9 +6,10 @@ Digitone II.
 The window shows the title **SEQ**, the rings icon, a stock 3x2 DATA ENTRY
 grid, a step grid (hollow = off, solid = on; up to 4 rows of 16 for length
 64), and **LEN** with the **pattern** step count at the bottom right. The
-top-right corner of the SEQ logo panel shows the active knob page, **1/2** or
-**2/2**. Press **`[LEFT]`** or
-**`[RIGHT]`** to change the knob page. The step grid remains visible.
+top-right corner of the SEQ logo panel shows the active page number, **1/2**
+or **2/2**. This guide calls the pages **Rhythm** and **Harmony**. Press
+**`[LEFT]`** or **`[RIGHT]`** to switch between them. The step grid remains
+visible.
 
 It writes **pattern** sequencer data. SEQ settings save with the
 **project** and bank. Audio tracks default to **AMP** / **VOL**. MIDI tracks
@@ -64,12 +65,14 @@ Scroll **D** on **PLCK** to load that destination's **PULS** / **ROT** into
 
 ## Controls
 
-Page **1/2** keeps the rhythm controls. Page **2/2** changes only the knob
-assignments; the rhythm grid remains visible and unchanged.
+The **Rhythm** page edits trig and lock patterns. The **Harmony** page edits
+pitch settings. Switching pages changes the DATA ENTRY assignments; the step
+grid stays visible and unchanged. The logo panel shows **1/2** for Rhythm and
+**2/2** for Harmony.
 
-![SEQ page 1/2 on an audio track.](../../img/seq/panel.png)
+![SEQ Rhythm controls on an audio track.](../../img/seq/panel.png)
 
-### Page 1/2
+### Rhythm
 
 Same 3x2 cells as stock SETUP pages:
 
@@ -82,15 +85,15 @@ Same 3x2 cells as stock SETUP pages:
 | **E** | **DPTH** | How far locks swing from the Part value. **0** clears that destination. **SRC** / **PTCH** stays in scale around the Part's **PLAYBACK** **PTCH**. **AMP** / **VOL** sits at or below the Part's **AMP** **VOL**. Anything else swings ± **DPTH** |
 | **F** | | Empty |
 
-### Page 2/2
+### Harmony
 
 The second page controls melody and harmony for both audio and MIDI tracks.
 SEQ keeps these scale settings separate from the PROJECT SCALE QUANTIZER.
 
 **LEN** shows the active **pattern** length.
 
-![SEQ page 2/2 on an audio track.](../../img/seq/tonal.png)
-![SEQ page 2/2 on a MIDI track.](../../img/seq/midi-tonal.png)
+![SEQ Harmony controls on an audio track.](../../img/seq/tonal.png)
+![SEQ Harmony controls on a MIDI track.](../../img/seq/midi-tonal.png)
 
 | Knob | Label | Role |
 |---|---|---|

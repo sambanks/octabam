@@ -99,7 +99,7 @@
   "seq": {
     "panel": {
       "image": "seq/panel.png",
-      "caption": "SEQ page 1/2: rings icon, PULS, ROT, LANE, page+param, DPTH, step grid and LEN.",
+      "caption": "SEQ Rhythm page (1/2): rings icon, PULS, ROT, LANE, page+param, DPTH, step grid and LEN.",
       "remix": "test/seq",
       "source": "emulator panel UART",
       "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"
@@ -113,14 +113,14 @@
     },
     "tonal": {
       "image": "seq/tonal.png",
-      "caption": "SEQ audio page 2/2: SCAL, ROOT, RANG and PHRS; C and F are empty.",
+      "caption": "SEQ Harmony page (2/2) on audio: SCAL, ROOT, RANG and PHRS; C and F are empty.",
       "remix": "test/seq",
       "source": "emulator panel UART",
       "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"
     },
     "midi-tonal": {
       "image": "seq/midi-tonal.png",
-      "caption": "SEQ page 2/2 on a MIDI track: SCAL, ROOT, VOIC, RANG, PHRS and CHRD.",
+      "caption": "SEQ Harmony page (2/2) on MIDI: SCAL, ROOT, VOIC, RANG, PHRS and CHRD.",
       "remix": "test/seq",
       "source": "emulator panel UART",
       "firmware_sha256": "93d9a25dfd43e9d07b541f53fbb475cc35ae23a6e2bddd4b67aa79d87b715fd4"

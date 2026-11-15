@@ -8,9 +8,10 @@ a dedicated window, not a PROJECT menu entry.
 
 Hold a **TRACK** key and press **PAGE**: SEQ opens for that track — title
 SEQ, LEN at bottom right, a stock 3×2 grid, and a 4×16 step grid (hollow / solid) for
-all ≤64 steps. **`[LEFT]`** / **`[RIGHT]`** switch two knob pages; the step grid
-stays visible. Page **1/2** has A=PULS B=ROT C=LANE / D=DEST E=DPTH;
-**F** is empty. Page **2/2** has A=SCAL B=ROOT / D=RANG E=PHRS.
+all ≤64 steps. **`[LEFT]`** / **`[RIGHT]`** switch between the **Rhythm** and
+**Harmony** pages; the step grid stays visible. Rhythm has A=PULS B=ROT
+C=LANE / D=DEST E=DPTH; **F** is empty. Harmony has A=SCAL B=ROOT /
+D=RANG E=PHRS.
 MIDI C is VOIC 1-4 and F is CHRD. Audio C and F are empty and inactive. The page count sits at the top-right of the
 SEQ logo panel.
 **LANE**
