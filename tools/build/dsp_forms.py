@@ -11,7 +11,7 @@ addressing modes kept) plus the instruction's word count, so a short and a long 
 
 --census: for each module of the remix with a DspSection, the forms of its code words with no stock site and
 whether a register row of CHIP.md matches. Code words come from assembling the module's source with dsp_asm
-(`-org 800`, the ptable literals set to a placeholder) and decoding them with dsp56kDisassemble: every word of
+(`-org 800`, the ptable literals set to a placeholder, each payload's DspSection.subst applied) and decoding them with dsp56kDisassemble: every word of
 an assembled source is code (dsp_asm has no data directive). Modules with no source on disk (a generated one
 the build writes) and the build's own stubs and trampolines are reported as not covered.
 """
@@ -79,9 +79,11 @@ def register_rows(path=CHIP):
     return rows
 
 
-def assemble_words(src_path):
-    """(hex words string, error) of a module source assembled at P:$800."""
+def assemble_words(src_path, subst=None):
+    """(hex words string, error) of a module source assembled at P:$800, a payload's DspSection.subst applied."""
     src = pathlib.Path(src_path).read_text().replace("$fab1e0", "$000400").replace("$fab2e0", "$000400")
+    for k, v in (subst or {}).items():
+        src = src.replace(k, v)
     with tempfile.TemporaryDirectory(prefix="dspforms.") as d:
         d = pathlib.Path(d)
         (d / "s.asm").write_text(src)
@@ -108,11 +110,15 @@ def census(remix):
         if not src.exists():
             out[m.key] = {"source": d.asm, "status": "no source on disk (written by the build)"}
             continue
-        words, err = assemble_words(src)
-        if words is None:
+        mine, err = {}, None
+        for tag in sorted(d.payloads):                    # a payload's subst can replace instructions
+            words, err = assemble_words(src, dict((d.subst or {}).get(tag, {})))
+            if words is None:
+                break
+            mine.update(disassemble(words, "800"))
+        if err:
             out[m.key] = {"source": d.asm, "status": f"dsp_asm failed: {err[0]}"}
             continue
-        mine = disassemble(words, "800")
         new = {f: ex.split(";")[0].strip() for f, ex in mine.items() if f not in stock}
         used |= set(new)
         out[m.key] = {"source": d.asm, "status": "listing", "forms": len(mine), "payloads": sorted(d.payloads),
