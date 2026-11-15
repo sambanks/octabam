@@ -9,6 +9,10 @@ stock effects and both effect menus stay as stock has them, with stock LO-FI's
 AMF knob fixed. The [Octabam Remix Manual](reference/manual/octabam/index.md)
 has a page for every feature.
 
+The remix includes [SCOPE](reference/manual/octabam/utilities/scope.md), opened with **[DOWN]** + **[TEMPO]**,
+and [TUNER](reference/manual/octabam/sequencer/tuner.md), opened with **[UP]** +
+**[TEMPO]**. They share the TEMPO key dispatcher and work in the same build.
+
 ## The effects
 
 SPECTRUM, CHARACTER and MODULATION are on FX1 and FX2, and SHATTER on FX2, beside the stock effects.
@@ -36,6 +40,7 @@ change that puts one on all eight tracks, or takes it off them, leaves about
   [CC map](reference/manual/octabam/midi-usb/cc-map.md) and
   [CC feedback](reference/manual/octabam/midi-usb/cc-feedback.md).
 - [USB](reference/manual/octabam/midi-usb/usb.md): MIDI both ways, plus audio to a computer: the 16 track channels, MAIN and CUE by default.
+- [SCOPE](reference/manual/octabam/utilities/scope.md) and [TUNER](reference/manual/octabam/sequencer/tuner.md): full-screen track audio and note tuning.
 - [OCTA-303](reference/manual/octabam/machines/octa303.md): a TB-303 voice as a machine.
 - [WAVE](reference/manual/octabam/machines/wavecf.md): a 4-voice wavetable voice with chords as a machine; a Part holds two machines of either kind.
 - [Pattern mute](reference/manual/octabam/sequencer/pattern-mute.md): double-press FUNC to mute tracks per pattern as well as globally.

@@ -85,6 +85,7 @@ nav:
           - Copy Project: reference/manual/octabam/utilities/copy-project.md
           - Mode Defaults: reference/manual/octabam/utilities/mode-defaults.md
           - Remix Switch: reference/manual/octabam/utilities/remix-switch.md
+          - Scope: reference/manual/octabam/utilities/scope.md
       - Fixes to stock behaviour:
           - ATA Write Guard: reference/manual/octabam/fixes/ata-write-guard.md
           - Batch Bugfixes: reference/manual/octabam/fixes/batch-bugfixes.md
