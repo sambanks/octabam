@@ -41,7 +41,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 EMU = ROOT / "out/emu/ot_emu"
 PY = ROOT / ".venv/bin/python3"
 OUT = ROOT / "out/dlload"
-JOBS = int(os.environ.get("OCTABAM_GATE_JOBS", "0") or 0)
+_JOBS = os.environ.get("OCTABAM_GATE_JOBS", "")
+JOBS = int(_JOBS) if _JOBS.strip() else 3        # 0 = every scenario at once; unset = 3 (see the launch loop)
 STAGE = 0x2900
 FX1_LIVE, FX2_LIVE = 0x80000EC4, 0x80000ECC
 FX1_PART, FX2_PART = 0x8ED80, 0x8ED88            # a Part's FX ids of track 1, from its bank's base (Part p: + p * PART_STRIDE)
@@ -230,8 +231,10 @@ def main():
         if tag.startswith("pick") or tag in ("used", "blocked", "both-blocked", "stuck", "reverb-late", "plate-ok", "spring-ok",
                                              "dark-id-ok", "dark-id-both-ok", "verb-ok"):
             cmd += ["--watch-pc", f"{TOAST:#x}"]
-        # OCTABAM_GATE_JOBS caps the emulators running at once (each holds about 1 GB; unset, every scenario starts
-        # together, as before): on a 16 GB machine the kernel's memory killer took runs with all of them at once
+        # OCTABAM_GATE_JOBS caps the emulators running at once (each holds about 1 GB); unset it is 3, and 0 starts
+        # every scenario together. Uncapped, the run holds about 14 GB: on a 16 GB machine the kernel's memory killer
+        # took it, and in CI (sambanks/octabam#1129, 15 Nov 2026, twice) the runner was shut down 2 minutes after
+        # this gate started, taking the unit's other jobs with it
         while JOBS and sum(p.poll() is None for p, _ in procs.values()) >= JOBS:
             time.sleep(0.5)
         fh = open(OUT / f"{tag}.txt", "w")
