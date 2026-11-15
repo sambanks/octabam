@@ -117,8 +117,10 @@ TRACKS PRE; the control N2 is `octabam` without REMOTE.
 
 - The ring over `0xc0/0x5a`: header and records, 0 lost. A menu load of the project reads LOADMASK 254,
   BANKW, LOADALL, NEWPROJ, LOADMASK 255.
-- `wait_for` after a MIDI START (host clock): PLAYING 1 in 7 to 8 ms; after a program change: PATTERN in 7.9
-  and 8.0 s (the pattern's end), QPATTERN first.
+- `wait_for` after a MIDI START (host clock): PLAYING 1 in 7 to 8 ms; after a program change while
+  playing: PATTERN in 7.9 and 8.0 s (the pattern's end), QPATTERN first.
+- A program change with the sequencer stopped: PATTERN and QPATTERN 4.5 to 5.9 ms after the send (8 sends:
+  with and without a host clock, before any START and after START and STOP).
 - A MIDI STOP writes PLAYING 2. PLAYING 0 follows one frame before the next START, and on entering USB DISK
   MODE.
 - The trace: 461 consecutive entries 354.0 to 372.5 µs apart, mean 362.8 µs.
@@ -126,27 +128,31 @@ TRACKS PRE; the control N2 is `octabam` without REMOTE.
   444 of 453 entries (98.0 %) interrupted `main_idle` (`0x4001fc9c`, main's `bras .`); playing, 322 of 462
   (69.7 %), and 140 in stock pages with no symbol, most of them `0x40098300` to `0x40098bff` (the per-voice
   work, inferred from the CF cost notes' `0x40098a5c`).
-- The file sink: `/LOG 261115.txt` held records 0 to 16 as `RMT` lines, equal to the ring; lines written in
-  one flush carry that flush's time.
+- The file sink: `/LOG 261115.txt` held records 0 to 16 as `RMT` lines, equal to the ring. Each line
+  carries the time of its own write: 12 to 17 ms a line (84 and 60 lines in two full seconds of one flush;
+  the reload's NEWPROJ to LOADMASK 255 took 9.60 s with nothing pending, 10.68 and 10.70 s with about 100
+  lines, 12.65 s with about 200).
 - COMMAND 1: the card mounted on the host 4.5 s later. COMMAND 2: the project reloaded, LOADMASK 255 after
   9.9 s; the command stays pending until then, so a command sent before it is refused.
 - COMMAND 4: the list over PEEK holds the card's 10 files. The list is empty after a boot until MAIN MENU
   opens or COMMAND 4 runs.
-- COMMAND 3: 6 boots (5 of N1's file, 1 of N2's); the ring answered 7.0 and 8.0 s after the command. It
-  saves the selection as the panel's YES does: a power-cycle then boots the commanded file. One of the 6
-  stopped on the boot screen and did not return to USB (`docs/contributing/FAILURE_MODES.md`).
+- COMMAND 3: 10 boots (8 of N1's file, 2 of N2's); the ring answered 7.0 to 8.0 s after the command. It
+  saves the selection as the panel's YES does: a power-cycle then boots the commanded file. One of the 10,
+  the first, stopped on the boot screen and did not return to USB (`docs/contributing/FAILURE_MODES.md`).
 - The ring does not survive a boot: its cells are the runtime's `.data`, which a boot loads again (read
   from the source; the head after each boot was 0 or 1).
 - LOAD METER's ColdFire share, N1 against N2: playing, 30 s, 64.48 % and 64.94 % (two runs) against
-  64.85 %; fresh after the load, stopped, 26.08 % (15 s) against 25.7 % (one reading). The longest run
-  playing: 492 and 485 µs against 424 µs.
+  64.85 %; stopped, fresh after a boot by COMMAND 3, three 15 s readings each, 25.91 % against 25.73 %
+  (the three equal to 0.01): 0.18 points, 0.65 µs a frame interrupt. The longest run playing: 492 and
+  485 µs against 424 µs.
 - FRAME GUARD's first-START assay (`ot_stall.py`, 20 channels, one trial a power-cycle): 8 of 8 ok.
 
 ## Open
 
-- The freeze after one COMMAND 3 boot: not repeated in 5 more; its cause is not known.
-- The file sink's write time: not measured.
-- N2's stopped share from more than one reading.
+- The freeze after one COMMAND 3 boot: not repeated in 9 more, two of them from the same state (a menu
+  load, PLAY from the panel, the same MIDI and COMMAND sequence; one of the two the first boot after a
+  flash, as the frozen one was); its cause is not known.
+- A flush of n records holds its task 12 to 17 ms a record.
 - A host cannot leave an image without REMOTE: the panel's FLASHED row or FUNC at power-on.
 - EMPTY RESET, project delete and card format are not located, so the command table's forbidden set holds OS
   UPGRADE's four routines only.

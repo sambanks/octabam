@@ -1023,7 +1023,7 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   never binds (panel frozen, USB gone), cause not established. 27 to 35 bad DSP records per 10 min at pattern wraps
   while MODULATION's code runs, with and without this fix.
 
-## Stopped on the boot screen after REMOTE's COMMAND 3 booted an `.RMX`: 1 of 6 boots 🟡 seen once, cause not known
+## Stopped on the boot screen after REMOTE's COMMAND 3 booted an `.RMX`: 1 of 10 boots 🟡 seen once, cause not known
 
 MKII, 15 Nov 2026, image N1 (`octabam` with REMOTE, commit 95e52aee). COMMAND 3 for `OCTABAM N1.RMX` was
 taken; the unit reset, showed the boot screen and did not return to USB in 150 s. A power-cycle recovered it.
@@ -1031,8 +1031,9 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
 - Before the command, in that boot: the first boot after flashing N1, the project loaded from the menu, PLAY
   from the panel, a MIDI START, two program changes and a STOP, COMMAND 1 and 2, COMMAND 4.
 - The host polled for the device from 3 s after the command.
-- Five later COMMAND 3 boots returned: three with 20 to 75 s of host silence, two polled from 3 s, one of
-  those after the same MIDI and COMMAND sequence.
-- Not tested: the first `.RMX` boot after a flash; a menu load and a panel PLAY before the command; the same
-  file booted from BRAIN > REMIXES in that state.
+- Nine later COMMAND 3 boots returned: five with 20 to 75 s of host silence, four polled from 3 s; two of
+  the four after the same sequence from a menu load and a panel PLAY, one of those the first boot after
+  flashing N1 again.
+- Not tested: the same file booted from BRAIN > REMIXES in that state; the card's state at the time (it was
+  the first selection REMIX SWITCH saved from this image).
 
