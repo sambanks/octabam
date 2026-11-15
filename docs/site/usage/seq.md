@@ -98,7 +98,8 @@ SEQ keeps these scale settings separate from the PROJECT SCALE QUANTIZER.
 
 Audio INTV applies when RANG is above zero. At RANG 0, PTCH follows the Part
 value. Set different intervals on separate audio tracks to play a harmony.
-The tonal page has not yet been confirmed on hardware.
+The author tested SEQ 83 on an Octatrack MKII, including clearing unused
+MIDI voices when reducing VOIC.
 
 MIDI **VOIC** 1 writes one note. Higher values add notes from the selected
 **CHRD** shape. Filling with **VOIC** 1 clears the NOT2, NOT3 and NOT4 locks on

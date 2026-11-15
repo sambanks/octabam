@@ -161,10 +161,10 @@ degree (unison through seventh), so separate tracks can form a harmony.
 Audio interval only applies when **RANG** is nonzero; at RANG 0, PTCH follows
 the Part value.
 
-SEQ 82 was copied to the author's MKII card on 15 Nov 2026. The author
-reported that VOIC 2 displayed -64 in unused NOTE3/4 slots. This tip clears
-those locks to empty; the fix passes the port scenarios and awaits a unit retest.
-The report confirms the controls were exercised, not complete audio validation.
+Hardware report, 15 Nov 2026: the author tested SEQ 83 on the MKII and
+confirmed it works, including the fix that leaves unused NOTE3/4 slots empty
+at VOIC 2. SEQ 82 had displayed -64 in those slots. The report does not
+provide separate measurements of audio pitch or MIDI timing.
 
 MIDI mode has separate TRIG/PLOCK rhythms, per-destination depth and
 settings stored in `euclid.work` version 9. The reader migrates earlier

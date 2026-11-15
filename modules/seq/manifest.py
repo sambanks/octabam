@@ -55,6 +55,9 @@ MODULE = Module(
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
     evidence=(
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="SEQ 83.RMX", date="2026-11-15",
+                 note="Author confirmed SEQ 83 works on the unit, including empty unused "
+                      "NOTE3/4 slots after a VOIC 2 fill. No separate audio or timing measurements."),
         Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-11-11",
                  note="CX EUCL93, 11 Nov 2026: dual LANE, write-only, LOCK_COLL + floor, PLCK overwrites TRIG-placed locks,"
                       " TRIG reshape keeps other DEST locks (TL promote); also verify_seq."),
