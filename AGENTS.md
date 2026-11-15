@@ -228,6 +228,7 @@ moment it costs real work, and add its line here.
 - [A runtime's own bytes can spell the clones' staging range](docs/contributing/TRAPS.md#trap-staging-coincidence) — the build moves staging and re-checks; a word that moves with it is stale.
 - [The machine list's key handlers clamp the cursor to 5](docs/contributing/TRAPS.md#trap-machine-clamp) — a sixth row fits by accident, a seventh needs the ten `moveq`s; a port key held 0.25 s repeats.
 - [Narrowing the port's DMA arm rule broke a gate whose image never moved](docs/contributing/TRAPS.md#trap-dma-arm) — a port change is every port gate's instrument; CI's cached passes hide it.
+- [A wall-clock timeout in a port gate failed on a loaded runner](docs/contributing/TRAPS.md#trap-wall-timeout) — the same tree passed on its PR and failed on main; under the port, waits and settles are emulated time (`Events(clock=)`, `MenuPort.run` finishes a capped slice).
 
 - [Resident relinks can republish imported staging addresses](docs/contributing/TRAPS.md#trap-resident-import-exports) — publish only owned exports; `midi-follow-events` exercises descriptor relocation with MIDI Part State.
 - [A ColdFire save frame sized for the wrong register count overwrites the return address](docs/contributing/TRAPS.md#trap-cf-frame) — `lea -4N(%sp)` + `movem.l regs,(%sp)`; no pre-decrement `movem`, no `eor <mem>,Dn`, no `st <mem>`, no `move.b #imm,abs.l`.

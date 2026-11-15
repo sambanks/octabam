@@ -170,6 +170,28 @@ class Waits(unittest.TestCase):
         u.add(ev.BY_NAME["LOADMASK"], 255)
         self.assertEqual(e.wait_for(("LOADALL", 2), timeout=1, tick=lambda: None)["name"], "LOADMASK")
 
+    def test_wait_for_times_out_on_the_given_clock(self):
+        """Under the port the timeout is emulated time: the wait gives up after the ticks advance the clock past
+        it, however long each tick takes in wall time, and not before."""
+        u = Unit()
+        now = [0.0]
+        e = ev.Events(u.ctrl, clock=lambda: now[0])
+        ticks = []
+
+        def tick():
+            ticks.append(1)
+            now[0] += 0.01                        # one tick = 10 emulated ms
+            if len(ticks) == 250:
+                u.add(ev.BY_NAME["LOADALL"], 0)
+
+        self.assertEqual(e.wait_for("LOADALL", timeout=3.0, tick=tick)["name"], "LOADALL")
+        self.assertEqual(len(ticks), 250)
+        with self.assertRaises(TimeoutError):
+            e.wait_for("LOADALL", timeout=1.0, tick=tick)
+        self.assertAlmostEqual(now[0], 2.5 + 1.0, delta=0.02)
+        with self.assertRaises(TimeoutError):
+            e.wait_screen(timeout=0.5, tick=tick)
+
     def test_wait_for_arg_filter(self):
         u = Unit()
         e = ev.Events(u.ctrl)
