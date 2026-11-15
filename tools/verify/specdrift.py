@@ -77,7 +77,13 @@ def check():
     for e in sorted(have - set(st["EVENTS"])):
         fails.append(f"docs/specs/STORE.md: the events table names {e}, which EVENTS does not have")
     sec = _section(text, "Clients")
-    want = {(k, p): set(ev) for k, p, ev in st["CLIENTS"]}
+    # a tuple key (a client present when all its modules are) reads "A + B + C" in the table
+    def name(k):                             # "A + B + C"; a nested tuple "(X or Y)", one alone "X"
+        if not isinstance(k, tuple):
+            return k
+        return " + ".join(name(m) if not isinstance(m, tuple) else
+                          (m[0] if len(m) == 1 else "(" + " or ".join(m) + ")") for m in k)
+    want = {(name(k), p): set(ev) for k, p, ev in st["CLIENTS"]}
     got = {}
     for cells in _rows(sec or []):
         m = re.match(r"(.+?) \(`(\w+)`\)$", cells[0])

@@ -203,6 +203,15 @@ def capture_drummer(p,r):
     shot(p,'drummer','live','The LIVE page: SEED DENS CPLX ORN BRK GHST.',r)
     p.press('pg_playback',settle=600)
     shot(p,'drummer','balance','SRC again: KIT BALANCE, the mix of the drums.',r)
+    press(p,'rec');press(p,'trig3')                # GRID RECORDING, a trig on step 3
+    p.key('trig3',True);p.run(200);enc(p,0,-64);enc(p,2,6);p.run(300)
+    shot(p,'drummer','balance-step','GRID RECORDING, trig 3 held: KIT BALANCE locks step 3 (KICK OUT, HATS +30).',r)
+    p.key('trig3',False);p.run(300);press(p,'trig3') # the trig taken off: its locks with it
+    press(p,'rec')
+    p.key('scene_a',True);p.run(200);enc(p,1,-4);p.run(300)
+    shot(p,'drummer','balance-scene','SCENE A held: KIT BALANCE locks the scene (SNARE -20); the others read --.',r)
+    p.key('func',True);p.run(60);enc(p,1,1);p.key('func',False)   # FUNC + turn: the scene lock removed
+    p.key('scene_a',False);p.run(300)
     p.press('pg_playback',settle=600)
     shot(p,'drummer','next','SRC a third time: NEXT, the orders, nothing armed, the sequencer stopped.',r)
     enc(p,1,1);enc(p,2,3);enc(p,3,1);p.run(400)
@@ -525,7 +534,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','drummer'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','resonator','drummer'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -557,6 +566,7 @@ def main():
         elif group=='machines':jobs=[('analog-bassdrum',capture_analog,[]),('octatrick',capture_synth,[]),('blackpyramids-303',capture_blackpyramids,[]),('octa303',capture_octa303,[]),('cxosc',capture_cxosc,[])]
         elif group=='devilish':jobs=[('devilish',capture_fx,[(2,'fx2','DEVILISH')])]
         elif group=='vibrato':jobs=[('vibrato',capture_fx,[(2,'fx1','VIBRATO')])]
+        elif group=='resonator':jobs=[('resonator',capture_fx,[(2,'fx1','RESONATOR')])]
         elif group=='probes':jobs=[('cfmeter',capture_fx,[(8,'fx2','CF METER')])]
         elif group=='utilities':jobs=[('buffer-saver',capture_buffer_saver,[])]
         elif group=='varispeed':jobs=[('varispeed',capture_varispeed,[])]
