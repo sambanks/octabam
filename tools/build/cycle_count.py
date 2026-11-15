@@ -211,7 +211,9 @@ def measure(name):
     reasoning MODEFORK applies to alternatives INSIDE one loop; this is the
     case where the fork sits outside it.
 
-    ⚠️ Summing them instead would price every mode at once -- charging a
+    `; CYCLES_SEQUENTIAL_LOOPS` opts into adding successive passes instead.
+
+    ⚠️ Summing unmarked mode loops would price every mode at once -- charging a
     five-mode module five engines and making it look unaffordable.
     """
     src = prep(name)
@@ -222,6 +224,14 @@ def measure(name):
         sys.exit(f"{name}: no `do n7,>...` sample loop found")
     if len(hits) > 1:
         alts = [_measure_loop(name, src, lines, i) for i in hits]
+        if "; CYCLES_SEQUENTIAL_LOOPS" in src:
+            combined = dict(alts[0])
+            combined["cycles"] = sum(a["cycles"] for a in alts)
+            combined["words"] = sum(a["words"] for a in alts)
+            combined["inner"] = "sequential loops (" + "/".join(
+                str(a["cycles"]) for a in alts) + ")"
+            combined["modes"] = [("sequential", "", combined["cycles"])]
+            return combined
         worst = max(alts, key=lambda m: m["cycles"])
         others = "/".join(str(a["cycles"]) for a in alts)
         worst = dict(worst)
