@@ -99,17 +99,31 @@
   "seq": {
     "panel": {
       "image": "seq/panel.png",
-      "caption": "SEQ: title SEQ, rings icon, A/B PULS/ROT, C=LANE TRIG/PLCK, D=page+param, E=DPTH, step grid, LEN bottom-right.",
-      "remix": "test/seq",
+      "caption": "SEQ page 1/2: rings icon, PULS, ROT, LANE, page+param, DPTH, step grid and LEN.",
+      "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "e8a894a6fbc8e4c579aacc244940e7bc6f933d661693a556b46dc4bfcffc6bdb"
+      "firmware_sha256": "c0ba05266647a601025394c70fb436a3d2bd76e93ac0ca564a3ba27d8820d263"
     },
     "clear": {
       "image": "seq/clear.png",
       "caption": "SEQ clear menu: CLEAR DEST, CLEAR ALL DEST, CLEAR ALL+TRIGS.",
-      "remix": "test/seq",
+      "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "e8a894a6fbc8e4c579aacc244940e7bc6f933d661693a556b46dc4bfcffc6bdb"
+      "firmware_sha256": "c0ba05266647a601025394c70fb436a3d2bd76e93ac0ca564a3ba27d8820d263"
+    },
+    "tonal": {
+      "image": "seq/tonal.png",
+      "caption": "SEQ page 2/2: SCAL, ROOT, MODE, RANG, PHRS and INTV.",
+      "remix": "manual-features",
+      "source": "emulator panel UART",
+      "firmware_sha256": "c0ba05266647a601025394c70fb436a3d2bd76e93ac0ca564a3ba27d8820d263"
+    },
+    "midi-tonal": {
+      "image": "seq/midi-tonal.png",
+      "caption": "SEQ page 2/2 on a MIDI track: SCAL, ROOT, MODE, RANG, PHRS and HARM.",
+      "remix": "manual-features",
+      "source": "emulator panel UART",
+      "firmware_sha256": "c0ba05266647a601025394c70fb436a3d2bd76e93ac0ca564a3ba27d8820d263"
     }
   },
   "rec-threshold": {
@@ -118,14 +132,14 @@
       "caption": "TRIG set to THR in RECORDING SETUP 1.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"
+      "firmware_sha256": "c0ba05266647a601025394c70fb436a3d2bd76e93ac0ca564a3ba27d8820d263"
     },
     "level": {
       "image": "rec-threshold/level.png",
       "caption": "Threshold LEV and live IN meter in RECORDING SETUP 2.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"
+      "firmware_sha256": "c0ba05266647a601025394c70fb436a3d2bd76e93ac0ca564a3ba27d8820d263"
     }
   },
   "stems": {
@@ -134,16 +148,16 @@
       "caption": "The STEM REC recording window.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "fdb1ba5f644079d738e46d80b7ebe8b2da0b75c055eeae199896dc2288fda0a0"
+      "firmware_sha256": "c0ba05266647a601025394c70fb436a3d2bd76e93ac0ca564a3ba27d8820d263"
     }
   },
   "rnd-name": {
     "name": {
       "image": "rnd-name/name.png",
-      "caption": "Random project name filled with FUNC + CUE.",
+      "caption": "Random project name after FUNC + CUE.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"
+      "firmware_sha256": "c0ba05266647a601025394c70fb436a3d2bd76e93ac0ca564a3ba27d8820d263"
     }
   },
   "spectrum": {
@@ -988,70 +1002,14 @@
       "caption": "T1 + UP: the FREE LOOP window for T1, ROLE FREE, 4/4, BARS AUTO, 70-160 BPM.",
       "remix": "free-loop",
       "source": "emulator panel UART",
-      "firmware_sha256": "a206ee16b1ced7596cd88d933071570657ad55a3446ede2f03561099c86fef81"
+      "firmware_sha256": "bb0b4c6080a8ab36cdbec79a2409660f8bc8bc7516a5977fe40b3df3eef9cd2a"
     },
     "popup": {
       "image": "free-loop/popup.png",
       "caption": "CC 90 on channel 1, 3 s into the free take: T1's REC popup, FIRST LOOP.",
       "remix": "free-loop",
       "source": "emulator panel UART",
-      "firmware_sha256": "a206ee16b1ced7596cd88d933071570657ad55a3446ede2f03561099c86fef81"
-    },
-    "window-pattern": {
-      "image": "free-loop/window-pattern.png",
-      "caption": "The window scrolled to ENTRY and PLAY: how T1 enters the pattern in the header (A01).",
-      "remix": "free-loop",
-      "source": "emulator panel UART",
-      "firmware_sha256": "a206ee16b1ced7596cd88d933071570657ad55a3446ede2f03561099c86fef81"
-    },
-    "window-undo": {
-      "image": "free-loop/window-undo.png",
-      "caption": "The last rows: UNDO buffer R5, UNDO TO LAST, MUTE NOW, POPUP ON.",
-      "remix": "free-loop",
-      "source": "emulator panel UART",
-      "firmware_sha256": "a206ee16b1ced7596cd88d933071570657ad55a3446ede2f03561099c86fef81"
-    },
-    "armed": {
-      "image": "free-loop/armed.png",
-      "caption": "CC 90 again, the loop playing: T1 ARMED, waiting for its loop start.",
-      "remix": "free-loop",
-      "source": "emulator panel UART",
-      "firmware_sha256": "a206ee16b1ced7596cd88d933071570657ad55a3446ede2f03561099c86fef81"
-    },
-    "overdub": {
-      "image": "free-loop/overdub.png",
-      "caption": "The overdub pass: OVERDUB, the bar and the pass's progress.",
-      "remix": "free-loop",
-      "source": "emulator panel UART",
-      "firmware_sha256": "a206ee16b1ced7596cd88d933071570657ad55a3446ede2f03561099c86fef81"
-    },
-    "finishing": {
-      "image": "free-loop/finishing.png",
-      "caption": "CC 90 during the pass: FINISHING, the pass ends at the loop's end.",
-      "remix": "free-loop",
-      "source": "emulator panel UART",
-      "firmware_sha256": "a206ee16b1ced7596cd88d933071570657ad55a3446ede2f03561099c86fef81"
-    },
-    "undo": {
-      "image": "free-loop/undo.png",
-      "caption": "CC 92: UNDO, the last pass taken back from the next loop start.",
-      "remix": "free-loop",
-      "source": "emulator panel UART",
-      "firmware_sha256": "a206ee16b1ced7596cd88d933071570657ad55a3446ede2f03561099c86fef81"
-    },
-    "marks-armed": {
-      "image": "free-loop/marks-armed.png",
-      "caption": "CC 90 on channel 2: T2 armed (POPUP OFF), a ring blinking left of its icon.",
-      "remix": "free-loop",
-      "source": "emulator panel UART",
-      "firmware_sha256": "a206ee16b1ced7596cd88d933071570657ad55a3446ede2f03561099c86fef81"
-    },
-    "marks-overdub": {
-      "image": "free-loop/marks-overdub.png",
-      "caption": "T2 overdubbing: a dot left of its icon.",
-      "remix": "free-loop",
-      "source": "emulator panel UART",
-      "firmware_sha256": "a206ee16b1ced7596cd88d933071570657ad55a3446ede2f03561099c86fef81"
+      "firmware_sha256": "bb0b4c6080a8ab36cdbec79a2409660f8bc8bc7516a5977fe40b3df3eef9cd2a"
     }
   },
   "midi-follow": {
@@ -1099,140 +1057,77 @@
       "caption": "FUNC + SRC on T1: the machine list, DRUMMER the last row.",
       "remix": "drummer",
       "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     },
     "ask": {
       "image": "drummer/ask.png",
       "caption": "DRUMMER asks to make a kit from the slices (AUTO).",
       "remix": "drummer",
       "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     },
     "auto": {
       "image": "drummer/auto.png",
       "caption": "AUTO done: the toast says how many slices were sorted.",
       "remix": "drummer",
       "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     },
     "config": {
       "image": "drummer/config.png",
       "caption": "DRUMMER chosen: its CONFIG knobs STYL VEL ALT SWNG HUMN VAR.",
       "remix": "drummer",
       "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     },
     "live": {
       "image": "drummer/live.png",
       "caption": "The LIVE page: SEED DENS CPLX ORN BRK GHST.",
       "remix": "drummer",
       "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     },
     "balance": {
       "image": "drummer/balance.png",
       "caption": "SRC again: KIT BALANCE, the mix of the drums.",
       "remix": "drummer",
       "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
+    },
+    "fills": {
+      "image": "drummer/fills.png",
+      "caption": "SRC a third time: FILLS.",
+      "remix": "drummer",
+      "source": "emulator panel UART",
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     },
     "kit-zones": {
       "image": "drummer/kit-zones.png",
       "caption": "Trig 1 held + BANK: the KIT window, page 1 (zone, role).",
       "remix": "drummer",
       "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     },
     "kit-align": {
       "image": "drummer/kit-align.png",
       "caption": "KIT window page 2: ALIGN, GAIN, SCENE, DOSE.",
       "remix": "drummer",
       "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     },
     "kit-track": {
       "image": "drummer/kit-track.png",
       "caption": "KIT window page 3: the track's settings.",
       "remix": "drummer",
       "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     },
     "redrum": {
       "image": "drummer/redrum.png",
       "caption": "Page 3, F turned once: REDRUM AUTO, the loop read as 1 bar of 16 slices.",
       "remix": "drummer",
       "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
-    },
-    "next": {
-      "image": "drummer/next.png",
-      "caption": "SRC a third time: NEXT, the orders, nothing armed, the sequencer stopped.",
-      "remix": "drummer",
-      "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
-    },
-    "next-ready": {
-      "image": "drummer/next-ready.png",
-      "caption": "NEXT: STOP, FILL+CR, a TRIP fill set, each marked * while it waits for WHEN.",
-      "remix": "drummer",
-      "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
-    },
-    "next-playing": {
-      "image": "drummer/next-playing.png",
-      "caption": "PLAY: the phrase fills up to the playhead, bar 2 of 4.",
-      "remix": "drummer",
-      "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
-    },
-    "next-armed": {
-      "image": "drummer/next-armed.png",
-      "caption": "A WHEN on PHRASE, the knob at rest: the order armed, ^ where it fires, the beats to go.",
-      "remix": "drummer",
-      "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
-    },
-    "next-close": {
-      "image": "drummer/next-close.png",
-      "caption": "The last beat before the phrase: the armed values blink.",
-      "remix": "drummer",
-      "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
-    },
-    "next-stopped": {
-      "image": "drummer/next-stopped.png",
-      "caption": "Done: the drummer stopped, WHEN back to --, B now reads RESUME.",
-      "remix": "drummer",
-      "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
-    },
-    "kit-fills": {
-      "image": "drummer/kit-fills.png",
-      "caption": "KIT window page 4: FILLS, the fills' vocabulary (all AUTO).",
-      "remix": "drummer",
-      "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
-    },
-    "kit-fills-set": {
-      "image": "drummer/kit-fills-set.png",
-      "caption": "FILLS: RUDI, its first sticking, 6LET triplets (boxed: set by hand).",
-      "remix": "drummer",
-      "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
-    },
-    "balance-step": {
-      "image": "drummer/balance-step.png",
-      "caption": "GRID RECORDING, trig 3 held: KIT BALANCE locks step 3 (KICK OUT, HATS +30).",
-      "remix": "drummer",
-      "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
-    },
-    "balance-scene": {
-      "image": "drummer/balance-scene.png",
-      "caption": "SCENE A held: KIT BALANCE locks the scene (SNARE -20); the others read --.",
-      "remix": "drummer",
-      "source": "emulator panel UART",
-      "firmware_sha256": "c1beedad893dfaa67fe82ceb9f81fd2bc69878771821f6f6f2de1649fcb55d43"
+      "firmware_sha256": "f8f5a4d726a186ca3e6d77a72bd81223697bb8aca3c5052759be43789dcc2c7f"
     }
   }
 }

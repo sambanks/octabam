@@ -7,31 +7,36 @@ The name **SEQ** is from the SEQ submenu on Digitakt II and Digitone II —
 a dedicated window, not a PROJECT menu entry.
 
 Hold a **TRACK** key and press **PAGE**: SEQ opens for that track — title
-SEQ, LEN gutter, stock 3×2 (A=PULSE B=ROT C=LANE / D=DEST E=DEPTH; **F**
-empty), and a 4×16 step grid (hollow / solid) for all ≤64 steps. **LANE**
+SEQ, LEN at bottom right, a stock 3×2 grid, and a 4×16 step grid (hollow / solid) for
+all ≤64 steps. **`[LEFT]`** / **`[RIGHT]`** switch two knob pages; the step grid
+stays visible. Page **1/2** has A=PULS B=ROT C=LANE / D=DEST E=DPTH;
+**F** is empty. Page **2/2** has A=SCAL B=ROOT C=MODE / D=RANG E=PHRS
+F=HARM on MIDI or INTV on audio. The page count sits at the top-right of the
+SEQ logo panel.
+**LANE**
 selects whether A/B and the grid edit the **TRIG** rhythm or the **PLOCK**
 rhythm for the current DEST. **YES** writes TRIG → sample-trig mask 0 and
 PLOCK → locks on the chosen DEST (trigless on plock-only steps). **NO**
 closes. Bare **PAGE** stays stock and does not close SEQ.
 
-**Hardware evidence:** author's MKII, `CX CJ.RMX`, 14 Nov 2026. All six
-reported checks passed: PLCK **PULS** 0 clears only that destination;
-all three **[FUNC]** + **[BANK]** clear rows act immediately and return to
-SEQ, and **[NO]** cancels; **"ARE YOU SURE?"** stays above SEQ with knobs
-locked until answered; stock TRACK shortcuts work; **[CUE]** + **[TRACK]**
-cues without randomizing while bare **[CUE]** randomizes the focused lane;
-and with SCALE off, pitch locks match the Part's PLAYBACK PTCH. This report
-covers those interactions on MKII. It does not claim audio testing or MKI
-behavior. The port gates also pass: `verify_seq`, `verify_seq_func_bank`
-and `verify_seq_scenarios`.
+**Proof.HARDWARE:** author's MKII, `CX CJ.RMX`, 14 Nov 2026. Six reported
+device checks passed: PLCK **PULS** 0 clears only that destination; all three
+**[FUNC]** + **[BANK]** clear rows act immediately and return to SEQ, and
+**[NO]** cancels; **"ARE YOU SURE?"** stays above SEQ with knobs locked until
+answered; stock TRACK shortcuts work; **[CUE]** + **[TRACK]** cues without
+randomizing while bare **[CUE]** randomizes the focused lane; and with SCALE
+off, pitch locks match the Part's PLAYBACK PTCH. This report covers those
+interactions on MKII; it does not claim audio testing or MKI behavior. The
+port gates also pass: `verify_seq`, `verify_seq_func_bank` and
+`verify_seq_scenarios`.
 
-Historical hardware report: author's MKII, CX EUCL93, 11 Nov 2026,
-dual LANE, write-only YES, LOCK_COLL + floor, PLCK overwrite and TRIG
-reshape preserving other destinations. That report predates these changes.
+Historical hardware report: author's MKII, CX EUCL93, 11 Nov 2026, dual LANE,
+write-only YES, LOCK_COLL + floor, PLCK overwrite and TRIG reshape preserving
+other destinations.
 
 Not the DSP [EUCLID](../euclid/README.md) effect (filter/amp modulation).
-This module only edits sequencer trigs. It does not grow
-`PROJECT > CONTROL > SEQUENCER`, so it coexists with SCALE QUANTIZER.
+SEQ stores its own scale masks and root; the PROJECT SCALE QUANTIZER remains
+independent.
 
 Rhythm names, ranges, and the TRIG PULSE default match filter EUCLID; length
 comes from pattern length (not a knob).
@@ -48,24 +53,27 @@ comes from pattern length (not a knob).
 | D | DEST — page-1 flat; same name as LFO PMTR |
 | E | DEPTH — 0..127, lock span around Part |
 | F | empty |
+| **`[LEFT]`** / **`[RIGHT]`** | switch knob pages; indicator is **1/2** or **2/2** at top-right |
 | CUE | hold = stock cue; release alone = random PULSE hits on the focused lane; CUE+TRACK = cue that track |
 | TRACK (stock) | double-tap QUICK ASSIGN; FUNC+TRACK mute; TRACK+PLAY/STOP/BANK as stock |
 | FUNC + BANK | clear menu (LISTPOP over SEQ): CLEAR DEST / CLEAR ALL DEST / CLEAR ALL+TRIGS |
 | YES | write TRIG mask + current DEST locks (trigless where needed) |
 | NO | close |
 
-PAGE / UP / DOWN / LEFT / RIGHT / PROJ / PART / AED / ARR are **omitted**
-from `EF_KEYS` (not listed — a `0` swallows; a `-1` row still clears the
-sub-map). Soft dialog keeps the layer so knobs stay locked (`ef_ask`);
+PAGE / UP / DOWN / PROJ / PART / AED / ARR are **omitted** from `EF_KEYS`
+(not listed — a `0` swallows; a `-1` row still clears the sub-map). LEFT /
+RIGHT select knob pages. Soft dialog keeps the layer so knobs stay locked (`ef_ask`);
 user/orphan close pops it (`ef_layer_on`). LEVEL does nothing.
 
 Hold TRACK + PAGE opens SEQ on that track. Selecting another track while
 open retargets YES and loads that track's per-track params. DEPTH and
 PLOCK PULSE/ROT are remembered **per DEST** on that track. D/E stay live
 even when LANE is TRIG (no auto-focus switch). Slots + DEST tables live in
-DRAM and in `euclid.work` (bank + per-DEST depth/plock + per-track LANE)
-(STORE client, `EF_VER` 4) on SAVE PROJECT / bank write. **Pattern length**
-shows in the title gutter (`LEN n`), not as a row. Defaults: TRIG PULSE 5,
+DRAM and in `euclid.work` (audio recipes, per-DEST depth/plock + LANE,
+separate MIDI-track recipes and per-flat depths, and per-track tonal
+settings; STORE client, `EF_VER` 8) on SAVE PROJECT / bank write. Older files
+migrate with default tonal settings. **Pattern length**
+The bottom right shows the pattern length as `LEN n`. Defaults: TRIG PULSE 5,
 DEST = AMP VOL, ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
 
 Write-only: open / track switch load bank SEQ params only — the grid never
@@ -85,9 +93,9 @@ only; writing the pattern is a separate YES.
 **DEPTH** (0..127): at 0, YES clears that DEST's locks for the path in
 use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
-- **DEST = PTCH:** SCALE ON = in-scale around Part PLAYBACK PTCH; SCALE OFF
-  = that Part PTCH on every hit (trigless when PLCK). Silent / PLCK misses
-  fall back to Part.
+- **DEST = PTCH:** RANG 0 uses the Part PLAYBACK PTCH. Above zero, SEQ picks
+  pitches inside RANG around the Part value using SCAL and ROOT. Audio INTV
+  offsets the selected scale degree. Silent / PLCK misses fall back to Part.
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
 - **Any other DEST:** uniform `[Part−DEPTH .. Part+DEPTH]` clamped 0..127.
 
@@ -136,3 +144,68 @@ the list does not toggle open/closed on a single chord.
 `verify_seq_func_bank.py` and `verify_seq_scenarios.py` cover the cases.
 
 Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md).
+
+## MIDI tracks
+
+The tonal page applies to audio and MIDI tracks. **SCAL** selects MAJ, MIN,
+PENT, DOR, PHR, MIX, WHOL or CHRO; **ROOT** selects C through B. **MODE** is
+MELO, CHRD or ARP on MIDI and MELO or ARP on audio. **RANG** controls the
+pitch radius around the Part value, from unison to four octaves, and **PHRS** selects
+UP, DOWN, ALT, TRI or WAVE. MIDI melody and ARP use PHRS; audio ARP rises
+through the available scale notes. MIDI **HARM** adds the seventh chord tone
+in chord mode. Audio **INTV** transposes the generated PTCH line by a scale
+degree (unison through seventh), so separate tracks can form a harmony.
+Audio interval only applies when **RANG** is nonzero; at RANG 0, PTCH follows
+the Part value.
+
+These new tonal controls have not yet been confirmed on hardware.
+
+MIDI mode has separate TRIG/PLOCK rhythms, per-destination depth and
+settings stored in `euclid.work` version 8. The reader migrates earlier
+versions. The Part page-1 read window is registered with STORE;
+`store_part_midi_context` selects the playing MIDI Part independently of
+the audio engine and UI selection. All MIDI writes update the bank and
+its CS1 mirror.
+
+**D** selects NOTE, VEL, LEN, NOT2-4, LFO, ARP, pitch bend, channel
+pressure or CC1-10. **E** varies that parameter around its Part value.
+TRIG rewrites the note mask and selected destination only. PLOCK keeps
+the note mask and uses that destination's own rhythm. Other destinations
+retain their stored locks, including when the note rhythm changes.
+NOTE is an absolute MIDI pitch; NOT2-4 are intervals from it.
+
+With existing trigs, confirmation **`[YES]`** unlocks the pending MIDI
+encoder or CUE edit in the preview. A second explicit **`[YES]`** writes
+the fill. **`[NO]`** cancels. Merely choosing a destination or setting its
+depth does not write locks.
+
+**`[FUNC]`** + **`[BANK]`** opens CLEAR DEST, CLEAR ALL DEST and
+CLEAR ALL+TRIGS. Each action clears steps within LEN on the focused MIDI
+track. CLEAR DEST resets only that destination's depth and PLOCK settings;
+CLEAR ALL DEST resets all its MIDI lock settings. CLEAR ALL+TRIGS also
+clears its note mask and restores TRIG PULS 5 / ROT 0. Audio data, other
+MIDI tracks, steps beyond LEN and neighboring patterns are preserved.
+MIDI TRACK double-tap keeps stock behavior; NOTE SETUP uses double-tap
+**`[SRC]`** or **`[FUNC]`** + **`[SRC]`**.
+
+### MIDI proof
+
+The author confirmed the MIDI behavior on his MKII with **CX M8**, built
+and flashed on 14 Nov 2026. Artifact SHA-256:
+`b6722704137567abf1ac82a6d71e3d6faaf7de915c8b3357d837675ef330f3c3`.
+The image remains outside git in the shared remix folder.
+
+Receive-only USB captures showed channel-2 note-ons, velocity 100 and
+matching note-offs, with changing additional chord voices. A subsequent
+fixed C3 was traced to empty NOTE locks in the saved project despite
+SEQ depth 73. An explicit fill wrote the NOTE locks; the author then
+confirmed that the MIDI randomization was working. Confirmation and the
+explicit fill are separate actions.
+
+The port gates check nonzero NOTE, VEL, NOT2-4 and CC locks, separate
+TRIG/PLOCK behavior, CUE at depths 0 and 4, and distinct UI/MIDI playing
+Parts. `verify_seq_midi_edit.py` drives real panel gestures on T2 with all
+30 destinations populated. It checks confirmation YES/NO, pending edits,
+selected-destination isolation, zero-depth clearing, all MIDI clear rows,
+recipe resets, RAM/CS1 agreement and preservation outside the edited scope.
+This automated coverage is separate from the author's device report.

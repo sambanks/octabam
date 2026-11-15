@@ -1,7 +1,12 @@
 """SEQ -- TRACK + PAGE opens a Euclidean sample-trig + p-lock window.
 
-Hold a track key and press PAGE: title SEQ, LEN gutter, stock 3x2 grid
-A=PULSE B=ROT C=LANE / D=DEST E=DEPTH (F empty). LANE focuses TRIG or
+Hold a track key and press PAGE: title SEQ, LEN gutter, stock 3x2 grid.
+`[LEFT]` / `[RIGHT]` switches between two knob pages; the step grid stays fixed.
+Page 1 is A=PULSE B=ROT C=LANE / D=DEST E=DEPTH (F empty). Page 2 has
+SEQ-owned SCALE, ROOT, MODE, RANGE, PHRASE and MIDI HARM / audio INTV.
+MIDI MELO/CHRD/ARP writes scale-based note locks; audio MELO/ARP writes
+PTCH locks and INTV transposes the generated audio pitch line. SEQ keeps its
+scale settings separate from SCALE QUANTIZER. LANE focuses TRIG or
 PLOCK; YES writes sample trigs and DEST locks (write-only - never
 re-reads live trigs). Per-track / per-DEST params in euclid.work (STORE).
 CUE hold is stock; bare CUE release places a random k-subset with density
@@ -81,6 +86,8 @@ MODULE = Module(
     requires=("STORE",),
     gates=(
         Gate("tools/verify/verify_seq.py", venv=True, stage="image"),
+        Gate("tools/verify/verify_seq_tonal.py", venv=True, stage="image"),
+        Gate("tools/verify/verify_seq_tonal_port.py", venv=True, stage="image"),
         Gate("tools/verify/verify_seq_func_bank.py", venv=True, stage="image"),
         Gate("tools/verify/verify_seq_scenarios.py", venv=True, stage="image"),
     ),
