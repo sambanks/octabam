@@ -25,12 +25,14 @@ firmware makes, tools/hw/ot_fresh.py), enumerates over the scripted host and che
   command    rmt_cmds is enter, leave, boot, scan and holds none of OS UPGRADE's routines; ids 0 and 5 are refused; 2 outside
              the mode changes nothing; 1 enters USB DISK MODE and the ring still answers; 1 again does not enter
              twice; 2 leaves, the project reloads and no dialog stays open
+  save       SAVE PROJECT from the panel: PSTORE or BANKW read back; the card log then holds every record up to the
+             save's last, the frame interrupt's (PLAYING, PATTERN) among them
   file       the card log (/LOG <date>.txt) holds a "RMT seq kind arg stamp" line for each record the load
              flushed, equal to the record read over USB
 
 SKIPs when the remix has no REMOTE or no USB, or the port is not built.
 What it cannot see: the unit's timing (the stamps are the port's timer), a host's USB stack, the frame
-interrupt's added time on a unit, and a flush at a save (no save is driven here).
+interrupt's added time on a unit.
 """
 import os
 import pathlib
@@ -252,6 +254,36 @@ def main():
         want = {n: v for n, v in by_n.items() if n <= max((r["n"] for r in loads), default=-1)}
         check(f"the card log holds the {len(want)} record(s) up to the load's last, as read over USB",
               bool(want) and all(logged.get(n) == v for n, v in want.items()), f"log {logged}, usb {want}")
+
+        def tap(name, ms_after):
+            press(name)
+            run(ms_after)
+
+        try:                                                          # SAVE PROJECT: PROJ, RIGHT, DOWN, YES, YES (verify_kits)
+            for k, w in (("proj", 1000), ("right", 700), ("down", 500), ("yes", 1100)):
+                tap(k, w)
+            press("yes")
+            r = ev.wait_for(("PSTORE", "BANKW"), timeout=120.0, tick=tick)
+            recs.append(r)
+            recs.extend(r["passed"])
+            run(15000)                                                # the rest of the save
+            recs.extend(ev.poll())
+            last = max(x["n"] for x in recs if x["name"] in ("PSTORE", "BANKW"))
+            p.card_flush()
+            files = emu_card.extract_image(card.read_bytes())
+            lines = [ln.split("RMT ", 1)[1].split() for k, v in files.items() if "LOG" in k.upper()
+                     for ln in v.decode("latin1").splitlines() if " RMT " in ln]
+            logged = {int(x[0]): (int(x[1]), int(x[2]), int(x[3]) & 0xffffffff) for x in lines if len(x) == 4}
+            want = {x["n"] & 0xffff: (x["kind"], x["arg"], x["stamp"]) for x in recs if x["n"] <= last}
+            saves = sorted({x["name"] for x in recs if x["name"] in ("PSTORE", "BANKW")})
+            check(f"SAVE PROJECT: {', '.join(saves)} read back, and the card log holds every record up to the save's last "
+                  f"({len(want)}), the frame interrupt's among them",
+                  all(logged.get(n) == v for n, v in want.items()) and any(v[0] >= 16 for v in want.values()),
+                  f"missing {sorted(set(want) - set(logged))}")
+            for _ in range(3):
+                tap("no", 400)
+        except Exception as e:  # noqa: BLE001
+            check("SAVE PROJECT is read back and flushed", False, f"{type(e).__name__}: {e}")
 
         def cmd1(cid, arg=0):
             return bytes(serve(lambda: b.ctrl_in(0xc0, 0x59, cid, arg, 1)))

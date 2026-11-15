@@ -88,8 +88,8 @@ At each STORE event the handler flushes the records not yet logged through the s
 
 ## Measured
 
-Under the port, 13 to 15 Nov 2026, `verify_remote` on `remote` (26 checks) and `octabam` (28 checks),
-project `OCTABAM89_setgate`:
+Under the port, 13 to 15 Nov 2026, `verify_remote` on `remote` (27 checks) and on `octabam`, `octabam-bus`
+and `octabam-verbs` (29 checks each), project `OCTABAM89_setgate`:
 
 - the block's header, request sizes (255 bytes for 256 asked, 63 for 64), an offset at the block's end STALLs,
   head over USB equals the cell;
@@ -99,6 +99,8 @@ project `OCTABAM89_setgate`:
 - PEEK returns the header; a peripheral register, flash and the uncached view STALL;
 - the last 64 trace entries: every PC in SDRAM, the count rises;
 - the card log holds the load's `RMT` lines, equal to the records read over USB;
+- SAVE PROJECT from the panel reads back as BANKW and PSTORE, and the card log then holds every record up to
+  the save's last, PLAYING and PATTERN among them;
 - COMMAND: the command table holds none of OS UPGRADE's routines (`0x400636bc`, `0x40063660`, `0x4006370c`,
   `0x40080640`); 1 enters USB DISK MODE and the ring still answers; 1 again does nothing; 2 leaves, the
   project reloads, no dialog stays open;
@@ -116,7 +118,6 @@ Nothing yet.
 
 - The watch's and the trace's added time in the frame interrupt on a unit.
 - The stock logger called from a module on a unit; a call as the main routine under the port does not return.
-- A flush at a save (no save is driven in the gate).
 - Whether DRAM survives a soft reset (the ring across a command 3 boot).
 - EMPTY RESET, project delete and card format are not located, so the command table's forbidden set holds OS
   UPGRADE's four routines only.
