@@ -1,14 +1,14 @@
-"""RELOAD_FROM_PROJECT -- reload from the CF card without stopping the transport: [PTN] + [TRACK n] a track's sequence, [BANK] + [TRACK n] with its Part slice (machine, FX, pages, scene locks, LFO designer), [PTN] + [BANK] + trig a whole pattern. Running, a reload lands on the next step, in phase.
+"""RELOAD_FROM_PROJECT -- reload from the CF card without stopping the transport: [PTN] + [TRACK n] a track's sequence, [BANK] + [TRACK n] with its Part slice (machine, FX, pages, scene locks, LFO designer), [PTN] + [BANK] + trig a whole pattern. Running, a reload lands on the track's next step, in phase, and that step already plays it.
 
 Source: `upstream/` is Zac Kyoti's repository (Zac-Kyoti/octatrack-kyoti-fw,
-submodule, pinned to `27ab725`). The declaration is
+submodule, pinned to `dd1ad1e`). The declaration is
 `upstream/octabam-modules/reload-from-project/manifest.py`: one DRAM unit (`patch_reload3.s`), each re-linked and
 compared with the author's own bytes (`reference`) every build. Its source
 paths are derived from its own directory, so it is executed here from the
 source on disk, as the registry does for every manifest, and this file only
 re-exports its MODULE. Nothing inside `upstream/` is edited here.
 
-On hardware: the author's MKI (standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image with all six KYOTI modules; 9 Nov 2026 the card reloads and the quantized landing, from DRAM in the KYOTI V1.7 image (this octabam form not flashed).
+On hardware: the author's MKI (standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image with all six KYOTI modules; 9 Nov 2026 the card reloads and the quantized landing, from DRAM in the KYOTI V1.7 image; 14 Nov 2026 Clyps' landing rules (`dd1ad1e`: never a step late, the FULL slice with the first sounding trig, trig conditions in place), the standalone image 140C_RLCP4, every item of the author's FLASHING walk-through. This octabam form has not been flashed.
 
 Beside FREE LOOP the UI task's tick 0x40056c28, which both detour, goes through
 HOOKS (ui_tick): FREE LOOP's detour stays and jumps to rl_uitick where it replayed
@@ -32,4 +32,7 @@ MODULE = dataclasses.replace(
     evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", date="2026-10-01",
         note="(standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image "
              "with all six KYOTI modules; 9 Nov 2026 the card reloads and quantized landing from DRAM in the KYOTI"
-             " V1.7 image (this octabam form not flashed)"),))
+             " V1.7 image (this octabam form not flashed)"),
+              Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", image="140C_RLCP4", date="2026-11-14",
+        note="Clyps' landing rules (dd1ad1e), the standalone image, every item of the author's FLASHING "
+             "walk-through (this octabam form not flashed)"),))

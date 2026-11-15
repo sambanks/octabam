@@ -203,6 +203,15 @@ def capture_drummer(p,r):
     shot(p,'drummer','live','The LIVE page: SEED DENS CPLX ORN BRK GHST.',r)
     p.press('pg_playback',settle=600)
     shot(p,'drummer','balance','SRC again: KIT BALANCE, the mix of the drums.',r)
+    press(p,'rec');press(p,'trig3')                # GRID RECORDING, a trig on step 3
+    p.key('trig3',True);p.run(200);enc(p,0,-64);enc(p,2,6);p.run(300)
+    shot(p,'drummer','balance-step','GRID RECORDING, trig 3 held: KIT BALANCE locks step 3 (KICK OUT, HATS +30).',r)
+    p.key('trig3',False);p.run(300);press(p,'trig3') # the trig taken off: its locks with it
+    press(p,'rec')
+    p.key('scene_a',True);p.run(200);enc(p,1,-4);p.run(300)
+    shot(p,'drummer','balance-scene','SCENE A held: KIT BALANCE locks the scene (SNARE -20); the others read --.',r)
+    p.key('func',True);p.run(60);enc(p,1,1);p.key('func',False)   # FUNC + turn: the scene lock removed
+    p.key('scene_a',False);p.run(300)
     p.press('pg_playback',settle=600)
     shot(p,'drummer','next','SRC a third time: NEXT, the orders, nothing armed, the sequencer stopped.',r)
     enc(p,1,1);enc(p,2,3);enc(p,3,1);p.run(400)

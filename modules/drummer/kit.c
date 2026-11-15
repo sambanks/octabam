@@ -1029,6 +1029,15 @@ static int l2_x(unsigned v)                       /* v's place on the bar, L2_X_
     return v <= 64 ? L2_X_BAR + (int)(v * 30u / 64u) : L2_X_BAR + 30 + (int)((v - 64u) * 30u / 63u);
 }
 
+/* A turn from v: 5 % a detent (l2_step), the middle stops it once. */
+static unsigned l2_turn(unsigned v, int delta)
+{
+    int k = l2_step(v), n = k + delta;
+    if ((k < 0 && n > 0) || (k > 0 && n < 0))
+        n = 0;
+    return l2_value(n < -20 ? -20 : n > 20 ? 20 : n);
+}
+
 static void vline(uint32_t s, int x, int y, int h)
 {
     int i;
@@ -1301,11 +1310,15 @@ static void nx_enc(unsigned t, unsigned index, int delta)
     part_put(NX_AT + 30u * t + index - 1u, (unsigned)v);
 }
 
+unsigned dr_pl_shown(unsigned page, unsigned track, unsigned slot);   /* hooks.s: PAGES' locks */
+unsigned dr_pl_where(void);
+DATA uint32_t dr_l2_where;        /* the held step / scene drawn last (pg_lk_where) */
+
 static void l2_draw(void)
 {
     uint32_t s;
     int top, x;
-    unsigned i;
+    unsigned i, where;
     char line[8], *p;
     if (!dr_l2)
         return;
@@ -1321,15 +1334,26 @@ static void l2_draw(void)
         return;
     }
     s = dr_l2 + 36;
+    where = dr_pl_where();
     p = put_s(dr_kw_band, "KIT BALANCE T");
     p = put_u(p, dr_l2_t + 1u, 1);
+    if (where & 0x100u) {                         /* a scene held: its locks */
+        p = put_s(p, " SCENE ");
+        p = put_u(p, where & 0xffu, 1);
+    } else if (where) {                           /* GRID RECORDING, a trig held: its step's */
+        p = put_s(p, " STEP ");
+        p = put_u(p, where, 1);
+    }
     *p = 0;
     FN(WTITLE, uint32_t, const char *, int)(dr_l2, dr_kw_band, 0);
     FN(WINSIDE, uint32_t)(s);
     top = (int)U32(s + 4) - 20 + 2;
     for (i = 0; i < DR_MIXES; i++) {
         unsigned v = part_base()[MIX_AT + 30u * dr_l2_t + i] & 0x7fu;
+        unsigned shown = dr_pl_shown(DR_LK_PAGE, dr_l2_t, i);   /* a trig or a scene held: its lock */
         int y = top - 7 * (int)i, xf = l2_x(L2_FREE);
+        if (shown != 0xffffu && (shown & 0x100u))
+            v = shown & 0x7fu;
         kw_text(s, 4, y, MIXN[i]);
         FN(RULE, uint32_t, int, int, int, int)(s, L2_X_BAR, y + 2, xf, 1);    /* the bar: solid, */
         dots(s, xf + 2, y + 2, L2_X_BAR + 60 - xf - 2, 1);                    /* dotted past the free steps' tick */
@@ -1342,7 +1366,9 @@ static void l2_draw(void)
         vline(s, x - 1, y, 5);
         vline(s, x, y, 5);
         vline(s, x + 1, y, 5);
-        if (!v)
+        if (shown != 0xffffu && !(shown & 0x100u))
+            p = put_s(line, "--");                /* held, no lock: the Part's value plays */
+        else if (!v)
             p = put_s(line, "OUT");
         else if (!l2_step(v))                     /* 64, or a byte set before image 67 next to it */
             p = put_s(line, "=");
@@ -1383,7 +1409,6 @@ static void dr_l2_closed(void)
 void dr_l2_enc(unsigned index, int delta)
 {
     unsigned off;
-    int k, v;
     if (!dr_l2 || index >= DR_MIXES)
         return;
     if (dr_l2_view) {
@@ -1392,12 +1417,36 @@ void dr_l2_enc(unsigned index, int delta)
         return;
     }
     off = MIX_AT + 30u * dr_l2_t + index;
-    k = l2_step(part_base()[off] & 0x7fu);
-    v = k + delta;
-    if ((k < 0 && v > 0) || (k > 0 && v < 0))     /* the middle stops the turn once */
-        v = 0;
-    part_put(off, l2_value(v < -20 ? -20 : v > 20 ? 20 : v));
+    part_put(off, l2_turn(part_base()[off] & 0x7fu, delta));
     l2_draw();
+}
+
+/* ---- PAGES' locks (pages/manifest.py LOCKS: page 1, hold 'trig'): KIT
+ * BALANCE's six rows take step locks (GRID RECORDING, trigs held) and scene
+ * locks (a scene held), turned as the Part's are. */
+unsigned dr_lk_ctx(void)
+{
+    return dr_l2 && !dr_l2_view ? 0x8000u | DR_LK_PAGE << 8 | dr_l2_t : 0;
+}
+
+int dr_lk_turn(unsigned page, unsigned slot, unsigned value, int delta)
+{
+    if (page != DR_LK_PAGE || slot >= DR_MIXES)
+        return -1;
+    return (int)l2_turn(value & 0x7fu, delta);
+}
+
+unsigned dr_lk_part(unsigned page, unsigned track, unsigned slot)
+{
+    if (page != DR_LK_PAGE || slot >= DR_MIXES || track >= TRACKS || !bank_ok())
+        return 64;
+    return part_base()[MIX_MARK + 30u * track] == MIX_MAGIC ? part_base()[MIX_AT + 30u * track + slot] & 0x7fu : 64u;
+}
+
+void dr_lk_redraw(unsigned page)
+{
+    if (page == DR_LK_PAGE && dr_l2 && !dr_l2_view)
+        l2_draw();
 }
 
 /* PAGES (audio mode, SRC pressed again on its page): KIT BALANCE is DRUMMER's
@@ -1460,6 +1509,10 @@ void dr_page_tick(void)
                 l2_draw();
             }
         }
+    }
+    if (dr_l2 && !dr_l2_view && dr_pl_where() != dr_l2_where) {   /* a trig / scene held or let go */
+        dr_l2_where = dr_pl_where();
+        l2_draw();
     }
 }
 
