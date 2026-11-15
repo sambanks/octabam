@@ -566,6 +566,7 @@ def cmd_import(args):
     if cf.endswith(":Coldfire"):
         print("[ghidra] no ColdFire EMAC fractional variant here: MAIN_OS uses 68000:BE:32:Coldfire (tools/ghidra/README.md)")
     failed = []
+    env = {**os.environ, "OT_EXPORT_DIR": str(OUT)}     # OtExport writes symbols.tsv and xrefs.tsv here
     for name, lang, base in plan:
         if name not in only:
             continue
@@ -576,20 +577,20 @@ def cmd_import(args):
         if args.no_analysis:
             cmd.append("-noanalysis")
         else:
-            cmd += ["-postScript", "OtReport.java"]
+            cmd += ["-postScript", "OtReport.java", "-postScript", "OtExport.java"]
         print(f"[ghidra] {name} ({lang}) ...", flush=True)
         log(" ".join(cmd))
         with open(logf, "w") as fh:
             if DEBUG:
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
                 for line in p.stdout:
                     sys.stderr.write(line)
                     fh.write(line)
                 rc = p.wait()
             else:
-                rc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT).returncode
+                rc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, env=env).returncode
         text = logf.read_text(errors="replace")
-        rx = re.compile(r"(Ot(?:Layout|Report): .*?)(?:\s+\(GhidraScript\))?\s*$")
+        rx = re.compile(r"(Ot(?:Layout|Report|Export): .*?)(?:\s+\(GhidraScript\))?\s*$")
         summary = [m.group(1) for m in map(rx.search, text.splitlines()) if m]
         for s in summary:
             print(f"    {s}")
