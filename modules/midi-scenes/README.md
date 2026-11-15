@@ -43,8 +43,9 @@ lock. `flat` is the MIDI page × 6 + knob (NOTE, LFO, ARP, CTRL1, CTRL2;
 
 The mix (`scenes.s`, `mix`) reads scenes A and B from the displayed Part's
 assignment bytes (Part `+0x10`, `+0x11`, bank offset `0x8ed90`). For each
-track and flat: both sides unlocked, the record takes the Part's value and
-nothing is sent; otherwise an unlocked side reads the Part's value and the
+track and flat: both sides unlocked, the record takes the Part's value and,
+when that changed it (a lock had left its value there), the value is sent;
+otherwise an unlocked side reads the Part's value and the
 result is `A + ((B − A)·w >> 7)` with `w = 127 − (xf & 127)` (weight 0 =
 A end, 127 = B end). The result goes to the track record `0x46c76dc0 +
 0x44·t + flat` and, when it changed, out through stock's `0x4009eec8`.
@@ -94,6 +95,7 @@ Paste and bank-copy rows.
 | the mix follows the Part the sequencer plays: `engine_follow` reads the engine latch (bank `0x80001828`, Part `0x80001829`) each playback step and re-mixes in the same step | the same latch, read each playback step while SCHED `0x800065b8` is 1, the mix in the same step | `sw`/`swn` match his MIDI out except the switch burst: ours at the take (79 at frame 51,229), his at the sequencer commit (50,490), 739 frames earlier; `tg`/`tg2` match frame for frame; `swd` measures the same-step re-mix at a DIRECT pattern jump |
 | a context key (the sparse blob's contents) decides whether a mix may reuse its state; the XF-changed test runs only once a mix has run | a due flag (set by a target change, a load, a Kit load, Part Clear) and the XF-changed test | the tables are in `scn_lib`, not in a Part blob |
 | a scene pressed on the MIDI tracks and held across MIDI: the audio page shows no locks and LEV, as stock does | the audio page shows the held scene's locks and XLV, as a fresh press does | stock sets the audio lock view (`0x460d1694`: 1 A, 2 B) only in the scene press handlers `0x40054c80` / `0x40054c5c`, which return at once in MIDI mode, and the MIDI key's handler (`0x40055548`) does not set it. `scn_mkey` on the handler's tail sets it as a fresh press in the new mode would (the held scene on the audio side, 0 on the MIDI side) and redraws the overlay. ✅ `verify_scenes` `hm`, `ha`, `hb` under the port, 12 Nov 2026: LCD plane, LED rows and levels equal to a fresh press, and the UI block `0x460d1680..+0x180` equal; stock differs in `ha` and `hb` and matches in `hm` (the MIDI side does not read the view). User report, 12 Nov 2026 |
+| with no lock on either scene, the mix writes the Part's value to the record and sends nothing: a CC a lock moved stays at the lock's value until a knob or a trig sends it | when that write changes the record, the Part's value is sent | the CC returns to the Part's value when no scene locks it any more (#1096, reported by gph123123, who ran a variant of this change on an MKII). The record bytes, the table and the clipboard are 2.1's; only the wire differs. ⬜ `verify_scenes` `bfree` (ours only) |
 | the mix refreshes the MIDI track records' setup bytes (`+0x1e..+0x43`) from the Part | not done | stock's apply already copies them; no scenario differs |
 
 ## Measured
