@@ -20,10 +20,6 @@ Hold **`[TRACK]`** and press **`[PAGE]`** to open SEQ. Press another
 **`[PAGE]`** still selects pattern pages. **`[FUNC]`** + **`[TRACK]`** still
 mutes, and **`[CUE]`** + **`[TRACK]`** still cues a track.
 
-For pitch, select **SRC** / **PTCH** on an audio track or **NOTE** on a MIDI
-track with **D**, then press **`[RIGHT]`** to open Harmony. Press
-**`[LEFT]`** to return to Rhythm.
-
 ## Lanes
 
 Each track has one **TRIG** rhythm and a **PLCK** rhythm for each parameter.
@@ -45,6 +41,11 @@ envelopes. When a TRIG fill removes a sample or note trig, locks for other
 parameters remain on a trigless trig.
 
 ## Controls
+
+| Keys | Action |
+|---|---|
+| **`[RIGHT]`** | Switch from Rhythm to Harmony. Select **SRC** / **PTCH** on audio or **NOTE** on MIDI with **D** first. |
+| **`[LEFT]`** | Return from Harmony to Rhythm. |
 
 ### Rhythm
 
