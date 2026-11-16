@@ -4,6 +4,51 @@
         .text
         .include "remix.inc"
 
+        .if     hk_scope_tuner
+| SCOPE and TUNER keep separate state and implementation. This bridge is
+| selected only when both are present. SCOPE owns these sites by itself.
+        .set    KROWS, 0x46100b18
+        .set    KDOWN, 0x20
+        .global hk_scope_tuner_tempo
+hk_scope_tuner_tempo:
+.if     hk_tuner_scope
+        moveq   #0,%d0
+        move.b  KROWS+(KDOWN>>3),%d0
+        btst    #(KDOWN&7),%d0
+        beq.s   1f
+        jmp     sc_tempo_down
+1:      jmp     tu_tempo
+.else
+        jmp     sc_tempo
+.endif
+
+        .global hk_scope_tuner_frame
+hk_scope_tuner_frame:
+.if     hk_tuner_scope
+        lea     -60(%sp),%sp
+        movem.l %d0-%d7/%a0-%a6,(%sp)
+        jsr     sc_frame_body
+        movem.l (%sp),%d0-%d7/%a0-%a6
+        lea     60(%sp),%sp
+        jmp     tu_frame
+.else
+        jmp     sc_frame
+.endif
+
+        .global hk_scope_tuner_tick
+hk_scope_tuner_tick:
+.if     hk_tuner_scope
+        lea     -60(%sp),%sp
+        movem.l %d0-%d7/%a0-%a6,(%sp)
+        jsr     sc_tick_body
+        movem.l (%sp),%d0-%d7/%a0-%a6
+        lea     60(%sp),%sp
+        jmp     tu_tick
+.else
+        jmp     sc_tick
+.endif
+        .endif
+
         .if     hk_status_icon
 | renderer 0x4004bee2: `jsr hk_status_icon` replaces `lea 0x400c0cb8,%a0`.
 | Each participant is called as its own detour would be: d3 the track, a4
