@@ -130,7 +130,7 @@ def main():
     # The otop and wrap checks name the heaviest slot of each core: T5's FX2 (core 0) and T1's FX2 (core 1), the
     # bus's host engines in a project RIG HOSTS wires. A remix without the bus gets the same two slots made the
     # heaviest in the copy: its id 0x16 (DARK REV in octabam, VERB HALL in octabam-verbs) on T1's and T5's FX2,
-    # every other FX2 SEND at page 0, every FX1 NONE. Until 15 Nov 2026 the gate ran with a project only on
+    # every other FX2 slot the generated project's DELAY, every FX1 NONE. Until 15 Nov 2026 the gate ran with a project only on
     # octabam-bus's checks (sambanks/octabam#1051) and on octabam-verbs it found slots 7 and 12 heaviest.
     if "RIG HOSTS" not in remix.modules:
         sys.path.insert(0, str(ROOT / "tools/hw"))
@@ -141,11 +141,6 @@ def main():
             sys.exit(f"verify_load_meter: {a.remix} has no row on id 0x16 for the heaviest-slot fixture")
         for track in (1, 5):
             otp.set_fx(copy, "fx2", track, heavy, guard=False)
-        for track in (2, 3, 4, 6, 7, 8):                # every other FX2 SEND at page 0, make_clean_project's FX2:
-            otp.set_fx(copy, "fx2", track, otp.SEND_ID, page=(0,) * 6, guard=False)   # the generated project's
-                                                        # DELAY there outweighed 0x16 (octabam, 16 Nov 2026:
-                                                        # heaviest slots 5, 11 -- T7's and T2's FX2 -- and 3, 11
-                                                        # in the wrap run)
         for track in range(1, 9):                       # FX1 NONE: the generated project's FX1 (id 0x04) on every
             otp.set_fx(copy, "fx1", track, 0, guard=False)   # track cost what DARK REV does (octabam, 15 Nov 2026:
                                                         # every 0x04 slot 1633..1685 counts, DARK REV 1645/1650) and
