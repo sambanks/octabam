@@ -1552,8 +1552,13 @@ that runner load is the cause (no run was repeated on one runner).
 Fix: `Events(..., clock=)` -- `verify_remote` passes the emulated clock, so its
 timeouts are emulated seconds -- and `MenuPort.run` runs further capped slices
 until the asked emulated ms have passed (a slice that advances nothing ends
-it). Rule: under the port, a timeout or a settle is emulated time; a wall cap
-only bounds a slice, and the caller checks what the slice advanced. Gate:
+it). A slice's cap must also sit inside the reply timeout: `ms/50` asked
+`run 15000 wall 300` against `PortProc.BACKSTOP`'s 120 s, and on main's run of
+#1119 (16 Nov 2026) a slow port was declared dead mid-slice ("PortDied: no reply
+to 'run 15000 wall 300' within 120 s"); the cap is now at most BACKSTOP / 2.
+Rule: under the port, a timeout or a settle is emulated time; a wall cap
+only bounds a slice, sits inside the reply timeout, and the caller checks what
+the slice advanced. Gate:
 `test_ot_events.test_wait_for_times_out_on_the_given_clock`.
 
 <a name="trap-cf-frame"></a>
