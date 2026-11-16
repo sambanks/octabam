@@ -251,6 +251,12 @@ namespace ot
 		// RTOS_FORK 10.43-10.46's "retrigger gap". Hardware's pipeline holds
 		// live input at that moment; this option reproduces that condition.
 		void setAudioInputFromBoot(const bool _on) { m_inputFromBoot = _on; }
+		// --audio-in-on-cue: the input stays silent until the live script's
+		// `audio start` line, then plays from its first sample on both cores'
+		// receive clocks. The onset is then on the script's clock, the one its
+		// key presses use, and no longer moves with the boot and load time.
+		void setAudioInputOnCue(const bool _on) { m_inputOnCue = _on; }
+		void startAudioInputNow();
 		uint64_t txAtFirstCommand(int _core) const;
 		uint64_t rxAtFirstCommand(int _core) const;
 		uint64_t txSlotNonZero(int _core, uint32_t _slot) const;
@@ -604,6 +610,7 @@ namespace ot
 		std::vector<int32_t> m_input;
 		uint32_t m_inputChannels = 0;
 		bool m_inputFromBoot = false;
+		bool m_inputOnCue = false;
 		// THE INTER-CORE MAILBOX, one register each way. 🟡 Inferred from the
 		// firmware's use, not from a datasheet: core A writes Y:$FFFFD7 and
 		// waits while bit 1 of Y:$FFFFD6 is set; core B waits for bit 1 of
