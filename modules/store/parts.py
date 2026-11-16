@@ -9,6 +9,7 @@ from remix.schema import Claims, Detour, Gate, Linked, Poke
 
 PART_SIZE = 0x18b2
 MIDI_BASE, MIDI_SIZE = 0x4e2, 8 * 36
+MIDI_P1_BASE, MIDI_P1_SIZE = 0x3e2, 8 * 32
 # key: (read windows (offset, size), writable offsets)
 def midi_fields(*fields):
     return tuple(MIDI_BASE + 36*t + f for t in range(8) for f in fields)
@@ -18,6 +19,9 @@ PART_CLIENTS = {
     'MIDI LOOPBACK': (((MIDI_BASE, MIDI_SIZE),), midi_fields(12)),
     'MIDI HARMONY': (((MIDI_BASE, MIDI_SIZE),), midi_fields(5, 16, 18, 19)),
     'MIDI SRAM': ((), ()),
+    # SEQ's MIDI lock depth is based on the Part the MIDI sequencer plays.
+    # Publishing this window also provides STORE's per-track context readers.
+    'SEQ': (((MIDI_P1_BASE, MIDI_P1_SIZE),), ()),
     # Reads each MIDI track's KEY (store_part_midi_key) and the engines' Part
     # contexts; writes no native byte (its scale IDs live in scales.work).
     'SCALES': (((MIDI_BASE, MIDI_SIZE),), ()),

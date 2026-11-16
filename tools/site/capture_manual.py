@@ -203,15 +203,6 @@ def capture_drummer(p,r):
     shot(p,'drummer','live','The LIVE page: SEED DENS CPLX ORN BRK GHST.',r)
     p.press('pg_playback',settle=600)
     shot(p,'drummer','balance','SRC again: KIT BALANCE, the mix of the drums.',r)
-    press(p,'rec');press(p,'trig3')                # GRID RECORDING, a trig on step 3
-    p.key('trig3',True);p.run(200);enc(p,0,-64);enc(p,2,6);p.run(300)
-    shot(p,'drummer','balance-step','GRID RECORDING, trig 3 held: KIT BALANCE locks step 3 (KICK OUT, HATS +30).',r)
-    p.key('trig3',False);p.run(300);press(p,'trig3') # the trig taken off: its locks with it
-    press(p,'rec')
-    p.key('scene_a',True);p.run(200);enc(p,1,-4);p.run(300)
-    shot(p,'drummer','balance-scene','SCENE A held: KIT BALANCE locks the scene (SNARE -20); the others read --.',r)
-    p.key('func',True);p.run(60);enc(p,1,1);p.key('func',False)   # FUNC + turn: the scene lock removed
-    p.key('scene_a',False);p.run(300)
     p.press('pg_playback',settle=600)
     shot(p,'drummer','next','SRC a third time: NEXT, the orders, nothing armed, the sequencer stopped.',r)
     enc(p,1,1);enc(p,2,3);enc(p,3,1);p.run(400)
@@ -243,11 +234,21 @@ def capture_drummer(p,r):
 
 def capture_seq(p,r):
     p.chord('t1','page')
-    shot(p,'seq','panel','SEQ: title SEQ, rings icon, A/B PULS/ROT, C=LANE TRIG/PLCK, D=page+param, E=DPTH, step grid, LEN bottom-right.',r)
+    enc(p,3,-15);p.run(400)  # select PTCH so the Harmony-page hint is enabled
+    shot(p,'seq','panel','SEQ Rhythm page with PTCH selected: PULS, ROT, LANE, DEST, DPTH, step grid and LEN.',r)
+    p.press('right',settle=400)
+    shot(p,'seq','tonal','SEQ Harmony page on audio: SCAL, ROOT, RANG and PHRS; C and F are empty.',r)
+    p.press('left',settle=400)
     p.chord('func','bank')
     shot(p,'seq','clear','SEQ clear menu: CLEAR DEST, CLEAR ALL DEST, CLEAR ALL+TRIGS.',r)
     p.press('no',settle=400)
     close(p)
+    p.press('midi',settle=300)
+    p.chord('t1','page')
+    p.press('right',settle=400)
+    shot(p,'seq','midi-tonal','SEQ Harmony page on MIDI: SCAL, ROOT, VOIC, RANG, PHRS and CHRD.',r)
+    close(p)
+    p.press('midi',settle=300)
 
 
 def capture_features(p,r):
@@ -541,13 +542,14 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','seq','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','resonator','drummer'])
+    ap.add_argument('groups',nargs='+',choices=['seq','core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','resonator','drummer'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
     for group in a.groups:
         assignments=[]
-        if group=='core': jobs=[('octabam',capture_core,[])]
+        if group=='seq': jobs=[('test/seq',capture_seq,[])]
+        elif group=='core': jobs=[('octabam',capture_core,[])]
         elif group=='midi-loopback':jobs=[('midi-loopback',capture_midi_loopback,[])]
         elif group=='midi-follow':jobs=[('midi-follow',capture_midi_follow,[])]
         elif group=='plocks': jobs=[('octabam',capture_plocks,[(1,'fx2','PLATE REV')])]
@@ -556,9 +558,8 @@ def main():
             # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist, and
             # LOAD METER declares a conflict with STEM REC (11 Oct 2026); its screens are the bus group's.
             scratch=OUT/'features.py'
-            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k not in ("REC_TRIG_MUTE","LOAD METER"))+("REC THRESHOLD","SEQ","RND NAME","STEM REC"),window=tuple(w for w in base.window if not w[0].startswith("LOAD METER")))\n')
+            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k not in ("REC_TRIG_MUTE","LOAD METER","SC LOAD METER BRIDGE","REC THRESHOLD","SEQ","RND NAME","STEM REC"))+("REC THRESHOLD","SEQ","RND NAME","STEM REC"),window=tuple(w for w in base.window if not w[0].startswith("LOAD METER")))\n')
             jobs=[('../out/manual-captures/features',capture_features,[])]
-        elif group=='seq':jobs=[('test/seq',capture_seq,[])]
         elif group=='inserts':
             assignments=[(1,'fx1','SPECTRUM'),(2,'fx1','CHARACTER'),(3,'fx1','MODULATION'),(4,'fx2','DELAY')]
             jobs=[('octabam',capture_fx,assignments)]

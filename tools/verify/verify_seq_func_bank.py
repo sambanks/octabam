@@ -29,6 +29,7 @@ M_OBJ = 0x460e5e30
 M_CBS = 0x460e5e28
 M_LAB = 0x460e5e2c
 FUNC_LAYER_KEYS = 0x400bfa36
+STOCK_FUNC_LAYER_KEYS = 0x400bf628
 MKII_TRIG_EDIT = 0x4007c0d0
 
 FAILS = 0
@@ -51,6 +52,7 @@ def sym(name: str) -> int:
 
 
 def ensure_card():
+    # CI has no template_project: the image makes its own project (seq_port_fixture, main a6a4b3e).
     return stage_project(IMAGE, CARD, ROOT / "out/_seq_fb_tree")
 
 
@@ -99,7 +101,7 @@ def main() -> int:
         print("verify_seq_func_bank: no runtime.map")
         return 1
 
-    remix = ensure_card()
+    ensure_card()
     ef_win = sym("ef_win")
     ef_fb = sym("ef_fb_mkii")
 
@@ -116,10 +118,10 @@ def main() -> int:
         check("Detour target is ef_fb_mkii", dest == ef_fb, f"{dest:#x} vs {ef_fb:#x}")
 
         fk = p.long(FUNC_LAYER_KEYS)
-        if "BRAIN" in remix.modules:
-            check("FUNC layer keys ptr is DRAM (BRAIN clone)", fk >= 0x40A00000, f"{fk:#x}")
+        check("FUNC layer keys ptr is stock or the DRAM BRAIN clone",
+              fk == STOCK_FUNC_LAYER_KEYS or fk >= 0x40A00000, f"{fk:#x}")
         press = bank_press_in_table(p, fk)
-        check("FUNC+BANK press = TRACK TRIG EDIT entry",
+        check("BRAIN FUNC+BANK press = TRACK TRIG EDIT entry",
               press == MKII_TRIG_EDIT, f"{press:#x}" if press else "none")
 
         # Open SEQ

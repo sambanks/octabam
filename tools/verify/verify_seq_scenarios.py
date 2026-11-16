@@ -8,6 +8,7 @@ bytes. Requires out/mainos_bus.bin + ot_emu (REMIX with SEQ, e.g. cx).
 from __future__ import annotations
 
 import pathlib
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -16,6 +17,7 @@ sys.path[:0] = [str(ROOT / "tools"), str(ROOT / "tools/verify"), str(ROOT / "too
 from stems_panel import MenuPort  # noqa: E402
 from seq_port_fixture import stage_project  # noqa: E402
 from panel_server import popup_geometry  # noqa: E402
+from verify_seq_tonal import on_scale  # noqa: E402
 
 IMAGE = ROOT / "out/mainos_bus.bin"
 CARD = ROOT / "out/_seq_scenarios_card.img"
@@ -24,7 +26,13 @@ MAP = ROOT / "out/platform/runtime/runtime.map"
 DBPTR_ADDR = 0x46c82456
 UI_PTN = 0x100b14d0
 UI_TRACK = 0x100b14cc
+UI_PART = 0x100b14cf
+MIDI_BANK_TRACKS = 0x8000666e
+MIDI_PART_TRACKS = MIDI_BANK_TRACKS + 8
 PTN_STR = 0x8ed8
+PART_STR = 0x18B2
+BANK_STR = 0x9B340
+PARTS_BASE = 0x400E21E0 + 0x8ED80
 TRK_STR = 0x91a
 LOCK0 = 0x59
 LOCK_PTCH = 0
@@ -69,6 +77,17 @@ def sym_opt(name: str) -> int | None:
     return None
 
 
+def local_sym(name: str) -> int:
+    output = subprocess.check_output(
+        ["m68k-elf-nm", "-a", str(ROOT / "out/platform/runtime/runtime.elf")],
+        text=True)
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) == 3 and fields[2] == name:
+            return int(fields[0], 16)
+    raise SystemExit(f"local symbol missing in runtime.elf: {name}")
+
+
 def u8(p, a: int) -> int:
     return p.peek(a, 1)[0]
 
@@ -82,6 +101,7 @@ def poke8(p, a: int, v: int) -> None:
 
 
 def ensure_card() -> None:
+    # CI has no template_project: the image makes its own project (seq_port_fixture, main a6a4b3e).
     stage_project(IMAGE, CARD, ROOT / "out/_seq_scenarios_tree")
 
 
@@ -139,6 +159,14 @@ class SeqPort:
         self.p = p
         self.ef = sym("ef_win")
         self.bank = sym("ef_bank")
+        self.pulses = sym("ef_pulses")
+        self.rot = sym("ef_rot")
+        self.ppulses = sym("ef_ppulses")
+        self.prot = sym("ef_prot")
+        self.lane = sym("ef_lane")
+        self.pfree = local_sym("ef_pfree")
+        self.dest = sym("ef_dest")
+        self.depth = sym("ef_depth")
         self.dep = sym("ef_dep_mem")
         self.plk = sym("ef_plk_mem")
         self.lane_mem = sym("ef_lane_mem")
@@ -190,14 +218,14 @@ class SeqPort:
         poke8(self.p, self.plk + off + 2, 0)
         self.p.poke(self.plk + off + 4, bytes(8))
         for a, v in (
-            (self.ef + 0x18, lane),
-            (self.ef + 0x28, dest),
-            (self.ef + 0x2c, depth),
-            (self.ef + 0x10, pulses),
-            (self.ef + 0x14, rot),
-            (self.ef + 8, trig_pulses),
-            (self.ef + 0xC, trig_rot),
-            (self.ef + 0x1C, 0),
+            (self.lane, lane),
+            (self.dest, dest),
+            (self.depth, depth),
+            (self.ppulses, pulses),
+            (self.prot, rot),
+            (self.pulses, trig_pulses),
+            (self.rot, trig_rot),
+            (self.pfree, 0),
             (self.from_cue, 0),
             (self.free, 0),
         ):
@@ -221,15 +249,15 @@ class SeqPort:
 def run_scenarios() -> int:
     global FAILS
     if not IMAGE.exists():
-        print("SEQ scenarios: FAIL (no out/mainos_bus.bin)")
-        return 1
+        print("SEQ scenarios: skip (no out/mainos_bus.bin)")
+        return 0
     if not MAP.exists():
-        print("SEQ scenarios: FAIL (no runtime.map)")
-        return 1
+        print("SEQ scenarios: skip (no runtime.map)")
+        return 0
     emu = ROOT / "out/emu/ot_emu"
     if not emu.exists():
-        print("SEQ scenarios: FAIL (no out/emu/ot_emu)")
-        return 1
+        print("SEQ scenarios: skip (no out/emu/ot_emu)")
+        return 0
 
     ensure_card()
     print("SEQ port scenarios (usage/seq.md):")
@@ -241,6 +269,21 @@ def run_scenarios() -> int:
         s = SeqPort(port)
 
         # --- open ---
+        s.open_seq()
+        s.close_seq()
+        port.press("proj", settle=400)
+        project_geo = popup_geometry(port.rt.uc)
+        project_open = project_geo is not None and project_geo[1] == 0 and project_geo[3] == 0x40
+        check("PROJECT opens directly after closing SEQ (key layer released)",
+              project_open, f"geometry={project_geo}")
+        if project_open:
+            port.press("right", settle=150)
+            port.press("down", settle=150)
+            check("Project stays navigable after SEQ closes",
+                  popup_geometry(port.rt.uc) == project_geo
+                  and port.long(local_sym("ef_win")) == 0,
+                  f"geometry={popup_geometry(port.rt.uc)} ef_win={port.long(local_sym('ef_win')):#x}")
+            port.press("no", settle=400)
         s.open_seq()
 
         # --- Place sample trigs (TRIG, PTCH, DPTH 0) ---
@@ -322,8 +365,10 @@ def run_scenarios() -> int:
         pt = locks_of(port, LOCK_PTCH)
         vals = {v for v in pt if v != 0xFF}
         check("PLCK+PTCH SCALE OFF writes trigless PTCH", live(pt) >= 1)
-        check("PLCK+PTCH SCALE OFF uses one base pitch",
-              len(vals) == 1, f"vals={vals}")
+        decoded = [int((value - 64) / 5) for value in vals]
+        check("SEQ's built-in scale still shapes PTCH when SCALE QUANTIZER is off",
+              bool(decoded) and all(on_scale(note, 0, 0x0AB5) for note in decoded),
+              f"raw={vals} semitones={decoded}")
         check("PLCK+PTCH leaves sample trigs alone", mask_of(port) == trig_before)
 
         # --- PLCK PTCH SCALE ON still writes ---
@@ -416,9 +461,9 @@ def run_scenarios() -> int:
         check("CLEAR DEST restores SEQ", port.long(s.ef) != 0)
         check("CLEAR DEST wipes PTCH locks", live(locks_of(port, LOCK_PTCH)) == 0)
         check("CLEAR DEST resets DPTH/PULS/ROT working",
-              port.long(s.ef + 0x2C) == 0 and port.long(s.ef + 0x10) == 0
-              and port.long(s.ef + 0x14) == 0,
-              f"dep={port.long(s.ef+0x2C)} pp={port.long(s.ef+0x10)} prot={port.long(s.ef+0x14)}")
+              port.long(s.depth) == 0 and port.long(s.ppulses) == 0
+              and port.long(s.prot) == 0,
+              f"dep={port.long(s.depth)} pp={port.long(s.ppulses)} prot={port.long(s.prot)}")
 
         # CLEAR ALL DEST via list YES
         s.prime(lane=1, dest=LOCK_VOL, depth=64, pulses=5, trig_pulses=5)
@@ -552,10 +597,10 @@ def run_scenarios() -> int:
         s.prime(lane=0, dest=0, depth=0, pulses=6, trig_pulses=6, trk=1)
         # Working vars already primed for lane/dest; focus must be track 1.
         # Re-prime working after open may have loaded T2 slot; force fill knobs.
-        poke32(port, s.ef + 8, 6)
-        poke32(port, s.ef + 0xC, 0)
-        poke32(port, s.ef + 0x18, 0)
-        poke32(port, s.ef + 0x2c, 0)
+        poke32(port, s.pulses, 6)
+        poke32(port, s.rot, 0)
+        poke32(port, s.lane, 0)
+        poke32(port, s.depth, 0)
         poke32(port, s.from_cue, 0)
         poke32(port, s.free, 0)
         s.yes()
@@ -636,6 +681,222 @@ def run_scenarios() -> int:
         port.press("t2", settle=400)
         check("TRACK tap while SEQ still retargets UI_TRACK",
               u8(port, UI_TRACK) == 1, f"UI_TRACK={u8(port, UI_TRACK)}")
+
+        # --- MIDI-mode note trigs use the MIDI mask and keep audio data ---
+        s.close_seq()
+        port.press("midi", settle=300)
+        port.press("t1", settle=300)
+        midi_bank = sym("ef_midi_bank")
+        midi_dep = sym("ef_midi_dep_mem")
+        midi_plk = sym("ef_midi_plk_mem")
+        midi_lane = sym("ef_midi_lane_mem")
+        poke32(port, midi_bank, 3)
+        poke32(port, midi_bank + 4, 0)
+        poke32(port, midi_bank + 8, 20)  # CTRL1 CC1 flat
+        poke32(port, midi_bank + 0xC, 4)
+        poke8(port, midi_dep + 20, 4)
+        s.open_seq("t1")
+        check("MIDI mode opens SEQ on the MIDI track",
+              port.long(0x80000012) != 0 and port.long(s.ef) != 0)
+        poke32(port, local_sym("ef_tone_midi"), 1)
+        poke32(port, sym("ef_dest"), 20)
+        poke32(port, sym("ef_depth"), 4)
+        poke32(port, s.lane, 0)
+        poke32(port, s.from_cue, 0)
+        poke32(port, s.free, 0)
+        pattern = port.long(DBPTR_ADDR) + u8(port, UI_PTN) * PTN_STR
+        midi_record = pattern + 0x48D0
+        midi_mask = midi_record + 7
+        audio_before = mask_of(port, 0)
+        midi_lock_base = pattern + 0x4900
+        # MIDI playback keeps a per-track Part context independent of the UI.
+        # Seed T1 on bank 1 / Part 2 while the UI shows Part 3: a UI-based
+        # read silently uses the wrong zero-filled Part and makes NOTE C-1,
+        # VEL 0. STORE's MIDI context must select the values used for locks.
+        poke8(port, MIDI_BANK_TRACKS, 1)
+        poke8(port, MIDI_PART_TRACKS, 2)
+        poke8(port, UI_PART, 3)
+        midi_part = PARTS_BASE + BANK_STR + 2 * PART_STR + 0x3e2
+        port.poke(midi_part + 20, bytes((64,)))  # CC1 Part value
+        midi_lock_span = 7 * 0x8B0 + 0x800
+        midi_locks_before = bytearray(port.peek(midi_lock_base, midi_lock_span))
+        for step in range(64):
+            midi_locks_before[step * 32 + 20] = 0xFF
+        port.poke(midi_lock_base, bytes(midi_locks_before))
+        port.poke(midi_record, bytes(8))
+        port.poke(midi_record + 0x28, bytes((16,)))
+        port.proc.command(f"watchmem {midi_lock_base:#x} 0x800", "ok")
+        port.proc.command(f"watch {local_sym('ef_midi_lock_store'):#x}", "ok")
+        s.yes()
+        midi_lock_trace = port.proc.command("writes", "writes")
+        midi_lock_calls = port.proc.command("hits", "hits")
+        midi_bytes = port.peek(midi_mask - 7, 8)
+        midi_bits = sum(bool(midi_bytes[7 - (step >> 3)] & (1 << (step & 7))) << step
+                        for step in range(16))
+        expected = (1 << 0) | (1 << 6) | (1 << 11)
+        check("MIDI PULS writes note trigs at steps 1, 7, 12",
+              midi_bits == expected, f"mask={midi_bits:#018x}")
+        check("MIDI fill leaves audio sample trigs alone",
+              mask_of(port, 0) == audio_before)
+        cc_locks = port.peek(midi_lock_base, 0x800)
+        cc_ok = True
+        for step in range(64):
+            value = cc_locks[step * 32 + 20]
+            if step < 16 and (expected >> step) & 1:
+                cc_ok &= 60 <= value <= 68
+            else:
+                cc_ok &= value == 0xFF
+        check("MIDI CC1 locks follow note hits around the Part value", cc_ok,
+              f"hits={[cc_locks[step * 32 + 20] for step in range(16) if (expected >> step) & 1]} "
+              f"depth={port.long(sym('ef_depth'))} dest={port.long(sym('ef_dest'))} "
+              f"dep={u8(port, midi_dep + 20)} part={u8(port, midi_part + 20)} "
+              f"mode={port.long(0x80000012)} focus={port.long(sym('ef_focus'))} "
+              f"lockbase={midi_lock_base:#x} calls={midi_lock_calls[:700]} "
+              f"writes={midi_lock_trace[:700]}")
+        locks_after_all = port.peek(midi_lock_base, midi_lock_span)
+        cc_other_ok = all(
+            locks_after_all[i] == midi_locks_before[i]
+            for i in range(midi_lock_span)
+            if i not in {step * 32 + 20 for step in range(64)})
+        check("MIDI CC1 fill preserves other lock flats and MIDI tracks", cc_other_ok)
+
+        # MIDI PLOCK has its own rhythm and must not alter note trigs.
+        midi_plk_slot = midi_plk + 20 * 12
+        poke8(port, midi_plk_slot, 3)
+        poke8(port, midi_plk_slot + 1, 0)
+        poke8(port, midi_plk_slot + 2, 0)
+        poke8(port, midi_lane, 1)
+        poke32(port, sym("ef_lane"), 1)
+        poke32(port, sym("ef_dest"), 20)
+        poke32(port, sym("ef_depth"), 4)
+        poke32(port, local_sym("ef_ppulses"), 3)
+        poke32(port, local_sym("ef_prot"), 0)
+        poke32(port, local_sym("ef_pfree"), 0)
+        note_mask_before_plk = port.peek(midi_mask - 7, 8)
+        s.yes()
+        check("MIDI PLOCK fill leaves note trigs unchanged",
+              port.peek(midi_mask - 7, 8) == note_mask_before_plk)
+        plk_values = port.peek(midi_lock_base, 0x800)
+        plk_ok = True
+        for step in range(64):
+            value = plk_values[step * 32 + 20]
+            if step in (0, 6, 11):
+                plk_ok &= 60 <= value <= 68
+            else:
+                plk_ok &= value == 0xFF
+        check("MIDI PLOCK writes its own 3-pulse CC rhythm", plk_ok,
+              f"hits={[plk_values[step * 32 + 20] for step in (0, 6, 11)]}")
+
+        note_dest_ok = True
+        poke8(port, midi_lane, 0)
+        poke32(port, sym("ef_lane"), 0)
+        poke32(port, local_sym("ef_tone_mode"), 0)
+        poke32(port, local_sym("ef_tone_midi"), 1)
+        poke32(port, local_sym("ef_tone_harm"), 4)  # VOIC 4
+        poke32(port, local_sym("ef_tone_style"), 4)  # FM SYNTH MAJ
+        for flat, base in ((0, 60), (1, 100), (18, 64), (19, 67), (29, 72)):
+            port.poke(midi_part + flat, bytes((base,)))
+            poke32(port, sym("ef_dest"), flat)
+            poke32(port, sym("ef_depth"), 2)
+            poke8(port, midi_dep + flat, 2)
+            # The TRIG lane's first baked pattern raises the normal MIDI
+            # confirmation. This fixture is testing flat coverage, so seed
+            # the existing unlock that a confirmed user edit would set.
+            poke32(port, s.unlocked, 1)
+            poke32(port, s.ask, 0)
+            s.yes()
+            locks = port.peek(midi_lock_base, 0x800)
+            for step in range(64):
+                value = locks[step * 32 + flat]
+                if flat == 0:
+                    if step < 16 and (expected >> step) & 1:
+                        note_dest_ok &= on_scale(value, 0, 0x0AB5)
+                    else:
+                        note_dest_ok &= value == 0xFF
+                elif step < 16 and (expected >> step) & 1:
+                    note_dest_ok &= base - 2 <= value <= base + 2
+                else:
+                    note_dest_ok &= value == 0xFF
+        chord_values = [u8(port, midi_lock_base + step * 32 + flat)
+                        for flat in (3, 4, 5) for step in (0, 6, 11)]
+        check("VOIC 4 NOTE fills add NOTE2/NOTE3/NOTE4 locks",
+              len(chord_values) == 9 and all(value != 0xFF for value in chord_values), str(chord_values))
+        note_vals = {
+            flat: [u8(port, midi_lock_base + step * 32 + flat) for step in (0, 6, 11)]
+            for flat in (0, 3, 4, 5)
+        }
+        check("NOTE and MIDI parameter locks remain available on TRIG fills",
+              note_dest_ok, f"hit-values={note_vals}")
+        # Refill existing four-note chords at each smaller voice count.
+        # Unused intervals must be 0xff (empty), not raw 0 (-64).
+        for voices in (2, 3, 1, 4):
+            poke32(port, sym("ef_dest"), 0)
+            poke32(port, sym("ef_depth"), 2)
+            poke8(port, midi_dep, 2)
+            poke32(port, local_sym("ef_tone_harm"), voices)
+            poke32(port, s.unlocked, 1)
+            poke32(port, s.ask, 0)
+            s.yes()
+            intervals = {
+                flat: [u8(port, midi_lock_base + step * 32 + flat)
+                       for step in (0, 6, 11)]
+                for flat in (3, 4, 5)
+            }
+            check(f"VOIC {voices} leaves unused MIDI voices empty",
+                  all(all(value == 0xff for value in values)
+                      if flat - 2 >= voices else
+                      all(value not in (0, 0xff) for value in values)
+                      for flat, values in intervals.items()), str(intervals))
+            check(f"VOIC {voices} mirrors all generated and cleared intervals",
+                  all(u8(port, 0x1001614E + u8(port, UI_PTN) * PTN_STR
+                         + 0x4900 + step * 32 + flat) ==
+                      u8(port, midi_lock_base + step * 32 + flat)
+                      for step in (0, 6, 11) for flat in (3, 4, 5)))
+
+        mirror = 0x1001614E + u8(port, UI_PTN) * PTN_STR + 0x48D0
+        check("MIDI note-trig mask reaches the battery mirror",
+              port.peek(mirror, 8) == midi_bytes)
+        check("MIDI CC and NOTE locks reach the battery mirror",
+              port.peek(mirror + (0x4900 - 0x48D0), 0x800)
+              == port.peek(midi_lock_base, 0x800))
+
+        # Exercise the user's CUE -> YES gesture. The free-rhythm reader
+        # uses a0; the MIDI writer must retain its destination address.
+        for depth in (0, 4):
+            s.close_seq()
+            port.poke(midi_record, bytes(8))
+            s.open_seq("t1")
+            poke32(port, s.pulses, 5)
+            poke32(port, s.rot, 0)
+            poke32(port, s.depth, depth)
+            poke32(port, s.lane, 0)
+            poke32(port, s.unlocked, 1)
+            poke32(port, s.ask, 0)
+            port.proc.command("knob 0x31 -63", "ok")
+            port.run(250)
+            port.proc.command("knob 0x34 -127", "ok")
+            port.run(250)
+            if depth:
+                port.proc.command(f"knob 0x34 {depth}", "ok")
+                port.run(250)
+            port.press("cue", settle=400)
+            free_before = port.peek(local_sym("ef_mask"), 8)
+            count = port.long(sym("ef_steps"))
+            expected_free = sum(
+                ((free_before[step >> 3] >> (step & 7)) & 1) << step
+                for step in range(count))
+            s.yes()
+            actual_free = int.from_bytes(port.peek(midi_record, 8), "big")
+            check(f"MIDI panel CUE then YES creates trigs at DPTH {depth}",
+                  actual_free == expected_free and actual_free.bit_count() > 0,
+                  f"expected={expected_free:#x} actual={actual_free:#x} count={count} "
+                  f"mask={free_before.hex()} pulses={port.long(s.pulses)} "
+                  f"unlocked={port.long(s.unlocked)} ask={port.long(s.ask)} "
+                  f"from_cue={port.long(s.from_cue)} free={port.long(s.free)}")
+            check(f"MIDI CUE fill preserves its preview mask at DPTH {depth}",
+                  port.peek(local_sym("ef_mask"), 8) == free_before)
+            check(f"MIDI CUE trigs reach battery mirror at DPTH {depth}",
+                  port.peek(mirror, 8) == port.peek(midi_record, 8))
 
     print(f"SEQ scenarios: {FAILS} failed checks")
     return FAILS

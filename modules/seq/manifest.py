@@ -1,7 +1,12 @@
 """SEQ -- TRACK + PAGE opens a Euclidean sample-trig + p-lock window.
 
-Hold a track key and press PAGE: title SEQ, LEN gutter, stock 3x2 grid
-A=PULSE B=ROT C=LANE / D=DEST E=DEPTH (F empty). LANE focuses TRIG or
+Hold a track key and press PAGE: title SEQ, LEN gutter, stock 3x2 grid.
+`[LEFT]` / `[RIGHT]` switches between two knob pages; the step grid stays fixed.
+Page 1 is A=PULSE B=ROT C=LANE / D=DEST E=DEPTH (F empty). Page 2 has
+SEQ-owned SCAL, ROOT, RANG and PHRS, MIDI VOIC 1-4 and CHRD,
+with audio C and F empty. MIDI writes a melody with FM SYNTH chord shapes;
+audio writes a single PTCH line. SEQ keeps its
+scale settings separate from SCALE QUANTIZER. LANE focuses TRIG or
 PLOCK; YES writes sample trigs and DEST locks (write-only - never
 re-reads live trigs). Per-track / per-DEST params in euclid.work (STORE).
 CUE hold is stock; bare CUE release places a random k-subset with density
@@ -50,6 +55,9 @@ MODULE = Module(
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
     evidence=(
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="SEQ 83.RMX", date="2026-11-15",
+                 note="Author confirmed SEQ 83 works on the unit, including empty unused "
+                      "NOTE3/4 slots after a VOIC 2 fill. No separate audio or timing measurements."),
         Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-11-11",
                  note="CX EUCL93, 11 Nov 2026: dual LANE, write-only, LOCK_COLL + floor, PLCK overwrites TRIG-placed locks,"
                       " TRIG reshape keeps other DEST locks (TL promote); also verify_seq."),
@@ -81,6 +89,8 @@ MODULE = Module(
     requires=("STORE",),
     gates=(
         Gate("tools/verify/verify_seq.py", venv=True, stage="image"),
+        Gate("tools/verify/verify_seq_tonal.py", venv=True, stage="image"),
+        Gate("tools/verify/verify_seq_tonal_port.py", venv=True, stage="image"),
         Gate("tools/verify/verify_seq_func_bank.py", venv=True, stage="image"),
         Gate("tools/verify/verify_seq_scenarios.py", venv=True, stage="image"),
     ),
