@@ -256,10 +256,15 @@ two sites; not run until that line is pinned.
     writes `scales.work` and `scales.strd` (version 2: header, CRC-32, the
     ID in bank 1 Part 1 track 1, the audio scale of bank 1 Part 1, nothing
     else); the saved card booted again gives the ID, the audio scale and the
-    KEY back; a version 1 file reads with the audio scales OFF (the load
-    writes `sc_alib`, which ends zero; a poke cannot show the clearing, as
-    the port's poke options all land after the load); a run with no save
-    writes no file. The window's six
+    KEY back; a run with no save, as long as the save, writes no
+    `scales.strd`, and the `scales.work` the bank writer leaves in it holds the
+    ID and the audio scale. (Until 16 Nov 2026 this read "a run with no save
+    writes no file": that run ended 9.3 s in, before the bank writer reached
+    `scales.work`; run as long as the save, the writer wrote it, as
+    **scales.work** above says.) A version 1 file reads with the audio scales
+    OFF (the load writes `sc_alib`, which ends zero; a poke cannot show the
+    clearing, as the port's poke options all land after the load). The
+    window's six
     states drawn under the port and looked at (families, a family, back,
     scrolled, reopened with the marks).
   - On `test/scales-quantizer`, the audio side as well: every SCALE 0..24
