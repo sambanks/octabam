@@ -49,7 +49,8 @@ MODULE = Module(
         "tonic and, pressed, opens the scale chooser (the families, then their scales); the "
         "sequencer and the arpeggiator play the scale; the CHROMATIC trig keys light it "
         "(SCALE QUANTIZER's on audio tracks).",
-    linked=(Linked("sc", "modules/scales/scales.s", dram=True, include=_sources),),
+    linked=(Linked("sc", "modules/scales/scales.s", dram=True, include=_sources),
+            Linked("sa", "modules/scales/audio.s", dram=True)),
     pokes=(Poke(0x400D4096, bytes.fromhex("00000019"), bytes.fromhex("00000055"),
                 "ARP SETUP KEY: 85 values, stock's 25 and MIDI SCALES' modes"),),
     symbol_refs=(SymbolRef(0x400D40C6, 0x4003B790, "sc", "sc_format",
@@ -65,9 +66,21 @@ MODULE = Module(
                "ARP SETUP's encoder F: the tonic, the scale kept", pad_to=8),
         Detour(0x4009FB58, bytes.fromhex("4aaeffc06f22"), "sc", "sc_output",
                "stock's output quantization: the notes snap to a scale stock does not play"),
+        # The audio tracks' scale (audio.s): the sites and the semantics are Tim Hastie's SCALE QUANTIZER's.
+        Detour(0x40055170, bytes.fromhex("14821a82320e"), "sa", "sa_knob",
+               "knob handler 0x40055008: the store -- PTCH steps by degree of the Part's audio scale",
+               kind="jsr"),
+        Detour(0x40050E60, bytes.fromhex("1384885973b9100b14cc"), "sa", "sa_plock",
+               "p-lock editor (TRIG held): the lock store -- PTCH steps by degree of the Part's audio scale",
+               kind="jsr", pad_to=10),
+        Detour(0x4004FC58, bytes.fromhex("45f2ac0471b9100b14cf"), "sa", "sa_chrom",
+               "CHROMATIC trig key -> pitch: transpose the key index by the Part's tonic and snap it to its audio scale",
+               kind="jsr", pad_to=10),
     ),
     conflicts=(("MIDI SCALES", "both own ARP SETUP's KEY; SCALES reads MIDI SCALES' KEY values "
-                               "and plays its modes"),),
+                               "and plays its modes"),
+               ("SCALE QUANTIZER", "both own the PTCH knob, the PTCH lock and the CHROMATIC key's pitch (0x40055170, "
+                                   "0x40050e60, 0x4004fc58); SCALES' audio scale replaces it (deprecated)"),),
     requires=("STORE",),
     gates=(Gate("tools/verify/verify_scales.py", venv=True),),
 )

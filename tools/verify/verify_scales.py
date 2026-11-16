@@ -173,6 +173,130 @@ def snap(note, tonic, ident):
 
 # ---- 1. the linked code ------------------------------------------------------
 
+def _pc_raw(raw):
+    """The pitch class of a sample track's PTCH raw value (64 + 5 * semitones; min 4), None between semitones."""
+    r = raw - 4
+    return (r // 5) % 12 if r % 5 == 0 else None
+
+
+def _rotated(ident, tonic):
+    mk = mask(CATALOGUE[ident][4])
+    return ((mk << tonic) | (mk >> (12 - tonic))) & 0xfff
+
+
+def _knob_model(raw, mk, delta):
+    """PTCH raw stepped |delta| degrees: each step to the next semitone in the scale within 4..124; the end stays."""
+    for _ in range(abs(delta)):
+        rng = range(raw + 1, 125) if delta > 0 else range(raw - 1, 3, -1)
+        for r in rng:
+            pc = _pc_raw(r)
+            if pc is not None and mk >> pc & 1:
+                raw = r
+                break
+    return raw
+
+
+def _chrom_model(idx, mk, tonic, position):
+    """The CHROMATIC key index after the tonic and the snap (key 1 sounds the tonic; ties to the lower one)."""
+    i = idx + tonic
+    if tonic > 6 and position:
+        i = max(i - 24, 0)
+    i = min(i, 24)
+    for dist in range(25):
+        if i - dist >= 0 and mk >> ((i - dist) % 12) & 1:
+            return i - dist
+        if i + dist <= 24 and mk >> ((i + dist) % 12) & 1:
+            return i + dist
+    return i
+
+
+def audio_snap(m, u, alib):
+    """sa_knob, sa_plock and sa_chrom (audio.s) called with the registers their detours have, against models of the
+    rules in README "The audio scale": the Part's own scale and tonic, OFF = stock, the ends stay."""
+    from unicorn.m68k_const import (UC_M68K_REG_A1, UC_M68K_REG_A2, UC_M68K_REG_A3, UC_M68K_REG_A4,
+                                    UC_M68K_REG_A5, UC_M68K_REG_A6, UC_M68K_REG_D2, UC_M68K_REG_D3,
+                                    UC_M68K_REG_D4, UC_M68K_REG_D5, UC_M68K_REG_D6, UC_M68K_REG_A0,
+                                    UC_M68K_REG_D1)
+    bad = []
+    desc, byte, rec = 0x47002000, 0x47003000, 0x47004000
+    u.mem_write(desc, b"\0" * 0xa0)
+    u.mem_write(desc + 0x16, b"PTCH")
+    u.mem_write(desc + 0x6a, (4).to_bytes(4, "big"))
+    u.mem_write(desc + 0x9a, (121).to_bytes(4, "big"))
+    u.mem_write(0x460d1684, (0).to_bytes(4, "big"))        # the PLAYBACK page
+    u.mem_write(0x100b14cc, b"\0")                         # UI_TRACK
+    u.mem_write(0x460d16fc, (0).to_bytes(4, "big"))        # the CHROMATIC octave word
+    part = BANK0
+    cases = [(0, 0), (1, 0), (6, 9), (19, 4), (36, 11), (41, 6), (52, 3)]    # OFF, then ID x tonic
+    for ident, tonic in cases:
+        u.mem_write(alib, bytes((ident, tonic)))
+        mk = _rotated(ident, tonic) if ident else 0
+        # the knob: from a few starting values, a few turns each way
+        for start in (64, 4, 124, 69, 100):
+            for delta in (1, 2, 5, -1, -3, -9):
+                u.mem_write(byte, bytes((start, start)))
+                stock = max(4, min(124, start + delta))
+                regs = {UC_M68K_REG_D5: 0, UC_M68K_REG_A3: desc, UC_M68K_REG_A4: delta & 0xffffffff,
+                        UC_M68K_REG_D6: start, UC_M68K_REG_D2: stock, UC_M68K_REG_A2: byte,
+                        UC_M68K_REG_A5: byte + 1, UC_M68K_REG_A6: delta & 0xffffffff}
+                m.call("sa_knob", regs=regs)
+                got = tuple(u.mem_read(byte, 2))
+                want = _knob_model(start, mk, delta) if ident else stock
+                if got != (want, want):
+                    bad.append(f"sa_knob ID {ident} tonic {tonic} {start} {delta:+d}: {got}, want {want}")
+        # the lock: a held step's lock byte, and the Part's value when the step has none (0xff)
+        u.mem_write(part + 0x8eda2, bytes(8))                 # every track's machine: STATIC (0)
+        for start, lock in ((64, 64), (70, 0xff), (4, 4)):
+            for delta in (1, -2, 4):
+                u.mem_write(rec + 0x59, bytes((lock,)))
+                u.mem_write(part + 0x8edaa, bytes((start,)))   # the Part's PTCH, STATIC track 1
+                stock = max(4, min(124, start + delta))
+                regs = {UC_M68K_REG_D5: 0, UC_M68K_REG_A3: desc, UC_M68K_REG_A0: rec, UC_M68K_REG_A1: 0,
+                        UC_M68K_REG_A6: delta & 0xffffffff, UC_M68K_REG_D4: stock, UC_M68K_REG_D2: 0x1234,
+                        UC_M68K_REG_D3: 0x5678}
+                m.call("sa_plock", regs=regs)
+                got = u.mem_read(rec + 0x59, 1)[0]
+                want = _knob_model(start, mk, delta) if ident else stock
+                if got != want:
+                    bad.append(f"sa_plock ID {ident} tonic {tonic} lock {lock:#x} start {start} {delta:+d}: {got}, want {want}")
+        # the CHROMATIC key: index 0..24 (stock position 0: 0..15; position 1: 12..24)
+        for position in (0, 1):
+            u.mem_write(0x460d16fc, position.to_bytes(4, "big"))
+            for idx in (range(0, 16) if position == 0 else range(12, 25)):
+                regs = {UC_M68K_REG_A2: idx, UC_M68K_REG_D2: 3, UC_M68K_REG_D3: 0x11111111, UC_M68K_REG_D4: 0x22222222}
+                m.call("sa_chrom", regs=regs)
+                if u.reg_read(UC_M68K_REG_D2) != 3 or u.reg_read(UC_M68K_REG_D3) != 0x11111111 \
+                        or u.reg_read(UC_M68K_REG_D4) != 0x22222222:
+                    bad.append(f"sa_chrom ID {ident} tonic {tonic} idx {idx}: d2-d4 not kept")
+                got = u.reg_read(UC_M68K_REG_A2)
+                snapped = _chrom_model(idx, mk, tonic, position) if ident else idx
+                want = 5 * snapped + 4
+                if got != want:
+                    bad.append(f"sa_chrom ID {ident} tonic {tonic} position {position} idx {idx}: raw {got}, want {want}")
+    u.mem_write(0x460d16fc, (0).to_bytes(4, "big"))
+    u.mem_write(alib, b"\0\0")
+    # the stock paths: another slot, another page, another name: the new value stored as stock
+    u.mem_write(alib, bytes((1, 0)))
+    for what, regs, mem in (("slot B", {UC_M68K_REG_D5: 1}, None),
+                            ("page 1", {}, (0x460d1684, (1).to_bytes(4, "big"))),
+                            ("name AMP", {}, (desc + 0x16, b"AMP "))):
+        u.mem_write(byte, bytes((64, 64)))
+        if mem:
+            u.mem_write(*mem)
+        base = {UC_M68K_REG_D5: 0, UC_M68K_REG_A3: desc, UC_M68K_REG_A4: 1, UC_M68K_REG_D6: 64,
+                UC_M68K_REG_D2: 65, UC_M68K_REG_A2: byte, UC_M68K_REG_A5: byte + 1, UC_M68K_REG_A6: 1}
+        base.update(regs)
+        m.call("sa_knob", regs=base)
+        if tuple(u.mem_read(byte, 2)) != (65, 65):
+            bad.append(f"sa_knob on {what} is not stock: {tuple(u.mem_read(byte, 2))}")
+        u.mem_write(0x460d1684, (0).to_bytes(4, "big"))
+        u.mem_write(desc + 0x16, b"PTCH")
+    u.mem_write(alib, b"\0\0")
+    print(f"  [{'FAIL' if bad else 'ok'}] audio snap: sa_knob, sa_plock, sa_chrom against the models, "
+          f"{len(cases)} scales x tonics (OFF = stock; the ends stay; another slot, page or name is stock's)")
+    return bad
+
+
 def machine_gate(remix):
     import midi_scales_machine as h
     from unicorn.m68k_const import UC_M68K_REG_A0, UC_M68K_REG_D5, UC_M68K_REG_D7, UC_M68K_REG_A2
@@ -181,7 +305,7 @@ def machine_gate(remix):
     def symbols():
         raw = subprocess.check_output(["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")],
                                       text=True)
-        return {n: int(a, 16) for a, n in re.findall(r"^([0-9a-f]+) [TtBbDd] ((?:sc|kl)_\w+)$", raw, re.M)}
+        return {n: int(a, 16) for a, n in re.findall(r"^([0-9a-f]+) [TtBbDd] ((?:sc|kl|sa)_\w+)$", raw, re.M)}
 
     m = h.Machine(symbol_loader=symbols)
     u = m.uc
@@ -453,7 +577,10 @@ def machine_gate(remix):
     print(f"  [{'FAIL' if bad else 'ok'}] formatter: tonic and short name, bounded to 10 bytes")
     for line in bad[:12]:
         print(f"      {line}")
-    return bool(bad)
+    snap_bad = audio_snap(m, u, m.sym["sc_alib"])
+    for line in snap_bad[:10]:
+        print(f"      {line}")
+    return bool(bad) or bool(snap_bad)
 
 
 # ---- 2. under the port -------------------------------------------------------
