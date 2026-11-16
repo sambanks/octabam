@@ -44,7 +44,7 @@ or note trig becomes a **trigless trig**, which triggers LFOs and FX
 envelopes. When a TRIG fill removes a sample or note trig, locks for other
 parameters remain on a trigless trig.
 
-## Knobs
+## Controls
 
 ### Rhythm
 
