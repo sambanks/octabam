@@ -91,16 +91,19 @@ its PNGs, or an entry in `screen-notes.json`. Without either it shows as
 
 ## Never duplicate panel screenshots
 
-`tools/site/gen_pages.py` already embeds every `screenshots.json` image for a
-module (hero under the title, then **Screen reference**). Do **not** also
-`![](../../img/<module>/….png)` those same panel shots in
-`docs/site/usage/<module>.md` — the module page shows them twice (burned CX
-OSC, Nov 2026).
+Place a panel screenshot in its relevant usage section with
+`![](../../img/<module>/<screen>.png)`. The page generators recognize these
+placements and omit those images from the automatic screenshots above and
+below the usage text. SEQ places its Rhythm and Harmony images under
+Controls and its clear-menu image beside the clear instructions.
+
+Images without an inline placement appear under the title or in Screen
+reference. If every image has a placement, Screen reference is omitted.
 
 | Put here | Do not put here |
 |---|---|
-| `screenshots.json` + `docs/site/img/<module>/*.png` | `usage/<module>.md` embeds of those same PNGs |
-| Diagrams / SVGs only in usage (path, mix, etc.) | A second copy of source.png / setup.png in usage |
+| `screenshots.json` + `docs/site/img/<module>/*.png` for capture records | A second inline copy of the same panel image |
+| Panel images beside their controls or instructions in usage | A separate screen inventory repeating those placements |
 | PR body **Screenshots** (raw.githubusercontent.com) for Sam | Re-embedding the same PNGs again inside usage for the site |
 
 PR descriptions still embed changed PNGs once (ritual). That is for GitHub

@@ -49,6 +49,8 @@ parameters remain on a trigless trig.
 
 ### Rhythm
 
+![SEQ Rhythm on an audio track.](../../img/seq/panel.png)
+
 | Control | Effect |
 |---|---|
 | **A**, **PULS** | Choose how many hits to spread across the pattern length. |
@@ -65,6 +67,9 @@ MIDI destinations include **NOTE**, **VEL**, **LEN**, LFO and ARP
 parameters, pitch bend, channel pressure, and **CC1** through **CC10**.
 
 ### Harmony
+
+![SEQ Harmony on an audio track.](../../img/seq/tonal.png)
+![SEQ Harmony on a MIDI track.](../../img/seq/midi-tonal.png)
 
 Set the Part's pitch first, select **PTCH** or **NOTE** on Rhythm, raise
 **DPTH** above 0, then press **`[RIGHT]`**.
@@ -98,6 +103,8 @@ selected lane. Each tap chooses another arrangement. Press **`[YES]`** to
 write it. Turning **PULS** returns to a Euclidean rhythm.
 
 ### Clear locks or trigs
+
+![SEQ clear menu.](../../img/seq/clear.png)
 
 Press **`[FUNC]`** + **`[BANK]`** while SEQ is open. Choose a row and press
 **`[YES]`** to clear immediately and return to SEQ. **`[NO]`** cancels.
