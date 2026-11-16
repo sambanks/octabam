@@ -3399,7 +3399,7 @@ po_fi_loop:
         move.l  48(%sp),%d2            | PWM (under amt+φm+φc+saw; was at 8)
         bsr     po_dpw_pulse             | d0 = pulse; needs saw at 0(sp)
         move.l  (%sp)+,%d1               | saw
-        move.l  44(%sp),%d2              | PWM (under amt+φm+φc; base slot 8)
+        move.l  36(%sp),%d2              | PWM (one parked φc; base slot 8)
         bsr     sy_wramp                 | phase-skew saw (d6=φm_eff)
         move.l  (%sp)+,%d6               | raw φm
         move.l  (%sp)+,%d2               | amt
@@ -3411,7 +3411,7 @@ po_mod_ok:
         | mod never showed saw/square (unit ask).
         move.l  %d4,-(%sp)               | heard mod (under: MIX FOLD PWM …)
         move.l  V_LASTM(%a3),%a4         | m_prev = clean sine
-        mvs.w   V_ISTEP(%a3),%d1
+        move.l  20(%sp),%d1              | consume the step saved before clearing V_ISTEP
         add.l   V_IEFF(%a3),%d1
         move.l  %d1,V_IEFF(%a3)
         muls.l  %d1,%d4                  | m * I
