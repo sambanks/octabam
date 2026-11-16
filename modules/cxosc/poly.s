@@ -266,8 +266,8 @@
         .set    PART_IDX, 0x100b14cf
         .set    UI_TRACK, 0x100b14cc
         .set    LFO_PAGE_OFF, 0x8ee9a    | the Part's LFO page bytes, 24 a track: +2 = VOIC, +5 = CHRD
-| ---- a voice record, 64 bytes (the first 36 match the mono voice's fields)
-        .set    V_STRIDE, 64
+| ---- a voice record, 80 bytes (the first 36 match the mono voice's fields)
+        .set    V_STRIDE, 80
         .set    V_PHC, 0
         .set    V_PHM, 4
         .set    V_ENV, 8
@@ -287,6 +287,10 @@
         .set    V_FRAME, 56              | the frame (po_clock CK_FRAMES) the voice was allocated at (26 Sep 2026)
         .set    V_GPREV, 60              | word: the gain the last rendered frame ended at (po_fill ramps V_GPREV -> V_GAIN across a frame; 0 = the voice has been silent: a start resets the phases; a long until BUILD 38)
         .set    V_ERAMP, 62              | word: frames left of the voice's index-envelope ramp to ENV_ONE after a warm START (po_frame; BUILD 38; 0 = none)
+        .set    V_DPWM, 64               | per-voice DPW saw history
+        .set    V_DPWC, 68               | per-voice DPW pulse history
+        .set    V_DUTY, 72               | per-voice pulse duty phase
+        .set    V_LASTP, 76              | per-voice last pulse sample
 | ---- the chord record (po_keyrec, 26 Sep 2026; 32 bytes a track since the rolling window) --
         .set    CR_STRIDE, 32
         .set    CR_STEP, 0               | the step the chord's first key was recorded on
@@ -631,6 +635,7 @@ sy_called:
         move.l  (%a1)+,(%a0)+
         tst.b   T_POLY(%a3)
         beq     sy_mono_frame
+        bsr     po_cx_params             | poly voices share the track's live CX controls
         bsr     po_frame                 | paraphonic: allocate/update voices before po_fill (preserves a2, a3, d2)
         bra     sy_check
 
@@ -653,6 +658,65 @@ sy_machine:
         adda.l  %d0,%a0                  | the Part
         adda.l  #MACH_OFF,%a0
         mvz.b   (%a0,%d2.l),%d0
+        rts
+
+| ---- po_cx_params: stage the track's live CX timbre controls for poly voices.
+| Mirrors sy_mono_frame's FOLD/SETUP/LFO/PWM/MIX staging. d2=track, a4=fp.
+po_cx_params:
+        lea     -60(%sp),%sp
+        movem.l %d0-%d7/%a0-%a6,(%sp)
+        mvz.w   8(%a4),%d1               | RTRG -> FOLD
+        lsr.l   #8,%d1
+        move.l  %d2,%d0
+        lea     sy_foldq(%pc),%a0
+        lsl.l   #2,%d0
+        adda.l  %d0,%a0
+        move.l  %d1,%d0
+        bsr     sy_knob_slew
+        move.l  %d2,%d1
+        lea     sy_cxparm(%pc),%a0
+        lsl.l   #2,%d1
+        move.b  %d0,(%a0,%d1.l)         | FOLD (slewed)
+        move.l  %d1,%d0
+        move.l  %d2,%d1
+        move.l  #CV_STRIDE,%d3
+        mulu.l  %d3,%d1
+        .if     HAVE_EF_CX
+        bsr     cx_ef_live
+        .endif
+        lea     CURVALS+CV_SETUP,%a1
+        mvz.b   3(%a1,%d1.l),%d3
+        bne     po_cp_symm
+        moveq   #64,%d3
+        move.b  %d3,3(%a1,%d1.l)
+po_cp_symm:
+        move.b  %d3,1(%a0,%d0.l)
+        mvz.b   (%a1,%d1.l),%d3
+        move.b  %d3,2(%a0,%d0.l)
+        mvz.b   1(%a1,%d1.l),%d3
+        move.b  %d3,3(%a0,%d0.l)
+        bsr     cx_lfo_morph
+        lea     sy_cxpwm(%pc),%a0
+        mvz.b   (%a0,%d2.l),%d3
+        move.l  %d3,%d0
+        move.l  %d2,%d3
+        lea     sy_pwmq(%pc),%a0
+        lsl.l   #2,%d3
+        adda.l  %d3,%a0
+        bsr     sy_knob_slew
+        lea     sy_cxpwm(%pc),%a0
+        move.b  %d0,(%a0,%d2.l)
+        mvz.w   10(%a4),%d0              | RTIM -> MIX
+        lsr.l   #8,%d0
+        move.l  %d2,%d1
+        lea     sy_mixq(%pc),%a0
+        lsl.l   #2,%d1
+        adda.l  %d1,%a0
+        bsr     sy_knob_slew
+        lea     sy_cxmix(%pc),%a0
+        move.b  %d0,(%a0,%d2.l)
+        movem.l (%sp),%d0-%d7/%a0-%a6
+        lea     60(%sp),%sp
         rts
 
 | ---- the mono voice's frame: the rate, as the stock renderer computes it -----
@@ -1531,6 +1595,56 @@ sy_dpp_hi:
 sy_dpp_lo:
         move.l  %d0,S_LASTP(%a3)
 sy_dpp_out:
+        move.l  (%sp)+,%a4
+        move.l  (%sp)+,%d6
+        move.l  (%sp)+,%d3
+        rts
+
+po_dpw_pulse:
+        move.l  %d3,-(%sp)
+        move.l  %d6,-(%sp)
+        move.l  %a4,-(%sp)               | after parks: 0 a4, 4 φ, 8 d3, 12 ret, 16 saw
+        bsr     sy_wduty                 | d2 = eff_q8
+        lsl.l   #8,%d2
+        lsl.l   #8,%d2
+        lsl.l   #1,%d2                   | duty phase
+        move.l  %d2,%d0
+        sub.l   V_DUTY(%a3),%d0
+        bpl     po_dpp_ad
+        neg.l   %d0
+po_dpp_ad:
+        cmpi.l  #(1<<24),%d0             | ~0.4% of a cycle
+        bcs     po_dpp_go                | small / Q8 step — stay continuous
+        move.l  %d2,V_DUTY(%a3)
+        add.l   %d2,%d6                  | φ + duty
+        move.l  %d6,%d0                  | prime z1 = p² at new phase
+        lsr.l   #8,%d0
+        lsr.l   #8,%d0
+        move.l  %d0,%d3
+        mulu.l  %d0,%d3
+        lsr.l   #8,%d3
+        lsr.l   #8,%d3
+        move.l  %d3,V_DPWC(%a3)
+        move.l  V_LASTP(%a3),%d0         | hold one sample across the jump
+        bra     po_dpp_out
+po_dpp_go:
+        move.l  %d2,V_DUTY(%a3)          | track (even when continuous)
+        add.l   %d2,%d6                  | φ + duty
+        lea     V_DPWC(%a3),%a4
+        bsr     sy_dpw                   | d2 = saw(φ+duty)
+        move.l  16(%sp),%d0              | saw(φ)
+        sub.l   %d2,%d0
+        asr.l   #1,%d0
+        cmpi.l  #16384,%d0
+        ble     po_dpp_hi
+        move.l  #16384,%d0
+po_dpp_hi:
+        cmpi.l  #-16384,%d0
+        bge     po_dpp_lo
+        move.l  #-16384,%d0
+po_dpp_lo:
+        move.l  %d0,V_LASTP(%a3)
+po_dpp_out:
         move.l  (%sp)+,%a4
         move.l  (%sp)+,%d6
         move.l  (%sp)+,%d3
@@ -2626,6 +2740,10 @@ po_st_note:                              | the voicing's notes (a shape: its n n
         clr.l   V_PHC(%a0)               | a silent voice: both operators at phase 0 ...
         clr.l   V_PHM(%a0)
         clr.l   V_LASTM(%a0)
+        clr.l   V_DPWM(%a0)
+        clr.l   V_DPWC(%a0)
+        clr.l   V_DUTY(%a0)
+        clr.l   V_LASTP(%a0)
         clr.l   V_GAIN(%a0)              | ... and the ramp from 0 (28 Sep 2026; before: the carrier ran on, the gain cut to 0)
         clr.l   V_IEFF(%a0)              | the index climbs to I * E within the first frame, under the gain from 0
         clr.w   V_ERAMP(%a0)
@@ -2882,6 +3000,10 @@ po_ho_fresh:
         move.l  (%sp)+,%d0
         clr.l   V_PHM(%a0)               | as po_st_note starts one
         clr.l   V_LASTM(%a0)
+        clr.l   V_DPWM(%a0)
+        clr.l   V_DPWC(%a0)
+        clr.l   V_DUTY(%a0)
+        clr.l   V_LASTP(%a0)
         clr.l   V_GAIN(%a0)
         clr.l   V_IEFF(%a0)
         clr.w   V_ERAMP(%a0)
@@ -3171,10 +3293,26 @@ po_fill:
         moveq   #0,%d4                   | the record is cleared first
 po_fill1:
         move.l  52(%sp),%d2              | track
-        lea     -24(%sp),%sp             | (sp) L longs, 4 count, 8 voices' end, 12 track record, 16 the voice's gain step, 20 its index step
+        lea     -44(%sp),%sp             | locals: output/count/end/track/gain-step/index-step + MIX/FOLD/PWM/SYMM/morph
         move.l  %a1,(%sp)                | the first L long
         move.l  %d7,4(%sp)               | the count
         move.l  %a3,12(%sp)              | the track record
+        move.l  96(%sp),%d0              | track (52 above caller SP, plus 44 locals)
+        lsl.l   #2,%d0
+        lea     sy_mixq(%pc),%a0
+        move.l  (%a0,%d0.l),%d1
+        move.l  %d1,24(%sp)              | MIX Q8
+        lea     sy_foldq(%pc),%a0
+        move.l  (%a0,%d0.l),%d1
+        move.l  %d1,28(%sp)              | FOLD Q8
+        lea     sy_pwmq(%pc),%a0
+        move.l  (%a0,%d0.l),%d1
+        move.l  %d1,32(%sp)              | PWM Q8
+        lea     sy_cxparm(%pc),%a0
+        mvz.b   1(%a0,%d0.l),%d1
+        move.l  %d1,36(%sp)              | SYMM
+        mvz.w   2(%a0,%d0.l),%d1
+        move.l  %d1,40(%sp)              | CMOR:MMOR
         move.l  %a1,%a0
         move.l  %d7,%d0
         tst.l   %d4
@@ -3238,24 +3376,144 @@ po_fi_loop:
         asr.l   #8,%d2
         asr.l   #8,%d2
         add.l   %d2,%d4                  | m, Q14
-        move.l  %d4,%a4                  | m_prev
-        move.l  V_IEFF(%a3),%d1          | the index one step on (a linear ramp across the frame; BUILD 38)
-        add.l   20(%sp),%d1
+        move.l  %d4,V_LASTM(%a3)         | fb = clean sine
+        move.l  %d4,%d1                  | heard morph sine gets PWM lean
+        move.l  32(%sp),%d2
+        bsr     sy_wlean
+        move.l  %d1,%d4
+        mvz.b   43(%sp),%d2              | MMOR
+        beq     po_mod_ok
+        | d0 = carrier phase for the whole loop — pulse helpers write d0, so park it.
+        move.l  %d0,-(%sp)               | park φc
+        move.l  %d6,%d1                  | raw φm
+        move.l  %a4,%d6                  | DPW phase = φm_eff
+        move.l  %d2,-(%sp)               | amt
+        move.l  %d1,-(%sp)               | raw φm
+        move.l  %a2,%d1                  | Δφ (sy_dpw / po_dpw_pulse keep it)
+        lea     V_DPWM(%a3),%a4
+        bsr     sy_dpw                   | d2 = continuous saw
+        move.l  V_LASTM(%a3),%d4         | sine
+        | Always build DPW pulse (even MMOR < 64). Old path set square=saw
+        | below 64 then swapped in a real pulse at 64 — unit: steppy 60..70.
+        move.l  %d2,-(%sp)               | park saw (d7 = sample count — do not touch)
+        move.l  48(%sp),%d2            | PWM (under amt+φm+φc+saw; was at 8)
+        bsr     po_dpw_pulse             | d0 = pulse; needs saw at 0(sp)
+        move.l  (%sp)+,%d1               | saw
+        move.l  44(%sp),%d2              | PWM (under amt+φm+φc; base slot 8)
+        bsr     sy_wramp                 | phase-skew saw (d6=φm_eff)
+        move.l  (%sp)+,%d6               | raw φm
+        move.l  (%sp)+,%d2               | amt
+        bsr     sy_wshape                | d4 → FM (sine→saw→square)
+        move.l  (%sp)+,%d0               | restore φc
+po_mod_ok:
+        | Park heard mod (MMOR morph / PWM-leaned sine) for MIX. FDBK still
+        | uses clean sine in a4/V_LASTM — MIX used to tap that and soloing the
+        | mod never showed saw/square (unit ask).
+        move.l  %d4,-(%sp)               | heard mod (under: MIX FOLD PWM …)
+        move.l  V_LASTM(%a3),%a4         | m_prev = clean sine
+        mvs.w   V_ISTEP(%a3),%d1
+        add.l   V_IEFF(%a3),%d1
         move.l  %d1,V_IEFF(%a3)
-        muls.l  %d1,%d4                  | m * I: the phase offset (wraps: it is a phase)
+        muls.l  %d1,%d4                  | m * I
         add.l   %d0,%d4                  | carrier phase, modulated
-        move.l  %d4,%d2
+        move.l  %d6,-(%sp)               | park mod phase
+        move.l  %d4,%d6                  | φc_mod (table lookup)
+        move.l  %d6,%d2
         lsr.l   %d3,%d2
         add.l   %d2,%d2
         mvs.w   (%a0,%d2.l),%d1          | a
         mvs.w   2(%a0,%d2.l),%d2         | b
         sub.l   %d1,%d2
+        move.l  %d6,%d4
         lsr.l   #8,%d4
         mvz.w   %d4,%d4
         muls.l  %d4,%d2
         asr.l   #8,%d2
         asr.l   #8,%d2
-        add.l   %d2,%d1                  | c, Q14
+        add.l   %d2,%d1                  | c sine, Q14
+        move.l  40(%sp),%d2              | PWM (under φm+heard)
+        bsr     sy_wlean                 | PWM lean on carrier sine (audible at CMOR 0)
+        mvz.b   50(%sp),%d2              | CMOR (morph under φm+heard)
+        beq     po_car_ok
+        | d0 = running carrier phase — park it (sy_sq_phi writes d0).
+        move.l  %d0,-(%sp)               | park φc
+        move.l  %d1,%d4                  | sine (already PWM-leaned)
+        move.l  %d6,%d1
+        lsr.l   #8,%d1
+        lsr.l   #8,%d1
+        lsr.l   #1,%d1                   | φc_mod>>17
+        neg.l   %d1
+        addi.l  #16384,%d1              | aligned naive saw (morph only)
+        move.l  %d1,-(%sp)               | park saw
+        move.l  48(%sp),%d2              | PWM (under saw+φc+φm+heard)
+        bsr     sy_sq_phi                | d0 = pulse from φ (stable; not stepped saw)
+        move.l  (%sp)+,%d1               | saw
+        move.l  44(%sp),%d2              | PWM (under φc+φm+heard)
+        bsr     sy_wramp                 | phase-skew saw (d6=φc_mod)
+        mvz.b   54(%sp),%d2            | CMOR (morph under φc+φm+heard)
+        bsr     sy_wshape                | 127 → pure d0 square; linear saw→sq
+        move.l  %d4,%d1
+        move.l  (%sp)+,%d0               | restore φc
+po_car_ok:
+        move.l  (%sp)+,%d6               | restore mod phase
+        move.l  (%sp)+,%d4               | heard mod (MMOR shape)
+        | ---- MIX (PLAYBACK F): c' = c + (m - c) * MIX_Q8 / 32768; 0 = carrier ----
+        move.l  24(%sp),%d2                | MIX Q8 (slewed)
+        beq     po_mix_done
+        sub.l   %d1,%d4                  | m − c (m = MMOR morph, not clean sine)
+        muls.l  %d2,%d4
+        asr.l   #8,%d4                   | /32768 (CF asr #imm is 1..8)
+        asr.l   #7,%d4
+        add.l   %d4,%d1
+po_mix_done:
+        | ---- FOLD (RTRG) + SYMM (SETUP D): half-wave skew into the folder ----
+        | c_fold = c * gain/64; gain = SYMM (c>=0) or (128-SYMM) (c<0).
+        | 64 = even. drive = 256 + (FOLD_Q8*24)>>8. out = c + (folded-c)*FOLD_Q8/32768.
+        move.l  28(%sp),%d2               | FOLD Q8
+        beq     po_nofold
+        move.l  %d1,-(%sp)               | park c (unbiased dry)
+        move.l  %d2,-(%sp)               | park FOLD Q8
+        move.l  %d2,%d4                  | (fold_q8*24)>>8 = fold*24
+        lsl.l   #4,%d4
+        lsl.l   #3,%d2
+        add.l   %d2,%d4
+        asr.l   #8,%d4
+        addi.l  #256,%d4                 | drive_q8
+        move.l  4(%sp),%d1                | c
+        move.l  44(%sp),%d2              | SYMM (under the two parks; was at 12)
+        mvz.b   %d2,%d2                  | SYMM 0..127
+        tstl    %d1
+        bmi     po_skew_lo
+        muls.l  %d2,%d1                  | +half: c * SYMM
+        bra     po_skew_div
+po_skew_lo:
+        negl    %d2
+        addil   #128,%d2                 | 128 − SYMM
+        muls.l  %d2,%d1                  | −half: c * (128−SYMM)
+po_skew_div:
+        asr.l   #6,%d1                   | / 64 -> c_fold
+        muls.l  %d4,%d1                  | c_fold * drive_q8
+        asl.l   #8,%d1
+        move.l  %d1,%d2
+        lsr.l   %d3,%d2
+        add.l   %d2,%d2
+        mvs.w   (%a0,%d2.l),%d4
+        mvs.w   2(%a0,%d2.l),%d2
+        sub.l   %d4,%d2
+        lsr.l   #8,%d1
+        mvz.w   %d1,%d1
+        muls.l  %d1,%d2
+        asr.l   #8,%d2
+        asr.l   #8,%d2
+        add.l   %d2,%d4                  | folded, Q14
+        move.l  (%sp)+,%d2               | FOLD Q8
+        move.l  (%sp)+,%d1               | c
+        sub.l   %d1,%d4
+        muls.l  %d2,%d4
+        asr.l   #8,%d4                   | /32768
+        asr.l   #7,%d4
+        add.l   %d4,%d1
+po_nofold:
         adda.l  16(%sp),%a5              | the gain one step on (a linear ramp across the frame: no step at its edge)
         move.l  %a5,%d2
         swap    %d2                      | its integer part, Q15
@@ -3288,7 +3546,7 @@ po_fi_put:
         move.l  %d1,(%a1)+               | R
         subq.l  #1,%d7
         bne     po_fi_out
-        lea     24(%sp),%sp
+        lea     44(%sp),%sp
         bra     sy_done
 po_fi_sat:
         bmi     po_fi_satp               | the doubled sum wrapped: its sign says which way
@@ -6419,7 +6677,7 @@ sy_foldq:                                | 8 tracks x Q8 current FOLD
         .fill   8, 4, 0
 po_amp:                                  | (2.20) 8 tracks x 4 bytes: ATK, HOLD, REL as the frame builder wrote them,
         .fill   8 * 4, 1, 0              | 1 once kept (po_amp_snap)
-po_voices:                               | 8 tracks x 4 voices x 64 bytes
+po_voices:                               | 8 tracks x 4 voices x 80 bytes
         .fill   8 * 4 * V_STRIDE, 1, 0
 po_seq:                                  | the allocation stamp
         .long   0

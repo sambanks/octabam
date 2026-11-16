@@ -79,8 +79,9 @@ Trigs, chromatic keys, or MIDI. **MONO** keeps the last note. In **POLY**,
 **VOIC** sets the voice count and **CHRD** selects a chord shape. **LEG**
 selects **OFF**, **MONO**, or **POLY** behavior. AMP **HOLD** owns note
 length (**HOLD INF** = until **`[STOP]`**). P-locks, scenes, and MIDI CCs
-hit PLAYBACK / SETUP like any machine. Stock FX1 / FX2 and quantizer
-**GLIDE** work as usual.
+hit PLAYBACK / SETUP like any machine. Every POLY voice uses the same **CAR**,
+**MOD**, **SYMM**, **FDBK**, and **PWM** settings, plus PLAYBACK **MIX** and
+**FOLD**. Stock FX1 / FX2 and quantizer **GLIDE** work as usual.
 
 ## Controls
 

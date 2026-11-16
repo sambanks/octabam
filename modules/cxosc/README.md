@@ -112,21 +112,15 @@ In **MONO**, the selection guard is **`ML_FM_MAX = 6`** (Part popup
 | 7 | 0 | 355 µs | 446 µs | wall — MAIN clipped; do not ship as a cap |
 
 The seven-track MONO run clipped MAIN, so the guard rejects a seventh. In
-**POLY**, the selector cap is **four** (`CX OSC: 4 MAX`). On 16 Nov 2026, the
-author ran five POLY tracks with CF METER on `CPMTR84`. Three 20-second USB
-captures decoded 23 cycles. Idle was 9.36–10.39%, ISR mean was 309.1–313.9 µs,
-and the longest ISR reading in each cycle was 415.2–463.8 µs against a
-362.8–362.9 µs frame. DSP TUE and ROE stayed at zero, with 5,520 frames in
-each two-second window. The author reported a freeze during the five-track
-test.
+**POLY** allows four voices per CX OSC track. The selector cap is four. The
+MONO cap remains six.
 
-At four POLY tracks, a 20-second USB capture decoded nine cycles. Idle was
-16.39–16.69%, ISR mean was 294.3–294.8 µs, and the longest ISR reading was
-314.4–337.7 µs against a 362.8–362.9 µs frame. DSP TUE and ROE stayed at zero,
-with 5,520 frames in every window. On 16 Nov 2026, the author confirmed the
-four-track setup was stable and still running after the capture. The POLY
-selector cap is four. The MONO cap remains six. The run's exact RMX tag was
-not confirmed. [#852](https://github.com/sambanks/octabam/issues/852).
+The 16 Nov 2026 POLY CF METER captures are retracted as performance evidence.
+That renderer applied only PTCH, RATO, and INDX. It skipped the CX waveform,
+feedback, MIX, FOLD, and SYMM stages. The four-track run was reported stable,
+but it measured the incomplete renderer and does not establish stability or
+headroom for the corrected code. Re-measure before claiming a POLY limit.
+[#852](https://github.com/sambanks/octabam/issues/852).
 
 ## Build
 

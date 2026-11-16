@@ -326,7 +326,7 @@ MODULE = Module(
              "~12%/309; 7× idle 0%/355 max 446 (wall) → ML_FM_MAX=6; author confirmed 6 MAX toast on unit. Prior "
              "CX 41 / CX 28 / VRCS-CX VS. MONO cap 6; POLY cap 4. verify_cxosc + make check REMIX=cxosc"),
               Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-11-16",
-        note="CF METER USB captures during POLY use. Four tracks: 9 cycles / 20 s, 16.4% idle, 294.5 us mean, 324.2 us max, DSP TUE/ROE 0; author confirmed stable and still running. Five tracks: 23 cycles / 60 s across three captures, 9.4–10.4% idle, 309–314 us mean, 415–464 us max; author reported freeze. Running RMX tag not confirmed.")),
+        note="RETRACTED as POLY performance evidence: these CF METER captures used the earlier renderer, which applied only PTCH/RATO/INDX and skipped CX waveform, feedback, MIX, FOLD and SYMM. The reported four-track stability and five-track freeze describe that incomplete renderer, not this implementation. Re-measure before claiming POLY stability or headroom.")),
     doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..34 CAR/MOD/SYMM/FDBK/PWM (DEC not a destination). VOICES=POLY adds VOIC/CHRD as PMTR 35/36 destinations for LFO 1/2; LFO 3 is muted. Local fork of FM SYNTH.",
     conflicts=(
         ("SYNTH MACHINE", "both own the FLEX/STATIC kind-table renderers, page cave 0x400d24d0, and machine-list sites"),
