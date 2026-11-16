@@ -4,7 +4,7 @@
 Stages an Octatrack project onto a virtual card (verify_set's stage()), boots
 the image under --interactive --frame with the USB device model, enumerates,
 starts the sequencer with a MIDI START and 0xF8 ticks, and records every
-USB-MIDI packet the device sends on EP2 IN. Prints, per channel (= track), the
+USB-MIDI packet the device sends on EP2 IN. Prints, per channel (= the track's TRIG CHANNEL: track n on channel n in a default project), the
 note-ons, note-offs and CCs, and the module's debug counters.
 
     OT_PROJECT=<project dir> python3 tools/verify/probe_usbmidi_tracks_project.py [--part N] [--bank N] [--ticks N]
@@ -25,6 +25,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import collections
 
@@ -40,7 +41,8 @@ spec.loader.exec_module(vs)
 EMU = ROOT / "out/emu/ot_emu"
 IMAGE = ROOT / "out/mainos_bus.bin"
 ELF = ROOT / "out/platform/runtime/runtime.elf"
-OUT = ROOT / "out/usbtracks_probe"
+# one scratch directory per process (TRAPS trap-tmp-race): two probes at once must not share the card image
+OUT = pathlib.Path(tempfile.mkdtemp(prefix="usbtracks_probe_", dir=ROOT / "out"))
 CLOCK_RECEIVE = 0x80000028
 TYPE = {0: "STATIC", 1: "FLEX", 2: "THRU", 3: "NEIGH", 4: "PICKUP"}
 
