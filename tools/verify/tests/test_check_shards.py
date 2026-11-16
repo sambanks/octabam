@@ -144,13 +144,12 @@ class PickJobs(unittest.TestCase):
                 self.assertTrue((ROOT / script).is_file(), unit)
                 self.assertIn(script, {g.script for g in registry.by_key(module).gates}, unit)
 
-    def test_octabams_long_share_names_real_jobs(self):
-        import reach
-        names = {j[0] for j in check_shards.remix_jobs("octabam", ROOT)}
-        parts = reach.SPLIT_REMIX_JOBS["octabam"]
-        every = [n for jobs in parts.values() for n in jobs]
-        self.assertLessEqual(set(every), names)
-        self.assertEqual(len(every), len(set(every)))      # no job in two parts
+    def test_job_names_are_the_remix_jobs_without_the_placeholder(self):
+        names = check_shards.job_names("octabam")
+        self.assertEqual(names, [j[0] for j in check_shards.remix_jobs("octabam", ROOT) if j[0] != "module-gates"])
+        self.assertEqual(len(names), len(set(names)))
+        self.assertLess(set(check_shards.job_names("octabam", ["BRAIN"])), set(names))
+        self.assertIsNone(check_shards.SCOPE)           # the scope is restored
 
 
 class Split(unittest.TestCase):
