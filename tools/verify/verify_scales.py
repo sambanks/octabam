@@ -30,6 +30,9 @@ tonic).
      and scales.strd (header, CRC-32, the ID in bank 1 Part 1 track 1); the
      saved card booted again gives the ID back; a run with no save writes
      no scales.work.
+
+`--section mki|mkii[,..]` runs one half (the CI units, reach.SPLIT_GATE_SECTIONS): `mki` is the linked code and the
+MKI port runs, `mkii` the MKII port runs and scales.work; none runs both.
 """
 import os
 import pathlib
@@ -561,8 +564,19 @@ def chooser_runs(out):
     return runs
 
 
+SECTIONS = ("mki", "mkii")
+
+
 def main():
-    remix = sys.argv[1]
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("remix")
+    ap.add_argument("--section", default="", help="mki, mkii or both, comma-separated; none runs both")
+    a = ap.parse_args()
+    sections = [x for x in a.section.split(",") if x] or list(SECTIONS)
+    if set(sections) - set(SECTIONS):
+        ap.error(f"--section takes {', '.join(SECTIONS)}")
+    remix = a.remix
     mods = registry.remix(remix).modules
     if "SCALES" not in mods:
         return 0
@@ -573,7 +587,7 @@ def main():
     env = dict(os.environ, REMIX=remix, XBUS="1", SPEC="1")
     subprocess.run([sys.executable, "tools/build/build_bus.py"], cwd=ROOT, env=env,
                    stdout=subprocess.DEVNULL, check=True)
-    fails = machine_gate(remix)
+    fails = machine_gate(remix) if "mki" in sections else 0
 
     image = out / "mainos.bin"
     shutil.copy2(ROOT / "out/mainos_bus.bin", image)
@@ -611,7 +625,7 @@ def main():
     window = int(re.search(r"^([0-9a-f]+) [Dd] sc_win$", nm, re.M).group(1), 16)
     dumps = (f"{LIVE:#x},{0x24}", f"{PART_SETUP:#x},{0x24}", f"{CS1_SETUP:#x},{0x24}",
              f"{window:#x},4", "0x46c82456,4", "0x100b14cf,1", f"{lib:#x},1")
-    for model in ("mki", "mkii"):
+    for model in sections:
         cmd = [str(ROOT / "out/emu/ot_emu"), "--image", str(image), "--card", str(card),
                "--set", "SCSET", "--project", "SCPRJ", "--load-ms", "90000",
                "--scenario-jobs", str(os.cpu_count() or 4)]
@@ -663,7 +677,8 @@ def main():
         for line in bad[:10]:
             print(f"      {line}")
         fails += bool(bad)
-    fails += persist(out, image, card, lib)
+    if "mkii" in sections:
+        fails += persist(out, image, card, lib)
     return int(bool(fails))
 
 
