@@ -664,6 +664,16 @@ class PlanJsonTests(unittest.TestCase):
         self.assertIn("check-remix slow-lfo (project)", units(""))       # an unscoped run reaches it
         self.assertEqual(list(units("KITS")), ["check-remix slow-lfo"])  # a change to another module: no project unit
 
+    def test_a_long_project_gate_is_a_project_unit_of_its_own(self):
+        """Run 43811384156: octabam's (project) hit the 120-minute job limit with dlload still running."""
+        items = [("check-remix", "python3 tools/verify/check_shards.py --jobs 3 octabam", ["e"])]
+        got = {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
+        pre = "python3 tools/verify/check_shards.py --jobs 3 "
+        self.assertEqual(got["check-remix octabam (project-dlload)"], pre + "--only-jobs dlload octabam")
+        self.assertNotIn("dlload", got["check-remix octabam (project)"].split("--only-jobs ")[1].split()[0].split(","))
+        self.assertIn("image:load-meter", got["check-remix octabam (project)"].split("--only-jobs ")[1].split()[0].split(","))
+        self.assertIn("dlload", got["check-remix octabam"].split("--skip-jobs ")[1].split()[0].split(","))
+
     def test_a_job_left_out_of_one_remixs_project_unit_is_left_out_there_only(self):
         """reach.PROJECT_GATE_SKIP leaves a job out of one remix's (project) unit; plocks-p2 and mode-defaults on
         octabam-verbs (#1127) were its entries until fixed, and run there now."""

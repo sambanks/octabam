@@ -1190,6 +1190,13 @@ SPLIT_SHARED_GATES = {"morph": ("MORPH", "tools/morph/test_morph.py"),
 # others (sambanks/octabam#1051): remix -> {job: issue}. They SKIP there as before. Remove an entry when fixed.
 PROJECT_GATE_SKIP = {}         # octabam-verbs' plocks-p2 and mode-defaults (#1127) were here until 15 Nov 2026
 
+# Project gate jobs too long to share a remix's `(project)` unit: each is `check-remix <remix> (project-<job>)`, with
+# the same generated project (ci.yml's Fresh Project step takes every ` (project` unit). Run 43811384156's octabam
+# `(project)` (16 Nov 2026, caches cold after #1138's port change) ran nine jobs on 3 shards and hit the 120-minute job
+# limit with dlload still running: dlload's last uncached pass took 4182 s alone, and beside it load-meter took 5546 s
+# (1789 s on an earlier run).
+PROJECT_OWN_UNIT = ("dlload",)
+
 
 def project_gate_jobs(remix_name):
     """[(module key, check_shards job)] of the remix's gates that SKIP without a project (`Gate.project`), the
@@ -1266,8 +1273,12 @@ def entries(items, jobs):
                 parts = dict(SPLIT_REMIX_JOBS.get(r, {}))
                 named = {n for names in parts.values() for n in names} | set(SPLIT_EXTRA_UNITS.get(r, {}))
                 more = [n for key, n in project_gate_jobs(r) if n not in named and (modules is None or key in modules)]
-                if more:
-                    parts["project"] = tuple(parts.get("project", ())) + tuple(dict.fromkeys(more))
+                shared = [n for n in dict.fromkeys(more) if n not in PROJECT_OWN_UNIT]
+                if shared:
+                    parts["project"] = tuple(parts.get("project", ())) + tuple(shared)
+                for n in dict.fromkeys(more):
+                    if n in PROJECT_OWN_UNIT:
+                        parts[f"project-{n}"] = (n,)
                 if parts:
                     every = ",".join([n for names in parts.values() for n in names] + list(SPLIT_EXTRA_UNITS.get(r, {})))
                     out.append({"name": f"check-remix {r}", "items": [(kind, line(f"--skip-jobs {every} "), paths)]})
