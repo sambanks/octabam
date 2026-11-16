@@ -131,16 +131,57 @@ A batch that does not fit USB MIDI's 256-byte accumulator goes into its 4 KB
 ring; only a batch the ring has no room for is dropped, whole, and counted in
 `usbmidi_tx_drops`.
 
-## On a unit (MKII, 15 Nov 2026)
+## On a unit (MKII, 16 Nov 2026)
 
-Owner report, with the PR's first build (channel = track number, always on,
-the encoder kicked in the frame interrupt), not with this one: seen on the
-host over USB MIDI, CC 16..21 for every value on PLAYBACK page 1, a note for
-each trig, retrig repeats, and the CCs following the crossfader between
-scenes. Nothing on the unit was timed or counted: the gate length, repeat
-spacing, `usbmidi_tx_drops` and the INF burst are port numbers only. The
-present build (TRIG CHANNEL, SEND, the deferred kick, the sweep) has not been
-flashed.
+`tools/hw/ot_usbtracks.py` on the owner's MKII, three images of
+[`test/usb-midi-tracks-hw`](../../remixes/test/usb-midi-tracks-hw/README.md)
+(USB, REMOTE, BRAIN, LOAD METER, no FRAME GUARD) switched over USB: NEW (this
+build, SEND NOTES+CC), OLD (the PR's first push, 94c95f79: channel = track, no
+setting, the encoder kicked in the frame interrupt) and OFF (this build, SEND
+OFF). One project: T1..T4 FLEX with a trig on every 16th, T1 RTRG INF RTIM 4
+and T2 RTRG INF RTIM 16 on every trig; TRIG CHANNELs 1, 2, 4, 3 (T3 and T4
+swapped); clock and START from the Mac over USB at 120 BPM; 60 s, then a
+program change to a pattern whose part has T1 on THRU with a trig on step 1;
+STOP. Every USB MIDI byte kept with its arrival time; LOAD METER polled 4
+times a second. Runs `new2`, `old2`, `off3` (`out/hw/umt/<run>.json`):
+
+| | NEW | OLD | OFF |
+|---|---|---|---|
+| DSP stall | none | none | none |
+| longest frame interrupt (stress / part change) | 310.8 / 318.1 us | 308.8 / 312.8 us | 293.3 / 312.7 us |
+| note-ons T1 / T2 / T3 / T4 | 76,115 / 42,575 / 548 / 548 | 75,910 / 42,462 / 547 / 547 | 0 |
+| a note-on without its note-off at the end | none | T1's (the unit still held it pending) | -- |
+| T3's channel (TRIG CHANNEL 4) | 4 | 3 | -- |
+| T1 after the part change | last note-off 17.6 ms after the estimated switch | last note-off 21.5 ms after, its last note never closed | -- |
+| T3 note spacing, 547 intervals (125 ms) | mean 124.99, sd 3.30, 105.1..145.2 ms | mean 125.00, sd 3.56, 109.2..145.1 ms | -- |
+| `usbmidi_tx_drops` during the run | 0 | 0 | 0 |
+
+What it shows:
+
+- TRIG CHANNEL is what NEW sends on (T3 on 4, T4 on 3); OLD sends on the track's number.
+- The stuck note is real on a unit and fixed: on OLD, T1's FLEX note was still
+  open when its track became THRU and never closed; on NEW it closed at the switch.
+- SEND OFF is silent while the module sees 860 STARTs and 44,476 repeats.
+- Moving the encoder out of the frame interrupt changed no measured number here:
+  the longest frame interrupt is the same on all three images (about 300 us,
+  OFF included, so it is the playback's cost, not MIDI's), no image stalled,
+  and host-side note timing is the same. LOAD METER reads the interrupt's
+  duration; the late-ENTRY window of trap-late-frame (`tools/hw/framelog.patch`)
+  was not measured, and FRAME GUARD's absence did not produce a stall in 60 s
+  on either build.
+- Every queued note reached the Mac. Before the Mac opened the port, an INF
+  retrig on the unit filled the queue and 8,861 batches were dropped and
+  counted (NEW, before run `new1`): with no host reading, the queue fills in
+  seconds at this rate.
+
+The first run (`new1`) had a 64-step pattern and no T1 trig on the THRU part:
+the INF voice played on after the part change, still rendered, so the
+stuck-note case was not reached; the fixture now has both. Stock's MIDI
+tracks sent 59 CCs (20..29, 46..63, 80..88) on channels 8 and 9 at the
+program change; not this module's.
+
+The first build was also seen working on this MKII on 15 Nov 2026 (owner
+report: CCs, notes per trig, repeats, fader moves; nothing counted).
 
 ## Measured (under the port)
 
@@ -182,10 +223,11 @@ with one generated WAV behind every sample slot:
 
 ## Inferred and to be measured
 
-- On a unit: frame-interrupt lateness with dense trigs and INF retrig on
-  several tracks (`tools/hw/framelog.patch`), now that the encoder is out of
-  the interrupt; and the latency the deferred kick adds when EP2 IN is idle
-  (the engine task's turn), not measured anywhere.
+- Frame-interrupt entry lateness (`tools/hw/framelog.patch`) on either
+  build: LOAD METER's duration and the absence of a stall are all the unit run
+  measured. The latency the deferred kick adds when EP2 IN is idle is inside
+  the host-side spacing above (no difference between NEW and OLD), not
+  measured on its own.
 - An LFO on one of the six is in the CC (`docs/firmware/LFO.md`: it writes the same
   record). Read from the code, no test project has one.
 - A track on another machine is not hooked for STARTs. PICKUP shares the stock
