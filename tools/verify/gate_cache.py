@@ -244,10 +244,16 @@ def shared_key(root, name, argv, scripts, module_dirs, deps=None, env=None):
 def lookup(k, root=ROOT):
     if not k or not enabled():
         return None
+    f = store_dir(root) / f"{k}.json"
     try:
-        return json.loads((store_dir(root) / f"{k}.json").read_text())
+        rec = json.loads(f.read_text())
     except (OSError, ValueError):
         return None
+    try:
+        os.utime(f)         # a hit is a use: CI prunes passes unused for 14 days by mtime, and uploads the ones a run touched
+    except OSError:
+        pass
+    return rec
 
 
 def store(k, record, root=ROOT):

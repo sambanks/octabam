@@ -1561,6 +1561,32 @@ only bounds a slice, sits inside the reply timeout, and the caller checks what
 the slice advanced. Gate:
 `test_ot_events.test_wait_for_times_out_on_the_given_clock`.
 
+<a name="trap-two-clocks"></a>
+
+### A gate timed its input from boot and its keys from the load's end
+
+**THE INPUT AND THE KEYS RAN ON TWO CLOCKS.** `verify_rec_threshold`'s `late`,
+`cancel` and `untrig` fed 10 s of silence from the DSP boot
+(`--audio-in-from-boot`) and pressed TRACK 1 + REC AB 2 s into the live script,
+which starts when the port marks the load ended. The press led the onset only
+while boot and load took under about 8 s. On 16 Nov 2026 every branch merged
+with main failed `cancel: stock's own start path ran under THR`
+(sambanks/octabam#1129, #1132): from sambanks/octabam#1133 on octabam the
+gate's bare project (a `project.work`, no bank files) was marked loaded after
+9.1 s, not 3.4 s; the press found the signal already there, armed and started
+at once, and the second press ran stock's start. Measured under the port: the
+1.40C itself and the images before and after #1133 all write the 15 missing
+banks after that load (the bank writer `0x400917c8`, mask `0xfffe`, called from
+`0x40084dc8`); with SEQ registered as a STORE Part client the load-end mark
+(the engine idle at its queue receive) falls after those writes instead of
+before them, and with SEQ's registration removed it falls before them again.
+A project with its banks loads in 15,081 ms before and after #1133 with the same
+card traffic. Inferred: that STORE's Part hooks move the idle gap (not traced).
+Fix: `--audio-in-on-cue` holds a WAV silent until the script's `<ms> audio
+start` line, and the gate cues every WAV at script 6 s and stages a complete
+project from `tools/hw/ot_fresh.py`. Rule: a gate that compares two events
+puts both on the script's clock; boot and load time move with every module.
+
 <a name="trap-cf-frame"></a>
 
 ### A ColdFire save frame sized for the wrong register count overwrites the return address

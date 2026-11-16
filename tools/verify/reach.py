@@ -1111,58 +1111,36 @@ def entry_name(kind, command):
     return kind
 
 
-# Units that would set the wall time on one runner, cut up (a CI runner each).
-# A remix: each part is the gate jobs named here (check_shards --only-jobs, the
-# unit `check-remix <remix> (<part>)`), the unit `check-remix <remix>` every
-# other (--skip-jobs); a name that is no gate job is refused there, so a
-# rename cannot drop a gate. The `project` part is the jobs that read
-# OT_PROJECT: its unit alone gets the generated project (ci.yml, tools/hw/
-# ot_fresh.py, 255 s on a runner), the others run as they did without one
-# (pattern-mute writes the mute masks its checks expect into its copy).
-# `image` is not in it: with a project its verify_brain fails and the job took
-# 2869 s on cxosc-core (27 Oct 2026). The shared half: its module_gates step on
-# one unit, every other step on the other (Makefile SHARED_PART). Times of run
-# 40467801048: remix-switch 481 s of octabam's 1886 s over 3 shards (the other
-# jobs: 1405 s, 468 s over 3 shards); module_gates --shared 353 s of the shared
-# half's 645 s, run serially.
-# The `image:` jobs (one per image-stage module gate) are cut up by their times in runs 41762397696 and 41783120715 (4 Nov
-# 2026): `rec` is usb-in and usb-load-meter, about 600 s each; `rec-arming`, `rec-inputs` and `rec-level` are the three
-# REC THRESHOLD gates (verify_rec_threshold.py: twelve port runs with the DSP, 1042 s in one job beside the others).
-# A runner each (a public repo's minutes are free).
-# Run 43734790095 (15 Nov 2026, every unit reached, cold): `scales` (verify_scales.py: 196 port scenarios on each of MKI
-# and MKII) took 3630 s on octabam, 4430 s on octabam-verbs and 2687 s on octabam-bus, alone on one shard from the
-# unit's start to its end, and was each unit's whole wall time (62, 75 and 46 min; every other unit of the run: 22 min
-# or less). It runs as two jobs, one per `--section` (SPLIT_GATE_SECTIONS), a unit each. `image:chords` was the next
-# (1314, 1702 and 942 s) and has a unit too. octabam-verbs and octabam-bus had no parts and ran the REC THRESHOLD
-# gates, remix-switch and the usb pair beside the rest (verbs: 7993 s of jobs other than `scales` over two shards);
-# they are cut as octabam is. Not measured: the new units' times (the first run of this table shows them).
-_PARTS = {"long": ("remix-switch",),
-          "rec": ("image:usb-in", "image:usb-load-meter"),
-          "rec-arming": ("image:rec-threshold-arming",),
-          "rec-inputs": ("image:rec-threshold-inputs",),
-          "rec-level": ("image:rec-threshold-level",),
-          "chords": ("image:chords",),
-          "scales-mki": ("scales:mki",),
-          "scales-mkii": ("scales:mkii",)}
-SPLIT_REMIX_JOBS = {"octabam": {"long": _PARTS["long"], "project": ("set", "mode-defaults", "plocks-p2", "pattern-mute"),
-                                **{k: v for k, v in _PARTS.items() if k != "long"}},
-                    "octabam-verbs": dict(_PARTS),
-                    "octabam-bus": dict(_PARTS)}
+# CI runs one unit (a runner) per gate job: `check-remix <remix> (<job>)` is `check_shards --only-jobs <job>`, and one
+# per shared module gate: `check-shared (<gate>)` is `SHARED_PART=modules MODULE_GATES_ONLY=<script>`. A name that is no
+# gate job is refused by check_shards, so a rename cannot drop a gate. Runner setup before the gates: 47-94 s, and
+# 248-411 s with a generated project (run 43811384156, 16 Nov 2026).
+#
+# The jobs that read OT_PROJECT (`Gate.project`, and PROJECT_SET's `set`) get a project made by tools/hw/ot_fresh.py in
+# the plan job (255 s on a runner), once per remix, and each of those units downloads it. `image` jobs without
+# `Gate.project` have none: with a project verify_brain failed and the one `image` job took 2869 s on cxosc-core
+# (27 Oct 2026).
+PROJECT_SET = ("octabam",)         # remixes whose `set` job runs with the generated project (the others run it without)
 
-# A per-remix isolated gate cut into jobs by its own `--section` switch: script -> sections. check_shards.remix_jobs
-# makes the job `<gate>:<section>` of each in place of the gate's one job (no `--section` runs them all, as
+# A matrix holds at most 256 jobs (GitHub). Past this many units, the gate jobs of a remix share runners (entries()).
+MATRIX_LIMIT = 250
+
+FRESH = "out/fresh"                # ci.yml: tools/hw/ot_fresh.py --out out/fresh -> out/fresh/<remix>/NOPROJ
+
+# A per-remix isolated gate cut into jobs by its own `--section` switch: script -> sections. Run 43734790095 (15 Nov
+# 2026): verify_scales alone, 196 port scenarios on each of MKI and MKII, took 3630 s on octabam, 4430 s on octabam-verbs
+# and 2687 s on octabam-bus. check_shards.remix_jobs makes the job `<gate>:<section>` of each in place of the gate's one job (no `--section` runs them all, as
 # `make verify-remix` does). verify_scales: `mki` is the linked code and the MKI port runs, `mkii` the MKII port runs
 # and scales.work.
 SPLIT_GATE_SECTIONS = {"tools/verify/verify_scales.py": ("mki", "mkii")}
 
-# A unit that runs one gate on its own, with a generated project, beside the units above: `check-remix <remix> (<name>)`
+# A unit that runs one gate on its own, with a generated project: `check-remix <remix> (<name>)`
 # is `check_shards --only-jobs <name>`; check_shards.remix_jobs adds the gate job from COMMAND, so the gate cache covers it
-# (4 Nov 2026; until then the unit ran COMMAND directly, uncached, 24.7 min on average). It is additive (the remix's
-# other units still run that gate, without a project), so it exists only when MODULE is reached. `brain`: BRAIN's
+# (4 Nov 2026; until then the unit ran COMMAND directly, uncached, 24.7 min on average). It exists only when MODULE is reached. `brain`: BRAIN's
 # image-stage gate, verify_brain, needs a project; the `image:` jobs cannot take one, and scoping it with --modules does
 # not narrow it (that is "reached from BRAIN": 9 gates of ten modules, 4581 s, with verify_usb_post, verify_load_meter
 # and verify_usb_load_meter failing on a generated project, run 40640514673), so the unit runs verify_brain alone.
-# It builds its own image and reads OT_PROJECT, which ci.yml sets for a `(brain)` unit.
+# It builds its own image and reads OT_PROJECT, which ci.yml sets for a unit with a project.
 # verify_brain runs as five units, one per `--section` group (4 Nov 2026: 1026 s locally in one process, about 40
 # boots; `brain` keeps the name of the whole gate and runs the eight card cases; in CI the `cards` group took 782 and
 # 784 s with the stock-store sections in it, the others 308-786 s).
@@ -1178,17 +1156,9 @@ SPLIT_EXTRA_UNITS = {"octabam": {"brain": ("BRAIN", _BRAIN + "cards"),
                                  "scenes": ("MIDI SCENES", ".venv/bin/python3 tools/verify/verify_scenes.py octabam")}}
 
 
-# Shared module gates that are slow beside the rest, each a unit of its own: `check-shared (<part>)` is
-# `SHARED_PART=modules MODULE_GATES_ONLY=<script>`, and `check-shared (module gates)` is `MODULE_GATES_SKIP` of all of
-# them. Run 41768453842 (4 Nov 2026): the module gates took 1328 s in one serial loop, test_morph 579 s and
-# test_octa303 409 s of it. Module key, script (the manifest's Gate).
-SPLIT_SHARED_GATES = {"morph": ("MORPH", "tools/morph/test_morph.py"),
-                      "octa303": ("OCTA303", "tools/octa303/sim/test_octa303.py")}
-
-
-# Jobs left out of one remix's `(project)` unit because they fail there with a generated project though they pass on
-# others (sambanks/octabam#1051): remix -> {job: issue}. They SKIP there as before. Remove an entry when fixed.
-PROJECT_GATE_SKIP = {"octabam-verbs": {"plocks-p2": "#1127", "mode-defaults": "#1127"}}
+# Jobs left out of one remix's project units because they fail there with a generated project though they pass on
+# others (sambanks/octabam#1051): remix -> {job: issue}. They run without a project there and SKIP. Remove an entry when fixed.
+PROJECT_GATE_SKIP = {}         # octabam-verbs' plocks-p2 and mode-defaults (#1127) were here until 15 Nov 2026
 
 
 def project_gate_jobs(remix_name):
@@ -1210,11 +1180,24 @@ def project_gate_jobs(remix_name):
     return out
 
 
-def project_shared_gates(remixes, modules):
-    """[(unit name, script)] for the gates that run in the shared half (`once`, or isolated with remix_arg=False), SKIP
-    without a project (`Gate.project`) and have no unit of SPLIT_EXTRA_UNITS: each is a `check-shared (project: <gate> on
-    <remix>)` unit, <remix> the one carrying the module with the fewest modules (where module_gates --shared runs a
-    once gate) and the one ci.yml makes the project on. `modules` is the plan's module scope or None."""
+def remix_units(remix, modules):
+    """[(gate job, runs with a project)] of the remix's per-remix half under `modules` (a list or None), in job order;
+    None for a name the registry does not know (a fixture's)."""
+    try:
+        names = check_shards.job_names(remix, modules)
+    except (KeyError, ValueError, FileNotFoundError, SystemExit):
+        return None
+    project = {n for _, n in project_gate_jobs(remix)} | set(SPLIT_EXTRA_UNITS.get(remix, {}))
+    if remix in PROJECT_SET:
+        project.add("set")
+    return [(n, n in project) for n in names]
+
+
+def shared_units(remixes, modules):
+    """[{"name", "key", "script", "remix", "remixes", "project"}] of the gates `module_gates --shared` runs for
+    `remixes` under MODULES=`modules` (the selection of module_gates._run): the gate's job name, its module key, its
+    script, the remix it runs on (the carrier of a `once` gate, else the first), and whether it runs with a project
+    (`Gate.project`, without a unit of SPLIT_EXTRA_UNITS). None for a remix the registry does not know."""
     sys.path.insert(0, str(ROOT / "tools"))
     import toolpath  # noqa: F401,E402
     from remix import registry  # noqa: E402
@@ -1222,33 +1205,32 @@ def project_shared_gates(remixes, modules):
     try:
         objs = [registry.remix(r) for r in remixes]
     except (KeyError, ValueError, FileNotFoundError, SystemExit):
-        return []
+        return None
+    mods = module_gates.union(objs)
     own = {a for units in SPLIT_EXTRA_UNITS.values() for _, command in units.values() for a in command.split()}
-    out = []
-    for key, g in module_gates.collect(module_gates.union(objs), "isolated"):
-        if not g.project or not (g.once or not g.remix_arg) or g.script in own:
-            continue
-        if modules is not None and key not in modules:
-            continue
+    gates = [(k, g, objs[0].name) for k, g in module_gates.collect(mods, "isolated", remix_arg=False)]
+    for k, g in module_gates.collect(mods, "isolated", once=True):
         try:
-            # module_gates --shared runs a remix_arg=False gate on the first remix, a once gate on the carrier
-            carrier = (module_gates.carrier(key, objs) if g.once else objs[0]).name
+            gates.append((k, g, module_gates.carrier(k, objs).name))
         except (ValueError, AttributeError):
             continue
-        out.append((f"check-shared (project: {pathlib.PurePosixPath(g.script).stem.removeprefix('verify_').replace('_', '-')} "
-                    f"on {carrier})", g.script))
-    return out
+    if modules is not None:
+        mine = {g.script for m in mods if m.key in modules for g in getattr(m, "gates", ())}
+        gates = [x for x in gates if x[1].script in mine]
+    names = [module_gates.job_name(g) for _, g, _ in gates]
+    # two modules' `verify.py` share a job name: the directory goes in front of it
+    names = [f"{pathlib.PurePosixPath(g.script).parent.name}/{n}" if names.count(n) > 1 else n
+             for n, (_, g, _) in zip(names, gates)]
+    return [dict(name=n, key=k, script=g.script, remix=r, remixes=list(remixes),
+                 project=bool(g.project and g.script not in own), once=g.once, remix_arg=g.remix_arg)
+            for n, (k, g, r) in zip(names, gates)]
 
 
-def entries(items, jobs):
-    """The plan as units that run independently, for a caller that gives
-    each its own machine (the CI matrix): [{"name", "items"}], `items` as
-    in the plan. The quick commands (LIGHT) are one entry, `selftest`; DEDICATED ones are none; a check_shards
-    line becomes one line per remix (`--jobs` shards on that machine); every
-    other command is its own entry. `selftest` comes last: the dear units start first. A unit is run alone with `--only NAME`,
-    which plans again from the same diff: `jobs` must match between the two
-    calls. `identity` still queues the checks of the remixes it names inside
-    its own entry."""
+def _chunks(items, size):
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def _entries(items, jobs, size):
     out, light = [], []
     for item in items:
         kind, command, paths = item
@@ -1261,43 +1243,32 @@ def entries(items, jobs):
             for r in remixes:
                 line = lambda extra="": (f"python3 tools/verify/check_shards.py --jobs {jobs} "
                                          + (f'--modules "{",".join(modules)}" ' if modules else "") + extra + r)
-                # The gates that SKIP without a project and no unit above runs with one (sambanks/octabam#1051): each
-                # is a job of the remix's `(project)` unit, which ci.yml gives a project made by ot_fresh.py
-                parts = dict(SPLIT_REMIX_JOBS.get(r, {}))
-                named = {n for names in parts.values() for n in names} | set(SPLIT_EXTRA_UNITS.get(r, {}))
-                more = [n for key, n in project_gate_jobs(r) if n not in named and (modules is None or key in modules)]
-                if more:
-                    parts["project"] = tuple(parts.get("project", ())) + tuple(dict.fromkeys(more))
-                if parts:
-                    every = ",".join([n for names in parts.values() for n in names] + list(SPLIT_EXTRA_UNITS.get(r, {})))
-                    out.append({"name": f"check-remix {r}", "items": [(kind, line(f"--skip-jobs {every} "), paths)]})
-                    for part, names in parts.items():
-                        out.append({"name": f"check-remix {r} ({part})",
-                                    "items": [(kind, line(f"--only-jobs {','.join(names)} "), paths)]})
-                    for name, (module, command) in SPLIT_EXTRA_UNITS.get(r, {}).items():
-                        if modules is None or module in modules:
-                            out.append({"name": f"check-remix {r} ({name})",
-                                        "items": [(kind, line(f"--only-jobs {name} "), paths)]})
-                else:
-                    out.append({"name": f"check-remix {r}", "items": [(kind, line(), paths)]})
+                units = remix_units(r, modules)
+                if units is None:
+                    out.append({"name": f"check-remix {r}", "items": [(kind, line(), paths)], "remix": r, "project": False})
+                    continue
+                for project in (False, True):
+                    for chunk in _chunks([n for n, p in units if p == project], size):
+                        label = chunk[0] if len(chunk) == 1 else f"{chunk[0]} +{len(chunk) - 1}"
+                        out.append({"name": f"check-remix {r} ({label})",
+                                    "items": [(kind, line(f"--only-jobs {','.join(chunk)} "), paths)],
+                                    "remix": r, "modules": modules, "jobs": chunk, "project": project})
         elif kind == "check-shared":
-            mods = shared_modules(command)
-            proj = project_shared_gates(shared_remixes(command), mods)
-            skip = ",".join([script for _, script in SPLIT_SHARED_GATES.values()] + [script for _, script in proj])
-            out.append({"name": "check-shared", "items": [(kind, command + " SHARED_PART=rest", paths)]})
-            out.append({"name": "check-shared (module gates)",
-                        "items": [(kind, command + f" SHARED_PART=modules MODULE_GATES_SKIP={skip}", paths)]})
-            for part, (module, script) in SPLIT_SHARED_GATES.items():
-                if mods is None or module in mods:
-                    out.append({"name": f"check-shared ({part})",
-                                "items": [(kind, command + f" SHARED_PART=modules MODULE_GATES_ONLY={script}", paths)]})
-            # a gate that SKIPs without a project, in a unit that has one (sambanks/octabam#1051)
-            for name, script in proj:
-                out.append({"name": name, "items": [(kind, command + f" SHARED_PART=modules MODULE_GATES_ONLY={script}", paths)]})
+            remixes, modules = shared_remixes(command), shared_modules(command)
+            units = shared_units(remixes, modules)
+            if units is None:
+                out.append({"name": "check-shared", "items": [item], "remix": remixes[0], "project": False})
+                continue
+            out.append({"name": "check-shared", "items": [(kind, command + " SHARED_PART=rest", paths)],
+                        "remix": remixes[0], "project": False})
+            for u in units:
+                out.append({"name": f"check-shared ({u['name']})",
+                            "items": [(kind, command + f" SHARED_PART=modules MODULE_GATES_ONLY={u['script']}", paths)],
+                            "remix": u["remix"], "project": u["project"], "shared": u})
         else:
-            out.append({"name": entry_name(kind, command), "items": [item]})
+            out.append({"name": entry_name(kind, command), "items": [item], "remix": None, "project": False})
     if light:
-        out.append({"name": "selftest", "items": light})
+        out.append({"name": "selftest", "items": light, "remix": None, "project": False})
     seen = {}
     for e in out:
         n = seen[e["name"]] = seen.get(e["name"], 0) + 1
@@ -1306,15 +1277,104 @@ def entries(items, jobs):
     return out
 
 
-def plan_json(base, merge_base, quick, jobs, remixes, items):
-    """The plan as data, for a caller that fans the gates out (a CI matrix):
-    `gates`, one entry per command in run order with the paths that put it
-    there, and `matrix`, the units entries() makes of them. `${STRESS_SOURCE}`
-    and `${BASE}` are left in the commands as printed; --run substitutes them."""
+def entries(items, jobs, limit=MATRIX_LIMIT):
+    """The plan as units that run independently, for a caller that gives each its own machine (the CI matrix):
+    [{"name", "items", "remix", "project", ...}], `items` as in the plan. The quick commands (LIGHT) are one entry,
+    `selftest`; DEDICATED ones are none. A check_shards line becomes one unit per gate job per remix
+    (`check-remix <remix> (<job>)`, `--only-jobs <job>`), a check-shared line `check-shared` (SHARED_PART=rest) and
+    one unit per shared module gate (`check-shared (<gate>)`); every other command is its own entry. `project` says
+    the unit runs with the generated project (ci.yml). Past `limit` units the gate jobs of a remix share units, as few
+    to a unit as fits (`check-remix <remix> (<job> +<n>)`). A unit is run alone with `--only NAME`, which plans again
+    from the same diff: `jobs` must match between the two calls. `identity` still queues the checks of the remixes it
+    names inside its own entry."""
+    size = 1
+    while True:
+        out = _entries(items, jobs, size)
+        if len(out) <= limit or size >= 64:
+            return out
+        size += 1
+
+
+def makefile_build():
+    """The BUILD `make` gives a recipe that passes BUILD=$(BUILD): the environment's, else the Makefile's default."""
+    if os.environ.get("BUILD"):
+        return os.environ["BUILD"]
+    m = re.search(r"(?m)^BUILD\s*\?=\s*(\S+)", (ROOT / "Makefile").read_text())
+    return m.group(1) if m else ""
+
+
+def project_dir(remix):
+    return ROOT / FRESH / remix / "NOPROJ"
+
+
+def cached_units(units, log):
+    """The names of `units` (entries()) whose every gate job has a pass recorded for the key it would run under
+    (tools/verify/gate_cache.py), after building each remix's image here. A project unit whose project is not made, a
+    job whose image does not build, and a `once` gate (module_gates caches only `remix_arg=False` ones) are not cached."""
+    import gate_cache  # noqa: E402
+    sys.path.insert(0, str(ROOT / "tools"))
+    from remix import registry  # noqa: E402
+    import module_gates  # noqa: E402
+    if not gate_cache.enabled():
+        return {}
+    deps = scan_deps(ROOT)
+    registry.modules()
+    hits, keys = {}, {}
+    groups = {}
+    for u in units:
+        if "jobs" in u:
+            groups.setdefault((u["remix"], tuple(u["modules"] or ())), []).append(u)
+    for (remix, modules), us in groups.items():
+        projects = {j for u in us if u["project"] for j in u["jobs"]}
+        have = project_dir(remix).is_dir()
+        got = check_shards.job_keys(remix, list(modules) or None,
+                                    lambda job: project_dir(remix) if job in projects and have else None, deps, log)
+        for u in us:
+            if u["project"] and not have:
+                continue
+            ks = [got.get(j) for j in u["jobs"]]
+            found = [gate_cache.lookup(k) for k in ks]
+            if ks and all(ks) and all(found):
+                hits[u["name"]] = [k for k in ks]
+    for u in units:
+        sh = u.get("shared")
+        if not sh or sh["remix_arg"]:
+            continue
+        objs = [registry.remix(r) for r in sh["remixes"]]
+        mods = module_gates.union(objs)
+        g = next(g for k, g in module_gates.collect(mods, "isolated", remix_arg=False) if g.script == sh["script"])
+        env = dict(os.environ)
+        env.setdefault("PYTHONUNBUFFERED", "1")
+        env["BUILD"] = makefile_build() or "0"
+        # the Makefile exports OT_PROJECT, else the path in ~/.octabam_project (gate_cache.project_dir: unset in CI)
+        pd = gate_cache.project_dir()
+        env["OT_PROJECT"] = str(pd) if pd else ""
+        if u["project"]:
+            if not project_dir(sh["remix"]).is_dir():
+                continue
+            env["OT_PROJECT"] = str(project_dir(sh["remix"]))
+        k = module_gates.shared_cache_key(mods, sh["key"], g, module_gates.command(g, sh["remix"]), env)
+        if k and gate_cache.lookup(k):
+            hits[u["name"]] = [k]
+    return hits
+
+
+def plan_json(base, merge_base, quick, jobs, remixes, items, lookup=False, log=None):
+    """The plan as data, for a caller that fans the gates out (a CI matrix): `gates`, one entry per command in run
+    order with the paths that put it there, and `matrix`, the units entries() makes of them, each `{"name",
+    "commands", "remix", "project"}`. `projects` is the remixes a project unit needs; `cached` the units left out
+    because every gate job of them has a pass recorded (`lookup`). `${STRESS_SOURCE}` and `${BASE}` are left in the
+    commands as printed; --run substitutes them."""
+    units = entries(items, jobs)
+    hits = cached_units(units, log or sys.stderr) if lookup else {}
+    live = [e for e in units if e["name"] not in hits]
     return {"base": base, "merge_base": merge_base, "tier": "quick" if quick else "full", "jobs": jobs,
             "remixes": remixes,
             "gates": [{"kind": k, "command": c, "paths": list(ps)} for k, c, ps in items],
-            "matrix": [{"name": e["name"], "commands": [c for _, c, _ in e["items"]]} for e in entries(items, jobs)]}
+            "projects": sorted({e["remix"] for e in units if e["project"]}),
+            "cached": {n: [k[:12] for k in ks] for n, ks in hits.items()},
+            "matrix": [{"name": e["name"], "commands": [c for _, c, _ in e["items"]], "remix": e["remix"],
+                        "project": e["project"]} for e in live]}
 
 
 def git(*args):
@@ -1354,6 +1414,9 @@ def main(argv=None):
     ap.add_argument("--only", metavar="NAME",
                     help="plan as usual, then keep only the unit NAME of the matrix in --json (entries()); "
                          "with --run, run just that unit")
+    ap.add_argument("--lookup", action="store_true",
+                    help="with --json: build each remix's image here and leave out of `matrix` the units whose every gate "
+                         "job has a pass recorded (tools/verify/gate_cache.py); they are listed in `cached`")
     ap.add_argument("--json", action="store_true",
                     help="print the plan as one JSON object on stdout (the report goes to stderr) and exit; not with --run")
     ap.add_argument("--stamp-port", action="store_true",
@@ -1361,6 +1424,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.json and a.run:
         ap.error("--json prints the plan and runs nothing: not with --run")
+    if a.lookup and not a.json:
+        ap.error("--lookup is for --json")
     if a.stamp_port:
         stamp_port()
         return 0
@@ -1416,7 +1481,7 @@ def main(argv=None):
               " (it then runs the accepted remixes' checks itself).")
     if a.json:
         sys.stdout = report_to
-        print(json.dumps(plan_json(a.base, merge_base, quick, a.jobs, remixes_reached(rows), items), indent=2))
+        print(json.dumps(plan_json(a.base, merge_base, quick, a.jobs, remixes_reached(rows), items, a.lookup), indent=2))
         return 0
     if not a.run:
         return 0

@@ -70,6 +70,12 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   `--bank N` selects a bank live, but the transport start re-applies the
   saved bank's part over the live lane, so write a fixture into the saved
   bank.
+- **The input.** `--audio-in FILE` feeds a WAV onto RX0 from the first
+  host frame command (`0x8c`); `--audio-in-from-boot` from the DSP's
+  first receive frame; `--audio-in-on-cue` holds it silent until a live
+  script's `<ms> audio start` line, so the onset is on the same clock as
+  the script's keys and does not move with the boot and load
+  (`verify_rec_threshold`).
 - **Samples.** `stage_card.py` skips `.wav` and `.ot` files; `--audio`
   stages one at its card path. FLEX and STATIC both play.
   `--main-level` is required for any voice.

@@ -388,7 +388,12 @@ def main():
             shutil.rmtree(d)
         d.mkdir(parents=True)
         for f in pathlib.Path(src).iterdir():
-            if f.is_file() and f.suffix.lower() in (".work",):
+            # not the project's own kits.work: the scenarios start from a project whose Parts migrate at the load
+            # (base), or stage their own kits.work through `extra`. A generated project (tools/hw/ot_fresh.py,
+            # CI's project units since sambanks/octabam#1051) carries the kits.work the image that made it
+            # wrote: the kits remix refused octabam's as BADFILE and never came READY, and on octabam-verbs and
+            # octabam-bus nothing migrated (15 Nov 2026).
+            if f.is_file() and f.suffix.lower() in (".work",) and f.name.lower() != "kits.work":
                 shutil.copy2(f, d / f.name)
         for f in extra:
             shutil.copy2(f, d / f.name)

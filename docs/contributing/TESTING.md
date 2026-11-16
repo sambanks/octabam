@@ -199,16 +199,18 @@ dear={"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
   `"image"` runs last, on the finished `out/mainos_bus.bin` (and after
   `verify_set` has staged its card).
 - `venv=True` runs it under `.venv/bin/python3` when the venv exists.
-- `project=True`: the gate prints `[SKIP] ... no project` and exits 0 without `OT_PROJECT`. `reach` plans a unit that runs it
-  with a project made by `tools/hw/ot_fresh.py` (`.github/workflows/ci.yml`'s "Fresh Project" step): a per-remix gate is a job of
-  `check-remix <remix> (project)` (its name is the gate's, `image:` in front for the image stage; the remix's other unit
-  skips it); a `once` gate or an isolated `remix_arg=False` one, which runs in the shared half, is
-  `check-shared (project: <gate> on <remix>)`, run alone with `MODULE_GATES_ONLY`, the project made on <remix> (the carrier
-  of a `once` gate, the first remix of the line otherwise). `test_reach` refuses a gate that has the SKIP line and no flag,
-  except those with a unit of `reach.SPLIT_EXTRA_UNITS` (BRAIN, MIDI SCENES) and five that fail with a generated project (or, for
-  `verify_cfmeter`, reach a remix where another gate fails) and are left unflagged until fixed: `verify_ids64_load` #1120,
-  `verify_dlload` #1075, `verify_cfmeter` #1124, `verify_kits` #1125, `verify_load_meter` #1126 (`KNOWN_RED` in `test_reach`). A job that fails in one remix's `(project)` unit and passes in others is left out of that
-  unit only (`reach.PROJECT_GATE_SKIP`: `plocks-p2` and `mode-defaults` on `octabam-verbs`, #1127) (sambanks/octabam#1051). A job that exited 0 with `[SKIP]` lines reads `ok, N SKIP` in `check_shards`'s table.
+- `project=True`: the gate prints `[SKIP] ... no project` and exits 0 without `OT_PROJECT`. `reach` gives its unit a project made
+  by `tools/hw/ot_fresh.py` (the plan job makes one per remix and the unit downloads it): a per-remix gate is the unit
+  `check-remix <remix> (<job>)` (the job's name is the gate's, `image:` in front for the image stage); a `once` gate or an
+  isolated `remix_arg=False` one, which runs in the shared half, is `check-shared (<gate>)` with the project made on the remix it
+  runs on (the carrier of a `once` gate, the first remix of the line otherwise). `test_reach` refuses a gate that has the SKIP line
+  and no flag, except those with a job of `reach.SPLIT_EXTRA_UNITS` (BRAIN, MIDI SCENES) and three that fail with a generated
+  project (or, for `verify_cfmeter`, reach a remix where another gate fails) and are left unflagged until fixed:
+  `verify_ids64_load` #1120, `verify_cfmeter` #1124, `verify_kits` #1125 (`KNOWN_RED` in `test_reach`; `verify_dlload` #1075 and
+  `verify_load_meter` #1126 left it on 15 Nov 2026). A job that fails in one remix's project unit and passes in others is left out
+  of the project there (`reach.PROJECT_GATE_SKIP`, empty since #1127's `plocks-p2` and `mode-defaults` on `octabam-verbs` were
+  fixed) and runs without one (sambanks/octabam#1051). `set` runs with the project on the remixes of `reach.PROJECT_SET`
+  (`octabam`). A job that exited 0 with `[SKIP]` lines reads `ok, N SKIP` in `check_shards`'s table.
 - `once=True` (with `remix_arg=True`, isolated): the gate checks the
   module's own code, the same in every carrier, so it runs once per run
   in the shared half, on the named remix with the fewest modules that
@@ -259,7 +261,7 @@ shared check verifies payload placement, not the correctness of mutable values.
 | need | option | example |
 |---|---|---|
 | several calls, pokes and memory dumps on one load | `--step FRAME:call\|poke\|dump:SPEC`, repeatable; `-` = after the load before the transport, `N` = frame N after the transport start | `verify_mode_defaults`: two editor calls, their lane dumps and a MIDI case on one load |
-| a panel sequence (keys, encoders, the level pot) | `--live-script FILE`: lines of `<emulated ms> key\|enc\|pot\|midi\|quit ...`, transport stopped, applied at emulated times | `verify_tempo_bus`: 65 panel lines, 7.1 s emulated, no wall-clock sleeps, the same on a loaded machine |
+| a panel sequence (keys, encoders, the level pot) | `--live-script FILE`: lines of `<emulated ms> key\|enc\|pot\|midi\|audio start\|quit ...`, transport stopped, applied at emulated times | `verify_tempo_bus`: 65 panel lines, 7.1 s emulated, no wall-clock sleeps, the same on a loaded machine |
 | several runs that each need the machine exactly as it was after the load | `--scenario "LOG ARGS..."`, repeatable, `--scenario-jobs N` (default 3): the port loads once and forks one child per scenario; each child writes its stdout to LOG and takes ARGS as its post-load options (`--sequencer`, `--frames`, `--step`, `--poke`, `--call`, `--midi`, `--mem-dump`, `--live-script`, ...) | `verify_scenes_p2`: three frame runs and the editor pass from one load |
 
    Boot-time options (`--dsp`, `--audio-in`, `--audio-out`'s capture, the
@@ -427,35 +429,35 @@ once-per-run gates and `refhash` itself are not cached; in CI `refhash`'s
 baseline (`refhash_store.py`, the 24 builds of the merge-base) is restored
 from the actions cache by `refhash_store.py key`.
 
-**CI units cut up** (`reach.entries`, `reach.SPLIT_REMIX_JOBS`). Each unit of
-the CI matrix is a runner with its own setup. `check-remix octabam` runs as
-ten units, each `check_shards --only-jobs ...` over a part of the gate jobs:
-`(long)` is `remix-switch`, `(project)` is `set`, `mode-defaults` and
-`plocks-p2` (the jobs that read `OT_PROJECT`), `(rec)` is `image:usb-in`
-and `image:usb-load-meter`, `(rec-arming)`, `(rec-inputs)` and `(rec-level)` are
-the three `image:rec-threshold-*` jobs (the twelve REC THRESHOLD port runs, four each), `(chords)` is `image:chords`,
-`(scales-mki)` and `(scales-mkii)` are `scales:mki` and `scales:mkii` (`verify_scales.py --section`, one model's port
-runs each; `reach.SPLIT_GATE_SECTIONS` makes a gate's sections jobs in place of its one job), and the unit without a
-suffix is `--skip-jobs` of all of them and of the `brain` jobs (every other job, the remaining `image:` jobs among them).
-`octabam-verbs` and `octabam-bus` are cut the same way, without `octabam`'s project jobs (15 Nov 2026, run
-43734790095: `scales` alone was the wall time of all three units, 3630, 4430 and 2687 s, on one shard from start to end). A name that is no
-gate job is refused, so the parts always cover every gate job once.
-The shared half is cut the same way (`reach.SPLIT_SHARED_GATES`): `check-shared (morph)` and
-`check-shared (octa303)` run `test_morph` and `test_octa303` (`SHARED_PART=modules
-MODULE_GATES_ONLY=<script>`, one unit each, only when the module is reached), and
-`check-shared (module gates)` runs every other shared module gate (`MODULE_GATES_SKIP`). Only the
-`(project)` unit makes a project: `tools/hw/ot_fresh.py` boots the port and
-creates one with the panel script (100 s locally, 255 s in CI), and keeps it in
-`<git common dir>/octabam-fresh-cache/<sha256 of image, port sources, script>`
-(CI: the same actions cache as the gate passes), so a rerun for the same inputs
-is the image build alone (41 s locally). The `image:` jobs are outside it: with a project
-`verify_brain` failed and the one `image` job ran 2869 s on cxosc-core (27 Oct 2026).
+**CI units** (`reach.entries`). Each unit of the CI matrix is a runner with its own setup. A remix's per-remix half is one
+unit per gate job, `check-remix <remix> (<job>)`, which runs `check_shards --only-jobs <job> <remix>`; the job names are
+`check_shards.job_names` (the `verify-remix` recipe's scripts, `cycles`, every module gate, `set`, `usb`, and the jobs of
+`reach.SPLIT_EXTRA_UNITS`). A gate with sections is one job per section (`reach.SPLIT_GATE_SECTIONS`: `scales:mki` and
+`scales:mkii`, `verify_scales.py --section`, one model's port runs each; 15 Nov 2026, run 43734790095: `scales` alone was
+3630 s on octabam, 4430 s on octabam-verbs and 2687 s on octabam-bus, each unit's whole wall time). A name that is no gate job is
+refused, so the units always cover every gate job once. The shared half is `check-shared` (`SHARED_PART=rest`) and one
+unit per shared module gate, `check-shared (<gate>)` (`SHARED_PART=modules MODULE_GATES_ONLY=<script>`; two modules'
+`verify.py` are `<module dir>/verify`). Past `reach.MATRIX_LIMIT` (250; a GitHub matrix holds 256) a remix's gate jobs share units,
+as few to a unit as fits: `check-remix <remix> (<job> +<n>)`.
+
+The plan job builds each reached remix's image and leaves out of the matrix every unit whose gate jobs all have a pass recorded
+for the same image and inputs (`reach.py --json --lookup`; the key is `gate_cache.key`, the one the unit computes). The
+omitted units are in the plan's `cached` and on its summary page. A `once` shared gate has no key (`module_gates` caches only
+`remix_arg=False` gates), so its unit always runs. The passes are one actions-cache entry (`gate-store-@<run id>`): each
+unit uploads the passes it recorded as an artifact and `gates-result` merges them into the entry; a pass unused for 14 days is
+dropped (a cache hit refreshes the file's mtime).
+
+The units that read `OT_PROJECT` get a project: `tools/hw/ot_fresh.py` boots the port and creates one with the panel script
+(100 s locally, 255 s in CI) in the plan job, once per remix with such a unit, and keeps it in
+`<git common dir>/octabam-fresh-cache/<sha256 of image, port sources, script>` (CI: an actions-cache entry, `fresh-@<run id>`),
+so a rerun for the same inputs is the image build alone (41 s locally). The units download it as the artifact
+`fresh-projects`. The `image:` jobs without `Gate.project` have none: with a project `verify_brain` failed and the one `image` job ran
+2869 s on cxosc-core (27 Oct 2026).
 Each image-stage module gate is a job of its own, `image:<script>` (until 4 Nov 2026
 one `image` job ran them in turn: 2723 s of a 3031 s unit); a gate whose script names
 `verify_set` stages its card first. `brain`, `brain-stores`, `brain-templates`, `brain-panes` and
-`brain-screens` (`reach.SPLIT_EXTRA_UNITS`) are gate jobs that only their own
-`check-remix octabam (brain...)` units run (`--only-jobs <name>`), each with a generated
-project; they are cached like the others. Each is `verify_brain.py octabam --section <group>`:
+`brain-screens` (`reach.SPLIT_EXTRA_UNITS`) are gate jobs of `octabam` only, each its own
+`check-remix octabam (brain...)` unit with a generated project; they are cached like the others. Each is `verify_brain.py octabam --section <group>`:
 `cards` is the eight card cases and the .data checks, `stores` is the stock clamps, the saves, the
 project load, the menu, the settings and the USB pair rule; `templates` is SAVE and LOAD TEMPLATE, the AMP, LFO and
 SRC targets; `panes` is the BRAIN > TEMPLATES screens, the PART templates and the PART default;
@@ -540,7 +542,7 @@ recreates, `--rm` removes). Remixes are handed out from one queue. Logs:
 
 **The long pole is split.** A remix whose half would set the wall time
 runs as its gate jobs in the same queue as the other remixes' whole
-halves, and the queue runs longest first. check_shards records every job's
+halves, and the queue runs longest first (local runs; CI runs one gate job a runner). check_shards records every job's
 duration in `<git common dir>/octabam-gate-times.json` after each run,
 one record for every worktree (`out/check_shards/times.json` until 11 Oct
 2026, so a fresh worktree's first run split nothing); `--split auto`
@@ -782,26 +784,24 @@ PR; a first-time contributor's run waits for maintainer approval:
 | job | target | proves |
 |---|---|---|
 | 🔍 Classify Changes | `tools/verify/ci_paths.py` on the diff | each job below runs only when the diff touches its inputs (the map is `JOB_PREFIXES` there); a skipped job is a grey check, not a pass. No usable diff (a manual run) and workflow, Makefile and `scripts/` changes run everything; `make ci` locally still runs everything |
-| 🗺️ Plan Gates | `reach.py --json --jobs 3` | the units the diff's gates split into; no firmware |
+| 🗺️ Plan Gates | `reach.py --json --lookup --jobs 3` | the units the diff's gates split into, without the ones with a recorded pass; builds each reached remix's image and makes the generated projects (the 1.40C on the runner) |
 | 🧪 Gates — `<unit>` | `make reach RUN=1 KEEP=1 JOBS=3 REACHARGS='--only "<unit>"'` | one unit of the plan, on the stock 1.40C fetched into its own runner (Ubuntu) |
-| 🧪 Gates — make reach | `needs` the two above | green when the plan ran and every unit passed (or the plan had none); the one check that stands for all of them |
+| 🧪 Gates — make reach | `needs` the two above | green when the plan ran and every unit passed (or the plan had none); the one check that stands for all of them; writes the pass store |
 | 🎛️ DSP Toolchain — dsp56300 | `make ci-dsp` | the vendored DSP emulator at its pin takes our patch, builds, passes upstream's runner; `dsp_asm` emits the one-word displaced move (Ubuntu only) |
 | 🔌 ColdFire Port Unit Tests | `make ci-emu` | `ot_emu` builds on both hosts (the fork unshare has a macOS and a Linux path) and passes `emac` and `periph` |
 | 📚 Docs, Site and Web Patches | `make verify-docs`; `make test-acceptance` when `acceptance` is affected (the runner refuses skipped, failed, incomplete and over-budget evidence; `reach` routes as documented; the shard runner covers the recipe); `tools/web/stale.py`; on a PR that reaches the site, `mkdocs build --strict` | the rendered tables are current, every remix has a README, every link between tracked files resolves; the web builder's patch manifest matches its patch files; the manual site builds |
 
-**Units.** `reach.py --json` prints `matrix`, the plan as units (`entries()`):
-`selftest` (last), one `check-remix <remix>` per remix (`check_shards.py --jobs 3`
-on that runner), and every other command as its own unit (`check-shared`,
-`refhash`, `verify-bus`, `identity`, ...). `verify_docs`, `test-acceptance`,
-`ci-dsp`, `ci-emu` and `ci` are no unit: Docs, DSP Toolchain and ColdFire
-Port Unit Tests run them for every diff that plans them (`reach.DEDICATED`;
-a local `make reach RUN=1` still runs them). `--only <unit>` plans again from the same diff and
-keeps that unit, so the plan job and the unit jobs must pass the same
-`--jobs`. A unit's setup is the whole job's (checkout, caches, `make os`,
-`make recon`, `make emu-setup`, ports from the cache): 60 s on a warm run
-(Gates run 40145893338, 25 Oct 2026). The gate cache and the slots are per
-machine, so a unit gets no hits from another. `identity` queues the checks
-of the remixes it names inside its own unit.
+**Units.** `reach.py --json` prints `matrix`, the plan as units (`entries()`): `selftest` (last), one
+`check-remix <remix> (<job>)` per gate job of each remix (`check_shards.py --jobs 3 --only-jobs <job>` on that runner),
+`check-shared` and one `check-shared (<gate>)` per shared module gate, and every other command as its own unit (`refhash`,
+`verify-bus`, `identity`, ...). `verify_docs`, `test-acceptance`, `ci-dsp`, `ci-emu` and `ci` are no unit: Docs, DSP
+Toolchain and ColdFire Port Unit Tests run them for every diff that plans them (`reach.DEDICATED`; a local
+`make reach RUN=1` still runs them). `--lookup` leaves out the units with a recorded pass (the plan's `cached`). `--only <unit>`
+plans again from the same diff, without the lookup, and keeps that unit, so the plan job and the unit jobs must pass the same
+`--jobs`. A unit's setup is the whole job's (checkout, caches, `make os`, `make recon`, `make emu-setup`, the port from the
+cache; `.github/actions/gates-setup`): 47-94 s without a project and 248-411 s with the fresh project step it had before the
+plan made them (run 43811384156, 16 Nov 2026). The gate cache and the slots are per machine; the pass store is how a runner
+sees another's passes. `identity` queues the checks of the remixes it names inside its own unit.
 
 The run's summary page has one section per unit (its `check_shards` and `reach` result tables, and the failure excerpts when a gate failed) and the `Gates — make reach` table of units with result, time and a link to each job.
 

@@ -130,5 +130,5 @@ MODULE = Module(
               Setting(2, "GRACE", Option("10 S", "2 S"), default="10 S", apply=Apply.BUILD,
                       doc="how long an unused effect stays loaded before it is withdrawn; a project load leaves every id at its "
                           "default for about 4 s (measured on a unit), so 10 S keeps the effects through it; 2 S is for the port gates"),),
-    gates=(Gate("tools/verify/verify_dlload.py", venv=True),),
+    gates=(Gate("tools/verify/verify_dlload.py", venv=True, project=True),),
 )
