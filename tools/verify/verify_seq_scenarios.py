@@ -15,13 +15,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "tools"), str(ROOT / "tools/verify"), str(ROOT / "tools/panel")]
 
 from stems_panel import MenuPort  # noqa: E402
+from seq_port_fixture import stage_project  # noqa: E402
 from panel_server import popup_geometry  # noqa: E402
 from verify_seq_tonal import on_scale  # noqa: E402
 
 IMAGE = ROOT / "out/mainos_bus.bin"
 CARD = ROOT / "out/_seq_scenarios_card.img"
 MAP = ROOT / "out/platform/runtime/runtime.map"
-TEMPLATE = ROOT / "template_project"
 
 DBPTR_ADDR = 0x46c82456
 UI_PTN = 0x100b14d0
@@ -101,15 +101,8 @@ def poke8(p, a: int, v: int) -> None:
 
 
 def ensure_card() -> None:
-    if CARD.exists() and CARD.stat().st_size > 0:
-        return
-    CARD.parent.mkdir(parents=True, exist_ok=True)
-    tree = ROOT / "out/_seq_scenarios_tree"
-    subprocess.check_call(
-        [sys.executable, str(ROOT / "tools/emu/ot_emu/stage_card.py"),
-         str(TEMPLATE), "OCTABAM", "A", "--tree", str(tree), "--out", str(CARD)],
-        cwd=ROOT,
-    )
+    # CI has no template_project: the image makes its own project (seq_port_fixture, main a6a4b3e).
+    stage_project(IMAGE, CARD, ROOT / "out/_seq_scenarios_tree")
 
 
 def trac(p, trk: int = 0) -> int:

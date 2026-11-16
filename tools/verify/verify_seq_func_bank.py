@@ -13,17 +13,16 @@ Cases:
 from __future__ import annotations
 
 import pathlib
-import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "tools"), str(ROOT / "tools/verify"), str(ROOT / "tools/panel")]
 
 from stems_panel import MenuPort  # noqa: E402
+from seq_port_fixture import stage_project  # noqa: E402
 
 IMAGE = ROOT / "out/mainos_bus.bin"
 CARD = ROOT / "out/_seq_fb_card.img"
-TEMPLATE = ROOT / "template_project"
 MAP = ROOT / "out/platform/runtime/runtime.map"
 
 M_OBJ = 0x460e5e30
@@ -52,16 +51,9 @@ def sym(name: str) -> int:
     raise SystemExit(f"missing {name} in runtime.map")
 
 
-def ensure_card() -> None:
-    if CARD.exists() and CARD.stat().st_size > 0:
-        return
-    CARD.parent.mkdir(parents=True, exist_ok=True)
-    tree = ROOT / "out/_seq_fb_tree"
-    subprocess.check_call(
-        [sys.executable, str(ROOT / "tools/emu/ot_emu/stage_card.py"),
-         str(TEMPLATE), "OCTABAM", "A", "--tree", str(tree), "--out", str(CARD)],
-        cwd=ROOT,
-    )
+def ensure_card():
+    # CI has no template_project: the image makes its own project (seq_port_fixture, main a6a4b3e).
+    return stage_project(IMAGE, CARD, ROOT / "out/_seq_fb_tree")
 
 
 def labels(p) -> list[str]:

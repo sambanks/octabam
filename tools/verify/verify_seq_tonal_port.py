@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import pathlib
-import subprocess
 import sys
 import tempfile
 
@@ -13,22 +12,16 @@ sys.path[:0] = [str(ROOT / "tools"), str(ROOT / "tools/verify"), str(ROOT / "too
 
 import verify_seq_scenarios as seq  # noqa: E402
 from stems_panel import MenuPort  # noqa: E402
+from seq_port_fixture import stage_project  # noqa: E402
 from panel_server import popup_geometry  # noqa: E402
 
 
 def main() -> int:
-    template = next((parent / "template_project" for parent in ROOT.parents
-                     if (parent / "template_project").is_dir()), None)
-    if template is None:
-        print("SEQ tonal port: skip (template_project unavailable)")
-        return 0
     with tempfile.TemporaryDirectory(prefix="seq-tonal-port-") as tmp:
         card = pathlib.Path(tmp) / "card.img"
         tree = pathlib.Path(tmp) / "tree"
-        subprocess.check_call([
-            sys.executable, str(ROOT / "tools/emu/ot_emu/stage_card.py"),
-            str(template), "OCTABAM", "A", "--tree", str(tree), "--out", str(card),
-        ], cwd=ROOT)
+        # CI has no template_project (this gate SKIPped there): the image makes its own project.
+        stage_project(seq.IMAGE, card, tree)
         fails = 0
 
         def check(label: str, passed: bool, detail: str = "") -> None:
