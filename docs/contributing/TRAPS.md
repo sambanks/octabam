@@ -1765,6 +1765,18 @@ not known, and the port and `dsp_host` run one core, so no gate sees it. Rule: l
 its frame, after the last track; to see a stalled DSP, read it (`tools/hw/dlprobe.patch`, `tools/hw/dl_probe.py`: the shared
 window through the core that still takes host commands), do not infer it from the ColdFire's side.
 
+<a id="trap-pitch-destination"></a>
+
+### PLAYBACK slot A depends on the machine
+
+SEQ treated destination 0 as pitch when drawing its Harmony hint and
+handling RIGHT. On THRU, that destination is INAB, so the manual screenshot
+offered Harmony for an input selector. The old gate checked only the
+destination index and missed this case. Both paths now use the resolved
+PTCH label for audio, or NOTE on MIDI. The capture fixture assigns FLEX to
+T1 in every Part before selecting PTCH. `verify_seq_tonal_port` checks
+THRU INAB and FLEX PTCH, including the hint pixels and the RIGHT gesture.
+
 <a id="trap-sequential-limiter"></a>
 
 ### Sequential sample loops were priced as alternative modes

@@ -234,7 +234,7 @@ def capture_drummer(p,r):
 
 def capture_seq(p,r):
     p.chord('t1','page')
-    enc(p,3,-15);p.run(400)  # select PTCH so the Harmony-page hint is enabled
+    enc(p,3,-127);p.run(400)  # select PTCH regardless of the saved destination
     shot(p,'seq','panel','SEQ Rhythm on an audio track.',r)
     p.press('right',settle=400)
     shot(p,'seq','tonal','SEQ Harmony on an audio track.',r)
@@ -500,6 +500,11 @@ def prepare(remix,project,assignments):
         otp.set_fx(fixture,'fx2',1,'DELAY',page=values[:6],page2=values[6:],guard=False)
     if remix=='octabam-bus':
         otp.host_rig(fixture,remix,guard=False)
+    if remix=='test/seq':
+        for bank in fixture.glob('bank*.work'):
+            for part in range(1, otp.NPARTS + 1):
+                otp.set_machine_type(fixture, int(bank.stem[4:]), part, 1, 1,
+                                     guard=False)  # T1 FLEX: SRC/PTCH, not THRU's SRC/INAB
     for track,slot,key in assignments:
         m=registry.modules()[key]
         values=otp.module_defaults(m)

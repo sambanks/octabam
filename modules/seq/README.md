@@ -16,6 +16,9 @@ C=LANE / D=DEST E=DPTH; **F** is empty. Harmony has A=SCAL B=ROOT /
 D=RANG E=PHRS.
 MIDI C is VOIC 1-4 and F is CHRD. Audio C and F are empty and inactive. The
 page hint sits at the top-right of the SEQ logo panel.
+Audio pitch availability follows the resolved parameter name: FLEX PTCH
+opens Harmony, while THRU INAB stays on Rhythm without the RIGHT hint.
+`verify_seq_tonal_port.py` checks both machines through the panel.
 **LANE**
 selects whether A/B and the grid edit the **TRIG** rhythm or the **PLOCK**
 rhythm for the current DEST. **YES** writes TRIG → sample-trig mask 0 and

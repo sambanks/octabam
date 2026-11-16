@@ -41,6 +41,23 @@ def main() -> int:
             s.open_seq("t1")
             page = seq.local_sym("ef_page_no")
             dest = seq.local_sym("ef_dest")
+            part = (p.long(seq.DBPTR_ADDR)
+                    + p.peek(seq.UI_PART, 1)[0] * seq.PART_STR)
+            machine = part + 0x8eda2
+            original_machine = p.peek(machine, 1)
+            s.prime(lane=0, dest=0, depth=0, pulses=3, trig_pulses=3)
+            p.poke(machine, b"\x02")  # THRU slot A is INAB, not PTCH.
+            p.press("left", settle=150)
+            no_pitch_hint = p.link.lcd_rows()
+            p.press("right", settle=150)
+            check("THRU INAB cannot open Harmony",
+                  p.long(page) == 0 and p.long(dest) == 0)
+            p.poke(machine, b"\x01")  # FLEX slot A is PTCH.
+            p.press("left", settle=150)
+            pitch_hint = p.link.lcd_rows()
+            check("RIGHT hint appears for PTCH but not THRU INAB",
+                  any(pitch_hint[y][x] != no_pitch_hint[y][x]
+                      for y in range(2, 8) for x in range(38, 47)))
             s.prime(lane=0, dest=15, depth=0, pulses=3, trig_pulses=3)
             p.press("right", settle=150)
             check("RIGHT stays on Rhythm for non-pitch destination",
@@ -142,6 +159,7 @@ def main() -> int:
                   not any(rows[y][x] for y in (*range(3, 18), *range(23, 38))
                           for x in range(101, 118)))
             s.close_seq()
+            p.poke(machine, original_machine)
 
         print(f"SEQ tonal port: {fails} failed checks")
         return 1 if fails else 0
