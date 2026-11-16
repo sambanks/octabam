@@ -28,8 +28,9 @@ tonic).
      opens nothing; CTRL1 SETUP's YES keeps the scale.
    - scales.work (MKII): a scale picked and SAVE PROJECT write scales.work
      and scales.strd (header, CRC-32, the ID in bank 1 Part 1 track 1); the
-     saved card booted again gives the ID back; a run with no save writes
-     no scales.work.
+     saved card booted again gives the ID back; a run with no save, as long
+     as the save, writes no scales.strd, and the scales.work the bank writer
+     leaves holds the ID.
 
 `--section mki|mkii[,..]` runs one half (the CI units, reach.SPLIT_GATE_SECTIONS): `mki` is the linked code and the
 MKI port runs, `mkii` the MKII port runs and scales.work; none runs both.
@@ -448,6 +449,10 @@ def shown(stream):
 # The runtime's addresses of SCALES' own state (main fills it from runtime.elf before a script is written), and the
 # stock state its tick reads (scales.s's equates).
 SYM = {}
+# ms from the end of the load (LOAD PROJECT handled, the engine idle) to a script's first line. 1500 until 16 Nov
+# 2026; at 100 every memory dump and LED state of the gate's 500 port sessions was byte-identical to 1500's
+# (verify_scales.py octabam, both models).
+START_MS = 100
 AFTER_CAP = 100                           # ms: a press's further conditions, after its first has held
 MIDI_MODE, TRIG_MODE, ARP_WINDOW = 0x80000012, 0x460d16f0, 0x400cfebe
 
@@ -464,7 +469,7 @@ class Script:
     did, and a script whose every wait times out runs about a tenth longer than the fixed-gap one did."""
 
     def __init__(self):
-        self.lines, self.t = [], 1500
+        self.lines, self.t = [], START_MS
 
     def send(self, text, gap=150):
         self.lines.append(f"{self.t} {text}")
@@ -777,6 +782,9 @@ def main():
     return int(bool(fails))
 
 
+SAVE_GAPS = (1000, 700, 500, 1100, 30000)  # PROJ, the SAVE PROJECT row, YES, and the save itself
+
+
 def persist(out, image, card, lib):
     """scales.work under the port, MKII: written by SAVE PROJECT, read at the next boot."""
     import struct
@@ -792,11 +800,13 @@ def persist(out, image, card, lib):
         arp(s)
         choose(s, ident)
         if save:                          # PROJ: SAVE PROJECT
-            s.tap(0x1c, 1000)
-            s.tap(0x21, 700)
-            s.tap(0x20, 500)
-            s.tap(0x31, 1100)
-            s.tap(0x31, 30000)
+            for key, gap in zip((0x1c, 0x21, 0x20, 0x31, 0x31), SAVE_GAPS):
+                s.tap(key, gap)
+        else:
+            # No keys for as long as the save's take: the firmware writes the bank .work files in the background for
+            # seconds after the load (32 on this card 9.3 s in, 17 at 1.2 s; 16 Nov 2026), so a run that ends early
+            # would see "no scales.work" from a writer that had not reached it yet.
+            s.t += sum(gap + 40 for gap in SAVE_GAPS)
         s.write(d / f"{tag}.script")
     s = Script()
     s.tap(0x32, 400)
@@ -819,21 +829,33 @@ def persist(out, image, card, lib):
     if rc != [0, 0]:
         bad.append(f"the save and the unsaved run exited {rc}")
     files = emu_card.extract_image((d / "saved.img").read_bytes())
+    def holds_ident(f):
+        return (len(f) == 16 + 512 and f[:12] == b"SCLS\0\0\0\1\0\0\2\0"
+                and struct.unpack(">I", f[12:16])[0] == zlib.crc32(f[16:]) and f[16] == ident and not any(f[17:]))
+
+    def card_file(fs, ext):
+        return next((v for k, v in fs.items() if k.lower().endswith(f"/scprj/scales.{ext}")), None)
+
     for ext in ("work", "strd"):
-        f = next((v for k, v in files.items() if k.lower().endswith(f"/scprj/scales.{ext}")), b"")
-        if not (len(f) == 16 + 512 and f[:12] == b"SCLS\0\0\0\1\0\0\2\0"
-                and struct.unpack(">I", f[12:16])[0] == zlib.crc32(f[16:])
-                and f[16] == ident and not any(f[17:])):
+        f = card_file(files, ext) or b""
+        if not holds_ident(f):
             bad.append(f"scales.{ext}: {len(f)} B {f[:16].hex()} ID {f[16] if len(f) > 16 else None}")
+    # No save, no scales.strd (the project store's copy). scales.work is the bank writer's (README: written by
+    # the bank writer and before the project store): stock's background writer of the .work files writes it with
+    # no save, seconds after the pick. Until 16 Nov 2026 this checked "no scales.work", and passed only because
+    # the run ended 9.3 s in, before the writer reached it; run as long as the save, it found a valid one.
     uf = emu_card.extract_image((d / "unsaved.img").read_bytes())
-    if any(k.lower().endswith("/scprj/scales.work") for k in uf):
-        bad.append("the unsaved run wrote scales.work")
+    if card_file(uf, "strd") is not None:
+        bad.append("the unsaved run wrote scales.strd")
+    uw = card_file(uf, "work")
+    if uw is not None and not holds_ident(uw):
+        bad.append(f"the unsaved run's scales.work (the bank writer's): {len(uw)} B {uw[:16].hex()}")
     rc = boot("reboot", d / "saved.img", d / "idle.script", False)
     lib_b, live = (d / "reboot.lib").read_bytes(), (d / "reboot.live").read_bytes()
     if rc or lib_b[0] != ident or live[KEY] != encode(0, ident):
         bad.append(f"reboot: exited {rc}, sc_lib {lib_b[0]}, KEY {live[KEY]} (want {ident}, {encode(0, ident)})")
     print(f"  [{'FAIL' if bad else 'PASS'}] verify_scales: scales.work, MKII (SAVE PROJECT writes .work and "
-          f".strd with the ID; the saved card boots it back; no save, no file)")
+          f".strd with the ID; the saved card boots it back; no save, no .strd)")
     for line in bad:
         print(f"      {line}")
     return bool(bad)
