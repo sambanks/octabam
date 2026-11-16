@@ -2233,8 +2233,34 @@ int main(int _argc, char** _argv)
 				// --block-dump path keeps writing it; the others close their copy.
 				const std::string bootBlockDump = blockDump;
 				blockDump.clear();
+				const std::string bootWatchPc = watchPc, bootDspPcWatch = dspPcWatch;
 				if(!parseArgs(static_cast<int>(av.size()), av.data()))
 					::_exit(2);
+				// The two PC watches are armed before the boot; a child that names one arms it here, from the
+				// fork on (16 Nov 2026: until then a child's --watch-pc or --dsp-pcwatch was parsed and never armed,
+				// and its report read 0 hits). The hits the parent took before the fork stay in a --watch-pc list.
+				if(watchPc != bootWatchPc)
+				{
+					std::vector<uint32_t> addrs;
+					for(size_t q = 0; q < watchPc.size();)
+					{
+						auto e = watchPc.find(',', q);
+						if(e == std::string::npos) e = watchPc.size();
+						addrs.push_back(static_cast<uint32_t>(std::strtoul(watchPc.substr(q, e - q).c_str(), nullptr, 0)));
+						q = e + 1;
+					}
+					m.watchPc(addrs);
+					std::printf("scenario   : --watch-pc %s armed at the fork\n", watchPc.c_str());
+				}
+				if(dspPair && dspPcWatch != bootDspPcWatch && !dspPcWatch.empty())
+				{
+					int core = 0; unsigned pc = 0; unsigned long long from = 0;
+					if(std::sscanf(dspPcWatch.c_str(), "%d:%x:%llu", &core, &pc, &from) >= 2)
+					{
+						dspPair->setPcWatch(core, pc, from);
+						std::printf("scenario   : --dsp-pcwatch %s armed at the fork\n", dspPcWatch.c_str());
+					}
+				}
 				if(blockDump.empty() || blockDump != bootBlockDump)
 					rtos.closeBlockDump();
 				// The card was built before the fork; a child's --card-fail-after applies here.
