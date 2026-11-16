@@ -46,7 +46,9 @@ rest idle.
 
 A PART OF ONE REMIX (27 Oct 2026). `--only-jobs a,b` / `--skip-jobs a,b`
 run a remix as gate jobs, cut to the named ones or without them (CI runs
-the two as separate units, reach.SPLIT_REMIX_JOBS). A name that is no gate
+the two as separate units, reach.SPLIT_REMIX_JOBS). A gate of
+reach.SPLIT_GATE_SECTIONS is one job per `--section` (`scales:mki`,
+`scales:mkii`), in every split run. A name that is no gate
 job is refused; under `--modules` a name is checked against the remix's
 whole job list, and one outside the reached modules is left out of the cut.
 
@@ -390,6 +392,7 @@ def remix_jobs(remix_name, shard):
     if SCOPE:
         keys = module_gates.reached(set(SCOPE), selected)
         mine = {g.script for m in selected if m.key in keys for g in getattr(m, "gates", ())}
+    from reach import SPLIT_GATE_SECTIONS  # noqa: E402
     for key, g in module_gates.collect(selected, "isolated", True, once=False):
         if mine is not None and g.script not in mine:
             continue
@@ -399,6 +402,11 @@ def remix_jobs(remix_name, shard):
         cmd = module_gates.command(g, remix_name, root=ROOT)
         cmd[0] = cmd[0] if g.venv else PY
         cmd[1] = str(g.script)
+        # reach.SPLIT_GATE_SECTIONS: a gate that would set the wall time on its own, one job per `--section`
+        for section in SPLIT_GATE_SECTIONS.get(str(g.script), ()):
+            jobs.append(job(f"{module_gates.job_name(g)}:{section}", [cmd + ["--section", section]], f"{V}/module_gates.py"))
+        if str(g.script) in SPLIT_GATE_SECTIONS:
+            continue
         jobs.append(job(module_gates.job_name(g), [cmd], f"{V}/module_gates.py"))
     jobs.append(job("menu", [[py, f"{V}/verify_menu.py"], [py, f"{V}/verify_replaces.py", "--image", remix_name]],
                     f"{V}/verify_menu.py", f"{V}/verify_replaces.py"))
