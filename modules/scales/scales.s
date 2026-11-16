@@ -80,6 +80,7 @@
         .text
         .globl  sc_count, sc_mask, sc_name, sc_short, sc_family, sc_snap
         .globl  sc_pick, sc_track, sc_win, sc_keyboard
+        .globl  sc_audio, sc_audio_mask, sc_audio_set, sc_alib
         .globl  kl_chromatic, kl_source, kl_tick
         .globl  sc_encoder, sc_output, sc_format, sc_lib
         .globl  sc_st_loadall_pre, sc_st_loadmask_pre, sc_st_newproj, sc_st_bankw_post
@@ -116,6 +117,8 @@
         .equ    F_COPY,    0x40016388   | (dst path, src path, 0) -> < 0 error
         .equ    FMAGIC,    0x53434c53   | 'SCLS': scales.work's header
         .equ    LIB_B,     512          | 16 banks x 4 Parts x 8 tracks, an ID each
+        .equ    LIB_A,     128          | 16 banks x 4 Parts, an audio scale each: ID byte, tonic byte
+        .equ    LIB_T,     640          | sc_lib then sc_alib: what scales.work version 2 holds
         .equ    BANK_RAM,  0x46c82456   | long: the current bank's RAM
         .equ    PART_SETUP, 0x8f262     | + bank RAM + 0x18b2 * p + 0x24 * t: the Part's setup record
         .equ    CS1_SETUP, 0x100a53b0   | + 0x18b2 * p + 0x24 * t: its CS1 mirror
@@ -458,6 +461,87 @@ sc_ext:
 8:      moveq   #0,%d0
 9:      movem.l (%sp),%d2-%d4
         lea     12(%sp),%sp
+        rts
+
+| ==== the audio scale =======================================================
+| One scale and one tonic per bank and Part, shared by its eight audio
+| tracks (sc_alib, in scales.work). A context is STORE's: bank * 4 + Part,
+| 0..63. Register calls, d0-d1/a0-a1 scratch.
+|   sc_audio       d1 a context -> d0 = ID << 4 | tonic, -1 for OFF (or for
+|                  an entry that names no scale)
+|   sc_audio_mask  d1 a context -> d0 = the scale's pitch classes on its
+|                  tonic (bit k = pitch class k from C: the word SCALE
+|                  QUANTIZER's accessor returns), 0 for OFF
+|   sc_audio_set   d0 = ID << 4 | tonic, or -1 for OFF; d1 a context -> d0 =
+|                  0 and scales.work due; d0 = -1, nothing written, for a
+|                  context past 63 or an ID or tonic that is none
+| The UI edits a Part through store_part_ui_context; what plays reads it
+| through store_part_audio_context(track).
+
+sc_audio:
+        andi.l  #63,%d1
+        lea     sc_alib,%a0
+        mvz.b   (%a0,%d1.l*2),%d0       | the ID
+        beq.s   1f                      | 0: OFF
+        cmpi.l  #SC_COUNT,%d0
+        bhi.s   1f
+        mvz.b   1(%a0,%d1.l*2),%d1      | the tonic
+        cmpi.l  #11,%d1
+        bhi.s   1f
+        lsl.l   #4,%d0
+        or.l    %d1,%d0
+        rts
+1:      moveq   #-1,%d0
+        rts
+
+sc_audio_mask:
+        bsr.s   sc_audio
+        tst.l   %d0
+        bmi.s   2f
+        move.l  %d0,%d1
+        lsr.l   #4,%d0
+        bsr.w   sc_mask                 | the scale on C (sc_mask keeps d1)
+        andi.l  #15,%d1                 | the tonic
+        lsl.l   %d1,%d0                 | on the tonic: bits 0..22 ...
+        move.l  %d0,%d1
+        lsr.l   #8,%d1
+        lsr.l   #4,%d1
+        or.l    %d1,%d0                 | ... the ones past B back at the bottom
+        andi.l  #0xfff,%d0
+        rts
+2:      moveq   #0,%d0
+        rts
+
+sc_audio_set:
+        cmpi.l  #63,%d1
+        bhi.s   3f
+        move.l  %d1,%a1                 | the context
+        tst.l   %d0
+        bpl.s   1f
+        moveq   #0,%d0                  | OFF: ID 0, tonic 0
+        bra.s   2f
+1:      move.l  %d0,%d1
+        lsr.l   #4,%d1                  | the ID
+        beq.s   3f                      | 0 is not a scale
+        cmpi.l  #SC_COUNT,%d1
+        bhi.s   3f
+        move.l  %d0,%d1
+        andi.l  #15,%d1
+        cmpi.l  #11,%d1
+        bhi.s   3f
+2:      move.l  %a1,%d1
+        lea     sc_alib,%a0
+        lea     (%a0,%d1.l*2),%a0
+        move.l  %d0,%d1
+        lsr.l   #4,%d1
+        move.b  %d1,(%a0)               | the ID
+        andi.l  #15,%d0
+        move.b  %d0,1(%a0)              | the tonic
+        moveq   #1,%d0
+        move.l  %d0,sc_dirty
+        moveq   #0,%d0
+        rts
+3:      moveq   #-1,%d0
         rts
 
 | ==== the chooser ==========================================================
@@ -1250,7 +1334,27 @@ kl_source:
         or.l    %d1,%d0                 | key 1 sounds ROOT
         rts
         .else
-        bra.s   kl_none                 | audio: no source
+        jsr     store_part_ui_context   | the Part the UI edits
+        move.l  %d0,%d1
+        bmi.w   kl_none
+        bsr.w   sc_audio                | ID << 4 | tonic, -1 for OFF
+        tst.l   %d0
+        bmi.w   kl_none                 | OFF: stock's keyboard
+        move.l  %d0,%d1
+        andi.l  #15,%d1                 | the tonic
+        lsr.l   #4,%d0
+        bsr.w   sc_mask                 | the scale on C (keeps d1)
+        lsl.l   %d1,%d0                 | on the tonic ...
+        move.l  %d0,-(%sp)
+        lsr.l   #8,%d0
+        lsr.l   #4,%d0
+        or.l    (%sp)+,%d0              | ... the ones past B back at the bottom
+        andi.l  #0xfff,%d0
+        lsl.l   #8,%d0
+        or.l    %d1,%d0                 | tonic
+        lsl.l   #4,%d1
+        or.l    %d1,%d0                 | key 1 sounds it
+        rts
         .endif
 kl_midi:
         bsr.w   sc_track
@@ -1472,18 +1576,21 @@ MODE_W:     .asciz "w"
         .section .bss
         .balign 4
 sc_lib:     .space LIB_B                | bank * 32 + Part * 8 + track: the ID, 0 the KEY's own
-sc_stage:   .space LIB_B                | scales.work read here before it is applied
-sc_hdr:     .space 16                   | 'SCLS', version 1, LIB_B, CRC-32 of the IDs
+sc_alib:    .space LIB_A                | (bank * 4 + Part) * 2: the audio scale's ID (0 OFF), its tonic 0..11; sc_lib's neighbour, so one CRC covers both
+sc_stage:   .space LIB_T                | scales.work read here before it is applied
+sc_hdr:     .space 16                   | 'SCLS', version 2 (1: no audio scales), LIB_T, CRC-32 of sc_lib and sc_alib
 sc_ctx:     .space 4120                 | STORE_CTX
 sc_path:    .space 260
 sc_psrc:    .space 260
 
 | ==== scales.work: STORE's handlers (modules/store) ========================
-| scales.work beside the bank files: the header, then sc_lib. Written at the
+| scales.work beside the bank files: the header, then sc_lib, then sc_alib
+| (version 2; a version 1 file is sc_lib alone, reads with every audio scale
+| OFF, and the next write makes it version 2). Written at the
 | bank writer and before the project store when an ID changed; scales.strd
 | is its copy at the project store, copied back at a project reload. No
-| file: no scale past the KEY's own. A file that is not version 1 or fails
-| its CRC is refused (STORE's prompt) and never written over. Handlers may
+| file: no scale past the KEY's own. A file that is not version 1 or 2, or
+| fails its CRC, is refused (STORE's prompt) and never written over. Handlers may
 | clobber every register.
 
         .text
@@ -1502,6 +1609,12 @@ sc_clear:
 2:      clr.l   (%a0)+
         subq.l  #1,%d0
         bne.w   2b
+        move.l  %d2,%d0
+        lsl.l   #3,%d0
+        lea     sc_alib,%a0
+        adda.l  %d0,%a0
+        clr.l   (%a0)+                  | the bank's four audio scales
+        clr.l   (%a0)
 3:      addq.l  #1,%d2
         cmpi.l  #16,%d2
         bne.w   1b
@@ -1525,7 +1638,7 @@ sc_copy_file:
         lea     12(%sp),%sp
         rts
 
-| sc_write -> d0 = 0 when scales.work holds sc_lib.
+| sc_write -> d0 = 0 when scales.work holds sc_lib and sc_alib.
 sc_write:
         move.l  %d2,-(%sp)
         tst.l   sc_backup
@@ -1535,15 +1648,15 @@ sc_write:
         lea     FMT_BAK,%a1
         bsr.w   sc_copy_file
 1:      lea     sc_lib,%a0
-        move.l  #LIB_B,%d0
+        move.l  #LIB_T,%d0
         moveq   #0,%d1
         jsr     store_crc32
         move.l  %d0,sc_hdr+12
         move.l  #FMAGIC,%d0
         move.l  %d0,sc_hdr
-        moveq   #1,%d0
+        moveq   #2,%d0
         move.l  %d0,sc_hdr+4
-        move.l  #LIB_B,%d0
+        move.l  #LIB_T,%d0
         move.l  %d0,sc_hdr+8
         lea     FMT_WORK,%a0
         lea     sc_path,%a1
@@ -1560,7 +1673,7 @@ sc_write:
         jsr     store_fwrite
         move.l  %d0,%d2
         lea     sc_lib,%a0
-        move.l  #LIB_B,%d0
+        move.l  #LIB_T,%d0
         jsr     store_fwrite
         subq.l  #1,%d0
         bne.w   7f
@@ -1586,8 +1699,9 @@ sc_write_due:
 1:      rts
 
 | sc_read: d1 = a bank mask -> d0 = 0 the masked banks read, 1 no file, 2 a
-| file that is not scales.work version 1 or fails its CRC (sc_lib is not
-| touched then).
+| file that is not scales.work version 1 or 2 or fails its CRC (sc_lib and
+| sc_alib are not touched then). A version 1 file has no audio scales: they
+| read OFF.
 sc_read:
         lea     -8(%sp),%sp
         movem.l %d2-%d3,(%sp)
@@ -1613,20 +1727,29 @@ sc_read:
         move.l  (%a0),%d0
         cmpi.l  #FMAGIC,%d0
         bne.w   7f
-        moveq   #1,%d0
-        cmp.l   4(%a0),%d0
+        move.l  4(%a0),%d0              | the version
+        move.l  #LIB_T,%d2
+        cmpi.l  #2,%d0
+        beq.w   5f
+        move.l  #LIB_B,%d2              | version 1: sc_lib alone
+        cmpi.l  #1,%d0
         bne.w   7f
-        move.l  8(%a0),%d0
-        cmpi.l  #LIB_B,%d0
+5:      move.l  8(%a0),%d0
+        cmp.l   %d2,%d0
         bne.w   7f
+        lea     sc_stage+LIB_B,%a0      | what the file does not hold reads OFF
+        moveq   #LIB_A>>2,%d0
+8:      clr.l   (%a0)+
+        subq.l  #1,%d0
+        bne.w   8b
         lea     sc_stage,%a0
-        move.l  #LIB_B,%d0
+        move.l  %d2,%d0
         jsr     store_fread
         subq.l  #1,%d0
         bne.w   7f
         jsr     store_fclose
         lea     sc_stage,%a0
-        move.l  #LIB_B,%d0
+        move.l  %d2,%d0
         moveq   #0,%d1
         jsr     store_crc32
         cmp.l   sc_hdr+12,%d0
@@ -1644,6 +1767,14 @@ sc_read:
 3:      move.l  (%a0)+,(%a1)+
         subq.l  #1,%d1
         bne.w   3b
+        move.l  %d2,%d0
+        lsl.l   #3,%d0
+        lea     sc_stage+LIB_B,%a0
+        adda.l  %d0,%a0
+        lea     sc_alib,%a1
+        adda.l  %d0,%a1
+        move.l  (%a0)+,(%a1)+
+        move.l  (%a0),(%a1)
 4:      addq.l  #1,%d2
         cmpi.l  #16,%d2
         bne.w   2b
@@ -1725,7 +1856,9 @@ sc_st_partclear:                        | d0 = the Part
         mvz.b   CUR_BANK,%d1
         andi.l  #15,%d1
         lsl.l   #2,%d1
-        add.l   %d1,%d0
+        add.l   %d1,%d0                 | the context: bank * 4 + Part
+        lea     sc_alib,%a0
+        clr.w   (%a0,%d0.l*2)           | the Part's audio scale OFF
         lsl.l   #3,%d0
         lea     sc_lib,%a0
         adda.l  %d0,%a0
