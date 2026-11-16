@@ -1,0 +1,22 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "labels": [
+    "OFF",
+    "NOTES",
+    "NOTES+CC"
+   ],
+   "name": "SEND",
+   "type": "option"
+  }
+ },
+ "store": {
+  "id": "octabam.usb-midi-tracks",
+  "major": 1
+ }
+}

@@ -2,10 +2,13 @@
 
 For every START on an audio track (T1..T8: sequencer trig, panel key or MIDI
 IN note alike, they share one funnel) it queues on the USB MIDI module's
-transmit accumulator: CC 16..21 (PTCH STRT LEN RATE RTRG RTIM, stock's numbers),
-read from the frame's parameter record so locks and the crossfader's morph are in them, and a
-note-on whose number is the playing sample's slot, then a note-off a fixed
-gate later. Channel n carries track n. Nothing is sent to the DIN port.
+transmit queue, on the track's TRIG CHANNEL (OFF sends nothing, as stock):
+CC 16..21 (PTCH STRT LEN RATE RTRG RTIM, stock's numbers), read from the
+frame's parameter record so locks and the crossfader's morph are in them, and
+a note-on whose number is the playing sample's slot, then a note-off a fixed
+gate later. The BRAIN setting SEND chooses OFF (the default), NOTES or
+NOTES+CC. Nothing is sent to the DIN port. The frame interrupt only queues;
+the encoder is kicked from the engine task.
 
 Retrigs: the renderer's own call of the start handler for each repeat is repointed too
 (0x4000421e), so each repeat is a note-off and the same note again, and a scene or the
@@ -14,25 +17,45 @@ crossfader moving RTRG/RTIM is followed by construction. No detour: the kind tab
 start handler has set the voice's sample record). SYNTH MACHINE repoints the
 same entries, so the two never share an image. See README.md for what is measured and what is not.
 """
-from remix.schema import Category, Evidence, Gate, Kind, Level, Linked, Module, SymbolRef
+from remix.schema import (Apply, Category, Evidence, Gate, Kind, Level, Linked, Module, Option, Scope, Setting,
+                          Store, SymbolRef)
 
 H = bytes.fromhex
+STORE_ID = "octabam.usb-midi-tracks"
+
+
+def send_inc(modules, remix):
+    """remix.inc: the get_send macro (0 OFF, 1 NOTES, 2 NOTES+CC)."""
+    from remix import brain
+    mods = modules if isinstance(modules, dict) else {}
+    return ("| remix.inc -- USB MIDI TRACKS (modules/usb-midi-tracks/manifest.py)\n"
+            + brain.read_macro(remix, mods, STORE_ID, "SEND", "get_send"))
+
 
 MODULE = Module(
     name="usb-midi-tracks", key="USB MIDI TRACKS", kind=Kind.CF_PATCH,
     category=Category.MIDI_USB, author="siddely",
     author_url="https://github.com/siddely",
     evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-11-15",
-                       note="seen on the host over USB: CC 16..21 for every PLAYBACK page 1 value, a note per trig, "
-                            "retrig repeats, and the CCs following scene/fader moves; nothing timed or counted"),
-              Evidence(Level.EMULATOR, date="2026-11-15", ref="verify_usbmidi_tracks",
-                       note="notes, CCs, gate and retrig repeats (scene-morphed RTRG included) measured under the port on real projects")),
-    doc="Audio-track trigs out over USB MIDI only: the trig page as CC 16-21 with the crossfader morph in them, note per sample slot, fixed gate.",
+                       note="the PR's first build (channel = track, always on, the encoder kicked in the frame "
+                            "interrupt), not this one: seen on the host over USB, CC 16..21 for every PLAYBACK page 1 "
+                            "value, a note per trig, retrig repeats, and the CCs following scene/fader moves; nothing "
+                            "timed or counted"),
+              Evidence(Level.EMULATOR, date="2026-11-16", ref="verify_usbmidi_tracks",
+                       note="CCs, note-on, note-off on the TRIG CHANNEL in that order and the gate length, under the "
+                            "port; retrig repeats (scene-morphed RTRG included) on real projects with the probe")),
+    doc="Audio-track trigs out over USB MIDI only, on each track's TRIG CHANNEL, when BRAIN's SEND is on: the trig page as CC 16-21 with the crossfader morph in them, note per sample slot, fixed gate.",
     requires=("USB",),
     linked=(
-        Linked("utm", "modules/usb-midi-tracks/utm.s", cpu="54455", dram=True),
+        Linked("utm", "modules/usb-midi-tracks/utm.s", cpu="54455", dram=True, include=send_inc),
     ),
     gates=(Gate("tools/verify/verify_usbmidi_tracks.py", stage="image"),),
+    store=Store(STORE_ID),
+    settings=(Setting(1, "SEND", Option("OFF", "NOTES", "NOTES+CC"), default="OFF", scope=Scope.CARD,
+                      apply=Apply.LIVE,
+                      doc="audio-track trigs out over USB MIDI on each track's TRIG CHANNEL: NOTES (a note per "
+                          "sample slot) or NOTES+CC (CC 16..21 first, the same numbers stock's AUDIO CC OUT uses); "
+                          "OFF sends nothing. A host that echoes MIDI back plays the OT from these notes"),),
     # The kind table's FLEX and STATIC renderer entries (4-byte data pointers, stock 0x40004008):
     # the packer calls the renderer twice a frame per track, the second call after the start handler.
     symbol_refs=(

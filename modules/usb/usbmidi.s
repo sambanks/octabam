@@ -118,6 +118,15 @@ usbmidi_clrfeat_shim:
 | usbmidi_tx_append(len=%d0, buf=%a0): queue one complete message, then
 | kick. Masks interrupts around the queue. Trashes %d0-%d3/%a0-%a1.
 usbmidi_tx_append:
+    bsr     usbmidi_tx_queue
+    bra     usbmidi_tx_kick
+
+| usbmidi_tx_queue(len=%d0, buf=%a0): queue one complete message and return,
+| no kick: for a sender in the frame interrupt, which must not run the
+| encoder there (TRAPS trap-late-frame); it has the kick run in a task
+| (modules/usb-midi-tracks: utm_kick). Masks interrupts around the queue.
+| Trashes %d0-%d3/%a0-%a1.
+usbmidi_tx_queue:
     tstl    %d0
     jle     9f                      | nothing to queue
     movew   %sr,%d2
@@ -140,7 +149,7 @@ usbmidi_tx_append:
     bnes    5b
     movew   %d3,usbmidi_tx_acc_len  | acc_len = acc_len + len
     movew   %d2,%sr
-    bra     usbmidi_tx_kick
+    rts
 4:  mvzw    usbmidi_tx_rhead,%d1    | free = (head - tail - 1) mod RING_CAP
     mvzw    usbmidi_tx_rtail,%d3
     subl    %d3,%d1
@@ -163,7 +172,7 @@ usbmidi_tx_append:
     bnes    3b
     movew   %d1,usbmidi_tx_rtail
     movew   %d2,%sr
-    bra     usbmidi_tx_kick
+    rts
 6:  addql   #1,usbmidi_tx_drops
     movew   %d2,%sr
 9:  rts
@@ -285,7 +294,7 @@ usbmidi_prio_shim:
 | ---- data -----------------------------------------------------------------
     .balign 2
     .global usbmidi_up, usbmidi_tx_busy, usbmidi_tx_drops, usbmidi_tx_reset
-    .global usbmidi_tx_append
+    .global usbmidi_tx_append, usbmidi_tx_queue, usbmidi_tx_kick
 usbmidi_up:      .byte 0
 usbmidi_tx_busy: .byte 0
 usbmidi_tmpbyte: .byte 0
