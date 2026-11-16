@@ -261,7 +261,7 @@ shared check verifies payload placement, not the correctness of mutable values.
 | need | option | example |
 |---|---|---|
 | several calls, pokes and memory dumps on one load | `--step FRAME:call\|poke\|dump:SPEC`, repeatable; `-` = after the load before the transport, `N` = frame N after the transport start | `verify_mode_defaults`: two editor calls, their lane dumps and a MIDI case on one load |
-| a panel sequence (keys, encoders, the level pot) | `--live-script FILE`: lines of `<emulated ms> key\|enc\|pot\|midi\|audio start\|quit ...`, transport stopped, applied at emulated times | `verify_tempo_bus`: 65 panel lines, 7.1 s emulated, no wall-clock sleeps, the same on a loaded machine |
+| a panel sequence (keys, encoders, the level pot) | `--live-script FILE`: lines of `<emulated ms> key\|enc\|pot\|midi\|audio start\|quit ...`, transport stopped, applied at emulated times; `wait ADDR HEX eq\|ne\|chg CAP_MS` and `card QUIET_MS CAP_MS` run until the event (bytes in RAM; the firmware has written to the card and then left it alone for QUIET_MS) and pull the later lines forward | `verify_tempo_bus`: 65 panel lines, 7.1 s emulated, no wall-clock sleeps, the same on a loaded machine |
 | several runs that each need the machine exactly as it was after the load | `--scenario "LOG ARGS..."`, repeatable, `--scenario-jobs N` (default 3): the port loads once and forks one child per scenario; each child writes its stdout to LOG and takes ARGS as its post-load options (`--sequencer`, `--frames`, `--step`, `--poke`, `--call`, `--midi`, `--mem-dump`, `--live-script`, ...) | `verify_scenes_p2`: three frame runs and the editor pass from one load |
 
    Boot-time options (`--dsp`, `--audio-in`, `--audio-out`'s capture, the
@@ -449,8 +449,12 @@ unit uploads the passes it recorded as an artifact and `gates-result` merges the
 dropped (a cache hit refreshes the file's mtime).
 
 The units that read `OT_PROJECT` get a project: `tools/hw/ot_fresh.py` boots the port and creates one with the panel script
-(100 s locally, 255 s in CI with its own build of the image) in the plan job (`reach.py --fresh`: from the plan's build of
-the remix, while the next remix builds), once per remix with such a unit, and keeps it in
+in the plan job (`reach.py --fresh`: from the plan's build of the remix, while the next remix builds), once per remix with
+such a unit. The script waits for the card, not for a time (`card 2000 CAP`: the create's last write is 558 ms after its key,
+the save's 14651 ms, never more than 49 ms between two writes; octabam, emulated, 16 Nov 2026), and `ot_fresh.py` refuses a
+run with a `WAIT TIMEOUT` or a script that did not reach its `quit`. The boot is 62 s in a cloud container (16 Nov 2026;
+97 s with the fixed 13 s and 30 s waits it had until then, the project's 90 files byte-identical; with those waits and its
+own build of the image it was 255 s on a runner). It keeps the project in
 `<git common dir>/octabam-fresh-cache/<sha256 of image, port sources, script>` (CI: an actions-cache entry, `fresh-@<run id>`),
 so a rerun for the same inputs is the image build alone (41 s locally). The units download it as the artifact
 `fresh-projects`. The `image:` jobs without `Gate.project` have none: with a project `verify_brain` failed and the one `image` job ran

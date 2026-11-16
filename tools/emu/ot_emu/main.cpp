@@ -1471,7 +1471,7 @@ int main(int _argc, char** _argv)
 			"              [--usb-host SOCKET] [--usb-notify FILE] [--usb-fs]   the USB device controller + a scripted host (usb.h)\n"
 			"              [--interactive] [--rtc host|off|EPOCH] [--dsp-rt]    the line protocol on stdin/stdout (tools/panel)\n"
 			"              [--step FRAME:call|poke|dump:SPEC]...              a gate's whole script on one boot: FRAME '-' = after the load, N = N frames after the transport start\n"
-			"              [--live-script FILE]                              '<emulated ms> key|enc|pot|midi|poke|quit ...' lines, transport stopped, no wall-clock pacing\n"
+			"              [--live-script FILE]                              '<emulated ms> key|enc|pot|midi|poke|quit ...' lines ('wait ADDR HEX eq|ne|chg CAP_MS' and 'card QUIET_MS CAP_MS' run until the event), transport stopped, no wall-clock pacing\n"
 			"              [--no-post]                                       no LOAD PROJECT post: the firmware's own power-up load\n"
 			"              [--boot-load]                                     --names-early --no-post: the names before the mount, the firmware's own load\n"
 			"              [--preload ADDR=FILE[;...]]                       a file's bytes into memory before the boot (a staged OS image, NOR's 0x3ffc)\n"
@@ -2611,6 +2611,62 @@ int main(int _argc, char** _argv)
 						else
 						{
 							std::printf("live script: WAIT TIMEOUT %s %s %s after %.0f ms\n", addrS.c_str(), hex.c_str(), op.c_str(), cap);
+							++timeouts;
+						}
+						++n;
+						continue;
+					}
+					// "<ms> card QUIET_MS CAP_MS": at <ms> (plus the shift so far) run until the firmware has
+					// written a sector since the wait began and then none for QUIET_MS -- the card is as a save
+					// or a copy leaves it -- at most CAP_MS more. The lines after it shift as after `wait`; a
+					// cap reached is a WAIT TIMEOUT. The longest gap between two writes inside the wait is
+					// printed: QUIET_MS must stay well above it, or the wait ends inside the save.
+					if(rest.compare(0, 6, " card ") == 0)
+					{
+						std::istringstream ws(rest.substr(6));
+						double quiet = 0, cap = 0;
+						ws >> quiet >> cap;
+						if(rtos.runUntil(ms * 5 + 60000.0, [&] { txMark(); return rtos.frameCount() >= at; }, ot::Rtos::Changes::OnEvent) != ot::Rtos::Stop::Gate)
+						{
+							std::printf("live script: stopped before %.0f ms -- %s\n", ms, rtos.why().c_str());
+							stallCpu();
+							early = true;
+							break;
+						}
+						const uint64_t w0 = card ? card->sectorsWritten() : 0;
+						uint64_t wLast = w0, fLast = rtos.frameCount(), gapMax = 0;
+						const auto end = rtos.frameCount() + msFrames(cap), quietFrames = msFrames(quiet);
+						const auto idle = [&]
+						{
+							const uint64_t w = card ? card->sectorsWritten() : 0, f = rtos.frameCount();
+							if(w != wLast)
+							{
+								if(wLast != w0)
+									gapMax = std::max(gapMax, f - fLast);
+								wLast = w;
+								fLast = f;
+							}
+							return wLast != w0 && f - fLast >= quietFrames;
+						};
+						if(rtos.runUntil((ms + cap) * 5 + 60000.0, [&] { txMark(); return idle() || rtos.frameCount() >= end; }, ot::Rtos::Changes::OnEvent) != ot::Rtos::Stop::Gate)
+						{
+							std::printf("live script: stopped in a card wait at %.0f ms -- %s\n", ms, rtos.why().c_str());
+							stallCpu();
+							early = true;
+							break;
+						}
+						const auto frameMs = [](uint64_t _f) { return static_cast<double>(_f) * ot::g_framePeriod / ot::g_sampleHz * 1000.0; };
+						const double waited = frameMs(rtos.frameCount() - at);
+						if(idle())
+						{
+							std::printf("live script: card quiet %.0f ms after %.0f ms (cap %.0f): %llu sector(s) written, the last %.0f ms in, longest gap between writes %.0f ms\n",
+								quiet, waited, cap, static_cast<unsigned long long>(wLast - w0), frameMs(fLast - at), frameMs(gapMax));
+							shiftMs -= cap - waited;
+						}
+						else
+						{
+							std::printf("live script: WAIT TIMEOUT card quiet %.0f after %.0f ms (%llu sector(s) written, longest gap %.0f ms)\n", quiet, cap,
+								static_cast<unsigned long long>(wLast - w0), frameMs(gapMax));
 							++timeouts;
 						}
 						++n;

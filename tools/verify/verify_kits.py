@@ -280,6 +280,12 @@ class Script:
         arg = "00" * nbytes if op == "chg" else nbytes
         self.lines.append(f"{self.t:.0f} wait {addr:#x} {arg} {op} {cap}"); self.t += cap
 
+    def card(self, quiet=2000, cap=60000):
+        """Wait for the card to be left alone (ot_emu's `card` line): the firmware has written
+        since the wait began and then nothing for `quiet` ms; at most `cap` ms. For a save or a
+        copy, whose end no RAM byte marks on every image. A cap reached is a WAIT TIMEOUT."""
+        self.lines.append(f"{self.t:.0f} card {quiet} {cap}"); self.t += cap
+
     def clock(self, start, end, bpm=120):
         """MIDI clock (F8, 24 per beat) from start to end ms, beside the
         keys: an external master keeps time while the panel is used."""

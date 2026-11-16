@@ -30,6 +30,11 @@ import subprocess
 import sys
 
 LOAD_MS = 90000
+# The script waits for the card, not for a time (ot_emu's `card` line): the create and the save are over when the
+# firmware has left the card alone for QUIET_MS. Measured on octabam, 16 Nov 2026 (emulated ms, so the same on any
+# host): the create's last write 558 ms after the key, the save's 14651 ms after, and never more than 49 ms between
+# two writes. Until then the script waited 13 s and 30 s: 54 s emulated, 96 s of the 97 s the boot took here.
+QUIET_MS = 2000
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -41,8 +46,8 @@ def panel_script():
     import verify_kits as V
     s = V.Script()
     s.tap("no"); s.tap(0x1c, 1000); s.tap("yes", 1000); s.tap("yes", 1000); s.tap("up", 600)      # PROJECT > CHANGE > CREATE EMPTY PROJECT
-    s.tap("yes", 1400); s.tap("yes", 13000)                                                      # the name, confirmed
-    s.tap(0x1c, 1000); s.tap("right", 700); s.tap("down", 500); s.tap("yes", 1100); s.tap("yes", 30000)   # SAVE PROJECT
+    s.tap("yes", 1400); s.tap("yes", 20); s.card(QUIET_MS, 30000)                                # the name, confirmed
+    s.tap(0x1c, 1000); s.tap("right", 700); s.tap("down", 500); s.tap("yes", 1100); s.tap("yes", 20); s.card(QUIET_MS, 60000)   # SAVE PROJECT
     return s.text()
 
 
@@ -133,6 +138,11 @@ def main():
         rc = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT).returncode
     if rc or not after.exists():
         sys.exit(f"ot_emu exit {rc}; see {work / 'port.txt'}")
+    log = (work / "port.txt").read_text(errors="replace")
+    if "WAIT TIMEOUT" in log or "ended on quit" not in log:
+        # a card wait that reached its cap, or a script that stopped early: the card may hold half a project
+        sys.exit(f"the panel script did not run to its end (a create or a save the card wait did not see finish); "
+                 f"see {work / 'port.txt'}")
     import emu_card
     files = emu_card.extract_image(after.read_bytes())
     projects = {}

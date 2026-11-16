@@ -126,7 +126,13 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
     - FRAME `-` means after the load and before the transport;
     - FRAME N means frame N after the transport start.
   - `--live-script FILE`: lines of `<emulated ms> key|enc|pot|midi|poke|quit ...` (`poke` as `--poke`),
-    applied at those emulated times with the transport stopped. A script that
+    applied at those emulated times with the transport stopped. Two lines run
+    until an event, at most CAP_MS, and pull the lines after them forward by
+    what they saved: `wait ADDR HEXBYTES eq|ne|chg CAP_MS` (the bytes at ADDR)
+    and `card QUIET_MS CAP_MS` (the firmware has written a sector since the
+    line and then none for QUIET_MS: a save or a copy is over; the line prints
+    the longest gap between two writes, which QUIET_MS must stay well above).
+    A cap reached prints `WAIT TIMEOUT`. A script that
     stops early (`live script: stopped before ...`: its frames stopped
     coming) prints `stall cpu  : pc=... sr=...`, where the ColdFire was. With
     `OT_STALL_CPU=1` it also prints the next 64 PCs, single-stepped, which
