@@ -1188,7 +1188,7 @@ SPLIT_SHARED_GATES = {"morph": ("MORPH", "tools/morph/test_morph.py"),
 
 # Jobs left out of one remix's `(project)` unit because they fail there with a generated project though they pass on
 # others (sambanks/octabam#1051): remix -> {job: issue}. They SKIP there as before. Remove an entry when fixed.
-PROJECT_GATE_SKIP = {"octabam-verbs": {"plocks-p2": "#1127", "mode-defaults": "#1127"}}
+PROJECT_GATE_SKIP = {}         # octabam-verbs' plocks-p2 and mode-defaults (#1127) were here until 15 Nov 2026
 
 
 def project_gate_jobs(remix_name):

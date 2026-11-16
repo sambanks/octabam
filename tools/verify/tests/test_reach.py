@@ -567,10 +567,8 @@ class TestRemixTests(unittest.TestCase):
 # runs it in CI and fails CI on a fault that was already there. Take it off when fixed and set project=True.
 KNOWN_RED = {
     "tools/verify/verify_ids64_load.py": "#1120: the chooser check fails with a generated project",
-    "tools/verify/verify_dlload.py": "#1075: 12 checks fail with a project",
     "tools/verify/verify_cfmeter.py": "#1124: flagging it reaches the cfmeter remix, where verify_quantizer_ui (once, on the carrier) fails",
     "tools/verify/verify_kits.py": "#1125: its Kit fixtures fail on a generated project (a once gate in the shared half)",
-    "tools/verify/verify_load_meter.py": "#1126: otop and wrap fail with a generated project (1649 s in the octabam (project) unit)",
 }
 
 
@@ -666,14 +664,19 @@ class PlanJsonTests(unittest.TestCase):
         self.assertIn("check-remix slow-lfo (project)", units(""))       # an unscoped run reaches it
         self.assertEqual(list(units("KITS")), ["check-remix slow-lfo"])  # a change to another module: no project unit
 
-    def test_a_job_that_fails_as_a_project_unit_on_one_remix_is_left_out_there_only(self):
-        """#1127: plocks-p2 and mode-defaults fail on octabam-verbs with a generated project and pass elsewhere."""
+    def test_a_job_left_out_of_one_remixs_project_unit_is_left_out_there_only(self):
+        """reach.PROJECT_GATE_SKIP leaves a job out of one remix's (project) unit; plocks-p2 and mode-defaults on
+        octabam-verbs (#1127) were its entries until fixed, and run there now."""
         verbs = {n for _, n in reach.project_gate_jobs("octabam-verbs")}
-        bus = {n for _, n in reach.project_gate_jobs("octabam-bus")}
-        for job in reach.PROJECT_GATE_SKIP["octabam-verbs"]:
-            self.assertNotIn(job, verbs)
-            self.assertIn(job, bus)
-        self.assertIn("verb-parts", verbs)                  # the others stay
+        for job in ("plocks-p2", "mode-defaults", "verb-parts"):
+            self.assertIn(job, verbs)
+        saved = dict(reach.PROJECT_GATE_SKIP)
+        try:
+            reach.PROJECT_GATE_SKIP["octabam-verbs"] = {"plocks-p2": "#test"}
+            self.assertNotIn("plocks-p2", {n for _, n in reach.project_gate_jobs("octabam-verbs")})
+            self.assertIn("plocks-p2", {n for _, n in reach.project_gate_jobs("octabam-bus")})
+        finally:
+            reach.PROJECT_GATE_SKIP.clear(); reach.PROJECT_GATE_SKIP.update(saved)
 
     def test_a_remix_without_such_a_gate_stays_one_unit(self):
         items = [("check-remix", "python3 tools/verify/check_shards.py --jobs 3 not-a-remix", ["e"])]

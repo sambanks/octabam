@@ -27,13 +27,25 @@ a remix without MODE DEFAULTS. What it cannot see: the panel redraw, the
 DSP receiving page 1 (the page-1 writer's live byte is what the frame
 builder reads; verify_set covers the delivery).
 """
-import argparse, os, pathlib, shutil, subprocess, sys
+import argparse, os, pathlib, re, shutil, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 from remix import registry  # noqa: E402
 import ot_project  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+def _cc_map_ccs():
+    """CC MAP's page-2 CCs (FX2, FX1), slot 6..11 order, from its manifest (as verify_cc_map reads them)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ccmap_manifest_md", ROOT / "modules/cc-map/manifest.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.FX2_CCS, mod.FX1_CCS
+
+
+CC_MAP_FX2, CC_MAP_FX1 = _cc_map_ccs()
 EMU = ROOT / "out/emu/ot_emu"
 PY = ROOT / ".venv/bin/python3"
 OUT = ROOT / "out/modedefverify"
@@ -166,11 +178,21 @@ def main():
             if kind0 == "fx2" and (m0.menu is None or m0.menu.fx2_id not in (6, 7)):
                 continue
             slot2 = m0.mode_slot - 6
-            want_mode = 1 if expect_view(m0, 1) else (2 if expect_view(m0, 2) else None)
+            # a mode the editor step (+2 ticks, MODE 1 or 2) cannot have left: with MODE 1 already in the lane
+            # (octabam, 15 Nov 2026) a CC of 1 passed with or without CC MAP's write
+            want_mode = next((v for v in (3, 1, 2) if expect_view(m0, v)), None)
             if want_mode is not None:
-                cc = (62 if kind0 == "fx2" else 68) + slot2
+                # CC MAP's own numbers (modules/cc-map/manifest.py FX2_CCS, FX1_CCS): page 2 moved off the pedal
+                # CCs on 1 Nov 2026 (#981; 62-67 and 68-73 before), and the gate sent the old ones until 15 Nov
+                cc = (CC_MAP_FX2 if kind0 == "fx2" else CC_MAP_FX1)[slot2]
                 midi = OUT / "cc.midi"
-                midi.write_text(f"40 B0 {cc:02X} {want_mode:02X}\n")   # MIDI channel 1: T1's MIDI_TRIG_CH1 = 0 in the fixture; T2 (the FX1 case) proved on the same channel before LOFI2 joined the FX2 cases
+                # the case's track's own channel (MIDI_TRIG_CHn, as verify_set reads it). Until 15 Nov 2026 the CC
+                # went on channel 1, T1's, for T2's FX1 case: it never reached T2, and the check passed only while
+                # the editor step had left the mode it asked for (octabam: MODE 1)
+                raw = (copy / "project.work").read_bytes().decode("latin1")
+                chans = [int(c) for c in re.findall(r"MIDI_TRIG_CH\d=(-?\d+)", raw)][:8]
+                ch = chans[tracks[kind0]] & 0xf if len(chans) > tracks[kind0] else 0
+                midi.write_text(f"40 B{ch:X} {cc:02X} {want_mode:02X}\n")
                 cc_dump = OUT / f"cc_{kind0}_lanes.bin"
                 cc_case = (kind0, k0, m0, slot2, cc, want_mode)
                 break

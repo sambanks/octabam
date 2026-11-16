@@ -14,7 +14,9 @@ lm_dsp and lm_ot (modules/load-meter/meter.s) and the screen's figures.
               samples, each mean cost is within its core's frame, the slots'
               means sum to no more than the core's mean busy time, and the
               heaviest slot of each core is the host engine on its track
-              (core 0: T5's FX2, BusVerb; core 1: T1's FX2, BusDelay)
+              (core 0: T5's FX2, BusVerb; core 1: T1's FX2, BusDelay); in a
+              remix without the bus the fixture puts id 0x16 (DARK REV, VERB
+              HALL) on those two slots
   scrub       a write watch on MAIN's long 0 low byte (0x80005e63): the
               scrub (lm_scrub) zeroes it every frame the DSP wrote it
   every       lm_scrub runs once per frame interrupt (its pass count equals
@@ -125,6 +127,33 @@ def main():
     for f in pathlib.Path(project).expanduser().iterdir():
         if f.is_file() and f.suffix.lower() == ".work":
             shutil.copy2(f, copy / f.name)
+    # The otop and wrap checks name the heaviest slot of each core: T5's FX2 (core 0) and T1's FX2 (core 1), the
+    # bus's host engines in a project RIG HOSTS wires. A remix without the bus gets the same two slots made the
+    # heaviest in the copy: its id 0x16 (DARK REV in octabam, VERB HALL in octabam-verbs) on T1's and T5's FX2,
+    # every other FX2 slot the generated project's DELAY, every FX1 NONE. Until 15 Nov 2026 the gate ran with a project only on
+    # octabam-bus's checks (sambanks/octabam#1051) and on octabam-verbs it found slots 7 and 12 heaviest.
+    if "RIG HOSTS" not in remix.modules:
+        sys.path.insert(0, str(ROOT / "tools/hw"))
+        import ot_project as otp
+        heavy = next((k for k, m in registry.bound(remix).items()          # the remix's own row, by key: a bare id
+                      if k in remix.modules and getattr(m, "menu", None) is not None and m.menu.fx2_id == 0x16), None)
+        if heavy is None:
+            sys.exit(f"verify_load_meter: {a.remix} has no row on id 0x16 for the heaviest-slot fixture")
+        for track in (1, 5):
+            otp.set_fx(copy, "fx2", track, heavy, guard=False)
+        for track in range(1, 9):                       # FX1 NONE: the generated project's FX1 (id 0x04) on every
+            otp.set_fx(copy, "fx1", track, 0, guard=False)   # track cost what DARK REV does (octabam, 15 Nov 2026:
+                                                        # every 0x04 slot 1633..1685 counts, DARK REV 1645/1650) and
+                                                        # the heaviest slot fell on a tie (4, 10)
+    else:
+        # The gate has no remix argument (remix_arg=False), so CI's (project) units run it on its default, octabam-bus,
+        # with the unit's generated project: no host is wired in it, slots 7 and 12 came out heaviest and the sums were
+        # 344 and 326 counts against about 2000 (sambanks/octabam#1129, run 43764596132; the same on the port with this
+        # argument left off). The copy gets the locked rig, as a project RIG HOSTS wires: T1 DELAY SERVER, T5 REVERB
+        # SERVER, T8 the stock DELAY, every other track SEND
+        sys.path.insert(0, str(ROOT / "tools/hw"))
+        import ot_project as otp
+        otp.host_rig(copy, a.remix, guard=False)
 
     into = [(0x1c, 500)] + [(0x20, 500)] * 4 + [(0x21, 500)]                 # PROJ, BRAIN's pane
     open_load = [(0x32, 500)] + into + [(0x20, 500)] * 3 + [(0x31, 500)]      # BRAIN > PERFORMANCE (the fourth row)
