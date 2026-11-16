@@ -21,6 +21,12 @@ stock does):
 | note-on, velocity 100 | note = the playing sample's slot, 0..127 |
 | note-off, a fixed 160 frames (about 58 ms) later | a new START closes a pending note first |
 
+## In a DAW
+
+[`host/ot-gate/`](host/ot-gate/README.md): two Max for Live devices that use these
+notes to split one OT track's USB audio by the sample each trig plays, one Live
+track per sound. A reference for building on the module from a host.
+
 ## The SEND setting
 
 PROJ > BRAIN > SETTINGS > SEND, stored on the card (in a remix without BRAIN, the value the remix pins):
