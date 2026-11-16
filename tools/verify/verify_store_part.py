@@ -29,7 +29,8 @@ def main():
     if 'MIDI LOOPBACK' in keys: fields.add(12)
     if 'MIDI HARMONY' in keys: fields.update((5,16,18,19))
     reader = 'SCALES' in keys       # reads the MIDI setup window, writes no native byte
-    assert fields or reader, 'this gate needs a native settings client'
+    seq_reader = 'SEQ' in keys
+    assert fields or reader or seq_reader, 'this gate needs a native Part client'
     fields = tuple(sorted(fields))
     def put(a, v, n=1): u.mem_write(a, v.to_bytes(n, 'big'))
     def get(a, n=1): return int.from_bytes(u.mem_read(a, n), 'big')
@@ -63,6 +64,25 @@ def main():
     assert call('store_part_midi_context',0)==0xffffffff
     assert call('store_part_audio_context',0)==0xffffffff
     print('  [ok] UI, audio and MIDI contexts stay distinct; independent latches, unlatched fallback and invalid inputs')
+
+    if seq_reader:
+        reads = 0
+        for bank in (0, 7, 15):
+            for part in range(4):
+                for track in range(8):
+                    for flat in range(32):
+                        offset = 0x3e2 + track * 32 + flat
+                        address = BANK + bank * STRIDE + WORK + part * PART + offset
+                        value = (bank + part + track + flat) % 256
+                        put(address, value)
+                        assert m.call('store_part_read', offset, bank * 4 + part) == value
+                        if not fields:
+                            assert m.call('store_part_write', offset, bank * 4 + part,
+                                          regs={UC_M68K_REG_D3: 1}) == 0
+                        reads += 1
+        print(f'  [ok] SEQ: {reads} MIDI page-1 reads through explicit Part contexts')
+        if not fields and not reader:
+            return
 
     if not fields:                  # a read-only client: coherent reads, every write refused
         reads = 0
