@@ -44,7 +44,7 @@ HOW A PATH IS PLACED (28 Sep 2026; before, by directory):
   modules/<name>/           the remixes carrying the module: the shared half
                             scoped to the module (MODULES=<key>), the
                             per-remix half and make accept for each
-  remixes/<name>/remix.py   that remix (remixes/test/<name>/remix.py too)
+  remixes/<name>/remix.py   that remix (remixes/test/<name>/ and remixes/community/<name>/ too)
   tools/, scripts/          by DEPENDENCY: the Python imports (`from remix
                             import`, `import send_probe`) and the
                             `tools/x/y.py` path strings in every tools/ file
@@ -579,8 +579,10 @@ class Context:
         mods = registry.modules()
         module_key = {m.name: m.key for m in mods.values()}
         # The remixes in play: remixes/ only, unless TESTS=1 (the one-module
-        # remixes under remixes/test/ are left out of every list, 30 Sep 2026)
-        tests = [n for n in registry.remix_names() if registry.is_test(n)]
+        # remixes under remixes/test/ are left out of every list, 30 Sep 2026;
+        # so are contributors' own under remixes/community/, 16 Nov 2026: a
+        # module change would otherwise check every whole image they keep)
+        tests = [n for n in registry.remix_names() if registry.is_test(n) or registry.is_community(n)]
         names = [n for n in registry.remix_names() if include_tests or n not in tests]
         remixes_of = {k: [] for k in mods}
         test_carriers = {}
@@ -884,10 +886,11 @@ def classify(paths, ctx):
                 note = "unknown module directory"
                 gates = ctx.every()
         elif top == "remixes" and len(parts) >= 2:
-            # remixes/<name>/..., remixes/test/<name>/..., or a flat remixes/<name>.py
-            name = parts[2] if parts[1] == "test" and len(parts) >= 3 else parts[1]
+            # remixes/<name>/..., remixes/{test,community}/<name>/..., or a flat remixes/<name>.py
+            sub = parts[1] in ("test", "community") and len(parts) >= 3
+            name = parts[2] if sub else parts[1]
             name = name[:-3] if name.endswith(".py") else name
-            rdir = "/".join(parts[:3] if parts[1] == "test" else parts[:2])
+            rdir = "/".join(parts[:3] if sub else parts[:2])
             if parts[-1] == "README.md":
                 gates = [CMD["verify_docs"]]
             elif not ctx.exists(rdir):
@@ -1403,7 +1406,7 @@ def main(argv=None):
     ap.add_argument("--jobs", type=int, default=1,
                     help="with --run: the check-remix lines through check_shards.py, N worktrees at a time")
     ap.add_argument("--tests", action="store_true",
-                    help="include the remixes under remixes/test/ (left out by default)")
+                    help="include the remixes under remixes/test/ and remixes/community/ (left out by default)")
     ap.add_argument("--full", action="store_true",
                     help="every gate a change reaches: the cover, identity, accept, every carrying remix, full speed "
                          "(the default is quick: see the module docstring)")

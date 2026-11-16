@@ -87,10 +87,13 @@ a shortened FX1 list drops has its cursor row clamped to 0.
 
 A remix is one directory, `remixes/<name>/`: `remix.py` holds the
 selection, `README.md` says what is in it and where it has run. The
-registry discovers every `remixes/*/remix.py` and `remixes/test/*/remix.py`;
-nothing else registers it. A remix that carries one module for that
-module's gates goes in `remixes/test/<name>/`; names are unique across
-both, and every tool takes the bare name (`make check REMIX=miniverb`).
+registry discovers every `remixes/*/remix.py`, `remixes/test/*/remix.py`
+and `remixes/community/*/remix.py`; nothing else registers it. A remix
+that carries one module for that module's gates goes in
+`remixes/test/<name>/`; one you compose for your own card and want in the
+repository goes in `remixes/community/<name>/`, named after you or its
+purpose, never `octabam-*` (CONTRIBUTING.md "Remixes"). Names are unique
+across the three, and every tool takes the bare name (`make check REMIX=miniverb`).
 
 Copy an existing `remix.py` and edit it. `remixes/octabam-bus/remix.py`
 is the bus with stations, hosts and ColdFire mods,

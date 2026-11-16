@@ -39,7 +39,7 @@ def main():
         d = registry.remix_dir(name)
         if d is None:
             fails.append(f"remixes/{name}.py: a remix is a directory, remixes/{name}/remix.py "
-                         f"(or remixes/test/{name}/remix.py) + README.md")
+                         f"(or remixes/test/ or remixes/community/{name}/remix.py) + README.md")
         elif not (d / "README.md").exists():
             fails.append(f"{d.relative_to(ROOT)}/README.md: missing")
     nav = (ROOT / "docs/site/mkdocs.yml").read_text()

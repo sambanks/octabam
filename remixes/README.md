@@ -5,6 +5,7 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 - What to install first (the Xcode Command Line Tools, Homebrew, Python 3.10+, `cmake`, `uv`) and every step to a flashed unit: [BUILDING.md](../docs/guide/BUILDING.md).
 - Composing your own: [COMPOSING.md](../docs/guide/COMPOSING.md).
 - The remixes that carry one module for its gates: [test/](test/README.md).
+- Contributors' own selections: [community/](community/README.md).
 
 ## The delay and reverb bus
 
@@ -16,7 +17,6 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 
 | remix | contains | proof |
 |---|---|---|
-| [`cxosc-core`](cxosc-core/README.md) | CORE + REMIX SWITCH + CX OSC on the 14 stock effects. | emulator: unit handoff: CORE + CX OSC; marker-less machine list, mono, stock LFOs |
 | [`octabam`](octabam/README.md) | The core ColdFire modules, SCOPE and TUNER, every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain. | measured on a unit (OCTA S2, 2026-11-15): Flashed S2 image. With SCOPE closed/open, 30 loader transitions per state had zero bad records. Median CF window peak 537.36/544.96 us, steady 355.77/359.37 us; median DSP window max 49/48%, steady max 49/48%; median audio gap 340/340 ms. Maximum gap 1,480/360 ms. The 40 ms GAP flag appeared on all transitions because the loader silence is about 340 ms. These results cover this flashed image and transition set. |
 | [`octabam-verbs`](octabam-verbs/README.md) | octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand, with VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words. | emulator: not flashed; `make check` (CI) |
 

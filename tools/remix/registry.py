@@ -196,11 +196,14 @@ def by_id(fx2_id: int):
 
 
 REMIXES_DIR = ROOT / "remixes"
-# Two roots. remixes/<name>/ is a remix for a card; remixes/test/<name>/
-# carries one module for that module's gates (`make check REMIX=<name>`).
-# A name is unique across both, and every tool takes it bare.
+# Three roots. remixes/<name>/ is the project's own remix for a card;
+# remixes/test/<name>/ carries one module for that module's gates (`make
+# check REMIX=<name>`); remixes/community/<name>/ is a contributor's own
+# selection for a card (CONTRIBUTING.md "Remixes"). A name is unique across
+# all three, and every tool takes it bare.
 TEST_DIR = REMIXES_DIR / "test"
-REMIX_ROOTS = (REMIXES_DIR, TEST_DIR)
+COMMUNITY_DIR = REMIXES_DIR / "community"
+REMIX_ROOTS = (REMIXES_DIR, TEST_DIR, COMMUNITY_DIR)
 # There is no default remix. Every tool takes the selection from its
 # argument or $REMIX and refuses without one (`remix(None)` below); a gate
 # that needs a particular image asks for it by requirement (`fixture`).
@@ -210,12 +213,12 @@ NO_REMIX = ("no remix selected: pass REMIX=<name> (or the remix argument); "
 
 
 def remix_dir(name: str) -> pathlib.Path | None:
-    """The directory holding remixes/<name>/remix.py or
-    remixes/test/<name>/remix.py; None for a flat scratch file. Refuses a
-    name present under both roots."""
+    """The directory holding remixes/<name>/remix.py,
+    remixes/test/<name>/remix.py or remixes/community/<name>/remix.py; None
+    for a flat scratch file. Refuses a name present under two roots."""
     hits = [r / name for r in REMIX_ROOTS if (r / name / "remix.py").exists()]
     if len(hits) > 1:
-        raise SystemExit(f"remix {name!r} exists under both roots: "
+        raise SystemExit(f"remix {name!r} exists under more than one root: "
                          + " and ".join(str(h.relative_to(ROOT)) for h in hits))
     return hits[0] if hits else None
 
@@ -226,8 +229,14 @@ def is_test(name: str) -> bool:
     return d is not None and d.parent == TEST_DIR
 
 
+def is_community(name: str) -> bool:
+    """True for a remix under remixes/community/."""
+    d = remix_dir(name)
+    return d is not None and d.parent == COMMUNITY_DIR
+
+
 def remix_path(name: str) -> pathlib.Path:
-    """The remix.py under either root (remix_dir); or the flat
+    """The remix.py under any root (remix_dir); or the flat
     remixes/<name>.py the TUI and the selftest write as scratch."""
     d = remix_dir(name)
     return d / "remix.py" if d is not None else REMIXES_DIR / f"{name}.py"
@@ -323,9 +332,9 @@ def remix(name: str | None):
 
 
 def remix_names() -> list[str]:
-    """Every remix under both roots, plus the flat scratch files at the top
-    level. remixes/test/ itself has no remix.py, so the top-level walk skips
-    it; a name under both roots is refused."""
+    """Every remix under the three roots, plus the flat scratch files at the
+    top level. remixes/test/ and remixes/community/ have no remix.py of their
+    own, so the top-level walk skips them; a name under two roots is refused."""
     if not REMIXES_DIR.is_dir():
         return []
     names: set[str] = set()
