@@ -5,7 +5,7 @@
     python3 tools/hw/ot_usbtracks.py project SRC             # the test project from a copy of SRC (SRC untouched)
     python3 tools/hw/ot_usbtracks.py deploy [--vol /Volumes/X]   # .RMX files + project to the card
     python3 tools/hw/ot_usbtracks.py switch NEW|OFF|OLD      # boot that image through REMIX SWITCH
-    .venv/bin/python3 tools/hw/ot_usbtracks.py run LABEL --image NEW|OFF|OLD [--stress 60]
+    python3 tools/hw/ot_usbtracks.py run LABEL --image NEW|OFF|OLD [--stress 60]
     python3 tools/hw/ot_usbtracks.py report LABEL [LABEL ...]
 
 The images (`build`; out/hw/umt/):
