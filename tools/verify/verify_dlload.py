@@ -188,16 +188,14 @@ def main():
     for tag, (tracks, core, _) in TWO.items():
         scenarios[tag] = (";".join(poke(FX1_LIVE, FX1_PART, t, rec["id"]) for t in tracks), [])
         watch[tag] = f"{core}:{rec['proc']:x}"
-    # ONE LOAD A GROUP, the scenarios forked from it (ot_emu --scenario). Until 16 Nov 2026 every scenario was a boot
-    # and a load of its own: measured on octabam with a generated project, 4 CPUs, three at a time, a run took about
-    # 270 s of which the 7 s script took about 65 (a 13.5 s script took 61 s more) -- the boot and the 18.75 s load
-    # were three quarters of 34 runs, and the gate did not finish in 75 minutes alone on a CI runner
-    # (sambanks/octabam#1139, run 43823203810). A forked child takes its post-load options (the script, the first
-    # pokes, the peeks, the dump); the two PC watches are armed before the boot, and one given to a child is parsed
-    # and never armed (as TRAPS.md trap-scenario-watch's --watch-mem), so the scenarios are grouped by the watch they
-    # need and each group's load arms it: the toast watch for every scenario without a DSP PC watch (the checks that
-    # want a toast and the ones that want none share that load, so a dead watch fails the first kind), and one load
-    # for each --dsp-pcwatch value.
+    # ONE LOAD, the scenarios forked from it (ot_emu --scenario). Until 16 Nov 2026 every scenario was a boot and a
+    # load of its own: measured on octabam with a generated project, 4 CPUs, three at a time, a run took about 270 s
+    # of which the 7 s script took about 65 (a 13.5 s script took 61 s more) -- the boot and the 18.75 s load were
+    # three quarters of 34 runs, and the gate did not finish in 75 minutes alone on a CI runner
+    # (sambanks/octabam#1139, run 43823203810). A forked child takes its post-load options: the script, the first
+    # pokes, the peeks, the dump, and its PC watch (--watch-pc on the toast or --dsp-pcwatch), which ot_emu arms at
+    # the fork. A watch given to a child of a port without that arming is parsed and never armed: the checks that
+    # want a toast or an arrival fail then, the ones that want none would pass.
     args, groups = {}, {}
     for tag, (first, later) in scenarios.items():
         lines = [f"{ms} poke {p}" for ms, p in later]
@@ -228,8 +226,8 @@ def main():
         args[tag] = ["--live-script", OUT / f"{tag}.script", "--dsp-peek", peeks, "--mem-dump", f"{FX1_LIVE:#x},16={dump}"]
         if first:
             args[tag] += ["--step", "-:poke:" + first]
-        boot = ("--dsp-pcwatch", watch[tag]) if tag in watch else ("--watch-pc", f"{TOAST:#x}")
-        groups.setdefault(boot, []).append(tag)
+        args[tag] += ["--dsp-pcwatch", watch[tag]] if tag in watch else ["--watch-pc", f"{TOAST:#x}"]
+        groups.setdefault((), []).append(tag)
     for tag in scenarios:
         (OUT / f"{tag}.txt").unlink(missing_ok=True)
         if any(" " in str(x) for x in args[tag]) or " " in str(OUT):
