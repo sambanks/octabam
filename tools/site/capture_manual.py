@@ -235,18 +235,18 @@ def capture_drummer(p,r):
 def capture_seq(p,r):
     p.chord('t1','page')
     enc(p,3,-15);p.run(400)  # select PTCH so the Harmony-page hint is enabled
-    shot(p,'seq','panel','SEQ Rhythm page with PTCH selected: PULS, ROT, LANE, DEST, DPTH, step grid and LEN.',r)
+    shot(p,'seq','panel','SEQ Rhythm on an audio track.',r)
     p.press('right',settle=400)
-    shot(p,'seq','tonal','SEQ Harmony page on audio: SCAL, ROOT, RANG and PHRS; C and F are empty.',r)
+    shot(p,'seq','tonal','SEQ Harmony on an audio track.',r)
     p.press('left',settle=400)
     p.chord('func','bank')
-    shot(p,'seq','clear','SEQ clear menu: CLEAR DEST, CLEAR ALL DEST, CLEAR ALL+TRIGS.',r)
+    shot(p,'seq','clear','SEQ clear menu.',r)
     p.press('no',settle=400)
     close(p)
     p.press('midi',settle=300)
     p.chord('t1','page')
     p.press('right',settle=400)
-    shot(p,'seq','midi-tonal','SEQ Harmony page on MIDI: SCAL, ROOT, VOIC, RANG, PHRS and CHRD.',r)
+    shot(p,'seq','midi-tonal','SEQ Harmony on a MIDI track.',r)
     close(p)
     p.press('midi',settle=300)
 
