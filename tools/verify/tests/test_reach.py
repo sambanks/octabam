@@ -640,6 +640,21 @@ class PlanJsonTests(unittest.TestCase):
         for line in got.values():
             self.assertEqual(reach.shards_line(line)[0], [line.split()[-1]])
 
+    def test_the_slow_gates_are_units_of_their_own_on_the_three_octabam_remixes(self):
+        """Run 43734790095: `scales` alone was each unit's wall time (62, 75, 46 min); `image:chords` was next."""
+        import check_shards
+        for r in ("octabam", "octabam-verbs", "octabam-bus"):
+            items = [("check-remix", f"python3 tools/verify/check_shards.py --jobs 3 {r}", ["e"])]
+            got = {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
+            for part, job in (("scales-mki", "scales:mki"), ("scales-mkii", "scales:mkii"), ("chords", "image:chords")):
+                self.assertEqual(got[f"check-remix {r} ({part})"],
+                                 f"python3 tools/verify/check_shards.py --jobs 3 --only-jobs {job} {r}")
+                self.assertIn(job, got[f"check-remix {r}"].split("--skip-jobs ")[1].split()[0].split(","))
+            jobs = {j[0]: j[1] for j in check_shards.remix_jobs(r, reach.ROOT)}
+            self.assertNotIn("scales", jobs)        # the sections replace the whole gate's job
+            for section in ("mki", "mkii"):
+                self.assertEqual(jobs[f"scales:{section}"][0][-2:], ["--section", section])
+
     def test_a_gate_that_skips_without_a_project_gets_a_project_unit(self):
         """sambanks/octabam#1051: `check-remix slow-lfo` ran verify_slow_lfo with no OT_PROJECT, it SKIPped, the unit was green."""
         def units(modules):

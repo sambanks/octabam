@@ -1129,11 +1129,31 @@ def entry_name(kind, command):
 # 2026): `rec` is usb-in and usb-load-meter, about 600 s each; `rec-arming`, `rec-inputs` and `rec-level` are the three
 # REC THRESHOLD gates (verify_rec_threshold.py: twelve port runs with the DSP, 1042 s in one job beside the others).
 # A runner each (a public repo's minutes are free).
-SPLIT_REMIX_JOBS = {"octabam": {"long": ("remix-switch",), "project": ("set", "mode-defaults", "plocks-p2", "pattern-mute"),
-                                "rec": ("image:usb-in", "image:usb-load-meter"),
-                                "rec-arming": ("image:rec-threshold-arming",),
-                                "rec-inputs": ("image:rec-threshold-inputs",),
-                                "rec-level": ("image:rec-threshold-level",)}}
+# Run 43734790095 (15 Nov 2026, every unit reached, cold): `scales` (verify_scales.py: 196 port scenarios on each of MKI
+# and MKII) took 3630 s on octabam, 4430 s on octabam-verbs and 2687 s on octabam-bus, alone on one shard from the
+# unit's start to its end, and was each unit's whole wall time (62, 75 and 46 min; every other unit of the run: 22 min
+# or less). It runs as two jobs, one per `--section` (SPLIT_GATE_SECTIONS), a unit each. `image:chords` was the next
+# (1314, 1702 and 942 s) and has a unit too. octabam-verbs and octabam-bus had no parts and ran the REC THRESHOLD
+# gates, remix-switch and the usb pair beside the rest (verbs: 7993 s of jobs other than `scales` over two shards);
+# they are cut as octabam is. Not measured: the new units' times (the first run of this table shows them).
+_PARTS = {"long": ("remix-switch",),
+          "rec": ("image:usb-in", "image:usb-load-meter"),
+          "rec-arming": ("image:rec-threshold-arming",),
+          "rec-inputs": ("image:rec-threshold-inputs",),
+          "rec-level": ("image:rec-threshold-level",),
+          "chords": ("image:chords",),
+          "scales-mki": ("scales:mki",),
+          "scales-mkii": ("scales:mkii",)}
+SPLIT_REMIX_JOBS = {"octabam": {"long": _PARTS["long"], "project": ("set", "mode-defaults", "plocks-p2", "pattern-mute"),
+                                **{k: v for k, v in _PARTS.items() if k != "long"}},
+                    "octabam-verbs": dict(_PARTS),
+                    "octabam-bus": dict(_PARTS)}
+
+# A per-remix isolated gate cut into jobs by its own `--section` switch: script -> sections. check_shards.remix_jobs
+# makes the job `<gate>:<section>` of each in place of the gate's one job (no `--section` runs them all, as
+# `make verify-remix` does). verify_scales: `mki` is the linked code and the MKI port runs, `mkii` the MKII port runs
+# and scales.work.
+SPLIT_GATE_SECTIONS = {"tools/verify/verify_scales.py": ("mki", "mkii")}
 
 # A unit that runs one gate on its own, with a generated project, beside the units above: `check-remix <remix> (<name>)`
 # is `check_shards --only-jobs <name>`; check_shards.remix_jobs adds the gate job from COMMAND, so the gate cache covers it
