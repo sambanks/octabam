@@ -1,11 +1,13 @@
-# Most jobs run without Elektron bytes. `gates` downloads the 1.40C from
+# Most jobs run without Elektron bytes. `plan` and `gates` download the 1.40C from
 # Elektron's site (scripts/fetch-os.sh, zip hash pinned) into the runner's
-# working tree on every run and runs the gates `make reach` plans, one unit
-# per runner (`plan` lists the units, `gates` is the matrix over them,
-# `gates-result` is the one check that stands for all of them); the bytes
-# are not cached, not uploaded as an artifact and not printed. It runs for pushes
-# to main and for every pull request, fork PRs included: a fork PR's code runs
-# with the firmware on the runner's disk, and the repository's approval policy
+# working tree on every run (.github/actions/gates-setup); the bytes are not
+# cached, not uploaded as an artifact and not printed. `plan` builds each reached
+# remix's image, lists the units `make reach` plans (one per gate job, one per shared
+# module gate) and leaves out the ones whose pass is recorded for the same image
+# and inputs; `gates` is the matrix over the rest, a runner each, and `gates-result`
+# is the one check that stands for all of them and writes the pass store. It runs
+# for pushes to main and for every pull request, fork PRs included: a fork PR's code
+# runs with the firmware on the runner's disk, and the repository's approval policy
 # for fork PR workflows (first_time_contributors) decides who is held first.
 # Each job is one make target, so a red job reproduces with the same command.
 # `classify` gates each job on whether the diff touches its inputs
@@ -59,18 +61,34 @@ jobs:
           python3 tools/verify/ci_paths.py --base "$base" --github-output >> "$GITHUB_OUTPUT"
 
   plan:
-    # The gates this diff reaches, as the units that run on a runner each
-    # (tools/verify/reach.py --json: `matrix`). Runs no firmware.
+    # The units this diff reaches (tools/verify/reach.py --json: `matrix`), one per gate job, without the ones whose
+    # pass is recorded for the same image and inputs (`--lookup`: each reached remix's image is built here and every
+    # unit's gate_cache key computed). Holds the 1.40C like a unit does, because the keys are of the images built from
+    # it. It also makes the generated project (tools/hw/ot_fresh.py) once per remix that has a unit reading one, and
+    # hands it to those units as an artifact; the bytes are not cached outside the runner's own .git, not printed.
     name: 🗺️ Plan Gates
     needs: classify
     if: >-
       (github.event_name == 'push' || github.event_name == 'pull_request')
       && needs.classify.outputs.reach == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 120
+    permissions:
+      contents: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       count: ${{ steps.plan.outputs.count }}
+      projects: ${{ steps.plan.outputs.projects }}
+    env:
+      OS_HASH_STRICT: '1'
+      # no PGO training in CI (tools/emu/port_store.py)
+      OCTABAM_PGO: '0'
+      # the optional tools (binwalk, radare2) are 127 MB of apt downloads
+      OPTIONAL_TOOLS: '0'
+      EXTRA_PACKAGES: ccache
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CCACHE_MAXSIZE: 300M
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -82,13 +100,32 @@ jobs:
       - name: 📥 Submodules
         run: git submodule update --init --force --depth 1 --jobs 16
 
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: 🧰 Setup
+        uses: ./.github/actions/gates-setup
         with:
-          python-version: '3.12'
+          save: 'true'
 
-      # --jobs is the shards per remix on a runner; the `gates` job passes the
-      # same value, because --only plans again and the two plans must agree
+      # The gate passes (tools/verify/gate_cache.py) are one cache entry per run: this run's units upload what they
+      # record as artifacts and `gates-result` writes the merged store. A PR run restores the newest entry of its own
+      # branch, else of the base branch.
+      - name: 💾 Restore Gate Passes
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .git/octabam-gate-cache
+          key: gate-store-@${{ github.run_id }}
+          restore-keys: gate-store-@
+
+      # an empty project made by the firmware itself under the port from this runner's own OS, kept by image, port and
+      # script (tools/hw/ot_fresh.py)
+      - name: 💾 Restore Fresh Projects
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .git/octabam-fresh-cache
+          key: fresh-@${{ github.run_id }}
+          restore-keys: fresh-@
+
+      # --jobs is the shards per unit on a runner; the `gates` job passes the same value, because --only plans again
+      # and the two plans must agree
       - name: 🗺️ Plan
         id: plan
         run: |
@@ -97,26 +134,84 @@ jobs:
           else
             base="${{ github.event.before }}"
           fi
-          python3 tools/verify/reach.py --json --jobs 3 --base "$base" > "$RUNNER_TEMP/plan.json"
+          mkdir -p .git/octabam-gate-cache .git/octabam-fresh-cache
+          touch "$RUNNER_TEMP/plan-start"
+          ls .git/octabam-fresh-cache > "$RUNNER_TEMP/fresh-before"
+          python3 tools/verify/reach.py --json --jobs 3 --base "$base" > "$RUNNER_TEMP/plan0.json"
+          projects="$(python3 -c "import json,sys; print(' '.join(json.load(open(sys.argv[1]))['projects']))" "$RUNNER_TEMP/plan0.json")"
+          for r in $projects; do
+            .venv/bin/python3 tools/hw/ot_fresh.py --remix "$r" --out out/fresh
+          done
+          python3 tools/verify/reach.py --json --lookup --jobs 3 --base "$base" > "$RUNNER_TEMP/plan.json"
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
-          m = json.load(open(os.environ["RUNNER_TEMP"] + "/plan.json"))["matrix"]
-          print("matrix=" + json.dumps([{"name": e["name"]} for e in m]))
+          d = json.load(open(os.environ["RUNNER_TEMP"] + "/plan.json"))
+          m = d["matrix"]
+          print("matrix=" + json.dumps([{"name": e["name"], "remix": e["remix"], "project": e["project"]} for e in m]))
           print(f"count={len(m)}")
+          print("projects=" + " ".join(sorted({e["remix"] for e in m if e["project"]})))
           PY
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json, os
-          m = json.load(open(os.environ["RUNNER_TEMP"] + "/plan.json"))["matrix"]
-          print("| unit | commands |\n|---|---|")
-          for e in m:
-              print(f"| {e['name']} | " + "<br>".join(f"`{c}`" for c in e["commands"]) + " |")
+          d = json.load(open(os.environ["RUNNER_TEMP"] + "/plan.json"))
+          print(f"{len(d['matrix'])} units to run, {len(d['cached'])} with a pass recorded for the same image and inputs\n")
+          print("| unit | project | commands |\n|---|---|---|")
+          for e in d["matrix"]:
+              print(f"| {e['name']} | {'yes' if e['project'] else ''} | " + "<br>".join(f"`{c}`" for c in e["commands"]) + " |")
+          if d["cached"]:
+              print("\n| cached unit | key |\n|---|---|")
+              for n, ks in d["cached"].items():
+                  print(f"| {n} | " + ", ".join(f"`{k}`" for k in ks) + " |")
           PY
+          # the passes this plan read, for the store `gates-result` writes (a hit refreshes the file's mtime)
+          mkdir -p "$RUNNER_TEMP/passes-out"
+          find .git/octabam-gate-cache -name '*.json' -newer "$RUNNER_TEMP/plan-start" -exec cp {} "$RUNNER_TEMP/passes-out/" \;
+          ls .git/octabam-fresh-cache | diff -q - "$RUNNER_TEMP/fresh-before" >/dev/null || echo "fresh=new" >> "$GITHUB_OUTPUT"
+          [ -d out/fresh ] && tar -cf "$RUNNER_TEMP/fresh.tar" -C out fresh || true
+
+      - name: 💾 Save Fresh Projects
+        if: steps.plan.outputs.fresh == 'new'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .git/octabam-fresh-cache
+          key: fresh-@${{ github.run_id }}
+
+      # tar: upload-artifact drops empty directories
+      - name: 📤 Upload Fresh Projects
+        if: steps.plan.outputs.projects != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fresh-projects
+          path: ${{ runner.temp }}/fresh.tar
+          retention-days: 3
+          overwrite: true
+          if-no-files-found: error
+
+      - name: 📤 Upload Gate Passes
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: passes-plan
+          path: ${{ runner.temp }}/passes-out
+          retention-days: 1
+          if-no-files-found: ignore
+          overwrite: true
+
+      # saved on main only: the key is per run, an entry saved from a PR is read by no other ref, and 29 of them were
+      # 8 GB of the repository's 10 GB cache limit, evicting the toolchain and port caches
+      - name: 💾 Save Compiler Cache
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: always() && github.ref == 'refs/heads/main'
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ github.run_id }}
+
+      - name: 📊 Compiler Cache Statistics
+        if: always()
+        run: ccache -s || true
 
   gates:
-    # One unit of the plan (make reach --only) against the stock 1.40C fetched
-    # into this runner. The caches hold the toolchain, the dsp56300 build, the ColdFire
-    # port and compiler output; no cache or upload step touches downloads/ or
-    # out/ (the stock OS and what is derived from it).
+    # One unit of the plan (make reach --only) against the stock 1.40C fetched into this runner. A unit is one gate
+    # job of one remix (or one shared module gate): `check-remix <remix> (<job>)`, `check-shared (<gate>)`.
     name: 🧪 Gates — ${{ matrix.name }}
     needs: plan
     if: needs.plan.result == 'success' && needs.plan.outputs.count != '0'
@@ -147,113 +242,8 @@ jobs:
       - name: 📥 Submodules
         run: git submodule update --init --force --depth 1 --jobs 16
 
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-
-      # keyed by the pinned versions: an edit to the script that leaves them
-      # alone keeps the cache
-      - name: 🔢 Toolchain Versions
-        id: m68kver
-        run: echo "v=$(scripts/m68k-toolchain.sh --versions)" >> "$GITHUB_OUTPUT"
-
-      - name: 💾 Restore Toolchain Cache
-        id: m68k
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ~/.local/m68k-elf
-          key: m68k-elf-${{ runner.os }}-${{ steps.m68kver.outputs.v }}
-
-      # the pinned dsp56300 checkout with its patch and build; every input of
-      # scripts/setup.sh's build of it is in the key
-      - name: 💾 Restore DSP Toolchain Cache
-        id: dsp
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: vendor/dsp56300
-          key: dsp56300-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/vendor.sh', 'scripts/setup.sh', 'tools/patches/dsp56300.patch', 'tools/harness/dsp_host/**') }}
-
-      - name: 💾 Restore Compiler Cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ~/.cache/ccache
-          key: ccache-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: ccache-${{ runner.os }}-
-
-      # apt packages (the optional tools and the gcc build dependencies only
-      # when needed), the m68k toolchain (a no-op when restored), then setup.sh
-      - name: 🚀 Install System Tools and Toolchain
-        run: |
-          echo "$HOME/.local/m68k-elf/bin" >> "$GITHUB_PATH"
-          scripts/setup-linux.sh
-
-      # saved when the toolchain is complete (libgcc is its last install step),
-      # also after a later failure; a partial tree would be cached under the key for good
-      - name: 🧮 Check Caches Complete
-        id: done
-        if: always()
-        run: |
-          find ~/.local/m68k-elf -name libgcc.a 2>/dev/null | grep -q . && echo m68k=true >> "$GITHUB_OUTPUT" || true
-          [ -x vendor/dsp56300/build/source/dsp_host/dsp_host ] && [ -x vendor/dsp56300/build/source/dsp_host/dsp_asm ] \
-            && [ -x vendor/dsp56300/build/source/disassemble/dsp56kDisassemble ] && echo dsp=true >> "$GITHUB_OUTPUT" || true
-
-      - name: 💾 Save Toolchain Cache
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        if: always() && steps.m68k.outputs.cache-hit != 'true' && steps.done.outputs.m68k == 'true'
-        with:
-          path: ~/.local/m68k-elf
-          key: m68k-elf-${{ runner.os }}-${{ steps.m68kver.outputs.v }}
-
-      - name: 💾 Save DSP Toolchain Cache
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        if: always() && steps.dsp.outputs.cache-hit != 'true' && steps.done.outputs.dsp == 'true'
-        with:
-          path: vendor/dsp56300
-          key: dsp56300-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/vendor.sh', 'scripts/setup.sh', 'tools/patches/dsp56300.patch', 'tools/harness/dsp_host/**') }}
-
-      - name: ⬇️ Fetch Stock OS
-        run: make os
-
-      - name: 🔬 Extract Main OS
-        run: make recon
-
-      - name: 📦 Install Remixer Dependencies
-        run: pip install uv && make emu-setup && git checkout -- uv.lock   # uv sync rewrites it; reach would read it as a change
-
-      # The ColdFire gates that run fractional EMAC code under Unicorn (modules/wavecf/test_wavecf.py) need the EMAC-fixed
-      # library: stock 2.1.4 halves every fractional product (scripts/build_unicorn.sh). Built once per script and patch,
-      # into .venv/lib/unicorn-emac, where the gates pick it up.
-      - name: 💾 Restore the EMAC-fixed Unicorn
-        id: unicorn
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: .venv/lib/unicorn-emac
-          key: unicorn-emac-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build_unicorn.sh', 'tools/patches/unicorn_emac_fractional.patch') }}
-
-      - name: 🦄 Build the EMAC-fixed Unicorn
-        if: steps.unicorn.outputs.cache-hit != 'true'
-        run: make emu-unicorn
-
-      - name: 💾 Save the EMAC-fixed Unicorn
-        if: steps.unicorn.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: .venv/lib/unicorn-emac
-          key: unicorn-emac-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build_unicorn.sh', 'tools/patches/unicorn_emac_fractional.patch') }}
-
-      # the ColdFire port, built once per source state into .git/octabam-port
-      # (tools/emu/port_store.py); `reach` and its shards install from there
-      - name: 🔑 Key the ColdFire Port
-        id: port
-        run: echo "key=$(python3 tools/emu/port_store.py key)" >> "$GITHUB_OUTPUT"
-
-      - name: 💾 Restore ColdFire Port Cache
-        id: portcache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: .git/octabam-port
-          key: port-${{ steps.port.outputs.key }}
+      - name: 🧰 Setup
+        uses: ./.github/actions/gates-setup
 
       # scripts/refhash.sh check compares against the 24 builds of the merge-base
       # (tools/verify/refhash_store.py), built on the runner when the store has
@@ -278,53 +268,33 @@ jobs:
           path: .git/octabam-refhash
           key: refhash-${{ steps.refhash.outputs.key }}
 
-      # check_shards orders its jobs longest-first from the durations of the last
-      # run (<git common dir>/octabam-gate-times.json) and skips a gate whose pass
-      # is recorded for the same image and inputs (octabam-gate-cache,
-      # tools/verify/gate_cache.py). Neither survives a runner, so both go
-      # through the cache, keyed by unit. A PR run restores the newest entry of
-      # its own branch, else of the base branch. The `-@` ends the unit's slug:
-      # `check-remix-octabam-` is also the start of `check-remix-octabam--project-`,
-      # and a restore-key takes the newest entry that starts with it.
-      - name: 🔑 Name the Unit's Caches
-        id: unit
-        env:
-          UNIT: ${{ matrix.name }}
-        run: echo "slug=$(printf '%s' "$UNIT" | tr -c 'A-Za-z0-9\n' '-')" >> "$GITHUB_OUTPUT"
-
-      - name: 💾 Restore Gate Times and Passes
-        id: gatecache
+      # the passes the plan read: a job of this unit with a pass recorded is not run (a unit holds several jobs when the
+      # plan is over reach.MATRIX_LIMIT, and a job a plan lookup could not key still checks here)
+      - name: 💾 Restore Gate Passes
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: |
-            .git/octabam-gate-times.json
-            .git/octabam-gate-cache
-            .git/octabam-fresh-cache
-          key: gates-${{ steps.unit.outputs.slug }}-@${{ github.run_id }}
-          restore-keys: gates-${{ steps.unit.outputs.slug }}-@
+          path: .git/octabam-gate-cache
+          key: gate-store-@${{ github.run_id }}
+          restore-keys: gate-store-@
 
-      # The set gates (mode-defaults, plocks-p2, set, ...) SKIP without a project. An empty one is made by the
-      # firmware itself under the port from the runner's own OS (tools/hw/ot_fresh.py), on the unit's remix, and kept
-      # in .git/octabam-fresh-cache by image, port and script. Only the `(project)` unit of a remix (reach.SPLIT_REMIX_JOBS,
-      # and a remix whose module has a Gate(project=True), reach.project_gate_jobs) runs the jobs that read it; the `image:` jobs are not among them: with a project they ran 2869 s and verify_brain failed.
-      # A `check-shared (project: <gate> on <remix>)` unit (reach.project_shared_gates: a once or remix_arg=False gate with
-      # Gate(project=True)) runs that gate alone on a project made on <remix>.
-      # The `(brain)`, `(brain-templates)`, `(brain-panes)` and `(brain-screens)` units (reach.SPLIT_EXTRA_UNITS) run verify_brain's
-      # sections with one, through check_shards (gate cache); the `(scenes)` unit runs verify_scenes (MIDI SCENES) with one.
-      - name: 📁 Fresh Project
-        if: contains(matrix.name, ' (project)') || contains(matrix.name, ' (brain') || contains(matrix.name, ' (scenes)') || contains(matrix.name, ' (project:')
+      # The generated project (tools/hw/ot_fresh.py, made by `plan`) of a unit that reads one: Gate(project=True),
+      # reach.PROJECT_SET's `set`, and the verify_brain and verify_scenes jobs of reach.SPLIT_EXTRA_UNITS. The `image:`
+      # jobs without the flag have none: with a project they ran 2869 s and verify_brain failed.
+      - name: 📁 Download Fresh Project
+        if: matrix.project
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: fresh-projects
+          path: ${{ runner.temp }}/fresh
+
+      - name: 📁 Unpack Fresh Project
+        if: matrix.project
         env:
-          UNIT: ${{ matrix.name }}
+          REMIX: ${{ matrix.remix }}
         run: |
-          remix="${UNIT#check-remix }"
-          # `check-shared (project: <gate> on <remix>)` (reach.project_shared_gates): the project is made on <remix>
-          case "$UNIT" in
-            "check-shared (project: "*) remix="$(echo "$UNIT" | sed -E 's/^.* on ([^ ]+)\)$/\1/')" ;;
-            *) remix="$(echo "$remix" | sed -E 's/ \((project|scenes|brain[a-z-]*)\)$//')" ;;
-          esac
-          make emu-get
-          .venv/bin/python3 tools/hw/ot_fresh.py --remix "$remix" --out out/fresh
-          echo "OT_PROJECT=$PWD/out/fresh/$remix/NOPROJ" >> "$GITHUB_ENV"
+          mkdir -p out
+          tar -xf "$RUNNER_TEMP/fresh/fresh.tar" -C out
+          echo "OT_PROJECT=$PWD/out/fresh/$REMIX/NOPROJ" >> "$GITHUB_ENV"
 
       # the unit's name goes through the environment: it can carry a remix name
       - name: 🧪 Run Gates
@@ -336,6 +306,7 @@ jobs:
           else
             base="${{ github.event.before }}"
           fi
+          touch "$RUNNER_TEMP/unit-start"
           set -o pipefail
           make reach RUN=1 KEEP=1 JOBS=3 BASE="$base" REACHARGS='--only "'"$UNIT"'"' 2>&1 | tee "$RUNNER_TEMP/reach.log"
 
@@ -360,26 +331,24 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # a pass is a file of its own; one unused for 14 days is dropped so the
-      # entry does not grow without bound
-      - name: 🧹 Prune Gate Passes
-        id: gatedone
+      # the passes this unit recorded (check_shards and module_gates store a pass per gate job, a file each)
+      - name: 📦 Collect Gate Passes
+        id: passes
         if: always()
         run: |
-          find .git/octabam-gate-cache -name '*.json' -mtime +14 -delete 2>/dev/null || true
-          # check-shared units record passes (module_gates --shared) and no times
-          { [ -f .git/octabam-gate-times.json ] || [ -n "$(ls .git/octabam-gate-cache 2>/dev/null)" ]; } \
-            && echo recorded=true >> "$GITHUB_OUTPUT" || true
+          mkdir -p "$RUNNER_TEMP/passes-out"
+          [ -f "$RUNNER_TEMP/unit-start" ] || exit 0
+          find .git/octabam-gate-cache -name '*.json' -newer "$RUNNER_TEMP/unit-start" -exec cp {} "$RUNNER_TEMP/passes-out/" \; 2>/dev/null || true
+          [ -n "$(ls "$RUNNER_TEMP/passes-out")" ] && echo "any=true" >> "$GITHUB_OUTPUT" || true
 
-      - name: 💾 Save Gate Times and Passes
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        if: always() && steps.gatedone.outputs.recorded == 'true'
+      - name: 📤 Upload Gate Passes
+        if: always() && steps.passes.outputs.any == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          path: |
-            .git/octabam-gate-times.json
-            .git/octabam-gate-cache
-            .git/octabam-fresh-cache
-          key: gates-${{ steps.unit.outputs.slug }}-@${{ github.run_id }}
+          name: passes-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/passes-out
+          retention-days: 1
+          overwrite: true      # a re-run of the unit uploads again
 
       - name: 🧮 Check Refhash Baseline Saved
         id: refhashdone
@@ -393,35 +362,14 @@ jobs:
           path: .git/octabam-refhash
           key: refhash-${{ steps.refhash.outputs.key }}
 
-      - name: 🧮 Check ColdFire Port Built
-        id: portdone
-        if: always()
-        run: ls .git/octabam-port/*/ot_emu >/dev/null 2>&1 && echo built=true >> "$GITHUB_OUTPUT" || true
-
-      - name: 💾 Save ColdFire Port Cache
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        if: always() && steps.portcache.outputs.cache-hit != 'true' && steps.portdone.outputs.built == 'true'
-        with:
-          path: .git/octabam-port
-          key: port-${{ steps.port.outputs.key }}
-
-      # one unit saves it, and only on main: the key is per run, an entry saved
-      # from a PR is read by no other ref, and 29 of them were 8 GB of the
-      # repository's 10 GB cache limit, evicting the toolchain and port caches
-      - name: 💾 Save Compiler Cache
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        if: always() && strategy.job-index == 0 && github.ref == 'refs/heads/main'
-        with:
-          path: ~/.cache/ccache
-          key: ccache-${{ runner.os }}-${{ github.run_id }}
-
       - name: 📊 Compiler Cache Statistics
         if: always()
         run: ccache -s || true
 
   gates-result:
     # The one check for the gates: green when the plan ran and every unit
-    # passed (or the plan had none).
+    # passed (or the plan had none). It also writes the pass store: the
+    # passes of the plan's lookup and of every unit, merged into one cache entry.
     name: 🧪 Gates — make reach
     needs: [classify, plan, gates]
     if: >-
@@ -429,10 +377,45 @@ jobs:
       && (github.event_name == 'push' || github.event_name == 'pull_request')
       && needs.classify.outputs.reach == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       actions: read
     steps:
+      # the same path as `plan`'s: the path is part of a cache's version
+      - name: 💾 Restore Gate Passes
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .git/octabam-gate-cache
+          key: gate-store-@${{ github.run_id }}
+          restore-keys: gate-store-@
+
+      - name: 📥 Download Gate Passes
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: passes-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/passes-in
+
+      # a pass is a file of its own; one unused for 14 days is dropped so the entry does not grow without bound
+      - name: 🧹 Merge Gate Passes
+        id: merge
+        run: |
+          mkdir -p .git/octabam-gate-cache
+          if [ -d "$RUNNER_TEMP/passes-in" ] && [ -n "$(ls "$RUNNER_TEMP/passes-in")" ]; then
+            cp "$RUNNER_TEMP"/passes-in/*.json .git/octabam-gate-cache/
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+          find .git/octabam-gate-cache -name '*.json' -mtime +14 -delete 2>/dev/null || true
+
+      - name: 💾 Save Gate Passes
+        if: steps.merge.outputs.new == 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .git/octabam-gate-cache
+          key: gate-store-@${{ github.run_id }}
+
       - name: 🧮 Gate Results
         env:
           GH_TOKEN: ${{ github.token }}
@@ -449,7 +432,7 @@ jobs:
             echo
             echo "| unit | result | time |"
             echo "|---|---|---|"
-            gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq '
+            gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" --paginate --jq '
               .jobs[] | select(.name | startswith("🧪 Gates — ")) | select(.name != "🧪 Gates — make reach")
               | "| [\(.name | ltrimstr("🧪 Gates — "))](\(.html_url)) | \(.conclusion // .status) | "
                 + "\(if .completed_at then ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) else 0 end) s |"' || true

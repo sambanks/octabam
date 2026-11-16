@@ -1,0 +1,139 @@
+# The runner setup `plan` and every `gates` unit share: Python, the m68k and dsp56300 toolchains, the stock 1.40C
+# (make os, make recon), the remixer dependencies, the EMAC-fixed Unicorn and the ColdFire port in out/emu. Caches hold
+# the toolchains, the Unicorn build, the port and compiler output; none touches downloads/ or out/ (the stock OS and
+# what is derived from it). `save: 'true'` (the plan job) saves a cache that missed; the units only restore.
+name: Gates Setup
+description: Toolchains, stock OS, remixer dependencies and the ColdFire port for the gate jobs
+inputs:
+  save:
+    description: Save the caches that missed
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: '3.12'
+
+    # keyed by the pinned versions: an edit to the script that leaves them
+    # alone keeps the cache
+    - name: 🔢 Toolchain Versions
+      id: m68kver
+      shell: bash
+      run: echo "v=$(scripts/m68k-toolchain.sh --versions)" >> "$GITHUB_OUTPUT"
+
+    - name: 💾 Restore Toolchain Cache
+      id: m68k
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.local/m68k-elf
+        key: m68k-elf-${{ runner.os }}-${{ steps.m68kver.outputs.v }}
+
+    # the pinned dsp56300 checkout with its patch and build; every input of
+    # scripts/setup.sh's build of it is in the key
+    - name: 💾 Restore DSP Toolchain Cache
+      id: dsp
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: vendor/dsp56300
+        key: dsp56300-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/vendor.sh', 'scripts/setup.sh', 'tools/patches/dsp56300.patch', 'tools/harness/dsp_host/**') }}
+
+    - name: 💾 Restore Compiler Cache
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ runner.os }}-${{ github.run_id }}
+        restore-keys: ccache-${{ runner.os }}-
+
+    # apt packages (the optional tools and the gcc build dependencies only
+    # when needed), the m68k toolchain (a no-op when restored), then setup.sh
+    - name: 🚀 Install System Tools and Toolchain
+      shell: bash
+      run: |
+        echo "$HOME/.local/m68k-elf/bin" >> "$GITHUB_PATH"
+        scripts/setup-linux.sh
+
+    # saved when the toolchain is complete (libgcc is its last install step),
+    # also after a later failure; a partial tree would be cached under the key for good
+    - name: 🧮 Check Caches Complete
+      id: done
+      if: always()
+      shell: bash
+      run: |
+        find ~/.local/m68k-elf -name libgcc.a 2>/dev/null | grep -q . && echo m68k=true >> "$GITHUB_OUTPUT" || true
+        [ -x vendor/dsp56300/build/source/dsp_host/dsp_host ] && [ -x vendor/dsp56300/build/source/dsp_host/dsp_asm ] \
+          && [ -x vendor/dsp56300/build/source/disassemble/dsp56kDisassemble ] && echo dsp=true >> "$GITHUB_OUTPUT" || true
+
+    - name: 💾 Save Toolchain Cache
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      if: always() && inputs.save == 'true' && steps.m68k.outputs.cache-hit != 'true' && steps.done.outputs.m68k == 'true'
+      with:
+        path: ~/.local/m68k-elf
+        key: m68k-elf-${{ runner.os }}-${{ steps.m68kver.outputs.v }}
+
+    - name: 💾 Save DSP Toolchain Cache
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      if: always() && inputs.save == 'true' && steps.dsp.outputs.cache-hit != 'true' && steps.done.outputs.dsp == 'true'
+      with:
+        path: vendor/dsp56300
+        key: dsp56300-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/vendor.sh', 'scripts/setup.sh', 'tools/patches/dsp56300.patch', 'tools/harness/dsp_host/**') }}
+
+    - name: ⬇️ Fetch Stock OS
+      shell: bash
+      run: make os
+
+    - name: 🔬 Extract Main OS
+      shell: bash
+      run: make recon
+
+    - name: 📦 Install Remixer Dependencies
+      shell: bash
+      run: pip install uv && make emu-setup && git checkout -- uv.lock   # uv sync rewrites it; reach would read it as a change
+
+    # The ColdFire gates that run fractional EMAC code under Unicorn (modules/wavecf/test_wavecf.py) need the EMAC-fixed
+    # library: stock 2.1.4 halves every fractional product (scripts/build_unicorn.sh). Built once per script and patch,
+    # into .venv/lib/unicorn-emac, where the gates pick it up.
+    - name: 💾 Restore the EMAC-fixed Unicorn
+      id: unicorn
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: .venv/lib/unicorn-emac
+        key: unicorn-emac-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build_unicorn.sh', 'tools/patches/unicorn_emac_fractional.patch') }}
+
+    - name: 🦄 Build the EMAC-fixed Unicorn
+      if: steps.unicorn.outputs.cache-hit != 'true'
+      shell: bash
+      run: make emu-unicorn
+
+    - name: 💾 Save the EMAC-fixed Unicorn
+      if: inputs.save == 'true' && steps.unicorn.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: .venv/lib/unicorn-emac
+        key: unicorn-emac-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build_unicorn.sh', 'tools/patches/unicorn_emac_fractional.patch') }}
+
+    # the ColdFire port, built once per source state into .git/octabam-port
+    # (tools/emu/port_store.py) and copied into out/emu
+    - name: 🔑 Key the ColdFire Port
+      id: port
+      shell: bash
+      run: echo "key=$(python3 tools/emu/port_store.py key)" >> "$GITHUB_OUTPUT"
+
+    - name: 💾 Restore ColdFire Port Cache
+      id: portcache
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: .git/octabam-port
+        key: port-${{ steps.port.outputs.key }}
+
+    - name: 🔌 Install the ColdFire Port
+      shell: bash
+      run: make emu-get
+
+    - name: 💾 Save ColdFire Port Cache
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      if: inputs.save == 'true' && steps.portcache.outputs.cache-hit != 'true'
+      with:
+        path: .git/octabam-port
+        key: port-${{ steps.port.outputs.key }}
