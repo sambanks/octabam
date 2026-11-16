@@ -684,7 +684,10 @@ def main():
     # gates, make reach): a module no selection carries is never built or
     # checked. A module arrives with its remix (remixes/<name>/remix.py or
     # remixes/test/<name>/remix.py, README.md beside it), or in an existing one.
-    carried = {k for n in registry.remix_names() for k in registry.remix(n).modules}
+    # A contributor's remix under remixes/community/ does not count: make reach
+    # leaves those out, so a module carried only there would go unchecked.
+    carried = {k for n in registry.remix_names() if not registry.is_community(n)
+               for k in registry.remix(n).modules}
     orphans = sorted(m.key for m in registry.modules().values()
                      if not m.is_stock and m.key not in carried)
     for key in orphans:

@@ -1,4 +1,6 @@
-<!-- CONTRIBUTING.md has the contract; "Before you open a PR" has the gates. -->
+<!-- CONTRIBUTING.md has the contract; "Before you open a PR" has the gates.
+One module per PR. A remix of your own goes under remixes/community/<name>/,
+never named octabam-* (CONTRIBUTING.md "Remixes"). -->
 
 ## What this changes
 
