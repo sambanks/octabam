@@ -3,7 +3,7 @@
 Octabam is Octatrack OS 1.40C with more built in. It keeps what you know:
 all 14 stock effects, both effect menus and the way a project is laid out.
 On top of that it adds features for sequencing, Kits and scenes, MIDI and
-USB, and three new effects. Every feature is credited to the person who wrote
+USB, SCOPE and TUNER, and four new effects. Every feature is credited to the person who wrote
 it, and each has its own page in this manual. This is version 0.4.
 
 ### What changes on the unit
@@ -45,7 +45,8 @@ it, and each has its own page in this manual. This is version 0.4.
   waits for the input ([rec threshold](sequencer/rec-threshold.md)).
 - **Utilities.** [Copy a project](utilities/copy-project.md) without loading
   it, [save the recorder buffers](utilities/buffer-saver.md) with the project,
-  and [SEQ](sequencer/seq.md) (TRACK + PAGE).
+  [SCOPE](utilities/scope.md) for full-screen track audio (**[DOWN]** + **[TEMPO]**),
+  and [SEQ](sequencer/seq.md) (**[TRACK]** + **[PAGE]**).
 - **Fixes.** The recorder loop click, stock LO-FI's AMF knob and a few
   sequencer and card-write faults are [corrected](fixes/recorder-loop-fix.md).
 

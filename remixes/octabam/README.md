@@ -1,9 +1,9 @@
 # octabam
 
-A remix of Octatrack OS 1.40C, built from your own copy of it, that adds the
-core modules (below) to all 14 stock effects and adds SPECTRUM, CHARACTER,
-MODULATION and SHATTER, which are copied into the DSP when a track uses them. It
-has no bus and no SEND. See [Where it has run](#where-it-has-run).
+A remix of Octatrack OS 1.40C, built from your own copy of it. It adds the core
+modules (below), SCOPE and TUNER, keeps all 14 stock effects, and adds SPECTRUM,
+CHARACTER, MODULATION and SHATTER, which are copied into the DSP when a track
+uses them. It has no bus and no SEND. See [Where it has run](#where-it-has-run).
 
 ## The effects
 
@@ -31,7 +31,8 @@ COMPRESSOR is [SIDECHAIN_COMPRESSOR](../../modules/sidechain-compressor/README.m
 side-chain KEY on page 2. Its DSP code (1,711 words) is loaded the same way, into the top of T4's FX2 block, while a
 track uses COMPRESSOR; until it is, or while DARK REV on T4's FX2 or another loaded effect holds that block,
 COMPRESSOR runs as stock, KEY reads `--` and a toast says `SC KEY OFF`. It was out of this remix from 1 Nov 2026
-(`433e22e`, the 0.1 scope) and is back since #1026; this composition has not run on a unit.
+(`433e22e`, the 0.1 scope) and is back since #1026. The flashed S2 image included it in the loader comparison below;
+that run switched into and out of the effect but did not test its side-chain controls.
 
 TRANSIENT and DISTORX are not in this remix. Their modules are in the repository.
 
@@ -56,7 +57,7 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 | | [SCENES P2](../../modules/scenes-p2/README.md), [PLOCKS P2](../../modules/plocks-p2/README.md) | scene locks and parameter locks on FX page 2 |
 | | [CC MAP](../../modules/cc-map/README.md), [CC FEEDBACK](../../modules/cc-feedback/README.md) | CC onto page 2; knob changes out as CC |
 | | [DIRECT_JUMP_KYOTI](../../modules/direct-jump-kyoti/README.md), [RELOAD_FROM_PROJECT](../../modules/reload-from-project/README.md) | clock-locked direct jump; reload one track from the card |
-| | [SCALE QUANTIZER](../../modules/quantizer/README.md), [TUNER](../../modules/tuner/README.md) | scale quantizing on PTCH; a tuner window (UP + TEMPO) |
+| | [SCALE QUANTIZER](../../modules/quantizer/README.md), [TUNER](../../modules/tuner/README.md), [SCOPE](../../modules/scope/README.md) | scale quantizing on PTCH; a tuner window (**[UP]** + **[TEMPO]**); full-screen track audio (**[DOWN]** + **[TEMPO]**) |
 | | [SCALES](../../modules/scales/README.md) | 52 scales for a MIDI track's ARP SETUP KEY, a scale chooser, the CHROMATIC trig keys lit with the scale (SCALE QUANTIZER's on audio tracks) |
 | | [CHORDS FACTORY](../../modules/chords/README.md), [PAGES](../../modules/pages/README.md) | chord progressions for a MIDI track, sixteen slots a bank, voice-led; PAGES is the page-key cycle its page joins |
 | | [SLOW LFO](../../modules/slow-lfo/README.md), [BAR LED](../../modules/bar-led/README.md) | LFO MULT 1/2X, 1/4X, 1/8X; the tempo LED green on the pattern's 1 |
@@ -85,8 +86,15 @@ the image without VARISPEED left 3 of 32 program changes unapplied and the image
 ([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)).
 
 Not run on this image: `mix-soak` and the [manual plan](../../docs/contributing/HARDWARE_MANUAL.md). The images that
-had CX OSC, STEM REC, SCOPE, MIDI SCALES or RND NAME stopped the DSP or left program changes unapplied in the
-same probes ([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)). Not measured on a unit: the stock reverbs'
+had CX OSC, STEM REC, MIDI SCALES or RND NAME stopped the DSP or left program changes unapplied in the
+same probes ([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)). SCOPE was added to the S2 build and tested
+open and closed during 30 paired loader transitions on 15 Nov 2026. The median transition-window CF peak was 537.36 µs
+closed and 544.96 µs open; median steady CF was 355.77 and 359.37 µs. Median DSP window maxima were 49% closed and
+48% open; steady DSP maxima were 49% and 48%. Both runs had zero bad records and 340 ms median audio gaps.
+The closed run had one 1,480 ms maximum-gap outlier; the open run's maximum was 360 ms. All 30 transitions in each run
+reported the harness's GAP flag (40 ms threshold), reflecting the loader's roughly 340 ms silence. CF spike flags were
+21 closed and 24 open; DSP spike flags were 1 and 2. This comparison covers these transitions and this S2 image only.
+Not measured on a unit: the stock reverbs'
 buffer extents at other settings, the toast wording and width.
 
 Earlier, the loader alone: Sam's MKII, 26 Oct 2026, the images `DLPROBEJ1` to `K1` (`remixes/test/dl-probe`;
