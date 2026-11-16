@@ -46,6 +46,11 @@ from the user's image at build time.
 3. Branch from `origin/main`, write the module (next section), and run
    the gates in [Before you open a PR](#before-you-open-a-pr).
 4. `git push fork <branch>` and open the PR against `sambanks/octabam:main`.
+   **One module per PR** (with its `remixes/test/<name>/` remix, gate and
+   docs): several modules, even ones written together, are several PRs,
+   each reviewed, gated and reverted on its own. A remix of your own that
+   combines them is a PR of its own after they land
+   ([Remixes](#remixes)).
    The template asks for the gates you ran and what was measured. CI runs
    on it; GitHub holds a first-time contributor's first CI run until a
    maintainer approves it.
@@ -64,8 +69,8 @@ README.md       what it is, what was MEASURED, what is INFERRED, what is open
 <sources>       .s for the ColdFire, .asm for the DSP -- or `upstream/`, a submodule
 ```
 
-plus a remix that carries it (`remixes/<name>/remix.py`, or
-`remixes/test/<name>/remix.py` for a remix of that one module, and a
+plus a remix that carries it (`remixes/test/<name>/remix.py`, a remix of
+that one module, or an existing remix of the project's; and a
 `README.md` beside it: what is in it, where it has run;
 `docs/guide/COMPOSING.md`) and, for anything with behaviour worth pinning, a gate
 (`tools/verify/verify_<name>.py`, named in the manifest's `gates`, run by
@@ -82,6 +87,23 @@ without them, `verify_docs` a stale copy). `evidence` is a tuple of
 `BUILD`, `EMULATOR`, `RENDER`, `UNIT` or `UNIT_MEASURED`
 (`docs/contributing/MODULES.md`). A remix declares `family` (`rig`,
 `effects`, `mods`, `reference`, `probes`) and `evidence` the same way.
+
+### Remixes
+
+There are three places a remix can live, and a contributor's goes in one of two:
+
+- `remixes/<name>/`: the project's own remixes (`octabam`, `octabam-bus`,
+  `octabam-verbs`, ...). The `octabam` name and the `octabam-` prefix are
+  theirs; a contributed remix uses neither.
+- `remixes/test/<name>/`: one module (or one combination its gates need) on
+  the stock effects, for that module's gates. Every module arrives with
+  one, or in an existing remix the project keeps.
+- `remixes/community/<name>/`: a contributor's own selection for a card, such as
+  the image they flashed, or the modules they use together. Name it after
+  yourself or its purpose (`8thmyth-chop`, not `octabam-chop`); its
+  `README.md` says what is in it and where it has run. `make reach` leaves
+  these out unless `TESTS=1`, and the selftest does not count one as a
+  module's remix, so a module still needs a `test/` remix of its own.
 
 Settings a module keeps on the card (a checkbox, a profile) go in BRAIN
 (`modules/brain`; `docs/specs/BRAIN.md` is the design), and in no
@@ -189,8 +211,8 @@ the gates it reaches, in order; `RUN=1` runs them. By default it runs the
 QUICK tier (the remixes users flash that carry the change, no identity, no
 `make accept`, two shards, nice 10); `FULL=1` runs every gate
 at full speed, when you choose to (`docs/contributing/TESTING.md` section 6 says what
-quick gives up). Remixes under `remixes/test/` are left out unless
-`TESTS=1`. It refuses a tree that
+quick gives up). Remixes under `remixes/test/` and `remixes/community/` are
+left out unless `TESTS=1`. It refuses a tree that
 is not rebased onto the base. A change to a module reaches every remix
 that carries it; a change to the build reaches `scripts/refhash.sh check`,
 `make identity` and the cover (the fewest remixes that carry every

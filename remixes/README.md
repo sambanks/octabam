@@ -5,6 +5,7 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 - What to install first (the Xcode Command Line Tools, Homebrew, Python 3.10+, `cmake`, `uv`) and every step to a flashed unit: [BUILDING.md](../docs/guide/BUILDING.md).
 - Composing your own: [COMPOSING.md](../docs/guide/COMPOSING.md).
 - The remixes that carry one module for its gates: [test/](test/README.md).
+- Contributors' own selections: [community/](community/README.md).
 
 ## The delay and reverb bus
 
