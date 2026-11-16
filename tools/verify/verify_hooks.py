@@ -76,10 +76,13 @@ def selection():
     check(bridged({RL, FL}) == ("ui_tick",), "RELOAD_FROM_PROJECT + FREE LOOP: ui_tick only")
     check(bridged({RL}) == () and bridged({RL, RTM, THR}) == (), "RELOAD_FROM_PROJECT without FREE LOOP: no bridge")
     check(bridged({"ANALOG BD", "OCTA303"}) == ("machine_rows",), "ANALOG BD + OCTA303: machine_rows only")
+    check(bridged({"SCOPE"}) == (), "SCOPE alone keeps its own site handlers")
+    check(bridged({"SCOPE", "TUNER"}) == ("scope_tuner",), "SCOPE + TUNER share TEMPO, frame and UI through HOOKS")
     check(DECL["select"](set()) == {"linked": (), "detours": (), "symbol_refs": (), "overrides": (), "pokes": ()},
           "an empty selection: HOOKS has no unit, claim or override")
     check(not registry.hooks_needed(known, {THR}) and not registry.hooks_needed(known, {RTM, THR}) and
-          registry.hooks_needed(known, {THR, FL}), "registry.hooks_needed follows the bridges")
+          registry.hooks_needed(known, {THR, FL}) and not registry.hooks_needed(known, {"SCOPE"}) and
+          registry.hooks_needed(known, {"SCOPE", "TUNER"}), "registry.hooks_needed follows the bridges")
     for name, want in (("octabam", True), ("morph", False), ("rec-threshold", False), ("hooks", True)):
         try:
             has = "HOOKS" in registry.remix(name).modules

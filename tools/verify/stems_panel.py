@@ -74,8 +74,12 @@ class MenuPort:
         # advances less than `ms` (the port's `run <ms> wall <s>`), so on a loaded runner a gate's emulated
         # time would be cut short with nothing said. The rest runs as further slices until `ms` emulated ms
         # have passed; a slice that advances nothing ends it.
+        # The cap stays well inside the reply timeout (PortProc.BACKSTOP, 120 s): main's run of #1119 asked
+        # `run 15000 wall 300` and the port, slower than 1/8 real time there, was declared dead at 120 s with
+        # the slice still running (verify_remote, 16 Nov 2026). A shorter slice is only more slices.
         if wall is None:
             wall = max(5.0, float(ms) / 50.0)
+        wall = min(wall, PortProc.BACKSTOP / 2)
         left = float(ms)
         while True:
             s0 = self.rt.sample
