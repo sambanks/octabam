@@ -36,14 +36,15 @@ MODULE = Module(
     name="usb-midi-tracks", key="USB MIDI TRACKS", kind=Kind.CF_PATCH,
     category=Category.MIDI_USB, author="siddely",
     author_url="https://github.com/siddely",
-    evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-11-15",
-                       note="the PR's first build (channel = track, always on, the encoder kicked in the frame "
-                            "interrupt), not this one: seen on the host over USB, CC 16..21 for every PLAYBACK page 1 "
-                            "value, a note per trig, retrig repeats, and the CCs following scene/fader moves; nothing "
-                            "timed or counted"),
+    evidence=(Evidence(Level.UNIT, unit="MKII", date="2026-11-16", ref="ot_usbtracks",
+                       note="this build against the PR's first, switched over USB (tools/hw/ot_usbtracks.py, runs "
+                            "new2/old2/off3): TRIG CHANNEL followed, the stuck note on a part change closed (open on "
+                            "the old build), SEND OFF silent, every note paired, no drops, no stall in 60 s of INF "
+                            "retrig on two tracks; longest frame interrupt the same on both builds (~310 us); "
+                            "frame-entry lateness not measured"),
               Evidence(Level.EMULATOR, date="2026-11-16", ref="verify_usbmidi_tracks",
-                       note="CCs, note-on, note-off on the TRIG CHANNEL in that order and the gate length, under the "
-                            "port; retrig repeats (scene-morphed RTRG included) on real projects with the probe")),
+                       note="CCs, note-on, note-off on the TRIG CHANNEL in that order, the gate length, and a track "
+                            "leaving the renderer mid-gate closed at once, under the port")),
     doc="Audio-track trigs out over USB MIDI only, on each track's TRIG CHANNEL, when BRAIN's SEND is on: the trig page as CC 16-21 with the crossfader morph in them, note per sample slot, fixed gate.",
     requires=("USB",),
     linked=(
