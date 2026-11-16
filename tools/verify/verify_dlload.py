@@ -188,14 +188,18 @@ def main():
     for tag, (tracks, core, _) in TWO.items():
         scenarios[tag] = (";".join(poke(FX1_LIVE, FX1_PART, t, rec["id"]) for t in tracks), [])
         watch[tag] = f"{core}:{rec['proc']:x}"
-    procs = {}
+    # ONE LOAD A GROUP, the scenarios forked from it (ot_emu --scenario). Until 16 Nov 2026 every scenario was a boot
+    # and a load of its own: measured on octabam with a generated project, 4 CPUs, three at a time, a run took about
+    # 270 s of which the 7 s script took about 65 (a 13.5 s script took 61 s more) -- the boot and the 18.75 s load
+    # were three quarters of 34 runs, and the gate did not finish in 75 minutes alone on a CI runner
+    # (sambanks/octabam#1139, run 43823203810). A forked child takes its post-load options (the script, the first
+    # pokes, the peeks, the dump); the two PC watches are armed before the boot, and one given to a child is parsed
+    # and never armed (as TRAPS.md trap-scenario-watch's --watch-mem), so the scenarios are grouped by the watch they
+    # need and each group's load arms it: the toast watch for every scenario without a DSP PC watch (the checks that
+    # want a toast and the ones that want none share that load, so a dead watch fails the first kind), and one load
+    # for each --dsp-pcwatch value.
+    args, groups = {}, {}
     for tag, (first, later) in scenarios.items():
-        card = OUT / f"{tag}.img"
-        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
-                            "--tree", str(OUT / f"tree_{tag}"), "--out", str(card)], cwd=ROOT,
-                           capture_output=True, text=True)
-        if r.returncode:
-            sys.exit(f"verify_dlload: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
         lines = [f"{ms} poke {p}" for ms, p in later]
         if tag.startswith("pick"):
             t = 1500 if not tag.startswith("pick-reverb") else 3500   # after the load has landed
@@ -221,31 +225,47 @@ def main():
         dump = OUT / f"{tag}_ids.bin"
         peeks = ";".join(f"{c}:X:{STAGE:x},1;{c}:X:{0x33DA3 + 8 * k:x},8;{c}:P:{r['addr']:x},{len(r['words'])}"
                          for c in (0, 1) for k, r in enumerate(recs))
-        cmd = [EMU, "--image", image, "--card", card, "--set", a.set_name, "--project", a.name, "--load-ms", "90000",
-               "--mkii", "--dsp", "--frame", "--live-script", OUT / f"{tag}.script", "--dsp-peek", peeks,
-               "--mem-dump", f"{FX1_LIVE:#x},16={dump}"]
+        args[tag] = ["--live-script", OUT / f"{tag}.script", "--dsp-peek", peeks, "--mem-dump", f"{FX1_LIVE:#x},16={dump}"]
         if first:
-            cmd += ["--step", "-:poke:" + first]
-        if tag in watch:
-            cmd += ["--dsp-pcwatch", watch[tag]]
-        if tag.startswith("pick") or tag in ("used", "blocked", "both-blocked", "stuck", "reverb-late", "plate-ok", "spring-ok",
-                                             "dark-id-ok", "dark-id-both-ok", "verb-ok"):
-            cmd += ["--watch-pc", f"{TOAST:#x}"]
-        # OCTABAM_GATE_JOBS caps the emulators running at once (each holds about 1 GB); unset it is 3, and 0 starts
-        # every scenario together. Uncapped, the run holds about 14 GB: on a 16 GB machine the kernel's memory killer
-        # took it, and in CI (sambanks/octabam#1129, 15 Nov 2026, twice) the runner was shut down 2 minutes after
-        # this gate started, taking the unit's other jobs with it
-        while JOBS and sum(p.poll() is None for p, _ in procs.values()) >= JOBS:
+            args[tag] += ["--step", "-:poke:" + first]
+        boot = ("--dsp-pcwatch", watch[tag]) if tag in watch else ("--watch-pc", f"{TOAST:#x}")
+        groups.setdefault(boot, []).append(tag)
+    for tag in scenarios:
+        (OUT / f"{tag}.txt").unlink(missing_ok=True)
+        if any(" " in str(x) for x in args[tag]) or " " in str(OUT):
+            sys.exit(f"verify_dlload: a space in {tag}'s arguments or in {OUT}: a --scenario line is split on spaces")
+    # OCTABAM_GATE_JOBS caps the emulators running at once (each holds about 1 GB); unset it is 3, and 0 starts
+    # every scenario together. Uncapped, the run held about 14 GB: on a 16 GB machine the kernel's memory killer
+    # took it, and in CI (sambanks/octabam#1129, 15 Nov 2026, twice) the runner was shut down 2 minutes after
+    # this gate started, taking the unit's other jobs with it. A group counts as its children (its load is one
+    # emulator, and the parent only waits once they are forked).
+    running = []
+    def weight(tags):
+        return min(len(tags), JOBS) if JOBS else len(tags)
+    for n, (boot, tags) in enumerate(sorted(groups.items(), key=lambda g: -len(g[1]))):
+        card = OUT / f"group{n}.img"
+        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+                            "--tree", str(OUT / f"tree_group{n}"), "--out", str(card)], cwd=ROOT,
+                           capture_output=True, text=True)
+        if r.returncode:
+            sys.exit(f"verify_dlload: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+        cmd = [EMU, "--image", image, "--card", card, "--set", a.set_name, "--project", a.name, "--load-ms", "90000",
+               "--mkii", "--dsp", "--frame", *boot, "--scenario-jobs", weight(tags)]
+        for tag in tags:
+            cmd += ["--scenario", " ".join(map(str, [OUT / f"{tag}.txt", *args[tag]]))]
+        while JOBS and running and sum(w for p, w in running if p.poll() is None) + weight(tags) > JOBS:
             time.sleep(0.5)
-        fh = open(OUT / f"{tag}.txt", "w")
-        procs[tag] = (subprocess.Popen(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT), fh)
-    texts = {}
-    for tag, (p, fh) in procs.items():
-        rc = p.wait()
+        fh = open(OUT / f"group{n}.txt", "w")
+        running.append((subprocess.Popen(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT), weight(tags)))
         fh.close()
-        texts[tag] = (OUT / f"{tag}.txt").read_text(errors="replace")
-        if rc or "ended on quit" not in texts[tag]:
-            sys.exit(f"verify_dlload: the {tag} run did not finish -- {OUT / (tag + '.txt')}")
+    for p, _w in running:
+        p.wait()
+    texts = {}
+    for tag in scenarios:
+        log = OUT / f"{tag}.txt"
+        texts[tag] = log.read_text(errors="replace") if log.is_file() else ""
+        if "ended on quit" not in texts[tag]:
+            sys.exit(f"verify_dlload: the {tag} run did not finish -- {log} (its load: {OUT}/group*.txt)")
 
     def peek(tag, core, space, addr):
         m = re.search(rf"core {core} {space}:0x0*{addr:x}:([^\n]*)", texts[tag])
