@@ -57,7 +57,7 @@ def main() -> int:
             pitch_hint = p.link.lcd_rows()
             check("RIGHT hint appears for PTCH but not THRU INAB",
                   any(pitch_hint[y][x] != no_pitch_hint[y][x]
-                      for y in range(2, 8) for x in range(38, 47)))
+                      for y in range(2, 8) for x in range(47, 59)))
             s.prime(lane=0, dest=15, depth=0, pulses=3, trig_pulses=3)
             p.press("right", settle=150)
             check("RIGHT stays on Rhythm for non-pitch destination",
