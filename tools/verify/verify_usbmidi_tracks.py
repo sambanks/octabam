@@ -51,7 +51,8 @@ CC_FIRST = 16
 CHANNEL = 12                    # MIDI channel 13: not track 1's number, and no track's default (1..8), so
                                 # one START, and the TRIG CHANNEL is what is read
 GATE_MS = 160 * 16 / 44.1       # utm.s GATE_FRAMES frames: 58.0 ms
-GATE_TOL_MS = 8                 # the 2 ms run step, the deferred kick and the transfer on each end
+GATE_TOL_MS = 12                # the 2 ms run step, the deferred kick, and the reader thread's lag: a packet is
+                                # stamped when the reader gets it (50 and 52 ms read on this build, 16 Nov 2026)
 NOTE_ON_KEY = 84                # chromatic range 72..96: a START of the track with a PTCH lock
 RUN_MS = 400
 RENDER_PTRS = 0x400d61f0        # the packer's per-track renderer pointers (stock, lea at 0x4000bff6)
@@ -148,7 +149,7 @@ def main():
                 try:
                     while time.time() < end:
                         try:
-                            data = b.ep_in(2, 64, timeout=max(0.1, end - time.time()))
+                            data = b.ep_in(2, 512, timeout=max(0.1, end - time.time()))   # a whole HS packet
                         except TimeoutError:
                             break
                         for i in range(0, len(data) - 3, 4):
