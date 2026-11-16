@@ -2,7 +2,7 @@
 |
 | BASELINE: LSCOPE X — hold-then-drop (OSC/XY).
 |
-| DOWN+TEMPO opens; UP+TEMPO -> TUNER. No WFRAME / RULE; BOX = rim clear only.
+| DOWN+TEMPO opens. UP+TEMPO is not handled. No WFRAME / RULE; BOX = rim clear only.
 | UP/DOWN switch visual, reset A-F, toast. RIGHT help / LEFT back.
 | ENC A push = GAIN default + clear session peak.
 | CUE release = toggle G/P HUD (not while held).
@@ -41,9 +41,7 @@
         .set    WINH,      64
         .set    MID,       32
         .set    NRING,     8192
-        .set    TURING,    4096
         .set    SC_PERIOD, 46
-        .set    TU_PERIOD, 400
         .set    GAIN_DEF,  20          | centre = 0 dB; knob 0..40 → ±20 dB
         .set    GAIN_MAX,  40
         .set    GAIN_DIV,  0x4000      | OSC px scale at 0 dB
@@ -70,55 +68,33 @@
         .set    HUD_TY,    54
 
         .text
-        .globl  sc_tempo, sc_frame, sc_tick, sc_open, sc_close, sc_draw
+        .globl  sc_tempo, sc_tempo_down, sc_frame, sc_frame_body
+        .globl  sc_tick, sc_tick_body, sc_open, sc_close, sc_draw
         .globl  sc_enc, sc_viz_up, sc_viz_down, sc_help_on, sc_help_off
         .globl  sc_gain_rst, sc_hud_tog
-
-        .extern tu_win, tu_wr, tu_frames, tu_ring
-        .extern tu_open, tu_close, tu_analyse, tu_draw
 
 | ---- TEMPO ------------------------------------------------------------
 sc_tempo:
         moveq   #0,%d0
         moveb   KROWS+(KDOWN>>3),%d0
         btst    #(KDOWN&7),%d0
-        bne.s   do_scope
-        moveq   #0,%d0
-        moveb   KROWS+(KUP>>3),%d0
-        btst    #(KUP&7),%d0
-        bne.s   do_tuner
-        tstl    TEMPOWIN
-        jmp     TEMPO_GO
-
-do_scope:
-        tstl    tu_win
-        beq.s   1f
-        jsr     tu_close
-1:      tstl    sc_win
+        beq.s   tempo_stock
+sc_tempo_down:
+        tstl    scope_win
         bne.w   sc_close
         bra.w   sc_open
-
-do_tuner:
-        tstl    sc_win
-        beq.s   2f
-        bsr.w   sc_close
-2:      tstl    tu_win
-        beq.s   3f
-        jsr     tu_close
-        rts
-3:      jsr     tu_open
-        rts
+tempo_stock:
+        tstl    TEMPOWIN
+        jmp     TEMPO_GO
 
 | ---- frame_isr --------------------------------------------------------
 sc_frame:
         movel   %d1,0x80004800
-        tstl    sc_win
-        bne.s   fill_sc
-        tstl    tu_win
-        bne.w   fill_tu
+        bsr.w   sc_frame_body
         jmp     ISR_GO
-
-fill_sc:
+sc_frame_body:
+        tstl    scope_win
+        beq.w   frame_stock
         movel   RB_PREV,%d0
         lsll    #8,%d0
         lsll    #2,%d0
@@ -190,63 +166,25 @@ fs_t:   movel   RB_PREV,%d0
         movel   %d2,sc_all_wr
 fs_all_skip:
         addql   #1,sc_frames
-        jmp     ISR_GO
-
-fill_tu:
-        movel   RB_PREV,%d0
-        lsll    #8,%d0
-        lsll    #2,%d0
-        moveq   #0,%d1
-        moveb   TRACK,%d1
-        andil   #7,%d1
-        lsll    #7,%d1
-        addl    %d1,%d0
-        addil   #RB_BASE,%d0
-        moveal  %d0,%a0
-        movel   tu_wr,%d2
-        lea     tu_ring,%a1
-        moveq   #16,%d3
-1:      movel   %a0@+,%d0
-        movel   %a0@+,%d1
-        asrl    #1,%d0
-        asrl    #1,%d1
-        addl    %d1,%d0
-        swap    %d0
-        movew   %d0,%a1@(0,%d2:l:2)
-        addql   #1,%d2
-        andil   #TURING-1,%d2
-        subql   #1,%d3
-        bne.s   1b
-        movel   %d2,tu_wr
-        addql   #1,tu_frames
-        jmp     ISR_GO
+frame_stock:
+        rts
 
 | ---- UI tick ----------------------------------------------------------
 sc_tick:
-        tstl    sc_win
-        beq.s   try_tu
+        bsr.w   sc_tick_body
+        pea     UIQUEUE
+        jmp     UI_GO
+sc_tick_body:
+        tstl    scope_win
+        beq.s   tick_done
         movel   sc_frames,%d0
         cmpil   #SC_PERIOD,%d0
         blt.s   tick_done
         clrl    sc_frames
         bsr.w   sc_draw
-        bra.s   tick_done
-try_tu:
-        tstl    tu_win
-        beq.s   tick_done
-        movel   tu_frames,%d0
-        cmpil   #TU_PERIOD,%d0
-        blt.s   tick_done
-        clrl    tu_frames
-        lea     %sp@(-44),%sp
-        movem.l %d2-%d7/%a2-%a6,%sp@
-        jsr     tu_analyse
-        jsr     tu_draw
-        movem.l %sp@,%d2-%d7/%a2-%a6
-        lea     %sp@(44),%sp
+        bra.w   tick_done
 tick_done:
-        pea     UIQUEUE
-        jmp     UI_GO
+        rts
 
 | ---- viz switch -------------------------------------------------------
 sc_viz_up:
@@ -384,7 +322,7 @@ sc_open:
         pea     WINW
         jsr     WCREATE
         lea     %sp@(24),%sp
-        movel   %d0,sc_win
+        movel   %d0,scope_win
         beq.w   9f
         pea     SC_LAYER
         jsr     LPUSH
@@ -421,10 +359,10 @@ sc_open:
 9:      rts
 
 sc_close:
-        tstl    sc_win
+        tstl    scope_win
         beq.s   9f
         clrl    sc_help
-        pea     sc_win
+        pea     scope_win
         jsr     WDESTROY
         addql   #4,%sp
         pea     SC_LAYER
@@ -628,7 +566,7 @@ sc_start:
 sc_draw:
         lea     %sp@(-44),%sp
         movem.l %d2-%d7/%a2-%a6,%sp@
-        movel   sc_win,%d0
+        movel   scope_win,%d0
         beq.w   dexit
         moveal  %d0,%a5
         lea     %a5@(36),%a5
@@ -1206,7 +1144,7 @@ SC_ENCS:
 
         .data
         .balign 4
-        .globl  sc_win, sc_wr, sc_frames, sc_viz
+        .globl  scope_win, sc_wr, sc_frames, sc_viz
 sc_p:
 sc_gain:     .long GAIN_DEF
 sc_time:     .long TIME_DEF
@@ -1214,7 +1152,7 @@ sc_c:        .long 0
 sc_d:        .long 0
 sc_e:        .long 0
 sc_f:        .long 0
-sc_win:      .long 0
+scope_win:   .long 0
 sc_wr:       .long 0
 sc_frames:   .long 0
 sc_viz:      .long 0
