@@ -25,7 +25,14 @@ rhythm for the current DEST. **YES** writes TRIG → sample-trig mask 0 and
 PLOCK → locks on the chosen DEST (trigless on plock-only steps). **NO**
 closes. Bare **PAGE** stays stock and does not close SEQ.
 
-**Proof.HARDWARE:** author's MKII, `CX CJ.RMX`, 14 Nov 2026. Six reported
+**Hardware confirmation, 16 Nov 2026:** the author confirmed the `OCTA S3.RMX`
+handoff checklist on his MKII: the image loads in BRAIN, PTCH opens Harmony,
+and THRU INAB has no RIGHT hint. Built as `REMIX=octabam BUILD=S3` from
+`854ea9c055d9dea89a91763ed43f065e3a24de10`. Artifact SHA-256:
+`c5efe642cab1de0d71d5ba8f5abb619147c8ea13877cc506bf21ad6bf14e086b`.
+This report covers those checks; no audio or timing measurements were reported.
+
+**Earlier hardware report:** author's MKII, `CX CJ.RMX`, 14 Nov 2026. Six reported
 device checks passed: PLCK **PULS** 0 clears only that destination; all three
 **[FUNC]** + **[BANK]** clear rows act immediately and return to SEQ, and
 **[NO]** cancels; **"ARE YOU SURE?"** stays above SEQ with knobs locked until

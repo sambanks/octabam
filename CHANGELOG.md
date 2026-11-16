@@ -16,6 +16,17 @@ including Image 90 (`usb-lean`). Other documents cite 94, 96 and 99 for
 
 The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
+## OCTA S3, 16 Nov 2026, octabam remix
+
+- The author confirmed the handoff checklist on his MKII: the image loads
+  in BRAIN, SEQ PTCH opens Harmony, and THRU INAB has no RIGHT hint.
+- Built from `854ea9c055d9dea89a91763ed43f065e3a24de10`, with upstream's
+  REC_TRIG_MUTE pin `91a58e9` restored after the rebase. The source image
+  predates the evidence and documentation updates. No audio or timing
+  measurements were reported.
+- Artifact SHA-256:
+  `c5efe642cab1de0d71d5ba8f5abb619147c8ea13877cc506bf21ad6bf14e086b`.
+
 ## Unreleased
 
 - **Demand loader: one copy a load, a shorter copy loop, a simpler pump** (`modules/dlcopy`, `modules/dlpump`;
