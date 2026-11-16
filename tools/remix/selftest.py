@@ -1053,7 +1053,7 @@ def main():
                                   "seq", "varispeed", "copy-project",
                                   "pattern-mute-modes",  # PATTERN MUTE beside MUTE_MODES, stock effects
                                   "scope", "scope-alone",  # SCOPE and SCOPE without TUNER: ColdFire, no DSP words
-                                  "cxosc", "cxosc-core",
+                                  "cxosc", "cxosc-core", "cxosc-poly",
                                   "screen", "screen-usb")},  # CX OSC (+ CORE handoff); ColdFire, no DSP words
              "trackpatterns": (),   # pgstath's ColdFire module on the stock effects, no DSP words
              "trackpatterns-core": (),   # TRACK PATTERNS on the core modules and the 14 stock effects, which gives up nothing

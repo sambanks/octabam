@@ -46,12 +46,20 @@ def machine_limits():
         return f.read()
 
 
-def _cxosc_place(modules) -> str:
+def _cxosc_build_values(modules) -> dict:
     seq = modules.values() if isinstance(modules, dict) else modules
     for m in seq:
         if getattr(m, "name", None) == "cxosc":
-            return dict(getattr(m, "build_values", {}) or {}).get("PLACE", "DRAM")
-    return "DRAM"
+            return dict(getattr(m, "build_values", {}) or {})
+    return {}
+
+
+def _cxosc_place(modules) -> str:
+    return _cxosc_build_values(modules).get("PLACE", "DRAM")
+
+
+def _cxosc_poly(modules) -> bool:
+    return _cxosc_build_values(modules).get("VOICES", "MONO") == "POLY"
 
 
 def _hooks_inc(modules):
@@ -71,9 +79,11 @@ def poly_include(modules, remix=None):
     unit does not re-include hooks (macros would redefine).
     HAVE_EF_CX: SEQ's ef_cx_bank/bits — apply per-step SETUP fills."""
     have_ef = 1 if "SEQ" in modules else 0
+    poly_set = f".set CX_POLY, {1 if _cxosc_poly(modules) else 0}"
     with open(os.path.join(_HERE, "lfo_morph.inc.s"), encoding="utf-8") as _lf:
         morph = _lf.read()
     return "\n".join((
+        poly_set,
         ".ifndef CX_PASS1",
         ".set CX_PASS1, 1",
         f".set HAVE_EF_CX, {have_ef}",
@@ -86,7 +96,8 @@ def poly_include(modules, remix=None):
 
 
 def machine_include(modules, remix=None):
-    text = remix_include(modules, remix) + machine_limits() + _hooks_inc(modules)
+    poly_set = f".set CX_POLY, {1 if _cxosc_poly(modules) else 0}\n"
+    text = remix_include(modules, remix) + poly_set + machine_limits() + _hooks_inc(modules)
     # CAVE: page.s is not linked; machine.s's .long fm_descriptor needs the
     # absolute cave base. DRAM: the Linked page unit exports the symbol.
     if _cxosc_place(modules) != "DRAM":
@@ -313,8 +324,10 @@ MODULE = Module(
              "outline; CX 65 silhouettes; CX 63 saw PWM skew liked on unit. CX 48: sine→saw→square + PWM; "
              "FINE/FOLD/MIX; HOLD INF; slew. MKII CX-CF 69 (9 Nov 2026): CF METER — 4× CX idle 22%/ISR 272 us; 6× "
              "~12%/309; 7× idle 0%/355 max 446 (wall) → ML_FM_MAX=6; author confirmed 6 MAX toast on unit. Prior "
-             "CX 41 / CX 28 / VRCS-CX VS. verify_cxosc + make check REMIX=cxosc"),),
-    doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..34 CAR/MOD/SYMM/FDBK/PWM (DEC not a destination). Local fork of FM SYNTH.",
+             "CX 41 / CX 28 / VRCS-CX VS. MONO cap 6; POLY cap 4. verify_cxosc + make check REMIX=cxosc"),
+              Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-11-16",
+        note="CF METER USB captures during POLY use. Four tracks: 9 cycles / 20 s, 16.4% idle, 294.5 us mean, 324.2 us max, DSP TUE/ROE 0; author confirmed stable and still running. Five tracks: 23 cycles / 60 s across three captures, 9.4–10.4% idle, 309–314 us mean, 415–464 us max; author reported freeze. Running RMX tag not confirmed.")),
+    doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..34 CAR/MOD/SYMM/FDBK/PWM (DEC not a destination). VOICES=POLY adds VOIC/CHRD as PMTR 35/36 destinations for LFO 1/2; LFO 3 is muted. Local fork of FM SYNTH.",
     conflicts=(
         ("SYNTH MACHINE", "both own the FLEX/STATIC kind-table renderers, page cave 0x400d24d0, and machine-list sites"),
         ("BLACKPYRAMIDS_303", "shares ColdFire ROM hooks (e.g. MIDI note-on 0x4000e746) — build refuses the pair"),
@@ -336,13 +349,13 @@ MODULE = Module(
     ),
     detours=(
         Detour(LFO_DEPTH_HOOK, LFO_DEPTH_STOCK, "poly", "cx_lfo_standalone",
-               "PMTR 30..34 (CMOR/MMOR/SYMM/FDBK/PWM) private LFO words; stock depth otherwise",
+               "PMTR 30..34 oscillator words and POLY 35/36 VOIC/CHRD; mute POLY LFO 3",
                kind="jmp", pad_to=8),
         Detour(LFO_DEPTH_HOOK2, LFO_DEPTH_STOCK, "poly", "cx_lfo_frame",
-               "frame-builder LFO depth: CMOR/MMOR/SYMM/FDBK private words",
+               "frame-builder LFO depth: CX oscillator destinations and POLY VOIC/CHRD",
                kind="jmp", pad_to=8),
         Detour(LFO_PAGE_HOOK, LFO_PAGE_STOCK, "poly", "cx_lfo_page",
-               "LFO page: PMTR count 34 on CX OSC (CMOR/MMOR/SYMM/FDBK)",
+               "LFO page: CX PMTR destinations, plus VOIC/CHRD in POLY",
                kind="jmp", pad_to=8),
         Detour(LFD_EDIT_HOOK, LFD_EDIT_STOCK, "poly", "cx_lfo_pmtr_edit",
                "LFO SETUP PMTR walk includes 30/31 on CX OSC",
@@ -476,5 +489,8 @@ MODULE = Module(
     variant=_variant,
     settings=(Setting(1, "PLACE", Option(*PLACES), default="DRAM", apply=Apply.BUILD,
                       doc="DRAM: page in the platform runtime (leaves stock DELAY table tail alone); "
-                          "CAVE: pinned ROM cave at 0x400d24d0, refused where DELAY is listed"),),
+                          "CAVE: pinned ROM cave at 0x400d24d0, refused where DELAY is listed"),
+              Setting(2, "VOICES", Option("MONO", "POLY"), default="MONO", apply=Apply.BUILD,
+                      doc="MONO: hard last-note mono, six-track cap, stock LFO 3 SPD/DEP. "
+                          "POLY: four-track cap, Tim VOIC 1..4 + CHRD on LFO page, trades LFO3 rate/depth"),),
 )

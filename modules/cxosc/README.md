@@ -1,31 +1,30 @@
 # `cxosc` — CX OSC
 
 Buchla-style **complex oscillator** as a track machine: two-operator FM,
-sine wavefolder, modulator feedback, sine→saw morphs. West Coast timbre
-path — fold and index, not a filter. Local fork of Tim Hastie's FM SYNTH
-ColdFire engine (not an edit of `modules/synth`). Provenance: `NOTICE`,
+sine wavefolder, modulator feedback, and sine→saw morphs. Local fork of
+Tim Hastie's FM SYNTH ColdFire engine. Provenance: `NOTICE`,
 `LICENSE-TIM`, `THIRD_PARTY.md`.
 
 Human manual (params + shots): [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md).
 
 ## Select
 
-Same sixth list row (**CX OSC**, under PICKUP). No marker file. Stored as
-FLEX with Part signature `"CX", 1`. No marker-file select; Part signature `"CX", 1`.
+Sixth machine-list row (**CX OSC**, under PICKUP). CX OSC uses a FLEX
+track with the Part signature "CX", 1.
 
-- Double-tap the track key → machine list → **CX OSC** → YES
-- **FUNC + SRC** → **SELECT MACHINE TYPE** → **CX OSC** → YES
-- From **SRC SETUP**’s left machine list → **CX OSC** → YES
+- Double-tap **[TRACK]** → machine list → **CX OSC** → **[YES]**
+- **[FUNC] + [SRC]** → **SELECT MACHINE TYPE** → **CX OSC** → **[YES]**
+- From **SRC SETUP**’s left machine list → **CX OSC** → **[YES]**
 
-On a sample track, **FUNC + SRC** may open the sample list first — **LEFT**
+On a sample track, **[FUNC] + [SRC]** may open the sample list first. **[LEFT]**
 reaches the machines.
 
 ## PLAYBACK — carrier, mod, fold
 
 | Knob | Name | What it does |
 |------|------|----------------|
-| A | PTCH | Semitones (−64..+63); **FUNC** snaps to …/−12/0/+12…; one unit a detent |
-| B | RATO | Mod∶carrier ratio, free 0.25..4; **FUNC** snaps the classic table |
+| A | PTCH | Semitones (−64..+63); **[FUNC]** snaps to …/−12/0/+12…; one unit a detent |
+| B | RATO | Mod∶carrier ratio, free 0.25..4; **[FUNC]** snaps the classic table |
 | C | INDX | FM depth (default **0**) |
 | D | FINE | Cents (−64..+63; raw **64** = 0c) |
 | E | FOLD | Wavefolder dry/wet after MIX (default **0** = bypass) |
@@ -36,26 +35,24 @@ See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagram
 
 ## SETUP — morph, index env, feedback
 
-**FUNC + PLAYBACK** (LCD header **SRC SETUP**).
+**[FUNC] + [PLAYBACK]** (LCD header **SRC SETUP**).
 
 | Knob | Name | What it does |
 |------|------|----------------|
-| A | CAR | Carrier morph 0..127 (**0** sine → **64** saw → **127** square); icon tracks the shape; **FUNC** snaps |
-| B | MOD | Modulator morph 0..127 (same; needs **INDX**); icon tracks the shape; **FUNC** snaps |
+| A | CAR | Carrier morph 0..127 (**0** sine → **64** saw → **127** square); icon tracks the shape; **[FUNC]** snaps |
+| B | MOD | Modulator morph 0..127 (same; needs **INDX**); icon tracks the shape; **[FUNC]** snaps |
 | C | DEC | Index envelope; **127 = HOLD** |
 | D | SYMM | Fold half-wave skew (**64** = even) |
 | E | FDBK | Modulator feedback (default **0** = off) |
 | F | PWM | Cycle lean — LCD **−64..+63** (**0** = neutral; byte 64): sine soft lean; saw phase-skew (8%..92%); square duty (**0** ≈ 50%). Does **not** move the CAR/MOD icons. |
 
-LFO SETUP PMTR lists the PLAYBACK names (**PTCH RATO INDX FINE FOLD MIX**)
-plus AMP / stock FX, then **30 = CAR**, **31 = MOD**, **32 = SYMM**,
-**33 = FDBK**, **34 = PWM**. PTCH LFO depth matches FLEX (÷5). DEC is not an LFO destination. Mono only — AMP HOLD
-owns note length (**HOLD INF** = until STOP); select seeds ATK 0 / HOLD INF /
-REL 0 / LEG MONO. Beside OCTA303, HOOKS `machine_rows` bridges the LFO
-PMTR name site (`0x4003bff0`): each machine names its own track.
+LFO SETUP PMTR lists the PLAYBACK names (**PTCH RATO INDX FINE FOLD MIX**) plus AMP and stock FX, then **CAR MOD SYMM FDBK PWM**. DEC stays on its knob. PTCH LFO depth matches FLEX.
+
+**VOICES** is a build setting. **MONO** is the default and keeps last-note mono. **POLY** enables Tim **VOIC 1..4**, **CHRD**, and the **LEG** choices **OFF / MONO / POLY**. VOIC and CHRD use the LFO 3 rate and depth slots, so those two LFO 3 controls are unavailable on CX OSC in the poly build. AMP **HOLD** owns note length. CX selection seeds ATK 0 / HOLD INF / REL 0 / LEG MONO.
+
+In **POLY**, LFO 3 is muted. LFO SETUP **PMTR** adds **VOIC** and **CHRD** after the CX OSC destinations. LFO 1 or 2 can modulate them; each new note uses the current values.
 
 CMOR/MMOR targets and traps: [`MORPH.md`](MORPH.md).
-
 ## Icons (SETUP LCD) — do not invert
 
 Stock blit `0x400128a8` column longs: **bit 31 = bottom row**, bit 19 = top
@@ -103,18 +100,33 @@ ROM hooks, e.g. MIDI note-on). Not an FX2 id — machine signature `"CX", 1`.
 One mono voice under Unicorn: about **2035** instructions/frame (peak ~2074;
 `verify_cxosc`).
 
-Selection guard **`ML_FM_MAX = 6`** (Part popup `CX OSC: 6 MAX`). Measured on
-author MKII with remix `cx-cf` + CF METER (USB decode, 9 Nov 2026, tip
-`CX-CF 69`):
+In **MONO**, the selection guard is **`ML_FM_MAX = 6`** (Part popup
+`CX OSC: 6 MAX`). Measured on the author's MKII with remix `cx-cf` + CF METER
+(USB decode, 9 Nov 2026, tip `CX-CF 69`):
 
 | CX tracks sounding | idle % | ISR mean | ISR max | notes |
 |---|---:|---:|---:|---|
 | 0 (baseline) | 44.7 | 125 µs | 212 µs | |
 | 4 | 21.8 | 272 µs | 325 µs | comfortable |
-| 6 | ~12 | 309 µs | 376 µs | max past the 363 µs frame |
+| 6 | ~12 | 309 µs | 376 µs | cap; max past the 363 µs frame |
 | 7 | 0 | 355 µs | 446 µs | wall — MAIN clipped; do not ship as a cap |
 
-Eight tracks were not safe. Author confirmed **6 MAX** toast on unit (CX 70). [#852](https://github.com/sambanks/octabam/issues/852).
+The seven-track MONO run clipped MAIN, so the guard rejects a seventh. In
+**POLY**, the selector cap is **four** (`CX OSC: 4 MAX`). On 16 Nov 2026, the
+author ran five POLY tracks with CF METER on `CPMTR84`. Three 20-second USB
+captures decoded 23 cycles. Idle was 9.36–10.39%, ISR mean was 309.1–313.9 µs,
+and the longest ISR reading in each cycle was 415.2–463.8 µs against a
+362.8–362.9 µs frame. DSP TUE and ROE stayed at zero, with 5,520 frames in
+each two-second window. The author reported a freeze during the five-track
+test.
+
+At four POLY tracks, a 20-second USB capture decoded nine cycles. Idle was
+16.39–16.69%, ISR mean was 294.3–294.8 µs, and the longest ISR reading was
+314.4–337.7 µs against a 362.8–362.9 µs frame. DSP TUE and ROE stayed at zero,
+with 5,520 frames in every window. On 16 Nov 2026, the author confirmed the
+four-track setup was stable and still running after the capture. The POLY
+selector cap is four. The MONO cap remains six. The run's exact RMX tag was
+not confirmed. [#852](https://github.com/sambanks/octabam/issues/852).
 
 ## Build
 

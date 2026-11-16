@@ -9,7 +9,8 @@
 
 ColdFire, not dsp_host. Instruction counts are diagnostics, not hardware cycles.
 
-    python3 tools/verify/verify_cxosc.py          # after make bus REMIX=cxosc
+    python3 tools/verify/verify_cxosc.py          # after make bus REMIX=cxosc (MONO)
+    # POLY: make bus REMIX=test/cxosc-poly && python3 tools/verify/verify_cxosc.py
     make check REMIX=cxosc                        # Gate on the module
 """
 from __future__ import annotations
@@ -485,6 +486,55 @@ def main():
         f"note=Unicorn executed instructions, not hardware cycles\n"
     )
     check("cost measured", mean > 100, f"{mean:.0f} insn/frame")
+
+    # VOICES=MONO|POLY build gate: CX_POLY folds Tim VOIC/CHRD into the image.
+    poly = "sy_topoly" in symbols
+    headers = subprocess.check_output(
+        ["m68k-elf-objdump", "-h", str(RUNTIME / "runtime.elf")], text=True
+    )
+    text_base = int(
+        next(
+            line.split()[3]
+            for line in headers.splitlines()
+            if len(line.split()) > 3 and line.split()[1] == ".text"
+        ),
+        16,
+    )
+    runtime = (RUNTIME / "runtime.bin").read_bytes()
+    if "ml_limits" in symbols:
+        cap_off = symbols["ml_limits"] - text_base
+        cap = runtime[cap_off]
+        expected_cap = 4 if poly else 6
+        check(
+            f"{'POLY' if poly else 'MONO'}: CX selector cap is {expected_cap}",
+            cap == expected_cap,
+            f"ml_limits[0]={cap}",
+        )
+    if "cx_lfo_page" in symbols and "po_lfopage" in symbols:
+        off = symbols["cx_lfo_page"] - text_base
+        head = runtime[off : off + 2]
+        if poly:
+            check(
+                "POLY: cx_lfo_page branches to Tim VOIC/CHRD page",
+                head == b"\x60\x00" or head[0] == 0x60,  # bra / braw
+                f"opc={head.hex()}",
+            )
+            for name in ("po_voic", "po_chrd", "po_fmt_voic", "po_lm_para", "po_st_v1"):
+                check(f"POLY: {name} present", name in symbols)
+            # Labels in the VOIC/CHRD descriptor clone.
+            for label, needle in (("po_voic", b"VOIC"), ("po_chrd", b"CHRD")):
+                if label in symbols:
+                    lo = symbols[label] - text_base
+                    blob = runtime[lo : lo + 8]
+                    check(f"POLY: {label} spells {needle.decode()}", needle in blob, blob[:6])
+        else:
+            check(
+                "MONO: cx_lfo_page is morph LFO (not bra to po_lfopage)",
+                head != b"\x60\x00" and head[0] != 0x60,
+                f"opc={head.hex()}",
+            )
+            check("MONO: sy_topoly absent", "sy_topoly" not in symbols)
+
     print("  [PASS] verify_cxosc")
     return 0
 

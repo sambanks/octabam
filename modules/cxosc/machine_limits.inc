@@ -1,7 +1,10 @@
 | CX OSC -- selection guard limits (from synth 2.15). Values only.
-| MKII CX-CF 69 (author, 9 Nov 2026), CF METER over USB: baseline idle 44.7 % /
-| ISR 125 us; 4x CX idle 21.8 % / 272 us; 6x idle ~12 % / 309 us (max past the
-| 363 us frame); 7x idle 0 % / ISR mean 355 us max 446 us — wall. Cap at 6.
-        .set    ML_FM_MAX, 4             | measured headroom on MKII (see comment)
+| The MONO build keeps its six-track cap. POLY uses four; five-track POLY
+| measurements and their limits are recorded in modules/cxosc/README.md.
+        .if CX_POLY
+        .set    ML_FM_MAX, 4             | POLY cap after reported freeze at five tracks
+        .else
+        .set    ML_FM_MAX, 6             | historical MONO cap (CX-CF 69)
+        .endif
         .set    ML_SY_MAX, 2             | unused (HAVE_SYDRUM 0)
         .set    ML_SY_WITH_FM, 1         | unused

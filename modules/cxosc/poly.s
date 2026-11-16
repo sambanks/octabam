@@ -1,4 +1,4 @@
-| CX OSC -- Buchla-flavoured complex oscillator as a DRAM unit (mono).
+| CX OSC -- Buchla-flavoured complex oscillator as a DRAM unit (mono by default).
 | GNU as, -mcpu=5475. Linked into the platform runtime; the kind table's
 | FLEX/STATIC entries point at sy_render (modules/cxosc/manifest.py).
 | Signature "CX", 1 in the Part's NEIGHBOR PLAYBACK column. Forked from
@@ -16,11 +16,10 @@
 | (asymmetric ramp, one discontinuity), square duty (64≈50%).
 | PTCH −64..+63.
 
-| Mono only -- T_POLY
-| is cleared; stock LFO page (no VOIC/CHRD). GLIDE still slews pitch.
+| Default MONO (CX_POLY=0): T_POLY cleared; morph LFO page (no VOIC/CHRD).
+| CX_POLY=1: Tim VOIC/CHRD on the LFO page; T_POLY latched from VOIC.
+| GLIDE still slews pitch.
 |
-| (The upstream file also described paraphonic VOIC/CHRD paths retained in
-| the source for provenance; CX OSC never arms them. Opening of that block:)
 |   * a voice START (the packer's event bit 4: a sequencer trig or a live
 |     CHROMATIC key) allocates one voice per note of the CHORD SHAPE --
 |     the track's LFO page slot 5 byte (DEP3's storage, the "current value"
@@ -470,11 +469,29 @@ sy_warm_env:
 sy_warm:                                 | (sy_env_ramp, 5.8 ms), the carrier and the level continuous (BUILD 38)
         move.l  RS_PTR,%a0
         clr.l   4(%a0)                   | the retrig count the packer just latched: no stock retrigs
-        clr.b   T_POLY(%a3)              | CX OSC: mono only -- LFO 3 stays SPD3/DEP3 (no VOIC/CHRD)
+        .if CX_POLY
+        bsr     cx_lf_voice_chord        | step/scene/Part VOIC plus LFO 1/2 offset
+        subq.l  #2,%d0
+        cmpi.l  #2,%d0
+        sls     %d0
+        move.b  %d0,T_POLY(%a3)
+        bne     sy_topoly
+        bsr     po_fade                  | mono note: fade leftover para voices under the carrier
+        bsr     po_mring_reset
+        lea     KEYS_AT,%a0
+        clr.b   (%a0,%d2.l)
+        bra     sy_synth
+sy_topoly:
+        tst.w   S_GPREV(%a3)             | VOIC 1 -> 2..4 across a note: carry mono into a voice
+        beq     sy_synth
+        bsr     po_carry
+        .else
+        clr.b   T_POLY(%a3)              | CX OSC mono: LFO 3 stays SPD3/DEP3 (no VOIC/CHRD)
         bsr     po_free                  | hard-kill para zombies (fade left them under mono = two pitches)
         bsr     po_mring_reset
         lea     KEYS_AT,%a0
         clr.b   (%a0,%d2.l)
+        .endif
 sy_synth:
         bsr     sy_word                  | a fresh note starts at its own pitch: no slide (GLIDE)
         move.l  %d6,%d1
@@ -612,7 +629,10 @@ sy_called:
         move.l  (%a1)+,(%a0)+
         move.l  (%a1)+,(%a0)+
         move.l  (%a1)+,(%a0)+
-        bra     sy_mono_frame            | mono only
+        tst.b   T_POLY(%a3)
+        beq     sy_mono_frame
+        bsr     po_frame                 | paraphonic: allocate/update voices before po_fill (preserves a2, a3, d2)
+        bra     sy_check
 
 | ---- sy_voice: a0 := track d2's voice struct + V_POS (clobbers d1) ----------
 sy_voice:
@@ -637,7 +657,11 @@ sy_machine:
 
 | ---- the mono voice's frame: the rate, as the stock renderer computes it -----
 sy_mono_frame:
-        bsr     po_free                  | CX: never leave para zombies under the mono voice
+        .if CX_POLY
+        bsr     po_fade_frame            | paraphonic voices fading under the mono voice
+        .else
+        bsr     po_free                  | CX mono: never leave para zombies under the mono voice
+        .endif
         bsr     po_rate_fold             | d0 = the increment for the word d6, any octave (clobbers d0/d1/d3/d4/d7/a0)
         cmpi.l  #INC_MAX,%d0             | safety net: an impossible pitch (a word off the curve's
         bls     sy_mono_inc              | table, a stale record) silences the voice instead of
@@ -1250,7 +1274,16 @@ sy_gend:
         move.l  (%sp)+,%d1               | drop SYMM
         move.l  (%sp)+,%d1               | drop morph
         move.l  (%sp)+,%a2               | the header
+        .if CX_POLY
+        move.l  52(%sp),%d2              | track
+        bsr     po_any                   | fading para voices (VOIC 2..4 -> 1): sum onto mono samples
+        beq     sy_done
+        mvz.b   3(%a2),%d7
+        lea     16(%a2),%a1
+        bra     po_fill_add
+        .else
         | CX mono: never sum fading para voices under the carrier (was two pitches)
+        .endif
 sy_done:
         move.l  44(%sp),%d0
         movem.l (%sp),%d2-%d7/%a2-%a6
@@ -2425,7 +2458,12 @@ po_st_1a:
         move.l  #CV_STRIDE,%d0
         muls.l  %d2,%d0
         lea     CURVALS,%a0
+        .if CX_POLY
+        bsr     cx_lf_voice_chord
+        move.l  %d1,%d0                  | effective CHRD for the duplicate-key check
+        .else
         mvz.b   CV_CHRD(%a0,%d0.l),%d0
+        .endif
         lsr.l   #2,%d0
         bne     po_st_go                 | a shape: chord memory decides
         bsr     po_voices_of             | a6 = the voices, a2 = their end (clobbers d0)
@@ -2506,8 +2544,14 @@ po_st_ns:
         move.l  #CV_STRIDE,%d0
         muls.l  %d2,%d0
         lea     CURVALS,%a0
-        moveq   #1,%d6                   | CX: always VOIC 1 (SPD3 is LFO rate, not Tim's cap)
+        .if CX_POLY
+        bsr     cx_lf_voice_chord
+        move.l  %d0,%d6                  | effective VOIC
+        move.l  %d1,%d0                  | effective CHRD
+        .else
+        moveq   #1,%d6                   | CX mono: always VOIC 1 (SPD3 is LFO rate, not Tim's cap)
         mvz.b   CV_CHRD(%a0,%d0.l),%d0   | the chord byte, locks applied: shape << 2 | inversion (26 Sep 2026)
+        .endif
         move.l  %d0,%d3
         lsr.l   #2,%d3                   | the shape, 0..31 (0 = "----")
         beq     po_st_row0
@@ -2773,8 +2817,14 @@ po_ho_fold1:
         move.l  #CV_STRIDE,%d0
         muls.l  %d2,%d0
         lea     CURVALS,%a0
+        .if CX_POLY
+        bsr     cx_lf_voice_chord
+        move.l  %d0,%d6                  | effective VOIC
+        move.l  %d1,%d3                  | effective CHRD
+        .else
+        moveq   #1,%d6                   | CX mono: always VOIC 1 (SPD3 ≠ Tim cap)
         mvz.b   CV_CHRD(%a0,%d0.l),%d3   | the chord byte, locks applied: shape << 2 | inversion
-        moveq   #1,%d6                   | CX: always VOIC 1 (SPD3 ≠ Tim cap)
+        .endif
         move.l  %d3,%d0
         lsr.l   #2,%d0                   | the shape
         beq     po_ho_single
@@ -2895,17 +2945,71 @@ po_ho_new1:
 | ---- po_legmode: d2 = track -> d0 = what a CHROMATIC key (or a MIDI note) pressed
 | while another is held does on the track -- THE LEG GATE (2 Oct 2026; the
 | quantizer reaches it through the pointer block's -24, po_mon directly):
-|   0  stock: the held note ends, the new one starts (LEG OFF)
+|   0  stock: the held note ends, the new one starts (LEG OFF / VOIC 1)
 |   1  mono legato: the trigless path, the mono voice slews (LEG MONO / POLY)
-| CX OSC: ALWAYS 1 on a synth track. LEG OFF used to return 0 → stock note-off
-| + START while the previous note was still releasing (~REL, ~0.5 s of two
-| pitches). Last-note priority, no under-release. SPD3 is never Tim VOIC.
+|   2  paraphonic: key gets its own voice (VOIC 2..4, LEG OFF/MONO; chord press)
+|   3  paraphonic legato: chord follows the key (VOIC 2..4, LEG POLY)
+| CX_POLY=0: ALWAYS 1 on a synth track (hard mono; SPD3 never Tim VOIC).
 | Sample tracks unchanged below. tst.l d0 done; preserves every other register.
 po_legmode:
         bsr     po_is_synth
         beq     po_lm_sample             | not a synth track: its LEG byte, 0 -> 0 (stock), else 1 (mono legato)
-        moveq   #1,%d0                   | CX synth: always mono legato (even LEG OFF)
+        .if CX_POLY
+        lea     -16(%sp),%sp
+        movem.l %d1/%d3/%d4/%a0,(%sp)
+        movea.l PART_PTR,%a0
+        mvz.b   PART_IDX,%d0
+        move.l  #6322,%d1
+        muls.l  %d1,%d0
+        adda.l  %d0,%a0                  | the Part
+        move.l  %d2,%d1
+        lsl.l   #3,%d1
+        move.l  %d1,%d0
+        add.l   %d1,%d1
+        add.l   %d0,%d1                  | track * 24
+        bsr     cx_lf_voice_chord
+        move.l  %d0,%d3                  | effective VOIC
+        move.l  %d1,%d4                  | effective CHRD
+        move.l  %d2,%d1
+        lsl.l   #5,%d1
+        sub.l   %d2,%d1
+        sub.l   %d2,%d1                  | track * 30
+        adda.l  #AMP_P2_OFF,%a0
+        mvz.b   LEG_SLOT2(%a0,%d1.l),%d0 | LEG: 0 OFF, 1 MONO, 2.. POLY
+        subq.l  #2,%d3
+        cmpi.l  #2,%d3                   | VOIC 2..4?
+        bls     po_lm_para
+        tst.l   %d0                      | VOIC 1: OFF -> 0 (stock), else 1 (mono legato)
+        beq     po_lm_out
+        moveq   #1,%d0
+        bra     po_lm_out
+po_lm_para:
+        cmpi.l  #2,%d0                   | VOIC 2..4: POLY -> 3 (or a chord press, 2), else 2
+        bcc     po_lm_leg
+po_lm_two:
+        moveq   #2,%d0
+        bra     po_lm_out
+po_lm_leg:
+        lsr.l   #2,%d4                   | a shape: legato
+        bne     po_lm_three
+        lea     sy_state(%pc),%a0        | "----": inside the chord window of the track's last live
+        move.l  %d2,%d1                  | key START (po_st_cpress stamps T_LASTK) the key is a chord
+        lsl.l   #7,%d1                   | press -- a voice of its own
+        move.l  po_clock+CK_FRAMES(%pc),%d0
+        sub.l   T_LASTK(%a0,%d1.l),%d0
+        cmpi.l  #KR_WIN,%d0
+        bls     po_lm_two
+po_lm_three:
+        moveq   #3,%d0
+po_lm_out:
+        movem.l (%sp),%d1/%d3/%d4/%a0
+        lea     16(%sp),%sp
+        tst.l   %d0
         rts
+        .else
+        moveq   #1,%d0                   | CX mono: always mono legato (even LEG OFF)
+        rts
+        .endif
 po_lm_sample:
         lea     -8(%sp),%sp              | a sample track (3 Oct 2026): LEG OFF -> 0 (stock), LEG MONO (any
         movem.l %d3/%a0,(%sp)            | nonzero byte) -> 1 (the trigless path: instant pitch, no retrigger).
@@ -3222,6 +3326,10 @@ po_lfo3_depth:
         lea     (%a0,%d4.l*2),%a1        | displaced
         cmpi.l  #2,%d2
         bne     po_l3_back
+        .if CX_POLY
+        moveq   #0,%d0                   | LFO 3's DEP3 byte is CHRD in this build; never use it as depth
+        rts
+        .endif
         move.l  %a4,%d1                  | (whatever VOIC: slot 5 is the chord byte on a synth track,
         subi.l  #LFO_STATE,%d1
         lsr.l   #3,%d1                   | the track
@@ -3233,58 +3341,25 @@ po_lfo3_depth:
 po_l3_back:
         rts
 
-| ==== po_lfopage: the page resolver's LFO-descriptor load, 0x40031e62 (jmp, 8 B) ==
-| `movel #0x400d37f6,%d0; bras 0x40031ed6`. d3 = track, d1 = part index, a1 =
-| the bank blob, d5 = the machine byte (0x40031e2a); d2-d5 are restored by the
-| epilogue at RESOLVER_RET, d0/d1/a0/a1 are C scratch. For a FLEX track whose
-| assigned FLEX slot's sample is named SYNTH* (page.s's test) the clone --
-| built from the stock descriptor on first use -- is returned.
+| ==== po_lfopage: Tim VOIC/CHRD LFO descriptor (CX_POLY). ========================
+| Same resolver site as cx_lfo_page. Marker-less: Part signature via po_sig
+| (not CXOSC* basename). d3=track, d1=part, a1=bank, d5=machine.
 po_lfopage:
         move.l  #LFO_P,%d0               | displaced: the stock descriptor
-        cmpi.l  #1,%d5                   | FLEX?
+        mvz.b   %d5,%d2
+        cmpi.l  #1,%d2                   | FLEX?
         bne     po_lp_done
         move.l  #6322,%d2
         muls.l  %d1,%d2                  | part * 6322
         add.l   %a1,%d2                  | + the bank blob
-        move.l  %d3,%d4
-        lsl.l   #2,%d4
-        add.l   %d3,%d4                  | track * 5
-        add.l   %d4,%d2
-        move.l  %d2,%a0
-        add.l   #SLOT_OFF,%a0
-        mvz.b   (%a0),%d2                | the track's FLEX slot, 0-based
-        cmpi.l  #127,%d2
-        bhi     po_lp_done               | 0xff = none; 128.. = the recorder buffers
-        move.l  #SETTINGS_STRIDE,%d4
-        muls.l  %d2,%d4
-        addi.l  #SETTINGS_BASE,%d4
-        move.l  %d4,%a0                  | the slot's settings record; its path at +0
-        move.l  %a0,%a1
-        move.l  #255,%d4
-po_lp_scan:
-        mvz.b   (%a0)+,%d5
-        beq     po_lp_scanned
-        cmpi.l  #'/',%d5
-        bne     po_lp_scan1
-        move.l  %a0,%a1
-po_lp_scan1:
-        subq.l  #1,%d4
-        bne     po_lp_scan
-po_lp_scanned:
-        move.w  #0x0000,%d5              | no alt prefix; marker is CXOSC* only
-        cmp.w   (%a1),%d5
-        bne     po_lp_fm
-        addq.l  #2,%a1
-po_lp_fm:
-        lea     sy_name(%pc),%a0
-        moveq   #5,%d4
-po_lp_cmp:
-        mvz.b   (%a0)+,%d5
-        mvz.b   (%a1)+,%d2
-        cmp.l   %d2,%d5
+        move.l  %d0,-(%sp)
+        movea.l %d2,%a0
+        move.l  %d3,%d0
+        jsr     po_sig:l                 | 1 = CX OSC on this track
+        move.l  %d0,%d2
+        move.l  (%sp)+,%d0
+        cmpi.l  #1,%d2
         bne     po_lp_done
-        subq.l  #1,%d4
-        bne     po_lp_cmp
         lea     po_lfodesc(%pc),%a1
         tst.b   po_lfo_built
         bne     po_lp_have
@@ -3300,19 +3375,18 @@ po_lp_copy:
         move.w  (%a0),0x16+34(%a1)
         lea     po_fmt_chord(%pc),%a0    | ... its formatter the shape's name ...
         move.l  %a0,0xca+20(%a1)
-        lea     po_voic(%pc),%a0         | ... slot 2 (SPD3, LFO 3 being muted here) named VOIC ...
+        lea     po_voic(%pc),%a0         | ... slot 2 (SPD3, LFO 3 muted) named VOIC ...
         move.l  (%a0)+,0x16+12(%a1)
         move.w  (%a0),0x16+16(%a1)
         lea     po_fmt_voic(%pc),%a0     | ... printing 1..4 ...
         move.l  %a0,0xca+8(%a1)
-        moveq   #1,%d4                   | ... range 1..4, default 1 (the knob clamps to them;
-        move.l  %d4,0x6a+8(%a1)          | a Part's stock byte 32 reads as 1 until turned) ...
+        moveq   #1,%d4                   | ... range 1..4, default 1
+        move.l  %d4,0x6a+8(%a1)
         move.b  %d4,0x5e+2(%a1)
         moveq   #4,%d4
         move.l  %d4,0x9a+8(%a1)
-        clr.l   0x12a+8(%a1)             | ... the stock enum stepper (handler 0, as PMTR/WAVE: one
-                                         | step a detent; the accumulator handlers scale by the range) ...
-        move.l  0x18e(%a1),%d4           | ... both always shown (nibbles 2 and 5, bit 2)
+        clr.l   0x12a+8(%a1)             | stock enum stepper
+        move.l  0x18e(%a1),%d4           | both always shown (nibbles 2 and 5)
         andi.l  #0xff0ff0ff,%d4
         ori.l   #0x00500500,%d4
         move.l  %d4,0x18e(%a1)
@@ -4229,12 +4303,23 @@ po_keyrec:
         move.l  %d0,%d1
         add.l   %d1,%d0
         add.l   %d1,%d0                  | track * 24
+        .if CX_POLY
+        bsr     po_is_synth
+        beq     po_kr_out                | only CX tracks use the VOIC/CHRD LFO destinations
+        bsr     cx_lf_voice_chord
+        move.l  %d0,%d3                  | effective VOIC
+        move.l  %d1,%d0                  | effective CHRD
+        move.l  %d3,%d1
+        .else
         mvz.b   2(%a0,%d0.l),%d1         | VOIC
+        .endif
         subq.l  #2,%d1
         cmpi.l  #2,%d1
         bhi     po_kr_out                | 1 (or out of range): the mono synth, stock recording
         addq.l  #2,%d1
+        .if !CX_POLY
         mvz.b   5(%a0,%d0.l),%d0         | CHRD
+        .endif
         lsr.l   #2,%d0
         bne     po_kr_out                | a shape: the player's choice stands
         lea     po_chord(%pc),%a3
@@ -4685,10 +4770,22 @@ po_slot_marker:
         moveq   #0,%d0
         rts
 
-| ---- po_polytrack: always 0 -- CX OSC is mono (LFO 3 is a normal LFO).
+| ---- po_polytrack: CX OSC only when the opt-in poly voice build is active.
 po_polytrack:
+        .if CX_POLY
+        movea.l PART_PTR,%a0
+        mvz.b   PART_IDX,%d0
+        move.l  #6322,%d1
+        muls.l  %d1,%d0
+        adda.l  %d0,%a0
+        move.l  %d2,%d0
+        jsr     po_sig:l
+        tst.l   %d0
+        rts
+        .else
         moveq   #0,%d0
         rts
+        .endif
 
 | ---- the held-note list: 8 bytes a track, identities 0x80 | note in press order,
 | packed at the front, 0 = empty.

@@ -1,9 +1,8 @@
 A **Buchla-style complex oscillator** as an Octatrack track machine: two
 operators in FM, a sine wavefolder after them, modulator feedback, and
 **sine → saw → square** morphs on each operator (**SRC SETUP** **PWM**:
-sine lean / saw phase-skew / square duty). The **PWM** knob leaves the
-**CAR**/**MOD** icons alone. Timbre from folding and index. Up to **six**
-CX OSC tracks per Part.
+sine lean / saw phase-skew / square duty). The **PWM** knob leaves the **CAR**/**MOD** icons alone. The selector
+allows up to six CX OSC tracks per Part in **MONO** and four in **POLY**.
 
 Built on Tim Hastie's FM SYNTH engine (local fork). Remixes that ship
 CX OSC omit SYNTH MACHINE (same seat).
@@ -64,8 +63,11 @@ sample list first. **`[LEFT]`** reaches the machines.
   **ATK** 0 / **HOLD INF** / **REL** 0 and **LEG MONO**
 - **LFO.** **PMTR** lists PLAYBACK (**PTCH** **RATO** **INDX** **FINE**
   **FOLD** **MIX**) then AMP / FX, then SETUP **CAR** / **MOD** / **SYMM**
-  / **FDBK** / **PWM**. **DEC** stays on its knob. No VOIC / CHRD. LFO 3
-  stays **SPD3** / **DEP3**
+  / **FDBK** / **PWM**. **DEC** stays on its knob. In the default **MONO**
+  build, LFO 3 stays **SPD3** / **DEP3**. The **POLY** build (`cx-poly`)
+  shows **VOIC** (1..4) and **CHRD** in those two slots. LFO 3 is muted in
+  POLY. LFO 1 and 2 can target **VOIC** and **CHRD** from LFO SETUP **PMTR**;
+  their current values apply when the next note starts.
 
 **`[FUNC]`** on PLAYBACK knobs: **PTCH** ±12 (octave). **RATO** snaps
 classic FM ratios. **`[FUNC]`** on SETUP **CAR** / **MOD** snaps 0 / 64 /
@@ -73,7 +75,9 @@ classic FM ratios. **`[FUNC]`** on SETUP **CAR** / **MOD** snaps 0 / 64 /
 
 ### Play
 
-Trigs, chromatic keys, or MIDI. Last note wins. AMP **HOLD** owns note
+Trigs, chromatic keys, or MIDI. **MONO** keeps the last note. In **POLY**,
+**VOIC** sets the voice count and **CHRD** selects a chord shape. **LEG**
+selects **OFF**, **MONO**, or **POLY** behavior. AMP **HOLD** owns note
 length (**HOLD INF** = until **`[STOP]`**). P-locks, scenes, and MIDI CCs
 hit PLAYBACK / SETUP like any machine. Stock FX1 / FX2 and quantizer
 **GLIDE** work as usual.
@@ -126,9 +130,13 @@ destinations:
 | 32 | SYMM |
 | 33 | FDBK |
 | 34 | PWM |
+| 35 | VOIC, POLY only |
+| 36 | CHRD, POLY only |
 
 **PTCH** LFO depth matches FLEX. **DEC** is not an LFO destination; it
-stays under its knob (and locks / scenes).
+stays under its knob (and locks / scenes). In **POLY**, use LFO 1 or 2 for
+**VOIC** and **CHRD**. LFO 3's output is muted because its **DEP3** byte stores
+**CHRD**.
 
 ### A short listen path
 

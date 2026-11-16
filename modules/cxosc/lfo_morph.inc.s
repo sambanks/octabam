@@ -1,14 +1,18 @@
 | CX OSC LFO destinations:
 |   Stock 0..29: PLAYBACK / AMP / LFO / FX names via po_lfdname (Tim 2.10) so
 |   a CX track lists PTCH RATO INDX FINE FOLD MIX, not Flex STRT/LEN/... .
-|   PMTR 30 = CAR, 31 = MOD, 32 = SYMM, 33 = FDBK, 34 = PWM (private words).
+|   PMTR 30..34 = CAR/MOD/SYMM/FDBK/PWM; poly adds 35 = VOIC, 36 = CHRD.
 | DEC is not a destination. Tim private-word pattern
 | (octatrick-modules lfo_destinations.inc.s): offsets apply every audio
 | frame into sy_cxparm / sy_cxfb / sy_cxpwm. LFO_P / LFO_DESC_LEN /
 | LFO_STATE / UI_TRACK / CURVALS / CV_STRIDE / CV_SETUP / FLEX_P come from
 | poly.s.
         .set    LF_MID, 16256            | 63.5 << 8
+        .if CX_POLY
+        .set    LF_LAST, 36              | CAR..CHRD (DEC skipped)
+        .else
         .set    LF_LAST, 34              | CAR..PWM (DEC skipped)
+        .endif
         .set    LFD_ENC, 0x4003249c
         .set    LFD_STORE, 0x4003932c
         .set    LFD_RESOLVER, 0x40031da4 | page resolver (track, kind) -> descriptor
@@ -52,10 +56,37 @@ cx_ln_stock:
 cx_lfo_apply:
         mvs.w   0x12(%a2,%d2.l*2),%d0
         lea     (%a0,%d4.l*2),%a1
+        .if CX_POLY
+        cmpi.l  #2,%d2                  | the poly page stores CHRD in LFO 3's DEP3 word
+        bne     cx_la_lfo3_done
+        lea     -20(%sp),%sp
+        movem.l %d0-%d3/%a0,(%sp)
+        move.l  %a4,%d2
+        subi.l  #LFO_STATE,%d2
+        lsr.l   #3,%d2                  | track
+        jsr     po_signed:l
+        tst.l   %d0
+        beq     cx_la_lfo3_restore
+        | The LFO 3 target is track * 3 + 2. Clear its stale prior target.
+        move.l  %d2,%d3
+        add.l   %d3,%d3
+        add.l   %d2,%d3
+        addq.l  #2,%d3
+        lea     cx_lf_targets:l,%a0
+        clr.b   (%a0,%d3.l)
+        movem.l (%sp),%d0-%d3/%a0
+        lea     20(%sp),%sp
+        moveq   #0,%d0                  | do not apply CHRD as LFO 3 pitch depth
+        rts
+cx_la_lfo3_restore:
+        movem.l (%sp),%d0-%d3/%a0
+        lea     20(%sp),%sp
+cx_la_lfo3_done:
+        .endif
+        cmpi.l  #30,%d4
+        bcs     cx_la_clear_target
         tst.l   %d4
         beq     cx_la_ptch               | (Tim 2.20) PMTR 0 = PTCH: synth unit is 5× sample
-        cmpi.l  #30,%d4
-        bcs     cx_la_out
         lea     -20(%sp),%sp
         movem.l %d0-%d3/%a0,(%sp)
         move.l  %d2,%d3
@@ -88,6 +119,29 @@ cx_la_mid:
         movem.l (%sp),%d0-%d3/%a0
         lea     20(%sp),%sp
 cx_la_out:
+        rts
+
+cx_la_clear_target:
+        .if CX_POLY
+        lea     -12(%sp),%sp
+        movem.l %d1/%d3/%a0,(%sp)
+        move.l  %a4,%d1
+        subi.l  #LFO_STATE,%d1
+        lsr.l   #3,%d1                  | track
+        cmpi.l  #8,%d1
+        bcc     cx_la_clear_done
+        move.l  %d1,%d3
+        add.l   %d3,%d3
+        add.l   %d1,%d3
+        add.l   %d2,%d3                  | track * 3 + LFO
+        lea     cx_lf_targets:l,%a0
+        clr.b   (%a0,%d3.l)
+cx_la_clear_done:
+        movem.l (%sp),%d1/%d3/%a0
+        lea     12(%sp),%sp
+        .endif
+        tst.l   %d4
+        beq     cx_la_ptch               | PTCH: clear stale private target, then scale depth
         rts
 
 | PTCH on a CX OSC track: one semitone = five sample PTCH units (sy_word), so
@@ -148,7 +202,7 @@ cx_lm_each:
         mvz.b   (%a0,%d3.l),%d0
         cmpi.l  #30,%d0
         bcs     cx_lm_next
-        cmpi.l  #LF_LAST,%d0
+        cmpi.l  #34,%d0                  | only CAR..PWM are frame-morphed targets
         bhi     cx_lm_next
         lea     cx_lf_scratch:l,%a0
         mvs.w   (%a0,%d3.l*2),%d2
@@ -231,6 +285,83 @@ cx_lm_cmax:
 cx_lm_cok:
         rts
 
+.if CX_POLY
+| d2 track -> d0 effective VOIC, d1 effective CHRD for the next note.
+| Tim's PMTR 30/31 path accumulates LFO outputs in midpoint-based private
+| words; CX uses 35/36 so 30..34 keep their oscillator destinations.
+cx_lf_voice_chord:
+        lea     -28(%sp),%sp
+        movem.l %d2-%d7/%a0,(%sp)
+        move.l  #CV_STRIDE,%d0
+        mulu.l  %d2,%d0
+        lea     CURVALS,%a0
+        mvz.b   CV_VOIC(%a0,%d0.l),%d6   | lock/scene/Part value for this frame
+        mvz.b   CV_CHRD(%a0,%d0.l),%d7
+        subq.l  #1,%d6
+        cmpi.l  #3,%d6
+        bls     cx_lfvc_vbase
+        moveq   #0,%d6
+cx_lfvc_vbase:
+        addq.l  #1,%d6
+        move.l  %d2,%d3
+        add.l   %d3,%d3
+        add.l   %d2,%d3                  | track * 3 LFO slots
+        moveq   #0,%d0                   | summed VOIC offset (<<8)
+        moveq   #0,%d1                   | summed CHRD offset (<<8)
+        moveq   #3,%d4
+cx_lfvc_each:
+        lea     cx_lf_targets:l,%a0
+        mvz.b   (%a0,%d3.l),%d5
+        cmpi.l  #35,%d5
+        beq     cx_lfvc_voic
+        cmpi.l  #36,%d5
+        bne     cx_lfvc_next
+        lea     cx_lf_scratch:l,%a0
+        mvs.w   (%a0,%d3.l*2),%d5
+        subi.l  #LF_MID,%d5
+        add.l   %d5,%d1
+        bra     cx_lfvc_next
+cx_lfvc_voic:
+        lea     cx_lf_scratch:l,%a0
+        mvs.w   (%a0,%d3.l*2),%d5
+        subi.l  #LF_MID,%d5
+        add.l   %d5,%d0
+cx_lfvc_next:
+        addq.l  #1,%d3
+        subq.l  #1,%d4
+        bne     cx_lfvc_each
+        move.l  #4096,%d5                | 16 raw output units per voice step
+        divs.l  %d5,%d0
+        add.l   %d6,%d0
+        cmpi.l  #1,%d0
+        bge     cx_lfvc_vmax
+        moveq   #1,%d0
+cx_lfvc_vmax:
+        cmpi.l  #4,%d0
+        ble     cx_lfvc_chord
+        moveq   #4,%d0
+cx_lfvc_chord:
+        move.l  %d7,%d5
+        andi.l  #3,%d5                   | keep the stored inversion
+        lsr.l   #2,%d7
+        move.l  #512,%d6                 | two raw output units per chord step
+        divs.l  %d6,%d1
+        add.l   %d1,%d7
+        bpl     cx_lfvc_cmax
+        moveq   #0,%d7
+cx_lfvc_cmax:
+        cmpi.l  #31,%d7
+        ble     cx_lfvc_cpack
+        moveq   #31,%d7
+cx_lfvc_cpack:
+        lsl.l   #2,%d7
+        or.l    %d5,%d7
+        move.l  %d7,%d1
+        movem.l (%sp),%d2-%d7/%a0
+        lea     28(%sp),%sp
+        rts
+.endif
+
 cx_lf_ui_desc:
         lea     -12(%sp),%sp
         movem.l %d2/%a0-%a1,(%sp)
@@ -265,7 +396,11 @@ cx_lf_copy:
         subq.l  #1,%d0
         bne     cx_lf_copy
         lea     cx_lf_desc:l,%a1
-        moveq   #35,%d0                  | PMTR count 35 (0..34)
+        .if CX_POLY
+        moveq   #37,%d0                  | PMTR 0..36, including VOIC and CHRD
+        .else
+        moveq   #35,%d0                  | PMTR 0..34
+        .endif
         move.l  %d0,0x9a+24(%a1)
         lea     cx_lf_pmtr_fmt:l,%a0
         move.l  %a0,0xca+24(%a1)
@@ -277,6 +412,10 @@ cx_lf_build_out:
         rts
 
 cx_lfo_page:
+        .if CX_POLY
+        | Tim VOIC/CHRD LFO page on CX tracks (trades LFO3 SPD/DEP).
+        bra     po_lfopage
+        .else
         move.l  #LFO_P,%d0
         mvz.b   %d5,%d2
         cmpi.l  #1,%d2
@@ -297,6 +436,7 @@ cx_lfo_page:
         move.l  %a1,%d0
 cx_lfo_page_out:
         jmp     0x40031ed6
+        .endif
 
 cx_lfo_stage:
         subq.l  #4,%sp
@@ -342,6 +482,12 @@ cx_lf_pmtr_fmt:
         beq     cx_lf_pmtr_symm
         cmpi.l  #33,%d0
         beq     cx_lf_pmtr_fdbk
+        .if CX_POLY
+        cmpi.l  #35,%d0
+        beq     cx_lf_pmtr_voic
+        cmpi.l  #36,%d0
+        beq     cx_lf_pmtr_chrd
+        .endif
         move.b  #'P',(%a0)+              | 34 PWM (matches SETUP F)
         move.b  #'W',(%a0)+
         move.b  #'M',(%a0)+
@@ -370,6 +516,20 @@ cx_lf_pmtr_fdbk:
         move.b  #'D',(%a0)+
         move.b  #'B',(%a0)+
         move.b  #'K',(%a0)+
+        bra     cx_lf_pmtr_tag
+.if CX_POLY
+cx_lf_pmtr_voic:
+        move.b  #'V',(%a0)+
+        move.b  #'O',(%a0)+
+        move.b  #'I',(%a0)+
+        move.b  #'C',(%a0)+
+        bra     cx_lf_pmtr_tag
+cx_lf_pmtr_chrd:
+        move.b  #'C',(%a0)+
+        move.b  #'H',(%a0)+
+        move.b  #'R',(%a0)+
+        move.b  #'D',(%a0)+
+.endif
 cx_lf_pmtr_tag:
         clr.b   (%a0)
         move.b  #'S',1(%a0)
