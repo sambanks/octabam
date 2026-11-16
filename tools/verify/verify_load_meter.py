@@ -145,6 +145,15 @@ def main():
             otp.set_fx(copy, "fx1", track, 0, guard=False)   # track cost what DARK REV does (octabam, 15 Nov 2026:
                                                         # every 0x04 slot 1633..1685 counts, DARK REV 1645/1650) and
                                                         # the heaviest slot fell on a tie (4, 10)
+    else:
+        # The gate has no remix argument (remix_arg=False), so CI's (project) units run it on its default, octabam-bus,
+        # with the unit's generated project: no host is wired in it, slots 7 and 12 came out heaviest and the sums were
+        # 344 and 326 counts against about 2000 (sambanks/octabam#1129, run 43764596132; the same on the port with this
+        # argument left off). The copy gets the locked rig, as a project RIG HOSTS wires: T1 DELAY SERVER, T5 REVERB
+        # SERVER, T8 the stock DELAY, every other track SEND
+        sys.path.insert(0, str(ROOT / "tools/hw"))
+        import ot_project as otp
+        otp.host_rig(copy, a.remix, guard=False)
 
     into = [(0x1c, 500)] + [(0x20, 500)] * 4 + [(0x21, 500)]                 # PROJ, BRAIN's pane
     open_load = [(0x32, 500)] + into + [(0x20, 500)] * 3 + [(0x31, 500)]      # BRAIN > PERFORMANCE (the fourth row)
