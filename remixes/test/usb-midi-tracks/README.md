@@ -10,9 +10,8 @@ Stock effects + USB MIDI + USB MIDI TRACKS. Smallest image that carries the modu
 
 The module's own gate (`verify_usbmidi_tracks`) passed under the port on this
 build, 16 Nov 2026: TRIG CHANNEL, order, gate length and the stuck-note sweep.
-The whole-remix `make check` runs in CI on the PR. The PR's first build (channel = track,
-always on) was seen working on an MKII on 15 Nov 2026 (owner report); this
-build has not been flashed.
+The whole-remix `make check` runs in CI on the PR. On a unit the module ran in
+[`usb-midi-tracks-hw`](../usb-midi-tracks-hw/README.md), not in this image (MKII, 16 Nov 2026).
 
 ```bash
 make check REMIX=usb-midi-tracks

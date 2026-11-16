@@ -23,8 +23,9 @@ sends no CC 16..21 of its own to muddle the count), and in bank A:
   TRIG CHANNELs 1, 2, 4, 3, 5..8: T3 and T4 swapped, so the channel shows which build read the setting
   pattern 1 (part 1)  T1..T4 FLEX, slots 1..4 (notes 0..3), a trig on every step;
                       T1 RTRG INF RTIM 4 and T2 RTRG INF RTIM 16 locked on every trig: the stress
-  pattern 2 (part 2)  the same, but T1 is THRU: a part change that takes T1 off the hooked renderer
-                      with a note pending, as the stuck-note fix is about
+  pattern 2 (part 2)  the same, but T1 is THRU with one trig on step 1: the THRU machine STARTs while
+                      the FLEX voice's note is pending, so T1 leaves the hooked renderer with a note open
+  both patterns LEN 16 at 1X: one bar, 2 s at 120 BPM
 Every other trig and lock of patterns 1 and 2 is cleared. Written to out/hw/umt/card/UMTSET/UMT.
 
 `deploy` copies the three .RMX files to /BRAIN/REMIXES/ and the set to the card root. With a REMOTE image
@@ -216,9 +217,15 @@ def cmd_project(a):
                     ob.set_mask(d, pat, t, 0, which)
                 base = ob.trac(pat, t) + ob.LOCKS
                 d[base:base + ob.NSTEPS * ob.LOCK_LEN] = bytes([ob.NOLOCK]) * (ob.NSTEPS * ob.LOCK_LEN)
+            tail = otp.PTRN0 + pat * otp.PTRN_FSTRIDE + otp.PTRN_FSTRIDE - 11
+            d[tail + 2], d[tail + 3] = 16, 2            # LEN 16, SCALE 1X: a pattern is one bar (2 s at 120)
             for t in range(4):
                 if pat == 1 and t == 0:
-                    continue                            # T1 is THRU in part 2
+                    # T1 is THRU in part 2: one trig on step 1, so the THRU machine STARTs while the FLEX
+                    # voice's note is pending. Without it the FLEX voice plays on (INF retrig) and is
+                    # still rendered: that is what the first unit run (new1, 16 Nov 2026) did.
+                    ob.set_mask(d, pat, t, 1)
+                    continue
                 ob.set_mask(d, pat, t, 0xffff)          # steps 1..16
                 for st in range(16):
                     rec = ob.trac(pat, t) + ob.LOCKS + st * ob.LOCK_LEN
@@ -232,8 +239,11 @@ def cmd_project(a):
     pat_part, _ = otp.bank_info(dest, 1)
     d = (dest / "bank01.work").read_bytes()
     ok = pat_part[:2] == [0, 1] and int.from_bytes(d[-2:], "big") == (sum(d[0x10:-2]) & 0xFFFF)
-    ok &= all(ob.trigs(d, 0, t) == list(range(16)) for t in range(4)) and ob.trigs(d, 1, 0) == []
-    ok &= ob.locks(d, 0, 0)[0] == {RTRG: 127, RTIM: 4} and ob.locks(d, 0, 2) == {}
+    ok &= all(ob.trigs(d, 0, t) == list(range(16)) for t in range(4)) and True
+    ok &= ob.locks(d, 0, 0)[0] == {RTRG: 127, RTIM: 4} and ob.locks(d, 0, 2) == {} and ob.trigs(d, 1, 0) == [0]
+    for pat in (0, 1):
+        tail = otp.PTRN0 + pat * otp.PTRN_FSTRIDE + otp.PTRN_FSTRIDE - 11
+        ok &= (d[tail + 2], d[tail + 3]) == (16, 2)
     ok &= list(d[part_off(1) + otp.MTYPE_OFF:][:4]) == [FLEX] * 4
     ok &= list(d[part_off(2) + otp.MTYPE_OFF:][:4]) == [THRU] + [FLEX] * 3
     ok &= [d[part_off(1) + 0x2d3 + t * 5 + 1] for t in range(4)] == [0, 1, 2, 3]
@@ -352,6 +362,7 @@ def cmd_switch(a):
         time.sleep(0.5)  # waits for: the unit to leave USB at its reset
     if wait_healthy(90) is None:
         sys.exit("the unit did not come back healthy within 90 s")
+    time.sleep(15.0)  # waits for: the project and its samples to load after the boot (off2 started too early)
     print("  up, DSP running")
 
 
@@ -448,6 +459,11 @@ def cmd_run(a):
     with lock:
         res["midi"] = [(round(t, 4), m.hex()) for t, m in msgs if m]
     res["judged"] = judge(res)
+    b, a2 = res["before"], res["after"]
+    if isinstance(a2, dict) and a2["starts"] - b["starts"] == 0:
+        # nothing STARTed: the project was not loaded yet (off2, 16 Nov 2026: run 5 s after a switch), or
+        # START never arrived. Silence then proves nothing.
+        res["verdict"] = "DID NOT PLAY (no START reached the module): load the project, run again"
     (OUT / f"{a.label}.json").write_text(json.dumps(res, indent=1))
     show(res)
     print(f"  -> {OUT / (a.label + '.json')}")
