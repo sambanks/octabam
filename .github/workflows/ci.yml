@@ -64,7 +64,7 @@ jobs:
     # The units this diff reaches (tools/verify/reach.py --json: `matrix`), one per gate job, without the ones whose
     # pass is recorded for the same image and inputs (`--lookup`: each reached remix's image is built here and every
     # unit's gate_cache key computed). Holds the 1.40C like a unit does, because the keys are of the images built from
-    # it. It also makes the generated project (tools/hw/ot_fresh.py) once per remix that has a unit reading one, and
+    # it. It also makes the generated project (tools/hw/ot_fresh.py, `--fresh`) once per remix that has a unit reading one, and
     # hands it to those units as an artifact; the bytes are not cached outside the runner's own .git, not printed.
     name: 🗺️ Plan Gates
     needs: classify
@@ -137,12 +137,10 @@ jobs:
           mkdir -p .git/octabam-gate-cache .git/octabam-fresh-cache
           touch "$RUNNER_TEMP/plan-start"
           ls .git/octabam-fresh-cache > "$RUNNER_TEMP/fresh-before"
-          python3 tools/verify/reach.py --json --jobs 3 --base "$base" > "$RUNNER_TEMP/plan0.json"
-          projects="$(python3 -c "import json,sys; print(' '.join(json.load(open(sys.argv[1]))['projects']))" "$RUNNER_TEMP/plan0.json")"
-          for r in $projects; do
-            .venv/bin/python3 tools/hw/ot_fresh.py --remix "$r" --out out/fresh
-          done
-          python3 tools/verify/reach.py --json --lookup --jobs 3 --base "$base" > "$RUNNER_TEMP/plan.json"
+          # one build of each reached remix: --fresh makes a project remix's generated project from it while the
+          # next remix builds, --lookup keys the units from it (until 16 Nov 2026: ot_fresh.py --remix, then a second
+          # build of the same remix for the keys)
+          python3 tools/verify/reach.py --json --lookup --fresh --jobs 3 --base "$base" > "$RUNNER_TEMP/plan.json"
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
           d = json.load(open(os.environ["RUNNER_TEMP"] + "/plan.json"))

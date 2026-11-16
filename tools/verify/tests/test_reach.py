@@ -788,6 +788,87 @@ class PlanJsonTests(unittest.TestCase):
             reach.main(["--json", "--run"])
 
 
+class PlanImagesTests(unittest.TestCase):
+    """The plan builds each remix once and makes a project from that build while the next remix builds."""
+
+    class Boot:
+        def __init__(self, log, name, rc=0):
+            self.log, self.name, self.rc, self.killed = log, name, rc, False
+
+        def wait(self):
+            self.log.append(f"wait {self.name}")
+            return self.rc
+
+        def poll(self):
+            return self.rc
+
+        def kill(self):
+            self.killed = True
+
+    def run_plan(self, remixes, projects, broken=(), boot_rc=None):
+        import io
+        log, boots = [], []
+
+        def build(r, _log):
+            log.append(f"build {r}")
+            return None if r in broken else f"out/plan/{r}.bin"
+
+        def fresh(r, image, _log):
+            log.append(f"boot {r} {image}")
+            boots.append(self.Boot(log, r, (boot_rc or {}).get(r, 0)))
+            return boots[-1]
+        return reach.plan_images(remixes, projects, io.StringIO(), build=build, fresh=fresh), log, boots
+
+    def test_each_remix_builds_once_and_a_boot_starts_before_the_next_build(self):
+        images, log, _ = self.run_plan(["a", "b", "c"], {"a", "c"})
+        self.assertEqual(log, ["build a", "boot a out/plan/a.bin", "build b", "build c", "boot c out/plan/c.bin",
+                               "wait a", "wait c"])
+        self.assertEqual(images, {r: f"out/plan/{r}.bin" for r in "abc"})
+
+    def test_a_remix_that_does_not_build_has_no_image_and_stops_the_plan_only_when_a_unit_needs_its_project(self):
+        images, log, _ = self.run_plan(["a", "b"], set(), broken={"a"})
+        self.assertEqual(images, {"b": "out/plan/b.bin"})
+        with self.assertRaises(SystemExit) as e:
+            self.run_plan(["a", "b"], {"b"}, broken={"b"})
+        self.assertIn("no generated project for b", str(e.exception))
+
+    def test_a_failed_boot_stops_the_plan(self):
+        with self.assertRaises(SystemExit) as e:
+            self.run_plan(["a", "b"], {"a", "b"}, boot_rc={"a": 1})
+        self.assertIn("no generated project for a", str(e.exception))
+
+    def test_the_plan_builds_the_job_remixes_for_the_lookup_and_the_project_remixes_for_fresh(self):
+        units = [{"name": "u1", "items": [], "remix": "a", "modules": None, "jobs": ["set"], "project": False},
+                 {"name": "u2", "items": [], "remix": "b", "project": True, "shared": {"remix_arg": True}},
+                 {"name": "u3", "items": [], "remix": "a", "modules": ["K"], "jobs": ["menu"], "project": False}]
+        for lookup, fresh, want in ((True, True, (["a", "b"], {"b"})), (True, False, (["a"], set())),
+                                    (False, True, (["b"], {"b"})), (False, False, ([], set()))):
+            with mock.patch.object(reach, "entries", return_value=units), \
+                    mock.patch.object(reach, "plan_images", return_value={}) as images, \
+                    mock.patch.object(reach, "cached_units", return_value={"u1": ["k" * 64]}) as cached, \
+                    mock.patch.dict(os.environ, {"OCTABAM_GATE_CACHE": "1"}):
+                d = reach.plan_json("origin/main", None, True, 3, ["a", "b"], [], lookup=lookup, fresh=fresh)
+            self.assertEqual(images.call_args[0][:2], want, (lookup, fresh))
+            self.assertEqual(cached.called, lookup)
+            self.assertEqual(d["projects"], ["b"])
+            self.assertEqual([e["name"] for e in d["matrix"]], ["u2", "u3"] if lookup else ["u1", "u2", "u3"])
+
+    def test_a_key_is_of_the_image_it_is_given(self):
+        import tempfile
+        import gate_cache
+        with tempfile.TemporaryDirectory() as t:
+            t = pathlib.Path(t)
+            (t / "out").mkdir()
+            (t / "out/mainos_bus.bin").write_bytes(b"one")
+            (t / "kept.bin").write_bytes(b"one")
+            (t / "other.bin").write_bytes(b"two")
+            with mock.patch.object(gate_cache, "inputs", return_value=set()):
+                k = lambda **kw: gate_cache.key(t, "r", "job", [], set(), deps={}, env={}, **kw)
+                self.assertEqual(k(), k(image=t / "kept.bin"))
+                self.assertNotEqual(k(), k(image=t / "other.bin"))
+                self.assertIsNone(k(image=t / "absent.bin"))
+
+
 class VendorWriterTests(unittest.TestCase):
     """`reach --run` in a worktree must not run a step that writes the shared vendor/."""
 

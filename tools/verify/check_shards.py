@@ -478,12 +478,13 @@ def job_names(remix_name, modules=None):
         return [j[0] for j in remix_jobs(remix_name, ROOT / "out/shards/0") if j[0] != "module-gates"]
 
 
-def job_keys(remix_name, modules, project_of, deps, log):
+def job_keys(remix_name, modules, project_of, deps, log, image=None):
     """{job: gate_cache key} after `make bus REMIX=<remix>` in ROOT: the key run_job computes in a shard of the same
-    tree. `project_of(job)` is the job's OT_PROJECT, or None for the one clean_env() gives. {} when the build fails."""
+    tree. `project_of(job)` is the job's OT_PROJECT, or None for the one clean_env() gives. {} when the build fails.
+    With `image` (a copy of that build: reach.build_images) nothing is built and the keys are of that image."""
     env = clean_env()
-    if subprocess.run(["make", "bus", f"REMIX={remix_name}"], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
-                      env=env).returncode:
+    if image is None and subprocess.run(["make", "bus", f"REMIX={remix_name}"], cwd=ROOT, stdout=log,
+                                        stderr=subprocess.STDOUT, env=env).returncode:
         return {}
     with scoped(modules):
         jobs = remix_jobs(remix_name, ROOT / "out/shards/0")
@@ -496,7 +497,7 @@ def job_keys(remix_name, modules, project_of, deps, log):
         if project:
             e["OT_PROJECT"] = str(project)
         out[name] = gate_cache.key(ROOT, remix_name, name, [a for c in cmds for a in c],
-                                   job_scripts(cmds) | scripts, deps, e)
+                                   job_scripts(cmds) | scripts, deps, e, image=image)
     return out
 
 

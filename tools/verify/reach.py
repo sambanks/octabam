@@ -1117,7 +1117,7 @@ def entry_name(kind, command):
 # 248-411 s with a generated project (run 43811384156, 16 Nov 2026).
 #
 # The jobs that read OT_PROJECT (`Gate.project`, and PROJECT_SET's `set`) get a project made by tools/hw/ot_fresh.py in
-# the plan job (255 s on a runner), once per remix, and each of those units downloads it. `image` jobs without
+# the plan job (`--fresh`, from the plan's one build of the remix), once per remix, and each of those units downloads it. `image` jobs without
 # `Gate.project` have none: with a project verify_brain failed and the one `image` job took 2869 s on cxosc-core
 # (27 Oct 2026).
 PROJECT_SET = ("octabam",)         # remixes whose `set` job runs with the generated project (the others run it without)
@@ -1307,10 +1307,73 @@ def project_dir(remix):
     return ROOT / FRESH / remix / "NOPROJ"
 
 
-def cached_units(units, log):
+# Each reached remix's image as the plan built it: out/plan/<remix>.bin. Not under FRESH: ci.yml uploads that directory.
+PLAN_IMAGES = "out/plan"
+
+
+def build_image(remix, log):
+    """`make bus REMIX=<remix>` in ROOT and a copy of the image at PLAN_IMAGES/<remix>.bin (the next remix's build
+    replaces out/mainos_bus.bin); None when the build fails."""
+    t0 = time.monotonic()
+    if subprocess.run(["make", "bus", f"REMIX={remix}"], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+                      env=check_shards.clean_env()).returncode:
+        print(f"reach: make bus REMIX={remix} failed", file=log, flush=True)
+        return None
+    dest = ROOT / PLAN_IMAGES / f"{remix}.bin"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / "out/mainos_bus.bin", dest)
+    print(f"reach: {remix} built in {time.monotonic() - t0:.0f} s", file=log, flush=True)
+    return dest
+
+
+def start_fresh(remix, image, log):
+    """tools/hw/ot_fresh.py for `remix` on its built `image`, started: the generated project at FRESH/<remix>/NOPROJ
+    (from ot_fresh's cache, or a boot of the port: one thread, 70-135 s on a runner)."""
+    py = ROOT / ".venv/bin/python3"
+    return subprocess.Popen([str(py) if py.exists() else sys.executable, str(ROOT / "tools/hw/ot_fresh.py"),
+                             "--remix", remix, "--image", str(image), "--built", "--out", str(ROOT / FRESH)],
+                            cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+
+
+def plan_images(remixes, projects, log, build=build_image, fresh=start_fresh):
+    """{remix: image} of `remixes`, each built once, one after another (the tree has one out/). The generated project
+    of a remix in `projects` is made from its image while the remixes after it build, and all are waited for. Until
+    16 Nov 2026 a project remix was built twice (ot_fresh.py --remix, then check_shards.job_keys) and booted between
+    the two: 250 and 398 s of the plan step for octabam alone (runs 43857055189 and 43936154630). A remix that does
+    not build has no image; the plan stops when that remix, or a boot, leaves a unit without its project."""
+    images, running, failed = {}, [], []
+    try:
+        for r in remixes:
+            image = build(r, log)
+            if image is None:
+                if r in projects:
+                    failed.append(r)
+                    break
+                continue
+            images[r] = image
+            if r in projects:
+                running.append((r, time.monotonic(), fresh(r, image, log)))
+        for r, t0, proc in running:
+            if failed:
+                proc.kill()
+            if proc.wait() and not failed:
+                failed.append(r)
+            elif not failed:
+                print(f"reach: {r}'s generated project after {time.monotonic() - t0:.0f} s", file=log, flush=True)
+    finally:
+        for _, _, proc in running:
+            if proc.poll() is None:
+                proc.kill()
+    if failed:
+        sys.exit(f"reach: no generated project for {failed[0]} (make bus, then tools/hw/ot_fresh.py: the log above)")
+    return images
+
+
+def cached_units(units, log, images):
     """The names of `units` (entries()) whose every gate job has a pass recorded for the key it would run under
-    (tools/verify/gate_cache.py), after building each remix's image here. A project unit whose project is not made, a
-    job whose image does not build, and a `once` gate (module_gates caches only `remix_arg=False` ones) are not cached."""
+    (tools/verify/gate_cache.py), from each remix's image as plan_images() built it. A project unit whose project is
+    not made, a job whose image did not build, and a `once` gate (module_gates caches only `remix_arg=False` ones)
+    are not cached."""
     import gate_cache  # noqa: E402
     sys.path.insert(0, str(ROOT / "tools"))
     from remix import registry  # noqa: E402
@@ -1319,16 +1382,15 @@ def cached_units(units, log):
         return {}
     deps = scan_deps(ROOT)
     registry.modules()
-    hits, keys = {}, {}
-    groups = {}
-    for u in units:
-        if "jobs" in u:
-            groups.setdefault((u["remix"], tuple(u["modules"] or ())), []).append(u)
-    for (remix, modules), us in groups.items():
+    hits = {}
+    for (remix, modules), us in job_groups(units).items():
+        if remix not in images:
+            continue
         projects = {j for u in us if u["project"] for j in u["jobs"]}
         have = project_dir(remix).is_dir()
         got = check_shards.job_keys(remix, list(modules) or None,
-                                    lambda job: project_dir(remix) if job in projects and have else None, deps, log)
+                                    lambda job: project_dir(remix) if job in projects and have else None, deps, log,
+                                    image=images[remix])
         for u in us:
             if u["project"] and not have:
                 continue
@@ -1359,19 +1421,35 @@ def cached_units(units, log):
     return hits
 
 
-def plan_json(base, merge_base, quick, jobs, remixes, items, lookup=False, log=None):
+def job_groups(units):
+    """{(remix, modules): [unit]} of the units that are gate jobs of a remix, in plan order."""
+    groups = {}
+    for u in units:
+        if "jobs" in u:
+            groups.setdefault((u["remix"], tuple(u["modules"] or ())), []).append(u)
+    return groups
+
+
+def plan_json(base, merge_base, quick, jobs, remixes, items, lookup=False, log=None, fresh=False):
     """The plan as data, for a caller that fans the gates out (a CI matrix): `gates`, one entry per command in run
     order with the paths that put it there, and `matrix`, the units entries() makes of them, each `{"name",
-    "commands", "remix", "project"}`. `projects` is the remixes a project unit needs; `cached` the units left out
-    because every gate job of them has a pass recorded (`lookup`). `${STRESS_SOURCE}` and `${BASE}` are left in the
+    "commands", "remix", "project"}`. `projects` is the remixes a project unit needs (`fresh`: their generated
+    projects are made here); `cached` the units left out because every gate job of them has a pass recorded
+    (`lookup`). Each remix either needs is built once (plan_images). `${STRESS_SOURCE}` and `${BASE}` are left in the
     commands as printed; --run substitutes them."""
+    import gate_cache  # noqa: E402
+    log = log or sys.stderr
     units = entries(items, jobs)
-    hits = cached_units(units, log or sys.stderr) if lookup else {}
+    projects = sorted({e["remix"] for e in units if e["project"]})
+    build = [r for r, _ in job_groups(units)] if lookup and gate_cache.enabled() else []
+    build += projects if fresh else []
+    images = plan_images(list(dict.fromkeys(build)), set(projects) if fresh else set(), log)
+    hits = cached_units(units, log, images) if lookup else {}
     live = [e for e in units if e["name"] not in hits]
     return {"base": base, "merge_base": merge_base, "tier": "quick" if quick else "full", "jobs": jobs,
             "remixes": remixes,
             "gates": [{"kind": k, "command": c, "paths": list(ps)} for k, c, ps in items],
-            "projects": sorted({e["remix"] for e in units if e["project"]}),
+            "projects": projects,
             "cached": {n: [k[:12] for k in ks] for n, ks in hits.items()},
             "matrix": [{"name": e["name"], "commands": [c for _, c, _ in e["items"]], "remix": e["remix"],
                         "project": e["project"]} for e in live]}
@@ -1417,6 +1495,9 @@ def main(argv=None):
     ap.add_argument("--lookup", action="store_true",
                     help="with --json: build each remix's image here and leave out of `matrix` the units whose every gate "
                          "job has a pass recorded (tools/verify/gate_cache.py); they are listed in `cached`")
+    ap.add_argument("--fresh", action="store_true",
+                    help="with --json: make the generated project of each remix in `projects` here (tools/hw/ot_fresh.py, "
+                         f"{FRESH}/<remix>/NOPROJ), from the one build of the remix, before --lookup keys the units that read it")
     ap.add_argument("--json", action="store_true",
                     help="print the plan as one JSON object on stdout (the report goes to stderr) and exit; not with --run")
     ap.add_argument("--stamp-port", action="store_true",
@@ -1424,8 +1505,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.json and a.run:
         ap.error("--json prints the plan and runs nothing: not with --run")
-    if a.lookup and not a.json:
-        ap.error("--lookup is for --json")
+    if (a.lookup or a.fresh) and not a.json:
+        ap.error("--lookup and --fresh are for --json")
     if a.stamp_port:
         stamp_port()
         return 0
@@ -1481,7 +1562,7 @@ def main(argv=None):
               " (it then runs the accepted remixes' checks itself).")
     if a.json:
         sys.stdout = report_to
-        print(json.dumps(plan_json(a.base, merge_base, quick, a.jobs, remixes_reached(rows), items, a.lookup), indent=2))
+        print(json.dumps(plan_json(a.base, merge_base, quick, a.jobs, remixes_reached(rows), items, a.lookup, fresh=a.fresh), indent=2))
         return 0
     if not a.run:
         return 0

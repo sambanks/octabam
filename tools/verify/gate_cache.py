@@ -145,15 +145,17 @@ def inputs(root, remix, scripts, deps):
     return files
 
 
-def key(root, remix, job, argv, scripts, deps=None, env=None):
+def key(root, remix, job, argv, scripts, deps=None, env=None, image=None):
     """The job's key in the tree at `root` (a shard, or this tree), after
     `make bus REMIX=<remix>` there, for a job run with `env` (the project
     is the job's OT_PROJECT, not this process's); None when the image is
-    missing."""
+    missing. `image` is a copy of that build kept elsewhere (reach's plan
+    builds one remix after another in one tree); the key holds the image's
+    content, not its path."""
     env = os.environ if env is None else env
     import reach  # noqa: E402  (tools/verify; the graph and the port digest)
     root = pathlib.Path(root)
-    image = root / "out/mainos_bus.bin"
+    image = pathlib.Path(image) if image else root / "out/mainos_bus.bin"
     if not image.is_file():
         return None
     deps = reach.scan_deps(root) if deps is None else deps

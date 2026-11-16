@@ -440,7 +440,8 @@ unit per shared module gate, `check-shared (<gate>)` (`SHARED_PART=modules MODUL
 `verify.py` are `<module dir>/verify`). Past `reach.MATRIX_LIMIT` (250; a GitHub matrix holds 256) a remix's gate jobs share units,
 as few to a unit as fits: `check-remix <remix> (<job> +<n>)`.
 
-The plan job builds each reached remix's image and leaves out of the matrix every unit whose gate jobs all have a pass recorded
+The plan job builds each reached remix's image, once (`reach.plan_images`; a copy is kept at `out/plan/<remix>.bin` because
+the next remix's build replaces `out/mainos_bus.bin`), and leaves out of the matrix every unit whose gate jobs all have a pass recorded
 for the same image and inputs (`reach.py --json --lookup`; the key is `gate_cache.key`, the one the unit computes). The
 omitted units are in the plan's `cached` and on its summary page. A `once` shared gate has no key (`module_gates` caches only
 `remix_arg=False` gates), so its unit always runs. The passes are one actions-cache entry (`gate-store-@<run id>`): each
@@ -448,7 +449,8 @@ unit uploads the passes it recorded as an artifact and `gates-result` merges the
 dropped (a cache hit refreshes the file's mtime).
 
 The units that read `OT_PROJECT` get a project: `tools/hw/ot_fresh.py` boots the port and creates one with the panel script
-(100 s locally, 255 s in CI) in the plan job, once per remix with such a unit, and keeps it in
+(100 s locally, 255 s in CI with its own build of the image) in the plan job (`reach.py --fresh`: from the plan's build of
+the remix, while the next remix builds), once per remix with such a unit, and keeps it in
 `<git common dir>/octabam-fresh-cache/<sha256 of image, port sources, script>` (CI: an actions-cache entry, `fresh-@<run id>`),
 so a rerun for the same inputs is the image build alone (41 s locally). The units download it as the artifact
 `fresh-projects`. The `image:` jobs without `Gate.project` have none: with a project `verify_brain` failed and the one `image` job ran
@@ -784,7 +786,7 @@ PR; a first-time contributor's run waits for maintainer approval:
 | job | target | proves |
 |---|---|---|
 | 🔍 Classify Changes | `tools/verify/ci_paths.py` on the diff | each job below runs only when the diff touches its inputs (the map is `JOB_PREFIXES` there); a skipped job is a grey check, not a pass. No usable diff (a manual run) and workflow, Makefile and `scripts/` changes run everything; `make ci` locally still runs everything |
-| 🗺️ Plan Gates | `reach.py --json --lookup --jobs 3` | the units the diff's gates split into, without the ones with a recorded pass; builds each reached remix's image and makes the generated projects (the 1.40C on the runner) |
+| 🗺️ Plan Gates | `reach.py --json --lookup --fresh --jobs 3` | the units the diff's gates split into, without the ones with a recorded pass; builds each reached remix's image and makes the generated projects (the 1.40C on the runner) |
 | 🧪 Gates — `<unit>` | `make reach RUN=1 KEEP=1 JOBS=3 REACHARGS='--only "<unit>"'` | one unit of the plan, on the stock 1.40C fetched into its own runner (Ubuntu) |
 | 🧪 Gates — make reach | `needs` the two above | green when the plan ran and every unit passed (or the plan had none); the one check that stands for all of them; writes the pass store |
 | 🎛️ DSP Toolchain — dsp56300 | `make ci-dsp` | the vendored DSP emulator at its pin takes our patch, builds, passes upstream's runner; `dsp_asm` emits the one-word displaced move (Ubuntu only) |
@@ -796,7 +798,7 @@ PR; a first-time contributor's run waits for maintainer approval:
 `check-shared` and one `check-shared (<gate>)` per shared module gate, and every other command as its own unit (`refhash`,
 `verify-bus`, `identity`, ...). `verify_docs`, `test-acceptance`, `ci-dsp`, `ci-emu` and `ci` are no unit: Docs, DSP
 Toolchain and ColdFire Port Unit Tests run them for every diff that plans them (`reach.DEDICATED`; a local
-`make reach RUN=1` still runs them). `--lookup` leaves out the units with a recorded pass (the plan's `cached`). `--only <unit>`
+`make reach RUN=1` still runs them). `--lookup` leaves out the units with a recorded pass (the plan's `cached`); `--fresh` makes the generated projects. `--only <unit>`
 plans again from the same diff, without the lookup, and keeps that unit, so the plan job and the unit jobs must pass the same
 `--jobs`. A unit's setup is the whole job's (checkout, caches, `make os`, `make recon`, `make emu-setup`, the port from the
 cache; `.github/actions/gates-setup`): 47-94 s without a project and 248-411 s with the fresh project step it had before the

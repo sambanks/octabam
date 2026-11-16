@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A fresh, empty Octatrack project made by the firmware itself under the ColdFire port, with no file from a unit.
 
-    python3 tools/hw/ot_fresh.py [--remix octabam] [--image out/mainos_bus.bin] [--out out/fresh]
+    python3 tools/hw/ot_fresh.py [--remix octabam] [--image out/mainos_bus.bin] [--built] [--out out/fresh]
 
 The port boots the image on a card with no project, a panel script does what a person does (PROJECT > CHANGE >
 CREATE EMPTY PROJECT, then SAVE PROJECT: the keys verify_kits.py's `newsave` scenario uses), and the card the firmware
@@ -93,9 +93,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--remix", default=None, help="build this remix first (make bus); else use --image as it is")
     ap.add_argument("--image", default=str(ROOT / "out/mainos_bus.bin"))
+    ap.add_argument("--built", action="store_true",
+                    help="--image is --remix's build already: build nothing (reach.py's plan, which builds each remix once)")
     ap.add_argument("--out", default=str(ROOT / "out/fresh"))
     a = ap.parse_args()
-    if a.remix:
+    if a.built and not a.remix:
+        ap.error("--built names the remix --image was built from: give --remix")
+    if a.remix and not a.built:
         r = subprocess.run(["make", "bus", f"REMIX={a.remix}"], cwd=ROOT, capture_output=True, text=True)
         if r.returncode:
             sys.exit(f"make bus REMIX={a.remix} failed:\n{r.stdout[-600:]}{r.stderr[-600:]}")
