@@ -2,8 +2,10 @@
 """REC THRESHOLD under the port: TRIG THR set through RECORDING SETUP, then
 TRACK 1 + REC AB, in twelve scenarios.
 
-Each scenario boots the built image (out/mainos_bus.bin) on a private empty
-card, opens RECORDING SETUP 1 with FUNC + REC AB, turns encoder D three
+Each scenario boots the built image (out/mainos_bus.bin) on a private card
+holding a complete empty project the firmware made itself (tools/hw/ot_fresh.py:
+CREATE EMPTY PROJECT, then SAVE, under the port; every bank file present, as on
+a unit), opens RECORDING SETUP 1 with FUNC + REC AB, turns encoder D three
 steps (4 detents a step) so TRIG reads THR, closes it with NO, and presses
 TRACK 1 + REC AB. "Started" means the recorder's arm wrote LIMIT
 (0x46c7fe24[0]) at 0x400069d6, as it does after a stock press.
@@ -12,7 +14,7 @@ TRACK 1 + REC AB. "Started" means the recorder's arm wrote LIMIT
   silent  a silent WAV from the DSP boot    armed, never started; track 1's
                                             status icon blinks (its drawn state
                                             alternates with 0x10 + state)
-  late    silent 10 s, then numbered samples
+  late    numbered samples from script 6 s
                                             armed, started only after a wait; the
                                             take's first sample within one frame
                                             (16 samples) of the onset
@@ -30,7 +32,7 @@ TRACK 1 + REC AB. "Started" means the recorder's arm wrote LIMIT
 
 LEV (the QREC byte under THR, -40 dB when TRIG becomes THR, set through
 RECORDING SETUP 2's encoder D, 4 detents a step of LEV_DB) against a steady
-1 kHz sine after 10 s of silence:
+1 kHz sine from script 6 s:
 
   high    -20 dBFS, LEV -12 dB              armed, never started; encoder E
                                             (IN, QPL's cell) leaves QPL alone
@@ -42,7 +44,16 @@ RECORDING SETUP 2's encoder D, 4 detents a step of LEV_DB) against a steady
 `verify_rec_threshold.py [scenario ...]` runs the named scenarios (default all twelve, at once). The
 manifest runs them as three gates, each a unit of its own in CI (modules/rec-threshold/verify_rec_threshold_<group>.py):
 `arming` is tones, late, cancel and untrig, `inputs` is silent, stock, inpage_one and inpage_thr, `level` is high,
-quiet, low and full. A run costs its emulated time with the DSP, about 6.5 s of wall time per emulated second
+quiet, low and full.
+
+A WAV input is cued (ot_emu --audio-in-on-cue): silent until the script's `ONSET_MS audio start` line, then
+from its first sample. The onset is on the script's clock, the one the presses use. Until 16 Nov 2026 the WAVs
+began with 10 s of silence from the DSP boot (--audio-in-from-boot) and the presses came 2 s into the script,
+after the load: the press led the onset only while boot and load took under ~8 s. They took 9.1 s on octabam
+once a STORE Part client (SEQ, sambanks/octabam#1133) moved the port's load-end mark past stock's write of
+the missing bank files of the bare project the gate then staged, and `cancel` failed.
+
+A run costs its emulated time with the DSP, about 6.5 s of wall time per emulated second
 (one scenario alone, M-series, 4 Nov 2026: 5 s of script 43 s, 14 s 97 s, boot 10 s).
 
 Never flashes or talks to hardware.
@@ -207,9 +218,16 @@ def first_numbered(dump):
     return best
 
 
+ONSET_MS = 6000                      # script time of a cued WAV's first sample: after every press and edit
+                                     # (2000, cancel's 3000, untrig's 2500..2920, the level presses at 3200)
+
+
 def run(work, card, armed, name, audio, script, quit_ms):
     path = work / f"{name}.script"
-    path.write_text("\n".join(script + [f"{quit_ms} quit"]) + "\n")
+    cued = audio != "tones"
+    lines = script + ([f"{ONSET_MS} audio start"] if cued else []) + [f"{quit_ms} quit"]
+    lines.sort(key=lambda ln: float(ln.split()[0]))          # stable: the port applies the lines in order
+    path.write_text("\n".join(lines) + "\n")
     args = [str(EMU), "--image", str(IMAGE), "--card", str(card),
             "--set", "OCTABAM", "--project", "THRESHOLD", "--load-ms", "90000",
             "--mkii", "--dsp", "--main-level", "64",
@@ -219,7 +237,7 @@ def run(work, card, armed, name, audio, script, quit_ms):
     if name == "late":
         start, length = arena_span()
         args += ["--mem-dump", f"{start:#x},{length:#x}={work / 'late_arena.bin'}"]
-    args += ["--audio-in", "tones"] if audio == "tones" else ["--audio-in", str(audio), "--audio-in-from-boot"]
+    args += ["--audio-in", "tones"] if not cued else ["--audio-in", str(audio), "--audio-in-on-cue"]
     started = time.monotonic()
     try:
         r = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=RUN_TIMEOUT_S)
@@ -268,9 +286,12 @@ def main(only=None):
 
     with tempfile.TemporaryDirectory() as td:
         work = pathlib.Path(td)
-        project = work / "project"
-        project.mkdir()
-        (project / "project.work").write_text("[STATES]\nBANK=0\n\n")
+        made = subprocess.run([sys.executable, str(ROOT / "tools/hw/ot_fresh.py"), "--image", str(IMAGE),
+                               "--out", str(work / "fresh")], cwd=ROOT, capture_output=True, text=True)
+        project = work / "fresh/image/NOPROJ"
+        if made.returncode or not (project / "bank16.work").is_file():
+            return fail("could not make the complete empty project (tools/hw/ot_fresh.py)", made.stdout + made.stderr)
+        print(f"  project: {made.stdout.strip().splitlines()[-1] if made.stdout.strip() else project}", flush=True)
         card = work / "card.img"
         staged = subprocess.run([sys.executable, str(STAGE_CARD), str(project), "OCTABAM", "THRESHOLD",
                                  "--tree", str(work / "tree"), "--out", str(card)],
@@ -279,7 +300,7 @@ def main(only=None):
             return fail("could not stage the empty card", staged.stdout + staged.stderr)
         silent, late = work / "silent.wav", work / "late.wav"
         write_wav(silent, 30, 0)
-        write_wav(late, 10, 20, numbered=True)
+        write_wav(late, 0, 20, numbered=True)
 
         jobs = [("tones", "tones", SETUP + press(2000), 5000),
                 ("silent", silent, SETUP + press(2000), 5000),
@@ -292,14 +313,14 @@ def main(only=None):
                 ("inpage_one", "tones", OPEN1 + press(2000), 5000),
                 ("inpage_thr", "tones", OPEN1 + ["1300 enc 3 12"] + press(2000), 5000)]
         tone20, tone46, tone50 = work / "tone20.wav", work / "tone46.wav", work / "tone50.wav"
-        write_wav(tone20, 10, 20, dbfs=-20)
-        write_wav(tone46, 10, 20, dbfs=-46)
-        write_wav(tone50, 10, 20, dbfs=-50)
+        write_wav(tone20, 0, 20, dbfs=-20)
+        write_wav(tone46, 0, 20, dbfs=-46)
+        write_wav(tone50, 0, 20, dbfs=-50)
         jobs += [("high", tone20, SETUP + lev(-12) + press(3200), 14000),
                  ("quiet", tone46, SETUP + press(2000), 14000),
                  ("low", tone50, SETUP + lev(-60) + press(3200), 14000)]
         full = work / "full.wav"
-        write_full_scale(full, 10, 6)
+        write_full_scale(full, 0, 6)
         jobs += [("full", full, SETUP + lev(0) + press(3200), 14000)]
         unknown = set(only or ()) - {j[0] for j in jobs}
         if unknown:

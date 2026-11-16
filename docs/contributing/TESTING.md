@@ -260,7 +260,7 @@ shared check verifies payload placement, not the correctness of mutable values.
 | need | option | example |
 |---|---|---|
 | several calls, pokes and memory dumps on one load | `--step FRAME:call\|poke\|dump:SPEC`, repeatable; `-` = after the load before the transport, `N` = frame N after the transport start | `verify_mode_defaults`: two editor calls, their lane dumps and a MIDI case on one load |
-| a panel sequence (keys, encoders, the level pot) | `--live-script FILE`: lines of `<emulated ms> key\|enc\|pot\|midi\|quit ...`, transport stopped, applied at emulated times | `verify_tempo_bus`: 65 panel lines, 7.1 s emulated, no wall-clock sleeps, the same on a loaded machine |
+| a panel sequence (keys, encoders, the level pot) | `--live-script FILE`: lines of `<emulated ms> key\|enc\|pot\|midi\|audio start\|quit ...`, transport stopped, applied at emulated times | `verify_tempo_bus`: 65 panel lines, 7.1 s emulated, no wall-clock sleeps, the same on a loaded machine |
 | several runs that each need the machine exactly as it was after the load | `--scenario "LOG ARGS..."`, repeatable, `--scenario-jobs N` (default 3): the port loads once and forks one child per scenario; each child writes its stdout to LOG and takes ARGS as its post-load options (`--sequencer`, `--frames`, `--step`, `--poke`, `--call`, `--midi`, `--mem-dump`, `--live-script`, ...) | `verify_scenes_p2`: three frame runs and the editor pass from one load |
 
    Boot-time options (`--dsp`, `--audio-in`, `--audio-out`'s capture, the

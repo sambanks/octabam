@@ -230,6 +230,8 @@ moment it costs real work, and add its line here.
 - [Narrowing the port's DMA arm rule broke a gate whose image never moved](docs/contributing/TRAPS.md#trap-dma-arm) — a port change is every port gate's instrument; CI's cached passes hide it.
 - [A wall-clock timeout in a port gate failed on a loaded runner](docs/contributing/TRAPS.md#trap-wall-timeout) — the same tree passed on its PR and failed on main; under the port, waits and settles are emulated time (`Events(clock=)`, `MenuPort.run` finishes a capped slice).
 
+- [A gate timed its input from boot and its keys from the load's end](docs/contributing/TRAPS.md#trap-two-clocks) — the load-end mark moved 5.7 s with a STORE Part client; cue the input on the script's clock (`--audio-in-on-cue`, `<ms> audio start`).
+
 - [Resident relinks can republish imported staging addresses](docs/contributing/TRAPS.md#trap-resident-import-exports) — publish only owned exports; `midi-follow-events` exercises descriptor relocation with MIDI Part State.
 - [A ColdFire save frame sized for the wrong register count overwrites the return address](docs/contributing/TRAPS.md#trap-cf-frame) — `lea -4N(%sp)` + `movem.l regs,(%sp)`; no pre-decrement `movem`, no `eor <mem>,Dn`, no `st <mem>`, no `move.b #imm,abs.l`.
 - [An unused-looking project byte can be rewritten on save](docs/contributing/TRAPS.md#trap-unused-bytes) — mark, load, save, diff before using one.

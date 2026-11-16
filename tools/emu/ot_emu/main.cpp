@@ -1322,6 +1322,7 @@ int main(int _argc, char** _argv)
 	std::string blockDump;		// O9d: every host-port block's CONTENT (binary) -> FILE
 	std::string audioOut;		// O9: PREFIX -> PREFIX_core<k>.wav, every X-side ESAI TX0 frame (8 slots) the core put out
 	std::string audioIn;		// O9: a WAV onto RX0's slots from the transport start, or "tones"
+	bool audioInOnCue = false;	// hold the input silent until the live script's `audio start` line
 	bool audioInFromBoot = false;	// O14: feed it from the DSP boot instead (a live input already flowing when a step-1 recorder arms)
 	int preRoll = 0;			// O14: frames of the frame engine to run BEFORE the transport start (a warm DSP, as on hardware)
 	std::string dspPcWatch;		// O9b: core:pc -- registers at the last 24 arrivals at that DSP PC
@@ -1423,6 +1424,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--audio-out" && i + 1 < _argc)	audioOut = _argv[++i];
 		else if(a == "--audio-in" && i + 1 < _argc)	audioIn = _argv[++i];
 		else if(a == "--audio-in-from-boot")		audioInFromBoot = true;
+		else if(a == "--audio-in-on-cue")		audioInOnCue = true;
 		else if(a == "--pre-roll" && i + 1 < _argc)	preRoll = std::atoi(_argv[++i]);
 		else if(a == "--dsp-map" && i + 1 < _argc)	dspMap = _argv[++i];
 		else if(a == "--dsp-watch" && i + 1 < _argc)	dspWatch = _argv[++i];
@@ -1670,6 +1672,16 @@ int main(int _argc, char** _argv)
 			std::printf("audio in   : %s, %u channel(s) onto RX0 slots 0..%u, %zu frames at %u Hz (fed at 44100)\n",
 				audioIn.c_str(), ch, ch - 1, pcm.size() / ch, rate);
 			dspPair->setAudioInput(std::move(pcm), ch);
+		}
+		if(audioInOnCue)
+		{
+			if(audioInFromBoot)
+			{
+				std::printf("audio in   : --audio-in-on-cue and --audio-in-from-boot are exclusive\n");
+				return 1;
+			}
+			dspPair->setAudioInputOnCue(true);
+			std::printf("audio in   : silent until the live script's `audio start` (--audio-in-on-cue)\n");
 		}
 		if(audioInFromBoot)
 		{
@@ -2408,6 +2420,17 @@ int main(int _argc, char** _argv)
 					while(is >> hex)
 						bytes.push_back(static_cast<uint8_t>(std::strtoul(hex.c_str(), nullptr, 16)));
 					rtos.midiIn(bytes);
+				}
+				else if(what == "audio")
+				{
+					std::string act; is >> act;
+					if(act == "start" && dspPair)
+					{
+						dspPair->startAudioInputNow();
+						std::printf("audio in   : started by the live script at frame %llu\n", static_cast<unsigned long long>(rtos.frameCount()));
+					}
+					else
+						std::printf("live       : unknown line '%s' (audio start, with --dsp)\n", _line.c_str());
 				}
 				else if(what == "poke")
 				{
