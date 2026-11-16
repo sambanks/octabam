@@ -111,7 +111,7 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**SCALES**](scales/README.md) | [djib](https://github.com/Djibdjib) | One catalogue of 52 scales in 9 families for every module; ARP SETUP's KEY turns the tonic and, pressed, opens the scale chooser (the families, then their scales); the sequencer and the arpeggiator play the scale; the CHROMATIC trig keys light it (SCALE QUANTIZER's on audio tracks). |
 | [**SCREEN**](screen/README.md) | [Sam Banks](https://github.com/sambanks) | Answers the Elektron screenshot SysEx request on MIDI OUT with the 128x64 screen, windows and popups included. |
 | [**USB**](usb/README.md) | [markandrus](https://github.com/markandrus) | USB MIDI in and out, and USB audio to and from a computer, on the Octatrack's own USB port, with its channels set in BRAIN (built on markandrus/octemu; bryantysinger's input path and crossbar; allmyfriendsaresynths's post-fader stems). |
-| [**USB MIDI TRACKS**](usb-midi-tracks/README.md) | [siddely](https://github.com/siddely) | Audio-track trigs out over USB MIDI only: the trig page as CC 16-21 with the crossfader morph in them, note per sample slot, fixed gate. |
+| [**USB MIDI TRACKS**](usb-midi-tracks/README.md) | [siddely](https://github.com/siddely) | Audio-track trigs out over USB MIDI only, on each track's TRIG CHANNEL, when BRAIN's SEND is on: the trig page as CC 16-21 with the crossfader morph in them, note per sample slot, fixed gate. |
 
 ## Fixes
 
