@@ -1,6 +1,7 @@
+; CYCLES_SEQUENTIAL_LOOPS
 ; CYCLES_FORWARD_BRANCHES
 ; ---------------------------------------------------------------------------
-; SHATTER -- fold, clip, crush, chaotic feedback.
+; SHATTER -- fold, clip, crush, chaotic feedback, brickwall after MIX.
 ;
 ; Insert: frames in place at x:(r0)/x:(r0+n0), knobs from r6, state in r7.
 ; No bus, no buffers, no shared window.
@@ -11,13 +12,21 @@
 ;   c   = hard/soft clip(f)              MODE HARD / SOFT / CHAOS
 ;   w   = srr then brr(c)                CRSH (LOFI2-style $400000 phase)
 ;   fb  = tone_lp(w)                     TONE in the loop
-;   out = dry + MIX * (w - dry)
+;   m   = dry + MIX * (w - dry)
+;   out = lim(m)                         LIM brickwall after MIX; 0 = skip
 ;
 ; CHAOS: a block-rate phase advances by RATE; each wrap flips polarity (+/-1).
+;
+; LIM: shared current-block stereo peak limiter, one div outside sample DO.
+; Ceiling = 0.75 - LIM*0.5/128 (LIM 0 bypass), near -2.5..-12 dBFS.
+; Unity below ceiling, no makeup gain; approximately 63 ms block release.
+; The second pass controls the first transient without nested DO/div.
 ;
 ; r7: $00 fb L  $01 fb R  $02 hold L  $03 hold R  $04 srr phase
 ;     $05 tone L  $06 tone R  $07 polarity (+1/-1)  $08 chaos phase
 ;     $09 srr wrap (1 this sample)  $0a brr n (0..12)  $0b srr inc
+;     $0c clip thresh  $0d lim level_s  $19 lim thresh (0 = LIM off)
+;     $1a lim gain  $1b mixed L  $1c mixed R  $1d block peak  $1e block start
 ;     $10..$18 per-block: drv, fold, clip, crsh, fdbk, mix, mode, tone, rate
 ; Every mpy is x0,y1 or y0,x0 (signed). No rep. init preserves r1.
 ; SRR phase is stored from a1 (never move a,x: -- that saturates and sticks).
@@ -37,6 +46,11 @@ init:
         move    a,x:(r7+$0a)
         move    a,x:(r7+$0b)            ; srr inc (set each block)
         move    a,x:(r7+$0c)            ; clip thresh
+        move    a,x:(r7+$0d)            ; lim level_s
+        move    a,x:(r7+$19)            ; lim thresh (0 = off)
+        move    a,x:(r7+$1a)            ; lim gain
+        move    a,x:(r7+$1b)            ; mixed L stash
+        move    a,x:(r7+$1c)            ; mixed R stash
         move    #>$7fffff,x0            ; polarity +1
         move    x0,x:(r7+$07)
         rts
@@ -139,6 +153,7 @@ shc0:
         move    #>$001000,x0
         add     x0,a
         move    a,x:(r7+$18)
+; LIMIT_THRESHOLD
 ; ---- CHAOS polarity (block rate) ------------------------------------------
         move    x:(r7+$16),a
         move    #>$2,x0
@@ -158,6 +173,7 @@ shc0:
         move    a,x:(r7+$08)
 sh00:
         move    #$1,n0
+; LIMIT_PREPARE
         do      n7,>sh16
 ; ---- dry * (1+8*DRV) + feedback (fb not driven) ---------------------------
         move    x:(r0),x0               ; dry L
@@ -275,9 +291,10 @@ sh08:
         move    x:(r7+$15),y1           ; MIX
         mpy     x0,y1,a
         add     b,a
-        move    a,x:(r0)+n0             ; out L; r0 -> R
+        move    a,x:(r7+$1b)            ; mixed L stash; r0 stays on L
 ; ============================= R channel ===================================
-        move    x:(r0),x0               ; dry R
+; Dry R via (r0+n0); r0 stays on L until the unified write below.
+        move    x:(r0+n0),x0            ; dry R
         move    x:(r7+$10),y0           ; DRV
         mpy     y0,x0,a
         asl     #$3,a,a                 ; 8 * DRV * dry
@@ -368,14 +385,20 @@ sh15:
         add     b,a
         move    a,x:(r7+$06)
         move    a,x:(r7+$01)
-        move    x:(r0),b                ; dry R
+        move    x:(r0+n0),b             ; dry R (r0 still on L)
         move    y0,a
         sub     b,a
         move    a,x0
         move    x:(r7+$15),y1
         mpy     x0,y1,a
         add     b,a
+        move    a,x:(r7+$1c)            ; mixed R stash (LIM)
+; LIMIT_COLLECT
+        move    x:(r7+$1b),a
+        move    a,x:(r0)+n0
+        move    x:(r7+$1c),a
         move    a,x:(r0)+
 sh16:
         nop
+; LIMIT_FINISH
         rts
