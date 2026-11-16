@@ -957,9 +957,112 @@ def main():
         for line in bad[:10]:
             print(f"      {line}")
         fails += bool(bad)
+    if not quantizer:
+        fails += audio_panel(out, image, card)
     if "mkii" in sections:
         fails += persist(out, image, card, lib, alib)
     return int(bool(fails))
+
+
+def audio_panel(out, image, card):
+    """The audio scale from the panel, MKI and MKII: encoder A pushed and released on the PLAYBACK page opens the
+    chooser (OFF, the families; a family's scales; the roots); YES on a root sets the Part's scale, OFF clears it,
+    LEFT goes back a level, NO closes; a push with a turn, a push in MIDI mode and a push on the AMP page open
+    nothing; then the PTCH knob steps by degree of the scale just set. Read from sc_alib, the window, its level and
+    cursor, and the Part's PTCH byte."""
+    d = out / "audio-panel"
+    d.mkdir()
+    alib, win, lvl, sel = SYM["sc_alib"], SYM["sc_win"], SYM["sc_level"], SYM["sc_sel"]
+    modes = "0x80000012=00;0x80000013=00;0x80000014=00;0x80000015=00"
+    set_d_major = [0x20, 0x31, 0x31, 0x20, 0x20, 0x31]           # MAJOR, IONIAN, down to D, YES
+    # tag: (the keys after the first push, sc_alib's first entry, the window open, its level, its cursor)
+    stages = {
+        "open": ([], (0, 0), True, 0, 0),
+        "family": ([0x20, 0x31], (0, 0), True, 1, 0),
+        "roots": ([0x20, 0x31, 0x31], (0, 0), True, 2, 0),
+        "set": (set_d_major, (1, 2), False, None, None),
+        "reopen": (set_d_major + ["push"], (1, 2), True, 0, 1),     # on the scale's family, under OFF
+        "off": (set_d_major + ["push", 0x33, 0x33, 0x31], (0, 0), False, None, None),
+        "left": ([0x20, 0x31, 0x31, 0x34, 0x34], (0, 0), True, 0, 1),
+        "no": ([0x20, 0x31, 0x32], (0, 0), False, None, None),
+        "right-on-off": ([0x21], (0, 0), True, 0, 0),
+        "knob": (set_d_major + ["turn"], (1, 2), False, None, None),
+    }
+    closed = {"turned": ["push-turn"], "midi": [0x35, "push"], "amp": [0x23, "push"], "setup": ["src-setup", "push"]}
+    bad_all = 0
+    for model in ("mki", "mkii"):
+        cmd = [str(ROOT / "out/emu/ot_emu"), "--image", str(image), "--card", str(card), "--set", "SCSET",
+               "--project", "SCPRJ", "--load-ms", "90000", "--scenario-jobs", str(os.cpu_count() or 4)]
+        if model == "mkii":
+            cmd.append("--mkii")
+        dumps = (f"{alib:#x},2", f"{win:#x},4", f"{lvl:#x},4", f"{sel:#x},4", f"{BANK0 + 0x8eda2:#x},1",
+                 f"{BANK0 + 0x8edaa:#x},30")
+
+        def script(keys, first_push=True):
+            s = Script()
+            s.tap(0x32)
+            s.tap(0x22, 600)                  # SRC: the PLAYBACK page
+            for k in (["push"] if first_push else []) + keys:
+                if k == "push":
+                    s.send("key 0x38 down", 200)
+                    s.send("key 0x38 up", 700)
+                elif k == "push-turn":
+                    s.send("key 0x38 down", 200)
+                    s.send("enc 0 1", 200)
+                    s.send("key 0x38 up", 700)
+                elif k == "turn":
+                    s.send("enc 0 1", 500)
+                elif k == "src-setup":        # FUNC + SRC: the SETUP window over the page
+                    s.send("key 0x2d down")
+                    s.tap(0x22, 600)
+                    s.send("key 0x2d up", 600)
+                else:
+                    s.tap(k, 500)
+            s.t += 600
+            return s
+
+        runs = [(tag, script(keys)) for tag, (keys, *_x) in stages.items()]
+        runs += [(tag, script(keys, first_push=False)) for tag, keys in closed.items()]
+        for tag, s in runs:
+            base = d / f"{model}-{tag}"
+            s.write(base.with_suffix(".script"))
+            mem = ";".join(f"{x}={base}.m{i}" for i, x in enumerate(dumps))
+            cmd += ["--scenario", f"{base}.log --live-script {base}.script --poke {modes} --mem-dump {mem}"]
+        with (d / f"{model}.log").open("w") as f:
+            subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT, check=True)
+        bad = []
+
+        def read(tag):
+            base = d / f"{model}-{tag}"
+            m = [pathlib.Path(f"{base}.m{i}").read_bytes() for i in range(len(dumps))]
+            if "ended on quit" not in base.with_suffix(".log").read_text():
+                bad.append(f"{tag}: the script did not end")
+            return tuple(m[0]), any(m[1]), int.from_bytes(m[2], "big"), int.from_bytes(m[3], "big"), m[4][0], m[5]
+
+        for tag, (_keys, entry, is_open, level, cursor) in stages.items():
+            got = read(tag)
+            if got[0] != entry or got[1] != is_open or (is_open and got[2:4] != (level, cursor)):
+                bad.append(f"{tag}: sc_alib {got[0]}, window {'open' if got[1] else 'closed'}, level {got[2]}, "
+                           f"cursor {got[3]}; want {entry}, {'open' if is_open else 'closed'}, {level}, {cursor}")
+        for tag in closed:
+            got = read(tag)
+            if got[1] or got[0] != (0, 0):
+                bad.append(f"{tag}: the chooser opened (or a scale was set: {got[0]})")
+        # the knob, one detent up from the project's PTCH, on D major: the next semitone of the scale
+        base_ptch = read("set")
+        machine, slots = base_ptch[4], base_ptch[5]
+        start = slots[machine * 6]
+        got = read("knob")[5][machine * 6]
+        want = _knob_model(start, _rotated(1, 2), 1)
+        if got != want or want == min(start + 1, 124):
+            bad.append(f"knob: PTCH {start} -> {got}, want {want} (stock would give {min(start + 1, 124)})")
+        print(f"  [{'FAIL' if bad else 'PASS'}] verify_scales: {model}, the audio scale from the panel: {len(stages)} "
+              f"chooser runs (open, family, roots, set, reopen, OFF, LEFT, NO, RIGHT on OFF, the PTCH knob on the "
+              f"scale set), {len(closed)} that open nothing (a turn while pushed, MIDI mode, the AMP page, SRC SETUP open)")
+        for line in bad[:10]:
+            print(f"      {line}")
+        bad_all += bool(bad)
+    return bad_all
 
 
 SAVE_GAPS = (1000, 700, 500, 1100, 30000)  # PROJ, the SAVE PROJECT row, YES, and the save itself

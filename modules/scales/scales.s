@@ -80,7 +80,7 @@
         .text
         .globl  sc_count, sc_mask, sc_name, sc_short, sc_family, sc_snap
         .globl  sc_pick, sc_track, sc_win, sc_keyboard
-        .globl  sc_audio, sc_audio_mask, sc_audio_set, sc_alib
+        .globl  sc_audio, sc_audio_mask, sc_audio_set, sc_alib, sc_pick_audio, sa_turned
         .globl  kl_chromatic, kl_source, kl_tick
         .globl  sc_encoder, sc_output, sc_format, sc_lib
         .globl  sc_st_loadall_pre, sc_st_loadmask_pre, sc_st_newproj, sc_st_bankw_post
@@ -171,6 +171,10 @@
         .equ    DIALOG_OPEN, 0x460e5cd0 | long: nonzero while a stock dialog owns the keys
         .equ    TEXT_OPEN, 0x460e7612   | long: nonzero while a text editor is open
         .equ    PUSH_F,    0x46c7d8de+0x10+0x3d*0x18 | long: nonzero while encoder F is pushed (key 0x3d)
+        .equ    PUSH_A,    0x46c7d8de+0x10+0x38*0x18 | ... encoder A (key 0x38)
+        .equ    PAGE_KIND, 0x460d1684   | long: the parameter page shown, 0 = PLAYBACK (SRC)
+        .equ    LAYERS,    0x460d165c   | long: the first key layer (the model's base: MKI 0x400c090a, MKII 0x400c091e)
+        .equ    PAGE_LAYER, 0x400d0ed6  | the layer after it on the plain parameter pages; its first long the next
 
 | ==== the catalogue ========================================================
 
@@ -557,14 +561,39 @@ sc_audio_set:
 | sc_pick: d0 the ID shown first, a0 the routine the chosen ID goes to.
 sc_pick:
         tst.l   sc_win
-        bne.s   9f                      | open already
+        bne.w   9f                      | open already
+        clr.l   sc_mode
+        bra.s   sc_pick0
+
+| sc_pick_audio: d0 = ID << 4 | tonic, or -1 for OFF: the chooser for the
+| audio scale of the Part the UI edits. An OFF row above the families; YES on
+| a scale goes on to its root (C .. B); YES on a root sets the Part's scale
+| (sc_audio_set), YES on OFF clears it. LEFT goes back a level.
+sc_pick_audio:
+        tst.l   sc_win
+        bne.w   9f
+        moveq   #1,%d1
+        move.l  %d1,sc_mode
+        moveq   #0,%d1                  | no scale: ID 0, the roots open on C
+        tst.l   %d0
+        bpl.s   1f
+        moveq   #0,%d0
+        bra.s   2f
+1:      move.l  %d0,%d1
+        andi.l  #15,%d1
+        lsr.l   #4,%d0
+2:      move.l  %d1,sc_tonic
+        suba.l  %a0,%a0                 | no client: the Part's scale is set here
+sc_pick0:
         move.l  %a0,sc_client
         move.l  %d0,sc_shown
         bsr.w   sc_family
         tst.l   %d0
         bpl.s   1f
-        moveq   #0,%d0
-1:      clr.l   sc_level
+        moveq   #0,%d0                  | no such ID: the first row (audio: OFF)
+        bra.s   2f
+1:      add.l   sc_mode,%d0             | audio: the families sit under the OFF row
+2:      clr.l   sc_level
         move.l  %d0,sc_sel
         bsr.w   sc_scroll
         pea     sc_close
@@ -598,11 +627,18 @@ sc_close:
 | -> d0 = the rows of the level shown, d1 = the first's index in sc_order
 | (scales) or 0.
 sc_rows:
+        move.l  sc_level,%d0
+        bne.s   1f
         moveq   #0,%d1
         moveq   #SC_FAMILIES,%d0
-        tst.l   sc_level
-        beq.s   9f
-        move.l  sc_fam,%d0
+        add.l   sc_mode,%d0             | audio: the OFF row first
+        rts
+1:      subq.l  #1,%d0
+        beq.s   2f
+        moveq   #0,%d1                  | level 2: the twelve roots
+        moveq   #12,%d0
+        rts
+2:      move.l  sc_fam,%d0
         lea     sc_fam_first,%a0
         mvz.b   (%a0,%d0.l),%d1
         mvz.b   1(%a0,%d0.l),%d0
@@ -645,9 +681,13 @@ sc_key_ud:
 | RIGHT and YES on a family: its scales, on the shown one when it is there.
 sc_key_right:
         tst.l   sc_level
-        bne.s   9f
+        bne.w   9f
+        move.l  sc_sel,%d0
+        sub.l   sc_mode,%d0
+        bmi.w   9f                      | the OFF row has nothing under it
 sc_enter:
         move.l  sc_sel,%d0
+        sub.l   sc_mode,%d0
         move.l  %d0,sc_fam
         moveq   #1,%d0
         move.l  %d0,sc_level
@@ -673,10 +713,20 @@ sc_enter:
 
 | LEFT on a scale: the families, on this one.
 sc_key_left:
-        tst.l   sc_level
-        beq.s   9f
-        clr.l   sc_level
+        move.l  sc_level,%d0
+        beq.w   9f
+        subq.l  #1,%d0
+        beq.s   1f
+        moveq   #1,%d0                  | a root: back to the family's scales, on the one picked
+        move.l  %d0,sc_level
+        move.l  sc_sel1,%d0
+        move.l  %d0,sc_sel
+        clr.l   sc_top
+        bsr.w   sc_scroll
+        bra.w   sc_draw
+1:      clr.l   sc_level
         move.l  sc_fam,%d0
+        add.l   sc_mode,%d0
         move.l  %d0,sc_sel
         clr.l   sc_top
         bsr.w   sc_scroll
@@ -685,16 +735,40 @@ sc_key_left:
 
 | YES: a family is entered, a scale is picked.
 sc_key_yes:
-        tst.l   sc_level
-        beq.w   sc_enter
-        lea     -24(%sp),%sp
+        move.l  sc_level,%d0
+        bne.s   1f
+        move.l  sc_sel,%d0
+        sub.l   sc_mode,%d0
+        bpl.w   sc_enter
+        moveq   #-1,%d0                 | audio, the OFF row: the Part's scale off
+        bra.w   sc_audio_commit
+1:      subq.l  #2,%d0
+        bne.s   2f
+        move.l  sc_pid,%d0              | a root: the Part's scale is the picked ID on it
+        lsl.l   #4,%d0
+        or.l    sc_sel,%d0
+        bra.w   sc_audio_commit
+2:      lea     -24(%sp),%sp
         movem.l %d2-%d7,(%sp)
         bsr.w   sc_rows
         move.l  %d1,%d2
         add.l   sc_sel,%d2
         lea     sc_order,%a0
         mvz.b   (%a0,%d2.l),%d2         | the ID picked
-        bsr.w   sc_close
+        tst.l   sc_mode
+        beq.s   3f
+        move.l  %d2,sc_pid              | audio: on to its root, the Part's own first
+        move.l  sc_sel,%d0
+        move.l  %d0,sc_sel1
+        moveq   #2,%d0
+        move.l  %d0,sc_level
+        move.l  sc_tonic,%d0
+        move.l  %d0,sc_sel
+        clr.l   sc_top
+        bsr.w   sc_scroll
+        bsr.w   sc_draw
+        bra.s   2f
+3:      bsr.w   sc_close
         move.l  %d2,%d0
         move.l  sc_client,%d1
         beq.s   2f
@@ -703,6 +777,19 @@ sc_key_yes:
 2:      movem.l (%sp),%d2-%d7
         lea     24(%sp),%sp
         rts
+
+| d0 = ID << 4 | tonic, or -1 for OFF: the window closed, the scale of the
+| Part the UI edits set (scales.work due).
+sc_audio_commit:
+        move.l  %d0,-(%sp)
+        bsr.w   sc_close
+        jsr     store_part_ui_context
+        move.l  %d0,%d1
+        move.l  (%sp)+,%d0
+        tst.l   %d1
+        bmi.s   9f
+        bra.w   sc_audio_set
+9:      rts
 
 | d0 x, d1 y, a0 the string; a5 the surface.
 sc_text:
@@ -752,10 +839,21 @@ sc_draw:
         move.l  (%a5),%d7               | d7: w
         move.l  4(%a5),%d6
         subi.l  #20,%d6                 | d6: h - 20
-        lea     t_scales,%a2            | the title: SCALES, or the family
-        tst.l   sc_level
+        lea     t_scales,%a2            | the title: SCALES (audio: the Part), the family, or ROOT
+        move.l  sc_level,%d0
+        bne.s   11f
+        tst.l   sc_mode
         beq.s   1f
-        move.l  sc_fam,%d0
+        lea     t_part,%a2
+        mvz.b   UI_PART,%d0
+        addi.l  #0x31,%d0
+        move.b  %d0,5(%a2)              | "PART n SCALE"
+        bra.s   1f
+11:     subq.l  #1,%d0
+        beq.s   12f
+        lea     t_root,%a2
+        bra.s   1f
+12:     move.l  sc_fam,%d0
         lea     sc_fam_labels,%a0
         move.l  (%a0,%d0.l*4),%a2
 1:      move.l  %a2,-(%sp)
@@ -814,19 +912,38 @@ sc_draw:
         moveq   #VISIBLE,%d7            | d7: rows left to draw
 4:      cmp.l   %d4,%d5
         bge.w   7f
-        tst.l   sc_level
-        bne.s   5f
-        lea     sc_fam_labels,%a0       | a family: its name; the shown scale's short
-        move.l  (%a0,%d5.l*4),%a2       | name on its row
         suba.l  %a3,%a3
+        move.l  sc_level,%d0
+        beq.s   41f
+        subq.l  #1,%d0
+        beq.w   5f
+        lea     sc_roots,%a0            | a root: its name; a ticked box on the Part's own
+        move.l  (%a0,%d5.l*4),%a2
+        cmp.l   sc_tonic,%d5
+        bne.w   6f
+        move.l  sc_pid,%d0
+        cmp.l   sc_shown,%d0
+        bne.w   6f
+        lea     box_on,%a3
+        bra.w   6f
+41:     move.l  %d5,%d2
+        sub.l   sc_mode,%d2             | the family (audio: under the OFF row)
+        bpl.s   42f
+        lea     t_off,%a2               | OFF: ticked when the Part has no scale
+        tst.l   sc_shown
+        bne.w   6f
+        lea     box_on,%a3
+        bra.w   6f
+42:     lea     sc_fam_labels,%a0       | a family: its name; the shown scale's short
+        move.l  (%a0,%d2.l*4),%a2       | name on its row
         move.l  sc_shown,%d0
         bsr.w   sc_family
-        cmp.l   %d5,%d0
-        bne.s   6f
+        cmp.l   %d2,%d0
+        bne.w   6f
         move.l  sc_shown,%d0
         bsr.w   sc_short
         move.l  %a0,%a3
-        bra.s   6f
+        bra.w   6f
 5:      move.l  %d3,%d2                 | a scale: its name; a ticked box on the shown one
         add.l   %d5,%d2
         lea     sc_order,%a0
@@ -1292,7 +1409,8 @@ kl_tick:
         bsr.w   sc_pick
         bra.s   6f
 4:      clr.l   sc_pushed
-6:      moveq   #1,%d0
+6:      bsr.w   sa_tick
+        moveq   #1,%d0
         cmp.l   TRIG_MODE,%d0
         bne.s   2f
         bsr.w   kl_current
@@ -1306,6 +1424,54 @@ kl_tick:
         move.l  %d0,kl_shown
 3:      tst.l   TICK_FLAG               | the displaced instruction; its flags go on
         jmp     TICK_BACK
+
+| An audio track's PLAYBACK page with nothing over it: encoder A (PTCH) pushed
+| and released without a turn opens the chooser on the Part's audio scale.
+| "Nothing over it" is the key-layer list as the plain parameter pages have it
+| (measured under the port, MKI and MKII, 16 Nov 2026): the model's base layer,
+| then PAGE_LAYER, then nothing. A menu, a SETUP window, the trig-mode list, a
+| held PATTERN or BANK key and this chooser each change that list.
+sa_tick:
+        tst.l   MIDI_MODE
+        bne.w   8f
+        tst.l   PAGE_KIND
+        bne.w   8f
+        move.l  LAYERS,%d0
+        beq.w   8f
+        movea.l %d0,%a0
+        move.l  (%a0),%d0
+        cmpi.l  #PAGE_LAYER,%d0
+        bne.w   8f
+        tst.l   PAGE_LAYER
+        bne.w   8f
+        tst.l   PUSH_A
+        beq.s   5f
+        tst.l   sa_pushed
+        bne.w   9f
+        moveq   #1,%d0                  | pushed now
+        move.l  %d0,sa_pushed
+        clr.l   sa_turned
+        rts
+5:      tst.l   sa_pushed
+        beq.w   9f
+        clr.l   sa_pushed               | released
+        tst.l   sa_turned
+        bne.w   9f
+        tst.l   sc_win
+        bne.w   9f
+        tst.l   LIST_OPEN
+        bne.w   9f
+        tst.l   DIALOG_OPEN
+        bne.w   9f
+        tst.l   TEXT_OPEN
+        bne.w   9f
+        jsr     store_part_ui_context
+        move.l  %d0,%d1
+        bmi.w   9f
+        bsr.w   sc_audio                | ID << 4 | tonic, -1 for OFF
+        bra.w   sc_pick_audio
+8:      clr.l   sa_pushed
+9:      rts
 
 | The current track's answer, on the side the MIDI key selects.
 kl_current:
@@ -1487,6 +1653,23 @@ sc_icon_p1:
         .long   0xff800000
         .endr
 t_scales: .asciz "SCALES"
+t_part:   .asciz "PART 1 SCALE"         | the digit is written at each draw
+t_root:   .asciz "ROOT"
+t_off:    .asciz "OFF"
+r_0: .asciz "C"
+r_1: .asciz "C#"
+r_2: .asciz "D"
+r_3: .asciz "D#"
+r_4: .asciz "E"
+r_5: .asciz "F"
+r_6: .asciz "F#"
+r_7: .asciz "G"
+r_8: .asciz "G#"
+r_9: .asciz "A"
+r_10: .asciz "A#"
+r_11: .asciz "B"
+        .balign 4
+sc_roots: .long r_0,r_1,r_2,r_3,r_4,r_5,r_6,r_7,r_8,r_9,r_10,r_11
 box_on:   .byte  0x16, 0                | the small UI font's ticked box, as PERSONALIZE's
 f_maj:  .asciz  "MAJOR"
 f_mel:  .asciz  "MELODIC MINOR"
@@ -1559,10 +1742,16 @@ sc_turned:  .long 0                     | ... and turned since
 sc_client:  .long 0                     | the chooser's client
 sc_shown:   .long 0                     | the ID it opened on
 sc_win:     .long 0                     | the chooser's window, 0 closed
-sc_level:   .long 0                     | 0 the families, 1 a family's scales
+sc_level:   .long 0                     | 0 the families, 1 a family's scales, 2 the roots (audio)
 sc_fam:     .long 0                     | the family shown at level 1
 sc_sel:     .long 0                     | the cursor's row
 sc_top:     .long 0                     | the first row shown
+sc_mode:    .long 0                     | 0 a MIDI track's scale (a client's), 1 the Part's audio scale
+sc_tonic:   .long 0                     | audio: the Part's tonic when the window opened
+sc_pid:     .long 0                     | audio: the ID picked at level 1
+sc_sel1:    .long 0                     | audio: level 1's cursor, for LEFT from the roots
+sa_pushed:  .long 0                     | encoder A was pushed at the last tick
+sa_turned:  .long 0                     | ... and turned since (audio.s sa_knob)
 sc_band:    .space 64                   | the title band: <set>/<project>
 sc_dirty:   .long 0                     | scales.work is due
 sc_nowrite: .long 0                     | scales.work was refused: never overwritten

@@ -70,6 +70,8 @@ sa_on:
 sa_knob:
         tst.l   %d5                     | slot A only
         jbne    sa_k_store
+        moveq   #1,%d1
+        move.l  %d1,sa_turned           | a turn while pushed is no press (scales.s sa_tick)
         tst.l   0x460d1684              | page kind 0 = PLAYBACK
         jbne    sa_k_store
         move.l  0x16(%a3),%d1           | the slot's name: "PTCH" (not THRU / NEIGHBOR)
