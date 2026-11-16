@@ -195,7 +195,7 @@ def main():
         def reader():
             while not stop.is_set():
                 try:
-                    data = b.ep_in(2, 64, timeout=0.2)
+                    data = b.ep_in(2, 512, timeout=0.2)   # a high-speed bulk packet: a whole transfer, as a host reads it
                 except Exception:  # noqa: BLE001 -- a timeout is just no packet yet
                     continue
                 for i in range(0, len(data) - 3, 4):
