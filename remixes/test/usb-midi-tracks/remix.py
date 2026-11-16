@@ -18,5 +18,6 @@ REMIX = Remix(
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "OFF", ("octabam.usb", "MAIN"): 0,
               ("octabam.usb", "CUE"): 0, ("octabam.usb", "MASTER"): 0,
-              ("octabam.usb", "IN"): "OFF"},
+              ("octabam.usb", "IN"): "OFF",
+              ("octabam.usb-midi-tracks", "SEND"): "NOTES+CC"},   # the gate checks CCs and notes
 )

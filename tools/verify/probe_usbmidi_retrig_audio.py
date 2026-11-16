@@ -9,7 +9,7 @@ onsets it finds (ms from the first one).
 
     OT_PROJECT=<dir> python3 tools/verify/probe_usbmidi_retrig_audio.py 0,0 3,64 3,16
 """
-import argparse, importlib.util, math, os, pathlib, random, re, shutil, struct, subprocess, sys, wave
+import argparse, importlib.util, math, os, pathlib, random, re, shutil, struct, subprocess, sys, tempfile, wave
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
@@ -18,7 +18,9 @@ import ot_bank as ob  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("verify_set", ROOT / "tools/verify/verify_set.py")
 vs = importlib.util.module_from_spec(spec); spec.loader.exec_module(vs)
-EMU, IMAGE, OUT = ROOT / "out/emu/ot_emu", ROOT / "out/mainos_bus.bin", ROOT / "out/retrig_audio"
+EMU, IMAGE = ROOT / "out/emu/ot_emu", ROOT / "out/mainos_bus.bin"
+(ROOT / "out").mkdir(exist_ok=True)
+OUT = pathlib.Path(tempfile.mkdtemp(prefix="retrig_audio_", dir=ROOT / "out"))   # per process: TRAPS trap-tmp-race
 
 
 def burst(path, secs=0.3):
