@@ -46,7 +46,7 @@ rest idle.
 
 A PART OF ONE REMIX (27 Oct 2026). `--only-jobs a,b` / `--skip-jobs a,b`
 run a remix as gate jobs, cut to the named ones or without them (CI runs
-the two as separate units, reach.SPLIT_REMIX_JOBS). A gate of
+one unit per gate job, `--only-jobs <job>`: reach.entries). A gate of
 reach.SPLIT_GATE_SECTIONS is one job per `--section` (`scales:mki`,
 `scales:mkii`), in every split run. A name that is no gate
 job is refused; under `--modules` a name is checked against the remix's
@@ -454,14 +454,50 @@ def pick_jobs(jobs, only, skip, known=None):
     return [j for j in jobs if (not only or j[0] in only) and j[0] not in skip]
 
 
+@contextlib.contextmanager
+def scoped(modules):
+    """SCOPE set to `modules` (None or empty: every gate) for the block."""
+    global SCOPE
+    was, SCOPE = SCOPE, (sorted(modules) if modules else None)
+    try:
+        yield
+    finally:
+        SCOPE = was
+
+
 def all_job_names(remix_name, shard):
     """Every gate job name of the remix, whatever --modules cut the run to."""
-    global SCOPE
-    scope, SCOPE = SCOPE, None
-    try:
+    with scoped(None):
         return {j[0] for j in remix_jobs(remix_name, shard)}
-    finally:
-        SCOPE = scope
+
+
+def job_names(remix_name, modules=None):
+    """The remix's gate job names under `--modules`, in job order. `module-gates` (the echo that stands for
+    module_gates.py in check_recipe when no gate is reached) is left out: it runs nothing."""
+    with scoped(modules):
+        return [j[0] for j in remix_jobs(remix_name, ROOT / "out/shards/0") if j[0] != "module-gates"]
+
+
+def job_keys(remix_name, modules, project_of, deps, log):
+    """{job: gate_cache key} after `make bus REMIX=<remix>` in ROOT: the key run_job computes in a shard of the same
+    tree. `project_of(job)` is the job's OT_PROJECT, or None for the one clean_env() gives. {} when the build fails."""
+    env = clean_env()
+    if subprocess.run(["make", "bus", f"REMIX={remix_name}"], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+                      env=env).returncode:
+        return {}
+    with scoped(modules):
+        jobs = remix_jobs(remix_name, ROOT / "out/shards/0")
+    out = {}
+    for name, cmds, env_add, scripts in jobs:
+        if name == "module-gates":
+            continue
+        e = dict(env, **env_add)
+        project = project_of(name)
+        if project:
+            e["OT_PROJECT"] = str(project)
+        out[name] = gate_cache.key(ROOT, remix_name, name, [a for c in cmds for a in c],
+                                   job_scripts(cmds) | scripts, deps, e)
+    return out
 
 
 def choose_split(remixes, spec, times, jobs):

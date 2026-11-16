@@ -518,7 +518,7 @@ def main():
     print("        " + "  ".join(rows[:4]) + "\n        " + "  ".join(rows[4:]))
     check("audio: every track with record audio has a chain output", not silent_chain,
           f"silent chain: {', '.join(silent_chain)}" if silent_chain else "")
-    # T2's send needs T2 to make sound: a generated project (tools/hw/ot_fresh.py, CI's (project) units since
+    # T2's send needs T2 to make sound: a generated project (tools/hw/ot_fresh.py, CI's project units since
     # sambanks/octabam#1051) has STATIC machines with no sample, every track's input at -200 dBFS, and the port
     # feeds no input audio. Then the hosts' check cannot be made: it says so instead of failing (octabam-bus,
     # 15 Nov 2026) or passing.
