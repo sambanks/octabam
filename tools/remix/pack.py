@@ -19,7 +19,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 # build that cannot write here builds cold. OCTABAM_NO_CACHE=1 builds cold;
 # OCTABAM_CACHE=<dir> names the directory (check_shards.py hands its
 # worktrees the parent's). (28 Sep 2026: the packer was 55% of every build;
-# a warm build is 1.7 s where a cold one was 9.)
+# a warm build is 1.7 s where a cold one was 9.) The memo holds packed
+# firmware, so CI does not carry it between runs (ci.yml: the bytes are not
+# cached); a runner's build is always cold.
 CACHE = pathlib.Path(os.environ.get("OCTABAM_CACHE") or ROOT / "out/cache")
 
 
@@ -60,69 +62,73 @@ HASH2_SIZE = 1 << 16
 PACKED_MAGIC = b"GKA3"
 
 
-def _hash3(b, i):
-    key = (b[i] << 16) | (b[i + 1] << 8) | b[i + 2]
-    return ((key * 2654435761) & 0xFFFFFFFF) >> (32 - HASH3_BITS) & HASH3_MASK
-
-
-def _hash2(b, i):
-    return (b[i] << 8) | b[i + 1]
-
-
-def _match_length(data, cand, pos):
-    offset = pos - cand
-    limit = min(len(data) - pos, MAX_MATCH_LEN)
-    direct = min(offset, limit)
-    n = 0
-    while n < direct and data[cand + n] == data[pos + n]:
-        n += 1
-    if n == direct and n < limit:
-        while n < limit and data[cand + (n % offset)] == data[pos + n]:
-            n += 1
-    return n
-
-
+# The greedy parse is the encoder's, in the form that is fast in pure Python (16 Nov 2026): on octabam the build
+# packs its 812 KB runtime four times and the DSP tail once, and the parse as first ported (a call and a byte loop
+# per candidate, 13.1 million calls) was about 100 s of a 119 s cold build -- in every CI job that builds an image.
+# The same inputs now parse in 1.4-1.8 s each. The stream is unchanged: tools/verify/tests/test_pack.py holds the
+# first port as the reference and compares the two.
 def _greedy_parse(data, max_candidates):
     if not data:
         return []
+    n = len(data)
     head3 = [-1] * HASH3_SIZE
     head2 = [-1] * HASH2_SIZE
-    chain3 = [-1] * len(data)
-    chain2 = [-1] * len(data)
+    chain3 = [-1] * n
+    chain2 = [-1] * n
+    shift = 32 - HASH3_BITS
     ops = []
     pos = 0
-    n = len(data)
     while pos < n:
         best_off = best_len = 0
         if pos + 2 < n:
-            cand = head3[_hash3(data, pos)]
+            cand = head3[((((data[pos] << 16) | (data[pos + 1] << 8) | data[pos + 2]) * 2654435761) & 0xFFFFFFFF) >> shift & HASH3_MASK]
+            limit = n - pos
+            if limit > MAX_MATCH_LEN:
+                limit = MAX_MATCH_LEN
             tried = 0
             while cand >= 0 and tried < max_candidates:
-                off = pos - cand
-                length = _match_length(data, cand, pos)
-                minimum = 3 if off > MAX_OFFSET_FOR_LEN2 else 2
-                if length >= minimum and length > best_len:
-                    best_off, best_len = off, length
-                    if best_len == MAX_MATCH_LEN:
-                        break
+                # a candidate is taken only when its match is longer than the best so far, so it must
+                # match at index best_len; one that does not is passed without measuring it
+                if data[cand + best_len] == data[pos + best_len]:
+                    # the match length: the common prefix of data[cand:] and data[pos:], which may overlap
+                    # (the encoder's `cand + (k % offset)` reads the same bytes: k >= offset is reached only
+                    # when the first `offset` bytes matched, and then data[pos + k - offset] is that byte)
+                    k = 0
+                    step = 16
+                    while k < limit:
+                        s = step if k + step <= limit else limit - k
+                        if data[cand + k:cand + k + s] == data[pos + k:pos + k + s]:
+                            k += s
+                            if step < 4096:
+                                step <<= 1
+                        elif s == 1:
+                            break
+                        else:
+                            step = s >> 1
+                    if k > best_len and k >= (3 if pos - cand > MAX_OFFSET_FOR_LEN2 else 2):
+                        best_off, best_len = pos - cand, k
+                        if k == limit:
+                            # nothing is longer than the limit. (The encoder stops here only at
+                            # MAX_MATCH_LEN and tries the rest otherwise; none of them can be taken.)
+                            break
                 cand = chain3[cand]
                 tried += 1
         if best_len < 2 and pos + 1 < n:
-            cand = head2[_hash2(data, pos)]
+            cand = head2[(data[pos] << 8) | data[pos + 1]]
             if cand >= 0 and pos - cand <= MAX_OFFSET_FOR_LEN2:
                 best_off, best_len = pos - cand, 2
         if best_len >= 2:
             ops.append((best_off, best_len))
-            advance = best_len
+            end = pos + best_len
         else:
             ops.append(data[pos])
-            advance = 1
-        end = pos + advance
+            end = pos + 1
         while pos < end:
             if pos + 1 < n:
-                k = _hash2(data, pos); chain2[pos] = head2[k]; head2[k] = pos
-            if pos + 2 < n:
-                k = _hash3(data, pos); chain3[pos] = head3[k]; head3[k] = pos
+                k = (data[pos] << 8) | data[pos + 1]; chain2[pos] = head2[k]; head2[k] = pos
+                if pos + 2 < n:
+                    k = ((((data[pos] << 16) | (data[pos + 1] << 8) | data[pos + 2]) * 2654435761) & 0xFFFFFFFF) >> shift & HASH3_MASK
+                    chain3[pos] = head3[k]; head3[k] = pos
             pos += 1
     return ops
 
