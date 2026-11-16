@@ -69,6 +69,9 @@ For other modules: register calls, d0-d1 / a0-a1 scratch, the rest kept.
 | `sc_family` | d0 ID | d0 = its family 0..8, -1 for no such ID |
 | `sc_snap` | d0 note 0..127, d1 = ID << 4 \| tonic | d0 = the nearest note of the scale, ties downward; every other register kept |
 | `sc_track` | d0 MIDI track 0..7 | d0 = ID << 4 \| tonic of its KEY, -1 for KEY OFF |
+| `sc_audio` | d1 a STORE context (bank * 4 + Part, 0..63) | d0 = ID << 4 \| tonic of that Part's audio scale, -1 for OFF |
+| `sc_audio_mask` | d1 a STORE context | d0 = the audio scale's pitch classes on its tonic (bit k = pitch class k from C), 0 for OFF |
+| `sc_audio_set` | d0 = ID << 4 \| tonic, or -1 for OFF; d1 a STORE context | d0 = 0 and `scales.work` due; -1 and nothing written for a context past 63 or an ID or tonic that is none |
 | `sc_keyboard` | C call: track, first note, green mask (bit k = key k) | the sixteen trig LEDs as a keyboard from that note (key k sounds it + k), the CHROMATIC keys' colours for the track's scale, a masked key green (the caller's notes: CHORDS FACTORY's chord while FUNC types it); d0 = 1, or 0 and nothing drawn on KEY OFF; d2-d7 / a2-a6 kept |
 | `sc_pick` | d0 the ID shown first, a0 the routine to call | the chooser (UI task only); a0 is called with the chosen ID in d0, as a C routine |
 
@@ -110,12 +113,16 @@ STORE (`store_part_midi_key`). SCALES is registered as a STORE Part client
 with the MIDI setup window to read and no byte to write.
 
 **scales.work** (a STORE client, `modules/store`): a 16-byte header
-(`SCLS`, version 1, length 512, the CRC-32 of the IDs) then `sc_lib`,
-beside the bank files. Written by the bank writer and before the project
+(`SCLS`, version 2, length 640, the CRC-32 of what follows) then `sc_lib`
+(512 bytes) and `sc_alib` (128 bytes: bank * 4 + Part, then the audio
+scale's ID and tonic), beside the bank files. A version 1 file (`sc_lib`
+alone, written before the audio scales) still reads, with every audio scale
+OFF, and the next write makes it version 2; an older build refuses a
+version 2 file. Written by the bank writer and before the project
 store when an ID changed; `scales.strd` is its copy at the project store,
 copied back at a project reload. A load of every bank reads every bank, a
 masked load those banks; no file is no scale past the KEY's own. Part
-Clear empties that Part's IDs. A file that is not version 1 or fails its
+Clear empties that Part's IDs and its audio scale. A file that is not version 1 or 2 or fails its
 CRC is refused: STORE's prompt (client 6, SCALES NOT LOADED), never
 written over unless the answer says so.
 
@@ -184,7 +191,7 @@ The keys ask one question; the answers are chosen at build time
 | --- | --- | --- |
 | MIDI | always | `sc_track`: the KEY and `sc_lib`, key 1 = C |
 | audio | SCALE QUANTIZER | its own `SCALE_AT` (`0x400d2ca8`, the pinned `jmp qz_scale_mask`: the SCALE's pitch classes rotated by ROOT, 0 = OFF) and ROOT (`0x100b14ee`); its keyboard plays ROOT on key 1 (its README), so key1 = tonic = ROOT |
-| audio | otherwise | none: stock's keyboard |
+| audio | otherwise | `sc_audio` on the Part the UI edits (`store_part_ui_context`): one scale and tonic per bank and Part, key 1 sounds the tonic; OFF: stock's keyboard. Set through `sc_audio_set`; the UI to set it is a later change |
 
 A module that knows a track's scale answers here instead of drawing LEDs
 of its own: one more `HAVE_<NAME>` in `_sources` and its branch in
@@ -243,16 +250,21 @@ two sites; not run until that line is pinned.
     Part, the CS1 mirror and the live copy, the ID from `sc_lib`, `+0x12`
     unchanged; reopened (YES YES keeps the scale), NO, F turned while
     pushed (no window), the window left open after a plain push, RIGHT
-    into a family and LEFT back; CTRL1 SETUP's YES. 132 LED and 58
+    into a family and LEFT back; CTRL1 SETUP's YES. 138 LED and 58
     chooser runs per model, all equal;
   - `scales.work` under the port, MKII: a scale picked then SAVE PROJECT
-    writes `scales.work` and `scales.strd` (header, CRC-32, the ID in bank
-    1 Part 1 track 1, nothing else); the saved card booted again gives the
-    ID and the KEY back; a run with no save, as long as the save, writes no
+    writes `scales.work` and `scales.strd` (version 2: header, CRC-32, the
+    ID in bank 1 Part 1 track 1, the audio scale of bank 1 Part 1, nothing
+    else); the saved card booted again gives the ID, the audio scale and the
+    KEY back; a run with no save, as long as the save, writes no
     `scales.strd`, and the `scales.work` the bank writer leaves in it holds the
-    ID. (Until 16 Nov 2026 this read "a run with no save writes no file": that
-    run ended 9.3 s in, before the bank writer reached `scales.work`; run as
-    long as the save, the writer wrote it, as **scales.work** above says.) The window's six
+    ID and the audio scale. (Until 16 Nov 2026 this read "a run with no save
+    writes no file": that run ended 9.3 s in, before the bank writer reached
+    `scales.work`; run as long as the save, the writer wrote it, as
+    **scales.work** above says.) A version 1 file reads with the audio scales
+    OFF (the load writes `sc_alib`, which ends zero; a poke cannot show the
+    clearing, as the port's poke options all land after the load). The
+    window's six
     states drawn under the port and looked at (families, a family, back,
     scrolled, reopened with the marks).
   - On `test/scales-quantizer`, the audio side as well: every SCALE 0..24

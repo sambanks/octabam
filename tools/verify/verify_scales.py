@@ -238,6 +238,48 @@ def machine_gate(remix):
     print(f"  [{'FAIL' if bad else 'ok'}] catalogue: {len(CATALOGUE)} IDs in {len(FAMILIES)} families, "
           f"masks, families, names, refusals, the chooser's order; SCALE QUANTIZER's 24 included")
 
+    # The audio scale: sc_alib holds (ID, tonic) a bank and Part; sc_audio, sc_audio_mask and
+    # sc_audio_set are its service (README "Service"). The mask is the scale on its tonic.
+    n_bad = len(bad)
+    alib, dirty = m.sym["sc_alib"], m.sym["sc_dirty"]
+    off = 0xffffffff
+    for ctx in (0, 5, 63):
+        for ident in (1, 6, 19, 52):
+            for tonic in (0, 3, 11):
+                u.mem_write(alib + 2 * ctx, bytes((ident, tonic)))
+                mk = mask(CATALOGUE[ident][4])
+                want = ((mk << tonic) | (mk >> (12 - tonic))) & 0xfff
+                if m.call("sc_audio", d1=ctx) != (ident << 4 | tonic):
+                    bad.append(f"sc_audio ctx {ctx} ID {ident} tonic {tonic}: {m.call('sc_audio', d1=ctx):#x}")
+                if m.call("sc_audio_mask", d1=ctx) != want:
+                    bad.append(f"sc_audio_mask ctx {ctx} ID {ident} tonic {tonic}: "
+                               f"{m.call('sc_audio_mask', d1=ctx):#05x}, want {want:#05x}")
+    for entry in ((0, 0), (0, 5), (len(CATALOGUE) + 1, 0), (255, 0), (4, 12), (4, 255)):
+        u.mem_write(alib + 2, bytes(entry))
+        if m.call("sc_audio", d1=1) != off or m.call("sc_audio_mask", d1=1) != 0:
+            bad.append(f"sc_alib entry {entry} is not OFF")
+    u.mem_write(alib + 2 * 7, bytes((9, 2)))
+    u.mem_write(alib + 2 * 8, bytes((9, 2)))
+    for ctx, value, ok in ((7, 52 << 4 | 11, True), (7, off, True), (7, 1 << 4 | 0, True),
+                           (7, 0 << 4 | 4, False), (7, 53 << 4 | 0, False), (7, 4 << 4 | 12, False),
+                           (64, 1 << 4, False)):
+        u.mem_write(dirty, b"\0\0\0\0")
+        before = bytes(u.mem_read(alib, 128))
+        got = m.call("sc_audio_set", d0=value, d1=ctx)
+        after = bytes(u.mem_read(alib, 128))
+        want = bytes((52, 11)) if value == 52 << 4 | 11 else bytes((0, 0)) if value == off else bytes((1, 0))
+        if ok and (got != 0 or after[2 * ctx:2 * ctx + 2] != want or int.from_bytes(u.mem_read(dirty, 4), "big") != 1):
+            bad.append(f"sc_audio_set ctx {ctx} {value:#x}: d0 {got:#x}, entry {after[2 * ctx:2 * ctx + 2].hex()}, "
+                       f"dirty {int.from_bytes(u.mem_read(dirty, 4), 'big')}")
+        if not ok and (got != off or after != before or int.from_bytes(u.mem_read(dirty, 4), "big")):
+            bad.append(f"sc_audio_set ctx {ctx} {value:#x} is not refused cleanly (d0 {got:#x})")
+    if bytes(u.mem_read(alib + 16, 2)) != bytes((9, 2)):
+        bad.append("sc_audio_set wrote another Part's entry")
+    for ctx in range(64):
+        u.mem_write(alib + 2 * ctx, b"\0\0")
+    print(f"  [{'FAIL' if len(bad) > n_bad else 'ok'}] audio scale: sc_audio / sc_audio_mask on every ID class and "
+          f"tonic class, OFF and bad entries, sc_audio_set and its refusals")
+
     # The chooser's rows come from sc_order, not from the IDs: with every
     # family's IDs reversed in it, entering a family finds the shown ID on its
     # reversed row and YES gives that row's ID (no window: sc_draw draws nothing).
@@ -436,6 +478,13 @@ def expected_audio(qz_scale, root):
     if not qz_scale:
         return keyboard(0, CATALOGUE[1][4], 0)          # SCALE OFF: stock
     return keyboard(root, set(QZ_SCALES[qz_scale - 1]), root)
+
+
+def expected_audio_part(ident, tonic):
+    """An audio Part's own scale (no SCALE QUANTIZER): key 1 sounds its tonic."""
+    if not ident:
+        return keyboard(0, CATALOGUE[1][4], 0)
+    return keyboard(tonic, CATALOGUE[ident][4], tonic)
 
 
 def shown(stream):
@@ -696,14 +745,14 @@ def main():
                     str(empty), "SCSET", "SCPRJ", "--out", str(card)], cwd=ROOT,
                    stdout=subprocess.DEVNULL, check=True)
     nm = subprocess.check_output(["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")], text=True)
-    for name in ("sc_win", "sc_level", "sc_fam", "sc_sel", "kl_shown", "sc_lib"):
+    for name in ("sc_win", "sc_level", "sc_fam", "sc_sel", "kl_shown", "sc_lib", "sc_alib"):
         SYM[name] = int(re.search(rf"^([0-9a-f]+) [BbDd] {name}$", nm, re.M).group(1), 16)
     chromatic(True).write(out / "midi.script")
     chromatic(False).write(out / "audio.script")
     chromatic(True, (f"poke {LIVE + KEY:#x}=6;{PART_SETUP + KEY:#x}=6",)).write(out / "midi-later.script")  # C MAJ -> D MIN
     chromatic(False, (f"poke {NV_ROOT:#x}=9",)).write(out / "audio-later.script")        # MINOR on C -> on A
     modes = "0x80000012=00;0x80000013=00;0x80000014=00;0x80000015=00"
-    lib = SYM["sc_lib"]
+    lib, alib = SYM["sc_lib"], SYM["sc_alib"]
 
     def lane(key, ext):
         """Track 1's KEY (the live copy and the native Part, which STORE reads) and its ID."""
@@ -717,7 +766,10 @@ def main():
         leds += [(f"audio-{sc}-{r}", "audio", (sc, r), f"{NV_SCALE:#x}={sc};{NV_ROOT:#x}={r}")
                  for sc, r in audio]
     else:
-        leds.append(("audio", "audio", (0, 0), lane(6, 0)))
+        leds.append(("audio", "audio", (0, 0), lane(6, 0)))   # no audio scale: stock
+        # the UI Part's audio scale (bank 1 Part 1, context 0): the keyboard is the scale, key 1 its tonic
+        leds += [(f"audio-{ident}-{tonic}", "audio", (ident, tonic), f"{alib:#x}={ident};{alib + 1:#x}={tonic}")
+                 for ident, tonic in ((1, 0), (6, 9), (19, 4), (36, 11), (41, 6), (52, 3))]
     leds.append(("refresh-midi", "midi-later", (6, 0), lane(1, 0)))
     if quantizer:
         leds.append(("refresh-audio", "audio-later", (6, 9), f"{NV_SCALE:#x}={6};{NV_ROOT:#x}=0"))
@@ -745,7 +797,8 @@ def main():
         bad = []
         for tag, kind, want, _poke in leds:
             base = out / f"{model}-{tag}"
-            want = expected_midi(*want) if kind.startswith("midi") else expected_audio(*want)
+            want = (expected_midi(*want) if kind.startswith("midi")
+                    else expected_audio(*want) if quantizer else expected_audio_part(*want))
             got = shown(base.with_suffix(".a")) if base.with_suffix(".a").exists() else "(no stream)"
             ended = "ended on quit" in base.with_suffix(".log").read_text()
             if got != want or not ended:
@@ -778,15 +831,16 @@ def main():
             print(f"      {line}")
         fails += bool(bad)
     if "mkii" in sections:
-        fails += persist(out, image, card, lib)
+        fails += persist(out, image, card, lib, alib)
     return int(bool(fails))
 
 
 SAVE_GAPS = (1000, 700, 500, 1100, 30000)  # PROJ, the SAVE PROJECT row, YES, and the save itself
 
 
-def persist(out, image, card, lib):
-    """scales.work under the port, MKII: written by SAVE PROJECT, read at the next boot."""
+def persist(out, image, card, lib, alib):
+    """scales.work under the port, MKII: written by SAVE PROJECT, read at the next boot; a version 1
+    file (before the audio scales) reads with every audio scale OFF."""
     import struct
     import zlib
     from concurrent.futures import ThreadPoolExecutor
@@ -813,10 +867,14 @@ def persist(out, image, card, lib):
     s.write(d / "idle.script")
     modes = "0x80000012=00;0x80000013=00;0x80000014=00;0x80000015=00"
 
-    def boot(tag, card_, script, card_out):
+    audio = (36, 7)                       # bank 1 Part 1's audio scale, written with the pick
+
+    def boot(tag, card_, script, card_out, extra="", watch=""):
         cmd = [ROOT / "out/emu/ot_emu", "--image", image, "--card", card_, "--set", "SCSET",
                "--project", "SCPRJ", "--load-ms", "90000", "--mkii", "--live-script", script,
-               "--poke", modes, "--mem-dump", f"{lib:#x},{0x200}={d / (tag + '.lib')};{LIVE:#x},{0x24}={d / (tag + '.live')}"]
+               "--poke", modes + extra, *(["--watch-mem", watch] if watch else []), "--mem-dump",
+               f"{lib:#x},{0x200}={d / (tag + '.lib')};{LIVE:#x},{0x24}={d / (tag + '.live')};"
+               f"{alib:#x},{128}={d / (tag + '.alib')}"]
         if card_out:
             cmd += ["--card-out", d / f"{tag}.img"]
         with open(d / f"{tag}.txt", "w") as f:
@@ -824,14 +882,17 @@ def persist(out, image, card, lib):
 
     bad = []
     with ThreadPoolExecutor(2) as ex:
-        rc = list(ex.map(lambda j: boot(*j), (("saved", card, d / "saved.script", True),
-                                              ("unsaved", card, d / "unsaved.script", True))))
+        poke = f";{alib:#x}={audio[0]};{alib + 1:#x}={audio[1]}"
+        rc = list(ex.map(lambda j: boot(*j), (("saved", card, d / "saved.script", True, poke),
+                                              ("unsaved", card, d / "unsaved.script", True, poke))))
     if rc != [0, 0]:
         bad.append(f"the save and the unsaved run exited {rc}")
     files = emu_card.extract_image((d / "saved.img").read_bytes())
     def holds_ident(f):
-        return (len(f) == 16 + 512 and f[:12] == b"SCLS\0\0\0\1\0\0\2\0"
-                and struct.unpack(">I", f[12:16])[0] == zlib.crc32(f[16:]) and f[16] == ident and not any(f[17:]))
+        return (len(f) == 16 + 640 and f[:12] == b"SCLS\0\0\0\2\0\0\2\x80"
+                and struct.unpack(">I", f[12:16])[0] == zlib.crc32(f[16:])
+                and f[16] == ident and not any(f[17:16 + 512])
+                and f[16 + 512:16 + 514] == bytes(audio) and not any(f[16 + 514:]))
 
     def card_file(fs, ext):
         return next((v for k, v in fs.items() if k.lower().endswith(f"/scprj/scales.{ext}")), None)
@@ -854,8 +915,29 @@ def persist(out, image, card, lib):
     lib_b, live = (d / "reboot.lib").read_bytes(), (d / "reboot.live").read_bytes()
     if rc or lib_b[0] != ident or live[KEY] != encode(0, ident):
         bad.append(f"reboot: exited {rc}, sc_lib {lib_b[0]}, KEY {live[KEY]} (want {ident}, {encode(0, ident)})")
+    if (d / "reboot.alib").read_bytes()[:2] != bytes(audio) or any((d / "reboot.alib").read_bytes()[2:]):
+        bad.append(f"reboot: sc_alib {(d / 'reboot.alib').read_bytes()[:4].hex()}, want {bytes(audio).hex()} then zeros")
+    # a version 1 file: what a card written before the audio scales holds
+    v1 = out / "v1-project"
+    v1.mkdir()
+    body = bytearray(512)
+    body[0], body[40] = 47, 5
+    (v1 / "scales.work").write_bytes(b"SCLS\0\0\0\1\0\0\2\0" + struct.pack(">I", zlib.crc32(bytes(body))) + bytes(body))
+    card1 = out / "card-v1.img"
+    subprocess.run([str(ROOT / ".venv/bin/python3"), "tools/emu/ot_emu/stage_card.py", str(v1), "SCSET", "SCPRJ",
+                    "--out", str(card1), "--tree", str(out / "v1-tree")], cwd=ROOT,
+                   stdout=subprocess.DEVNULL, check=True)
+    # The poke options all land after the load, so a poked sc_alib cannot show the read clearing it:
+    # the watch shows the load itself writing zeros into the first entry (the bank copy), and it ends zero.
+    rc = boot("v1", card1, d / "idle.script", False, watch=f"{alib:#x},2")
+    v1_lib, v1_alib = (d / "v1.lib").read_bytes(), (d / "v1.alib").read_bytes()
+    wrote = re.findall(rf"\[{alib:#x}\] <- 0 \(4\) at pc", (d / "v1.txt").read_text())
+    if rc or v1_lib[0] != 47 or v1_lib[40] != 5 or any(v1_alib) or not wrote:
+        bad.append(f"version 1 file: exited {rc}, sc_lib[0] {v1_lib[0]} (47), sc_lib[40] {v1_lib[40]} (5), "
+                   f"sc_alib {v1_alib[:4].hex()} (zeros), {len(wrote)} load writes to sc_alib (want some)")
     print(f"  [{'FAIL' if bad else 'PASS'}] verify_scales: scales.work, MKII (SAVE PROJECT writes .work and "
-          f".strd with the ID; the saved card boots it back; no save, no .strd)")
+          f".strd with the ID and the audio scale; the saved card boots them back; a version 1 file reads with "
+          f"the audio scales OFF; no save, no .strd)")
     for line in bad:
         print(f"      {line}")
     return bool(bad)
