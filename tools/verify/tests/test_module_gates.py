@@ -54,6 +54,14 @@ class OnceGates(unittest.TestCase):
         pick = module_gates.carrier("K", [big, other, small], selected=lambda r: sel[r.name])
         self.assertIs(pick, small)
 
+    def test_a_probe_remix_carries_only_when_nothing_else_does(self):
+        """#1124: `cfmeter` (family probes) was the smallest carrier of SCALE QUANTIZER, and its gate failed there."""
+        probe = types.SimpleNamespace(name="probe", family="probes")
+        big = types.SimpleNamespace(name="big", family="octabam")
+        sel = {"probe": [module("K")], "big": [module("K"), module("X"), module("Y")]}
+        self.assertIs(module_gates.carrier("K", [probe, big], selected=lambda r: sel[r.name]), big)
+        self.assertIs(module_gates.carrier("K", [probe], selected=lambda r: sel[r.name]), probe)
+
 
 class PortStamp(unittest.TestCase):
     def test_stamp_matches_content_not_mtime(self):
