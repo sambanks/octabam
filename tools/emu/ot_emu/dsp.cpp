@@ -118,6 +118,7 @@ namespace ot
 		std::vector<int32_t> capture;
 		std::atomic<bool> firstCmdSeen{false};			// O17: cvrWrite (ColdFire) sets, the ESAI input callback (worker) reads
 		std::atomic<uint64_t> txAtFirstCmd{0}, rxAtFirstCmd{0};
+		std::atomic<int64_t> rxAtCue{-1};	// --audio-in-on-cue: rxFrames at the live script's `audio start`, -1 before it
 		bool rotSeen = false; uint32_t rotMin = 0, rotMax = 0;	// ring-word rotation of the ESAI slot counter (O9c)
 		std::array<uint64_t, DspPair::g_audioSlots> txNZ = {}, rxNZ = {};
 		uint64_t surplus = 0, zeroDelta = 0;	// instruction-counter delta beyond one per interpreter call / calls that moved it not at all
@@ -381,9 +382,12 @@ namespace ot
 					for(auto& w : _f[i])
 						w = 0;
 				_f.resize(dsp56k::Audio::MaxSlotsPerFrame);
-				if((c.firstCmdSeen.load(std::memory_order_acquire) || m_inputFromBoot) && (m_tones || m_inputChannels))
+				const int64_t cue = c.rxAtCue.load(std::memory_order_acquire);
+				if((m_inputOnCue ? cue >= 0 : c.firstCmdSeen.load(std::memory_order_acquire) || m_inputFromBoot) && (m_tones || m_inputChannels))
 				{
-					const uint64_t n = m_inputFromBoot ? c.rxFrames.load(std::memory_order_relaxed) : c.rxFrames.load(std::memory_order_relaxed) - c.rxAtFirstCmd.load(std::memory_order_relaxed);
+					const uint64_t rx = c.rxFrames.load(std::memory_order_relaxed);
+					const uint64_t n = m_inputOnCue ? rx - static_cast<uint64_t>(cue)
+						: m_inputFromBoot ? rx : rx - c.rxAtFirstCmd.load(std::memory_order_relaxed);
 					for(uint32_t s = 0; s < g_audioSlots; ++s)
 					{
 						int32_t v = 0;
@@ -3486,6 +3490,11 @@ namespace ot
 
 	void DspPair::setAudioInput(std::vector<int32_t> _interleaved, const uint32_t _channels) { m_input = std::move(_interleaved); m_inputChannels = _channels; }
 	uint64_t DspPair::txAtFirstCommand(const int _core) const { return m_cores[_core & 1]->txAtFirstCmd.load(std::memory_order_relaxed); }
+	void DspPair::startAudioInputNow()
+	{
+		for(auto& k : m_cores)
+			k->rxAtCue.store(static_cast<int64_t>(k->rxFrames.load(std::memory_order_relaxed)), std::memory_order_release);
+	}
 	uint64_t DspPair::rxAtFirstCommand(const int _core) const { return m_cores[_core & 1]->rxAtFirstCmd.load(std::memory_order_relaxed); }
 	uint64_t DspPair::txSlotNonZero(const int _core, const uint32_t _slot) const { return m_cores[_core & 1]->txNZ[_slot & 7]; }
 	uint64_t DspPair::rxSlotNonZero(const int _core, const uint32_t _slot) const { return m_cores[_core & 1]->rxNZ[_slot & 7]; }
