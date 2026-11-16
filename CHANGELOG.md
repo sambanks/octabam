@@ -208,6 +208,16 @@ Docs
 - Removed: `PLAN.md`, `docs/TIMESTRETCH_PIPELINE.md` (27 Sep).
 - Demand loader (`modules/dlpump`, `modules/dlcopy`, `modules/dlprobe`; `docs/contributing/DEMAND_LOADER.md`): `octabam` copies SPECTRUM, CHARACTER, MODULATION and TRANSIENT into the DSP's shared window while a track uses them and withdraws them 10 s after the last use. All 14 stock effects stay; the stock reverbs run behind a guard that keeps them off loaded code. A block is held by whoever has it first: the FX1 and FX2 choosers refuse an effect whose block is under PLATE, DARK or SPRING REV, and a reverb on the block of a loaded effect a track uses, each with a toast (`NEEDS Tn FX2 FREE`, `Tn HOLDS <effect>`); other routes toast at the next page key. `octabam` lists the stations on FX1 (it offered SPECTRUM and CHARACTER on FX2 only, where they render dry). GATE VERB is not in `octabam`. New builder fields `Remix.window_demand`, `window_guard`, `window_loader`; the build refuses an uploaded window record above `0x37f00`. DLPROBE and `tools/hw/dl_state.py` (USB `0xc0/0x57` block 3) read the counters on a unit. Gates `verify_dlstub`, `verify_dlwrap`, `verify_dlload`, `verify_dlprobe`.
 
+## 16 Nov 2026 -- `test/usb-midi-tracks-hw` (UMT-HW 1, UMT-OLD 1, UMT-OFF 1), MKII
+
+USB MIDI TRACKS' unit test, by REMIX SWITCH (no flash): `tools/hw/ot_usbtracks.py`
+switched the three images over USB and ran each on one project (INF retrig on two
+tracks, trigs on four, a part change). The reviewed build follows TRIG CHANNEL,
+closes the note a part change strands (the first push leaves it open), is silent
+with SEND OFF, and drops nothing while the Mac reads; neither build stalled in 60 s,
+and the longest frame interrupt was about 310 us on both. Frame-entry lateness was
+not measured. `modules/usb-midi-tracks/README.md` has the table.
+
 ## OCTABAMS5 — 9 Nov 2026 (local remix `o4-stems`, branch `o4s-dl`)
 
 `OCTABAMS4`'s code (`00a23502`: v0.4 plus STEMS13) with the demand loader's copy-loop, repeat and pump
