@@ -439,11 +439,13 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(context.gate_owners[script], ["STORE"])
         self.assertEqual(context.gate_remixes[script],
                          {"chords", "chords-alone", "hooks-boot", "midi-follow", "midi-follow-events",
-                          "midi-loopback", "octabam", "octabam-bus", "octabam-verbs", "scales", "scales-quantizer"})
+                          "midi-loopback", "octabam", "octabam-bus", "octabam-lazy-chop", "octabam-verbs", "scales",
+                          "scales-quantizer"})
         rows = reach.classify([script], context)
         self.assertEqual(reach.remixes_reached(rows),
                          ["chords", "chords-alone", "hooks-boot", "midi-follow", "midi-follow-events",
-                          "midi-loopback", "octabam", "octabam-bus", "octabam-verbs", "scales", "scales-quantizer"])
+                          "midi-loopback", "octabam", "octabam-bus", "octabam-lazy-chop", "octabam-verbs", "scales",
+                          "scales-quantizer"])
 
     def test_remixes_reached(self):
         rows = reach.classify(["modules/character/a.asm", "remixes/miniverb/remix.py"], ctx())
