@@ -248,7 +248,11 @@ two sites; not run until that line is pinned.
   - `scales.work` under the port, MKII: a scale picked then SAVE PROJECT
     writes `scales.work` and `scales.strd` (header, CRC-32, the ID in bank
     1 Part 1 track 1, nothing else); the saved card booted again gives the
-    ID and the KEY back; a run with no save writes no file. The window's six
+    ID and the KEY back; a run with no save, as long as the save, writes no
+    `scales.strd`, and the `scales.work` the bank writer leaves in it holds the
+    ID. (Until 16 Nov 2026 this read "a run with no save writes no file": that
+    run ended 9.3 s in, before the bank writer reached `scales.work`; run as
+    long as the save, the writer wrote it, as **scales.work** above says.) The window's six
     states drawn under the port and looked at (families, a family, back,
     scrolled, reopened with the marks).
   - On `test/scales-quantizer`, the audio side as well: every SCALE 0..24
