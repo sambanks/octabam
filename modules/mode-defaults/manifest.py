@@ -68,5 +68,5 @@ MODULE = Module(
         Detour(0x4003ACF2, H("4eb940027e00"), "modedef", "fx1_hook",
                "FX1 page-2 editor: after the Part store, apply the mode's view", kind="jsr"),
     ),
-    gates=(Gate('tools/verify/verify_mode_defaults.py'),),
+    gates=(Gate('tools/verify/verify_mode_defaults.py', project=True),),
 )

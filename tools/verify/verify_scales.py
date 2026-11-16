@@ -28,8 +28,12 @@ tonic).
      opens nothing; CTRL1 SETUP's YES keeps the scale.
    - scales.work (MKII): a scale picked and SAVE PROJECT write scales.work
      and scales.strd (header, CRC-32, the ID in bank 1 Part 1 track 1); the
-     saved card booted again gives the ID back; a run with no save writes
-     no scales.work.
+     saved card booted again gives the ID back; a run with no save, as long
+     as the save, writes no scales.strd, and the scales.work the bank writer
+     leaves holds the ID.
+
+`--section mki|mkii[,..]` runs one half (the CI units, reach.SPLIT_GATE_SECTIONS): `mki` is the linked code and the
+MKI port runs, `mkii` the MKII port runs and scales.work; none runs both.
 """
 import os
 import pathlib
@@ -442,55 +446,151 @@ def shown(stream):
                    for k in range(16))
 
 
+# The runtime's addresses of SCALES' own state (main fills it from runtime.elf before a script is written), and the
+# stock state its tick reads (scales.s's equates).
+SYM = {}
+# ms from the end of the load (LOAD PROJECT handled, the engine idle) to a script's first line. 1500 until 16 Nov
+# 2026; at 100 every memory dump and LED state of the gate's 500 port sessions was byte-identical to 1500's
+# (verify_scales.py octabam, both models).
+START_MS = 100
+AFTER_CAP = 100                           # ms: a press's further conditions, after its first has held
+MIDI_MODE, TRIG_MODE, ARP_WINDOW = 0x80000012, 0x460d16f0, 0x400cfebe
+
+
+def long_hex(v):
+    return f"{v & 0xffffffff:08x}"
+
+
 class Script:
+    """A panel script at emulated times (ot_emu --live-script). A press waits for what it causes (`until`): ot_emu's
+    `wait` line runs until the bytes hold, capped at the press's gap, and pulls every later line forward by the time
+    it saved. The caps are the fixed gaps the script had until 16 Nov 2026: a press whose effect never comes takes
+    its whole gap (and AFTER_CAP for each further condition), so a failing check sees the state no earlier than it
+    did, and a script whose every wait times out runs about a tenth longer than the fixed-gap one did."""
+
     def __init__(self):
-        self.lines, self.t = [], 1500
+        self.lines, self.t = [], START_MS
 
     def send(self, text, gap=150):
         self.lines.append(f"{self.t} {text}")
         self.t += gap
 
-    def tap(self, key, gap=300):
+    def until(self, addr, value, op, cap):
+        """Run until the bytes at `addr` are (eq) or are not (ne) the hex `value`, or differ from what they were
+        when the wait began (chg), at most `cap` ms."""
+        self.lines.append(f"{self.t} wait {addr:#x} {value} {op} {cap}")
+        self.t += cap
+
+    def tap(self, key, gap=300, until=()):
+        """A key pressed and released; `until`: the (addr, hex, op) the press causes, waited for in turn. The first
+        is capped at `gap`; the others are the same handler's writes and are capped at AFTER_CAP, so a press whose
+        effect never comes costs its gap and AFTER_CAP for each further condition."""
         self.send(f"key {key:#x} down", 40)
-        self.send(f"key {key:#x} up", gap)
+        self.send(f"key {key:#x} up", 0 if until else gap)
+        for i, (addr, value, op) in enumerate(until):
+            self.until(addr, value, op, gap if i == 0 else AFTER_CAP)
 
     def write(self, path):
         self.send("quit")
         path.write_text("\n".join(self.lines) + "\n")
 
 
+LED_TAIL = 300                            # ms after kl_shown is recorded: the LED bytes reach the panel stream
+
+
 def chromatic(midi, later=()):
     s = Script()
     s.tap(0x32)
     if midi:
-        s.tap(0x35)                       # MIDI mode
+        s.tap(0x35, until=((MIDI_MODE, "00000000", "ne"),))       # MIDI mode
     s.send("key 0x2d down")
     s.tap(0x20)                           # the trig-mode list
     s.tap(0x20)                           # CHROMATIC
-    s.send("key 0x2d up", 1500)
-    for line in later:                    # after CHROMATIC is drawn, no key after it
-        s.send(line, 2000)
+    # CHROMATIC drawn: the trig mode is 1 and kl_chromatic has recorded the answer it drew (-2 outside it)
+    s.send("key 0x2d up", 0)
+    s.until(TRIG_MODE, "00000001", "eq", 1500)
+    s.until(SYM["kl_shown"], long_hex(-2), "ne", 1500)
+    s.t += LED_TAIL
+    for line in later:                    # after CHROMATIC is drawn, no key after it: the tick draws the change
+        s.send(line, 0)
+        s.until(SYM["kl_shown"], long_hex(0), "chg", 2000)
+        s.t += LED_TAIL
     return s
 
 
 def arp(s):
     s.tap(0x32)
-    s.tap(0x35)                           # MIDI mode
+    s.tap(0x35, until=((MIDI_MODE, "00000000", "ne"),))           # MIDI mode
     s.send("key 0x2d down")
-    s.tap(0x23)                           # FUNC + AMP: ARP SETUP
-    s.send("key 0x2d up", 800)
+    s.tap(0x23, until=((ARP_WINDOW, "00000000", "ne"),))          # FUNC + AMP: ARP SETUP
+    s.send("key 0x2d up", 0)
+    s.until(ARP_WINDOW, "00000000", "ne", 800)
 
 
-def choose(s, ident):
-    """F pushed, the family's row, YES, the scale's row, YES (the lists open on row 0 from OFF)."""
+class Chooser:
+    """The chooser as sc_pick and its keys set it (scales.s), so that each press waits for its own effect in
+    sc_win, sc_level, sc_fam and sc_sel, and a pick for the KEY and the ID it writes. `shown`: the ID the
+    window opens on (0: none)."""
+
+    def __init__(self, s, shown=0):
+        self.s, self.shown, self.level, self.fam, self.sel = s, shown, 0, 0, 0
+
+    def at(self, name, value):
+        return SYM[name], long_hex(value), "eq"
+
+    def rows(self):
+        return len(FAMILIES) if self.level == 0 else len(FAMILIES[self.fam][1])
+
+    def open(self, gap=600):
+        """Encoder F pushed and released: the window, on the shown ID's family."""
+        self.level, self.sel = 0, CATALOGUE[self.shown][0] if self.shown in CATALOGUE else 0
+        self.s.tap(0x3d, gap, ((SYM["sc_win"], "00000000", "ne"), self.at("sc_level", 0), self.at("sc_sel", self.sel)))
+
+    def down(self):
+        if self.sel + 1 >= self.rows():
+            self.s.tap(0x20)              # the last row: DOWN changes nothing to wait for
+            return
+        self.sel += 1
+        self.s.tap(0x20, 300, (self.at("sc_sel", self.sel),))
+
+    def enter(self, key=0x31, gap=600):
+        """YES or RIGHT on a family: its scales, on the shown ID's row when it is one of them."""
+        self.fam, self.level = self.sel, 1
+        shown = CATALOGUE.get(self.shown)
+        self.sel = shown[1] if shown and shown[0] == self.fam else 0
+        self.s.tap(key, gap, (self.at("sc_level", 1), self.at("sc_fam", self.fam), self.at("sc_sel", self.sel)))
+
+    def left(self, gap=600):
+        self.level, self.sel = 0, self.fam
+        self.s.tap(0x34, gap, (self.at("sc_level", 0), self.at("sc_sel", self.sel)))
+
+    def pick(self, gap=800):
+        """YES on a scale: the window closed, the KEY in the live copy, the Part and the CS1 mirror, the ID in sc_lib."""
+        ident = next(i for i, c in CATALOGUE.items() if c[:2] == (self.fam, self.sel))
+        key, ext = encode(0, ident), 0 if ident <= 7 else ident
+        self.s.tap(0x31, gap, ((SYM["sc_win"], "00000000", "eq"),
+                               *((a + KEY, f"{key:02x}", "eq") for a in (LIVE, PART_SETUP, CS1_SETUP)),
+                               (SYM["sc_lib"], f"{ext:02x}", "eq")))
+        self.shown = ident
+        return ident
+
+    def close(self, gap=800):
+        """NO: the window closed, nothing written."""
+        self.s.tap(0x32, gap, ((SYM["sc_win"], "00000000", "eq"),))
+
+
+def choose(s, ident, shown=0):
+    """F pushed, the family's row, YES, the scale's row, YES (the lists open on row 0 from OFF). -> the Chooser."""
+    c = Chooser(s, shown)
+    c.open()
     fam, row = CATALOGUE[ident][:2]
-    s.tap(0x3d, 600)
-    for _ in range(fam):
-        s.tap(0x20)
-    s.tap(0x31, 600)
-    for _ in range(row):
-        s.tap(0x20)
-    s.tap(0x31, 800)
+    for _ in range(fam - c.sel):
+        c.down()
+    c.enter()
+    for _ in range(row - c.sel):
+        c.down()
+    assert c.pick() == ident
+    return c
 
 
 def chooser_runs(out):
@@ -504,18 +604,18 @@ def chooser_runs(out):
         runs.append((f"choose-{ident}", (encode(0, ident), 0 if ident <= 7 else ident), False))
     s = Script()                          # reopened on the scale: YES YES keeps it
     arp(s)
-    choose(s, 32)
-    s.tap(0x3d, 600)
-    s.tap(0x31, 600)
-    s.tap(0x31, 800)
+    c = choose(s, 32)
+    c.open()
+    c.enter()
+    assert c.pick() == 32
     s.write(out / "reopen.script")
     runs.append(("reopen", (encode(0, 32), 32), False))
     s = Script()                          # NO closes, nothing written
     arp(s)
-    choose(s, 41)
-    s.tap(0x3d, 600)
-    s.tap(0x20)
-    s.tap(0x32, 800)
+    c = choose(s, 41)
+    c.open()
+    c.down()
+    c.close()
     s.write(out / "no.script")
     runs.append(("no", (encode(0, 41), 41), False))
     s = Script()                          # F turned while pushed: a quick edit, no list
@@ -532,18 +632,19 @@ def chooser_runs(out):
     runs.append(("open", (0, 0), True))
     s = Script()                          # RIGHT enters a family, LEFT goes back on it
     arp(s)
-    s.tap(0x3d, 600)
-    s.tap(0x20)
-    s.tap(0x20)
-    s.tap(0x21, 600)                      # HARMONIC MINOR's scales
-    s.tap(0x20)
-    s.tap(0x34, 600)                      # back on HARMONIC MINOR
+    c = Chooser(s)
+    c.open()
+    c.down()
+    c.down()
+    c.enter(0x21)                         # HARMONIC MINOR's scales
+    c.down()
+    c.left()                              # back on HARMONIC MINOR
     for _ in range(3):
-        s.tap(0x20)                       # PENTATONIC
-    s.tap(0x21, 600)
+        c.down()                          # PENTATONIC
+    c.enter(0x21)
     for _ in range(4):
-        s.tap(0x20)                       # MINOR PENTATONIC
-    s.tap(0x31, 800)
+        c.down()                          # MINOR PENTATONIC
+    assert c.pick() == 40
     s.write(out / "rightleft.script")
     runs.append(("rightleft", (encode(0, 40), 40), False))
     s = Script()                          # CTRL1 SETUP's YES (its commit-all writes +0x12..+0x17)
@@ -561,8 +662,19 @@ def chooser_runs(out):
     return runs
 
 
+SECTIONS = ("mki", "mkii")
+
+
 def main():
-    remix = sys.argv[1]
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("remix")
+    ap.add_argument("--section", default="", help="mki, mkii or both, comma-separated; none runs both")
+    a = ap.parse_args()
+    sections = [x for x in a.section.split(",") if x] or list(SECTIONS)
+    if set(sections) - set(SECTIONS):
+        ap.error(f"--section takes {', '.join(SECTIONS)}")
+    remix = a.remix
     mods = registry.remix(remix).modules
     if "SCALES" not in mods:
         return 0
@@ -573,7 +685,7 @@ def main():
     env = dict(os.environ, REMIX=remix, XBUS="1", SPEC="1")
     subprocess.run([sys.executable, "tools/build/build_bus.py"], cwd=ROOT, env=env,
                    stdout=subprocess.DEVNULL, check=True)
-    fails = machine_gate(remix)
+    fails = machine_gate(remix) if "mki" in sections else 0
 
     image = out / "mainos.bin"
     shutil.copy2(ROOT / "out/mainos_bus.bin", image)
@@ -583,13 +695,15 @@ def main():
     subprocess.run([str(ROOT / ".venv/bin/python3"), "tools/emu/ot_emu/stage_card.py",
                     str(empty), "SCSET", "SCPRJ", "--out", str(card)], cwd=ROOT,
                    stdout=subprocess.DEVNULL, check=True)
+    nm = subprocess.check_output(["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")], text=True)
+    for name in ("sc_win", "sc_level", "sc_fam", "sc_sel", "kl_shown", "sc_lib"):
+        SYM[name] = int(re.search(rf"^([0-9a-f]+) [BbDd] {name}$", nm, re.M).group(1), 16)
     chromatic(True).write(out / "midi.script")
     chromatic(False).write(out / "audio.script")
     chromatic(True, (f"poke {LIVE + KEY:#x}=6;{PART_SETUP + KEY:#x}=6",)).write(out / "midi-later.script")  # C MAJ -> D MIN
     chromatic(False, (f"poke {NV_ROOT:#x}=9",)).write(out / "audio-later.script")        # MINOR on C -> on A
     modes = "0x80000012=00;0x80000013=00;0x80000014=00;0x80000015=00"
-    nm = subprocess.check_output(["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")], text=True)
-    lib = int(re.search(r"^([0-9a-f]+) [Bb] sc_lib$", nm, re.M).group(1), 16)
+    lib = SYM["sc_lib"]
 
     def lane(key, ext):
         """Track 1's KEY (the live copy and the native Part, which STORE reads) and its ID."""
@@ -608,10 +722,10 @@ def main():
     if quantizer:
         leds.append(("refresh-audio", "audio-later", (6, 9), f"{NV_SCALE:#x}={6};{NV_ROOT:#x}=0"))
     chooser = chooser_runs(out)
-    window = int(re.search(r"^([0-9a-f]+) [Dd] sc_win$", nm, re.M).group(1), 16)
+    window = SYM["sc_win"]
     dumps = (f"{LIVE:#x},{0x24}", f"{PART_SETUP:#x},{0x24}", f"{CS1_SETUP:#x},{0x24}",
              f"{window:#x},4", "0x46c82456,4", "0x100b14cf,1", f"{lib:#x},1")
-    for model in ("mki", "mkii"):
+    for model in sections:
         cmd = [str(ROOT / "out/emu/ot_emu"), "--image", str(image), "--card", str(card),
                "--set", "SCSET", "--project", "SCPRJ", "--load-ms", "90000",
                "--scenario-jobs", str(os.cpu_count() or 4)]
@@ -663,8 +777,12 @@ def main():
         for line in bad[:10]:
             print(f"      {line}")
         fails += bool(bad)
-    fails += persist(out, image, card, lib)
+    if "mkii" in sections:
+        fails += persist(out, image, card, lib)
     return int(bool(fails))
+
+
+SAVE_GAPS = (1000, 700, 500, 1100, 30000)  # PROJ, the SAVE PROJECT row, YES, and the save itself
 
 
 def persist(out, image, card, lib):
@@ -682,11 +800,13 @@ def persist(out, image, card, lib):
         arp(s)
         choose(s, ident)
         if save:                          # PROJ: SAVE PROJECT
-            s.tap(0x1c, 1000)
-            s.tap(0x21, 700)
-            s.tap(0x20, 500)
-            s.tap(0x31, 1100)
-            s.tap(0x31, 30000)
+            for key, gap in zip((0x1c, 0x21, 0x20, 0x31, 0x31), SAVE_GAPS):
+                s.tap(key, gap)
+        else:
+            # No keys for as long as the save's take: the firmware writes the bank .work files in the background for
+            # seconds after the load (32 on this card 9.3 s in, 17 at 1.2 s; 16 Nov 2026), so a run that ends early
+            # would see "no scales.work" from a writer that had not reached it yet.
+            s.t += sum(gap + 40 for gap in SAVE_GAPS)
         s.write(d / f"{tag}.script")
     s = Script()
     s.tap(0x32, 400)
@@ -709,21 +829,33 @@ def persist(out, image, card, lib):
     if rc != [0, 0]:
         bad.append(f"the save and the unsaved run exited {rc}")
     files = emu_card.extract_image((d / "saved.img").read_bytes())
+    def holds_ident(f):
+        return (len(f) == 16 + 512 and f[:12] == b"SCLS\0\0\0\1\0\0\2\0"
+                and struct.unpack(">I", f[12:16])[0] == zlib.crc32(f[16:]) and f[16] == ident and not any(f[17:]))
+
+    def card_file(fs, ext):
+        return next((v for k, v in fs.items() if k.lower().endswith(f"/scprj/scales.{ext}")), None)
+
     for ext in ("work", "strd"):
-        f = next((v for k, v in files.items() if k.lower().endswith(f"/scprj/scales.{ext}")), b"")
-        if not (len(f) == 16 + 512 and f[:12] == b"SCLS\0\0\0\1\0\0\2\0"
-                and struct.unpack(">I", f[12:16])[0] == zlib.crc32(f[16:])
-                and f[16] == ident and not any(f[17:])):
+        f = card_file(files, ext) or b""
+        if not holds_ident(f):
             bad.append(f"scales.{ext}: {len(f)} B {f[:16].hex()} ID {f[16] if len(f) > 16 else None}")
+    # No save, no scales.strd (the project store's copy). scales.work is the bank writer's (README: written by
+    # the bank writer and before the project store): stock's background writer of the .work files writes it with
+    # no save, seconds after the pick. Until 16 Nov 2026 this checked "no scales.work", and passed only because
+    # the run ended 9.3 s in, before the writer reached it; run as long as the save, it found a valid one.
     uf = emu_card.extract_image((d / "unsaved.img").read_bytes())
-    if any(k.lower().endswith("/scprj/scales.work") for k in uf):
-        bad.append("the unsaved run wrote scales.work")
+    if card_file(uf, "strd") is not None:
+        bad.append("the unsaved run wrote scales.strd")
+    uw = card_file(uf, "work")
+    if uw is not None and not holds_ident(uw):
+        bad.append(f"the unsaved run's scales.work (the bank writer's): {len(uw)} B {uw[:16].hex()}")
     rc = boot("reboot", d / "saved.img", d / "idle.script", False)
     lib_b, live = (d / "reboot.lib").read_bytes(), (d / "reboot.live").read_bytes()
     if rc or lib_b[0] != ident or live[KEY] != encode(0, ident):
         bad.append(f"reboot: exited {rc}, sc_lib {lib_b[0]}, KEY {live[KEY]} (want {ident}, {encode(0, ident)})")
     print(f"  [{'FAIL' if bad else 'PASS'}] verify_scales: scales.work, MKII (SAVE PROJECT writes .work and "
-          f".strd with the ID; the saved card boots it back; no save, no file)")
+          f".strd with the ID; the saved card boots it back; no save, no .strd)")
     for line in bad:
         print(f"      {line}")
     return bool(bad)

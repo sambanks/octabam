@@ -42,5 +42,5 @@ MODULE = Module(
         Poke(0x400D38B0, expect=COUNT, write=(10).to_bytes(4, "big"), note="audio LFO page MULT count 7 -> 10"),
         Poke(0x400D421C, expect=COUNT, write=(10).to_bytes(4, "big"), note="MIDI LFO page MULT count 7 -> 10"),
     ),
-    gates=(Gate("tools/verify/verify_slow_lfo.py", venv=True, stage="image"),),
+    gates=(Gate("tools/verify/verify_slow_lfo.py", venv=True, stage="image", project=True),),
 )

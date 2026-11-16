@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """SHATTER render gates.
 
-  MIX=0       -> bit-exact passthrough
+  MIX=0       -> bit-exact passthrough (LIM default 0)
   defaults    -> near-passthrough (dirt knobs 0)
   DRV+FOLD    -> both signs fold (negated in ~= negated out)
   FDBK        -> raises energy vs FDBK 0 on a tone
   CHAOS       -> non-silent with FDBK up
+  LIM         -> transparent GR lowers hot peak; LIM 0 == off; LIM 1 quiet ~match
   every knob  -> renders without dsp_host dying
   max knobs   -> ~3 s no runaway; rail fraction bounded
   DRV 127     -> clips at ordinary input (rail fraction in band)
@@ -52,10 +53,12 @@ def params(**kw):
     return v
 
 
-def render(samples, inst=1, **kw):
+def render(samples, inst=1, right_samples=None, **kw):
     n = len(samples) - len(samples) % FRAMES
     src, out = TMP / "in.raw", TMP / "out.raw"
-    src.write_bytes(b"".join(struct.pack("<i", m) for m in samples[:n]))
+    words = samples[:n] if right_samples is None else [
+        v for pair in zip(samples[:n], right_samples[:n]) for v in pair]
+    src.write_bytes(b"".join(struct.pack("<i", m) for m in words))
     pcsv = ",".join(str(x) for x in params(**kw))
     # FX2: r7 = 2+3*pos, alloc = 1+2*pos (dsp_host header).
     r7 = ",".join(str(2 + 3 * k) for k in range(inst))
@@ -68,6 +71,8 @@ def render(samples, inst=1, **kw):
            "-inmask", str((1 << inst) - 1),
            "-frames", str(FRAMES), "-blocks", str(n // FRAMES),
            "-in", str(src), "-out", str(out)]
+    if right_samples is not None:
+        cmd += ["-stereo"]
     for _ in range(inst):
         cmd += ["-params", pcsv]
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -192,6 +197,45 @@ d_rate = max(abs(a - b) for a, b in zip(Lr0, Lr1))
 check("CHAOS RATE 0 vs 127 differs (page-2 on $d)", d_rate > (1 << 12),
       f"max|d|={d_rate}")
 
+# LIM after MIX: slot 9 = $d companion. Stereo-linked envelope + block-rate
+# g = thresh/max(level, thresh). Off path stable; on path lowers a hot peak
+# to the ceiling (transparent GR — makeup-to-FS cancelled the GR on hot).
+N_LIM = FRAMES * 32
+drive_lim = [int(0.25 * (1 << 23) * __import__("math").sin(
+    2 * 3.14159265 * 220 * i / FS)) for i in range(N_LIM)]
+Loff, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+                 MODE=0, TONE=64, RATE=64, LIM=0)
+Loff2, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+                  MODE=0, TONE=64, RATE=64, LIM=0)
+check("LIM 0 path stable (two runs match)", Loff == Loff2)
+L100, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+                 MODE=0, TONE=64, RATE=64, LIM=100)
+L127, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+                 MODE=0, TONE=64, RATE=64, LIM=127)
+p0 = max(abs(x) for x in Loff[FRAMES:])
+p100 = max(abs(x) for x in L100[FRAMES:])
+p127 = max(abs(x) for x in L127[FRAMES:])
+check("LIM 100 lowers peak vs LIM 0", p100 < p0 * 0.85,
+      f"p0={p0} p100={p100}")
+check("LIM 127 peak below LIM 100", p127 < p100 * 0.95,
+      f"p100={p100} p127={p127}")
+# Floor ~0.125 FS: max LIM is quiet, not mute.
+check("LIM 127 still audible (floor ~0.125)", p127 > (RAIL >> 4),
+      f"p127={p127}")
+d_lim = max(abs(a - b) for a, b in zip(Loff, L100))
+check("LIM 100 changes vs LIM 0 (page-2 $d companion)", d_lim > (1 << 16),
+      f"max|d|={d_lim}")
+# Quiet below ceiling: g=1, near bit-match to LIM 0.
+quiet_lim = [int(0.05 * (1 << 23) * __import__("math").sin(
+    2 * 3.14159265 * 220 * i / FS)) for i in range(N_LIM)]
+Q0, _ = render(quiet_lim, MIX=127, DRV=0, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+               MODE=0, TONE=64, RATE=64, LIM=0)
+Q1, _ = render(quiet_lim, MIX=127, DRV=0, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+               MODE=0, TONE=64, RATE=64, LIM=32)
+d_q = max(abs(a - b) for a, b in zip(Q0[FRAMES:], Q1[FRAMES:]))
+check("LIM 32 quiet near-matches LIM 0 (under ceiling)", d_q < (1 << 14),
+      f"max|d|={d_q}")
+
 for name in K:
     render(ramp[:FRAMES * 4], **{name: 64})
 check("every named knob renders", True)
@@ -202,9 +246,10 @@ N_LONG = int(3.0 * FS)
 N_LONG -= N_LONG % FRAMES
 drive = [int(0.25 * (1 << 23) * __import__("math").sin(
     2 * 3.14159265 * 220 * i / FS)) for i in range(N_LONG)]
+# Test feedback stability with the limiter bypassed.
 Lmax, Rmax = render(
     drive, MIX=127, DRV=127, FOLD=127, CLIP=127, CRSH=127, FDBK=127,
-    MODE=2, TONE=127, RATE=127)
+    MODE=2, TONE=127, RATE=127, LIM=0)
 rf_max = max(rail_frac(Lmax), rail_frac(Rmax))
 check(f"max-knob rail frac bounded ({rf_max:.3f} < 0.50)", rf_max < 0.50)
 half = len(Lmax) // 2
@@ -234,6 +279,9 @@ for i, (Li, Ri) in enumerate(pair):
     e = sum(abs(x) for x in Li[512:])
     check(f"two-instance[{i}] has energy ({e})", e > 10_000)
     check(f"two-instance[{i}] rail frac bounded ({rf:.3f} < 0.50)", rf < 0.50)
+
+from peak_limiter_gate import verify as verify_limiter
+verify_limiter(render, check, FRAMES, RAIL)
 
 if FAILS:
     sys.exit(f"verify_shatter: {len(FAILS)} FAILED: {', '.join(FAILS)}")

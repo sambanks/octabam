@@ -13,6 +13,9 @@ In MIDI mode (MIDI SEQUENCER), with scene A or B held:
   when its scene holds a lock for any track.
 - Move the crossfader (the panel's or CC 48): each locked parameter goes
   A↔B, and CCs are sent when a value changes.
+- When no scene on either side of the crossfader locks a CC any more, it
+  returns to the Part's value and that value is sent. (MIDISC 2.1 left the
+  last locked value in place; this is a change in octabam.)
 
 CLEAR, COPY and PASTE SCENE act on the whole scene, its MIDI locks and its
 audio locks together, whether the audio or the MIDI tracks are shown. The

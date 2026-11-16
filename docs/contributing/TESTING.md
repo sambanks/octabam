@@ -91,6 +91,7 @@ Each step runs through `tools/verify/step.py`, which prints one line after the s
 | `verify_dirty_state` | each DSP module rendered from a garbage-filled instance block on silence is silent or identical to the zeroed render | `dsp_host` |
 | `verify_init_regs` | no module's `init` writes r1/n1/m1 (the dispatcher keeps the effect id there) | |
 | `verify_dsp_forms` | every instruction form of the remix's DSP modules has a site in a stock payload, a row of CHIP.md's instruction-form register, or a module whose `Evidence` is `Level.UNIT` or above; the control form `move a,y:(r3+$1)` is reported; a `bench_only` module's unproven forms are reported, not refused, in a remix under `remixes/test`. Cannot see: a stock listing decodes tables as code, so a form can have a site the chip never ran; a unit run proves the paths that ran, not every instruction of the source. The build's own window code (the demand stub, the reverb guard's trampolines and body, hook stubs: `out/dsp/window_records.json` of the last build, decoded from the placed words) has no module whose evidence could clear it, so its forms with no stock site or row are printed as `[info]` per record and not refused; on `octabam` that is 32 forms in 8 records. Its build must be the remix's | `dsp_asm`, `dsp56kDisassemble` |
+| `verify_cf_forms` | every ColdFire instruction form of the remix's runtime units, read from the build's assembler listings (`out/platform/runtime/*.lst`, instruction lines only, each instruction's decoded length checked against the listing's), is reported when no analysed stock code has a site of it (`tools/build/cf_code_runs.tsv`, Ghidra's address runs, decoded from the user's own image) and neither its module's `Evidence` is `Level.UNIT` or above nor a row of `docs/contributing/COLDFIRE_FORMS.md` names it. It refuses nothing of that kind yet: FAILs are the control (`wddatal %a0@` must be reported, `moveq #1,%d0` not), an image other than the one the runs were written from, a unit with no listing or a listing of another build, an instruction objdump decodes at another length. Cannot see: ROM caves, detour stubs and the loader; an instruction a source writes as `.short`; a stock function Ghidra did not reach; a unit run proves the paths that ran; the port may shim a form that has a stock site | `m68k-elf-objdump`, `m68k-elf-as` |
 | `tools/build/norep.py` (in every build, `assemble_syms`) | a DSP source with a `rep` is refused; a `do` loop is the form (FAILURE_MODES.md "Crackle on core B"); `tests/test_norep.py` plants one | |
 | `verify_dram_boot` | the image boots under the port; the loader runs once, its `fatal` never, every DRAM window reads back equal to the linked runtime | port |
 | `verify_labels`, `verify_mode_names`, `verify_hidden` | the firmware's own formatter code prints each select's words; the MODE formatter renames its neighbours; a hidden engine is placed, dispatched, off the chooser and draws nothing | `.venv` |
@@ -198,6 +199,16 @@ dear={"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
   `"image"` runs last, on the finished `out/mainos_bus.bin` (and after
   `verify_set` has staged its card).
 - `venv=True` runs it under `.venv/bin/python3` when the venv exists.
+- `project=True`: the gate prints `[SKIP] ... no project` and exits 0 without `OT_PROJECT`. `reach` plans a unit that runs it
+  with a project made by `tools/hw/ot_fresh.py` (`.github/workflows/ci.yml`'s "Fresh Project" step): a per-remix gate is a job of
+  `check-remix <remix> (project)` (its name is the gate's, `image:` in front for the image stage; the remix's other unit
+  skips it); a `once` gate or an isolated `remix_arg=False` one, which runs in the shared half, is
+  `check-shared (project: <gate> on <remix>)`, run alone with `MODULE_GATES_ONLY`, the project made on <remix> (the carrier
+  of a `once` gate, the first remix of the line otherwise). `test_reach` refuses a gate that has the SKIP line and no flag,
+  except those with a unit of `reach.SPLIT_EXTRA_UNITS` (BRAIN, MIDI SCENES) and five that fail with a generated project (or, for
+  `verify_cfmeter`, reach a remix where another gate fails) and are left unflagged until fixed: `verify_ids64_load` #1120,
+  `verify_dlload` #1075, `verify_cfmeter` #1124, `verify_kits` #1125, `verify_load_meter` #1126 (`KNOWN_RED` in `test_reach`). A job that fails in one remix's `(project)` unit and passes in others is left out of that
+  unit only (`reach.PROJECT_GATE_SKIP`: `plocks-p2` and `mode-defaults` on `octabam-verbs`, #1127) (sambanks/octabam#1051). A job that exited 0 with `[SKIP]` lines reads `ok, N SKIP` in `check_shards`'s table.
 - `once=True` (with `remix_arg=True`, isolated): the gate checks the
   module's own code, the same in every carrier, so it runs once per run
   in the shared half, on the named remix with the fewest modules that
@@ -418,12 +429,16 @@ from the actions cache by `refhash_store.py key`.
 
 **CI units cut up** (`reach.entries`, `reach.SPLIT_REMIX_JOBS`). Each unit of
 the CI matrix is a runner with its own setup. `check-remix octabam` runs as
-seven units, each `check_shards --only-jobs ...` over a part of the gate jobs:
+ten units, each `check_shards --only-jobs ...` over a part of the gate jobs:
 `(long)` is `remix-switch`, `(project)` is `set`, `mode-defaults` and
 `plocks-p2` (the jobs that read `OT_PROJECT`), `(rec)` is `image:usb-in`
 and `image:usb-load-meter`, `(rec-arming)`, `(rec-inputs)` and `(rec-level)` are
-the three `image:rec-threshold-*` jobs (the twelve REC THRESHOLD port runs, four each), and the unit without a suffix is
-`--skip-jobs` of all of them and of the `brain` jobs (every other job, the remaining `image:` jobs among them). A name that is no
+the three `image:rec-threshold-*` jobs (the twelve REC THRESHOLD port runs, four each), `(chords)` is `image:chords`,
+`(scales-mki)` and `(scales-mkii)` are `scales:mki` and `scales:mkii` (`verify_scales.py --section`, one model's port
+runs each; `reach.SPLIT_GATE_SECTIONS` makes a gate's sections jobs in place of its one job), and the unit without a
+suffix is `--skip-jobs` of all of them and of the `brain` jobs (every other job, the remaining `image:` jobs among them).
+`octabam-verbs` and `octabam-bus` are cut the same way, without `octabam`'s project jobs (15 Nov 2026, run
+43734790095: `scales` alone was the wall time of all three units, 3630, 4430 and 2687 s, on one shard from start to end). A name that is no
 gate job is refused, so the parts always cover every gate job once.
 The shared half is cut the same way (`reach.SPLIT_SHARED_GATES`): `check-shared (morph)` and
 `check-shared (octa303)` run `test_morph` and `test_octa303` (`SHARED_PART=modules

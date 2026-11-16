@@ -622,11 +622,12 @@ mix_flat:
         mvzb    %a0@,%d1
         moveb   %d2,%a0@
         tstl    %d3
-        beq.s   1f
+        beq.s   mix_send
         lea     scn_sdirty:l,%a0
         tstb    %a0@(0,%d6:l)
         bne.s   mix_ctl                 | between the ends, a trig playing: the CC loop sends it
-1:      cmpl    %d2,%d1
+mix_send:
+        cmpl    %d2,%d1
         beq.s   mix_ctl
         clrl    %sp@-                   | CC_TX (track, flat, value, 0)
         movel   %d2,%sp@-
@@ -656,7 +657,9 @@ mix_free:                               | no lock on either side
         addl    %d7,%d1
         lea     REC,%a0
         addal   %d1,%a0
+        mvzb    %a0@,%d1                | octabam: MIDISC 2.1 sends nothing here (#1096)
         moveb   %d2,%a0@
+        bra.s   mix_send                | a value a lock left behind returns to the Part's
 mix_ctl:
         cmpil   #18,%d7
         bcs.s   mix_next

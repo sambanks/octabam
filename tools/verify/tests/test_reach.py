@@ -3,6 +3,7 @@ no manifests, no firmware."""
 import json
 import os
 import pathlib
+import re
 import sys
 import unittest
 from unittest import mock
@@ -562,6 +563,17 @@ class TestRemixTests(unittest.TestCase):
         self.assertNotIn("--remixes", ctx().identity()[1])
 
 
+# Gates that SKIP without a project and are left unflagged (Gate.project) because running them as a unit is red: flagging one
+# runs it in CI and fails CI on a fault that was already there. Take it off when fixed and set project=True.
+KNOWN_RED = {
+    "tools/verify/verify_ids64_load.py": "#1120: the chooser check fails with a generated project",
+    "tools/verify/verify_dlload.py": "#1075: 12 checks fail with a project",
+    "tools/verify/verify_cfmeter.py": "#1124: flagging it reaches the cfmeter remix, where verify_quantizer_ui (once, on the carrier) fails",
+    "tools/verify/verify_kits.py": "#1125: its Kit fixtures fail on a generated project (a once gate in the shared half)",
+    "tools/verify/verify_load_meter.py": "#1126: otop and wrap fail with a generated project (1649 s in the octabam (project) unit)",
+}
+
+
 class PlanJsonTests(unittest.TestCase):
     def test_one_entry_per_command_in_plan_order(self):
         rows = reach.classify(["remixes/miniverb/remix.py"], ctx())
@@ -626,6 +638,92 @@ class PlanJsonTests(unittest.TestCase):
         for line in got.values():
             self.assertEqual(reach.shards_line(line)[0], [line.split()[-1]])
 
+    def test_the_slow_gates_are_units_of_their_own_on_the_three_octabam_remixes(self):
+        """Run 43734790095: `scales` alone was each unit's wall time (62, 75, 46 min); `image:chords` was next."""
+        import check_shards
+        for r in ("octabam", "octabam-verbs", "octabam-bus"):
+            items = [("check-remix", f"python3 tools/verify/check_shards.py --jobs 3 {r}", ["e"])]
+            got = {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
+            for part, job in (("scales-mki", "scales:mki"), ("scales-mkii", "scales:mkii"), ("chords", "image:chords")):
+                self.assertEqual(got[f"check-remix {r} ({part})"],
+                                 f"python3 tools/verify/check_shards.py --jobs 3 --only-jobs {job} {r}")
+                self.assertIn(job, got[f"check-remix {r}"].split("--skip-jobs ")[1].split()[0].split(","))
+            jobs = {j[0]: j[1] for j in check_shards.remix_jobs(r, reach.ROOT)}
+            self.assertNotIn("scales", jobs)        # the sections replace the whole gate's job
+            for section in ("mki", "mkii"):
+                self.assertEqual(jobs[f"scales:{section}"][0][-2:], ["--section", section])
+
+    def test_a_gate_that_skips_without_a_project_gets_a_project_unit(self):
+        """sambanks/octabam#1051: `check-remix slow-lfo` ran verify_slow_lfo with no OT_PROJECT, it SKIPped, the unit was green."""
+        def units(modules):
+            flag = f'--modules "{modules}" ' if modules else ""
+            items = [("check-remix", f"python3 tools/verify/check_shards.py --jobs 3 {flag}slow-lfo", ["e"])]
+            return {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
+        got = units("SLOW LFO")
+        pre = 'python3 tools/verify/check_shards.py --jobs 3 --modules "SLOW LFO" '
+        self.assertEqual(got["check-remix slow-lfo (project)"], pre + "--only-jobs image:slow-lfo slow-lfo")
+        self.assertIn("image:slow-lfo", got["check-remix slow-lfo"].split("--skip-jobs ")[1].split()[0].split(","))
+        self.assertIn("check-remix slow-lfo (project)", units(""))       # an unscoped run reaches it
+        self.assertEqual(list(units("KITS")), ["check-remix slow-lfo"])  # a change to another module: no project unit
+
+    def test_a_job_that_fails_as_a_project_unit_on_one_remix_is_left_out_there_only(self):
+        """#1127: plocks-p2 and mode-defaults fail on octabam-verbs with a generated project and pass elsewhere."""
+        verbs = {n for _, n in reach.project_gate_jobs("octabam-verbs")}
+        bus = {n for _, n in reach.project_gate_jobs("octabam-bus")}
+        for job in reach.PROJECT_GATE_SKIP["octabam-verbs"]:
+            self.assertNotIn(job, verbs)
+            self.assertIn(job, bus)
+        self.assertIn("verb-parts", verbs)                  # the others stay
+
+    def test_a_remix_without_such_a_gate_stays_one_unit(self):
+        items = [("check-remix", "python3 tools/verify/check_shards.py --jobs 3 not-a-remix", ["e"])]
+        self.assertEqual([e["name"] for e in reach.entries(items, 3)], ["check-remix not-a-remix"])
+
+    def test_every_module_gate_that_skips_without_a_project_is_flagged_or_has_its_own_unit(self):
+        """A gate that prints `[SKIP] ... no project` and exits 0 is green in a unit that gives it none; `Gate.project`
+        is what makes reach plan a (project) unit, so the flag may not be forgotten when a gate is added."""
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+        from remix import registry
+        root = pathlib.Path(__file__).resolve().parents[3]
+        # reach.SPLIT_EXTRA_UNITS: verify_brain's five units, one per section, and verify_scenes' own
+        own_units = {c for units in reach.SPLIT_EXTRA_UNITS.values() for _, cmd in units.values() for c in cmd.split()}
+        # Red with a generated project before this unit existed (15 Nov 2026), so flagging them would turn CI red on a
+        # fault that was already there: unflag until fixed, then set project=True
+        known_red = KNOWN_RED
+        missing = []
+        for m in registry.modules().values():
+            for g in getattr(m, "gates", ()):
+                text = (root / g.script).read_text(errors="replace") if (root / g.script).exists() else ""
+                if not re.search(r"\[SKIP\][^\n]*no project", text) or g.project or g.script in own_units or g.script in known_red:
+                    continue
+                missing.append(f"{m.key}: {g.script}")
+        self.assertEqual(missing, [], "a gate that SKIPs without a project needs Gate(project=True)")
+
+    def test_the_known_red_gates_are_still_unflagged_and_still_skip(self):
+        """A gate on the known-red list that gets flagged runs in CI and fails it: take it off the list in the same change."""
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+        from remix import registry
+        flagged = {g.script for m in registry.modules().values() for g in getattr(m, "gates", ()) if g.project}
+        self.assertFalse(flagged & set(KNOWN_RED))
+
+    def test_a_shared_half_gate_that_skips_without_a_project_gets_its_own_unit(self):
+        """A once gate (COPY PROJECT, RND NAME; KITS is known red) or an isolated remix_arg=False one runs in the shared half, which has no project: `check-shared (project: <gate> on <remix>)`, run alone, and the module-gates
+        unit leaves it out."""
+        def units(remixes, modules=""):
+            flag = f' MODULES="{modules}"' if modules else ""
+            items = [("check-shared", f'make check-shared REMIXES="{remixes}"{flag}', ["e"])]
+            return {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
+        got = units("octabam bbd rnd-name")
+        base = 'make check-shared REMIXES="octabam bbd rnd-name" SHARED_PART=modules MODULE_GATES_ONLY='
+        self.assertEqual(got["check-shared (project: copy-project on octabam)"], base + "tools/verify/verify_copy_project.py")
+        self.assertEqual(got["check-shared (project: rnd-name on rnd-name)"], base + "tools/verify/verify_rnd_name.py")
+        skipped = got["check-shared (module gates)"].split("MODULE_GATES_SKIP=")[1].split(",")
+        for script in ("verify_copy_project", "verify_rnd_name"):
+            self.assertIn(f"tools/verify/{script}.py", skipped)
+        self.assertNotIn("tools/verify/verify_scenes.py", skipped)         # its own unit is a check-remix one
+        self.assertNotIn("check-shared (project: copy-project on octabam)", units("octabam", "BRAIN"))   # COPY PROJECT not reached
+        self.assertEqual([n for n in units("x y") if "project" in n], [])
+
     def test_the_brain_unit_exists_only_when_brain_is_reached(self):
         def names(modules):
             flag = f'--modules "{modules}" ' if modules else ""
@@ -649,7 +747,7 @@ class PlanJsonTests(unittest.TestCase):
             return {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
         got = units("")
         scripts = ",".join(sc for _, sc in reach.SPLIT_SHARED_GATES.values())
-        self.assertTrue(got["check-shared (module gates)"].endswith(f"SHARED_PART=modules MODULE_GATES_SKIP={scripts}"))
+        self.assertIn(f"SHARED_PART=modules MODULE_GATES_SKIP={scripts}", got["check-shared (module gates)"])
         self.assertTrue(got["check-shared (morph)"].endswith("SHARED_PART=modules MODULE_GATES_ONLY=tools/morph/test_morph.py"))
         self.assertIn("check-shared (octa303)", got)
         self.assertNotIn("check-shared (morph)", units("KITS"))                # a unit only when its module is reached
