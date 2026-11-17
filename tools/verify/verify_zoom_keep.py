@@ -2,6 +2,8 @@
 """ZOOM KEEP under the ColdFire port. the audio editor keeps its zoom when a slice is auditioned:
   aedview   encoder F zooms in; in SLICES trig mode TRIG 2 selects slice 2 with the zoom kept and its start in
             view; TRIG 1 selects slice 1, the zoom still kept
+  aedtracks each editor page (TRIM, SLICE, EDIT) keeps its zoom and place in time across tracks; the first
+            open after power-on is still stock's fit
 
     python3 tools/verify/verify_zoom_keep.py [REMIX] [scenario ...]
     make check REMIX=<a remix with ZOOM KEEP>   # runs this as the module gate
