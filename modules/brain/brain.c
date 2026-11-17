@@ -3209,8 +3209,17 @@ static void sw_out(int keep, int mem)
 		PS_LIVE[o] = sw_live[o];
 		PS_MIRROR[o] = sw_mir[o];
 	}
-	for (u32 k = 0; k < 6; k++)
-		MEM_PEND[k] = sw_pend[k];
+	/* The barrier in the loop keeps GCC from relating the two addresses: it compiled
+	 * this copy to `move.b (%a0)+,(%a0,%d0.l)` with d0 = dst - src, which assumes the
+	 * destination uses a0 before the increment; the port's CPU applies it first, so
+	 * every byte landed one late (sambanks/octabam#1134). A barrier before the loop
+	 * is not enough: the loop optimiser rebuilds dst - src at run time.
+	 * tools/verify/tests/test_postinc.py refuses the form in any committed unit. */
+	const u8 *pend = sw_pend;
+	for (u32 k = 0; k < 6; k++) {
+		MEM_PEND[k] = *pend++;
+		__asm__("" : "+a"(pend));
+	}
 	MEM_COUNT = sw_count;
 }
 

@@ -133,9 +133,18 @@ static void scan_borrow(void)
 
 static void scan_restore(void)
 {
+	/* The barrier in the loop keeps GCC from relating the two addresses: it compiled
+	 * this copy to `move.b (%a2)+,(%a3,%a2.l)`, which assumes the destination uses a2
+	 * before the increment; the port's CPU applies it first, so the restore landed one
+	 * byte late (sambanks/octabam#1134). A barrier before the loop is not enough: the
+	 * loop optimiser rebuilds dst - src at run time.
+	 * tools/verify/tests/test_postinc.py refuses the form in any committed unit. */
+	const u8 *src = scan_save;
 	u32 i;
-	for (i = 0; i < SCAN_STATE_LEN; i++)
-		SCAN_STATE[i] = scan_save[i];
+	for (i = 0; i < SCAN_STATE_LEN; i++) {
+		SCAN_STATE[i] = *src++;
+		__asm__("" : "+a"(src));
+	}
 }
 
 /* Fill ent_* from dir; return count, -1 on scan error, -2 if a directory
