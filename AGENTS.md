@@ -210,6 +210,8 @@ moment it costs real work, and add its line here.
 - [Fixed `/tmp` names corrupted parallel builds](docs/contributing/TRAPS.md#trap-tmp-race) — mkdtemp per process now; a failure moving between remixes is a shared-scratch race.
 - [The memory word-count fixture can race reach and shard snapshots](docs/contributing/TRAPS.md#trap-word-fixture) — ignore its scratch path so it is not planned or copied as a real remix.
 - [Replacing a stock routine can halt every other caller](docs/contributing/TRAPS.md#trap-stock-callee) — diff the routine and its callers with `tools/build/where.py`.
+- [`{byte 21, fn}` on the engine queue runs fn on the sys task](docs/contributing/TRAPS.md#trap-job21) — the task that handles the keys; a long job needs a type of its own at the engine's receive.
+- [A gate at the step handler is a step early](docs/contributing/TRAPS.md#trap-step-ahead) — the first trig at PLAY was computed before PLAY; gate at the arm `0x40005ff0`.
 - [A forked port shares its DSP memory with its siblings](docs/contributing/TRAPS.md#trap-fork-shm) — `unshareRanges`; new shared maps need the same.
 - [The port ran under Rosetta and nothing said so](docs/contributing/TRAPS.md#trap-rosetta) — `file out/emu/ot_emu` is the check.
 - [The report is API and prints paths](docs/contributing/TRAPS.md#trap-report-api) — re-save refhash only after the artifacts are shown identical.
