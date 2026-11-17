@@ -55,6 +55,10 @@ MODULE = Module(
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
     evidence=(
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTA S3.RMX", date="2026-11-16",
+                 commit="854ea9c055d9dea89a91763ed43f065e3a24de10",
+                 note="Author confirmed the OCTA S3 handoff checklist: loads in BRAIN, PTCH opens Harmony, "
+                      "and THRU INAB has no RIGHT hint. No audio or timing measurements reported."),
         Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="SEQ 83.RMX", date="2026-11-15",
                  note="Author confirmed SEQ 83 works on the unit, including empty unused "
                       "NOTE3/4 slots after a VOIC 2 fill. No separate audio or timing measurements."),
