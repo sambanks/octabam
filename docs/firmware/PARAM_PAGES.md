@@ -352,6 +352,13 @@ T1, T3, T8 under the emulator, THRU included). The page-1 writer
 `+0x18 + k`. The lane store has no page term: page index 0..3 moves only
 the Part/shadow bytes.
 
+The LFO page's editor is `0x40038e04(slot, delta)`, the LFO from the window's list `0x460d1a32` (3 is
+the designer): A..F are PMTR WAVE MULT TRIG SPD DEP. ✅ Read 5 Nov 2026: PMTR/WAVE and MULT/TRIG clear the
+lock bit and byte of `cell + 6`, where `cell` is the LFO plus 3 for the odd slots, the page-1 flat index their SPD/DEP would
+have, and write marker `0xa0` there. A WAVE above 10 copies the designer table and its slope word live. Part from `0x100b14cf`;
+the other page-2 editors take it from `0x80000003`. ✅ None of the page-2 editors tests an enable bit: FX1 SETUP's knob
+F on EQUALIZER moves a byte no screen shows (under the port, 5 Nov 2026: the Part byte changed with no screen showing it).
+
 ### 5c. The copier ✅ (port, 13 Sep 2026)
 
 `0x4000cae8` (loop `0x4000cb2a..cb98`, eight tracks) takes three six-byte

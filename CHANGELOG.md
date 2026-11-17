@@ -18,6 +18,8 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- **CX OSC: C28 remix handoff** (`cxosc-core`, built from `f4b11964`, 17 Nov 2026). On an MKII, Ilia reports CX OSC sounds good. The image contains the DEC envelope and startup waveform fixes. The ColdFire emulator booted the image to the RTOS handoff; `verify_cxosc.py` could not run because Unicorn raised an illegal instruction while initializing its M68K engine.
+
 - **Demand loader: one copy a load, a shorter copy loop, a simpler pump** (`modules/dlcopy`, `modules/dlpump`;
   `docs/contributing/DEMAND_LOADER.md`). DLPUMP still sends every load three times. DLCOPY now consumes a repeat
   of the block an entry already holds (BOUND set, the same first word) without copying it again. A load costs one

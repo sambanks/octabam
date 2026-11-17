@@ -566,7 +566,6 @@ class TestRemixTests(unittest.TestCase):
 # Gates that SKIP without a project and are left unflagged (Gate.project) because running them as a unit is red: flagging one
 # runs it in CI and fails CI on a fault that was already there. Take it off when fixed and set project=True.
 KNOWN_RED = {
-    "tools/verify/verify_cfmeter.py": "#1124: flagging it reaches the cfmeter remix, where verify_quantizer_ui (once, on the carrier) fails",
     "tools/verify/verify_kits.py": "#1125: its Kit fixtures fail on a generated project (a once gate in the shared half)",
 }
 
