@@ -8,7 +8,7 @@ there, or the view centred on it). While the trig is held, the page's
 encoders edit that slice. lockedit.s has the detail.
 """
 
-from remix.schema import Category, Evidence, Gate, Kind, Level, Linked, Module, SymbolRef
+from remix.schema import Category, Gate, Kind, Linked, Module, Proof, SymbolRef
 
 # [BANK]'s press in both MKI key tables (records 0x400c00a2 and 0x400c0686,
 # code 0x2f; the press long at +2 is stock 0x4007af80, referenced by nothing
@@ -29,11 +29,9 @@ MODULE = Module(
     key="LOCK EDIT",
     kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="8thmyth", author_url="https://github.com/8thmyth",
-    evidence=(Evidence(Level.UNIT, unit="MKI", who="8thmyth", image="OCTABAMHC", date="2026-11-14", commit="a1bd2d2",
-                       note="#1099's combined remix: STRT locks with SLIC on and off, sliced and unsliced samples, sample locks on FLEX and STATIC tracks"),
-              Evidence(Level.UNIT, unit="MKI", who="8thmyth", image="OCTABAMT8", date="2026-11-16", commit="c8e93954",
-                       note="this module's code as in this PR, incl. the zoom kept from one [TRIG]+[BANK] jump to the next (on the unit since T4, 15 Nov)"),
-              Evidence(Level.EMULATOR, ref="tools/verify/verify_lock_edit.py")),
+    proof=Proof.HARDWARE,
+    proof_note="8thmyth's MKI, image OCTABAMHC (remix test/octabam-lazy-chop), 14 Nov 2026: STRT locks with SLIC on and off, "
+               "sample locks on FLEX and STATIC tracks; verify_lock_edit under the port",
     doc="[TRIG]+[BANK] in grid recording opens the audio editor on the step's sample, its slice selected and in view.",
     linked=(Linked("lockedit", "modules/lock-edit/lockedit.s", dram=True),),
     symbol_refs=(

@@ -291,7 +291,6 @@ le_view:
         rts
         .equ    LE_TOL,     64              | frames (1.5 ms)
         .equ    AED_VIEW,   0x400ceb14      | the SLICE page's view
-        .equ    F_VIEWFIT,  0x40077138      | (view, start, end, force): fit the range
         .equ    AED_PAGE,   0x460e5e5c      | the editor's page (0 TRIM, 1 SLICE, ...)
         .equ    AED_SLICEPG, 1
         .equ    AED_TYPEID, 0x46c8d1a0      | the editor's sample type and slot (0x40071668 checks them)
