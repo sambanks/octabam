@@ -145,14 +145,20 @@ def union(remixes):
 
 def carrier(module_key, remixes, selected=None):
     """The remix among `remixes` carrying `module_key` with the fewest
-    modules (the first on a tie): where a once-per-run gate runs."""
+    modules (the first on a tie): where a once-per-run gate runs. A probe
+    remix (`family="probes"`) carries a module only when no other remix in
+    `remixes` does: a probe is built for one measurement and its setup is
+    not a carrier's. On `cfmeter` (CF METER IDLE, the USB readout) the port
+    shows NO SET IS MOUNTED after the load, so SCALE QUANTIZER's panel gate
+    pressed its keys into a dialog and failed whenever a change reached CF
+    METER and made `cfmeter` the smallest carrier (sambanks/octabam#1124)."""
     selected = selected or registry.selected
     carrying = []
     for i, r in enumerate(remixes):
         sel = selected(r)
         if any(m.key == module_key for m in sel):
-            carrying.append((len(sel), i, r))
-    return min(carrying)[2]
+            carrying.append((getattr(r, "family", None) == "probes", len(sel), i, r))
+    return min(carrying)[3]
 
 
 def python_for(gate, root=ROOT):

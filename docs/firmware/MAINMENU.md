@@ -334,6 +334,13 @@ These are copied without inheritance.
 underneath. TEMPO's layer (`0x400bb4ec`) has LEVEL only, which is why
 A–F turn the page behind the stock TEMPO window.
 
+**What has the keys ✅ (measured under the port on both models, 5 Nov 2026: the list read after each window was opened from the panel's keys).** With nothing open the list holds
+only the base layer, `0x400c090a` on an MKI, `0x400c091e` on an MKII. MAIN MENU pushes `0x400cbf2c`, a YES/NO popup `0x400cdff8` over it, MIXER
+`0x400d0384`, TEMPO `0x400bb4ec`, the PART window `0x400b9b24`, its menu `0x400ce0c4` over that, the name keyboard `0x400d071c`, the progress window
+`0x400d0bc4`; a key with a sub-map pushes it while held (FUNC `0x400bfa32`, a page key `0x400bab6e`), and a trig held in grid recording `0x400bee74`. A trig
+held outside grid recording pushes nothing. The SETUP windows push `0x400bb7b4` SRC, `0x400bbd22` LFO, `0x400bb960` AMP, `0x400bc246` FX1, `0x400bc470` FX2:
+record − 0x14 for all but LFO, whose screen record is `0x400bc030`. A toast pushes nothing. A host that writes while the panel is in use can read this list to tell which window holds the keys.
+
 **TEMPO's keys:**
 - UP `0x33` / DOWN `0x20`: the tempo step `0x4004b954 → 0x4004b824(0, ±1)`,
   0.1 BPM. LEVEL (`0x4004b918`) calls it as `(delta, 0)`, whole BPM, ×7

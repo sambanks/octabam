@@ -1095,6 +1095,27 @@ copies each backing object into a private one after the fork. Anything
 new the port maps shared (a window, a ring for the host) needs the same
 treatment, or the children interfere and the failure moves between runs.
 
+<a name="trap-job21"></a>
+
+### `{byte 21, fn}` on the engine queue runs fn on the sys task, not the engine
+
+**Seen:** 5 Nov 2026, read from the image and run under the port while designing a module that saves a
+recorder buffer, following REMIX SWITCH's and COPY PROJECT's "engine job". Job 21 (`0x40085ab6`) posts event
+43 to the sys queue `0x460d17ae`, and `0x40062454` calls `fn(1)` on the sys task, the task that handles the
+panel's keys. A long file write there holds every key for its length.
+
+**Fix:** a job of its own, taken at the engine's receive (`0x40084854`, or `0x4008485e` where BRAIN takes
+its own). **Gate:** a key pressed during the job is answered before the job ends.
+
+<a name="trap-step-ahead"></a>
+
+### A gate at the step handler is a step early: the first trig at PLAY was computed before PLAY
+
+**Seen:** 5 Nov 2026, under the port: a gate on REC TRIG MUTE's site `0x4009d9a4` read "idle" for a
+recorder trig that sounded on PLAY, because the step handler computes the first trig before PLAY sets the
+state the gate reads. **Fix:** gate at the arm `0x40005ff0`, where a sequencer's word carries bit 9
+(`0x4000c9a4`). **Gate:** a keyed recording started, then PLAY, with a recorder trig on step 1.
+
 <a name="trap-rosetta"></a>
 
 ### The port ran under Rosetta in every shard, and nothing said so

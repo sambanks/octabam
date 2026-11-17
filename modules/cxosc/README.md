@@ -42,10 +42,14 @@ See [`docs/site/usage/cxosc.md`](../../docs/site/usage/cxosc.md) for the diagram
 |------|------|----------------|
 | A | CAR | Carrier morph 0..127 (**0** sine → **64** saw → **127** square); icon tracks the shape; **FUNC** snaps |
 | B | MOD | Modulator morph 0..127 (same; needs **INDX**); icon tracks the shape; **FUNC** snaps |
-| C | DEC | Index envelope; **127 = HOLD** |
+| C | DEC | Index decay time constant: **0 = instant**; **1–32 = 1 ms/step**, then the steps widen to **5.061 s** at 126; **127 = HOLD** |
 | D | SYMM | Fold half-wave skew (**64** = even) |
 | E | FDBK | Modulator feedback (default **0** = off) |
 | F | PWM | Cycle lean — LCD **−64..+63** (**0** = neutral; byte 64): sine soft lean; saw phase-skew (8%..92%); square duty (**0** ≈ 50%). Does **not** move the CAR/MOD icons. |
+
+On every sequencer trig, DEC starts from full INDX for that frame, then begins
+decaying, even while AMP HOLD keeps the oscillator sounding. Live legato notes
+keep the running envelope. DEC reaches zero rather than leaving a residual tail.
 
 LFO SETUP PMTR lists the PLAYBACK names (**PTCH RATO INDX FINE FOLD MIX**)
 plus AMP / stock FX, then **30 = CAR**, **31 = MOD**, **32 = SYMM**,

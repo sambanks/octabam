@@ -53,7 +53,7 @@
 |   * THE AMP ENVELOPE IS THE ENGINE'S (plan B, BUILD 31/32): the DSP sees ATK 0
 |     / HOLD INF / REL INF on a synth track (sy_ison) and each voice, mono or
 |     paraphonic, runs the live lane's ATK / HOLD / REL with the DSP's measured
-|     laws (po_mono_env, po_frame): ATK a linear ramp to full in 3.85 ms x
+|     laws (po_mono_env, po_frame): ATK ramps to full in 3.85 ms x
 |     2^(v/8.53) (16 frames the floor, po_atk); HOLD a timer from the START,
 |     po_hold128 x frames a step (127 = INF), the note ends by itself; REL
 |     exponential, tau = 0.295 ms x 2^(v/8.53) floored at 1 ms (po_relk), 127
@@ -155,8 +155,8 @@
         .set    PITCH_TAB, 0x400aa294    | the stock 2^(x/12) curve, longs Q26 (index = PTCH word >> 5)
         .set    C4_INC, 25480119         | C4: 261.6256 / 44100 * 2^32
         .set    ENV_ONE, 0x01000000      | the index envelope's 1.0 (Q24)
-        .set    ENV_FLOOR, 0x00100000    | it decays toward 1/16
-        .set    K_NUM, 3068384           | k = K_NUM / raw^2, Q20 per frame: tau = 2 s at 127
+        .set    ENV_FLOOR, 0             | decay reaches silence; no residual index modulation
+        .set    K_NUM, 380400            | calibrated to sy_render cadence; divide by DEC tau in milliseconds
         .set    K_MAX, 0xfffff
         .set    INDEX_SCALE, 2628        | 8 rad / 127 in cycles * 2^18 (offset = m_Q14 * I)
         .set    FB_SCALE, 2064           | 1.0 cycle / 127 * 2^16 (was 0.25; harsher mod feedback)
@@ -240,6 +240,7 @@
         .set    S_DUTY, 52               | last DPW pulse duty phase (mono); aliases T_MASK
         .set    T_MASK, 52               | paraphonic: the held-key mask seen last frame
         .set    S_LASTP, 56              | last DPW pulse sample Q14 (mono); aliases T_DK
+        .set    S_DPW_INIT, 87           | byte: cold modulator DPW phase/state needs initialization (free mono byte)
         .set    T_DK, 56                 | paraphonic: the index decay k this frame (0 = hold)
         .set    T_RK, 60                 | paraphonic: the release k this frame (Q16)
         .set    T_RATIO, 64              | paraphonic: the ratio this frame (Q8)
@@ -247,7 +248,7 @@
         .set    T_W, 72                  | paraphonic: this frame's PTCH word
         .set    T_SCALE, 76              | paraphonic: the scale mask at the last start (0 = OFF)
         .set    T_POLY, 80               | byte: the note that started last is paraphonic (VOIC 2..4 then)
-        .set    S_ERAMP, 81              | byte: frames left of the mono voice's index-envelope ramp after a warm START (BUILD 38: sy_env_ramp; 0 = none)
+        .set    S_ERAMP, 81              | byte: cold-start flag; hold full index through the trig frame (0 = none)
         .set    RT_CALLS, 0              | po_rtlog (po_clock + 32, peekable): passes of the frame builder's DSP command-byte copy (po_retrig)
         .set    RT_FIXED, 4              | ... START bytes rewritten to the clean form 0x30
         .set    RT_HEAD, 8               | ... the ring's head
@@ -387,8 +388,8 @@ sy_cold:                                 | a synth starts -- THE START RULE (pla
         mvz.b   1(%a0),%d1               | phase-continuously at its current level, the pitch changes, the attack
                                          | re-runs from that level (an analog mono synth's retrigger), and the index
                                          | envelope RAMPS from its level to ENV_ONE over 16 frames (BUILD 38). S_GPREV
-                                         | == 0: COLD -- both operators at phase 0, the gain ramps from 0 (the ATK law,
-                                         | the 16-frame ramp its floor), the index envelope restarts at once (from
+                                         | == 0: COLD -- both operators start phase-aligned; AMP starts its measured
+                                         | attack from zero; the index envelope restarts at once (from
                                          | silence: inaudible). BUILD 27/28's four-condition rule (S_HOLD, S_KEYED,
                                          | the released flag) is gone: the DSP no longer restarts or
         tst.l   %d1                      | DSP snap can still be 0 on the START frame; prefer the lane
@@ -427,8 +428,51 @@ sy_cold_seq:
         tst.w   S_GPREV(%a3)
         bne     sy_warm_env              | sounding: continuous
 sy_cold1:
-        clr.l   S_PHC(%a3)               | silent: phase 0, the gain from 0
+        clr.l   S_PHC(%a3)
+        move.l  %d2,%d1
+        move.l  #CV_STRIDE,%d0
+        mulu.l  %d0,%d1
+        lea     CURVALS+CV_SETUP,%a0
+        mvz.b   (%a0,%d1.l),%d1          | current CMOR
+        cmpi.l  #64,%d1
+        bhi.s   sy_cold_carhi
+        lsl.l   #8,%d1
+        lsl.l   #8,%d1
+        lsl.l   #8,%d1
+        lsl.l   #1,%d1                  | CMOR 0 keeps phase 0; 64 reaches the saw zero crossing
+        move.l  %d1,%d0
+        bra.s   sy_cold_carphase
+sy_cold_carhi:
+        move.l  #0x80000000,%d0
+        subi.l  #64,%d1
+        move.l  #34087042,%d3
+        mulu.l  %d3,%d1
+        sub.l   %d1,%d0                  | move toward phase zero inside the square plateau
+sy_cold_carphase:
+        move.l  %d0,S_PHC(%a3)
         clr.l   S_PHM(%a3)
+        move.b  #1,S_DPW_INIT(%a3)       | seed mod DPW state after sy_ison applies ratio
+        move.l  %d2,%d1
+        move.l  #CV_STRIDE,%d0
+        mulu.l  %d0,%d1
+        lea     CURVALS+CV_SETUP,%a0
+        mvz.b   1(%a0,%d1.l),%d1         | current MMOR
+        cmpi.l  #64,%d1
+        bhi.s   sy_cold_modhi
+        lsl.l   #8,%d1
+        lsl.l   #8,%d1
+        lsl.l   #8,%d1
+        lsl.l   #1,%d1                  | MMOR 0 keeps phase 0; 64 reaches the saw zero crossing
+        move.l  %d1,%d0
+        bra.s   sy_cold_modphase
+sy_cold_modhi:
+        move.l  #0x80000000,%d0
+        subi.l  #64,%d1
+        move.l  #34087042,%d3            | half-cycle / 63
+        mulu.l  %d3,%d1
+        sub.l   %d1,%d0                  | approach phase zero inside the square plateau
+sy_cold_modphase:
+        move.l  %d0,S_PHM(%a3)
         clr.l   S_LASTM(%a3)
         move.l  %d2,%d0                  | snap MIX/FOLD/PWM Q8 to the panel (was clr → click every START)
         lsl.l   #2,%d0
@@ -461,13 +505,20 @@ sy_cold1:
         clr.l   S_GAIN(%a3)
         clr.w   S_GPREV(%a3)
         clr.l   S_IEFF(%a3)              | the index climbs to I * E within the first frame, under the gain from 0
-        clr.b   S_ERAMP(%a3)
+        move.b  #1,S_ERAMP(%a3)          | hold full index through the trig frame; DEC starts on the next frame
         move.l  #ENV_ONE,%d1             | the index envelope restarts at once (BUILD 38: only cold)
         move.l  %d1,S_ENV(%a3)
         bra     sy_warm
 sy_warm_env:
-        move.b  #16,S_ERAMP(%a3)         | warm: the index envelope ramps from its level to ENV_ONE over 16 frames
-sy_warm:                                 | (sy_env_ramp, 5.8 ms), the carrier and the level continuous (BUILD 38)
+        | Sequencer trigs retrigger DEC even while AMP HOLD keeps the voice warm.
+        | Live legato notes preserve their running envelope.
+        btst    #3,S_ON(%a3)
+        bne.s   sy_warm_env_live
+        move.b  #1,S_ERAMP(%a3)
+        move.l  #ENV_ONE,%d1
+        move.l  %d1,S_ENV(%a3)
+sy_warm_env_live:
+sy_warm:                                 | the carrier phase and AMP level stay continuous (BUILD 38)
         move.l  RS_PTR,%a0
         clr.l   4(%a0)                   | the retrig count the packer just latched: no stock retrigs
         clr.b   T_POLY(%a3)              | CX OSC: mono only -- LFO 3 stays SPD3/DEP3 (no VOIC/CHRD)
@@ -688,6 +739,14 @@ sy_symm_nz:
         mvz.b   1(%a1,%d1.l),%d3
         move.b  %d3,3(%a0,%d0.l)         | MMOR
         bsr     cx_lfo_morph             | PMTR 30..34 -> CMOR/MMOR/SYMM + sy_cxfb + sy_cxpwm
+        move.l  %d2,%d1
+        lsl.l   #2,%d1
+        lea     sy_cxparm(%pc),%a0
+        tst.b   3(%a0,%d1.l)
+        bne.s   sy_morph_dpw_live
+        move.b  #1,S_DPW_INIT(%a3)       | sine does not advance DPW history; re-prime on a later saw/square change
+        clr.l   S_DUTY(%a3)
+sy_morph_dpw_live:
         lea     sy_cxpwm(%pc),%a0        | SETUP F + LFO PMTR 34 (morph wrote the target)
         mvz.b   (%a0,%d2.l),%d3
         move.l  %d3,%d0                  | target — slew like MIX/FOLD (MMOR DPW duty clicked raw)
@@ -714,14 +773,29 @@ sy_symm_nz:
         mulu.l  %d0,%d1
         lsr.l   #8,%d1
         move.l  %d1,S_FB(%a3)
-        mvz.b   S_ERAMP(%a3),%d1         | a warm START's ramp (BUILD 38): the remaining distance to ENV_ONE over
-        beq     sy_env_k                 | the remaining frames -- linear, ENV_ONE exactly at the last; the decay
-        move.l  #ENV_ONE,%d0             | waits for it
-        sub.l   S_ENV(%a3),%d0
-        divs.l  %d1,%d0
-        add.l   %d0,S_ENV(%a3)
-        subq.l  #1,%d1
-        move.b  %d1,S_ERAMP(%a3)
+        tst.b   S_DPW_INIT(%a3)
+        beq.s   sy_dpw_ready
+        move.l  52(%sp),%d1
+        lsl.l   #2,%d1
+        lea     sy_cxparm(%pc),%a0
+        mvz.b   3(%a0,%d1.l),%d1         | leave pending while MMOR is sine-only
+        beq.s   sy_dpw_ready
+        | Seed DPW from the sample before the current phase so saw and pulse
+        | morphs begin on their real waveform value, not a startup transient.
+        move.l  S_PHM(%a3),%d0
+        sub.l   S_INCM(%a3),%d0          | seed DPW history at the preceding sample
+        lsr.l   #8,%d0
+        lsr.l   #8,%d0                   | previous phase, Q16
+        move.l  %d0,%d2
+        mulu.l  %d0,%d2
+        lsr.l   #8,%d2
+        lsr.l   #8,%d2                   | previous phase squared, Q16
+        move.l  %d2,S_DPWM(%a3)
+        clr.b   S_DPW_INIT(%a3)
+sy_dpw_ready:
+        mvz.b   S_ERAMP(%a3),%d1         | cold trig frame: leave E at full; DEC starts on the next frame
+        beq     sy_env_k                 | DEC starts after the first full-index trig frame
+        clr.b   S_ERAMP(%a3)
         bra     sy_envdone
 sy_env_k:                                | (2.10 / 5 Oct 2026: HOLD at 127, not 0)
         move.l  52(%sp),%d1              | track
@@ -729,17 +803,24 @@ sy_env_k:                                | (2.10 / 5 Oct 2026: HOLD at 127, not 
         mulu.l  %d0,%d1
         lea     CURVALS+CV_SETUP,%a1
         mvz.b   2(%a1,%d1.l),%d1         | SETUP C -> DEC
-        moveq   #127,%d0                 | DEC 127: the index holds;
-        cmp.l   %d0,%d1                  | 0 = the shortest -- read as 1, whose k is the cap
-        bcc     sy_nodecay               | K_MAX
+        moveq   #127,%d0                 | DEC 127: the index holds
+        cmp.l   %d0,%d1
+        bcc     sy_nodecay
         tst.l   %d1
-        bne.s   sy_env0
-        moveq   #1,%d1
-sy_env0:
-        move.l  %d1,%d2
-        mulu.l  %d2,%d1                  | raw^2
+        beq     sy_env_zero              | DEC 0: immediate silence after the full-index trig frame
+        move.l  %d1,%d2                  | tau = raw through 32; then add ((raw - 32)^2 * 33) >> 8
+        cmpi.l  #32,%d1
+        bls.s   sy_env_tau
+        subi.l  #32,%d2
+        move.l  %d2,%d0
+        mulu.l  %d2,%d0
+        move.l  #143,%d3
+        mulu.l  %d3,%d0
+        lsr.l   #8,%d0
+        add.l   %d0,%d1
+sy_env_tau:
         move.l  #K_NUM,%d0
-        divu.l  %d1,%d0                  | k, Q20 per frame
+        divu.l  %d1,%d0                  | k, Q20 per frame; DEC 1..32 = 1ms/step, curved above
         cmpi.l  #K_MAX,%d0
         ble     sy_env1
         move.l  #K_MAX,%d0
@@ -751,7 +832,13 @@ sy_env1:
         lsr.l   #4,%d1
         mulu.l  %d0,%d1
         lsr.l   #8,%d1                   | (E - floor) * k
+        bne.s   sy_env_sub
+        moveq   #1,%d1                   | rounding must not leave a permanent nonzero tail
+sy_env_sub:
         sub.l   %d1,S_ENV(%a3)
+        bra     sy_envdone
+sy_env_zero:
+        clr.l   S_ENV(%a3)
         bra     sy_envdone
 sy_nodecay:
         move.l  #ENV_ONE,%d1             | RTIM 127: the index holds
@@ -767,8 +854,8 @@ sy_envdone:
         mulu.l  %d2,%d1
         lsr.l   #8,%d1
         lsr.l   #4,%d1                   | I * E: this call's target
-        move.l  %d1,S_IEFF(%a3)          | snap — INDX / DEC track this frame (no 16-sample slew;
-        clr.w   S_ISTEP(%a3)             | DEC HOLD must feel instant on the knob)
+        move.l  %d1,S_IEFF(%a3)          | snap INDX * DEC for this frame (no 16-sample slew)
+        clr.w   S_ISTEP(%a3)             | keep index onset independent of FOLD and carrier phase
         move.l  52(%sp),%d2              | track (d2 was RTIM above)
         bsr     po_mono_env              | the mono voice's AMP envelope (plan B): S_GAIN := the level this frame ends at
         bra     sy_check                 | (po_mono_env's body follows: not fall-through)
@@ -849,7 +936,7 @@ po_aa_out:
 |     at the START): the timer runs out -> the release starts by itself (the
 |     DSP's hold ends inside the DSP with no note-off anywhere: this is that).
 |   SOUNDING: gain += po_atk[ATK] (Q15 a frame: a LINEAR ramp to full in 3.85 ms x
-|     2^(ATK / 8.53), the 16-frame ramp its floor, the step at least 1), capped
+|     2^(ATK / 8.53), the 16-frame ramp its floor and step at least 1), capped
 |     at full -- from wherever the level is (a warm START re-attacks from its
 |     current level; a cold one from 0). 2.10: the step goes through po_alaw --
 |     no faster than one carrier period, S-shaped at the same total time (linear
@@ -1146,7 +1233,7 @@ sy_mod_ok:
         | d0 = running carrier phase — park it (sy_sq_phi writes d0).
         move.l  %d0,-(%sp)               | park φc
         move.l  %d1,%d4                  | sine (already PWM-leaned)
-        move.l  %d6,%d1
+        move.l  %d0,%d1                  | square phase is the carrier (the saved d0), never φm
         lsr.l   #8,%d1
         lsr.l   #8,%d1
         lsr.l   #1,%d1                   | φc_mod>>17
@@ -1461,6 +1548,8 @@ sy_dpw_pulse:
         lsl.l   #8,%d2
         lsl.l   #8,%d2
         lsl.l   #1,%d2                   | duty phase
+        tst.l   S_DUTY(%a3)
+        beq     sy_dpp_prime             | first square sample: seed the shifted saw and emit it immediately
         move.l  %d2,%d0
         sub.l   S_DUTY(%a3),%d0
         bpl     sy_dpp_ad
@@ -1485,6 +1574,22 @@ sy_dpp_go:
         add.l   %d2,%d6                  | φ + duty
         lea     S_DPWC(%a3),%a4
         bsr     sy_dpw                   | d2 = saw(φ+duty)
+        bra.s   sy_dpp_calc
+sy_dpp_prime:
+        move.l  %d2,S_DUTY(%a3)
+        add.l   %d2,%d6                  | shifted square phase
+        move.l  %d6,%d0
+        sub.l   %d1,%d0                  | previous sample's shifted phase
+        lsr.l   #8,%d0
+        lsr.l   #8,%d0                   | p Q16
+        move.l  %d0,%d3
+        mulu.l  %d0,%d3
+        lsr.l   #8,%d3
+        lsr.l   #8,%d3
+        move.l  %d3,S_DPWC(%a3)          | seed z1 = p² at the previous sample
+        lea     S_DPWC(%a3),%a4
+        bsr     sy_dpw
+sy_dpp_calc:
         move.l  16(%sp),%d0              | saw(φ)
         sub.l   %d2,%d0
         asr.l   #1,%d0
@@ -1937,15 +2042,25 @@ po_fr_params:
         cmp.l   %d0,%d1
         bcc     po_fr_hold
         tst.l   %d1
-        bne.s   po_fr_k
-        moveq   #1,%d1
-po_fr_k:
-        move.l  %d1,%d0
-        mulu.l  %d0,%d1                  | raw^2
+        beq     po_fr_fast               | DEC 0: fastest decay
+        move.l  %d1,%d2                  | same tau map as sy_render
+        cmpi.l  #32,%d1
+        bls.s   po_fr_tau
+        subi.l  #32,%d2
+        move.l  %d2,%d0
+        mulu.l  %d2,%d0
+        move.l  #143,%d3
+        mulu.l  %d3,%d0
+        lsr.l   #8,%d0
+        add.l   %d0,%d1
+po_fr_tau:
         move.l  #K_NUM,%d0
-        divu.l  %d1,%d0
+        divu.l  %d1,%d0                  | k, Q20 per frame
         cmpi.l  #K_MAX,%d0
         ble     po_fr_dk
+        move.l  #K_MAX,%d0
+        bra     po_fr_dk
+po_fr_fast:
         move.l  #K_MAX,%d0
         bra     po_fr_dk
 po_fr_hold:
@@ -2017,6 +2132,9 @@ po_fr_envk:
         lsr.l   #4,%d1
         mulu.l  %d0,%d1
         lsr.l   #8,%d1
+        bne.s   po_fr_envsub
+        moveq   #1,%d1
+po_fr_envsub:
         sub.l   %d1,V_ENV(%a6)
         bra     po_fr_env
 po_fr_envhold:
@@ -2589,7 +2707,7 @@ po_st_note:                              | the voicing's notes (a shape: its n n
         move.l  %d0,V_ENV(%a0)
         bra     po_st_env
 po_st_warm:
-        move.w  #16,V_ERAMP(%a0)         | warm: the index envelope ramps from its level to ENV_ONE over 16 frames (po_frame; BUILD 38)
+        | Preserve the running index envelope on a warm retrigger.
 po_st_env:
         move.l  #SEMI,%d0
         muls.l  %d3,%d0

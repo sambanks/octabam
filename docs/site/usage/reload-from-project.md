@@ -31,5 +31,7 @@ the transport.
 
 - A reloaded track's trig conditions carry on as if the saved sequence
   had always played: A:B conditions count from where the pattern's
-  conditions last started again (PLAY, a pattern change, a Direct Jump),
+  conditions last started again (PLAY or a normal pattern change),
   PRE starts again as it does on a pattern change, and FILL is kept.
+  A Direct Jump (Kyoti) jump is not such a restart; it counts from the
+  same moment, so a reload after a jump stays in step.
