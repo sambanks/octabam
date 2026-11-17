@@ -75,8 +75,9 @@ MODULE = Module(
     ),
     requires=("SCENES P2", "STORE", "EVENTS"),
     # NV copy of the current bank's page 2 in CS1 (battery SRAM), nv_save in
-    # p2locks.s: 0x100f8600..0x100fbdf0, unused by stock beyond its whole-CS1 init.
-    claims=Claims(sram=((0x100f8600, 0x100fbdf0 - 0x100f8600, "P2NV bank copy in CS1"),)),
+    # p2locks.s: 0x100f8600..0x100fbdc0, unused by stock beyond its whole-CS1 init (its top 48 B,
+    # 0x100fbdc0..0x100fbdf0, are PATTERN MUTE's since 17 Nov 2026).
+    claims=Claims(sram=((0x100f8600, 0x100fbdc0 - 0x100f8600, "P2NV bank copy in CS1"),)),
     gates=(Gate('tools/verify/verify_plocks_copy.py', once=True, venv=True),
            Gate('tools/verify/verify_plocks_p2.py', project=True),),
 )

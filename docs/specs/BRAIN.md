@@ -306,7 +306,9 @@ rewritten when the card store loads and after an edit.
 |---|---|---|
 | `0x100f859c..0x100fff00` | stock references nothing here (`docs/firmware/STEP_LOCKS.md` section 6) | 31,076 |
 | `0x100f85a0..0x100f85e8` | KITS | 72 |
-| `0x100f8600..0x100ffe00` | PLOCKS P2 | 30,720 |
+| `0x100f8600..0x100fbdc0` | PLOCKS P2 | 14,272 |
+| `0x100fbdc0..0x100fbdf0` | PATTERN MUTE (since 17 Nov 2026) | 48 |
+| `0x100fbdf0..0x100ffe00` | MIDI SCENES | 16,400 |
 | `0x100ffe00..0x100fff00` | KITS | 256 |
 | `0x100f859c..0x100f85a0`, `0x100f85e8..0x100f8600` | free in bottleservice | 4 + 24 |
 
