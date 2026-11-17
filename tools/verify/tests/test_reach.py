@@ -567,7 +567,6 @@ class TestRemixTests(unittest.TestCase):
 # runs it in CI and fails CI on a fault that was already there. Take it off when fixed and set project=True.
 KNOWN_RED = {
     "tools/verify/verify_ids64_load.py": "#1120: the chooser check fails with a generated project",
-    "tools/verify/verify_cfmeter.py": "#1124: flagging it reaches the cfmeter remix, where verify_quantizer_ui (once, on the carrier) fails",
     "tools/verify/verify_kits.py": "#1125: its Kit fixtures fail on a generated project (a once gate in the shared half)",
 }
 
