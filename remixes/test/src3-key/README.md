@@ -1,3 +1,3 @@
-# test/src3-key
+# src3-key
 
-SRC3 KEY with BUFFER SAVER (the gate's recorder project) and ATA WRITE GUARD over the 14 stock effects: the remix `verify_src3_key` runs on. Not flashed as such: SRC3 KEY ran on 8thmyth's MKI inside personal builds (OCTABAMHC, 14 Nov 2026; T8, 16 Nov 2026; `modules/src3-key/README.md`).
+Stock effects with SRC3 KEY (and BUFFER SAVER with ATA WRITE GUARD, which the gate's recorder project needs): on an MKI, [MIDI] in the audio editor starts and stops a SRC3 recording. The module's gate runs here without LAZY CHOP; the module ran on 8thmyth's MKI in `test/octabam-lazy-chop` (OCTABAMHC, 14 Nov 2026).

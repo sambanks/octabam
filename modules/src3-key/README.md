@@ -24,12 +24,9 @@ Author: [8thmyth](https://github.com/8thmyth). ColdFire only, one linked DRAM un
 
 | where | build | result |
 |---|---|---|
-| the ColdFire port | `verify_src3_key` scenario `midi` (MKI), alone (`test/src3-key`, this PR) and beside LAZY CHOP (8thmyth's personal remix); LAZY CHOP's `mkii` scenario (in LAZY CHOP's PR) | [MIDI] in the editor starts / stops a SRC3 take, the editor stays; SRC3 `-` records nothing; the setting off and outside the editor are stock; with LAZY CHOP in LIVE CHOP, TRIG 1 joins the take and [YES] stops it; MKII stock |
-| 8thmyth's MKI | OCTABAMG6 to OCTABAMHC (#1099's combined remix, commit a1bd2d2), 11-14 Nov 2026 | works as above; no issues found |
-| 8thmyth's MKI | personal builds T4 to T8 (T8 = commit c8e93954), 15-16 Nov 2026: this module's code as in this PR | works as above; no issues found |
+| the ColdFire port | `verify_src3_key` scenario `midi` (MKI), alone (`test/src3-key`) and with LAZY CHOP (`test/octabam-lazy-chop`); LAZY CHOP's `mkii` scenario | [MIDI] in the editor starts / stops a SRC3 take, the editor stays; SRC3 `-` records nothing; the setting off and outside the editor are stock; with LAZY CHOP in LIVE CHOP, TRIG 1 joins the take and [YES] stops it; MKII stock |
+| 8thmyth's MKI | OCTABAMG6 to OCTABAMHC (`test/octabam-lazy-chop`), 11-14 Nov 2026 | works as above; no issues found |
 
 ## Inferred / open
-
-- Store id `8thmyth.src3-key`. Builds before this PR wrote the setting under `octabam.src3-key`; a card from those builds starts with MIDI = SRC3 at its default once.
 
 - The editor's waveform redraws while a take records, which looks less smooth than an idle editor; the take itself is unaffected. Stock's record keys in the editor draw the same way (not compared side by side).
