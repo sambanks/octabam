@@ -6,6 +6,9 @@ Machine-list signature `"CX",1` (no marker). PLAYBACK: PTCH RATO INDX FOLD SYMM 
 RATO free 0.25..4; FUNC snaps classic table ≤4.01 (rounded). FOLD drive eased.
 Mono; stock LFOs.
 
+On an MKII with `CXOSC C28.RMX` (17 Nov 2026), Ilia reports CX OSC sounds
+good.
+
 ```bash
 make rmx REMIX=cxosc-core RMX='CXOSC C18'
 ```
