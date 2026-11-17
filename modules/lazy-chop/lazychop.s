@@ -19,8 +19,8 @@
 |   While LAZY CHOP is open the trig LEDs show this page: red for the
 |   slices made, green for the next key to tap (a new page starts with
 |   TRIG 1 green); at the end they are stock's again. Stock's trig-LED pass
-|   (0x40043fdc, called through the slot 0x400c0936) is skipped while
-|   LAZY CHOP is open and runs as before otherwise (lc_ledpass): stock's running
+|   (0x40043fdc, called through the slot 0x400c0936) runs first and LAZY
+|   CHOP skips that pass while it is open (lc_ledpass): stock's running
 |   light blinks the playhead's pair and dims one of them, which LAZY CHOP
 |   would otherwise undo and stock redo at every step (on 8thmyth's MKI,
 |   F5: a trig flashing and the keys starved after two chops). The LED
@@ -262,6 +262,7 @@ lc_s16:
 | mono sum within SNAP_W frames; with none, to the quietest frame there;
 | with nothing readable, it stays. Kept inside (trim start, trim end).
 lc_snapfix:
+        move.l  %d2,lc_dbg_tap          | debug: the tap before any snap (read by tools/hw/ot_monitor.py)
         tst.l   lc_snap
         beq     99f
         move.l  lc_rec,%d0
@@ -420,6 +421,8 @@ lc_snapfix:
         lea     36(%sp),%sp
 99:
 lc_snapdone:                            | (the gate's cost check times lc_snapfix to here)
+        move.l  %d2,lc_dbg_snap         | debug: where the tap ended up (the same frame with ZERO SNAP off)
+        addq.l  #1,lc_dbg_n             | debug: taps seen since power-on
         rts
 
 | SCALE (MKI) / PAGE (MKII), code 0x1b: ZERO SNAP on/off. Not FUNC + YES:
@@ -681,7 +684,7 @@ lc_range:
         bra     lc_cmd                  | tail call
 
 | entry 0 back to the whole take and the live SLIC and STRT back (after
-| lc_range). Clobbers d0/a0.
+| lc_range); a SLIC or STRT the player turned meanwhile stays. Clobbers d0/a0.
 lc_unaud:
         tst.l   lc_tmod
         beq     9f
@@ -702,11 +705,17 @@ lc_unaud:
         mulu.l  %d1,%d0
         add.l   #LIVE_LANE,%d0
         move.l  %d0,%a0
+        moveq   #0,%d1                  | each byte back only if it still holds the audition's
+        move.b  LIVE_SLIC(%a0),%d1      | own value: a SLIC or STRT turned during the audition
+        subq.l  #1,%d1                  | is kept (the audition wrote SLIC ON = 1, STRT 0)
+        bne     1f
         move.l  lc_slsave,%d1
         move.b  %d1,LIVE_SLIC(%a0)
+1:      tst.b   LIVE_STRT(%a0)
+        bne     2f
         move.l  lc_stsave,%d1
         move.b  %d1,LIVE_STRT(%a0)
-        move.l  (%sp)+,%d0
+2:      move.l  (%sp)+,%d0
         clr.l   lc_tmod
         move.w  %d0,%sr
         move.l  (%sp)+,%d1
@@ -1003,6 +1012,9 @@ lc_ledsoff:
         move.l  (%sp)+,%d2
         rts
 
+| stock's trig-LED pass, through its slot (0x400c0936): stock's own when
+| LAZY CHOP is closed; else stock's, then ids 0-31 put back to LAZY CHOP's
+| (only when they differ, so the panel link sees no extra traffic)
 | the LED task's tick (0x40055956 loads it into a2): stock's countdowns,
 | then, while LAZY CHOP is open, ids 0-31 checked against lc_want and set
 | again if a stock flash (a short countdown) or a pass changed them
@@ -1047,10 +1059,6 @@ lc_cmdgate:
 9:      btst    #0,%d0
         rts
 
-| stock's trig-LED pass, through its slot (0x400c0936): stock's own when
-| LAZY CHOP is closed. While it is open stock's pass is skipped and
-| lc_sync sets ids 0-31 to LAZY CHOP's (only those that differ, so the
-| panel link sees no extra traffic).
 lc_ledpass:
         tst.l   lc_state
         bne     1f
@@ -1126,7 +1134,7 @@ lc_open:
         bne     1b
         moveq   #0,%d0
         move.b  CUR_TRACK,%d0
-        and.l   #7,%d0                  | as the other readers (the editor is only open on an audio track)
+        and.l   #7,%d0                  | the track, as the other readers mask it
         move.l  %d0,lc_track
         clr.l   lc_next
         moveq   #ST_ARMED,%d0
@@ -1487,6 +1495,10 @@ lc_finish:
         lea     12(%sp),%sp
         lea     lc_buf,%a0
         bsr     lc_toast
+        .ifdef  LC_TEMPO                | LAZY CHOP TEMPO: the tempo popup follows the count's
+        move.l  lc_rec,%a0
+        jsr     ct_after_yes
+        .endif
         bsr     lc_end
         bsr     lc_refresh
         jsr     (F_EDITED).l
@@ -1587,6 +1599,10 @@ lc_lpend:       .long   0               | its start is posted, not yet recording
 lc_mset:        .long   0               | the mute bit LAZY CHOP set for silent chop, 0 if none
 lc_w:           .long   0               | lc_snapfix: the window now (SNAP_W1, then SNAP_W)
 lc_behind:      .long   0               | lc_snapfix: search behind the tap only
+        .global lc_dbg_tap, lc_dbg_snap, lc_dbg_n
+lc_dbg_tap:     .long   0               | ZERO SNAP debug: the last tap's frame before the snap
+lc_dbg_snap:    .long   0               | ZERO SNAP debug: the same tap after it (no behaviour change)
+lc_dbg_n:       .long   0               | ZERO SNAP debug: taps since power-on
 
 lc_keys_chop:
         TRIGS

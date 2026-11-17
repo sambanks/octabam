@@ -103,7 +103,7 @@ GROUPS = {
     "lazy_chop": ("chop", "cap", "save", "leds", "mkii", "rec", "seq", "recnew", "ptn", "slic", "snap", "static", "undo",
                   "aud", "audslic", "cost", "coststatic", "live", "tstr"),
     "lock_edit": ("lockedit", "lock"),
-    "zoom_keep": ("aedview",),
+    "zoom_keep": ("aedview", "aedtracks"),
     "src3_key": ("midi",),
     "chop_tempo": ("tempo", "tempopop"),
 }
@@ -909,6 +909,34 @@ def sc_aedview(r):
     p.poke(0x460D16F0, (0).to_bytes(4, "big")); p.run(100)
 
 
+def sc_aedtracks(r):
+    """Each editor page (TRIM, SLICE, EDIT) keeps its own zoom and place in time across tracks: T1 FLEX and T2
+    STATIC samples, each page zoomed differently on T1, a track key inside the editor, and back. The first open
+    after power-on is stock's fit."""
+    p = r.p
+    views = {"TRIM": ("pg_playback", 0x400CE724), "SLICE": ("pg_amp", 0x400CEB14), "EDIT": ("pg_lfo", 0x400CEF60)}
+    rd = lambda a: (p.long(a + 16), p.long(a + 24) - (1 << 32) if p.long(a + 24) > 0x7FFFFFFF else p.long(a + 24))
+    p.chord("t1", "bank", settle=600)
+    fit = {k: rd(a) for k, (_, a) in views.items()}
+    # stock's fit starts 10 pixels before the sample (first frame = -10 x frames a pixel); the boot default is 3 / 0
+    r.check(all(z > 3 and f == -10 * z for z, f in fit.values()), f"first open: every page fitted by stock ({fit})")
+    turns = {"TRIM": -4, "SLICE": 4, "EDIT": -8}
+    for k, (key, a) in views.items():
+        p.press(key, settle=400)
+        for _ in range(3):
+            p.proc.command(f"knob 0x35 {turns[k]}", "ok"); p.run(150)
+    z1 = {k: rd(a) for k, (_, a) in views.items()}
+    r.check(all(z1[k][0] != fit[k][0] for k in views), f"T1: each page zoomed its own way ({z1})")
+    p.press("t2", settle=600)
+    z2 = {k: rd(a) for k, (_, a) in views.items()}
+    r.check(all(z2[k][0] == z1[k][0] for k in views), f"T2: every page kept its zoom ({z2})")
+    p.press("t1", settle=600)
+    z3 = {k: rd(a) for k, (_, a) in views.items()}
+    r.check(all(z3[k][0] == z1[k][0] for k in views), f"back on T1: every page still has its zoom ({z3})")
+    r.check(all(z3[k][1] == z1[k][1] for k in views if z1[k][1] >= -10 * z1[k][0]),
+            "back on T1: each page's place in time kept (when it was inside the sample)")
+
+
 def sc_lock(r):
     """[TRIG] + [BANK] in grid recording: the editor on the step's sample lock; LAZY CHOP on it."""
     p = r.p
@@ -1248,7 +1276,7 @@ def scenario(name, base):
         with r.p as p:
             p.settle()
             {"chop": sc_chop, "cap": sc_cap, "save": sc_save, "leds": sc_leds, "mkii": sc_mkii, "rec": sc_rec,
-             "seq": sc_seq, "recnew": sc_recnew, "ptn": sc_ptn, "slic": sc_slic, "snap": sc_snap, "static": sc_static, "undo": sc_undo, "aud": sc_aud, "audslic": sc_aud, "cost": sc_cost, "coststatic": sc_coststatic, "lock": sc_lock, "live": sc_live, "midi": sc_midi, "tstr": sc_tstr, "lockedit": sc_lockedit, "aedview": sc_aedview, "tempo": sc_tempo, "tempopop": sc_tempopop}[name](r)
+             "seq": sc_seq, "recnew": sc_recnew, "ptn": sc_ptn, "slic": sc_slic, "snap": sc_snap, "static": sc_static, "undo": sc_undo, "aud": sc_aud, "audslic": sc_aud, "cost": sc_cost, "coststatic": sc_coststatic, "lock": sc_lock, "live": sc_live, "midi": sc_midi, "tstr": sc_tstr, "lockedit": sc_lockedit, "aedview": sc_aedview, "aedtracks": sc_aedtracks, "tempo": sc_tempo, "tempopop": sc_tempopop}[name](r)
     except Exception as e:                       # a scenario that dies is a failure, with its reason
         r.fails.append(f"{type(e).__name__}: {e}")
         r.notes.append(f"FAIL {type(e).__name__}: {e}")
@@ -1277,7 +1305,7 @@ def main(argv, gate="lazy_chop"):
     jobs = int(os.environ.get("LAZY_CHOP_JOBS", "2"))
     failed = []
     with cf.ThreadPoolExecutor(max_workers=jobs) as ex:
-        futs = [ex.submit(scenario, n, cards["rec" if n in ("rec", "recnew", "live", "midi") else n if n in ("slic", "static") else "slic" if n == "audslic" else "static" if n == "coststatic" else "lock" if n in ("lock", "lockedit") else "stretch" if n == "tstr" else "sample"]) for n in only]
+        futs = [ex.submit(scenario, n, cards["rec" if n in ("rec", "recnew", "live", "midi") else n if n in ("slic", "static") else "slic" if n == "audslic" else "static" if n == "coststatic" else "lock" if n in ("lock", "lockedit", "aedtracks") else "stretch" if n == "tstr" else "sample"]) for n in only]
         for f in cf.as_completed(futs):
             name, fails, notes = f.result()
             for line in notes:

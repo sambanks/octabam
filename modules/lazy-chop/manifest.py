@@ -13,7 +13,7 @@ keymap list) holds the trig keys, YES and NO only while chopping; the
 page's encoders and drawing are stock. lazychop.s has the detail.
 """
 
-from remix.schema import (Apply, Binary, Category, Detour, Evidence, Gate, Kind, Level, Linked, Module, Poke, Scope,
+from remix.schema import (Apply, Binary, Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, Scope,
                           Setting, Store, SymbolRef, TableGrow)
 
 # The audio editor's SLICE menu (FUNC+BANK or YES on the SLICE page), opener
@@ -32,9 +32,8 @@ OFF_AT, ON_AT = 0, 0
 # Stock's trig-LED pass 0x40043fdc is called through this slot (the u32 at
 # 0x400c0936, after the MKII key layer). On the unit the editor's own trig
 # display painted over LAZY CHOP's red while the sequencer was stopped
-# (8thmyth's MKI, F4, 10 Nov 2026); lc_ledpass skips stock's pass while
-# LAZY CHOP is open and sets ids 0-31 to LAZY CHOP's (lc_sync); closed, it is
-# stock's pass. No direct caller exists (0 jsr/bsr).
+# (8thmyth's MKI, F4, 10 Nov 2026); lc_ledpass runs stock's, then puts ids
+# 0-31 back while LAZY CHOP is open. No direct caller exists (0 jsr/bsr).
 TRIGLED_SLOT, TRIGLED_PASS = 0x400C0936, 0x40043FDC
 # The LED task's loop (0x4005595c: wait 0x46c7e0e2, jsr (a2)) loads the 120
 # Hz countdown tick with `lea 0x4001387c,%a2` at 0x40055956; its operand
@@ -56,7 +55,7 @@ CMDGATE = 0x4000B54A
 # 0-31 while LAZY CHOP is open and passes every other call to stock's.
 LEDPAINT_LEAS, LEDON = (0x400341D4, 0x400341EE, 0x400342CE, 0x400343B2, 0x4003445A), 0x40013784
 
-STORE_ID = "8thmyth.lazy-chop"
+STORE_ID = "octabam.lazy-chop"
 
 
 def lc_inc(modules, remix):
@@ -86,14 +85,7 @@ MODULE = Module(
     key="LAZY CHOP",
     kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="8thmyth", author_url="https://github.com/8thmyth",
-    evidence=(Evidence(Level.UNIT, unit="MKI", who="8thmyth", image="OCTABAMHC", date="2026-11-14", commit="a1bd2d2",
-                       note="#1099's combined remix: STUDIO and LIVE chopping of FLEX, STATIC and recorder takes, sequencer "
-                            "stopped and running, ZERO SNAP, audition / undo / resume, pattern recording, timestretched slice 1"),
-              Evidence(Level.UNIT, unit="MKI", who="8thmyth", image="OCTABAMT8", date="2026-11-16", commit="c8e93954",
-                       note="this module's code as in this PR (a personal remix with BUFFER SAVER, LOCK EDIT, ZOOM KEEP, "
-                            "SRC3 KEY and Hteah's TRACK TRIG MODE / PAGE LOOP / TRIG MUTE); 28 recorded takes chopped over two "
-                            "days with tools/hw/ot_monitor.py reading the slices back over REMOTE"),
-              Evidence(Level.EMULATOR, ref="tools/verify/verify_lazy_chop.py", note="19 scenarios, MKI and MKII")),
+    proof=Proof.HARDWARE, proof_note="8thmyth's MKI, image OCTABAMHC (remix test/octabam-lazy-chop), 14 Nov 2026: STUDIO and LIVE chopping, ZERO SNAP, pattern recording, timestretched slice 1; verify_lazy_chop under the port (MKI and MKII)",
     doc="Slice a sample by tapping TRIG 1..16 (four pages, 64 slices) while it plays, from the audio editor's slice menu.",
     linked=(Linked("lazychop", "modules/lazy-chop/lazychop.s", dram=True, include=lc_inc),),
     store=Store(STORE_ID),
@@ -110,7 +102,7 @@ MODULE = Module(
     ),
     symbol_refs=(
         SymbolRef(TRIGLED_SLOT, TRIGLED_PASS, "lazychop", "lc_ledpass",
-                  "trig-LED pass slot: stock's pass when closed; while LAZY CHOP is open, skipped and its green/red set instead"),
+                  "trig-LED pass slot: stock's pass, then LAZY CHOP's green/red while it is open"),
         SymbolRef(LEDTICK_OPERAND, LEDTICK, "lazychop", "lc_tick",
                   "LED task tick: stock's countdowns, then ids 0-31 checked while LAZY CHOP is open"),
         *(SymbolRef(a, LEDON, "lazychop", "lc_ledflt",
@@ -134,4 +126,14 @@ MODULE = Module(
              note="SLICE menu on a slice: LISTPOP count 9 -> 10"),
     ),
     gates=(Gate("tools/verify/verify_lazy_chop.py", venv=True, stage="image"),),
+    select=lambda keys: _select(keys),
 )
+
+
+# LAZY CHOP TEMPO (modules/chop-tempo) in the image: lc_finish calls its ct_after_yes after the
+# slice-count popup (LC_TEMPO), which works out the tempo popup that follows it.
+def _select(keys):
+    if "LAZY CHOP TEMPO" not in keys:
+        return {}
+    import dataclasses
+    return {"linked": (dataclasses.replace(MODULE.linked[0], defsyms=(("LC_TEMPO", 1),)),)}
