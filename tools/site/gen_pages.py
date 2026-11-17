@@ -112,6 +112,14 @@ def _records(m) -> dict:
     return records.get(m.name, {})
 
 
+def _page_records(m) -> dict:
+    """Screenshots still needing placement after the usage fragment's images."""
+    fragment = OUT.parent / "usage" / f"{m.name}.md"
+    text = fragment.read_text() if fragment.is_file() else ""
+    embedded = set(re.findall(r"!\[[^\]]*\]\(\.\./\.\./img/([^\s)]+)\)", text))
+    return {k: rec for k, rec in _records(m).items() if rec["image"] not in embedded}
+
+
 def _module_url(m) -> str:
     d = pathlib.Path("modules") / m.name
     if (ROOT / d / "README.md").exists():
@@ -126,20 +134,20 @@ def _figure(record: dict) -> list[str]:
 
 def _hero_key(m) -> str | None:
     """The screenshot shown under the title: `main` where captured, else the first."""
-    recs = _records(m)
+    recs = _page_records(m)
     return "main" if "main" in recs else next(iter(recs), None)
 
 
 def hero(m) -> list[str]:
     key = _hero_key(m)
-    return _figure(_records(m)[key]) if key else []
+    return _figure(_page_records(m)[key]) if key else []
 
 
 def screen_reference(m) -> list[str]:
     notes_path = OUT.parent / "screen-notes.json"
     notes = json.loads(notes_path.read_text()) if notes_path.exists() else {}
     hero_key = _hero_key(m)
-    rest = [r for k, r in _records(m).items() if k != hero_key]
+    rest = [r for k, r in _page_records(m).items() if k != hero_key]
     lines = []
     if rest:
         lines += ["## Screen reference", ""]
@@ -199,7 +207,7 @@ def module_page(m, mods, manual_page: dict) -> str:
     _DIAGRAM_FIRST = frozenset({"void", "resonator", "shatter", "stuttr"})
     if m.name in _DIAGRAM_FIRST and fragment.is_file():
         lines += [f'--8<-- "usage/{m.name}.md"', ""]
-        recs = _records(m)
+        recs = _page_records(m)
         if recs:
             lines += ["## Screens", ""]
             for record in recs.values():

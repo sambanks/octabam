@@ -234,11 +234,12 @@ def check_ui(src: str) -> None:
           and "X_PAGE_R" in draw and ".set    X_PAGE_R,  X_GRID-1" in src
           and "ef_rtext" in draw
           and '.asciz " 1>"' in src and '.asciz "<2 "' in src
-          and "hide RIGHT affordance off NOTE/PTCH" in draw)
+          and "bsr.w   ef_pitch_selected" in draw)
     right = _block(src, "ef_page_right:", "ef_enc:")
-    check("RIGHT opens Harmony only for destination index 0 (NOTE/PTCH)",
-          "tstl    ef_dest" in right and "bne.s   9f" in right
-          and right.index("tstl    ef_dest") < right.index("movel   %d0,ef_page_no"))
+    check("RIGHT and the page hint share the pitch-destination check",
+          "bsr.w   ef_pitch_selected" in right and "beq.s   9f" in right
+          and right.index("bsr.w   ef_pitch_selected")
+          < right.index("movel   %d0,ef_page_no"))
     check("page 2 redraw keeps shared step grid", "ef_draw_pat" in draw
           and "ef_grid" in draw and "ef_draw_tonal" in draw
           and "Page 2 keeps the rhythm grid" in src)

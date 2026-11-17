@@ -1253,8 +1253,9 @@ ef_page_left:
 ef_page_right:
         tstl    ef_ask
         bne.s   9f
-        tstl    ef_dest                 | only NOTE (MIDI) / PTCH (audio) opens Harmony
-        bne.s   9f
+        bsr.w   ef_pitch_selected
+        tstl    %d0
+        beq.s   9f
         moveq   #1,%d0
         movel   %d0,ef_page_no
         bra.w   ef_draw
@@ -1592,8 +1593,9 @@ ef_draw:
         lea     T_PAGE2,%a0
         bra.s   d_page
 d_page1:
-        tstl    ef_dest                 | hide RIGHT affordance off NOTE/PTCH
-        bne.s   d_page_done
+        bsr.w   ef_pitch_selected
+        tstl    %d0
+        beq.s   d_page_done
         lea     T_PAGE1,%a0
 d_page: moveq   #X_PAGE_R,%d0
         moveq   #Y_TITLE,%d1
@@ -2056,6 +2058,29 @@ tk_done:
         lea     44(%sp),%sp
         rts
 
+
+| Slot zero is NOTE on MIDI, but INAB on THRU. Use the audio descriptor's
+| actual parameter name for both the page hint and the RIGHT handler.
+| Keeps d2/d3, clobbers d0/d1/a0/a1 like ef_dest_label.
+ef_pitch_selected:
+        tstl    ef_dest
+        bne.s   eps_no
+        tstl    MIDI_MODE
+        bne.s   eps_yes
+        bsr.w   ef_dest_label
+        lea     ef_buf,%a0
+eps_page:
+        tstb    %a0@+
+        bne.s   eps_page
+        movel   %a0@,%d0
+        cmpil   #0x50544348,%d0         | PTCH
+        bne.s   eps_no
+eps_yes:
+        moveq   #1,%d0
+        rts
+eps_no:
+        moveq   #0,%d0
+        rts
 
 | ef_dest_label: LFO SETUP PMTR style PAGE\0PARAM\0 into ef_buf
 | (two lines: AMP/VOL, SRC/PTCH, SRC/CAR…). Via ef_dest_name; static

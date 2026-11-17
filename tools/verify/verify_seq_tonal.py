@@ -135,9 +135,9 @@ def main() -> int:
     ptch = block(src, "\nef_write_ptch:\n", "\nef_part_flat:\n")
     page_right = block(src, "ef_page_right:", "ef_enc:")
     check("RIGHT is pitch-gated and page labels use padded arrows",
-          "tstl    ef_dest" in page_right and "bne.s   9f" in page_right
+          "bsr.w   ef_pitch_selected" in page_right and "beq.s   9f" in page_right
           and '.asciz " 1>"' in src and '.asciz "<2 "' in src
-          and "hide RIGHT affordance off NOTE/PTCH" in draw)
+          and "bsr.w   ef_pitch_selected" in draw)
     check("page indicator stays at logo-panel top-right and grid draws on both pages",
           "X_PAGE_R" in draw and ".set    X_PAGE_R,  X_GRID-1" in src
           and "T_PAGE1" in draw and "T_PAGE2" in draw

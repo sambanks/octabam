@@ -20,6 +20,7 @@ function Ghidra did not reach (its forms have no site here); a unit run proves t
 instruction of the source, and a source changed after the run keeps its level (tools/build/evidence.py stale lists
 those); the port may still shim a form that has a stock site. SKIPs without the m68k binutils.
 """
+import os
 import pathlib
 import subprocess
 import sys
@@ -66,6 +67,25 @@ def main():
     ok = new == {"wddatal An@  [2b]"}
     print(f"  [{'PASS' if ok else 'FAIL'}] control: wddatal %a0@ is reported, moveq #1,%d0 is not  {sorted(new) if not ok else ''}{err or ''}")
     bad += not ok
+    from remix import registry  # noqa: E402
+    dram = [u.label for m in registry.selected(registry.remix(remix)) for u in (getattr(m, "linked", None) or ())
+            if getattr(u, "dram", False)]
+    if not dram:
+        # No runtime unit, so no out/platform/layout.json from this remix's build (bbd: a ROM stub only); one left by
+        # another remix's build is not this remix's to census.
+        print(f"  [PASS] {remix}: no runtime units (no module links into DRAM): no forms to census")
+        print("verify_cf_forms: " + ("OK" if not bad else f"{bad} FAILED"))
+        return 1 if bad else 0
+    if not (cf.PLATFORM / "layout.json").is_file():
+        # Run on its own (a CI unit of this job alone, sambanks/octabam#1157) nothing has built the remix: build it,
+        # as the gates that read an image do. A listing of another remix's build is refused by the census below.
+        env = dict(os.environ, REMIX=remix, XBUS="1", SPEC="1")
+        env.setdefault("BUILD", "0")
+        r = subprocess.run([sys.executable, str(ROOT / "tools/build/build_bus.py")], env=env, cwd=ROOT,
+                           capture_output=True, text=True)
+        if r.returncode:
+            print(f"  [FAIL] verify_cf_forms: building {remix} failed:\n{(r.stdout + r.stderr)[-1200:]}")
+            return 1
     per, info = cf.census(remix)
     for p in info["problems"]:
         print(f"  [FAIL] {p}")

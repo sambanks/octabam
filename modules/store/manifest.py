@@ -70,24 +70,29 @@ CLIENTS = (
     ("VARISPEED", "vs", ("partsaved", "partclear")),
     # No side file: a record in REMOTE's ring at each event (modules/remote).
     ("REMOTE", "rmt", ("loadall_post", "loadmask_post", "newproj", "bankw_post", "pstore_post", "preload_post")),
+    # pmute.work and the current bank's copy in CS1 (modules/pattern-mute, sambanks/octabam#1143)
+    ("PATTERN MUTE", "pm", ("loadall_pre", "loadmask_pre", "newproj", "bankw_post", "pstore_pre",
+                            "pstore_post", "preload_post", "tocs1", "fromcs1")),
 )
 
 
 # A client's number in the refusal registry (store_refuse) and in ans_tab: only the
 # clients that keep a side file (VARISPEED keeps none and has no entry).
 CLIENT_IDS = {"PLOCKS P2": 0, "KITS": 1, "MIDI SCENES": 2, "PERSISTENT BUFFERS": 3, "MORPH": 4,
-              "FREE LOOP": 5, "SCALES": 6, "CHORDS FACTORY": 7, "DRUMMER": 8, "SEQ": 9, PAGES_LOCKS: 10}
+              "FREE LOOP": 5, "SCALES": 6, "CHORDS FACTORY": 7, "DRUMMER": 8, "SEQ": 9, PAGES_LOCKS: 10,
+              "PATTERN MUTE": 11}
 
 
 def store_inc(modules, remix):
     out = ["ev_ctl:", "        .long   kits_level" if "KITS" in modules else "        .long   0",
            "cp_cbs:", "        .long   name_fp" if "COPY PROJECT" in modules else "        .long   0",
-           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn, nm_pbf, nm_mrp, nm_fl, nm_sc, nm_ch, nm_dr, nm_ef, nm_pg",
+           "name_tab:", "        .long   nm_plk, nm_kits, nm_scn, nm_pbf, nm_mrp, nm_fl, nm_sc, nm_ch, nm_dr, nm_ef, nm_pg, nm_pm",
            'nm_plk: .asciz "P2LK%02d.WORK"', 'nm_kits: .asciz "KITS.WORK"',
            'nm_scn: .asciz "SCENES.WORK"', 'nm_pbf: .asciz "BUFFERS/REC%d.WAV"',
            'nm_mrp: .asciz "MORPH.WORK"', 'nm_fl: .asciz "FREELOOP.WORK"',
            'nm_sc: .asciz "SCALES.WORK"', 'nm_ch: .asciz "CHORDS.WORK"',
            'nm_dr: .asciz "DRUMMER.WORK"', 'nm_ef: .asciz "EUCLID.WORK"', 'nm_pg: .asciz "PGLOCKS.WORK"',
+           'nm_pm: .asciz "PMUTE.WORK"',
            ".balign 2", "ans_tab:"]
     for key, _prefix, _events in sorted((c for c in CLIENTS if c[0] in CLIENT_IDS),
                                         key=lambda c: CLIENT_IDS[c[0]]):

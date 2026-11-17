@@ -246,6 +246,8 @@ moment it costs real work, and add its line here.
 - [A held scene replaces every encoder's handler](docs/contributing/TRAPS.md#trap-scene-encoders) — `0x40053498` over the SETUP editors; a panel gesture's gate drives the panel.
 - [A frame interrupt entering about 150 µs late stops the DSP's frame exchange](docs/contributing/TRAPS.md#trap-late-frame) — START and program changes; ColdFire time added to the frame interrupt moves it on or off the window; FRAME GUARD holds a late entry to 190 µs.
 
+- [PLAYBACK slot A depends on the machine](docs/contributing/TRAPS.md#trap-pitch-destination): THRU has INAB where FLEX has PTCH; resolve the parameter before offering pitch controls.
+
 ## How claims are written here
 
 The project has been burned by stale confident numbers more than once — a
