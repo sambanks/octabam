@@ -6,18 +6,15 @@ KEEP the zoom stays where it is and the slice start is scrolled into view, so
 an edit zoomed in on a marker survives auditioning. zoomkeep.s has the detail.
 """
 
-from remix.schema import Category, Detour, Evidence, Gate, Kind, Level, Linked, Module
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 
 MODULE = Module(
     name="zoom-keep",
     key="ZOOM KEEP",
     kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="8thmyth", author_url="https://github.com/8thmyth",
-    evidence=(Evidence(Level.UNIT, unit="MKI", who="8thmyth", image="OCTABAMHC", date="2026-11-14", commit="a1bd2d2",
-                       note="the audition zoom (#1099's combined remix)"),
-              Evidence(Level.UNIT, unit="MKI", who="8thmyth", image="OCTABAMT8", date="2026-11-16", commit="c8e93954",
-                       note='the audition zoom, as in this PR'),
-              Evidence(Level.EMULATOR, ref="tools/verify/verify_zoom_keep.py", note="aedview: the audition zoom; aedtracks: each page keeps its zoom across tracks (port; MKI trace found SLICE re-fitting on T9)")),
+    proof=Proof.HARDWARE,
+    proof_note="8thmyth's MKI, image OCTABAMHC (remix test/octabam-lazy-chop), 14 Nov 2026; verify_zoom_keep under the port",
     doc="The audio editor keeps its zoom when a slice is auditioned (SLICES trig mode; the slice start scrolls into view), and every page (TRIM, SLICE, EDIT) keeps its own zoom and place in time across tracks.",
     linked=(Linked("zoomkeep", "modules/zoom-keep/zoomkeep.s", dram=True),),
     detours=(
