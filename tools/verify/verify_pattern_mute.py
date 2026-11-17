@@ -4,20 +4,25 @@
     python3 tools/verify/verify_pattern_mute.py REMIX [--project DIR]
 
 One load of the project (any project with pattern A01 current; the copy's TRACK_MUTE_MASK and
-MIDI_TRACK_MUTE_MASK are set to 127 and 255 first), then one forked scenario per gesture, each ending in a dump of the mute words, their SRAM
-mirrors, the unit's layer state and the current bank's pattern records (RAM and CS1):
+MIDI_TRACK_MUTE_MASK are set to 127 and 255 first, and every audio track of the current bank's first two
+patterns gets a one-shot trig on steps 1 and 2), then one forked scenario per gesture, each ending in a dump
+of the mute words, their SRAM mirrors, the unit's layer state, pm_tab, the CS1 copy and the current bank's
+pattern records:
 
-  global      FUNC+T1                      GLOBAL layer: word, layer and mirror agree
+  global      FUNC+T1                      GLOBAL layer: word, layer and mirror agree; the step 1-2 one-shots
+                                           mute nothing (until 16 Nov 2026 the PATTERN layer was the one-shot
+                                           mask's low byte: sambanks/octabam#1143)
   layer       FUNC tapped twice            the layer flag flips (two presses inside 300 ms on DTCN3)
+  combo       FUNC+T1, FUNC+T2 inside 300 ms   the layer does not flip; both GLOBAL mutes toggle
   pattern     double FUNC, FUNC+T8         PATTERN layer: word = GLOBAL | PATTERN, mirror keeps GLOBAL,
-                                           the pattern's track 8 record and its CS1 copy hold bit 0,
-                                           the bank is marked edited
+                                           pm_tab and its CS1 copy hold track 8, the bank is marked edited,
+                                           every one-shot is where the fixture put it
   away        pattern, then PATTERN+trig 2 the other pattern has no PATTERN mutes: word back to GLOBAL
   back        away, then PATTERN+trig 1    A01's PATTERN layer returns
-  midi        MIDI, FUNC+T1, double FUNC,  GLOBAL then PATTERN on the MIDI word; bit 1 of track 1's record
+  midi        MIDI, FUNC+T1, double FUNC,  GLOBAL then PATTERN on the MIDI word; pm_tab's MIDI byte
               FUNC+T1
-  save        pattern, then SAVE PROJECT   bank03.work carries the PATTERN bit, project.work's
-                                           TRACK_MUTE_MASK stays the GLOBAL byte
+  save        pattern, then SAVE PROJECT   PMUTE.WORK carries the PATTERN bit, the bank file keeps the
+                                           one-shots, project.work's TRACK_MUTE_MASK stays the GLOBAL byte
 
 SKIPs without the port or a project.
 """
@@ -49,6 +54,8 @@ CS1_PAT, EDIT_FLAG = 0x1001614E, 0x100F8598
 FUNC, T1, T8, NO, MIDI, PATTERN, TRIG1, TRIG2 = 0x2D, 0x10, 0x17, 0x32, 0x35, 0x2E, 0x00, 0x01
 PROJ, RIGHT, DOWN, YES = 0x1C, 0x21, 0x20, 0x31
 
+PM_CS1, PM_CS1_LEN, PM_MAGIC = 0x100FBDC0, 0x30, 0x504D4353   # 'PMCS': the current bank's PATTERN layer in CS1
+ONESHOT = 0x18                                  # ot_project.set_pattern_trig's mask offset: the one-shot mask
 WORDS = ((0x80000008, 4), (0x8000000C, 4), (0x100B14D4, 4), (0x100B14D8, 4), (EDIT_FLAG, 4))
 SYMS = ("pm_gl_a", "pm_gl_m", "pm_pa", "pm_pm", "pm_ef_a", "pm_ef_m")
 LAYER_B = 0x100B14DD                            # battery SRAM: bit 0 = PATTERN layer
@@ -109,6 +116,13 @@ def sc_layer(s):
     s.dn(FUNC, 50); s.up(FUNC, 80); s.dn(FUNC, 50); s.up(FUNC, 500)
 
 
+def sc_combo(s):
+    """FUNC+T1 then FUNC+T2, the second FUNC press 160 ms after the first: a pair stock code would count."""
+    start(s)
+    s.dn(FUNC, 40); s.dn(T1, 40); s.up(T1, 40); s.up(FUNC, 40)
+    s.dn(FUNC, 40); s.dn(T1 + 1, 40); s.up(T1 + 1, 40); s.up(FUNC, 600)
+
+
 def sc_pattern(s):
     start(s); double_func(s); s.tap(T8, 200); s.up(FUNC, 600)
 
@@ -131,7 +145,7 @@ def sc_save(s):
     s.tap(PROJ, 1000); s.tap(RIGHT, 700); s.tap(DOWN, 500); s.tap(YES, 1100); s.tap(YES, 30000)
 
 
-SCENARIOS = {"global": sc_global, "layer": sc_layer, "pattern": sc_pattern, "away": sc_away,
+SCENARIOS = {"global": sc_global, "layer": sc_layer, "combo": sc_combo, "pattern": sc_pattern, "away": sc_away,
              "back": sc_back, "midi": sc_midi, "save": sc_save}
 
 
@@ -194,6 +208,15 @@ def main():
     m = re.search(rb"\[STATES\]\r?\nBANK=(\d+)", pw)
     bank = int(m.group(1)) if m else 0
     base = BANK0 + bank * BANK_STRIDE
+    # one-shots on steps 1 and 2 of every audio track of the bank's first two patterns: the byte the PATTERN layer
+    # used to live in (sambanks/octabam#1143); a trig on the step too, as a one-shot needs one
+    sys.path.insert(0, str(ROOT / "tools/hw"))
+    import ot_project
+    for ptn in (0, 1):
+        for trk in range(8):
+            for step in (1, 2):
+                for mask in (0x00, ONESHOT):
+                    ot_project.set_pattern_trig(proj, bank + 1, ptn, trk, step, mask, guard=False)
     r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(proj), "OCTABAM", "SCN",
                         "--tree", str(OUT / "tree"), "--out", str(OUT / "card.img")],
                        cwd=ROOT, capture_output=True, text=True)
@@ -211,7 +234,8 @@ def main():
         dumps.update({"layer": (LAYER_B, 1), "trk": (CUR_TRACK, 1), "ledcd": (LED_CD, 4 * 80), "ledbm": (LED_BM, 17)})
         if tag == "save":
             dumps["sram"] = (0x10000000, 0x100000)
-        dumps.update({"ram0": ram0, "ram1": ram1, "cs0": cs0, "cs1": cs1})
+        dumps.update({"ram0": ram0, "ram1": ram1, "cs0": cs0, "cs1": cs1,
+                      "tab": (sym["pm_tab"], 0x200), "pmcs1": (PM_CS1, PM_CS1_LEN)})
         dump = ";".join(f"{ad:#x},{ln:#x}={OUT / f'{tag}_{k}.bin'}" for k, (ad, ln) in dumps.items())
         extra = f" --card-out {OUT / (tag + '.img')}" if tag == "save" else ""
         scen += ["--scenario", f"{OUT / (tag + '.txt')} --live-script {OUT / (tag + '.script')}{extra} --mem-dump {dump}"]
@@ -258,13 +282,25 @@ def main():
     cd, bit = led("global")
     check(f"global: the current track key's second colour is not held (countdown {cd}, bit {bit})", cd == 0)
 
+    def oneshots(tag, k):
+        """Each audio track's one-shot byte for steps 1-8 (record byte 31) in a dumped pattern."""
+        p = OUT / f"{tag}_{k}.bin"
+        b = p.read_bytes() if p.is_file() else b""
+        return [b[t * REC_STRIDE] if len(b) > t * REC_STRIDE else None for t in range(8)]
+
+    s = state("combo")
+    check(f"combo: FUNC+T1 then FUNC+T2 inside 300 ms leaves the layer {s['pm_layer']!r}, GLOBAL {s['pm_gl_a']!r}"
+          if s["wa"] is not None else "combo: no dump",
+          s["pm_layer"] == 0 and s["pm_gl_a"] == G0 ^ 0x0300 and s["pm_pa"] == 0)
+
     s = state("layer")
     check(f"layer: two FUNC presses flip the layer: {s['pm_layer']!r}" if s["pm_layer"] is not None else "layer: no dump",
           s["pm_layer"] == 1 and s["wa"] == G0)
 
     s = state("pattern")
-    p0 = u8("pattern", "ram0", 7 * REC_STRIDE)
-    c0 = u8("pattern", "cs0", 7 * REC_STRIDE)
+    t0 = u8("pattern", "tab", bank * 32)
+    raw = (OUT / "pattern_pmcs1.bin").read_bytes() if (OUT / "pattern_pmcs1.bin").is_file() else b""
+    c0 = raw[16 + 0] if len(raw) >= 48 and struct.unpack(">II", raw[:8]) == (PM_MAGIC, bank) else None
     check(f"pattern: FUNC+T8 in the PATTERN layer -> word {s['wa']:#x} = GLOBAL {s['pm_gl_a']:#x} | PATTERN {s['pm_pa']:#x}"
           if s["wa"] is not None else "pattern: no dump",
           s["wa"] == 0xFF00 and s["pm_gl_a"] == G0 and s["pm_pa"] == 0x8000 and s["pm_layer"] == 1)
@@ -272,8 +308,12 @@ def main():
     check(f"pattern: the current track key's second colour is held lit (countdown {cd}, bitmap bit {bit})", bool(cd) and bit == 1)
     check(f"pattern: the mirror keeps the GLOBAL layer: {s['ma']:#x}" if s["ma"] is not None else "pattern: no mirror",
           s["ma"] == G0)
-    check(f"pattern: A01 track 8 record RAM {p0!r}, CS1 {c0!r}; bank edited flag {s['edit']!r}",
-          p0 is not None and p0 & 3 == 1 and c0 == p0 and s["edit"] == 1)
+    check(f"pattern: pm_tab A01 audio {t0!r}, its CS1 copy {c0!r}; bank edited flag {s['edit']!r}",
+          t0 == 0x80 and c0 == t0 and s["edit"] == 1)
+    for k in ("ram0", "ram1"):
+        os_ = oneshots("pattern", k)
+        check(f"pattern: pattern {k[-1]}'s one-shot bytes (steps 1-8) {os_} are the fixture's (3 on every track)",
+              os_ == [3] * 8)
 
     s = state("away")
     check(f"away: pattern 2 has no PATTERN mutes: word {s['wa']:#x}, PATTERN {s['pm_pa']:#x}" if s["wa"] is not None else "away: no dump",
@@ -283,22 +323,24 @@ def main():
           s["wa"] == 0xFF00 and s["pm_pa"] == 0x8000)
 
     s = state("midi")
-    r0 = u8("midi", "ram0", 0)
+    r0 = u8("midi", "tab", bank * 32 + 1)
     check(f"midi: GLOBAL then PATTERN on the MIDI word: word {s['wm']:#x}, GLOBAL {s['pm_gl_m']:#x}, PATTERN {s['pm_pm']:#x}, "
-          f"mirror {s['mm']:#x}, track 1 record {r0!r}" if s["wm"] is not None else "midi: no dump",
-          s["wm"] == M0 and s["pm_gl_m"] == 0xFE00 and s["pm_pm"] == 0x0100 and s["mm"] == 0xFE00 and r0 is not None and r0 & 2 == 2)
+          f"mirror {s['mm']:#x}, pm_tab MIDI byte {r0!r}" if s["wm"] is not None else "midi: no dump",
+          s["wm"] == M0 and s["pm_gl_m"] == 0xFE00 and s["pm_pm"] == 0x0100 and s["mm"] == 0xFE00 and r0 == 0x01)
 
     img = OUT / "save.img"
     if img.is_file():
         files = emu_card.extract_image(img.read_bytes())
         bk = files.get(f"OCTABAM/SCN/bank{bank + 1:02d}.work")
         pwk = files.get("OCTABAM/SCN/project.work")
-        rec = None
-        if bk:
-            rec = bk[0x16 + 8 + 7 * 0x922 + 40]    # pattern A01, audio track 8, file offset 40
+        pmw = next((v for k, v in files.items() if k.upper() == "OCTABAM/SCN/PMUTE.WORK"), None)
+        recs = [bk[0x16 + 8 + t * 0x922 + 40] for t in range(8)] if bk else None   # A01's one-shot bytes, steps 1-8
         mask = re.search(rb"TRACK_MUTE_MASK=(\d+)", pwk or b"")
-        check(f"save: bank file A01 track 8 record byte {rec!r}, project.work TRACK_MUTE_MASK {mask.group(1).decode() if mask else None}",
-              rec is not None and rec & 1 == 1 and mask is not None and int(mask.group(1)) == G0 >> 8)
+        ok_pmw = (pmw is not None and len(pmw) == 16 + 512 and pmw[:4] == b"PMTW" and pmw[16 + bank * 32] == 0x80)
+        check(f"save: PMUTE.WORK {len(pmw) if pmw else None} B with A01's PATTERN byte "
+              f"{pmw[16 + bank * 32] if ok_pmw else None}; the bank file's A01 one-shot bytes {recs}; "
+              f"project.work TRACK_MUTE_MASK {mask.group(1).decode() if mask else None}",
+              ok_pmw and recs == [3] * 8 and mask is not None and int(mask.group(1)) == G0 >> 8)
     else:
         check("save: no card image written", False)
     cs1 = OUT / "save_sram.bin"

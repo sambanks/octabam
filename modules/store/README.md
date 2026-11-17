@@ -38,7 +38,7 @@ for KITS' own lists). Other stock LISTPOPs are left to stock / `kits_level`.
 
 ## Side-file clients
 
-Refusal / `name_tab` ids: 0 PLOCKS P2, 1 KITS, 2 MIDI SCENES, 3 PERSISTENT BUFFERS, 4 MORPH, 5 FREE LOOP, 6 SCALES, 7 CHORDS FACTORY, 8 DRUMMER (`DRUMMER.WORK`), 9 SEQ (`EUCLID.WORK`).
+Refusal / `name_tab` ids: 0 PLOCKS P2, 1 KITS, 2 MIDI SCENES, 3 PERSISTENT BUFFERS, 4 MORPH, 5 FREE LOOP, 6 SCALES, 7 CHORDS FACTORY, 8 DRUMMER (`DRUMMER.WORK`), 9 SEQ (`EUCLID.WORK`), 10 PAGES' locks (`PGLOCKS.WORK`), 11 PATTERN MUTE (`PMUTE.WORK`). Each id has its line in `store_info_text`; until 17 Nov 2026 the table stopped at 9, so a refused `PGLOCKS.WORK` read past it.
 
 ## Provenance and verification
 
