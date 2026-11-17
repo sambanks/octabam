@@ -192,7 +192,8 @@ def _fragment(m, here: str, r, mods) -> str | None:
 
 
 def _shots(m) -> dict:
-    return {k: rec for k, rec in _records(m).items() if (m.name, k) not in HIDE_SHOTS}
+    return {k: rec for k, rec in gen_pages._page_records(m).items()
+            if (m.name, k) not in HIDE_SHOTS}
 
 
 def _figure(record: dict, here: str) -> list[str]:
