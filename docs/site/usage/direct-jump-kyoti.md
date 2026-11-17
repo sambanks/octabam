@@ -29,8 +29,3 @@ the last restart: PLAY, or the last normal pattern change. A `1:2` or `1:4` trig
 survives it, and a PRE trig right after a jump plays. A track reloaded
 from the card after a jump counts from the same restart, so it stays in
 step too.
-
-## Not with CHAIN AFTER: DIRECT
-
-This is not the same as the stock DIRECT chain setting (CHAIN AFTER: DIRECT).
-Both change when a cued pattern takes over; use one or the other.
