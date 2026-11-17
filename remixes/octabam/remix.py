@@ -35,7 +35,12 @@ STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPA
 
 REMIX = Remix(
     name="octabam",
-    family="mods", evidence=(Evidence(Level.EMULATOR,
+    family="mods", evidence=(
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTA S3.RMX", date="2026-11-16",
+            commit="854ea9c055d9dea89a91763ed43f065e3a24de10",
+            note="Author confirmed the OCTA S3 handoff checklist: loads in BRAIN, SEQ PTCH opens Harmony, "
+                 "and THRU INAB has no RIGHT hint. This report covers those checks only."),
+        Evidence(Level.EMULATOR,
         note="Without SIDECHAIN_COMPRESSOR: Sam's MKII, image OCTABAMR3 (this remix before the rebase onto "
              "fa49e92f), USB TRACKS PRE, 1 Nov 2026: ot_suite.py phases pre-meter, pre-transport, pre-usb, dsp-"
              "watch, fx01-fx03 (74 layouts, no crash), loader01-02, kits-identity, scenes-sweep, scenes-latency, "
