@@ -3,8 +3,9 @@
   lockedit  SLIC off STRT 64: the SLICE page, the slice holding STRT/128 of the trim selected, in view with room;
             the encoders edit it while the trig is held; SLIC on STRT 4/8/9: slice STRT/2 (capped); SLIC on and
             the sample without slices: the view centred on STRT/128; no lock: the Part's STRT
-  lock      the step's sample lock (FLEX, STATIC) or the track's sample; the trig released clean; a held trig's
-            lock popup swapped for the editor; [BANK] alone and outside grid recording stay stock
+  lock      the step's sample lock (FLEX, STATIC) or the track's sample; the trig released clean, including after
+            a long re-hold to audition it with the editor up; a held trig's lock popup swapped for the editor;
+            [BANK] alone and outside grid recording stay stock
             (with LAZY CHOP in the image: it arms on, plays and writes the locked slot)
 
     python3 tools/verify/verify_lock_edit.py [REMIX] [scenario ...]

@@ -15,7 +15,10 @@
 | STRT is the step's lock (the byte is the value, 0xff none) or the Part's.
 | While the trig is held the page's encoders edit that slice (stock's).
 | A trig's hold event would open the lock popup and shut the editor, so
-| le_trighold drops it while the editor is up. Otherwise [BANK] is stock's.
+| le_trighold keeps it from doing that while the editor is up. It still clears
+| the hold's release-toggle word (stock's 0x400587d4 does): without it, a
+| re-hold to audition the step turns its trig off on release. Otherwise [BANK]
+| is stock's.
 
         .equ    CUR_TRACK,  0x100b14cc
         .equ    F_REC,      0x4006da78     | () -> the edited slot's record, 0 if none
@@ -44,6 +47,7 @@
         .equ    F_TRIGKEY,  0x40060ce0          | the grid's TRIG press/hold/release
         .equ    F_LOCKPOPDN, 0x40024b84         | the sample-lock popup's own close (none up: nothing)
         .equ    AED_WIN,    0x460e5e4c          | the editor's window, 0 when shut
+        .equ    TRIG_RELEASE_FLAGS, 0x460d1a9e  | u16, bit per trig: release toggles that step
         .equ    GRID_REC,   0x460d1736
         .equ    HELD_TRIGS, 0x460d174a     | u16, a bit a trig key
         .equ    HELD_PAGE,  0x460d174c     | u16, the step page's first step
@@ -300,12 +304,19 @@ le_view:
         .equ    PART_SETUP, 0x1da           | a Part's machine SETUP (file 0x1e3)
 
 | grid TRIG hold (key, event): with the editor up (opened by [TRIG]+[BANK] on
-| a held trig) the hold's lock popup would shut it, so the hold is dropped
+| a held trig) the hold's lock popup would shut it, so the hold is dropped.
+| Stock's hold (0x400587d4) clears 0x460d1a9e first: the bit for this trig is
+| what makes its RELEASE toggle the step's trig off. A re-hold to audition
+| after [TRIG]+[BANK] must do the same clear, or the audition's release deletes
+| the step. Measured under the port (17 Nov 2026): 0x460d1a9e = 4 on a re-hold
+| with no clear, step 3 lost on release; 0 and step kept with it. Poking the
+| bookkeeping flag 0x460d173a does not help; the release reads 0x460d1a9e.
 le_trighold:
         tst.l   (AED_WIN).l
-        bne     1f
-        jmp     (F_TRIGKEY).l
-1:      rts
+        beq     1f
+        clr.w   (TRIG_RELEASE_FLAGS).l
+        rts
+1:      jmp     (F_TRIGKEY).l
 
         .data
         .balign 4

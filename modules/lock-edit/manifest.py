@@ -20,8 +20,10 @@ BANK_PRESS_SLOTS, BANK_PRESS = (0x400C00A4, 0x400C0688), 0x4007AF80
 # event 2 (0x400316e0), referenced by nothing else). Held long enough on a
 # step with a sample lock, the hold event opens the lock popup, whose window
 # shuts the editor [TRIG]+[BANK] just opened (measured under the port,
-# 11 Nov 2026). le_trighold drops a trig's hold while the editor is up and
-# passes every other to stock's.
+# 11 Nov 2026). le_trighold keeps a trig's hold from opening that popup while
+# the editor is up, but clears stock's 0x460d1a9e release-toggle word, so
+# re-holding the step to audition it does not delete its trig on release
+# (measured under the port, 17 Nov 2026); every other hold goes to stock's.
 TRIG_HOLD_SLOTS, TRIG_HOLD = tuple(0x400BFD96 + 26 * k + 10 for k in range(16)), 0x40060CE0
 
 MODULE = Module(
@@ -39,7 +41,7 @@ MODULE = Module(
                     "[BANK] press: in grid recording with a trig held, the editor on that step's sample and slice")
           for a in BANK_PRESS_SLOTS),
         *(SymbolRef(a, TRIG_HOLD, "lockedit", "le_trighold",
-                    "grid TRIG hold: dropped while the editor is up (the lock popup would shut it)")
+                    "grid TRIG hold: the popup shut while the editor is up, the release-toggle flag cleared")
           for a in TRIG_HOLD_SLOTS),
     ),
     gates=(Gate("tools/verify/verify_lock_edit.py", venv=True, stage="image"),),

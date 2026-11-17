@@ -1774,6 +1774,18 @@ evidence about that module; read the frame log (`tools/hw/framelog.patch`,
 `verify_frame_guard` (the guard's arithmetic; the window itself is a unit
 measurement).
 
+<a id="trap-hold-release-toggle"></a>
+**DROPPING A STOCK HOLD TO KEEP A WINDOW OPEN CAN ALSO DROP THE HOLD'S RELEASE BOOKKEEPING.** A grid TRIG hold
+(long press) does more than open the lock popup: stock's `0x400587d4` clears the bit for that key in the u16
+`0x460d1a9e`, and the release path toggles the step's trig exactly when that bit is still set. LOCK EDIT's
+`le_trighold` suppressed the popup while the audio editor was up but returned before the clear, so after
+`[TRIG]+[BANK]`, releasing the editor-opening trig was safe, but re-holding the same step to audition it took
+the trig away on release while the editor stayed open (8thmyth's MKI, 17 Nov 2026; port probe: `1a9e=0004`
+and the step lost, with the editor and `0x460d173a` unchanged). Poking `0x460d173a` or replaying the bank
+bookkeeping does not help; the release reads `0x460d1a9e`. Fix: when the editor is up, clear `0x460d1a9e`
+and keep suppressing the popup. **Gate:** `verify_lock_edit`'s `lock` scenario re-holds for 400 ms with the
+editor up and checks the flag is clear, no popup came, and the step and editor survive the release.
+
 <a id="trap-frame-head"></a>
 **A FRAME HOOK THAT HOLDS CORE B AT ITS FRAME HEAD CAN STOP THE CORE.** Core B has no idle of its own: its frame
 head (`P:$51..$8d`) is two word-by-word handshakes with core A, and DLCOPY's hook sat between them at `P:$76`. A copy
