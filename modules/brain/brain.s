@@ -1356,12 +1356,11 @@ sw_out:
 	addq.l #1,%a0
 	cmp.l #-2147483536,%a0
 	jne .L283
+	move.l #1175340368,%a1
 	lea sw_pend,%a0
-	move.l #1175340368,%d0
-	sub.l %a0,%d0
 .L284:
-	move.b (%a0)+,(%a0,%d0.l)
-	cmp.l #sw_pend+6,%a0
+	move.b (%a0)+,(%a1)+
+	cmp.l #1175340374,%a1
 	jne .L284
 	movem.l (%sp),#7228
 	lea sw_count,%a0
@@ -19623,7 +19622,7 @@ brain_midi_log:
 	mvz.b %d0,%d0
 	cmp.l %d0,%d2
 	jcs .L3941
-	lea CSWTCH.958,%a0
+	lea CSWTCH.959,%a0
 	move.l (%a0,%d0.l*4),%d0
 .L3940:
 	lea midi_cnt,%a0
@@ -20497,7 +20496,7 @@ brain_scr_key:
 	mov3q.l #5,%d2
 	cmp.l %d0,%d2
 	jcs .L4143
-	lea CSWTCH.932,%a0
+	lea CSWTCH.933,%a0
 	move.l (%a0,%d0.l*4),%a0
 	tst.l %a0
 	jeq .L4143
@@ -21139,7 +21138,7 @@ brain_scr_draw:
 	add.l #-20,%d5
 	cmp.l %d0,%d1
 	jeq .L4378
-	lea CSWTCH.932,%a0
+	lea CSWTCH.933,%a0
 	move.l (%a0,%d0.l*4),%a0
 	tst.l %a0
 	jeq .L4379
@@ -22093,9 +22092,9 @@ brain_load_chord:
 	.size	brain_load_chord, .-brain_load_chord
 	.section	.rodata.cst32,"aM",@progbits,32
 	.align	2
-	.type	CSWTCH.958, @object
-	.size	CSWTCH.958, 32
-CSWTCH.958:
+	.type	CSWTCH.959, @object
+	.size	CSWTCH.959, 32
+CSWTCH.959:
 	.long	0
 	.long	0
 	.long	3
@@ -22106,9 +22105,9 @@ CSWTCH.958:
 	.long	4
 	.section	.rodata
 	.align	2
-	.type	CSWTCH.932, @object
-	.size	CSWTCH.932, 24
-CSWTCH.932:
+	.type	CSWTCH.933, @object
+	.size	CSWTCH.933, 24
+CSWTCH.933:
 	.long	perf_tab
 	.long	0
 	.long	0

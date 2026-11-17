@@ -198,7 +198,7 @@ def plant_voice(uc, track=0, active=True, **amp):
     plant_amp(uc, track, **amp)
 
 
-def render_frames(uc, symbols, knobs, frames=64, track=0, amp=None):
+def render_frames(uc, symbols, knobs, frames=64, track=0, amp=None, state_probe=None):
     """Cold-start then run `frames` second-calls; return interleaved L samples (signed 24)."""
     amp = dict(amp or {})
     plant_part(uc, track)
@@ -246,13 +246,17 @@ def render_frames(uc, symbols, knobs, frames=64, track=0, amp=None):
 
     # Frame 0: cold start (end==16, start bit set)
     cost0 = call_render(0, 16)
+    if state_probe is not None:
+        state_probe(uc, 0)
     uc.mem_write(NIBBLE + track, bytes([0x00]))  # no further starts
 
     costs = [cost0]
-    for _ in range(frames):
+    for frame in range(1, frames + 1):
         uc.mem_write(CURSOR_AT, struct.pack(">I", HEADER))
         uc.mem_write(HEADER, bytes(16 + 16 * 8))
         costs.append(call_render(0, 16))
+        if state_probe is not None:
+            state_probe(uc, frame)
         # 16 stereo pairs at HEADER+16; take L (every other long)
         raw = bytes(uc.mem_read(HEADER + 16, 16 * 8))
         for i in range(16):
@@ -388,6 +392,17 @@ def main():
         )
         differ(mid, lean, f"PWM changes output at CMOR={cmor} ({label})")
 
+    # At MIX 0 and neutral PWM, CAR square must be driven by carrier phase,
+    # independent of modulator phase. A mistaken φm read can nearly cancel it.
+    square_knobs = {**base, "cmor": 127, "mix": 0, "pwm": 64,
+                    "fold": 0, "indx": 0, "fdbk": 0}
+    for ptch, label in ((64, "C4"), (52, "C3")):
+        if "sy_state" in symbols:
+            uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+        square, _ = render_frames(uc, symbols, {**square_knobs, "ptch": ptch}, frames=32)
+        check(f"CAR square MIX 0 sounds at {label}", rms(square) > 4000,
+              f"rms={rms(square):.1f}")
+
     # MIX 127 solos the heard MMOR morph (not the clean FDBK sine).
     for label, mmor in (("sine", 0), ("saw", 64), ("square", 127)):
         if "sy_state" in symbols:
@@ -464,6 +479,219 @@ def main():
         # After the last slow frame, snap kept DSP ATK=100 in po_amp[0]
         snap = bytes(uc.mem_read(symbols["po_amp"], 4))
         check("po_amp snapshot holds DSP ATK", snap[0] == 100, f"po_amp={snap.hex()}")
+
+    # DEC holds the full index through the cold trig frame, then begins its
+    # decay. A warm retrigger preserves the running envelope rather than
+    # resetting it to full and creating a timbral bloom.
+    if "sy_state" in symbols:
+        uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+        cold_env = []
+
+        def probe_cold(machine, frame):
+            env = struct.unpack(">I", machine.mem_read(symbols["sy_state"] + 8, 4))[0]
+            ieff = struct.unpack(">I", machine.mem_read(symbols["sy_state"] + 20, 4))[0]
+            gain = struct.unpack(">I", machine.mem_read(symbols["sy_state"] + 24, 4))[0]
+            gain_prev = struct.unpack(">H", machine.mem_read(symbols["sy_state"] + 38, 2))[0]
+            cold_env.append((frame, env, ieff, gain, gain_prev))
+
+        render_frames(
+            uc, symbols, {**base, "indx": 100, "dec": 0}, frames=1,
+            amp=dict(atk=0, hold=127, rel=64), state_probe=probe_cold,
+        )
+        full_index = 100 * 2628
+        check("DEC starts at full index on the trig frame",
+              cold_env[0][1] == 0x01000000 and cold_env[0][2] == full_index,
+              f"env={cold_env[0][1]:#x}, ieff={cold_env[0][2]}")
+        check("AMP ATK 0 keeps its short click-controlled onset",
+              0 < cold_env[0][3] < 32768 and cold_env[0][4] == cold_env[0][3],
+              f"gain after first frame={cold_env[0][3]}, last-sample gain={cold_env[0][4]}")
+        check("DEC begins after the trig frame",
+              cold_env[1][1] == 0 and cold_env[1][2] == 0,
+              f"frame0={cold_env[0][1]:#x}/{cold_env[0][2]}, frame1={cold_env[1][1]:#x}/{cold_env[1][2]}")
+
+        # A cold saw starts at its zero crossing; the move toward square starts
+        # on a stable pulse plateau. Confirm phase selection survives the first
+        # rendered frame, while the index itself is already at full strength.
+        for mmor in (0, 64, 127):
+            uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+            start_shape = {}
+
+            def probe_shape(machine, frame):
+                if frame == 0:
+                    state = symbols["sy_state"]
+                    start_shape["phase"] = struct.unpack(
+                        ">I", machine.mem_read(state + 4, 4)
+                    )[0]
+                    start_shape["increment"] = struct.unpack(
+                        ">I", machine.mem_read(state + 16, 4)
+                    )[0]
+                    start_shape["index"] = struct.unpack(
+                        ">I", machine.mem_read(state + 20, 4)
+                    )[0]
+
+            render_frames(
+                uc, symbols,
+                {**base, "indx": 100, "dec": 127, "fdbk": 0, "mmor": mmor},
+                frames=0, amp=dict(atk=0, hold=127, rel=64), state_probe=probe_shape,
+            )
+            phase0 = (mmor << 25) if mmor <= 64 else (
+                0x80000000 - (mmor - 64) * 34087042
+            ) & 0xFFFFFFFF
+            phase_end = (phase0 + 16 * start_shape["increment"]) & 0xFFFFFFFF
+            check(f"MOD {mmor} starts from its phase-aligned point",
+                  start_shape["phase"] == phase_end,
+                  f"phase={start_shape['phase']:#x}, expected={phase_end:#x}")
+            check(f"MOD {mmor} does not ramp the index on startup",
+                  start_shape["index"] == full_index,
+                  f"index={start_shape['index']}, expected={full_index}")
+
+        for cmor in (0, 64, 127):
+            uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+            start_car = {}
+
+            def probe_car(machine, frame):
+                if frame == 0:
+                    state = symbols["sy_state"]
+                    start_car["phase"] = struct.unpack(
+                        ">I", machine.mem_read(state, 4)
+                    )[0]
+                    start_car["increment"] = struct.unpack(
+                        ">I", machine.mem_read(state + 12, 4)
+                    )[0]
+
+            render_frames(
+                uc, symbols,
+                {**base, "indx": 0, "dec": 127, "fdbk": 0, "cmor": cmor},
+                frames=0, amp=dict(atk=0, hold=127, rel=64), state_probe=probe_car,
+            )
+            phase0 = (cmor << 25) if cmor <= 64 else (
+                0x80000000 - (cmor - 64) * 34087042
+            ) & 0xFFFFFFFF
+            phase_end = (phase0 + 16 * start_car["increment"]) & 0xFFFFFFFF
+            check(f"CAR {cmor} starts from its phase-aligned point",
+                  start_car["phase"] == phase_end,
+                  f"phase={start_car['phase']:#x}, expected={phase_end:#x}")
+
+        # DEC 32 is a 32 ms time constant. At one time constant, the
+        # envelope's distance above its floor should be about 1/e of full.
+        uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+        tau_env = {}
+
+        def probe_tau(machine, frame):
+            if frame in (0, 88):
+                tau_env[frame] = struct.unpack(
+                    ">I", machine.mem_read(symbols["sy_state"] + 8, 4)
+                )[0]
+
+        render_frames(
+            uc, symbols, {**base, "indx": 100, "dec": 32}, frames=88,
+            amp=dict(atk=0, hold=127, rel=64), state_probe=probe_tau,
+        )
+        env_ratio = tau_env[88] / tau_env[0]
+        check("DEC 32 has the measured 32 ms time constant",
+              0.32 <= env_ratio <= 0.42,
+              f"one-tau remaining envelope={env_ratio:.3f} (expected about 0.368)")
+
+        # The upper end must remain long after adding low-end resolution.
+        uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+        high_tau_env = {}
+
+        def probe_high_tau(machine, frame):
+            if frame in (0, 2000):
+                high_tau_env[frame] = struct.unpack(
+                    ">I", machine.mem_read(symbols["sy_state"] + 8, 4)
+                )[0]
+
+        render_frames(
+            uc, symbols, {**base, "indx": 100, "dec": 126}, frames=2000,
+            amp=dict(atk=0, hold=127, rel=64), state_probe=probe_high_tau,
+        )
+        high_ratio = high_tau_env[2000] / high_tau_env[0]
+        high_tau_ms = -2000 / math.log(high_ratio) * 32 / 88
+        check("DEC 126 retains a 5 second time constant",
+              4800 <= high_tau_ms <= 5400,
+              f"measured time constant={high_tau_ms:.0f} ms")
+
+        # The lower settings must make distinct, ordered changes rather than
+        # collapsing into one coarse short-decay region.
+        low_levels = []
+        for dec in range(1, 7):
+            uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+            level = []
+
+            def probe_low(machine, frame):
+                if frame == 8:
+                    level.append(struct.unpack(
+                        ">I", machine.mem_read(symbols["sy_state"] + 8, 4)
+                    )[0])
+
+            render_frames(
+                uc, symbols, {**base, "indx": 100, "dec": dec}, frames=8,
+                amp=dict(atk=0, hold=127, rel=64), state_probe=probe_low,
+            )
+            low_levels.append(level[0])
+        check("DEC 1–6 have distinct, progressively longer low-end decays",
+              all(a < b for a, b in zip(low_levels, low_levels[1:])),
+              "remaining envelopes=" + ",".join(f"{v:#x}" for v in low_levels))
+
+        # A long single note must decay to exact zero. Raising INDX after the
+        # tail must not reveal a residual index envelope.
+        uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+        tail_env = {}
+
+        def probe_tail(machine, frame):
+            if frame == 16000:
+                tail_env[frame] = struct.unpack(
+                    ">4I", machine.mem_read(symbols["sy_state"] + 8, 16)
+                )
+                plant_fp(uc, **{**base, "indx": 127, "dec": 32})
+            elif frame == 16001:
+                tail_env[frame] = struct.unpack(
+                    ">4I", machine.mem_read(symbols["sy_state"] + 8, 16)
+                )
+
+        render_frames(
+            uc, symbols, {**base, "indx": 100, "dec": 32}, frames=16001,
+            amp=dict(atk=0, hold=127, rel=64), state_probe=probe_tail,
+        )
+        check("DEC reaches zero and changing INDX cannot expose a stale tail",
+              tail_env[16000][0] == 0 and tail_env[16001][0] == 0
+              and tail_env[16001][3] == 0,
+              f"env={tail_env[16000][0]:#x}->{tail_env[16001][0]:#x}, ieff={tail_env[16001][3]}")
+
+        uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+        warm_env = []
+
+        def probe_warm(machine, frame):
+            env = struct.unpack(">I", machine.mem_read(symbols["sy_state"] + 8, 4))[0]
+            ieff = struct.unpack(">I", machine.mem_read(symbols["sy_state"] + 20, 4))[0]
+            warm_env.append((frame, env, ieff))
+
+        render_frames(
+            uc, symbols, {**base, "indx": 100, "dec": 32}, frames=1,
+            amp=dict(atk=0, hold=127, rel=64), state_probe=probe_warm,
+        )
+        state = symbols["sy_state"]
+        # Re-run one frame with START asserted against the still-sounding state.
+        plant_part(uc)
+        plant_fp(uc, **{**base, "indx": 100, "dec": 32})
+        plant_amp(uc, 0, atk=0, hold=127, rel=64)
+        before_env = struct.unpack(">I", uc.mem_read(state + 8, 4))[0]
+        before_ieff = struct.unpack(">I", uc.mem_read(state + 20, 4))[0]
+        uc.mem_write(NIBBLE, b"\x10")
+        uc.mem_write(CURSOR_AT, struct.pack(">I", HEADER))
+        uc.mem_write(HEADER, bytes(16 + 16 * 8))
+        uc.reg_write(UC_M68K_REG_A7, STACK)
+        uc.mem_write(STACK, struct.pack(">IIIII", STOP, 0, 0, 0, 16))
+        try:
+            uc.emu_start(symbols["sy_render"], STOP, count=500_000)
+        except Exception as e:
+            die(f"warm retrigger probe fault: {e}")
+        after_env = struct.unpack(">I", uc.mem_read(state + 8, 4))[0]
+        after_ieff = struct.unpack(">I", uc.mem_read(state + 20, 4))[0]
+        check("sequencer retrigger restarts DEC at full INDX",
+              after_env == 0x01000000 and after_ieff == full_index,
+              f"env={before_env:#x}->{after_env:#x}, ieff={before_ieff}->{after_ieff}")
 
     # Cost: mean instructions of steady frames (skip cold start).
     steady = costs["base"][1:]

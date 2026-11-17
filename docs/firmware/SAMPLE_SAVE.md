@@ -130,6 +130,9 @@ chunk to account for the difference.
 Either the firmware writes a value 8 too large, which most decoders ignore
 because they trust the `data` chunk size, or the `lea` is being misread.
 
+✅ Measured under the port (5 Nov 2026, the stock save routine writing a recorder buffer): a 44,100-frame 16-bit stereo save is 176,444 B
+with 176,444 in the field, so 8 over the specification.
+
 **Falsifier, and it needs no tools:** take any `.wav` the Octatrack saved,
 read bytes 4 to 7 as a little endian integer, and compare with the file size
 minus 8. If they differ by 8, the firmware is off by 8.

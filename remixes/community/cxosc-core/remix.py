@@ -17,8 +17,12 @@ STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATI
 
 REMIX = Remix(
     name="cxosc-core",
-    family="mods", evidence=(Evidence(Level.EMULATOR,
-        note="unit handoff: CORE + CX OSC; marker-less machine list, mono, stock LFOs"),),
+    family="mods", evidence=(Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov",
+        image="CXOSC C28.RMX", date="2026-11-17",
+        commit="f4b11964534b48d0428e3ff303d75d7063f8d878",
+        note="CORE + CX OSC handoff; marker-less machine list, mono, stock LFOs. "
+             "Ilia reports CX OSC sounds good on the MKII. The ColdFire emulator "
+             "boots the image to the RTOS handoff."),),
     doc="CORE + REMIX SWITCH + CX OSC on the 14 stock effects.",
     modules=CORE + ("REMIX SWITCH", "CX OSC", "LOFI AMF FIX") + STOCK14,
     fallback="NONE",
