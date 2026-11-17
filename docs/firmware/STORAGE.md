@@ -160,3 +160,13 @@ REMOTE calls it at level 2 from STORE's handlers (`modules/remote/README.md`, "T
 Measured under the port: `0x4001ff2c` called as the main routine (`--call`) does not return (unimplemented
 opcode at `0x4003b108`); from a STORE handler it writes the line. Not measured: a write from the engine task
 during play, or on a unit.
+
+## 8. SAVE PROJECT's path ✅ (read from the image 5 Nov 2026; run under the port from the panel's keys)
+
+PROJECT > SAVE is the row action `0x40063890`: `0x400255ec` asks whether the project is on the card (no: SAVE TO
+NEW's `0x40063618`, the name keyboard), then a YES/NO popup. YES is `0x40063c54`: `0x400a10c8`, which stops the
+sequencer, and `0x40022850`, which posts the static record `{byte 17, 0x400232bc, 0x40022e80, 0x40022dc4}` to the engine
+queue. Engine job 17 (`0x40085736`) sends `+4(1)` to the sys task as event 43: the progress window. It runs the bank write
+`0x400919e4` and the project store `0x4008ee74` on the engine task with `+12` its progress step, then sends `+8(result)`
+as event 43: `0x40022e80` closes the window and shows `DONE!`, or stock's message for a result below 0. The card takes
+over 6 s of emulated time for this project's 16 banks.
