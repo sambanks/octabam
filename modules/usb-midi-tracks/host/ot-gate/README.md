@@ -53,7 +53,7 @@ shows and hides by name.
 
 ## Status
 
-Used on an MKII with Live, 14 Nov 2026, with the module's first build
-(notes on channel = track). Not yet used with the reviewed build, which sends
-on the TRIG CHANNEL and only when SEND is on; with default channels the two
-are the same.
+Used on an MKII with Live (owner reports): 14 Nov 2026 with the module's
+first build (notes on channel = track), and 17 Nov 2026 with the reviewed
+build (TRIG CHANNEL, SEND on), splitting as expected. Nothing was timed or
+counted beyond the Offset reading above.
