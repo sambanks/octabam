@@ -77,13 +77,18 @@ def main():
     for f in pathlib.Path(project).expanduser().iterdir():
         if f.is_file() and f.suffix.lower() == ".work":
             shutil.copy2(f, pick / "project" / f.name)
+    base = 0x40000400
+    img = (OUT / "mainos.bin").read_bytes()
+    rows = [int.from_bytes(img[idspace.ID2POS64 - base + 4 * i:][:4], "big") for i in range(64)]
+    row = rows[FX_ID]
+    # The chooser opens on the row of the slot's current effect, not on row 0. A project ot_fresh.py makes has DELAY on
+    # every FX2, so `row` DOWN presses from DELAY's row picked DARK REV (0x16) (sambanks/octabam#1120). Track 2 starts
+    # on the effect at row 0, in every Part of every bank, before the card is staged.
+    ot_project.set_fx(pick / "project", "fx2", 2, rows.index(0), guard=False)
     r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(pick / "project"), "BRAINSET", "BRAINPRJ",
                         "--tree", str(pick / "tree"), "--out", str(pick / "card.img")], cwd=ROOT, capture_output=True, text=True)
     if r.returncode:
         sys.exit(f"verify_ids64_load: stage_card failed:\n{r.stdout[-600:]}{r.stderr[-600:]}")
-    base = 0x40000400
-    img = (OUT / "mainos.bin").read_bytes()
-    row = int.from_bytes(img[idspace.ID2POS64 - base + 4 * FX_ID:][:4], "big")
     keys = dict(no=0x32, fx2=0x26, down=0x20, yes=0x31, t2=0x11)
     seq = [("no", 400), ("t2", 400), ("fx2", 160), ("fx2", 800)] + [("down", 500)] * row + [("yes", 1500)]
     lines, tm = [], 1500

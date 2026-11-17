@@ -5,7 +5,7 @@ REMIX = Remix(
     family="test",
     evidence=(Evidence(Level.EMULATOR,
         note="PATTERN MUTE smoke"),),
-    doc="smoke: PATTERN MUTE alone",
-    modules=("PATTERN MUTE",),
+    doc="smoke: PATTERN MUTE alone, with STORE (pmute.work)",
+    modules=("PATTERN MUTE", "STORE"),
     fallback="NONE",
 )

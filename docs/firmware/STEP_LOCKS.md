@@ -55,7 +55,7 @@ frame builder's scene morph, which reads the live value as the knob.
 
 | operation | routine | |
 |---|---|---|
-| place a trig (clears the step's 32 bytes) | `0x4005fb44`, store at `0x400603a8` | ✅ |
+| remove a trig (clears the step's 32 bytes; placing one leaves them) | `0x4005fb44`, store at `0x400603a8` | ✅ |
 | trig copy + paste (grid rec: hold trig, REC; hold trig, STOP) | `0x4002c89c`, lock store at `0x4002cb5e` | ✅ |
 | clear a trig's locks (hold trig, PLAY) | `0x40040e14`, store at `0x40040e82` | ✅ |
 | track copy / paste (FUNC held with the trig chords) | `memcpy` `0x40020898`, 0x91a bytes; track write `0x40029754(src, pattern, track)`, track snapshot `0x40026664` | ✅ |

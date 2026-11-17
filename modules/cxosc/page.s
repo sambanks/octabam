@@ -252,19 +252,23 @@ pg_fr_out:
         movel   %sp@+,%d2
         rts
 
-pg_fmt_decay:                            | tau = 2 s * (raw/127)^2: "0", "32", "286", "1.1s", "1.9s", 127 "HOLD"
+pg_fmt_decay:                            | tau: 0=instant; 1..32=1ms/step; then curved to 5061ms; 127 HOLD
         movel   %d2,%sp@-
         movel   %sp@(12),%d0             | raw
-        moveq   #127,%d1                 | 127 (the last position): HOLD; 0 = the shortest, prints "0"
+        moveq   #127,%d1                 | 127 (the last position): HOLD
         cmpl    %d1,%d0                  | (5 Oct 2026: HOLD moved from 0 to 127)
         bccs    pg_fd_hold
         movel   %d0,%d1
-        mulul   %d0,%d1                  | raw^2
-        movel   #2000,%d0
-        mulul   %d1,%d0                  | * 2000 ms
-        addil   #8064,%d0
-        movel   #16129,%d1
-        divul   %d1,%d0                  | / 127^2, rounded: ms
+        cmpil   #32,%d0
+        bls.s   pg_fd_tau
+        subil   #32,%d1
+        movel   %d1,%d2
+        mulul   %d1,%d2
+        movel   #143,%d1
+        mulul   %d1,%d2
+        lsrl    #8,%d2
+        addl    %d2,%d0
+pg_fd_tau:
         cmpil   #1000,%d0
         bcc     pg_fd_sec
         movel   %d0,%sp@-

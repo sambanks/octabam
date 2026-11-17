@@ -1095,6 +1095,27 @@ copies each backing object into a private one after the fork. Anything
 new the port maps shared (a window, a ring for the host) needs the same
 treatment, or the children interfere and the failure moves between runs.
 
+<a name="trap-job21"></a>
+
+### `{byte 21, fn}` on the engine queue runs fn on the sys task, not the engine
+
+**Seen:** 5 Nov 2026, read from the image and run under the port while designing a module that saves a
+recorder buffer, following REMIX SWITCH's and COPY PROJECT's "engine job". Job 21 (`0x40085ab6`) posts event
+43 to the sys queue `0x460d17ae`, and `0x40062454` calls `fn(1)` on the sys task, the task that handles the
+panel's keys. A long file write there holds every key for its length.
+
+**Fix:** a job of its own, taken at the engine's receive (`0x40084854`, or `0x4008485e` where BRAIN takes
+its own). **Gate:** a key pressed during the job is answered before the job ends.
+
+<a name="trap-step-ahead"></a>
+
+### A gate at the step handler is a step early: the first trig at PLAY was computed before PLAY
+
+**Seen:** 5 Nov 2026, under the port: a gate on REC TRIG MUTE's site `0x4009d9a4` read "idle" for a
+recorder trig that sounded on PLAY, because the step handler computes the first trig before PLAY sets the
+state the gate reads. **Fix:** gate at the arm `0x40005ff0`, where a sequencer's word carries bit 9
+(`0x4000c9a4`). **Gate:** a keyed recording started, then PLAY, with a recorder trig on step 1.
+
 <a name="trap-rosetta"></a>
 
 ### The port ran under Rosetta in every shard, and nothing said so
@@ -1764,6 +1785,18 @@ tried. Fix: the hook is at `P:$342`, the frame's end (12 of 12 runs clean). What
 not known, and the port and `dsp_host` run one core, so no gate sees it. Rule: long work on core B goes at the end of
 its frame, after the last track; to see a stalled DSP, read it (`tools/hw/dlprobe.patch`, `tools/hw/dl_probe.py`: the shared
 window through the core that still takes host commands), do not infer it from the ColdFire's side.
+
+<a id="trap-pitch-destination"></a>
+
+### PLAYBACK slot A depends on the machine
+
+SEQ treated destination 0 as pitch when drawing its Harmony hint and
+handling RIGHT. On THRU, that destination is INAB, so the manual screenshot
+offered Harmony for an input selector. The old gate checked only the
+destination index and missed this case. Both paths now use the resolved
+PTCH label for audio, or NOTE on MIDI. The capture fixture assigns FLEX to
+T1 in every Part before selecting PTCH. `verify_seq_tonal_port` checks
+THRU INAB and FLEX PTCH, including the hint pixels and the RIGHT gesture.
 
 <a id="trap-sequential-limiter"></a>
 

@@ -1,11 +1,12 @@
-"""PATTERN MUTE -- a second mute layer saved with the pattern, as on the Digitakt II.
+"""PATTERN MUTE -- a second mute layer kept per pattern, as on the Digitakt II.
 
 Stock keeps one mute state per project (bits 8-15 of 0x80000008 for audio
 tracks, of 0x8000000c for MIDI tracks). This module keeps two layers:
-GLOBAL, stock's state, saved in project.work; and PATTERN, saved in the
-pattern. A track is muted when either layer mutes it. Double-pressing FUNC
-chooses which layer the next mute edit (FUNC+track, the MIXER trig keys,
-MIDI) changes, with a toast. The word stock and every other module read is
+GLOBAL, stock's state, saved in project.work; and PATTERN, kept per pattern
+in pmute.work (a STORE client) and, for the current bank, in battery SRAM.
+A track is muted when either layer mutes it. Double-pressing FUNC (no other
+key between the presses) chooses which layer the next mute edit (FUNC+track,
+the MIXER trig keys, MIDI) changes, with a toast. The word stock and every other module read is
 the OR of the two, so MUTE MODE and the LEDs need no change.
 
 Sites: the 22 + 8 stores that follow a stock write of a mute word (the
@@ -14,7 +15,7 @@ bytes (so project.work keeps the GLOBAL layer), the UI-side pattern commit
 (0x40062142), and FUNC's press record in the MKI and MKII key tables.
 """
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level, SymbolRef
+from remix.schema import Category, Claims, Detour, Gate, Kind, Linked, Module, Evidence, Level, SymbolRef
 
 # (site, register of the stock store) of `move.l %dN,0x100b14d4` / `...d8`.
 # 0x4000fe6c / 0x4000fe82 clamp the mirror at power-up and are not hooked.
@@ -49,7 +50,7 @@ MODULE = Module(
     author_url="https://github.com/sambanks",
     evidence=(Evidence(Level.EMULATOR, ref="verify_pattern_mute",
         note="verify_pattern_mute under the port on octabam, 30 Oct 2026; not flashed"),),
-    doc="Double-press FUNC: mute edits go to a PATTERN layer saved with the pattern, "
+    doc="Double-press FUNC: mute edits go to a PATTERN layer kept per pattern, "
         "beside the GLOBAL layer (Digitakt II PATTERN MUTE / GLOBAL MUTE).",
     linked=(Linked("pm", "modules/pattern-mute/pm.s", dram=True, include=lambda modules, remix: ""),),
     detours=(
@@ -69,6 +70,10 @@ MODULE = Module(
                    kind="jsr"),
         )
     ),
+    # pmute.work (a STORE client) and the current bank's copy in CS1: the PATTERN layer is kept out of
+    # Elektron's pattern data (sambanks/octabam#1143: it sat in the one-shot trig mask)
+    requires=("STORE",),
+    claims=Claims(sram=((0x100fbdc0, 0x30, "PATTERN MUTE: the current bank's PATTERN layer"),)),
     # per remix, not once: the gate reads OT_PROJECT, which CI gives only octabam's `set` and
     # project-flagged jobs (tools/verify/reach.py PROJECT_SET); elsewhere it SKIPs
     gates=(Gate("tools/verify/verify_pattern_mute.py", venv=True, project=True),),

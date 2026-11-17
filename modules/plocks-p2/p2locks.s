@@ -73,7 +73,7 @@
         .set    SPRINTF,    0x40013a08
         .set    IOB_LEN,    0x1000
         .set    NV,         0x100f8600      | CS1: the current bank's page 2, sparse (see nv_save)
-        .set    NV_END,     0x100fbdf0      | MIDI SCENES' CS1 copy follows (0x100fbdf0..0x100ffe00)
+        .set    NV_END,     0x100fbdc0      | PATTERN MUTE's copy (..0x100fbdf0), then MIDI SCENES' (..0x100ffe00)
         .set    NV_MAX,     (NV_END-NV-16)/3
         .set    NV_MAGIC,   0x50324e56      | 'P2NV'
         .set    CUR_BANK,   0x80000002

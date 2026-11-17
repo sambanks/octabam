@@ -81,7 +81,7 @@ Each step runs through `tools/verify/step.py`, which prints one line after the s
 | `verify_remixer` (`Makefile` verify-shared) | the remixer (`make remix`) opens and draws headless under Textual's test pilot for stock and every remix (three panes, cursor in each); `k` moves the cursor up in AVAILABLE and `K` resets to stock. SKIPs without textual |
 | `tools/build/label_fmt.py` | the select formatter caves re-derive from their sources (with `m68k-elf-as` on PATH) |
 | `verify_knob_clicks` | the knob census: every continuous knob of the fixture remix's DSP modules moved mid-render, the block-rate step in dBFS; a garbage start stays quiet. `make check-shared` runs it for the changed DSP modules only (`MODULES=`) and, with no module named (a build or tool change), `--sample`: two knobs per module and mode and the whole garbage start (19 s against 49 s, 12 Oct 2026). `make verify-knobs` is the full census |
-| `module_gates.py --shared` | every manifest gate declared `remix_arg=False` by a module in the selection, once for the union; every `once=True` gate, once, on the named remix with the fewest modules that carries its module |
+| `module_gates.py --shared` | every manifest gate declared `remix_arg=False` by a module in the selection, once for the union; every `once=True` gate, once, on the named remix with the fewest modules that carries its module (a probe remix only when no other carries it) |
 
 **The per-remix half** (`make check-remix REMIX=<name>`), in recipe order:
 
@@ -204,17 +204,20 @@ dear={"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
   `check-remix <remix> (<job>)` (the job's name is the gate's, `image:` in front for the image stage); a `once` gate or an
   isolated `remix_arg=False` one, which runs in the shared half, is `check-shared (<gate>)` with the project made on the remix it
   runs on (the carrier of a `once` gate, the first remix of the line otherwise). `test_reach` refuses a gate that has the SKIP line
-  and no flag, except those with a job of `reach.SPLIT_EXTRA_UNITS` (BRAIN, MIDI SCENES) and two that fail with a generated
-  project (or, for `verify_cfmeter`, reach a remix where another gate fails) and are left unflagged until fixed:
-  `verify_ids64_load` #1120, `verify_cfmeter` #1124 (`KNOWN_RED` in `test_reach`; `verify_dlload` #1075 and
-  `verify_load_meter` #1126 left it on 15 Nov 2026, `verify_kits` #1125 on 17 Nov 2026). A job that fails in one remix's project unit and passes in others is left out
+  and no flag, except those with a job of `reach.SPLIT_EXTRA_UNITS` (BRAIN, MIDI SCENES). `KNOWN_RED` in `test_reach` lists
+  any gate that fails with a generated project and is left unflagged until fixed; it is empty (`verify_dlload` #1075 and
+  `verify_load_meter` #1126 left it on 15 Nov 2026, `verify_cfmeter` #1124 when a probe remix stopped being a `once` gate's
+  carrier, `verify_ids64_load` #1120 and `verify_kits` #1125 on 17 Nov 2026). A job that fails in one remix's project unit and passes in others is left out
   of the project there (`reach.PROJECT_GATE_SKIP`, empty since #1127's `plocks-p2` and `mode-defaults` on `octabam-verbs` were
   fixed) and runs without one (sambanks/octabam#1051). `set` runs with the project on the remixes of `reach.PROJECT_SET`
   (`octabam`). A job that exited 0 with `[SKIP]` lines reads `ok, N SKIP` in `check_shards`'s table.
 - `once=True` (with `remix_arg=True`, isolated): the gate checks the
   module's own code, the same in every carrier, so it runs once per run
   in the shared half, on the named remix with the fewest modules that
-  carries the module, not once per carrying remix. `make check REMIX=x`
+  carries the module, not once per carrying remix. A probe remix
+  (`family="probes"`) is the carrier only when no other named remix carries
+  the module (sambanks/octabam#1124: `cfmeter` leaves the set unmounted
+  under the port). `make check REMIX=x`
   on its own still runs it on x. For a ColdFire module's port scenarios
   (KITS: 29 scenarios, 371 s emulated, two carriers).
 - A missing script is `[FAIL]`. The same script may not be listed twice.

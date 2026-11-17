@@ -90,7 +90,7 @@ hit PLAYBACK / SETUP like any machine. Stock FX1 / FX2 and quantizer
 | PLAYBACK | MIX | 0..127 | 0 | **folder input:** carrier↔modulator crossfade; **0 = carrier only** |
 | SETUP | CAR | 0..127 | 0 | carrier morph: **0** sine → **64** saw → **127** square; **`[FUNC]`** snaps landmarks |
 | SETUP | MOD | 0..127 | 0 | modulator morph (same map; DPW saw/pulse); hear via **INDX** (FM) or **MIX 127** (solo); **`[FUNC]`** snaps |
-| SETUP | DEC | 0..127 | 127 | index envelope after a trig; **127 = HOLD** (INDX stays with the knob) |
+| SETUP | DEC | 0..127 | 127 | index decay time constant: **0 = instant**; **1–32 = 1 ms/step**, then steps widen to **5.061 s** at 126; **127 = HOLD** (INDX stays with the knob) |
 | SETUP | SYMM | 0..127 | 64 | fold half-wave skew; **64 = even**; needs **FOLD** up |
 | SETUP | FDBK | 0..127 | 0 | modulator feedback (always the unmorphed mod sine) |
 | SETUP | PWM | **−64..+63** (byte 0..127) | **0** (byte 64) | cycle lean: sine soft lean; saw phase-skew (steep↔shallow ramp, still a saw); square duty (**0** ≈ 50%) |
@@ -106,8 +106,11 @@ hit PLAYBACK / SETUP like any machine. Stock FX1 / FX2 and quantizer
   emphasises.
 - **Morph while folding.** High **FOLD** can make a saw-ish CMOR still
   sound sine-ish. Drop **FOLD** near 0 when auditioning CMOR/**PWM**.
-- **DEC vs MIX.** **DEC** is SETUP **C** (index envelope). **MIX** is
-  PLAYBACK **F** (folder input blend). Different jobs.
+- **DEC and MIX.** SETUP **C DEC** controls the **INDX** envelope. Each
+  sequencer trig starts it at full **INDX** for that frame, then decay begins
+  on the next frame, even while the oscillator is sounding. Live legato notes
+  keep the running envelope. It reaches zero without a residual tail.
+  PLAYBACK **F MIX** blends the carrier and modulator before **FOLD**.
 - **CMOR vs MMOR.** Same **0** sine / **64** saw / **127** square map.
   Carrier = hard saw/pulse, modulator = DPW saw/pulse. **PWM** is
   region-specific (sine lean / saw skew / square duty). Audition with

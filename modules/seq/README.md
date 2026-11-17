@@ -16,13 +16,23 @@ C=LANE / D=DEST E=DPTH; **F** is empty. Harmony has A=SCAL B=ROOT /
 D=RANG E=PHRS.
 MIDI C is VOIC 1-4 and F is CHRD. Audio C and F are empty and inactive. The
 page hint sits at the top-right of the SEQ logo panel.
+Audio pitch availability follows the resolved parameter name: FLEX PTCH
+opens Harmony, while THRU INAB stays on Rhythm without the RIGHT hint.
+`verify_seq_tonal_port.py` checks both machines through the panel.
 **LANE**
 selects whether A/B and the grid edit the **TRIG** rhythm or the **PLOCK**
 rhythm for the current DEST. **YES** writes TRIG → sample-trig mask 0 and
 PLOCK → locks on the chosen DEST (trigless on plock-only steps). **NO**
 closes. Bare **PAGE** stays stock and does not close SEQ.
 
-**Proof.HARDWARE:** author's MKII, `CX CJ.RMX`, 14 Nov 2026. Six reported
+**Hardware confirmation, 16 Nov 2026:** the author confirmed the `OCTA S3.RMX`
+handoff checklist on his MKII: the image loads in BRAIN, PTCH opens Harmony,
+and THRU INAB has no RIGHT hint. Built as `REMIX=octabam BUILD=S3` from
+`854ea9c055d9dea89a91763ed43f065e3a24de10`. Artifact SHA-256:
+`c5efe642cab1de0d71d5ba8f5abb619147c8ea13877cc506bf21ad6bf14e086b`.
+This report covers those checks; no audio or timing measurements were reported.
+
+**Earlier hardware report:** author's MKII, `CX CJ.RMX`, 14 Nov 2026. Six reported
 device checks passed: PLCK **PULS** 0 clears only that destination; all three
 **[FUNC]** + **[BANK]** clear rows act immediately and return to SEQ, and
 **[NO]** cancels; **"ARE YOU SURE?"** stays above SEQ with knobs locked until
