@@ -27,7 +27,7 @@ covers choosing other modules.
 ## How it is made
 
 - Every module is contributed by its author and credited on its page and in
-  [Credits](reference/manual/octabam/credits.md).
+  [Credits](reference/manual/credits.md).
 - A module ported from an existing mod is checked byte for byte against the
   author's own build.
 - The build refuses to combine modules that claim the same memory, hook or
