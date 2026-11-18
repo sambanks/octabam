@@ -85,7 +85,7 @@ MODULE = Module(
     key="LAZY CHOP",
     kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="8thmyth", author_url="https://github.com/8thmyth",
-    proof=Proof.HARDWARE, proof_note="8thmyth's MKI, image OCTABAMHC (remix test/octabam-lazy-chop), 14 Nov 2026: STUDIO and LIVE chopping, ZERO SNAP, pattern recording, timestretched slice 1; verify_lazy_chop under the port (MKI and MKII)",
+    proof=Proof.HARDWARE, proof_note="8thmyth's MKI, image METALFNGRZ (remix test/lazy-chop), 14 Nov 2026: STUDIO and LIVE chopping, ZERO SNAP, pattern recording, timestretched slice 1; verify_lazy_chop under the port (MKI and MKII)",
     doc="Slice a sample by tapping TRIG 1..16 (four pages, 64 slices) while it plays, from the audio editor's slice menu.",
     linked=(Linked("lazychop", "modules/lazy-chop/lazychop.s", dram=True, include=lc_inc),),
     store=Store(STORE_ID),
