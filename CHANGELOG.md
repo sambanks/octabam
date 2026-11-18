@@ -29,6 +29,8 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- **Site and builder version v0.5** (`tools/site/release.py`): the tag the web builder's patches are built from. The site and the builder publish three remixes, `octabam`, `octabam-verbs` and `octabam-bus`, each with its own overview page and manual; the builder page has a **Remix** picker. `octabam-verbs` names its image `OCTABAM-VRB <tag>`: `OCTABAM-VERBS` with a two-character tag is 16 characters, one past REMIX SWITCH's 15, so the tag was cut. `octabam` at v0.5 is the `main` composition at the release commit; against v0.4 it gains SCOPE, SCALES, WAVE (ColdFire), CHORDS FACTORY with PAGES, SCREEN, SLOW LFO, BAR LED, REC CS1 SKIP, KEYBUS with SC KEYBUS BRIDGE, FRAME GUARD and REMOTE; EUCLID FILL is renamed SEQ; PATTERN MUTE keeps its state in CS1 and `pmute.work` (#1143), and BRAIN's switch copy is fixed (#1134). `octabam-verbs` and `octabam-bus` have not been flashed in these compositions; their pages say so.
+
 - **CX OSC: C28 remix handoff** (`cxosc-core`, built from `f4b11964`, 17 Nov 2026). On an MKII, Ilia reports CX OSC sounds good. The image contains the DEC envelope and startup waveform fixes. The ColdFire emulator booted the image to the RTOS handoff; `verify_cxosc.py` could not run because Unicorn raised an illegal instruction while initializing its M68K engine.
 
 - **Demand loader: one copy a load, a shorter copy loop, a simpler pump** (`modules/dlcopy`, `modules/dlpump`;

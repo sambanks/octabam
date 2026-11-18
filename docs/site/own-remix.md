@@ -43,7 +43,8 @@ continue to [Build and Install](web-builder.md#install-the-image).
 
 ## Next steps
 
-- [Octabam v0.4](remix-octabam.md) is the ready-made selection.
+- [Octabam v0.5](remix-octabam.md) is the ready-made selection;
+  [Octabam Verbs](remix-octabam-verbs.md) and [Octabam Bus](remix-octabam-bus.md) are two more.
 - [Developer documentation](https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md)
   and [writing a module](https://github.com/sambanks/octabam/blob/main/docs/contributing/MODULES.md)
   if you want to add a new feature or share a module.

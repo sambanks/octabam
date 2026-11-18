@@ -41,6 +41,7 @@ STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPA
 
 REMIX = Remix(
     name="octabam-verbs",
+    image_name="OCTABAM-VRB",   # "OCTABAM-VERBS" + a two-character build tag is 16 characters: the tag was cut
     family="mods", evidence=(Evidence(Level.EMULATOR,
         note="not flashed; `make check` (CI)"),),
     doc="octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand, with VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words.",
