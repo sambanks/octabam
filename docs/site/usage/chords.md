@@ -5,9 +5,8 @@ sequencer and through the arpeggiator.
 
 ## Access
 
-Not in an official remix; build the test remix `chords` (with SCALES) or
-`chords-alone`. Needs STORE (the chords are saved with the project) and
-PAGES.
+On a MIDI track, press **SRC** again on the MIDI NOTE page (below). The
+chords are saved with the project.
 
 ## The atelier
 
