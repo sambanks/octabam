@@ -100,13 +100,31 @@ def wait_card(mounted, timeout=60):
     return False
 
 
-def enter_disk(u):
+DISK_FLAG = 0x460e76a0          # nonzero while the unit is in USB DISK MODE (modules/remote/README.md)
+
+
+def enter_disk(u, attempts=4):
+    """COMMAND 1 and the card's mount. The unit sometimes clears the flag within 4 s and the card never appears
+    (18 Nov 2026, `octabam-bus` 05 and, later, `octabam-verbs` 05 and `octabam` 05); each attempt is logged."""
     if os.path.isdir(os.path.join(CARD, "BRAIN")):
         return
-    if not u.command(ev.CMD_DISK_ENTER):
-        print("COMMAND 1 refused (a command is pending, or the unit is already in DISK MODE); waiting for the card")
-    if not wait_card(True):
-        sys.exit(f"{CARD} did not mount in 60 s")
+    for n in range(1, attempts + 1):
+        taken = u.command(ev.CMD_DISK_ENTER)
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 30:
+            if wait_card(True, timeout=2):
+                return
+            if time.monotonic() - t0 > 8:
+                mount_card()
+            try:
+                flag = ev.peek(u.peek1, DISK_FLAG, 4)[0]
+            except (SystemExit, Exception):  # noqa: BLE001
+                flag = None
+            if flag == 0 and time.monotonic() - t0 > 6:
+                break
+        print(f"attempt {n}: COMMAND 1 {'taken' if taken else 'refused'}, disk-mode flag {flag}, no card after {time.monotonic() - t0:.0f} s")
+        time.sleep(3.0)
+    sys.exit(f"{CARD} did not mount in {attempts} attempts")
 
 
 def leave_disk(u):
@@ -118,6 +136,12 @@ def leave_disk(u):
         time.sleep(1.0)
     else:
         sys.exit(f"could not unmount {CARD}: {r.stderr.strip()}")
+    # `diskutil unmount` leaves the device node (`diskN`) on the Mac: after it, every later COMMAND 1 enters DISK MODE
+    # on the unit (BANKW in the ring) and the Mac never mounts the card (18 Nov 2026). Ejecting removes the node.
+    for line in subprocess.run(["diskutil", "list", "external"], capture_output=True, text=True, timeout=30).stdout.splitlines():
+        if "OCTATRACK" in line and "Windows_FAT" in line:
+            disk = line.split()[-1].rsplit("s", 1)[0]
+            subprocess.run(["diskutil", "eject", disk], capture_output=True, timeout=60)
     if not u.command(ev.CMD_DISK_LEAVE):
         sys.exit("COMMAND 2 refused")
 
@@ -130,6 +154,26 @@ def same_tree(a, b):
     if mismatch or errors:
         return False
     return all(same_tree(os.path.join(a, d), os.path.join(b, d)) for d in cmp.common_dirs)
+
+
+def wait_running(u, timeout=90.0):
+    """Seconds until LOAD METER's health rule holds (the DSP's frame count advances, the frame interrupt keeps its
+    rate), or None at the timeout. The count is 0 a second for a while after a project load or a boot: a phase that
+    starts first reads a stopped DSP (18 Nov 2026: `pc-soak`, `kits-identity` and `scenes-sweep` each failed in under
+    3 s, back to back, right after a load)."""
+    import load_meter
+    t0 = time.monotonic()
+    why = "no reading"
+    while time.monotonic() - t0 < timeout:
+        try:
+            ok, why = load_meter.healthy(u.dev)
+            if ok:
+                return time.monotonic() - t0
+        except (SystemExit, Exception) as e:  # noqa: BLE001
+            why = str(e)
+        time.sleep(1.0)
+    print(f"the unit is not running normally after {timeout:.0f} s: {why}")
+    return None
 
 
 def cmd_load(a):
@@ -161,6 +205,10 @@ def cmd_load(a):
         print(f"the unit did not reload the project ({e}); is {a.name} the project it has loaded?")
         return 1
     print("the unit reloaded the project:", rec["name"], rec["arg"])
+    t = wait_running(u)
+    if t is None:
+        return 1
+    print(f"the DSP's frame count advances {t:.1f} s after the reload record")
     return 0
 
 
@@ -214,7 +262,11 @@ def cmd_boot(a):
     if not u.wait_present(a.wait, gone_first=True):
         print(f"STOPPED ON THE BOOT SCREEN? no answer in {a.wait} s: power-cycle the unit and record it in FAILURE_MODES.md")
         return 1
+    t = wait_running(u)
+    if t is None:
+        return 1
     after = u.fingerprint()
+    print(f"the DSP's frame count advances {t:.1f} s after the unit returned")
     print("fingerprint", before, "->", after, "(changed)" if after != before else "(same: the image did not change, or both share addresses)")
     return 0
 

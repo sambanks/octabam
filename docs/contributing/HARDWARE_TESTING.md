@@ -214,11 +214,11 @@ python3 tools/hw/ot_suite.py run <label> --dest out/suite/<remix> --auto --phase
   (RMT_TRACE, REMIX SWITCH's name list and count); they differ per image. 18 Nov 2026, BUILD 05: `octabam`
   `0x40b34f44 0x40af0238 0x40af0188`, `octabam-verbs` `0x40b22a84 0x40ae7fb8 0x40ae7f08`, `octabam-bus`
   `0x40b20a84 0x40ae7520 0x40ae7470`. The boot screen shows the flashed image's name, not the running one's.
-- On `octabam-bus` 05, COMMAND 1 sets the disk-mode flag (`0x460e76a0`) and the unit clears it within 4 s; the card
-  never reaches the Mac (`diskutil list external` shows nothing). Put the project on the card from another image,
-  then `boot` the bus image: it loads the card's project at boot.
-- After COMMAND 1 the Mac did not always mount the card; `ot_card.py` runs `diskutil mount` on the OCTATRACK
-  partition after 8 s.
+- Leave DISK MODE with `diskutil unmount` and then `diskutil eject`, not unmount alone: after an unmount alone the Mac
+  keeps `diskN` and no later DISK MODE mounts the card (FAILURE_MODES.md). After COMMAND 1 the Mac did not always mount
+  the card; `ot_card.py` runs `diskutil mount` on the OCTATRACK partition after 8 s and repeats COMMAND 1 up to 4 times.
+- `load` and `boot` return when LOAD METER's health rule holds (the DSP's frame count advances); 0.4 s after the
+  reload record on 18 Nov 2026.
 - `ot_matrix.py switch` prints the transitions left unapplied (`unapplied`: the DSP busy from 2.5 s after the switch
   is nearer the previous layout's figure than the new one's) and puts none of that in its exit code, which is 1 when
   any row carries a flag (`GAP` is on every transition: the 340 ms silence is the load).

@@ -1044,12 +1044,17 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
 
 
 
-## `octabam-bus` 05: COMMAND 1 enters USB DISK MODE and the unit leaves it within 4 s 🟡 seen, cause not known
+## USB DISK MODE entered by COMMAND 1, the card never mounts on the Mac: a stale `diskN` after `diskutil unmount` ✅ measured, fixed in `ot_card.py`
 
-MKII, 18 Nov 2026, `octabam-bus` BUILD 05 (`5b991c85`) after a COMMAND 3 switch from `octabam-verbs`. COMMAND 1 was
-taken; the disk-mode flag (`0x460e76a0`) read 1 at 2 s and 0 at 4 s and for the next 36 s; `diskutil list external`
-showed no device in 40 s. Three attempts, same result. The same command on `octabam` 05 and `octabam-verbs` 05
-mounted the card each time. Not tested: DISK MODE from the panel on this image; COMMAND 1 on `octabam-bus` as the
-flashed image.
+MKII, 18 Nov 2026, `octabam`, `octabam-verbs` and `octabam-bus` BUILD 05. After one DISK MODE session ended with
+`diskutil unmount` and COMMAND 2, the Mac kept the device node (`diskutil list external` still listed `disk4`) and every
+later COMMAND 1 left the card unmounted: the ring showed COMMAND and BANKW (the unit entered the mode), the disk-mode
+flag (`0x460e76a0`) read 1 for 2 to 4 s and then 0, and the Mac mounted nothing in 60 s. 3 of 3 loads after the first
+failed. `diskutil mount disk4s1` and `diskutil list external` hung until the cable was replugged. This was first logged
+as `octabam-bus` leaving DISK MODE within 4 s; the same failure followed an `unmount`-based leave on the other two
+images, so that reading is withdrawn.
 
-- **Workaround:** `ot_card.py load` from another image, then `boot` the bus image; it loads the card's project.
+- **Fix:** `ot_card.py` ejects the device (`diskutil eject diskN`) after the unmount and before COMMAND 2. 3 of 3
+  consecutive loads then mounted and reloaded the project, each with the DSP's frame count advancing 0.4 s after the
+  reload record. A first COMMAND 1 right after an image switch has failed once and mounted on the retry.
+- **Not known:** whether `diskutil mount` hanging is the Mac's or the unit's USB stack's.
