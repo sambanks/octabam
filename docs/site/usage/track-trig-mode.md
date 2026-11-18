@@ -1,5 +1,5 @@
 # TRACK TRIG MODE
 
-Hteah's single-mode track trig editing. This branch keeps the **singular**
-variant; the separate `track-trig-modes` branch carries the plural revision.
-Only one should go upstream. Proof is emulator-only; not on hardware here.
+Hteah's single-mode track trig editing in GRID RECORDING. This is the
+singular variant; the separate plural module was withdrawn and its PR closed.
+Proof is emulator-only; not on hardware here.

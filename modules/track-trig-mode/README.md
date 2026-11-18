@@ -1,5 +1,8 @@
 # TRACK TRIG MODE
 
+Author: [Hteah](https://github.com/Hteah). PR preparation, test remix and gate by 8thmyth; SCALE QUANTIZER compatibility shim by 8thmyth.
+Original module by [Hteah](https://github.com/Hteah), from [Hteah/ot-mods](https://github.com/Hteah/ot-mods). Copyright (c) 2026 Hteah. Licensed under MIT; the upstream copyright and permission notice apply to this module.
+
 Each audio track keeps its own trig mode: CHROMATIC, SLOTS or SLICES.
 
 - Hold FUNC and press UP / DOWN to pick a trig mode as usual. A CHROMATIC,
