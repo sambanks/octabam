@@ -1,3 +1,5 @@
+Module author: [Hteah](https://github.com/Hteah). PR preparation and gate adaptation by 8thmyth.
+
 Loop one 16-step page of one track while you edit it; the rest of the
 pattern plays on, and the track comes back in time.
 

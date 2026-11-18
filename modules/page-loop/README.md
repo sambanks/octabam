@@ -1,6 +1,7 @@
 # `page-loop` — PAGE LOOP
 
 Author: [Hteah](https://github.com/Hteah).
+Original module by [Hteah](https://github.com/Hteah), from [Hteah/ot-mods](https://github.com/Hteah/ot-mods). Copyright (c) 2026 Hteah. Licensed under MIT; the upstream copyright and permission notice apply to this module.
 
 Loop one 16-step page of one track while you work on it, the way newer
 Elektron machines can. In **GRID RECORDING**, hold **PAGE** and tap **trig 1–4**:
