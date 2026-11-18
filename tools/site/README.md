@@ -8,8 +8,8 @@ build, without the deploy, runs as the `site` job on every PR
 `release.py` says what the site publishes: one release (`v0.5`, the git tag
 the web builder's patches are built from) of three remixes (`octabam`, `octabam-verbs`,
 `octabam-bus`). A remix
-that is not listed (`cxosc-core`, the test remixes) has no manual, no overview
-row and no builder entry; it stays in the repository.
+that is not listed (`cxosc-core`, the test remixes) is not in the manual, has no
+overview page and no builder entry; it stays in the repository.
 
 `gen_pages.py` renders the generated pages from this commit's manifests
 (`tools/remix/index.py`, the registry). The generated files sit under
@@ -19,58 +19,77 @@ rebuilds them.
 
 Generated, gitignored:
 
-- the manual of each published remix, `reference/manual/<remix>/` (below)
-- `modules.md`, the Feature Directory (in the nav under More): what is in the published
-  remix by the manual's sections, linked to the manual pages, then every other contributed
-  module by category, linked to its own page
-- `modules/<name>.md`, one page per contributed module: the usage fragment, whether the
-  module is in the published remix (and its manual page), and its facts; no test status.
+- the manual, `reference/manual/` (below): one manual for every published remix
+- `modules.md`, the Feature Directory (in the nav under More): what is in the release by the
+  manual's sections, with the remixes that have each feature, linked to the manual, then every
+  other contributed module by category, linked to its own page
+- `modules/<name>.md`, one page per contributed module: the usage fragment, which published
+  remixes have it (and its manual page), and its facts; no test status.
   The pages are not in the nav (each carries a `not_in_nav` line); the directory reaches them
-- `_remix-<name>.md`: the module table of the remix's overview page
-  (`remix-<name>.md`, hand-written), each row linked to its manual page;
-  stock effects read `stock` in the author column
+- `_remix-<name>.md`: the feature table of the remix's overview page
+  (`remix-<name>.md`, hand-written), each row linked to the manual; the
+  stock effects the remix keeps are one row
 
-## The remix manual
+## The manual
 
-`gen_manual.py` (run by `gen_pages.py`) writes the manual of each published
-remix under `reference/manual/<remix>/`:
+The published remixes share most of their features, so they share one
+manual (`gen_manual.py`, run by `gen_pages.py`), written under
+`reference/manual/`. Each page says which remixes have its feature. What is
+particular to one remix, and how to install it, is on that remix's
+hand-written overview page (`remix-octabam.md`), which the manual's
+introduction links; there is no per-remix copy of the manual.
 
-- `index.md`: the introduction (hand-written, below), conventions, the
-  contents, installing
-- one page per module, in the section `PLACE` gives it: `effects/`,
-  `machines/`, `sequencer/`, `parts/`, `midi-usb/`, `utilities/`, `fixes/`,
-  `inside/` ("Behind the scenes"). A module that `PLACE` does not name goes by
-  its category, so a new module is not left out
+- `index.md`: the introduction: the remixes (`SUMMARY`), conventions, the
+  table of which remix has which feature, installing
+- one page per feature a musician operates, in the section `PLACE` gives it:
+  `effects/`, `bus/`, `machines/`, `sequencer/`, `parts/`, `midi-usb/`,
+  `utilities/`. A module `PLACE` does not name goes by its category, so a new
+  module is not left out
+- `fixes.md` and `inside.md` ("Behind the scenes"): one page each, a section
+  per module. A fix or a service other features rely on (STORE, EVENTS, the
+  effect loader, the bridges) has nothing to operate, so it is explained and
+  credited there rather than given a chapter
+- a module that is part of another feature's use is a section of that
+  feature's page (`FOLD`: RIG HOSTS and FX2 LOCK on SEND, TEMPO SYNC on the
+  bus delay, the VERB rows and VERB PARTS on VERBERATION). A folded row of a
+  chooser lists only the starting values that differ from its host's
 - `brain/`: BRAIN, one page per part of it (index, templates, remixes,
   settings, performance, log, about, files), from the hand-written fragments
   `docs/site/manual/brain-<part>.md`
-- `credits.md`: the authors, one entry each (two spellings of one GitHub
-  account are one entry)
+- `credits.md`: the authors, one entry per GitHub account however the
+  manifests spell it (`gen_pages.who`: a name with a space over a handle,
+  never `account/repository`; the repository is named in the byline)
 
 Stock effects are not documented. No page carries a test status.
 
-Each module page is, from the manifest, never typed: the byline, which chooser
-an effect is in (FX1, FX2, read from the remix's `fx1` and the module's `SLOTS`
-setting), the knob layout (name, values, default, one-line meaning) with what a
-MODE renames, the settings a musician can change with the value this remix gives
-them (build-time settings are not shown), and what the module needs. From the
-hand-written usage fragment (`docs/site/usage/<name>.md`): the prose, with its
-site links rewritten for the page's depth. A fragment's own `## Parameters` table
-is dropped from the manual, because the knob tables come from the manifest. A
-sibling link in a fragment (`kits.md`) points at that module's page, or loses its
-link when the module is not in this manual. A module with no fragment shows its
-manifest line, so the manual has no hole. `HIDE_SHOTS` in `gen_manual.py` lists a
-screenshot that shows another remix's screen.
+Each feature page is, from the manifest, never typed: the byline and the
+remixes that have it, which chooser an effect is in (FX1, FX2, read from each
+remix's `fx1` and the module's `SLOTS` setting; per remix when they differ),
+the knob layout (name, values, default, one-line meaning) with what a MODE
+renames, and the settings a musician can change with the value each remix
+starts them at (build-time settings are not shown). What a module needs is
+not shown: the image is built. From the hand-written usage fragment
+(`docs/site/usage/<name>.md`): the prose, with its site links rewritten for
+the page's depth. The fragment's own `## Parameters` table is dropped, because
+the knob tables come from the manifest, and so are its development sections
+(`DROP_SECTIONS`: `## Changed on ...`, `## Checked`, `## Verification ...`,
+`## Hardware ...`), which stay on the module's Feature Directory page. A
+sibling link in a fragment (`kits.md`) points at that module's page or
+section, or loses its link when the module is not in the manual. A module
+with no fragment shows its manifest line, so the manual has no hole.
+`HIDE_SHOTS` in `gen_manual.py` lists a screenshot not to show.
 
-The introduction is hand-written, one file per remix in the site's manual
-directory (`octabam.md`). Write it as sections `### About ...`, `### What changes
-...` for the page it lands in, so its links are relative to
-`reference/manual/<remix>/` (`../../../safety.md` reaches the site root); the
-generator adds the conventions, the contents and installing.
+`verify_docs.py` refuses a manual page that carries build or test text
+(`gen_manual.LEAKS`): a test remix, an emulator result, "in the same image",
+a dated change note, a timing in µs, a Python bytes value, "not in an
+official remix". Fix the usage fragment (or the manifest line), not the
+check. A fragment serves the Feature Directory too, so write it for a
+musician.
 
 To improve a knob's row in the manual, edit the `Param` `doc` in the manifest.
-To improve a module's prose, edit its usage fragment. The remix's own paragraph
-is `Remix.doc`.
+To improve a module's prose, edit its usage fragment. A page title is
+`_label` in `gen_pages.py` (`MANUAL_LABEL` in `gen_manual.py` where the
+directory needs a longer one to tell two modules apart).
 
 The pages are listed by hand under the manual in `mkdocs.yml`:
 `python3 tools/site/gen_manual.py --nav` prints the block. `verify_docs.py`

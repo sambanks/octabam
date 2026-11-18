@@ -6,7 +6,7 @@ docs_dir: .
 site_dir: ../../out/site
 use_directory_urls: false
 # the _remix-*.md fragments are snippet includes, not pages; usage/*.md
-# are included into generated module pages, manual/*.md into the manuals; img/ holds image assets.
+# are included into generated module pages, manual/brain-*.md into the manual's BRAIN pages; img/ holds image assets.
 exclude_docs: |
   reference/_remix-*.md
   usage/*.md
@@ -27,247 +27,79 @@ theme:
 nav:
   - Getting Started:
       - Overview: index.md
-      - What is in Octabam: remix-octabam.md
-      - What is in Octabam Verbs: remix-octabam-verbs.md
-      - What is in Octabam Bus: remix-octabam-bus.md
+      - Octabam: remix-octabam.md
+      - Octabam Verbs: remix-octabam-verbs.md
+      - Octabam Bus: remix-octabam-bus.md
       - Build and Install: web-builder.md
       - Safety and Recovery: safety.md
       - About: about.md
-  - Octabam Remix Manual:
-      - Introduction: reference/manual/octabam/index.md
+  - Octabam Manual:
+      - Introduction: reference/manual/index.md
       - Effects:
-          - Character: reference/manual/octabam/effects/character.md
-          - Modulation: reference/manual/octabam/effects/modulation.md
-          - SHATTER: reference/manual/octabam/effects/shatter.md
-          - Sidechain Compressor: reference/manual/octabam/effects/sidechain-compressor.md
-          - Spectrum: reference/manual/octabam/effects/spectrum.md
+          - Character: reference/manual/effects/character.md
+          - Modulation: reference/manual/effects/modulation.md
+          - Resonator: reference/manual/effects/resonator.md
+          - Shatter: reference/manual/effects/shatter.md
+          - Sidechain Compressor: reference/manual/effects/sidechain-compressor.md
+          - Spectrum: reference/manual/effects/spectrum.md
+          - Transient: reference/manual/effects/transient.md
+          - Verberation: reference/manual/effects/verberation.md
+          - Vibrato: reference/manual/effects/vibrato.md
+      - The delay and reverb bus:
+          - Bus Delay: reference/manual/bus/busdelay.md
+          - Bus Reverb: reference/manual/bus/busverb.md
+          - Send: reference/manual/bus/send.md
+          - TEMPO Window: reference/manual/bus/tempo-bus.md
       - Machines:
-          - OCTA-303: reference/manual/octabam/machines/octa303.md
-          - WAVE: reference/manual/octabam/machines/wavecf.md
+          - OCTA-303: reference/manual/machines/octa303.md
+          - WAVE: reference/manual/machines/wavecf.md
       - Sequencer and recording:
-          - Bar Led: reference/manual/octabam/sequencer/bar-led.md
-          - Direct Jump (Kyoti): reference/manual/octabam/sequencer/direct-jump-kyoti.md
-          - Mute Modes: reference/manual/octabam/sequencer/mute-modes.md
-          - Pattern Mute: reference/manual/octabam/sequencer/pattern-mute.md
-          - Quantize Live Rec Toggle: reference/manual/octabam/sequencer/quantize-live-rec-toggle.md
-          - Rec Threshold: reference/manual/octabam/sequencer/rec-threshold.md
-          - Recorder Trig Mute: reference/manual/octabam/sequencer/rec-trig-mute.md
-          - Reload from Project: reference/manual/octabam/sequencer/reload-from-project.md
-          - RLEN PLEN: reference/manual/octabam/sequencer/rlen-plen.md
-          - Scale Quantizer: reference/manual/octabam/sequencer/quantizer.md
-          - Seq: reference/manual/octabam/sequencer/seq.md
-          - Slow LFO: reference/manual/octabam/sequencer/slow-lfo.md
-          - Track Patterns: reference/manual/octabam/sequencer/trackpatterns.md
-          - Tuner: reference/manual/octabam/sequencer/tuner.md
-          - Varispeed: reference/manual/octabam/sequencer/varispeed.md
+          - Bar LED: reference/manual/sequencer/bar-led.md
+          - Direct Jump: reference/manual/sequencer/direct-jump-kyoti.md
+          - Mute Modes: reference/manual/sequencer/mute-modes.md
+          - Pattern Mute: reference/manual/sequencer/pattern-mute.md
+          - Quantize Live Rec Toggle: reference/manual/sequencer/quantize-live-rec-toggle.md
+          - Rec Threshold: reference/manual/sequencer/rec-threshold.md
+          - Recorder Trig Mute: reference/manual/sequencer/rec-trig-mute.md
+          - Reload from Project: reference/manual/sequencer/reload-from-project.md
+          - RLEN PLEN: reference/manual/sequencer/rlen-plen.md
+          - Scale Quantizer: reference/manual/sequencer/quantizer.md
+          - SEQ: reference/manual/sequencer/seq.md
+          - Slow LFO: reference/manual/sequencer/slow-lfo.md
+          - Track Patterns: reference/manual/sequencer/trackpatterns.md
+          - Varispeed: reference/manual/sequencer/varispeed.md
       - Parts, Kits and scenes:
-          - Kits: reference/manual/octabam/parts/kits.md
-          - MIDI Scenes: reference/manual/octabam/parts/midi-scenes.md
-          - Morph: reference/manual/octabam/parts/morph.md
-          - Page 2 Parameter Locks: reference/manual/octabam/parts/plocks-p2.md
-          - Page 2 Scene Locks: reference/manual/octabam/parts/scenes-p2.md
+          - Kits: reference/manual/parts/kits.md
+          - MIDI Scenes: reference/manual/parts/midi-scenes.md
+          - Morph: reference/manual/parts/morph.md
+          - Page 2 Parameter Locks: reference/manual/parts/plocks-p2.md
+          - Page 2 Scene Locks: reference/manual/parts/scenes-p2.md
       - MIDI and USB:
-          - CC Feedback: reference/manual/octabam/midi-usb/cc-feedback.md
-          - CC Map: reference/manual/octabam/midi-usb/cc-map.md
-          - Chords Factory: reference/manual/octabam/midi-usb/chords.md
-          - Scales: reference/manual/octabam/midi-usb/scales.md
-          - Screen: reference/manual/octabam/midi-usb/screen.md
-          - USB: reference/manual/octabam/midi-usb/usb.md
+          - CC Feedback: reference/manual/midi-usb/cc-feedback.md
+          - CC Map: reference/manual/midi-usb/cc-map.md
+          - Chords Factory: reference/manual/midi-usb/chords.md
+          - Scales: reference/manual/midi-usb/scales.md
+          - Screen: reference/manual/midi-usb/screen.md
+          - USB: reference/manual/midi-usb/usb.md
       - BRAIN:
-          - BRAIN: reference/manual/octabam/brain/index.md
-          - Templates: reference/manual/octabam/brain/templates.md
-          - Remixes: reference/manual/octabam/brain/remixes.md
-          - Settings: reference/manual/octabam/brain/settings.md
-          - Performance: reference/manual/octabam/brain/performance.md
-          - Log: reference/manual/octabam/brain/log.md
-          - About: reference/manual/octabam/brain/about.md
-          - Files on the card: reference/manual/octabam/brain/files.md
+          - BRAIN: reference/manual/brain/index.md
+          - Templates: reference/manual/brain/templates.md
+          - Remixes: reference/manual/brain/remixes.md
+          - Settings: reference/manual/brain/settings.md
+          - Performance: reference/manual/brain/performance.md
+          - Log: reference/manual/brain/log.md
+          - About: reference/manual/brain/about.md
+          - Files on the card: reference/manual/brain/files.md
       - Utilities:
-          - Buffer Saver: reference/manual/octabam/utilities/buffer-saver.md
-          - Copy Project: reference/manual/octabam/utilities/copy-project.md
-          - Mode Defaults: reference/manual/octabam/utilities/mode-defaults.md
-          - Remix Switch: reference/manual/octabam/utilities/remix-switch.md
-          - Scope: reference/manual/octabam/utilities/scope.md
-      - Fixes to stock behaviour:
-          - ATA Write Guard: reference/manual/octabam/fixes/ata-write-guard.md
-          - Batch Bugfixes: reference/manual/octabam/fixes/batch-bugfixes.md
-          - Erase Empty Trigless Locks: reference/manual/octabam/fixes/erase-empty-trigless-locks.md
-          - Frame Guard: reference/manual/octabam/fixes/frame-guard.md
-          - Lo-Fi AMF Fix: reference/manual/octabam/fixes/lofi-amf-fix.md
-          - Recorder CS1 Skip: reference/manual/octabam/fixes/rec-cs1-skip.md
-          - Recorder Loop Fix: reference/manual/octabam/fixes/recorder-loop-fix.md
-      - Behind the scenes:
-          - Effect Loader (Copier): reference/manual/octabam/inside/dlcopy.md
-          - Effect Loader (Sender): reference/manual/octabam/inside/dlpump.md
-          - Events: reference/manual/octabam/inside/events.md
-          - Hooks: reference/manual/octabam/inside/hooks.md
-          - Keybus: reference/manual/octabam/inside/keybus.md
-          - Load Meter: reference/manual/octabam/inside/load-meter.md
-          - Memory: reference/manual/octabam/inside/memory.md
-          - Pages: reference/manual/octabam/inside/pages.md
-          - Remote: reference/manual/octabam/inside/remote.md
-          - Sc Keybus Bridge: reference/manual/octabam/inside/sc-keybus-bridge.md
-          - Sc Load Meter Bridge: reference/manual/octabam/inside/sc-loadmeter-bridge.md
-          - Store: reference/manual/octabam/inside/store.md
-      - Credits: reference/manual/octabam/credits.md
-  - Octabam Verbs Remix Manual:
-      - Introduction: reference/manual/octabam-verbs/index.md
-      - Effects:
-          - Character: reference/manual/octabam-verbs/effects/character.md
-          - Modulation: reference/manual/octabam-verbs/effects/modulation.md
-          - Resonator: reference/manual/octabam-verbs/effects/resonator.md
-          - Shatter: reference/manual/octabam-verbs/effects/shatter.md
-          - Sidechain Compressor: reference/manual/octabam-verbs/effects/sidechain-compressor.md
-          - Spectrum: reference/manual/octabam-verbs/effects/spectrum.md
-          - Transient: reference/manual/octabam-verbs/effects/transient.md
-          - Verb Hall: reference/manual/octabam-verbs/effects/verberation-hall.md
-          - Verb Plate: reference/manual/octabam-verbs/effects/verberation-plate.md
-          - Verb Room: reference/manual/octabam-verbs/effects/verberation-room.md
-          - Verberation: reference/manual/octabam-verbs/effects/verberation.md
-          - Vibrato: reference/manual/octabam-verbs/effects/vibrato.md
-      - Machines:
-          - OCTA-303: reference/manual/octabam-verbs/machines/octa303.md
-      - Sequencer and recording:
-          - Bar Led: reference/manual/octabam-verbs/sequencer/bar-led.md
-          - Direct Jump (Kyoti): reference/manual/octabam-verbs/sequencer/direct-jump-kyoti.md
-          - Mute Modes: reference/manual/octabam-verbs/sequencer/mute-modes.md
-          - Pattern Mute: reference/manual/octabam-verbs/sequencer/pattern-mute.md
-          - Quantize Live Rec Toggle: reference/manual/octabam-verbs/sequencer/quantize-live-rec-toggle.md
-          - Rec Threshold: reference/manual/octabam-verbs/sequencer/rec-threshold.md
-          - Recorder Trig Mute: reference/manual/octabam-verbs/sequencer/rec-trig-mute.md
-          - Reload from Project: reference/manual/octabam-verbs/sequencer/reload-from-project.md
-          - RLEN PLEN: reference/manual/octabam-verbs/sequencer/rlen-plen.md
-          - Scale Quantizer: reference/manual/octabam-verbs/sequencer/quantizer.md
-          - Seq: reference/manual/octabam-verbs/sequencer/seq.md
-          - Slow LFO: reference/manual/octabam-verbs/sequencer/slow-lfo.md
-          - Track Patterns: reference/manual/octabam-verbs/sequencer/trackpatterns.md
-          - Tuner: reference/manual/octabam-verbs/sequencer/tuner.md
-          - Varispeed: reference/manual/octabam-verbs/sequencer/varispeed.md
-      - Parts, Kits and scenes:
-          - Kits: reference/manual/octabam-verbs/parts/kits.md
-          - MIDI Scenes: reference/manual/octabam-verbs/parts/midi-scenes.md
-          - Morph: reference/manual/octabam-verbs/parts/morph.md
-          - Page 2 Parameter Locks: reference/manual/octabam-verbs/parts/plocks-p2.md
-          - Page 2 Scene Locks: reference/manual/octabam-verbs/parts/scenes-p2.md
-          - Verb Parts: reference/manual/octabam-verbs/parts/verb-parts.md
-      - MIDI and USB:
-          - CC Feedback: reference/manual/octabam-verbs/midi-usb/cc-feedback.md
-          - CC Map: reference/manual/octabam-verbs/midi-usb/cc-map.md
-          - Chords Factory: reference/manual/octabam-verbs/midi-usb/chords.md
-          - Scales: reference/manual/octabam-verbs/midi-usb/scales.md
-          - Screen: reference/manual/octabam-verbs/midi-usb/screen.md
-          - USB: reference/manual/octabam-verbs/midi-usb/usb.md
-      - BRAIN:
-          - BRAIN: reference/manual/octabam-verbs/brain/index.md
-          - Templates: reference/manual/octabam-verbs/brain/templates.md
-          - Remixes: reference/manual/octabam-verbs/brain/remixes.md
-          - Settings: reference/manual/octabam-verbs/brain/settings.md
-          - Performance: reference/manual/octabam-verbs/brain/performance.md
-          - Log: reference/manual/octabam-verbs/brain/log.md
-          - About: reference/manual/octabam-verbs/brain/about.md
-          - Files on the card: reference/manual/octabam-verbs/brain/files.md
-      - Utilities:
-          - Buffer Saver: reference/manual/octabam-verbs/utilities/buffer-saver.md
-          - Copy Project: reference/manual/octabam-verbs/utilities/copy-project.md
-          - Mode Defaults: reference/manual/octabam-verbs/utilities/mode-defaults.md
-          - Remix Switch: reference/manual/octabam-verbs/utilities/remix-switch.md
-      - Fixes to stock behaviour:
-          - ATA Write Guard: reference/manual/octabam-verbs/fixes/ata-write-guard.md
-          - Batch Bugfixes: reference/manual/octabam-verbs/fixes/batch-bugfixes.md
-          - Erase Empty Trigless Locks: reference/manual/octabam-verbs/fixes/erase-empty-trigless-locks.md
-          - Frame Guard: reference/manual/octabam-verbs/fixes/frame-guard.md
-          - Lo-Fi AMF Fix: reference/manual/octabam-verbs/fixes/lofi-amf-fix.md
-          - Recorder CS1 Skip: reference/manual/octabam-verbs/fixes/rec-cs1-skip.md
-          - Recorder Loop Fix: reference/manual/octabam-verbs/fixes/recorder-loop-fix.md
-      - Behind the scenes:
-          - Effect Loader (Copier): reference/manual/octabam-verbs/inside/dlcopy.md
-          - Effect Loader (Sender): reference/manual/octabam-verbs/inside/dlpump.md
-          - Events: reference/manual/octabam-verbs/inside/events.md
-          - Hooks: reference/manual/octabam-verbs/inside/hooks.md
-          - Keybus: reference/manual/octabam-verbs/inside/keybus.md
-          - Load Meter: reference/manual/octabam-verbs/inside/load-meter.md
-          - Memory: reference/manual/octabam-verbs/inside/memory.md
-          - Pages: reference/manual/octabam-verbs/inside/pages.md
-          - Remote: reference/manual/octabam-verbs/inside/remote.md
-          - Sc Keybus Bridge: reference/manual/octabam-verbs/inside/sc-keybus-bridge.md
-          - Sc Load Meter Bridge: reference/manual/octabam-verbs/inside/sc-loadmeter-bridge.md
-          - Store: reference/manual/octabam-verbs/inside/store.md
-      - Credits: reference/manual/octabam-verbs/credits.md
-  - Octabam Bus Remix Manual:
-      - Introduction: reference/manual/octabam-bus/index.md
-      - Effects:
-          - Character: reference/manual/octabam-bus/effects/character.md
-          - Delay Server: reference/manual/octabam-bus/effects/busdelay.md
-          - Modulation: reference/manual/octabam-bus/effects/modulation.md
-          - Reverb Server: reference/manual/octabam-bus/effects/busverb.md
-          - Send: reference/manual/octabam-bus/effects/send.md
-          - Spectrum: reference/manual/octabam-bus/effects/spectrum.md
-      - Machines:
-          - OCTA-303: reference/manual/octabam-bus/machines/octa303.md
-      - Sequencer and recording:
-          - Bar Led: reference/manual/octabam-bus/sequencer/bar-led.md
-          - Direct Jump (Kyoti): reference/manual/octabam-bus/sequencer/direct-jump-kyoti.md
-          - Mute Modes: reference/manual/octabam-bus/sequencer/mute-modes.md
-          - Pattern Mute: reference/manual/octabam-bus/sequencer/pattern-mute.md
-          - Quantize Live Rec Toggle: reference/manual/octabam-bus/sequencer/quantize-live-rec-toggle.md
-          - Rec Threshold: reference/manual/octabam-bus/sequencer/rec-threshold.md
-          - Recorder Trig Mute: reference/manual/octabam-bus/sequencer/rec-trig-mute.md
-          - Reload from Project: reference/manual/octabam-bus/sequencer/reload-from-project.md
-          - RLEN PLEN: reference/manual/octabam-bus/sequencer/rlen-plen.md
-          - Scale Quantizer: reference/manual/octabam-bus/sequencer/quantizer.md
-          - Seq: reference/manual/octabam-bus/sequencer/seq.md
-          - Slow LFO: reference/manual/octabam-bus/sequencer/slow-lfo.md
-          - Track Patterns: reference/manual/octabam-bus/sequencer/trackpatterns.md
-          - Tuner: reference/manual/octabam-bus/sequencer/tuner.md
-          - Varispeed: reference/manual/octabam-bus/sequencer/varispeed.md
-      - Parts, Kits and scenes:
-          - Kits: reference/manual/octabam-bus/parts/kits.md
-          - MIDI Scenes: reference/manual/octabam-bus/parts/midi-scenes.md
-          - Morph: reference/manual/octabam-bus/parts/morph.md
-          - Page 2 Parameter Locks: reference/manual/octabam-bus/parts/plocks-p2.md
-          - Page 2 Scene Locks: reference/manual/octabam-bus/parts/scenes-p2.md
-      - MIDI and USB:
-          - CC Feedback: reference/manual/octabam-bus/midi-usb/cc-feedback.md
-          - CC Map: reference/manual/octabam-bus/midi-usb/cc-map.md
-          - Chords Factory: reference/manual/octabam-bus/midi-usb/chords.md
-          - Scales: reference/manual/octabam-bus/midi-usb/scales.md
-          - Screen: reference/manual/octabam-bus/midi-usb/screen.md
-          - USB: reference/manual/octabam-bus/midi-usb/usb.md
-      - BRAIN:
-          - BRAIN: reference/manual/octabam-bus/brain/index.md
-          - Templates: reference/manual/octabam-bus/brain/templates.md
-          - Remixes: reference/manual/octabam-bus/brain/remixes.md
-          - Settings: reference/manual/octabam-bus/brain/settings.md
-          - Performance: reference/manual/octabam-bus/brain/performance.md
-          - Log: reference/manual/octabam-bus/brain/log.md
-          - About: reference/manual/octabam-bus/brain/about.md
-          - Files on the card: reference/manual/octabam-bus/brain/files.md
-      - Utilities:
-          - Buffer Saver: reference/manual/octabam-bus/utilities/buffer-saver.md
-          - Copy Project: reference/manual/octabam-bus/utilities/copy-project.md
-          - FX2 Lock: reference/manual/octabam-bus/utilities/fx2-lock.md
-          - Mode Defaults: reference/manual/octabam-bus/utilities/mode-defaults.md
-          - Remix Switch: reference/manual/octabam-bus/utilities/remix-switch.md
-          - Rig Hosts: reference/manual/octabam-bus/utilities/rig-hosts.md
-          - Tempo Controls: reference/manual/octabam-bus/utilities/tempo-bus.md
-          - Tempo Sync: reference/manual/octabam-bus/utilities/tempo-sync.md
-      - Fixes to stock behaviour:
-          - ATA Write Guard: reference/manual/octabam-bus/fixes/ata-write-guard.md
-          - Batch Bugfixes: reference/manual/octabam-bus/fixes/batch-bugfixes.md
-          - Erase Empty Trigless Locks: reference/manual/octabam-bus/fixes/erase-empty-trigless-locks.md
-          - Frame Guard: reference/manual/octabam-bus/fixes/frame-guard.md
-          - Lo-Fi AMF Fix: reference/manual/octabam-bus/fixes/lofi-amf-fix.md
-          - Recorder CS1 Skip: reference/manual/octabam-bus/fixes/rec-cs1-skip.md
-          - Recorder Loop Fix: reference/manual/octabam-bus/fixes/recorder-loop-fix.md
-      - Behind the scenes:
-          - Events: reference/manual/octabam-bus/inside/events.md
-          - Hooks: reference/manual/octabam-bus/inside/hooks.md
-          - Load Meter: reference/manual/octabam-bus/inside/load-meter.md
-          - Memory: reference/manual/octabam-bus/inside/memory.md
-          - Pages: reference/manual/octabam-bus/inside/pages.md
-          - Remote: reference/manual/octabam-bus/inside/remote.md
-          - Store: reference/manual/octabam-bus/inside/store.md
-      - Credits: reference/manual/octabam-bus/credits.md
+          - Buffer Saver: reference/manual/utilities/buffer-saver.md
+          - Copy Project: reference/manual/utilities/copy-project.md
+          - Mode Defaults: reference/manual/utilities/mode-defaults.md
+          - Remix Switch: reference/manual/utilities/remix-switch.md
+          - SCOPE: reference/manual/utilities/scope.md
+          - TUNER: reference/manual/utilities/tuner.md
+      - Fixes to stock behaviour: reference/manual/fixes.md
+      - Behind the scenes: reference/manual/inside.md
+      - Credits: reference/manual/credits.md
   - More:
       - Feature Directory: reference/modules.md
       - Create a Remix: own-remix.md

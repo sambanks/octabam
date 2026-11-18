@@ -79,7 +79,7 @@ installs above, for a unit that already runs an octabam image:
 3. The choice is kept across reboots. To return to the flashed image, select
    the name under the FLASHED separator in the same list.
 
-See [BRAIN: Remixes](reference/manual/octabam/brain/remixes.md) for the details.
+See [BRAIN: Remixes](reference/manual/brain/remixes.md) for the details.
 
 ## Confirm the installation
 
