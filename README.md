@@ -34,6 +34,7 @@ responsible for any damage to your Octatrack. See
 
 | you want to | read |
 |---|---|
+| [**TRACK TRIG MODE**](modules/track-trig-mode/README.md) | [8thmyth](https://github.com/8thmyth) | Hteah's single-mode track trig editing on the Step View grid. | emulator (verify_track_trig_mode.py); not on a unit |
 | put a remix on your Octatrack | [docs/guide/BUILDING.md](docs/guide/BUILDING.md): a fresh machine to a flashed unit, step by step, with the recovery path |
 | see what remixes exist and what is in each | [remixes/README.md](remixes/README.md), then the remix's own page in `remixes/<name>/README.md` |
 | see every module and how far it is proven | the table below; each module's `modules/<name>/README.md` has the measurements |

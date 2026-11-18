@@ -1062,6 +1062,7 @@ def main():
              "trackpatterns-core": (),   # TRACK PATTERNS on the core modules and the 14 stock effects, which gives up nothing
              "free-loop": (),   # FREE LOOP: ColdFire, no DSP words, on the 14 stock effects
              "drummer": (), "drummer-probe": (),   # DRUMMER (+ STORE) and its probe: ColdFire, no DSP words
+             "track-trig-mode": (),   # TRACK TRIG MODE: ColdFire, no DSP words, on the 14 stock effects
              "rec-cs1-skip": (),   # REC CS1 SKIP: ColdFire, no DSP words, on the 14 stock effects
              "slow-lfo": (),   # SLOW LFO: ColdFire, no DSP words, on the 14 stock effects
              "bar-led": (),   # BAR LED: ColdFire, no DSP words, on the 14 stock effects
