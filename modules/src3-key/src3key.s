@@ -111,4 +111,4 @@ sk_toggle:
 sk_on:      .long   1                   | the setting without BRAIN: on
 msg_rec:    .asciz  "SRC3 RECORDING"
 msg_stop:   .asciz  "RECORDING STOPPED"
-msg_off:    .asciz  "SRC3 IS OFF (REC SETUP)"
+msg_off:    .asciz  "SRC3 OFF (SETUP)"
