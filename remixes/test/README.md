@@ -20,6 +20,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`cfmeter-tracks`](cfmeter-tracks/README.md) | octatrick (less TUNER and the USB input) + CF METER on T8's FX2, with USB TRACKS in place of TRACKS MAIN CUE: the 16-channel-only stream's ColdFire cost, over USB. | emulator: the readout chain under the port |
 | [`character-key`](character-key/README.md) | stock effects with KEYBUS and CHARACTER: CHARACTER's KEY reads T1..T8 from KEYBUS's shared key words. | emulator |
 | [`character-txtr`](character-txtr/README.md) | octabam-bus with CHARACTER TXTR (Character + Airwindows Pockey2 texture) on FX1 in place of CHARACTER: the image for measuring the texture stage's cost on a unit. | emulator |
+| [`chop-tempo`](chop-tempo/README.md) | stock effects with LAZY CHOP and LAZY CHOP TEMPO (BPM popup after YES). | emulator (tools/verify/verify_chop_tempo.py) |
 | [`chords`](chords/README.md) | CHORDS FACTORY with SCALES, on the 14 stock effects: the chord atelier on SRC, a chord step played as written, the FUNC keyboard in the scale's colours. | emulator (verify_chords): verify_chords |
 | [`chords-alone`](chords-alone/README.md) | CHORDS FACTORY without SCALES, on the 14 stock effects: the atelier alone on SRC, chords played as written (no scale). | emulator (verify_chords): verify_chords |
 | [`copy-project`](copy-project/README.md) | stock effects with COPY PROJECT: duplicate a project on the card without loading it. | emulator |
