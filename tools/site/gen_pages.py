@@ -144,6 +144,8 @@ def hero(m) -> list[str]:
 
 
 def screen_reference(m) -> list[str]:
+    if m.name == "seq":
+        return []  # The usage page places its Rhythm and MIDI Harmony screens.
     notes_path = OUT.parent / "screen-notes.json"
     notes = json.loads(notes_path.read_text()) if notes_path.exists() else {}
     hero_key = _hero_key(m)

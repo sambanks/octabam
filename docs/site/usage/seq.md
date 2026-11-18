@@ -68,7 +68,6 @@ parameters, pitch bend, channel pressure, and **CC1** through **CC10**.
 
 ### Harmony
 
-![SEQ Harmony on an audio track.](../../img/seq/tonal.png)
 ![SEQ Harmony on a MIDI track.](../../img/seq/midi-tonal.png)
 
 Set the Part's pitch first, select **PTCH** or **NOTE** on Rhythm, raise
@@ -102,7 +101,13 @@ Tap **`[CUE]`** to scatter the current number of hits randomly on the
 selected lane. Each tap chooses another arrangement. Press **`[YES]`** to
 write it. Turning **PULS** returns to a Euclidean rhythm.
 
-### Clear locks or trigs
+## Save your settings
+
+Save the project to keep SEQ's rhythms, depths and Harmony settings with
+the bank. Audio and MIDI tracks keep separate SEQ settings. Written trigs
+and locks belong to the pattern.
+
+## Clear data
 
 ![SEQ clear menu.](../../img/seq/clear.png)
 
@@ -118,11 +123,11 @@ Press **`[FUNC]`** + **`[BANK]`** while SEQ is open. Choose a row and press
 Clearing affects the selected track within the pattern length. Other
 tracks and patterns keep their data.
 
-### Save your settings
+To clear one destination's locks directly, select **PLCK** and the
+parameter with **D**, set **PULS** to 0, then press **`[YES]`**. Sample
+trigs and other parameters stay. Empty trigless trigs are removed.
 
-Save the project to keep SEQ's rhythms, depths and Harmony settings with
-the bank. Audio and MIDI tracks keep separate SEQ settings. Written trigs
-and locks belong to the pattern.
+![PLCK PULS 0 clears PTCH while preserving sample trigs and other parameters.](../../img/seq/clear-dest.png)
 
 ## Examples
 
@@ -163,14 +168,6 @@ Select **PLCK** and **SRC** / **PTCH**, change **ROT**, then press
 including steps that still have sample trigs.
 
 ![PLCK rewrites PTCH while preserving sample trigs and other parameters.](../../img/seq/plck-overwrite.png)
-
-### Clear one parameter's locks
-
-Select **PLCK** and the parameter with **D**, set **PULS** to 0, then
-press **`[YES]`**. The sample trigs and other parameters keep their data.
-Empty trigless trigs are removed.
-
-![PLCK PULS 0 clears PTCH while preserving sample trigs and other parameters.](../../img/seq/clear-dest.png)
 
 ### Write MIDI chords
 
