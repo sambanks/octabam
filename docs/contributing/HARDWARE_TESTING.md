@@ -219,6 +219,8 @@ python3 tools/hw/ot_suite.py run <label> --dest out/suite/<remix> --auto --phase
   the card; `ot_card.py` runs `diskutil mount` on the OCTATRACK partition after 8 s and repeats COMMAND 1 up to 4 times.
 - `load` and `boot` return when LOAD METER's health rule holds (the DSP's frame count advances); 0.4 s after the
   reload record on 18 Nov 2026.
+- After a loader phase (`loader01`, `loader02`) a project reload left the DSP's frame count at 0 on `octabam` and `octabam-verbs`
+  (FAILURE_MODES.md); `ot_suite.py run --auto --image "<NAME>.RMX"` boots the image again after each loader phase, which cleared it.
 - `ot_matrix.py switch` prints the transitions left unapplied (`unapplied`: the DSP busy from 2.5 s after the switch
   is nearer the previous layout's figure than the new one's) and puts none of that in its exit code, which is 1 when
   any row carries a flag (`GAP` is on every transition: the 340 ms silence is the load).

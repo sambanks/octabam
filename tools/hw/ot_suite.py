@@ -287,6 +287,10 @@ def cmd_run(a):
         rows.append(dict(id=p["id"], title=p["title"], project=p["project"], rc=r.returncode,
                          seconds=round(time.time() - t0), tail=(r.stdout + r.stderr).strip().splitlines()[-6:]))
         print(f"   {'PASS' if r.returncode == 0 else 'FAIL'} rc={r.returncode} {rows[-1]['seconds']} s -> {out / (p['id'] + '.log')}", flush=True)
+        if a.auto and a.image and p["id"].startswith("loader"):
+            # a project reload after a loader phase leaves the DSP frame count at 0 (FAILURE_MODES.md): start the image again
+            print(f"   {p['id']} done: booting {a.image} again before the next project load", flush=True)
+            subprocess.run([PY, str(HERE / "ot_card.py"), "boot", a.image], cwd=ROOT)
         merged = [r for r in prev if r["id"] not in {x["id"] for x in rows}] + rows
         sumf.write_text(json.dumps(merged, indent=1))
         if r.returncode and not a.keep_going:
@@ -315,6 +319,7 @@ def main():
     p = sub.add_parser("run"); p.add_argument("label"); p.add_argument("--dest", default=str(ROOT / "out/suite"))
     p.add_argument("--phase"); p.add_argument("--yes", action="store_true"); p.add_argument("--keep-going", action="store_true")
     p.add_argument("--auto", action="store_true", help="load each project with ot_card.py (REMOTE: DISK MODE, copy, leave) instead of asking; implies --yes")
+    p.add_argument("--image", help="the .RMX name of the running image (with --auto): booted again after each loader phase")
     p = sub.add_parser("report"); p.add_argument("label")
     a = ap.parse_args()
     if getattr(a, "auto", False):

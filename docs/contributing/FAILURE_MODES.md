@@ -1058,3 +1058,21 @@ images, so that reading is withdrawn.
   consecutive loads then mounted and reloaded the project, each with the DSP's frame count advancing 0.4 s after the
   reload record. A first COMMAND 1 right after an image switch has failed once and mounted on the retry.
 - **Not known:** whether `diskutil mount` hanging is the Mac's or the unit's USB stack's.
+
+
+## DSP frame count stays at 0 after a project reload that follows a demand-loader phase 🟡 reproduced once, cause not known
+
+MKII, `octabam` BUILD 05 (`5b991c85`), 18 and 19 Nov 2026. A project reload (`ot_card.py load`: DISK MODE, copy, COMMAND 2; the
+NEWPROJ record arrives) after `ot_matrix.py switch` had run `loader01` (30 transitions, SFX_01) left the DSP's record count
+(`dsp.seq`) fixed at 1,510,920 for the 90 s the tool waited and still fixed 20 minutes later, while the ColdFire frame interrupt
+ran at 2,756 a second and the USB device answered. A second reload with the DSP in that state gave the same reading.
+
+- **Seen 3 times:** 18 Nov, `octabam` after `loader02` (the next phase's start read 0 a second, three phases in a row); 18 Nov,
+  `octabam-verbs` after `loader02` (90 s wait); 19 Nov, `octabam` after `loader01`, in a run built to reproduce it.
+- **Not seen:** a reload directly after a boot (every one, on all three images); a reload after `fx01` to `fx04` runs (the loader01 load after `fx03`
+  was fine); `pc-soak`, `kits-identity` and the scene phases after a boot and a load.
+- **Recovery:** COMMAND 3 for the same image (`ot_card.py boot`): the count advanced 0.4 s after the unit returned. No power-cycle.
+- **Not tested:** the same reload from the panel; a reload after `loader01` on `octabam-bus` (it has no loader phases); what state the demand
+  effect's block is in when the reload comes (the phase ends on a SHATTER, CHARACTER or MODULATION layout); DLCOPY's counters
+  (`dl_state.py`) before the reload.
+- **Workaround:** `ot_suite.py run --auto --image "<NAME>.RMX"` boots the image again after each loader phase.
