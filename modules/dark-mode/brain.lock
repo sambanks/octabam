@@ -1,0 +1,17 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "name": "DARK MODE",
+   "type": "binary"
+  }
+ },
+ "store": {
+  "id": "octabam.dark-mode",
+  "major": 1
+ }
+}
