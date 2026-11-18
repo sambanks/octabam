@@ -15,7 +15,10 @@ kits.work, so its Parts migrate at the load; every panel scenario forks
 from that load (`ot_emu --scenario`). Bank 3 (the project's saved bank on
 OCTABAM89_setgate) is the bank under test; ASSIGN and Part bytes are
 poked after the load so the scenarios do not depend on the project's
-pattern content beyond pattern 1 playing.
+pattern content beyond pattern 1 playing. The staged copy loads on bank 3
+(BANK=2 in project.work), patterns 1-13 of bank 3 get a trig (content, so
+the migration assigns them; 14-16 stay empty) and Part 1 a non-default
+level, so a project made by tools/hw/ot_fresh.py serves (sambanks/octabam#1125).
 
   base      the migration: READY, kits.work on the card with a good CRC,
             Kit n = bank n/4's Part n%4 (working copy, its name), ASSIGN
@@ -187,6 +190,7 @@ TEMPO24 = 0x80001814, 0x80000020          # BPM x 24 and its shadow (long); the 
 FAST = [(a + i, v) for a in TEMPO24 for i, v in enumerate((0, 0, 5760 >> 8, 5760 & 255))]   # 240 BPM
 LOCK_IDX = 0x015                          # a lock-table index: scene A, track 1, flat 21
 EDIT_OFF, EDIT_VAL = 0x10, 0x30           # a Part byte (track 1's level) set to EDIT_VAL + slot: an edit no Kit holds
+FIXTURE_OFF, FIXTURE_LEVEL = 0x12, 0x55   # a byte of Part 1 in the staged copy (stage): track 1's level, not a default
 NEWKNOB = (5, 11)                        # knob A turns on patterns 2 and 3 of the panel-made project
 MKI = dict(midi=0x35, bank=0x2f, recab=0x2b)   # held with FUNC on the MKI panel
 MENU = 0x460e5e28                         # the stock list: callbacks, labels, object, &selection
@@ -380,7 +384,10 @@ def main():
         fails += not ok
 
     sys.path.insert(0, str(ROOT / "tools/emu"))
+    sys.path.insert(0, str(ROOT / "tools/hw"))
     import emu_card  # noqa: E402
+    import ot_fresh  # noqa: E402
+    import ot_project  # noqa: E402
 
     def stage(src, name, extra=()):
         d = OUT / f"proj_{name}"
@@ -397,6 +404,27 @@ def main():
                 shutil.copy2(f, d / f.name)
         for f in extra:
             shutil.copy2(f, d / f.name)
+        # Bank 3 is the bank under test (BANK): the project's own on OCTABAM89_setgate, which saves with BANK=2. A
+        # generated project saves on bank A (BANK=0), so no track's current bank was bank 3 and every scenario that
+        # reads the engine failed (sambanks/octabam#1125). The copy loads on bank 3 whatever the project saved.
+        pw = d / "project.work"
+        if pw.is_file():
+            pw.write_bytes(ot_fresh.stamp_settings(pw.read_bytes(), {"BANK": BANK}))
+        # The migration gives a pattern its Part's Kit only when stock's content test (HASCONT) finds content; a
+        # generated project's patterns are empty, so bank 3's ASSIGN stayed 0xff (#1125). A trig on track 1 step 1
+        # of patterns 1-13: content, and nothing the scenarios read. Patterns 14-16 stay empty: fright's
+        # PTN+FUNC+RIGHT copies to the next empty pattern, 14.
+        # Part 1 (working and saved copy) gets a track-1 level no default has (0x6c): lclearlive checks that clearing
+        # its Kit changes the playing Part, which a generated project's default Parts never show. Part +0x10, the byte
+        # EDIT_OFF names, does not survive the load (0x55 in the file read 0x00 in RAM, 17 Nov 2026).
+        if (d / f"bank{BANK + 1:02d}.work").is_file():
+            for ptn in range(13):
+                ot_project.set_pattern_trig(d, BANK + 1, ptn, 0, 1, guard=False)
+
+            def level(data):
+                for part in (0, 4):
+                    data[ot_project.PART_BASE + part * ot_project.PART_STRIDE + 9 + FIXTURE_OFF] = FIXTURE_LEVEL
+            ot_project._bank_write(d, BANK + 1, level, guard=False)
         card = OUT / f"card_{name}.img"
         r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(d), "OCTABAM", name,
                             "--tree", str(OUT / f"tree_{name}"), "--out", str(card)],
@@ -447,7 +475,7 @@ def main():
         s.tap("no"); s.tap("play", 2000); s.hold("ptn", ptn); s.until(ENG_PART, 1)
 
     s = Script(); s.tap("no"); add("base", s, extra=["--card-out", OUT / "base.img"])
-    s = Script(); playing_switch(s, 1); add("free", s, [(pa(1), 0)], fast=True)
+    s = Script(); playing_switch(s, 1); add("free", s, [(pa(1), 0), (pb(1), 1)], fast=True)   # pattern 2 on its own slot
     s = Script(); playing_switch(s, 1); add("repoint", s, [(pa(1), 0), (pb(1), 0)], fast=True)
     s = Script(); s.tap("no"); s.hold("ptn", 1); s.wait(1500); add("stopped", s, [(pa(1), 0), (pb(1), 0)])
     (OUT / "progchg.midi").write_text("200 c0 21\n")
@@ -759,6 +787,13 @@ def main():
              "--load-ms", "90000", "--mkii", "--live-script", OUT / "newboot.script", "--card-out", OUT / "newboot.img",
              "--mem-dump", dumps("newboot") + newb.replace("NAME", "newboot")], OUT / "newboot.txt")
 
+    def kits_src():
+        """The project v1up and krefuse stage their kits.work into: the strand project when it is there, else the
+        gate's own. Neither case reads the strand bank file; with no strand project they crashed on its path
+        (FileNotFoundError, a generated project in CI, sambanks/octabam#1125)."""
+        sd_ = pathlib.Path(a.strand_project).expanduser()
+        return sd_ if (sd_ / "project.work").is_file() else pathlib.Path(pdir)
+
     def v1up_run():
         kw = next((v for k, v in emu_card.extract_image((OUT / "base.img").read_bytes()).items()
                    if k.lower().endswith("/kits/kits.work")), b"")
@@ -768,7 +803,7 @@ def main():
         v1 = struct.pack(">4sIII", b"KITS", 1, O_LIB + 256 * REC1, zlib.crc32(body)) + bytes(48) + body
         (OUT / "v1up_kits").mkdir(exist_ok=True)
         f = OUT / "v1up_kits/kits.work"; f.write_bytes(v1)
-        c = stage(pathlib.Path(a.strand_project).expanduser(), "V1UP", extra=[f])
+        c = stage(kits_src(), "V1UP", extra=[f])
         run([EMU, "--image", image, "--card", c, "--set", "OCTABAM", "--project", "V1UP", "--load-ms", "90000",
              "--live-script", s1, "--mem-dump", dumps("v1up")], OUT / "v1up.txt")
 
@@ -778,7 +813,7 @@ def main():
         badk = bytearray(kw); badk[O_LIB + 3000] ^= 0x55; badk = bytes(badk)       # the CRC fails
         (OUT / "kbad_kits").mkdir(exist_ok=True)
         f = OUT / "kbad_kits/kits.work"; f.write_bytes(badk)
-        c = stage(pathlib.Path(a.strand_project).expanduser(), "KBAD", extra=[f])
+        c = stage(kits_src(), "KBAD", extra=[f])
 
         def kbad(tag, choice):
             dmp = (f"{KS:#x},48={OUT / f'{tag}_st.bin'};{sym['store_npend']:#x},4={OUT / f'{tag}_np.bin'};"
