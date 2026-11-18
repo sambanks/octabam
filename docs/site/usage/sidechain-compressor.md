@@ -13,15 +13,10 @@ An effect on a track: select the track, press FX2 (or FX1), and pick COMPRESSOR
 from the chooser; the setup page shows the new knobs. There is no separate
 effect to load: COMPRESSOR is the side-chain compressor.
 
-[Octabam](../../remix-octabam.md) carries it in the loader form: the side-chain's DSP code is loaded
-while a track uses COMPRESSOR, into the top of T4's FX2 block. Until it is, and while DARK REV on T4's FX2 or
-another loaded effect holds that block, COMPRESSOR works as stock, KEY reads `--` and the screen says
-`SC KEY OFF`. This form has not run on a unit in the current `octabam`.
-
-The test remixes `sidechain-compressor` and `kyoti-mute-sidechain` carry it the
-earlier way, in SPRING REV's words, so SPRING REV is off the chooser in those images.
-It does not coexist with BusDelay or BusVerb: their core-private and
-cross-core memory overlaps, and the build refuses the pair.
+The side-chain is loaded into the audio processor while a track uses COMPRESSOR. Until it
+arrives, just after you choose COMPRESSOR, COMPRESSOR works as stock, KEY reads `--` and the screen
+says `SC KEY OFF`. In Octabam the same happens while DARK REV on track 4's FX2, or another loaded
+effect, holds the memory the side-chain uses. It is not in Octabam Bus.
 
 ![FX2 SETUP with COMPRESSOR selected, showing RMS, MON, KEY (here T2), KGN, KBAS and KWID.](../../img/sidechain-compressor/chooser.png)
 
@@ -66,16 +61,16 @@ affected.
 - MON lets you hear the processed key in place of the track: OFF on the
   left, ON on the right. Switching it, or changing KEY while it is on,
   fades (about 6 ms) instead of clicking.
-- A key on the same DSP core and earlier in the order (T1 keying T2-T4, T5
-  keying T6-T8) reaches the detector with no delay, so a trig on both
+- A key from an earlier track in the same group of four (T1 keying T2-T4,
+  T5 keying T6-T8) reaches the detector with no delay, so a trig on both
   tracks at once clicks less at short attack than a key from the other
-  core.
+  group.
 - A COMPRESSOR saved on stock firmware comes up with MON OFF, KEY OFF, KGN
   centred and both filters OFF; one saved with an earlier version of this
   module comes up with MON OFF.
-- The key works across the two DSP cores in both directions.
-- Beside MUTE_MODES a muted key track keeps feeding the key, as stock mute
-  does (MUTE_MODES' SC_KEY build).
+- Any track can key any other, in either group of four.
+- With [mute modes](mute-modes.md), a muted key track keeps feeding the
+  key, as a stock mute does.
 
 ## Parameters
 

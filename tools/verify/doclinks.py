@@ -8,8 +8,8 @@ Two kinds of reference are checked:
   `docs/site/usage/` fragment resolves against the generated module page
   it is included into (`docs/site/reference/modules/`), because that
   page's directory is where the link will live on the site; likewise a
-  `docs/site/manual/<remix>.md` intro resolves against the remix's manual
-  directory (`docs/site/reference/manual/<remix>/`);
+  fragment of the manual's own pages under `docs/site/manual/` resolves
+  against the manual's directory (`docs/site/reference/manual/`);
 - a repository path to a Markdown file, `docs/...md`, `tools/...md`,
   `modules/...md` or `remixes/...md`, written anywhere in a tracked text
   file (code comments, Makefile help, docs): the file must exist.
@@ -112,8 +112,8 @@ def check(root=ROOT):
                             continue
                         base = root / pathlib.Path("docs") / "site" / "reference" / "modules"
                     elif rel.startswith("docs/site/manual/"):
-                        # the introduction sits at reference/manual/<remix>/
-                        base = root / pathlib.Path("docs") / "site" / "reference" / "manual" / path.stem
+                        # a fragment of the manual's own pages lands in reference/manual/
+                        base = root / pathlib.Path("docs") / "site" / "reference" / "manual"
                     else:
                         base = path.parent
                     dest = (base / ref).resolve()
