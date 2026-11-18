@@ -17,7 +17,6 @@
         .text
         .balign 2
         .global dm_flush_hook
-        .global dm_enabled
 
         .equ    BACK_BUF,   0x400b9710
         .equ    RET_SITE,   0x40013cb4
@@ -50,7 +49,3 @@ dm_flush_hook:
 .Ldm_done:
         jmp     RET_SITE:l                  | return to stock diff loop (0x40013cb4)
 
-        .data
-        .balign 4
-dm_enabled:
-        .long   0                           | default 0 (0 = normal light, 1 = dark)

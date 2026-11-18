@@ -3,8 +3,9 @@
 
 Verifies:
 1. Stock detour hook site at 0x40013cae (displaced instruction 2a79 400b 9710: moveal 0x400b9710,%a5).
-2. Module manifest declarations: store 'octabam.dark-mode', setting 'DARK MODE' (Binary, default=1, Scope.CARD).
-3. Dynamic remix.inc macro generation (get_dark_mode).
+2. Module manifest declarations: store 'octabam.dark-mode', setting 'DARK MODE' (Binary, default=0, Scope.CARD).
+3. Dynamic remix.inc macro generation (get_dark_mode) and a ROM-placed hook unit
+   with a resolved runtime reference to the Brain setting.
 4. Framebuffer bitwise inversion accuracy (1,024-byte full buffer inversion test vector).
 5. Setting bypass (0 = bypass / stock display; 1 = invert / dark mode).
 """
@@ -45,7 +46,17 @@ def test_manifest_and_macro():
     assert d.site == 0x40013cae
     assert d.expect == bytes.fromhex("2a79400b9710")
 
-    # Test dm_inc fallback without BRAIN
+    # The hook must be in ROM: a detour into a DRAM unit hangs the ColdFire
+    # port before the loader's bootstrap (measured 2026-11-18).  The Brain
+    # value it reads is resolved after the platform link, as store/parts.py
+    # does, rather than being jumped into at boot.
+    assert dm_mod._UNIT.dram is False, "DARK MODE hook unit must be ROM-placed"
+    assert dm_mod._UNIT.runtime_refs == (
+        ("BRAIN_DARK", "brain", "brain_v_octabam_dark_mode_1"),), dm_mod._UNIT.runtime_refs
+    declared = dict(dm_mod._UNIT.defsyms)["BRAIN_DARK"]
+    assert declared >= 0x10000, "BRAIN_DARK must be declared long-form so both links agree"
+    assert "BRAIN_DARK" in d.unit or dm_mod._UNIT.label == d.unit  # detour reaches our unit
+
     class MockNoBrainRemix:
         modules = ("DARK MODE",)
         name = "test-no-brain"
@@ -54,22 +65,8 @@ def test_manifest_and_macro():
 
     inc_text = dm_mod.dm_inc({"DARK MODE": m}, MockNoBrainRemix())
     assert "get_dark_mode" in inc_text
-    assert "dm_enabled" in inc_text
-
-    # Test dm_inc with mock BRAIN
-    class MockRemix:
-        modules = ("BRAIN", "DARK MODE")
-        name = "test-remix"
-        pins = ()
-        settings = {}
-
-    mods = {
-        "BRAIN": schema.Module(name="brain", key="BRAIN", kind=schema.Kind.CF_PATCH, category=schema.Category.UTILITIES, author="", author_url="", doc=""),
-        "DARK MODE": m
-    }
-    brain_inc = dm_mod.dm_inc(mods, MockRemix())
-    assert "get_dark_mode" in brain_inc
-    assert "brain_v_octabam_dark_mode_1" in brain_inc
+    assert "move.l  BRAIN_DARK" in inc_text
+    assert "dm_enabled" not in inc_text
     print("[PASS] Manifest declarations and dynamic remix.inc macros verified.")
 
 

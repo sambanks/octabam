@@ -5,7 +5,7 @@ Inverts the 1,024-byte display framebuffer immediately after all layers
 (Page plane, Audio Editor, Mixer, Arranger, Menus, Popups, Step View) have
 been composited and before the diff-and-send loop transmits blocks to UART1.
 
-Configurable via setting 'DARK MODE' (default 1 / ON).
+Configurable via setting 'DARK MODE' (default 0 / OFF).
 """
 import dataclasses
 from remix.schema import (Apply, Binary, Category, Detour, Gate, Kind, Linked,
@@ -14,19 +14,26 @@ from remix.schema import (Apply, Binary, Category, Detour, Gate, Kind, Linked,
 STORE_ID = "octabam.dark-mode"
 
 
+# The hook must be reachable at boot, before the platform runtime has been
+# copied into DRAM: a detour into a DRAM unit hangs the ColdFire port before
+# the loader's bootstrap runs (measured 2026-11-18).  The code therefore lives
+# in a ROM-placed linked unit; the one DRAM value it needs is resolved after
+# the platform link with `runtime_refs`, the same pattern store/parts.py uses.
+BRAIN_DARK = "BRAIN_DARK"
+
+
 def dm_inc(modules, remix):
-    import sys, pathlib
-    from remix import schema
-    sys.path.insert(0, str(pathlib.Path(schema.__file__).resolve().parents[1]))
-    from remix import brain
-    mods = modules if isinstance(modules, dict) else {}
-    get = brain.read_macro(remix, mods, STORE_ID, "DARK MODE", "get_dark_mode").rstrip("\n")
-    if "brain_v_" not in get:
-        get = "        .macro  get_dark_mode reg\n        move.l  dm_enabled,\\reg\n        .endm"
-    return "| remix.inc -- DARK MODE (modules/dark-mode/manifest.py)\n" + get + "\n"
+    return ("| remix.inc -- DARK MODE (modules/dark-mode/manifest.py)\n"
+            "        .macro  get_dark_mode reg\n"
+            "        move.l  BRAIN_DARK,\\reg\n"
+            "        .endm\n")
 
 
-_UNIT = Linked("darkmode", "modules/dark-mode/darkmode.s", dram=True, include=dm_inc)
+_UNIT = Linked(
+    "darkmode", "modules/dark-mode/darkmode.s", dram=False, include=dm_inc,
+    defsyms=((BRAIN_DARK, 0x40a955e0),),
+    runtime_refs=((BRAIN_DARK, "brain", "brain_v_octabam_dark_mode_1"),),
+)
 
 MODULE = Module(
     name="dark-mode",
