@@ -4,6 +4,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 
 | remix | contains | proof |
 |---|---|---|
+| [`track-trig-modes`](track-trig-modes/README.md) | Hteah's plural track trig modes revision, with its own test remix.. | emulator (verify_track_trig_modes.py); not on a unit |
 | [`analog-bassdrum`](analog-bassdrum/README.md) | Analog BD source machine, switchable 808/909, stock AMP and FX. | emulator: source/UI under the port; earlier ANALOGBD1 auditioned on MK1, current revision unflashed |
 | [`ata-write-guard`](ata-write-guard/README.md) | Stock effects with the first PIO card write guarded through bookkeeping. | emulator: forced completion-interrupt gate under the port; not on hardware |
 | [`bar-led`](bar-led/README.md) | stock effects with BAR LED: the tempo LED flashes green on the pattern's 1 while playing. | emulator |
