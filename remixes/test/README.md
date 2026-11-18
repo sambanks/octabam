@@ -55,8 +55,6 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`kyoti-fixes`](kyoti-fixes/README.md) | stock effects with QUANTIZE_LIVE_REC_TOGGLE, ERASE_EMPTY_TRIGLESS_LOCKS and BATCH_BUGFIXES together. | emulator |
 | [`kyoti-mute-jump`](kyoti-mute-jump/README.md) | stock effects with MUTE_MODES and DIRECT_JUMP_KYOTI together. | emulator |
 | [`kyoti-mute-sidechain`](kyoti-mute-sidechain/README.md) | stock effects with MUTE_MODES and SIDECHAIN_COMPRESSOR together: a muted KEY track keeps feeding the compressor (SC_KEY). | emulator |
-| [`lazy-chop`](lazy-chop/README.md) | stock effects with LAZY CHOP (tap TRIG 1..16 to slice a take) and BUFFER SAVER. | emulator (verify_lazy_chop): verify_lazy_chop under the port; the module on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
-| [`lock-edit`](lock-edit/README.md) | stock effects with LOCK EDIT ([TRIG]+[BANK] in grid recording opens the audio editor on the step's sample and slice). | emulator (verify_lock_edit): verify_lock_edit under the port; the module itself on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
 | [`lofi-amf-fix`](lofi-amf-fix/README.md) | Reference minimal build: the LO-FI AMF mpysu->mpyuu fix, alone. | emulator |
 | [`lofi2`](lofi2/README.md) | LOFI2 beside the stock effects (all but PLATE REV and SPRING REV, whose words it takes). | emulator |
 | [`midi-follow`](midi-follow/README.md) | Per-track RFOL source selection on MIDI NOTE SETUP; Part-owned bass following. | emulator |
