@@ -16,8 +16,10 @@ and `suite.json`, which names the project, the layouts and the demand-loader tra
 list comes from the remix's manifests at build time, so a module added to the remix (DISTORX) is in the next build.
 The audio is `ot_stimuli.py`'s synthetic material; no file from Elektron is read except the user's own fresh project.
 
-`run` executes the phases in order. When a phase needs another project, it prints the load steps and waits (the card
-and the panel are not reachable from the Mac). A phase passes when its tool exits 0. Phases that need a panel action
+`run` executes the phases in order. When a phase needs another project, it prints the load steps and waits; with
+`--auto` it loads the project through REMOTE instead (`ot_card.py load`: the project is copied over the one the unit has
+loaded, `RMT_SFX_01`, which load it once from the panel to start). The card and the panel are otherwise not
+reachable from the Mac. A phase passes when its tool exits 0. Phases that need a panel action
 say so in `needs`; the manual plan (docs/contributing/HARDWARE_MANUAL.md) covers everything that has no phase.
 """
 import argparse
@@ -263,22 +265,28 @@ def cmd_run(a):
         if want and p["id"] not in want:
             continue
         if p["project"] != loaded:
-            print(f"\n== load {p['project']} ({d / p['project']})\n"
-                  f"   card: cp -R <pristine> PRESETS/{p['project']}; dot_clean -m; sync; diff -r; unmount; load on the unit")
-            if not a.yes:
-                input("   Enter when it is loaded ")
+            print(f"\n== load {p['project']} ({d / p['project']})", flush=True)
+            if a.auto:
+                r = subprocess.run([PY, str(HERE / "ot_card.py"), "load", str(d / p["project"])], cwd=ROOT)
+                if r.returncode:
+                    print("   ot_card.py load failed; stopped")
+                    break
+            else:
+                print(f"   card: cp -R <pristine> PRESETS/{p['project']}; dot_clean -m; sync; diff -r; unmount; load on the unit")
+                if not a.yes:
+                    input("   Enter when it is loaded ")
             loaded = p["project"]
         if p["needs"] and not a.yes:
             print(f"   needs: {p['needs']}")
             input("   Enter when done ")
         cmd = p["cmd"].format(py=PY, hw=HERE, proj=d / p["project"], label=a.label, id=p["id"], out=out, seq=out / f"{p['id']}.json")
-        print(f"-- {p['id']}: {p['title']}")
+        print(f"-- {p['id']}: {p['title']}", flush=True)
         t0 = time.time()
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=ROOT)
         (out / f"{p['id']}.log").write_text(r.stdout + r.stderr)
         rows.append(dict(id=p["id"], title=p["title"], project=p["project"], rc=r.returncode,
                          seconds=round(time.time() - t0), tail=(r.stdout + r.stderr).strip().splitlines()[-6:]))
-        print(f"   {'PASS' if r.returncode == 0 else 'FAIL'} rc={r.returncode} {rows[-1]['seconds']} s -> {out / (p['id'] + '.log')}")
+        print(f"   {'PASS' if r.returncode == 0 else 'FAIL'} rc={r.returncode} {rows[-1]['seconds']} s -> {out / (p['id'] + '.log')}", flush=True)
         merged = [r for r in prev if r["id"] not in {x["id"] for x in rows}] + rows
         sumf.write_text(json.dumps(merged, indent=1))
         if r.returncode and not a.keep_going:
@@ -306,8 +314,11 @@ def main():
         p.add_argument("--lean", action="store_true", help="pre-flight and effect layouts only; no SSCN, SDJ, loader, KITS, scenes, DIRECT_JUMP or soak")
     p = sub.add_parser("run"); p.add_argument("label"); p.add_argument("--dest", default=str(ROOT / "out/suite"))
     p.add_argument("--phase"); p.add_argument("--yes", action="store_true"); p.add_argument("--keep-going", action="store_true")
+    p.add_argument("--auto", action="store_true", help="load each project with ot_card.py (REMOTE: DISK MODE, copy, leave) instead of asking; implies --yes")
     p = sub.add_parser("report"); p.add_argument("label")
     a = ap.parse_args()
+    if getattr(a, "auto", False):
+        a.yes = True
     sys.exit({"plan": cmd_plan, "build": build, "run": cmd_run, "report": cmd_report}[a.c](a) or 0)
 
 

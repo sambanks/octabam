@@ -192,6 +192,37 @@ program changes this way, each with the old sleep as the fallback; the program c
 (`ot_matrix.py` switch) are timed by the run. Every other `time.sleep` in `ot_matrix.py`, `ot_stall.py` and
 `ot_ladder.py` carries a comment naming what it waits for. `ot_suite.py` has none.
 
+## Without the panel: image and project over USB
+
+With an image that carries REMOTE, STORE and USB (`octabam`, `octabam-bus`, `octabam-verbs`), `tools/hw/ot_card.py`
+does the card and the image switch. Run on an MKII on 18 Nov 2026 with the three BUILD 05 images.
+
+```
+python3 tools/hw/ot_card.py copy "OCTABAM-VRB 05.RMX" ...     # files into /BRAIN/REMIXES/, then COMMAND 4; no file: rescan only
+python3 tools/hw/ot_card.py boot "OCTABAM-VRB 05.RMX"         # COMMAND 3, waits for the unit to leave and return
+python3 tools/hw/ot_card.py load out/suite/octabam/SFX_01     # project onto the card, unit reloads it
+python3 tools/hw/ot_card.py fingerprint                       # which image is running
+python3 tools/hw/ot_suite.py run <label> --dest out/suite/<remix> --auto --phase pre-meter,pre-transport,pre-usb,pc-soak
+```
+
+- `load` enters DISK MODE (COMMAND 1), replaces `PRESETS/<name>` with the project (default `RMT_SFX_01`), removes
+  the `._*` files, compares every file, unmounts and leaves (COMMAND 2). Leaving reloads the project the unit has
+  loaded, so `<name>` must be that project: load it from the panel once, then every later load is this command.
+  The record that follows is NEWPROJ or LOADMASK.
+- `boot` needs the name in REMIX SWITCH's list; a fresh image's list is empty until a scan, which `boot` sends.
+- Nothing over USB carries the running image's name. `fingerprint` prints the ring header's three linked addresses
+  (RMT_TRACE, REMIX SWITCH's name list and count); they differ per image. 18 Nov 2026, BUILD 05: `octabam`
+  `0x40b34f44 0x40af0238 0x40af0188`, `octabam-verbs` `0x40b22a84 0x40ae7fb8 0x40ae7f08`, `octabam-bus`
+  `0x40b20a84 0x40ae7520 0x40ae7470`. The boot screen shows the flashed image's name, not the running one's.
+- On `octabam-bus` 05, COMMAND 1 sets the disk-mode flag (`0x460e76a0`) and the unit clears it within 4 s; the card
+  never reaches the Mac (`diskutil list external` shows nothing). Put the project on the card from another image,
+  then `boot` the bus image: it loads the card's project at boot.
+- After COMMAND 1 the Mac did not always mount the card; `ot_card.py` runs `diskutil mount` on the OCTATRACK
+  partition after 8 s.
+- `ot_matrix.py switch` prints the transitions left unapplied (`unapplied`: the DSP busy from 2.5 s after the switch
+  is nearer the previous layout's figure than the new one's) and puts none of that in its exit code, which is 1 when
+  any row carries a flag (`GAP` is on every transition: the 340 ms silence is the load).
+
 ## Stress sequences
 
 `python3 tools/hw/ot_fuzz.py gen <seed> <out.json> --profile mix --minutes 10 --layouts <n>`

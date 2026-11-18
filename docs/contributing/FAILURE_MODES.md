@@ -1023,7 +1023,7 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   never binds (panel frozen, USB gone), cause not established. 27 to 35 bad DSP records per 10 min at pattern wraps
   while MODULATION's code runs, with and without this fix.
 
-## Stopped on the boot screen after REMOTE's COMMAND 3 booted an `.RMX`: 1 of 10 boots 🟡 seen once, cause not known
+## Stopped on the boot screen after REMOTE's COMMAND 3 booted an `.RMX`: 1 of 10 boots 🟡 seen twice, cause not known
 
 MKII, 15 Nov 2026, image N1 (`octabam` with REMOTE, commit 95e52aee). COMMAND 3 for `OCTABAM N1.RMX` was
 taken; the unit reset, showed the boot screen and did not return to USB in 150 s. A power-cycle recovered it.
@@ -1036,4 +1036,20 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
   flashing N1 again.
 - Not tested: the same file booted from BRAIN > REMIXES in that state; the card's state at the time (it was
   the first selection REMIX SWITCH saved from this image).
+- Second sighting, 18 Nov 2026, MKII: COMMAND 3 for `OCTABAM 05.RMX` (`octabam` at `5b991c85`) from image N1 (the
+  same N1 image as the first). Taken; no USB device at 30 s; the unit showed the boot screen and was power-cycled,
+  and it came back on N1. The same file picked from BRAIN > REMIXES on the panel booted `OCTABAM 05` (build tag `05`
+  in the effect names). Later COMMAND 3 boots, all from BUILD 05 images: octabam to verbs, verbs to bus, bus to
+  octabam, octabam to bus: 4 of 4 returned (`tools/hw/ot_card.py boot`).
 
+
+
+## `octabam-bus` 05: COMMAND 1 enters USB DISK MODE and the unit leaves it within 4 s 🟡 seen, cause not known
+
+MKII, 18 Nov 2026, `octabam-bus` BUILD 05 (`5b991c85`) after a COMMAND 3 switch from `octabam-verbs`. COMMAND 1 was
+taken; the disk-mode flag (`0x460e76a0`) read 1 at 2 s and 0 at 4 s and for the next 36 s; `diskutil list external`
+showed no device in 40 s. Three attempts, same result. The same command on `octabam` 05 and `octabam-verbs` 05
+mounted the card each time. Not tested: DISK MODE from the panel on this image; COMMAND 1 on `octabam-bus` as the
+flashed image.
+
+- **Workaround:** `ot_card.py load` from another image, then `boot` the bus image; it loads the card's project.

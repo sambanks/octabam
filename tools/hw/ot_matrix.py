@@ -1120,6 +1120,26 @@ def switch_flags(m):
     return f
 
 
+def unapplied(results):
+    """Indexes of the transitions whose DSP busy after the switch stays at the previous layout's figure
+    (FAILURE_MODES.md, "Program changes left unapplied in a loader soak"). A layout's figure is the median of its
+    DSP busy in the second before each switch away from it; a transition is unapplied when the median from 2.5 s
+    after the switch is nearer the previous layout's figure than the new one's. Needs each layout to be left at
+    least once, and layouts whose figures differ by more than the noise (about 0.3 point).
+    Series rows are [t, cf us, dsp core 0, dsp core 1, ...]."""
+    import statistics
+    pre, post = {}, []
+    for i, r in enumerate(results):
+        s, t = r.get("series") or [], r.get("t_switch_s")
+        before = [p[2] for p in s if t is not None and p[0] < t - 1]
+        after = [p[2] for p in s if t is not None and p[0] > t + 2.5]
+        if before and after:
+            pre.setdefault(r["from"], []).append(statistics.median(before))
+            post.append((i, r["from"], r["to"], statistics.median(after)))
+    level = {k: statistics.median(v) for k, v in pre.items()}
+    return [i for i, f, t, b in post if t in level and abs(b - level[t]) >= abs(b - level[f])]
+
+
 def _switch_pairs(a, entries):
     """[(slot A, slot B)]: --pairs 'A:B,...', else from --report the lightest, heaviest and second heaviest layouts
     that did not drop frames: light to heavy, heavy to light, heavy to second heaviest and back."""
@@ -1238,7 +1258,9 @@ def cmd_switch(a):
         clock.close()
         (out_dir / "report.json").write_text(json.dumps({"remix": plan["remix"], "project": a.project, "mode": "switch",
                                                         "args": vars(a), "results": results}, indent=1))
-    print(f"{len(results)} transitions; report {out_dir / 'report.json'}")
+    bad = unapplied(results)
+    print(f"{len(results)} transitions; unapplied {len(bad)} {bad}; bad records {sum(r.get('bad_in_window') or 0 for r in results)}; "
+          f"report {out_dir / 'report.json'}")
     return 1 if any(r["flags"] for r in results) else 0
 
 
