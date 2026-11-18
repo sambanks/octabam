@@ -1,5 +1,8 @@
 # TRIG MUTE
 
+Author: [Hteah](https://github.com/Hteah). PR preparation, test remix and gate by 8thmyth.
+Original module by [Hteah](https://github.com/Hteah), from [Hteah/ot-mods](https://github.com/Hteah/ot-mods). Copyright (c) 2026 Hteah. Licensed under MIT; the upstream copyright and permission notice apply to this module.
+
 Mute single trigs, as on the newer Elektron boxes. A muted trig stays on the
 grid with its locks and its condition, but does not play.
 

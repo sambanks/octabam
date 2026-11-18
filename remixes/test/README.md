@@ -4,7 +4,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 
 | remix | contains | proof |
 |---|---|---|
-| [`trig-mute`](trig-mute/README.md) | Mute and unmute trigs from the Step View grid.. | emulator (verify_trig_mute.py); not on a unit |
+| [`trig-mute`](trig-mute/README.md) | Hteah's TRIG MUTE: mute and unmute individual trigs in GRID RECORDING. | emulator (verify_trig_mute.py); not on a unit |
 | [`analog-bassdrum`](analog-bassdrum/README.md) | Analog BD source machine, switchable 808/909, stock AMP and FX. | emulator: source/UI under the port; earlier ANALOGBD1 auditioned on MK1, current revision unflashed |
 | [`ata-write-guard`](ata-write-guard/README.md) | Stock effects with the first PIO card write guarded through bookkeeping. | emulator: forced completion-interrupt gate under the port; not on hardware |
 | [`bar-led`](bar-led/README.md) | stock effects with BAR LED: the tempo LED flashes green on the pattern's 1 while playing. | emulator |
