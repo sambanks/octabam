@@ -7,7 +7,7 @@ when that track is selected again, QUICK MUTE and DELAY CTRL included.
 RAM only: every track starts in TRACKS at power-up. ttm.s has the detail.
 """
 
-from remix.schema import Category, Detour, Kind, Linked, Module, Proof
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
 
 H = bytes.fromhex
 
@@ -17,6 +17,7 @@ MODULE = Module(
     kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="8thmyth", author_url="",
     proof=Proof.PORT, proof_note="verify_track_trig_modes under the port; not yet on a unit",
+    gates=(Gate("tools/verify/verify_track_trig_modes.py", venv=True, stage="image"),),
     doc="Each track (T1-T8, M1-M8) remembers its trig mode, every mode included.",
     linked=(Linked("ttm", "modules/track-trig-modes/ttm.s", dram=True),),
     detours=(
