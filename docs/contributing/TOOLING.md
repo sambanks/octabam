@@ -265,7 +265,7 @@ CI). The family, and what each proves:
 | tool | proves |
 |---|---|
 | `tools/build/cycle_count.py` (`make cycles`) | static per-sample cycle count of every module in the selected remix, plus the worst load one core can be asked for |
-| `tools/build/interlock_scan.py MODULE [NAME=VALUE ...]` | the path one module's proc executes under `dsp_host -steptrace`, priced with the DSP56300 Family Manual's Table A-1 and its pipeline stalls (sections A.2 and 3.5), per mode, with the stall sites by label. A model, not a measurement; `--selftest` checks it against the manual's own examples. `ILSCAN_HOST` overrides the `dsp_host` it runs; one without `-steptrace` is refused |
+| `tools/build/interlock_scan.py EFFECT [NAME=VALUE ...] [--sweep] [--json FILE]` | the path one effect's proc executes (a module, or a stock effect by its key) under `dsp_host -steptrace`, priced with the DSP56300 Family Manual's Table A-1 and its pipeline stalls (sections A.2 and 3.5), per mode, with the stall sites by label. A model, not a measurement, checked against the unit in [CYCLE_SCAN.md](CYCLE_SCAN.md) (mean 3 % high); `--selftest` checks it against the manual's own examples. `ILSCAN_HOST` overrides the `dsp_host` it runs; one without `-steptrace` is refused |
 | `tools/verify/verify_roll.py` / `verify_delay.py` | an alternate reverb / delay engine is bit-identical to the shipping one |
 | `tools/verify/verify_bus.py` (`make verify-bus`) | a bus-layout change is behaviour-preserving over its case list (34 layouts on 28 Sep 2026), stamp-edit-compare (`modules/send/README.md`) |
 | `tools/verify/verify_menu.py` | the built choosers and descriptor clones against the chooser mechanism decompiled from the firmware, including formatter vs count and the name-field lengths |

@@ -371,8 +371,8 @@ ceiling is unmeasured by it. ❌ "There is not real headroom": retracted.
 - **The cycle budget.** The emulator renders an engine the chip cannot
   afford. `make cycles` bounds it; hardware proves it.
   `tools/build/interlock_scan.py` prices the executed path with the DSP56300
-  Family Manual's cycle table and pipeline stalls, a model that fitted
-  MODULATION's unit costs (`docs/firmware/CHIP.md` section 2).
+  Family Manual's cycle table and pipeline stalls, a model that fits the
+  unit's slot costs within a few percent (`docs/contributing/CYCLE_SCAN.md`).
 - **The ColdFire side.** `-params` pokes r6 directly, bypassing menus,
   descriptors, ranges and scene logic; the gain chain around the chain is
   modelled, the main level and the cue are not. A slot can draw a knob and

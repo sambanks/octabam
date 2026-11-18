@@ -18,11 +18,20 @@ contention, interrupts. See "Readings" below for the calls the manual
 leaves open.
 
 usage:
-  python3 tools/build/interlock_scan.py MODULE [NAME=VALUE ...] [--top N] [--dump]
+  python3 tools/build/interlock_scan.py EFFECT [NAME=VALUE ...] [--sweep] [--top N] [--json FILE] [--dump]
   python3 tools/build/interlock_scan.py --selftest
 
-NAME=VALUE sets a knob; a MODE given by its label (MODE=JUNO) starts from
-that mode's view defaults. With no MODE, every mode of the module is run.
+EFFECT is a module name (modulation, busverb) or a stock effect's key
+(FILTER, "PLATE REV"). NAME=VALUE sets a knob; a select takes its label
+(MODE=JUNO), and a MODE starts from that mode's view defaults. A run is made
+for every value of the selector (MODE, else the first select of at most 8
+values) not set on the command line. --sweep runs three variants a value:
+the defaults, every other named knob at its maximum, and every other at its
+minimum, and a fourth with the manifest's `dear` knobs when it declares
+them; the sites printed are the dearest variant's. --noviews leaves a
+mode's view defaults out: the knobs are the manifest's defaults plus the
+command line, as the hardware matrix stamps them (tools/hw/ot_matrix.py).
+--json writes every run's figures and sites.
 Run it from the root of a built tree (vendor/, out/raw/). The audition's
 scratch dump (out/dsp/_audition_<module>_A.mem) is built when it is missing
 or older than modules/. The trace needs a dsp_host with -steptrace (make
@@ -40,6 +49,7 @@ subtracted):
   cycles inserted for one let the other's producer finish.
   The A.2.4 distance runs from the END of the writing instruction.
 """
+import json
 import os
 import pathlib
 import re
@@ -57,6 +67,9 @@ ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 LINE = re.compile(r"^([0-9a-f]{5,6}):\s+(.*?)\s*;\s*([0-9a-f]{6})(?:\s+([0-9a-f]{6}))?\s*$")
 TRACE = re.compile(r"^\s+inst 0\s+(\d+)\s+pc=([0-9a-f]{6})")
 FRAMES = 16          # the unit's block (docs/firmware/DSP.md); the gates run 15
+# The traced block is the last of BLOCKS: past the servers' dry start ("the
+# engine stays dry for 256 CALLS", tools/harness/render_reverb.py WARMUP_BLOCKS).
+BLOCKS = 264
 
 KINDS = ("agu", "agu-lua", "agu-tcc", "arith", "arith-tcc", "transfer", "logic-ext", "status", "tcc-r")
 
@@ -252,9 +265,15 @@ FORMS = ("call/return", "branch", "lua", "displaced move", "(rn+nn) / -(rn)",
          "long immediate/absolute", "do/rep", "movem", "other")
 
 
-def analyze(seq):
+def analyze(seq, agu_from=None):
     """seq: [Ins] in executed order, the conditional branches' outcome in .taken.
-    -> (cycles, stalls {kind: cycles}, sites [(index, kind, n, index of the producer)])"""
+    -> (cycles, stalls {kind: cycles}, sites [(index, kind, n, index of the producer)])
+
+    agu_from: where A.2.4's three-cycle distance starts. "end" (the default,
+    ILSCAN_AGU_FROM) counts from the end of the writing instruction; "start"
+    from its first cycle, so a two-cycle writer (a long immediate) is one
+    cycle nearer clear. The manual's examples do not separate the two."""
+    agu_from = agu_from or os.environ.get("ILSCAN_AGU_FROM", "end")
     t = 0
     last_w = {}                     # AGU set -> (end cycle, how, index of the writer)
     stalls = Counter()
@@ -289,11 +308,12 @@ def analyze(seq):
             kind, st, w = max(cand, key=lambda c: c[1])
             stalls[kind] += st
             sites.append((k, kind, st, w))
+        start = t + st
         t += st + ins.cyc
         if ins.cond and ins.taken is False:
             t += 1                   # A.2.6.3: a false condition delays the next decode by one
         for s, how in ins.agu_dst.items():
-            last_w[s] = (t, how, k)
+            last_w[s] = ((start + 1) if agu_from == "start" else t, how, k)
     return t, stalls, sites
 
 
@@ -401,23 +421,32 @@ def decode(p, pcs, lo):
     return ins
 
 
-def trace(mem, init, proc, params, blocks=4):
+class ScanError(Exception):
+    """A run that could not be scanned; a sweep records it and goes on."""
+
+
+def trace(t, params, blocks=BLOCKS):
     """PCs of the tracked instance's proc in block blocks-1 (a steady block)."""
     with tempfile.TemporaryDirectory(prefix="ilscan.") as d:
         d = pathlib.Path(d)
         n = FRAMES * blocks
         (d / "in.raw").write_bytes(b"".join(
             struct.pack("<i", int(0.3 * 8388607 * ((i * 37) % 200 - 100) / 100)) for i in range(2 * n)))
-        cmd = [str(HOST), "-mem", str(mem), "-init", f"{init:x}", "-proc", f"{proc:x}",
-               "-inst", "1", "-r7", "1", "-alloc", "0", "-inmask", "1", "-stereo",
+        cmd = [str(HOST), "-mem", str(t.mem), "-init", f"{t.init:x}", "-proc", f"{t.proc:x}",
+               "-inst", "1", "-r7", str(t.r7), "-alloc", str(t.alloc), "-inmask", "1", "-stereo",
+               *(["-audio", "0"] if t.audio0 else []),
                "-frames", str(FRAMES), "-blocks", str(blocks), "-diff", str(blocks),
                "-in", str(d / "in.raw"), "-out", str(d / "out.raw"),
                "-params", ",".join(str(x) for x in params),
                "-trace", "400000", "-trackinst", "0", "-steptrace"]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            raise ScanError("dsp_host did not finish in 600 s")
     if r.returncode:
-        sys.exit(f"dsp_host failed ({HOST}; a host without -steptrace fails here too: set ILSCAN_HOST):\n"
-                 f"{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
+        tail = (r.stdout[-1200:] + r.stderr[-600:]).strip().splitlines()[-6:]
+        raise ScanError(f"dsp_host failed ({HOST}; a host without -steptrace fails here too: "
+                        f"set ILSCAN_HOST): " + " | ".join(tail))
     calls, cur = [], None
     for l in r.stdout.splitlines():
         m = TRACE.match(l)
@@ -428,26 +457,137 @@ def trace(mem, init, proc, params, blocks=4):
             calls.append(cur)
         cur.append(int(m.group(2), 16))
     if not calls:
-        sys.exit("dsp_host printed no trace")
+        raise ScanError("dsp_host printed no trace")
     return calls[-1]
 
 
-def labels_at(mod_name, base, p):
-    """[(address, label)] of the module's source assembled at base, checked against the dump."""
+def _words(b):
+    return [b[i] | b[i + 1] << 8 | b[i + 2] << 16 for i in range(0, len(b) - len(b) % 3, 3)]
+
+
+def labels_for(mod, init, p):
+    """[(address, label)] of the module's source where the dump has it, or [].
+
+    The source is assembled once at 0; the base is the one, among init minus
+    each label's address, at which the most words agree with the dump (a
+    word holding an absolute address differs, the rest agree)."""
     import cycle_count
-    src = cycle_count.prep(mod_name)
+    try:
+        src = cycle_count.prep(pathlib.Path(mod.dsp.asm).stem)
+    except SystemExit:
+        return []
     with tempfile.TemporaryDirectory(prefix="ilscan.") as d:
         d = pathlib.Path(d)
         (d / "s.asm").write_text(src)
-        r = subprocess.run([str(ASM), "-in", str(d / "s.asm"), "-org", f"{base:x}",
+        r = subprocess.run([str(ASM), "-in", str(d / "s.asm"), "-org", "0",
                             "-out", str(d / "s.bin"), "-sym", str(d / "s.sym")], capture_output=True, text=True)
-        if r.returncode:
-            return [], 0.0
-        b = (d / "s.bin").read_bytes()
-        syms = [(int(v, 16), k) for k, v in (l.split() for l in (d / "s.sym").read_text().splitlines() if l.strip())]
-    w = [b[i] | b[i + 1] << 8 | b[i + 2] << 16 for i in range(0, len(b) - len(b) % 3, 3)]
-    same = sum(1 for i, x in enumerate(w) if p.get(base + i) == x) / max(1, len(w))
-    return sorted(syms), same
+        if r.returncode or not (d / "s.bin").exists():
+            return []
+        w = _words((d / "s.bin").read_bytes())
+        syms = sorted((int(v, 16), k) for k, v in (l.split() for l in (d / "s.sym").read_text().splitlines()
+                                                    if l.strip()))
+    best, best_same = None, 0.0
+    for a, _k in syms:
+        base = init - a
+        if base < 0:
+            continue
+        same = sum(1 for i, x in enumerate(w) if p.get(base + i) == x) / max(1, len(w))
+        if same > best_same:
+            best, best_same = base, same
+    if best is None or best_same < 0.9:
+        return []
+    return [(a + best, k) for a, k in syms]
+
+
+def insert_mem(mod):
+    """The audition's scratch dump for an insert, with the modules it requires.
+
+    audition._ensure_insert_mem builds a two-module remix (the insert and
+    SEND); a module with `requires` (DEVILISH needs OCTA303, EUCLID EVENTS)
+    refuses that build, so its scratch remix carries them too."""
+    from remix import audition, registry
+    need, todo = [], list(mod.requires or ())
+    while todo:
+        k = todo.pop()
+        if k not in need and k != mod.key:
+            need.append(k)
+            todo += list(registry.by_key(k).requires or ())
+    if not need:
+        return audition._ensure_insert_mem(mod, log=lambda *_a: None)
+    mem = ROOT / f"out/dsp/_audition_{mod.name}_A.mem"
+    if mem.exists() and mem.stat().st_mtime > audition._newest_input_mtime():
+        return mem
+    send = registry.by_name("send")
+    keys = ", ".join(f'"{k}"' for k in [mod.key, send.key, *need])
+    scratch = ROOT / "remixes/_audition.py"
+    scratch.write_text(
+        f'"""_audition -- scratch: {mod.name} + SEND + what it requires, for interlock_scan.\n\n'
+        f'Written and removed by tools/build/interlock_scan.py.\n"""\n\n'
+        f'from remix.schema import Remix\n\n'
+        f'REMIX = Remix(\n    name="_audition",\n    doc="audition scratch",\n'
+        f'    modules=({keys},),\n    fallback="{send.key}",\n)\n')
+    keep = audition.IMAGE.read_bytes() if audition.IMAGE.exists() else None
+    try:
+        audition._build({"REMIX": "_audition", "XBUS": "1", "SPEC": "1"})
+        audition._dump(mem)
+    finally:
+        scratch.unlink(missing_ok=True)
+        for junk in (ROOT / "remixes/__pycache__").glob("_audition*"):
+            junk.unlink(missing_ok=True)
+        if keep is not None:
+            audition.IMAGE.write_bytes(keep)
+    return mem
+
+
+class Target:
+    """What one effect needs for a run: its dump, entries, slot and labels."""
+
+    def __init__(self, mod):
+        import send_probe
+        from remix import audition, registry, schema, stock
+        self.mod = mod
+        quiet = lambda *_a: None  # noqa: E731
+        self.audio0 = False
+        if getattr(mod, "is_stock", False):
+            if mod.key in stock.NO_DSP:
+                raise ScanError(f"{mod.key} runs on the ColdFire (stock.NO_DSP): its DSP entry is "
+                                "the passthrough stub")
+            self.mem = audition._ensure_stock_mem(log=quiet)
+            self.r7, self.alloc = schema.render_slot(mod)
+            self.audio0 = True            # dsp_host's default audio block sits in stock scratch
+        elif mod.dsp is None or mod.menu is None:
+            raise ScanError(f"{mod.name} has no DSP effect of its own to scan")
+        elif mod.name == "busdelay":
+            self.mem = audition._ensure_delay_mem(log=quiet)   # the DEV hatch: the server in payload A
+            self.r7, self.alloc = schema.render_slot(mod)
+        elif mod.key == registry.by_name("send").key:
+            # SEND cannot pair with itself in the audition's scratch remix; the
+            # reverb server's scratch dump is the reverb plus SEND
+            self.mem = audition._ensure_insert_mem(registry.by_name("busverb"), log=quiet)
+            self.r7, self.alloc = schema.render_slot(mod)
+        else:
+            try:
+                self.mem = insert_mem(mod)
+            except RuntimeError as e:          # the audition's build refused the scratch remix
+                raise ScanError(str(e))
+            if mod.name == "busverb":
+                import render_reverb      # its slot rule: the first FX2 slot on a guarded image
+                self.r7, self.alloc = (2 if render_reverb._guarded(self.mem) else 4), 3
+            else:
+                self.r7, self.alloc = schema.render_slot(mod)
+        self.init, self.proc = send_probe.entry_points(str(self.mem), mod.menu.fx2_id)
+        send = registry.by_name("send")
+        if not getattr(mod, "is_stock", False) and mod.key != send.key and \
+                (self.init, self.proc) == send_probe.entry_points(str(self.mem), send.menu.fx2_id):
+            raise ScanError(f"fx id 0x{mod.menu.fx2_id:02x} resolves to SEND's entry points: "
+                            f"{mod.name} is not in {self.mem}")
+        self.p = load_p(self.mem)
+        self.syms = [] if getattr(mod, "is_stock", False) else labels_for(mod, self.init, self.p)
+        self.labelled = bool(self.syms)
+        if not self.syms:
+            # stock code, or a source the build edits (a key bus reader, a
+            # per-remix substitution): sites read from the entries instead
+            self.syms = sorted({(self.init, "init"), (self.proc, "proc")})
 
 
 def where(pc, syms):
@@ -462,9 +602,33 @@ def where(pc, syms):
 
 # ---- settings -----------------------------------------------------------------
 
-def settings_for(mod, args):
-    """[(label, params)]: the knob vector of each run."""
-    K = mod.knob_map()
+def _name(q):
+    n = q.name
+    return (n.decode() if isinstance(n, bytes) else n) or ""
+
+
+def selector(mod):
+    """The knob a sweep runs every value of: MODE, else the first select of at most 8 values."""
+    names = [_name(q) for q in mod.params]
+    if "MODE" in names:
+        return "MODE"
+    for q in mod.params:
+        if q.labels and q.count and q.count <= 8:
+            return _name(q)
+    return None
+
+
+def settings_for(mod, args, sweep=False, views=True):
+    """[(label, variant, params)]: the knob vector of each run.
+
+    A run per value of the selector (MODE, or the first small select), from
+    that value's view defaults when the module has views. With sweep, three
+    variants a value: the defaults, every other named knob at its maximum,
+    and every other named knob at its minimum (the "dearest of as-picked,
+    all-min, all-max" of the stock measurements in CHIP.md), and the
+    manifest's `dear` knobs when it has them."""
+    names = [_name(q) for q in mod.params]
+    K = {n: i for i, n in enumerate(names) if n}
     base = [(q.default or 0) for q in mod.params]
     over = {}
     for a in args:
@@ -475,47 +639,81 @@ def settings_for(mod, args):
         q = mod.params[K[name]]
         labels = [l.upper() for l in (q.labels or ())]
         over[name] = labels.index(val.upper()) if val.upper() in labels else int(val)
+    sel = selector(mod)
+    qsel = mod.params[K[sel]] if sel else None
+    values = [over[sel]] if sel in over else (list(range(qsel.count)) if sel else [None])
     runs = []
-    modes = [over["MODE"]] if "MODE" in over else (
-        list(range(mod.params[K["MODE"]].count)) if "MODE" in K else [None])
-    for mv in modes:
+    for sv in values:
         v = list(base)
-        label = ""
-        if mv is not None:
-            view = mod.view_for(mv)
+        label = "defaults"
+        if sv is not None:
+            view = mod.view_for(sv) if views and sel == "MODE" and hasattr(mod, "view_for") else None
             for slot, val in (view.defaults.items() if view is not None else ()):
                 v[K[mod.canon_name(slot)]] = val
-            v[K["MODE"]] = mv
-            q = mod.params[K["MODE"]]
-            label = q.labels[mv] if q.labels else f"MODE={mv}"
-        for name, val in over.items():
-            if name != "MODE":
-                v[K[name]] = val
-        extra = " ".join(f"{n}={x}" for n, x in over.items() if n != "MODE")
-        runs.append(((label + " " + extra).strip() or "defaults", v))
+            v[K[sel]] = sv
+            label = (qsel.labels[sv] if qsel.labels else f"{sel}={sv}")
+            if sel != "MODE":
+                label = f"{sel}={label}"
+        variants = [("def", v)]
+        if sweep:
+            hi, lo = list(v), list(v)
+            for i, q in enumerate(mod.params):
+                n = names[i]
+                if not n or n == sel:
+                    continue
+                hi[i] = (q.count - 1) if q.count else 127
+                lo[i] = 0
+            variants += [("max", hi), ("min", lo)]
+            dear = dict(getattr(mod, "dear", None) or {})
+            if dear:
+                # the manifest's dearest knobs (schema `dear`, what the hardware
+                # matrix and the pressure render use), the selector kept
+                dv = list(v)
+                for n, val in dear.items():
+                    if n != sel and n in K:
+                        dv[K[n]] = val
+                variants.append(("dear", dv))
+        for var, vec in variants:
+            vec = list(vec)
+            for name, val in over.items():
+                if name != sel:
+                    vec[K[name]] = val
+            extra = " ".join(f"{n}={x}" for n, x in over.items() if n != sel)
+            runs.append(((label + " " + extra).strip(), var, vec))
     return runs
 
 
 # ---- the report -----------------------------------------------------------------
 
-def scan(mod, mem, init, proc, params, p, syms):
-    pcs = trace(mem, init, proc, params)
-    ins = decode(p, pcs, min(min(pcs), init))
+def scan(t, params):
+    pcs = trace(t, params)
+    p = t.p
+    ins = decode(p, pcs, min(min(pcs), t.init))
     # dsp_host ignores an option it does not know: a host without -steptrace
     # runs each DO loop inside one step, and the trace goes from the `do`
     # straight to the address after the loop (the disassembler prints that
     # address, LA + 1, as the `do`'s operand).
+    # A `do` whose count is zero skips its body too (an annulled DO, A.2.6.6:
+    # three more decode cycles), so only a count known to be non-zero proves
+    # the host: n7 (the frame count) or a non-zero immediate.
+    annulled = set()
     for k in range(len(pcs) - 1):
-        t = ins[pcs[k]][0]
-        m = re.match(r"do\s+\S+,>?\$([0-9a-f]+)", t)
-        if m and pcs[k + 1] == int(m.group(1), 16):
-            sys.exit(f"the trace skips the body of `{t}` at P:0x{pcs[k]:x}: this dsp_host ({HOST}) "
-                     "does not step DO loops (-steptrace). Set ILSCAN_HOST to one that does.")
+        txt = ins[pcs[k]][0]
+        m = re.match(r"do\s+(\S+),>?\$([0-9a-f]+)", txt)
+        if m and pcs[k + 1] == int(m.group(2), 16):
+            cnt = m.group(1)
+            imm = re.match(r"#[<>]?\$?([0-9a-f]+)$", cnt)
+            if cnt == "n7" or (imm and int(imm.group(1), 16) != 0):
+                sys.exit(f"the trace skips the body of `{txt}` at P:0x{pcs[k]:x}: this dsp_host ({HOST}) "
+                         "does not step DO loops (-steptrace). Set ILSCAN_HOST to one that does.")
+            annulled.add(k)
     seq = []
     for k, pc in enumerate(pcs):
         i = Ins(pc, *ins[pc])
         if i.cond and k + 1 < len(pcs):
             i.taken = pcs[k + 1] != pc + i.nwords
+        if k in annulled:
+            i.cyc += 3
         seq.append(i)
     total, stalls, sites = analyze(seq)
     return seq, total, stalls, sites
@@ -525,70 +723,111 @@ def main(argv):
     if "--selftest" in argv:
         sys.exit(0 if selftest() else 1)
     dump = "--dump" in argv
-    top = 12
-    if "--top" in argv:
-        i = argv.index("--top")
-        top = int(argv[i + 1])
-        del argv[i:i + 2]
-    argv = [a for a in argv if a != "--dump"]
+    sweep = "--sweep" in argv
+    views = "--noviews" not in argv
+    top, jpath = 12, None
+    for opt in ("--top", "--json"):
+        if opt in argv:
+            i = argv.index(opt)
+            if opt == "--top":
+                top = int(argv[i + 1])
+            else:
+                jpath = argv[i + 1]
+            del argv[i:i + 2]
+    argv = [a for a in argv if a not in ("--dump", "--sweep", "--noviews")]
     if not argv:
         sys.exit(__doc__)
-    import send_probe
-    from remix import audition, registry
-    mod = registry.by_name(argv[0])
-    if mod.dsp is None or mod.menu is None:
-        sys.exit(f"{mod.name} has no DSP effect of its own to scan")
-    # the audition's scratch dump: payload A with this module (and SEND) in it,
-    # rebuilt when anything under modules/ is newer than it
-    mem = audition._ensure_insert_mem(mod, log=lambda *_a: None)
-    init, proc = send_probe.entry_points(str(mem), mod.menu.fx2_id)
-    send = registry.by_name("send")
-    if mod.key != send.key and (init, proc) == send_probe.entry_points(str(mem), send.menu.fx2_id):
-        sys.exit(f"fx id 0x{mod.menu.fx2_id:02x} resolves to SEND's entry points: {mod.name} is not in {mem}")
-    p = load_p(mem)
-    syms, same = labels_at(mod.name, init, p)
-    if same < 0.99:
-        syms = []                    # the module does not start at its init entry: no labels
-    print(f"{mod.name}: init P:0x{init:x} proc P:0x{proc:x}, {FRAMES}-sample blocks, one steady block a setting")
+    # the servers' build paths (the DEV hatch, BusDelay's geometry) read the
+    # selected remix; octabam-bus carries both servers
+    os.environ.setdefault("REMIX", "octabam-bus")
+    from remix import registry, stock
+    e = next((e for e in stock.MODULES if e.key.upper() == argv[0].upper()), None)
+    mod = registry.by_key(e.key) if e is not None else None
+    if mod is None:
+        mod = next((m for m in registry.modules().values() if m.key.upper() == argv[0].upper()), None)
+    if mod is None:
+        try:
+            mod = registry.by_name(argv[0])
+        except SystemExit:
+            mod = None
+    if mod is None:
+        sys.exit(f"no module or stock effect named {argv[0]!r}")
+    who = getattr(mod, "key", mod.name)
+    result = dict(target=who, name=mod.name, stock=bool(getattr(mod, "is_stock", False)),
+                  frames=FRAMES, runs=[], error=None)
+    try:
+        t = Target(mod)
+    except ScanError as e:
+        result["error"] = str(e)
+        print(f"{who}: not scanned: {e}")
+        if jpath:
+            pathlib.Path(jpath).write_text(json.dumps(result, indent=1))
+        return
+    result.update(init=t.init, proc=t.proc, r7=t.r7, alloc=t.alloc, labels=t.labelled)
+    print(f"{who}: init P:0x{t.init:x} proc P:0x{t.proc:x} (r7 {t.r7}, alloc {t.alloc}"
+          f"{', -audio 0' if t.audio0 else ''}), {FRAMES}-sample blocks, one steady block a setting")
     print("cycles = Table A-1 (DSP56300FM Rev 5); stalls = sections A.2 and 3.5; internal memory, no wait states")
-    print(f"{'setting':28} {'instr/smp':>9} {'cyc/smp':>8} {'stall/smp':>9}  " + " ".join(f"{k:>9}" for k in KINDS))
+    print(f"{'setting':28} {'var':3} {'instr/smp':>9} {'cyc/smp':>8} {'stall/smp':>9}  "
+          + " ".join(f"{k:>9}" for k in KINDS))
     reports = []
-    for label, params in settings_for(mod, argv[1:]):
-        seq, total, stalls, sites = scan(mod, mem, init, proc, params, p, syms)
+    for label, var, params in settings_for(mod, argv[1:], sweep, views):
+        try:
+            seq, total, stalls, sites = scan(t, params)
+        except ScanError as e:
+            print(f"{label:28} {var:3} not scanned: {e}")
+            result["runs"].append(dict(label=label, variant=var, params=params, error=str(e)))
+            continue
         base = sum(i.cyc for i in seq)
         st = sum(stalls.values())
-        print(f"{label:28} {len(seq) / FRAMES:9.1f} {(total) / FRAMES:8.1f} {st / FRAMES:9.1f}  "
+        print(f"{label:28} {var:3} {len(seq) / FRAMES:9.1f} {total / FRAMES:8.1f} {st / FRAMES:9.1f}  "
               + " ".join(f"{stalls[k] / FRAMES:9.2f}" for k in KINDS))
-        reports.append((label, params, seq, total, base, stalls, sites))
-    print("\ncyc/smp includes the stalls and A.2.6.3's +1 after a conditional branch not taken.")
-    print(f"\ncycles a sample above one an instruction, by form (Table A-1):\n{'setting':28} "
-          + " ".join(f"{f[:11]:>11}" for f in FORMS) + f" {'branch+1':>9}")
-    for label, params, seq, total, base, stalls, sites in reports:
         extra = Counter()
         for i in seq:
             f = form_of(i)
             if f:
                 extra[f] += i.cyc - 1
         nt = sum(1 for i in seq if i.cond and i.taken is False)
-        print(f"{label:28} " + " ".join(f"{extra[f] / FRAMES:11.2f}" for f in FORMS) + f" {nt / FRAMES:9.2f}")
-    for label, params, seq, total, base, stalls, sites in reports:
         agg = defaultdict(lambda: [0, 0])
         for k, kind, n, w in sites:
-            key = (seq[w].pc, seq[k].pc, kind)
-            agg[key][0] += 1
-            agg[key][1] += n
+            agg[(seq[w].pc, seq[k].pc, kind)][0] += 1
+            agg[(seq[w].pc, seq[k].pc, kind)][1] += n
         at = {i.pc: i for i in seq}
-        print(f"\n{label}: params {params}; {len(seq)} instructions, {base} cycles before stalls, "
-              f"{total - base} after (stalls and branch decode), {total} in the block")
-        print(f"  {'stall/smp':>9}  {'kind':9}  {'site':18} the instruction that waits     waits on")
-        for (wpc, pc, kind), (cnt, n) in sorted(agg.items(), key=lambda kv: -kv[1][1])[:top]:
-            print(f"  {n / FRAMES:9.2f}  {kind:9}  {where(pc, syms):18} {at[pc].text:30} "
-                  f"{at[wpc].text} ({where(wpc, syms)})")
+        topsites = [dict(stall=n / FRAMES, kind=kind, site=where(pc, t.syms), pc=pc, text=at[pc].text,
+                         waits_on=at[wpc].text, waits_on_site=where(wpc, t.syms))
+                    for (wpc, pc, kind), (cnt, n) in sorted(agg.items(), key=lambda kv: -kv[1][1])]
+        run = dict(label=label, variant=var, params=params, instr=len(seq) / FRAMES,
+                   cycles=total / FRAMES, base=base / FRAMES, stall=st / FRAMES,
+                   stalls={k: stalls[k] / FRAMES for k in KINDS},
+                   forms={f: extra[f] / FRAMES for f in FORMS}, branch_false=nt / FRAMES,
+                   sites=topsites[:40])
+        result["runs"].append(run)
+        reports.append((run, seq, sites))
+    print("\ncyc/smp includes the stalls and A.2.6.3's +1 after a conditional branch not taken.")
+    print(f"\ncycles a sample above one an instruction, by form (Table A-1):\n{'setting':28} {'var':3} "
+          + " ".join(f"{f[:11]:>11}" for f in FORMS) + f" {'branch+1':>9}")
+    for run, _seq, _sites in reports:
+        print(f"{run['label']:28} {run['variant']:3} " + " ".join(f"{run['forms'][f]:11.2f}" for f in FORMS)
+              + f" {run['branch_false']:9.2f}")
+    # the sites of the dearest variant of each setting
+    dearest = {}
+    for run, seq, sites in reports:
+        if run["label"] not in dearest or run["cycles"] > dearest[run["label"]][0]["cycles"]:
+            dearest[run["label"]] = (run, seq, sites)
+    for run, seq, sites in dearest.values():
+        print(f"\n{run['label']} ({run['variant']}): params {run['params']}; {run['instr']:.1f} instructions "
+              f"a sample, {run['base']:.1f} cycles before stalls, {run['cycles']:.1f} after")
+        print(f"  {'stall/smp':>9}  {'kind':9}  {'site':22} the instruction that waits     waits on")
+        for s in run["sites"][:top]:
+            print(f"  {s['stall']:9.2f}  {s['kind']:9}  {s['site']:22} {s['text']:30} "
+                  f"{s['waits_on']} ({s['waits_on_site']})")
         if dump:
             st = {k: (kind, n) for k, kind, n, _w in sites}
             for k, i in enumerate(seq):
                 s = st.get(k)
-                print(f"    {k:6} {i.pc:06x} {where(i.pc, syms):18} {i.cyc}c {('+' + str(s[1]) + ' ' + s[0]) if s else '':14} {i.text}")
+                print(f"    {k:6} {i.pc:06x} {where(i.pc, t.syms):22} {i.cyc}c "
+                      f"{('+' + str(s[1]) + ' ' + s[0]) if s else '':14} {i.text}")
+    if jpath:
+        pathlib.Path(jpath).write_text(json.dumps(result, indent=1))
 
 
 if __name__ == "__main__":

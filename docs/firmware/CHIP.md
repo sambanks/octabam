@@ -372,6 +372,12 @@ counted as an address register written by a move, and a Tcc counted as an ALU
 instruction for the arithmetic stall. Without them the model is within 1 % of
 all six unit figures; with them, 1.4 to 2.6 % high.
 
+The same check over every unit figure the repo has for code the scan can
+rebuild (38 settings of 22 effects, the stock effects among them, and
+Jannik Aßfalg's stock counts in the table above):
+`docs/contributing/CYCLE_SCAN.md` section 1. The narrow model is a mean 3.0 %
+above the unit and never more than 0.2 % below it.
+
 - ✅ the numbers in the table (the unit's from `modules/modulation/README.md`;
   the model's from the scan, 18 Nov 2026).
 - 🟡 that Table A-1 and the stalls, with the narrow readings, describe this
