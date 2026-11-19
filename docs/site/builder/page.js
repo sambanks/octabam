@@ -14,7 +14,10 @@ const here = (p) => new URL(p, import.meta.url);
 async function main() {
   const manifest = await (await fetch(here("manifest.json"))).json();
 
-  const meta = manifest.remixes[0];
+  const remixes = manifest.remixes;
+  let meta = remixes[0];
+  const pick = el("select", { id: "ob-remix" },
+    ...remixes.map((r, i) => el("option", { value: String(i), textContent: r.title })));
   const file = el("input", { type: "file", id: "ob-file", accept: ".zip,.syx", hidden: true });
   const choose = el("button", { type: "button", id: "ob-choose", textContent: "Choose OS file" });
   const chosen = el("span", { id: "ob-chosen", textContent: " No file chosen." });
@@ -26,10 +29,16 @@ async function main() {
 
   root.replaceChildren(
     el("p", {}, `Octabam ${manifest.version}`),
+    ...(remixes.length > 1 ? [el("p", {}, el("label", { htmlFor: "ob-remix", textContent: "Remix: " }), pick)] : []),
     el("p", {}, "Your OCTATRACK_OS1.40C_dist.zip or OCTATRACK_OS1.40C.syx:"),
     el("p", {}, choose, chosen, file),
     el("p", {}, go), status, links, built);
 
+  pick.addEventListener("change", () => {
+    meta = remixes[Number(pick.value)];
+    links.replaceChildren();
+    status.textContent = "";
+  });
   choose.addEventListener("click", () => file.click());
   file.addEventListener("change", () => {
     go.disabled = !file.files.length;

@@ -1,7 +1,8 @@
 # Build and Install
 
-Builds Octabam v0.4 ([what is in it](remix-octabam.md)) from your own copy of
-Octatrack OS 1.40C, in this browser tab. The OS file is read locally and
+Builds an Octabam v0.5 remix from your own copy of Octatrack OS 1.40C, in this
+browser tab: [Octabam](remix-octabam.md), [Octabam Verbs](remix-octabam-verbs.md) or
+[Octabam Bus](remix-octabam-bus.md). Choose one under **Remix** before you build. The OS file is read locally and
 nothing is uploaded.
 
 !!! tip "Back up your projects"
@@ -30,7 +31,7 @@ The build takes a few seconds. The page offers three files:
 |---|---|
 | `OCTATRACK_OCTABAM<tag>.bin` | card install: copy to the root of the CF card, then PROJECT → SYSTEM → OS UPGRADE. |
 | `OCTATRACK_OS1.40C_OCTABAM<tag>.syx` | DIN MIDI install. |
-| `OCTABAM <tag>.RMX` | optional: boots this image from the card without flashing it. Needs a unit already running an octabam image. See [Switch with an RMX file](#switch-with-an-rmx-file). |
+| `OCTABAM <tag>.RMX` (`OCTABAM-VRB <tag>.RMX`, `OCTABAM-BUS <tag>.RMX`) | optional: boots this image from the card without flashing it. Needs a unit already running an octabam image. See [Switch with an RMX file](#switch-with-an-rmx-file). |
 
 The files contain Elektron's OS, so keep them to yourself.
 
@@ -91,7 +92,7 @@ the same steps, or see [Safety and recovery](safety.md).
 
 ## How it works
 
-The page holds the patch for Octabam v0.4: its bytes, plus instructions to
+The page holds one patch for each Octabam v0.5 remix: its bytes, plus instructions to
 copy ranges from your 1.40C. It applies the patch to the MAIN OS section of
 your file, rebuilds the firmware container with Elektron's container tool
 compiled to WebAssembly, and wraps it for the card. It refuses a file whose
