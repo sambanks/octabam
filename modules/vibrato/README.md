@@ -97,6 +97,19 @@ block-based:
 
 ## Measured
 
+- **19 Nov 2026, the stall pass** (bit-identical: `verify_ident.py` with the
+  wider matrix of sambanks/octabam#1172, 36 renders and the r7 state after
+  every block, IDENTICAL after each of the three commits; `verify_vibrato`
+  ALL PASS). Cycles a sample from `tools/build/interlock_scan.py` (the core
+  manual's cycle table and stalls: a model, on average 3.0 % above the unit,
+  `docs/contributing/CYCLE_SCAN.md` section 1), every knob at its maximum:
+  SINE 206.8 → 176.8, TRI 207.0 → 177.0, SQR 206.6 → 176.6 (4.6 % → 3.9 % of a
+  frame), RND -30 as well. Instructions a sample -8. Words 593 → 587. Not
+  measured on the unit. Changes: `vb_tap` works out the offset first and the
+  fraction in its gaps, and drops a clean reload its callers never needed
+  (MODULATION's `mo_tap` had the same change); the line writes load their
+  address early and store in the blend's shift gap; the frame advance rides on
+  the output stores. Every form has a stock site or a register row.
 - ✅ **Render gates, 4 Nov 2026** (`verify_vibrato`, 54 checks, this tree,
   dsp_host): MIX 0 bit-exact in every shape; an FX2 instance bit-exact dry at
   any setting and `-guard` clean on both slots; DEP 0 a pure 2-sample delay
