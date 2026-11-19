@@ -69,6 +69,12 @@ STGS 4096, HPF 64 (`cycle_count.py` prices HPF on).
   its read (3 cycles on the narrow model, none on the full one: the read then
   waits only on a `lua`'s destination, which the manual does not say
   interlocks).
+- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172, 40 renders, IDENTICAL; the scan
+  as above): six small constants (0 to 63) in `add` and `sub` load as the
+  one-word 6-bit form (`add #>$1,a` is `add #$1,a`: the same result and
+  flags). STGS=1024 at `dear`: 522.4 → 520.3 cycles a sample (modelled); words
+  1,088 → 1,082.
 
 All 52 gates of `tools/verify/verify_bbd.py` pass on this tree (`dsp_host`, a
 private image with the stock code built in and BBD in the space of SPRING REV
