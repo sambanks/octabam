@@ -455,6 +455,26 @@ timing, so a local "clean" is still NOT evidence a bus timing defect is
 gone (a local red IS a defect). When local says clean and hardware says
 broken, believe the hardware and go looking for what the harness omits.
 
+<a name="trap-trace-do"></a>
+
+### `dsp_host -trace` skips the body of a `do` loop
+
+**Seen:** 18 Nov 2026. A trace of MODULATION's proc logged 339 instructions for a 16-sample block,
+where `-meter` reads 3,299. The trace went from `do n7,>$13de` straight to `P:0x13de`, the
+address after the loop.
+
+**Cause:** the emulator's interpreter runs a whole hardware DO loop inside the one
+`execInterpreter()` call that executes the `do` (`DSP::do_start`, `vendor/dsp56300`), so the
+host's per-step trace never sees the body. `ot_emu` steps loops itself (`setHostStepped`,
+`doLoopEnd()` after every step).
+
+**Fix and gate:** `dsp_host -steptrace` runs the core host-stepped, as `ot_emu` does; MODULATION's
+five modes render bit-identically with and without it. `tools/build/interlock_scan.py` refuses a
+trace in which a `do` is followed by the address after its loop.
+
+Rule: a per-instruction trace of an effect needs `-steptrace`. Without it, every sample loop is
+missing.
+
 <a name="trap-bus-zero-client"></a>
 
 ### A bus client that registers but contributes nothing steals everyone else's level
