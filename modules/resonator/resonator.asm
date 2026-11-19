@@ -202,12 +202,8 @@ rs_fbd:
         move    a,x:(r7+$27)
         move    x1,x:(r7+$25)
         move    r7,r4
-        move    r7,r3
-        move    #$30,n3
-        move    (r3)+n3
-        move    r7,r2
-        move    #$34,n2
-        move    (r2)+n2
+        lua     (r7+$30),r3             ; the coefficients ($30) and the gains ($34),
+        lua     (r7+$34),r2             ; one lua each (rs_one steps them by one)
         clr     a
         move    a,x:(r7+$58)
         bsr     rs_one
@@ -262,15 +258,9 @@ rs_fbd:
         tne     y0,a
         move    a,x:(r7+$27)
         move    x1,x:(r7+$26)
-        move    r7,r4
-        move    #$10,n4
-        move    (r4)+n4
-        move    r7,r3
-        move    #$30,n3
-        move    (r3)+n3
-        move    r7,r2
-        move    #$34,n2
-        move    (r2)+n2
+        lua     (r7+$10),r4             ; the second bank's states
+        lua     (r7+$30),r3
+        lua     (r7+$34),r2
         clr     a
         move    a,x:(r7+$58)
         bsr     rs_one
