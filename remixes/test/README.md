@@ -110,6 +110,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`stuttr`](stuttr/README.md) | STUTTR beside the stock effects (all but PLATE REV, whose words it takes). | local render: verify_stuttr; chance-engage redesign. |
 | [`tapeecho`](tapeecho/README.md) | Tape Echo replacing Spring Reverb, alone. | on a unit: the author's unit (OCTACLID4): six instances; a seventh freezes it, open |
 | [`testgen`](testgen/README.md) | TESTGEN on FX1 beside the stock effects (all but PLATE REV, whose words it takes). | on a unit (MKII, Ignorato, OCTABAM6, 2026-10-04) |
+| [`track-trig-mode`](track-trig-mode/README.md) | stock effects with TRACK TRIG MODE: Hteah's single-mode track trig editing. | emulator |
 | [`trackpatterns`](trackpatterns/README.md) | TRACK PATTERNS with the stock effects: hold TRACK + PATTERN + TRIG for a pattern per track. | on a unit (MKII, OCTABAM3, 2026-10-21): functional tests and trig LEDs passed (contributor's report) |
 | [`trackpatterns-core`](trackpatterns-core/README.md) | TRACK PATTERNS on the core modules (KITS, DIRECT_JUMP_KYOTI and the other core modules). | on a unit (MKII, OCTABAM8, 2026-10-22): gesture on T1 and M1, global change, save and power cycle passed (contributor's report) |
 | [`transient`](transient/README.md) | TRANSIENT beside the stock effects (all but PLATE REV, whose words it takes). | on a unit (MKII, Ignorato, OCTABAM2, 2026-10-03) |
