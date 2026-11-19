@@ -196,21 +196,21 @@ save words only. "No stock 6-bit form" counts `cmp` and `and` on b.
 | module | sites with a stock 6-bit form | no stock 6-bit form | status |
 |---|---|---|---|
 | DELAY SERVER | 24 | 1 | open |
-| STUTTR | 16 | 0 | open; its PR #1180 is open |
-| MODULATION | 13 | 0 | open; its PR #1174 is open |
+| STUTTR | 16 | 0 | taken, #1180 (a later commit) |
+| MODULATION | 13 | 0 | taken, #1174 (a later commit) |
 | REVERB SERVER | 11 | 1 | open |
-| CHARACTER TXTR | 7 | 1 | open |
-| BBD | 6 | 0 | open; its PR #1184 is open |
+| CHARACTER TXTR | 7 | 1 | taken, #1192 |
+| BBD | 6 | 0 | taken, #1184 (a later commit) |
 | SPECTRUM | 6 | 0 | taken, #1188 |
-| VOCODER | 4 | 0 | open; its PR #1177 is open |
+| VOCODER | 4 | 0 | taken, #1177 (a later commit) |
 | CHARACTER | 3 | 2 | taken, #1190 |
-| VIBRATO | 3 | 2 | open; its PR #1175 is open |
-| SEND | 3 | 0 | open |
-| MINIVERB | 2 | 0 | open; its PR #1176 is open |
-| VERBERATION | 2 | 0 | open; its PR #1178 is open |
-| RESONATOR | 1 | 0 | open; its PR #1179 is open |
+| VIBRATO | 3 | 2 | taken, #1175 (a later commit) |
+| SEND | 3 | 0 | stays: the code both servers repeat; with the servers |
+| MINIVERB | 2 | 0 | taken, #1176 (a later commit) |
+| VERBERATION | 2 | 0 | taken, #1178 (a later commit) |
+| RESONATOR | 1 | 0 | taken, #1179 (a later commit) |
 | SHATTER | 1 | 0 | taken, #1189 |
-| TRANSIENT | 1 | 0 | open; its PR #1186 is open |
+| TRANSIENT | 1 | 0 | taken, #1186 (a later commit) |
 | LOFI2, VOID, EUCLID, DISTORX | 0 | 0 | none |
 
 Out of the audit, counted for the record: the frame hooks DLCOPY (8) and LOAD
@@ -218,8 +218,11 @@ METER (1), ANALOG BASSDRUM (2), and the probes (PEXT PROBE 33, EXTPROBE 11,
 DLPROBE 10). The sidechain patches under other modules' `upstream/`
 submodules are another repository's code.
 
-Every module is now stamped with version 4: T34 is counted in all of them,
-and taken in SPECTRUM, SHATTER and CHARACTER.
+Every module is now stamped with version 4: T34 is counted in all of them.
+It is taken in every module with a site, as a commit on the module's PR
+(IDENTICAL, the module's own gate passing), except where the site is in code
+the servers repeat (SEND) and in the servers themselves, which are not yet
+fixed.
 
 ## 3. How each module is built
 
@@ -391,8 +394,21 @@ CHARACTER TXTR is CHARACTER plus 191 lines, so CH2, CH3 and CH5 land in both.
 short-form constants (`93b85932`) and T34's three (`37b3eeb2`; the two
 `cmp #>$1,b` stay, since stock has no 6-bit `cmp` on b), IDENTICAL (49
 renders), `verify_character` OK (34 checks). The scan: SAT=TUBE 428.3 → 428.0
-cycles a sample; words 967 → 961. CH1 to CH6 stay open, and CHARACTER TXTR is
-unchanged.
+cycles a sample; words 967 → 961. CH1 to CH6 stay open in CHARACTER.
+
+**Taken, 19 Nov 2026** (sambanks/octabam#1192, CHARACTER TXTR): the same three
+T31 constants (`b2f84890`) and T34's seven (`4ee318ad`; its `cmp #>$1,b`
+stays), IDENTICAL (49 renders), `verify_character_txtr` OK (45 checks) and
+`verify_charkey_txtr` PASS (10 checks). The scan: SAT=TUBE 697.9 → 696.3 cycles
+a sample; words 1,097 → 1,087. Not taken:
+
+- **CH1** stays design. `chtx2` is one serial chain a channel, and each local
+  reorder tried trades an arithmetic wait for an address-register wait (the
+  `n1` loads need two instructions before the `p:(r1+n1)` reads). The saving
+  needs the L and R calls interleaved, which needs registers the chain
+  already uses.
+- **CH6** is class F: `add x1,a #N,x1` has no stock site (stock pairs the
+  parallel immediate with `add y0,a`, `sub x0,b`, `sub x1,b` and `sub y0,a`).
 
 #### RESONATOR (ilia-murzinov): 655.9, 14.5 %
 
@@ -626,6 +642,25 @@ pass; the gate now renders the manifest's `dear` settings (`e4c207a2` on
 One client; a bus remix runs several beside a server. SE1, T25: five one-cycle
 stalls (`proc+234` to `+255`), about -3. Nothing else.
 
+**Taken, 19 Nov 2026** (sambanks/octabam#1191), each commit bit-identical
+under `verify_bus` (34 cases, against a reference stamped on main; its
+selftest catches both injected defects; SEND is a bus client, so
+`verify_ident` does not render it):
+
+- **SE2, T11** (`bb37720c`, found here): the REV ramp read its step from
+  `x:(r7+$18)` every sample, and x1 holds the same word through the loop. The
+  ramp adds x1: -2, 1 word.
+- **SE1** (`b5b43d49`): the DEL ramp and the AUX sum run in b, so an
+  independent instruction fills four of the five waits; the REV
+  accumulator's store keeps its wait. -4. Every register leaves the loop with its old value. The order
+  with no wait left needs `move y:(r2),a`, which has no stock site, and the
+  next needs `move y:(r4),a`, whose CHIP.md row is pending a unit test.
+
+The scan: 57.5 → 51.5 cycles a sample for each instance (every track runs
+one); words 260 → 259. T34's three sites stay: they are in the housekeeping
+block and the frame offset's mask, which both servers repeat, and the three
+copies change together (with the servers).
+
 #### REVERB SERVER (sambanks): 1,593.1, 35.2 % of a core, one instance
 
 | # | row | site | the change | saving | class |
@@ -687,36 +722,41 @@ stalls (`proc+234` to `+255`), about -3. Nothing else.
 
 ### The fixes, 19 Nov 2026: where they stand
 
-Sixteen branches, one module each, from main at `cc7cffc1`, opened as
-sambanks/octabam#1174 to #1186 and #1188 to #1190 on 19 Nov 2026. Every commit is IDENTICAL under the wider gate (sambanks/octabam#1172
-and its three later commits), every module's own gate passes, every new form
-has a stock site or a register row. Cycles are the scan's, a sample, at the
-module's dearest setting (modelled); words are `dsp_asm` at P:$800.
+Eighteen branches, one module each, from main at `cc7cffc1`, opened as
+sambanks/octabam#1174 to #1186 and #1188 to #1192 on 19 Nov 2026. Every
+commit is IDENTICAL under the wider gate (sambanks/octabam#1172 and its three
+later commits; SEND's under `verify_bus`), every module's own gate passes,
+every new form has a stock site or a register row. Cycles are the scan's, a
+sample, at the module's dearest setting (modelled); words are `dsp_asm` at
+P:$800. The same day Yves set the module PRs to draft, to test them on his
+unit, and told each owner once. Later changes to a module go to its PR.
 
 | module | author | PR | commits | cycles a sample | % of a frame | words |
 |---|---|---|---|---|---|---|
-| MODULATION (FLNG) | sambanks | #1174 | 7 | 398.8 → 370.7 | 8.8 → 8.2 | 1,318 → 1,310 |
-| VIBRATO | Bryan T | #1175 | 6 | 207.0 → 176.9 | 4.6 → 3.9 | 593 → 584 |
-| MINIVERB | repeat98 | #1176 | 4 | 608.8 → 507.7 | 13.4 → 11.2 | 459 → 446 |
-| VOCODER | Ignorato | #1177 | 4 | 1,245.8 → 1,190.5 | 27.5 → 26.3 | 581 → 570 |
-| VERBERATION | Emilie Gillet, ported | #1178 | 5 | 455.7 → 394.5 | 10.1 → 8.7 | 644 → 639 |
-| RESONATOR | ilia-murzinov | #1179 | 4 | 655.9 → 636.6 | 14.5 → 14.0 | 451 → 433 |
-| STUTTR (FWD, `dear`) | ilia-murzinov | #1180 | 4 | 268.4 → 262.5 | 5.9 → 5.8 | 591 → 581 |
+| MODULATION (FLNG) | sambanks | #1174 | 9 | 398.8 → 368.3 | 8.8 → 8.1 | 1,318 → 1,297 |
+| VIBRATO | Bryan T | #1175 | 8 | 207.0 → 175.7 | 4.6 → 3.9 | 593 → 581 |
+| MINIVERB | repeat98 | #1176 | 6 | 608.8 → 507.6 | 13.4 → 11.2 | 459 → 444 |
+| VOCODER | Ignorato | #1177 | 6 | 1,245.8 → 1,190.3 | 27.5 → 26.3 | 581 → 566 |
+| VERBERATION | Emilie Gillet, ported | #1178 | 7 | 455.7 → 393.5 | 10.1 → 8.7 | 644 → 637 |
+| RESONATOR | ilia-murzinov | #1179 | 6 | 655.9 → 636.4 | 14.5 → 14.0 | 451 → 432 |
+| STUTTR (FWD, `dear`) | ilia-murzinov | #1180 | 6 | 268.4 → 258.4 | 5.9 → 5.7 | 591 → 565 |
 | LOFI2 (DOWN) | Bryan T | #1181 | 4 | 654.2 → 638.9 | 14.4 → 14.1 | 838 → 821 |
 | VOID (`dear`) | ilia-murzinov | #1182 | 4 | 503.9 → 493.8 | 11.1 → 10.9 | 513 → 502 |
 | EUCLID | repeat98 | #1183 | 4 | 232.3 → 223.2 | 5.1 → 4.9 | 362 → 351 |
-| BBD (`dear`) | JamCones | #1184 | 3 | 528.3 → 522.4 | 11.7 → 11.5 | 1,112 → 1,088 |
+| BBD (`dear`) | JamCones | #1184 | 5 | 528.3 → 520.3 | 11.7 → 11.5 | 1,112 → 1,082 |
 | DISTORX (RAT) | MaMarko | #1185 | 2 | 375.9 → 375.4 | 8.3 | 1,114 → 1,099 |
-| TRANSIENT | Ignorato | #1186 | 2 | 270.0 → 267.9 | 6.0 → 5.9 | 258 → 254 |
+| TRANSIENT | Ignorato | #1186 | 4 | 270.0 → 266.9 | 6.0 → 5.9 | 258 → 253 |
 | SPECTRUM (ISO) | sambanks | #1188 | 8 | 371.1 → 356.9 | 8.2 → 7.9 | 1,345 → 1,334 |
 | SHATTER (SOFT) | ilia-murzinov | #1189 | 4 | 383.1 → 380.7 | 8.5 → 8.4 | 457 → 449 |
 | CHARACTER (SAT=TUBE) | sambanks | #1190 | 4 | 428.3 → 428.0 | 9.5 → 9.4 | 967 → 961 |
+| SEND (each instance) | sambanks | #1191 | 3 | 57.5 → 51.5 | 1.3 → 1.1 | 260 → 259 |
+| CHARACTER TXTR (SAT=TUBE) | sambanks | #1192 | 3 | 697.9 → 696.3 | 15.4 | 1,097 → 1,087 |
 
 The module branches change only their module (code and README). The scan's
-figures for all sixteen are in `CYCLE_SCAN.md` on this branch: a trial merge
+figures for all eighteen are in `CYCLE_SCAN.md` on this branch: a trial merge
 of every branch onto main found the modules' entries there on adjacent lines,
-so one docs change carries them all, and the sixteen module PRs can merge in
-any order without a rebase.
+so one docs change carries them all, and the module PRs can merge in any order
+without a rebase.
 
 ## 5. Good for all
 
