@@ -103,7 +103,7 @@ bblive:
         move    x:(r7+$01),a
         tst     a
         beq     bbrun
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$01)
         move    a,b
         asl     #$8,a,a
@@ -196,7 +196,7 @@ bbsame:
         move    x:(r7+$02),b
         tst     b
         beq     bbnofade
-        sub     #>$1,b
+        sub     #$1,b                    ; (6-bit immediate)
         move    b,x:(r7+$02)
         bne     bbfading
         move    #>$10,b
@@ -494,7 +494,7 @@ bbdivk:
         clr     b
         move    b,x:(r7+$36)
         move    x:(r7+$01),a            ; ... all nine from 0 in the clear call
-        sub     #>$1,a                  ; before a reset (bbnine, the one with
+        sub     #$1,a                    ; before a reset (bbnine, the one with (6-bit immediate)
         bne     bbsnap1                 ; $01 = 1) ...
         move    b,x:(r7+$3b)
         move    #>$9,x1
@@ -544,7 +544,7 @@ bbrjoin:
         move    b,x:(r7+$3b)
 bbrend:
         move    x:(r7+$01),a            ; $01 = 1: bbnine's clear call, dry, done
-        sub     #>$1,a                  ; (16 when a fade ends this call: the
+        sub     #$1,a                    ; (16 when a fade ends this call: the (6-bit immediate)
         bne     bbcoefs                 ; call goes on)
         rts
 bbcoefs:
@@ -684,14 +684,14 @@ bbpreoff:
         move    y1,a
         mac     y0,x0,a
         move    a,x:(r7+$0b)            ; avg += (|q[n-1]| - avg) / 442
-        add     #>$00002a,a
+        add     #$00002a,a               ; (6-bit immediate)
         move    a,y0
         mpy     x1,y0,a
         move    a,x0                    ; D
         move    b,y1                    ; N's sign
         abs     b
         move    x0,a
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,y0
         cmp     y0,b
         tgt     y0,b                    ; |N| >= D clips q at +-2
