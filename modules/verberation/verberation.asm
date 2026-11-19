@@ -396,6 +396,7 @@ gv_p2a:
         mpy     y0,x0,a
         add     b,a
         move    a,y:(r5+n5)
+        move    x:(r7+$47),n5
 ; input: (L + R)/2 times the gain
         move    x:(r0),a
         move    x:(r0+n0),x0
@@ -449,7 +450,6 @@ gv_p2a:
         tst     b
         tne     y1,a
         move    a,x:(r7+$35)
-        move    x:(r7+$47),n5
         move    y0,y:(r5+n5)
         move    x:(r7+$48),n5
         move    y:(r5+n5),x0
@@ -490,13 +490,14 @@ gv_p2a:
         mac     x0,y1,a
         move    x0,b
         move    a,y:(r5+n5)
+        move    x:(r7+$2f),n5
         move    a,x0
         move    b,a
         mac     -x0,y1,a
         move    a,x:(r7+$32)
 ; loop, first half: delay 2 (modulated) -> damping -> dap1a -> dap1b -> delay 1; left out
-        move    x:(r7+$2f),n5
         lua     (r5+n5),r4
+        move    x:(r7+$40),n5
         move    y:(r4)-,b
         move    y:(r4),a
         sub     b,a
@@ -524,16 +525,15 @@ gv_p2a:
         mac     x0,y1,b
         move    b,x:(r7+$3a)
         move    x:(r7+$38),y1
-        move    x:(r7+$40),n5
         move    y:(r5+n5),x0
         move    #>$fffc87,n5
         mac     -x0,y1,a
         move    x0,b
         move    a,y:(r5+n5)
+        move    x:(r7+$41),n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
-        move    x:(r7+$41),n5
         move    y:(r5+n5),x0
         move    #>$fff6e6,n5
         mac     x0,y1,a
@@ -561,6 +561,7 @@ gv_p2a:
         move    x:(r7+$32),a
         move    x:(r7+$42),n5
         move    y:(r5+n5),x0
+        move    x:(r7+$43),n5
         move    x:(r7+$37),y1
         mac     x0,y1,a
         move    x:(r7+$31),b
@@ -578,16 +579,15 @@ gv_p2a:
         mac     x0,y1,b
         move    b,x:(r7+$3b)
         move    x:(r7+$38),y1
-        move    x:(r7+$43),n5
         move    y:(r5+n5),x0
         move    #>$ffe457,n5
         mac     x0,y1,a
         move    x0,b
         move    a,y:(r5+n5)
+        move    x:(r7+$44),n5
         move    a,x0
         move    b,a
         mac     -x0,y1,a
-        move    x:(r7+$44),n5
         move    y:(r5+n5),x0
         move    #>$ffddd3,n5
         mac     -x0,y1,a
