@@ -410,6 +410,8 @@ mo_line:
         move    r2,r5                   ; line L
         bsr     mo_tap
         move    a,n2                    ; tap L
+        move    y0,n5                   ; the write address, loaded early: nothing
+        move    r2,r5                   ; below reads r5 before the step
 ; ---- the line write L: LPi(dry) + fb*tap, a LIMITING store -----------------
         move    x:(r0),x0               ; dry L
         move    x:(r1)+,y1              ; c
@@ -423,10 +425,8 @@ mo_line:
         move    x:(r1)+,y1              ; fb
         mpy     x0,y1,a
         add     b,a
+        move    (r5)+n5                 ; line L at the write phase (in add's gap)
         move    a,x0                    ; LIMITING: the loop cannot rail
-        move    y0,n5
-        move    r2,r5
-        move    (r5)+n5                 ; line L at the write phase
 ; ---- mo_lofl, inline (23 Sep 2026; three sites each, FREE allows it) ----
         move    x0,y1                   ; the limited value
         move    n1,a
@@ -457,6 +457,8 @@ mo_line:
         move    r6,r5                   ; line R
         bsr     mo_tap
         move    a,n6                    ; tap R
+        move    y0,n5                   ; the write address, loaded early (as L)
+        move    r6,r5
 ; ---- the line write R: LPi(dry) + fb*tap, a LIMITING store -----------------
         move    x:(r0+n0),x0            ; dry R
         move    x:(r1)+,y1              ; c
@@ -470,10 +472,8 @@ mo_line:
         move    x:(r1)+,y1              ; fb
         mpy     x0,y1,a
         add     b,a
+        move    (r5)+n5                 ; line R at the write phase (in add's gap)
         move    a,x0                    ; LIMITING: the loop cannot rail
-        move    y0,n5
-        move    r6,r5
-        move    (r5)+n5                 ; line R at the write phase
 ; ---- mo_lofr, inline (23 Sep 2026; three sites each, FREE allows it) ----
         move    x0,y1                   ; the limited value
         move    n1,a
