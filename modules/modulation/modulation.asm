@@ -88,7 +88,7 @@ proc:
 ; MIX (page-1 slot 5, bottom right on every effect); 127 = 1.0, the wet
 ; outright (the through-zero null is exact)
         move    x:(r6+$5),a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a                    ; k - 127
         move    #>$7fffff,x0
         tge     x0,a
@@ -131,7 +131,7 @@ proc:
         mpy     x0,y1,a
         add     #>$200000,a             ; + 0.25
         move    x0,b                    ; the glided word, as $46 holds it
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,b                    ; k - 127
         move    #>$7fffff,x0
         tge     x0,a                    ; k >= 127: open
@@ -936,7 +936,7 @@ mo_bcomb:
 ; the polarity: FDBK's sign
         move    x:(r7+$04),a
         move    #>$7fffff,x0
-        move    #>$800000,x1
+        move    #$80,x1                  ; (short immediate: bits 23-16)
         move    x0,b                    ; +1
         tst     a
         tmi     x1,b                    ; -1 when negative
