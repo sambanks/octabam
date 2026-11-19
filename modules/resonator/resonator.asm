@@ -79,7 +79,7 @@ proc:
 ; MIX
         move    x:(r6+$5),a
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -88,7 +88,7 @@ proc:
         move    x:(r6+$4),a
         and     #>$7f0000,a
         move    a,x:(r7+$4c)
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         move    x0,b
         sub     a,b
         move    b,a
@@ -117,7 +117,7 @@ proc:
         move    #>$7fffff,x0
         move    x0,b
         sub     a,b
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         move    x:(r7+$4c),a
         cmp     x0,a
         move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
