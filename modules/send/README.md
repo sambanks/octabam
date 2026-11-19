@@ -94,6 +94,19 @@ slot-11 byte (WOW, or 0) as TIME: stamp before play (`stamp-defaults
 - Residual at 6–7 senders: 2 samples in 16,305 differ by ≤ 33 LSB
   (−105 dB) from the lag-0 control; does not scale with amplitude; filed as
   rounding under the added latency.
+- **19 Nov 2026, the stall pass** (bit-identical: `verify_bus`, 34 cases of
+  the `bus` remix with both servers, split blocks and one to seven senders,
+  against a reference stamped on main; its selftest catches both injected
+  defects). Cycles a sample from `tools/build/interlock_scan.py` (the core
+  manual's cycle table and stalls: a model, on average 3.0 % above the unit,
+  `docs/contributing/CYCLE_SCAN.md` section 1), at its defaults:
+  **57.5 → 51.5** (1.3 % → 1.1 % of a frame, for each instance; every track
+  runs one). Words 260 → 259 (`dsp_asm` at P:$800). Not measured on the
+  unit. The REV ramp adds its step from x1, which holds the same word as
+  `x:(r7+$18)` through the loop, and the loop's independent moves fill four
+  of its five accumulator waits. The housekeeping block's three long
+  constants from 0 to 63 stay long: the two servers carry copies of the
+  block, and the three copies change together.
 
 ## On the unit
 

@@ -1023,7 +1023,7 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   never binds (panel frozen, USB gone), cause not established. 27 to 35 bad DSP records per 10 min at pattern wraps
   while MODULATION's code runs, with and without this fix.
 
-## Stopped on the boot screen after REMOTE's COMMAND 3 booted an `.RMX`: 1 of 10 boots 🟡 seen once, cause not known
+## Stopped on the boot screen after REMOTE's COMMAND 3 booted an `.RMX`: 1 of 10 boots 🟡 seen three times, cause not known
 
 MKII, 15 Nov 2026, image N1 (`octabam` with REMOTE, commit 95e52aee). COMMAND 3 for `OCTABAM N1.RMX` was
 taken; the unit reset, showed the boot screen and did not return to USB in 150 s. A power-cycle recovered it.
@@ -1036,4 +1036,66 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
   flashing N1 again.
 - Not tested: the same file booted from BRAIN > REMIXES in that state; the card's state at the time (it was
   the first selection REMIX SWITCH saved from this image).
+- Second sighting, 18 Nov 2026, MKII: COMMAND 3 for `OCTABAM 05.RMX` (`octabam` at `5b991c85`) from image N1 (the
+  same N1 image as the first). Taken; no USB device at 30 s; the unit showed the boot screen and was power-cycled,
+  and it came back on N1. The same file picked from BRAIN > REMIXES on the panel booted `OCTABAM 05` (build tag `05`
+  in the effect names). Later COMMAND 3 boots, all from BUILD 05 images: octabam to verbs, verbs to bus, bus to
+  octabam, octabam to bus: 4 of 4 returned (`tools/hw/ot_card.py boot`).
+- Third sighting, 19 Nov 2026, MKII: COMMAND 3 for `OCTABAM 05.RMX` sent from `octabam` BUILD 05 while its DSP frame count was
+  stopped (the entry "DSP frame count stops 27 minutes into a mixed program-change sequence" below). No return in 150 s;
+  power-cycled. The first sighting from a BUILD 05 image.
 
+
+
+## USB DISK MODE entered by COMMAND 1, the card never mounts on the Mac: a stale `diskN` after `diskutil unmount` ✅ measured, fixed in `ot_card.py`
+
+MKII, 18 Nov 2026, `octabam`, `octabam-verbs` and `octabam-bus` BUILD 05. After one DISK MODE session ended with
+`diskutil unmount` and COMMAND 2, the Mac kept the device node (`diskutil list external` still listed `disk4`) and every
+later COMMAND 1 left the card unmounted: the ring showed COMMAND and BANKW (the unit entered the mode), the disk-mode
+flag (`0x460e76a0`) read 1 for 2 to 4 s and then 0, and the Mac mounted nothing in 60 s. 3 of 3 loads after the first
+failed. `diskutil mount disk4s1` and `diskutil list external` hung until the cable was replugged. This was first logged
+as `octabam-bus` leaving DISK MODE within 4 s; the same failure followed an `unmount`-based leave on the other two
+images, so that reading is withdrawn.
+
+- **Fix:** `ot_card.py` ejects the device (`diskutil eject diskN`) after the unmount and before COMMAND 2. 3 of 3
+  consecutive loads then mounted and reloaded the project, each with the DSP's frame count advancing 0.4 s after the
+  reload record. A first COMMAND 1 right after an image switch has failed once and mounted on the retry.
+- **Not known:** whether `diskutil mount` hanging is the Mac's or the unit's USB stack's.
+
+
+## DSP frame count stays at 0 after a project reload that follows a demand-loader phase 🟡 reproduced once, cause not known
+
+MKII, `octabam` BUILD 05 (`5b991c85`), 18 and 19 Nov 2026. A project reload (`ot_card.py load`: DISK MODE, copy, COMMAND 2; the
+NEWPROJ record arrives) after `ot_matrix.py switch` had run `loader01` (30 transitions, SFX_01) left the DSP's record count
+(`dsp.seq`) fixed at 1,510,920 for the 90 s the tool waited and still fixed 20 minutes later, while the ColdFire frame interrupt
+ran at 2,756 a second and the USB device answered. A second reload with the DSP in that state gave the same reading.
+
+- **Seen 3 times:** 18 Nov, `octabam` after `loader02` (the next phase's start read 0 a second, three phases in a row); 18 Nov,
+  `octabam-verbs` after `loader02` (90 s wait); 19 Nov, `octabam` after `loader01`, in a run built to reproduce it.
+- **Not seen:** a reload directly after a boot (every one, on all three images); a reload after `fx01` to `fx04` runs (the loader01 load after `fx03`
+  was fine); `pc-soak`, `kits-identity` and the scene phases after a boot and a load.
+- **Recovery:** COMMAND 3 for the same image (`ot_card.py boot`): the count advanced 0.4 s after the unit returned. No power-cycle.
+- **Not tested:** the same reload from the panel; a reload after `loader01` on `octabam-bus` (it has no loader phases); what state the demand
+  effect's block is in when the reload comes (the phase ends on a SHATTER, CHARACTER or MODULATION layout); DLCOPY's counters
+  (`dl_state.py`) before the reload.
+- **Workaround:** `ot_suite.py run --auto --image "<NAME>.RMX"` boots the image again after each loader phase.
+
+
+## DSP frame count stops 27 minutes into a mixed program-change sequence on `octabam` 05 🟡 seen once, cause not known
+
+MKII, 19 Nov 2026, `octabam` BUILD 05 (`5b991c85`), project SFX_01 (layouts of `ot_suite.py build`), `mix-soak` (`ot_fuzz.py` seed 3401,
+profile `mix`: 4,721 operations over 3,366 s). Booted with COMMAND 3 and the project loaded 30 s before the run, so the frame count
+started from the run. The run stopped at operation 2205, 1,612 s in (the 50.7-minute mark is at 3,044 s):
+"the DSP's frame count advances 0 a second". Operations before it: a program-change burst (71.0 to 71.4, layouts 28, 17, 17, 21 and 22, 10),
+a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, START at 1,611.3 s.
+
+- **State, read 13 minutes later:** `dsp.seq` fixed at 4,522,667 (`0x4502ab`) over every read; the ColdFire frame interrupt at 2,756 a
+  second; DLPUMP's pump-call counter fixed at 4,549,817 over two reads 2 s apart (27,150 above `dsp.seq`); 25 loads and 25
+  withdrawals armed, 100 doorbells, MODULATION's FX2 id `0x16` live on all 8 tracks, one block holding code; the playing byte 0;
+  the ring ending PLAYING 1, BANKW; LOAD METER's DSP busy 84 % / 78 % (stale values).
+- **Recovery:** COMMAND 3 for the same image did not return in 150 s (the boot screen, FAILURE_MODES.md "Stopped on the boot screen
+  after REMOTE's COMMAND 3"): a power-cycle was needed. 2 earlier COMMAND 3 boots from a stalled DSP (`octabam-verbs` to `octabam-bus` on 18 Nov, `octabam` to itself on
+  19 Nov, both after loader phases) returned.
+- **Not known:** whether the sequence's earlier 1,600 s of program changes, 25 demand loads or the scene select matter;
+  whether the same seed stalls again; the 50.7-minute mark was not reached.
+- **Replay:** `ot_fuzz.py run out/hw/suite/oct05mix2/mix-soak.json <label> --until 2205` (seed 3401).

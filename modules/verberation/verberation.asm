@@ -61,7 +61,7 @@ proc:
         move    x:(r7+$22),a
         tst     a
         beq     gv_ready
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$22)
         move    x:(r7+$23),r4
         move    #>$ffffff,m4
@@ -139,7 +139,7 @@ gv_ready:
         move    x:(r6+$e),a
         and     #>$7f0000,a
         move    a1,x0
-        move    #>$7f0000,a
+        move    #$7f,a                   ; (short immediate: bits 23-16)
         sub     x0,a
         move    a1,x0
         move    #>$6734ee,y1
@@ -190,14 +190,14 @@ gv_ready:
         and     #>$7f0000,a
         move    a1,x1
         move    x1,a
-        move    #>$400000,x1
+        move    #$40,x1                  ; (short immediate: bits 23-16)
         sub     x1,a
         move    x:(r7+$46),b
         sub     b,a
         asr     #$4,a,a
         add     b,a
         move    a,x:(r7+$46)
-        move    #>$400000,x1
+        move    #$40,x1                  ; (short immediate: bits 23-16)
         add     x1,a
         move    a1,y0
         mpy     y0,x0,a
@@ -387,6 +387,7 @@ gv_p2a:
 ; smear: the first allpass line read at 10 + 60 lfo1, written back at 100
         move    x:(r7+$2e),n5
         lua     (r5+n5),r4
+        move    #>$ffff9c,n5
         move    y:(r4)-,b
         move    y:(r4),a
         sub     b,a
@@ -394,8 +395,8 @@ gv_p2a:
         move    x:(r7+$2c),y0
         mpy     y0,x0,a
         add     b,a
-        move    #>$ffff9c,n5
         move    a,y:(r5+n5)
+        move    x:(r7+$47),n5
 ; input: (L + R)/2 times the gain
         move    x:(r0),a
         move    x:(r0+n0),x0
@@ -416,7 +417,7 @@ gv_p2a:
         add     b,a
         move    a1,x:(r7+$33)
         move    x:(r7+$34),b
-        sub     #>$1,b
+        sub     #$1,b                    ; (6-bit immediate)
         move    #0,x0
         tst     b
         tmi     x0,b
@@ -449,54 +450,53 @@ gv_p2a:
         tst     b
         tne     y1,a
         move    a,x:(r7+$35)
-        move    x:(r7+$47),n5
         move    y0,y:(r5+n5)
         move    x:(r7+$48),n5
         move    y:(r5+n5),x0
+        move    #>$ffff94,n5
         move    x:(r7+$25),y1
         mpy     x0,y1,a
 ; four input allpasses
         move    x:(r7+$38),y1
-        move    #>$ffff94,n5
         move    y:(r5+n5),x0
         mac     x0,y1,a
         move    x0,b
-        move    #>$000000,n5
-        move    a,y:(r5+n5)
-        move    a,x0
-        move    b,a
-        mac     -x0,y1,a
+        move    a,y:(r5)                ; offset 0: no n5
         move    #>$fffef6,n5
+        move    a,x0
+        move    b,a
+        mac     -x0,y1,a
         move    y:(r5+n5),x0
-        mac     x0,y1,a
-        move    x0,b
         move    #>$ffff92,n5
+        mac     x0,y1,a
+        move    x0,b
         move    a,y:(r5+n5)
-        move    a,x0
-        move    b,a
-        mac     -x0,y1,a
         move    #>$fffe0c,n5
-        move    y:(r5+n5),x0
-        mac     x0,y1,a
-        move    x0,b
-        move    #>$fffef4,n5
-        move    a,y:(r5+n5)
         move    a,x0
         move    b,a
         mac     -x0,y1,a
-        move    #>$fffc89,n5
         move    y:(r5+n5),x0
+        move    #>$fffef4,n5
         mac     x0,y1,a
         move    x0,b
-        move    #>$fffe0a,n5
         move    a,y:(r5+n5)
+        move    #>$fffc89,n5
+        move    a,x0
+        move    b,a
+        mac     -x0,y1,a
+        move    y:(r5+n5),x0
+        move    #>$fffe0a,n5
+        mac     x0,y1,a
+        move    x0,b
+        move    a,y:(r5+n5)
+        move    x:(r7+$2f),n5
         move    a,x0
         move    b,a
         mac     -x0,y1,a
         move    a,x:(r7+$32)
 ; loop, first half: delay 2 (modulated) -> damping -> dap1a -> dap1b -> delay 1; left out
-        move    x:(r7+$2f),n5
         lua     (r5+n5),r4
+        move    x:(r7+$40),n5
         move    y:(r4)-,b
         move    y:(r4),a
         sub     b,a
@@ -524,25 +524,24 @@ gv_p2a:
         mac     x0,y1,b
         move    b,x:(r7+$3a)
         move    x:(r7+$38),y1
-        move    x:(r7+$40),n5
         move    y:(r5+n5),x0
-        mac     -x0,y1,a
-        move    x0,b
         move    #>$fffc87,n5
+        mac     -x0,y1,a
+        move    x0,b
         move    a,y:(r5+n5)
+        move    x:(r7+$41),n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
-        move    x:(r7+$41),n5
         move    y:(r5+n5),x0
+        move    #>$fff6e6,n5
         mac     x0,y1,a
         move    x0,b
-        move    #>$fff6e6,n5
         move    a,y:(r5+n5)
+        move    #>$ffeff5,n5
         move    a,x0
         move    b,a
         mac     -x0,y1,a
-        move    #>$ffeff5,n5
         move    a,y:(r5+n5)
         asl     #$1,a,a
         move    a,x0
@@ -561,6 +560,7 @@ gv_p2a:
         move    x:(r7+$32),a
         move    x:(r7+$42),n5
         move    y:(r5+n5),x0
+        move    x:(r7+$43),n5
         move    x:(r7+$37),y1
         mac     x0,y1,a
         move    x:(r7+$31),b
@@ -578,25 +578,24 @@ gv_p2a:
         mac     x0,y1,b
         move    b,x:(r7+$3b)
         move    x:(r7+$38),y1
-        move    x:(r7+$43),n5
         move    y:(r5+n5),x0
-        mac     x0,y1,a
-        move    x0,b
         move    #>$ffe457,n5
+        mac     x0,y1,a
+        move    x0,b
         move    a,y:(r5+n5)
+        move    x:(r7+$44),n5
         move    a,x0
         move    b,a
         mac     -x0,y1,a
-        move    x:(r7+$44),n5
         move    y:(r5+n5),x0
+        move    #>$ffddd3,n5
         mac     -x0,y1,a
         move    x0,b
-        move    #>$ffddd3,n5
         move    a,y:(r5+n5)
+        move    #>$ffd829,n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
-        move    #>$ffd829,n5
         move    a,y:(r5+n5)
         asl     #$1,a,a
         move    a,x0

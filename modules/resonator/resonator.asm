@@ -79,7 +79,7 @@ proc:
 ; MIX
         move    x:(r6+$5),a
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -88,7 +88,7 @@ proc:
         move    x:(r6+$4),a
         and     #>$7f0000,a
         move    a,x:(r7+$4c)
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         move    x0,b
         sub     a,b
         move    b,a
@@ -117,10 +117,10 @@ proc:
         move    #>$7fffff,x0
         move    x0,b
         sub     a,b
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         move    x:(r7+$4c),a
         cmp     x0,a
-        move    #>$0,a
+        move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         teq     a,b
         move    b,x:(r7+$23)
 ; GN1..GN4 → $34..$37 as kn/128
@@ -164,7 +164,7 @@ proc:
         do      #4,>rs_fbd
         bsr     rs_flook
         move    x:(r7+$4b),a
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$4b)
 rs_fbd:
 ; samples
@@ -181,7 +181,7 @@ rs_fbd:
         abs     a
         move    #>$066666,x0
         cmp     x0,a
-        move    #>$0,a
+        move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         move    #>$7fffff,x0
         tmi     x0,a
         move    a,x:(r7+$28)
@@ -189,7 +189,7 @@ rs_fbd:
         abs     a
         move    #>$028f5c,x0
         cmp     x0,a
-        move    #>$0,a
+        move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         move    #>$7fffff,x0
         tgt     x0,a
         move    x:(r7+$28),x0
@@ -202,12 +202,8 @@ rs_fbd:
         move    a,x:(r7+$27)
         move    x1,x:(r7+$25)
         move    r7,r4
-        move    r7,r3
-        move    #$30,n3
-        move    (r3)+n3
-        move    r7,r2
-        move    #$34,n2
-        move    (r2)+n2
+        lua     (r7+$30),r3             ; the coefficients ($30) and the gains ($34),
+        lua     (r7+$34),r2             ; one lua each (rs_one steps them by one)
         clr     a
         move    a,x:(r7+$58)
         bsr     rs_one
@@ -242,7 +238,7 @@ rs_fbd:
         abs     a
         move    #>$066666,x0
         cmp     x0,a
-        move    #>$0,a
+        move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         move    #>$7fffff,x0
         tmi     x0,a
         move    a,x:(r7+$28)
@@ -250,7 +246,7 @@ rs_fbd:
         abs     a
         move    #>$028f5c,x0
         cmp     x0,a
-        move    #>$0,a
+        move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         move    #>$7fffff,x0
         tgt     x0,a
         move    x:(r7+$28),x0
@@ -262,15 +258,9 @@ rs_fbd:
         tne     y0,a
         move    a,x:(r7+$27)
         move    x1,x:(r7+$26)
-        move    r7,r4
-        move    #$10,n4
-        move    (r4)+n4
-        move    r7,r3
-        move    #$30,n3
-        move    (r3)+n3
-        move    r7,r2
-        move    #$34,n2
-        move    (r2)+n2
+        lua     (r7+$10),r4             ; the second bank's states
+        lua     (r7+$30),r3
+        lua     (r7+$34),r2
         clr     a
         move    a,x:(r7+$58)
         bsr     rs_one

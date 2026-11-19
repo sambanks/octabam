@@ -140,6 +140,6 @@ MODULE = Module(
     # It writes nothing there and never registers.
     harness=Harness(layout_char="8", is_server=False, bus_client=True),
     gates=(Gate('modules/character-txtr/verify_character_txtr.py', remix_arg=False),
-           Gate('modules/character-txtr/verify_char_key_txtr.py', remix_arg=False)),
+           Gate('modules/character-txtr/verify_charkey_txtr.py', remix_arg=False)),
     dear={'DRV': 127, 'FOLD': 127, 'COMP': 127, 'MIX': 127, 'WDTH': 127, 'SAT': 0, 'TXTR': 127},
 )
