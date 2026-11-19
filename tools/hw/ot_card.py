@@ -19,7 +19,9 @@ directory is the one NAME names under PRESETS and nothing else.
 are linked addresses, so they differ between images; compare with the line a build's own run printed to see which
 image is running. Nothing over USB carries the image's name.
 
-Needs pyusb and libusb (load_meter.py) and an image with REMOTE, STORE, USB and, for `boot`, REMIX SWITCH.
+macOS only: the card is mounted, unmounted and ejected with `diskutil`, cleaned with `dot_clean`, and found at
+/Volumes/OCTATRACK. Needs pyusb and libusb (load_meter.py) and an image with REMOTE, STORE, USB and, for `boot`,
+REMIX SWITCH.
 """
 import argparse
 import filecmp
@@ -185,14 +187,30 @@ def cmd_load(a):
     u = Unit()
     head0 = ev.Events(u.ctrl).head()
     enter_disk(u)
+    # Copy beside the old project, compare, and only then swap: a copy that fails partway leaves the old one whole.
     dst = os.path.join(CARD, "PRESETS", a.name)
+    new, old = dst + ".NEW", dst + ".OLD"
+    for d in (new, old):            # left by an earlier run that stopped between its steps
+        if os.path.isdir(d):
+            shutil.rmtree(d)
+    try:
+        shutil.copytree(src, new)
+        subprocess.run(["dot_clean", "-m", new], check=True)
+        subprocess.run(["sync"], check=True)
+        same = same_tree(src, new)
+    except (OSError, subprocess.CalledProcessError) as e:
+        same, why = False, str(e)
+    else:
+        why = "the files differ"
+    if not same:
+        shutil.rmtree(new, ignore_errors=True)
+        sys.exit(f"the copy of {src} to {new} failed ({why}); PRESETS/{a.name} is unchanged and the unit is still in DISK MODE")
     if os.path.isdir(dst):
-        shutil.rmtree(dst)
-    shutil.copytree(src, dst)
-    subprocess.run(["dot_clean", "-m", dst], check=True)
+        os.rename(dst, old)
+    os.rename(new, dst)
+    if os.path.isdir(old):
+        shutil.rmtree(old)
     subprocess.run(["sync"], check=True)
-    if not same_tree(src, dst):
-        sys.exit(f"{dst} differs from {src} after the copy; nothing was left")
     print(f"card: PRESETS/{a.name} equals {src}")
     leave_disk(u)
     if not u.wait_present(a.wait):
@@ -226,6 +244,11 @@ def wait_list(u, name=None, timeout=45):
 
 def cmd_copy(a):
     u = Unit()
+    if not a.files:                 # rescan only: no DISK MODE, so the unit's project is not reloaded
+        if not u.command(ev.CMD_SCAN):
+            sys.exit("COMMAND 4 refused")
+        print([n.decode() for n in wait_list(u)])
+        return 0
     enter_disk(u)
     dst = os.path.join(CARD, "BRAIN", "REMIXES")
     for f in a.files:

@@ -290,7 +290,13 @@ def cmd_run(a):
         if a.auto and a.image and p["id"].startswith("loader"):
             # a project reload after a loader phase leaves the DSP frame count at 0 (FAILURE_MODES.md): start the image again
             print(f"   {p['id']} done: booting {a.image} again before the next project load", flush=True)
-            subprocess.run([PY, str(HERE / "ot_card.py"), "boot", a.image], cwd=ROOT)
+            b = subprocess.run([PY, str(HERE / "ot_card.py"), "boot", a.image], cwd=ROOT)
+            if b.returncode:
+                # the unit did not come back (the boot screen, FAILURE_MODES.md): every later phase would fail for it
+                print(f"   ot_card.py boot {a.image} failed (rc={b.returncode}); stopped", flush=True)
+                merged = [x for x in prev if x["id"] not in {y["id"] for y in rows}] + rows
+                sumf.write_text(json.dumps(merged, indent=1))
+                break
         merged = [r for r in prev if r["id"] not in {x["id"] for x in rows}] + rows
         sumf.write_text(json.dumps(merged, indent=1))
         if r.returncode and not a.keep_going:
