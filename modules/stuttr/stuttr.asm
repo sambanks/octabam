@@ -55,7 +55,7 @@ proc:
         move    x:(r7+$22),a
         tst     a
         beq     st01
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$22)
         asl     #$7,a,a
         move    x:(r7+$20),x0
@@ -72,7 +72,7 @@ st01:
         move    x:(r6+$0),a
         and     #>$7f0000,a
         asr     #$10,a,a
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         move    a1,x0
         clr     b
         do      x0,>st48
@@ -121,7 +121,7 @@ st17:
         move    x:(r6+$3),a
         and     #>$7f0000,a
         asr     #$10,a,a
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         move    a1,x0
         clr     b
         do      x0,>st50
@@ -177,7 +177,7 @@ st03:
         tst     a
         bmi     st04                    ; releasing: keep grain, no new HOLD math
         move    x:(r7+$2c),a
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$2c)
         tst     a
         bgt     st04
@@ -226,7 +226,7 @@ st42:
         move    a,x0
         asl     #$1,a,a
         add     x0,a
-        add     #>$3d,a
+        add     #$3d,a                   ; (6-bit immediate)
         and     #>$00ffff,a
         move    a1,x0
         move    x0,a
@@ -265,12 +265,12 @@ st05:
         move    a,x0
         asl     #$1,a,a
         add     x0,a
-        add     #>$3d,a
+        add     #$3d,a                   ; (6-bit immediate)
         and     #>$00ffff,a
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$34)
-        and     #>$3,a
+        and     #$3,a                    ; (6-bit immediate)
         move    a1,b
         move    #>$2,x0
         cmp     x0,b
@@ -299,7 +299,7 @@ stm1:
         move    a,x0
         asl     #$1,a,a
         add     x0,a
-        add     #>$3d,a
+        add     #$3d,a                   ; (6-bit immediate)
         and     #>$00ffff,a
         move    a1,x0
         move    x0,a
@@ -333,7 +333,7 @@ st28:
         move    x:(r7+$35),a
         tst     a
         beq     st27
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$35)
         move    #>$1,b
         tst     b
@@ -362,13 +362,13 @@ st25:
         move    y:(r4)+,a
         move    a,x:(r7+$30)
         move    x:(r7+$2e),a
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$35)
         move    x:(r7+$2a),a
-        add     #>$2,a
+        add     #$2,a                    ; (6-bit immediate)
         move    a,x1
         move    x:(r7+$2a),a
-        sub     #>$2,a
+        sub     #$2,a                    ; (6-bit immediate)
         move    x:(r7+$2d),b
         tst     b
         tpl     x1,a
@@ -377,7 +377,7 @@ st25:
         cmp     x0,a
         bge     st12
         move    x:(r7+$24),a
-        sub     #>$2,a
+        sub     #$2,a                    ; (6-bit immediate)
         move    #>$1,b
 st12:
         move    x:(r7+$24),x0
@@ -401,7 +401,7 @@ st13:
         move    a,x0
         asl     #$1,a,a
         add     x0,a
-        add     #>$3d,a
+        add     #$3d,a                   ; (6-bit immediate)
         and     #>$00ffff,a
         move    a1,x0
         move    x0,a
@@ -429,12 +429,12 @@ stm7:
         move    a,x0
         asl     #$1,a,a
         add     x0,a
-        add     #>$3d,a
+        add     #$3d,a                   ; (6-bit immediate)
         and     #>$00ffff,a
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$34)
-        and     #>$3,a
+        and     #$3,a                    ; (6-bit immediate)
         move    a1,b
         move    #>$2,x0
         cmp     x0,b
