@@ -311,7 +311,7 @@ ch_pos3:
 ; no host, or boot garbage. $15 the counter last seen, $16 blocks since it
 ; moved (held at 8).
         move    x:(r7+$16),b
-        add     #>$1,b
+        add     #$1,b                    ; (6-bit immediate)
         move    #>$8,x1
         cmp     x1,b
         tgt     x1,b
@@ -330,7 +330,7 @@ ch_pos3:
         tst     a
         bne     ch_kself                ; the master keys on its own input
         move    x:(r7+$16),a
-        cmp     #>$4,a
+        cmp     #$4,a                    ; (6-bit immediate)
         bge     ch_kzero                ; stale: silence
         move    y:>$990,x0              ; T1's peak |mono in|
         move    x:(r6+$d),a             ; KLVL, the knob field
@@ -448,13 +448,13 @@ norep_tx_04:
         add     x0,a                    ; 3k
         move    a1,y0
         neg     a
-        and     #>$1f,a                 ; j = -3k mod 32
+        and     #$1f,a                   ; j = -3k mod 32 (6-bit immediate)
         add     #>$235,a                ; T follows ENC and DEC: 51 + 514
         move    a1,n1
         move    y0,a
-        add     #>$1f,a
+        add     #$1f,a                   ; (6-bit immediate)
         asr     #$5,a,a                 ; ceil(3k/32) = 16 - floor(rez)
-        add     #>$5,a                  ; s = 21 - floor(rez), 5..17
+        add     #$5,a                    ; s = 21 - floor(rez), 5..17 (6-bit immediate)
         move    a1,n2
         move    p:(r1+n1),x1            ; T[j]
         move    #>$ffffff,a             ; a2 = $ff: the mask shifts in zeros
@@ -668,7 +668,7 @@ ch_gdone:
         move    #$1,n6                  ; 16 - 15
         bra     ch_rdone
 ch_r12:
-        cmp     #>$1,a
+        cmp     #$1,a                    ; (6-bit immediate)
         bne     ch_rinfl
         move    #$42,n3                 ; DaTube's L pair
         move    x:(r7+$32),x0           ; TUBE: G/8 (0.5+d)/2 d d/2 comp/2 k R scale
@@ -794,7 +794,7 @@ ch_rdone:
         move    x:(r7+$05),x0
         tst     a
         tle     x0,a
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$04)
         lua     (r1-$33),r1             ; TUBE_UP again
         lua     (r1+$11),r2             ; its slopes
