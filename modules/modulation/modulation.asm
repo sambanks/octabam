@@ -1056,6 +1056,8 @@ norep_md_01:
         move    x:(r1)+,a               ; period - 1 (the FIR's own delay)
         move    r2,r5
         bsr     mo_herm                 ; r3 stays on its scratch word
+        move    y0,n5                   ; the write address, loaded early: nothing
+        move    r2,r5                   ; below reads r5 before the step
         move    (r3)+                   ; -> x1 L
         move    a,x0
         move    x:(r1)+,y1              ; the polarity
@@ -1090,10 +1092,8 @@ norep_md_01:
         move    a,x:(r3)+
         move    x:(r1)+,x0              ; the mask
         and     x0,a
+        move    (r5)+n5                 ; line L at the write phase (in and's gap)
         move    a,x1                    ; wet L = the sample written
-        move    y0,n5
-        move    r2,r5
-        move    (r5)+n5
         move    x1,y:(r5)               ; write line L
         move    x1,x0                   ; the -12 dB output trim, after the line
         move    x:(r1)+,y1              ; write so the ring is untouched: 0.251
@@ -1103,6 +1103,8 @@ norep_md_01:
         move    x:(r4),a                ; period - 1 (L's run value)
         move    r6,r5
         bsr     mo_herm                 ; r3 stays on its scratch word
+        move    y0,n5                   ; the write address, loaded early (as L)
+        move    r6,r5
         move    (r3)+                   ; -> x1 R
         move    a,x0
         move    x:(r4+$1),y1            ; the polarity (L's run value)
@@ -1133,10 +1135,8 @@ norep_md_01:
         move    a,x:(r3)+
         move    x:(r1)+,x0
         and     x0,a
+        move    (r5)+n5                 ; line R at the write phase (in and's gap)
         move    a,x1                    ; wet R = the sample written
-        move    y0,n5
-        move    r6,r5
-        move    (r5)+n5
         move    x1,y:(r5)               ; write line R
         move    x1,x0                   ; the -12 dB output trim, after the line
         move    x:(r1)+,y1              ; write so the ring is untouched: 0.251
