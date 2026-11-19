@@ -35,6 +35,27 @@ The normalized 50–100 ms echo-density diagnostic rose from 0.297 (v2) to
 energy. These describe a less concentrated early response, not a universal
 sound-quality score. Listening decided between the candidates.
 
+### The tap pass, 19 November 2026
+
+Bit-identical: `verify_ident.py` with the wider matrix of
+sambanks/octabam#1172 (56 renders on MINIVERB's own slot, payload B, a 2 s
+run, a knob ramp, stereo, the r7 state after every block) IDENTICAL after
+each commit. Cycles a sample from `tools/build/interlock_scan.py` (the core
+manual's cycle table and stalls: a model, `docs/contributing/CYCLE_SCAN.md`;
+for MINIVERB it reads 8.2 % above the unit's slot cost), every knob at its
+maximum, every RATE: **608.8 → 507.7** (13.4 % → 11.2 % of a frame).
+Executed instructions a sample 314.6 → 311.6. Words 459 → 446 (`dsp_asm` at
+P:$800, as `dsp_forms.py --census` counts them). Not measured
+on the unit.
+
+Every tap loaded its offset into `n5` just before its access, so every access
+waited 3 cycles for the address register. Each offset now loads right after the
+access before it, and the wait overlaps the work between taps: the same
+instructions in another order, with nothing between the old and new place
+reading `n5`. Beside that: the write at offset 0 needs no `n5`; two allpasses
+keep the gain already in `y1`; the 0.75, 0.625 and 0.5 gains and one mask load
+as one-word short immediates.
+
 ### DSP load, 20 September 2026
 
 457 assembled words. All multiply/MAC encodings checked in disassembly.
