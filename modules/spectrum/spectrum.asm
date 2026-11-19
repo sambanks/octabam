@@ -619,6 +619,8 @@ fs_svf:
         move    #>$ffffff,m2
         move    #$0,r5                  ; the input peak
         do      n7,>fs_sz
+        move    r4,r1                   ; the stream (first: the input peak below
+        move    r6,r2                   ; the states  covers the AGU's wait)
 ; ---- input peak for the envelope follower (mono, pre-filter) --------------
         move    x:(r0),a
         move    x:(r0+n0),x0
@@ -629,8 +631,6 @@ fs_svf:
         max     a,b                     ; peak = max(peak, |mono|)
         move    b1,r5
 ; ---- the cutoff ramp: g2run += dg, once per sample for both channels -------
-        move    r4,r1                   ; the stream
-        move    r6,r2                   ; the states
         move    x:(r1)+,x0              ; dg
         move    x:(r7+$2e),a
         add     x0,a
