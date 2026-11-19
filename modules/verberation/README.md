@@ -96,6 +96,24 @@ the stock reverbs never draw).
 
 ## Measured
 
+- **19 Nov 2026, the tap pass** (bit-identical: `verify_ident.py` with the
+  wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
+  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
+  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
+  after each commit; 58 renders). Cycles a sample from
+  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
+  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
+  section 1), every mode at its defaults: **455.7 → 394.5** (10.1 % → 8.7 % of
+  a frame, under the 9.07 % a slot that core 0 can give every slot). Words 644
+  → 639 (`dsp_asm` at P:$800). Not measured on the unit. Every tap loaded its
+  offset into `n5` just before its access, so every access waited 3 cycles for
+  the address register; each offset (the 15 immediates and the 6 read from
+  state) now loads right after the access before it, so the wait overlaps the
+  work between taps. The same instructions in another order, with nothing
+  between the old and new place reading `n5` or storing to the state word. The
+  write at offset 0 needs no `n5`; three constants load as one-word short
+  immediates. MINIVERB's tap pass is the same change.
+
 Under `dsp_host` (`tools/verify/verify_verberation.py`, remix `test/verberation`):
 - The pricer counts 247 cycles per sample (219 before the desk gate, 228 before page 2, 242 before PRE), a floor: it counts words, not memory stalls. Scaled from the 7.76 % GATE VERB measured on a unit at 219, about 8.8 % a slot (🟡 inferred, not read), under the 9.07 % that lets it sit on every FX2 slot. `tools/remix/slot_costs.json` carries no VERBERATION entry: GATE VERB's reading was of older code.
 - PRE: SIZE 60 with PRE 40 matches the model to 61.1 dB over 8,000 samples; it moves the wet onset by 1,279 samples (32 × 40 = 1,280; the onset is a threshold crossing); PRE 127 at SIZE 90 is clamped to the 1,077 samples of room; at SIZE 127 PRE 127 is bit-exact PRE 0; SIZE 0 with PRE 127 writes nothing outside the ring.
