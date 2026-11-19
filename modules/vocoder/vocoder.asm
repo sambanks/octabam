@@ -456,9 +456,7 @@ vc_gdone:
         move    a,x:(r7+$2)
         move    x:(r7+$12),r4           ; BAND {W/2, f1, f2}: the synthesis side
         move    x:(r7+$10),r3           ; the analysis f1 A, f2 A, written this block
-        move    r7,b
-        add     #27,b                   ; $1b, band 0
-        move    b1,r5
+        lua     (r7+$1b),r5             ; $1b, band 0
         do      #10,>vc_bend
 ; m, section 1 (f1 A); x1 = q in every section
         move    y:(r3)+,x0              ; f1 A
@@ -526,12 +524,10 @@ vc_gdone:
         move    b,x:(r7+$2)
 vc_bend:
 ; ---- hp6: m/2 through three high-pass sections at 4 kHz, states walked by r5 -------------
+        lua     (r7+$6),r5              ; $06 (first: its wait overlaps the next three)
         move    x:(r7+$4),b
         asr     #$1,b,b                 ; m/2
         move    #>$47f6e6,x0            ; f, 4 kHz
-        move    r7,a
-        add     #6,a
-        move    a1,r5                   ; $06
         move    x:(r5)+,a               ; section 1: low
         move    x:(r5)-,y1              ; band
         macr    x0,y1,a
