@@ -73,7 +73,7 @@ init:
         do      #$40,>dxzinit           ; do, not rep: interrupts stay serviced (tools/build/norep.py)
         move    a,x:(r3)+               ; every slot $00..$3f (verify_dirtystate)
 dxzinit:
-        move    #>$800000,x0            ; d = -1, the pedal OFF ($3b = 0 from the clear):
+        move    #$80,x0                  ; d = -1, the pedal OFF ($3b = 0 from the clear): (short immediate: bits 23-16)
                                         ; a pedal chosen later switches in and fades in
         move    x0,x:(r7+$3d)
         rts
@@ -89,12 +89,12 @@ proc:
 ; ---- MODE: the knob's pedal, and the switch at the bottom of the fade ------
         move    x:(r6+$5),a
         and     #>$7f0000,a
-        move    #>$030000,x0
+        move    #$03,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         tgt     x0,a                    ; anything past TURB is TURB
         move    a1,x:(r7+$3f)           ; the knob's pedal
         move    x:(r7+$3d),a            ; d, a clean load
-        move    #>$800000,x0
+        move    #$80,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         bne     dtx_keep                ; still sounding: no switch
         move    x:(r7+$3b),a
@@ -114,8 +114,8 @@ dtx_keep:
         move    x:(r7+$3b),a
         move    x:(r7+$3f),x0
         cmp     x0,a
-        move    #>$ff0000,a             ; -1/128 a sample: fading out ...
-        move    #>$010000,x0            ; ... +1/128: the knob's pedal is on
+        move    #$ff,a                   ; -1/128 a sample: fading out ... (short immediate: bits 23-16)
+        move    #$01,x0                  ; ... +1/128: the knob's pedal is on (short immediate: bits 23-16)
         teq     x0,a
         move    a,x:(r7+$3e)
 ; ---- v8: OFF -- nothing runs, the frames (in place) pass untouched ----------
@@ -134,7 +134,7 @@ dtx_on:
 ; ---- MIX: value/128, 127 pinned to full scale (transient's) -------------------
         move    x:(r6+$4),a
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -144,14 +144,14 @@ dtx_on:
 ; A calm block (d = 0 and the step up: d stays 0 through the block) needs no fade
 ; arithmetic at all: $2f; settled is calm with MIX 127: $30.
         move    a1,y1                   ; MIX
-        move    #>$000000,b
+        move    #$00,b                   ; (short immediate: bits 23-16)
         move    b1,x:(r7+$30)
         move    b1,x:(r7+$2f)
         move    x:(r7+$3d),a
         tst     a                       ; d = 0?
         bne     dtx_nofast
         move    x:(r7+$3e),a
-        move    #>$010000,x0
+        move    #$01,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a                    ; the step up (the knob's pedal on)?
         bne     dtx_nofast
         move    #>$000001,b
@@ -164,7 +164,7 @@ dtx_on:
 dtx_nofast:
         move    #$1,n0                  ; (short immediate, stock's own form)
         move    x:(r7+$3b),a
-        move    #>$010000,x0
+        move    #$01,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         bne     dtx_rat
 ; ===========================================================================
@@ -297,7 +297,7 @@ sod_dec:
         move    a,x:(r3)+
 dtx_tpe:
         move    x:(r7+$37),x0           ; A0/8, in 0.018 .. 0.125
-        move    #>$020000,a
+        move    #$02,a                   ; (short immediate: bits 23-16)
         bsr     dtx_div                 ; q = 1/(8 A0)
         move    x:(r7+$32),x0
         mpy     x0,y1,a
@@ -584,7 +584,7 @@ rat_dec:
         move    x0,x:(r7+$23)
 ; ---- the pedal's six words, MK + 6 (MODE - 1): KX 8N CK KK NK0 MAKEUP --------
         move    x:(r7+$3b),a
-        move    #>$030000,x0
+        move    #$03,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>@MK_AT@,a
         move    #>@MK_AT6@,x0
@@ -638,7 +638,7 @@ rat_dec:
         asl     #$7,b,b                 ; P/W
         move    #>@RTH0@,a
         sub     b,a
-        move    #>$400000,x0
+        move    #$40,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         tlt     x0,a                    ; theta
         move    a,x0
@@ -679,7 +679,7 @@ rat_dec:
         mpy     x0,y1,a
         add     #>@RTG0@,a              ; (1 + Rt' G8x)/64
         move    a,x0
-        move    #>$020000,a             ; 1/64
+        move    #$02,a                   ; 1/64 (short immediate: bits 23-16)
         bsr     dtx_div
         move    y1,x:(r7+$0f)           ; aD
         move    x:(r7+$14),x0
@@ -705,7 +705,7 @@ rat_dec:
         mpy     x0,y1,a
         add     #>$400000,a
         move    a,x0
-        move    #>$400000,a
+        move    #$40,a                   ; (short immediate: bits 23-16)
         bsr     dtx_div
         move    y1,x:(r7+$07)           ; rho
         move    x:(r7+$0f),x0
@@ -1049,7 +1049,7 @@ dtx_out:
         move    #0,x0
         cmp     x0,a
         tgt     x0,a                    ; not above 0
-        move    #>$800000,x0
+        move    #$80,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         tlt     x0,a                    ; not below -1
         move    a,x:(r7+$3d)
