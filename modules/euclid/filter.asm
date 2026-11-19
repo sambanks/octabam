@@ -118,7 +118,7 @@ eu_type_done:
         move    x:(r6+$e),a
         and     #>$7f00,a
         asl     #$8,a,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -284,7 +284,7 @@ eu_loopend:
 eu_amp_setup:
         move    x:(r6+$0),a
         and     #>$7fffff,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -292,7 +292,7 @@ eu_amp_setup:
         move    x:(r6+$e),a
         and     #>$7f00,a
         asl     #$8,a,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
