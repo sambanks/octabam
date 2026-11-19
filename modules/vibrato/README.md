@@ -111,6 +111,11 @@ block-based:
   address early and store in the blend's shift gap; the frame advance rides on
   the output stores; three constants load as one-word short immediates. Every
   form has a stock site or a register row.
+- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172, 58 renders, IDENTICAL; the scan
+  as above): three small constants (0 to 63) in `add` load as the one-word
+  6-bit form (`add #>$1,a` is `add #$1,a`: the same result and flags). TRI at
+  its maximum: 176.9 → 175.7 cycles a sample (modelled); words 584 → 581.
 - ✅ **Render gates, 4 Nov 2026** (`verify_vibrato`, 54 checks, this tree,
   dsp_host): MIX 0 bit-exact in every shape; an FX2 instance bit-exact dry at
   any setting and `-guard` clean on both slots; DEP 0 a pure 2-sample delay
