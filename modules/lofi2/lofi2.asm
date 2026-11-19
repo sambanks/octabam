@@ -747,13 +747,14 @@ lf_nomod:
 ; $40 is past lua's -64..63 displacement (`lua (r7+$40)` assembles to
 ; r7-$40; AGENTS.md), so the base is r7 + n1.
         move    r7,r1
-        move    (r1)+n1                 ; this sample's parity half
+        move    n1,a                    ; the other half next sample: $40 <-> $60
+        move    #>$20,x0                ; (these two fill r1's wait before the step)
+        move    (r1)+n1                 ; this sample's parity half (n1 not flipped yet)
         move    r1,r2
+        eor     x0,a                    ; EOR in the register form (stock uses eor x0,b /
+                                        ; x1,b; stock has no EOR #imm site, #704 review)
         move    (r2)+                   ; r2 writes from section 0's X slot
-        move    n1,a                    ; the other half next sample:
-        move    #>$20,x0                ;  $40 <-> $60. EOR in the register form
-        eor     x0,a                    ;  stock uses (eor x0,b / x1,b); stock
-        move    a1,n1                   ;  has no EOR #imm site (#704 review)
+        move    a1,n1                   ; the flip, for the next sample
 
         move    x:(r7+$3d),x1          ; chain A-L input
 ; ---- chain A-L section 0: allpass, c = a^2 = 0.4794008348558 ----
