@@ -1081,7 +1081,7 @@ ran at 2,756 a second and the USB device answered. A second reload with the DSP 
 - **Workaround:** `ot_suite.py run --auto --image "<NAME>.RMX"` boots the image again after each loader phase.
 
 
-## DSP frame count stops 27 minutes into a mixed program-change sequence on `octabam` 05 🟡 seen once, cause not known
+## DSP frame count stops after DARK REV is picked on every track while MODULATION is loaded: `octabam` 05, reproduced in 10 minutes 🟡 trigger measured, mechanism not known
 
 MKII, 19 Nov 2026, `octabam` BUILD 05 (`5b991c85`), project SFX_01 (layouts of `ot_suite.py build`), `mix-soak` (`ot_fuzz.py` seed 3401,
 profile `mix`: 4,721 operations over 3,366 s). Booted with COMMAND 3 and the project loaded 30 s before the run, so the frame count
@@ -1099,3 +1099,30 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
 - **Not known:** whether the sequence's earlier 1,600 s of program changes, 25 demand loads or the scene select matter;
   whether the same seed stalls again; the 50.7-minute mark was not reached.
 - **Replay:** `ot_fuzz.py run out/hw/suite/oct05mix2/mix-soak.json <label> --until 2205` (seed 3401).
+- **Reproduction (19 to 20 Nov 2026, same seed 3401, boot and project load before each run, `ot_fuzz.py run` on a sequence cut
+  from the failing one; the files are `out/hw/replay/` in the tooling worktree):** the last 22 s alone (from the START at 1,591 s):
+  2 runs, no stall; the last 128 s: 1 run, no stall; the last 573 s: **2 of 2 stalled**, at the same final START, the DSP count
+  fixed at 1,618,228 and 1,617,916 and the same DLPUMP state each time (effect bit `0x1`, block `0x4`, 7 loads and 7 withdrawals
+  armed, FX2 ids `0x16` on all 8 tracks, FX1 ids all 0). The same 573 s with the last program change replaced:
+
+  | last layout | result |
+  |---|---|
+  | 14 DARK REV FX2 def | stalled 2 of 2 |
+  | 15 MODULATION FX2 def | no stall, 1 run |
+  | 12 PLATE REV FX2 def | no stall, 1 run |
+  | 13 SPRING REV FX2 def | no stall, 1 run |
+
+- **State just before the last program change** (the same replay stopped there, DLPUMP read over USB): the 573 s run held MODULATION
+  in block `0x4` (bit `0x1`, 7 loads armed, 6 withdrawals) with FX2 ids `0x0e` on all 8 tracks; the 22 s run, which did not stall,
+  held no effect (bits 0, FX2 ids 0). So the stall needs MODULATION loaded and live on FX2 when DARK REV is picked on every
+  track and START follows. DARK REV is the reverb whose buffer reaches the demand effect's code (`verify_dlload`: `DARK = 0x16`).
+- **Under the port (`ot_emu`, the replay as live-script lines on the same image):** no stall, in the same state (MODULATION
+  loaded, FX2 ids `0x0e`, then `0x16` on all 8 tracks): the loader withdrew MODULATION (1 load, 1 withdrawal, bits 0). The port does
+  not model the two-core timing (FAILURE_MODES.md, "DSP stall after a demand load during play").
+- **Corrected:** the pump-call counter read 27,150 and 26,660 above `dsp.seq` in the two stalls; the gap is about the same each
+  time, so it is a boot offset and not evidence that the pump kept running.
+- **Related:** the 28 Oct entry "DARK REV picked on T4's FX2 while a demand effect's code is in T4's block" (the guard's late
+  resume of a dry reverb after the code leaves its block; fixed by moving the guard's cells). That entry lists "whether another writer touches
+  `x:$3dc0..$3e3f`" as not established. Here all 8 guard instances see DARK REV at once.
+- **Not known:** whether the fault is the guard's resume on one track or the eight together; whether DARK REV on one track
+  over the same history stalls; PLATE, SPRING and MODULATION def are 1 run each.
