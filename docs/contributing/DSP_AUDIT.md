@@ -230,10 +230,10 @@ from before #1080 (`48b7e4f3`, the merge's first parent):
 
 | # | row | site | the change | saving | class | status |
 |---|---|---|---|---|---|---|
-| M1 | T26, T25 | `mo_tap` (`:1347-1359`) | The offset first, in `a`; the fraction in `b`, filling the gap before `n5` is used. Stalls a call 6 → 2. Every form has a stock site (`move a,b`, `and #>N,b`, `asl #N,b,b`, `move b1,y1`); the zero-stall order needs `sub y1,b` and `move b1,n5`, which have none. | -5 a call: JUNO and DIM -10, FLNG -15; -1 word | I | open |
-| M2 | T26, T25 | `mo_herm` (`:1383-1396`) | The same order. | -5 a call: COMB -10; -1 word | I | open |
-| M3 | T26, T25 | LINE's two line writes (`:427-429`, `:474-476`); COMB's two (`:1139-1141` and its L twin) | Load `n5` and `r5` just after the tap returns (nothing between uses them); put the step between `add b,a` and the limiting `move a,x0`. Removes the 3-cycle AGU stall and a 1-cycle arithmetic stall. | -4 a site: LINE modes -8; COMB -8 (its sites to be read); 0 words | I | open |
-| M4 | T19 | the three mix tails (`:634-644`, `:897-907`, `:1163-1173`) | The L store `x:(r0)+`, the dry R read `x:(r0)`, the R store `x:(r0)+`; the `lua` goes. Nothing between uses `r0`. | -5 in every live mode; -1 word each (3 in all) | I | open |
+| M1 | T26, T25 | `mo_tap` (`:1347-1359`) | The offset first, in `a`; the fraction in `b`, filling the gap before `n5` is used. Stalls a call 6 → 2. Every form has a stock site (`move a,b`, `and #>N,b`, `asl #N,b,b`, `move b1,y1`); the zero-stall order needs `sub y1,b` and `move b1,n5`, which have none. | -5 a call: JUNO and DIM -10, FLNG -15; -1 word | I | taken: branch `mod-fast` (17dfb0f8), -10 / -15 as modelled |
+| M2 | T26, T25 | `mo_herm` (`:1383-1396`) | The same order. | -5 a call: COMB -10; -1 word | I | taken: with M1, COMB -10 |
+| M3 | T26, T25 | LINE's two line writes (`:427-429`, `:474-476`); COMB's two (`:1139-1141` and its L twin) | Load `n5` and `r5` just after the tap returns (nothing between uses them); put the step between `add b,a` and the limiting `move a,x0`. Removes the 3-cycle AGU stall and a 1-cycle arithmetic stall. | -4 a site: LINE modes -8; COMB -8 (its sites to be read); 0 words | I | taken: LINE b3e53422 (-8), COMB 4dd05345 (-8) |
+| M4 | T19 | the three mix tails (`:634-644`, `:897-907`, `:1163-1173`) | The L store `x:(r0)+`, the dry R read `x:(r0)`, the R store `x:(r0)+`; the `lua` goes. Nothing between uses `r0`. | -5 in every live mode; -1 word each (3 in all) | I | taken: 1aa9c85d, -5 in every mode, -3 words |
 | M5 | T09 | the three MIX run stores (`:629`, `:892`, `:1158`) | `move a,x:(r1)` and `move a,y1` as one X:R move. | -1 in every live mode; -1 word each | F: `move a,x:(r1) a,y1` has no stock site | open |
 | M6 | T25 | LINE's line writes and LPo (`mo_line+124`, `+153`, `+168`, `+192` in the scan) | Move the next independent load (`move n2,x0`, the next slope) between the `mac` and its store. | about -1 a site, 4 to 6 sites a sample | I | open: design per site |
 | M7 | T26 | `move #$3,n3` at `mo_whr` (`:617`), `move #$5,n3` in COMB (`:1146`) | Load `n3` earlier, or reach wet L another way. In FLNG `n3` also holds f. | -1 to -2 | I | open |
@@ -241,10 +241,18 @@ from before #1080 (`48b7e4f3`, the merge's first parent):
 | M9 | T29 | PHSR's two `do #4` (`:791`, `:851`) | Unroll. | -10, about +20 words | I | not taken: a trade |
 | M10 | T27 | a `lua` and a read through it (`mo_whl`, `mo_padv+103`, COMB `+80`) | Separate them. | up to 3 each, only if a `lua` interlocks (the manual does not say) | I | open, low |
 | M11 | T25 | the mix tails' five 1-cycle stalls (`mo_whr+7`, `+11`, `+16`, `+21`, `+25`) | The MIX rework #1080 declined (mix L as soon as wet L exists). | about -5 in every live mode | I | open: more surgery |
+| M12 | T26 | FLNG's fixed-tap line write (`mo_whl+7`: `move r6,r5` then the step, 3 a sample), found by the scan of the M1 to M4 code | M3's change. | -3 (FLNG) | I | open |
 
 If M1 to M5 hold, the model gives JUNO about -24 (321.8 → 298), DIM -24, FLNG
 -29 (398.8 → 370, 8.8 % → 8.2 % of a frame), COMB -24 and PHSR -6. Modelled,
 not measured; the gate and a LOAD METER read would confirm them.
+
+**Taken, 19 Nov 2026** (branch `mod-fast`, local, from main `cc7cffc1`): M1 to
+M4, each commit IDENTICAL under the wider gate (41 renders, state after every
+block), `verify_modulation` ALL PASS, every new form at a stock site. The scan
+of the result: JUNO 321.8 → 298.8, DIM 390.9 → 367.9, FLNG 398.8 → 370.8 (8.8 %
+→ 8.2 %), COMB 360.9 → 337.9, PHSR 393.1 → 388.1 cycles a sample; words 1,318
+→ 1,313. Every figure matched the finding's estimate.
 
 ### VIBRATO
 
