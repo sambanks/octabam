@@ -164,7 +164,7 @@ vc_run:
         asl     #$2,b,b                 ; 12 s
         add     x1,b
         asr     #$10,b,b
-        add     #>$00002e,b             ; + 46, DOWN
+        add     #$00002e,b               ; + 46, DOWN (6-bit immediate)
         move    b1,n4
         move    p:(r4+n4),x0            ; DOWN[s][degree]: 0 .. 2 semitones, x 2^16
         move    y1,a
@@ -177,7 +177,7 @@ vc_run:
         cmp     x0,b
         tgt     x0,b
         asr     #$8,b,b
-        add     #>$00002b,b             ; + 43, RNG
+        add     #$00002b,b               ; + 43, RNG (6-bit immediate)
         move    b1,n4
         move    x:(r6+$1),a             ; BEND: bipolar
         and     #>$7f0000,a
@@ -209,7 +209,7 @@ vc_glide:
         move    #>$000004,x0
         cmp     x0,a
         tgt     x0,a
-        add     #>$000026,a             ; + 38, GLD
+        add     #$000026,a               ; + 38, GLD (6-bit immediate)
         move    a1,n4
         move    n7,y0                   ; the call's frame count
         move    p:(r4+n4),x0            ; K
@@ -285,7 +285,7 @@ vc_long:
         move    #$40,a                   ; (short immediate: bits 23-16)
         mac     y0,x0,a
         move    a,x0                    ; 2^r / 2
-        add     #>$00001e,b             ; + 30, OCT
+        add     #$00001e,b               ; + 30, OCT (6-bit immediate)
         move    b1,n4
         move    p:(r4+n4),y0            ; OCT[o]: the increment of C(o), x 2
         mpy     y0,x0,a
