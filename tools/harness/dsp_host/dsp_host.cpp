@@ -158,6 +158,11 @@
 //     -trackout FILE        where -track writes (default /tmp/dsp_track.txt)
 //     -trackinst K          which instance -track samples (default 0)
 //     -trace N              log the first N instructions executed
+//     -steptrace            step hardware DO loops one instruction at a time
+//                           (the emulator's host-stepped mode, as ot_emu runs
+//                           it), so -trace shows a loop's body; without it the
+//                           interpreter runs a whole DO loop in one step and the
+//                           trace jumps from the `do` to its end
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -192,6 +197,7 @@ struct Args {
     std::vector<std::string> in;               // one per instance, or one for all
     TWord init = 0, proc = 0, audio = 0x000080, params = 0x000100, state = 0x010000;
     int frames = 32, blocks = 256, trace = 0, diff = 0, spray = 0;
+    bool steptrace = false;
     TWord flags = 0; int pingpong = -1;
     int inst = 1; TWord dirty = 0; bool noctl = false;
     bool dispatch = false; int fx2tracks = 0; TWord fxid = 0x16;
@@ -454,6 +460,15 @@ Ctx detectCtx(Memory& mem) {
     return c;
 }
 
+// One instruction. A host-stepped core (-steptrace) returns from a `do` before
+// its body runs, and the loop-end test is the host's: doLoopEnd() after every
+// step, as tools/emu/ot_emu does. Without -steptrace this is execInterpreter().
+inline void step(DSP& dsp) {
+    dsp.execInterpreter();
+    if (dsp.isHostStepped())
+        dsp.doLoopEnd();
+}
+
 // Run from _pc until the matching rts pops back past the entry stack depth.
 uint32_t g_lastCycles = 0;
 const TWord SENTINEL = 0x03f000;   // must be a MAPPED P address -- an
@@ -474,7 +489,7 @@ bool runToRts(DSP& dsp, TWord pc, int trace, const char* what, uint32_t maxCycle
                         dsp.regs().m[5].var & 0xffffff,
                         (unsigned)(dsp.regs().x.var >> 24) & 0xffffff,
                         dsp.regs().n[7].var);
-        dsp.execInterpreter();   // single-step; exec() may JIT past the sentinel
+        step(dsp);   // single-step; exec() may JIT past the sentinel
     }
     std::cerr << what << ": did not return after " << maxCycles << " cycles (pc="
               << std::hex << dsp.getPC().toWord() << ")\n";
@@ -485,7 +500,7 @@ bool runToRts(DSP& dsp, TWord pc, int trace, const char* what, uint32_t maxCycle
 void runRange(DSP& dsp, TWord lo, TWord hi) {
     dsp.setPC(lo);
     while (dsp.getPC().toWord() <= hi)
-        dsp.execInterpreter();
+        step(dsp);
 }
 
 void dumpRegs(DSP& dsp, Memory& mem) {
@@ -557,6 +572,7 @@ int main(int argc, char** argv) {
         else if (k == "-frames") a.frames = atoi(argv[++i]);
         else if (k == "-blocks") a.blocks = atoi(argv[++i]);
         else if (k == "-trace") a.trace = atoi(argv[++i]);
+        else if (k == "-steptrace") a.steptrace = true;
         else if (k == "-trackinst") a.trackInst = atoi(argv[++i]);
         else if (k == "-flags") a.flags = strtoul(argv[++i], nullptr, 16);
         else if (k == "-diff") a.diff = atoi(argv[++i]);
@@ -697,7 +713,7 @@ int main(int argc, char** argv) {
                      "                [-memB <file>] [-core a,b] [-skew N] [-meter FILE]\n"
                      "                [-inst N] [-alloc a,b] [-r7 a,b] [-allocproc MODE] [-guard]\n"
                      "                [-frames N] [-blocks N] [-in raw[,raw..]] [-out raw]\n"
-                     "                [-paramfile FILE ...] [-guard-shared] [-trace N]\n";
+                     "                [-paramfile FILE ...] [-guard-shared] [-trace N] [-steptrace]\n";
         return 2;
     }
     if (a.inst < 1) a.inst = 1;
@@ -722,6 +738,7 @@ int main(int argc, char** argv) {
         C.periphX.reset(new Peripherals56362);
         C.periphY.reset(new Peripherals56367);
         C.dsp.reset(new DSP(*C.mem, C.periphX.get(), C.periphY.get()));
+        if (a.steptrace) C.dsp->setHostStepped(true);
         if (c == 1) {
             // Core 1's shared window lives in core 0's arrays. Both X and Y:
             // on the chip P/X/Y all alias there (docs/firmware/CHIP.md), and the
@@ -1088,7 +1105,7 @@ int main(int argc, char** argv) {
                 // Cheap enough at 1/1024 instructions, and it has to be
                 // INSIDE the block: the ring can fill mid-block.
                 if ((i & 0x3ff) == 0) drainHostTX();
-                dsp.execInterpreter();
+                step(dsp);
             }
             drainHostTX();
             const long n = static_cast<long>(dsp.getInstructionCounter() - i0);
@@ -1304,7 +1321,7 @@ int main(int argc, char** argv) {
                         D.regs().m[5].var & 0xffffff,
                         (unsigned)(D.regs().x.var >> 24) & 0xffffff,
                         D.regs().n[7].var);
-        D.execInterpreter();
+        step(D);
         ++R.cur.steps;
         return true;
     };
