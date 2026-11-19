@@ -165,34 +165,34 @@ Every module is now stamped with version 2.
 ## 3. How each module is built
 
 Seeded on 19 Nov 2026 from a first read of every DSP module; each module's
-audit checks its row and corrects it. Counts are inside the sample loop
-(`do n7`), callees not included.
+audit checks its row and corrects it. The state counts are the static check's
+(T14), checked in pass 1: inside the sample loops and the routines they call.
 
-| module | author | source of record | state in the loop: displaced from r7 / walked | calls a sample | `do` in the loop | tables | reference model | identity gate |
-|---|---|---|---|---|---|---|---|---|
-| MODULATION (audited) | sambanks | hand-written | 7 / 102, loops and the routines they call | `mo_tap` 2 to 3, `mo_itrd`, `mo_apst` 4 (PHSR), `mo_herm` 2 (COMB) | PHSR `do #4` twice | generated from the reference | `modulation_ref.py` | `verify_ident` |
-| VIBRATO (audited) | Bryan T | hand-written | 11 / 4, loops and the routines they call | `vb_tap` 2 | none | generated from the reference | `vibrato_ref.py` | `verify_ident` |
-| SPECTRUM | sambanks | hand-written | 7 / 82 | `fs_r3`, `fs_lcore`, `fs_ccore` | `do #2` | 3 listed by hand | `capacitor2_ref.py` (helper only) | `verify_spectrum_ident` |
-| CHARACTER | sambanks | hand-written | 0 / 61 | `chtube` or `chtape` 2 | none | TUBE_UP computed, TAPE_D8 by hand | none | `verify_ident` |
-| CHARACTER TXTR | sambanks | hand-written: CHARACTER plus 191 lines | 4 / 63 | as CHARACTER, plus `chtx2` 2 | none | as CHARACTER, plus POCKEY computed | `pockey2_ref.py` | `verify_ident` |
-| DISTORX | MaMarko | **generated** by `generate_asm.py` from `distorx.tmpl.asm` | 6 small loops; the work is in callees | `sod_stage` or `dtx_rstage`, `dtx_out` | none | computed | `distorx_ref.py` | `verify_ident` |
-| LOFI2 | Bryan T | hand-written | 93 / 85 | none (inline) | none | computed in the manifest | none | `verify_ident` |
-| VOID | ilia-murzinov | hand-written | 107 / few | none | none | computed in the manifest | `void_ref.py` | `verify_ident` |
-| STUTTR | ilia-murzinov | hand-written | 92 / few | none | none | none | none | `verify_ident` |
-| SHATTER | ilia-murzinov | hand-written; limiter spliced from `peak_limiter.py` | 48 / few | none | none | none | none | `verify_ident` |
-| RESONATOR | ilia-murzinov | hand-written; limiter spliced from `peak_limiter.py` | 28 / 2 | `rs_one` 8 | none | computed in the manifest | `resonator_ref.py` | `verify_ident` |
-| EUCLID | repeat98 | hand-written | 56 / few | `eu_denominator` (conditional) | none | computed in the manifest | none | `verify_ident` |
-| MINIVERB | repeat98 | hand-written; its comments read machine-made, no generator in the repo | 58 / few | none | none | none | none | `verify_ident` |
-| TRANSIENT | Ignorato | hand-written | 26 / few | none | none | computed in the manifest | `transient_ref.py` | `verify_ident` |
-| VOCODER | Ignorato | hand-written | 35 / 36 | `vc_blep` 2 | `do #10` | from `vocoder_law.py` | `vocoder_ref.py` | `verify_ident` (own slot 5) |
-| BBD | JamCones | hand-written | 42 / 111 | `bbhsec` | none | none | `bbd_ref.py` | `verify_ident` |
-| VERBERATION | Emilie Gillet, ported | hand-written; three rows from `rows.py` | 44 / few | none | none | none | none | `verify_ident` |
-| TESTGEN | Ignorato | hand-written | 34 / few | | | computed in the manifest | `testgen_ref.py` (not imported) | `verify_ident` |
-| SEND | sambanks | hand-written | | | | none | none | `verify-bus` |
-| REVERB SERVER | sambanks | hand-written | 93 / 80 | `apbody` 4 | `do #8`, `do #4` twice | typed-in mode rows, the rolled LFO table | none | `verify-roll` |
-| DELAY SERVER | sambanks | hand-written | 54 / 9 | `modtap`, `smoothw` | `do #4` twice | typed in | none | `verify-delay` |
-| SIDECHAIN_COMPRESSOR | Zac Kyoti | in its `upstream/` submodule | | | | | | |
-| ANALOG BASSDRUM | repeat98 | written over SPRING REV's words by `ab_image.py` | | | | `tables.inc` | `dsp808.py`, `dsp909.py` | |
+| module | author | source of record | state in the loop: displaced from r7 / walked | calls a sample | `do` in the loop | tables | reference model | identity gate | frame advance |
+|---|---|---|---|---|---|---|---|---|---|
+| MODULATION (audited) | sambanks | hand-written | 7 / 102, loops and the routines they call | `mo_tap` 2 to 3, `mo_itrd`, `mo_apst` 4 (PHSR), `mo_herm` 2 (COMB) | PHSR `do #4` twice | generated from the reference | `modulation_ref.py` | `verify_ident` | `lua (r0+$2),r0` |
+| VIBRATO (audited) | Bryan T | hand-written | 11 / 4, loops and the routines they call | `vb_tap` 2 | none | generated from the reference | `vibrato_ref.py` | `verify_ident` | two `(r0)+n0` |
+| SPECTRUM | sambanks | hand-written | 7 / 90 | `fs_r3`, `fs_lcore`, `fs_ccore` | `do #2` | 3 listed by hand | `capacitor2_ref.py` (helper only) | `verify_spectrum_ident` | post-step stores |
+| CHARACTER | sambanks | hand-written | 0 / 66 | `chtube` or `chtape` 2 | none | TUBE_UP computed, TAPE_D8 by hand | none | `verify_ident` | post-step stores |
+| CHARACTER TXTR | sambanks | hand-written: CHARACTER plus 191 lines | 5 / 68 | as CHARACTER, plus `chtx2` 2 | none | as CHARACTER, plus POCKEY computed | `pockey2_ref.py` | `verify_ident` | post-step stores |
+| DISTORX | MaMarko | **generated** by `generate_asm.py` from `distorx.tmpl.asm` | 2 / 8 | `sod_stage` or `dtx_rstage`, `dtx_out` | none | computed | `distorx_ref.py` | `verify_ident` | post-step stores |
+| LOFI2 | Bryan T | hand-written | 93 / 88 | none (inline) | none | computed in the manifest | none | `verify_ident` | `#>$2,n0` / step / `#>$1,n0` |
+| VOID | ilia-murzinov | hand-written | 107 / 3 | none | none | computed in the manifest | `void_ref.py` | `verify_ident` | `#>$2,n0` / step / `#>$1,n0` |
+| STUTTR | ilia-murzinov | hand-written | 92 / 6 | none | none | none | none | `verify_ident` | post-step stores |
+| SHATTER | ilia-murzinov | hand-written; limiter spliced from `peak_limiter.py` | 48 / 2 | none | none | none | none | `verify_ident` | post-step stores |
+| RESONATOR | ilia-murzinov | hand-written; limiter spliced from `peak_limiter.py` | 28 / 8 | `rs_one` 8 | none | computed in the manifest | `resonator_ref.py` | `verify_ident` | post-step stores |
+| EUCLID | repeat98 | hand-written | 56 / 2 | `eu_denominator` (conditional) | none | computed in the manifest | none | `verify_ident` | `#>$2,n0` / step / `#>$1,n0` |
+| MINIVERB | repeat98 | hand-written; its comments read machine-made, no generator in the repo | 58 / 6 | none | none | none | none | `verify_ident` | post-step stores |
+| TRANSIENT | Ignorato | hand-written | 26 / 6 | none | none | computed in the manifest | `transient_ref.py` | `verify_ident` | post-step stores |
+| VOCODER | Ignorato | hand-written | 35 / 39 | `vc_blep` 2 | `do #10` | from `vocoder_law.py` | `vocoder_ref.py` | `verify_ident` (own slot 5) | post-step stores |
+| BBD | JamCones | hand-written | 44 / 67 | `bbhsec` | none | none | `bbd_ref.py` | `verify_ident` | post-step stores |
+| VERBERATION | Emilie Gillet, ported | hand-written; three rows from `rows.py` | 44 / 5 | none | none | none | none | `verify_ident` | post-step stores |
+| TESTGEN | Ignorato | hand-written | 34 / few | | | computed in the manifest | `testgen_ref.py` (not imported) | `verify_ident` |  |
+| SEND | sambanks | hand-written | 6 / 4 | | none | none | `verify-bus` | n/a (the bus) |
+| REVERB SERVER | sambanks | hand-written | 108 / 83 | `apbody` 4 | `do #8`, `do #4` twice | typed-in mode rows, the rolled LFO table | none | `verify-roll` | n/a (the bus) |
+| DELAY SERVER | sambanks | hand-written | 54 / 13 | `modtap`, `smoothw` | `do #4` twice | typed in | none | `verify-delay` | two `(r0)+n0` |
+| SIDECHAIN_COMPRESSOR | Zac Kyoti | in its `upstream/` submodule | | | | | | |  |
+| ANALOG BASSDRUM | repeat98 | written over SPRING REV's words by `ab_image.py` | | | | `tables.inc` | `dsp808.py`, `dsp909.py` | |  |
 
 Every module decodes its knobs once a block; none reads r6 inside a sample
 loop. `dsp_asm` has no includes, macros or `equ`, so modules share code by
@@ -457,14 +457,19 @@ stalls (`proc+234` to `+255`), about -3. Nothing else.
 
 #### Not audited in pass 1
 
-- **SIDECHAIN_COMPRESSOR**: four hooks into the stock COMPRESSOR, code in its
-  `upstream/` submodule (checked out in WSL); the scan cannot trace hooks.
-  Pass 1 by reading is still to do.
-- **TESTGEN**: a test generator, not scanned.
+- **SIDECHAIN_COMPRESSOR** (Zac Kyoti): Zac's code, pinned in `upstream/`,
+  checked against his own build every build, and never edited here; any
+  change goes to his repository. It has no sample loop of its own (four hooks
+  into the stock COMPRESSOR), so the scan cannot price it. The static checks
+  on `patch_sc_dsp3.asm` show 34 long immediates, 8 compare-and-branch tests
+  and 5 `lua`-then-read pairs, to price with a trace through the stock
+  COMPRESSOR before they are offered to him.
+- **TESTGEN**: a test signal generator, not scanned.
 - **ANALOG BASSDRUM**: built by `ab_image.py` over SPRING REV's words, no
   `DspSection`; not scanned.
 - **The frame hooks** (LOAD METER, USB's `rx_inject`, KEYBUS, REMIX SWITCH's
-  park, DLCOPY): by reading, still to do.
+  park, DLCOPY): they run once a frame, not once a sample, so a cycle saved
+  there is worth about a sixteenth of one in a sample loop. Not audited.
 
 ### Notes from the pilot (checklist version 1 unchanged)
 
@@ -499,6 +504,20 @@ so they sit outside this audit's bit-identical rule.
   bits are zero with the one-word short form (`move #$5e,y1`, "bits 23-16").
   The other modules spell the same kind of value as a two-word `#>$xx0000`:
   136 times in 23 files. Bit-identical, a word and a cycle each.
+- **The frame advance, four ways.** Post-stepping `r0` on the last stores
+  (CHARACTER, SPECTRUM and most others) costs nothing. A `lua (r0+$2),r0`
+  (MODULATION) costs 3 cycles; two `(r0)+n0` (VIBRATO, DELAY SERVER) 2;
+  `#>$2,n0` / step / `#>$1,n0` (LOFI2, VOID, EUCLID) about 8 with its stalls.
+  T19 brings them all to the first.
+- **Tap offsets, four ways.** Loaded into `n5` just before use (MINIVERB,
+  VERBERATION: a 3-cycle stall a tap), streamed from memory into `n5` just
+  before use (REVERB SERVER), computed into `r5` just before use (DELAY
+  SERVER), and computed early enough (none yet). T24, T26 and T32 are the
+  remedies; T32 needs no new form.
+- **State addressing.** Walked (MODULATION, CHARACTER, SPECTRUM, mostly BBD)
+  against displaced from `r7` (VOID 107, STUTTR 92, LOFI2 93, MINIVERB 58,
+  EUCLID 56). MODULATION's 22 Sep pass is the worked example; the cost of
+  following it is a re-laid state block.
 - **Shared code.** `vb_tap` is `mo_tap` plus one move. A shared tap would come
   in the way `tools/remix/peak_limiter.py` serves SHATTER and RESONATOR: one
   Python source, spliced in through `subst`.
