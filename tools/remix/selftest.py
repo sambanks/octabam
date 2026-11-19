@@ -1073,6 +1073,7 @@ def main():
              "xfcurve": (), "xfcurve-scurve": (),   # XF CURVE: ColdFire, no DSP words, on the 14 stock effects
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
+             "usb-midi-tracks-hw": ("SPATIALIZER",), "usb-midi-tracks-hw-off": ("SPATIALIZER",),   # unit-test images: SPATIALIZER's DSP words go to LOAD METER
              "octatrick": ("SPATIALIZER",),   # USB's ABCD input inject, as in the io remixes
              "pext-probe": ("EQUALIZER", "PLATE REV", "SPRING REV"),   # the probe takes EQUALIZER's id and the two reverbs' words
              "window-mod": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"), "window-ctl": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"),   # MODULATION takes CHORUS's id; the reverbs' words hold LOAD METER and CORE
