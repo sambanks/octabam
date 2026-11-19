@@ -311,6 +311,12 @@ T1's FX1, printed as an amplitude and read by `clock_probe.py --bench`):
 | `move x:(r7+$15),a` (one-word displaced) | 3.98 ✅ |
 | `move x:(r7+$70),a` (two-word displaced) | 6.01 ✅ |
 
+❓ Each row is exactly twice the core manual's figure for the form (1, 1, 2, 3;
+"Cycles from the core's manual" below), and the manual's figures at face value
+fit MODULATION's unit costs. Not reconciled: the factor may be in the probe's
+conversion (its timer counts at CLK/2) rather than in the chip. Falsifier:
+the same loop timed beside a loop of known one-cycle instructions in one build.
+
 A station's whole-proc timer window is not usable for its absolute cost:
 probes 59/61 (8 nops × 125 and × 1,000 iterations) differed by one frame
 (72,512 cycles), not by their instruction counts — the window is
@@ -319,6 +325,73 @@ per-station numbers (LP 464, VOWL 685, LADR 797, ISO 1,010, TAPE 887, JUNO
 1,260 cycles/sample) carry that pre-emption and are not separable from it
 ❓; the burn sweep and the pricer with the per-form costs above are the
 instruments.
+
+### Cycles from the core's manual (18 Nov 2026)
+
+The DSP56300 Family Manual (DSP56300FM Rev 5, April 2005; the Symphony uses
+"the same DSP56300 core", AN3653 section 2) gives each instruction form's
+cycles (Table A-1, for code in internal memory) and the idle cycles the core
+inserts for some sequences (sections A.2 and 3.5). The forms the effects use:
+
+| form | cycles |
+|---|---|
+| a one-word move, ALU instruction, or ALU instruction with a parallel move | 1 |
+| a second word (long immediate `#>`, long absolute address) | +1 |
+| an `(rN+nN)` or `-(rN)` address | +1 |
+| `move x:(rN+xxx)` (one word) / `x:(rN+xxxx)` (two words) | 2 / 3 |
+| `lua` | 3 |
+| `bsr`, `bcc`: short / long displacement; `rts` | 4 / 5; 3 |
+| `do`, `rep` | 5 |
+| a move to or from P memory (`movem`) | 6 |
+
+| stall | idle cycles |
+|---|---|
+| a move reads an accumulator the previous ALU instruction wrote (arithmetic, 3.5.1) | 1 |
+| a move reads an accumulator the previous move wrote (transfer, 3.5.2.1) | 1 |
+| an SR read one or two instructions after an ALU instruction (status, 3.5.2) | 1 or 2 |
+| an address register set (Rn, Nn, Mn) written by a move, then Rn used for an address within 3 cycles (A.2.4) | 3, 2 or 1 |
+| a Tcc, then an instruction with an R register as source (A.2.4) | 1 |
+| a conditional branch not taken: the next decode (A.2.6.3) | 1 |
+
+`tools/build/interlock_scan.py` traces the path a module's proc executes
+(`dsp_host -steptrace`) and prices it with both tables. Against the unit's
+LOAD METER costs of MODULATION (25 Oct 2026, images I3 and I4: per-slot share
+of a frame × 4,532), on the code those images ran (`4d6406c0`, `55daca93`):
+
+| mode | instructions/sample (`-meter`) | unit, cycles/sample | model | model without the two readings |
+|---|---|---|---|---|
+| JUNO | 212.9 | 326.3 | 333.5 | 326.4 |
+| DIM | 258.8 | 397.0 | 402.5 | 398.4 |
+| FLNG (I3) | 259.8 | 417.9 | 424.7 | 417.6 |
+| FLNG (I4) | 253.6 | 405.6 | 412.5 | 405.4 |
+| COMB | 262.5 | 359.4 | 368.1 | 361.3 |
+| PHSR | 296.8 | 392.0 | 402.2 | 395.6 |
+
+The two readings are where the manual is not explicit: a `lua` destination
+counted as an address register written by a move, and a Tcc counted as an ALU
+instruction for the arithmetic stall. Without them the model is within 1 % of
+all six unit figures; with them, 1.4 to 2.6 % high.
+
+The same check over every unit figure the repo has for code the scan can
+rebuild (38 settings of 22 effects, the stock effects among them, and
+Jannik Aßfalg's stock counts in the table above):
+`docs/contributing/CYCLE_SCAN.md` section 1. The narrow model is a mean 3.0 %
+above the unit and never more than 0.2 % below it.
+
+- ✅ the numbers in the table (the unit's from `modules/modulation/README.md`;
+  the model's from the scan, 18 Nov 2026).
+- 🟡 that Table A-1 and the stalls, with the narrow readings, describe this
+  chip: six figures, one module, one project; the unit's knob settings were
+  not recorded (the path does not depend on them in the scan: LOFI 0 and 40
+  price the same) and its figures include the dispatcher's call.
+- 🟡 that I3 and I4 ran MODULATION from internal P: window placement
+  (`1a7bf9d7`, `36b86291`) landed 12 hours after `55daca93`. The window's
+  wait state on every fetch (DSP56720RM 16.2) is not in the model and not
+  measured.
+- Consequence, inferred: `-meter` (instructions) reads MODULATION at 0.62
+  to 0.76 of its unit cost, and `cycle_count.py` (words) is in the same
+  range. The burn sweep's rows above already put the pricer low on the
+  reverb (1,650 against 1,384).
 
 ## 3. DSP Y memory
 

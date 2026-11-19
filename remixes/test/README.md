@@ -4,7 +4,6 @@ Each carries one module, or one combination, for that module's gates: `make chec
 
 | remix | contains | proof |
 |---|---|---|
-| [`track-trig-mode`](track-trig-mode/README.md) | Hteah's single-mode track trig editing on the Step View grid.. | emulator (verify_track_trig_mode.py); not on a unit |
 | [`analog-bassdrum`](analog-bassdrum/README.md) | Analog BD source machine, switchable 808/909, stock AMP and FX. | emulator: source/UI under the port; earlier ANALOGBD1 auditioned on MK1, current revision unflashed |
 | [`ata-write-guard`](ata-write-guard/README.md) | Stock effects with the first PIO card write guarded through bookkeeping. | emulator: forced completion-interrupt gate under the port; not on hardware |
 | [`bar-led`](bar-led/README.md) | stock effects with BAR LED: the tempo LED flashes green on the pattern's 1 while playing. | emulator |
@@ -56,6 +55,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`kyoti-fixes`](kyoti-fixes/README.md) | stock effects with QUANTIZE_LIVE_REC_TOGGLE, ERASE_EMPTY_TRIGLESS_LOCKS and BATCH_BUGFIXES together. | emulator |
 | [`kyoti-mute-jump`](kyoti-mute-jump/README.md) | stock effects with MUTE_MODES and DIRECT_JUMP_KYOTI together. | emulator |
 | [`kyoti-mute-sidechain`](kyoti-mute-sidechain/README.md) | stock effects with MUTE_MODES and SIDECHAIN_COMPRESSOR together: a muted KEY track keeps feeding the compressor (SC_KEY). | emulator |
+| [`lazy-chop`](lazy-chop/README.md) | stock effects with LAZY CHOP (tap TRIG 1..16 to slice a take) and BUFFER SAVER. | emulator (verify_lazy_chop): verify_lazy_chop under the port; the module on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
 | [`lofi-amf-fix`](lofi-amf-fix/README.md) | Reference minimal build: the LO-FI AMF mpysu->mpyuu fix, alone. | emulator |
 | [`lofi2`](lofi2/README.md) | LOFI2 beside the stock effects (all but PLATE REV and SPRING REV, whose words it takes). | emulator |
 | [`midi-follow`](midi-follow/README.md) | Per-track RFOL source selection on MIDI NOTE SETUP; Part-owned bass following. | emulator |
@@ -98,6 +98,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`sidechain-compressor`](sidechain-compressor/README.md) | stock effects with SIDECHAIN_COMPRESSOR in COMPRESSOR's row: MON, KEY, KGN, KBAS and KWID on page 2. | emulator |
 | [`slow-lfo`](slow-lfo/README.md) | stock effects with SLOW LFO: LFO MULT gains 1/2X, 1/4X and 1/8X on audio and MIDI tracks. | emulator |
 | [`sos-capture`](sos-capture/README.md) | recorder fixes + USB (TRACKS out, AB in) (stock effects minus SPATIALIZER). | emulator: `make check` under the port; not on hardware in this form |
+| [`src3-key`](src3-key/README.md) | stock effects with SRC3 KEY ([MIDI] in the audio editor records SRC3 on the MKI). | emulator (verify_src3_key): verify_src3_key under the port; the module itself on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
 | [`stations-fx2`](stations-fx2/README.md) | SPECTRUM, CHARACTER and MODULATION on FX1 and FX2, beside the stock DELAY. | emulator (verify_stations_fx2): `verify_stations_fx2` (dsp_host); not on a unit |
 | [`stems`](stems/README.md) | STEM REC on the stock effects: multitrack recording to the card, each track, MAIN, CUE and the inputs as separate WAV files. | on a unit (MKII, Yves, 2026-10-06): (STEMS3) |
 | [`stems-brain`](stems-brain/README.md) | STEM REC (UP+REC) with BRAIN on the root: coexistence without two menu growers. | emulator (verify_stems_menu): verify_stems_menu under ot_emu |
@@ -106,6 +107,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`stuttr`](stuttr/README.md) | STUTTR beside the stock effects (all but PLATE REV, whose words it takes). | local render: verify_stuttr; chance-engage redesign. |
 | [`tapeecho`](tapeecho/README.md) | Tape Echo replacing Spring Reverb, alone. | on a unit: the author's unit (OCTACLID4): six instances; a seventh freezes it, open |
 | [`testgen`](testgen/README.md) | TESTGEN on FX1 beside the stock effects (all but PLATE REV, whose words it takes). | on a unit (MKII, Ignorato, OCTABAM6, 2026-10-04) |
+| [`track-trig-mode`](track-trig-mode/README.md) | stock effects with TRACK TRIG MODE: Hteah's single-mode track trig editing. | emulator |
 | [`trackpatterns`](trackpatterns/README.md) | TRACK PATTERNS with the stock effects: hold TRACK + PATTERN + TRIG for a pattern per track. | on a unit (MKII, OCTABAM3, 2026-10-21): functional tests and trig LEDs passed (contributor's report) |
 | [`trackpatterns-core`](trackpatterns-core/README.md) | TRACK PATTERNS on the core modules (KITS, DIRECT_JUMP_KYOTI and the other core modules). | on a unit (MKII, OCTABAM8, 2026-10-22): gesture on T1 and M1, global change, save and power cycle passed (contributor's report) |
 | [`transient`](transient/README.md) | TRANSIENT beside the stock effects (all but PLATE REV, whose words it takes). | on a unit (MKII, Ignorato, OCTABAM2, 2026-10-03) |
@@ -144,3 +146,4 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`window-mod`](window-mod/README.md) | CORE with LOAD METER and MODULATION in the shared window beside the stock effects (all but CHORUS, whose id it takes, and the three reverbs). | emulator |
 | [`xfcurve`](xfcurve/README.md) | XF CURVE (the crossfader's curve, a BRAIN setting) with BRAIN, STORE and the stock effects. | emulator (verify_xfcurve): builds; tools/verify/verify_xfcurve.py |
 | [`xfcurve-scurve`](xfcurve-scurve/README.md) | XF CURVE pinned to S-CURVE, without BRAIN, on the stock effects. | emulator (verify_xfcurve): tools/verify/verify_xfcurve.py |
+| [`zoom-keep`](zoom-keep/README.md) | stock effects with ZOOM KEEP (the audio editor keeps its zoom when a slice is auditioned). | emulator (verify_zoom_keep): verify_zoom_keep under the port; the module itself on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
