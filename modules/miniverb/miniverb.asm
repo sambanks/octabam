@@ -49,7 +49,7 @@ proc:
         move    x:(r7+$22),a
         tst     a
         beq     mv_ready
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$22)
         asl     #$7,a,a
         move    x:(r7+$20),x0
@@ -91,7 +91,7 @@ mv_mix:
 ; RATE is an 8-way control: AGU step 1..8, 0.336..2.692 Hz.
         move    x:(r6+$4),a
         asr     #$10,a,a
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         move    a,n2
         move    #>$ffffff,m2
         move    x:(r7+$37),r2
