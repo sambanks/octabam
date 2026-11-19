@@ -141,8 +141,8 @@ eu_den_held:
         move    x:(r0),x0
         move    x0,x:(r7+$1d)           ; park x
         move    x:(r7+$2e),a            ; running g2
+        move    x0,x1                   ; input: x is still in x0 (fills a's gap)
         move    a,x:(r7+$1c)            ; g2 this sample
-        move    x:(r7+$1d),x1           ; input
 ; t8 = (x - (2R+g)*s0 - s1)/8, pre-scaled so nothing clamps before hp
         move    x:(r7+$34),x0           ; s0
         move    x:(r7+$1f),y1           ; c4 = (R + g2)/2
@@ -209,8 +209,8 @@ eu_den_held:
         move    x:(r0+n0),x0
         move    x0,x:(r7+$1d)           ; park x
         move    x:(r7+$2e),a            ; running g2
+        move    x0,x1                   ; input: x is still in x0 (fills a's gap)
         move    a,x:(r7+$1c)            ; g2 this sample
-        move    x:(r7+$1d),x1           ; input
 ; t8 = (x - (2R+g)*s0 - s1)/8, pre-scaled so nothing clamps before hp
         move    x:(r7+$36),x0           ; s0
         move    x:(r7+$1f),y1           ; c4 = (R + g2)/2
