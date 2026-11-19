@@ -36,6 +36,22 @@ WDTH. `stamp-defaults` before play.
 
 ## Measured
 
+- **19 Nov 2026, the stall pass** (bit-identical: `verify_ident.py` with the
+  wider matrix of #1172, 41 renders and the r7 state after every block,
+  IDENTICAL after each of the four commits; `verify_modulation` ALL PASS).
+  Cycles per sample from `tools/build/interlock_scan.py` (the core manual's
+  cycle table and pipeline stalls: a model, on average 3.0 % above the unit,
+  `docs/contributing/CYCLE_SCAN.md` section 1), every mode at its defaults:
+  JUNO 321.8 → 298.8, DIM 390.9 → 367.9, FLNG 398.8 → 370.8, COMB 360.9 →
+  337.9, PHSR 393.1 → 388.1. Instructions per sample (the scan's count, the
+  figure `dsp_host -meter` gives): JUNO 206.2 → 203.2, DIM 252.1 → 249.1, FLNG
+  245.9 → 241.9, COMB 256.1 → 253.1, PHSR 288.1 → 287.1. Words 1,318 → 1,313.
+  Not measured on the unit. Changes:
+  `mo_tap` and `mo_herm` work out the offset first and the fraction in its
+  gaps (stall cycles a call 6 → 2); LINE and COMB load the line write's
+  address as soon as the tap returns; the frame advance rides on the output
+  stores, so the `lua` and two `(r0+n0)` accesses go. Every new form has a
+  stock site.
 - **10 Nov 2026, the simplify pass** (bit-identical: `make verify-ident
   MOD=modulation` 13/13; `verify_modulation` 30/30, `verify_stations_fx2`
   PASS, `verify-knobs` 131 cases 0 flagged). Instructions per sample from
