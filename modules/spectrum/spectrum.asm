@@ -296,7 +296,7 @@ fs_msame:
         move    x0,a                    ; A2-clean (AND cleans A1 only)
         move    #>$4000,x0
         sub     x0,a                    ; (k - 64)<<8: its sign picks the half
-        move    #>$400000,b             ; below 64: x 1/2, x 4 below = 1/64
+        move    #$40,b                   ; below 64: x 1/2, x 4 below = 1/64 (short immediate: bits 23-16)
         move    #>$410411,y0            ; above: (128/63)/4, rounded up
         tgt     y0,b                    ; nothing but moves since the sub
         move    b,y1
@@ -358,7 +358,7 @@ fs_mcap:
         neg     a
         add     #>$700000,a             ; nl/8 = 7/8 - 6C/8, 1/8 .. 7/8
         move    a,x1                    ; the denominator
-        move    #>$0f0000,y1            ; 15/128
+        move    #$0f,y1                  ; 15/128 (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$010000,a             ; (1 + 15C)/128, < nl/8 always
         move    x1,x0
@@ -575,9 +575,9 @@ fs_live:
         move    x:(r7+$2d),a
         tst     a
         beq     fs_svf
-        cmp     #>$1,a
+        cmp     #$1,a                   ; (6-bit immediate)
         beq     fs_vowl
-        cmp     #>$2,a
+        cmp     #$2,a                   ; (6-bit immediate)
         beq     fs_ladr
         bra     fs_cap
 
@@ -619,6 +619,8 @@ fs_svf:
         move    #>$ffffff,m2
         move    #$0,r5                  ; the input peak
         do      n7,>fs_sz
+        move    r4,r1                   ; the stream (first: the input peak below
+        move    r6,r2                   ; the states  covers the AGU's wait)
 ; ---- input peak for the envelope follower (mono, pre-filter) --------------
         move    x:(r0),a
         move    x:(r0+n0),x0
@@ -629,8 +631,6 @@ fs_svf:
         max     a,b                     ; peak = max(peak, |mono|)
         move    b1,r5
 ; ---- the cutoff ramp: g2run += dg, once per sample for both channels -------
-        move    r4,r1                   ; the stream
-        move    r6,r2                   ; the states
         move    x:(r1)+,x0              ; dg
         move    x:(r7+$2e),a
         add     x0,a
@@ -980,7 +980,7 @@ fs_ladr:
 ; makeup on the ladder's output (README).
         bsr     fs_gramp
         move    x:(r7+$13),x0           ; k/4
-        move    #>$400000,y1            ; 0.5
+        move    #$40,y1                  ; 0.5 (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$200000,a             ; M/4 = (1 + k/2)/4
         move    #>$499999,x0            ; 2.3/4
@@ -1159,17 +1159,17 @@ fs_cap:
 ; pole pairs join pole A this sample (B or C, then D, E or F); o1 -> n4,
 ; o2 -> n6 from the table.
         move    n2,a
-        add     #>$1,a
-        cmp     #>$6,a
+        add     #$1,a                   ; (6-bit immediate)
+        cmp     #$6,a                   ; (6-bit immediate)
         move    #$0,x1
         tge     x1,a
+        move    a1,n6                   ; n6 first: one move between it and the read
         move    a1,n2
-        move    a1,n6
         move    x:(r6+n6),a             ; o2 = 3, 4 or 5
         move    a1,n6
         move    n2,a
-        and     #>$1,a
-        add     #>$1,a                  ; o1 = 1 or 2
+        and     #$1,a                   ; (6-bit immediate)
+        add     #$1,a                   ; o1 = 1 or 2 (6-bit immediate)
         move    a1,n4
 ; ===================== channel L =====================
         move    x:(r0),a
@@ -1178,9 +1178,7 @@ fs_cap:
         move    a,x:(r0)                ; out (limited)
 ; ===================== channel R =====================
         move    x:(r0+n0),a
-        move    r7,r3
-        move    #$0c,n3
-        move    (r3)+n3                 ; R states at $0c / $12
+        lua     (r7+$c),r3              ; R states at $0c / $12 (fs_ccore writes n3 before it reads it)
         bsr     fs_ccore
         move    a,x:(r0+n0)
 ; WIDTH
@@ -1327,10 +1325,10 @@ fs_gz:
 fs_ccore:
         move    r3,r5
         move    #$6,n5
-        move    (r5)+n5
         move    a,x1                    ; x (the dry drives the dielectric)
         move    a,x0
         move    x:(r2)+,y1              ; gn/16
+        move    (r5)+n5                 ; -> the lowpass states (n5 loaded three back: no wait)
         mpy     x0,y1,a                 ; g x / (16 nl)
         asl     #$3,a,a                 ; g x / (2 nl)
         neg     a

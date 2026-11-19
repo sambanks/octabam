@@ -20,6 +20,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`cfmeter-tracks`](cfmeter-tracks/README.md) | octatrick (less TUNER and the USB input) + CF METER on T8's FX2, with USB TRACKS in place of TRACKS MAIN CUE: the 16-channel-only stream's ColdFire cost, over USB. | emulator: the readout chain under the port |
 | [`character-key`](character-key/README.md) | stock effects with KEYBUS and CHARACTER: CHARACTER's KEY reads T1..T8 from KEYBUS's shared key words. | emulator |
 | [`character-txtr`](character-txtr/README.md) | octabam-bus with CHARACTER TXTR (Character + Airwindows Pockey2 texture) on FX1 in place of CHARACTER: the image for measuring the texture stage's cost on a unit. | emulator |
+| [`chop-tempo`](chop-tempo/README.md) | stock effects with LAZY CHOP and LAZY CHOP TEMPO (BPM popup after YES). | emulator (tools/verify/verify_chop_tempo.py) |
 | [`chords`](chords/README.md) | CHORDS FACTORY with SCALES, on the 14 stock effects: the chord atelier on SRC, a chord step played as written, the FUNC keyboard in the scale's colours. | emulator (verify_chords): verify_chords |
 | [`chords-alone`](chords-alone/README.md) | CHORDS FACTORY without SCALES, on the 14 stock effects: the atelier alone on SRC, chords played as written (no scale). | emulator (verify_chords): verify_chords |
 | [`copy-project`](copy-project/README.md) | stock effects with COPY PROJECT: duplicate a project on the card without loading it. | emulator |
@@ -56,6 +57,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`kyoti-mute-jump`](kyoti-mute-jump/README.md) | stock effects with MUTE_MODES and DIRECT_JUMP_KYOTI together. | emulator |
 | [`kyoti-mute-sidechain`](kyoti-mute-sidechain/README.md) | stock effects with MUTE_MODES and SIDECHAIN_COMPRESSOR together: a muted KEY track keeps feeding the compressor (SC_KEY). | emulator |
 | [`lazy-chop`](lazy-chop/README.md) | stock effects with LAZY CHOP (tap TRIG 1..16 to slice a take) and BUFFER SAVER. | emulator (verify_lazy_chop): verify_lazy_chop under the port; the module on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
+| [`lock-edit`](lock-edit/README.md) | stock effects with LOCK EDIT ([TRIG]+[BANK] in grid recording opens the audio editor on the step's sample and slice). | emulator (verify_lock_edit): verify_lock_edit under the port; the module itself on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
 | [`lofi-amf-fix`](lofi-amf-fix/README.md) | Reference minimal build: the LO-FI AMF mpysu->mpyuu fix, alone. | emulator |
 | [`lofi2`](lofi2/README.md) | LOFI2 beside the stock effects (all but PLATE REV and SPRING REV, whose words it takes). | emulator |
 | [`midi-follow`](midi-follow/README.md) | Per-track RFOL source selection on MIDI NOTE SETUP; Part-owned bass following. | emulator |
@@ -69,6 +71,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`mute-modes`](mute-modes/README.md) | stock effects with MUTE_MODES: PERSONALIZE > MUTE MODE (OT, OTFX, OTFX-T, DT-T). | emulator |
 | [`octa303`](octa303/README.md) | the OCTA-303 machine (a circuit-modelled TB-303 voice on the ColdFire) with the stock effects. | emulator: built and its UI gate run under the port, 19 Oct 2026; OCTA303 itself on the owner's MK1 in remix acidtrack (ACIDV70, BUILD 87) |
 | [`octatrick`](octatrick/README.md) | SYNTH MACHINE + SCALE QUANTIZER + DIRECT JUMP + TUNER + USB (20 channels out, 4 in onto A-D) on the stock effects less SPATIALIZER. | on a unit (MKI, Tim, 2026-09-29): test build 3.0 b40 (this selection at BUILD 40), 29 Sep 2026: USB AUDIO IN brings the Mac's audio onto the inputs in a one-minute check (long runs not yet tested). The same four modules with the 26 Sep USB AUDIO (out only) ran on the same MKI through the 2.9 test builds; the tuner works on test build 3.0 b40 (UP + TEMPO); the last two 2.9 fixes are not yet confirmed on hardware |
+| [`page-loop`](page-loop/README.md) | stock effects with PAGE LOOP: loop one page of one track, in time. | emulator |
 | [`pattern-mute`](pattern-mute/README.md) | smoke: PATTERN MUTE alone, with STORE (pmute.work) | emulator: PATTERN MUTE smoke |
 | [`pattern-mute-modes`](pattern-mute-modes/README.md) | smoke: PATTERN MUTE and MUTE_MODES together, stock effects | emulator: PATTERN MUTE beside MUTE_MODES |
 | [`persistent-buffers`](persistent-buffers/README.md) | Recorder buffers BUFFERS/REC1.wav..REC8.wav under the project on SAVE / LOAD. | emulator (verify_persistent_buffers): verify_persistent_buffers under the port |

@@ -171,7 +171,7 @@ ch_glz:
         add     #>$020000,a             ; + 1/64 -> gain/64, 0.016 .. 0.75
         move    a,x:(r7+$21)            ; gq
         move    a,x0                    ; gq = the denominator, >= 1/64
-        move    #>$010000,a             ; 1/128 (a clean load: a0 = 0)
+        move    #$01,a                   ; 1/128 (a clean load: a0 = 0) (short immediate: bits 23-16)
         andi    #$fe,ccr
         do      #$18,>norep_ch_01
         div     x0,a
@@ -300,7 +300,7 @@ ch_pos3:
 ; no host, or boot garbage. $15 the counter last seen, $16 blocks since it
 ; moved (held at 8).
         move    x:(r7+$16),b
-        add     #>$1,b
+        add     #$1,b                   ; (6-bit immediate)
         move    #>$8,x1
         cmp     x1,b
         tgt     x1,b
@@ -337,7 +337,7 @@ ch_kbus:
         tst     a
         bne     ch_kself                ; the master keys on its own input
         move    x:(r7+$16),a
-        cmp     #>$4,a
+        cmp     #$4,a                   ; (6-bit immediate)
         bge     ch_kzero                ; stale: silence
         move    y:>$990,x0              ; T1's peak |mono in|
 ch_klvl:
@@ -526,7 +526,7 @@ ch_live:
         move    x0,x:(r3)+
         move    x:(r7+$22),x0           ; K/4
         move    x0,x:(r3)+
-        move    #>$800000,x0            ; -1.0: the dip's t = Lv^2/2 - 1
+        move    #$80,x0                  ; -1.0: the dip's t = Lv^2/2 - 1 (short immediate: bits 23-16)
         move    x0,x:(r3)+
         move    x:(r7+$28),y1           ; the dip's a
         bsr     ch_rset
@@ -547,7 +547,7 @@ ch_live:
 ; output scale at $33 (the ring words around each callee).
         move    x:(r7+$4e),a             ; d = DRV/128
         move    a,x0
-        move    #>$300000,y1            ; 0.375
+        move    #$30,y1                  ; 0.375 (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$100000,a             ; G/8 = 0.125 + 0.375 d
         move    a,x:(r7+$32)
@@ -625,7 +625,7 @@ ch_gdone:
         move    #$1,n6                  ; 16 - 15
         bra     ch_rdone
 ch_r12:
-        cmp     #>$1,a
+        cmp     #$1,a                   ; (6-bit immediate)
         bne     ch_rinfl
         move    #$42,n3                 ; DaTube's L pair
         move    x:(r7+$32),x0           ; TUBE: G/8 (0.5+d)/2 d d/2 comp/2 k R scale
