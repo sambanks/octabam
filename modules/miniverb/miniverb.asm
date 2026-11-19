@@ -80,7 +80,7 @@ mv_ready:
         move    a,x:(r7+$25)
 ; Full-wet endpoint, all other values knob/128; mix zero is exact dry.
         move    x:(r6+$2),a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         bne     mv_mix
         move    #>$7fffff,a
