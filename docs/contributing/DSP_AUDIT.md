@@ -123,6 +123,45 @@ offset); MODULATION's MIX and COMB loops reworked.
 | T28 | A P read (`movem`) every sample, copied into X or Y once a block. | S (movem) | I | up to 5 cycles a read, if Table A-1's 6 holds (CYCLE_SCAN.md section 1 doubts it) | VOCODER, CHARACTER TXTR |
 | T29 | A short `do` inside the sample loop, unrolled where the words allow. | S (do/rep) | I | 5 cycles a loop entered, for words: often a trade | the scan's remedies |
 
+### Version 2: rows found in pass 1 (19 Nov 2026)
+
+| id | technique | how found | proof | saving a site | found in, and where it applies |
+|---|---|---|---|---|---|
+| T30 | A table read from P every sample (`p:(r1+n1)`, `movem`): where the build places the module's `ptable` decides whether the read is P or X (MODULES.md "Declaring DSP code": the stock curve bank, P, or a given-up effect's X). Read the build report before rewriting the reads. | S (movem), G | build placement | up to 5 cycles a read, if Table A-1's 6 holds (doubted) | found in CHARACTER TXTR; VOCODER, CHARACTER, TRANSIENT, DISTORX, LOFI2 |
+| T31 | A long immediate in the sample loop. A data-register move of a constant whose low 16 bits are zero (`#>$400000`) is the one-word short form `#$40`, which loads bits 23-16: CHARACTER TXTR already uses it (`:180`, "short immediate: bits 23-16"). Any other constant can live in a register across the loop when one is free. | S (two-word forms), G | I (check the encoding: `trap-asm`) | 1 word, 1 cycle | found in BBD; short-form candidates across the modules: 136 moves in 23 files |
+| T32 | Taps through one `nN` in a row: alternate two pointer sets on the same ring (r4/n4 and r5/n5 with the same modulus), so the next tap's offset loads while this tap reads. Hides the AGU stall with stock forms, where T24's displaced move needs a new form. | G | I | about 3 cycles a tap | found in MINIVERB (20 runs of taps); VERBERATION (9) |
+
+T12's shape also covers `move r7,a` / `add #n,a` / `move a1,rN` (found in
+VOCODER).
+
+**Pass 2: the version 2 rows over every module audited before them** (static
+counts inside the sample loops and the routines they call):
+
+| module | T12 | T28/T30 P reads | T31 long immediates | T31 short-form candidates (whole file) | T32 |
+|---|---|---|---|---|---|
+| MODULATION | 0 | 0 | 22 | 3 | 0 |
+| VIBRATO | 0 | 0 | 4 | 3 | 0 |
+| VOCODER | 2 | 3 | 11 | 7 | 0 |
+| CHARACTER TXTR | 0 | 6 | 10 | 3 | 0 |
+| CHARACTER | 0 | 2 | 6 | 3 | 0 |
+| RESONATOR | 5 | 0 | 14 | 3 | 0 |
+| LOFI2 | 0 | 2 | 31 | 11 | 1 |
+| MINIVERB | 0 | 0 | 18 | 9 | 20 |
+| BBD | 0 | 0 | 22 | 23 | 0 |
+| VOID | 0 | 0 | 19 | 7 | 1 |
+| VERBERATION | 0 | 0 | 4 | 3 | 9 |
+| DISTORX | 0 | 4 | 29 | 15 | 0 |
+| SPECTRUM | 1 | 0 | 7 | 3 | 0 |
+| SHATTER | 0 | 0 | 5 | 6 | 0 |
+| TRANSIENT | 0 | 4 | 18 | 4 | 0 |
+| EUCLID | 0 | 0 | 1 | 3 | 2 |
+| STUTTR | 0 | 0 | 58 | 4 | 0 |
+| SEND | 0 | 0 | 0 | 0 | 0 |
+| REVERB SERVER | 0 | 0 | 44 | 1 | 0 |
+| DELAY SERVER | 1 | 0 | 45 | 0 | 0 |
+
+Every module is now stamped with version 2.
+
 ## 3. How each module is built
 
 Seeded on 19 Nov 2026 from a first read of every DSP module; each module's
@@ -166,7 +205,8 @@ audited against, or "not audited".
 
 ### MODULATION
 
-**Stamp: checklist version 1, pass 1, 19 Nov 2026,** source at `cc7cffc1`
+**Stamp: checklist version 1, pass 1, 19 Nov 2026; version 2 rows by pass 2**
+(T31: 22 long immediates in the loops, 3 short-form), source at `cc7cffc1`
 (the same as #1080's merge). Dearest: FLNG, 398.8 cycles a sample, 8.8 % of a
 frame (modelled). Scan: `out/dsp-audit/pilot/modulation_now.json`; the
 static checks: the audit's `g_checks.py`.
@@ -208,7 +248,8 @@ not measured; the gate and a LOAD METER read would confirm them.
 
 ### VIBRATO
 
-**Stamp: checklist version 1, pass 1, 19 Nov 2026,** source at `cc7cffc1`.
+**Stamp: checklist version 1, pass 1, 19 Nov 2026; version 2 rows by pass 2**
+(T31: 4 long immediates, 3 short-form), source at `cc7cffc1`.
 Dearest: SHP=TRI at its maximum, 207.0 cycles a sample, 4.6 % of a frame
 (modelled). Scan: `out/dsp-audit/pilot/vibrato_now.json`.
 
@@ -225,6 +266,205 @@ words as offsets from `r7`.
 | V5 | T25 | `vb_mixd`'s other 1-cycle stalls (`+25`, `+29`, `+43`, `+48`, `+52`, `+66`, `+71`) | Reorder. | about -1 each | I | open |
 
 If V1 to V3 hold: about -30 of 207.0 (4.6 % → 3.9 % of a frame), -6 words.
+
+### Pass 1, the other modules
+
+**Stamp for each: checklist version 2, 19 Nov 2026,** source at `cc7cffc1`;
+scan: `out/dsp-audit/baseline/`, the static checks: `out/dsp-audit/pass1/`.
+Every saving is cycles a sample at the dearest setting (modelled) and words.
+Status is open for every finding unless it says otherwise. "Design" means the
+site is found and priced, and the instruction order is still to be worked
+out.
+
+#### VOCODER (Ignorato): 1,245.8 cycles a sample, 27.5 %
+
+Ten bands a sample, each four state-variable filter sections, an envelope and
+a VCA. A section is a serial chain, so most of its stalls are intrinsic; these
+are the ones that are not.
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| VC1 | T25 | the band loop (`:462-526`) | Load the next section's coefficient (`y:(r3)+`, `p:(r4)+`) and the envelope's 0.00227 and e into the slot after each section's last `macr`. | about -5 a band, -50 | I |
+| VC2 | T16 | `sub a,b a,x:(r5)+`, four a band | The low store rides in the next `macr`'s slot. | -4 a band, -40 | F: `macr -y1,x1,b a,x:(r5)+` has no stock site |
+| VC3 | T12 | the band setup (`:459-461`) and hp6's (`:532-535`) | `lua (r7+$1b),r5`; `lua (r7+$6),r5` hoisted above `move x:(r7+$4),b`. Both forms stock. | -3; -4 words | I |
+| VC4 | T25 | `vc_blep`, 2 calls, 8 stalls a call | Interleave its two independent halves (t_b, t_a). | up to -16 | I, design: registers are tight |
+| VC5 | T28, T30 | 3 P reads a band, 30 a sample | Copy BAND's 30 words into X or Y once a block, or have the build place the table in X. | up to -150, if a P read is 6 cycles | needs 30 words of X or Y |
+| VC6 | T31 | 7 short-form constants | | -1 word each | I |
+| VC7 | T29 | `do #10` | Unroll. | -5, about +600 words | not taken: a trade |
+
+VC1 and VC3: about -53 (27.5 % → 26.3 %); with VC2, -93 (25.4 %).
+
+#### CHARACTER TXTR and CHARACTER (sambanks): 697.9 and 428.3, 15.4 % and 9.5 %
+
+CHARACTER TXTR is CHARACTER plus 191 lines, so CH2, CH3 and CH5 land in both.
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| CH1 | T25 | TXTR's `chtx2`, 2 calls, about 20 one-cycle stalls a call | Reorder within the texture's two halves. | up to -40 (TXTR) | I, design |
+| CH2 | T27 | `lua (r5+$2),r5` (or `+$6`), then a read through r5: 3 sites, plus `lua (r4+$3d),r3` and `lua (r4+$2),r3` | Separate each pair. | up to -16 | I, low: only if a `lua` interlocks |
+| CH3 | T25 | the coefficient ramps: `add x0,a x:(r3)+,x0` then `move a,x:(r5)+`, 6 sites | Interleave two ramps in a and b. | -6 | I, design |
+| CH4 | T28, T30 | 6 P reads a sample in TXTR, 2 in CHARACTER (`p:(r1+n1)`, `p:(r2+n2)`) | Where the build places the 597 and 51 words. | up to -30 (TXTR) | build placement |
+| CH5 | T07 | `cmp #1,b` / `bne` a sample (`character.asm:746`, `character_txtr.asm:815`) | A flag test. | 0 to -1 | I |
+| CH6 | T08 | `add x1,a` / `move #0,x1` (TXTR `:1119`) | The zero rides in the add's slot. | -1, -1 word | I or F |
+
+#### RESONATOR (ilia-murzinov): 655.9, 14.5 %
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| RS1 | T12 | five `move r7,rN` / `move #n,nN` / `move (rN)+nN` a sample (`:205-210`, `:265-273`) | `lua (r7+n),rN`; every n is under $40. | -3 a site, -15; -10 words | I |
+| RS2 | T25 | `rs_one`, 8 calls, 5 stalls a call | Reorder; the four bands are independent. | up to -40 | I, design |
+| RS3 | T08, T31 | `cmp x0,a` / `move #>$0,a`, 4 sites (`:183`, `:191`, `:244`, ...) | The one-word `move #0,a` (it keeps the flags the following Tcc needs). | -1, -1 word each | I (check the form) |
+| RS4 | T14 | 28 displaced, 8 walked | Walk. | up to -28 | I, re-laid state |
+
+RS1 and RS3: about -19 and -14 words; with RS2, up to -59 (14.5 % → 13.2 %).
+
+#### LOFI2 (Bryan T): 654.2, 14.4 %
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| LF1 | T01, T19 | the frame advance `move #>$2,n0` / `move (r0)+n0` / `move #>$1,n0` (`:1112-1114`), with an AGU stall, and the next sample's first read waiting on n0 | The stores post-step r0 (T19), or one `lua (r0+$2),r0`. | about -8; -4 words | I |
+| LF2 | T26 | `move a1,r5` then `move p:(r5),y0`, twice (`:1010`, `:1016`) | Compute r5 earlier. | -6 | I, design |
+| LF3 | T26, T12 | `move r7,r1` / `move (r1)+n1` and `move r1,r2` / `move (r2)+` (DOWN, UP) | `lua`, hoisted. | -6 | I |
+| LF4 | T08, T31 | `add x0,a` / `move #>$0,x0` (`:913`) | The zero rides in the add's slot as a short immediate. | -2, -2 words | I or F |
+| LF5 | T14 | 93 displaced, 88 walked; every slot already in the one-word range | Walk. | up to -90 | I, re-laid state |
+| LF6 | T31 | 31 long immediates in the loop, 11 short-form candidates | | -1 each | I |
+
+LF1, LF3 and LF4: about -16, -6 words (14.4 % → 14.1 %); LF5 is the large one.
+
+#### MINIVERB (repeat98): 608.8, 13.4 %
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| MV1 | T24 | 30 taps: `move #>off,n5` then `y:(r5+n5)` | One displaced move, `y:(r5+off)`. | -4 a tap, about -120; -30 words | F: check the two-word displaced Y form |
+| MV2 | T32 | the same taps | Alternate r4/n4 and r5/n5 on the ring (m4 = m5 = $3dfd already); load each offset while the other set reads. | -3 a tap, about -90; 0 words | I, design: r4 also serves the modulated taps |
+| MV3 | T23 | `move #>$000000,n5` / `y:(r5+n5)` (`:152`) | `y:(r5)`. | -6; -2 words | I |
+| MV4 | T31 | 9 short-form constants (`#>$400000,y1`, `#>$600000,y1`, ...) | `#$40`, `#$60`. | -1, -1 word each | I |
+| MV5 | T26 | `move a,n5` / `lua (r5+n5),r4`, twice | Hoist. | -6 | I |
+| MV6 | T14 | 58 displaced, among them the four per-sample smoothers ($24 to $2d) | Walk. | up to -20 | I |
+
+MV2 to MV5: about -110 (13.4 % → 11.0 %); with MV1 in place of MV2 and MV6, about -160 (9.9 %). Neither reaches the 9.07 % cap on the model alone, but the model reads MINIVERB 8.2 % above its unit figure (CYCLE_SCAN.md section 1): a LOAD METER read after the change decides.
+
+#### BBD (JamCones): 528.3, 11.7 % (`dear`)
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| BB1 | T31 | 23 short-form constants (`#>$300000,x0`, `#>$d00000,x0`, ...), 22 long immediates in the loop | Short form, or a register. | -1, -1 word each in the loop | I |
+| BB2 | T26, T27 | `move r2,r5` then the XY read (`:733`); `lua (r2+$35),r5` then the XY read (`:626`) | Hoist. | -3 (-6 if a `lua` interlocks) | I |
+| BB3 | T08 | `sub x0,a` / `move #0,x0` (`:921`), `asl a` / `move #0,x1` (`:955`) | Ride in the slot. | -1, -1 word each | I or F |
+| BB4 | T25 | about 12 one-cycle stalls | Reorder. | about -6 | I, design |
+| BB5 | T14 | 44 displaced | Walk. | up to -44 | I, re-laid state |
+
+#### VOID (ilia-murzinov): 503.9, 11.1 % (`dear`)
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| VD1 | T01, T19 | the frame advance (`:510-512`), as LF1 | | about -8; -4 words | I |
+| VD2 | T14 | 107 displaced, 3 walked: the most of any module | Walk, with the state block re-laid. | up to -100 | I, re-laid state |
+| VD3 | T11 | `$25` and `$26` stored, then read back (`:226`, `:368`) | Keep them in a register. | -2 | I |
+| VD4 | T31 | 7 short-form constants | | -7 words | I |
+| VD5 | T25 | about 10 one-cycle stalls | Reorder. | about -5 | I, design |
+
+#### VERBERATION (Emilie Gillet, ported): 455.7, 10.1 %
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| VB1 | T24, T32, T26 | 15 taps through n5: immediate offsets, and offsets read from state (`$2e`, `$47`, `$48`) just before use | Displaced moves (F) or two pointer sets (I) for the immediates; the state offsets loaded 3 cycles earlier (I). | about -3 a tap, up to -50 | I or F |
+| VB2 | T23 | `move #>$000000,n5` (`:464`) | `(r5)`. | -6; -2 words | I |
+| VB3 | T08 | `sub ...` / `move #0,x0`, three (`:412`, `:419`, `:444`) | Ride in the slot. | -1 each | I or F |
+| VB4 | T14 | 44 displaced | Walk. | up to -44 | I, re-laid state |
+
+#### DISTORX (MaMarko): 375.9, 8.3 %
+
+Generated from `distorx.tmpl.asm` by `generate_asm.py`: every fix goes to the
+template.
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| DX1 | T31 | 15 short-form constants, 29 long immediates in the loops | | -1 each | I |
+| DX2 | T26 | `move r4,r5` / `move (r5)+n5` (`dtx_rstage+133`, `sod_stage+79`), `move r7,r3` / `move (r3)+n3` (`sod_stage+53`) | Hoist, or `lua`. | -2 to -4 | I |
+| DX3 | T28, T30 | 4 P reads a stage: the 515-word diode table | Build placement. | | build |
+| DX4 | T14, T25 | displaced moves 70 cycles in RAT, about 10 one-cycle stalls, in `dtx_rstage` | Walk; reorder. | up to -40 | I, design |
+
+#### SPECTRUM (sambanks): 371.1, 8.2 %
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| SP1 | T26 | `move r4,r1` / `(r1)+` (`fs_svf`, 6 in SEM), `move #$6,n5` / `(r5)+n5` (`fs_ccore`, 6 in ISO), `move a1,n6` / `x:(r6+n6)` and `move #$c,n3` (`fs_cap`, 3 each in ISO) | Hoist. | -3 to -12 by mode | I |
+| SP2 | T25 | the ramps in `fs_r3`, 3 sites | Interleave. | -3 to -9 | I, design |
+| SP3 | T12, T29 | `move r7,r3` (`:1181`); `do #2` (`:655`) | `lua`; unroll. | small | I |
+| SP4 | T13 | G2, COS and VOWL_ER listed by hand in the manifest | Generate them. | none at run time | construction |
+
+#### SHATTER (ilia-murzinov): 383.1, 8.5 %
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| SH1 | T11 | `$02`, `$03`, `$1c` stored, then read back 2 or 3 later (`:259`, `:361`, `:395`) | Keep them in a register. | -1 to -2 each | I |
+| SH2 | T14 | 48 displaced | Walk. | up to -48 | I, re-laid state |
+| SH3 | T25 | about 10 one-cycle stalls in `sh00` | Reorder. | about -5 | I, design |
+| SH4 | branches | 59 cycles a sample of branches (the scan) | A mode's arms as loops chosen once a block. | | not taken: words |
+
+#### TRANSIENT (Ignorato): 270.0, 6.0 %
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| TR1 | T28, T30 | 4 P reads a sample (`:146-147`, `:259-260`): the 99-word table | Build placement. | up to -20 | build |
+| TR2 | T08 | `sub x0,a` / `move #0,x0`, twice (`:219`, `:232`) | Ride in the slot. | -1 each | I or F |
+| TR3 | T14 | 26 displaced (27 cycles a sample, its largest extra) | Walk. | up to -26 | I, re-laid state |
+| TR4 | T31 | 18 long immediates in the loop, 4 short-form | | -1 each | I |
+
+#### EUCLID (repeat98): 232.3, 5.1 %
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| EU1 | T01, T19 | two frame advances, one a loop (`:277-279`, `:328-330`), as LF1 | | about -8; -4 words each | I |
+| EU2 | T11 | `$1d` stored, then read back (`:142`, `:210`) | A register. | -1 | I |
+| EU3 | T14 | 56 displaced (53 cycles a sample) | Walk. | up to -50 | I, re-laid state |
+
+#### STUTTR (ilia-murzinov): 268.4, 5.9 % (`dear`)
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| ST1 | T05 | `move #>$ffffff,m4` inside the sample loop, twice (`:157`, `:359`); `proc` already sets m4 linear before the loop (`:64`) and nothing in the loop changes it | Drop both. Also clears a breach of MODULES.md's hardware rule "no M-register write inside the sample loop". | about -10; -4 words | I |
+| ST2 | T31 | 58 long immediates in the loop, the most of any insert | Registers, or the short form. | -1 each | I, design |
+| ST3 | T17 | the wrap by compare and branch (`:162-168`) | Modulo addressing. | | I or U |
+| ST4 | T14 | 92 displaced | Walk. | up to -60 | I, re-laid state |
+| ST5 | branches | 49 to 61 cycles a sample of branches | Arms chosen once a block. | | not taken: words |
+
+#### SEND (sambanks): 57.5, 1.3 %
+
+One client; a bus remix runs several beside a server. SE1, T25: five one-cycle
+stalls (`proc+234` to `+255`), about -3. Nothing else.
+
+#### REVERB SERVER (sambanks): 1,593.1, 35.2 % of a core, one instance
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| RV1 | T25 | `lfrol`: 8 a sample at each of its sites (an ALU result moved at once), 185 cycles a sample of arithmetic stalls in all | If the eight passes are independent (to read), interleave them in pairs. | up to -100 | I, design: the largest single target in the audit |
+| RV2 | T26 | `move y:(r6)+,n5` then `y:(r5+n5)` (`lfrol+372`, 8 a sample) | Load the offset 3 cycles earlier. | -8 to -24 | I |
+| RV3 | T17 | five `and #>$7ff` masks | Modulo addressing. | | I or U |
+| RV4 | T31, T29, T14 | 44 long immediates; `do #8`, `do #4` twice; 108 displaced | | | design |
+
+#### DELAY SERVER (sambanks): 1,966.2 in GRAIN, 43.4 % of a core
+
+| # | row | site | the change | saving | class |
+|---|---|---|---|---|---|
+| DL1 | T26 | `move a1,r5` then `y:(r5+n5)` (`proc+1108` to `+1414`: 6 each in CLEAN and GRAIN, 12 each at `+1116` and `+1213` in GRAIN) | Compute the address earlier. | -15 (CLEAN) to -50 (GRAIN) | I, design |
+| DL2 | T17 | 7 `and #>$3fff` masks, among them `modtap`'s | Modulo addressing (T17). | | I or U |
+| DL3 | T09 | 4 store-and-copy pairs (`:1643`, `:1648`, `:1747`, `:1752`) | X:R moves. | -1, -1 word each | F |
+| DL4 | T01 | two `(r0)+n0` (`:1987-1988`) | Not a `lua` (+1 cycle): T19 if the stores allow. | -2 to -4 | I |
+| DL5 | T11 | `$31`, `$32` stored, then read back (`:1474`, `:1923`) | A register. | -1 each | I |
+| DL6 | T03 | two entry reloads (`:1506`, `:1520`) | First read: they look like deliberate limiting copies. | | check |
+
+#### Not audited in pass 1
+
+- **SIDECHAIN_COMPRESSOR**: four hooks into the stock COMPRESSOR, code in its
+  `upstream/` submodule (checked out in WSL); the scan cannot trace hooks.
+  Pass 1 by reading is still to do.
+- **TESTGEN**: a test generator, not scanned.
+- **ANALOG BASSDRUM**: built by `ab_image.py` over SPRING REV's words, no
+  `DspSection`; not scanned.
+- **The frame hooks** (LOAD METER, USB's `rx_inject`, KEYBUS, REMIX SWITCH's
+  park, DLCOPY): by reading, still to do.
 
 ### Notes from the pilot (checklist version 1 unchanged)
 
@@ -255,6 +495,10 @@ so they sit outside this audit's bit-identical rule.
   (MODULATION), shapes once a block (VIBRATO), a parabola once a block
   (VERBERATION), a corrected parabola a sample (LOFI2), a triangle a sample
   (MINIVERB), a rolled table (REVERB SERVER).
+- **One-word constants (T31).** CHARACTER TXTR loads constants whose low 16
+  bits are zero with the one-word short form (`move #$5e,y1`, "bits 23-16").
+  The other modules spell the same kind of value as a two-word `#>$xx0000`:
+  136 times in 23 files. Bit-identical, a word and a cycle each.
 - **Shared code.** `vb_tap` is `mo_tap` plus one move. A shared tap would come
   in the way `tools/remix/peak_limiter.py` serves SHATTER and RESONATOR: one
   Python source, spliced in through `subst`.
@@ -266,6 +510,10 @@ Not optimisations. Reported, and fixed only with Yves's OK.
 - `modules/character-txtr/manifest.py:143` names `verify_char_key_txtr.py`;
   the file on disk is `verify_charkey_txtr.py`.
 - SEND and DEVILISH declare no gate of their own.
+- STUTTR writes `m4` inside its sample loop (`:157`, `:359`), against
+  MODULES.md's hardware rule "no M-register write inside the sample loop". The
+  value is the one `proc` already set (linear), so it does no harm and costs
+  about 10 cycles a sample (ST1 removes it).
 - MODULATION's PHSR advances its LFO with a fixed `do #15` a block. The unit's
   block is 16 samples, so PHSR's rate is probably 15/16 of the knob's (#1080's
   deferred note; inferred). The wider identity gate's 16-sample renders see
