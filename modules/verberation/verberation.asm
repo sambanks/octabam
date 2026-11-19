@@ -387,6 +387,7 @@ gv_p2a:
 ; smear: the first allpass line read at 10 + 60 lfo1, written back at 100
         move    x:(r7+$2e),n5
         lua     (r5+n5),r4
+        move    #>$ffff9c,n5
         move    y:(r4)-,b
         move    y:(r4),a
         sub     b,a
@@ -394,7 +395,6 @@ gv_p2a:
         move    x:(r7+$2c),y0
         mpy     y0,x0,a
         add     b,a
-        move    #>$ffff9c,n5
         move    a,y:(r5+n5)
 ; input: (L + R)/2 times the gain
         move    x:(r0),a
@@ -453,42 +453,42 @@ gv_p2a:
         move    y0,y:(r5+n5)
         move    x:(r7+$48),n5
         move    y:(r5+n5),x0
+        move    #>$ffff94,n5
         move    x:(r7+$25),y1
         mpy     x0,y1,a
 ; four input allpasses
         move    x:(r7+$38),y1
-        move    #>$ffff94,n5
         move    y:(r5+n5),x0
-        mac     x0,y1,a
-        move    x0,b
         move    #>$000000,n5
+        mac     x0,y1,a
+        move    x0,b
         move    a,y:(r5+n5)
-        move    a,x0
-        move    b,a
-        mac     -x0,y1,a
         move    #>$fffef6,n5
+        move    a,x0
+        move    b,a
+        mac     -x0,y1,a
         move    y:(r5+n5),x0
-        mac     x0,y1,a
-        move    x0,b
         move    #>$ffff92,n5
+        mac     x0,y1,a
+        move    x0,b
         move    a,y:(r5+n5)
-        move    a,x0
-        move    b,a
-        mac     -x0,y1,a
         move    #>$fffe0c,n5
-        move    y:(r5+n5),x0
-        mac     x0,y1,a
-        move    x0,b
-        move    #>$fffef4,n5
-        move    a,y:(r5+n5)
         move    a,x0
         move    b,a
         mac     -x0,y1,a
-        move    #>$fffc89,n5
         move    y:(r5+n5),x0
+        move    #>$fffef4,n5
         mac     x0,y1,a
         move    x0,b
+        move    a,y:(r5+n5)
+        move    #>$fffc89,n5
+        move    a,x0
+        move    b,a
+        mac     -x0,y1,a
+        move    y:(r5+n5),x0
         move    #>$fffe0a,n5
+        mac     x0,y1,a
+        move    x0,b
         move    a,y:(r5+n5)
         move    a,x0
         move    b,a
@@ -526,23 +526,23 @@ gv_p2a:
         move    x:(r7+$38),y1
         move    x:(r7+$40),n5
         move    y:(r5+n5),x0
+        move    #>$fffc87,n5
         mac     -x0,y1,a
         move    x0,b
-        move    #>$fffc87,n5
         move    a,y:(r5+n5)
         move    a,x0
         move    b,a
         mac     x0,y1,a
         move    x:(r7+$41),n5
         move    y:(r5+n5),x0
+        move    #>$fff6e6,n5
         mac     x0,y1,a
         move    x0,b
-        move    #>$fff6e6,n5
         move    a,y:(r5+n5)
+        move    #>$ffeff5,n5
         move    a,x0
         move    b,a
         mac     -x0,y1,a
-        move    #>$ffeff5,n5
         move    a,y:(r5+n5)
         asl     #$1,a,a
         move    a,x0
@@ -580,23 +580,23 @@ gv_p2a:
         move    x:(r7+$38),y1
         move    x:(r7+$43),n5
         move    y:(r5+n5),x0
+        move    #>$ffe457,n5
         mac     x0,y1,a
         move    x0,b
-        move    #>$ffe457,n5
         move    a,y:(r5+n5)
         move    a,x0
         move    b,a
         mac     -x0,y1,a
         move    x:(r7+$44),n5
         move    y:(r5+n5),x0
+        move    #>$ffddd3,n5
         mac     -x0,y1,a
         move    x0,b
-        move    #>$ffddd3,n5
         move    a,y:(r5+n5)
+        move    #>$ffd829,n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
-        move    #>$ffd829,n5
         move    a,y:(r5+n5)
         asl     #$1,a,a
         move    a,x0
