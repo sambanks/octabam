@@ -379,8 +379,7 @@ cnt_done:
         add     b,a
         move    a,y:(r2)+                ; AUX ACC[write][i] += contribution
         move    x:(r7+$17),a             ; REV level, ramped per sample
-        move    x:(r7+$18),y1
-        add     y1,a
+        add     x1,a                     ; + the step: x1 = x:(r7+$18), set above, kept through the loop
         move    a,x:(r7+$17)
         move    a,y1
         mpy     x0,y1,a                  ; a = mono * REV level
