@@ -97,7 +97,17 @@ def _ensure_insert_mem(mod, log=print):
     # the firmware's NONE as the fallback.
     alone = bool(mod.claims is not None and mod.claims.stock_instance_buffer
                  and not mod.claims.fx1_only)
-    modules = f'("{mod.key}",)' if alone else f'("{mod.key}", "{send.key}")'
+    # A module that `requires` others (EUCLID needs EVENTS, DEVILISH OCTA303)
+    # refuses a remix without them: they come too, with what they require
+    # (interlock_scan.insert_mem does the same for its own dumps).
+    need, todo = [], list(mod.requires or ())
+    while todo:
+        k = todo.pop()
+        if k not in need and k != mod.key:
+            need.append(k)
+            todo += list(registry.by_key(k).requires or ())
+    keys = [mod.key] + ([] if alone else [send.key]) + need
+    modules = "(" + ", ".join(f'"{k}"' for k in keys) + ",)"
     fallback = "NONE" if alone else send.key
     scratch = ROOT / "remixes/_audition.py"
     scratch.write_text(
