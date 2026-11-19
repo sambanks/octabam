@@ -183,6 +183,44 @@ counts inside the sample loops and the routines they call):
 
 Every module is now stamped with version 2.
 
+### Version 4: a row found in the fifth batch (19 Nov 2026)
+
+| id | technique | how found | proof | saving a site | found in, and where it applies |
+|---|---|---|---|---|---|
+| T34 | An `add`, `sub`, `cmp` or `and` of a constant from 0 to 63, written long (`#>$1`: two words, two cycles). The ALU's 6-bit form (`add #$1,a`: one word, one cycle) right-aligns and zero-extends its value as the long form does, so the result and the flags are the same. `dsp_asm` takes `#$N` as the 6-bit form and `#>$N` as the long one. Stock has sites of `add` and `sub` on a and b, and of `cmp` and `and` on a only; `cmp #N,b` and `and #N,b` have none and stay long. T31 is the same idea for data-register moves, whose short form loads bits 23-16 instead. | G (the audit's `t34.py`) | I (check the encoding: `trap-asm`) | 1 word, 1 cycle | found in SPECTRUM (`fs_cap`'s rotation count, four a sample); every module but LOFI2, VOID, EUCLID and DISTORX |
+
+**Pass 2 for T34** (`t34.py` over every module's source at `cc7cffc1`). The
+counts are whole files, so they include sites outside the sample loop, which
+save words only. "No stock 6-bit form" counts `cmp` and `and` on b.
+
+| module | sites with a stock 6-bit form | no stock 6-bit form | status |
+|---|---|---|---|
+| DELAY SERVER | 24 | 1 | open |
+| STUTTR | 16 | 0 | open; its PR #1180 is open |
+| MODULATION | 13 | 0 | open; its PR #1174 is open |
+| REVERB SERVER | 11 | 1 | open |
+| CHARACTER TXTR | 7 | 1 | open |
+| BBD | 6 | 0 | open; its PR #1184 is open |
+| SPECTRUM | 6 | 0 | taken, #1188 |
+| VOCODER | 4 | 0 | open; its PR #1177 is open |
+| CHARACTER | 3 | 2 | taken, #1190 |
+| VIBRATO | 3 | 2 | open; its PR #1175 is open |
+| SEND | 3 | 0 | open |
+| MINIVERB | 2 | 0 | open; its PR #1176 is open |
+| VERBERATION | 2 | 0 | open; its PR #1178 is open |
+| RESONATOR | 1 | 0 | open; its PR #1179 is open |
+| SHATTER | 1 | 0 | taken, #1189 |
+| TRANSIENT | 1 | 0 | open; its PR #1186 is open |
+| LOFI2, VOID, EUCLID, DISTORX | 0 | 0 | none |
+
+Out of the audit, counted for the record: the frame hooks DLCOPY (8) and LOAD
+METER (1), ANALOG BASSDRUM (2), and the probes (PEXT PROBE 33, EXTPROBE 11,
+DLPROBE 10). The sidechain patches under other modules' `upstream/`
+submodules are another repository's code.
+
+Every module is now stamped with version 4: T34 is counted in all of them,
+and taken in SPECTRUM, SHATTER and CHARACTER.
+
 ## 3. How each module is built
 
 Seeded on 19 Nov 2026 from a first read of every DSP module; each module's
@@ -349,6 +387,13 @@ CHARACTER TXTR is CHARACTER plus 191 lines, so CH2, CH3 and CH5 land in both.
 | CH5 | T07 | `cmp #1,b` / `bne` a sample (`character.asm:746`, `character_txtr.asm:815`) | A flag test. | 0 to -1 | I |
 | CH6 | T08 | `add x1,a` / `move #0,x1` (TXTR `:1119`) | The zero rides in the add's slot. | -1, -1 word | I or F |
 
+**Taken, 19 Nov 2026** (sambanks/octabam#1190, CHARACTER only): T31's three
+short-form constants (`93b85932`) and T34's three (`37b3eeb2`; the two
+`cmp #>$1,b` stay, since stock has no 6-bit `cmp` on b), IDENTICAL (49
+renders), `verify_character` OK (34 checks). The scan: SAT=TUBE 428.3 → 428.0
+cycles a sample; words 967 → 961. CH1 to CH6 stay open, and CHARACTER TXTR is
+unchanged.
+
 #### RESONATOR (ilia-murzinov): 655.9, 14.5 %
 
 | # | row | site | the change | saving | class |
@@ -489,6 +534,23 @@ cycles a sample; words 1,114 → 1,099.
 | SP3 | T12, T29 | `move r7,r3` (`:1181`); `do #2` (`:655`) | `lua`; unroll. | small | I |
 | SP4 | T13 | G2, COS and VOWL_ER listed by hand in the manifest | Generate them. | none at run time | construction |
 
+**Taken, 19 Nov 2026** (sambanks/octabam#1188), IDENTICAL after each commit
+(58 renders), `verify_spectrum` OK (58 checks):
+
+- SP1 in SEM (`d08b44ed`): the two pointer copies lead the sample loop, -2.
+- SP3's `move r7,r3` / `move #$c,n3` / `move (r3)+n3` as `lua (r7+$c),r3`
+  (`04608fbd`, a stock form): -3, 2 words.
+- SP1 in `fs_ccore` (`3dbb58ef`): `move (r5)+n5` three instructions after
+  `move #$6,n5`, -6. `lua (r3+$6),r5` would save a word more, but has no stock
+  site.
+- T31's three short-form constants (`663508c6`): 3 words.
+- SP1 in `fs_cap` (`6a499372`): `n6` is written before `n2`, so its wait is 2,
+  not 3. It cannot move further: `n6` is the result of the `tge` just before.
+- T34's six 6-bit immediates (`e2fef030`, the row found here): -4, 6 words.
+
+The scan: ISO 371.1 → 356.9, SEM 223.3 → 221.2 cycles a sample; words 1,345 →
+1,334. Left: SP2, SP3's `do #2`, and SP4.
+
 #### SHATTER (ilia-murzinov): 383.1, 8.5 %
 
 | # | row | site | the change | saving | class |
@@ -497,6 +559,15 @@ cycles a sample; words 1,114 → 1,099.
 | SH2 | T14 | 48 displaced | Walk. | up to -48 | I, re-laid state |
 | SH3 | T25 | about 10 one-cycle stalls in `sh00` | Reorder. | about -5 | I, design |
 | SH4 | branches | 59 cycles a sample of branches (the scan) | A mode's arms as loops chosen once a block. | | not taken: words |
+
+**Taken, 19 Nov 2026** (sambanks/octabam#1189): T31's seven short-form
+constants (`63a2d096`; one is a zero after a `sub`, and stays a `move`
+because a `clr` would change the flags the code after it reads) and T34's one
+(`f14d3f4b`), IDENTICAL (49 renders), `verify_shatter` OK (46 checks). The
+scan: SOFT 383.1 → 380.7 cycles a sample, HARD and CHAOS -2.4; words 457 →
+449. **SH1 is not a finding:** two of its three reloads have a label between
+the store and the reload (T11 never crosses a label), and the third comes
+after the accumulator is reused, so no value is still in a register.
 
 #### TRANSIENT (Ignorato): 270.0, 6.0 %
 
@@ -616,8 +687,8 @@ stalls (`proc+234` to `+255`), about -3. Nothing else.
 
 ### The fixes, 19 Nov 2026: where they stand
 
-Thirteen branches, one module each, from main at `cc7cffc1`, opened as
-sambanks/octabam#1174 to #1186 on 19 Nov 2026. Every commit is IDENTICAL under the wider gate (sambanks/octabam#1172
+Sixteen branches, one module each, from main at `cc7cffc1`, opened as
+sambanks/octabam#1174 to #1186 and #1188 to #1190 on 19 Nov 2026. Every commit is IDENTICAL under the wider gate (sambanks/octabam#1172
 and its three later commits), every module's own gate passes, every new form
 has a stock site or a register row. Cycles are the scan's, a sample, at the
 module's dearest setting (modelled); words are `dsp_asm` at P:$800.
@@ -637,11 +708,14 @@ module's dearest setting (modelled); words are `dsp_asm` at P:$800.
 | BBD (`dear`) | JamCones | #1184 | 3 | 528.3 → 522.4 | 11.7 → 11.5 | 1,112 → 1,088 |
 | DISTORX (RAT) | MaMarko | #1185 | 2 | 375.9 → 375.4 | 8.3 | 1,114 → 1,099 |
 | TRANSIENT | Ignorato | #1186 | 2 | 270.0 → 267.9 | 6.0 → 5.9 | 258 → 254 |
+| SPECTRUM (ISO) | sambanks | #1188 | 8 | 371.1 → 356.9 | 8.2 → 7.9 | 1,345 → 1,334 |
+| SHATTER (SOFT) | ilia-murzinov | #1189 | 4 | 383.1 → 380.7 | 8.5 → 8.4 | 457 → 449 |
+| CHARACTER (SAT=TUBE) | sambanks | #1190 | 4 | 428.3 → 428.0 | 9.5 → 9.4 | 967 → 961 |
 
 The module branches change only their module (code and README). The scan's
-figures for all thirteen are in `CYCLE_SCAN.md` on this branch: a trial merge
+figures for all sixteen are in `CYCLE_SCAN.md` on this branch: a trial merge
 of every branch onto main found the modules' entries there on adjacent lines,
-so one docs change carries them all, and the thirteen module PRs can merge in
+so one docs change carries them all, and the sixteen module PRs can merge in
 any order without a rebase.
 
 ## 5. Good for all
