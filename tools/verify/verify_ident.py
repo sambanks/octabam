@@ -80,7 +80,7 @@ if ON_B:
 OWN = schema.render_slot(MOD)
 OTHER = (2, schema.R7_ALLOC[2]) if OWN == (1, schema.R7_ALLOC[1]) else (1, schema.R7_ALLOC[1])
 DEFAULTS = [(p.default or 0) for p in MOD.params]
-NAMES = [p.name.decode() for p in MOD.params]
+NAMES = [p.name.decode() if p.name else "" for p in MOD.params]   # MINIVERB has an unnamed slot
 
 
 def params(**kw):
