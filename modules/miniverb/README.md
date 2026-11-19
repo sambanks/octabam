@@ -56,6 +56,11 @@ reading `n5`. Beside that: the write at offset 0 needs no `n5`; two allpasses
 keep the gain already in `y1`; the 0.75, 0.625 and 0.5 gains and one mask load
 as one-word short immediates.
 
+Then (the same gate, 56 renders, IDENTICAL) two small constants in `add` and
+`sub` (0 to 63) load as the one-word 6-bit form (`add #>$1,a` is
+`add #$1,a`: the same result and flags): 507.7 → 507.6 cycles a sample
+(modelled); words 446 → 444.
+
 ### DSP load, 20 September 2026
 
 457 assembled words. All multiply/MAC encodings checked in disassembly.
