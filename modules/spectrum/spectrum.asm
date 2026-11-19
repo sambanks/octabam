@@ -1163,8 +1163,8 @@ fs_cap:
         cmp     #>$6,a
         move    #$0,x1
         tge     x1,a
+        move    a1,n6                   ; n6 first: one move between it and the read
         move    a1,n2
-        move    a1,n6
         move    x:(r6+n6),a             ; o2 = 3, 4 or 5
         move    a1,n6
         move    n2,a
