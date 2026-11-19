@@ -1063,6 +1063,7 @@ def main():
              "free-loop": (),   # FREE LOOP: ColdFire, no DSP words, on the 14 stock effects
              "drummer": (), "drummer-probe": (),   # DRUMMER (+ STORE) and its probe: ColdFire, no DSP words
              "lazy-chop": (),   # LAZY CHOP (+ BUFFER SAVER): ColdFire, no DSP words, on the 14 stock effects
+             "chop-tempo": (),   # LAZY CHOP TEMPO (+ LAZY CHOP): ColdFire, no DSP words, on the 14 stock effects
              "lock-edit": (), "zoom-keep": (), "src3-key": (),   # LOCK EDIT, ZOOM KEEP, SRC3 KEY: ColdFire, no DSP words, on the 14 stock effects
              "track-trig-mode": (), "page-loop": (), "trig-mute": (),   # TRACK TRIG MODE, PAGE LOOP and TRIG MUTE (Hteah): ColdFire, no DSP words, on the 14 stock effects
              # octabam-lazy-chop: octabam-verbs + LAZY CHOP, so the three stock reverbs (CONSUMED), as octabam-verbs
