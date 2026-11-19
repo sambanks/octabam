@@ -53,6 +53,12 @@ WDTH. `stamp-defaults` before play.
   stores, so the `lua` and two `(r0+n0)` accesses go; three constants load as
   one-word short immediates. Every new form has a
   stock site.
+- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172, 67 renders, IDENTICAL; the scan
+  as above): thirteen small constants (0 to 63) in `add` and `cmp` load as the
+  one-word 6-bit form (`add #>$1,a` is `add #$1,a`: the same result and
+  flags). FLNG at its defaults: 370.7 → 368.3 cycles a sample (modelled);
+  words 1,310 → 1,297.
 - **10 Nov 2026, the simplify pass** (bit-identical: `make verify-ident
   MOD=modulation` 13/13; `verify_modulation` 30/30, `verify_stations_fx2`
   PASS, `verify-knobs` 131 cases 0 flagged). Instructions per sample from
