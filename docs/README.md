@@ -25,6 +25,7 @@ Where each doc is, by who reads it. A module's own page is
 | [contributing/COLDFIRE_FORMS.md](contributing/COLDFIRE_FORMS.md) | the ColdFire instruction forms of a remix's runtime units, which stock code has run, the register of the rest |
 | [contributing/COSTS.md](contributing/COSTS.md) | what each effect costs on a unit, per slot, and the worst-case DSP load of a remix; `tools/remix/costs.py` |
 | [contributing/CYCLE_SCAN.md](contributing/CYCLE_SCAN.md) | where each effect spends its cycles, by the core manual's cycle table and pipeline stalls: every module and stock effect, the check against the unit, and the change for each site; `tools/build/interlock_scan.py` |
+| [contributing/DSP_AUDIT.md](contributing/DSP_AUDIT.md) | the audit of every module's DSP code for shorter, cheaper code with the same output: the techniques to check, how each module is built, the findings by module |
 | [contributing/TESTING.md](contributing/TESTING.md) | every gate, what it proves and cannot see; `make check`, `make reach`, shards, `make accept`, bit-identity, CI |
 | [contributing/TOOLING.md](contributing/TOOLING.md) | every tool by pipeline stage, and which README each tool directory has |
 | [contributing/HARDWARE_TESTING.md](contributing/HARDWARE_TESTING.md) | testing a remix on your own unit: the session step by step, stress sequences, recovering from a failure |
