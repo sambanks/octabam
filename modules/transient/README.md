@@ -28,6 +28,11 @@ ATCK and SUST together are clamped to ±12 dB; OUT adds up to a further ±12 dB.
   section 1): **270.0 → 267.9** at its defaults (6.0 % → 5.9 % of a frame).
   Words 258 → 254 (`dsp_asm` at P:$800). Not measured on the unit. Four
   constants load as one-word short immediates.
+- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172, 27 renders, IDENTICAL; the scan
+  as above): one small constant (0 to 63) in an `add` load as the one-word
+  6-bit form (`add #>$1,a` is `add #$1,a`: the same result and flags). Its
+  defaults: 267.9 → 266.9 cycles a sample (modelled); words 254 → 253.
 
 All by `tools/verify/verify_transient.py` through `dsp_host` on the audition's scratch image, 3 Oct 2026, unless stated.
 
