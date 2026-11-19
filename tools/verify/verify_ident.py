@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove a rewritten FX1 station renders BIT-IDENTICALLY to a saved reference,
+"""Prove a rewritten insert renders BIT-IDENTICALLY to a saved reference,
 across a knob matrix: every mode with two knob sets, all zeros, all max.
 
     python3 tools/verify/verify_ident.py <module> ref     # stamp from the current build
@@ -9,12 +9,17 @@ The reference is out/ident_<module>_ref.json (gitignored, per worktree).
 Every 0..127 knob is driven off its default so each stage carries signal;
 the select (MODE / SAT) is swept over its count. The Spectrum-specific
 matrix stays in verify_spectrum_ident.py.
+
+It renders on the module's own slot (schema.render_slot): VOCODER runs at
+r7 5 only, and on slot 1 its dry pass hashed the same before and after any
+change. A control fails the run when `defaults` and `max` render the same
+audio: the render never reached the module.
 """
 import hashlib, json, math, pathlib, struct, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 import send_probe
-from remix import registry
+from remix import registry, schema
 
 if len(sys.argv) < 2:
     sys.exit(__doc__)
@@ -52,12 +57,15 @@ def params(**kw):
     return v
 
 
-def render(samples, r7=1, **kw):
+OWN = schema.render_slot(MOD)
+
+
+def render(samples, **kw):
     src = TMP / "in.raw"
     src.write_bytes(b"".join(struct.pack("<i", m) for m in samples))
     out = TMP / "out.raw"
     cmd = [HOST, "-mem", MEM, "-init", f"{init:x}", "-proc", f"{proc:x}",
-           "-inst", "1", "-r7", str(r7), "-alloc", "0", "-inmask", "1",
+           "-inst", "1", "-r7", str(OWN[0]), "-alloc", str(OWN[1]), "-inmask", "1",
            "-frames", str(FRAMES), "-blocks", str(len(samples) // FRAMES),
            "-in", str(src), "-out", str(out),
            "-params", ",".join(str(x) for x in params(**kw))]
@@ -104,6 +112,10 @@ def hashes():
 if __name__ == "__main__":
     mode = sys.argv[2] if len(sys.argv) > 2 else "check"
     got = hashes()
+    print(f"  slot r7 {OWN[0]} / alloc {OWN[1]}")
+    if got["defaults"][:2] == got["max"][:2]:
+        sys.exit(f"  [CONTROL FAIL] defaults and max render the same audio: the render does not "
+                 f"reach {MOD.name} (a wrong slot, a dry pass, the SEND alias?)")
     if mode == "ref":
         REF.write_text(json.dumps(got, indent=1))
         print(f"reference saved: {len(got)} settings -> {REF}")
