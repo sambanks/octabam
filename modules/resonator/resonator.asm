@@ -164,7 +164,7 @@ proc:
         do      #4,>rs_fbd
         bsr     rs_flook
         move    x:(r7+$4b),a
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$4b)
 rs_fbd:
 ; samples
