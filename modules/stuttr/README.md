@@ -92,6 +92,12 @@ back to stock.
   (`docs/contributing/MODULES.md`); it is now written once a call, before the
   loop. Eight constants (four of them zeros) load as one-word short
   immediates.
+- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172, 58 renders, IDENTICAL; the scan
+  as above): sixteen small constants (0 to 63) in `add`, `sub` and `and` load
+  as the one-word 6-bit form (`add #>$1,a` is `add #$1,a`: the same result and
+  flags). FWD at `dear`: 262.5 → 258.4 cycles a sample (modelled); words 581 →
+  565.
 
 Local render gates (`verify_stuttr`): MIX 0 bit-exact; CHNC 0 stays dry;
 CHNC 127 + HOLD engages; SIZE loop gaps; HALF lengthens gaps vs FWD;
