@@ -459,10 +459,9 @@ gv_p2a:
 ; four input allpasses
         move    x:(r7+$38),y1
         move    y:(r5+n5),x0
-        move    #>$000000,n5
         mac     x0,y1,a
         move    x0,b
-        move    a,y:(r5+n5)
+        move    a,y:(r5)                ; offset 0: no n5
         move    #>$fffef6,n5
         move    a,x0
         move    b,a
