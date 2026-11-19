@@ -89,7 +89,10 @@ reference.
 - **Instrumentation:** `-track` dumps r7-relative state words every block,
   `-peekx/-peeky/-pokey` read and seed words, `-dumpy` writes a region,
   `-trace` logs the first N instructions; every run reports
-  instructions/sample per instance. `-dispatch` runs the payload's own
+  instructions/sample per instance. `-trace` alone skips the body of every
+  `do` loop, because the interpreter runs a loop in one step; `-steptrace`
+  steps loops one instruction at a time, as `ot_emu` does, and changes no
+  output (`docs/contributing/TRAPS.md#trap-trace-do`). `-dispatch` runs the payload's own
   dispatcher loop instead of the hand-rolled calling convention.
 - **Two cores:** `-mem A.mem -memB B.mem` boots both payloads in one
   process with X/Y `0x30000-0x3FFFF` of core 1 redirected into core 0's
@@ -367,6 +370,9 @@ ceiling is unmeasured by it. ❌ "There is not real headroom": retracted.
   a race fix holds (`modules/send/README.md`).
 - **The cycle budget.** The emulator renders an engine the chip cannot
   afford. `make cycles` bounds it; hardware proves it.
+  `tools/build/interlock_scan.py` prices the executed path with the DSP56300
+  Family Manual's cycle table and pipeline stalls, a model that fits the
+  unit's slot costs within a few percent (`docs/contributing/CYCLE_SCAN.md`).
 - **The ColdFire side.** `-params` pokes r6 directly, bypassing menus,
   descriptors, ranges and scene logic; the gain chain around the chain is
   modelled, the main level and the cue are not. A slot can draw a knob and
