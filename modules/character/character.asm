@@ -300,7 +300,7 @@ ch_pos3:
 ; no host, or boot garbage. $15 the counter last seen, $16 blocks since it
 ; moved (held at 8).
         move    x:(r7+$16),b
-        add     #>$1,b
+        add     #$1,b                   ; (6-bit immediate)
         move    #>$8,x1
         cmp     x1,b
         tgt     x1,b
@@ -337,7 +337,7 @@ ch_kbus:
         tst     a
         bne     ch_kself                ; the master keys on its own input
         move    x:(r7+$16),a
-        cmp     #>$4,a
+        cmp     #$4,a                   ; (6-bit immediate)
         bge     ch_kzero                ; stale: silence
         move    y:>$990,x0              ; T1's peak |mono in|
 ch_klvl:
@@ -625,7 +625,7 @@ ch_gdone:
         move    #$1,n6                  ; 16 - 15
         bra     ch_rdone
 ch_r12:
-        cmp     #>$1,a
+        cmp     #$1,a                   ; (6-bit immediate)
         bne     ch_rinfl
         move    #$42,n3                 ; DaTube's L pair
         move    x:(r7+$32),x0           ; TUBE: G/8 (0.5+d)/2 d d/2 comp/2 k R scale
