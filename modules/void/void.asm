@@ -56,7 +56,7 @@ proc:
 ; BAL: kn<<16; kn=127 → exact 1.0 (pure noise, no dry floor)
         move    x:(r6+$0),a
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -121,7 +121,7 @@ proc:
         and     #>$007f00,a
         asr     #$8,a,a
         asl     #$10,a,a                ; kn<<16
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -129,7 +129,7 @@ proc:
 ; WID = $d knob; SRC = $d companion
         move    x:(r6+$d),a
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -225,7 +225,7 @@ vd_have_in:
         move    a,x0
         move    x0,x:(r7+$25)
 ; HPF + COLR on mid ($02/$04); side uses $03/$05 under WID.
-        move    x:(r7+$25),x1
+        move    x0,x1                   ; the word just stored, from its register
         move    x1,x:(r7+$24)
         move    x:(r7+$14),y0
         move    x:(r7+$02),b
@@ -284,7 +284,7 @@ vd_nz_drv:
         move    #>$7fffff,x0
         cmp     x0,a
         tgt     x0,a
-        move    #>$800000,x0
+        move    #$80,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         tlt     x0,a
         move    a,x:(r7+$27)            ; park u
@@ -342,12 +342,12 @@ vd_am_lfo:
         move    x0,a
         tst     a
         move    #>$7fffff,a
-        move    #>$800000,b
+        move    #$80,b                   ; (short immediate: bits 23-16)
         tlt     b,a
         move    a,x:(r7+$25)            ; SQR scratch
         move    x0,a
         abs     a
-        move    #>$800000,b
+        move    #$80,b                   ; (short immediate: bits 23-16)
         add     b,a
         neg     a
         move    a,y1
@@ -444,7 +444,7 @@ vd_side_drv:
         move    #>$7fffff,x0
         cmp     x0,a
         tgt     x0,a
-        move    #>$800000,x0
+        move    #$80,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         tlt     x0,a
         move    a,x:(r7+$27)
@@ -507,8 +507,6 @@ vd_bal:
         move    x:(r7+$23),b
         add     b,a
         move    a,x:(r0+n0)
-        move    #>$2,n0
-        move    (r0)+n0
-        move    #>$1,n0
+        lua     (r0+$2),r0              ; the frame advance: one stereo frame, n0 stays 1
 vd_end:
         rts
