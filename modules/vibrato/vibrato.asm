@@ -626,20 +626,22 @@ vb_knot:
 ; vb_tap -- modulation's mo_tap: a = the delay in Q11.12, y0 = the write
 ; phase, r5 = the line's base (m5 = $3ff) -> a = the tap, the fraction
 ; blended toward the OLDER neighbour. Uses x0 y1 b n5. Straight-line.
+; Both callers enter with a0 = 0 and a in range (a delay and its slope, each
+; loaded from memory, added), so a needs no clean copy. The offset is worked
+; out first, in a; the fraction, in b, fills the gaps a result needs before it
+; is moved and n5 needs before the step (modulation's mo_tap does the same).
 ; ---------------------------------------------------------------------------
 vb_tap:
-        move    a,x0                    ; the total (positive, under 1: not limited)
-        move    x0,a                    ; clean: a0 = 0
-        and     #>$fff,a
-        asl     #$b,a,a                 ; the fraction, Q23
-        move    a1,y1
-        move    x0,a
-        asr     #$c,a,a
+        move    a,b                     ; the total (positive, under 1: not limited)
+        asr     #$c,a,a                 ; (a0 takes the fraction's bits: a1 is what is read)
+        and     #>$fff,b
         move    a1,x0                   ; i
         move    y0,a                    ; the write phase
         sub     x0,a
         and     #>$3ff,a                ; (a2 may be stale: a1 is what is read)
+        asl     #$b,b,b                 ; the fraction, Q23
         move    a1,n5
+        move    b1,y1                   ; f
         move    (r5)+n5                 ; -> delay i
         move    y:(r5)-,b               ; t0; the modulo steps r5 to delay i + 1
         move    y:(r5),a                ; t1
