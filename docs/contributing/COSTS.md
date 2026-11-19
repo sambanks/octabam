@@ -136,8 +136,15 @@ Not read, and why:
 
 ## Not in the catalog yet
 
-No cost: TAPE ECHO, DEVILISH,
-SIDECHAIN_COMPRESSOR, MULTIBCOMP. Estimated from `make cycles` only (static
-price x about 1.4, inferred): WAVE (the DSP effect, removed) about 33 %, VOCODER about 24 %, RESONATOR
-about 14 %, CHARACTER TXTR about 12 %.
+No cost read on a unit: TAPE ECHO (now on the ColdFire; its DSP entry is a stub), DEVILISH,
+SIDECHAIN_COMPRESSOR, MULTIBCOMP.
+
+Modeled, not read (`tools/build/interlock_scan.py`, [CYCLE_SCAN.md](CYCLE_SCAN.md), 18 Nov 2026: the core manual's
+cycle table and pipeline stalls on the executed path; where a unit figure exists, the model is a mean 3 % above it and
+never more than 0.2 % below): VOCODER 27.5 %, CHARACTER TXTR 15.4 %, RESONATOR 14.5 %, VERBERATION 10.1 %, VIBRATO
+4.6 %, MULTIBCOMP about 0.1 % (a stub path in the stock image). The servers, one instance: REVERB SERVER 35.2 %,
+DELAY SERVER 21.5 % (CLEAN) to 43.4 % (GRAIN), SEND 1.3 %. The model has no term for the shared window's fetch wait
+state, so a window effect may cost more. The catalog takes only readings, so none of these is in
+`slot_costs.json`. They replace the `make cycles` estimates (static price x about 1.4, inferred): VOCODER about 24 %,
+RESONATOR about 14 %, CHARACTER TXTR about 12 %; WAVE (the DSP effect, removed) was about 33 %.
 P words per effect are not in the catalog.

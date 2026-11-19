@@ -1,0 +1,17 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "name": "MIDI = SRC3",
+   "type": "binary"
+  }
+ },
+ "store": {
+  "id": "octabam.src3-key",
+  "major": 1
+ }
+}

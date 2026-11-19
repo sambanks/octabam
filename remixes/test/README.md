@@ -4,7 +4,6 @@ Each carries one module, or one combination, for that module's gates: `make chec
 
 | remix | contains | proof |
 |---|---|---|
-| [`page-loop`](page-loop/README.md) | Loop one page of one track, in time.. | emulator (verify_page_loop.py); not on a unit |
 | [`analog-bassdrum`](analog-bassdrum/README.md) | Analog BD source machine, switchable 808/909, stock AMP and FX. | emulator: source/UI under the port; earlier ANALOGBD1 auditioned on MK1, current revision unflashed |
 | [`ata-write-guard`](ata-write-guard/README.md) | Stock effects with the first PIO card write guarded through bookkeeping. | emulator: forced completion-interrupt gate under the port; not on hardware |
 | [`bar-led`](bar-led/README.md) | stock effects with BAR LED: the tempo LED flashes green on the pattern's 1 while playing. | emulator |
@@ -56,6 +55,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`kyoti-fixes`](kyoti-fixes/README.md) | stock effects with QUANTIZE_LIVE_REC_TOGGLE, ERASE_EMPTY_TRIGLESS_LOCKS and BATCH_BUGFIXES together. | emulator |
 | [`kyoti-mute-jump`](kyoti-mute-jump/README.md) | stock effects with MUTE_MODES and DIRECT_JUMP_KYOTI together. | emulator |
 | [`kyoti-mute-sidechain`](kyoti-mute-sidechain/README.md) | stock effects with MUTE_MODES and SIDECHAIN_COMPRESSOR together: a muted KEY track keeps feeding the compressor (SC_KEY). | emulator |
+| [`lazy-chop`](lazy-chop/README.md) | stock effects with LAZY CHOP (tap TRIG 1..16 to slice a take) and BUFFER SAVER. | emulator (verify_lazy_chop): verify_lazy_chop under the port; the module on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
 | [`lofi-amf-fix`](lofi-amf-fix/README.md) | Reference minimal build: the LO-FI AMF mpysu->mpyuu fix, alone. | emulator |
 | [`lofi2`](lofi2/README.md) | LOFI2 beside the stock effects (all but PLATE REV and SPRING REV, whose words it takes). | emulator |
 | [`midi-follow`](midi-follow/README.md) | Per-track RFOL source selection on MIDI NOTE SETUP; Part-owned bass following. | emulator |
@@ -69,6 +69,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`mute-modes`](mute-modes/README.md) | stock effects with MUTE_MODES: PERSONALIZE > MUTE MODE (OT, OTFX, OTFX-T, DT-T). | emulator |
 | [`octa303`](octa303/README.md) | the OCTA-303 machine (a circuit-modelled TB-303 voice on the ColdFire) with the stock effects. | emulator: built and its UI gate run under the port, 19 Oct 2026; OCTA303 itself on the owner's MK1 in remix acidtrack (ACIDV70, BUILD 87) |
 | [`octatrick`](octatrick/README.md) | SYNTH MACHINE + SCALE QUANTIZER + DIRECT JUMP + TUNER + USB (20 channels out, 4 in onto A-D) on the stock effects less SPATIALIZER. | on a unit (MKI, Tim, 2026-09-29): test build 3.0 b40 (this selection at BUILD 40), 29 Sep 2026: USB AUDIO IN brings the Mac's audio onto the inputs in a one-minute check (long runs not yet tested). The same four modules with the 26 Sep USB AUDIO (out only) ran on the same MKI through the 2.9 test builds; the tuner works on test build 3.0 b40 (UP + TEMPO); the last two 2.9 fixes are not yet confirmed on hardware |
+| [`page-loop`](page-loop/README.md) | stock effects with PAGE LOOP: loop one page of one track, in time. | emulator |
 | [`pattern-mute`](pattern-mute/README.md) | smoke: PATTERN MUTE alone, with STORE (pmute.work) | emulator: PATTERN MUTE smoke |
 | [`pattern-mute-modes`](pattern-mute-modes/README.md) | smoke: PATTERN MUTE and MUTE_MODES together, stock effects | emulator: PATTERN MUTE beside MUTE_MODES |
 | [`persistent-buffers`](persistent-buffers/README.md) | Recorder buffers BUFFERS/REC1.wav..REC8.wav under the project on SAVE / LOAD. | emulator (verify_persistent_buffers): verify_persistent_buffers under the port |
@@ -98,6 +99,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`sidechain-compressor`](sidechain-compressor/README.md) | stock effects with SIDECHAIN_COMPRESSOR in COMPRESSOR's row: MON, KEY, KGN, KBAS and KWID on page 2. | emulator |
 | [`slow-lfo`](slow-lfo/README.md) | stock effects with SLOW LFO: LFO MULT gains 1/2X, 1/4X and 1/8X on audio and MIDI tracks. | emulator |
 | [`sos-capture`](sos-capture/README.md) | recorder fixes + USB (TRACKS out, AB in) (stock effects minus SPATIALIZER). | emulator: `make check` under the port; not on hardware in this form |
+| [`src3-key`](src3-key/README.md) | stock effects with SRC3 KEY ([MIDI] in the audio editor records SRC3 on the MKI). | emulator (verify_src3_key): verify_src3_key under the port; the module itself on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
 | [`stations-fx2`](stations-fx2/README.md) | SPECTRUM, CHARACTER and MODULATION on FX1 and FX2, beside the stock DELAY. | emulator (verify_stations_fx2): `verify_stations_fx2` (dsp_host); not on a unit |
 | [`stems`](stems/README.md) | STEM REC on the stock effects: multitrack recording to the card, each track, MAIN, CUE and the inputs as separate WAV files. | on a unit (MKII, Yves, 2026-10-06): (STEMS3) |
 | [`stems-brain`](stems-brain/README.md) | STEM REC (UP+REC) with BRAIN on the root: coexistence without two menu growers. | emulator (verify_stems_menu): verify_stems_menu under ot_emu |
@@ -144,3 +146,4 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`window-mod`](window-mod/README.md) | CORE with LOAD METER and MODULATION in the shared window beside the stock effects (all but CHORUS, whose id it takes, and the three reverbs). | emulator |
 | [`xfcurve`](xfcurve/README.md) | XF CURVE (the crossfader's curve, a BRAIN setting) with BRAIN, STORE and the stock effects. | emulator (verify_xfcurve): builds; tools/verify/verify_xfcurve.py |
 | [`xfcurve-scurve`](xfcurve-scurve/README.md) | XF CURVE pinned to S-CURVE, without BRAIN, on the stock effects. | emulator (verify_xfcurve): tools/verify/verify_xfcurve.py |
+| [`zoom-keep`](zoom-keep/README.md) | stock effects with ZOOM KEEP (the audio editor keeps its zoom when a slice is auditioned). | emulator (verify_zoom_keep): verify_zoom_keep under the port; the module itself on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
