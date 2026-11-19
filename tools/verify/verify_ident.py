@@ -24,7 +24,10 @@ reference stamped before the wider net still compares on them):
   ramp          every knob ramped up and back down over 12,000 samples, the
                 select stepping through its values: glides, snaps, mode changes;
   stereo/       different L and R inputs: a channel read from the wrong side;
-  split/        the dispatcher's split call (a=0 for 5 frames, then the rest).
+  split/        the dispatcher's split call (a=0 for 5 frames, then the rest);
+  dear, mode<i>_dear  the manifest's `dear` knobs, as-is and with every value
+                of the select, in each family above (a module whose generic
+                settings never engage it, STUTTR, is reached here).
 
 Every render also records the instance block, r7 $00..$83, after every block
 (dsp_host -track), and the check compares it word by word: "Compare persistent
@@ -167,10 +170,29 @@ def settings():
     return out
 
 
+def dears():
+    """The manifest's `dear` knobs (the engaging demo the scan and the hardware
+    matrix use), as-is and once per value of the select: a module whose generic
+    settings never engage it (STUTTR: chance and a free clock) is reached here."""
+    dear = {k: v for k, v in (getattr(MOD, "dear", None) or {}).items() if k in K}
+    if not dear:
+        return {}
+    out = {"dear": dear}
+    sel = next((p for p in MOD.params if p.name and 2 <= (p.count or 128) <= 8), None)
+    if sel:
+        for mode in range(sel.count):
+            out[f"mode{mode}_dear"] = dict(dear, **{sel.name.decode(): mode})
+    return out
+
+
 def cases():
     base = settings()
     hots = [k for k in base if k.endswith("_hot")]
     out = {k: {"kw": kw} for k, kw in base.items()}          # the original 13, unchanged
+    dear = dears()
+    base.update(dear)
+    out.update({k: {"kw": kw} for k, kw in dear.items()})
+    hots += list(dear)                                    # "dear" and its per-mode twins
     for k in ("defaults", "max"):
         out[f"other-slot/{k}"] = {"kw": base[k], "slot": OTHER}
     if ON_B:
@@ -178,12 +200,12 @@ def cases():
             out[f"B/{k}"] = {"kw": base[k], "core": 1}
     for k in ["defaults", "max"] + hots:
         out[f"f16/{k}"] = {"kw": base[k], "frames": 16}
-    for k in ("defaults", "max"):
+    for k in ("defaults", "max") + (("dear",) if dear else ()):
         out[f"long/{k}"] = {"kw": base[k], "n": LONG}
     out["ramp"] = {"ramp": True, "n": RAMP}
     for k in ["defaults", "max"] + hots:
         out[f"stereo/{k}"] = {"kw": base[k], "stereo": True}
-    for k in ("defaults", "max"):
+    for k in ("defaults", "max") + (("dear",) if dear else ()):
         out[f"split/{k}"] = {"kw": base[k], "split": 5}
     return out
 
@@ -202,13 +224,14 @@ def hashes():
 
 
 def controls(got):
-    """The render must reach the module: defaults and max differ."""
+    """The render must reach the module: max, or the manifest's dear, differs from defaults."""
     bad = []
     for pre in ("", "B/") if ON_B else ("",):
-        a, b = got.get(f"{pre}defaults"), got.get(f"{pre}max")
-        if a and b and a[:2] == b[:2]:
-            bad.append(f"{pre or 'A/'}defaults and {pre or 'A/'}max render the same audio: the render "
-                       f"does not reach {MOD.name} (a wrong slot, a dry pass, the SEND alias?)")
+        a, b, c = got.get(f"{pre}defaults"), got.get(f"{pre}max"), got.get(f"{pre}dear")
+        if a and b and a[:2] == b[:2] and (c is None or a[:2] == c[:2]):
+            bad.append(f"{pre or 'A/'}defaults and {pre or 'A/'}max{' and dear' if c else ''} render the "
+                       f"same audio: the render does not reach {MOD.name} (a wrong slot, a dry pass, the "
+                       f"SEND alias, or no setting that engages it?)")
     return bad
 
 
