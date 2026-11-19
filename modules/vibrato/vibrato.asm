@@ -393,7 +393,7 @@ vb_mixd:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r0)                ; dry + m (tap - dry)
+        move    a,x:(r0)+               ; dry + m (tap - dry); r0 steps to R (the frame advance, 1 of 2)
 ; ---- R ---------------------------------------------------------------------
         move    x:(r7+$08),x0
         move    x:(r7+$06),a
@@ -404,7 +404,7 @@ vb_mixd:
         move    a,x1                    ; tap R
         move    y0,n5
         move    r6,r5
-        move    x:(r0+n0),b             ; dry R
+        move    x:(r0),b                ; dry R
         move    x1,a
         sub     b,a
         move    (r5)+n5                 ; line R at the write phase
@@ -415,9 +415,7 @@ vb_mixd:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r0+n0)
-        move    (r0)+n0                 ; the frame advance: n0 is 1 for the
-        move    (r0)+n0                 ; whole loop, so two steps, no reload
+        move    a,x:(r0)+               ; r0 steps to the next frame (2 of 2)
 vbloopz:
         nop
         move    #>$ffffff,m5
