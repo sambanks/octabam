@@ -131,8 +131,8 @@ audit checks its row and corrects it. Counts are inside the sample loop
 
 | module | author | source of record | state in the loop: displaced from r7 / walked | calls a sample | `do` in the loop | tables | reference model | identity gate |
 |---|---|---|---|---|---|---|---|---|
-| MODULATION | sambanks | hand-written | 4 / 88 | `mo_tap` 2 to 3, `mo_itrd`, `mo_apst` 2, `mo_herm` | PHSR `do #4` | generated from the reference | `modulation_ref.py` | `verify_ident` |
-| VIBRATO | Bryan T | hand-written | 11 / 0 | `vb_tap` 2 | none | generated from the reference | `vibrato_ref.py` | `verify_ident` |
+| MODULATION (audited) | sambanks | hand-written | 7 / 102, loops and the routines they call | `mo_tap` 2 to 3, `mo_itrd`, `mo_apst` 4 (PHSR), `mo_herm` 2 (COMB) | PHSR `do #4` twice | generated from the reference | `modulation_ref.py` | `verify_ident` |
+| VIBRATO (audited) | Bryan T | hand-written | 11 / 4, loops and the routines they call | `vb_tap` 2 | none | generated from the reference | `vibrato_ref.py` | `verify_ident` |
 | SPECTRUM | sambanks | hand-written | 7 / 82 | `fs_r3`, `fs_lcore`, `fs_ccore` | `do #2` | 3 listed by hand | `capacitor2_ref.py` (helper only) | `verify_spectrum_ident` |
 | CHARACTER | sambanks | hand-written | 0 / 61 | `chtube` or `chtape` 2 | none | TUBE_UP computed, TAPE_D8 by hand | none | `verify_ident` |
 | CHARACTER TXTR | sambanks | hand-written: CHARACTER plus 191 lines | 4 / 63 | as CHARACTER, plus `chtx2` 2 | none | as CHARACTER, plus POCKEY computed | `pockey2_ref.py` | `verify_ident` |
@@ -166,11 +166,80 @@ audited against, or "not audited".
 
 ### MODULATION
 
-Not audited.
+**Stamp: checklist version 1, pass 1, 19 Nov 2026,** source at `cc7cffc1`
+(the same as #1080's merge). Dearest: FLNG, 398.8 cycles a sample, 8.8 % of a
+frame (modelled). Scan: `out/dsp-audit/pilot/modulation_now.json`; the
+static checks: the audit's `g_checks.py`.
+
+**The pilot's check.** The procedure was first run on MODULATION's source
+from before #1080 (`48b7e4f3`, the merge's first parent):
+
+- The static checks find #1080's sites in that source: T01 (3 frame advances),
+  T02 (4 write addresses), T03 (3 entry reloads), T05 (3 `n3` loads), T07 (4
+  arm tests), T08 (3 compares) and T09 (5 store-and-copy pairs, of which #1080
+  merged the two PHSR ramps). Per block, with `--all`: T11 (`$47` stored and
+  read back at once) and T12 (5 `move r7,rN`). In today's source those sites
+  are gone, except the ones #1080 left on purpose (T09's three MIX stores, T17).
+- **#1080 in cycles** (the model, every mode at its defaults): JUNO 333.5 →
+  321.8, DIM 402.5 → 390.9, FLNG 412.5 → 398.8, COMB 368.1 → 360.9, PHSR
+  402.2 → 393.1. That is 7.1 to 13.7 cycles a sample, more than its 6.4 to 8.8
+  instructions: the stalls and two-word forms it removed count more than the
+  cycle its frame-advance `lua` adds (+1.5 a sample on average).
+
+**Findings.** Savings are cycles a sample (modelled) by mode, and words.
+
+| # | row | site | the change | saving | class | status |
+|---|---|---|---|---|---|---|
+| M1 | T26, T25 | `mo_tap` (`:1347-1359`) | The offset first, in `a`; the fraction in `b`, filling the gap before `n5` is used. Stalls a call 6 → 2. Every form has a stock site (`move a,b`, `and #>N,b`, `asl #N,b,b`, `move b1,y1`); the zero-stall order needs `sub y1,b` and `move b1,n5`, which have none. | -5 a call: JUNO and DIM -10, FLNG -15; -1 word | I | open |
+| M2 | T26, T25 | `mo_herm` (`:1383-1396`) | The same order. | -5 a call: COMB -10; -1 word | I | open |
+| M3 | T26, T25 | LINE's two line writes (`:427-429`, `:474-476`); COMB's two (`:1139-1141` and its L twin) | Load `n5` and `r5` just after the tap returns (nothing between uses them); put the step between `add b,a` and the limiting `move a,x0`. Removes the 3-cycle AGU stall and a 1-cycle arithmetic stall. | -4 a site: LINE modes -8; COMB -8 (its sites to be read); 0 words | I | open |
+| M4 | T19 | the three mix tails (`:634-644`, `:897-907`, `:1163-1173`) | The L store `x:(r0)+`, the dry R read `x:(r0)`, the R store `x:(r0)+`; the `lua` goes. Nothing between uses `r0`. | -5 in every live mode; -1 word each (3 in all) | I | open |
+| M5 | T09 | the three MIX run stores (`:629`, `:892`, `:1158`) | `move a,x:(r1)` and `move a,y1` as one X:R move. | -1 in every live mode; -1 word each | F: `move a,x:(r1) a,y1` has no stock site | open |
+| M6 | T25 | LINE's line writes and LPo (`mo_line+124`, `+153`, `+168`, `+192` in the scan) | Move the next independent load (`move n2,x0`, the next slope) between the `mac` and its store. | about -1 a site, 4 to 6 sites a sample | I | open: design per site |
+| M7 | T26 | `move #$3,n3` at `mo_whr` (`:617`), `move #$5,n3` in COMB (`:1146`) | Load `n3` earlier, or reach wet L another way. In FLNG `n3` also holds f. | -1 to -2 | I | open |
+| M8 | T17 | `and #>$3ff,a` in `mo_tap` and `mo_herm` | Drop it: the modulo AGU would wrap the offset (#1080's note). | 2 to 3 a call | U | needs the unit |
+| M9 | T29 | PHSR's two `do #4` (`:791`, `:851`) | Unroll. | -10, about +20 words | I | not taken: a trade |
+| M10 | T27 | a `lua` and a read through it (`mo_whl`, `mo_padv+103`, COMB `+80`) | Separate them. | up to 3 each, only if a `lua` interlocks (the manual does not say) | I | open, low |
+| M11 | T25 | the mix tails' five 1-cycle stalls (`mo_whr+7`, `+11`, `+16`, `+21`, `+25`) | The MIX rework #1080 declined (mix L as soon as wet L exists). | about -5 in every live mode | I | open: more surgery |
+
+If M1 to M5 hold, the model gives JUNO about -24 (321.8 → 298), DIM -24, FLNG
+-29 (398.8 → 370, 8.8 % → 8.2 % of a frame), COMB -24 and PHSR -6. Modelled,
+not measured; the gate and a LOAD METER read would confirm them.
 
 ### VIBRATO
 
-Not audited.
+**Stamp: checklist version 1, pass 1, 19 Nov 2026,** source at `cc7cffc1`.
+Dearest: SHP=TRI at its maximum, 207.0 cycles a sample, 4.6 % of a frame
+(modelled). Scan: `out/dsp-audit/pilot/vibrato_now.json`.
+
+VIBRATO copies MODULATION's tap (`vb_tap` is `mo_tap` plus a clean reload)
+and its line writes, but not the 22 Sep pass: its loop reads all 11 state
+words as offsets from `r7`.
+
+| # | row | site | the change | saving | class | status |
+|---|---|---|---|---|---|---|
+| V1 | T26, T25, T03 | `vb_tap` (`:630-643`) | M1's order, and the clean reload `move x0,a` dropped: both callers enter with a0 = 0 (a delay and its slope, both loaded from memory and added). | -6 a call, -12 a sample; -2 words | I | open |
+| V2 | T02, T26, T25 | the two line writes (`:383-388`, `:406-411`) | `move y0,n5` for `move y0,a` / `move a1,n5`; `r5` loaded first, the step after `sub b,a`; the line store `move b,y:(r5)` into the slot after the shift. Removes 6 stall cycles and an instruction a site. | -7 a site, -14 a sample; -2 words | I (`move y0,n5` has a register row) | open |
+| V3 | T19 | the frame advance (`:397`, `:410`, `:420-422`) | The stores post-step `r0`; the two steps go. | -4; -2 words | I | open |
+| V4 | T14 | the 11 displaced state accesses in the loop | Walk a pointer over the state. The words are not in the order the loop reads them, so the state block would be re-laid. | up to -11 | I, but a re-laid state block shows in the gate's state check: each moved word must be named | open |
+| V5 | T25 | `vb_mixd`'s other 1-cycle stalls (`+25`, `+29`, `+43`, `+48`, `+52`, `+66`, `+71`) | Reorder. | about -1 each | I | open |
+
+If V1 to V3 hold: about -30 of 207.0 (4.6 % → 3.9 % of a frame), -6 words.
+
+### Notes from the pilot (checklist version 1 unchanged)
+
+- **Price a pass in cycles.** An instruction saved is not always a cycle
+  saved: #1080's frame-advance `lua` saves an instruction and costs a cycle.
+  T19, folding the advance into the stores, beats both.
+- **Prefer the order whose forms are stock.** For a tap's reorder (T26), the
+  stall-free order needed two forms with no stock site; the order with 2 cycles
+  left needs none. The finding gives both.
+- **A re-laid state block** (T14, T21) defeats the gate's word-by-word state
+  check, which cannot follow a word to its new slot. Name every moved word
+  with `--scratch` and say so in the PR; the audio renders still prove the
+  output.
+- **One fix, two modules.** M1 and V1 are the same change; so are M3 and V2,
+  and M4 and V3.
 
 ## 5. Good for all
 
@@ -204,7 +273,9 @@ Not optimisations. Reported, and fixed only with Yves's OK.
 - `verify_ident.py` used to render every module on the FX1 slot. VOCODER
   renders on slot 5, so on slot 1 it hashed VOCODER's dry pass and passed any
   change to the vocoder (measured 19 Nov 2026: a one-bit coefficient change,
-  7/7 identical). Fixed on branch `ident-wide`.
+  7/7 identical). Fixed on branch `ident-wide` (`88ca7523`); the same branch adds
+  the wider renders (`35fc338c`): of ten deliberate faults the old gate caught
+  one, the new gate all ten.
 
 ## 7. Baseline
 
