@@ -467,10 +467,10 @@ vc_gdone:
         macr    -y1,x1,b                ; hp = q m - low - q band
         tfr     y1,a      b,y0
         macr    y0,x0,a                 ; band += f hp
+        move    y:(r3)+,x0              ; f2 A, for section 2 (x0 is free: fills the macr's gap)
         move    a,y0
         mpy     x1,y0,b   a,x:(r5)+     ; section 2's input, q band
 ; m, section 2 (f2 A)
-        move    y:(r3)+,x0              ; f2 A
         move    x:(r5)+,a
         move    x:(r5)-,y1
         macr    x0,y1,a
@@ -478,15 +478,15 @@ vc_gdone:
         macr    -y1,x1,b
         tfr     y1,a      b,y0
         macr    y0,x0,a                 ; the m band
+        move    p:(r4)+,x0              ; W/2, for the envelope (fills the macr's gap)
         abs     a         a,x:(r5)+     ; |m band| (the signed band is stored)
+        move    x:(r7+$14),y1           ; 0.00227, for the envelope (fills abs's gap; y1 is free)
 ; the envelope: e = max((W/2) |m band|, e (1 - 0.00227)), 48 bits
         move    a,y0
-        move    p:(r4)+,x0              ; W/2
         mpy     y0,x0,b                 ; v
         move    x:(r5)+,a               ; e, high word
         move    x:(r5)-,a0              ; e, low word
         move    a1,x0
-        move    x:(r7+$14),y1           ; 0.00227
         mac     -x0,y1,a                ; e (1 - 0.00227)
         cmp     b,a
         tlt     b,a                     ; below v -> v (the instant attack)
@@ -503,10 +503,10 @@ vc_gdone:
         macr    -y1,x1,b
         tfr     y1,a      b,y0
         macr    y0,x0,a
+        move    p:(r4)+,x0              ; f2, for section 2 (fills the macr's gap)
         move    a,y0
         mpy     x1,y0,b   a,x:(r5)+
 ; c, section 2 (f2)
-        move    p:(r4)+,x0              ; f2
         move    x:(r5)+,a
         move    x:(r5)-,y1
         macr    x0,y1,a
@@ -514,11 +514,11 @@ vc_gdone:
         macr    -y1,x1,b
         tfr     y1,a      b,y0
         macr    y0,x0,a                 ; the c band
+        move    x:(r7+$17),x0           ; e, for the VCA (fills the macr's gap)
         move    a,x:(r5)+               ; (r5 -> the next band)
 ; the VCA: the band sum += e (c band), rounded to 24 bits (about 62 dB under
 ; the vocoded signal, README and DESIGN; two moves a band fewer than 48)
         move    a,y0
-        move    x:(r7+$17),x0           ; e
         move    x:(r7+$2),b
         macr    y0,x0,b
         move    b,x:(r7+$2)
