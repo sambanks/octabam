@@ -105,7 +105,7 @@ def wait_card(mounted, timeout=60):
 DISK_FLAG = 0x460e76a0          # nonzero while the unit is in USB DISK MODE (modules/remote/README.md)
 
 
-def enter_disk(u, attempts=4):
+def enter_disk(u, attempts=6):
     """COMMAND 1 and the card's mount. The unit sometimes clears the flag within 4 s and the card never appears
     (18 Nov 2026, `octabam-bus` 05 and, later, `octabam-verbs` 05 and `octabam` 05); each attempt is logged."""
     if os.path.isdir(os.path.join(CARD, "BRAIN")):
@@ -125,7 +125,7 @@ def enter_disk(u, attempts=4):
             if flag == 0 and time.monotonic() - t0 > 6:
                 break
         print(f"attempt {n}: COMMAND 1 {'taken' if taken else 'refused'}, disk-mode flag {flag}, no card after {time.monotonic() - t0:.0f} s")
-        time.sleep(3.0)
+        time.sleep(10.0)
     sys.exit(f"{CARD} did not mount in {attempts} attempts")
 
 
@@ -137,7 +137,10 @@ def leave_disk(u):
             break
         time.sleep(1.0)
     else:
-        sys.exit(f"could not unmount {CARD}: {r.stderr.strip()}")
+        # loginwindow or Finder can dissent (19 Nov 2026); the project was compared before this, so force it
+        r = subprocess.run(["diskutil", "unmount", "force", CARD], capture_output=True, text=True)
+        if r.returncode:
+            sys.exit(f"could not unmount {CARD}: {r.stderr.strip()}")
     # `diskutil unmount` leaves the device node (`diskN`) on the Mac: after it, every later COMMAND 1 enters DISK MODE
     # on the unit (BANKW in the ring) and the Mac never mounts the card (18 Nov 2026). Ejecting removes the node.
     for line in subprocess.run(["diskutil", "list", "external"], capture_output=True, text=True, timeout=30).stdout.splitlines():
