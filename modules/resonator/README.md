@@ -70,6 +70,12 @@ the Part.
   The five per-sample pointer setups (`move r7,rN` / `move #n,nN` / `move
   (rN)+nN`) are one `lua (r7+n),rN` each; the five zero loads after a compare
   and three constants are one word each.
+- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172, 27 renders, IDENTICAL; the scan
+  as above): one small constant (0 to 63) in an `add` load as the one-word
+  6-bit form (`add #>$1,a` is `add #$1,a`: the same result and flags). Every
+  knob at its maximum: 636.6 → 636.4 cycles a sample (modelled); words 433 →
+  432.
 
 - Render gates in `tools/verify/verify_resonator.py` (SCAL 8 max-knob rail
   fraction < 5%, SCAL 127 + LIM 127 peak under ~0.76 FS with rail fraction
