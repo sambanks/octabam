@@ -139,7 +139,7 @@ gv_ready:
         move    x:(r6+$e),a
         and     #>$7f0000,a
         move    a1,x0
-        move    #>$7f0000,a
+        move    #$7f,a                   ; (short immediate: bits 23-16)
         sub     x0,a
         move    a1,x0
         move    #>$6734ee,y1
@@ -190,14 +190,14 @@ gv_ready:
         and     #>$7f0000,a
         move    a1,x1
         move    x1,a
-        move    #>$400000,x1
+        move    #$40,x1                  ; (short immediate: bits 23-16)
         sub     x1,a
         move    x:(r7+$46),b
         sub     b,a
         asr     #$4,a,a
         add     b,a
         move    a,x:(r7+$46)
-        move    #>$400000,x1
+        move    #$40,x1                  ; (short immediate: bits 23-16)
         add     x1,a
         move    a1,y0
         mpy     y0,x0,a
