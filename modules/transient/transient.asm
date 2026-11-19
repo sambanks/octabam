@@ -41,7 +41,7 @@
 ; ---------------------------------------------------------------------------
 
 init:
-        move    #>$c00000,x0            ; -16 bits: the followers start at
+        move    #$c0,x0                  ; -16 bits: the followers start at (short immediate: bits 23-16)
         move    x0,x:(r7+$00)           ; the floor, like the float reference
         move    x0,x:(r7+$01)
         move    x0,x:(r7+$02)
@@ -73,7 +73,7 @@ proc:
         move    a,x:(r7+$12)
         move    x:(r6+$4),a             ; MIX: value/128, 127 pinned to full
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -235,10 +235,10 @@ proc:
         move    a,y0
         move    x:(r7+$11),x0           ; SUST
         mac     y0,x0,b                 ; g in bits/32
-        move    #>$080000,x0            ; +2 bits
+        move    #$08,x0                  ; +2 bits (short immediate: bits 23-16)
         cmp     x0,b
         tgt     x0,b
-        move    #>$f80000,x0            ; -2 bits
+        move    #$f8,x0                  ; -2 bits (short immediate: bits 23-16)
         cmp     x0,b
         tlt     x0,b
         move    x:(r7+$12),x0           ; OUT
