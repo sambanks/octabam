@@ -63,10 +63,11 @@ back to stock.
   after each commit; 49 renders). Cycles a sample from
   `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
   model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
-  section 1), every knob at its maximum: SOFT **383.1 → 380.8**, HARD and
-  CHAOS -2.3. Words 457 → 450 (`dsp_asm` at P:$800). Not measured on the unit.
+  section 1), every knob at its maximum: SOFT **383.1 → 380.7**, HARD and
+  CHAOS -2.4. Words 457 → 449 (`dsp_asm` at P:$800). Not measured on the unit.
   Seven constants (one a zero kept a move for its flags) load as one-word
-  short immediates. Its three store-then-reload sites stay: two have a label
+  short immediates, and the BRR depth's `add #>$1,a` is the one-word 6-bit
+  form `add #$1,a`. Its three store-then-reload sites stay: two have a label
   between the store and the reload, and the third reloads after the
   accumulator is reused.
 
