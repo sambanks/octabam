@@ -1342,20 +1342,21 @@ mo_knot:
 ; delay of i + f lies between the samples at i and i + 1 (blended toward
 ; the newer one it reads i - f and clicks at every integer crossing). Out:
 ; y1 = f, n5 = delay i's offset (the fixed taps' R reuses both through
-; mo_itrd). Uses x0 b; x1 is kept. Straight-line.
+; mo_itrd). Uses x0 b; x1 is kept. Straight-line. The offset is worked out
+; first, in a; the fraction, in b, fills the gaps a result needs before it is
+; moved and n5 needs before the step (2 of the 6 stall cycles are left).
 ; ---------------------------------------------------------------------------
 mo_tap:
-        move    a,x0                    ; the total (positive, under 1: not limited)
-        and     #>$fff,a
-        asl     #$b,a,a                 ; the fraction, Q23
-        move    a1,y1
-        move    x0,a
-        asr     #$c,a,a
+        move    a,b                     ; the total (positive, under 1: not limited)
+        asr     #$c,a,a                 ; (a0 takes the fraction's bits: a1 is what is read)
+        and     #>$fff,b
         move    a1,x0                   ; i
         move    y0,a                    ; the write phase
         sub     x0,a
         and     #>$3ff,a                ; (a2 may be stale: a1 is what is read)
+        asl     #$b,b,b                 ; the fraction, Q23
         move    a1,n5
+        move    b1,y1                   ; f
         move    (r5)+n5                 ; -> delay i (r5 = the line, m5 = $3ff)
 mo_itrd:
         move    y:(r5)-,b               ; t0; the modulo steps r5 to delay i + 1
@@ -1378,21 +1379,20 @@ mo_itrd:
 ; (the same polynomial as the form in c = (x1 - xm1)/2, v = x0 - x1, w = c + v,
 ; a = w + v + (x2 - x0)/2, b = w + a, which kept eight scratch words). x0 waits
 ; in the scratch word; r3 is where it came in. Uses x0 x1 y1 a b n3 n5.
-; Straight-line.
+; Straight-line. The offset first, the fraction in b in its gaps (mo_tap's note).
 ; ---------------------------------------------------------------------------
 mo_herm:
-        move    a,x0                    ; the total
-        and     #>$fff,a
-        asl     #$b,a,a
-        move    a1,y1                   ; f, Q23
-        move    x0,a
+        move    a,b                     ; the total
         asr     #$c,a,a
+        and     #>$fff,b
         move    a1,x1                   ; i
         move    y0,a
         sub     x1,a
         add     #>$1,a                  ; i - 1: xm1
         and     #>$3ff,a
+        asl     #$b,b,b
         move    a1,n5
+        move    b1,y1                   ; f, Q23
         move    (r5)+n5                 ; -> xm1 (r5 = the line, m5 = $3ff)
         move    y:(r5)-,x1              ; xm1; each next index is the last - 1
         move    y:(r5)-,x0              ; x0
