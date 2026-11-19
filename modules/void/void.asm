@@ -225,7 +225,7 @@ vd_have_in:
         move    a,x0
         move    x0,x:(r7+$25)
 ; HPF + COLR on mid ($02/$04); side uses $03/$05 under WID.
-        move    x:(r7+$25),x1
+        move    x0,x1                   ; the word just stored, from its register
         move    x1,x:(r7+$24)
         move    x:(r7+$14),y0
         move    x:(r7+$02),b
