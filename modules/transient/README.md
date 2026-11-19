@@ -18,6 +18,17 @@ ATCK and SUST together are clamped to ±12 dB; OUT adds up to a further ±12 dB.
 
 ## Measured
 
+- **19 Nov 2026, the constants pass** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
+  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
+  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
+  after each commit; 27 renders). Cycles a sample from
+  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
+  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
+  section 1): **270.0 → 267.9** at its defaults (6.0 % → 5.9 % of a frame).
+  Words 258 → 254 (`dsp_asm` at P:$800). Not measured on the unit. Four
+  constants load as one-word short immediates.
+
 All by `tools/verify/verify_transient.py` through `dsp_host` on the audition's scratch image, 3 Oct 2026, unless stated.
 
 - ✅ Defaults (ATCK = SUST = OUT = 0, MIX 127) are a bit-exact passthrough of a full-scale bipolar ramp and of full-scale noise. Falsified by any differing sample.
