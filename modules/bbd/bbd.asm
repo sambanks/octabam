@@ -723,6 +723,7 @@ bbpreoff:
         move    b0,y0
         move    y0,a
         neg     a
+        move    r2,r5                   ; the anti-alias line, early: its wait overlaps
         move    y1,b                    ; N's sign
         tst     b
         tpl     y0,a
@@ -730,7 +731,6 @@ bbpreoff:
         move    a,x0                    ; q / 2
 ; anti-alias: four DF1 sections, coefficients halved, from Y
         lua     (r7+$20),r1
-        move    r2,r5
         move    x:(r1)+,x1      y:(r5)+,y0
         mpy     y0,x0,a         x:(r1)-,y1
         move    x0,x:(r1)+      y:(r5)+,y0
