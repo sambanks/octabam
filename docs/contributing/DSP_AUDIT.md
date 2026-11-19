@@ -134,6 +134,22 @@ offset); MODULATION's MIX and COMB loops reworked.
 T12's shape also covers `move r7,a` / `add #n,a` / `move a1,rN` (found in
 VOCODER).
 
+### Version 3: a row found while fixing (19 Nov 2026)
+
+| id | technique | how found | proof | saving a site | found in, and where it applies |
+|---|---|---|---|---|---|
+| T33 | In a chain of accesses through one `nN`, load each `nN` right after the previous instruction that names it, not just before its own use. The AGU wait then overlaps the work between accesses. Straight-line code only; nothing between the old and the new place names `nN`, so the change is safe by construction (the audit's `t33.py` makes and lists the moves). | G (`t33.py --dry`) | I: the same instructions in another order | up to 3 cycles an access; an arithmetic stall the load used to fill can come back (1) | found in MINIVERB (29 loads, -101 cycles a sample with T31 and T11); VERBERATION 15, LOFI2 1, REVERB SERVER 1 |
+
+**Why T33 and not T24 or T32 in MINIVERB.** The stock payloads address Y
+through `(rN+nN)` with no register but MINIVERB's own r5 (its forms run under
+its unit evidence), and have no two-word displaced Y move at all
+(`move y:(r5+N),b`). So T24 and T32 both need a form with no stock site
+(class F); T33 needs none.
+
+**Pass 2 for T33** (`t33.py --dry` over every module's sample loops, every
+N register): MINIVERB 29 (taken), VERBERATION 15, LOFI2 1 (n0), REVERB SERVER
+1 (n5); every other module 0.
+
 **Pass 2: the version 2 rows over every module audited before them** (static
 counts inside the sample loops and the routines they call):
 
@@ -252,7 +268,8 @@ M4, each commit IDENTICAL under the wider gate (41 renders, state after every
 block), `verify_modulation` ALL PASS, every new form at a stock site. The scan
 of the result: JUNO 321.8 → 298.8, DIM 390.9 → 367.9, FLNG 398.8 → 370.8 (8.8 %
 → 8.2 %), COMB 360.9 → 337.9, PHSR 393.1 → 388.1 cycles a sample; words 1,318
-→ 1,313. Every figure matched the finding's estimate.
+→ 1,313, then 1,310 with three short-form constants (T31, `6875d815`). Every
+figure matched the finding's estimate.
 
 ### VIBRATO
 
@@ -274,6 +291,12 @@ words as offsets from `r7`.
 | V5 | T25 | `vb_mixd`'s other 1-cycle stalls (`+25`, `+29`, `+43`, `+48`, `+52`, `+66`, `+71`) | Reorder. | about -1 each | I | open |
 
 If V1 to V3 hold: about -30 of 207.0 (4.6 % → 3.9 % of a frame), -6 words.
+
+**Taken, 19 Nov 2026** (branch `vib-fast`, local): V1 (`470c692b`), V2
+(`940bba0b`), V3 (`5b495fab`) and three short-form constants (T31,
+`5172eb75`), each IDENTICAL under the wider gate (36 renders), `verify_vibrato`
+ALL PASS. The scan: 207.0 → 176.9 cycles a sample at SHP=TRI max (4.6 % → 3.9
+%), as estimated; words 593 → 584.
 
 ### Pass 1, the other modules
 
@@ -301,6 +324,12 @@ are the ones that are not.
 | VC7 | T29 | `do #10` | Unroll. | -5, about +600 words | not taken: a trade |
 
 VC1 and VC3: about -53 (27.5 % → 26.3 %); with VC2, -93 (25.4 %).
+
+**Taken, 19 Nov 2026** (branch `voc-fast`, local): VC3 (`f8362081`, -5,
+estimated -3), VC1 (`3e359d75`, -50, as estimated), VC6 (`d8c833d8`, seven
+short-form constants, -7 words), each IDENTICAL under the wider gate (26
+renders on VOCODER's own slot), `verify_vocoder` OK. The scan: 1,245.8 →
+1,190.5 cycles a sample (27.5 % → 26.3 %); words 581 → 570.
 
 #### CHARACTER TXTR and CHARACTER (sambanks): 697.9 and 428.3, 15.4 % and 9.5 %
 
@@ -349,6 +378,18 @@ LF1, LF3 and LF4: about -16, -6 words (14.4 % → 14.1 %); LF5 is the large one.
 | MV4 | T31 | 9 short-form constants (`#>$400000,y1`, `#>$600000,y1`, ...) | `#$40`, `#$60`. | -1, -1 word each | I |
 | MV5 | T26 | `move a,n5` / `lua (r5+n5),r4`, twice | Hoist. | -6 | I |
 | MV6 | T14 | 58 displaced, among them the four per-sample smoothers ($24 to $2d) | Walk. | up to -20 | I |
+
+**Taken, 19 Nov 2026** (branch `mv-fast`, local): T33 over the input diffusers
+(`d63191dc`, -36, estimated -46: the writes keep a 1-cycle arithmetic stall the
+`n5` load used to fill) and over the branches (`ee755fd4`, -65), with MV3 (the
+zero offset), MV4 and T31 (seven short-form gains and a mask), and T11 (two
+gains still in y1). Each IDENTICAL under the wider gate (56 renders; the gate
+needed a fix first, `ee85d43b` on `ident-wide`: MINIVERB has an unnamed
+parameter), 34 `verify_miniverb` gates passed. The scan: 608.8 → 507.7 cycles
+a sample (13.4 % → 11.2 %); words 459 → 446. MV1 and MV2 are not needed for
+this saving and need new forms (see T33). Still over the 9.07 % cap on the
+model; the model reads MINIVERB 8.2 % above its unit figure, so a LOAD METER
+read decides. Left: MV5 (the two modulated taps, 3 each), MV6 (the smoothers).
 
 MV2 to MV5: about -110 (13.4 % → 11.0 %); with MV1 in place of MV2 and MV6, about -160 (9.9 %). Neither reaches the 9.07 % cap on the model alone, but the model reads MINIVERB 8.2 % above its unit figure (CYCLE_SCAN.md section 1): a LOAD METER read after the change decides.
 
