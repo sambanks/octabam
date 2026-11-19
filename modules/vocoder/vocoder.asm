@@ -127,27 +127,27 @@ vc_run:
 ;      P is held to [0, 96 x 2^16): C0 (16.35 Hz, 1/du's Q23 floor) up to just under C8
         move    x:(r6+$0),a             ; NOTE: the step in bits 16 and up
         and     #>$7f0000,a
-        move    #>$3c0000,x0            ; 60, C6
+        move    #$3c,x0                  ; 60, C6 (short immediate: bits 23-16)
         cmp     x0,a
         tgt     x0,a
         move    a1,y1                   ; n
         move    x:(r6+$e),b             ; KEY, slot 10: the knob field of $e
         and     #>$7f0000,b
-        move    #>$0b0000,x0            ; 11, B
+        move    #$0b,x0                  ; 11, B (short immediate: bits 23-16)
         cmp     x0,b
         tgt     x0,b
         move    b1,x0
         add     #>$0c0000,a
         sub     x0,a                    ; d = n + 12 - KEY: 1 .. 72
-        move    #>$300000,x0            ; d mod 12: less 48, 24 and 12 where they go
+        move    #$30,x0                  ; d mod 12: less 48, 24 and 12 where they go (short immediate: bits 23-16)
         move    a,b
         sub     x0,b
         tpl     b,a
-        move    #>$180000,x0
+        move    #$18,x0                  ; (short immediate: bits 23-16)
         move    a,b
         sub     x0,b
         tpl     b,a
-        move    #>$0c0000,x0
+        move    #$0c,x0                  ; (short immediate: bits 23-16)
         move    a,b
         sub     x0,b
         tpl     b,a                     ; the degree above KEY, 0 .. 11
@@ -282,7 +282,7 @@ vc_long:
         move    #>$2c5ca5,a
         mac     y0,x0,a
         move    a,x0
-        move    #>$400000,a
+        move    #$40,a                   ; (short immediate: bits 23-16)
         mac     y0,x0,a
         move    a,x0                    ; 2^r / 2
         add     #>$00001e,b             ; + 30, OCT
@@ -332,7 +332,7 @@ vc_pdone:
         move    #>$d39f80,a
         mac     y0,x0,a
         move    a,x0
-        move    #>$400000,a
+        move    #$40,a                   ; (short immediate: bits 23-16)
         mac     y0,x0,a
         move    a,y1                    ; A/2
         move    x:(r7+$10),r3           ; the Y slot
