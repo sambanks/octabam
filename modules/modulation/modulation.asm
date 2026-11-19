@@ -100,7 +100,7 @@ proc:
         move    a,x0
         move    #>$780,y1
         mpy     x0,y1,a
-        add     #>$10,a
+        add     #$10,a                   ; (6-bit immediate)
         move    a,x:(r7+$01)
 ; WDTH (page-2 slot 8, $d's knob field, bits 16-23) -> the right channel's
 ; LFO phase offset, 0 .. half a cycle
@@ -187,7 +187,7 @@ proc:
         move    a1,y1
         mpy     x0,y1,a                 ; (k/128)^2, Q23
         asr     #$11,a,a                ; x 64: an integer 0..63
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         move    a1,x:(r7+$42)
         move    x0,a                    ; k again (the mpy left x0 as it was)
         asr     #$13,a,a                ; k >> 3: 0..15
@@ -239,13 +239,13 @@ mo_msame:
 ; ---- dispatch, once per block, on the select word ($40) -------------------
         move    x:(r7+$40),a
         asr     #$10,a,a                ; the mode (the low 16 bits are 0: a0 = 0)
-        cmp     #>$1,a
+        cmp     #$1,a                    ; (6-bit immediate)
         beq     mo_bdim
-        cmp     #>$2,a
+        cmp     #$2,a                    ; (6-bit immediate)
         beq     mo_bflng
-        cmp     #>$3,a
+        cmp     #$3,a                    ; (6-bit immediate)
         beq     mo_bcomb
-        cmp     #>$4,a
+        cmp     #$4,a                    ; (6-bit immediate)
         beq     mo_bphsr
 ; JUNO (and any stored value past 4): bl 0, bd 0, ff 1, kc 0, kb 0 (the loop
 ; reads bl, kc and kb in FLNG and DIM only: only bd and ff are written here).
@@ -392,7 +392,7 @@ mo_line:
         lua     (r7+$23),r3
 ; ---- advance the write phase ----------------------------------------------
         move    y0,a                    ; 0..1023, so phase + 1 is 1..1024: a2 = 0
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         and     #>$3ff,a
         move    a1,y0                   ; a1 straight over: no limiter
 ; ---- the delays: each is a word and its step, stepped here ---------------
@@ -431,7 +431,7 @@ mo_line:
         move    x0,y1                   ; the limited value
         move    n1,a
         move    x:(r1)+,x0              ; the hold length
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         cmp     x0,a        #$0,x0     ; the cmp reads the old x0, the move then zeroes it
         tge     x0,a
         move    a1,n1
@@ -812,7 +812,7 @@ mo_pml:
         move    b,y1                    ; wet L (limited)
         move    n1,a
         move    x:(r1)+,x0              ; the hold length
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         cmp     x0,a        #$0,x0     ; the cmp reads the old x0, the move then zeroes it
         tge     x0,a
         move    a1,n1
@@ -1049,7 +1049,7 @@ norep_md_01:
         move    r4,r1
         lua     (r7+$23),r3
         move    y0,a
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         and     #>$3ff,a
         move    a1,y0
 ; ===== channel L =====
@@ -1083,7 +1083,7 @@ norep_md_01:
         move    a,y1
         move    n1,a
         move    x:(r1)+,x0              ; the hold length
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         cmp     x0,a        #$0,x0     ; the cmp reads the old x0, the move then zeroes it
         tge     x0,a
         move    a1,n1
@@ -1325,7 +1325,7 @@ mo_knot:
         move    x:(r1+$1),b             ; the delay now (moves keep the flags)
         teq     a,b                     ; the first block: on the end
         sub     b,a
-        add     #>$8,a                  ; rounded: a floor leaves the walk 8 LSB short on average
+        add     #$8,a                    ; rounded: a floor leaves the walk 8 LSB short on average (6-bit immediate)
         asr     #$4,a,a                 ; the slope per sample
         move    a,x:(r1)+
         move    b,x:(r1)+
@@ -1385,7 +1385,7 @@ mo_herm:
         move    a1,x1                   ; i
         move    y0,a
         sub     x1,a
-        add     #>$1,a                  ; i - 1: xm1
+        add     #$1,a                    ; i - 1: xm1 (6-bit immediate)
         and     #>$3ff,a
         asl     #$b,b,b
         move    a1,n5
