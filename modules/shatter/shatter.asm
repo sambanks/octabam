@@ -80,7 +80,7 @@ proc:
         move    a,x:(r7+$13)
 ; BRR depth n = 1 + kn/8 (1..16), clamp 12 -- asr n / asl n keeps level
         asr     #$13,a,a                ; kn>>3 → 0..15
-        add     #>$1,a
+        add     #$1,a                   ; (6-bit immediate)
         move    #>$c,x0
         cmp     x0,a
         tgt     x0,a
