@@ -1325,10 +1325,10 @@ fs_gz:
 fs_ccore:
         move    r3,r5
         move    #$6,n5
-        move    (r5)+n5
         move    a,x1                    ; x (the dry drives the dielectric)
         move    a,x0
         move    x:(r2)+,y1              ; gn/16
+        move    (r5)+n5                 ; -> the lowpass states (n5 loaded three back: no wait)
         mpy     x0,y1,a                 ; g x / (16 nl)
         asl     #$3,a,a                 ; g x / (2 nl)
         neg     a
