@@ -380,15 +380,14 @@ vb_mixd:
         move    r2,r5
         bsr     vb_tap
         move    a,x1                    ; tap L
-        move    y0,a
-        move    a1,n5
+        move    y0,n5                   ; the write phase (a 24-bit word: no limiter)
         move    r2,r5
-        move    (r5)+n5                 ; line L at the write phase
         move    x:(r0),b                ; dry L
-        move    b,y:(r5)                ; write line L
         move    x1,a
         sub     b,a
+        move    (r5)+n5                 ; line L at the write phase (r5 loaded 3 cycles back)
         asr     #$1,a,a
+        move    b,y:(r5)                ; write line L (in the shift's gap)
         move    a,x0                    ; (tap - dry)/2
         move    x:(r7+$12),y1           ; m
         mpy     x0,y1,a
@@ -403,15 +402,14 @@ vb_mixd:
         move    r6,r5
         bsr     vb_tap
         move    a,x1                    ; tap R
-        move    y0,a
-        move    a1,n5
+        move    y0,n5
         move    r6,r5
-        move    (r5)+n5                 ; line R at the write phase
         move    x:(r0+n0),b             ; dry R
-        move    b,y:(r5)                ; write line R
         move    x1,a
         sub     b,a
+        move    (r5)+n5                 ; line R at the write phase
         asr     #$1,a,a
+        move    b,y:(r5)                ; write line R
         move    a,x0
         move    x:(r7+$12),y1
         mpy     x0,y1,a
