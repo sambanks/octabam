@@ -58,6 +58,19 @@ the Part.
 
 ## Measured
 
+- **19 Nov 2026, the pointer pass** (bit-identical: `verify_ident.py` with the
+  wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
+  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
+  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
+  after each commit; 27 renders). Cycles a sample from
+  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
+  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
+  section 1), every knob at its maximum: **655.9 → 636.6** (14.5 % → 14.0 % of
+  a frame). Words 451 → 433 (`dsp_asm` at P:$800). Not measured on the unit.
+  The five per-sample pointer setups (`move r7,rN` / `move #n,nN` / `move
+  (rN)+nN`) are one `lua (r7+n),rN` each; the five zero loads after a compare
+  and three constants are one word each.
+
 - Render gates in `tools/verify/verify_resonator.py` (SCAL 8 max-knob rail
   fraction < 5%, SCAL 127 + LIM 127 peak under ~0.76 FS with rail fraction
   < 5%, no-runaway, two FX1 instances).
