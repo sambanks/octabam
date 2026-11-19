@@ -145,7 +145,7 @@ proc:
 ; a block; unlimited, the walk to the new knot is a pitch spike (61 % at an
 ; SPD 80 -> 120 step). No shape's own slope exceeds dev, so in steady state
 ; the limit never engages; in a jump the delay chases its knot at 1.5 dev.
-        move    #>$180000,y1            ; 1.5/8 (x0 is still 8 dev)
+        move    #$18,y1                  ; 1.5/8 (x0 is still 8 dev) (short immediate: bits 23-16)
         mpy     x0,y1,a                 ; 1.5 dev
         move    #>$00c49c,x0            ; the floor, 0.006
         cmp     x0,a
@@ -326,7 +326,7 @@ vb_cd:
 ; within it, and snaps once the distance is under 128 LSBs (MIX 0 stays exact)
         move    x:(r6+$5),a
         and     #>$7fff00,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a                    ; k - 127
         move    #>$7fffff,x0
         tge     x0,a                    ; 127: the wet outright
@@ -554,7 +554,7 @@ vbs_sin:
 ; ---------------------------------------------------------------------------
 vb_lfsr:
         move    x:(r7+$0d),a
-        move    #>$e10000,y0
+        move    #$e1,y0                  ; (short immediate: bits 23-16)
         do      #$10,>vblfz
         move    a1,b                    ; a1, not a: A2 is stale after lsr
         and     #>$1,b                  ; Z: bit 0 clear
