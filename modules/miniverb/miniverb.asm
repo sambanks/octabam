@@ -224,6 +224,7 @@ mv_mix:
         sub     x1,a
         move    a,n5
         lua     (r5+n5),r4
+        move    #>$fff7fa,n5
         move    y:(r4)-,b
         move    y:(r4),a
         sub     b,a
@@ -235,25 +236,25 @@ mv_mix:
         move    b,x0
         move    #>$59999a,y1
         mac     -x0,y1,a
-        move    #>$fff7fa,n5
         move    a,y:(r5+n5)
+        move    #>$fff3b2,n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
-        move    #>$fff3b2,n5
         move    y:(r5+n5),b
-        move    b,x0
-        move    #>$400000,y1
-        mac     -x0,y1,a
         move    #>$fff65d,n5
+        move    b,x0
+        move    #$40,y1                 ; 0.5 (short immediate: bits 23-16)
+        mac     -x0,y1,a
         move    a,y:(r5+n5)
+        move    #>$ffee1c,n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
         move    a,x:(r7+$38)
 ; Branch 2: delay 1429, damping, AP 431, AP 887.
-        move    #>$ffee1c,n5
         move    y:(r5+n5),a
+        move    #>$ffec6c,n5
         move    x:(r7+$29),y1
         move    x:(r7+$31),b
         sub     b,a
@@ -261,29 +262,28 @@ mv_mix:
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$31)
-        move    #>$ffec6c,n5
         move    y:(r5+n5),b
+        move    #>$ffee1b,n5
         move    b,x0
         move    #>$59999a,y1
         mac     -x0,y1,a
-        move    #>$ffee1b,n5
         move    a,y:(r5+n5)
+        move    #>$ffe8f4,n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
-        move    #>$ffe8f4,n5
         move    y:(r5+n5),b
-        move    b,x0
-        move    #>$400000,y1
-        mac     -x0,y1,a
         move    #>$ffec6b,n5
+        move    b,x0
+        move    #$40,y1                 ; 0.5 (short immediate: bits 23-16)
+        mac     -x0,y1,a
         move    a,y:(r5+n5)
+        move    #>$ffe1cc,n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
         move    a,x:(r7+$39)
 ; Branch 3: delay 1831, damping, AP 563, AP 1091.
-        move    #>$ffe1cc,n5
         move    y:(r5+n5),a
         move    x:(r7+$29),y1
         move    x:(r7+$32),b
@@ -297,6 +297,7 @@ mv_mix:
         add     x1,a
         move    a,n5
         lua     (r5+n5),r4
+        move    #>$ffe1cb,n5
         move    y:(r4)+,b
         move    y:(r4),a
         sub     b,a
@@ -308,25 +309,25 @@ mv_mix:
         move    b,x0
         move    #>$59999a,y1
         mac     -x0,y1,a
-        move    #>$ffe1cb,n5
         move    a,y:(r5+n5)
+        move    #>$ffdb13,n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
-        move    #>$ffdb13,n5
         move    y:(r5+n5),b
-        move    b,x0
-        move    #>$400000,y1
-        mac     -x0,y1,a
         move    #>$ffdf56,n5
+        move    b,x0
+        move    #$40,y1                 ; 0.5 (short immediate: bits 23-16)
+        mac     -x0,y1,a
         move    a,y:(r5+n5)
+        move    #>$ffd26d,n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
         move    a,x:(r7+$3a)
 ; Branch 4: delay 2213, damping, AP 719, AP 1361.
-        move    #>$ffd26d,n5
         move    y:(r5+n5),a
+        move    #>$ffcf9d,n5
         move    x:(r7+$29),y1
         move    x:(r7+$33),b
         sub     b,a
@@ -334,23 +335,23 @@ mv_mix:
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$33)
-        move    #>$ffcf9d,n5
         move    y:(r5+n5),b
+        move    #>$ffd26c,n5
         move    b,x0
         move    #>$59999a,y1
         mac     -x0,y1,a
-        move    #>$ffd26c,n5
         move    a,y:(r5+n5)
+        move    #>$ffca4b,n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
-        move    #>$ffca4b,n5
         move    y:(r5+n5),b
-        move    b,x0
-        move    #>$400000,y1
-        mac     -x0,y1,a
         move    #>$ffcf9c,n5
+        move    b,x0
+        move    #$40,y1                 ; 0.5 (short immediate: bits 23-16)
+        mac     -x0,y1,a
         move    a,y:(r5+n5)
+        move    #>$fffbcc,n5
         move    a,x0
         move    b,a
         mac     x0,y1,a
@@ -379,8 +380,8 @@ mv_mix:
         mac     -x0,y1,a
         move    x:(r7+$2c),x0
         add     x0,a
-        move    #>$fffbcc,n5
         move    a,y:(r5+n5)
+        move    #>$fff3b1,n5
 ; line 2 = diffused input + feedback * (half-sum - di).
         move    x:(r7+$35),a
         asl     #$1,a,a
@@ -388,8 +389,8 @@ mv_mix:
         mac     -x0,y1,a
         move    x:(r7+$2c),x0
         add     x0,a
-        move    #>$fff3b1,n5
         move    a,y:(r5+n5)
+        move    #>$ffe8f3,n5
 ; line 3 = diffused input + feedback * (half-sum - di).
         move    x:(r7+$35),a
         asl     #$1,a,a
@@ -397,8 +398,8 @@ mv_mix:
         mac     -x0,y1,a
         move    x:(r7+$2c),x0
         add     x0,a
-        move    #>$ffe8f3,n5
         move    a,y:(r5+n5)
+        move    #>$ffdb12,n5
 ; line 4 = diffused input + feedback * (half-sum - di).
         move    x:(r7+$35),a
         asl     #$1,a,a
@@ -406,7 +407,6 @@ mv_mix:
         mac     -x0,y1,a
         move    x:(r7+$2c),x0
         add     x0,a
-        move    #>$ffdb12,n5
         move    a,y:(r5+n5)
 ; Stereo projections reconstruct the matrix half-sum from its mean. Mix directly into audio.
         move    x:(r7+$2a),y1
