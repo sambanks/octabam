@@ -575,9 +575,9 @@ fs_live:
         move    x:(r7+$2d),a
         tst     a
         beq     fs_svf
-        cmp     #>$1,a
+        cmp     #$1,a                   ; (6-bit immediate)
         beq     fs_vowl
-        cmp     #>$2,a
+        cmp     #$2,a                   ; (6-bit immediate)
         beq     fs_ladr
         bra     fs_cap
 
@@ -1159,8 +1159,8 @@ fs_cap:
 ; pole pairs join pole A this sample (B or C, then D, E or F); o1 -> n4,
 ; o2 -> n6 from the table.
         move    n2,a
-        add     #>$1,a
-        cmp     #>$6,a
+        add     #$1,a                   ; (6-bit immediate)
+        cmp     #$6,a                   ; (6-bit immediate)
         move    #$0,x1
         tge     x1,a
         move    a1,n6                   ; n6 first: one move between it and the read
@@ -1168,8 +1168,8 @@ fs_cap:
         move    x:(r6+n6),a             ; o2 = 3, 4 or 5
         move    a1,n6
         move    n2,a
-        and     #>$1,a
-        add     #>$1,a                  ; o1 = 1 or 2
+        and     #$1,a                   ; (6-bit immediate)
+        add     #$1,a                   ; o1 = 1 or 2 (6-bit immediate)
         move    a1,n4
 ; ===================== channel L =====================
         move    x:(r0),a
