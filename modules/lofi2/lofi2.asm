@@ -1109,9 +1109,7 @@ lf_noshift:
         mac     -x0,y1,a
         move    a,x:(r0+n0)
 
-        move    #>$2,n0
-        move    (r0)+n0
-        move    #>$1,n0
+        lua     (r0+$2),r0              ; the frame advance: one stereo frame, n0 stays 1
 lf_end:
         nop
         move    n1,x:(r7+$37)           ; the parity carries into the next block
