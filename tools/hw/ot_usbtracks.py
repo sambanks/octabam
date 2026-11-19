@@ -7,12 +7,15 @@
     python3 tools/hw/ot_usbtracks.py switch NEW|OFF|OLD      # boot that image through REMIX SWITCH
     python3 tools/hw/ot_usbtracks.py run LABEL --image NEW|OFF|OLD [--stress 60]
     python3 tools/hw/ot_usbtracks.py report LABEL [LABEL ...]
+    python3 tools/hw/ot_usbtracks.py starts LABEL --image FLNEW|FLOFF [--trials 8]   # frame-entry lateness
 
 The images (`build`; out/hw/umt/):
   NEW  remixes/test/usb-midi-tracks-hw at this tree: USB MIDI TRACKS as reviewed on #1123, SEND pinned NOTES+CC
   OFF  remixes/test/usb-midi-tracks-hw-off: the same, SEND pinned OFF
   OLD  the same composition at OLD_REV (the PR's first push: channel = track, the encoder kicked in the
        frame interrupt), built in a detached worktree under out/hw/umt/old-tree
+  FLNEW, FLOFF  NEW and OFF with tools/hw/framelog.patch applied (UMT-FL, UMT-FLO), built in a detached
+       worktree of this commit under out/hw/umt/fl-tree; the patch is never committed applied
 Each carries REMOTE (PEEK, disk mode, REMIX SWITCH boots over USB), BRAIN and LOAD METER, and no FRAME GUARD:
 a late frame entry is what the stress looks for. Each build's runtime.elf gives the PEEK addresses
 (utm_dbg, utm_state, usbmidi_tx_drops), kept in <name>.json beside the .RMX.
@@ -57,6 +60,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import re
 import threading
 import time
 
@@ -71,7 +75,10 @@ IMAGES = {                              # key: (remix, image name, build number)
     "NEW": ("test/usb-midi-tracks-hw", "UMT-HW", 1),
     "OFF": ("test/usb-midi-tracks-hw-off", "UMT-OFF", 1),
     "OLD": ("test/usb-midi-tracks-hw", "UMT-OLD", 1),
+    "FLNEW": ("test/usb-midi-tracks-hw", "UMT-FL", 1),
+    "FLOFF": ("test/usb-midi-tracks-hw-off", "UMT-FLO", 1),
 }
+GRID_US = 362.8                         # the DSP's frame grid (modules/frame-guard/README.md)
 SYMS = ("utm_dbg", "utm_state", "usbmidi_tx_drops")
 SET, PROJ, WAV = "UMTSET", "UMT", "utm_hw.wav"
 MARKER = "OT_USBTRACKS_FIXTURE.txt"
@@ -144,21 +151,43 @@ def build_one(key, tree):
     print(f"  {key}: {OUT / rmx_name(key)}")
 
 
+def side_tree(name, rev):
+    """A detached worktree at rev under OUT, with the links and the stock section a build needs."""
+    tree = OUT / name
+    if not tree.exists():
+        sh(["git", "worktree", "add", "--detach", tree, rev])
+        for link in ("vendor", ".venv", "downloads"):
+            src = ROOT / link
+            (tree / link).symlink_to(src.resolve() if src.is_symlink() else src)
+        (tree / "out/raw").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / "out/raw/section_3_MAIN_OS.bin", tree / "out/raw/section_3_MAIN_OS.bin")
+        sh(["git", "submodule", "update", "--init"], cwd=tree)
+    return tree
+
+
 def cmd_build(a):
     OUT.mkdir(parents=True, exist_ok=True)
     for key in ("NEW", "OFF"):
         if key in a.only:
             build_one(key, ROOT)
+    fl = [k for k in ("FLNEW", "FLOFF") if k in a.only]
+    if fl:
+        rev = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        tree = side_tree("fl-tree", rev)
+        sh(["git", "checkout", "-q", "--detach", rev], cwd=tree)
+        sh(["git", "checkout", "-q", "--", "."], cwd=tree)
+        sh(["git", "apply", ROOT / "tools/hw/framelog.patch"], cwd=tree)
+        for key in fl:
+            remix, name, _ = IMAGES[key]
+            p = tree / "remixes" / remix / "remix.py"
+            src = p.read_text()
+            new = re.sub(r'image_name="[^"]*"', f'image_name="{name}"', src)
+            if new == src and f'image_name="{name}"' not in src:
+                sys.exit(f"{p}: no image_name to replace")
+            p.write_text(new)
+            build_one(key, tree)
     if "OLD" in a.only:
-        old = OUT / "old-tree"
-        if not old.exists():
-            sh(["git", "worktree", "add", "--detach", old, OLD_REV])
-            for link in ("vendor", ".venv", "downloads"):
-                src = ROOT / link
-                (old / link).symlink_to(src.resolve() if src.is_symlink() else src)
-            (old / "out/raw").mkdir(parents=True, exist_ok=True)
-            shutil.copy2(ROOT / "out/raw/section_3_MAIN_OS.bin", old / "out/raw/section_3_MAIN_OS.bin")
-            sh(["git", "submodule", "update", "--init"], cwd=old)
+        old = side_tree("old-tree", OLD_REV)
         d = old / "remixes/test/usb-midi-tracks-hw"
         d.mkdir(parents=True, exist_ok=True)
         (d / "remix.py").write_text(OLD_REMIX)
@@ -469,6 +498,128 @@ def cmd_run(a):
     print(f"  -> {OUT / (a.label + '.json')}")
 
 
+def frame_log(dev):
+    """-> {frozen, frames: [(entry_us, duration_us)] oldest first, entry_us from the oldest}: lm_ot on a FRAMELOG
+    image (tools/hw/framelog.patch; ot_stall.frame_log decodes the same block)."""
+    import load_meter as lm
+    def ctrl(w, off, n):
+        return bytes(dev.ctrl_transfer(0xc0, 0x57, w, off, n, timeout=1000))
+    w = struct.unpack(">64I", lm.read_block(ctrl, 2, 256))
+    nxt = w[2] if 20 <= w[2] <= 62 else 20
+    fr = [(w[i], w[i + 1]) for i in list(range(nxt, 64, 2)) + list(range(20, nxt, 2)) if w[i]]
+    if not fr:
+        return {"frozen": bool(w[3] >> 31), "frames": []}
+    return {"frozen": bool(w[3] >> 31),
+            "frames": [(round(((t - fr[0][0]) & 0xffffffff) / 132.0, 1), round((pk >> 16) * 64 / 132.0, 1)) for t, pk in fr]}
+
+
+def lateness(frames):
+    """Each entry's lateness against the 362.8 us grid, the earliest entry of the window taken as on time; a
+    lateness within 20 us of a whole frame counts as that frame (frame-guard's rule). -> [(late_us, skipped)]."""
+    if len(frames) < 2:
+        return []
+    res = []
+    for t, _ in frames:
+        k = round(t / GRID_US)
+        res.append((t - k * GRID_US, k))
+    lo = min(r for r, _ in res)
+    out, prev_k = [], None
+    for (r, k) in res:
+        late = r - lo
+        out.append((round(late, 1), 0 if prev_k is None else k - prev_k - 1))
+        prev_k = k
+    return out
+
+
+def cmd_starts(a):
+    """Frame-entry lateness at START and at a part change, a trial a START, on a FRAMELOG image. The log freezes
+    12 frames after a frame interrupt of 440 us or more (the START frame and the program change's), so each read
+    holds the frames around that frame."""
+    import load_meter as lm
+    import ot_midi
+    if not a.image.startswith("FL"):
+        sys.exit("starts needs a FRAMELOG image (FLNEW or FLOFF)")
+    meta = json.loads((OUT / f"{a.image}.json").read_text())
+    dev = wait_healthy(10)
+    if dev is None:
+        sys.exit("no healthy unit on USB")
+    _, _, peek1 = remote(dev)
+    inp = ot_midi.In(midi_port("src"), lambda data: None)   # the host reads: transfers run as with a DAW
+    out = ot_midi.Out(midi_port("dst"))
+    res = {"label": a.label, "image": a.image, "rmx": meta["rmx"], "rev": meta["rev"],
+           "t": time.strftime("%Y-%m-%d %H:%M:%S"), "before": peek_state(peek1, meta["syms"]), "trials": []}
+
+    def stalled(seconds):
+        t1, still, last = time.monotonic(), 0, None
+        while time.monotonic() - t1 < seconds:
+            inp.pump(0.25)
+            r = lm.read_fast(dev)
+            still = still + 1 if r["dsp"]["seq"] == last else 0
+            last = r["dsp"]["seq"]
+            if still >= 3:
+                return True
+        return False
+
+    def window(tag):
+        fl = frame_log(dev)
+        late = lateness(fl["frames"])
+        return {"tag": tag, "frozen": fl["frozen"], "frames": fl["frames"], "late": late,
+                "max_late_us": max((x for x, _ in late), default=None),
+                "skipped": sum(s for _, s in late), "longest_us": max((d for _, d in fl["frames"]), default=None)}
+
+    for n in range(a.trials):
+        out.send([0xC0, 0])                                 # pattern 1, stopped
+        time.sleep(1.0)  # waits for: the pattern change while stopped
+        stop = threading.Event()
+
+        def clock():
+            period = 60.0 / (BPM * 24)
+            tc, k = time.monotonic(), 0
+            while not stop.is_set():
+                out.send([0xF8]); k += 1
+                dt = tc + k * period - time.monotonic()
+                if dt > 0:
+                    time.sleep(dt)  # waits for: MIDI clock pacing
+        th = threading.Thread(target=clock); th.start()
+        time.sleep(0.5)  # waits for: the unit to lock to the clock before START
+        out.send([0xFA])
+        time.sleep(0.3)  # waits for: the START frame and the 12 frames after it (the log then freezes)
+        trial = {"n": n + 1, "start": window("start")}
+        bad = stalled(a.play)
+        if not bad:
+            out.send([0xC0, 1])                             # pattern 2 at pattern 1's end: part 2
+            bad = stalled(STEP_S * 16 + 1.0)
+            trial["part"] = window("part")
+        out.send([0xFC])
+        stop.set(); th.join()
+        trial["verdict"] = "STALLED" if bad else "ok"
+        res["trials"].append(trial)
+        print(f"  trial {n + 1}: {trial['verdict']}; START window max late {trial['start']['max_late_us']} us, "
+              f"skipped {trial['start']['skipped']}, longest {trial['start']['longest_us']} us"
+              + (f"; part change max late {trial['part']['max_late_us']} us, longest {trial['part']['longest_us']} us"
+                 if "part" in trial else ""))
+        if bad:
+            break
+        time.sleep(1.5)  # waits for: STOP to settle before the next trial
+    res["after"] = peek_state(peek1, meta["syms"])
+    (OUT / f"{a.label}.json").write_text(json.dumps(res, indent=1))
+    show_starts(res)
+    print(f"  -> {OUT / (a.label + '.json')}")
+
+
+def show_starts(res):
+    ws = [(t["start"], t.get("part")) for t in res["trials"]]
+    st = [w["max_late_us"] for w, _ in ws if w["max_late_us"] is not None]
+    pt = [p["max_late_us"] for _, p in ws if p and p["max_late_us"] is not None]
+    print(f"{res['label']} [{res['image']} {res['rev']}]: {len(res['trials'])} trials, "
+          f"{sum(t['verdict'] != 'ok' for t in res['trials'])} stalled")
+    print(f"  START: max entry lateness per trial {st}; frames skipped {[w['skipped'] for w, _ in ws]}; "
+          f"longest frame interrupt {[w['longest_us'] for w, _ in ws]}")
+    print(f"  part change: max entry lateness per trial {pt}; longest {[p['longest_us'] for _, p in ws if p]}")
+    b, a2 = res["before"], res["after"]
+    print(f"  module: STARTs {a2['starts'] - b['starts']}, notes {a2['notes'] - b['notes']}, drops {a2['drops'] - b['drops']}")
+
+
 def events(res):
     """[(t, status, d1, d2)]: the channel messages in the bytes the unit sent, running status resolved.
     Realtime bytes (F8..FF) were dropped on arrival; nothing here sends SysEx or system common."""
@@ -563,16 +714,18 @@ def cmd_report(a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    b = sub.add_parser("build"); b.add_argument("--only", default="NEW,OFF,OLD", type=lambda s: s.split(","))
+    b = sub.add_parser("build"); b.add_argument("--only", default="NEW,OFF,OLD,FLNEW,FLOFF", type=lambda s: s.split(","))
     p = sub.add_parser("project"); p.add_argument("src")
     d = sub.add_parser("deploy"); d.add_argument("--vol")
     s = sub.add_parser("switch"); s.add_argument("image", choices=IMAGES)
     r = sub.add_parser("run"); r.add_argument("label"); r.add_argument("--image", choices=IMAGES, required=True)
     r.add_argument("--stress", type=float, default=60.0)
     rp = sub.add_parser("report"); rp.add_argument("labels", nargs="+")
+    st = sub.add_parser("starts"); st.add_argument("label"); st.add_argument("--image", choices=IMAGES, required=True)
+    st.add_argument("--trials", type=int, default=8); st.add_argument("--play", type=float, default=5.0)
     a = ap.parse_args()
     {"build": cmd_build, "project": cmd_project, "deploy": cmd_deploy, "switch": cmd_switch,
-     "run": cmd_run, "report": cmd_report}[a.cmd](a)
+     "run": cmd_run, "report": cmd_report, "starts": cmd_starts}[a.cmd](a)
 
 
 if __name__ == "__main__":
