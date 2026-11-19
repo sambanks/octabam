@@ -145,3 +145,4 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`window-mod`](window-mod/README.md) | CORE with LOAD METER and MODULATION in the shared window beside the stock effects (all but CHORUS, whose id it takes, and the three reverbs). | emulator |
 | [`xfcurve`](xfcurve/README.md) | XF CURVE (the crossfader's curve, a BRAIN setting) with BRAIN, STORE and the stock effects. | emulator (verify_xfcurve): builds; tools/verify/verify_xfcurve.py |
 | [`xfcurve-scurve`](xfcurve-scurve/README.md) | XF CURVE pinned to S-CURVE, without BRAIN, on the stock effects. | emulator (verify_xfcurve): tools/verify/verify_xfcurve.py |
+| [`zoom-keep`](zoom-keep/README.md) | stock effects with ZOOM KEEP (the audio editor keeps its zoom when a slice is auditioned). | emulator (verify_zoom_keep): verify_zoom_keep under the port; the module itself on 8thmyth's MKI in test/octabam-lazy-chop (OCTABAMHC, 14 Nov 2026) |
