@@ -379,6 +379,14 @@ three short-form constants (`e1a3a05c`), each IDENTICAL under the wider gate
 
 LF1, LF3 and LF4: about -16, -6 words (14.4 % → 14.1 %); LF5 is the large one.
 
+**Taken, 19 Nov 2026** (branch `lofi-fast`, local): LF1 as one `lua` (the stores
+could not post-step r0 without tracing every mode's stores; `95f022e4`, -5),
+LF3 as a reorder (`lua (r1)+,r2` has no stock site, so the parity flip fills
+the pointer waits instead; `60962317`, -5 in DOWN and UP), LF4 and LF6 with
+t31.py (`dd704f7f`, thirteen constants including two zeros, -5.3), each
+IDENTICAL under the wider gate (26 renders), all LOFI2 gates passing. The scan:
+DOWN 654.2 → 638.9 cycles a sample (14.4 % → 14.1 %); words 838 → 821.
+
 #### MINIVERB (repeat98): 608.8, 13.4 %
 
 | # | row | site | the change | saving | class |
@@ -423,6 +431,12 @@ MV2 to MV5: about -110 (13.4 % → 11.0 %); with MV1 in place of MV2 and MV6, ab
 | VD3 | T11 | `$25` and `$26` stored, then read back (`:226`, `:368`) | Keep them in a register. | -2 | I |
 | VD4 | T31 | 7 short-form constants | | -7 words | I |
 | VD5 | T25 | about 10 one-cycle stalls | Reorder. | about -5 | I, design |
+
+**Taken, 19 Nov 2026** (branch `void-fast`, local): VD1 (`32c1c460`, -5), VD3 at
+`$25` only (`e0de4ee5`, -1: the `$26` store and reload have the label
+`vd_am_apply` between them, so another path brings its own value), VD4 with
+t31.py (`0b0cb062`, -4, -7 words), each IDENTICAL (31 renders), all VOID gates
+passing. The scan: 503.9 → 493.8 cycles a sample at `dear`; words 513 → 502.
 
 #### VERBERATION (Emilie Gillet, ported): 455.7, 10.1 %
 
@@ -488,6 +502,16 @@ template.
 | EU1 | T01, T19 | two frame advances, one a loop (`:277-279`, `:328-330`), as LF1 | | about -8; -4 words each | I |
 | EU2 | T11 | `$1d` stored, then read back (`:142`, `:210`) | A register. | -1 | I |
 | EU3 | T14 | 56 displaced (53 cycles a sample) | Walk. | up to -50 | I, re-laid state |
+
+**Taken, 19 Nov 2026** (branch `eu-fast`, local): EU1 in both loops (`1dc207b4`,
+-5, -8 words), EU2 (`149c8a41`, -4: the reload became `move x0,x1` and fills a
+transfer stall), three short-form constants (`27a254f9`), each IDENTICAL (41
+renders). The scan: 232.3 → 223.2 cycles a sample; words 362 → 351. The gate
+could not build EUCLID before: its audition image lacked EVENTS, which EUCLID
+requires (fixed on `ident-wide`, `bd19a163`). `verify_euclid` needs the
+`euclid` remix built first (`make bus REMIX=euclid`; then 0 failed checks on the
+branch); on a scratch image it
+fails five chooser checks, on the base source as on the branch.
 
 #### STUTTR (ilia-murzinov): 268.4, 5.9 % (`dear`)
 
@@ -563,6 +587,14 @@ stalls (`proc+234` to `+255`), about -3. Nothing else.
   check, which cannot follow a word to its new slot. Name every moved word
   with `--scratch` and say so in the PR; the audio renders still prove the
   output.
+- **T11 never across a label.** A reload replaced by a register copy is the
+  same value only if no other path enters between the store and the reload
+  (VOID's `$26`, `vd_am_apply`).
+- **One idiom, three authors.** LOFI2 (Bryan T), VOID (ilia-murzinov) and
+  EUCLID (repeat98) end their sample loops with the same three lines,
+  `move #>$2,n0` / `move (r0)+n0` / `move #>$1,n0`, the dearest frame advance
+  in the repo. A shared origin (a template or a generator) is likely; worth
+  telling the authors, so new modules start from the cheap form.
 - **One fix, two modules.** M1 and V1 are the same change; so are M3 and V2,
   and M4 and V3.
 
@@ -628,7 +660,9 @@ Not optimisations. Reported, and fixed only with Yves's OK.
   (`ee85d43b`); STUTTR's generic settings never engage it, so every render
   was its dry pass and the gate passed any change (`e4c207a2`: the
   manifest's `dear` settings, and the control accepts them). The control
-  caught the second one: that is what it was built for.
+  caught the second one: that is what it was built for. A third: the
+  gate's audition build carried only the module and SEND, so a module that
+  requires another (EUCLID: EVENTS) did not build at all (`bd19a163`).
 
 ## 7. Baseline
 
