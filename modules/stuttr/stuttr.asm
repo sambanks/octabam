@@ -372,8 +372,8 @@ st25:
         move    x:(r7+$2d),b
         tst     b
         tpl     x1,a
-        move    #>$0,x0
-        move    #>$0,b
+        move    #$00,x0                  ; (short immediate: bits 23-16)
+        move    #$00,b                   ; (short immediate: bits 23-16)
         cmp     x0,a
         bge     st12
         move    x:(r7+$24),a
@@ -383,7 +383,7 @@ st12:
         move    x:(r7+$24),x0
         cmp     x0,a
         blt     st13
-        move    #>$0,a
+        move    #$00,a                   ; (short immediate: bits 23-16)
         move    #>$1,b
 st13:
         move    a,x:(r7+$2a)
@@ -490,7 +490,7 @@ stx1:
         move    x:(r7+$37),a
         move    x:(r7+$38),x0
         sub     x0,a
-        move    #>$0,x0
+        move    #$00,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         tlt     x0,a
         move    a,x:(r7+$37)
