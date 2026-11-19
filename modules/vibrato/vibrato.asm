@@ -125,7 +125,7 @@ proc:
         bsr     vb_tab                  ; INC at +0
         move    a1,x:(r7+$16)
         move    x:(r7+$15),a
-        add     #>$21,a
+        add     #$21,a                   ; (6-bit immediate)
         move    a1,r5                   ; PERW at +33
         move    x:(r7+$21),a
         bsr     vb_tab
@@ -365,7 +365,7 @@ vb_mixd:
         do      n7,>vbloopz
 ; ---- advance the write phase and the MIX run -------------------------------
         move    y0,a                    ; 0..1023, so phase + 1 is 1..1024: a2 = 0
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         and     #>$3ff,a
         move    a1,y0
         move    x:(r7+$13),x0
@@ -604,7 +604,7 @@ vb_knot:
         teq     b,a                     ; the first block: on the knot
         move    a,x:(r4)
         sub     a,b
-        add     #>$8,b                  ; rounded: a floor leaves the walk 8 LSB short
+        add     #$8,b                    ; rounded: a floor leaves the walk 8 LSB short (6-bit immediate)
         asr     #$4,b,b                 ; the slope per sample
         move    x:(r7+$1e),x0           ; ... limited to +-S
         cmp     x0,b
