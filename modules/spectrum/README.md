@@ -46,13 +46,16 @@ back as SEM at whatever SHPE it held. Once per project, before play:
   after each commit; 58 renders). Cycles a sample from
   `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
   model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
-  section 1), at its defaults: ISO **371.1 → 362.0** (8.2 % → 8.0 % of a
-  frame), SEM 223.3 → 221.2, LADR and VOWL unchanged. Words 1,345 → 1,340
-  (`dsp_asm` at P:$800). Not measured on the unit. SEM's pointer copies lead
-  the sample loop; ISO's R state pointer is one `lua (r7+$c),r3`; `fs_ccore`
-  steps to its lowpass states three instructions after loading `n5` (`lua
-  (r3+$6),r5` would be shorter, but has no stock site); three constants load
-  as one-word short immediates.
+  section 1), at its defaults: ISO **371.1 → 356.9** (8.2 % → 7.9 % of a
+  frame), SEM 223.3 → 221.2, LADR and VOWL 0.2 or less (the mode dispatch).
+  Words 1,345 → 1,334 (`dsp_asm` at P:$800). Not measured on the unit. SEM's
+  pointer copies lead the sample loop; ISO's R state pointer is one
+  `lua (r7+$c),r3`; `fs_ccore` steps to its lowpass states three
+  instructions after loading `n5` (`lua (r3+$6),r5` would be shorter, but has
+  no stock site); `fs_cap` writes `n6` before `n2`, so a move sits between
+  `n6` and the read through it; three constants load as one-word short
+  immediates, and six small ones in `add`, `cmp` and `and` (0 to 63) as
+  one-word 6-bit immediates.
 
 - `tools/verify/verify_spectrum.py`: defaults bit-exact on a full-scale
   ramp; LP slope; SHPE 64 (BP) and 127 (HP) at DC → 0; a tone at fc level
