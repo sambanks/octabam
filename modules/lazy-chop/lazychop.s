@@ -1615,20 +1615,20 @@ lc_keys_chop:
 
 lc_label:   .asciz  "LAZY CHOP"
 msg_ast:    .asciz  "LAZY CHOP: STUDIO"
-msg_asts:   .asciz  "LAZY CHOP: STUDIO SNAP"
+msg_asts:   .asciz  "CHOP: STUDIO SNAP"
 msg_alv:    .asciz  "LAZY CHOP: LIVE"
-msg_alvs:   .asciz  "LAZY CHOP: LIVE SNAP"
+msg_alvs:   .asciz  "CHOP: LIVE SNAP"
 msg_live:   .asciz  "LIVE CHOP"
 msg_studio: .asciz  "STUDIO CHOP"
 msg_silent: .asciz  "SILENT CHOP"
         .balign 4
         .balign 4
 msg_arms:   .long   msg_ast, msg_asts, msg_alv, msg_alvs
-msg_wrong:  .asciz  "TRACK PLAYS ANOTHER SAMPLE"
-msg_cancel: .asciz  "LAZY CHOP CANCELLED"
+msg_wrong:  .asciz  "DIFFERENT SAMPLE"
+msg_cancel: .asciz  "CHOP CANCELLED"
 fmt_done:   .asciz  "%d SLICES"
 fmt_page:   .asciz  "SLICES %d-%d"
-fmt_back:   .asciz  "LOOPED: YES KEEPS %d"
+fmt_back:   .asciz  "LOOPED: KEEP %d?"
 msg_snapon: .asciz  "ZERO SNAP ON"
 fmt_undo:   .asciz  "SLICE %d REMOVED"
 msg_snapoff: .asciz "ZERO SNAP OFF"
