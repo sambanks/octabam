@@ -128,7 +128,7 @@ offset); MODULATION's MIX and COMB loops reworked.
 | id | technique | how found | proof | saving a site | found in, and where it applies |
 |---|---|---|---|---|---|
 | T30 | A table read from P every sample (`p:(r1+n1)`, `movem`): where the build places the module's `ptable` decides whether the read is P or X (MODULES.md "Declaring DSP code": the stock curve bank, P, or a given-up effect's X). Read the build report before rewriting the reads. | S (movem), G | build placement | up to 5 cycles a read, if Table A-1's 6 holds (doubted) | found in CHARACTER TXTR; VOCODER, CHARACTER, TRANSIENT, DISTORX, LOFI2 |
-| T31 | A long immediate in the sample loop. A data-register move of a constant whose low 16 bits are zero (`#>$400000`) is the one-word short form `#$40`, which loads bits 23-16: CHARACTER TXTR already uses it (`:180`, "short immediate: bits 23-16"). Any other constant can live in a register across the loop when one is free. | S (two-word forms), G | I (check the encoding: `trap-asm`) | 1 word, 1 cycle | found in BBD; short-form candidates across the modules: 136 moves in 23 files |
+| T31 | A long immediate in the sample loop. A data-register move of a constant whose low 16 bits are zero (`#>$400000`) is the one-word short form `#$40`, which loads bits 23-16: CHARACTER TXTR already uses it (`:180`, "short immediate: bits 23-16"). Any other constant can live in a register across the loop when one is free. | S (two-word forms), G | I (check the encoding: `trap-asm`) | 1 word, 1 cycle | found in BBD; short-form candidates across the modules: 136 moves in 23 files, and 15 zero loads written long (`#>$0`) in 7 (found in RESONATOR) |
 | T32 | Taps through one `nN` in a row: alternate two pointer sets on the same ring (r4/n4 and r5/n5 with the same modulus), so the next tap's offset loads while this tap reads. Hides the AGU stall with stock forms, where T24's displaced move needs a new form. | G | I | about 3 cycles a tap | found in MINIVERB (20 runs of taps); VERBERATION (9) |
 
 T12's shape also covers `move r7,a` / `add #n,a` / `move a1,rN` (found in
@@ -145,6 +145,11 @@ through `(rN+nN)` with no register but MINIVERB's own r5 (its forms run under
 its unit evidence), and have no two-word displaced Y move at all
 (`move y:(r5+N),b`). So T24 and T32 both need a form with no stock site
 (class F); T33 needs none.
+
+**The gate changed during batch 2** (`e4c207a2`: the manifest's `dear`
+settings). Batch 1's four branches were proven again with it, the base
+stamped and the final source checked: MODULATION 67/67, VIBRATO 58/58,
+MINIVERB 56/56, VOCODER 40/40 IDENTICAL.
 
 **Pass 2 for T33** (`t33.py --dry` over every module's sample loops, every
 N register): MINIVERB 29 (taken), VERBERATION 15, LOFI2 1 (n0), REVERB SERVER
@@ -355,6 +360,12 @@ CHARACTER TXTR is CHARACTER plus 191 lines, so CH2, CH3 and CH5 land in both.
 
 RS1 and RS3: about -19 and -14 words; with RS2, up to -59 (14.5 % → 13.2 %).
 
+**Taken, 19 Nov 2026** (branch `res-fast`, local): RS1 (`a1a6bee4`, -15, as
+estimated, -10 words), RS3 (`8193024b`, the five zero loads, -4, -5 words) and
+three short-form constants (`e1a3a05c`), each IDENTICAL under the wider gate
+(27 renders). The scan: 655.9 → 636.6 cycles a sample (14.5 % → 14.0 %); words
+451 → 433. Left: RS2 (the `rs_one` stalls), RS4.
+
 #### LOFI2 (Bryan T): 654.2, 14.4 %
 
 | # | row | site | the change | saving | class |
@@ -422,6 +433,15 @@ MV2 to MV5: about -110 (13.4 % → 11.0 %); with MV1 in place of MV2 and MV6, ab
 | VB3 | T08 | `sub ...` / `move #0,x0`, three (`:412`, `:419`, `:444`) | Ride in the slot. | -1 each | I or F |
 | VB4 | T14 | 44 displaced | Walk. | up to -44 | I, re-laid state |
 
+**Taken, 19 Nov 2026** (branch `verb-fast`, local): T33 over the 15 immediate
+offsets (`244e9c14`, -36) and, with `t33.py --mem`, over 6 offsets read from
+state (`7f8410d5`, -21: a load moves only past instructions that cannot store
+to its word), VB2 (`e25fc47d`, -4, -2 words) and three short-form constants
+(`94a393bb`), each IDENTICAL under the wider gate (58 renders). The scan: 455.7
+→ 394.5 cycles a sample (10.1 % → 8.7 %, under the 9.07 % cap on the model);
+words 644 → 639. Left: the `$2e`, `$48` and `$42` offsets (3 each), VB3 (needs
+a parallel-immediate form), VB4.
+
 #### DISTORX (MaMarko): 375.9, 8.3 %
 
 Generated from `distorx.tmpl.asm` by `generate_asm.py`: every fix goes to the
@@ -478,6 +498,17 @@ template.
 | ST3 | T17 | the wrap by compare and branch (`:162-168`) | Modulo addressing. | | I or U |
 | ST4 | T14 | 92 displaced | Walk. | up to -60 | I, re-laid state |
 | ST5 | branches | 49 to 61 cycles a sample of branches | Arms chosen once a block. | | not taken: words |
+
+**Taken, 19 Nov 2026** (branch `stut-fast`, local): ST1 (`92e44f4b`: one m4
+write a call, before the loop; -3.9 in FWD at `dear`, estimated about -10: the
+AGU waits stay, now on r4's own write before its use; -2 words) and four
+short-form constants (`3c044914`) and four zero loads (`69462901`, -2), each
+IDENTICAL under the wider gate (58
+renders). The scan: 268.4 → 262.5 in FWD at `dear`; words 591 → 581. Before
+this, the gate could not see STUTTR at all:
+its generic settings never engage the repeater, so every render was the dry
+pass; the gate now renders the manifest's `dear` settings (`e4c207a2` on
+`ident-wide`).
 
 #### SEND (sambanks): 57.5, 1.3 %
 
@@ -592,6 +623,12 @@ Not optimisations. Reported, and fixed only with Yves's OK.
   7/7 identical). Fixed on branch `ident-wide` (`88ca7523`); the same branch adds
   the wider renders (`35fc338c`): of ten deliberate faults the old gate caught
   one, the new gate all ten.
+- Two more gate blind spots, found while fixing (both fixed on `ident-wide`):
+  MINIVERB has a parameter with no name, and the gate stopped at load on it
+  (`ee85d43b`); STUTTR's generic settings never engage it, so every render
+  was its dry pass and the gate passed any change (`e4c207a2`: the
+  manifest's `dear` settings, and the control accepts them). The control
+  caught the second one: that is what it was built for.
 
 ## 7. Baseline
 
