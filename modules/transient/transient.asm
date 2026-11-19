@@ -249,7 +249,7 @@ proc:
         move    b1,x1                   ; u
         move    r4,r5                   ; the table base
         asr     #$12,b,b                ; idx
-        add     #>$000021,b             ; + 33, EXP
+        add     #$000021,b               ; + 33, EXP (6-bit immediate)
         move    b1,n5
         move    x1,a
         and     #>$3ffff,a
