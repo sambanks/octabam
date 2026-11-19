@@ -251,10 +251,10 @@ from before #1080 (`48b7e4f3`, the merge's first parent):
 
 | # | row | site | the change | saving | class | status |
 |---|---|---|---|---|---|---|
-| M1 | T26, T25 | `mo_tap` (`:1347-1359`) | The offset first, in `a`; the fraction in `b`, filling the gap before `n5` is used. Stalls a call 6 → 2. Every form has a stock site (`move a,b`, `and #>N,b`, `asl #N,b,b`, `move b1,y1`); the zero-stall order needs `sub y1,b` and `move b1,n5`, which have none. | -5 a call: JUNO and DIM -10, FLNG -15; -1 word | I | taken: branch `mod-fast` (17dfb0f8), -10 / -15 as modelled |
+| M1 | T26, T25 | `mo_tap` (`:1347-1359`) | The offset first, in `a`; the fraction in `b`, filling the gap before `n5` is used. Stalls a call 6 → 2. Every form has a stock site (`move a,b`, `and #>N,b`, `asl #N,b,b`, `move b1,y1`); the zero-stall order needs `sub y1,b` and `move b1,n5`, which have none. | -5 a call: JUNO and DIM -10, FLNG -15; -1 word | I | taken: branch `mod-fast` (8ec6736e), -10 / -15 as modelled |
 | M2 | T26, T25 | `mo_herm` (`:1383-1396`) | The same order. | -5 a call: COMB -10; -1 word | I | taken: with M1, COMB -10 |
-| M3 | T26, T25 | LINE's two line writes (`:427-429`, `:474-476`); COMB's two (`:1139-1141` and its L twin) | Load `n5` and `r5` just after the tap returns (nothing between uses them); put the step between `add b,a` and the limiting `move a,x0`. Removes the 3-cycle AGU stall and a 1-cycle arithmetic stall. | -4 a site: LINE modes -8; COMB -8 (its sites to be read); 0 words | I | taken: LINE b3e53422 (-8), COMB 4dd05345 (-8) |
-| M4 | T19 | the three mix tails (`:634-644`, `:897-907`, `:1163-1173`) | The L store `x:(r0)+`, the dry R read `x:(r0)`, the R store `x:(r0)+`; the `lua` goes. Nothing between uses `r0`. | -5 in every live mode; -1 word each (3 in all) | I | taken: 1aa9c85d, -5 in every mode, -3 words |
+| M3 | T26, T25 | LINE's two line writes (`:427-429`, `:474-476`); COMB's two (`:1139-1141` and its L twin) | Load `n5` and `r5` just after the tap returns (nothing between uses them); put the step between `add b,a` and the limiting `move a,x0`. Removes the 3-cycle AGU stall and a 1-cycle arithmetic stall. | -4 a site: LINE modes -8; COMB -8 (its sites to be read); 0 words | I | taken: LINE b4036b96 (-8), COMB ce20bb5d (-8) |
+| M4 | T19 | the three mix tails (`:634-644`, `:897-907`, `:1163-1173`) | The L store `x:(r0)+`, the dry R read `x:(r0)`, the R store `x:(r0)+`; the `lua` goes. Nothing between uses `r0`. | -5 in every live mode; -1 word each (3 in all) | I | taken: 50d2841b, -5 in every mode, -3 words |
 | M5 | T09 | the three MIX run stores (`:629`, `:892`, `:1158`) | `move a,x:(r1)` and `move a,y1` as one X:R move. | -1 in every live mode; -1 word each | F: `move a,x:(r1) a,y1` has no stock site | open |
 | M6 | T25 | LINE's line writes and LPo (`mo_line+124`, `+153`, `+168`, `+192` in the scan) | Move the next independent load (`move n2,x0`, the next slope) between the `mac` and its store. | about -1 a site, 4 to 6 sites a sample | I | open: design per site |
 | M7 | T26 | `move #$3,n3` at `mo_whr` (`:617`), `move #$5,n3` in COMB (`:1146`) | Load `n3` earlier, or reach wet L another way. In FLNG `n3` also holds f. | -1 to -2 | I | open |
@@ -273,7 +273,7 @@ M4, each commit IDENTICAL under the wider gate (41 renders, state after every
 block), `verify_modulation` ALL PASS, every new form at a stock site. The scan
 of the result: JUNO 321.8 → 298.8, DIM 390.9 → 367.9, FLNG 398.8 → 370.8 (8.8 %
 → 8.2 %), COMB 360.9 → 337.9, PHSR 393.1 → 388.1 cycles a sample; words 1,318
-→ 1,313, then 1,310 with three short-form constants (T31, `6875d815`). Every
+→ 1,313, then 1,310 with three short-form constants (T31, `f62606e9`). Every
 figure matched the finding's estimate.
 
 ### VIBRATO
@@ -297,9 +297,9 @@ words as offsets from `r7`.
 
 If V1 to V3 hold: about -30 of 207.0 (4.6 % → 3.9 % of a frame), -6 words.
 
-**Taken, 19 Nov 2026** (branch `vib-fast`, local): V1 (`470c692b`), V2
-(`940bba0b`), V3 (`5b495fab`) and three short-form constants (T31,
-`5172eb75`), each IDENTICAL under the wider gate (36 renders), `verify_vibrato`
+**Taken, 19 Nov 2026** (branch `vib-fast`, local): V1 (`eadc4ae9`), V2
+(`af810da6`), V3 (`d172013f`) and three short-form constants (T31,
+`06566068`), each IDENTICAL under the wider gate (36 renders), `verify_vibrato`
 ALL PASS. The scan: 207.0 → 176.9 cycles a sample at SHP=TRI max (4.6 % → 3.9
 %), as estimated; words 593 → 584.
 
@@ -330,8 +330,8 @@ are the ones that are not.
 
 VC1 and VC3: about -53 (27.5 % → 26.3 %); with VC2, -93 (25.4 %).
 
-**Taken, 19 Nov 2026** (branch `voc-fast`, local): VC3 (`f8362081`, -5,
-estimated -3), VC1 (`3e359d75`, -50, as estimated), VC6 (`d8c833d8`, seven
+**Taken, 19 Nov 2026** (branch `voc-fast`, local): VC3 (`a39f113d`, -5,
+estimated -3), VC1 (`9559e8a6`, -50, as estimated), VC6 (`4d1d944f`, seven
 short-form constants, -7 words), each IDENTICAL under the wider gate (26
 renders on VOCODER's own slot), `verify_vocoder` OK. The scan: 1,245.8 →
 1,190.5 cycles a sample (27.5 % → 26.3 %); words 581 → 570.
@@ -360,9 +360,9 @@ CHARACTER TXTR is CHARACTER plus 191 lines, so CH2, CH3 and CH5 land in both.
 
 RS1 and RS3: about -19 and -14 words; with RS2, up to -59 (14.5 % → 13.2 %).
 
-**Taken, 19 Nov 2026** (branch `res-fast`, local): RS1 (`a1a6bee4`, -15, as
-estimated, -10 words), RS3 (`8193024b`, the five zero loads, -4, -5 words) and
-three short-form constants (`e1a3a05c`), each IDENTICAL under the wider gate
+**Taken, 19 Nov 2026** (branch `res-fast`, local): RS1 (`4094b897`, -15, as
+estimated, -10 words), RS3 (`9d8afa3b`, the five zero loads, -4, -5 words) and
+three short-form constants (`7ddcd5f3`), each IDENTICAL under the wider gate
 (27 renders). The scan: 655.9 → 636.6 cycles a sample (14.5 % → 14.0 %); words
 451 → 433. Left: RS2 (the `rs_one` stalls), RS4.
 
@@ -380,10 +380,10 @@ three short-form constants (`e1a3a05c`), each IDENTICAL under the wider gate
 LF1, LF3 and LF4: about -16, -6 words (14.4 % → 14.1 %); LF5 is the large one.
 
 **Taken, 19 Nov 2026** (branch `lofi-fast`, local): LF1 as one `lua` (the stores
-could not post-step r0 without tracing every mode's stores; `95f022e4`, -5),
+could not post-step r0 without tracing every mode's stores; `7ade4847`, -5),
 LF3 as a reorder (`lua (r1)+,r2` has no stock site, so the parity flip fills
-the pointer waits instead; `60962317`, -5 in DOWN and UP), LF4 and LF6 with
-t31.py (`dd704f7f`, thirteen constants including two zeros, -5.3), each
+the pointer waits instead; `defd7b73`, -5 in DOWN and UP), LF4 and LF6 with
+t31.py (`cc931853`, thirteen constants including two zeros, -5.3), each
 IDENTICAL under the wider gate (26 renders), all LOFI2 gates passing. The scan:
 DOWN 654.2 → 638.9 cycles a sample (14.4 % → 14.1 %); words 838 → 821.
 
@@ -399,8 +399,8 @@ DOWN 654.2 → 638.9 cycles a sample (14.4 % → 14.1 %); words 838 → 821.
 | MV6 | T14 | 58 displaced, among them the four per-sample smoothers ($24 to $2d) | Walk. | up to -20 | I |
 
 **Taken, 19 Nov 2026** (branch `mv-fast`, local): T33 over the input diffusers
-(`d63191dc`, -36, estimated -46: the writes keep a 1-cycle arithmetic stall the
-`n5` load used to fill) and over the branches (`ee755fd4`, -65), with MV3 (the
+(`05971e11`, -36, estimated -46: the writes keep a 1-cycle arithmetic stall the
+`n5` load used to fill) and over the branches (`af7f4112`, -65), with MV3 (the
 zero offset), MV4 and T31 (seven short-form gains and a mask), and T11 (two
 gains still in y1). Each IDENTICAL under the wider gate (56 renders; the gate
 needed a fix first, `ee85d43b` on `ident-wide`: MINIVERB has an unnamed
@@ -422,6 +422,13 @@ MV2 to MV5: about -110 (13.4 % → 11.0 %); with MV1 in place of MV2 and MV6, ab
 | BB4 | T25 | about 12 one-cycle stalls | Reorder. | about -6 | I, design |
 | BB5 | T14 | 44 displaced | Walk. | up to -44 | I, re-laid state |
 
+**Taken, 19 Nov 2026** (branch `bbd-fast`, local): BB2's second site
+(`6db50424`: `move r2,r5` before the N decode; -3 on the narrow model, 0 on the
+full one, since the read then waits only on a `lua`'s destination) and BB1 with
+t31.py (`8da8322a`, twenty-four constants, one a zero, -5.9, -24 words), each
+IDENTICAL (40 renders), all BBD gates passing. The scan: 528.3 → 522.4 cycles a
+sample at `dear`; words 1,112 → 1,088.
+
 #### VOID (ilia-murzinov): 503.9, 11.1 % (`dear`)
 
 | # | row | site | the change | saving | class |
@@ -432,10 +439,10 @@ MV2 to MV5: about -110 (13.4 % → 11.0 %); with MV1 in place of MV2 and MV6, ab
 | VD4 | T31 | 7 short-form constants | | -7 words | I |
 | VD5 | T25 | about 10 one-cycle stalls | Reorder. | about -5 | I, design |
 
-**Taken, 19 Nov 2026** (branch `void-fast`, local): VD1 (`32c1c460`, -5), VD3 at
-`$25` only (`e0de4ee5`, -1: the `$26` store and reload have the label
+**Taken, 19 Nov 2026** (branch `void-fast`, local): VD1 (`d997709d`, -5), VD3 at
+`$25` only (`a27c530e`, -1: the `$26` store and reload have the label
 `vd_am_apply` between them, so another path brings its own value), VD4 with
-t31.py (`0b0cb062`, -4, -7 words), each IDENTICAL (31 renders), all VOID gates
+t31.py (`553a7448`, -4, -7 words), each IDENTICAL (31 renders), all VOID gates
 passing. The scan: 503.9 → 493.8 cycles a sample at `dear`; words 513 → 502.
 
 #### VERBERATION (Emilie Gillet, ported): 455.7, 10.1 %
@@ -448,10 +455,10 @@ passing. The scan: 503.9 → 493.8 cycles a sample at `dear`; words 513 → 502.
 | VB4 | T14 | 44 displaced | Walk. | up to -44 | I, re-laid state |
 
 **Taken, 19 Nov 2026** (branch `verb-fast`, local): T33 over the 15 immediate
-offsets (`244e9c14`, -36) and, with `t33.py --mem`, over 6 offsets read from
-state (`7f8410d5`, -21: a load moves only past instructions that cannot store
-to its word), VB2 (`e25fc47d`, -4, -2 words) and three short-form constants
-(`94a393bb`), each IDENTICAL under the wider gate (58 renders). The scan: 455.7
+offsets (`aff8c6b5`, -36) and, with `t33.py --mem`, over 6 offsets read from
+state (`1402651f`, -21: a load moves only past instructions that cannot store
+to its word), VB2 (`672b6c59`, -4, -2 words) and three short-form constants
+(`397ac067`), each IDENTICAL under the wider gate (58 renders). The scan: 455.7
 → 394.5 cycles a sample (10.1 % → 8.7 %, under the 9.07 % cap on the model);
 words 644 → 639. Left: the `$2e`, `$48` and `$42` offsets (3 each), VB3 (needs
 a parallel-immediate form), VB4.
@@ -467,6 +474,11 @@ template.
 | DX2 | T26 | `move r4,r5` / `move (r5)+n5` (`dtx_rstage+133`, `sod_stage+79`), `move r7,r3` / `move (r3)+n3` (`sod_stage+53`) | Hoist, or `lua`. | -2 to -4 | I |
 | DX3 | T28, T30 | 4 P reads a stage: the 515-word diode table | Build placement. | | build |
 | DX4 | T14, T25 | displaced moves 70 cycles in RAT, about 10 one-cycle stalls, in `dtx_rstage` | Walk; reorder. | up to -40 | I, design |
+
+**Taken, 19 Nov 2026** (branch `dx-fast`, local): DX1 in the template
+(`ef1d3f9a`: fifteen constants; `distorx.asm` regenerated, `--check` passing),
+IDENTICAL (58 renders), all DISTORX gates passing. The scan: RAT 375.9 → 375.4
+cycles a sample; words 1,114 → 1,099.
 
 #### SPECTRUM (sambanks): 371.1, 8.2 %
 
@@ -495,6 +507,10 @@ template.
 | TR3 | T14 | 26 displaced (27 cycles a sample, its largest extra) | Walk. | up to -26 | I, re-laid state |
 | TR4 | T31 | 18 long immediates in the loop, 4 short-form | | -1 each | I |
 
+**Taken, 19 Nov 2026** (branch `tr-fast`, local): TR4's four short-form
+constants (`df9b1b60`), IDENTICAL (27 renders), `verify_transient` OK. The scan:
+270.0 → 267.9 cycles a sample; words 258 → 254.
+
 #### EUCLID (repeat98): 232.3, 5.1 %
 
 | # | row | site | the change | saving | class |
@@ -503,9 +519,9 @@ template.
 | EU2 | T11 | `$1d` stored, then read back (`:142`, `:210`) | A register. | -1 | I |
 | EU3 | T14 | 56 displaced (53 cycles a sample) | Walk. | up to -50 | I, re-laid state |
 
-**Taken, 19 Nov 2026** (branch `eu-fast`, local): EU1 in both loops (`1dc207b4`,
--5, -8 words), EU2 (`149c8a41`, -4: the reload became `move x0,x1` and fills a
-transfer stall), three short-form constants (`27a254f9`), each IDENTICAL (41
+**Taken, 19 Nov 2026** (branch `eu-fast`, local): EU1 in both loops (`c58a9288`,
+-5, -8 words), EU2 (`358517b1`, -4: the reload became `move x0,x1` and fills a
+transfer stall), three short-form constants (`07441326`), each IDENTICAL (41
 renders). The scan: 232.3 → 223.2 cycles a sample; words 362 → 351. The gate
 could not build EUCLID before: its audition image lacked EVENTS, which EUCLID
 requires (fixed on `ident-wide`, `bd19a163`). `verify_euclid` needs the
@@ -523,10 +539,10 @@ fails five chooser checks, on the base source as on the branch.
 | ST4 | T14 | 92 displaced | Walk. | up to -60 | I, re-laid state |
 | ST5 | branches | 49 to 61 cycles a sample of branches | Arms chosen once a block. | | not taken: words |
 
-**Taken, 19 Nov 2026** (branch `stut-fast`, local): ST1 (`92e44f4b`: one m4
+**Taken, 19 Nov 2026** (branch `stut-fast`, local): ST1 (`18cbf152`: one m4
 write a call, before the loop; -3.9 in FWD at `dear`, estimated about -10: the
 AGU waits stay, now on r4's own write before its use; -2 words) and four
-short-form constants (`3c044914`) and four zero loads (`69462901`, -2), each
+short-form constants (`711d086b`) and four zero loads (`ad50ac90`, -2), each
 IDENTICAL under the wider gate (58
 renders). The scan: 268.4 → 262.5 in FWD at `dear`; words 591 → 581. Before
 this, the gate could not see STUTTR at all:
@@ -597,6 +613,36 @@ stalls (`proc+234` to `+255`), about -3. Nothing else.
   telling the authors, so new modules start from the cheap form.
 - **One fix, two modules.** M1 and V1 are the same change; so are M3 and V2,
   and M4 and V3.
+
+### The fixes, 19 Nov 2026: where they stand
+
+Thirteen branches, one module each, from main at `cc7cffc1`, local and not yet
+pushed. Every commit is IDENTICAL under the wider gate (sambanks/octabam#1172
+and its three later commits), every module's own gate passes, every new form
+has a stock site or a register row. Cycles are the scan's, a sample, at the
+module's dearest setting (modelled); words are `dsp_asm` at P:$800.
+
+| module | author | branch | commits | cycles a sample | % of a frame | words |
+|---|---|---|---|---|---|---|
+| MODULATION (FLNG) | sambanks | `mod-fast` | 7 | 398.8 → 370.7 | 8.8 → 8.2 | 1,318 → 1,310 |
+| VIBRATO | Bryan T | `vib-fast` | 6 | 207.0 → 176.9 | 4.6 → 3.9 | 593 → 584 |
+| MINIVERB | repeat98 | `mv-fast` | 4 | 608.8 → 507.7 | 13.4 → 11.2 | 459 → 446 |
+| VOCODER | Ignorato | `voc-fast` | 4 | 1,245.8 → 1,190.5 | 27.5 → 26.3 | 581 → 570 |
+| VERBERATION | Emilie Gillet, ported | `verb-fast` | 5 | 455.7 → 394.5 | 10.1 → 8.7 | 644 → 639 |
+| RESONATOR | ilia-murzinov | `res-fast` | 4 | 655.9 → 636.6 | 14.5 → 14.0 | 451 → 433 |
+| STUTTR (FWD, `dear`) | ilia-murzinov | `stut-fast` | 4 | 268.4 → 262.5 | 5.9 → 5.8 | 591 → 581 |
+| LOFI2 (DOWN) | Bryan T | `lofi-fast` | 4 | 654.2 → 638.9 | 14.4 → 14.1 | 838 → 821 |
+| VOID (`dear`) | ilia-murzinov | `void-fast` | 4 | 503.9 → 493.8 | 11.1 → 10.9 | 513 → 502 |
+| EUCLID | repeat98 | `eu-fast` | 4 | 232.3 → 223.2 | 5.1 → 4.9 | 362 → 351 |
+| BBD (`dear`) | JamCones | `bbd-fast` | 3 | 528.3 → 522.4 | 11.7 → 11.5 | 1,112 → 1,088 |
+| DISTORX (RAT) | MaMarko | `dx-fast` | 2 | 375.9 → 375.4 | 8.3 | 1,114 → 1,099 |
+| TRANSIENT | Ignorato | `tr-fast` | 2 | 270.0 → 267.9 | 6.0 → 5.9 | 258 → 254 |
+
+The module branches change only their module (code and README). The scan's
+figures for all thirteen are in `CYCLE_SCAN.md` on this branch: a trial merge
+of every branch onto main found the modules' entries there on adjacent lines,
+so one docs change carries them all, and the thirteen module PRs can merge in
+any order without a rebase.
 
 ## 5. Good for all
 
