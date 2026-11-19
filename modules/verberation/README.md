@@ -113,6 +113,11 @@ the stock reverbs never draw).
   between the old and new place reading `n5` or storing to the state word. The
   write at offset 0 needs no `n5`; three constants load as one-word short
   immediates. MINIVERB's tap pass is the same change.
+- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172, 58 renders, IDENTICAL; the scan
+  as above): two small constants (0 to 63) in `sub` load as the one-word 6-bit
+  form (`add #>$1,a` is `add #$1,a`: the same result and flags). ROOM at its
+  defaults: 394.5 → 393.5 cycles a sample (modelled); words 639 → 637.
 
 Under `dsp_host` (`tools/verify/verify_verberation.py`, remix `test/verberation`):
 - The pricer counts 247 cycles per sample (219 before the desk gate, 228 before page 2, 242 before PRE), a floor: it counts words, not memory stalls. Scaled from the 7.76 % GATE VERB measured on a unit at 219, about 8.8 % a slot (🟡 inferred, not read), under the 9.07 % that lets it sit on every FX2 slot. `tools/remix/slot_costs.json` carries no VERBERATION entry: GATE VERB's reading was of older code.
