@@ -631,17 +631,16 @@ mo_whr:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r0)
+        move    a,x:(r0)+               ; L out; r0 steps to R (the frame advance, 1 of 2)
         move    x1,a
-        move    x:(r0+n0),b
+        move    x:(r0),b                ; dry R
         sub     b,a
         asr     #$1,a,a
         move    a,x0
         mpy     x0,y1,a                 ; (y1 = m still)
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r0+n0)
-        lua     (r0+$2),r0              ; the frame advance: one stereo frame
+        move    a,x:(r0)+               ; R out; r0 steps to the next frame (2 of 2)
 molinz:
         nop
         move    #>$ffffff,m5
@@ -894,17 +893,16 @@ mo_pmr:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r0)
+        move    a,x:(r0)+               ; L out; r0 steps to R (the frame advance, 1 of 2)
         move    x1,a
-        move    x:(r0+n0),b
+        move    x:(r0),b                ; dry R
         sub     b,a
         asr     #$1,a,a
         move    a,x0
         mpy     x0,y1,a                 ; (y1 = m still)
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r0+n0)
-        lua     (r0+$2),r0              ; the frame advance
+        move    a,x:(r0)+               ; R out; r0 steps to the next frame (2 of 2)
 mophsz:
         nop
         move    x:(r4+$11),x0           ; MIX's run value, for the next block
@@ -1160,17 +1158,16 @@ norep_md_01:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r0)
+        move    a,x:(r0)+               ; L out; r0 steps to R (the frame advance, 1 of 2)
         move    x1,a
-        move    x:(r0+n0),b
+        move    x:(r0),b                ; dry R
         sub     b,a
         asr     #$1,a,a
         move    a,x0
         mpy     x0,y1,a                 ; (y1 = m still)
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r0+n0)
-        lua     (r0+$2),r0              ; the frame advance
+        move    a,x:(r0)+               ; R out; r0 steps to the next frame (2 of 2)
 mocmbz:
         nop
         move    #>$ffffff,m5
