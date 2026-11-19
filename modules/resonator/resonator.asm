@@ -120,7 +120,7 @@ proc:
         move    #>$7f0000,x0
         move    x:(r7+$4c),a
         cmp     x0,a
-        move    #>$0,a
+        move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         teq     a,b
         move    b,x:(r7+$23)
 ; GN1..GN4 → $34..$37 as kn/128
@@ -181,7 +181,7 @@ rs_fbd:
         abs     a
         move    #>$066666,x0
         cmp     x0,a
-        move    #>$0,a
+        move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         move    #>$7fffff,x0
         tmi     x0,a
         move    a,x:(r7+$28)
@@ -189,7 +189,7 @@ rs_fbd:
         abs     a
         move    #>$028f5c,x0
         cmp     x0,a
-        move    #>$0,a
+        move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         move    #>$7fffff,x0
         tgt     x0,a
         move    x:(r7+$28),x0
@@ -238,7 +238,7 @@ rs_fbd:
         abs     a
         move    #>$066666,x0
         cmp     x0,a
-        move    #>$0,a
+        move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         move    #>$7fffff,x0
         tmi     x0,a
         move    a,x:(r7+$28)
@@ -246,7 +246,7 @@ rs_fbd:
         abs     a
         move    #>$028f5c,x0
         cmp     x0,a
-        move    #>$0,a
+        move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         move    #>$7fffff,x0
         tgt     x0,a
         move    x:(r7+$28),x0
