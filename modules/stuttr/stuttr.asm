@@ -140,7 +140,7 @@ st50:
         move    a,x:(r7+$32)
         move    x:(r6+$5),a
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -182,7 +182,7 @@ st03:
         tst     a
         bgt     st04
 ; HOLD done -> start release fade (stay active)
-        move    #>$800000,a
+        move    #$80,a                   ; (short immediate: bits 23-16)
         move    a,x:(r7+$39)
         move    #>$1,b
         tst     b
@@ -310,7 +310,7 @@ stm1:
         cmp     x0,a
         ble     stm6
 stm5:
-        move    #>$800000,a
+        move    #$80,a                   ; (short immediate: bits 23-16)
         move    #>$1,b
         tst     b
         bne     stm4
@@ -412,7 +412,7 @@ st13:
         cmp     x0,a
         ble     stm9
 stm8:
-        move    #>$800000,a
+        move    #$80,a                   ; (short immediate: bits 23-16)
         move    #>$1,b
         tst     b
         bne     stm7
