@@ -68,6 +68,10 @@ def lc_inc(modules, remix):
     from remix import brain
     mods = modules if isinstance(modules, dict) else {}
     out = ["| remix.inc -- LAZY CHOP (modules/lazy-chop/manifest.py)"]
+    # LAZY CHOP TEMPO's hook in lc_finish: only assembled when that module is
+    # in the remix; the unit's own bytes are unchanged in every other image.
+    if "LAZY CHOP TEMPO" in mods:
+        out.append("        .equ    LC_TEMPO, 1")
     for key, name, mac, var in ((1, "ZERO SNAP", "snap", "lc_snap"), (2, "LIVE CHOP", "live", "lc_live")):
         get = brain.read_macro(remix, mods, STORE_ID, name, f"get_{mac}").rstrip("\n")
         held = "brain_v_" in get
