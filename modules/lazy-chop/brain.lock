@@ -1,0 +1,21 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "name": "ZERO SNAP",
+   "type": "binary"
+  },
+  "2": {
+   "name": "LIVE CHOP",
+   "type": "binary"
+  }
+ },
+ "store": {
+  "id": "octabam.lazy-chop",
+  "major": 1
+ }
+}
