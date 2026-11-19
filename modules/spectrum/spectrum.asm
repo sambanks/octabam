@@ -296,7 +296,7 @@ fs_msame:
         move    x0,a                    ; A2-clean (AND cleans A1 only)
         move    #>$4000,x0
         sub     x0,a                    ; (k - 64)<<8: its sign picks the half
-        move    #>$400000,b             ; below 64: x 1/2, x 4 below = 1/64
+        move    #$40,b                   ; below 64: x 1/2, x 4 below = 1/64 (short immediate: bits 23-16)
         move    #>$410411,y0            ; above: (128/63)/4, rounded up
         tgt     y0,b                    ; nothing but moves since the sub
         move    b,y1
@@ -358,7 +358,7 @@ fs_mcap:
         neg     a
         add     #>$700000,a             ; nl/8 = 7/8 - 6C/8, 1/8 .. 7/8
         move    a,x1                    ; the denominator
-        move    #>$0f0000,y1            ; 15/128
+        move    #$0f,y1                  ; 15/128 (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$010000,a             ; (1 + 15C)/128, < nl/8 always
         move    x1,x0
@@ -980,7 +980,7 @@ fs_ladr:
 ; makeup on the ladder's output (README).
         bsr     fs_gramp
         move    x:(r7+$13),x0           ; k/4
-        move    #>$400000,y1            ; 0.5
+        move    #$40,y1                  ; 0.5 (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$200000,a             ; M/4 = (1 + k/2)/4
         move    #>$499999,x0            ; 2.3/4
