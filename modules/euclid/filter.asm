@@ -274,9 +274,7 @@ eu_den_held:
         asl     #$1,a,a
         add     b,a
         move    a,x:(r0+n0)
-        move    #>$2,n0
-        move    (r0)+n0
-        move    #>$1,n0
+        lua     (r0+$2),r0              ; the frame advance: one stereo frame, n0 stays 1
 eu_loopend:
         nop
         rts
@@ -325,9 +323,7 @@ eu_amp_setup:
         asl     #$1,a,a
         add     b,a
         move    a,x:(r0+n0)
-        move    #>$2,n0
-        move    (r0)+n0
-        move    #>$1,n0
+        lua     (r0+$2),r0              ; the frame advance: one stereo frame, n0 stays 1
 eu_amp_loopend:
         nop
         rts
