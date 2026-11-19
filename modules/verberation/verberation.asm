@@ -61,7 +61,7 @@ proc:
         move    x:(r7+$22),a
         tst     a
         beq     gv_ready
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$22)
         move    x:(r7+$23),r4
         move    #>$ffffff,m4
@@ -417,7 +417,7 @@ gv_p2a:
         add     b,a
         move    a1,x:(r7+$33)
         move    x:(r7+$34),b
-        sub     #>$1,b
+        sub     #$1,b                    ; (6-bit immediate)
         move    #0,x0
         tst     b
         tmi     x0,b
