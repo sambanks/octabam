@@ -151,10 +151,11 @@ st50:
         asr     #$10,a,a
         move    a,x:(r7+$28)
         move    #$1,n0
+        move    #>$ffffff,m4            ; r4 linear for the whole loop: once a call,
+                                        ; not every sample (nothing below changes m4)
         do      n7,>st19
 ; write dry
         move    x:(r7+$21),r4
-        move    #>$ffffff,m4
         move    x:(r0),a
         move    a,y:(r4)+
         move    x:(r0+n0),a
@@ -356,7 +357,6 @@ st24:
         sub     x0,a
 st25:
         move    a,r4
-        move    #>$ffffff,m4
         move    y:(r4)+,a
         move    a,x:(r7+$2f)
         move    y:(r4)+,a
