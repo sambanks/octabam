@@ -1178,9 +1178,7 @@ fs_cap:
         move    a,x:(r0)                ; out (limited)
 ; ===================== channel R =====================
         move    x:(r0+n0),a
-        move    r7,r3
-        move    #$0c,n3
-        move    (r3)+n3                 ; R states at $0c / $12
+        lua     (r7+$c),r3              ; R states at $0c / $12 (fs_ccore writes n3 before it reads it)
         bsr     fs_ccore
         move    a,x:(r0+n0)
 ; WIDTH
