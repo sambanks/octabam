@@ -31,6 +31,8 @@ r7 `$40..$4f` stays reserved for a longer FEED delay later.
 when that goes quiet (no LFO free-run). Default **SRC=LFO** keeps RATE/SHPE
 on any track. On **track 1**, abs track and FX2 position are both 0, so NBR
 reads `X:$37f60`, KEYBUS’s word for T1. Tracks 2–8 read the previous track.
+Every remix containing VOID must include KEYBUS. If SIDECHAIN_COMPRESSOR is also
+selected, the remix must include SC KEYBUS BRIDGE.
 AM and DRV/FDBK hit **noise only**:
 `wet = (1−BAL)·dry + BAL·noise''`. BAL=0 is always exact dry; BAL=127 =
 AM’d noise. SETUP **WID**: 0 = mono; >0 = second white → same HPF/COLR/DRV

@@ -52,6 +52,7 @@ MODULE = Module(
     evidence=(Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-10-22",
         note="LATEST NP / VRCS VJ: SRC LFO|NBR, COLR/HPF main, SHPE/DPTH SETUP, DPTH default 127; verify_void"),),
     doc="Scrape grit: dry↔noise BAL; LFO/nbr AM + DRV/FDBK on noise only; WID stereo.",
+    requires=("KEYBUS",),
     menu=MenuEntry(
         # No free custom FX2 id left in-tree (SHATTER=0x0a, …). PLATE is
         # VERBERATION's (GATE VERB's until 6 Nov 2026). Replace COMB FILTER; DSP still sits in harvested PLATE.

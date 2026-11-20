@@ -1,6 +1,7 @@
 # remix `void`
 
-Carries VOID beside the stock FX set minus PLATE REV (VOID's DSP host).
+Carries VOID and KEYBUS beside the stock FX set minus PLATE REV (VOID's DSP
+host).
 
 ## Hardware
 
