@@ -1,5 +1,5 @@
 A TB-303 voice as a track machine, shown as BLKPYRAMD: on the DSP in 24-bit
-fixed point with its filter 4× oversampled at 176.4 kHz, built on Robin
+fixed point with its filter 4× oversampled at 176.4 kHz, adapted from Robin
 Schmidt's Open303 and recalibrated on the TB-303's own circuit against
 recordings of a real 303. One voice per DSP core (one on T1–T4, one on
 T5–T8), ahead of the track's stock AMP, FX1 and FX2.
@@ -39,6 +39,12 @@ that shape the filter sweep together.
 - A slide trig glides to its note without a retrigger. Trigless locks and
   trigless trigs right after a note tie it.
 - Accents in a row stack into the 303's rising sweep.
+- A note tied to the end of a pattern holds on through ties at the start of
+  the next pattern.
+- At a pattern or Part change the voice carries on, as a stock machine's
+  sound does, until the track's own first trig in the new pattern: the last
+  step plays and rings over the change. A BLKPYRAMD on another track of the
+  same core in the new Part takes the voice at its first trig.
 - Live: the track key, the chromatic keys (four octaves of absolute notes,
   [PAGE] the 17th) and MIDI notes play while held. TRIG + YES previews a
   step.
@@ -52,6 +58,14 @@ that shape the filter sweep together.
 - Like any machine, BLKPYRAMD keeps its knobs when the track switches to
   another machine and back. On another machine's track, its row in
   [FUNC] + [SRC] shows and edits those kept SETUP values.
+- One BLKPYRAMD per DSP core, wherever it would arrive: the machine list,
+  TRACK PASTE and an SRC page paste refuse a second one on a core with ONE
+  303 PER CORE!, and nothing changes. A project saved with two on a core
+  keeps the lower-numbered one; the other goes back to FLEX.
+- Copying a BLKPYRAMD's SRC page copies the machine: pasted onto another
+  track, it makes that track a BLKPYRAMD with the same knobs. A FLEX or
+  STATIC page pasted onto a BLKPYRAMD makes it that machine with the pasted
+  values; choosing BLKPYRAMD again brings its knobs back.
 - The voice takes SPRING REV's place on the DSP, so SPRING REV is not in a
   remix with it. A Part that still names SPRING REV shows its page and
   passes audio through.

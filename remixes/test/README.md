@@ -9,7 +9,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`bar-led`](bar-led/README.md) | stock effects with BAR LED: the tempo LED flashes green on the pattern's 1 while playing. | emulator |
 | [`batch-bugfixes`](batch-bugfixes/README.md) | stock effects with BATCH_BUGFIXES: the MIDI Plays-Free trig, empty-pattern LED and Part-change carryover fixes. | emulator |
 | [`bbd`](bbd/README.md) | BBD beside the stock effects (all but SPRING REV and PLATE REV, whose words it takes). | on a unit (MKII, 2026-10-17): JamCones' MKII, BBDOB4 (BUILD 4), 17 Oct 2026 |
-| [`blackpyramids-303`](blackpyramids-303/README.md) | BLACKPYRAMIDS_303 (BLKPYRAMD, a TB-303 voice as a track machine) with the stock effects, SPRING REV given up. | emulator |
+| [`blackpyramids-303`](blackpyramids-303/README.md) | BLACKPYRAMIDS_303 (BLKPYRAMD, a TB-303 voice as a track machine) with the stock effects, SPRING REV given up. | on a unit (MKI, Zac Kyoti, OCTABAM43, 2026-11-19) |
 | [`buffer-saver`](buffer-saver/README.md) | stock effects with SAVE PROJECT offering to save the recorder buffers' unsaved takes, each assigned to itself. | on a unit (MKII, Chupitnik, 2026-10-16): 15-16 Oct 2026, AUTOSAVE1 and AUTOSAVE2 from the card (the module under its first name): after a take FUNC + PROJ and PROJECT > SAVE ask SAVE SAMPLES?; YES saves R<n>-YYMMDD-HHMM and assigns it to its buffer, two buffers in one save, an immediate re-save does not ask, a reload brings the takes back, NO saves as stock |
 | [`bus`](bus/README.md) | The plain two-server image: BusVerb + BusDelay + send bus + tempo sync. | on a unit: under earlier names |
 | [`bus-notempo`](bus-notempo/README.md) | bus with TEMPO SYNC's CAVE pinned OFF (diagnostic). | emulator |
