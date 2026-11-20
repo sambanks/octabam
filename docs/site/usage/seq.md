@@ -81,6 +81,8 @@ The step grid and **LEN** stay visible on both pages.
 
 ### Rhythm
 
+![SEQ Rhythm page on an audio track.](../../img/seq/panel.png)
+
 | Knob | Label | Role |
 |---|---|---|
 | **A** | **PULS** | Hit count of the focused lane |
@@ -100,6 +102,8 @@ returns to the Euclidean pattern.
 
 #### Audio tracks
 
+![SEQ Harmony page on an audio track, with RAND selected.](../../img/seq/tonal.png)
+
 On audio tracks, Harmony controls the **SRC** / **PTCH** destination.
 **SCAL** and **ROOT** set the scale for generated pitch locks. **DPTH**
 sets their pitch span around the Part's **PLAYBACK PTCH**. **D** **PHRS**
@@ -115,6 +119,8 @@ up to 12 semitones in either direction; synth and CX pitch span up to 24.
 On audio tracks, **C** and **F** are blank.
 
 #### MIDI tracks
+
+![SEQ Harmony page on a MIDI track, with RAND selected.](../../img/seq/midi-tonal.png)
 
 On MIDI tracks, **A** **SCAL** chooses MAJ, MIN, PENT, DOR, PHR, MIX,
 WHOL or CHRO. **B** **ROOT** chooses C through B. **C** **VOIC** chooses
@@ -139,6 +145,25 @@ At either end of the **DPTH** span, the phrase wraps to the other end.
 **DPTH** sets the pitch span around the Part's **NOTE**. At **DPTH** 127,
 the span reaches up to four octaves in either direction, limited by the
 MIDI note range.
+
+#### 64-hit pitch rolls
+
+These piano rolls show MIDI **NOTE** pitches for 64 consecutive hits. They
+use C major, ROOT C, Part **NOTE** C3 and **DPTH** 32. The in-scale range is
+C2 through C4. Each figure compares **JUMP** 0, 64 and 127 at that same
+depth. The PDF contains all five figures on separate pages.
+
+[Download the five-page pitch examples PDF](../../img/seq/seq-pitch-examples.pdf).
+
+![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.svg)
+
+![UP pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-up.svg)
+
+![DOWN pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-down.svg)
+
+![ALT pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-alt.svg)
+
+![TRI pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-tri.svg)
 
 SEQ's **SCAL** and **ROOT** are independent of the PROJECT SCALE
 QUANTIZER on both audio and MIDI tracks.
@@ -215,35 +240,6 @@ locks become empty. Press **`[NO]`** to cancel and return to SEQ. Press
 
 In the figures, black marks a lock on a sample trig, hatching marks a
 **trigless trig**, and white marks no lock.
-
-### 64-hit pitch rolls
-
-These piano rolls show MIDI **NOTE** pitches for 64 consecutive hits. They
-use C major, ROOT C, Part **NOTE** C3 and **DPTH** 32. The in-scale range is
-C2 through C4. Each figure compares **JUMP** 0, 64 and 127 at that same
-depth. The PDF contains all five figures on separate pages.
-
-[Download the five-page pitch examples PDF](../../img/seq/seq-pitch-examples.pdf).
-
-#### RAND
-
-![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.svg)
-
-#### UP
-
-![UP pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-up.svg)
-
-#### DOWN
-
-![DOWN pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-down.svg)
-
-#### ALT
-
-![ALT pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-alt.svg)
-
-#### TRI
-
-![TRI pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-tri.svg)
 
 ### Place sample trigs
 
