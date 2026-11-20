@@ -109,11 +109,15 @@ def rand_walk(count: int, jump: int, hits: int, seed: int = 1) -> list[int]:
         seed = (1664525 * seed + 1013904223) & 0xFFFFFFFF
         return seed
 
-    stride = 1 + jump * ((count - 1) // 2) // 127
+    stride = 1 + jump * ((count - 1) // 4) // 127
     rank = rng() % count
     result = [rank]
     for _ in range(hits - 1):
-        rank = (rank + (stride if rng() < 0x80000000 else -stride)) % count
+        direction = 1 if rng() < 0x80000000 else -1
+        candidate = rank + direction * stride
+        if not 0 <= candidate < count:
+            candidate = rank - direction * stride
+        rank = candidate
         result.append(rank)
     return result
 
@@ -227,18 +231,23 @@ def main() -> int:
                   for phrase in (3, 4) for n in range(3, 65)))
         rand_rolls = {jump: rand_walk(15, jump, 64)
                       for jump in (0, 64, 127)}
-        rand_strides = {jump: 1 + jump * 7 // 127
+        rand_strides = {jump: 1 + jump * 3 // 127
                         for jump in (0, 64, 127)}
         check("RAND JUMP sets every neighboring scale-degree distance",
-              all(all((b - a) % 15 in (stride, 15 - stride)
+              all(all(abs(b - a) == stride
                       for a, b in zip(rand_rolls[jump], rand_rolls[jump][1:]))
                   for jump, stride in rand_strides.items()))
-        check("RAND stays random while JUMP controls interval size",
+        check("RAND stays random while JUMP controls absolute interval size",
               all(len(set(roll)) > 1 for roll in rand_rolls.values())
-              and all(len(set((b - a) % 15
-                              for a, b in zip(roll, roll[1:]))) == 2
-                      for roll in rand_rolls.values())
+              and all(set(b - a for a, b in zip(roll, roll[1:]))
+                      == {-rand_strides[jump], rand_strides[jump]}
+                      for jump, roll in rand_rolls.items())
               and len({tuple(roll) for roll in rand_rolls.values()}) == 3)
+        check("RAND neighboring intervals grow monotonically with JUMP",
+              list(rand_strides.values()) == [1, 2, 4]
+              and all(max(abs(b - a) for a, b in zip(roll, roll[1:]))
+                      == rand_strides[jump]
+                      for jump, roll in rand_rolls.items()))
         legacy = bytes(value for track in range(16)
                        for value in (track, track + 1, track + 2, 127,
                                      track % 5, track + 4, track + 5, 0))

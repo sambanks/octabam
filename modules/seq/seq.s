@@ -3072,29 +3072,31 @@ epr_random:
         movel   %d1,ef_rand_valid
         rts
 epr_rand_next:
-        | Pick a random direction; JUMP sets the scale-degree distance.
+        | Pick a random direction; turn at DEPTH edges to keep the absolute
+        | scale-degree interval equal to JUMP.
         bsr.w   ef_rng
         movel   %d0,%d1
         movel   %d3,%d5
         subql   #1,%d5
-        lsrl    #1,%d5
+        lsrl    #2,%d5                 | leave room for random motion inside DEPTH
         movel   ef_tone_jump,%d0
         mulu.w  %d5,%d0
         moveq   #127,%d5
         divu.l  %d5,%d0
         addql   #1,%d0
         tstl    %d1
-        bpl.s   epr_rand_up
+        bpl.s   epr_rand_dir
         negl    %d0
-epr_rand_up:
+epr_rand_dir:
+        movel   %d0,%d1                | keep the requested signed interval
         addl    ef_rand_rank,%d0
         tstl    %d0
-        bpl.s   epr_rand_low
-        addl    %d3,%d0
-epr_rand_low:
+        bmi.s   epr_rand_turn
         cmpl    %d3,%d0
         bcs.s   epr_rand_store
-        subl    %d3,%d0
+epr_rand_turn:
+        movel   ef_rand_rank,%d0
+        subl    %d1,%d0                | reverse direction instead of wrapping
 epr_rand_store:
         movel   %d0,ef_rand_rank
         rts

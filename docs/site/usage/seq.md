@@ -139,7 +139,7 @@ chord shape and inversion. **JUMP** is not used for MIDI ARP destinations.
 
 | **PHRS** | Pitch order |
 |---|---|
-| **RAND** | Choose a random direction for each move through the in-scale pitches. **JUMP** sets the scale-degree distance between neighboring hits; the walk wraps inside **DPTH**. This is the default. Filling again rerolls the sequence without changing the controls. |
+| **RAND** | Choose a random direction for each move through the in-scale pitches. **JUMP** sets the scale-degree distance between neighboring hits. At a **DPTH** edge, the walk turns around so the interval stays the same. This is the default. Filling again rerolls the sequence without changing the controls. |
 | **UP** | Start at the Part pitch and move upward through the in-scale pitches. Wrap to the bottom of the **DPTH** span. |
 | **DOWN** | Start at the Part pitch and move downward through the in-scale pitches. Wrap to the top of the **DPTH** span. |
 | **ALT** | Rise from the lowest pitch to the highest, then descend without repeating the peak. |
@@ -156,29 +156,30 @@ Each piano roll shows 64 MIDI **NOTE** hits in C major, ROOT C, with Part
 **NOTE** C3 and **DPTH** 32. The pitch range is C2–C4. The **JUMP** 0, 64
 and 127 rolls use identical settings except for **JUMP**. Each roll uses the
 same seed so the random directions are comparable; **JUMP** changes the
-scale-degree distance while the notes wrap within the same pitch range.
+scale-degree distance while the notes stay within the same pitch range.
 
 ##### RAND
 
 RAND chooses a starting in-scale pitch, then moves a random direction by the
-scale-degree distance set by **JUMP**. The walk wraps inside the **DPTH**
-range; refilling chooses a new starting pitch and direction sequence.
+scale-degree distance set by **JUMP**. At either **DPTH** edge, it turns
+around instead of wrapping, so the absolute interval stays consistent;
+refilling chooses a new starting pitch and direction sequence.
 
-![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.svg)
+![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.png)
 
 ##### UP
 
 UP starts at C3 and climbs through the in-scale pitches. It wraps to the
 bottom of the C2–C4 span; raising **JUMP** skips farther between notes.
 
-![UP pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-up.svg)
+![UP pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-up.png)
 
 ##### DOWN
 
 DOWN starts at C3 and descends through the in-scale pitches. It wraps to the
 top of the span; raising **JUMP** skips farther between notes.
 
-![DOWN pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-down.svg)
+![DOWN pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-down.png)
 
 ##### ALT
 
@@ -186,7 +187,7 @@ ALT starts at the bottom of the pitch set, rises to its highest note once,
 then descends without repeating the peak. At **JUMP** 0, its top notes are
 C4, B3.
 
-![ALT pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-alt.svg)
+![ALT pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-alt.png)
 
 ##### TRI
 
@@ -195,7 +196,7 @@ descending. At **JUMP** 0, its top notes are C4, C4, B3. This single extra
 top hit is the only difference at **JUMP** 0. At **JUMP** 64, ALT uses a
 five-step stride and TRI a seven-step stride, so their rolls diverge more.
 
-![TRI pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-tri.svg)
+![TRI pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-tri.png)
 
 SEQ's **SCAL** and **ROOT** are independent of the PROJECT SCALE
 QUANTIZER on both audio and MIDI tracks.
