@@ -14,8 +14,10 @@ chooser does not list it.
 - **GN1-GN4.** Per-band level. Four bands at 64 can overload their summed
   output; lower or mute bands for a cleaner sound.
 - **PIT1-PIT4.** Band centres (~40 Hz to ~4 kHz).
-- **SCAL.** Overall gain scale. **8 = conservative starting point**, 127 ≈
-  hot smash (~×16 at GN 64). The filter-bank sum can distort before **LIM**;
+- **SCAL.** Overall gain scale. **1 = low-gain default**; raise it for more
+  output. Four bands at GN 64 can still overload at 8. At 127 it is a hot
+  smash (~×16 at GN 64).
+  The filter-bank sum can distort before **LIM**;
   lower **SCAL** or **GN1–GN4** if that happens.
 - **LIM.** Stereo peak limiter after **MIX**. **0** is off. It catches hot
   output peaks, but cannot remove distortion already created by high **SCAL**
@@ -37,7 +39,7 @@ chooser does not list it.
 | PIT2 | 0..127 | 48 | band 2 centre |
 | PIT3 | 0..127 | 64 | band 3 centre |
 | PIT4 | 0..127 | 80 | band 4 centre |
-| SCAL | 0..127 | 8 | gain scale; 8=tame, 127≈smash |
+| SCAL | 0..127 | 1 | gain scale; 1=low-gain default, 127≈smash |
 | LIM | 0..127 | 0 | peak limiter after MIX; 0 off, 1..127 ≈ -2.5..-12 dB |
 
 **LIM** leaves quiet passages at their original level. Higher settings lower
