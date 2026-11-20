@@ -51,7 +51,7 @@ Not the DSP [EUCLID](../euclid/README.md) effect (filter/amp modulation).
 SEQ stores its own scale masks and root; the PROJECT SCALE QUANTIZER remains
 independent.
 
-Rhythm names, ranges, and the TRIG PULSE default match filter EUCLID; length
+Rhythm names, ranges, and the TRIG PULS default match filter EUCLID; length
 comes from pattern length (not a knob).
 
 ## Controls
@@ -60,11 +60,11 @@ comes from pattern length (not a knob).
 |---|---|
 | TRACK + PAGE | open SEQ on that track |
 | TRACK (while open) | switch to that track's params / YES target |
-| A | PULSE of the focused lane |
+| A | PULS of the focused lane |
 | B | ROT of the focused lane |
 | C | LANE — TRIG ↔ PLCK |
 | D | DEST — page-1 flat; same name as LFO PMTR |
-| E | DEPTH — 0..127, lock span around Part |
+| E | DPTH — 0..127, lock span around Part |
 | F | empty |
 | **`[LEFT]`** / **`[RIGHT]`** | switch knob pages; indicator is **1/2** or **2/2** at top-right |
 | CUE | hold = stock cue; release alone = random PULSE hits on the focused lane; CUE+TRACK = cue that track |
@@ -164,10 +164,12 @@ The tonal page applies to audio and MIDI tracks. **SCAL** selects MAJ, MIN,
 PENT, DOR, PHR, MIX, WHOL or CHRO; **ROOT** selects C through B. **JUMP** is
 available on both audio and MIDI. It sets the spacing between successive
 phrase positions: 0 advances one scale position, and higher values skip
-farther (range 0..127). UP and DOWN start at the Part pitch and wrap to the
-other end of the **DPTH** span when they reach a boundary. **RAND** chooses a
-new in-scale pitch on each hit; filling again rerolls it without changing the
-controls. Audio C and F are empty and inactive.
+farther (range 0..127). It changes pitch spacing, while **DPTH** sets the
+outer pitch span. UP starts at the Part pitch and ascends; DOWN starts there
+and descends. Both wrap at the **DPTH** boundary. ALT moves up and down in
+alternation; TRI repeats a short up-and-down contour. RAND chooses a new
+in-scale pitch on each hit and ignores JUMP. Filling again rerolls RAND
+without changing the controls. Audio C and F are empty and inactive.
 On MIDI, **VOIC** selects one to four notes and
 **CHRD** selects one of the FM SYNTH chord types and its inversion. **DPTH**
 controls the pitch span around the Part value, up to four octaves in either
@@ -183,7 +185,7 @@ at VOIC 2. SEQ 82 had displayed -64 in those slots. The report does not
 provide separate measurements of audio pitch or MIDI timing.
 
 MIDI mode has separate TRIG/PLOCK rhythms, per-destination depth and
-settings stored in `euclid.work` version 9. The reader migrates earlier
+settings stored in `euclid.work` version 10. The reader migrates earlier
 versions. The Part page-1 read window is registered with STORE;
 `store_part_midi_context` selects the playing MIDI Part independently of
 the audio engine and UI selection. All MIDI writes update the bank and

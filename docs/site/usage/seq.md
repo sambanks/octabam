@@ -13,6 +13,9 @@ independently of the track trigs. SEQ settings save with the **project** and
 bank; audio and MIDI tracks keep separate settings. Hold **`[TRACK]`** and
 press **`[PAGE]`** to open SEQ for that track.
 
+Fresh audio-track settings start on **SRC** / **PTCH**. Fresh MIDI-track
+settings start on **NOTE**.
+
 ## Mental model
 
 Each track has one TRIG rhythm and a separate PLCK rhythm for each
@@ -101,8 +104,8 @@ On audio tracks, Harmony controls the **SRC** / **PTCH** destination.
 **SCAL** and **ROOT** set the scale for generated pitch locks. **DPTH**
 sets their pitch span around the Part's **PLAYBACK PTCH**. **D** **PHRS**
 chooses UP, DOWN, ALT, TRI or RAND for the generated pitches. **E** **JUMP**
-sets the spacing between successive phrase positions: 0 advances by one
-scale position; higher values skip farther between positions. UP and DOWN
+sets the spacing between successive phrase positions from 0 to 127: 0
+advances by one scale position; higher values skip farther. UP and DOWN
 start at the Part pitch and move in the selected direction. At either end
 of the **DPTH** span, the phrase wraps to the other end. Sample playback
 pitch locks use whole-semitone steps.
