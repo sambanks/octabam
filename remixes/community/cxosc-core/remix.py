@@ -23,7 +23,10 @@ REMIX = Remix(
         note="Earlier CORE + CX OSC handoff, before SEQ was added; marker-less "
              "machine list, mono, stock LFOs. Ilia reports CX OSC sounds good "
              "on the MKII. The ColdFire emulator boots the image to the RTOS "
-             "handoff. This does not measure the current SEQ combination."),),
+             "handoff. This does not measure the current SEQ combination."),
+        Evidence(Level.UNIT, who="ilia-murzinov", image="CXSEQ CV.RMX (BUILD 79)",
+            date="2026-11-20", commit="5e737dc4bddd27d2e6c02dc54b8de341493dbc08",
+            note="Ilia confirms INDX changes the saw and triangle carrier waveforms on this build.")),
     doc="CORE + REMIX SWITCH + CX OSC and SEQ on the 14 stock effects.",
     modules=CORE + ("REMIX SWITCH", "CX OSC", "LOFI AMF FIX", "SEQ") + STOCK14,
     fallback="NONE",
