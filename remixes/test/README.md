@@ -114,6 +114,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`trackpatterns`](trackpatterns/README.md) | TRACK PATTERNS with the stock effects: hold TRACK + PATTERN + TRIG for a pattern per track. | on a unit (MKII, OCTABAM3, 2026-10-21): functional tests and trig LEDs passed (contributor's report) |
 | [`trackpatterns-core`](trackpatterns-core/README.md) | TRACK PATTERNS on the core modules (KITS, DIRECT_JUMP_KYOTI and the other core modules). | on a unit (MKII, OCTABAM8, 2026-10-22): gesture on T1 and M1, global change, save and power cycle passed (contributor's report) |
 | [`transient`](transient/README.md) | TRANSIENT beside the stock effects (all but PLATE REV, whose words it takes). | on a unit (MKII, Ignorato, OCTABAM2, 2026-10-03) |
+| [`trig-mute`](trig-mute/README.md) | stock effects with TRIG MUTE: mute a single trig without deleting it. | emulator |
 | [`usb-io-main-ab`](usb-io-main-ab/README.md) | stock - SPATIALIZER + USB (MAIN out, AB in). | emulator (verify_usb): `make check` (verify_usb, verify_usb_in) under the port, 28 Sep 2026; not on hardware in this form |
 | [`usb-io-main-abcd`](usb-io-main-abcd/README.md) | stock - SPATIALIZER + USB (MAIN out, ABCD in). | emulator (verify_usb): `make check` (verify_usb, verify_usb_in) under the port, 28 Sep 2026; not on hardware in this form |
 | [`usb-io-main-cd`](usb-io-main-cd/README.md) | stock - SPATIALIZER + USB (MAIN out, CD in). | emulator (verify_usb): `make check` (verify_usb, verify_usb_in) under the port, 28 Sep 2026; not on hardware in this form |
