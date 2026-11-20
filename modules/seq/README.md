@@ -88,8 +88,9 @@ PLOCK PULS/ROT are remembered **per DEST** on that track. D/E stay live
 even when LANE is TRIG (no auto-focus switch). Slots + DEST tables live in
 DRAM and in `euclid.work` (audio recipes, per-DEST depth/plock + LANE,
 separate MIDI-track recipes and per-flat depths, and per-track tonal
-settings; STORE client, `EF_VER` 10) on SAVE PROJECT / bank write. Older files
-migrate with default tonal settings. **Pattern length:** shown as `LEN n` at
+settings; STORE client, `EF_VER` 11) on SAVE PROJECT / bank write. Older files
+migrate their saved tonal settings; files predating tonal settings use the
+defaults. **Pattern length:** shown as `LEN n` at
 the bottom right. Defaults: TRIG PULS 5,
 DEST = SRC PTCH on audio and NOTE on MIDI, ROT/DPTH/PLOCK PULS 0,
 LANE = TRIG.
@@ -174,12 +175,14 @@ farther (range 0..127). It changes pitch spacing, while **DPTH** sets the
 outer pitch span. UP starts at the Part pitch and ascends; DOWN starts there
 and descends. Both wrap at the **DPTH** boundary. ALT moves up and down in
 alternation; TRI repeats a short up-and-down contour. RAND chooses a new
-in-scale pitch on each hit and ignores JUMP. Filling again rerolls RAND
-without changing the controls. Audio C and F are empty and inactive.
+in-scale pitch on each hit and ignores JUMP. RAND is the first PHRS option
+and the default for new settings. Older saved phrase values migrate without
+changing their selected mode. Filling again rerolls RAND without changing
+the controls. Audio C and F are empty and inactive.
 On MIDI, **VOIC** selects one to four notes and
 **CHRD** selects one of the FM SYNTH chord types and its inversion. **DPTH**
 controls the pitch span around the Part value, up to four octaves in either
-direction. **PHRS** selects UP, DOWN, ALT, TRI or RAND. MIDI **VOIC** 1 writes
+direction. **PHRS** selects RAND, UP, DOWN, ALT or TRI. MIDI **VOIC** 1 writes
 one note. Higher values add
 notes from **CHRD**. Filling with **VOIC** 1 clears NOT2, NOT3 and NOT4 on
 hit trigs. The Octatrack MIDI arp can play the generated notes when enabled
@@ -191,7 +194,7 @@ at VOIC 2. SEQ 82 had displayed -64 in those slots. The report does not
 provide separate measurements of audio pitch or MIDI timing.
 
 MIDI mode has separate TRIG/PLOCK rhythms, per-destination depth and
-settings stored in `euclid.work` version 10. The reader migrates earlier
+settings stored in `euclid.work` version 11. The reader migrates earlier
 versions. The Part page-1 read window is registered with STORE;
 `store_part_midi_context` selects the playing MIDI Part independently of
 the audio engine and UI selection. All MIDI writes update the bank and

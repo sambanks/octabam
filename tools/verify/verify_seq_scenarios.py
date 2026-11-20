@@ -378,7 +378,7 @@ def run_scenarios() -> int:
         poke8(port, audio_part_ptch, 65)  # +0.2 st: sample PTCH is raw 64+5*n
         poke8(port, NV_SCALE, 1)
         poke8(port, NV_ROOT, 0)
-        poke32(port, local_sym("ef_tone_phrase"), 0)  # UP
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
         audio_jump_notes = {}
         audio_jump_masks = {}
         for jump_value in (0, 127):
@@ -629,11 +629,11 @@ def run_scenarios() -> int:
               popcount_mask(mask_of(port)) == 5, mask_of(port).hex())
         check("YES after CUE re-locks", port.long(s.unlocked) == 0)
 
-        # RAND (PHRS=4) should randomize generated pitch locks as well as
+        # RAND (PHRS=0) should randomize generated pitch locks as well as
         # CUE's trigger placement. Keep every generation parameter fixed
         # across the reroll; only the RNG state advances.
         tone_phrase = local_sym("ef_tone_phrase")
-        poke32(port, tone_phrase, 4)  # RAND
+        poke32(port, tone_phrase, 0)  # RAND
         s.prime(lane=0, dest=0, depth=127, pulses=5, trig_pulses=5)
         poke32(port, s.unlocked, 1)
         poke32(port, s.ask, 0)
@@ -662,7 +662,7 @@ def run_scenarios() -> int:
               rand_pitch_2 != rand_pitch_1
               and len(rand_values_2) == 5
               and len(set(rand_values_2)) > 1
-              and port.long(tone_phrase) == 4
+              and port.long(tone_phrase) == 0
               and port.long(s.depth) == 127,
               f"first={rand_values_1} second={rand_values_2} "
               f"phrase={port.long(tone_phrase)} "
@@ -956,7 +956,7 @@ def run_scenarios() -> int:
         poke32(port, midi_bank, 16)
         poke32(port, midi_bank + 4, 0)
         poke32(port, s.pulses, 16)
-        poke32(port, local_sym("ef_tone_phrase"), 0)
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
         poke32(port, s.unlocked, 1)
         poke32(port, s.ask, 0)
         s.yes()
@@ -967,7 +967,7 @@ def run_scenarios() -> int:
               up_notes == [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83, 84, 86]
               and len({b-a for a, b in zip(up_notes, up_notes[1:])}) > 1,
               f"notes={up_notes}")
-        poke32(port, local_sym("ef_tone_phrase"), 1)
+        poke32(port, local_sym("ef_tone_phrase"), 2)  # DOWN
         poke32(port, s.unlocked, 1)
         poke32(port, s.ask, 0)
         s.yes()
@@ -980,7 +980,7 @@ def run_scenarios() -> int:
               f"notes={down_notes}")
         poke32(port, midi_bank, 3)
         poke32(port, s.pulses, 3)
-        poke32(port, local_sym("ef_tone_phrase"), 0)
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
         close_jump_notes = None
         wide_jump_notes = None
         for jump_value in (0, 127):
@@ -1014,7 +1014,7 @@ def run_scenarios() -> int:
         poke32(port, sym("ef_depth"), 16)
         poke8(port, midi_dep, 16)
         poke32(port, local_sym("ef_tone_jump"), 127)
-        poke32(port, local_sym("ef_tone_phrase"), 0)
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
         poke32(port, s.unlocked, 1)
         poke32(port, s.ask, 0)
         s.yes()
@@ -1026,7 +1026,7 @@ def run_scenarios() -> int:
               and wrap_notes[7:14] == wrap_notes[:7]
               and wrap_notes[14:] == wrap_notes[:2],
               f"notes={wrap_notes}")
-        poke32(port, local_sym("ef_tone_phrase"), 1)
+        poke32(port, local_sym("ef_tone_phrase"), 2)  # DOWN
         poke32(port, s.unlocked, 1)
         poke32(port, s.ask, 0)
         s.yes()
@@ -1041,7 +1041,7 @@ def run_scenarios() -> int:
               f"notes={down_wrap_notes}")
         poke32(port, midi_bank, 3)
         poke32(port, s.pulses, 3)
-        poke32(port, local_sym("ef_tone_phrase"), 0)
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
         poke32(port, sym("ef_depth"), 16)
         poke8(port, midi_dep, 16)
         poke32(port, s.unlocked, 1)

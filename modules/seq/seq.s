@@ -214,7 +214,7 @@
         .set    PIT_RAD,   24
         .set    PIT_SAMP,  12
         .set    EF_MAGIC,  0x4546494c   | 'EFIL'
-        .set    EF_VER,    10           | v10: JUMP; clears legacy RANG byte
+        .set    EF_VER,    11           | v11: RAND is PHRS default and value 0
         .set    EF_BANK_B, 224          | 8 tracks * 28
         .set    DEST_NSLOT, 36          | 0..34 + pad; track*36 = <<5+<<2
         .set    EF_DEP_B,  8*DEST_NSLOT | per-track × DEST depth bytes
@@ -234,7 +234,8 @@
         .set    EF_TONE_B, 16*EF_TONE_REC | audio + MIDI tracks
         .set    EF_FILE_V8,EF_FILE_V7+EF_TONE_B
         .set    EF_FILE_V9,EF_FILE_V8
-        .set    EF_FILE_B, EF_FILE_V9
+        .set    EF_FILE_V10,EF_FILE_V9
+        .set    EF_FILE_B, EF_FILE_V10
         .set    TON_SCALE, 0
         .set    TON_ROOT,  1
         .set    TON_MODE,  2
@@ -499,6 +500,25 @@ ef_tone_defaults:
         clrl    ef_tone_phrase
         clrl    ef_tone_harm
         clrl    ef_tone_style
+        rts
+
+| Stored v10 PHRS values were UP/DOWN/ALT/TRI/RAND = 0..4.
+| v11 puts RAND first; rotate all 16 audio/MIDI track values by one.
+ef_tone_phrase_v10_to_v11:
+        lea     ef_tone_mem,%a0
+        moveq   #15,%d0
+etp_migrate:
+        moveq   #0,%d1
+        moveb   %a0@(TON_PHRASE),%d1
+        addql   #1,%d1
+        cmpi.l  #5,%d1
+        bcs.s   etp_store
+        clrl    %d1
+etp_store:
+        moveb   %d1,%a0@(TON_PHRASE)
+        addal   #EF_TONE_REC,%a0
+        subql   #1,%d0
+        bpl.s   etp_migrate
         rts
 
 | Store working params into bank[ef_focus]. Clobbers d0/d1/a0/a1.
@@ -2957,24 +2977,25 @@ ef_degree_interval:
         rts
 
 | d3=available pitch count, d2=step. Return a phrase rank 0..count-1.
-| Phrase 0 rises, 1 falls, 2 reflects, 3 repeats a short triangle, 4 random.
+| Phrase 0 random, 1 rises, 2 falls, 3 reflects, 4 repeats a short triangle.
 ef_pitch_rank:
         movel   ef_tone_phrase,%d1
         tstl    %d1
-        beq.w   epr_up
-        cmpi.l  #4,%d1
         beq.w   epr_random
         cmpi.l  #1,%d1
-        beq.w   epr_down
+        beq.w   epr_up
         cmpi.l  #2,%d1
-        beq.w   epr_reflect
+        beq.w   epr_down
         cmpi.l  #3,%d1
+        beq.w   epr_reflect
+        cmpi.l  #4,%d1
         beq.w   epr_triangle
         movel   %d2,%d1
         movel   %d3,%d5
         remul   %d5,%d0,%d1
         rts
 epr_up:
+        moveq   #0,%d1
         bra.w   epr_linear
 epr_down:
         moveq   #1,%d1                 | DOWN starts at the Part pitch
@@ -3047,7 +3068,7 @@ epr_random:
 | d2=generated-note ordinal, d3=candidate count; return transformed ordinal in d2.
 ef_pitch_step:
         movel   ef_tone_phrase,%d1
-        cmpi.l  #4,%d1
+        tstl    %d1
         beq.s   eps_done                | RAND already chooses a fresh rank
         tstl    ef_tone_jump
         beq.s   eps_done
@@ -3068,9 +3089,9 @@ ef_pitch_step:
         movel   %d2,-(%sp)             | preserve note ordinal for multiplication
 eps_period:
         movel   ef_tone_phrase,%d4
-        cmpi.l  #2,%d4
-        beq.s   eps_alt_period
         cmpi.l  #3,%d4
+        beq.s   eps_alt_period
+        cmpi.l  #4,%d4
         beq.s   eps_tri_period
         movel   %d3,%d1                 | UP/DOWN cycle over candidate count
         bra.s   eps_gcd_start
@@ -4961,7 +4982,7 @@ ef_root_names:
 ef_mode_names:
         .long M_MELODY,M_ARP
 ef_phrase_names:
-        .long P_UP,P_DOWN,P_ALT,P_TRI,P_RAND
+        .long P_RAND,P_UP,P_DOWN,P_ALT,P_TRI
 ef_harmony_names:
         .long H_V1,H_V2,H_V3,H_V4
 ef_chord_shapes:
@@ -5261,6 +5282,9 @@ ef_load_file:
         moveq   #9,%d0
         cmpl    %d0,%d2
         beq.w   el_v9
+        moveq   #10,%d0
+        cmpl    %d0,%d2
+        beq.w   el_v10
         moveq   #EF_VER,%d0
         cmpl    %d0,%d2
         bne.w   el_bad
@@ -5305,6 +5329,28 @@ el9_track:
         addal   #EF_TONE_REC,%a0
         subql   #1,%d0
         bpl.s   el9_track
+        bsr.w   ef_tone_phrase_v10_to_v11
+        moveq   #1,%d0
+        movel   %d0,ef_dirty
+        rts
+| v10 has the current record shape and old PHRS values. Rotate values so
+| RAND becomes 0 without changing the selected mode on any saved track.
+el_v10: movel   #EF_FILE_V10,%d0
+        cmpl    %d0,%d3
+        bne.w   el_bad
+        lea     ef_bank,%a0
+        movel   %d3,%d0
+        jsr     store_fread
+        subql   #1,%d0
+        bne.w   el_bad
+        jsr     store_fclose
+        lea     ef_bank,%a0
+        movel   #EF_FILE_V10,%d0
+        moveq   #0,%d1
+        jsr     store_crc32
+        cmpl    ef_hdr+12,%d0
+        bne.w   el_crc
+        bsr.w   ef_tone_phrase_v10_to_v11
         moveq   #1,%d0
         movel   %d0,ef_dirty
         rts
@@ -5350,6 +5396,7 @@ el8_voice:
         addql   #1,%d2
         cmpi.l  #8,%d2
         bcs.s   el8_track
+        bsr.w   ef_tone_phrase_v10_to_v11
         moveq   #1,%d0
         movel   %d0,ef_dirty
         rts

@@ -103,7 +103,8 @@ returns to the Euclidean pattern.
 On audio tracks, Harmony controls the **SRC** / **PTCH** destination.
 **SCAL** and **ROOT** set the scale for generated pitch locks. **DPTH**
 sets their pitch span around the Part's **PLAYBACK PTCH**. **D** **PHRS**
-chooses UP, DOWN, ALT, TRI or RAND for the generated pitches. **E** **JUMP**
+chooses RAND, UP, DOWN, ALT or TRI for the generated pitches. New tracks
+start at RAND. **E** **JUMP**
 sets the spacing between successive phrase positions from 0 to 127: 0
 advances by one scale position; higher values skip farther. UP and DOWN
 start at the Part pitch and move in the selected direction. At either end
@@ -117,7 +118,8 @@ On audio tracks, **C** and **F** are blank.
 
 On MIDI tracks, **A** **SCAL** chooses MAJ, MIN, PENT, DOR, PHR, MIX,
 WHOL or CHRO. **B** **ROOT** chooses C through B. **C** **VOIC** chooses
-one to four notes. **D** **PHRS** chooses UP, DOWN, ALT, TRI or RAND. **E**
+one to four notes. **D** **PHRS** chooses RAND, UP, DOWN, ALT or TRI. New
+tracks start at RAND. **E**
 **JUMP** ranges from 0 to 127 and sets spacing between successive phrase
 positions: 0 advances one scale position, and higher values skip farther.
 UP and DOWN start at the Part's **NOTE** and move in the selected direction.
@@ -128,11 +130,11 @@ At either end of the **DPTH** span, the phrase wraps to the other end.
 
 | **PHRS** | Pitch order |
 |---|---|
+| **RAND** | Choose a new in-scale pitch on each hit. This is the default. **JUMP** does not affect RAND. Filling again rerolls the pitches without changing the controls. |
 | **UP** | Start at the Part pitch and move upward through the in-scale pitches. Wrap at the top of the **DPTH** span. |
 | **DOWN** | Start at the Part pitch and move downward through the in-scale pitches. Wrap at the bottom of the **DPTH** span. |
 | **ALT** | Move up and down through the span in alternating directions. |
 | **TRI** | Repeat a short up-and-down pitch contour. |
-| **RAND** | Choose a new in-scale pitch on each hit. **JUMP** does not affect RAND. Filling again rerolls the pitches without changing the controls. |
 
 **DPTH** sets the pitch span around the Part's **NOTE**. At **DPTH** 127,
 the span reaches up to four octaves in either direction, limited by the
@@ -214,6 +216,35 @@ locks become empty. Press **`[NO]`** to cancel and return to SEQ. Press
 In the figures, black marks a lock on a sample trig, hatching marks a
 **trigless trig**, and white marks no lock.
 
+### 64-hit pitch rolls
+
+These piano rolls show MIDI **NOTE** pitches for 64 consecutive hits. They
+use C major, ROOT C, Part **NOTE** C3 and **DPTH** 32. The in-scale range is
+C2 through C4. Each figure compares **JUMP** 0, 64 and 127 at that same
+depth. The PDF contains all five figures on separate pages.
+
+[Download the five-page pitch examples PDF](../../img/seq/seq-pitch-examples.pdf).
+
+#### RAND
+
+![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.svg)
+
+#### UP
+
+![UP pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-up.svg)
+
+#### DOWN
+
+![DOWN pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-down.svg)
+
+#### ALT
+
+![ALT pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-alt.svg)
+
+#### TRI
+
+![TRI pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-tri.svg)
+
 ### Place sample trigs
 
 On an empty track, set **LANE** to **TRIG**, choose **SRC** / **PTCH** with
@@ -264,8 +295,8 @@ Set the MIDI track's output channel in **NOTE SETUP**, opened with
 **`[FUNC]`** + **`[SRC]`** or a double-tap of **`[SRC]`**. Set the Part's
 **NOTE** to C3. In SEQ, select **TRIG**, choose **NOTE** with **D**, and set
 **PULS** and a non-zero **DPTH**. Press **`[RIGHT]`**, choose MAJ for
-**SCAL**, C for **ROOT**, set **VOIC** to 3 and **CHRD** to MAJ0. With the
-default **PHRS** UP and **JUMP** 0, the first hit writes C3, E3 and G3;
+**SCAL**, C for **ROOT**, set **VOIC** to 3 and **CHRD** to MAJ0. Set
+**PHRS** to UP and **JUMP** to 0. The first hit writes C3, E3 and G3;
 following hits move upward through the scale. Press **`[YES]`** to write
 the phrase.
 

@@ -59,15 +59,15 @@ def snap(note: int, root: int, mask: int) -> int:
 
 
 def phrase_rank(step: int, count: int, phrase: int) -> int:
-    if phrase == 4:
+    if phrase == 0:
         return (1664525 * (step + 1) + 1013904223) % count
-    if phrase == 1:
-        return count - 1 - (step % count)
     if phrase == 2:
+        return count - 1 - (step % count)
+    if phrase == 3:
         period = max(1, 2 * count - 2)
         pos = step % period
         return pos if pos < count else period - pos
-    if phrase == 3:
+    if phrase == 4:
         period = 2 * count
         pos = step % period
         return pos if pos < count else 2 * count - 1 - pos
@@ -77,21 +77,21 @@ def phrase_rank(step: int, count: int, phrase: int) -> int:
 def pitch_jump(step: int, count: int, phrase: int, jump: int,
                *, anchor: int = 0, pulses: int = 8) -> int:
     """Mirror anchored cyclic UP/DOWN and ALT/TRI rank stepping."""
-    if phrase in (0, 1):
+    if phrase in (1, 2):
         if count <= 2 or jump <= 0:
             multiplier = 1
         else:
             multiplier = jump * ((count - 1) // 2) // 127 + 1
             while math.gcd(multiplier, count) != 1:
                 multiplier += 1
-        direction = 1 if phrase == 0 else -1
+        direction = 1 if phrase == 1 else -1
         return (anchor + direction * (step * multiplier % count)) % count
-    if count <= 2 or jump <= 0 or phrase == 4:
+    if count <= 2 or jump <= 0 or phrase == 0:
         return phrase_rank(step, count, phrase)
     stride = jump * ((count - 1) // 2) // 127
     multiplier = stride + 1
-    period = count if phrase in (0, 1) else (
-        2 * (count - 1) if phrase == 2 else 2 * count)
+    period = count if phrase in (1, 2) else (
+        2 * (count - 1) if phrase == 3 else 2 * count)
     while multiplier > 1 and math.gcd(multiplier, period) != 1:
         multiplier += 1
     return phrase_rank(step * multiplier, count, phrase)
@@ -104,10 +104,22 @@ def degree_interval(mask: int, degree: int) -> int:
 
 
 def migrate_v9_tonal(payload: bytes) -> bytes:
-    """Model v9->v10 migration: byte 3 was RANG and must become JUMP=0."""
+    """Model v9 migration: clear RANG and rotate the old PHRS values."""
     out = bytearray(payload)
     for track in range(16):
         out[track * 8 + 3] = 0
+        old = out[track * 8 + 4]
+        out[track * 8 + 4] = (old + 1) % 5 if old < 5 else 0
+    return bytes(out)
+
+
+def migrate_v10_phrases(payload: bytes) -> bytes:
+    """Model v10->v11 migration: RAND moves from PHRS value 4 to 0."""
+    out = bytearray(payload)
+    for track in range(16):
+        pos = track * 8 + 4
+        old = out[pos]
+        out[pos] = (old + 1) % 5 if old < 5 else 0
     return bytes(out)
 
 
@@ -133,20 +145,20 @@ def main() -> int:
         check("MIDI melody candidates stay in range and in rooted scale",
               bool(in_range) and all(48 <= n <= 72 and on_scale(n, 2, major)
                                      for n in in_range))
-        up = [pitch_jump(s, 9, 0, 0, anchor=4, pulses=5) for s in range(5)]
-        down = [pitch_jump(s, 9, 1, 0, anchor=4, pulses=5) for s in range(5)]
-        alt = [phrase_rank(s, 5, 2) for s in range(9)]
-        tri = [phrase_rank(s, 5, 3) for s in range(10)]
+        up = [pitch_jump(s, 9, 1, 0, anchor=4, pulses=5) for s in range(5)]
+        down = [pitch_jump(s, 9, 2, 0, anchor=4, pulses=5) for s in range(5)]
+        alt = [phrase_rank(s, 5, 3) for s in range(9)]
+        tri = [phrase_rank(s, 5, 4) for s in range(10)]
         check("UP starts on the Part pitch and wraps at the top of the range",
               up == [4, 5, 6, 7, 8])
         check("DOWN starts on the Part pitch and wraps at the bottom of the range",
               down == [4, 3, 2, 1, 0])
         major_notes = [n for n in range(12, 109) if on_scale(n, 0, major)]
         anchor = major_notes.index(60)
-        up_notes = [major_notes[pitch_jump(s, len(major_notes), 0, 0,
+        up_notes = [major_notes[pitch_jump(s, len(major_notes), 1, 0,
                                             anchor=anchor, pulses=8)]
                     for s in range(8)]
-        down_notes = [major_notes[pitch_jump(s, len(major_notes), 1, 0,
+        down_notes = [major_notes[pitch_jump(s, len(major_notes), 2, 0,
                                               anchor=anchor, pulses=8)]
                       for s in range(8)]
         check("MIDI UP starts on Part NOTE and wraps through the DEPTH range",
@@ -157,53 +169,64 @@ def main() -> int:
               down_notes == [60, 59, 57, 55, 53, 52, 50, 48]
               and len({a-b for a, b in zip(down_notes, down_notes[1:])}) > 1,
               f"notes={down_notes}")
-        wide_up = [major_notes[pitch_jump(s, len(major_notes), 0, 127,
+        wide_up = [major_notes[pitch_jump(s, len(major_notes), 1, 127,
                                            anchor=anchor, pulses=8)]
                    for s in range(8)]
-        wide_down = [major_notes[pitch_jump(s, len(major_notes), 1, 127,
+        wide_down = [major_notes[pitch_jump(s, len(major_notes), 2, 127,
                                              anchor=anchor, pulses=8)]
                      for s in range(8)]
         check("maximum JUMP still wraps UP and DOWN from Part NOTE",
               wide_up[0] == wide_down[0] == 60
-              and wide_up == [major_notes[pitch_jump(s, len(major_notes), 0, 127,
+              and wide_up == [major_notes[pitch_jump(s, len(major_notes), 1, 127,
                                                       anchor=anchor, pulses=8)]
                               for s in range(8)]
-              and wide_down == [major_notes[pitch_jump(s, len(major_notes), 1, 127,
+              and wide_down == [major_notes[pitch_jump(s, len(major_notes), 2, 127,
                                                         anchor=anchor, pulses=8)]
                                 for s in range(8)],
               f"up={wide_up} down={wide_down}")
         check("UP and DOWN continue wrapping on sequences longer than the range",
               all(pitch_jump(s, 5, phrase, 127, anchor=2, pulses=20)
                   == pitch_jump(s % 5, 5, phrase, 127, anchor=2, pulses=20)
-                  for phrase in (0, 1) for s in range(20)))
+                  for phrase in (1, 2) for s in range(20)))
         check("JUMP remains inside small candidate sets",
               all(0 <= pitch_jump(s, n, 1, 127) < n
                   for n in range(1, 13) for s in range(64)))
         check("ALT/TRI/RAND retain bounded phrase behavior with JUMP",
               all(0 <= pitch_jump(s, n, phrase, jump) < n
-                  for phrase in (2, 3, 4) for n in range(1, 65)
+                  for phrase in (0, 3, 4) for n in range(1, 65)
                   for s in range(2 * n) for jump in (0, 127)))
         check("UP and DOWN cycle through candidates when the phrase exceeds DEPTH",
               all(pitch_jump(s + n, n, phrase, j, anchor=n // 2, pulses=64)
                   == pitch_jump(s, n, phrase, j, anchor=n // 2, pulses=64)
                   for n in range(1, 65) for j in range(128)
-                  for phrase in (0, 1) for s in range(64)))
+                  for phrase in (1, 2) for s in range(64)))
         check("ALT/TRI still cover every candidate at maximum JUMP",
               all(len({pitch_jump(s, n, phrase, 127) for s in range(
-                       2 * (n - 1) if phrase == 2 else 2 * n)}) == n
-                  for phrase in (2, 3) for n in range(3, 65)))
+                       2 * (n - 1) if phrase == 3 else 2 * n)}) == n
+                  for phrase in (3, 4) for n in range(3, 65)))
         check("RAND remains random while JUMP is set",
-              all(pitch_jump(s, 11, 4, 127) == phrase_rank(s, 11, 4)
+              all(pitch_jump(s, 11, 0, 127) == phrase_rank(s, 11, 0)
                   for s in range(128)))
         legacy = bytes(value for track in range(16)
                        for value in (track, track + 1, track + 2, 127,
-                                     track + 3, track + 4, track + 5, 0))
+                                     track % 5, track + 4, track + 5, 0))
         migrated = migrate_v9_tonal(legacy)
-        check("v9 migration clears legacy RANG for all 16 tracks and preserves other fields",
+        check("v9 migration clears legacy RANG, rotates PHRS, and preserves other fields",
               len(migrated) == 128
               and all(migrated[t * 8 + 3] == 0
+                      and migrated[t * 8 + 4] == (legacy[t * 8 + 4] + 1) % 5
                       and migrated[t * 8:t * 8 + 3] == legacy[t * 8:t * 8 + 3]
-                      and migrated[t * 8 + 4:t * 8 + 8] == legacy[t * 8 + 4:t * 8 + 8]
+                      and migrated[t * 8 + 5:t * 8 + 8] == legacy[t * 8 + 5:t * 8 + 8]
+                      for t in range(16)))
+        v10 = bytes(value for track in range(16)
+                    for value in (track, track + 1, track + 2, track + 3,
+                                  track % 5, track + 5, track + 6, 0))
+        migrated_v10 = migrate_v10_phrases(v10)
+        check("v10 migration rotates all PHRS values and preserves other settings",
+              len(migrated_v10) == 128
+              and all(migrated_v10[t * 8 + 4] == (v10[t * 8 + 4] + 1) % 5
+                      and migrated_v10[t * 8:t * 8 + 4] == v10[t * 8:t * 8 + 4]
+                      and migrated_v10[t * 8 + 5:t * 8 + 8] == v10[t * 8 + 5:t * 8 + 8]
                       for t in range(16)))
         check("ALT and TRI have distinct repeating contours",
               alt == [0, 1, 2, 3, 4, 3, 2, 1, 0]
@@ -286,13 +309,20 @@ def main() -> int:
     check("audio pitch ignores MIDI-only harmony and mode settings",
           "ef_tone_harm" not in ptch
           and "ef_tone_mode" not in block(src, "ef_pitch_rank:", "ef_snap_note:"))
-    check("tonal settings persist per audio and MIDI track with v10 migration",
+    check("tonal settings persist per audio and MIDI track with v11 PHRS migration",
           "EF_TONE_B, 16*EF_TONE_REC" in src
-          and "EF_VER,    10" in src and "ef_tone_addr:" in src
+          and "EF_VER,    11" in src and "ef_tone_addr:" in src
           and "addil   #8,%d0" in block(src, "ef_tone_addr:", "ef_tone_save:")
           and "el_v8:" in src and "TON_STYLE" in block(src, "el_v8:", "el_v7:")
           and "el_v9:" in src and "clrb    %a0@(TON_JUMP)" in block(src, "el_v9:", "el_v8:")
-          and "moveq   #15,%d0" in block(src, "el_v9:", "el_v8:"))
+          and "bsr.w   ef_tone_phrase_v10_to_v11" in block(src, "el_v9:", "el_v10:")
+          and "el_v10:" in src
+          and "bsr.w   ef_tone_phrase_v10_to_v11" in block(src, "el_v10:", "el_v8:")
+          and "moveq   #15,%d0" in block(src, "ef_tone_phrase_v10_to_v11:", "ef_store_slot:"))
+    check("RAND is the first PHRS option and the default value",
+          ".long P_RAND,P_UP,P_DOWN,P_ALT,P_TRI" in src
+          and "clrb    %a0@(TON_PHRASE)" in block(src, "ef_tone_defaults:", "ef_tone_phrase_v10_to_v11:")
+          and "ef_tone_phrase:.long 0" in src)
     check("32-bit working values save their low byte to the tonal record",
           all(f"movel   ef_tone_{field},%d1" in save
               for field in ("scale", "root", "mode", "jump", "phrase", "harm", "style")))

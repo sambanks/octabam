@@ -80,14 +80,21 @@ def main() -> int:
                 rows = p.link.lcd_rows()
                 return sum(rows[y][x] for y in range(32, 39) for x in range(50, 67))
 
-            p.proc.command("knob 0x33 4", "ok")
+            default_phrase_pixels = phrase_pixels()
+            check("new audio settings default to first PHRS option RAND",
+                  p.long(phrase_value) == 0 and default_phrase_pixels > 0,
+                  f"phrase={p.long(phrase_value)} pixels={default_phrase_pixels}")
+            p.proc.command("knob 0x33 1", "ok")
             p.run(250)
-            pixels = phrase_pixels()
-            check("PHRS RAND stays visible on screen",
-                  p.long(phrase_value) == 4 and pixels > 0,
-                  f"phrase={p.long(phrase_value)} pixels={pixels}")
-            p.proc.command("knob 0x33 -4", "ok")
+            up_pixels = phrase_pixels()
+            check("PHRS next option after RAND is UP",
+                  p.long(phrase_value) == 1 and up_pixels > 0
+                  and up_pixels != default_phrase_pixels,
+                  f"phrase={p.long(phrase_value)} pixels={up_pixels}")
+            p.proc.command("knob 0x33 -1", "ok")
             p.run(250)
+            check("PHRS returns to RAND at its first value",
+                  p.long(phrase_value) == 0)
             p.proc.command("knob 0x34 127", "ok")
             p.run(250)
             check("audio E JUMP reaches 127",

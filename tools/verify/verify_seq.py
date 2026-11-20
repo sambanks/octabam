@@ -207,9 +207,11 @@ def check_ui(src: str) -> None:
           and "X_TITLE" in _block(src, "ef_draw:", "d9:")
           and "ef_text" in _block(src, "ef_draw:", "d9:"))
     check("no ROTATION string", "ROTATION" not in src)
-    check("RAND is the PHRS random value; no RAND VEL/PTCH labels",
+    check("RAND is first in PHRS and is the default value",
           'P_RAND:   .asciz "RAND"' in src
-          and "RAND VEL" not in src and "RAND PTCH" not in src)
+          and ".long P_RAND,P_UP,P_DOWN,P_ALT,P_TRI" in src
+          and "RAND VEL" not in src and "RAND PTCH" not in src
+          and "clrb    %a0@(TON_PHRASE)" in _block(src, "ef_tone_defaults:", "ef_tone_phrase_v10_to_v11:"))
     check("audio and MIDI Harmony expose E=JUMP",
           'L_JUMP:   .asciz "JUMP"' in src
           and "cmpi.l  #4,%d3" in _block(src, "ef_tonal_draw_cell:", "ef_tonal_nudge:")
@@ -335,12 +337,12 @@ def check_ui(src: str) -> None:
           re.search(r"\.set\s+SLOT_B,\s*28\b", src) is not None)
     check("ef_bank has 8 slots",
           re.search(r"ef_bank:\s*\n\s*\.rept\s+8\b", src) is not None)
-    check("per-DEST depth + audio/MIDI PLOCK recipes and tonal state in euclid.work v10",
+    check("per-DEST depth + audio/MIDI PLOCK recipes and tonal state in euclid.work v11",
           "ef_dep_mem:" in src and "ef_dep_load:" in src and "ef_dep_save:" in src
           and "ef_plk_mem:" in src and "ef_plk_load:" in src and "ef_plk_save:" in src
           and "ef_lane_mem:" in src and "ef_lane_load:" in src and "ef_lane_save:" in src
           and "ef_plk_expand_v3:" in src
-          and re.search(r"\.set\s+EF_VER,\s*10\b", src) is not None
+          and re.search(r"\.set\s+EF_VER,\s*11\b", src) is not None
           and "EF_FILE_V4" in src and "el_v4:" in src
           and "EF_FILE_V5" in src and "el_v5:" in src
           and "ef_midi_bank" in src and "ef_midi_dep_mem" in src

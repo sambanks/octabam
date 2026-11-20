@@ -2,7 +2,8 @@
 
 Hold [TRACK] and press [PAGE] to open it. The rhythm page has A=PULS,
 B=ROT, C=LANE, D=page and parameter, E=DPTH, and empty F. The Harmony page
-has A=SCAL, B=ROOT, D=PHRS, and E=JUMP on audio and MIDI tracks. MIDI also
+has A=SCAL, B=ROOT, D=PHRS, and E=JUMP on audio and MIDI tracks. PHRS starts
+at RAND, then UP, DOWN, ALT and TRI. MIDI also
 has C=VOIC and F=CHRD. Fresh audio settings select SRC PTCH; MIDI settings
 select NOTE. [LEFT] and [RIGHT] switch pages without hiding the step grid.
 
@@ -70,6 +71,7 @@ MODULE = Module(
     ),
     doc="TRACK+PAGE opens SEQ for audio and MIDI: A=PULS B=ROT C=LANE, "
         "D=page/parameter E=DPTH; Harmony A=SCAL B=ROOT D=PHRS E=JUMP. "
+        "PHRS defaults to RAND, then UP/DOWN/ALT/TRI. "
         "MIDI adds C=VOIC and F=CHRD. Fresh audio DEST is SRC PTCH; MIDI "
         "DEST is NOTE. TRIG writes track trigs and selected DEST locks; "
         "PLCK rewrites only that DEST. CUE randomizes hit positions; PHRS "
