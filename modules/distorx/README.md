@@ -127,6 +127,18 @@ the pedal): its slow, subsonic relaxation reaches the output through the
 
 ## Measured
 
+- **19 Nov 2026, the constants pass** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
+  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
+  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
+  after each commit; 58 renders). Cycles a sample from
+  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
+  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
+  section 1): RAT at its minimum 375.9 → 375.4, SD-1 285.9 → 285.4. Words
+  1,114 → 1,099 (`dsp_asm` at P:$800). Not measured on the unit. Fifteen
+  constants in `distorx.tmpl.asm` load as one-word short immediates;
+  `distorx.asm` is `generate_asm.py`'s output from it (`--check` passes).
+
 ✅ in a standalone DSP56300 harness (the vendored emulator with
 `tools/patches/dsp56300.patch`, garbage in every register and in the whole
 r7 block before init, fresh garbage in the scratch registers before every
