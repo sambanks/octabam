@@ -5,7 +5,7 @@
 <text class="title" x="550.0" y="38" text-anchor="middle">PHRS RAND · 64 hits</text>
 <text class="t" x="550" y="67" text-anchor="middle">MIDI · C major · ROOT C · Part NOTE C3 · DPTH 32</text>
 <text class="sm" x="550" y="90" text-anchor="middle">15 in-scale pitches from C2 to C4. Each dot is one generated hit.</text>
-<text class="sm" x="550" y="111" text-anchor="middle">Three rolls at equal depth. JUMP controls stride; RAND ignores JUMP.</text>
+<text class="sm" x="550" y="111" text-anchor="middle">Three seeded RAND examples at equal depth; JUMP has no effect.</text>
 <text class="t" x="230.0" y="132">JUMP 0 · JUMP ignored; one seeded illustration</text>
 <text class="pitch" x="221" y="154.0" text-anchor="end">C4</text>
 <line x1="230.0" y1="145.0" x2="1062.0" y2="145.0" stroke="#bbb" stroke-width="0.6"/>
@@ -513,5 +513,5 @@
 <circle cx="1029.5" cy="707.0" r="4" fill="#111"/>
 <circle cx="1042.5" cy="683.0" r="4" fill="#111"/>
 <circle cx="1055.5" cy="623.0" r="4" fill="#111"/>
-<text class="xs" x="550" y="832" text-anchor="middle">64 successive hits · Open the PDF for all PHRS modes.</text>
+<text class="xs" x="550" y="832" text-anchor="middle">64 successive hits · JUMP does not change RAND.</text>
 </svg>

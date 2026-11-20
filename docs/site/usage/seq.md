@@ -1,3 +1,5 @@
+![SEQ Rhythm page on an audio track.](../../img/seq/panel.png)
+
 Use **SEQ** to fill an audio or MIDI track's pattern with a Euclidean
 rhythm, add parameter locks on their own rhythms, and generate melodies or
 MIDI chords. On **TRIG**, a fill writes sample or note trigs and the
@@ -81,6 +83,8 @@ The step grid and **LEN** stay visible on both pages.
 
 ### Rhythm
 
+![SEQ Rhythm page on an audio track.](../../img/seq/panel.png)
+
 | Knob | Label | Role |
 |---|---|---|
 | **A** | **PULS** | Hit count of the focused lane |
@@ -90,7 +94,7 @@ The step grid and **LEN** stay visible on both pages.
 | **E** | **DPTH** | Set lock variation. At 0, the fill clears this destination's locks. **AMP** / **VOL** varies only below the Part value; audio **PTCH** and MIDI **NOTE** use DPTH for their pitch span. Other destinations vary above and below their Part values. |
 | **F** | | Empty |
 
-**LEN** shows the active length.
+**LEN** shows the active pattern length.
 
 Tap **`[CUE]`** and release without **`[TRACK]`** to keep the **PULS** hit
 count and choose its steps randomly on the focused lane. Changing **PULS**
@@ -109,10 +113,11 @@ chooses RAND, UP, DOWN, ALT or TRI for the generated pitches. New tracks
 start at RAND. **E** **JUMP**
 sets the spacing between successive phrase positions from 0 to 127: 0
 advances by one scale position; higher values skip farther. UP and DOWN
-start at the Part pitch and move in the selected direction. At either end
-of the **DPTH** span, the phrase wraps to the other end. Sample playback
-pitch locks use whole-semitone steps. At **DPTH** 127, sample playback spans
-up to 12 semitones in either direction; synth and CX pitch span up to 24.
+start at the Part pitch and move in the selected direction, wrapping within
+the **DPTH** pitch span. ALT and TRI traverse that span from its lowest
+pitch. Sample playback pitch locks use whole-semitone steps. At **DPTH**
+127, sample playback spans up to 12 semitones in either direction; synth
+and CX pitch span up to 24.
 
 On audio tracks, **C** and **F** are blank.
 
@@ -122,38 +127,41 @@ On audio tracks, **C** and **F** are blank.
 
 On MIDI tracks, **A** **SCAL** chooses MAJ, MIN, PENT, DOR, PHR, MIX,
 WHOL or CHRO. **B** **ROOT** chooses C through B. **C** **VOIC** chooses
-one to four notes. **D** **PHRS** chooses RAND, UP, DOWN, ALT or TRI. New
-tracks start at RAND. **E**
-**JUMP** ranges from 0 to 127 and sets spacing between successive phrase
-positions: 0 advances one scale position, and higher values skip farther.
-UP and DOWN start at the Part's **NOTE** and move in the selected direction.
-At either end of the **DPTH** span, the phrase wraps to the other end.
-**F** **CHRD** chooses a chord shape and inversion.
+one to four notes. For **NOTE** fills, **D** **PHRS** chooses RAND, UP,
+DOWN, ALT or TRI. New tracks start at RAND. **E** **JUMP** ranges from 0 to
+127 and sets spacing between successive phrase positions: 0 advances one
+scale position, and higher values skip farther. UP and DOWN start at the
+Part's **NOTE** and wrap through the in-scale notes inside the **DPTH** span.
+ALT and TRI traverse those notes from the low end. **F** **CHRD** chooses a
+chord shape and inversion. **JUMP** is not used for MIDI ARP destinations.
 
 **PHRS** sets the pitch order on audio and MIDI tracks:
 
 | **PHRS** | Pitch order |
 |---|---|
 | **RAND** | Choose a new in-scale pitch on each hit. This is the default. **JUMP** does not affect RAND. Filling again rerolls the pitches without changing the controls. |
-| **UP** | Start at the Part pitch and move upward through the in-scale pitches. Wrap at the top of the **DPTH** span. |
-| **DOWN** | Start at the Part pitch and move downward through the in-scale pitches. Wrap at the bottom of the **DPTH** span. |
+| **UP** | Start at the Part pitch and move upward through the in-scale pitches. Wrap to the bottom of the **DPTH** span. |
+| **DOWN** | Start at the Part pitch and move downward through the in-scale pitches. Wrap to the top of the **DPTH** span. |
 | **ALT** | Rise from the lowest pitch to the highest, then descend without repeating the peak. |
 | **TRI** | Rise from the lowest pitch, repeat the highest pitch once, then descend. |
 
-**DPTH** sets the pitch span around the Part's **NOTE**. At **DPTH** 127,
-the span reaches up to four octaves in either direction, limited by the
-MIDI note range.
+For MIDI **NOTE** fills, **DPTH** sets the pitch span around the Part's
+**NOTE**. At **DPTH** 127, the span reaches up to four octaves in either
+direction, limited by the MIDI note range. MIDI **ARP** uses its selected
+mode's intervals rather than the melodic **DPTH** span.
 
 #### Phrase types
 
 Each piano roll shows 64 MIDI **NOTE** hits in C major, ROOT C, with Part
-**NOTE** C3 and **DPTH** 32. The pitch range is C2–C4. Each roll compares
-**JUMP** 0, 64 and 127 at the same depth.
+**NOTE** C3 and **DPTH** 32. The pitch range is C2–C4. The **JUMP** 0, 64
+and 127 rolls use identical settings except for **JUMP**. RAND uses one
+seeded illustrative sequence at all three values because **JUMP** does not
+affect RAND.
 
 ##### RAND
 
 RAND chooses a fresh in-scale pitch for each hit. **JUMP** does not affect
-RAND, so the same illustrative roll appears at all three values.
+RAND, so the same seeded illustrative roll appears at all three values.
 
 ![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.svg)
 

@@ -109,7 +109,15 @@ def _author(m) -> str:
 def _records(m) -> dict:
     path = OUT.parent / "screenshots.json"
     records = json.loads(path.read_text()) if path.exists() else {}
-    return records.get(m.name, {})
+    return {key: record for key, record in records.get(m.name, {}).items()
+            if isinstance(record, dict) and "image" in record}
+
+
+def _preferred_hero(m) -> str | None:
+    path = OUT.parent / "screenshots.json"
+    records = json.loads(path.read_text()) if path.exists() else {}
+    key = records.get(m.name, {}).get("_hero")
+    return key if isinstance(key, str) else None
 
 
 def _page_records(m) -> dict:
@@ -133,14 +141,24 @@ def _figure(record: dict) -> list[str]:
 
 
 def _hero_key(m) -> str | None:
-    """The screenshot shown under the title: `main` where captured, else the first."""
+    """The preferred hero, else `main` or the first unplaced screenshot."""
+    records = _records(m)
+    preferred = _preferred_hero(m)
+    if preferred in records:
+        return preferred
     recs = _page_records(m)
     return "main" if "main" in recs else next(iter(recs), None)
 
 
 def hero(m) -> list[str]:
     key = _hero_key(m)
-    return _figure(_page_records(m)[key]) if key else []
+    if key:
+        fragment = OUT.parent / "usage" / f"{m.name}.md"
+        if fragment.is_file():
+            first = re.search(r"!\[[^\]]*\]\(\.\./\.\./img/([^\s)]+)\)", fragment.read_text())
+            if first and first.group(1) == _records(m)[key]["image"]:
+                return []
+    return _figure(_records(m)[key]) if key else []
 
 
 def screen_reference(m) -> list[str]:
