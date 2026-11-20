@@ -84,7 +84,7 @@ The step grid and **LEN** stay visible on both pages.
 | **B** | **ROT** | Rotation of the focused lane |
 | **C** | **LANE** | **TRIG** or **PLCK** |
 | **D** | Page and parameter | Choose the lock destination. Audio choices include **AMP** / **VOL**, **SRC** / **PTCH**, and CX OSC controls. MIDI choices include **NOTE**, **VEL**, **LEN**, LFO and ARP parameters, pitch bend, channel pressure, and **CC1** through **CC10**. |
-| **E** | **DPTH** | Set lock variation. At 0, the fill clears this destination's locks. **AMP** / **VOL** varies only below the Part value; audio **PTCH** and MIDI **NOTE** follow Harmony. Other destinations vary above and below their Part values. |
+| **E** | **DPTH** | Set lock variation. At 0, the fill clears this destination's locks. **AMP** / **VOL** varies only below the Part value; audio **PTCH** and MIDI **NOTE** use DPTH for their pitch span. Other destinations vary above and below their Part values. |
 | **F** | | Empty |
 
 **LEN** shows the active **pattern** length.
@@ -97,25 +97,41 @@ returns to the Euclidean pattern.
 
 #### Audio tracks
 
-![SEQ Harmony on an audio track.](../../img/seq/tonal.png)
-
 On audio tracks, Harmony controls the **SRC** / **PTCH** destination.
-**SCAL** and **ROOT** set the scale for generated pitch locks. **RANG**
-sets their pitch span around the Part's **PLAYBACK PTCH**. At **RANG** 0,
-fills use the Part pitch.
+**SCAL** and **ROOT** set the scale for generated pitch locks. **DPTH**
+sets their pitch span around the Part's **PLAYBACK PTCH**. **D** **PHRS**
+chooses UP, DOWN, ALT, TRI or RAND for the generated pitches. **E** **JUMP**
+sets the spacing between successive phrase positions: 0 advances by one
+scale position; higher values skip farther between positions. UP and DOWN
+start at the Part pitch and move in the selected direction. At either end
+of the **DPTH** span, the phrase wraps to the other end. Sample playback
+pitch locks use whole-semitone steps.
 
-On audio tracks, **C** and **F** are blank. **PHRS** does not affect audio
-PTCH fills.
+On audio tracks, **C** and **F** are blank.
 
 #### MIDI tracks
 
-![SEQ Harmony on a MIDI track.](../../img/seq/midi-tonal.png)
-
 On MIDI tracks, **A** **SCAL** chooses MAJ, MIN, PENT, DOR, PHR, MIX,
 WHOL or CHRO. **B** **ROOT** chooses C through B. **C** **VOIC** chooses
-one to four notes. **D** **RANG** sets the pitch span around the Part's
-**NOTE**. **E** **PHRS** chooses UP, DOWN, ALT, TRI or WAVE. **F** **CHRD**
-chooses a chord shape and inversion.
+one to four notes. **D** **PHRS** chooses UP, DOWN, ALT, TRI or RAND. **E**
+**JUMP** ranges from 0 to 127 and sets spacing between successive phrase
+positions: 0 advances one scale position, and higher values skip farther.
+UP and DOWN start at the Part's **NOTE** and move in the selected direction.
+At either end of the **DPTH** span, the phrase wraps to the other end.
+**F** **CHRD** chooses a chord shape and inversion.
+
+**PHRS** sets the pitch order on audio and MIDI tracks:
+
+| **PHRS** | Pitch order |
+|---|---|
+| **UP** | Start at the Part pitch and move upward through the in-scale pitches. Wrap at the top of the **DPTH** span. |
+| **DOWN** | Start at the Part pitch and move downward through the in-scale pitches. Wrap at the bottom of the **DPTH** span. |
+| **ALT** | Move up and down through the span in alternating directions. |
+| **TRI** | Repeat a short up-and-down pitch contour. |
+| **RAND** | Choose a new in-scale pitch on each hit. **JUMP** does not affect RAND. Filling again rerolls the pitches without changing the controls. |
+
+**DPTH** sets the pitch span around the Part's **NOTE**. At **DPTH** 127,
+the span reaches four octaves in either direction.
 
 SEQ's **SCAL** and **ROOT** are independent of the PROJECT SCALE
 QUANTIZER on both audio and MIDI tracks.
@@ -243,8 +259,8 @@ Set the MIDI track's output channel in **NOTE SETUP**, opened with
 **`[FUNC]`** + **`[SRC]`** or a double-tap of **`[SRC]`**. Set the Part's
 **NOTE** to C3. In SEQ, select **TRIG**, choose **NOTE** with **D**, and set
 **PULS** and a non-zero **DPTH**. Press **`[RIGHT]`**, choose MAJ for
-**SCAL**, C for **ROOT**, set **RANG** to 0, **VOIC** to 3 and **CHRD** to
-MAJ0. Press **`[YES]`** to write C3, E3 and G3 on each hit.
+**SCAL**, C for **ROOT**, set **VOIC** to 3 and **CHRD** to MAJ0. Press
+**`[YES]`** to write C3, E3 and G3 on each hit.
 
 Set **VOIC** to 1 and fill again to write single notes and clear unused
 extra-voice locks. USB MIDI output is available when the remix includes

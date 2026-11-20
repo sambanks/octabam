@@ -13,9 +13,9 @@ select **PTCH** on audio or **NOTE** on MIDI to show **` 1>`** and enable
 **`[RIGHT]`**; other destinations hide the hint and keep the page on Rhythm.
 Harmony shows **`<2 `**. The step grid stays visible. Rhythm has A=PULS B=ROT
 C=LANE / D=DEST E=DPTH; **F** is empty. Harmony has A=SCAL B=ROOT /
-D=RANG E=PHRS.
-MIDI C is VOIC 1-4 and F is CHRD. Audio C and F are empty and inactive. The
-page hint sits at the top-right of the SEQ logo panel.
+D=PHRS E=JUMP on audio and MIDI. MIDI C=VOIC 1-4 and F=CHRD; audio C and
+F are empty and inactive. The page hint sits at the top-right of the SEQ
+logo panel.
 Audio pitch availability follows the resolved parameter name: FLEX PTCH
 opens Harmony, while THRU INAB stays on Rhythm without the RIGHT hint.
 `verify_seq_tonal_port.py` checks both machines through the panel.
@@ -84,10 +84,11 @@ PLOCK PULSE/ROT are remembered **per DEST** on that track. D/E stay live
 even when LANE is TRIG (no auto-focus switch). Slots + DEST tables live in
 DRAM and in `euclid.work` (audio recipes, per-DEST depth/plock + LANE,
 separate MIDI-track recipes and per-flat depths, and per-track tonal
-settings; STORE client, `EF_VER` 8) on SAVE PROJECT / bank write. Older files
+settings; STORE client, `EF_VER` 10) on SAVE PROJECT / bank write. Older files
 migrate with default tonal settings. **Pattern length**
 The bottom right shows the pattern length as `LEN n`. Defaults: TRIG PULSE 5,
-DEST = AMP VOL, ROT/DEPTH/PLOCK PULSE 0, LANE = TRIG.
+DEST = SRC PTCH on audio and NOTE on MIDI, ROT/DPTH/PLOCK PULSE 0,
+LANE = TRIG.
 
 Write-only: open / track switch load bank SEQ params only — the grid never
 mirrors live sample trigs. YES overwrites from PULSE/ROT (or a CUE mask).
@@ -106,8 +107,8 @@ only; writing the pattern is a separate YES.
 **DEPTH** (0..127): at 0, YES clears that DEST's locks for the path in
 use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
-- **DEST = PTCH:** RANG 0 uses the Part PLAYBACK PTCH. Above zero, SEQ picks
-  pitches inside RANG around the Part value using SCAL and ROOT. Silent / PLCK misses fall back to Part.
+- **DEST = PTCH:** DPTH sets pitch variation around the Part PLAYBACK PTCH.
+  SEQ chooses pitches from SCAL and ROOT. Silent / PLCK misses fall back to Part.
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
 - **Any other DEST:** uniform `[Part−DEPTH .. Part+DEPTH]` clamped 0..127.
 
@@ -160,10 +161,18 @@ Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md).
 ## MIDI tracks
 
 The tonal page applies to audio and MIDI tracks. **SCAL** selects MAJ, MIN,
-PENT, DOR, PHR, MIX, WHOL or CHRO; **ROOT** selects C through B. Audio C and F are empty and inactive. On MIDI, **VOIC** selects one to four notes and **CHRD**
-selects one of the FM SYNTH chord types and its inversion. **RANG** controls
-the pitch radius around the Part value, from unison to four octaves, and
-**PHRS** selects UP, DOWN, ALT, TRI or WAVE. MIDI **VOIC** 1 writes one note. Higher values add
+PENT, DOR, PHR, MIX, WHOL or CHRO; **ROOT** selects C through B. **JUMP** is
+available on both audio and MIDI. It sets the spacing between successive
+phrase positions: 0 advances one scale position, and higher values skip
+farther (range 0..127). UP and DOWN start at the Part pitch and wrap to the
+other end of the **DPTH** span when they reach a boundary. **RAND** chooses a
+new in-scale pitch on each hit; filling again rerolls it without changing the
+controls. Audio C and F are empty and inactive.
+On MIDI, **VOIC** selects one to four notes and
+**CHRD** selects one of the FM SYNTH chord types and its inversion. **DPTH**
+controls the pitch span around the Part value, up to four octaves in either
+direction. **PHRS** selects UP, DOWN, ALT, TRI or RAND. MIDI **VOIC** 1 writes
+one note. Higher values add
 notes from **CHRD**. Filling with **VOIC** 1 clears NOT2, NOT3 and NOT4 on
 hit trigs. The Octatrack MIDI arp can play the generated notes when enabled
 on that track.

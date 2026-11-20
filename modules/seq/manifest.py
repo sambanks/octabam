@@ -1,12 +1,14 @@
 """SEQ -- TRACK + PAGE opens a Euclidean sample-trig + p-lock window.
 
-Hold a track key and press PAGE: title SEQ, LEN gutter, stock 3x2 grid.
+Hold a track key and press PAGE to open SEQ. The title is SEQ, LEN is at
+the bottom right, and the stock 3×2 grid stays beside the 4×16 step grid.
 `[LEFT]` / `[RIGHT]` switches between two knob pages; the step grid stays fixed.
-Page 1 is A=PULSE B=ROT C=LANE / D=DEST E=DEPTH (F empty). Page 2 has
-SEQ-owned SCAL, ROOT, RANG and PHRS, MIDI VOIC 1-4 and CHRD,
-with audio C and F empty. MIDI writes a melody with FM SYNTH chord shapes;
-audio writes a single PTCH line. SEQ keeps its
-scale settings separate from SCALE QUANTIZER. LANE focuses TRIG or
+Page 1 has A=PULS B=ROT C=LANE, D=page and parameter, E=DPTH and empty F.
+Page 2 has A=SCAL B=ROOT D=PHRS E=JUMP on audio and MIDI. MIDI C=VOIC
+1-4 and F=CHRD; audio C and F are empty. MIDI writes notes and optional
+chord voices; audio writes a PTCH line. Audio defaults to SRC PTCH and MIDI
+defaults to NOTE. SEQ keeps its scale settings separate from SCALE QUANTIZER.
+LANE focuses TRIG or
 PLOCK; YES writes sample trigs and DEST locks (write-only - never
 re-reads live trigs). Per-track / per-DEST params in euclid.work (STORE).
 CUE hold is stock; bare CUE release places a random k-subset with density

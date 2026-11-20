@@ -102,28 +102,28 @@
       "caption": "SEQ Rhythm on an audio track.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "c90743df7872a58eb098d10e076b499d132971a95ac9fd7dde5323d5927fb8ba"
+      "firmware_sha256": "6e04adab4fcd85d4b3a68d6c1f534246dcb00cc491bc86391d206d7304bf3647"
     },
     "clear": {
       "image": "seq/clear.png",
       "caption": "SEQ clear menu.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "c90743df7872a58eb098d10e076b499d132971a95ac9fd7dde5323d5927fb8ba"
+      "firmware_sha256": "6e04adab4fcd85d4b3a68d6c1f534246dcb00cc491bc86391d206d7304bf3647"
     },
     "tonal": {
       "image": "seq/tonal.png",
       "caption": "SEQ Harmony on an audio track.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "c90743df7872a58eb098d10e076b499d132971a95ac9fd7dde5323d5927fb8ba"
+      "firmware_sha256": "6e04adab4fcd85d4b3a68d6c1f534246dcb00cc491bc86391d206d7304bf3647"
     },
     "midi-tonal": {
       "image": "seq/midi-tonal.png",
       "caption": "SEQ Harmony on a MIDI track.",
       "remix": "test/seq",
       "source": "emulator panel UART",
-      "firmware_sha256": "c90743df7872a58eb098d10e076b499d132971a95ac9fd7dde5323d5927fb8ba"
+      "firmware_sha256": "6e04adab4fcd85d4b3a68d6c1f534246dcb00cc491bc86391d206d7304bf3647"
     }
   },
   "rec-threshold": {
