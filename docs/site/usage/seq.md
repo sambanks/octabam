@@ -146,22 +146,47 @@ At either end of the **DPTH** span, the phrase wraps to the other end.
 the span reaches up to four octaves in either direction, limited by the
 MIDI note range.
 
-#### 64-hit pitch rolls
+#### Phrase types
 
-These piano rolls show MIDI **NOTE** pitches for 64 consecutive hits. They
-use C major, ROOT C, Part **NOTE** C3 and **DPTH** 32. The in-scale range is
-C2 through C4. Each figure compares **JUMP** 0, 64 and 127 at that same
-depth. The PDF contains all five figures on separate pages.
+Each piano roll shows 64 MIDI **NOTE** hits in C major, ROOT C, with Part
+**NOTE** C3 and **DPTH** 32. The pitch range is C2–C4. Each roll compares
+**JUMP** 0, 64 and 127 at the same depth. The PDF collects all five rolls
+on separate pages.
 
 [Download the five-page pitch examples PDF](../../img/seq/seq-pitch-examples.pdf).
 
+##### RAND
+
+RAND chooses a fresh in-scale pitch for each hit. **JUMP** does not affect
+RAND, so the same illustrative roll appears at all three values.
+
 ![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.svg)
+
+##### UP
+
+UP starts at C3 and climbs through the in-scale pitches. It wraps to the
+bottom of the C2–C4 span; raising **JUMP** skips farther between notes.
 
 ![UP pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-up.svg)
 
+##### DOWN
+
+DOWN starts at C3 and descends through the in-scale pitches. It wraps to the
+top of the span; raising **JUMP** skips farther between notes.
+
 ![DOWN pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-down.svg)
 
+##### ALT
+
+ALT alternates its direction at the edges of the span. Higher **JUMP** makes
+the steps wider while pitches stay within the same C2–C4 range.
+
 ![ALT pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-alt.svg)
+
+##### TRI
+
+TRI repeats a short rising and falling contour. Higher **JUMP** widens its
+intervals without changing the depth range.
 
 ![TRI pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-tri.svg)
 
