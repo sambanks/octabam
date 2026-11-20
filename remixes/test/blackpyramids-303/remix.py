@@ -4,7 +4,7 @@ from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="blackpyramids-303",
-    family="mods", evidence=(Evidence(Level.EMULATOR),),
+    family="mods", evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", image="OCTABAM43", date="2026-11-19"),),
     doc="BLACKPYRAMIDS_303 (BLKPYRAMD, a TB-303 voice as a track machine) with the stock effects, SPRING REV given up.",
     modules=("BLACKPYRAMIDS_303",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
