@@ -3,8 +3,9 @@
 FX1 station: **4 pitched bandpasses** (Torso S-4 RING filterbank idea, not
 a modal / Rings body). Wet is the input through four constant-peak bandpass
 peaks. Per-band **GN** levels sit on page 1; pitches, **SCAL** (gain scale),
-and **LIM** (post-MIX peak limiter) live on FX SETUP. SCAL 8 is the
-conservative starting point; four bands at GN 64 can still overload the sum.
+and **LIM** (post-MIX peak limiter) live on FX SETUP. SCAL 1 is the
+low-gain default; raise it for more output. Four bands at GN 64 can still
+overload the sum at SCAL 8.
 SCAL 127 restores build-TN smash headroom. The filter-bank sum can distort
 before LIM; LIM only controls the post-MIX output peak. Lower SCAL or GN1–GN4
 to avoid pre-limiter distortion.
@@ -29,7 +30,7 @@ The page descriptor is cloned from **DARK REV**.
 | 2 | 7 | PIT2 | 0–127 | band 2 centre |
 | 2 | 8 | PIT3 | 0–127 | band 3 centre |
 | 2 | 9 | PIT4 | 0–127 | band 4 centre |
-| 2 | 10 | SCAL | 0–127 | gain scale; 8=tame, 127≈smash |
+| 2 | 10 | SCAL | 0–127 | gain scale; 1=low-gain default, 127≈smash |
 | 2 | 11 | LIM | 0–127 | peak limiter after MIX; 0 off |
 
 ## Stock 1.40C and a saved Part
