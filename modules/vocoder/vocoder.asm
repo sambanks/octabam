@@ -127,27 +127,27 @@ vc_run:
 ;      P is held to [0, 96 x 2^16): C0 (16.35 Hz, 1/du's Q23 floor) up to just under C8
         move    x:(r6+$0),a             ; NOTE: the step in bits 16 and up
         and     #>$7f0000,a
-        move    #>$3c0000,x0            ; 60, C6
+        move    #$3c,x0                  ; 60, C6 (short immediate: bits 23-16)
         cmp     x0,a
         tgt     x0,a
         move    a1,y1                   ; n
         move    x:(r6+$e),b             ; KEY, slot 10: the knob field of $e
         and     #>$7f0000,b
-        move    #>$0b0000,x0            ; 11, B
+        move    #$0b,x0                  ; 11, B (short immediate: bits 23-16)
         cmp     x0,b
         tgt     x0,b
         move    b1,x0
         add     #>$0c0000,a
         sub     x0,a                    ; d = n + 12 - KEY: 1 .. 72
-        move    #>$300000,x0            ; d mod 12: less 48, 24 and 12 where they go
+        move    #$30,x0                  ; d mod 12: less 48, 24 and 12 where they go (short immediate: bits 23-16)
         move    a,b
         sub     x0,b
         tpl     b,a
-        move    #>$180000,x0
+        move    #$18,x0                  ; (short immediate: bits 23-16)
         move    a,b
         sub     x0,b
         tpl     b,a
-        move    #>$0c0000,x0
+        move    #$0c,x0                  ; (short immediate: bits 23-16)
         move    a,b
         sub     x0,b
         tpl     b,a                     ; the degree above KEY, 0 .. 11
@@ -164,7 +164,7 @@ vc_run:
         asl     #$2,b,b                 ; 12 s
         add     x1,b
         asr     #$10,b,b
-        add     #>$00002e,b             ; + 46, DOWN
+        add     #$00002e,b               ; + 46, DOWN (6-bit immediate)
         move    b1,n4
         move    p:(r4+n4),x0            ; DOWN[s][degree]: 0 .. 2 semitones, x 2^16
         move    y1,a
@@ -177,7 +177,7 @@ vc_run:
         cmp     x0,b
         tgt     x0,b
         asr     #$8,b,b
-        add     #>$00002b,b             ; + 43, RNG
+        add     #$00002b,b               ; + 43, RNG (6-bit immediate)
         move    b1,n4
         move    x:(r6+$1),a             ; BEND: bipolar
         and     #>$7f0000,a
@@ -209,7 +209,7 @@ vc_glide:
         move    #>$000004,x0
         cmp     x0,a
         tgt     x0,a
-        add     #>$000026,a             ; + 38, GLD
+        add     #$000026,a               ; + 38, GLD (6-bit immediate)
         move    a1,n4
         move    n7,y0                   ; the call's frame count
         move    p:(r4+n4),x0            ; K
@@ -282,10 +282,10 @@ vc_long:
         move    #>$2c5ca5,a
         mac     y0,x0,a
         move    a,x0
-        move    #>$400000,a
+        move    #$40,a                   ; (short immediate: bits 23-16)
         mac     y0,x0,a
         move    a,x0                    ; 2^r / 2
-        add     #>$00001e,b             ; + 30, OCT
+        add     #$00001e,b               ; + 30, OCT (6-bit immediate)
         move    b1,n4
         move    p:(r4+n4),y0            ; OCT[o]: the increment of C(o), x 2
         mpy     y0,x0,a
@@ -332,7 +332,7 @@ vc_pdone:
         move    #>$d39f80,a
         mac     y0,x0,a
         move    a,x0
-        move    #>$400000,a
+        move    #$40,a                   ; (short immediate: bits 23-16)
         mac     y0,x0,a
         move    a,y1                    ; A/2
         move    x:(r7+$10),r3           ; the Y slot
@@ -456,9 +456,7 @@ vc_gdone:
         move    a,x:(r7+$2)
         move    x:(r7+$12),r4           ; BAND {W/2, f1, f2}: the synthesis side
         move    x:(r7+$10),r3           ; the analysis f1 A, f2 A, written this block
-        move    r7,b
-        add     #27,b                   ; $1b, band 0
-        move    b1,r5
+        lua     (r7+$1b),r5             ; $1b, band 0
         do      #10,>vc_bend
 ; m, section 1 (f1 A); x1 = q in every section
         move    y:(r3)+,x0              ; f1 A
@@ -469,10 +467,10 @@ vc_gdone:
         macr    -y1,x1,b                ; hp = q m - low - q band
         tfr     y1,a      b,y0
         macr    y0,x0,a                 ; band += f hp
+        move    y:(r3)+,x0              ; f2 A, for section 2 (x0 is free: fills the macr's gap)
         move    a,y0
         mpy     x1,y0,b   a,x:(r5)+     ; section 2's input, q band
 ; m, section 2 (f2 A)
-        move    y:(r3)+,x0              ; f2 A
         move    x:(r5)+,a
         move    x:(r5)-,y1
         macr    x0,y1,a
@@ -480,15 +478,15 @@ vc_gdone:
         macr    -y1,x1,b
         tfr     y1,a      b,y0
         macr    y0,x0,a                 ; the m band
+        move    p:(r4)+,x0              ; W/2, for the envelope (fills the macr's gap)
         abs     a         a,x:(r5)+     ; |m band| (the signed band is stored)
+        move    x:(r7+$14),y1           ; 0.00227, for the envelope (fills abs's gap; y1 is free)
 ; the envelope: e = max((W/2) |m band|, e (1 - 0.00227)), 48 bits
         move    a,y0
-        move    p:(r4)+,x0              ; W/2
         mpy     y0,x0,b                 ; v
         move    x:(r5)+,a               ; e, high word
         move    x:(r5)-,a0              ; e, low word
         move    a1,x0
-        move    x:(r7+$14),y1           ; 0.00227
         mac     -x0,y1,a                ; e (1 - 0.00227)
         cmp     b,a
         tlt     b,a                     ; below v -> v (the instant attack)
@@ -505,10 +503,10 @@ vc_gdone:
         macr    -y1,x1,b
         tfr     y1,a      b,y0
         macr    y0,x0,a
+        move    p:(r4)+,x0              ; f2, for section 2 (fills the macr's gap)
         move    a,y0
         mpy     x1,y0,b   a,x:(r5)+
 ; c, section 2 (f2)
-        move    p:(r4)+,x0              ; f2
         move    x:(r5)+,a
         move    x:(r5)-,y1
         macr    x0,y1,a
@@ -516,22 +514,20 @@ vc_gdone:
         macr    -y1,x1,b
         tfr     y1,a      b,y0
         macr    y0,x0,a                 ; the c band
+        move    x:(r7+$17),x0           ; e, for the VCA (fills the macr's gap)
         move    a,x:(r5)+               ; (r5 -> the next band)
 ; the VCA: the band sum += e (c band), rounded to 24 bits (about 62 dB under
 ; the vocoded signal, README and DESIGN; two moves a band fewer than 48)
         move    a,y0
-        move    x:(r7+$17),x0           ; e
         move    x:(r7+$2),b
         macr    y0,x0,b
         move    b,x:(r7+$2)
 vc_bend:
 ; ---- hp6: m/2 through three high-pass sections at 4 kHz, states walked by r5 -------------
+        lua     (r7+$6),r5              ; $06 (first: its wait overlaps the next three)
         move    x:(r7+$4),b
         asr     #$1,b,b                 ; m/2
         move    #>$47f6e6,x0            ; f, 4 kHz
-        move    r7,a
-        add     #6,a
-        move    a1,r5                   ; $06
         move    x:(r5)+,a               ; section 1: low
         move    x:(r5)-,y1              ; band
         macr    x0,y1,a
