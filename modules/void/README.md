@@ -7,7 +7,7 @@ harvested **PLATE REV** words.
 
 Grit: this track’s input blended with white noise (shape with COLR/HPF; WID
 for stereo), amplitude-modulated by an audio-rate LFO or (SETUP **SRC=NBR**)
-the previous track’s keybus envelope. HPF/COLR/DRV/FDBK/AM hit the **noise**
+the previous track’s KEYBUS level. HPF/COLR/DRV/FDBK/AM hit the **noise**
 only; dry is unfiltered. Always wet — no dry/wet MIX.
 
 r7 `$40..$4f` stays reserved for a longer FEED delay later.
@@ -27,11 +27,11 @@ r7 `$40..$4f` stays reserved for a longer FEED delay later.
 | 2 | 8 | WID | 0–127 | mono → stereo grit (2nd noise, same HPF/COLR/DRV) |
 | 2 | 9 | SRC | LFO / NBR | AM source (NBR = previous track keybus) |
 
-**SRC=NBR:** noise opens from the previous track’s SC keybus level and stops
+**SRC=NBR:** noise opens from the previous track’s KEYBUS level and stops
 when that goes quiet (no LFO free-run). Default **SRC=LFO** keeps RATE/SHPE
 on any track. On **track 1**, abs track and FX2 position are both 0, so NBR
-reads `Y:$800` — T1’s own keybus lane (it follows itself). Tracks 2–8 read
-the previous track. AM and DRV/FDBK hit **noise only**:
+reads `X:$37f60`, KEYBUS’s word for T1. Tracks 2–8 read the previous track.
+AM and DRV/FDBK hit **noise only**:
 `wet = (1−BAL)·dry + BAL·noise''`. BAL=0 is always exact dry; BAL=127 =
 AM’d noise. SETUP **WID**: 0 = mono; >0 = second white → same HPF/COLR/DRV
 (no FDBK) → same AM; `L/R = mid ± (w/2)·side` (mono sum keeps mid/LFO).
