@@ -81,8 +81,6 @@ The step grid and **LEN** stay visible on both pages.
 
 ### Rhythm
 
-![SEQ Rhythm page on an audio track.](../../img/seq/panel.png)
-
 | Knob | Label | Role |
 |---|---|---|
 | **A** | **PULS** | Hit count of the focused lane |
@@ -139,8 +137,8 @@ At either end of the **DPTH** span, the phrase wraps to the other end.
 | **RAND** | Choose a new in-scale pitch on each hit. This is the default. **JUMP** does not affect RAND. Filling again rerolls the pitches without changing the controls. |
 | **UP** | Start at the Part pitch and move upward through the in-scale pitches. Wrap at the top of the **DPTH** span. |
 | **DOWN** | Start at the Part pitch and move downward through the in-scale pitches. Wrap at the bottom of the **DPTH** span. |
-| **ALT** | Move up and down through the span in alternating directions. |
-| **TRI** | Repeat a short up-and-down pitch contour. |
+| **ALT** | Rise from the lowest pitch to the highest, then descend without repeating the peak. |
+| **TRI** | Rise from the lowest pitch, repeat the highest pitch once, then descend. |
 
 **DPTH** sets the pitch span around the Part's **NOTE**. At **DPTH** 127,
 the span reaches up to four octaves in either direction, limited by the
@@ -244,6 +242,8 @@ Empty **trigless trigs** drop when nothing else remains on the step.
 
 Use the menu to clear existing locks or trigs without writing a new fill.
 
+![SEQ clear menu.](../../img/seq/clear.png)
+
 While SEQ is open, press **`[FUNC]`** + **`[BANK]`** to open the clear
 menu. Choose a row and press **`[YES]`** once. That row clears and resets
 immediately; no second SEQ **`[YES]`** is needed. SEQ returns afterward.
@@ -252,7 +252,7 @@ immediately; no second SEQ **`[YES]`** is needed. SEQ returns afterward.
 |---|---|
 | **CLEAR DEST** | Clear the selected destination's locks. Reset its **DPTH**, PLCK **PULS** / **ROT**, and random step selection; keep track trigs. |
 | **CLEAR ALL DEST** | Clear every SEQ destination's locks on this track. Reset each destination's **DPTH**, PLCK **PULS** / **ROT**, and random step selection; keep track trigs. |
-| **CLEAR ALL+TRIGS** | Clear all destinations and their settings, plus audio sample trigs or MIDI note trigs. Reset TRIG **PULS** to 5 and **ROT** to 0. |
+| **CLEAR ALL+TRIGS** | Clear all destination locks and reset their **DPTH** / PLCK settings, plus audio sample trigs or MIDI note trigs. Reset TRIG **PULS** to 5 and **ROT** to 0. |
 
 These clears affect only the selected track within the current pattern
 length. Other tracks and patterns keep their data.
