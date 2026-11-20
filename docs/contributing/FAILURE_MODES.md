@@ -1151,6 +1151,18 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
   - **Inferred, not measured:** the Part change takes effect at START, so DARK REV's inits (four on core B, about 800 instructions each in the
     stock init) land in the START frames, on top of the held late frame; PLATE REV and SPRING REV have smaller inits (0 of 3 stalls).
     The log records ColdFire frame durations, not the DSP's.
+- **DARK REV on only some tracks (20 Nov 2026; the shipped image, the same 573 s replay, a project whose layout 14 is built with
+  `OT_DARK_ONLY=<tracks>` in `ot_matrix.layouts`; the live FX2 ids at the end of each run confirm the subset):**
+
+  | DARK REV on | FX2 ids at the end | stalled / runs |
+  |---|---|---|
+  | T5 to T8 (core A) | `00 00 00 00 16 16 16 16` | 0 / 2 |
+  | T1 to T4 (core B) | `16 16 16 16 00 00 00 00` | 1 / 2 |
+  | all 8 tracks (the standard project) | `16` on all | 5 / 7 (shipped image, all runs so far) |
+
+  Four runs; two more were pending when this was written. It fits the stall being on core B, and is not enough to say so. An earlier
+  pair of runs of this kind used a project whose layout was not changed (the builder runs in a subprocess; the patch did not reach it) and
+  counts as standard runs.
 - **Not tried:** the stock init and proc in separate frames with the registers in cells D2 did not move (`x:$3fe0..$3fe7` are the
   words that hold r0, n0, r6, r7, n7, m0, m1 and `x:$213` across the resumed init; the stock DARK REV init may write there: not read).
 - **Not known:** whether the stall is timing dependent (it stalled in 6 of 9 runs at the same final START, and 0 of 3 runs of other last layouts); whether the guard's resume is involved at all; whether DARK REV on one track
