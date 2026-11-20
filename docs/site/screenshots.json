@@ -97,7 +97,6 @@
     }
   },
   "seq": {
-    "_hero": "panel",
     "panel": {
       "image": "seq/panel.png",
       "caption": "SEQ Rhythm on an audio track.",
