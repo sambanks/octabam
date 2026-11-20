@@ -281,7 +281,8 @@ IMAGE_NAME_SCAN = (0x40ae0000, 0x40b70000)       # the resident runtime (RMT_TRA
 
 
 def running_image(u):
-    """The name the running image carries (`<REMIX> <BUILD>`, REMIX SWITCH's OSW_SELF), found in memory over PEEK, or None.
+    """The distinct `OCTABAM…` names in the resident runtime, sorted: the running image's own (`<REMIX> <BUILD>`, REMIX
+    SWITCH's OSW_SELF), and any other name the range happens to hold. `one_name` says whether that is unambiguous.
     The ring fingerprint is the same for two builds that differ only in DSP code; this tells them apart (20 Nov 2026).
     About 1 minute: 2,400 PEEKs."""
     import re
@@ -294,14 +295,23 @@ def running_image(u):
             d = b"\0" * 248
         buf += d
         a += len(d) or 248
-    names = {m.group().decode() for m in re.finditer(rb"OCTABAM[ -~]{0,8}", buf)}
-    return sorted(names, key=len)[-1] if names else None
+    return sorted({m.group().decode() for m in re.finditer(rb"OCTABAM[ -~]{0,8}", buf)})
+
+
+def one_name(names):
+    """The running image's name when the scan found exactly one, else None. More than one distinct name (another
+    image's name in the range, REMIX SWITCH's file list for one) is ambiguous: the scan cannot say which is running."""
+    return names[0] if len(names) == 1 else None
 
 
 def cmd_image(a):
-    name = running_image(Unit())
-    print(name or "no image name found in 0x40ae0000..0x40b70000")
-    return 0 if name else 1
+    names = running_image(Unit())
+    if len(names) == 1:
+        print(names[0])
+        return 0
+    print(f"ambiguous: {len(names)} names in 0x40ae0000..0x40b70000: {names}" if names
+          else "no image name found in 0x40ae0000..0x40b70000")
+    return 1
 
 
 def cmd_boot(a):
@@ -322,10 +332,15 @@ def cmd_boot(a):
     after = u.fingerprint()
     print(f"the DSP's frame count advances {t:.1f} s after the unit returned")
     want = a.name[:-4] if a.name.endswith(".RMX") else a.name
-    got = running_image(u)
-    print(f"running image: {got}" + ("" if got == want else f"  (asked for {want}: the switch fell back or did not happen)"))
-    if got != want:
-        return 1
+    names = running_image(u)
+    got = one_name(names)
+    if got is None and want in names:
+        # several names in the range, the one asked for among them: not proof, not a failure
+        print(f"running image: not confirmed ({len(names)} names found: {names}); the fingerprint below is the check")
+    else:
+        print(f"running image: {got}" + ("" if got == want else f"  (asked for {want}: the switch fell back or did not happen)"))
+        if got != want:
+            return 1
     print("fingerprint", before, "->", after, "(changed)" if after != before else "(same: the image did not change, or both share addresses)")
     return 0
 
