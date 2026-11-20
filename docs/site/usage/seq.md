@@ -175,15 +175,18 @@ top of the span; raising **JUMP** skips farther between notes.
 
 ##### ALT
 
-ALT alternates its direction at the edges of the span. Higher **JUMP** makes
-the steps wider while pitches stay within the same C2–C4 range.
+ALT starts at the bottom of the pitch set, rises to its highest note once,
+then descends without repeating the peak. At **JUMP** 0, its top notes are
+C4, B3.
 
 ![ALT pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-alt.svg)
 
 ##### TRI
 
-TRI repeats a short rising and falling contour. Higher **JUMP** widens its
-intervals without changing the depth range.
+TRI also starts at the bottom, but repeats the highest note once before
+descending. At **JUMP** 0, its top notes are C4, C4, B3. This single extra
+top hit is the only difference at **JUMP** 0. At **JUMP** 64, ALT uses a
+five-step stride and TRI a seven-step stride, so their rolls diverge more.
 
 ![TRI pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-tri.svg)
 

@@ -978,6 +978,36 @@ def run_scenarios() -> int:
               down_notes == [60, 59, 57, 55, 53, 52, 50, 48, 47, 45, 43, 41, 40, 38, 36, 35]
               and len({a-b for a, b in zip(down_notes, down_notes[1:])}) > 1,
               f"notes={down_notes}")
+        # ALT reflects without repeating the top candidate; TRI repeats it
+        # once. Their distinct cycle lengths also produce different JUMP strides.
+        poke32(port, sym("ef_depth"), 32)
+        poke8(port, midi_dep, 32)
+        phrase_roll_expected = {
+            (3, 0): [48, 50, 52, 53, 55, 57, 59, 60,
+                     62, 64, 65, 67, 69, 71, 72, 71],
+            (4, 0): [48, 50, 52, 53, 55, 57, 59, 60,
+                     62, 64, 65, 67, 69, 71, 72, 72],
+            (3, 64): [48, 57, 65, 71, 62, 53, 52, 60,
+                      69, 67, 59, 50, 55, 64, 72, 64],
+            (4, 64): [48, 60, 72, 62, 50, 57, 69, 65,
+                      53, 53, 65, 69, 57, 50, 62, 72],
+        }
+        phrase_roll_actual = {}
+        for (phrase, jump), expected_notes in phrase_roll_expected.items():
+            poke32(port, local_sym("ef_tone_phrase"), phrase)
+            poke32(port, local_sym("ef_tone_jump"), jump)
+            poke32(port, s.unlocked, 1)
+            poke32(port, s.ask, 0)
+            s.yes()
+            actual_notes = [u8(port, midi_lock_base + step * 32)
+                            for step in range(16)]
+            phrase_roll_actual[(phrase, jump)] = actual_notes
+            check(f"MIDI {'ALT' if phrase == 3 else 'TRI'} roll matches JUMP {jump}",
+                  actual_notes == expected_notes,
+                  f"notes={actual_notes}")
+        check("MIDI ALT and TRI rolls differ at JUMP 0 and JUMP 64",
+              phrase_roll_actual.get((3, 0)) != phrase_roll_actual.get((4, 0))
+              and phrase_roll_actual.get((3, 64)) != phrase_roll_actual.get((4, 64)))
         poke32(port, midi_bank, 3)
         poke32(port, s.pulses, 3)
         poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
