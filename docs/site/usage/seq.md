@@ -150,10 +150,7 @@ MIDI note range.
 
 Each piano roll shows 64 MIDI **NOTE** hits in C major, ROOT C, with Part
 **NOTE** C3 and **DPTH** 32. The pitch range is C2–C4. Each roll compares
-**JUMP** 0, 64 and 127 at the same depth. The PDF collects all five rolls
-on separate pages.
-
-[Download the five-page pitch examples PDF](../../img/seq/seq-pitch-examples.pdf).
+**JUMP** 0, 64 and 127 at the same depth.
 
 ##### RAND
 
