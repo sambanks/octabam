@@ -1139,6 +1139,18 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
   and the DSP count fixed between 1,617,916 and 1,618,632. **Retracted:** an earlier version of this entry said D1 (no resume) stopped the
   stall after 2 clean runs; the third run stalled, so D1 does not remove it. The 28 Oct clobber of the guard's cells is not the cause (D2).
   With these counts a build that lowers the rate cannot be told from one that does not.
+- **Frame log at two stalls (`OCTABAM F1` = `octabam` with `tools/hw/framelog.patch`, 20 Nov 2026; it keeps REMIX SWITCH, so COMMAND 3 boots it).**
+  The log holds the last 22 frame interrupts, frozen after a frame of 440 us or more. Both stalls gave the same shape: two frames of about 505 us
+  (505 and 506 us; 505 and 506 us), 20.06 s apart, which are the replay's two STARTs (552.839 s and 572.915 s). After each, the next
+  entry came 553 us later (190 us late, FRAME GUARD's hold, flag `G`), then 535 or 536 us. After the first START (layout 22 live, MODULATION)
+  the frames then ran at 362 to 363 us and the run went on. After the second (DARK REV just picked) the next gap was 726 us (one frame
+  skipped), then 362 and 364 us, and the log ends 5 or 6 frames after the START frame with the DSP count frozen. The frame-interrupt count
+  and DLPUMP's pump-call count equal each other and stop with the DSP's.
+  - **Corrected:** an earlier line here said the ColdFire frame interrupt kept running during the stall; the interrupt is driven by the DSP
+    and its counters stop with it.
+  - **Inferred, not measured:** the Part change takes effect at START, so DARK REV's inits (four on core B, about 800 instructions each in the
+    stock init) land in the START frames, on top of the held late frame; PLATE REV and SPRING REV have smaller inits (0 of 3 stalls).
+    The log records ColdFire frame durations, not the DSP's.
 - **Not tried:** the stock init and proc in separate frames with the registers in cells D2 did not move (`x:$3fe0..$3fe7` are the
   words that hold r0, n0, r6, r7, n7, m0, m1 and `x:$213` across the resumed init; the stock DARK REV init may write there: not read).
 - **Not known:** whether the stall is timing dependent (it stalled in 6 of 9 runs at the same final START, and 0 of 3 runs of other last layouts); whether the guard's resume is involved at all; whether DARK REV on one track
