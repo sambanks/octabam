@@ -2,6 +2,7 @@
 """The card and the image, driven over USB through REMOTE (modules/remote/README.md): no panel step.
 
     python3 tools/hw/ot_card.py fingerprint
+    python3 tools/hw/ot_card.py image                                # the running image's name, read from memory
     python3 tools/hw/ot_card.py load  <project-dir> [--name NAME]    # put a project on the card, leave DISK MODE
     python3 tools/hw/ot_card.py boot  "<NAME>.RMX"                   # switch image through REMIX SWITCH
     python3 tools/hw/ot_card.py copy  <file> [<file> ...]            # files into /BRAIN/REMIXES/, then rescan
@@ -276,6 +277,33 @@ def cmd_copy(a):
     return 0
 
 
+IMAGE_NAME_SCAN = (0x40ae0000, 0x40b70000)       # the resident runtime (RMT_TRACE, LOAD METER, DLPUMP's cells are in it)
+
+
+def running_image(u):
+    """The name the running image carries (`<REMIX> <BUILD>`, REMIX SWITCH's OSW_SELF), found in memory over PEEK, or None.
+    The ring fingerprint is the same for two builds that differ only in DSP code; this tells them apart (20 Nov 2026).
+    About 1 minute: 2,400 PEEKs."""
+    import re
+    lo, hi = IMAGE_NAME_SCAN
+    buf, a = b"", lo
+    while a < hi:
+        try:
+            d = ev.peek(u.peek1, a, 248)
+        except (SystemExit, Exception):  # noqa: BLE001
+            d = b"\0" * 248
+        buf += d
+        a += len(d) or 248
+    names = {m.group().decode() for m in re.finditer(rb"OCTABAM[ -~]{0,8}", buf)}
+    return sorted(names, key=len)[-1] if names else None
+
+
+def cmd_image(a):
+    name = running_image(Unit())
+    print(name or "no image name found in 0x40ae0000..0x40b70000")
+    return 0 if name else 1
+
+
 def cmd_boot(a):
     u = Unit()
     before = u.fingerprint()
@@ -293,6 +321,11 @@ def cmd_boot(a):
         return 1
     after = u.fingerprint()
     print(f"the DSP's frame count advances {t:.1f} s after the unit returned")
+    want = a.name[:-4] if a.name.endswith(".RMX") else a.name
+    got = running_image(u)
+    print(f"running image: {got}" + ("" if got == want else f"  (asked for {want}: the switch fell back or did not happen)"))
+    if got != want:
+        return 1
     print("fingerprint", before, "->", after, "(changed)" if after != before else "(same: the image did not change, or both share addresses)")
     return 0
 
@@ -301,6 +334,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("fingerprint")
+    sub.add_parser("image")
     p = sub.add_parser("load")
     p.add_argument("project")
     p.add_argument("--name", default=DEFAULT_NAME)
@@ -312,6 +346,8 @@ def main():
     p.add_argument("name")
     p.add_argument("--wait", type=float, default=150.0)
     a = ap.parse_args()
+    if a.cmd == "image":
+        return cmd_image(a)
     if a.cmd == "fingerprint":
         print(*Unit().fingerprint())
         return 0

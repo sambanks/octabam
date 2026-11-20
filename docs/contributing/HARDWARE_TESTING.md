@@ -210,7 +210,8 @@ python3 tools/hw/ot_suite.py run <label> --dest out/suite/<remix> --auto --phase
   loaded, so `<name>` must be that project: load it from the panel once, then every later load is this command.
   The record that follows is NEWPROJ or LOADMASK.
 - `boot` needs the name in REMIX SWITCH's list; a fresh image's list is empty until a scan, which `boot` sends.
-- Nothing over USB carries the running image's name. `fingerprint` prints the ring header's three linked addresses
+- `ot_card.py image` reads the running image's name from memory over PEEK (2.5 s, 20 Nov 2026), and `boot` checks it against the name it asked for. The ring fingerprint cannot tell two builds apart that differ only in DSP code.
+- `fingerprint` prints the ring header's three linked addresses
   (RMT_TRACE, REMIX SWITCH's name list and count); they differ per image. 18 Nov 2026, BUILD 05: `octabam`
   `0x40b34f44 0x40af0238 0x40af0188`, `octabam-verbs` `0x40b22a84 0x40ae7fb8 0x40ae7f08`, `octabam-bus`
   `0x40b20a84 0x40ae7520 0x40ae7470`. The boot screen shows the flashed image's name, not the running one's.

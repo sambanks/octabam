@@ -1124,19 +1124,22 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
 - **Related:** the 28 Oct entry "DARK REV picked on T4's FX2 while a demand effect's code is in T4's block" (the guard's late
   resume of a dry reverb after the code leaves its block; fixed by moving the guard's cells). That entry lists "whether another writer touches
   `x:$3dc0..$3e3f`" as not established. Here all 8 guard instances see DARK REV at once.
-- **Diagnostic builds on the 573 s replay (20 Nov 2026; `octabam` at `5b991c85` with one edit each; neither is for merge).** Both have the same
-  ring fingerprint as the shipped image, so which one ran is known from the COMMAND 3 name the unit took, and from the results:
+- **Diagnostic builds on the 573 s replay (20 Nov 2026; `octabam` at `5b991c85` with one edit each; none is for merge).** The ring
+  fingerprint is the same for all of them; the running image's name is read from memory (`OCTABAM D1` at `0x40aef730` and
+  `0x40b05f48` on the stalled D1 run):
 
-  | build | change | result |
+  | build | change | stalled / runs |
   |---|---|---|
-  | `OCTABAM 05` (baseline, rerun) | none | stalled (3 of 3 runs in all) |
-  | D1 | `dlwrap.asm` `proc`: a dry instance branches to `dw_pass` before the range-clear check, so it never resumes | no stall, 2 of 2 |
-  | D2 | the guard's cells moved up `$80`: state words `x:$3e40 + idx`, base cells `x:$3e80 + idx` (`dlwrap.asm`, `dlcopy/manifest.py`) | stalled, 1 of 1 |
+  | `OCTABAM 05` (shipped) | none | 3 / 3 |
+  | D1 | `dlwrap.asm` `proc`: a dry instance branches to `dw_pass` before the range-clear check, so it never resumes | 1 / 3 (clean, clean, then stalled) |
+  | D2 | the guard's cells moved up `$80`: state words `x:$3e40 + idx`, base cells `x:$3e80 + idx` | 1 / 1 |
+  | D3 | the resume zeroes the instance's whole buffer, base to extent, before the late init | 1 / 2 |
 
-  So the late resume of a dry DARK REV instance is the trigger, and relocating the cells does not remove it. The 28 Oct fix
-  (cells moved off `x:$3f7f..$3fbf`) removed a different clobber. At the stall DLPUMP still read the effect loaded (bit `0x1`, block `0x4`)
-  with the withdrawal armed (7 and 7).
+  Every stalled run ended in the same state (effect bit `0x1`, block `0x4`, 7 loads and 7 withdrawals armed, FX2 ids `0x16` on all 8 tracks)
+  and the DSP count fixed between 1,617,916 and 1,618,632. **Retracted:** an earlier version of this entry said D1 (no resume) stopped the
+  stall after 2 clean runs; the third run stalled, so D1 does not remove it. The 28 Oct clobber of the guard's cells is not the cause (D2).
+  With these counts a build that lowers the rate cannot be told from one that does not.
 - **Not tried:** the stock init and proc in separate frames with the registers in cells D2 did not move (`x:$3fe0..$3fe7` are the
   words that hold r0, n0, r6, r7, n7, m0, m1 and `x:$213` across the resumed init; the stock DARK REV init may write there: not read).
-- **Not known:** whether the fault is the guard's resume on one track or the eight together; whether DARK REV on one track
+- **Not known:** whether the stall is timing dependent (it stalled in 6 of 9 runs at the same final START, and 0 of 3 runs of other last layouts); whether the guard's resume is involved at all; whether DARK REV on one track
   over the same history stalls; PLATE, SPRING and MODULATION def are 1 run each.
