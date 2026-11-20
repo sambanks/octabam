@@ -139,7 +139,7 @@ chord shape and inversion. **JUMP** is not used for MIDI ARP destinations.
 
 | **PHRS** | Pitch order |
 |---|---|
-| **RAND** | Choose a new in-scale pitch on each hit. This is the default. **JUMP** does not affect RAND. Filling again rerolls the pitches without changing the controls. |
+| **RAND** | Choose a random direction for each move through the in-scale pitches. **JUMP** sets the scale-degree distance between neighboring hits; the walk wraps inside **DPTH**. This is the default. Filling again rerolls the sequence without changing the controls. |
 | **UP** | Start at the Part pitch and move upward through the in-scale pitches. Wrap to the bottom of the **DPTH** span. |
 | **DOWN** | Start at the Part pitch and move downward through the in-scale pitches. Wrap to the top of the **DPTH** span. |
 | **ALT** | Rise from the lowest pitch to the highest, then descend without repeating the peak. |
@@ -154,14 +154,15 @@ mode's intervals rather than the melodic **DPTH** span.
 
 Each piano roll shows 64 MIDI **NOTE** hits in C major, ROOT C, with Part
 **NOTE** C3 and **DPTH** 32. The pitch range is C2–C4. The **JUMP** 0, 64
-and 127 rolls use identical settings except for **JUMP**. RAND uses one
-seeded illustrative sequence at all three values because **JUMP** does not
-affect RAND.
+and 127 rolls use identical settings except for **JUMP**. Each roll uses the
+same seed so the random directions are comparable; **JUMP** changes the
+scale-degree distance while the notes wrap within the same pitch range.
 
 ##### RAND
 
-RAND chooses a fresh in-scale pitch for each hit. **JUMP** does not affect
-RAND, so the same seeded illustrative roll appears at all three values.
+RAND chooses a starting in-scale pitch, then moves a random direction by the
+scale-degree distance set by **JUMP**. The walk wraps inside the **DPTH**
+range; refilling chooses a new starting pitch and direction sequence.
 
 ![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.svg)
 

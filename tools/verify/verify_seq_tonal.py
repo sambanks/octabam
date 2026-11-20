@@ -86,7 +86,9 @@ def pitch_jump(step: int, count: int, phrase: int, jump: int,
                 multiplier += 1
         direction = 1 if phrase == 1 else -1
         return (anchor + direction * (step * multiplier % count)) % count
-    if count <= 2 or jump <= 0 or phrase == 0:
+    if phrase == 0:
+        return rand_walk(count, jump, max(step + 1, 1))[step]
+    if count <= 2 or jump <= 0:
         return phrase_rank(step, count, phrase)
     stride = jump * ((count - 1) // 2) // 127
     multiplier = stride + 1
@@ -95,6 +97,25 @@ def pitch_jump(step: int, count: int, phrase: int, jump: int,
     while multiplier > 1 and math.gcd(multiplier, period) != 1:
         multiplier += 1
     return phrase_rank(step * multiplier, count, phrase)
+
+
+def rand_walk(count: int, jump: int, hits: int, seed: int = 1) -> list[int]:
+    """Model RAND's seeded starting rank and random-direction JUMP walk."""
+    if count <= 1 or hits <= 0:
+        return [0] * max(0, hits)
+
+    def rng() -> int:
+        nonlocal seed
+        seed = (1664525 * seed + 1013904223) & 0xFFFFFFFF
+        return seed
+
+    stride = 1 + jump * ((count - 1) // 2) // 127
+    rank = rng() % count
+    result = [rank]
+    for _ in range(hits - 1):
+        rank = (rank + (stride if rng() < 0x80000000 else -stride)) % count
+        result.append(rank)
+    return result
 
 
 def degree_interval(mask: int, degree: int) -> int:
@@ -204,9 +225,20 @@ def main() -> int:
               all(len({pitch_jump(s, n, phrase, 127) for s in range(
                        2 * (n - 1) if phrase == 3 else 2 * n)}) == n
                   for phrase in (3, 4) for n in range(3, 65)))
-        check("RAND remains random while JUMP is set",
-              all(pitch_jump(s, 11, 0, 127) == phrase_rank(s, 11, 0)
-                  for s in range(128)))
+        rand_rolls = {jump: rand_walk(15, jump, 64)
+                      for jump in (0, 64, 127)}
+        rand_strides = {jump: 1 + jump * 7 // 127
+                        for jump in (0, 64, 127)}
+        check("RAND JUMP sets every neighboring scale-degree distance",
+              all(all((b - a) % 15 in (stride, 15 - stride)
+                      for a, b in zip(rand_rolls[jump], rand_rolls[jump][1:]))
+                  for jump, stride in rand_strides.items()))
+        check("RAND stays random while JUMP controls interval size",
+              all(len(set(roll)) > 1 for roll in rand_rolls.values())
+              and all(len(set((b - a) % 15
+                              for a, b in zip(roll, roll[1:]))) == 2
+                      for roll in rand_rolls.values())
+              and len({tuple(roll) for roll in rand_rolls.values()}) == 3)
         legacy = bytes(value for track in range(16)
                        for value in (track, track + 1, track + 2, 127,
                                      track % 5, track + 4, track + 5, 0))
@@ -285,10 +317,13 @@ def main() -> int:
           "movel   ef_tone_jump,-(%sp)" in jump_draw
           and "pea     VFMT" in jump_draw and "pea     ef_buf" in jump_draw
           and "jsr     SPRINTF" in jump_draw and "moveq   #4,%d0" in jump_draw)
-    check("JUMP is bounded by the DEPTH candidate set and uses coprime strides",
+    check("JUMP is bounded by DEPTH; RAND uses a random-direction stride",
           "ef_tone_jump" in jump and "ef_jump_index" in tonal
           and "eps_gcd" in jump and "bsr.w   ef_pitch_step" in tonal
-          and "mulu.w  %d0,%d2" in jump)
+          and "mulu.w  %d0,%d2" in jump
+          and "epr_rand_next" in src and "ef_rand_rank" in src
+          and "ef_rand_valid" in src and "ef_pitch_rank" in tonal
+          and "ef_pitch_rank:" in src)
     chord_table = block(src, "ef_chord_shapes:", "ef_scale_masks:")
     chord_names = block(src, "ef_chord_names:", "ef_scale_masks:")
     check("MIDI VOIC uses all 31 FM SYNTH chord shapes",

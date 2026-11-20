@@ -170,12 +170,13 @@ Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md).
 The tonal page applies to audio and MIDI tracks. **SCAL** selects MAJ, MIN,
 PENT, DOR, PHR, MIX, WHOL or CHRO; **ROOT** selects C through B. **JUMP** is
 available on both audio and MIDI. It sets the spacing between successive
-phrase positions: 0 advances one scale position, and higher values skip
-farther (range 0..127). It changes pitch spacing, while **DPTH** sets the
-outer pitch span. UP starts at the Part pitch and ascends; DOWN starts there
-and descends. Both wrap at the **DPTH** boundary. ALT moves up and down in
-alternation; TRI repeats a short up-and-down contour. RAND chooses a new
-in-scale pitch on each hit and ignores JUMP. RAND is the first PHRS option
+phrase notes: 0 advances one scale position, and higher values skip farther
+(range 0..127). It changes pitch spacing, while **DPTH** sets the outer pitch
+span. UP starts at the Part pitch and ascends; DOWN starts there and descends.
+Both wrap at the **DPTH** boundary. ALT moves up and down in alternation; TRI
+repeats a short up-and-down contour. RAND chooses a random direction for each
+step, with JUMP controlling the scale-degree distance; the walk wraps within
+the **DPTH** candidate set. RAND is the first PHRS option
 and the default for new settings. Older saved phrase values migrate without
 changing their selected mode. Filling again rerolls RAND without changing
 the controls. Audio C and F are empty and inactive.

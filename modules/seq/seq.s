@@ -2548,6 +2548,7 @@ ef_write_midi_locks:
         lea     -28(%sp),%sp
         movem.l %d2-%d7,(%sp)
         clrl    ef_jump_index
+        clrl    ef_rand_valid
         moveq   #0,%d2
         movel   ef_steps,%d5
         movel   ef_pulses,%d4
@@ -2579,6 +2580,7 @@ ef_write_midi_plocks:
         lea     -28(%sp),%sp
         movem.l %d2-%d7,(%sp)
         clrl    ef_jump_index
+        clrl    ef_rand_valid
         moveq   #0,%d2
         movel   ef_steps,%d5
 wmpl_loop:
@@ -2653,6 +2655,7 @@ ef_write_mask:
         lea     -28(%sp),%sp
         movem.l %d2-%d7/%a2,(%sp)
         clrl    ef_jump_index
+        clrl    ef_rand_valid
         moveal  32(%sp),%a2             | 28 + 4 return = 32
         movel   36(%sp),%d6             | TRIG rot
         movel   40(%sp),%d4             | TRIG k
@@ -3056,10 +3059,47 @@ epr_triangle:
         movel   %d1,%d0
 3:      rts
 epr_random:
+        cmpi.l  #1,%d3
+        bls.s   epr_rand_single
+        tstl    ef_rand_valid
+        bne.s   epr_rand_next
         bsr.w   ef_rng
         movel   %d0,%d1
         movel   %d3,%d5
         remul   %d5,%d0,%d1
+        movel   %d0,ef_rand_rank
+        moveq   #1,%d1
+        movel   %d1,ef_rand_valid
+        rts
+epr_rand_next:
+        | Pick a random direction; JUMP sets the scale-degree distance.
+        bsr.w   ef_rng
+        movel   %d0,%d1
+        movel   %d3,%d5
+        subql   #1,%d5
+        lsrl    #1,%d5
+        movel   ef_tone_jump,%d0
+        mulu.w  %d5,%d0
+        moveq   #127,%d5
+        divu.l  %d5,%d0
+        addql   #1,%d0
+        tstl    %d1
+        bpl.s   epr_rand_up
+        negl    %d0
+epr_rand_up:
+        addl    ef_rand_rank,%d0
+        tstl    %d0
+        bpl.s   epr_rand_low
+        addl    %d3,%d0
+epr_rand_low:
+        cmpl    %d3,%d0
+        bcs.s   epr_rand_store
+        subl    %d3,%d0
+epr_rand_store:
+        movel   %d0,ef_rand_rank
+        rts
+epr_rand_single:
+        clrl    %d0
         rts
 
 | MIDI-only phrase spacing. JUMP=0 advances one phrase step per note.
@@ -3069,7 +3109,7 @@ epr_random:
 ef_pitch_step:
         movel   ef_tone_phrase,%d1
         tstl    %d1
-        beq.s   eps_done                | RAND already chooses a fresh rank
+        beq.s   eps_done                | RAND applies JUMP in its random walk
         tstl    ef_tone_jump
         beq.s   eps_done
         cmpi.l  #2,%d3
@@ -5662,6 +5702,8 @@ ef_tone_mode: .long 0
 ef_tone_jump: .long 0
 ef_tone_anchor:.long 0
 ef_jump_index:.long 0
+ef_rand_rank:.long 0
+ef_rand_valid:.long 0
 ef_tone_phrase:.long 0
 ef_tone_harm: .long 0
 ef_tone_style:.long 0

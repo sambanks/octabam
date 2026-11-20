@@ -406,6 +406,36 @@ def run_scenarios() -> int:
                       for note in audio_wide)
               and audio_jump_masks[0] == audio_jump_masks[127],
               f"close={audio_close} wide={audio_wide}")
+        audio_rand_rolls = {}
+        sample_scale_offsets = [-12, -10, -8, -7, -5, -3, -1,
+                                0, 2, 4, 5, 7, 9, 11, 12]
+        for jump_value in (0, 64, 127):
+            poke32(port, local_sym("ef_tone_phrase"), 0)  # RAND
+            poke32(port, local_sym("ef_tone_jump"), jump_value)
+            poke32(port, local_sym("ef_rng_state"), 1)
+            s.prime(lane=0, dest=LOCK_PTCH, depth=127, pulses=16,
+                    trig_pulses=16)
+            s.yes()
+            raw = locks_of(port, LOCK_PTCH)
+            notes = [int((value - 64) / 5) for value in raw if value != 0xFF]
+            audio_rand_rolls[jump_value] = notes
+            ranks = [sample_scale_offsets.index(note) for note in notes]
+            stride = 1 + jump_value * 7 // 127
+            check(f"sample audio RAND JUMP {jump_value} sets neighboring pitch spacing",
+                  len(ranks) == 16
+                  and all((b - a) % 15 in (stride, 15 - stride)
+                          for a, b in zip(ranks, ranks[1:]))
+                  and all(-12 <= note <= 12 and on_scale(note, 0, 0x0AB5)
+                          for note in notes),
+                  f"notes={notes} ranks={ranks} stride={stride}")
+        check("sample audio RAND retains random direction and JUMP changes spacing",
+              len({tuple(roll) for roll in audio_rand_rolls.values()}) == 3
+              and all(len({(b - a) % 15 for a, b in zip(
+                  [sample_scale_offsets.index(n) for n in roll],
+                  [sample_scale_offsets.index(n) for n in roll][1:])}) == 2
+                      for roll in audio_rand_rolls.values()),
+              f"rolls={audio_rand_rolls}")
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # restore UP for following tests
         poke32(port, local_sym("ef_tone_jump"), 127)
         s.prime(lane=0, dest=LOCK_PTCH, depth=127, pulses=16,
                 trig_pulses=16)
@@ -1008,6 +1038,36 @@ def run_scenarios() -> int:
         check("MIDI ALT and TRI rolls differ at JUMP 0 and JUMP 64",
               phrase_roll_actual.get((3, 0)) != phrase_roll_actual.get((4, 0))
               and phrase_roll_actual.get((3, 64)) != phrase_roll_actual.get((4, 64)))
+        midi_rand_rolls = {}
+        c_major_range = [48, 50, 52, 53, 55, 57, 59, 60,
+                         62, 64, 65, 67, 69, 71, 72]
+        for jump_value in (0, 64, 127):
+            poke32(port, local_sym("ef_tone_phrase"), 0)  # RAND
+            poke32(port, local_sym("ef_tone_jump"), jump_value)
+            poke32(port, local_sym("ef_rng_state"), 1)
+            poke32(port, s.unlocked, 1)
+            poke32(port, s.ask, 0)
+            s.yes()
+            values = [u8(port, midi_lock_base + step * 32)
+                      for step in range(16)]
+            notes = [value for value in values if value != 0xFF]
+            midi_rand_rolls[jump_value] = notes
+            ranks = [c_major_range.index(note) for note in notes]
+            stride = 1 + jump_value * 7 // 127
+            check(f"MIDI RAND JUMP {jump_value} sets neighboring pitch spacing",
+                  len(ranks) == 16
+                  and all((b - a) % 15 in (stride, 15 - stride)
+                          for a, b in zip(ranks, ranks[1:]))
+                  and all(48 <= note <= 72 and on_scale(note, 0, 0x0AB5)
+                          for note in notes),
+                  f"notes={notes} ranks={ranks} stride={stride}")
+        check("MIDI RAND retains random direction and JUMP changes spacing",
+              len({tuple(roll) for roll in midi_rand_rolls.values()}) == 3
+              and all(len({(b - a) % 15 for a, b in zip(
+                  [c_major_range.index(n) for n in roll],
+                  [c_major_range.index(n) for n in roll][1:])}) == 2
+                      for roll in midi_rand_rolls.values()),
+              f"rolls={midi_rand_rolls}")
         poke32(port, midi_bank, 3)
         poke32(port, s.pulses, 3)
         poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
