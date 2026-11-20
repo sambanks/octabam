@@ -3,27 +3,30 @@
 Author: [ilia-murzinov](https://github.com/ilia-murzinov). Rhythm math matches
 filter [EUCLID](../euclid/README.md) ([repeat98](https://github.com/repeat98)).
 
-The name **SEQ** is from the SEQ submenu on Digitakt II and Digitone II —
-a dedicated window, not a PROJECT menu entry.
+SEQ takes its name from the SEQ submenu on Digitakt II and Digitone II.
 
-Hold a **TRACK** key and press **PAGE**: SEQ opens for that track — title
-SEQ, LEN at bottom right, a stock 3×2 grid, and a 4×16 step grid (hollow / solid) for
-all ≤64 steps. **`[LEFT]`** returns from **Harmony** to **Rhythm**. On Rhythm,
-select **PTCH** on audio or **NOTE** on MIDI to show **` 1>`** and enable
-**`[RIGHT]`**; other destinations hide the hint and keep the page on Rhythm.
-Harmony shows **`<2 `**. The step grid stays visible. Rhythm has A=PULS B=ROT
-C=LANE / D=DEST E=DPTH; **F** is empty. Harmony has A=SCAL B=ROOT /
-D=PHRS E=JUMP on audio and MIDI. MIDI C=VOIC 1-4 and F=CHRD; audio C and
-F are empty and inactive. The page hint sits at the top-right of the SEQ
-logo panel.
+SEQ opens a dedicated track window. Hold **`[TRACK]`** and press
+**`[PAGE]`**. The window shows the title SEQ, **LEN** at bottom right, the
+stock 3×2 grid, and a 4×16 step grid for up to 64 steps. **`[LEFT]`** returns
+from **Harmony** to **Rhythm**. On Rhythm, selecting audio **PTCH** or MIDI
+**NOTE** shows **` 1>`** and enables **`[RIGHT]`**. Other destinations keep
+SEQ on Rhythm. Harmony shows **`<2 `**. The step grid stays visible.
+
+Rhythm has A=**PULS**, B=**ROT**, C=**LANE**, D=page and parameter, E=**DPTH**,
+and empty F. Harmony has A=**SCAL**, B=**ROOT**, D=**PHRS**, E=**JUMP** on
+audio and MIDI. MIDI C=**VOIC** 1 to 4 and F=**CHRD**; audio C and F are empty.
+Fresh audio settings select **SRC** / **PTCH**; MIDI settings select
+**NOTE**. The page hint sits at the top-right of the SEQ logo panel.
 Audio pitch availability follows the resolved parameter name: FLEX PTCH
 opens Harmony, while THRU INAB stays on Rhythm without the RIGHT hint.
 `verify_seq_tonal_port.py` checks both machines through the panel.
-**LANE**
-selects whether A/B and the grid edit the **TRIG** rhythm or the **PLOCK**
-rhythm for the current DEST. **YES** writes TRIG → sample-trig mask 0 and
-PLOCK → locks on the chosen DEST (trigless on plock-only steps). **NO**
-closes. Bare **PAGE** stays stock and does not close SEQ.
+**LANE** selects whether A/B and the grid edit the **TRIG** rhythm or the
+**PLOCK** rhythm for the current destination. **`[YES]`** writes the TRIG
+rhythm and selected destination's locks. On audio tracks, TRIG writes sample
+trigs; on MIDI tracks, it writes note trigs. PLCK writes locks on that
+destination's rhythm. Audio PLCK hits without sample trigs create trigless
+trigs. **`[NO]`** closes SEQ. Bare **`[PAGE]`** keeps its stock function and
+does not close SEQ.
 
 **Hardware confirmation, 16 Nov 2026:** the author confirmed the `OCTA S3.RMX`
 handoff checklist on his MKII: the image loads in BRAIN, PTCH opens Harmony,
@@ -47,80 +50,83 @@ Historical hardware report: author's MKII, CX EUCL93, 11 Nov 2026, dual LANE,
 write-only YES, LOCK_COLL + floor, PLCK overwrite and TRIG reshape preserving
 other destinations.
 
-Not the DSP [EUCLID](../euclid/README.md) effect (filter/amp modulation).
-SEQ stores its own scale masks and root; the PROJECT SCALE QUANTIZER remains
-independent.
+SEQ generates track rhythms and pitch. The DSP
+[EUCLID](../euclid/README.md) effect modulates filter and amp. SEQ's scale
+and root remain separate from the PROJECT SCALE QUANTIZER.
 
-Rhythm names, ranges, and the TRIG PULS default match filter EUCLID; length
-comes from pattern length (not a knob).
+Rhythm names, ranges, and the TRIG PULS default match filter EUCLID; **LEN**
+shows the active length (it is not a knob).
 
 ## Controls
 
 | control | does |
 |---|---|
-| TRACK + PAGE | open SEQ on that track |
-| TRACK (while open) | switch to that track's params / YES target |
+| **`[TRACK]`** + **`[PAGE]`** | open SEQ on that track |
+| **`[TRACK]`** (while open) | switch SEQ to that track |
 | A | PULS of the focused lane |
 | B | ROT of the focused lane |
 | C | LANE — TRIG ↔ PLCK |
-| D | DEST — page-1 flat; same name as LFO PMTR |
+| D | Page and parameter for the lock destination; names match LFO SETUP PMTR |
 | E | DPTH — 0..127, lock span around Part |
 | F | empty |
 | **`[LEFT]`** / **`[RIGHT]`** | switch knob pages; indicator is **1/2** or **2/2** at top-right |
-| CUE | hold = stock cue; release alone = random PULSE hits on the focused lane; CUE+TRACK = cue that track |
-| TRACK (stock) | double-tap QUICK ASSIGN; FUNC+TRACK mute; TRACK+PLAY/STOP/BANK as stock |
-| FUNC + BANK | clear menu (LISTPOP over SEQ): CLEAR DEST / CLEAR ALL DEST / CLEAR ALL+TRIGS |
-| YES | write TRIG mask + current DEST locks (trigless where needed) |
-| NO | close |
+| **`[CUE]`** | hold = stock cue; bare release = random PULS hits on the focused lane; **`[CUE]`** + **`[TRACK]`** cues that track |
+| **`[TRACK]`** (stock) | double-tap QUICK ASSIGN; **`[FUNC]`** + **`[TRACK]`** mutes; **`[TRACK]`** + **`[PLAY]`** / **`[STOP]`** / **`[BANK]`** keeps stock behavior |
+| **`[FUNC]`** + **`[BANK]`** | clear menu: CLEAR DEST / CLEAR ALL DEST / CLEAR ALL+TRIGS |
+| **`[YES]`** | write the focused lane and selected destination locks |
+| **`[NO]`** | close |
 
-PAGE / UP / DOWN / PROJ / PART / AED / ARR are **omitted** from `EF_KEYS`
+**`[PAGE]`** / **`[UP]`** / **`[DOWN]`** / **`[PROJ]`** / **`[PART]`** /
+**`[AED]`** / **`[ARR]`** are **omitted** from `EF_KEYS`
 (not listed — a `0` swallows; a `-1` row still clears the sub-map). LEFT /
 RIGHT select knob pages. Soft dialog keeps the layer so knobs stay locked (`ef_ask`);
 user/orphan close pops it (`ef_layer_on`). LEVEL does nothing.
 
-Hold TRACK + PAGE opens SEQ on that track. Selecting another track while
-open retargets YES and loads that track's per-track params. DEPTH and
-PLOCK PULSE/ROT are remembered **per DEST** on that track. D/E stay live
+Hold **`[TRACK]`** + **`[PAGE]`** opens SEQ on that track. Selecting another track while
+open retargets **`[YES]`** and loads that track's per-track params. DPTH and
+PLOCK PULS/ROT are remembered **per DEST** on that track. D/E stay live
 even when LANE is TRIG (no auto-focus switch). Slots + DEST tables live in
 DRAM and in `euclid.work` (audio recipes, per-DEST depth/plock + LANE,
 separate MIDI-track recipes and per-flat depths, and per-track tonal
 settings; STORE client, `EF_VER` 10) on SAVE PROJECT / bank write. Older files
-migrate with default tonal settings. **Pattern length**
-The bottom right shows the pattern length as `LEN n`. Defaults: TRIG PULSE 5,
-DEST = SRC PTCH on audio and NOTE on MIDI, ROT/DPTH/PLOCK PULSE 0,
+migrate with default tonal settings. **Pattern length:** shown as `LEN n` at
+the bottom right. Defaults: TRIG PULS 5,
+DEST = SRC PTCH on audio and NOTE on MIDI, ROT/DPTH/PLOCK PULS 0,
 LANE = TRIG.
 
 Write-only: open / track switch load bank SEQ params only — the grid never
-mirrors live sample trigs. YES overwrites from PULSE/ROT (or a CUE mask).
+mirrors live sample trigs. YES overwrites from PULS/ROT (or a CUE mask).
 When a step's last lock is cleared, orphan trigless bits drop and stock's
 plock LED bitmap is rebuilt (`0x400339d8`).
 
-**CUE** keeps **PULSE** as density on the focused lane and only randomizes
-*which* steps are on. Changing **PULSE** leaves free mode and returns to
-Euclidean. PULSE / ROT / CUE with sample trigs already present open stock
+**CUE** keeps **PULS** as density on the focused lane and only randomizes
+*which* steps are on. Changing **PULS** leaves free mode and returns to
+Euclidean. PULS / ROT / CUE with sample trigs already present open stock
 **ARE YOU SURE?** only when LANE is TRIG. Dialog YES unlocks knobs/CUE
 only; writing the pattern is a separate YES.
 
 **DEST** matches LFO SETUP PMTR targets. **0..29** page-1 lock flats
 (**AMP XVOL** skipped). On **CX OSC**, **30..34** SETUP knobs stack in DRAM.
 
-**DEPTH** (0..127): at 0, YES clears that DEST's locks for the path in
+**DPTH** (0..127): at 0, YES clears that DEST's locks for the path in
 use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
 - **DEST = PTCH:** DPTH sets pitch variation around the Part PLAYBACK PTCH.
   SEQ chooses pitches from SCAL and ROOT. Silent / PLCK misses fall back to Part.
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
-- **Any other DEST:** uniform `[Part−DEPTH .. Part+DEPTH]` clamped 0..127.
+- **Any other DEST:** uniform `[Part−DPTH .. Part+DPTH]` clamped 0..127.
 
-**LANE = TRIG:** YES writes DEST/DEPTH locks on the sample-trig steps
-and syncs that DEST's plock recipe to the TRIG rhythm. Only **this DEST**
-is reshaped — other DEST locks stay; if a step loses its note trig but
-still holds another DEST, it becomes trigless so those locks remain
-audible. **LANE = PLCK:** independent plock rhythm; plock-only → trigless
-(+0x10); miss / PULSE 0 clears this DEST on every step in range —
+**LANE = TRIG:** **`[YES]`** writes DEST/DPTH locks on the TRIG steps and
+syncs that DEST's PLCK rhythm. Only **this DEST** is reshaped; other DEST
+locks stay. On audio tracks, a step that loses its sample trig but keeps
+another DEST lock becomes trigless. On MIDI tracks, the note-trig mask is
+rewritten while other MIDI locks stay on their steps; they do not add note
+trigs. **LANE = PLCK:** independent lock rhythm; audio PLCK hits without a
+sample trig become trigless (`+0x10`). A miss or PULS 0 clears this DEST on
+every step in range —
 including note trigs — so a PLCK YES **overwrites** locks previously placed
-from TRIG for that DEST (other DEST locks stay). PULSE 0 uses the same
-clear helper as DEPTH 0 (stale free/CUE masks ignored) and drops orphan
+from TRIG for that DEST (other DEST locks stay). PULS 0 uses the same
+clear helper as DPTH 0 (stale free/CUE masks ignored) and drops orphan
 trigless bits when no other DEST remains on the step.
 
 YES writes **only** the selected DEST's lock bytes (plus the TRIG mask).
@@ -130,10 +136,10 @@ A later YES with another DEST leaves earlier locks alone.
 pattern data without a new Euclidean fill:
 
 1. **CLEAR DEST** - this DEST's locks only; sample trigs stay; that DEST's
-   DEPTH / PLOCK PULSE / ROT / free mask → 0.
+   DPTH / PLOCK PULS / ROT / free mask → 0.
 2. **CLEAR ALL DEST** - every SEQ DEST on the track; sample trigs stay;
    all per-DEST params → 0.
-3. **CLEAR ALL+TRIGS** - row 2, then wipe sample trigs; TRIG PULSE 5 /
+3. **CLEAR ALL+TRIGS** - row 2, then wipe sample trigs; TRIG PULS 5 /
    ROT 0.
 
 Class-5 SEQ soft-closes while the list is up (stacking SEQ on top hid the
