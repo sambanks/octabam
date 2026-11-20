@@ -93,5 +93,7 @@ and save, before going back to stock.
 - Hardware **LATEST NP** / **VRCS VJ** (22 Oct 2026, Ilia's MKII): current
   layout — SRC LFO|NBR; COLR/HPF main; SHPE/DPTH SETUP; mid±(w/2) WID;
   DPTH default 127. See test-remix README.
+- Hardware **NBR / KEYBUS** (20 Nov 2026, Ilia's MKII, tip `dafb11b3`):
+  with CX on the neighbouring track, NBR drove VOID's noise level as expected.
 - Earlier: **VOID V9** (COLR/HPF tables); **V215 N7** (Y-direct nbr, pre-SRC);
   **LATEST NN** (noise-only path, pre-SRC WID). Superseded by NP/VJ.

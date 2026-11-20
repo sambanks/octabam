@@ -5,6 +5,8 @@ host).
 
 ## Hardware
 
+- **NBR / KEYBUS** (20 Nov 2026, Ilia's MKII, tip `dafb11b3`): with CX on the
+  neighbouring track, NBR drove VOID's noise level as expected.
 - **VOID V7** (20 Oct 2026): `void-handoff` working tree (not a git commit) —
   BAL/AC-FDBK; four `mpy` sites still on `y0`. COLR floor was 200 Hz; HPF to 2 kHz.
 - **VOID V8** (`471c7d5b` asm, signed `mpy x0,y1`): same COLR/HPF tables as V7.
