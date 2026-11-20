@@ -1233,7 +1233,7 @@ sy_mod_ok:
         | d0 = running carrier phase — park it (sy_sq_phi writes d0).
         move.l  %d0,-(%sp)               | park φc
         move.l  %d1,%d4                  | sine (already PWM-leaned)
-        move.l  %d0,%d1                  | square phase is the carrier (the saved d0), never φm
+        move.l  %d6,%d1                  | saw phase follows the FM-modulated carrier too
         lsr.l   #8,%d1
         lsr.l   #8,%d1
         lsr.l   #1,%d1                   | φc_mod>>17
