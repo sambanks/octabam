@@ -19,6 +19,9 @@ the same way.
 
 A sample or project tempo outside 30–300 BPM plays as TSTR OFF.
 
+A VARI note held over a Part switch keeps its speed until the track's
+next trig.
+
 ## QUAN
 
 On a VARI track the PTCH knob becomes QUAN, the ratio p/q: 1/2, 2/3, 3/4,
@@ -28,7 +31,9 @@ The knob is drawn as a nine-position switch: 1/2 points left, 1/1 up and
 
 ![The SRC page of a VARI track: PTCH is QUAN, here 3/2.](../../img/varispeed/quan.png)
 
-Leaving VARI gives PTCH back its value.
+Entering VARI, QUAN starts at 1/1, unless the track had another QUAN
+when it last left VARI: then it comes back. Each Part keeps its own, and
+a saved project keeps it. Leaving VARI gives PTCH back its value.
 
 ## Notes
 

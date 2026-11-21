@@ -1,7 +1,7 @@
 """VARISPEED -- STATIC/FLEX TSTR VARI: tempo-locked varispeed, QUAN on PTCH, nothing emulated.
 
 Source: `upstream/` is Zac Kyoti's repository (Zac-Kyoti/octatrack-kyoti-fw,
-submodule, pinned to `9b2e35a`). The declaration is
+submodule, pinned to `2cd3109`). The declaration is
 `upstream/octabam-modules/varispeed/manifest.py`: the linked unit `vari_cf`
 (`varispeed.s`, VARISPEED_EMUS's source with its switch at 0, read from
 `../varispeed-emus/` in the same checkout, with QUAN's rotary switch `tools/ui_switch.s`
@@ -15,7 +15,9 @@ as the registry does for every manifest, and this file only re-exports its
 MODULE. Nothing inside `upstream/` is edited here.
 
 On hardware: the author's MKI, 15 Oct 2026 (VARI1 build); QUAN as a 9-position rotary switch, 23 Oct 2026
-(standalone image).
+(standalone image); this source (VRG3: QUAN enters VARI at 1/1 or at the QUAN the track last had there, its
+own track bytes, a held VARI note's speed through a Part switch) on 20 Nov 2026 in KYOTI V1.8BC / V1.8C release
+candidates and VARISPEED_EMUS, which assemble the same source. This octabam form: not flashed.
 """
 
 import dataclasses
@@ -50,4 +52,8 @@ MODULE = dataclasses.replace(
     MODULE, linked=tuple(_adapt_unit(_u) for _u in MODULE.linked), variant=_adapted_variant,
     category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
     evidence=(Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", date="2026-10-15",
-        note="(the VARI1 build, standalone image); QUAN's rotary switch, 23 Oct 2026 (standalone image)"),))
+        note="(the VARI1 build, standalone image); QUAN's rotary switch, 23 Oct 2026 (standalone image)"),
+        Evidence(Level.UNIT, unit="MKI", who="Zac Kyoti", image="KY18BC RC1", date="2026-11-20",
+        note="VRG3 in KYOTI V1.8BC / V1.8C release candidates and VARISPEED_EMUS 140CVEMRC1 (the same source): "
+             "QUAN 1/1 on entering VARI, its memory across a save, a project from an earlier build, a held VARI "
+             "note's speed through a Part switch; this octabam form not flashed"),))
