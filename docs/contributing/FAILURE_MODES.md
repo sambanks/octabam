@@ -1023,7 +1023,7 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   never binds (panel frozen, USB gone), cause not established. 27 to 35 bad DSP records per 10 min at pattern wraps
   while MODULATION's code runs, with and without this fix.
 
-## Stopped on the boot screen after REMOTE's COMMAND 3 booted an `.RMX`: 1 of 10 boots 🟡 seen three times, cause not known
+## Stopped on the boot screen after REMOTE's COMMAND 3 booted an `.RMX`: most often with a stalled DSP 🟡 seen many times, not counted, cause not known
 
 MKII, 15 Nov 2026, image N1 (`octabam` with REMOTE, commit 95e52aee). COMMAND 3 for `OCTABAM N1.RMX` was
 taken; the unit reset, showed the boot screen and did not return to USB in 150 s. A power-cycle recovered it.
@@ -1044,6 +1044,14 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
 - Third sighting, 19 Nov 2026, MKII: COMMAND 3 for `OCTABAM 05.RMX` sent from `octabam` BUILD 05 while its DSP frame count was
   stopped (the entry "DSP frame count stops 27 minutes into a mixed program-change sequence" below). No return in 150 s;
   power-cycled. The first sighting from a BUILD 05 image.
+- **Pattern, 18 to 22 Nov 2026 (from the session's notes and the saved run logs; no complete count exists, because the retry of a failed boot skipped the
+  per-run logs; `ot_card.py boot` now writes every attempt to `out/hw/boot_ledger.tsv`: time, image asked for, the unit's state before it, outcome, seconds):**
+  - the 39 COMMAND 3 boots in the saved run logs all returned, on units whose DSP was counting;
+  - a COMMAND 3 sent while the DSP was stalled did not return or fell back to the flashed image N1 in most of the attempts I noted (not counted:
+    boot-screen freezes needing a power-cycle, and fall-backs that the image-name check caught: `OCTABAM N1` running when another image was asked for);
+  - from N1 it froze at least 3 times (15 Nov, 18 Nov, 20 Nov) and returned several times;
+  - from a counting `octabam` unit it froze once (20 Nov, switching to `OCTABAM D3`), after a power-cycle and a healthy reading;
+  The ring fingerprint and the boot screen's version string do not show a fall-back; `ot_card.py image` does.
 
 
 

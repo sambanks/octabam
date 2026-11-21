@@ -304,17 +304,43 @@ def cmd_image(a):
     return 0 if name else 1
 
 
+LEDGER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "out", "hw", "boot_ledger.tsv")
+
+
+def ledger(requested, prior, result, seconds):
+    """One line a COMMAND 3 boot: time, the image asked for, the unit's state before it, the outcome, seconds waited.
+    The retries of a freeze and a fall-back skip the per-run logs, so this is the only complete count of them."""
+    os.makedirs(os.path.dirname(LEDGER), exist_ok=True)
+    with open(LEDGER, "a") as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{requested}\t{prior}\t{result}\t{seconds:.0f}\n")
+
+
+def prior_state(u):
+    """healthy, stalled (the DSP count is not advancing) or the running name, for the ledger."""
+    import load_meter
+    try:
+        ok, _ = load_meter.healthy(u.dev)
+        name = running_image(u)
+        return ("healthy" if ok else "stalled") + ":" + str(name)
+    except (SystemExit, Exception):  # noqa: BLE001
+        return "unknown"
+
+
 def cmd_boot(a):
     u = Unit()
+    t_start = time.monotonic()
+    prior = prior_state(u)
     before = u.fingerprint()
     if a.name.encode() not in wait_list(u, a.name, timeout=5):
         u.command(ev.CMD_SCAN)      # a fresh image's list stays empty until a scan
         wait_list(u, a.name)
     if not ev.boot(u.cmd1, u.ctrl, u.peek1, a.name):
+        ledger(a.name, prior, "refused", time.monotonic() - t_start)
         sys.exit(f"{a.name}: refused or not in the unit's list (run `copy` or COMMAND 4 first)")
     print(f"COMMAND 3 taken for {a.name}; waiting for the unit to leave and return (up to {a.wait} s)")
     if not u.wait_present(a.wait, gone_first=True):
         print(f"STOPPED ON THE BOOT SCREEN? no answer in {a.wait} s: power-cycle the unit and record it in FAILURE_MODES.md")
+        ledger(a.name, prior, "no-return", time.monotonic() - t_start)
         return 1
     t = wait_running(u)
     if t is None:
@@ -324,6 +350,7 @@ def cmd_boot(a):
     want = a.name[:-4] if a.name.endswith(".RMX") else a.name
     got = running_image(u)
     print(f"running image: {got}" + ("" if got == want else f"  (asked for {want}: the switch fell back or did not happen)"))
+    ledger(a.name, prior, "returned" if got == want else f"fell-back:{got}", time.monotonic() - t_start)
     if got != want:
         return 1
     print("fingerprint", before, "->", after, "(changed)" if after != before else "(same: the image did not change, or both share addresses)")
