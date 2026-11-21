@@ -1166,9 +1166,13 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
   |---|---|---|
   | T5 to T8 (core A) | `00 00 00 00 16 16 16 16` | 0 / 3 |
   | T1 to T4 (core B) | `16 16 16 16 00 00 00 00` | 1 / 3 |
+  | T3 only | `00 00 16 00 00 00 00 00` | 0 / 1 |
+  | T1 only | `16 00 00 00 00 00 00 00` | 0 / 1 |
   | all 8 tracks (the standard project) | `16` on all | 5 / 7 (shipped image, all runs so far) |
 
-  Four instances on either core: 1 stall in 6 runs; eight instances: 5 in 7 (Fisher exact, two-sided, p = 0.10). Core A only against core B only
+  One instance: 0 stalls in 2 valid runs. A third single-track run ended with FX2 ids `08` on all 8 tracks (the last program change had not
+  taken effect before the START) and is not counted; three more were lost to a failed boot (the REMIX SWITCH list empty with the unit stuck on its
+  project load) or a USB error. Four instances on either core: 1 stall in 6 runs; eight instances: 5 in 7 (Fisher exact, two-sided, p = 0.10). Core A only against core B only
   cannot be told apart (0 / 3 against 1 / 3, p = 1.0), so these runs do not show a core. They fit a stall rate that rises with the number of
   DARK REV instances that start together at the START (inferred; the frame log shows the START frame and one skipped frame, not the DSP's
   own frame time). An earlier pair of runs of this kind used a project whose layout was not changed (the builder runs in a subprocess; the
