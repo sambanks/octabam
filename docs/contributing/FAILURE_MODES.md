@@ -1141,7 +1141,7 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
   | `OCTABAM 05` (shipped) | none | 3 / 3 |
   | D1 | `dlwrap.asm` `proc`: a dry instance branches to `dw_pass` before the range-clear check, so it never resumes | 1 / 3 (clean, clean, then stalled) |
   | D2 | the guard's cells moved up `$80`: state words `x:$3e40 + idx`, base cells `x:$3e80 + idx` | 1 / 1 |
-  | D3 | the resume zeroes the instance's whole buffer, base to extent, before the late init | 1 / 2 |
+  | D3 | the resume zeroes the instance's whole buffer, base to extent, before the late init | 1 / 2 (unreliable, see below) |
 
   Every stalled run ended in the same state (effect bit `0x1`, block `0x4`, 7 loads and 7 withdrawals armed, FX2 ids `0x16` on all 8 tracks)
   and the DSP count fixed between 1,617,916 and 1,618,632. **Retracted:** an earlier version of this entry said D1 (no resume) stopped the
@@ -1177,6 +1177,12 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
   DARK REV instances that start together at the START (inferred; the frame log shows the START frame and one skipped frame, not the DSP's
   own frame time). An earlier pair of runs of this kind used a project whose layout was not changed (the builder runs in a subprocess; the
   patch did not reach it) and counts as standard runs.
+- **Placement (22 Nov 2026): D3 and the stagger build D4 are not trustworthy.** The guard body sits in the window at `0x33f36` and the SIDECHAIN_COMPRESSOR hook stubs follow it,
+  ending at `0x33ffc` in the shipped image (3 words of slack in block 0). Growing the guard body moves the stubs: D4 (+32 words) put `moncommit A`, `moncommit B` and `scinit`
+  at `0x34000..0x3401c`; D3 (about 10 words more by my count; its stub addresses were not read back) would put `scinit` across `0x34000`. A DARK REV slot at `0x34000` writes up to `0x37da2`. A control image, P1 (the shipped guard plus 22
+  unreachable `nop`s, stubs at `0x34000..0x34012`), booted from a healthy unit twice and the DSP's frame count stayed at 0 for 90 s both times (`OCTABAM N1` running before). D4 stalled
+  at 6.6 s into its first run, with no DARK REV in the sequence. D1 (shorter) and D2 (the same size) did not move the stubs past `0x33fff`. The build did not refuse these placements;
+  it now does (`build_bus.py`, a record inside `[slot, slot + extent)` of a guarded reverb).
 - **Not tried:** the stock init and proc in separate frames with the registers in cells D2 did not move (`x:$3fe0..$3fe7` are the
   words that hold r0, n0, r6, r7, n7, m0, m1 and `x:$213` across the resumed init; the stock DARK REV init may write there: not read).
 - **Not known:** whether the stall is timing dependent (it stalled in 6 of 9 runs at the same final START, and 0 of 3 runs of other last layouts); whether the guard's resume is involved at all; whether DARK REV on one track

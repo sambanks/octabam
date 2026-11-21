@@ -294,8 +294,12 @@ def running_image(u):
             d = b"\0" * 248
         buf += d
         a += len(d) or 248
-    names = {m.group().decode() for m in re.finditer(rb"OCTABAM[ -~]{0,8}", buf)}
-    return sorted(names, key=len)[-1] if names else None
+    # REMIX SWITCH also holds file names in memory (the saved choice, the list): `OCTABAM P1.RMX`. The image's own name has no `.RMX`.
+    names = [m.group().decode() for m in re.finditer(rb"OCTABAM[ -~]{0,8}", buf)]
+    own = [n for n in names if not n.upper().endswith(".RMX") and len(n) > len("OCTABAM")]
+    if not own:
+        return None
+    return max(set(own), key=lambda n: (own.count(n), len(n)))
 
 
 def cmd_image(a):
