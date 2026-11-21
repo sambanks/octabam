@@ -13,6 +13,14 @@ The remix includes [SCOPE](reference/manual/octabam/utilities/scope.md), opened 
 and [TUNER](reference/manual/octabam/sequencer/tuner.md), opened with **[UP]** +
 **[TEMPO]**. They share the TEMPO key dispatcher and work in the same build.
 
+!!! warning "Known fault: DARK REV while MODULATION is loaded"
+    On Sam's MKII (22 Nov 2026), with MODULATION in use on a track, a program change that put DARK REV on all 8 tracks, then
+    PLAY, stopped the DSP: the sound stops, the panel and USB still answer, and a power-cycle clears it. MODULATION stays loaded
+    for 10 s after the last track uses it. Over 573-second replays on the earlier BUILD 05 it stalled 5 of 7 times with DARK REV
+    on 8 tracks, 1 of 6 on 4 tracks and 0 of 2 on one track. With SPECTRUM loaded in place of MODULATION: 0 of 25 tries; with no
+    effect loaded: no stall. The cause is not known and no setting is shown to be safe.
+    [Details](https://github.com/sambanks/octabam/blob/main/docs/contributing/FAILURE_MODES.md).
+
 ## The effects
 
 SPECTRUM, CHARACTER and MODULATION are on FX1 and FX2, and SHATTER on FX2, beside the stock effects.

@@ -50,6 +50,9 @@ REMIX = Remix(
              "355.77/359.37 us, DSP window max 49/48%, DSP steady max 49/48%, and audio gap 340/340 ms "
              "(closed/open). Maximum gap 1,480/360 ms; all transitions carried the 40 ms GAP flag because the "
              "loader silence is about 340 ms. This compares SCOPE closed/open on that image only."),
+        Evidence(Level.UNIT_MEASURED, unit="MKII", who="sambanks", image="OCTABAM 05 (REMIX SWITCH)", date="2026-11-22",
+            commit="382a478b03a1f788a335e57f318a234d29b194d0",
+            note="OCTABAM 05, built from main at 382a478b plus the v0.5 release commit and booted by REMIX SWITCH from the flashed OCTABAM N1 (not flashed itself). pre-meter, pre-transport, pre-usb and dsp-watch pass; 32 program changes (MODULATION FX2 def, PLATE REV FX2 def, BASE): 3 unapplied, 0 bad DSP records, longest silence 340 ms. KNOWN FAULT: with MODULATION loaded in T3's block, a program change that puts DARK REV on all 8 tracks, then START, stops the DSP frame count (a power-cycle clears it): it stalled in cycle 0 of the one-minute reproduction; with SPECTRUM loaded instead 0 stalls in 25 cycles; on the stock effects with no loader 0 in 60 DARK REV STARTs. The longer replay on the earlier BUILD 05 (5b991c85) stalled in 5 of 7 runs with DARK REV on 8 tracks, 1 of 6 on 4 tracks, 0 of 2 on one track. Cause not known (docs/contributing/FAILURE_MODES.md). Also on 5b991c85: fx01-fx03, loader01-02, pc-soak, kits-identity, scenes-sweep, scenes-latency, djump-off, djump-on and djump-burst ran; mix-soak did not complete."),
         Evidence(Level.UNIT_MEASURED, image="OCTA S2", date="2026-11-15",
             note="Flashed S2 image. With SCOPE closed/open, 30 loader transitions per state "
                  "had zero bad records. Median CF window peak 537.36/544.96 us, steady 355.77/359.37 us; median "

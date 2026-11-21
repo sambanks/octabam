@@ -5,9 +5,10 @@ reverbs, and three more effects in the words the reverbs gave up. The
 [Octabam Verbs Remix Manual](reference/manual/octabam-verbs/index.md) has a page for every
 feature.
 
-!!! warning "Not flashed"
-    This remix passes every build and emulator check CI runs, but it has not run on a unit.
-    Octabam is the remix that has.
+!!! note "Where it has run"
+    Sam's MKII, 22 Nov 2026, booted by REMIX SWITCH from the flashed image (not flashed itself): the pre-flight checks pass and
+    32 program changes between MODULATION, SPECTRUM and BASE left none unapplied. The effect and loader layouts, kits, scenes and
+    DIRECT_JUMP (toggle off) ran on the earlier BUILD 05; DIRECT_JUMP with the toggle on and the 56-minute soak did not run.
 
 ## The reverbs
 

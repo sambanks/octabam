@@ -32,9 +32,9 @@ machine and SHATTER are not in this image.
 
 ### Status
 
-This remix has not been flashed in this form. It passes every build and emulator check that
-CI runs. An earlier form of the bus ran on an MKII in October 2026; the bus running beside
-the stock effects and the ColdFire features has not run on a unit.
+This remix ran on Sam's MKII on 22 Nov 2026, booted by REMIX SWITCH from the flashed image (not flashed itself): the pre-flight
+checks pass and 32 program changes between SPECTRUM, CHARACTER and BASE left none unapplied. The effect layouts, kits, scenes and
+DIRECT_JUMP (toggle off) ran on the earlier BUILD 05. DIRECT_JUMP with the toggle on and the 56-minute soak did not run.
 
 ### Before you install
 

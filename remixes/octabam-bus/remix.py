@@ -30,7 +30,10 @@ COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT",
 
 REMIX = Remix(
     name="octabam-bus",
-    family="rig", evidence=(Evidence(Level.EMULATOR),),
+    family="rig", evidence=(Evidence(Level.EMULATOR),
+        Evidence(Level.UNIT_MEASURED, unit="MKII", who="sambanks", image="OCTABAM-BUS 05 (REMIX SWITCH)", date="2026-11-22",
+            commit="382a478b03a1f788a335e57f318a234d29b194d0",
+            note='OCTABAM-BUS 05, built from main at 382a478b plus the v0.5 release commit and booted by REMIX SWITCH from the flashed image (not flashed itself). pre-meter, pre-transport, pre-usb and dsp-watch pass; 32 program changes (SPECTRUM FX1 dear, CHARACTER FX1 dear, BASE): 0 unapplied, 0 bad DSP records, longest silence 340 ms. On the earlier BUILD 05 (5b991c85) also fx01 (28 layouts), kits-identity, scenes-sweep, scenes-latency and djump-off ran. Not run: djump-on, djump-burst, mix-soak, the loader phases (this remix has no loader).')),
     doc="CORE + the extra ColdFire modules of octabam + the delay and reverb bus (BusDelay on T1's FX2, BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8) + SPECTRUM, CHARACTER and MODULATION on FX1.",
     modules=("LOFI AMF FIX", "REVERB SERVER", "DELAY SERVER", "SEND", "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",

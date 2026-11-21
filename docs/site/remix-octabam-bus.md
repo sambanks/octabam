@@ -5,10 +5,10 @@ track, and keeps Octabam's core features around it. The
 [Octabam Bus Remix Manual](reference/manual/octabam-bus/index.md) has a page for every
 feature.
 
-!!! warning "Not flashed in this form"
-    This remix passes every build and emulator check CI runs. An earlier form of the bus ran
-    on an MKII in October 2026; this one, with the stock effects and the ColdFire features
-    beside the bus, has not run on a unit.
+!!! note "Where it has run"
+    Sam's MKII, 22 Nov 2026, booted by REMIX SWITCH from the flashed image (not flashed itself): the pre-flight checks pass and
+    32 program changes between SPECTRUM, CHARACTER and BASE left none unapplied, with no bad DSP records. The effect layouts, kits,
+    scenes and DIRECT_JUMP (toggle off) ran on the earlier BUILD 05; DIRECT_JUMP with the toggle on and the 56-minute soak did not run.
 
 ## The bus
 
