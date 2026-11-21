@@ -1156,13 +1156,15 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
 
   | DARK REV on | FX2 ids at the end | stalled / runs |
   |---|---|---|
-  | T5 to T8 (core A) | `00 00 00 00 16 16 16 16` | 0 / 2 |
-  | T1 to T4 (core B) | `16 16 16 16 00 00 00 00` | 1 / 2 |
+  | T5 to T8 (core A) | `00 00 00 00 16 16 16 16` | 0 / 3 |
+  | T1 to T4 (core B) | `16 16 16 16 00 00 00 00` | 1 / 3 |
   | all 8 tracks (the standard project) | `16` on all | 5 / 7 (shipped image, all runs so far) |
 
-  Four runs; two more were pending when this was written. It fits the stall being on core B, and is not enough to say so. An earlier
-  pair of runs of this kind used a project whose layout was not changed (the builder runs in a subprocess; the patch did not reach it) and
-  counts as standard runs.
+  Four instances on either core: 1 stall in 6 runs; eight instances: 5 in 7 (Fisher exact, two-sided, p = 0.10). Core A only against core B only
+  cannot be told apart (0 / 3 against 1 / 3, p = 1.0), so these runs do not show a core. They fit a stall rate that rises with the number of
+  DARK REV instances that start together at the START (inferred; the frame log shows the START frame and one skipped frame, not the DSP's
+  own frame time). An earlier pair of runs of this kind used a project whose layout was not changed (the builder runs in a subprocess; the
+  patch did not reach it) and counts as standard runs.
 - **Not tried:** the stock init and proc in separate frames with the registers in cells D2 did not move (`x:$3fe0..$3fe7` are the
   words that hold r0, n0, r6, r7, n7, m0, m1 and `x:$213` across the resumed init; the stock DARK REV init may write there: not read).
 - **Not known:** whether the stall is timing dependent (it stalled in 6 of 9 runs at the same final START, and 0 of 3 runs of other last layouts); whether the guard's resume is involved at all; whether DARK REV on one track
