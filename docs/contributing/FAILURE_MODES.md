@@ -1183,6 +1183,13 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
   unreachable `nop`s, stubs at `0x34000..0x34012`), booted from a healthy unit twice and the DSP's frame count stayed at 0 for 90 s both times (`OCTABAM N1` running before). D4 stalled
   at 6.6 s into its first run, with no DARK REV in the sequence. D1 (shorter) and D2 (the same size) did not move the stubs past `0x33fff`. The build did not refuse these placements;
   it now does (`build_bus.py`, a record inside `[slot, slot + extent)` of a guarded reverb).
+- **Is it ours, or stock's? (22 Nov 2026; argued from the runs above, no stock or loader-free image has been run).**
+  - For ours: the stall needs MODULATION (a demand-loaded effect) resident when DARK REV is picked (the 22 s tail, with nothing loaded, 0 / 2); it needs DARK REV, the one reverb whose
+    buffer reaches loaded code (the other last layouts 0 / 3; one instance 0 / 2); DARK REV selected with nothing loaded is routine in the matrix runs.
+  - For a general fragility we expose: every START gives a 505 us frame interrupt and a held late entry, and the stall adds a skipped frame, a timing race of the kind of the 12 Nov entries;
+    the ColdFire is about 75 % busy under these projects, so a race that is rare under a lighter load could be common here.
+  - **Control to run:** `remixes/test/remote` (REMOTE, STORE and USB only: stock DARK REV, no demand loader, no guard) with program change to DARK REV on all tracks, START, 8 s of play, STOP, repeated about
+    100 times. A stall there is not the loader. No stall in about 100 cycles points at the loader or our load; that image's ColdFire load is lower, so it cannot separate the two.
 - **Not tried:** the stock init and proc in separate frames with the registers in cells D2 did not move (`x:$3fe0..$3fe7` are the
   words that hold r0, n0, r6, r7, n7, m0, m1 and `x:$213` across the resumed init; the stock DARK REV init may write there: not read).
 - **Not known:** whether the stall is timing dependent (it stalled in 6 of 9 runs at the same final START, and 0 of 3 runs of other last layouts); whether the guard's resume is involved at all; whether DARK REV on one track
