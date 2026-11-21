@@ -1188,8 +1188,12 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
     buffer reaches loaded code (the other last layouts 0 / 3; one instance 0 / 2); DARK REV selected with nothing loaded is routine in the matrix runs.
   - For a general fragility we expose: every START gives a 505 us frame interrupt and a held late entry, and the stall adds a skipped frame, a timing race of the kind of the 12 Nov entries;
     the ColdFire is about 75 % busy under these projects, so a race that is rare under a lighter load could be common here.
-  - **Control to run:** `remixes/test/remote` (REMOTE, STORE and USB only: stock DARK REV, no demand loader, no guard) with program change to DARK REV on all tracks, START, 8 s of play, STOP, repeated about
-    100 times. A stall there is not the loader. No stall in about 100 cycles points at the loader or our load; that image's ColdFire load is lower, so it cannot separate the two.
+  - **Control, run 22 Nov 2026:** `REMOTE T1` (`make rmx REMIX=test/remote`: REMOTE, STORE and USB with the stock effects; no demand loader, no guard) with a project from its
+    own layouts; 60 cycles of STOP, three program changes while stopped (LO-FI, PLATE REV, FILTER), the scene-select CC, a program change to layout 14 (DARK REV on all tracks), START 0.22 s later, 6 s of play
+    (`out/hw/replay/remote-cycles.json`). 541 operations over 1,080 s, **0 stalls in 60 DARK REV STARTs**. At the end the live FX2 ids read `16` on all 8 tracks and bank 3 pattern 2, and the ring holds 42 PLAYING
+    and 40 PATTERN records. The stall was detected by REMOTE's frame-interrupt count (`tools/hw/ot_fuzz_remote.py`: the image has no LOAD METER, so `ot_fuzz` alone sees no DSP stall); that check
+    has not been shown to catch a stall, since none occurred. The ColdFire load of this image is lower than `octabam`'s (about 75 % share), so this does not separate the loader from the load.
+  - **So far:** DARK REV picked on all 8 tracks and START with no demand code loaded: 0 / 2 on `octabam` (the 22 s tail) and 0 / 60 on the stock-effects image; with MODULATION loaded: 5 / 7.
 - **Not tried:** the stock init and proc in separate frames with the registers in cells D2 did not move (`x:$3fe0..$3fe7` are the
   words that hold r0, n0, r6, r7, n7, m0, m1 and `x:$213` across the resumed init; the stock DARK REV init may write there: not read).
 - **Not known:** whether the stall is timing dependent (it stalled in 6 of 9 runs at the same final START, and 0 of 3 runs of other last layouts); whether the guard's resume is involved at all; whether DARK REV on one track
