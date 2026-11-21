@@ -1194,6 +1194,16 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
     and 40 PATTERN records. The stall was detected by REMOTE's frame-interrupt count (`tools/hw/ot_fuzz_remote.py`: the image has no LOAD METER, so `ot_fuzz` alone sees no DSP stall); that check
     has not been shown to catch a stall, since none occurred. The ColdFire load of this image is lower than `octabam`'s (about 75 % share), so this does not separate the loader from the load.
   - **So far:** DARK REV picked on all 8 tracks and START with no demand code loaded: 0 / 2 on `octabam` (the 22 s tail) and 0 / 60 on the stock-effects image; with MODULATION loaded: 5 / 7.
+- **A different demand effect loaded (22 Nov 2026; shipped `octabam`, 25 cycles of: layout of the effect live and playing 9 s, STOP, a LO-FI program change, the scene-select CC,
+  DARK REV on all tracks 6 s after the effect was last used, START; `out/hw/replay/cyc-spectrum.json` and `cyc-modulation.json`).**
+
+  | effect loaded when DARK REV is picked | its home block | result |
+  |---|---|---|
+  | SPECTRUM (layout 26) | T7's (core A) | 0 stalls in 25 cycles (25 loads, 25 withdrawals) |
+  | MODULATION (layout 22) | T3's (core B) | stalled in the first cycle, 19.1 s in (the positive control), the usual end state |
+
+  So the stall is not "any loaded demand effect": it needs MODULATION, whose home is T3's block. Other effects: CHARACTER (its layout is in the second project, which has no DARK REV
+  layout), SHATTER and SIDECHAIN_COMPRESSOR are untested. The one-cycle stall also shortens the reproduction to about 1 minute after the boot and load.
 - **Not tried:** the stock init and proc in separate frames with the registers in cells D2 did not move (`x:$3fe0..$3fe7` are the
   words that hold r0, n0, r6, r7, n7, m0, m1 and `x:$213` across the resumed init; the stock DARK REV init may write there: not read).
 - **Not known:** whether the stall is timing dependent (it stalled in 6 of 9 runs at the same final START, and 0 of 3 runs of other last layouts); whether the guard's resume is involved at all; whether DARK REV on one track
