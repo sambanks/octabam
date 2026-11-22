@@ -16,8 +16,17 @@ async function main() {
 
   const remixes = manifest.remixes;
   let meta = remixes[0];
+  const option = (r) => el("option", { value: String(remixes.indexOf(r)), textContent: r.title });
+  const release = remixes.filter((r) => !r.community);
+  const contrib = remixes.filter((r) => r.community);
   const pick = el("select", { id: "ob-remix" },
-    ...remixes.map((r, i) => el("option", { value: String(i), textContent: r.title })));
+    ...(contrib.length
+      ? [el("optgroup", { label: `Octabam ${manifest.version}` }, ...release.map(option)),
+         el("optgroup", { label: "Community" }, ...contrib.map(option))]
+      : release.map(option)));
+  const note = el("p", { id: "ob-community", className: "ob-meta", hidden: true },
+    "A community remix: its contributor's selection, checked when this page's patches were built " +
+    "but not by the project's own test runs. See Community Remixes in the manual.");
   const file = el("input", { type: "file", id: "ob-file", accept: ".zip,.syx", hidden: true });
   const choose = el("button", { type: "button", id: "ob-choose", textContent: "Choose OS file" });
   const chosen = el("span", { id: "ob-chosen", textContent: " No file chosen." });
@@ -30,12 +39,14 @@ async function main() {
   root.replaceChildren(
     el("p", {}, `Octabam ${manifest.version}`),
     ...(remixes.length > 1 ? [el("p", {}, el("label", { htmlFor: "ob-remix", textContent: "Remix: " }), pick)] : []),
+    note,
     el("p", {}, "Your OCTATRACK_OS1.40C_dist.zip or OCTATRACK_OS1.40C.syx:"),
     el("p", {}, choose, chosen, file),
     el("p", {}, go), status, links, built);
 
   pick.addEventListener("change", () => {
     meta = remixes[Number(pick.value)];
+    note.hidden = !meta.community;
     links.replaceChildren();
     status.textContent = "";
   });

@@ -2,8 +2,14 @@
 
 Builds an Octabam v0.5 remix from your own copy of Octatrack OS 1.40C, in this
 browser tab: [Octabam](remix-octabam.md), [Octabam Verbs](remix-octabam-verbs.md) or
-[Octabam Bus](remix-octabam-bus.md). Choose one under **Remix** before you build. The OS file is read locally and
+[Octabam Bus](remix-octabam-bus.md), or one of the [Community Remixes](reference/community.md) listed
+under Community. Choose one under **Remix** before you build. The OS file is read locally and
 nothing is uploaded.
+
+!!! note "Community remixes"
+    A community remix is its contributor's selection, and keeping it working is theirs: the project's
+    own test runs leave it out. It is offered here only when it passed `make check` in the run that built
+    this page's patches.
 
 !!! tip "Back up your projects"
     Back up your CF card before installing, or start new projects after
@@ -92,7 +98,7 @@ the same steps, or see [Safety and recovery](safety.md).
 
 ## How it works
 
-The page holds one patch for each Octabam v0.5 remix: its bytes, plus instructions to
+The page holds one patch for each Octabam v0.5 remix and each community remix it offers: its bytes, plus instructions to
 copy ranges from your 1.40C. It applies the patch to the MAIN OS section of
 your file, rebuilds the firmware container with Elektron's container tool
 compiled to WebAssembly, and wraps it for the card. It refuses a file whose
