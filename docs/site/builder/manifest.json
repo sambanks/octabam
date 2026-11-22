@@ -31,6 +31,16 @@
    "patch": "patches/octabam-bus.obp",
    "patchBytes": 171438,
    "sha256": "0ca532356e8ab356826a16fbd713278744831407456c297f0fc9c88e04225a40"
+  },
+  {
+   "name": "cxosc-core",
+   "title": "cxosc-core",
+   "version": "OCTABAM05",
+   "imageName": "CXOSC-CORE 05",
+   "patch": "patches/cxosc-core.obp",
+   "patchBytes": 116423,
+   "sha256": "97d236f5eddb97cdd17bb47afa3e3de6ea81d3a46a72d9f800ab6456b443353b",
+   "community": true
   }
  ]
 }
