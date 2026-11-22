@@ -82,8 +82,7 @@ Five fields are the module index (`modules/README.md`), rendered by `make docs`
 ```
 
 `category` is the module's section in the module index and the manual.
-`evidence` is a tuple of `schema.Evidence` that the schema requires and no
-doc shows. Its `Level` (`BUILD`, `EMULATOR`, `RENDER`, `UNIT`,
+`evidence` is an optional tuple of `schema.Evidence` that no doc shows. Its `Level` (`BUILD`, `EMULATOR`, `RENDER`, `UNIT`,
 `UNIT_MEASURED`) is read by `verify_dsp_forms`, which accepts an
 instruction form a `UNIT`-level module uses; the other fields (`unit`,
 `who`, `image`, `date`, `ref`, `commit`, `note`) are optional.
@@ -94,8 +93,8 @@ its unproven instruction forms, in any other remix it refuses them.
 
 A manifest executed from an author's repository may declare the old
 `proof=Proof.X, proof_note="..."`; the schema turns it into one `Evidence`
-(`schema.from_proof`). The selftest refuses a module without these fields;
-one executed from an author's repository adds them with
+(`schema.from_proof`). The selftest refuses a module without `category`, `author` and
+`author_url`; one executed from an author's repository adds them with
 `dataclasses.replace` (`modules/synth`).
 
 Two more fields are the checks. `gates` names the verifiers `make check`
@@ -727,7 +726,7 @@ the recorder, and anything after the handoff.
 
 ### Pricing a ColdFire module
 
-From Jannik Aßfalg's note beside Tape Echo (PR #357; `COLDFIRE_DELAY.md`),
+From Jannik Aßfalg's note beside Tape Echo (`COLDFIRE_DELAY.md`),
 the first module to run audio on the ColdFire. Its gate,
 `tools/verify/verify_tapeecho_cpu.py` on that branch, is the worked
 example of every item.
@@ -1197,7 +1196,7 @@ For an eligible module: the slot size and the state block.
 |  | FX1 | FX2 |
 |---|---|---|
 | buffer slot | `0x1000 0x1c00 0x2800 0x3400`, 3,072 words each | `0x4000 0x8000` + the shared-window pair, 16,384 |
-| state block (`r7`) | instance *k* → `0x6100 + 0x300 * k` | instance *k* → `0x6200 + 0x300 * k` (measured, issue #815) |
+| state block (`r7`) | instance *k* → `0x6100 + 0x300 * k` | instance *k* → `0x6200 + 0x300 * k` |
 | in the chain | first | second: it processes what FX1 produced |
 | cycles | 4 slots per core | 4 slots per core; both are paid |
 

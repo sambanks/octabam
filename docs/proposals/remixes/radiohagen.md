@@ -39,14 +39,14 @@ RLEN PLEN's cave is 298 B of ROM (`rlen plen cave: 298 bytes at
 0x400d7980`); with it placed, MODULATION's slot 6 formatter (454 B) has
 108 B left in the overflow run, 346 B short.
 
-With PR #643 (Sam's ColdFire caves to DRAM, 8d078da7), `make bus`:
+With the ColdFire caves moved to DRAM, `make bus`:
 
 | selection | result |
 |---|---|
 | bottleservice + RLEN PLEN + TUNER | builds, 224 B of the clone window left |
 | bottleservice + SYNTH MACHINE | builds, 224 B left |
 
-MIDI SCENES' collision is a Part-window claim and #643 does not change it.
+MIDI SCENES' collision is a Part-window claim, which the move does not change.
 
 ## To find out
 

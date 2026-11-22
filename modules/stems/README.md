@@ -290,9 +290,9 @@ and STEM REC's writer named on the CPU tab (its task control block is
   frame, and the ring would fill in about 160 s (STEM_REC.md 18.9). On
   the unit (STEMS3), eleven stereo files at 24 bits, 2.91 MB/s, peaked
   the ring at 13 to 16% on a light project and filled it on a busy one:
-  RING FULL, cause open (STEM_REC.md 17.3). BuMa measured a MKI's card
+  RING FULL, cause open. BuMa measured a MKI's card
   writes at 4.7–5.7 MB/s with the sequencer stopped and 1.4–2.1 MB/s with
-  Static tracks streaming (STEM_REC.md 19.1).
+  Static tracks streaming.
 - **On a busy project, eleven files at 24 bits keep up; twelve aren't
   measured since.** On STEMS13 (whole clusters, 5 Nov 2026), Yves's
   project, with the slowest Static samples measured on STEMS12, recorded
@@ -300,7 +300,7 @@ and STEM REC's writer named on the CPU tab (its task control block is
   MAIN, CUE, AB and CD, 2.91 MB/s) for 24 s with the ring at most 36%
   full and the card busy 60% of the take, and thirteen (the inputs as
   four mono files, the same bytes) for 21 s at 44% (STEM_REC.md 20.11).
-  Before, with zero copy (STEM_REC.md 17.6): T1 to T8 at 24 bits ran a
+  Before, with zero copy: T1 to T8 at 24 bits ran a
   minute with the ring at most 21% full; twelve files at 24 bits (MAIN,
   CUE, AB and CD added, 3.17 MB/s) stopped with `RING FULL` after 4.3 s,
   the card taking 2.1 MB/s while the writer, at priority 1, waited for

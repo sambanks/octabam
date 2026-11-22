@@ -15,7 +15,5 @@ remixes carry it.
   next step boundary, at the step count the old pattern had reached,
   instead of at the old pattern's end or after its CHAIN AFTER length.
 - A project that never selects DIRECT plays exactly as stock.
-- Hand-over timing was measured from audio on 26 Sep 2026.
 
-Built from timhastie/octatrick-modules (v2.9). Its author flashed it on an
-Octatrack MKI from 26 Sep 2026 onwards.
+Built from timhastie/octatrick-modules (v2.9).

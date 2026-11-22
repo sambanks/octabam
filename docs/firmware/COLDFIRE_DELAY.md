@@ -67,7 +67,7 @@ frame (his harness).
 
 ## 3. The seam a replacement can take (Jannik Aßfalg / repeat98)
 
-From his note of written beside Tape Echo (PR #357: the effect runs on the ColdFire inside this routine,
+From his note beside Tape Echo (the effect runs on the ColdFire inside this routine,
 in the stock delay's own ring for the track; the DSP side is a 5-word
 passthrough). The practice half of the note is `MODULES.md` "Pricing a
 ColdFire module".

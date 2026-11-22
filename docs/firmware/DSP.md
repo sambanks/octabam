@@ -505,7 +505,7 @@ advanced in `P:0x0041e` before process is called. Base table `X:0x255`
 (8 words): `0x01000 0x04000 0x01c00 0x08000 0x02800 0x30000 0x03400
 0x34000`, interleaved FX1/FX2 (FX1 stride `0xc00`, FX2 `0x4000`). Payload B
 takes `0x38000`/`0x3c000` for its shared-window slots. FX2 instance *k* =
-table entry `1 + 2k`, `r7 = 0x6200 + 0x300·k` (the dispatcher bumps r7 three times per track: FX1, FX2, then once more unconditionally). measured with an r7 canary in `ot_emu` (OTDEMO; Zac Kyoti, issue #815). 
+table entry `1 + 2k`, `r7 = 0x6200 + 0x300·k` (the dispatcher bumps r7 three times per track: FX1, FX2, then once more unconditionally; Zac Kyoti).
 
 |  | entry | base A | base B | r7 |
 |---|---|---|---|---|

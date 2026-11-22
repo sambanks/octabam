@@ -23,8 +23,8 @@ level, 47 cue, 8 AMP BAL, 48 crossfader, 49-51 mute/solo/cue, 52-54 arm,
 
 Page 2 is unreachable from stock CC: `cc−16 < 30` and the writer derives
 `slot = flat % 6`. `modules/cc-map` adds CC 102-107 (FX2 page 2) and
-108-111, 14, 15 (FX1 page 2); 62-67 and 68-73 (issue
-#981: the pedal CCs, 64 sustain among them).
+108-111, 14, 15 (FX1 page 2); 62-67 and 68-73 (the pedal CCs, 64 sustain
+among them).
 
 **The generic writer `FUN_40054cd8(track, flat, value)`** resolves the
 descriptor via `FUN_40031da4(track, flat/6)`, refuses disabled slots,
@@ -203,7 +203,7 @@ numbers from 62). They fall through every compare to the `rts` at
 `0x4000f274`. Unused by stock is not free of meaning: 64-69 are the
 pedals and 96-101 data entry and RPN/NRPN, and a module that maps or
 sends one reaches every synth on that channel
-(`tools/remix/midi_cc.py`, issue #981).
+(`tools/remix/midi_cc.py`).
 
 MIDI-track channels (mask bits 16+): the CC is copied to `0x400d2e79` and
 handed to `0x40010bc8(3, buf)` (`0x4000e886`) — a pass-through, not a

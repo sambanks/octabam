@@ -66,6 +66,5 @@ MODE on page 2 picks the signal:
 | 2 | MODE | 7 signals | SINE, SWEP, PINK, WHIT, IMPL, NEDL, DC |
 | 2 | CHAN | 5 | L+R, L, R, L/-R, MONO |
 
-Measured through the unit's main out into an audio interface on a MKII
-(4 Oct 2026): LEVL steps within 0.002 dB, THD at 1 kHz about -94 dB at
-0 dBFS.
+At the main out, LEVL steps within 0.002 dB, and THD at 1 kHz is about
+-94 dB at 0 dBFS.

@@ -303,8 +303,7 @@ comparisons against the oracle pass:
   until a trig) and then the Part's `+0x3e2` value; both sides without a
   lock write the Part's value to the record and send nothing (octabam
   differs: `mix_free` sends it when the old record byte differs, so a CC left
-  by a lock returns to the Part's value, #1096, ⚠️ not built under the port
-  or flashed; the oracle sends nothing in that scenario); otherwise
+  by a lock returns to the Part's value; the oracle sends nothing in that scenario); otherwise
   `A + ((B-A)*w >> 7)`, `w = 127 - (xf & 127)`, weight 0 = A, 127 = B; the
   record byte is written first and `0x4009eec8(track, flat, value, 0)` is
   called when it changed.

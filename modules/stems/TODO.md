@@ -90,8 +90,7 @@ takes go to `<set>/AUDIO/STEMS/<project>/<YYMMDD-HHMM>/` (`5822ebcc`).
 
 All six are in the code, and every gate passes under the port: the take
 runs (`verify_stems`) and the menu on both panels (`verify_stems_menu`).
-The unit hasn't run any of it yet: flash H in FLASH.md lists what only the
-unit can show.
+
 
 - **Note 6, the flat folder,** then a folder for each take (27 Oct 2026,
   after flash J: a full `!STEMS` slowed each take's start until a take at
@@ -289,7 +288,7 @@ machine's sound. A Flex track whose sample has a marker name
 (`FMSYNTH*.wav`) gets a renderer of the module's own in place of the stock
 one, and the DSP shapes the result like a sample. SYNTH already references
 the STATIC renderer entry too. What isn't known: which task refills a
-Static track from the card (STEM_REC.md section 19.2), and how fast the
+Static track from the card, and how fast the
 card reads on the unit.
 
 **Options.**
@@ -320,7 +319,7 @@ whether A can work before any of it is built. Size: small to medium, plus
 a flash.
 
 **Open.** Static plays 24-bit files from a 16-bit cache (BuMa's reading of
-the code, STEM_REC.md section 19.1). A stem player could do the same, or sum all 24 bits.
+the code). A stem player could do the same, or sum all 24 bits.
 
 ## 6. A STEM REC screen
 
@@ -364,3 +363,28 @@ refreshes only on a key.
 
 Items 1 to 3 build on PR #644 (zero copy): the writer that would write the
 `.ot` files is the one in that PR.
+
+## For later — ideas from the perf round
+
+Ideas from the perf round and from Sam's review of it that weren't
+needed for its goal (eight tracks at 24 bits on a busy project), with what
+each would buy and its size. None is measured.
+
+| Idea | What it would buy | Size |
+|---|---|---|
+| The writer at priority 2 (`stems-prio2`, STEM_REC 20.6) | Twelve files at 24 bits on a busy project: flash G's writer still waited 4.8 times its fastest write there | One constant; built, not flashed. A flash must listen to the Static voices and try the keys during a take |
+| Bigger writes per file when the writer is behind | Fewer switches between the files' streams on the card: its fastest write fell from 28 to 10 MB/s with twelve files , cause unknown | Small: the per-pass cap in `stems_zwrite` |
+| One card command for a run of contiguous clusters | The file layer sends one command a cluster (STEM_REC 20.2); a run of clusters in one WRITE DMA cuts the per-command cost | Large: a write path beside the file layer's, keeping its FAT right |
+|  |  | Withdrawn |
+| A bounded wait on the card | A card that stops answering would end the take with an error instead of hanging the writer on the PIO path (STEM_REC 11.4) | Medium |
+| WRITE MULTIPLE (`0xC5`) for PIO cards | One interrupt a block of sectors instead of one a sector | Medium: PIO cards only; Yves's card writes by DMA |
+| Pre-shifted gains | The mirror stores `g << 8`, saving one shift a sample in the track loops: 128 instructions a frame at T1–T8 | Small |
+| The stems from the audio processor | Core 0 already computes each track's share of MAIN; reading it back would remove the hook's multiplies | Large: DSP work, both payloads |
+| A CAPTURE-style menu page | A clearer STEMS menu (octalab's page-drawing calls; TUNER is the in-tree precedent) | Medium: menu work, deferred this round |
+| `STATS.TXT`'s byte counts in sectors | The card rec and card save lines stay right past 4 GiB in a phase, about 22 minutes with every source at 24 bits (README, STATS.TXT) | Small: two counters, their readout and `stats_check`'s tolerance |
+| T8's row held while a take records or saves | The row would show the running take's choice when MASTER TRACK changes mid-take, not the next take's (README, Limits) | Small, but in the frame hook (`stems_m8check`): its instruction counts (STEM_REC 20.1) are measured again |
+| T8's label stored with interrupts off | `stems_source_action` restores SR before it stores the label; a MASTER TRACK change in those few instructions leaves a stale `T8 [X]` or `T8 [ ]` until the next change. Who writes the MASTER TRACK byte isn't traced | One line moved |
+| A port gate that fills the ring and checks the samples | The hook writing up to the writer's place, checked sample for sample under the port. Today only flash G's take 1858 checks it, on the unit  | Medium |
+| `RAW_WRITE`'s return value | `stems_zput` tests only its sign, as the writer did before this round; what a positive value means is open (STEM_REC 12.1) | Small, once STEM_REC 12.1 is answered |
+| A debug build | A release build without STATS.TXT, the hook's timing and the gain probe: about 140 instructions a frame at eight tracks under the port (the parts' marks and sums 56, the probe 84;, the hook's own timing besides, and the log's code. Yves: the diagnostics stay in STEM REC, not in BRAIN, and every build is a debug build for now | Small: one assembler symbol around the timing, the probe and `stems_stats`; the gates that read STATS.TXT run on the debug build |
+|  |

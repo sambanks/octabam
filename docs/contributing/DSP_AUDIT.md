@@ -49,7 +49,7 @@ is checked against the new rows only. Passes repeat until one adds no row.
     identity gate proves it.
   - **F** (new form): as I, but the change needs an instruction form no stock
     site runs. It needs a ⏳ row in the instruction-form register
-    (`docs/firmware/CHIP.md`), as #1080's forms had.
+    (`docs/firmware/CHIP.md`), as the MODULATION rework's forms had.
   - **U** (needs the unit): the output is the same only if the chip behaves as
     the port does, such as an offset past a modulo buffer. Not taken in this
     round.
@@ -79,7 +79,7 @@ From MODULATION's parallel-move pass (`86f76efd`) and
 **Version 1, .** Costs are Table A-1's, as CYCLE_SCAN.md "The
 remedies" gives them.
 
-### From #1080
+### From the MODULATION rework
 
 | id | technique | how found | saving a site | first candidates elsewhere |
 |---|---|---|---|---|
@@ -97,7 +97,7 @@ remedies" gives them.
 | T12 | `move r7,rN` / `move #n,nN` / `move (rN)+nN` made `lua (r7+n),rN`, for n up to 63. | G | 2 words, 0 to 3 cycles | RESONATOR (five a sample), SPECTRUM, CHARACTER, BBD |
 | T13 | A table listed by hand in the manifest, generated from the module's reference instead. | G | none at run time; one source of truth | SPECTRUM (3 tables), CHARACTER's TAPE_D8, DELAY SERVER's RECIP |
 
-Not taken in #1080, kept as known trades: PHSR's four `bsr mo_apst` inlined
+Not taken in the MODULATION rework, kept as known trades: PHSR's four `bsr mo_apst` inlined
 (8 instructions a sample fewer, 20 words more); `and #>$3ff,a` dropped in
 `mo_tap` and `mo_herm` (class U: it relies on the modulo AGU wrapping an
 offset); MODULATION's MIX and COMB loops reworked.
@@ -269,20 +269,20 @@ audited against, or "not audited".
 
 **Stamp: checklist version 1, pass 1,; version 2 rows by pass 2**
 (T31: 22 long immediates in the loops, 3 short-form), source at `cc7cffc1`
-(the same as #1080's merge). Dearest: FLNG, 398.8 cycles a sample, 8.8 % of a
+(the same as the MODULATION rework's merge). Dearest: FLNG, 398.8 cycles a sample, 8.8 % of a
 frame (modelled). Scan: `out/dsp-audit/pilot/modulation_now.json`; the
 static checks: the audit's `g_checks.py`.
 
 **The pilot's check.** The procedure was first run on MODULATION's source
-from before #1080 (`48b7e4f3`, the merge's first parent):
+from before the MODULATION rework (`48b7e4f3`, the merge's first parent):
 
-- The static checks find #1080's sites in that source: T01 (3 frame advances),
+- The static checks find the MODULATION rework's sites in that source: T01 (3 frame advances),
   T02 (4 write addresses), T03 (3 entry reloads), T05 (3 `n3` loads), T07 (4
-  arm tests), T08 (3 compares) and T09 (5 store-and-copy pairs, of which #1080
+  arm tests), T08 (3 compares) and T09 (5 store-and-copy pairs, of which the MODULATION rework
   merged the two PHSR ramps). Per block, with `--all`: T11 (`$47` stored and
   read back at once) and T12 (5 `move r7,rN`). In today's source those sites
-  are gone, except the ones #1080 left on purpose (T09's three MIX stores, T17).
-- **#1080 in cycles** (the model, every mode at its defaults): JUNO 333.5 →
+  are gone, except the ones the MODULATION rework left on purpose (T09's three MIX stores, T17).
+- **the MODULATION rework in cycles** (the model, every mode at its defaults): JUNO 333.5 →
   321.8, DIM 402.5 → 390.9, FLNG 412.5 → 398.8, COMB 368.1 → 360.9, PHSR
   402.2 → 393.1. That is 7.1 to 13.7 cycles a sample, more than its 6.4 to 8.8
   instructions: the stalls and two-word forms it removed count more than the
@@ -299,17 +299,17 @@ from before #1080 (`48b7e4f3`, the merge's first parent):
 | M5 | T09 | the three MIX run stores (`:629`, `:892`, `:1158`) | `move a,x:(r1)` and `move a,y1` as one X:R move. | -1 in every live mode; -1 word each | F: `move a,x:(r1) a,y1` has no stock site |
 | M6 | T25 | LINE's line writes and LPo (`mo_line+124`, `+153`, `+168`, `+192` in the scan) | Move the next independent load (`move n2,x0`, the next slope) between the `mac` and its store. | about -1 a site, 4 to 6 sites a sample | I |
 | M7 | T26 | `move #$3,n3` at `mo_whr` (`:617`), `move #$5,n3` in COMB (`:1146`) | Load `n3` earlier, or reach wet L another way. In FLNG `n3` also holds f. | -1 to -2 | I |
-| M8 | T17 | `and #>$3ff,a` in `mo_tap` and `mo_herm` | Drop it: the modulo AGU would wrap the offset (#1080's note). | 2 to 3 a call | U |
+| M8 | T17 | `and #>$3ff,a` in `mo_tap` and `mo_herm` | Drop it: the modulo AGU would wrap the offset (the MODULATION rework's note). | 2 to 3 a call | U |
 | M9 | T29 | PHSR's two `do #4` (`:791`, `:851`) | Unroll. | -10, about +20 words | I |
 | M10 | T27 | a `lua` and a read through it (`mo_whl`, `mo_padv+103`, COMB `+80`) | Separate them. | up to 3 each, only if a `lua` interlocks (the manual does not say) | I |
-| M11 | T25 | the mix tails' five 1-cycle stalls (`mo_whr+7`, `+11`, `+16`, `+21`, `+25`) | The MIX rework #1080 declined (mix L as soon as wet L exists). | about -5 in every live mode | I |
+| M11 | T25 | the mix tails' five 1-cycle stalls (`mo_whr+7`, `+11`, `+16`, `+21`, `+25`) | The MIX rework the MODULATION rework declined (mix L as soon as wet L exists). | about -5 in every live mode | I |
 | M12 | T26 | FLNG's fixed-tap line write (`mo_whl+7`: `move r6,r5` then the step, 3 a sample), found by the scan of the M1 to M4 code | M3's change. | -3 (FLNG) | I |
 
 If M1 to M5 hold, the model gives JUNO about -24 (321.8 → 298), DIM -24, FLNG
 -29 (398.8 → 370, 8.8 % → 8.2 % of a frame), COMB -24 and PHSR -6. Modelled,
 not measured; the gate and a LOAD METER read would confirm them.
 
-**Taken, ** (sambanks/octabam#1174, from main `cc7cffc1`): M1 to
+**Taken** (from main `cc7cffc1`): M1 to
 M4, each commit IDENTICAL under the wider gate (41 renders, state after every
 block), `verify_modulation` ALL PASS, every new form at a stock site. The scan
 of the result: JUNO 321.8 → 298.8, DIM 390.9 → 367.9, FLNG 398.8 → 370.8 (8.8 %
@@ -338,7 +338,7 @@ words as offsets from `r7`.
 
 If V1 to V3 hold: about -30 of 207.0 (4.6 % → 3.9 % of a frame), -6 words.
 
-**Taken, **: V1 (`eadc4ae9`), V2
+**Taken**: V1 (`eadc4ae9`), V2
 (`af810da6`), V3 (`d172013f`) and three short-form constants (T31,
 `06566068`), each IDENTICAL under the wider gate (36 renders), `verify_vibrato`
 ALL PASS. The scan: 207.0 → 176.9 cycles a sample at SHP=TRI max (4.6 % → 3.9
@@ -371,7 +371,7 @@ are the ones that are not.
 
 VC1 and VC3: about -53 (27.5 % → 26.3 %); with VC2, -93 (25.4 %).
 
-**Taken, **: VC3 (`a39f113d`, -5,
+**Taken**: VC3 (`a39f113d`, -5,
 estimated -3), VC1 (`9559e8a6`, -50, as estimated), VC6 (`4d1d944f`, seven
 short-form constants, -7 words), each IDENTICAL under the wider gate (26
 renders on VOCODER's own slot), `verify_vocoder` OK. The scan: 1,245.8 →
@@ -390,13 +390,13 @@ CHARACTER TXTR is CHARACTER plus 191 lines, so CH2, CH3 and CH5 land in both.
 | CH5 | T07 | `cmp #1,b` / `bne` a sample (`character.asm:746`, `character_txtr.asm:815`) | A flag test. | 0 to -1 | I |
 | CH6 | T08 | `add x1,a` / `move #0,x1` (TXTR `:1119`) | The zero rides in the add's slot. | -1, -1 word | I or F |
 
-**Taken, ** (sambanks/octabam#1190, CHARACTER only): T31's three
+**Taken** (CHARACTER only): T31's three
 short-form constants (`93b85932`) and T34's three (`37b3eeb2`; the two
 `cmp #>$1,b` stay, since stock has no 6-bit `cmp` on b), IDENTICAL (49
 renders), `verify_character` OK (34 checks). The scan: SAT=TUBE 428.3 → 428.0
 cycles a sample; words 967 → 961. CH1 to CH6 stay open in CHARACTER.
 
-**Taken, ** (sambanks/octabam#1192, CHARACTER TXTR): the same three
+**Taken** (CHARACTER TXTR): the same three
 T31 constants (`b2f84890`) and T34's seven (`4ee318ad`; its `cmp #>$1,b`
 stays), IDENTICAL (49 renders), `verify_character_txtr` OK (45 checks) and
 `verify_charkey_txtr` PASS (10 checks). The scan: SAT=TUBE 697.9 → 696.3 cycles
@@ -421,7 +421,7 @@ a sample; words 1,097 → 1,087. Not taken:
 
 RS1 and RS3: about -19 and -14 words; with RS2, up to -59 (14.5 % → 13.2 %).
 
-**Taken, **: RS1 (`4094b897`, -15, as
+**Taken**: RS1 (`4094b897`, -15, as
 estimated, -10 words), RS3 (`9d8afa3b`, the five zero loads, -4, -5 words) and
 three short-form constants (`7ddcd5f3`), each IDENTICAL under the wider gate
 (27 renders). The scan: 655.9 → 636.6 cycles a sample (14.5 % → 14.0 %); words
@@ -440,7 +440,7 @@ three short-form constants (`7ddcd5f3`), each IDENTICAL under the wider gate
 
 LF1, LF3 and LF4: about -16, -6 words (14.4 % → 14.1 %); LF5 is the large one.
 
-**Taken, **: LF1 as one `lua` (the stores
+**Taken**: LF1 as one `lua` (the stores
 could not post-step r0 without tracing every mode's stores; `7ade4847`, -5),
 LF3 as a reorder (`lua (r1)+,r2` has no stock site, so the parity flip fills
 the pointer waits instead; `defd7b73`, -5 in DOWN and UP), LF4 and LF6 with
@@ -459,7 +459,7 @@ DOWN 654.2 → 638.9 cycles a sample (14.4 % → 14.1 %); words 838 → 821.
 | MV5 | T26 | `move a,n5` / `lua (r5+n5),r4`, twice | Hoist. | -6 | I |
 | MV6 | T14 | 58 displaced, among them the four per-sample smoothers ($24 to $2d) | Walk. | up to -20 | I |
 
-**Taken, **: T33 over the input diffusers
+**Taken**: T33 over the input diffusers
 (`05971e11`, -36, estimated -46: the writes keep a 1-cycle arithmetic stall the
 `n5` load used to fill) and over the branches (`af7f4112`, -65), with MV3 (the
 zero offset), MV4 and T31 (seven short-form gains and a mask), and T11 (two
@@ -483,7 +483,7 @@ MV2 to MV5: about -110 (13.4 % → 11.0 %); with MV1 in place of MV2 and MV6, ab
 | BB4 | T25 | about 12 one-cycle stalls | Reorder. | about -6 | I, design |
 | BB5 | T14 | 44 displaced | Walk. | up to -44 | I, re-laid state |
 
-**Taken, **: BB2's second site
+**Taken**: BB2's second site
 (`6db50424`: `move r2,r5` before the N decode; -3 on the narrow model, 0 on the
 full one, since the read then waits only on a `lua`'s destination) and BB1 with
 t31.py (`8da8322a`, twenty-four constants, one a zero, -5.9, -24 words), each
@@ -500,7 +500,7 @@ sample at `dear`; words 1,112 → 1,088.
 | VD4 | T31 | 7 short-form constants |  | -7 words | I |
 | VD5 | T25 | about 10 one-cycle stalls | Reorder. | about -5 | I, design |
 
-**Taken, **: VD1 (`d997709d`, -5), VD3 at
+**Taken**: VD1 (`d997709d`, -5), VD3 at
 `$25` only (`a27c530e`, -1: the `$26` store and reload have the label
 `vd_am_apply` between them, so another path brings its own value), VD4 with
 t31.py (`553a7448`, -4, -7 words), each IDENTICAL (31 renders), all VOID gates
@@ -515,7 +515,7 @@ passing. The scan: 503.9 → 493.8 cycles a sample at `dear`; words 513 → 502.
 | VB3 | T08 | `sub ...` / `move #0,x0`, three (`:412`, `:419`, `:444`) | Ride in the slot. | -1 each | I or F |
 | VB4 | T14 | 44 displaced | Walk. | up to -44 | I, re-laid state |
 
-**Taken, **: T33 over the 15 immediate
+**Taken**: T33 over the 15 immediate
 offsets (`aff8c6b5`, -36) and, with `t33.py --mem`, over 6 offsets read from
 state (`1402651f`, -21: a load moves only past instructions that cannot store
 to its word), VB2 (`672b6c59`, -4, -2 words) and three short-form constants
@@ -536,7 +536,7 @@ template.
 | DX3 | T28, T30 | 4 P reads a stage: the 515-word diode table | Build placement. |  | build |
 | DX4 | T14, T25 | displaced moves 70 cycles in RAT, about 10 one-cycle stalls, in `dtx_rstage` | Walk; reorder. | up to -40 | I, design |
 
-**Taken, **: DX1 in the template
+**Taken**: DX1 in the template
 (`ef1d3f9a`: fifteen constants; `distorx.asm` regenerated, `--check` passing),
 IDENTICAL (58 renders), all DISTORX gates passing. The scan: RAT 375.9 → 375.4
 cycles a sample; words 1,114 → 1,099.
@@ -550,7 +550,7 @@ cycles a sample; words 1,114 → 1,099.
 | SP3 | T12, T29 | `move r7,r3` (`:1181`); `do #2` (`:655`) | `lua`; unroll. | small | I |
 | SP4 | T13 | G2, COS and VOWL_ER listed by hand in the manifest | Generate them. | none at run time | construction |
 
-**Taken, **, IDENTICAL after each commit
+**Taken**, IDENTICAL after each commit
 (58 renders), `verify_spectrum` OK (58 checks):
 
 - SP1 in SEM (`d08b44ed`): the two pointer copies lead the sample loop, -2.
@@ -576,7 +576,7 @@ The scan: ISO 371.1 → 356.9, SEM 223.3 → 221.2 cycles a sample; words 1,345 
 | SH3 | T25 | about 10 one-cycle stalls in `sh00` | Reorder. | about -5 | I, design |
 | SH4 | branches | 59 cycles a sample of branches (the scan) | A mode's arms as loops chosen once a block. |  | not taken: words |
 
-**Taken, **: T31's seven short-form
+**Taken**: T31's seven short-form
 constants (`63a2d096`; one is a zero after a `sub`, and stays a `move`
 because a `clr` would change the flags the code after it reads) and T34's one
 (`f14d3f4b`), IDENTICAL (49 renders), `verify_shatter` OK (46 checks). The
@@ -594,7 +594,7 @@ after the accumulator is reused, so no value is still in a register.
 | TR3 | T14 | 26 displaced (27 cycles a sample, its largest extra) | Walk. | up to -26 | I, re-laid state |
 | TR4 | T31 | 18 long immediates in the loop, 4 short-form |  | -1 each | I |
 
-**Taken, **: TR4's four short-form
+**Taken**: TR4's four short-form
 constants (`df9b1b60`), IDENTICAL (27 renders), `verify_transient` OK. The scan:
 270.0 → 267.9 cycles a sample; words 258 → 254.
 
@@ -606,7 +606,7 @@ constants (`df9b1b60`), IDENTICAL (27 renders), `verify_transient` OK. The scan:
 | EU2 | T11 | `$1d` stored, then read back (`:142`, `:210`) | A register. | -1 | I |
 | EU3 | T14 | 56 displaced (53 cycles a sample) | Walk. | up to -50 | I, re-laid state |
 
-**Taken, **: EU1 in both loops (`c58a9288`,
+**Taken**: EU1 in both loops (`c58a9288`,
 -5, -8 words), EU2 (`358517b1`, -4: the reload became `move x0,x1` and fills a
 transfer stall), three short-form constants (`07441326`), each IDENTICAL (41
 renders). The scan: 232.3 → 223.2 cycles a sample; words 362 → 351. The gate
@@ -626,7 +626,7 @@ fails five chooser checks, on the base source as on the branch.
 | ST4 | T14 | 92 displaced | Walk. | up to -60 | I, re-laid state |
 | ST5 | branches | 49 to 61 cycles a sample of branches | Arms chosen once a block. |  | not taken: words |
 
-**Taken, **: ST1 (`18cbf152`: one m4
+**Taken**: ST1 (`18cbf152`: one m4
 write a call, before the loop; -3.9 in FWD at `dear`, estimated about -10: the
 AGU waits stay, now on r4's own write before its use; -2 words) and four
 short-form constants (`711d086b`) and four zero loads (`ad50ac90`, -2), each
@@ -642,7 +642,7 @@ pass; the gate now renders the manifest's `dear` settings (`e4c207a2` on
 One client; a bus remix runs several beside a server. SE1, T25: five one-cycle
 stalls (`proc+234` to `+255`), about -3. Nothing else.
 
-**Taken, **, each commit bit-identical
+**Taken**, each commit bit-identical
 under `verify_bus` (34 cases, against a reference stamped on main; its
 selftest catches both injected defects; SEND is a bus client, so
 `verify_ident` does not render it):
@@ -700,7 +700,7 @@ copies change together (with the servers).
 ### Notes from the pilot (checklist version 1 unchanged)
 
 - **Price a pass in cycles.** An instruction saved is not always a cycle
-  saved: #1080's frame-advance `lua` saves an instruction and costs a cycle.
+  saved: the MODULATION rework's frame-advance `lua` saves an instruction and costs a cycle.
   T19, folding the advance into the stores, beats both.
 - **Prefer the order whose forms are stock.** For a tap's reorder (T26), the
   stall-free order needed two forms with no stock site; the order with 2 cycles
@@ -722,35 +722,32 @@ copies change together (with the servers).
 
 ### The fixes: where they stand
 
-Eighteen branches, one module each, from main at `cc7cffc1`, opened as
-sambanks/octabam#1174 to #1186 and #1188 to #1192. Every
-commit is IDENTICAL under the wider gate (sambanks/octabam#1172 and its three
-later commits; SEND's under `verify_bus`), every module's own gate passes,
+One change per module. Every
+commit is IDENTICAL under the wider gate (SEND's under `verify_bus`), every module's own gate passes,
 every new form has a stock site or a register row. Cycles are the scan's, a
 sample, at the module's dearest setting (modelled); words are `dsp_asm` at
-P:$800. The same day Yves set the module PRs to draft, to test them on his
-unit, and told each owner once. Later changes to a module go to its PR.
+P:$800.
 
-| module | author | PR | commits | cycles a sample | % of a frame | words |
-|---|---|---|---|---|---|---|
-| MODULATION (FLNG) | sambanks | #1174 | 9 | 398.8 → 368.3 | 8.8 → 8.1 | 1,318 → 1,297 |
-| VIBRATO | Bryan T | #1175 | 8 | 207.0 → 175.7 | 4.6 → 3.9 | 593 → 581 |
-| MINIVERB | repeat98 | #1176 | 6 | 608.8 → 507.6 | 13.4 → 11.2 | 459 → 444 |
-| VOCODER | Ignorato | #1177 | 6 | 1,245.8 → 1,190.3 | 27.5 → 26.3 | 581 → 566 |
-| VERBERATION | Emilie Gillet, ported | #1178 | 7 | 455.7 → 393.5 | 10.1 → 8.7 | 644 → 637 |
-| RESONATOR | ilia-murzinov | #1179 | 6 | 655.9 → 636.4 | 14.5 → 14.0 | 451 → 432 |
-| STUTTR (FWD, `dear`) | ilia-murzinov | #1180 | 6 | 268.4 → 258.4 | 5.9 → 5.7 | 591 → 565 |
-| LOFI2 (DOWN) | Bryan T | #1181 | 4 | 654.2 → 638.9 | 14.4 → 14.1 | 838 → 821 |
-| VOID (`dear`) | ilia-murzinov | #1182 | 4 | 503.9 → 493.8 | 11.1 → 10.9 | 513 → 502 |
-| EUCLID | repeat98 | #1183 | 4 | 232.3 → 223.2 | 5.1 → 4.9 | 362 → 351 |
-| BBD (`dear`) | JamCones | #1184 | 5 | 528.3 → 520.3 | 11.7 → 11.5 | 1,112 → 1,082 |
-| DISTORX (RAT) | MaMarko | #1185 | 2 | 375.9 → 375.4 | 8.3 | 1,114 → 1,099 |
-| TRANSIENT | Ignorato | #1186 | 4 | 270.0 → 266.9 | 6.0 → 5.9 | 258 → 253 |
-| SPECTRUM (ISO) | sambanks | #1188 | 8 | 371.1 → 356.9 | 8.2 → 7.9 | 1,345 → 1,334 |
-| SHATTER (SOFT) | ilia-murzinov | #1189 | 4 | 383.1 → 380.7 | 8.5 → 8.4 | 457 → 449 |
-| CHARACTER (SAT=TUBE) | sambanks | #1190 | 4 | 428.3 → 428.0 | 9.5 → 9.4 | 967 → 961 |
-| SEND (each instance) | sambanks | #1191 | 3 | 57.5 → 51.5 | 1.3 → 1.1 | 260 → 259 |
-| CHARACTER TXTR (SAT=TUBE) | sambanks | #1192 | 3 | 697.9 → 696.3 | 15.4 | 1,097 → 1,087 |
+| module | author | commits | cycles a sample | % of a frame | words |
+|---|---|---|---|---|---|
+| MODULATION (FLNG) | sambanks | 9 | 398.8 → 368.3 | 8.8 → 8.1 | 1,318 → 1,297 |
+| VIBRATO | Bryan T | 8 | 207.0 → 175.7 | 4.6 → 3.9 | 593 → 581 |
+| MINIVERB | repeat98 | 6 | 608.8 → 507.6 | 13.4 → 11.2 | 459 → 444 |
+| VOCODER | Ignorato | 6 | 1,245.8 → 1,190.3 | 27.5 → 26.3 | 581 → 566 |
+| VERBERATION | Emilie Gillet, ported | 7 | 455.7 → 393.5 | 10.1 → 8.7 | 644 → 637 |
+| RESONATOR | ilia-murzinov | 6 | 655.9 → 636.4 | 14.5 → 14.0 | 451 → 432 |
+| STUTTR (FWD, `dear`) | ilia-murzinov | 6 | 268.4 → 258.4 | 5.9 → 5.7 | 591 → 565 |
+| LOFI2 (DOWN) | Bryan T | 4 | 654.2 → 638.9 | 14.4 → 14.1 | 838 → 821 |
+| VOID (`dear`) | ilia-murzinov | 4 | 503.9 → 493.8 | 11.1 → 10.9 | 513 → 502 |
+| EUCLID | repeat98 | 4 | 232.3 → 223.2 | 5.1 → 4.9 | 362 → 351 |
+| BBD (`dear`) | JamCones | 5 | 528.3 → 520.3 | 11.7 → 11.5 | 1,112 → 1,082 |
+| DISTORX (RAT) | MaMarko | 2 | 375.9 → 375.4 | 8.3 | 1,114 → 1,099 |
+| TRANSIENT | Ignorato | 4 | 270.0 → 266.9 | 6.0 → 5.9 | 258 → 253 |
+| SPECTRUM (ISO) | sambanks | 8 | 371.1 → 356.9 | 8.2 → 7.9 | 1,345 → 1,334 |
+| SHATTER (SOFT) | ilia-murzinov | 4 | 383.1 → 380.7 | 8.5 → 8.4 | 457 → 449 |
+| CHARACTER (SAT=TUBE) | sambanks | 4 | 428.3 → 428.0 | 9.5 → 9.4 | 967 → 961 |
+| SEND (each instance) | sambanks | 3 | 57.5 → 51.5 | 1.3 → 1.1 | 260 → 259 |
+| CHARACTER TXTR (SAT=TUBE) | sambanks | 3 | 697.9 → 696.3 | 15.4 | 1,097 → 1,087 |
 
 The module branches change only their module (code and README). The scan's
 figures for all eighteen are in `CYCLE_SCAN.md` on this branch: a trial merge
@@ -806,7 +803,7 @@ Not optimisations. Reported, and fixed only with Yves's OK.
   value is the one `proc` already set (linear), so it does no harm and costs
   about 10 cycles a sample (ST1 removes it).
 - MODULATION's PHSR advances its LFO with a fixed `do #15` a block. The unit's
-  block is 16 samples, so PHSR's rate is probably 15/16 of the knob's (#1080's
+  block is 16 samples, so PHSR's rate is probably 15/16 of the knob's (the MODULATION rework's
   deferred note; inferred). The wider identity gate's 16-sample renders see
   the difference.
 - `verify_ident.py` used to render every module on the FX1 slot. VOCODER

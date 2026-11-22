@@ -10,7 +10,7 @@ SYNTH MACHINE, and for reading the DSP's load during normal play.
 An effect on track 8 only: select T8, press FX2, and pick **CF Meter**.
 T8's audio is replaced by the readout (its machine still runs). Not in an
 official remix; build the test remix `cfmeter`. That image takes DARK REV
-off the chooser, because the readout uses its DSP words. Hardware: cursory testing on Sam's MKII (owner report, 16 Oct 2026).
+off the chooser, because the readout uses its DSP words.
 
 ## Operation
 

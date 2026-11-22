@@ -219,8 +219,8 @@ Labels are tails of longer stock strings (no abs refs to the short forms):
 A usable `"COPY"` tail sits at `0x400b3882` (`"DIRECTORY COPY"`). RENAME's
 handler pea's `"RENAME PROJECT"` (`0x400b5c5c`) into `POPUP` `0x4006d57c`;
 DELETE pea's `"DELETE PROJECT"` (`0x400b3984`). Growing this popup 2→3 is two
-4-byte pointer slots plus the count immediate — see issue #931 / module
-`copy-project`.
+4-byte pointer slots plus the count immediate (module
+`copy-project`).
 
 Key codes (octalab's list, plus the probe of under the
 port, each code alone in a fresh session): trigs `0x00..0x0f`, tracks

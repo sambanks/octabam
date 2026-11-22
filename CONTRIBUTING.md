@@ -78,9 +78,9 @@ the remix settles clashes (`registry.assign_ids`).
 The manifest's `category`, `author` and `author_url` make its row in
 [modules/README.md](modules/README.md) (`make docs` renders it and the
 remix index; `verify_docs` refuses a stale copy). A remix declares its
-`family` (`rig`, `effects`, `mods`, `reference`, `probes`). The schema
-still asks for an `evidence` entry on each module and remix
-(`docs/contributing/MODULES.md`); no doc shows it.
+`family` (`rig`, `effects`, `mods`, `reference`, `probes`). An optional
+`evidence` entry is read only by the instruction-form gates
+(`docs/contributing/MODULES.md`).
 
 ### Remixes
 

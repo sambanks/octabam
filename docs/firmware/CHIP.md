@@ -125,87 +125,87 @@ ships, and the row names the test that settles it.
 | `move y1,x:(r1)+` (1w) | MODULATION, e.g. `move y1,x:(r1)+` |
 | `mpy x0,y1,a x:(r0+n0),b` (1w) | MODULATION, e.g. `mpy x0,y1,a x:(r0+n0),b` |
 | `move b,x:(r1+N)` (2w) | KEYBUS, `move b,x:(r1+$37f60)` |
-| `add x0,a x:(r3)+,x0` (1w) | MODULATION (before #1080), e.g. `add x0,a x:(r3)+,x0` |
-| `andi #N,ccr` (1w) | MODULATION (before #1080), e.g. `andi #$fe,ccr` |
-| `clr a x:(r0),x0` (1w) | MODULATION (before #1080), e.g. `clr a x:(r0),x0` |
-| `clr a x:(r0+n0),x0` (1w) | MODULATION (before #1080), e.g. `clr a x:(r0+n0),x0` |
-| `clr b y0,y1` (1w) | MODULATION (before #1080), e.g. `clr b y0,y1` |
-| `cmp x1,a` (1w) | MODULATION (before #1080), e.g. `cmp x1,a` |
-| `div x0,a` (1w) | MODULATION (before #1080), e.g. `div x0,a` |
-| `lua (r1+N),r3` (1w) | MODULATION (before #1080), e.g. `lua (r1+$1),r3` |
-| `lua (r3+N),r3` (1w) | MODULATION (before #1080), e.g. `lua (r3+$2),r3` |
-| `lua (r4+N),r1` (1w) | MODULATION (before #1080), e.g. `lua (r4+$1),r1` |
-| `lua (r4+N),r3` (1w) | MODULATION (before #1080), e.g. `lua (r4+$e),r3` |
-| `lua (r4+N),r5` (1w) | MODULATION (before #1080), e.g. `lua (r4+$17),r5` |
-| `mac x0,y1,a x1,x:(r3)+` (1w) | MODULATION (before #1080), e.g. `mac x0,y1,a x1,x:(r3)+` |
-| `move a,x:(r0+n0)` (1w) | MODULATION (before #1080), e.g. `move a,x:(r0+n0)` |
-| `move a,x:(r1)` (1w) | MODULATION (before #1080), e.g. `move a,x:(r1)` |
-| `move a,y:(r5)` (1w) | MODULATION (before #1080), e.g. `move a,y:(r5)` |
-| `move a1,n2` (1w) | MODULATION (before #1080), e.g. `move a1,n2` |
-| `move a1,x:(r7+N)` (2w) | MODULATION (before #1080), e.g. `move a1,x:(r7+$42)` |
-| `move n1,a` (1w) | MODULATION (before #1080), e.g. `move n1,a` |
-| `move n2,a` (1w) | MODULATION (before #1080), e.g. `move n2,a` |
-| `move n2,b` (1w) | MODULATION (before #1080), e.g. `move n2,b` |
-| `move n2,x0` (1w) | MODULATION (before #1080), e.g. `move n2,x0` |
-| `move n3,a` (1w) | MODULATION (before #1080), e.g. `move n3,a` |
-| `move n3,x0` (1w) | MODULATION (before #1080), e.g. `move n3,x0` |
-| `move n3,x1` (1w) | MODULATION (before #1080), e.g. `move n3,x1` |
-| `move n3,y1` (1w) | MODULATION (before #1080), e.g. `move n3,y1` |
-| `move n4,b` (1w) | MODULATION (before #1080), e.g. `move n4,b` |
-| `move n6,x0` (1w) | MODULATION (before #1080), e.g. `move n6,x0` |
-| `move p:(r5)+,y0` (1w) | MODULATION (before #1080), e.g. `move p:(r5)+,y0` |
-| `move p:(r5),b` (1w) | MODULATION (before #1080), e.g. `move p:(r5),b` |
-| `move p:(r5),x0` (1w) | MODULATION (before #1080), e.g. `move p:(r5),x0` |
-| `move r4,r3` (1w) | MODULATION (before #1080), e.g. `move r4,r3` |
-| `move r6,r5` (1w) | MODULATION (before #1080), e.g. `move r6,r5` |
-| `move r7,r4` (1w) | MODULATION (before #1080), e.g. `move r7,r4` |
-| `move r7,r5` (1w) | MODULATION (before #1080), e.g. `move r7,r5` |
-| `move x0,n2` (1w) | MODULATION (before #1080), e.g. `move x0,n2` |
-| `move x0,n6` (1w) | MODULATION (before #1080), e.g. `move x0,n6` |
-| `move x0,x:(r1)` (1w) | MODULATION (before #1080), e.g. `move x0,x:(r1)` |
-| `move x0,x:(r3)` (1w) | MODULATION (before #1080), e.g. `move x0,x:(r3)` |
-| `move x0,x:(r5)` (1w) | MODULATION (before #1080), e.g. `move x0,x:(r5)` |
-| `move x0,x:(r7+N)` (2w) | MODULATION (before #1080), e.g. `move x0,x:(r7+$45)` |
-| `move x0,y1` (1w) | MODULATION (before #1080), e.g. `move x0,y1` |
-| `move x1,x0` (1w) | MODULATION (before #1080), e.g. `move x1,x0` |
-| `move x1,y1` (1w) | MODULATION (before #1080), e.g. `move x1,y1` |
-| `move x1,y:(r5)` (1w) | MODULATION (before #1080), e.g. `move x1,y:(r5)` |
-| `move x:(r0),b` (1w) | MODULATION (before #1080), e.g. `move x:(r0),b` |
-| `move x:(r0),x0` (1w) | MODULATION (before #1080), e.g. `move x:(r0),x0` |
-| `move x:(r0+n0),b` (1w) | MODULATION (before #1080), e.g. `move x:(r0+n0),b` |
-| `move x:(r1)+,y1` (1w) | MODULATION (before #1080), e.g. `move x:(r1)+,y1` |
-| `move x:(r1),b` (1w) | MODULATION (before #1080), e.g. `move x:(r1),b` |
-| `move x:(r1)-,y1` (1w) | MODULATION (before #1080), e.g. `move x:(r1)-,y1` |
-| `move x:(r1+N),b` (1w) | MODULATION (before #1080), e.g. `move x:(r1+$1),b` |
-| `move x:(r3)-,x0` (1w) | MODULATION (before #1080), e.g. `move x:(r3)-,x0` |
-| `move x:(r4),a` (1w) | MODULATION (before #1080), e.g. `move x:(r4),a` |
-| `move x:(r4+N),a` (1w) | MODULATION (before #1080), e.g. `move x:(r4+$1),a` |
-| `move x:(r4+N),x0` (1w) | MODULATION (before #1080), e.g. `move x:(r4+$15),x0` |
-| `move x:(r4+N),x1` (1w) | MODULATION (before #1080), e.g. `move x:(r4+$17),x1` |
-| `move x:(r4+N),y0` (1w) | MODULATION (before #1080), e.g. `move x:(r4+$1),y0` |
-| `move x:(r4+N),y1` (1w) | MODULATION (before #1080), e.g. `move x:(r4+$1),y1` |
-| `move x:(r5),a` (1w) | MODULATION (before #1080), e.g. `move x:(r5),a` |
-| `move x:(r7+N),x0` (2w) | MODULATION (before #1080), e.g. `move x:(r7+$40),x0` |
-| `move x:(r7+N),x1` (2w) | MODULATION (before #1080), e.g. `move x:(r7+$47),x1` |
-| `move y0,y1` (1w) | MODULATION (before #1080), e.g. `move y0,y1` |
-| `move y1,n3` (1w) | MODULATION (before #1080), e.g. `move y1,n3` |
-| `move y:(r5),x0` (1w) | MODULATION (before #1080), e.g. `move y:(r5),x0` |
-| `move y:(r5)-,b` (1w) | MODULATION (before #1080), e.g. `move y:(r5)-,b` |
-| `move y:(r5)-,x0` (1w) | MODULATION (before #1080), e.g. `move y:(r5)-,x0` |
-| `move y:(r5)-,x1` (1w) | MODULATION (before #1080), e.g. `move y:(r5)-,x1` |
-| `mpy x0,y1,a x:(r0),b` (1w) | MODULATION (before #1080), e.g. `mpy x0,y1,a x:(r0),b` |
-| `mpy x0,y1,a x:(r0),x0` (1w) | MODULATION (before #1080), e.g. `mpy x0,y1,a x:(r0),x0` |
-| `mpy x0,y1,a x:(r0+n0),x0` (1w) | MODULATION (before #1080), e.g. `mpy x0,y1,a x:(r0+n0),x0` |
-| `mpy x0,y1,a x:(r3),x0` (1w) | MODULATION (before #1080), e.g. `mpy x0,y1,a x:(r3),x0` |
-| `mpy x0,y1,a x:(r3),x1` (1w) | MODULATION (before #1080), e.g. `mpy x0,y1,a x:(r3),x1` |
-| `or x0,a` (1w) | MODULATION (before #1080), e.g. `or x0,a` |
-| `teq a,b` (1w) | MODULATION (before #1080), e.g. `teq a,b` |
-| `teq y1,a` (1w) | MODULATION (before #1080), e.g. `teq y1,a` |
-| `teq y1,b` (1w) | MODULATION (before #1080), e.g. `teq y1,b` |
-| `tge x0,a` (1w) | MODULATION (before #1080), e.g. `tge x0,a` |
-| `tgt x0,a` (1w) | MODULATION (before #1080), e.g. `tgt x0,a` |
-| `tgt x1,a` (1w) | MODULATION (before #1080), e.g. `tgt x1,a` |
-| `tmi x1,b` (1w) | MODULATION (before #1080), e.g. `tmi x1,b` |
+| `add x0,a x:(r3)+,x0` (1w) | MODULATION, e.g. `add x0,a x:(r3)+,x0` |
+| `andi #N,ccr` (1w) | MODULATION, e.g. `andi #$fe,ccr` |
+| `clr a x:(r0),x0` (1w) | MODULATION, e.g. `clr a x:(r0),x0` |
+| `clr a x:(r0+n0),x0` (1w) | MODULATION, e.g. `clr a x:(r0+n0),x0` |
+| `clr b y0,y1` (1w) | MODULATION, e.g. `clr b y0,y1` |
+| `cmp x1,a` (1w) | MODULATION, e.g. `cmp x1,a` |
+| `div x0,a` (1w) | MODULATION, e.g. `div x0,a` |
+| `lua (r1+N),r3` (1w) | MODULATION, e.g. `lua (r1+$1),r3` |
+| `lua (r3+N),r3` (1w) | MODULATION, e.g. `lua (r3+$2),r3` |
+| `lua (r4+N),r1` (1w) | MODULATION, e.g. `lua (r4+$1),r1` |
+| `lua (r4+N),r3` (1w) | MODULATION, e.g. `lua (r4+$e),r3` |
+| `lua (r4+N),r5` (1w) | MODULATION, e.g. `lua (r4+$17),r5` |
+| `mac x0,y1,a x1,x:(r3)+` (1w) | MODULATION, e.g. `mac x0,y1,a x1,x:(r3)+` |
+| `move a,x:(r0+n0)` (1w) | MODULATION, e.g. `move a,x:(r0+n0)` |
+| `move a,x:(r1)` (1w) | MODULATION, e.g. `move a,x:(r1)` |
+| `move a,y:(r5)` (1w) | MODULATION, e.g. `move a,y:(r5)` |
+| `move a1,n2` (1w) | MODULATION, e.g. `move a1,n2` |
+| `move a1,x:(r7+N)` (2w) | MODULATION, e.g. `move a1,x:(r7+$42)` |
+| `move n1,a` (1w) | MODULATION, e.g. `move n1,a` |
+| `move n2,a` (1w) | MODULATION, e.g. `move n2,a` |
+| `move n2,b` (1w) | MODULATION, e.g. `move n2,b` |
+| `move n2,x0` (1w) | MODULATION, e.g. `move n2,x0` |
+| `move n3,a` (1w) | MODULATION, e.g. `move n3,a` |
+| `move n3,x0` (1w) | MODULATION, e.g. `move n3,x0` |
+| `move n3,x1` (1w) | MODULATION, e.g. `move n3,x1` |
+| `move n3,y1` (1w) | MODULATION, e.g. `move n3,y1` |
+| `move n4,b` (1w) | MODULATION, e.g. `move n4,b` |
+| `move n6,x0` (1w) | MODULATION, e.g. `move n6,x0` |
+| `move p:(r5)+,y0` (1w) | MODULATION, e.g. `move p:(r5)+,y0` |
+| `move p:(r5),b` (1w) | MODULATION, e.g. `move p:(r5),b` |
+| `move p:(r5),x0` (1w) | MODULATION, e.g. `move p:(r5),x0` |
+| `move r4,r3` (1w) | MODULATION, e.g. `move r4,r3` |
+| `move r6,r5` (1w) | MODULATION, e.g. `move r6,r5` |
+| `move r7,r4` (1w) | MODULATION, e.g. `move r7,r4` |
+| `move r7,r5` (1w) | MODULATION, e.g. `move r7,r5` |
+| `move x0,n2` (1w) | MODULATION, e.g. `move x0,n2` |
+| `move x0,n6` (1w) | MODULATION, e.g. `move x0,n6` |
+| `move x0,x:(r1)` (1w) | MODULATION, e.g. `move x0,x:(r1)` |
+| `move x0,x:(r3)` (1w) | MODULATION, e.g. `move x0,x:(r3)` |
+| `move x0,x:(r5)` (1w) | MODULATION, e.g. `move x0,x:(r5)` |
+| `move x0,x:(r7+N)` (2w) | MODULATION, e.g. `move x0,x:(r7+$45)` |
+| `move x0,y1` (1w) | MODULATION, e.g. `move x0,y1` |
+| `move x1,x0` (1w) | MODULATION, e.g. `move x1,x0` |
+| `move x1,y1` (1w) | MODULATION, e.g. `move x1,y1` |
+| `move x1,y:(r5)` (1w) | MODULATION, e.g. `move x1,y:(r5)` |
+| `move x:(r0),b` (1w) | MODULATION, e.g. `move x:(r0),b` |
+| `move x:(r0),x0` (1w) | MODULATION, e.g. `move x:(r0),x0` |
+| `move x:(r0+n0),b` (1w) | MODULATION, e.g. `move x:(r0+n0),b` |
+| `move x:(r1)+,y1` (1w) | MODULATION, e.g. `move x:(r1)+,y1` |
+| `move x:(r1),b` (1w) | MODULATION, e.g. `move x:(r1),b` |
+| `move x:(r1)-,y1` (1w) | MODULATION, e.g. `move x:(r1)-,y1` |
+| `move x:(r1+N),b` (1w) | MODULATION, e.g. `move x:(r1+$1),b` |
+| `move x:(r3)-,x0` (1w) | MODULATION, e.g. `move x:(r3)-,x0` |
+| `move x:(r4),a` (1w) | MODULATION, e.g. `move x:(r4),a` |
+| `move x:(r4+N),a` (1w) | MODULATION, e.g. `move x:(r4+$1),a` |
+| `move x:(r4+N),x0` (1w) | MODULATION, e.g. `move x:(r4+$15),x0` |
+| `move x:(r4+N),x1` (1w) | MODULATION, e.g. `move x:(r4+$17),x1` |
+| `move x:(r4+N),y0` (1w) | MODULATION, e.g. `move x:(r4+$1),y0` |
+| `move x:(r4+N),y1` (1w) | MODULATION, e.g. `move x:(r4+$1),y1` |
+| `move x:(r5),a` (1w) | MODULATION, e.g. `move x:(r5),a` |
+| `move x:(r7+N),x0` (2w) | MODULATION, e.g. `move x:(r7+$40),x0` |
+| `move x:(r7+N),x1` (2w) | MODULATION, e.g. `move x:(r7+$47),x1` |
+| `move y0,y1` (1w) | MODULATION, e.g. `move y0,y1` |
+| `move y1,n3` (1w) | MODULATION, e.g. `move y1,n3` |
+| `move y:(r5),x0` (1w) | MODULATION, e.g. `move y:(r5),x0` |
+| `move y:(r5)-,b` (1w) | MODULATION, e.g. `move y:(r5)-,b` |
+| `move y:(r5)-,x0` (1w) | MODULATION, e.g. `move y:(r5)-,x0` |
+| `move y:(r5)-,x1` (1w) | MODULATION, e.g. `move y:(r5)-,x1` |
+| `mpy x0,y1,a x:(r0),b` (1w) | MODULATION, e.g. `mpy x0,y1,a x:(r0),b` |
+| `mpy x0,y1,a x:(r0),x0` (1w) | MODULATION, e.g. `mpy x0,y1,a x:(r0),x0` |
+| `mpy x0,y1,a x:(r0+n0),x0` (1w) | MODULATION, e.g. `mpy x0,y1,a x:(r0+n0),x0` |
+| `mpy x0,y1,a x:(r3),x0` (1w) | MODULATION, e.g. `mpy x0,y1,a x:(r3),x0` |
+| `mpy x0,y1,a x:(r3),x1` (1w) | MODULATION, e.g. `mpy x0,y1,a x:(r3),x1` |
+| `or x0,a` (1w) | MODULATION, e.g. `or x0,a` |
+| `teq a,b` (1w) | MODULATION, e.g. `teq a,b` |
+| `teq y1,a` (1w) | MODULATION, e.g. `teq y1,a` |
+| `teq y1,b` (1w) | MODULATION, e.g. `teq y1,b` |
+| `tge x0,a` (1w) | MODULATION, e.g. `tge x0,a` |
+| `tgt x0,a` (1w) | MODULATION, e.g. `tgt x0,a` |
+| `tgt x1,a` (1w) | MODULATION, e.g. `tgt x1,a` |
+| `tmi x1,b` (1w) | MODULATION, e.g. `tmi x1,b` |
 | `lua (r5)+n5,r4` (1w) | VERBERATION, e.g. `lua (r5)+n5,r4` |
 | `move a,y:(r5+n5)` (1w) | VERBERATION, e.g. `move a,y:(r5+n5)` |
 | `move b,a` (1w) | VERBERATION, e.g. `move b,a` |

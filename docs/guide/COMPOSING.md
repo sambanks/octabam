@@ -101,13 +101,12 @@ is the bus with stations, hosts and ColdFire mods,
   `remixes/test/kits/remix.py` one ColdFire mod and no DSP code.
 
 ```python
-from remix.schema import Evidence, Level, Remix
+from remix.schema import Remix
 
 REMIX = Remix(
     name="mine",                       # == the directory name
     doc="One line: what is in it.",
     family="effects",                  # index section: rig, effects, mods, reference, probes
-    evidence=(Evidence(Level.EMULATOR, ref="make check", date="2026-09-28"),),   # docs/contributing/MODULES.md
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "TEMPO SYNC",
              "FILTER", "LO-FI"),       # the FX2 chooser, in row order
     fallback="SEND",                   # or "NONE"
@@ -135,7 +134,7 @@ REMIX = Remix(
   name. A row costs no words and does cost cycles: four more slots per
   core.
 - `family` is the remix index's section; without it the remix lists under
-  Reference. `evidence` is required by the schema and shown nowhere.
+  Reference. `evidence` is optional and shown nowhere.
 - Seven FX2 rows fit in place; up to 32 go to a longer list.
 - Two selected modules that claim one address, id, hook or buffer are
   refused by name; `make modules` prints the pairwise matrix.

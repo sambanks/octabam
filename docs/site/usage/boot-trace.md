@@ -6,7 +6,7 @@ note a MIDI monitor receives is the last stage that ran.
 
 No menu and no screen. Connect a MIDI monitor to MIDI OUT and boot. Not in
 an official remix; build the test remix `remix-switch-trace`. It was built
-for REMIX SWITCH's hardware bring-up and has run on a MKII (29 Sep 2026).
+for REMIX SWITCH's hardware bring-up.
 
 ## Operation
 

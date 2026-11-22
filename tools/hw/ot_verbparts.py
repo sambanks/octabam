@@ -11,7 +11,7 @@ of every bank gets, on FX2 (the values are verify_verb_parts', so the port and t
     T3  0x14  PLATE REV's id (VERB PLATE), slot 9 at 4: a Part saved with the row              -> opens as written
     T5  0x1a  VERBERATION, slots 9 and 10 at 0, not a row's id                                  -> opens as written
 
-On the unit (docs/contributing/HARDWARE_PLAN.md, "VERB PARTS"): load DEST, open T2's and T4's FX2 pages and read the
+On the unit: load DEST, open T2's and T4's FX2 pages and read the
 knobs against `--expect`; then, playing, cue B01 (bank B's Part 1, applied at the pattern change) and read them again
 -- that is the pattern-change path (0x40009e10) the port has not run.
 

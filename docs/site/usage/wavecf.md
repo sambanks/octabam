@@ -41,7 +41,3 @@ each note. LFO SETUP names a WAVE track's destinations as a FLEX track's (PTCH S
 knobs they move are the six above.
 
 ## Checked
-
-The voice and the chord, pitch and sound under the emulator: TUNE C3 sounds at 130.6 Hz, E3 at 164.7 Hz and a
-major chord of three voices at 130.6, 164.7 and 196.0 Hz. Not yet played on a unit, and its load on the
-processor is not measured.

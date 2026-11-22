@@ -16,7 +16,7 @@ payload of the same loader in its own 528 pages of the arena. KITS
 (`modules/kits`) replaced it; the class went with it (`git show
 2063370f:tools/remix/schema.py`).
 
-A DSP-side class exists for one kind of code (sanderlegit, PR #542):
+A DSP-side class exists for one kind of code (sanderlegit):
 
 | class | declared as | where it lands | budget |
 |---|---|---|---|
@@ -53,7 +53,7 @@ place would shift B (it begins on the byte A's ends), the
 the bootstrap-reprogram path at `0x40000450` (A's size `0x136cb` at
 `0x40000476` and `0x400004d4`, `79563` at `0x40000488`, B's address at
 `0x400004b0` and `0x40000500`; that path runs only when `0x3ffc` is below
-`0x400dea48`; Sam B, #854).
+`0x400dea48`; Sam B).
 
 **The tail** (`DspSection(tail=True)`,) reaches it without
 moving anything. The normal boot hands the DSP loader only a pointer

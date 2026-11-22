@@ -200,7 +200,7 @@ wrong guesses (emulator memory limits, buffer alignment, a stale modulo) that
 were all *reasoned about* rather than disassembled. **Disassembling first would
 have cost one step instead of four** — the rule above is not advice.
 
-Gate: `tools/build/nolabelprefix.py` (called by `build_bus.assemble_syms`; test `tools/verify/tests/test_label_prefix.py`) refuses a source that defines a label that is a prefix of another. It sees only labels at the start of a line, and only within one `assemble_syms` source; the disassembly check cannot see this trap (it decodes the bytes `dsp_asm` wrote). Issue #815 item 5.
+Gate: `tools/build/nolabelprefix.py` (called by `build_bus.assemble_syms`; test `tools/verify/tests/test_label_prefix.py`) refuses a source that defines a label that is a prefix of another. It sees only labels at the start of a line, and only within one `assemble_syms` source; the disassembly check cannot see this trap (it decodes the bytes `dsp_asm` wrote).
 
 <a name="trap-markers"></a>
 
@@ -1392,7 +1392,7 @@ cost read goes to a wild address. The unit's frame interrupt and every
 counter on it stopped 8,388,607 frames after power-up (3,043.6 s at
 2,756.25 a second), on an idle unit, twice (24 Oct 17:23, 25 Oct 07:41). The
 port reads zero at the wild address and goes on; the OTOP costs after the
-crossing are zero. Inferred, not measured: that the read stalls the core on
+crossing are zero. Unconfirmed: that the read stalls the core on
 the unit (an image with the count preset, Q1, stopped within seconds of boot;
 Q2, with the wrap below, did not).
 - Fix: `and #>$7fffff,a` after the add keeps the count below bit 23 (2^23 is
@@ -1449,8 +1449,8 @@ is the measurement, and a 64-id build is the case to watch: its
 end). Gate: none of its own; the refusal names both regions.
 
 The run's own bytes are not free either: the stock DELAY reads the whole run
-as entries 508..1023 of its coefficient table (`stock.DELAY_TABLE_END`, issues
-#771 and #1007; the 16 bytes past the curve; all but SCALE
+as entries 508..1023 of its coefficient table (`stock.DELAY_TABLE_END`;
+the 16 bytes past the curve; all but SCALE
 QUANTIZER's pinned tail at `0x400d2ca8` is kept now), and the
 first form of this fix put the cave on them in a selection listing DELAY (the
 kept-bytes check refused it: `DELAY keeps 0x400d24d0`). The overflow cursor
@@ -1480,7 +1480,7 @@ runtime's.
 ### A runtime's own bytes can spell the clones' staging range
 
 **THE FINAL SCAN FOR STAGING ADDRESSES READS EVERY EVEN OFFSET, SO TWO
-UNRELATED HALFWORDS CAN MAKE ONE.** PR #989 grew CC MAP by 14 bytes and
+UNRELATED HALFWORDS CAN MAKE ONE.** Growing CC MAP by 14 bytes made
 octabam's build refused with `the DRAM runtime still holds a staging
 address`. Nothing was stale: OCTA303's `o3_over` table is `.long o3_names`
 then `.short 0x05f`, the shift put `o3_names` at an address with low half
@@ -1555,9 +1555,8 @@ input pages), not only the one the change was made for. Gate:
 
 ### A wall-clock timeout in a port gate failed on a loaded runner
 
-**THE SAME TREE PASSED ON ITS PR AND FAILED ON MAIN.** On main's
-merge of #1116 (`636460a`, a tree bit-identical to the PR head `1d7d96e`)
-failed `verify_remote`'s `COMMAND 1 and 2`: NEWPROJ and the PATTERN records
+**THE SAME TREE PASSED ON ITS PR AND FAILED ON MAIN.** A merge
+bit-identical to its PR head failed `verify_remote`'s `COMMAND 1 and 2`: NEWPROJ and the PATTERN records
 arrived after COMMAND 2, the LOADALL did not "in 120.0 s". The PR's run had
 passed the shard in 474 s; main's took 958 s. The 120 s was wall time
 (`ot_events.Events.wait_for` read `time.monotonic()`) while each tick advanced
@@ -1565,19 +1564,12 @@ the port 10 emulated ms, so a slower runner gave the reload fewer emulated
 seconds. Every PR whose image moved then failed the same check
 . `MenuPort.run` had the same blind spot: it passed the
 port a soft wall cap (`run <ms> wall <s>`), and a capped slice "advances less
-than ms" with nothing said. (`verify_copy_project`'s "no PROJECT
-261014/project.work on card" on sambanks/octabam#1119 was first put down to
-that cap; retracted -- it failed again with the cap fixed. Its cause is a fixed
-20 s of emulated time for a copy of the generated project that takes 20-40 s:
-`4a0e9e0` waits for the job's dialog instead.)
-Measured: the identical-tree pass and fail, and the two shard times. Inferred:
-that runner load is the cause (no run was repeated on one runner).
+than ms" with nothing said.
 Fix: `Events(..., clock=)` -- `verify_remote` passes the emulated clock, so its
 timeouts are emulated seconds -- and `MenuPort.run` runs further capped slices
 until the asked emulated ms have passed (a slice that advances nothing ends
 it). A slice's cap must also sit inside the reply timeout: `ms/50` asked
-`run 15000 wall 300` against `PortProc.BACKSTOP`'s 120 s, and on main's run of
-#1119 a slow port was declared dead mid-slice ("PortDied: no reply
+`run 15000 wall 300` against `PortProc.BACKSTOP`'s 120 s, and a slow port was declared dead mid-slice ("PortDied: no reply
 to 'run 15000 wall 300' within 120 s"); the cap is now at most BACKSTOP / 2.
 Rule: under the port, a timeout or a settle is emulated time; a wall cap
 only bounds a slice, sits inside the reply timeout, and the caller checks what
@@ -1594,17 +1586,17 @@ the slice advanced. Gate:
 which starts when the port marks the load ended. The press led the onset only
 while boot and load took under about 8 s. On every branch merged
 with main failed `cancel: stock's own start path ran under THR`
-: from sambanks/octabam#1133 on octabam the
+: the
 gate's bare project (a `project.work`, no bank files) was marked loaded after
 9.1 s, not 3.4 s; the press found the signal already there, armed and started
-at once, and the second press ran stock's start. Measured under the port: the
-1.40C itself and the images before and after #1133 all write the 15 missing
+at once, and the second press ran stock's start. Under the port, the
+1.40C itself and octabam's images all write the 15 missing
 banks after that load (the bank writer `0x400917c8`, mask `0xfffe`, called from
 `0x40084dc8`); with SEQ registered as a STORE Part client the load-end mark
 (the engine idle at its queue receive) falls after those writes instead of
 before them, and with SEQ's registration removed it falls before them again.
-A project with its banks loads in 15,081 ms before and after #1133 with the same
-card traffic. Inferred: that STORE's Part hooks move the idle gap (not traced).
+A project with its banks loads in the same time either way. STORE's Part
+hooks probably move the idle gap (not traced).
 Fix: `--audio-in-on-cue` holds a WAV silent until the script's `<ms> audio
 start` line, and the gate cues every WAV at script 6 s and stages a complete
 project from `tools/hw/ot_fresh.py`. Rule: a gate that compares two events

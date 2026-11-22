@@ -44,7 +44,6 @@ and [remixes/README.md](../remixes/README.md).
 | [contributing/HARDWARE_TESTING.md](contributing/HARDWARE_TESTING.md) | testing a remix on your own Octatrack, and recovering from a failure |
 | [contributing/HARDWARE_MATRIX.md](contributing/HARDWARE_MATRIX.md) | running one remix in many configurations over one USB cable |
 | [contributing/HARDWARE_SUITE.md](contributing/HARDWARE_SUITE.md) | the `octabam` remix's automated hardware suite |
-| [contributing/HARDWARE_PLAN.md](contributing/HARDWARE_PLAN.md) | the checklist for a hardware session |
 | [contributing/HARDWARE_MANUAL.md](contributing/HARDWARE_MANUAL.md) | the checks done by hand: panel gestures, listening, the card, MIDI controllers |
 
 ## Specs

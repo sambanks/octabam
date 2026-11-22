@@ -209,19 +209,15 @@ dear={"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
   isolated `remix_arg=False` one, which runs in the shared half, is `check-shared (<gate>)` with the project made on the remix it
   runs on (the carrier of a `once` gate, the first remix of the line otherwise). `test_reach` refuses a gate that has the SKIP line
   and no flag, except those with a job of `reach.SPLIT_EXTRA_UNITS` (BRAIN, MIDI SCENES). `KNOWN_RED` in `test_reach` lists
-  any gate that fails with a generated project and is left unflagged until fixed; it is empty (`verify_dlload` #1075 and
-  `verify_load_meter` #1126 left it, `verify_cfmeter` #1124 when a probe remix stopped being a `once` gate's
-  carrier, `verify_ids64_load` #1120 and `verify_kits` #1125). A job that fails in one remix's project unit and passes in others is left out
-  of the project there (`reach.PROJECT_GATE_SKIP`, empty since #1127's `plocks-p2` and `mode-defaults` on `octabam-verbs` were
-  fixed) and runs without one. `set` runs with the project on the remixes of `reach.PROJECT_SET`
+  any gate that fails with a generated project and is left unflagged until fixed; it is empty. A job that fails in one remix's project unit and passes in others is left out
+  of the project there (`reach.PROJECT_GATE_SKIP`, empty) and runs without one. `set` runs with the project on the remixes of `reach.PROJECT_SET`
   (`octabam`). A job that exited 0 with `[SKIP]` lines reads `ok, N SKIP` in `check_shards`'s table.
 - `once=True` (with `remix_arg=True`, isolated): the gate checks the
   module's own code, the same in every carrier, so it runs once per run
   in the shared half, on the named remix with the fewest modules that
   carries the module, not once per carrying remix. A probe remix
   (`family="probes"`) is the carrier only when no other named remix carries
-  the module (sambanks/octabam#1124: `cfmeter` leaves the set unmounted
-  under the port). `make check REMIX=x`
+  the module (`cfmeter` leaves the set unmounted under the port). `make check REMIX=x`
   on its own still runs it on x. For a ColdFire module's port scenarios
   (KITS: 29 scenarios, 371 s emulated, two carriers).
 - A missing script is `[FAIL]`. The same script may not be listed twice.

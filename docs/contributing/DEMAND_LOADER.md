@@ -124,7 +124,6 @@ records are left out of payload A's upload and written to `out/dsp/demand_record
 
 Source: Zac-Kyoti/octatrack-kyoti-fw#4 (opt-in `FORM = SHARED`: one core-independent copy). octabam carries it in COMPRESSOR's row as a
 demand effect with one home at `P:0x3f820` (1,711 words: 620 code, 65 table, 1,026 key window and counters as zeros), PLACE = DRAM.
-Issue octabam#934; guard compaction octabam#947.
 
 It has no dispatch entry of its own: `MenuEntry.stock_dsp` makes the row COMPRESSOR's, COMPRESSOR's stock init and proc stay, and four
 `DspHook`s reach SC's code. So the block is loaded like any demand effect, and something resident has to sit in front of each hook.
@@ -165,7 +164,7 @@ with TUNER through `requires` and `overrides` (`modules/scope/manifest.py`).
 choosers, never refuses a reverb, and gives its block up at once to a reverb that reaches it (`modules/dlpump/README.md`).
 The pump's trigger is the replaced effect's stock id (COMPRESSOR `0x18`), which is what the Part saves; `dl_tab` takes it from
 `stock_dsp` instead of `menu.fx2_id`. Toasts: `SC KEY OFF: T4 FX2` (no home free), `SC KEY OFF: T4 REV` (a reverb took the block).
-While the code is not loaded, page 2's KEY reads `--` (`dl_keyfmt`; issue #934).
+While the code is not loaded, page 2's KEY reads `--` (`dl_keyfmt`).
 
 **One core-independent copy.** The per-core source needs 677 words a copy (612 code, 16 `ptable`, 49 `ptable2`), two copies of the
 per-core tokens (`@COREBASE@`, `@FCOREBASE@`, `@SBASE@`, `@FSBASE@`, `@GCNT@`, `@GSEED@`, `@FOREIGN_BR@`) = 1,354, and a 1,028-word

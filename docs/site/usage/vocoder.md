@@ -14,13 +14,6 @@ NEIGHBOR machine: T1 drums into T2 NEIGHBOR + VOCODER, T3 into T4, and so
 on. Not in an official remix; build the test remix `vocoder`, or
 `vocoder-usb` to record it over USB.
 
-Heard on a MKII (Ignorato's, by ear): 0.1 on 4-5 Oct 2026; 0.2 on the even
-tracks on 11 Oct 2026 (T4 and T8 clean, including at trigs; a NEIGHBOR on
-T2 vocodes T1's drums; T2 and T4 together stable); SCAL, KEY and RANG on
-18 Oct 2026 (scale sweeps play only scale notes, GLDE slides between them,
-6ST, 12ST and 24ST bend as labelled, two per core stable). Not yet run:
-T6 and T8 together, a long session.
-
 ![FX2 SETUP with VOCODER selected: MODE, SCAL, GLDE, RANG and KEY on its page 2.](../../img/vocoder/chooser.png)
 
 *FX2 SETUP with VOCODER selected: MODE, SCAL, GLDE, RANG and KEY on its page 2.*

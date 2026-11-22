@@ -667,18 +667,18 @@ def main():
         else:
             bad += 1
             print(f"  [FAIL] {mod.name}: category {cat} derived tracks {tr}")
-    # ---- the module table's fields --------------------------------------
-    # README.md's table is rendered from these (make docs); a module without
-    # them has no row, which is how eight merged modules went unlisted.
+    # ---- the module index's fields --------------------------------------
+    # modules/README.md is rendered from these (make docs); a module without
+    # them has no row. `evidence` is optional: only the form gates read it.
     for mod in registry.modules().values():
         if mod.is_stock:
             continue
-        missing = [f for f in ("category", "author", "author_url", "evidence")
+        missing = [f for f in ("category", "author", "author_url")
                    if not getattr(mod, f)]
         if missing:
             bad += 1
             print(f"  [FAIL] {mod.name}: manifest declares no {', '.join(missing)}")
-    print("  [PASS] every module declares category, author, author_url, evidence")
+    print("  [PASS] every module declares category, author, author_url")
     # ---- every module has a remix ----------------------------------------
     # Every check starts from a remix (make check, make accept, the module
     # gates, make reach): a module no selection carries is never built or
