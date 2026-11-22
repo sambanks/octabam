@@ -78,8 +78,8 @@ MODULE = Module(
               doc="band 3 centre pitch"),
         Param(b"PIT4", 80, 128, active=True, formatter=_PLAIN,
               doc="band 4 centre pitch"),
-        Param(b"SCAL", 8, 128, active=True, formatter=_PLAIN,
-              doc="gain scale: 8 is tame, 127 is a smash"),
+        Param(b"SCAL", 1, 128, active=True, formatter=_PLAIN,
+              doc="gain scale: 1 is the low-gain default, 127 is a smash"),
         Param(b"LIM", 0, 128, active=True, formatter=_PLAIN,
               doc="peak limiter after MIX; 0 off, 1..127 ≈ -2.5..-12 dB ceiling"),
     ),
@@ -98,5 +98,5 @@ MODULE = Module(
     gates=(Gate("tools/verify/verify_resonator.py", remix_arg=False),),
     dear={"GN1": 64, "GN2": 64, "GN3": 64, "GN4": 64,
           "PIT1": 64, "PIT2": 80, "PIT3": 96, "PIT4": 112,
-          "SCAL": 8, "DECY": 127, "MIX": 127},
+          "SCAL": 1, "DECY": 127, "MIX": 127},
 )

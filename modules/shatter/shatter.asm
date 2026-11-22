@@ -67,11 +67,11 @@ proc:
         and     #>$7f0000,a
         move    a,x:(r7+$12)            ; raw CLIP (0 = skip stage)
         move    a,x0
-        move    #>$700000,y1            ; 0.875
+        move    #$70,y1                  ; 0.875 (short immediate: bits 23-16)
         mpy     x0,y1,a
         move    #>$7fffff,b
         sub     a,b
-        move    #>$100000,x0            ; floor ~0.125 so it never gates to 0
+        move    #$10,x0                  ; floor ~0.125 so it never gates to 0 (short immediate: bits 23-16)
         cmp     x0,b
         tlt     x0,b
         move    b,x:(r7+$0c)            ; thresh
@@ -80,7 +80,7 @@ proc:
         move    a,x:(r7+$13)
 ; BRR depth n = 1 + kn/8 (1..16), clamp 12 -- asr n / asl n keeps level
         asr     #$13,a,a                ; kn>>3 → 0..15
-        add     #>$1,a
+        add     #$1,a                   ; (6-bit immediate)
         move    #>$c,x0
         cmp     x0,a
         tgt     x0,a
@@ -90,7 +90,7 @@ proc:
         move    x:(r7+$13),a
         and     #>$7f0000,a
         asr     #$14,a,a                ; kn>>4 → 0..7
-        move    #>$200000,b             ; at least 2-sample hold
+        move    #$20,b                   ; at least 2-sample hold (short immediate: bits 23-16)
         tst     a
         beq     shc0
         asr     #$1,b,b
@@ -129,7 +129,7 @@ shc0:
         move    a,x:(r7+$14)
         move    x:(r6+$5),a             ; MIX; 127 -> full scale
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -144,7 +144,7 @@ shc0:
         and     #>$7f00,a
         asl     #$8,a,a                 ; -> TONE<<16 like page-1 knobs
         asr     #$1,a,a                 ; /2 for lp coeff
-        move    #>$040000,x0            ; floor so dark still moves
+        move    #$04,x0                  ; floor so dark still moves (short immediate: bits 23-16)
         add     x0,a
         move    a,x:(r7+$17)
         move    x:(r6+$d),a             ; RATE slot 8 = $d bits 16-23
@@ -244,13 +244,13 @@ sh03:
         move    x:(r7+$04),b
         move    x:(r7+$0b),x0
         add     x0,b
-        move    #>$400000,x1
+        move    #$40,x1                  ; (short immediate: bits 23-16)
         move    b,a
         sub     x1,a
         move    a,y1
         tge     y1,b
         move    b1,x:(r7+$04)
-        move    #>$0,a                  ; move #imm keeps the sub's CC (clr would not)
+        move    #$00,a                   ; move #imm keeps the sub's CC (clr would not) (short immediate: bits 23-16)
         move    #>$1,x0
         tge     x0,a
         move    a,x:(r7+$09)

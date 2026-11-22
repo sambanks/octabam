@@ -103,7 +103,7 @@ bblive:
         move    x:(r7+$01),a
         tst     a
         beq     bbrun
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$01)
         move    a,b
         asl     #$8,a,a
@@ -127,7 +127,7 @@ bbwipe:
         move    a,x:(r4)+
 bbwipx:
         nop
-        move    #>$040000,a             ; poly(0): the DC every bucket carries, already
+        move    #$04,a                   ; poly(0): the DC every bucket carries, already (short immediate: bits 23-16)
         move    a,x:(r7+$0a)            ; through the reconstruction and the DC blocker,
         move    a,x:(r7+$0e)            ; so a reset starts quiet
         move    r7,r4
@@ -137,10 +137,10 @@ bbwipx:
         move    a,x:(r4)+
 bbwipr:
         nop
-        move    #>$400000,a             ; warm start: the compressor's last output = 1
+        move    #$40,a                   ; warm start: the compressor's last output = 1 (short immediate: bits 23-16)
         move    a,x:(r7+$0b)
         move    a,x:(r7+$0c)
-        move    #>$100000,a             ; TONE flat: high gain 1/8
+        move    #$10,a                   ; TONE flat: high gain 1/8 (short immediate: bits 23-16)
         move    a,x:(r7+$18)
         move    a,x:(r7+$1d)
         move    #>$1,a
@@ -149,7 +149,7 @@ bbwipr:
         move    a,x:(r7+$06)
         move    x:(r6+$c),a
         and     #>$7f0000,a
-        move    #>$010000,x0
+        move    #$01,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         tgt     x0,a
         move    a,x:(r7+$03)
@@ -181,7 +181,7 @@ bbrun:
 ; ---- STGS: a change fades out, then clears ---------------------------------
         move    x:(r6+$c),a
         and     #>$7f0000,a
-        move    #>$010000,x0
+        move    #$01,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         tgt     x0,a
         move    x:(r7+$03),x0
@@ -196,7 +196,7 @@ bbsame:
         move    x:(r7+$02),b
         tst     b
         beq     bbnofade
-        sub     #>$1,b
+        sub     #$1,b                    ; (6-bit immediate)
         move    b,x:(r7+$02)
         bne     bbfading
         move    #>$10,b
@@ -208,7 +208,7 @@ bbnofade:
 ; MIX: 127 is the wet alone, every other value value/128
         move    x:(r6+$5),a
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         bne     bbmixdone
         move    #>$7fffff,a
@@ -220,7 +220,7 @@ bbmixdone:
 ; ---- TONE: u = |value-64|/64, gains / 8 from cubic fits of 10^(+-0.45u) ----
         move    x:(r6+$3),a
         and     #>$7f0000,a
-        move    #>$400000,x0
+        move    #$40,x0                  ; (short immediate: bits 23-16)
         sub     x0,a
         move    a,b                     ; sign of value-64
         abs     a
@@ -246,7 +246,7 @@ bbmixdone:
         move    a,x1                    ; pc = (10^(-0.45u) - 1) / 8
         tst     b
         blt     bbtneg
-        move    #>$100000,a             ; treble: high = 1 + pg, low = 1 + pc
+        move    #$10,a                   ; treble: high = 1 + pg, low = 1 + pc (short immediate: bits 23-16)
         add     y1,a
         move    a,x:(r7+$1d)
         move    x1,a
@@ -256,7 +256,7 @@ bbmixdone:
         move    a,x:(r7+$1e)
         bra     bbtdone
 bbtneg:
-        move    #>$100000,a             ; low-mid peak: flat plus pg * bandpass
+        move    #$10,a                   ; low-mid peak: flat plus pg * bandpass (short immediate: bits 23-16)
         move    a,x:(r7+$1d)
         clr     a
         move    a,x:(r7+$1c)
@@ -296,7 +296,7 @@ bbtdone:
         move    a,x:(r7+$39)
         clr     b
         move    #>$1,x1
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         teq     x1,b
         move    b,x:(r7+$3a)
@@ -423,7 +423,7 @@ bblimok:
         and     #>$7f0000,a
         move    a,x:(r7+$59)            ; HPF on
         move    a,x0
-        move    #>$7f0000,a
+        move    #$7f,a                   ; (short immediate: bits 23-16)
         sub     x0,a
         move    a,x0                    ; (127 - v) / 128
         move    #>$463f9d,y0            ; log2(20) * 128 / (126 * 8)
@@ -494,7 +494,7 @@ bbdivk:
         clr     b
         move    b,x:(r7+$36)
         move    x:(r7+$01),a            ; ... all nine from 0 in the clear call
-        sub     #>$1,a                  ; before a reset (bbnine, the one with
+        sub     #$1,a                    ; before a reset (bbnine, the one with (6-bit immediate)
         bne     bbsnap1                 ; $01 = 1) ...
         move    b,x:(r7+$3b)
         move    #>$9,x1
@@ -539,12 +539,12 @@ bbrjoin:
         add     x0,b
         move    #>$9,x0
         cmp     x0,b
-        move    #>$0,x1
+        move    #$00,x1                  ; (short immediate: bits 23-16)
         tge     x1,b
         move    b,x:(r7+$3b)
 bbrend:
         move    x:(r7+$01),a            ; $01 = 1: bbnine's clear call, dry, done
-        sub     #>$1,a                  ; (16 when a fade ends this call: the
+        sub     #$1,a                    ; (16 when a fade ends this call: the (6-bit immediate)
         bne     bbcoefs                 ; call goes on)
         rts
 bbcoefs:
@@ -654,10 +654,10 @@ bbpreoff:
         mpy     y0,x0,a
         asl     a
         add     b,a                     ; x / 8
-        move    #>$300000,x0            ; Pade range: |x| <= 3
+        move    #$30,x0                  ; Pade range: |x| <= 3 (short immediate: bits 23-16)
         cmp     x0,a
         tgt     x0,a
-        move    #>$d00000,x0
+        move    #$d0,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         tlt     x0,a
         asl     a
@@ -668,7 +668,7 @@ bbpreoff:
         move    a,y1
         mpy     x0,y1,b
         asr     #$3,b,b
-        move    #>$1b0000,y0
+        move    #$1b,y0                  ; (short immediate: bits 23-16)
         mac     y0,x0,b                 ; N, full precision
         move    a,y0
         asr     #$3,a,a
@@ -684,14 +684,14 @@ bbpreoff:
         move    y1,a
         mac     y0,x0,a
         move    a,x:(r7+$0b)            ; avg += (|q[n-1]| - avg) / 442
-        add     #>$00002a,a
+        add     #$00002a,a               ; (6-bit immediate)
         move    a,y0
         mpy     x1,y0,a
         move    a,x0                    ; D
         move    b,y1                    ; N's sign
         abs     b
         move    x0,a
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,y0
         cmp     y0,b
         tgt     y0,b                    ; |N| >= D clips q at +-2
@@ -723,6 +723,7 @@ bbpreoff:
         move    b0,y0
         move    y0,a
         neg     a
+        move    r2,r5                   ; the anti-alias line, early: its wait overlaps
         move    y1,b                    ; N's sign
         tst     b
         tpl     y0,a
@@ -730,7 +731,6 @@ bbpreoff:
         move    a,x0                    ; q / 2
 ; anti-alias: four DF1 sections, coefficients halved, from Y
         lua     (r7+$20),r1
-        move    r2,r5
         move    x:(r1)+,x1      y:(r5)+,y0
         mpy     y0,x0,a         x:(r1)-,y1
         move    x0,x:(r1)+      y:(r5)+,y0
@@ -893,7 +893,7 @@ bbnotick:
         abs     a
         move    a,x1                    ; |wet/2|
         sub     #>$200000,a
-        move    #>$400000,x0
+        move    #$40,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a
         tgt     x0,a
         move    a,x0                    ; e
@@ -916,7 +916,7 @@ bbnotick:
         move    x:(r7+$16),a
         asl     a
         move    a,y0                    ; g: the move limits 2m at 1
-        move    #>$400000,x0
+        move    #$40,x0                  ; (short immediate: bits 23-16)
         sub     x0,a
         sub     x0,a                    ; 2m - 1
         move    #0,x0
@@ -973,10 +973,10 @@ bbsect:
         move    x:(r7+$38),b
         asr     #$2,b,b
         add     b,a
-        move    #>$200000,y0
+        move    #$20,y0                  ; (short immediate: bits 23-16)
         add     y0,a
         move    a,x0                    ; d/4 = (1 + K/Q + K^2) / 4
-        move    #>$100000,a
+        move    #$10,a                   ; (short immediate: bits 23-16)
         andi    #$fe,ccr
         do      #$18,>bbdivs            ; do, not rep: stock never holds interrupts off
         div     x0,a
@@ -991,14 +991,14 @@ bbdivs:
         move    a,y:(r5)+               ; b2/2
         move    x:(r7+$38),a
         asr     a
-        move    #>$400000,b
+        move    #$40,b                   ; (short immediate: bits 23-16)
         sub     a,b
         asl     b
         move    b,x0                    ; 1 - K^2
         mpy     y0,x0,a
         asl     a
         move    a,y:(r5)+               ; -a1/2 = (1 - K^2) / d
-        move    #>$400000,b
+        move    #$40,b                   ; (short immediate: bits 23-16)
         sub     x1,b
         move    x:(r7+$38),a
         asr     a
@@ -1013,10 +1013,10 @@ bbdivs:
 bbpole:
         move    x:(r7+$37),a
         asr     #$2,a,a
-        move    #>$200000,y0
+        move    #$20,y0                  ; (short immediate: bits 23-16)
         add     y0,a
         move    a,x0                    ; (1 + K) / 4
-        move    #>$100000,a
+        move    #$10,a                   ; (short immediate: bits 23-16)
         andi    #$fe,ccr
         do      #$18,>bbdivp            ; do, not rep: stock never holds interrupts off
         div     x0,a
@@ -1028,7 +1028,7 @@ bbdivp:
         move    a,y:(r5)+
         move    x:(r7+$37),a
         asr     a
-        move    #>$400000,b
+        move    #$40,b                   ; (short immediate: bits 23-16)
         sub     a,b
         asl     b
         move    b,x0                    ; 1 - K

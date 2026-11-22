@@ -125,7 +125,7 @@ proc:
         bsr     vb_tab                  ; INC at +0
         move    a1,x:(r7+$16)
         move    x:(r7+$15),a
-        add     #>$21,a
+        add     #$21,a                   ; (6-bit immediate)
         move    a1,r5                   ; PERW at +33
         move    x:(r7+$21),a
         bsr     vb_tab
@@ -145,7 +145,7 @@ proc:
 ; a block; unlimited, the walk to the new knot is a pitch spike (61 % at an
 ; SPD 80 -> 120 step). No shape's own slope exceeds dev, so in steady state
 ; the limit never engages; in a jump the delay chases its knot at 1.5 dev.
-        move    #>$180000,y1            ; 1.5/8 (x0 is still 8 dev)
+        move    #$18,y1                  ; 1.5/8 (x0 is still 8 dev) (short immediate: bits 23-16)
         mpy     x0,y1,a                 ; 1.5 dev
         move    #>$00c49c,x0            ; the floor, 0.006
         cmp     x0,a
@@ -326,7 +326,7 @@ vb_cd:
 ; within it, and snaps once the distance is under 128 LSBs (MIX 0 stays exact)
         move    x:(r6+$5),a
         and     #>$7fff00,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                  ; (short immediate: bits 23-16)
         cmp     x0,a                    ; k - 127
         move    #>$7fffff,x0
         tge     x0,a                    ; 127: the wet outright
@@ -365,7 +365,7 @@ vb_mixd:
         do      n7,>vbloopz
 ; ---- advance the write phase and the MIX run -------------------------------
         move    y0,a                    ; 0..1023, so phase + 1 is 1..1024: a2 = 0
-        add     #>$1,a
+        add     #$1,a                    ; (6-bit immediate)
         and     #>$3ff,a
         move    a1,y0
         move    x:(r7+$13),x0
@@ -380,21 +380,20 @@ vb_mixd:
         move    r2,r5
         bsr     vb_tap
         move    a,x1                    ; tap L
-        move    y0,a
-        move    a1,n5
+        move    y0,n5                   ; the write phase (a 24-bit word: no limiter)
         move    r2,r5
-        move    (r5)+n5                 ; line L at the write phase
         move    x:(r0),b                ; dry L
-        move    b,y:(r5)                ; write line L
         move    x1,a
         sub     b,a
+        move    (r5)+n5                 ; line L at the write phase (r5 loaded 3 cycles back)
         asr     #$1,a,a
+        move    b,y:(r5)                ; write line L (in the shift's gap)
         move    a,x0                    ; (tap - dry)/2
         move    x:(r7+$12),y1           ; m
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r0)                ; dry + m (tap - dry)
+        move    a,x:(r0)+               ; dry + m (tap - dry); r0 steps to R (the frame advance, 1 of 2)
 ; ---- R ---------------------------------------------------------------------
         move    x:(r7+$08),x0
         move    x:(r7+$06),a
@@ -403,23 +402,20 @@ vb_mixd:
         move    r6,r5
         bsr     vb_tap
         move    a,x1                    ; tap R
-        move    y0,a
-        move    a1,n5
+        move    y0,n5
         move    r6,r5
-        move    (r5)+n5                 ; line R at the write phase
-        move    x:(r0+n0),b             ; dry R
-        move    b,y:(r5)                ; write line R
+        move    x:(r0),b                ; dry R
         move    x1,a
         sub     b,a
+        move    (r5)+n5                 ; line R at the write phase
         asr     #$1,a,a
+        move    b,y:(r5)                ; write line R
         move    a,x0
         move    x:(r7+$12),y1
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r0+n0)
-        move    (r0)+n0                 ; the frame advance: n0 is 1 for the
-        move    (r0)+n0                 ; whole loop, so two steps, no reload
+        move    a,x:(r0)+               ; r0 steps to the next frame (2 of 2)
 vbloopz:
         nop
         move    #>$ffffff,m5
@@ -558,7 +554,7 @@ vbs_sin:
 ; ---------------------------------------------------------------------------
 vb_lfsr:
         move    x:(r7+$0d),a
-        move    #>$e10000,y0
+        move    #$e1,y0                  ; (short immediate: bits 23-16)
         do      #$10,>vblfz
         move    a1,b                    ; a1, not a: A2 is stale after lsr
         and     #>$1,b                  ; Z: bit 0 clear
@@ -608,7 +604,7 @@ vb_knot:
         teq     b,a                     ; the first block: on the knot
         move    a,x:(r4)
         sub     a,b
-        add     #>$8,b                  ; rounded: a floor leaves the walk 8 LSB short
+        add     #$8,b                    ; rounded: a floor leaves the walk 8 LSB short (6-bit immediate)
         asr     #$4,b,b                 ; the slope per sample
         move    x:(r7+$1e),x0           ; ... limited to +-S
         cmp     x0,b
@@ -626,20 +622,22 @@ vb_knot:
 ; vb_tap -- modulation's mo_tap: a = the delay in Q11.12, y0 = the write
 ; phase, r5 = the line's base (m5 = $3ff) -> a = the tap, the fraction
 ; blended toward the OLDER neighbour. Uses x0 y1 b n5. Straight-line.
+; Both callers enter with a0 = 0 and a in range (a delay and its slope, each
+; loaded from memory, added), so a needs no clean copy. The offset is worked
+; out first, in a; the fraction, in b, fills the gaps a result needs before it
+; is moved and n5 needs before the step (modulation's mo_tap does the same).
 ; ---------------------------------------------------------------------------
 vb_tap:
-        move    a,x0                    ; the total (positive, under 1: not limited)
-        move    x0,a                    ; clean: a0 = 0
-        and     #>$fff,a
-        asl     #$b,a,a                 ; the fraction, Q23
-        move    a1,y1
-        move    x0,a
-        asr     #$c,a,a
+        move    a,b                     ; the total (positive, under 1: not limited)
+        asr     #$c,a,a                 ; (a0 takes the fraction's bits: a1 is what is read)
+        and     #>$fff,b
         move    a1,x0                   ; i
         move    y0,a                    ; the write phase
         sub     x0,a
         and     #>$3ff,a                ; (a2 may be stale: a1 is what is read)
+        asl     #$b,b,b                 ; the fraction, Q23
         move    a1,n5
+        move    b1,y1                   ; f
         move    (r5)+n5                 ; -> delay i
         move    y:(r5)-,b               ; t0; the modulo steps r5 to delay i + 1
         move    y:(r5),a                ; t1

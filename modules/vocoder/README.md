@@ -36,6 +36,25 @@ The modulator is the left and right channels averaged (INT), or the left channel
 
 ## Measured
 
+- **19 Nov 2026, the stall pass** (bit-identical: `verify_ident.py` with the
+  wider matrix of sambanks/octabam#1172, 26 renders on VOCODER's own slot
+  r7 5, payload B, a 2 s run, a knob ramp, stereo, the r7 state after every
+  block, IDENTICAL after each of the three commits; `verify_vocoder` OK).
+  Cycles a sample from `tools/build/interlock_scan.py` (the core manual's
+  cycle table and stalls: a model, on average 3.0 % above the unit,
+  `docs/contributing/CYCLE_SCAN.md` section 1), INT and EXT at their
+  defaults: **1,245.8 → 1,190.5** (27.5 % → 26.3 % of a frame). Instructions a
+  sample 757.1 → 753.1. Words 581 → 570 (`dsp_asm` at P:$800). Not measured on
+  the unit. Changes: in each band, the next load that does not depend on a
+  section's result sits in the gap after that section's last `macr` (5 stall
+  cycles a band); the band and high-pass state pointers are one `lua` each;
+  seven constants load as one-word short immediates.
+- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172, 40 renders, IDENTICAL; the scan
+  as above): four small constants (0 to 63) in `add` load as the one-word
+  6-bit form (`add #>$1,a` is `add #$1,a`: the same result and flags). INT at
+  its defaults: 1,190.5 → 1,190.3 cycles a sample (modelled); words 570 → 566.
+
 All by `tools/verify/verify_vocoder.py` through `dsp_host` on the `vocoder` remix's image (payload A), 4-5 Oct 2026 (0.2's de-zipper 10 Oct 2026), unless stated. The test modulator is synthetic: a 120 Hz glottal pulse train through three formants, the vowel changing every 200 ms, with noise bursts for consonants.
 
 - ✅ The output matches the float reference within -62.4 dB (INT at C3) and -64.2 dB (EXT with a chord carrier), level within 0.001 dB. The difference is the band sum's 24-bit rounding (it was -85.7 dB with a 48-bit sum, which cost two moves a band); it exists only while a band is active.
