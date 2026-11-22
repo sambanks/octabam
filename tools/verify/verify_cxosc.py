@@ -378,6 +378,22 @@ def main():
     differ(outs["base"], outs["rato"], "RATO changes the output")
     differ(outs["base"], outs["dec"], "DEC (not HOLD) changes the output")
 
+    # INDX must phase-modulate every carrier shape. The saw morph must use
+    # the FM-modulated carrier phase, or INDX has no effect on saw and square.
+    for label, cmor in (("sine", 0), ("saw", 64), ("square", 127)):
+        index_outputs = []
+        for indx in (0, 96):
+            if "sy_state" in symbols:
+                uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+            audio, _ = render_frames(
+                uc, symbols,
+                {**base, "indx": indx, "cmor": cmor, "mmor": 0,
+                 "mix": 0, "fold": 0, "fdbk": 0, "pwm": 64},
+                frames=32,
+            )
+            index_outputs.append(audio)
+        differ(index_outputs[0], index_outputs[1], f"INDX changes {label} carrier")
+
     # PWM must change audio at sine (CMOR 0) and saw (CMOR 64), not only square.
     for label, cmor in (("sine", 0), ("saw", 64), ("square", 127)):
         if "sy_state" in symbols:
