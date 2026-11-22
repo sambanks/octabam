@@ -297,8 +297,10 @@ def running_image(u):
         a += len(d) or 248
     # REMIX SWITCH keeps file names (the saved choice) as `OCTABAM P1.RMX`; the image's own name has no `.RMX` (22 Nov 2026: a unit on
     # N1 read as `OCTABAM P1.RMX`). A bare `OCTABAM` is the start of a longer string cut by the scan, not a name.
-    found = {m.group().decode() for m in re.finditer(rb"OCTABAM[ -~]{0,8}", buf)}
-    return sorted(n for n in found if not n.upper().endswith(".RMX") and len(n) > len("OCTABAM"))
+    # 24 characters after OCTABAM: a file name such as `OCTABAM-VRB 05.RMX` must be read whole, or a capture cut before
+    # `.RMX` would pass the filter as a name of its own.
+    found = {m.group().decode() for m in re.finditer(rb"OCTABAM[ -~]{0,24}", buf)}
+    return sorted(n for n in found if ".RMX" not in n.upper() and len(n) > len("OCTABAM"))
 
 
 def one_name(names):
@@ -329,13 +331,12 @@ def ledger(requested, prior, result, seconds):
 
 
 def prior_state(u):
-    """healthy, stalled (the DSP count is not advancing) or the running name, for the ledger."""
+    """healthy or stalled (the DSP count is not advancing), and the ring fingerprint, for the ledger. Not the name scan:
+    that is about a minute of PEEKs, and boot already reads the name once the unit is back."""
     import load_meter
     try:
         ok, _ = load_meter.healthy(u.dev)
-        names = running_image(u)
-        name = one_name(names) or "/".join(names) or None
-        return ("healthy" if ok else "stalled") + ":" + str(name)
+        return ("healthy" if ok else "stalled") + ":" + "/".join(u.fingerprint())
     except (SystemExit, Exception):  # noqa: BLE001
         return "unknown"
 
