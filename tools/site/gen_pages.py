@@ -243,22 +243,26 @@ def directory_page(mods, book) -> str:
 
 def community_page(mods, book) -> str:
     """Community remixes: contributors' own selections (the community root of the remixes), one section
-    each from its remix.py: what it carries and how to build it. Not in the release, so
-    not in the web builder; each feature links to its manual page, or to its page in the directory."""
+    each from its remix.py: what it carries and how to build it, in the web builder when its
+    manifest (docs/site/builder/manifest.json) has a patch for it; each feature links to its manual
+    page, or to its page in the directory."""
     import gen_manual
     import release
     v = release.VERSION
     manual_page = gen_manual.published_pages(book)
     tree = f"{GH}/tree/main/remixes/community"
+    built = OUT.parent / "builder" / "manifest.json"
+    patched = {r["name"] for r in json.loads(built.read_text()).get("remixes", []) if r.get("community")} \
+        if built.is_file() else set()
     lines = ["# Community Remixes", "",
              "A community remix is a contributor's own selection of modules: an image they flashed, or a "
-             "combination they use. It is not part of the "
-             f"{v} release, so the [web builder](../web-builder.md) does not offer it and this manual's pages "
-             "describe its features only where a released remix has them too. Build one from source as in "
-             "[Create a Remix](../own-remix.md), and read its notes on GitHub before flashing it.", "",
-             '!!! warning "Check before you flash"',
-             "    CI leaves community remixes out of its checks, so a later change can stop one building. Run "
-             "`make check REMIX=<name>` before you flash one.", ""]
+             f"combination they use. It is not part of the {v} release, and this manual's pages describe its "
+             "features only where a released remix has them too. Read its notes on GitHub before flashing it.", "",
+             '!!! warning "Checked by its contributor"',
+             "    The project's own test runs leave community remixes out: keeping one working is its "
+             "contributor's job. The [web builder](../web-builder.md) offers a community remix only when it "
+             "passed `make check` in the run that built the builder's patches; one built from source is "
+             "checked by nobody until you run `make check REMIX=<name>`.", ""]
     names = sorted(n for n in registry.remix_names() if registry.is_community(n))
     if not names:
         lines += ["None yet.", ""]
@@ -282,7 +286,13 @@ def community_page(mods, book) -> str:
             lines += [f"**Also in {v}:** {', '.join(feats)}.", ""]
         if stock:
             lines += [f"**Stock effects kept:** {len(stock)} ({', '.join(stock)}).", ""]
-        lines += ["**Build it:**", "", "```bash", f"make image REMIX={n} BUILD=1", "```", "",
+        if n in patched:
+            lines += [f"**Build it:** in the [web builder](../web-builder.md), choose `{n}` under Community, "
+                      "or from source:", ""]
+        else:
+            lines += ["**Build it** from source, as in [Create a Remix](../own-remix.md) (the web builder "
+                      "does not have it yet):", ""]
+        lines += ["```bash", f"make image REMIX={n} BUILD=1", "```", "",
                   f"Its selection and notes: [{n} on GitHub]({tree}/{n}).", ""]
     lines += ["## Share yours", "",
               "Add your remix under the community remixes on GitHub and open a pull request: [Create a Remix](../own-remix.md) has the steps and the "

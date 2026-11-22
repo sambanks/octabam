@@ -12,6 +12,7 @@ stale: a manifest-only edit to a module still lists that module's remixes.
   docs/, *.md, .github/, tools/{verify,harness,emu,site,web,...}   ignored
   modules/<name>/        the official remixes selecting that module
   remixes/<official>/    that remix
+  remixes/community/<name>/   that community remix
   anything else          every official remix (the build, the DSP sources,
                          the Makefile, the vendored patches)
 
@@ -59,7 +60,7 @@ def registry_names():
 
 
 def selections(names):
-    """{official remix: {module directory name}} from the registry."""
+    """{published remix: {module directory name}} from the registry."""
     from remix import registry
     have = set(registry.remix_names())
     return {n: ({m.name for m in registry.selected(registry.remix(n))} if n in have else set()) for n in names}
@@ -74,7 +75,7 @@ def stale(paths, sel):
         if parts[0] == "modules" and len(parts) > 2:
             hit = [n for n, mods in sel.items() if parts[1] in mods]
         elif parts[0] == "remixes" and len(parts) > 2:
-            hit = [n for n in sel if parts[1] == n]
+            hit = [n for n in sel if parts[1] == n or (parts[1] == "community" and parts[2] == n)]
         else:
             hit = list(sel)
         for n in hit:
@@ -126,7 +127,7 @@ def main():
     for n in names:
         paths = res[n]
         if n not in set(registry_names()):
-            print(f"{n}: RETIRED (no remixes/{n}); the published patch stays until it is republished")
+            print(f"{n}: RETIRED (no such remix); the published patch stays until it is republished")
             continue
         if m.get("version"):
             # a patch locked to a release: later changes are expected, so nothing warns
