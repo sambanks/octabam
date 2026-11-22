@@ -93,7 +93,7 @@ proc:
 ; ---- MIX: value/128, 127 pinned to full scale ----------------------------------
         move    x:(r6+$4),a
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                 ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
