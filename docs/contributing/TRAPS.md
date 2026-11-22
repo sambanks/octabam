@@ -914,6 +914,18 @@ DARK REV on the slot at `0x30000` writes up to `0x33da2` (`stock.SLOT_EXTENT`), 
 build refuses an uploaded window record above `0x37f00`. The two clear gaps are `0x33da3..0x33fff`
 and `0x37da3..0x37eff`.
 
+**Seen again, 22 Nov 2026:** the reverb guard's body in `octabam` is followed by SIDECHAIN_COMPRESSOR's
+hook stubs, which end at `0x33ffc`: 3 words of slack in block 0. A test image with 22 more words in the
+guard body (unreachable `nop`s only) put `moncommit B` and `scinit` at `0x34000..0x34012`, inside the
+slot DARK REV writes up to `0x37da2`; the build accepted it and the DSP's frame count stayed at 0 for
+90 s after the boot, twice. A diagnostic build with a longer guard (+32 words) stalled the DSP 6.6 s into
+its first run. Two test images and several hours of runs were read as results about the guard's logic
+before the stub addresses were read back from `out/dsp/window_records.json`.
+**Gate:** the build now refuses an uploaded window record that overlaps `[slot, slot + extent)` of a
+guarded reverb for any of the four FX2 slots (`0x30000`, `0x34000`, `0x38000`, `0x3c000`); the shipped
+`octabam` is byte-identical with it. Rule: after adding words to a window record, read `window_records.json`
+for the records after it.
+
 <a name="trap-host-mask"></a>
 
 ### A host write at the frame interrupt's entry is lost on every other frame
@@ -1793,6 +1805,18 @@ evidence about that module; read the frame log (`tools/hw/framelog.patch`,
 `tools/hw/ot_stall.py`) for the entry lateness before the stop. **Gate:**
 `verify_frame_guard` (the guard's arithmetic; the window itself is a unit
 measurement).
+
+<a id="trap-hold-release-toggle"></a>
+**DROPPING A STOCK HOLD TO KEEP A WINDOW OPEN CAN ALSO DROP THE HOLD'S RELEASE BOOKKEEPING.** A grid TRIG hold
+(long press) does more than open the lock popup: stock's `0x400587d4` clears the bit for that key in the u16
+`0x460d1a9e`, and the release path toggles the step's trig exactly when that bit is still set. LOCK EDIT's
+`le_trighold` suppressed the popup while the audio editor was up but returned before the clear, so after
+`[TRIG]+[BANK]`, releasing the editor-opening trig was safe, but re-holding the same step to audition it took
+the trig away on release while the editor stayed open (8thmyth's MKI, 17 Nov 2026; port probe: `1a9e=0004`
+and the step lost, with the editor and `0x460d173a` unchanged). Poking `0x460d173a` or replaying the bank
+bookkeeping does not help; the release reads `0x460d1a9e`. Fix: when the editor is up, clear `0x460d1a9e`
+and keep suppressing the popup. **Gate:** `verify_lock_edit`'s `lock` scenario re-holds for 400 ms with the
+editor up and checks the flag is clear, no popup came, and the step and editor survive the release.
 
 <a id="trap-frame-head"></a>
 **A FRAME HOOK THAT HOLDS CORE B AT ITS FRAME HEAD CAN STOP THE CORE.** Core B has no idle of its own: its frame

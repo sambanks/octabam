@@ -107,6 +107,12 @@ ROM hooks, e.g. MIDI note-on). Not an FX2 id — machine signature `"CX", 1`.
 One mono voice under Unicorn: about **2035** instructions/frame (peak ~2074;
 `verify_cxosc`).
 
+`verify_cxosc` also compares INDX 0 and 96 at CAR sine, saw, and square. The
+rendered samples differ for all three shapes. This is emulator evidence, not
+a hardware measurement. On `CXSEQ CV.RMX` (BUILD 79, 20 Nov 2026), Ilia
+confirmed on a unit that INDX changes the saw and triangle carrier waveforms.
+That report covers those two shapes only.
+
 Selection guard **`ML_FM_MAX = 6`** (Part popup `CX OSC: 6 MAX`). Measured on
 author MKII with remix `cx-cf` + CF METER (USB decode, 9 Nov 2026, tip
 `CX-CF 69`):
