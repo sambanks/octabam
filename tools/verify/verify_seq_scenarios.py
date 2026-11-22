@@ -371,6 +371,104 @@ def run_scenarios() -> int:
               f"raw={vals} semitones={decoded}")
         check("PLCK+PTCH leaves sample trigs alone", mask_of(port) == trig_before)
 
+        # JUMP is shared by audio and MIDI Harmony: keep the phrase, DEPTH,
+        # scale, root, Part pitch, and trig placement fixed across both fills.
+        audio_part_ptch = PARTS_BASE + BANK_STR + 0x8EDAA
+        part_ptch_before = u8(port, audio_part_ptch)
+        poke8(port, audio_part_ptch, 65)  # +0.2 st: sample PTCH is raw 64+5*n
+        poke8(port, NV_SCALE, 1)
+        poke8(port, NV_ROOT, 0)
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
+        audio_jump_notes = {}
+        audio_jump_masks = {}
+        for jump_value in (0, 127):
+            poke32(port, local_sym("ef_tone_jump"), jump_value)
+            s.prime(lane=0, dest=LOCK_PTCH, depth=127,
+                    pulses=5, trig_pulses=5)
+            s.yes()
+            values = locks_of(port, LOCK_PTCH)
+            audio_jump_masks[jump_value] = mask_of(port)
+            check(f"audio JUMP {jump_value} sample PTCH locks are whole semitones",
+                  all(v == 0xFF or (v - 64) % 5 == 0 for v in values),
+                  f"raw-locks={values}")
+            audio_jump_notes[jump_value] = [int((v - 64) / 5) for v in values
+                                            if v != 0xFF]
+        audio_close = audio_jump_notes[0]
+        audio_wide = audio_jump_notes[127]
+        check("sample audio UP starts on the rounded Part pitch",
+              len(audio_close) == 5 and audio_close[0] == 0,
+              f"notes={audio_close}")
+        check("sample audio max JUMP spreads UP to the DEPTH limit",
+              len(audio_wide) == 5
+              and audio_wide[0] == 0 and min(audio_wide) == -12
+              and len(set(audio_wide)) == 5
+              and all(-12 <= note <= 12 and on_scale(note, 0, 0x0AB5)
+                      for note in audio_wide)
+              and audio_jump_masks[0] == audio_jump_masks[127],
+              f"close={audio_close} wide={audio_wide}")
+        audio_rand_rolls = {}
+        sample_scale_offsets = [-12, -10, -8, -7, -5, -3, -1,
+                                0, 2, 4, 5, 7, 9, 11, 12]
+        for jump_value in (0, 64, 127):
+            poke32(port, local_sym("ef_tone_phrase"), 0)  # RAND
+            poke32(port, local_sym("ef_tone_jump"), jump_value)
+            poke32(port, local_sym("ef_rng_state"), 1)
+            s.prime(lane=0, dest=LOCK_PTCH, depth=127, pulses=16,
+                    trig_pulses=16)
+            s.yes()
+            raw = locks_of(port, LOCK_PTCH)
+            notes = [int((value - 64) / 5) for value in raw if value != 0xFF]
+            audio_rand_rolls[jump_value] = notes
+            ranks = [sample_scale_offsets.index(note) for note in notes]
+            stride = 1 + jump_value * 3 // 127
+            check(f"sample audio RAND JUMP {jump_value} sets neighboring pitch spacing",
+                  len(ranks) == 16
+                  and all(abs(b - a) == stride
+                          for a, b in zip(ranks, ranks[1:]))
+                  and all(-12 <= note <= 12 and on_scale(note, 0, 0x0AB5)
+                          for note in notes),
+                  f"notes={notes} ranks={ranks} stride={stride}")
+        check("sample audio RAND retains random direction and JUMP changes spacing",
+              len({tuple(roll) for roll in audio_rand_rolls.values()}) == 3
+              and all({b - a for a, b in zip(
+                  [sample_scale_offsets.index(n) for n in roll],
+                  [sample_scale_offsets.index(n) for n in roll][1:])}
+                      == {-(1 + jump * 3 // 127), 1 + jump * 3 // 127}
+                      for jump, roll in audio_rand_rolls.items()),
+              f"rolls={audio_rand_rolls}")
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # restore UP for following tests
+        poke32(port, local_sym("ef_tone_jump"), 127)
+        s.prime(lane=0, dest=LOCK_PTCH, depth=127, pulses=16,
+                trig_pulses=16)
+        s.yes()
+        audio_wrap = [int((v - 64) / 5) for v in locks_of(port, LOCK_PTCH)
+                      if v != 0xFF]
+        check("sample audio JUMP wraps within DPTH when trigs exceed the range",
+              len(audio_wrap) == 16 and audio_wrap[0] == 0
+              and audio_wrap[1] == -12 and audio_wrap[15] == 0
+              and all(-12 <= note <= 12 and on_scale(note, 0, 0x0AB5)
+                      for note in audio_wrap),
+              f"notes={audio_wrap}")
+        audio_plock_notes = {}
+        audio_trigs_before_plock = mask_of(port)
+        for jump_value in (0, 127):
+            poke32(port, local_sym("ef_tone_jump"), jump_value)
+            s.prime(lane=1, dest=LOCK_PTCH, depth=127,
+                    pulses=5, trig_pulses=5)
+            s.yes()
+            values = locks_of(port, LOCK_PTCH)
+            audio_plock_notes[jump_value] = [int((v - 64) / 5) for v in values
+                                             if v != 0xFF]
+        check("audio PLCK JUMP widens generated pitches without changing trigs",
+              len(audio_plock_notes[0]) == len(audio_plock_notes[127]) == 5
+              and max(audio_plock_notes[127]) - min(audio_plock_notes[127])
+              > max(audio_plock_notes[0]) - min(audio_plock_notes[0])
+              and mask_of(port) == audio_trigs_before_plock,
+              f"close={audio_plock_notes[0]} wide={audio_plock_notes[127]} "
+              f"trigs-unchanged={mask_of(port) == audio_trigs_before_plock}")
+        poke32(port, local_sym("ef_tone_jump"), 0)
+        poke8(port, audio_part_ptch, part_ptch_before)
+
         # --- PLCK PTCH SCALE ON still writes ---
         poke8(port, NV_SCALE, 1)
         poke8(port, NV_ROOT, 0)
@@ -539,16 +637,67 @@ def run_scenarios() -> int:
               f"ef_win={port.long(s.ef):#x}")
         check("dialog YES leaves sample trigs untouched", mask_of(port) == baked)
         # Second CUE now randomizes free mask.
+        poke32(port, local_sym("ef_rng_state"), 1)
         port.press("cue", settle=700)
         check("CUE after unlock sets from_cue", port.long(s.from_cue) != 0)
         check("CUE after unlock sets free", port.long(s.free) != 0)
         free_bits = popcount_mask(port.peek(s.ef_mask, 8))
         check("CUE free mask has PULS hits",
               free_bits == 5, f"bits={free_bits} mask={port.peek(s.ef_mask, 8).hex()}")
+        first_cue_mask = port.peek(s.ef_mask, 8)
+        # Regenerating the same PULSE count should advance the random sequence,
+        # rather than returning the same placement (DEPTH only changes locks).
+        port.press("cue", settle=700)
+        second_cue_mask = port.peek(s.ef_mask, 8)
+        check("repeated CUE regenerates a different TRIG placement",
+              second_cue_mask != first_cue_mask,
+              f"first={first_cue_mask.hex()} second={second_cue_mask.hex()}")
+        check("repeated CUE keeps the requested PULSE count",
+              popcount_mask(second_cue_mask) == 5,
+              f"bits={popcount_mask(second_cue_mask)} mask={second_cue_mask.hex()}")
         s.yes()
         check("YES after CUE writes free mask popcount",
               popcount_mask(mask_of(port)) == 5, mask_of(port).hex())
         check("YES after CUE re-locks", port.long(s.unlocked) == 0)
+
+        # RAND (PHRS=0) should randomize generated pitch locks as well as
+        # CUE's trigger placement. Keep every generation parameter fixed
+        # across the reroll; only the RNG state advances.
+        tone_phrase = local_sym("ef_tone_phrase")
+        poke32(port, tone_phrase, 0)  # RAND
+        s.prime(lane=0, dest=0, depth=127, pulses=5, trig_pulses=5)
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        poke32(port, local_sym("ef_rng_state"), 1)
+        port.press("cue", settle=700)
+        s.yes()
+        rand_trigs_1 = mask_of(port)
+        rand_pitch_1 = locks_of(port, LOCK_PTCH)
+        rand_values_1 = [v for v in rand_pitch_1 if v != 0xFF]
+        check("PHRS RAND creates varied PTCH locks",
+              len(rand_values_1) == 5 and len(set(rand_values_1)) > 1,
+              f"values={rand_values_1}")
+
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        port.press("cue", settle=700)
+        s.yes()
+        rand_trigs_2 = mask_of(port)
+        rand_pitch_2 = locks_of(port, LOCK_PTCH)
+        rand_values_2 = [v for v in rand_pitch_2 if v != 0xFF]
+        check("same-settings CUE reroll changes TRIG placement",
+              rand_trigs_2 != rand_trigs_1
+              and popcount_mask(rand_trigs_2) == 5,
+              f"first={rand_trigs_1.hex()} second={rand_trigs_2.hex()}")
+        check("same-settings RAND reroll changes generated pitches",
+              rand_pitch_2 != rand_pitch_1
+              and len(rand_values_2) == 5
+              and len(set(rand_values_2)) > 1
+              and port.long(tone_phrase) == 0
+              and port.long(s.depth) == 127,
+              f"first={rand_values_1} second={rand_values_2} "
+              f"phrase={port.long(tone_phrase)} "
+              f"depth={port.long(s.depth)}")
 
         # Dialog NO cancels; still locked.
         baked = mask_of(port)
@@ -827,6 +976,216 @@ def run_scenarios() -> int:
         }
         check("NOTE and MIDI parameter locks remain available on TRIG fills",
               note_dest_ok, f"hit-values={note_vals}")
+        # JUMP changes melodic spacing while DEPTH, PHRS, Part NOTE, and
+        # trigger placement stay fixed. Both fills must remain in scale/range.
+        poke32(port, sym("ef_dest"), 0)
+        poke32(port, sym("ef_depth"), 127)
+        poke8(port, midi_dep, 127)
+        poke32(port, local_sym("ef_tone_scale"), 0)
+        poke32(port, local_sym("ef_tone_root"), 0)
+        poke32(port, local_sym("ef_tone_jump"), 0)
+        poke32(port, midi_bank, 16)
+        poke32(port, midi_bank + 4, 0)
+        poke32(port, s.pulses, 16)
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        s.yes()
+        up_notes = [u8(port, midi_lock_base + step * 32)
+                    for step in range(16)]
+        up_notes = [note for note in up_notes if note != 0xFF]
+        check("MIDI UP starts on Part NOTE, varies scale intervals, and wraps",
+              up_notes == [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83, 84, 86]
+              and len({b-a for a, b in zip(up_notes, up_notes[1:])}) > 1,
+              f"notes={up_notes}")
+        poke32(port, local_sym("ef_tone_phrase"), 2)  # DOWN
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        s.yes()
+        down_notes = [u8(port, midi_lock_base + step * 32)
+                      for step in range(16)]
+        down_notes = [note for note in down_notes if note != 0xFF]
+        check("MIDI DOWN starts on Part NOTE, varies scale intervals, and wraps",
+              down_notes == [60, 59, 57, 55, 53, 52, 50, 48, 47, 45, 43, 41, 40, 38, 36, 35]
+              and len({a-b for a, b in zip(down_notes, down_notes[1:])}) > 1,
+              f"notes={down_notes}")
+        # ALT reflects without repeating the top candidate; TRI repeats it
+        # once. Their distinct cycle lengths also produce different JUMP strides.
+        poke32(port, sym("ef_depth"), 32)
+        poke8(port, midi_dep, 32)
+        phrase_roll_expected = {
+            (3, 0): [48, 50, 52, 53, 55, 57, 59, 60,
+                     62, 64, 65, 67, 69, 71, 72, 71],
+            (4, 0): [48, 50, 52, 53, 55, 57, 59, 60,
+                     62, 64, 65, 67, 69, 71, 72, 72],
+            (3, 64): [48, 57, 65, 71, 62, 53, 52, 60,
+                      69, 67, 59, 50, 55, 64, 72, 64],
+            (4, 64): [48, 60, 72, 62, 50, 57, 69, 65,
+                      53, 53, 65, 69, 57, 50, 62, 72],
+        }
+        phrase_roll_actual = {}
+        for (phrase, jump), expected_notes in phrase_roll_expected.items():
+            poke32(port, local_sym("ef_tone_phrase"), phrase)
+            poke32(port, local_sym("ef_tone_jump"), jump)
+            poke32(port, s.unlocked, 1)
+            poke32(port, s.ask, 0)
+            s.yes()
+            actual_notes = [u8(port, midi_lock_base + step * 32)
+                            for step in range(16)]
+            phrase_roll_actual[(phrase, jump)] = actual_notes
+            check(f"MIDI {'ALT' if phrase == 3 else 'TRI'} roll matches JUMP {jump}",
+                  actual_notes == expected_notes,
+                  f"notes={actual_notes}")
+        check("MIDI ALT and TRI rolls differ at JUMP 0 and JUMP 64",
+              phrase_roll_actual.get((3, 0)) != phrase_roll_actual.get((4, 0))
+              and phrase_roll_actual.get((3, 64)) != phrase_roll_actual.get((4, 64)))
+        midi_rand_rolls = {}
+        c_major_range = [48, 50, 52, 53, 55, 57, 59, 60,
+                         62, 64, 65, 67, 69, 71, 72]
+        for jump_value in (0, 64, 127):
+            poke32(port, local_sym("ef_tone_phrase"), 0)  # RAND
+            poke32(port, local_sym("ef_tone_jump"), jump_value)
+            poke32(port, local_sym("ef_rng_state"), 1)
+            poke32(port, s.unlocked, 1)
+            poke32(port, s.ask, 0)
+            s.yes()
+            values = [u8(port, midi_lock_base + step * 32)
+                      for step in range(16)]
+            notes = [value for value in values if value != 0xFF]
+            midi_rand_rolls[jump_value] = notes
+            ranks = [c_major_range.index(note) for note in notes]
+            stride = 1 + jump_value * 3 // 127
+            check(f"MIDI RAND JUMP {jump_value} sets neighboring pitch spacing",
+                  len(ranks) == 16
+                  and all(abs(b - a) == stride
+                          for a, b in zip(ranks, ranks[1:]))
+                  and all(48 <= note <= 72 and on_scale(note, 0, 0x0AB5)
+                          for note in notes),
+                  f"notes={notes} ranks={ranks} stride={stride}")
+        check("MIDI RAND retains random direction and JUMP changes spacing",
+              len({tuple(roll) for roll in midi_rand_rolls.values()}) == 3
+              and all({b - a for a, b in zip(
+                  [c_major_range.index(n) for n in roll],
+                  [c_major_range.index(n) for n in roll][1:])}
+                      == {-(1 + jump * 3 // 127), 1 + jump * 3 // 127}
+                      for jump, roll in midi_rand_rolls.items()),
+              f"rolls={midi_rand_rolls}")
+        poke32(port, midi_bank, 3)
+        poke32(port, s.pulses, 3)
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
+        close_jump_notes = None
+        wide_jump_notes = None
+        for jump_value in (0, 127):
+            poke32(port, local_sym("ef_tone_jump"), jump_value)
+            poke32(port, s.unlocked, 1)
+            poke32(port, s.ask, 0)
+            s.yes()
+            values = [u8(port, midi_lock_base + step * 32) for step in (0, 6, 11)]
+            if jump_value == 0:
+                close_jump_notes = values
+            else:
+                wide_jump_notes = values
+        check("JUMP 0 keeps successive MIDI notes close",
+              close_jump_notes is not None
+              and len(close_jump_notes) == 3
+              and close_jump_notes[0] == 60
+              and max(close_jump_notes) - min(close_jump_notes) < 16,
+              f"notes={close_jump_notes}")
+        check("JUMP 127 wraps MIDI UP through DEPTH while staying in scale",
+              wide_jump_notes is not None and close_jump_notes is not None
+              and wide_jump_notes[0] == 60
+              and len(set(wide_jump_notes)) == 3
+              and max(wide_jump_notes) - min(wide_jump_notes)
+                  > max(close_jump_notes) - min(close_jump_notes)
+              and all(12 <= note <= 108 and on_scale(note, 0, 0x0AB5)
+                      for note in wide_jump_notes),
+              f"close={close_jump_notes} wide={wide_jump_notes}")
+        # More generated notes than candidates must cycle rather than clamp.
+        poke32(port, midi_bank, 8)
+        poke32(port, s.pulses, 16)
+        poke32(port, sym("ef_depth"), 16)
+        poke8(port, midi_dep, 16)
+        poke32(port, local_sym("ef_tone_jump"), 127)
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        s.yes()
+        wrap_notes = [u8(port, midi_lock_base + step * 32) for step in range(16)]
+        wrap_notes = [note for note in wrap_notes if note != 0xFF]
+        check("MIDI UP wraps repeatedly at the DEPTH maximum with many trigs",
+              len(wrap_notes) == 16 and wrap_notes[0] == 60
+              and wrap_notes[:7] == [60, 55, 62, 57, 64, 59, 65]
+              and wrap_notes[7:14] == wrap_notes[:7]
+              and wrap_notes[14:] == wrap_notes[:2],
+              f"notes={wrap_notes}")
+        poke32(port, local_sym("ef_tone_phrase"), 2)  # DOWN
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        s.yes()
+        down_wrap_notes = [u8(port, midi_lock_base + step * 32)
+                           for step in range(16)]
+        down_wrap_notes = [note for note in down_wrap_notes if note != 0xFF]
+        check("MIDI DOWN wraps repeatedly at the DEPTH minimum with many trigs",
+              len(down_wrap_notes) == 16
+              and down_wrap_notes[:7] == [60, 65, 59, 64, 57, 62, 55]
+              and down_wrap_notes[7:14] == down_wrap_notes[:7]
+              and down_wrap_notes[14:] == down_wrap_notes[:2],
+              f"notes={down_wrap_notes}")
+        poke32(port, midi_bank, 3)
+        poke32(port, s.pulses, 3)
+        poke32(port, local_sym("ef_tone_phrase"), 1)  # UP
+        poke32(port, sym("ef_depth"), 16)
+        poke8(port, midi_dep, 16)
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        s.yes()
+        narrow_notes = [u8(port, midi_lock_base + step * 32) for step in (0, 6, 11)]
+        check("maximum JUMP stays inside a narrow DEPTH span",
+              narrow_notes[0] == 60
+              and all(54 <= note <= 66 and on_scale(note, 0, 0x0AB5)
+                  for note in narrow_notes),
+              f"notes={narrow_notes} Part=60 DEPTH=16")
+        poke32(port, sym("ef_depth"), 0)
+        poke8(port, midi_dep, 0)
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        s.yes()
+        check("DEPTH 0 still clears MIDI NOTE locks with JUMP enabled",
+              all(u8(port, midi_lock_base + step * 32) == 0xFF
+                  for step in range(16)))
+        port_mask = port.peek(midi_mask - 7, 8)
+        poke32(port, sym("ef_depth"), 127)
+        poke8(port, midi_dep, 127)
+        poke8(port, midi_lane, 1)
+        poke32(port, s.lane, 1)
+        poke32(port, sym("ef_dest"), 0)
+        poke32(port, sym("ef_depth"), 127)
+        poke8(port, midi_dep, 127)
+        poke8(port, midi_plk, 3)
+        poke8(port, midi_plk + 1, 0)
+        poke8(port, midi_plk + 2, 0)
+        poke32(port, local_sym("ef_ppulses"), 3)
+        poke32(port, local_sym("ef_prot"), 0)
+        poke32(port, local_sym("ef_pfree"), 0)
+        plck_notes = {}
+        for jump_value in (0, 127):
+            poke32(port, local_sym("ef_tone_jump"), jump_value)
+            poke32(port, s.unlocked, 1)
+            poke32(port, s.ask, 0)
+            s.yes()
+            plck_notes[jump_value] = [u8(port, midi_lock_base + step * 32)
+                                      for step in (0, 6, 11)]
+        check("JUMP also spaces MIDI NOTE locks on the independent PLCK lane",
+              all(value != 0xFF for value in plck_notes[127])
+              and max(plck_notes[127]) - min(plck_notes[127])
+              > max(plck_notes[0]) - min(plck_notes[0])
+              and all(on_scale(value, 0, 0x0AB5) for value in plck_notes[127])
+              and port.peek(midi_mask - 7, 8) == port_mask,
+              f"close={plck_notes[0]} wide={plck_notes[127]} "
+              f"note-mask-unchanged={port.peek(midi_mask - 7, 8) == port_mask}")
+        poke8(port, midi_lane, 0)
+        poke32(port, s.lane, 0)
+        poke32(port, local_sym("ef_tone_jump"), 0)
         # Refill existing four-note chords at each smaller voice count.
         # Unused intervals must be 0xff (empty), not raw 0 (-64).
         for voices in (2, 3, 1, 4):
