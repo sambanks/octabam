@@ -1,18 +1,36 @@
 {
- "version": "v0.4",
- "commit": "9e2545bc951c5379649b61f0a7577e05cd8e9d25",
+ "version": "v0.5",
+ "commit": "4975ebf07c89da8ddffc1206682886294c1d7a3d",
  "dev": false,
- "build": "04",
- "date": "2026-11-04",
+ "build": "05",
+ "date": "2026-11-22",
  "remixes": [
   {
    "name": "octabam",
    "title": "octabam",
-   "version": "OCTABAM04",
-   "imageName": "OCTABAM 04",
+   "version": "OCTABAM05",
+   "imageName": "OCTABAM 05",
    "patch": "patches/octabam.obp",
-   "patchBytes": 203074,
-   "sha256": "9159aca19b927478c9be8ebe5f86028c0f1a6f43c80d54d69fc739d753362977"
+   "patchBytes": 253941,
+   "sha256": "a9ae99482c81c0bc652d8f6f77a54f1138ad0a90c96ef1fd0d68c2feb31e71e0"
+  },
+  {
+   "name": "octabam-verbs",
+   "title": "octabam-verbs",
+   "version": "OCTABAM05",
+   "imageName": "OCTABAM-VRB 05",
+   "patch": "patches/octabam-verbs.obp",
+   "patchBytes": 242562,
+   "sha256": "b3089ec6fe32aa888ce58fbb2b858155bc44e8fc713740fffa517506c7b8ef4a"
+  },
+  {
+   "name": "octabam-bus",
+   "title": "octabam-bus",
+   "version": "OCTABAM05",
+   "imageName": "OCTABAM-BUS 05",
+   "patch": "patches/octabam-bus.obp",
+   "patchBytes": 171438,
+   "sha256": "0ca532356e8ab356826a16fbd713278744831407456c297f0fc9c88e04225a40"
   }
  ]
 }
