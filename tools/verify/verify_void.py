@@ -13,6 +13,7 @@
 """
 import importlib.util
 import math
+import os
 import pathlib
 import struct
 import subprocess
@@ -28,7 +29,7 @@ MOD = registry.by_name("void")
 SEND = registry.by_name("send")
 K = MOD.knob_map()
 MEM = f"out/dsp/_audition_{MOD.name}_A.mem"
-HOST = "vendor/dsp56300/build/source/dsp_host/dsp_host"
+HOST = os.environ.get("DSP_HOST", "vendor/dsp56300/build/source/dsp_host/dsp_host")
 FXID = MOD.menu.fx2_id
 FRAMES = 15
 TMP = pathlib.Path("out/_voidgate")
@@ -244,24 +245,24 @@ if r.returncode == 0 and out.exists():
               pk < RAIL and rail_hits(Li + Ri) == 0,
               f"peak={pk} rail_hits={rail_hits(Li + Ri)}")
 
-# SRC=NBR: previous-track keybus AM. Seed every gen-0 lane (harness $420
-# may not be 0). SRC=LFO on the same slot still responds to RATE.
+# SRC=NBR: previous-track KEYBUS AM. Seed the published X:$37f60 word for
+# track 0; r7 position 5 models the following FX2 slot (track 1). SRC=LFO on
+# that same slot still responds to RATE.
 carrier = [0.5 * math.sin(2 * math.pi * 220 * i / FS) for i in range(n)]
 src1 = TMP / "nbr1.raw"
 out_nbr = TMP / "out_nbr.raw"
 src1.write_bytes(b"".join(struct.pack("<i", m) for m in q23(carrier)))
 _qw = q23([0.6])[0] & 0xFFFFFF
-_pokey = ",".join(
-    f"{0x800 + t * 0x40 + i:x}={_qw:x}"
-    for t in range(8) for i in range(32))
+_keybus_on = f"{0x37f60:x}={_qw:x}"
+_keybus_off = f"{0x37f60:x}=0"
 
 
-def _src_render(pokey, **kw):
+def _src_render(keybus, **kw):
     cmd = [HOST, "-mem", MEM, "-init", f"{init:x}", "-proc", f"{proc:x}",
            "-inst", "1", "-r7", "5", "-alloc", "3", "-inmask", "1",
            "-audio", "0", "-frames", str(FRAMES), "-blocks", str(n // FRAMES),
            "-in", str(src1), "-out", str(out_nbr),
-           "-pokey", pokey,
+           "-xword", keybus,
            "-params", ",".join(str(x) for x in params(**kw))]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0 or not out_nbr.exists():
@@ -273,12 +274,12 @@ def _src_render(pokey, **kw):
 
 
 def _auto_nbr(**kw):
-    return _src_render(_pokey, SRC=1, **kw)
+    return _src_render(_keybus_on, SRC=1, **kw)
 
 
-L_lfo10, rcl = _src_render(_pokey, SRC=0, BAL=127, DPTH=127, DRV=0, FDBK=0,
+L_lfo10, rcl = _src_render(_keybus_on, SRC=0, BAL=127, DPTH=127, DRV=0, FDBK=0,
                            COLR=127, HPF=0, RATE=10, SHPE=0)
-L_lfo100, rcl2 = _src_render(_pokey, SRC=0, BAL=127, DPTH=127, DRV=0, FDBK=0,
+L_lfo100, rcl2 = _src_render(_keybus_on, SRC=0, BAL=127, DPTH=127, DRV=0, FDBK=0,
                              COLR=127, HPF=0, RATE=100, SHPE=0)
 check("SRC=LFO RATE still works",
       rcl == 0 and rcl2 == 0 and L_lfo10 is not None and L_lfo100 is not None
@@ -301,13 +302,11 @@ if L_slow is not None:
           f"{None if not (L_r10 and L_r100) else max(abs(a-b) for a,b in zip(L_r10, L_r100))}")
     energy = sum(abs(x) for x in L_slow)
     check("SRC=NBR keeps this track", energy > (1 << 20), f"energy={energy}")
-    _pokey_z = ",".join(
-        f"{0x800 + t * 0x40 + i:x}=0"
-        for t in range(8) for i in range(32))
+    _keybus_z = _keybus_off
     car_q = q23(carrier)
 
     # Quiet keybus → AM≈0 → noise stops (no LFO free-run).
-    L_q, rcq = _src_render(_pokey_z, SRC=1, BAL=127, DPTH=127, DRV=0, FDBK=0,
+    L_q, rcq = _src_render(_keybus_z, SRC=1, BAL=127, DPTH=127, DRV=0, FDBK=0,
                            COLR=127, HPF=0, RATE=10, SHPE=0)
     _bleed = max(abs(x) for x in car_q) // 64 + 8
     check("SRC=NBR quiet BAL127 ≈ silence",

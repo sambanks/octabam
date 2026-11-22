@@ -438,11 +438,11 @@ class PlanTests(unittest.TestCase):
         script = "tools/verify/verify_store_part_selection.py"
         self.assertEqual(context.gate_owners[script], ["STORE"])
         self.assertEqual(context.gate_remixes[script],
-                         {"chords", "chords-alone", "hooks-boot", "midi-follow", "midi-follow-events",
+                         {"chords", "chords-alone", "cxosc-core", "hooks-boot", "midi-follow", "midi-follow-events",
                           "midi-loopback", "octabam", "octabam-bus", "octabam-verbs", "scales", "scales-quantizer", "seq"})
         rows = reach.classify([script], context)
         self.assertEqual(reach.remixes_reached(rows),
-                         ["chords", "chords-alone", "hooks-boot", "midi-follow", "midi-follow-events",
+                         ["chords", "chords-alone", "cxosc-core", "hooks-boot", "midi-follow", "midi-follow-events",
                           "midi-loopback", "octabam", "octabam-bus", "octabam-verbs", "scales", "scales-quantizer", "seq"])
 
     def test_remixes_reached(self):

@@ -33,6 +33,19 @@ Page layout history: 16 Sep 2026 put MIX bottom right and SAT top left.
 
 ## Measured
 
+- **19 Nov 2026, the constants pass** (bit-identical: `verify_ident.py` with
+  the wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
+  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
+  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
+  after each commit; 49 renders). Cycles a sample from
+  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
+  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
+  section 1): SAT=TUBE at its maximum 428.3 → 428.0. Words 967 → 961
+  (`dsp_asm` at P:$800). Not measured on the unit. Three constants load as
+  one-word short immediates, the form CHARACTER TXTR already uses, and three
+  small ones in `add` and `cmp` (0 to 63) as one-word 6-bit immediates (the
+  two `cmp #>$1,b` stay: stock has no 6-bit `cmp` on b).
+
 - DRV drive (23 Sep 2026): THD on a 1 kHz tone at −20 dBFS (the set's
   working level), before → after: TAPE DRV 64 −40 → −23 dB, DRV 127
   −18 → −11 dB; TUBE 127 −22 → −18 dB; INFL 127 −58 → −37 dB. Level on that
