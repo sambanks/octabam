@@ -75,11 +75,12 @@ IMAGES = {                              # key: (remix, image name, build number)
     "NEW": ("test/usb-midi-tracks-hw", "UMT-HW", 1),
     "OFF": ("test/usb-midi-tracks-hw-off", "UMT-OFF", 1),
     "OLD": ("test/usb-midi-tracks-hw", "UMT-OLD", 1),
-    "FLNEW": ("test/usb-midi-tracks-hw", "UMT-FL", 1),
-    "FLOFF": ("test/usb-midi-tracks-hw-off", "UMT-FLO", 1),
+    "FLNEW": ("test/usb-midi-tracks-hw", "UMT-FL", 2),
+    "FLOFF": ("test/usb-midi-tracks-hw-off", "UMT-FLO", 2),
 }
 GRID_US = 362.8                         # the DSP's frame grid (modules/frame-guard/README.md)
 SYMS = ("utm_dbg", "utm_state", "usbmidi_tx_drops")
+GAP_SYMS = ("lm_gprev", "lm_g20", "lm_g110", "lm_gshort")   # FRAMELOG images only (framelog.patch)
 SET, PROJ, WAV = "UMTSET", "UMT", "utm_hw.wav"
 MARKER = "OT_USBTRACKS_FIXTURE.txt"
 BPM = 120
@@ -105,15 +106,15 @@ def sh(cmd, cwd=ROOT, log=None):
         sys.exit(f"failed ({r.returncode}): {' '.join(str(c) for c in cmd)}" + (f"; log {log}" if log else ""))
 
 
-def symbols(tree):
+def symbols(tree, want=SYMS):
     nm = shutil.which("m68k-elf-nm") or shutil.which("m68k-linux-gnu-nm")
     elf = tree / "out/platform/runtime/runtime.elf"
     got = {}
     for line in subprocess.run([nm, str(elf)], capture_output=True, text=True).stdout.splitlines():
         f = line.split()
-        if len(f) == 3 and f[2] in SYMS:
+        if len(f) == 3 and f[2] in want:
             got[f[2]] = int(f[0], 16)
-    missing = [s for s in SYMS if s not in got]
+    missing = [s for s in want if s not in got]
     if missing:
         sys.exit(f"{elf}: no {missing}")
     return got
@@ -147,7 +148,8 @@ def build_one(key, tree):
     (OUT / f"{key}.json").write_text(json.dumps({"rmx": rmx_name(key), "remix": remix, "tree": str(tree),
                                                  "rev": subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=tree,
                                                                        capture_output=True, text=True).stdout.strip(),
-                                                 "syms": symbols(tree)}, indent=1))
+                                                 "syms": symbols(tree, SYMS + (GAP_SYMS if key.startswith("FL") else ()))},
+                                                indent=1))
     print(f"  {key}: {OUT / rmx_name(key)}")
 
 
@@ -548,11 +550,21 @@ def cmd_starts(a):
     out = ot_midi.Out(midi_port("dst"))
     res = {"label": a.label, "image": a.image, "rmx": meta["rmx"], "rev": meta["rev"],
            "t": time.strftime("%Y-%m-%d %H:%M:%S"), "before": peek_state(peek1, meta["syms"]), "trials": []}
+    res["gaps_before"] = gaps()
+
+    import ot_events as ev
+    sy = meta["syms"]
+
+    def gaps():
+        return dict(zip(("g20", "g110", "gshort"),
+                        struct.unpack(">3I", ev.peek(peek1, sy["lm_g20"], 12))))
+    gmax = []                                           # each 0.5 s window's longest entry gap, us
 
     def stalled(seconds):
         t1, still, last = time.monotonic(), 0, None
         while time.monotonic() - t1 < seconds:
             inp.pump(0.25)
+            gmax.append(round(struct.unpack(">I", ev.peek(peek1, sy["lm_gprev"], 4))[0] / 132.0, 1))
             r = lm.read_fast(dev)
             still = still + 1 if r["dsp"]["seq"] == last else 0
             last = r["dsp"]["seq"]
@@ -602,6 +614,8 @@ def cmd_starts(a):
             break
         time.sleep(1.5)  # waits for: STOP to settle before the next trial
     res["after"] = peek_state(peek1, meta["syms"])
+    res["gaps_after"] = gaps()
+    res["window_gap_max_us"] = gmax
     (OUT / f"{a.label}.json").write_text(json.dumps(res, indent=1))
     show_starts(res)
     print(f"  -> {OUT / (a.label + '.json')}")
@@ -616,6 +630,11 @@ def show_starts(res):
     print(f"  START: max entry lateness per trial {st}; frames skipped {[w['skipped'] for w, _ in ws]}; "
           f"longest frame interrupt {[w['longest_us'] for w, _ in ws]}")
     print(f"  part change: max entry lateness per trial {pt}; longest {[p['longest_us'] for _, p in ws if p]}")
+    if "gaps_after" in res:
+        g0, g1, gm = res["gaps_before"], res["gaps_after"], res["window_gap_max_us"]
+        print(f"  entry gaps over the run (grid 362.8 us): longest {max(gm, default=0)} us over {len(gm)} polls; "
+              f"over 382.8 us {g1['g20'] - g0['g20']}, over 472.8 us {g1['g110'] - g0['g110']}, "
+              f"under 342.8 us {g1['gshort'] - g0['gshort']}")
     b, a2 = res["before"], res["after"]
     print(f"  module: STARTs {a2['starts'] - b['starts']}, notes {a2['notes'] - b['notes']}, drops {a2['drops'] - b['drops']}")
 
