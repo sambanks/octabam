@@ -98,9 +98,10 @@ hit PLAYBACK / SETUP like any machine. Stock FX1 / FX2 and quantizer
 ### How the knobs interact
 
 - **Clean sine carrier.** **INDX**, **FOLD**, **FDBK**, CMOR, MMOR at 0.
-- **Hear FM.** Raise **INDX**. **RATO** sets sideband spacing (1 = octaves;
-  non-integers clang). **FDBK** needs **INDX**. MMOR also colours FM then,
-  or solo the MMOR wave with **MIX 127** / **INDX** 0.
+- **Hear FM.** Raise **INDX**. It affects all **CAR** shapes: sine, saw, and
+  square. **RATO** sets sideband spacing (1 = octaves; non-integers clang).
+  **FDBK** needs **INDX**. MMOR also colours FM then, or solo the MMOR wave
+  with **MIX 127** / **INDX** 0.
 - **Folder.** Raise **FOLD** first. **MIX** chooses *what* gets folded
   (carrier vs modulator). **SYMM** tips which polarity the folder
   emphasises.
