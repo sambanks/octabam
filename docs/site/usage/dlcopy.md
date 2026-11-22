@@ -1,1 +1,1 @@
-Part of the effect loader (the other half is Effect loader (sender)). It copies the effect code the sender delivers into the effects processor's shared memory, where the effect runs. It has no controls and nothing on the panel. What you will notice is described under Effect loader (sender).
+The other half of the effect loader (the [sender](dlpump.md)). It copies the effect code the sender delivers into the effects processor's shared memory, where the effect runs. It has no controls and nothing on the panel. What you will notice is described under the [sender](dlpump.md).

@@ -18,18 +18,21 @@ damage to your Octatrack.
 
 ## Get started
 
-1. Read [what is in Octabam](remix-octabam.md).
+1. Choose a remix: [Octabam](remix-octabam.md) is the one that has run on a unit;
+   [Octabam Verbs](remix-octabam-verbs.md) changes the reverbs and
+   [Octabam Bus](remix-octabam-bus.md) adds a delay and reverb bus.
 2. [Build and install](web-builder.md) it.
-3. Use the [Octabam Remix Manual](reference/manual/octabam/index.md).
+3. Use the [Octabam Manual](reference/manual/index.md): one manual for all three remixes, and
+   each page says which remixes have its feature.
 
 ## Everyday use
 
-- Save templates or change defaults: [BRAIN](reference/manual/octabam/brain/index.md)
-- Assign a saved sound setup to a pattern: [Kits and patterns](reference/manual/octabam/parts/kits.md)
-- Lock parameters on an effect's second page: [Page 2 parameter locks](reference/manual/octabam/parts/plocks-p2.md)
-- Control MIDI tracks with scenes: [MIDI scenes](reference/manual/octabam/parts/midi-scenes.md)
-- Record MAIN and CUE on a computer: [USB audio and MIDI](reference/manual/octabam/midi-usb/usb.md)
-- Look up an effect or a feature: the [manual](reference/manual/octabam/index.md)
+- Save templates or change defaults: [BRAIN](reference/manual/brain/index.md)
+- Assign a saved sound setup to a pattern: [Kits and patterns](reference/manual/parts/kits.md)
+- Lock parameters on an effect's second page: [Page 2 parameter locks](reference/manual/parts/plocks-p2.md)
+- Control MIDI tracks with scenes: [MIDI scenes](reference/manual/parts/midi-scenes.md)
+- Record MAIN and CUE on a computer: [USB audio and MIDI](reference/manual/midi-usb/usb.md)
+- Look up an effect or a feature: the [manual](reference/manual/index.md)
 
 ## Reading this manual
 

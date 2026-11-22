@@ -1,14 +1,14 @@
 A reverb for rooms, plates and halls, with a gate that works like a desk
 gate on a reverb return: set GATE and the wash falls away quickly when the
-input goes quiet, instead of a slow decay. It replaces GATE VERB, and a Part
-that used GATE VERB opens with VERBERATION. The reverb is the reverb stage of Mutable
+input goes quiet, instead of a slow decay. The reverb is the reverb stage of Mutable
 Instruments Clouds; the gate is new. Dry stays dry.
 
 ## Access
 
 An effect on a track: select the track, press FX2, and pick VERBERATION from
-the chooser. It is not in an official remix: build `octabam-verbs` (octabam with VERBERATION in place of
-the stock reverbs) or the test remix `verberation`.
+the chooser. It is in [Octabam Verbs](../../remix-octabam-verbs.md), in place of the three stock
+reverbs; FX2 also lists three rows that start it in a mode, VERB PLATE, VERB ROOM and VERB HALL
+(below).
 
 ![FX2 SETUP with Verberation selected: MODE (here PLAT), LCUT, MOD, RATE, SIZE and PRE on its page 2.](../../img/verberation/setup.png)
 
