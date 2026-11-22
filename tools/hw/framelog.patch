@@ -1,5 +1,5 @@
 diff --git a/modules/load-meter/meter.s b/modules/load-meter/meter.s
-index b9093c3d..389ce0db 100644
+index b9093c3d..4b0a6906 100644
 --- a/modules/load-meter/meter.s
 +++ b/modules/load-meter/meter.s
 @@ -13,6 +13,7 @@
@@ -24,12 +24,36 @@ index b9093c3d..389ce0db 100644
          move.l  DTCN3,%d2                       | now
          move.l  %d2,%d0
          sub.l   lm_t0,%d0                       | this interrupt's duration
-@@ -51,7 +59,72 @@ lm_out:
+@@ -51,7 +59,96 @@ lm_out:
          cmp.l   lm_max,%d0
          bls.s   1f
          move.l  %d0,lm_max
 -1:      move.l  %d2,%d1
 +1:
++| FRAMELOG gaps (test image): the time from the previous frame interrupt's entry
++| to this one's (raw DTCN3, 132 MHz). lm_gcur: the window's longest gap, moved
++| to lm_gprev at the window's end (0.5 s); since boot, lm_g20 counts gaps over
++| 382.8 us (an entry 20 us past the 362.8 us grid), lm_g110 over 472.8 us, and
++| lm_gshort gaps under 342.8 us (a back-to-back entry). d3/d4 only.
++        move.l  lm_pe,%d3
++        move.l  lm_t0,%d4
++        move.l  %d4,lm_pe
++        tst.l   %d3
++        beq.s   19f
++        sub.l   %d3,%d4                         | this gap
++        cmp.l   lm_gcur,%d4
++        bls.s   16f
++        move.l  %d4,lm_gcur
++16:     cmp.l   #45250,%d4
++        bcc.s   17f
++        addq.l  #1,lm_gshort
++17:     cmp.l   #50530,%d4
++        bcs.s   19f
++        addq.l  #1,lm_g20
++        cmp.l   #62410,%d4
++        bcs.s   19f
++        addq.l  #1,lm_g110
++19:
 +| FRAMELOG (test image, not for merge): lm_ot holds frame-interrupt records
 +| instead of OTOP's costs. Longs: 0 count of frame interrupts; 1 the USB
 +| shim's entry stamp (audio_frame_shim writes it, cleared here); 2 the next
@@ -98,7 +122,17 @@ index b9093c3d..389ce0db 100644
          sub.l   lm_w0,%d1                       | the window so far
          cmp.l   #WIN,%d1
          bcs.s   2f
-@@ -151,7 +224,7 @@ lm_scrub:
+@@ -63,6 +160,9 @@ lm_out:
+         move.l  %d0,%a0@(12)
+         move.l  lm_max,%d0
+         move.l  %d0,%a0@(16)
++        move.l  lm_gcur,%d0                     | FRAMELOG gaps: the window's longest
++        move.l  %d0,lm_gprev
++        clr.l   lm_gcur
+         addq.l  #1,%a0@                         | the seq last: a reader sees a whole window
+         move.l  %d2,lm_w0
+         clr.l   lm_sum
+@@ -151,7 +251,7 @@ lm_scrub:
          add.l   %d0,lm_dsum+4
          addq.l  #1,lm_dsum+8
          addq.l  #1,lm_dsp                       | seq: a good record
@@ -107,17 +141,24 @@ index b9093c3d..389ce0db 100644
          bra.s   8f
  9:      addq.l  #1,lm_dsp+4                     | bad
  8:      movem.l %sp@,%d0-%d3/%a0-%a1
-@@ -282,3 +355,5 @@ lm_w0:  .long   0
+@@ -282,3 +382,12 @@ lm_w0:  .long   0
  lm_sum: .long   0
  lm_cnt: .long   0
  lm_max: .long   0
 +lm_gf:  .long   0
++lm_pe:  .long   0                               | FRAMELOG gaps: the previous entry
++lm_gcur: .long  0
++        .globl  lm_gprev, lm_g20, lm_g110, lm_gshort
++lm_gprev: .long 0
++lm_g20: .long   0
++lm_g110: .long  0
++lm_gshort: .long 0
 +lm_fz:  .long   0                               | FRAMELOG: frames until the log freezes
 diff --git a/modules/usb/usbaudio.s b/modules/usb/usbaudio.s
-index 35d3f4d5..20a97397 100644
+index 7d4bb420..3ecec351 100644
 --- a/modules/usb/usbaudio.s
 +++ b/modules/usb/usbaudio.s
-@@ -958,6 +958,23 @@ audio_ep3_flush:
+@@ -959,6 +959,23 @@ audio_ep3_flush:
      movel   %d2,%a3@+
  .endm
  
@@ -141,7 +182,7 @@ index 35d3f4d5..20a97397 100644
      .global audio_frame_shim
  audio_frame_shim:
      | The producer runs only while the host asks for the stream (usbaudio_alt,
-@@ -975,7 +992,12 @@ audio_frame_shim:
+@@ -976,7 +993,12 @@ audio_frame_shim:
      | always-on producer cost 13-25 us of frame interrupt per frame with no
      | host attached (OUT TRACKS MAIN CUE against OUT MAIN CUE). Not on a
      | unit since.
