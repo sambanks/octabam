@@ -10,8 +10,9 @@ SEND and renders a plausible dry passthrough):
   busverb   render_reverb's own fingerprinted engine cache.
   busdelay  the DEV hatch dump (out/dsp/mem_dev_A.mem), rebuilt here when
              stale with `make render-delay`'s build line.
-  inserts    a per-insert scratch dump (out/dsp/_audition_<name>_A.mem)
-             built from a two-module remix (the insert + SEND). The scratch
+  inserts    a per-insert scratch dump (out/dsp/_audition_<name>_A.mem, and
+             _B.mem for payload B) built from a two-module remix (the insert +
+             SEND). The scratch
              build writes out/mainos_bus.bin, so the user's image is saved
              and restored around it: the emulator view boots that file.
 
@@ -63,11 +64,11 @@ def _build(env):
         _die("build failed: " + (tail[-1] if tail else "(no output)"))
 
 
-def _dump(mem):
+def _dump(mem, payload="A"):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
     import dsp_modmap
     mem.parent.mkdir(parents=True, exist_ok=True)
-    dsp_modmap.dumpmem(IMAGE.read_bytes(), ["A", str(mem)])
+    dsp_modmap.dumpmem(IMAGE.read_bytes(), [payload, str(mem)])
 
 
 def _ensure_delay_mem(log=print):
@@ -82,9 +83,12 @@ def _ensure_delay_mem(log=print):
 
 
 def _ensure_insert_mem(mod, log=print):
-    """A dump whose payload A really CONTAINS this insert."""
+    """A dump whose payload A really CONTAINS this insert. Payload B's dump
+    of the same scratch image goes beside it (_B.mem), for the identity
+    gate's core-1 renders (tools/verify/verify_ident.py)."""
     mem = ROOT / f"out/dsp/_audition_{mod.name}_A.mem"
-    if mem.exists() and mem.stat().st_mtime > _newest_input_mtime():
+    mem_b = mem.with_name(f"_audition_{mod.name}_B.mem")
+    if mem.exists() and mem_b.exists() and mem.stat().st_mtime > _newest_input_mtime():
         return mem
     log(f"building a scratch image containing {mod.name} ...")
     send = registry.by_name("send")
@@ -93,7 +97,17 @@ def _ensure_insert_mem(mod, log=print):
     # the firmware's NONE as the fallback.
     alone = bool(mod.claims is not None and mod.claims.stock_instance_buffer
                  and not mod.claims.fx1_only)
-    modules = f'("{mod.key}",)' if alone else f'("{mod.key}", "{send.key}")'
+    # A module that `requires` others (EUCLID needs EVENTS, DEVILISH OCTA303)
+    # refuses a remix without them: they come too, with what they require
+    # (interlock_scan.insert_mem does the same for its own dumps).
+    need, todo = [], list(mod.requires or ())
+    while todo:
+        k = todo.pop()
+        if k not in need and k != mod.key:
+            need.append(k)
+            todo += list(registry.by_key(k).requires or ())
+    keys = [mod.key] + ([] if alone else [send.key]) + need
+    modules = "(" + ", ".join(f'"{k}"' for k in keys) + ",)"
     fallback = "NONE" if alone else send.key
     scratch = ROOT / "remixes/_audition.py"
     scratch.write_text(
@@ -110,6 +124,7 @@ def _ensure_insert_mem(mod, log=print):
     try:
         _build({"REMIX": "_audition", "XBUS": "1", "SPEC": "1"})
         _dump(mem)
+        _dump(mem_b, "B")
     finally:
         scratch.unlink(missing_ok=True)
         for junk in (ROOT / "remixes/__pycache__").glob("_audition*"):
