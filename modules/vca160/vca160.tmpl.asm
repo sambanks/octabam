@@ -109,21 +109,20 @@ proc:
         move    a1,x1
         clr     b                       ; b = 0 BEFORE the compares
         move    x1,a
-        sub     #>$1,a                  ; KEY - 1
+        sub     #$1,a                   ; KEY - 1
         move    #>$000001,x0
         tge     x0,b                    ; KEY >= 1: on
         move    x1,a
-        sub     #>$9,a                  ; KEY - 9
+        sub     #$9,a                   ; KEY - 9
         move    #0,x0
         tge     x0,b                    ; KEY >= 9: off
         move    b1,x:(r7+$04)
         move    x1,a
-        sub     #>$1,a
-        and     #>$000007,a             ; t, 0..7 (when off, any record)
+        sub     #$1,a
+        and     #$7,a                   ; t, 0..7 (when off, any record)
         move    a1,x1                   ; a1 straight out: the and left a2 stale
         move    x1,a
-        move    #>$000003,x0
-        cmp     x0,a                    ; t - 3
+        cmp     #$3,a                   ; t - 3 (the 6-bit immediate)
         move    #>$03fff0,b
         move    #>$037fe0,y1
         tgt     y1,b                    ; t >= 4: payload A's half
@@ -137,7 +136,7 @@ proc:
 ; read, changed and written back by two parties, so the two cores cannot
 ; undo each other.
         move    x:(r7+$0c),a            ; this VCA160's heartbeat
-        add     #>$000001,a
+        add     #$1,a
         move    a1,x:(r7+$0c)
         move    a1,x0
         move    x:(r7+$04),a            ; KEY on (1) or off (0)
@@ -145,7 +144,7 @@ proc:
         beq     dbk_off
         move    x0,y:(r1)+              ; BEAT (stock's store form; r1 is set again below)
 dbk_off:
-        add     #>$000003,b             ; b1 = the record's LEVEL word
+        add     #$3,b                   ; b1 = the record's LEVEL word
         move    b1,r1
         nop                             ; two moves between writing r1 and using it
         nop
@@ -259,7 +258,7 @@ dbk_off:
         move    r4,r5
         asr     #$12,a,a                ; n
         move    a1,b
-        add     #>$1,b
+        add     #$1,b
         neg     b                       ; -(n + 1): normf's count
         move    b1,x:(r7+$09)
         move    x1,a
@@ -335,7 +334,7 @@ dbt_tap:
         asl     #2,a,a                  ; one record of four words per track
         add     #>@ROFF@,a              ; its record: BEAT COUNT LAST LEVEL
         move    a1,r0
-        add     #>$000003,a
+        add     #$3,a
         move    a1,r1                   ; its LEVEL word
         move    x:>$208,r6              ; --- displaced --- (here: it fills the AGU gap)
         move    y:(r0)+,b               ; BEAT: written by the VCA160s that key this track
@@ -350,7 +349,7 @@ dbt_tap:
 dbt_same:
         tst     a
         beq     dbt_idle                ; nobody keys this track
-        sub     #>$1,a                  ; count down one block
+        sub     #$1,a                   ; count down one block
         move    (r0)-                   ; back to COUNT
         move    a,y:(r0)+
 dbt_run:
