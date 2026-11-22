@@ -134,7 +134,7 @@ def capture_plocks(p,r):
 
 def capture_morph(p,r):
     p.key('t1',True);p.run(60);p.press('up',settle=120)
-    shot(p,'morph','window','T1 + UP: the MORPH window, T1 armed; STEPS, x and MODE on A, B and C.',r)
+    shot(p,'morph','window','T1 + UP: the MORPH window, T1 armed; STEPS, x and MODE on A, B and C; RET, CURV and END on D, E and F.',r)
     enc(p,0,-8);enc(p,1,-6);p.run(120)
     shot(p,'morph','settings','STEPS 8 and x 2: a cycle of 16 steps.',r)
     p.key('t1',False);p.run(300)
