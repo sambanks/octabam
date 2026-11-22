@@ -16,8 +16,10 @@ preparing your own OS 1.40C.
 
 ## 2. Select modules and effects
 
-Copy an existing `remixes/<name>/remix.py` and edit its `modules` (the FX2
-chooser, in row order) and, optionally, `fx1`. `make modules` lists every
+Copy an existing remix's `remix.py` (for example `remixes/octabam/remix.py`) into a
+directory of your own, `remixes/community/<name>/`, named after you or its purpose
+(never `octabam-*`), and edit its `name`, its `modules` (the FX2 chooser, in row order)
+and, optionally, `fx1`. `make modules` lists every
 module key and the compatibility matrix. See the
 [composing guide](https://github.com/sambanks/octabam/blob/main/docs/guide/COMPOSING.md)
 for every field and the costs.
@@ -28,7 +30,7 @@ and take effect at the next boot. A remix can fix one with a `Pin`.
 
 ## 3. Record and check the remix
 
-Add `remixes/<name>/README.md` describing what the remix includes and what
+Add `remixes/community/<name>/README.md` describing what the remix includes and what
 has been tested. Update the remix index, then run:
 
 ```bash
@@ -38,8 +40,20 @@ make check REMIX=<name>
 
 `make check` builds the image, runs its gates and boots it under the port.
 It is the minimum check before flashing; a successful build alone does not
-show that the remix works on hardware. For image creation and installation,
-continue to [Build and Install](web-builder.md#install-the-image).
+show that the remix works on hardware.
+
+## 4. Build the image and install it
+
+The web builder builds only the released remixes, so build yours from source:
+
+```bash
+make image REMIX=<name> BUILD=1
+```
+
+This writes `out/OCTATRACK_OCTABAM1.bin` (the card image), `out/OCTATRACK_OS1.40C_OCTABAM1.syx`
+(the MIDI image) and an `.RMX` file; the
+[build guide](https://github.com/sambanks/octabam/blob/main/docs/guide/BUILDING.md) says what
+`BUILD` is. Install them as in [Install the image](web-builder.md#install-the-image).
 
 ## Next steps
 

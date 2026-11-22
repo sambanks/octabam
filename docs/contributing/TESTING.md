@@ -1,7 +1,11 @@
 # How the testing works
 
-Every claim in this repository is checked on the developer's machine,
-without hardware, against the developer's own copy of OS 1.40C. This page
+Every claim in this repository is checked without hardware against a copy
+of OS 1.40C: by CI on every push, on runners that download it for the run
+(section 11), and on the developer's own machine against their own copy, one
+gate script at a time while they work. The whole-remix checks and
+`make reach RUN=1` run locally only to reproduce a failure CI reported
+(`CONTRIBUTING.md` "Before you open a PR"). This page
 is the whole mechanism: what runs, what each gate proves, how a change is
 routed to the gates it can affect, how the gates are made fast, how to
 write one, and what none of it can see. `CONTRIBUTING.md` is the contract
@@ -811,6 +815,14 @@ The run's summary page has one section per unit (its `check_shards` and `reach` 
 **A green CI run says nothing about a remix unless `Gates — make reach` ran.**
 Building, booting and playing one needs 1.40C, which that job fetches into
 the runner.
+
+Two more workflows: `.github/workflows/pages.yml` (`📖 Pages`) builds the
+manual site and deploys it to
+[sambanks.github.io/octabam](https://sambanks.github.io/octabam/) on every push
+to `main` (the same `gen_pages.py` and `mkdocs build --strict` as the Docs
+job); `.github/workflows/fuzz.yml` (`🎲 Port stress`, by hand only) replays
+stress sequences of program changes and CCs under the port over many runners
+(`docs/contributing/HARDWARE_MATRIX.md`).
 
 ## 12. What none of this can see
 

@@ -30,11 +30,24 @@ again ([BUILDING.md](docs/guide/BUILDING.md) section 7). Elektron is not
 responsible for any damage to your Octatrack. See
 [Before you flash anything](#before-you-flash-anything).
 
+## The manual
+
+**Musicians start at [sambanks.github.io/octabam](https://sambanks.github.io/octabam/).** It is
+the manual for the current release (v0.5: [Octabam](https://sambanks.github.io/octabam/remix-octabam.html),
+[Octabam Verbs](https://sambanks.github.io/octabam/remix-octabam-verbs.html) and
+[Octabam Bus](https://sambanks.github.io/octabam/remix-octabam-bus.html)). Its
+[Build and Install](https://sambanks.github.io/octabam/web-builder.html) page builds an image in the
+browser from your own OS 1.40C, with no toolchain and nothing uploaded, and installs it from the card or over
+MIDI. The site is built from this repository (`docs/site/`, `tools/site/README.md`) and deployed on every
+push to `main`; this README and the docs under `docs/` are for building from source and contributing.
+
 ## Start here
 
 | you want to | read |
 |---|---|
-| put a remix on your Octatrack | [docs/guide/BUILDING.md](docs/guide/BUILDING.md): a fresh machine to a flashed unit, step by step, with the recovery path |
+| put a released remix on your Octatrack | [the manual's Build and Install page](https://sambanks.github.io/octabam/web-builder.html): in the browser, then flash; [Safety and Recovery](https://sambanks.github.io/octabam/safety.html) for the way back |
+| build any remix from source, or flash your own build | [docs/guide/BUILDING.md](docs/guide/BUILDING.md): a fresh machine to a flashed unit, step by step, with the recovery path |
+| learn what a feature does on the unit | [the Octabam Manual](https://sambanks.github.io/octabam/reference/manual/index.html): one page per feature, each saying which remixes have it |
 | see what remixes exist and what is in each | [remixes/README.md](remixes/README.md), then the remix's own page in `remixes/<name>/README.md` |
 | see every module and how far it is proven | the table below; each module's `modules/<name>/README.md` has the measurements |
 | compose your own selection | [docs/guide/COMPOSING.md](docs/guide/COMPOSING.md): a `remix.py` by hand |
@@ -44,6 +57,8 @@ responsible for any damage to your Octatrack. See
 
 ## Quick start
 
+To install a released remix, no build is needed: use the
+[web builder](https://sambanks.github.io/octabam/web-builder.html). To build from source,
 [docs/guide/BUILDING.md](docs/guide/BUILDING.md) has every step. Section 0 is what
 to install first: on macOS the Xcode Command Line Tools
 (`xcode-select --install`) and Homebrew, then `make setup-mac`; on Linux
@@ -264,13 +279,14 @@ port of it (`tools/emu/ot_emu`, `make emu-cf`; [tools/emu/README.md](tools/emu/R
 
 ```bash
 make check REMIX=<name>             # build + every gate + boot under the port; OT_PROJECT=<dir> adds a real project
-make reach                          # the gates this branch's diff reaches, in order; RUN=1 runs them
+make reach                          # the gates this branch's diff reaches, in order (CI runs them on every push; RUN=1 runs them here)
 make panel REMIX=<name>             # the virtual front panel with sound at localhost:8563 (tools/panel/README.md)
 make emu-live REMIX=<name>          # the screen and keys in a window, no sound
 ```
 
-CI (`.github/workflows/ci.yml`, `make ci`) runs the checks that need no
-firmware. What the emulators cannot see (caches, the recorder's DMA,
+CI (`.github/workflows/ci.yml`) runs every gate a change reaches on each
+push and pull request, on runners that download the 1.40C for the run;
+`make ci` runs its firmware-free jobs locally. What the emulators cannot see (caches, the recorder's DMA,
 cross-core timing) is listed beside every gate that is blind to it.
 
 ## Before you flash anything
@@ -289,6 +305,9 @@ AB, used here only to identify the hardware this project targets.
 
 ## Documentation
 
+The musician's manual is [sambanks.github.io/octabam](https://sambanks.github.io/octabam/)
+(source: `docs/site/`; the feature pages are generated from the manifests, and a module's
+`docs/site/usage/<name>.md` is its hand-written part).
 [docs/README.md](docs/README.md) lists every doc by who it is for. Each
 module's page is `modules/<name>/README.md`, each remix's
 `remixes/<name>/README.md`, and each tool's `tools/<dir>/README.md`.
@@ -302,13 +321,17 @@ AGENTS.md          working rules and the trap index for coding agents (CLAUDE.md
 modules/           the contributions, one directory each, each with its README
 remixes/           one directory per remix: remix.py (the selection, in chooser order) and README.md; README.md here is the index
 remixes/test/      the one-module remixes, for their modules' gates (make check REMIX=<name>)
+docs/site/         the manual site (MkDocs): hand-written pages, usage fragments, screenshots, the web builder's page and patches
 docs/guide/        building, flashing and composing a remix
 docs/contributing/ writing a module, testing, placement, tooling, the failure register
+docs/specs/        the contracts between modules, and between modules and tools (STORE, EVENTS, HOOKS, BRAIN)
 docs/firmware/     the firmware, reverse-engineered
-docs/proposals/    technical propositions
+docs/proposals/    remix proposals
 tools/remix/       the toolkit: schema, registry, ledger, the loader, the DRAM platform, the TUI
 tools/build/       the image build (build_bus.py) and the tools that understand the OS layout
 tools/verify/      the gates
+tools/site/        the manual site's generator, the release (release.py) and the screenshot captures
+tools/web/         the web builder's patches: built at the release tag (make webpatch), checked in CI (stale.py)
 tools/harness/     hear and measure the DSP side locally (dsp_host, send_probe, rig_render)
 tools/emu/         the ColdFire emulators: the headless port (ot_emu) and the Unicorn bring-up
 tools/panel/       the virtual front panel over the port, with sound

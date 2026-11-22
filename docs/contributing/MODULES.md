@@ -18,7 +18,7 @@ Decide first which kind you are writing.
 - A **bus client** (`send`) taps its track into the bus.
 - A **ColdFire module** changes what the firmware does (parts, kits, menus,
   MIDI, bug fixes) and touches no audio; midisc (`modules/midi-scenes`)
-  and Octakit (`modules/octakit`) are this shape. Skeleton
+  and KITS (`modules/kits`) are this shape. Skeleton
   `modules/_template_cf/`, worked example `modules/direct-jump-kyoti/`, section
   "Declaring a ColdFire module" below; `docs/contributing/PLACEMENT.md` says
   where the bytes land.
@@ -1050,12 +1050,24 @@ Specific to a module:
 
 - Your gates and your `dear` settings go in the manifest, in the same PR.
 - Voicing is judged by ear, level-matched, A/B/A/B, wet-only
-  (`docs/history/VOICING.md`). Render locally rather than flashing.
+  (`git show 3ceba41:docs/history/VOICING.md`). Render locally rather than flashing.
 - A `layout_char` makes your module placeable by `send_probe`, which
   measures a bus accumulator and so analyses only modules whose harness
   says `is_server`; render an insert with `--direct`.
 - Disassemble what you assemble: `dsp_asm` mis-encodes several instructions
   silently (`TRAPS.md`).
+- **Its page in the manual.** A module a musician can see on the unit writes
+  `docs/site/usage/<name>.md`, the hand-written part of its page on
+  [sambanks.github.io/octabam](https://sambanks.github.io/octabam/); the rest
+  (the byline, the chooser line, the knob table, the settings) is generated
+  from the manifest, so the param `doc` strings are what a musician reads.
+  `tools/site/gen_manual.py` decides the page: `PLACE` names its section
+  (otherwise its `category` does) and `FOLD` makes it a section of another
+  module's page. Only the remixes in `tools/site/release.py` are in the
+  manual; a module in none of them still gets a page in the Feature Directory.
+  The fragment's rules are in [CONTRIBUTING.md "Before you open a
+  PR"](../../CONTRIBUTING.md#before-you-open-a-pr); screenshots in
+  [SCREENSHOTS.md](SCREENSHOTS.md).
 
 `dsp_host` boots both payloads (`-memB`; `tools/harness/rig_render.py` for
 all eight tracks), so a server on core 1 renders on core 1 with the shared
