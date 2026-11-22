@@ -1,22 +1,20 @@
-"""SEQ -- TRACK + PAGE opens a Euclidean sample-trig + p-lock window.
+"""SEQ is a Euclidean rhythm and parameter-lock window for audio and MIDI.
 
-Hold a track key and press PAGE: title SEQ, LEN gutter, stock 3x2 grid.
-`[LEFT]` / `[RIGHT]` switches between two knob pages; the step grid stays fixed.
-Page 1 is A=PULSE B=ROT C=LANE / D=DEST E=DEPTH (F empty). Page 2 has
-SEQ-owned SCAL, ROOT, RANG and PHRS, MIDI VOIC 1-4 and CHRD,
-with audio C and F empty. MIDI writes a melody with FM SYNTH chord shapes;
-audio writes a single PTCH line. SEQ keeps its
-scale settings separate from SCALE QUANTIZER. LANE focuses TRIG or
-PLOCK; YES writes sample trigs and DEST locks (write-only - never
-re-reads live trigs). Per-track / per-DEST params in euclid.work (STORE).
-CUE hold is stock; bare CUE release places a random k-subset with density
-PULSE; CUE+TRACK cues that track. TRACK keys forward to stock (QUICK
-ASSIGN, mute, PLAY/STOP/BANK) then retarget SEQ. FUNC+BANK opens a clear
-LISTPOP over SEQ (CLEAR DEST / ALL DEST / ALL+TRIGS). NO closes and
-restores SEQ; bare PAGE does not.
+Hold [TRACK] and press [PAGE] to open it. The rhythm page has A=PULS,
+B=ROT, C=LANE, D=page and parameter, E=DPTH, and empty F. The Harmony page
+has A=SCAL, B=ROOT, D=PHRS, and E=JUMP on audio and MIDI tracks. PHRS starts
+at RAND, then UP, DOWN, ALT and TRI. MIDI also
+has C=VOIC and F=CHRD. Fresh audio settings select SRC PTCH; MIDI settings
+select NOTE. [LEFT] and [RIGHT] switch pages without hiding the step grid.
 
-Independent of PROJECT > SEQUENCER (SCALE QUANTIZER) and of the EUCLID
-DSP effect. FUNC + PAGE (SCALE SETUP) stays stock.
+TRIG writes audio sample trigs or MIDI note trigs and the selected
+destination's locks. PLCK rewrites only that destination's locks. SEQ keeps
+its scale and root separate from the PROJECT SCALE QUANTIZER. Bare [CUE]
+release randomizes the focused lane's hit positions; PHRS RAND generates
+new in-scale pitches on each fill. [CUE]+[TRACK] keeps stock cue behavior.
+TRACK key shortcuts remain stock. [FUNC]+[BANK] opens the clear menu; [NO]
+closes SEQ or returns from the menu. Bare [PAGE] keeps its stock function.
+Settings are stored per track and destination in euclid.work through STORE.
 """
 
 import runpy
@@ -71,11 +69,13 @@ MODULE = Module(
                       "stock TRACK shortcuts; CUE chord vs bare tap; SCALE-off "
                       "Part PTCH. Does not claim audio testing."),
     ),
-    doc="TRACK + PAGE: Euclidean sample-trig + p-lock window (title SEQ; "
-        "A/B=PULSE/ROT of focused LANE, C=TRIG|PLCK, D/E=DEST/DEPTH; "
-        "CUE = focused-lane random k-subset; DEST = LFO PMTR 0..29 + CX "
-        "30..34; per-DEST depth/plock + per-track LANE in euclid.work; "
-        "write-only - YES overwrites, never re-reads live trigs).",
+    doc="TRACK+PAGE opens SEQ for audio and MIDI: A=PULS B=ROT C=LANE, "
+        "D=page/parameter E=DPTH; Harmony A=SCAL B=ROOT D=PHRS E=JUMP. "
+        "PHRS defaults to RAND, then UP/DOWN/ALT/TRI. "
+        "MIDI adds C=VOIC and F=CHRD. Fresh audio DEST is SRC PTCH; MIDI "
+        "DEST is NOTE. TRIG writes track trigs and selected DEST locks; "
+        "PLCK rewrites only that DEST. CUE randomizes hit positions; PHRS "
+        "RAND rerolls pitches on each fill. Per-track settings persist via STORE.",
     linked=(Linked("ef", "modules/seq/seq.s", dram=True,
                    include=_sources),),
     detours=(

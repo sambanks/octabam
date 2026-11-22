@@ -177,7 +177,7 @@ moment it costs real work, and add its line here.
 - [A slot can draw a knob and publish nothing](docs/contributing/TRAPS.md#trap-knob-publish) — panel and DSP are separate; `docs/firmware/PARAM_PAGES.md`.
 - [Flash cycles are expensive](docs/contributing/TRAPS.md#trap-flash) — render locally and measure first.
 - [The unit misbehaves](docs/contributing/TRAPS.md#trap-failure-modes) — `docs/contributing/FAILURE_MODES.md` first; add new failures the moment they are seen.
-- [Window code above `0x37f00` is wiped at boot; below `0x33da3` DARK REV can write it](docs/contributing/TRAPS.md#trap-window-zero) — resident code in `0x33da3..0x37eff`; the build refuses the rest.
+- [Window code above `0x37f00` is wiped at boot; below `0x33da3` DARK REV can write it](docs/contributing/TRAPS.md#trap-window-zero) — resident code in `0x33da3..0x33fff` and `0x37da3..0x37eff`; the build refuses the rest, and a record inside a guarded reverb's slot extent (22 Nov 2026: stubs pushed to `0x34000`, the DSP did not run).
 - [A host write at the frame interrupt's entry is lost on every other frame](docs/contributing/TRAPS.md#trap-host-mask) — send to core B on ping-0 frames; never to core A.
 - [`dsp_asm` does not assemble a backward `bra`](docs/contributing/TRAPS.md#trap-bra-back) — trampolines go before their target.
 - [A persistent slot init doesn't clear holds the previous effect's state](docs/contributing/TRAPS.md#trap-dirty-state) — zero every slot the sample loop reads; `verify_dirty_state` refuses.
@@ -245,6 +245,7 @@ moment it costs real work, and add its line here.
 - [A stock call returns with a0, a1, d0 and d1 changed](docs/contributing/TRAPS.md#trap-stock-scratch-regs) — MIDI SCENES kept `scn_snap` in a1 across the CC sender; reload scratch registers after every stock `jsr`.
 - [A held scene replaces every encoder's handler](docs/contributing/TRAPS.md#trap-scene-encoders) — `0x40053498` over the SETUP editors; a panel gesture's gate drives the panel.
 - [A frame interrupt entering about 150 µs late stops the DSP's frame exchange](docs/contributing/TRAPS.md#trap-late-frame) — START and program changes; ColdFire time added to the frame interrupt moves it on or off the window; FRAME GUARD holds a late entry to 190 µs.
+- [Dropping a stock hold to keep a window open can drop the hold's release bookkeeping](docs/contributing/TRAPS.md#trap-hold-release-toggle) — LOCK EDIT's re-hold audition lost the step trig until `le_trighold` cleared stock's `0x460d1a9e` itself.
 
 - [PLAYBACK slot A depends on the machine](docs/contributing/TRAPS.md#trap-pitch-destination): THRU has INAB where FLEX has PTCH; resolve the parameter before offering pitch controls.
 
