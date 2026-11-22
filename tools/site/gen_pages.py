@@ -6,6 +6,7 @@
 Writes the generated pages (gitignored, so the deploy builds them fresh):
 
   manual/...          the manual of the published remixes, one for all of them (gen_manual.py)
+  community.md         the community remixes (remixes/community/), one section each
   _remix-<name>.md     the module table of each published remix's overview page
 
 Only the remixes in release.REMIXES are published. The pages are rendered at
@@ -94,6 +95,7 @@ def _label(m) -> str:
         "rnd-name": "Random naming",
         "scenes-p2": "Page 2 scene locks",
         "seq": "SEQ",
+        "cxosc": "CX OSC",
         "sc-keybus-bridge": "Side-chain and Keybus bridge",
         "sc-loadmeter-bridge": "Side-chain and Load Meter bridge",
         "scope": "SCOPE",
@@ -239,6 +241,55 @@ def directory_page(mods, book) -> str:
     return "\n".join(lines) + "\n"
 
 
+def community_page(mods, book) -> str:
+    """Community remixes: contributors' own selections (the community root of the remixes), one section
+    each from its remix.py: what it carries and how to build it. Not in the release, so
+    not in the web builder; each feature links to its manual page, or to its page in the directory."""
+    import gen_manual
+    import release
+    v = release.VERSION
+    manual_page = gen_manual.published_pages(book)
+    tree = f"{GH}/tree/main/remixes/community"
+    lines = ["# Community Remixes", "",
+             "A community remix is a contributor's own selection of modules: an image they flashed, or a "
+             "combination they use. It is not part of the "
+             f"{v} release, so the [web builder](../web-builder.md) does not offer it and this manual's pages "
+             "describe its features only where a released remix has them too. Build one from source as in "
+             "[Create a Remix](../own-remix.md), and read its notes on GitHub before flashing it.", "",
+             '!!! warning "Check before you flash"',
+             "    CI leaves community remixes out of its checks, so a later change can stop one building. Run "
+             "`make check REMIX=<name>` before you flash one.", ""]
+    names = sorted(n for n in registry.remix_names() if registry.is_community(n))
+    if not names:
+        lines += ["None yet.", ""]
+    for n in names:
+        r = registry.remix(n)
+        new, feats, stock = [], [], []
+        for k in r.modules:
+            m = mods.get(k)
+            if m is None:
+                continue
+            if m.is_stock:
+                stock.append(k)
+            elif m.key in manual_page:
+                feats.append(f"[{gen_manual.label(m)}](manual/{manual_page[m.key]})")
+            else:
+                new.append(f"[{_label(m)}](modules/{m.name}.md)")
+        lines += [f"## {n}", "", r.doc, ""]
+        if new:
+            lines += [f"**Not in any {v} remix:** {', '.join(new)}.", ""]
+        if feats:
+            lines += [f"**Also in {v}:** {', '.join(feats)}.", ""]
+        if stock:
+            lines += [f"**Stock effects kept:** {len(stock)} ({', '.join(stock)}).", ""]
+        lines += ["**Build it:**", "", "```bash", f"make image REMIX={n} BUILD=1", "```", "",
+                  f"Its selection and notes: [{n} on GitHub]({tree}/{n}).", ""]
+    lines += ["## Share yours", "",
+              "Add your remix under the community remixes on GitHub and open a pull request: [Create a Remix](../own-remix.md) has the steps and the "
+              f"[community remixes]({tree}) the others.", ""]
+    return "\n".join(lines)
+
+
 def module_page(m, mods, book) -> str:
     """One page per contributed module: the usage fragment (docs/site/usage/<name>.md) when one is written,
     else the manifest's line, then where the module is and its facts."""
@@ -302,6 +353,7 @@ def main(quiet: bool = False) -> int:
     jobs = {}
     book = gen_manual.Book(mods, official)
     jobs["modules.md"] = directory_page(mods, book)
+    jobs["community.md"] = community_page(mods, book)
     for m in mods.values():
         if not m.is_stock:
             jobs[f"modules/{m.name}.md"] = module_page(m, mods, book)

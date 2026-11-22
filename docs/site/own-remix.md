@@ -58,6 +58,8 @@ This writes `out/OCTATRACK_OCTABAM1.bin` (the card image), `out/OCTATRACK_OS1.40
 
 - [Octabam v0.5](remix-octabam.md) is the ready-made selection;
   [Octabam Verbs](remix-octabam-verbs.md) and [Octabam Bus](remix-octabam-bus.md) are two more.
+- [Community Remixes](reference/community.md) lists the remixes other contributors have shared;
+  open a pull request with your `remixes/community/<name>/` to add yours.
 - [Developer documentation](https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md)
   and [writing a module](https://github.com/sambanks/octabam/blob/main/docs/contributing/MODULES.md)
   if you want to add a new feature or share a module.
