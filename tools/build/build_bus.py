@@ -4288,6 +4288,18 @@ hostquit:
         if _wa + len(_ww) > 0x37F00:
             sys.exit(f"{_wk}: P:0x{_wa:05x}..0x{_wa + len(_ww):05x} is uploaded above 0x37f00, where payload B's boot "
                      f"zero loop clears the window after the upload (docs/contributing/TRAPS.md, trap-window-zero)")
+    # A guarded stock reverb writes [base, base + extent) of its slot: base + 0x3da3 for DARK REV, from each of the four FX2 slots.
+    # An uploaded record inside that range is overwritten once a reverb runs there (trap-window-zero: the two clear gaps are
+    # 0x33da3..0x33fff and 0x37da3..0x37eff). 22 Nov 2026: 22 unreachable words in the guard body moved SIDECHAIN_COMPRESSOR's
+    # hook stubs to 0x34000..0x34012 and the DSP did not run after the boot (2 of 2 boots on a unit).
+    _gext = max((_gr["extent"] for _gr in guard_records.values()), default=0)
+    if _gext:
+        for _wk, (_wa, _ww) in window_records.items():
+            for _slot in (0x30000, 0x34000, 0x38000, 0x3C000):
+                if _wa < _slot + _gext and _wa + len(_ww) > _slot:
+                    sys.exit(f"{_wk}: P:0x{_wa:05x}..0x{_wa + len(_ww) - 1:05x} is inside the slot at 0x{_slot:05x}, which a stock reverb "
+                             f"writes up to 0x{_slot + _gext - 1:05x}; resident window code goes in 0x33da3..0x33fff or "
+                             f"0x37da3..0x37eff (docs/contributing/TRAPS.md, trap-window-zero)")
     _wf = pathlib.Path("out/dsp/window_records.json")
     if window_records:
         _wf.parent.mkdir(parents=True, exist_ok=True)
