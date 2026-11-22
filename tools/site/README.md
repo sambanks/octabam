@@ -8,8 +8,9 @@ build, without the deploy, runs as the `site` job on every PR
 `release.py` says what the site publishes: one release (`v0.5`, the git tag
 the web builder's patches are built from) of three remixes (`octabam`, `octabam-verbs`,
 `octabam-bus`). A remix
-that is not listed (`cxosc-core`, the test remixes) is not in the manual, has no
-overview page and no builder entry; it stays in the repository.
+that is not listed (the community and test remixes) is not in the manual and has no
+overview page; it stays in the repository. The web builder also offers each community
+remix that passed `make check` in the publish run (`tools/web/publish.py`).
 
 `gen_pages.py` renders the generated pages from this commit's manifests
 (`tools/remix/index.py`, the registry). The generated files sit under
@@ -29,8 +30,8 @@ Generated, gitignored:
 - `community.md`, Community Remixes (in the nav under More): one section per remix under
   `remixes/community/`, from its `remix.py`: the features no published remix has (linked to their
   Feature Directory pages) first, then the rest (linked to the manual), the stock effects it keeps,
-  and the `make image` line. These remixes are not in `release.py`, so they have
-  no builder entry, and CI's reach leaves them out
+  and the `make image` line. CI's reach leaves them out; a remix the builder's
+  manifest has a patch for links the web builder
 - `_remix-<name>.md`: the feature table of the remix's overview page
   (`remix-<name>.md`, hand-written), each row linked to the manual; the
   stock effects the remix keeps are one row
