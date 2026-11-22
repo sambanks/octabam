@@ -247,45 +247,39 @@ def community_page(mods, book) -> str:
     manifest (docs/site/builder/manifest.json) has a patch for it; each feature links to its manual
     page, or to its page in the directory."""
     import gen_manual
-    import release
-    v = release.VERSION
     manual_page = gen_manual.published_pages(book)
     tree = f"{GH}/tree/main/remixes/community"
     built = OUT.parent / "builder" / "manifest.json"
     patched = {r["name"] for r in json.loads(built.read_text()).get("remixes", []) if r.get("community")} \
         if built.is_file() else set()
     lines = ["# Community Remixes", "",
-             "A community remix is a contributor's own selection of modules: an image they flashed, or a "
-             f"combination they use. It is not part of the {v} release, and this manual's pages describe its "
-             "features only where a released remix has them too. Read its notes on GitHub before flashing it.", "",
-             '!!! warning "Checked by its contributor"',
-             "    The project's own test runs leave community remixes out: keeping one working is its "
-             "contributor's job. The [web builder](../web-builder.md) offers a community remix only when it "
-             "passed `make check` in the run that built the builder's patches; one built from source is "
-             "checked by nobody until you run `make check REMIX=<name>`.", ""]
+             "A community remix is a contributor's own selection of modules. Its contributor keeps it "
+             "working, and the [web builder](../web-builder.md) offers it while it passes the project's "
+             "checks. Read its notes on GitHub before flashing it.", ""]
     names = sorted(n for n in registry.remix_names() if registry.is_community(n))
     if not names:
         lines += ["None yet.", ""]
     for n in names:
         r = registry.remix(n)
-        new, feats, stock = [], [], []
+        feats, stock = [], []
         for k in r.modules:
             m = mods.get(k)
             if m is None:
                 continue
             if m.is_stock:
                 stock.append(k)
+            elif manual_page.get(m.key, "").startswith("inside.md"):
+                continue                        # a service other features use: nothing to operate
             elif m.key in manual_page:
                 feats.append(f"[{gen_manual.label(m)}](manual/{manual_page[m.key]})")
             else:
-                new.append(f"[{_label(m)}](modules/{m.name}.md)")
+                feats.append(f"[{_label(m)}](modules/{m.name}.md)")
         lines += [f"## {n}", "", r.doc, ""]
-        if new:
-            lines += [f"**Not in any {v} remix:** {', '.join(new)}.", ""]
         if feats:
-            lines += [f"**Also in {v}:** {', '.join(feats)}.", ""]
+            lines += [f"**Features:** {', '.join(feats)}.", ""]
         if stock:
-            lines += [f"**Stock effects kept:** {len(stock)} ({', '.join(stock)}).", ""]
+            lines += ["**Stock effects:** all 14." if len(stock) == 14 else
+                      f"**Stock effects:** {', '.join(stock)}.", ""]
         if n in patched:
             lines += [f"**Build it:** in the [web builder](../web-builder.md), choose `{n}` under Community, "
                       "or from source:", ""]
