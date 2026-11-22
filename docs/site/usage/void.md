@@ -27,6 +27,8 @@ Select a track, press **`[FX2]`**, pick **VOID**.
   the previous track's **keybus envelope**, level only, with no neighbour
   audio into VOID. Quiet neighbour → noise stops. Dry/**BAL** is still this
   track. On track 1, **NBR** reads T1's own keybus.
+  The remix must include **KEYBUS**. With SIDECHAIN_COMPRESSOR, it must also
+  include **SC KEYBUS BRIDGE**.
 - **DPTH.** How hard the modulator opens the noise (both **SRC** modes).
 - **WID.** Stereo grit from a second noise through the same
   **HPF**/**COLR**/**DRV** (no **FDBK**). **0 = mono**.
