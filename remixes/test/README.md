@@ -38,6 +38,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`events-clients`](events-clients/README.md) | EVENTS with EUCLID in both FX slots, PLOCKS P2, USB MAIN/CUE and LOAD METER. |
 | [`events-empty`](events-empty/README.md) | EVENTS with no clients: no event hooks or dispatcher code. |
 | [`ext-probe`](ext-probe/README.md) | octabam's core and stock effects (EQUALIZER's id is the probe's) with EXTPROBE on FX1: the highest window word a reverb writes. |
+| [`fet76`](fet76/README.md) | FET76 (modelled on the UREI 1176LN FET limiter) on FX1 and FX2, beside the stock effects but CHORUS, SPATIALIZER, PLATE REV and SPRING REV. |
 | [`frame-guard`](frame-guard/README.md) | Stock effects with a late frame interrupt held out of the DSP's stall window. |
 | [`free-loop`](free-loop/README.md) | stock effects with FREE LOOP: a loop pedal per track, the first free loop sets the tempo. |
 | [`hooks`](hooks/README.md) | REC THRESHOLD and FREE LOOP together (HOOKS bridges the status icons) with STORE and the stock effects. |

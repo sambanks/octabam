@@ -85,6 +85,7 @@ def _label(m) -> str:
         "dlpump": "Effect loader (sender)",
         "direct-jump-kyoti": "Direct jump (Kyoti)",
         "distorx": "DisTorX",
+        "fet76": "FET76",
         "lofi-amf-fix": "Lo-Fi AMF fix",
         "octa303": "OCTA-303",
         "wavecf": "WAVE",
