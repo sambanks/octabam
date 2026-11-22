@@ -166,9 +166,9 @@ What it shows:
   the longest frame interrupt is the same on all three images (about 300 us,
   OFF included, so it is the playback's cost, not MIDI's), no image stalled,
   and host-side note timing is the same. LOAD METER reads the interrupt's
-  duration; the late-ENTRY window of trap-late-frame (`tools/hw/framelog.patch`)
-  was not measured, and FRAME GUARD's absence did not produce a stall in 60 s
-  on either build.
+  duration; the late-ENTRY window of trap-late-frame was measured on 22 Nov
+  (below), and FRAME GUARD's absence did not produce a stall in 60 s on either
+  build.
 - Every queued note reached the Mac. Before the Mac opened the port, an INF
   retrig on the unit filled the queue and 8,861 batches were dropped and
   counted (NEW, before run `new1`): with no host reading, the queue fills in
@@ -179,6 +179,38 @@ the INF voice played on after the part change, still rendered, so the
 stuck-note case was not reached; the fixture now has both. Stock's MIDI
 tracks sent 59 CCs (20..29, 46..63, 80..88) on channels 8 and 9 at the
 program change; not this module's.
+
+### Frame-entry lateness, SEND on against OFF (MKII, 22 Nov 2026)
+
+trap-late-frame: a frame interrupt that enters about 150 us late stops the
+DSP's frame exchange. Two images of `test/usb-midi-tracks-hw` at `14ac6909`
+with `tools/hw/framelog.patch` applied (a test edit, never committed applied):
+UMT-FL 2 (SEND NOTES+CC) and UMT-FLO 2 (SEND OFF), switched over USB.
+`ot_usbtracks.py starts`, the same project: 8 trials each of pattern 1,
+START at 120 BPM from the Mac's clock, 20 s of play (INF retrig on T1 and T2,
+trigs on T1..T4), a program change to the part with T1 on THRU, STOP; the Mac
+reading USB MIDI throughout. The patch stamps every frame interrupt's entry
+(DMA timer 3, 132 MHz): the longest gap between two entries in each 0.5 s
+window, polled 4 times a second (every window read), and counters since boot
+of gaps over 382.8 us (an entry 20 us or more late), over 472.8 us (110 us)
+and under 342.8 us (back-to-back), differenced over the run. Runs `fl2`,
+`flo2`:
+
+| | SEND NOTES+CC | SEND OFF |
+|---|---|---|
+| stall | none in 8 STARTs, 8 part changes | none |
+| longest entry gap, whole run (721 / 724 polls) | 367.1 us | 367.9 us |
+| gaps over 382.8 us / over 472.8 us / under 342.8 us | 0 / 0 / 0 | 0 / 0 / 0 |
+| longest frame interrupt in the 22 frames after each START | 150..225 us | 141..206 us |
+| the module: STARTs / notes / `usbmidi_tx_drops` | 5,911 / 340,467 / 0 | 5,932 / 0 / 0 |
+
+No entry was late by more than about 5 us on either image, START and the part
+change included, so SEND adds nothing measurable to entry lateness here. What
+this does not cover: these images stream no USB audio (USB's TRACKS OFF, MAIN,
+CUE and MASTER 0). trap-late-frame's 475..585 us START frames were measured with
+a 20-channel capture open, and a host splitting tracks with these notes (the
+OT Gate devices) streams audio too; the START frame here never reached the
+log's 440 us trigger. SEND with audio streaming is not measured.
 
 The first build was also seen working on this MKII on 15 Nov 2026 (owner
 report: CCs, notes per trig, repeats, fader moves; nothing counted).
@@ -223,9 +255,8 @@ with one generated WAV behind every sample slot:
 
 ## Inferred and to be measured
 
-- Frame-interrupt entry lateness (`tools/hw/framelog.patch`) on either
-  build: LOAD METER's duration and the absence of a stall are all the unit run
-  measured. The latency the deferred kick adds when EP2 IN is idle is inside
+- Frame-entry lateness with SEND on while USB audio streams (the table above
+  has none). The latency the deferred kick adds when EP2 IN is idle is inside
   the host-side spacing above (no difference between NEW and OLD), not
   measured on its own.
 - An LFO on one of the six is in the CC (`docs/firmware/LFO.md`: it writes the same
