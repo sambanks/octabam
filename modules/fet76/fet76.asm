@@ -43,7 +43,7 @@ init:
         move    a,x:(r7+$11)            ; C22 empty
         move    a,x:(r7+$13)
         move    a,x:(r7+$14)
-        move    #>$400000,a
+        move    #$40,a                 ; (short immediate: bits 23-16)
         move    a,x:(r7+$12)            ; G = 1
         rts
 
@@ -113,7 +113,7 @@ proc:
         and     #>$7fffff,a
         move    x:(r7+$0c),x0
         sub     x0,a                    ; ALL: three times slower
-        move    #>$010000,x0
+        move    #$01,x0                 ; (short immediate: bits 23-16)
         cmp     x0,a
         tlt     x0,a                    ; never below ATK 1
         move    #>$000021,y0
@@ -153,7 +153,7 @@ proc:
 ; ---- MIX: value/128, 127 pinned to full scale ------------------------------------
         move    x:(r6+$5),a
         and     #>$7f0000,a
-        move    #>$7f0000,x0
+        move    #$7f,x0                 ; (short immediate: bits 23-16)
         cmp     x0,a
         move    #>$7fffff,x0
         teq     x0,a
@@ -279,7 +279,7 @@ f76_dv1:
 ; ---- G/2 = (1/16)/(1/8 + uA8) -----------------------------------------------------
         add     #>$100000,a
         move    a,x0
-        move    #>$080000,a
+        move    #$08,a                 ; (short immediate: bits 23-16)
         andi    #$fe,ccr                ; y1 = a1 / x0, inline
         do      #$18,>f76_dv2
         div     x0,a
