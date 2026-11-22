@@ -2,7 +2,7 @@
 """FET76 render gates: the assembled module against its bit-exact model, and the model against the
 1176LN's own manual.
 
-Renders the module straight through dsp_host (the render-gate shape of verify_db666: the id and the
+Renders the module straight through dsp_host (the render-gate shape of verify_distorx: the id and the
 slots come from the manifest, the entry points are checked against SEND's).
 
 Gates:

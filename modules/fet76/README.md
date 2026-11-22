@@ -113,9 +113,8 @@ applied in two normf steps, at most 7 bits each, inside the accumulator's guard 
 ## On the unit
 
 The author's MKI, by his report of 22 Nov 2026: FET76 has been in his own
-images (aCiDtRacK) practically since it was written, mainly on the master
-track and sometimes on single tracks, with no clicks, noise or hangs heard.
-By the fork's history the first of those images is ACIDV82 (2 Nov 2026).
+images (aCiDtRacK) since ACIDV82 (2 Nov 2026), the first with FET76, mainly
+on the master track and sometimes on single tracks, with no defect noticed.
 By ear, not a measurement. The DSP source that ran is the one this module
 was added with; the audit's three commits after it are bit-identical in the
 emulator and not flashed. `test/fet76` itself has not run on a unit.

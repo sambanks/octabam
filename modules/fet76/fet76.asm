@@ -406,7 +406,7 @@ f76_tab:
 
 ; ---------------------------------------------------------------------------
 ; f76_exp -- 2^g, g = a (gain bits / 32): y1 = the EXP mantissa 2^f/2,
-; b1 = normf's count -(n + 1) (dB666's VCA). Uses x0 x1 y0 b r5 n5.
+; b1 = normf's count -(n + 1) (as in VCA160's VCA). Uses x0 x1 y0 b r5 n5.
 ; ---------------------------------------------------------------------------
 f76_exp:
         move    a,x1                    ; g, limited
