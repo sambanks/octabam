@@ -13,25 +13,11 @@ author and a link to the upstream repository.
 
 Omit this section for a module without knobs.
 
-## Measured
+## How it works
 
-✅ facts, each with how and when it was measured (the gate, the harness,
-the port), and what would falsify it. 🟡 for inferred.
-
-## On the unit
-
-Hardware results: image, unit, date. "Not flashed" is a valid entry.
+For contributors: what the code does and where it hooks in. No test logs,
+dates or proof levels (`AGENTS.md` "How docs are written here").
 
 ## Open
 
 Things to find out.
-
-## Gates
-
-The `tools/verify/verify_*.py` gates and `make` targets that cover the
-module (the manifest's `Gate(...)` entries). `tools/verify/verify_character.py`
-is the pattern: predict the arithmetic exactly, drive both signs, refuse to
-run if the id it resolves is the fallback rather than the effect.
-
-Module-specific sections (design, memory, collisions, updating) follow as
-further `##` sections after Gates.

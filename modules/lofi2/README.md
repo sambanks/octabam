@@ -35,19 +35,6 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
 - **AMPH** is bipolar: the knob word less `$400000` runs from -1/4 cycle (knob 0, -90 degrees) to 63/256 cycle (knob 127, +88.6 degrees) in phase units. Every distinct stereo motion of a ring mod lives inside +-90 degrees: offsets of theta and 180-theta give the same envelope with lead and lag swapped, and the sign says which channel leads.
 - **The MODE duck.** A MODE change swaps one modulator for an unrelated one, or flips Q's sign, which is a step in the output. The wet is ducked to dry over 5 ms, the running mode switches only once it is fully out (at the next block boundary), and the wet returns over 5 ms. The flags read the running mode, never the knob, and MIX runs at m*(1-e), exactly m when nothing is ducking.
 
-## Status
-
-- Flashed and heard on Bryan T's MKII in September 2026, built on the tree of 12 Sep 2026.
-- Ported to this tree in October 2026. Three changes the port required:
-  - the shifter's chain pointer was `lua (r7+$40)`, which assembles to `r7-$40` (`lua` takes a displacement of -64..63; docs/contributing/TRAPS.md). All four Hilbert chains had been keeping their state in the 64 words below the instance's own block. This tree's build refuses it (the disassemble-what-you-assemble round-trip); the pointer is now `r7 + n1`. It moved where the state lives, not the arithmetic: under `rig_render` (T1 and T5, every MODE), the September source and this one render bit-identically, because nothing in that layout uses those 64 words (the top of the slot below, `$c0..$ff`). On the unit it was a latent corruption of whatever does.
-  - every page-1 knob read is masked (an LFO-modulated knob word carries bits 8-15; docs/contributing/TRAPS.md): `and #>$7f0000` for the selects, and, since the October rewrites, `and #>$7fff00` for the continuous knobs, which keep those bits as the LFO's fraction.
-  - `init` zeroes the block (verify_dirty_state), where it had been a bare `rts`.
-- Rendered against the September source in this tree (the same image built from each, `rig_render`, T1 on payload B and T5 on payload A; passthrough, RING with and without AMPH, SRR/BRR/LPF, SHIFT UP, SHIFT DOWN with FDBK): bit-identical in every case, and T1 bit-identical to T5.
-- The port ran on Bryan T's MKII as image 96 (remix `_bt_oct`, his own: LOFI2 with RECORDER LOOP FIX, USB AUDIO IN ABCD and OUT MAIN CUE), 10 Oct 2026: LPF right on track 1 (payload B), SHIFT on two tracks at once, MODE through RING / DOWN / UP without a fault.
-- AMPH bipolar, GAIN and the MODE duck ran on the unit as image 97 (October 2026).
-- Our own SRR, BRR and LPF ran on the unit as image 98 (10 Oct 2026), on track 1 (payload B) and track 5 (payload A): "sounding and working great", and the MODE change no longer clicks.
-- The FREQ, MIX, GAIN/FDBK and AMPH glides ran on the unit as image 99 (10 Oct 2026), with five LOFI2 instances running at once (so at least three on one core): no issues. Image 99, 11 Oct 2026: seven in RING (T1-T7) and seven in SHIFT UP (T1-T7) played cleanly; eight in SHIFT UP overran core 0 (see Design, "Cost, and how many fit").
-
 ## Open
 
 - Stock LO-FI follows its hold with a fixed linear-phase FIR near Nyquist (seen in its step response: symmetric pre-ringing, 7-10 samples of latency); LOFI2 does not, and at stock's rates it is not what makes stock's SRR sound smoother.
@@ -57,24 +44,3 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
 - SHIFT's cost: four on one core did not fit at 654 or at 506 counted cycles. The October rework, 654 -> 416 counted (about 1,530 -> 995 weighted): per-block glide steps for all but BRR, walked by a pointer with the stores in parallel slots; `mpy y1,x1` in the Hilbert sections; the parity-split Hilbert state; I·cos formed between the chains instead of parked; the shelf state and every other per-sample slot below $40; the direction moved into the carrier; the sine inlined; values kept in registers where they were stored and reloaded. Every step but the per-block glides and the direction is bit-identical to the one before it. On the unit at 414 (the EOR's form aside, the same loop): eight SHIFT instances, four per core (build 11, 12 Oct 2026). Untried: the Hilbert coefficients from Y memory in a parallel slot (about 2 words a section, but LOFI2 owns no Y today), and a quadrature oscillator in place of the two sines (not bit-identical).
 - From the same model (13 Oct 2026, not measured here): the parabolic sine's carrier-harmonic spurs sit near -63 dBc (a 1024-entry interpolated table would reach about -104 dBc, at a cost in cycles and table space; LOFI2 owns no Y memory), and the Hilbert sections' truncating stores leave a limit cycle near -100 dBFS after the input stops (rounding toward zero removes it, at a few instructions a section).
 - On the unit: the image at -20 dB was part of how SHIFT sounded on images 96-99 and builds 11-12. Whether the cleaner shift is preferred is an ear decision.
-
-## Measured
-
-- **19 Nov 2026, the stall pass** (bit-identical: `verify_ident.py` with the
-  wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
-  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
-  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
-  after each commit; 26 renders). Cycles a sample from
-  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
-  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
-  section 1), every knob at its maximum: DOWN **654.2 → 638.9**, UP 653.4 →
-  638.1 (14.4 % → 14.1 % of a frame), RING 426.5 → 417.2. Words 838 → 821
-  (`dsp_asm` at P:$800). Not measured on the unit. The frame advance
-  (`#>$2,n0` / step / `#>$1,n0`) is one `lua (r0+$2),r0`, n0 staying 1; the
-  parity flip fills the Hilbert chains' pointer waits; thirteen constants load
-  as one-word short immediates.
-
-## Gates
-
-- `tools/verify/verify_lofi2.py` (the manifest's `Gate`), through `dsp_host` on payload A: the ring level against dry, GAIN at 64 and 127, the SHIFT level, the SHIFT sidebands (UP and DOWN on 1, 3, 5, 10 and 15 kHz at 16- and 13-sample blocks, and UP -> DOWN while playing: the wanted side, the other under -40 dB; 10 kHz catches the parity toggle failing, the odd block a parity not carried across blocks), AMPH (L == R at 0, L untouched and R moved at +-45), the start-up fade-in, a RING -> UP switch scheduled mid-render (no step larger than the steady states', and a pass through the dry), SRR's rate against stock LO-FI's at five settings (stock rendered from the user's own image), BRR's step against stock's at eight settings (within 0.05 bit, read from DC plateaus so neither effect's filters enter), BRR 64's gain against BRR 0 (within 0.05 dB), the LPF shelf against its design at six settings (coefficient, DC gain, depth), no gain above unity anywhere, LPF 127 bit for bit, FREQ's LFO fraction (a half step lands between the two steps), and turns under verify_knob_clicks's -70 dBFS on every continuous knob: SRR, BRR, LPF, FREQ (RING and SHIFT UP), MIX and GAIN (RING), FDBK (SHIFT UP) and AMPH (RING, the R channel).
-- `make check REMIX=lofi2`.

@@ -78,10 +78,3 @@ Stack in `sy_loop`: `0=MIX_Q8, 4=FOLD_Q8, 8=PWM, 12=SYMM, 16=morph (00 00 CMOR M
 7. **MMOR** 0→127, INDX ~40, CMOR 0: smooth FM colour; no jump mid-travel.
 8. **MIX 127**, INDX 0, MMOR 0→64→127: hear mod sine → DPW saw → DPW square.
 9. One morph at a time when comparing.
-
-## Proof status
-
-**CX 63** (author MKII): saw PWM phase-skew 0→127 confirmed on unit
-(crest moves, stays saw-family). Port still covers sine lean / square duty /
-FUNC snaps / MMOR zipper; those were exercised in the same PWM pass of
-tips CX 54–63.

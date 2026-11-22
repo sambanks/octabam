@@ -50,37 +50,6 @@ With dEVILish on the track, its SLID replaces the OCTA-303 SETUP page's SLID.
 - A remix without dEVILish gives `octa303` `DEVIL_ID 0x100`, which no id byte equals: every 303
   track is then the plain one.
 
-## Measured
-
-- ✅ `tools/octa303/sim/test_octa303.py` (the `octa303` gate): the Devil Fish engine in
-  `octa303.s` equals `ref303.py` sample for sample, on FX1 and FX2, with knobs moved, locked and
-  taken away, at the extremes, and from the voice record with an LFO's fractional low bytes, a moving
-  LFO and either ping; the neutral knobs equal no
-  dEVILish; a remix without it is neutral; the module's knob order and defaults are the engine's.
-- ✅ DSP cost 1 cycle/sample (`make cycles REMIX=acidtrack`).
-- ✅ On the unit: the author's MKI, `acidtrack` images up to ACIDV71, October 2026: the current
-  dEVILish in daily use for several days, many hours in all, on two or three OCTA303 tracks beside
-  DisTorX; no fault seen. Those images had it on FX id `0x1f`, then `0x1e`; on `0x10` (PHASER's,
-  since 21 Oct 2026, when `0x1e` became RESONATOR's) see "On the unit, this tree" when flashed.
-
-- ✅ On the unit, this tree (on `0x10`): image DEVPR2 (BUILD 93, remix `devilish`, the owner's MKI,
-  22 Oct 2026), by ear: an LFO on a dEVILish knob (FM, OVDR, TRCK) moves the 303, as it did not
-  before the voice-record read; a scene with another FM through the crossfader and a lock on a
-  step still act as before.
-  The same image, every knob: OCTA-303 on T1 with accents and slides; dEVILish on FX1 at its
-  defaults sounds as FX1 = NONE; page 1 OVDR, FM, TRCK, VDEC (0, 64, 127 = endless notes), SLID,
-  ADEC and page 2 SATK, SWP (ACID, WHST, SELF), SPD (FAST, NORM, SLOW), MUFF (OFF, SOFT, HARD),
-  CUTX and ENVX each act; on FX2 the same; on a track that is not a 303 the sound passes; an LFO
-  on a knob, no hang; two OCTA-303 tracks with dEVILish for five minutes; save, power-cycle,
-  reload keep dEVILish and its knobs.
-
-## Inferred
-
-- 🟡 ColdFire cost on the OCTA303 voice: ~1,500 instructions more per 16-sample frame with FM and
-  MUFF on (~4,700 against ~3,200, simulator counts), ~3 % of the frame at ~1.77 cycles an
-  instruction. Falsified by CF METER on the unit.
-- 🟡 The knob ranges follow Whittle's descriptions; they are not measured against a Devil Fish.
-
 ## Open
 
 - No recordings of a real Devil Fish with known settings were used; the mods are modelled from the
@@ -91,12 +60,6 @@ With dEVILish on the track, its SLID replaces the OCTA-303 SETUP page's SLID.
 - **Robin Whittle**, Real World Interfaces — *User Manual for the Devil Fish mods to the TB-303*
   (2019) and the Devil Fish pages: https://www.firstpr.com.au/rwi/dfish/
 - **Sam Banks**, octabam — the menu, the descriptor clone, the remixer.
-
-## Gates
-
-`tools/octa303/sim/test_octa303.py` (through `octa303`: 92/92 with `modules/devilish` in the
-tree, its three manifest checks included); `make check REMIX=devilish` (`remixes/test/devilish`:
-OCTA303 and dEVILish beside the stock effects but PHASER, whose id dEVILish takes).
 
 ## FX id
 

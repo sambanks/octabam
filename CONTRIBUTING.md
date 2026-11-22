@@ -8,27 +8,19 @@ etiquette for building from somebody else's repository.
 **Never an Elektron byte.** Not an OS image, not a `.syx`, not a slice of
 either, not in a commit and not attached to an issue or PR. Describe it,
 hash it, or name the commit that built it. Anything a module needs from
-the stock firmware is taken from the user's copy at build time (Octakit,
-until 6 Oct 2026, `.incbin`'d 459 distinct `stock/NNNN.bin` files that
-way). `.gitignore` refuses `*.bin`,
+the stock firmware is taken from the user's copy at build time
+(`.incbin`). `.gitignore` refuses `*.bin`,
 `*.syx`, `downloads/` and `out/`. The web builder's patches
 (`docs/site/builder/patches/*.obp`) are committed under the same rule: each
 holds octabam's bytes and instructions to copy stock bytes from the user's own
 file in the browser, and `tools/web/obpatch.py` refuses a patch whose literal bytes
 contain a stock sequence of 16 bytes or more (`MIN_STOCK`).
 
-What the rule does not cover (decided 16 Sep 2026): the few displaced
-instructions at a cave's hook site. A `CfPatch.hook_stock` is the six to
-ten bytes the installer overwrites with its `jsr` and the cave replays; the
-build refuses an image that does not hold them, which is the check that
-keeps a cave off the wrong OS. Those opcodes (ten sites, 70 bytes in all: `recorder-loop-fix` eight
-sites and 54 bytes, `tempo-sync` one site and 10 bytes, `rlen-plen` one
-site and 6 bytes; the Kyoti upstream's `TS_HOOK_STOCK` in
-`batch-bugfixes` is a further 18) are an
-instruction, not a firmware, and every ColdFire module carries its own
-the same way. Keep a hook to whole instructions and the minimum span; data
-tables, routines and anything longer than the displaced instructions come
-from the user's image at build time.
+One exception: the few stock instructions a ColdFire hook overwrites and
+replays (`CfPatch.hook_stock`, six to ten bytes a site). The build checks
+the image holds them, which keeps a hook off the wrong OS. Keep a hook to
+whole instructions and the shortest span; anything longer comes from the
+user's image at build time.
 
 ## Your first pull request
 
@@ -69,13 +61,13 @@ One directory, `modules/<name>/`:
 
 ```
 manifest.py     declares the module -- exports MODULE (tools/remix/schema.py is the vocabulary)
-README.md       what it is, what was MEASURED, what is INFERRED, what is open
+README.md       what it does, how to use it, how it works, its limits
 <sources>       .s for the ColdFire, .asm for the DSP -- or `upstream/`, a submodule
 ```
 
 plus a remix that carries it (`remixes/test/<name>/remix.py`, a remix of
 that one module, or an existing remix of the project's; and a
-`README.md` beside it: what is in it, where it has run;
+`README.md` beside it saying what is in it;
 `docs/guide/COMPOSING.md`) and, for anything with behaviour worth pinning, a gate
 (`tools/verify/verify_<name>.py`, named in the manifest's `gates`, run by
 `make check` for every remix that carries the module). Nothing else
@@ -83,14 +75,12 @@ registers it: the registry discovers every `modules/*/manifest.py`, and
 refuses two modules on one key. A module's `fx2_id` is its preferred id;
 the remix settles clashes (`registry.assign_ids`).
 
-The manifest's `category`, `author`, `author_url` and `evidence`
-are the README's module table (`make docs` renders it and the remix index
-from the manifests and the selections; the selftest refuses a module
-without them, `verify_docs` a stale copy). `evidence` is a tuple of
-`Evidence(Level.X, unit, who, image, date, ref, commit, note)`; `Level` is
-`BUILD`, `EMULATOR`, `RENDER`, `UNIT` or `UNIT_MEASURED`
-(`docs/contributing/MODULES.md`). A remix declares `family` (`rig`,
-`effects`, `mods`, `reference`, `probes`) and `evidence` the same way.
+The manifest's `category`, `author` and `author_url` make its row in
+[modules/README.md](modules/README.md) (`make docs` renders it and the
+remix index; `verify_docs` refuses a stale copy). A remix declares its
+`family` (`rig`, `effects`, `mods`, `reference`, `probes`). The schema
+still asks for an `evidence` entry on each module and remix
+(`docs/contributing/MODULES.md`); no doc shows it.
 
 ### Remixes
 
@@ -105,7 +95,7 @@ There are three places a remix can live, and a contributor's goes in one of two:
 - `remixes/community/<name>/`: a contributor's own selection for a card, such as
   the image they flashed, or the modules they use together. Name it after
   yourself or its purpose (`8thmyth-chop`, not `octabam-chop`); its
-  `README.md` says what is in it and where it has run. `make reach` leaves
+  `README.md` says what is in it. `make reach` leaves
   these out unless `TESTS=1`, and the selftest does not count one as a
   module's remix, so a module still needs a `test/` remix of its own.
 
@@ -144,8 +134,7 @@ parameter ranges, and combinations with other modules in the same remix.
 A guard removes the configuration (a refused selection, a clamp, a bypass on
 overrun); documenting the failure does not. `DspSection.max_per_core` declares
 an instance ceiling for the cycle price and the unit does not enforce it, so
-it is not a guard. The module README names the guard and what it was
-measured against.
+it is not a guard. The module README names the guard.
 
 **A new module may not duplicate the function of an accepted one.** Once a
 module is accepted, changes to that behaviour are enhancements and bugfixes
@@ -154,7 +143,7 @@ exceptions: a proposal to replace an abandoned or buggy module, where the PR
 says which module it replaces and why; and a module that does the job in a
 suitably different fashion, where the PR states what differs (the method,
 the sound, the cost, what it can do that the accepted one cannot) and the
-module README carries the measurement that shows it. Modules that overlap
+module README says what differs. Modules that overlap
 and cannot share an image declare a `conflicts` pair (see Etiquette).
 
 ## The oracle rule
@@ -238,9 +227,9 @@ build reports, bit-identical, against the baseline of your branch's
 merge-base with origin/main, saved once for every worktree), and `make identity` (every remix, base against
 head).
 
-**Say what was measured and what was inferred**, in the README, with what
-would falsify each claim; retract in every document that repeated a
-number, not just the one you are editing.
+**Docs state what the code does now**: no proof levels, run histories,
+dates or PR numbers (`AGENTS.md` "How docs are written here"). When a fact
+changes, change it in every doc that repeats it.
 
 **Flashing is the author's own step, on their own unit**, and it is
 expensive: bump `BUILD` so the unit's version string maps to a commit,
@@ -252,14 +241,12 @@ is seen.
 ## Before you open a PR
 
 Rebase onto current main. Gates run before the rebase are not a result: a
-branch that merges without a conflict can still fail on main (PR #396's
-stress fixture named a knob that #415 had renamed).
+branch that merges without a conflict can still fail on main.
 
 **CI runs the gates; you run the one for your change.** The whole-remix
-checks, `make reach` and the `refhash` pass take hours on one machine
-(`check-remix octabam` took 72 min on sambanks/octabam#1087, 12 Nov 2026), and
+checks, `make reach` and the `refhash` pass take hours on one machine, and
 CI runs every one the diff reaches on each push, fork PRs included, against
-the 1.40C it downloads for that run (owner's rule, 13 Nov 2026). Locally:
+the 1.40C it downloads for that run. Locally:
 
 ```bash
 git fetch origin && git rebase origin/main
@@ -282,7 +269,7 @@ run, in a file the PR also changed or in a module, hook, cave or remix its
 gates build with; a PR main has not moved under merges as it stands.
 
 A change that alters what a remix does — its modules, effects, menus,
-costs (memory pages, DSP words) or proof status — updates the
+or costs (memory pages, DSP words) — updates the
 hand-written manual site pages under `docs/site/` in the same PR. The
 generated reference pages update themselves from the manifests.
 
@@ -303,7 +290,7 @@ same PR, and so does a rebase onto a main that changed a screen they show
 the local check for the fragments themselves.
 
 A manifest, remix selection or module README change leaves the generated
-copies stale: `make docs` renders `README.md`, `remixes/README.md` and
+copies stale: `make docs` renders `modules/README.md`, `remixes/README.md` and
 `remixes/test/README.md` from the manifests and the selections. Run
 `make docs` and commit the result; `make verify-docs` is the local
 check, and CI's `📚 Docs, Site and Web Patches` job refuses a stale copy.

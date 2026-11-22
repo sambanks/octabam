@@ -81,65 +81,6 @@ them with their addresses.
   buffer to the file and calls back with the result. A success clears the
   buffer's mark and moves on; after the last buffer stock's SAVE runs.
 
-## Measured
-
-Under the ColdFire port on stock 1.40C (15 Oct 2026), the path this module
-drives: a take, SAVE THIS RECORDING with YES on the keyboard, ASSIGN TO
-SELF, then SAVE PROJECT wrote `R1-000000-0000.wav` (the port's clock is
-unset) and `.ot`. The project then recorded `SLOT=129
-PATH=../AUDIO/R1-000000-0000.wav`, and a fresh boot's LOAD PROJECT refilled
-buffer 1 (length `0xac440`, the 16 s take).
-
-Under the port on this module's image, `tools/verify/verify_buffer_saver.py`
-(in `make check`): after a take FUNC + PROJ asks SAVE SAMPLES?; YES writes
-`R1-000000-0000.wav` and `.ot` and points the project's buffer 1 at it, and
-the next save does not ask; with that name taken the take is saved as
-`R1-000000-0000-2` and the old file is left alone; NO writes no sample and
-the project saves as stock.
-
-On a unit (Chupitnik's MKII, 15-16 Oct 2026, images AUTOSAVE1 and AUTOSAVE2
-from the card, under the module's first name REC BUFFER AUTOSAVE;
-`CHANGELOG.md`): the question on FUNC + PROJ and on PROJECT > SAVE; names
-with the real date and time; two buffers saved in one go; no question on an
-immediate re-save; a reload brings the takes back; NO saves as stock.
-
-Two harder cases under the port (16 Oct 2026, this module's image, a
-saved project, inputs on the port's tones):
-
-- **A full card** (a filler file leaving 64 KB, a one-second take): YES,
-  then stock's WAV write fails (its done callback `0x40024740` with -25),
-  stock shows ERRORS OCCURED WHILE SAVING THE SAMPLE! and then the sample
-  settings error (`0x400247b8`, -24). Neither calls the module's done
-  callback, so the chain stops before the project save. The unit stays
-  live: the next FUNC + PROJ asks SAVE SAMPLES? again (the mark kept), NO
-  there opens stock's CONTINUE?, and a later save asks again. Stock leaves
-  `R1-000000-0000.wav` and `.ot` at 0 bytes.
-- **Saving while the sequencer plays** (PLAY, a take, FUNC + PROJ): the
-  take is saved and assigned, the project saves with buffer 1's path, and a
-  later FUNC + PROJ opens stock's CONTINUE? with no SAVE SAMPLES?. The port
-  played an empty pattern; playback under load was not judged.
-
-On a unit (Chupitnik's MKII, 16 Oct 2026, AUTOSAVE2):
-
-- **Saving while a pattern plays** (samples on several tracks): the samples
-  saved with no stutter or dropout, the take came back on reload, and the
-  keys stayed responsive. Playback stopped at the project save itself, as
-  stock SAVE PROJECT does.
-- **A full card** (224 KB free, a take of several seconds): stock's ERRORS
-  OCCURED WHILE SAVING THE SAMPLE! / CARD FULL, no freeze; the next save
-  asked again, and saving the project without the samples worked. The
-  failed write left `R5-…-0744.wav` cut at 256 KB and its `.ot` empty, with
-  nothing pointing at them.
-
-The code as merged (#752), and this follow-up, also ran on the MKII, in
-Chupitnik's personal images PREMIX builds 2 to 4 (16-19 Oct 2026), next to
-REC THRESHOLD, USB and ATA WRITE GUARD (build 4 adds RND NAME). Build 2
-carried the merged head plus the hook move; builds 3 and 4 add SAVE TO
-NEW. The behaviour above held; the power-cycle case was tried there; on
-build 3, SAVE TO NEW asked and the new project had the take. Between
-AUTOSAVE2 and the merged head only the name, the docs, the gate and the
-screenshot changed.
-
 ## vs PERSISTENT BUFFERS
 
 [PERSISTENT BUFFERS](../persistent-buffers/README.md) also writes recorder

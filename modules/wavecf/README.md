@@ -88,31 +88,6 @@ BAL), the delay / reverb macro (DELAY and the reverbs), table select (one genera
 - `generate.py` compiles the C into the block of `wavecf.s` between its GENERATED ENGINE markers;
   `--check` refuses a stale one.
 
-## Measured
-
-- ✅ `test_wavecf.py`: the Python model (`ref_wavecf.py`), the host build and the ColdFire build under Unicorn
-  give the same samples on three command streams (engine, 35,200 samples; note layer, 38,400; AMP, 51,200); the AMP laws against Tim's measurements (ATK 0: 16 frames; ATK 70: 1.19 s against 1.14 s; HOLD 32: 777 frames = 282 ms); a voice on frame 0
-  is a 440 Hz sine at gain × table amplitude; frame 3 is the square; a released voice ends in exact zero;
-  `wcf_inc` is within 0.002 cent of 2^(p/12) from C3 over −48..+48 semitones; SETUP and AMP behaviour on the model: OCT, DETN's spread, COMP's harmonics, VIBR's pitch spread, POLY's round-robin, scale snapping.
-- ✅ Instructions under Unicorn (not cycles): `eng_render` 316.9 per sample at the worst block of the engine stream and 330.4 with vibrato and COMP on (four
-  voices); `wcf_note` 168 per START; `wcf_knobs` 39 per call.
-- ✅ Under the port (`tools/verify/verify_wavecf_port.py`, a WAVE track on T1, trigs on steps 1, 5, 9, 13):
-  TUNE 64 gives 130.6 Hz (C3 130.8), TUNE 68 164.7 Hz (E3 164.8), CHRD MAJ with VOIC 3 gives 130.6, 164.7 and
-  196.0 Hz.
-- ✅ Under the port (`tools/verify/verify_wavecf_ui.py`, on an image of remix `wavecf-octa303`): choosing WAVE from the list, the signature and the
-  defaults in the Part, its shadow and the live lane, unsigning, the limit with WAVE and OCTA303 counted together
-  (a third pick refused, a loaded Part's third track unsigned).
-- ✅ `verify_hooks.py`: the row type, names, commits and the SRC SETUP name table through the chain for OCTA303 +
-  WAVE CF, ANALOG BD + WAVE CF and all three.
-
-## Inferred
-
-- 🟡 ColdFire cost: 311.8 instructions per sample is 48 % of the stock `waveload` engine's 646.2 worst path
-  (69.2 µs of the 362.8 µs frame on the unit, image 92); at that ratio about 33 µs, 9 % of the frame, for four
-  voices sounding. Falsified by CF METER on the unit with a WAVE track playing.
-- 🟡 The stock Part validator clamps none of the six PLAYBACK values WAVE stores (poked 70 127 31 3 127 127: unchanged
-  on an unsigned track too). It does clamp SETUP bytes to FLEX's ranges, which the hook undoes.
-
 ## Open
 
 - Not flashed. The load with two machines playing, and with a stream open, is not measured.
@@ -130,8 +105,3 @@ BAL), the delay / reverb macro (DELAY and the reverbs), table select (one genera
 - **repeat98**, `analog-bassdrum`: the machine-list seams that scaffold uses.
 - **Tim Hastie**, SYNTH MACHINE 2.9 (https://github.com/timhastie/octatrick-modules, MIT): the FLEX renderer
   integration.
-
-## Gates
-
-`python3 modules/wavecf/test_wavecf.py`; `tools/verify/verify_wavecf_ui.py` and `verify_wavecf_port.py` (an
-image of remix `wavecf` or `wavecf-octa303`, `OT_PROJECT` set).

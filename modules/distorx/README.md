@@ -125,58 +125,6 @@ which only the diodes can bleed off (C8 and C9 block every other path, as on
 the pedal): its slow, subsonic relaxation reaches the output through the
 1.6 Hz HP at −95 dBFS after 2 s and about −118 dBFS after 10 s.
 
-## Measured
-
-- **19 Nov 2026, the constants pass** (bit-identical: `verify_ident.py` with
-  the wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
-  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
-  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
-  after each commit; 58 renders). Cycles a sample from
-  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
-  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
-  section 1): RAT at its minimum 375.9 → 375.4, SD-1 285.9 → 285.4. Words
-  1,114 → 1,099 (`dsp_asm` at P:$800). Not measured on the unit. Fifteen
-  constants in `distorx.tmpl.asm` load as one-word short immediates;
-  `distorx.asm` is `generate_asm.py`'s output from it (`--check` passes).
-
-✅ in a standalone DSP56300 harness (the vendored emulator with
-`tools/patches/dsp56300.patch`, garbage in every register and in the whole
-r7 block before init, fresh garbage in the scratch registers before every
-call), 14 Oct 2026, every gate of `tools/verify/verify_distorx.py`:
-
-- **Bit-exact** against `distorx_ref.fixed()`, every MODE: defaults, every
-  knob at both ends, a full-scale square, a split block, page words with
-  bits 8–15 dirty (an LFO's), MODE changed mid-render (SD-1, RAT, TURB, back,
-  a 3-block RAT, with a split), MODE values past TURB.
-- **The service notes' WAVEFORM CHECKING page** (SD-1): 1.21 / 1.22 /
-  0.74 Vp-p against 1.2 / 1.2 / 0.8.
-- **The analysis** (the float circuit's LM308 stage): 65.0 dB at 700 Hz at
-  full DISTORTION (~64 dB near 700 Hz); 24.8 dB at 1.5 kHz and 8.2 dB at
-  60 Hz with 1 k (24 and 8).
-- **FILTER full left**, through the module, small signal: −3 dB at 543 Hz;
-  the whole network (R6 + R7 + 100 k, C8, C9/R8) says 539 Hz. The
-  analysis's 475 Hz is R7 + 100 k against C8 alone.
-- **The diodes' level** at full DISTORTION, FILTER bright: 0.80 V peak at
-  the gate (1N914), 1.99 V (red LEDs); the float circuit at 1× says the
-  same, at 8× 0.73 / 1.82 V: the sampled peak of a bright square at 1×. **Symmetric**: the 2nd harmonic of a
-  sine at −72.6 dB (the SD-1's: −33 dB).
-- **The circuit**: against the float circuit at 1× (exact diode law, the
-  slew clamp in float), −64 dB at the defaults, −43 dB at full DISTORTION,
-  −78 dB at DISTORTION 0, −49 … −64 dB elsewhere; against the circuit run at
-  8× and band-limited back (the ground truth), −49 dB (RAT), −53 dB (TURBO),
-  −42 dB at full DISTORTION (the 2× core was −40 … −56).
-  On an acid line with FILTER bright: −35 … −41 dB at 1×, −43 … −48 at 2×.
-- **MIX 0** is an exact passthrough in every MODE with every other knob at
-  an extreme.
-- **The fade**: switching SD-1 → RAT → TURB → SD-1 on a 110 Hz tone makes no
-  step larger than the pedals' own (0.0995 FS against 0.0993).
-- **Cost**: 1,071 words of code + 515 words of table (WF 241, LN 65, EXP 33,
-  TAPER 33, TP 18, OM 113, MK 12) = 1,586 words.
-  Instructions a block in the harness (decode, loop and fade, no stall):
-  SD-1 5,480, RAT/TURBO 4,537 (8,505 with the 2× core). By
-  `tools/build/cycle_count.py`: the SD-1 loop 381 cycles a sample (v7; v9: 225,
-  "v9" below).
-
 ## Where it goes
 
 Since v10 (below) DISTORX is 1,629 words: 1,114 of code and the 515-word P
@@ -190,56 +138,6 @@ module of more than 114 words gives up a second, separate run for it.
 the assembled file, not placed (no stock image where it was written).
 aCiDtRacK gives up PHASER: its 207 words join EQUALIZER's 282 (dB666 is on
 EQUALIZER's id) into 489, where dB666 (297 + 66 words) goes.
-
-## On the unit
-
-- **ACIDDTX1** (aCiDtRacK, MK1, 14 Oct 2026): every MODE sounds as rendered,
-  the MODE fade is clean, dB666 and the rest of the remix unchanged. One
-  defect: a **16-sample block of noise** now and then (about 200 in four
-  minutes, in clusters at one phase of the pattern), on T1 and on T5, in
-  every MODE. Measured on the owner's USB take: each is exactly one
-  dispatcher block, both channels, not a copy of any other audio; L and R
-  are identical before it and differ after it by up to 0.006 FS, dying
-  away in ~0.5 s, so the junk passes through DISTORX's own state. With one
-  DISTORX per core the load is far from any limit, and the harness renders
-  bit-exact with every knob moving, fractional and dirty page bits included.
-- **ACIDDTX2** (the same with a `nop` at LA in both sample loops): the same
-  junk at the same rate. The LA cause is **retracted**; the `nop` stays (no
-  loop ends on a change of flow, `verify_distorx` refuses one).
-- **Where (✅ measured on the unit, 14 Oct 2026, 24-bit takes):** only on
-  **T1**. T5 and T8 with the same kick, 130 BPM, every knob at 127: no junk
-  block in 99 s. On T1: none without a sample playing (trigs or not); with
-  one, bursts of junk blocks whose rate rises with the tempo (hundreds a
-  second around 130 BPM). The junk is a 16-sample block, in pairs, at one
-  phase of the block grid, holding wrapped ramps: a slow signal's low bits
-  read as its high bits, the signature of the read-back's hi/lo words torn
-  or shifted, not of DISTORX's arithmetic (bit-exact in the harness with
-  every knob moving, fractional and dirty page bits, near-silent DC and
-  noise in). The "L and R differ after it" above is retracted with it.
-- **Cause (🟡 inferred from the above and the BusDelay record):** T1 is the
-  first block core 1's ColdFire pull reads (`docs/firmware/DSP.md` "Frames,
-  tempo, read-back"); the dispatcher's copy of the block right after
-  DISTORX's rts lands inside that pull when DISTORX ends in its window,
-  which moves with the machine's work and the sequencer.
-- **Measured cost in the harness** (instructions a block, no stall):
-  SD-1 5,480, RAT/TURBO 8,505 (the 2× core).
-- **Workaround (image ACIDDTX3): PAD**, page 2, slot 6: wait PAD x 256
-  cycles after the loop, before the rts (0 = none, 127 = 32,512 cycles,
-  ~7 samples), the output bit for bit the same. Turned up on T1 until the
-  junk stops, it measures where the window is; the value found becomes the
-  fixed fix (T1 only, as BusDelay's 8,192-cycle pad). PAD costs core 1's
-  budget, so it stays 0 on every other track.
-- **ACIDDTX3 measured** (24-bit takes, 15 Oct 2026): on T1 in RAT, 130
-  BPM, junk up to PAD 7, **none at PAD 8** (12 minutes, T1 and T5 with
-  dEVILish: 0 junk blocks). PAD 10 and, another time, 12 **wedged the
-  unit** (power cycle). With T1 at PAD 8, a second DISTORX on **T2** (PAD 0,
-  so SD-1 by default) **wedged it too**. So core 1 has a hard limit just
-  past the junk window; the 2× core put DISTORX at its edge.
-- **The fix (image ACIDDTX4):** the RAT core at 1× (above): RAT/TURBO
-  4,537 instructions a block, 47 % less, below the SD-1's 5,480. PAD reads
-  at most 8 (10 and 12 wedged core 1). To find out on the unit: T1 in RAT
-  and SD-1 at PAD 0 (the RAT now ends before the window, if the window is
-  where the 2× measurements put it); then a second DISTORX on T2.
 
 ## v8 (18 Oct 2026): lighter, for T1
 
@@ -390,13 +288,6 @@ n4 and the reverb server's n1 and n4 already are.
 - Instruction forms: every form DISTORX uses has run on the owner's MK1 since v7 (ACIDV68 to
   ACIDV71, DTXPR1); `verify_distorx` lists the ones with no site in the stock payloads.
 - The knobs DRIV/TONE/LEVL are applied once per block.
-
-## Gates
-
-`tools/verify/verify_distorx.py` (the manifest's): generated source,
-bit-exact against the model (19 renders), MIX 0, the service notes, the analysis,
-the circuit and its 8× truth, silence, the fade, every knob in every MODE;
-and an information list of instruction forms with no stock precedent.
 
 ## Files
 

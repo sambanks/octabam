@@ -17,7 +17,7 @@ The code that turns `modules/<name>/manifest.py` files and a
 | `stock.py` | the stock FX2 effects as rows a remix can keep in the chooser; what a remix harvests |
 | `costs.py`, `slot_costs.json` | slot costs measured on a unit per effect, merged from the matrix reports, and the worst-case DSP load of a remix bounded from them (`docs/contributing/COSTS.md`) |
 | `rig.py` | a module's category, track range and chooser, derived from the manifests |
-| `index.py` | `make modules`, `make docs`: the module table in `README.md` and the remix index |
+| `index.py` | `make modules`, `make docs`: the module index `modules/README.md` and the remix index |
 | `selftest.py` | proves the ledger catches each collision class and every shipped remix is clean |
 | `platform_build.py`, `loader.S` | the DRAM platform: every DRAM unit linked as one image, packed and appended after the OS behind the loader (derived from Em's Octakit loader) |
 | `pack.py` | the loader payloads' packer (the firmware's aPLib variant, GKA3, ported from Em's encoder); memoised in `out/cache/` |

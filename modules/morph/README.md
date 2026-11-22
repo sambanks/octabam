@@ -139,34 +139,6 @@ SCENES keeps `scenes.work`. MORPH is a client of STORE (`modules/store`), which 
 - No message at a project load says which tracks will morph (the window shows it); a toast from
   the load, which runs in the engine task, is not a place stock draws from.
 
-## Measured
-
-- ✅ On the owner's MKI, image MRPPR1 (BUILD 98, remix `morph`, from `374d4515`), the owner's MKI, 23 Oct 2026: the window armed while T1 is held and CYCLE following A and B; YES does nothing; the start on the release; the window over a running morph (changes at once, the morph goes on); 41.625 and CYCLE 666 STEPS; T1 and T5 with different settings, SAVE PROJECT, power off and on, PLAY: both start from A with their settings; a change without saving undone by PROJECT > RELOAD; another project with no morph.work on the fader with the defaults, and back to the first: T1 and T5 armed again; TRACK + DOWN ends the cycle on A. By ear and eye.
-- ✅ On the owner's MKI, image ACIDV74MP (aCiDtRacK + MORPH), 22 Oct 2026, by ear and eye: the
-  window ([TRACK] + [UP], STEPS / x / MODE on A, B, C), the morph at the tempo over STEPS × x
-  steps, SMOOTH and TRIG HOLD, several tracks at once (T5 with OCTA303 and T6 on a NEIGHBOR
-  machine), STOP / PLAY, [TRACK] + [DOWN] parking on A, the crossfader taking the track back at
-  its A end. That image still had YES to start and x up to 8.
-- ✅ v0 on the same unit, image ACIDV73MP, 21 Oct 2026: [TRACK] + [UP] runs the track's morph,
-  the others keep the fader, [TRACK] + [DOWN] parks it on A.
-- ✅ Under the port (`tools/morph/port_morph.py`, with a project, 22 Oct 2026, on the YES form): the
-  window opens and draws, the encoders set STEPS 8 and x 2, the morph starts from A and runs at
-  the tempo (xf 35 after ~5.6 steps of a 16-step cycle, ~38 expected), T2 keeps the fader, STOP
-  holds, PLAY carries on, [T1] + [DOWN] ends parked on A, TRIG HOLD gives one value a step.
-- ✅ `tools/morph/test_morph.py`: `morph.s` executed from its source text in OCTA303's source
-  simulator (`tools/octa303/sim/cfsim.py`, with its ColdFire lint), against a mock of the firmware
-  addresses, a mock sequencer moving the step word at the tempo, and mocks of STORE's file calls:
-  the arming in the window and the start on the release; B at step 64 and A again at step 128
-  (16 × 8); one xf step per frame at most (SMOOTH) and the triangle's value on each step's first
-  frame; TRIG HOLD one value per step; STEPS 0 = the track's length; 512 and 1 steps; the transport
-  stop; stop on A, parking, re-attach; x to 16 and 41.625 (a 666-step cycle at STEPS 16); the
-  window's paint, encoders, YES swallowed, closing on release, twice, on eviction; saving:
-  nothing written for an untouched project, the file's bytes and CRC, no rewrite when nothing
-  changed, the copy to `.strd`, the load (settings back, the morphing tracks armed, the others
-  parked or on the fader), RELOAD from `.strd`, a bad CRC refused and never written over, the
-  BACKUP answer, a project without the file. Not covered: the hook under the real firmware, MACSR
-  (the simulator has none), STORE's real file calls.
-
 ## Credits
 
 - Korg, the Electribe's Motion Sequence: the idea.

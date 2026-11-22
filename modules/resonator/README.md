@@ -57,44 +57,6 @@ Saving that bank on stock writes those DARK REV values back; keep a
 separate project copy if you need to return to stock without rewriting
 the Part.
 
-## Measured
-
-- **19 Nov 2026, the pointer pass** (bit-identical: `verify_ident.py` with the
-  wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
-  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
-  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
-  after each commit; 27 renders). Cycles a sample from
-  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
-  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
-  section 1), every knob at its maximum: **655.9 → 636.6** (14.5 % → 14.0 % of
-  a frame). Words 451 → 433 (`dsp_asm` at P:$800). Not measured on the unit.
-  The five per-sample pointer setups (`move r7,rN` / `move #n,nN` / `move
-  (rN)+nN`) are one `lua (r7+n),rN` each; the five zero loads after a compare
-  and three constants are one word each.
-- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
-  the wider matrix of sambanks/octabam#1172, 27 renders, IDENTICAL; the scan
-  as above): one small constant (0 to 63) in an `add` load as the one-word
-  6-bit form (`add #>$1,a` is `add #$1,a`: the same result and flags). Every
-  knob at its maximum: 636.6 → 636.4 cycles a sample (modelled); words 433 →
-  432.
-
-- Render gates in `tools/verify/verify_resonator.py` (SCAL 8 max-knob rail
-  fraction < 5%, SCAL 127 + LIM 127 peak under ~0.76 FS with rail fraction
-  < 5%, no-runaway, two FX1 instances).
-- LIM curve: ceiling `0.75 - LIM*0.5/128` (≈ -2.5..-12 dB).
-  Same as SHATTER. LIM 0 bypasses attenuation so MIX 0 stays bit-exact dry.
-- SCAL 127 may overload the filter-bank sum before the output limiter. Lower
-  SCAL or band gains to avoid that pre-limiter distortion.
-- Hardware: Ilia's MKII, **`RESO LM4.RMX`**, built from PR tip `0808651e`,
-  14 Nov 2026. Low SCAL settings stayed clean and LIM reduced hot output.
-- Earlier hardware (pre-LIM): Ilia's MKII, tip of PR #806 as **`RESON RR`**
-  / BUILD RR, 19 Oct 2026. Page-1 GN1–4, DECY low and high, MIX; page-2
-  PIT1–4; SCAL 8 and 127; FX2 dry-pass; two FX1 instances.
-
-## Gates
-
-`tools/verify/verify_resonator.py` (manifest `Gate`).
-
 ## Sources
 
 - Torso S-4 RING — behaviour target (filterbank, not modal reverb).

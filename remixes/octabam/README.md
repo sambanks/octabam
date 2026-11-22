@@ -3,7 +3,7 @@
 A remix of Octatrack OS 1.40C, built from your own copy of it. It adds the core
 modules (below), SCOPE and TUNER, keeps all 14 stock effects, and adds SPECTRUM,
 CHARACTER, MODULATION and SHATTER, which are copied into the DSP when a track
-uses them. It has no bus and no SEND. See [Where it has run](#where-it-has-run).
+uses them. It has no bus and no SEND.
 
 ## The effects
 
@@ -17,8 +17,8 @@ that runs them only while their buffer does not cover loaded code. A block is he
 a demand effect on a chooser is refused, with a toast, while the FX2 slot that shares
 its memory is on a stock reverb, and choosing a stock reverb on that slot is refused while
 the effect is loaded. A song that sets both by another route leaves the reverb or the
-effect dry, and says which at the next page key. The design and what has been measured:
-[`DEMAND_LOAD.md`](../../docs/contributing/DEMAND_LOADER.md).
+effect dry, and says which at the next page key. The design:
+[DEMAND_LOADER.md](../../docs/contributing/DEMAND_LOADER.md).
 
 | effect | FX1 | FX2 | id | what it is | module |
 |---|---|---|---|---|---|
@@ -30,9 +30,7 @@ effect dry, and says which at the next page key. The design and what has been me
 COMPRESSOR is [SIDECHAIN_COMPRESSOR](../../modules/sidechain-compressor/README.md): stock COMPRESSOR with a
 side-chain KEY on page 2. Its DSP code (1,711 words) is loaded the same way, into the top of T4's FX2 block, while a
 track uses COMPRESSOR; until it is, or while DARK REV on T4's FX2 or another loaded effect holds that block,
-COMPRESSOR runs as stock, KEY reads `--` and a toast says `SC KEY OFF`. It was out of this remix from 1 Nov 2026
-(`433e22e`, the 0.1 scope) and is back since #1026. The flashed S2 image included it in the loader comparison below;
-that run switched into and out of the effect but did not test its side-chain controls.
+COMPRESSOR runs as stock, KEY reads `--` and a toast says `SC KEY OFF`.
 
 TRANSIENT and DISTORX are not in this remix. Their modules are in the repository.
 
@@ -69,57 +67,14 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 | | [FRAME GUARD](../../modules/frame-guard/README.md) | a frame interrupt that enters late at START or a program change waits out the window in which the DSP's frame exchange stalls |
 | | [REC CS1 SKIP](../../modules/rec-cs1-skip/README.md) | the recorder's per-frame update without its redundant CS1 writes |
 
-## Where it has run
+## Known fault
 
-Sam's MKII, 22 Nov 2026, `OCTABAM 05` built from `main` at `382a478b` plus the v0.5 release commit and booted by REMIX SWITCH from the
-flashed `OCTABAM N1` (not flashed itself): `pre-meter`, `pre-transport`, `pre-usb` and `dsp-watch` (20 cycles) pass; 32 program changes
-between MODULATION FX2 def, PLATE REV FX2 def and BASE: 3 unapplied, 0 bad DSP records, longest silence 340 ms, longest ColdFire run
-535 us. On the earlier BUILD 05 (`5b991c85`, 148 commits behind `main`): `fx01` to `fx03`, `loader01` and `loader02`, the soak,
-`kits-identity`, `scenes-sweep`, `scenes-latency`, `djump-off`, `djump-on` and `djump-burst` ran; `mix-soak` did not complete (below).
-
-**Known fault: the DSP stops when DARK REV is picked on the tracks while MODULATION is loaded.** MODULATION loaded in T3's block and live
-on FX2, then a program change that puts DARK REV on all 8 tracks, then START: the DSP's frame count stops (the panel and USB still answer; a
-power-cycle clears it, and a reboot from the stalled unit often freezes on the boot screen). Measured on this remix:
-- the one-minute reproduction (play with MODULATION live, STOP, a program change, DARK REV on all tracks, START) stalled in cycle 0 on the
-  `main` composition; with SPECTRUM loaded instead it ran 25 cycles without a stall;
-- the 573 s replay on `5b991c85` stalled in 5 of 7 runs with DARK REV on 8 tracks, 1 of 6 on 4 tracks and 0 of 2 on one track;
-- DARK REV picked on all tracks with nothing loaded: no stall in 2 runs here and in 60 STARTs on an image with the stock effects and no loader.
-
-Cause not known; no setting is shown to be safe. The entry, with the frame log, the diagnostic builds and the controls, is in
-[FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md).
-
-Sam's MKII, image `OCTABAMR3` (this remix before the rebase onto `fa49e92f`), USB TRACKS PRE, 1 Nov 2026, the hardware
-suite ([HARDWARE_SUITE.md](../../docs/contributing/HARDWARE_SUITE.md)): `pre-meter`, `pre-transport`, `pre-usb`
-(`underruns=0`) and `dsp-watch` (20 cycles) pass; 74 effect layouts ran with no crash or stall, 39 flagged (CLICKS,
-ROUGH, DC, STATIC, CLIP: MODULATION, SPECTRUM and CHARACTER `dear` and mode layouts, DJ EQ, LO-FI); the 20 demand-loader
-transitions between BASE, the stock reverbs, MODULATION, SPECTRUM and CHARACTER applied with `bad 0`, each with about
-340 ms of silence and a ColdFire run of 404 to 476 us (a frame is 362.8 us); `kits-identity` (603 program changes),
-`scenes-sweep` (2,289 operations) and `djump-burst` (536) pass; crossfader to lock CC 0.77 to 0.95 ms median; DIRECT_JUMP
-lands within 0 to 5 steps with the toggle on and at the pattern end with it off.
-
-CHORDS FACTORY, PAGES, SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP were added on 7 Nov 2026 and have not run on a unit in this
-composition (each has, in its author's images: the modules' READMEs). VARISPEED was added and FX2 LOCK removed after `OCTABAMR3`; `OCTABAMV5` (that composition) was flashed on 2 Nov 2026 and FX2 picks take effect; the suite was not run on it. In a loader soak on 2 Nov 2026
-the image without VARISPEED left 3 of 32 program changes unapplied and the image with it 4
-([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)).
-
-Not run on this image: `mix-soak` (stopped by the fault above) and the [manual plan](../../docs/contributing/HARDWARE_MANUAL.md). The images that
-had CX OSC, STEM REC, MIDI SCALES or RND NAME stopped the DSP or left program changes unapplied in the
-same probes ([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)). SCOPE was added to the S2 build and tested
-open and closed during 30 paired loader transitions on 15 Nov 2026. The median transition-window CF peak was 537.36 µs
-closed and 544.96 µs open; median steady CF was 355.77 and 359.37 µs. Median DSP window maxima were 49% closed and
-48% open; steady DSP maxima were 49% and 48%. Both runs had zero bad records and 340 ms median audio gaps.
-The closed run had one 1,480 ms maximum-gap outlier; the open run's maximum was 360 ms. All 30 transitions in each run
-reported the harness's GAP flag (40 ms threshold), reflecting the loader's roughly 340 ms silence. CF spike flags were
-21 closed and 24 open; DSP spike flags were 1 and 2. This comparison covers these transitions and this S2 image only.
-Not measured on a unit: the stock reverbs'
-buffer extents at other settings, the toast wording and width.
-
-Earlier, the loader alone: Sam's MKII, 26 Oct 2026, the images `DLPROBEJ1` to `K1` (`remixes/test/dl-probe`;
-[CHANGELOG](../../CHANGELOG.md)).
-
-EDIT EVENTS/PLOCKS: radiohagen, Octatrack MKII, PLK858/build 98, 22 October 2026:
-held-edit and trig/track/pattern checks passed
-([results](../../modules/plocks-p2/DEVELOPMENT.md#edit-events-hardware-results-22-october-2026)).
+The DSP can stop when a program change puts DARK REV on several tracks while
+MODULATION is loaded (in use on a track, or in the 10 s after the last track
+stops using it), followed by PLAY. The sound stops; the panel and USB still
+answer; a power-cycle clears it. The cause is not known. Avoid DARK REV on
+many tracks in a song that uses MODULATION.
+[FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md) has the entry.
 
 ## How to flash
 

@@ -52,7 +52,6 @@ Measured under the port (13 Oct 2026; `verify_brain`, 118 checks, run alone): NE
 
 **The PART default.** SET AS DEFAULT copies the template's Part image into a `K_DEFAULT` record (`stock.part2`, an 8-byte prefix and the same Blob). A detour at the end of stock's Part initialiser (`0x40005a38`, in `0x40005638(part)`, hooks.s `brain_partinit`; it replaces the two instructions before the tail call to the Part validator) puts the default's sections on the Part just initialised (all six; nothing else of the image). Part Clear, every Part of a new project (16 banks of 4, working and saved copies) and KITS' test for a free slot (its default Part is that routine's) all start there, so they agree on what a default Part is. Measured (`verify_brain`): CREATE EMPTY PROJECT with a default on the card writes the default's scene locks into every one of the new project's 16 bank files (8 copies in each: 4 Parts, working and saved) and not its sample slots; Part Clear (called as the Part window's CLEAR calls it) of Part 3 leaves the default's FX ids, LFO, machines and scene locks on it and not its sample slots; by hand, 128 of 128 Parts in RAM equalled the first build's default outside the sample slots. The stock Part validator (`0x40002318`, the initialiser's tail call) clamps the MIDI pages to their descriptors' counts after the default lands, so a default's out-of-range MIDI bytes do not survive; the tests use 0 and 1 bytes. Not run: KITS' staging in a new project that has a default. `card.work`'s default is read by `cache_defaults` (the engine task) into a 6,322-byte copy the UI and the initialiser read. FX defaults apply at selection, PROJECT's at CREATE EMPTY PROJECT; there is no default for a MIDI TRACK (the PART default carries the MIDI tracks) or the page templates.
 
-
 A setting row reads `NAME` at the left and its value at the right (a Binary a checkbox); YES steps the value (a Binary toggles; an Option steps by one and a Number by its step, each wrapping to its minimum past the maximum) and writes it to `card.work` through an engine-task job.
 
 The stock menu engine is two levels deep (the root and a category's list), so BRAIN's screens are states of its menu-state table: the table (16 entries of `{enter, exit, draw, key, encoder}` at `0x400cbdac`) is copied to DRAM with seven states appended (16..22, `brain_stab` in `manifest.py`) and its six references repointed (the same as `modules/busscreen`, in history, did for its 17th state, tags 85-90 on the unit). A row's action calls the engine's state opener (`0x40064e20`); the key dispatcher (`0x4006510a`) passes each key to `brain_scr_key` and redraws after it; NO runs the state's exit member and returns to the menu (`0x400650a0`). The screens draw with the stock routines the MIDI screens use (`0x400128a8` the icon, `0x40012bd8` text, `0x40011910` the rule, `0x40012254` the inverted bar, `0x40011a58` a dotted line) and are rebuilt from `sr[]` on entry and after each action. MAIN MENU's opening resets the pane to its top (REMIX SWITCH's detour at `0x40064c32`). Measured under the port, 12 Oct 2026 (`verify_brain`, `verify_remix_switch`, screens rendered with `ot_emu --lcd`).
@@ -267,36 +266,6 @@ store runs, as PLOCKS P2 does at the load call sites.
   descriptor in both id tables; an id-table entry whose descriptor carries
   another id (NONE, an effect on one chooser only) is never written.
 
-## Measured
-
-Under the port (`tools/verify/verify_brain.py`, remix `brain`, 6 Oct 2026),
-with T2's FX2 chooser select (SEND -> stock DELAY) and FX1 select
-(SPECTRUM -> CHARACTER):
-
-| card | lands | state |
-|---|---|---|
-| no file | the image's defaults | fresh |
-| `card.work` with DELAY and CHARACTER records | their knobs; one value outside its count skipped | card.work |
-| `card.work` damaged, `card.strd` valid | `card.strd`'s values | recovered |
-| `card.work` damaged, no `card.strd` | the image's defaults | damaged |
-| a record with another layout | the image's defaults | card.work, 1 skipped |
-| two records for one effect | the image's defaults | card.work, both skipped |
-
-| SAVE FX DEFAULT for T1's FX2 and T2's FX1, then the store copy, on a card holding two other records | the two records hold the live pages; the others keep their bytes; `card.strd` = `card.work`; a second boot puts the saved page on BusDelay's descriptor | card.work |
-| the panel: T1, FX2 page, PROJ, DOWN x4, RIGHT, YES on SAVE FX DEFAULT; then OK, DOWN, YES on CLEAR FX DEFAULT | `card.work` holds T1's FX2 page; after CLEAR no BusDelay record | |
-| SAVE FX DEFAULT on a card with no `BRAIN` folder | the folder and `card.work` with one record | |
-| out-of-count bytes in every Part of every bank, no file | read count - 1 after the load: stock's Part validator `0x40002318`, so the brain has no clamp | |
-| `card.work` with MIDI LOG and APPLY DFLTS off and an unknown key 99 | values (0,0); no default record applied; the unknown key kept on write | card.work |
-| a settings record with an out-of-bounds Binary and a wrong type | values stay (1,1); 2 skipped | card.work |
-| the panel: PROJ, DOWN x4, RIGHT, DOWN x2, YES on SETTINGS, DOWN, YES on MIDI LOG | `card.work` holds one settings record {1:1, 2:1, 99:1}; screens rendered under `ot_emu --lcd` | card.work |
-| the shortcut on T1's FX1 page: SAVE TEMPLATE (YES on the name editor), knob A +10, LOAD TEMPLATE `TPL 01` | one template record of CHARACTER with the saved page; the page moves with the knob and comes back to the saved values on LOAD; screens rendered under `ot_emu --lcd` | card.work |
-| a GRAIN record for BusDelay (FDBK, SCTR, GLEN listed by the view; DEL not), then MODE CLEAN -> GRAIN through the FX2 page-2 editor on T1 | the view with the card's three values; DEL skipped and untouched | card.work |
-
-Both hooks run during one LOAD PROJECT under the port (2 calls a load). A power-up with no LOAD PROJECT post
-(`--no-post`, CS1 from an earlier boot) runs the bank-load hook alone and
-the card's DELAY default (TIME 52, FB 5) lands on T2's FX2 select (7 Oct
-2026, by hand; not in the gate).
-
 ## The project pair
 
 `<set path>/<project folder>/brain.work` and `brain.strd` (file kinds 2 and
@@ -339,10 +308,6 @@ store) counts 1 same, 1 layout, 1 gone, 1 moved; a damaged `brain.work`
 with a valid `brain.strd` reads the same counts with state 2; a damaged
 `brain.work` alone gives state 3 and no record read.
 
-## On the unit
-
-Not yet.
-
 ## Open
 
 - A set named `BRAIN` shares the directory: the store's files sit in
@@ -366,11 +331,6 @@ Not yet.
 - `--step call` runs as main under the port, where file I/O does not
   return (an unimplemented opcode at `0x4003b108`); the gate posts the job
   instead. The menu rows post from the UI task (measured under the port).
-
-## Gates
-
-- `tools/verify/verify_brain.py` (the manifest's gate, image stage), with
-  `modules/brain/generate_brain.py --check`.
 
 ## Hooks
 

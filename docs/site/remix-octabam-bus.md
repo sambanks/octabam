@@ -5,11 +5,6 @@ track, and keeps Octabam's core features around it. The
 [Octabam Manual](reference/manual/index.md) has a page for every feature; this page says what
 is different here.
 
-!!! note "Where it has run"
-    Sam's MKII, 22 Nov 2026, booted by REMIX SWITCH from the flashed image (not flashed itself): the pre-flight checks pass and
-    32 program changes between SPECTRUM, CHARACTER and BASE left none unapplied, with no bad DSP records. The effect layouts, kits,
-    scenes and DIRECT_JUMP (toggle off) ran on the earlier BUILD 05; DIRECT_JUMP with the toggle on and the 56-minute soak did not run.
-
 ## The bus
 
 Track 1 hosts the delay and track 5 the reverb. Every other track's FX2 is a SEND with two
@@ -29,8 +24,8 @@ reverb's own knobs are in the [TEMPO window](reference/manual/bus/tempo-bus.md):
 **[TEMPO]**.
 
 !!! warning "Tracks 1 and 5"
-    Keep tracks 1 and 5 as THRU tracks with no trigs of their own: that is the only setup the
-    bus has been tested in. Sounds programmed on track 1 made the delay pop and click.
+    Keep tracks 1 and 5 as THRU tracks with no trigs of their own. Sounds programmed on track 1
+    make the delay pop and click.
 
 ## What the bus costs
 

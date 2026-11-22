@@ -65,28 +65,3 @@ trigs, NO closes it). Beside SCALES a chord step plays as written
 | `0x40045502` | `ch_box_bar` | the box's sample play bar (modes 2 / 3): none in MIDI mode |
 | `0x4005872e` | poke `7003` -> `7004` | the MIDI trig modes' list has four rows |
 | `0x40035a24`, `0x40051efc`, `0x40051f6c` | `ch_midimodes` | the MIDI trig modes: 0, 1, 2, 4 |
-
-## Measured
-
-- Stock's CHROMATIC note `0x40043664` keeps held notes in 16 cells
-  (note % 16): two voices 16 apart collide and one is left on. CHORDS
-  calls the note routine `0x4009e9a8` directly ✅ (image 37 on the unit).
-- `0x4009e9a8` posts its note events from one static record
-  (`0x46c77bea`); for live recording CHORDS posts its own events per voice
-  to the system queue `0x460d17ae`, and stock's recorder `0x40041bc4`
-  writes NOTE and NOT2-4 ✅.
-- The MIDI track record of a pattern: `pattern + 0x48d0 + t * 0x8b0`,
-  locks at `+0x30 + step * 32`, its CS1 copy at `0x1001614e` ✅.
-- Mode 2's refresh (`0x400454c4`) draws the audio sample's play bar
-  (`fill(0x3d, 8, 0x75, 9)` at `0x40045502`) ✅.
-- The trig LED pass is `0x40043fdc`; its mode dispatch is at `0x40044006`,
-  its common end at `0x400444f8` ✅.
-
-## Status
-
-On the owner's MKII in the live-djib rig, OCTABAM36-43 (3-5 Nov 2026,
-with SCALES): the page, voice leading, the trig mode, live recording,
-TRIG + UP, the FUNC keyboard. Gates: `modules/chords/verify.py` (the
-engine on the host: every type, root, inversion and spread; voice
-leading), `tools/verify/verify_chords.py` (the port: test remixes
-`chords`, with SCALES, and `chords-alone`, without it).

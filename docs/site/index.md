@@ -18,8 +18,8 @@ damage to your Octatrack.
 
 ## Get started
 
-1. Choose a remix: [Octabam](remix-octabam.md) is the one that has run on a unit;
-   [Octabam Verbs](remix-octabam-verbs.md) changes the reverbs and
+1. Choose a remix: [Octabam](remix-octabam.md) keeps every stock effect and adds new ones,
+   [Octabam Verbs](remix-octabam-verbs.md) replaces the stock reverbs, and
    [Octabam Bus](remix-octabam-bus.md) adds a delay and reverb bus.
 2. [Build and install](web-builder.md) it.
 3. Use the [Octabam Manual](reference/manual/index.md): one manual for all three remixes, and

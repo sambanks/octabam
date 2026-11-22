@@ -22,7 +22,7 @@ server on its own), reported from the build's own figures. An overrun
 arrives as the build's refusal, naming the payload: `payload B: SPECTRUM
 overruns the region (3599 > 2724 words)`.
 
-Measured costs, payload A (27 Sep 2026): Send 262, Euclid 362 (+33
+Costs in payload A, in words: Send 262, Euclid 362 (+33
 table), MiniVerb 457, Character 999 (+51), Spectrum 1,346
 (+54), Modulation 1,481 (+148), BusVerb 2,035 (+194 LFO lines and
 table), BusDelay 1,437 (+60, payload B).
@@ -69,7 +69,7 @@ the build reports which survived), so an effect can be listed and
 harvested at once until the placer reaches it; the build then refuses the
 row.
 
-Stock rows are not in the cycles figure (only FILTER's is measured, 192 per
+Stock rows are not in the cycles figure (FILTER costs 192 cycles per
 instance).
 
 ### FX1 rows
@@ -86,7 +86,7 @@ a shortened FX1 list drops has its cursor row clamped to 0.
 ## Writing `remix.py` by hand
 
 A remix is one directory, `remixes/<name>/`: `remix.py` holds the
-selection, `README.md` says what is in it and where it has run. The
+selection, `README.md` says what is in it. The
 registry discovers every `remixes/*/remix.py`, `remixes/test/*/remix.py`
 and `remixes/community/*/remix.py`; nothing else registers it. A remix
 that carries one module for that module's gates goes in
@@ -134,11 +134,9 @@ REMIX = Remix(
   Only a buffer-free insert may take a row; the build refuses the rest by
   name. A row costs no words and does cost cycles: four more slots per
   core.
-- `family` and `evidence` are the columns of the remix index.
-  Without them the remix lists under Reference with proof `?`.
-- Seven FX2 rows fit in place; up to 32 go to a longer list, whose
-  scrolling on the panel is inferred from stock's fifteen-row list, not
-  measured.
+- `family` is the remix index's section; without it the remix lists under
+  Reference. `evidence` is required by the schema and shown nowhere.
+- Seven FX2 rows fit in place; up to 32 go to a longer list.
 - Two selected modules that claim one address, id, hook or buffer are
   refused by name; `make modules` prints the pairwise matrix.
 - `settings` fixes or re-defaults a module's settings for this image:

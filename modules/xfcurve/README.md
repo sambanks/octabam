@@ -42,17 +42,3 @@ per frame. The curves are generated in `manifest.py` (`CURVES`).
 - **CARD scope**: one curve for every project on the card; no per-track or per-Part curve yet.
 - Select parameters (MODE, WAVE...) still jump where the blend crosses the middle; with CUT that
   is the middle of the fader, as stock.
-
-## Proof
-
-On hardware: Bryan's MKII, 6 Nov 2026, in his everyday remix (`_bt_mtrx_io_vib`: BRAIN, STORE,
-KITS, MIDI SCENES, SCENES P2, REC MATRIX, USB IN/OUT, among others). Every curve chosen in BRAIN and
-swept with the panel crossfader, CUT A / CUT B as a scratch-style cut on a track's XVOL.
-
-`tools/verify/verify_xfcurve.py` under the port: panel crossfader moves with CURVE at LINEAR
-(never written), CUT, CUT then LINEAR again, S-CURVE and CUT A, set through BRAIN's value table;
-the pinned build (`remixes/test/xfcurve-scurve`). It also passes on the `octabam` remix plus XF
-CURVE (with MORPH, MIDI SCENES, SCENES P2, STORE, BRAIN).
-
-Not covered: the MIDI CC 48 crossfader (the same routine from the second site; no gate or
-hardware run sends the CC).

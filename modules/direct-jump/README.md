@@ -19,28 +19,6 @@ already stores, so a project that never selects it plays exactly as stock.
 measured (audio-measured hand-over timing, 26 Sep 2026) and what was
 inferred.
 
-## Measured
-
-- At `v9.1`, remixes `octatrick` and `octatrick-usb` built byte-identical
-  with the module sources as a plain `modules/<name>/` directory and as this
-  wrapper over the submodule (same base, same build reports), and
-  byte-identical to the OCTATRICK9 images Tim flashed (built on
-  upstream `0e93543`; upstream's changes since touch modules these
-  remixes do not carry).
-- `v2.9` (29 Sep 2026) leaves this module's sources as they were at `v9.1`
-  (the cave links to the same 358 bytes); the quantizer's move into DRAM at
-  2.9 frees the ROM zero run, so the cave fits beside SCALE QUANTIZER and
-  CF METER's descriptor clone again (at 2.8 it did not).
-
-## On the unit
-
-- 26 Sep 2026: `OCTATRICK9` (remix `octatrick-usb`) on Tim's Octatrack MKI.
-- Every test build since, 2.3 .. 2.8, flashed on the same MKI from Tim's
-  own tree ([timhastie/octatrick](https://github.com/timhastie/octatrick),
-  the same wrappers over the same submodule), and the 2.9 line up to the
-  build before its last two fixes. The 2.9 image with the last two fixes is
-  emulator-verified on `octatrick` (`make check` on this tree).
-
 ## How it is built
 
 Source: `upstream/` is Tim's repository (submodule, pinned to `v2.9` (`525f4b1`)).

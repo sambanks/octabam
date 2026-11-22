@@ -51,16 +51,6 @@ stamp the defaults to get the original sound back.
 The ranges and defaults are this port's, taken from the values Clouds sets in `granular_processor.cc`
 and `reverb.h`; they have not been compared by ear.
 
-## The gate
-
-Clouds' reverb has no gate; this part is new. The input (the mean of left and right, before GAIN) feeds an envelope follower with an instant attack and a 1/512 release per sample (about 12 ms). While the envelope is above 0.0078 (-42 dBFS) the hold counter is reloaded; once it falls below, the counter runs down. While it has time left the wet gain rises 1/32 of the way to 1 a sample (about 0.7 ms). When it runs out the gain falls by 1/2048 a sample: a straight line in dB, a desk gate's release (an SSL channel gate's or a Drawmer DS201's, the In the Air Tonight shape), 46 ms a time constant, −60 dB in about 320 ms. Below 2^-11 (−66 dB) it is 0. The wet output is multiplied by that gain after the reverb and before the AMNT mix, so the dry signal is untouched.
-
-A shut gate also empties the tank. In any block that starts with the gain at 0, the loop gain (TIME's) and the allpass coefficient (DIFF's) are 0. Every line is then a plain delay fed only by the quiet input, and the tank flushes in one pass of its longest path (dap2a, dap2b, del2: 7,283 samples, 165 ms). The next hit starts from silence, so every hit of a backbeat sounds the same instead of opening onto what the last one left. Both come back the moment the gain leaves 0; the first block of a new hit (at most 0.36 ms) runs without them, into an empty tank.
-
-Chosen by ear on 5 Nov 2026 (Sam, from sandbox renders of a backbeat snare and a tom fill; releases of 1/512, 1/1024 and 1/2048 a sample were compared, and the slowest was preferred). Until then the wet closed over 128 samples (about 3 ms), which read as a cut, and the tank rang on underneath.
-
-Under `dsp_host` (`verify_verberation`, GATE 40): the wet is open for the whole hold (−68.5 dB against −68.3 dB with the gate off); 70 to 110 ms into the release it is −88.9 dB against −72.3 dB, a release, not a cut (the 3 ms gate read −200 dB there); after the release it is exactly silent (−200 dB against −75.7 dB); and a second impulse 190 ms after the gate shuts, less the same impulse alone, is −119.0 dBFS, the truncation floor (−77.7 dBFS with the old gate, whose tank rang on). Whether the wash is dense and flat enough to sound like one is not measured: for the classic effect set TIME and DIFF high, GAIN up and AMNT up, and GATE to taste. The threshold, the envelope's release, the attack and the gate's release are constants in `verberation.asm`, not knobs.
-
 ## The rows on the stock reverbs' ids
 
 [`octabam-verbs`](../../remixes/octabam-verbs/README.md) gives up PLATE REV, SPRING REV and DARK REV and puts three
@@ -93,74 +83,6 @@ the stock reverbs never draw).
 - **Smoothing.** The five coefficients move a sixteenth of the way to their target each block (Clouds changes them as they arrive).
 - **Memory.** A modulo ring of 14,366 words (`m5 = 14365`). It is not a power of two. Stock code uses small non-power-of-2 moduli
   (6, 10 and 30), but nothing uses one this size with `(Rn+Nn)` addressing; this is the first thing to check on a unit.
-
-## Measured
-
-- **19 Nov 2026, the tap pass** (bit-identical: `verify_ident.py` with the
-  wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
-  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
-  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
-  after each commit; 58 renders). Cycles a sample from
-  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
-  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
-  section 1), every mode at its defaults: **455.7 → 394.5** (10.1 % → 8.7 % of
-  a frame, under the 9.07 % a slot that core 0 can give every slot). Words 644
-  → 639 (`dsp_asm` at P:$800). Not measured on the unit. Every tap loaded its
-  offset into `n5` just before its access, so every access waited 3 cycles for
-  the address register; each offset (the 15 immediates and the 6 read from
-  state) now loads right after the access before it, so the wait overlaps the
-  work between taps. The same instructions in another order, with nothing
-  between the old and new place reading `n5` or storing to the state word. The
-  write at offset 0 needs no `n5`; three constants load as one-word short
-  immediates. MINIVERB's tap pass is the same change.
-- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
-  the wider matrix of sambanks/octabam#1172, 58 renders, IDENTICAL; the scan
-  as above): two small constants (0 to 63) in `sub` load as the one-word 6-bit
-  form (`add #>$1,a` is `add #$1,a`: the same result and flags). ROOM at its
-  defaults: 394.5 → 393.5 cycles a sample (modelled); words 639 → 637.
-
-Under `dsp_host` (`tools/verify/verify_verberation.py`, remix `test/verberation`):
-- The pricer counts 247 cycles per sample (219 before the desk gate, 228 before page 2, 242 before PRE), a floor: it counts words, not memory stalls. Scaled from the 7.76 % GATE VERB measured on a unit at 219, about 8.8 % a slot (🟡 inferred, not read), under the 9.07 % that lets it sit on every FX2 slot. `tools/remix/slot_costs.json` carries no VERBERATION entry: GATE VERB's reading was of older code.
-- PRE: SIZE 60 with PRE 40 matches the model to 61.1 dB over 8,000 samples; it moves the wet onset by 1,279 samples (32 × 40 = 1,280; the onset is a threshold crossing); PRE 127 at SIZE 90 is clamped to the 1,077 samples of room; at SIZE 127 PRE 127 is bit-exact PRE 0; SIZE 0 with PRE 127 writes nothing outside the ring.
-- Page 2 against the model: six settings (SIZE 30; SIZE 0 with MOD 127; LCUT 90; MOD and RATE 0; MOD and RATE 127; SIZE 60, LCUT 40, MOD 100, RATE 30) match to 57-82 dB over the first 8,000 samples, where a wrong integer tap would show at once, and 46-62 dB over the whole render, where the tail meets the 24-bit floor the float model has not got. SIZE 30 decays faster than 127 (−69.3 dB against −56.9 dB at 0.7-0.9 s); LCUT 90 takes 12 dB out under 150 Hz; SIZE 0 with MOD 127 writes nothing outside the ring.
-- The first 22 calls pass the input through while the ring is cleared (653 words a call, exactly the ring: 77 × 206 would now write past it, into `octabam`'s window code).
-- AMNT 0 is bit-exact dry.
-- An impulse and a noise burst through 48,000 samples match a float model (gate off, and an impulse with the gate on) of the same algorithm (same lengths, the same integer LFO phases and
-  offsets, the same parameter laws and smoothing) to 58 dB (the difference is the 24-bit arithmetic).
-- No write outside the 14,366-word ring (`-guard 14366`); a dirty state block and a dirty ring with silent input give silent output.
-- TIME 127 rings longer than TIME 80.
-
-Not measured: sound (no listening yet), hardware, the real allocator's bases on a unit.
-
-### The smear LFO was bipolar, and the tail grew from TIME 94 up (fixed 5 Nov 2026)
-
-Clouds' LFOs are unipolar: stmlib's `CosineOscillator::Next()` returns `y + 0.5`, 0 to 1, so
-Clouds reads `ap1` at 10..70 and `del2` at 4680..4780. Until 5 Nov 2026 this port's smear used the
-parabola bipolar, ±1: it read `ap1` at −50..70, so up to 50 samples of its reads landed behind line 0,
-in the far end of the last tank line, and were written back into the first input allpass. That was a
-second feedback path that TIME did not scale. The smear's LFO is now `(lfo1 + 1)/2`, as Clouds'.
-
-✅ Under `dsp_host` (the module, one impulse after the knobs settle, AMNT 80, gate off), half-second
-RMS of the left output:
-
-| TIME | before | after |
-|---|---|---|
-| 64 | −58 dB, then a floor near −85 dB that drifted up to −82 dB | −58 dB to −99 dB in 3 s, then steady |
-| 90 | −57 dB, a floor near −70 dB, rising | −57 dB to −95 dB |
-| 120 | −56 dB, **grew to −11 dB** in 11 s | −56 dB to −84 dB |
-| 127 | grew to −4 dB in 10 s (the gate's `runaway` check on the old code) | −56 dB to −77 dB in 11 s, still falling |
-
-RT60 from the float model (`tools/harness/verberation_voice.py --impulse`, on the 15,862-word ring of the time): TIME 64 2.80 s (4.84 s
-before), 80 3.72 s (6.87 s), 94 5.08 s (grew), 127 17.92 s (grew). The extra path made every tail
-longer, not only the unstable ones, so a part voiced on the old code sounds shorter at the same TIME.
-`verify_verberation`'s `runaway` check fails on the old code and passes on the new; the model match is
-58.0 / 58.1 dB, as before.
-
-Not changed: the `del2` tap still swings 4531 ± 97, twice Clouds' excursion, and stable
-(`verberation_voice.py --lfo clouds` renders Clouds' form). What is left at the end of a long tail is a
-DC offset, not a tone: at TIME 120, the last second reads −84.4 dBFS DC and −97.2 dBFS AC. That is
-`mpy`'s truncation bias circulating in the loop; a high-pass in the tank (the LOCUT the sandbox
-proposes) would remove it. Not heard on a unit, before or after.
 
 ## Credit
 

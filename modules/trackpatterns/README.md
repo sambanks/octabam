@@ -46,33 +46,6 @@ prepares across a global or bank change follows stock.
 `INVESTIGATION.md` has every address, where it came from and what was read
 or measured, and names the stock instructions each detour displaces.
 
-## Measured
-
-- `modules/trackpatterns/verify.py` (the gate): the engine and the glue on
-  the host, on fake firmware memory: a change landing at the track's own
-  loop start for lengths 1–64, MASTER LENGTH's repeated step, PLAY
-  restarts, the way back to following, global and bank changes clearing,
-  the look-ahead, MIDI tracks, the popup text, the gesture and the trig
-  LEDs. Planted defects fail it. With `m68k-elf-gcc` on the PATH it also
-  checks that `trackpatterns.s` matches the C and assembles for the 5475.
-- Under the ColdFire port (`ot_emu`, a project with distinct trigs on A01,
-  A02 and A03 for T1 and M1): the gesture moved T1, then M1, from A01 to A03
-  at each track's own loop start with no global queue written; the trig
-  entries of the step handler followed; a global change to A02 cleared both;
-  the trig LEDs blinked as above with the running light kept; the same as an
-  MKI and as an MKII. `TESTING.md`.
-- Beside KITS and DIRECT_JUMP_KYOTI: `remixes/test/trackpatterns-core`
-  (`octabam-core` with TRACK PATTERNS) builds with no ledger conflict;
-  under the port the gesture, MIDI and global-change run gives the same 72
-  events as the module alone, and the LEDs behave the same.
-- Patterns over 16 steps (port): T1 switched to a 32-step A03 played all
-  32 steps with A01's MASTER LENGTH at 32 under PER TRACK, and stopped at 16
-  with MASTER LENGTH 16 or under NORMAL (the length row above); the trig
-  LEDs showed page 2's trigs while the playhead was on steps 17-32. In
-  CHROMATIC (set by writing the mode, not by the keys) the module drew no
-  trig LED, as the build without the LED pass.
-- `make check REMIX=trackpatterns` (`remixes/test/trackpatterns/`).
-
 ## Cost
 
 Measured under the ColdFire port (`ot_emu --mkii`, this build, a run with
@@ -103,42 +76,6 @@ On a unit (MKII, CF METER, 300 BPM, a trig on every step of 15 tracks;
 - With eight tracks on their own patterns, the LED pass and gestures, idle
   is 1.5 points lower, about 5.4 µs of each 362.8 µs frame. The frame
   interrupt's mean is unchanged, and no frame ran late.
-
-## On the unit
-
-- 21 Oct 2026, the contributor's MKII, image `OCTABAM3` built from this
-  tree (`make image REMIX=trackpatterns BUILD=3`; hashes in `TESTING.md`):
-  stock PATTERN + TRIG, the gesture on T1 and on M1, following again, a
-  global change clearing, the stopped case, a latched PATTERN, chains, GRID
-  REC, save and power cycle, and the three trig LED checks: all reported as
-  passed. The same tests passed earlier that day on images built from this
-  source in Modwerk's copy of octabam (`OCTABAM1`, `OCTABAM2`). Not reported:
-  run length, LED colours, other tracks.
-- 22 Oct 2026, the same MKII, image `OCTABAM8` (`make image
-  REMIX=trackpatterns-core BUILD=8`, with KITS and DIRECT_JUMP_KYOTI;
-  hashes in `TESTING.md`): the gesture on T1 and on M1, a global change, save
-  and power cycle: reported as passed. KITS' and DIRECT JUMP's own actions
-  were not tried on it.
-- 22 Oct 2026, the same MKII, image `OCTABAM9` (`make image
-  REMIX=trackpatterns BUILD=9`): T1 on a 32-step pattern under PER TRACK
-  with MASTER LENGTH 32 played all 32 steps, with the trig LEDs following
-  the playhead's page; in the other trig modes, CHROMATIC included, the
-  module drew no trig LED: reported as working as expected.
-
-## Inferred, open
-
-- Chip cycles per detour are not measured (instruction counts above). The
-  unit's load is measured as a whole (CF METER, above), and in 3c it is not
-  separated from the gestures' UI work.
-- KITS detours `0x40056b2c`, the entry of the handler this module patches
-  at `0x40056b50`; KITS acts there with FUNC held, the gesture without. On
-  a unit the gesture passed beside KITS (`OCTABAM8`); KITS' own action
-  beside the module has not been tried.
-- On a unit: MIDI note-offs across a switch with a long note; MASTER
-  LENGTH 16 and NORMAL with a 32-step override, and GRID REC's page 2, were
-  not reported separately.
-- The track's speed (scale) stays the playing pattern's; overrides are not
-  saved; trig LEDs and editing in GRID REC address the global pattern.
 
 ## Credits
 

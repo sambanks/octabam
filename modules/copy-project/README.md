@@ -65,43 +65,6 @@ copy): more than 64 projects in the set, a directory with more than 256
 entries, an entry name longer than 32 characters inside the tree, or
 nesting deeper than 6 folders.
 
-## Measured
-
-🟡 FUNC+BANK LISTPOP handlers/labels at `0x400cbaac` / `0x400cbab4`,
-count poke at `0x400641a2`; selection name `0x100f8378` (same pea as
-stock RENAME/DELETE). Mapped under the port 27 Oct 2026.
-
-🟡 Dir-scan borrow/restore follows REMIX SWITCH
-(`docs/contributing/FAILURE_MODES.md`). Copy uses stock `DIRSCAN`
-(`0x4007f598`), mkdir (`0x46c8240a`), and file copy (`0x40016388`) from
-an engine job (type 21), posted like REMIX SWITCH's deferred load.
-Failed-copy cleanup uses stock's recursive walker (`0x40090a14`, mode 0).
-Gated under the port: a source directory with more than 256 entries
-forces `COPY FAILED`, removes the partial destination, leaves SRC
-intact, and a retry with the same name does not read
-`NAME ALREADY IN USE!`.
-
-## On the unit
-
-- **17 Oct 2026 (MKII):** PROJECT-menu COPY (pre-#931). BUILD not recorded.
-- **27 Oct 2026 (MKII), `CORE CP`:** FUNC+BANK COPY; OPEN IT? YES loads the
-  copy and closes CHOOSE PROJECT with no save prompt; OPEN IT? NO leaves
-  the live project. Owner report on this tip.
-
-U1 (`LATEST U1`, 19 Oct 2026): a long project name stretched the pick
-list until nothing drew — fixed by the 16-char display cap (full name
-still copied). Name editor >32 is unreachable (form cap). Sidecars
-present on the author's DEFAULT set (`kits.work`, `scenes.work`,
-`brain.work`, `p2lk*`, `BUFFERS/`). Not tried: a directory near/over 256
-entries, or copying while the sequencer plays.
-
 ## Open
 
 - Cross-set copy (v1 is the mounted set only).
-
-## Gates
-
-`make check REMIX=copy-project` (test remix). Port gate:
-`tools/verify/verify_copy_project.py` — CHANGE → FUNC+BANK → COPY,
-stages SRC, copies to the stock default name under a pinned RTC, checks
-`project.work` and the rest of the folder.

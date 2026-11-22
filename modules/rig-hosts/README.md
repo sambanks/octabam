@@ -15,21 +15,6 @@ slot, this is what makes a project made on the unit host the bus without
 a chooser row or a stamp. An older project keeps its stored ids: host it
 with `python3 tools/hw/ot_project.py host <project>`.
 
-## Measured
-
-- Under the port (22 Sep 2026): loading a project name the card does not
-  carry makes the firmware create one, and its live FX2 ids read
-  6 9 9 9 7 9 9 8, FX1 0 x8; T1's page bytes are BusDelay's defaults,
-  T5's BusVerb's, T8's the stock delay's.
-
-## On the unit
-
-- Image 52 (22 Sep 2026) ran the FX2 hosting with FX1 left
-  at stock's FILTER default, which on that image was Spectrum's id with
-  FILTER's page bytes ("muted and quiet and modulated" until re-selected);
-  image 53 added the FX1 = NONE and page-defaults detours, measured under
-  the port. Image 88 carried the current module, not exercised there.
-
 ## Open
 
 - A project born on the unit under the current module.

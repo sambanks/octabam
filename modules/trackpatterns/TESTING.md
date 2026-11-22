@@ -1,55 +1,5 @@
 # TRACK PATTERNS testing
 
-## Host gate (21 Oct 2026)
-
-`python3 verify.py` on macOS (Apple clang, Homebrew python 3.12,
-m68k-elf-gcc 16.2.0): both host suites pass, and the ColdFire unit compiles
-and assembles for the 5475 with no calls outside it.
-
-What the suites cover:
-
-- A zeroed state follows the global pattern on every track.
-- A queued change lands exactly at the track's own loop start, for lengths
-  1–64, with the rest of the pass still on the old pattern.
-- The global pattern's trig queues the way back to following; asking for
-  what the track already plays withdraws a queued change.
-- A global pattern change clears every override and every queued change;
-  the same global pattern seen again changes nothing.
-- While stopped, a change applies at once and PLAY plays it from step 1.
-- The look-ahead names what then plays, across the loop end and after a
-  queue (as the key stub has stock rebuild its steps).
-- PLAY restarts land a queued change on step 1; the repeated step of a
-  MASTER LENGTH restart is a loop start too.
-- MIDI tracks (8–15), the popup text (`T5 > A03`, `M2 FOLLOWS`, the bank
-  letter), out-of-range tracks and patterns.
-- The adapter on fake sequencer memory: transport, playing bank and
-  pattern, length source following the track.
-- A bank change to the same pattern number (A10 → B10) clears the
-  overrides, and the step stock prepares across it is B10's on every track;
-  P16 is a pattern like any other.
-- The gesture on fake key memory: no TRACK key held leaves the press to
-  stock; TRACK 2 held (state 2, as once the PATTERN layer opened over it)
-  queues for T2 with the toast `T2 > B05`; the lowest held TRACK key wins;
-  MIDI mode addresses M5, not T5; the global pattern's trig makes the track
-  follow again; a key past TRACK 8 is not a TRACK key.
-- The trig LEDs on fake LED, UI and timer memory: a following track and
-  other pages are left as stock drew them; GRID REC's dark half puts only
-  the 32 trig LEDs out and names the running light's track (M4 in MIDI
-  mode); the playhead is relit only on the page GRID REC shows; outside
-  GRID REC the playing pattern's trigs go over stock's running light, page
-  2 included, and not in CHROMATIC; MIDI tracks read the MIDI record; the
-  PATTERN layer with TRACK 1 held lights T1's pattern, its queued change
-  and the global pattern as one with content. Planted defects fail them
-  (inverted blink, 6 failures; a key off by one, 3; no running light
-  redraw, 2; overwriting stock's LEDs, 3; the page check dropped, 1).
-
-Planted defects fail them: a loop-start test that ignores the repeated step
-(5 engine failures), a global change that no longer clears (2 adapter, 9
-engine failures).
-
-The hand-written entries in `hooks.s` were disassembled after assembly and
-read as written.
-
 ## ColdFire port (21 Oct 2026)
 
 Image: native remix `trackpatterns-test` (TRACK PATTERNS + the 14 stock
@@ -133,25 +83,6 @@ repeated on this exact `mainos_bus.bin` gives the same 72 events at the same
 times, booted as an MKI (the emulator's default, as every run above) and
 with `--mkii`.
 
-### On the unit: MKII, 21 Oct 2026, reported by pgstath
-
-Image `OCTABAM1` above, flashed from the card. Test project as in the plan:
-bank A, T1 trigs A01 1/5/9/13, A02 2/10, A03 3/7/11/15; M1 trigs A01
-1/9, A03 5/13; all 16 steps. Only what the contributor reported:
-
-| # | test | result |
-|---|---|---|
-| 1 | stock PATTERN + TRIG 3 switches every track to A03 at the pattern's end | pass |
-| 2 | hold TRACK 1, hold PATTERN, TRIG 3: popup `T1 ▸ A03`, screen stays A01, T1 switches at its own loop start | pass |
-| 3 | TRACK 1 + PATTERN + TRIG 1: `T1 FOLLOWS`, T1 back on A01 at its loop start | pass |
-| 4 | MIDI mode, M1 to A03; note-offs across the switch | not tested |
-| 5 | with T1 on A03, PATTERN + TRIG 2 (no TRACK held): A02 at the pattern's end, T1 on A02's trigs | pass |
-| 6 | the gesture while stopped, then PLAY | not tested |
-| 7 | latched PATTERN, TRACK after PATTERN, chains, GRID REC | not tested |
-| 8 | save, power cycle | not tested |
-
-Not reported: how long it ran, other tracks, CPU load, cycles.
-
 ## Build 2: the trig LEDs (21 Oct 2026, emulator only)
 
 `make image REMIX=trackpatterns-test BUILD=2`, same tree and OS; adds the
@@ -185,29 +116,6 @@ rebuilt every 50 ms), `src[T1]`, GRID REC, PATTERN held.
 Not run under the emulator: MIDI mode's LEDs (host-tested only), patterns
 longer than 16 steps, the cycle cost of the LED pass.
 
-### On the unit: MKII, 21 Oct 2026, reported by pgstath
-
-Image `OCTABAM2` above (`53ccd9fe…`), the test project and steps as for
-build 1, plus the four LED checks. The contributor reported every test
-below as passed; nothing more detailed was reported.
-
-| # | test | result |
-|---|---|---|
-| 1 | stock PATTERN + TRIG 3 switches every track to A03 at the pattern's end | pass |
-| 2 | hold TRACK 1, hold PATTERN, TRIG 3: popup `T1 ▸ A03`, screen stays A01, T1 switches at its own loop start | pass |
-| 3 | TRACK 1 + PATTERN + TRIG 1: `T1 FOLLOWS`, T1 back on A01 at its loop start | pass |
-| 4 | MIDI mode, TRACK 1 + PATTERN + TRIG 3: `M1 ▸ A03`, M1's notes move from 1, 9 to 5, 13 at its loop start, no hanging note across the switch | pass |
-| 5 | with T1 on A03, PATTERN + TRIG 2 (no TRACK held): A02 at the pattern's end, T1 on A02's trigs | pass |
-| 6 | the gesture while stopped, then PLAY: T1 plays A03 from step 1 | pass |
-| 7 | a tapped (latched) PATTERN then TRACK + TRIG, TRACK pressed after PATTERN, a chain (PATTERN + two trigs), GRID REC editing | pass |
-| 8 | save, power cycle: the project intact, every track following the global pattern again | pass |
-| L1 | T1 on A03, outside GRID REC: A03's trigs blink about once a second, the playhead keeps moving | pass |
-| L2 | GRID REC: A01's trigs blink | pass |
-| L3 | hold TRACK 1 + PATTERN: A03's key lit as the current pattern | pass |
-
-Not reported: how long it ran, which colour each LED of a pair shows,
-other tracks than T1 and M1, CPU load, cycles.
-
 ## Build 3: from this tree (21 Oct 2026)
 
 `make image REMIX=trackpatterns BUILD=3` in octabam at `828edcac` with this
@@ -227,29 +135,6 @@ order, every event about 30 ms later (the load ends later); the LEDs as
 build 2's (A03's trigs blinking about 500 ms on, 500 ms off outside GRID
 REC, A01's in GRID REC, the running light kept; TRACK 1 + PATTERN lighting
 LEDs 1, 3, 4).
-
-### On the unit: MKII, 21 Oct 2026, reported by pgstath
-
-Image `OCTABAM3` above (`a3712dbb…`), flashed after build 2's tests, with
-the same test project and steps. The contributor reported every test below
-as passed; nothing more detailed was reported.
-
-| # | test | result |
-|---|---|---|
-| 1 | stock PATTERN + TRIG 3 switches every track to A03 at the pattern's end | pass |
-| 2 | hold TRACK 1, hold PATTERN, TRIG 3: popup `T1 ▸ A03`, screen stays A01, T1 switches at its own loop start | pass |
-| 3 | TRACK 1 + PATTERN + TRIG 1: `T1 FOLLOWS`, T1 back on A01 at its loop start | pass |
-| 4 | MIDI mode, TRACK 1 + PATTERN + TRIG 3: `M1 ▸ A03`, M1's notes move from 1, 9 to 5, 13 at its loop start, no hanging note across the switch | pass |
-| 5 | with T1 on A03, PATTERN + TRIG 2 (no TRACK held): A02 at the pattern's end, T1 on A02's trigs | pass |
-| 6 | the gesture while stopped, then PLAY: T1 plays A03 from step 1 | pass |
-| 7 | a tapped (latched) PATTERN then TRACK + TRIG, TRACK pressed after PATTERN, a chain (PATTERN + two trigs), GRID REC editing | pass |
-| 8 | save, power cycle: the project intact, every track following the global pattern again | pass |
-| L1 | T1 on A03, outside GRID REC: A03's trigs blink about once a second, the playhead keeps moving | pass |
-| L2 | GRID REC: A01's trigs blink | pass |
-| L3 | hold TRACK 1 + PATTERN: A03's key lit as the current pattern | pass |
-
-Not reported: how long it ran, which colour each LED of a pair shows,
-other tracks than T1 and M1, CPU load, cycles.
 
 ## Review round 1 (22 Oct 2026, emulator)
 
@@ -311,22 +196,6 @@ the card file is byte-identical.
 | `OCTATRACK_OCTABAM8.bin` | `2a698188558cf31b7d9c30b0cc978ec97bdcbb5da654e67347ddb272c41c9458` |
 | `OCTATRACK_OS1.40C_OCTABAM8.syx` | `4b38d1aaf72b7a2cc25f8ce9303fe1dcee687e08384375b6225d47e0aab1a403` |
 
-### On the unit: MKII, 22 Oct 2026, reported by pgstath
-
-Image `OCTABAM8` above (`2a698188…`), the test project of build 3, A01
-playing. The contributor reported 1a to 1d as passed and skipped 1e;
-nothing more detailed was reported.
-
-| # | test | result |
-|---|---|---|
-| 1a | hold TRACK 1, hold PATTERN, TRIG 3: popup `T1 ▸ A03`, T1 switches at its own loop start, the other tracks stay on A01 | pass |
-| 1b | MIDI mode, TRACK 1 + PATTERN + TRIG 3: M1 switches to A03 at its loop start, no hanging note | pass |
-| 1c | PATTERN + TRIG 2 (no TRACK held): A02 at the pattern's end, T1 and M1 included | pass |
-| 1d | T1 on A03, SAVE PROJECT, power cycle, reload: the patterns unchanged, every track following the global pattern | pass |
-| 1e | a KITS action and a DIRECT JUMP action of their own | not tried |
-
-Not reported: how long it ran, other tracks than T1 and M1, the trig LEDs.
-
 ## CF METER with and without the module (22 Oct 2026)
 
 Two images from `05d8701c`, made from local probe remixes that are not in
@@ -344,44 +213,6 @@ its words to the meter:
 | `OCTATRACK_OCTABAM11.bin` | `90fa968b70ae07cc81376b082f38c03b0e05a8f84778ee03a532d3c84379c916` |
 | `OCTATRACK_OS1.40C_OCTABAM11.syx` | `75511ebe723d795ae3599f501fff5106b1f84a007d2938223fbbfcfefe83814c` |
 
-### On the unit: MKII, 22 Oct 2026, workload reported by pgstath
-
-T8 FX2 was CF METER with BURN, MEM and DBRN at 0. T8's USB channels 15/16
-were recorded on a Mac for 120 s per take (the recorder of `tools/hw/rec`)
-and decoded with `tools/harness/cfmeter.py`. Each take gives 59 cycles of
-2 s.
-
-The contributor's workload, the same in every take: 300 BPM; a trig on
-every step of T1–T7 and M1–M8 in A01; A02 and A03 copies of A01; T8 left
-as the readout.
-
-| take | image | what played | idle %, mean (sd) | frame interrupt, median mean | its longest, median / worst | TUE / ROE |
-|---|---|---|---|---|---|---|
-| 3a | OCTABAM11 | A01, untouched | 17.58 (2.94) | 244.6 µs | 292.7 / 326.4 µs | 0 / 0 |
-| 3b | OCTABAM10 | A01, every track following | 17.78 (2.88) | 244.3 µs | 293.9 / 328.2 µs | 0 / 0 |
-| 3c | OCTABAM10 | T1–T4 and M1–M4 on A02 / A03 by the gesture, T1 current outside GRID REC (the LED pass drawing), a few gestures during the take | 16.10 (3.74) | 244.4 µs | 297.3 / 336.2 µs | 0 / 0 |
-
-Every take has a frame period of 362.8 µs and 5,520 DSP frames in every
-2 s window.
-
-- **3b against 3a.** With the module loaded and every track following,
-  idle is 0.19 points higher (0.4 standard errors) and the frame interrupt
-  is the same: no difference within the noise.
-- **3c against 3a.**
-  - With eight tracks on their own patterns, the LED pass and gestures,
-    idle is 1.49 points lower (2.4 standard errors). That is about 5.4 µs
-    of each 362.8 µs frame.
-  - The frame interrupt's mean is unchanged (245.1 against 245.9 µs over
-    all cycles), so the extra work is outside the interrupt (inferred).
-  - The interrupt's worst run is 336.2 µs against 326.4 µs, 26.6 µs under
-    the frame.
-  - 3a had no key presses. Part of the difference is 3c's gestures, popups
-    and MIDI-mode switches, not separated from the module's own work.
-- **The DSP period.** In 3c's median row it ranges 356.6–370.7 µs, against
-  361.1–364.2 µs in 3a and 3b. There is no underrun or overrun.
-
-Not reported: whether the overrides in 3c sounded as expected.
-
 ## Build 9: over 16 steps and other trig modes (22 Oct 2026)
 
 `make image REMIX=trackpatterns BUILD=9` in octabam at `f1eb1507`. Rebuilt
@@ -391,23 +222,6 @@ at `05d8701c`, the card file is byte-identical.
 |---|---|
 | `OCTATRACK_OCTABAM9.bin` | `4fb7b88903d21f5ea90f524978c14a0d79e063cd986c0c9dbc93d406eb16d2e7` |
 | `OCTATRACK_OS1.40C_OCTABAM9.syx` | `b382bfdcfdc7e40b81a1af816589634394ba59011a496eb6326002b92267d337` |
-
-### On the unit: MKII, 22 Oct 2026, reported by pgstath
-
-Image `OCTABAM9` above, with the test sheet's setup:
-- A04: T1 at 32 steps, with different trigs on steps 1–16 and 17–32.
-- A01: SCALE MODE PER TRACK, MASTER LENGTH 32 or more, T1 at 16 steps.
-
-The contributor reported the 32-step pattern and the other trig modes as
-working as expected; nothing more detailed was reported.
-
-| # | test | expected | result |
-|---|---|---|---|
-| 2a | A01 playing, T1 on A04 by the gesture, T1 current, outside GRID REC | T1 plays all 32 steps; the trig keys blink A04's steps 1–16 while the playhead is on 1–16 and 17–32's while it is on 17–32; the running light kept | as expected |
-| 2d | the same, switched to each other trig mode, CHROMATIC included, then back to TRACKS | the module draws no trig LED there; the blink returns in TRACKS | as expected |
-| 2b | MASTER LENGTH 16 on A01 | T1 restarts after 16 | not reported separately |
-| 2c | SCALE MODE NORMAL on A01 | T1 wraps at A01's length | not reported separately |
-| 2e | GRID REC in a 32-step pattern, page 2 | the stock trigs blink as the warning | not reported separately |
 
 ## Not yet
 

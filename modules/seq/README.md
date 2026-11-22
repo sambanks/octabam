@@ -222,25 +222,3 @@ clears its note mask and restores TRIG PULS 5 / ROT 0. Audio data, other
 MIDI tracks, steps beyond LEN and neighboring patterns are preserved.
 MIDI TRACK double-tap keeps stock behavior; NOTE SETUP uses double-tap
 **`[SRC]`** or **`[FUNC]`** + **`[SRC]`**.
-
-### MIDI proof
-
-The author confirmed the MIDI behavior on his MKII with **CX M8**, built
-and flashed on 14 Nov 2026. Artifact SHA-256:
-`b6722704137567abf1ac82a6d71e3d6faaf7de915c8b3357d837675ef330f3c3`.
-The image remains outside git in the shared remix folder.
-
-Receive-only USB captures showed channel-2 note-ons, velocity 100 and
-matching note-offs, with changing additional chord voices. A subsequent
-fixed C3 was traced to empty NOTE locks in the saved project despite
-SEQ depth 73. An explicit fill wrote the NOTE locks; the author then
-confirmed that the MIDI randomization was working. Confirmation and the
-explicit fill are separate actions.
-
-The port gates check nonzero NOTE, VEL, NOT2-4 and CC locks, separate
-TRIG/PLOCK behavior, CUE at depths 0 and 4, and distinct UI/MIDI playing
-Parts. `verify_seq_midi_edit.py` drives real panel gestures on T2 with all
-30 destinations populated. It checks confirmation YES/NO, pending edits,
-selected-destination isolation, zero-depth clearing, all MIDI clear rows,
-recipe resets, RAM/CS1 agreement and preservation outside the edited scope.
-This automated coverage is separate from the author's device report.

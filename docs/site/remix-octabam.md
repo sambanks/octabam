@@ -6,16 +6,14 @@
 
 Octabam adds the core features to Octatrack OS 1.40C, four effects and a machine. All 14
 stock effects and both effect menus stay as stock has them, with stock LO-FI's AMF knob
-fixed. It is the remix that has run on a unit. The [Octabam Manual](reference/manual/index.md)
+fixed. The [Octabam Manual](reference/manual/index.md)
 has a page for every feature, shared with the other two remixes.
 
 !!! warning "Known fault: DARK REV while MODULATION is loaded"
-    On Sam's MKII (22 Nov 2026), with MODULATION in use on a track, a program change that put DARK REV on all 8 tracks, then
-    PLAY, stopped the DSP: the sound stops, the panel and USB still answer, and a power-cycle clears it. MODULATION stays loaded
-    for 10 s after the last track uses it. Over 573-second replays on the earlier BUILD 05 it stalled 5 of 7 times with DARK REV
-    on 8 tracks, 1 of 6 on 4 tracks and 0 of 2 on one track. With SPECTRUM loaded in place of MODULATION: 0 of 25 tries; with no
-    effect loaded: no stall. The cause is not known and no setting is shown to be safe.
-    [Details](https://github.com/sambanks/octabam/blob/main/docs/contributing/FAILURE_MODES.md).
+    The DSP can stop when a program change puts DARK REV on several tracks while MODULATION is
+    loaded (in use on a track, or in the 10 s after the last track stops using it), followed by
+    PLAY. The sound stops; the panel and USB still answer; a power-cycle clears it. The cause is
+    not known. Avoid DARK REV on many tracks in a song that uses MODULATION.
 
 ## The effects
 

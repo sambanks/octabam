@@ -3,29 +3,10 @@
 Turning a MODE on the panel re-defaults the knobs around it to that mode's
 `ModeView` (`docs/contributing/MODULES.md`, "Per-mode knob names and defaults").
 
-## Measured
-
-`tools/verify/verify_mode_defaults.py` (in `make verify` with `OT_PROJECT`):
-the FX2 editor called on T1 (BusDelay, CLEAN -> GRAIN) and the FX1 editor
-on T2 (Modulation, MODE on slot 6 as on every effect since 16 Sep 2026, JUNO -> DIM) under the port leave every pair of the
-landed view in the live lane, page 1 and page 2, and the untouched slots
-at the fixture's bytes. The editor takes encoder ticks of 256 units
-against a per-slot step (`0x46c7dede + slot2*20 + 8`; 0x10e for a 3-way
-select under the port), so two ticks move a select by one.
-
-## On the unit
-
-Image 26 (15 Sep 2026, Sam's MKII): a MODE turn on the panel re-defaults
-the knobs, on FX1 and FX2.
-
 ## Open
 
 - The Part bytes are written by the same formulas `modules/cc-map` proves
   against the editor; the verifier reads the live lane only.
-
-## Gates
-
-- `tools/verify/verify_mode_defaults.py` (in `make verify` with `OT_PROJECT`).
 
 ## Hook
 

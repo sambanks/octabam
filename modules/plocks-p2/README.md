@@ -14,39 +14,6 @@ Holding a trig shows its lock after the same short delay as page 1, with
 the value area highlighted. Knob edits update immediately. Releasing the
 trig restores the Part display.
 
-## Measured
-
-Under the port, 2 Oct 2026, `tools/verify/verify_plocks_p2.py` on
-`plocks-p2` and on bottleservice with PLOCKS P2 added (Octakit, the bus, the FX1
-stations, SCENES P2 KITS), project OCTABAM89_setgate:
-
-- A held trig and knob A on the FX2 SETUP page lock step 1's page-2
-  slot 0; stock's page-1 locks of step 1 stay 0xff.
-- Trig copy and paste, clear a trig's locks, pattern copy and paste,
-  clear pattern and its undo each carry or clear the page-2 locks with
-  the stock data.
-- T1 step 1 locked to 99 with trigs on steps 1 and 2: the live lane reads
-  99 after step 1 and the Part's value after step 2; no other track's
-  page-2 lane byte moves. The DSP record follows the lane (both pings,
-  measured by hand the same day).
-- SAVE PROJECT writes `p2lk03.work` and `p2lk03.strd` with the lock; a
-  second boot of that card has it in the table after the load.
-- Power cycles (`ot_emu --cs1-in` with the first run's CS1, `--no-post`
-  for the firmware's own power-up load): a saved lock, a lock never saved,
-  and a saved lock with the CS1 copy cleared (read from `p2lk03.work`)
-  are each in the table after the power-up.
-
-## On the unit
-
-Image A0 (`bottleservice`, `CHANGELOG.md`) carries PLOCKS P2; `p2lk01.work` was written by image 99 on Sam's MKII, 4 Oct 2026 (`docs/contributing/FAILURE_MODES.md`). Sam also reported cursory testing on his MKII on 16 October 2026.
-radiohagen tested the Core P4 build on an MKII on 17 October, including
-hold/edit/release/rehold and perceived page-one hold timing; see
-[contribution notes](DEVELOPMENT.md). Those reports predate EDIT EVENTS.
-Core PLK858/build 98 on an MKII: radiohagen reported FX1/FX2 held-edit, native fallback
-and trig/track/pattern checks on 22 October 2026; see
-[EDIT EVENTS results](DEVELOPMENT.md#edit-events-hardware-results-22-october-2026).
-Refused-file prompts and `.bak` copies are not covered by these panel reports.
-
 ## Open
 
 - The CS1 copy holds 4,752 locks (`NV_MAX`; 10,234 until 10 Oct 2026, when 16,400 B of its top went to MIDI SCENES' copy, and 4,768 until 17 Nov 2026, when its top 48 B went to PATTERN MUTE's); a current bank with more has no copy
@@ -80,10 +47,6 @@ the code; the port is lock-step and cannot interleave tasks, so it is not
 measured on the port or the unit.
 
 `read_bank` rejects a `p2lkNN` header whose version is not 1 as no locks.
-
-## Gates
-
-- `tools/verify/verify_plocks_p2.py`.
 
 ## What stock does
 

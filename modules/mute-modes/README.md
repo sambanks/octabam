@@ -6,17 +6,6 @@ Built from [Zac-Kyoti/octatrack-kyoti-fw](https://github.com/Zac-Kyoti/octatrack
 (submodule `upstream/`, pinned to `bb9bead`). `Kind.CF_PATCH`. Two linked units (`patch_softmute.s`, `patch_mutemode.s`; ROM caves or DRAM by the `PLACE` setting, default CAVE), six `jmp` detours, three `TableGrow`s for the PERSONALIZE label, getter and setter arrays, and four pokes: the row count at `0x40068fb2` (15 to 16 on an MKI, 16 to 17 on an MKII) and the three ANDY restore widenings `pea 0x64` to `pea 0x70`. The tables are grown with `insert_at=2`: MUTE MODE is row 2, after PREVIEW WITHOUT FX, as in the author's standalone build; LED BRIGHTNESS stays the last row, shown on an MKII only.
 `upstream/octabam-modules/mute-modes/README.md` is the full description, with what was measured and what was inferred.
 
-## Measured
-
-- Every build re-links each cave or unit and compares it with the author's
-  own bytes (`reference`); a difference refuses the build.
-- `make check REMIX=mute-modes` (`remixes/test/mute-modes/`) builds and boots the
-  image under the ColdFire port.
-
-## On the unit
-
-- On the author's MKI (standalone image, the KYOTI V1.7 combined image, and this octabam form beside SIDECHAIN_COMPRESSOR as OCTABAM39, 3 Nov 2026).
-
 ## Notes
 
 - 1 Oct 2026: on the author's MKI in an octabam image with all six KYOTI modules: MUTE MODE at row 2, all four modes, and the setting surviving a power-cycle.

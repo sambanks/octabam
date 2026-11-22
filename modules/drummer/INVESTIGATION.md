@@ -102,66 +102,6 @@ Worktree `.claude/worktrees/drummer` (branch `drummer`, from origin/main
 `54200264`): `make emu-cf` then `make check REMIX=cxosc` — 503 PASS, 0 FAIL,
 3 SKIP (no project), 5 Nov 2026.
 
-## Phase 2 (5 Nov 2026): the measurements under the port
-
-Sample: the user's 2-bar loop at 93 BPM (stereo 16-bit, 227 613 frames), 16 slices
-from its `.ot` (the unit's FILE > SAVE SAMPLE SETTINGS). It stays on the user's disk
-and on scratch cards under `out/`; nothing of it is committed. The `.ot` holds the
-same 12-byte slice entries as the settings record (0x3a + 12n), count at 0x33a.
-
-Scripts (port, image = `out/mainos_bus.bin` of `cxosc`, or of `test/drummer-probe`):
-`probe_slices.py` (an empty project by `ot_fresh`, the sample on FLEX slot 1, T1
-FLEX SLIC on, 16 STRT locks), `probe_steps.py` (the step builder's words, voice
-starts and VOL per step; `DR_SPARSE=1` = trigs on steps 1, 5, 9, 13 with micro-timing
-0, +12, −12, +23), and the probe module `modules/drummer-probe` (never shipped).
-
-### Results
-
-| what | result | marker |
-|---|---|---|
-| STRT lock → slice | 16/16 steps start `min(STRT >> 1, count − 1)` with that slice's exact bounds at voice +40/+44: odd values, 40 and 127 clamped, a step without lock (Part STRT 0 → slice 0) | 🟡 port |
-| Trig word in the bank FILE | `TRAC + 0x899 + 2·step` (0-based; the RAM word is `+0x89a`): a word written there reads back in RAM at `+0x89a + 2·step` | 🟡 port (the doc's ✅ stands) |
-| Step builder per step | runs ~912 samples after the step counter `0x800064d0[t]` changes, for the step index the counter now holds. Sample trig: `0x46c7a810[t]` = 29, `0x46c7a14c[t]` = 1, `0x46c77bfa[t]` = 15 876 000 at 120 BPM, `0x46c7a830[t]` = µt·110 250·6. Trigless trig (mask +0x10): `a810` = 1. Empty step: nothing written. `a810` is cleared by its consumers (`0x400a3374`, `0x400a3bce`) | 🟡 port |
-| Micro-timing | one unit = 1/24 of a step: +12 → +2 756 samples, −12 → −2 756, +23 → +5 283 at 120 BPM (5 512 per step), on top of a constant ~+900 from the counter change (the grid instant). Two trigs landing on the same instant start one voice | 🟡 port |
-| **Adding a trig** to an empty step from the detour after the builder (`0x400a2d82`): `a810` = 29, `a14c` = 1, `a830`, `7bfa` = stock's last value | the voice starts, on the grid, or +2 756 with `a830` = +12's value | 🟡 port (probe) |
-| **Moving a trig**: `a830` rewritten after the builder | +12 → 0 plays on the grid | 🟡 port (probe) |
-| A STRT lock staged at `0x46c7aa24 + 32t` for an added trig | **ignored** (slice 0 played) | 🟡 port |
-| A VOL byte written into the pending block `0x80001558 + 32t` | **never applied** (the apply at `0x4000c5ac` is skipped for these trigs: the `bmi` on the trig's flags at `0x4000c5a2`) | 🟡 port |
-| **Forcing the slice** in a wrapper of the FLEX start (`0x400d6458` → `0x4000f450(track, slot)`): page record STRT byte = 2·slice, SLIC = 1, call stock, restore | slice 9 played on steps 9 and 13, their micro-timing kept | 🟡 port (probe) |
-| **VOL per hit** in that wrapper, as stock applies a lock: lane `0x80000810 + 72t + 15`, DSP halfword `0x80000a50 + 64t + 30` = v<<8, bit 15 of `0x80001538 + 4t` | DSP VOL 80<<8 for the hit; at the next trig stock restores the Part's 64 (`0x4000c54c`) before the start, and the wrapper applies again | 🟡 port; heard: not yet |
-| The page record `0x80000510 + ping·0x180 + 48t` | rewritten every frame (16 samples), alternating ping, by `0x4000ced4` | 🟡 port |
-| The stock FLEX renderer `0x40004008` reads the page record every frame: PTCH `+0`, RTIM `+10`, byte `+27` (page 2) | | ✅code |
-
-### What the design takes from it
-
-1. **The engine** runs in the detour after the step builder (`0x400a2d82`, free):
-   once per step per DRUMMER track it decides whether the step plays (adds or
-   drops the trig through `0x46c7a810`), its micro-timing (`0x46c7a830`, in
-   1/24 of a step, live: the humanisation's TIME aspect is not frozen), and
-   queues the hit (slice, VOL, ornament) for the start.
-2. **The hit** is applied in the FLEX start wrapper (`0x400d6458`): slice
-   through the page record, VOL as a stock lock with its restore bit. No grid
-   writes, nothing saved in the pattern: HUMAN varies at every pass.
-3. **The parameters page**: DRUMMER's knobs share the page record with what the
-   stock voice and renderer read (PTCH, STRT, LEN, RATE, RTRG, RTIM, SLIC...).
-   Since the record is rebuilt every frame, DRUMMER copies its knob values (scenes
-   and LFOs applied) out of it each frame, then writes the playback values it
-   wants (PTCH 64, RATE forward, SLIC on, LEN 0, its STRT) for its tracks,
-   between the build (`0x4000ced4`) and the packer `0x4000d3fc`. Site to choose in
-   phase 4; the HOOKS RENDER chain (`0x400d6438`) is the other candidate.
-4. **Not usable**: locks staged or pending for an added trig. Apply them in the
-   start wrapper instead.
-
-### Still open
-
-- RTRG / RTIM on FLEX (flams, rolls): what the renderer does with page-record
-  `+8`/`+10`, and whether setting them at the start is enough. Phase 4, by ear
-  (`--dsp --audio-out`).
-- The VOL halfword heard in the output (DSP side): `--dsp` run in phase 4.
-- `0x400d6458`: CX OSC replaces the same entry (`cxosc/manifest.py:84`): a HOOKS
-  "start" chain, or a declared conflict, before an image carries both.
-- Everything above is port-only; nothing has run on the unit.
-
 ## Phase 3 (5 Nov 2026): the engine on the host
 
 `drummer.h` / `drummer.c`: the engine, freestanding C (integers, no library

@@ -3,15 +3,6 @@
 Feeds the held MIDI note to BusDelay and draws BusDelay's TIME knob as a
 tempo division. Two ColdFire units in DRAM.
 
-## On the unit
-
-Since 24 Aug 2026 as a publish of tempo24, the period, fader+1 and the
-note into halfwords 18-21 (`+0x24..+0x2a`, FX2 ids 6 and 7); note-only since 15 Sep 2026 (image 24): halfwords 18-20
-are the FX1 instance's page 2 and 21 the AMP page 2's first halfword, so
-on a delay or reverb host every FX1 effect's page 2 read the tempo bytes
-(`docs/contributing/FAILURE_MODES.md`, "An FX1 station's page 2 does not reach
-the DSP on a bus host").
-
 ## Open
 
 The note unit filters on FX2 id 6 (`cmpi.w #6,%d2` in `tempo_cave.s`). A

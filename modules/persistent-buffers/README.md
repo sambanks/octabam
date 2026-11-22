@@ -49,26 +49,6 @@ buffer to itself. This module always dumps every non-empty slot to fixed
 `BUFFERS/RECn.wav` through STORE, with no dialog. Declared
 `conflicts` — both would write the same buffers on one save.
 
-## Status
-
-`Proof.HARDWARE`. `verify_persistent_buffers` covers symbols, a save-smoke
-call on empty buffers, and a staged-load of `BUFFERS/REC1.wav` under the
-port. Record-then-save under a live frame ISR is still not driven by the
-port (PROJECT menu); that path is the hardware table below.
-
-Hardware (author's MKII). R1–R6 on personal `minimal` (16–17 Oct 2026).
-**R7** on flash stack `PBUF R7.RMX` (`REMIX=latest` on `ilia`, BUILD R7,
-22 Oct 2026) — tip then carried the no-reload save + flex load:
-
-| BUILD | measured |
-|---|---|
-| R1 | only the last slot assigned (async SAVE/ASSIGN shared scratch) |
-| R2 | sync `wav_write` wrote all eight WAVs |
-| R3 | slot load + post-load bound the UI assignment (`REC*.wav` at project root) |
-| R4–R5 | paths under `!BUFFERS/`: WAVs + `PATH=` in `project.work`, UI stayed unassigned (`SLOT_LOAD` status −0x10 INVALID FILENAME — inferred from symptom + status table; falsify: assigned UI with a `!` PATH) |
-| R6 | folder renamed to `BUFFERS/` (no `!`) |
-| R7 | short + long take: UI shows `RECn` when the write finishes (no second-load lag); all eight slots; empty skipped; PROJECT LOAD + RELOAD; reopen + play; overwrite existing `REC*.wav`; post-save play matches post-load play |
-
 ## Remix
 
 Listed next to STORE (required). Gate carrier:

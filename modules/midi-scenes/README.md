@@ -100,48 +100,6 @@ Paste and bank-copy rows.
 | with no lock on either scene, the mix writes the Part's value to the record and sends nothing: a CC a lock moved stays at the lock's value until a knob or a trig sends it | when that write changes the record, the Part's value is sent | the CC returns to the Part's value when no scene locks it any more (#1096, reported by gph123123, who ran a variant of this change on an MKII). The record bytes, the table and the clipboard are 2.1's; only the wire differs. ✅ port, `verify_scenes` `bfree` (ours only), 15 Nov 2026: CC 1 on the wire 100, 40, 69, 100, 40, 0, 100, 0; the module before the change sends the same without the last 0, and fails it. The whole gate passes on `midi-scenes` (generated project, no `--oracle`). Not run on a unit in this form |
 | the mix refreshes the MIDI track records' setup bytes (`+0x1e..+0x43`) from the Part | not done | stock's apply already copies them; no scenario differs |
 
-## Measured
-
-✅ Under the port, 5 Nov 2026 (`octabam`, a fresh project; `verify_scenes`
-scenario `tt`): T1 on channel 11 and T2 on channel 12 both trig every
-step, CC 1 locked in scene B only (100 / 90, Part values 20 / 30), the
-fader swept from the B end to the A end. Before the fix T2's CC 1 went
-… 33, 31, **0**, 30, and stayed 0 with no T2 trigs; T1 was smooth. `mix`
-kept `scn_snap` in a1 across the stock CC sender `0x4009eec8`, which saves
-d2-d7/a2-a5 only: after the first send of a pass a1 was garbage
-(`0xffffffba`) and later unlocked sides read their snapshot through it. a1
-is reloaded after the call; both channels now fall monotonically to their
-Part values. The oracle scenarios have one MIDI track and could not see
-it (`TRAPS.md` "A stock call returns with a0, a1, d0 and d1 changed").
-
-✅ Against the oracle image (stock + `release21.json`, built from his repository at
-`52eaab0`) under the port (`ot_emu`, OCTABAM89_setgate bank 3 Part 1, T1 a
-MIDI track on channel 11), remix `midi-scenes`, 10 Oct 2026: scenarios b1,
-b2, b7, b7play, b3, b29copy, b29clear pass every comparison. MIDI out
-(bytes and frames, 0 frames apart), the lock table, the track records
-`0x46c76dc0..+0x220`, the lock-mask longs and (b2) the LCD plane are
-identical to the oracle's; the Part windows are identical to stock's. The
-clipboard differs where untouched (table above). The scenario table and
-what the compare cannot see (LED rows are identical on stock, the oracle
-and this module) are in `docs/firmware/MIDI_SCENES.md` section 11 and the
-docstring of `verify_scenes.py`.
-
-On `ok-ms` the same scenarios pass except the LCD plane, whose status line
-reads the Kit (`009 ONE`) where the oracle reads `Pt:1 ONE`; the gate skips
-the screen compare on a remix with KITS.
-
-Unit size (phase 1, before the library, measured with `m68k-elf-size`): 1,558 B of code and 4,360 B of data; the library adds the code of the storage section and 524,288 B of `.bss`. No site needs a ROM-resident target (`docs/firmware/MIDI_SCENES.md` section 9; every detour is a `jmp` or `jsr` into the DRAM unit and the OS ran them under the port).
-
-## Gate
-
-`tools/verify/verify_scenes.py REMIX [--oracle MAIN21.raw] [--persist]`: scenarios b1,
-b2, b7, b7play, b3, b29copy, b29clear on the built image, stock's, and the
-oracle's; with `--persist` (not in `make check`; the final batch passes it), on the built image only (MKII panel), the b1 locks through
-SAVE PROJECT (`scenes.work` and `.strd`: size, header, CRC-32, the locks), a second
-boot, a power cycle after a save and after none (CS1 in, nothing posted), and the
-unsaved card without CS1 (the locks are absent). The docstring says what each compares and what it does not
-cover.
-
 ## Open
 
 - His freeze twin and sparse blob (Part `+0x1712..+0x1832`) are the LFO

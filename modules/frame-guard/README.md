@@ -76,15 +76,3 @@ followed by one skipped frame.
 
 Not measured: what the skipped frame does to audio that is sounding at
 that moment; an MKI; a remix other than `octabam`.
-
-## Gate
-
-`tools/verify/verify_frame_guard.py` assembles `guard.s` alone and bridged
-and enters it under Unicorn at lists of entry times against a model of the
-timer: which entries wait, the lateness at which each leaves, the
-prologue's frame and the exit. It does not model the DSP.
-
-On a unit: `tools/hw/ot_stall.py` runs the first-START assay, one trial a
-power-cycle; `tools/hw/framelog.patch` is the frame log it reads with
-`--framelog` (a test edit to LOAD METER and USB, not for an image that
-ships).

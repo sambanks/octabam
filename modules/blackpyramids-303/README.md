@@ -8,19 +8,6 @@ Built from [Zac-Kyoti/octatrack-kyoti-fw](https://github.com/Zac-Kyoti/octatrack
 
 A remix with it gives up SPRING REV and carries no DSP module and no other source machine; the build refuses them. A Part that still names SPRING REV shows SPRING's page and passes audio through, as with ANALOG BD.
 
-## Measured
-
-- Every build re-links the runtime and compares it with the author's own bytes (`reference`, 39,736 B at 0x40a955e0); a difference refuses the build.
-- `remixes/test/blackpyramids-303`: both DSP payloads' voice words are the author's standalone image's, and the author's emulator check (`tools/ot303/verify_ot303.py` upstream: the voice on both cores, the sequencer, live notes, the DSP's memory, DARK REV and PLATE REV unchanged) passes on the image. For the 936 / 932-word voice (3 Nov 2026) the author ran it on the standalone image: every check equal to the previous FINAL's.
-
-## On the unit
-
-- 14 Oct 2026: the standalone image on the author's MKI, everything (the voice, the grid, live play, chromatic, FUNC + PTCH octaves).
-- 16 Oct 2026: the author's FINAL standalone (accents per step, push-turn octaves, equal-loudness WAVE, driven-VOL headroom, a RES trim below 20) on the author's MKI: all good.
-- 3 Nov 2026: the author's FINAL standalone with the same voice 90 words smaller (output bit-exact, 936 / 932 words; mainos `5b7dfb2f…`) on the author's MKI: all tests pass. This octabam form of it is not flashed.
-- 21 Oct 2026: the author's FINAL standalone with the recalibrated voice (mainos `ecc85887…`) on the author's MKI: all good; then this octabam form of it (`remixes/test/blackpyramids-303`): all good.
-- 19 Oct 2026: this octabam form (`remixes/test/blackpyramids-303`), with the previous voice, on the author's MKI. The first build worked well, except that switching the track to another machine and back reset BLKPYRAMD's knobs to the defaults, which no stock machine does. With the fix, every check passes: the knobs are kept away and back, and after a save and power cycle, and SRC SETUP's BLKPYRAMD row edits them.
-
 ## Credits
 
 Built on [Open303](https://github.com/RobinSchmidt/Open303), Robin Schmidt (MIT): its filter, oscillator and envelope algorithms. The recalibration's values come from the TB-303's circuit (Roland's service notes, the x0xb0x schematics, Robin Whittle's notes) and Din Sync's recordings of a real TB-303 (measurement only). The machine registration follows repeat98's ANALOG BD (`modules/analog-bassdrum`). The design, the calibration and the voicing (by ear), the sequencer and live-play plumbing and the hardware testing: Zac Kyoti.

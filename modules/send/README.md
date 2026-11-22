@@ -53,73 +53,6 @@ BusDelay. A part saved before reads its old TIME byte as REV and its old
 slot-11 byte (WOW, or 0) as TIME: stamp before play (`stamp-defaults
 <project> bottleservice --all --keep-mode`).
 
-## Measured
-
-- Carried by every flashed bus image (`CHANGELOG.md`); the two-knob form
-  (DEL and REV, 25 Sep 2026) by image 88 on Sam's MKII (27 Sep 2026). The
-  auto-gain numbers are `dsp_host` measurements; the T8 refusal and the
-  FX1-NONE return were measured under the ColdFire port.
-- ✅ Payload A / core 0 serves tracks 5–8, payload B / core 1 tracks 1–4
-  (marker flash, 10 Aug 2026).
-- ✅ P, X and Y alias in the shared window; the stock allocator's slot
-  table (`X:0x255`, both payloads of the raw image) hands the low half to
-  core 0 and the high half to core 1 (`docs/firmware/DSP.md` section 7).
-- Total bus latency is 3 blocks since 22 Sep 2026: 48 samples on hardware,
-  45 in the harness's 15-frame blocks (2 blocks from 17 Aug to 21 Sep;
-  `docs/history/TESTPASS.md`).
-- Auto-gain (below): a quiet sender turns the loud sender's reverb down:
-  three senders, two of them 10–15 dB quieter, measured 4.8 dB below the
-  loud sender alone (`docs/history/CAPTURE_18AUG.md` capture E, against
-  1/N's predicted −9.5). A client that registers and contributes nothing
-  dilutes every real sender by √(N/(N+1)): −3.0 dB with one sender (the
-  −6.02 dB measured on 17 Aug 2026 was under 1/N). A track already sending
-  loses 3 dB of wet each time the sender count doubles (1→2, 2→4, 4→8),
-  stepped per block when a knob leaves 0; N counts knobs, not signal, per
-  bus. The "1 through 7 senders render identically" measurement fed the
-  same tone to every sender, the one case where 1/N and 1/√N agree.
-- 🟡 An FX1 slot runs SEND (id 0 is aliased to SEND and the FX1 chooser's
-  NONE is id 0). Under the port on Sam's project (bank 1, T1/T5/T6/T8 FX1
-  = NONE; `--dsp-pcwatch` on the tracker's store), core 1 ran the SEND
-  client eight times a frame, at 0x6100 0x6200 0x6400 0x6500 0x6700 0x6800
-  0x6a00 0x6b00 in that order: the FX1 slots are
-  0x6100/0x6400/0x6700/0x6a00, the FX2 slots 0x6200/0x6500/0x6800/0x6b00
-  (three r7 bumps per track). The port's flip lands late in core 1's frame
-  (between 0x6800 and 0x6a00 in every frame watched).
-- Return balance on material (7 Sep 2026, `out/rig/oneaux/`, the
-  MIX-crossfade stage of the time; WET adds since 15 Sep 2026 and the wet
-  is ×2 since 16 Sep): drum loop −25.1 dB rms with the reverb at MIX 0 and
-  −26.8 at MIX 127; pad −31.4 / −32.8; no makeup. (The "wet ~25 dB under
-  the repeats" reading from the 438 Hz gate tone was retracted the same
-  day.)
-- Residual at 6–7 senders: 2 samples in 16,305 differ by ≤ 33 LSB
-  (−105 dB) from the lag-0 control; does not scale with amplitude; filed as
-  rounding under the added latency.
-- **19 Nov 2026, the stall pass** (bit-identical: `verify_bus`, 34 cases of
-  the `bus` remix with both servers, split blocks and one to seven senders,
-  against a reference stamped on main; its selftest catches both injected
-  defects). Cycles a sample from `tools/build/interlock_scan.py` (the core
-  manual's cycle table and stalls: a model, on average 3.0 % above the unit,
-  `docs/contributing/CYCLE_SCAN.md` section 1), at its defaults:
-  **57.5 → 51.5** (1.3 % → 1.1 % of a frame, for each instance; every track
-  runs one). Words 260 → 259 (`dsp_asm` at P:$800). Not measured on the
-  unit. The REV ramp adds its step from x1, which holds the same word as
-  `x:(r7+$18)` through the loop, and the loop's independent moves fill four
-  of its five accumulator waits. The housekeeping block's three long
-  constants from 0 to 63 stay long: the two servers carry copies of the
-  block, and the three copies change together.
-
-## On the unit
-
-- ✅ Flash 7 (OCTABAM21): the one aux bus, the delay feeding the reverb,
-  the T8 return of the time, every one-aux claim.
-- ✅ Image 47 (a marker tone whenever a client's last stamp was gone)
-  sounded on every block of plain play: core 1's tracker one step ahead.
-  Image 48: SEND returns at proc entry on an FX1 r7. Image 49: the eight
-  buffers and the per-client count.
-- ✅ The three cross-core defects (below) closed on the unit, sweep of
-  core-1 tracks × delay modes.
-- Image 88 (27 Sep 2026, Sam's MKII): the two-knob SEND.
-
 ## Open
 
 - 🟡 The race fix assumes the cores are rate-locked (same sample clock,
@@ -133,31 +66,6 @@ slot-11 byte (WOW, or 0) as TIME: stamp before play (`stamp-defaults
   see. What would falsify it: image 48 still washing on a THRU host past
   position 0 with a trig on every step, or still bleeding with every SEND
   at 0.
-
-## Gates
-
-- `make verify-bus`: 19 layouts (17 until 18 Aug 2026; the two `IN` cases
-  were added after the delay's IN decode was deleted by a splice with 17/17
-  still passing), the three carriers of the housekeeping block, the
-  election, 1–7 senders per bus, both cross-sends, split blocks, compared
-  bit-for-bit against a stamp (`SAVE=1` first).
-- `tools/verify/verify_one_bus.py` (in `make check`) runs the chain on both
-  cores: T5 prints the reverb (stereo) and T1 the delay; the reverb hears
-  the delay; delay WET 0 == no delay three blocks later, sample-exact; a
-  host at WET 0 prints only its dry; T1's print is bit-identical with the
-  reverb at WET 0, WET 127 or absent; a SEND at core-0 position 3 (T8) at
-  SEND 127 changes neither host and the mirror position on core 1 does; a
-  Character with slot 4 stored 127 (RET in a pre-20-Sep part) prints
-  nothing and changes neither host; a station with stored send bytes
-  contributes nothing; T5's DEL and T1's REV land bit-identically to a SEND
-  track's on the same core; the chain is identical under four
-  instruction-level skews.
-- `make verify-two-core`: SEND, delay and series hops on their real cores ==
-  the DEV hatch.
-- `dsp_host` runs both cores since 7 Sep 2026, lock-step or under `-skew`;
-  a mismatch under skew is a defect, identity is not evidence
-  (`tools/harness/README.md`). The decisive configuration is BusDelay on
-  track 1, fed over the bus.
 
 ## The shape
 

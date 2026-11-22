@@ -43,14 +43,3 @@ A step value that is not the one PAGE LOOP stored was written by someone else
 (a resync), and becomes the true position. Leaving stores the true position at
 the track's next step. The tick-side code reads and writes only its own `.data`
 and the step bytes: no UI or kernel calls there.
-
-## Proof
-
-`tools/verify/verify_page_loop.py` under the port (MKI panel, blank project,
-64-step pattern): the combo sets the loop with no page flip and no trig placed;
-while T1 loops page 2 its step is always `16 + (T2's step % 16)` and a trig on
-step 18 fires (live AMP VOL from its lock); without the combo it does not yet;
-the combo again, a stop-and-start, and ending it mid-play or after the pattern's
-wrap all put T1 back level with T2; a 40-step pattern refuses page 4 and loops
-page 3's 8 steps; a MIDI track loops; a pattern change ends it.
-Run on an Octatrack MKI since ACCLOOP6 (25 Oct 2026), in every image through ACCLOOP32.
