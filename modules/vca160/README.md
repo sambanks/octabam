@@ -50,13 +50,17 @@ must keep the old ids pins them: `ids={"VCA160": 0x1b, "DISTORX": 0x06}`
 (`Remix.ids`). Up to image ACIDV81 (28 Oct 2026) the author's remix ran it
 on EQUALIZER's `0x0c` (`replaces="EQUALIZER"`).
 
-BRAIN files an effect's stored defaults and templates under its store id,
-`octabam.<module directory>` (`tools/remix/brain.py` `fx_store_id`), so the
-rename moves them from `octabam.vca160` to `octabam.vca160`: records saved
-under the old name are kept on the card and not applied (BRAIN.md 7.7
-rule 1), and a project saved with the old name reports the id as MOVED in
-BRAIN's ABOUT, PROJECT tab. The page layout hash (the keys and counts of the
-twelve slots) is unchanged.
+BRAIN files an effect's stored defaults and templates under its store id
+(`tools/remix/brain.py` `fx_store_id`): a declared `Store`, else
+`octabam.<module directory>`. As dB666 the module's store id was
+`octabam.db666`, and the author has defaults and templates saved under it on
+his card. The rename alone would move the id to `octabam.vca160`, and those
+records would stay on the card unapplied (BRAIN.md 7.7 rule 1). So the
+manifest declares `store=Store("octabam.db666")`: the store id is a
+compatibility key, not a name, and keeping it keeps the saved records
+applying and a project saved with the old name reporting nothing changed
+(`modules/vca160/brain.lock` records it; `brain.py check` passes). The page
+layout hash (the keys and counts of the twelve slots) is unchanged.
 
 ## Knobs
 
@@ -141,7 +145,8 @@ them, so they moved.
 
 The ledger refuses VCA160 beside SIDECHAIN_COMPRESSOR and beside KEYBUS (the
 same hook site, and a declared `conflicts` for each), so it cannot join
-`octabam`, which carries SIDECHAIN_COMPRESSOR, and beside DELAY SERVER, whose line covers payload B's
+`octabam` or `octabam-verbs`, which carry both KEYBUS and
+SIDECHAIN_COMPRESSOR, and beside DELAY SERVER, whose line covers payload B's
 words from 0x38000 up, the records at $3FFF0–$3FFFF included (so no bus remix).
 No `window` placement is declared; the build checks window homes against
 `Claims.dsp_ranges`.
@@ -155,7 +160,11 @@ below):
 
 - **Bit-exact** against `vca160_ref.fixed()`: defaults, every knob at its
   ends, the OVER knee, KEY from T1 (payload B's half) and T7 (payload A's), KEY
-  out of range, a split block, LFO-dirty page words.
+  out of range, a split block, LFO-dirty page words. Added 22 Nov 2026, after
+  an independent review found the gate blind to two faults (a KEY routed to
+  the wrong track's record, an R channel read from L's word, both measured
+  passing the earlier gate): every KEY T1–T8 on a bus whose eight words all
+  differ, and two stereo renders with L ≠ R.
 - **The manual**: attack to 63 % of the reduction 15.8 / 6.7 / 2.8 ms for
   10 / 20 / 30 dB over threshold at infinity:1 (the manual: 15 / 5 / 3 ms);
   release 123 dB/s (125).
@@ -245,7 +254,7 @@ All on the author's MKI, by ear, under the earlier name dB666:
 - **Remix `acidtrack`, on EQUALIZER's id**, from 11 Oct 2026 (first flash)
   to image ACIDV81 (28 Oct 2026): the side-chain ducking heard clearly from
   the first flash (KEY on the kick), then hours of live use, with the bus at
-  today's +$3FF8 words in ACIDV79 (27 Oct) and ACIDV81. `make check
+  the then +$3FF8 words in ACIDV79 (27 Oct) and ACIDV81. `make check
   REMIX=acidtrack` (the tap inside the real dispatcher, under the ColdFire
   port) passed on the author's tree. That form had no AGU nops, no BEAT
   handshake and no one-cycle sum.
@@ -255,7 +264,8 @@ All on the author's MKI, by ear, under the earlier name dB666:
   unit from 18 Nov 2026) and ACIDF08 (from 19 Nov), as DISTORX's evidence
   records. The author's report of 22 Nov 2026: in use practically since it
   was written, usually on T5 and T6 with KEY on T1 (the kicks), also on the
-  master and on single tracks; no clicks, noise or hangs. T5 and T6 are on
+  master and on single tracks; no defect noticed. He confirmed the images
+  and the 29 Oct date the same day. T5 and T6 are on
   core 0 and T1 on core 1, so that use reads T1's record across the cores,
   in payload B's half of the shared window (the bus table above).
 - Not measured on a unit: the ducking against the model's attack and
@@ -294,7 +304,8 @@ heartbeat checks pass before and after each commit.
 ## Gates
 
 `tools/verify/verify_vca160.py`: generated source, bit-exact on eight
-settings (the bus planted with `-pokey`), the passthroughs, the manual's
+settings (the bus planted with `-pokey`), on every KEY with eight different
+bus words and on two stereo renders (L ≠ R), the passthroughs, the manual's
 attack and release, the ratios, the key, silence, every knob.
 
 ## Files

@@ -29,7 +29,7 @@ Stereo-linked: one detector on (L^2 + R^2)/2, one gain for both channels.
 """
 import math as _m
 
-from remix.schema import (BusRole, Category, Claims, DspHook, DspRange, DspSection, Formatter,
+from remix.schema import (Store, BusRole, Category, Claims, DspHook, DspRange, DspSection, Formatter,
                           Gate, Harness, Kind, MenuEntry, Module, Param, Evidence, Level, YBase)
 
 FS = 44100.0
@@ -105,8 +105,11 @@ MODULE = Module(
     key="VCA160",
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="MaMarko", author_url="https://github.com/braikomarko-hub",
+    # BRAIN's store id stays the one it had as dB666 (octabam.<module directory> then): the defaults and
+    # templates the author saved on his card keep applying after the rename (README "FX id")
+    store=Store("octabam.db666"),
     evidence=(Evidence(Level.UNIT, unit="MKI", who="MaMarko", date="2026-10-28",
-        note="as dB666, the owner's MKI, acidtrack images on EQUALIZER's id from 11 Oct 2026, with the bus at today's "
+        note="as dB666, the owner's MKI, acidtrack images on EQUALIZER's id from 11 Oct 2026, with the bus at the then "
              "+$3FF8 words in ACIDV79 (27 Oct) and ACIDV81 (28 Oct): side-chain ducking by ear, hours of live use. "
              "That form had no AGU nops, no BEAT handshake and no one-cycle sum"),
               Evidence(Level.EMULATOR, ref="verify_vca160",
@@ -115,7 +118,8 @@ MODULE = Module(
         note="as dB666 on its own id 0x1b (the DSP words of this PR's first commit, unchanged in the fork since 29 Oct "
              "2026), in the owner's acidtrack images, among them ACIDF07B (from 18 Nov 2026) and ACIDF08 (from 19 Nov): "
              "usually on T5 and T6 with KEY on T1 (the kicks), so the key crosses from core 1 to core 0; also on the "
-             "master and on single tracks; no clicks, noise or hangs heard (the owner's report, 22 Nov 2026). By ear, "
+             "master and on single tracks; no defect noticed (the owner's report, 22 Nov 2026, who confirmed the images "
+             "and the 29 Oct date). By ear, "
              "not a measurement. The DSP audit's T34, T31 and T11 commits after it are not flashed"),),
     doc="Modelled on the dbx 160 compressor: true-RMS detector, threshold, ratio to infinity and beyond, side-chain KEY from any track.",
     menu=MenuEntry(
