@@ -41,6 +41,8 @@ def main() -> int:
             s.open_seq("t1")
             page = seq.local_sym("ef_page_no")
             dest = seq.local_sym("ef_dest")
+            check("audio SEQ opens on SRC PTCH by default",
+                  p.long(dest) == 0, f"dest={p.long(dest)}")
             part = (p.long(seq.DBPTR_ADDR)
                     + p.peek(seq.UI_PART, 1)[0] * seq.PART_STR)
             machine = part + 0x8eda2
@@ -70,21 +72,41 @@ def main() -> int:
             check("RIGHT opens Harmony for NOTE/PTCH without changing the grid",
                   p.long(page) == 1 and seq.mask_of(p) == grid,
                   f"grid={seq.mask_of(p).hex()} original={grid.hex()}")
-            range_value = seq.local_sym("ef_tone_range")
+            phrase_value = seq.local_sym("ef_tone_phrase")
+            jump_value = seq.local_sym("ef_tone_jump")
+            tonal_buf = seq.local_sym("ef_buf")
 
-            def range_pixels() -> int:
+            def phrase_pixels() -> int:
                 rows = p.link.lcd_rows()
                 return sum(rows[y][x] for y in range(32, 39) for x in range(50, 67))
 
-            for delta, expected in ((-3, 9), (-8, 1), (-1, 0)):
-                p.proc.command(f"knob 0x33 {delta}", "ok")
-                p.run(250)
-                pixels = range_pixels()
-                check(f"RANG value {expected} stays visible on screen",
-                      p.long(range_value) == expected and pixels > 0,
-                      f"value={p.long(range_value)} pixels={pixels}")
-            p.proc.command("knob 0x33 12", "ok")
+            default_phrase_pixels = phrase_pixels()
+            check("new audio settings default to first PHRS option RAND",
+                  p.long(phrase_value) == 0 and default_phrase_pixels > 0,
+                  f"phrase={p.long(phrase_value)} pixels={default_phrase_pixels}")
+            p.proc.command("knob 0x33 1", "ok")
             p.run(250)
+            up_pixels = phrase_pixels()
+            check("PHRS next option after RAND is UP",
+                  p.long(phrase_value) == 1 and up_pixels > 0
+                  and up_pixels != default_phrase_pixels,
+                  f"phrase={p.long(phrase_value)} pixels={up_pixels}")
+            p.proc.command("knob 0x33 -1", "ok")
+            p.run(250)
+            check("PHRS returns to RAND at its first value",
+                  p.long(phrase_value) == 0)
+            p.proc.command("knob 0x34 127", "ok")
+            p.run(250)
+            check("audio E JUMP reaches 127",
+                  p.long(jump_value) == 127
+                  and p.peek(tonal_buf, 4) == b"127\0",
+                  f"jump={p.long(jump_value)} display={p.peek(tonal_buf, 4)!r}")
+            p.proc.command("knob 0x34 -127", "ok")
+            p.run(250)
+            check("audio JUMP clamps at zero and displays 0",
+                  p.long(jump_value) == 0
+                  and p.peek(tonal_buf, 2) == b"0\0",
+                  f"jump={p.long(jump_value)} display={p.peek(tonal_buf, 2)!r}")
             p.press("left", settle=150)
             check("LEFT restores page 1/2 without changing the grid",
                   p.long(page) == 0 and seq.mask_of(p) == grid,
@@ -107,15 +129,26 @@ def main() -> int:
             # MIDI T1 settings occupy their own record (audio records are 0..7).
             p.press("midi", settle=300)
             s.open_seq("t1")
+            check("MIDI SEQ opens on NOTE by default",
+                  p.long(dest) == 0, f"dest={p.long(dest)}")
             p.press("right", settle=150)
-            for enc, delta in ((0, 1), (1, 2), (2, 2), (3, -12)):
+            for enc, delta in ((0, 1), (1, 2), (2, 2), (3, -12), (4, 127)):
                 p.proc.command(f"knob {0x30 + enc:#x} {delta}", "ok")
                 p.run(250)
             tone_mem = seq.local_sym("ef_tone_mem")
             midi_record = tone_mem + 64
-            check("MIDI tonal controls persist scale/root/VOIC/range",
-                  p.peek(midi_record, 7) == bytes((1, 2, 0, 0, 0, 3, 0)),
+            check("MIDI tonal controls persist scale/root/mode/JUMP/PHRS/VOIC",
+                  p.peek(midi_record, 7) == bytes((1, 2, 0, 127, 0, 3, 0)),
                   p.peek(midi_record, 7).hex())
+            check("MIDI E JUMP display is numeric",
+                  p.peek(tonal_buf, 4) == b"127\0",
+                  repr(p.peek(tonal_buf, 4)))
+            p.proc.command("knob 0x34 -127", "ok")
+            p.run(250)
+            check("JUMP clamps at zero", p.long(jump_value) == 0,
+                  f"jump={p.long(jump_value)}")
+            p.proc.command("knob 0x34 127", "ok")
+            p.run(250)
             p.proc.command("knob 0x32 -127", "ok")
             p.run(250)
             check("MIDI VOIC stops at one when turned below minimum",
@@ -132,7 +165,8 @@ def main() -> int:
                   p.long(seq.local_sym("ef_tone_scale")) == 0
                   and p.long(seq.local_sym("ef_tone_root")) == 0
                   and p.long(seq.local_sym("ef_tone_mode")) == 0
-                  and p.long(seq.local_sym("ef_tone_range")) == 12)
+                  and p.long(jump_value) == 0
+                  and p.long(seq.local_sym("ef_tone_phrase")) == 0)
             s.close_seq()
             s.open_seq("t1")
             check("reopening MIDI T1 restores tonal settings",
@@ -140,7 +174,8 @@ def main() -> int:
                   and p.long(seq.local_sym("ef_tone_root")) == 2
                   and p.long(seq.local_sym("ef_tone_mode")) == 0
                   and p.long(seq.local_sym("ef_tone_harm")) == 3
-                  and p.long(seq.local_sym("ef_tone_range")) == 0)
+                  and p.long(jump_value) == 127
+                  and p.long(seq.local_sym("ef_tone_phrase")) == 0)
 
             s.close_seq()
 
@@ -148,16 +183,27 @@ def main() -> int:
             p.press("midi", settle=300)
             s.open_seq("t1")
             p.press("right", settle=150)
-            for enc, delta in ((1, 2), (2, 127), (5, 127)):
+            for enc, delta in ((1, 2), (2, 127), (4, 127), (5, 127)):
                 p.proc.command(f"knob {0x30 + enc:#x} {delta}", "ok")
                 p.run(250)
             check("audio tonal controls use a separate T1 record",
-                  p.peek(tone_mem, 6) == bytes((0, 2, 0, 12, 0, 0)),
-                  p.peek(tone_mem, 6).hex())
+                  p.peek(tone_mem, 7) == bytes((0, 2, 0, 127, 0, 0, 0)),
+                  p.peek(tone_mem, 7).hex())
             rows = p.link.lcd_rows()
             check("audio C and F cells are blank",
                   not any(rows[y][x] for y in (*range(3, 18), *range(23, 38))
                           for x in range(101, 118)))
+            check("audio E JUMP remains active at 127",
+                  p.long(jump_value) == 127,
+                  f"jump={p.long(jump_value)}")
+            s.close_seq()
+            s.open_seq("t2")
+            check("audio JUMP is isolated per track",
+                  p.long(jump_value) == 0, f"jump={p.long(jump_value)}")
+            s.close_seq()
+            s.open_seq("t1")
+            check("audio JUMP reloads from its own track record",
+                  p.long(jump_value) == 127, f"jump={p.long(jump_value)}")
             s.close_seq()
             p.poke(machine, original_machine)
 

@@ -87,7 +87,7 @@ reference.
   instance's own window (a stray write vs a clobber of a loaded module).
   `-dirty` pre-fills Y with garbage, as hardware never zeroes a buffer.
 - **Instrumentation:** `-track` dumps r7-relative state words every block,
-  `-peekx/-peeky/-pokey` read and seed words, `-dumpy` writes a region,
+  `-peekx/-peeky/-pokey/-xword` read and seed words, `-dumpy` writes a region,
   `-trace` logs the first N instructions; every run reports
   instructions/sample per instance. `-trace` alone skips the body of every
   `do` loop, because the interpreter runs a loop in one step; `-steptrace`

@@ -182,7 +182,7 @@ ch_glz:
         add     #>$020000,a             ; + 1/64 -> gain/64, 0.016 .. 0.75
         move    a,x:(r7+$21)            ; gq
         move    a,x0                    ; gq = the denominator, >= 1/64
-        move    #>$010000,a             ; 1/128 (a clean load: a0 = 0)
+        move    #$01,a                   ; 1/128 (a clean load: a0 = 0) (short immediate: bits 23-16)
         andi    #$fe,ccr
         do      #$18,>norep_tx_01
         div     x0,a
@@ -311,7 +311,7 @@ ch_pos3:
 ; no host, or boot garbage. $15 the counter last seen, $16 blocks since it
 ; moved (held at 8).
         move    x:(r7+$16),b
-        add     #>$1,b
+        add     #$1,b                    ; (6-bit immediate)
         move    #>$8,x1
         cmp     x1,b
         tgt     x1,b
@@ -330,7 +330,7 @@ ch_pos3:
         tst     a
         bne     ch_kself                ; the master keys on its own input
         move    x:(r7+$16),a
-        cmp     #>$4,a
+        cmp     #$4,a                    ; (6-bit immediate)
         bge     ch_kzero                ; stale: silence
         move    y:>$990,x0              ; T1's peak |mono in|
         move    x:(r6+$d),a             ; KLVL, the knob field
@@ -448,13 +448,13 @@ norep_tx_04:
         add     x0,a                    ; 3k
         move    a1,y0
         neg     a
-        and     #>$1f,a                 ; j = -3k mod 32
+        and     #$1f,a                   ; j = -3k mod 32 (6-bit immediate)
         add     #>$235,a                ; T follows ENC and DEC: 51 + 514
         move    a1,n1
         move    y0,a
-        add     #>$1f,a
+        add     #$1f,a                   ; (6-bit immediate)
         asr     #$5,a,a                 ; ceil(3k/32) = 16 - floor(rez)
-        add     #>$5,a                  ; s = 21 - floor(rez), 5..17
+        add     #$5,a                    ; s = 21 - floor(rez), 5..17 (6-bit immediate)
         move    a1,n2
         move    p:(r1+n1),x1            ; T[j]
         move    #>$ffffff,a             ; a2 = $ff: the mask shifts in zeros
@@ -569,7 +569,7 @@ ch_live:
         move    x0,x:(r3)+
         move    x:(r7+$22),x0           ; K/4
         move    x0,x:(r3)+
-        move    #>$800000,x0            ; -1.0: the dip's t = Lv^2/2 - 1
+        move    #$80,x0                  ; -1.0: the dip's t = Lv^2/2 - 1 (short immediate: bits 23-16)
         move    x0,x:(r3)+
         move    x:(r7+$28),y1           ; the dip's a
         bsr     ch_rset
@@ -590,7 +590,7 @@ ch_live:
 ; output scale at $33 (the ring words around each callee).
         move    x:(r7+$4e),a             ; d = DRV/128
         move    a,x0
-        move    #>$300000,y1            ; 0.375
+        move    #$30,y1                  ; 0.375 (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$100000,a             ; G/8 = 0.125 + 0.375 d
         move    a,x:(r7+$32)
@@ -668,7 +668,7 @@ ch_gdone:
         move    #$1,n6                  ; 16 - 15
         bra     ch_rdone
 ch_r12:
-        cmp     #>$1,a
+        cmp     #$1,a                    ; (6-bit immediate)
         bne     ch_rinfl
         move    #$42,n3                 ; DaTube's L pair
         move    x:(r7+$32),x0           ; TUBE: G/8 (0.5+d)/2 d d/2 comp/2 k R scale
@@ -794,7 +794,7 @@ ch_rdone:
         move    x:(r7+$05),x0
         tst     a
         tle     x0,a
-        sub     #>$1,a
+        sub     #$1,a                    ; (6-bit immediate)
         move    a,x:(r7+$04)
         lua     (r1-$33),r1             ; TUBE_UP again
         lua     (r1+$11),r2             ; its slopes

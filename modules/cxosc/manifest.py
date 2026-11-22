@@ -315,7 +315,10 @@ MODULE = Module(
              "FINE/FOLD/MIX; HOLD INF; slew. MKII CX-CF 69 (9 Nov 2026): CF METER — 4× CX idle 22%/ISR 272 us; 6× "
              "~12%/309; 7× idle 0%/355 max 446 (wall) → ML_FM_MAX=6; author confirmed 6 MAX toast on unit. Prior "
              "CX 41 / CX 28 / VRCS-CX VS. verify_cxosc + make check REMIX=cxosc. On C28 (17 Nov 2026), Ilia "
-             "reports CX OSC sounds good on the MKII."),),
+             "reports CX OSC sounds good on the MKII."),
+        Evidence(Level.UNIT, who="ilia-murzinov", image="CXSEQ CV.RMX (BUILD 79)",
+            date="2026-11-20", commit="5e737dc4bddd27d2e6c02dc54b8de341493dbc08",
+            note="Ilia confirms INDX changes the saw and triangle carrier waveforms on this build.")),
     doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..34 CAR/MOD/SYMM/FDBK/PWM (DEC not a destination). Local fork of FM SYNTH.",
     conflicts=(
         ("SYNTH MACHINE", "both own the FLEX/STATIC kind-table renderers, page cave 0x400d24d0, and machine-list sites"),
