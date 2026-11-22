@@ -7,10 +7,9 @@
 ;
 ; BAL = this track ↔ noise always (neighbour never replaces the dry source).
 ; SETUP SRC ($d companion, bottom left): LFO (default) or NBR. NBR AM’s noise
-; from previous track’s SC keybus Y:($800+(track−1)·$40); quiet → noise stops.
+; from previous track’s KEYBUS X:($37f60+track−1); quiet → noise stops.
 ; X:$420 = absolute track (0..7); harness $420=0 invents abs from FX2 pos.
-; Sample loop reads Y:(r5)+ directly — never flatten into X (X:$500 stomped
-; shared scratch and broke FM chromatic / MIDI IN; HW A/B 22 Oct 2026).
+; KEYBUS publishes the block peak of |mono| in X:$37f60+track.
 ; Law: noise' = FDBK+DRV(noise);  noise'' = noise'·((1−DPTH)+DPTH·uni);
 ;       WID stereoizes noise'';  wet = (1−BAL)·dry + BAL·noise''.
 ;       Dry never AM/DRV/FDBK'd — BAL=0 is always exact dry.
@@ -26,7 +25,7 @@
 ;     $06 fbL   $07 fbR   (FDBK on mid only; both kept in step when mono)
 ;     $0c dcL   $0d dcR   (feedback DC tracker — high FDBK+DRV otherwise rails)
 ;     $10..$19 block knobs/flags ($16 = BAL)
-;     $1b use_nbr (SRC=NBR)  $1c pos  $1d nbr Y: read ptr (keybus lane)
+;     $1b use_nbr (SRC=NBR)  $1c pos  $1d keybus X: address
 ;     $1e nbr uni (smoothed |mono|)  $1f env one-pole state
 ;     $20 nL after AM/width  $21 nR after AM/width  $22 dryL  $23 dryR
 ;     $24 scratch (u / pre-HP / m)
@@ -169,14 +168,13 @@ proc:
         move    a,b                     ; harness: abs = pos
         tst     b
         bne     vd_abs
-        move    #>$000001,b             ; pos0 harness → read Y:$800 as nbr
+        move    #>$000001,b             ; pos0 harness → model T2 reading T1
 vd_abs:
         move    b,a
         move    #>$000001,x0
         sub     x0,a                    ; previous absolute track
-        asl     #$6,a,a                 ; · $40
-        move    #>$800,x0
-        add     x0,a                    ; Y:keybus gen 0
+        move    #>$37f60,x0
+        add     x0,a                    ; X:keybus word for previous track
         move    a,x:(r7+$1d)
 vd_nbr_go:
         move    #$1,n0
@@ -186,7 +184,7 @@ vd_nbr_go:
         move    a,x:(r7+$22)
         move    x:(r0+n0),a
         move    a,x:(r7+$23)
-; neighbour AM uni: smoothed |mono| from Y keybus (BAL source stays this track)
+; neighbour AM uni: smoothed published keybus peak (BAL source stays this track)
         move    x:(r7+$1b),a
         tst     a
         beq     vd_have_in
@@ -194,14 +192,8 @@ vd_nbr_go:
         tst     b
         beq     vd_have_in
         move    b,r5
-        move    y:(r5)+,x0
-        move    y:(r5)+,x1
-        move    r5,b
-        move    b,x:(r7+$1d)
-        move    x0,a
-        add     x1,a
-        asr     #$1,a,a                 ; mono
-        abs     a                       ; |mono| already in [0,1)
+        move    x:(r5),a
+        abs     a                       ; KEYBUS publishes |mono| peak in X
         move    x:(r7+$1f),b            ; env one-pole
         sub     b,a
         move    a,x0

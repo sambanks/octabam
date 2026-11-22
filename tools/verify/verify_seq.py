@@ -151,6 +151,14 @@ def decode_ptch(raw: int, *, synth: bool) -> int:
     return (raw - 64) // 5
 
 
+def nearest_sample_semitone(raw: int) -> int:
+    """Round sample PTCH raw to the nearest semitone; ties go away from zero."""
+    offset = raw - 64
+    if offset >= 0:
+        return (offset + 2) // 5
+    return -((-offset + 2) // 5)
+
+
 def encode_ptch(st: int, *, synth: bool) -> int:
     """PTCH lock byte after the 0..127 clamp."""
     raw = (64 + st) if synth else (64 + 5 * st)
@@ -199,8 +207,17 @@ def check_ui(src: str) -> None:
           and "X_TITLE" in _block(src, "ef_draw:", "d9:")
           and "ef_text" in _block(src, "ef_draw:", "d9:"))
     check("no ROTATION string", "ROTATION" not in src)
-    check("no RAND VEL/PTCH labels",
-          "RAND VEL" not in src and "RAND PTCH" not in src)
+    check("RAND is first in PHRS and is the default value",
+          'P_RAND:   .asciz "RAND"' in src
+          and ".long P_RAND,P_UP,P_DOWN,P_ALT,P_TRI" in src
+          and "RAND VEL" not in src and "RAND PTCH" not in src
+          and "clrb    %a0@(TON_PHRASE)" in _block(src, "ef_tone_defaults:", "ef_tone_phrase_v10_to_v11:"))
+    check("audio and MIDI Harmony expose E=JUMP",
+          'L_JUMP:   .asciz "JUMP"' in src
+          and "cmpi.l  #4,%d3" in _block(src, "ef_tonal_draw_cell:", "ef_tonal_nudge:")
+          and "lea     L_JUMP,%a0" in _block(src, "ef_tonal_draw_cell:", "ef_tonal_nudge:")
+          and "ef_tone_jump" in _block(src, "ef_draw_tonal:", "ef_tonal_cell:")
+          and "TON_JUMP,  3" in src)
 
     # Panel strings: plain ASCII only. No invented unicode arrows/blocks.
     panel = re.findall(r"\.asciz\s+\"([^\"]*)\"", src)
@@ -308,8 +325,11 @@ def check_ui(src: str) -> None:
           re.search(r"ef_rot:\s*\.long\s+0\b", src) is not None)
     check("default ef_steps=16",
           re.search(r"ef_steps:\s*\.long\s+16\b", src) is not None)
-    check("default ef_dest=LOCK_VOL",
-          re.search(r"ef_dest:\s*\.long\s+LOCK_VOL\b", src) is not None)
+    check("default ef_dest=LOCK_PTCH",
+          re.search(r"ef_dest:\s*\.long\s+LOCK_PTCH\b", src) is not None)
+    check("ef_defaults resets audio DEST to LOCK_PTCH",
+          re.search(r"ef_defaults:.*?moveq\s+#LOCK_PTCH,%d1",
+                    src, re.S) is not None)
     check("default ef_depth=0",
           re.search(r"ef_depth:\s*\.long\s+0\b", src) is not None)
 
@@ -317,12 +337,12 @@ def check_ui(src: str) -> None:
           re.search(r"\.set\s+SLOT_B,\s*28\b", src) is not None)
     check("ef_bank has 8 slots",
           re.search(r"ef_bank:\s*\n\s*\.rept\s+8\b", src) is not None)
-    check("per-DEST depth + audio/MIDI PLOCK recipes and tonal state in euclid.work v9",
+    check("per-DEST depth + audio/MIDI PLOCK recipes and tonal state in euclid.work v11",
           "ef_dep_mem:" in src and "ef_dep_load:" in src and "ef_dep_save:" in src
           and "ef_plk_mem:" in src and "ef_plk_load:" in src and "ef_plk_save:" in src
           and "ef_lane_mem:" in src and "ef_lane_load:" in src and "ef_lane_save:" in src
           and "ef_plk_expand_v3:" in src
-          and re.search(r"\.set\s+EF_VER,\s*9\b", src) is not None
+          and re.search(r"\.set\s+EF_VER,\s*11\b", src) is not None
           and "EF_FILE_V4" in src and "el_v4:" in src
           and "EF_FILE_V5" in src and "el_v5:" in src
           and "ef_midi_bank" in src and "ef_midi_dep_mem" in src
@@ -392,8 +412,8 @@ def check_ui(src: str) -> None:
     check("MIDI mask helper preserves the outer target loop register",
           "movem.l %d2-%d7/%a0-%a1,(%sp)" in midi_fill
           and "movem.l (%sp),%d2-%d7/%a0-%a1" in midi_fill)
-    check("ef_bank defaults DEST=LOCK_VOL",
-          re.search(r"ef_bank:.*?\.long\s+5,\s*0,\s*LOCK_VOL,\s*0,\s*0",
+    check("ef_bank defaults DEST=LOCK_PTCH",
+          re.search(r"ef_bank:.*?\.long\s+5,\s*0,\s*LOCK_PTCH,\s*0,\s*0",
                     src, re.S) is not None)
     check("ef_store_slot / ef_load_slot present",
           "ef_store_slot:" in src and "ef_load_slot:" in src)
@@ -884,12 +904,9 @@ def check_ui(src: str) -> None:
     check("ef_write_ptch uses SEQ scale mask and root, independent of quantizer",
           "ef_tone_mask" in ptch and "ef_tone_root" in ptch
           and "SCALE_AT" not in ptch and "NV_ROOT" not in ptch)
-    check("RANG 0 returns Part PTCH; audio INTV is applied only in ranged path",
-          "ep_base:" in ptch
-          and "ef_part_ptch" in _block(src, "ep_base:", "ep_clear:")
-          and "beq.w   ep_base" in ptch
-          and "ef_pitch_offset" in ptch
-          and "ep_dst: addl    ef_pitch_offset" in ptch)
+    check("PTCH has no separate RANG control",
+          "ef_tone_range" not in src and "L_RANGE" not in src
+          and "ep_base:" not in ptch)
     check("ef_write_ptch writes LOCK_PTCH", "LOCK_PTCH" in ptch)
     check("ef_is_synth accepts CX with FM/SY",
           "0x4358" in _block(src, "ef_is_synth:", "ef_bit_addr:")
@@ -923,6 +940,10 @@ def check_ui(src: str) -> None:
           and "ep_samp:" in ptch
           and re.search(r"muls\.l\s+%d1,%d0", ptch) is not None
           and re.search(r"addi\.l\s+#64,%d0", ptch) is not None)
+    check("sample Part PTCH is rounded to whole semitones before scale selection",
+          "ep_sround_pos:" in ptch
+          and "nearest semitone below" in ptch
+          and "nearest semitone above" in ptch)
     check("ef_write_ptch clamps raw to 0..127",
           "ep_clamp:" in ptch and re.search(r"moveq\s+#127,%d1", ptch) is not None)
     check("ef_dest_name reads LFO/AMP/FX descriptors + resolver",
@@ -1066,6 +1087,12 @@ def check_pitch_behavior() -> None:
     check("decode synth raw 71 -> +7", decode_ptch(71, synth=True) == 7)
     check("decode sample raw 64 -> 0", decode_ptch(64, synth=False) == 0)
     check("decode sample raw 94 -> +6", decode_ptch(94, synth=False) == 6)
+    check("fractional sample Part PTCH rounds to nearest semitone",
+          [nearest_sample_semitone(raw) for raw in (62, 63, 64, 65, 66, 67, 68)]
+          == [0, 0, 0, 0, 0, 1, 1])
+    check("sample PTCH semitone locks use only 64+5*n raw values",
+          all((encode_ptch(note, synth=False) - 64) % 5 == 0
+              for note in range(-12, 13)))
     cands_rel = pitch_candidates(5, root=0, mask=major_c, base_st=7)
     check("major/C ±5 around Part +7: all abs st near 7, on scale",
           all(2 <= st <= 12 for st in cands_rel)

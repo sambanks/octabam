@@ -914,6 +914,18 @@ DARK REV on the slot at `0x30000` writes up to `0x33da2` (`stock.SLOT_EXTENT`), 
 build refuses an uploaded window record above `0x37f00`. The two clear gaps are `0x33da3..0x33fff`
 and `0x37da3..0x37eff`.
 
+**Seen again, 22 Nov 2026:** the reverb guard's body in `octabam` is followed by SIDECHAIN_COMPRESSOR's
+hook stubs, which end at `0x33ffc`: 3 words of slack in block 0. A test image with 22 more words in the
+guard body (unreachable `nop`s only) put `moncommit B` and `scinit` at `0x34000..0x34012`, inside the
+slot DARK REV writes up to `0x37da2`; the build accepted it and the DSP's frame count stayed at 0 for
+90 s after the boot, twice. A diagnostic build with a longer guard (+32 words) stalled the DSP 6.6 s into
+its first run. Two test images and several hours of runs were read as results about the guard's logic
+before the stub addresses were read back from `out/dsp/window_records.json`.
+**Gate:** the build now refuses an uploaded window record that overlaps `[slot, slot + extent)` of a
+guarded reverb for any of the four FX2 slots (`0x30000`, `0x34000`, `0x38000`, `0x3c000`); the shipped
+`octabam` is byte-identical with it. Rule: after adding words to a window record, read `window_records.json`
+for the records after it.
+
 <a name="trap-host-mask"></a>
 
 ### A host write at the frame interrupt's entry is lost on every other frame

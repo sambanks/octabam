@@ -4,4 +4,4 @@ A contributor's own selection of modules for a card: the image they flashed, or 
 
 | remix | contains | proof |
 |---|---|---|
-| [`cxosc-core`](cxosc-core/README.md) | CORE + REMIX SWITCH + CX OSC on the 14 stock effects. | on a unit (MKII, ilia-murzinov, CXOSC C28.RMX, 2026-11-17): CORE + CX OSC handoff; marker-less machine list, mono, stock LFOs. Ilia reports CX OSC sounds good on the MKII. The ColdFire emulator boots the image to the RTOS handoff. |
+| [`cxosc-core`](cxosc-core/README.md) | CORE + REMIX SWITCH + CX OSC and SEQ on the 14 stock effects. | on a unit (ilia-murzinov, CXSEQ CV.RMX (BUILD 79), 2026-11-20): Ilia confirms INDX changes the saw and triangle carrier waveforms on this build. |
