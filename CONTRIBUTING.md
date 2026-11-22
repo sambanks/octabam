@@ -11,7 +11,11 @@ hash it, or name the commit that built it. Anything a module needs from
 the stock firmware is taken from the user's copy at build time (Octakit,
 until 6 Oct 2026, `.incbin`'d 459 distinct `stock/NNNN.bin` files that
 way). `.gitignore` refuses `*.bin`,
-`*.syx`, `downloads/` and `out/`.
+`*.syx`, `downloads/` and `out/`. The web builder's patches
+(`docs/site/builder/patches/*.obp`) are committed under the same rule: each
+holds octabam's bytes and instructions to copy stock bytes from the user's own
+file in the browser, and `tools/web/obpatch.py` refuses a patch whose literal bytes
+contain a stock sequence of 16 bytes or more (`MIN_STOCK`).
 
 What the rule does not cover (decided 16 Sep 2026): the few displaced
 instructions at a cave's hook site. A `CfPatch.hook_stock` is the six to
@@ -195,7 +199,7 @@ what `make check` runs, what each gate proves, what none of them can see.
 The contract:
 
 **`make check REMIX=<name>` is the floor**, for every remix the change
-reaches. No make target has a default remix: every target that builds or checks an
+reaches; CI runs it for each of them ("Before you open a PR"). No make target has a default remix: every target that builds or checks an
 image takes `REMIX=<name>` and refuses without it (`make modules` lists
 them); `make reach` and CI check `octabam`, the golden master, for every module
 it carries. It builds, prices cycles, runs the gates every remix gets (the
@@ -251,41 +255,31 @@ Rebase onto current main. Gates run before the rebase are not a result: a
 branch that merges without a conflict can still fail on main (PR #396's
 stress fixture named a knob that #415 had renamed).
 
-PRs merge one at a time. Before a merge, the maintainer updates the branch
-only when main has moved under it since its last green run, in a file the
-PR also changed or in a module, hook, cave or remix its gates build with;
-a PR main has not moved under merges as it stands.
-
-CI's `Gates — make reach` job runs the `make reach RUN=1 KEEP=1` line below
-on every PR push, against the 1.40C it downloads for that run; link the run
-in the PR body. A first-time contributor's run waits for maintainer approval.
-The commands below are the same ones to run on your own machine, on a rebased
-tree, while you iterate.
+**CI runs the gates; you run the one for your change.** The whole-remix
+checks, `make reach` and the `refhash` pass take hours on one machine
+(`check-remix octabam` took 72 min on sambanks/octabam#1087, 12 Nov 2026), and
+CI runs every one the diff reaches on each push, fork PRs included, against
+the 1.40C it downloads for that run (owner's rule, 13 Nov 2026). Locally:
 
 ```bash
 git fetch origin && git rebase origin/main
-make reach RUN=1 KEEP=1      # QUICK: every module or tool change
-STRESS_SOURCE=<a local project> make reach FULL=1 RUN=1 KEEP=1 JOBS=3
-#   FULL=1 (optional): every gate, identity and accept included, at full speed
-#   KEEP=1: every gate, then one table (instead of stopping at the first failure)
-#   JOBS=3: the per-remix lines over three worktrees at a time
+python3 tools/verify/verify_<name>.py <remix>   # the one gate script for the change
+make verify-docs                                # after a manifest, selection or doc change
+git push fork <branch>
 ```
 
-`CACHE=0`: run every gate job; by default a job whose image and inputs
-passed before on this machine is reported `cached` and not run, so the
-run before merging, after a rebase over unrelated work, is mostly cache
-hits ([TESTING.md section 6](docs/contributing/TESTING.md#6-make-reach-which-gates-a-change-reaches)).
-Jobs wait for one of the machine's gate slots (`OCTABAM_SLOTS`, default 3)
-when other sessions are running gates.
+Then open the PR and read its checks. A local `make check REMIX=<name>` or
+`make reach RUN=1` is for a failure CI reported that the one script cannot
+reproduce; `make reach` (without `RUN=1`) only prints what the diff reaches,
+and is quick. A first-time contributor's run waits for maintainer approval.
+In the PR body, link the run and list each gate's result from its log (the
+template asks for it). A remix with a DSP module that declares no `dear`
+makes `make accept` report `blocked` with the module's name; say so in the PR.
 
-Without `STRESS_SOURCE` the accept line cannot run, so the list carries
-the `make check` lines separately and names the accept line as blocked.
-A remix with a DSP module that declares no `dear` makes `make accept`
-report `blocked` with the module's name; say so in the PR. List each
-command and its result in the PR body (`make reach`'s output is the list;
-the PR template asks for it). Every PR also runs
-`make reach RUN=1 KEEP=1` in CI on a runner that downloads the 1.40C for that
-run.
+PRs merge one at a time, oldest ready first. Before a merge, the maintainer
+updates the branch only when main has moved under it since its last green
+run, in a file the PR also changed or in a module, hook, cave or remix its
+gates build with; a PR main has not moved under merges as it stands.
 
 A change that alters what a remix does — its modules, effects, menus,
 costs (memory pages, DSP words) or proof status — updates the
@@ -312,17 +306,29 @@ A manifest, remix selection or module README change leaves the generated
 copies stale: `make docs` renders `README.md`, `remixes/README.md` and
 `remixes/test/README.md` from the manifests and the selections. Run
 `make docs` and commit the result; `make verify-docs` is the local
-check, and CI's `docs and links` job refuses a stale copy.
+check, and CI's `📚 Docs, Site and Web Patches` job refuses a stale copy.
 
 ## What CI checks
 
-`.github/workflows/ci.yml` runs on every PR, on `main` and by hand. Every
-job but `Gates — make reach` runs without Elektron bytes; that job fetches
-the 1.40C from Elektron's site into the runner on each run, with the zip hash
-pinned, and runs for pushes to `main` and every PR; a first-time contributor's run waits for maintainer approval. [TESTING.md section 11](docs/contributing/TESTING.md#11-what-github-actions-checks)
+`.github/workflows/ci.yml` runs on every PR, on `main` and by hand. `🔍
+Classify Changes` decides from the diff which jobs run; `🗺️ Plan Gates`
+builds each reached remix's image and splits the gates `make reach` plans
+into units, leaving out the ones whose pass is recorded for the same image and
+inputs (reported `cached`); `🧪 Gates — <unit>` runs each unit on a runner of
+its own; and `🧪 Gates — make reach` is the one check that stands for all of
+them. The plan and the units fetch the 1.40C from Elektron's site into the
+runner on each run, with the zip hash pinned; every other job runs without
+Elektron bytes. `📚 Docs, Site and Web Patches` checks the generated tables,
+every link, the web builder's patches and, when the diff reaches it, the
+manual site (`mkdocs build --strict`). [TESTING.md section 11](docs/contributing/TESTING.md#11-what-github-actions-checks)
 lists each job and what it proves. **A green CI run says nothing about a
 remix unless `Gates — make reach` ran.** Actions are pinned to commit SHAs; a bump
 is a PR that changes the SHA and the version comment beside it.
+
+Two more workflows: `.github/workflows/pages.yml` builds the manual site and
+deploys it to [sambanks.github.io/octabam](https://sambanks.github.io/octabam/)
+on every push to `main`; `.github/workflows/fuzz.yml` (`🎲 Port stress`, by hand only)
+replays stress sequences of program changes and CCs under the ColdFire port over many runners.
 
 ## Etiquette
 

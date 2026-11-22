@@ -476,7 +476,7 @@ sequencer and not the tempo", "A ten-character page-2 label faults the unit", "E
 
 - **Seen:** image 26, OCTABAM89 C02, 15 Sep 2026. Knob moves on BusDelay or BusVerb (times, sizes) sometimes bring static that stays, most reliably with the reverb host's SEND and both WETs up; a transport restart clears it. Not reproducible on demand after. One 10 s capture (`out/hw/voicing25/noise_now.wav`): HF above 8 kHz −77 dB against −85..−91 dB after CC toggles, no clean A/B.
 - **Cause:** open. Under the port (ONEAUX fixture and OCTABAM89 C02 for 2,400 frames, `out/crackle/c02_recipe.midi`) a knob turn costs no extra cycles (delay 3,754 → 3,754, REVRS 3,914, reverb 16,710 ± 14) and no output rails or jumps above 0.25 FS. The port models no stall; C02 prices ~2,950 (core 1) and ~2,994 (core 0) against 3,120 usable, with the counter ~270 low on the reverb, so an overrun that desynchronises the frame handshake fits (🟡 inferred).
-- **Fix:** open. To find out: with the static going, take one station off the core (T2's FX1 to NONE); or `make burn` on C02, stepping the burn until it appears.
+- **Fix:** open. To find out: with the static going, take one station off the core (T2's FX1 to NONE); or the burn knob on C02, stepping it until the static appears (`make burn` was retired 14 Oct 2026; `tools/harness/README.md` "The burn knob" says how to recover it).
 
 ## A DC thump every 10.59 s at idle, from track 6 ✅ source measured
 

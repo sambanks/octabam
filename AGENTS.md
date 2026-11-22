@@ -3,7 +3,10 @@
 octabam is a remixer for the Octatrack's OS: it composes modules, each
 credited to its author, into one image built from the user's own 1.40C.
 `README.md` says what each module and remix is and where it has run;
-`CHANGELOG.md` records each flashed image. `docs/README.md` lists every doc
+`CHANGELOG.md` records each flashed image. The musicians' manual,
+[sambanks.github.io/octabam](https://sambanks.github.io/octabam/), is built from
+`docs/site/` by `tools/site/` (its README) for the release in
+`tools/site/release.py`, with the web builder. `docs/README.md` lists every doc
 by reader; `docs/contributing/PLACEMENT.md` is the architecture record for
 where code goes and what is measured about the memory.
 

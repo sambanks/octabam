@@ -3,6 +3,16 @@
 From a fresh machine to a flashed unit, and back to stock. Every image is
 built on your own computer from your own copy of Octatrack OS 1.40C.
 
+**To install a released remix you do not need this guide.** The manual's
+[Build and Install](https://sambanks.github.io/octabam/web-builder.html) page builds
+Octabam, Octabam Verbs or Octabam Bus (the release in `tools/site/release.py`)
+in the browser from your own 1.40C, with nothing uploaded, and has the same
+install steps as sections 5 and 5b here; [Safety and
+Recovery](https://sambanks.github.io/octabam/safety.html) is section 7's. This
+guide is for building any remix from source: a test or community remix, your
+own selection ([COMPOSING.md](COMPOSING.md)), a branch, or main ahead of the
+release.
+
 > **This is not official Elektron firmware.** Flashing a modified OS can
 > leave the unit unusable until you recover it (section 7), and puts your warranty
 > in question. Nothing here is endorsed by, supported by, or affiliated
@@ -11,8 +21,8 @@ built on your own computer from your own copy of Octatrack OS 1.40C.
 > **Do not share a built image.** A built `.bin` or `.syx` contains
 > Elektron's OS.
 
-Pick a remix from [the remix index](../../remixes/README.md). The commands below use `octabam-bus`
-(the core ColdFire modules plus the delay and reverb bus); substitute any
+Pick a remix from [the remix index](../../remixes/README.md). The commands below use `octabam`
+(the remix that has run on a unit; [its README](../../remixes/octabam/README.md)); substitute any
 remix name.
 
 ## 0. What you need
@@ -188,7 +198,7 @@ build reads. Both directories are gitignored.
 ## 3. Build the image
 
 ```bash
-make image REMIX=octabam-bus BUILD=1
+make image REMIX=octabam BUILD=1
 ```
 
 Output:
@@ -196,6 +206,7 @@ Output:
 ```
 out/OCTATRACK_OCTABAM1.bin            the card image
 out/OCTATRACK_OS1.40C_OCTABAM1.syx    the MIDI image
+out/<REMIX> <BUILD>.RMX               REMIX SWITCH: boots from the card without flashing (section 5c)
 ```
 
 `BUILD` is a one- or two-character tag of your choosing (digits; past
@@ -216,7 +227,7 @@ cannot prove.
 
 ```bash
 make emu-cf                 # builds the local ColdFire emulator (cmake) and boots stock in it once
-make check REMIX=octabam-bus      # build + every gate + boot under the emulator
+make check REMIX=octabam          # build + every gate + boot under the emulator
 ```
 
 `make check` is two halves: `make check-shared` (the gates that do not
@@ -277,6 +288,22 @@ decodes the official file, validates its checksum and round-trips ours.
    disconnect during either.
 6. The unit may update its bootstrap. Let it finish booting, then
    power-cycle (section 5 step 5).
+
+### 5c. Boot from the card without flashing (REMIX SWITCH)
+
+On a unit already running an octabam image, BRAIN can boot another image
+from the card without writing the flash:
+
+1. Copy the `.RMX` file into `/BRAIN/REMIXES/` on the card (create the
+   folders if they are missing).
+2. On the unit: **PROJ → BRAIN → REMIXES**, select its name, YES at
+   `BOOT <NAME>?`. The choice is kept across reboots; the name under the
+   FLASHED separator returns to the flashed image.
+
+`make rmx REMIX=<name> BUILD=<nn>` writes only the `.RMX` (`RMX=<NAME>` names
+it, 15 characters); `make rmx-stock` writes `STOCK 1.40C.RMX`, which switches
+back to stock without a flash. [REMIX SWITCH](../../modules/remix-switch/README.md)
+is the module.
 
 ## 6. After the flash
 

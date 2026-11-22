@@ -6,7 +6,14 @@ where each result is written. The tools are those of [HARDWARE_TESTING.md](HARDW
 [HARDWARE_SUITE.md](HARDWARE_SUITE.md) and [HARDWARE_MANUAL.md](HARDWARE_MANUAL.md); this page adds only what is
 particular to these three remixes.
 
-Status, 7 Nov 2026: nothing below has been run. What has run is in "Done without a unit" at the end.
+Status, 22 Nov 2026 (from the v0.5 entry in [CHANGELOG.md](../../CHANGELOG.md), not re-run for this page): most
+of it has run on Sam's MKII, on the three v0.5 images booted by REMIX SWITCH from the flashed image (none
+flashed). `pre-meter`, `pre-transport`, `pre-usb` and `dsp-watch` passed on all three; the 32-program-change soak
+left 3 of 32 unapplied on `octabam` and 0 on the other two; on the earlier BUILD 05 the fx, loader, kits, scenes
+and DIRECT_JUMP phases ran as that entry lists. Not done: `mix-soak` (did not complete on any), DIRECT_JUMP with
+its toggle on on `octabam-verbs` and `octabam-bus`. A fault found on `octabam` (MODULATION in T3's block, DARK REV
+on all 8 tracks, START: the DSP frame count stops) is open in [FAILURE_MODES.md](FAILURE_MODES.md). The plan below
+is as written on 7 Nov 2026; "Done without a unit" at the end is what ran before the session.
 
 ## What is being tested
 

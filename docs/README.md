@@ -4,13 +4,25 @@ Where each doc is, by who reads it. A module's own page is
 `modules/<name>/README.md`, a remix's `remixes/<name>/README.md`, a tool's
 `tools/<dir>/README.md`.
 
-## Building and flashing a remix
+**Musicians: the manual is [sambanks.github.io/octabam](https://sambanks.github.io/octabam/).**
+It covers the current release (v0.5: Octabam, Octabam Verbs and Octabam Bus), builds an
+image in the browser and says how to install it and how to get back to stock. Everything
+below is for building from source and for contributors.
+
+## The manual site
 
 | doc | what it is |
 |---|---|
-| [site/index.md](site/index.md) | the musician-facing manual site: choose a remix, build and flash it, use BRAIN, and recover to stock OS |
-| [../tools/site/README.md](../tools/site/README.md) | the site generator, including the per-remix manuals it renders from the manifests (`gen_manual.py`) |
-| [guide/BUILDING.md](guide/BUILDING.md) | what to install (macOS, Linux/WSL2), the toolchain, your own OS 1.40C, building an image, flashing from the card or over MIDI, after the flash, recovery, back to stock |
+| [site/index.md](site/index.md) | the site's source: the hand-written pages (the overview, a page per released remix, Build and Install, Safety and Recovery, About, Build Your Own Remix); deployed to GitHub Pages by `.github/workflows/pages.yml` on every push to main |
+| [site/usage/](site/usage/) | one hand-written fragment per module, `usage/<name>.md`, included into its page of the manual; [CONTRIBUTING.md "Before you open a PR"](../CONTRIBUTING.md#before-you-open-a-pr) has the rules for writing one |
+| [../tools/site/README.md](../tools/site/README.md) | the generator: the one manual for every released remix (`gen_manual.py`), the Feature Directory and module pages, the remix feature tables, all rendered from the manifests and gitignored; the release (`release.py`); the web builder's files; the rules the link gates force on the pages |
+| [contributing/SCREENSHOTS.md](contributing/SCREENSHOTS.md) | re-capturing the site's LCD screenshots under the port |
+
+## Building and flashing a remix from source
+
+| doc | what it is |
+|---|---|
+| [guide/BUILDING.md](guide/BUILDING.md) | what to install (macOS, Linux/WSL2), the toolchain, your own OS 1.40C, building an image, flashing from the card or over MIDI, booting an `.RMX` without flashing, after the flash, recovery, back to stock |
 | [../remixes/README.md](../remixes/README.md) | the remixes you can flash, with where each has run |
 | [guide/COMPOSING.md](guide/COMPOSING.md) | composing your own remix: a `remix.py` by hand |
 
@@ -33,7 +45,6 @@ Where each doc is, by who reads it. A module's own page is
 | [contributing/HARDWARE_SUITE.md](contributing/HARDWARE_SUITE.md) | the `octabam` remix's hardware suite: projects with generated audio, the phases over the one cable, what each measures |
 | [contributing/HARDWARE_PLAN.md](contributing/HARDWARE_PLAN.md) | the run sheet for the next unit session: `octabam`, `octabam-bus` and `octabam-verbs` after #1067, the control images, the soak's decision rule, the checks by hand, where results go |
 | [contributing/HARDWARE_MANUAL.md](contributing/HARDWARE_MANUAL.md) | the manual test plan for what the cable cannot reach: panel gestures, listening, card, MIDI controllers |
-| [contributing/SCREENSHOTS.md](contributing/SCREENSHOTS.md) | re-capturing the manual site's LCD screenshots: when, `capture_manual.py` groups, the records and coverage page, the probe scripts, FX page behaviour |
 | [contributing/FAILURE_MODES.md](contributing/FAILURE_MODES.md) | what has gone wrong on a unit: symptom, cause, fix, the gate that catches it |
 | [contributing/TRAPS.md](contributing/TRAPS.md) | the trap register: what has cost real work in the code, build, emulators and harness — symptom, fix, the gate that catches it |
 | [../AGENTS.md](../AGENTS.md) | working rules, worktrees, build and check, and the trap index (for people and coding agents) |
@@ -60,6 +71,9 @@ measurements and history stay in the module's README.
 | [../tools/emu/README.md](../tools/emu/README.md) | the ColdFire emulators: the port (`ot_emu`) and Tier-0 (Unicorn) |
 | [../tools/panel/README.md](../tools/panel/README.md) | the virtual front panel over the port; [KEYMAP.md](../tools/panel/KEYMAP.md) the key and LED map |
 | [../tools/ghidra/README.md](../tools/ghidra/README.md) | the Ghidra project over the OS and both DSP payloads |
+| [../tools/site/README.md](../tools/site/README.md) | the manual site's generator and the web builder (above) |
+| `tools/web/` (no README; [tools/site/README.md](../tools/site/README.md) "The web builder") | the web builder's patches: `make webpatch BUILD=<nn>` at the release tag (`publish.py`), `stale.py --check` in CI |
+| [contributing/TOOLING.md](contributing/TOOLING.md) | every other tool directory (`tools/build`, `tools/verify`, `tools/hw`, ...), by pipeline stage |
 
 ## The firmware, reverse-engineered
 

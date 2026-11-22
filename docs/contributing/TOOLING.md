@@ -33,6 +33,9 @@ line `verify_dram_boot.py` does.
 | `tools/ghidra/` | the Ghidra project import and the DSP56300 SLEIGH spec | [`tools/ghidra/README.md`](../../tools/ghidra/README.md) |
 | `tools/hw/` | **the unit and its card**: MIDI control, capture, sweeps, project files, MIDI flashing | section 7 below |
 | `tools/patches/` | local patches to the vendored toolchains (dsp56300, elektron-firmware-tool, unicorn) | section 1 below |
+| `tools/site/` | **the manual site** ([sambanks.github.io/octabam](https://sambanks.github.io/octabam/)): the page generator (`gen_pages.py`, `gen_manual.py`), the release it publishes (`release.py`), the screenshot captures (`capture_manual.py`, `shots/`) | [`tools/site/README.md`](../../tools/site/README.md), [`SCREENSHOTS.md`](SCREENSHOTS.md) |
+| `tools/web/` | **the web builder's patches**: `publish.py` (`make webpatch BUILD=<nn>`, on a clean tree at the release tag) writes `docs/site/builder/patches/` and its `manifest.json`; `obpatch.py` the patch format; `stale.py --check` (CI) holds the manifest to its patches; `build_eft_wasm.sh` the in-browser firmware tool | [`tools/site/README.md`](../../tools/site/README.md) "The web builder" |
+| `tools/morph/`, `tools/octa303/` | one module's own tools: MORPH under the port (`port_morph.py`), OCTA303's tables and its playing remix (`gen_tables.py`, `make_remix.py`) | [`modules/morph/README.md`](../../modules/morph/README.md), [`modules/octa303/README.md`](../../modules/octa303/README.md) |
 
 ## The chip, in one paragraph
 
