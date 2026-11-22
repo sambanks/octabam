@@ -42,6 +42,11 @@ MODULE = Module(
                             "the old build), SEND OFF silent, every note paired, no drops, no stall in 60 s of INF "
                             "retrig on two tracks; longest frame interrupt the same on both builds (~310 us); "
                             "frame-entry lateness not measured"),
+              Evidence(Level.UNIT, unit="MKII", date="2026-11-22", ref="ot_usbtracks starts",
+                       note="frame-entry lateness, SEND NOTES+CC against SEND OFF (FRAMELOG images UMT-FL 2 / "
+                            "UMT-FLO 2, runs fl2/flo2): 8 STARTs and 8 part changes each with INF retrig on two "
+                            "tracks, no stall; longest gap between two frame entries 367.1 vs 367.9 us (grid "
+                            "362.8), none 20 us late or back-to-back on either; USB audio off"),
               Evidence(Level.EMULATOR, date="2026-11-16", ref="verify_usbmidi_tracks",
                        note="CCs, note-on, note-off on the TRIG CHANNEL in that order, the gate length, and a track "
                             "leaving the renderer mid-gate closed at once, under the port")),

@@ -518,6 +518,10 @@ def frame_log(dev):
 def lateness(frames):
     """Each entry's lateness against the 362.8 us grid, the earliest entry of the window taken as on time; a
     lateness within 20 us of a whole frame counts as that frame (frame-guard's rule). -> [(late_us, skipped)]."""
+    for i in range(len(frames) - 1, 0, -1):            # a record left from an earlier pass of the ring (seen
+        if frames[i][0] - frames[i - 1][0] > 4 * GRID_US:  # 32.5 s back, one timer wrap) is not this window's
+            frames = [(t - frames[i][0], d) for t, d in frames[i:]]
+            break
     if len(frames) < 2:
         return []
     res = []
@@ -550,7 +554,6 @@ def cmd_starts(a):
     out = ot_midi.Out(midi_port("dst"))
     res = {"label": a.label, "image": a.image, "rmx": meta["rmx"], "rev": meta["rev"],
            "t": time.strftime("%Y-%m-%d %H:%M:%S"), "before": peek_state(peek1, meta["syms"]), "trials": []}
-    res["gaps_before"] = gaps()
 
     import ot_events as ev
     sy = meta["syms"]
@@ -579,6 +582,7 @@ def cmd_starts(a):
                 "max_late_us": max((x for x, _ in late), default=None),
                 "skipped": sum(s for _, s in late), "longest_us": max((d for _, d in fl["frames"]), default=None)}
 
+    res["gaps_before"] = gaps()
     for n in range(a.trials):
         out.send([0xC0, 0])                                 # pattern 1, stopped
         time.sleep(1.0)  # waits for: the pattern change while stopped

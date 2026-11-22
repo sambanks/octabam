@@ -223,6 +223,14 @@ Docs
 - Removed: `PLAN.md`, `docs/TIMESTRETCH_PIPELINE.md` (27 Sep).
 - Demand loader (`modules/dlpump`, `modules/dlcopy`, `modules/dlprobe`; `docs/contributing/DEMAND_LOADER.md`): `octabam` copies SPECTRUM, CHARACTER, MODULATION and TRANSIENT into the DSP's shared window while a track uses them and withdraws them 10 s after the last use. All 14 stock effects stay; the stock reverbs run behind a guard that keeps them off loaded code. A block is held by whoever has it first: the FX1 and FX2 choosers refuse an effect whose block is under PLATE, DARK or SPRING REV, and a reverb on the block of a loaded effect a track uses, each with a toast (`NEEDS Tn FX2 FREE`, `Tn HOLDS <effect>`); other routes toast at the next page key. `octabam` lists the stations on FX1 (it offered SPECTRUM and CHARACTER on FX2 only, where they render dry). GATE VERB is not in `octabam`. New builder fields `Remix.window_demand`, `window_guard`, `window_loader`; the build refuses an uploaded window record above `0x37f00`. DLPROBE and `tools/hw/dl_state.py` (USB `0xc0/0x57` block 3) read the counters on a unit. Gates `verify_dlstub`, `verify_dlwrap`, `verify_dlload`, `verify_dlprobe`.
 
+## 22 Nov 2026 -- `test/usb-midi-tracks-hw` with `tools/hw/framelog.patch` (UMT-FL 2, UMT-FLO 2), MKII
+
+USB MIDI TRACKS' frame-entry lateness, SEND NOTES+CC against SEND OFF, by REMIX
+SWITCH (no flash; the patch is a test edit). 8 STARTs and 8 part changes each with
+INF retrig on two tracks: no stall, the longest gap between two frame entries 367.1
+and 367.9 us against the 362.8 us grid, and no entry 20 us late or back-to-back on
+either. No USB audio was streaming. `modules/usb-midi-tracks/README.md` has the table.
+
 ## 16 Nov 2026 -- `test/usb-midi-tracks-hw` (UMT-HW 1, UMT-OLD 1, UMT-OFF 1), MKII
 
 USB MIDI TRACKS' unit test, by REMIX SWITCH (no flash): `tools/hw/ot_usbtracks.py`
