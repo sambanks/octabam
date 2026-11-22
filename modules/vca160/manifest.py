@@ -112,11 +112,11 @@ MODULE = Module(
               Evidence(Level.EMULATOR, ref="verify_vca160",
         note="bit-exact against its fixed-point model (verify_vca160, dsp_host), the tap and its handshake included"),
               Evidence(Level.UNIT, unit="MKI", who="MaMarko", date="2026-11-22",
-        note="as dB666 on its own id 0x1b (DSP source byte-identical to this PR's, unchanged in the fork since 29 Oct "
+        note="as dB666 on its own id 0x1b (the DSP words of this PR's first commit, unchanged in the fork since 29 Oct "
              "2026), in the owner's acidtrack images, among them ACIDF07B (from 18 Nov 2026) and ACIDF08 (from 19 Nov): "
              "usually on T5 and T6 with KEY on T1 (the kicks), so the key crosses from core 1 to core 0; also on the "
              "master and on single tracks; no clicks, noise or hangs heard (the owner's report, 22 Nov 2026). By ear, "
-             "not a measurement"),),
+             "not a measurement. The DSP audit's T34, T31 and T11 commits after it are not flashed"),),
     doc="Modelled on the dbx 160 compressor: true-RMS detector, threshold, ratio to infinity and beyond, side-chain KEY from any track.",
     menu=MenuEntry(
         fx2_id=0x1b,                  # preferred, not a stock id: the remix may move it (registry.assign_ids)

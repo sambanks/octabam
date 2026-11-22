@@ -165,15 +165,21 @@ below):
   law's figure exactly; an empty word does nothing.
 - Below threshold at OUT 0 dB, and at MIX 0, the output is the input exactly;
   silence comes out as zeros.
-- **Cost** (measured again 22 Nov 2026 in this tree): 338 words of code on
-  each payload (the tap's 45 included; `dsp_asm` at P:$800,
-  `tools/build/dsp_forms.py` `assemble_words` with the payload's `subst`) +
-  66 words of table; 160 cycles a sample by `REMIX=test/vca160 python3
-  tools/build/cycle_count.py` (a static floor), plus the tap (above). For
-  comparison, stock COMPRESSOR: 103.1 cycles a sample in the cycle model
-  (`docs/contributing/CYCLE_SCAN.md`, a different instrument) and 2.18 % of a
-  core on a unit (`docs/contributing/COSTS.md`). Worst core: 8 instances
-  (FX1 and FX2 on its four tracks) = 1,280 static, about 1,800 with the
+- **Cost** (measured 22 Nov 2026 in this tree; `dsp_asm` at P:$800 with each
+  payload's `subst`, `tools/build/dsp_forms.py` `assemble_words`; cycles by
+  `REMIX=test/vca160 python3 tools/build/cycle_count.py`, a static floor):
+
+  | what | before the audit | now |
+  |---|---|---|
+  | code, each payload | 338 words (the tap 45) | 326 words (the tap 43) |
+  | table | 66 words | 66 words |
+  | sample loop | 160 cycles a sample | 159 cycles a sample |
+
+  plus the tap (above). For comparison, stock COMPRESSOR: 103.1 cycles a
+  sample in the cycle model (`docs/contributing/CYCLE_SCAN.md`, a different
+  instrument) and 2.18 % of a core on a unit (`docs/contributing/COSTS.md`).
+  Worst core: 8 instances
+  (FX1 and FX2 on its four tracks) = 1,272 static, about 1,800 with the
   ~1.4 that COSTS.md measured between static counts and the unit
   (inferred), against about 3,120 usable cycles a sample (CHIP.md). The
   code has no branch on a knob, so its cost does not depend on the
@@ -243,9 +249,9 @@ All on the author's MKI, by ear, under the earlier name dB666:
   REMIX=acidtrack` (the tap inside the real dispatcher, under the ColdFire
   port) passed on the author's tree. That form had no AGU nops, no BEAT
   handshake and no one-cycle sum.
-- **This form, on its own id `0x1b`**: the DSP source is byte-identical to
-  the one this module is added with (unchanged in the author's fork since
-  29 Oct 2026). It is in his acidtrack images, among them ACIDF07B (on the
+- **This form, on its own id `0x1b`**: the DSP words this module is added
+  with (unchanged in the author's fork since 29 Oct 2026; the audit's
+  commits after them are bit-identical in the emulator and not flashed). It is in his acidtrack images, among them ACIDF07B (on the
   unit from 18 Nov 2026) and ACIDF08 (from 19 Nov), as DISTORX's evidence
   records. The author's report of 22 Nov 2026: in use practically since it
   was written, usually on T5 and T6 with KEY on T1 (the kicks), also on the
@@ -263,6 +269,27 @@ All on the author's MKI, by ear, under the earlier name dB666:
   release.
 - Instruction forms without a stock site (`verify_vca160` lists them).
 - The soft knee's real width; the 160A's own curves are not published.
+
+## DSP audit
+
+Checked against `docs/contributing/DSP_AUDIT.md`, checklist version 4
+(T01 to T34). Every change taken is bit-identical: the gate's own cases
+(`verify_vca160.run_gates`, against `vca160_ref.fixed()`) and its tap and
+heartbeat checks pass before and after each commit.
+
+| row | site | status |
+|---|---|---|
+| T34 | nine `add`, `sub`, `and` of 1 to 9 written long: one in the sample loop, two in the tap, six in the KEY decode; and `move #>$3,x0` / `cmp x0,a` there | taken: the 6-bit forms and `cmp #$3,a`; −11 words, −1 cycle a sample, the tap 45 → 43 words |
+| T31 | MIX's `move #>$7f0000,x0` | taken: `move #$7f,x0`; −1 word, per block |
+| T31 | the generated `@NAME@` constants | not taken: the template's constants stay the generator's |
+| T11 | the detector reading S again while it is in `y0` | taken: `move y0,a`; same words, the displaced access's cycle (cycle model, not measured here) |
+| T11 | the KEY flag and level word read every sample; the exponent and wet L/R parked and read back | not taken: per-block values with no free register to hold them; the parked words are overwritten in between |
+| T14 | state displaced from r7 in the loop | not taken: a re-laid state block, a design change |
+| T16, T09 | parallel moves | none: displaced moves are never parallel |
+| T25, T26, T33 | stalls | not taken: they need the cycle model (`interlock_scan.py`, a built tree) to price; the `nop`s after `move b1,r1` and `move #0,r0` are the two-move rule |
+| T28, T30 | P reads | four a sample (two for LOG, two for EXP, interpolated): placement is the build's (`MODULES.md` "Declaring DSP code"), not rewritten here |
+| T29 | the tap's `do #<$20` | not taken: unrolling the 32 `mac`s is about 30 more words for the `do`'s few cycles, a trade, and the tap runs only on a keyed track |
+| T01, T05, T12, T19, T21 | frame advance, hoisting, `lua`, displacement range | already in the cheap form: post-step stores, `n0` set above the loop, no `move r7,rN`, every displacement under `$40` |
 
 ## Gates
 
