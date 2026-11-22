@@ -39,25 +39,6 @@ None known. It shares the platform reserve with the other DRAM modules
 runtime; `remixes/test/octatrick/` carries it beside the other two,
 SYNTH MACHINE and MIDI SCENES, with USB at TRACKS MAIN CUE and ABCD.
 
-## Measured
-
-- In the ColdFire port (26 Sep 2026, `upstream/tuner/README.md`
-  "Measured"): steady tones 55 Hz .. 2 kHz read within 1 cent; the FM
-  synth at PTCH -12 .. +12 reads the note the page shows; the chord, the
-  closes and the stock TEMPO / tap-tempo paths as listed there; audio
-  through the window unchanged.
-- `make check REMIX=octatrick` on this tree: builds, boots under
-  the port, the DRAM window reads back against the linked image.
-
-## On the unit
-
-- Works on Tim's MKI: UP + TEMPO opens the window and tunes (test build
-  3.0 b40 = `octatrick` at BUILD 40, 29 Sep 2026). The sources are
-  unchanged since `v2.8`. The hook sites are read
-  from the image and the build refuses on a difference; the other three
-  modules' hooks in the same remix ran on Tim's MKI (the test builds
-  2.3 .. 2.8 and the 2.9 line).
-
 ## Updating
 
 Bump the submodule pin and rebuild; the hook sites are read from the image

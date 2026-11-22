@@ -67,7 +67,7 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-25"),),
-    doc="FX1 station: a modulation pedal -- Juno, Dimension, flanger, phaser, comb; FX1 only.",
+    doc="Modulation pedal: Juno chorus, Dimension, flanger, phaser and comb.",
     menu=MenuEntry(
         fx2_id=0x0e,
         donor_desc=0x400d58b8,        # DARK REV: 12 active slots, selects 7/9/11

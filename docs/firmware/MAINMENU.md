@@ -1,15 +1,13 @@
 # The MAIN MENU table system
 
 How the MAIN MENU tree is stored and walked, and the firmware routines a
-menu screen can call to edit a track's parameters. Markers as in `CHIP.md`:
-✅ read out of the image and confirmed against `objdump -m m68k:cfv4e`
-disassembly or driven under the emulator / on the unit, 🟡 inferred.
+menu screen can call to edit a track's parameters. 
 Addresses are SDRAM addresses, `address = 0x40000400 + file offset` into
 `out/raw/section_3_MAIN_OS.bin`. The full record of the shortcut and
 bus-screen work (modules `menushortcut` and `busscreen`, both retired and
 in git history) is `MAINMENU_BUSSCREEN.md` (`git show 3ceba41:docs/history/MAINMENU_BUSSCREEN.md`).
 
-## 1. Record types ✅
+## 1. Record types
 
 Menu row, 0x18 bytes:
 
@@ -33,23 +31,22 @@ visible, count)` (`0x4007ec60`) at boot for the root (5 visible), the
 submenus (7) and the demo menus (2), guarded once by `tst.l 0x400cbda0`,
 count read from `+0x00`. A descriptor built in a cave is not in that run
 and must ship with `+0x10` set or its pane draws zero rows (octalab, MKI,
-13 Sep 2026; their reading of `+0x08..+0x14` as cursor / absolute
+; their reading of `+0x08..+0x14` as cursor / absolute
 selection / visible-row count / count re-verified here). Their "eleven
 pages, stride 0x1c" for the 16 × 0x14 menu-state table was dumped under
 both strides here: 0x14 holds (id 12's draw = `0x40068e00`).
 
 Root window descriptors (`0x400cbc34/48/5c/70`) are 20-byte records
-`{0x13, 0x09, 0x01, ptr, ptr}`: the category icon, 19 wide × 9 tall. ✅ Each
+`{0x13, 0x09, 0x01, ptr, ptr}`: the category icon, 19 wide × 9 tall. Each
 `ptr` is a plane of 19 LONGS, one per column, with the column in the long's
 top byte: a plane is `0x4c` bytes, and in all four stock icons the second
 plane starts `0x4c` after the first. The second plane is `0xff800000` in
-every column of all four (read from the image, 28 Sep 2026). Which bit of
+every column of all four (read from the image). Which bit of
 the column is the top row isn't settled here: STEMS's icon is symmetric top
-to bottom. ❌ Retracted: "a plane of 19 words", and "the second plane is
-`0xff80`" (the high word of the long only). 🟡 The rest from octalab's
+to bottom. The rest from octalab's
 fifth category, which draws its own icon on a MKI.
 
-## 2. The tree ✅
+## 2. The tree
 
 | list descriptor | count | row array | contents |
 |---|---|---|---|
@@ -70,14 +67,13 @@ longer grows any MAIN MENU list — UP + REC opens its own WCREATE window
 each time MAIN MENU opens from a detour at `0x40064c32`, the opener's
 new-window path (skipped while the menu is already up), before the window
 is created: its row count and cursor may change there (REMIX SWITCH's rows
-in BRAIN's pane, sanderlegit). ✅ drawn and driven under the port, 29 Sep
-2026 (OS SWITCH's own category then) and 8 Oct 2026 (`verify_remix_switch`,
+in BRAIN's pane, sanderlegit). drawn and driven under the port, (OS SWITCH's own category then) and (`verify_remix_switch`,
 BRAIN); STEMS own window, `verify_stems_menu` / `stems-brain`.
 
 Root rows: window descriptor set, child set, action 0. Leaf rows: window 0,
 child 0, action or page id set.
 
-## 3. Dispatch ✅
+## 3. Dispatch
 
 - Real handler: OS UPGRADE `0x400636bc`, USB DISK MODE `0x40063728`. A new
   row can carry a cave-resident handler; id 0 calls the row's +0x08 with
@@ -99,9 +95,9 @@ named by three `lea` immediates only (`0x40064bd2`, `0x40064e34`,
 `0x400650e6`); extending it = copy to a cave, append, patch three operands
 (`busscreen` did this, 17th state, tags 85–90 on the unit).
 
-## 4. The draw/nav engine ✅
+## 4. The draw/nav engine
 
-Body `0x40064908..0x40064fb2` (🟡 boundaries, from the xref cluster):
+Body `0x40064908..0x40064fb2` (boundaries, from the xref cluster):
 
 ```
 4006495e:  addl 0x400cbd90,%d3        ; += root descriptor's scroll field
@@ -123,27 +119,27 @@ at `0x40064fa0..c2` for an alternate-list swap keyed on `0x80000088`
 (semantics unknown); add rows to CONTROL or the root, not those two.
 
 Driven under the port with real keys, the MKII (PROJ) and the MKI
-(FUNC+MIXER) alike (`tools/verify/stems_menu_probe.py`, 29 Sep 2026;
+(FUNC+MIXER) alike (`tools/verify/stems_menu_probe.py`,;
 `STEM_REC.md` 16.1):
 
-- ✅ YES and RIGHT move the focus from the root into the selected
+- YES and RIGHT move the focus from the root into the selected
   category's list; LEFT moves it back. NO inside a list closes the whole
   menu, and the focus pointer keeps the list.
-- ✅ **The menu redraws on keys, not by itself.** A row's label pointer
+- **The menu redraws on keys, not by itself.** A row's label pointer
   changed while the menu shows it stays off the screen (3 s, no key); the
   next key that redraws the menu draws the new label. A module that
   changes a label from outside a key handler is seen at the next key.
-- ✅ A row whose action is 0 draws as plain text, and the cursor skips it:
-  DOWN from AUDIO lands on SEQUENCER when INPUT's action is 0. ✅ It skips
+- A row whose action is 0 draws as plain text, and the cursor skips it:
+  DOWN from AUDIO lands on SEQUENCER when INPUT's action is 0. It skips
   ONE such row, not two in a row: with two together, DOWN stops on the
-  second, where ENTER calls address 0 (STEMS's first layout). ✅ It never
+  second, where ENTER calls address 0 (STEMS's first layout). It never
   moves onto a last such row: DOWN from the row above stays put. So rows
   without an action must never be adjacent; one may be the last.
-- ✅ With the firmware's own font, the list pane clips a label at
+- With the firmware's own font, the list pane clips a label at
   x = 118 and the root column at x = 56 (the right edge of 24 Ws). `WRITE
   FAILED` ends at 105 and `STEMS` at 45.
-- ✅ PLAY and STOP work with the menu open, and it stays open.
-- ✅ **Two levels only.** LEFT (`0x34`) always puts the focus on the root
+- PLAY and STOP work with the menu open, and it stays open.
+- **Two levels only.** LEFT (`0x34`) always puts the focus on the root
   (`0x40064e98`); YES (`0x31`) and RIGHT (`0x21`) enter a child list only
   from the root (`0x40064ea8`, `0x40064f8c`); in a list YES runs the row's
   page id (1..15) or its action, never a child list (`0x40065010..`).
@@ -151,9 +147,9 @@ Driven under the port with real keys, the MKII (PROJ) and the MKI
   that repoints its own list descriptor (rows pointer, both counts,
   scroll, cursor, selection) shows the new rows at once: BRAIN's
   DEFAULTS / REMIXES / TOOLS sub-lists, driven and drawn under the port
-  8 Oct 2026 (`modules/brain/README.md`).
+   (`modules/brain/README.md`).
 
-## 5. Adding a row ✅
+## 5. Adding a row
 
 The root row array `0x400cc698` has one reference in the image, the rows
 pointer `0x400cbda4`; live data follows the array. Copy the rows to a cave,
@@ -168,7 +164,7 @@ Cave placement: the decoded free band `0x400d2000..0x400d8000`
 (`build_bus.SAFE_CAVE_CEIL`). `0x40108800` is inside the image's last
 ~30 KB, zero at rest and OS `.bss` (the PROJECT subsystem's RAM): a cave
 there passed a static zero-check and a no-project boot and faulted on
-[PROJ] (tag 91). octalab's fifth MAIN MENU category (MKI ✅ 7 Sep 2026)
+[PROJ] (tag 91). octalab's fifth MAIN MENU category (MKI)
 added: a null-action row is a heading the cursor skips; a row inside a
 pane cannot descend (`+0x10` read on the root only); the descriptor must
 ship initialised. `RANDOMIZE PAGE` = `0x4005b9c0`, via `0x400bab22`.
@@ -176,14 +172,14 @@ STEMS (`modules/stems`) opens with UP + REC (detour on the REC press
 handler) as its own WCREATE window (tuner-shaped class 5, not MAIN MENU
 class 1): no MAIN MENU row; stock PROJECT and root stay stock. Selection
 and labels live on `stems_list` / `stems_rows`; the window draws them.
-Earlier builds grew the root (29 Sep 2026), borrowed PROJECT, or poked a
+Earlier builds grew the root, borrowed PROJECT, or poked a
 root-child YES into MAIN MENU; all retired so BRAIN can own the fifth
 root slot and STEMS stays separate from the menu chrome. Port: MKII and
 MKI (`verify_stems_menu`); coexistence remix `stems-brain`. Hardware
 proof of the take path remains Yves's MKII (STEMS1–STEMS3) under the
 earlier root placement. `STEM_REC.md` section 16.
 
-Since 27 Oct 2026 the STEMS window looks like PERSONALIZE (Yves's
+Since the STEMS window looks like PERSONALIZE (Yves's
 choice), drawn with the calls MAIN MENU makes:
 - **The window,** as MAIN MENU's opener makes its own (`0x40064c56`,
   arguments at `0x400cbf58`): `0x4005829c(118, 64, -1, 0, class,
@@ -211,11 +207,11 @@ choice), drawn with the calls MAIN MENU makes:
   poked alone is lost at the next key. Opened again, PERSONALIZE kept
   place 3.
 
-✅ Measured under the port (27 Oct 2026): STEMS against PERSONALIZE drawn
+ Measured under the port: STEMS against PERSONALIZE drawn
 with STEMS's rows in place, pixel for pixel, in six states
 (`verify_stems_menu`'s third boot, `tools/verify/stems_reference.py`).
 
-## 6. Opening a parameter page from a handler ✅
+## 6. Opening a parameter page from a handler
 
 Keymaps: 26-byte records `{u8 code, 0, press, release, h3, aux, 0, u16
 flags}` in two tables, `0x400bfbf6..` and `0x400c01f4..0x400c0840` (the
@@ -225,25 +221,25 @@ the menu opener `FUN_40064c18` via `0x40064d78`). Page keys `0x22..0x26` →
 4)`; [FX2] = `0x26` → kind 4. Menu keys: `0x31` [YES]/ENTER, `0x34` up,
 `0x33` down (`0x32/0x35/0x36` also down on the bus screen).
 
-The main page's YES (read from the image, 9 Oct 2026): both tables send
+The main page's YES (read from the image): both tables send
 `0x31` to `0x4005e4c8`, on press and release (records `0x400c01a6` and
 `0x400c07a4`). It jumps to `0x4004903c` while `0x460d1aec` ≠ 0, returns
 while `0x800000b8` ≠ 0, and otherwise calls `0x4005e294(code, edge)`. A
 press with `0x460d1736` = 0 sets both arm words, `0x46c7ff64` and
 `0x46c803d4`, to all ones and shows `ARM ALL` (`0x400b48ff`) through the
-message call `0x4005a2b8`. With it set (🟡 a track key held) a press ORs
+message call `0x4005a2b8`. With it set (a track key held) a press ORs
 in the track's bit and shows `ARM TRK`, or bit 8 + track and `ARM REC
 TRK` while `0x460d5db4` = 3. A release clears `0x46c7ff64`. A press never
 clears an arm bit, so a second press repeats the first. FUNC + YES is
 `0x4005e3d8` (`PARTS.md` section 7), which ends in the same `0x4005e294`.
 
-✅ Read 27 Oct 2026 (objdump, the EMAC gate passing): the handler starts
+ Read (objdump, the EMAC gate passing): the handler starts
 `move.l 4(sp),d1; move.l 8(sp),d0`, the code and the edge, and passes
 them to `0x4005e294` with a `bra.w`. That routine reads the edge from
 `16(sp)` after pushing `d3` and `d2` (`0` is a release, `0x4005e3ca`). The
 toast is a tail call: `0x4005a2b8(text, 48)`, the text written over the
 code's slot and 48 over the edge's. STEM REC detours the handler's first
-eight bytes (`stems_yes_key`, note 4 of 26 Oct 2026): it runs the rest as
+eight bytes (`stems_yes_key`, note 4 of): it runs the rest as
 a subroutine on copies of the two arguments, so stock still arms on every
 press, and a second press within 0.5 s, with no track key held and
 STEM REC idle, also arms STEM REC.
@@ -273,9 +269,9 @@ STEM REC idle, also arms STEM REC.
 Menu-window destroy + setup-window create in one key dispatch is not a
 stock sequence; the deferral idiom is the timer callback `FUN_40000c3c`
 (used by `FUN_40063660`). The shortcut module ran on tags 85–90 and was
-retired 13 Sep 2026 (broken on the unit; `git show 3ceba41:docs/history/MAINMENU_BUSSCREEN.md`).
+retired (broken on the unit; `git show 3ceba41:docs/history/MAINMENU_BUSSCREEN.md`).
 
-### 6b. A page of one's own over GRID RECORDING (nordseele, MKI, 15 Sep 2026) ✅ theirs
+### 6b. A page of one's own over GRID RECORDING
 
 Holding a trig registers the stock's trig-held input map over any other
 (LEVEL → `0x400434d8`). LEVEL then opens the sample-lock list
@@ -290,7 +286,7 @@ map. The current track's key pressed again in grid recording opens the
 slot list over any popup, closing it; a page that forwards the track keys
 has to swallow that one.
 
-### 6c. Input layers ✅ (read from the image, driven under the port, 25 Sep 2026)
+### 6c. Input layers
 
 A layer is `{next, keys*, encoders*, +12, +16, -1, -1}`:
 - `0x40031494(layer)` appends it to the list at `0x460d165c` and sets
@@ -334,7 +330,7 @@ These are copied without inheritance.
 underneath. TEMPO's layer (`0x400bb4ec`) has LEVEL only, which is why
 A–F turn the page behind the stock TEMPO window.
 
-**What has the keys ✅ (measured under the port on both models, 5 Nov 2026: the list read after each window was opened from the panel's keys).** With nothing open the list holds
+**What has the keys (measured under the port on both models, the list read after each window was opened from the panel's keys).** With nothing open the list holds
 only the base layer, `0x400c090a` on an MKI, `0x400c091e` on an MKII. MAIN MENU pushes `0x400cbf2c`, a YES/NO popup `0x400cdff8` over it, MIXER
 `0x400d0384`, TEMPO `0x400bb4ec`, the PART window `0x400b9b24`, its menu `0x400ce0c4` over that, the name keyboard `0x400d071c`, the progress window
 `0x400d0bc4`; a key with a sub-map pushes it while held (FUNC `0x400bfa32`, a page key `0x400bab6e`), and a trig held in grid recording `0x400bee74`. A trig
@@ -355,7 +351,7 @@ record − 0x14 for all but LFO, whose screen record is `0x400bc030`. A toast pu
 Arrow codes: LEFT `0x34`, RIGHT `0x21` (`PANEL.md` section 4b).
 `modules/tempo-bus` pushes a layer of its own over TEMPO's.
 
-## 7. Editing parameters from a screen ✅
+## 7. Editing parameters from a screen
 
 Call the firmware's writers; do not reproduce them. Traced with a write
 hook, the page-2 knob editor makes nine non-stack stores: the Part array,
@@ -379,7 +375,7 @@ Writers:
 
 - Page 1: `0x40054cd8(track, flat, value)`, absolute, self-contained.
   `flat` 0–5 → `DB + 0x8edaa + track*30 + machine*6 + slot` (PLAYBACK);
-  `flat` 6–29 → `DB + 0x8ee9a + track*24 + flat − 6` (LFO · AMP · FX1 · FX2; ❌ retracted 10 Oct 2026: "AMP · LFO", the order is `+0x8ee9a` LFO, `+0x8eea0` AMP as `PARAM_PAGES.md` section 5a has it;
+  `flat` 6–29 → `DB + 0x8ee9a + track*24 + flat − 6` (LFO · AMP · FX1 · FX2
   FX2 page 1 = `flat` 24–29; measured at two tracks and a dozen indices).
   Page 2 is not reachable through it: it clears a scene-lock bit `1 <<
   flat` in a 32-bit word per track (`0x80000110 + (track + 1290)*4`) and
@@ -389,9 +385,7 @@ Writers:
   and part from the globals. `0x4003a474` is PLAYBACK's (Part
   `+0x8ef5a + track*30 + machine*6 + slot`, index `0x460d5c30`, live
   `0x80000830 + track*72 + slot`); FX1 `0x4003abe4` (Part `+0x8f07e`, live
-  +0x32); FX2 `0x4003a9dc` (Part `+0x8f084`, live +0x38). Retracted 13 Sep
-  2026: "`0x4003a474` is the FX page-2 editor" (the `cc_map.s` cave built
-  on it wrote PLAYBACK's bytes until then; `PARAM_PAGES.md` section 5b). Slot
+  +0x32); FX2 `0x4003a9dc` (Part `+0x8f084`, live +0x38). `PARAM_PAGES.md` section 5b). Slot
   argument is 0–5 (`moveq #5,d4; cmp a3,d4; bcs exit`); the `a3 == 6` arm
   is a repeat-by-delta loop gated on `0x460d1a48 == 1`. The delta comes
   from `0x4003249c(slot, delta)`, which reads the staged page and returns 0

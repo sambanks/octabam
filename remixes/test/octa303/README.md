@@ -13,13 +13,6 @@ without samples.
 `devilish` (the Devil Fish modifications, an FX read by the voice) and `distorx` are not in this
 remix; the owner's set carries them beside OCTA303.
 
-## Status
-
-OCTA303 v7.0 on the author's MKI in his remix `acidtrack` (ACIDV70, BUILD 87, 19 Oct 2026): the
-machine list, the SETUP page, save / power-cycle / reload and the 303 gate. This remix itself is
-built and its UI gate run under the port (`tools/verify/verify_octa303_ui.py`), not flashed.
-Not measured: the ColdFire load (CF METER).
-
 ## Build
 
 ```bash

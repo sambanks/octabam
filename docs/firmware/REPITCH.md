@@ -2,8 +2,8 @@
 
 The stock 1.40C facts the REPITCH module (removed; `git show 0ac7db50:modules/repitch/README.md`)
 stands on: the page descriptors, the select widgets, the TSTR resolution,
-the voice renderer's readers of it and the playback increment. ✅ measured
-from 1.40C unless marked; 🟡 inferred.
+the voice renderer's readers of it and the playback increment. measured
+from 1.40C unless marked; inferred.
 
 **Page descriptors** (`PARAM_PAGES.md`): STATIC `P = 0x400d301c`, FLEX
 `0x400d31ae`, PICKUP `0x400d3664`. TSTR is slot 10: count `P+0x9a+40`,
@@ -34,17 +34,17 @@ they assumed the image loads at `0x40000000`.)
 **The voice renderer** (`0x40007960`, called once per track and chunk by the
 increment builder at `0x400041c4` with the chunk's output samples `d3` and
 the source frames the DSP will consume `d7 = increment x d3`) reads the
-resolved TSTR at nine sites (✅ scanned, `repitch_probe`), each as
+resolved TSTR at nine sites (scanned, `repitch_probe`), each as
 zero/nonzero or against BEAT (3); what each does is read in objdump, the
 position advance measured under the port:
 
 | site | nonzero does |
 |---|---|
 | `0x40007ede` | sets the 64-bit position ratio from project tempo / sample tempo (dry: 1/1) |
-| `0x40008210`, `0x400089de` (reverse) | takes the sample's tempo and its reciprocal (`+0x116`, `+0x118`) in place of the playing rate; they differ, so the chunk is read in pieces (🟡 the grain splice) |
-| `0x400081b2`, `0x4000898a` (reverse) | sets voice `+3` when project tempo x rate exceeds twice the sample's (🟡 a stretch beyond 2x) |
+| `0x40008210`, `0x400089de` (reverse) | takes the sample's tempo and its reciprocal (`+0x116`, `+0x118`) in place of the playing rate; they differ, so the chunk is read in pieces (unconfirmed the grain splice) |
+| `0x400081b2`, `0x4000898a` (reverse) | sets voice `+3` when project tempo x rate exceeds twice the sample's (unconfirmed a stretch beyond 2x) |
 | `0x4000886c`, `0x40008e42` (reverse) | **advances the sample position by the chunk's OUTPUT samples** through that ratio, where OFF advances it by the frames consumed (`d7`) |
-| `0x400082a8`, `0x4000847e` | only for 3 (🟡 BEAT's transient handling) |
+| `0x400082a8`, `0x4000847e` | only for 3 (unconfirmed BEAT's transient handling) |
 
 So the renderer's position moves at project / sample tempo for every
 nonzero TSTR, whatever the increment. The project tempo it reads is

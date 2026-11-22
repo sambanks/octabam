@@ -29,7 +29,7 @@ MODULE = Module(
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
         note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); FUNC+CUE on CREATE / SAVE PROJECT AS / "
              "CHOOSE NEW PROJECT NAME under the port (verify_rnd_name); pools from unit"),),
-    doc="Project name editors: FUNC+CUE fills YYMMDD + random pool name.",
+    doc="FUNC + CUE in a project-name editor fills in the date and a random name.",
     linked=(Linked("rnd", "modules/rnd-name/rnd.s", dram=True, include=_rnd_include),),
     symbol_refs=(
         SymbolRef(

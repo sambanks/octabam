@@ -1,11 +1,11 @@
 # Boot path and OS entry
 
-Read 29 Sep 2026 from the MAIN OS image and from the bootstrap copy it carries (`0x400dea4c..0x400e1ec4`, linked at 0).
-✅ read from the image, 🟡 inferred, ❓ open. Moved here from the REMIX SWITCH design records (`git show 76fd8466:docs/proposals/FIRMWARE_SWITCHER.md`
+Read from the MAIN OS image and from the bootstrap copy it carries (`0x400dea4c..0x400e1ec4`, linked at 0).
+ read from the image, inferred, ❓ open. Moved here from the REMIX SWITCH design records (`git show 76fd8466:docs/proposals/FIRMWARE_SWITCHER.md`
 sections 2.1-2.4, `git show 76fd8466:docs/proposals/BOOT_DEFAULT.md` sections 2 and 3); what the module does with these facts is in
 [`modules/remix-switch/README.md`](../../modules/remix-switch/README.md).
 
-## The OS is unpacked into SDRAM at every reset ✅
+## The OS is unpacked into SDRAM at every reset
 
 The reset vector (`0x2d4a` in the bootstrap) runs these steps:
 - PLL, then RAMBAR1;
@@ -23,7 +23,7 @@ that `jsr` lands **is** the OS. Nothing on this path writes SDRAM outside
 the unpacked image, except the Startup Menu's TESTMODE RAM test (`0x784`),
 which runs only when chosen.
 
-## The OS entry, instruction by instruction ✅
+## The OS entry, instruction by instruction
 
 ```
 40000400  lea (-28,%sp),%sp ; movem.l ...        the bootstrap's argument at 32(%sp)
@@ -48,7 +48,7 @@ Two consequences:
   Every image built here carries 1.40C's `0x0408`. A switcher must refuse
   any other, and the prototype does (`BVER`).
 
-## OS UPGRADE ✅
+## OS UPGRADE
 
 `0x400636bc` → `0x40063660` stops playback → deferred through the UI task's
 queue (`0x40000c3c`) → `0x40080640`. From there:
@@ -65,18 +65,18 @@ queue (`0x40000c3c`) → `0x40080640`. From there:
 
 REMIX SWITCH reuses all of it except the programming, and brings its own reset.
 
-## Memory the OS never touches ✅
+## Memory the OS never touches
 
 The platform reserve (`docs/contributing/PLACEMENT.md`) is the bottom of
 the audio page arena, `0x40a955e0` upward. Stock never touches it once the
 base literal moves. REMIX SWITCH declares its image stage,
 `0x41200000..0x41495de0` (2.6 MB), as an ArenaReserve, so MEMORY keeps the
 reserve reaching past it (the bottom 1,707 pages, as in every DRAM remix
-before 11 Oct 2026).
+before).
 
-## What a boot default needs, read from the image ✅
+## What a boot default needs, read from the image
 
-Read from the user's own image, 29 Sep 2026. Bootstrap addresses are
+Read from the user's own image. Bootstrap addresses are
 relative to its copy at `0x400dea4c` (linked at 0); the image address is
 given where it matters.
 
@@ -108,7 +108,7 @@ card, stages the target and resets; the target boots. **Two boots per
 power-on, always** — including the boots where you wanted the flashed image
 anyway, unless the default can name it.
 
-## A held key at power-on ✅
+## A held key at power-on
 
 The bootstrap reads the panel before it unpacks the OS, and the results sit
 in two SRAM bytes that nothing else touches:
@@ -137,7 +137,7 @@ in two SRAM bytes that nothing else touches:
 - The OS reads the parked long at three sites: `0x4001fa2c` (`== 1` →
   clear `0x10000000..0x100fff00`, which is EMPTY RESET), `0x4001faec`,
   `0x4001fb6a`.
-- ✅ **The MAIN OS image contains no code reference to `0x80000200`,
+- **The MAIN OS image contains no code reference to `0x80000200`,
   `0x80000508` or `0x8000050a` outside the bootstrap's own copy** (a
   literal search of all four-byte occurrences: the nine other hits, at
   `0x400c401d`…`0x400c4069`, are odd-addressed and inside data). At the
@@ -151,7 +151,7 @@ in two SRAM bytes that nothing else touches:
 
 **The consequence.** `0x80000200 == 0x10` at the OS entry means the user
 came through STARTUP MENU > 5 EXIT: a value the bootstrap has no case for,
-which falls through `0x2b4c`'s dispatch and boots normally. 🟡 `0x10` is
+which falls through `0x2b4c`'s dispatch and boots normally. `0x10` is
 EXIT's bit, inferred from the `0x1f` mask and the four cases the dispatch
 does handle; **falsified by** a probe that reads the byte after EXIT and
 finds something else. The gesture is two presses on a path the manual

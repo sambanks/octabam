@@ -58,19 +58,6 @@ Swing uses the track's swing mask and amount, including Swing All changes.
 Rotation and odd Euclidean lengths do not rotate the track swing grid. The
 1/32 subdivision interpolates the surrounding track-step offsets.
 
-## On the unit
-
-Cursory testing on Sam's MKII (owner report, 16 Oct 2026).
-
-On radiohagen's MKII (`EUCL EVENTS 98`, owner report, 22 Oct 2026),
-start/resume/stop passed with one EUCLID instance, instances on several tracks
-and both FX slots on one track; ordinary and arpeggiated MIDI played and stopped
-normally.
-Ordinary and arpeggiated MIDI start/resume/stop also passed on optimized
-`EUCL EVENTS 99` the same day.
-EUCLID subscribes only to start/resume. Sample-accurate reset timing and multiple
-registered clients were not measured on the unit.
-
 ## Clock restart ordering
 
 `eu_clock_start` runs from the PLAY sites in task context; `eu_clock_update`
@@ -81,35 +68,6 @@ the call, restoring the SR saved after the displaced PLAYING store (mask and
 CCR). The ordering is by reading the code; the port is lock-step and cannot
 interleave the ISR with the task, so it is not measured on the port or the
 unit. The store order is checked under the port with `--watch-mem`.
-
-## Measured
-
-- **19 Nov 2026, the stall pass** (bit-identical: `verify_ident.py` with the
-  wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
-  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
-  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
-  after each commit; 41 renders: the audition build now carries EVENTS, which
-  EUCLID requires). Cycles a sample from `tools/build/interlock_scan.py` (the
-  core manual's cycle table and stalls: a model, on average 3.0 % above the
-  unit, `docs/contributing/CYCLE_SCAN.md` section 1), every RATE at its
-  defaults: **232.3 → 223.2** (5.1 % → 4.9 % of a frame). Words 362 → 351
-  (`dsp_asm` at P:$800). Not measured on the unit. The frame advance
-  (`#>$2,n0` / step / `#>$1,n0`) is one `lua (r0+$2),r0` in both loops, n0
-  staying 1; the parked input comes from its register instead of a reload;
-  three constants load as one-word short immediates.
-
-## Gates
-
-`make check REMIX=euclid` runs the Euclid suite as part of the normal verify
-target. It checks the native control laws, checked-in ColdFire assembly,
-executed hook traces, caller registers and PLAY condition codes, both DSP
-payloads, LP/BP/HP/NOTCH response, AMP unity/silence and instruction cost,
-rapid TYPE changes, cutoff sweeps, stock-row
-isolation and the real panel renderer. With `OT_PROJECT` it also boots a
-copied project under the ColdFire port and checks full playback. No test
-writes to the source project or hardware.
-
-Manifest gate: `tools/verify/verify_euclid.py` (stage `image`).
 
 ## Implementation
 

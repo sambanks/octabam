@@ -4,14 +4,14 @@
         [--stamp-tol N] [--frame-tol N] [--audio-tol L] [--wav-tol L] [--audio-frac P] \
         [--ref BIN] [--image BIN] [--card IMG] [--card2 IMG] [--set NAME] [--project NAME] [--out DIR]
 
-    tools/emu/ot_emu/oracle/phase_b.sh CAND [--build-dir <tree>] [--tag name]   # the Phase B gate, both references
+    tools/emu/ot_emu/oracle/phase_b.sh CAND [--build-dir <tree>] [--tag name] # the Phase B gate, both references
 
 Exit 0 = every check PASS. The report is echoed and saved under
 `out/_oracle/reports/<stamp>[-tag].txt`; per-binary outputs are cached under
 `out/_oracle/runs/<sha256[:12]>/<check>/` (a binary with the same bytes is
 never rerun unless `--fresh` or its inputs' size/mtime changed; reference ==
 candidate reruns the candidate side into `runs/<sha>-b/` as the determinism
-check). Written 12 Sep 2026 by Tim Hastie as `out/_agents/speed-oracle/`
+check). Written by Tim Hastie as `out/_agents/speed-oracle/`
 for the speed work (O15a–O15f), moved here with audio tolerances for
 Phase B (O16a); the milestone records are
 `git show 666b6154:docs/firmware/COLDFIRE_PORT.md`.
@@ -89,7 +89,7 @@ behaviour: screens, LEDs, sequencer timing, the goldens' dispatch order.
 The audio must stay sample-aligned, and the `run` frame counts and capture
 lengths may move by 1 only where a frame edge lands on a run boundary.
 
-Checked on real captures (12 Sep 2026, the Phase A `interdsp.pcm` and
+Checked on real captures (the Phase A `interdsp.pcm` and
 `run3_core0.wav`): identical → `PASS` in 0.02 s / 0.04 s; 300 samples moved by
 ±1..2 → `max 2, 0.1125 %`, FAIL strict, PASS at `--tol 2 --frac 0.5`; the
 same moved by +3 → FAIL `max 3 > 2`; the PCM shifted by one frame → FAIL
@@ -114,32 +114,6 @@ count 124447 / 124446, 0 samples differ); 500 words of the WAV moved by
   `audio out  :`) and the binary's own path — normalised to `<OUT>`/`<EMU>`.
 - ctest timing lines.
 - `--main-level` defaults to 64 under `--interactive` (O14k); both sides get it.
-
-## Measured (12 Sep 2026, M5 Max, macOS 26.5)
-
-- `ref-73c2815` vs itself (determinism, `--build-dir` a plain-LTO HEAD tree):
-  **28 PASS, 0 FAIL, 47 s wall** (`reports/20260912-130930-b0-refref-73c2815.txt`).
-  Per job under that load: stock 1.0 s; card 6.6 s; render 27 s; inter boot
-  6.6 s + 2.9 s of `run` for 4490 emulated ms; interdsp boot 20.5 s + 25 s of
-  `run`; ctest 5.8 s.
-- `ref-1e76ac5` vs `ref-73c2815`, strict: **28 PASS, 0 FAIL, 106 s wall**
-  (`reports/20260912-131027-b0-1e76ac5-vs-73c2815.txt`); the 73c2815 side
-  came from the cache, the pre-speed side ran (card 42 s, render 73 s,
-  interdsp boot 63 s + 43 s of `run`).
-- Negative control: `ref-73c2815` wrapped with `--rtc 1000000001`, with the
-  Phase B tolerances on: **14 PASS, 13 FAIL** (27 checks, no ctest; report
-  `20260912-131239-b0-negctrl`). It fails on the `rtc` boot-log line, the
-  goldens at char 4870, `card.serial_a` at byte 5147, the UART stream at
-  byte 5234 and the clock record; both audio captures stay identical. The
-  tolerance flags loosen nothing outside the audio.
-- `phase_b.sh` on a plain-LTO HEAD build (sha `089bd73fb869`): 28 PASS
-  against each reference, 54 s + 4 s.
-
-The compared UART stream, decoded with `tools/panel/panel_link.py`: 2545
-messages, 0 unknown — 1651 LCD blocks, 181 LED rows, 712 LED levels, 1 hello
-(`--dsp`: 2551, 718 levels); i.e. the byte diff covers what `/screen.txt` and
-`/leds` would show, step by step (`txlen.txt`: YES 10,209 B = the full screen
-redraw, MIXER 1,134, T1 double tap 1,202, PLAY 216, 2 s of play 574, STOP 178).
 
 ## Not covered (say so when a change touches it)
 

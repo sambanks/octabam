@@ -1,9 +1,7 @@
 # The demand loader
 
-25-28 Oct 2026. ✅ measured (port, `dsp_host`, or unit where stated), 🟡 inferred, ⬜ not looked at.
 Addresses are `P:` / `X:` / `Y:` DSP words, or ColdFire virtual addresses where they start `0x4`.
-Run on a unit: the ColdFire pump, the host write, the copier, the stub, the reverb guard's homes (sections "Measured on a unit", "Homes on a unit").
-Port and `dsp_host` only: the hooked, soft SIDECHAIN_COMPRESSOR path.
+
 
 ## What it does
 
@@ -31,22 +29,22 @@ The window is stock's buffer memory, so the code goes only where no running stoc
 
 ## Constraints
 
-| fact | status |
-|---|---|
-| P is 8K per core and full with the 13 stock DSP effects; P above `0x1fff` is absent | ✅ unit (`modules/pextprobe`) |
-| Code written into the window ran from both cores; the window `0x30000..0x3ffff` is one memory, P, X and Y alias | ✅ unit |
-| FX2 instance *k* of a core has its buffer at `Y:0x4000`, `Y:0x8000`, then two window slots: core A (tracks 7, 8) `0x30000`, `0x34000`; core B (tracks 3, 4) `0x38000`, `0x3c000` | ✅ (`DSP.md` section 7) |
-| Highest word each stock effect writes above its slot base: FLANGER `0x7ff`, SPRING REV `0xfff`, CHORUS `0xbfd`, COMB `0xbff`, SPATIALIZER `0xa5f`, PLATE REV `0x37ff`, DARK REV `0x3da2` | ✅ port, default knobs (`stock.SLOT_EXTENT`); other settings ⬜ |
-| So offset `0x1000` or higher in a slot is clear of every stock effect except PLATE REV and DARK REV (SPRING REV stops on the line); offset `0x3da3` or higher is clear of all | derived |
-| Payload B's boot zero loop clears `Y:0x37f00..0x3ffff` after the pre-boot upload, so an uploaded record there is gone at boot | ✅ port (both cores faulted at boot with resident code at `0x3bda3`) |
-| The dispatcher calls `INIT[id]` when an id changes and `PROCESS[id]` every frame through `jsr (r2)`; `proc` is entered with `a` = 0 or 1; `init` keeps `r1`; `x:$213` at `init` is the address of the slot's allocator entry | ✅ |
-| The ColdFire writes DSP X by host command `$08` (`HOST+4` = `0x88`), reaching `X:0..0x3fff` only, 16 data bits a word | ✅ port |
-| Payload B's frame loop stores `0x3fff` or `0x5fff` into the host handlers' address masks every frame (`P:0x70`, `0x72`, from the bank word); a chunk sent on a frame whose ping word (`0x800000e0`) is 1 is lost, one sent at ping 0 arrives whole | ✅ port: 0 of 3,126 halfwords differ at ping 0, 1,178 differ sending every frame. Why the lost chunks do not appear at `X:0x4901` is ⬜ |
-| Sending to core A at the frame interrupt's entry stops the stock ping words alternating: core A's chain stalls. HC polling and a settle loop did not change it | ✅ port; cause ⬜ |
-| `X:0x2840..0x3f7e` was written by nothing in one project at two fill seeds. The guard's cells at `x:$3dc0..$3e3f` held their values over three runs on a unit | 🟡 |
-| Payload B's frame routine at `P:0x7a` calls `func_00034f` (`r0 = $3f80`, `r1 = $3f00`) every frame: it reads `x:$3f00..$3f20` and writes `x:$3f7f..$3fbf`. The earlier claim that `X:0x2840..0x3fff` was free is wrong for that range. Payload A writes `x:$3f80` and `x:$3f81` only | ✅ disassembly; ✅ unit (the guard's base cell at `x:$3fb8` read `$ffb754` after the guard's init, with the allocator entry holding `$38000`). What the routine computes is ⬜ |
-| The live FX ids are `0x80000ec4[8]` (FX1) and `0x80000ecc[8]` (FX2), tracks 1-8 | ✅ |
-| The FX1 and FX2 choosers' select handlers are `0x400526e4` and `0x40052474`; the "same effect" test is `0x4005272a` / `0x400524ba` | ✅ |
+| fact |
+|---|
+| P is 8K per core and full with the 13 stock DSP effects; P above `0x1fff` is absent |
+| Code written into the window ran from both cores; the window `0x30000..0x3ffff` is one memory, P, X and Y alias |
+| FX2 instance *k* of a core has its buffer at `Y:0x4000`, `Y:0x8000`, then two window slots: core A (tracks 7, 8) `0x30000`, `0x34000`; core B (tracks 3, 4) `0x38000`, `0x3c000` |
+| Highest word each stock effect writes above its slot base: FLANGER `0x7ff`, SPRING REV `0xfff`, CHORUS `0xbfd`, COMB `0xbff`, SPATIALIZER `0xa5f`, PLATE REV `0x37ff`, DARK REV `0x3da2` |
+| So offset `0x1000` or higher in a slot is clear of every stock effect except PLATE REV and DARK REV (SPRING REV stops on the line); offset `0x3da3` or higher is clear of all |
+| Payload B's boot zero loop clears `Y:0x37f00..0x3ffff` after the pre-boot upload, so an uploaded record there is gone at boot |
+| The dispatcher calls `INIT[id]` when an id changes and `PROCESS[id]` every frame through `jsr (r2)`; `proc` is entered with `a` = 0 or 1; `init` keeps `r1`; `x:$213` at `init` is the address of the slot's allocator entry |
+| The ColdFire writes DSP X by host command `$08` (`HOST+4` = `0x88`), reaching `X:0..0x3fff` only, 16 data bits a word |
+| Payload B's frame loop stores `0x3fff` or `0x5fff` into the host handlers' address masks every frame (`P:0x70`, `0x72`, from the bank word); a chunk sent on a frame whose ping word (`0x800000e0`) is 1 is lost, one sent at ping 0 arrives whole |
+| Sending to core A at the frame interrupt's entry stops the stock ping words alternating: core A's chain stalls. HC polling and a settle loop did not change it |
+| `X:0x2840..0x3f7e` was written by nothing in one project at two fill seeds. The guard's cells at `x:$3dc0..$3e3f` held their values over three runs on a unit |
+| Payload B's frame routine at `P:0x7a` calls `func_00034f` (`r0 = $3f80`, `r1 = $3f00`) every frame: it reads `x:$3f00..$3f20` and writes `x:$3f7f..$3fbf`. The earlier claim that `X:0x2840..0x3fff` was free is wrong for that range. Payload A writes `x:$3f80` and `x:$3f81` only |
+| The live FX ids are `0x80000ec4[8]` (FX1) and `0x80000ecc[8]` (FX2), tracks 1-8 |
+| The FX1 and FX2 choosers' select handlers are `0x400526e4` and `0x40052474`; the "same effect" test is `0x4005272a` / `0x400524ba` |
 
 ## Design
 
@@ -88,13 +86,13 @@ resumes (it runs the stock init first if its init never ran).
   `FUN_4005a2b8`, which runs in the key handler). The idle loop cannot call the popup, so it leaves its message in `dl_pend`,
   and a detour at the UI task's page-key handler (`FUN_4005578c`) shows it at the next press.
 - **DLCOPY** (DSP, `modules/dlcopy/dlcopy.asm`), a hook on payload B at `P:0x342` (the frame's end, after the last track and
-  before the jump back to the frame wait), in the window. Until 15 Nov 2026 the hook was at `P:0x76`, the frame head: the copy
+  before the jump back to the frame wait), in the window. Until the hook was at `P:0x76`, the frame head: the copy
   held core B between its two handshakes with core A, and on a unit core B stopped in the first track of that frame
   (`FAILURE_MODES.md`, "DSP stall after a demand load during play"). When the doorbell is set it clears the effect's BOUND word, copies the block to the window while summing the code
   words, compares the sum with the one staged after the code, and only then writes the effect's init and proc and BOUND last. A
   block whose sum is wrong is not published; the second send replaces it. A message for an entry that is BOUND with the same first
   word (a repeat send) is consumed without a copy: BOUND stays set, and a repeat that arrives damaged cannot unbind resident code
-  (since 8 Nov 2026; `verify_dlstub`, not on a unit). A message with N = 0 only clears BOUND and the span.
+  (since; `verify_dlstub`, not on a unit). A message with N = 0 only clears BOUND and the span.
 - **The stub** (`modules/dlcopy/dlstub.asm`), assembled once by the build with a trampoline per effect. The effect's id
   dispatches to it. BOUND clear: the audio passes through (the stock null stub's loop). BOUND set: each instance runs the real
   init once, with `r0 n0 r6 r7 n7 m0 m1` kept, then jumps to the real proc.
@@ -111,22 +109,21 @@ Layout (words are `X:` or `P:` as in the window, which aliases):
 | `x:$33da3 + 8 k` (k = 0..4 in octabam, in the clear gap; DLCOPY follows the last) | effect k's entry: +0 BOUND (`$b0a5ed`), +1 real init, +2 real proc, +3 first window word, +4 the word after |
 | `x:$2900` | staging: doorbell, k, destination offset, N, init offset, proc offset, then 2 N halfwords (code word as high 16 bits, then low 8), then the sum of the code words modulo 2^24 in the same form. Addresses are offsets into the window |
 | `x:$3f00..$3f4c` | the stub's per-instance flags and saved registers; `x:$3dc0..$3e3f` the guard's state words and base cells, `x:$3fd0..$3fea` the trampolines' words, the guard's scratch and the copier's saved `b` |
-| `P:0x33dcb..0x33e55` | DLCOPY (138 words; in `test/dlspike`, with four entries, `0x33dc3..0x33e4d`); in octabam KEYBUS at `0x33e5e..0x33e6f`; the stub follows at `window_loader` (`0x33e6f`; `0x33e56` in `test/dlspike`), then the guard's trampolines for payload A and B with their two shared loaders, the reverbs' records (stock init, stock proc, extent; three words a reverb and payload), then its body, then the hook stubs (to `0x33ffd` in octabam, build report of 9 Nov 2026: 9 words free between DLCOPY and KEYBUS, 3 at the top) |
+| `P:0x33dcb..0x33e55` | DLCOPY (138 words; in `test/dlspike`, with four entries, `0x33dc3..0x33e4d`); in octabam KEYBUS at `0x33e5e..0x33e6f`; the stub follows at `window_loader` (`0x33e6f`; `0x33e56` in `test/dlspike`), then the guard's trampolines for payload A and B with their two shared loaders, the reverbs' records (stock init, stock proc, extent; three words a reverb and payload), then its body, then the hook stubs (to `0x33ffd` in octabam, build report of: 9 words free between DLCOPY and KEYBUS, 3 at the top) |
 | `P:0x37da3..0x37eff` | LOAD METER's DSP half (A and B) |
 | top of each slot | the effects, not uploaded: SPECTRUM `0x33820` (slot of T7), CHARACTER `0x37820` (T8), MODULATION `0x3b820` (T3), TRANSIENT `0x3fe00` (T4). The loader and LOAD METER sit above `0x33da3` and `0x37da3` in the first two slots, so those hold at most 1,411 words from `0x3820` (SPECTRUM, the larger of the two placed there, is 1,399); the third and fourth hold 2,016 |
 
 The clear gaps are `0x33da3..0x33fff` (605 words) and `0x37da3..0x37eff` (349 words); resident code above `0x37f00` is wiped at
-boot. octabam: see "Resident words" under SIDECHAIN_COMPRESSOR for the 28 Oct 2026 figures.
+boot. octabam: see "Resident words" under SIDECHAIN_COMPRESSOR for the figures.
 
 Builder: `Remix.window_demand` (keys), `Remix.window_guard` (stock keys), `Remix.window_loader` (address). The demand effects'
 records are left out of payload A's upload and written to `out/dsp/demand_records.json`; the guards' addresses to
 `out/dsp/guard_records.json`. The boot zero loop count ignores demand addresses.
 
-## SIDECHAIN_COMPRESSOR: a hooked, soft demand effect (28 Oct 2026; port and `dsp_host` only)
+## SIDECHAIN_COMPRESSOR: a hooked, soft demand effect; port and `dsp_host` only)
 
 Source: Zac-Kyoti/octatrack-kyoti-fw#4 (opt-in `FORM = SHARED`: one core-independent copy). octabam carries it in COMPRESSOR's row as a
 demand effect with one home at `P:0x3f820` (1,711 words: 620 code, 65 table, 1,026 key window and counters as zeros), PLACE = DRAM.
-Issue octabam#934; guard compaction octabam#947.
 
 It has no dispatch entry of its own: `MenuEntry.stock_dsp` makes the row COMPRESSOR's, COMPRESSOR's stock init and proc stay, and four
 `DspHook`s reach SC's code. So the block is loaded like any demand effect, and something resident has to sit in front of each hook.
@@ -146,7 +143,7 @@ stubs, 47 words, at `0x33fbe..0x33fed`, 18 resident words left.
 | `scdet` (`A 0x1ab1`, `B 0x1871`) | `221e00 346100` | COMPRESSOR proc+0 | replay both, `rts` |
 | `scinit` (`A 0x1aa4`, `B 0x1864`) | `44f400 0020c5` | COMPRESSOR init | replay, `rts` |
 
-A stub may clobber `a` and the CCR at all four sites (✅ disassembly of both payloads): `sctap` reloads `a` at +3 and sets the CCR (`asr`)
+A stub may clobber `a` and the CCR at all four sites (disassembly of both payloads): `sctap` reloads `a` at +3 and sets the CCR (`asr`)
 before any conditional; `scdet` runs `mpy x0,x0,a` after the two replayed words; `moncommit` is LOAD METER's `otop_e2`, which already clobbers
 `a`, `b` and the CCR there; `scinit`'s stock init only moves, and its caller (the dispatcher's init call, `A 0x4cd`/`0x503`, `B 0x2c2`/`0x2f8`)
 reloads `a` and sets the CCR after the proc call. `tst` changes the condition codes the stock code sees after `rts` (JSR/RTS do not restore SR).
@@ -167,7 +164,7 @@ with TUNER through `requires` and `overrides` (`modules/scope/manifest.py`).
 choosers, never refuses a reverb, and gives its block up at once to a reverb that reaches it (`modules/dlpump/README.md`).
 The pump's trigger is the replaced effect's stock id (COMPRESSOR `0x18`), which is what the Part saves; `dl_tab` takes it from
 `stock_dsp` instead of `menu.fx2_id`. Toasts: `SC KEY OFF: T4 FX2` (no home free), `SC KEY OFF: T4 REV` (a reverb took the block).
-While the code is not loaded, page 2's KEY reads `--` (`dl_keyfmt`; issue #934).
+While the code is not loaded, page 2's KEY reads `--` (`dl_keyfmt`).
 
 **One core-independent copy.** The per-core source needs 677 words a copy (612 code, 16 `ptable`, 49 `ptable2`), two copies of the
 per-core tokens (`@COREBASE@`, `@FCOREBASE@`, `@SBASE@`, `@FSBASE@`, `@GCNT@`, `@GSEED@`, `@FOREIGN_BR@`) = 1,354, and a 1,028-word
@@ -187,7 +184,7 @@ COMPRESSOR is picked, SC waits (`SC KEY OFF: T4 FX2`) until the block is free.
 to `0x33dcb` and the loader to `0x33e5e`. The window path takes a `ptable2` (placed behind `ptable`, as the harvested path does). The window
 path plants hooks into window code. A `window_demand` module with hooks gets the stubs above and the pump gets its bodies' addresses.
 
-**Resident words.** Before the change the build report (`make bus REMIX=octabam`, `origin/main` `b36afa2`, 28 Oct 2026) showed 21 free
+**Resident words.** Before the change the build report (`make bus REMIX=octabam`, `origin/main` `b36afa2`,) showed 21 free
 words in runs of 6, 6 and 9, and the stubs needed 39. The guard's trampolines were then 156 words of immediates (11 + 15 a reverb and
 payload, three `move`s of constants to `x:$3fd1..$3fd3` and a `jmp (r2)`); table-driven they are 70 words plus 18 of records (the
 stock init, stock proc and extent, three words a reverb and payload), the body unchanged at 152. The guard ends at `0x33fb6`, leaving 74 free at `0x33fb6..0x33fff`, plus
@@ -197,7 +194,7 @@ the 6 and 9 beside LOAD METER's two halves (`0x37e4a..0x37e4f`, `0x37ef7..0x37ef
 select, and the build changes are proved by `scripts/refhash.sh check`. Saved projects and Parts are untouched (COMPRESSOR's slots, ids and
 defaults stay; unloaded, it runs as stock COMPRESSOR). `octabam` and `test/dlspike` images changed (DLCOPY and what follows moved up 8 words).
 
-**Gates** (local, 28 Oct 2026): `verify_dlhook` 40 PASS (a broken stub, `beq` -> `bne`, fails 12), `verify_dlstub` 48, `verify_dlwrap` 224
+**Gates** (local): `verify_dlhook` 40 PASS (a broken stub, `beq` -> `bne`, fails 12), `verify_dlstub` 48, `verify_dlwrap` 224
 (199 on `octabam`, 125 on `test/dlspike` after the compaction; a mutated loader with extent and stock proc swapped hangs `dsp_host` on the first
 wrapper run); `verify_dlload` under the port: the PR.
 
@@ -217,7 +214,7 @@ still need resident stubs. Moving `otop_e2` to another dispatcher site: changes 
 
 `dsp_host` keeps P and Y apart, so the guard is shown to decide correctly, not to prevent an overwrite on the chip.
 
-## Measured on a unit (26 Oct 2026, MKII, images DLPROBEJ1..J7, project MXDLPR01 / MXDLPR02)
+## Measured on a unit, MKII, images DLPROBEJ1..J7, project MXDLPR01 / MXDLPR02)
 
 - DLPUMP runs on the unit: the pump's counters (`tools/hw/dl_state.py`, USB request `0xc0/0x57` block 3) show the frame interrupt calling it 2,756 times a second, the ping word alternating 0 and 1 as in the port, and the loads, chunks and doorbells it armed and sent.
 - The host write lands in core B's `X:0x2900..`: DLPROBE on T1 read `X:$2902` = `0x00d000` (TRANSIENT's destination offset).
@@ -227,14 +224,14 @@ still need resident stubs. Moving `otop_e2` to another dispatcher site: changes 
 - SPECTRUM and CHARACTER on an FX2 slot cost a dry slot's 116..119 counts: they are `fx1_only` and render dry there. `octabam` had no FX1 list, so it offered them on FX2 only; it lists them on FX1 now.
 - A project load leaves every id at its default for about 3.8 s (polled over USB every 0.25 s: ids reset at 36.2 s, back at 40.05 s). With a 2 s grace the pump withdrew all four effects at 38.3 s and loaded them again at 40.05 s; the grace is 10 s.
 - Sending on every frame (`DLPANYJ9`, `test/dl-probe-any`, the same project): the copier refused blocks for their sum on the unit (MODULATION received 4, refused 3, published 1; SPECTRUM received 2, refused 2, published 0; TRANSIENT received 2, refused 1, published 1; CHARACTER received nothing) and ran no bad copy. The ping-0 rule holds on the unit as in the port; with it, no block was refused in the rounds on `DLPROBEJ5` and `J7` (about 16 blocks over several loads).
-- A repeat send that is refused leaves the effect unbound: the copier clears BOUND before it copies and publishes nothing for a bad sum, and the ColdFire cannot see the counters to send again. Not seen with the ping-0 gate. The pump sends each load a third time since 26 Oct 2026: a refusal of the second send is followed by a good third; a refusal of the last send still leaves the effect unbound (dry). Since 8 Nov 2026 a repeat of a block that was bound is not copied
+- A repeat send that is refused leaves the effect unbound: the copier clears BOUND before it copies and publishes nothing for a bad sum, and the ColdFire cannot see the counters to send again. Not seen with the ping-0 gate. The pump sends each load a third time: a refusal of the second send is followed by a good third; a refusal of the last send still leaves the effect unbound (dry). Since a repeat of a block that was bound is not copied
 (`verify_dlstub`; not on a unit), so the effect stays dry only when every send is refused, and a load copies once when its first send
 arrives whole instead of three times. Each repeat holds the pump's idle comparison for 30 ping-0 frames, about 22 ms at 1,378 ping-0 frames a second (inferred from the frame rate, not measured). The unit did freeze once during the first rounds (13:27); it was on `DLPROBEJ3`, the build with the stale-byte bug, and the cause was not found.
 
-- The collision toasts on the unit (27 Oct 2026, images T1 to T4, projects `MXTST_A`, `MXTST_B`): the firmware popup (`FUN_4005a2b8`) draws one line of about 23 characters, centred, and clips what does not fit at both edges. A newline in the text is dropped, not drawn as a break (`BUFFER SPACE IN USE` + newline + `BY MODULATION` read `ER SPACE IN USEBY MODUL`). Image T1's strings all read `T4` because the table's second loop reused the last effect's track; the gate now compares each string with its effect's block track and chooser name. `EVICT T8 FX2 FIRST` (18 characters) showed whole; `EVICT MODULATION FIRST` (22) ran slightly off the screen. Both now end in `1ST` (`EVICT MODULATION 1ST` is 20). The duration was 48 ticks (0.8 s) and read as too short; it is 120 (2 s) from image T5.
+- The collision toasts on the unit (images T1 to T4, projects `MXTST_A`, `MXTST_B`): the firmware popup (`FUN_4005a2b8`) draws one line of about 23 characters, centred, and clips what does not fit at both edges. A newline in the text is dropped, not drawn as a break (`BUFFER SPACE IN USE` + newline + `BY MODULATION` read `ER SPACE IN USEBY MODUL`). Image T1's strings all read `T4` because the table's second loop reused the last effect's track; the gate now compares each string with its effect's block track and chooser name. `EVICT T8 FX2 FIRST` (18 characters) showed whole; `EVICT MODULATION FIRST` (22) ran slightly off the screen. Both now end in `1ST` (`EVICT MODULATION 1ST` is 20). The duration was 48 ticks (0.8 s) and read as too short; it is 120 (2 s) from image T5.
 - `EVICT T8 FX2 FIRST` showed on the AMP page after a page key (text now `EVICT T8 FX2 1ST`); which of the two projects was loaded for that photo was not recorded.
 
-## Stock reverb extents on a unit (26 Oct 2026, MKII, image `test/ext-probe` X1, projects MXEXT_{PL,DK,SP}_{MN,MX})
+## Stock reverb extents on a unit, MKII, image `test/ext-probe` X1, projects MXEXT_{PL,DK,SP}_{MN,MX})
 
 `modules/extprobe`: fills `X:0x34000..0x37da2` (T8 FX2's block) with `0xA5A5A5`, then counts the words that differ. T8 held the reverb with silent input and LEVEL 0; knobs all 0 (MN) or all 127 (MX); 8 s USB capture of T1 after each project load.
 
@@ -255,7 +252,7 @@ arrives whole instead of three times. Each repeat holds the pump's idle comparis
 - 0x3da2 is the last word the probe scans (LOAD METER's code starts at 0x37da3), so DARK REV's figure is a lower bound.
 - The section after this table gives the same effects with signal on T8.
 
-With signal on T8 (26 Oct 2026, projects `MXSG4_*`: T8 a FLEX slot playing a 31.7 s band-limited noise loop, started by MIDI Start and a note 43 on channel 8; knobs 127):
+With signal on T8 (projects `MXSG4_*`: T8 a FLEX slot playing a 31.7 s band-limited noise loop, started by MIDI Start and a note 43 on channel 8; knobs 127):
 
 | effect | highest differing offset | differing words | silent input |
 |---|---|---|---|
@@ -271,7 +268,7 @@ With signal on T8 (26 Oct 2026, projects `MXSG4_*`: T8 a FLEX slot playing a 31.
 - Every figure is below 0x1000, where the demand loader places effect code. SPATIALIZER's 0xa67 is 0x599 words below it.
 - One capture per effect at knobs 127; knobs 0 with signal were not measured.
 
-## Homes on a unit (28 Oct 2026, MKII, image `octabam` H1, projects `MXHOME_A`, `B`, `C`)
+## Homes on a unit, MKII, image `octabam` H1, projects `MXHOME_A`, `B`, `C`)
 
 MODULATION on T1's FX1; T3 and T4's FX2 are the only slots that matter (its two homes are the T3 and T4 blocks). Pump state read with `tools/hw/dl_state.py` (word 11: bit 2 the T3 block, bit 3 the T4 block), the effect's cost from LOAD METER (4,535 counts a slot when loaded, a dry slot 76 to 147).
 
@@ -286,11 +283,11 @@ MODULATION on T1's FX1; T3 and T4's FX2 are the only slots that matter (its two 
 
 Not measured: the dry gap while an effect moves and whether it is audible; whether the DARK REV that arrives runs correctly (it is guarded, so it should pass the audio through until the code is gone); and whether the toast at a page key appears on keys other than AMP.
 
-DSP 1's peak since reset read 99.8 % with an effect loaded (also 91.7 % and 99.8 % on cores 0 and 1 in an earlier round with four effects loaded, 26 Oct 2026) and 43.1 % when nothing had loaded. LOAD METER cannot reset the peak, so which frame made it is not measured: the load is the common factor, and the copy of a whole block in one frame hook (DLCOPY, up to 2,600 words) is the candidate.
+DSP 1's peak since reset read 99.8 % with an effect loaded (also 91.7 % and 99.8 % on cores 0 and 1 in an earlier round with four effects loaded) and 43.1 % when nothing had loaded. LOAD METER cannot reset the peak, so which frame made it is not measured: the load is the common factor, and the copy of a whole block in one frame hook (DLCOPY, up to 2,600 words) is the candidate.
 
 ## Next changes
 
-Found in the review of 8-9 Nov 2026 (the simplify pass whose changes are in `CHANGELOG.md`, "Unreleased"). None is made.
+Found in the review of (the simplify pass whose changes are in `CHANGELOG.md`, "Unreleased"). None is made.
 Each says what it removes and what it costs.
 
 - **An acknowledgement from the copier.** The pump sends each load three times because it cannot see a refusal. LOAD
@@ -330,14 +327,13 @@ Each says what it removes and what it costs.
 
 ## Open
 
-- OPEN, hardware: why a copy at the frame head that bound an effect stopped core B in the first track of that frame (15 Nov
-  2026, `FAILURE_MODES.md`, "DSP stall after a demand load during play"). The hook's move to the frame's end removed the
+- OPEN, hardware: why a copy at the frame head that bound an effect stopped core B in the first track of that frame ( `FAILURE_MODES.md`, "DSP stall after a demand load during play"). The hook's move to the frame's end removed the
   stall in 12 runs of 12; the mechanism is not known, and the copy still takes core B to about 80 % of a frame.
-- OPEN, hardware: a move from T4's block freezes the DSP frame loop (`FAILURE_MODES.md`, "DARK REV picked on T4's FX2 ..."). `octabam` still has `window_homes`. A poll caught DSP 1 at 99.8 % in a single frame at the copy of a send (15.544 s, 28 Oct 2026): copying a block in one frame takes core B close to a frame.
-  Since 8 Nov 2026 the loop is 9 instructions and 10 words a code word instead of 11 and 13, and the two repeats of a send that
+- OPEN, hardware: a move from T4's block freezes the DSP frame loop (`FAILURE_MODES.md`, "DARK REV picked on T4's FX2 ..."). `octabam` still has `window_homes`. A poll caught DSP 1 at 99.8 % in a single frame at the copy of a send (15.544 s): copying a block in one frame takes core B close to a frame.
+  Since the loop is 9 instructions and 10 words a code word instead of 11 and 13, and the two repeats of a send that
   arrived whole are not copied. Estimated from the code (2 cycles a one-word instruction, as `CHIP.md` measures; 4 assumed for a
   two-word one; wait states for fetches and P writes in the window not counted): MODULATION's 1,561 words went from about 41,000
-  cycles to about 31,000, against a frame of 72,512. 🟡 not measured on a unit. On a unit, 9 Nov 2026 (`OCTABAMS5`, which has
+  cycles to about 31,000, against a frame of 72,512. not measured on a unit. On a unit, (`OCTABAMS5`, which has
   these changes): a switch to MODULATION still read DSP busy 99.7 % in the window of its copy. At full polling the unit stopped
   once in 118 switches, where `OCTABAMS4` stopped the DSP 3 times in 19 (`FAILURE_MODES.md`, the loader soak). The busy figure
   is at its ceiling in both images (99.8 % before), so it cannot show the copy's shorter time. Copying a slice per frame (a cursor in the entry, BOUND after the last slice) is the change that
@@ -352,7 +348,7 @@ Each says what it removes and what it costs.
 - SIDECHAIN_COMPRESSOR: not on a unit. Cold key window: the block is a reverb's buffer before SC loads, so for two generations after a load the
   foreign read can return stale words (a few blocks of wrong key, a duck glitch); GSEED in private Y survives a withdraw and does not reseed.
   Either the copier zeroes the `$400` words (one more frame of core B work, at a copy-frame peak already measured at 99.8 %) or the code keeps a per-core
-  "warm" count reset when it first runs after a load. 🟡
+  "warm" count reset when it first runs after a load. 
 - SIDECHAIN_COMPRESSOR: load cost. The bodies run from the window, about +47 cycles a sample a core on an MKI (Zac, `KYOTI_BP303_SCOPE.md` 3a), plus
   the stubs on every track every block. Not measured on octabam. The copy-frame cost of a 1,711-word block is not measured.
 - Demand pressure: five demand effects over four blocks; SC and MODULATION want the same two. Which loses in a full project is the pump's

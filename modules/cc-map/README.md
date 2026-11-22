@@ -23,33 +23,6 @@ entry, RPN/NRPN, channel mode) at import.
 places it) and one poke. Named CC PAGE 2 (`modules/ccpage2`) until
 25 Sep 2026. Flash notes and commits before that date use the old name.
 
-## Measured
-
-- `tools/verify/verify_cc_map.py` (in `make check`; on the new numbers
-  since 1 Nov 2026, measured by the PR's CI run): for each track 0–7
-  on its own channel, CC 102 (FX2) and CC 108 (FX1) land count-clamped at
-  the traced Part, live and shadow bytes; an over-count value clamps; CC 15
-  reaches FX1 slot 11; every CC outside the blocks, 62–73 among them,
-  reaches the next handler and writes no page-2 byte. This runs single-core under Unicorn, so
-  it proves the write and the decision.
-- Under the ColdFire port (`verify_set`, `OT_PROJECT=<dir> make check`):
-  CC 68 over UART0 reached the FX1 page-2 lane and the DSP record
-  (15 Sep 2026, the old numbers; the gate sends CC 108 since 1 Nov 2026).
-- MODE DEFAULTS over CC, under the port: CC 62 = 1 on T1's channel landed
-  GRAIN's view in the lane; a CC 63 in the same frame then set SCTR (the
-  old numbers: CC 102 and 103 now).
-
-## On the unit
-
-Both images ran the old numbers (62–73). The 1 Nov 2026 numbers change
-only the decode at `CAVE`; the write paths are the same bytes. They have
-not run on a unit.
-
-- Image 96: CC 63 on channel 5 moved SHMR on the panel and raised the
-  reverb tail's 2–8 kHz bands 5–8 dB. Images before 96 wrote the PLAYBACK
-  page-2 byte (`docs/contributing/FAILURE_MODES.md`).
-- Image 97: the station voicing sweep set FX1 MODE over CC 69 (`docs/contributing/FAILURE_MODES.md`).
-
 ## Open
 
 - The new numbers on a unit: CC 102 and CC 108 moving their knobs, and a
@@ -61,12 +34,6 @@ not run on a unit.
   the old FX1 number, reached page 2 through the chain, above).
 - An FX1 page-2 edit reaching the DSP on a THRU track, on hardware
   (measured under the port: `docs/contributing/FAILURE_MODES.md`, image 24).
-
-## Gates
-
-- `tools/verify/verify_cc_map.py` (in `make check`, Unicorn), the manifest's
-  gate.
-- `verify_set` (`OT_PROJECT=<dir> make check`) under the ColdFire port.
 
 ## Hook
 

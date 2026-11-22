@@ -28,13 +28,3 @@ module rewrites them as the firmware applies the Part:
 
 The Part in RAM is changed, not the card: the project is converted on the card when it is next saved. A Part is
 converted when it is applied, so a bank or a Kit not yet played keeps its stock values until it is.
-
-## Measured
-
-`tools/verify/verify_verb_parts.py` under the ColdFire port (`octabam-verbs`, a project made by
-`tools/hw/ot_fresh.py`), every Part of every bank given, on FX2: T2 DARK's id with DARK's values, T4 SPRING's id with
-slots 9 and 10 at 0, T3 PLATE's id with slot 9 at 4, T5 VERBERATION's id with slots 9 and 10 at 0. After the load:
-the applied Part (bank 1) carries VERB HALL's defaults on T2 and VERB ROOM's on T4; T3 and T5 are as written in all
-16 banks; the 15 Parts not applied keep their stock values. 284 bytes of DRAM code and data.
-
-Not covered: the pattern-change path (`0x40009e00`) runs the same conversion but this run does not reach it; a unit.

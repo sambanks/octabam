@@ -3,17 +3,15 @@
 The contract for modules that declare settings and for tools that read or write the brain's files: what a module declares
 (`Store`, `Setting`, `Pin`, `Param.key`), how a value is resolved through four layers (manifest, remix, card, project),
 the run-time value table, the files on the card and in the project, the brain file's byte format, and compatibility.
-Design of 6 Oct 2026 (Sam Banks), restored from `git show 76fd8466:docs/proposals/BRAIN.md`, which also has the sections
+Design of (Sam Banks), restored from `git show 76fd8466:docs/proposals/BRAIN.md`, which also has the sections
 left out here: 9 menu, 10 tooling, 11 gates, 12 phases, 13 to find out, 14 relation to nordseele's OTX proposal, 15 retracted.
 Section numbers are those of the original; code comments cite them as "BRAIN.md section N".
 
 The implementation is `tools/remix/schema.py` (declarations), `tools/remix/brain.py` (resolution, refusals, lock file),
 `tools/remix/brainfile.py` (the file format; the reference implementation), `tools/hw/ot_brain.py` and `modules/brain`
 (the run-time side on the unit; [BRAIN module](../../modules/brain/README.md)). Phases 0-4 are built and measured under the port;
-the module README records what has run on a unit. A statement here about what is "not built" was true on 6 Oct 2026; the module README and the
+the module README records what has run on a unit. A statement here about what is "not built" was true; the module README and the
 code are current.
-
-Confidence markers: ✅ measured, 🟡 inferred with a falsifier stated, ❌ retracted.
 
 ## 1. What it holds
 
@@ -74,7 +72,7 @@ An instrument template holds the MIDI track setup, the knob names, the
 incoming CC map and the controller preset for one external instrument.
 
 Knob names: 8 MIDI tracks x 10 assignable CCs x 6 bytes = 480 bytes per
-Part (🟡 the 10 CCs are read from the panel's CTRL 1 and CTRL 2 pages; no
+Part (the 10 CCs are read from the panel's CTRL 1 and CTRL 2 pages; no
 record in `docs/firmware/` yet). 64 Parts are 30,720 bytes; with KITS the
 block is indexed by Kit, 256 Kits are 122,880 bytes, and KITS raises an
 event to the brain at Kit load and save.
@@ -102,13 +100,13 @@ settings=(
 - `Setting.key`: 1 to 65535, never reused for another meaning.
 - `Setting.kind`:
 
-  | kind | value | stored as |
-  |---|---|---|
-  | `Binary()` | 0 or 1 | 1 byte |
-  | `Option(*labels)` | an index; labels are append-only | 1 byte |
-  | `Number(min, max, step=1, unit="")` | signed 16-bit | 2 bytes |
-  | `Trigger()` | an action | never stored |
-  | `Blob(max_bytes)` | bytes the module packs and unpacks | up to `max_bytes` |
+| kind | value | stored as |
+|---|---|---|
+| `Binary()` | 0 or 1 | 1 byte |
+| `Option(*labels)` | an index; labels are append-only | 1 byte |
+| `Number(min, max, step=1, unit="")` | signed 16-bit | 2 bytes |
+| `Trigger()` | an action | never stored |
+| `Blob(max_bytes)` | bytes the module packs and unpacks | up to `max_bytes` |
 
 - `Setting.scope`: `Scope.CARD` or `Scope.PROJECT`.
 - `Setting.apply`: `LIVE` (the module reads the value table), `CALLBACK`
@@ -140,8 +138,8 @@ REMIX = Remix(...,
   (a new default). An Option takes a label or an index.
 - `defaults`: `(module key, mode label or None, knob name)` to a byte;
   it replaces `Param.default` or the `ModeView` entry in this image.
-- Image templates (`templates=`, JSON files in `templates/`) were built 11 Oct 2026
-  and removed 12 Oct 2026: templates are the user's, on the card.
+- Image templates (`templates=`, JSON files in `templates/`) were built 
+  and removed templates are the user's, on the card.
 
 ### 4.3 What the build refuses
 
@@ -189,7 +187,7 @@ Reading a setting from ColdFire source:
 |---|---|
 | live | one absolute read from the value table |
 | pinned, or the brain is absent | a constant |
-| `Apply.BUILD` | an assembler symbol (`layout_inc(n)` passed `USB_LAYOUT` until the USB merge, 15 Oct 2026) |
+| `Apply.BUILD` | an assembler symbol (`layout_inc(n)` passed `USB_LAYOUT` until the USB merge |
 
 Events: `card_loaded`, `project_loaded`, `project_saving`,
 `project_closing`, `setting_changed`, and the birth events
@@ -200,22 +198,22 @@ order; the build report prints the order.
 
 Layers 1 and 2 are the descriptor bytes the build writes today
 (`Param.default`: page 1 at `desc+0x5e`, page 2 at `desc+0x64`, read by
-`FUN_400526e4`, ✅ `docs/firmware/PARAM_PAGES.md` 5g) and MODE DEFAULTS'
+`FUN_400526e4`, `docs/firmware/PARAM_PAGES.md` 5g) and MODE DEFAULTS'
 table. For layer 3 the brain writes the card's values over those bytes in
 RAM after the card store loads; the OS image runs from cached SDRAM at
-`0x40000000` (✅ `docs/contributing/PLACEMENT.md`). The consuming sites
+`0x40000000` ( `docs/contributing/PLACEMENT.md`). The consuming sites
 are unchanged: the stock effect select, the new-part initialiser
 `0x40005638` with RIG HOSTS' detours, and MODE DEFAULTS at `0x4003aaea` /
 `0x4003acf2`, whose table moves into the brain's data when the brain is in
 the image.
 
-Measured under the port (6 Oct 2026, bottleservice,
+Measured under the port (bottleservice,
 `tools/verify/verify_desc_defaults.py`): the FX2 chooser's select (T2 SEND
 -> stock DELAY) and the FX1 chooser's select (T2 SPECTRUM -> CHARACTER)
 land the descriptor's twelve defaults in the live lane, and with those
-twelve bytes poked in RAM after the load they land the poked bytes ✅. The
+twelve bytes poked in RAM after the load they land the poked bytes. The
 new-part initialiser `0x40005638` reads the same bytes at execution time
-(✅ `lea P,%a1 / lea %a1@(5e,%d2:l)`, RIG HOSTS' sites); the read watch on
+( `lea P,%a1 / lea %a1@(5e,%d2:l)`, RIG HOSTS' sites); the read watch on
 stock DELAY's defaults shows it at `0x4000583c`/`0x4000584a` during the
 project load and no other reader in that window (the watch logs the first
 64 reads). 57 stock instructions read at `+0x5e`/`+0x64` through a
@@ -264,7 +262,7 @@ list row.
 
 ### 6.2 The pairs
 
-The rules are KITS's (`modules/kits/README.md`, "Files"; ✅ on the unit,
+The rules are KITS's (`modules/kits/README.md`, "Files"; on the unit,
 image A6): a header with magic, version, length and a CRC-32 of the rest;
 `.work` rewritten when something changed; `.strd` copied where stock
 copies `.work` to `.strd` (`0x4008ee74`) and back (`0x4008f180`); a
@@ -288,7 +286,7 @@ table of OTX_PROJECT_PROPOSAL.md section 3.3):
 
 A job on the stock engine job queue; the UI task does no file access for
 the store. `open("w")`, write, close through the stock buffered calls; edits coalesced about 2 s
-after the last one; deferred while a recorder is writing. ✅ on
+after the last one; deferred while a recorder is writing. on
 nordseele's MKI for Octalab's own files (OTX_PROJECT_PROPOSAL.md section
 2.2); not measured under an octabam image.
 
@@ -307,7 +305,7 @@ rewritten when the card store loads and after an edit.
 | `0x100f859c..0x100fff00` | stock references nothing here (`docs/firmware/STEP_LOCKS.md` section 6) | 31,076 |
 | `0x100f85a0..0x100f85e8` | KITS | 72 |
 | `0x100f8600..0x100fbdc0` | PLOCKS P2 | 14,272 |
-| `0x100fbdc0..0x100fbdf0` | PATTERN MUTE (since 17 Nov 2026) | 48 |
+| `0x100fbdc0..0x100fbdf0` | PATTERN MUTE (since | 48 |
 | `0x100fbdf0..0x100ffe00` | MIDI SCENES | 16,400 |
 | `0x100ffe00..0x100fff00` | KITS | 256 |
 | `0x100f859c..0x100f85a0`, `0x100f85e8..0x100f8600` | free in bottleservice | 4 + 24 |
@@ -317,7 +315,7 @@ values at build-assigned offsets: 20 value bytes at `0x100f85e8` in a
 remix that carries KITS and PLOCKS P2. The build sizes it from the
 declarations, claims the range in the ledger and refuses on overflow.
 
-🟡 CS1 keeps its contents with the power off. Inferred from stock's use
+Unconfirmed: CS1 keeps its contents with the power off. Inferred from stock's use
 of it (`STEP_LOCKS.md` section 6); both module READMEs record it as not
 measured on the unit.
 
@@ -453,6 +451,6 @@ the effect has none).
   layout. It does not rewrite Parts to a new layout, and needs no clamp:
   stock's Part validator `0x40002318` rewrites every FX page byte outside
   its descriptor's `[min, min + count - 1]` to the nearer end during the
-  load, in all 16 banks x 8 Parts (measured under the port, 6 Oct 2026,
+  load, in all 16 banks x 8 Parts (measured under the port, 
   `tools/verify/verify_brain.py`; reached from the new-part initialiser's
   tail `0x40005a44`, from `0x4002579e` and from the load at `0x4008cea0`).

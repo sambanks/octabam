@@ -1,12 +1,9 @@
 # DSP56300 side: load map, dispatch, parameters, memory
 
-Addresses are ColdFire virtual addresses (`file_offset = vaddr −
-0x40000400`) unless prefixed `P:` / `X:` / `Y:` (DSP word addresses).
-Markers as in `CHIP.md`: ✅ measured / read from the listing, 🟡 inferred.
 The build side of this (`DspSection`, ids, placement) is
 `docs/contributing/MODULES.md` and `docs/contributing/PLACEMENT.md`.
 
-## 1. Boot sequence ✅
+## 1. Boot sequence
 
 `FUN_40001e50`, called from `0x4000050c`:
 
@@ -23,20 +20,19 @@ FUN_40001b18(0x400f59ef)                     ; payload B (77,061 B)
 move.l #0xfff0000,(0xfc00801c)               ; FlexBus / chip-select config
 ```
 
-Retracted 8 Sep 2026: "`0x81` = DSP control: start" (the window is the
-HI08 register file). The sequence runs in the ColdFire port against two
+The sequence runs in the ColdFire port against two
 emulated cores and lands every byte (`git show 3ceba41:docs/history/COLDFIRE_PORT.md` O8). Payload B's
 entry `P:0x38000` is written by payload A's upload: the shared window is one
 memory for both cores, P/X/Y.
 
 Two DSP cores, one payload each; payload A serves tracks 5–8, payload B
-tracks 1–4 (✅ MrkVerb32 marker flash, 10 Aug 2026). Boot code at
+tracks 1–4 (MrkVerb32 marker flash). Boot code at
 `0x40000450` copies all four blobs from the image tail to `0x40a955e0`
 (= `0x400e21e0 + 16 × 0x9b340`, the end of the 16 resident bank blobs)
 before upload; after boot the DSP program exists only in the DSPs and at
 that copy.
 
-## 2. Payload format ✅
+## 2. Payload format
 
 `FUN_40001b18(ptr)` walks 24-bit little-endian words (`b[0] | b[1]<<8 |
 b[2]<<16`):
@@ -55,7 +51,7 @@ repeat:
 consumes the blob: A 98 records, 79,557 / 79,563 bytes; B 91 records,
 77,055 / 77,061.
 
-## 3. Load map ✅
+## 3. Load map
 
 Payload A: 98 modules, 26,221 words; X data `0x0020f`–`0x08d64`, Y data
 `0x00200`–`0x00715`, P from `0x00000`:
@@ -86,16 +82,12 @@ a dispatch table.
 
 Internal P is contiguous with no gaps: A 66 modules, 8,159 words, top
 `P:0x01fdf`; B 46 modules, 7,583 words, top `P:0x01d9f`. P ends at
-`P:0x1fff` on the default map ✅ (PEXT PROBE, 25 Oct 2026, `modules/pextprobe`,
+`P:0x1fff` on the default map (PEXT PROBE, `modules/pextprobe`,
 on the unit): a control at the spare `P:0x1fe0` wrote and read back on both
 cores, and `P:0x2000`, `0x2100`, `0x2400`, `0x2800`, `0x3000`, `0x3800` did not
 hold a written word on either; `P:0x3fe0`, `0x5fe0` .. `0xffe0` did not on
-either core, and nothing wrapped onto `P:0x1fe0`. ❌ Retracted: "`P:0x2000` is
-executable (CHORUS relocated there ran on the unit,
-`git show dc788d3a:tools/build_dsptest.py`)": a direct write and read-back
-at `P:0x2000` finds no memory there, and the CHORUS result is not
-reproduced. No external memory; the shared window runs at internal speed
-(`CHIP.md`). Code written at runtime into the shared window runs ✅: PEXT PROBE
+either core, and nothing wrapped onto `P:0x1fe0`. No external memory; the shared window runs at internal speed
+(`CHIP.md`). Code written at runtime into the shared window runs: PEXT PROBE
 wrote a three-word routine at `P:0x30100`, `0x35900`, `0x36300`, `0x36800`,
 `0x37000`, `0x37800` and `0x37e00` from each core, called it and read its
 result, on core 0 and on core 1 (the words are in payload A's half).
@@ -103,11 +95,11 @@ result, on core 0 and on core 1 (the words are in payload A's half).
 Non-effect modules (payload A): `0x2bf` summing mixdown, `0x3a1` voice
 playback engine (2-tap linear interpolator over a 128-word ring), `0x5cb`
 flag handling off `r6+$1e`, `0x6f4` a small MAC helper, `func_00055a` the
-24-bit ↔ dual-16-bit host packer (🟡 the first two and the packer from
-Bryan T, 30 Aug 2026). The DSP self-modifies: frame setup writes
+24-bit ↔ dual-16-bit host packer (the first two and the packer from
+Bryan T). The DSP self-modifies: frame setup writes
 `move x0,p:>$58c` and `p:>$59b`.
 
-### Timestretch is a ColdFire feature 🟡 (Bryan T, 30 Aug 2026)
+### Timestretch is a ColdFire feature (Bryan T)
 
 The CPU renders the grains and crossfades and ships finished audio to the
 DSP every frame; the DSP's playback engine (`P:0x3a1`) is a 2-tap linear
@@ -117,17 +109,16 @@ interpolator over a 128-word ring applying pitch only. Crossfade: a
 minimum grain body 2,048 samples. No pre-analysis: the `.ot` serializer
 persists 64 slice records, trim points and a checksum; BEAT mode's
 transients are slice markers. Segments are butt-spliced on the DSP. The
-module labels above (`P:0x3a1`, `P:0x2bf`, `func_00055a`) are Bryan T's;
-until 30 Aug 2026 they read "parameter unpacking", "resampler" and "gain
+module labels above (`P:0x3a1`, `P:0x2bf`, `func_00055a`) are Bryan T's; they read "parameter unpacking", "resampler" and "gain
 routine".
 
 Its ColdFire cost at 137 → 120 BPM (TSTR AUTO, audibly stretching, seven
 FLEX voices) is not measurable in the frame interrupt: 257–278 µs against
-244–268 µs with TSTR off (Bryan T's CF METER takes, 4 Oct 2026,
+244–268 µs with TSTR off (Bryan T's CF METER takes, 
 `ARCHITECTURE.md` section 6). Beyond 2× (voice `+3`, `REPITCH.md`) is
 untested.
 
-## 4. Disassembly ✅
+## 4. Disassembly
 
 The vendored dsp56300 project (`vendor/dsp56300/build/source/disassemble/
 dsp56kDisassemble`, built by `make setup`):
@@ -143,7 +134,7 @@ python3 tools/build/dsp_disasm_all.py                   # every P module -> out/
 as 23–16 / 15–8 / 7–0). `dsp_disasm_all.py`: A 68 modules / 6,817
 instructions, B 46 / 6,251, zero undecodable.
 
-## 5. The effect dispatch ✅
+## 5. The effect dispatch
 
 `P:0x0041e` holds the only dispatch: six `jsr (r2)` sites per payload.
 
@@ -207,13 +198,12 @@ distinct from COMPRESSOR `0x18`.
 Runs on the ColdFire: per-frame DMA descriptor arithmetic over per-track
 rings in SDRAM at `0x4F502C10` (10.8 MB, `0x477...` cached alias), EMAC loop
 for gain and mix, frame routine `0x400031a0` consuming the post-FX2 read-back
-block (section 6c) and returning 512 words to core 0 at `X:0x4400` (🟡 adopted from
-Bryan T, 30 Aug 2026; `git show 3ceba41:docs/history/RTOS_FORK.md` section 10.16.2). The routine
+block (section 6c) and returning 512 words to core 0 at `X:0x4400` (adopted from
+Bryan T,; `git show 3ceba41:docs/history/RTOS_FORK.md` section 10.16.2). The routine
 itself — its frame, the control-snapshot selector `0x80004804`, the track
 loop, the seam a replacement can take and its per-frame protocol — is
-`COLDFIRE_DELAY.md`. ❌ Until 22 Sep 2026 this read "per-track record
-`0x80001a00 + 96·track`": 96 is the snapshot stride, 12 the track's. The DSP is
-ruled out ✅: one dispatch, no `cmp` against id 8, per-track path FX1 → FX2 →
+`COLDFIRE_DELAY.md`. The DSP is
+ruled out: one dispatch, no `cmp` against id 8, per-track path FX1 → FX2 →
 packer → `jmp int_00004a`, reachability from the tables/vectors/bootstraps
 covers 95.8% (A) / 98.5% (B) of instructions with every unreached run ≤ 112
 instructions, largest modulo buffer 128 words (`m6=$7f`), one firmware
@@ -239,7 +229,7 @@ same slot. The send client's levels on that id are DELAY's own `p0 TIME` /
 `p1 FB` (its page: TIME 47, FB 0, VOL 127, BASE 0, WDTH 127, SEND 0 | X 0,
 TAPE 1, DIR 127, SYNC 1, LOCK 0, PASS 0).
 
-### Module records are not routine boundaries ✅
+### Module records are not routine boundaries
 
 Records are laid down contiguously and code runs across seams. PHASER's
 record is `0x00cc7`–`0x00d64` (157 words) and its control flow reaches
@@ -253,7 +243,7 @@ LO-FI `0x01d6b`, DJ EQ `0x01ec7`, COMB `0x01fd4`). Match `do/rep/jmp/jsr/
 bra/bsr/Jcc` operands only; `move #>$2000,x0` is an immediate. Disassemble a
 neighbour before overwriting it.
 
-### `X:0x30000` staging and aliasing ✅
+### `X:0x30000` staging and aliasing
 
 Frame setup copies 72 words from `X:0x30000` to `y:0x1b8` and writes
 parameter values back into `X:0x30000` (`P:0xa8..0xb6`). The allocator
@@ -273,7 +263,7 @@ track 3 FX2), and payload B's boot zero loop (`P:0x40-0x4a`) clears
 as stock's does. Six operands carry this (A `P:0x9c`; B `P:0x41`, `P:0x43`,
 `P:0x45`, `P:0x4c`, `P:0x173`; `tools/remix/dsp_ranges.py`
 `STOCK_PATCHES`), each asserted stock before it is written. Buffered stock effects and the
-mailbox (13 Oct 2026, measured under the port, not on a unit: the `mods` image,
+mailbox (measured under the port, not on a unit: the `mods` image,
 all eight tracks THRU with tones on the inputs and the same stock effect on
 every track's FX2, 1,400 frames, `--dsp-dirty`, `--dsp-peek 0:Y:30000,65536`
 at the end): none of FLANGER, CHORUS, SPATIALIZER, COMB FILTER, PLATE REV,
@@ -295,7 +285,7 @@ in both. X, Y and P alias in the shared
 window `0x30000`–`0x3FFFF` (`git show 93a787fc:dsp/alias_probe.asm`, `CHIP.md`); `dsp_host`
 keeps the spaces separate and cannot show aliasing.
 
-## 6. Parameters ✅
+## 6. Parameters
 
 Relative to `x:>$208`: FX1 params at `+6`, FX2 at `+12`, ids at `+0x1b`/
 `+0x1c`. Inside a routine page-1 slot *i* is `x:(r6+i)`, positionally,
@@ -317,17 +307,14 @@ low byte is never published.
 The stub's `r0` in / `r1` out is the stub's convention; DARK REV saves `r0`
 to `x:(r7+$17)` and works from `#$a0` / `#>$110`.
 
-### Page 2: `r6+$b..$e` ✅
+### Page 2: `r6+$b..$e`
 
 Not `r6+6` and not display order. Measured with `git show 8a358161:dsp/pagemap_probe.asm`
 and `git show 99f8baf5:dsp/page2_probe.asm`, and the slot map in
 `PARAM_PAGES.md` section 6. The two instances of a track overlap: the FX2 block
 starts six words after the FX1 block, so `r6_FX2+$6..$8` IS the FX1
 effect's page 2 and `r6_FX2+$9..$b` the AMP page 2 (record halfwords
-18-23). Retracted 15 Sep 2026: "`r6+$6..$a` are read by nothing on the
-DSP" -- true of every FX2 effect, and the tempo cave that relied on it
-overwrote the FX1 station's page 2 on every delay and reverb host
-(`docs/contributing/FAILURE_MODES.md`).
+18-23). 
 
 | display slot | field |
 |---|---|
@@ -339,8 +326,7 @@ overwrote the FX1 station's page 2 on every delay and reverb host
 | 11 | `r6+$e` bits 8–15 |
 
 Decode a companion with `and #>$7f00` then `asr #$8`. Every field takes a
-full 0–127 knob (✅ tag 84: SHMR/MDEP on slot 7). Retracted: bits 0–7 for
-companions (never worked on hardware); "a count-128 companion publishes
+full 0–127 knob (tag 84: SHMR/MDEP on slot 7). "a count-128 companion publishes
 near-boolean" (the inherited formatter). DARK REV's labels: displayed `PRE`
 drives `$e`, displayed `MIXF` drives `$c`; its algorithm reads its pre-delay
 from `$c`. Page-class A (`0x40032814`) donors render one page-2 knob when
@@ -349,7 +335,7 @@ probe comparing whole words against `64<<16` cannot see a companion field.
 A generator that interpolates an offset as `$12` gets hex 18: format
 `{x}`.
 
-## 6c. Frames, tempo, read-back ✅
+## 6c. Frames, tempo, read-back
 
 The transfer routine `0x40004860` is a 7-step state machine (`0x46104d3e`)
 over eDMA channel 0 (TCD `0xFC045000`, DADDR the port `0x2000001c`, 16-byte
@@ -363,10 +349,10 @@ bursts, 4 minor loops); before each DMA it writes the DSP destination
 | `0x80000110` / `0x80000210` + ping·`0x200` | 64 | `X:0x000` | four 16-word per-voice records |
 | `0x80005460` + slot·`0x80` | 32 | `X:0x800` | a sample-slot record, on demand |
 | `0x80003190` + ping·`0x400` | 256 | ← `X:0x4600` (A) / `X:0x2600` (B) | read-back: four per-track post-FX2 blocks (below); core 1's lands at `0x80003190`, core 0's at `+0x200`; the 512 words go back to core 0 every frame |
-| `0x80005460` + [`0x80004804`]·`0x80`: four pages, `0x80005460..0x8000565f` ([`0x80004800`] names the one written) | 64 | `X:$205` (`0x4800` A / `0x2800` B) | the level words: per slot the cue send, the level, the MAIN table index and the split; the cue and MAIN levels at halfwords `0x28`/`0x29` (`STEM_REC.md` 18.1) ✅ |
-| `0x80005660` + [`0x46104d00`]·`0x100`: eight pages, `0x80005660..0x80005e5f`; `0x4000ab66` advances the index mod 8 each frame | 128 | ← (eDMA ch 7) | the four inputs, one frame a page: C and D at `+0x00`, A and B at `+0x80`, a long a sample each, interleaved (`STEM_REC.md` 18.7) ✅. Until 1 Oct 2026 this row read "the eight ESAI input slots × 16 samples" and began at `0x80005460`, where the level pages are |
+| `0x80005460` + [`0x80004804`]·`0x80`: four pages, `0x80005460..0x8000565f` ([`0x80004800`] names the one written) | 64 | `X:$205` (`0x4800` A / `0x2800` B) | the level words: per slot the cue send, the level, the MAIN table index and the split; the cue and MAIN levels at halfwords `0x28`/`0x29` (`STEM_REC.md` 18.1) |
+| `0x80005660` + [`0x46104d00`]·`0x100`: eight pages, `0x80005660..0x80005e5f`; `0x4000ab66` advances the index mod 8 each frame | 128 | ← (eDMA ch 7) | the four inputs, one frame a page: C and D at `+0x00`, A and B at `+0x80`, a long a sample each, interleaved (`STEM_REC.md` 18.7) . Until this row read "the eight ESAI input slots × 16 samples" and began at `0x80005460`, where the level pages are |
 
-Retracted: "`X:0x400`" for the read-back (never located; `X:0x415`–`0x41f`
+`X:0x415`–`0x41f`
 are dispatcher variables). The 336-word block is built by the packer
 `0x4000d3fc`–`0x4000d55e` from the machine-type handler table `0x400d61d0`
 (rotated from `0x400d61f0`), record pointer `0x80001c80`; the DSP's 72-word
@@ -378,7 +364,7 @@ Read-back: the dispatcher (`P:0x54`/`0x64`) loads `r5 = X:0x4600` (A) /
 (`p:$371`/`p:$380` = `$3fff`/`$5fff`) so the ColdFire's constant command
 word `$6600` lands in the SAME buffer: one buffer per frame, and the
 pull (DMA channel 1, armed at `P:0x37c` in B) must finish before the first
-FX2 copy overwrites it. ✅ Measured on the unit 25 Sep 2026 (images
+FX2 copy overwrites it. Measured on the unit (images
 32-38, `docs/contributing/FAILURE_MODES.md`): core 1's pull reaches T1's 64
 words about 4.5 samples after T1's proc entry, jittering by half a
 sample or more with the pattern position (the port models +0.26). A
@@ -391,7 +377,7 @@ last instruction: core 1 has no idle of its own between frames; after each FX2 c
 `X:0`: 16 interleaved samples, each 24-bit sample stored as two words (`mpy`
 by `0x8000` and `0x80`), 64 words per track, `add #>$40` at `P:0x52b`. Four
 straight-line calls at `P:0x2df/0x2e2/0x2e6/0x2eb` fill the upper 256 words.
-Payload B's sites are 0x20b lower (`P:0x303`, `0x309`, `0x34f`). 🟡 Whether
+Payload B's sites are 0x20b lower (`P:0x303`, `0x309`, `0x34f`). Whether
 track LEVEL is applied before this point is unread.
 
 ESAI: both cores configure it at boot (`P:0x30026` and the second port:
@@ -405,9 +391,7 @@ a,x:<<M_TX0`):
 030045: movep a,x:<<M_TX0
 ```
 
-and a second port (`M_*_1`) identically; `M_TDC=$7` = 8 slots. Retracted
-30 Aug 2026 (Bryan T): "audio does not arrive over the ESAI" (inferred
-from dead ESAI vectors `0x30`–`0x3e`; a DMA-serviced peripheral needs
+and a second port (`M_*_1`) identically; `M_TDC=$7` = 8 slots. a DMA-serviced peripheral needs
 none). `CHIP.md` had labelled the `P:0x30000` module "host-port loader +
 ESAI setup" throughout. The live vectors `0x10`–`0x1c` are host-port handlers that
 program DMA0 (`P:0x588..0x592`: destination from `M_HORX` into `M_DDR0`,
@@ -421,21 +405,17 @@ Tempo: `0x80001814` = BPM × 24, clamped `0x2d0..0x1c20` at both writers
 `0x4009c7c4(bpm, tenths)`: `24·bpm + (23·tenths + 4)/9`, so tenths 0..9 →
 `0 3 5 8 10 13 15 18 20 23`; `0x4009c5f4` displays it back; `0x4009c5b8`
 returns the pattern's own word (`blob + pattern×0x8ed8 + 0x8e58`) when
-`[0x80000024]` is set; `0x4004bc54` scales by `[0x46c7d328]/1000` (🟡 nudge,
+`[0x80000024]` is set; `0x4004bc54` scales by `[0x46c7d328]/1000` (nudge,
 clamp ≤ 1100). No code path copies tempo24 into a frame record: the
 ColdFire ships rates. Consumers: the recorder's FIN/FOUT fade generator
 `0x400074a0`/`0x40007502` (`tempo24 << 18` × `table[FIN]`/`table[FOUT]`
 from `a4@(6)`/`a4@(7)`, `0x400ab83a` = `ceil(1134693784 / n)`, entry 0
-`0xFFFFFFFF`; ❌ until 21 Sep 2026 this read "LFO speed" and "MULT table"
-— the LFOs are `LFO.md`, their rate is `SPD × tempo24 × 4` and MULT is a
-shift); `0x40006d48`
+`0xFFFFFFFF``0x40006d48`
 reads the phase increment into per-voice records; `0x40004bd2` advances a
 playback position by `tempo24 << 4` per frame when byte `+0x2b` of the
 per-voice record is set, else `0xb40`; UI `0x40031d70` (bars) and
 `0x4002f7ec` (`%ds`); recorder `0x4006e3b2` (`(raw+1) × 63504000 /
 (4·tempo24)`) and `0x40006dfc` (rounds; the one that reaches `arm()`).
-Retracted 2 Sep 2026: `0x400060c4` as a tempo→frame site (it is the
-PICKUP recorder arm length, `RECORDER.md`).
 
 The tempo reaches the DSP from stock: the per-frame voice-record writer
 stores tempo24 (`0x8000181c`, BPM*24) into halfword 31 of every track's
@@ -446,19 +426,19 @@ Q12.4) per block with a 24-step `div`. The note cave
 (replaces `move.b 0xdbc(a0),d2 / ext.w d2 / move.w d2,0x38(a2)` with `jsr`
 + two `nop`s, replays them) and for FX2 id 6 stores the held MIDI note
 into the low byte of halfword 13 (`r6+$1` bits 8-15); `MIDI.md`. Until
-15 Sep 2026 the cave stored tempo24 and the period at `+0x24/+0x26`
+ the cave stored tempo24 and the period at `+0x24/+0x26`
 (`r6+$6/$7`): the FX1 instance's page 2. The cave floats past the
 descriptor clones (`0x400d7000` in the shipping image). An init that built a
 division table in Y through `(r1)+` killed every voice on three flashes
-(R48–R50, 24 Aug 2026); `m1` is not guaranteed linear at init; replaced by
+(R48–R50); `m1` is not guaranteed linear at init; replaced by
 an immediate `cmp`/`tge` chain. The panel's `time_fmt.s` formatter prints
 the division (`PARAM_PAGES.md` section 7); the DSP-side snap rule is in
 `modules/busdelay/README.md`.
 
-### Core 0's frame: the join, the gains, the mixdown ✅ (Tim Hastie, O23)
+### Core 0's frame: the join, the gains, the mixdown (Tim Hastie, O23)
 
 Read from `out/dsp/payload_A.asm` and confirmed under the port (lockstep,
-13 Sep 2026; `git show 666b6154:docs/firmware/COLDFIRE_PORT.md` O23).
+; `git show 666b6154:docs/firmware/COLDFIRE_PORT.md` O23).
 Payload A, core 0; per-track blocks exist as data after the join and are
 not accumulated in place.
 
@@ -486,7 +466,7 @@ half a sample before DMA2 enters the half the mixdown wrote. The port's
 per-track taps (`audio start tracks`, `tools/emu/README.md`) read the
 blocks at P:0x2d5.
 
-## 7. Memory ✅
+## 7. Memory
 
 Effect code sizes (words): DARK 1,067, SPRING 1,063, FILTER 727, PLATE 594,
 LO-FI 537, DJ EQ 345, CHORUS 329, FLANGER 289, EQ 282, COMB 277, SPAT 261,
@@ -525,9 +505,9 @@ advanced in `P:0x0041e` before process is called. Base table `X:0x255`
 (8 words): `0x01000 0x04000 0x01c00 0x08000 0x02800 0x30000 0x03400
 0x34000`, interleaved FX1/FX2 (FX1 stride `0xc00`, FX2 `0x4000`). Payload B
 takes `0x38000`/`0x3c000` for its shared-window slots. FX2 instance *k* =
-table entry `1 + 2k`, `r7 = 0x6200 + 0x300·k` (the dispatcher bumps r7 three times per track: FX1, FX2, then once more unconditionally). ✅ measured 20 Oct 2026 with an r7 canary in `ot_emu` (OTDEMO; Zac Kyoti, issue #815). ❌ retracted 21 Oct 2026: `0x6000 + (2 + 2k)·0x100`, right only for k = 0:
+table entry `1 + 2k`, `r7 = 0x6200 + 0x300·k` (the dispatcher bumps r7 three times per track: FX1, FX2, then once more unconditionally; Zac Kyoti).
 
-| | entry | base A | base B | r7 |
+|  | entry | base A | base B | r7 |
 |---|---|---|---|---|
 | bank track 1 FX2 | 1 | `0x04000` | `0x04000` | `0x6200` |
 | bank track 2 FX2 | 3 | `0x08000` | `0x08000` | `0x6500` |
@@ -549,7 +529,7 @@ isolated. A per-instance stash at `Y:(0x735 + (r7 >> 8))` works on payload A and
 lands inside a live coefficient table on payload B. `dsp_host -inst N
 -guard` names a write over a loaded module. Bring-up hangs (three
 attempts, cause not isolated): executing at `P:0x2000` with low X as delay
-memory (🟡 P/X alias; `P:0x2000` is not memory on the default map, above), a `do` loop-end assembled at the wrong org, a
+memory (P/X alias; `P:0x2000` is not memory on the default map, above), a `do` loop-end assembled at the wrong org, a
 hardcoded entry offset.
 
 ## 8. Standing rules

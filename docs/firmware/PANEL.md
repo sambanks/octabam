@@ -1,15 +1,15 @@
 # The panel: surface, fonts, text and regions (OS 1.40C, MKII)
 
 Read out of `out/raw/section_3_MAIN_OS.bin` (SHA256 `164f3122…`), base
-`0x40000400`, on 16 Sep 2026, while chasing why the arranger greys a field
+`0x40000400`, while chasing why the arranger greys a field
 out. This is the part of `MAINMENU.md` section 8's "drawing primitives behind the
 state table's draw functions" now read: enough to draw text, boxes and
 shading of your own.
 
-Static reading unless marked ✅. The one hardware fact is negative and cost
+Static reading unless marked. The one hardware fact is negative and cost
 a flash: the formatting drawer's two spare arguments are **not** a shade
 (section 3). `0x40012368` (section 4) was re-read from objdump on 16 Sep, by hand, not
-run (🟡 where marked).
+run (where marked).
 
 ---
 
@@ -24,19 +24,19 @@ The descriptor every UI call passes (`0x400bf10a`):
 | `+8` | `0x02` | **bits per pixel** |
 | `+12` | `0x46c7e0ea` | the buffer every drawer writes |
 | `+16` | `0x46c7ca38` | a second buffer |
-| `+20`, `+24` | `0x90000000`, `0x10004008` | 🟡 unidentified |
+| `+20`, `+24` | `0x90000000`, `0x10004008` | unconfirmed unidentified |
 
-Both buffers are 1,024 bytes = 128 × 64 ÷ 8: two 1-bit planes. ✅ `+12`
+Both buffers are 1,024 bytes = 128 × 64 ÷ 8: two 1-bit planes. `+12`
 is the picture, and it is stored a quarter turn round: 64 columns × 128
 rows, 8 bytes per row, MSB left, screen pixel (x, y) = column 63−y of row
-x (rendered from a port dump under every candidate layout, 17 Sep 2026;
+x (rendered from a port dump under every candidate layout,;
 `ot_emu --lcd` + `tools/emu/lcd_view.py`, `tools/emu/README.md`). `+16` read as all
 `0xff` after a boot and a load; the UI init at `0x40063264` clears both
 with `0x40020950(buf, 0x400)` (a memset — ~~the refresh or DMA setup~~,
 retracted 17 Sep) and then fills a 1,024-byte block from `0x40011804`
 with `-1`. Every drawing routine below writes only `+12`. ~~What sends the
 plane to the panel controller over UART1 (`0xfc064000`; the byte queue is
-`0x40010aa4`) is not located.~~ Located 4 Nov 2026: the diff flush
+`0x40010aa4`) is not located.~~ Located the diff flush
 `0x40013abc` composites the plane with the windows into a back buffer and
 sends that (section 9, "The composite"). `+12` is the page layer only: a
 window (MIXER, a menu, a SETUP window, a popup) is not in it.
@@ -45,10 +45,10 @@ window (MIXER, a menu, a SETUP window, a popup) is not in it.
 
 A font is a 20-byte record. Two are in use:
 
-| | `0x400ba862` | `0x400ba876` |
+|  | `0x400ba862` | `0x400ba876` |
 |---|---|---|
 | `+0` default advance | 5 | 3 |
-| `+4` `(yOffset << 16) \| height` | `0/5` | `1/6` |
+| `+4` `(yOffset << 16) \ | height` | `0/5` | `1/6` |
 | `+8` | → per-glyph width table | ← |
 | `+12` | → per-glyph offset table (signed words; negative = absent) | ← |
 | `+16` | → the glyph bitmaps | ← |
@@ -59,9 +59,8 @@ when a glyph has none, and skipping glyphs whose `+12` word is negative.
 
 There is no colour or level anywhere in the record.
 
-Eight such records sit at `0x400ba812 … 0x400ba89e` (nordseele, 22 Sep
-2026): `0x400ba876` is the small UI font, 506 literal references in the
-image (✅ counted here), `0x400ba83a` a large one (29 references). The two
+Eight such records sit at `0x400ba812 … 0x400ba89e` (nordseele): `0x400ba876` is the small UI font, 506 literal references in the
+image (counted here), `0x400ba83a` a large one (29 references). The two
 in the table are the ones the text routines use; the other six are not
 decoded.
 
@@ -87,15 +86,15 @@ The inner loop:
 ```
 
 One bit per pixel, ORed in, always into the same buffer. Text drawing takes
-no intensity. ✅ Confirmed negatively on the unit: a probe module
+no intensity. Confirmed negatively on the unit: a probe module
 (`ui-dimprobe`, not in this tree) recorded the two spare arguments of
 `0x40013904` (`fp@(24)`, `fp@(28)`) and they never varied with what was
 dimmed.
 
-### 3b. The SETUP windows' calls, for a page of one's own (nordseele, MKI, 15 Sep 2026)
+### 3b. The SETUP windows' calls, for a page of one's own (nordseele, MKI)
 
 Run on a MKI by octalab; each entry point re-read here as a function
-prologue with the reference count shown ✅. `0x4005829c(115, 64, 0, 0, 1,
+prologue with the reference count shown. `0x4005829c(115, 64, 0, 0, 1,
 closed)` the window; `0x400125ac(surface, 0, 1)` its planes cleared as the
 SETUP windows do; `0x400570b8(object, title, "")` the frame and title band
 (5 refs); `0x40011b94(surface, x, y0, y1, 1)` a solid vertical line;
@@ -130,7 +129,7 @@ the surface), builds a per-word column mask from `-1 >> (x1 & 31)` and
 | `> 0` | `or.l` — set | `0x40012460` |
 | `= 0` | `and.l` — clear | `0x4001247a` |
 
-**Every mode is dithered.** 🟡 The per-row loop starts from `0xaaaaaaaa`
+**Every mode is dithered.** The per-row loop starts from `0xaaaaaaaa`
 (`0x55555555` for clear) and re-applies `not` + `and mask` each row, so the
 phase alternates row by row: a true 50% checkerboard, not stripes. There is
 no solid-fill path in this routine; solid boxes are `0x40012254`'s.
@@ -140,7 +139,7 @@ That is the panel's grey. To grey an area, invert a checkerboard over it
 AND one — the glyph loses every other lit pixel and the background stays
 black. XOR over a black background lights half of it (a grey box).
 
-🟡 **The AND path clears outside its rectangle.** `0x4001246e..0x40012484`
+Unconfirmed: **The AND path clears outside its rectangle.** `0x4001246e..0x40012484`
 ANDs the surface word with `mask & 0xaaaaaaaa`, where `mask` is the
 in-rectangle column mask, so every pixel of the same 32-pixel word that lies
 outside the rectangle is cleared too. Whether stock only ever calls mode 0
@@ -148,7 +147,7 @@ on word-aligned spans is not checked. An overlay that dims one knob cell
 (≈21 px of 128, never word-aligned) cannot use it as-is; a cave-side
 `and ~(mask & 0x55555555)` is the fix if the reading holds.
 
-## 4b. The panel link: what the controller sends (18 Sep 2026) ✅ under the port
+## 4b. The panel link: what the controller sends under the port
 
 UART1 (`0xfc064000`, 312,500 baud, ISR `0x400109bc`, `KERNEL.md`) carries
 the panel controller's events to the OS. The ISR rings each byte
@@ -160,21 +159,21 @@ whose handler `0x4009228c` parses:
 | `0x2n` | 1 byte | key row `n` (0..7): bit `b` = key `n·8 + b` held. The parser XORs against the row's last state (`0x46100b18[n]`) and queues one event per changed bit from the keymap at `[0x46c901dc]` (12-byte records `{01, code, 01, 00, queue, 0}`, the identity map, so **key code = row·8 + bit**; a second table at `+0x302` is selected while the header's FUNCTION row/mask matches — `0xff`/`0x80` in 1.40C, never) |
 | `0x3n` | 1 byte | encoder `n`: signed delta (A..F = 0..5, LEVEL = 6); coalesced into a pending event's delta if one is queued |
 | `0x40` | 1 byte | the MAIN pot, 0..255, scaled by the calibration at `0x1ffffa..0x1ffffe` (magic `0x1234`) to 0..127 → `0x40092fac` |
-| `0x7n` | 9 bytes | copied to `0x46100b48` (pointer `0x46100b52`); the controller's identity 🟡 |
+| `0x7n` | 9 bytes | copied to `0x46100b48` (pointer `0x46100b52`); the controller's identity unconfirmed |
 
 Key events go through `0x40000c3c(queue 0x460d17ae, event)` — 8-byte
 records `{code, 0, pressed, 0, ticks}` in the ring at `0x46c9026c` — to
 the UI task, which reaches `FUN_4005578c(code, edge)` for a page key and
 the key layers `0x46c7d8de + code·0x18`. Keymaps are layers (octalab,
-MKI, 13 Sep 2026 ✅): `0x40031494(map)` / `0x4003146c(map)` register /
+MKI): `0x40031494(map)` / `0x4003146c(map)` register /
 remove a 20-byte map `{next, keys, encoders, 0, marker}`; rebuild
 (`FUN_4003125c`) into keys `0x46c7d8de + code·0x18` and encoders
 `0x46c7dede + enc·0x14`; last registered wins; −1 lets the layer below
 through; a null encoder handler swallows the turn. The image's keymaps
 (section 4c): the MKI layer `0x400c090a` → keys `0x400bfc10` (57 records, no
 `0x1c`) and the MKII layer `0x400c091e` → keys `0x400c01f4` (62: the same
-57 plus `0x1c..0x1f`, `0x36`); ✅ which one `0x40061bc4` pushes follows
-`0x46c8d18c`. (Until 25 Sep 2026 this read "`0x400bfbf6` (59 records)":
+57 plus `0x1c..0x1f`, `0x36`); which one `0x40061bc4` pushes follows
+`0x46c8d18c`. (Until this read "`0x400bfbf6` (59 records)":
 `0x400bfbf6` is 0x1a before the table the MKI layer points at, inside the
 record before it.) Record, 0x1a bytes: `+0 code, +2 press, +6 release,
 +0xa, +0xe sub-map, +0x12, +0x16`; the table ends at a code `0xff`.
@@ -195,12 +194,12 @@ Measured under
 the port: `0x24 0x08` (row 4 bit 3 = `0x23`) switched the page kind to 2
 and the plane redrew as AMP.
 
-### CHANGE project list → FUNC+BANK (RENAME / DELETE) ✅
+### CHANGE project list → FUNC+BANK (RENAME / DELETE)
 
 On **PROJECT → CHANGE** (`CHOOSE PROJECT`, string `0x400b5ce0`), with a
 project row selected (not `<CREATE EMPTY PROJECT>`), **FUNC+BANK** opens a
 2-row `LISTPOP` (RENAME / DELETE) instead of PATTERN SETTINGS / SELECT BANK.
-Measured under the port 27 Oct 2026 (`MenuPort.chord("func","bank")` on the
+Measured under the port (`MenuPort.chord("func","bank")` on the
 CHANGE list; a bare `press("bank")` loads the project / shows CHECKING
 PROJECT; `press("func"); press("bank")` without a hold can fall through to
 SELECT BANK).
@@ -220,18 +219,18 @@ Labels are tails of longer stock strings (no abs refs to the short forms):
 A usable `"COPY"` tail sits at `0x400b3882` (`"DIRECTORY COPY"`). RENAME's
 handler pea's `"RENAME PROJECT"` (`0x400b5c5c`) into `POPUP` `0x4006d57c`;
 DELETE pea's `"DELETE PROJECT"` (`0x400b3984`). Growing this popup 2→3 is two
-4-byte pointer slots plus the count immediate — see issue #931 / module
-`copy-project`.
+4-byte pointer slots plus the count immediate (module
+`copy-project`).
 
-Key codes (octalab's list, plus the probe of 18 Sep 2026 under the
+Key codes (octalab's list, plus the probe of under the
 port, each code alone in a fresh session): trigs `0x00..0x0f`, tracks
 `0x10..0x17`, PROJ (MKII) `0x1c`, PART `0x1d`, AED `0x1e`, ARR `0x1f`
 (section 4c), DOWN `0x20`, RIGHT `0x21`, page keys
 `0x22..0x26` (SRC, AMP, LFO, FX1, FX2), STOP `0x27`, PLAY `0x28`, REC
 `0x29`, CUE `0x2a`, FUNCTION `0x2d`, PATTERN `0x2e`, BANK `0x2f`, YES `0x31`, NO
 `0x32`, UP `0x33`, LEFT `0x34`, MIDI `0x35`, encoder pushes `0x38..0x3d`,
-LEVEL push `0x3e`. KEYPROBE ✅ STOP is `0x27`, not `0x2a` as this list
-said until 25 Sep 2026: under the port (`--mkii`, bamsep26 +
+LEVEL push `0x3e`. KEYPROBE STOP is `0x27`, not `0x2a` as this list
+said: under the port (`--mkii`, bamsep26 +
 OCTABAM89_setgate) PLAY `0x28` turned LED row 11 from `0x01` (stop) to
 `0x08` (play), `0x2a` left it at `0x08`, `0x27` put it back to `0x01`
 (`KEYMAP.md` has 0x24.7 = STOP and 0x25.2 = CUE from route A); in both
@@ -243,7 +242,7 @@ a press and a release handler (`0x4004e978`/`0x4004e968`) and a sub-map
 `tools/emu/lcd_view.py --panel FIFO` draws a control surface (`tools/emu/README.md`).
 What the OS sends BACK on the same link (LEDs, the plane) is unread.
 
-## 4c. The MKII: model flag, panel loader, report, keys (25 Sep 2026) ✅ under the port
+## 4c. The MKII: model flag, panel loader, report, keys under the port
 
 What makes the firmware run as an MKII, and what the port (`ot_emu
 --mkii`) models so that it does. Read from the image (base `0x40000400`)
@@ -254,7 +253,7 @@ stages it; scratch drivers in `out/_agents/mkii/` (gitignored).
 it to 1 (`0x4001f8ce`), then ten times writes `0x20` to GPIO
 `0xfc0a403a` (bit 5 high), reads bit 6, writes `0xdf` to `0xfc0a4052`
 (bit 5 low), reads bit 6; bit 6 not following bit 5 clears the flag
-(`0x4001f910`, MKI). ✅ With bit 6 tied to bit 5 (`--mkii`) the flag stays
+(`0x4001f910`, MKI). With bit 6 tied to bit 5 (`--mkii`) the flag stays
 1. 28 `tstl` sites read it; among them the keymap push
 `0x40061bc4`, the loader call `0x4001f976`, the `74 00` / `43` choice
 `0x4001f982`, the crossfader poll install `0x4001f9d2` (MKI only:
@@ -269,7 +268,7 @@ bytes. `70 05 v ..` with `v` = the long at `0x400d81a4` (8 in 1.40C) →
 send `60 00`, return 0. `70 05` with another `v` → reflash the panel from
 the image at `0x400d81a8..0x400db3d4` (erase `80 42`, five `ff` back, then
 5-byte `cmd addr32` writes echoed by the panel through `0x4001f40c`, up to
-3 tries), return `v`. Any other reply → `60 00`, return −1. ✅ With nothing
+3 tries), return `v`. Any other reply → `60 00`, return −1. With nothing
 answering, the port's TX stream stopped at `60 02 70 00` and the boot sat
 in the polled read `0x4001f540` (interrupts off) until the first bytes
 arrived on the panel line. Inferred from that: in the WIP port the first
@@ -290,8 +289,8 @@ on the far end of `Uart@fc064000`, the TX stream framed by the
 section 9 opcode lengths): `60 02` enters the loader state, `70 00`
 there gets `70 05 v 00 00` with `v` read from the image, `60 00` leaves
 it; `74 00` gets `70 00 v 00 01 00 00 00 00 00` (byte 1 = `v`, byte 3 = 1
-tested, byte 4 = 0). 🟡 The report's values other than byte 3 are chosen,
-not captured from an MKII panel. ✅ Measured order: loader entered at
+tested, byte 4 = 0). The report's values other than byte 3 are chosen,
+not captured from an MKII panel. Measured order: loader entered at
 instruction 10,198,954, returned 0 at 10,199,051, report parsed
 (`0x40092608`) at 10,199,687, checked (`0x40061c94`) at 45,935,951;
 `0x40061cbc` ("UI NOT TESTED!") never runs; `0x46100b48` =
@@ -308,10 +307,10 @@ table `0x400c01f4` = the MKI's `0x400bfc10` + five records:
 | `0x1d` | `0x23` bit 5 | `0x4002e7c8` | PART: the part chooser (ONE / TWO / THREE / FOUR) |
 | `0x1e` | `0x23` bit 6 | `0x4006e274` | AED: the audio editor (`STATIC 001`, TRIM SLICE EDIT ATTR FILE) |
 | `0x1f` | `0x23` bit 7 | `0x40058ab8` | ARR: the arranger menu (`ARR 1:` EDIT RENAME CHANGE CHAIN CLEAR SAVE RELOAD) |
-| `0x36` | `0x26` bit 6 | `0x40030a6c` | REC3 🟡: beside REC AB `0x2b` (`0x40030e6c`) and REC CD `0x2c` (`0x40030c60`), same sub-map `0x400b9e02`; nothing drawn on a STATIC track |
+| `0x36` | `0x26` bit 6 | `0x40030a6c` | REC3 unconfirmed: beside REC AB `0x2b` (`0x40030e6c`) and REC CD `0x2c` (`0x40030c60`), same sub-map `0x400b9e02`; nothing drawn on a STATIC track |
 
 PAGE is code `0x1b` (`0x23` bit 3), the MKI's SCALE key: the same handler
-`0x4004ffc4` in both tables. ✅ FUNC + `0x1b` under `--mkii` draws
+`0x4004ffc4` in both tables. FUNC + `0x1b` under `--mkii` draws
 `SCALE, TRACK 3 64/64` (per-track scale). Every tap above hits the key
 dispatcher `0x40031904` once (press) and the key-row path `0x400923c0`
 twice (press, release), in both models; under MKI the same `0x23.4-7`
@@ -320,7 +319,7 @@ under `--mkii`: YES on the date prompt (`DATE/TIME STORED`), T2 then T1
 (`0x80000000` 1 → 0), knob A +3 on T3's SRC page (`0x40170fc6` and
 `0x800008a0` 64 → 66, PTCH draws `+0.4`), code `0x27` = STOP (above).
 
-**LCD and LEDs under `--mkii`** ✅: the stream decodes with
+**LCD and LEDs under `--mkii`**: the stream decodes with
 `panel_link.PanelLink` as on an MKI (897 LCD blocks, 81 LED rows, 785 LED
 levels after boot + 500 ms); new on the wire: `60 02 70 00`, `74 00`,
 `60 00`, and 204 `0xb5` messages (`0x4003f430` called from
@@ -342,7 +341,7 @@ a0 = a0 - 1 - a1                ; x1 = x - w - 1
 jsr 0x40012254
 ```
 
-✅ **Those tables are (centre, half-width)**, not (left, width): the
+ **Those tables are (centre, half-width)**, not (left, width): the
 arithmetic is symmetric about `x`, and a pattern row's column 0 (centre 12,
 half 5 → 6..18) is a three-digit row number's span.
 
@@ -355,7 +354,7 @@ turns half of them off.
 ## 6. Greying a blanked parameter slot — what is still missing
 
 A nibble-0 slot (`PARAM_PAGES.md` section 3b) draws an empty circle and `---` on
-the unit (our image, 16 Sep 2026). To dim it with section 4 the following are
+the unit (our image). To dim it with section 4 the following are
 unread:
 
 - which drawer puts the circle and `---` there and its per-slot geometry
@@ -380,7 +379,7 @@ unread:
 - the window/geometry descriptor internals `MAINMENU.md` lists, a layer
   above these primitives.
 
-## 8. Timers, LEDs and the UI tick (measured under the port, Tim Hastie, 12 Sep 2026)
+## 8. Timers, LEDs and the UI tick
 
 From the panel work; the investigation logs are
 `git show f5148320:tools/panel/KEYMAP.md` (the 12 Sep sections).
@@ -427,7 +426,7 @@ From the panel work; the investigation logs are
 
 What the MAIN OS sends to the panel microcontroller, decoded far enough to
 draw the LCD and the LEDs from the byte stream alone. Decoder:
-`tools/panel/panel_link.py` (`PanelLink`, pure stdlib). Read 11 Sep 2026
+`tools/panel/panel_link.py` (`PanelLink`, pure stdlib). Read
 from `out/raw/section_3_MAIN_OS.bin`; measured against route-A captures
 (`rt.uart64.tx`) of a boot on an empty card, MIXER open/close, an encoder
 turn, PATTERN SETTINGS, cursor-right, a trig key and a track key.
@@ -440,7 +439,7 @@ addresses match the firmware's own `jsr` operands; every address in this
 file is from that listing. With `--adjust-vma=0x40000000` the same code
 sits 0x400 lower and every routine below lands mid-instruction (0x40010b1c
 is then inside a `clrl`), which is how the earlier "0x10 <chunk>" reading
-went wrong. (Until 11 Sep 2026 the producers table below quoted the ring
+went wrong. (Until the producers table below quoted the ring
 writer / byte pusher / drain as 0x4001071c / 0x400106a4 / 0x4001064c: those
 are the 0x40000000-listing addresses of the same three routines, 0x400 low;
 in the 0x40000400 listing the first two are mid-instruction and the third
@@ -485,7 +484,7 @@ captured bytes (1367 messages, 837 LCD blocks) or in the self-test's boot +
 MIXER stream (6861 B).
 
 Resync is by first byte only -- no length field, no checksum -- so what
-junk does depends on whether it looks like an opcode (measured 11 Sep 2026
+junk does depends on whether it looks like an opcode (measured
 with `out/_agents/lcd/verify_fix.py`, junk inserted at the last message
 boundary of the 9429-byte capture, offset 9419):
 
@@ -536,10 +535,9 @@ not the panel's. The stream is the ground truth.
 Bit order within a page byte is the same as `panel_server.FB`'s formula
 (`buf[x*8 + (63-y)//8]` bit `7-(63-y)%8` == page `7-y//8`, bit `y&7`).
 
-
 ### The composite: what the flush sends
 
-Read from objdump of `0x40013abc` on 4 Nov 2026 (static, except where ✅):
+Read from objdump of `0x40013abc` (static, except where):
 
 1. Clear the back buffer `[0x400b9710]` (1,024 bytes).
 2. Walk the layer list from `[0x460babf0]`, next at `+4`. A layer with
@@ -547,7 +545,7 @@ Read from objdump of `0x40013abc` on 4 Nov 2026 (static, except where ✅):
    ~mask) | (mask & pix)`, mask at `[+52]` and pixels at `[+48]`, shifted
    by `+12 & 31` bits, with the row stride at `+44` (words) and the span
    from `+16`/`+20`/`+24`/`+28`. The page plane `0x46c7e0ea` is one layer,
-   and each window is another, drawn over it in list order (🟡 the record
+   and each window is another, drawn over it in list order (the record
    fields beyond those the loop reads are not decoded).
 3. For each page p and column block c (0, 8, .., 120), compare bytes
    `x*8 + p` of the back buffer with `[0x400b970c]` for x in c..c+7. If any
@@ -556,12 +554,12 @@ Read from objdump of `0x40013abc` on 4 Nov 2026 (static, except where ✅):
 
 So between flushes `[0x400b970c]` holds the frame the panel shows. Its
 layout is the plane's: 128 rows of 8 bytes, byte `x*8 + p` = page p of
-column x, which is `+12`'s pixel (x, y) = column 63-y of row x. ✅ Under
+column x, which is `+12`'s pixel (x, y) = column 63-y of row x. Under
 the port (SCREEN, `verify_screen`), a copy of `[0x400b970c]` equals
 the frame decoded from the UART1 stream to the pixel, with the boot's "NOT
 WORKING IN ANY PROJECT" popup up (the plane then differs by 2,314 pixels)
 and with MIXER up (3,132). On a unit, a copy of the plane showed the page
-screens and none of the windows (SCREEN on Sam's MKII, 4 Nov 2026).
+screens and none of the windows (SCREEN on Sam's MKII).
 
 ### Traffic per action (empty card, stock image)
 
@@ -581,10 +579,10 @@ diff against the previous frame, block by block.
 
 ### Self-test
 
-    .venv/bin/python3 tools/panel/panel_link.py --selftest      # 15-20 s wall, exit 0
+    .venv/bin/python3 tools/panel/panel_link.py --selftest # 15-20 s wall, exit 0
 
 Boots the stock image on an empty card (the boot is most of the wall time:
-15.4 s and 17.1 s measured 11 Sep 2026), feeds the stream in 7-byte
+15.4 s and 17.1 s measured), feeds the stream in 7-byte
 pieces, opens MIXER, and asserts: no unknown bytes, nothing left unframed,
 the `0x43` hello and 88 LED levels at init, the MIXER title bar in rows 0-8
 and nothing inverted in the bottom band, the boot footer bar ending on row
@@ -595,7 +593,7 @@ pieces. It writes `selftest_boot.png` and `selftest_mixer.png` under
 
     .venv/bin/python3 tools/panel/panel_link.py --decode tx.bin --png lcd.png
 
-### Panel -> CPU: the RX parser (13 Sep 2026)
+### Panel -> CPU: the RX parser
 
 `0x4009228c` (RAM, 0x40000400 listing) runs on the UART's receive
 interrupt over the ring at `0x46100b28` (`0x40092254` fills it). The FIRST
@@ -604,7 +602,7 @@ length; the low nibble is the row:
 
 | first byte | payload | class |
 |---|---|---|
-| `0x2r` | 1 byte | **key matrix row r**, bitmask (set = held); changed bits against the last mask (`0x46100b18[r]`) become key events from the descriptor table at `[0x46c901dc] + (r*8+bit)*12` (+770 with the modifier row's key held -- never: the table's modifier row is 0xff), posted to the UI/sys queues. Rows 0-7 are all live entries (key codes 0x00-0x3f); **row 7 (`0x27`) is the encoders' push switches**, bit = the encoder (A-F = 0-5, LEVEL = 6): with a TRIG key held it toggles the step's parameter lock (KEYMAP.md, 13 Sep 2026) |
+| `0x2r` | 1 byte | **key matrix row r**, bitmask (set = held); changed bits against the last mask (`0x46100b18[r]`) become key events from the descriptor table at `[0x46c901dc] + (r*8+bit)*12` (+770 with the modifier row's key held -- never: the table's modifier row is 0xff), posted to the UI/sys queues. Rows 0-7 are all live entries (key codes 0x00-0x3f); **row 7 (`0x27`) is the encoders' push switches**, bit = the encoder (A-F = 0-5, LEVEL = 6): with a TRIG key held it toggles the step's parameter lock (KEYMAP.md |
 | `0x3r` | 1 byte | **encoder r**, signed detent delta; if the previous report is still unread it is ADDED into the pending message (`0x4009250c`), else a 6-byte message `{type, sub, delta, stamp}` is posted (`0x40092526`) |
 | `0x40` | 1 byte | **the crossfader**: the ADC byte 0..255. Scaled by the calibration record at `0x1ffffe` (magic `0x1234`: min `[0x1ffffc]+1`, span from `[0x1ffffa]`, `0x400925ac`), none under emulation so `pos = (byte >> 1) & 127`; `0x40092fac` drops a repeat of the last value (`0x400d16cc`) and `0x40092f2c` writes it into a 2-byte ping-pong message `04 <pos>` at `0x400d16c8/ca` (coalesced while one is pending) and posts it to the sys queue registered in `0x46104ca4`. Sys kind 4 -> `0x40061e0a`: gated on AUDIO CC OUT having INT (`0x8000004a` bit 0), stores `0x460d16c8`, rebuilds the 10 weight longs `0x80003c60`, echoes CC 48 = 127-pos if EXT, runs the STRT/LEN/RATE morph `0x4003f1b4` and redraws the fader icon (`0x4003577c`, five glyphs from `0x400bcd7c`, LCD x 104-108 / y 59-61). Rows `0x41`-`0x4f` are ignored (`0x4009256a` wants row 0) |
 | `0x7r` | 9 bytes | a report copied to `0x46100b48` with its pointer in `0x46100b52`: the MKII panel's answer to `74 00` (byte 1 = UI version minor, byte 3 = UI tested, byte 4 == 22 sets `0x46c8d188`); `ot_emu --mkii` sends one (`docs/firmware/PANEL.md` section 4c) |
@@ -618,7 +616,7 @@ redraws the icon and rebuilds the weights (`0x80003c60` = `0x8000_0000` at
 `0x37`-`0x3f`, `0x41`, `0x42`, `0x4f` with a value byte change nothing
 (`0x27`/`0x37` nudge the tempo readout's redraw, as KEYMAP.md found for
 `0x27`) -- alone: `0x27` with a TRIG key held is the encoder push, the
-lock toggle (KEYMAP.md, 13 Sep 2026). The panel's own scaling of the pot to `0x40 <byte>` on the
+lock toggle (KEYMAP.md). The panel's own scaling of the pot to `0x40 <byte>` on the
 hardware is not measured here (no unit); the message and the firmware's
 side are.
 

@@ -19,14 +19,3 @@ Built from [Zac-Kyoti/octatrack-kyoti-fw](https://github.com/Zac-Kyoti/octatrack
   The standalone image keeps its own detour there.
 
 `upstream/octabam-modules/varispeed/README.md` is the full description.
-
-## Measured
-
-- Every build re-links the unit and compares it with the author's own bytes (`reference`); a
-  difference refuses the build.
-- `make check REMIX=varispeed` (`remixes/test/varispeed/`, with STORE) builds and boots the
-  image under the ColdFire port.
-
-## On the unit
-
-- On the author's MKI, 15 Oct 2026: the standalone image (`140C_VARI1`).

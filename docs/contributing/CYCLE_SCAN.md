@@ -4,8 +4,7 @@
 the DSP56300 core's own manual (DSP56300 Family Manual, DSP56300FM Rev 5): each
 instruction form's cycles (Table A-1) and the idle cycles the core inserts for
 some sequences (sections A.2 and 3.5). This page holds what the scan found for
-every effect with DSP code of its own and for every stock effect, scanned on
-18 Nov 2026 on main at `5556a840`, and the changes that would make each
+every effect with DSP code of its own and for every stock effect, scanned on main at `5556a840`, and the changes that would make each
 cheaper.
 
 It is a model from the manual, not a measurement. Section 1 is how far it has
@@ -77,7 +76,7 @@ unit-proven module has run (`TRAPS.md#trap-chip-form`).
 
 Every unit figure the repo has for an effect whose scanned code is the code the
 unit ran. The unit's are LOAD METER slot costs
-(`tools/remix/slot_costs.json`, 24 to 27 Oct 2026; the dearer core × 4,532),
+(`tools/remix/slot_costs.json`, 24 to; the dearer core × 4,532),
 at the settings the hardware matrix stamped (`tools/hw/ot_matrix.py`: the
 manifest's defaults, `dear`, and each mode with and without `dear`, a mode's
 view applied when the mode is chosen). A module whose DSP source changed after
@@ -136,25 +135,25 @@ FX1 and FX2 rows of one setting price the same and are shown once.
 - The stock effects, Elektron's code and the code with the least risk in the
   comparison, read +1.1 to +4.3 % (SPATIALIZER +8.1 %, 4.7 cycles on 58).
 - **A second, independent measurement agrees.** Jannik Aßfalg's idle-pass
-  counts on an MKII (`CHIP.md` section 2, 12 Oct 2026, the dearest of
+  counts on an MKII (`CHIP.md` section 2, the dearest of
   as-picked, all-min and all-max) against the scan's dearest of defaults, all
   max and all min:
 
-  | effect | unit, core 0 / core 1 | instructions | model | narrow | narrow ÷ core 0 / ÷ core 1 |
-  |---|---|---|---|---|---|
-  | DJ EQ | 330 / 342 | 297.6 | 334.5 | 334.5 | 1.014 / 0.978 |
-  | LO-FI | 301 / 311 | 279.6 | 305.9 | 305.9 | 1.016 / 0.984 |
-  | SPRING REV | 288 / 299 | 261.1 | 293.1 | 293.1 | 1.018 / 0.980 |
-  | CHORUS | 285 / 295 | 257.8 | 290.0 | 289.9 | 1.017 / 0.983 |
-  | FILTER | 276 / 285 | 240.2 | 280.1 | 280.1 | 1.015 / 0.983 |
-  | DARK REV | 248 / 257 | 197.4 | 253.5 | 253.5 | 1.022 / 0.986 |
-  | PLATE REV | 241 / 249 | 188.1 | 246.9 | 246.9 | 1.024 / 0.991 |
-  | PHASER | 234 / 242 | 185.7 | 240.8 | 238.7 | 1.020 / 0.986 |
-  | EQUALIZER | 187 / 193 | 142.2 | 191.1 | 191.1 | 1.022 / 0.990 |
-  | FLANGER | 142 / 147 | 119.8 | 148.6 | 144.8 | 1.020 / 0.985 |
-  | COMB FILTER | 124 / 128 | 99.6 | 130.0 | 126.9 | 1.023 / 0.991 |
-  | COMPRESSOR | 99 / 102 | 71.6 | 103.1 | 103.1 | 1.041 / 1.010 |
-  | SPATIALIZER | 78 / 80 | 68.6 | 82.1 | 82.1 | 1.053 / 1.027 |
+| effect | unit, core 0 / core 1 | instructions | model | narrow | narrow ÷ core 0 / ÷ core 1 |
+|---|---|---|---|---|---|
+| DJ EQ | 330 / 342 | 297.6 | 334.5 | 334.5 | 1.014 / 0.978 |
+| LO-FI | 301 / 311 | 279.6 | 305.9 | 305.9 | 1.016 / 0.984 |
+| SPRING REV | 288 / 299 | 261.1 | 293.1 | 293.1 | 1.018 / 0.980 |
+| CHORUS | 285 / 295 | 257.8 | 290.0 | 289.9 | 1.017 / 0.983 |
+| FILTER | 276 / 285 | 240.2 | 280.1 | 280.1 | 1.015 / 0.983 |
+| DARK REV | 248 / 257 | 197.4 | 253.5 | 253.5 | 1.022 / 0.986 |
+| PLATE REV | 241 / 249 | 188.1 | 246.9 | 246.9 | 1.024 / 0.991 |
+| PHASER | 234 / 242 | 185.7 | 240.8 | 238.7 | 1.020 / 0.986 |
+| EQUALIZER | 187 / 193 | 142.2 | 191.1 | 191.1 | 1.022 / 0.990 |
+| FLANGER | 142 / 147 | 119.8 | 148.6 | 144.8 | 1.020 / 0.985 |
+| COMB FILTER | 124 / 128 | 99.6 | 130.0 | 126.9 | 1.023 / 0.991 |
+| COMPRESSOR | 99 / 102 | 71.6 | 103.1 | 103.1 | 1.041 / 1.010 |
+| SPATIALIZER | 78 / 80 | 68.6 | 82.1 | 82.1 | 1.053 / 1.027 |
 
   The narrow model lands between the two cores' readings for eleven of the
   thirteen; COMPRESSOR and SPATIALIZER are 1.0 and 2.7 % above the dearer
@@ -236,8 +235,8 @@ FX1 and FX2 rows of one setting price the same and are shown once.
 | STUTTR | FWD (dear) | 125.8 | 258.4 | 5.7 % | 20.6 | branches 61, displaced moves 40, arithmetic stalls 12 |
 | STUTTR | HALF (dear) | 109.8 | 225.9 | 5.0 % | 17.6 | branches 53, displaced moves 34, arithmetic stalls 11 |
 | STUTTR | QUART, RND (dear) | 101.8 | 209.6 | 4.6 % | 16.1 | branches 49, displaced moves 30, arithmetic stalls 11 |
-| DEVILISH | SWP=ACID, SWP=WHST, SWP=SELF (def) | 1.1 | 1.5 | 0.0 % | | idle: a voice of OCTA303 with nothing triggering it |
-| TAPE ECHO | SYNC=FREE, SYNC=BEAT (def) | 1.1 | 1.5 | 0.0 % | | runs on the ColdFire; the DSP entry is a stub |
+| DEVILISH | SWP=ACID, SWP=WHST, SWP=SELF (def) | 1.1 | 1.5 | 0.0 % |  | idle: a voice of OCTA303 with nothing triggering it |
+| TAPE ECHO | SYNC=FREE, SYNC=BEAT (def) | 1.1 | 1.5 | 0.0 % |  | runs on the ColdFire; the DSP entry is a stub |
 
 ### The bus
 
@@ -265,13 +264,13 @@ sample for an older engine).
 | COMPRESSOR | defaults (def) | 71.6 | 103.1 | 2.3 % | 10.4 | displaced moves 8, two-word forms 7, arithmetic stalls 6 |
 | DARK REV | MIXF=MIX (def) | 197.2 | 252.9 | 5.6 % | 14.6 | do/rep 12, arithmetic stalls 12, displaced moves 9 |
 | DARK REV | MIXF=SEND (def) | 197.4 | 253.5 | 5.6 % | 14.7 | arithmetic stalls 12, do/rep 12, displaced moves 9 |
-| DELAY | not scanned: DELAY runs on the ColdFire (stock.NO_DSP): its DSP entry is the passthrough stub | | | | | |
+| DELAY | not scanned: DELAY runs on the ColdFire (stock.NO_DSP): its DSP entry is the passthrough stub |  |  |  |  |  |
 | DJ EQ | defaults (def) | 297.6 | 334.5 | 7.4 % | 4.9 | calls 16, do/rep 10, displaced moves 5 |
 | EQUALIZER | TYP1=LOW, TYP1=PEQ, TYP1=HIGH (max) | 142.2 | 191.1 | 4.2 % | 26.7 | arithmetic stalls 25, do/rep 8, displaced moves 6 |
 | FILTER | HP=12dB, HP=24dB (max) | 240.2 | 280.1 | 6.2 % | 11.1 | do/rep 8, arithmetic stalls 8, displaced moves 8 |
 | FLANGER | defaults (def) | 119.8 | 148.6 | 3.3 % | 12.3 | arithmetic stalls 6, do/rep 6, lua 5 |
 | LO-FI | defaults (def) | 279.6 | 305.9 | 6.7 % | 15.8 | arithmetic stalls 14, displaced moves 3, do/rep 3 |
-| MULTIBCOMP | defaults (def) | 4.2 | 4.6 | 0.1 % | | a stub path in the stock image |
+| MULTIBCOMP | defaults (def) | 4.2 | 4.6 | 0.1 % |  | a stub path in the stock image |
 | PHASER | NUM=2 (def) | 185.4 | 240.6 | 5.3 % | 29.2 | arithmetic stalls 27, do/rep 12, lua 5 |
 | PHASER | every NUM value (4) (def) | 185.5 | 240.6 | 5.3 % | 29.2 | arithmetic stalls 27, do/rep 12, lua 5 |
 | PLATE REV | MIXF=MIX (min) | 187.9 | 246.2 | 5.4 % | 34.4 | arithmetic stalls 29, do/rep 11, displaced moves 5 |
@@ -290,7 +289,7 @@ alone can recover, at most; a stall between two instructions that depend on
 each other needs other work moved between them, which a short loop may not
 have.
 
-- **MINIVERB** (11.2 %, over the cap; 13.4 % before the 19 Nov 2026 tap pass,
+- **MINIVERB** (11.2 %, over the cap; 13.4 % before the tap pass,
   its README). Its taps loaded each offset into `n5` just before the access, an
   address-register stall of 3 at every tap. The pass loads each offset right
   after the access before it, so the wait overlaps the work between taps: 101
@@ -301,7 +300,7 @@ have.
   cycles a sample of displaced moves (the smoothers and the damping states,
   from r7) and 54 of 1-cycle arithmetic stalls.
   T34 later took two small constants into the 6-bit form: 2 words.
-- **VOCODER** (26.3 %, not in the catalog; 27.5 % before the 19 Nov 2026
+- **VOCODER** (26.3 %, not in the catalog; 27.5 % before the 
   pass, its README). The pass moved each band section's next independent load
   into the slot after its last `macr` (-50 cycles a sample) and made two
   pointer setups one `lua` each (-5). Left: 127 cycles a sample of arithmetic
@@ -312,27 +311,27 @@ have.
   block would remove them. 96 of displaced moves.
   T34 later took four small constants into the 6-bit form: 4 words.
 - **CHARACTER TXTR** (15.4 %) and **CHARACTER** (9.4 %; 9.5 % before
-  CHARACTER's pass). The 19 Nov 2026 passes (their READMEs) loaded constants
+  CHARACTER's pass). The passes (their READMEs) loaded constants
   in one word, short immediates and 6-bit ones: six in CHARACTER (6 words),
   ten in CHARACTER TXTR (10 words, 1.6 cycles a sample). Left in both:
   arithmetic stalls (55 to 88; TXTR's `chtx2`, 30 a sample, is one serial
   chain a channel), P reads (20 to 61) and a `lua` followed at once by a read
   through its register (`lua (r5+$2),r5` then `move x:(r5),a`, 13 to 16 if a
   `lua` destination interlocks).
-- **RESONATOR** (14.0 %; 14.5 % before the 19 Nov 2026 pass, its README). The
+- **RESONATOR** (14.0 %; 14.5 % before the pass, its README). The
   pass made the five per-sample pointer setups one `lua` each and the zero
   loads one word: 19 cycles a sample. Left: displaced moves (97), the
   arithmetic stalls in `rs_one` (five sites, 8 a sample each; the four bands
   are independent, so interleaving two is the next step) and calls (50).
   T34 later took one small constant into the 6-bit form: 1 word.
-- **LOFI2** (14.1 %, over the cap; 14.4 % before the 19 Nov 2026 pass, its
+- **LOFI2** (14.1 %, over the cap; 14.4 % before the pass, its
   README). The pass made the frame advance one `lua`, let the parity flip fill
   the Hilbert chains' pointer waits, and loaded thirteen constants in one word:
   15 cycles a sample in DOWN and UP, 17 words. Left: displaced moves (88: the
   state is addressed from r7), arithmetic stalls (59), and `move a1,r5` then
   `move p:(r5),y0` (a P read whose address is written the instruction before:
   3 + 6 cycles, twice).
-- **BBD** (11.5 % at `dear`, over the cap; 11.7 % before the 19 Nov 2026 pass,
+- **BBD** (11.5 % at `dear`, over the cap; 11.7 % before the pass,
   its README). The pass loaded twenty-four constants in one word (24 words, 6
   cycles a sample) and moved the anti-alias line's pointer load earlier (3 on
   the narrow model). Left: displaced moves (50), arithmetic stalls (40), and two
@@ -340,12 +339,12 @@ have.
   `lua` destination interlocks; the manual does not say).
   T34 later took six small constants into the 6-bit form: 6 words, 2.1 cycles
   a sample.
-- **VOID** (10.9 % at `dear`, over the cap; 11.1 % before the 19 Nov 2026
+- **VOID** (10.9 % at `dear`, over the cap; 11.1 % before the 
   pass, its README). The pass made the frame advance one `lua`, took one
   reloaded word from its register and loaded seven constants in one word: 10
   cycles a sample, 11 words. Left: displaced moves (94: 107 of the loop's
   state accesses are offsets from r7), arithmetic stalls (46), branches (36).
-- **VERBERATION** (8.7 %; 10.1 % before the 19 Nov 2026 tap pass, its README).
+- **VERBERATION** (8.7 %; 10.1 % before the tap pass, its README).
   The MINIVERB pattern, and MINIVERB's remedy: each tap offset now loads right
   after the access before it, the 15 immediates and the 6 offsets read from
   state alike, and the write at offset 0 needs no `n5`: 61 cycles a sample.
@@ -354,7 +353,7 @@ have.
   and 58 cycles a sample of displaced moves.
   T34 later took two small constants into the 6-bit form: 2 words, 1.0 cycle a
   sample.
-- **MODULATION** (up to 8.5 %, PHSR; FLNG 8.1 %). The 19 Nov 2026 stall pass
+- **MODULATION** (up to 8.5 %, PHSR; FLNG 8.1 %). The stall pass
   (its README) took `mo_tap`'s and `mo_herm`'s stalls from 6 to 2 a call, the
   line writes' address stalls, and the frame advance's `lua`: 23 to 28 cycles
   a sample in the line modes and COMB, 5 in PHSR. Left: `mo_tap`'s last
@@ -365,7 +364,7 @@ have.
   depending on the mode.
   T34 later took thirteen small constants into the 6-bit form: 13 words, FLNG
   2.4 cycles a sample.
-- **VIBRATO** (3.9 %; 4.6 % before the 19 Nov 2026 stall pass, its README).
+- **VIBRATO** (3.9 %; 4.6 % before the stall pass, its README).
   The pass took `vb_tap`'s stalls from 6 to 2 a call, the line writes' address
   and transfer stalls, and the frame advance's two steps: 30 cycles a sample.
   Left: `vb_tap`'s last 2-cycle AGU wait, `mo_itrd`'s twin (`sub b,a` /
@@ -373,7 +372,7 @@ have.
   sample of displaced moves (the state is addressed from r7).
   T34 later took three small constants into the 6-bit form: 3 words, 1.2
   cycles a sample.
-- **SPECTRUM** (up to 7.9 %; 8.2 % before the 19 Nov 2026 pass, its README).
+- **SPECTRUM** (up to 7.9 %; 8.2 % before the pass, its README).
   The pass copied SEM's stream and state pointers at the top of the sample, made
   ISO's R state pointer one `lua (r7+$c),r3`, stepped `fs_ccore` to its lowpass
   states three instructions after loading `n5`, wrote `fs_cap`'s `n6` before
@@ -382,18 +381,18 @@ have.
   stalls (28 to 44, the ladder core `fs_lcore`: each `asr`/`asl` result moved
   at once), calls (10 to 23), and `fs_cap`'s `n6`, now one move before the
   read through it (2).
-- **SHATTER** (8.4 %; 8.5 % before the 19 Nov 2026 pass, its README: eight
+- **SHATTER** (8.4 %; 8.5 % before the pass, its README: eight
   constants in one word, seven short immediates and one 6-bit, 8 words and 2.4
   cycles a sample). Branches (59) and displaced moves (52).
 - **DISTORX** (8.3 % at RAT and TURB). Displaced moves (70), arithmetic stalls
-  (35). The 19 Nov 2026 pass (its README) loaded fifteen constants in one word,
+  (35). The pass (its README) loaded fifteen constants in one word,
   in the template: 15 words, 0.5 cycles a sample.
-- **TRANSIENT** (5.9 %; 6.0 % before its 19 Nov 2026 passes, its README: five
+- **TRANSIENT** (5.9 %; 6.0 % before its passes, its README: five
   constants in one word, 5 words and 3.1 cycles a sample) and **EUCLID** (4.9 %;
-  5.1 % before EUCLID's 19 Nov 2026 pass, its README: the frame advance one
+  5.1 % before EUCLID's pass, its README: the frame advance one
   `lua` in both loops, the parked input taken from its register, three constants
   in one word, 9 cycles a sample and 11 words): displaced moves first.
-- **STUTTR** (5.7 % at `dear` in FWD; 5.9 % before the 19 Nov 2026 pass, its
+- **STUTTR** (5.7 % at `dear` in FWD; 5.9 % before the pass, its
   README). The pass moved the two `m4` writes out of the sample loop (one write
   a call, before it) and eight constants to the one-word form. Left: branches
   (49 to 61), displaced moves (30 to 40), and `st25`'s `move a,r4` right before
@@ -411,7 +410,7 @@ The sites of each effect's dearest setting, largest first (the full list:
 `--top N`):
 
 **MODULATION**, FLNG (def): 368.3 cycles a sample, 41.8 of them stalls (after
-the 19 Nov 2026 stall pass; 398.8 and 61.8 before).
+the stall pass; 398.8 and 61.8 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -422,8 +421,7 @@ the 19 Nov 2026 stall pass; 398.8 and 61.8 before).
 | 2.00 | agu | `move (r3)-n3` at mo_whr+2 | `move #$3,n3` at mo_whr+0 |
 | 1.00 | arith | `move a1,y0` at mo_line+105 | `and #>$3ff,a` at mo_line+103 |
 
-**SPECTRUM**, ISO (def): 356.9 cycles a sample, 45.2 of them stalls (after the 19
-Nov 2026 pass; 371.1 and 55.2 before).
+**SPECTRUM**, ISO (def): 356.9 cycles a sample, 45.2 of them stalls (after the pass; 371.1 and 55.2 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -435,7 +433,7 @@ Nov 2026 pass; 371.1 and 55.2 before).
 | 2.00 | arith | `move a,x:(r1)+` at fs_ccore+28 | `add #>$7fffff,a` at fs_ccore+26 |
 
 **CHARACTER**, SAT=TUBE (max): 428.0 cycles a sample, 76.7 of them stalls (after
-the 19 Nov 2026 pass; 428.3 before).
+the pass; 428.3 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -447,7 +445,7 @@ the 19 Nov 2026 pass; 428.3 before).
 | 2.00 | arith | `tst b b,y0` at proc+839 | `sub a,b #$0,x0` at proc+838 |
 
 **CHARACTER TXTR**, SAT=TUBE (max): 696.3 cycles a sample, 111.8 of them stalls
-(after the 19 Nov 2026 pass; 697.9 before).
+(after the pass; 697.9 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -459,7 +457,7 @@ the 19 Nov 2026 pass; 428.3 before).
 | 2.00 | arith | `move a,b` at chtx2+2 | `abs a` at chtx2+1 |
 
 **TRANSIENT**, defaults (def): 266.9 cycles a sample, 33.5 of them stalls (after the
-19 Nov 2026 pass, its README: four constants in one word; 270.0 before).
+ pass, its README: four constants in one word; 270.0 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -470,8 +468,7 @@ the 19 Nov 2026 pass; 428.3 before).
 | 1.00 | arith | `move a1,x1` at proc+88 | `asl #$1,a,a` at proc+87 |
 | 1.00 | arith | `move a1,n5` at proc+90 | `asr #$12,a,a` at proc+89 |
 
-**SHATTER**, SOFT (max): 380.7 cycles a sample, 37.0 of them stalls (after the 19
-Nov 2026 pass; 383.1 before).
+**SHATTER**, SOFT (max): 380.7 cycles a sample, 37.0 of them stalls (after the pass; 383.1 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -483,7 +480,7 @@ Nov 2026 pass; 383.1 before).
 | 1.00 | arith | `move b,y1` at sh02+8 | `mpy x0,x0,b` at sh02+7 |
 
 **VERBERATION**, ROOM (def): 393.5 cycles a sample, 49.8 of them stalls (after the
-19 Nov 2026 tap pass; 455.7 and 107.8 before).
+ tap pass; 455.7 and 107.8 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -495,7 +492,7 @@ Nov 2026 pass; 383.1 before).
 | 1.00 | arith | `move a,y:(r5+n5)` at gv_p2a+95 | `add b,a` at gv_p2a+94 |
 
 **VIBRATO**, SHP=TRI (max): 175.7 cycles a sample, 16.2 of them stalls (after
-the 19 Nov 2026 stall pass; 207.0 and 36.2 before).
+the stall pass; 207.0 and 36.2 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -507,7 +504,7 @@ the 19 Nov 2026 stall pass; 207.0 and 36.2 before).
 | 1.00 | arith | `move a,x:(r0)+` at vb_mixd+46 | `add b,a` at vb_mixd+45 |
 
 **VOCODER**, INT (def): 1190.3 cycles a sample, 149.8 of them stalls (after the
-19 Nov 2026 pass; 1245.8 and 204.8 before).
+ pass; 1245.8 and 204.8 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -518,8 +515,7 @@ the 19 Nov 2026 stall pass; 207.0 and 36.2 before).
 | 10.00 | transfer | `move a1,x0` at vc_gend+152 | `move x:(r5)-,a0` at vc_gend+151 |
 | 10.00 | arith-tcc | `move a1,x:(r5)+` at vc_gend+156 | `tlt b,a` at vc_gend+155 |
 
-**VOID**, SHPE=SIN (dear): 493.8 cycles a sample, 59.4 of them stalls (after the 19
-Nov 2026 pass; 503.9 and 62.4 before).
+**VOID**, SHPE=SIN (dear): 493.8 cycles a sample, 59.4 of them stalls (after the pass; 503.9 and 62.4 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -530,8 +526,7 @@ Nov 2026 pass; 503.9 and 62.4 before).
 | 1.00 | arith | `move b1,x:(r7+$1)` at vd_have_in+9 | `add #>$6ef35f,b` at vd_have_in+7 |
 | 1.00 | arith | `move a,x0` at vd_have_in+12 | `asr #$1,a,a` at vd_have_in+11 |
 
-**BBD**, STGS=1024 (dear): 520.3 cycles a sample, 54.3 of them stalls (after the 19
-Nov 2026 pass; 528.3 before).
+**BBD**, STGS=1024 (dear): 520.3 cycles a sample, 54.3 of them stalls (after the pass; 528.3 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -542,8 +537,7 @@ Nov 2026 pass; 528.3 before).
 | 1.00 | arith | `move a,x:(r7+$16)` at bbpreok+39 | `add b,a` at bbpreok+38 |
 | 1.00 | arith | `move a0,x:(r7+$4d)` at bbhsec+12 | `add x,a` at bbhsec+11 |
 
-**DISTORX**, RAT (min): 375.4 cycles a sample, 40.8 of them stalls (after the 19 Nov
-2026 pass; 375.9 before).
+**DISTORX**, RAT (min): 375.4 cycles a sample, 40.8 of them stalls (after the pass; 375.9 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -555,7 +549,7 @@ Nov 2026 pass; 528.3 before).
 | 1.00 | arith | `move a,x0` at dtx_rstage+33 | `asr #$1,a,a` at dtx_rstage+32 |
 
 **EUCLID**, RATE=1/32 (def): 223.2 cycles a sample, 20.2 of them stalls (after the
-19 Nov 2026 pass; 232.3 and 25.2 before).
+ pass; 232.3 and 25.2 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -566,8 +560,7 @@ Nov 2026 pass; 528.3 before).
 | 1.00 | arith | `move a,x:(r7+$34)` at eu_den_held+27 | `add b,a` at eu_den_held+26 |
 | 1.00 | arith | `move a,x:(r7+$1b)` at eu_den_held+34 | `add b,a` at eu_den_held+33 |
 
-**LOFI2**, DOWN (max): 638.9 cycles a sample, 81.6 of them stalls (after the 19 Nov
-2026 pass; 654.2 and 89.6 before).
+**LOFI2**, DOWN (max): 638.9 cycles a sample, 81.6 of them stalls (after the pass; 654.2 and 89.6 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -579,7 +572,7 @@ Nov 2026 pass; 528.3 before).
 | 1.00 | arith | `move b,x:(r3)+n3` at lf_fwd+92 | `add x0,b a,x:(r3)+n3` at lf_fwd+91 |
 
 **MINIVERB**, RATE=0.34 (max): 507.6 cycles a sample, 62.3 of them stalls (after
-the 19 Nov 2026 tap pass; 608.8 and 150.3 before).
+the tap pass; 608.8 and 150.3 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -591,7 +584,7 @@ the 19 Nov 2026 tap pass; 608.8 and 150.3 before).
 | 1.00 | arith | `move a,x:(r7+$2d)` at mv_mix+44 | `add b,a` at mv_mix+43 |
 
 **RESONATOR**, defaults (max): 636.4 cycles a sample, 67.6 of them stalls (after the
-19 Nov 2026 pass; 655.9 and 82.6 before).
+ pass; 655.9 and 82.6 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -602,8 +595,7 @@ the 19 Nov 2026 tap pass; 608.8 and 150.3 before).
 | 8.00 | arith | `move b,x:(r7+$58)` at rs_one+29 | `add a,b` at rs_one+28 |
 | 2.81 | agu-lua | `move x:(r0),x1` at rs_fbd+8 | `lua (r0+$1),r0` at rs_fbd+158 |
 
-**STUTTR**, FWD (dear): 258.4 cycles a sample, 20.6 of them stalls (after the 19 Nov
-2026 pass; 268.4 before).
+**STUTTR**, FWD (dear): 258.4 cycles a sample, 20.6 of them stalls (after the pass; 268.4 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|
@@ -636,8 +628,7 @@ the 19 Nov 2026 tap pass; 608.8 and 150.3 before).
 | 6.00 | agu | `move y:(r5+n5),b` at proc+1409 | `move a1,r5` at proc+1408 |
 | 6.00 | agu | `move y:(r5+n5),a` at proc+1414 | `move a1,r5` at proc+1413 |
 
-**SEND**, defaults (def): 51.5 cycles a sample, 2.9 of them stalls (after the 19 Nov
-2026 pass; 57.5 and 6.9 before).
+**SEND**, defaults (def): 51.5 cycles a sample, 2.9 of them stalls (after the pass; 57.5 and 6.9 before).
 
 | stall/sample | kind | the instruction that waits | waits on |
 |---|---|---|---|

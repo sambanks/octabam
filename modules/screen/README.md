@@ -45,26 +45,6 @@ does not read EP2 IN, the reply is dropped after a bounded wait.
 Cost: 566 B of code, 2,242 B `.bss`. The reply is 1,194 bytes; DIN takes 0.38 s per reply at 31,250 baud.
 The msgId field is a counter in `.bss`, which the DRAM reserve does not zero.
 
-## Tested
-
-`tools/verify/verify_screen.py` under the port (29 checks). The pixels are held to the port's panel UART
-stream decoded by `tools/panel/panel_link.py`, not to the plane. On an empty card (no project needed, so CI
-runs it): a request with the boot's "NOT WORKING IN ANY PROJECT" popup up, and one after YES and MIXER, are
-each answered with a frame the panel was sent, byte for byte, within 200 pixels of the last one (0 measured),
-and that frame differs from the plane by 2,314 and 3,132 pixels; the build before the fix fails both, and the
-USB pixel check (2,176-2,189 pixels off). "A frame the panel was sent" alone is not enough: before a window is
-drawn the panel shows the page, so the plane matched an early frame and the pre-fix build passed.
-With a project: both ids draw one 1,194-byte reply on DIN; the header fields; the pixels are a frame the panel
-was sent, near the last; a wrong cmd, another manufacturer id and a stock-range message draw
-none. In the `screen-usb` remix: a request as USB-MIDI events is answered on EP2 IN
-only (1,592 bytes, pixels a frame the panel was sent; 45-47 pixels from the last, redrawn after the reply), and a DIN request is still answered on DIN only.
-`verify_usbmidi_rx` passes on that image.
-
-On a unit, the build before the frame fix (a9f0d3d5): Sam's MKII, a looping remix (main + REC MATRIX + USB IN
-ABCD / OUT MAIN CUE), BUILD 40, 4 Nov 2026, over USB MIDI with `screendump` (`ident=(0x10, 0x00)`, 128 x 64,
-`--trace` and `-x --framerate 10`): answered, right side up, page screens only (above). The frame fix has not
-run on a unit.
-
 ## Open
 
 - Hardware: the frame fix on a unit (MIXER, a popup, the PROJECT menu, BRAIN, REC MATRIX); DIN on a unit.

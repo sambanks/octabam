@@ -64,137 +64,6 @@ the menu key by key on the MKII and MKI panels (STEM_REC.md sections 15,
 - The remix: `stems`, STEM REC and the 14 stock effects. `make image
   REMIX=stems` builds it.
 
-## Status
-
-**Measured under the ColdFire port, and run on Yves's MKII** (STEMS1 to
-STEMS3, `docs/firmware/STEM_REC.md` section 17). The port is the project's
-emulator of the unit's main processor. `tools/verify/verify_stems.py`, part
-of `make check REMIX=stems`, runs the module on fixture projects. It reads
-each take back off the port's card and checks the header, the sizes, and
-every sample. A track's file equals its read-back block, the track's
-finished audio the unit's audio processor hands back to the main
-processor, times the gain core 0's mix gives it, at a fixed lag. The
-runs cover:
-
-- A take stopped by STEM REC, by the sequencer, and by the 60-minute cap.
-- A take long enough that the writer writes while it records.
-- A take across the ring's wrap, with the take's sound on both sides.
-- A ring that fills because the card falls behind.
-- Eight tracks, eight files, each equal to its own track.
-- One take per track mask on the THRU fixture: 1, 2, 4 and 8 tracks, and
-  T1, T3, T6 and T8 together. Each file matches its own track, with sound
-  in every frame, and the ring's peak fill matches the watch log.
-- A card that refuses a write: the run records that the writer hangs.
-- A take cut off mid-way: the run records that its file is empty.
-- The menu's rows, read from memory during and after takes: STEM REC's
-  time rising from `00:00` to `00:01`, `DONE`, also at the cap, `NO CARD`,
-  `RING FULL` in place of `STEM REC`, and YES pressed while a take saves
-  changing nothing. The time also rises while the card falls behind.
-- A mono pair with an input left out: B and C out of their pairs, the take
-  is `T1.wav`, `A.wav` and `D.wav`, each input every sample.
-- After the fader: the hook's copy of core 0's gain arithmetic equals the
-  DSP's own, through level moves, a MAIN level change and dirty DSP RAM;
-  `T1.wav` equals `MAIN.wav`'s mix sample for sample when T1 alone
-  plays, through level moves and a take started mid-move.
-- The buses: `MAIN.wav` and `CUE.wav` equal the mixes, `AB.wav` and the
-  mono `A.wav` and `B.wav` equal the input exactly, and with every source
-  on the eight track files sum to `MAIN.wav` within the arithmetic's own
-  rounding (0 to 7 steps), at 16 and 24 bits.
-- 24 bits: `T1.wav` equals MAIN's 24 bits, and a 16-bit take of the same
-  run is its top 16 bits.
-
-`tools/verify/verify_stems_menu.py`, also part of `make check REMIX=stems`,
-presses the keys under the port, once as an MKII and once as an MKI. It
-checks that SYSTEM still reaches OS UPGRADE from the root (MAIN MENU is
-also the recovery screen), opens STEMS with UP+REC, turns tracks off and
-on, turns MAIN on and checks the last source stays on, flips 24 BIT,
-splits AB and leaves B out, arms and cancels, records a take with T3 off
-from PLAY to STOP, and checks the seven track files, `MAIN.wav` and
-`A.wav` on the card. It checks that every text STEMS can show fits its
-column, by the firmware font's own widths. A third boot compares STEMS
-with what it must look like, pixel for pixel: stock PERSONALIZE drawn by
-the firmware with STEMS's rows in place (`tools/verify/stems_reference.py`),
-opened, scrolled, with a pair split and an input left out, and recording.
-A picture of the screen at each step lands in `out/stems_runs/menu-*.png`
-and `looks-*.png`.
-
-The fixture projects come from a local copy of EZBot's Ultimate FX 1.5.3
-template, which never enters the repository. The verifier builds them at
-the start of every run, from the folder `STEMS_TEMPLATE` names (default
-`out/projects/Ultimate FX 1.5.3`). A fresh tree, such as a shard of
-`make check-remix-gates`, needs the variable. Without a template the
-verifier skips the port runs and says why.
-
-Under the port the FLEX fixtures' sounds play only their first four
-frames, so most of each FLEX take is silence. The THRU fixture feeds four
-channels of noise into inputs A to D, and each track plays its own mix of
-them, so the mask takes have sound in every frame: a lost or repeated
-sector would show there.
-
-`--long` adds a 20-second take whose file must equal the ring byte for
-byte, the masks of 3, 5, 6 and 7 tracks and T8 alone, a mask changed
-mid-take (the take keeps the one it started with), an eight-track take
-past the ring's wrap, the overflow at eight tracks, eight tracks on a card
-at half the speed they need, where the ring fills to 90% and the take
-still completes, and everything at 24 bits, which outruns the port's card
-by itself and stops with `RING FULL`, every file whole. It takes about an
-hour and a half and stays outside `make check`. `tools/verify/stems_sweep.py`
-measures the ring against the emulated card's speed (STEM_REC.md 15.4).
-
-| Measured under the port | Since the perf round | Before it | STEM_REC.md |
-|---|---|---|---|
-| The frame hook, not recording (the gain mirror) | 396 instructions per frame (394 in the perf round) | 1,001 | 20.1, 20.10 |
-| The frame hook, T1 alone at 24 bits | 937 instructions per frame, every fader at rest (the mirror 407 of them; 1,035 and 477 before flat gain slots, 968 before the mirror's slot mask) | | 20.9, 20.10 |
-| The frame hook, eight tracks at 16 bits | 3,401 instructions per frame, without `stems_zframe` (about 15 a file), before flat gain slots | 5,579 | 20.7 |
-| The frame hook, eight tracks at 24 bits | 3,969 instructions per frame, without `stems_zframe`, before flat gain slots | 6,219 | 20.7 |
-| The frame hook, everything at 24 bits | 4,468 instructions per frame, every fader at rest (5,252 before flat gain slots; 4,972 as counted until 29 Oct 2026, without `stems_zframe`) | 7,415 | 20.9, 20.10 |
-| The writer's copy | none: the card reads each file's ring (zero copy) | 737 a frame at eight tracks, 16 bits; 1,067 everything at 24 bits | 20.7 |
-| The writer task's stack peak | 1,560 of 8,192 bytes (the most seen; `full`, 8 Oct 2026) | 1,244 | 20.3 |
-
-The figures are zero copy's (STEM_REC.md 20.7; STEMS5 had 3,427, 3,995
-and 5,012 for the hook and a copy of 206 and 284; STEMS4, flash D,
-3,299, 4,059, 5,188, 502 and 807). The hook's figures are instruction
-counts. On the unit, `STATS.TXT` measures its time in every take: flash
-D measured 28 µs a frame on average (43 at most) at eight tracks, 24
-bits, 4,059 instructions then, about 1.8 cycles an instruction on the
-266 MHz core. Since zero copy the hook's stores go to uncached memory and
-each waits for the RAM: 🟡 about 10 to 13 µs more a frame at eight tracks,
-24 bits, estimated from flash E's copy, so about 37 µs, and about 45 µs
-with everything at 24 bits. Measured since: 30 to 33 µs on average at
-nine to eleven files at 24 bits (seven tracks), 62 µs at most (STEMS11 and
-STEMS12, 28 Oct and 4 Nov 2026). STEMS12's parts split that time
-(STEM_REC.md 20.9). With flat gain slots, eleven files took 30 µs on
-average and 51 at most (STEMS13, 5 Nov 2026, STEM_REC.md 20.10).
-STEMS3 recorded eleven files at 24 bits on the unit; clicks and the
-screen's response during a take aren't reported yet (STEM_REC.md 17.3).
-Before piece 5 the hook copied the tracks as they were and cost 743
-instructions per frame at eight tracks.
-
-Known from the port, before any flash:
-
-- **Every port take is named `000000-0000`**, because the port's clock
-  reads 0. The name comes from the unit's own clock, and the order of its
-  fields is first checked on the unit (STEM_REC.md 11.2).
-- **T1 sits about 24 dB below its source sample** in the read-back block
-  under the port, unexplained (STEM_REC.md section 9). A quiet take is a
-  known possibility.
-- **A stem is as loud as the track is in MAIN**, not as loud as its
-  source: the level, MAIN LEVEL and AMP VOL all apply, as they do to what
-  you hear. AMP VOL at its default, 64, gives about 12 dB less than at
-  127 (STEM_REC.md 18.7).
-- **A card that refuses a write command hangs the writer** inside the stock
-  card driver, which has no timeout. Recovery is a power cycle. The stock
-  sample save shares this (STEM_REC.md 11.4).
-- **The stock PIO card write has a race, and the module fixes it.** PIO is
-  the mode where the processor copies each sector to the card itself. An
-  interrupt could land between the stock routine sending a write's first
-  sector and updating the card handler's pointer and count. The handler
-  then either waited forever with the frame interrupt blocked, or wrote a
-  sector twice without an error. The module patches the stock routine to
-  update both first (STEM_REC.md 11.7). The patch changes every PIO card
-  write, not only STEM REC's. A card that reports DMA takes a different
-  stock path, where the patch never runs.
-
 ## How to use it
 
 Hold UP and press REC (UP first). The same chord again closes STEMS.
@@ -421,9 +290,9 @@ and STEM REC's writer named on the CPU tab (its task control block is
   frame, and the ring would fill in about 160 s (STEM_REC.md 18.9). On
   the unit (STEMS3), eleven stereo files at 24 bits, 2.91 MB/s, peaked
   the ring at 13 to 16% on a light project and filled it on a busy one:
-  RING FULL, cause open (STEM_REC.md 17.3). BuMa measured a MKI's card
+  RING FULL, cause open. BuMa measured a MKI's card
   writes at 4.7–5.7 MB/s with the sequencer stopped and 1.4–2.1 MB/s with
-  Static tracks streaming (STEM_REC.md 19.1).
+  Static tracks streaming.
 - **On a busy project, eleven files at 24 bits keep up; twelve aren't
   measured since.** On STEMS13 (whole clusters, 5 Nov 2026), Yves's
   project, with the slowest Static samples measured on STEMS12, recorded
@@ -431,7 +300,7 @@ and STEM REC's writer named on the CPU tab (its task control block is
   MAIN, CUE, AB and CD, 2.91 MB/s) for 24 s with the ring at most 36%
   full and the card busy 60% of the take, and thirteen (the inputs as
   four mono files, the same bytes) for 21 s at 44% (STEM_REC.md 20.11).
-  Before, with zero copy (STEM_REC.md 17.6): T1 to T8 at 24 bits ran a
+  Before, with zero copy: T1 to T8 at 24 bits ran a
   minute with the ring at most 21% full; twelve files at 24 bits (MAIN,
   CUE, AB and CD added, 3.17 MB/s) stopped with `RING FULL` after 4.3 s,
   the card taking 2.1 MB/s while the writer, at priority 1, waited for

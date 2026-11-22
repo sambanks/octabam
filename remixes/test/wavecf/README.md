@@ -8,11 +8,6 @@ One ColdFire module and the stock effects.
   CHRD VOIC SPRD GLID). `modules/wavecf/README.md`.
 - the 14 stock FX2 effects, listed so the chooser is stock's.
 
-## Status
-
-Built. The engine and note layer under Unicorn, and the machine's UI and sound under the port
-(`tools/verify/verify_wavecf_ui.py`, `verify_wavecf_port.py`), not flashed. Not measured: the ColdFire load.
-
 ## Build
 
 ```bash

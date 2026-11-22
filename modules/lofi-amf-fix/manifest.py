@@ -48,8 +48,7 @@ MODULE = Module(
     category=Category.FIXES, author="bryantysinger/octa-bt-pt", author_url="https://github.com/bryantysinger/octa-bt-pt",
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
         note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); both words disassembled against stock"),),
-    doc="Fixes stock LO-FI's AMF knob: mpysu -> mpyuu, both payloads. "
-        "Ported from bryantysinger/octa-bt-pt.",
+    doc="Fixes stock LO-FI's AMF knob. Ported from bryantysinger/octa-bt-pt.",
     cf_patches=(
         CavePatch(
             label="lofi amf fix: mpysu -> mpyuu (2 sites)",

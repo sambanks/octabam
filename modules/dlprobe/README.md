@@ -27,19 +27,6 @@ Every load is sent three times, so a healthy load reads received 3, refused 0, p
 (`DLPUMP`'s `PHASE` build setting): if the unit loses the frames the port loses, its refused count rises
 and its loads fail; if not, it reads like `dl-probe`.
 
-## Running it on a unit
-
-1. `make image REMIX=test/dl-probe BUILD=<n>`, flash it (`docs/guide/BUILDING.md`). The remix carries
-   USB audio out, TRACKS PRE (16 channels, the tracks).
-2. A project with DLPROBE (FX1, `DL PROBE`) on one track, and MODULATION, SPECTRUM, CHARACTER or
-   TRANSIENT on the FX2 of other tracks (they are on the FX2 chooser). Play, or only select: the
-   loader works from the selection.
-3. Capture the probe track's channel pair over USB, 44.1 kHz, sample exact, for a few seconds after
-   choosing an effect.
-4. `python3 modules/dlprobe/decode.py capture.wav --channels <L> <R>` prints each effect's BOUND
-   state and its three counters.
-5. Repeat with `test/dl-probe-any`.
-
 ## Files
 
 `dlprobe.asm`, `decode.py`, `manifest.py`; gate `tools/verify/verify_dlprobe.py` (`dsp_host`: seeded

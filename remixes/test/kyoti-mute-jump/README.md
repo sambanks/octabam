@@ -9,10 +9,6 @@
 - **BATCH_BUGFIXES** -- [`modules/batch-bugfixes/README.md`](../../../modules/batch-bugfixes/README.md). DIRECT_JUMP_KYOTI requires it.
 - the 14 stock FX2 effects, listed so the chooser is stock's.
 
-## Status
-
-Built and booted under the ColdFire port (`make check`). Not flashed in this form; the author's own combined image (KYOTI V1.0) carries these modules on his MKI.
-
 ## Build
 
 ```bash

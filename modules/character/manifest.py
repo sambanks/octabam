@@ -62,7 +62,7 @@ MODULE = Module(
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-11-15",
                        note="loaded as a demand effect in octabam during the 15 Nov 2026 mixed-walk runs (12 of 12 without a stall, "
                   "251 loads; #1100)"),),
-    doc="FX1 station: fold, saturation, tilt, compressor, width.",
+    doc="Channel strip: fold, saturation, tilt, compressor and width.",
     menu=MenuEntry(
         fx2_id=0x17,
         donor_desc=0x400d58b8,        # DARK REV: 12 active slots, selects 7/9/11

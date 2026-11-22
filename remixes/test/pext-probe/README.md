@@ -8,10 +8,6 @@ PEXT PROBE on FX1 with USB audio out (TRACKS PRE), beside the stock effects: EQU
 - **USB** -- TRACKS PRE, no MAIN, CUE or MASTER, IN off: the 16 track channels are what the capture reads.
 - the stock effects but EQUALIZER, PLATE REV and SPRING REV.
 
-## Status
-
-`make bus REMIX=pext-probe` builds; `tools/verify/verify_pextprobe.py` passes under `dsp_host`. Not flashed.
-
 ## Build
 
 ```bash

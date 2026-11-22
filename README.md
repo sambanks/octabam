@@ -2,363 +2,100 @@
 
 [![CI](https://github.com/sambanks/octabam/actions/workflows/ci.yml/badge.svg)](https://github.com/sambanks/octabam/actions/workflows/ci.yml)
 
-An unofficial community remixer for the Elektron Octatrack's operating
-system, not affiliated with Elektron: pick the modifications you want and
-build them into one firmware image from your own copy of OS 1.40C.
+octabam is a community remixer for the Elektron Octatrack's operating system.
+You pick the features you want, and octabam builds them into one firmware
+image from your own copy of OS 1.40C. Each feature is a **module**, credited to
+its author. A named set of modules is a **remix**.
 
-A modification is a **module** (`modules/<name>/`). A named selection of
-modules is a **remix** (`remixes/<name>/`). `make image REMIX=<name>`
-composes a remix into a card-flashable image: it places the code, wires
-the hooks by symbol, refuses collisions by name, and proves every ported
-module against its author's own build byte for byte. No firmware is
-distributed here; every image is derived from the user's own 1.40C on the
-user's machine, and a built image must never be shared.
-
-Every module is contributed by its author and credited in the table below.
-Pull requests are accepted: a module, a port of an existing mod, a fix, a
-doc correction. [GitHub Issues](https://github.com/sambanks/octabam/issues)
-take bug reports, module proposals and hardware test reports; each has a
-form (`.github/ISSUE_TEMPLATE/`) asking for the remix, image build,
-hardware model and steps to reproduce.
-The licence is MIT.
-
-## Unofficial firmware
-
-This is unofficial firmware, not made, endorsed or supported by Elektron.
-Flashing it is generally safe and can be reverted by flashing the stock OS
-again ([BUILDING.md](docs/guide/BUILDING.md) section 7). Elektron is not
-responsible for any damage to your Octatrack. See
-[Before you flash anything](#before-you-flash-anything).
-
-## The manual
-
-**Musicians start at [sambanks.github.io/octabam](https://sambanks.github.io/octabam/).** It is
-the manual for the current release (v0.5: [Octabam](https://sambanks.github.io/octabam/remix-octabam.html),
-[Octabam Verbs](https://sambanks.github.io/octabam/remix-octabam-verbs.html) and
-[Octabam Bus](https://sambanks.github.io/octabam/remix-octabam-bus.html)). Its
-[Build and Install](https://sambanks.github.io/octabam/web-builder.html) page builds an image in the
-browser from your own OS 1.40C, with no toolchain and nothing uploaded, and installs it from the card or over
-MIDI. The site is built from this repository (`docs/site/`, `tools/site/README.md`) and deployed on every
-push to `main`; this README and the docs under `docs/` are for building from source and contributing.
+octabam is unofficial: it is not made, endorsed or supported by Elektron. You
+can always go back to the stock OS
+([Safety and Recovery](https://sambanks.github.io/octabam/safety.html)).
 
 ## Start here
 
 | you want to | read |
 |---|---|
-| put a released remix on your Octatrack | [the manual's Build and Install page](https://sambanks.github.io/octabam/web-builder.html): in the browser, then flash; [Safety and Recovery](https://sambanks.github.io/octabam/safety.html) for the way back |
-| build any remix from source, or flash your own build | [docs/guide/BUILDING.md](docs/guide/BUILDING.md): a fresh machine to a flashed unit, step by step, with the recovery path |
-| learn what a feature does on the unit | [the Octabam Manual](https://sambanks.github.io/octabam/reference/manual/index.html): one page per feature, each saying which remixes have it |
-| see what remixes exist and what is in each | [remixes/README.md](remixes/README.md), then the remix's own page in `remixes/<name>/README.md` |
-| see every module and how far it is proven | the table below; each module's `modules/<name>/README.md` has the measurements |
-| compose your own selection | [docs/guide/COMPOSING.md](docs/guide/COMPOSING.md): a `remix.py` by hand |
-| write a module or port an existing mod | [CONTRIBUTING.md](CONTRIBUTING.md) (the contract), [docs/contributing/MODULES.md](docs/contributing/MODULES.md) (the guide), [docs/contributing/TESTING.md](docs/contributing/TESTING.md) (what the gates prove) |
-| understand the firmware | [docs/firmware/ARCHITECTURE.md](docs/firmware/ARCHITECTURE.md) and its neighbours; [docs/contributing/TOOLING.md](docs/contributing/TOOLING.md) for the tools |
+| put octabam on your Octatrack | [Build and Install](https://sambanks.github.io/octabam/web-builder.html): build in the browser, then install from the card or over MIDI |
+| learn what a feature does | [the manual](https://sambanks.github.io/octabam/) |
+| build a remix from source | [docs/guide/BUILDING.md](docs/guide/BUILDING.md) |
+| choose your own modules | [docs/guide/COMPOSING.md](docs/guide/COMPOSING.md) |
+| see every module | [modules/README.md](modules/README.md) |
+| see every remix | [remixes/README.md](remixes/README.md) |
+| write a module or port a mod | [CONTRIBUTING.md](CONTRIBUTING.md), then [docs/contributing/MODULES.md](docs/contributing/MODULES.md) |
+| look up a term | [docs/GLOSSARY.md](docs/GLOSSARY.md) |
 | find any other doc | [docs/README.md](docs/README.md) |
-
-## Quick start
-
-To install a released remix, no build is needed: use the
-[web builder](https://sambanks.github.io/octabam/web-builder.html). To build from source,
-[docs/guide/BUILDING.md](docs/guide/BUILDING.md) has every step. Section 0 is what
-to install first: on macOS the Xcode Command Line Tools
-(`xcode-select --install`) and Homebrew, then `make setup-mac`; on Linux
-or WSL2 `make setup-linux`. Then `make emu-setup`,
-`make os && make recon`, `make image REMIX=<name> BUILD=1`, and the flash
-from the card (section 5).
-
-<!-- modules:begin -->
-
-### Effects: the bus
-
-| module | author | what it does | proof |
-|---|---|---|---|
-| [**DELAY SERVER**](modules/busdelay/README.md) | [sambanks](https://github.com/sambanks) | Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow. | on a unit (MKII, sambanks) |
-| [**REVERB SERVER**](modules/busverb/README.md) | [sambanks](https://github.com/sambanks) | Eight-line FDN reverb: ROOM/PLATE/BIG, shimmer, gate, mid/side width. | on a unit (MKII, sambanks) |
-| [**FX2 LOCK**](modules/fx2-lock/README.md) | [sambanks](https://github.com/sambanks) | The FX2 chooser cannot change a track's effect: YES's key-table entry points at NO's close handler, so the select handler never runs. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); verify_fx2_lock under the port, 4 Oct 2026 |
-| [**MODE DEFAULTS**](modules/mode-defaults/README.md) | [sambanks](https://github.com/sambanks) | A MODE turned on the panel re-defaults the knobs around it (the manifests' ModeViews), on FX1 and FX2. | on a unit (MKII, sambanks, 2026-09-15): (images 26/27, 15 Sep 2026) |
-| [**RIG HOSTS**](modules/rig-hosts/README.md) | [sambanks](https://github.com/sambanks) | A new part is born hosted: T1 FX2 = BusDelay, T5 = BusVerb, T8 = the stock DELAY, the rest SEND. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); a new project born hosted under the port |
-| [**SEND**](modules/send/README.md) | [sambanks](https://github.com/sambanks) | Bus client: DEL into the delay, REV into the reverb, from any track. The default effect. | on a unit (MKII, sambanks, 2026-09-27) |
-| [**TEMPO BUS**](modules/tempo-bus/README.md) | [sambanks](https://github.com/sambanks) | The TEMPO window lists and edits BusDelay's and BusVerb's knobs (UP/DOWN = row, A or B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM). | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); `verify_set`; carried by image 88 on Sam's MKII |
-| [**TEMPO SYNC**](modules/tempo-sync/README.md) | [sambanks](https://github.com/sambanks) | ColdFire DRAM units: publishes the held MIDI note to BusDelay, and draws BusDelay TIME as a tempo division. | on a unit (MKII, sambanks) |
-
-### Effects: on a track
-
-| module | author | what it does | proof |
-|---|---|---|---|
-| [**BBD**](modules/bbd/README.md) | [JamCones](https://github.com/JamCones) | Clocked BBD delay: compander, clock/3 filters, bucket noise, freeze, governor; FX2. | on a unit (MKII, JamCones, 2026-10-17): JamCones' MKII, BBDOB4 (remixes/test/bbd, BUILD 4), 17 Oct 2026 |
-| [**CHARACTER**](modules/character/README.md) | [sambanks](https://github.com/sambanks) | FX1 station: fold, saturation, tilt, compressor, width. | on a unit (MKII, sambanks, 2026-11-15): loaded as a demand effect in octabam during the 15 Nov 2026 mixed-walk runs (12 of 12 without a stall, 251 loads; #1100) |
-| [**CHARACTER TXTR**](modules/character-txtr/README.md) | [sambanks](https://github.com/sambanks) | Character plus TXTR (Airwindows Pockey2): fold, texture, saturation, tilt, compressor, width. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026) |
-| [**DEVILISH**](modules/devilish/README.md) | [MaMarko](https://github.com/braikomarko-hub) | The Devil Fish mods (Robin Whittle) for an OCTA303 track: twelve knobs read by the 303 voice; the DSP passes the audio through. | on a unit (MKI, MaMarko, 2026-10-22): image DEVPR2 (BUILD 93, remix devilish, on 0x10), 22 Oct 2026: every knob of both pages, FX1 and FX2, an LFO on a knob moving the 303, a scene and a lock, a non-303 track passing, two 303 tracks for five minutes, save and reload. Before, in daily use in the acidtrack images up to ACIDV71 (on 0x1f / 0x1e). The Devil Fish engine is bit-exact in OCTA303's source simulator |
-| [**DISTORX**](modules/distorx/README.md) | [MaMarko](https://github.com/braikomarko-hub) | SD-1 + RAT + Turbo RAT in one insert: MODE picks the pedal (OFF first), a 3 ms fade between them. | on a unit (MKI, MaMarko, ACIDV97, 2026-11-20): v10 (distorx.asm and distorx.tmpl.asm byte-identical to this commit's) on id 0x06, where the remix's assign_ids put it (dB666 keeps 0x1b), in near-daily use on the owner's MKI: the acidtrack images ACIDF07B (on the unit from 18 Nov 2026) and ACIDF08 (from 19 Nov) of the fork branch octa303_optimus_23, and ACIDV97 (remix acidhyb, fork branch octa303-ibrido3, 20 Nov), where the table sits in the stock curve bank. On FX1 and on FX2, every MODE, at most three DISTORX so far, on almost all tracks but never T8; an LFO and scenes worked. By ear, no fault heard. Not a measurement. Id 0x1b itself is still not flashed |
-| [**DLPROBE**](modules/dlprobe/README.md) | [sambanks](https://github.com/sambanks) | Measurement instrument: the demand loader's per-effect counters, in the track's audio. | emulator |
-| [**EUCLID**](modules/euclid/README.md) | [repeat98](https://github.com/repeat98) | Euclidean LP/BP/HP/notch/amp sequencer: swing, envelope, gate, random and loop. | on a unit (MKII, sambanks, 2026-10-16): Tested on Sam's MKII (16 Oct 2026) and radiohagen's MKII (21 and 25 Oct 2026): start/resume, multiple tracks and both FX slots. |
-| [**EXTPROBE**](modules/extprobe/README.md) | [sambanks](https://github.com/sambanks) | Measurement instrument: the highest window word a reverb on T8's FX2 writes, in the track's audio. | emulator |
-| [**LOFI2**](modules/lofi2/README.md) | [Bryan T](https://github.com/bryantysinger) | Ring mod or frequency shifter, then sample-rate and bit reduction. | on a unit (MKII, Bryan T, 2026-10-12): images 96-99 (Oct 2026, this tree): tracks 1 and 5, five instances at once; `_bt_oct` build 11 (12 Oct 2026, the 414-cycle loop): eight in SHIFT at once, four per core, UP/DOWN switched while playing |
-| [**MINIVERB**](modules/miniverb/README.md) | [repeat98](https://github.com/repeat98) | Modulated diffused FDN reverb; independent FX2 buffers, smoothed controls. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); `make verify-miniverb` |
-| [**MODULATION**](modules/modulation/README.md) | [sambanks](https://github.com/sambanks) | FX1 station: a modulation pedal -- Juno, Dimension, flanger, phaser, comb; FX1 only. | on a unit (MKII, sambanks, 2026-10-25) |
-| [**PEXT PROBE**](modules/pextprobe/README.md) | [sambanks](https://github.com/sambanks) | Measurement instrument: tests P memory above P:0x2000 and code in the shared window, and reports it in the track's audio. | emulator |
-| [**RESONATOR**](modules/resonator/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | FX1 Torso S-4 RING-style filter bank: 4 pitched BPs, SCAL makeup, DECY, LIM. | on a unit (MKII, Ilia, RESO LM4.RMX, 2026-11-14): low SCAL settings remained clean and the current-block LIM reduced hot output; verify_resonator passed |
-| [**SHATTER**](modules/shatter/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Crush insert: fold, clip, crush, chaotic FDBK, stereo peak limiter after MIX. | on a unit (MKII, Ilia, SHTR LM4.RMX, 2026-11-14): LIM confirmed working; verify_shatter passed. |
-| [**SIDECHAIN_COMPRESSOR**](modules/sidechain-compressor/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Stock COMPRESSOR with a side-chain KEY from any of T1-T8, key gain, a base-width key filter (KBAS high-pass in Hz, KWID low-pass in octaves above it) and a key listen switch on page 2. | on a unit (MKI, Zac Kyoti, OCTABAM33, 2026-10-26): this pin's octabam form (remixes/test/sidechain-compressor) on the author's MKI as OCTABAM33, 26 Oct 2026: KBAS/KWID, MON's switch and its OFF on older projects, KEY's pressed turn, the fades, all good; the key-filter table fix alone as OCTABAM32, 25 Oct 2026. The author's standalone image (140C_SCKF4) and KYOTI V1.6 on the author's MKI, 22 Oct 2026, and KEY's rotary switch and KWID's clip in the standalone image, 23 Oct 2026: page 2, KBAS/KWID ranges and readouts, a kick fundamental keyed at short attack and release, MON and KEY declick, load with 1 + 7 and 4 + 4 COMPRESSOR/DJ EQ per core. The previous version's octabam form ran on the unit on 4 Oct 2026 |
-| [**SPECTRUM**](modules/spectrum/README.md) | [sambanks](https://github.com/sambanks) | FX1 station: a filter pedal -- the Moog ladder, SEM (LP -> BP -> HP by SHPE), Airwindows Capacitor2, formants; ENV and LFO onto the cutoff; width. | on a unit (MKII, sambanks, 2026-11-15): loaded as a demand effect in octabam during the 15 Nov 2026 mixed-walk runs (12 of 12 without a stall, 251 loads; #1100) |
-| [**STUTTR**](modules/stuttr/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Chance grain repeater: RATE/CHNC grab, HOLD loop, MODE rate, REV. | on a unit (MKII, Ilia, 2026-10-21): STUT NS.RMX (latest−SHATTER; BRAIN switch), 21 Oct 2026: empty-project play; every page-1/page-2 knob, MODE/SYNC, trig splits, two instances/core, engage/release fades click-free; verify_stuttr |
-| [**TAPE ECHO**](modules/tapeecho/README.md) | [repeat98](https://github.com/repeat98) | Economy CPU tape echo: two biquads, simple FREE slew, snapped BEAT TIME and page-1 AGE. | on a unit: the author's unit (OCTACLID4): six instances run, a seventh freezes it, open |
-| [**TESTGEN**](modules/testgen/README.md) | [Ignorato](https://github.com/Ignorato) | Measurement source: a sine, sweep, pink or white noise, impulses, a needle pulse train or DC replace the track's audio. | on a unit (MKII, Ignorato, OCTABAM4, 2026-10-04): images OCTABAM4-6 and 10 (remix testgen), 3-4 Oct 2026; 0.1 measured at the main outs; FX1-only in the emulator so far |
-| [**TRANSIENT**](modules/transient/README.md) | [Ignorato](https://github.com/Ignorato) | Transient shaper: ATCK and SUST reshape onsets and tails, level-independent. | on a unit (MKII, Ignorato, OCTABAM2, 2026-10-03): images OCTABAM2 and OCTABAM3 (remix transient), 3 Oct 2026 |
-| [**VERBERATION**](modules/verberation/README.md) | [sambanks](https://github.com/sambanks) | A plate reverb for rooms to halls, after the reverb stage of Mutable Instruments Clouds (Emilie Gillet; Griesinger topology), with a desk-style gate: amount, gain, time, diffusion, tone, gate; size, low cut, modulation depth and rate. One FX2 slot per instance. | local render: `verify_verberation` (dsp_host, against a float model); not run on a unit. Its predecessor GATE VERB had cursory testing on Sam's MKII (owner report, 16 Oct 2026) |
-| [**VERB HALL**](modules/verberation-hall/README.md) | [sambanks](https://github.com/sambanks) | Not a separate reverb: a second chooser row for VERBERATION, on DARK REV's id, with MODE set to HALL (long, dark, slowly modulated), so a Part saved with DARK REV opens on it. | local render: runs VERBERATION's code (verify_verberation); not run on a unit |
-| [**VERB PLATE**](modules/verberation-plate/README.md) | [sambanks](https://github.com/sambanks) | Not a separate reverb: a second chooser row for VERBERATION, on PLATE REV's id, with MODE set to PLATE (a full plate), so a Part saved with PLATE REV opens on it. | local render: runs VERBERATION's code (verify_verberation); not run on a unit |
-| [**VERB ROOM**](modules/verberation-room/README.md) | [sambanks](https://github.com/sambanks) | Not a separate reverb: a second chooser row for VERBERATION, on SPRING REV's id, with MODE set to ROOM (small, bright and short), so a Part saved with SPRING REV opens on it. | local render: runs VERBERATION's code (verify_verberation); not run on a unit |
-| [**VIBRATO**](modules/vibrato/README.md) | [Bryan T](https://github.com/bryantysinger) | Pitch vibrato on FX1, or FX1 and FX2 (SLOTS) -- sine, triangle, square trill or random; depth in cents. | on a unit (MKII, Bryan T, 2026-11-04): _bt_oct with VIBRATO and LOAD METER, 4 Nov 2026: 4.5 % a slot (LOAD METER over USB); SLOTS FX1+FX2: sixteen instances, FX1 and FX2 of all eight tracks, both cores at 59 % / 51 % |
-| [**VOCODER**](modules/vocoder/README.md) | [Ignorato](https://github.com/Ignorato) | Ten-band vocoder after the Roland VP-330: the track's voice, a built-in carrier at NOTE or input B. FX2 of tracks 2, 4, 6 and 8 only. | local render: 0.2 at T2 T4 T6 T8 in dsp_host and under the ColdFire port (verify_vocoder, make check), 11 Oct 2026; SCAL, KEY and RANG in dsp_host and under the port, 18 Oct 2026 (value 0 bit for bit the build before them); not flashed, T4 and T8 not heard, the selectors not heard. The 0.2 code before the de-zipper was heard on Ignorato's MKII at T2 T3 (OCTABAM20, 5 Oct 2026, by ear); 0.1 ran on OCTABAM12 |
-| [**VOID**](modules/void/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Scrape grit: dry↔noise BAL; LFO/nbr AM + DRV/FDBK on noise only; WID stereo. | on a unit (MKII, ilia-murzinov, 2026-11-20): NBR beside CX: KEYBUS level drives VOID noise; confirmed on tip dafb11b3; verify_void |
-
-### Machines and the sequencer
-
-| module | author | what it does | proof |
-|---|---|---|---|
-| [**ANALOG BD**](modules/analog-bassdrum/README.md) | [repeat98](https://github.com/repeat98) | Analog BD track machine: switchable 808/909 circuit-informed synthesis. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); source/AMP/main on both cores and engine-browser/hidden-control gates |
-| [**BAR LED**](modules/bar-led/README.md) | [nathangroth](https://github.com/nathangroth) | The tempo LED flashes green on the pattern's 1 while playing; the other beats stay red. | on a unit (MKI, nathangroth, 2026-11-02): (author's report): a private octabam remix through REMIX SWITCH, 2 Nov 2026, and the same unit.s loaded over USB by Modwerk's loader, 4 Nov 2026; `verify_bar_led` under the port |
-| [**BLACKPYRAMIDS_303**](modules/blackpyramids-303/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | BLKPYRAMD: a TB-303 voice (built on Open303, recalibrated on the TB-303 circuit) as a track machine, one per DSP core, played by the sequencer, the chromatic keys and MIDI. | on a unit (MKI, Zac Kyoti, 2026-11-03): standalone images 14 Oct - 3 Nov 2026; this octabam form 19 Oct 2026 and, with the recalibrated voice, 21 Oct 2026 (the 23 Oct link clips and the 3 Nov 936 / 932-word voice: standalone only) |
-| [**CX OSC**](modules/cxosc/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..34 CAR/MOD/SYMM/FDBK/PWM (DEC not a destination). Local fork of FM SYNTH. | on a unit (ilia-murzinov, CXSEQ CV.RMX (BUILD 79), 2026-11-20): Ilia confirms INDX changes the saw and triangle carrier waveforms on this build. |
-| [**DIRECT JUMP**](modules/direct-jump/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | CHAIN AFTER: DIRECT (its unused value 1) -- a pattern change lands at the next step, the step count continuing (A4/Rytm direct jump). | on a unit (MKI, 2026-09-26): `octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) through 2.9; the last two 2.9 fixes under the port |
-| [**DIRECT_JUMP_KYOTI**](modules/direct-jump-kyoti/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Clock-locked DIRECT JUMP ([PTN]+[YES]): a cued pattern lands on the next step exactly where it would be had it played since PLAY or the last pattern change. | on a unit (MKI, Zac Kyoti, KY18C DJR1, 2026-11-16): V7.3 (cd788e9), KYOTI V1.8C: after a normal pattern change a jump lands in phase with it, 1:2 trigs stay in step and a Clyps one-track load after it stays in step (this octabam form not flashed) |
-| [**DRUMMER**](modules/drummer/README.md) | [djib](https://github.com/Djibdjib) | DRUMMER machine: a sliced FLEX drum loop played as a drummer (styles, humanisation, BRK breaks on the crossfader). | on a unit (MKII, djib, 2026-11-09): images 52-78 (Nov 2026; REDRUM images 77-78, 9 Nov 2026); verify_port.py (12 cases, the firmware plays what the engine says, step by step), verify_store.py (drummer.work saved and read back), verify_drk.py (the kit file beside the sample), verify_kitmaker.py, verify_autokit.py, verify_live2.py, verify_next.py (NEXT's orders on the beat) |
-| [**ERASE_EMPTY_TRIGLESS_LOCKS**](modules/erase-empty-trigless-locks/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Bug fix: a trigless lock whose last parameter lock is erased stops staying lit on the trig row (audio and MIDI tracks). | on a unit (MKI, Zac Kyoti, KY18BC RC2, 2026-11-20): MIDI and audio: an erased last lock darkens the step, an empty FUNC + TRIG trigless lock stays, a note or trigless trig with a lock keeps its trig (the same 240 B in KYOTI V1.8BC); this octabam form not flashed |
-| [**MUTE_MODES**](modules/mute-modes/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | PERSONALIZE -> MUTE MODE: OT (stock) / OTFX / OTFX-T / DT-T -- dry cut with FX tails, trig suppression, or a Digitakt-style sequencer mute. | on a unit (MKI, Zac Kyoti, OCTABAM39, 2026-11-03): (standalone image, the KYOTI V1.7 combined image, and this octabam form beside SIDECHAIN_COMPRESSOR as OCTABAM39, 3 Nov 2026) |
-| [**OCTA303**](modules/octa303/README.md) | [MaMarko](https://github.com/braikomarko-hub) | A FLEX track whose sample is named TB303* plays a circuit-modelled TB-303 (diode ladder, accent-sweep capacitor, RC slide; TB303D*/TB303SQD* add a pedal). PLAYBACK: TUNE (-24..+24 semitones: four octaves) CUT RES ENV DEC ACC; dEVILish on FX1/FX2 = the Devil Fish mods (Whittle). Accent = an ACC lock, slide = a trigless PTCH lock. v7.0: OCTA-303 is also its own machine (row 5 of the machine list, no sample needed) with a SETUP page WAVE GATE FINE SLID DRIV ACCV; GATE 303 = the 303's own gate, 3.5 of the step's 6 clocks (Whittle). v7.1: held trig + UP / DOWN = an octave, a new slide takes the note it slides from. | on a unit (MKI, MaMarko, 2026-10-23): v7.1 on the author's MKI, image O3V71 (BUILD A0, remix octa303), 23 Oct 2026: held trig + UP / DOWN an octave (several trigs at once, C5 stays), FUNC + TRIG's slide tied into the previous note, then turned to another note and an octave up, a FLEX track's TRIG + UP stock, LFO SETUP's names, save / power-cycle / reload; v7.0 on the author's MKI, image ACIDV70 (BUILD 87, remix acidtrack), 19 Oct 2026: the OCTA-303 machine chosen from the list, its SETUP page, save / power-cycle / reload, the 303 gate; v6.3-v6.9 played for hours (two or three tracks, with dEVILish and DisTorX). The engine is bit-exact against tools/octa303/ref303.py (test_octa303); the panel under the port in verify_octa303_ui. The ColdFire load is not measured on the unit. |
-| [**PAGE LOOP**](modules/page-loop/README.md) | [Hteah](https://github.com/Hteah) | GRID REC: PAGE + trig 1-4 loops that page of the current track, in time; again to stop. | emulator (verify_page_loop): verify_page_loop: loop on / off, play step looping, in time on exit, other tracks untouched, pattern change ends it, under the port (MKI) |
-| [**PATTERN MUTE**](modules/pattern-mute/README.md) | [sambanks](https://github.com/sambanks) | Double-press FUNC: mute edits go to a PATTERN layer kept per pattern, beside the GLOBAL layer (Digitakt II PATTERN MUTE / GLOBAL MUTE). | emulator (verify_pattern_mute): verify_pattern_mute under the port on octabam, 30 Oct 2026; not flashed |
-| [**PLOCKS P2**](modules/plocks-p2/README.md) | [sambanks](https://github.com/sambanks) | Parameter locks on FX1/FX2 page 2 (hold trigs, turn a knob on the SETUP page). | on a unit (MKII, sambanks, 2026-10-16): Tested on Sam's MKII (16 Oct 2026) and radiohagen's MKII (17, 22 and 25 Oct 2026): held edits, copy operations and controlled trig-paste undo. |
-| [**QUANTIZE_LIVE_REC_TOGGLE**](modules/quantize-live-rec-toggle/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | QUANTIZE LIVE REC from the front panel: hold [REC], tap [PLAY] to see it, tap again while the toast is up to invert it. | on a unit (MKI, Zac Kyoti, 2026-09-25): (gesture) and 30 Sep 2026 (setting survives a power cycle); 22 Oct 2026 (toast text, PERSONALIZE redraw; standalone and KYOTI V1.6 images, not this octabam form) |
-| [**SCALE QUANTIZER**](modules/quantizer/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | PROJECT > CONTROL > SEQUENCER > SCALE: the PTCH knob and CHROMATIC trig keys quantize to a scale (24 scales, OFF = stock); > ROOT: the note the scale is built on (C..B; key 1 of the CHROMATIC keyboard sounds it); > GLIDE: the synth's glide time (OFF, 1..127; the legato switch is the synth track's LEG setting); polyphonic chromatic keys on a synth track whose VOIC is 2..4; on a synth track PTCH is semitones (-64..+63) and the CHROMATIC octave runs -4..+4. | on a unit: Tim pin; octabam qz_is_synth accepts CX OSC; FUNC+PTCH keeps octave under SCALE |
-| [**REC THRESHOLD**](modules/rec-threshold/README.md) | [Chupitnik](https://github.com/Chupitnik) | Recorder TRIG value THR: a REC press arms, and recording starts when the input passes the track's LEV (RECORDING SETUP 2, beside a live IN meter). | on a unit (MKII, Chupitnik, 2026-10-13): 11-13 Oct 2026, THR1 to THR9 from the card: armed with TRACK 1 + REC AB, silence never records, the input starts the take, a second press cancels, LEV and IN on RECORDING SETUP 2, TRIG moved off THR while armed drops the arm and the blink, an armed track's icon blinks, armed inside RECORDING SETUP 1 it records; THR9 is this code |
-| [**REC_TRIG_MUTE**](modules/rec-trig-mute/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | [TRACK]+[REC] mutes/unmutes the held tracks' recorder trigs; MIDI CC 80; '..' beside a muted track's tab letter. | on a unit (MKI, Zac Kyoti, 2026-10-29): [TRACK]+[REC] inside KYOTI V1.6, 29 Oct 2026; the tab-letter dots (91a58e9) inside a KYOTI V1.7 test build, 9 Nov 2026 (MIDI CC 80 not tried; this DRAM form not flashed) |
-| [**RELOAD_FROM_PROJECT**](modules/reload-from-project/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Reload from the card without stopping the transport: [PTN]+[TRACK n] a track's sequence, [BANK]+[TRACK n] with its machine and effects too, [PTN]+[BANK]+trig a whole pattern (then the OT goes to it). | on a unit (MKI, Zac Kyoti, 140C_RLCP4, 2026-11-14): Clyps' landing rules (dd1ad1e), the standalone image, every item of the author's FLASHING walk-through (this octabam form not flashed) |
-| [**RLEN PLEN**](modules/rlen-plen/README.md) | [sambanks](https://github.com/sambanks) | ColdFire cave: RLEN value PLEN (past MAX) = one loop of the track's pattern on its own scale, so TRIG ONE + QREC PLEN records the next pass and stops. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); 26 Sep 2026 |
-| [**SEQ**](modules/seq/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | TRACK+PAGE opens SEQ for audio and MIDI: A=PULS B=ROT C=LANE, D=page/parameter E=DPTH; Harmony A=SCAL B=ROOT D=PHRS E=JUMP. PHRS defaults to RAND, then UP/DOWN/ALT/TRI. MIDI adds C=VOIC and F=CHRD. Fresh audio DEST is SRC PTCH; MIDI DEST is NOTE. TRIG writes track trigs and selected DEST locks; PLCK rewrites only that DEST. CUE randomizes hit positions; PHRS RAND rerolls pitches on each fill. Per-track settings persist via STORE. | on a unit (MKII, ilia-murzinov, CX CJ.RMX, 2026-11-14): all six reported device checks passed: PLCK PULS 0 clearing; all FUNC+BANK clear rows and NO cancel; ARE YOU SURE? layering and lock; stock TRACK shortcuts; CUE chord vs bare tap; SCALE-off Part PTCH. Does not claim audio testing. |
-| [**SLOW LFO**](modules/slow-lfo/README.md) | [nathangroth](https://github.com/nathangroth) | LFO MULT gains 1/2X, 1/4X and 1/8X on audio and MIDI tracks: LFOs up to eight times slower. | on a unit (MKI, nathangroth, 2026-11-04): (author's report, rates by ear): the same unit.s loaded over USB by Modwerk's loader, 4 Nov 2026, audio and MIDI tracks; this octabam form not flashed; `verify_slow_lfo` under the port |
-| [**STEM REC**](modules/stems/README.md) | [yvesrosius](https://github.com/yvesrosius) | Multitrack recording to the card: each track (after its fader), MAIN, CUE and the inputs as separate WAV files, 16 or 24 bits, up to 60 minutes. UP + REC opens STEMS. | on a unit (MKII, Yves, 2026-09-30): STEMS1 (30 Sep 2026), T1-T8 for about two minutes; STEMS3 (6 Oct 2026), T1-T8 after the fader, MAIN and AB at 16 and 24 bits |
-| [**SYNTH MACHINE**](modules/synth/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | A FLEX track whose sample is named SYNTH* plays a two-operator FM voice (STRT/LEN/RTRG/RTIM = ratio/index/feedback/decay); the DSP shapes and effects it as a sample. Its PLAYBACK page reads RATO/INDX/FDBK/DEC with icons and the title FM SYNTH; PTCH is semitones (-64..+63) and RATE is FINE (cents) on a synth track, 0c the moment a track becomes one. A FLEX or STATIC sample track with LEG MONO and GLIDE slides its pitch (2.8). | on a unit (MKI, 2026-09-26): `octatrick-usb` on his MKI, 26 Sep 2026 (OCTATRICK9) through 2.9; the last two 2.9 fixes under the port |
-| [**TRACK TRIG MODE**](modules/track-trig-mode/README.md) | [Hteah](https://github.com/Hteah) | Each audio track keeps its own CHROMATIC / SLOTS / SLICES trig mode, saved with the project. | emulator (verify_track_trig_mode): verify_track_trig_mode: per-track modes on track change, the project line written and read back, a power cycle (CS1 kept), under the port |
-| [**TRACK PATTERNS**](modules/trackpatterns/README.md) | [pgstath](https://github.com/pgstath) | Each track plays its own pattern of the playing bank; changes land at the track's loop end. | on a unit (MKII, pgstath, OCTABAM3, 2026-10-21): (remix trackpatterns), 21 Oct 2026: functional tests and trig LEDs passed (contributor's report) |
-| [**TRIG MUTE**](modules/trig-mute/README.md) | [Hteah](https://github.com/Hteah) | GRID REC: hold a step + FUNC mutes or unmutes its trig (kept with the pattern; the LED blinks). | emulator (verify_trig_mute): verify_trig_mute: hold step + FUNC mutes and unmutes, a muted trig does not fire, its condition survives edits, its LED blinks, save / reload / power cycle, under the port (MKI) |
-| [**TUNER**](modules/tuner/README.md) | [timhastie/octatrick-modules](https://github.com/timhastie/octatrick-modules) | UP + TEMPO: a tuner window for the current audio track -- note, octave, cents, needle, Hz (McLeod NSDF + YIN refine on the ColdFire, in the UI task). | on a unit (MKI, Tim, 2026-09-29): test build 3.0 b40 (`octatrick` at BUILD 40), 29 Sep 2026: UP + TEMPO opens the window and tunes; sources unchanged since 26 Sep |
-| [**VARISPEED**](modules/varispeed/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | STATIC/FLEX TSTR VARI: dry, tempo-locked varispeed with QUAN ratios on PTCH (the plain build of VARISPEED_EMUS: nothing emulated, stock DSP). | on a unit (MKI, Zac Kyoti, 2026-10-15): (the VARI1 build, standalone image); QUAN's rotary switch, 23 Oct 2026 (standalone image) |
-| [**WAVE CF**](modules/wavecf/README.md) | [sambanks](https://github.com/sambanks) | WAVE: a 4-voice wavetable machine, a row of the track's machine list. PLAYBACK: TUNE FRAM CHRD VOIC SPRD GLID: FRAM morphs eight frames, CHRD one of 32 chords, VOIC 1-4 of its notes, SPRD opens the voicing. SETUP: VIBR VRAT OCT DETN COMP MODE (CHORD or POLY). Notes follow SCALE QUANTIZER's scale. No filter: the Octatrack's own FX and AMP follow. | emulator (verify_wavecf_ui): the engine and the note layer: Python model == host == ColdFire under Unicorn (modules/wavecf/test_wavecf.py); the machine's rows, the shared limit and its sound under the port (verify_wavecf_ui.py, verify_wavecf_port.py). Not flashed |
-
-### Parts, Kits and scenes
-
-| module | author | what it does | proof |
-|---|---|---|---|
-| [**EVENTS**](modules/events/README.md) | [radiohagen](https://github.com/radiohagen) | System: transport and MIDI notifications, held-step ownership and copy notifications. | emulator: Tested on radiohagen's MKII (25 Oct 2026): transport and trig-paste undo. |
-| [**KITS**](modules/kits/README.md) | [sambanks](https://github.com/sambanks) | 255 Kits per project: PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI: FUNC+MIDI, then FUNC+BANK); each pattern plays its Kit through the stock Part slots. Replaces the earlier Octakit implementation. | on a unit (MKII, sambanks, 2026-10-06): (image A6, 6 Oct 2026): importing Octakit-format kit files, ems-octakit #5, STOP/PTN+TRIG/PLAY with the Rytm, a rejected bank file, power cycles; `verify_kits` under the port |
-| [**MIDI SCENES**](modules/midi-scenes/README.md) | [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) | Scene locks for the MIDI tracks (hold-to-lock, readout, unlock, lock LEDs, XF morph, scene clear / copy / paste), kept per Part in scenes.work and CS1. Port of bkkbrls-del's midisc project. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); `verify_scenes` against MIDISC2.1 under the port, phase 1 scenarios (b1, b7, b3, b29copy, b29clear; b29acopy, b29aclear, hm, ha, hb ours only); MIDISC 2.0 ran on the author's unit as `ok-ms` (14 Sep 2026) |
-| [**MORPH**](modules/morph/README.md) | [MaMarko](https://github.com/braikomarko-hub) | Hold a track key and press UP: the window; YES and from the next step that track's scene morph runs by itself, A -> B -> A over STEPS x x steps, starting on A; the other tracks keep the crossfader. Then the track key held ~1 s turns it on and off. Track + DOWN finishes the cycle on A and parks the track there until the crossfader reaches A. D, E, F: how it comes back (RET, CURV) and whether it loops, plays once or stays on B (END). Settings saved with the project. Inspired by the Korg Electribe's Motion Sequence. | on a unit (MKI, MaMarko, aCiDtRacK ACIDV91..ACIDV97, 2026-11-22): v1.1 (the window stays open, YES / NO, the long press, x to 100, the scene indicator) in the owner's live sets with OCTA303: risers over STEPS x x while the rest is prepared |
-| [**SCENES P2**](modules/scenes-p2/README.md) | [sambanks](https://github.com/sambanks) | Scene locks and the crossfader on FX1/FX2 page 2 (hold a scene, turn a page-2 knob). | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); 26 Sep 2026 |
-| [**STORE**](modules/store/README.md) | [sambanks](https://github.com/sambanks) | Platform: the stock save, load, copy, CS1 and Part sites STORE clients share. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026) |
-| [**VERB PARTS**](modules/verb-parts/README.md) | [sambanks](https://github.com/sambanks) | A Part saved with PLATE, SPRING or DARK REV opens on its VERBERATION row (VERB PLATE, ROOM, HALL) at that row's defaults. | emulator (verify_verb_parts): verify_verb_parts (the port); not run on a unit |
-| [**XF CURVE**](modules/xfcurve/README.md) | [bryantysinger](https://github.com/bryantysinger) | The crossfader's curve, chosen in BRAIN: LINEAR (stock), four S-curves (S SOFT to S HARD), their inverses (INV SOFT to INV HARD), CUT, CUT A, CUT B, SLOW A or SLOW B. Applies to scene locks, XVOL and the playback morph alike. | on a unit (MKII, Bryan, 2026-11-06): his everyday remix, 6 Nov 2026 (panel crossfader, every curve including CUT A / CUT B); port gate tools/verify/verify_xfcurve.py |
-
-### MIDI and USB
-
-| module | author | what it does | proof |
-|---|---|---|---|
-| [**CC FEEDBACK**](modules/cc-feedback/README.md) | [sambanks](https://github.com/sambanks) | Every knob value change is transmitted as its CC (page 1: 16-45; page 2: CC MAP's 102-111, 14, 15), so a controller's encoders follow the unit. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026; page 2 on CC 62-73 then); `verify_ccfeedback` (Unicorn) and `verify_set` (the port's MIDI OUT bytes) |
-| [**CC MAP**](modules/cc-map/README.md) | [sambanks](https://github.com/sambanks) | MIDI CC 102-107 drive the FX2 engine's page-2 slots 6-11; CC 108-111, 14 and 15 the FX1 station's. | on a unit (MKII, sambanks, 2026-09-13): (image 96, 13 Sep 2026), on CC 62-73; the 1 Nov 2026 numbers are not flashed yet |
-| [**CHORDS FACTORY**](modules/chords/README.md) | [djib](https://github.com/Djibdjib) | Chord progressions for a MIDI track: sixteen slots per bank on the trig keys, each chord built (root, type, inversion, spread, octave), typed on the trig keys (FUNC) or voiced from the slot before by voice leading (the smoothest first, then the next ones); a voice moved by hand (FUNC + A-D); the bass free or the root; the scale's chords from SCALES (FUNC + F). Heard on the track's channel while a trig key is held. Saved in chords.work (a STORE client). The page: SRC again on MIDI NOTE (a PAGES client). CHORDS is also a MIDI trig mode (FUNC + DOWN): the trig keys play the slots, green, through stock's CHROMATIC note (the arpeggiator follows); live recording or TRIG + UP (a chooser window) puts a chord on a trig. | on a unit (MKII, djib, OCTABAM36, 2026-11-05): -43 (3-5 Nov 2026, the live-djib rig, with SCALES): the page, the slots, voice leading, the trig mode, live recording, TRIG + UP, the FUNC keyboard; verify_chords (the port), verify.py (the engine) |
-| [**FREE LOOP**](modules/free-loop/README.md) | [djib](https://github.com/Djibdjib) | Loop pedals per track on its channel: CC 90 REC (a FREE track's first free loop sets the tempo, the pattern length and starts the sequencer; then arm / cut the overdub; held: clear a muted or stopped loop), CC 91 PLAY/STOP (play, mute / unmute, held: END), CC 92 UNDO / REDO, CC 93 END (mute / unmute at the loop's start). TRACK + UP: the track's ROLE, SIGN, BARS, BPM range and the pattern's ENTRY mode. CC 83-89 on PROG CH: PLAY/STOP, clear, pattern and bank steps. | on a unit (MKII, djib, OCTABAM8, 2026-10-28): -OCTABAM17 (a rig remix, with REC MUTE), 26-28 Oct 2026: free take and tempo, overdub, PLAY/STOP and clear, UNDO / REDO, END, PLAY entries, the popup; tools/verify/verify_free_loop.py |
-| [**MIDI FOLLOW**](modules/midi-follow/README.md) | [radiohagen](https://github.com/radiohagen/octatrack-modules) | RFOL follows source notes; press D for FIXED/GRAV/SOURCE register, OCT/OFFS and TRIG/LIVE updates. | emulator |
-| [**MIDI LOOPBACK**](modules/midi-loopback/README.md) | [radiohagen](https://github.com/radiohagen/octatrack-modules) | Press CHAN for per-Part EXT/INT/BOTH routing of MIDI-track notes and controls. | emulator |
-| [**MIDI SCALES**](modules/midi-scales/README.md) | [radiohagen](https://github.com/radiohagen/octatrack-modules) | Stock MIDI ARP SETUP KEY: OFF plus all 12 keys in seven diatonic modes, stored in the Part. | emulator |
-| [**SCALES**](modules/scales/README.md) | [djib](https://github.com/Djibdjib) | One catalogue of 52 scales in 9 families for every module; ARP SETUP's KEY turns the tonic and, pressed, opens the scale chooser (the families, then their scales); the sequencer and the arpeggiator play the scale; the CHROMATIC trig keys light it (SCALE QUANTIZER's on audio tracks). | on a unit (MKII, djib, OCTABAM26, 2026-10-31): (live-djib, BUILD 26), 31 Oct 2026: the chooser, the snapped notes and LEDs, scales.work across SAVE PROJECT and a power cycle; verify_scales on MKI and MKII |
-| [**SCREEN**](modules/screen/README.md) | [sambanks](https://github.com/sambanks) | Answers the Elektron screenshot SysEx request on MIDI OUT with the 128x64 screen, windows and popups included. | emulator (verify_screen): `verify_screen` under the port (29 checks, DIN and USB, the pixels against the decoded panel stream with a popup and MIXER up); on a unit, the build before the frame fix (a9f0d3d5): Sam's MKII, a looping remix BUILD 40, USB MIDI with `screendump` (`--trace`, `-x --framerate 10`), 4 Nov 2026: answered, upright, page screens only; the frame fix has not run on a unit |
-| [**USB**](modules/usb/README.md) | [markandrus/octemu](https://github.com/markandrus/octemu) | Class-compliant USB-MIDI in/out plus UAC2 audio to and from the host on the OT's own USB port (markandrus/octemu; the input path and crossbar bryantysinger's; the TRACKS POST stems allmyfriendsaresynths's), by its TRACKS / MAIN / CUE / MASTER / IN / MIDI checkboxes. | on a unit (MKII, sambanks, OCTABAMB5, 2026-10-19): octabam-core OCTABAMB5 (main 11d9f129), macOS on an arm64 Mac, 19 Oct 2026, with TRACKS PRE, MAIN, CUE and MIDI at their defaults (20 channels): enumeration (the MIDI port and a 20-channel input); MIDI in (notes trig tracks 3, 4, 5 and 8 on their own channels, and again after a replug); MIDI out clock at 48-49 per second, back after each of three cable replugs; audio after a replug with 0 overruns and 0 underruns; DISK MODE in and out (the image read back off the card, `cmp` equal, then MIDI, audio and counters clean); not run on a unit that day: TRACKS OFF and POST, MASTER, MAIN or CUE off, MIDI off, IN (octabam-core fixes it OFF), a Windows host, an MKI; earlier: cursory testing on Sam's MKII (owner report, 16 Oct 2026); `verify_usb` for every combination and `verify_usb_in` for every IN value under the port; on units: MIDI in/out on Sam's MKII (image 64, 25 Sep 2026), Tim's MKI (OCTATRICK9, 26 Sep 2026) and Ignorato's MKII (OCTABAM21, 9 Oct 2026, transmit after three replugs, macOS and Windows 10), USB clock tempo on Kazeko's MKI (#633, 6 Oct 2026); TRACKS MAIN CUE on Sam's MKII and Tim's MKI, MAIN CUE and the ABCD inject on Bryan T's MKII (build 16, 27 Sep 2026), TRACKS POST on allmyfriendsaresynths's MKII (P3, 5 Oct 2026); the crossbar values at stream-up on Bryan T's MKII (usbin-test 12-16, 26-27 Sep 2026); README.md per combination and direction |
-
-### Fixes
-
-| module | author | what it does | proof |
-|---|---|---|---|
-| [**ATA WRITE GUARD**](modules/ata-write-guard/README.md) | [sambanks](https://github.com/sambanks) | Keeps the first PIO card sector and its pointer/count update atomic against interrupts; restores the caller's interrupt mask before returning. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); forced completion interrupt and full DSP-enabled project load under the port, 15 Oct 2026; not on hardware |
-| [**BATCH_BUGFIXES**](modules/batch-bugfixes/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Three stock 1.40C bug fixes in one module: MIDI Plays-Free trig, empty-pattern LED, and Part-change carryover. | on a unit (MKI, Zac Kyoti, KY18BC RC1, 2026-11-20): bug 2's [BANK] grid lights a bank whose only content is trigless locks with a locked parameter (audio and MIDI; also KY18C RC1 and 140CVEMRC1, the same 318 B); [BANK] held with the sequencer running stays responsive; this octabam form not flashed |
-| [**FRAME GUARD**](modules/frame-guard/README.md) | [sambanks](https://github.com/sambanks) | A late frame interrupt waits out the window in which the DSP's frame exchange stalls at START and at a program change. | on a unit (MKII, sambanks, 2026-11-12): octabam with a 20-channel USB capture open: 16 first STARTs and 96 program changes without a stall (1 in 8 and 1 in 27 without it); as test code inside LOAD METER's entry |
-| [**LOFI AMF FIX**](modules/lofi-amf-fix/README.md) | [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) | Fixes stock LO-FI's AMF knob: mpysu -> mpyuu, both payloads. Ported from bryantysinger/octa-bt-pt. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); both words disassembled against stock |
-| [**REC CS1 SKIP**](modules/rec-cs1-skip/README.md) | [bryantysinger](https://github.com/bryantysinger) | The recorder's per-frame control-record update without its redundant CS1 writes: less ColdFire time per recording track. | on a unit (MKII, Bryan T, 2026-11-02): test builds recording up to eight tracks at once (1-2 Nov 2026); verify_rec_cs1_skip against stock's routine under unicorn; under the port, a project recording through pattern changes, a stop and a start leaves all of CS1 as stock does |
-| [**RECORDER LOOP FIX**](modules/recorder-loop-fix/README.md) | [sambanks](https://github.com/sambanks) | ColdFire caves: the recorder loop click -- seek on a same-sample FLEX re-bind, keep its counter, record exactly the arm spacing, and repeat the last sample where sound-on-sound would play a zero. | on a unit (MKII, Bryan T, OCTABAM83, 2026-09-12): (self-loop); Bryan T's MKII, sos-capture BUILD=95, 3 Oct 2026 (sound-on-sound); the spacing cave's memo (2 Nov 2026): verify_recorder_loop_fix, call for call against the ratified cave under unicorn, and Bryan T's MKII recording up to eight tracks at once |
-
-### Settings
-
-| module | author | what it does | proof |
-|---|---|---|---|
-| [**BRAIN**](modules/brain/README.md) | [Sam Banks](https://github.com/sambanks) | The settings store on the unit: card-wide knob defaults read from BRAIN/card.work at each project load (docs/specs/BRAIN.md). | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); `verify_brain` under the port (6 Oct 2026) |
-| [**HOOKS**](modules/hooks/README.md) | [Sam Banks](https://github.com/sambanks) | Platform: owns a stock site two selected modules both claim, and calls each one's routine there. | emulator (verify_hooks): verify_hooks: the bridged tables and chains under Unicorn, and each bridged image's sites |
-| [**MEMORY**](modules/memory/README.md) | [Sam Banks](https://github.com/sambanks) | Platform: the DRAM reserve in stock's audio page arena, sized from what the remix's modules claim. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); the reserve's size per remix in the build report; `verify_dram_boot` under the port |
-| [**PAGES**](modules/pages/README.md) | [djib](https://github.com/Djibdjib) | System: the extra pages a page key cycles through (SRC again on MIDI NOTE: CHORDS FACTORY ...). | on a unit (MKII, djib): (live-djib, Oct-Nov 2026): SRC again on MIDI NOTE; verify_chords (the port): SRC 1/2/3 through PAGES |
-| [**PERSISTENT BUFFERS**](modules/persistent-buffers/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | On project save, dump non-empty recorder buffers to BUFFERS/REC1.wav..REC8.wav (overwrite); on project load, restore them. | on a unit (MKII, ilia-murzinov, 2026-10-17): verify_persistent_buffers port; author MKII R2–R6 (17 Oct 2026); R7 PBUF R7.RMX (22 Oct 2026): short/long save UI immediate, 8 slots, empty skip, load/reload, reopen+play, overwrite, save≡load play |
-
-### Utilities
-
-| module | author | what it does | proof |
-|---|---|---|---|
-| [**BUFFER SAVER**](modules/buffer-saver/README.md) | [Chupitnik](https://github.com/Chupitnik) | SAVE PROJECT (and SAVE TO NEW) offers to save unsaved recorder takes, each back into its own buffer, so they reload with the project. | on a unit (MKII, Chupitnik, 2026-10-16): 15-16 Oct 2026, AUTOSAVE1 and AUTOSAVE2 from the card (the module under its first name): after a take FUNC + PROJ and PROJECT > SAVE ask SAVE SAMPLES?; YES saves R<n>-YYMMDD-HHMM and assigns it to its buffer, two buffers in one save, an immediate re-save does not ask, a reload brings the takes back, NO saves as stock |
-| [**LAZY CHOP TEMPO**](modules/chop-tempo/README.md) | [8thmyth](https://github.com/8thmyth) | After LAZY CHOP's YES and its slice-count popup, a popup with the tempo the chops point to (BPM 115 (58)) until the next key. | emulator (8thmyth, 2026-11-17, tools/verify/verify_chop_tempo.py): 46 of 8thmyth's chops give tools/hw/chop_tempo_int.py's line under the port; not yet on a unit |
-| [**COPY PROJECT**](modules/copy-project/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | CHANGE project list > FUNC+BANK > COPY: duplicate the selected project folder on the card. | on a unit (MKII, 2026-10-27): FUNC+BANK (#931); CORE CP on MKII 27 Oct 2026: COPY + OPEN IT? loads/closes CHOOSE, no save prompt |
-| [**LAZY CHOP**](modules/lazy-chop/README.md) | [8thmyth](https://github.com/8thmyth) | Slice a sample by tapping TRIG 1..16 (four pages, 64 slices) while it plays, from the audio editor's slice menu. | on a unit (MKI, 2026-11-14): 8thmyth's MKI, image METALFNGRZ (remix test/lazy-chop), 14 Nov 2026: STUDIO and LIVE chopping, ZERO SNAP, pattern recording, timestretched slice 1; verify_lazy_chop under the port (MKI and MKII) |
-| [**LOCK EDIT**](modules/lock-edit/README.md) | [8thmyth](https://github.com/8thmyth) | [TRIG]+[BANK] in grid recording opens the audio editor on the step's sample, its slice selected and in view. | on a unit (MKI, OCTABAMHC, 2026-11-14): 8thmyth's MKI, image OCTABAMHC (remix test/octabam-lazy-chop), 14 Nov 2026: STRT locks with SLIC on and off, sample locks on FLEX and STATIC tracks; verify_lock_edit under the port |
-| [**REMIX SWITCH**](modules/remix-switch/README.md) | [sanderlegit](https://github.com/sanderlegit) | MAIN MENU > BRAIN lists the raw OS images (.RMX) in /BRAIN/REMIXES/ and boots the one picked without writing the flash; remembers the choice across reboots. | on a unit (MKII, sambanks, N1, 2026-11-15, #1101): REMOTE's COMMAND 3 booted /BRAIN/REMIXES files through the YES path: 9 of 10 boots returned in 7 to 8 s; the saved selection booted at the next power-up (a double boot) |
-| [**RND NAME**](modules/rnd-name/README.md) | [iliamurzinov](https://github.com/ilia-murzinov) | Project name editors: FUNC+CUE fills YYMMDD + random pool name. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); FUNC+CUE on CREATE / SAVE PROJECT AS / CHOOSE NEW PROJECT NAME under the port (verify_rnd_name); pools from unit |
-| [**SCOPE**](modules/scope/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | DOWN+TEMPO OSC/XY/ALL; UP/DOWN switch; A GAIN B TIME. | measured on a unit (OCTA S2, 2026-11-15): Flashed image. SCOPE open during 30 loader transitions: zero bad records. The paired closed/open comparison had a 340 ms median audio gap in both states and median DSP window maxima of 49%/48%. |
-| [**SRC3 KEY**](modules/src3-key/README.md) | [8thmyth](https://github.com/8thmyth) | [MIDI] in the audio editor starts / stops a SRC3 recording on the track's recorder (MKI has no [REC3]). | on a unit (MKI, OCTABAMHC, 2026-11-14): 8thmyth's MKI, image OCTABAMHC (remix test/octabam-lazy-chop), 14 Nov 2026; verify_src3_key under the port (MKI, and the MKII left stock) |
-| [**ZOOM KEEP**](modules/zoom-keep/README.md) | [8thmyth](https://github.com/8thmyth) | The audio editor keeps its zoom when a slice is auditioned (SLICES trig mode; the slice start scrolls into view), and every page (TRIM, SLICE, EDIT) keeps its own zoom and place in time across tracks. | on a unit (MKI, OCTABAMHC, 2026-11-14): 8thmyth's MKI, image OCTABAMHC (remix test/octabam-lazy-chop), 14 Nov 2026; verify_zoom_keep under the port |
-
-### Reference
-
-| module | author | what it does | proof |
-|---|---|---|---|
-| [**BOOT TRACE**](modules/boot-trace/) | [sanderlegit](https://github.com/sanderlegit) | Probe: a MIDI note on MIDI OUT at each boot stage, the DSP upload's record echoes and any stall, for finding where a boot hangs. | on a unit (MKII, OCTABAM4, 2026-09-29): (OCTABAM4-14); `verify_boot_trace` |
-| [**CF METER**](modules/cfmeter/README.md) | [sambanks](https://github.com/sambanks) | Probe: frame-interrupt duration and (with CF METER IDLE) idle time, plus core 0's frame spin count, ESAI underrun/overrun frames and frame period, printed as audio on T8's FX2. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); ColdFire half on image 92 (Sam's MKII, 3 Oct 2026: interrupt 123.1 us stopped, 213.5 us playing); the DSP slots and DBRN under the port only (4 Oct 2026) |
-| [**CF METER IDLE**](modules/cfmeter-idle/README.md) | [sambanks](https://github.com/sambanks) | Probe: main's idle loop timed, for CF METER's idle-time slot. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); boots and loads a project under the port (28 Sep 2026) |
-| [**DLCOPY**](modules/dlcopy/README.md) | [sambanks](https://github.com/sambanks) | Frame hook on payload B: copies a staged block into the shared window (demand loader). | on a unit (MKII, sambanks, 2026-11-15, #1100): the copy at the end of core B's frame: 12 of 12 mixed-walk runs without a stall, 251 loads |
-| [**DLPUMP**](modules/dlpump/README.md) | [sambanks](https://github.com/sambanks) | Host-writes a staged block to a DSP core, a chunk per frame interrupt (demand loader). | emulator |
-| [**DRUMMER PROBE**](modules/drummer-probe/) | [djib](https://github.com/Djibdjib) | DRUMMER phase 2 probe: trigs added and moved after the step builder, the FLEX start's slice forced (measurement only). | emulator: modules/drummer/probe_steps.py (DR_PROBE): measurement only, never shipped |
-| [**KEYBUS**](modules/keybus/README.md) | [sambanks](https://github.com/sambanks) | Every track's key level (block peak of \|mono\|) each block, in eight shared words for DSP readers on either core. | emulator |
-| [**LOAD METER**](modules/load-meter/README.md) | [sambanks](https://github.com/sambanks) | The frame interrupt's share of the ColdFire, each DSP core's busy time per frame and each effect call's cost, for BRAIN's OTOP screen. | on a unit (MKII, sambanks, 2026-10-16): cursory testing on Sam's MKII (owner report, 16 Oct 2026); the window and both DSP cores' figures under the port (verify_load_meter, verify_brain) |
-| [**REMOTE**](modules/remote/README.md) | [sambanks](https://github.com/sambanks) | Project loads, saves, transport, pattern changes and screen redraws as timestamped records a host reads over USB. | measured on a unit (MKII, sambanks, N1, 2026-11-15): records, the trace, the card log and COMMAND 1 to 4 read on the unit; ColdFire share playing 64.48 % and 64.94 % against 64.85 % without the module, stopped 25.91 % against 25.73 %; 1 of 10 COMMAND 3 boots stopped on the boot screen |
-| [**SC KEYBUS BRIDGE**](modules/sc-keybus-bridge/README.md) | [sambanks](https://github.com/sambanks) | Shares the dispatcher's per-track site between SIDECHAIN_COMPRESSOR's sctap and KEYBUS's tap. | emulator |
-| [**SC LOAD METER BRIDGE**](modules/sc-loadmeter-bridge/README.md) | [sambanks](https://github.com/sambanks) | Shares the FX2 commit site between SIDECHAIN_COMPRESSOR's moncommit and LOAD METER's otop_e2. | emulator |
-| [**WAVE LOAD**](modules/waveload/README.md) | [sambanks](https://github.com/sambanks) | Probe: K 4-voice wave engines per frame interrupt (CF METER's BURN), for CF METER's duration readout. | on a unit (MKII, sambanks, 2026-10-03): image 92, Sam's MKII, 3 Oct 2026: one 4-voice engine 69.2 us of the 362.8 us frame, clean beside four sample tracks |
-
-<!-- modules:end -->
 
 ## How it works
 
 ```
-modules/<name>/manifest.py   what a module is and what it claims (yours, or a pointer into an author's repo)
-remixes/<name>/remix.py      which modules, in which chooser order; README.md beside it
-remixes/test/<name>/         a remix of one module, for that module's gates
-tools/remix/ledger.py        refuses two modules that claim one address, hook, id or buffer, by name
-tools/build/build_bus.py     the build: assembles, links, places, wires, verifies -> out/mainos_bus.bin
-tools/verify/*               the gates: oracles, the boot under the ColdFire port, menu, cycles, identity
+modules/<name>/manifest.py   one contribution: its code, and what memory, hooks and ids it claims
+remixes/<name>/remix.py      a selection of modules, in chooser order
+tools/build/build_bus.py     the build: assembles, links, places and wires the code into one image
+tools/verify/                the gates: every check a change must pass before it merges
 ```
 
-A module's code lands in one of two places; the build decides which bytes
-go where, and a module declares what it is, not an address:
+A module declares what it is, not where it goes; the build places it. The
+build refuses two modules that claim the same memory, hook or effect id, and
+names both. A module ported from an existing mod is rebuilt at its author's
+address and compared byte for byte with the author's own build.
 
-| class | declared as | where |
-|---|---|---|
-| ROM cave | `CavePatch`: a `.s` source, or ratified hex | one of the OS image's free zero runs, ~8 KB total shared by everyone |
-| DRAM unit | `Linked(..., dram=True)`: a GNU-as unit | linked with every other DRAM unit in the remix into one runtime, packed, appended behind octabam's loader, depacked at boot into a 10 MB reserve carved off stock's 85.5 MB sample/recorder pool |
-
-The OS-image edits every class needs (a detour at a stock instruction, a
-poke, a grown table) are `Detour`, `Poke`, `TableGrow`, wired by symbol and
-asserted against stock before a byte is written. `docs/contributing/PLACEMENT.md`
-is the map of what is free and what was measured.
-
-**A port is a proof.** The build re-links every unit at the author's own
-address and compares, and refuses on any drift.
-
-**Where a module's state lives.** An effect's twelve knobs are Part
-parameters and stay in the Part. Personal material (KITS's library) is in
-files the module owns and formats. A module's settings (menu options, a USB
-profile) live in BRAIN (`modules/brain`), the settings, defaults and
-templates store: SETTINGS, MIDI LOG, DEFAULTS, the project pair and TOOLS,
-designed in
-`docs/specs/BRAIN.md` (6 Oct 2026, starting
-from nordseele's
-OTX proposal, `git show 76fd8466:docs/proposals/OTX_PROJECT_PROPOSAL.md`). Measured under the
-port only; not on a unit.
-
-## Checking without a flash
-
-Everything is checked on your machine against your own 1.40C
-([docs/contributing/TESTING.md](docs/contributing/TESTING.md)). The DSP side renders
-locally on the assembled instruction stream (`make render`, `make render-rig`;
-[tools/harness/README.md](tools/harness/README.md)). The whole machine, the
-ColdFire, both DSP cores, the card, the panel, MIDI and USB, runs under a
-port of it (`tools/emu/ot_emu`, `make emu-cf`; [tools/emu/README.md](tools/emu/README.md)):
+Everything is checked without hardware. The build runs the whole unit (the
+ColdFire, both DSP cores, the card, the panel, MIDI and USB) in an emulator
+called **the port** (`tools/emu/`), and renders the DSP side to audio
+(`tools/harness/`). CI runs every gate a change reaches on every pull request.
+[docs/contributing/TESTING.md](docs/contributing/TESTING.md) says what each
+gate checks.
 
 ```bash
-make check REMIX=<name>             # build + every gate + boot under the port; OT_PROJECT=<dir> adds a real project
-make reach                          # the gates this branch's diff reaches, in order (CI runs them on every push; RUN=1 runs them here)
-make panel REMIX=<name>             # the virtual front panel with sound at localhost:8563 (tools/panel/README.md)
-make emu-live REMIX=<name>          # the screen and keys in a window, no sound
+make modules                 # every module, the compatibility matrix, the remixes
+make image REMIX=<name> BUILD=1   # build the image from your own OS 1.40C
+make check REMIX=<name>      # build it and run its gates under the port
+make panel REMIX=<name>      # a virtual front panel with sound at localhost:8563
 ```
 
-CI (`.github/workflows/ci.yml`) runs every gate a change reaches on each
-push and pull request, on runners that download the 1.40C for the run;
-`make ci` runs its firmware-free jobs locally. What the emulators cannot see (caches, the recorder's DMA,
-cross-core timing) is listed beside every gate that is blind to it.
+## No Elektron bytes
 
-## Before you flash anything
+No Elektron binary is in this repository, and none may be added. A built
+`.bin` or `.syx` contains Elektron's OS, so never share one: share the
+repository and let everyone build their own.
 
-**Writing a non-official OS to an Octatrack can leave it unusable and puts
-your warranty in question.** Nothing here is endorsed by, supported by, or
-affiliated with Elektron. [BUILDING.md](docs/guide/BUILDING.md) has the
-recovery path (section 7).
-
-**No Elektron binary is redistributed here, and none may be.** A built
-`.bin` or `.syx` contains Elektron's OS: do not share built images. Share
-the repo; everyone builds their own.
-
-*Octatrack* and *Elektron* are trademarks of Elektron Music Machines MAV
-AB, used here only to identify the hardware this project targets.
-
-## Documentation
-
-The musician's manual is [sambanks.github.io/octabam](https://sambanks.github.io/octabam/)
-(source: `docs/site/`; the feature pages are generated from the manifests, and a module's
-`docs/site/usage/<name>.md` is its hand-written part).
-[docs/README.md](docs/README.md) lists every doc by who it is for. Each
-module's page is `modules/<name>/README.md`, each remix's
-`remixes/<name>/README.md`, and each tool's `tools/<dir>/README.md`.
+*Octatrack* and *Elektron* are trademarks of Elektron Music Machines MAV AB,
+used here only to name the hardware this project targets.
 
 ## Repository layout
 
 ```
-CONTRIBUTING.md    your first PR, the module contract, the oracle rule, the gates, what CI checks
-AGENTS.md          working rules and the trap index for coding agents (CLAUDE.md imports it; the full register: docs/contributing/TRAPS.md)
-.github/           CI (Ubuntu + macOS, SHA-pinned actions), the PR template
-modules/           the contributions, one directory each, each with its README
-remixes/           one directory per remix: remix.py (the selection, in chooser order) and README.md; README.md here is the index
-remixes/test/      the one-module remixes, for their modules' gates (make check REMIX=<name>)
-docs/site/         the manual site (MkDocs): hand-written pages, usage fragments, screenshots, the web builder's page and patches
+modules/           the contributions, one directory each
+remixes/           the remixes; remixes/test/ holds one-module remixes for gates
+docs/site/         the manual site: hand-written pages, usage fragments, screenshots, the web builder
 docs/guide/        building, flashing and composing a remix
-docs/contributing/ writing a module, testing, placement, tooling, the failure register
-docs/specs/        the contracts between modules, and between modules and tools (STORE, EVENTS, HOOKS, BRAIN)
-docs/firmware/     the firmware, reverse-engineered
-docs/proposals/    remix proposals
-tools/remix/       the toolkit: schema, registry, ledger, the loader, the DRAM platform, the TUI
-tools/build/       the image build (build_bus.py) and the tools that understand the OS layout
-tools/verify/      the gates
-tools/site/        the manual site's generator, the release (release.py) and the screenshot captures
-tools/web/         the web builder's patches: built at the release tag (make webpatch), checked in CI (stale.py)
-tools/harness/     hear and measure the DSP side locally (dsp_host, send_probe, rig_render)
-tools/emu/         the ColdFire emulators: the headless port (ot_emu) and the Unicorn bring-up
-tools/panel/       the virtual front panel over the port, with sound
-tools/hw/          the unit and its card: MIDI control, capture, project files, MIDI flashing
-tools/ghidra/      one Ghidra project over the OS and both DSP payloads
-tools/patches/     local patches to the vendored toolchains
-scripts/           toolchain setup, vendored pins (vendor.sh), OS fetch and recon, the bit-identity gate
-dsp/               shared DSP infrastructure: the null stub and the probes
+docs/contributing/ writing a module, testing, placement, tooling, the trap and failure registers
+docs/specs/        the contracts between modules (STORE, EVENTS, HOOKS, BRAIN)
+docs/firmware/     the Octatrack firmware, reverse-engineered
+tools/             the build, the gates, the emulators, the site generator (docs/contributing/TOOLING.md)
+scripts/           toolchain setup and the OS fetch
+.github/           CI and the PR and issue templates
 ```
+
+`AGENTS.md` holds the working rules for coding agents and people.
 
 ## Credit
 
-**Em** ([emuyia](https://github.com/emuyia)) designed Octakit and the
-loader-appended DRAM runtime octabam adopted as its large-payload placement;
-`tools/remix/loader.S` and the payload packer (`tools/remix/pack.py`) are
-derived from hers with attribution. Octakit was carried here as a
-submodule until 6 Oct 2026; KITS (`modules/kits`) follows its key map and
-reads its `kits3a/b.work` files.
+Every module's author is credited in [modules/README.md](modules/README.md)
+and in the manual's [Credits](https://sambanks.github.io/octabam/reference/manual/credits.html).
 
-This began as a fork of [mxldyn/octamax](https://github.com/mxldyn/octamax)
+octabam began as a fork of [mxldyn/octamax](https://github.com/mxldyn/octamax)
 by Maxolydian, whose reverse engineering of the OS format, memory map and
-parameter tables made any of this reachable; the upstream history is in
-this repository's log.
+parameter tables made all of this possible.
 
-BRAIN's LOAD view (`modules/load-meter`) follows the LOAD view design for the
-Machinedrum by Hamish Renton ([SamplesAndSnacks](https://github.com/SamplesAndSnacks)): the bounded
-reads, the `-` and `?` states, the refresh counter and the zero-cost close.
+**Em** ([emuyia](https://github.com/emuyia)) designed Octakit and the
+loader-appended DRAM runtime octabam uses for large modules;
+`tools/remix/loader.S` and `tools/remix/pack.py` are derived from hers. KITS
+(`modules/kits`) follows Octakit's design and reads its files.
+
+BRAIN's LOAD view follows the LOAD view Hamish Renton
+([SamplesAndSnacks](https://github.com/SamplesAndSnacks)) designed for the
+Machinedrum.
 
 `vendor/` pulls in [dsp56300](https://github.com/dsp56300/dsp56300),
 [mc68k](https://github.com/joelanders/mc68k-md-mm) and
@@ -366,10 +103,8 @@ reads, the `-` and `?` states, the refresh counter and the zero-cost close.
 
 ## License
 
-[MIT](LICENSE) for this repository's own code and documentation. It does
-not extend to Elektron's firmware, which is not distributed here, nor to
-the repositories referenced as submodules, which remain their authors'
-under their own terms.
-[THIRD_PARTY.md](THIRD_PARTY.md) lists every transcribed DSP source
-(Airwindows, JClones, Mutable Instruments, ChowDSP, jpcima, audiojs), the
-submodules and the vendored tools, each with its licence.
+[MIT](LICENSE) for this repository's own code and documentation. It does not
+cover Elektron's firmware, which is not distributed here, or the
+repositories referenced as submodules, which stay under their authors' terms.
+[THIRD_PARTY.md](THIRD_PARTY.md) lists every transcribed DSP source, submodule
+and vendored tool, with its licence.

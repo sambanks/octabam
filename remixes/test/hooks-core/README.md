@@ -10,7 +10,3 @@ hold CF METER's readout insert, as in `cfmeter`.
 
 `tools/verify/verify_hooks.py hooks-core`, after `make bus REMIX=hooks-core`, checks each
 bridged site and each chain's calls in this image.
-
-## Where it has run
-
-Not flashed. Built, and its sites and chains checked (verify_hooks).

@@ -14,7 +14,7 @@ The stock chooser, all fourteen effects, plus USB (MAIN and CUE out, IN ABCD, US
 
 Under the port, `make check REMIX=usb-io-stock14` runs `verify_usb` and
 `verify_usb_in` (the host's channels bit-exact on inputs A-D through the
-inject at the tail). On Bryan T's MKII (OCTABAM4, 22 Oct 2026, macOS),
+inject at the tail). On Bryan T's MKII (OCTABAM4, macOS),
 `tools/hw/usb_in_tones.py` reads the same as the donor-region injects did:
 each input at -18.1 dBFS on its own side, the other side below -178 dB, the
 rest within +-1.5 LSB. So the chip runs code at `P:$1fdf..$1fff`, and the DSP

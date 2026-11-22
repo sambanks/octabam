@@ -146,37 +146,6 @@ instructions, so the mean resolves below the step, and the gate compares
 means. It reports each rise's error against N/2. The port counts
 instructions, the chip cycles; the chip's ratio is a hardware-round item.
 
-## On a unit
-
-First readings over USB (`tools/hw/load_meter.py`, vendor request `0xc0/0x57`),
-24 Oct 2026, image A1 (`octabam-bus`, `BUILD=A1`), project `OCTAMX01` (BASE
-layout: FX1 NONE, FX2 SEND at 0 on T1-T7; four stimuli on eight FLEX tracks,
-one trig on step 1 of 64 steps), 10 s each, 21 published windows:
-
-| | ColdFire share mean / max | longest frame-interrupt run | DSP 0 busy/period | DSP 1 busy/period |
-|---|---|---|---|---|
-| stopped | 24.2 % / 24.2 % | 106.7 µs (29 % of a frame) | 25.4 % | 18.5 % |
-| playing (host START, 120 BPM) | 48.8 % / 49.4 % | 336.5 µs (93 % of a frame) | 25.4 % | 18.5 % |
-
-Per effect slot the cost is 46-60 counts for an FX1 NONE and 432-497 counts
-(1.2-1.4 % of a frame) for a SEND, 113 for slot A4 FX2; the DSP figures did not
-move with the transport. The 93 % is the longest single run in the window: all
-eight voices start on the same step. The meter reads timer counts; no
-independent measurement of them has been made. Before the A1 image the
-request returned a stale `lm_stats` (the window stuck for minutes, then jumping
-100 windows) and an alternate request failed with 0 bytes
-(`docs/contributing/TRAPS.md#trap-ep0-dma`).
-
-## Hardware round
-
-Every % and µs here is from the port, whose cycle table and timer are not
-the chip's:
-- timer 0's rate (CLK/2) and the nominal period 36,256 counts;
-- busy and period per core against a known load (a burn, as `LM_BURN`);
-- MAIN, CUE and USB audio bit-identical with the meter on (a recording of
-  MAIN, the USB stream);
-- the view's text widths on the unit's LCD.
-
 ## Frame count
 
 Core 0 counts frames in `x:(r1+6)`, 24 bits, wrapping at 2^23 (a multiple of
@@ -184,42 +153,3 @@ Core 0 counts frames in `x:(r1+6)`, 24 bits, wrapping at 2^23 (a multiple of
 `move a,n1` with A2 stale and the unit's frame interrupt stopped 8,388,607
 frames (50.7 minutes) after power-up (docs/contributing/TRAPS.md#trap-frame-count). `LM_FRAME0=N` starts
 the count at N in a gate build.
-
-## Measured
-
-Both DSP cores under the port (`verify_load_meter`, 12 Oct 2026, project
-BRAINPRJ, the view open for 4 s of emulated time): 89,783 good records and 2 bad
-(the first frames, before timer 0 is armed) out of 89,785 frame
-interrupts; core 0 busy 20,480 of a 36,864-count period, core 1 17,421 of
-36,028; the view read `DSP0 57%/ 60% M0`, `DSP1 51%/ 54%`. The mean busy
-rose by 508 and 1,504 counts on core 0, 500 and 1,503 on core 1, for
-1,000- and 3,000-cycle burns (expected 500 and 1,500: errors +1.6%, +0.3%,
--0.1%, +0.2%). USB's audio-out ring was byte-identical with the publish on
-and off; 9.0 host commands per frame interrupt with the view open and
-closed.
-
-Under the port with `--frame` (the frame timer without the DSP cores, 11
-Oct 2026, `verify_brain`'s `load` cases): windows published every 0.5 s,
-2,758 interrupts a second, 22% share, 82 µs a run. The port's timing is not
-the chip's; the numbers on a unit are a hardware-round item.
-
-## Gates
-
-- `tools/verify/verify_load_meter.py`: with both DSP cores under the port,
-  the records arrive and pass, the view's DSP rows carry numbers, the
-  scrub zeroes MAIN's byte every frame and runs once per frame interrupt,
-  USB's audio-out ring is byte-identical with the publish on and off
-  (`LM_NOPUB`), the closed view draws nothing and moves the same host
-  traffic, nothing stock writes the claimed words but payload B's boot
-  zero loop, and an injected burn (`LM_BURN` builds) raises each core's
-  busy by N/2 counts.
-- `tools/verify/verify_usb_load_meter.py`: the USB module's vendor request
-  `0xc0/0x57` (wValue low 0, 1, 2: `lm_stats`, `lm_dsp`, `lm_ot`; 20, 48 and
-  256 bytes) returns the meter's cells, equal to the same words peeked at
-  the symbol, with seq rising, a 0.5 s window, plausible periods and busy,
-  sampled slots; wValue 3 STALLs. `tools/hw/load_meter.py` reads them from
-  a unit (`--watch`, or `--for N --json` for a summary over N seconds).
-- `tools/verify/verify_brain.py` (BRAIN's gate) runs the PERFORMANCE screen on the
-  `octabam-bus` remix, which carries this module.
-- `tools/verify/verify_dsp_vectors.py`, `verify_two_core` and `make
-  verify-bus` (audio bit-identity) for the DSP section.

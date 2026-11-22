@@ -54,59 +54,10 @@ loaded under DARK REV, they read as DARK's knobs:
 Keep a separate project copy, or re-select effects and save, before going
 back to stock.
 
-## Measured
-
-- **19 Nov 2026, the constants pass** (bit-identical: `verify_ident.py` with
-  the wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
-  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
-  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
-  after each commit; 49 renders). Cycles a sample from
-  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
-  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
-  section 1), every knob at its maximum: SOFT **383.1 → 380.7**, HARD and
-  CHAOS -2.4. Words 457 → 449 (`dsp_asm` at P:$800). Not measured on the unit.
-  Seven constants (one a zero kept a move for its flags) load as one-word
-  short immediates, and the BRR depth's `add #>$1,a` is the one-word 6-bit
-  form `add #$1,a`. Its three store-then-reload sites stay: two have a label
-  between the store and the reload, and the third reloads after the
-  accumulator is reused.
-
-Local render gates (`verify_shatter`). DRV is dry-only (~×9 at 127);
-feedback is not driven. LFO-dirty page words are masked before use.
-DRV 127 at 0.25 FS hits the rail (~35% of samples); the gate asserts a
-rail-fraction band on that case (and on max-knob / two-instance).
-Page 2 reads MODE/TONE/RATE/LIM from `$c`/`$d` (PARAM_PAGES section 6).
-
-**Cycle measurements:** the previous implementation's render and static
-figures are superseded by the two-pass limiter. Run `make cycles` for the
-selected remix; sequential sample loops are added, rather than priced as
-mutually exclusive modes. These static counts do not prove hardware margin.
-
-## On the unit
-
-Ilia's MKII, **`SHTR LM4.RMX`**, built from PR tip `366e1bcd`, 14 Nov 2026:
-LIM confirmed working. This check confirms limiter operation on the tested
-setup; it does not measure the exact ceiling.
-
-Ilia's MKII, 12 Nov 2026, remix `cx` **CX LIM11**: LIM transparent GR
-(earlier ceiling about -2.5..-18 dB), LIM 0..127, other knobs unchanged vs
-pre-LIM tip, live icons. Pre-LIM tip: same unit, remix `shatter`
-**BUILD S6** (`SHATTER S6.RMX`), 21 Oct 2026.
-
-No build tag on the panel.
-
 ## Open
 
 - CHAOS voicing: RATE curve and polarity-flip energy
 - Whether CRSH should split into separate BRR / SRR knobs
-
-## Gates
-
-`tools/verify/verify_shatter.py` (manifest `Gate`): MIX 0 bit-exact (LIM 0);
-DRV+FOLD both signs; FDBK raises energy; CHAOS non-silent; HARD vs SOFT /
-TONE / RATE page-2 diffs; LIM transparent GR on a hot drive;
-max-knob rail fraction + no runaway; DRV 127 rail-fraction band; two
-instances.
 
 ## Current limiter
 

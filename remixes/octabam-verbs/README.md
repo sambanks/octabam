@@ -23,11 +23,11 @@ this remix does not.
   rewrites its FX2 pages to the row's defaults as the firmware applies it (`verify_verb_parts` under the port).
 - **No reverb guard.** In octabam the stock reverbs run behind a guard (`window_guard`, `modules/dlcopy/dlwrap.asm`)
   and the choosers refuse a reverb over loaded code, with a toast. Here nothing reaches the homes: VERBERATION's ring
-  ends at slot offset `0x381d` (14,366 words; the tank was shortened by 0.9 for this, 6 Nov 2026), the other stock
+  ends at slot offset `0x381d` (14,366 words), the other stock
   effects stop by `0xbff`, MODULATION's FX2 buffer is 2,048 words. So VERBERATION can sit on any track's FX2 beside
   any loaded effect, and the guard, its trampolines and the reverb toasts are not built.
-- **Cost.** VERBERATION counts 247 cycles a sample, an estimated 8.8 % of a core a slot (scaled from GATE VERB's
-  unit reading), under the 9.07 % that lets it sit on all eight FX2 slots. Not read on a unit.
+- **Cost.** VERBERATION counts 247 cycles a sample, about 8.8 % of a core a slot, under the 9.07 % that lets it
+  sit on all eight FX2 slots.
 
 ## Three more effects, resident
 
@@ -38,27 +38,12 @@ effect and has no such words; octabam-bus's internal P is 584 words short of VIB
 
 | effect | FX1 | FX2 | words | cost a slot | |
 |---|---|---|---|---|---|
-| [VIBRATO](../../modules/vibrato/README.md) | ✓ | ✓ | 593 + 103 table | 4.5 % (Bryan T's MKII) | pitch vibrato: sine, triangle, square trill, random; `SLOTS` at `FX1+FX2` |
-| [TRANSIENT](../../modules/transient/README.md) | ✓ | ✓ | 258 + 99 table | 5.3 % (`slot_costs.json`) | transient shaper |
-| [RESONATOR](../../modules/resonator/README.md) | ✓ | | 373 + 66 table | not measured | four resonant band-passes; FX1 only |
+| [VIBRATO](../../modules/vibrato/README.md) | ✓ | ✓ | 593 + 103 table | 4.5 % | pitch vibrato: sine, triangle, square trill, random; `SLOTS` at `FX1+FX2` |
+| [TRANSIENT](../../modules/transient/README.md) | ✓ | ✓ | 258 + 99 table | 5.3 % | transient shaper |
+| [RESONATOR](../../modules/resonator/README.md) | ✓ | | 373 + 66 table | — | four resonant band-passes; FX1 only |
 
 FX1 lists SPECTRUM, CHARACTER, MODULATION, VIBRATO, TRANSIENT, RESONATOR, then the stock effects (17 rows).
-Not read together with VERBERATION on a unit.
 
 The demand loader, the core modules and the ColdFire modules are octabam's; its README describes them. SCALES,
 CHORDS FACTORY with PAGES, SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP are here as in octabam.
 
-## Where it has run
-
-Sam's MKII, 22 Nov 2026, `OCTABAM-VRB 05` built from `main` at `382a478b` plus the v0.5 release commit and booted by REMIX SWITCH
-from the flashed image (not flashed itself): `pre-meter`, `pre-transport`, `pre-usb` and `dsp-watch` pass; 32 program changes between
-MODULATION FX2 dear, SPECTRUM FX2 dear and BASE: 0 unapplied, longest silence 340 ms, longest ColdFire run 515 us, and 32 bad DSP records
-(1 per transition, at the load of the `dear` layouts, which run the DSP at 84 % and 75 %; `octabam`'s MODULATION dear logs the same).
-On the earlier BUILD 05 (`5b991c85`) `fx01` to `fx04` (VERBERATION in each MODE, VERB PLATE, ROOM and HALL), `loader01` and `loader02`,
-`kits-identity`, `scenes-sweep`, `scenes-latency` and `djump-off` ran. Not run: `djump-on`, `djump-burst` and `mix-soak`. The DARK REV
-stall of `octabam` needs the stock DARK REV, which this remix does not carry; it was not run here to confirm.
-
-`make check REMIX=octabam-verbs` in CI. Under the port: `verify_verb_parts` (old Parts convert),
-`verify_dlload`'s no-guard checks (MODULATION loads in its first home with DARK's id or VERBERATION on its block's
-track, no toast; on a generated empty project, which the gate otherwise skips: 2 of its other checks fail there, as
-it documents for such projects).

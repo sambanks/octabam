@@ -1688,14 +1688,15 @@ class Module:
     mode_slot: int | None = None
     mode_views: tuple[ModeView, ...] = ()
     name_selects: tuple[NameSelect, ...] = ()
-    # ---- the module table (README.md, `make docs`) ------------------------
-    # The selftest requires all four on every non-stock module; the README's
-    # table is rendered from them (tools/remix/index.py --write) and
-    # verify_docs refuses a stale copy.
+    # ---- the module index (modules/README.md, `make docs`) ----------------
+    # The selftest requires category, author and author_url on every non-stock
+    # module; the index is rendered from them (tools/remix/index.py --write)
+    # and verify_docs refuses a stale copy. evidence is optional: the form
+    # gates (dsp_forms, cf_forms) read its level.
     category: Category | None = None
     author: str = ""             # a GitHub handle or a name, as the table credits it
     author_url: str = ""         # the author's repository or profile
-    evidence: tuple[Evidence, ...] = ()   # schema.Evidence, one per proof; the table shows the strongest
+    evidence: tuple[Evidence, ...] = ()   # schema.Evidence, optional; the form gates read the strongest level
     proof: Proof | None = None            # old form, submodule manifests only: becomes `evidence` (from_proof)
     proof_note: str = ""
     # Not for a release image: a probe, or an effect that has not run on a

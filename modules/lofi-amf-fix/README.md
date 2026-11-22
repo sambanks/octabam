@@ -14,32 +14,7 @@ The rest of octa-bt-pt generates per-user parameter defaults (any knob of the
 canonical value to port. Two fixed-but-opinionated pieces are also left out:
 a FLEX/STATIC `TSTR: AUTO → OFF` default, and "FX1/FX2 default = NONE".
 
-## Measured
-
-Both words disassembled with `vendor/dsp56300/.../dsp56kDisassemble` against
-the stock image:
-
-```
-001bef: mpysu   x0,y0,a   ; 01278d   (stock, both payloads)
-001bef: mpyuu   x0,y0,a   ; 0127cd   (the fix)
-```
-
-Both addresses resolved with `tools/build/dsp_modmap.py` hold those stock
-bytes.
-
-Not reproduced here: his 128×128 (AMF × Fine) sweep with zero monotonicity
-violations after the fix.
-
-## On the unit
-
-Cursory testing on Sam's MKII (owner report, 16 Oct 2026).
-
 ## Open
 
 - The addresses are fixed, not re-resolved per build. If a remix ever
   harvests LO-FI's code, each poke's `expect` refuses the build.
-
-## Gates
-
-`make check REMIX=lofi-amf-fix` passes; the module composes with
-everything (it claims no free space).

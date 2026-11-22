@@ -9,11 +9,6 @@ The stock chooser plus USB MIDI on the OT's own USB port. The unit appears to a 
 
 USB's audio halves are built on its MIDI composite descriptor and ISR shim, and each audio layout has its own remix under `remixes/test/usb-out-*` and `usb-io-*`.
 
-## Status
-
-- Not flashed in this form. The module ran on Sam's MKII in the `usb-audio` remix (the bus, the FX1 stations and USB; removed 30 Sep 2026) as image 64 (25 Sep 2026): USB MIDI in took 7,950 messages/s for 185 s without a stall.
-- Not measured: USB MIDI timing against DIN, DISK MODE entered with a MIDI session open, Windows, Linux hosts.
-
 ## Build and flash
 
 1. Set up the repository and the stock OS: [BUILDING.md](../../../docs/guide/BUILDING.md) sections 0–2 (what to install first, then `make setup`, `make emu-setup`, `make os`, `make recon`).

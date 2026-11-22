@@ -38,7 +38,7 @@ MIDI interface or second device is involved.
     `SUBSYSTEM=="usb", ATTR{idVendor}=="1935", MODE="0666"` in
     `/etc/udev/rules.d/99-elektron.rules` (a name that sorts after
     `50-udev-default.rules`, which otherwise resets the mode to 0664).
-  - What ran, 8 Nov 2026 (Yves's MKII, WSL2 on Windows 11, usbipd-win 5.3.0):
+  - What ran, (Yves's MKII, WSL2 on Windows 11, usbipd-win 5.3.0):
     `ot_matrix.py switch` (3 runs and a 32-transition run), `ot_dspwatch.py`
     (100 cycles, with and without `--audio`, polling at 20 and 400 a second),
     `load_meter.py` (313 to 433 reads a second, 0 read errors), `ot_suite.py
@@ -158,14 +158,14 @@ share, longest run and both DSP cores. It needs no USB audio device.
 `ot_matrix.py run` on the same project adds the audio detectors but needs the device.
 The ColdFire share depends on whether a host is reading the unit's USB audio:
 BASE (8 FLEX tracks, a hit on step 1) read 29.9 % with nothing reading the stream and
-67.7 % with a capture open, TRACKS PRE, on one MKII (2 Nov 2026). Compare layouts
+67.7 % with a capture open, TRACKS PRE, on one MKII. Compare layouts
 within one state.
 
 ## Reading events on a unit
 
 An image with REMOTE (`octabam`, `octabam-bus`, `octabam-verbs`) keeps a ring of timestamped records (project
 load and save events, PLAYING, BANK, PATTERN, the queued pair, a COMMAND having run) and the last 512 frame
-interrupts' interrupted PCs, read over USB (`modules/remote/README.md`). Run on an MKII on 15 Nov 2026.
+interrupts' interrupted PCs, read over USB (`modules/remote/README.md`). Run on an MKII.
 
 ```
 python3 tools/hw/ot_events.py                          # every record the ring holds
@@ -195,7 +195,7 @@ program changes this way, each with the old sleep as the fallback; the program c
 ## Without the panel: image and project over USB
 
 With an image that carries REMOTE, STORE and USB (`octabam`, `octabam-bus`, `octabam-verbs`), `tools/hw/ot_card.py`
-does the card and the image switch. Run on an MKII on 18 Nov 2026 with the three BUILD 05 images.
+does the card and the image switch. Run on an MKII with the three BUILD 05 images.
 
 ```
 python3 tools/hw/ot_card.py copy "OCTABAM-VRB 05.RMX" ...     # files into /BRAIN/REMIXES/, then COMMAND 4; no file: rescan only
@@ -210,16 +210,16 @@ python3 tools/hw/ot_suite.py run <label> --dest out/suite/<remix> --auto --phase
   loaded, so `<name>` must be that project: load it from the panel once, then every later load is this command.
   The record that follows is NEWPROJ or LOADMASK.
 - `boot` needs the name in REMIX SWITCH's list; a fresh image's list is empty until a scan, which `boot` sends.
-- `ot_card.py image` reads the running image's name from memory over PEEK (2.5 s, 20 Nov 2026), and `boot` checks it against the name it asked for. The ring fingerprint cannot tell two builds apart that differ only in DSP code.
+- `ot_card.py image` reads the running image's name from memory over PEEK (2.5 s), and `boot` checks it against the name it asked for. The ring fingerprint cannot tell two builds apart that differ only in DSP code.
 - `fingerprint` prints the ring header's three linked addresses
-  (RMT_TRACE, REMIX SWITCH's name list and count); they differ per image. 18 Nov 2026, BUILD 05: `octabam`
+  (RMT_TRACE, REMIX SWITCH's name list and count); they differ per image. BUILD 05: `octabam`
   `0x40b34f44 0x40af0238 0x40af0188`, `octabam-verbs` `0x40b22a84 0x40ae7fb8 0x40ae7f08`, `octabam-bus`
   `0x40b20a84 0x40ae7520 0x40ae7470`. The boot screen shows the flashed image's name, not the running one's.
 - Leave DISK MODE with `diskutil unmount` and then `diskutil eject`, not unmount alone: after an unmount alone the Mac
   keeps `diskN` and no later DISK MODE mounts the card (FAILURE_MODES.md). After COMMAND 1 the Mac did not always mount
   the card; `ot_card.py` runs `diskutil mount` on the OCTATRACK partition after 8 s and repeats COMMAND 1 up to 4 times.
 - `load` and `boot` return when LOAD METER's health rule holds (the DSP's frame count advances); 0.4 s after the
-  reload record on 18 Nov 2026.
+  reload record.
 - After a loader phase (`loader01`, `loader02`) a project reload left the DSP's frame count at 0 on `octabam` and `octabam-verbs`
   (FAILURE_MODES.md); `ot_suite.py run --auto --image "<NAME>.RMX"` boots the image again after each loader phase, which cleared it.
 - `ot_matrix.py switch` prints the transitions left unapplied (`unapplied`: the DSP busy from 2.5 s after the switch

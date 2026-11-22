@@ -42,6 +42,6 @@ is three (PB_TABLE has one spare word, `0x400d5f54`) and the manifest refuses a 
 
 ## History
 
-`git show 76fd8466:docs/proposals/SHARED_HOOKS.md` is the design of 28 Oct 2026: the conflict table by boundary, the rule that a contested site has one system owner, and the
-phases. It proposed EVENTS families for `track_key`, `status_icon`, `frame.tail`, `boot` and `midi.note_in`, and a PARTS module for the Part API and the machine table. As built (28-31 Oct 2026) those bridges are HOOKS's and in-tree
-participants keep their standalone bytes. PARTS was not built: the Part service is STORE's native Part access (radiohagen, sambanks/octabam#824), which retired MIDI PART STATE.
+`git show 76fd8466:docs/proposals/SHARED_HOOKS.md` is the design of the conflict table by boundary, the rule that a contested site has one system owner, and the
+phases. It proposed EVENTS families for `track_key`, `status_icon`, `frame.tail`, `boot` and `midi.note_in`, and a PARTS module for the Part API and the machine table. As built those bridges are HOOKS's and in-tree
+participants keep their standalone bytes. PARTS was not built: the Part service is STORE's native Part access (radiohagen), which retired MIDI PART STATE.

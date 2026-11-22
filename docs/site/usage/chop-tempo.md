@@ -15,13 +15,6 @@ Adds a tempo reading to LAZY CHOP. After you press [YES] and the slice-count pop
 - The number in brackets is a neighbour that also fits: a 4:3 or 3:2 reading, or half or double time.
 - If you chop at your own pace rather than to a beat, the spacing has no tempo in it and the reading can be wrong. Swung material was not measured.
 
-## Measured / inferred
-
-- On 8thmyth's MKI (build T9, 2026-11-17): a take near 73.5 BPM chopped three times read `BPM 73 (146)`, `73 (147)` and `74 (148)`, each within 1%.
-- Offline on 27 takes with a known tempo: 21 were within about 1 BPM in the first or bracketed number (78%).
-- Under the port: all 46 recorded takes give the reference's line; a real chop showed `8 SLICES` then `BPM 150 (75)`, still up three seconds later, with the slices unchanged.
-- Swung material and chops with ZERO SNAP on were not measured. No unit run of the final integer build yet.
-
 ## Related
 
 [ LAZY CHOP ](lazy-chop.md) places the slices; this module only reads them.

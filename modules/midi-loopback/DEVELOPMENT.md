@@ -149,84 +149,6 @@ loading and runtime state. The old fixed 10 MiB reserve predates per-remix
 sizing. Combined selections compute their own reservation; consult
 `out/platform/layout.json` and the build report for the selected image.
 
-## Verification and limits
-
-This contribution selects only Loopback and STORE on stock effects.
-Its gates execute the linked code, installed hooks and native queue/receiver
-routines. They cover all eight tracks, channels 1–16, EXT/INT/BOTH, message
-lengths, live/sequence producers, route changes, ownership, queue fairness,
-saturation, release reservation and overload recovery. Part tests compare
-native copy/clear bytes and registers before and after installing the hooks,
-including interrupted replacement with readers observing the outgoing snapshot.
-
-`tools/verify/measure_midi_loopback_cost.py` counts executed ColdFire instructions
-on the built image and checks instrumented state against an unmetered run.
-The earlier MIDI PART STATE image measured 16 instructions for an empty-track cleanup, 314 for
-eight changed channels with empty tracks, 131 for queuing an internal note-on,
-76 for its release and 110 for an internal CC. With 128 held internal notes,
-cleanup takes 27,823 instructions: this shortcut benefits empty tracks, not
-the active-note scan. These are instruction counts, not cycles, milliseconds,
-RTOS scheduling measurements or note-to-audio latency.
-
-```sh
-.venv/bin/python tools/verify/measure_midi_loopback_cost.py
-```
-
-The JSON receipt in `out/loopback-cost.json` includes image/runtime hashes,
-total instructions and the longest interrupt-masked span per case.
-Use `--build-root /path/to/baseline --out /path/to/receipt.json` to measure a
-separate baseline build with the same probe.
-
-Full-firmware tests use a disposable copy of a local project and a virtual card:
-
-```sh
-make check REMIX=midi-loopback
-.venv/bin/python tools/verify/verify_midi_loopback.py --project /path/to/project
-.venv/bin/python tools/verify/verify_midi_loopback.py --routing --project /path/to/project
-.venv/bin/python tools/verify/verify_midi_loopback.py --controls --project /path/to/project
-.venv/bin/python tools/verify/verify_midi_part_port.py --project /path/to/project
-.venv/bin/python tools/verify/verify_midi_part_stock.py --project /path/to/project
-.venv/bin/python tools/verify/verify_midi_loopback_ui_port.py --project /path/to/project
-.venv/bin/python tools/verify/verify_midi_detail_tracks_port.py --project /path/to/project --build-root . --out out/loopback-track-navigation
-.venv/bin/python tools/verify/verify_midi_loopback_producers_port.py midi-loopback --project /path/to/project
-```
-
-The routing window test delivers physical-panel event reports to the emulator;
-it checks CHAN activation, DEST, unused controls, closing keys, transport,
-project save, disk reload, retained-memory resume and fresh-project EXT.
-This is not physical hardware testing. Control fixtures also use direct
-native encoder calls and identify that narrower boundary in their receipts.
-
-For a pixel review, freeze `out/mainos_bus.bin` as `candidate.bin` together
-with `candidate-symbols.json` (the linked runtime's symbol/address mapping).
-Both UI verifiers accept that same immutable directory:
-
-```sh
-.venv/bin/python tools/verify/verify_midi_loopback_pixels.py --project /path/to/project --candidate /path/to/candidate --out out/loopback-pixels
-.venv/bin/python tools/verify/verify_midi_loopback_ui_port.py --project /path/to/project --candidate /path/to/candidate --out out/loopback-controls
-```
-
-The pixel verifier exercises M1–M8 and EXT/INT/BOTH, including OFF, channel 1
-and channel 16 on M1. It compares UART LCD pixels with the composed RAM
-planes, checks that both horizontal dividers meet the native inner frame
-without crossing its left edge into the underlying track icons, and measures
-text/widget centring, padding and equal row heights. It saves
-60 captures and a hash-labelled receipt. A new output directory is required
-so failed evidence survives a rerun. Native encoder steps retain fractional
-state across pages; the capture driver observes committed values while
-turning physical controls instead of assuming a report always advances one
-choice. Control semantics and exact-field edits have separate UI and track
-navigation regressions.
-
-Original implementation and historical combination evidence are retained at
-integration commit `8f8e00d061d17a890a3b01d5f340492f912712e2` in
-radiohagen/octabam. They are not current qualification for this branch.
-The Scenes bridge, Follow and Harmony are separate contributions. MIDI Scenes
-is explicitly incompatible until its producers are routed through the bridge.
-Stock DIN behavior is covered; USB-host and combined-module acceptance remain
-separate qualification. Worst-case interrupt latency and physical receiver
-backpressure have not been measured.
-
 ## Author source
 
 Pinned source: the `upstream` submodule gitlink beside this document.
@@ -234,7 +156,6 @@ Review both modules in that narrow author history alongside these adapters.
 The cold-entry reference is enforced at build time; the combined cross-unit
 runtime reference is enforced by `verify_midi_loopback_reference.py`. A native
 source build and the adapter build are compared at the same upstream base.
-
 
 ## Current routing and startup qualification
 
@@ -253,40 +174,3 @@ are unchanged. `verify_midi_part_activation.py` checks the installed call and
 96 register/status/stack/publication comparisons, plus a corrupted callback
 negative control. An unused runtime activation copy remains to preserve the
 qualified runtime layout; removing it requires fresh image qualification.
-
-## Hardware validation and measured latency
-
-Tested by radiohagen on an Octatrack MKII on 18 October 2026.
-MAIN SHA-256: `3dd6d81365bca25e2346e057a6481410c1f413f788b1ea272218ae6f14d08592`.
-
-- User-reported passes: EXT/INT/BOTH delivery, independent MIDI tracks,
-  stopped and playing pattern transitions with retained audio Part state,
-  routing controls and divider geometry, Part save/reload, project save/reload,
-  and normal playback STOP/panic.
-- These listening checks do not qualify every external receiver, a sustained-note
-  overlap stress test, USB-host operation or combinations with other MIDI modules.
-- The stock-firmware round trip, feedback matrix and overlapping-note matrix
-  described above are emulator checks, not physical stock-firmware acceptance.
-
-On-device stereo recordings at 44.1 kHz measured added delay relative to native
-sequencing. The audio measurements use the internal MAIN recording point, before
-analog outputs; recorder measurements use an internal audio source.
-
-| Measurement | Internal routing | DIN cable loopback |
-| --- | --- | --- |
-| Audio-start median | 0.544 ms | 0.952 ms |
-| Audio-start observed maximum | 0.680 ms | 1.406 ms |
-| Recorder-start offset | 16 samples / 0.363 ms | 48 samples / 1.088 ms |
-
-- Audio: one 16-second take per route; 28 click pairs analyzed after excluding
-  the first four. No missing or unmatched events.
-- Recorder: one two-second take per route; matching probe at both ends and no
-  alignment drift. This does not establish recorder-start jitter.
-- These are observed delays, not worst-case bounds. Separate MIDI stop latency,
-  external-synth response and analog input/output latency were not measured.
-- Raw recordings, SHA-256 hashes and filename mapping are retained locally;
-  no device projects, sample data or proprietary firmware are committed.
-
-The STORE migration retains the saved settings but changes the Part access calls.
-The earlier image sizes, instruction counts and physical reports above are
-historical measurements, not qualification of the STORE composition.

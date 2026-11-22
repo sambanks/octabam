@@ -33,7 +33,7 @@ stamp-defaults <project> character-txtr` writes the new layout.
    the result that lets TXTR into octabam-bus.
 3. If it fails, repeat with three, then two Characters at TXTR: the count at
    which it plays says what the stage costs on the unit.
-4. TXTR on the master (T8) is where 22 Sep 2026's unreproduced squeal was
+4. TXTR on the master (T8) is where 's unreproduced squeal was
    heard with the first texture; note whether it recurs.
 
 Report the image number, the configuration and what was heard on the PR or

@@ -13,7 +13,3 @@ longer share a site, and MORPH has had no partner on the [TRACK] key layer since
 `tools/verify/verify_hooks.py hooks` runs the bridged status-icon chain and decodes the
 [TRACK]-layer table under Unicorn from the modules' own sources, and checks this image's
 site once it is built.
-
-## Where it has run
-
-Not flashed. Under Unicorn only (verify_hooks).

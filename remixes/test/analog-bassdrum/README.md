@@ -10,7 +10,7 @@ Standalone DSP auditions: `python3 tools/harness/bd808.py --wav` and
 `python3 tools/harness/bd909.py --wav`. Both share the Mackie stage and LPF;
 new assignments default to 18 kHz.
 
-Earlier ANALOGBD1 was auditioned on an MK1 by mathgonzlez (28 Sep 2026):
+Earlier ANALOGBD1 was auditioned on an MK1 by mathgonzlez:
 all parameters worked, with no glitches while tweaking. The current browser
 and eight-track revision has not been flashed. See [the module](../../../modules/analog-bassdrum/README.md) for
 controls, integration limits and the authenticity qualification still open.

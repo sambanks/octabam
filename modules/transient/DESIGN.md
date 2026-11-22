@@ -57,24 +57,6 @@ Page 2 empty for now. abbr `TRNS`, fullname `Transient`. ATCK = SUST = 0 must be
 
 Estimated at about 70 cycles/sample before writing the code. **Measured: 166 cycles/sample** (`make cycles REMIX=transient`, branch-free so the word span is the cost). The estimate missed that long immediates and displaced moves cost two cycles each, and the 48-bit states. Still under the ~200 target; four instances on one core price at 664 of 4,535.
 
-## Gates (planned)
-
-- **Passthrough**: ATCK = SUST = 0, and MIX = 0, are bit-exact on full-scale noise of both signs.
-- **Level independence**: the same burst at -6, -24 and -42 dBFS gets the same gain trajectory. Float reference (2026-10-03): 0.0066 dB on a scaled noise bed (everything above the floor); 0.17 dB from digital silence after the first 1 ms (the followers rising out of the -96 dB floor; a property of the log-domain detector, not a defect). Tolerances: 0.01 dB and 0.25 dB, plus fixed-point table error on the DSP.
-- **Law against the float reference**: a 1 kHz tone burst (1 ms rise, exponential decay) through the DSP render against `transient_ref.py`, per-sample gain within a stated tolerance (fixed-point table error).
-- **Both signs**: a negative-going burst gives the mirrored output (proves no `mpysu`).
-- **Refuse the fallback**: the gate reads the FX2 id and knob slots from the manifest and refuses if they resolve to SEND.
-
-## History of the sustain law (3 Oct 2026, by ear then measured)
-
-| Law | Change | Heard | Measured on Juan's drum loop at SUST +63 |
-|---|---|---|---|
-| v1 | `sus = max(H - F, 0)` | a spike at the start of every hit | onset peaks up to +12.04 dB (mean +7.9): the 500 ms H remembered a louder hit, so each new onset took the tail's gain |
-| v2 | on `v > F`: `H = min(H, v)`; `sus` against `max(F, v)` | spikes gone, tails clicked | 19 gain steps of up to 12 dB in tails: waveform ripple crossed `v > F` |
-| v3 | a 0.5-bit (3 dB) margin on both, and the cap at `v - 0.5 bit` (a cap at `v` made the margin itself +3 dB of gain on every hit) | clean (Juan) | onset peaks 0.00 dB, tails +3.5 dB, largest tail gain step 0.11 dB |
-
-**Limitation of v3:** a hit less than 3 dB above the tail it lands in, and the first quarter cycle of a sine that starts below the tail's envelope, are treated as tail and share its boost (`verify_transient` reports both as information).
-
 ## What would falsify the design
 
 - Audible zipper or crackle at fast TIME: the followers are too fast for the 2^g table step. Check with a sine and ATCK at max.

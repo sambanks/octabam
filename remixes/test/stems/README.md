@@ -13,11 +13,6 @@ the inputs to the card as separate WAV files.
   root's fifth category.
 - **The 14 stock effects**, listed so the FX2 chooser is stock's.
 
-## Status
-
-On hardware: Yves's MKII, STEMS1 to STEMS3 (30 Sep to 6 Oct 2026). Under
-the port: `tools/verify/verify_stems.py` and `verify_stems_menu.py`.
-
 ## Build
 
 ```bash

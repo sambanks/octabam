@@ -7,10 +7,6 @@ TRACK PATTERNS with every core module (KITS, DIRECT_JUMP_KYOTI, RELOAD_FROM_PROJ
 - **TRACK PATTERNS** -- [`modules/trackpatterns/README.md`](../../../modules/trackpatterns/README.md).
 - the core module selection of [`octabam`](../../octabam/README.md) without LOAD METER and its effects, with its USB and MUTE_MODES settings.
 
-## Status
-
-`make check REMIX=trackpatterns-core`. Under the ColdFire port the gesture, MIDI and global-change run and the trig LEDs behave as with TRACK PATTERNS alone (`modules/trackpatterns/TESTING.md`). On the contributor's MKII, 22 Oct 2026 (`OCTABAM8`): the gesture on T1 and M1, a global change, save and power cycle passed; KITS' and DIRECT JUMP's own actions were not tried. That report predates this remix's EVENTS integration.
-
 ## Build
 
 ```bash

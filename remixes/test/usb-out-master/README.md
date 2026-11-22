@@ -7,10 +7,6 @@ The stock chooser plus USB at LAYOUT MASTER, for testing the two-channel stream 
 - **USB** at LAYOUT MASTER: USB-MIDI mirroring DIN; track 8's L/R, post-FX, pre-fader, on channels 1/2 at both USB speeds. [`USB`](../../../modules/usb/README.md#master).
 - the 14 stock FX2 effects.
 
-## Status
-
-Port only (`verify_usb`). Not on a unit in this form: high speed polls every 250 µs since 28 Sep 2026 (1 ms before, the form bottleservice ran as image 88).
-
 ## Build
 
 ```bash

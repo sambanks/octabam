@@ -46,42 +46,6 @@ The FREQ steps:
 | 6 | 80 | 14 | 440 (A) | 22 | 2500 | 30 | 16000 |
 | 7 | 100 | 15 | 500 | 23 | 3150 | 31 | 20000 |
 
-## Measured
-
-All by `tools/verify/verify_testgen.py` through `dsp_host` on the audition's scratch image, 3 Oct 2026, unless stated.
-
-- ✅ The output does not depend on the input: full-scale noise in and silence in give identical output.
-- ✅ 150 cycles a sample at most, in PINK and WHITE (two generators and two filters; SWEEP 85, SINE 51, IMPULSE, NEEDLE and DC 18, one loop; `make cycles REMIX=testgen`): TESTGEN on FX1 of all four tracks of a core prices at 600 of the 3,120 cycles usable (an FX2 instance is a dry pass and costs nothing).
-- ✅ FX1 only (0.2): an FX2 instance passes its input through bit-exact in every MODE at LEVL 127, and neither slot writes outside its own memory (`dsp_host -guard`).
-- ✅ Every FREQ index matches the sine the phase accumulator defines, sin(2 pi n inc / 2^24), within 3 LSB at 0 dBFS, from sample 0.
-- ✅ Every FREQ step is within 0.0013 Hz of its nominal value (1 kHz measures 1000.0007 Hz, A440 440.0007 Hz; the accumulator's resolution is 0.0026 Hz).
-- ✅ FINE moves the frequency to FREQ x 2^(FINE/384) within half an accumulator step plus 1 ppm, from -64 to +63 (the 2^x polynomial is within 0.19 ppm); FINE 0 is the FREQ step bit for bit; THD at 1 kHz with FINE +63 is -149.4 dB; 20 kHz with FINE up holds at 20 kHz.
-- ✅ THD at 0 dBFS: -149.5 dB at 1 kHz, -140.5 dB at 100 Hz (nine harmonics, Blackman window, 65,536 samples).
-- ✅ Every LEVL step from 1 to 127 is 0.5 dB within 0.0006 dB; LEVL 127 peaks within 1 LSB of full scale (RMS -3.010 dBFS); LEVL 0, the default, is silent in every MODE.
-- ✅ CHAN: L+R gives equal channels, L only and R only silence the other side, and L with inverted R gives R = -L within 1 LSB.
-- ✅ SWEEP follows the reference's exact phase law (`sweep_phases`: a 48-bit increment growing by a constant ratio each sample) within 4 LSB, over two whole periods at 1 s and one at 16 s, into the next period's start. Deconvolved through an identity path with the ideal inverse filter it is flat within 0.12 dB from 40 Hz to 16 kHz.
-- ✅ WHITE: each channel is the reference's 46-bit generator within 1 LSB (it repeats every 2^46 samples, about 50 years). Over 2^20 samples: flat (slope -0.002 dB/octave); autocorrelation at lags 1 to 64 at most 0.0027; with CHAN L+R, the L/R cross-correlation at lags -64 to 64 at most 0.0026 (1/sqrt(n) is 0.0010) and the (L, R) pairs fill a 64 x 64 grid evenly (chi-square 4,150 on 4,095 degrees of freedom); the output's low bits have no short cycles. MONO gives R = L, L-R gives R = -L.
-- ✅ PINK, each channel: -3.000 and -3.001 dB/octave, no octave band more than 0.44 dB off the fit; within -107.9 dB of the float filter on the same noise; RMS -14.39 and -14.52 dBFS. With CHAN L+R the channels are independent (differenced cross-correlation at most 0.0022).
-- History: 0.1's WHITE was a 24-bit generator whose low bits repeated on short cycles (the low 16 bits every 1.5 s, -48 dB under the noise) and whose L and R were the same; replaced at the tester's request.
-- ✅ IMPULSE puts a full-scale sample at exactly the reference's positions (every 0.25 s at LEN 0, every 1 s at LEN 24) and zero everywhere else.
-- ✅ NEEDLE (0.2, 4 Oct 2026): at every FREQ index, a full-scale sample at exactly every round(2^24 / inc) samples from sample 0 and zero elsewhere (20 Hz every 2,205 samples, 1 kHz every 44); with FINE, strictly periodic at the whole period nearest the set frequency (worst 0.40 samples off, 100 Hz with FINE +63); CHAN L-R gives R = -L and MONO R = L.
-- ✅ DC (0.2, 4 Oct 2026): every sample equals the LEVL table's value at LEVL 1, 64 and 127 (0 LSB off), on both channels; CHAN L-R gives R = -L, L only leaves R silent.
-- ✅ An invalid saved MODE byte plays SINE; every knob at both ends renders.
-- ✅ Under the ColdFire port in a real project (`verify_set`, `OT_PROJECT`, 3 Oct 2026): a project made on a MKII on stock 1.40C (T1 THRU, T2 STATIC with trigs), TESTGEN put on T2's FX2 in every part of every bank with `ot_project.py set-fx` (LEVL 115, FREQ 17, LEN 32: then 1 kHz at -6 dBFS, the 0.1 knob map). LOAD PROJECT completed and 900 frames ran; the live FX2 id on T2 read 0x17; T2's chain output was -16.5 dB against -41.7 dB in (the sine replaces the track's quiet audio); the load rewrote no project file; every shared-window DSP write lay in a permitted range. This proves the module loads and its signal reaches the chain on the emulated firmware, not the signal's accuracy there.
-
-## On the unit
-
-- ✅ Image OCTABAM4 (`make image REMIX=testgen BUILD=4`) on Ignorato's MKII, 3 Oct 2026: boots, and TESTGEN is listed on FX2. Two findings from the tester, both fixed in the next image: LEVL defaulted to 115 (-6 dBFS), so a loud tone started on insert; and FREQ, then a plain 0-127 knob, reached 5 kHz by about 24.
-- ✅ Image OCTABAM5 (`make image REMIX=testgen BUILD=5`, with FINE and A440), same unit and day: boots, OS VERSION reads OCTABAM5; on insert LEVL reads 0 (silent), and FREQ shows its steps in Hz; FINE tunes smoothly; all five MODEs and the four CHAN settings work as expected (tester, by ear).
-- ✅ Image OCTABAM6 (`make image REMIX=testgen BUILD=6`, the 46-bit noise per channel and CHAN MONO), same unit, 4 Oct 2026: boots, OS VERSION reads OCTABAM6; WHITE and PINK with CHAN L+R sound wide, and with MONO centred (tester, on headphones).
-
-- ✅ Measured through the unit's MAIN OUT into a Focusrite Scarlett 18i8 at 48 kHz (OCTABAM6, 4 Oct 2026; the whole chain, Octatrack and Scarlett together): LEVL steps exact within 0.002 dB over 54 dB; THD at 1 kHz -94 dB at 0 dBFS and -106.5 dB at -12 dBFS; THD+N -92 dB at 0 dBFS; noise floor -109 dBFS; crosstalk below -113 dB; response from 20 Hz to 19 kHz within -0.26 dB of 1 kHz (by SWEEP and deconvolution); PINK -2.98 and -3.01 dB/octave with L and R uncorrelated (0.003) after the converters. The two clocks differ by 23 ppm.
-
-## On the unit, 0.2
-
-- ✅ Image OCTABAM10 (`make image REMIX=testgen BUILD=10`, flashed over DIN MIDI) on Ignorato's MKII, 4 Oct 2026 (tester, by ear): boots, OS VERSION reads OCTABAM10; TESTGEN is listed on FX1 and silent on insert; all seven MODEs work; on FX1 it feeds FX2 (a SWEEP through FILTER, shaped as expected); four instances on FX1 of tracks 1-4 (PINK and WHIT) beside DELAY, then DARK REV, on FX2, and the same on tracks 5-8 at once (eight instances, both DSP cores): clean, with the sequencer stopped.
-- ⚠️ In that image TESTGEN was on both choosers, and two in series on one track (FX1 TESTGEN on PINK into FX2 TESTGEN) crackled; the cause was not found. 0.2 therefore takes FX1 only, and an FX2 instance is a dry pass (proved in the emulator, above; on the unit with the next image).
-
 ## Using it
 
 - **A level or a channel check**: SINE at 1 kHz (FREQ 18, the default), LEVL 127 gives a 0 dBFS peak; step LEVL to find where a path clips, 0.5 dB at a time. CHAN L-R shows whether a path keeps polarity.
@@ -99,8 +63,3 @@ All by `tools/verify/verify_testgen.py` through `dsp_host` on the audition's scr
 - How other units measure: the figures above are one MKII through one Scarlett, and do not separate the two.
 - Above 19 kHz the response is not resolved by the 1 s sweep and its analysis; a longer sweep, or SINE at 20 kHz, would.
 - The USB audio path (Octabam's USB audio out on a host) is not measured yet; TESTGEN is meant for that too.
-
-## Gates
-
-- `tools/verify/verify_testgen.py` (the manifest's `Gate`). It refuses to run if the id resolves to SEND's entry points.
-- `make check REMIX=testgen`; with `OT_PROJECT=<a project>` it adds `verify_set` under the ColdFire port.

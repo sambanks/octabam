@@ -30,8 +30,7 @@ and take effect at the next boot. A remix can fix one with a `Pin`.
 
 ## 3. Record and check the remix
 
-Add `remixes/community/<name>/README.md` describing what the remix includes and what
-has been tested. Update the remix index, then run:
+Add `remixes/community/<name>/README.md` describing what the remix includes. Update the remix index, then run:
 
 ```bash
 make docs

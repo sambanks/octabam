@@ -8,8 +8,7 @@ voice as a sample.
 Any FLEX track whose sample is named `FMSYNTH*.wav` becomes a synth. A
 silent 4 s marker file will do, and the marker's length never ends the
 note (`SYNTH*.wav` is still accepted). Not in an official remix; several
-test remixes carry it. Built from timhastie/octatrick-modules (v2.9) and
-flashed on its author's Octatrack MKI from 26 Sep 2026.
+test remixes carry it. Built from timhastie/octatrick-modules (v2.9).
 
 ## Operation
 

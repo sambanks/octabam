@@ -72,14 +72,6 @@ with the opcode-cache bounds guard removed and out-of-range writes logged.
 None occurred. The old crash claim is retracted and the unrelated emulator
 change removed. No failing platform/configuration has been reproduced.
 
-## Hardware and eight-track scope
-
-The MK1 report applies to the exact earlier ANALOGBD1 hash in README.md.
-It reports successful parameter tweaking without audible glitches, not an
-eight-voice/every-effect qualification. The new full-height engine browser
-and eight-track admission require fresh hardware testing. CPU.md records the
-local eight-voice successes and the all-909/double-DJ-EQ failure explicitly.
-
 ## Initial review validation (before the level follow-up)
 
 The final engine browser uses the same header chevrons as STATIC/FLEX.

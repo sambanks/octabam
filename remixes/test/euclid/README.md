@@ -7,10 +7,6 @@ Jannik Aßfalg's (repeat98) Euclidean modulation effect with the stock effects t
 - **EUCLID** — a 1–64-step Euclidean rhythm on the transport's grid (track speed and swing followed) driving one of five destinations: 12 dB/octave low-pass, band-pass, high-pass, notch, or amplitude; envelope, gate, random and loop controls. On FX1 and FX2. `modules/euclid/README.md`.
 - FILTER, EQUALIZER, DJ EQ, PHASER, COMPRESSOR, LO-FI on both choosers; PLATE, SPRING and DARK REV on FX2. SPATIALIZER, FLANGER, CHORUS and COMB FILTER are given up.
 
-## Status
-
-`make check REMIX=euclid` and the module's own render gates. Not run on hardware.
-
 ## Build
 
 ```bash

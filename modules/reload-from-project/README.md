@@ -6,22 +6,6 @@ Built from [Zac-Kyoti/octatrack-kyoti-fw](https://github.com/Zac-Kyoti/octatrack
 (submodule `upstream/`, pinned to `dd1ad1e`). `Kind.CF_PATCH`. One DRAM unit (`patch_reload3.s`, `Linked(dram=True)`, 51,620 B) and twelve `jmp` detours. A remix with this module carries the platform loader and its 10 MiB arena reserve, unless another DRAM module already brings them.
 `upstream/octabam-modules/reload-from-project/README.md` is the full description, with what was measured and what was inferred.
 
-## Measured
-
-- Every build re-links each cave or unit and compares it with the author's
-  own bytes (`reference`); a difference refuses the build.
-- `make check REMIX=reload-from-project` (`remixes/test/reload-from-project/`) builds and boots the
-  image under the ColdFire port.
-
-## On the unit
-
-- On the author's MKI, including that the sequencer and the internal metronome keep their phase.
-- 1 Oct 2026: from DRAM, in an octabam image with all six KYOTI modules (OBKYOTI6), both chords; and (OBKYOTI7) the knobs now show the reloaded Part's values straight after `[BANK]` + `[TRACK n]`.
-- 16 Oct 2026 (`223ac58`): `[CUE]` + `[TRACK n]` is stock cue again. It used to reload the track: the `0x40083dc4` detour is `[CUE]`'s held sub-map TRACK handler, not a `[PTN]` overlay, and it now reloads only with `[PTN]` held (the panel row). Fixed by Ilia Murzinov (Zac-Kyoti/octatrack-kyoti-fw#3), on an MKII, standalone image.
-- 25 Oct 2026 (`6a2da8d`): on the MIDI tracks both chords reloaded the AUDIO track with the same number. `0x80000012` ("the MIDI tracks are showing") is a long, and it was read as a byte, its always-zero high byte. Both chords now reload the MIDI track there; the Part half (stock `0x4004aab4`, the whole Part) was never affected. Confirmed on the author's MKI with the standalone image; this octabam form: emulator.
-- 9 Nov 2026 (`27ab725`): the card reloads. `[BANK]` + `[TRACK n]` brings back the track's slice of the project's saved Part (no longer stock Part RELOAD, the whole Part from SAVE PART); `[PTN]` + `[BANK]` + trig reloads a whole pattern of the playing bank and goes to it. Running, a reload lands on the track's next step, in phase, and its Part settings reach the engine with that step; length and scale changes re-phase every track; several chords before a landing all count. A pattern you are not on is a stock cue (CHAIN AFTER, or DIRECT JUMP's). Confirmed on the author's MKI from DRAM in the KYOTI V1.7 image; this octabam form: emulator.
-- 14 Nov 2026 (`dd1ad1e`): Clyps' landing rules. A running reload lands one tick before the step boundary, as stock's own landing and DIRECT JUMP land a track, so the boundary already plays the reloaded step (before, it was heard a step late). `[BANK]` + `[TRACK n]`'s slice reaches the engine with the reloaded sequence's first sounding trig (on the boundary when there is none). The reloaded track's trig conditions run as if the saved sequence had always played: the A:B counter from the conditions' last restart, PRE starting again at 1, FILL kept; a new detour at COND_RESET's entry (`0x400a539c`) notes the restarts. STOP no longer leaves a stale restart. Confirmed on the author's MKI with the standalone image (140C_RLCP4), every item of the author's walk-through; this octabam form: emulator.
-
 ## Notes
 
 - All-tracks and whole-bank reload are not implemented.

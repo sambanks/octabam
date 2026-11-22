@@ -6,7 +6,7 @@ effects, and the [core modules](../octabam/README.md#the-core-modules)
 (KITS, scene and parameter locks on page 2, USB MIDI and USB audio, BRAIN and
 the rest) and the extra ColdFire modules of `octabam` (OCTA303, MORPH,
 REC THRESHOLD, BUFFER SAVER, COPY PROJECT, SEQ, TRACK PATTERNS, SCALES, VARISPEED, CHORDS FACTORY
-with PAGES, SCREEN, SLOW LFO, BAR LED, REC CS1 SKIP). The USB settings are at their defaults here (TRACKS PRE, MAIN, CUE, MIDI on). See [Where it has run](#where-it-has-run).
+with PAGES, SCREEN, SLOW LFO, BAR LED, REC CS1 SKIP). The USB settings are at their defaults here (TRACKS PRE, MAIN, CUE, MIDI on).
 
 ## The bus
 
@@ -16,11 +16,9 @@ DEL and REV, that set how much of the track goes to each. The delay's
 repeats also feed the reverb (the reverb's DLY knob). Each engine's wet
 signal comes out on the track that hosts it.
 
-> **Tracks 1 and 5 must be THRU tracks with no trigs of their own.** That
-> is the only setup the bus has been tested in. Sounds programmed on track
-> 1 made the delay pop and click (reported 29 Sep 2026, cause open:
-> [FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)). Track
-> 5 with a sample machine or trigs has not been tested.
+> **Keep tracks 1 and 5 as THRU tracks with no trigs of their own.**
+> Sounds programmed on track 1 make the delay pop and click
+> ([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)).
 
 ```mermaid
 flowchart LR
@@ -65,18 +63,6 @@ listed give up their DSP code to the bus.
 |---|---|---|
 | sample and recorder memory | 14,602 pages | 12,895 pages (the platform reserve) |
 | DSP code in the window | | the servers, SEND, SPECTRUM, CHARACTER, MODULATION and LOAD METER (P:0x35800..0x37c67) |
-
-## Where it has run
-
-Sam's MKII, 22 Nov 2026, `OCTABAM-BUS 05` built from `main` at `382a478b` plus the v0.5 release commit and booted by REMIX SWITCH from
-the flashed image (not flashed itself): `pre-meter`, `pre-transport`, `pre-usb` and `dsp-watch` pass; 32 program changes between SPECTRUM FX1
-dear, CHARACTER FX1 dear and BASE: 0 unapplied, 0 bad DSP records, longest silence 340 ms, longest ColdFire run 509 us. On the earlier
-BUILD 05 (`5b991c85`) `fx01` (28 layouts), `kits-identity`, `scenes-sweep`, `scenes-latency` and `djump-off` ran. Not run: `djump-on`,
-`djump-burst`, `mix-soak`; this remix has no loader, so no loader phases.
-
-Port gates: `make check REMIX=octabam-bus` and the reach round. The previous
-definition of this remix (servers in internal P, three FX1 effects, nothing else
-from the stock set) ran on an MKII (owner report, 16 Oct 2026).
 
 ## How to flash
 

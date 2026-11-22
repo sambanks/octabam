@@ -4,8 +4,8 @@ The ColdFire ships a set of X and Y data modules to both DSPs at boot:
 lookup tables for waveforms, knob warps and filter coefficients. They are
 resident in every build; any effect can read them.
 
-Provenance: the catalogue is Bryan T's (30 Aug 2026), read
-from the payload module records with a Q23 signed decode; rows marked ✅
+Provenance: the catalogue is Bryan T's, read
+from the payload module records with a Q23 signed decode; rows marked 
 were re-derived here. Shapes are inferred from that decode (an integer or
 unsigned table has a different shape); stride findings are statistical;
 segment boundaries inside the big containers come from a discontinuity
@@ -29,7 +29,7 @@ build-supplied base.
 | `X:0x06c00` | 1,024 | sine, `0x3ff` modulo addressing |
 | `X:0x07000` | 1,024 | single-cycle ramp/saw (0 → −1, wrap to +1, → 0) |
 
-✅ The sine is exact to 1.75e-7 (Q23 quantisation) and sits at the same
+ The sine is exact to 1.75e-7 (Q23 quantisation) and sits at the same
 address in both payloads. `x:0x6c00` with `m = 1023` is a free-wrapping
 oscillator for 2-3 instructions.
 
@@ -37,7 +37,7 @@ oscillator for 2-3 instructions.
 
 | address | words | layout | contents |
 |---|---|---|---|
-| `X:0x04840` | 4,096 | 32 × 128, knob-indexed 0-127 | ✅ mostly one-pole coefficient pairs: a near-1.0 falling curve beside a small rising one (pole radius, complementary gain). Eleven of the 32 are near-linear; 12-15, 17, 19, 21, 29 and 31 are curved. The build parks module P tables here (`ptable`) |
+| `X:0x04840` | 4,096 | 32 × 128, knob-indexed 0-127 | mostly one-pole coefficient pairs: a near-1.0 falling curve beside a small rising one (pole radius, complementary gain). Eleven of the 32 are near-linear; 12-15, 17, 19, 21, 29 and 31 are curved. The build parks module P tables here (`ptable`) |
 | `X:0x08b70` | 384 | 3 × 128 | saturating-exp curves |
 | `X:0x088a2` | 258 | 2 × 128, `0x7f` mask | saturating-exp lowpass warp (COMB LP, CHORUS FBLP) |
 
@@ -100,7 +100,7 @@ bits, unexplained).
 ## Use to our modules
 
 A table read costs ~5 instructions and an AGU register; `k²` costs three
-instructions and no register. Measured 31 Aug 2026 against his catalogue
+instructions and no register. Measured against his catalogue
 (correction to it: the curve at `X:0x01bd9` is GN1/GN2, not FRQ1; FRQ
 reads `X:0x015c7` with a ×4 index):
 
@@ -116,13 +116,13 @@ reads `X:0x015c7` with a ×4 index):
   with the tightest register pressure; the GRAIN window sites cannot (they
   need `s(g) + s(1−g) = 1` exactly; best stock complementarity error 0.24).
 - A carrier read from the 1,024-point sine at `X:0x06c00` was built and
-  measured for BodeShift (removed 27 Sep 2026;
+  measured for BodeShift (removed;
   `git show 8e934a57^:modules/bodeshift/`): 344 → 328 cycles, and two
   phase-quantisation products at −72.5 dB (3,860 Hz and 5,249 Hz) that a
   sideband gate cannot see. A linearly interpolated read reaches −107 dB
   at ~22 instructions.
 
-## Payload-relative addresses (Bryan T, 14 Sep 2026) ✅
+## Payload-relative addresses (Bryan T)
 
 The payloads are linked separately:
 
@@ -142,7 +142,7 @@ literal into the curve bank is right on tracks 5–8 and 13 words off on
 1–4; past the end of the relocated table it reads unuploaded memory (his
 LOFI2: knobs 125/126 identically dull, 127 fine). `send_probe`'s
 single-payload render dumps payload A. Our modules' `#>` immediates in
-`0x438..0x1cd8` (156 sites) were read 14 Sep 2026: modulo masks, bus
+`0x438..0x1cd8` (156 sites) were read: modulo masks, bus
 scratch (`$901`…`$9da`, placed identically on both cores), a tap length
 (1407), a decay coefficient (`$755`); none reads a stock table.
 `docs/contributing/FAILURE_MODES.md` carries the failure mode. His fix (an `xtables` field on

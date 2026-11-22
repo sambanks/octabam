@@ -14,7 +14,8 @@ Decide first which kind you are writing.
   of the hazards below do not apply. `modules/character/` is the worked example.
 - A **server** owns a bus accumulator, is bank-bound to one core, and takes
   part in the rotation, the housekeeping election and the auto-gain. There
-  are two; [`modules/send/README.md`](../../modules/send/README.md).
+  are two: [`busdelay`](../../modules/busdelay/README.md) and
+  [`busverb`](../../modules/busverb/README.md).
 - A **bus client** (`send`) taps its track into the bus.
 - A **ColdFire module** changes what the firmware does (parts, kits, menus,
   MIDI, bug fixes) and touches no audio; midisc (`modules/midi-scenes`)
@@ -31,7 +32,7 @@ buffer, both payloads, any track.
 ```
 modules/character/manifest.py      the declaration -- knobs, donor, id, ModeViews
 modules/character/character.asm    the engine -- init, proc, in place
-modules/character/README.md        status, measured vs inferred, what is open
+modules/character/README.md        what it does, its knobs, how it works, what is open
 remixes/octabam-bus/remix.py      a remix that carries it (FX1 and FX2)
 tools/verify/verify_character.py   render gates against a float reference
 ```
@@ -43,8 +44,8 @@ python3 tools/verify/verify_character.py
 ```
 
 `modules/_template/` is the skeleton to copy: a manifest with every field
-commented, and the `README.md` shape every module page follows (Knobs,
-Measured, On the unit, Open, Gates).
+commented, and the `README.md` shape every module page follows: what it
+does, Knobs (or Using it), How it works, Limits, Open.
 
 Give your module one gate whose answer you can compute by hand: drive
 both signs of a full-scale signal (the negative half proves an `mpy` did
@@ -63,7 +64,7 @@ modules/<name>/
     manifest.py      declares the module -- exports MODULE
     <engine>.asm     DSP56300 source, if it has any
     <patch>.s        m68k source, if it patches the ColdFire
-    README.md        what it is, what is measured, what is open
+    README.md        what it does, how to use it, how it works, what is open
 ```
 
 `tools/remix/registry.py` discovers every `modules/*/manifest.py` that
@@ -71,7 +72,7 @@ exports a `MODULE`; directories starting with `_` are skipped.
 `tools/remix/schema.py` is the vocabulary; its comments carry the reasoning
 behind each field.
 
-Five fields are the README's module table, rendered by `make docs`
+Five fields are the module index (`modules/README.md`), rendered by `make docs`
 (`tools/remix/index.py --write`) and held current by `verify_docs`:
 
 ```python
@@ -80,35 +81,21 @@ Five fields are the README's module table, rendered by `make docs`
     evidence=(Evidence(Level.RENDER, ref="verify_myeffect", note="its own render gates"),),
 ```
 
-`category` is where the module sits in the table, the index and the
-index. `evidence` is the one record of how far the module is proven: a
-tuple of `schema.Evidence`, one per proof, the strongest shown in the last
-column. `Level`, lowest first: `BUILD` assembles and links, `EMULATOR`
-boots or passes a gate under the port or `dsp_host` (`ref` names the
-gate), `RENDER` was heard or measured locally and never flashed, `UNIT`
-ran on a unit, `UNIT_MEASURED` had a number read off a unit. The fields
-are `unit` (`MKI`, `MKII`), `who`, `image`, `date` (ISO), `ref` (a gate, a
-PR, an issue), `commit` (the tree proven) and `note` for what the fields
-cannot hold:
-
-```python
-    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", image="OCTABAM88", date="2026-09-27",
-                       commit="1a2b3c4d", note="a fourth instance beside the reverb"),),
-```
+`category` is the module's section in the module index and the manual.
+`evidence` is an optional tuple of `schema.Evidence` that no doc shows. Its `Level` (`BUILD`, `EMULATOR`, `RENDER`, `UNIT`,
+`UNIT_MEASURED`) is read by `verify_dsp_forms`, which accepts an
+instruction form a `UNIT`-level module uses; the other fields (`unit`,
+`who`, `image`, `date`, `ref`, `commit`, `note`) are optional.
 
 `bench_only=True` marks a module not for a release image (a probe, an
 effect not yet run on a unit): in a test remix `verify_dsp_forms` reports
 its unproven instruction forms, in any other remix it refuses them.
 
-`python3 tools/build/evidence.py` prints every module's level;
-`evidence.py stale` lists the modules at `UNIT` or above whose sources
-have a commit after the evidence's `commit` (or `date`). It reports and
-does not fail: the level stays, the module is due a rerun. A manifest
-executed from an author's repository may still declare the old
-`proof=Proof.X, proof_note="..."`; the schema turns it into one
-`Evidence` (`schema.from_proof`). The selftest refuses a
-module without all of them. A module whose manifest is executed from an
-author's repository adds them with `dataclasses.replace` (`modules/synth`).
+A manifest executed from an author's repository may declare the old
+`proof=Proof.X, proof_note="..."`; the schema turns it into one `Evidence`
+(`schema.from_proof`). The selftest refuses a module without `category`, `author` and
+`author_url`; one executed from an author's repository adds them with
+`dataclasses.replace` (`modules/synth`).
 
 Two more fields are the checks. `gates` names the verifiers `make check`
 runs when a remix carries the module, and `dear` its dearest knob
@@ -132,7 +119,7 @@ runs before the selected image is restored; an `"image"` gate reads
 (`verify_tempo_bus` reads the card `verify_set` staged). A script that
 does not exist fails; the gates every remix gets (the ledger selftest,
 the docs, the knob census, the dirty-state render, the menu, the set
-under the port) stay in the Makefile (`docs/contributing/TESTING.md`). Until 27 Sep 2026 the Makefile listed every
+under the port) stay in the Makefile (`docs/contributing/TESTING.md`). Until the Makefile listed every
 module's verifier by hand, each one written to SKIP when the remix
 lacked its module.
 
@@ -196,7 +183,7 @@ state things you might assume:
   0..127 draws no knob at all; a bipolar pair draws a count-5 select as a
   balance dial. Declare `formatter=` per slot; `verify_menu` checks the
   renderer against the count. `Formatter.PLAIN` zeroes both formatter
-  words on any module (since 5 Oct 2026; until then only a module with a
+  words on any module (since; until then only a module with a
   stepped slot had its clone's formatters reset, and CF METER's SRC on
   FILTER's bipolar slot 3 drew as a balance dial).
 - **Four per-parameter arrays carry the drawing**, `P`-relative
@@ -283,7 +270,7 @@ may carry any count (stock CHORUS TAPS sits on slot 6, stock FILTER's DIST
 knob on slot 11).
 
 A knob word read by the DSP carries the LFO's low byte in bits 8-15 whenever
-the knob is modulated (measured 5 Oct 2026, `docs/firmware/LFO.md` section
+the knob is modulated (measured, `docs/firmware/LFO.md` section
 5). Mask every page-1 knob read with `and #>$7f0000` before it is shifted,
 compared, tested or selected on; `dsp_host -params` writes clean words, so
 render the dirty case with `-pword k:off=hex`.
@@ -359,7 +346,7 @@ Both maps are sparse and optional. `names` renames a slot for that mode
 (four characters); `defaults` is where the other knobs land when the
 operator arrives at this mode.
 
-| | the unit |
+|  | the unit |
 |---|---|
 | `names` | `tools/build/mode_names.py` emits a MODE formatter that rewrites the descriptor's name fields before printing its own word |
 | `defaults` | `modules/mode-defaults` (in octabam-bus): the FX1 and FX2 page-2 editors are detoured, and a MODE turned on the panel writes the view -- page 1 through the stock page-1 writer, page 2 with the editor's own stores; without the module, `stamp-defaults` writes them; a MODE over CC MAP goes through the same unit (the cave calls it) |
@@ -377,7 +364,7 @@ REVRS rather than MODE (Character's SAT and BusVerb's MODE declare
 `mode_slot` for this alone). Every other select keeps its name and the tick
 widget flashes the word on a turn — on image 26 SIZE / SHFT / RATE
 reading `93MS` / `RUN` / `+12` / `1x` did not say what the knob was (Sam,
-15 Sep 2026; image 27 with the names back: "that's better").
+; image 27 with the names back: "that's better").
 
 Two limits, inferred: the rename lands on the draw after the one that
 formats MODE if the panel draws names first (turning the encoder redraws);
@@ -652,7 +639,7 @@ module in the image; `modules/usb` (descriptors.py): the USB configuration
 descriptors, grown with the audio function when the module's LAYOUT is not
 OFF, with that layout's channel count; `modules/usb` (manifest.py): the
 layout `.set` that picks which of three builds of one source the unit
-is). Works for both forms since 25 Sep 2026.
+is). Works for both forms.
 
 `Linked.defsyms=(("NAME", value), ...)` (as `CavePatch.defsyms`) defines
 symbols the source uses and does not define, for both `m68k-elf-as` (so
@@ -677,7 +664,7 @@ or loader units. The build's ordinary `defsyms` behavior is unchanged.
 
 DRAM units are assembled for the chip itself (`-mcpu=54455`, ISA C):
 GNU ld refuses to link an ISA-C object beside ISA-B ones, and an ISA-C
-assembly of ISA-A/B text is the same bytes (refhash, 25 Sep 2026), so a
+assembly of ISA-A/B text is the same bytes (refhash), so a
 port may keep an author's `byterev`, `mvs`, `mov3q` as written.
 `Linked.cpu` still governs the ROM-cave form.
 
@@ -701,7 +688,7 @@ site stands in for another module's (`modules/scenes-kits/`).
 `conflicts=(("<KEY>", "<why>"),)` names a module yours must never share an
 image with although no claim overlaps.
 
-Until 6 Oct 2026 there was a third form, `Runtime`: a recipe
+Until there was a third form, `Runtime`: a recipe
 (`firmware.json`) the build compiled, packed, identity-checked and
 appended as its own payload of the loader (Octakit's shape; `git show
 2063370f:tools/remix/runtime_build.py`).
@@ -739,7 +726,7 @@ the recorder, and anything after the handoff.
 
 ### Pricing a ColdFire module
 
-From Jannik Aßfalg's note beside Tape Echo (PR #357; `COLDFIRE_DELAY.md`),
+From Jannik Aßfalg's note beside Tape Echo (`COLDFIRE_DELAY.md`),
 the first module to run audio on the ColdFire. Its gate,
 `tools/verify/verify_tapeecho_cpu.py` on that branch, is the worked
 example of every item.
@@ -821,12 +808,11 @@ Three kinds of state, three homes:
 | personal material: Kits, grooves, presets, anything a musician would copy to another project on its own | files the module owns, beside the stock project files | the module |
 | the module's settings: how it behaves or looks (a checkbox, a menu option, a USB profile) | today: nowhere, or a private file (KITS keeps two in its `kits.work` header; octalab writes `octalab_grooves.map` and `octalab_generators.map`, "OTGM" v1). Designed: the brain | the core |
 
-The design is `docs/specs/BRAIN.md` (6 Oct
-2026): settings, defaults and templates in one registry, resolved through
+The design is `docs/specs/BRAIN.md`: settings, defaults and templates in one registry, resolved through
 four layers (manifest, remix, card, project), kept in a `.work` / `.strd`
 pair at the card root and one in the project. The BRAIN module
 (`modules/brain`) reads the card layer of settings and shows them in
-PROJ, BRAIN, SETTINGS (10 Oct 2026; its own two settings are MIDI LOG and
+PROJ, BRAIN, SETTINGS (its own two settings are MIDI LOG and
 DEFAULTS, `modules/brain/README.md`). The project layer and the CS1 block
 are not built. It starts from nordseele's OTX proposal
 (`git show 76fd8466:docs/proposals/OTX_PROJECT_PROPOSAL.md`,
@@ -1207,10 +1193,10 @@ ceiling and what a further instance costs.
 
 For an eligible module: the slot size and the state block.
 
-| | FX1 | FX2 |
+|  | FX1 | FX2 |
 |---|---|---|
 | buffer slot | `0x1000 0x1c00 0x2800 0x3400`, 3,072 words each | `0x4000 0x8000` + the shared-window pair, 16,384 |
-| state block (`r7`) | instance *k* → `0x6100 + 0x300 * k` | instance *k* → `0x6200 + 0x300 * k` (✅ measured 20 Oct 2026, issue #815; ❌ retracted: `0x6000 + (1 + 2k) * 0x100` and `0x6000 + (2 + 2k) * 0x100`, right only for k = 0) |
+| state block (`r7`) | instance *k* → `0x6100 + 0x300 * k` | instance *k* → `0x6200 + 0x300 * k` |
 | in the chain | first | second: it processes what FX1 produced |
 | cycles | 4 slots per core | 4 slots per core; both are paid |
 

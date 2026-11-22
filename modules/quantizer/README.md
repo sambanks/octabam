@@ -32,30 +32,6 @@ survive a power cycle like the stock project settings; ROOT is saved as
 `#SEQUENCER_ROOT` after the SCALE line. `upstream/quantizer/README.md` is
 the full description, with what was measured and what was inferred.
 
-## Measured
-
-- At `v9.1`, remixes `octatrick` and `octatrick-usb` built byte-identical
-  with the module sources as a plain `modules/<name>/` directory and as this
-  wrapper over the submodule (same base, same build reports), and
-  byte-identical to the OCTATRICK9 images Tim flashed (built on
-  upstream `0e93543`; upstream's changes since touch modules these
-  remixes do not carry).
-- In the ColdFire port through the virtual panel, per feature
-  (`upstream/quantizer/README.md` "Measured" and "ROOT, and the move into
-  DRAM"): the knob and the keys under each scale, ROOT on synth and sample
-  tracks (both keyboard positions, the readout), SCALE OFF stock, the SAVE
-  lines and the warm boot of the three bytes.
-
-## On the unit
-
-- 26 Sep 2026: `OCTATRICK9` (remix `octatrick-usb`) on Tim's Octatrack MKI.
-- Every test build since, 2.3 .. 2.8, flashed on the same MKI from Tim's
-  own tree ([timhastie/octatrick](https://github.com/timhastie/octatrick),
-  the same wrappers over the same submodule), and the 2.9 line up to the
-  build before its last two fixes (ROOT and the DRAM unit included). The
-  last two 2.9 fixes (the synth's sequencer trigs and index ramp) are
-  emulator-verified on `octatrick` (`make check` on this tree).
-
 ## How it is built
 
 The wrapper shortens the octave-number detour at `0x400449b8` to six

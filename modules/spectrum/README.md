@@ -37,95 +37,6 @@ VOWL 4 → 3); SHPE keeps its stored value, so a part that was on BP comes
 back as SEM at whatever SHPE it held. Once per project, before play:
 `python3 tools/hw/ot_project.py remap-slot <project> SPECTRUM MODE 2:1,3:2,4:3`.
 
-## Measured
-
-- **19 Nov 2026, the stall pass** (bit-identical: `verify_ident.py` with the
-  wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
-  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
-  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
-  after each commit; 58 renders). Cycles a sample from
-  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
-  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
-  section 1), at its defaults: ISO **371.1 → 356.9** (8.2 % → 7.9 % of a
-  frame), SEM 223.3 → 221.2, LADR and VOWL 0.2 or less (the mode dispatch).
-  Words 1,345 → 1,334 (`dsp_asm` at P:$800). Not measured on the unit. SEM's
-  pointer copies lead the sample loop; ISO's R state pointer is one
-  `lua (r7+$c),r3`; `fs_ccore` steps to its lowpass states three
-  instructions after loading `n5` (`lua (r3+$6),r5` would be shorter, but has
-  no stock site); `fs_cap` writes `n6` before `n2`, so a move sits between
-  `n6` and the read through it; three constants load as one-word short
-  immediates, and six small ones in `add`, `cmp` and `and` (0 to 63) as
-  one-word 6-bit immediates.
-
-- `tools/verify/verify_spectrum.py`: defaults bit-exact on a full-scale
-  ramp; LP slope; SHPE 64 (BP) and 127 (HP) at DC → 0; a tone at fc level
-  within 0.5 dB across SHPE 0..127; SHPE 32 passes DC at 0.704 (≈ cos π/4),
-  96 blocks it; VOWL A vs I distinct; every knob at both extremes renders;
-  an FX2 instance is a bit-exact dry pass.
-- The SEM core (13 Sep 2026): no cutoff ceiling, RES 127 bounded, Q ≈ 34;
-  the per-sample cutoff ramp took the block comb to −11..−26 dB.
-- LADR's RES makeup (23 Sep 2026): loop RMS against dry at RES 64 / 127:
-  FREQ 127 −9.4 / −13.5 → −3.5 / −6.3 dB, FREQ 64 −9.1 / −8.6 → −3.1 /
-  −1.4. The clamp keeps `verify_spectrum`'s 0.3 FS noise at RES 127 off the
-  rails (1 + 0.75k railed 4.6 %, 1 + k/2 0.4 %).
-- SHPE, loop RMS, dBFS (`dsp_host`, FX1 slot, FREQ 64 = fc 949 Hz; the loop
-  stem is `scripts/make_test_audio.py loop` at 0.5, 3 s):
-
-  | signal | RES | SHPE 0 | 32 | 64 | 96 | 127 |
-  |---|---|---|---|---|---|---|
-  | loop stem | 0 | −20.1 | −23.1 | −35.2 | −30.5 | −28.4 |
-  | loop stem | 64 | −20.0 | −22.8 | −33.1 | −29.6 | −27.7 |
-  | tone 949 Hz (fc) | 0 | −16.9 | −17.0 | −16.9 | −17.0 | −16.9 |
-  | tone 949 Hz (fc) | 64 | −4.8 | −4.9 | −4.8 | −4.9 | −4.8 |
-  | tone 300 Hz | 0 | −16.6 | −19.2 | −26.6 | −29.3 | −36.6 |
-  | tone 3 kHz | 0 | −36.8 | −29.4 | −26.7 | −19.1 | −16.6 |
-
-  The loop's −35 dB at 64 is the bandpass on a low-heavy loop: BP was
-  that level as its own MODE (SHPE 64 is bit-identical to it).
-- The BP fold (27 Sep 2026), against main's build over 15 settings
-  (FREQ 64 RES 90 WDTH 100, each with and without ENV/LDP): LADR, ISO, VOWL,
-  SEM at SHPE 0 and 127, defaults, zeros and max are bit-identical, and
-  SEM at SHPE 64 is bit-identical to main's BP MODE. The SVF loop's two
-  channel copies became one body (`do #2`), which paid for the crossfade's
-  words: Spectrum 1,338 → 1,337 words (main after #476); the SVF loop
-  127 → 139 words/sample in the pricer (ISO's 262 still prices the station).
-- `verify_labels` calls SHPE's formatter after the MODE formatter in each
-  mode: SEM prints 0:LP 32:32 64:BP 96:96 127:HP; LADR, ISO, VOWL print
-  the numbers.
-- `verify_dirty_state` (in `make verify`): init zeroes every persistent slot
-  the loop reads. Before it did, filter B's frozen HP poles held a stale
-  value and put up to a full-scale DC on a station's output, which surfaced
-  on hardware as the master compressor collapsing the right channel.
-- 5 Oct 2026, the cycles pass (bit-identical, `make verify-ident
-  MOD=spectrum` 11/11): ISO 264 → 252, LADR 216 → 208. `fs_ccore` loads
-  each stage's coefficient and its x with one X:R move (`move
-  x:(r1)+,x0  a,y1`, the multiply's operands swapped, `mpy x0,y1` still
-  the signed order); `fs_lcore`'s stages ride the state read on the v/2
-  transfer (`tfr x1,a  x:(r5),y0`).
-- Cost (pricer words/sample per mode, SVF / VOWL / LADR / ISO): 126 / 216
-  / 238 / 292 on 23 Sep 2026 after SHPE and the makeup → 107 / 170 / 198 /
-  250 after the loop pass the same day (one `do n7` per MODE, dispatched
-  per block; only the selected mode's stream is built; the input peak,
-  LADR's Grun and CAP's rotation count in address registers for the loop;
-  CAP's amounts ring set up per block and written in read order, its
-  four per-block constants in a second ring; the parallel moves stock runs
-  in the same shape: `mpy/mac … x:(rN)+,x0`, `x:(rN),x0`, `add … a,x0`,
-  `a,y0`, `x0,b`, `x1,b`, `asl a a,x1`, `asl b y0,a`; `max a,b` for the
-  peak). Displaced moves (`x:(r7+$nn)`, 3.98 cycles on the chip against 2.00
-  for a pointer or register move, probe 57, `docs/firmware/CHIP.md` section 2) per
-  sample: 49 / 78 / 39 / 88 before the 22 Sep pointer rewrite, 9 / 7 / 10 /
-  17 after it, 4 / 0 / 0 / 1 now (SVF's cutoff ramp and its two reads; ISO's
-  WDTH). LADR's G' clamp at $7f0000 went: G = g/(1+g) is 0.645 at the
-  table's top (0x748894) and the ramp stops at G. Both identity gates
-  bit-identical across the pass; hardware cycles unmeasured (a station's
-  timer window is pre-empted by whole frames, CHIP.md section 2). Program words:
-  payload A FREE 848 → 621 (four loops carry their own width block).
-- `verify_menu`, `verify_replaces`, `verify_labels` pass on the `rig` test remix.
-
-## On the unit
-
-On Sam's unit since flash 4; the LADR voicing (PR #254) since image 21.
-
 ## Open
 
 - VOWL went silent once on the unit with RES up
@@ -133,15 +44,6 @@ On Sam's unit since flash 4; the LADR voicing (PR #254) since image 21.
 - The remaining displaced moves are the SVF's cutoff ramp (g2run += dg,
   read twice per sample) and ISO's WDTH read; the other modes step g2run
   per block by n7·dg (`fs_gramp`), the same end value.
-
-## Gates
-
-`tools/verify/verify_spectrum.py` (the manifest's);
-`tools/verify/verify_spectrum_ident.py ref/check` (13 settings: every MODE
-with and without ENV/LDP, defaults, zeros, max) and `make verify-ident
-MOD=spectrum` (every MODE at two knob sets, zeros, max), the bit-identity
-gates for a rewrite; `make verify-knobs` (every knob moved mid-render);
-`verify_dirty_state` (in `make verify`).
 
 ## Modes
 

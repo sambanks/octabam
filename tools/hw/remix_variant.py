@@ -7,7 +7,7 @@
     .venv/bin/python3 tools/hw/remix_variant.py --list                             # the variants in this tree
     .venv/bin/python3 tools/hw/remix_variant.py --clean                            # remove them
 
-`--pr1067` takes out what #1067 added to that remix (docs/contributing/HARDWARE_PLAN.md, "Images"): the control
+`--pr1067` takes out what #1067 added to that remix: the control
 image for the loader soak. A module named in --without leaves the remix's FX1 list too. The build still refuses what
 it refuses for any remix (a module another one requires: CHORDS FACTORY requires PAGES, so take both out together).
 """

@@ -10,12 +10,10 @@ fixed. The [Octabam Manual](reference/manual/index.md)
 has a page for every feature, shared with the other two remixes.
 
 !!! warning "Known fault: DARK REV while MODULATION is loaded"
-    With MODULATION in use on a track, a program change that puts DARK REV on all 8 tracks, then PLAY, can stop the DSP: the
-    sound stops, the panel and USB still answer, and a power-cycle clears it. MODULATION stays loaded for 10 s after the last
-    track uses it. It does not happen every time, and it happens more often the more tracks have DARK REV; it has not been seen
-    with SPECTRUM loaded in place of MODULATION, or with no effect loaded. The cause is not known and no setting is shown to be
-    safe.
-    [Details](https://github.com/sambanks/octabam/blob/main/docs/contributing/FAILURE_MODES.md).
+    The DSP can stop when a program change puts DARK REV on several tracks while MODULATION is
+    loaded (in use on a track, or in the 10 s after the last track stops using it), followed by
+    PLAY. The sound stops; the panel and USB still answer; a power-cycle clears it. The cause is
+    not known. Avoid DARK REV on many tracks in a song that uses MODULATION.
 
 ## The effects
 

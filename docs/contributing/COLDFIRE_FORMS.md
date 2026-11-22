@@ -30,7 +30,7 @@ A form of a remix's runtime units passes when one of these holds:
 
 - analysed stock code has a site of it: `tools/build/cf_code_runs.tsv` lists the address runs of instructions Ghidra
   found in the stock MAIN OS, and the gate decodes those bytes from the user's own image. A linear sweep of the
-  image is not used: it decodes the image's tables as code (2,965 of 3,541 forms, measured 15 Nov 2026);
+  image is not used: it decodes the image's tables as code (2,965 of 3,541 forms, measured);
 - its module's strongest `Evidence` is `Level.UNIT` or above;
 - a row of the table below names it.
 
@@ -69,3 +69,4 @@ whose author ran the form on a unit). First cell the form in backticks, as the g
 
 | form | how it was run on the chip | date |
 |---|---|---|
+|  |

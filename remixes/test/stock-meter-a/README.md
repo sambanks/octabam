@@ -7,10 +7,6 @@ CORE (as `octabam`) with LOAD METER and the stock effects except PHASER, whose 2
 - CORE and LOAD METER, as in `octabam`.
 - 13 stock effects, FX1 chooser listed explicitly (a remix that names no FX1 effects keeps every stock FX1 effect and nothing is harvested).
 
-## Status
-
-Builds (`make bus REMIX=stock-meter-a`). `make check` and the unit have not run.
-
 ## Build
 
 ```bash

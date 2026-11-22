@@ -22,23 +22,6 @@ effect, holds the memory the side-chain uses. It is not in Octabam Bus.
 
 *FX2 SETUP with COMPRESSOR selected, showing RMS, MON, KEY (here T2), KGN, KBAS and KWID.*
 
-## Changed on 25 Oct 2026
-
-MON shows OFF on the left and ON on the right. A COMPRESSOR saved with any
-earlier version comes up with MON OFF. KEY moves one position per detent
-even with the encoder pressed. The earlier octabam form of this filter
-gave silence, level jumps and squeals on KBAS and KWID; that is fixed.
-
-## Changed on 22 Oct 2026
-
-The base-width filter replaced an earlier one-knob filter (KFLT), and page 2
-was laid out again: it was RMS, KEY, KFLT, KGN and MON. A COMPRESSOR saved
-with the earlier version keeps its KEY, but its other page-2 values now land
-on different knobs: KGN gets the old KFLT, KBAS the old KGN, KWID the old MON,
-and MON comes up OFF. Such a project sounds different until you set KGN,
-KBAS, KWID and MON again. A COMPRESSOR saved on stock firmware is not
-affected.
-
 ## Operation
 
 - KEY chooses what drives the detector: OFF (the track's own signal, as
@@ -83,11 +66,3 @@ affected.
 | 2 | KGN | key gain, about -24 to +24 dB |
 | 2 | KBAS | key high-pass, 18 dB/oct: OFF, 20 Hz to 19.6 kHz (Hz) |
 | 2 | KWID | key low-pass, 12 dB/oct, this many octaves above KBAS: 0.5 to 9.9, OFF |
-
-Tested on the author's MKI on 22 Oct 2026 in the author's standalone image:
-page 2 and its readouts, a kick's fundamental keyed at short attack and
-release, MON and KEY declick. The author's KYOTI V1.6 image, which carries it,
-ran on the unit the same day. KEY's switch and the KBAS-KWID bracket ran
-there in the standalone image on 23 Oct 2026. This octabam form, with
-the key-filter fix, MON's switch and KEY's pressed turn, ran on the author's
-MKI on 26 Oct 2026: all good.

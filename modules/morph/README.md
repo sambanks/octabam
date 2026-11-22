@@ -28,7 +28,7 @@ Inspired by the Korg Electribe's Motion Sequence
 (https://support.korguser.net/hc/en-us/articles/205917700-Motion-sequence): there the knob moves
 are recorded; here the movement is the ramp between the two scenes the Octatrack already has.
 
-Markers: ✅ measured, 🟡 inferred.
+Markers: measured, inferred.
 
 ## Using it
 
@@ -95,7 +95,7 @@ what is left of the cycle's last step.
 
 ## Saving
 
-✅ (on the unit, MRPPR1, and in the source simulator) The settings of the eight tracks and which tracks morph go to `morph.work` in
+ (on the unit, MRPPR1, and in the source simulator) The settings of the eight tracks and which tracks morph go to `morph.work` in
 the project directory, beside the bank files, when the Octatrack writes its banks and when the
 project is saved; SAVE PROJECT copies it to `morph.strd` and RELOAD brings that copy back, as MIDI
 SCENES keeps `scenes.work`. MORPH is a client of STORE (`modules/store`), which holds those sites.
@@ -120,17 +120,17 @@ SCENES keeps `scenes.work`. MORPH is a client of STORE (`modules/store`), which 
 
 ## How it works
 
-- ✅ **The weight per track.** The scene morph takes, for each track, a long at
+- **The weight per track.** The scene morph takes, for each track, a long at
   `0x80003c60 + 4·t`: the high word weights scene A's value, the low word scene B's (the both-scenes
   path at `0x4000ce60`). Only the crossfader writes them (`0x40061e2e`, `0x400626a8`), from the
   curve at `0x400bcd90` (`w = curve[xf]`, `0` … `−32768`; weight `= (w << 16) | ((0xffff8000 − w) &
   0xffff)`); xf 127 is all A, 0 all B. MORPH computes the same word from its own xf.
-- ✅ **When.** A detour at `0x4000cc62` (`move.l #96,%macsr ; lea 12(%sp),%sp`, both replayed) runs
+- **When.** A detour at `0x4000cc62` (`move.l #96,%macsr ; lea 12(%sp),%sp`, both replayed) runs
   once a frame in the frame builder, after its per-track loop and before `0x4000cc6c`, where all six
   paths that read the weights begin. No branch in the image lands inside the 10 bytes. It writes the
   weight of every morphing or parked track, so a crossfader move, which rewrites all ten, is
   undone for those tracks before the morph reads them.
-- ✅ **The clock.** The cycle counts the sequencer's steps: every frame the step word
+- **The clock.** The cycle counts the sequencer's steps: every frame the step word
   `0x800065b2` (OCTA303's 303 gate reads it on the unit) is compared with the last frame's; a
   change is a step (a jump of more than 8, a restart or a pattern change, counts as one), and the
   frames since the last step are counted while the transport word `0x800065b8` is 1. A track's k is
@@ -140,7 +140,7 @@ SCENES keeps `scenes.work`. MORPH is a client of STORE (`modules/store`), which 
   steps, SMOOTH moves every frame, and neither drifts from the pattern over many cycles. One
   division a frame per morphing track; with every track on the fader only the step-word compare
   runs.
-- ✅ (source simulator) **The way back (v1.2).** The cycle is counted in 1/256 steps: the way up
+- (source simulator) **The way back (v1.2).** The cycle is counted in 1/256 steps: the way up
   is L = N × 128 (N = STEPS × x), the way back T = N × 128 >> RET for SAME .. 1/16, 4096 (BAR),
   1024 (BEAT), 256 (STEP) or 0 (CUT); the cycle is C = ⌈(L + T) / 256⌉ steps (STAY: ⌈L / 256⌉).
   At pos < L the way up: v = pos · 256 / L, xf = 127 − v / 2 (RISE: v² / 512); after it the way
@@ -149,20 +149,20 @@ SCENES keeps `scenes.work`. MORPH is a client of STORE (`modules/store`), which 
   `⌊⌊2p/N⌋/2⌋ = ⌊p/N⌋`), which is why the defaults change nothing. Three new states: TOP (7,
   held on B), RETW (8, the way back asked, waiting for the next step) and RET (9, on the way back,
   then parked on A). Two divisions a frame per morphing track at most.
-- ✅ **STEPS 0** reads the track's length in the current pattern (bank blob `0x46c82456` + pattern
+- **STEPS 0** reads the track's length in the current pattern (bank blob `0x46c82456` + pattern
   `0x100b14d0` × `0x8ed8` + track × `0x91a`, the byte at `+0x50`, 1..64, else 16), as OCTA303's gate
   does, every frame: a pattern change is followed; a k past the new N starts again from A.
-- 🟡 **The fraction of a step** assumes the frame builder runs once per 16-sample frame at 44.1 kHz
+- Unconfirmed: **The fraction of a step** assumes the frame builder runs once per 16-sample frame at 44.1 kHz
   (363 µs; a step is `992,250 / tempo24` frames). If it did not, SMOOTH would still land on every
-  step (the clock is the step word) and only the motion inside a step would be uneven. 🟡 That the
+  step (the clock is the step word) and only the motion inside a step would be uneven. That the
   step word counts every 16th of the master length while playing.
-- ✅ **The keys.** Holding a track key pushes the layer `0x400d164a`, whose table `0x400d1594` has
+- **The keys.** Holding a track key pushes the layer `0x400d164a`, whose table `0x400d1594` has
   six records (STOP, PLAY, BANK, YES, NO, 0x18) and a terminator; UP and DOWN are not in it, so
   stock passes them to the layer below. MORPH carries a copy of the table with UP (`0x33`) and DOWN
   (`0x20`) added, and the layer's keys field `0x400d164e` points at it. The handlers follow stock's
   convention (`handler(keycode, event)`, event 1 = press; Zac Kyoti's REC_TRIG_MUTE uses the same
   table).
-- ✅ **The window** has the structure of ilia-murzinov's SEQ (`modules/seq`): a
+- **The window** has the structure of ilia-murzinov's SEQ (`modules/seq`): a
   TEMPO-class window (`0x4005829c` create, `0x40056f4c` frame, `0x40055db4` destroy, class 5:
   another TEMPO-class window takes its place and closes it), an input layer pushed over everything
   while it is open (YES, NO, UP, DOWN; encoders A, B, C; `0x40031494` / `0x4003146c`), the stock
@@ -171,14 +171,14 @@ SCENES keeps `scenes.work`. MORPH is a client of STORE (`modules/store`), which 
   scene indicator changed. v1.1: it stays open after the release; YES closes it and starts its
   held tracks, NO, UP or another TEMPO-class window closes it and starts nothing (a track that was
   parked is parked again); either way its tracks are armed for the long press.
-- ✅ (port, 26 Oct 2026) **The scene indicator** is the main page footer's: `0x4004d640` sets two
+- (port,) **The scene indicator** is the main page footer's: `0x4004d640` sets two
   boxes (`0x40012254` mode 1) x 95..103 and 109..117, y 0..6, and writes scene A and scene B (the
   bytes at bank + part × `0x18b2` + `0x8ed90` / `0x8ed91`, part `0x80000003`, shown from 1) with
   `0x40013904` (the small font, x `0x60` / `0x6e`, y 1, `"%02d"` `0x400b437c` in the width of
   `"00"` `0x400b4382`, inverted); `0x4003577c` sets the box x 104..108, y 0..6, clears y 2..4 and
   draws the 5 × 3 sprite `0x400bcd7c[4 - ((xf + 16) >> 5)]` (0..4) at (104, 2). The window makes
   the same calls 6 to the left and 3 up; on the port its pixels equal the footer's.
-- ✅ (port, 26 Oct 2026) **The long press** is TRACK MENU's (measured on the owner's MKI, 24 Oct):
+- (port,) **The long press** is TRACK MENU's (measured on the owner's MKI, 24 Oct):
   the PRESS field of T1..T8 in the MKI key table `0x400bfc10` and the MKII one `0x400c01f4`
   (stock `0x40040250`) points at `lp_tpress`, which calls stock first, then counts ~1 s with a soft
   timer while that track key stays the only key down (`HELD` and the panel rows `0x46100b18`). The
@@ -204,53 +204,10 @@ SCENES keeps `scenes.work`. MORPH is a client of STORE (`modules/store`), which 
   YES and NO inside the open window belong to the window's own key layer, not the [TRACK]
   layer, and the long press is on the T1..T8 key records, so neither goes through HOOKS.
 - A track's own scale (×2, ½) is not followed: a step is the master 16th.
-- 🟡 A masked bank load other than a project load or the power-up (STORE names reloads) reads
+- Unconfirmed: A masked bank load other than a project load or the power-up (STORE names reloads) reads
   `morph.work` again, so a running morph would be armed again from A.
 - No message at a project load says which tracks will morph (the window shows it); a toast from
   the load, which runs in the engine task, is not a place stock draws from.
-
-## Measured
-
-- 🟡 **v1.2** (RET, CURV, END; the eight-row window; version 3): in the source simulator only
-  (`tools/morph/test_morph.py`, 22 Nov 2026): every v1.1 check unchanged with the defaults; the
-  model of the cycle checked against the frame, step by step, for 3 lengths × 9 RET × 4 CURV in
-  TRIG HOLD; ONCE parking after one cycle; STAY holding B, the long press, [TRACK] + [DOWN] and
-  the window's DOWN starting the way back on the next step, RET long, then parking; a stop on the
-  way up coming back at B; the window over TOP and RET; encoders D, E, F (one a click, clamped, on
-  every window track) and their names; version 3 written only when needed, read back, version 2
-  clearing the new settings, stray values read as the first. Not yet under the port, not yet on
-  the unit.
-- ✅ **v1.1** (the window stays open, YES / NO, the long press, x to 100, the scene indicator): on
-  the owner's MKI inside aCiDtRacK (ACIDV91 .. ACIDV97), used live for risers with OCTA303 (the
-  owner, 22 Nov 2026); before, in the source simulator (`tools/morph/test_morph.py`) and under the
-  port (`tools/morph/port_morph.py`, 26 Oct 2026: YES starts T1 at the tempo, NO starts nothing, the
-  long press starts and stops T2, also with the MIXER open; the indicator compared pixel for pixel
-  with the main page's footer). The lines below are v1.
-- ✅ On the owner's MKI, image MRPPR1 (BUILD 98, remix `morph`, from `374d4515`), the owner's MKI, 23 Oct 2026: the window armed while T1 is held and CYCLE following A and B; YES does nothing; the start on the release; the window over a running morph (changes at once, the morph goes on); 41.625 and CYCLE 666 STEPS; T1 and T5 with different settings, SAVE PROJECT, power off and on, PLAY: both start from A with their settings; a change without saving undone by PROJECT > RELOAD; another project with no morph.work on the fader with the defaults, and back to the first: T1 and T5 armed again; TRACK + DOWN ends the cycle on A. By ear and eye.
-- ✅ On the owner's MKI, image ACIDV74MP (aCiDtRacK + MORPH), 22 Oct 2026, by ear and eye: the
-  window ([TRACK] + [UP], STEPS / x / MODE on A, B, C), the morph at the tempo over STEPS × x
-  steps, SMOOTH and TRIG HOLD, several tracks at once (T5 with OCTA303 and T6 on a NEIGHBOR
-  machine), STOP / PLAY, [TRACK] + [DOWN] parking on A, the crossfader taking the track back at
-  its A end. That image still had YES to start and x up to 8.
-- ✅ v0 on the same unit, image ACIDV73MP, 21 Oct 2026: [TRACK] + [UP] runs the track's morph,
-  the others keep the fader, [TRACK] + [DOWN] parks it on A.
-- ✅ Under the port (`tools/morph/port_morph.py`, with a project, 22 Oct 2026, on the YES form): the
-  window opens and draws, the encoders set STEPS 8 and x 2, the morph starts from A and runs at
-  the tempo (xf 35 after ~5.6 steps of a 16-step cycle, ~38 expected), T2 keeps the fader, STOP
-  holds, PLAY carries on, [T1] + [DOWN] ends parked on A, TRIG HOLD gives one value a step.
-- ✅ `tools/morph/test_morph.py`: `morph.s` executed from its source text in OCTA303's source
-  simulator (`tools/octa303/sim/cfsim.py`, with its ColdFire lint), against a mock of the firmware
-  addresses, a mock sequencer moving the step word at the tempo, and mocks of STORE's file calls:
-  the arming in the window and the start on the release; B at step 64 and A again at step 128
-  (16 × 8); one xf step per frame at most (SMOOTH) and the triangle's value on each step's first
-  frame; TRIG HOLD one value per step; STEPS 0 = the track's length; 512 and 1 steps; the transport
-  stop; stop on A, parking, re-attach; x to 16 and 41.625 (a 666-step cycle at STEPS 16); the
-  window's paint, encoders, YES swallowed, closing on release, twice, on eviction; saving:
-  nothing written for an untouched project, the file's bytes and CRC, no rewrite when nothing
-  changed, the copy to `.strd`, the load (settings back, the morphing tracks armed, the others
-  parked or on the fader), RELOAD from `.strd`, a bad CRC refused and never written over, the
-  BACKUP answer, a project without the file. Not covered: the hook under the real firmware, MACSR
-  (the simulator has none), STORE's real file calls.
 
 ## Credits
 

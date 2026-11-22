@@ -32,4 +32,5 @@ date.
 
 | proposal | modules | requested by | stage |
 |---|---|---|---|
-| [radiohagen](radiohagen.md) | the delay and reverb bus, SPECTRUM, CHARACTER, MODULATION, RLEN PLEN, TUNER | radiohagen | 2: composes with PR #643 |
+| [radiohagen](radiohagen.md) | the delay and reverb bus, SPECTRUM, CHARACTER, MODULATION, RLEN PLEN, TUNER | radiohagen | 2: composes |
+|  |

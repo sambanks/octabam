@@ -681,12 +681,11 @@ def index_page(book: Book) -> str:
         lines.append(f"- [{title(n)}]({_up(here)}{OVERVIEW.get(n, 'index.md')}): {doc}")
     lines += ["",
               "!!! warning \"Known fault in Octabam: DARK REV while MODULATION is loaded\"",
-              "    With MODULATION in use on a track, a program change that puts DARK REV on all 8 tracks, "
-              "followed by PLAY, can stop the DSP: the sound stops, the panel and USB still answer, "
-              "and a power-cycle clears it. MODULATION stays loaded for 10 seconds after the last track uses it. "
-              "It does not happen every time, and it happens more often the more tracks have DARK REV; it has not "
-              "been seen with SPECTRUM loaded instead of MODULATION, or with no effect loaded. The cause is not "
-              "known and no setting is shown to be safe.", "",
+              "    The DSP can stop when a program change puts DARK REV on several tracks while MODULATION is "
+              "loaded (in use on a track, or in the 10 seconds after the last track stops using it), followed "
+              "by PLAY. The sound stops; the panel and USB still answer; a power-cycle clears it. The cause is "
+              "not known. Avoid DARK REV on many tracks in a song that uses MODULATION. Octabam Verbs has no "
+              "stock DARK REV, and Octabam Bus loads no effects on demand.", "",
               "## Conventions", "",
               "Names in capitals are what the unit's screen prints. Effects sit on the FX1 and FX2 keys; "
               "each has two pages of six knobs, A to F, reached with the PAGE keys as on any Octatrack effect. "

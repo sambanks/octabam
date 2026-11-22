@@ -9,10 +9,6 @@ channels 15/16. T8's channels are post-FX, pre-fader, as in `cfmeter`.
 [`cfmeter-tracks`](../cfmeter-tracks/README.md) are a pair: POST minus
 TRACKS on the same project is POST's cost.
 
-## Status
-
-Flashed as BUILD C1 on allmyfriendsaresynths's (@clickysteve) MKII, 7 Oct 2026: three 8 s streaming takes decoded (period 362.8 µs, TUE/ROE 0); results in the [USB AUDIO OUT README](../../../modules/usb/README.md), TRACKS POST, *On the unit*. The no-host takes were not run.
-
 ## Procedure (PR #625's CPU comparison)
 
 1. `make bus REMIX=cfmeter-tracks` (or `make image REMIX=cfmeter-tracks BUILD=N`), flash.

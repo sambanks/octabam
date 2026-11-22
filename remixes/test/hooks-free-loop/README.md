@@ -4,7 +4,3 @@ FREE LOOP beside REC_TRIG_MUTE and REC THRESHOLD: HOOKS chains the status icons 
 
 `tools/verify/verify_hooks.py hooks-free-loop` checks the bridged sites in this image after
 `make bus REMIX=hooks-free-loop`.
-
-## Where it has run
-
-Not flashed.

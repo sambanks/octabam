@@ -319,7 +319,7 @@ MODULE = Module(
         Evidence(Level.UNIT, who="ilia-murzinov", image="CXSEQ CV.RMX (BUILD 79)",
             date="2026-11-20", commit="5e737dc4bddd27d2e6c02dc54b8de341493dbc08",
             note="Ilia confirms INDX changes the saw and triangle carrier waveforms on this build.")),
-    doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..34 CAR/MOD/SYMM/FDBK/PWM (DEC not a destination). Local fork of FM SYNTH.",
+    doc="Buchla-style complex oscillator as a machine: FM, a wavefolder, waveform morphs and feedback.",
     conflicts=(
         ("SYNTH MACHINE", "both own the FLEX/STATIC kind-table renderers, page cave 0x400d24d0, and machine-list sites"),
         ("BLACKPYRAMIDS_303", "shares ColdFire ROM hooks (e.g. MIDI note-on 0x4000e746) — build refuses the pair"),

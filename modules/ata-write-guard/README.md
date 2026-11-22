@@ -36,20 +36,3 @@ stub restores SR, returns the original status, restores d2/d3 and returns
 to the original caller. The existing critical section now includes the
 256 data-word writes and their bookkeeping. No wait or filesystem call is
 added inside it. Its worst duration on hardware remains to be measured.
-
-## Proof
-
-`verify_ata_write` executes the actual first-sector routine, without a boot
-or card fixture, and requests a level-5 interrupt at the final data word.
-The stock control must accept it with the stale pointer/count. The guarded
-image must accept it only after both updates; tests also cover callers
-whose masks already block that interrupt, the returned status, d2/d3,
-the stack and all 256 transferred words.
-
-```
-make check REMIX=ata-write-guard
-```
-
-This gate does not measure physical CF timing, the interrupt delay added
-by the critical section, or hardware streaming. The shipping remix gates
-remain required.

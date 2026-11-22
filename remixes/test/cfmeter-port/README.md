@@ -1,7 +1,7 @@
 # `cfmeter-port` — `cfmeter` without the idle loop, for the port gate
 
 The same selection as [`cfmeter`](../cfmeter/README.md) without CF METER
-IDLE. Until 28 Sep 2026 the ColdFire port advanced its clock only at
+IDLE. Until the ColdFire port advanced its clock only at
 main's stock `bras .`, which the idle loop replaces, so `cfmeter` did not
 load a project there; the port follows the detour now and `cfmeter`
 passes its gates too. The idle slot reads 0 here.

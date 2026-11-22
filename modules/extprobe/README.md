@@ -16,19 +16,6 @@ frames) and then scans it; **SCAN** counts without filling. A scan pass reads 12
 the words that are not the pattern: in total, in each 1,024-word bucket, and the highest offset since the restart.
 Setting GO to OFF and back to FILL refills and restarts the figures.
 
-## Running it on a unit
-
-1. `make image REMIX=test/ext-probe BUILD=<n>` and flash it. A project with EXT PROBE on one track's FX1 (GO = OFF), **nothing on T8's
-   FX2 but the stock DELAY**, and the reverb to be measured chosen later on T8's FX2.
-2. Start a USB capture of the probe track (`tools/hw/dl_capture`-style: channels 0 and 1 are T1).
-3. GO to FILL; wait until `decode.py` shows state `scanning` and `0` differing words (the pattern is down).
-4. Choose the reverb on T8's FX2, set its knobs, play audio into T8 (a loop, or the input) for 20 s.
-5. `python3 modules/extprobe/decode.py capture.npy` prints the highest offset and the buckets.
-6. For the next setting: GO to OFF, then FILL again.
-
-A reverb that is selected but silent writes zeros into its delay lines, which differ from the pattern, so a
-silent track measures the extent of the lines the effect clears; a longer delay needs signal in it.
-
 ## Files
 
 `extprobe.asm`, `decode.py`, `manifest.py`; gate `tools/verify/verify_extprobe.py` (`dsp_host`: a seeded region

@@ -15,39 +15,12 @@ each engine's parameters with the values the host page would show.
 | C–F | held while the window is open |
 | [TEMPO], [YES], [NO] | close (stock) |
 
-## Measured
-
-- **Under the port** (`tools/verify/verify_tempo_bus.py`, in `make verify`
-  with OT_PROJECT), on verify_set's staged card:
-  - TEMPO opens the 118 × 64 window.
-  - Delay MODE → GRAIN lands on the host's page-2 lane, with GRAIN's view
-    applied.
-  - Delay FDBK set to 5 and reverb SEND set to 3 land on the hosts'
-    page-1 lanes.
-  - Close leaves the window handle 0 and no layer of this module
-    registered.
-  - The run ends on quit.
-- **The port also:**
-  - rendered the window planes (`out/tempobus/screen.png`);
-  - raised the BPM by 5.1 through LEVEL with the window open;
-  - reopened the window after a close;
-  - with the window closed, gave knob A to the page behind.
-
-## On the unit
-
-- Anything on hardware beyond being carried by image 88 (Sam's MKII, 27
-  Sep 2026), not exercised there.
-
 ## Open
 
 - The MKII keymap: the port boots the MKI one. TEMPO, LEFT and RIGHT have
   the same codes in both.
 - EXT SYNC: the header prints the internal tempo, where the stock window
   prints the external one.
-
-## Gates
-
-- `tools/verify/verify_tempo_bus.py` (stage `image`; in `make verify` with `OT_PROJECT`).
 
 ## The window
 

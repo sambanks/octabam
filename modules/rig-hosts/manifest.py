@@ -44,7 +44,7 @@ MODULE = Module(
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
         note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); a new project born hosted under the port"),),
-    doc="A new part is born hosted: T1 FX2 = BusDelay, T5 = BusVerb, T8 = the stock DELAY, the rest SEND.",
+    doc="A new Part starts wired for the bus: the bus delay on T1's FX2, the bus reverb on T5's, the stock DELAY on T8's and SEND on the rest.",
     linked=(Linked("righosts", "modules/rig-hosts/righosts.s", include=ids_inc, dram=True),),
     detours=(
         Detour(0x4000567E, H("41f9400d47ad15903800" "41f9400d4ad1226f004413500008"), "righosts", "fx_ids",

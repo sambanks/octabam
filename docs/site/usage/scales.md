@@ -68,10 +68,3 @@ SCALES keeps the scale of each track and Part in `scales.work`, in the
 project folder, written when you save. A scale picked and not saved is
 lost at power-off: the track then plays its KEY's Major or Minor until you
 pick the scale again.
-
-## Verification limits
-
-Checked under the emulator on both models: every scale picked from ARP
-SETUP's keys and read back, saved in `scales.work` and loaded again, the snapped notes for every
-scale, tonic and note, and the trig LEDs. The keyboard's colours and their
-refresh were tested on a unit; the chooser and the snapped notes not yet.

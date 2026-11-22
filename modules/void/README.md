@@ -69,31 +69,3 @@ If the same page bytes are loaded under DARK REV, they read as DARK's knobs:
 Saving on stock with DARK selected writes DARK's names into those slots; the
 bytes are the same width. Keep a separate project copy, or re-select effects
 and save, before going back to stock.
-
-## Measured
-
-- **19 Nov 2026, the stall pass** (bit-identical: `verify_ident.py` with the
-  wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
-  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
-  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
-  after each commit; 31 renders). Cycles a sample from
-  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
-  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
-  section 1), at `dear`: **503.9 → 493.8** (11.1 % → 10.9 % of a frame), every
-  shape. Words 513 → 502 (`dsp_asm` at P:$800). Not measured on the unit. The
-  frame advance (`#>$2,n0` / step / `#>$1,n0`) is one `lua (r0+$2),r0`, n0
-  staying 1; a word stored to $25 and read back at once comes from its
-  register; seven constants load as one-word short immediates.
-
-- `verify_void.py`: passthrough; AM / FDBK vs `void_ref.py`; WID mono/stereo
-  + 0→1 continuity + L/R anti-corr at full; COLR closed vs open; FDBK+DRV
-  not DC-silent; max-knob true 3 s rail budget; two FX2 instances; SRC=LFO
-  RATE moves / SRC=NBR RATE idle; quiet NBR ≈ silence; BAL0 ignores
-  DRV/FDBK/DPTH/WID.
-- Hardware **LATEST NP** / **VRCS VJ** (22 Oct 2026, Ilia's MKII): current
-  layout — SRC LFO|NBR; COLR/HPF main; SHPE/DPTH SETUP; mid±(w/2) WID;
-  DPTH default 127. See test-remix README.
-- Hardware **NBR / KEYBUS** (20 Nov 2026, Ilia's MKII, tip `dafb11b3`):
-  with CX on the neighbouring track, NBR drove VOID's noise level as expected.
-- Earlier: **VOID V9** (COLR/HPF tables); **V215 N7** (Y-direct nbr, pre-SRC);
-  **LATEST NN** (noise-only path, pre-SRC WID). Superseded by NP/VJ.

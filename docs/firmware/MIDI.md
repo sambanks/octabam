@@ -1,13 +1,11 @@
 # MIDI: how a CC, a scene or a note reaches a parameter the DSP reads
 
 The summary first; the three disassembly records (CC, note, scene) follow
-as appendices A-C (they were `midi_re_{cc,note,scene}.md` until 16 Sep
-2026). Markers as in `CHIP.md`: ✅
-measured / decompiled, 🟡 inferred. r2's m68k backend misdecodes ColdFire
+as appendices A-C (they were `midi_re_{cc,note,scene}.md`). r2's m68k backend misdecodes ColdFire
 `mvs/mvz/mov3q/mac`; read this code with `m68k-elf-objdump -m m68k:cfv4e`
 (`scripts/disasm.sh emac`).
 
-## MIDI in → parameters ✅
+## MIDI in → parameters
 
 UART0 `0xfc060000` is MIDI IN; RX ISR `0x400106ec`, framer `0x40092bf4`
 (running status `0x46100b70`), the MIDI thread `0x40005540` dispatching on
@@ -25,24 +23,23 @@ level, 47 cue, 8 AMP BAL, 48 crossfader, 49-51 mute/solo/cue, 52-54 arm,
 
 Page 2 is unreachable from stock CC: `cc−16 < 30` and the writer derives
 `slot = flat % 6`. `modules/cc-map` adds CC 102-107 (FX2 page 2) and
-108-111, 14, 15 (FX1 page 2); 62-67 and 68-73 until 1 Nov 2026 (issue
-#981: the pedal CCs, 64 sustain among them).
+108-111, 14, 15 (FX1 page 2); 62-67 and 68-73 (the pedal CCs, 64 sustain
+among them).
 
-**The generic writer `FUN_40054cd8(track, flat, value)`** ✅ resolves the
+**The generic writer `FUN_40054cd8(track, flat, value)`** resolves the
 descriptor via `FUN_40031da4(track, flat/6)`, refuses disabled slots,
 clamps to `[min, min+count−1]` from `P+0x6a/P+0x9a`, stores to the Part
-(`+0x8ee9a + track·24 + flat−6` for LFO/AMP/FX1/FX2; ❌ was "AMP/LFO", see `MAINMENU.md` section 7), a shadow, and the
-live byte `0x80000810[track·72 + flat]`; the frame builder `0x4000c0f0`
+(`+0x8ee9a + track·24 + flat−6` for LFO/AMP/FX1/FX2the frame builder `0x4000c0f0`
 copies those `<<8` into the DSP frame every frame (why knobs sit at bits
 16-23). The UI knob path is a near-copy, `FUN_40055008(slot, delta)`.
-Page 2 is in the same 72-byte block ✅: an FX2 page-2 slot's live byte is
+Page 2 is in the same 72-byte block: an FX2 page-2 slot's live byte is
 `0x80000810 + track·72 + 32 + slot2` (traced on tracks 0/1/4/7); page 1
 occupies `+0..+29`. The FX2 page-2 editor's stores are Part `+0x8f084`,
 shadow `0x100a51d2`, lane +0x38; the FX1 page-2 editor `0x4003abe4`
 writes Part `+0x8f07e + track·30 + slot`, shadow `0x100a51cc`, lane
 +0x32 (`PARAM_PAGES.md`, `FAILURE_MODES.md`).
 
-## Scenes / crossfader ✅
+## Scenes / crossfader
 
 `FUN_4003f1b4` handles only STRT/LEN/RATE. The general morph runs every
 DSP frame inside the frame builder (`0x4000cc6c..0x4000cf3e`, inside the frame ISR `0x4000aad0..0x4000d9b0`)
@@ -59,7 +56,7 @@ Fader position: `0x460d16c8` (long, 0..127), written by the panel path
 scene A. Nothing of ours is hard-locked to the fader, and nothing of ours
 reads it on the DSP.
 
-## Notes ✅
+## Notes
 
 Channel→track route `0x46c7febe[16]` from per-track channel
 `0x8000003f+t` (−1 off) + auto channel `0x80000047`. Audio note map
@@ -69,14 +66,14 @@ note `0x400d64c2[t]` (byte, `0xFF` on release), a gate bit in
 `0x46c7fb08`, and posts event 0x41. Velocity is never retained for audio
 tracks. Per-channel held count `0x46c7fe4c[chan·4]`. The per-track loop
 `0x4000e724..0x4000e790` writes `0x400d64c2[t]` for every track in the
-channel mask with no machine-type test ✅; the only skip is the
+channel mask with no machine-type test; the only skip is the
 panel-selected track when `0x46104cb0` is set and `0x40033970` returns 0
-🟡 (an editor guard). On hardware: chromatic notes 72-96 on a track's
+Unconfirmed: (an editor guard). On hardware: chromatic notes 72-96 on a track's
 channel trigger reliably; sample-trig notes 36-43 never fired on the test
 project; a note to the panel-selected track is eaten (keep an empty track
 selected while driving notes).
 
-## The DSP record ✅
+## The DSP record
 
 The record (32 halfwords per track) is fully rewritten every frame
 (`0x4000cb6e..0x4000cb7c` copies `0x80000830+72t` into `+0x24..+0x3d`
@@ -87,8 +84,7 @@ read by the dispatcher at P:0x231), `+0x30..+0x34` (24-26) the FX2 page 2,
 `+0x36/+0x38` the ids, `+0x3a..+0x3e` (29-31) the writer's own words: a
 per-track table word, the flag/split word (`r2+$1e`) and **tempo24
 (`0x8000181c`) at `+0x3e`**, stored by stock at `0x40004d6a` for every
-track. Retracted 15 Sep 2026: "`+0x24..+0x2c` are dead" (they were read
-by no FX2 effect; the FX1 effect on the same track reads them).
+track. the FX1 effect on the same track reads them).
 
 What the tempo cave stores in the record, and what BusDelay derives from
 tempo24: `modules/tempo-sync/README.md`.
@@ -96,7 +92,7 @@ tempo24: `modules/tempo-sync/README.md`.
 The track index is `a0 − 0x80000110` (`moveal %d4,%a0 ; addal
 #0x80000110,%a0` at `0x40004d38`).
 
-## Note → pitch on the DSP ✅
+## Note → pitch on the DSP
 
 BusDelay's note latch and GRAIN pitch: `modules/busdelay/README.md`.
 
@@ -107,7 +103,7 @@ BusDelay's note latch and GRAIN pitch: `modules/busdelay/README.md`.
   value) but reaches the DSP only while the host track's FX2 page is on
   screen; the reverb's slot 2 (SIZE, T5) takes CC un-selected. Enable
   bitmap and min/count clamp verified sane in the image; the frame-builder
-  path for that slot is the suspect. 🟡 untraced, single-slot; not a
+  path for that slot is the suspect. untraced, single-slot; not a
   general rule and not page 2's.
 - The OT echoes TIME as CC 40 with CC OUT on.
 - The lab's MIDI setup (Rytm clock master, Midihub): `docs/contributing/TESTING.md` section 1.
@@ -115,28 +111,27 @@ BusDelay's note latch and GRAIN pitch: `modules/busdelay/README.md`.
 ## Remote CC reference
 
 From the official appendices (OT MKII 1.40A Appendix C, AR MKII 1.72
-Appendix C). ✅ = exercised here; 🟡 = manual-only.
+Appendix C). 
 
-**Octatrack, per-track channel:** CC 7 track level (receive-only) ✅, CC
-46 track level (trn+rec), CC 8 balance, CC 25 AMP VOL 🟡 (amp page = CC
-22-27), playback 16-21, LFO 28-33, FX1 34-39 🟡, FX2 40-45 ✅ (the slot-2
-quirk above), CC 47 cue, 48 crossfader ✅, 49/50/51 mute/solo/cue, 55/56
+**Octatrack, per-track channel:** CC 7 track level (receive-only) CC
+46 track level (trn+rec), CC 8 balance, CC 25 AMP VOL (amp page = CC
+22-27), playback 16-21, LFO 28-33, FX1 34-39 FX2 40-45 (the slot-2
+quirk above), CC 47 cue, 48 crossfader 49/50/51 mute/solo/cue, 55/56
 scene A/B select. Pattern select via program change needs PROG CH receive
-ON (PROJECT→MIDI→SYNC) 🟡.
+ON (PROJECT→MIDI→SYNC).
 
 **Rytm MKII, per-track channel** (RECEIVE CC/NRPN ON in MIDI CONFIG): CC
-95 track LEVEL 🟡, CC 7 amp VOLUME, CC 8x amp page (81 overdrive, 82/83
+95 track LEVEL CC 7 amp VOLUME, CC 8x amp page (81 overdrive, 82/83
 delay/reverb send), CC 31 sample level, 94/93 mute/solo. FX track channel:
 delay 16-23, reverb 24-31, distortion 70-77, compressor 78-85 (78 thresh,
-81 makeup, 84 mix, 85 output vol) 🟡. Transport start/stop over its own
-USB port only ✅.
+81 makeup, 84 mix, 85 output vol). Transport start/stop over its own
+USB port only.
 
 ---
 
 ## Appendix A: Incoming MIDI CC → track parameter (record)
 
-Static disassembly of `out/raw/section_3_MAIN_OS.bin` (base `0x40000400`).
-✅ = read off the disassembly or measured on hardware. 🟡 = inferred. Every
+Every
 cross-reference came from a raw byte scan for the 32-bit operand (r2 finds
 no data xrefs on this image and misdecodes the ColdFire-only opcodes).
 
@@ -151,7 +146,7 @@ UART bytes → (parser task) → queue 0x46c7e974 → MIDI-in task 0x40005540
   → Part storage + live byte 0x80000810[track*72 + flat] + dirty marker
 ```
 
-### 1. CC dispatcher ✅
+### 1. CC dispatcher
 
 **MIDI-in task** `0x40005540` (created at `0x400054c4`, stack `0x46c7ea20`,
 prio 6): loops on blocking receive `0x40000d00(0x46c7e974)`, gets a 3-byte
@@ -190,7 +185,7 @@ track bit.
 | CC | code | what is posted / done |
 |---|---|---|
 | 7 (0x07), 46 (0x2e) | `0x4000ea4a` | track level: byte `0x80000c50+2t`, pattern copy, kind `0x43` |
-| 47 (0x2f) | `0x4000eb54` | same, odd byte `0x80000c51+2t`: the cue level ✅ (port, 3 Oct 2026: with T1 cued, 127 makes its cue word on the level page `0x7ef8`, against `0x6c00` cued at the default; uncued, the byte moves nothing; `STEM_REC.md` 18.1) |
+| 47 (0x2f) | `0x4000eb54` | same, odd byte `0x80000c51+2t`: the cue level (port: with T1 cued, 127 makes its cue word on the level page `0x7ef8`, against `0x6c00` cued at the default; uncued, the byte moves nothing; `STEM_REC.md` 18.1) |
 | 8 (0x08) | `0x4000e9d0` | `post(0x40, track, 10, value)` → AMP BAL |
 | **16–45** | `0x4000e91c` | `idx = cc−16` (checked `< 30` at `0x4000e928`), `post(0x40, track, idx, value, stamp, 0)` |
 | 48 (0x30) | `0x4000ec60` | `post(0x44, 0,0, value)` crossfader |
@@ -198,23 +193,23 @@ track bit.
 | 52/53 | `0x4000ed7e` | word masks `0x46c803d4` / `0x46c7fe22` (bit t / t+8) |
 | 54 | `0x4000ee10` | set both masks to 0xff |
 | 55/56 | `0x4000ee48` | scene A/B select, value clamped 0..15, `0x40170f70[...]` |
-| 57/58 | `0x4000ef8c` | per-track byte in `0x4017156a`/`0x4017156c` (pickup 🟡) |
+| 57/58 | `0x4000ef8c` | per-track byte in `0x4017156a`/`0x4017156c` (pickup unconfirmed) |
 | 59/60 | `0x4000f10a`/`f14c` | synthesise note-on/off `{ch, value, 127}` → `0x4000e018`/`0x4000db98` |
-| 61 | `0x4000f18c` | value 0 → post static msg `0x400d64c0` (send request 🟡) |
-| 112–119 / 120–127 | `0x4000f1ce`/`f210` | bits 8–15 / 0–7 of `0x8000000c` (MIDI-track mute/solo 🟡) |
+| 61 | `0x4000f18c` | value 0 → post static msg `0x400d64c0` (send request unconfirmed) |
+| 112–119 / 120–127 | `0x4000f1ce`/`f210` | bits 8–15 / 0–7 of `0x8000000c` (MIDI-track mute/solo unconfirmed) |
 
 **Unused audio-track CCs in 0..119: 0–6, 9–15, 62–111** (50 contiguous free
 numbers from 62). They fall through every compare to the `rts` at
-`0x4000f274`. ✅ Unused by stock is not free of meaning: 64-69 are the
+`0x4000f274`. Unused by stock is not free of meaning: 64-69 are the
 pedals and 96-101 data entry and RPN/NRPN, and a module that maps or
 sends one reaches every synth on that channel
-(`tools/remix/midi_cc.py`, issue #981).
+(`tools/remix/midi_cc.py`).
 
 MIDI-track channels (mask bits 16+): the CC is copied to `0x400d2e79` and
 handed to `0x40010bc8(3, buf)` (`0x4000e886`) — a pass-through, not a
 CTRL-page write.
 
-### 2. Page/slot mapping — page 1 only ✅
+### 2. Page/slot mapping — page 1 only
 
 Poster `0x400053d8(kind, a, b, c, stamp, x)` writes a 12-byte record
 `{kind, a, b, c, u32 stamp, u32 x}` into ring `0x46c7ff7e[64]` and posts its
@@ -245,13 +240,13 @@ The table `0x400a7280 = {0,2,1,3,4}` re-orders the manual's CC groups
 
 **No CC reaches page-2 slots 6..11.** The handler admits only `cc−16 < 30`,
 and the writer's slot is `flat % 6`, so slots 6–11 are unrepresentable on
-this path. ✅ (The knob path `0x40055008` uses the same `page*6+slot`
+this path. (The knob path `0x40055008` uses the same `page*6+slot`
 addressing off the six-entry encoder table `0x400c085a`; page-2 editing
 goes through other code — the Part region at `+0x8ef5a`, read by
-`0x4003a55a`, `0x4003ed34` etc., is the likely page-2 store 🟡, not
+`0x4003a55a`, `0x4003ed34` etc., is the likely page-2 store not
 examined.)
 
-### 3. The generic writer ✅
+### 3. The generic writer
 
 `FUN_40054cd8(int track, int flat, int value)` — callers: `0x40062530`,
 `0x400625aa` (CC path) and `0x400a15f0`. The UI knob path does **not** call
@@ -261,14 +256,14 @@ the same body. Steps, all measured:
 1. `page_kind = flat/6`, `slot = flat%6`; descriptor `P = FUN_40031da4(track, page_kind)`.
 2. Enable bitmap check `0x400a6994(P+0x18a, P+0x18e, slot*4)` bit 0 → else
    returns −1 (`0x40054d26`). A disabled slot is refused, not written.
-3. `0x40027e00` / `0x40027e30` (project-dirty flags 🟡).
+3. `0x40027e00` / `0x40027e30` (project-dirty flags).
 4. Audio track (`track ≤ 7`): storage address
    - PB page: `Part + 0x8edaa + track*30 + machine*6 + slot` (`0x40054d7e..88`
-     computes `(m<<3) − m*2`; octalab's validator reading agrees, 13 Sep 2026)
+     computes `(m<<3) − m*2`; octalab's validator reading agrees)
    - others: `Part + 0x8ee9a + track*24 + (flat − 6)` (24 B/track = AMP·LFO·FX1·FX2 × 6)
    plus a shadow copy at `0x100a4ef8`/`0x100a4fe8` + same offset.
 5. Clears a per-track lock bit `0x80001538[t] &= ~(1<<flat)` and byte
-   `0x80001658[t*32+flat]` (p-lock/override state 🟡).
+   `0x80001658[t*32+flat]` (p-lock/override state).
 6. **Clamp** (`0x40054dee`): `v = min(max(value, P+0x6a[slot]), P+0x6a[slot] + P+0x9a[slot] − 1)` — the descriptor's min and count are applied.
 7. Stores `v` to Part, shadow and the **live byte `0x80000810[track*72 + flat]`**;
    writes `0xa0` to `0x80000db4[track*72 + (flat/4)*4]` (per-4-param group marker).
@@ -283,12 +278,12 @@ and call `0x4009eec8`.
 array `0x80000a50` as `value << 8` — which is exactly why knob values sit at
 bits 16–23 of the DSP word (`PARAM_PAGES.md`). The same loop also fills a
 second byte lane at `+0x20` (`0x80000830..`) and six more at `+0x3e`. Page 2
-is that `+0x20` lane ✅ (`0x80000810 + track*72 + 0x20 + slot2` for the
+is that `+0x20` lane (`0x80000810 + track*72 + 0x20 + slot2` for the
 PLAYBACK page; FX2 page 2 at `+0x38`, FX1 page 2 at `+0x32`; section 6). The `0xa0`
 marker array `0x80000db4` is walked by the packer at `0x4000d648`. A CC
 write lands in the next frame's record; there is no explicit "publish" call.
 
-### 4. Crossfader and channel→track ✅
+### 4. Crossfader and channel→track
 
 CC 48 → kind `0x44` → `0x4006269a`: `0x460d16c8 = 127 − value`, then
 rebuilds the 10-entry gain table `0x80003c60..0x80003c88` from the curve
@@ -300,7 +295,7 @@ same code with `0x460d16c8 = msg[1]` (no inversion) and, if
 `0x40033e3c(8, 0x30, 127 − v)` — CC 48 out — before jumping to `0x400626de`.
 **Same variable, same table, same `0x4003f1b4`.** The poster of kind 4 (the
 ADC scanner) was not located; the identification rests on the CC-48-out
-echo and the shared body 🟡.
+echo and the shared body.
 
 Readers of `0x460d16c8` (scene interpolation): `0x4003ee4c`, `0x4003f0d0`,
 `0x4006ff34`, `0x400935a8`, `0x4009dd30`, `0x400a3126`, `0x400357cc`.
@@ -322,7 +317,7 @@ CC 16–45 on the auto channel to track 8 regardless of AUDIO CC IN
 - A value outside `[min, min+count)` reaching `0x80000810`: would mean the
   clamp at `0x40054dee` is bypassed (only the three callers above exist).
 
-### 6. Page 2 over CC: the mechanism, measured on hardware ✅
+### 6. Page 2 over CC: the mechanism, measured on hardware
 
 Page 2 reaches the engine through the live lane: the per-frame copier
 `0x4000cae8` (and its twin `0x40003d14`) ships `0x80000a50`'s halfwords and
@@ -352,7 +347,7 @@ and tail-jumps to the page redraw. The FX2 dial reads the displayed value
 from the Part via the page cache.
 
 `modules/cc-map` (CC 102-107 → FX2 page 2, CC 108-111, 14, 15 → FX1 page
-2; 62-67 and 68-73 until 1 Nov 2026) makes the FX2 editor's stores for
+2; 62-67 and 68-73) makes the FX2 editor's stores for
 its FX2 block and the FX1 editor's for its FX1 block. Its first
 versions used the PLAYBACK editor's stores (reading `0x4003a474` as "the
 page-2 editor"), so CCs corrupted the track's PLAYBACK page-2 byte and never
@@ -366,7 +361,6 @@ capture, a page-1 control proving the harness each run), an emulator
 write-diff of the editor against the cave (every store, same inputs),
 `tools/verify/verify_cc_map.py` (the cave's writes for all eight tracks
 against the FX2 editor under the emulator).
-
 
 ---
 
@@ -407,17 +401,17 @@ table read from the image), **I** = inferred.
   `0x46c7ea20`, prio 6): loops `0x40000d00(0x46c7e974)` (blocking receive),
   then `jsr table[status>>4]` with **table `0x400d6474`** (M, read from image):
 
-  | idx | handler | |
-  |---|---|---|
-  | 0-7 | `0x40001850` | (data bytes, never posted) |
-  | 8 | `0x4000db98` | **note off** |
-  | 9 | `0x4000e018` | **note on** (vel 0 → falls into `0x4000db98`, `0x4000e044`) |
-  | A | `0x4000a640` | poly AT |
-  | B | `0x4000e79c` | **CC** |
-  | C | `0x4000da40` | program change |
-  | D | `0x4000a51c` | channel AT |
-  | E | `0x4000a3e0` | pitch bend |
-  | F | `0x40001900` | system: `jmp table 0x400d2d98[status&0xF]` |
+| idx | handler |  |
+|---|---|---|
+| 0-7 | `0x40001850` | (data bytes, never posted) |
+| 8 | `0x4000db98` | **note off** |
+| 9 | `0x4000e018` | **note on** (vel 0 → falls into `0x4000db98`, `0x4000e044`) |
+| A | `0x4000a640` | poly AT |
+| B | `0x4000e79c` | **CC** |
+| C | `0x4000da40` | program change |
+| D | `0x4000a51c` | channel AT |
+| E | `0x4000a3e0` | pitch bend |
+| F | `0x40001900` | system: `jmp table 0x400d2d98[status&0xF]` |
 
   Realtime table `0x400d2d98` (M): `F8 → 0x40005a48` (clock), `FA →
   0x4000a274` (start), `FB → 0x4000a200` (continue), `FC → 0x4000a1e0`
@@ -508,13 +502,8 @@ nothing per channel needs decoding.
 The 0x40-byte per-track record (`0x80000110 + ping*0x200 + t*0x40`) is
 **fully written every frame** by the frame builder's copy loop at
 `0x4000cb2a..0x4000cb98` (same function as the writer call; no `rts`
-between `0x4000c8a2` and the `jsr 0x40004bd4` at `0x4000d0e4`, M). ❌ The
-`FUN_4000c8a4` this document named until 23 Sep 2026 is not a function:
-`0x4000c8a4` is inside the operand of `lea 0x46c7e9fa,%a2` at `0x4000c8a2`
-(objdump, the stream converging from `0x4000c864`), and the builder is
-part of the frame ISR `0x4000aad0` (`lea -252(%sp)`) `..0x4000d9b0` (`rte`
-at `0x4000d9ae`). Jannik Aßfalg's profiler refused the label; re-checked
-here ✅:
+between `0x4000c8a2` and the `jsr 0x40004bd4` at `0x4000d0e4`, M). Jannik Aßfalg's profiler refused the label; re-checked
+here:
 
 ```
 4000cb4e  moveml d0-d5,(a0)      ; +0x00..+0x17  <- 0x80000a50+64t [24..47]
@@ -552,15 +541,13 @@ Consequences:
   only +0x18..+0x23, +0x30..+0x35 and +0x38 (M), so no ColdFire reader of
   +0x24..+0x2f was found either.
 
-
 ---
 
 ## Appendix C: Scene morph / crossfader (record)
 
 Static read of `out/raw/section_3_MAIN_OS.bin` (base `0x40000400`), disassembled
 with `m68k-elf-objdump -m m68k:cfv4e` (radare2's m68k plugin cannot decode
-ColdFire `mvs/mvz/byterev/mac`, which is most of this code). Markers as in
-`CHIP.md`: ✅ read from the code, 🟡 inferred, ⬜ not found.
+ColdFire `mvs/mvz/byterev/mac`, which is most of this code). 
 
 ### 0. Headline
 
@@ -574,7 +561,7 @@ ColdFire `mvs/mvz/byterev/mac`, which is most of this code). Markers as in
   exclusion is structural (block size, buffer size, loop extents), not one
   `cmp`.
 
-### 1. Scene block layout ✅
+### 1. Scene block layout
 
 `base + pattern*0x18b2 + scene*0x100 + 0x8f3e2`, **8 tracks × 0x20 bytes**.
 Scene byte *k* of a track is the lock for **DSP-frame halfword *k*** of that
@@ -584,11 +571,11 @@ at `0x4000ce60..0x4000ced4`). Frame halfwords are `knob<<8 | companion`
 
 | scene bytes | frame halfwords | page |
 |---|---|---|
-| 0..5 | page-block `0x80000510+ping·0x180+track·0x30`, hw 0..5 | PLAYBACK p1 (byte 1 = STRT, 2 = LEN, 3 = RATE ✅ from the STRT/LEN encoder hooks `0x4003eef0`/`0x4003ec7c` and `FUN_4003f1b4`) |
-| 6..11 | same block, hw 6..11 | LFO p1: the LFO engine reads SPD *i* at word 6+i and DEP *i* at 9+i (✅ objdump, `LFO.md` section 2) |
-| 12..17 | voice record `0x80000110+ping·0x200+track·0x40`, hw 0..5 | AMP p1: PMTR 12–17 write there (✅ objdump, `LFO.md` section 5) |
-| 18..23 | voice record hw 6..11 | FX1 page 1 (`r6+0..5`) ✅ |
-| 24..29 | voice record hw 12..17 | **FX2 page 1 (`r6+0..5`)** ✅ |
+| 0..5 | page-block `0x80000510+ping·0x180+track·0x30`, hw 0..5 | PLAYBACK p1 (byte 1 = STRT, 2 = LEN, 3 = RATE from the STRT/LEN encoder hooks `0x4003eef0`/`0x4003ec7c` and `FUN_4003f1b4`) |
+| 6..11 | same block, hw 6..11 | LFO p1: the LFO engine reads SPD *i* at word 6+i and DEP *i* at 9+i (objdump, `LFO.md` section 2) |
+| 12..17 | voice record `0x80000110+ping·0x200+track·0x40`, hw 0..5 | AMP p1: PMTR 12–17 write there (objdump, `LFO.md` section 5) |
+| 18..23 | voice record hw 6..11 | FX1 page 1 (`r6+0..5`) |
+| 24..29 | voice record hw 12..17 | **FX2 page 1 (`r6+0..5`)** |
 | 30..31 | — | **skipped**: `addql #4,%a2` at `0x4000cef6`; SCENES P2 keeps its page-2 locks here (`modules/scenes-p2/README.md`) |
 
 **Not-locked sentinel: any negative byte (bit 7 set, i.e. `0xFF`)** — every
@@ -597,14 +584,14 @@ the 0..127 knob value; it is shifted `<<8` into the halfword, so **a lock only
 ever represents the knob byte**. FX2 page 2 (`r6+$c..$e` = voice-record
 halfwords 24..26) has no scene byte, and the morph loop stops at halfword 17.
 
-Shared-RAM working copy ✅: `0x80000ed4 + track*0x40`, bytes interleaved
+Shared-RAM working copy: `0x80000ed4 + track*0x40`, bytes interleaved
 `[A_k, B_k]` (A = scene selected at `+0x8ed90`, B = `+0x8ed91`). Filled by
 apply-part (`0x40009424`, `0x40009bee`), pattern change (`0x4000225a`), the
 frame builder itself on a selection change (`0x4000c24a`), and patched in place
 by the scene editor (`0x40053a2c`: `0x80000ed5 + slot*2` for B). Exactly 32
 pairs; no spare.
 
-### 2. Morph arithmetic ✅
+### 2. Morph arithmetic
 
 Crossfader position: **`0x460d16c8`, long, 0..127**. On every write the
 handlers rebuild a **per-track weight table `0x80003c60`, 10 longs** (all the
@@ -622,9 +609,9 @@ one weight long per track. Per halfword (`0x4000ce60..`):
 | A lock | B lock | result |
 |---|---|---|
 | yes | yes | `A·xf/127 + B·(1-xf/127)` |
-| yes | no  | `A·xf/127 + knob·(1-xf/127)` |
-| no  | yes | `knob·xf/127 + B·(1-xf/127)` |
-| no  | no  | `knob` (× `0x8000` = 1.0, exact passthrough) |
+| yes | no | `A·xf/127 + knob·(1-xf/127)` |
+| no | yes | `knob·xf/127 + B·(1-xf/127)` |
+| no | no | `knob` (× `0x8000` = 1.0, exact passthrough) |
 
 So **xf = 127 ⇒ the `+0x8ed90` scene, xf = 0 ⇒ the `+0x8ed91` scene**, linear
 in between, no rounding beyond the MAC's, **no clamp against the descriptor
@@ -633,13 +620,13 @@ count** (the lerp cannot leave `[min,max]` of its endpoints). The whole
 (companion / DSP bits 8-15) becomes fraction bits — harmless on page 1 where
 the low byte is unused, fatal for any scheme that wanted to lock a companion.
 
-Where it writes ✅: into the **ping-pong DSP frame** (`0x80000510+…` and the
+Where it writes: into the **ping-pong DSP frame** (`0x80000510+…` and the
 voice records `0x80000110+…`), which the builder re-copies each frame from the
 live blocks (`0x80000a50`/`0x80000830`, copy loop `0x4000cb2a`). The live
 per-track parameter words (what the panel edits and the record writer
 `0x40004bd2` publishes ids into) are never modified. Every frame, all 8 tracks.
 
-Scene disable flags ✅: `0x80000006` / `0x80000007` (toggled by `0x4004d928` /
+Scene disable flags: `0x80000006` / `0x80000007` (toggled by `0x4004d928` /
 `0x4004d908`, mirrored at `0x100b14d2/d3`). One set → that scene is treated as
 absent (branches `0x4000cd7a` = A-only, `0x4000cc96` = B-only, same maths,
 `byterev` to pick the byte). Both set → morph skipped and the crossfader-volume
@@ -647,7 +634,7 @@ words forced to `0x7f00`. XVOL is a separate A/B halfword array `0x800010d4`
 (10 entries) → `0x80000c80` (`0x4000cd22`, `0x4000cefc`) — that is where
 `AMP p5 XVOL` goes, confirming `PARAM_PAGES.md`'s warning.
 
-`FUN_4003f1b4` ✅: runs only when `0x460d16c8 != 0x400c0c44` (last value),
+`FUN_4003f1b4` : runs only when `0x460d16c8 != 0x400c0c44` (last value),
 loops 8 tracks, reads scene bytes 1..3 of A and B, defaults from Part
 `+0x8edab/ac/ad + track*0x1e`, same lerp (`(B−A)·2T + B<<16`, rounded), and
 posts message type `0x0e` (STRT/LEN/RATE + sample slot) to queue `0x460d17ee`
@@ -660,18 +647,18 @@ via `0x40000c3c`. Callers: the two fader-event handlers (`0x400626de`) and
 Event loop `FUN_40061a94`, queue `0x460d17ae`, jump table `0x40061cfa`
 (index = type − 1):
 
-* **type 4 → `0x40061e0a`** ✅: `xf = a2@(1)` raw, **gated on `0x8000004a`
+* **type 4 → `0x40061e0a`**: `xf = a2@(1)` raw, **gated on `0x8000004a`
   bit 0**; rebuilds weights, draws UI element `0x30` with `127 − xf`, then
   `FUN_4003f1b4`. **Producer of the type-4 event ⬜ not located** — no static
   message buffer in the image carries type 4, and it is not the DSPI RTC/panel
   helpers at `0x4001c360..`. Likely a dynamic buffer from the panel/ADC task;
   find by breakpointing `0x40061e0a` or by the `0x8000004a` writer.
-* **type 0x44 → `0x4006269a`** ✅: `xf = 127 − a2@(3)`, same weights, same
+* **type 0x44 → `0x4006269a`**: `xf = 127 − a2@(3)`, same weights, same
   `FUN_4003f1b4`. Produced by the **MIDI CC parser at `0x4000ec60`**:
   `moveq #48; cmp d1` → gated by `FUN_40033970` / bit 8 of the track's MIDI
   word / `0x80000049` → `FUN_400053d8(0x44, 0, 0, value, 0, 0)` (generic
   poster, ring of 12-byte messages at `0x46c7ff7e`). **So MIDI CC 48 writes the
-  same variable, inverted.** 🟡 If CC48 = 0 is "scene A" per the manual, then
+  same variable, inverted.** If CC48 = 0 is "scene A" per the manual, then
   xf = 127 is the A end and `git show 3ceba41:docs/history/NOTES.md`'s A = `+0x8ed90` labelling holds.
 
 ### 4. Page 2 and scene locks
@@ -686,10 +673,10 @@ lock the wrong way (would invert section 2's endpoint claim).
 
 ## Appendix D: CC out — the emitter (record)
 
-`0x40033e3c(track, cc, value)`, stack arguments, disassembled 28 Sep 2026
+`0x40033e3c(track, cc, value)`, stack arguments, disassembled 
 (`modules/cc-feedback`). Gated on `0x8000004a` (AUDIO CC OUT) **bit 1**;
 bit 0 is what the panel crossfader path tests before applying its move
-(section 4 above), so bit 0 = INT, bit 1 = EXT ✅. `track` 8 = the current track
+(section 4 above), so bit 0 = INT, bit 1 = EXT. `track` 8 = the current track
 (resolved to the first audio-track channel no MIDI track uses); a track
 0..7 uses `0x8000003f + track` (−1 = off → return) and returns if a MIDI
 track's channel byte (`0x46c76de0 + 68·i`, ch+1) equals it. It does not
@@ -718,3 +705,4 @@ traced. Nothing calls it on a pattern, part or project change.
 What CC FEEDBACK's sweep puts through it, measured under the port:
 `modules/cc-feedback/README.md`.
 
+|  |

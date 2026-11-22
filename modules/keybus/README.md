@@ -17,14 +17,6 @@ T1..T8 ([`modules/character`](../character/README.md)).
 - **Forms:** `max a,b` is stock's (payload A `P:0x1e8`); the long-displacement store `move b,x:(r1+xxx)` is
   BusVerb's class (`0a7_8e`/`8f`), which runs on the unit.
 
-## Measured
-
-- `tools/verify/verify_keybus.py` under dsp_host, on `test/keybus` and `octabam` (9 Nov 2026): on both payloads
-  the hook reaches the tap (directly, or through SC's bridged stub on `octabam`); the tap's word for the track
-  holds the input block's exact peak and the other seven stay 0, for x:$420 as dsp_host leaves it and for every
-  track 0..7 (the tap's track read redirected to a planted cell in a copy of the dump); silence publishes 0; through
-  SC's bridged stub with SC not loaded, the same word.
-
 ## Not covered
 
 - That the dispatcher reaches the site for every track on the unit (stock's per-track path; SIDECHAIN_COMPRESSOR's

@@ -16,7 +16,7 @@ first knob) becomes K, 0 to 12; above 12 it renders 12. The test remixes
 - The result was one 4-voice track as the ColdFire's limit, which is why
   WAVE runs on the DSP instead.
 - The engine matches CHOMPI WAVE's own float classes closely until the
-  pitch LFO starts, then parts (measured on a harness, 2 Oct 2026).
+  pitch LFO starts, then parts.
 - The `waveload` image does not assemble at present (`meter.s:91`, short
   branch displacement 130), so no capture of it is possible until that is
   fixed.

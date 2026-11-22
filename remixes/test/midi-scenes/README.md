@@ -12,10 +12,6 @@ switch) runs. The remix has not been flashed.
   pattern switch mid-pattern, which is the case where the mix must follow
   in the same step.
 
-## Status
-
-`verify_scenes` runs the panel scenarios on this image and on MIDISC2.1's under the port and compares MIDI out, the lock table, the track records and the screen. Not flashed.
-
 ## Build
 
 ```bash

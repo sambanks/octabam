@@ -4,13 +4,9 @@ OS 1.40C, ColdFire side, above the ATA stack (`ARCHITECTURE.md` section 5): the
 filesystem vtable, the sample-slot loader and its status records, where a
 Part lives, and what the unit writes to the card. Read by nordseele for
 octalab ([`nordseele/octalab-notes`](https://github.com/nordseele/octalab-notes),
-MIT, findings only; read here 13 Sep 2026 at commit `40ffa53`, again 23
-Sep 2026 at `e0dc56d`) on an Octatrack MKI, and re-read here where marked.
+MIT, findings only; read here at commit `40ffa53`, again at `e0dc56d`) on an Octatrack MKI, and re-read here where marked.
 
-Status key as `CHIP.md`: ✅ measured on their MKI or read from our image ·
-🟡 adopted on their evidence.
-
-## 1. The filesystem layer (nordseele's `FS_LAYER.md`) ✅
+## 1. The filesystem layer (nordseele's `FS_LAYER.md`)
 
 A 23-slot FS vtable `0x46c823fa..0x46c82452`, three implementations
 installed by `0x40014524` / `0x40014636` / `0x40014750`, variant B runs
@@ -18,7 +14,7 @@ installed by `0x40014524` / `0x40014636` / `0x40014750`, variant B runs
 mode) → fd`, `0x46c823fa` existence probe, `0x46c8241e` file size;
 `0x46c82456` is the bank pointer, not a slot. `0x40090a14` = recursive
 directory walker `walk(path, *dirs, *files, mode, progress)`, stacks
-`0x46070e44`/`0x46038e40`; 🟡 `mode == 0` calls `0x46c8241a` per file and
+`0x46070e44`/`0x46038e40`; `mode == 0` calls `0x46c8241a` per file and
 `0x46c8243a` per directory (unlink/rmdir; never call mode 0 on a card you
 care about); it enumerates a whole directory before the callback.
 Buffered primitives `0x40016864` open, `0x400166b8` write, `0x4001677c`
@@ -28,12 +24,12 @@ A directory record is 0x140 bytes (filled by the resolve-path / next-entry
 slots): name at `+0`, FAT attribute byte at `+0x10d` (0x10 = directory),
 first cluster the LONG at `+0x11e`. The walker keeps the record at
 `sp+0x2a`, tests `+0x10d` and hands `+0x11e` to the iterator slot
-`0x46c82442` (`0x40090a98..0x40090aaa`, re-read here 23 Sep 2026 ✅). The
+`0x46c82442` (`0x40090a98..0x40090aaa`, re-read here). The
 word at `+0x120` is that long's low half: enough on FAT16, wrong on a
 FAT32 card for any folder past cluster 65535 — a folder copied late to a
-32 GB card was not listed (nordseele, MKI ✅).
+32 GB card was not listed (nordseele, MKI).
 
-## 2. Slot loading (nordseele's `SLOT_LOADING.md`, MKI) ✅
+## 2. Slot loading (nordseele's `SLOT_LOADING.md`, MKI)
 
 `0x40093980(slot, keep_trim)` has one caller (case 1 of `0x4008445c`),
 followed by post-load (`0x40099148(0, slot)` / `0x40099680`),
@@ -46,7 +42,7 @@ state 0/2/3, `+0x0c` code, `+0x24` handle; `-0x10` INVALID FILENAME,
 the handle: MAX OPEN FILES). STATIC settings `0x100d5b30`, FLEX
 `0x100b14f0`, stride `0x448`.
 
-## 3. A Part lives three times (nordseele's `FINDINGS.md`, MKI) ✅
+## 3. A Part lives three times (nordseele's `FINDINGS.md`, MKI)
 
 Working `bank + 0x8ed80 + part*0x18b2`, saved `bank + 0x9504a + …`, SRAM
 `0x100a4ece + part*0x18b2` (the copy that survives a power cycle;
@@ -56,13 +52,11 @@ and re-applies with `0x40009094(bank, part)` (also copies scenes A/B at
 `part + 0x10/0x11` into `0x80000ed4`). The page arrays inside a Part are
 `PARAM_PAGES.md` section 5.
 
-## 4. The card from the host (nordseele's `PROJECT_FILE.md`, MKI) ✅
+## 4. The card from the host (nordseele's `PROJECT_FILE.md`, MKI)
 
-`PATH=` bare, no quotes; the unit writes nested STATIC paths itself (❌
-retracted 13 Sep 2026: "a STATIC PATH must be bare, `../AUDIO/…` loads
-empty" — the empty slot is one with no `markers.work` record).
+`PATH=` bare, no quotes; the unit writes nested STATIC paths itself.
 `TRIM_BARSx100 = 100 × 2^round(log2(seconds × tempo24 / 24 / 240))`,
-capped 3200 (🟡 cap from one point), never cloned. `markers.work`: 16-byte
+capped 3200 (cap from one point), never cloned. `markers.work`: 16-byte
 header `FORM 00000000 DPS1SAMP`, 264 records × 784 B (136 flex incl. 8
 recorders, then 128 static), 8-byte trailer ending in `sum(body) &
 0xffff`; STATIC slot n at `16 + (136 + n − 1) × 784`, frame count at `+10`
@@ -74,9 +68,9 @@ and its RTC runs behind wall clock (compare content, not mtimes).
 `OS_VERSION=R0178     OLAB<n>`. `tools/hw/ot_project.py` never writes
 `markers.work` and has no trim command in this tree.
 
-How the firmware reads it (Tim Hastie, 22 Sep 2026, PC and write watches
+How the firmware reads it (Tim Hastie, PC and write watches
 under the port on stock 1.40C;
-`git show 666b6154:docs/firmware/COLDFIRE_PORT.md` O24) ✅:
+`git show 666b6154:docs/firmware/COLDFIRE_PORT.md` O24):
 - The project load's markers parser (`0x40086396`, in `0x40086xxx`) reads
   `PROJECT/markers.work` field by field: his reading is a 22-byte `FORM …
   DPS1SAMP` sub-header, 264 records of 784 bytes (FLEX 1..136, 129..136
@@ -93,10 +87,10 @@ under the port on stock 1.40C;
   (`0x4000f758..f76c`). The slot STATE records (`0x46c922c4 + 44·slot`)
   hold the file lengths regardless.
 - A zero or 64-frame trim therefore plays a 64-frame stub at every trig.
-  🟡 The browser's load writes `end` = the file's length (`0x40095d90..5dd8`,
+  Unconfirmed: The browser's load writes `end` = the file's length (`0x40095d90..5dd8`,
   read from the code, not driven through the browser).
 
-## 5. Project settings ✅ (read from the image, 7 Oct 2026; not run)
+## 5. Project settings (read from the image; not run)
 
 `project.work` carries a `[SETTINGS]` block, parsed in `0x40086c00..0x40088288`
 (the `TEMPOx24` key is referenced at `0x40086d72`) and written by `0x40088288`
@@ -141,7 +135,7 @@ and AUTO_CHANNEL (end at `0x40067994`) were seen without their entries. The
 setters write the RAM byte and the CS1 mirror and mark nothing dirty; the
 file is written at project save.
 
-## 6. CHANGE project list: RENAME / DELETE (FUNC+BANK) ✅
+## 6. CHANGE project list: RENAME / DELETE (FUNC+BANK)
 
 Stock's project-folder rename/delete is not a MAIN MENU row. It is the
 FUNC+BANK `LISTPOP` on **PROJECT → CHANGE** (`CHOOSE PROJECT`). Full map
@@ -151,7 +145,7 @@ image: `CHOOSE PROJECT` `0x400b5ce0`, `<CREATE EMPTY PROJECT>`
 `0x400b5bf1`, `RENAME PROJECT` `0x400b5c5c`, `DELETE THIS PROJECT?`
 `0x400b5d39`, `CHECKING PROJECT` nearby in the same cluster.
 
-## 7. The stock card logger (read from disassembly; the load's lines measured under the port, 13 Nov 2026)
+## 7. The stock card logger
 
 `0x4001ffe4(level, format, ...)` formats `<date> <LEVEL> <text>` and calls `0x4001ff2c(line)`, which opens
 `/LOG <date>.txt`, appends the line and closes it. The level table is at `0x400abf28`: CRITICAL, ERROR,
@@ -161,7 +155,7 @@ Measured under the port: `0x4001ff2c` called as the main routine (`--call`) does
 opcode at `0x4003b108`); from a STORE handler it writes the line. Not measured: a write from the engine task
 during play, or on a unit.
 
-## 8. SAVE PROJECT's path ✅ (read from the image 5 Nov 2026; run under the port from the panel's keys)
+## 8. SAVE PROJECT's path (read from the image; run under the port from the panel's keys)
 
 PROJECT > SAVE is the row action `0x40063890`: `0x400255ec` asks whether the project is on the card (no: SAVE TO
 NEW's `0x40063618`, the name keyboard), then a YES/NO popup. YES is `0x40063c54`: `0x400a10c8`, which stops the

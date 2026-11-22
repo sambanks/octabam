@@ -245,7 +245,7 @@ wrote at 387, and on lighter ones its eleven at 423 before `RING FULL`
 hook took 30 µs against 33: `mirror` 4.1 µs against 6.9, `gains` 0.78
 against 1.39 (20.10). Thirteen files, the inputs as four mono files,
 recorded too, at 261 µs a KB. `lm-stems` is STEMS12's 48 modules on main
-`c9cadc82`, with SHATTER for TRANSIENT (`modules/stems/FLASH.md` flash M).
+`c9cadc82`, with SHATTER for TRANSIENT (flash M).
 - STEM REC: a resting fader's gain slot holds one gain, and the track loops multiply by it without a ramp.
 - STEM REC: while a take records, each file writes whole clusters only, so the card never goes back to a cluster it left half written.
 
@@ -259,7 +259,7 @@ lines at seven tracks), and the mirror runs 3 to 4.5 µs over its
 instruction count, so the queue is to go (`docs/firmware/STEM_REC.md`
 20.9). Eleven files filled the ring in 10 s (`RING FULL`) with the card
 writing at 423 µs a KB, against 255 on STEMS11's eleven-file take; why
-isn't established (`modules/stems/FLASH.md` flash L). With the same ten
+isn't established (flash L). With the same ten
 files, other samples on the Static machines slowed the card from 252 to
 387 µs a KB. `lm-stems` as for STEMS11.
 - STEM REC: STATS.TXT splits the hook into four parts and probes the gain queue's cache lines; the mirror writes only the gains of the tracks a take records.
@@ -273,7 +273,7 @@ filled, ran 49 s with the ring at most 34% full, and no take reached 100%
 to take isn't measured on the unit yet. The `.ot`
 files hold the take's tempo and +12 dB. `lm-stems` is `octabam` plus STEM
 REC and MEMORY, with LOAD METER's refusal of STEM REC lifted in that build
-only; it isn't committed (`modules/stems/FLASH.md` flash K).
+only; it isn't committed (flash K).
 - STEM REC: a folder for each take, `<set>/AUDIO/!STEMS/<take>/<take>-<source>.wav`; T1 alone at 24 bits at boot.
 
 ## STEMS10 — 27 Oct 2026 (local remix `lm-stems`, branch `stems-next`)

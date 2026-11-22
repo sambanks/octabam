@@ -1,6 +1,6 @@
 # Remixes
 
-A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` builds it into a card-flashable image from your own OS 1.40C. Each remix is a directory here: `remix.py` is the selection, `README.md` says what is in it, where it has run and how to flash it. This index is rendered from the selections (`make docs`).
+A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` builds it into a card-flashable image from your own OS 1.40C. Each remix is a directory here: `remix.py` is the selection, `README.md` says what is in it and how to flash it. This index is rendered from the selections (`make docs`).
 
 - What to install first (the Xcode Command Line Tools, Homebrew, Python 3.10+, `cmake`, `uv`) and every step to a flashed unit: [BUILDING.md](../docs/guide/BUILDING.md).
 - Composing your own: [COMPOSING.md](../docs/guide/COMPOSING.md).
@@ -9,15 +9,15 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 
 ## The delay and reverb bus
 
-| remix | contains | proof |
-|---|---|---|
-| [`octabam-bus`](octabam-bus/README.md) | CORE + the extra ColdFire modules of octabam + the delay and reverb bus (BusDelay on T1's FX2, BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8) + SPECTRUM, CHARACTER and MODULATION on FX1. | measured on a unit (MKII, sambanks, OCTABAM-BUS 05 (REMIX SWITCH), 2026-11-22): OCTABAM-BUS 05, built from main at 382a478b plus the v0.5 release commit and booted by REMIX SWITCH from the flashed image (not flashed itself). pre-meter, pre-transport, pre-usb and dsp-watch pass; 32 program changes (SPECTRUM FX1 dear, CHARACTER FX1 dear, BASE): 0 unapplied, 0 bad DSP records, longest silence 340 ms. On the earlier BUILD 05 (5b991c85) also fx01 (28 layouts), kits-identity, scenes-sweep, scenes-latency and djump-off ran. Not run: djump-on, djump-burst, mix-soak, the loader phases (this remix has no loader). |
+| remix | contains |
+|---|---|
+| [`octabam-bus`](octabam-bus/README.md) | CORE + the extra ColdFire modules of octabam + the delay and reverb bus (BusDelay on T1's FX2, BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8) + SPECTRUM, CHARACTER and MODULATION on FX1. |
 
 ## Firmware mods on the stock effects
 
-| remix | contains | proof |
-|---|---|---|
-| [`octabam`](octabam/README.md) | The core ColdFire modules, SCOPE and TUNER, every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain. | measured on a unit (OCTA S2, 2026-11-15): Flashed S2 image. With SCOPE closed/open, 30 loader transitions per state had zero bad records. Median CF window peak 537.36/544.96 us, steady 355.77/359.37 us; median DSP window max 49/48%, steady max 49/48%; median audio gap 340/340 ms. Maximum gap 1,480/360 ms. The 40 ms GAP flag appeared on all transitions because the loader silence is about 340 ms. These results cover this flashed image and transition set. |
-| [`octabam-verbs`](octabam-verbs/README.md) | octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand, with VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words. | measured on a unit (MKII, sambanks, OCTABAM-VRB 05 (REMIX SWITCH), 2026-11-22): OCTABAM-VRB 05, built from main at 382a478b plus the v0.5 release commit and booted by REMIX SWITCH from the flashed image (not flashed itself). pre-meter, pre-transport, pre-usb and dsp-watch pass; 32 program changes (MODULATION FX2 dear, SPECTRUM FX2 dear, BASE): 0 unapplied, 32 bad DSP records (1 per transition, at the dear layouts' load; octabam's MODULATION dear logs the same), longest silence 340 ms. On the earlier BUILD 05 (5b991c85) also fx01-fx04 (VERBERATION in each MODE, VERB PLATE, ROOM and HALL), loader01-02, kits-identity, scenes-sweep, scenes-latency and djump-off ran. Not run: djump-on, djump-burst, mix-soak. The DARK REV stall of octabam needs the stock DARK REV, which this remix does not carry; not run to confirm. |
+| remix | contains |
+|---|---|
+| [`octabam`](octabam/README.md) | The core ColdFire modules, SCOPE and TUNER, every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain. |
+| [`octabam-verbs`](octabam-verbs/README.md) | octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand, with VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words. |
 
 Never share a built image: it contains Elektron's OS.

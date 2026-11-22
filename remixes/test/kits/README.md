@@ -6,10 +6,6 @@
 
 - **KITS** (sambanks) — a library of 255 Parts per project; each pattern plays its Kit through the stock Part slots. PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI: FUNC+MIDI, then FUNC+BANK).
 
-## Status
-
-Port-gated (`tools/verify/verify_kits.py`). Not flashed.
-
 ## Build
 
 ```bash

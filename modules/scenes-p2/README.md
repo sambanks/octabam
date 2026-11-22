@@ -3,71 +3,6 @@
 Scene locks and the crossfader for page 2 of FX1 and FX2. `Kind.CF_PATCH`:
 one DRAM unit, seven detours, nothing on the DSP.
 
-## Measured
-
-Under the port, 5 Nov 2026 (`octabam`, a fresh project, `verify_scenes_p2`'s
-`panel` scenario and a probe beside it):
-
-- From the panel: T1, FX2 SETUP open, SCENE A held, knob E turned three
-  times: scene 0 holds one cell (T1 FX2 slot 4 = LOCK, value 1), the Part
-  byte and the lane stay 0. Fader at the A end with the transport on: T1's
-  DSP record carries LOCK 1; at the B end, the knob's 0. FX1 SETUP, knob A:
-  the same (cell key 8, record 1 / 0).
-- Before the fix, the same gesture wrote no cell: a held scene installs
-  stock's scene-lock knob handler `0x40053498` over every encoder (the
-  dispatch table `0x46c7dede + 20·encoder`), so the page-2 editors and
-  their hooks were never called (`--watch-pc`: zero calls of `0x4003a9dc`
-  with SCENE A held, three without). The `editor` checks below call the
-  editor directly and could not see it (`TRAPS.md` "A held scene replaces
-  every encoder's handler"). `scene_knob_hook` at `0x40053498` sends a
-  turn to the edit hooks while an FX SETUP window is open; page-1 scene
-  locks with no window are unchanged (same scene-block byte as before).
-
-Under the port, 10 Oct 2026, the cells (`tools/verify/verify_scenes_p2.py`
-on `remixes/test/scenes-midisc`, MIDI SCENES + KITS + SCENES P2 + PLOCKS
-P2, OCTABAM89_setgate):
-
-- Cells `{scene 0: MODE 1, TIME 100; scene 1: TIME 20}` on T1, fader 64:
-  MODE 1 and TIME 60 in both pings; fader 0: MODE the knob, TIME 20.
-- The FX2 editor with scene A held: one cell written in the working window
-  and the SRAM twin, the Part byte and the lane unchanged; a seeded cell
-  updated in place; FUNCTION + turn empties it; with all eight cells of the
-  scene taken the turn is dropped.
-- Stock scene copy `0x400274cc(0, 0)` then paste `0x40027578(0, 3)`: scene
-  3's cells equal scene 0's.
-- Stock image, every scene block's bytes 30 and 31 set to `0x12 0x34` in
-  every Part record against the unmodified project, 300 frames with the
-  transport on: no DSP block differs (`blockdump.py diff`); the working
-  copy `0x80000ed4` differs in those bytes' pairs only.
-- 1,536 bank files on this machine: bytes 30 and 31 are `0xff` in all
-  196,608 scene blocks. The census does not show that no stock code reads
-  them; the frame builder skips them (`0x4000cef6`), and scene copy, paste,
-  undo snapshot and clear move 32 bytes a track (`moveq #32` at
-  `0x400274f8`, `0x40025bc8`, `0x4002761c`, `0x40038cbc`).
-
-Under the port, 26 Sep 2026, the 144-byte pool at Part `+0x17a2` this
-module used until 10 Oct 2026 (stock's LFO designs of MIDI tracks 2–8,
-`docs/firmware/PARTS.md` section 9):
-
-- bamsep26 and rig-kits (Octakit): pool `{scene 0: MODE 1, TIME 100;
-  scene 1: TIME 20}` on T1 (BusDelay), fader 64: T1's record carries MODE 1
-  and TIME 60 in both pings, the predicted lerp exactly; fader 0: MODE 0
-  (the knob), TIME 20. Scene A disabled: the A side is ignored (the fixture
-  project has it off).
-- The FX2 editor called with scene A held: the pool and its SRAM twin gain
-  one entry, the Part byte and the live lane do not move; with a seeded
-  entry the same entry is updated, count 1; with FUNC held the entry is
-  removed. Under rig-kits the held call returns cleanly and the pool lands
-  in the Part DB's current bank.
-- Scene copy fills the clip; paste into another scene adds the clip's
-  entry under it; clear drops the scene's entries; the undo snapshot fills
-  the undo clip and a write from the undo buffer restores it.
-
-## On the unit
-
-- Anything on hardware beyond being carried by image 88 (pre-fix), not
-  exercised there.
-
 ## Open
 
 - The dial hook (a draw; the port's LCD was not driven to the page).
@@ -91,10 +26,6 @@ module used until 10 Oct 2026 (stock's LFO designs of MIDI tracks 2–8,
   value. An ISR between two stores sees no lock or a whole one. The order
   is by reading the code; the port is lock-step and cannot interleave the
   ISR with the task.
-
-## Gates
-
-- `tools/verify/verify_scenes_p2.py`.
 
 ## What stock does
 

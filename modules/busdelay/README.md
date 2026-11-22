@@ -33,63 +33,6 @@ In REVERSE LineL alone is the 32K mono ring (the R line is not read or
 written; XTRM = 16,384 samples = 371 ms, the mode's default), PING is forced
 off and the output is mono to both channels.
 
-## Measured
-
-- CLEAN and REVERSE bit-identical across the `verify_delay` cases (defaults,
-  PING 0/127, TIME 0/127, FDBK+TONE, split, WET 0, wow, the unknown-mode
-  fallback); `verify-bus` 28/28 (GRAIN, REVERSE, PING and the reverb's other arms were added to the gate 23 Sep 2026).
-- GRAIN DC gate (0.25 FS DC, full density, unison): p-p 0 across scatter
-  0/64/127 and every size (four windows a quarter period apart sum to
-  exactly 2).
-- GRAIN pitch (438 Hz tone, 93 ms grains, TIME 127): PTCH 64 → 438.7 Hz;
-  96 → 869.4 (876 expected); 32 → 223.4 (219); 48 → 309.5 (310); 127 → 1709
-  (1714). MIDI note 96 → 869.4, 91 → 654.1, 72 → 223.4. Below about −1.5
-  octaves the finder reads 10–25 % low (note 60 → 94 for 110): finder or
-  engine, unverified. 186 ms grains at TIME 100 clamp PTCH 127 to 2.5×.
-- GRAIN density law (0.5 FS tone, 93 ms): −14.6 / −11.2 / −10.7 / −11.3 /
-  −12.0 dBFS at DENS 0/32/64/96/127; GRAIN's peaks sit level with CLEAN's
-  (RMS ~4 dB under).
-- PING at FDBK 60: 0 mono (L/R correlation 1.000), 32 / 64 near-mono (0.998
-  / 0.965), 96 / 127 the bounce (0.73 / 0.01); 127 leans +4.4 dB left (L
-  gets repeats 1, 3, 5: L/R = 1/feedback).
-- REVERSE at 371 ms: a 50 ms burst comes back reversed ~300 ms later; the
-  sine is continuous at every size.
-- Cost: 1,300 words on payload B; pricer (`cycle_count.py --modes`, words)
-  GRAIN 1,028 / REVERSE 395 per sample (1,354 words and 1,126 before the
-  23 Sep 2026 rewrite; 1,326 words after the return left 20 Sep, +28 for
-  the TIME ramp).
-- 5 Oct 2026, the cycles pass (bit-identical, `verify_delay.py` against
-  the 23c91b15 engine, every case): GRAIN 1,007 → 975 per sample. The
-  grain readers' two clean reloads per grain went: `move a1,r5` and
-  `move a1,r6` take a1 raw, as the t1 read already did, and `add #>$1`
-  needs only a1 correct before its mask.
-- 23 Sep 2026: the sample loop reads the aux accumulator through r3 and
-  writes the chain at `(r3+n3)`, keeps x_in, the lag, the fraction, the
-  TIME ramp, the crossfeed terms and the stage outputs in registers, and
-  the GRAIN and REVERSE arms run after the line writes and write the wet
-  slots themselves (the SHIFTED substitution and its flag are gone; GRAIN
-  keeps s/frac/gain/t0 in registers, its phase cursor in r6 and its wet sum
-  in n6; REVERSE keeps its lags and windows in registers). Displaced
-  `(r7+$..)` moves per sample, counting each `do #4` body four times and
-  callees per call: CLEAN 91 -> 35, GRAIN 294 -> 102, REVERSE 109 -> 39.
-  Probe 57 (`docs/firmware/CHIP.md` section 2) timed a one-word displaced move at
-  3.98 cycles against 2.00 for a pointer or register move. All 28
-  `verify-bus` cases bit-identical. Not gated: a TIME move during a render
-  (no case glides), so the ramp's move to n4 is by reading, not by render.
-- 23 Sep 2026: two per-block writes landed in GRAIN's records. The PITCH
-  decode parked f and oct in raw $49, grain 3's scatter word on line L
-  (moved to raw $16); the SIZE decode wrote the REVERSE lag cap to raw $56,
-  grain 3's window multiplier on line R (the write was a duplicate of raw
-  $2a's and is gone). Each change moves the two GRAIN gate cases and none
-  of the other 26.
-
-## On the unit
-
-Image 28 (15 Sep 2026), the two 32K lines: "sounds fantastic now".
-
-On Sam's unit in every flash that carried the bus. Heard: REVERSE 371 ms over 93 ("the long
-one is better"); GRAIN DENS 32 → 127 on the loop "sounds pretty good".
-
 ## Open
 
 - REVERSE's segment ceiling is 371 ms (its 32K ring is LineL); a 741 ms
@@ -97,14 +40,6 @@ one is better"); GRAIN DENS 32 → 127 on the loop "sounds pretty good".
   in the private region).
 - Pitch accuracy below −1.5 octaves: finder or engine.
 - The delay's wet is ~4 dB quieter than the reverb's at equal send.
-
-## Gates
-
-The manifest's gates: `tools/verify/verify_grains.py`,
-`tools/verify/verify_tempo.py`, `tools/verify/verify_two_core.py`,
-`tools/verify/verify_one_bus.py`. `verify_delay` and `make verify-bus` (28
-cases) are the bit-identity gates quoted under Measured; `make
-verify-knobs` covers the per-sample ramps.
 
 ## Memory: two 32K lines, 741 ms
 

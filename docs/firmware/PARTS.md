@@ -3,8 +3,8 @@
 OS 1.40C, ColdFire side. Where a Part lives, which stock routines copy,
 save, reload and apply it, and what the sequencer does with a pattern's
 Part when the pattern changes. Measured under the ColdFire port on the
-stock image with OCTABAM89_setgate (bank 3 saved) on 5–6 Oct 2026 unless
-marked; ✅ measured or read from the code. Base `0x40000400`. The page
+stock image with OCTABAM89_setgate (bank 3 saved) unless
+marked; measured or read from the code. Base `0x40000400`. The page
 arrays inside a Part are `PARAM_PAGES.md` section 5, the step locks
 `STEP_LOCKS.md`, the files `STORAGE.md` and `STEP_LOCKS.md` section 5.
 
@@ -13,23 +13,23 @@ arrays inside a Part are `PARAM_PAGES.md` section 5, the step locks
 `B` = a bank's RAM, `0x400e21e0 + bank·0x9b340`; `p` = the Part, 0..3;
 `0x18b2` (6,322) bytes a Part.
 
-| what | address | |
+| what | address |  |
 |---|---|---|
-| working Part | `B + 0x8ed80 + p·0x18b2` | ✅ |
-| saved Part | `B + 0x9504a + p·0x18b2` | ✅ |
-| unsaved bits (bit p = working differs from saved, as stock tracks it) | byte `B + 0x95048` | ✅ |
-| has a saved copy | bytes `B + 0x9b312 + p` | ✅ |
-| name, six characters and a NUL | `B + 0x9b316 + 7·p` | ✅ |
-| bank written by the next bank write | long `B + 0x9b332` | ✅ |
-| a pattern's Part | byte `B + n·0x8ed8 + 0x8e57` | ✅ |
-| the current bank's copies in CS1: patterns, working Parts, saved Parts, unsaved bits, has-saved bytes, names, edited flag | `0x1001614e`, `0x100a4ece`, `0x100ab196`, `0x100b145e`, `0x100b145f`, `0x100b1463`, `0x100f8598` | ✅ (`0x4000faf0` copies each from `B`) |
+| working Part | `B + 0x8ed80 + p·0x18b2` |  |
+| saved Part | `B + 0x9504a + p·0x18b2` |  |
+| unsaved bits (bit p = working differs from saved, as stock tracks it) | byte `B + 0x95048` |  |
+| has a saved copy | bytes `B + 0x9b312 + p` |  |
+| name, six characters and a NUL | `B + 0x9b316 + 7·p` |  |
+| bank written by the next bank write | long `B + 0x9b332` |  |
+| a pattern's Part | byte `B + n·0x8ed8 + 0x8e57` |  |
+| the current bank's copies in CS1: patterns, working Parts, saved Parts, unsaved bits, has-saved bytes, names, edited flag | `0x1001614e`, `0x100a4ece`, `0x100ab196`, `0x100b145e`, `0x100b145f`, `0x100b1463`, `0x100f8598` | (`0x4000faf0` copies each from `B`) |
 
-✅ The unsaved bit is not "working ≠ saved": OCTABAM89_setgate's bank 3
+ The unsaved bit is not "working ≠ saved": OCTABAM89_setgate's bank 3
 loads with `0x95048 = 0x0f` while Part 3's working copy equals its saved
 copy byte for byte, and Parts 1, 2 and 4 differ from theirs by 1, 11 and
 3 bytes.
 
-### 1a. The sample slots a Part names ✅ (13 Oct 2026)
+### 1a. The sample slots a Part names
 
 A Part names the sample slots its machines play: five bytes a track at
 `Part + 0x2ca + 5t`, between the SRC page-2 array (`+0x1da..+0x2ca`) and
@@ -46,25 +46,25 @@ bytes mean the same sample only within one project's slot lists.
 
 ## 2. The routines
 
-| routine | does | |
+| routine | does |  |
 |---|---|---|
-| `0x40029a4c(src, p)` | Part paste: `src` → working Part of the current bank and its CS1 copy, sets the unsaved bit (RAM and CS1) and the edited flags; when `p` is the current Part, tail-jumps to `0x40009094(current bank, p)` | ✅ |
-| `0x4004a908(p)` | Part Save: working → saved (and CS1), clears the unsaved bit, sets has-saved; re-applies when `p` is current | ✅ |
-| `0x4004a9d0(p)` | Part Clear: `0x40005638` initialises working and saved, writes the name `PART<n>` (format `0x400b4200`), clears the bits, ends in Part Save (`bra 0x4004a908`) | ✅ |
-| `0x4004aab4(p)` | Part Reload: returns 0 without a saved copy; else copies the eight machine bytes of the working Part (`+0x22`) to the stack, saved → working (and CS1), clears the unsaved bit; for the current Part calls `0x40009848(bank, p)` and then `0x400972fc(p, track, old)` for each of the eight tracks, `old` the machine byte copied before (read from the code 13 Oct 2026; this is the only stock path that runs the machine transition, and KITS' LOAD KIT uses it) | ✅ |
-| `0x4004a8a4(p)` | the current pattern's Part = `p` (RAM and CS1), edited flags, `0x40027e00`, `0x40009094(current bank, p)` | ✅ |
-| `0x40009094(bank, p)` | apply a Part to the engine: writes `0x80001828/9`, copies the Part's pages into the engine, the LFO designer records (section 9) | ✅ |
-| `0x40009e00(bank, p)` | the pattern-change apply: `0x80001828/9`, the scene bytes, the rest as `0x40009094` | ✅ |
+| `0x40029a4c(src, p)` | Part paste: `src` → working Part of the current bank and its CS1 copy, sets the unsaved bit (RAM and CS1) and the edited flags; when `p` is the current Part, tail-jumps to `0x40009094(current bank, p)` |  |
+| `0x4004a908(p)` | Part Save: working → saved (and CS1), clears the unsaved bit, sets has-saved; re-applies when `p` is current |  |
+| `0x4004a9d0(p)` | Part Clear: `0x40005638` initialises working and saved, writes the name `PART<n>` (format `0x400b4200`), clears the bits, ends in Part Save (`bra 0x4004a908`) |  |
+| `0x4004aab4(p)` | Part Reload: returns 0 without a saved copy; else copies the eight machine bytes of the working Part (`+0x22`) to the stack, saved → working (and CS1), clears the unsaved bit; for the current Part calls `0x40009848(bank, p)` and then `0x400972fc(p, track, old)` for each of the eight tracks, `old` the machine byte copied before (read from the code; this is the only stock path that runs the machine transition, and KITS' LOAD KIT uses it) |  |
+| `0x4004a8a4(p)` | the current pattern's Part = `p` (RAM and CS1), edited flags, `0x40027e00`, `0x40009094(current bank, p)` |  |
+| `0x40009094(bank, p)` | apply a Part to the engine: writes `0x80001828/9`, copies the Part's pages into the engine, the LFO designer records (section 9) |  |
+| `0x40009e00(bank, p)` | the pattern-change apply: `0x80001828/9`, the scene bytes, the rest as `0x40009094` |  |
 
 Part names: `0x40029a4c` copies the 0x18b2-byte payload only; the name at
 `B + 0x9b316` is written by Part Clear and by nothing in this table
-(✅). `0x4000faf0` copies the four names (28 bytes) into CS1 with the
+. `0x4000faf0` copies the four names (28 bytes) into CS1 with the
 bank.
 
 ## 3. Pattern changes
 
 Every pattern request goes through the schedule routine `0x400a0570(bank,
-pattern, a, b, c)` (✅ callers: the request `0x400a1030`, the arranger's
+pattern, a, b, c)` (callers: the request `0x400a1030`, the arranger's
 row publish `0x4004a652`, the arranger playback `0x400a0eaa` and the
 repeat `0x400a101e`, the last two from the sequencer tick). It:
 
@@ -91,7 +91,7 @@ flag `0x80006546`), patterns of the queued bank. The switch takes the next
 entry into `0x800065c0` itself (`0x400a4500..0x400a4542`) and wraps; the
 schedule routine is not called for a chain's later entries.
 
-✅ Measured, stock image (`--watch-pc`, `--watch-mem`):
+ Measured, stock image (`--watch-pc`, `--watch-mem`):
 
 | form | the request | the switch |
 |---|---|---|
@@ -103,32 +103,32 @@ schedule routine is not called for a chain's later entries.
 | program change (`c0 21`, channel 1 = the project's) | `0x400a1030` from `0x4001fc9c` | the port's run applied it at once |
 | BANK + TRIG, then PTN + TRIG | one request for the second, same bank (the bank key was released first) | — |
 
-✅ Not driven here: the arranger (row publish and playback, tick
+ Not driven here: the arranger (row publish and playback, tick
 context), DIRECT JUMP (`modules/direct-jump`, a hook at `0x400a06d6`
 inside the queued path).
 
 ## 4. How many Parts the engine names at once
 
-✅ After every switch above the eight track bytes named one (bank, Part)
+ After every switch above the eight track bytes named one (bank, Part)
 or `0xff` (a track that had not played yet), e.g. `02 02 02 ff 02 ff ff
-ff` / `01 01 01 ff 01 ff ff ff`. ✅ The frame ISR resets all eight at
+ff` / `01 01 01 ff 01 ff ff ff`. The frame ISR resets all eight at
 the switch and writes them as tracks play; no traced form left two Parts
 named at once. PER TRACK scale (tracks of different lengths) and
 "plays free" tracks were not measured.
 
 ## 5. Cost of moving a Part
 
-✅ `0x40029a4c` (two 6,322-byte copies and the bits, before the engine
+ `0x40029a4c` (two 6,322-byte copies and the bits, before the engine
 apply): 4,826 instructions. A KITS stage that copies one Kit into a slot
 (saved and working copies, their CS1 copies, the slot tests): 133,563
 instructions in its first build, most of them four whole-Part
 compares; at the CPI 4.4 measured for voice code on the unit (Bryan T,
-4 Oct 2026) about 2.2 ms of task time. The compare now runs only on
+) about 2.2 ms of task time. The compare now runs only on
 slots no track names, by long words.
 
 ## 6. The CC handler Octakit wraps
 
-✅ Octakit's handler on the MIDI CC dispatch entry (`0x400d64a0`,
+ Octakit's handler on the MIDI CC dispatch entry (`0x400d64a0`,
 `midi_control_parameter.S`) routes CC 7, 46 and 47 (Part `+0x12`,
 `+0x12`, `+0x13`), 55 and 56 (scene A `+0x10`, scene B `+0x11`), 57 (a
 flag) and 58 (`+0x60d`, 12 bytes) through her workspace (capture,
@@ -137,7 +137,7 @@ nothing there.
 
 ## 7. The panel routes to the Part menus
 
-✅ `--live-script`, MKII (`--mkii`) and MKI:
+ `--live-script`, MKII (`--mkii`) and MKI:
 
 | keys | reaches |
 |---|---|
@@ -149,10 +149,10 @@ nothing there.
 | FUNC + CUE, both | `0x4004aab4` from `0x4005e05a` (return `0x4005e060`) |
 | FUNC + YES | `0x4005e3d8` (press, then release), not an open list's YES |
 
-✅ The PART window's cursor `0x460d10c8` is a cross: UP Part 1, RIGHT 2, DOWN 3, LEFT 4,
+ The PART window's cursor `0x460d10c8` is a cross: UP Part 1, RIGHT 2, DOWN 3, LEFT 4,
 from any Part; YES makes it the current Part and closes. FUNC + BANK over it opens the Part
 edit menu on that Part, four rows: RENAME, RELOAD `0x4002dd50`, SAVE `0x4002dd0c`, SAVE ALL
-`0x4002dcd0` (labels `0x400b9b14`, callbacks `0x400b9b04`; measured 5 Nov 2026,
+`0x4002dcd0` (labels `0x400b9b14`, callbacks `0x400b9b04`; measured,
 under the port, both models, from the panel's keys). A fresh project has no saved copies: RELOAD says SAVE PART FIRST!.
 FUNC + CUE reloads only the current Part, only while its unsaved bit is set, and reads no
 track key: stock has no per-track reload.
@@ -161,12 +161,12 @@ The stock list menu `0x4006d94c(count, cursor, &cursor, labels,
 callbacks)`: `labels` and `callbacks` are tables of pointers, one per
 row; YES (`0x4006d8f4`) stores the cursor, closes the list
 (`0x4006d754`) and passes `callbacks[cursor]` to `0x40020c28`, which
-calls it with no argument. ✅ 257 rows draw and scroll.
+calls it with no argument. 257 rows draw and scroll.
 
 ## 8. The file seams
 
 The masked bank load `0x400905d4(?, mask, …)` is how every project load
-reads its banks (✅): LOAD PROJECT calls the empty-project init
+reads its banks : LOAD PROJECT calls the empty-project init
 `0x400909d8` (from `0x4008534c`) and then `0x400905d4` with mask `0xffff`
 (from `0x400853d8`); a second engine command loads every bank but the
 current one (`0xfffb` from `0x40084d60`, the power-up's path too). The
@@ -178,15 +178,15 @@ entries (`0x40090504`, `0x400905d4`, `0x400909d8`, `0x400917c8`,
 
 ## 9. The Part window bytes MIDI SCENES and SCENES P2 claim
 
-✅ Stock addresses the LFO designer records as `B + 0x90482 + p·0x18b2
+ Stock addresses the LFO designer records as `B + 0x90482 + p·0x18b2
 + 16·n` (audio, Part `+0x1702`) and `B + 0x90512 + …` (MIDI, `+0x1792`)
 and reads `B + 0x905b2 + …`: the apply-part copy `0x400092e0..0x40009328`
 (`n` = WAVE − 11), the designer editor and operations (`0x40038212`,
 `0x40038308`, `0x400384de`, `0x40038eea`, …) and the LFO paste/undo
 (`0x400278dc`, `0x40027a00`).
 
-✅ The run `0x90492..0x905b2` (Part `+0x1712..+0x1832`) that MIDI SCENES
-and SCENES P2 store in is LFO designer data (measured 10 Oct 2026, stock
+ The run `0x90492..0x905b2` (Part `+0x1712..+0x1832`) that MIDI SCENES
+and SCENES P2 store in is LFO designer data (measured, stock
 image under the port, a copy of OCTABAM89_setgate with T2 LFO1 WAVE = 12
 and the bytes `11..20` at Part `+0x1712` in every Part record: after the
 load the engine's LFO shape table held `11..20` at `0x800013b8`, T2 LFO1's
@@ -197,7 +197,7 @@ slot of `0x80001388 + 16·(3t + lfo)`):
 | `+0x1712..+0x1782` | audio LFO designs, tracks 2–8 | MIDI SCENES' freeze twin, on Part Save when the sparse blob carries `MS` |
 | `+0x1782..+0x1792` | 0 in every census file (below) | MIDI SCENES' freeze twin |
 | `+0x1792..+0x17a2` | MIDI LFO design, track 1 | MIDI SCENES' freeze twin |
-| `+0x17a2..+0x1812` | MIDI LFO designs, tracks 2–8 | MIDI SCENES' sparse blob (`MS`); SCENES P2's pool (`P2`, from the first page-2 scene lock) until 10 Oct 2026 |
+| `+0x17a2..+0x1812` | MIDI LFO designs, tracks 2–8 | MIDI SCENES' sparse blob (`MS`); SCENES P2's pool (`P2`, from the first page-2 scene lock) until |
 | `+0x1812..+0x1832` | not located | the same |
 
 Census of the Part tail across 1,536 bank files (12,288 Part records) on
@@ -208,9 +208,9 @@ three patterns, `+0x1832..+0x18b2` is 0 in most records, and stock reads
 not a measurement of use.
 
 Not measured: the designer editor's writes landing on the module bytes
-(✅ from the addresses above); on the unit.
+(from the addresses above); on the unit.
 
-Since 10 Oct 2026 SCENES P2 keeps its locks in bytes 30 and 31 of the
+Since SCENES P2 keeps its locks in bytes 30 and 31 of the
 stock scene block (`modules/scenes-p2/README.md`); MIDI SCENES still
 stores at `+0x1712..+0x1832`.
 

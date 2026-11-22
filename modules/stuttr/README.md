@@ -75,48 +75,10 @@ DARK REV, they read as DARK's knobs:
 Keep a separate project copy, or re-select effects and save, before going
 back to stock.
 
-## Measured
-
-- **19 Nov 2026, the m4 pass** (bit-identical: `verify_ident.py` with the
-  wider matrix of sambanks/octabam#1172 (the module's own slot, payload B,
-  16-sample blocks, a 2 s run, a knob ramp, stereo, the split call, the
-  manifest's `dear` settings, and the r7 state after every block), IDENTICAL
-  after each commit; 58 renders; the manifest's `dear` settings are the ones
-  that engage the repeater). Cycles a sample from
-  `tools/build/interlock_scan.py` (the core manual's cycle table and stalls: a
-  model, on average 3.0 % above the unit, `docs/contributing/CYCLE_SCAN.md`
-  section 1), at `dear`: FWD **268.4 → 262.5**, HALF 232.9 → 229.0, QUART and
-  RND 215.2 → 212.2. Words 591 → 581 (`dsp_asm` at P:$800). Not measured on
-  the unit. The sample loop wrote `m4` (linear) twice a sample, against the
-  hardware rule "no M-register write inside the sample loop"
-  (`docs/contributing/MODULES.md`); it is now written once a call, before the
-  loop. Eight constants (four of them zeros) load as one-word short
-  immediates.
-- **19 Nov 2026, the 6-bit immediates** (bit-identical: `verify_ident.py` with
-  the wider matrix of sambanks/octabam#1172, 58 renders, IDENTICAL; the scan
-  as above): sixteen small constants (0 to 63) in `add`, `sub` and `and` load
-  as the one-word 6-bit form (`add #>$1,a` is `add #$1,a`: the same result and
-  flags). FWD at `dear`: 262.5 → 258.4 cycles a sample (modelled); words 581 →
-  565.
-
-Local render gates (`verify_stuttr`): MIX 0 bit-exact; CHNC 0 stays dry;
-CHNC 127 + HOLD engages; SIZE loop gaps; HALF lengthens gaps vs FWD;
-REV 127 reverses; every named knob renders; max-knob (all 127, each MODE,
-~3 s / 0.5 FS) hits **0 rail samples**; two FX2 instances each have energy;
-CHNC 8 sits between dry and always-on; REV 64 is neither always-fwd nor
-always-rev (LFSR); grab onsets spread at CHNC 127; MODE RND varies gaps.
-
 ## Defaults
 
 SIZE / RATE / HOLD mid (64); CHNC 0 (dry until raised); REV 0; MIX 127;
 MODE FWD; SYNC **8**.
-
-## On the unit
-
-Ilia's MKII, **STUT NS.RMX** (latest−SHATTER via BRAIN; 21 Oct 2026): empty
-project sequencer advances; every page-1/page-2 knob, MODE/SYNC, trig
-splits, two instances per core, engage/release fades heard click-free.
-(Prior G4 was the old always-loop topology.)
 
 ## Conflicts
 
@@ -135,7 +97,3 @@ scratch only). Build refuses the combo until fixed.
 - Project-BPM tempo sync
 - Root cause of the SHATTER+STUTTR empty-play stall
 
-
-## Gates
-
-`tools/verify/verify_stuttr.py` (manifest `Gate`).

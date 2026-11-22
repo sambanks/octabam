@@ -4,7 +4,3 @@ BLACKPYRAMIDS_303 beside SCALE QUANTIZER: HOOKS gives a BLACKPYRAMIDS track's CH
 
 `tools/verify/verify_hooks.py hooks-chrom-bp` checks the bridged sites in this image after
 `make bus REMIX=hooks-chrom-bp`.
-
-## Where it has run
-
-Not flashed. Built, and its sites checked (verify_hooks).

@@ -1,18 +1,18 @@
 # radiohagen
 
-Requested by radiohagen (received 8 Oct 2026): the modules they run now.
+Requested by radiohagen (received): the modules they run now.
 
 ## Selection
 
 [`bottleservice`](../../../remixes/octabam-bus/README.md) plus RLEN PLEN
 and TUNER.
 
-| module | in bottleservice | proof (module table, 8 Oct 2026) |
+| module | in bottleservice | proof (module table |
 |---|---|---|
 | [DELAY SERVER](../../../modules/busdelay/README.md), [REVERB SERVER](../../../modules/busverb/README.md), [SEND](../../../modules/send/README.md) and the rig modules | yes | on hardware: Sam's MKII |
 | [SPECTRUM](../../../modules/spectrum/README.md), [CHARACTER](../../../modules/character/README.md), [MODULATION](../../../modules/modulation/README.md) | yes | on hardware: Sam's MKII |
-| [RLEN PLEN](../../../modules/rlen-plen/README.md) | no | port-gated, 26 Sep 2026 |
-| [TUNER](../../../modules/tuner/README.md) | no | on hardware: Tim's MKI, 29 Sep 2026 |
+| [RLEN PLEN](../../../modules/rlen-plen/README.md) | no | port-gated |
+| [TUNER](../../../modules/tuner/README.md) | no | on hardware: Tim's MKI |
 
 radiohagen's own MIDI development is not part of this selection.
 
@@ -22,7 +22,7 @@ compression are out of reach in their configuration.
 
 ## Stage 2: composes
 
-Built from `origin/main` at `2f89c186`, 8 Oct 2026, `make bus` on a
+Built from `origin/main` at `2f89c186`, `make bus` on a
 `remix.py` copied from bottleservice with modules added:
 
 | selection | result |
@@ -39,14 +39,14 @@ RLEN PLEN's cave is 298 B of ROM (`rlen plen cave: 298 bytes at
 0x400d7980`); with it placed, MODULATION's slot 6 formatter (454 B) has
 108 B left in the overflow run, 346 B short.
 
-With PR #643 (Sam's ColdFire caves to DRAM, 8d078da7), `make bus`:
+With the ColdFire caves moved to DRAM, `make bus`:
 
 | selection | result |
 |---|---|
 | bottleservice + RLEN PLEN + TUNER | builds, 224 B of the clone window left |
 | bottleservice + SYNTH MACHINE | builds, 224 B left |
 
-MIDI SCENES' collision is a Part-window claim and #643 does not change it.
+MIDI SCENES' collision is a Part-window claim, which the move does not change.
 
 ## To find out
 

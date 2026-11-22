@@ -1,8 +1,7 @@
 # Parameter-page descriptor table (OS 1.40C)
 
 Read from `out/raw/section_3_MAIN_OS.bin` (SHA256 `164f3122…`), base
-`0x40000400`, `file_offset = vaddr − 0x40000400`. Markers as in `CHIP.md`:
-✅ measured or decompiled, 🟡 inferred. One table describes every parameter
+`0x40000400`, `file_offset = vaddr − 0x40000400`. One table describes every parameter
 page on the machine: sample playback (one entry per machine type), AMP,
 LFOs, the track recorder, MIDI NOTE/ARP/CTRL pages and the effects.
 
@@ -24,18 +23,18 @@ immediate references the table base; entries are reached individually.
 
 Two bases are in use. `E` = entry start (the layout below). `P = E + 0x38`
 = the pointer the lookup tables hold and every firmware routine receives
-(✅ `FUN_40031da4`'s fixed returns are all `entry + 0x38`). A routine handed
+( `FUN_40031da4`'s fixed returns are all `entry + 0x38`). A routine handed
 `P` uses P-relative offsets: `min = P+0x6a`, `count = P+0x9a`, formatter
 array A `P+0x0ca`, widget array B `P+0x0fa`, enable bitmap
 `P+0x18a`/`P+0x18e`; the record is 0x192 bytes from `P`. The fields listed
 before `E+0x38` below belong to the previous record when read from `P`.
-The mode-rename cave used `E`'s `+0x4e` on `P` from 3 to 13 Sep 2026 and
+The mode-rename cave used `E`'s `+0x4e` on `P` from 3 to and
 wrote names over the minimum table (`FAILURE_MODES.md`, "BusDelay went
 silent").
 
 | offset | size | field |
 |---|---|---|
-| `E+0x00` | 6 × u32 | per-encoder handler pointers (usually `0x40038d94` ×6; FILTER all zero, MULTIBCOMP fifth zero) 🟡 one per encoder |
+| `E+0x00` | 6 × u32 | per-encoder handler pointers (usually `0x40038d94` ×6; FILTER all zero, MULTIBCOMP fifth zero) unconfirmed one per encoder |
 | `E+0x18` | 29 B | zero |
 | `E+0x35` | 6 B | not decoded (`11 11 11 00 00 00` for CHORUS) |
 | `E+0x3b` | u8 | effect id (0 for non-FX pages); read as the whole u32 at `P+0`, so the three bytes above it must be zero |
@@ -49,7 +48,7 @@ silent").
 | `E+0x132` | 12 × u32 | widget array B (= `P+0x0fa`), section 7; `E+0x14a` = B[6] |
 | `E+0x176` | u32 | page class handler |
 | `E+0x186` | u32 | fourth pointer (almost always 0) |
-| `P+0x18a`/`P+0x18e` | u32 | enable bitmap, section 3b (past `E+0x192`: the next entry's leading bytes as `E` sees them; `E+0x35` 🟡 is the previous record's) |
+| `P+0x18a`/`P+0x18e` | u32 | enable bitmap, section 3b (past `E+0x192`: the next entry's leading bytes as `E` sees them; `E+0x35` unconfirmed is the previous record's) |
 
 A slot named `---` is an empty encoder position. `E+0xd2` is a count, not
 a maximum.
@@ -103,14 +102,14 @@ are where a module's id goes (`MODULES.md`); a stock id is also an FX1 id
 
 ### PLAYBACK entries = machine types
 
-Index = machine type (`FUN_40097168 → 0..4`; ✅ 7 Sep 2026: type 0 reads
+Index = machine type (`FUN_40097168 → 0..4`; type 0 reads
 the STATIC arena, type 1 the FLEX arena, `git show 3ceba41:docs/history/RTOS_FORK.md` section 10.13;
-2–4 🟡 from the parameter sets).
+2–4 from the parameter sets).
 
 | # | page 1 | page 2 | type |
 |---|---|---|---|
 | 0 | PTCH STRT LEN RATE RTRG RTIM | LOOP SLIC LEN RATE TSTR TSNS | STATIC |
-| 1 | same as 0 | | FLEX |
+| 1 | same as 0 |  | FLEX |
 | 2 | INAB VOL --- INCD VOL --- | all `---` | THRU |
 | 3 | all `---` | all `---` | NEIGHBOR |
 | 4 | PTCH DIR LEN RATE GAIN OP | --- --- --- --- TSTR TSNS | PICKUP |
@@ -124,7 +123,7 @@ page1  INAB(1/5)  INCD(1/5)  RLEN(64/65)  TRIG(1/3)  SRC3(0/11)  LOOP(1/2)
 page2  FIN(0/113) FOUT(0/113) AB(0/128)  QREC(255/18) QPL(255/18) CD(0/128)
 ```
 
-(default/count.) Decoded to shared RAM by Bryan T, 2 Sep 2026
+(default/count.) Decoded to shared RAM by Bryan T, 
 (`RECORDER.md`), display values hardware-confirmed: INAB/INCD
 `-, A B, A, B, A+B`; RLEN `1…64, MAX` (raw+1, raw 64 = MAX); TRIG `ONE,
 ONE2, HOLD`; SRC3 `-, T1…T8, MAIN, CUE`; FIN/FOUT `0, 0.063, 0.125 … 64`
@@ -153,13 +152,13 @@ raw 1 (= ONE2) and 0 (= `-`); the fixup is not located.
 `P+0x18e` = parameters 0–7, `P+0x18a` = 8–11, one nibble each, low nibble
 first. `FUN_400326d4` (staging a value) and `FUN_40037590` (drawing the
 knob) both call `FUN_400a6994(*(u32*)(P+0x18a), *(u32*)(P+0x18e),
-4·paramIndex)` and gate on bit 0. The accessor (✅ objdump, 16 Sep 2026) is
+4·paramIndex)` and gate on bit 0. The accessor (objdump) is
 a 64-bit arithmetic right shift of the pair by its third argument, low half
 returned in D1, high in D0, with a second path for shifts ≥ 32 (params
 8–11); it masks nothing, so every bit decision is made at the call site (26
 direct calls, 3 through a register, 2 sites read the words inline).
 Every nibble in the table is one of `0 1 3 5 7 8`; all 31 rows and Bryan
-T's bit reading (his note of 16 Sep 2026; the note
+T's bit reading (his note of; the note
 verbatim is `git show 3ceba41:docs/history/EXTERNAL_INGEST.md` section 11) were
 re-read from our image the same day: all 31 descriptors' `P+0x18e`/`P+0x18a`
 words and nibbles match his table; PICKUP TSTR count 3 against 4 on
@@ -170,12 +169,12 @@ the sign of `hi` in D0. Both return the same nibble for every word in the
 table. Call-site masks checked: `0x40053810` (`moveq #9; andl`),
 `0x40052b82` (`#15` then `#9`), `0x4003780e` (`#4`).
 
-| bit | value | meaning | status |
-|---|---|---|---|
-| 0 | 1 | drawn by the generic renderer and staged by `FUN_400326d4`; a zero nibble is neither | ✅ (31 rows; PICKUP page 2 `0,0,0,0,1,1` draws TSTR and TSNS only, THRU/NEIGHBOR page 2 blank, on the unit) |
-| 1 | 2 | a link element tying this knob to the one on its left: STRT/LEN, RTRG/RTIM, RATE/TSTR (STATIC and FLEX), INAB/VOL and INCD/VOL (THRU), BASE/WDTH (FILTER), SHVG/SHVF (DARK REV). Since 16 Sep 2026 `Param(link=True)` sets it (`build_bus.penable`, checked by `verify_menu`) on BusVerb SIZE and SHFT, BusDelay FDBK/DENS/PTCH, Spectrum RES/LSP, Modulation DPTH | ✅ on the unit for stock (Bryan T, MKII) and for the cloned descriptors (image 29, 16 Sep 2026: every linked pair draws its bracket); the drawer is not located |
-| 2 | 4 | PLAYBACK page 2 only: LOOP, RATE, TSTR on STATIC and FLEX, SLIC on FLEX alone. At `0x4003780e` the drawer passes `8` (else `0`) as the flags word of the knob renderer `0x400479b4`, which loads it into CCR and takes the `bpl`-not-taken layout at `0x40047ab0` instead of the one at `0x40047b4a` that offsets the dial by `max(0, (0x46c7d244 + 20·index)+4)` (0..3); a record field > 3 or flags bit 0 takes the `0x40047ab0` layout regardless | 🟡 read in objdump 16 Sep 2026, not run; on the unit the six page-2 knobs look identical to each other and SLIC looks the same on STATIC and FLEX (Bryan T) |
-| 3 | 8 | AMP p5 XVOL only, bit 0 clear: absent from the AMP page, drawn while a scene button is held; six call sites test mask `0x9` | 🟡 one slot, one mask pattern; the `0x9` sites are not traced to the scene UI |
+| bit | value | meaning |
+|---|---|---|
+| 0 | 1 | drawn by the generic renderer and staged by `FUN_400326d4`; a zero nibble is neither |
+| 1 | 2 | a link element tying this knob to the one on its left: STRT/LEN, RTRG/RTIM, RATE/TSTR (STATIC and FLEX), INAB/VOL and INCD/VOL (THRU), BASE/WDTH (FILTER), SHVG/SHVF (DARK REV). Since `Param(link=True)` sets it (`build_bus.penable`, checked by `verify_menu`) on BusVerb SIZE and SHFT, BusDelay FDBK/DENS/PTCH, Spectrum RES/LSP, Modulation DPTH |
+| 2 | 4 | PLAYBACK page 2 only: LOOP, RATE, TSTR on STATIC and FLEX, SLIC on FLEX alone. At `0x4003780e` the drawer passes `8` (else `0`) as the flags word of the knob renderer `0x400479b4`, which loads it into CCR and takes the `bpl`-not-taken layout at `0x40047ab0` instead of the one at `0x40047b4a` that offsets the dial by `max(0, (0x46c7d244 + 20·index)+4)` (0..3); a record field > 3 or flags bit 0 takes the `0x40047ab0` layout regardless |
+| 3 | 8 | AMP p5 XVOL only, bit 0 clear: absent from the AMP page, drawn while a scene button is held; six call sites test mask `0x9` |
 
 | page | `p0..p7` / `p8..p11` | nibble 0 |
 |---|---|---|
@@ -217,7 +216,7 @@ Effect rows (nibbles p0..p11, `-` = a `---` slot at 0):
 Named slots with nibble 0: PICKUP p3 RATE, AMP p11 TRIG, MIXER p6 MIX,
 LO-FI p1 NOIS; each `---` is 0 and each named knob is 1 except FILTER
 WDTH and DARK REV SHVF (`3`).
-Until 16 Sep 2026 this section's derived lists read `P+0x18e` high nibble
+Until this section's derived lists read `P+0x18e` high nibble
 first (ARP "p0 p1 p9 p10", NOTE "p8 p10", MIXER "p0 p1 …", AMP REL `8`);
 the hex words were right. The MIXER "drawn anyway" counterexample rested
 on that reversed read — MAIN and DIR are `1` — so whether a bespoke page
@@ -257,7 +256,7 @@ and check `0x46c7dd26`:
 The split does not follow FX1/FX2 assignment; FX1 already hosts both
 classes. Why there are two classes is not decoded.
 
-The resolver `FUN_40031da4(track, page_kind)` ✅:
+The resolver `FUN_40031da4(track, page_kind)` :
 
 ```c
 if (track < 8) switch (page_kind) {                    // audio tracks
@@ -282,7 +281,7 @@ bias.
 
 ## 5. Storage and delivery
 
-### 5a′. The live lane is the lock record ✅ (port, 18 Sep 2026)
+### 5a′. The live lane is the lock record
 
 A track's live lane (`0x80000810 + 72·t`) begins with the same 32 slots a
 pattern's step lock record holds (`tools/hw/ot_bank.py`): PLAYBACK page 1
@@ -293,7 +292,7 @@ pattern's step lock record holds (`tools/hw/ot_bank.py`): PLAYBACK page 1
 The page-2 lanes follow (section 5a: AMP p2 +0x2c, FX1 p2 +0x32, FX2 p2 +0x38).
 `tools/hw/ot_spec.py` names locks by these slots.
 
-### 5a. The Part's page arrays ✅ (port, 12 Sep 2026)
+### 5a. The Part's page arrays
 
 DB = the part pointer (`0x46c82456`; `0x400e21e0` under `ot_emu`), t =
 track:
@@ -304,7 +303,7 @@ track:
 | page 2, read by the dial | `DB + 0x8f072 + t·30` | LFO PMTR×3 WAVE×3 · AMP · FX1 (`+0x8f07e`) · FX2 (`+0x8f084`) · LFO MULT×3 TRIG×3 (`+0x8f08a`) |
 | page 2, PLAYBACK editor storage | `DB + 0x8ef5a + t·30 + 6·machine + slot` | indexed by `0x460d5c30` |
 
-Audio-track page homes, offsets from `DB + p·0x18b2` ✅ (read 7 Oct 2026,
+Audio-track page homes, offsets from `DB + p·0x18b2` (read,
 `t` = audio track, nothing run under the port):
 
 | page | page 1 | page 2 | page-2 editor |
@@ -323,18 +322,14 @@ the editors (delta-based, reading globals) or an absolute write as in
 
 The bank file's page-2 block (`ot_project.P2_OFF 0x307 + t·30`, FX1 p2 at
 +0, FX2 p2 at +6) has the DB display array's order from the FX1 column on.
-❌ Until 21 Sep 2026 the display array was written as `+0x8f06c` with a
-machine column first: the LFO resolver `0x40057538` (`LFO.md` section 7) puts
-PMTR/WAVE at `+0x8f072 + 30·t` and MULT/TRIG at `+0x8f08a + 30·t`, and
-`+0x8f072 + 8·30 = +0x8f162`, the MIDI tracks' array (`MIDI.md` Appendix A section 3). The
+The
 FX1/FX2 columns, the only ones measured, are unchanged; AMP's position is
 the six-byte gap between them. The tools index from `P2_OFF` and were
 never affected.
 
-### 5b. Page-2 editors ✅ (port, 13 Sep 2026)
+### 5b. Page-2 editors
 
-Each page has its own page-2 editor. Retracted the same day: "`0x4003a474`
-is the FX page-2 editor". It is PLAYBACK's: `0x460d5c30` indexes
+Each page has its own page-2 editor. It is PLAYBACK's: `0x460d5c30` indexes
 `0x400d5f38[machine]`, Part store `+0x8ef5a + t·30 + machine·6 + slot`, live
 write `0x80000830 + t·72 + slot`.
 
@@ -353,13 +348,13 @@ T1, T3, T8 under the emulator, THRU included). The page-1 writer
 the Part/shadow bytes.
 
 The LFO page's editor is `0x40038e04(slot, delta)`, the LFO from the window's list `0x460d1a32` (3 is
-the designer): A..F are PMTR WAVE MULT TRIG SPD DEP. ✅ Read 5 Nov 2026: PMTR/WAVE and MULT/TRIG clear the
+the designer): A..F are PMTR WAVE MULT TRIG SPD DEP. Read: PMTR/WAVE and MULT/TRIG clear the
 lock bit and byte of `cell + 6`, where `cell` is the LFO plus 3 for the odd slots, the page-1 flat index their SPD/DEP would
 have, and write marker `0xa0` there. A WAVE above 10 copies the designer table and its slope word live. Part from `0x100b14cf`;
-the other page-2 editors take it from `0x80000003`. ✅ None of the page-2 editors tests an enable bit: FX1 SETUP's knob
-F on EQUALIZER moves a byte no screen shows (under the port, 5 Nov 2026: the Part byte changed with no screen showing it).
+the other page-2 editors take it from `0x80000003`. None of the page-2 editors tests an enable bit: FX1 SETUP's knob
+F on EQUALIZER moves a byte no screen shows (under the port, the Part byte changed with no screen showing it).
 
-### 5c. The copier ✅ (port, 13 Sep 2026)
+### 5c. The copier
 
 `0x4000cae8` (loop `0x4000cb2a..cb98`, eight tracks) takes three six-byte
 page-2 blocks per track from the live lane `0x80000810 + t·72` into the
@@ -376,12 +371,12 @@ DSP record `0x80000110 + 64·t`:
 
 Measured with marker bytes (scratchpad `copier_markers.py`) for the DSP
 rows; the ColdFire-record offsets and the `+0x3e` row from the loop's
-`moveml`/`lea` sequence (`0x4000cb3a`, `0x4000cb86`; objdump, 21 Sep 2026).
+`moveml`/`lea` sequence (`0x4000cb3a`, `0x4000cb86`; objdump).
 The same loop fills the record's words `+0..+0x17` and DSP hw 0–17 from a
 third, 64-byte-stride source (`a3`; ⬜ the scene morph's output) — the
 page-1 words the LFOs modulate (`LFO.md` section 5).
 
-### 5d. Effect ids into shared RAM ✅
+### 5d. Effect ids into shared RAM
 
 `apply_part` publishes both ids as two adjacent 8-byte arrays, one byte per
 track, immediately before the live scene buffer `0x80000ed4 + t·0x40`:
@@ -410,18 +405,18 @@ by an 8-byte offset; the descriptor path forwards nothing to the DSP.
 | reverb on FX1 and FX2 | audio glitches, severity varies by reverb type |
 
 The id→algorithm mapping is not slot-restricted. The delay's silence is
-per-effect, DSP-side; 🟡 a per-slot buffer pointer whose FX1 entry is never
+per-effect, DSP-side; a per-slot buffer pointer whose FX1 entry is never
 initialised fits every observation (one shared on-demand buffer does not).
 `FUN_40005638` references the FILTER and DELAY descriptors because it is
 the part-defaults initialiser (a new part is FX1 = FILTER, FX2 = DELAY),
-not a buffer lead. Two reverbs exceed the DSP's budget (🟡 cycles, from
+not a buffer lead. Two reverbs exceed the DSP's budget (cycles, from
 the per-type variation). `DSP.md` section 5 for the delay.
 
 ### 5f. Adding an effect: five tables
 
 `docs/contributing/MODULES.md` "The five tables an effect needs".
 
-### 5g. Step records, trig words and the lock stores (octalab, MKI, 13 Sep 2026) ✅
+### 5g. Step records, trig words and the lock stores (octalab, MKI)
 
 64 × 32-byte step records from `TRAC + 0x59` (byte k = p-lock of scene
 parameter k: PLAYBACK 0..5, LFO 6..11, AMP 12..17, FX1 18..23, FX2
@@ -436,53 +431,50 @@ returns unless a trig key is down (`FUN_4003171c`); octalab replicates its
 body (dirty flags `bank+0x9b332` / `0x100f8598` / `0x40027e00`, refresh
 `0x4009da20`). Our decode of the same records by name is
 `tools/hw/ot_spec.py`. nordseele lowered their label for the `+0x10` step
-mask ("trigless locks") to 🟡 on 22 Sep 2026; our own reading of it stands
-✅ (`tools/hw/ot_bank.py`: exactly the locked steps without a trig, four
+mask ("trigless locks") to; our own reading of it stands
+ (`tools/hw/ot_bank.py`: exactly the locked steps without a trig, four
 patterns of OCTABAM90 byte-diffed).
 
-Smaller, same source: 🟡 pattern `+0x8e55` scale mode, `+0x8e53` length,
+Smaller, same source: pattern `+0x8e55` scale mode, `+0x8e53` length,
 `+0x8e54` scale, `+0x8e50` master length (short, −1 INF); per track `TRAC
-+ 0x50` length, `+0x51` scale. ✅ descriptor defaults page-1 `desc + 0x5e`,
++ 0x50` length, `+0x51` scale. descriptor defaults page-1 `desc + 0x5e`,
 page-2 `+0x64` (`FUN_400526e4`); part offsets from `part = bank + 0x8ed80
 + part*0x18b2`: `+0x22 + track` machine type, `+0x2a + track*30 +
 machine*6` PLAYBACK p1, `+0x11a + track*24 + page*6` LFO/AMP/FX1/FX2 p1,
 `+0x2f2 + track*30` LFO PMTR ×3 then WAVE ×3, `+0x662 + (scene*8 +
 track)*0x20` scene locks; LFO destinations 0..29 use the scene-byte
 numbering. Where a Part lives (working, saved, SRAM) is `STORAGE.md` section 3.
-Bryan T's `octa-bt-pt` registry (4 Sep 2026; 61 parameters across 14
-effects) agrees with section 3's counts on 12 of 14 (FILTER 12, SPAT 10, DELAY
+Bryan T's `octa-bt-pt` registry agrees with section 3's counts on 12 of 14 (FILTER 12, SPAT 10, DELAY
 12, EQ 8, DJEQ 5, PHSR 7, FLNG 6, CHOR 8, COMB 5, SPRG 6, COMP 7, LOFI 6);
 PLATE and DARK differ (we read 10 active slots, it lists 9; open, likely
 the trailing `MIXF`). Its `fx1_disallowed_effects` = DELAY, PLATE, SPRING,
 DARK, "confirmed on real hardware".
 
-## 6. The page-2 slot map ✅
+## 6. The page-2 slot map
 
 Each page-2 word carries two controls: the knob field at bits 16–23 and a
 companion field at bits 8–15. The low byte is never published. The field a
 slot is delivered in is fixed by the slot; its count and renderer are free.
 Slot 6 is on `$c`; `$b` is not a page-2 parameter word.
 
-| slot | word | field | example (BusVerb / BusDelay, from the manifests, 5 Oct 2026) |
+| slot | word | field | example (BusVerb / BusDelay, from the manifests |
 |---|---|---|---|
 | 6 | `$c` | knob, bits 16–23 | MODE / MODE |
 | 7 | `$c` | bits 8–15 | TONE / SCTR |
 | 8 | `$d` | knob, bits 16–23 | DIFF / DENS |
 | 9 | `$d` | bits 8–15 | GATE / SIZE |
 | 10 | `$e` | knob, bits 16–23 | DLY / PTCH |
-| 11 | `$e` | bits 8–15 | TIME / TIME (26 Sep 2026; blank / WOW before) |
+| 11 | `$e` | bits 8–15 | TIME / TIME; blank / WOW before) |
 
-The example column before 5 Oct 2026 named slots 7–11 SHMR/MDEP, DIFF/MRAT,
+The example column before named slots 7–11 SHMR/MDEP, DIFF/MRAT,
 SHFT/SIZE, GATE/PTCH, TIME/TIME; those are the names of earlier builds
 (the evidence paragraph below uses them).
 
 Evidence: MODE on slot 7 read bits 8–15 across five positions on hardware;
 SHMR needed `$c`'s knob field, not `$b`'s; slot 11 was dead for both
-effects while it read bits 0–7 (fixed `7a4f96b`). Retracted 4 Sep 2026: "a
-stepped control can only live on 7, 9 or 11" (stock puts CHORUS TAPS on 6,
-FILTER HP/ENV/Q2 on 6/8/10, 128-value knobs on 9 and 11). Both bus
-engines' MODE moved to slot 6 (4 Sep 2026) because the main-menu page-2 knob
-editor (`MAINMENU.md` section 7) writes even slots only; ✅ tag 84: MODE steps
+effects while it read bits 0–7 (fixed `7a4f96b`). Both bus
+engines' MODE moved to slot 6 because the main-menu page-2 knob
+editor (`MAINMENU.md` section 7) writes even slots only; tag 84: MODE steps
 as a select on slot 6, SHMR/MDEP sweep 0–127 from slot 7 (a count-128 knob
 in a companion field works; the 10 Aug "near-boolean companion" reading was
 the inherited formatter). The first play after the move stalled on stored
@@ -496,7 +488,7 @@ hardware). `send_probe` has `--dmode/--dptch/--dwow/--width/--gate/--rdel`.
 `dsp_host` writes params once before the first block; a mid-run change
 (FREEZE on a filled line) is hardware-only.
 
-## 7. Display formatters ✅ (r2, 24 Aug 2026)
+## 7. Display formatters
 
 Array A (`P+0x0ca`), one signature: `void fmt(char *buf, int value)`
 (`4(a7)` = buf, `8(a7)` = value); every stock one wraps `sprintf`
@@ -523,7 +515,7 @@ hard-coded (`cmp #N` after a common prologue):
 | `0x40047424` | 3-position (SPRING TYPE) |
 | `0x400477d4` | boolean (DELAY's switches) |
 | `0x400467a4` / `0x4004661c` | numeric bar (NOTE) |
-| `0x40046f10` / `0x40046d9c` / `0x40046c28` / `0x40046ab4` | the PLAYBACK-page select: 2 / 3 / 4 / 5 positions, one body, a `cmp #N-1` bound and a 17x7 icon table each (`0x400be2f2`, `0x400be2fa`, `0x400be306`, `0x400be316`); a value past the bound draws nothing. The 5-position one is unreferenced in stock; REPITCH's TSTR uses it (✅ 16 Sep 2026, `docs/firmware/REPITCH.md`) |
+| `0x40046f10` / `0x40046d9c` / `0x40046c28` / `0x40046ab4` | the PLAYBACK-page select: 2 / 3 / 4 / 5 positions, one body, a `cmp #N-1` bound and a 17x7 icon table each (`0x400be2f2`, `0x400be2fa`, `0x400be306`, `0x400be316`); a value past the bound draws nothing. The 5-position one is unreferenced in stock; REPITCH's TSTR uses it, `docs/firmware/REPITCH.md`) |
 | `0x400479b4` | the knob (PTCH, RATE); a negative value draws its frame alone (`0x40047a0e`) |
 | `0` | plain dial printing A's text (stock DELAY TIME: `A=0x4003c718, B=0`; used for labelled selects wider than five because the tick widget stops at value 4) |
 
@@ -544,7 +536,7 @@ and whether A is consulted where B's count matters.
 ## 8. Not decoded
 
 - `E+0x35` flags.
-- The six `E+0x00` pointers (🟡 one per encoder).
+- The six `E+0x00` pointers (one per encoder).
 - Why the effects split across two page classes.
 - What `0x800000a0` (PERSONALIZE) switches.
 - Enable-nibble bit 2 (what the `0x40047ab0` layout changes on screen) and

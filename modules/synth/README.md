@@ -44,40 +44,6 @@ until the next key. `upstream/synth/README.md` is the full description
 (the five phases, the voice model, what was measured and what was
 inferred).
 
-## Measured
-
-- At `v9.1`, remixes `octatrick` and `octatrick-usb` built byte-identical
-  with the module sources as a plain `modules/<name>/` directory and as this
-  wrapper over the submodule (same base, same build reports), and
-  byte-identical to the OCTATRICK9 images Tim flashed (built on
-  upstream `0e93543`; upstream's changes since touch modules these
-  remixes do not carry).
-- The 2.8 features (MIDI IN, chord recording with inversions, the LEG
-  modes, the sample-track glide, step transpose, the chord order) and the
-  2.9 engine (the envelope laws against the DSP's, the START rule, the
-  fades, STOP, `po_retrig`, the index ramp: the step / slope and |d2|
-  figures) were each measured in the port through the virtual panel; the
-  tables are in `upstream/synth/README.md`, per feature, with what is open.
-- Cost against 2.8 (a static count of the FM loops): +6 instructions a
-  sample a voice with the limiter's per-sample stage gone, about +15-20 %
-  of a VOIC 1 synth track's frame work, ~0.1-0.2 % of the frame budget; the
-  platform reserve and FREE MEM unchanged; the OS image's ROM section about
-  3 KB smaller (the quantizer's move), the DRAM append a few KB larger.
-
-## On the unit
-
-- 26 Sep 2026: `OCTATRICK9` (remix `octatrick-usb`) on Tim's Octatrack
-  MKI: the synth, the quantizer and direct jump, and USB audio on all 20
-  channels on the MKI.
-- Every test build since, 2.3 .. 2.8, flashed on the same MKI from Tim's
-  own tree ([timhastie/octatrick](https://github.com/timhastie/octatrick),
-  the same wrappers over the same submodule), and the 2.9 line up to the
-  build before its last two fixes: ROOT, the DRAM quantizer, FINE 0c, the
-  envelope engine and the limiter's removal ran on the MKI (the held-chord
-  crackle gone, the live-key pops gone, by ear). The last two fixes (the
-  sequencer trigs, the index ramp) are emulator-verified on `octatrick`
-  (`make check` on this tree), not yet flashed.
-
 ## How it is built
 
 Source: `upstream/` is Tim's repository (submodule, pinned to `v2.9` (`525f4b1`)).

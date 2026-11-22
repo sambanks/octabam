@@ -50,27 +50,3 @@ adds **19 instructions**. For example, a track bank-to-clipboard copy is
 680 → 699, and a pattern copy is 4718 → 4737. These counts include the
 six-instruction PLOCKS adapter, but exclude the unchanged caller, native memcpy and `nv_touch`
 bodies, which the probe substitutes at their entry points.
-
-## Verification boundary
-
-`verify_system_events.py` executes production assembly with zero/one/three
-synthetic clients, independent transport subscriptions, and native MIDI packet
-construction/arbitration. `verify_edit_events.py` checks first-owner precedence,
-native fallback, register/stack/condition-code preservation, callback ordering,
-copy results and counts. A second pass executes native memcpy for 12 lengths
-and four alignments, comparing zero/one/three clients' copy bytes, entry frame,
-return registers, stack and condition codes. Synthetic callbacks deliberately
-clobber registers.
-`verify_events_selection.py` checks all 32 event subsets, absent code/hooks,
-invalid registrations and the registry's bound real-client selections. A
-16-subscriber MIDI case also checks branch reach and constant stack depth.
-`verify_event_clients.py` checks executable callbacks, exclusive installed hook
-ownership and stock bytes at every unused boundary in each built image.
-
-The [events-clients fixture](../../remixes/test/events-clients/README.md) selects
-both clients with USB MAIN/CUE and LOAD METER for focused integration checks.
-EUCLID and PLOCKS retain their own behavior gates. The fixture's
-[hardware results](../../remixes/test/events-clients/README.md#hardware-results)
-identify the tested image and scope.
-Add further events only with an audited native boundary, a precise contract,
-and both dispatcher and installed-image tests.

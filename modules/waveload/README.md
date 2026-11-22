@@ -17,96 +17,11 @@ LOAD is a measurement, not a playable machine.
 CF METER's BURN (T8 FX2 page 1 slot 0) is K, 0–12, when WAVE LOAD is in
 the remix (CF METER's `remix.inc` sets `WAVE_LOAD`); above 12 it renders 12.
 
-## Measured
-
-- ✅ The engine (`engine.c`) against CHOMPI WAVE's own float classes,
-  extracted verbatim and driven as `myEngine::Process` drives them at
-  44.1 kHz with DaisySP's ADSR and oscillator (`harness/run.sh`, 2 Oct
-  2026): a 4.5 s scenario (eight notes, a cutoff sweep 0.2 → 1 → 0,
-  resonance .63 → .95 at 2 s, filter LFO depth .3 from 1 s, pitch LFO
-  depth .5 from 1.5 s, 23 frame steps three of which retarget, release at
-  3.5 s). Magnitude spectra per 0.25 s window agree to −53…−88 dB until
-  the pitch LFO starts. From there they part to −14…−22 dB: DaisySP's float
-  LFO phase runs 0.0117 % slow (4.947624 Hz against a nominal 4.948201 Hz
-  over 60 s), and with both LFOs replaced by that float arithmetic in a
-  host-only build the eight-note render agrees to −38…−88 dB and one voice
-  (C6) to −50…−97 dB. The sample-domain residue that grows over the run is
-  the oscillator's float phase accumulator against the port's exact 32-bit
-  one. Falsified by: a window where the two differ with the LFOs matched.
-- ✅ The ColdFire build (m68k-elf-gcc 16.2, `-mcpu=54455 -O2`, `mac.l` /
-  `movclr.l` with MACSR 0x20) under the patched Unicorn
-  (`.venv/lib/unicorn-emac`) is bit-identical to the host build: 198,448
-  of 198,448 samples, at 4 and at 8 voices.
-- ✅ Instructions executed in `eng_render`, counted per basic block under
-  Unicorn over the scenario:
-
-  | voices | mean / sample | worst 16-sample block / sample |
-  |---|---|---|
-  | 4 | 560.2 | 646.2 |
-  | 8 | 957.0 | 1,131.2 |
-
-  The worst blocks are the frame crossfade (two table reads per voice);
-  WAVE LOAD keeps the crossfade running, so it renders the worst path.
-  Instructions, not cycles: neither the cache nor the EMAC's timing is
-  modelled.
-- ✅ For comparison, SYNTH MACHINE's engine at VOIC 4 measured 3,304
-  instructions a frame mean, 3,956 max, under the port
-  (`modules/synth/upstream/synth/README.md`); a 4-voice wave engine is
-  8,963 mean, 10,339 worst.
-- ✅ Under the port (`waveload-port`, `OCTABAM89_setgate` with T8 FX2 =
-  CF METER, BURN = K, 12,000 frames, `verify_set.py`, decoded with
-  `cfmeter.py --dump`, 2 Oct 2026):
-
-  | K | isr mean | every verify_set gate |
-  |---|---|---|
-  | 0 | 154.4 µs | pass |
-  | 1 | 210.5 µs | pass |
-  | 2 | 266.2 µs | pass |
-  | 4 | — | T1's chain silent, the readout's sync lost |
-
-  +56.1 and +55.9 µs per engine; at K = 4 the interrupt (154.4 + 4 × 56)
-  passes the 362.8 µs period. The port prices every instruction at one
-  step of its own clock, so these are the port's µs, not the unit's: one
-  4-voice engine is 36 % of what stock's frame interrupt executes in this
-  project, and that ratio is what carries to the unit only if both run
-  at the same cycles per instruction.
-- ✅ CF METER's image and build report for remix `cfmeter` are
-  byte-identical with and without the `WAVE_LOAD` change (built both ways,
-  2 Oct 2026).
-
-## On the unit
-
-Image 92 (`waveload` at `d99fa690`, Sam's MKII, 3 Oct 2026), a fresh
-project with samples on tracks 1–4, playing:
-
-| K | idle | interrupt mean | longest |
-|---|---|---|---|
-| 0 | 28.0 % | 213.5 µs | 272.7 µs |
-| 1 | 10.9 % | 282.7 µs | 329.5 µs |
-
-One 4-voice engine costs 69.2 µs of the 362.8 µs frame; tracks 1–4 played
-clean at K = 1. At ~10,339 instructions a frame (the worst path, under
-Unicorn) that is ~1.77 cycles an instruction at 264 MHz (inferred from
-the two). K = 2 not tried: the linear prediction is a 352 µs mean and a
-~400 µs longest interrupt. With 28 % idle (~102 µs a frame) at K = 0, a
-second engine does not fit on the ColdFire beside this project wherever
-it runs.
-
 ## Open
 
 - A 4-voice voice on the DSP: its cycle cost, and where two 2,048-word
   frames per track live (per-core free private memory is ~616 X words
   and ~2,155 Y words).
-
-## Gates
-
-- `modules/waveload/harness/run.sh 4` (and `8`): the oracle comparison,
-  the ColdFire build's bit identity, the instruction count. Needs
-  `clang`, `m68k-elf-gcc` and the emulator `.venv`; clones CHOMPI into
-  `out/chompi` at the pinned commit.
-- `python3 modules/waveload/generate.py --check`: `load.s` matches
-  `load.c` + `engine.c`.
-- `OT_PROJECT=<dir> make check REMIX=waveload-port`.
 
 ## Design
 

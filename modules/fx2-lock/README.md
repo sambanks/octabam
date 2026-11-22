@@ -21,14 +21,3 @@ For a rig whose engines are locked to their tracks (bottleservice:
 BusDelay on T1, BusVerb on T5, the stock DELAY on T8). Image 99, 4 Oct
 2026: an FX2 change on T5 took the reverb off the track, and with the
 engines hidden from the chooser there was no row to put it back.
-
-## Measured
-
-- Under the port (`tools/verify/verify_fx2_lock.py`, in `make check`):
-  T2, FX2 twice, DOWN, YES leaves the live FX2 ids as a run that pressed
-  nothing. Without the module the same sequence turns T2's SEND (0x09)
-  into the stock DELAY (0x08) on bottleservice.
-
-## On the unit
-
-- Not yet.

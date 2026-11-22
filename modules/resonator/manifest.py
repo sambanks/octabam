@@ -48,7 +48,7 @@ MODULE = Module(
              "and 127, DECY low and high, FX2 dry-pass, two FX1 instances"),
               Evidence(Level.UNIT, unit="MKII", who="Ilia", image="RESO LM4.RMX", date="2026-11-14", commit="0808651e",
         note="low SCAL settings remained clean and the current-block LIM reduced hot output; verify_resonator passed"),),
-    doc="FX1 Torso S-4 RING-style filter bank: 4 pitched BPs, SCAL makeup, DECY, LIM.",
+    doc="Four pitched resonant band-pass filters in the style of the Torso S-4's RING, with decay and a limiter. FX1 only.",
     menu=MenuEntry(
         # Custom id 0x1e (BBD 0x1b). Selftest fixtures use DELAY 0x08.
         fx2_id=0x1e,

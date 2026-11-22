@@ -4,7 +4,7 @@ its README, and every link between tracked files resolves.
 
     python3 tools/verify/verify_docs.py
 
-README.md's module table and remixes/README.md are rendered from the
+modules/README.md and remixes/README.md are rendered from the
 manifests and the selections by `make docs` (tools/remix/index.py --write);
 this refuses a stale copy. It also refuses a remix directory without a
 README.md. Eight merged modules and four remixes had no row or page on

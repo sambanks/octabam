@@ -22,4 +22,4 @@ make check REMIX=sos-capture
 make image REMIX=sos-capture BUILD=1   # -> out/OCTATRACK_OCTABAM1.bin
 ```
 
-On Bryan T's MKII as BUILD=94 (`f6ce41d6`) and BUILD=95 (`cd017851`), 3 Oct 2026: [`CHANGELOG.md`](../../../CHANGELOG.md).
+On Bryan T's MKII as BUILD=94 (`f6ce41d6`) and BUILD=95 (`cd017851`), [`CHANGELOG.md`](../../../CHANGELOG.md).

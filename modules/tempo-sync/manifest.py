@@ -88,8 +88,7 @@ MODULE = Module(
     kind=Kind.CF_PATCH,
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks"),),
-    doc="ColdFire DRAM units: publishes the held MIDI note to BusDelay, and draws "
-        "BusDelay TIME as a tempo division.",
+    doc="Syncs the bus delay to the tempo: TIME shows as a tempo division, and the held MIDI note reaches the delay.",
     # BusDelay TIME's formatter: a DRAM unit since 8 Oct 2026 (a floating
     # ROM cave until then). A (P+0x0ca) points at `time_fmt` and B (P+0x0fa)
     # stays zero -- stock DELAY TIME's own configuration. TIME is page-2

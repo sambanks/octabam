@@ -97,25 +97,3 @@ The retired ColdFire synthesis, its coefficient tables and audio gates
 have been removed. ColdFire retains only control transport and UI helpers. [CPU.md](CPU.md),
 [SCHEMATIC.md](SCHEMATIC.md) and [REFERENCE.md](REFERENCE.md) retain the earlier
 ColdFire research, not the current DSP algorithm specification.
-
-## Hardware report and compatibility
-
-mathgonzlez reported on 28 September 2026 that ANALOGBD1 worked on an MK1:
-all parameters worked, with no glitches or unexpected sounds while tweaking.
-They also noted labels close to the edge of the parameter area. The tested
-flash file SHA256 is
-`3672634dedb8ce0138d7cf4216bd051a47afac6601dcd2a3c1830def24f39704`.
-This report does not specify a save/reload test, eight voices, or every effect
-combination; it predates this review revision.
-
-Loading an AB project in pristine 1.40C succeeds under the port, but stock
-sees FLEX and clamps the setup controls to FLEX ranges. In the measured
-fixture, ACCNT/LPF/LOW/HIGH become 1/1/1/3; the AB signature remains. Saving
-that project on stock can therefore overwrite the synth settings. Keep a
-separate project copy for stock or remixes without ANALOG BD. No claim of
-transparent backward compatibility is made.
-
-Eight voices are selectable, but effects still share each core's budget.
-All eight 808s, all eight 909s and mixed models passed FILTER + DARK locally.
-Eight 909s with DJ EQ in both slots failed with silent output. See [CPU.md](CPU.md)
-for the measured envelope; eight voices does not guarantee every FX combination.

@@ -11,10 +11,6 @@ divides two words of one block, so the gain itself cancels.
 [`cfmeter-tracks`](../cfmeter-tracks/README.md) are a pair: POST minus
 TRACKS on the same project is POST's cost.
 
-## Status
-
-Flashed as BUILD C2 on allmyfriendsaresynths's (@clickysteve) MKII, 7 Oct 2026: three 8 s streaming takes decoded (period 362.8 µs, TUE/ROE 0); results in the [USB AUDIO OUT README, TRACKS POST](../../../modules/usb/README.md#tracks-post), *On the unit*. The no-host takes were not run.
-
 ## Procedure (PR #625's CPU comparison)
 
 1. `make bus REMIX=cfmeter-post` (or `make image REMIX=cfmeter-post BUILD=N`), flash.

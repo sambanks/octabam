@@ -39,7 +39,7 @@ write-back change the Part and the card copy.
 
 | project | made by | holds |
 |---|---|---|
-| `SFX_01..NN` | `ot_matrix.py proj --clean --stimuli hits,pink,two_tones,sweep,ladder,impulses` | BASE + up to 31 layouts each: every effect on all 8 tracks in FX1 and FX2, each MODE with and without `dear`; 74 layouts + BASE in 3 projects on 1 Nov 2026 (`octabam` 0.1) |
+| `SFX_01..NN` | `ot_matrix.py proj --clean --stimuli hits,pink,two_tones,sweep,ladder,impulses` | BASE + up to 31 layouts each: every effect on all 8 tracks in FX1 and FX2, each MODE with and without `dear`; 74 layouts + BASE in 3 projects on (`octabam` 0.1) |
 | `SSCN` | SFX_01 + `ot_scenes.py stamp --banks 1-2 --all-scenes --trigs grid4` | MIDI track 1 on channel 11, CC 1 locked in all 16 scenes, MIDI trigs on steps 4, 8, 12, 16, clock and transport receive on |
 | `SDJ` | SFX_01 + `ot_scenes.py stamp --banks 1-2 --pattern-steps 2=1,2,4,7,8,11,13` | pattern 2 notes on steps 1, 2, 4, 7, 8, 11, 13 |
 
@@ -53,7 +53,7 @@ write-back change the Part and the card copy.
 | `dsp-watch` | SFX_01 | 6 | `ot_dspwatch.py --audio --continuous-clock --programs 0,1` | the DSP record count (`dsp.seq`, polled at 20 Hz) through 20 cycles of STOP, program change, START with a continuous MIDI clock and the unit's USB audio captured; the recipe that stopped the DSP with CX OSC in the image ([FAILURE_MODES.md](FAILURE_MODES.md)) | the count stops advancing, or a LOAD METER read times out |
 | `fxNN` | SFX_NN | 11 each | `ot_matrix.py run` | per layout: CRASH, FREEZE, CLICKS, ROUGH, STATIC, LEVEL, CLIP, DC/RINGS, DROPS, OVERLOAD, LOAD; DSP busy per core, per-slot cost | any flag |
 | `loaderNN` | SFX_NN | 2-7 | `ot_matrix.py switch --pairs` | program-change transitions: loaded effect to BASE, to a stock reverb, to another loaded effect (both FX1 and FX2 hosts); gaps, ColdFire longest run, bad records | any flag |
-| `pc-soak` | SFX_01 | 11 | `ot_matrix.py switch --pairs` | the loader soak of [FAILURE_MODES.md](FAILURE_MODES.md): A:B, B:A, A:BASE, BASE:A eight times (`ot_suite.py soak()`; in `octabam` MODULATION and PLATE REV, the 1-2 Nov probe; per remix in [HARDWARE_PLAN.md](HARDWARE_PLAN.md)) | count transitions whose DSP busy stays at the previous layout's (the tool's exit code does not) |
+| `pc-soak` | SFX_01 | 11 | `ot_matrix.py switch --pairs` | the loader soak of [FAILURE_MODES.md](FAILURE_MODES.md): A:B, B:A, A:BASE, BASE:A eight times (`ot_suite.py soak()`; in `octabam` MODULATION and PLATE REV) | count transitions whose DSP busy stays at the previous layout's (the tool's exit code does not) |
 | `kits-identity` | SFX_01 | 10 | `ot_fuzz.py` profile `pc` | 10 min of program changes (single, burst, back) across 32 patterns; each plays its Kit (firmware-migrated from the stock Parts at the first load) | MIDI destination lost, audio below -80 dB, frame count stopped |
 | `scenes-sweep` | SSCN | 11 | `ot_fuzz.py` profile `scenes` | scene A/B select 0..15 and crossfader sweeps | same checks |
 | `scenes-latency` | SSCN | 4 | `ot_xflag.py` | crossfader step to lock CC, stopped / playing / flood | tool error |
@@ -71,7 +71,7 @@ program change with the toggle on, at the pattern end with it off).
 
 ## Results on a unit
 
-1 Nov 2026, Sam's MKII, image `OCTABAMR3` (`octabam` 0.1: the stations, PATTERN MUTE and the ColdFire modules
+ Sam's MKII, image `OCTABAMR3` (`octabam` 0.1: the stations, PATTERN MUTE and the ColdFire modules
 OCTA303, MORPH, REC THRESHOLD, BUFFER SAVER, COPY PROJECT, SEQ, FX2 LOCK and TRACK PATTERNS), USB TRACKS PRE, the
 projects of `ot_suite.py build` (74 layouts + BASE). Each project loaded from a pristine copy.
 

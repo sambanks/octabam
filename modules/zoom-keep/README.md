@@ -18,14 +18,3 @@ Loading a sample into the editor (opening it, or a track key inside it) runs one
 
 - **The slice select 0x40071668** (the 0x40071712 detour): one stock call, `jsr` at 0x4004f9d4 in 0x4004f8dc, which is reached from 0x4005028e (in 0x400501d8) and 0x40050156 (in 0x400500e6). Under the port (lazy-chop-mods image): a trig in SLICES trig mode reaches 0x4005028e on its press and its release, also with [TRACK] or [FUNC] held, and only the press selected a slice; grid recording, normal trig mode, the sequencer playing (SLICES or normal trig mode, 2.5 s each), LEVEL, knob A, the track key and opening or closing the editor never called 0x40071668. 0x40050156 was not reached in these runs (inferred: another entry of the same trig handler). LOCK EDIT calls 0x40071668 itself and positions the view afterwards. So every caller is an audition or LOCK EDIT.
 - **The four page fits** (zk_loadkeep): reached only through the editor's sample load (its open and a track key inside it), measured as above; their routines have no direct callers in 1.40C (they are reached through the page records).
-
-## Measured
-
-- Under the ColdFire port (`tools/verify/verify_zoom_keep.py`, scenarios `aedview` and `aedtracks`): `aedtracks` zooms TRIM, SLICE and EDIT differently on T1 (T1 FLEX, T2 STATIC), switches to T2 and back: every page keeps its zoom and place; the first open after power-on is stock's fit. `aedview`: encoder F zooms in; in SLICES trig mode TRIG 2 selects slice 2 with the zoom unchanged and slice 2's start in view; TRIG 1 selects slice 1 with the zoom still unchanged.
-- On 8thmyth's MKI (image OCTABAMHC, remix `test/octabam-lazy-chop`, 14 Nov 2026): zoomed in on a marker, auditioning slices keeps the zoom. No issues found.
-
-## Inferred / open
-
-- Zoom across tracks: under the port only, not yet on a unit (planned in T9, 16 Nov 2026).
-
-- Every caller of 0x40071668 keeps the zoom; the callers are listed above (the SLICES trig audition and LOCK EDIT).

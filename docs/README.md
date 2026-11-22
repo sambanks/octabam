@@ -1,109 +1,104 @@
 # Documentation
 
-Where each doc is, by who reads it. A module's own page is
-`modules/<name>/README.md`, a remix's `remixes/<name>/README.md`, a tool's
-`tools/<dir>/README.md`.
+Every doc, by who reads it. Musicians want
+[the manual](https://sambanks.github.io/octabam/); everything here is for
+building from source and contributing. Terms are in
+[GLOSSARY.md](GLOSSARY.md).
 
-**Musicians: the manual is [sambanks.github.io/octabam](https://sambanks.github.io/octabam/).**
-It covers the current release (v0.5: Octabam, Octabam Verbs and Octabam Bus), builds an
-image in the browser and says how to install it and how to get back to stock. Everything
-below is for building from source and for contributors.
+Each module, remix and tool also has its own page:
+`modules/<name>/README.md`, `remixes/<name>/README.md` and
+`tools/<dir>/README.md`. The indexes are [modules/README.md](../modules/README.md)
+and [remixes/README.md](../remixes/README.md).
 
-## The manual site
-
-| doc | what it is |
-|---|---|
-| [site/index.md](site/index.md) | the site's source: the hand-written pages (the overview, a page per released remix, Build and Install, Safety and Recovery, About, Build Your Own Remix); deployed to GitHub Pages by `.github/workflows/pages.yml` on every push to main |
-| [site/usage/](site/usage/) | one hand-written fragment per module, `usage/<name>.md`, included into its page of the manual; [CONTRIBUTING.md "Before you open a PR"](../CONTRIBUTING.md#before-you-open-a-pr) has the rules for writing one |
-| [../tools/site/README.md](../tools/site/README.md) | the generator: the one manual for every released remix (`gen_manual.py`), the Feature Directory and module pages, the remix feature tables, all rendered from the manifests and gitignored; the release (`release.py`); the web builder's files; the rules the link gates force on the pages |
-| [contributing/SCREENSHOTS.md](contributing/SCREENSHOTS.md) | re-capturing the site's LCD screenshots under the port |
-
-## Building and flashing a remix from source
+## Build and flash from source
 
 | doc | what it is |
 |---|---|
-| [guide/BUILDING.md](guide/BUILDING.md) | what to install (macOS, Linux/WSL2), the toolchain, your own OS 1.40C, building an image, flashing from the card or over MIDI, booting an `.RMX` without flashing, after the flash, recovery, back to stock |
-| [../remixes/README.md](../remixes/README.md) | the remixes you can flash, with where each has run |
-| [guide/COMPOSING.md](guide/COMPOSING.md) | composing your own remix: a `remix.py` by hand |
+| [guide/BUILDING.md](guide/BUILDING.md) | from a fresh machine to a flashed unit, and back to stock |
+| [guide/COMPOSING.md](guide/COMPOSING.md) | choosing your own modules: writing a `remix.py` |
 
-## Writing a module or changing the build
+## Write a module
 
 | doc | what it is |
 |---|---|
-| [../CONTRIBUTING.md](../CONTRIBUTING.md) | the contract: the one rule, your first PR, the oracle rule, the gates before a PR |
-| [contributing/MODULES.md](contributing/MODULES.md) | writing a module: manifests, descriptors, DSP and ColdFire declarations, the ledger |
-| [contributing/PLACEMENT.md](contributing/PLACEMENT.md) | where a module's code goes and what is free, measured |
-| [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) | the demand loader: effects copied into the DSP's shared window while a track uses them; DLPUMP, DLCOPY, the stub, the reverb guard, SIDECHAIN_COMPRESSOR's hook stubs, the window layout, measurements on a unit |
-| [contributing/COLDFIRE_FORMS.md](contributing/COLDFIRE_FORMS.md) | the ColdFire instruction forms of a remix's runtime units, which stock code has run, the register of the rest |
-| [contributing/COSTS.md](contributing/COSTS.md) | what each effect costs on a unit, per slot, and the worst-case DSP load of a remix; `tools/remix/costs.py` |
-| [contributing/CYCLE_SCAN.md](contributing/CYCLE_SCAN.md) | where each effect spends its cycles, by the core manual's cycle table and pipeline stalls: every module and stock effect, the check against the unit, and the change for each site; `tools/build/interlock_scan.py` |
-| [contributing/DSP_AUDIT.md](contributing/DSP_AUDIT.md) | the audit of every module's DSP code for shorter, cheaper code with the same output: the techniques to check, how each module is built, the findings by module |
-| [contributing/TESTING.md](contributing/TESTING.md) | every gate, what it proves and cannot see; `make check`, `make reach`, shards, `make accept`, bit-identity, CI |
-| [contributing/TOOLING.md](contributing/TOOLING.md) | every tool by pipeline stage, and which README each tool directory has |
-| [contributing/HARDWARE_TESTING.md](contributing/HARDWARE_TESTING.md) | testing a remix on your own unit: the session step by step, stress sequences, recovering from a failure |
-| [contributing/HARDWARE_MATRIX.md](contributing/HARDWARE_MATRIX.md) | one remix in many configurations on a unit over one USB cable: project generation, the run, the flags, the limits |
-| [contributing/HARDWARE_SUITE.md](contributing/HARDWARE_SUITE.md) | the `octabam` remix's hardware suite: projects with generated audio, the phases over the one cable, what each measures |
-| [contributing/HARDWARE_PLAN.md](contributing/HARDWARE_PLAN.md) | the run sheet for the next unit session: `octabam`, `octabam-bus` and `octabam-verbs` after #1067, the control images, the soak's decision rule, the checks by hand, where results go |
-| [contributing/HARDWARE_MANUAL.md](contributing/HARDWARE_MANUAL.md) | the manual test plan for what the cable cannot reach: panel gestures, listening, card, MIDI controllers |
-| [contributing/FAILURE_MODES.md](contributing/FAILURE_MODES.md) | what has gone wrong on a unit: symptom, cause, fix, the gate that catches it |
-| [contributing/TRAPS.md](contributing/TRAPS.md) | the trap register: what has cost real work in the code, build, emulators and harness — symptom, fix, the gate that catches it |
-| [../AGENTS.md](../AGENTS.md) | working rules, worktrees, build and check, and the trap index (for people and coding agents) |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | the rules every pull request follows, and your first one |
+| [contributing/MODULES.md](contributing/MODULES.md) | how to write a module: the manifest, the kinds of module, DSP and ColdFire declarations |
+| [contributing/TESTING.md](contributing/TESTING.md) | every gate and what it checks; `make check`, `make reach`, CI |
+| [contributing/TRAPS.md](contributing/TRAPS.md) | mistakes that have cost real work, and the gate that now catches each |
+| [contributing/FAILURE_MODES.md](contributing/FAILURE_MODES.md) | faults seen on a unit: symptom, cause, fix |
+| [contributing/PLACEMENT.md](contributing/PLACEMENT.md) | where a module's code goes, and what memory is free |
+| [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) | how effects are loaded into the DSP while a track uses them |
+| [contributing/COSTS.md](contributing/COSTS.md) | what each effect costs in DSP time, and a remix's worst case |
+| [contributing/CYCLE_SCAN.md](contributing/CYCLE_SCAN.md) | where each effect spends its DSP cycles |
+| [contributing/DSP_AUDIT.md](contributing/DSP_AUDIT.md) | techniques for shorter, cheaper DSP code, and findings per module |
+| [contributing/COLDFIRE_FORMS.md](contributing/COLDFIRE_FORMS.md) | the ColdFire instruction forms a module may use |
+| [contributing/TOOLING.md](contributing/TOOLING.md) | every tool, by stage of the build |
+| [contributing/SCREENSHOTS.md](contributing/SCREENSHOTS.md) | capturing the manual's screenshots |
+| [../tools/site/README.md](../tools/site/README.md) | how the manual site and the web builder are generated |
+| [../AGENTS.md](../AGENTS.md) | working rules for coding agents and people |
+
+## Test on a unit
+
+| doc | what it is |
+|---|---|
+| [contributing/HARDWARE_TESTING.md](contributing/HARDWARE_TESTING.md) | testing a remix on your own Octatrack, and recovering from a failure |
+| [contributing/HARDWARE_MATRIX.md](contributing/HARDWARE_MATRIX.md) | running one remix in many configurations over one USB cable |
+| [contributing/HARDWARE_SUITE.md](contributing/HARDWARE_SUITE.md) | the `octabam` remix's automated hardware suite |
+| [contributing/HARDWARE_MANUAL.md](contributing/HARDWARE_MANUAL.md) | the checks done by hand: panel gestures, listening, the card, MIDI controllers |
 
 ## Specs
 
-[specs/](specs/README.md): the contracts between modules, and between modules and tools. A spec says what is guaranteed and what a client must do;
-measurements and history stay in the module's README.
+The contracts between modules: what is guaranteed, and what a client must
+do. [specs/README.md](specs/README.md).
 
 | doc | what it is |
 |---|---|
-| [specs/SHARED_SITES.md](specs/SHARED_SITES.md) | two modules on one stock site: STORE, EVENTS, HOOKS and `Override`, which to use, the machine chain, what is open |
-| [specs/STORE.md](specs/STORE.md) | save/load/copy events, side-file calls, refused files, native Part access, the MIDI SETUP byte table, the register ABI |
-| [specs/EVENTS.md](specs/EVENTS.md) | transport, accepted-MIDI, held-editor and copy boundaries; the registration form and each family's contract |
-| [specs/HOOKS.md](specs/HOOKS.md) | every bridge, its site and participants; adding one |
-| [specs/BRAIN.md](specs/BRAIN.md) | settings declarations, the four layers, the files on the card and in the project, the brain file's byte format |
+| [specs/SHARED_SITES.md](specs/SHARED_SITES.md) | two modules on one stock site: which of STORE, EVENTS, HOOKS or `Override` to use |
+| [specs/STORE.md](specs/STORE.md) | saving and loading a module's data with the project |
+| [specs/EVENTS.md](specs/EVENTS.md) | transport, MIDI, editor and copy events |
+| [specs/HOOKS.md](specs/HOOKS.md) | every shared hook, its site and the modules on it |
+| [specs/BRAIN.md](specs/BRAIN.md) | settings: declarations, layers, files and their format |
 
-## The tools
+## Tools
 
 | doc | what it is |
 |---|---|
 | [../tools/remix/README.md](../tools/remix/README.md) | the remix engine: schema, registry, ledger, the DRAM platform |
-| [../tools/harness/README.md](../tools/harness/README.md) | hearing and measuring the DSP side locally: `dsp_host`, `send_probe`, `rig_render`, `pressure`, the stress project |
-| [../tools/emu/README.md](../tools/emu/README.md) | the ColdFire emulators: the port (`ot_emu`) and Tier-0 (Unicorn) |
-| [../tools/panel/README.md](../tools/panel/README.md) | the virtual front panel over the port; [KEYMAP.md](../tools/panel/KEYMAP.md) the key and LED map |
+| [../tools/harness/README.md](../tools/harness/README.md) | hearing and measuring DSP code locally |
+| [../tools/emu/README.md](../tools/emu/README.md) | the emulators: the port and the Unicorn harness |
+| [../tools/panel/README.md](../tools/panel/README.md) | the virtual front panel; [KEYMAP.md](../tools/panel/KEYMAP.md) maps its keys |
 | [../tools/ghidra/README.md](../tools/ghidra/README.md) | the Ghidra project over the OS and both DSP payloads |
-| [../tools/site/README.md](../tools/site/README.md) | the manual site's generator and the web builder (above) |
-| `tools/web/` (no README; [tools/site/README.md](../tools/site/README.md) "The web builder") | the web builder's patches: `make webpatch BUILD=<nn>` at the release tag (`publish.py`), `stale.py --check` in CI |
-| [contributing/TOOLING.md](contributing/TOOLING.md) | every other tool directory (`tools/build`, `tools/verify`, `tools/hw`, ...), by pipeline stage |
 
 ## The firmware, reverse-engineered
 
-[firmware/](firmware/): OS 1.40C as measured here. Start at
-[ARCHITECTURE.md](firmware/ARCHITECTURE.md); [CHIP.md](firmware/CHIP.md)
-is the silicon and the cycle budget, [DSP.md](firmware/DSP.md) the audio
-DSP, and the rest one subsystem each (kernel, tables, parameter pages,
-menus, panel, MIDI, LFO, level law, recorder, sample save, storage,
-the MIDI tracks' setup record, writers, outgoing MIDI and CTRL labels in [MIDI_TRACKS.md](firmware/MIDI_TRACKS.md), Parts and pattern changes in [PARTS.md](firmware/PARTS.md), step locks, the ColdFire delay routine in [COLDFIRE_DELAY.md](firmware/COLDFIRE_DELAY.md), the reset path and OS entry in [BOOT.md](firmware/BOOT.md),
-REPITCH in [REPITCH.md](firmware/REPITCH.md)).
+How OS 1.40C works. Start at [firmware/ARCHITECTURE.md](firmware/ARCHITECTURE.md).
+
+| doc | subject |
+|---|---|
+| [firmware/CHIP.md](firmware/CHIP.md) | the chips, and the cycle budget |
+| [firmware/DSP.md](firmware/DSP.md) | the DSP programs |
+| [firmware/BOOT.md](firmware/BOOT.md) | reset, boot and OS entry |
+| [firmware/KERNEL.md](firmware/KERNEL.md) | the kernel |
+| [firmware/TABLES.md](firmware/TABLES.md) | the parameter tables |
+| [firmware/PARAM_PAGES.md](firmware/PARAM_PAGES.md) | parameter pages and what they publish to the DSP |
+| [firmware/MAINMENU.md](firmware/MAINMENU.md) | the menus |
+| [firmware/PANEL.md](firmware/PANEL.md) | keys, LEDs and the screen |
+| [firmware/PARTS.md](firmware/PARTS.md) | Parts and pattern changes |
+| [firmware/STEP_LOCKS.md](firmware/STEP_LOCKS.md) | parameter locks |
+| [firmware/LFO.md](firmware/LFO.md) | the LFOs |
+| [firmware/LEVEL_LAW.md](firmware/LEVEL_LAW.md) | the level law |
+| [firmware/MIDI.md](firmware/MIDI.md) | MIDI in and out |
+| [firmware/MIDI_TRACKS.md](firmware/MIDI_TRACKS.md) | MIDI tracks |
+| [firmware/MIDI_SCENES.md](firmware/MIDI_SCENES.md) | scenes on MIDI tracks |
+| [firmware/RECORDER.md](firmware/RECORDER.md) | the recorders |
+| [firmware/SAMPLE_SAVE.md](firmware/SAMPLE_SAVE.md) | saving samples |
+| [firmware/STORAGE.md](firmware/STORAGE.md) | the card and the file layer |
+| [firmware/STEM_REC.md](firmware/STEM_REC.md) | the stock routines STEM REC uses |
+| [firmware/COLDFIRE_DELAY.md](firmware/COLDFIRE_DELAY.md) | the ColdFire delay routine |
+| [firmware/REPITCH.md](firmware/REPITCH.md) | REPITCH |
 
 ## Proposals
 
-[proposals/remixes/](proposals/remixes/README.md): remix proposals, each
-taken on hardware to verified stable before it lands under `remixes/`.
+[proposals/remixes/](proposals/remixes/README.md): proposed remixes.
 
-## History
-
-Removed proposals, each recovered with `git show 76fd8466:docs/proposals/<file>`:
-
-| file | why removed | where it went |
-|---|---|---|
-| `FIRMWARE_SWITCHER.md`, `BOOT_DEFAULT.md` | REMIX SWITCH shipped | firmware facts in [firmware/BOOT.md](firmware/BOOT.md); behaviour in [REMIX SWITCH](../modules/remix-switch/README.md) |
-| `OTX_PROJECT_PROPOSAL.md`, `OTX_MODULE_GUIDELINES.md` | replaced by BRAIN and the modules that use it | section 14 of the removed BRAIN design lists what BRAIN took from OTX |
-| `USB_HANDOFF.md`, `USB.md` | session handoff (15 Oct 2026) and the design that merged four USB modules into one with run-time settings; built, with six settings where it proposed two (LAYOUT, INPUTS) | [USB](../modules/usb/README.md) |
-| `SHARED_HOOKS.md` | built as HOOKS; PARTS dropped | [specs/SHARED_SITES.md](specs/SHARED_SITES.md) |
-| `BRAIN.md` | built | sections 1-8 (declarations, layers, files, format) are [specs/BRAIN.md](specs/BRAIN.md); sections 9-15 (menu, tooling, gates, phases, OTX) stay in git; [BRAIN module](../modules/brain/README.md) |
-| `SCOPE.md` | shipped | [SCOPE](../modules/scope/README.md) |
-| `DEMAND_LOAD.md`, `SC_DEMAND_LOAD.md` | merged | [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) |
-
-[../CHANGELOG.md](../CHANGELOG.md) has one entry per image that reached a
-unit. Records that were closed and removed are cited in place as
-`git show <sha>:<path>`.
+[../CHANGELOG.md](../CHANGELOG.md) lists each release.

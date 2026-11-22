@@ -19,4 +19,3 @@ idle figure appears in CF Meter's readout. Not in an official remix.
 - Under the port the loop boots and loads a project. The idle slot's number
   needs the unit: once a borrowed call returns to the stock `bras .`, main
   parks there and the loop's accounting stops.
-- Hardware: cursory testing on Sam's MKII (owner report, 16 Oct 2026).

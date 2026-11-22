@@ -68,20 +68,3 @@ Stock 1.40C preserves the source-track number but resets the mode, response
 and octave fields. After saving that bank on stock, Follow returns as **FIXED,
 octave 0, TRIG**, with a remembered SOURCE offset of **-2 octaves**. Keep a
 separate project copy to preserve these settings.
-
-## Testing status
-
-MKII USB MIDI tests on 30 October 2026 passed ten minutes each with seven
-four-note GRAV LIVE followers at 200 BPM / 1×, both sharing one source and
-forming a chain. A five-minute run added eight looping FLEX tracks with
-FILTER and PLATE REV; audio stayed continuous and the panel remained responsive.
-STOP released all held follower notes. Earlier Part save/reload and power-cycle
-checks also passed.
-
-**Known limit:** eight MIDI tracks playing four-note chords on every sixteenth
-at 300 BPM / 2× froze the unit with RFOL OFF on every track and Follow still
-loaded. Avoid that load while the freeze remains unresolved. The
-passing runs do not establish a safe maximum for all MIDI traffic or remix
-combinations. MKI and DIN output/timing remain unverified.
-
-[Implementation and verification](DEVELOPMENT.md).

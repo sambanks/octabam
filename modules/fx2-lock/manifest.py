@@ -28,7 +28,7 @@ MODULE = Module(
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
         note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); verify_fx2_lock under the port, 4 Oct "
              "2026"),),
-    doc="The FX2 chooser cannot change a track's effect: YES's key-table entry points at NO's close handler, so the select handler never runs.",
+    doc="Locks each track's FX2 effect: the FX2 chooser cannot change it.",
     pokes=(
         Poke(0x400BC374, expect=H("40052474"), write=H("4003d440"),
              note="FX2 chooser key table: YES -> the NO (close) handler, not the select"),

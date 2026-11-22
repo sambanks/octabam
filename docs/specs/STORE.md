@@ -137,14 +137,14 @@ unused by stock's pages; the record has no byte left that no module uses.
 | byte | offset | stock | module | state |
 | --- | --- | --- | --- | --- |
 | 0-2 | `+0x00..0x02` | CHAN, BANK, PROG | — | stock |
-| 3 | `+0x03` | unused (NOTE SETUP slot D) | MIDI FOLLOW: source | #824 |
+| 3 | `+0x03` | unused (NOTE SETUP slot D) | MIDI FOLLOW: source | in use |
 | 4 | `+0x04` | SBNK | — | stock |
 | 5 | `+0x05` | unused (NOTE SETUP slot F) | MIDI HARMONY: OFF / NOTE / CHORD | radiohagen's repo |
 | 6-11 | `+0x06..0x0b` | LFO PMTR, WAVE | — | stock |
-| 12 | `+0x0c` | unused (ARP SETUP slot A) | the shared flags byte, owned by STORE: MIDI FOLLOW mode / response (bits 0-1), MIDI LOOPBACK DEST (bits 2-3) | #824; merged |
-| 13 | `+0x0d` | unused (ARP SETUP slot B) | MIDI FOLLOW: remembered fixed octave | #824 |
+| 12 | `+0x0c` | unused (ARP SETUP slot A) | the shared flags byte, owned by STORE: MIDI FOLLOW mode / response (bits 0-1), MIDI LOOPBACK DEST (bits 2-3) | in use |
+| 13 | `+0x0d` | unused (ARP SETUP slot B) | MIDI FOLLOW: remembered fixed octave | in use |
 | 14 | `+0x0e` | ARP LEN | — | stock |
-| 15 | `+0x0f` | unused (ARP SETUP slot D) | MIDI FOLLOW: remembered relative octave | #824 |
+| 15 | `+0x0f` | unused (ARP SETUP slot D) | MIDI FOLLOW: remembered relative octave | in use |
 | 16 | `+0x10` | unused (ARP SETUP slot E) | MIDI HARMONY: VOIC / SPRD / ROOT | radiohagen's repo |
 | 17 | `+0x11` | ARP KEY | MIDI SCALES and SCALES write it (values 25-84 past stock's 0-24); MIDI FOLLOW, MIDI HARMONY and SCALES read it (`store_part_midi_key`) | merged; SCALES PR |
 | 18 | `+0x12` | unused (CTRL1 SETUP slot A) | MIDI HARMONY: CHRD (bits 0-2), SIZE (bits 3-4) | radiohagen's repo |
@@ -152,7 +152,7 @@ unused by stock's pages; the record has no byte left that no module uses.
 | 20-29 | `+0x14..0x1d` | CC1..CC10 numbers | — | stock |
 | 30-35 | `+0x1e..0x23` | LFO MULT, TRIG | — | stock |
 
-Measured on stock 1.40C for `+0x12` (SCALES, 30 Oct 2026, under the port):
+Measured on stock 1.40C for `+0x12` (SCALES, under the port):
 the load keeps the byte (a value past 127 loads as 127), SAVE PROJECT
 writes it back, and CTRL1 SETUP's YES (`0x4003fe14`) writes back the value
 its window read when it opened (`0x40059620`), so a value no page shows

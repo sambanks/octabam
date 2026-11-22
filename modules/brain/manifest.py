@@ -262,7 +262,7 @@ MODULE = Module(
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
         note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); `verify_brain` under the port (6 Oct "
              "2026)"),),
-    doc="The settings store on the unit: card-wide knob defaults read from BRAIN/card.work at each project load (docs/specs/BRAIN.md).",
+    doc="The settings store: card-wide settings and knob defaults kept on the card and read at each project load, behind the PROJ → BRAIN menu.",
     # MODEDEF_TABLE: MODE DEFAULTS' view table, 0 without that module.
     # BRAIN's own settings (SETTINGS > BRAIN), read by brain.c
     store=Store("octabam.brain"),

@@ -6,10 +6,6 @@ Two DSP words. No cave, no menu row.
 
 - **LOFI AMF FIX** (Bryan T, [octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt)) — stock LO-FI's AMF knob jumps the pitch backwards at some settings because its coefficient multiply is `mpysu` (signed × unsigned) where both operands are magnitudes; two DSP words become `mpyuu`.
 
-## Status
-
-Both words disassembled against stock (`mpysu x0,y0,a` → `mpyuu x0,y0,a` at P:0x01bef / P:0x019af). Upstream's 128×128 sweep (zero monotonicity violations) is his claim, not re-measured here. Not flashed.
-
 ## Build
 
 ```bash

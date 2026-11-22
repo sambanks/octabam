@@ -4,12 +4,6 @@ Every address, argument and behaviour the STEM REC module
 (`modules/stems/`, design in `git show 4d2d6456:docs/superpowers/specs/2026-09-10-stem-rec-poc-design.md`)
 relies on, with the evidence for each.
 
-**Method.** Read from `out/raw/section_3_MAIN_OS.bin`, SHA-256
-`164f31224bf61181e3f50e7dec40df9afcae5b16dbf6e4c0d0cc5e986af0a84e`, load base
-`0x40000400`, with `scripts/disasm.sh emac` (objdump `-m m68k:cfv4e`), never r2.
-Confidence markers as in `CHIP.md`: ✅ measured, 🟡 inferred with a
-falsifier stated, ❌ retracted.
-
 ## 1. The transport word
 
 ### 1.0 The plan's rule does not hold. Read this first.
@@ -31,7 +25,7 @@ are therefore transitions in and out of the value 1, not in and out of zero.
 Section 1.7 gives the corrected interface. Task 14's hook must be revised
 before it is written.
 
-### 1.1 Size ✅
+### 1.1 Size
 
 Every one of the 33 references in the image is a longword form: `movel`,
 `clrl`, `tstl`, `cmpl` or `orl`. There is no byte or word access to
@@ -41,7 +35,7 @@ This confirms the warning already in `tools/emu/emu_rtos.py` and
 `RTOS_FORK.md` section 10.1: reading this address one byte at a time reports a flat
 0 no matter what the firmware does, because the value lands in `0x800065bb`.
 
-### 1.2 Every reference, classified ✅
+### 1.2 Every reference, classified
 
 `refs.sh 0x800065b8` returns 33 hits. Each hit is an instruction operand.
 Each was decoded from five different earlier start addresses (the hit minus
@@ -90,14 +84,14 @@ every case.
 
 Totals: 20 reads, 7 writes of 0, 5 writes of 1, 1 write of 2.
 
-#### Is that census complete? Mostly ✅, with one gap 🟡
+#### Is that census complete? Mostly , with one gap
 
 `refs.sh` matches 32-bit literals. It cannot see a store formed as
 `lea <base>,%aN` plus a displacement, so "every writer" needs its own
 evidence. Four checks, all against the image:
 
 **1. No pointer to the word itself.** No `lea 0x800065b8` and no
-`movea.l #0x800065b8` appears anywhere. ✅
+`movea.l #0x800065b8` appears anywhere. 
 
 **2. No misaligned store from below overlaps it.** The bytes immediately
 under the word are accessed at widths that stop at `0x800065b7`:
@@ -124,7 +118,7 @@ as an absolute operand, reads and writes together, not writes alone. The
 widest access at `0x800065b2` is a word, so it ends at `0x800065b3`; at
 `0x800065b4` a word, ending at `0x800065b5`; at `0x800065b6` a byte, ending
 there. `0x800065b7` is never touched. Nothing below reaches into
-`0x800065b8`. ✅
+`0x800065b8`. 
 
 (The `lea` at `0x800065b2` is the one site check 3 resolves. It is counted
 here as a reference but it is not an access.)
@@ -144,16 +138,16 @@ is used once:
 `%a0` is loaded, read once at displacement 0, never incremented, and next
 reloaded with an unrelated base (`lea 0x400abae4,%a0` at `0x400a4264`). The
 code reverts to absolute addressing immediately. It never reaches
-`0x800065b8`. ✅
+`0x800065b8`. 
 
 **4. No pointer walk crosses it.** No `cmpal` loop terminator anywhere in
 the image falls in `0x80006510` to `0x800065c0`, so no walk in this
 neighbourhood runs up to or past the word. The two walks nearby both miss
 it: the per-track array walks stop at `0x80006510`, which is `0xa8` below,
 and the eight-entry walk over `0x80006646` to `0x8000664e` (writing
-`%a0@(-8)` and `%a0@`) sits `0x8e` above. ✅
+`%a0@(-8)` and `%a0@`) sits `0x8e` above. 
 
-🟡 **What remains unseen.** A store through a base register whose value is
+Unconfirmed: **What remains unseen.** A store through a base register whose value is
 computed at run time rather than loaded from a literal, for example a struct
 pointer read out of memory, would be invisible to all four checks. So would
 a base outside the `0x80006400` to `0x800065b8` range that reaches the word
@@ -189,7 +183,7 @@ transport dispatchers call it as `getter(-1)` and compare the result with 1:
 4009b29c:	4e75           	rts
 ```
 
-### 1.3 The writers ✅
+### 1.3 The writers
 
 **Write 1, the transport starts.** Five sites. Two are inside `0x4009b964`,
 the routine `emu_rtos.py` calls `FW_TRANSPORT`:
@@ -248,7 +242,7 @@ transmits `0xfa` (MIDI Start) at `0x400a2224` and `0x400a28c2`, and `0xfb`
 therefore certain: `0x400a220a` falls through to the `0xfa` at `0x400a2224`,
 as the listing above shows.
 
-🟡 Which transmission belongs with `0x400a24d0` and with `0x400a27e2` was
+Unconfirmed: Which transmission belongs with `0x400a24d0` and with `0x400a27e2` was
 not traced through the handler's branches.
 **Falsifier:** a trace through `0x400a1e0c` showing either store reaching a
 different transmission, or none. This does not affect the interface, because
@@ -256,9 +250,9 @@ all three store the same value.
 
 The store at `0x4009c3d4` is the one the port has already caught.
 `RTOS_FORK.md` section 9.4 and section 10.1 record `[0x800065b8] <- 0x1 (4)` at pc
-`0x4009c3d4` in task main, measured 6 Sep 2026 against `out/_testproj`. That
+`0x4009c3d4` in task main, measured against `out/_testproj`. That
 is an independent confirmation of both the size (4 bytes) and the running
-value (1) at one of the five sites listed here. ✅
+value (1) at one of the five sites listed here. 
 
 **Write 2, the STOP key.** One site, at the head of `0x4009f5bc`:
 
@@ -356,7 +350,7 @@ into `0x400a1296` by fall-through, so it clears a second time at
 `0x400a12ac`. There is no `rts` in the whole span.
 
 So the routine always leaves the word at 0, by one clear on the zero branch
-and two on the non-zero branch. ✅
+and two on the non-zero branch. 
 
 It also transmits MIDI Stop, at `0x400a1426`. That site is inside
 `0x400a10c8`: the routine's only `rts` is at `0x400a14a0`, after the
@@ -377,7 +371,7 @@ clears:
 400a406c:	4210           	clrb %a0@
 ```
 
-### 1.4 What the three values mean ✅
+### 1.4 What the three values mean
 
 `FW_TRANSPORT` switches on the word at its head. This is the clearest
 statement of the state machine in the image:
@@ -410,7 +404,7 @@ value 2 means "stopped, with the position kept, so the next start is a
 Continue". The per-track byte array at `0x80006500` carries the same 0, 1
 and 2 encoding for each of the 16 lanes.
 
-### 1.5 The stop edge ✅, with the key's identity 🟡
+### 1.5 The stop edge , with the key's identity
 
 The per-key jump table is at `0x400d2d54`, holding 4-byte handler pointers.
 The three transport keys are consecutive:
@@ -420,11 +414,6 @@ The three transport keys are consecutive:
 | 27 | `0x400d2dc0` | `0x4000a274` | REC |
 | 28 | `0x400d2dc4` | `0x4000a200` | PLAY |
 | 29 | `0x400d2dc8` | `0x4000a1e0` | STOP |
-
-❌ **Correction to two existing notes.** The task brief and the comment by
-`UI_QUEUE` in `tools/emu/emu_rtos.py` both put REC, PLAY and STOP at indices
-24, 25 and 26. They are at 27, 28 and 29. Index 26 is `0x400d2dbc`, and it
-holds `0x400019d0`, which is a bare `rts`:
 
 ```
 400019d0:	4e75           	rts
@@ -468,9 +457,9 @@ The STOP handler is short and has no state of its own:
 So **both** branches of the STOP handler reach `0x4009f5bc`, and
 `0x4009f5bc` writes **2** into `0x800065b8`. There is no store of 0 anywhere
 on this path, and the handler is stateless, so a second press behaves like
-the first. ✅
+the first. 
 
-🟡 **That `0x4000a1e0` is the STOP key is inferred, not measured.** The
+Unconfirmed: **That `0x4000a1e0` is the STOP key is inferred, not measured.** The
 evidence is strong but indirect: it is the third of three consecutive table
 entries whose other two are the measured REC and PLAY handlers, and it is
 the only one of the three that reaches a routine transmitting MIDI Stop
@@ -491,7 +480,7 @@ before it starts), `0x400a4066` (the sequencer's automatic stop) and
 Task 10 added four `ot_emu` flags (`--card-out`, `--call-before-play`, `--at`,
 `--card-fail-after`) and staged a project card (set `STEMS`, project `ULTFX`,
 from `out/projects/Ultimate FX 1.5.3`) to close this section. Command run
-(12 Sep 2026):
+:
 
 ```bash
 out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card out/stems_card.img \
@@ -508,7 +497,7 @@ without touching the transport word. The write of 2 was measured only in a
 second run, with that precondition forced open. Four separate claims, each
 measured, follow.
 
-**✅ `0` at init and `1` at the transport start, measured.** `--watch-mem`
+** `0` at init and `1` at the transport start, measured.** `--watch-mem`
 on the command above shows exactly two writes over the whole run:
 
 ```
@@ -522,7 +511,7 @@ The first is engine init (section 1.3's `0x400a1050`); the second is
 project, so the 0->1 transition is now measured twice, against two
 projects.
 
-**✅ Unforced, on this project, the STOP handler takes its early `rts` and
+** Unforced, on this project, the STOP handler takes its early `rts` and
 the word stays 1, measured.** The call above returns
 (`call : 0x4000a1e0(0x0) at frame 200 -> returned, d0 0x3fb6`), but
 `--watch-mem` shows no third write: the word stays at 1. `--watch-pc` on the
@@ -539,7 +528,7 @@ tstb 0x80000029 / beqs 0x4000a1fe   -- taken
 call at all shows the same byte still `0x00`: nothing in this project's load
 or its first 400 frames ever sets it.
 
-**✅ With `0x80000029` forced to 1, the STOP handler writes 2 at pc
+** With `0x80000029` forced to 1, the STOP handler writes 2 at pc
 `0x4009f5c6`, measured.** A second run, `--poke 0x80000029=1` added before
 the same `--at 200:0x4000a1e0:0` call, reaches the code section 1.5 already
 disassembled:
@@ -557,7 +546,7 @@ not triggered: a running transport (word 1) that receives a real STOP call,
 with its own precondition satisfied, does write 2 and nothing else. Section
 1.7's rule -- running iff the word is exactly 1 -- stands on both runs.
 
-**🟡 What sets `0x80000029` on the unit is still open.** `RTOS_FORK.md`
+** What sets `0x80000029` on the unit is still open.** `RTOS_FORK.md`
 section 9.4 measured this same byte as already `0x01` right after
 `load_project_live` on `out/_testproj`, with no extra setup. On
 `Ultimate FX 1.5.3`, staged the same way, it reads `0x00` after the same
@@ -637,7 +626,7 @@ One instruction detail for Task 14: ColdFire immediate shift counts stop at
 8. The stock code shifts by 10 through a register, and the hook must do the
 same. Section 2.8 gives the exact sequence.
 
-### 2.1 The frame routine and its one caller ✅
+### 2.1 The frame routine and its one caller
 
 `0x400031a0` is called from exactly one place in the image:
 
@@ -666,7 +655,7 @@ It saves and restores the whole EMAC state around its body
 (`0x400031ac` to `0x400031c4`, and `0x4000383c` to `0x4000384e`), which is
 what an audio routine called from an interrupt has to do.
 
-### 2.2 How the half is computed ✅
+### 2.2 How the half is computed
 
 The routine reads the word once, at the top, and parks it in a stack slot:
 
@@ -742,13 +731,13 @@ Eight tracks, `0x80` bytes each, `0x400` bytes for the half. That is the
 whole half, and it agrees with `DSP.md`: tracks 1 to 4 at `0x80003190` and
 tracks 5 to 8 at `0x80003390`, which is `0x80003190 + 0x200`.
 
-🟡 **Which loop iteration is track 1 is not settled here.** The loop starts
+Unconfirmed: **Which loop iteration is track 1 is not settled here.** The loop starts
 at offset 0 and steps by `0x80`, and `DSP.md` puts tracks 1 to 4 in the
 first `0x200`, so iteration 0 is expected to be track 1. Task 4 owns this.
 **Falsifier:** a port run with a known signal on one track showing the
 signal at an offset other than `track_index * 0x80`.
 
-### 2.3 The word is 0 or 1, and the firmware says so ✅
+### 2.3 The word is 0 or 1, and the firmware says so
 
 The absence of a mask is safe because the firmware checks the range itself
 and halts:
@@ -766,7 +755,7 @@ there was no borrow, that is when `1 >= value` unsigned. Any value above 1
 runs into the `halt`. The check sits four instructions after the only write
 to the word, so it guards every value the word can take.
 
-### 2.4 Every writer of `0x800000e0`, classified ✅
+### 2.4 Every writer of `0x800000e0`, classified
 
 `refs.sh 0x800000e0` returns 35 hits. The helper was checked first on
 `0x800065b8`, which gave the expected 33.
@@ -799,7 +788,7 @@ keeps the previous one next door.
 pushes. The DMA setup steps use it for the buffers the DSP is still filling
 (`0x400048f6`, `0x40004964`, `0x40004a48`, `0x40004ab2`).
 
-#### Displacement forms, checked ✅
+#### Displacement forms, checked
 
 `refs.sh` matches 32-bit literals, so a store written as `lea 0x80000000,%aN`
 plus a displacement of `0xe0` would be invisible to it. A `grep` over the
@@ -816,13 +805,13 @@ At `0x40084438` the same `%a1` is used at displacements `0xcc`, `0xd0`,
 `0xd8` and `0xdc` in the surrounding lines, so it is a structure pointer.
 At `0x400d867e` the access is a load of a pointer, not a store.
 
-🟡 **What remains unseen.** A store through a base register computed at run
+Unconfirmed: **What remains unseen.** A store through a base register computed at run
 time, for example a struct pointer read out of memory, would be invisible to
 both checks.
 **Falsifier:** a write watch over `0x800000e0,4` under the port reporting a
 store from a PC other than `0x4000ab02`.
 
-### 2.5 Where the write sits, relative to the `jsr` ✅
+### 2.5 Where the write sits, relative to the `jsr`
 
 The write is not in the interrupt that calls the frame routine. It is in a
 different one, and that one runs first.
@@ -997,7 +986,7 @@ ends:
 So on the working path the write and the reset always happen together, in
 that order.
 
-🟡 **The error exit at `0x4000ab12` writes the word and does not reset the
+Unconfirmed: **The error exit at `0x4000ab12` writes the word and does not reset the
 counter.** On that path `0x800000e0` has already changed while a step chain
 from the previous frame may still be walking, so the frame routine could
 read a half that chain did not fill. The path calls `0x4000a8fc` and leaves
@@ -1054,7 +1043,7 @@ So the order within one frame is:
 value written at point 3, and so does the stock routine at point 11. Same
 value, same half, no inversion.**
 
-🟡 **That the level 5 handler runs once per audio frame is inferred.** What
+Unconfirmed: **That the level 5 handler runs once per audio frame is inferred.** What
 is measured is that it resets the step chain, takes a fresh half index from
 the DSP host port, and programs the frame's transfers. That is a frame's
 worth of work, and nothing else in the image resets the counter except the
@@ -1062,7 +1051,7 @@ one `clrl` at `0x4000ac32`.
 **Falsifier:** a port run counting entries to `0x4000aad0` against frames and
 finding a different rate.
 
-### 2.6 The word cannot change under the hook ✅
+### 2.6 The word cannot change under the hook
 
 The hook is detoured at `0x40004b12`, which is after the
 `movew #9472,%sr` at `0x40004b0e`. `9472` is `0x2500`, so the supervisor bit
@@ -1081,7 +1070,7 @@ There is one writer in the whole image.
 So the hook may read the word once and use that value for its whole copy.
 That is what the stock routine does.
 
-### 2.7 What the port cannot show 🟡
+### 2.7 What the port cannot show
 
 Nothing in this section was run. No Octatrack project folder exists on this
 machine, and `ot_emu` needs one for `--card`, `--set` and `--project`. The
@@ -1150,7 +1139,7 @@ immediate shift only encodes 1 to 8:
 
 ## 3. Creating a task
 
-### 3.0 The capacity question, answered first ✅
+### 3.0 The capacity question, answered first
 
 The ready structure is **a circular doubly linked list of task control
 blocks, one list per priority, with no capacity field and no bitmap**. A
@@ -1172,7 +1161,7 @@ kernel keeps per task: its two ring links, its priority, its saved
 registers, and its state. A **ready list** is the ring of TCBs at one
 priority that are eligible to run.
 
-### 3.1 The two routines and every call site ✅
+### 3.1 The two routines and every call site
 
 `0x400005fc` creates a task. `0x4000063c` makes it runnable. Both are called
 only in that pair, and always in that order.
@@ -1235,7 +1224,7 @@ the frame layout.
 Priority 1 therefore holds three tasks in stock: rows 5, 7 and 10. That is
 the count the plan assumed, confirmed from the image.
 
-#### Is the census complete? ✅ for direct and PC relative calls, 🟡 beyond
+#### Is the census complete? for direct and PC relative calls, beyond
 
 `refs.sh` matches 32 bit literals, so a PC relative call is invisible to it.
 Two further checks were run.
@@ -1245,13 +1234,13 @@ offset in the image for `jsr %pc@(d16)` (`0x4eba`), `bsr.b`, `bsr.w` and
 `bsr.l`, resolving each displacement, finds **exactly one** call to either
 address: the boot's `0x40000e3a` above. There are **zero** occurrences of
 the word `0x4ebb`, which is `jsr %pc@(d8,Xn)`, at any even offset in the
-image, so the indexed PC relative form is not used anywhere. ✅
+image, so the indexed PC relative form is not used anywhere. 
 
 **2. A linear disassembly of the whole image**, grepped for both addresses
 in objdump's resolved target column, returns the same set and nothing else.
-✅
+ 
 
-🟡 **What remains unseen.** A call through an address register whose value
+Unconfirmed: **What remains unseen.** A call through an address register whose value
 came from memory rather than from a `lea` of a literal would be invisible to
 all three checks. So would a call through a dispatch table built at run
 time.
@@ -1259,7 +1248,7 @@ time.
 reporting an entry from a program counter that is not one of the ten call
 sites above.
 
-### 3.2 K_CREATE, the argument list ✅
+### 3.2 K_CREATE, the argument list
 
 The whole routine, 64 bytes:
 
@@ -1329,13 +1318,13 @@ initial SP = stack + (size & ~3) - 12
 an unaligned stack pointer and an address error on the task's first push.
 Align the base. Do not rely on the mask.
 
-**Return value ✅.** `moveq #1,%d0` at `0x40000638` is unconditional and the
+**Return value .** `moveq #1,%d0` at `0x40000638` is unconditional and the
 only exit is the `rts` after it. `K_CREATE` **always returns 1 in `%d0`.
 There is no failure path.** Nothing is validated: not the priority, not the
 stack alignment, not the TCB address. A caller cannot learn that it got
 something wrong.
 
-**What create writes into the TCB ✅.** Four fields, and nothing else:
+**What create writes into the TCB .** Four fields, and nothing else:
 
 | offset | value |
 |---|---|
@@ -1348,7 +1337,7 @@ something wrong.
 them. The saved register block at `+12` through `+71` is not written either.
 Section 3.8 says what follows from that.
 
-### 3.3 The first frame, and what the entry function sees ✅
+### 3.3 The first frame, and what the entry function sees
 
 Three longwords are pushed at the stack top, from high address to low:
 
@@ -1377,7 +1366,7 @@ longword and then the program counter:
 
 So on the task's first instruction `%sp` is `top - 4` and `%sp@(0)` is
 `0x400006e4`. **The entry function is entered exactly as if it had been
-called with `jsr` and no arguments.** ✅ Task 15's entry must take no
+called with `jsr` and no arguments.** Task 15's entry must take no
 parameters.
 
 `0x400006e4` is the task exit stub. It reads the current TCB from
@@ -1393,19 +1382,19 @@ into the scheduler, which never comes back:
 ```
 
 So an entry function that returns deletes its own task cleanly. It does not
-free the TCB or the stack. ✅
+free the TCB or the stack. 
 
-**The SR the task starts with ✅.** The low word of `0x407c2000` is `0x2000`:
+**The SR the task starts with .** The low word of `0x407c2000` is `0x2000`:
 supervisor set, trace off, interrupt mask 0. The task runs with all
 interrupts enabled.
 
-🟡 **The high word `0x407c`.** Read against the ColdFire frame layout it is
+Unconfirmed: **The high word `0x407c`.** Read against the ColdFire frame layout it is
 format 4, fault status 0, vector 31. Only the format field and the SR matter
 to `rte`. Task 15 must push the same constant rather than reason about it.
 **Falsifier:** a format field the V4e `rte` rejects would raise a format
 error at the task's first dispatch instead of entering the task.
 
-**A second, independent reading of the same frame ✅.** The boot code builds
+**A second, independent reading of the same frame .** The boot code builds
 one by hand for the `main` task, TCB `0x46c7ae84`, and never calls create:
 
 ```
@@ -1428,7 +1417,7 @@ one by hand for the `main` task, TCB `0x46c7ae84`, and never calls create:
 create does, from a code path that never touches create.
 
 The priority field is written a few instructions earlier, and it matches
-`K_CREATE`'s own formula exactly ✅:
+`K_CREATE`'s own formula exactly:
 
 ```
 40000dec:	223c 8000 68dc 	movel #-2147456804,%d1
@@ -1440,7 +1429,7 @@ The priority field is written a few instructions earlier, and it matches
 and the boot writes the same four fields create writes, with the same
 values, computed the same way.
 
-### 3.4 K_START, the whole routine ✅
+### 3.4 K_START, the whole routine
 
 ```
 4000063c:	2f0a           	movel %a2,%sp@-
@@ -1477,17 +1466,17 @@ values, computed the same way.
 `%sp@(4)` because `%a2` was pushed first. A call is one `pea` and a `jsr`,
 then a 4 byte stack adjustment.
 
-**Return value ✅.** `moveq #1,%d0` at `0x4000065a` is on both paths of the
+**Return value .** `moveq #1,%d0` at `0x4000065a` is on both paths of the
 branch above it, and nothing after it writes `%d0`. `K_START` **always
 returns 1 in `%d0`**. Like create, it has no failure path.
 
-**It does not force a context switch ✅.** There is no `trap #0` anywhere in
+**It does not force a context switch .** There is no `trap #0` anywhere in
 `0x4000063c` to `0x4000068a`, and no write to the software interrupt bit at
 `0xfc04c010` that the kernel's post routines use to request one. A newly
 started task runs at the next scheduling point, not at the `jsr`. This holds
 even when the new task outranks its creator.
 
-### 3.5 The ready structure, and why it has no capacity ✅
+### 3.5 The ready structure, and why it has no capacity
 
 Three facts, all from the code above.
 
@@ -1496,7 +1485,7 @@ Three facts, all from the code above.
 `0x40000668` points both at the TCB itself. The non empty case at
 `0x40000672` splices the new TCB in between the head and the head's
 successor. There is no counter, no array of slots and no bitmap. **A
-priority holds any number of tasks.** ✅
+priority holds any number of tasks.** 
 
 **2. The head array is eight longwords, priorities 0 to 7.** The kernel's
 init clears exactly that range:
@@ -1517,7 +1506,7 @@ does not check:
 40000610:	0680 8000 68dc 	addil #-2147456804,%d0
 ```
 
-Priority 1 gives `0x800068e0`, well inside the array. ✅
+Priority 1 gives `0x800068e0`, well inside the array. 
 
 **3. Higher priority number wins, and the scheduler is round robin inside a
 priority.** `0x800068d8`, one longword below the array, holds the **address**
@@ -1545,7 +1534,7 @@ priority:
 
 So priority 1 is second lowest of eight. A priority 1 task runs whenever no
 task at priority 2 through 7 is ready, and it shares its ring round robin
-with the three tasks already there. ✅
+with the three tasks already there. 
 
 ⚠️ For Task 15. The UI task runs at **priority 1**, row 7 of the census, TCB
 `0x46c7bed8`, entry `0x40061a94`. A menu action that creates a priority 1
@@ -1553,11 +1542,9 @@ task therefore does not lose the processor at the `jsr`: the new task joins
 the same ring and first runs when the UI task blocks, or when a time slice
 ends. STEM REC's action creates and starts the writer before it touches the
 state word, and the writer acts only on FINISHING, so a switch in between
-changes nothing. (26 Sep 2026: the streaming writer also acts on
-RECORDING. The action still writes the state last, so a switch in between
-finds IDLE and the writer does nothing.)
+changes nothing.
 
-✅ Corrected 22 Sep 2026. This paragraph said the UI task was row 4,
+ Corrected. This paragraph said the UI task was row 4,
 priority 3, TCB `0x460d59d4`. Row 7 is not only the start-up task: after
 its start-up, `0x40061a94` falls straight into the UI event loop at
 `0x40061cd2`, which receives the UI queue `0x460d17ae` (`0x40061cd8`). No
@@ -1567,7 +1554,7 @@ housekeeping message (section 4). octemu (`re/coldfire.syms`, `ui_task`)
 reads it the same way. The port's STEM REC runs call the action from main
 (`callAsMain`), so no run has exercised it from the UI task.
 
-### 3.6 The TCB is 84 bytes, measured two ways that agree ✅
+### 3.6 The TCB is 84 bytes, measured two ways that agree
 
 **Way 1: the largest offset any kernel routine touches, rounded up to 4.**
 
@@ -1605,7 +1592,7 @@ handler patches after stashing `%a0` in scratch:
 ```
 
 The largest offset touched is `+80`, a longword, so the structure runs to
-byte 83. Rounded up to 4: **84**. ✅
+byte 83. Rounded up to 4: **84**. 
 
 **Way 2: the gaps between stock TCBs.**
 
@@ -1643,7 +1630,7 @@ create call. The boot's two TCBs are consecutive in one static area:
 `0x46c7ae84 - 0x46c7ae30 = 0x54`, **84**, the same stride.
 (`0x46c7ae30` is the pre multitasking context the first `trap #0` saves into.
 It is never linked into a ready list, but the trap 0 handler writes its
-register block, so it is a TCB sized object.) ✅
+register block, so it is a TCB sized object.) 
 
 Both ways give 84 and there is nothing to prefer between them. `TCB_SIZE` is
 **84**.
@@ -1651,10 +1638,10 @@ Both ways give 84 and there is nothing to prefer between them. `TCB_SIZE` is
 ⚠️ Reserve it as 84 bytes aligned to 4, in the module's own data, and never
 read or write inside it. Every field belongs to the kernel.
 
-### 3.7 Interrupts, locks, and what else a task needs ✅
+### 3.7 Interrupts, locks, and what else a task needs
 
 **Neither routine needs interrupts enabled, and neither needs a particular
-SR.** ✅
+SR.** 
 
 `K_CREATE` contains no `movew %sr` in either direction. It inherits whatever
 mask the caller has and leaves it alone. It is safe because it touches no
@@ -1671,26 +1658,23 @@ that TCB is on no list until start links it, so nothing else can see it.
 
 `0x2700` is interrupt mask 7 with supervisor set. Because start saves the
 caller's SR and puts it back, it is safe at any interrupt level, including
-inside a handler and including with interrupts already masked. ✅
+inside a handler and including with interrupts already masked. 
 
-**Neither routine takes a lock.** ✅ There is no call out of either one. The
+**Neither routine takes a lock.** There is no call out of either one. The
 interrupt mask is the mutual exclusion, and only start needs it.
 
-🟡 Both routines execute `movew %sr,%dN` and `movew #imm,%sr`, which are
+Unconfirmed: Both routines execute `movew %sr,%dN` and `movew #imm,%sr`, which are
 privileged on ColdFire, so both must be called in supervisor mode. Every
 task in this firmware is supervisor, because the SR create puts in the first
 frame is `0x2000` with the S bit set. This is not a constraint in practice.
 **Falsifier:** a privilege violation exception, vector 8, from a call to
 either address.
 
-**Nothing else is needed to make a task run.** ✅ Stock's own sequence is the
+**Nothing else is needed to make a task run.** Stock's own sequence is the
 oracle, and the storage task is the clearest one because it is created from
 exactly one place, reached from exactly one place.
 
-The task lead named `0x40061a94` for this. ❌ **`0x40061a94` is not a create
-site.** It is the **entry of the task that does the creating**, the `sys`
-task, row 7 of the census in section 3.1: created at `0x40040d2e` with TCB
-`0x46c7bed8`, priority 1, and that entry address. Its first instruction is a
+The task lead named `0x40061a94` for this. Its first instruction is a
 function prologue and there is no `jsr` to `0x400005fc` anywhere in it:
 
 ```
@@ -1699,7 +1683,7 @@ function prologue and there is no `jsr` to `0x400005fc` anywhere in it:
 ```
 
 The chain from there to the create is **one hop**, and every step is unique
-✅:
+ :
 
 ```
 40061b64:	4eb9 4001 dfbc 	jsr 0x4001dfbc
@@ -1744,7 +1728,7 @@ after the pair:
 4001e01a:	4eb9 4000 0d50 	jsr 0x40000d50         | install the vector 0xaf handler
 ```
 
-**Between create and start there is not one call.** ✅ Only the stack
+**Between create and start there is not one call.** Only the stack
 adjustment: the four queue arguments and the five create arguments are 36
 bytes, `lea %sp@(32),%sp` pops 32 of them, and the last 4 byte slot is
 overwritten in place with start's single argument. The arithmetic closes
@@ -1754,7 +1738,7 @@ The queue init before create prepares an object the task will use. It is not
 part of making the task runnable, and the other nine sites prove it: rows 1,
 3, 4, 5, 6, 7, 8 and 10 call create with no preceding queue init at all.
 
-There is **no name registration, no enable bit and no scheduler kick**. ✅
+There is **no name registration, no enable bit and no scheduler kick**. 
 The set priority helper at `0x40000744` has **zero callers** in the image:
 `refs.sh` returns 0 hits, the PC relative byte scan finds 0 calls, and so
 does the linear disassembly grep. Priority is never changed after create
@@ -1775,24 +1759,24 @@ either. The get priority helper at `0x4000075c` has zero callers too.
 	addq.l	#4,%sp
 ```
 
-### 3.8 What create does not do ✅, and what follows for Task 15 🟡
+### 3.8 What create does not do , and what follows for Task 15
 
-**Create does not clear `+12` to `+71`.** ✅ It writes `+8`, `+72`, `+76` and
+**Create does not clear `+12` to `+71`.** It writes `+8`, `+72`, `+76` and
 `+80` and nothing else, so the saved register block holds whatever was in
 the TCB's memory. The scheduler restores `%d0` to `%a6` from it on the
 task's first dispatch. That is harmless because the entry function reads
 none of them, and loading a garbage value into an address register raises
 nothing on ColdFire. Stock relies on this at all ten sites.
-🟡 Zero the TCB anyway in Task 15, once, before the create. It costs 21
+Unconfirmed: Zero the TCB anyway in Task 15, once, before the create. It costs 21
 longwords and removes a class of question from any later trace.
 **Falsifier:** a TCB zeroed before create behaving differently from one that
 was not, which would mean some field outside the four is read.
 
-**Neither routine checks whether the TCB is already in use.** ✅ `K_START`
+**Neither routine checks whether the TCB is already in use.** `K_START`
 unconditionally rewrites `tcb+0` and `tcb+4` and splices the TCB into the
 ring. Called a second time on a TCB that is already linked, it links the same
 node into the ring twice.
-🟡 The result is a ring in which one node's forward and backward links no
+Unconfirmed: The result is a ring in which one node's forward and backward links no
 longer agree, which the round robin walk at `0x4000057c` and the unlink at
 `0x40000672` would both follow into inconsistency.
 ⚠️ **Task 15's `stems_task_create` must run at most once.** Guard it with a
@@ -1803,7 +1787,7 @@ action is selected, so the guard is the whole of the "first time".
 leaving `tcb+0` and `tcb+4` mutually consistent with every task still
 reachable from its head.
 
-### 3.9 Not measured under the port 🟡
+### 3.9 Not measured under the port
 
 Nothing in this section was run. No Octatrack project folder exists on this
 machine, so `ot_emu` cannot be given `--card`, and this section is a static
@@ -1883,7 +1867,7 @@ scheduler never dispatches.
 
 ## 4. Sleeping for N ticks
 
-### 4.0 The answer, and the shape it is not ✅
+### 4.0 The answer, and the shape it is not
 
 **There is no `K_DELAY` in the kernel.** No kernel routine takes a tick
 count, no task control block holds a tick counter, and there is no delay
@@ -1895,11 +1879,6 @@ plan retracted. `0x40020c7c` **is** a sleep. It blocks the calling task,
 the task leaves its ready ring, every other task runs, and a timer
 interrupt wakes it. The plan read the lock and the hardware timer
 correctly and drew the wrong conclusion from them.
-
-❌ **Retract "`0x40020c7c` is not a sleep, it is a timed hardware wait"**
-(the plan's section 6, and this task's brief). It is a timed hardware
-wait **that blocks**. Section 4.4 is the whole routine and section 4.6 is
-what happens to the caller.
 
 Two things follow that change what Task 15 writes.
 
@@ -1915,7 +1894,7 @@ timer the kernel uses to preempt tasks. An **event object** is the two
 longword structure the kernel's `0x40000818` blocks on and `0x40000968`
 posts. Both are defined below.
 
-### 4.1 The kernel has no tick counter and no delay list ✅
+### 4.1 The kernel has no tick counter and no delay list
 
 The kernel installs one handler for both the software trap and the tick:
 
@@ -1957,13 +1936,13 @@ That handler, in full, is a context switch and nothing else:
 It saves the outgoing task's registers, takes the top priority ring's
 head and steps to `head->next`, makes that the current task and the new
 head, acknowledges the timer, invalidates the cache, and returns. It
-decrements nothing, walks no list, and reads no per task counter. ✅
+decrements nothing, walks no list, and reads no per task counter. 
 
 `0x40000582` clears bit 11 of `0xfc04c010`, which section 4.3 identifies
 as INTC1's force register, and `0x40000588` writes PIT0's control
 register. Both are acknowledgements.
 
-**Nothing re-installs vector 171.** ✅ The set vector routine
+**Nothing re-installs vector 171.** The set vector routine
 `0x40000d50` takes the vector number as its first argument, and a byte
 scan of the whole image finds **zero** occurrences of either way to push
 171 as an immediate: `4878 00ab` for `pea 0xab`, and `2f3c 0000 00ab` for
@@ -1975,12 +1954,12 @@ the `pea` in front of each of the seventeen literal sites that reach
 `0x4f`, `0x56`, `0x5a`, `0x5b`, `0x5c`, `0x60`, `0x61`, `0x62`, `0x64`,
 `0x65`, `0xac`, `0xaf`, `0xb1`, `0xb6` and zero.
 
-🟡 A vector number computed in a register rather than written as an
+Unconfirmed: A vector number computed in a register rather than written as an
 immediate would be invisible to both checks. **Falsifier:** a write watch
 on the vector table entry for 171, at the vector base register's value
 plus 684, firing after the kernel's own write at `0x400005d8`.
 
-**No stock task sleeps on a tick.** ✅ Every stock task blocks on an
+**No stock task sleeps on a tick.** Every stock task blocks on an
 object, not on time. The key repeat task the brief named is the clearest
 example. It creates a semaphore, then loops on it forever:
 
@@ -2004,7 +1983,7 @@ example. It creates a semaphore, then loops on it forever:
 `0x40000794` initialises the object with count 0, `0x400007a4` blocks on
 it, and `0x4001387c` does the work. There is no time in it.
 
-**What posts that semaphore** ✅, because a task that never wakes would
+**What posts that semaphore** because a task that never wakes would
 prove nothing. A 32 bit scan of the image finds exactly three references
 to `0x46c7e0e2`: the `pea` in the init above, the `pea` in the wait
 above, and one more, at `0x40055cfe`. It is inside an interrupt handler:
@@ -2034,9 +2013,9 @@ section 4.3's:
 
 `0x61 = 97 = 64 + 33`, and `0xfc048061` is INTC0's ICR33, set to level 3.
 So **the key repeat task is woken by INTC0 source 33, at interrupt level
-3**, and its period is that interrupt's, not the kernel's tick. ✅
+3**, and its period is that interrupt's, not the kernel's tick. 
 
-🟡 The handler looks periodic rather than one shot: it runs a countdown
+Unconfirmed: The handler looks periodic rather than one shot: it runs a countdown
 at `0x400c0cf0`, sending two queue messages and reloading the count with
 2 each time it reaches zero, and it acknowledges a peripheral at
 `0xfc074003` on the way out. **Falsifier:** a program counter watch on
@@ -2047,14 +2026,6 @@ layer, and posting it would inject key repeats.
 
 **The census of blocking calls from outside the kernel** is short and it
 says the same thing everywhere.
-
-❌ **Retract the first version's counts, "three, ten and five, eighteen
-in all".** They counted only `jsr` to a literal address and missed every
-call made through an address register. The method that catches those:
-grep the linear disassembly for each primitive's address, which finds the
-`jsr` sites and also the `lea` and `moveal` instructions that load it into
-a register; then, for each register load, scan forward in the same
-function for `jsr %aN@` until that register is reloaded.
 
 | primitive | direct `jsr` | register loads | calls through them | total |
 |---|---|---|---|---|
@@ -2078,12 +2049,12 @@ Two references are inside the kernel and are not calls from a task:
 `0x40000d00` itself.
 
 **Twenty calls, and every one of them pushes exactly one longword, an
-object address.** ✅ Fourteen push it with `pea` on a literal. The other
+object address.** Fourteen push it with `pea` on a literal. The other
 six, all in `0x40015xxx`, load a pointer from memory first, with
 `movel %a2@(10),%d0` or `movel 0x46c8c598,%d0`, and push that.
 **None passes a time.**
 
-### 4.2 The three blocking primitives, and their objects ✅
+### 4.2 The three blocking primitives, and their objects
 
 None of the three takes a timeout. That is the finding, and it is why
 step 1 of this task ends here rather than in a convention.
@@ -2124,7 +2095,7 @@ The flag is **latched**. A set flag is consumed and the caller does not
 block, so a post that arrives before the wait is not lost. A clear flag
 parks the current task control block in `obj+4` and blocks. `obj+4` is
 **one slot, not a list**, so an object holds exactly one waiter and a
-second waiter overwrites the first. ✅
+second waiter overwrites the first. 
 
 **`0x40000d00`, a queue receive.** **One longword**, the object. It loops
 on `0x40000818` against `obj+8` while the queue count at `obj+4` is zero,
@@ -2144,13 +2115,6 @@ then pops one entry and returns it in `%d0`.
 40000d1c:	4aaa 0004      	tstl %a2@(4)
 40000d20:	67f4           	beqs 0x40000d16
 ```
-
-❌ **Retract "three longwords", which the first version of this section
-said.** The routine reserves 12 bytes and saves three registers into them
-before it reads an argument, so `%sp@(0)` through `%sp@(11)` hold `%d2`,
-`%a2` and `%a3`, `%sp@(12)` is the return address, and `%sp@(16)` is
-**the first and only argument**. The exit is symmetric and confirms the
-frame:
 
 ```
 40000d44:	4cd7 0c04      	moveml %sp@,%d2/%a2-%a3
@@ -2189,7 +2153,7 @@ one longword too and fold the four byte pop into a later multi-argument
 It inherits `0x40000818`'s behaviour and adds no time.
 
 **Object sizes and their initialisers**, for a module that wants a private
-one. ✅
+one. 
 
 | object | bytes | initialiser | arguments |
 |---|---|---|---|
@@ -2209,7 +2173,7 @@ The event initialiser is four instructions, which fixes the layout:
 `obj+0` is the count or flag, `obj+4` is the single waiter. Eight bytes.
 A statically zeroed eight byte block is already a valid empty event
 object, so `.long 0, 0` in the module's own data needs no initialiser
-call at all. ✅
+call at all. 
 
 ⚠️ **A private object that nothing posts is a permanent block, not a
 timeout.** The brief asks for that sequence if a timeout were the only
@@ -2218,7 +2182,7 @@ Written down so nobody reaches for it: `pea obj` then `jsr 0x40000818` on
 an object no code posts parks the task forever, and `0x400006e4`, the
 task exit path, is the only way back.
 
-### 4.3 The tick, from its own register writes ✅ and 🟡
+### 4.3 The tick, from its own register writes and
 
 PIT0 is programmed once, in the kernel's timer init:
 
@@ -2238,7 +2202,7 @@ the quotient in `%d0`. objdump prints it as `remul`, which is the 64 bit
 form's name. `m68k-elf-as -mcpu=5407` assembles `divu.l %d2,%d0` to those
 exact four bytes, which is the check the preamble asks for.
 
-**The register values, read off those lines.** ✅
+**The register values, read off those lines.** 
 
 | register | value | meaning |
 |---|---|---|
@@ -2260,7 +2224,7 @@ interrupt wiring:
 ```
 
 `0x0009` sets EN and PIE. The two byte writes name the interrupt, and
-they are self checking. ✅
+they are self checking. 
 
 - `0xfc04c000` is INTC1, not INTC0. The UART driver settles it: it writes
   `0xfc04805c` and `0xfc04801d` for vector `0x5c`, and `0x5c = 92 =
@@ -2274,12 +2238,12 @@ they are self checking. ✅
   at.
 
 So **the tick is INTC1 source 43, level 1, vector 171, and PIT0 drives
-it.** ✅ Each of those four numbers is confirmed by another.
+it.** Each of those four numbers is confirmed by another.
 
 The same reading explains the switcher's `andl %d0,0xfc04c010` at
 `0x40000582`. `0xfc04c010` is INTC1's INTFRCH, which forces sources 32 to
 63, and bit 11 is source 43. So **the kernel's "reschedule now" is a
-forged PIT0 interrupt**, and the switcher clears it on the way out. ✅
+forged PIT0 interrupt**, and the switcher clears it on the way out. 
 Section 4.6 uses that.
 
 **The modulus and the period.** `0x400b9654` holds the CPU clock. The boot
@@ -2304,7 +2268,7 @@ fails it falls through to two error calls and then to `0x4000fa8c`, a
 4000fa7e:	670e           	beqs 0x4000fa8e
 ```
 
-So the CPU clock is **264,000,000**. ✅
+So the CPU clock is **264,000,000**. 
 
 The internal bus clock is half of that, and the firmware says so twice.
 The UART baud setup halves the stored value before dividing by 32 times
@@ -2327,7 +2291,7 @@ rate word, for example
 ```
 
 `264,000,000` appears in the image only in the boot's own arithmetic and
-that guard. **The internal bus clock is 132 MHz.** ✅ This agrees with
+that guard. **The internal bus clock is 132 MHz.** This agrees with
 `CHIP.md`, which derives it the same way.
 
 The arithmetic, then:
@@ -2338,7 +2302,7 @@ tick  = (PMR + 1) * 2^PRE / f_bus = 644 * 2048 / 132,000,000
       = 1,318,912 / 132,000,000 = 9.9918 ms, a 100.08 Hz tick
 ```
 
-🟡 **The period in milliseconds rests on two facts that are not in the
+Unconfirmed: **The period in milliseconds rests on two facts that are not in the
 image**: that PIT0 counts the internal bus clock, and that the PCSR
 prescaler field divides by 2^PRE rather than by 2^(PRE+1). Both come from
 the MCF54455 reference manual, by way of `CHIP.md`. Every candidate
@@ -2359,9 +2323,9 @@ firmware can break the tie**, and three attempts to break it failed:
 clock source on this part that is not the internal bus.
 
 ⚠️ **Two documents in this repository disagree today, and neither has
-been corrected.** `RTOS_FORK.md` section 3 says **5.0 ms**, marked ✅,
+been corrected.** `RTOS_FORK.md` section 3 says **5.0 ms**, marked 
 which is this arithmetic against the CPU clock. `CHIP.md` says **9.99
-ms**, marked 🟡 and flagged there as "not acted on and not yet reviewed".
+ms**, marked and flagged there as "not acted on and not yet reviewed".
 This section is a third derivation and it lands on `CHIP.md`'s number.
 Nothing here edits either file.
 
@@ -2369,10 +2333,10 @@ Nothing here edits either file.
 together. The argument this section hands Task 15 is 10,000, and it
 produces a sleep of 5 ms, 10 ms or 20 ms depending on which reading is
 right. A 64 KB chunk fills every 371 ms at 176,400 B/s, so all three are
-ample and none is expensive. ✅ Task 15's loop does not depend on
+ample and none is expensive. Task 15's loop does not depend on
 resolving it.
 
-### 4.4 K_DELAY, the whole routine ✅
+### 4.4 K_DELAY, the whole routine
 
 `0x40020c7c`. Two longword arguments, C order, and `%d2` is pushed first,
 so the arguments sit at `%sp@(8)` and `%sp@(12)`.
@@ -2427,7 +2391,7 @@ so the arguments sit at `%sp@(8)` and `%sp@(12)`.
 40020d36:	4e75           	rts
 ```
 
-**The arguments.** ✅
+**The arguments.** 
 
 | slot | name | meaning |
 |---|---|---|
@@ -2448,7 +2412,7 @@ that reads most like Task 15's loop is
 `%a2` was loaded with `0x40020c7c` at `0x40080462`. `0x2710` is 10,000,
 the `us` argument, and the zero pushed before it is `wait`.
 
-**The return value.** ✅ `moveq #-1,%d0` at `0x40020c9c` is the only other
+**The return value.** `moveq #-1,%d0` at `0x40020c9c` is the only other
 exit, and it is reached only when `wait` was 0 and the mutex was held.
 Otherwise `clrl %d0` at `0x40020d30` runs. So **0 means the sleep
 happened and -1 means it did not**. There is no other failure path, and
@@ -2458,7 +2422,7 @@ nothing else is validated: not the range of `us`, and not its sign.
 carries the result, and `%d1`, `%a0` and `%a1` are clobbered by the
 routine and by the kernel calls it makes.
 
-**The re-initialiser at `0x40020cb0`.** ✅ Every call runs it, and it is
+**The re-initialiser at `0x40020cb0`.** Every call runs it, and it is
 not guarded.
 
 ```
@@ -2481,13 +2445,13 @@ not guarded.
 It clears the mutex at `0x460bcda8`, clears the event object at
 `0x460bcdb4`, installs `0x40020d38` at vector `0xac`, sets INTC1's ICR44
 to level 2 and unmasks source 44. By the arithmetic of section 4.3,
-`0xac = 172 = 128 + 44`, so **PIT1 is INTC1 source 44 at level 2**. ✅
+`0xac = 172 = 128 + 44`, so **PIT1 is INTC1 source 44 at level 2**. 
 
 Clearing the event object before arming PIT1 is why a stale expiry cannot
 make the next sleep return early. Clearing the mutex is section 4.7's
 problem.
 
-**The interrupt handler.** ✅
+**The interrupt handler.** 
 
 ```
 40020d38:	4fef fff0      	lea %sp@(-16),%sp
@@ -2511,14 +2475,14 @@ problem.
 Set PIF to clear it, clear EN to stop the timer, post the event. The
 restore reads from `%sp@(4)` and pops 20 rather than 16 because the `pea`
 at `0x40020d56` is still on the stack. So **one call means exactly one
-interrupt**, even though RLD is set in PCSR. ✅
+interrupt**, even though RLD is set in PCSR. 
 
-### 4.5 The unit is microseconds ✅
+### 4.5 The unit is microseconds
 
 Two paths, chosen by `cmpil #15000,%d2` and `blss`, which is an unsigned
 "lower or same". Values up to and including 15,000 take the fine path.
 
-| | fine, `us <= 15000` | coarse, `us > 15000` |
+|  | fine, `us <= 15000` | coarse, `us > 15000` |
 |---|---|---|
 | PCSR | `0x053a`, PRE 5, prescaler 32 | `0x0b3a`, PRE 11, prescaler 2048 |
 | counter clock | 132 MHz / 32 = 4,125,000 Hz | 132 MHz / 2048 = 64,453.125 Hz |
@@ -2529,12 +2493,12 @@ Two paths, chosen by `cmpil #15000,%d2` and `blss`, which is an unsigned
 
 Both factors are the counts per microsecond of their own prescaler, to
 within the rounding the integer arithmetic forces. **The argument is
-microseconds.** ✅ The `+ 99 / 100` and `+ 31249 / 31250` are round-up
+microseconds.** The `+ 99 / 100` and `+ 31249 / 31250` are round-up
 divides, so the routine never rounds a request down to nothing.
 
 The threshold is where the fine timer would overflow. PMR is 16 bits,
 written with `movew`, and `15000 * 4.12 = 61,800`, just under 65,535. The
-next thousand microseconds would pass it. ✅
+next thousand microseconds would pass it. 
 
 Worked values, for the record:
 
@@ -2553,7 +2517,7 @@ Neither is checked, and the first one binds. Stay under 1,000,000.
 becomes 0, and the caller still blocks for one counter period, about
 0.24 µs, plus a full context switch each way.
 
-### 4.6 What happens to the calling task, and what wakes it ✅
+### 4.6 What happens to the calling task, and what wakes it
 
 **Which queue it joins.** `0x40000818`, called at `0x40020d1e`, does five
 things under interrupt mask 7:
@@ -2579,7 +2543,7 @@ things under interrupt mask 7:
 5. Executes `trap #0`, which is the switcher of section 4.1.
 
 So the task is **on no ready ring while it sleeps**, and every other task,
-at every priority, runs normally. ✅ That is the property the plan
+at every priority, runs normally. That is the property the plan
 doubted.
 
 **What wakes it.** The handler's post, `0x40000968`:
@@ -2612,7 +2576,7 @@ It sets the flag, relinks the sleeper into its ready ring, raises
 `0x800068d8` if that ring now outranks the current top, and forges the
 source 43 interrupt of section 4.3.
 
-**The wake latency is not one tick. It is immediate.** ✅ The forced
+**The wake latency is not one tick. It is immediate.** The forced
 interrupt is level 1. PIT1's handler runs at level 2, and its `rte`
 restores the interrupted context's mask, so the forced interrupt is taken
 at the next instruction boundary that allows it, and the switcher runs.
@@ -2624,13 +2588,13 @@ three stock tasks. It wakes at once but is dispatched round robin within
 priority 1, and it yields to priorities 2 through 7. Treat the sleep as
 "at least `us`, and then when the machine is free", never as a deadline.
 
-**Interrupt state and locks.** ✅
+**Interrupt state and locks.** 
 
 - `0x40020c7c` saves and restores no SR of its own. The kernel routines it
   calls, `0x40000818` and the mutex pair, each mask to level 7 and restore
   the caller's mask, so the routine is safe at any interrupt level the
   caller holds.
-- 🟡 It must be called in **supervisor mode**, because those kernel
+- Unconfirmed: It must be called in **supervisor mode**, because those kernel
   routines execute `movew %sr,%dn`, which is privileged on ColdFire. Every
   task in this firmware is supervisor: the SR `K_CREATE` puts in the first
   frame is `0x2000`. **Falsifier:** a privilege violation, vector 8, from
@@ -2640,11 +2604,8 @@ priority 1, and it yields to priorities 2 through 7. Treat the sleep as
   runnable task would never be woken. A task created by `K_CREATE` starts
   at SR `0x2000`, level 0, so this needs no action unless Task 15 masks
   deliberately.
-- ❌ **It is not callable from an interrupt handler.** It blocks the
-  current task, and inside a handler the current task is whoever was
-  interrupted.
 
-### 4.7 The shared timer is single user, and that is the real risk ⚠️ ✅
+### 4.7 The shared timer is single user, and that is the real risk ⚠️
 
 `0x40020cb0` re-runs the initialiser on every call, and the initialiser
 clears the event object's waiter slot:
@@ -2655,7 +2616,7 @@ clears the event object's waiter slot:
 4000079c:	42a8 0004      	clrl %a0@(4)
 ```
 
-Two consequences, both read off the code above. ✅
+Two consequences, both read off the code above. 
 
 **1. The mutex does not exclude anything.** The initialiser calls
 `0x400009e4` on `0x460bcda8`, which clears `obj+0`, and `obj+0` is the
@@ -2673,7 +2634,7 @@ slot before arming PIT1 for its own interval. When PIT1 expires,
 flag clear, and nothing will ever relink it.** It is gone until the unit
 restarts.
 
-**Who else calls it, and when.** Only two sites load the address. ✅
+**Who else calls it, and when.** Only two sites load the address. 
 
 | site | call | context |
 |---|---|---|
@@ -2688,12 +2649,12 @@ restarts.
 40015ff4:	4e90           	jsr %a0@
 ```
 
-**The steady state card path does not use this timer.** ✅ The sector read
+**The steady state card path does not use this timer.** The sector read
 and write routines are in `0x40014xxx`, and neither of the two sites that
 load `0x40020c7c` is among them. So a stem recording that is writing to
 the card is not racing the driver on every sector.
 
-**The exposure, stated plainly.** 🟡 A writer task that sleeps 10 ms
+**The exposure, stated plainly.** A writer task that sleeps 10 ms
 between chunks is asleep on this object almost all of the time. The two
 stock callers are a card probe, which happens on insert or mount, and an
 OS upgrade. Both are already incompatible with a recording in progress: a
@@ -2708,13 +2669,13 @@ private timer. PIT3 at `0xfc08c000` has **zero references anywhere in the
 image**, from a 32 bit scan of the whole file, so it is free. The module
 would program it exactly as section 4.4's routine programs PIT1, install
 its own handler on its own vector, and post its own eight byte event
-object. 🟡 PIT3's interrupt source and vector are inferred from PIT0 at 43
+object. PIT3's interrupt source and vector are inferred from PIT0 at 43
 and PIT1 at 44, so 45 and 46 for PIT2 and PIT3, giving vector 174.
 **Falsifier:** installing at vector 174 and never seeing the handler run.
 That is more code than this proof of concept needs, and it is recorded
 here so that using the shared timer is a choice rather than an oversight.
 
-### 4.8 A bare yield, if the loop ever wants one ✅
+### 4.8 A bare yield, if the loop ever wants one
 
 `trap #0` from a task is a cooperative yield. Vector 32 is the switcher of
 section 4.1, which advances the top priority ring by one and dispatches
@@ -2729,14 +2690,14 @@ ring's next pass.
 Every `trap #0` in the image is inside the kernel, at `0x400006e0`,
 `0x40000732`, `0x40000810`, `0x40000882`, `0x40000a78`, `0x40000b40`,
 `0x40000ba8` and `0x40000e46`. No application code uses it directly, so a
-module that does is doing something stock does not. ✅
+module that does is doing something stock does not. 
 
 ⚠️ A loop of `trap #0` never idles the processor. It is a spin at
 priority 1 that yields to priorities 2 through 7 and starves priority 0.
 Use `K_DELAY`. This is here because the switcher's behaviour is worth
 recording, not as a recommendation.
 
-### 4.9 Not measured under the port 🟡
+### 4.9 Not measured under the port
 
 Nothing in this section was run. No Octatrack project folder exists on
 this machine, so `ot_emu` cannot be given `--card`.
@@ -2863,7 +2824,7 @@ a folder beside `AUDIO` inside the set. **cdecl** here means arguments pushed
 right to left and popped by the caller, which is what every routine in this
 section uses.
 
-### 5.1 The name builder, whole ✅
+### 5.1 The name builder, whole
 
 `0x400819fc` is 128 bytes and has exactly one caller, a `jsr` at `0x40023eba`.
 Measured two ways that agree: `refs.sh 0x400819fc` returns one hit, and a
@@ -2917,7 +2878,7 @@ and there is none.
 40081a7a:	4e75           	rts
 ```
 
-Five facts follow, all ✅.
+Five facts follow, all.
 
 - **It takes no arguments.** Nothing reads `%sp@(4)`.
 - **It returns a pointer in `%d0`**, to the static buffer `0x460faab4`.
@@ -2961,10 +2922,10 @@ The timestamp routine's tail is the only place `2000` is added:
 400819e4:	4eb9 4001 3a08 	jsr 0x40013a08
 ```
 
-✅ The name builder does not add it. It prints the clock's two digit year with
+ The name builder does not add it. It prints the clock's two digit year with
 `%02d`, which is what makes the name `YYMMDD-HHMM`.
 
-### 5.2 The clock read takes a blocking mutex, and it is SPI ✅
+### 5.2 The clock read takes a blocking mutex, and it is SPI
 
 ```
 4001c4d8:	2f02           	movel %d2,%sp@-
@@ -2996,21 +2957,21 @@ The timestamp routine's tail is the only place `2000` is added:
 4001c540:	4e75           	rts
 ```
 
-**The argument.** ✅ One longword at `%sp@(8)`, which is `%sp@(4)` at entry,
+**The argument.** One longword at `%sp@(8)`, which is `%sp@(4)` at entry,
 because `%d2` was pushed first. It is the field index, and it goes into the
 transmit word unchanged.
 
-**The return.** ✅ `mvzb %d2,%d0` at `0x4001c53c` zero extends the low byte of
+**The return.** `mvzb %d2,%d0` at `0x4001c53c` zero extends the low byte of
 the second received word into `%d0`. So `%d0` holds the clock's raw byte in the
 range 0 to 255, in binary coded decimal, with bits 8 to 31 clear. `0x4001c31c`
 needs exactly that, because it uses `asrl` on the whole longword.
 
-**The clobbers.** ✅ `%d2` is saved and restored. Nothing else is. The two
+**The clobbers.** `%d2` is saved and restored. Nothing else is. The two
 helper calls save `%d2`, `%a2` and `%a3` themselves. So the routine preserves
 `%d2` through `%d7` and `%a2` through `%a6`, and clobbers `%d0`, `%d1`, `%a0`
 and `%a1`. This matches what section 5.1 measured from the caller.
 
-**The lock.** ✅ `0x400009f4` is a blocking mutex acquire. Its object is three
+**The lock.** `0x400009f4` is a blocking mutex acquire. Its object is three
 longwords: the owning task at `+0`, and a waiter list at `+4` and `+8`.
 
 ```
@@ -3044,7 +3005,7 @@ Two consequences for Task 15.
   with the interrupt mask raised. It is also not recursive: the acquire has no
   "already mine" case, so a second entry from the same task deadlocks.
 
-**It is DSPI, not I2C.** ✅ The three registers are `+0x2c`, `+0x34` and
+**It is DSPI, not I2C.** The three registers are `+0x2c`, `+0x34` and
 `+0x38` of the module at `0xfc05c000`. On this part that module is the DSPI,
 the serial peripheral interface, and those offsets are its status, transmit
 FIFO push, and receive FIFO pop registers. The behaviour matches: two pushes
@@ -3056,23 +3017,18 @@ second; then a poll of the nibble at bits 7 to 4 of the status until it reads
 already names `0xfc05c000` as the DSPI, from the emulator's own modelling of it
 as a loopback FIFO whose sites wait for two or three received frames.
 
-❌ **Retract `SAMPLE_SAVE.md` section 6's "It is an I2C transaction".** The
-addresses in that sentence are right and its conclusion about BCD is right.
-The bus is wrong. The I2C module on this part is at `0xfc058000`, and nothing
-in this path touches it.
-
 The correction changes no calling convention, but it changes the risk picture.
 An SPI FIFO read is a four step sequence, and the poll loop has no timeout. If
 the receive FIFO never reaches two entries the routine spins forever with the
 mutex held, and every other task that wants the clock blocks behind it.
-🟡 That has never been observed. Falsifier: run the port with a watch on
+Unconfirmed: That has never been observed. Falsifier: run the port with a watch on
 `0x4001c504` and count iterations across a boot.
 
 The same module has a write path at `0x4001c468`, which takes two arguments and
 uses the same mutex. STEM REC has no reason to call it. It is recorded here
 only so nobody mistakes it for the read.
 
-### 5.3 The BCD conversion ✅
+### 5.3 The BCD conversion
 
 ```
 4001c31c:	2f02           	movel %d2,%sp@-
@@ -3090,7 +3046,7 @@ only so nobody mistakes it for the read.
 4001c338:	4e75           	rts
 ```
 
-✅ One longword argument at `%sp@(8)`, which is `%sp@(4)` at entry. The value
+ One longword argument at `%sp@(8)`, which is `%sp@(4)` at entry. The value
 is `(v >> 4) * 8 + (v >> 4) * 2 + (v & 15)`, which is
 `(v >> 4) * 10 + (v & 15)`. Returned in `%d0`, binary. Preserves `%d2`;
 clobbers `%d0`, `%d1`, `%a0` and `%a1`. cdecl, caller pops.
@@ -3100,7 +3056,7 @@ returns and nothing else. A value with bit 31 set converts to nonsense.
 
 The inverse, binary to BCD, is at `0x4001c33c`. STEM REC does not need it.
 
-### 5.4 The field indices, and the format's argument order ✅
+### 5.4 The field indices, and the format's argument order
 
 The name builder pushes the sprintf arguments right to left, so the last push
 before the format string is the first conversion. Reading `0x40081a4e` to
@@ -3114,7 +3070,7 @@ before the format string is the first conversion. Reading `0x40081a4e` to
 | 4 | `%d4` | 3 | hour |
 | 5 | `%d5` | 2 | minute |
 
-✅ So the name is `YYMMDD-HHMM`, and the plan's placeholder indices 2, 3, 5, 6
+ So the name is `YYMMDD-HHMM`, and the plan's placeholder indices 2, 3, 5, 6
 and 7 are the real ones.
 
 The meanings are pinned by the sibling at `0x40081a7c`, which reads indices 1,
@@ -3129,10 +3085,10 @@ The meanings are pinned by the sibling at `0x40081a7c`, which reads indices 1,
 
 `%d3` came from index 1, `%d2` from index 2 and `%d0` from index 3, and the
 first conversion is the hour. So index 3 is the hour, index 2 the minute, and
-index 1 the second. ✅ The date sibling at `0x40081b30` reads 5, 6 and 7 into
+index 1 the second. The date sibling at `0x40081b30` reads 5, 6 and 7 into
 `"%02d%02d%02d"`, in that same day, month, year order.
 
-🟡 Index 4 is day of week, and index 0 is unidentified. Neither routine reads
+Unconfirmed: Index 4 is day of week, and index 0 is unidentified. Neither routine reads
 either. Falsifier: call `0x4001c4d8(4)` under the port and compare against a
 known date. This repeats what `SAMPLE_SAVE.md` section 6 already says, and
 nothing here changes it.
@@ -3145,10 +3101,10 @@ than depend on the address:
             "%02d%02d%02d-%02d%02d"
 ```
 
-✅ 21 characters and a terminator. `refs.sh 0x400b77bb` returns exactly one
+ 21 characters and a terminator. `refs.sh 0x400b77bb` returns exactly one
 hit, `0x40081a5a`, the operand of the `pea` at `0x40081a58`.
 
-### 5.5 sprintf ✅
+### 5.5 sprintf
 
 ```
 40013a08:	4e56 0000      	linkw %fp,#0
@@ -3161,12 +3117,12 @@ hit, `0x40081a5a`, the operand of the `pea` at `0x40081a58`.
 40013a22:	4e75           	rts
 ```
 
-✅ `sprintf(dest, fmt, ...)`, cdecl, caller pops, ordinary C varargs: the
+ `sprintf(dest, fmt, ...)`, cdecl, caller pops, ordinary C varargs: the
 wrapper hands the inner formatter a pointer to the first vararg at `%fp@(16)`.
 It returns whatever the inner routine returns in `%d0`, which no caller in this
 section reads.
 
-✅ It preserves `%d2` through `%d7` and `%a2` through `%a6`. Measured at a call
+ It preserves `%d2` through `%d7` and `%a2` through `%a6`. Measured at a call
 site rather than assumed: the routine at `0x40024180` loads `%a2` before the
 sprintf at `0x400241cc` and dereferences `%a2` at `0x40024202`, after it. The
 inner formatter at `0x40013a24` saves `%d2` to `%d5` and `%a2` to `%a5` in its
@@ -3175,7 +3131,7 @@ own prologue.
 ⚠️ There is no length limit. This is `sprintf`, not `snprintf`. Size the
 destination for the worst case yourself.
 
-### 5.6 The stock save's path build, both branches ✅
+### 5.6 The stock save's path build, both branches
 
 The brief's lead `0x40084e24` is the file open, not the path build:
 
@@ -3219,7 +3175,7 @@ Here is the first, whole:
 400241f8:	4fef 0018      	lea %sp@(24),%sp
 ```
 
-Reading it out, all ✅.
+Reading it out, all.
 
 - **The first `%s` of `"%s/AUDIO/%s.wav"` is the buffer at `0x100f8480`.** `pea`
   pushes the address, so `0x100f8480` is where the characters are, not a
@@ -3272,7 +3228,7 @@ filename, relative to wherever the slot record is read from:
 ```
 
 `0x400b3a11` is `"../AUDIO/%s.wav"` and `0x400b3a1a` is `"%s.wav"`, chosen by
-the same two tests. ✅ So `AUDIO` is one level up from a project folder, and
+the same two tests. So `AUDIO` is one level up from a project folder, and
 both sit directly inside the set.
 
 The exact bytes of the two path formats:
@@ -3282,7 +3238,7 @@ The exact bytes of the two path formats:
 0x400b3a95  25 73 2f 25 73 2e 77 61 76 00                     "%s/%s.wav"
 ```
 
-### 5.7 The project directory routine, whole ✅
+### 5.7 The project directory routine, whole
 
 ```
 40025230:	202f 0004      	movel %sp@(4),%d0
@@ -3311,23 +3267,23 @@ The exact bytes of the two path formats:
 40025286:	4e75           	rts
 ```
 
-✅ **Two longword arguments, cdecl.** The first is a set path string, defaulted
+ **Two longword arguments, cdecl.** The first is a set path string, defaulted
 to `0x100f8480` when it is zero. The second is a project name string, defaulted
 to `0x100f8378` when it is zero. The `bnes` at `0x40025238` tests `%d0`, because
 `moveal` does not touch the condition codes on this core.
 
-✅ **`0x400b86c1` is `"%s/%s"` and `0x400b3f82` is `"%s/UNTITLED"`.** So the
+ **`0x400b86c1` is `"%s/%s"` and `0x400b3f82` is `"%s/UNTITLED"`.** So the
 result is `<set>/<project>`, or `<set>/UNTITLED` when the project name is the
 empty string.
 
-✅ **The return is `%d0`, and only `%d0`.** `0x40025280` loads the literal
+ **The return is `%d0`, and only `%d0`.** `0x40025280` loads the literal
 `0x460bf112`, which is the destination it just formatted into. objdump prints
 the immediate in decimal, 1175187730; the operand bytes `460b f112` are the
 address. `%a0` holds the project name string at that point, not the result, and
 `%a1` holds sprintf's address. Nothing else is set. This answers step 3 of the
 brief: `%d0`, not `%a0`, not both.
 
-✅ **The result buffer is a shared static, `0x460bf112`.** The whole image
+ **The result buffer is a shared static, `0x460bf112`.** The whole image
 references it from two instructions, both inside this routine, so it is this
 routine's output buffer and nothing else's. But 45 sites in the image name
 this routine. Counted from the linear objdump, which catches the
@@ -3337,16 +3293,16 @@ some of them table data. Some of the 45 are register loads that feed more than
 one call, so the number of calls is 45 or more. Any of them can overwrite the
 buffer. Copy the string out immediately.
 
-✅ **It clobbers `%d0`, `%d1`, `%a0` and `%a1` only.** It saves nothing, and it
+ **It clobbers `%d0`, `%d1`, `%a0` and `%a1` only.** It saves nothing, and it
 calls only sprintf, which preserves `%d2` upward.
 
-🟡 **It takes no lock and cannot block on its own.** It reads two globals and
+Unconfirmed: **It takes no lock and cannot block on its own.** It reads two globals and
 calls sprintf. Falsifier: a lock inside sprintf's inner formatter, which is not
 disassembled here.
 
-### 5.8 The set folder, and what Task 15 must use ✅ with two 🟡
+### 5.8 The set folder, and what Task 15 must use with two
 
-✅ **The set folder is the C string at `0x100f8480`.** The linear objdump finds
+ **The set folder is the C string at `0x100f8480`.** The linear objdump finds
 49 instructions naming it, and every one of them is `pea 0x100f8480`. Not one
 loads from it as a variable. A `pea` in a sprintf argument list is a `%s`
 pointer, so the address is the first character of the string.
@@ -3355,15 +3311,15 @@ There is a fiftieth site, which objdump prints with a decimal immediate, so a
 grep for the hex misses it. It is `0x4002523a`, `movel #269452416,%d0` inside
 `0x40025230`, and it uses the same address the same way.
 
-✅ **`0x100f8378` is the project name**, by the same reasoning, plus
+ **`0x100f8378` is the project name**, by the same reasoning, plus
 `0x40024eec` testing its first byte for the empty string.
 
-✅ **Both live outside this image section.** The section covers `0x40000400`
+ **Both live outside this image section.** The section covers `0x40000400`
 through `0x4010f9b0`. `0x100f8480` is in the settings block region, above the
 128 slot table, and its contents are runtime state. So the addresses are
 measured and the contents are not, and cannot be, from a static read.
 
-✅ **`0x100f8480` is a complete path prefix, not a bare folder name.** The mount
+ **`0x100f8480` is a complete path prefix, not a bare folder name.** The mount
 check `0x40025650` takes it as its only argument, formats `"%s/AUDIO"` from it
 into a 260 byte stack buffer, and asks the file layer whether both the set path
 and that pool path exist:
@@ -3386,8 +3342,8 @@ and that pool path exist:
 is `"NO SET IS MOUNTED!"` at `0x400b3766`. So the string is what the file layer
 accepts as the head of a path.
 
-✅ **It begins with `/` and has no trailing `/`.** Measured under the port,
-12 Sep 2026: a project staged as set `STEMS`, project `ULTFX`
+ **It begins with `/` and has no trailing `/`.** Measured under the port,
+ a project staged as set `STEMS`, project `ULTFX`
 (`out/projects/Ultimate FX 1.5.3`), loaded and run under `ot_emu`
 (`--card out/stems_card.img --set STEMS --project ULTFX --sequencer`), then
 `--mem-dump 0x100f8480,64` dumped as `2f5354454d53 00...` --
@@ -3408,19 +3364,19 @@ because `0x40025230` always appends exactly one `/` and one name component, but
 it goes through a buffer that 45 other sites share, and it behaves differently
 when the project name is empty, where it appends `UNTITLED` rather than nothing.
 
-🟡 **Nothing locks `0x100f8480`.** No call site takes a mutex around it. The UI
+Unconfirmed: **Nothing locks `0x100f8480`.** No call site takes a mutex around it. The UI
 task can in principle rewrite it while the writer task is formatting. The window
 is the length of one sprintf, and the only writer is a set change, which the
 user cannot do while the sequencer is running, so the exposure is small.
 Falsifier: find a write to `0x100f8480` that is reachable during playback.
 
-🟡 **`0x800000a4` is not STEM REC's business.** STEM REC writes stems to the
+Unconfirmed: **`0x800000a4` is not STEM REC's business.** STEM REC writes stems to the
 pool unconditionally, so it should ignore the AUD POOL and PROJ DIR setting.
 Recorded so that nobody wires it in by analogy with the stock save. Falsifier: a
 decision that stems should follow the setting, which is a design question, not a
 firmware one.
 
-### 5.9 The table Task 15 codes against ✅
+### 5.9 The table Task 15 codes against
 
 | routine | address | arguments | returns | preserves | blocks |
 |---|---|---|---|---|---|
@@ -3429,7 +3385,7 @@ firmware one.
 | sprintf | `0x40013a08` | dest, format, varargs | `%d0`, unused here | `%d2`-`%d7`, `%a2`-`%a6` | no |
 | name builder | `0x400819fc` | none | `%d0`, pointer to `0x460faab4` | `%d2`-`%d7`, `%a2`-`%a6` | yes, through the clock |
 | project directory | `0x40025230` | set path or 0, project name or 0 | `%d0`, pointer to `0x460bf112` | `%d2`-`%d7`, `%a2`-`%a6` | no |
-| set mounted | `0x40025650` | set path | `%d0`, non-zero if mounted | `%d2`, `%d3` measured; rest not | 🟡 not measured |
+| set mounted | `0x40025650` | set path | `%d0`, non-zero if mounted | `%d2`, `%d3` measured; rest not | unconfirmed not measured |
 
 Every one is cdecl and the caller pops. Every one clobbers `%d0`, `%d1`, `%a0`
 and `%a1`.
@@ -3437,12 +3393,12 @@ and `%a1`.
 Two static buffers, each overwritten on every call to its owner: `0x460faab4`
 for the name, and `0x460bf112` for the project directory.
 
-### 5.10 Not measured under the port 🟡
+### 5.10 Not measured under the port
 
 No project folder exists on this machine, so nothing here was executed. Four
 things a port run would settle, in the order they matter:
 
-1. ✅ **Done for `0x100f8480`, 12 Sep 2026 (Task 10).** `--mem-dump
+1. **Done for `0x100f8480`, (Task 10).** `--mem-dump
    0x100f8480,64` after a real load reads `/STEMS`, settling the leading
    slash question in 5.8. `0x100f8378` (the project name) was not dumped in
    this pass and is still open.
@@ -3545,7 +3501,7 @@ STEM REC writes `<set>/AUDIO/YYMMDD-HHMM/T1.wav`, so it has to create the folder
 `<set>/AUDIO/YYMMDD-HHMM` first. A folder-creation routine exists, it does
 nothing but create the folder, and STEM REC can call it. `HAVE_MKDIR` is 1.
 
-### 6.0 The answer, first ✅
+### 6.0 The answer, first
 
 The file layer is a table of function pointers in RAM. The folder-creation
 entry is the pointer at `0x46c8240a`. On a card it holds `0x4001b0ac`. One
@@ -3558,22 +3514,22 @@ blocks.
 The rest of this section is the evidence, and the five stock call sites that fix
 the convention.
 
-### 6.1 How the routine was found ✅
+### 6.1 How the routine was found
 
 The search started from the new-project path, as the brief's Step 1 directs.
 
-✅ **The disassembler gate passed first.** `scripts/disasm.sh emac 0x40003664 8`
+ **The disassembler gate passed first.** `scripts/disasm.sh emac 0x40003664 8`
 printed `msacl`, and the image's SHA-256 matched the header's. Every
 disassembly in this section follows from that gate.
 
-✅ **A byte search for `project.work` and `markers.work` found the creator's
+ **A byte search for `project.work` and `markers.work` found the creator's
 neighbour, not the creator.** `"%s/%s/project.work"` sits at `0x400b5ccd`, with
 one reference, `0x400646bc`. The routine that reads it, `0x40064624`, turned
 out to be the project BROWSER, not CREATE NEW PROJECT. It was still useful: it
 calls a file test through a pointer in RAM, `0x46c823fa`, not through a fixed
 entry point. That is the pointer table 6.2 documents next.
 
-✅ **Following the pointer led to its installer, then to a per-slot census.**
+ **Following the pointer led to its installer, then to a per-slot census.**
 `0x4001451c` writes `0x46c823fa` and its neighbours, branching at `0x40014520`
 to `0x40014636` depending on its argument, and `0x4001474c` is a separate
 stub-table installer (6.2 has the detail). A linear objdump of the whole
@@ -3581,22 +3537,22 @@ image, grepped for every `moveal 0x46c82xxx`, split the sites inside the
 installer's own range `0x40014000`-`0x40017000` from the sites outside it,
 which gave a per-slot census of callers.
 
-✅ **The census pointed at slot `0x46c8240a`.** Its neighbour `0x46c82406`
+ **The census pointed at slot `0x46c8240a`.** Its neighbour `0x46c82406`
 turned out to be a folder removal: `0x4008ec4c` deletes a project's `.work`
 and `.strd` files and then calls `0x46c82406` on `"%s/%s"`. `0x46c8240a` had
 five callers, all shaped "format a path, test exists, create" (6.3).
 
-✅ **`0x40080fa4` settled it.** CREATE NEW SET makes `"/%s"` and then
+ **`0x40080fa4` settled it.** CREATE NEW SET makes `"/%s"` and then
 `"/%s/AUDIO"` through slot `0x46c8240a`, parent first, with `"ERROR CREATING
 SET DIR."` on failure (6.3). Nothing but a folder-creation routine has that
 shape, so the search stopped there and moved to confirming the convention.
 
-✅ **The last step disassembled the routine whole.** The card backend
+ **The last step disassembled the routine whole.** The card backend
 `0x4001b0ac` behind the slot, and the path resolver `0x4001aa70` it calls,
 gave the calling convention, the return codes and the attribute byte that the
 rest of this section documents.
 
-### 6.2 The file layer is a table of pointers, not a set of fixed entry points ✅
+### 6.2 The file layer is a table of pointers, not a set of fixed entry points
 
 The routine at `0x4001451c` installs 23 function pointers into RAM, at
 `0x46c823fa`, `0x46c823fe` and then `0x46c82402` through `0x46c82452` in steps
@@ -3623,7 +3579,7 @@ objdump prints the immediates in decimal. 1073854580 is `0x4001b874` and
 1073852588 is `0x4001b0ac`, which are also the operand bytes of the two `movel`
 instructions.
 
-✅ **The zero-argument backend is a stub set.** `0x4001b874` is two
+ **The zero-argument backend is a stub set.** `0x4001b874` is two
 instructions:
 
 ```
@@ -3634,7 +3590,7 @@ instructions:
 Its neighbours at `0x4001b878`, `0x4001b87c`, `0x4001b880` and `0x4001b884` are
 the same two instructions, four bytes apart.
 
-✅ **The card installs the non-zero backend.** `0x400169d4` calls the installer
+ **The card installs the non-zero backend.** `0x400169d4` calls the installer
 with 1, right after a mount succeeds:
 
 ```
@@ -3657,12 +3613,12 @@ The only other caller passes zero, in a mode that then writes 2 to
 400616fc:	23c0 460d 1cb8 	movel %d0,0x460d1cb8
 ```
 
-🟡 **That second mode is believed to be the USB disk mode.** It is not needed
+Unconfirmed: **That second mode is believed to be the USB disk mode.** It is not needed
 here. Falsifier: read `0x460d1cb8` under the port in both states.
 
 There is a third install routine, at `0x4001474c`, whose whole table points into
 `0x40014878` through `0x400148d0`, a run of 4-byte stubs. Four sites call it,
-one of them at `0x40061714`, right after the teardown at `0x40014960`. 🟡 It is
+one of them at `0x40061714`, right after the teardown at `0x40014960`. It is
 the unmount table. Falsifier: a port run that unmounts and reads `0x46c8240a`.
 
 **What follows for STEM REC.** The pointer is the interface, not the address
@@ -3670,7 +3626,7 @@ behind it. Read `0x46c8240a` and call through it, the way all five stock call
 sites do, and check the return: in the stub state the call returns -1 rather
 than crashing.
 
-### 6.3 Slot `0x46c8240a` is the folder-creation routine ✅
+### 6.3 Slot `0x46c8240a` is the folder-creation routine
 
 Five instructions in the image read that slot. Counted from a linear objdump of
 the whole image (`m68k-elf-objdump -D -b binary -m m68k:cfv4e
@@ -3683,7 +3639,7 @@ unmount table below), and nothing else. The five are `0x40063dd0`,
 All five have one shape: format a path, ask the "does it exist" slot
 `0x46c823fa`, and on "no" call `0x46c8240a` with that path.
 
-✅ **The decisive site is CREATE NEW SET**, because it creates two nested
+ **The decisive site is CREATE NEW SET**, because it creates two nested
 folders in one routine, parent first:
 
 ```
@@ -3726,7 +3682,7 @@ message the failure branch shows, is `"ERROR CREATING SET DIR."`. So creating a
 set is: make `/NAME`, then make `/NAME/AUDIO`, through the same slot, parent
 first. Nothing but a folder-creation routine has that shape.
 
-✅ **CREATE NEW PROJECT is the second proof**, with the error strings naming
+ **CREATE NEW PROJECT is the second proof**, with the error strings naming
 what the slot did:
 
 ```
@@ -3773,7 +3729,7 @@ So the exists slot guards the name and the `0x46c8240a` slot creates
 (`0x400b58c7`), and `0x40090c22` is a third instance, with `"/"` at
 `0x400b36a6`.
 
-✅ **The neighbouring slot `0x46c82406` removes a folder**, which corroborates
+ **The neighbouring slot `0x46c82406` removes a folder**, which corroborates
 the pair. The routine at `0x4008ec4c` deletes `project.work`, `project.strd`,
 `markers.work`, `markers.strd`, `bank%02d.work` and `bank%02d.strd` for 16
 banks, and `arr%02d.work` and `arr%02d.strd` for 8, and then does this:
@@ -3794,7 +3750,7 @@ banks, and `arr%02d.work` and `arr%02d.strd` for 8, and then does this:
 Empty the folder, then call `0x46c82406` on `"%s/%s"`. That is a folder removal,
 and `0x46c8240a` is its neighbour in both backend tables.
 
-### 6.4 It writes a directory entry with attribute `0x10` ✅
+### 6.4 It writes a directory entry with attribute `0x10`
 
 Step 2 of the brief is confirmed statically, in the card backend `0x4001b0ac`,
 three times. Offset 11 of a 32-byte FAT directory entry is the attribute byte,
@@ -3849,9 +3805,9 @@ time go to `+0x16` and `+0x18` (`0x4ece3216`, `0x4ece3218`, `0x4ece3236` and
 That is a FAT directory creation, written out longhand. No port run is needed
 for step 2 of the brief.
 
-### 6.5 Arguments, return and errors ✅
+### 6.5 Arguments, return and errors
 
-✅ **One longword argument, the path, cdecl, the caller pops.** cdecl here
+ **One longword argument, the path, cdecl, the caller pops.** cdecl here
 means the caller pushes the arguments right to left and pops them after the
 call (5.0's term note defines it the same way). Every one of the five call
 sites pushes one longword and pops four bytes. The plainest:
@@ -3865,7 +3821,7 @@ sites pushes one longword and pops four bytes. The plainest:
 40063ddc:	6d10           	blts 0x40063dee
 ```
 
-✅ **The return is `%d0`. Zero is success and negative is failure.** In the card
+ **The return is `%d0`. Zero is success and negative is failure.** In the card
 backend `%d4` is the return value, and it is written at exactly five places.
 Here is the whole set, from a grep of the linear objdump restricted to
 `0x4001b0ac` through `0x4001b3f2`:
@@ -3884,15 +3840,15 @@ success path carries out the zero that `0x4001b120` stored.
 
 | value | site | what it means |
 |---|---|---|
-| 0 | falls through from `0x4001b120` | the folder was created ✅ |
-| -4 | `0x4001b0c6` | the FAT mutex could not be taken ✅ |
-| -24 | `0x4001b0e0` | no volume is mounted, `0x460bae2c` is zero ✅ |
-| -15 | `0x4001b10a` | the path did not resolve to "only the last component is missing". The name exists already, or a parent does not, or the path ends in `/` ✅ |
-| -25 | `0x4001b15a` | the cluster allocator at `0x400174ec` or `0x4001748c` returned -1 ✅ |
-| other negative | `0x4001b120` | the directory-entry allocator `0x4001a1f8` failed 🟡 |
+| 0 | falls through from `0x4001b120` | the folder was created |
+| -4 | `0x4001b0c6` | the FAT mutex could not be taken |
+| -24 | `0x4001b0e0` | no volume is mounted, `0x460bae2c` is zero |
+| -15 | `0x4001b10a` | the path did not resolve to "only the last component is missing". The name exists already, or a parent does not, or the path ends in `/` |
+| -25 | `0x4001b15a` | the cluster allocator at `0x400174ec` or `0x4001748c` returned -1 |
+| other negative | `0x4001b120` | the directory-entry allocator `0x4001a1f8` failed unconfirmed |
 
 The first five are read straight off the branches that reach them. The last is
-🟡 only in its name: what `0x4001a1f8` does was not disassembled, and
+Unconfirmed: only in its name: what `0x4001a1f8` does was not disassembled, and
 `"CHECK CARD! (FULL?)"` is the message its caller shows. Falsifier: fill a card
 image under the port and read the code that comes back.
 
@@ -3913,7 +3869,7 @@ The lock-failure and not-mounted paths, whole:
 4001b0e0:	78e8           	moveq #-24,%d4
 ```
 
-✅ **It preserves `%d2` through `%d5`.** They are saved on entry and restored on
+ **It preserves `%d2` through `%d5`.** They are saved on entry and restored on
 exit:
 
 ```
@@ -3927,14 +3883,14 @@ exit:
 4001b3f2:	4e75           	rts
 ```
 
-🟡 **It preserves `%d6`, `%d7` and `%a2` through `%a6` as well.** No instruction
+Unconfirmed: **It preserves `%d6`, `%d7` and `%a2` through `%a6` as well.** No instruction
 between `0x4001b0ac` and `0x4001b3f2` names any of them, and its callees follow
 the same convention (`0x4001c5b8` and `0x4001c544` each save `%d2`, `%a2` and
 `%a3`). Falsifier: one callee that does not. This is the only register claim in
 the section that is not read off a save and a restore, so save them yourself if
 that is cheap.
 
-### 6.6 The path convention ✅
+### 6.6 The path convention
 
 The path resolver is `0x4001aa70`. It takes the path and a 300-plus byte output
 structure, and its return code is the only thing the folder routine tests:
@@ -3954,7 +3910,7 @@ structure, and its return code is the only thing the folder routine tests:
 Anything but -3 becomes the -15 return. So the whole path convention is the
 resolver's convention.
 
-✅ **A leading `/` resolves from the root. Anything else resolves from the
+ **A leading `/` resolves from the root. Anything else resolves from the
 current directory.** 47 is the ASCII code for `/`:
 
 ```
@@ -3977,7 +3933,7 @@ current directory.** 47 is the ASCII code for `/`:
 The absolute case zeroes the 12 bytes of walking state. The relative case copies
 them from `0x460bae38`, which is the current directory.
 
-✅ **The parent must exist.** When a component is not found, the resolver looks
+ **The parent must exist.** When a component is not found, the resolver looks
 at the next character. If that character is `/`, so the missing component is not
 the last one, it returns -2, and the folder routine turns that into -15:
 
@@ -4002,7 +3958,7 @@ the last one, it returns -2, and the folder routine turns that into -15:
 -3 is also the only code that copies the missing name out to the caller, at
 `0x4001ab5c`. That name is what the folder routine then creates.
 
-✅ **No trailing `/`.** After a component the resolver skips separators and then
+ **No trailing `/`.** After a component the resolver skips separators and then
 tests for the end of the string:
 
 ```
@@ -4028,7 +3984,7 @@ A path that ends in `/` reaches `0x4001ab9a` and returns 1 or -1, never -3. So
 `"<set>/AUDIO/260910-1432/"` fails with -15, and
 `"<set>/AUDIO/260910-1432"` is the form to pass.
 
-✅ **The name must not exist already**, by the same rule: a resolved path
+ **The name must not exist already**, by the same rule: a resolved path
 returns 1 or 0, not -3. The exists slot `0x46c823fa` in front of the call is the
 stock way to tell that case apart, and it answers for a folder as well as a
 file, which is what the "NAME ALREADY IN USE!" branch in 6.3 depends on.
@@ -4036,21 +3992,21 @@ file, which is what the "NAME ALREADY IN USE!" branch in 6.3 depends on.
 **What Task 15 must pass.** `<set>/AUDIO/YYMMDD-HHMM`, built from `SET_PATH` as
 section 5.8 says, with no trailing `/`, and only once `<set>/AUDIO` exists.
 
-🟡 **`<set>/AUDIO` can be assumed to exist whenever a set is mounted.** Stock
+Unconfirmed: **`<set>/AUDIO` can be assumed to exist whenever a set is mounted.** Stock
 creates it with the set (6.3), and the mount check `0x40025650` in section 5.8
 formats `"%s/AUDIO"` and tests it. Falsifier: a user who deletes `AUDIO` from a
 computer and then mounts the card. Cheap defence: call the exists slot on
 `<set>/AUDIO` first and create it if it is missing, before creating the take
 folder. It is the same call, so it costs a few instructions.
 
-**One corroboration for section 5.8's leading-slash 🟡.** CREATE NEW SET formats
+**One corroboration for section 5.8's leading-slash .** CREATE NEW SET formats
 the folder it makes as `"/%s"` (6.3), so the folder stock creates for a set is
 `/NAME`, at the root. That does not prove what `0x100f8480` holds afterwards,
 which is still the port run listed in 5.10. It does mean that a set path without
 a leading `/` would resolve against the current directory, which is a second
 reason to settle 5.8 before flashing.
 
-### 6.7 It does not change the current directory ✅
+### 6.7 It does not change the current directory
 
 The current directory is the 12 bytes at `0x460bae38`, read by the resolver at
 `0x4001aabe` above. Five instructions in the whole image name it, found by
@@ -4064,20 +4020,20 @@ grepping the linear objdump for the operand bytes `460b ae38`:
 4001b540:	23c0 460b ae38 	movel %d0,0x460bae38
 ```
 
-✅ **None of them is inside `0x4001b0ac` through `0x4001b3f2`.** The folder
+ **None of them is inside `0x4001b0ac` through `0x4001b3f2`.** The folder
 routine reads the current directory through the resolver and never writes it.
 Spec section 6 is satisfied by calling the slot as documented.
 
-🟡 **`0x4001b540` is the change-directory routine's write.** It sits inside the
+Unconfirmed: **`0x4001b540` is the change-directory routine's write.** It sits inside the
 routine that begins at `0x4001b4f4`, which the installer puts in slot
 `0x46c8242e`. STEM REC must never call slot `0x46c8242e`. Falsifier: a caller of
 that slot that is not a directory change. The two `clrl` sites at `0x40017cfa`
-and `0x40017de8` are 🟡 a mount or a media change resetting to the root.
+and `0x40017de8` are a mount or a media change resetting to the root.
 
-### 6.8 It takes the same mutex as open, read and write, and it reads the clock ✅
+### 6.8 It takes the same mutex as open, read and write, and it reads the clock
 
-✅ **The mutex object is `0x461079c0`**, acquired with `0x400009f4` and released
-with `0x40000ab4`. Both routines are already ✅ in this document: section 5.2
+ **The mutex object is `0x461079c0`**, acquired with `0x400009f4` and released
+with `0x40000ab4`. Both routines are already in this document: section 5.2
 measured `0x400009f4` as a blocking mutex acquire and `0x40000ab4` as the
 release that hands the lock to the head waiter. The folder routine takes the
 mutex at `0x4001b0b4`
@@ -4090,7 +4046,7 @@ mutex at `0x4001b0b4`
 4001b3e8:	2004           	movel %d4,%d0
 ```
 
-✅ **It is the same lock the rest of the file layer takes.** The card backend for
+ **It is the same lock the rest of the file layer takes.** The card backend for
 open takes it as its first act:
 
 ```
@@ -4106,7 +4062,7 @@ the image. So the FAT layer is one big lock, and the folder routine is inside it
 exactly as open and write are. Task 8 owns the lock's own reading. This is the
 pend seen on the way.
 
-✅ **It also reads the real time clock, six times.** Two helpers fill the date
+ **It also reads the real time clock, six times.** Two helpers fill the date
 and the time before the entries are written:
 
 ```
@@ -4126,16 +4082,16 @@ priority 1, the way section 5.2 says to call the clock. Never from the DSP hook
 or an interrupt, and never while holding anything the UI task needs. Call it
 once per take, before the file is opened, and never in the sample loop.
 
-### 6.9 What else it does, and what it costs ✅ and 🟡
+### 6.9 What else it does, and what it costs and
 
-✅ **It creates a folder and nothing else.** No template is copied, no project
+ **It creates a folder and nothing else.** No template is copied, no project
 files are written, no setting is touched. The project files are written by the
 CALLER, after the folder exists: `0x4008eda4` and `0x4008ee74` build
 `"%s/bank%02d.work"` and the rest and write them through the buffered file API.
 So the controller's "unless the extra work is harmless" clause does not apply.
 `HAVE_MKDIR` is 1.
 
-🟡 **Budget at least 1 KB of stack for the call.** The measured frames on the
+Unconfirmed: **Budget at least 1 KB of stack for the call.** The measured frames on the
 path are 336 bytes for the folder routine itself (`linkw %fp,#-336`), 40 for the
 resolver (`linkw %fp,#-40`), and 164 for the entry allocator
 (`4001a1f8: linkw %fp,#-164`), plus their own callees, which were not walked to
@@ -4147,7 +4103,7 @@ stack.
 layer's own scratch, used under the mutex. That is one more reason not to hold
 the call across anything.
 
-### 6.10 Not measured under the port 🟡
+### 6.10 Not measured under the port
 
 No project folder exists on this machine, so nothing in this section was
 executed. Four things a port run would settle, in the order they matter:
@@ -4226,7 +4182,7 @@ executed. Four things a port run would settle, in the order they matter:
 ## 7. Two tasks on one card
 
 STEM REC's writer task and stock's own tasks both call the buffered file
-API. (Corrected 22 Sep 2026: this said "the stock storage task". The task
+API. (Corrected this said "the stock storage task". The task
 this document calls the storage task, `0x4001ee30`, is the USB
 mass-storage worker, and it never calls the buffered API; section 7.7.
 The stock callers are all on the engine task; section 7.5.) Section 6
@@ -4234,7 +4190,7 @@ already measured one lock, `FS_LOCK` (`0x461079c0`), taken by
 the folder-creation routine. This section measures the same lock for open,
 write, seek and close, and asks whether it is enough.
 
-### 7.0 The answer, first ✅
+### 7.0 The answer, first
 
 Yes, with the FAT lock. Open, the buffered write's flush, seek, and the
 buffered close's flush all reach a raw card-backend routine that takes
@@ -4258,7 +4214,7 @@ This belongs in the flash notes as a real, if narrow, exposure: it needs two
 tasks racing on the SAME shared buffer, not merely two tasks holding open
 files.
 
-### 7.1 The four routines the brief names are a buffered layer, and none of them takes FS_LOCK ✅
+### 7.1 The four routines the brief names are a buffered layer, and none of them takes FS_LOCK
 
 Open (`0x40016864`), the buffered write (`0x400166b8`), seek (`0x4001660c`)
 and the buffered close (`0x4001677c`) are a small stdio-like layer over the
@@ -4289,7 +4245,7 @@ cleared, and later offset 0 the handle and offset 20 the mode byte). `%a3` is
 the mode string; its first byte is stored into `%a2@(20)` a few lines further
 down, and the SAME byte, pushed again, becomes the raw open's second argument.
 
-✅ **Open calls a SIXTH slot after the raw open already released `FS_LOCK`,
+ **Open calls a SIXTH slot after the raw open already released `FS_LOCK`,
 on a read-mode open.** The rest of the wrapper, read whole:
 
 ```
@@ -4356,7 +4312,7 @@ READ-mode open, not a write-mode one** (the sample save's own call, section
 40018a6e:	4e90           	jsr %a0@
 ```
 
-✅ `0x40018a0c` DOES take `FS_LOCK` (`0x461079c0`), as its first act, and
+ `0x40018a0c` DOES take `FS_LOCK` (`0x461079c0`), as its first act, and
 releases it on every exit found (three release sites: the immediate-fail
 skip at `0x40018a24` needs none, and three `pea`/`jsr` pairs at `0x40018a32`,
 `0x40018a5c`-`0x40018a62`, and `0x40018a68`-`0x40018a6e` cover the rest).
@@ -4413,7 +4369,7 @@ write-flush test when it is zero:
 
 `%a2@(12)` is still `0` on this path, so the branch IS taken.
 
-✅ `%a2@(12)` is the buffered write's fill position: the number of bytes
+ `%a2@(12)` is the buffered write's fill position: the number of bytes
 staged in the file object's own buffer since the last flush. The evidence
 is the write wrapper, `0x400166b8` (`scripts/disasm.sh emac 0x400166b8 168`,
 gate run first). For each byte of the caller's data, it reads the field,
@@ -4471,7 +4427,7 @@ write-flush test entirely and fall straight to the handle release, slot
 40019920:	6000 0282      	braw 0x40019ba4
 ```
 
-✅ `0x40019900` DOES take `FS_LOCK` as its first act, so close's read-mode
+ `0x40019900` DOES take `FS_LOCK` as its first act, so close's read-mode
 error path takes and releases it a THIRD time for this one open call, but
 through `0x40019900`, not through the wrapper's own body. Two release sites
 found:
@@ -4489,7 +4445,7 @@ found:
 40019992:	6000 020e      	braw 0x40019ba2
 ```
 
-🟡 Only the first ~150 bytes of `0x40019900` were read; the routine
+Unconfirmed: Only the first ~150 bytes of `0x40019900` were read; the routine
 continues past `0x400199c2` into work not disassembled here (it reads a
 per-descriptor flag at `%d1@(24)` and, on one path, indirects through
 `0x4694886e`, the same table write's backend used, section 7.2). The two
@@ -4583,7 +4539,7 @@ disassembly above. The lock is entirely the raw and post-check backends'
 business, and one open (in read mode) can reach it twice, in two separate
 holds (above).
 
-### 7.2 Each raw backend holds the lock across its OWN body, released on every exit ✅
+### 7.2 Each raw backend holds the lock across its OWN body, released on every exit
 
 This is the corrected claim: `FS_LOCK` is held across the whole body of
 EACH raw backend, not across the whole WRAPPER call. For write, seek, and a
@@ -4655,7 +4611,7 @@ Four release sites, each pairing `pea 0x461079c0` with `jsr 0x40000ab4`
 Every exit checked: the immediate acquire-fail path (no release, correct,
 because the lock was never taken) plus these four, and nothing between the
 acquire and any of the four releases returns without going through one of
-them. ✅ **This ONE backend holds `FS_LOCK` across its WHOLE body**, not
+them. **This ONE backend holds `FS_LOCK` across its WHOLE body**, not
 narrowly around a sector-I/O step: path resolution and directory-entry
 allocation both happen while it is held. ⚠️ It is not the whole `0x40016864`
 wrapper call: on a read-mode open, the wrapper reaches this backend, lets it
@@ -4723,12 +4679,12 @@ further on, an indirect call through a per-descriptor function-pointer table:
 ```
 
 `%a0` there is loaded through two indirections, `moveal 0x4694886e,%a0` then
-`moveal %a0@(4),%a0`. 🟡 This was not traced to a name; its position (between
+`moveal %a0@(4),%a0`. This was not traced to a name; its position (between
 the cluster allocator and the final directory-entry bookkeeping, all still
 inside the lock) is consistent with the actual sector write, but that is
 inferred, not confirmed. Falsifier: disassemble the target and confirm it
 reaches the ATA WRITE SECTORS handler section EMU.md names (`0x40014c48`).
-✅ What IS confirmed: nothing between the acquire (`0x40018a98`) and the five
+ What IS confirmed: nothing between the acquire (`0x40018a98`) and the five
 releases returns without releasing, so write also holds `FS_LOCK` across its
 whole call, cluster allocation and the indirect call both included.
 
@@ -4765,7 +4721,7 @@ Three release sites found in the disassembled range:
 4001861e:	6000 015c      	braw 0x4001877c
 ```
 
-🟡 **The success exit was not reached.** Seek's body continues past
+Unconfirmed: **The success exit was not reached.** Seek's body continues past
 `0x400186c6` into position-update work not disassembled here, so this
 section did not read its final release. Falsifier: disassemble
 `0x4001858c` through its `rts` and confirm a fourth `pea 0x461079c0` /
@@ -4776,11 +4732,11 @@ treated as the same pattern, not as measured.
 
 Open (`0x4001b570`), write (`0x40018a84`) and seek (`0x4001858c`) are each
 named by exactly one `jsr` in the whole image, per a linear-objdump grep of
-each address: their own label line, and nothing else. ✅ The pointer-table
+each address: their own label line, and nothing else. The pointer-table
 slot is the ONLY way to reach them, so the buffered wrapper is the sole path
 in, and `FS_LOCK` guards every reachable route to the FAT-touching work.
 
-### 7.3 The ATA lock is a separate, lower, non-blocking lock, and it never appears in the FAT-layer code ✅ with one 🟡
+### 7.3 The ATA lock is a separate, lower, non-blocking lock, and it never appears in the FAT-layer code with one
 
 The ATA lock EMU.md names, `0x460bae18`, is not the same object as `FS_LOCK`.
 It is a try-lock, not a blocking mutex: it masks interrupts, tests-and-sets
@@ -4801,13 +4757,13 @@ the word, and on failure returns instead of blocking:
 ```
 
 `refs.sh 0x460bae18` finds 17 hits, all of them between `0x400150b4` and
-`0x4001611c`. ✅ That whole range is the ATA driver EMU.md describes (the PIO
+`0x4001611c`. That whole range is the ATA driver EMU.md describes (the PIO
 handlers it names, `0x40014b94`, `0x40014c48`, `0x400159bc`, sit just below
 it). None of the 17 falls inside any of the FAT-layer addresses this section
 or section 6 disassembled: not the four wrappers, not open, write, seek, or
 folder-create.
 
-🟡 **Nesting is inferred, not traced.** This section confirmed the ATA lock's
+Unconfirmed: **Nesting is inferred, not traced.** This section confirmed the ATA lock's
 code never appears in the FAT-layer routines by ADDRESS, and separately that
 write's raw backend makes an indirect call, still holding `FS_LOCK`, to
 something not identified by name (7.2). It did not trace that indirect call
@@ -4820,19 +4776,19 @@ locks during one write, showing the ATA lock is never held while `FS_LOCK` is
 free, and never taken by anything that is not already inside a `FS_LOCK`
 critical section.
 
-### 7.4 The current directory is read, never written, by open, write or seek ✅
+### 7.4 The current directory is read, never written, by open, write or seek
 
 Section 6.7 already found the whole image's five writers of `FS_CWD`
 (`0x460bae38`): `0x40016f48`, `0x40017cfa`, `0x40017de8`, `0x4001aabe`, and
 `0x4001b540`. None of those five addresses falls inside open
 (`0x4001b570`-`0x4001b722`), write (`0x40018a84`-`0x40018e34`) or seek
-(`0x4001858c`-`0x40018700`, the range disassembled). ✅ The one READ of
+(`0x4001858c`-`0x40018700`, the range disassembled). The one READ of
 `FS_CWD`, `0x4001aabe`, is inside the shared path resolver, and section 7.2
 shows the resolver is only reached from open while `FS_LOCK` is held. So the
 current directory is touched by these three routines exactly the way the
 folder routine touches it: read under the lock, never written.
 
-### 7.5 The shared sector staging buffer is touched OUTSIDE the lock 🟡
+### 7.5 The shared sector staging buffer is touched OUTSIDE the lock
 
 Both flushes quoted in 7.1 copy the caller's data into ONE fixed address,
 `0x4ecd3000`, through a plain memcpy, BEFORE the call that takes `FS_LOCK`:
@@ -4864,7 +4820,7 @@ Both flushes quoted in 7.1 copy the caller's data into ONE fixed address,
 40020904:	4e75           	rts
 ```
 
-✅ **This is memcpy(dest, src, n)**, 16 bytes per iteration. cdecl argument
+ **This is memcpy(dest, src, n)**, 16 bytes per iteration. cdecl argument
 order (caller pushes right to left) puts `0x4ecd3000` in `%a1` (dest) and the
 caller's own buffer, `%a2@(4)`, in `%a0` (src). So the write-flush and
 close-flush paths copy the CALLER's buffered bytes INTO the shared address
@@ -4879,7 +4835,7 @@ payload:
 40016726:	4e90           	jsr %a0@
 ```
 
-✅ **`refs.sh 0x4ecd3000` finds 12 hits**, clustered in two ranges:
+ **`refs.sh 0x4ecd3000` finds 12 hits**, clustered in two ranges:
 `0x400162d0`-`0x40016310` and `0x4001648c`-`0x400165c0` (both outside the
 routines this section disassembled, and by their position between open and
 seek in the address map, likely the buffered READ's equivalent fill step,
@@ -4887,7 +4843,7 @@ not measured here), plus the four sites already shown, two in write-flush
 (`0x40016708`, `0x4001671a`) and two in close-flush (`0x400167f2`,
 `0x40016800`).
 
-🟡 **The exposure.** The memcpy into `0x4ecd3000` happens BEFORE `FS_LOCK` is
+Unconfirmed: **The exposure.** The memcpy into `0x4ecd3000` happens BEFORE `FS_LOCK` is
 acquired (the acquire is inside the raw write backend, called after the
 memcpy returns). If two tasks both reach a write-flush or close-flush at
 overlapping instants, whichever finishes its memcpy last overwrites the
@@ -4900,19 +4856,19 @@ write path concurrently today. Falsifier: a port run with a write-watch on
 buffered I/O (if it uses this same layer, not yet confirmed) are scheduled to
 interleave.
 
-### 7.5a The other party, and a stock save that starts itself (22 Sep 2026) ✅ static, 🟡 not observed
+### 7.5a The other party, and a stock save that starts itself static, not observed
 
 The cross-check against octemu, octamax, and Octakit named the other party,
 and it found a trigger nobody has to press.
 
-✅ **The other routines are the buffered layer's own, and every caller is
+ **The other routines are the buffered layer's own, and every caller is
 the engine task.** The 12 references are in `0x400161ec` (5 callers),
 `0x40016388` (17 callers), the buffered read `0x40016564`, the write, and
 the close. Every caller of these routines is in `0x40084xxx` to
 `0x40091xxx`, the engine task's code (`0x4008445c`, priority 1): project,
 bank, and sample loading and saving.
 
-✅ **The race runs both ways, and its window is the whole transfer.** The
+ **The race runs both ways, and its window is the whole transfer.** The
 buffered read calls the raw read slot `0x46c82426` into `0x4ecd3000`
 (`0x400165a0`), and then, outside the lock, copies it out to the caller
 (`0x400165be`). A flush on another task in between hands the reader the
@@ -4921,7 +4877,7 @@ while it reads `0x4ecd3000`, but another task's memcpy into the buffer
 takes no lock. So a flush can overwrite the buffer while a write is still
 sending it, not only before the lock.
 
-✅ **Stock saves banks by itself, about 1 s after every STOP.** Read from
+ **Stock saves banks by itself, about 1 s after every STOP.** Read from
 the image:
 
 1. DTIM1 (`0x40055cb8`, INTC0 source 33, level 3) runs with reference
@@ -4951,17 +4907,17 @@ STEM REC starts writing its take at STOP. It took 0.69 s of port time for
 so they share time slices, and each gives way while it waits on the card.
 Two repos saw stock save by itself on hardware, possibly by other paths:
 octamax saw a truncated `project.work` written at power-off
-(`octamax/NOTES.md`, 12 Aug 2026), and octalab calls the saves "more or
+(`octamax/NOTES.md`,), and octalab calls the saves "more or
 less continuous" (`octalab/docs/PROJECT_FILE.md`). Neither traced a
 trigger.
 
-🟡 **Not observed.** The collision is read from the code, not seen.
+Unconfirmed: **Not observed.** The collision is read from the code, not seen.
 Either side can lose: a take with bank bytes in it, or a bank `.work` file
 with audio in it. The second damages the user's project. Falsifier, and
 the test to run: the port with a second bank dirty, a take, STOP, and a
 write watch on `0x4ecd3000` by task.
 
-### 7.6 Per-caller state does not collide ✅
+### 7.6 Per-caller state does not collide
 
 Open writes exactly two kinds of thing outside its own locals: the caller's
 file object (`%a2`, the pointer passed as its first argument) and, inside
@@ -4987,7 +4943,7 @@ argument:
 40084e24:	4eb9 4001 6864 	jsr 0x40016864
 ```
 
-✅ **This corrects an ambiguity in how section 5.6 was read.** `0x460363e0`
+ **This corrects an ambiguity in how section 5.6 was read.** `0x460363e0`
 is the PATH argument (built by the `sprintf`-like call at `0x40084dee` just
 above), not the buffer; `0x460263e0` is the buffer, pushed with its size
 (`0x10000`) as the two arguments the wrapper stores into `%a2@(4)` and
@@ -5001,28 +4957,7 @@ caller of this layer shares are the open-file table (written only under
 `FS_LOCK`, 7.2) and the staging buffer `0x4ecd3000` (written outside it,
 7.5).
 
-### 7.7 The buffered API has other stock callers today, and the USB mass-storage task bypasses it entirely ✅
-
-❌ **Corrected 22 Sep 2026: task `0x4001ee30` is the USB mass-storage
-worker, not the storage task's real-time sample streaming.** This section
-read it as the task that streams samples during play, after
-`RTOS_FORK.md`. octemu (`re/coldfire.syms`, `fs_usb_msc_task`) names it the
-USB mass-storage worker, and the image agrees. Its queue `0x460bb3a0` is
-posted from the USB code (`0x4001e412` to `0x4001e902`), from both card
-interrupt handlers (`0x400152e8` in the DMA completion handler,
-`0x400154e6` in `0x40015304`), which work out offsets from the task's own
-buffer `0x4ecb8000`, and from a countdown in `0x40056c40`
-(`0x40056ef4`). A task that moves raw sectors between USB and the card,
-with no file system, is what the loop below shows. So "the storage task"
-in the rest of this section means that USB worker. The buffer argument
-still holds: it never touches `0x4ecd3000`. But it doesn't run during
-normal play, so ruling it out rules out nothing that matters. Static
-samples stream through the raw read `0x400180c8` (octamax
-`STATIC_STREAMING.md`; octemu `fs_pread`, called at `0x4009318e` from
-the top-up reader `0x40093064`). It takes `FS_LOCK` at `0x400180d8` and
-releases it at `0x400180fa`, and it never touches `0x4ecd3000`. All 12 references to
-`0x4ecd3000` are in the buffered layer itself, and every caller of that
-layer is on the engine task (section 7.5).
+### 7.7 The buffered API has other stock callers today, and the USB mass-storage task bypasses it entirely
 
 This resolves, statically, the question the first pass of this section could
 only defer to the port: does the section 7.5 exposure ever have two real
@@ -5040,7 +4975,7 @@ an approximate count of "N or more calls"):
 | write `0x400166b8` | 57 |
 | close `0x4001677c` | 22 |
 
-✅ These are not small numbers: dozens of stock call sites exist beyond the
+ These are not small numbers: dozens of stock call sites exist beyond the
 sample save section 5.6 already measured (`0x40084e24`/`0x40084e02` open,
 `0x40084e52` close). Four clusters, by address range:
 
@@ -5066,7 +5001,7 @@ sample save section 5.6 already measured (`0x40084e24`/`0x40084e02` open,
    ...
    4001ffd6:	4e90           	jsr %a0@
    ```
-   🟡 Not traced to a name or a caller. Its size (one 512-byte record) and
+   Unconfirmed: Not traced to a name or a caller. Its size (one 512-byte record) and
    position right next to the storage task's own code are consistent with
    EMU.md's "the firmware's own log on the card records each missing
    sample", but that is a guess, not a measurement. It is NOT inside the
@@ -5075,7 +5010,7 @@ sample save section 5.6 already measured (`0x40084e24`/`0x40084e02` open,
    ordinarily-called subroutine, not the real-time streaming path.
 3. **`0x4008fbfc`-`0x40090650`, roughly eight to nine paired open/write/close
    sites**, each shaped like items 1 and 2 above (an open, some writes, a
-   close). 🟡 Not individually disassembled. Their position, right after the
+   close). Not individually disassembled. Their position, right after the
    folder-removal and project-file-deletion routines section 6.3 already
    placed nearby (`0x4008ec4c`), and section 6.9's own finding that
    "`0x4008eda4` and `0x4008ee74` build `%s/bank%02d.work` and the rest and
@@ -5085,7 +5020,7 @@ sample save section 5.6 already measured (`0x40084e24`/`0x40084e02` open,
    fact.
 4. **`0x400882ba`-`0x4008b47c`, ~50 WRITE-only call sites, no matching open
    or close density in the same range.** This is the cluster the review
-   round asked about. 🟡 One write roughly every 200 bytes of code, with no
+   round asked about. One write roughly every 200 bytes of code, with no
    open/close nearby, is consistent with a routine that opens ONCE (or reuses
    an already-open handle from a caller) and then serialises many small
    fields, one `WRITE` call per field (a text or binary record serializer,
@@ -5093,7 +5028,7 @@ sample save section 5.6 already measured (`0x40084e24`/`0x40084e02` open,
    one already-open handle. Not individually disassembled; this is a shape
    argument, not a name.
 
-✅ **Conclusion for the exposure itself**: several stock callers of the
+ **Conclusion for the exposure itself**: several stock callers of the
 buffered API exist today, independent of STEM REC and independent of each
 other (the sample save, the small log-writer, the project/bank-file saver).
 The section 7.5 exposure is real AMONG THEM: if the project/bank-file saver
@@ -5102,7 +5037,7 @@ different tasks at an overlapping instant, they race on `0x4ecd3000`. This
 was true before this review round; the census only makes it countable.
 
 **The USB mass-storage worker's loop, from the other direction** (read
-here, before 22 Sep 2026, as the storage task's real-time sample path).
+here, before as the storage task's real-time sample path).
 RTOS_FORK.md names its entry `0x4001ee30` (TCB `0x460bcc2c`, priority 5,
 `sys` at `0x40061a94` creates it via `0x4001dfbc`, per STEM_REC.md section
 3.7). Its loop, read whole from its entry:
@@ -5122,7 +5057,7 @@ RTOS_FORK.md names its entry `0x4001ee30` (TCB `0x460bcc2c`, priority 5,
 4001ee7c:	4efb 0802      	jmp %pc@(0x4001ee80,%d0:l)
 ```
 
-✅ Same shape as 8.3's UI dispatcher: blocking `QUEUE_RECEIVE` (`0x40000d00`)
+ Same shape as 8.3's UI dispatcher: blocking `QUEUE_RECEIVE` (`0x40000d00`)
 against the storage task's own queue `0x460bb3a0`, then an opcode-indexed
 jump table (7 entries here). One case does the actual sector transfer:
 
@@ -5142,7 +5077,7 @@ jump table (7 entries here). One case does the actual sector transfer:
 4001eef8:	6000 ff62      	braw 0x4001ee5c
 ```
 
-✅ **The storage task's sector transfer goes through NEITHER the buffered API
+ **The storage task's sector transfer goes through NEITHER the buffered API
 NOR the raw FAT backends.** It calls through `0x460d16cc` (the same word
 section 8.2 already found is the target of `0x40015e28`'s return, written by
 the mount routine), double-indirected (`moveal 0x460d16cc,%a0 / moveal
@@ -5155,7 +5090,7 @@ also never executes `rts`: every case ends in `braw 0x4001ee5c` back to the
 top, confirming it is the whole task body, not a subroutine that returns
 into something else that might call the buffered API afterward.
 
-✅ **This settles the open question the first pass deferred.** The section
+ **This settles the open question the first pass deferred.** The section
 7.5 exposure does NOT apply between STEM REC's writer task and the USB
 mass-storage worker (see the correction at the top of this section): they
 use entirely different buffers and entirely different call paths. Nor does
@@ -5165,7 +5100,7 @@ this section found (the sample save, the project/bank saver, and whatever
 calls the small log-writer at item 2), all on the engine task, and all of
 which could overlap with STEM REC's own writer task.
 
-### 7.8 Not measured under the port 🟡
+### 7.8 Not measured under the port
 
 No project folder exists on this machine. Three things a port run would
 settle, in the order they matter:
@@ -5196,18 +5131,18 @@ different call path entirely), but STEM REC against whichever of the stock buffe
 callers (the sample save, the project/bank-file saver, the small log-writer)
 happens to run on another task at the same instant.
 
-### 7.10 Why the header is written first ✅
+### 7.10 Why the header is written first
 
 STEM REC writes a take only after it stops. It writes the header first,
 with its final sizes, then the ring, then closes, and it never seeks. The
 original design streamed the take during the recording and then sought back
 to patch the two sizes. This section is why that design could not work.
-Read from `scripts/disasm.sh emac` on 13 Sep 2026: the open wrapper
+Read from `scripts/disasm.sh emac`: the open wrapper
 `0x40016864`, the write `0x400166b8`, the seek `0x4001660c`, the close
 `0x4001677c`, the buffered read `0x40016564` and the close backend
 `0x40018788`.
 
-✅ **The object is 24 bytes.** Open stores the caller's buffer at `+4`
+ **The object is 24 bytes.** Open stores the caller's buffer at `+4`
 (`0x40016878`) and its size at `+8` (`0x4001687e`), clears `+16`
 (`0x40016884`), stores the raw handle at `+0` (`0x4001689c`) and the mode's
 first character at `+20` (`0x4001689e`), and clears `+12` (`0x400168ac`).
@@ -5222,11 +5157,11 @@ The five routines read and write nothing past that byte at `+20`.
 | `+16` | the write position |
 | `+20` | the mode byte, `'r'` or `'w'` |
 
-✅ **Open clears `+16`, so `+16` cannot say whether the file existed.** It is
+ **Open clears `+16`, so `+16` cannot say whether the file existed.** It is
 0 after every open, new file or old. STEM REC asks the file layer's exists
 pointer `0x46c823fa` instead (section 6.11).
 
-✅ **The write copies one byte at a time and advances `+16` once per byte.**
+ **The write copies one byte at a time and advances `+16` once per byte.**
 Each byte goes into the caller's buffer at the fill (`0x400166ee`). When the
 fill reaches the buffer's size, the buffer is copied to the shared staging
 buffer `0x4ecd3000` and written as size ÷ 512 sectors through the slot
@@ -5234,7 +5169,7 @@ buffer `0x4ecd3000` and written as size ÷ 512 sectors through the slot
 one for every byte (`0x4001673a`), whether or not a flush happened. The
 write returns 1, or the sector write's negative code.
 
-✅ **The seek does not flush.** It seeks the raw file to the offset rounded
+ **The seek does not flush.** It seeks the raw file to the offset rounded
 down to 512 (slot `0x46c8243e`, `0x40016636`), then calls the buffered read
 `0x40016564` for the remaining `offset & 511` bytes with no destination
 (`0x4001665e`). That read refills the buffer from the card only when the
@@ -5244,7 +5179,7 @@ mode the seek then sets `+16` to the offset (`0x40016674`), and it ends by
 jumping to the raw seek with the full offset (`0x4001668a`). Nothing in it
 writes the pending buffer.
 
-✅ **Close flushes the tail, then hands `+16` to the file layer as the
+ **Close flushes the tail, then hands `+16` to the file layer as the
 length.** In `"w"` mode with a non-zero fill, it pads the buffer with zeros
 to its size (`0x400167c2`) and writes `(fill + 511) ÷ 512` sectors
 (`0x40016806`). Then, still in `"w"` mode, it calls the slot `0x46c82436`
@@ -5255,8 +5190,8 @@ clusters or fewer takes the path at `0x4001895a`, and more allocates at
 `0x400188f8`.
 Close then calls the raw close (slot `0x46c82422`) and clears `+0`.
 
-✅ **Close sets the file's length to `+16`, shorter as well as longer.**
-Measured under the port on 13 Sep 2026, both ways:
+ **Close sets the file's length to `+16`, shorter as well as longer.**
+Measured under the port, both ways:
 
 - **Longer.** Every take the verifier writes reads back at exactly 44 bytes
   plus its data: 27,180 bytes for 27,136 bytes of audio. Close wrote whole
@@ -5281,18 +5216,18 @@ leaves no file. The gain: no card traffic at all while the take runs.
 
 ## 8. Is a card mounted
 
-### 8.0 The answer, first ✅
+### 8.0 The answer, first
 
 `0x460d1cb8` is a LONGWORD. Every one of its nine accesses in the image uses
 a 4-byte form (`movel`, `clrl` or `cmpl`); none uses a byte or word form. It
 is written 0 (not mounted, or just unmounted), 1 (mounted as an ATA card) or
-2 (believed USB disk mode, section 6.2's 🟡, now corroborated below). No
+2 (believed USB disk mode, section 6.2's now corroborated below). No
 hardware card-removal path was found: the only writer of 0 at runtime is a
 software unmount sequence, reached from the boot sequence and from at least
 one menu action, never from an interrupt or a poll. Task 13's action should
 use `tst.l`.
 
-✅ **What 2 means for STEM REC, read 22 Sep 2026.** The mode that writes 2
+ **What 2 means for STEM REC, read.** The mode that writes 2
 calls the backend installer `0x4001451c` with 0 (`0x400616f2`), which
 installs the second file-system table (`0x40014524` on). octemu
 (`re/coldfire.syms`) names that state "the in-image archive". In that
@@ -5304,7 +5239,7 @@ open `0x4001c0ac` only resolves a path that already exists (through
 `0x4001bf50`), so the open fails too. Nothing is written anywhere. `cmp.l #1`
 would say what is meant, but it isn't needed for safety.
 
-### 8.1 The size: longword, from every access's own width ✅
+### 8.1 The size: longword, from every access's own width
 
 `refs.sh 0x460d1cb8` (sanity-checked against the known 33-hit and 113-hit
 counts for two other addresses first, per the preamble) returns 9 hits. A
@@ -5325,11 +5260,11 @@ hit resolves to the instruction starting 2 bytes earlier:
 | `0x4006176c` | `movel %d0,0x460d1cb8` |
 | `0x40061f8c` | `cmpl 0x460d1cb8,%d0` |
 
-✅ `movel`, `clrl` and `cmpl` are all longword forms on this core. No `moveb`,
+ `movel`, `clrl` and `cmpl` are all longword forms on this core. No `moveb`,
 `clrb`, `cmpb`, `movew`, `clrw` or `cmpw` form appears anywhere against this
 address. `tst.l CARD_MOUNTED` is the correct test.
 
-### 8.2 The writers, and the values ✅
+### 8.2 The writers, and the values
 
 Two routines write it, both reached only through the pointer-table pattern
 this document has already seen elsewhere (a literal `jsr` or a `lea`-then-
@@ -5380,7 +5315,7 @@ takes none.
 4006172c:	4280           	clrl %d0
 ```
 
-✅ **Always clears first, then dispatches on its one argument.** `0x460d1cb8`
+ **Always clears first, then dispatches on its one argument.** `0x460d1cb8`
 is cleared unconditionally at entry (`0x40061654`), before the argument is
 even tested, so the word reads 0 for the whole duration of every call to this
 routine. Then: argument 1 falls through into an ATA IDENTIFY sequence
@@ -5396,8 +5331,8 @@ to be the unmount table"), then clears `0x460d16cc` and `0x460d1cb8`
 explicitly (`0x40061726`, redundant with the entry `clrl` but present) and
 returns 0.
 
-🟡 **Argument 2 is corroborated, not directly proven, as USB disk mode.**
-Section 6.2 already marked this 🟡. New evidence here: the ONLY caller of
+Unconfirmed: **Argument 2 is corroborated, not directly proven, as USB disk mode.**
+Section 6.2 already marked this. New evidence here: the ONLY caller of
 `0x40061648` with a literal 2 is in the boot sequence's fallback (8.3), and
 the SECOND writer routine (below) is reached exclusively from a handler whose
 own confirm-dialog string is `"USB DISK MODE"` (read from the image at
@@ -5426,12 +5361,12 @@ already reads 1:
 40061774:	4e75           	rts
 ```
 
-✅ Same pattern: clear first (`0x40061740`), re-verify, then set back to 1 on
+ Same pattern: clear first (`0x40061740`), re-verify, then set back to 1 on
 success (`0x4006176c`) or leave it at 0 and return -1 on failure. This is a
 re-check, not a fresh mount: it is only reached from two call sites, both
 guarded by "the word already reads 1" (8.3).
 
-### 8.3 The callers, and what they say about removal ✅ with two 🟡
+### 8.3 The callers, and what they say about removal with two
 
 `0x40061648` has FOUR callers in the whole image. Re-run for this fix round,
 a linear-objdump grep for its address returns exactly FOUR lines:
@@ -5496,7 +5431,7 @@ census names) against queue object `0x460d17ae`:
 40061cf6:	4efb 0802      	jmp %pc@(0x40061cfa,%d0:l)
 ```
 
-✅ The first byte of the received message selects the case (`%a2@`, the
+ The first byte of the received message selects the case (`%a2@`, the
 opcode, minus 1, indexes the word table at `0x40061cfa`). Decoding the table
 directly from the image (not from the garbled disassembly a data table
 prints as): index 15 (opcode 16) holds the word `0x0282`, and
@@ -5505,18 +5440,18 @@ further down its own branch. `refs.sh 0x460d17ae` finds 87 hits across the
 image: a widely shared queue, consistent with it being a general UI/task
 event queue, not a private one-purpose object.
 
-✅ **This is task-context, message-driven code, not an interrupt handler and
+ **This is task-context, message-driven code, not an interrupt handler and
 not a poll.** The one fact that matters for the removal question: the whole
 switch runs only after `0x40000d00` returns with a message already
 DEQUEUED, which is section 4's blocking receive primitive, called from a
 task. There is no timer, no ATA interrupt vector, and no busy-wait anywhere
 in this path: the case body only runs when something POSTS a message to
 `0x460d17ae`, which is what happens on a menu action or a mode switch.
-🟡 Which specific keypress or menu action posts opcode 16 was not traced
+Unconfirmed: Which specific keypress or menu action posts opcode 16 was not traced
 among the 87 references (that count includes many unrelated cases sharing
 the same queue); falsifier: a port run posting to `0x460d17ae` with opcode
 16 and observing what the display shows. The architectural point (queue
-message, not interrupt, not a background poll) is ✅ regardless of which
+message, not interrupt, not a background poll) is regardless of which
 exact menu entry it is.
 
 `0x40061740` has two callers, both guarded the same way as `0x40061f8e`
@@ -5524,20 +5459,20 @@ above (read the word, compare to 1, call only if equal):
 
 - **`0x4006bac4`**, inside a routine that first checks `0x40032384()` (the
   bare accessor quoted in 8.1's table): `jsr 0x40032384 / ... / cmpl %d0,%d1
-  (%d1=1) / bnes +6 / jsr 0x40061740`. 🟡 What triggers this routine was not
+  (%d1=1) / bnes +6 / jsr 0x40061740`. What triggers this routine was not
   traced past this point; falsifier: a port run tracing its caller.
 - **`0x4007ec12`**, inside a handler whose own confirm-dialog string reads
   `"USB DISK MODE"` (`0x400b5844`, found by reading the bytes at that
   address): the handler starts a subsystem (`0x40055d20`), clears the
   USB disk mode flag (`0x460e76a0`), then does the same
   `jsr 0x40032384 / cmpl / bnes / jsr 0x40061740` gate.
-  ✅ Corrected 22 Sep 2026; this line called `0x460e76a0` "an unrelated
+ Corrected; this line called `0x460e76a0` "an unrelated
   flag". All four of its accesses in the image are in this mode's own code:
   tests at `0x4007eb10` and `0x4007eb18`, the store at `0x4007eb8c`, the
   clear at `0x4007ebf6`. octemu (`re/coldfire.syms`, `usb_diskmode_active`)
   measured it live: 1 while USB DISK MODE is active, 0 outside.
 
-🟡 **No card-removal or media-detect caller was found, against all SIX call
+Unconfirmed: **No card-removal or media-detect caller was found, against all SIX call
 sites now census'd** (the fourth caller above added one, not removed any).
 The census is every caller of both writers, from a linear-objdump grep
 (which catches register-indirect calls the preamble warns refs.sh alone
@@ -5570,7 +5505,7 @@ failure mode is whatever the write backend's FAT-mutex path does when the
 ATA layer stops answering (not measured here; section 7.3's falsifier
 list applies).
 
-### 8.5 Not measured under the port 🟡
+### 8.5 Not measured under the port
 
 No project folder exists on this machine. Three things a port run would
 settle, in the order they matter:
@@ -5579,7 +5514,7 @@ settle, in the order they matter:
    decides whether the crash-safety picture needs a stronger check than
    `tst.l CARD_MOUNTED`.
 2. **`0x460d1cb8` in both the 1 and 2 states**, to settle whether 2 really is
-   USB disk mode (8.2's 🟡), by comparing against the port's own USB-mode
+   USB disk mode (8.2's), by comparing against the port's own USB-mode
    trigger if one exists.
 3. **What `0x40061648`'s trigger for argument 2 actually reads** at
    `0x80000088`, to confirm it is the personal setting believed here, not
@@ -5620,7 +5555,7 @@ settle, in the order they matter:
 
 ## 9. T1 in the read-back block
 
-### 9.0 The fixture ✅
+### 9.0 The fixture
 
 No copy of the RIG project exists on this machine (COLDFIRE_PORT.md O10's own
 fixture). `tools/verify/stems_fixture.py` builds an equivalent from EZBot's
@@ -5639,7 +5574,7 @@ python3 tools/verify/stems_fixture.py
 It prints the card path, the set (`STEMS`) and the project (`ULTFX`), and
 writes `out/stems_fixture.json`.
 
-### 9.1 The port run ✅
+### 9.1 The port run
 
 Step 3's command, run against the fixture's own card:
 
@@ -5662,30 +5597,23 @@ blindness check CLAUDE.md asks for. A second, longer run
 window for the fit below; it changes nothing about the layout, and every
 number in 9.2-9.3 reproduces identically from the official 300-frame dump.
 
-### 9.2 Which 0x80-byte block is T1, and the word order ✅ (corrected 22 Sep 2026: T1 is the FIRST slot)
+### 9.2 Which 0x80-byte block is T1, and the word order (corrected: T1 is the FIRST slot)
 
-❌ **Corrected 22 Sep 2026: T1 is the first slot, `0x00`, not the third.
-The fit below found T3.** The fixture's template, "Ultimate FX 1.5.3", has
-NEIGHBOR machines on T2 and T3 (and on T6 and T7), and the fixture changed
-only T1. So T2 copied T1 and T3 copied T2, each one read-back cycle
-(64 samples) later, and each through its own effects. What follows fitted
-T3's copy.
-
-- ✅ **Stock says track k is at k × 0x80.** The NEIGHBOR handler
+- **Stock says track k is at k × 0x80.** The NEIGHBOR handler
   (`0x4000466c`) takes the 0-based track in `%d1`, outputs silence for 0
   and 4 (the manual's "not on tracks 1 and 5"), and reads the previous
   track at `0x80003190 + [0x800000e4] × 0x400 + (%d1 − 1) × 0x80 + start
   × 8` (`0x400046dc` to `0x400046f2`). octemu's RECEIVE machine reads
   the same slots and was checked on hardware; `COLDFIRE_DELAY.md` on main
   gives the stock delay the same formula.
-- ✅ **The port agrees.** The 12 Sep dump again, one stream per slot
+- **The port agrees.** The 12 Sep dump again, one stream per slot
   (`fitkick.py`, cross-check scratch): slot `0x00` matches `kick.wav`
   exactly (correlation 1.00000, residual −74.2 dB, gain 1/15.5) from
   sample 704. Slots `0x80` and `0x100` hold the same onset 64 and 128
   samples later, colored by T2's effects (residual −31 dB). Slots `0x80`
   and `0x100` correlate at 1.000 at a lag of 64. With T2's effects set to
   SEND, all three become exact copies (−74 dB). `0x180` is silent.
-- 🟡 **T1 itself sounds for only 64 samples in this fixture**, then its
+- Unconfirmed: **T1 itself sounds for only 64 samples in this fixture**, then its
   slot reads 0, though `kick.wav` is 44,100 samples long. So something in
   the template's part gates T1 after four frames, probably its amp
   envelope. That is why this section read slot `0x00` as "a single
@@ -5718,8 +5646,7 @@ own numbers. Offset `0` shows a single four-frame blip and then silence
 the whole run; offset `0x80` shows a slowly-decaying, non-oscillating
 residue with the same duplicate-pair structure but no waveform relationship
 to `kick.wav` at any lag tried (checked to `±6600` samples). ~~**T1 is the
-THIRD `0x80`-byte slot (0-based index 2), not the first.**~~ ❌ Retracted
-22 Sep 2026: that slot is T3 (see the top of this subsection).
+THIRD `0x80`-byte slot (0-based index 2), not the first.**~~ 
 
 Within the matching slot, each of the 16 samples is 4 words, and word 0
 equals word 2 (both "high") while word 1 equals word 3 (both "low") -- L
@@ -5736,7 +5663,7 @@ words are 15872, -27648, 18432, 31488, 8960, 6656, 13056, 14592, 18176,
 exactly. This is the plan's claim, met without a single counterexample in
 the tested range.
 
-### 9.3 The lag, the residual, and where the fit breaks down ✅, with an open gain factor 🟡
+### 9.3 The lag, the residual, and where the fit breaks down , with an open gain factor
 
 **Lag.** `kick.wav` sample 0 lands at the matching slot's word-0 in
 block-dump frame 53 (this run's own frame numbering, 1-based) -- 52 frames
@@ -5782,15 +5709,15 @@ different kick fixture (one that never saturates) is needed before a
 full-duration, whole-note fit can be claimed -- Task 14 should not assume
 this offset holds sample-for-sample once its own source material clips.**
 
-(22 Sep 2026: the fit above is T3's slot, and T3's copy passes through
+(the fit above is T3's slot, and T3's copy passes through
 T2's and T3's effects. That is why it stops matching past sample 64. T1's
 own slot matches at 1/k = 15.5 with a −74.2 dB residual over its 64
 samples, so the gain below is T1's, not the chain's.)
 
-**🟡 The gain factor (1/k ≈ 16.2-17.1, roughly −24.4 dB; 15.5 on T1's own
+** The gain factor (1/k ≈ 16.2-17.1, roughly −24.4 dB; 15.5 on T1's own
 slot) is measured, not explained.** It rules out both of the two simplest hypotheses: a plain
 16-to-24-bit promotion (`high_word == kick_sample`, 1/k = 1) and the same
-promotion read 8 bits low (1/k = 256). 1/k sits close to 16 (four bits), 🟡
+promotion read 8 bits low (1/k = 256). 1/k sits close to 16 (four bits), 
 consistent with a headroom/guard-bit convention on the DSP side, but no
 site in the DSP disassembly was read to confirm it. **Falsifier:** a second
 fixture with a known, different GAIN or AMP setting on T1, showing 1/k move
@@ -5818,13 +5745,13 @@ card, and what a passing check on it can and cannot claim.
 
 ## 10. The hook's cost
 
-### 10.0 Method ✅
+### 10.0 Method
 
 `--coverage` records how many times the ColdFire ran each program-counter
 value, from the moment the port's transport start returns. Every address
 from `stems_frame_hook` (`0x40a9566e`) to its `rts` (`0x40a957e6`) is one of
 the hook's own instructions in this build, so its hit count is the number
-of frames in which that instruction ran. Three runs, 13 Sep 2026, all from
+of frames in which that instruction ran. Three runs, all from
 `out/mainos_bus.bin` built from this HEAD, all with the fixture's card and
 the same common flags:
 
@@ -5859,7 +5786,7 @@ count of an address is the number of frames that took a path through it.
 One count in the three runs does not fit that rule. In run C the `lea` after
 the register restore (`0x40a957d8`) shows 200 hits, and the restore just
 before it (`0x40a957d4`) shows 199. Nothing branches to the `lea`, so one of
-its 200 counts is a double count. 🟡 The cause is inferred: an interrupt
+its 200 counts is a double count. The cause is inferred: an interrupt
 above level 5 taken at that instruction boundary, so the port counts the
 instruction once before the exception and again when it resumes. No path
 count below reads that address alone.
@@ -5867,9 +5794,9 @@ count below reads that address alone.
 These are instruction counts, not cycles. The hook's time on the unit is not
 measured.
 
-### 10.1 The port refused a call before play, and now does not ✅
+### 10.1 The port refused a call before play, and now does not
 
-On 12 Sep 2026 `--call-before-play` could never succeed beside
+On `--call-before-play` could never succeed beside
 `--pre-roll`. The pre-roll loop in `tools/emu/ot_emu/main.cpp` stops the
 instant the last pre-roll frame's interrupt vector is taken. That is where
 `rtos.cpp`'s acknowledge hook counts the frame, so the ColdFire is inside
@@ -5879,7 +5806,7 @@ printed the refusal and carried on, so the run recorded nothing and did not
 fail. This was measured the same at `--pre-roll` 1, 5, 10, 20, 39, 40, 41
 and 50. Only `--pre-roll 0` let the call through.
 
-The fix, 13 Sep 2026: `main.cpp` calls `rtos.runToMainSpin(1000.0)` before
+The fix, `main.cpp` calls `rtos.runToMainSpin(1000.0)` before
 each `--call-before-play` call, as its `--at` loop already did. With
 `--pre-roll 0` the ColdFire is already at the spin and `runToMainSpin`
 returns without stepping, so every earlier run that used the flag is
@@ -5896,13 +5823,6 @@ call       : 0x40a95602(0) before play -> returned, d0 0xffffffff
 `tap()` now checks the call's report line first, so an older port fails the
 check by name instead of recording nothing.
 
-❌ **Retracted, from this section's 12 Sep version:** the workaround. The
-tap called `stems_action` through `--at 0:...`, after the transport start.
-That run took the action's "already playing" branch straight to RECORDING
-and never passed through ARMED. Its IDLE and RECORDING figures were right
-for that run. Its ARMED figure was counted by hand, and its lag of 63 frames
-included 22 frames of waiting that the workaround added (10.6).
-
 ### 10.2 The costs, per state
 
 | state | instructions per frame | measured in | frames |
@@ -5917,10 +5837,10 @@ included 22 frames of waiting that the workaround added (10.6).
 Every state then runs the same three-instruction tail: `jsr FRAME_ROUTINE`,
 `move.w #0x2700,%sr`, `rts`. The tail is the pass-through hook Task 13
 shipped, and it does not change with `stems_state`, so the table leaves it
-out. All six figures are ✅ measured: each is the number of hook addresses
+out. All six figures are measured: each is the number of hook addresses
 whose hit count equals that state's frame count in the run named.
 
-### 10.3 IDLE and ARMED ✅
+### 10.3 IDLE and ARMED
 
 In run A, `tst.l stems_state` (`0x40a9566e`) and the `beq.w` after it show
 400 hits, one per frame. The next address in program order shows 199. So
@@ -5939,7 +5859,7 @@ exactly 199 hits, one per ARMED frame:
 The run ends with `stems_state` 1 and `stems_frames` 0: armed, nothing
 recorded. Every ARMED-only address after the `bne.w` shows 0 hits.
 
-### 10.4 The start edge ✅ 125 instructions, once
+### 10.4 The start edge 125 instructions, once
 
 In run C the port starts the transport again at frame 300, while the hook is
 ARMED. The three edge instructions (`moveq #2`, `move.l %d0,stems_state`,
@@ -5955,7 +5875,7 @@ tap's command hits once, 37,484 instructions after main writes 1 to the
 transport word (`0x800065b8`, at `0x4009c3d4`), with `%d2` = 0 there: the
 transport word minus 1.
 
-### 10.5 RECORDING ✅ 122 instructions
+### 10.5 RECORDING 122 instructions
 
 In the tap, 122 hook addresses show exactly 301 hits each. The 302nd
 recorded frame is the start edge, which runs before the coverage window
@@ -5974,7 +5894,7 @@ opens (10.6). The ring was nowhere near full (302 × 64 = 19,328 bytes of
 | the 16-sample copy | 80 | `.rept 16` of 5 instructions: `move.l (a0)+,d0`, `move.l (a0)+,d1`, `swap d1`, `move.w d1,d0`, `move.l d0,(a1)+` |
 | bookkeeping | 8 | publish `stems_wr`, increment and store `stems_frames`, compare against `MAX_FRAMES` (not taken) |
 | restore | 2 | `movem.l`, `lea` |
-| **total** | **122** | |
+| **total** | **122** |  |
 
 The STOP ends it. The hook at the frame after the STOP sees the transport
 word at 2 and runs 20 instructions once: the first 15 of the RECORDING
@@ -5987,10 +5907,10 @@ RECORDING path, where the state dispatch's `beq.w` is taken, then the
 restore. The window's 400 frames are 301
 RECORDING, 1 transition and 98 FINISHING, with no gap and no double count.
 
-### 10.6 The lag, broken down ✅
+### 10.6 The lag, broken down
 
 `python3 tools/verify/verify_stems.py stems`, run three times from the same
-build on 13 Sep 2026, reports the same lines each time:
+build, reports the same lines each time:
 
 ```
 [PASS] the action was called before play  call       : 0x40a95602(0) before play -> returned, d0 0xffffffff
@@ -6036,7 +5956,7 @@ frame 301 reads the transport word at 2.
 
 **Falsifier, run:** the breakdown predicts that the lag follows
 `--pre-roll`, and that the edge never runs inside the coverage window. The
-tap at `--pre-roll 20`, with `--coverage` (13 Sep 2026, same build):
+tap at `--pre-roll 20`, with `--coverage`:
 
 | pre-roll | dump frames | frames recorded | lag | edge hits in the window | copy hits in the window |
 |---|---|---|---|---|---|
@@ -6053,9 +5973,9 @@ ring and the dump.
 
 ## 11. The writer task under the port
 
-### 11.0 The runs ✅
+### 11.0 The runs
 
-`python3 tools/verify/verify_stems.py stems`, 13 Sep 2026, with the writer
+`python3 tools/verify/verify_stems.py stems`, with the writer
 task in the unit. Every run uses the fixture's card and project, a 40-frame
 pre-roll and the action called before play, so each take starts with the
 ARMED-to-RECORDING edge. Each run writes its port report to
@@ -6074,7 +5994,7 @@ size is 36 plus that, and the file is 44 bytes plus that. Every sample
 equals T1's read-back at the lag of 40, the pre-roll, as in section 10.6.
 In `rowstop` the task wrote the file while the sequencer was still playing.
 
-### 11.1 What the runs settle ✅
+### 11.1 What the runs settle
 
 - **The task is created, dispatched and sleeps.** The action's one create
   and start made a task that ran. Its sleep call returned 47 times in a
@@ -6092,7 +6012,7 @@ In `rowstop` the task wrote the file while the sequencer was still playing.
   bytes of the ring are little-endian. `tap()` reads the bytes below
   `stems_rd` that way and still finds every frame equal to the read-back.
 
-### 11.2 Every take is named 000000-0000 under the port ✅
+### 11.2 Every take is named 000000-0000 under the port
 
 The port's SPI model answers every transfer with 0 (`Dspi::write` in
 `tools/emu/ot_emu/periph.cpp` queues a 0 for each word pushed). The clock is
@@ -6102,7 +6022,7 @@ port, so section 5.10's second item stays open until the unit names a take.
 One consequence helps: every port run's take is in the same minute, which is
 what Task 16's "an existing file is not overwritten" test needs.
 
-### 11.3 The port's transport start spans 23 frames in this build 🟡
+### 11.3 The port's transport start spans 23 frames in this build
 
 In section 10's build, one frame arrived inside the port's transport start.
 In this build 23 do: the block dump holds 763 read-back frames for a 40-frame
@@ -6123,7 +6043,7 @@ had a span of 23.
 **Falsifier:** a span that changes between two runs of one build. That
 would make it a race in the port, not a property of the build.
 
-### 11.4 A card that aborts a write hangs the writer in the stock driver ✅
+### 11.4 A card that aborts a write hangs the writer in the stock driver
 
 The run is `cardfail`, with `--card-fail-after 20`. From the 21st sector on,
 the port's card refuses every WRITE SECTORS command with ERR and ABRT and
@@ -6150,20 +6070,20 @@ command the card refuses waits for it forever.
 
 What the hang reaches:
 
-- ✅ **Main stops running.** The writer spins at priority 1 and never
+- **Main stops running.** The writer spins at priority 1 and never
   blocks, and main is priority 0: the boot writes the priority-0 list head
   `0x800068dc` into main's TCB (`0x40000dec` to `0x40000df2`; section 3.0
   has the array of list heads). In the first `cardfail` run the port's call
   at frame 600 waited 1,000 ms of port time for main to reach its idle loop,
   and was refused with main elsewhere.
-- 🟡 **Every other user of the FAT layer waits.** The sector write runs
+- Unconfirmed: **Every other user of the FAT layer waits.** The sector write runs
   inside a raw backend that holds `FS_LOCK` across its body (section 7.2),
   so the writer hangs holding the lock. This follows from the reading. The
   run did not watch the lock.
-- 🟡 **The UI keeps running.** The writer spins with interrupts enabled.
+- Unconfirmed: **The UI keeps running.** The writer spins with interrupts enabled.
   The UI task shares its priority-1 ring and still gets its time slices,
   and tasks above priority 1 run as before (section 3.5). The run did not
-  observe them. (Corrected 22 Sep 2026: this line named "the UI task (3)
+  observe them. (Corrected this line named "the UI task (3)
   and the storage task (5)". The UI task is priority 1 (section 3.5), and
   the priority-5 task is the USB mass-storage worker (section 7.7).)
 
@@ -6180,7 +6100,7 @@ data.
 writer is stuck in that loop after exactly 20 sectors, so a change in the
 driver's answer or in the port's card model shows up as a failure.
 
-Since 28 Oct 2026 the run refuses writes after the 31st sector. Each take
+Since the run refuses writes after the 31st sector. Each take
 now makes its own folder at the start, which writes 11 sectors more
 (measured on three runs: 103 to 114, 113 to 124 and 97 to 108 sectors in
 all). With 20, the refusal came during the start, while the take was still
@@ -6190,9 +6110,9 @@ stayed RECORDING, after 22 sectors. With 31, the start completes, the STOP
 lands, and the hang comes in the take's first raw write while FINISHING,
 after 34 sectors, with 3.3 million polls at `0x40014cf4`, as before.
 
-### 11.5 A second take in the same minute, and the overflow guard ✅
+### 11.5 A second take in the same minute, and the overflow guard
 
-Two runs of `verify_stems.py`, 13 Sep 2026:
+Two runs of `verify_stems.py`, 
 
 - **`exists`.** A second take on the card the `full` run wrote, in the same
   minute: every port take is `000000-0000` (11.2). The task refused it with
@@ -6219,7 +6139,7 @@ answers every command at once. The sequencer was running during this
 write, so the figure includes the task's share of the processor beside the
 audio interrupt and the other tasks.
 
-### 11.6 The writer's stack ✅ 1,048 bytes of 8,192
+### 11.6 The writer's stack 1,048 bytes of 8,192
 
 The `full` run dumps the task's 8 KB stack after the take is written. Create
 fills it with `"STEM"` (`0x5354454d`), and 1,786 of its 2,048 longs are
@@ -6235,20 +6155,20 @@ and 1,048 bytes is well under it, so the stack stays at 8 KB. The depth does
 not grow with the take's length: a 15-second take runs the same calls more
 times.
 
-### 11.7 The 15-second take, and a race in the stock PIO write ✅
+### 11.7 The 15-second take, and a race in the stock PIO write
 
 `python3 tools/verify/verify_stems.py stems --long` adds `limit()`: a take
 with no STOP, which the hook ends at 15 seconds, and then the writer writes
 it. It stays out of `make check`, because it plays 48,000 frames: about 15
 minutes of wall time on the fixed image.
 
-**The first runs stalled.** On 13 and 14 Sep 2026, on the image before the
+**The first runs stalled.** On 13 and on the image before the
 fix, the runs `limit` and `limit2` ended the same way:
 
-- ✅ The hook stopped the take at exactly 41,344 frames.
-- ✅ The writer then wrote 20 of the take's 41 chunks (`stems_rd` =
+- The hook stopped the take at exactly 41,344 frames.
+- The writer then wrote 20 of the take's 41 chunks (`stems_rd` =
   1,310,720), and the port's card took 2,665 sectors.
-- ✅ About 900 frames after the stop, the processor stopped taking the frame
+- About 900 frames after the stop, the processor stopped taking the frame
   interrupt. The DSP ran the whole of the port's budget, 3.93 million
   samples after the transport start, but frames stopped at 42,275. At the
   end, the frame source was asserting and latched, and not masked. The
@@ -6258,9 +6178,9 @@ Three more runs ruled out the other causes:
 
 | run | what it checks | result |
 |---|---|---|
-| `control` | 44,000 frames, STEM REC never selected | ✅ all 44,000 reached: the port has no limit near frame 42,300 |
-| `overlap` | the same, with a write watch over the whole platform reserve, `0x40a955e0` to `0x41495ddf` | ✅ 0 writes: stock does not write into the ring or the stack during play |
-| `limit2` | the stalled take again, recording the last 256 instructions | ✅ the same stall, and all 256 instructions are one loop |
+| `control` | 44,000 frames, STEM REC never selected | all 44,000 reached: the port has no limit near frame 42,300 |
+| `overlap` | the same, with a write watch over the whole platform reserve, `0x40a955e0` to `0x41495ddf` | 0 writes: stock does not write into the ring or the stack during play |
+| `limit2` | the stalled take again, recording the last 256 instructions | the same stall, and all 256 instructions are one loop |
 
 The loop is in the card interrupt's handler, entry `0x40015304`:
 
@@ -6310,7 +6230,7 @@ the moment the frame interrupt returns, before the task's next instruction.
 The port's card raises its interrupt one sample, about 23 µs, after each
 sector.
 
-✅ **Measured.** The run `race`, on the image before the fix, watched every
+ **Measured.** The run `race`, on the image before the fix, watched every
 write to the driver's bytes `0x46c8c58a` to `0x46c8c59b`, 113,289 writes,
 and dumped them at the end:
 
@@ -6336,7 +6256,7 @@ WRITE SECTORS (`0x20`, `0x30`): the PIO path. The port's card reports no DMA
 (word 49 is `0x0200` in `tools/emu/ot_emu/card.cpp`), so every port run
 takes the PIO path.
 
-✅ The choice in detail, read from the image on 14 Sep 2026
+ The choice in detail, read from the image
 (`0x40015e92` to `0x40015fb4`). If word 49 bit 8 (DMA supported) is clear,
 the driver never looks for a DMA mode. Otherwise it takes the highest Ultra
 DMA mode that word 88 lists, capped at mode 5, into `0x46c85c8c`. It falls
@@ -6346,11 +6266,11 @@ routines at `0x46c85c76` (`0x400157dc`, `0x4001586c`, `0x40015848`,
 `0x4001588c`, `0x400158cc`). With neither, it installs the PIO table, which
 starts `0x400157b4`. So a card that lists any UDMA mode takes the DMA path.
 
-- ✅ Any PIO write can hit the race, the stock sample save included: the
+- Any PIO write can hit the race, the stock sample save included: the
   window is in the stock routine, and nothing in it is STEM REC's.
-- 🟡 The port's shorter runs did not hit it only because no interrupt
+- Unconfirmed: The port's shorter runs did not hit it only because no interrupt
   landed in the window. They are deterministic, so they miss it every time.
-- 🟡 On the unit, a card that reports DMA takes the WRITE DMA path, which
+- Unconfirmed: On the unit, a card that reports DMA takes the WRITE DMA path, which
   this section did not read. CompactFlash 4.0 (2006) added UDMA, and fast
   cards generally report it. A card that reports no DMA takes the PIO path
   and can hit the race. How often depends on how long the card takes to
@@ -6365,29 +6285,29 @@ so the handler always finds the values already advanced. The stub uses the
 registers stock uses there: d0, d1 and a0. It changes every PIO write, not
 only STEM REC's. On the WRITE DMA path it never runs.
 
-**With the fix**, the same take on 14 Sep 2026, image `343779ab4b13389a…`:
+**With the fix**, the same take, image `343779ab4b13389a…`:
 
-- ✅ All 48,000 frames ran.
-- ✅ The state is IDLE and the status 0. `stems_rd` and `stems_wr` are both
+- All 48,000 frames ran.
+- The state is IDLE and the status 0. `stems_rd` and `stems_wr` are both
   2,646,016.
-- ✅ `T1.wav` is 2,646,060 bytes, and its header gives 2,646,016 data bytes.
-- ✅ The file's data equals the ring byte for byte. The task swaps the ring
+- `T1.wav` is 2,646,060 bytes, and its header gives 2,646,016 data bytes.
+- The file's data equals the ring byte for byte. The task swaps the ring
   in place before each write, so after the take the ring is the file's
   data. A sector sent twice or lost keeps the size and fails this check.
-- ✅ The write took 1,892 frames after the stop, 0.69 s of port time. The
+- The write took 1,892 frames after the stop, 0.69 s of port time. The
   port's card answers at once, so the unit's card will be slower.
 
 Falsifier: any rerun of `limit()` on the fixed image that stalls, or whose
 file differs from the ring.
 
-### 11.8 The WRITE DMA path, read 22 Sep 2026 ✅ static, 🟡 never run
+### 11.8 The WRITE DMA path, read static, never run
 
 A card that lists any UDMA mode gets the driver's DMA table (11.7), so a
 modern card writes every sector through WRITE DMA (`0xCA`), where 11.7's
 patch never runs. Neither this project's port nor octemu models DMA. This
 section reads the path from the image.
 
-✅ **Every card command goes through one request routine.** Each of the
+ **Every card command goes through one request routine.** Each of the
 driver's methods (`0x400157b4` to `0x400158e4`) calls `0x4001568c` with an
 ATA command: `0x20` and `0x30` in the PIO table, `0xC8` and `0xCA` in the
 DMA table. The request queues a 22-byte record, takes a completion event
@@ -6398,7 +6318,7 @@ the global pointer `0x46c8c598` the interrupt clears. The executor switches
 on the command byte: `0x30` → `0x40014c48` (the PIO write), `0xCA` →
 `0x40014e4c`.
 
-✅ **The WRITE DMA handler touches nothing after the command.**
+ **The WRITE DMA handler touches nothing after the command.**
 `0x40014e4c` disables eDMA channel 15's request (`0xfc044019`), sets its
 source to the caller's buffer (`0xfc0451e0`) and its iteration counts to 16
 (`0xfc0451f4`, `0xfc0451fc`), puts the card interface in DMA mode
@@ -6410,39 +6330,39 @@ returns. No sector count and no data pointer is shared with the interrupt.
 So 11.7's race, a task and an interrupt both updating the count and the
 pointer, has no counterpart here.
 
-✅ **The hardware streams every sector.** The one-time setup (`0x40014a9c`)
+ **The hardware streams every sector.** The one-time setup (`0x40014a9c`)
 gives channel 15 a destination of the card's data port (`0x90000018`), 32
 bytes per request, 16 requests per loop (one 512-byte sector), a source
 step of 16 with no adjustment at the loop's end, and a control word of 0:
 no interrupt, and the channel stays enabled. So a command of several
 sectors runs through the buffer with no processor work between sectors.
 
-✅ **One interrupt ends the command.** In the card interrupt `0x40015304`,
+ **One interrupt ends the command.** In the card interrupt `0x40015304`,
 a finished `0xCA` goes to `0x400155ee`: clear the busy state, signal the
 event, clear its pointer, and start the next queued command.
 
-✅ **Errors.**
+ **Errors.**
 
 - An interface CRC error (the error register's bit 7) makes the interrupt
   reissue the whole command itself (`0x400153aa`).
 - Any other error sets a flag, completes the command the same way, and
   sends REQUEST SENSE (`0x40015642`). So a card that refuses a write does
-  not hang the writer, unlike the PIO path (11.4). 🟡 The request routine
+  not hang the writer, unlike the PIO path (11.4). The request routine
   returns 0 after the wait (`0x400157a2`) whatever happened, so the error
   does not seem to reach the file layer: the file could be short or wrong
   with no message. Not traced past the request.
 - As on the PIO path, the interrupt halts the processor if the card still
   reads BSY (`0x4001532a`). That is stock's, for every command.
 
-✅ **The data comes from an uncached buffer.** STEM REC's sectors are
+ **The data comes from an uncached buffer.** STEM REC's sectors are
 flushed from the file layer's staging buffer `0x4ecd3000` (7.5), in the
 uncached alias (`PLAN.md`, "The RAM"). So the processor's data cache
 cannot hand the DMA stale bytes. Stock's own saves do the same.
-(Superseded 26 Sep 2026 for the streaming build: STEM REC writes from its
+(Superseded for the streaming build: STEM REC writes from its
 own buffers, addressed through the uncached alias, and never uses
 `0x4ecd3000` (12.0). The conclusion holds.)
 
-🟡 **Never run.** No emulator executes this path, and it has not been
+Unconfirmed: **Never run.** No emulator executes this path, and it has not been
 watched on a unit. Stock uses it for every save on a UDMA card, so its
 common case works. What STEM REC adds is length: about 2,650 sector writes
 in a row. Falsifier: a take on a UDMA card whose file differs from what
@@ -6476,7 +6396,7 @@ Spec: `git show 4d2d6456:docs/superpowers/specs/2026-09-22-stem-rec-streaming-de
 - A take cut off before the end, by a power cut or a card pull, leaves
   0-byte files: each length is set only at the end (12.3).
 
-### 12.1 The raw file routines, measured under the port ✅
+### 12.1 The raw file routines, measured under the port
 
 Each call below went through the file layer's pointer, from STEM REC's
 writer task, with the arguments the buffered layer uses (7.10): open
@@ -6510,15 +6430,7 @@ consistent; read as a sector or byte count written, none of them are. Not
 settled past that: the falsifier is a write that crosses a second cluster
 boundary, which this probe does not exercise.
 
-❌ **Retracted (27 Sep 2026): "bytes now allocated, rounded up to the
-cluster".** On FAT32 with 512-byte clusters (section 14.2) that reading
-predicts 1,536 for the 3-sector write, and all three writes returned 512.
-The value both cards agree on is one cluster's bytes: 2,048 on FAT16 (4
-sectors) and 512 on FAT32 (1 sector), for every write. 🟡 What the routine
-means by it is still open. `stems.s` tests only the sign (`tst.l d0; bmi`),
-so the module does not depend on it.
-
-### 12.2 The hook's cost, and a take past 15 s ✅
+### 12.2 The hook's cost, and a take past 15 s
 
 Instructions per recording frame, from `--coverage` over the hook
 (`stems_frame_hook` to `stems_layout`), section 10.0's method. As in 10.2,
@@ -6533,7 +6445,7 @@ the three-instruction tail (`jsr FRAME_ROUTINE`, `move.w #0x2700,%sr`,
 These are instruction counts, not cycles. The hook's time on the unit is
 not measured.
 
-How it was measured (24 Sep 2026): two runs of the fixture's command from
+How it was measured: two runs of the fixture's command from
 10.0, armed before play, 400 frames, with **no STOP**. So every frame in the
 coverage window is a RECORDING frame, and no FINISHING or IDLE frame has to
 be subtracted. The hook's entry showed 400 hits in both runs. The 1-track
@@ -6545,7 +6457,7 @@ the hook has latched the mask, so it can't change the take's tracks.
 The raw sums were 52,397 and 296,000 instructions: 130.99 and 740.00 per
 frame. A few addresses showed counts that aren't a multiple of 400: three
 at 1 track (524 to 548 hits, on the `stems_wr` increment and its two
-stores) and four at 8 tracks (in the copy block). 🟡 Read as 10.0's
+stores) and four at 8 tracks (in the copy block). Read as 10.0's
 double count, an instruction counted again when an interrupt lands on it.
 The cause is inferred, as in 10.0. The table floors each address's count
 to whole frames. The two figures agree with the code: each extra track
@@ -6557,9 +6469,9 @@ RECORDING at T1 costs 8 more instructions than the proof of concept's 122
 walks the track mask.
 
 The writer task's stack peak is 1,052 of 8,192 bytes, in `full()`
-(24 Sep 2026).
+.
 
-A 20-second take (`verify_stems.py --long`, 24 Sep 2026): 55,367 frames,
+A 20-second take (`verify_stems.py --long`,): 55,367 frames,
 past the old cap of 41,344. The file's data is 3,543,488 bytes, which is
 55,367 × 64, and the file is 44 bytes more. The data equals the ring byte
 for byte, with each 16-bit word byte-swapped: the ring is big-endian, and
@@ -6567,7 +6479,7 @@ the file is little-endian.
 
 ### 12.3 What the final review measured
 
-A review of the whole streaming branch (26 Sep 2026) found no defect in
+A review of the whole streaming branch found no defect in
 `stems.s`, and found two test checks that couldn't see what they claimed.
 
 **The wrap test passed on a file of zeros.** `wrap()` set the ring's
@@ -6582,13 +6494,13 @@ on at its start, just before the four loud frames. Both offsets end at
 read-back at lag 40 with a peak of 2,112. Every file check now pins the lag
 to the pre-roll (40) and requires sound.
 
-🟡 **Most of each port take is silence.** Under the port the fixture's
+Unconfirmed: **Most of each port take is silence.** Under the port the fixture's
 sounds play only their first four frames (dump frames 44 to 47). So a lost
 or repeated sector later in a take, including across a T1 ring wrap at
 65,536 frames (23.8 s), wouldn't show in any port run. Flash 13's
 60-second take is the first test with sound throughout.
 
-✅ **A take cut off mid-way is a 0-byte file.** `cut()`: 1,500 frames with
+ **A take cut off mid-way is a 0-byte file.** `cut()`: 1,500 frames with
 no STOP, so the run ends while RECORDING. The hook had recorded 1,526
 frames and the writer had streamed 1,024, but `T1.wav`'s directory entry
 said 0 bytes. Each file's length is set only at the end, with its header,
@@ -6613,16 +6525,16 @@ passes.
 ## 13. On upstream (branch `stem-rec-v2`)
 
 STEM REC was carried from `crosscheck` (`7dee174`) onto upstream `main` at
-`68af650` on 27 Sep 2026 (spec:
+`68af650` (spec:
 `git show 4d2d6456:docs/superpowers/specs/2026-09-26-stem-rec-upstream-port-design.md`).
 `stems.s` is byte-identical (md5 `cf735ce0927b23e36b2fa04980cc7536`). Image
 SHA-256 `164f31224bf61181e3f50e7dec40df9afcae5b16dbf6e4c0d0cc5e986af0a84e`.
 
-### 13.1 What the port changed around the module ✅
+### 13.1 What the port changed around the module
 
 - The runtime is assembled with `-mcpu=54455`, as upstream assembles every
   DRAM unit, where `crosscheck` used `-mcpu=5407`. Both give the same section
-  contents and relocations for `stems.s` (27 Sep 2026).
+  contents and relocations for `stems.s`.
 - The verifier reads takes with `emu_card.extract_image`, stages its card
   with `emu_card.stage_project`, and runs the port's own flags for several
   calls before play (`--call-before-play`), calls at frames (`--at`), a poke
@@ -6631,33 +6543,32 @@ SHA-256 `164f31224bf61181e3f50e7dec40df9afcae5b16dbf6e4c0d0cc5e986af0a84e`.
 - `extract_image` can't see a folder with no file in it. A take that makes
   its folder and writes nothing reads as no take.
 
-### 13.2 The pinned values, against `crosscheck`'s run of 26 Sep 2026
+### 13.2 The pinned values, against `crosscheck`'s run of
 
 `verify_stems.py stems` passes 94 checks: `crosscheck`'s 93 and one for the
-card-out parse. Every check line was compared with `crosscheck`'s run of 26
-Sep 2026 (93 of 93).
+card-out parse. Every check line was compared with `crosscheck`'s run of (93 of 93).
 
 | Value | `crosscheck` | `stem-rec-v2` | Cause |
 |---|---|---|---|
-| Lag of every take against the read-back | 40 frames | 40 frames | Same ✅ |
-| `tap` frames (STOP at 300) | 327 | 302 | The port's transport start ✅ |
-| `full` frames (STOP at 400) | 427 | 402 | The port's transport start ✅ |
-| `rowstop` frames (row at 200) | 227 | 202 | The port's transport start ✅ |
-| `stream` frames (STOP at 1700) | 1,727 | 1,702 | The port's transport start ✅ |
-| `wrap` frames (STOP at 300) | 327 | 302 | The port's transport start ✅ |
-| `cut` frames (no STOP, 1,500 frames) | 1,526 | 1,501 | The port's transport start ✅ |
-| `eight` frames (STOP at 300) | 342 | 302 | The port's transport start ✅ |
-| `cardfail` sectors written | 23 | 23 | Same ✅ |
-| `cardfail` polls at `0x40014cf4` | 3,562,923 | 3,521,744 | The port's timing (1.2% fewer) 🟡 |
-| The writer's stack peak | 1,052 bytes | 1,052 bytes | Same ✅ |
-| The hook, 1 track, 400 frames, tail left out | 52,397 | 52,400 | 3 hits in 400 frames; 🟡 on the three odd-count addresses of 12.2 (572, 542 and 486 hits here), whose counts 12.2 itself only infers |
-| The hook, 8 tracks, 400 frames, tail left out | 296,000 | 296,000 | Same ✅ |
+| Lag of every take against the read-back | 40 frames | 40 frames | Same |
+| `tap` frames (STOP at 300) | 327 | 302 | The port's transport start |
+| `full` frames (STOP at 400) | 427 | 402 | The port's transport start |
+| `rowstop` frames (row at 200) | 227 | 202 | The port's transport start |
+| `stream` frames (STOP at 1700) | 1,727 | 1,702 | The port's transport start |
+| `wrap` frames (STOP at 300) | 327 | 302 | The port's transport start |
+| `cut` frames (no STOP, 1,500 frames) | 1,526 | 1,501 | The port's transport start |
+| `eight` frames (STOP at 300) | 342 | 302 | The port's transport start |
+| `cardfail` sectors written | 23 | 23 | Same |
+| `cardfail` polls at `0x40014cf4` | 3,562,923 | 3,521,744 | The port's timing (1.2% fewer) unconfirmed |
+| The writer's stack peak | 1,052 bytes | 1,052 bytes | Same |
+| The hook, 1 track, 400 frames, tail left out | 52,397 | 52,400 | 3 hits in 400 frames; unconfirmed on the three odd-count addresses of 12.2 (572, 542 and 486 hits here), whose counts 12.2 itself only infers |
+| The hook, 8 tracks, 400 frames, tail left out | 296,000 | 296,000 | Same |
 
 **The transport start.** Every take on `stem-rec-v2` is 25 frames shorter
 (40 on the eight-track project), and every sample still equals its track's
 read-back. The cause is measured, not the module. The same image and the same
 fixture card give 327 frames under `crosscheck`'s port binary and 302 under
-upstream's; on the eight-track card, 342 and 302 (`5baf399`, 27 Sep 2026).
+upstream's; on the eight-track card, 342 and 302 (`5baf399`,).
 A take runs from the arm to a STOP that `--at` schedules from the
 port's frame 0, the first frame after its transport start returns. In
 `stream`'s watch-mem log, the arm is at sample 895,711 and the STOP's
@@ -6668,15 +6579,15 @@ transport call, then eight start-track calls) is unchanged. Upstream's port
 runs 810 M ColdFire instructions to the arm where `crosscheck`'s ran 441 M,
 over the same emulated time.
 
-🟡 Inferred: `cardfail`'s 1.2% fewer polls come from the same timing change.
+Unconfirmed: Inferred: `cardfail`'s 1.2% fewer polls come from the same timing change.
 Its sector count, the part that shows STEM REC's behavior, is unchanged.
 
 **Consequence.** Section 12.2's statement that a `--poke` lands "about 26
-frames into play" is `crosscheck`'s port. 🟡 On upstream's port it lands
+frames into play" is `crosscheck`'s port. On upstream's port it lands
 about 2 frames into play: inferred from frame 0's shift above, not measured
 on its own.
 
-### 13.3 Upstream's card latency, merged 27 Sep 2026 ✅
+### 13.3 Upstream's card latency, merged
 
 Upstream's port gives each ATA data sector 8 samples, about 181 µs, before
 its interrupt (`30b530a`, "a card-like figure"); until then it was 1. Merged
@@ -6695,7 +6606,7 @@ into `main` (`9208165`) and measured the same evening:
   run's 4 MiB ring. `verify_stems` now gives those two runs that time (the
   eight-track run 400 → 700 frames; the overflow run's row 3,800 → 7,000,
   its end 7,200). No check's bound changed.
-- 🟡 Inferred from those two runs: the emulated card writes about 2.2 MB/s
+- Unconfirmed: Inferred from those two runs: the emulated card writes about 2.2 MB/s
   in one long file and about 1.7 MB/s across eight small ones. That is the
   port's model, not the unit's card; flash A measures the card.
 
@@ -6704,16 +6615,16 @@ into `main` (`9208165`) and measured the same evening:
 Every take before this section ran on a FAT16 image. The unit's card is
 FAT32.
 
-### 14.1 The mount, read from the image ✅
+### 14.1 The mount, read from the image
 
 Method: `scripts/disasm.sh emac` over `0x400168e8` (512 bytes),
 `0x40017ad4` (768 bytes, then 176 more from `0x40017dd0`) and `0x40017250`
-(512 bytes), and a search of the image for literals, 27 Sep 2026. Image
+(512 bytes), and a search of the image for literals. Image
 SHA-256 `164f31224bf61181e3f50e7dec40df9afcae5b16dbf6e4c0d0cc5e986af0a84e`.
 The two `.short 0x02c0` forms in these listings are `byterev`, which the
 disassembler doesn't know; they turn the card's little-endian fields around.
 
-**The partition types.** ✅ The mount (`0x400168e8`) reads sector 0 into
+**The partition types.** The mount (`0x400168e8`) reads sector 0 into
 `0x4ece3000` and refuses it without `0x55aa` at offset 0x1fe (`-37`). With
 an MBR, it reads the first partition's type byte (offset 0x1c2). It takes
 6, 0x0e and 4 at `0x40016982`..`0x40016996`, and 0x0b and 0x0c through
@@ -6722,60 +6633,60 @@ So FAT32's two types are accepted. The header of `tools/emu/emu_card.py`
 listed only 4, 6 and 0x0e; it names all five since `eb74b74`. The partition's start and size
 (offsets 0x1c6 and 0x1ca) go to `0x460bac10` and `0x460bac14`.
 
-**A card with no MBR.** ✅ When sector 0 begins `EB 58 90` (`0x4001693c`),
+**A card with no MBR.** When sector 0 begins `EB 58 90` (`0x4001693c`),
 the jump a FAT32 boot sector carries, the mount takes sector 0 as the boot
-sector (start 0) and calls `0x4001765c`, which must return 2 or 3. 🟡 That
+sector (start 0) and calls `0x4001765c`, which must return 2 or 3. That
 routine isn't read; what it tests is open.
 
-**The boot sector.** ✅ The check (`0x40017ad4`) reads the partition's first
+**The boot sector.** The check (`0x40017ad4`) reads the partition's first
 sector and requires `0x55aa` (`-35`) and 512-byte sectors (offset 0x0b,
 `-36`). It takes the total sectors from offset 0x13, or 0x20 when that is 0,
 and the FAT size from offset 0x16, or from FAT32's offset 0x24 when that is
 0 (`0x40017b82`..`0x40017b9c`).
 
-**The FAT-size limit applies to FAT32.** ✅ The FAT size, from either field,
+**The FAT-size limit applies to FAT32.** The FAT size, from either field,
 must be at most 16,384 sectors (`0x40017ba8`, `-34`). The mount reads the
 whole FAT into DRAM at `0x4eceb400`, 256 sectors at a time
 (`0x40017d80`..`0x40017db0` for FAT32), and 16,384 sectors fill that cache
-to `0x4f4eb400` exactly: 8 MiB. 🟡 Inferred from the arithmetic, a card of
+to `0x4f4eb400` exactly: 8 MiB. Inferred from the arithmetic, a card of
 "64 GB" (64 × 10^9 bytes) formatted with 32 KB clusters has about 1.95
 million clusters and a FAT of about 15,260 sectors, which fits. A FAT32
 card much above 68 GB with 32 KB clusters would not.
 
-**The cluster count decides the type.** ✅ Clusters are (total sectors −
+**The cluster count decides the type.** Clusters are (total sectors −
 FATs × FAT size − reserved sectors − root entries / 16) / sectors per
 cluster (`0x40017be4`..`0x40017bf8`; the `remsl` there has one register for
 quotient and remainder, so it keeps the quotient). 4,084 or fewer: `-38`,
 refused. Up to 65,524: FAT16. More: the FAT32 path at `0x40017d12`.
 
-**The FAT32 path.** ✅ It sets a FAT32 flag (`0x46107991` := 1), takes the
+**The FAT32 path.** It sets a FAT32 flag (`0x46107991` := 1), takes the
 root directory's first cluster from offset 0x2c (`0x40017d32`) and computes
 its sector from it, reads the whole FAT, then reads the FSInfo sector
 (offset 0x30) into `0x4f4eb400`, the buffer just past the FAT cache, and
 calls `0x40017250`. That routine walks the cached FAT from entry 2 and builds
-the free-cluster map itself. ✅ The image holds `0x4f4eb400` as a literal
+the free-cluster map itself. The image holds `0x4f4eb400` as a literal
 once, at that read (`0x40017dc6`), and never `0x4f4eb5e8` or `0x4f4eb5ec`,
-FSInfo's free count and next-free hint. 🟡 So the firmware neither uses nor
+FSInfo's free count and next-free hint. So the firmware neither uses nor
 updates them. Falsifier: code reaching those fields through a register
 offset from the buffer.
 
-### 14.2 The take checks on FAT32 ✅
+### 14.2 The take checks on FAT32
 
 Method: `verify_stems.py stems --long --fat32` at `5baf399` on a clean tree,
-27 Sep 2026: 163 checks, 0 failures (the 94 of section 13, 4 for the
+ 163 checks, 0 failures (the 94 of section 13, 4 for the
 20-second take, 65 on FAT32). The FAT32 card is the fixture's card as a
 128 MB FAT32 image, 512-byte clusters, partition type 0x0c, with 65,536
 clusters of filler in the set folder, so the project, AUDIO and every take
 sit above cluster 65,535 (`stems_fixture.py --fat32`), under upstream's port,
 on the `stems` image of section 13.
 
-**The mount.** ✅ The firmware's mount flag (`0x460d1cb8`, the `FW_CARD_READY`
+**The mount.** The firmware's mount flag (`0x460d1cb8`, the `FW_CARD_READY`
 of `tools/emu/emu_card.py`) reads `00000001` on the FAT16 card, the control,
 and on the FAT32 card. It is a 32-bit word: its first byte is 0 either way,
 which is how the check's first form, reading one byte, failed both cards
 while both were mounted.
 
-**The take checks.** ✅ All pass, 62 checks after the two above: the probe
+**The take checks.** All pass, 62 checks after the two above: the probe
 of the raw routines (10), `full` (11), `rowstop` (11), `stream` (11), `wrap`
 (10), `cap` (2), `cut` (1), `exists` (2) and `overflow` (4). A first run on
 a 64 MB card put the take at cluster 20,699, below the high word; on the
@@ -6786,10 +6697,10 @@ during the take, `wrap` wrapped at the ring's end, `cut` a 0-byte `T1.wav`
 after 1,024 frames streamed, `exists` refused with the first take untouched,
 and `overflow` a whole 4 MiB ring written and closed (4,194,348 bytes).
 
-**One value differs, and it is the cluster size.** ✅ The probe's three raw
+**One value differs, and it is the cluster size.** The probe's three raw
 writes each return `d0` 512 on FAT32 and 2,048 on FAT16 (section 12.1,
 whose reading of that value this retracts). Those are
-the two cards' cluster sizes, 1 sector and 4. 🟡 Inferred: the raw write
+the two cards' cluster sizes, 1 sector and 4. Inferred: the raw write
 returns the bytes of one cluster, or its own write unit, not the bytes the
 caller asked for. The probe's other results, and the file it writes, are the
 same on both.
@@ -6801,45 +6712,44 @@ cluster allocation, not the unit's. A FAT32 image with 32 KB clusters needs
 at least 65,525 clusters, about 2 GB, and wasn't run. Flash A is the first
 test on the real card.
 
-**Also measured (27 Sep 2026, a lead from the final review, re-measured on
-the 128 MB run images).** ✅ The FAT's two copies are equal on the fixture
+**Also measured.** The FAT's two copies are equal on the fixture
 card and after `full` and `overflow`, so the firmware keeps the mirror on
-FAT32. ✅ FSInfo's free count is right on the fixture card (169,768) and
+FAT32. FSInfo's free count is right on the fixture card (169,768) and
 stays 169,768 after `full` (real free count 169,716) and after `overflow`
-(161,574): the firmware doesn't update it, which upgrades 14.1's 🟡 to
+(161,574): the firmware doesn't update it, which upgrades 14.1's to
 measured under the port. A computer reading the card after a take may show
 stale free space until it recounts.
 
 ## 15. Eight tracks under the emulator
 
 Piece 2 (`git show 4d2d6456:docs/superpowers/specs/2026-09-27-stem-rec-eight-tracks-design.md`),
-27–28 Sep 2026, on upstream `2a849af` merged in (`a1c4e27`). The build
+ on upstream `2a849af` merged in (`a1c4e27`). The build
 records all eight tracks by default (`stems_tracks = 0xFF`), and
 `stems_peak` keeps the take's largest ring fill. Image SHA-256
 `164f31224bf61181e3f50e7dec40df9afcae5b16dbf6e4c0d0cc5e986af0a84e`.
 
-### 15.1 THRU input routing, measured ✅
+### 15.1 THRU input routing, measured
 
 The fixture needs sound in every frame of every track. Eight THRU machines
 play the port's inputs A to D, fed a four-channel WAV of seeded noise
 through `ot_emu --audio-in` (`stems_fixture.py --thru`; the WAV is ours,
 generated into `out/test_audio/`).
 
-- **MIDI CCs route nothing under the port.** ✅ The THRU page's CCs (16,
+- **MIDI CCs route nothing under the port.** The THRU page's CCs (16,
   17, 19, 20 and 22 to 25) sent at frame 2 after the transport start, then
   a note-on at frame 3, changed no track in a 300-frame run. Only the
   routing stored in the template sounded: T1 INAB 1, T5 INCD 1.
-- **The part record holds the routing.** ✅ Each track's 30-byte block at
+- **The part record holds the routing.** Each track's 30-byte block at
   part + 0x33 + (track − 1) × 30 holds the THRU page at +12 to +16: INAB,
   VOL, ---, INCD, VOL. The fixture writes it into every part record,
   current and saved, of banks 1 and 2. Every track then sounds from frame
   44 with no silent frame through 1,600 frames, with no CC and the amp
   envelope left alone.
-- **The WAV's channels are inputs C, D, A and B, in that order.** ✅
+- **The WAV's channels are inputs C, D, A and B, in that order.** 
   Measured with one live channel per run and T1–T4 set to INAB 1–4, T5–T8
   to INCD 1–4: channel 0 reached T5 left, T6 and T8; channel 1 T5 right, T7
   and T8; channel 2 T1 left, T2 and T4; channel 3 T1 right, T3 and T4.
-- **The INAB and INCD values.** ✅ 0 is off. 1 is the pair in stereo (A or
+- **The INAB and INCD values.** 0 is off. 1 is the pair in stereo (A or
   C left, B or D right). 2 is the pair's first input alone, on both sides.
   3 is the second alone. 4 is the pair summed, on both sides.
 - **The fixture's mixes.** T1 A, T2 B, T3 C, T4 D, T5 A and B in stereo, T6
@@ -6847,11 +6757,10 @@ generated into `out/test_audio/`).
   `verify_stems`: every track's read-back sounds in every frame from frame
   44, and the eight signals are distinct.
 
-### 15.2 The eight-track takes ✅
+### 15.2 The eight-track takes
 
 Method: `verify_stems.py stems` through `make check-remix-gates REMIX=stems
-JOBS=2` at `d31f55a` plus the mask takes (28 Sep 2026, 152 checks, 0
-failures), and the `--long` additions at `16fbc2a` (73 checks, 0
+JOBS=2` at `d31f55a` plus the mask takes, and the `--long` additions at `16fbc2a` (73 checks, 0
 failures). Each mask take arms before play, stops at frame 1,700 and runs
 to frame 3,000.
 
@@ -6868,37 +6777,37 @@ to frame 3,000.
 | `0x7F` | T1–T7 | 7 | 528 | (`--long`) |
 | `0x80` | T8 | 1 | 522 | (`--long`) |
 
-- **Every file is its track.** ✅ In every take each file holds 1,727
+- **Every file is its track.** In every take each file holds 1,727
   frames and equals its own track's read-back at lag 40, sample for sample.
   Its first four frames are silent, before the input reaches the track;
   from the fifth on, no frame is silent. No two files are alike, and the
   writer wrote during every take. A negative control compares a `0x02`
   take's file with T1's read-back; the check fails, as it must.
-- **The peak.** ✅ `stems_peak` equals the largest fill rebuilt from the
+- **The peak.** `stems_peak` equals the largest fill rebuilt from the
   port's watch log of `stems_wr` and `stems_rd`, in every take. It stays
   near one chunk (512 frames) plus the frames of one write at every track
   count: the emulated card keeps up. The re-arm at the end of `overflow`
   resets it to 0.
-- **The mask is latched at the start.** ✅ A T1 take with `stems_tracks`
+- **The mask is latched at the start.** A T1 take with `stems_tracks`
   poked to `0xFF` after play started (the port's report: `poke 0x40a955ff
   <- 0xff`) writes `T1.WAV` alone, equal to T1.
-- **The wrap at eight tracks.** ✅ A take stopped at frame 9,000 holds
+- **The wrap at eight tracks.** A take stopped at frame 9,000 holds
   9,027 frames per file, past the ring's 8,192. Every file equals its
   track; the writer wrote 18 times during the take; the peak was 539; the
   drain took 421 frames.
-- **The overflow at eight tracks.** ✅ With the writer held and the ring
+- **The overflow at eight tracks.** With the writer held and the ring
   made to look nearly full, the guard trips at 100 frames with
   `ERR_OVERFLOW`. The largest value the hook writes to `stems_peak` is
   8,192, the ring's capacity. The writer then writes eight files of
   524,332 bytes each, the whole ring's share, in 6,678 frames (5,167 for
   the one-track ring of 13.3), goes IDLE, and the row arms again.
-- **The 20-second take.** ✅ 55,365 frames, the file equal to the ring byte
+- **The 20-second take.** 55,365 frames, the file equal to the ring byte
   for byte. It was 55,342 at `5baf399`: that run predates the card latency
   of 13.3, whose +23 frames on every take this is (55,367 on
   `crosscheck`, −25 for 13.2's transport start, +23). Measured: the same
   count at `ed486b3`, `main` before this piece, under its own port, and at
   `def2503`, before this piece's hook change.
-- **One incidental count moved.** 🟡 `cardfail`'s polls in the stock DRQ
+- **One incidental count moved.** `cardfail`'s polls in the stock DRQ
   loop went from 3,460,329 to 3,460,318 when the hook gained the peak. Both
   runs execute 18,591,841 ColdFire instructions over their frames (the
   port gives every frame the same budget), write 23 sectors and change
@@ -6907,9 +6816,9 @@ to frame 3,000.
   move where the poll loop falls inside each frame. The fact the check
   records, a writer hung in the DRQ poll, is unchanged.
 
-### 15.3 The hook's cost ✅
+### 15.3 The hook's cost
 
-Section 12.2's method at `54542a6` (28 Sep 2026): 400 frames armed before
+Section 12.2's method at `54542a6`: 400 frames armed before
 play with no STOP, `--coverage` over the hook, the three-instruction tail
 left out, each address's count floored to whole frames.
 
@@ -6918,22 +6827,21 @@ left out, each address's count floored to whole frames.
 | 1 (T1) | 54,000 | 134 | 130 |
 | 8 | 297,600 | 743 | 739 |
 
-- **The peak costs 4 instructions a frame here.** ✅ `addq`, `cmp`, `bls`
+- **The peak costs 4 instructions a frame here.** `addq`, `cmp`, `bls`
   and the store to `stems_peak`, each hit 400 times in both runs. In 400
   frames the writer takes no chunk (it takes one every 512), so the fill
   sets a new peak on every frame and the store always runs.
-- 🟡 Inferred from the code: once the fill falls back below its peak, the
+- Unconfirmed: Inferred from the code: once the fill falls back below its peak, the
   `bls` skips the store, and the peak costs 3 instructions a frame.
 - The counts that aren't whole frames are 12.2's again: three addresses
   at one track (505, 541 and 554 hits) and three at eight (3,299, 3,384
   and 3,317 against 3,200). Their excess is exactly 400 in both runs, one
-  extra count a frame. 🟡 Read, as in 10.0 and 12.2, as an instruction
+  extra count a frame. Read, as in 10.0 and 12.2, as an instruction
   counted again when an interrupt lands on it.
 
-### 15.4 The card-speed sweep ✅ under the port
+### 15.4 The card-speed sweep under the port
 
-Method: `python3 tools/verify/stems_sweep.py --jobs 2` at `54542a6`, 28
-Sep 2026: a 5-second take on the THRU fixture for each track count and
+Method: `python3 tools/verify/stems_sweep.py --jobs 2` at `54542a6`, a 5-second take on the THRU fixture for each track count and
 card delay (`ot_emu --ata-latency`, samples between a card sector and its
 interrupt), then its rows analysed again with `--from-logs` once the fill's
 trend had a noise test.
@@ -6975,53 +6883,53 @@ The peak fill's share is of the ring at that track count: 65,536 frames
 at one track, 8,192 at eight. The writer's rate is averaged over the
 recording. A growth without a ± had an error under 1 frame a second.
 
-- **Under the break-even, every count keeps up.** ✅ The writer runs at
+- **Under the break-even, every count keeps up.** The writer runs at
   the data rate (0.17, 0.34, 0.68 and 1.36 MB/s), the peak stays at one
   chunk and the frames of one write (526 to 587 frames), and the fill is
   flat within its noise. One row, two tracks at 24, reads +4 ± 3: just
   past the test, which at twice the error passes about one flat row in 40
   by chance. At that rate the ring would outlast the 60-minute cap.
-- **At the break-even the fill grows slowly.** ✅ Two tracks at 64, four
+- **At the break-even the fill grows slowly.** Two tracks at 64, four
   at 32 and eight at 16 grow by 39, 78 and 154 frames a second. The ring
   would last 829, 204 and 47 seconds more at that rate.
-- **Past it, the ring fills.** ✅ Eight tracks overflow at 4.27 s with a
+- **Past it, the ring fills.** Eight tracks overflow at 4.27 s with a
   delay of 48, and at 3.72 s with 64. The arithmetic predicts both: at 64
   the writer's 0.28 of the needed 1.41 MB/s grows the fill by about 2,200
   frames a second, and 8,192 frames last 3.7 s. At 48, 4.3 s.
-- **A take near capacity still completes.** ✅ `verify_stems --long`'s
+- **A take near capacity still completes.** `verify_stems --long`'s
   `slow8`: eight tracks at a delay of 32, half the speed they need, for 5
   seconds. The ring peaks at 7,505 of 8,192 frames (92%) without
   overflowing; the take ends IDLE with no error, and each of the eight
   files holds 13,783 frames equal to its track, sample for sample.
-- **A slow card slows the project's load too.** ✅ At a delay of 64 the
+- **A slow card slows the project's load too.** At a delay of 64 the
   load did not finish within the verifier's 20 s budget, and no take
   started. The sweep's budget grows with the delay; the port ends a load
   as soon as the engine is idle, so a bigger budget costs nothing.
 - **Its limit.** The emulated card has one constant delay per sector. A
   real card stalls. OctaLab measured single card writes of up to 1.2 s
   while STATIC tracks play, and 1.4 to 2.1 MB/s while they read (their
-  `git show 76fd8466:docs/proposals/OTX_PROJECT_PROPOSAL.md`, 26 Sep 2026). 🟡 Arithmetic, not
+  `git show 76fd8466:docs/proposals/OTX_PROJECT_PROPOSAL.md`,). Arithmetic, not
   measured: eight tracks need 1.41 MB/s, and the 4 MiB ring holds 8,192
   frames at eight tracks, about 3 s, so a 1.2 s stall fits in the ring if
   the card writes fast enough between stalls to empty it again. So this
   table gives steady-rate limits only; flash A measures the real card.
 
-### 15.5 The bare-metal toolchain ✅
+### 15.5 The bare-metal toolchain
 
 Every value above was measured on STEM REC assembled by Ubuntu's
 `m68k-linux-gnu` binutils 2.46, symlinked as `m68k-elf-*`. Upstream's
-authors build with Homebrew's bare-metal `m68k-elf` tools. On 28 Sep 2026
+authors build with Homebrew's bare-metal `m68k-elf` tools. On 
 this machine got the same kind of toolchain, built from source: binutils
 2.47 and GCC 16.1.0 in `/opt/m68k-elf` (`docs/guide/BUILDING.md` 1a).
 
-**STEM REC's bytes move.** ✅ The bare-metal assembler reads a global
+**STEM REC's bytes move.** The bare-metal assembler reads a global
 symbol of the same section PC-relative: `tstl %pc@(d)`, 4 bytes. Ubuntu's
 keeps an absolute read with an `R_68K_32` relocation, 6 bytes, because a
 Linux target leaves a global symbol preemptible. The instructions and their
 order are the same; only their lengths change. Measured by assembling
 `stems.s` with both and diffing the disassembly:
 
-| | Ubuntu's `m68k-linux-gnu` 2.46 | bare-metal `m68k-elf` 2.47 |
+|  | Ubuntu's `m68k-linux-gnu` 2.46 | bare-metal `m68k-elf` 2.47 |
 |---|---|---|
 | `stems.s` `.text` | `0xdb4` | `0xd84` (48 bytes shorter) |
 | `stems_frame_hook` | `0x40a95a2c` | `0x40a95a28` |
@@ -7029,8 +6937,8 @@ order are the same; only their lengths change. Measured by assembling
 | the packed loader append | 1,989 B | 2,000 B |
 | the runtime's stage end | `0x40a976dd` | `0x40a976e8` |
 
-**Piece 2's gates pass on it.** ✅ `make check-remix REMIX=stems` at
-`b0688c8` (29 Sep 2026, log `v3-p3-newtc-check.log`): `verify_stems` 152
+**Piece 2's gates pass on it.** `make check-remix REMIX=stems` at
+`b0688c8` (log `v3-p3-newtc-check.log`): `verify_stems` 152
 PASS, 0 FAIL, 0 SKIP, the same 152 checks as piece 2's last run on
 Ubuntu's toolchain (`4601774`). Besides the addresses above and the
 template's folder, five values moved:
@@ -7046,12 +6954,12 @@ template's folder, five values moved:
 Every peak still equals the largest fill rebuilt from the write log,
 exactly, which is what each check tests.
 
-- ✅ Measured: the boot to the RTOS handoff runs 861 fewer ColdFire
+- Measured: the boot to the RTOS handoff runs 861 fewer ColdFire
   instructions on the new build (11,588,561 against 11,587,700), and the
   difference carries through the project load to the arm. `mask01`'s arm
   lands at the same emulated sample, 521,130.5, at instruction 801,552,285
   instead of 801,553,146.
-- 🟡 Inferred: the port paces emulated time by instruction counts, so the
+- Unconfirmed: Inferred: the port paces emulated time by instruction counts, so the
   writer task runs at a slightly shifted phase against the frame
   interrupt. That can move which frame a chunk write ends in, hence a peak
   one or two frames off, and the number of polls that fit in `cardfail`'s
@@ -7065,36 +6973,36 @@ exactly, which is what each check tests.
 Piece 3 of the roadmap: `git show 4d2d6456:docs/superpowers/specs/2026-09-28-stem-rec-menu-design.md`
 and its plan, `git show 4d2d6456:docs/superpowers/plans/2026-09-28-stem-rec-menu.md`.
 
-### 16.1 What the design stands on, measured ✅ under the port
+### 16.1 What the design stands on, measured under the port
 
 `tools/verify/stems_menu_probe.py` boots the stems image (STEM REC still
 in CONTROL) on the one-track fixture card under `ot_emu --interactive`,
 presses real keys through `tools/verify/stems_panel.py`, and reads the
-screen from the bytes the CPU sends the panel. Run on 29 Sep 2026 as an
+screen from the bytes the CPU sends the panel. Run as an
 MKII (`v3-p3-probe-mkii3.log`) and as an MKI (`v3-p3-probe-mki.log`); the
 two agree on every item. The PNGs are `out/stems_runs/probe-mkii-*.png`
 and `probe-mki-*.png`.
 
 | # | question | answer, MKII and MKI |
 |---|---|---|
-| 1 | Does MAIN MENU open on the root? | ✅ PROJ (MKII) and FUNC+MIXER (MKI): focus `0x400cbd8c`, row 0 |
-| 2 | Which keys enter and leave a list? | ✅ YES and RIGHT enter (focus `0x400cbd54` on CONTROL); LEFT leaves |
-| 3 | Does a changed label redraw with no key? | ❌ No: a label pointer changed while the menu shows it stayed off the screen for 3 s. After RIGHT and LEFT it was drawn |
-| 4 | Where does text clip? | ✅ The list pane at x = 118 and the root column at x = 56 |
-| 5 | Does the cursor skip a row with action 0? | ✅ Yes, both ways: `[0, 2, 0]`, and the row draws as plain text |
-| 6 | Do PLAY and STOP work with the menu open? | ✅ Transport 0 → 1 → 0, the menu stays open |
-| 7 | What does NO do inside a list? | ✅ It closes the whole menu; the focus pointer keeps the list |
-| 8 | Can the cursor land on a LAST row with action 0? | ✅ No: from the row above it, DOWN, DOWN = `[4, 4, 4]` (MKII, `v3-p3-probe-last.log`) |
+| 1 | Does MAIN MENU open on the root? | PROJ (MKII) and FUNC+MIXER (MKI): focus `0x400cbd8c`, row 0 |
+| 2 | Which keys enter and leave a list? | YES and RIGHT enter (focus `0x400cbd54` on CONTROL); LEFT leaves |
+| 3 | Does a changed label redraw with no key? |  |
+| 4 | Where does text clip? | The list pane at x = 118 and the root column at x = 56 |
+| 5 | Does the cursor skip a row with action 0? | Yes, both ways: `[0, 2, 0]`, and the row draws as plain text |
+| 6 | Do PLAY and STOP work with the menu open? | Transport 0 → 1 → 0, the menu stays open |
+| 7 | What does NO do inside a list? | It closes the whole menu; the focus pointer keeps the list |
+| 8 | Can the cursor land on a LAST row with action 0? | No: from the row above it, DOWN, DOWN = `[4, 4, 4]` (MKII, `v3-p3-probe-last.log`) |
 
-**Two rows with action 0 next to each other are not skipped.** ✅ Found
+**Two rows with action 0 next to each other are not skipped.** Found
 by the gate's first run (MKII, `v3-p3-menu-gate.log`): with the status at
 row 1 and PEAK at row 2, DOWN from REC stopped on row 2. The engine skips
 one such row, not a run of them, and ENTER on one calls address 0. Item 5
-had tested a single one. Yves moved PEAK to the last row (29 Sep 2026),
+had tested a single one. Yves moved PEAK to the last row,
 which item 8 then showed the cursor never reaches; the gate passes on both
 panels with that layout (16.2).
 
-**A key-driven boot needs `--mount`.** ✅ `ot_emu --interactive` with
+**A key-driven boot needs `--mount`.** `ot_emu --interactive` with
 `--set`/`--project` but no `--mount` loads no project: ready at sample
 8,567, the current set's path (`0x100f8480`) empty, and a take then ends
 `PATH FAILED` (the gate's second run). With `--mount`, as
@@ -7112,11 +7020,11 @@ itself, as octalab's `MENU.md` reports; its labels changed from a row's
 action, which a key press runs, so a key always followed. Under the port,
 a label STEM REC changes on its own reaches the screen at the next key
 that redraws the menu: the take starting on PLAY (ARMED to `REC 00:00`),
-the seconds, `SAVING` to `DONE`, `RING FULL`. Yves chose (29 Sep 2026) to
+the seconds, `SAVING` to `DONE`, `RING FULL`. Yves chose to
 keep the design and let the status refresh on any key: opening the menu, or
 a key inside it, shows it current. A status that ticks by itself needs a
 redraw request from outside a key handler, which is left for piece 7's
-recording window. (27 Oct 2026, note 2: STEMS is its own window now, and
+recording window. (note 2: STEMS is its own window now, and
 a detour in the UI task's loop, `0x40056c7c`, redraws it at the task's next
 message when a label changed. `verify_stems_menu` checks the screen
 against a fresh redraw.)
@@ -7125,7 +7033,7 @@ The first probe run pressed NO to leave CONTROL, which closed the menu, so
 its items 3 to 5 measured a closed menu; that run is void, and item 7
 records NO.
 
-### 16.2 The category as built ✅ under the port
+### 16.2 The category as built under the port
 
 **The layout.** MAIN MENU's root grows from four categories to five: the
 manifest copies the four stock rows from the user's image (a `TableGrow`,
@@ -7151,7 +7059,7 @@ changes does it format a line, with the stock `sprintf`, into the buffer
 the row isn't showing. The frame hook is unchanged. The screen shows a
 change at the next key (16.1).
 
-**The stock `sprintf` from two tasks.** ✅ The writer task now calls
+**The stock `sprintf` from two tasks.** The writer task now calls
 `sprintf` (`0x40013a08`) about once a second while it records, and the UI
 task calls it for its own screens (the menu redraw at `0x40064db2` is
 one). Read from the image: `sprintf` passes its arguments to `0x40011104`,
@@ -7199,9 +7107,9 @@ that's on stays on, so a take always has a track the rows show.
   pass with the same values; the only SKIP is `verify_set`'s (no
   `OT_PROJECT`). Each panel's walk takes 15 to 18 minutes there.
 
-### 16.2a The window as PERSONALIZE (27 Oct 2026) ✅ under the port
+### 16.2a The window as PERSONALIZE under the port
 
-Sections 16.1 and 16.2 describe the eighteen-row list. On 27 Oct 2026
+Sections 16.1 and 16.2 describe the eighteen-row list. On 
 Yves chose PERSONALIZE's look from firmware-drawn mockups, and STEMS
 became fifteen rows of a label and a value, five at a time: STEM REC
 (its state as the value, a failure's name in place of the label), PEAK
@@ -7216,7 +7124,7 @@ how STEMS does: `MAINMENU.md` section 5, after the STEMS paragraph.
 with STEMS's rows, pixel for pixel; `verify_stems_units` covers the
 rows' actions, the cursor and the file table with inputs left out.
 
-### 16.3 What the gate can't see 🟡
+### 16.3 What the gate can't see
 
 - **The unit's key timing and its panel.** The port feeds the panel's
   bytes in exact steps; a real press is slower and bounces. Flash A
@@ -7224,291 +7132,20 @@ rows' actions, the cursor and the file table with inputs left out.
 - **The card while the menu is open.** The emulated card answers at one
   fixed speed (15.4).
 - **Whether the MKII's root takes a fifth category on the unit.** octalab's
-  ran on a MKI (7 Sep 2026). A root that won't draw costs a SysEx recovery,
+  ran on a MKI. A root that won't draw costs a SysEx recovery,
   so flash A's precondition stays: a stock 1.40C `.syx` at hand.
 - **A status that ticks by itself.** Not built (16.1): the screen shows the
   task's labels at the next key.
 
-## 17. On hardware
-
-### 17.1 Flash A: STEMS1 on Yves's MKII, 30 Sep 2026
-
-The image is STEMS1 (`BUILD=1`, from `4ec1276`; `modules/stems/FLASH.md`).
-Yves reported each result from the unit and the card, by ear and by eye. No
-instrument read any of them.
-
-- ✅ **The flash.** From the card, OS UPGRADE, no error.
-- 🔴 **The first boot had no audio**, in the loaded project and in a new
-  one. The stock recorder's buffers still drew the inputs' waveforms. A
-  power cycle brought the sound back. Cause open: STEMS1 carries no DSP
-  module, so the warm-up tag that `docs/guide/BUILDING.md` section 5 step 5
-  blames can't apply (`docs/contributing/FAILURE_MODES.md`).
-- ✅ **T1 alone** recorded a take.
-- ✅ **T1 to T8**, each track on its own sample, about 1:57: every take
-  whole. Stopping the sequencer ended the take.
-- ✅ **The files.** The take's folder is `YYMMDD-HHMM` in the set's AUDIO
-  folder. Every track's file is there and plays, 16-bit stereo.
-- ✅ **The effects are in the stems** (checked again on 1 Oct 2026). The tap
-  is post-FX (section 9).
-- **The time doesn't tick by itself.** Leaving the menu and opening it again
-  shows the right time. This is the design of section 16.1, and Yves now
-  wants it live.
-- **FX2's chooser had one row.** Every octabam image replaces the FX2
-  chooser with the remix's list (`tools/remix/stock.py`), and STEMS1 listed
-  STEM REC alone. The selftest's give-up table shows the other cost: STEMS1
-  also gave up PLATE, SPRING and DARK REV, the FX2-only reverbs. STEMS2
-  lists the 14 stock effects.
-- 🟡 **The stems are about 12 dB quieter than normal playback.** This is
-  Yves's rough gain staging, not a measurement. What is known: the tap is
-  post-FX and pre-fader. The track's LEVEL, the crossfader, MAIN volume and
-  the master effects all come after it (the tap note in
-  `modules/usb-audio-out-tracks-main-cue/usbaudio.s`). Under the port, T1's
-  slot sat at 1/15.5 of its source sample (section 9.3). Open: the gain from
-  the tap to MAIN. **Falsifier:** a port run with T1 alone at the default
-  LEVEL, comparing T1's read-back slot with the MAIN buffer at `0x80005e60`
-  (the stock recorder's MAIN source). A ratio near 1 puts the 12 dB
-  somewhere else.
-- **Not reported:** the checklist's tests 4 to 7 (the card's speed at 1, 2,
-  4 and 8 tracks, a static machine playing, the level against the stock
-  recorder, and stock saves).
-
-### 17.2 Flash B: STEMS2 on Yves's MKII, 1 Oct 2026
-
-The image is STEMS2 (`BUILD=2`, from `d646e83`; `modules/stems/FLASH.md`):
-STEMS1's STEM REC on the 14 stock effects. Yves reported it from the unit.
-
-- ✅ **The flash.** It flashed with no error.
-- ✅ **FX2's page displays correctly.** The stock effects are back in it.
-- ✅ **The first boot played audio.** Yves made a new project at once, and it
-  sounded. Flash A's silent first boot didn't recur, though flash A had
-  loaded the saved project before trying a new one.
-- ✅ **A stem doesn't follow the fader.** T1 recorded while its LEVEL moved:
-  the take doesn't change level. That's the tap of section 9: post-FX,
-  before the fader. Piece 5 changes it (its spec is on branch
-  `stem-rec-p5`).
-- **Not yet reported:** the card's speed (test 4).
-
-### 17.3 Flash C: STEMS3 on Yves's MKII, reported 6 Oct 2026
-
-The image is STEMS3 (`BUILD=3`, from `fc7baad`; `modules/stems/FLASH.md`):
-piece 5, with stems after the fader, MAIN, CUE, the inputs, and 24 bits.
-Yves reported each result from the unit and the card, by ear and by eye.
-PEAK is the menu's own readout: the take's largest ring fill, in whole
-percent of the ring's capacity in frames.
-
-- ✅ **The flash.** STEMS3 flashed and records.
-- ✅ **T1 to T8 record**, from Static machines and from THRU machines.
-- ✅ **MAIN and AB, stereo, record.**
-- ✅ **A stem follows its track's LEVEL, AMP VOL, and BAL**, by ear.
-  STEMS2's stems didn't follow LEVEL (17.2); piece 5 takes them after the
-  fader (18.2). The null tests against `MAIN.wav` (flash C's tests 3 and
-  4) aren't reported yet.
-- ✅ **A light project leaves the card room, at 16 and at 24 bits.** On a
-  project with audio on AB, T1 as a THRU track, and MAIN only:
-
-  | Sources | Width | Data rate | PEAK | Behind at the peak |
-  |---|---|---|---|---|
-  | AB | 16 bits | 0.18 MB/s | 0% | under 0.48 s |
-  | T1 to T8, MAIN, AB, CD (11 stereo files) | 16 bits | 1.94 MB/s | 10% | 0.43 to 0.48 s |
-  | the same | 24 bits | 2.91 MB/s | 13 to 16% | 0.37 to 0.49 s |
-
-  The last column is computed from PEAK: the ring holds 11,915 frames of
-  eleven 16-bit files and 7,943 of eleven 24-bit files, and a frame is
-  16 samples. 🟡 Inferred: the peak is about two of the writer's
-  512-frame chunks at both widths, and about the same time behind, so
-  the slowest round was set by a stall of the card, not by the amount of
-  data. Falsifier: a longer take at 24 bits whose PEAK keeps rising.
-- 🔴 **A busy project at 24 bits filled the ring.** The same eleven files
-  at 24 bits, with every track playing audio, and scenes set on several
-  parameters. T2 to T8 were Static machines with all 16 trigs on, so
-  seven tracks restarted a sample from the card on every step. PEAK
-  reached 100%, the status read
-  SAVING, then RING FULL. The take's files saved and play, cut where the
-  ring filled. That's the overflow stop as built (12.0): the take
-  ends at the last whole frame. The writer was 2.88 s of audio behind
-  when it stopped, the 8 MiB ring at that rate. Cause open
-  (`docs/contributing/FAILURE_MODES.md`). Two candidates, not told apart:
-  the Static machines read from the same card the writer writes to, and
-  a busy project leaves the writer task less of the CPU, since the frame
-  interrupt grows with every playing voice and STEM REC's hook runs
-  inside it (18.9 found the port's card path slowed by a longer frame
-  interrupt). What tells them apart: the cut take's length, which gives
-  the rate the writer fell behind at, and the same project with Flex
-  machines instead of Static ones.
-- **Not reported yet:** the first boot (test 1), the menu's rows (test
-  2), the null tests (3 and 4), the inputs in mono, CD, and against the
-  stock recorder (5), the 24-bit files in a DAW against a 16-bit take
-  (6), the 5-minute take at eight tracks and 16 bits (7), clicks, the
-  screen's response, and timing during a take (8), and stock saves (10).
-
-### 17.4 Flash D: STEMS4 on Yves's MKII, reported 8 Oct 2026
-
-The image is STEMS4 (`BUILD=4`, from `ad73ee89`; `modules/stems/FLASH.md`
-flash D). Yves reported it and copied the take's folder off the card.
-
-- ✅ **The flash** and the boot.
-- 🔴 **RING FULL after 6.75 s** on a new project: T1 to T8 Static
-  machines, each playing one bell sample on its own sequence (T8 a trig
-  on every step), all eight tracks recorded at 24 bits. Take
-  `261008-1131`: eight files of 1,785,836 bytes (44 + 18,602 frames of
-  96 bytes), whole to the cut.
-- ✅ **The files are intact** (read by a script, not by ear): every hit
-  of T1 from 1.0 s to 6.0 s sits on a grid of exactly 22,048 samples
-  (1,378 frames), eleven hits, no drift, so no recorder frame was lost
-  or doubled; hits on a step shared by several tracks start on the same
-  sample in every file (286,785 in T1, T3, T4 and T8); no run of zeros
-  inside a sound, no repeated non-silent frame past each track's leading
-  silence (−3, the floor of a near-zero product). The other gaps are the
-  sequencer's: trigs land on 16-sample frames (500 ms is 1,378.125
-  frames) and some steps sit about 97 samples late (swing or micro
-  timing).
-- **STATS.TXT, the first readout from a unit:**
-
-  ```
-  status RING FULL
-  18602 frames, 6 s, 8 files, 24 bits
-  ring peak 10922 of 10922 frames
-  card writes 304, 3506 ms in all, longest 89979 us
-  writer copy 8462 ms in all, longest batch 329432 us
-  writer longest sleep 10075 us, asks 10000
-  hook mean 28 us, longest 43 us
-  hook and frame routine mean 73 us, longest 92 us, 18602 frames
-  card udma 5 mwdma 4, cluster 64 sectors
-  ```
-
-  - **The card kept up**: it wrote the take's 14.3 MB in 3.5 s, about
-    4.1 MB/s against the 2.12 MB/s eight 24-bit tracks need. A DMA card
-    (Ultra DMA 5) with 32 KB clusters. The card is a SanDisk Extreme
-    64 GB, rated up to 85 MB/s write, a minimum of 20 MB/s sustained for
-    video recording (VPG-20), Ultra DMA 7 (SanDisk's data sheet, 06/16).
-    So each write took far longer than the card needs: the time is the
-    host's (one command a cluster, the writer's share of the processor)
-    or the card's under mixed traffic (the Static voices read the same
-    card). Not measured.
-  - **The writer woke on time**: its 10 ms sleeps came back within 75 µs.
-    That's its wake-up latency, not its share of the processor while it
-    copies (below).
-  - **The hook took 28 µs a frame** on average (43 at most): STEM REC's
-    part of the audio interrupt, 4,059 instructions under the port, so
-    about 1.8 cycles an instruction. (The second time line covers the
-    hook and the stock routine called at its site, not the whole
-    interrupt.)
-  - **The writer's copy was the limit**: 8.5 s to copy 6.75 s of audio,
-    230 to 330 ms a 512-frame batch (186 ms of audio), about 0.6 µs a
-    byte. Wall time: it includes any time the writer didn't run.
-- ✅ **The stores are precise, from the chip's own manual.** The stock CACR is `0xA50CE100`
-  (`0x4001f3e0`): DEC 1, DESB 1, DDPI 0, DDCM `10`, SPA 1. DDCM `10`
-  is "cache-inhibited precise" for every address outside the RAMBARs and
-  ACRs (MCF54455RM Rev. 6.1, Table 6-3), which includes the uncached
-  alias `0x48000000` where STEM REC's stream buffers are addressed
-  (ACR0 caches `0x40000000`-`0x47FFFFFF`, `docs/firmware/ARCHITECTURE.md`).
-  In precise mode "the instruction is held in the pipeline until external
-  bus transfer termination is received… the minimum write time [is] six
-  cycles" (section 6.4.4.2.1). At 24 bits the copy reordered every
-  sample's bytes and stored them one byte at a time: 14.3 M stores, each
-  waiting for the SDRAM. The port models neither the cache nor bus
-  timing (20.1 counts instructions), so it could not show this.
-- 🟡 **But the stalls alone don't add up to 8.5 s** (corrected 8 Oct
-  2026, the same day). Bryan T's USB AUDIO OUT TRACKS MAIN CUE copies
-  320 longs a frame into buffers addressed the same way (the uncached
-  alias, the same CACR) inside the frame interrupt, and streaming costs
-  it 14 µs a frame with no voices playing and 25 µs with seven
-  (`docs/firmware/ARCHITECTURE.md` "ColdFire time per frame on a unit",
-  his MKII, 4 Oct 2026): at most 45 to 80 ns a store, its instructions and descriptor
-  writes included. At that rate flash D's 14.3 M byte stores take 0.6 to
-  1.1 s, and their 18 M instructions about 0.12 s more (at the hook's
-  measured 6.9 ns an instruction), against 8.5 s measured. The rest is
-  either time the copy wasn't running (the audio interrupt, and the
-  tasks at the writer's priority, which include the one streaming the
-  eight Static voices), or stores far slower under this project's load
-  than under Bryan's. Neither is measured. STEMS5 (20.5) cuts the stores
-  to a quarter and the instructions to about a third either way, and its
-  readout adds the copy's fastest frame and the card's fastest write,
-  which separate the work from the waiting.
-
-### 17.5 Flash E: STEMS5 on Yves's MKII, reported 8 Oct 2026
-
-The image is STEMS5 (`BUILD=5`, from `19a3a113`; `modules/stems/FLASH.md`
-flash E). Yves flashed it, recorded six takes on flash D's project (T1
-to T8 Static, one bell sample each) and copied the folders off the card
-(`261008-1421` to `1426`).
-
-| Take | Tracks, bits | Result | Ring peak | Copy while recording | Fastest frame | Card mean, fastest |
-|---|---|---|---|---|---|---|
-| 1421 | 8, 24 | RING FULL at 18.1 s | 10,922 of 10,922 | 303 µs/KB | 12,621 ns, 768 B (16.4 µs/KB) | 3.7, 27.0 MB/s |
-| 1426 | 8, 24 | RING FULL at 17.9 s | 10,922 of 10,922 | 299 µs/KB | 12,636 ns, 768 B | 3.7, 26.4 MB/s |
-| 1425 | 7, 24 | OK, 69.8 s | 5,831 of 12,483 | 288 µs/KB | 11,053 ns, 672 B | 3.7, 27.1 MB/s |
-| 1424 | 6, 24 | OK, 44.6 s | 2,332 of 14,563 | 276 µs/KB | 9,454 ns, 576 B | 3.7, 26.9 MB/s |
-| 1423 | 4, 24 | OK, 29.0 s | 1,448 of 21,845 | 246 µs/KB | 6,257 ns, 384 B | 4.8, 26.7 MB/s |
-| 1422 | 8, 16 | OK, 62.8 s | 2,812 of 16,384 | 266 µs/KB | 8,893 ns, 512 B | 6.3, 29.9 MB/s |
-
-(The card's mean is the take's KB over its card writes' time.)
-
-- ✅ **Better than flash D**: eight tracks at 24 bits ran 18 s against
-  6.75 s, the writer keeping about 78% of what the hook produced (the
-  ring grew about 600 frames a second of the 2,756 produced) against
-  about half. Seven tracks at 24 bits filled slowly (47% after 70 s, so
-  about 2.5 minutes to RING FULL); six and fewer, and eight at 16 bits,
-  held.
-- ✅ **The copy's own cost is small and as estimated**: its fastest
-  frame moves 768 bytes in 12.6 µs, about 66 ns a long store with its
-  share of the instructions, inside Bryan T's 45 to 80 ns (17.4). The
-  hook took 25 µs a frame (28 in flash D).
-- ✅ **The writer waits, in every take**: the copy's mean while recording
-  is 15 to 18 times its fastest frame, and the card's mean 5 to 7 times
-  slower than its fastest write. Its time goes to not running, at any
-  track count. The 16-bit take's longest sleep came back after 22.4 ms
-  for a 10 ms request. 🟡 Inferred: with eight Static voices, the frame
-  interrupt and the tasks at priorities 2 to 7 leave priority 1 little,
-  and the writer shares that round robin with three stock tasks (3.5).
-  The work itself, about 13 µs of copy and 28 µs of card a frame at the
-  fastest rates, is about 11% of the processor.
-- The card's longest single write was 254 ms (the 16-bit take), about
-  700 frames; the ring absorbs it.
-
-### 17.6 Flash G: STEMS7 (zero copy) on Yves's MKII, reported 8 Oct 2026
-
-The image is STEMS7 (`BUILD=7`, from `92959832`; `modules/stems/FLASH.md`
-flash G), the writer at priority 1. Two takes on flash D's project (T1 to
-T8 Static, one bell each), copied off the card as `261008-1856` and
-`1858`.
-
-| Take | Files, bits | Result | Ring peak | Card while recording, fastest | Hook mean, longest |
-|---|---|---|---|---|---|
-| 1856 | T1–T8, 24 | OK, 61.4 s | 2,244 of 10,901 (21%) | 3.0 MB/s (329 µs/KB), 28.0 MB/s | 29 µs, 52 µs |
-| 1858 | 12: T1–T8, MAIN, CUE, AB, CD, 24 | RING FULL at 4.3 s | 7,260 of 7,260 | 2.1 MB/s (474 µs/KB), 10.1 MB/s | 37 µs, 64 µs |
-
-- ✅ **Eight tracks at 24 bits keep up**: 61 s with the ring never above
-  21% (flash D filled it in 6.75 s, flash E in 18 s). The writer needs
-  2.12 MB/s there and the card took 3.0 while recording.
-- ✅ **The hook's uncached stores cost less than estimated**: 29 µs a
-  frame against flash E's 25 at T1–T8, 24 bits (20.7 estimated about
-  37).
-- ✅ **The files are whole** (read by `zcheck.py` and `zsum.py`, scripts
-  in the session, not in the tree): in take 1858 MAIN minus the sum of T1
-  to T8 is 0 to 7 at all 379,744 samples off MAIN's rails, the property
-  the port's checks hold, and 2 to 5 around the place each ring wrapped;
-  nine files agree sample for sample through the wrap and the RING FULL
-  stop. In take 1856 (each ring wrapped 15 times) no loud 16-sample
-  frame repeats and the steps in the audio fall on sector boundaries no
-  more often than chance (3 of 422, 4.7 expected): they are the bell's
-  attacks.
-- 🔴 **Twelve files at 24 bits still fall behind**: 3.17 MB/s needed, 2.1
-  taken. 🟡 Two things differ from eight files: the writer still waits
-  (its mean is 4.8 times its fastest write, 9 times at eight files), and
-  the fastest write itself fell from 28 to 10 MB/s. Unmeasured guesses
-  for the second: the file layer finding clusters for twelve growing
-  files, or the card switching between twelve streams every 48 KB.
-
 ## 18. The level path (piece 5)
 
-Measured 1 Oct 2026 under the port with `tools/verify/stems_levels_probe.py`
+Measured under the port with `tools/verify/stems_levels_probe.py`
 on the `stems` image built from branch `stem-rec-p5` (logs
 `/home/yvez/xcheck/v5-p5-lv-*.log`), and read from `out/dsp/payload_A.asm`
 (`tools/build/dsp_disasm_all.py`) and the stock slice (SHA-256
-`164f3122…af0a84e`). Confidence markers as at the top of this file.
+`164f3122…af0a84e`). 
 
-### 18.1 The level pages ✅
+### 18.1 The level pages
 
 Each frame the ColdFire writes the words core 0 reads through `X:$205` into
 one of four 0x80-byte pages at `0x80005460`:
@@ -7554,7 +7191,7 @@ Two movers for the gates, both measured:
 - Poking T1's level byte `0x80000c50` to 64 makes slot 0's level word
   `0x4008`, and T1's MAIN gain falls to `0x0801d0` (`v5-p5-lv-move.log`).
 
-### 18.2 The gain path ✅ (read from the code)
+### 18.2 The gain path (read from the code)
 
 Payload A, core 0, once a frame:
 
@@ -7576,7 +7213,7 @@ Payload A, core 0, once a frame:
   gain, summed, `asl #2`, limited: MAIN = lim(floor(Σ g·x / 2^21)), with
   the MAIN gains at `Y:0x4a + 20j + k` (j the sample, k the slot).
 
-### 18.3 The ramp and its residual ✅
+### 18.3 The ramp and its residual
 
 The state per slot is five words at `X:0x3dd + 5k`: the last split, the
 cue increment, the MAIN increment, the cue gain and the MAIN gain. Each
@@ -7595,8 +7232,8 @@ stays exact only when it starts from the same state and sees every page.
 Payload A's upload writes 50 zero words at `X:0x3dd`, so the state starts
 at zero after a boot. The banks the pages land in, `X:0x4800` and
 `X:0x2800`, aren't in the upload: on a unit they hold whatever RAM held
-until the first page arrives. 🟡 Inferred: if core 0 runs frames on those
-words first, its ramp starts from them. Measured 3 Oct 2026 under the
+until the first page arrives. Inferred: if core 0 runs frames on those
+words first, its ramp starts from them. Measured under the
 port: with DSP RAM filled with garbage at boot (`--dsp-dirty 7`), the
 hook's mirror, which starts from zero and sees only the pages channel 0
 sent, still equals `X:0x3dd` in all eight slots at the run's end, and so
@@ -7618,7 +7255,7 @@ carries the earlier steps, and the model has it too. The MAIN gains at
 in `Y:0x80`-`0x9f` (most of j = 3 and 4) read `0x007ffc`, so other code
 reuses them by a run's end (`v5-p5-gain-val2.log`).
 
-### 18.4 The table ✅
+### 18.4 The table
 
 `X:0x6c00` holds T[0..257], a quarter sine: T[1] = `0x00c910`,
 T[254] = `0x7ffd87`, T[256] = `0x7fffff` (limited), T[257] = `0x7fff61`.
@@ -7633,9 +7270,9 @@ the user's stock slice at build time with `.incbin`, as AGENTS.md's
 pattern has it (no Elektron byte in the repository). The copy equals what
 core 0 received, uploaded from the same bytes.
 
-### 18.5 What the hook sees each frame ✅
+### 18.5 What the hook sees each frame
 
-Measured 1 Oct 2026 with the hook's trace seam (`stems_trace` in
+Measured with the hook's trace seam (`stems_trace` in
 `modules/stems/stems.s`) and `tools/verify/stems_levels_probe.py trace` on
 the one-THRU fixture: T1 a THRU machine on inputs A|B, T2-T8 silent.
 The trace covers 64 frames from frame 60. T1's level byte is poked to 64,
@@ -7659,14 +7296,14 @@ so each traced frame is placed among the pages core 0 received
   at the frame interrupt's end: it reads the tracks from the half
   `0x800000e4` names, and in its stream MAIN is the mix of the tracks one
   block earlier (`modules/usb-audio-out-tracks-main-cue/usbaudio.s`,
-  `MAIN_CUE_LAG_BLOCKS`; heard on Bryan T's MKII, 25 Sep 2026, and
-  measured under the port, 28 Sep 2026).
+  `MAIN_CUE_LAG_BLOCKS`; heard on Bryan T's MKII, and
+  measured under the port).
 - The half `PING` doesn't name isn't a copy of the half it named a frame
   earlier: a positive sample's long reads one less there (`033db600`, then
   `033db5ff`); negative samples read the same. Core 0 mixes the words of
   the half `PING` doesn't name.
 
-### 18.6 MAIN and CUE at hook time ✅
+### 18.6 MAIN and CUE at hook time
 
 eDMA channel 6 writes `0x80005e60` (`0x4000abf2`): MAIN at `+0x00`, CUE at
 `+0x80`, each 16 samples of an L long and an R long. The stock recorder
@@ -7678,7 +7315,7 @@ and last L samples both match in all 63 traced frames. CUE reads zero on
 the fixture, which has no cue sends; its place is the stock recorder's,
 not measured with sound.
 
-### 18.7 The inputs ✅
+### 18.7 The inputs
 
 The inputs aren't at `0x80005e60 + 0x100` or `+ 0x180`. Those longs belong
 to the stock delay's per-track records, which start at `0x80005f60`
@@ -7719,7 +7356,7 @@ samples (five frames) earlier, at 65/256 of its level (−11.9 dB):
 correlation 1.000 at that lag, under 0.42 at any other lag from −64 to
 399. The factor is AMP VOL's default (64). With T1's AMP VOL byte (page
 1, `ot_project.P1_OFF − 3`; the template reads 64 there) at 127 in every
-part, MAIN rose by 3.94, which is 256/65 (3 Oct 2026, `verify_stems`
+part, MAIN rose by 3.94, which is 256/65 ( `verify_stems`
 `clip` with and without it, LEVEL and MAIN 127).
 
 Under the port, a THRU track stops growing at an input of about 0.254 of
@@ -7738,7 +7375,7 @@ The hook's constants: `IN_RING` = `0x80005660`, `IN_IDX` = `0x46104d00`,
 `IN_AB_OFF` = `0x80` and `IN_CD_OFF` = `0x00` within a page, and
 `IN_A_IS_LEFT` = 1.
 
-### 18.8 MASTER TRACK ✅
+### 18.8 MASTER TRACK
 
 `P:0x113` branches to `P:0x131` when bit 10 of `x:(X:$207 + $7e)` is set.
 There, slots 0-6 (T1-T7) and 8-9 (the inputs) get the MAIN-chain target
@@ -7752,7 +7389,7 @@ steps. T2-T7 settle at `0x7dff90` and T8 at `0x1f7fe0`, at MAIN level 64
 (`v5-p5-master.log`). The normal model, by contrast, differs in T1-T7.
 
 The mixdown at `P:0x292`-`0x2d3` takes the master path. The USB module's
-notes record it as measured on Bryan T's MKII (29 Sep 2026; `usbaudio.s`):
+notes record it as measured on Bryan T's MKII (`usbaudio.s`):
 the cue bus sums T1-T7 of this frame directly (`P:0x29f`-`0x2b2`), MAIN
 is T8 alone (`P:0x2cb`-`0x2d0`), and T8 plays a mix it was sent two
 frames earlier (`x:(X:$209+$1f8)`, `P:0x2b7`-`0x2ca`). The ColdFire sets
@@ -7767,7 +7404,7 @@ T8's stem holds T1-T7 again, through T8's effects, so in this mode the
 stems don't sum to MAIN. `verify_stems`' `master` check confirms only that
 the take is whole and aligned.
 
-✅ **The files against each other, measured 7 Oct 2026 under the port**
+ **The files against each other, measured under the port**
 (the one-THRU master fixture; a take of T1, T8, MAIN and CUE at 16 bits,
 T1 cued; each file's left channel against the others by normalized
 cross-correlation over ±64 samples, `master-measure.py` in the perf design's appendix):
@@ -7775,26 +7412,26 @@ cross-correlation over ±64 samples, `master-measure.py` in the perf design's ap
 | File | Against `MAIN.wav` | Against `T8.wav` |
 |---|---|---|
 | `T1.wav` | 32 samples early, correlation 1.0000 | 32 samples early, 1.0000 |
-| `T8.wav` | 0, 1.0000 | |
+| `T8.wav` | 0, 1.0000 |  |
 | `CUE.wav` | 32 samples early, 0.9278 | 32 samples early, 0.9278 |
 
 So with MASTER TRACK on, `T8.wav` is `MAIN.wav`, and T1 and CUE lead them
 by two frames, as the mixdown above predicts and as upstream's USB modules
-measured (CUE 32 samples ahead of MAIN on Bryan T's MKII, 29 Sep 2026;
-TRACKS POST's T1-T7 two blocks ahead of T8). 🟡 T2-T7 are inferred to
+measured (CUE 32 samples ahead of MAIN on Bryan T's MKII,;
+TRACKS POST's T1-T7 two blocks ahead of T8). T2-T7 are inferred to
 lead alike: the mixdown sums T1-T7 the same way.
 
-Rulings (Yves, 7 Oct 2026): the lead is documented, not corrected
+Rulings (Yves): the lead is documented, not corrected
 (`modules/stems/README.md`, Limits). T8 is not a source while MASTER
 TRACK is on: its row reads `T8 MASTER` and does nothing, a take leaves T8
 out, and a take with T8 alone records `MAIN.wav`. `verify_stems`'
 `master8` and `verify_stems_units`' `master_t8` check it.
 
-### 18.9 The gates ✅ under the port
+### 18.9 The gates under the port
 
 Every gate of the spec's section 6
 (`git show 4d2d6456:docs/superpowers/specs/2026-10-01-stem-rec-sources-design.md`), run on
-branch `stem-rec-p5` at `3780665` (dirty 0), 5 Oct 2026: `make check-remix
+branch `stem-rec-p5` at `3780665` (dirty 0), `make check-remix
 REMIX=stems` (317 PASS, 0 FAIL, the only SKIP `verify_set`'s, which needs a project; `/home/yvez/xcheck/v5-p5-big2.log`), then
 `verify_stems.py stems --long` (363 PASS, 0 FAIL, 0 SKIP; `v5-p5-big2-long.log`),
 then `--fat32` (95 PASS, 0 FAIL; `v5-p5-fat32.log`). The fixtures are the
@@ -7866,7 +7503,7 @@ to D) and the eight-track THRU card (`stems_fixture.py --thru1`,
    96, `stems_bus_src` 72, the rest 154. Not recording: 1,001
    (`stems_mirror` 959). Eight tracks: 5,579 at 16 bits, 6,219 at 24
    (`v5-p5-cost8.log`). Piece 3's eight tracks cost 743. The ceiling is
-   the measured 7,415 (the spec's 4.6, amended 4 Oct 2026).
+   the measured 7,415 (the spec's 4.6, amended).
 8. **Nothing that passed breaks.** The piece 1 to 3 checks in the same
    runs: the THRU mask takes, the 20-second take equal to the ring byte
    for byte, the wrap at eight tracks, the overflows, the slow card, the
@@ -7878,7 +7515,7 @@ to D) and the eight-track THRU card (`stems_fixture.py --thru1`,
    1,052 before this piece, 12.2): the writer now formats the labels
    between chunks too.
 
-**Eight tracks against the port's card** 🟡. `stems_sweep.py --counts 8
+**Eight tracks against the port's card**. `stems_sweep.py --counts 8
 --latencies 8,16,24,32` (`v5-p5-sweep.log`): at the port's default card
 (latency 8) the fill after each of the writer's rounds rises from 23 to
 489 frames in 5 s, +96 frames a second, where piece 2's stayed flat
@@ -7925,10 +7562,10 @@ must drop; and with the card behind, the writer looped on chunks and the
 menu's time and PEAK froze for the whole take (`labelsbehind`: with the
 writer 2,446 frames behind, the seconds rise).
 
-**What the port can't see** 🟡, for flash C (`modules/stems/FLASH.md`):
+**What the port can't see** for flash C:
 
 - **The hook's time.** The port counts instructions, not cycles or memory
-  waits. Sam Banks's CF METER takes on Bryan T's MKII (4 Oct 2026) put
+  waits. Sam Banks's CF METER takes on Bryan T's MKII put
   the frame interrupt at 244 to 285 µs of the 362.8 µs frame with seven
   voices playing, 291 to 335 µs in its worst frames, about 17 µs a voice.
   At one to three cycles an instruction the hook adds about 6 to 11 µs
@@ -7943,91 +7580,14 @@ writer 2,446 frames behind, the seconds rise).
   the port's boot order isn't the unit's (18.3).
 - **MASTER TRACK's stems** are whole and aligned only (18.8).
 
-## 19. BuMa's MKI recorder, against this design (9 Oct 2026)
-
-BuMa sent notes from their own recorder on a MKI (OS 1.40C): MAIN plus an
-input pair or CUE, two to four channels of 24-bit PCM into one WAV on the
-card, written while it records. Their markers are kept: **MKI** measured on
-their unit, **code** read in their disassembly. Their tip for testing:
-a project with many sample locks on Static tracks.
-
-### 19.1 New here
-
-- **MKI card write rate** (MKI): 4.7–5.7 MB/s with the sequencer stopped,
-  1.4–2.1 MB/s under load (Static tracks streaming). Single writes took
-  1.2–2.6 s under load, with the ring peaking at 81 %, while another
-  recorder of theirs posted to the same storage queue. STEMS3's busy take
-  needed 2.91 MB/s (17.3) and its light one peaked at 13–16 %; their
-  under-load rate is below the busy take's.
-- **The stock `memset` (`0x40020984`) writes one zero long past any length
-  that is a multiple of 16** (code; read here too: the tail loop
-  `clrl %a0@+ / subql #4,%d1 / bgts` runs once with nothing left, and also
-  rounds a length that is not a multiple of 4 up). The arena clear
-  (`memset(0x40a955e0, 0x05590800)` at `0x40097006`) therefore zeroes the
-  long at `0x46025de0`, the first above the arena, and so does the
-  project-load clear of the arena's top pages, which ends at the same
-  address (`docs/contributing/PLACEMENT.md`); BuMa saw it on every LOAD
-  PROJECT. A reservation at the arena's top starts at that long and
-  needs a guard there. octabam's reserve is at the bottom
-  (`docs/contributing/PLACEMENT.md`); STEM REC's ring is inside it.
-- **Writer under FS_MUTEX** (hypothesis, never measured): a priority-1
-  writer holds `0x461079c0` while a Static read waits for it, and the UI
-  and key repeat (priorities 3–4) preempt the writer. BuMa writes in
-  pieces of at most 16 KiB and gives the mutex back between pieces. STEM
-  REC's writer is also priority 1 (`modules/stems/README.md`) and writes a
-  512-frame chunk per file per raw call (12.0): 32 KiB at 16 bits, 48 KiB
-  at 24 bits, each call holding the lock across its body (7.2).
-- **Stray jobs.** Their writer runs as job messages on the stock engine
-  queue; a late message once opened a new file and ran the finish again,
-  and the close set a 114 MB length on a 44-byte file, extending the
-  cluster chain without writing it (stale card data in the file). STEM REC
-  has its own task and no job messages; the close behaviour is 7.10's
-  "close sets the file's length to `+16`, shorter as well as longer",
-  measured under the port.
-- **Playback of PCM24** (code): preview and STATIC play a 16-bit cache
-  (the high 16 bits, no dither); the file stays 24-bit. PCM24 reaches the
-  DSP as two 16-bit halves rebuilt there.
-- Their FS write-back of the FAT during a take, for power loss, exists
-  and is unproven; power-loss behaviour is unknown. STEM REC's files are
-  0 bytes after a cut (12.3).
-
-### 19.2 Agrees with what is here
-
-- MAIN L/R at `0x80005e60`, CUE at `+0x80` (18.6).
-- The inputs: eight `0x100` pages from `0x80005660`, page from the frame
-  clock `0x46104d00 & 7`, read `(clock − 2) & 7`; `+0x80` A/B (MKI: a
-  signal on A/B alone came out on the expected channels), `+0x00` C/D
-  (18.7).
-- Per-track blocks at `0x80003190`, bank `0x800000e4`, 128 bytes a track,
-  pre-fader for LEVEL and MUTE (section 9; their reading is from an
-  earlier octabam 20-channel image; STEM REC applies the fader itself,
-  18.2). Which bank is fresh at the end of the
-  frame interrupt is their open question; STEM REC reads at `0x40004b12`,
-  not at the USB modules' `0x4000d9a0` they hook.
-- DTCN3 (`0xfc07c00c`) at 132 MHz agrees with the frame count to 1 % on
-  their MKI; `modules/cfmeter/README.md` has 132 MHz from the frame period
-  on a MKII.
-- The engine queue: priority 1, `0x4008445c`, mailbox `0x460d17ce`; FAT/ATA
-  task priority 5, `0x4001ee30` (`docs/firmware/KERNEL.md`). The task that
-  refills STATIC during playback is unknown to them too.
-- The buffered file calls `0x40016864` / `0x40016564` / `0x400166b8` /
-  `0x4001660c` / `0x4001677c`, and the logical length as word 4 (`+16`) of
-  the handle, set before the one close (7.10, 12.0).
-- A FAT32 directory record's first cluster is the long at `+0x11e`, `+0x120`
-  its low half (`docs/firmware/STORAGE.md`). Their card is FAT32 with
-  512-byte clusters; the 64 GB card in 14.2 has 32 KB clusters, so the
-  cluster size is the card's format.
-- The emulator runs storage instantly and cannot show starvation or late
-  jobs (15.4, 18.9).
-
-## 20. The perf round (7 Oct 2026)
+## 20. The perf round
 
 Branch `stems-perf`; the design is
 `git show 15703f7a:docs/superpowers/specs/2026-10-07-stem-rec-perf-design.md`. Every number
 here is from the port unless marked; the files are unchanged sample for
 sample, which the take checks of 18.9 prove again.
 
-### 20.1 The frame hook ✅ under the port
+### 20.1 The frame hook under the port
 
 - **Tracks staged a frame early.** MAIN at frame f is mixed from the half
   `PING` doesn't name as it read at f−1, with the gains of the page sent
@@ -8056,8 +7616,8 @@ Before and after on one port binary, the same fixture and method
 (the perf design's appendix: `verify_stems --only=cost`, the eight-track costs,
 a 2,000-frame take with `--coverage` for the writer, then `stems_sweep.py
 --counts 8 --latencies 8,16`; logs `/home/yvez/xcheck/perf-baseline.log`
-and `perf-after.log`, 7 Oct 2026; STEMS5 (20.5) the same way,
-`perf-after5.log`, 8 Oct 2026):
+and `perf-after.log`,; STEMS5 (20.5) the same way,
+`perf-after5.log`,):
 
 | Instructions a frame | `6f9e5bc9` | After the round (STEMS4) | STEMS5 |
 |---|---|---|---|
@@ -8080,10 +7640,10 @@ at a time at 24 bits, STEMS5 a long (20.5).
 
 The port's PIO card still falls behind at eight tracks (18.9's
 mechanism: one sector a frame while the frame interrupt runs), less
-than before. 🟡 A DMA card, as on Yves's unit, takes a command's sectors
+than before. A DMA card, as on Yves's unit, takes a command's sectors
 with no processor work between them (11.8).
 
-### 20.2 What the card takes, per write ✅ under the port
+### 20.2 What the card takes, per write under the port
 
 `ot_emu --cmd-log-end` (new) logs every ATA command of a run. On the THRU
 fixture card (FAT16, 4 sectors a cluster), a 3,028-frame take at T1 to T8,
@@ -8098,19 +7658,19 @@ start. A T1 take: 97 commands of 4 sectors, 4 FAT writes.
 - It keeps the FAT in RAM (14.1), so space reservation saves nothing: not
   done.
 - The take is one sequential stream on the card.
-- 🟡 Inferred for the unit: a card formatted with 32 KB clusters takes
+- Unconfirmed: Inferred for the unit: a card formatted with 32 KB clusters takes
   16 times fewer, 16 times larger commands than the fixture's 2 KB, for
   STEM REC's writes and the Static tracks' reads alike.
 
-### 20.3 The readout ✅ under the port
+### 20.3 The readout under the port
 
-`STATS.TXT` in each take's folder (since 27 Oct 2026 the take's log,
+`STATS.TXT` in each take's folder (since the take's log,
 `/BRAIN/STEMS/<take>.TXT`; `modules/stems/README.md`): the take,
 the ring's peak, the card writes, the writer's copy and sleeps, the hook
 and the frame routine's time on DTCN3, the card's DMA modes and its
 cluster (`0x46107990`, sectors a cluster: the raw write returns it << 9,
 12.1). `verify_stems`' `stream` checks it against the take. The
-writer's stack peaked at 1,560 of 8,192 bytes in `full` on 8 Oct 2026
+writer's stack peaked at 1,560 of 8,192 bytes in `full`
 (1,060 in an earlier run of the same check: where the frame interrupt
 lands on the writer's stack varies), under the 6,144-byte limit.
 
@@ -8158,7 +7718,7 @@ however much of its time the writer spent not running.
   about 530 bytes, so the file is written as two sectors (copies 0 and 1
   of the sector-0 buffers, free by then) and its length set to the
   text's.
-- 🟡 Inferred, for a unit: at T1 to T8, 24 bits, a frame's copy falls
+- Unconfirmed: Inferred, for a unit: at T1 to T8, 24 bits, a frame's copy falls
   from 768 stores and about 960 instructions to 192 stores and about 360.
   At Bryan T's 45 to 80 ns a store (17.4), that's 11 to 18 µs a frame
   against 42 to 68. If the writer's share of the processor stays what it
@@ -8184,11 +7744,7 @@ ISA, `byterev` in ISA_A+ (the V4e's) and `movem`'s memory operand at
 `(Ay)` or `(d16,Ay)`, the forms STEMS5 uses. USB AUDIO OUT would gain
 from the same copy: its packet build stores 320 longs a frame uncached
 inside the frame interrupt (14 to 25 µs a frame on Bryan T's unit).
-❌ Answered on a unit (Bryan T, `docs/firmware/CHIP.md`, 26 Oct 2026):
-a dirty `cpushl` costs 80 ns, a cached store that misses fills its line
-first (~80 ns), and an uncached store costs 36 ns, so cache plus push
-costs about what the uncached stores do. The idea is withdrawn (29 Oct
-2026), and USB OUT went the other way in #956: no copy, its packets
+The idea is withdrawn, and USB OUT went the other way: no copy, its packets
 written straight through the alias.
 
 ### 20.6 The writer at priority 2: kept as a fallback
@@ -8199,7 +7755,7 @@ constant; it was built (STEMS6, branch `stems-prio2`, `f53117b4`: the
 units 71 PASS, the scheduling-reached port checks 111 PASS) and not
 flashed. Yves chose zero copy first (20.7), which keeps priority 1.
 
-**Who the writer would outrank, and who it would take turns with.** 🟡
+**Who the writer would outrank, and who it would take turns with.** 
 Read from each task's entry, not measured (`KERNEL.md`'s table has the
 same):
 
@@ -8276,7 +7832,7 @@ most capacity × its frame's bytes + 44 ≤ its ring's size.
 - The stream buffers are gone: `stems_buf` holds only the fourteen
   sector-0 copies (7 KB; it was 702 KB).
 - The hook stores to uncached memory: each store waits for the RAM.
-  🟡 Inferred from flash E's copy (768 bytes in 12.6 µs at best): about
+  Unconfirmed: Inferred from flash E's copy (768 bytes in 12.6 µs at best): about
   10 to 13 µs more a frame at T1–T8, 24 bits, in the audio interrupt.
   `STATS.TXT`'s hook line measures it.
 - `STATS.TXT` loses the copy's lines and gains the card's time split by
@@ -8288,13 +7844,13 @@ most capacity × its frame's bytes + 44 ≤ its ring's size.
   133 (the copy took some 10,000), so `overflow` presses REC at frame 85,
   inside the save, and both overflow runs are shorter.
 - Nothing reaches the rings through the cache any more (the hook, the
-  writer, the card and the probe seam all use the uncached alias). 🟡 A
+  writer, the card and the probe seam all use the uncached alias). A
   line the loader dirtied there at boot could still be written back over
   a take; with a 16 KB data cache (MCF54455RM, 4-way) and minutes of
   other work before any take, it is long gone. USB AUDIO OUT's buffers rest on the same
   assumption. Not measured.
 
-**Measured** under the port, 8 Oct 2026 (logs `/home/yvez/xcheck/zc4-full.log`,
+**Measured** under the port, (logs `/home/yvez/xcheck/zc4-full.log`,
 `zc4-perf.log`, `zc5`):
 
 - `verify_stems --long --fat32`: 451 PASS; the two FAILs were `cut`'s
@@ -8309,9 +7865,7 @@ most capacity × its frame's bytes + 44 ≤ its ring's size.
   and on FAT32.
 - The hook, in instructions a frame: 3,401 at T1–T8, 16 bits (STEMS5
   3,427), 3,969 at 24 bits (3,995), 4,972 with everything at 24 bits
-  (5,012), the new `HOOK_CEILING`. ❌ (29 Oct 2026, 20.9) These counts
-  leave out `stems_zframe`, the per-file wrapper itself: the cost gate's
-  routine list didn't name it. It runs 182 instructions a frame with
+  (5,012), the new `HOOK_CEILING`. It runs 182 instructions a frame with
   everything at 24 bits (twelve files, about 15 a file), so that case is
   5,154, above STEMS5's 5,012, and "the per-file wrapper costs less than
   the shared frame's offsets did" does not hold. The whole processor
@@ -8319,29 +7873,29 @@ most capacity × its frame's bytes + 44 ≤ its ring's size.
 - The writer's copy, 206 and 284 instructions a frame in STEMS5, is gone.
   What the writer still does is a few dozen instructions a file per
   512-frame pass (counted from the code) beside the file layer's own.
-- 🟡 Not measurable here: the uncached stores' time in the hook, and the
+- Unconfirmed: Not measurable here: the uncached stores' time in the hook, and the
   writer's share of the processor. Flash G's `STATS.TXT` reads both: the
   hook line, and `card rec` against `card fastest write`.
 
 ### 20.8 For later
 
-The ideas from the perf round and from Sam's review of it (#644) that
-weren't needed for its goal are in `modules/stems/FLASH.md`, "For later —
+The ideas from the perf round and from Sam's review of it that
+weren't needed for its goal are in `modules/stems/TODO.md`, "For later —
 ideas from the perf round". The review of the hook and the writer of
-29 Oct 2026, ranked with its savings and risks, is
+ ranked with its savings and risks, is
 `modules/stems/CLEANUP.md`.
 
-### 20.9 The hook's parts, the gain probe and the mirror's slot mask (29 Oct 2026)
+### 20.9 The hook's parts, the gain probe and the mirror's slot mask
 
-**Why.** STEMS11 on Yves's MKII (28 Oct 2026, `/BRAIN/STEMS/*.TXT`, every
+**Why.** STEMS11 on Yves's MKII ( `/BRAIN/STEMS/*.TXT`, every
 take at 24 bits) measured the hook's mean at 8 µs with T1 alone, 24 µs
 with seven files and 32 µs with eleven (longest 18, 39 and 69 µs). Bryan
 T's access costs (`docs/firmware/CHIP.md`) price what the eleven-file
 hook does: about 5,000 instructions at ~2.9 ns, about 14 µs, and 264
-uncached ring stores at 36 ns, about 9.5 µs. 🟡 That leaves about 8 µs
+uncached ring stores at 36 ns, about 9.5 µs. That leaves about 8 µs
 unexplained.
 
-**The candidate: the gain queue** (🟡 inferred). `stems_mirror` writes
+**The candidate: the gain queue** (unconfirmed). `stems_mirror` writes
 each track slot's 16 gains and their bound, 68 bytes, into `stems_gq`:
 cached SDRAM, four 1 KB frames in rotation. `stems_stage` reads them a
 frame later. A copyback write miss first fills the line from memory
@@ -8363,17 +7917,17 @@ candidate. A `gains` part of about 2 µs or more means it misses. The next
 step would then be to compute each slot's ramp in registers and drop
 `stems_gq`.
 
-**On the unit** (STEMS12, Yves's MKII, 4 Nov 2026; flash L lists the
+**On the unit** (STEMS12, Yves's MKII,; flash L lists the
 takes). The parts add up to the logged hook mean in all five takes. At
 eleven files the means are mirror 6.9 µs, buses 9.0, gains 1.4 and tracks
 16.6, against a hook mean of 33 µs.
 
-- ✅ **The gain queue misses the cache, in part.** At seven tracks the
+- **The gain queue misses the cache, in part.** At seven tracks the
   probe's 35 lines cost 1.36 to 1.55 µs. Cached, with the probe's own
   instructions, they'd cost about 0.3 µs; all missing, about 3 µs. So
   roughly 40% of the lines miss. With T1 alone, the five lines cost
   0.58 µs: they all miss.
-- 🟡 **The mirror runs over its count.** It takes 6.8 to 7.3 µs at seven
+- Unconfirmed: **The mirror runs over its count.** It takes 6.8 to 7.3 µs at seven
   tracks and 4.6 µs with T1 alone. Its port counts (about 920 and 493
   instructions) at 2.9 ns predict 2.7 and 1.4 µs. The rest, 3 to 4.5 µs,
   is part line misses (its writes to the same lines, its state words) and
@@ -8388,7 +7942,7 @@ eleven files the means are mirror 6.9 µs, buses 9.0, gains 1.4 and tracks
   (four takes, other projects), and STEMS12 adds about 1 µs of
   instrumentation (the probe, four timer reads, the sums).
 
-**The mirror's slot mask** (✅ under the port). Until now, on every
+**The mirror's slot mask** (under the port). Until now, on every
 recorded frame, the mirror wrote all eight slots' gains, whatever the
 take recorded: 968 instructions a frame against 378 at idle (the 28 Oct
 coverage). The stage reads only the track files' slots, so a take of T1
@@ -8404,7 +7958,7 @@ alone, the default, wrote seven slots that nothing read.
 - With T1 alone at 24 bits, the hook runs 1,035 instructions a frame
   and the mirror 477 of them. Before the mask, the mirror ran 968 there,
   because its path didn't depend on what the take records. So the mask
-  saves 491 a frame. 🟡 On the unit that's about 1.4 µs at 2.9 ns, plus
+  saves 491 a frame. On the unit that's about 1.4 µs at 2.9 ns, plus
   35 line writes if they miss; STEMS12's log measures it against
   STEMS11's 8 µs. (STEMS12 itself carries the mask's first form, before
   the simplify round below: 1,078 and 493.)
@@ -8414,7 +7968,7 @@ alone, the default, wrote seven slots that nothing read.
 The unit test `mirror_mask` checks the written slots against the model
 and the others for their old bytes.
 
-**The cost gate** (✅ under the port). Since zero copy (20.7) the gate's
+**The cost gate** (under the port). Since zero copy (20.7) the gate's
 routine list didn't name `stems_zframe`, so `HOOK_CEILING` left out its
 182 instructions a frame with everything at 24 bits. The gate now counts
 every instruction from `stems_frame_hook` to `stems_hook_end`, the block
@@ -8430,7 +7984,7 @@ at 24 bits:
 | with the mask (STEMS12's code) | 5,316 |
 | after the simplify round (the new `HOOK_CEILING`) | 5,252 |
 
-**CUE.wav and the port's capture** (🟡 inferred from three runs). On
+**CUE.wav and the port's capture** (inferred from three runs). On
 STEMS12's code (`83ac96ec`), `verify_stems`' `sources` check failed:
 `CUE.wav` matched the port's audio-out capture only with the capture's
 left cue word one sample off its right one. `CUE.wav`'s own left and right
@@ -8446,7 +8000,7 @@ taken inline with one macro (`ST_ACC`) instead of a loop, two dead mark
 stores go, the probe and the stage share `GQ_READ`, and the mask lives
 in a register instead of two state words.
 
-### 20.10 Flat gain slots: one gain while a fader rests (4 Nov 2026)
+### 20.10 Flat gain slots: one gain while a fader rests
 
 **Why.** STEMS12 (20.9) put the gain path, `stems_mirror` and the gain
 probe together, at about 8.3 µs of the 33 µs hook at seven tracks, and
@@ -8490,7 +8044,7 @@ arithmetic on the same gain, and the units compare every form with the
 model. A frame where a fader moves: that slot costs what it did, plus the
 flag's test and store.
 
-**Under the port** (✅, 4 Nov 2026; the port's faders rest, so every
+**Under the port** (the port's faders rest, so every
 written slot is flat after the first frames):
 
 | the hook, a frame | before (20.9) | flat slots |
@@ -8499,7 +8053,7 @@ written slot is flat after the first frames):
 | its mirror, eight slots written | 960 | 400 |
 | T1 alone at 24 bits | 1,035 | 937 |
 | its mirror, one slot written | 477 | 407 |
-| the recorder idle, the sequencer playing (no slot written) | | 396 |
+| the recorder idle, the sequencer playing (no slot written) |  | 396 |
 
 - With everything at 24 bits the routines read `stems_track24` 2,632,
   `stems_bus24` 910, `stems_mirror` 400, `stems_zframe` 182 and
@@ -8515,7 +8069,7 @@ written slot is flat after the first frames):
   not 64 (1,015 frames on the card, not 1,023). The check now asks for a
   second pass, which is what it is there to show.
 
-🟡 **On the unit,** inferred until STEMS13 measures it: at seven tracks
+Unconfirmed: **On the unit,** inferred until STEMS13 measures it: at seven tracks
 the instructions alone save about 2 µs at 2.9 ns, and the gain lines
 touched fall from 70 (35 written, 35 read) to 14. STEMS12's probe priced
 its 35 lines at 1.4 µs, so the `gains` part should fall to about 0.3 µs
@@ -8525,7 +8079,7 @@ excess isn't the gain queue; if the `mirror` part falls by only its
 instructions, the rest is elsewhere (instruction-cache fills are the
 first candidate).
 
-**On the unit** (✅ STEMS13, flash M, 5 Nov 2026; one take each). The
+**On the unit** (STEMS13, flash M,; one take each). The
 hook parts, in ns on average, against STEMS12's takes of 4 Nov:
 
 | take | `mirror` | `buses` | `gains` | `tracks` | hook |
@@ -8540,21 +8094,21 @@ hook parts, in ns on average, against STEMS12's takes of 4 Nov:
   they were: neither changed.
 - `mirror` fell 2.8 µs, a little more than the 1.5 to 2.5 estimated. Its
   instructions account for about 1.4 µs (about 490 fewer at seven slots,
-  at 2.9 ns). 🟡 The rest fits the 28 gain lines a frame it no longer
+  at 2.9 ns). The rest fits the 28 gain lines a frame it no longer
   writes.
-- 🟡 `mirror` now costs 4.1 to 4.2 µs with one track or seven, against
+- Unconfirmed: `mirror` now costs 4.1 to 4.2 µs with one track or seven, against
   about 1.2 µs of instructions (about 400). So about 3 µs of it doesn't
   depend on the tracks, and it isn't the gain queue. Instruction-cache
   fills at the hook's start remain the first candidate; the stock state
   the mirror reads is the second.
-- 🟡 `gains` fell to 0.78 µs, not the 0.3 estimated. With one line (T1)
+- Unconfirmed: `gains` fell to 0.78 µs, not the 0.3 estimated. With one line (T1)
   it reads 0.37 µs, the probe's own cost; the six more lines at seven
   tracks add 0.41 µs, about 68 ns each, close to a miss each (CHIP.md:
   about 80 ns). The estimate assumed STEMS12's share of hits. What's
   left of the queue costs under 1 µs at seven tracks, so replacing it
   (the descriptor of 20.9) is worth less than this round was.
 
-### 20.11 Whole clusters while recording (4 Nov 2026)
+### 20.11 Whole clusters while recording
 
 **Why.** STEMS12's takes (flash L) put the card's time per KB written at
 54 to 82 µs with one file and 142 to 423 µs with two to eleven, on one
@@ -8580,12 +8134,12 @@ and 48 for a mono one. The file layer sends a command a cluster (20.2),
 so a write that ends inside a cluster sends the rest of it on the file's
 next pass, after the other files' writes: the card goes back to a cluster
 it left half written. With one file the next write continues where the
-last ended, and the card sees one stream. 🟡 Inferred: flash cards are
+last ended, and the card sees one stream. Inferred: flash cards are
 slow at going back, and that is the cost that grows with the files. 20.2
 measured one stream under the port on a card of 2 KB clusters, where a
 chunk is whole clusters and the pattern can't show.
 
-**The card's layout** (the card in disk mode on Windows, 4 Nov 2026: the
+**The card's layout** (the card in disk mode on Windows, the
 partition table from Windows' partition log, and the volume's first
 sector read with an elevated PowerShell). One FAT32 partition
 from sector 63, 67 reserved sectors, two FATs of 15,263 sectors: the
@@ -8612,7 +8166,7 @@ and 48 sectors), logs every card command (`--cmd-log-end`) and counts,
 in the WAVs' cluster chains, the writes that leave a cluster half written
 and the writes that come back to one.
 
-**Under the port** (✅, 4 Nov 2026). `clusters` records T1 and T2 in
+**Under the port**. `clusters` records T1 and T2 in
 stereo and A and B in mono, at 24 bits (chunks of 96 and 48 sectors
 against a cluster's 64), for 8,000 frames:
 
@@ -8635,7 +8189,7 @@ against a cluster's 64), for 8,000 frames:
   so their takes stream as before; a pass that writes less than a chunk
   now ends on a cluster too (`cut` streams 1,503 frames in its run where
   it streamed 1,015).
-- The other gates on this code (4 to 5 Nov 2026): `verify_stems` 340
+- The other gates on this code (4 to): `verify_stems` 340
   PASS and 1 FAIL, `verify_stems_units` 126 PASS, `verify_stems_menu` 93
   PASS, `verify_docs` 0 problems. The failure is `sources`' CUE check,
   20.9's port timing again: each of `CUE.wav`'s channels equals the
@@ -8650,16 +8204,16 @@ half-written clusters wasn't the cost. Then the per-command time is the
 next candidate (a 24-bit stereo file now sends one or two commands of 64
 sectors a pass instead of two of 64 and 32).
 
-**On the unit** (✅ STEMS13, flash M, 5 Nov 2026; one take each). The
+**On the unit** (STEMS13, flash M,; one take each). The
 Static machines played the samples of flash L's fifth take
 (`261104-2034`), the slower of its two sets (Yves):
 
 | files | STEMS13, µs a KB | busy, share of the take | a cluster's command | STEMS12, same samples | STEMS12, lighter samples |
 |---|---|---|---|---|---|
-| 1 (T1) | 92 | 2% | 3.0 ms | | 54 to 82 |
-| 10: T1 to T7, MAIN, CUE, AB | | | | 387 | 252 |
-| 11: as 10, and CD | 212 | 60% | 6.8 ms | | 423, `RING FULL` (busy 89%) |
-| 13: as 11, the inputs as four mono files | 261 | 73% | 8.4 ms | | |
+| 1 (T1) | 92 | 2% | 3.0 ms |  | 54 to 82 |
+| 10: T1 to T7, MAIN, CUE, AB |  |  |  | 387 | 252 |
+| 11: as 10, and CD | 212 | 60% | 6.8 ms |  | 423, `RING FULL` (busy 89%) |
+| 13: as 11, the inputs as four mono files | 261 | 73% | 8.4 ms |  |  |
 
 A cluster's command is the card's time while recording over the KB
 written in 32 KB clusters, one command each. Eleven and thirteen files
@@ -8668,7 +8222,7 @@ carry the same 1,056 bytes a frame.
 - On the same samples, eleven files wrote at 212 µs a KB where STEMS12's
   ten wrote at 387: 45% less, with one file more. That is also below the
   230 to 420 that would have falsified the change. But it is far above
-  one file's 92 on these samples. 🟡 So going back to half-written
+  one file's 92 on these samples. So going back to half-written
   clusters was much of the card's cost, not all of it.
 - The samples raise even one file's time: 92 µs a KB here against 54 to
   82 on the lighter set.
@@ -8676,17 +8230,17 @@ carry the same 1,056 bytes a frame.
   and a command takes more than twice as long with eleven files as with
   one.
 
-**The order of the writes** (✅ under the port, the `clusters` run's
+**The order of the writes** (under the port, the `clusters` run's
 command log). With whole clusters, each of the take's 66 data writes
 continues the one before on the card: the file layer gives each file the
 next free cluster as it writes, so the four files' clusters lie in the
 order they were written and the card sees one stream going forward.
 Before the change 16 of 108 did. No FAT or directory write comes between
-them while the take records. 🟡 The port's card is FAT16; that the
+them while the take records. The port's card is FAT16; that the
 firmware's FAT32 path allocates the same way isn't checked.
 
 So on the port's evidence, a cost that still grows with the files isn't
-the order of the writes. 🟡 The first candidate is the stock's sample
+the order of the writes. The first candidate is the stock's sample
 reads from the same card. BuMa measured a MKI's card writes at 4.7 to
 5.7 MB/s with the sequencer stopped and 1.4 to 2.1 MB/s with Static
 tracks streaming (19.1), and on STEMS12 other samples on the Static
