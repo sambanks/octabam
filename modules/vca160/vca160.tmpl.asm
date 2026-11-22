@@ -173,7 +173,7 @@ dbk_off:
         move    a,x0
         move    #>@ALPHA@,y1
         mpy     x0,y1,b
-        move    x:(r7+$07),a
+        move    y0,a                    ; S, still in y0 (a0 = 0, as the load)
         move    x:(r7+$08),a0
         add     b,a                     ; S'
         move    #>$000001,x0            ; the floor: one LSB of the high word
