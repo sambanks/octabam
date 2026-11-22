@@ -63,21 +63,42 @@ else branchless. The fixed-point model is `fet76_ref.fixed()`; the float
 model `fet76_ref.FET76` (the same file) is what the numbers above were
 measured on.
 
-Eight FET76 on one core (FX1 and FX2 on four tracks) are 2,488 cycles a
+Eight FET76 on one core (FX1 and FX2 on four tracks) are 2,480 cycles a
 sample by the same static count, under the 3,120 the build budgets for
 modules (`cycle_count.py`); no guard is needed for the instance count.
 
-| what | FET76 | how it was measured |
-|---|---|---|
-| code | 406 words | `dsp_asm` at P:$800 (`tools/build/dsp_forms.py` `assemble_words`) |
-| P table | 143 words | `len(MODULE.dsp.ptable)` |
-| sample loop | 311 cycles a sample | `REMIX=test/fet76 python3 tools/build/cycle_count.py` (a static floor: the word span of the loop, the two calls priced at their 40 words) |
+| what | before the audit | now | how it was measured |
+|---|---|---|---|
+| code | 406 words | 401 words | `dsp_asm` at P:$800 (`tools/build/dsp_forms.py` `assemble_words`) |
+| P table | 143 words | 143 words | `len(MODULE.dsp.ptable)` |
+| sample loop | 311 cycles a sample | 310 cycles a sample | `REMIX=test/fet76 python3 tools/build/cycle_count.py` (a static floor: the word span of the loop, the two calls priced at their 40 words) |
 
 For comparison, stock COMPRESSOR: 103.1 cycles a sample in the cycle model
 (`docs/contributing/CYCLE_SCAN.md`, `interlock_scan.py`, a different
 instrument from `cycle_count.py`) and 2.18 % of a core on a unit
 (`docs/contributing/COSTS.md`). FET76's figure in the cycle model is not yet
 taken: `interlock_scan.py` needs a built tree.
+
+## DSP audit
+
+Checked against `docs/contributing/DSP_AUDIT.md`, checklist version 4
+(T01 to T34). Every change taken is bit-identical: the gate's own cases
+(`verify_fet76.run_gates`, against `fet76_ref.fixed()`) pass before and
+after each commit.
+
+| row | site | status |
+|---|---|---|
+| T31 | four `move #>$XX0000,D` literals (init, two per block, one in the sample loop) | taken: the one-word `move #$XX,D`; −4 words, −1 cycle a sample |
+| T31 | the generated `@NAME@` constants (`@EMAX8@` in the loop is `$600000`) | not taken: the template's constants stay the generator's (as DISTORX's DX1) |
+| T34 | `add #>$1,b` in `f76_exp` (twice a block) | taken: `add #$1,b`; −1 word |
+| T11 | three reads of uA8 while it is in `a` or `x0` | taken: register moves; same words, the displaced access's cycle (cycle model, not measured here) |
+| T11 | aL and aR stored and read back for the peak | not taken: needs a register the loop does not have free |
+| T14 | state displaced from r7 in the loop | not taken: walking it is a re-laid state block, a design change |
+| T16, T09 | parallel moves | none: the loop's moves are displaced `x:(r7+d)`, which is never a parallel move |
+| T25, T26, T33 | stalls | not taken: they need the cycle model (`interlock_scan.py`, a built tree) to price; the per-block table reads keep their `nop`s (two moves between an address write and its use) |
+| T28, T30 | P reads | none in the sample loop: the table is read once a block |
+| T29 | the two `do #$18` divisions in the loop | not taken: unrolling is 24 words a division for about 5 cycles, a trade |
+| T01, T05, T12, T19, T21 | frame advance, hoisting, `lua`, displacement range | already in the cheap form: post-step stores, `n0` set above the loop, no `move r7,rN`, every displacement under `$40` |
 
 ## Gates
 
@@ -91,8 +112,10 @@ applied in two normf steps, at most 7 bits each, inside the accumulator's guard 
 
 ## On the unit
 
-No unit record is written for this form. The author reports (22 Nov 2026)
-that he uses FET76 on his MKI in his own images, on the master track as the
-last stage of the chain; which images, since when and what was checked are
-not yet written down here, so the manifest declares no `Level.UNIT` evidence.
-Bit-exact under `dsp_host` (`verify_fet76`).
+The author's MKI, by his report of 22 Nov 2026: FET76 has been in his own
+images (aCiDtRacK) practically since it was written, mainly on the master
+track and sometimes on single tracks, with no clicks, noise or hangs heard.
+By the fork's history the first of those images is ACIDV82 (2 Nov 2026).
+By ear, not a measurement. The DSP source that ran is the one this module
+was added with; the audit's three commits after it are bit-identical in the
+emulator and not flashed. `test/fet76` itself has not run on a unit.

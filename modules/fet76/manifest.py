@@ -114,8 +114,12 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="MaMarko", author_url="https://github.com/braikomarko-hub",
     evidence=(Evidence(Level.EMULATOR, ref="verify_fet76",
-        note="code by Claude (Anthropic); bit-exact against its fixed-point model (verify_fet76, dsp_host); "
-             "no unit record written yet"),),
+        note="code by Claude (Anthropic); bit-exact against its fixed-point model (verify_fet76, dsp_host)"),
+              Evidence(Level.UNIT, unit="MKI", who="MaMarko", date="2026-11-22",
+        note="in the owner's aCiDtRacK images since ACIDV82 (2 Nov 2026, the first image with FET76 in the "
+             "fork's history), on his MKI: mainly on the master track, sometimes on single tracks; no clicks, "
+             "noise or hangs heard (the owner's report, 22 Nov 2026). By ear, not a measurement. The DSP source "
+             "that ran is this PR's first commit's; the T31, T34 and T11 commits after it are not flashed"),),
     doc="Modelled on the UREI 1176LN FET limiter: feedback FET gain cell, 4/8/12/20:1 and ALL BUTTONS, "
         "20-800 us attack, program-dependent release, LN or BLUE.",
     menu=MenuEntry(
