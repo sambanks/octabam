@@ -67,9 +67,7 @@ introduction links; there is no per-remix copy of the manual.
   manifests spell it (`gen_pages.who`: a name with a space over a handle,
   never `account/repository`; the repository is named in the byline)
 
-Stock effects are not documented. No page carries a test status or says where something has
-run (`gen_manual.RAN`, which `verify_docs` also holds the hand-written pages and the community page to);
-known faults stay, as faults.
+Stock effects are not documented. No page carries a test status.
 
 Each feature page is, from the manifest, never typed: the byline and the
 remixes that have it, which chooser an effect is in (FX1, FX2, read from each

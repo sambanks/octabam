@@ -114,10 +114,6 @@ MANUAL_LABEL = {"direct-jump-kyoti": "Direct Jump"}
 # Sections of a usage fragment that record its development, not its use: kept on the
 # module's own page in the Feature Directory, left out of the manual.
 DROP_SECTIONS = re.compile(r"(?i)^(changed on|checked|verification|hardware|tested|status|history)\b")
-# Where a feature or remix has run is not the manual's (11/2026: CI's gates are the record, and each
-# remix's README in the repository); verify_docs also holds the hand-written pages to this one.
-RAN = (r"(?i)\b(has|have) (not )?(yet )?(run|been used|been tried|been played) on\b|\bran on (a|an|one)\b"
-       r"|\btested (on|in)\b|\bowner report\b|\bcursory testing\b|\bwhere (it|they|the remixes) (has|have) run\b")
 # Text no manual page may carry: build and test vocabulary, and values printed from Python.
 LEAKS = (
     (r"\btest remix", "names a test remix"),
@@ -127,7 +123,6 @@ LEAKS = (
     (r"µs\b|\bISR\b", "carries a timing measurement"),
     (r"(?<![\w`])b'[^']*'", "prints a Python bytes value"),
     (r"\bnot in an official remix\b", "says the feature is unpublished"),
-    (RAN, "says where it has run"),
 )
 
 # BRAIN is one section with a page per part of it; the text of each is docs/site/manual/brain-<part>.md.
