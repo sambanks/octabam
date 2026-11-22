@@ -7,8 +7,13 @@ Instruments Clouds; the gate is new. Dry stays dry.
 
 An effect on a track: select the track, press FX2, and pick VERBERATION from
 the chooser. It is in [Octabam Verbs](../../remix-octabam-verbs.md), in place of the three stock
-reverbs; FX2 also lists three rows that start it in a mode, VERB PLATE, VERB ROOM and VERB HALL
-(below).
+reverbs.
+
+It is one reverb with four voicings: ROOM, PLATE, HALL and GATED, picked with MODE on
+page 2. The chooser also shows VERB PLATE, VERB ROOM and VERB HALL, on the rows the stock
+PLATE, SPRING and DARK REV had. They are not other reverbs: each is VERBERATION with MODE
+already set. They are there so a project saved with a stock reverb opens on a matching
+voicing (below).
 
 ![FX2 SETUP with Verberation selected: MODE (here PLAT), LCUT, MOD, RATE, SIZE and PRE on its page 2.](../../img/verberation/setup.png)
 

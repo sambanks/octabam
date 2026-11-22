@@ -8,12 +8,12 @@ this remix does not.
 
 ## The reverbs
 
-| effect | FX1 | FX2 | id | |
+| row | FX1 | FX2 | id | |
 |---|---|---|---|---|
 | VERBERATION | | ✓ | 0x1a | rooms to halls with a desk-style gate; MODE (ROOM, PLATE, HALL, GATED), LCUT, MOD, RATE, SIZE, PRE on page 2 |
-| VERB PLATE | | ✓ | 0x14 (PLATE REV's) | VERBERATION starting in PLATE mode |
-| VERB ROOM | | ✓ | 0x15 (SPRING REV's) | VERBERATION starting in ROOM mode |
-| VERB HALL | | ✓ | 0x16 (DARK REV's) | VERBERATION starting in HALL mode |
+| VERB PLATE | | ✓ | 0x14 (PLATE REV's) | VERBERATION with MODE set to PLATE: a second row, not a second reverb |
+| VERB ROOM | | ✓ | 0x15 (SPRING REV's) | VERBERATION with MODE set to ROOM |
+| VERB HALL | | ✓ | 0x16 (DARK REV's) | VERBERATION with MODE set to HALL |
 
 - **The stock reverbs are given up.** PLATE REV, SPRING REV and DARK REV are off both choosers; their DSP code is
   harvested (VERBERATION's 644 words go over PLATE's and part of SPRING's) and their ids are the three rows,

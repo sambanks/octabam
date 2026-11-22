@@ -389,10 +389,15 @@ def controls(m, level: int = 2) -> list[str]:
     return lines
 
 
+def _differs(m, host) -> list[str]:
+    """The knobs a row of the host's chooser starts at other values than the host's."""
+    return [f"{p.name.decode()} {_default(p)}" for p, h in zip(m.params, host.params)
+            if p.active and h.active and p.name == h.name and p.default != h.default]
+
+
 def starting_values(m, host) -> list[str]:
     """A row of the host's chooser that starts the host's code at other values: the knobs that differ."""
-    diff = [f"{p.name.decode()} {_default(p)}" for p, h in zip(m.params, host.params)
-            if p.active and h.active and p.name == h.name and p.default != h.default]
+    diff = _differs(m, host)
     if not diff:
         return [f"Starts at the same values as {label(host)}.", ""]
     return [f"Starts at {label(host)}'s values except " + ", ".join(diff) + ".", ""]
@@ -516,6 +521,26 @@ def _section(m, book: Book, here: str, host=None) -> list[str]:
     return lines
 
 
+def _row_of(m, host) -> bool:
+    """A chooser row that runs the host's code under another name and starting values."""
+    return m.menu is not None and m.menu.dsp_of == host.key and _drawn(m) and _drawn(host)
+
+
+def row_table(host, rows, book: Book) -> list[str]:
+    """The host's other chooser rows, one table: they are the host, not effects of their own,
+    so they get a line each rather than a section each."""
+    lines = [f"## {label(host)} on other rows", "",
+             f"These rows of the chooser are {label(host)} under another name: the same code and knobs, "
+             "with other starting values. Turning MODE, or any knob, on one of them works as it does on "
+             f"{label(host)} itself.", "",
+             "| Row | Chooser | Starting values |", "|---|---|---|"]
+    for x in rows:
+        diff = _differs(x, host)
+        start = (f"{label(host)}'s, except " + ", ".join(diff)) if diff else f"{label(host)}'s, all of them"
+        lines.append(f"| {label(x)} | {where(x, book) or ''} | {start} |")
+    return lines + [""]
+
+
 def module_page(m, book: Book) -> str:
     here = book.page_of(m)
     lines = [f"# {label(m)}", ""] + _head(m, book)
@@ -528,8 +553,13 @@ def module_page(m, book: Book) -> str:
     if _drawn(m):
         lines += controls(m)
     lines += settings(m, book)
-    for x in book.folded(m):
-        lines += _section(x, book, here, host=m)
+    folded = book.folded(m)
+    rows = [x for x in folded if _row_of(x, m)]
+    if rows:
+        lines += row_table(m, rows, book)
+    for x in folded:
+        if x not in rows:
+            lines += _section(x, book, here, host=m)
     rest = [rec for k, rec in recs.items() if k != key]
     if rest:
         lines += ["## Screens", ""]

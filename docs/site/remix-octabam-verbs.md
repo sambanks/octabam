@@ -12,16 +12,14 @@ is different here.
 
 ## The reverbs
 
-PLATE REV, SPRING REV and DARK REV are off both effect menus. FX2 lists
-[VERBERATION](reference/manual/effects/verberation.md), which goes from rooms to halls and has
-a desk-style gate, and three rows that start it in a mode:
+PLATE REV, SPRING REV and DARK REV are off both effect menus. In their place FX2 has
+[VERBERATION](reference/manual/effects/verberation.md): one reverb, rooms to halls, with a
+desk-style gate. MODE on its page 2 picks the voicing: ROOM, PLATE, HALL or GATED. LCUT,
+MOD, RATE, SIZE and PRE are beside it.
 
-| FX2 row | What it is |
-|---|---|
-| [VERBERATION](reference/manual/effects/verberation.md) | rooms to halls with a desk-style gate; MODE (ROOM, PLATE, HALL, GATED), LCUT, MOD, RATE, SIZE, PRE on page 2 |
-| [VERB PLATE](reference/manual/effects/verberation.md#verb-plate) | VERBERATION starting in PLATE mode, on PLATE REV's row |
-| [VERB ROOM](reference/manual/effects/verberation.md#verb-room) | VERBERATION starting in ROOM mode, on SPRING REV's row |
-| [VERB HALL](reference/manual/effects/verberation.md#verb-hall) | VERBERATION starting in HALL mode, on DARK REV's row |
+The chooser also shows VERB PLATE, VERB ROOM and VERB HALL, on the old reverbs' rows. They
+are not three more reverbs: each is VERBERATION with MODE already set (PLATE, ROOM and HALL),
+[listed on its page](reference/manual/effects/verberation.md#verberation-on-other-rows).
 
 A Part saved with a stock reverb opens on that reverb's row, with the row's defaults on its
 FX2 pages. Octabam's choosers refuse a stock reverb beside a loaded effect; here there is no
