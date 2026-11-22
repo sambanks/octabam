@@ -46,7 +46,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 
 import gen_pages  # noqa: E402
-from gen_pages import OUT, _author, _label, title_case  # noqa: E402
+from gen_pages import OUT, ROOT, _author, _label, title_case  # noqa: E402
 from remix.schema import Category, Formatter, Option, Binary, Number, Pin, Trigger, Blob  # noqa: E402
 
 USAGE = OUT.parent / pathlib.Path("usage")
@@ -605,7 +605,41 @@ def credits_page(book: Book) -> str:
         link = f"[{name}]({url})" if url else name
         items = sorted({(label(m), book.page_of(m)) for m in ms}, key=lambda t: t[0].lower())
         body.append(f"- {link}: " + ", ".join(f"[{t}]({_rel('credits', p)})" for t, p in items))
+    built = built_on(book)
+    if built:
+        body += ["", "## Built on the work of", "",
+                 "Designs, measurements and code from elsewhere that these features are written from "
+                 "(`THIRD_PARTY.md` in the repository has each source and its licence).", ""] + built
     return "\n".join(["# Credits", ""] + body) + "\n"
+
+
+def built_on(book: Book) -> list[str]:
+    """THIRD_PARTY.md's tables, by copyright holder: the features of the manual each one's work is in.
+    A row names its modules as `modules/<name>`; a row whose modules are none of the manual's is left out,
+    and so is a row with no holder stated."""
+    text = (ROOT / "THIRD_PARTY.md").read_text()
+    by_name = {m.name: m for m in book.documented()}
+    holders: dict[str, set] = {}
+    cols = None                                  # (holder, used in) of the table being read
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            cols = None
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if cols is None:                         # a table's header: only one with a copyright column counts
+            cols = (cells.index("copyright"), cells.index("used in")) \
+                if "copyright" in cells and "used in" in cells else ()
+            continue
+        if not cols or set(cells[0]) <= set("-: "):
+            continue
+        holder = re.sub(r"\s*\(.*?\)|,\s*\d{4}.*$|^©\s*", "", cells[cols[0]]).strip()
+        if not holder or holder in ("—", "-") or "not stated" in holder:
+            continue
+        ms = [by_name[n] for n in re.findall(r"`modules/([\w-]+)", cells[cols[1]]) if n in by_name]
+        if ms:
+            holders.setdefault(holder, set()).update((label(m), book.page_of(m)) for m in ms)
+    return [f"- {h}: " + ", ".join(f"[{t}]({_rel('credits', p)})" for t, p in sorted(items, key=lambda t: t[0].lower()))
+            for h, items in sorted(holders.items(), key=lambda kv: kv[0].lower())]
 
 
 def _feature_rows(book: Book, mark, pages_only: bool = False) -> list[str]:
