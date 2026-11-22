@@ -31,6 +31,7 @@ time (`.incbin`, `make os`).
 | BOSS SD-1 Super OverDrive service notes, ET5212-510A (3 Mar 1981) | part values only, no text | © Roland (BOSS) | `modules/distorx` SD-1 (the circuit modelled from its part values) |
 | ElectroSmash, *Pro Co Rat Analysis*, https://www.electrosmash.com/proco-rat | part values, schematic, the clipping amplifier's response curve, the LM308's slew rate; laws only, no text | © ElectroSmash | `modules/distorx` RAT, TURB |
 | LTspice `LedRed` diode model, as quoted on the All About Circuits forum | two numbers (IS, N) | © Analog Devices (LTspice library); values only | `modules/distorx` TURB |
+| dbx 160/161 compressor/limiter manual and schematic (dbx Inc., c. 1976); dbx 160A cut sheet (Harman); D. E. Blackmer, US 3,681,618 (the RMS detector, printed on the schematic) | specifications, part values and laws only, no text | © Harman (dbx); the patent is public | `modules/vca160` (modelled on the 160; not affiliated with or endorsed by dbx or Harman) |
 
 Retired transcriptions (in history only): jpcima `string-machine` (BSL-1.0,
 the Solina ensemble, removed 16 Sep 2026).

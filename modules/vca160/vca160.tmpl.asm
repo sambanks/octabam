@@ -1,0 +1,372 @@
+; ---------------------------------------------------------------------------
+; VCA160 -- the dbx 160 compressor/limiter (1976), a per-track insert, and
+; the side-chain bus tap.
+;
+; GENERATED from vca160.tmpl.asm by generate_asm.py (constants from
+; manifest.py). Edit the template, then: python3 modules/vca160/generate_asm.py
+;
+; Insert contract: frames in place at x:(r0)/x:(r0+n0), knobs from r6,
+; state in this instance's r7 block. In the shared window it reads one LEVEL
+; word and, with KEY on, writes its heartbeat to that track's BEAT word.
+;
+; ---- the 160 (schematic + manual; modules/vca160/README.md) -----------------
+;   ms   = (L^2 + R^2)/2, or KEY's block mean square from the bus
+;   S   += alpha (ms - S)            the RMS 208: tau = 34.7 ms (125 dB/s)
+;   L    = log2 S / 32               clb + normf + LOG (transient's form)
+;   over = L - T                     THRESHOLD, in mean-square bits / 32
+;   oe   = max(over, 0)              HARD; OVER: (over + W/2)^2/(2W) inside the knee
+;   g    = -oe k/2 + OUT             COMPRESSION k (ratio 1/(1 - k)); amplitude
+;                                    bits / 32, clamped to -16 .. +4 bits
+;   wet  = x 2^g                     the VCA: EXP mantissa, normf by the exponent
+;   out  = dry + MIX (wet - dry)
+; Below threshold at OUT 0 dB, g = 0 exactly and the wet path is bit-exact.
+;
+; ---- r7 slots ---------------------------------------------------------------
+; per block: $00 T/32  $01 k/2  $02 OUT bits/32  $03 OverEasy flag  $04 KEY flag
+;   $05 KEY's mean square (the bus word)  $06 MIX
+; persistent, zeroed at init: $07 S high  $08 S low (48 bits)  $0c KEY heartbeat
+; per sample scratch: $09 the shift count  $0a wet L  $0b wet R
+;
+; Every mpy and mac is x0,y1 / -x0,y1 / x0,x0 (the signed encodings). Every
+; Tcc reads the tst or cmp directly above it with only moves between. No
+; branch in the sample loop.
+; ---------------------------------------------------------------------------
+
+init:
+        clr     a
+        move    a,x:(r7+$07)            ; the detector, empty
+        move    a,x:(r7+$08)
+        move    a,x:(r7+$0c)            ; the KEY heartbeat
+        rts
+
+proc:
+        move    #>$ffffff,m5
+        move    #>$fab1e0,r4            ; the P table: LOG, EXP
+; ===========================================================================
+; PER BLOCK
+; ===========================================================================
+; ---- THRS: T/32 = THLO + x THSPAN (x = knob * 128/127, below 1.0) ------------
+        move    x:(r6+$0),a
+        and     #>$7fffff,a
+        move    a,x0
+        move    #>@STRETCH@,y1
+        mac     x0,y1,a
+        move    a,x0                    ; x
+        move    #>@THSPAN@,y1
+        move    #>@THLO@,a
+        mac     x0,y1,a
+        move    a,x:(r7+$00)            ; T/32
+; ---- RATI: k/2, 0 .. 0.496 over 0..100, then 0.5 .. 1.0 over 101..127 -------
+        move    x:(r6+$1),a
+        and     #>$7fffff,a
+        move    a,x0                    ; w = knob/128
+        move    #>@K1@,y1
+        mpy     x0,y1,b                 ; the 160: k/2 = w K1
+        move    b,y0
+        move    #>@WRAT@,y1
+        sub     y1,a                    ; w - 100/128
+        move    a,x0
+        move    #>@K2Q@,y1
+        mpy     x0,y1,a                 ; (w - 100/128) K2/4
+        asl     #$2,a,a
+        add     #>$400000,a             ; the 160A: 1/2 + (w - 100/128) K2
+        move    a,x1
+        move    x:(r6+$1),a
+        and     #>$7fffff,a
+        move    #>@WRAT@,y1
+        cmp     y1,a                    ; w - 100/128
+        move    x1,a                    ; (moves keep the flags)
+        tle     y0,a                    ; w <= 100/128: the 160's k
+        move    a,x:(r7+$01)            ; k/2 (limited below 1.0)
+; ---- OUT: amplitude bits/32 = (w - 1/2) OUTK ---------------------------------
+        move    x:(r6+$2),a
+        and     #>$7fffff,a
+        sub     #>$400000,a
+        move    a,x0
+        move    #>@OUTK@,y1
+        mpy     x0,y1,a
+        move    a,x:(r7+$02)
+; ---- KNEE (page 2, slot 6: x:(r6+$c) bits 16-23): 1 = OverEasy ---------------
+        move    x:(r6+$c),a
+        and     #>$7f0000,a
+        move    a1,x:(r7+$03)           ; 0 = HARD, anything else = OVER
+; ---- MIX: value/128, 127 pinned to full scale ----------------------------------
+        move    x:(r6+$4),a
+        and     #>$7f0000,a
+        move    #>$7f0000,x0
+        cmp     x0,a
+        move    #>$7fffff,x0
+        teq     x0,a
+        move    a,x:(r7+$06)
+; ---- KEY: OFF, or T1..T8 -> that track's record on the bus ------------------------
+; t = KEY - 1. Each track has a record of four words, BEAT COUNT LAST LEVEL,
+; at $3fff0 + 4t (T1..T4, payload B's half) or $37fe0 + 4t (T5..T8, payload
+; A's half). A KEY of 0 or above 8 is OFF (a Part saved with another effect
+; here can hold any byte).
+        move    x:(r6+$3),a
+        and     #>$7f0000,a
+        asr     #$10,a,a                ; KEY 0..127
+        move    a1,x1
+        clr     b                       ; b = 0 BEFORE the compares
+        move    x1,a
+        sub     #>$1,a                  ; KEY - 1
+        move    #>$000001,x0
+        tge     x0,b                    ; KEY >= 1: on
+        move    x1,a
+        sub     #>$9,a                  ; KEY - 9
+        move    #0,x0
+        tge     x0,b                    ; KEY >= 9: off
+        move    b1,x:(r7+$04)
+        move    x1,a
+        sub     #>$1,a
+        and     #>$000007,a             ; t, 0..7 (when off, any record)
+        move    a1,x1                   ; a1 straight out: the and left a2 stale
+        move    x1,a
+        move    #>$000003,x0
+        cmp     x0,a                    ; t - 3
+        move    #>$03fff0,b
+        move    #>$037fe0,y1
+        tgt     y1,b                    ; t >= 4: payload A's half
+        asl     #2,a,a                  ; 4t
+        add     a,b                     ; b1 = the record: its BEAT word
+        move    b1,r1
+; ---- KEY on: this VCA160's heartbeat into the record's BEAT word ------------------
+; The tap sums a track only while its BEAT word keeps changing. BEAT has
+; one kind of writer, a VCA160 whose KEY names the track (OFF branches over
+; the store); COUNT and LAST have one writer, that track's tap. No word is
+; read, changed and written back by two parties, so the two cores cannot
+; undo each other.
+        move    x:(r7+$0c),a            ; this VCA160's heartbeat
+        add     #>$000001,a
+        move    a1,x:(r7+$0c)
+        move    a1,x0
+        move    x:(r7+$04),a            ; KEY on (1) or off (0)
+        tst     a
+        beq     dbk_off
+        move    x0,y:(r1)+              ; BEAT (stock's store form; r1 is set again below)
+dbk_off:
+        add     #>$000003,b             ; b1 = the record's LEVEL word
+        move    b1,r1
+        nop                             ; two moves between writing r1 and using it
+        nop
+        move    y:(r1),x0               ; the level word
+        move    x0,x:(r7+$05)
+        move    #$1,n0                  ; (short immediate, stock's own form)
+; ===========================================================================
+; THE SAMPLE LOOP
+; ===========================================================================
+        do      n7,>dbc_end
+; ---- ms: (L^2 + R^2)/2, or KEY's word ----------------------------------------------
+        move    x:(r0),x0
+        mpy     x0,x0,a
+        move    x:(r0+n0),x0
+        mac     x0,x0,a
+        asr     #$1,a,a
+        move    a,x1                    ; ms, limited below 1.0
+        move    x:(r7+$04),b
+        move    x:(r7+$05),x0
+        tst     b
+        move    x1,a
+        tne     x0,a                    ; KEY on: the bus word
+; ---- the RMS detector: S += alpha (ms - S), 48 bits ------------------------------
+        move    x:(r7+$07),y0
+        sub     y0,a                    ; ms - S
+        move    a,x0
+        move    #>@ALPHA@,y1
+        mpy     x0,y1,b
+        move    x:(r7+$07),a
+        move    x:(r7+$08),a0
+        add     b,a                     ; S'
+        move    #>$000001,x0            ; the floor: one LSB of the high word
+        cmp     x0,a                    ; (-69 dB, under every threshold)
+        tlt     x0,a
+        move    a1,x:(r7+$07)
+        move    a0,x:(r7+$08)
+; ---- L = log2 S / 32 ------------------------------------------------------------------
+        clb     a,b
+        normf   b1,a                    ; the mantissa m in [0.5, 1)
+        move    b1,x:(r7+$09)           ; the exponent, parked
+        move    r4,r5
+        sub     #>$400000,a
+        asl     #$1,a,a                 ; u = 2 (m - 1/2)
+        move    a1,x1
+        asr     #$12,a,a                ; idx = bits 22..18
+        move    a1,n5
+        move    x1,a
+        and     #>$3ffff,a
+        asl     #$5,a,a                 ; frac
+        move    (r5)+n5
+        move    a,x0
+        move    p:(r5)+,y0              ; LOG[i]
+        move    p:(r5),b                ; LOG[i+1]
+        move    y0,a
+        sub     a,b
+        move    b,y1
+        mpy     x0,y1,a
+        add     y0,a                    ; log2(m)/32
+        move    x:(r7+$09),b
+        asl     #$12,b,b                ; e/32
+        add     b,a                     ; L
+; ---- over, the knee -----------------------------------------------------------------
+        move    x:(r7+$00),x0
+        sub     x0,a                    ; over = L - T
+        move    a,x1                    ; over
+; OverEasy: d = over + W/2 clamped to [0, W], soft = d^2/(2W)
+        move    #>@W2@,x0
+        add     x0,a
+        move    #0,x0
+        tmi     x0,a                    ; d < 0: 0
+        move    #>@W32@,x0
+        cmp     x0,a
+        tgt     x0,a                    ; d > W: W
+        move    a,x0
+        mpy     x0,x0,a                 ; d^2
+        move    a,x0
+        move    #>@IW8@,y1
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; d^2 / (2W)
+        move    a,y0
+        move    x1,a
+        move    #>@W2@,x0
+        cmp     x0,a                    ; over - W/2
+        move    y0,a                    ; inside or below the knee: the curve
+        tgt     x1,a                    ; above it: over itself
+        move    a,y0                    ; OverEasy's oe
+; HARD: max(over, 0)
+        move    x1,b
+        move    #0,x0
+        tst     b
+        tmi     x0,b
+        move    b,x0                    ; HARD's oe
+        move    x:(r7+$03),a
+        tst     a
+        move    x0,a
+        tne     y0,a                    ; KNEE OVER: OverEasy's
+; ---- g = -oe k/2 + OUT, clamped -------------------------------------------------------
+        move    a,x0
+        move    x:(r7+$01),y1
+        mpy     -x0,y1,a
+        move    x:(r7+$02),x0
+        add     x0,a
+        move    #>@TMIN@,x0
+        cmp     x0,a
+        tlt     x0,a
+        move    #>@TMAX@,x0
+        cmp     x0,a
+        tgt     x0,a
+        move    a,x1                    ; g, amplitude bits / 32
+; ---- 2^g: n = floor(32 g), the EXP mantissa 2^f / 2 -----------------------------------
+        move    r4,r5
+        asr     #$12,a,a                ; n
+        move    a1,b
+        add     #>$1,b
+        neg     b                       ; -(n + 1): normf's count
+        move    b1,x:(r7+$09)
+        move    x1,a
+        and     #>$3ffff,a              ; 32 g - n, as 18 bits
+        move    a1,x1
+        move    x1,a
+        asr     #$d,a,a                 ; idx = top 5 bits
+        add     #>@EXP_AT@,a
+        move    a1,n5
+        move    x1,a
+        and     #>$1fff,a
+        asl     #$a,a,a                 ; frac
+        move    (r5)+n5
+        move    a,x0
+        move    p:(r5)+,y0              ; EXP[i]
+        move    p:(r5),b                ; EXP[i+1]
+        move    y0,a
+        sub     a,b
+        move    b,y1
+        mpy     x0,y1,a
+        add     y0,a                    ; 2^f / 2, in [0.5, 1]
+        move    a,y1                    ; the VCA's gain mantissa
+; ---- the VCA, both channels -------------------------------------------------------------
+        move    x:(r7+$09),b            ; the count, a clean load
+        move    x:(r0),x0
+        mpy     x0,y1,a
+        normf   b1,a                    ; x 2^(n+1)
+        move    a,x:(r7+$0a)            ; wet L, limited
+        move    x:(r0+n0),x0
+        mpy     x0,y1,a
+        normf   b1,a
+        move    a,x:(r7+$0b)            ; wet R
+; ---- MIX, per channel ---------------------------------------------------------------------
+        move    x:(r7+$06),y1
+        move    x:(r0),b                ; dry L
+        move    x:(r7+$0a),a
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     b,a
+        move    a,x:(r0)+
+        move    x:(r0),b                ; dry R
+        move    x:(r7+$0b),a
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     b,a
+        move    a,x:(r0)+
+dbc_end:
+        nop
+        rts
+
+; ---------------------------------------------------------------------------
+; dbt_tap -- the side-chain bus. Reached by a `jsr` at the dispatcher's FX1
+; entry (SIDECHAIN_COMPRESSOR's `sctap` site), every track, every block, the
+; track's audio at X:$00..$1f. Keeps the track's record at this core's half
+; (@ROFF@: the half's first record less four words for each track before
+; it): reads BEAT, writes COUNT, LAST and LEVEL (the block's mean square).
+; Uses only a, b, r0, r1, x0 -- inside the set stock reloads after this site
+; (a b r0 r1 n1 x0, as audited for sctap) -- and replays the displaced
+; instruction after the address arithmetic. It sums the block only while a
+; VCA160 keys the track (its BEAT word changed within the last WANT_BLOCKS
+; blocks); asleep it costs about 30 cycles and writes 0. It leaves r0 at
+; $21 awake or in the shared window asleep: no stock setup routine reads r0
+; before writing it (all 13 checked, 29 Oct 2026).
+; ---------------------------------------------------------------------------
+dbt_tap:
+        move    x:>$420,a               ; the track, 0..7
+        asl     #2,a,a                  ; one record of four words per track
+        add     #>@ROFF@,a              ; its record: BEAT COUNT LAST LEVEL
+        move    a1,r0
+        add     #>$000003,a
+        move    a1,r1                   ; its LEVEL word
+        move    x:>$208,r6              ; --- displaced --- (here: it fills the AGU gap)
+        move    y:(r0)+,b               ; BEAT: written by the VCA160s that key this track
+        move    y:(r0)+,a               ; COUNT: this tap's own
+        move    y:(r0),x0               ; LAST: the BEAT this tap saw last, its own
+        cmp     x0,b
+        beq     dbt_same
+        move    b,y:(r0)-               ; a new beat: LAST = BEAT, back to COUNT
+        move    #>@WANT@,a              ; awake for WANT_BLOCKS more blocks
+        move    a,y:(r0)+
+        bra     dbt_run
+dbt_same:
+        tst     a
+        beq     dbt_idle                ; nobody keys this track
+        sub     #>$1,a                  ; count down one block
+        move    (r0)-                   ; back to COUNT
+        move    a,y:(r0)+
+dbt_run:
+        clr     a
+        move    #0,r0
+        nop                             ; two moves between writing r0 and using it
+        nop
+        move    x:(r0)+,x0
+        do      #<$20,>dbt_sum
+        mac     x0,x0,a x:(r0)+,x0      ; sum and load the next in one cycle
+dbt_sum:
+        asr     #$5,a,a                 ; / 32: the mean of (L^2 + R^2)/2
+        move    a,x0                    ; limited below 1.0
+        move    x0,y:(r1)+              ; LEVEL (stock's store form; stock reloads r1 after the site)
+        rts
+dbt_idle:
+        clr     a
+        move    a,y:(r1)+               ; LEVEL = 0: a KEY turned on never reads a stale level
+        rts
