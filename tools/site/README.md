@@ -26,6 +26,11 @@ Generated, gitignored:
 - `modules/<name>.md`, one page per contributed module: the usage fragment, which published
   remixes have it (and its manual page), and its facts; no test status.
   The pages are not in the nav (each carries a `not_in_nav` line); the directory reaches them
+- `community.md`, Community Remixes (in the nav under More): one section per remix under
+  `remixes/community/`, from its `remix.py`: the features no published remix has (linked to their
+  Feature Directory pages) first, then the rest (linked to the manual), the stock effects it keeps,
+  its best evidence, and the `make image` line. These remixes are not in `release.py`, so they have
+  no builder entry, and CI's reach leaves them out
 - `_remix-<name>.md`: the feature table of the remix's overview page
   (`remix-<name>.md`, hand-written), each row linked to the manual; the
   stock effects the remix keeps are one row

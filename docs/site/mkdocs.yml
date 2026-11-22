@@ -103,6 +103,7 @@ nav:
   - More:
       - Feature Directory: reference/modules.md
       - Create a Remix: own-remix.md
+      - Community Remixes: reference/community.md
 markdown_extensions:
   - admonition
   - pymdownx.details
