@@ -1023,7 +1023,7 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   never binds (panel frozen, USB gone), cause not established. 27 to 35 bad DSP records per 10 min at pattern wraps
   while MODULATION's code runs, with and without this fix.
 
-## Stopped on the boot screen after REMOTE's COMMAND 3 booted an `.RMX`: 1 of 10 boots 🟡 seen three times, cause not known
+## Stopped on the boot screen after REMOTE's COMMAND 3 booted an `.RMX`: most often with a stalled DSP 🟡 seen many times, not counted, cause not known
 
 MKII, 15 Nov 2026, image N1 (`octabam` with REMOTE, commit 95e52aee). COMMAND 3 for `OCTABAM N1.RMX` was
 taken; the unit reset, showed the boot screen and did not return to USB in 150 s. A power-cycle recovered it.
@@ -1044,6 +1044,14 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
 - Third sighting, 19 Nov 2026, MKII: COMMAND 3 for `OCTABAM 05.RMX` sent from `octabam` BUILD 05 while its DSP frame count was
   stopped (the entry "DSP frame count stops 27 minutes into a mixed program-change sequence" below). No return in 150 s;
   power-cycled. The first sighting from a BUILD 05 image.
+- **Pattern, 18 to 22 Nov 2026 (from the session's notes and the saved run logs; no complete count exists, because the retry of a failed boot skipped the
+  per-run logs; `ot_card.py boot` now writes every attempt to `out/hw/boot_ledger.tsv`: time, image asked for, the unit's state before it, outcome, seconds):**
+  - the 39 COMMAND 3 boots in the saved run logs all returned, on units whose DSP was counting;
+  - a COMMAND 3 sent while the DSP was stalled did not return or fell back to the flashed image N1 in most of the attempts I noted (not counted:
+    boot-screen freezes needing a power-cycle, and fall-backs that the image-name check caught: `OCTABAM N1` running when another image was asked for);
+  - from N1 it froze at least 3 times (15 Nov, 18 Nov, 20 Nov) and returned several times;
+  - from a counting `octabam` unit it froze once (20 Nov, switching to `OCTABAM D3`), after a power-cycle and a healthy reading;
+  The ring fingerprint and the boot screen's version string do not show a fall-back; `ot_card.py image` does.
 
 
 
@@ -1133,12 +1141,69 @@ a scene select CC at 1,608.3 s, a program change to layout 14 at 1,611.1 s, STAR
   | `OCTABAM 05` (shipped) | none | 3 / 3 |
   | D1 | `dlwrap.asm` `proc`: a dry instance branches to `dw_pass` before the range-clear check, so it never resumes | 1 / 3 (clean, clean, then stalled) |
   | D2 | the guard's cells moved up `$80`: state words `x:$3e40 + idx`, base cells `x:$3e80 + idx` | 1 / 1 |
-  | D3 | the resume zeroes the instance's whole buffer, base to extent, before the late init | 1 / 2 |
+  | D3 | the resume zeroes the instance's whole buffer, base to extent, before the late init | 1 / 2 (unreliable, see below) |
 
   Every stalled run ended in the same state (effect bit `0x1`, block `0x4`, 7 loads and 7 withdrawals armed, FX2 ids `0x16` on all 8 tracks)
   and the DSP count fixed between 1,617,916 and 1,618,632. **Retracted:** an earlier version of this entry said D1 (no resume) stopped the
   stall after 2 clean runs; the third run stalled, so D1 does not remove it. The 28 Oct clobber of the guard's cells is not the cause (D2).
   With these counts a build that lowers the rate cannot be told from one that does not.
+- **Frame log at two stalls (`OCTABAM F1` = `octabam` with `tools/hw/framelog.patch`, 20 Nov 2026; it keeps REMIX SWITCH, so COMMAND 3 boots it).**
+  The log holds the last 22 frame interrupts, frozen after a frame of 440 us or more. Both stalls gave the same shape: two frames of about 505 us
+  (505 and 506 us; 505 and 506 us), 20.06 s apart, which are the replay's two STARTs (552.839 s and 572.915 s). After each, the next
+  entry came 553 us later (190 us late, FRAME GUARD's hold, flag `G`), then 535 or 536 us. After the first START (layout 22 live, MODULATION)
+  the frames then ran at 362 to 363 us and the run went on. After the second (DARK REV just picked) the next gap was 726 us (one frame
+  skipped), then 362 and 364 us, and the log ends 5 or 6 frames after the START frame with the DSP count frozen. The frame-interrupt count
+  and DLPUMP's pump-call count equal each other and stop with the DSP's.
+  - **Corrected:** an earlier line here said the ColdFire frame interrupt kept running during the stall; the interrupt is driven by the DSP
+    and its counters stop with it.
+  - **Inferred, not measured:** the Part change takes effect at START, so DARK REV's inits (four on core B, about 800 instructions each in the
+    stock init) land in the START frames, on top of the held late frame; PLATE REV and SPRING REV have smaller inits (0 of 3 stalls).
+    The log records ColdFire frame durations, not the DSP's.
+- **DARK REV on only some tracks (20 Nov 2026; the shipped image, the same 573 s replay, a project whose layout 14 is built with
+  `OT_DARK_ONLY=<tracks>` in `ot_matrix.layouts`; the live FX2 ids at the end of each run confirm the subset):**
+
+  | DARK REV on | FX2 ids at the end | stalled / runs |
+  |---|---|---|
+  | T5 to T8 (core A) | `00 00 00 00 16 16 16 16` | 0 / 3 |
+  | T1 to T4 (core B) | `16 16 16 16 00 00 00 00` | 1 / 3 |
+  | T3 only | `00 00 16 00 00 00 00 00` | 0 / 1 |
+  | T1 only | `16 00 00 00 00 00 00 00` | 0 / 1 |
+  | all 8 tracks (the standard project) | `16` on all | 5 / 7 (shipped image, all runs so far) |
+
+  One instance: 0 stalls in 2 valid runs. A third single-track run ended with FX2 ids `08` on all 8 tracks (the last program change had not
+  taken effect before the START) and is not counted; three more were lost to a failed boot (the REMIX SWITCH list empty with the unit stuck on its
+  project load) or a USB error. Four instances on either core: 1 stall in 6 runs; eight instances: 5 in 7 (Fisher exact, two-sided, p = 0.10). Core A only against core B only
+  cannot be told apart (0 / 3 against 1 / 3, p = 1.0), so these runs do not show a core. They fit a stall rate that rises with the number of
+  DARK REV instances that start together at the START (inferred; the frame log shows the START frame and one skipped frame, not the DSP's
+  own frame time). An earlier pair of runs of this kind used a project whose layout was not changed (the builder runs in a subprocess; the
+  patch did not reach it) and counts as standard runs.
+- **Placement (22 Nov 2026): D3 and the stagger build D4 are not trustworthy.** The guard body sits in the window at `0x33f36` and the SIDECHAIN_COMPRESSOR hook stubs follow it,
+  ending at `0x33ffc` in the shipped image (3 words of slack in block 0). Growing the guard body moves the stubs: D4 (+32 words) put `moncommit A`, `moncommit B` and `scinit`
+  at `0x34000..0x3401c`; D3 (about 10 words more by my count; its stub addresses were not read back) would put `scinit` across `0x34000`. A DARK REV slot at `0x34000` writes up to `0x37da2`. A control image, P1 (the shipped guard plus 22
+  unreachable `nop`s, stubs at `0x34000..0x34012`), booted from a healthy unit twice and the DSP's frame count stayed at 0 for 90 s both times (`OCTABAM N1` running before). D4 stalled
+  at 6.6 s into its first run, with no DARK REV in the sequence. D1 (shorter) and D2 (the same size) did not move the stubs past `0x33fff`. The build did not refuse these placements;
+  it now does (`build_bus.py`, a record inside `[slot, slot + extent)` of a guarded reverb).
+- **Is it ours, or stock's? (22 Nov 2026; argued from the runs above, no stock or loader-free image has been run).**
+  - For ours: the stall needs MODULATION (a demand-loaded effect) resident when DARK REV is picked (the 22 s tail, with nothing loaded, 0 / 2); it needs DARK REV, the one reverb whose
+    buffer reaches loaded code (the other last layouts 0 / 3; one instance 0 / 2); DARK REV selected with nothing loaded is routine in the matrix runs.
+  - For a general fragility we expose: every START gives a 505 us frame interrupt and a held late entry, and the stall adds a skipped frame, a timing race of the kind of the 12 Nov entries;
+    the ColdFire is about 75 % busy under these projects, so a race that is rare under a lighter load could be common here.
+  - **Control, run 22 Nov 2026:** `REMOTE T1` (`make rmx REMIX=test/remote`: REMOTE, STORE and USB with the stock effects; no demand loader, no guard) with a project from its
+    own layouts; 60 cycles of STOP, three program changes while stopped (LO-FI, PLATE REV, FILTER), the scene-select CC, a program change to layout 14 (DARK REV on all tracks), START 0.22 s later, 6 s of play
+    (`out/hw/replay/remote-cycles.json`). 541 operations over 1,080 s, **0 stalls in 60 DARK REV STARTs**. At the end the live FX2 ids read `16` on all 8 tracks and bank 3 pattern 2, and the ring holds 42 PLAYING
+    and 40 PATTERN records. The stall was detected by REMOTE's frame-interrupt count (`tools/hw/ot_fuzz_remote.py`: the image has no LOAD METER, so `ot_fuzz` alone sees no DSP stall); that check
+    has not been shown to catch a stall, since none occurred. The ColdFire load of this image is lower than `octabam`'s (about 75 % share), so this does not separate the loader from the load.
+  - **So far:** DARK REV picked on all 8 tracks and START with no demand code loaded: 0 / 2 on `octabam` (the 22 s tail) and 0 / 60 on the stock-effects image; with MODULATION loaded: 5 / 7.
+- **A different demand effect loaded (22 Nov 2026; shipped `octabam`, 25 cycles of: layout of the effect live and playing 9 s, STOP, a LO-FI program change, the scene-select CC,
+  DARK REV on all tracks 6 s after the effect was last used, START; `out/hw/replay/cyc-spectrum.json` and `cyc-modulation.json`).**
+
+  | effect loaded when DARK REV is picked | its home block | result |
+  |---|---|---|
+  | SPECTRUM (layout 26) | T7's (core A) | 0 stalls in 25 cycles (25 loads, 25 withdrawals) |
+  | MODULATION (layout 22) | T3's (core B) | stalled in the first cycle, 19.1 s in (the positive control), the usual end state |
+
+  So the stall is not "any loaded demand effect": it needs MODULATION, whose home is T3's block. Other effects: CHARACTER (its layout is in the second project, which has no DARK REV
+  layout), SHATTER and SIDECHAIN_COMPRESSOR are untested. The one-cycle stall also shortens the reproduction to about 1 minute after the boot and load.
 - **Not tried:** the stock init and proc in separate frames with the registers in cells D2 did not move (`x:$3fe0..$3fe7` are the
   words that hold r0, n0, r6, r7, n7, m0, m1 and `x:$213` across the resumed init; the stock DARK REV init may write there: not read).
 - **Not known:** whether the stall is timing dependent (it stalled in 6 of 9 runs at the same final START, and 0 of 3 runs of other last layouts); whether the guard's resume is involved at all; whether DARK REV on one track

@@ -105,6 +105,7 @@ usb_counters.py), and the unit's analog outputs.
 """
 import argparse
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -214,6 +215,11 @@ def layouts(remix_name, pairs=False, split=False):
                     lo = {t: ((k1, d1) if t <= 4 else (k2, d2), None) if col == 0 else (None, (k1, d1) if t <= 4 else (k2, d2))
                           for t in range(1, 9)}
                     out.append((f"{k1} {slot} T1-4 + {k2} {slot} T5-8 dear", "split", lo))
+    only = os.environ.get("OT_DARK_ONLY")           # a test: DARK REV FX2 on these tracks only, e.g. "1,2,3,4"
+    if only:
+        keep = {int(x) for x in only.split(",")}
+        out = [(n, k, {t: (v if t in keep else (v[0], None)) for t, v in lo.items()} if n == "DARK REV FX2 def" else lo)
+               for n, k, lo in out]
     return out
 
 
