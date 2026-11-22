@@ -239,7 +239,7 @@ f76_dv1:
 ; ---- u' = (1 - lam) c0 + lam (1 + 2 uA), in u/8 ---------------------------------
         move    x:(r7+$10),x0
         move    x:(r7+$04),y1           ; ka
-        move    x:(r7+$10),a
+        move    x0,a                    ; uA8, still in x0
         mac     -x0,y1,a                ; (1 - ka) uA8
         asr     #$2,a,a                 ; /4
         move    x:(r7+$0a),x0           ; T64
@@ -268,12 +268,12 @@ f76_dv1:
         cmp     a,b
         tlt     a,b                     ; never below uA
         move    b,x1                    ; u'/8
-        move    x:(r7+$10),x0
+        move    a,x0                    ; uA8, still in a
         move    x:(r7+$08),y1           ; 1/(4S)
         mpy     x0,y1,b                 ; uA/(32 S)
         move    x:(r7+$1c),a            ; t
         cmp     b,a                     ; t - uA/(32 S)
-        move    x:(r7+$10),a
+        move    x0,a                    ; uA8, still in x0
         tgt     x1,a                    ; the diode conducts: C27 charges
         move    a,x:(r7+$10)
 ; ---- G/2 = (1/16)/(1/8 + uA8) -----------------------------------------------------
