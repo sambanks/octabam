@@ -51,8 +51,10 @@ introduction links; there is no per-remix copy of the manual.
   credited there rather than given a chapter
 - a module that is part of another feature's use is a section of that
   feature's page (`FOLD`: RIG HOSTS and FX2 LOCK on SEND, TEMPO SYNC on the
-  bus delay, the VERB rows and VERB PARTS on VERBERATION). A folded row of a
-  chooser lists only the starting values that differ from its host's
+  bus delay, the VERB rows and VERB PARTS on VERBERATION). The folded rows of a
+  chooser that run the host's code (`MenuEntry.dsp_of`) are one table, "<host>
+  on other rows", a line each with the starting values that differ from the
+  host's: they are the host under another name, not effects of their own
 - `brain/`: BRAIN, one page per part of it (index, templates, remixes,
   settings, performance, log, about, files), from the hand-written fragments
   `docs/site/manual/brain-<part>.md`

@@ -1,5 +1,5 @@
-"""VERBERATION -- rooms, plates, halls and a desk-gated reverb for FX2, built on the reverb stage of
-Mutable Instruments Clouds. GATE VERB until 6 Nov 2026, then briefly STUDIO VERB (`git log -- modules/gateverb modules/studioverb`).
+"""VERBERATION -- rooms, plates, halls and a desk-gated reverb for FX2, by sambanks, built on the reverb
+stage of Mutable Instruments Clouds (Emilie Gillet: the algorithm, not code). GATE VERB until 6 Nov 2026, then briefly STUDIO VERB (`git log -- modules/gateverb modules/studioverb`).
 
 Clouds' reverb stage (clouds/dsp/fx/reverb.h, MIT, Emilie Gillet 2014): a
 Griesinger/Dattorro plate of four input allpasses and a loop of two halves,
@@ -25,12 +25,11 @@ from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate
 
 MODULE = Module(
     name="verberation", key="VERBERATION", kind=Kind.DSP_EFFECT,
-    category=Category.TRACK, author="Emilie Gillet (Mutable Instruments), ported here",
-    author_url="https://github.com/pichenettes/eurorack",
+    category=Category.TRACK, author="sambanks", author_url="https://github.com/sambanks",
     evidence=(Evidence(Level.RENDER,
         note="`verify_verberation` (dsp_host, against a float model); not run on a unit. Its predecessor GATE VERB"
              " had cursory testing on Sam's MKII (owner report, 16 Oct 2026)"),),
-    doc="A plate reverb (Griesinger topology, after Mutable Instruments Clouds) for rooms to halls, with a desk-style gate: amount, gain, time, diffusion, tone, gate; size, low cut, modulation depth and rate. One FX2 slot per instance.",
+    doc="A plate reverb for rooms to halls, after the reverb stage of Mutable Instruments Clouds (Emilie Gillet; Griesinger topology), with a desk-style gate: amount, gain, time, diffusion, tone, gate; size, low cut, modulation depth and rate. One FX2 slot per instance.",
     menu=MenuEntry(fx2_id=0x1a, donor_desc=0x400d5594,
                    abbr=b"VRBN", fullname=b"Verberation", build_tag=False),
     # Page 1 and the defaults are PLATE's view (MODE 1). Page 2 in slots 6-11: MODE (slot 6, as on every

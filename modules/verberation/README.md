@@ -164,4 +164,9 @@ proposes) would remove it. Not heard on a unit, before or after.
 
 ## Credit
 
-Emilie Gillet, Mutable Instruments (`pichenettes/eurorack`, MIT). `THIRD_PARTY.md` has the licence row.
+By sambanks. The algorithm is Emilie Gillet's, Mutable Instruments (`pichenettes/eurorack`, MIT): the reverb stage of
+Clouds, its topology, delay lengths (before the scaling above), the five setters' laws and the LFO rates and depths. No
+code is carried: this is DSP56300 fixed-point assembly written from that design. The gate, page 2 and its four modes,
+the 24-bit storage, the LFO shape, the smoothing, the ring layout and the smear fix are this module's. Zac-Kyoti sized
+the ring under octabam's window rule (18 Oct 2026); Yves Rosius made the bit-identical tap passes (19 Nov 2026).
+`THIRD_PARTY.md` has the licence row.

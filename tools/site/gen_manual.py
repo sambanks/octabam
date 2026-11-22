@@ -46,7 +46,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 
 import gen_pages  # noqa: E402
-from gen_pages import OUT, _author, _label, title_case  # noqa: E402
+from gen_pages import OUT, ROOT, _author, _label, title_case  # noqa: E402
 from remix.schema import Category, Formatter, Option, Binary, Number, Pin, Trigger, Blob  # noqa: E402
 
 USAGE = OUT.parent / pathlib.Path("usage")
@@ -389,10 +389,15 @@ def controls(m, level: int = 2) -> list[str]:
     return lines
 
 
+def _differs(m, host) -> list[str]:
+    """The knobs a row of the host's chooser starts at other values than the host's."""
+    return [f"{p.name.decode()} {_default(p)}" for p, h in zip(m.params, host.params)
+            if p.active and h.active and p.name == h.name and p.default != h.default]
+
+
 def starting_values(m, host) -> list[str]:
     """A row of the host's chooser that starts the host's code at other values: the knobs that differ."""
-    diff = [f"{p.name.decode()} {_default(p)}" for p, h in zip(m.params, host.params)
-            if p.active and h.active and p.name == h.name and p.default != h.default]
+    diff = _differs(m, host)
     if not diff:
         return [f"Starts at the same values as {label(host)}.", ""]
     return [f"Starts at {label(host)}'s values except " + ", ".join(diff) + ".", ""]
@@ -516,6 +521,26 @@ def _section(m, book: Book, here: str, host=None) -> list[str]:
     return lines
 
 
+def _row_of(m, host) -> bool:
+    """A chooser row that runs the host's code under another name and starting values."""
+    return m.menu is not None and m.menu.dsp_of == host.key and _drawn(m) and _drawn(host)
+
+
+def row_table(host, rows, book: Book) -> list[str]:
+    """The host's other chooser rows, one table: they are the host, not effects of their own,
+    so they get a line each rather than a section each."""
+    lines = [f"## {label(host)} on other rows", "",
+             f"These rows of the chooser are {label(host)} under another name: the same code and knobs, "
+             "with other starting values. Turning MODE, or any knob, on one of them works as it does on "
+             f"{label(host)} itself.", "",
+             "| Row | Chooser | Starting values |", "|---|---|---|"]
+    for x in rows:
+        diff = _differs(x, host)
+        start = (f"{label(host)}'s, except " + ", ".join(diff)) if diff else f"{label(host)}'s, all of them"
+        lines.append(f"| {label(x)} | {where(x, book) or ''} | {start} |")
+    return lines + [""]
+
+
 def module_page(m, book: Book) -> str:
     here = book.page_of(m)
     lines = [f"# {label(m)}", ""] + _head(m, book)
@@ -528,8 +553,13 @@ def module_page(m, book: Book) -> str:
     if _drawn(m):
         lines += controls(m)
     lines += settings(m, book)
-    for x in book.folded(m):
-        lines += _section(x, book, here, host=m)
+    folded = book.folded(m)
+    rows = [x for x in folded if _row_of(x, m)]
+    if rows:
+        lines += row_table(m, rows, book)
+    for x in folded:
+        if x not in rows:
+            lines += _section(x, book, here, host=m)
     rest = [rec for k, rec in recs.items() if k != key]
     if rest:
         lines += ["## Screens", ""]
@@ -575,7 +605,41 @@ def credits_page(book: Book) -> str:
         link = f"[{name}]({url})" if url else name
         items = sorted({(label(m), book.page_of(m)) for m in ms}, key=lambda t: t[0].lower())
         body.append(f"- {link}: " + ", ".join(f"[{t}]({_rel('credits', p)})" for t, p in items))
+    built = built_on(book)
+    if built:
+        body += ["", "## Built on the work of", "",
+                 "Designs, measurements and code from elsewhere that these features are written from "
+                 "(`THIRD_PARTY.md` in the repository has each source and its licence).", ""] + built
     return "\n".join(["# Credits", ""] + body) + "\n"
+
+
+def built_on(book: Book) -> list[str]:
+    """THIRD_PARTY.md's tables, by copyright holder: the features of the manual each one's work is in.
+    A row names its modules as `modules/<name>`; a row whose modules are none of the manual's is left out,
+    and so is a row with no holder stated."""
+    text = (ROOT / "THIRD_PARTY.md").read_text()
+    by_name = {m.name: m for m in book.documented()}
+    holders: dict[str, set] = {}
+    cols = None                                  # (holder, used in) of the table being read
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            cols = None
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if cols is None:                         # a table's header: only one with a copyright column counts
+            cols = (cells.index("copyright"), cells.index("used in")) \
+                if "copyright" in cells and "used in" in cells else ()
+            continue
+        if not cols or set(cells[0]) <= set("-: "):
+            continue
+        holder = re.sub(r"\s*\(.*?\)|,\s*\d{4}.*$|^©\s*", "", cells[cols[0]]).strip()
+        if not holder or holder in ("—", "-") or "not stated" in holder:
+            continue
+        ms = [by_name[n] for n in re.findall(r"`modules/([\w-]+)", cells[cols[1]]) if n in by_name]
+        if ms:
+            holders.setdefault(holder, set()).update((label(m), book.page_of(m)) for m in ms)
+    return [f"- {h}: " + ", ".join(f"[{t}]({_rel('credits', p)})" for t, p in sorted(items, key=lambda t: t[0].lower()))
+            for h, items in sorted(holders.items(), key=lambda kv: kv[0].lower())]
 
 
 def _feature_rows(book: Book, mark, pages_only: bool = False) -> list[str]:
