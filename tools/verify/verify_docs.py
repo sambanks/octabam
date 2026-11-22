@@ -20,7 +20,8 @@ manual (tools/site/release.py) needs an entry in the site nav
 No manual page may carry build or test text: a test remix, an emulator result,
 a build dependency, a change note, a timing measurement or a Python value
 (gen_manual.LEAKS; on 18 Nov 2026 the v0.5 manual printed `b''` as a setting and
-told readers to build test remixes for features every published remix has).
+told readers to build test remixes for features every published remix has), and no
+site page says where a feature or remix has run (gen_manual.RAN).
 The specs under docs/specs/ name what the STORE, EVENTS and HOOKS manifests declare (tools/verify/specdrift.py).
 """
 import pathlib, re, sys
@@ -58,6 +59,13 @@ def main():
         fails.append(f"docs/site/mkdocs.yml: nav entry {path} is not a page of the manual")
     # a manual page carries no build or test text (gen_manual.LEAKS): fix the usage fragment, or the manifest line
     fails += [f"docs/site/{f}" for f in gen_manual.leaks(gen_manual.manual(book))]
+    # nor does a hand-written page or the community page say where something has run (gen_manual.RAN)
+    site = ROOT / "docs" / "site"
+    pages = sorted(site.glob("*.md")) + [site / "reference" / "community.md"]
+    for page in (p for p in pages if p.is_file()):
+        for n, line in enumerate(page.read_text().splitlines(), 1):
+            if re.search(gen_manual.RAN, line):
+                fails.append(f"{page.relative_to(ROOT)}:{n}: says where it has run")
     fails += doclinks.check()
     fails += specdrift.check()
     for f in fails:

@@ -243,7 +243,7 @@ def directory_page(mods, book) -> str:
 
 def community_page(mods, book) -> str:
     """Community remixes: contributors' own selections (the community root of the remixes), one section
-    each from its remix.py: what it carries, where it has run, how to build it. Not in the release, so
+    each from its remix.py: what it carries and how to build it. Not in the release, so
     not in the web builder; each feature links to its manual page, or to its page in the directory."""
     import gen_manual
     import release
@@ -256,10 +256,9 @@ def community_page(mods, book) -> str:
              f"{v} release, so the [web builder](../web-builder.md) does not offer it and this manual's pages "
              "describe its features only where a released remix has them too. Build one from source as in "
              "[Create a Remix](../own-remix.md), and read its notes on GitHub before flashing it.", "",
-             '!!! warning "Checked by its contributor"',
-             "    Where each remix has run is its contributor's report, for the image they built. The project "
-             "does not test community remixes: CI leaves them out of its checks, so a later change can stop one "
-             "building. Run `make check REMIX=<name>` before you flash one.", ""]
+             '!!! warning "Check before you flash"',
+             "    CI leaves community remixes out of its checks, so a later change can stop one building. Run "
+             "`make check REMIX=<name>` before you flash one.", ""]
     names = sorted(n for n in registry.remix_names() if registry.is_community(n))
     if not names:
         lines += ["None yet.", ""]
@@ -277,9 +276,6 @@ def community_page(mods, book) -> str:
             else:
                 new.append(f"[{_label(m)}](modules/{m.name}.md)")
         lines += [f"## {n}", "", r.doc, ""]
-        e = index.best(r.evidence)
-        if e:
-            lines += [f"**Where it has run:** {e.text()}", ""]
         if new:
             lines += [f"**Not in any {v} remix:** {', '.join(new)}.", ""]
         if feats:
@@ -289,8 +285,7 @@ def community_page(mods, book) -> str:
         lines += ["**Build it:**", "", "```bash", f"make image REMIX={n} BUILD=1", "```", "",
                   f"Its selection and notes: [{n} on GitHub]({tree}/{n}).", ""]
     lines += ["## Share yours", "",
-              "Add your remix under the community remixes on GitHub with a note saying where it has run, and "
-              "open a pull request: [Create a Remix](../own-remix.md) has the steps and the "
+              "Add your remix under the community remixes on GitHub and open a pull request: [Create a Remix](../own-remix.md) has the steps and the "
               f"[community remixes]({tree}) the others.", ""]
     return "\n".join(lines)
 

@@ -9,7 +9,4 @@ peak HUD and a clip `!` sit on OSC and XY.
 **`[CUE]`** release toggles the G/P HUD on OSC / XY (ALL has none).
 Push **A** resets GAIN and clears the peak.
 
-SCOPE has run on an MKII for several minutes on a busy eight-track
-project with no glitch. With SCOPE open, the short silence when an
-effect loads was the same as with it closed (340 ms, the median of 30
-changes each way).
+Opening SCOPE does not lengthen the short silence when an effect loads.

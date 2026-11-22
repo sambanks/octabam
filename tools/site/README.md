@@ -29,7 +29,7 @@ Generated, gitignored:
 - `community.md`, Community Remixes (in the nav under More): one section per remix under
   `remixes/community/`, from its `remix.py`: the features no published remix has (linked to their
   Feature Directory pages) first, then the rest (linked to the manual), the stock effects it keeps,
-  its best evidence, and the `make image` line. These remixes are not in `release.py`, so they have
+  and the `make image` line. These remixes are not in `release.py`, so they have
   no builder entry, and CI's reach leaves them out
 - `_remix-<name>.md`: the feature table of the remix's overview page
   (`remix-<name>.md`, hand-written), each row linked to the manual; the
@@ -67,7 +67,9 @@ introduction links; there is no per-remix copy of the manual.
   manifests spell it (`gen_pages.who`: a name with a space over a handle,
   never `account/repository`; the repository is named in the byline)
 
-Stock effects are not documented. No page carries a test status.
+Stock effects are not documented. No page carries a test status or says where something has
+run (`gen_manual.RAN`, which `verify_docs` also holds the hand-written pages and the community page to);
+known faults stay, as faults.
 
 Each feature page is, from the manifest, never typed: the byline and the
 remixes that have it, which chooser an effect is in (FX1, FX2, read from each
