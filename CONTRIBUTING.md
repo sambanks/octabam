@@ -108,6 +108,15 @@ There are three places a remix can live, and a contributor's goes in one of two:
   `README.md` says what is in it and where it has run. `make reach` leaves
   these out unless `TESTS=1`, and the selftest does not count one as a
   module's remix, so a module still needs a `test/` remix of its own.
+  Keeping one working is its author's job: CI does not build it, so run
+  `make check REMIX=<name>` before its PR and give the result in the PR
+  body. The web builder offers every community remix that passes
+  `make check` in the publish run (`tools/web/publish.py`), and leaves out
+  one that does not. The unit shows `<image_name or name> <BUILD>`, upper
+  case, at most 15 characters, so a name longer than 12 characters sets
+  `image_name`. The manual's Community Remixes page is generated from
+  `remix.py`: its `doc` line is the summary there, and no page under
+  `docs/site/` needs editing.
 
 Settings a module keeps on the card (a checkbox, a profile) go in BRAIN
 (`modules/brain`; `docs/specs/BRAIN.md` is the design), and in no

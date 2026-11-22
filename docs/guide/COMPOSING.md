@@ -92,7 +92,9 @@ and `remixes/community/*/remix.py`; nothing else registers it. A remix
 that carries one module for that module's gates goes in
 `remixes/test/<name>/`; one you compose for your own card and want in the
 repository goes in `remixes/community/<name>/`, named after you or its
-purpose, never `octabam-*` (CONTRIBUTING.md "Remixes"). Names are unique
+purpose, never `octabam-*` (CONTRIBUTING.md "Remixes"). CI does not build a
+community remix, so run `make check REMIX=<name>` before its PR; the web
+builder offers it once it passes that check in the publish run. Names are unique
 across the three, and every tool takes the bare name (`make check REMIX=miniverb`).
 
 Copy an existing `remix.py` and edit it. `remixes/octabam-bus/remix.py`

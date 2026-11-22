@@ -83,9 +83,22 @@ and no reach or refhash pass locally before a PR: they take hours and CI runs
 them.** Locally, run only the one gate script for the change
 (`python3 tools/verify/verify_<name>.py <remix>`), push, and read
 `gh pr checks`; a local whole-remix run is for a failure CI has reported that
-the one script cannot reproduce. A change to
+the one script cannot reproduce. **A community remix is the exception**
+(below). A change to
 `.github/`, `scripts/` or the Makefile runs every CI job. Passes whose image
 and inputs did not move are reported `cached`.
+
+**A community remix** (`remixes/community/<name>/`, a contributor's own
+selection) is its author's to keep working: CI's runs leave it out
+(`tools/verify/reach.py`), so run `make check REMIX=<name>` locally before
+its PR and list the result in the PR body. The web builder offers it when it
+passes `make check` in the publish run (`tools/web/publish.py`); one that
+stops passing drops out of the builder at the next publish. Its name on the
+unit is `<image_name or name> <BUILD>`, upper case, cut at 15 characters:
+set `image_name` (at most 12) when the name is longer. The manual's
+Community Remixes page is generated from `remix.py` (its `doc` line and
+modules), so write a good `doc` and a `README.md` and edit nothing under
+`docs/site/`. `CONTRIBUTING.md` "Remixes" is the rule.
 
 **A change that alters what a remix does — its modules, effects, menus,
 costs or proof status — updates the hand-written manual site pages under
