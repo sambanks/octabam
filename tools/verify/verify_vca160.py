@@ -11,9 +11,10 @@ boots under the ColdFire port.
 Gates:
   generated     -> vca160.asm is what the template and the manifest make
   bit-exact     -> the dump's code equals modules/vca160/vca160_ref.fixed():
-                   defaults, every knob at both ends, OverEasy, KEY from a
-                   planted bus word on either half, KEY out of range, a split
-                   block, LFO-dirty page words
+                   defaults, every knob at both ends, the OVER knee, KEY from a
+                   planted bus word on either half, every KEY T1..T8 on a bus whose
+                   eight words all differ, KEY out of range, a split block,
+                   LFO-dirty page words, and two stereo renders (L != R)
   passthrough   -> below threshold at OUT 0 dB: exact; MIX 0: exact
   the manual    -> attack (63 %) for 10 / 20 / 30 dB over threshold at
                    infinity:1 near 15 / 5 / 3 ms; release near 125 dB/s
@@ -77,8 +78,8 @@ def env_db(x, period):
 
 
 def run_gates(render, dirty_words=True):
-    """render(mono_q23, knobs, split=0, pfrac=0, bus=None) -> (L, R); bus is
-    {Y address: word} planted before the run."""
+    """render(mono_q23, knobs, split=0, pfrac=0, bus=None, right=None) -> (L, R); bus is
+    {Y address: word} planted before the run; right, when given, is the R input (L != R)."""
     rng = np.random.default_rng(3)
     N = FRAMES * 900
     noise = q23(rng.uniform(-0.9, 0.9, N))
@@ -94,13 +95,22 @@ def run_gates(render, dirty_words=True):
              ("KEY 100 (out of range: OFF), sine", sine, knobs(THRS=40, RATI=90, KEY=100), 0, 0, kickbus),
              ("RATI 110 MIX 70, noise, split 5", noise, knobs(THRS=60, RATI=110, MIX=70), 5, 0, None),
              ("LFO-dirty page words ($a5), noise", noise, knobs(THRS=50, RATI=80, OUT=70), 0, 0xA5, None)]
+    # every KEY on a bus whose eight words all differ: a KEY that reads the wrong track's record fails here
+    allbus = {REF.bus_address(t): 0x030000 + 0x0b0000 * t for t in range(8)}
+    cases += [(f"KEY T{k}, eight different bus words, sine", sine, knobs(THRS=40, RATI=100, KEY=k), 0, 0, allbus)
+              for k in range(1, 9)]
+    # L != R: a channel read from the wrong side (R from L's word) fails here; every case above has L = R
+    cases += [("stereo: noise L, sine R, compressing", (noise, sine), knobs(THRS=50, RATI=90), 0, 0, None),
+              ("stereo: sine L, noise R, KEY T3, KNEE OVER", (sine, noise), knobs(THRS=40, RATI=100, KEY=3, KNEE=1),
+               0, 0, allbus)]
     for label, sig, kn, split, pfrac, bus in cases:
         if pfrac and not dirty_words:
             print(f"  [info] {label}: skipped -- this dsp_host has no -pword")
             continue
-        L, R = render(sig, kn, split=split, pfrac=pfrac, bus=bus)
+        sl, sr = sig if isinstance(sig, tuple) else (sig, None)
+        L, R = render(sl, kn, split=split, pfrac=pfrac, bus=bus, right=sr)
         words = REF.page_words(**kn, frac=pfrac)
-        mL, mR, _ = REF.fixed(sig[:len(L)], sig[:len(R)], words,
+        mL, mR, _ = REF.fixed(sl[:len(L)], (sr if sr is not None else sl)[:len(R)], words,
                               [bus or {}] * (len(L) // FRAMES + 1))
         d = max(max(abs(a - b) for a, b in zip(L, mL)), max(abs(a - b) for a, b in zip(R, mR)))
         check(f"{label}: max |dsp - model| = {d} LSB", d == 0)
@@ -198,10 +208,13 @@ def dsp_host_render():
         sys.exit(f"fx id 0x{mod.menu.fx2_id:02x} resolves to SEND's entry points -- vca160 is NOT in this dump")
     print(f"entries from dispatch tables: init=P:0x{init:04x} proc=P:0x{proc:04x}")
 
-    def render(samples, kn, split=0, pfrac=0, bus=None):
+    def render(samples, kn, split=0, pfrac=0, bus=None, right=None):
         n = len(samples) - len(samples) % FRAMES
         src, out = tmp / "in.raw", tmp / "out.raw"
-        src.write_bytes(b"".join(struct.pack("<i", m) for m in samples[:n]))
+        if right is None:
+            src.write_bytes(b"".join(struct.pack("<i", m) for m in samples[:n]))
+        else:                                       # interleaved L, R (dsp_host -stereo)
+            src.write_bytes(b"".join(struct.pack("<ii", a, b) for a, b in zip(samples[:n], right[:n])))
         pv = [0] * 12
         for name, v in kn.items():
             pv[K[name]] = v
@@ -210,6 +223,8 @@ def dsp_host_render():
                "-frames", str(FRAMES), "-blocks", str(n // FRAMES),
                "-in", str(src), "-out", str(out),
                "-params", ",".join(str(x) for x in pv)]
+        if right is not None:
+            cmd += ["-stereo"]
         if split:
             cmd += ["-split", str(split)]
         if pfrac:
