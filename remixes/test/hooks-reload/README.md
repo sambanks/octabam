@@ -4,7 +4,3 @@ FREE LOOP beside RELOAD_FROM_PROJECT: HOOKS chains the UI task's tick `0x40056c2
 
 `tools/verify/verify_hooks.py hooks-reload` checks the bridged site in this image after
 `make bus REMIX=hooks-reload`.
-
-## Where it has run
-
-Not flashed.

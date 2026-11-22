@@ -19,7 +19,7 @@ at high speed, five at full) and `verify_usb_in` (the host's channels
 bit-exact on the module's inputs, the other inputs untouched, the jacks back
 after alt 0). This form has not been flashed.
 
-Bryan T's usbin-test `usb-io` (builds 12–16, 26–27 Sep 2026) was this
+Bryan T's usbin-test `usb-io` (builds 12–16) was this
 combination with the inject poked into SPATIALIZER's words: on his MKII about
 5 million host packets with no bad packet, underrun or overrun, DISK MODE in
 and out with the stream back afterwards, a round trip through the two rings

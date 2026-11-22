@@ -9,13 +9,6 @@ BURN knob is K: the frame interrupt renders K 4-voice wave engines
 (output discarded) where it would busy-wait. The readout comes over USB
 AUDIO, T8 on channels 15/16.
 
-## Status
-
-Image 92 on Sam's MKII, 3 Oct 2026: one 4-voice engine (BURN 1) took
-69.2 µs of the 362.8 µs frame and played clean beside four sample tracks
-([WAVE LOAD](../../../modules/waveload/README.md), CHANGELOG). `waveload-port`
-(the same selection without CF METER IDLE) is the emulator variant.
-
 ## Procedure
 
 1. `make image REMIX=waveload BUILD=N`, flash, power-cycle.

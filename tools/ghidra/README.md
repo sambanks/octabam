@@ -81,11 +81,11 @@ image does not hold:
 | `DSP_A` | 109 | 6,921 | 1: `P:0`'s `jmp $fff000`, the boot ROM |
 | `DSP_B` | 102 | 6,377 | 1: the same |
 
-Measured 26 Sep 2026, macOS arm64, Ghidra 12.1.4 (the release zip, the
+Measured, macOS arm64, Ghidra 12.1.4 (the release zip, the
 decompiler built by `install.sh`). Every non-thunk function decompiles
 (20 s timeout each): 107 in DSP_A, 100 in DSP_B, 2,171 in MAIN_OS. The same
 programs on Ghidra 12.3-DEV with the `roblg/ghidra` branches merged
-(26 Sep 2026): MAIN_OS 2,175 / 190,956 / 9, DSP_A 109 / 6,921 / 1, DSP_B
+: MAIN_OS 2,175 / 190,956 / 9, DSP_A 109 / 6,921 / 1, DSP_B
 102 / 6,377 / 1.
 
 `IMAGE=out/mainos_bus.bin` after `make check` (the shipping build,
@@ -118,5 +118,6 @@ cave the build fills (`0x400d6b00`..`0x400d7c3c`, `tools/remix/state.py`).
 `OtExport.java` is a post-script beside `OtReport.java`: it writes `out/ghidra/symbols.tsv` (`cf`, address, size,
 name) for each function of MAIN_OS or REMIX and `xrefs.tsv` (`cf`, from, to, kind) for the references to each
 function's entry. `python3 tools/build/symdb.py build --ghidra` reads them (`docs/contributing/TOOLING.md`).
-`ot_ghidra.py import` runs it after `OtReport.java` on MAIN_OS and, with `--image`, REMIX (the last one imported leaves the files; `--no-analysis` skips it). `OtCode.java` follows it on MAIN_OS and writes `out/ghidra/code_runs.tsv`: the address runs of instructions the analysis found, no bytes (`tools/build/cf_code_runs.tsv` is the committed copy the ColdFire form gate reads, `docs/contributing/TESTING.md`). Run in Ghidra 12.1.4 (this machine, 15 Nov 2026), MAIN_OS: 2,179 functions and 13,654 references to them; `symdb.py build --ghidra` loads them and `sym.py --callers 0x4001ffe4` lists the 43 references to the stock logger.
+`ot_ghidra.py import` runs it after `OtReport.java` on MAIN_OS and, with `--image`, REMIX (the last one imported leaves the files; `--no-analysis` skips it). `OtCode.java` follows it on MAIN_OS and writes `out/ghidra/code_runs.tsv`: the address runs of instructions the analysis found, no bytes (`tools/build/cf_code_runs.tsv` is the committed copy the ColdFire form gate reads, `docs/contributing/TESTING.md`). Run in Ghidra 12.1.4 (this machine), MAIN_OS: 2,179 functions and 13,654 references to them; `symdb.py build --ghidra` loads them and `sym.py --callers 0x4001ffe4` lists the 43 references to the stock logger.
 
+|  |

@@ -7,13 +7,6 @@ the chooser: its DSP words hold the readout insert. The readout comes over
 USB AUDIO, T8 on channels 15/16 (post-FX, pre-fader, so LEVEL and MAIN do
 not matter).
 
-## Status
-
-Not flashed. `OT_PROJECT=<dir> make check REMIX=cfmeter` passes every
-gate since 28 Sep 2026 (the port follows the idle loop's detour,
-[CF METER IDLE](../../../modules/cfmeter-idle/README.md)); `cfmeter-port`,
-the same selection without the loop, is the variant that passed before.
-
 ## Procedure
 
 1. `make image REMIX=cfmeter BUILD=N`, flash, power-cycle.

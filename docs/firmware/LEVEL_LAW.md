@@ -7,14 +7,10 @@ is `(127/128)² = 0.98443603515625` = **-0.1362 dB**. Every level stage a
 signal passes through costs another one. This is what "127" means, not a
 calibration constant or a table.
 
-Read out of the binary and off hardware by Bryan T (21 Sep 2026;
-hardware captures his, section 7). Nothing
+Read out of the binary and off hardware by Bryan T. Nothing
 below has been run under the port.
 
-Status key as `CHIP.md`: ✅ measured (hardware or read off the firmware) ·
-🟡 inferred.
-
-## 1. What was measured ✅
+## 1. What was measured
 
 T1 playing a steady tone, T1 MAIN = 127, T1 CUE = 127, MAIN OUT = 127; MAIN
 fed T2's record buffer, CUE fed T3's, T1 fed T4's directly (no level
@@ -36,20 +32,20 @@ Sweeping CUE confirms the square law against `(L/128)²`, exact at 96 and
 
 ## 2. The code path
 
-**ColdFire: the raw integer crosses untouched ✅.** The per-frame
+**ColdFire: the raw integer crosses untouched .** The per-frame
 dispatcher at `0x4000d2a0` reads two bytes (`0x8000005e`, `0x8000005f`),
 sign-extends and stores them into the per-track DSP record at `X:0x080`
 words `0x32`/`0x33` — `0x4000d2c6`-`0x4000d2da`. No scaling. The encoder
 handlers at `0x40066b64`/`0x40066ba8` clamp 0..127 and mirror to
 `0x100b14be`/`0x100b14bf` for persistence. Which byte is MAIN and which is
-CUE is 🟡 unresolved.
+CUE is unresolved.
 
-**DSP: shift and square ✅.** In the summing mixdown (`P:0x292`-`0x3a0`,
+**DSP: shift and square .** In the summing mixdown (`P:0x292`-`0x3a0`,
 module record at `P:0x2bf`), immediately before the coefficient loop
 (`P:0x2f4`-`0x2fb`): each of `x:(r0+$32)` and `x:(r0+$33)` is shifted left
 16 (`L/128` as a fraction) and squared against itself (`mpy x0,x0`), giving
 `x1`/`y1` — one coefficient per bus, applied by the 16-sample loop at
-`P:0x2ff`-`0x30a` to two separate stereo destinations. 🟡 `mpy` in
+`P:0x2ff`-`0x30a` to two separate stereo destinations. `mpy` in
 fractional mode yields `2(L/128)²` in the accumulator; a scale-down
 transfer to `x1` would give exactly `(L/128)²` as measured, but the status
 register bits were not checked, so this is the leading explanation rather
@@ -59,7 +55,7 @@ than an established one.
 
 - Which of `0x8000005e`/`0x8000005f` is MAIN and which is CUE.
 - Whether these two bytes are the MAIN/CUE levels at all: the project
-  parse (`0x40087ae0..0x40087b64`, read 28 Sep 2026 from the image) stores
+  parse (`0x40087ae0..0x40087b64`, read from the image) stores
   `METRONOME_CUE_VOLUME` at `0x8000005e` and `METRONOME_MAIN_VOLUME` at
   `0x8000005f` (mirrors `0x100b14be/bf`), and `MAIN_LEVEL` / `CUE_LEVEL`
   at `0x80000035` / `0x80000036` (`0x40087348`, `0x4008738c`; mirrors
@@ -90,7 +86,7 @@ is elsewhere in the chain. `tools/harness/mixer.py`'s per-track LEVEL
 port; this note is the first measurement of MAIN/CUE, which that harness
 does not model.
 
-## 5. No gain table ✅
+## 5. No gain table
 
 All four measured coefficients, and the underlying linear values `T[64] =
 16392`/`T[32] = 8200`, were searched for across the whole image (six
@@ -111,7 +107,7 @@ encodings, five strides) and directly in the DSP data blocks at `X:0x438`,
 | summing mixdown function | DSP `P:0x292`-`0x3a0` |
 | constant-power pan table | DSP `X:0x6c00` (and `X:0x6d02`, reversed) |
 
-## 7. Provenance: what was checked (22 Sep 2026)
+## 7. Provenance: what was checked
 
 Hardware capture (24-bit WAV, no converters in the path) plus a static
 read of our image, both his. Re-read and matching his objdump: the

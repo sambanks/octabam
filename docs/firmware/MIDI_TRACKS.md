@@ -5,24 +5,24 @@ a setup value changes, how the unit sends it out, and where the CTRL pages
 draw their knob labels. Written for BRAIN (`docs/specs/BRAIN.md`) and
 for any module that applies a template to the eight MIDI tracks.
 
-Markers: ✅ read from `out/raw/section_3_MAIN_OS.bin` in
-`m68k-elf-objdump -m m68k:cfv4e` output (7 Oct 2026), 🟡 inferred from that
+Markers: read from `out/raw/section_3_MAIN_OS.bin` in
+`m68k-elf-objdump -m m68k:cfv4e` output, inferred from that
 reading. Nothing in this document was run under the port or on a unit.
 Addresses are SDRAM addresses, `address = 0x40000400 + file offset`.
-Spot-checked a second time against the image on 10 Oct 2026: the setup-record
+Spot-checked a second time against the image: the setup-record
 writers `0x4003fd34` and `0x4003f80c`, the program/bank send `0x4009ec70`,
 the cache invalidation `0x4009a3e0`, the label draw call `0x4004e474`, the
 project-settings writer `0x40088288` and the LFO resolver immediates.
 
 Notation: `B` = bank RAM = `*0x46c82456` = `0x400e21e0 + bank*0x9b340`;
 `p` = Part 0..3; `t` = MIDI track 0..7; `T` = `0x100b14cc`, the UI's current
-track 🟡; `P#` = `0x100b14cf`, the current Part 🟡. `0x80000002` is the
-current bank and `0x80000003` the current Part as `0x4009eec8` reads them ✅.
+track; `P#` = `0x100b14cf`, the current Part. `0x80000002` is the
+current bank and `0x80000003` the current Part as `0x4009eec8` reads them.
 `0x80000012` (MIDI mode) is a long: the MIDI key's handler stores 1 there
-with a 4-byte write (`0x4005557a`, under the port, 11 Oct 2026), so its
+with a 4-byte write (`0x4005557a`, under the port), so its
 byte at `0x80000012` stays 0.
 
-## 1. The setup record ✅
+## 1. The setup record
 
 Per Part and MIDI track, 0x24 bytes: `B + 0x8f262 + p*0x18b2 + t*0x24 + off`.
 It holds the five MIDI pages' page-2 slots. The page-1 record (values) is
@@ -38,7 +38,7 @@ It holds the five MIDI pages' page-2 slots. The page-1 record (values) is
 | `+0x05` | unused |
 | `+0x06..0x08` | LFO PMTR x3 |
 | `+0x09..0x0b` | LFO WAVE x3 (resolver `0x40057598`, `LFO.md` section 7) |
-| `+0x0c..0x11` | ARP setup; LEN at `+0x0e`, KEY at `+0x11` by slot order 🟡 |
+| `+0x0c..0x11` | ARP setup; LEN at `+0x0e`, KEY at `+0x11` by slot order unconfirmed |
 | `+0x12..0x13` | CTRL1 setup slots 0 and 1, unused |
 | `+0x14..0x17` | CC1..CC4 numbers (defaults 7, 1, 2, 10) |
 | `+0x18..0x1d` | CC5..CC10 numbers (defaults 71..76) |
@@ -51,16 +51,16 @@ CC1..CC10. Page-1 `+0x1e` and `+0x1f` of the record are the per-slot enable
 bitmaps of CTRL1 and CTRL2: a clear bit draws OFF and a bar, a set bit draws
 the value and a knob. The bits are XOR-toggled in the knob-press code around
 `0x4004ed74..0x4004ef24` (entry not located), which writes the Part, the CS1
-mirror and the live byte ✅.
+mirror and the live byte.
 
-## 2. The live copy ✅
+## 2. The live copy
 
 `0x46c76dc0 + t*0x44`: `+0x00..0x1f` is page 1 and `+0x20..0x43` the setup
 record. The Part apply at `0x40009094` fills it (loop `0x400094fe..0x4000953c`)
 and then calls `0x4009ec70(bank, p)`. The live setup byte for record offset
 `off` is `0x46c76de0 + t*0x44 + off`.
 
-## 3. The UI writers ✅
+## 3. The UI writers
 
 Every UI writer uses `T` and `P#`. Each stores:
 
@@ -90,7 +90,7 @@ byte `+0x14 + slot`, live byte `0x46c76df4 + t*0x44 + slot`.
 MIDI LEARN (`0x40060f84`) calls `0x4003fd34` and `0x4003f80c`; its index is
 `0x46c7d23c` (0-3 CTRL1, 4-9 CTRL2). The per-slot callbacks are in the
 windows' record tables (CTRL2: `0x400bcb64..`). Which panel event fires
-phase 0 is not traced 🟡.
+phase 0 is not traced.
 
 Setup windows (open / close / draw; close does not commit):
 
@@ -101,7 +101,7 @@ Setup windows (open / close / draw; close does not commit):
 | CTRL2 | `0x4005948c` | `0x400567b8` | `0x4003f490` |
 | ARP | `0x40079c28` | `0x40079abc` | `0x40079d48` |
 
-## 4. Outgoing MIDI ✅
+## 4. Outgoing MIDI
 
 `0x4009ec70(bank, p)` walks the eight MIDI tracks of that bank and Part; the
 arguments are read at `sp+48` (bank) and `sp+52` (Part). For each track with
@@ -122,7 +122,7 @@ CHAN != 0:
 
 `0x4009a3e0` writes `0xff` to byte 0 of each 128-byte row at `0x46c76100`
 (16 channels) and to all 16 bytes of `0x46c7a9b6`, so the next
-`0x4009ec70` resends. It leaves the displacement-`0x20` bytes untouched 🟡
+`0x4009ec70` resends. It leaves the displacement-`0x20` bytes untouched 
 (read as the SBNK cache; not checked against a run).
 
 A CC-number change (`0x4003fd34`, `0x4003f80c`) sends no MIDI.
@@ -144,7 +144,7 @@ Incoming CC routing reads CHAN from the Part on every CC (`0x40001882`).
 
 For a module that writes a template without UI globals, built from the
 writers' stores above. BRAIN's LOAD TEMPLATE on a MIDI track runs it
-(`modules/brain/brain.c` `apply_view`); under the port (11 Oct 2026,
+(`modules/brain/brain.c` `apply_view`); under the port (
 `tools/verify/verify_brain.py`) every setup and page-1 byte of the seeded
 template landed in the current Part and the MIDI OUT carried the new
 program change. The CS1 and live writes are not checked by that gate.
@@ -160,7 +160,7 @@ program change. The CS1 and live writes are not checked by that gate.
 Calling `0x4003fd34` or `0x4003f80c` directly needs `T` and `P#` set to the
 target track and Part, because they read both globals.
 
-## 6. CTRL page knob labels ✅
+## 6. CTRL page knob labels
 
 Page 1 draws the descriptor's fixed 6-byte names (CTL1, entry `0x400d42bc`:
 PB, AT, CC1..CC4; CTL2, entry `0x400d444e`: CC5..CC10). The drawer
@@ -178,7 +178,7 @@ the descriptor `%fp@(-80)`. BRAIN's knob names use it
 (`modules/brain/README.md`, "MIDI knob names"): a detour there pushes a
 per-(bank, Part, track, CC) string when `P` is `0x400d42f4` (CTL1) or
 `0x400d4486` (CTL2); under the port the pushed pointer was BRAIN's at the
-draw call (11 Oct 2026). Labels longer than 4 characters on page 1 are not
+draw call. Labels longer than 4 characters on page 1 are not
 measured.
 
 The value text comes from formatter array A (CTL1 `0x4003c6a0..0x4003c45c`,

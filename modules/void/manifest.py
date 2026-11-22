@@ -51,7 +51,7 @@ MODULE = Module(
     author_url="https://github.com/ilia-murzinov",
     evidence=(Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-11-20",
         note="NBR beside CX: KEYBUS level drives VOID noise; confirmed on tip dafb11b3; verify_void"),),
-    doc="Scrape grit: dry↔noise BAL; LFO/nbr AM + DRV/FDBK on noise only; WID stereo.",
+    doc="Noise texture: blends the track with noise shaped by an LFO or another track's level, with drive, feedback and stereo width.",
     requires=("KEYBUS",),
     menu=MenuEntry(
         # No free custom FX2 id left in-tree (SHATTER=0x0a, …). PLATE is

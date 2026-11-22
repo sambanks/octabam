@@ -71,13 +71,7 @@ MODULE = Module(
     category=Category.MACHINES,
     author="MaMarko",
     author_url="https://github.com/braikomarko-hub",
-    doc=("A FLEX track whose sample is named TB303* plays a circuit-modelled TB-303 (diode "
-         "ladder, accent-sweep capacitor, RC slide; TB303D*/TB303SQD* add a pedal). PLAYBACK: "
-         "TUNE (-24..+24 semitones: four octaves) CUT RES ENV DEC ACC; dEVILish on FX1/FX2 = the Devil Fish mods (Whittle). "
-         "Accent = an ACC lock, slide = a trigless PTCH lock. v7.0: OCTA-303 is also its own machine (row 5 "
-         "of the machine list, no sample needed) with a SETUP page WAVE GATE FINE SLID DRIV ACCV; "
-         "GATE 303 = the 303's own gate, 3.5 of the step's 6 clocks (Whittle). v7.1: held trig + UP / DOWN = "
-         "an octave, a new slide takes the note it slides from."),
+    doc=("A TB-303 voice: OCTA-303 as its own machine, or a FLEX track whose sample is named TB303*. Accent is an ACC lock, slide a trigless PTCH lock; dEVILish on FX1 or FX2 adds the Devil Fish mods."),
     evidence=(Evidence(Level.UNIT, unit="MKI", who="MaMarko", date="2026-10-23",
         note="v7.1 on the author's MKI, image O3V71 (BUILD A0, remix octa303), 23 Oct 2026: held trig + UP / DOWN "
              "an octave (several trigs at once, C5 stays), FUNC + TRIG's slide tied into the previous note, then "

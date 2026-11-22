@@ -7,10 +7,6 @@ Page-2 parameter locks and page-2 scene locks on the stock effects.
 - **PLOCKS P2** (sambanks) — parameter locks on FX1/FX2 page 2: hold trigs and turn a knob on the SETUP page.
 - **SCENES P2** (sambanks) — scene locks and the crossfader on FX1/FX2 page 2.
 
-## Status
-
-Port-gated (`tools/verify/verify_plocks_p2.py`). Not flashed.
-
 ## Build
 
 ```bash

@@ -264,7 +264,7 @@ MODULE = Module(
              " on Sam's MKII and Tim's MKI, MAIN CUE and the ABCD inject on Bryan T's MKII (build 16, 27 Sep "
              "2026), TRACKS POST on allmyfriendsaresynths's MKII (P3, 5 Oct 2026); the crossbar values at stream-"
              "up on Bryan T's MKII (usbin-test 12-16, 26-27 Sep 2026); README.md per combination and direction"),),
-    doc="Class-compliant USB-MIDI in/out plus UAC2 audio to and from the host on the OT's own USB port (markandrus/octemu; the input path and crossbar bryantysinger's; the TRACKS POST stems allmyfriendsaresynths's), by its TRACKS / MAIN / CUE / MASTER / IN / MIDI checkboxes.",
+    doc="USB MIDI in and out, and USB audio to and from a computer, on the Octatrack's own USB port, with its channels set in BRAIN (built on markandrus/octemu; bryantysinger's input path and crossbar; allmyfriendsaresynths's post-fader stems).",
     linked=LINKED,
     detours=tuple(_AUDIO_AT_SITE.get(d.site, d) for d in MIDI_DETOURS) + _AUDIO_EXTRA
     + SELECTOR_DETOURS + CROSSBAR_DETOUR + IN_DETOURS,

@@ -8,7 +8,3 @@ native Part client, STORE has no boot hook and BOOT TRACE keeps its own call.
 
 `tools/verify/verify_hooks.py hooks-boot` checks the chain in this image after
 `make bus REMIX=hooks-boot`.
-
-## Where it has run
-
-Not flashed. Built, and its chain checked (verify_hooks).

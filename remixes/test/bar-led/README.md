@@ -8,12 +8,6 @@ One ColdFire module by Nathan Groth and the stock effects: the remix
 - **BAR LED** -- [`modules/bar-led/README.md`](../../../modules/bar-led/README.md).
 - the 14 stock FX2 effects, listed so the chooser is stock's.
 
-## Status
-
-Not flashed as such. The module's `unit.s` ran on the author's MKI inside a
-private remix through REMIX SWITCH (2 Nov 2026) and loaded over USB by
-Modwerk's loader (4 Nov 2026); `modules/bar-led/README.md` has both.
-
 ## Build
 
 ```bash

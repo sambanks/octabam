@@ -69,13 +69,7 @@ MODULE = Module(
                       "stock TRACK shortcuts; CUE chord vs bare tap; SCALE-off "
                       "Part PTCH. Does not claim audio testing."),
     ),
-    doc="TRACK+PAGE opens SEQ for audio and MIDI: A=PULS B=ROT C=LANE, "
-        "D=page/parameter E=DPTH; Harmony A=SCAL B=ROOT D=PHRS E=JUMP. "
-        "PHRS defaults to RAND, then UP/DOWN/ALT/TRI. "
-        "MIDI adds C=VOIC and F=CHRD. Fresh audio DEST is SRC PTCH; MIDI "
-        "DEST is NOTE. TRIG writes track trigs and selected DEST locks; "
-        "PLCK rewrites only that DEST. CUE randomizes hit positions; PHRS "
-        "RAND rerolls pitches on each fill. Per-track settings persist via STORE.",
+    doc="TRACK + PAGE opens SEQ: Euclidean rhythms, lock rhythms, and generated melodies and chords, for audio and MIDI tracks.",
     linked=(Linked("ef", "modules/seq/seq.s", dram=True,
                    include=_sources),),
     detours=(

@@ -5,7 +5,7 @@ is in the module's README, linked from the top of the page.
 
 | spec | for | module |
 |---|---|---|
-| [SHARED_SITES.md](SHARED_SITES.md) | choosing how two modules share a stock site | |
+| [SHARED_SITES.md](SHARED_SITES.md) | choosing how two modules share a stock site |  |
 | [STORE.md](STORE.md) | a module that saves, loads or copies with a project, or keeps settings in working Parts | [STORE](../../modules/store/README.md) |
 | [EVENTS.md](EVENTS.md) | a module that reacts to transport, accepted MIDI, the held-step editor or native copies | [EVENTS](../../modules/events/README.md) |
 | [HOOKS.md](HOOKS.md) | a module that shares a stock site with a named partner; adding a bridge | [HOOKS](../../modules/hooks/README.md) |

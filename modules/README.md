@@ -8,19 +8,19 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 |---|---|---|
 | [**DELAY SERVER**](busdelay/README.md) | [Sam Banks](https://github.com/sambanks) | Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow. |
 | [**REVERB SERVER**](busverb/README.md) | [Sam Banks](https://github.com/sambanks) | Eight-line FDN reverb: ROOM/PLATE/BIG, shimmer, gate, mid/side width. |
-| [**FX2 LOCK**](fx2-lock/README.md) | [Sam Banks](https://github.com/sambanks) | The FX2 chooser cannot change a track's effect: YES's key-table entry points at NO's close handler, so the select handler never runs. |
-| [**MODE DEFAULTS**](mode-defaults/README.md) | [Sam Banks](https://github.com/sambanks) | A MODE turned on the panel re-defaults the knobs around it (the manifests' ModeViews), on FX1 and FX2. |
-| [**RIG HOSTS**](rig-hosts/README.md) | [Sam Banks](https://github.com/sambanks) | A new part is born hosted: T1 FX2 = BusDelay, T5 = BusVerb, T8 = the stock DELAY, the rest SEND. |
+| [**FX2 LOCK**](fx2-lock/README.md) | [Sam Banks](https://github.com/sambanks) | Locks each track's FX2 effect: the FX2 chooser cannot change it. |
+| [**MODE DEFAULTS**](mode-defaults/README.md) | [Sam Banks](https://github.com/sambanks) | Turning a MODE knob resets the knobs around it to that mode's defaults, on FX1 and FX2. |
+| [**RIG HOSTS**](rig-hosts/README.md) | [Sam Banks](https://github.com/sambanks) | A new Part starts wired for the bus: the bus delay on T1's FX2, the bus reverb on T5's, the stock DELAY on T8's and SEND on the rest. |
 | [**SEND**](send/README.md) | [Sam Banks](https://github.com/sambanks) | Bus client: DEL into the delay, REV into the reverb, from any track. The default effect. |
 | [**TEMPO BUS**](tempo-bus/README.md) | [Sam Banks](https://github.com/sambanks) | The TEMPO window lists and edits BusDelay's and BusVerb's knobs (UP/DOWN = row, A or B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM). |
-| [**TEMPO SYNC**](tempo-sync/README.md) | [Sam Banks](https://github.com/sambanks) | ColdFire DRAM units: publishes the held MIDI note to BusDelay, and draws BusDelay TIME as a tempo division. |
+| [**TEMPO SYNC**](tempo-sync/README.md) | [Sam Banks](https://github.com/sambanks) | Syncs the bus delay to the tempo: TIME shows as a tempo division, and the held MIDI note reaches the delay. |
 
 ## Effects: on a track
 
 | module | author | what it does |
 |---|---|---|
 | [**BBD**](bbd/README.md) | [JamCones](https://github.com/JamCones) | Clocked BBD delay: compander, clock/3 filters, bucket noise, freeze, governor; FX2. |
-| [**CHARACTER**](character/README.md) | [Sam Banks](https://github.com/sambanks) | FX1 station: fold, saturation, tilt, compressor, width. |
+| [**CHARACTER**](character/README.md) | [Sam Banks](https://github.com/sambanks) | Channel strip: fold, saturation, tilt, compressor and width. |
 | [**CHARACTER TXTR**](character-txtr/README.md) | [Sam Banks](https://github.com/sambanks) | Character plus TXTR (Airwindows Pockey2): fold, texture, saturation, tilt, compressor, width. |
 | [**DEVILISH**](devilish/README.md) | [MaMarko](https://github.com/braikomarko-hub) | The Devil Fish mods (Robin Whittle) for an OCTA303 track: twelve knobs read by the 303 voice; the DSP passes the audio through. |
 | [**DISTORX**](distorx/README.md) | [MaMarko](https://github.com/braikomarko-hub) | SD-1 + RAT + Turbo RAT in one insert: MODE picks the pedal (OFF first), a 3 ms fade between them. |
@@ -29,12 +29,12 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**EXTPROBE**](extprobe/README.md) | [Sam Banks](https://github.com/sambanks) | Measurement instrument: the highest window word a reverb on T8's FX2 writes, in the track's audio. |
 | [**LOFI2**](lofi2/README.md) | [Bryan T](https://github.com/bryantysinger) | Ring mod or frequency shifter, then sample-rate and bit reduction. |
 | [**MINIVERB**](miniverb/README.md) | [repeat98](https://github.com/repeat98) | Modulated diffused FDN reverb; independent FX2 buffers, smoothed controls. |
-| [**MODULATION**](modulation/README.md) | [Sam Banks](https://github.com/sambanks) | FX1 station: a modulation pedal -- Juno, Dimension, flanger, phaser, comb; FX1 only. |
+| [**MODULATION**](modulation/README.md) | [Sam Banks](https://github.com/sambanks) | Modulation pedal: Juno chorus, Dimension, flanger, phaser and comb. |
 | [**PEXT PROBE**](pextprobe/README.md) | [Sam Banks](https://github.com/sambanks) | Measurement instrument: tests P memory above P:0x2000 and code in the shared window, and reports it in the track's audio. |
-| [**RESONATOR**](resonator/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | FX1 Torso S-4 RING-style filter bank: 4 pitched BPs, SCAL makeup, DECY, LIM. |
+| [**RESONATOR**](resonator/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Four pitched resonant band-pass filters in the style of the Torso S-4's RING, with decay and a limiter. FX1 only. |
 | [**SHATTER**](shatter/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Crush insert: fold, clip, crush, chaotic FDBK, stereo peak limiter after MIX. |
 | [**SIDECHAIN_COMPRESSOR**](sidechain-compressor/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Stock COMPRESSOR with a side-chain KEY from any of T1-T8, key gain, a base-width key filter (KBAS high-pass in Hz, KWID low-pass in octaves above it) and a key listen switch on page 2. |
-| [**SPECTRUM**](spectrum/README.md) | [Sam Banks](https://github.com/sambanks) | FX1 station: a filter pedal -- the Moog ladder, SEM (LP -> BP -> HP by SHPE), Airwindows Capacitor2, formants; ENV and LFO onto the cutoff; width. |
+| [**SPECTRUM**](spectrum/README.md) | [Sam Banks](https://github.com/sambanks) | Filter: Moog ladder, SEM state-variable, isolator (Airwindows Capacitor2) and formant bank, with an envelope and an LFO on the cutoff, and stereo width. |
 | [**STUTTR**](stuttr/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Chance grain repeater: RATE/CHNC grab, HOLD loop, MODE rate, REV. |
 | [**TAPE ECHO**](tapeecho/README.md) | [repeat98](https://github.com/repeat98) | Economy CPU tape echo: two biquads, simple FREE slew, snapped BEAT TIME and page-1 AGE. |
 | [**TESTGEN**](testgen/README.md) | [Ignorato](https://github.com/Ignorato) | Measurement source: a sine, sweep, pink or white noise, impulses, a needle pulse train or DC replace the track's audio. |
@@ -45,7 +45,7 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**VERB ROOM**](verberation-room/README.md) | [Sam Banks](https://github.com/sambanks) | Not a separate reverb: a second chooser row for VERBERATION, on SPRING REV's id, with MODE set to ROOM (small, bright and short), so a Part saved with SPRING REV opens on it. |
 | [**VIBRATO**](vibrato/README.md) | [Bryan T](https://github.com/bryantysinger) | Pitch vibrato on FX1, or FX1 and FX2 (SLOTS) -- sine, triangle, square trill or random; depth in cents. |
 | [**VOCODER**](vocoder/README.md) | [Ignorato](https://github.com/Ignorato) | Ten-band vocoder after the Roland VP-330: the track's voice, a built-in carrier at NOTE or input B. FX2 of tracks 2, 4, 6 and 8 only. |
-| [**VOID**](void/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Scrape grit: dry↔noise BAL; LFO/nbr AM + DRV/FDBK on noise only; WID stereo. |
+| [**VOID**](void/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Noise texture: blends the track with noise shaped by an LFO or another track's level, with drive, feedback and stereo width. |
 
 ## Machines and the sequencer
 
@@ -54,13 +54,13 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**ANALOG BD**](analog-bassdrum/README.md) | [repeat98](https://github.com/repeat98) | Analog BD track machine: switchable 808/909 circuit-informed synthesis. |
 | [**BAR LED**](bar-led/README.md) | [nathangroth](https://github.com/nathangroth) | The tempo LED flashes green on the pattern's 1 while playing; the other beats stay red. |
 | [**BLACKPYRAMIDS_303**](blackpyramids-303/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | BLKPYRAMD: a TB-303 voice (built on Open303, recalibrated on the TB-303 circuit) as a track machine, one per DSP core, played by the sequencer, the chromatic keys and MIDI. |
-| [**CX OSC**](cxosc/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..34 CAR/MOD/SYMM/FDBK/PWM (DEC not a destination). Local fork of FM SYNTH. |
+| [**CX OSC**](cxosc/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Buchla-style complex oscillator as a machine: FM, a wavefolder, waveform morphs and feedback. |
 | [**DIRECT JUMP**](direct-jump/README.md) | [timhastie](https://github.com/timhastie) | CHAIN AFTER: DIRECT (its unused value 1) -- a pattern change lands at the next step, the step count continuing (A4/Rytm direct jump). |
 | [**DIRECT_JUMP_KYOTI**](direct-jump-kyoti/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Clock-locked DIRECT JUMP ([PTN]+[YES]): a cued pattern lands on the next step exactly where it would be had it played since PLAY or the last pattern change. |
 | [**DRUMMER**](drummer/README.md) | [djib](https://github.com/Djibdjib) | DRUMMER machine: a sliced FLEX drum loop played as a drummer (styles, humanisation, BRK breaks on the crossfader). |
 | [**ERASE_EMPTY_TRIGLESS_LOCKS**](erase-empty-trigless-locks/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Bug fix: a trigless lock whose last parameter lock is erased stops staying lit on the trig row (audio and MIDI tracks). |
 | [**MUTE_MODES**](mute-modes/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | PERSONALIZE -> MUTE MODE: OT (stock) / OTFX / OTFX-T / DT-T -- dry cut with FX tails, trig suppression, or a Digitakt-style sequencer mute. |
-| [**OCTA303**](octa303/README.md) | [MaMarko](https://github.com/braikomarko-hub) | A FLEX track whose sample is named TB303* plays a circuit-modelled TB-303 (diode ladder, accent-sweep capacitor, RC slide; TB303D*/TB303SQD* add a pedal). PLAYBACK: TUNE (-24..+24 semitones: four octaves) CUT RES ENV DEC ACC; dEVILish on FX1/FX2 = the Devil Fish mods (Whittle). Accent = an ACC lock, slide = a trigless PTCH lock. v7.0: OCTA-303 is also its own machine (row 5 of the machine list, no sample needed) with a SETUP page WAVE GATE FINE SLID DRIV ACCV; GATE 303 = the 303's own gate, 3.5 of the step's 6 clocks (Whittle). v7.1: held trig + UP / DOWN = an octave, a new slide takes the note it slides from. |
+| [**OCTA303**](octa303/README.md) | [MaMarko](https://github.com/braikomarko-hub) | A TB-303 voice: OCTA-303 as its own machine, or a FLEX track whose sample is named TB303*. Accent is an ACC lock, slide a trigless PTCH lock; dEVILish on FX1 or FX2 adds the Devil Fish mods. |
 | [**PAGE LOOP**](page-loop/README.md) | [Hteah](https://github.com/Hteah) | GRID REC: PAGE + trig 1-4 loops that page of the current track, in time; again to stop. |
 | [**PATTERN MUTE**](pattern-mute/README.md) | [Sam Banks](https://github.com/sambanks) | Double-press FUNC: mute edits go to a PATTERN layer kept per pattern, beside the GLOBAL layer (Digitakt II PATTERN MUTE / GLOBAL MUTE). |
 | [**PLOCKS P2**](plocks-p2/README.md) | [Sam Banks](https://github.com/sambanks) | Parameter locks on FX1/FX2 page 2 (hold trigs, turn a knob on the SETUP page). |
@@ -69,8 +69,8 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**REC THRESHOLD**](rec-threshold/README.md) | [Chupitnik](https://github.com/Chupitnik) | Recorder TRIG value THR: a REC press arms, and recording starts when the input passes the track's LEV (RECORDING SETUP 2, beside a live IN meter). |
 | [**REC_TRIG_MUTE**](rec-trig-mute/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | [TRACK]+[REC] mutes/unmutes the held tracks' recorder trigs; MIDI CC 80; '..' beside a muted track's tab letter. |
 | [**RELOAD_FROM_PROJECT**](reload-from-project/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Reload from the card without stopping the transport: [PTN]+[TRACK n] a track's sequence, [BANK]+[TRACK n] with its machine and effects too, [PTN]+[BANK]+trig a whole pattern (then the OT goes to it). |
-| [**RLEN PLEN**](rlen-plen/README.md) | [Sam Banks](https://github.com/sambanks) | ColdFire cave: RLEN value PLEN (past MAX) = one loop of the track's pattern on its own scale, so TRIG ONE + QREC PLEN records the next pass and stops. |
-| [**SEQ**](seq/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | TRACK+PAGE opens SEQ for audio and MIDI: A=PULS B=ROT C=LANE, D=page/parameter E=DPTH; Harmony A=SCAL B=ROOT D=PHRS E=JUMP. PHRS defaults to RAND, then UP/DOWN/ALT/TRI. MIDI adds C=VOIC and F=CHRD. Fresh audio DEST is SRC PTCH; MIDI DEST is NOTE. TRIG writes track trigs and selected DEST locks; PLCK rewrites only that DEST. CUE randomizes hit positions; PHRS RAND rerolls pitches on each fill. Per-track settings persist via STORE. |
+| [**RLEN PLEN**](rlen-plen/README.md) | [Sam Banks](https://github.com/sambanks) | Adds PLEN to RLEN: a recording lasts one loop of the track's pattern, so TRIG ONE with QREC PLEN records the next pass and stops. |
+| [**SEQ**](seq/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | TRACK + PAGE opens SEQ: Euclidean rhythms, lock rhythms, and generated melodies and chords, for audio and MIDI tracks. |
 | [**SLOW LFO**](slow-lfo/README.md) | [nathangroth](https://github.com/nathangroth) | LFO MULT gains 1/2X, 1/4X and 1/8X on audio and MIDI tracks: LFOs up to eight times slower. |
 | [**STEM REC**](stems/README.md) | [yvesrosius](https://github.com/yvesrosius) | Multitrack recording to the card: each track (after its fader), MAIN, CUE and the inputs as separate WAV files, 16 or 24 bits, up to 60 minutes. UP + REC opens STEMS. |
 | [**SYNTH MACHINE**](synth/README.md) | [timhastie](https://github.com/timhastie) | A FLEX track whose sample is named SYNTH* plays a two-operator FM voice (STRT/LEN/RTRG/RTIM = ratio/index/feedback/decay); the DSP shapes and effects it as a sample. Its PLAYBACK page reads RATO/INDX/FDBK/DEC with icons and the title FM SYNTH; PTCH is semitones (-64..+63) and RATE is FINE (cents) on a synth track, 0c the moment a track becomes one. A FLEX or STATIC sample track with LEG MONO and GLIDE slides its pitch (2.8). |
@@ -86,7 +86,7 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | module | author | what it does |
 |---|---|---|
 | [**EVENTS**](events/README.md) | [radiohagen](https://github.com/radiohagen) | System: transport and MIDI notifications, held-step ownership and copy notifications. |
-| [**KITS**](kits/README.md) | [Sam Banks](https://github.com/sambanks) | 255 Kits per project: PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI: FUNC+MIDI, then FUNC+BANK); each pattern plays its Kit through the stock Part slots. Replaces the earlier Octakit implementation. |
+| [**KITS**](kits/README.md) | [Sam Banks](https://github.com/sambanks) | 255 Kits per project: PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI: FUNC+MIDI, then FUNC+BANK); each pattern plays its Kit through the stock Part slots. |
 | [**MIDI SCENES**](midi-scenes/README.md) | [bkkbrls-del](https://github.com/bkkbrls-del) | Scene locks for the MIDI tracks (hold-to-lock, readout, unlock, lock LEDs, XF morph, scene clear / copy / paste), kept per Part in scenes.work and CS1. Port of bkkbrls-del's midisc project. |
 | [**MORPH**](morph/README.md) | [MaMarko](https://github.com/braikomarko-hub) | Hold a track key and press UP: from the next step that track's scene morph runs by itself, A -> B -> A over STEPS x x steps, starting on A; the other tracks keep the crossfader. Track + DOWN finishes the cycle on A and parks the track there until the crossfader reaches A. Settings saved with the project. Inspired by the Korg Electribe's Motion Sequence. |
 | [**SCENES P2**](scenes-p2/README.md) | [Sam Banks](https://github.com/sambanks) | Scene locks and the crossfader on FX1/FX2 page 2 (hold a scene, turn a page-2 knob). |
@@ -107,7 +107,7 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**MIDI SCALES**](midi-scales/README.md) | [radiohagen](https://github.com/radiohagen) | Stock MIDI ARP SETUP KEY: OFF plus all 12 keys in seven diatonic modes, stored in the Part. |
 | [**SCALES**](scales/README.md) | [djib](https://github.com/Djibdjib) | One catalogue of 52 scales in 9 families for every module; ARP SETUP's KEY turns the tonic and, pressed, opens the scale chooser (the families, then their scales); the sequencer and the arpeggiator play the scale; the CHROMATIC trig keys light it (SCALE QUANTIZER's on audio tracks). |
 | [**SCREEN**](screen/README.md) | [Sam Banks](https://github.com/sambanks) | Answers the Elektron screenshot SysEx request on MIDI OUT with the 128x64 screen, windows and popups included. |
-| [**USB**](usb/README.md) | [markandrus](https://github.com/markandrus) | Class-compliant USB-MIDI in/out plus UAC2 audio to and from the host on the OT's own USB port (markandrus/octemu; the input path and crossbar bryantysinger's; the TRACKS POST stems allmyfriendsaresynths's), by its TRACKS / MAIN / CUE / MASTER / IN / MIDI checkboxes. |
+| [**USB**](usb/README.md) | [markandrus](https://github.com/markandrus) | USB MIDI in and out, and USB audio to and from a computer, on the Octatrack's own USB port, with its channels set in BRAIN (built on markandrus/octemu; bryantysinger's input path and crossbar; allmyfriendsaresynths's post-fader stems). |
 
 ## Fixes
 
@@ -116,15 +116,15 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**ATA WRITE GUARD**](ata-write-guard/README.md) | [Sam Banks](https://github.com/sambanks) | Keeps the first PIO card sector and its pointer/count update atomic against interrupts; restores the caller's interrupt mask before returning. |
 | [**BATCH_BUGFIXES**](batch-bugfixes/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Three stock 1.40C bug fixes in one module: MIDI Plays-Free trig, empty-pattern LED, and Part-change carryover. |
 | [**FRAME GUARD**](frame-guard/README.md) | [Sam Banks](https://github.com/sambanks) | A late frame interrupt waits out the window in which the DSP's frame exchange stalls at START and at a program change. |
-| [**LOFI AMF FIX**](lofi-amf-fix/README.md) | [Bryan T](https://github.com/bryantysinger) | Fixes stock LO-FI's AMF knob: mpysu -> mpyuu, both payloads. Ported from bryantysinger/octa-bt-pt. |
+| [**LOFI AMF FIX**](lofi-amf-fix/README.md) | [Bryan T](https://github.com/bryantysinger) | Fixes stock LO-FI's AMF knob. Ported from bryantysinger/octa-bt-pt. |
 | [**REC CS1 SKIP**](rec-cs1-skip/README.md) | [Bryan T](https://github.com/bryantysinger) | The recorder's per-frame control-record update without its redundant CS1 writes: less ColdFire time per recording track. |
-| [**RECORDER LOOP FIX**](recorder-loop-fix/README.md) | [Sam Banks](https://github.com/sambanks) | ColdFire caves: the recorder loop click -- seek on a same-sample FLEX re-bind, keep its counter, record exactly the arm spacing, and repeat the last sample where sound-on-sound would play a zero. |
+| [**RECORDER LOOP FIX**](recorder-loop-fix/README.md) | [Sam Banks](https://github.com/sambanks) | Fixes the recorder's loop click: a re-bound sample keeps its place, a take is exactly the arm spacing, and sound-on-sound no longer plays a zero at the seam. |
 
 ## Settings
 
 | module | author | what it does |
 |---|---|---|
-| [**BRAIN**](brain/README.md) | [Sam Banks](https://github.com/sambanks) | The settings store on the unit: card-wide knob defaults read from BRAIN/card.work at each project load (docs/specs/BRAIN.md). |
+| [**BRAIN**](brain/README.md) | [Sam Banks](https://github.com/sambanks) | The settings store: card-wide settings and knob defaults kept on the card and read at each project load, behind the PROJ → BRAIN menu. |
 | [**HOOKS**](hooks/README.md) | [Sam Banks](https://github.com/sambanks) | Platform: owns a stock site two selected modules both claim, and calls each one's routine there. |
 | [**MEMORY**](memory/README.md) | [Sam Banks](https://github.com/sambanks) | Platform: the DRAM reserve in stock's audio page arena, sized from what the remix's modules claim. |
 | [**PAGES**](pages/README.md) | [djib](https://github.com/Djibdjib) | System: the extra pages a page key cycles through (SRC again on MIDI NOTE: CHORDS FACTORY ...). |
@@ -140,8 +140,8 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**LAZY CHOP**](lazy-chop/README.md) | [8thmyth](https://github.com/8thmyth) | Slice a sample by tapping TRIG 1..16 (four pages, 64 slices) while it plays, from the audio editor's slice menu. |
 | [**LOCK EDIT**](lock-edit/README.md) | [8thmyth](https://github.com/8thmyth) | [TRIG]+[BANK] in grid recording opens the audio editor on the step's sample, its slice selected and in view. |
 | [**REMIX SWITCH**](remix-switch/README.md) | [sanderlegit](https://github.com/sanderlegit) | MAIN MENU > BRAIN lists the raw OS images (.RMX) in /BRAIN/REMIXES/ and boots the one picked without writing the flash; remembers the choice across reboots. |
-| [**RND NAME**](rnd-name/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Project name editors: FUNC+CUE fills YYMMDD + random pool name. |
-| [**SCOPE**](scope/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | DOWN+TEMPO OSC/XY/ALL; UP/DOWN switch; A GAIN B TIME. |
+| [**RND NAME**](rnd-name/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | FUNC + CUE in a project-name editor fills in the date and a random name. |
+| [**SCOPE**](scope/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Full-screen scope of the track's audio (DOWN + TEMPO): waveform, XY or both, with gain and time on A and B. |
 | [**SRC3 KEY**](src3-key/README.md) | [8thmyth](https://github.com/8thmyth) | [MIDI] in the audio editor starts / stops a SRC3 recording on the track's recorder (MKI has no [REC3]). |
 | [**ZOOM KEEP**](zoom-keep/README.md) | [8thmyth](https://github.com/8thmyth) | The audio editor keeps its zoom when a slice is auditioned (SLICES trig mode; the slice start scrolls into view), and every page (TRIM, SLICE, EDIT) keeps its own zoom and place in time across tracks. |
 

@@ -8,10 +8,6 @@ The `window-mod` set with MODULATION in internal P (no `Remix.window`). Its slot
 - MODULATION in the harvested region.
 - FILTER, EQUALIZER, DJ EQ, PHASER, FLANGER, SPATIALIZER, COMB FILTER, COMPRESSOR, LO-FI, DELAY. CHORUS and the three reverbs are given up, as in `window-mod`.
 
-## Status
-
-Builds (`make bus REMIX=window-ctl`). Per-remix gates have not run on this remix. Not run on a unit.
-
 ## Build
 
 ```bash

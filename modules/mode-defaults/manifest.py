@@ -59,8 +59,7 @@ MODULE = Module(
     category=Category.BUS, author="sambanks", author_url="https://github.com/sambanks",
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-09-15",
         note="(images 26/27, 15 Sep 2026)"),),
-    doc="A MODE turned on the panel re-defaults the knobs around it "
-        "(the manifests' ModeViews), on FX1 and FX2.",
+    doc="Turning a MODE knob resets the knobs around it to that mode's defaults, on FX1 and FX2.",
     linked=(Linked("modedef", "modules/mode-defaults/modedef.s", include=table_inc, dram=True),),
     detours=(
         Detour(0x4003AAEA, H("4eb940027e00"), "modedef", "fx2_hook",

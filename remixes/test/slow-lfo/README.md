@@ -8,12 +8,6 @@ One ColdFire module by Nathan Groth and the stock effects: the remix
 - **SLOW LFO** -- [`modules/slow-lfo/README.md`](../../../modules/slow-lfo/README.md).
 - the 14 stock FX2 effects, listed so the chooser is stock's.
 
-## Status
-
-Not flashed as such. The module's `unit.s` ran on the author's MKI loaded
-over USB by Modwerk's loader (4 Nov 2026, audio and MIDI tracks);
-`modules/slow-lfo/README.md` has the run.
-
 ## Build
 
 ```bash

@@ -8,10 +8,6 @@ One ColdFire module and the stock effects. For anyone who has lost recorder take
 - **ATA WRITE GUARD** — closes stock's first-sector card-write race, which hung the gate's project saves under the port when a build shifted the timing (as in the official remixes).
 - the 14 stock FX2 effects, listed so the chooser is stock's.
 
-## Status
-
-Working on an MKII (Chupitnik's, 15-16 Oct 2026): images AUTOSAVE1 and AUTOSAVE2 from this remix under the module's first name, flashed from the card. Measured under the ColdFire port by `tools/verify/verify_buffer_saver.py` (in `make check`). Also on the MKII (16 Oct): a save while a pattern plays, and a full card (stock's CARD FULL error, no freeze). Not yet tried: an MKI. `CHANGELOG.md` has each image.
-
 ## Build
 
 ```bash

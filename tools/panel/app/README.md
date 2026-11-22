@@ -27,8 +27,7 @@ open "out/Virtual Panel.app"
 - The spawned server is terminated on quit, on window close and on
   SIGTERM/SIGINT/SIGHUP to the app (SIGTERM to the server, which handles
   it since O19: `card flush` + `quit` to its child -- the child fsyncs the
-  card image before its `ok` -- and the card's sidecar written; measured
-  13 Sep 2026: the app gone 0.8 s after its SIGTERM with `server pid ...
+  card image before its `ok` -- and the card's sidecar written; measured: the app gone 0.8 s after its SIGTERM with `server pid ...
   stopped (signal 15)`, no server and no `ot_emu` on the card left, the
   image not mounted). Only `kill -9` of the app orphans it
   (`pkill -f panel_server.py`). `kill -USR1 <app pid>` is File > Reload
@@ -36,9 +35,7 @@ open "out/Virtual Panel.app"
   (the menus themselves need the Accessibility grant to drive).
 - A sheet that is up when the app is asked to quit (the "N files added"
   alert, an open panel) is ended first, as Later / Cancel: AppKit refuses
-  `terminate:` while a sheet is attached to the window (measured 12 Sep
-  2026: SIGTERM and SIGINT to the app were ignored until the sheet was
-  answered, SIGUSR1 handled meanwhile). Quit Virtual Panel (cmd-Q) and the
+  `terminate:` while a sheet is attached to the window. Quit Virtual Panel (cmd-Q) and the
   three signals go through the app's own `quit()`, which ends the sheet and
   then calls `terminate:`; measured after the change, the app was gone
   291-356 ms after the signal in every run, the server stopped, and the
@@ -47,8 +44,7 @@ open "out/Virtual Panel.app"
   refused while a sheet is up, as in any Cocoa app.
 - When the spawned server dies the placeholder says how, with the log tail:
   `status N` for an exit code, `signal N (SIGxxx)` when a signal ended it
-  (a bind failure on a busy port ends in the interpreter's SIGBUS, measured
-  11 Sep 2026, which used to read "status 10").
+  (a bind failure on a busy port ends in the interpreter's SIGBUS, measured, which used to read "status 10").
 - `VIRTUAL_PANEL_PORT=8571` in the environment picks another port
   (`open --env VIRTUAL_PANEL_PORT=8571 "out/Virtual Panel.app"`, or run
   `out/Virtual Panel.app/Contents/MacOS/VirtualPanel` from a shell).
@@ -58,14 +54,14 @@ open "out/Virtual Panel.app"
 - First launch from Finder or `open`, with the repo under `~/Downloads` (or
   another folder macOS guards): the system asks whether Virtual Panel may
   access that folder, and the app waits on the dialog before its window
-  appears (measured 11 Sep 2026: the main thread blocks in `open()` of
+  appears (measured: the main thread blocks in `open()` of
   `out/panel_app.log` until the dialog is answered). Allow it once. An
   instance started from a terminal inherits the terminal's grant and never
   sees the dialog.
 
 ## Menus
 
-- **The card (13 Sep 2026, O19).** The unit's CF card is a file that
+- **The card.** The unit's CF card is a file that
   persists -- what you SAVE on the unit (PROJECT menu: FUNC + MIXER,
   RIGHT, DOWN to SAVE, YES, YES) and the samples you put on the card are
   there at the next launch; `tools/panel/README.md` "Your card" has the
@@ -99,8 +95,7 @@ open "out/Virtual Panel.app"
   - `VIRTUAL_PANEL_CARD=<img>` boots that card for one launch (created from
     the default project if missing; not remembered);
     `VIRTUAL_PANEL_PORT_BIN=<bin>` passes `--port-bin` (a build of `ot_emu`
-    that knows `--card-rw` before `out/emu` is rebuilt). Measured 13 Sep
-    2026 (port 8598, `out/_agents/persist/`): the spawn line carried
+    that knows `--card-rw` before `out/emu` is rebuilt). Measured (port 8598, `out/_agents/persist/`): the spawn line carried
     `--port-bin ... --card .../OTLIVE-PROJECT.img`, `/status` read
     `card_mode persistent, card_rw true` and the item logged `Eject Card,
     enabled` at `ready` (+8 s); `/card/eject` from a script had the item
@@ -155,8 +150,7 @@ open "out/Virtual Panel.app"
   never a modal `runModal()`: a modal loop entered from a URLSession
   completion (a block on the main queue) left the main queue undrained
   until the click -- other replies, the ready poll and the signal handlers
-  all waited on the "could not be re-inserted" alert (measured 12 Sep
-  2026; as a sheet, a second batch was logged 40 ms after `open -a` and
+  all waited on the "could not be re-inserted" alert (measured; as a sheet, a second batch was logged 40 ms after `open -a` and
   SIGUSR1 handled in 39 ms with it up).
 - **File > Show Card Audio Folder**: `GET /samples` -> `pool`, opened in
   Finder. That is the staged folder the card is built from, not the
@@ -192,7 +186,7 @@ open "out/Virtual Panel.app"
   checkbox stays disabled through the reboot and follows `/status` at
   `ready`. A refusal (already so, busy) is a sheet with the
   server's `note`.
-- **Audio > Output Device** (13 Sep 2026): the unit's outputs on a Mac
+- **Audio > Output Device**: the unit's outputs on a Mac
   audio device in real time -- BlackHole for a DAW, or the speakers
   (`tools/panel/README.md` "Recording into a DAW" has the server side and
   the numbers). The submenu is built from `GET /audio/devices` whenever
@@ -202,8 +196,7 @@ open "out/Virtual Panel.app"
   device=<name>` and is remembered (UserDefaults `outputDevice`; Off
   forgets it). The line under the submenu shows the channel map as the
   server reports it (`BlackHole 16ch: main L/R -> 1-2, cue L/R -> 3-4,
-  track 1 L/R -> 5-6, ... track 6 L/R -> 15-16` -- since O23 (13 Sep
-  2026) the eight tracks follow main and cue as stereo stems on 5-20,
+  track 1 L/R -> 5-6, ... track 6 L/R -> 15-16` -- since O23 the eight tracks follow main and cue as stereo stems on 5-20,
   per-track outputs the hardware does not have, then ESAI words 0/1 on
   21-22 and 6/7 on 23-24; a 2-channel device `main L/R -> 1-2`; `Output
   off -- ...` with the full map otherwise), and each device's tooltip
@@ -235,7 +228,7 @@ open "out/Virtual Panel.app"
   headphones click (inline playback is macOS's only mode --
   `allowsInlineMediaPlayback` is an iOS setting). With the UI delegate in
   place, JS `alert()`/`confirm()` are sheets now (they showed nothing and
-  answered false before); quit() ends them like any sheet.
+  answered false before); quit ends them like any sheet.
 - Hooks, in the style of `VIRTUAL_PANEL_ADD`: `VIRTUAL_PANEL_SAVE=<path>`
   saves the latest take to `<path>` (no panel) once `/status` is `ready`
   and `/audio/status` lists a take that is not recording -- polled every
@@ -253,7 +246,7 @@ open "out/Virtual Panel.app"
   kept (...)` or `PAGE NAVIGATED AWAY`.
 - Window: Minimize, Zoom. Edit: the clipboard for the key-map drawer.
 
-Measured 12 Sep 2026 (port 8588, the OTLIVE fixture, launched from a shell
+Measured (port 8588, the OTLIVE fixture, launched from a shell
 with `VIRTUAL_PANEL_ADD` naming a `.caf`, a 16-bit 48 kHz WAV and a `.txt`,
 `VIRTUAL_PANEL_ADD_THEN=commit`, plus a second batch sent with `open -a`
 at +3 s, during the boot): the first batch logged `waiting for phase ready
@@ -278,7 +271,7 @@ measured the same boot (+41 s) and re-insert (39.4 s, the server's `card
 re-inserted with 41 files` line; `/status` `restarts` counts watchdog
 respawns, not re-inserts).
 
-Audio, measured 12 Sep 2026 (a re-identified copy of the app,
+Audio, measured (a re-identified copy of the app,
 `out/_agents/monitor-app/VPMon.app`, bundle id
 `io.octabam.virtual-panel.monitor`; scripts, logs and the saved files under
 `out/_agents/monitor-app/`, `run1..5.sh` / `.out`). Against the real
@@ -319,7 +312,7 @@ with the save panel's sheet up quit in 333 ms (`quit: ending the open
 sheet`), with the "not available" sheet up in 296 ms. Build: 0 compiler
 warnings, `codesign -vv` valid on the copy and on `out/Virtual Panel.app`.
 
-Output device, measured 13 Sep 2026 (`out/_agents/output/verify_app.py`,
+Output device, measured (`out/_agents/output/verify_app.py`,
 `verify_app.log`): the built app launched from a shell with
 `VIRTUAL_PANEL_PORT=8598 VIRTUAL_PANEL_OUTPUT="BlackHole 2ch"
 VIRTUAL_PANEL_CARD=out/_agents/output/cards/HOOK.img` (a new card from the

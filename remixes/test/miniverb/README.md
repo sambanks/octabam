@@ -6,10 +6,6 @@ Jannik Aßfalg's (repeat98) reverb development image.
 
 - **MINI VERB** — a full-rate stereo FDN reverb in DARK REV's FX2 slot: four input diffusers, eight allpass diffusers inside the feedback tank, two of them modulated. Knobs DECAY DAMP MIX MOD RATE. Independent per-instance FX2 buffers; eight instances render. `modules/miniverb/README.md`.
 
-## Status
-
-Local render only (`make verify-miniverb`: both cores, isolation, dirty memory, buffer guards, audio gates). Not flashed.
-
 ## Build
 
 ```bash

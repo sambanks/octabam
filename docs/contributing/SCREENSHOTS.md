@@ -16,7 +16,7 @@ no tool or doc maps those names to a final name). Those shots are scratch.
 A screen that goes in the manual is a step in `capture_manual.py`, whose
 `shot(p, module, name, caption, remix)` call sets the final name.
 
-Confidence markers: **measured** = checked in the tree or on a run; **read**
+**read**
 = from the source of the tool, not run for this document.
 
 ## When to re-capture
@@ -131,7 +131,7 @@ FX1, `0x26` FX2, `0x10` `0x11` `0x12` tracks 1-3, `0x32` NO, `0x28` PROJ.
 gitignored (measured: `git check-ignore` is silent); delete `raw/` and
 `raw2/` before committing.
 
-FX page behaviour, measured on the port 16 Oct 2026:
+FX page behaviour, measured on the port 
 
 - Boot restores the FX1 setup on **page 2** (the routing grid).
 - Track keys switch tracks on both pages.
@@ -139,7 +139,7 @@ FX page behaviour, measured on the port 16 Oct 2026:
 - NO on page 2 goes to page 1; YES on page 2 opens the routing-cell editor.
 - FX from page 1 stays on page 1; page 2 is reached only from boot or from the other FX slot's page 2.
 - The bus FX2 servers have one page and no routing page.
-- The tuner shows `--` under the live path: the port's DSP track chain produced no output (tone on the DSP input, gain table filled, TX0 ring all zero, 16 Oct 2026).
+- The tuner shows `--` under the live path: the port's DSP track chain produced no output (tone on the DSP input, gain table filled, TX0 ring all zero).
 
 ## Before the PR
 

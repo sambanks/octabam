@@ -7,12 +7,6 @@ The stock chooser plus USB at LAYOUT MAIN CUE, for testing the four-channel (MAI
 - **USB** at LAYOUT MAIN CUE (markandrus/octemu; the MC variant Bryan T's): USB-MIDI mirroring DIN; four 24-bit channels, MAIN L/R + CUE L/R, at the same 250 us cadence as the other layouts; full speed carries MAIN alone. [`USB`](../../../modules/usb/README.md#main-cue).
 - the 14 stock FX2 effects.
 
-## Status
-
-Port only (`verify_usb`, 27 Sep 2026): four channels in 192-byte packets every 250 us, each carrying only its own source (MAIN L, MAIN R, CUE L, CUE R); full speed sends correctly sized two-channel packets, whose content the gate does not check (as for OUT TRACKS MAIN CUE and OUT TRACKS). Not yet on a unit. The MAIN+CUE-only high-speed stream itself ran on hardware as usbin-test's AUD_IN4 (Bryan T's MKII, 26 Sep 2026), as a slice of the twenty-channel producer rather than this standalone one.
-
-The same stream ran on hardware beside the four-channel USB AUDIO IN in usbin-test's `usb-io` (build 16, 27 Sep 2026); this remix itself has not been flashed. `usb-io-main-cue-abcd` is that pairing on the placed-section path; `usb-io-main-cue-ab` and `-cd` pair it with a stereo return.
-
 ## Build
 
 ```bash

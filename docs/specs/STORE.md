@@ -152,7 +152,7 @@ unused by stock's pages; the record has no byte left that no module uses.
 | 20-29 | `+0x14..0x1d` | CC1..CC10 numbers | — | stock |
 | 30-35 | `+0x1e..0x23` | LFO MULT, TRIG | — | stock |
 
-Measured on stock 1.40C for `+0x12` (SCALES, 30 Oct 2026, under the port):
+Measured on stock 1.40C for `+0x12` (SCALES, under the port):
 the load keeps the byte (a value past 127 loads as 127), SAVE PROJECT
 writes it back, and CTRL1 SETUP's YES (`0x4003fe14`) writes back the value
 its window read when it opened (`0x40059620`), so a value no page shows

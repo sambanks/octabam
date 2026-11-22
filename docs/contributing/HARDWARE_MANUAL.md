@@ -142,7 +142,7 @@ The loader's design and what has been measured on a unit: [DEMAND_LOADER.md](DEM
 | 6.1 | SFX_01, the heaviest layout from the `fx` reports, 2 hours | audio continuous; LOAD METER healthy at 120 min |
 | 6.2 | idle with the transport stopped, 1 hour | no tick, no freeze (`ot_soak.py` if the audio interface is attached) |
 
-## Not run on any unit (1 Nov 2026)
+## Not run on any unit
 
 The suite and this plan have not been run. Open from [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md) and
 `remixes/octabam/README.md`: the demand loader has run on a unit (host write, copy, homes, buffer extents at default knobs: `DEMAND_LOADER.md`). Not run on any unit: SIDECHAIN_COMPRESSOR's hook stubs, the window's wait-state cost, the stock effects' buffer extents at other settings, a move from T4's block (open freeze, `FAILURE_MODES.md`).

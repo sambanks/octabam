@@ -130,5 +130,5 @@ call sites, so the two share no site. Its CS1 ranges (`0x100f85a0..e8`,
 PLOCKS P2 requires EVENTS for held-step dispatch and pattern/track copy notifications. Other selected editors register independently; no pair-specific bridge is needed.
 
 EVENTS integration results, including MKII trig undo checks, are recorded in
-the [combined fixture](../../remixes/test/events-clients/README.md#hardware-results).
+the [combined fixture](../../remixes/test/events-clients/README.md).
 Earlier reports above apply to their named images.

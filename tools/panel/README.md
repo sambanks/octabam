@@ -2,7 +2,7 @@
 
 By **Tim Hastie**, from his fork of octabam,
 [timhastie/octa-panel](https://github.com/timhastie/octa-panel) at
-`be68244` (10-25 Sep 2026; MIT, as octabam). The panel (`tools/panel/`),
+`be68244`. The panel (`tools/panel/`),
 the macOS app (`tools/panel/app/`), the key/LED map and its evidence
 (`KEYMAP.md`, `docs/firmware/PANEL.md` section 9, `key_map.json`, `param_map.json`) and the
 port features the panel runs on (`tools/emu/ot_emu`: `--interactive`,
@@ -14,7 +14,7 @@ the features still in the port are `tools/emu/README.md` "Port features".
 Everything below
 "The panel, as he wrote it" is his README, unedited.
 
-**The face** (25 Sep 2026) is Mark Roberts' MKII panel from
+**The face** is Mark Roberts' MKII panel from
 [markandrus/octemu](https://github.com/markandrus/octemu) (`tools/panel/skin/gen_svg.py`,
 MIT), in octabam's dark palette: the server generates it into `out/panel_skin/`
 and serves it as `/skin.js`; the page lays its keys, knobs, fader and LEDs over
@@ -28,7 +28,7 @@ REC3 have no MKI equivalent.
 `tools/emu/README.md` lists the other ways to run the port (`make
 emu-live`, scripted runs, the gates).
 
-Route A (`emu_rtos.py`) was retired on 26 Sep 2026: the panel runs the
+Route A (`emu_rtos.py`) was retired: the panel runs the
 port only. `--backend`, `--no-rtc`, `install_rtc` and `/press` went with
 it; `/transport` taps the matrix keys. His text below still describes
 both backends.
@@ -69,7 +69,7 @@ make panel-app                                   # out/Virtual Panel.app (File >
   firmware's memory, SAVE PROJECT writes the card; `--phase persist`
   against a restarted server checks the saved value is still there.
 
-Measured 25 Sep 2026 on a MacBook Air (arm64), bamsep26 +
+Measured on a MacBook Air (arm64), bamsep26 +
 `OCTABAM89_setgate`, and the stock image + the ot-tools OTLIVE fixture:
 
 - Paced, playing, `--dsp-rt`: 1.000x real time on the panel's own meter
@@ -111,8 +111,7 @@ fork's base, 9a49f21, keeping everything octabam gained since):
 ## The panel, as he wrote it
 
 A clickable Octatrack, driven by the real firmware under an emulator — the
-C++ ColdFire port (`out/emu/ot_emu --interactive`, the default since 12 Sep
-2026) or the route-A oracle (`tools/emu/emu_rtos.py`). The screen is what
+C++ ColdFire port (`out/emu/ot_emu --interactive`, the default) or the route-A oracle (`tools/emu/emu_rtos.py`). The screen is what
 the firmware sends its LCD; the keys, knobs and LEDs go over the panel's own
 wire. It is a way to *operate* a built image before flashing — walk menus,
 open pages, turn knobs, start the sequencer — not just boot it.
@@ -134,7 +133,7 @@ File ▸ Open Project… (`tools/panel/app/README.md`).
 ```
 
 Open <http://localhost:8563/>. Under the port, boot is ~3 s and boot + the
-fixture project ~21 s wall (measured 12 Sep 2026); under route A ~5 s and
+fixture project ~21 s wall; under route A ~5 s and
 ~1½ min (the page says so). The SET DATE/TIME dialog the firmware opens on
 every boot is closed for you with YES (which stores the clock in RAM and
 leaves a `DATE/TIME STORED` box on the track screen until the first key,
@@ -150,7 +149,7 @@ is the encoder's PUSH: it removes that step's lock on the parameter --
 scene B; its value is in its tooltip), LEDs follow the firmware. Unwired:
 REC AB/CD and SCALE SETUP are inferred from their FUNC layers.
 
-The top bar (13 Sep 2026): the status pills (image, phase, x real time),
+The top bar: the status pills (image, phase, x real time),
 **SOUND** (a drawer with SOUND ON/OFF: reboot the unit with or without the
 DSP cores) and the hint line; the small chevron tab at the top right
 hides the bar so the panel takes the whole window (remembered per
@@ -188,7 +187,7 @@ state but does not redraw under route A, so the UART path is the real one.
 ## One backend, the port
 
 The panel runs the port (`out/emu/ot_emu --interactive`, built here when
-missing); `--backend` was removed with route A on 26 Sep 2026. The `Panel`
+missing); `--backend` was removed with route A. The `Panel`
 code drives the port through `PortRt`, an object with the
 handful of things the panel uses of `emu_rtos.Rtos` (`run(ms=)`,
 `uart64.rx/tx`, `uc.mem_read/mem_write`, `sample`, `frame`,
@@ -203,7 +202,7 @@ back per command. The child boots and loads the project itself
 (`--card --mount --set --project`, the card image being `stage_project`'s
 own bytes written to `out/_panel_card_<port>.img`); the server then sends
 the same YES and **the child paces itself** (`pace on`, O15f in
-`git show 666b6154:docs/firmware/COLDFIRE_PORT.md`, 12 Sep 2026): while its stdin is empty it advances
+`git show 666b6154:docs/firmware/COLDFIRE_PORT.md`,): while its stdin is empty it advances
 emulated time in 10 ms slices so that it tracks its own wall clock —
 sleeping inside `poll()` on stdin when ahead (a command wakes it at
 once), flat out when the core is slower than real time, re-anchoring past
@@ -212,7 +211,7 @@ every 20 ms, drains `tx` and audio, reads `pacestatus` and renders. So
 the unit runs at **1.00x real time** whenever the core can (idle always,
 and playing without the DSP cores on the M5: 999.7 emulated ms per wall
 s over 30 s of play, `rt` 0.998–1.003), and at the core's own rate when
-it cannot (playing with the cores: ~0.15x). Measured 12 Sep 2026 on the
+it cannot (playing with the cores: ~0.15x). Measured on the
 OTLIVE fixture: MIXER, T3, knob A (PTCH on the PLAYBACK page) and PLAY
 all work through the matrix; a page click reaches the firmware within
 one slice (`/key` round trip 4 ms idle); STOP takes the frame clock off.
@@ -224,7 +223,7 @@ now, see "Loading samples"). Route A keeps the pump.
 A child that answers nothing for 20 s (`ACTION_LIMIT`) is killed by the
 watchdog and respawned — boot, load and YES again, `restarts` counts it in
 `/status` — as is one that exits. Nothing is left running unseen
-(29 Oct 2026, after a hand-started panel's child held three cores for
+(after a hand-started panel's child held three cores for
 eight hours): `--parent-pid <pid>` stops the server and its child when
 that process is gone (a bench or the app passes its own pid), and
 `--idle-timeout <min>` (default 60, `0` = never) stops a server no HTTP
@@ -251,7 +250,7 @@ loads, so an edit needs a reload, not a restart. To probe an unknown cell,
 tap it from a script (`/key?row=0x23&bit=4&down=1`, then `down=0`; an
 encoder `/knob?row=0x36&delta=1`) and read `/screen.txt`, `/leds` and
 `/peek` -- `KEYMAP.md` is the evidence per entry and the method. (The
-click-to-bind MAP KEYS drawer and EXPORT MAP went 13 Sep 2026.) A
+click-to-bind MAP KEYS drawer and EXPORT MAP went .) A
 completed entry is a good PR — pure discovery, no firmware bytes.
 
 ## Endpoints (for scripting)
@@ -276,7 +275,7 @@ completed entry is a good PR — pure discovery, no firmware bytes.
 | `GET /card/eject?open=1` | flush, stop the child, mount the image on the Mac (browsable; `open=0` leaves Finder alone): `{ok, phase, mount}`; `/status card_ejected`/`card_mount` when done |
 | `GET /card/insert` | clean the volume, detach, boot the child again: `{ok, phase}` |
 | `GET /keys` | the jump-table handlers (the `press()` fallback) |
-| `GET /transport?k=play\|rec\|stop` | PLAY/REC/STOP as matrix taps |
+| `GET /transport?k=play\ | rec\ | stop` | PLAY/REC/STOP as matrix taps |
 | `GET /leds` | parsed LED bitmap + per-id values |
 | `GET /run?ms=1000` | advance emulated time (the sequencer runs here) |
 | `GET /peek?addr=0x460d175c&len=4` | read memory (either backend), hex |
@@ -296,7 +295,7 @@ the card is a FAT image built at boot and the emulator has no hot-plug:
    `out/_panel_pool_<port>/`, the AUDIO folder the card is built from. The
    unit reads WAV and AIFF, 16 or 24 bit, 44.1 kHz, mono or stereo (a
    WAVE_FORMAT_EXTENSIBLE header with a PCM SubFormat included — it loaded
-   one, footer `44.1k 16b 2Ch`, 12 Sep 2026 — listed as `… WAV
+   one, footer `44.1k 16b 2Ch`, — listed as `… WAV
    (extensible)`); anything else (mp3, aac, flac, 48 kHz, 32-bit float,
    AIFC, 8-bit, more than two channels …) is converted with `afconvert -f
    WAVE -d LEI16@44100 in out` (channels kept, `-c 2` above two;
@@ -315,23 +314,23 @@ the card is a FAT image built at boot and the emulator has no hot-plug:
    staging tree, rebuilds the image and reboots the unit on it, exactly
    the watchdog's respawn: `/status phase` reads `re-inserting the card
    (reboot, ~40 s)`, then the clock dialog closes, then `ready` (41 s on
-   the OTLIVE fixture, 12 Sep 2026). Adds, removes and a second commit
+   the OTLIVE fixture). Adds, removes and a second commit
    answer `ok: false` meanwhile. Same on route A (a fresh attach).
 
-Then load a slot through the matrix, measured 12 Sep 2026 on the port
+Then load a slot through the matrix, measured on the port
 with the OTLIVE fixture (`out/_agents/samples/`: `scan.py`, `drive.py`,
 shots `r*` `s*` `t*` `u*`; re-run after the fixes in
 `out/_agents/samples-fix/`, shots `f*` — as PNG and `/screen.txt`):
 
 | step | keys | screen |
 |---|---|---|
-| open the slot list of a track | the **track key twice** — a double-click on T1–T8 in the page, or `/tap?row=0x22&bit=<t-1>&n=2` (one action, 200 ms press to press) from a script. Two `/key` taps land by wall time now that the child is paced (O15f): 0.15 s of wall apart = 150–154 emulated ms press to press, the list opens; 0.30 s = 290–304 ms, it does not (12 Sep 2026, with and without the DSP cores) — the unit's own window, between 191 and 242 emulated ms. Before that the server slowed its idle pump for 0.5 s after a track key (`SLOW_PUMP_MS`, gone) so 0.45 s of wall reached the firmware as 191 ms | `<< MACHINE:STATIC` (or `FLEX`, the track's machine — the OTLIVE fixture boots with T5 current, T1–T4 STATIC, T5 FLEX), `SLOT / BPM / SIZE`, the track's slot highlighted |
-| pick a slot | DOWN `0x24.0` / UP `0x26.3` | |
+| open the slot list of a track | the **track key twice** — a double-click on T1–T8 in the page, or `/tap?row=0x22&bit=<t-1>&n=2` (one action, 200 ms press to press) from a script. Two `/key` taps land by wall time now that the child is paced (O15f): 0.15 s of wall apart = 150–154 emulated ms press to press, the list opens; 0.30 s = 290–304 ms, it does not, with and without the DSP cores) — the unit's own window, between 191 and 242 emulated ms. Before that the server slowed its idle pump for 0.5 s after a track key (`SLOW_PUMP_MS`, gone) so 0.45 s of wall reached the firmware as 191 ms | `<< MACHINE:STATIC` (or `FLEX`, the track's machine — the OTLIVE fixture boots with T5 current, T1–T4 STATIC, T5 FLEX), `SLOT / BPM / SIZE`, the track's slot highlighted |
+| pick a slot | DOWN `0x24.0` / UP `0x26.3` |  |
 | open the file browser on it | RIGHT `0x24.1` (YES `0x26.1` does the same) | `LOAD FILE TO STATIC 5`, folder `OTLIVE>AUDIO`, the files in name order, the cursor where it was last; the footer reads the highlighted file's header (`44.1k 16b 2Ch`) |
 | find the file | DOWN / UP (no wrap; the list is in name order, `extra-1` … `extra-32` numerically, and starts at the top after a boot: 35 taps from `extra-1.wav` to the first file after `fourth-0.wav`) | `clap.aiff`, `sine48k24.wav`, `Upload Sine 48k.wav` were all listed with their 0.33 MB; an unconverted extensible WAV reads `44.1k 16b 2Ch` (16-bit) / `44.1k 24b 2Ch` (24-bit) in the footer |
 | load it | YES | back in the list: `5>Upload Sine 48  120  0.33`, `6>clap.aiff  120  0.33`; after the fixes `5>fxext16.wav  0.08`, `6>fxext24  0.12`, `7>Upload Fx 48k.  120  0.33` |
-| the other list | LEFT `0x26.4` on the `<<` opens `SELECT MACHINE TYPE` (STATIC/FLEX/THRU/NEIGHBOR/PICKUP): the list follows the track's machine | |
-| leave | NO `0x26.2` once — a second NO on the main screen draws `DISARM ALL` (KEYMAP.md) | |
+| the other list | LEFT `0x26.4` on the `<<` opens `SELECT MACHINE TYPE` (STATIC/FLEX/THRU/NEIGHBOR/PICKUP): the list follows the track's machine |  |
+| leave | NO `0x26.2` once — a second NO on the main screen draws `DISARM ALL` (KEYMAP.md) |  |
 
 How the opener was found: a PC watch on the list's window store
 (`0x4007920c`, in the handler at `0x40077b00` that draws `« MACHINE:%s`)
@@ -342,7 +341,7 @@ T2 taps that happened to fall inside the window.
 
 ## Your card: saving projects and samples
 
-Until 13 Sep 2026 the card was rebuilt from the fixture at every server
+Until the card was rebuilt from the fixture at every server
 start and the port child never wrote its card back to the file, so the
 unit's own SAVE landed in RAM and a quit lost the project and every sample
 added. Now (O19 in `git show 666b6154:docs/firmware/COLDFIRE_PORT.md`) **the card is a
@@ -362,8 +361,7 @@ file that persists, like the CF card in the unit**:
   and a sidecar **`<file.img>.json`** records the set and project names
   (and the removals marked for the next re-insert); later starts need
   only `--card` -- the names come from the sidecar. The firmware does
-  not reload its last project by itself in emulation (tested 13 Sep
-  2026: a bare boot on the saved card leaves the SET/PROJECT names empty
+  not reload its last project by itself in emulation (tested a bare boot on the saved card leaves the SET/PROJECT names empty
   with the card ready; the "last set" record the manual describes is not
   on the card), so the sidecar is what boots you back into your project;
   it follows the unit when you change project there (the names at
@@ -378,7 +376,7 @@ file that persists, like the CF card in the unit**:
   CONTROL / MIDI at the left), **RIGHT** enters the PROJECT list (CHANGE,
   SAVE, RELOAD, SYNC TO CARD, SAVE TO NEW, ...), **DOWN** to SAVE,
   **YES**, and **YES** again on `SAVE PROJECT -- ANY PREVIOUSLY SAVED
-  STATE WILL BE LOST. CONTINUE?`. Measured 13 Sep 2026 on the OTLIVE
+  STATE WILL BE LOST. CONTINUE?`. Measured on the OTLIVE
   fixture (`out/_agents/persist/verify.py`, its log, `verify.json` and
   the screens in `shots-verify/`): a first burst of sectors at once, the
   16 bank files ~2 s later -- **20,030 sectors (10.3 MB) in the file**
@@ -448,7 +446,7 @@ says so; `--port-arg=--dsp` asks for the lockstep cores explicitly;
 `/status sound_rt` says which the current child runs, `/rtstatus` is the
 child's own line (MIPS per core, waits, edges, faults).
 
-**Playback note (13 Sep 2026, O17b).** With `--dsp-rt` the unit plays
+**Playback note.** With `--dsp-rt` the unit plays
 at real time on the M5: `bench.py --dsp --dsp-rt` 1042–1058 emulated ms
 per wall s flat out with LTO (O17: 664; 1357 without the cores, 208 with
 the lockstep `--dsp`), and under the panel's pacer a 3-minute PLAY held
@@ -469,7 +467,7 @@ samples; the DSP's output limiter runs on its own history under a
 different core interleave), not byte-identical. The lockstep fallback is
 ~0.2x.
 
-**Priority matters more than you would think** (O15f, 12 Sep 2026): a
+**Priority matters more than you would think** (O15f): a
 server started as a zsh background job (`… &`) runs at nice 5 (`BG_NICE`
 is on by default) — harmless on an idle machine, slower whenever anything
 else wants the CPU; `/status nice` reports it and the server warns at
@@ -478,7 +476,7 @@ background-QoS or napped app hands its children: efficiency cores) is
 3.5–3.7x slower; the server spawns the child with a `preexec_fn` that
 leaves that class (`setpriority(PRIO_DARWIN_PROCESS, 0, 0)`), measured
 back at full speed under `taskpolicy -b`. What the cores cost
-(13 Sep 2026): with `--dsp-rt` boot + fixture load ~7 s (the JIT
+: with `--dsp-rt` boot + fixture load ~7 s (the JIT
 compiles the payloads' blocks as they run; ~15 s with the lockstep
 `--dsp`, ~6 without the cores), and while the sequencer plays the unit
 runs at 1.0x real time (`/status rt`; the lockstep child at ~0.2x); idle
@@ -501,7 +499,7 @@ moment (a reader mid-take gets what is there so far); a take open at a
 reboot or at exit is closed as it stands. Takes are numbered on from what
 the folder already holds and never wiped.
 
-**Manual trigs (23 Sep 2026).** With the cores the child runs in frame
+**Manual trigs.** With the cores the child runs in frame
 mode from the boot, not only from PLAY to STOP (`/status frame_always`;
 `playing` is PLAY..STOP). The DSP frame interrupt runs the firmware's
 frame builder, the only thing that turns the mailbox a [TRIG] key posts
@@ -518,15 +516,15 @@ semitones).
 | route | does |
 |---|---|
 | `GET /status` | adds `sound` (the child runs `--dsp` and its capture is on) and `sound_note` (why not, when not) |
-| `GET /audio/status` | `{sound, on, rate: 44100, captured, end, first, cap, dropped, peak: [l, r], take, takes, note}` — `end` = frames ever captured, `first` = the oldest still in the ring, `cap` = 7 938 000, `dropped` = frames the child overwrote unread, `peak` of the last non-empty read, `take` = `{n, recording, frames, seconds, file, start}` while one is open (else null), `takes` = every take as `{n, file, frames, seconds}`; plus `busy`/`phase` (a reboot in progress), `takes_dir`, and `drain` (what the drain itself costs the pump: reads, wall_ms, max_ms); since 13 Sep 2026 also `capture` (`main` \| `all` \| `tracks`: the words per frame the child streams, `tracks` while an output device is on -- O23, the eight ESAI words plus the eight per-track stems -- or `all` on an older child), `words` (2 \| 8 \| 24), `peak_cue` (the cue pair's peak of the last multi-word read) and `output` (the device stream with its `map` and `layout`, "Recording into a DAW" below) |
+| `GET /audio/status` | `{sound, on, rate: 44100, captured, end, first, cap, dropped, peak: [l, r], take, takes, note}` — `end` = frames ever captured, `first` = the oldest still in the ring, `cap` = 7 938 000, `dropped` = frames the child overwrote unread, `peak` of the last non-empty read, `take` = `{n, recording, frames, seconds, file, start}` while one is open (else null), `takes` = every take as `{n, file, frames, seconds}`; plus `busy`/`phase` (a reboot in progress), `takes_dir`, and `drain` (what the drain itself costs the pump: reads, wall_ms, max_ms); since also `capture` (`main` \ | `all` \ | `tracks`: the words per frame the child streams, `tracks` while an output device is on -- O23, the eight ESAI words plus the eight per-track stems -- or `all` on an older child), `words` (2 \ | 8 \ | 24), `peak_cue` (the cue pair's peak of the last multi-word read) and `output` (the device stream with its `map` and `layout`, "Recording into a DAW" below) |
 | `GET /audio/pcm?from=<frame>&max=<frames>` | raw LE int16 stereo frames from `max(from, first)`, at most `max` (default 88 200, cap 441 000), `application/octet-stream` with `X-Audio-From` (where the body really starts), `X-Audio-Frames`, `X-Audio-End`, `X-Audio-Rate`; **204** with `X-Audio-End` when `from >= end`. Served from the ring on the HTTP thread: 1–2 ms for 2 s of audio |
 | `GET /audio.wav?take=N` | that take as `audio/wav`, `Content-Disposition: attachment; filename="octatrack-take-NNN.wav"`; a missing take is a 404 JSON |
 | `GET /audio.wav?from=&to=` | ring frames as `octatrack-main-out.wav` (default: everything held); an empty range is a 404 JSON |
-| `GET /audio/enable?on=1\|0` | reboot the child with/without `--dsp`, the card re-insert's own mechanics: `/status phase` reads `switching sound on (reboot, ~1 min)` / `switching sound off (reboot, ~40 s)`, `booted` false meanwhile, the clock dialog closed after; `ok: false` + `note` while a re-insert or switch runs, while booting, when already in that state, or under route A. Takes and the ring survive it |
+| `GET /audio/enable?on=1\ | 0` | reboot the child with/without `--dsp`, the card re-insert's own mechanics: `/status phase` reads `switching sound on (reboot, ~1 min)` / `switching sound off (reboot, ~40 s)`, `booted` false meanwhile, the clock dialog closed after; `ok: false` + `note` while a re-insert or switch runs, while booting, when already in that state, or under route A. Takes and the ring survive it |
 | `GET /audio/devices` | the output-capable audio devices PortAudio sees: `{ok, available, devices: [{index, name, channels, rate, default, hostapi}], output, capture, note}` -- rescanned on every call while no stream is open (PortAudio only enumerates at init), so a device plugged in appears once the output is off; `available: false` + `error` without the `sounddevice` package |
-| `GET /audio/output?device=<index\|name\|off>` | start the stream on that device (a name matches exactly, then case-insensitively, then as a unique substring: `device=blackhole`), or stop it; answers `{ok, output, capture, note}` -- `note` reads `already on <name>` when that device is already running (the stream is left alone), a 404 JSON with the `devices` names for an unknown one, 500 with `error` when the package is missing or the device would not open. Without `device=`: the state |
+| `GET /audio/output?device=<index\ | name\ | off>` | start the stream on that device (a name matches exactly, then case-insensitively, then as a unique substring: `device=blackhole`), or stop it; answers `{ok, output, capture, note}` -- `note` reads `already on <name>` when that device is already running (the stream is left alone), a 404 JSON with the `devices` names for an unknown one, 500 with `error` when the package is missing or the device would not open. Without `device=`: the state |
 
-Measured 12 Sep 2026 on the OTLIVE fixture (`out/_agents/monitor-server/`,
+Measured on the OTLIVE fixture (`out/_agents/monitor-server/`,
 `verify.py`, logs beside it): the drain costs the idle pump ~0.3 ms per
 25 ms of firmware once the pipe reader was buffered (it was 2.2 ms with
 `readline()` on the raw pipe, a syscall per byte); playing, `end` grows
@@ -550,7 +548,7 @@ the DAC.
 
 ## Recording into a DAW
 
-Since 13 Sep 2026 the unit's outputs can go to an audio device on the Mac
+Since the unit's outputs can go to an audio device on the Mac
 in real time: a virtual device such as
 [BlackHole](https://github.com/ExistentialAudio/BlackHole) (`brew install
 blackhole-16ch`; the DAW records BlackHole's input) or the speakers.
@@ -572,7 +570,7 @@ curl 'http://localhost:8563/audio/output?device=off'
 ```
 
 **The channel map.** With a device on the child's capture switches to
-`audio start tracks` (O23, 13 Sep 2026) -- the EIGHT ESAI words per
+`audio start tracks` (O23) -- the EIGHT ESAI words per
 frame (O14k) followed by the EIGHT PER-TRACK STEMS, 24 words a frame --
 and the drain lays them out on the device: **main L/R → channels 1-2,
 cue L/R → 3-4, tracks 1-8 as stereo pairs → 5-20 (T1 on 5-6 … T8 on
@@ -628,7 +626,7 @@ hour may carry a handful of such seams. Nothing resamples. The latency
 from the PLAY key to the device is the prime (100 ms) plus the drain's
 cadence (20 ms) plus the device's own (11.6 ms on BlackHole).
 
-Measured 13 Sep 2026 (`out/_agents/output/verify.py`, `verify.log`,
+Measured (`out/_agents/output/verify.py`, `verify.log`,
 `verify.json`; port 8596, the clean OTLIVE fixture `out/_agents/audio/
 tree2`, `--sound on`, the `--dsp-rt` child): ready in 7.1 s;
 `/audio/devices` listed BlackHole 2ch, External Headphones (default),
@@ -674,7 +672,7 @@ bank A parsed) and the panel stages its AUDIO pool automatically.
 
 ## Scenes and the crossfader
 
-Measured 13 Sep 2026 on the port with the OTLIVE fixture and the DSP cores
+Measured on the port with the OTLIVE fixture and the DSP cores
 (`out/_agents/panel-ctl/`: `lab_params.py` maps the encoders and finds the
 fader message, `lab_scenes.py` is the end-to-end run, `check_reset.py` the
 double-click, logs / JSON / `S_*` `R_*` screens beside them; the evidence
@@ -691,7 +689,7 @@ right. `/xfader?pos=` sends exactly that byte; the page's fader is a drag
 click on it, the Left/Right arrows (otherwise the keyboard's four arrow
 keys press the panel's arrows, held while held), with the position (0 = A at the left,
 127 = B at the right, the CC 48 value) and the two assigned scenes in its
-tooltip (the readout under the bed went 13 Sep 2026). Nothing is remembered across reloads: the page asks the firmware
+tooltip (the readout under the bed went). Nothing is remembered across reloads: the page asks the firmware
 where the fader is on load and every few seconds while idle.
 
 **The flow, as on the unit** (manual 10.3; every step through the matrix,
@@ -745,7 +743,7 @@ and unchanged (the monitor's gain, double-click = 75 %).
 
 ## Parameter locks
 
-Measured 13 Sep 2026 on the port with the OTLIVE fixture (`out/_agents/plock/`:
+Measured on the port with the OTLIVE fixture (`out/_agents/plock/`:
 `verify_plock.py` the scripted run, `probe2.py`, `flash_stream.log`; the
 evidence is the last section of `KEYMAP.md`).
 

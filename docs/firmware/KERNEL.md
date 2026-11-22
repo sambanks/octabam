@@ -1,13 +1,13 @@
 # The kernel: scheduler, tasks, interrupts
 
-Read byte-exact from the image 6 Sep 2026 (`scripts/disasm.sh emac`) and
-measured under the firmware's own scheduler (route A, retired 26 Sep 2026,
+Read byte-exact from the image (`scripts/disasm.sh emac`) and
+measured under the firmware's own scheduler (route A, retired 
 60509404; the logs are `git show 3ceba41:docs/history/RTOS_FORK.md` and
 `git show 3ceba41:docs/history/COLDFIRE_PORT.md`; the emulators and what
-they must reproduce: `tools/emu/README.md`). ✅ measured or byte-exact,
-🟡 inferred, ❓ open.
+they must reproduce: `tools/emu/README.md`). measured or byte-exact,
+Unconfirmed: inferred, ❓ open.
 
-## Scheduler ✅
+## Scheduler
 
 About 0x200 bytes at `0x40000550`–`0x40000760`. TCB layout (`0x400005fc`
 builds it, `0x40000550`/`0x4000056e` save and restore):
@@ -58,7 +58,7 @@ trampoline, so handlers installed during boot (the UART driver's,
 `0x40010faa`) are re-installed by main. VBR = `0x40000000` (the image's
 first KB, `[0x400b9668]`).
 
-## Tasks ✅ (eleven, measured by a hook on create)
+## Tasks (eleven, measured by a hook on create)
 
 | prio | TCB | entry | stack | created by | what |
 |---|---|---|---|---|---|
@@ -66,8 +66,8 @@ first KB, `[0x400b9668]`).
 | 5 | `0x460bcc2c` | `0x4001ee30` | `0x460bc42c` +0x800 | sys | storage (FAT/ATA) |
 | 4 | `0x460d4f80` | `0x4005593c` | `0x460d4780` +0x800 | sys | key-repeat timer |
 | 3 | `0x460d59d4` | `0x40056c40` | `0x460d51d4` +0x800 | sys | UI (`queue_receive(UI_QUEUE)`) |
-| 2 | `0x460fab80` | `0x40091d18` | `0x460fabd4` +0x2000 | main | 🟡 likely the Static streaming scheduler: waits on `0x46c901b8`, walks eight per-track records, builds read requests (`STEM_REC.md` 20.6) |
-| 2 | `0x460ffd44` | `0x400921c4` | `0x460fdd44` +0x2000 | main | 🟡 card reader: requests on queue `0x460fcd24`, the raw read slot `0x46c82426`, signals the requester; likely for the Static machines (`STEM_REC.md` 20.6) |
+| 2 | `0x460fab80` | `0x40091d18` | `0x460fabd4` +0x2000 | main | unconfirmed likely the Static streaming scheduler: waits on `0x46c901b8`, walks eight per-track records, builds read requests (`STEM_REC.md` 20.6) |
+| 2 | `0x460ffd44` | `0x400921c4` | `0x460fdd44` +0x2000 | main | unconfirmed card reader: requests on queue `0x460fcd24`, the raw read slot `0x46c82426`, signals the requester; likely for the Static machines (`STEM_REC.md` 20.6) |
 | 2 | `0x460e0e38` | `0x4009203c` | `0x460dee38` +0x2000 | main | machine parameters: receives queue `0x460d17ee` (kinds `0x0f` and `0x0e`, `MIDI.md`); ping-pongs with sys |
 | 1 | `0x460ddde4` | `0x4008445c` | `0x460d9de4` +0x4000 | main | engine (46-opcode dispatcher, queue `0x460d17ce`; RELOAD BANK types `0x14`, `6`) |
 | 1 | `0x46105508` | `0x40098a5c` | `0x4610555c` +0x2000 | main | ❓ waits on `0x4610755c`, walks eight per-track records with the EMAC fractional: per-voice work (`STEM_REC.md` 20.6) |
@@ -79,10 +79,10 @@ current TCB `0x46c7ae30` is the pre-multitasking context, saved once and
 never resumed. Route A's M6a gate: 10 tasks created, 11 ran, gate at
 204.95 ms (`out/oracle/m6a.json`).
 
-## Interrupts ✅
+## Interrupts
 
 Two controllers. INTC0 `0xfc048000`, vectors `64 + source`; INTC1
-`0xfc04c000`, vectors `128 + source`. 🟡 The firmware never writes
+`0xfc04c000`, vectors `128 + source`. The firmware never writes
 IMRH/IMRL; it unmasks through CIMR (`+0x1d`, value = source, `0x40` = all)
 and sets ICRn at `+0x40+n`; a CIMR write must also clear IMRL's MASKALL bit.
 
@@ -104,7 +104,7 @@ and sets ICRn at `+0x40+n`; a CIMR write must also clear IMRL's MASKALL bit.
 | `0xb1` | INTC1 49 | `0x4001c244` | `0x4001c2fc` | counter + ack of `0xfc0bc008` |
 | `0xb6` | INTC1 54 | `0x40015304` | `0x40016128` (ATA init `0x400160f8`) | ATA: one sector per interrupt, signal at count 0 |
 
-Levels, from the ICR byte writes (✅ objdump, 5 Oct 2026):
+Levels, from the ICR byte writes (objdump):
 
 | level | vectors |
 |---|---|

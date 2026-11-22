@@ -39,7 +39,7 @@ compares native undo availability and the resulting locks with stock;
 pattern clear/undo separately exercises restoration.
 
 Physical results are recorded once in the
-[combined fixture](../../remixes/test/events-clients/README.md#hardware-results),
+[combined fixture](../../remixes/test/events-clients/README.md),
 with the earlier discrepancy in the
 [failure register](../../docs/contributing/FAILURE_MODES.md#plocks-trig-paste-undo-keeps-copied-page-two-locks).
 

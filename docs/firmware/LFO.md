@@ -2,13 +2,10 @@
 
 ColdFire side of OS 1.40C. Three LFOs per track, eight tracks, evaluated
 once per audio frame inside the frame builder. Read out of the binary by
-Bryan T (21 Sep 2026) and re-read here in objdump
+Bryan T and re-read here in objdump
 the same day (section 8); nothing below has been run under the port yet.
 
-Status key as `CHIP.md`: ✅ read from our image · 🟡 inferred from
-what was read · ⬜ open.
-
-## 1. Where it is ✅
+## 1. Where it is
 
 Inline in the frame builder at `0x4000cf40`–`0x4000d09e` (`MACSR = 0x20`
 set at `0x4000cf60`), and a second copy as a standalone function at
@@ -24,20 +21,20 @@ at `sp@(4)` starts at 23 and decrements per LFO. Pointers per iteration:
 
 | reg | start (inline) | step | what it is |
 |---|---|---|---|
-| `a2` | `sp@(128) + 0x80000660` | −48 per track | `0x80000510 + ping·0x180 + 48·t`, the ColdFire page record (`PARAM_PAGES.md` section 5c); start = track 7 🟡 |
+| `a2` | `sp@(128) + 0x80000660` | −48 per track | `0x80000510 + ping·0x180 + 48·t`, the ColdFire page record (`PARAM_PAGES.md` section 5c); start = track 7 unconfirmed |
 | `a3` | `0x8000136c` | −28 per LFO | LFO state record `i = 3·t + lfo`, array `0x800010e8 + 28·i`, 24 records, ending at `0x80001388` |
 | `a4` | `0x80004890` | −8 per track | per-track trig flags byte (⬜ record not decoded) |
 | `a5` | `sp@(94) + 0x800002b8` | −64 per track | `a5 + 24 = 0x80000110 + ping·0x200 + 64·t`, the DSP voice record |
 | `acc1`/`acc2` | `0x80000000` / `0x7fff80ff` | — | saturation floor / ceiling |
 | `acc3` | `[0x8000181c] << 2` | — | tempo24 × 4 |
 
-🟡 The track order (7 → 0) follows from the two immediates against the
+Unconfirmed: The track order (7 → 0) follows from the two immediates against the
 record bases `PARAM_PAGES.md` and `MIDI.md` already hold; the `sp` slots
 are the ping offsets the standalone copy computes. A `--pcwatch` run under
-the port would make it ✅. The state-array base is also the end address of
+the port would make it. The state-array base is also the end address of
 an apply-part loop (`cmpal #0x800010e8` at `0x400094a8`).
 
-## 2. The records ✅
+## 2. The records
 
 ### The page record `a2` (`0x80000510 + 48·t`)
 
@@ -57,7 +54,7 @@ Bryan's note reads the last two as decimal, giving MULT `+0x18` and TRIG
 `+0x1b`, which is where PLAYBACK page 2 and TSTR sit). SPD *i* at word 6+i
 is itself destination 6+i, so an LFO can modulate another LFO's speed. Word 12+ of the scene numbering (AMP 12–17, FX1 18–23,
 FX2 24–29) is not in this record: see the destination rule below. This
-settles `MIDI.md` Appendix C section 1's two 🟡 rows: scene bytes 6–11 are LFO page 1 and
+settles `MIDI.md` Appendix C section 1's two rows: scene bytes 6–11 are LFO page 1 and
 12–17 are AMP page 1.
 
 ### The LFO state record `a3` (28 bytes, `0x800010e8 + 28·(3·t + lfo)`)
@@ -77,12 +74,12 @@ counter (= `3·t + lfo`), reads step bytes at `0x80001388 + 16·i + step`
 and a per-LFO word at `0x80000110 + 2·(0x9fc + i)` = `0x80001508 + 2·i`
 whose bit *step* selects linear interpolation to the next step (else a
 held step). Apply-part copies 16 bytes per entry from the Part's designer
-data (`part + 0x1702 + …`, `0x40009320`) into it. 🟡 That copy is where
+data (`part + 0x1702 + …`, `0x40009320`) into it. That copy is where
 the T1–T8 choice is resolved (all eight T slots share the handler, which
 never sees the WAVE value). The MIDI handler `0x40003b10` reads its steps
 from `0x46c76dc0` instead.
 
-## 3. Phase, rate, MULT, TRIG ✅
+## 3. Phase, rate, MULT, TRIG
 
 ```
 4000cfa8  mvsw  %a2@(0xc,%d2:l:2),%d6      ; SPD (word 6+lfo)
@@ -102,7 +99,7 @@ selects a 16-byte control record at `0x80006184 + 16·n`, with one bit of
 12–15 of the record steer the store offset (below) and the masks. ⬜ The
 eight modes' records are not decoded individually.
 
-## 4. Waveform dispatch ✅
+## 4. Waveform dispatch
 
 ```
 4000d004  lea   0x400d6210,%a1
@@ -128,7 +125,7 @@ LFOs, consumer `0x40003f56`, which masks the index to 31):
 The audio table is referenced from the inline engine (`0x4000d006`) and
 the standalone copy (`0x40003c6c`) only.
 
-## 5. Output ✅
+## 5. Output
 
 ```
 4000d024  mvzb  %fp@(12),%d0               ; TRIG record byte 12: 4 or 8
@@ -155,7 +152,7 @@ Destination *d* = PMTR: `d < 12` → word *d* of the page record (PLAYBACK
 works through the store offset at `0x4000d02e`: a mode whose byte 12 is
 not 8 leaves `+8` untouched, so the held value persists.
 
-**Low byte of the store (measured, port, 5 Oct 2026).** `ot_emu --watch-pc
+**Low byte of the store (measured, port).** `ot_emu --watch-pc
 0x4000d07a` on bottleservice with `tools/harness/stress_project.py` (24 LFOs
 per part, depth 18-28 on FX1/FX2 knobs), 900 frames: 21,088 output stores,
 each modulating its destination; 21,011 wrote a halfword with a non-zero low
@@ -202,7 +199,7 @@ slot.
 **A fourth LFO per track** changes the Part layout (every LFO field is
 packed three-wide, section 7) and is not planned.
 
-## 7. Part storage ✅ (`0x40057538`–`0x40057690`)
+## 7. Part storage (`0x40057538`–`0x40057690`)
 
 `part = bank + 0x8ed80 + part·0x18b2`; the resolver takes the page-2 slot
 in `d3`, the current LFO *n* (`0x460d1a32`), and branches on
@@ -210,25 +207,23 @@ in `d3`, the current LFO *n* (`0x460d1a32`), and branches on
 
 | slots | audio | MIDI |
 |---|---|---|
-| 0–1 PMTR / WAVE | `part + 0x2f2 + 30·t` | `part + 0x4e8 + 36·t` (❌ was `0x2e8`) |
-| 2–3 MULT / TRIG | `part + 0x30a + 30·t` | `part + 0x500 + 36·t` (❌ was `0x300`) |
-| 4–5 SPD / DEP | `part + 0x11a + 24·t` | `part + 0x3e8 + 32·t` (❌ was `0x268 + 36·t`) |
+| 0–1 PMTR / WAVE | `part + 0x2f2 + 30·t` | `part + 0x4e8 + 36·t` |
+| 2–3 MULT / TRIG | `part + 0x30a + 30·t` | `part + 0x500 + 36·t` |
+| 4–5 SPD / DEP | `part + 0x11a + 24·t` | `part + 0x3e8 + 32·t` |
 
-then `+ 3·(slot & 1) + n`. ✅ Re-read 10 Oct 2026: the MIDI offsets are
+then `+ 3·(slot & 1) + n`. Re-read: the MIDI offsets are
 the `addal` immediates `0x8f268` (`0x40057598`), `0x8f280` (`0x400575c8`) and
 `0x8f168` (`0x400575f4`) from the bank base, i.e. `0x4e8`, `0x500` and `0x3e8`
 from `part`; the SPD / DEP path (`0x400575da`) shifts the track by 5 (stride
-32), the other two by 5 plus 2 (stride 36). ❌ Retracted: the MIDI column
-`0x2e8` / `0x300` / `0x268`. `0x2f2 + 8·30 = 0x3e2` and `0x30a + 7·30 + 6 =
+32), the other two by 5 plus 2 (stride 36). `0x2f2 + 8·30 = 0x3e2` and `0x30a + 7·30 + 6 =
 0x3e2` are the base of the MIDI tracks' page-1 array (`part + 0x3e2` = bank
 `+ 0x8f162`); the MIDI page-2 (setup) array is at `part + 0x4e2` (bank
-`+ 0x8f262`, `MIDI_TRACKS.md` section 1). ❌ Retracted: "`0x3e2` is the MIDI
-page-2 array". The audio
+`+ 0x8f262`, `MIDI_TRACKS.md` section 1). The audio
 page-2 array is `part + 0x2f2 + 30·t`, per track PMTR×3 WAVE×3 · AMP p2 ·
 FX1 p2 · FX2 p2 · MULT×3 TRIG×3. Designer data: `part + 0x1702 + 16·t`
 (audio), `+ 0x1792` (MIDI).
 
-## 8. Provenance: what was checked (22 Sep 2026)
+## 8. Provenance: what was checked
 
 Bryan T's handoff answered two open questions (a slew control; more than
 19 waveforms). Re-read in objdump against our image and matching: the engine
@@ -243,31 +238,7 @@ resolver's six bases, and that `0x400074a0`/`0x40007502` are the
 recorder's FIN/FOUT fades over a `1/n` table (`a4@(6)`/`(7)`, the
 recorder page's slots 6 and 7).
 
-❌ Retracted on it: `DSP.md`'s "LFO speed `0x400074a0`/`0x40007502`, MULT
-table `0x400ab83a`" (they are the fade generator; the LFO rate is `SPD ×
-tempo24 × 4` and MULT is a shift). `PARAM_PAGES.md` section 5a's page-2 display
-array at `+0x8f06c` with a machine column: his `part + 0x2f2` / `+ 0x30a`
-(re-read at `0x4005762c`/`0x4005765a`) put PMTR/WAVE and MULT/TRIG at
-`+0x8f072 + 30·t` and `+0x8f08a + 30·t`, which is his "open discrepancy"
-resolved in his favour — the array starts six bytes later than we had it
-and ends on the MIDI array. `MIDI.md` Appendix C's two 🟡 rows (scene bytes
-6–11 and 12–17) are LFO p1 and AMP p1.
-
-❌ Corrected from the handoff, above (found in the re-read):
-- WAVE's count: `0x400d386c` / `0x400d41d0` hold 0. The counts are `u32`
-  at `E + 0xd2 + 4·slot`; WAVE is slot 7, so `0x400d38ac` (audio) and
-  `0x400d4218` (MIDI), both 19.
-- The page record's MULT and TRIG bytes are at `+0x24` and `+0x27`, not
-  `+0x18` and `+0x1b`: the displacements `24`/`27` in the `mvzb` extension
-  words are hex. `+0x18..+0x1d` is PLAYBACK page 2 (`REPITCH.md`'s TSTR at
-  byte 28 sits there).
-- The label array's reader and its only reference: the WAVE formatter
-  `0x4003be4c` (`lea` immediate at `0x4003be5c`), which also clamps the
-  index with a `moveq #19`; a count bump needs that word too.
-- The MIDI dispatch table is not identically shaped: its designer slots
-  hold `0x40003b10`, which reads steps from `0x46c76dc0`.
-
-Taken one step further (🟡 objdump): the iteration order is track 7 → 0
+Taken one step further (objdump): the iteration order is track 7 → 0
 (`a2 = 0x80000510 + 48·7`, `a5 + 24 = 0x80000110 + 64·7` at the first
 iteration; the `sp` slots are ping offsets, computed explicitly by the
 standalone copy of the engine at `0x40003b90`); the state array is

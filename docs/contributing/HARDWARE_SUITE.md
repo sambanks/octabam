@@ -39,7 +39,7 @@ write-back change the Part and the card copy.
 
 | project | made by | holds |
 |---|---|---|
-| `SFX_01..NN` | `ot_matrix.py proj --clean --stimuli hits,pink,two_tones,sweep,ladder,impulses` | BASE + up to 31 layouts each: every effect on all 8 tracks in FX1 and FX2, each MODE with and without `dear`; 74 layouts + BASE in 3 projects on 1 Nov 2026 (`octabam` 0.1) |
+| `SFX_01..NN` | `ot_matrix.py proj --clean --stimuli hits,pink,two_tones,sweep,ladder,impulses` | BASE + up to 31 layouts each: every effect on all 8 tracks in FX1 and FX2, each MODE with and without `dear`; 74 layouts + BASE in 3 projects on (`octabam` 0.1) |
 | `SSCN` | SFX_01 + `ot_scenes.py stamp --banks 1-2 --all-scenes --trigs grid4` | MIDI track 1 on channel 11, CC 1 locked in all 16 scenes, MIDI trigs on steps 4, 8, 12, 16, clock and transport receive on |
 | `SDJ` | SFX_01 + `ot_scenes.py stamp --banks 1-2 --pattern-steps 2=1,2,4,7,8,11,13` | pattern 2 notes on steps 1, 2, 4, 7, 8, 11, 13 |
 
@@ -71,7 +71,7 @@ program change with the toggle on, at the pattern end with it off).
 
 ## Results on a unit
 
-1 Nov 2026, Sam's MKII, image `OCTABAMR3` (`octabam` 0.1: the stations, PATTERN MUTE and the ColdFire modules
+ Sam's MKII, image `OCTABAMR3` (`octabam` 0.1: the stations, PATTERN MUTE and the ColdFire modules
 OCTA303, MORPH, REC THRESHOLD, BUFFER SAVER, COPY PROJECT, SEQ, FX2 LOCK and TRACK PATTERNS), USB TRACKS PRE, the
 projects of `ot_suite.py build` (74 layouts + BASE). Each project loaded from a pristine copy.
 

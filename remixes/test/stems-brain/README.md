@@ -12,11 +12,6 @@ root and the ledger refused the pair.
 - **MEMORY** — required by STEM REC's DramRegions.
 - **The 14 stock effects**, listed so the FX2 chooser is stock's.
 
-## Status
-
-Port: builds without a root-grow collision; `verify_stems_menu.py
-stems-brain` opens STEMS with UP+REC beside BRAIN. Not hardware-flashed.
-
 ## Build
 
 ```bash

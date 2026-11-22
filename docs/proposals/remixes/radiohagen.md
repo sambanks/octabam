@@ -1,18 +1,18 @@
 # radiohagen
 
-Requested by radiohagen (received 8 Oct 2026): the modules they run now.
+Requested by radiohagen (received): the modules they run now.
 
 ## Selection
 
 [`bottleservice`](../../../remixes/octabam-bus/README.md) plus RLEN PLEN
 and TUNER.
 
-| module | in bottleservice | proof (module table, 8 Oct 2026) |
+| module | in bottleservice | proof (module table |
 |---|---|---|
 | [DELAY SERVER](../../../modules/busdelay/README.md), [REVERB SERVER](../../../modules/busverb/README.md), [SEND](../../../modules/send/README.md) and the rig modules | yes | on hardware: Sam's MKII |
 | [SPECTRUM](../../../modules/spectrum/README.md), [CHARACTER](../../../modules/character/README.md), [MODULATION](../../../modules/modulation/README.md) | yes | on hardware: Sam's MKII |
-| [RLEN PLEN](../../../modules/rlen-plen/README.md) | no | port-gated, 26 Sep 2026 |
-| [TUNER](../../../modules/tuner/README.md) | no | on hardware: Tim's MKI, 29 Sep 2026 |
+| [RLEN PLEN](../../../modules/rlen-plen/README.md) | no | port-gated |
+| [TUNER](../../../modules/tuner/README.md) | no | on hardware: Tim's MKI |
 
 radiohagen's own MIDI development is not part of this selection.
 
@@ -22,7 +22,7 @@ compression are out of reach in their configuration.
 
 ## Stage 2: composes
 
-Built from `origin/main` at `2f89c186`, 8 Oct 2026, `make bus` on a
+Built from `origin/main` at `2f89c186`, `make bus` on a
 `remix.py` copied from bottleservice with modules added:
 
 | selection | result |

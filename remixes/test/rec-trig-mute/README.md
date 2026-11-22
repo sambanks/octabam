@@ -7,10 +7,6 @@ One ColdFire module by Zac Kyoti and the stock effects.
 - **REC_TRIG_MUTE** -- [`modules/rec-trig-mute/README.md`](../../../modules/rec-trig-mute/README.md).
 - the 14 stock FX2 effects, listed so the chooser is stock's.
 
-## Status
-
-The module's bytes are the author's: `reference` re-links the unit at his address every build and compares. The same source ran on the author's MKI, 2 and 3 Oct 2026 (standalone and inside KYOTI V1.0). This remix as a whole has not been flashed.
-
 ## Build
 
 ```bash

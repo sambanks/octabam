@@ -28,8 +28,7 @@ MODULE = Module(
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-06",
         note="(image A6, 6 Oct 2026): importing Octakit-format kit files, ems-octakit #5, STOP/PTN+TRIG/PLAY with "
              "the Rytm, a rejected bank file, power cycles; `verify_kits` under the port"),),
-    doc="255 Kits per project: PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI: FUNC+MIDI, "
-        "then FUNC+BANK); each pattern plays its Kit through the stock Part slots. Replaces the earlier Octakit implementation.",
+    doc="255 Kits per project: PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI: FUNC+MIDI, then FUNC+BANK); each pattern plays its Kit through the stock Part slots.",
     linked=(Linked("kits", "modules/kits/kits.s", dram=True, include=kits_inc),),
     detours=(
         Detour(0x4001FB80, H("4eb940025848"), "kits", "kits_bootblank",

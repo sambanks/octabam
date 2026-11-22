@@ -4,7 +4,3 @@ ANALOG BD and OCTA303 in one image: HOOKS gives the track's machine list seven r
 
 `tools/verify/verify_hooks.py hooks-machines` checks the bridged sites in this image after
 `make bus REMIX=hooks-machines`.
-
-## Where it has run
-
-Not flashed. Built, and its sites checked (verify_hooks).

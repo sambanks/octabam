@@ -1,22 +1,11 @@
 # `usb-out-tracks-main-cue` — USB on the stock effects
 
-The stock chooser plus USB at LAYOUT TRACKS MAIN CUE, for testing the twenty-channel USB stream on a unit that runs stock projects: no FX1 stations, no chooser changes, no project stamping. Bryan T's test remix, 25 Sep 2026.
+The stock chooser plus USB at LAYOUT TRACKS MAIN CUE, for testing the twenty-channel USB stream on a unit that runs stock projects: no FX1 stations, no chooser changes, no project stamping. Bryan T's test remix.
 
 ## What is in it
 
 - **USB** (markandrus, [octemu](https://github.com/markandrus/octemu), MIT) — MIDI in and out over USB, mirroring DIN; at LAYOUT TRACKS MAIN CUE: at USB high speed, track N's post-FX, pre-fader L/R on channels 2N−1/2N, MAIN on 17–18, CUE on 19–20, 44.1 kHz, 24-bit. At full speed, the stereo sum of the tracks. Track LEVEL, the crossfader and MAIN volume are not in channels 1–16. [`modules/usb/README.md`](../../../modules/usb/README.md).
 - the 14 stock FX2 effects.
-
-## Status
-
-- 20 channels on Bryan's MKII as image 90 (25 Sep 2026): MAIN and CUE on their channels, level changes follow.
-- The same modules ran beside the bus and the FX1 stations (the `usb-audio` remix, removed 30 Sep 2026) on Sam's MKII:
-  - image 64, 16 bits (25 Sep 2026): enumerates on macOS as "Elektron Octatrack DPS-1" (16-channel input + MIDI port). Every channel carried its track. 9.6 minutes recorded with no discontinuities after the first 1.6 s of each stream. Device counters 0 underruns, 0 overruns. USB MIDI in took 7,950 messages/s for 185 s without a stall.
-  - image 69, 24 bits (25 Sep 2026): 16 channels, every channel its track's tone, 3 minutes recorded (USBSIG 60 s, USBLOAD 120 s) with no discontinuities after 0.76 s; counters 0 underruns, 0 overruns. The start burst is on the right channels only.
-- Also on Tim's MKI inside `octatrick` (then `octatrick-usb`, OCTATRICK9, 26 Sep 2026).
-- Open: a burst of reordered samples 0.75–1.5 s after the host opens a stream, on four of five takes (`docs/contributing/FAILURE_MODES.md`).
-- `verify_usb_align` runs this remix under the port: MAIN/CUE lag behind the tracks must read 0 samples.
-- Not measured: DISK MODE entered with an audio session open, Windows, Linux hosts.
 
 ## Build
 

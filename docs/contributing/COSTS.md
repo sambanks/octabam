@@ -57,7 +57,7 @@ What the bound does not cover:
   chosen, not a measured edge.
 - Servers (BusVerb, BusDelay, SEND): the bus remixes are not bounded.
 
-## What it holds, 25 Oct 2026
+## What it holds
 
 Slot costs from `octabam-inserts` (base 22.4 / 14.9 %: image I1, and a hardware-branch build carrying the MODULATION pass, I4),
 `stock-meter-a` and `stock-meter-b` (base 22.4 / 14.9 %). Free everywhere =
@@ -97,10 +97,10 @@ core 1.
 `check` on `octabam-inserts`: worst core 112.9 % / 105.3 % (LOFI2 on the FX2
 slots, MODULATION on the FX1 slots), OVER. Without LOFI2: 94.1 % / 86.6 %,
 PASS. `stock-meter-a` and `-b`: 80.8 % / 73.3 %, PASS. The three overloading
-layouts found on the unit (24 Oct 2026, `HARDWARE_MATRIX.md`) all have LOFI2
+layouts found on the unit ( `HARDWARE_MATRIX.md`) all have LOFI2
 on FX2.
 
-GATE VERB, SHATTER and DISTORX were read on a unit on 27 Oct 2026 (images `COST-A` and `COST-B`, built from
+GATE VERB, SHATTER and DISTORX were read on a unit (images `COST-A` and `COST-B`, built from
 `remixes/test/cost-a` and `cost-b`; base 22.4 / 14.9 %, the same as above). GATE VERB's dearest layout (every knob at
 127, a `dear` the manifest gained for this) costs the same as its default, 7.75 %. SHATTER is 3.4 % at its defaults and
 7.46 % at mode1+dear. DISTORX is bypassed at its defaults (about 0 %) and 9.45 % at its dearest, over the 9.07 % that
@@ -112,7 +112,7 @@ STATIC LEVEL): RMS rose from about -35 dB to -8 to -14 dB. The static counts of 
 measured slot costs of the five effects read this way (measured over static, 1.36 to 1.60, mean about 1.5), so estimates from them
 carry that spread.
 
-STUTTR, BBD, MINIVERB and VOID were read the same way on 27 Oct 2026 (images `COST-C`, `COST-G`, `COST-H`). The
+STUTTR, BBD, MINIVERB and VOID were read the same way (images `COST-C`, `COST-G`, `COST-H`). The
 catalog takes the mean busy of the play window; STUTTR's dearest layout varies with time (core 0 mean 40.8 %, maximum
 45.1 %), so its slot cost is 4.60 % on the mean and 5.65 % on the maximum, and both are under the limit. BBD is 10.07 %
 at its defaults and 11.34 % dear, MINIVERB 12.29 % (no `dear` is defined), VOID 7.05 % and 10.46 % dear; the three are
@@ -121,7 +121,7 @@ and STUTTR 0.49 on the mean, 0.60 on the maximum (its static count of 426 is abo
 
 Not read, and why:
 
-- WAVE (the DSP effect, removed 7 Nov 2026 for the ColdFire machine; `git show 755a02ac:modules/wave/README.md`): with audio triggering it on all 8 tracks the frame interrupt fell from 2,756 to 1,378 a second (the matrix's
+- WAVE (the DSP effect, removed for the ColdFire machine; `git show 755a02ac:modules/wave/README.md`): with audio triggering it on all 8 tracks the frame interrupt fell from 2,756 to 1,378 a second (the matrix's
   `OVERLOAD`): the DSP needed two frame periods per frame, and the unit stayed degraded until a power cycle. Idle, with the
   transport stopped, it reads about 8 % a slot. It is a synth, so its cost depends on its voices. LOAD METER returned no
   per-slot rows under the overload, so there is no catalog entry.
@@ -139,7 +139,7 @@ Not read, and why:
 No cost read on a unit: TAPE ECHO (now on the ColdFire; its DSP entry is a stub), DEVILISH,
 SIDECHAIN_COMPRESSOR, MULTIBCOMP.
 
-Modeled, not read (`tools/build/interlock_scan.py`, [CYCLE_SCAN.md](CYCLE_SCAN.md), 18 Nov 2026: the core manual's
+Modeled, not read (`tools/build/interlock_scan.py`, [CYCLE_SCAN.md](CYCLE_SCAN.md), the core manual's
 cycle table and pipeline stalls on the executed path; where a unit figure exists, the model is a mean 3 % above it and
 never more than 0.2 % below): VOCODER 27.5 %, CHARACTER TXTR 15.4 %, RESONATOR 14.5 %, VERBERATION 10.1 %, VIBRATO
 4.6 %, MULTIBCOMP about 0.1 % (a stub path in the stock image). The servers, one instance: REVERB SERVER 35.2 %,

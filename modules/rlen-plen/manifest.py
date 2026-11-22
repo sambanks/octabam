@@ -105,9 +105,7 @@ MODULE = Module(
     category=Category.MACHINES, author="sambanks", author_url="https://github.com/sambanks",
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
         note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); 26 Sep 2026"),),
-    doc="ColdFire cave: RLEN value PLEN (past MAX) = one loop of the track's "
-        "pattern on its own scale, so TRIG ONE + QREC PLEN records the next "
-        "pass and stops.",
+    doc="Adds PLEN to RLEN: a recording lasts one loop of the track's pattern, so TRIG ONE with QREC PLEN records the next pass and stops.",
     # A DRAM unit since 8 Oct 2026 (a floating ROM cave until then).
     linked=(Linked("plen", "modules/rlen-plen/plen_cave.s", dram=True,
                    reference=(0x400d7980, hashlib.sha256(PLEN_CAVE_BYTES).hexdigest())),),

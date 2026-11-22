@@ -55,14 +55,14 @@ Idempotent. What to install before it: [BUILDING.md section 0](../guide/BUILDING
 
 | tool | from | what it is |
 |---|---|---|
-| `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. It mis-encodes some instructions silently (see [TRAPS.md](TRAPS.md#trap-asm)). `tools/patches/dsp56300.patch` adds the chip's one-word displaced move (displacement −64..63, data-ALU register); a word or cycle figure recorded before 14 Sep 2026 counts such a move as 2 |
+| `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. It mis-encodes some instructions silently (see [TRAPS.md](TRAPS.md#trap-asm)). `tools/patches/dsp56300.patch` adds the chip's one-word displaced move (displacement −64..63, data-ALU register); a word or cycle figure recorded before counts such a move as 2 |
 | `dsp_host` | `tools/harness/dsp_host/` (staged into `vendor/dsp56300` and built there) | the emulator harness written here: runs assembled effects on the dsp56300 emulator core. `tools/harness/README.md` |
 | `emu_bringup.py` | `tools/emu/` | Tier-0 ColdFire bring-up: boots the MAIN OS image on Unicorn's CFV4E core to the RTOS handoff. Needs `unicorn`: `make emu-setup` (uv, the `emu` extra). `tools/emu/README.md` |
 | `ot_emu` | `tools/emu/ot_emu/` (`make emu-cf`) | the headless C++ port of the machine: boots the built image, loads a project from a staged card, runs the sequencer and both DSP cores. `tools/emu/README.md` |
 | `ot_brain` | `tools/hw/ot_brain.py` | brain files (`.work`, `.strd`, `.brain`): `dump` to JSON, `build` from JSON (a record it cannot read kept as its bytes, so a round trip is byte for byte), `pair` (what the core does with a directory's `.work` / `.strd`; `docs/specs/BRAIN.md` section 6.2) |
 | `ot_spec` | `tools/hw/ot_spec.py` | one JSON spec over a project's parts and patterns: `apply` (FX ids by module name, every knob by name, machine type, part names; per pattern track: length, scale, trigs, locks on every page by knob name — PLAYBACK, LFO, AMP, FX1, FX2 — with `clear`; the lock-trig mask follows), `report` (the same shape back), `diff` (two projects, field by field); checksum + read-back on `.work` and `.strd` |
 | `ot_bank` | `tools/hw/ot_bank.py` | the bank file's pattern records: `report` lock counts per page, `strip --pages fx1,fx2` clears them in every pattern (the stamper never touches patterns) |
-| `verify_character` / `verify_spectrum` / `verify_modulation` | `tools/verify/verify_<module>.py` | the module rendered through `dsp_host` on the audition's scratch image against predictable arithmetic or a float reference (in `make check` since 16 Sep 2026; Character's master path reads the shipping build) |
+| `verify_character` / `verify_spectrum` / `verify_modulation` | `tools/verify/verify_<module>.py` | the module rendered through `dsp_host` on the audition's scratch image against predictable arithmetic or a float reference (in `make check` since; Character's master path reads the shipping build) |
 | `verify_spectrum_ident` | `tools/verify/verify_spectrum_ident.py` | bit-identity of a rewritten Spectrum against a saved reference (`make verify-spectrum-ident SAVE=1`, then without) |
 | `verify_usb` | `tools/verify/verify_usb.py` | the built image enumerated as a USB device under the port: Elektron 1935:0002, the MSC interface, INQUIRY and its CSW over EP1, no uninitialised queue head (`make verify`, 3 s) |
 | `usb_host` | `tools/harness/usb_host.py` | the scripted USB host for the port's bench (`ot_emu --usb-host SOCKET`): enumerate, mass storage, USB-MIDI in/out, drain an isochronous endpoint; octemu's protocol |
@@ -73,8 +73,7 @@ The disassembler from the same dsp56300 project is the other half:
 disassemble what you assemble, because the assembler's failure mode is
 clean assembly of wrong machine code. Every `build_bus.assemble()` call
 runs `dsp_asm -list` against an independent `dsp56kDisassemble` decode of
-the same bytes and compares mnemonics (Jannik Aßfalg, PR #380, 22 Sep
-2026): a mismatch fails the build. `mpy` encoded as `mpysu` is the one
+the same bytes and compares mnemonics (Jannik Aßfalg, PR #380): a mismatch fails the build. `mpy` encoded as `mpysu` is the one
 mismatch the shipping code carries on purpose ([TRAPS.md](TRAPS.md#trap-asm): second operand
 always non-negative at every site); those sites are counted per module in
 `build_bus.MPYSU_AUDITED`, a count that differs from the table fails the
@@ -109,9 +108,9 @@ cmake -S /tmp/hostpr -B /tmp/hostpr/build -DCMAKE_BUILD_TYPE=Release && cmake --
 then point the harness at it (`benchmark_reverbs.HOST`, `send_probe`'s
 host path) for that run.
 
-### The vendored pin and the DMA de-renewal (22 Sep 2026)
+### The vendored pin and the DMA de-renewal
 
-On 22 Sep 2026 `vendor/dsp56300`'s pin moved from `c051afad` (28 Jul) to
+On `vendor/dsp56300`'s pin moved from `c051afad` (28 Jul) to
 `8ccdd843` (21 Sep, 144 commits later), prompted by reading
 `markandrus/octemu`'s independent RE and finding upstream had absorbed
 several of our own fixes in that span. `tools/patches/dsp56300.patch`
@@ -128,7 +127,7 @@ pre-repin baseline (24 cases), `verify-bus`, `verify-spectrum-ident`,
 (`verify_set`) -- all bit-identical or passing. Our own AGU fix is still
 an open, uncommented upstream PR (#13, since 8 Sep).
 
-Also 22 Sep 2026: measured whether a same-value `DCR` rewrite ever lands
+Also measured whether a same-value `DCR` rewrite ever lands
 while a self-clearing DMA window is still open (octemu's independent
 QEMU fix names this a re-arm, not a no-op, that the vendored emulator was
 silently dropping). Instrumented `DmaChannel::setDCR` in an isolated
@@ -144,7 +143,7 @@ DE-renewal hunk (disabling `HostTransmitData` as a request source):
 `ot_emu` drives HDI08 directly, never through a `DmaChannel`, so that
 half doesn't apply here (checked, not inferred).
 
-### The 28 Oct 2026 re-pin
+### The re-pin
 
 `vendor/dsp56300` moved from `8ccdd843` to `8b731966` (upstream's default
 branch `dsp56300`, 66 commits). The patch dropped the hunks upstream
@@ -199,7 +198,7 @@ Two instruction sets, two toolchains:
 | `tools/build/cf_forms.py` | both | the ColdFire form census (`--census REMIX [--json]`): objdump's instruction forms of each runtime unit's listing (`out/platform/runtime/<NN>_<label>.lst`) against the stock forms of the Ghidra code runs in `tools/build/cf_code_runs.tsv`; `docs/contributing/COLDFIRE_FORMS.md` |
 | `tools/verify/verify_cf_forms.py` | check | the gate over that census (`docs/contributing/TESTING.md`) |
 
-### Disassembling the ColdFire ✅ (Bryan T, 30 Aug 2026; re-read here)
+### Disassembling the ColdFire (Bryan T; re-read here)
 
 `objdump -m m68k:5407` mangles EMAC regions; `m68k:547x` / `m68k:cfv4e`
 (the same decoder) is required. radare2's m68k backend cannot decode
@@ -209,7 +208,7 @@ extension word as an instruction: 6,757 undecodable instructions below
 1,834, EMAC 791; EMAC clusters: `0x40001000` 48, `0x40003000` 62,
 `0x40004000` 50, `0x40007000` 98, `0x4000c000–d000` 47). At `0x40003664`:
 
-| | first four instructions |
+|  | first four instructions |
 |---|---|
 | `m68k:547x` | `msacl %d0,%a1,%acc2` · `msacl %d0,%a2,%acc3` · `macl %d2,%a1,%a5@+,%a1,%acc0` · `msacl %d5,%a1,%a0@+,%a1,%acc0` |
 | `m68k:5407` | `msacl %d0,%a1` · `.short 0xa4c0` · `btst %d4,%a0@` · `macl %d2,%a1,%a5@+,%a1` |
@@ -217,7 +216,7 @@ extension word as an instruction: 6,757 undecodable instructions below
 
 `scripts/disasm.sh emac <addr> [bytes]` uses `m68k-elf-objdump -m
 m68k:cfv4e`. All 90 ColdFire addresses our docs cited in
-`0x40000400`–`0x4000dfff` were re-read with `cfv4e` (30 Aug 2026); no
+`0x40000400`–`0x4000dfff` were re-read with `cfv4e`; no
 conclusion changed (the four r2-unreadable sites: `0x4000b786` `mov3ql
 #-1,%a1@+`, `0x4000c24a` `mvsb %a3@(0,%d1:l),%d0`, `0x40003664`/`0x40003900`
 EMAC). The menu and descriptor work was Ghidra; the MIDI work was objdump
@@ -270,7 +269,7 @@ CI). The family, and what each proves:
 | `tools/build/cycle_count.py` (`make cycles`) | static per-sample cycle count of every module in the selected remix, plus the worst load one core can be asked for |
 | `tools/build/interlock_scan.py EFFECT [NAME=VALUE ...] [--sweep] [--json FILE]` | the path one effect's proc executes (a module, or a stock effect by its key) under `dsp_host -steptrace`, priced with the DSP56300 Family Manual's Table A-1 and its pipeline stalls (sections A.2 and 3.5), per mode, with the stall sites by label. A model, not a measurement, checked against the unit in [CYCLE_SCAN.md](CYCLE_SCAN.md) (mean 3 % high); `--selftest` checks it against the manual's own examples. `ILSCAN_HOST` overrides the `dsp_host` it runs; one without `-steptrace` is refused |
 | `tools/verify/verify_roll.py` / `verify_delay.py` | an alternate reverb / delay engine is bit-identical to the shipping one |
-| `tools/verify/verify_bus.py` (`make verify-bus`) | a bus-layout change is behaviour-preserving over its case list (34 layouts on 28 Sep 2026), stamp-edit-compare (`modules/send/README.md`) |
+| `tools/verify/verify_bus.py` (`make verify-bus`) | a bus-layout change is behaviour-preserving over its case list (34 layouts on, stamp-edit-compare (`modules/send/README.md`) |
 | `tools/verify/verify_menu.py` | the built choosers and descriptor clones against the chooser mechanism decompiled from the firmware, including formatter vs count and the name-field lengths |
 | `tools/verify/verify_slots.py` | static dead-store check on the reverb's r7 state block |
 | `tools/verify/verify_midi.py` | the note→PITCH interval path, locally, via a build override |
@@ -318,8 +317,6 @@ last section), the hardware capture setup — protocol in `docs/history/CAPTURE_
 
 ## Conventions the tooling enforces
 
-- Measured beats inferred, and the tools say which they are producing;
-  confidence markers follow `docs/firmware/CHIP.md`.
 - Silence is a failure, not a pass: the measurement tools check for it
   first.
 - Entry points come from the dispatch tables, never hardcoded.

@@ -84,24 +84,24 @@ Each step runs through `tools/verify/step.py`, which prints one line after the s
 | `brain.py check` | no two modules share a store id; every module with a `Store` or a keyed `Param` has a current `brain.lock` and breaks no released key; every remix's `settings` names a selected setting and a value inside its bounds, a module that `requires_brain` has the core, early settings fit the remix's free CS1 run (`docs/specs/BRAIN.md` section 4.3) |
 | `verify_remixer` (`Makefile` verify-shared) | the remixer (`make remix`) opens and draws headless under Textual's test pilot for stock and every remix (three panes, cursor in each); `k` moves the cursor up in AVAILABLE and `K` resets to stock. SKIPs without textual |
 | `tools/build/label_fmt.py` | the select formatter caves re-derive from their sources (with `m68k-elf-as` on PATH) |
-| `verify_knob_clicks` | the knob census: every continuous knob of the fixture remix's DSP modules moved mid-render, the block-rate step in dBFS; a garbage start stays quiet. `make check-shared` runs it for the changed DSP modules only (`MODULES=`) and, with no module named (a build or tool change), `--sample`: two knobs per module and mode and the whole garbage start (19 s against 49 s, 12 Oct 2026). `make verify-knobs` is the full census |
+| `verify_knob_clicks` | the knob census: every continuous knob of the fixture remix's DSP modules moved mid-render, the block-rate step in dBFS; a garbage start stays quiet. `make check-shared` runs it for the changed DSP modules only (`MODULES=`) and, with no module named (a build or tool change), `--sample`: two knobs per module and mode and the whole garbage start (19 s against 49 s. `make verify-knobs` is the full census |
 | `module_gates.py --shared` | every manifest gate declared `remix_arg=False` by a module in the selection, once for the union; every `once=True` gate, once, on the named remix with the fewest modules that carries its module (a probe remix only when no other carries it) |
 
 **The per-remix half** (`make check-remix REMIX=<name>`), in recipe order:
 
 | step | proves | needs |
 |---|---|---|
-| `bus`, `cycles` | the image builds; static per-sample cycles of every module and the worst load one core can be asked for, against the measured wall; an insert is priced at four copies, or at its declared `max_per_core` (declared, not enforced by the unit) | |
+| `bus`, `cycles` | the image builds; static per-sample cycles of every module and the worst load one core can be asked for, against the measured wall; an insert is priced at four copies, or at its declared `max_per_core` (declared, not enforced by the unit) |  |
 | `verify_dirty_state` | each DSP module rendered from a garbage-filled instance block on silence is silent or identical to the zeroed render | `dsp_host` |
-| `verify_init_regs` | no module's `init` writes r1/n1/m1 (the dispatcher keeps the effect id there) | |
+| `verify_init_regs` | no module's `init` writes r1/n1/m1 (the dispatcher keeps the effect id there) |  |
 | `verify_dsp_forms` | every instruction form of the remix's DSP modules has a site in a stock payload, a row of CHIP.md's instruction-form register, or a module whose `Evidence` is `Level.UNIT` or above; the control form `move a,y:(r3+$1)` is reported; a `bench_only` module's unproven forms are reported, not refused, in a remix under `remixes/test`. Cannot see: a stock listing decodes tables as code, so a form can have a site the chip never ran; a unit run proves the paths that ran, not every instruction of the source. The build's own window code (the demand stub, the reverb guard's trampolines and body, hook stubs: `out/dsp/window_records.json` of the last build, decoded from the placed words) has no module whose evidence could clear it, so its forms with no stock site or row are printed as `[info]` per record and not refused; on `octabam` that is 32 forms in 8 records. Its build must be the remix's | `dsp_asm`, `dsp56kDisassemble` |
 | `verify_cf_forms` | every ColdFire instruction form of the remix's runtime units, read from the build's assembler listings (`out/platform/runtime/*.lst`, instruction lines only, each instruction's decoded length checked against the listing's), is reported when no analysed stock code has a site of it (`tools/build/cf_code_runs.tsv`, Ghidra's address runs, decoded from the user's own image) and neither its module's `Evidence` is `Level.UNIT` or above nor a row of `docs/contributing/COLDFIRE_FORMS.md` names it. It refuses nothing of that kind yet: FAILs are the control (`wddatal %a0@` must be reported, `moveq #1,%d0` not), an image other than the one the runs were written from, a unit with no listing or a listing of another build, an instruction objdump decodes at another length. Cannot see: ROM caves, detour stubs and the loader; an instruction a source writes as `.short`; a stock function Ghidra did not reach; a unit run proves the paths that ran; the port may shim a form that has a stock site | `m68k-elf-objdump`, `m68k-elf-as` |
-| `tools/build/norep.py` (in every build, `assemble_syms`) | a DSP source with a `rep` is refused; a `do` loop is the form (FAILURE_MODES.md "Crackle on core B"); `tests/test_norep.py` plants one | |
+| `tools/build/norep.py` (in every build, `assemble_syms`) | a DSP source with a `rep` is refused; a `do` loop is the form (FAILURE_MODES.md "Crackle on core B"); `tests/test_norep.py` plants one |  |
 | `verify_dram_boot` | the image boots under the port; the loader runs once, its `fatal` never, every DRAM window reads back equal to the linked runtime | port |
 | `verify_labels`, `verify_mode_names`, `verify_hidden` | the firmware's own formatter code prints each select's words; the MODE formatter renames its neighbours; a hidden engine is placed, dispatched, off the chooser and draws nothing | `.venv` |
 | `module_gates.py --stage isolated --remix-only` | the manifest gates declared `remix_arg=True` and not `once` | per gate |
-| `verify_menu` | the FX1/FX2 choosers and every cloned descriptor against the chooser logic decompiled from the firmware: row order, formatter vs value count, name-field lengths, link bits | |
-| `verify_replaces --image` | on this image, every stock effect id is stock's or declared by `replaces`, on both menus (until 29 Sep 2026 the shared half built all 35 remixes for this: 41 s warm, 402 s on a cold build memo) | |
+| `verify_menu` | the FX1/FX2 choosers and every cloned descriptor against the chooser logic decompiled from the firmware: row order, formatter vs value count, name-field lengths, link bits |  |
+| `verify_replaces --image` | on this image, every stock effect id is stock's or declared by `replaces`, on both menus (until the shared half built all 35 remixes for this: 41 s warm, 402 s on a cold build memo) |  |
 | `verify_set` | a real project on the image under the port: the load completes, live ids equal the part's, page-2 lanes reach the DSP record, every track with audio has chain output, CCs over MIDI IN move the right bytes, CC FEEDBACK's wire and cache, the load rewrote no project file, the firmware's log is clean | port, `.venv`, project |
 | `verify_usb` | the image enumerates under the port with the descriptors its USB modules declare; the streams run at their cadence; mass storage still answers | port |
 | `module_gates.py --stage image` | the manifest gates that read the finished image | per gate |
@@ -155,7 +155,7 @@ The two tables above.
 | `verify_plocks_p2` | PLOCKS P2 | per remix | under the port: page-2 locks recorded from the panel (record, copy and paste, clear, pattern copy / paste / clear, undo), played on trigs, saved to the card (`p2lkNN.work`, `.strd`) and loaded back, including a power-up load from CS1 (`--cs1-in`, `--no-post`). Cannot see: the dial draw (the LCD is not decoded), the hardware, a slide trig | port, project |
 | `verify_testgen` | TESTGEN | shared | SINE against `sin(2 pi n inc / 2^24)` within 4 LSB, frequency within 0.003 Hz, FINE within 1 ppm, THD below −120 dB, LEVL steps of 0.5 dB within 0.01 dB, CHAN; SWEEP, WHITE, PINK, IMPULSE, NEEDLE and DC against `testgen_ref.py`; silent at LEVL 0; an invalid MODE byte is SINE | `dsp_host` |
 | `verify_transient` | TRANSIENT | shared | defaults and MIX 0 bit-exact passthrough; a negated input gives the negated output within 4 LSB; the per-sample gain matches the float reference within 0.1 dB across ATCK and SUST extremes and three levels; SUST +63 raises no onset peak and steps under 0.5 dB between samples on a decaying tail; a steady 1 kHz tone moves under 0.25 dB | `dsp_host` |
-| `verify_analog_bassdrum` | ANALOG BD | shared | the generated descriptor helpers | |
+| `verify_analog_bassdrum` | ANALOG BD | shared | the generated descriptor helpers |  |
 | `bd909.py`, `bd808.py` (`tools/harness/`) | ANALOG BD | shared | the 909 engine in `bd909_host` against `dsp909.Voice` (a mismatch is a DSP bug; a mismatch with Drumazon is a model limit); the 808 reference, retrigger, automation and desk stability | `bd909_host` built into `out/bd909` |
 | `verify_analog_bd_exact.py`, `verify_analog_bd_levels.py` (`tools/harness/`) | ANALOG BD | shared | the original DSP output and state pinned by hash (all trigger offsets, rapid retriggers, long tails, control extremes, random block-rate automation) with both post-desk output gains verified; the shipped 808/909 defaults compared by fixed-window hit RMS | `dsp_host` |
 | `verify_analog_bd_reverbs.py` (`tools/harness/`) | ANALOG BD | image | PLATE and DARK stay bit-identical to stock after SPRING is harvested, on both cores, with fixed and moving controls, at the hardware audio address X:0 | `dsp_host` |
@@ -210,10 +210,10 @@ dear={"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
   runs on (the carrier of a `once` gate, the first remix of the line otherwise). `test_reach` refuses a gate that has the SKIP line
   and no flag, except those with a job of `reach.SPLIT_EXTRA_UNITS` (BRAIN, MIDI SCENES). `KNOWN_RED` in `test_reach` lists
   any gate that fails with a generated project and is left unflagged until fixed; it is empty (`verify_dlload` #1075 and
-  `verify_load_meter` #1126 left it on 15 Nov 2026, `verify_cfmeter` #1124 when a probe remix stopped being a `once` gate's
-  carrier, `verify_ids64_load` #1120 and `verify_kits` #1125 on 17 Nov 2026). A job that fails in one remix's project unit and passes in others is left out
+  `verify_load_meter` #1126 left it, `verify_cfmeter` #1124 when a probe remix stopped being a `once` gate's
+  carrier, `verify_ids64_load` #1120 and `verify_kits` #1125). A job that fails in one remix's project unit and passes in others is left out
   of the project there (`reach.PROJECT_GATE_SKIP`, empty since #1127's `plocks-p2` and `mode-defaults` on `octabam-verbs` were
-  fixed) and runs without one (sambanks/octabam#1051). `set` runs with the project on the remixes of `reach.PROJECT_SET`
+  fixed) and runs without one. `set` runs with the project on the remixes of `reach.PROJECT_SET`
   (`octabam`). A job that exited 0 with `[SKIP]` lines reads `ok, N SKIP` in `check_shards`'s table.
 - `once=True` (with `remix_arg=True`, isolated): the gate checks the
   module's own code, the same in every carrier, so it runs once per run
@@ -267,8 +267,8 @@ shared check verifies payload placement, not the correctness of mutable values.
 
 | need | option | example |
 |---|---|---|
-| several calls, pokes and memory dumps on one load | `--step FRAME:call\|poke\|dump:SPEC`, repeatable; `-` = after the load before the transport, `N` = frame N after the transport start | `verify_mode_defaults`: two editor calls, their lane dumps and a MIDI case on one load |
-| a panel sequence (keys, encoders, the level pot) | `--live-script FILE`: lines of `<emulated ms> key\|enc\|pot\|midi\|audio start\|quit ...`, transport stopped, applied at emulated times | `verify_tempo_bus`: 65 panel lines, 7.1 s emulated, no wall-clock sleeps, the same on a loaded machine |
+| several calls, pokes and memory dumps on one load | `--step FRAME:call\ | poke\ | dump:SPEC`, repeatable; `-` = after the load before the transport, `N` = frame N after the transport start | `verify_mode_defaults`: two editor calls, their lane dumps and a MIDI case on one load |
+| a panel sequence (keys, encoders, the level pot) | `--live-script FILE`: lines of `<emulated ms> key\ | enc\ | pot\ | midi\ | audio start\ | quit ...`, transport stopped, applied at emulated times | `verify_tempo_bus`: 65 panel lines, 7.1 s emulated, no wall-clock sleeps, the same on a loaded machine |
 | several runs that each need the machine exactly as it was after the load | `--scenario "LOG ARGS..."`, repeatable, `--scenario-jobs N` (default 3): the port loads once and forks one child per scenario; each child writes its stdout to LOG and takes ARGS as its post-load options (`--sequencer`, `--frames`, `--step`, `--poke`, `--call`, `--midi`, `--mem-dump`, `--live-script`, ...) | `verify_scenes_p2`: three frame runs and the editor pass from one load |
 
    Boot-time options (`--dsp`, `--audio-in`, `--audio-out`'s capture, the
@@ -277,8 +277,7 @@ shared check verifies payload placement, not the correctness of mutable values.
    that names the same path keeps writing it, every other child closes its
    copy. A scenario inherits the DSP cores: a panel-only run forked from a
    `--dsp` load emulates both cores throughout, which cost more than a
-   separate load for `verify_tempo_bus` (measured 29 Sep 2026, 115 s against
-   109 s), and detaching the cores after the fork stalls the frame engine. The fork is the snapshot: after `fork()` the port
+   separate load for `verify_tempo_bus`, and detaching the cores after the fork stalls the frame engine. The fork is the snapshot: after `fork()` the port
    copies the DSP cores' shared memory into private objects
    (`unshareRanges` in `tools/emu/ot_emu/main.cpp`; the vendored DSP memory
    is a `shm` object mapped several times, which forked children would
@@ -294,15 +293,14 @@ shared check verifies payload placement, not the correctness of mutable values.
 
 **QUICK skips three `verify_kits` scenarios.** `make reach RUN=1` without `FULL=1` sets `OCTABAM_QUICK=1`; `verify_kits` (also `--quick`) then skips `unattended` (60 s emulated of BCR2000 CCs on a 120 BPM clock), `presses` (250 track presses) and `strand` (the rejected bank file, with the DSP) and prints `FULL only (skipped by --quick): unattended, presses, strand` at the start and the end of its output. `make reach FULL=1`, a direct `python3 tools/verify/verify_kits.py REMIX` and `make check` run them. A green QUICK run is not a pass of those three.
 
-
-**The test remixes are left out** (30 Sep 2026): no remix under
+**The test remixes are left out**: no remix under
 `remixes/test/` is picked by `make reach` in either tier, as a carrier, the
 floor, the cover or identity. A change to a module that only test remixes
 carry (CF METER, EUCLID, MINIVERB, TAPE ECHO, most USB variants)
 reaches that module's own gates on its test remixes (`check-shared` for the
 module, `check-remix` with the module's gates), not the selftest alone: before
-30 Oct 2026 it reached the selftest and a green run read as a checked
-module (#953). Other changes to a test remix, and the cover and identity,
+ it reached the selftest and a green run read as a checked
+module. Other changes to a test remix, and the cover and identity,
 still leave the test remixes out; `TESTS=1` brings them back.
 
 **Two tiers.** The default is QUICK, for working without losing the
@@ -311,7 +309,7 @@ machine: a module change checks the remixes users flash that carry it
 floor for tool and build changes is the one cover remix carrying the most
 modules; a build change runs refhash but not `make identity`; no
 `make accept`; a shard per gate slot no other session holds (at least
-two; a fixed two until 11 Oct 2026); every command at nice 10 (the performance cores,
+two; a fixed two); every command at nice 10 (the performance cores,
 below the desktop; measured on the M3: a CPU task 2.8 s at nice 0 and at
 nice 10, 19.9 s under background QoS, `taskpolicy -b`). `FULL=1` is everything below at
 full speed. What QUICK gives up: the pressure stages (the dearest layouts
@@ -354,7 +352,7 @@ Files under `tools/` are placed by dependency: the Python imports and the
 comment, docstring or message is not an edge.
 
 **The cover** is the fewest remixes that between them carry every module,
-computed from the registry each run (9 of 35 on 29 Sep 2026: bottleservice,
+computed from the registry each run (9 of 35: bottleservice,
 cfmeter, euclid, miniverb, mods, tapeecho, usb-io-main-ab,
 usb-io-main-cue-abcd, usb-io-tracks-ab). `REACHARGS=--all` makes the floor
 every remix.
@@ -369,7 +367,7 @@ With `STRESS_SOURCE=<a local project>` the accept lines run and replace the
 check lines for the same remixes. Without it, accept is listed as blocked
 and the check lines stay.
 
-**Scoped shared half** (11 Oct 2026). `make check-shared MODULES="A,B"`
+**Scoped shared half**. `make check-shared MODULES="A,B"`
 runs the selftest, slots, replaces, docs, the remixer and `label_fmt` as
 always (about 45 s together, measured under load 10-36), and the knob
 census and the shared module gates for those modules only: the census
@@ -378,10 +376,9 @@ whole shared half for bottleservice runs nine module gates (twocore,
 onebus, spectrum, character, charkey, modulation, ccmap, ccfeedback,
 kits) and the 90 s census; a KITS change needs one of them. Two scoped
 lines merge into one with the union of their modules; an unscoped line
-stands for every module of its own remixes (12 Oct 2026; until then it
-made the merged line the whole half of every remix in it).
+stands for every module of its own remixes.
 
-**Scoped per-remix half** (12 Oct 2026). `make check-remix REMIX=r
+**Scoped per-remix half**. `make check-remix REMIX=r
 MODULES="A,B"` (and `check_shards.py --modules`) runs the remix's floor
 as always (the build, cycles, dirty-state, init-regs, dram-boot, labels,
 mode-names, hidden, menu, the set and USB) and the module gates of every
@@ -401,7 +398,7 @@ change that reaches one remix runs its shared half and then its per-remix
 half through `check_shards.py` split by gate, instead of a serial
 `make check` in this tree.
 
-**Cached passes** (11 Oct 2026, `tools/verify/gate_cache.py`). Every job
+**Cached passes** ( `tools/verify/gate_cache.py`). Every job
 `check_shards.py` runs (a remix's whole half, or one gate job) builds the
 remix's image and looks itself up by a key over the image, the job's
 scripts and everything they reach in the tools/ graph, the Makefile, the
@@ -427,7 +424,7 @@ caches the gates that take no remix (`gate_cache.shared_key`): the key has no
 image or remix and covers the gate's script closure, the files of `dsp/`,
 `tools/build/`, `tools/remix/` and `tools/harness/` (of their Python, only what
 the build reaches from `reach.BUILD_ROOTS`: a tool or gate there, such as
-`selftest.py`, is in the key only through a gate's own closure; 4 Nov 2026, a
+`selftest.py`, is in the key only through a gate's own closure; a
 one-line `selftest.py` edit on main moved every shared gate's key), the directories of the gate's module and of
 every module `reached()` from it (their manifests with them), the stock OS slice, the
 port, the toolchain, the project, `BUILD` and `OT_BANK`. Each gate prints
@@ -440,7 +437,7 @@ from the actions cache by `refhash_store.py key`.
 unit per gate job, `check-remix <remix> (<job>)`, which runs `check_shards --only-jobs <job> <remix>`; the job names are
 `check_shards.job_names` (the `verify-remix` recipe's scripts, `cycles`, every module gate, `set`, `usb`, and the jobs of
 `reach.SPLIT_EXTRA_UNITS`). A gate with sections is one job per section (`reach.SPLIT_GATE_SECTIONS`: `scales:mki` and
-`scales:mkii`, `verify_scales.py --section`, one model's port runs each; 15 Nov 2026, run 43734790095: `scales` alone was
+`scales:mkii`, `verify_scales.py --section`, one model's port runs each; run 43734790095: `scales` alone was
 3630 s on octabam, 4430 s on octabam-verbs and 2687 s on octabam-bus, each unit's whole wall time). A name that is no gate job is
 refused, so the units always cover every gate job once. The shared half is `check-shared` (`SHARED_PART=rest`) and one
 unit per shared module gate, `check-shared (<gate>)` (`SHARED_PART=modules MODULE_GATES_ONLY=<script>`; two modules'
@@ -459,8 +456,8 @@ The units that read `OT_PROJECT` get a project: `tools/hw/ot_fresh.py` boots the
 `<git common dir>/octabam-fresh-cache/<sha256 of image, port sources, script>` (CI: an actions-cache entry, `fresh-@<run id>`),
 so a rerun for the same inputs is the image build alone (41 s locally). The units download it as the artifact
 `fresh-projects`. The `image:` jobs without `Gate.project` have none: with a project `verify_brain` failed and the one `image` job ran
-2869 s on cxosc-core (27 Oct 2026).
-Each image-stage module gate is a job of its own, `image:<script>` (until 4 Nov 2026
+2869 s on cxosc-core.
+Each image-stage module gate is a job of its own, `image:<script>` (until 
 one `image` job ran them in turn: 2723 s of a 3031 s unit); a gate whose script names
 `verify_set` stages its card first. `brain`, `brain-stores`, `brain-templates`, `brain-panes` and
 `brain-screens` (`reach.SPLIT_EXTRA_UNITS`) are gate jobs of `octabam` only, each its own
@@ -469,8 +466,8 @@ one `image` job ran them in turn: 2723 s of a 3031 s unit); a gate whose script 
 project load, the menu, the settings and the USB pair rule; `templates` is SAVE and LOAD TEMPLATE, the AMP, LFO and
 SRC targets; `panes` is the BRAIN > TEMPLATES screens, the PART templates and the PART default;
 `screens` is the knob names, the project settings, the live screens, the debug log and MODE
-DEFAULTS. No `--section` runs all five (about 830 s on an M-series Mac, 4 Nov 2026). Measured in CI (runs 41730853350
-and 41744406390, 4 Nov 2026), cold, three jobs to a 4-vCPU runner: `image:buffer-saver`
+DEFAULTS. No `--section` runs all five (about 830 s on an M-series Mac). Measured in CI (runs 41730853350
+and 41744406390), cold, three jobs to a 4-vCPU runner: `image:buffer-saver`
 1426-1646 s, `image:rec-threshold` 840-1002 s (its per-run timeout is 3600 s),
 `image:usb-load-meter` 242-469 s, `usb` 257-336 s, every other `image:` job 12-233 s;
 `check-remix octabam` 1646-1737 s wall. `module_gates --shared`: `test_morph` 373-578 s,
@@ -516,13 +513,13 @@ the runner fail and prints `[FAIL] card retention`. Acceptance reports keep
 removals print a count/size and append filenames and bytes to
 `out/card-retention.jsonl`; `out/card-retention.json` holds the last removal.
 
-**Gate slots** (11 Oct 2026, `tools/verify/slots.py`). Each `check_shards`
+**Gate slots** ( `tools/verify/slots.py`). Each `check_shards`
 job and each command `reach` runs in its own tree holds one of the
 machine's slots (`OCTABAM_SLOTS`, default 3) while it runs; the rest wait
 and print who holds the slots. `python3 tools/verify/slots.py` lists the
 holders. The same gate measured 35.7 s to 395 s across runs that shared
 the machine (`verify_set` on bottleservice, `times.json` of eight
-worktrees, 29 Sep-10 Oct 2026; the Rosetta port accounts for up to 1.75x
+worktrees, 29 Sep-; the Rosetta port accounts for up to 1.75x
 of that before 6 Oct). A `make check` run by hand takes no slot.
 
 **Every failure is recorded.** `module_gates.py` (each module gate),
@@ -532,7 +529,7 @@ of that before 6 Oct). A `make check` run by hand takes no slot.
 whether the tree had uncommitted changes), the worktree, the gate, the
 remix and the first `[FAIL]` line. `python3 tools/verify/gate_ledger.py`
 counts them per gate (`--all` lists every record). The gate cache keeps
-only passes, so until 11 Oct 2026 nothing said which gates ever caught
+only passes, so nothing said which gates ever caught
 anything. A failed module gate inside a remix half appears twice, once
 under its script and once under `check-remix` or its `job:` name.
 
@@ -551,14 +548,13 @@ recreates, `--rm` removes). Remixes are handed out from one queue. Logs:
 runs as its gate jobs in the same queue as the other remixes' whole
 halves, and the queue runs longest first (local runs; CI runs one gate job a runner). check_shards records every job's
 duration in `<git common dir>/octabam-gate-times.json` after each run,
-one record for every worktree (`out/check_shards/times.json` until 11 Oct
-2026, so a fresh worktree's first run split nothing); `--split auto`
+one record for every worktree (`out/check_shards/times.json`, so a fresh worktree's first run split nothing); `--split auto`
 (the default) splits a remix run alone, and a remix whose last time
 exceeds both 300 s and the run's total over the shard count. A split
 remix's gate jobs leave out the `once=True` module gates, as `make
-check-remix` does: the shared half runs them (until 11 Oct 2026 a split
+check-remix` does: the shared half runs them (until a split
 bottleservice ran `verify_kits` twice, 625-1,172 s each). `--split none` or `--split a,b` overrides. Measured on the cover
-with three shards (29 Sep 2026): 681 s whole, 574 s split, for 1,621 s of
+with three shards: 681 s whole, 574 s split, for 1,621 s of
 work (the floor for three shards is 540 s). The image-stage module gates
 then became their own job (`verify_set.py --stage-only` stages the image and
 card without running; TEMPO BUS reads its host ids from its own run): 530 s
@@ -569,7 +565,7 @@ half into one job per gate over the shards and prints each gate's time:
 the instrument for finding the expensive gate.
 
 **Cores.** The development Mac has four performance cores. Four port
-boots at once contend and run slower than three (measured 28 Sep 2026);
+boots at once contend and run slower than three;
 `JOBS=3` is the better default when another run shares the machine.
 
 ## 8. `make accept`: the strict runner
@@ -661,7 +657,7 @@ and project gates still apply). A module is never rendered at default
 settings and called covered; a module PR that wants the pressure stages
 adds `dear` beside its gates.
 
-Declared on 27 Sep 2026: SEND, DELAY SERVER, REVERB SERVER, CHARACTER,
+Declared: SEND, DELAY SERVER, REVERB SERVER, CHARACTER,
 SPECTRUM, MODULATION. Blocked until their authors declare one: MINIVERB,
 TAPE ECHO, EUCLID, CF METER.
 
@@ -738,8 +734,7 @@ A new module's gates, `dear` and behavioral tests belong in that same PR.
   at the merge-base, under an flock; keyed by the merge-base, the stock
   slice, `dsp_asm`/`dsp_host` and the assembler version; the newest eight
   kept) and `check` copies it in: 137 s for the first check after a main
-  merge (save plus check), 56 s for every later one (12 Oct 2026; before,
-  every session ran its own save). The 24 builds run over `REFHASH_JOBS`
+  merge (save plus check), 56 s for every later one. The 24 builds run over `REFHASH_JOBS`
   trees (default 4: this one and three kept scratch worktrees,
   `tools/verify/refhash_run.py`): 22 s, 40 s when the scratch trees are
   created. `save` stays sequential. `save` is a local baseline for
@@ -760,12 +755,12 @@ with the load average noted because it moves every number:
 |---|---|
 | `make check-shared` for a cover | 250-375 s |
 | per-remix half, a USB test remix | 115-260 s |
-| per-remix half, bottleservice | 468 s (29 Sep 2026, 3 shards; 788 s before the scenesp2 fork, 1,143 s on 27 Sep) |
+| per-remix half, bottleservice | 468 s, 3 shards; 788 s before the scenesp2 fork, 1,143 s on 27 Sep) |
 | per-remix half, mods | 432-627 s (2,580 s before `verify_repitch` stopped loading seven times) |
 | the cover's per-remix halves, `JOBS=3` | 530 s (574 s before the image job was split out, 681 s whole, 986 s before the scenesp2 fork) |
 | `verify_scenes_p2` on bottleservice, quiet machine | 109-111 s one load per run, 73-74 s one load and forked scenarios |
 | `verify_tempo_bus`, quiet machine | 49 s wall-clock paced, 34 s scripted |
-| `verify_kits` on bottleservice, quiet machine | 630 s: 29 scenarios, 371 s emulated, no DSP cores, 3 at a time, native binary (6 Oct 2026; the first reach run took 3,375 s for the whole per-remix half with the cores on, 6 at a time on two shards, under Rosetta) |
+| `verify_kits` on bottleservice, quiet machine | 630 s: 29 scenarios, 371 s emulated, no DSP cores, 3 at a time, native binary; the first reach run took 3,375 s for the whole per-remix half with the cores on, 6 at a time on two shards, under Rosetta) |
 
 Typical changes (with `JOBS=4`, kept shards):
 
@@ -807,7 +802,7 @@ Toolchain and ColdFire Port Unit Tests run them for every diff that plans them (
 plans again from the same diff, without the lookup, and keeps that unit, so the plan job and the unit jobs must pass the same
 `--jobs`. A unit's setup is the whole job's (checkout, caches, `make os`, `make recon`, `make emu-setup`, the port from the
 cache; `.github/actions/gates-setup`): 47-94 s without a project and 248-411 s with the fresh project step it had before the
-plan made them (run 43811384156, 16 Nov 2026). The gate cache and the slots are per machine; the pass store is how a runner
+plan made them (run 43811384156). The gate cache and the slots are per machine; the pass store is how a runner
 sees another's passes. `identity` queues the checks of the remixes it names inside its own unit.
 
 The run's summary page has one section per unit (its `check_shards` and `reach` result tables, and the failure excerpts when a gate failed) and the `Gates — make reach` table of units with result, time and a link to each job.

@@ -7,10 +7,6 @@ TRACK PATTERNS by pgstath and the stock effects.
 - **TRACK PATTERNS** -- [`modules/trackpatterns/README.md`](../../../modules/trackpatterns/README.md): a pattern per track, clip style; hold [TRACK n] + [PATTERN] + [TRIG k].
 - the 14 stock FX2 effects, listed so the chooser is stock's.
 
-## Status
-
-`make check REMIX=trackpatterns` and the module's gate. Flashed as `OCTABAM3` on the contributor's MKII on 21 Oct 2026: the functional tests and the trig LED checks were reported as passed (`modules/trackpatterns/TESTING.md`).
-
 ## Build
 
 ```bash

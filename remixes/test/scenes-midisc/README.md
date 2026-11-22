@@ -9,10 +9,6 @@ MIDI-driven scene locks, Kits, page-2 scene locks and page-2 parameter locks on 
 - **SCENES P2** (sambanks) — scene locks and the crossfader on FX1/FX2 page 2.
 - **PLOCKS P2** (sambanks) — parameter locks on FX1/FX2 page 2: hold trigs and turn a knob on the SETUP page.
 
-## Status
-
-Port-gated (`tools/verify/verify_scenes_p2.py`, `tools/verify/verify_plocks_p2.py`, `tools/verify/verify_kits.py`). Not flashed.
-
 ## Build
 
 ```bash

@@ -7,10 +7,6 @@ TRANSIENT beside 13 stock effects (all but PLATE REV, whose words it takes).
 - **TRANSIENT** -- [`modules/transient/README.md`](../../../modules/transient/README.md).
 - the stock effects but PLATE REV, listed so the chooser is otherwise stock's.
 
-## Status
-
-Ran on Ignorato's MKII as OCTABAM2, 3 Oct 2026 (`make image REMIX=transient BUILD=2`).
-
 ## Build
 
 ```bash

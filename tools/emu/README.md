@@ -18,7 +18,7 @@ The records of how they were built:
   Hastie's; what is still in the port is [Port features](#port-features));
 - Tier-0: `git show 3ceba41:docs/history/EMU_BRINGUP.md` and `git show 3ceba41:docs/history/RTOS_FORK.md`.
 
-Route A (`emu_rtos.py`) was retired on 26 Sep 2026 (60509404).
+Route A (`emu_rtos.py`) was retired (60509404).
 
 ## Which one
 
@@ -110,7 +110,7 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
     0x10000000,0x100000=FILE` of an earlier run makes it that run's CS1.
   - `--no-post` posts nothing: the load is the firmware's own power-up
     one; the run still ends when the engine is idle.
-  - Measured 2 Oct 2026 on the stock image: a page-1 lock recorded and
+  - Measured on the stock image: a page-1 lock recorded and
     never saved is in the pattern after `--cs1-in` + `--no-post` with the
     first run's card, and gone with the posted load.
 - **Cost.** Wall time is about 2× the emulated time; about 15 frames/s with
@@ -153,7 +153,7 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   `--live-script` while the load is still held (`verify_remix_switch`'s boot
   cases).
 - **Three things the DSP emulator does that the chip does not** (found
-  bringing up REMIX SWITCH's DSP park, 29 Sep 2026): `dsp peek <core> P <addr>`
+  bringing up REMIX SWITCH's DSP park): `dsp peek <core> P <addr>`
   answers 0 for `0x30000..0x3ffff` (it reads the core's own array, not the
   shared window); `--dsp-pcwatch`'s a1/b1 print the accumulator shifted left
   by 8; and inside a long interrupt (a `jsr` vector) no peripheral runs until
@@ -205,7 +205,7 @@ a real project. It is part of `make verify` when `OT_PROJECT` or
 - every track's record halfwords 18–26 equal its page-2 lane;
 - every track with record audio has a chain output;
 - CC 40 over MIDI IN moves T2's SEND;
-- (CC MAP) CC 108 reaches T1's FX1 page 2 (CC 68 until 1 Nov 2026);
+- (CC MAP) CC 108 reaches T1's FX1 page 2 (CC 68);
 - on a bus remix, each engine's host carries T2's send on its chain
   output, and an engine on the wrong core is refused;
 - the load rewrote no project file;
@@ -219,7 +219,7 @@ census of the main out is printed and not checked (below).
 A card-sample voice plays, and its audio stops at core 0's summing mixdown
 (`P:0x259..0x275`). The gain read from `Y:0x40` is 0 for every track
 (`--dsp-pcwatch 0:0x25e`: x0 = the sample, y0 = 0), so the TX DMA ring at
-`X:0x8000` stays zero. This was measured 28 Sep 2026 with `verify_repitch`'s
+`X:0x8000` stays zero. This was measured with `verify_repitch`'s
 FLEX fixture on the repitch and bus images.
 
 - **Upstream is fine.** The voice's position, fetch, format-3 copy, host
@@ -308,7 +308,7 @@ tools/harness/usb_host.py /tmp/ot-usb.sock audio 3 2.0 capture.pcm 4
   machine until the client has connected and hung up (`--usb-hold-ms` caps
   it). A `reset` answers once the firmware has attached and acknowledged
   it (URI), so the bench's first SETUP finds the reset handling done, as a
-  real host's does after its >= 10 ms of reset signalling (5 Oct 2026:
+  real host's does after its >= 10 ms of reset signalling (
   answered at landing, a SETUP sent while the reset was unhandled was
   served and then flushed with everything else, status-stage prime
   included -- `verify_usb`'s full-speed phase timed out on `out 0`).
@@ -351,7 +351,7 @@ tools/harness/usb_host.py /tmp/ot-usb.sock audio 3 2.0 capture.pcm 4
 Every option is in the usage block `./out/emu/ot_emu` prints for an argument it does not know (`--help` is not an option; exit status 2). The `--interactive`
 commands' reply formats are the header comment of `main.cpp`
 (`serveInteractive`). All but `--mkii` came from Tim Hastie's fork
-(O14i–O23, 11–13 Sep 2026; `THIRD_PARTY.md`).
+(O14i–O23,; `THIRD_PARTY.md`).
 
 - **`--interactive`** (what `make panel` runs). After the batch's boot and
   load the port prints `ready sample=<n> frames=<n>` and answers one line
@@ -386,7 +386,7 @@ commands' reply formats are the header comment of `main.cpp`
   vendored JIT on worker threads, on the lockstep schedule (`dsp.cpp`,
   "THE REAL-TIME MODE"); the ColdFire stays the master of emulated time.
   On the clean OTLIVE fixture its capture was bit-identical to lockstep's
-  (13 Sep 2026: 0 mismatches of 199,358 samples, three runs). The
+ . The
   per-instruction DSP instruments do not observe it; every batch mode
   keeps the lockstep interpreter.
 - **`--dsp-lazy N`**: the pair's ticks are booked and replayed in chunks
@@ -426,64 +426,12 @@ commands' reply formats are the header comment of `main.cpp`
 ## Speed
 
 What the port costs, where the time goes, and what each upstream has
-(12 Oct 2026; no core changed for this section). The 25 Sep figures from
+(no core changed for this section). The 25 Sep figures from
 the earlier version of this section are kept in the table at the end.
-
-### Measured, 12 Oct 2026
-
-An Apple M3 (4 performance and 4 efficiency cores), macOS 26.6, the port
-built by `make emu-cf` (bursts, LTO, the page-table memory path; not PGO).
-Another session's gates ran beside every measurement (load average 3-5), so
-each number is one run or a range, not a quiet-machine figure. The
-fixture is `octatrick`'s `verify_set` command: the stock slice's image, the
-`OCTABAM89_setgate` project (bank 3) on a 64 MB card, LOAD PROJECT, then 900
-frames with both DSP cores in lockstep.
-
-| phase | with the cores (`--dsp`) | without (`--frame`) |
-|---|---|---|
-| the whole command | 27.7-28.6 s | 25.5 s |
-| boot to the RTOS handoff | 2.0 s (14.1 M ColdFire, 16.0 M DSP instructions per core) | 0.9 s |
-| LOAD PROJECT | about 23 s: 14.9 s emulated, 853 M ColdFire instructions | 17.8 s emulated, 1,991 M ColdFire instructions |
-| 900 frames (14,400 samples, 0.33 s of audio) | 2.0 s: 21.7 M ColdFire instructions, 10.8 M/s, 6.1x off real time | 0.33 s: 21.7 M ColdFire instructions, 66.6 M/s, real time |
-
-`--frame` takes its frame interrupt from a 16-sample timer instead of the
-cores' bank word, and its load ran 2.3 times the ColdFire instructions; the
-two columns are not the same workload (that the frame interrupt is the cause
-is inferred, not measured).
-
-Play speed through `--interactive` (PLAY, then `run 4000` ms of emulated
-time) and the time to the `ready` line (boot and LOAD PROJECT):
-
-| DSP cores | 4 s of PLAY | real time | `ready` after |
-|---|---|---|---|
-| none (`--frame`) | 5.1-5.2 s | 0.76-0.78x | 30-34 s |
-| lockstep interpreter (`--dsp`) | 31-40 s | 0.10-0.13x | 33-46 s |
-| JIT workers (`--dsp --dsp-rt`) | 6.0-8.3 s | 0.48-0.67x | 14.5-17.8 s |
-
-The lockstep interpreter executes 4,532 instructions per sample per core
-(about 200 M per second per core in real time, 400 M for both); the gate
-command above executes 3.1 G per core over its 15 s of emulated time.
-
-Where the host's time goes, from `sample` (1 ms) on the running process:
-
-| phase of the gate command (`--dsp`) | DSP cores | Musashi core | run loop, timers | memory, peripherals | V4e layer |
-|---|---|---|---|---|---|
-| LOAD PROJECT | 64.2% | 16.7% | 15.4% | 2.1% | 1.3% |
-| 900-frame play | 67.1% | 14.8% | 14.2% | 1.9% | 1.8% |
-
-The ColdFire alone (`--frame`, LOAD PROJECT): Musashi 38.8%, run loop 36.8%,
-V4e layer and register glue 17.4%, memory 6.4%. The V4e layer runs the
-instructions Musashi lacks; Musashi reaches it through its illegal-instruction
-exception.
-
-Reproduce: `python3 tools/verify/verify_set.py octatrick --stage-only` writes
-the command to `out/setverify/port.txt`; time it, or `sample <pid> 12` it with
-`--dsp`. `--profile` covers the boot and the frames but not the load (the
-sequencer clears it at the transport start).
 
 ### What each upstream has
 
-| project | what it is | state, 12 Oct 2026 |
+| project | what it is | state |
 |---|---|---|
 | `vendor/mc68k` ([joelanders/mc68k-md-mm](https://github.com/joelanders/mc68k-md-mm), GPL-3.0) | the ColdFire core: Musashi, an interpreter, with our V4e layer (`ot::v4e`) | pushed 9 Sep; our pin is its PR #4; PR #5 (HI08 command acceptance) is open |
 | [Musashi](https://github.com/kstenerud/Musashi) | the 68000-family interpreter underneath | pushed 8 Mar; no ColdFire V4e |
@@ -636,11 +584,11 @@ that third.
 
 ### Earlier figures
 
-- 18 Sep 2026: play 14.0x off real time with the cores (23,946 ColdFire
+- play 14.0x off real time with the cores (23,946 ColdFire
   instructions per 16-sample frame, 66 M per second needed for real time);
   Musashi about 16 M per second in the port then; Unicorn TCG 52 M per second
   and without MAC-with-load.
-- 25 Sep 2026, a MacBook Air: the panel paced with `--dsp-rt` at 1.000x real
+- a MacBook Air: the panel paced with `--dsp-rt` at 1.000x real
   time; unpaced on the OTLIVE fixture with both cores, 475-684 emulated ms per
   wall second.
 - `--profile` prints the hottest PCs over the boot and over the frames.
@@ -660,10 +608,10 @@ that third.
 - **The uncached aliases** `0x4F…` and `0x4E…` are folded onto the cached
   regions (`machine.h`).
 - **EMAC −1.0 × −1.0** in fractional mode overflowed to −2³⁹; the product
-  is `>> 23` in one shift now (`v4e.cpp`, Tim Hastie, 13 Sep 2026).
+  is `>> 23` in one shift now (`v4e.cpp`, Tim Hastie).
 - **The eDMA TCD's ATTR and SOFF** were read swapped (ATTR is TCD+4, SOFF
   TCD+6), so every memory-to-memory copy moved single bytes (Tim Hastie,
-  13 Sep 2026).
+  ).
 
 ## Firmware behaviour an emulator has to reproduce
 

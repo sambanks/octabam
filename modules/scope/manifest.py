@@ -26,7 +26,7 @@ MODULE = Module(
                   note="Flashed image. SCOPE open during 30 loader transitions: zero bad records. The paired "
                        "closed/open comparison had a 340 ms median audio gap in both states and median DSP "
                        "window maxima of 49%/48%.")),
-    doc="DOWN+TEMPO OSC/XY/ALL; UP/DOWN switch; A GAIN B TIME.",
+    doc="Full-screen scope of the track's audio (DOWN + TEMPO): waveform, XY or both, with gain and time on A and B.",
     linked=(Linked("scope", "modules/scope/scope.s", cpu="5475", dram=True),),
     detours=(
         Detour(TEMPO_OPEN, H("4ab9460d16a0"), "scope", "sc_tempo",
