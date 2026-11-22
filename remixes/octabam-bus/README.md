@@ -68,11 +68,15 @@ listed give up their DSP code to the bus.
 
 ## Where it has run
 
-Port gates only: `make check REMIX=octabam-bus` and the reach round. The seven extra ColdFire modules have not run beside the bus on a unit. The previous
+Sam's MKII, 22 Nov 2026, `OCTABAM-BUS 05` built from `main` at `382a478b` plus the v0.5 release commit and booted by REMIX SWITCH from
+the flashed image (not flashed itself): `pre-meter`, `pre-transport`, `pre-usb` and `dsp-watch` pass; 32 program changes between SPECTRUM FX1
+dear, CHARACTER FX1 dear and BASE: 0 unapplied, 0 bad DSP records, longest silence 340 ms, longest ColdFire run 509 us. On the earlier
+BUILD 05 (`5b991c85`) `fx01` (28 layouts), `kits-identity`, `scenes-sweep`, `scenes-latency` and `djump-off` ran. Not run: `djump-on`,
+`djump-burst`, `mix-soak`; this remix has no loader, so no loader phases.
+
+Port gates: `make check REMIX=octabam-bus` and the reach round. The previous
 definition of this remix (servers in internal P, three FX1 effects, nothing else
-from the stock set) ran on an MKII (owner report, 16 Oct 2026). The servers and
-stations running from the shared window, and the stock effects beside them, have
-not run on a unit.
+from the stock set) ran on an MKII (owner report, 16 Oct 2026).
 
 ## How to flash
 

@@ -4,7 +4,7 @@ Octabam is Octatrack OS 1.40C with more built in. It keeps what you know:
 all 14 stock effects, both effect menus and the way a project is laid out.
 On top of that it adds features for sequencing, Kits and scenes, MIDI and
 USB, SCOPE and TUNER, and four new effects. Every feature is credited to the person who wrote
-it, and each has its own page in this manual. This is version 0.4.
+it, and each has its own page in this manual. This is version 0.5.
 
 ### What changes on the unit
 
@@ -56,6 +56,14 @@ the effect, it passes the audio through. A pattern change that puts one of
 them on all eight tracks, or takes it off them, leaves about 0.34 s of silence
 at the switch. See
 [Effect loader (sender)](inside/dlpump.md).
+
+### Known fault
+
+With MODULATION in use on a track, a program change that puts DARK REV on all 8 tracks, followed by PLAY, stopped the DSP on
+Sam's MKII (22 Nov 2026): the sound stops, the panel and USB still answer, and a power-cycle clears it. MODULATION stays loaded
+for 10 s after the last track uses it. On the earlier BUILD 05, 573-second replays stalled 5 of 7 times with DARK REV on 8 tracks,
+1 of 6 on 4 tracks and 0 of 2 on one track; with SPECTRUM loaded in place of MODULATION it did not stall in 25 tries, and with no
+effect loaded it did not stall. The cause is not known and no setting is shown to be safe.
 
 ### Before you install
 

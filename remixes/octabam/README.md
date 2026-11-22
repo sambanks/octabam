@@ -71,6 +71,23 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 
 ## Where it has run
 
+Sam's MKII, 22 Nov 2026, `OCTABAM 05` built from `main` at `382a478b` plus the v0.5 release commit and booted by REMIX SWITCH from the
+flashed `OCTABAM N1` (not flashed itself): `pre-meter`, `pre-transport`, `pre-usb` and `dsp-watch` (20 cycles) pass; 32 program changes
+between MODULATION FX2 def, PLATE REV FX2 def and BASE: 3 unapplied, 0 bad DSP records, longest silence 340 ms, longest ColdFire run
+535 us. On the earlier BUILD 05 (`5b991c85`, 148 commits behind `main`): `fx01` to `fx03`, `loader01` and `loader02`, the soak,
+`kits-identity`, `scenes-sweep`, `scenes-latency`, `djump-off`, `djump-on` and `djump-burst` ran; `mix-soak` did not complete (below).
+
+**Known fault: the DSP stops when DARK REV is picked on the tracks while MODULATION is loaded.** MODULATION loaded in T3's block and live
+on FX2, then a program change that puts DARK REV on all 8 tracks, then START: the DSP's frame count stops (the panel and USB still answer; a
+power-cycle clears it, and a reboot from the stalled unit often freezes on the boot screen). Measured on this remix:
+- the one-minute reproduction (play with MODULATION live, STOP, a program change, DARK REV on all tracks, START) stalled in cycle 0 on the
+  `main` composition; with SPECTRUM loaded instead it ran 25 cycles without a stall;
+- the 573 s replay on `5b991c85` stalled in 5 of 7 runs with DARK REV on 8 tracks, 1 of 6 on 4 tracks and 0 of 2 on one track;
+- DARK REV picked on all tracks with nothing loaded: no stall in 2 runs here and in 60 STARTs on an image with the stock effects and no loader.
+
+Cause not known; no setting is shown to be safe. The entry, with the frame log, the diagnostic builds and the controls, is in
+[FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md).
+
 Sam's MKII, image `OCTABAMR3` (this remix before the rebase onto `fa49e92f`), USB TRACKS PRE, 1 Nov 2026, the hardware
 suite ([HARDWARE_SUITE.md](../../docs/contributing/HARDWARE_SUITE.md)): `pre-meter`, `pre-transport`, `pre-usb`
 (`underruns=0`) and `dsp-watch` (20 cycles) pass; 74 effect layouts ran with no crash or stall, 39 flagged (CLICKS,
@@ -85,7 +102,7 @@ composition (each has, in its author's images: the modules' READMEs). VARISPEED 
 the image without VARISPEED left 3 of 32 program changes unapplied and the image with it 4
 ([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)).
 
-Not run on this image: `mix-soak` and the [manual plan](../../docs/contributing/HARDWARE_MANUAL.md). The images that
+Not run on this image: `mix-soak` (stopped by the fault above) and the [manual plan](../../docs/contributing/HARDWARE_MANUAL.md). The images that
 had CX OSC, STEM REC, MIDI SCALES or RND NAME stopped the DSP or left program changes unapplied in the
 same probes ([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)). SCOPE was added to the S2 build and tested
 open and closed during 30 paired loader transitions on 15 Nov 2026. The median transition-window CF peak was 537.36 µs

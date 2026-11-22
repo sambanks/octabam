@@ -41,8 +41,12 @@ STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPA
 
 REMIX = Remix(
     name="octabam-verbs",
+    image_name="OCTABAM-VRB",   # "OCTABAM-VERBS" + a two-character build tag is 16 characters: the tag was cut
     family="mods", evidence=(Evidence(Level.EMULATOR,
-        note="not flashed; `make check` (CI)"),),
+        note="`make check` (CI)"),
+        Evidence(Level.UNIT_MEASURED, unit="MKII", who="sambanks", image="OCTABAM-VRB 05 (REMIX SWITCH)", date="2026-11-22",
+            commit="382a478b03a1f788a335e57f318a234d29b194d0",
+            note="OCTABAM-VRB 05, built from main at 382a478b plus the v0.5 release commit and booted by REMIX SWITCH from the flashed image (not flashed itself). pre-meter, pre-transport, pre-usb and dsp-watch pass; 32 program changes (MODULATION FX2 dear, SPECTRUM FX2 dear, BASE): 0 unapplied, 32 bad DSP records (1 per transition, at the dear layouts' load; octabam's MODULATION dear logs the same), longest silence 340 ms. On the earlier BUILD 05 (5b991c85) also fx01-fx04 (VERBERATION in each MODE, VERB PLATE, ROOM and HALL), loader01-02, kits-identity, scenes-sweep, scenes-latency and djump-off ran. Not run: djump-on, djump-burst, mix-soak. The DARK REV stall of octabam needs the stock DARK REV, which this remix does not carry; not run to confirm.")),
     doc="octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand, with VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE",
                      "KEYBUS", "SC KEYBUS BRIDGE") + STOCK11 + OURS

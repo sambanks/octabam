@@ -91,8 +91,9 @@ BRAIN_PAGES = (
 # remix's delay host), not shown in this manual.
 HIDE_SHOTS = {("fx2-lock", "chooser")}
 
-TITLES = {"octabam": "Octabam"}
-OVERVIEW = {"octabam": "remix-octabam.md"}
+TITLES = {"octabam": "Octabam", "octabam-verbs": "Octabam Verbs", "octabam-bus": "Octabam Bus"}
+OVERVIEW = {"octabam": "remix-octabam.md", "octabam-verbs": "remix-octabam-verbs.md",
+            "octabam-bus": "remix-octabam-bus.md"}
 KNOB = "ABCDEF"
 
 
