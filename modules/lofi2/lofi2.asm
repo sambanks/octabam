@@ -112,7 +112,7 @@ lfiniz:
         move    #>$7fffff,x0
         move    x0,x:(r7+$11)
 ; SRR's rate starts at 1.0 (a latch every sample) and glides to the knob's
-        move    #>$400000,x0
+        move    #$40,x0                  ; (short immediate: bits 23-16)
         move    x0,x:(r7+$17)
 ; the Hilbert chains start on the even half
         move    #>$40,x0
@@ -200,7 +200,7 @@ lf_shf:
         move    #>$15becb,y1            ; 0.33977/2
         mac     x0,y1,a                 ; 0.33012 + 0.16989 f
         move    a,y1
-        move    #>$400000,a             ; 0.5
+        move    #$40,a                   ; 0.5 (short immediate: bits 23-16)
         mac     x0,y1,a                 ; h = 2^f / 2
         move    a,x0
         asr     #$1,a,a
@@ -269,8 +269,8 @@ lf_ringf:
         move    a1,y0                   ; k
         add     #>$183,a                ; k + 387
         move    a1,n5
-        move    #>$600000,b             ; kd = 3/4: the shelf in
-        move    #>$0,x0
+        move    #$60,b                   ; kd = 3/4: the shelf in (short immediate: bits 23-16)
+        move    #$00,x0                  ; (short immediate: bits 23-16)
         move    y0,a
         sub     #>$7f,a
         teq     x0,b                    ; k = 127: out
@@ -374,7 +374,7 @@ lf_rdone:
         move    x:(r6+$0),a
         and     #>$7fff00,a             ; the knob AND its fraction
         move    a1,x0
-        move    #>$600000,y1            ; 0.75
+        move    #$60,y1                  ; 0.75 (short immediate: bits 23-16)
         mpy     x0,y1,a
         move    a1,x1                   ; t
 
@@ -398,7 +398,7 @@ lf_rdone:
 ; octave boundaries are seamless. Worst-case error is about 5 cents near
 ; f = 0.25 -- inaudible on a carrier, and the alternative is a cubic.
         move    x1,x0
-        move    #>$160000,y1            ; 0.171875
+        move    #$16,y1                  ; 0.171875 (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$2a0000,a             ; + 0.328125
         move    a,y1
@@ -585,7 +585,7 @@ lf_fwd:
         move    x0,x:(r7+$1c)
         move    x0,a                    ; clean
         abs     a
-        move    #>$800000,y1            ; -1.0
+        move    #$80,y1                  ; -1.0 (short immediate: bits 23-16)
         add     y1,a                    ; |p| - 1
         neg     a                       ; t = 1 - |p|
         move    a,y1
@@ -608,7 +608,7 @@ lf_fwd:
         move    a1,x0                   ; pR, wrapped
         move    x0,a
         abs     a
-        move    #>$800000,y1
+        move    #$80,y1                  ; (short immediate: bits 23-16)
         add     y1,a
         neg     a
         move    a,y1
@@ -671,7 +671,7 @@ lf_nomod:
 ; result in A
         move    a,x1
         abs     a
-        move    #>$800000,x0
+        move    #$80,x0                  ; (short immediate: bits 23-16)
         add     x0,a                    ; |p| - 1
         neg     a                       ; t = 1 - |p|
         move    a,y1
@@ -690,14 +690,14 @@ lf_nomod:
         move    #>$633333,y1            ; 0.775
         mac     x0,y1,a
         move    a,x:(r7+$2c)            ; sin
-        move    #>$400000,x0
+        move    #$40,x0                  ; (short immediate: bits 23-16)
         add     x0,b                    ; + a quarter turn
         move    b1,x0
         move    x0,a
 ; ---- the same sine, a quarter turn on: cos ----
         move    a,x1
         abs     a
-        move    #>$800000,x0
+        move    #$80,x0                  ; (short immediate: bits 23-16)
         add     x0,a                    ; |p| - 1
         neg     a                       ; t = 1 - |p|
         move    a,y1
@@ -747,13 +747,14 @@ lf_nomod:
 ; $40 is past lua's -64..63 displacement (`lua (r7+$40)` assembles to
 ; r7-$40; AGENTS.md), so the base is r7 + n1.
         move    r7,r1
-        move    (r1)+n1                 ; this sample's parity half
+        move    n1,a                    ; the other half next sample: $40 <-> $60
+        move    #>$20,x0                ; (these two fill r1's wait before the step)
+        move    (r1)+n1                 ; this sample's parity half (n1 not flipped yet)
         move    r1,r2
+        eor     x0,a                    ; EOR in the register form (stock uses eor x0,b /
+                                        ; x1,b; stock has no EOR #imm site, #704 review)
         move    (r2)+                   ; r2 writes from section 0's X slot
-        move    n1,a                    ; the other half next sample:
-        move    #>$20,x0                ;  $40 <-> $60. EOR in the register form
-        eor     x0,a                    ;  stock uses (eor x0,b / x1,b); stock
-        move    a1,n1                   ;  has no EOR #imm site (#704 review)
+        move    a1,n1                   ; the flip, for the next sample
 
         move    x:(r7+$3d),x1          ; chain A-L input
 ; ---- chain A-L section 0: allpass, c = a^2 = 0.4794008348558 ----
@@ -911,7 +912,7 @@ lf_noshift:
         move    x:(r7+$11),a            ; e
         move    x:(r7+$13),x0           ; the step, signed
         add     x0,a
-        move    #>$0,x0
+        move    #$00,x0                  ; (short immediate: bits 23-16)
         tmi     x0,a
         move    a,x:(r7+$11)
         move    a,x0                    ; e as stored (the same limiting)
@@ -962,7 +963,7 @@ lf_noshift:
         move    b,x0                    ; inc (the same limiting as the store)
         move    x:(r7+$1b),b            ; phase, 0 .. < $400000
         add     x0,b                    ; phase + inc
-        move    #>$400000,x1
+        move    #$40,x1                  ; (short immediate: bits 23-16)
         move    b,a
         sub     x1,a                    ; >= 0: it wrapped
         move    a,y0
@@ -1109,9 +1110,7 @@ lf_noshift:
         mac     -x0,y1,a
         move    a,x:(r0+n0)
 
-        move    #>$2,n0
-        move    (r0)+n0
-        move    #>$1,n0
+        lua     (r0+$2),r0              ; the frame advance: one stereo frame, n0 stays 1
 lf_end:
         nop
         move    n1,x:(r7+$37)           ; the parity carries into the next block
