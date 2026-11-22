@@ -362,28 +362,29 @@ cnt_done:
         move    b,x:(r7+$17)
         move    a,x:(r7+$18)
         do      n7,>send_end
-        move    x:(r7+$15),a
+; Each instruction marked (fills) is independent of the one before it, so
+; it takes the cycle the next one would wait for an accumulator result.
+        move    x:(r7+$15),b
         move    x:(r7+$16),x0
-        add     x0,a
-        move    a,x:(r7+$15)
-        move    a,y1                     ; this sample's level
-        move    x:(r0)+,a                ; L
+        add     x0,b
+        move    x:(r0)+,a                ; L (fills)
+        move    b,x:(r7+$15)
+        move    b,y1                     ; this sample's level
         move    x:(r0)+,x0               ; R, and r0 on to the next frame
         add     x0,a
         asr     #$1,a,a                  ; a = mono
+        move    x:(r7+$17),b             ; REV level, ramped per sample (fills)
         move    a,x0
 
         mpy     x0,y1,a                  ; a = mono * DEL level
+        add     x1,b                     ; + the step: x1 = x:(r7+$18), set above, kept through the loop
         asr     #$3,a,a                  ; 3 bits of bus headroom: eight clients
+        move    b,x:(r7+$17)
+        move    b,y1
         move    y:(r2),b
-        add     b,a
-        move    a,y:(r2)+                ; AUX ACC[write][i] += contribution
-        move    x:(r7+$17),a             ; REV level, ramped per sample
-        move    x:(r7+$18),y1
-        add     y1,a
-        move    a,x:(r7+$17)
-        move    a,y1
-        mpy     x0,y1,a                  ; a = mono * REV level
+        add     a,b
+        mpy     x0,y1,a                  ; a = mono * REV level (fills)
+        move    b,y:(r2)+                ; AUX ACC[write][i] += contribution
         asr     #$3,a,a
         move    y:(r4),b
         add     b,a

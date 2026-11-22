@@ -128,6 +128,7 @@
 //                           k (decimal), written after the -params words on every
 //                           call: a knob word with its companion bits 8-15 set,
 //                           as an LFO leaves it.
+//     -xword addr=hex[,..]   seed arbitrary X words before processing
 //     -paramfile FILE       automate parameters per block. Repeat the option to
 //                           give successive instances their own file, in the
 //                           same order as repeated -params. Each non-comment
@@ -209,6 +210,7 @@ struct Args {
     bool stereo = false;                       // -in is interleaved L,R
     std::vector<std::vector<int>> pv;          // one parameter set per instance
     std::vector<std::array<TWord, 3>> pwords;   // -pword: (instance, offset, word)
+    std::vector<std::pair<TWord, TWord>> pokeX;
     std::vector<std::vector<ParamEvent>> paramEvents; // one event stream per instance
     std::string allocProc = "perinst";
     bool guard = false, guardShared = false; TWord guardWords = 0x3800;
@@ -623,6 +625,16 @@ int main(int argc, char** argv) {
                 pos = comma + 1;
             }
         }
+        else if (k == "-xword") {
+            std::string t(argv[++i]);
+            for (char* p = strtok(&t[0], ","); p; p = strtok(nullptr, ",")) {
+                char* eq = strchr(p, '=');
+                if (!eq) continue;
+                *eq = 0;
+                a.pokeX.push_back({static_cast<TWord>(strtoul(p, nullptr, 16)),
+                                   static_cast<TWord>(strtoul(eq + 1, nullptr, 16))});
+            }
+        }
         else if (k == "-paramfile") {
             const std::string path = v();
             std::ifstream f(path);
@@ -961,6 +973,7 @@ int main(int argc, char** argv) {
         mem.set(MemArea_Y, pv.first, pv.second);
         std::printf("poked Y:0x%05x = 0x%06x\n", pv.first, pv.second);
     }
+    for (auto& pv : a.pokeX) mem.set(MemArea_X, pv.first, pv.second);
 
     SharedGuard sharedGuard;
     if (a.guard) {
