@@ -680,23 +680,13 @@ def index_page(book: Book) -> str:
         doc = SUMMARY.get(n) or (book.remix(n).doc or "").strip().split("\n\n")[0].replace("\n", " ")
         lines.append(f"- [{title(n)}]({_up(here)}{OVERVIEW.get(n, 'index.md')}): {doc}")
     lines += ["",
-              "## Where the remixes have run", "",
-              "All three ran on one Octatrack MKII on 22 Nov 2026, started with REMIX SWITCH from the flashed OS "
-              "(none was flashed itself). Each passed the start-up checks and 32 effect changes in a "
-              "row; Octabam left 3 of them unapplied, the other two none. Longer runs (effect layouts, kits, "
-              "scenes, DIRECT JUMP with its toggle off) were done on the earlier build of the same release. "
-              "DIRECT JUMP with its toggle on and the 56-minute run were not done on Octabam Verbs and Octabam "
-              "Bus. Several module updates reached the release after that run and have not run on a unit; the "
-              "[changelog](https://github.com/sambanks/octabam/blob/main/CHANGELOG.md) lists them.", "",
               "!!! warning \"Known fault in Octabam: DARK REV while MODULATION is loaded\"",
               "    With MODULATION in use on a track, a program change that puts DARK REV on all 8 tracks, "
-              "followed by PLAY, stopped the DSP on that unit: the sound stops, the panel and USB still answer, "
+              "followed by PLAY, can stop the DSP: the sound stops, the panel and USB still answer, "
               "and a power-cycle clears it. MODULATION stays loaded for 10 seconds after the last track uses it. "
-              "In repeated runs it stopped 5 of 7 times with DARK REV on 8 tracks, 1 of 6 on 4 tracks and 0 of 2 "
-              "on one track; with SPECTRUM loaded instead of MODULATION it did not stop in 25 tries, and with no "
-              "effect loaded it did not stop. The cause is not known and no setting is shown to be safe. "
-              "Octabam Verbs has no stock DARK REV and Octabam Bus loads no effects on demand; neither was run "
-              "against it.", "",
+              "It does not happen every time, and it happens more often the more tracks have DARK REV; it has not "
+              "been seen with SPECTRUM loaded instead of MODULATION, or with no effect loaded. The cause is not "
+              "known and no setting is shown to be safe.", "",
               "## Conventions", "",
               "Names in capitals are what the unit's screen prints. Effects sit on the FX1 and FX2 keys; "
               "each has two pages of six knobs, A to F, reached with the PAGE keys as on any Octatrack effect. "

@@ -11,8 +11,6 @@ What is needed:
 - A computer with git and either [uv](https://docs.astral.sh/uv/) or Python 3.10 or newer with tkinter.
 - OBS Studio, optional.
 
-Tested on macOS. Other platforms have not been tried.
-
 ### Automated
 
 From the octabam checkout:
