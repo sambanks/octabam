@@ -333,7 +333,15 @@ MODULE = Module(
              "dry, T5 COMB FILTER + DISTORX, T6 COMB FILTER + DARK REV, T7 COMB FILTER + DISTORX, T8 MASTER), MODE"
              " changed while playing, OFF on re-selection, no clicks, by ear. Before, on 0x0a, image DTXPR1 (21 "
              "Oct): every knob in every MODE, FX1 and FX2, an LFO, a scene, save and reload. v10's loops and the "
-             "move to id 0x1b (28 Oct) are not flashed"),),
+             "move to id 0x1b (28 Oct) are not flashed"),
+              Evidence(Level.UNIT, unit="MKI", who="MaMarko", image="ACIDV97", date="2026-11-20", commit="d2820fc0",
+        note="v10 (distorx.asm and distorx.tmpl.asm byte-identical to this commit's) on id 0x06, where the "
+             "remix's assign_ids put it (dB666 keeps 0x1b), in near-daily use on the owner's MKI: the acidtrack "
+             "images ACIDF07B (on the unit from 18 Nov 2026) and ACIDF08 (from 19 Nov) of the fork branch "
+             "octa303_optimus_23, and ACIDV97 (remix acidhyb, fork branch octa303-ibrido3, 20 Nov), where the "
+             "table sits in the stock curve bank. On FX1 and on FX2, every MODE, at most three DISTORX so far, on "
+             "almost all tracks but never T8; an LFO and scenes worked. By ear, no fault heard. Not a measurement. "
+             "Id 0x1b itself is still not flashed"),),
     doc="SD-1 + RAT + Turbo RAT in one insert: MODE picks the pedal (OFF first), a 3 ms fade between them.",
     menu=MenuEntry(
         fx2_id=0x1b,                  # a free id (README "FX id"); stock SPATIALIZER keeps 0x05
