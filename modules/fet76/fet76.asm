@@ -413,7 +413,7 @@ f76_exp:
         move    x1,a
         asr     #$12,a,a                ; n
         move    a1,b
-        add     #>$1,b
+        add     #$1,b                    ; the 6-bit immediate (one word)
         neg     b                       ; -(n + 1)
         move    b1,x:(r7+$23)
         move    x1,a
