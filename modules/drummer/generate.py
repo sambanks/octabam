@@ -16,15 +16,12 @@ FLAGS = ['-mcpu=5475', '-msoft-float', '-O2', '-ffreestanding', '-fno-builtin', 
          '-fno-tree-loop-distribute-patterns', '-fno-jump-tables', '-fno-asynchronous-unwind-tables',
          '-fno-ident', '-fomit-frame-pointer', '-std=c11', '-Wall', '-Wextra', '-Werror']
 SOURCES = ('drummer.c', 'autokit.c', 'adapter.c', 'kit.c', 'store.c')
-ASM = ('hooks.s', 'machine.s')
+ASM = ('hooks.s',)
 # Stock targets the unit may reach besides its own labels: the stubs' returns (0x400a2d88 the
 # sequencer tick, 0x4000d3b4 the packer) and the stock FLEX start 0x4000f450.
 STOCK_CALLS = {'0x400a2d88', '0x4000d3b4', '0x4000f450', '0x4009dcaa',
-               # machine.s: the stock continuations of its detours (ANALOG BD's seams)
-               '0x400334de', '0x40079822', '0x400585e6', '0x4003a536', '0x4003cda0',
-               '0x40078890', '0x4003d722', '0x4004c374', '0x4003c986', '0x400786ce',
-               '0x400786fc', '0x4003d1cc', '0x40027e00', '0x40031ed6', '0x40031ece', '0x40002320',
-               '0x4005213c', '0x4007e940', '0x40052228', '0x4003c054', '0x4003c058',
+               # kit.c: the Part's edited mark
+               '0x40027e00',
                # kit.c: the window, its drawing, the layers, the track's trig (CHORDS' and SCALES' calls)
                '0x40005030', '0x40012254', '0x40012bd8', '0x40011910', '0x4003146c', '0x40031494',
                '0x400356a8', '0x40055db4', '0x40057c84', '0x4005829c',
