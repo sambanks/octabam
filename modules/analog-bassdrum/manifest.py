@@ -1,12 +1,6 @@
 """Analog BD: native source synthesis, one machine with 808/909 models."""
-from remix.schema import ArenaReserve, Category, Detour, Gate, Kind, Linked, Module, Poke, Evidence, Level, SymbolRef
+from remix.schema import ArenaReserve, Category, Detour, Gate, Kind, Linked, Module, Evidence, Level, SymbolRef
 H=bytes.fromhex
-
-
-def _hooks_inc(modules, remix=None):
-    """remix.inc for machine.s: modules/hooks's flags (machine_rows beside OCTA303)."""
-    from remix import hooks_flags
-    return hooks_flags.inc("ANALOG BD", modules)
 
 
 MODULE=Module(
@@ -14,7 +8,7 @@ MODULE=Module(
     # the pre-boot DSP uploads' destinations and stages
     # (tools/build/ab_image.py PRE: 0x40b00000..0x40bc0000 + 0x40000)
     arena_reserves=(ArenaReserve("pre-boot upload scratch", 0x40B00000, 0x100000),),
-    requires=("MEMORY",),
+    requires=("MEMORY", "MACHINES"),     # the machine row is MACHINES's (a client: CLIENTS there)
     category=Category.MACHINES, author="repeat98", author_url="https://github.com/repeat98",
     doc="Analog BD track machine: switchable 808/909 circuit-informed synthesis.",
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-16",
@@ -24,7 +18,7 @@ MODULE=Module(
                      "see modules/analog-bassdrum/CPU.md and benchmark_analog_bd.py",
     dsp_source="tools/build/ab_image.py",
     linked=(
-        Linked("abmachine", "modules/analog-bassdrum/machine.s", dram=True, include=_hooks_inc),
+        Linked("abmachine", "modules/analog-bassdrum/machine.s", dram=True),
         Linked("abcontrol", "modules/analog-bassdrum/control.s", dram=True),
         Linked("abengine", "modules/analog-bassdrum/engine.s", dram=True),
     ),
@@ -41,55 +35,6 @@ MODULE=Module(
                "draw the Analog BD engine browser in the stock pool layout", pad_to=8),
         Detour(0x400791E4, H("2f0a4ab9460e70e0"), "abmachine", "ab_pool_open",
                "track double-tap opens the Analog BD engine list", pad_to=8),
-        Detour(0x400334D8, H("2f02222f0008"), "abmachine", "ab_machine_name",
-               "format machine row 5 as ANALOG BD"),
-        Detour(0x4003C928, H("4bf9400a78c8"), "abmachine", "ab_src_names",
-               "point SRC SETUP at six machine names", kind="lea"),
-        Detour(0x4003D718, H("41f9400a78c8"), "abmachine", "ab_name_a",
-               "main page name lookup for the signed AB track"),
-        Detour(0x4004C36A, H("41f9400a78c8"), "abmachine", "ab_name_b",
-               "second main page name lookup for the signed AB track"),
-        Detour(0x4003C980, H("71104fef0018"), "abmachine", "ab_setup_row",
-               "SRC SETUP row highlights AB on a signed FLEX track"),
-        Detour(0x400786C8, H("7110b480662e"), "abmachine", "ab_chooser_row",
-               "main chooser row highlights AB on a signed FLEX track"),
-        Detour(0x400585DC, H("161079034879400bb704"), "abmachine", "ab_setup_open",
-               "SRC SETUP opens on ANALOG BD for the AB track", pad_to=10),
-        Detour(0x4005221E, H("4ebaff1c4eb94007e940"), "abmachine", "ab_tick_hook",
-               "publish the Analog BD SRC SETUP descriptor", pad_to=10),
-        Detour(0x40078886, H("71102f004879460e7386"), "abmachine", "ab_chooser_open",
-               "the track's machine list opens on ANALOG BD for the AB track", pad_to=10),
-        Detour(0x40031E74, H("710541f9400d5f386050"), "abmachine", "ab_resolve_pb",
-               "resolve the signed track's AB page without changing other FLEX tracks", pad_to=10),
-        Detour(0x4007981C, H("77101084d081"), "abmachine", "ab_main_commit",
-               "admit Analog BD at main chooser commit"),
-        Detour(0x4005A616, H("2239460d5c30"), "abmachine", "ab_src_commit",
-               "admit Analog BD at SRC SETUP commit"),
-        Detour(0x4005A850, H("2239460d5c30"), "abmachine", "ab_src_commit2",
-               "the same at SRC SETUP's second commit path"),
-        Detour(0x4003A52E, H("2002e788d4829082"), "abmachine", "ab_setup_edit6",
-               "SETUP's editor stores ANALOG BD's row in the track's FLEX slot", pad_to=8),
-        Detour(0x4003CD98, H("2e06e78fdc869e86"), "abmachine", "ab_setup_draw6",
-               "SETUP's drawer reads ANALOG BD's row from the track's FLEX slot", pad_to=8),
-        Detour(0x40002318, H("4fefffa048d77cfc"), "abmachine", "ab_validate",
-               "the Part validator reads an AB track's FLEX slots as the AB's",
-               pad_to=8),
-    ),
-    pokes=(
-        # Six rows, ANALOG BD the sixth (row 5): the track's own list draws
-        # six rows and does not scroll (md_machine.s header).
-        Poke(0x40079248, H("48780005"), H("48780006"),
-             "machine chooser has six rows, ANALOG BD the last"),
-        Poke(0x400585FA, H("48780005"), H("48780006"),
-             "SRC SETUP selector has six rows"),
-        Poke(0x4003C950, H("7204"), H("7205"),
-             "SRC SETUP name lookup admits AB"),
-        Poke(0x40078678, H("7004"), H("7005"),
-             "machine chooser draws AB"),
-        Poke(0x400786CE, H("7004"), H("7005"),
-             "machine chooser highlights AB"),
-        Poke(0x40079904, H("7604"), H("7605"),
-             "machine chooser persists AB"),
     ),
     gates=(Gate("tools/verify/verify_analog_bassdrum.py", remix_arg=False),
            Gate("tools/harness/bd909.py", remix_arg=False),

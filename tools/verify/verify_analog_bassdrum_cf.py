@@ -51,22 +51,11 @@ def main():
         assert uc.reg_read(UC_M68K_REG_A7) == stack + 4, (name, 'stack imbalance')
         return ct.c_int32(uc.reg_read(UC_M68K_REG_D0)).value
 
-    # The same admission function protects both chooser commit paths.
-    part = 0x23000
-    uc.mem_write(part, bytes(0x400))
-    assert call('ab_admit_track', part, 7) == 1
-    for track in (0, 4):
-        uc.mem_write(part + 0x22 + track, b'\x01')
-        uc.mem_write(part + 60 + 30 * track, b'AB\x01')
-    assert call('ab_admit_track', part, 7) == 1
-    assert call('ab_admit_track', part, 0) == 1
-    assert call('ab_admit_track', part, 4) == 1
-    for track in range(8):
-        uc.mem_write(part+0x22+track,b'\x01')
-        uc.mem_write(part+60+30*track,b'AB\x01')
-    for track in range(8):assert call('ab_admit_track',part,track)==1
-    assert call('ab_admit_track',part,8)==0
-    print('PASS all eight tracks admitted; invalid tracks rejected')
+    # The row, the signature and the chooser's commits are MACHINES's (modules/machines/verify.py);
+    # ANALOG BD's row is the word MACHINES gives it.
+    ab_row = struct.unpack('>I', data[symbols['ab_mc_row'] - base:symbols['ab_mc_row'] - base + 4])[0]
+    assert ab_row >= 5, ab_row
+    print(f'PASS ANALOG BD is MACHINES client row {ab_row}')
 
     for value,label in ((0,b'OFF'),(1,b'500'),(64,b'ORIG'),(127,b'18000')):
         uc.mem_write(0x24000,bytes(16))
@@ -133,12 +122,12 @@ def main():
     hook=uc.hook_add(UC_HOOK_CODE,stop_title)
     for signed in (False,True):
         uc.mem_write(livepart+60,b'AB\x01' if signed else b'\0\0\0')
-        for row in range(6):
+        for row in range(ab_row+2):
             uc.reg_write(UC_M68K_REG_D0,row)
             uc.reg_write(UC_M68K_REG_A0,0x400334d8)
             uc.reg_write(UC_M68K_REG_A7,stack)
             uc.emu_start(symbols['ab_pool_title'],stop,count=10000)
-            expected=0x40077b62 if row<2 or (row==5 and signed) else 0x40077b70
+            expected=0x40077b62 if row<2 or (row==ab_row and signed) else 0x40077b70
             assert uc.reg_read(UC_M68K_REG_PC)==expected,(row,signed)
             assert uc.reg_read(UC_M68K_REG_D0)==row
             assert uc.reg_read(UC_M68K_REG_D6)==1
@@ -150,13 +139,13 @@ def main():
     def stop_editor(_uc,address,_size,_data):
         if address in (0x4003a536,0x4003a624): _uc.emu_stop()
     hook=uc.hook_add(UC_HOOK_CODE,stop_editor)
-    for machine in (0,1,2,3,4,5):
+    for machine in range(ab_row+1):
         for knob in range(6):
             uc.reg_write(UC_M68K_REG_D2,machine)
             uc.reg_write(UC_M68K_REG_A3,knob)
             uc.reg_write(UC_M68K_REG_A7,stack)
-            uc.emu_start(symbols['ab_setup_edit6'],stop,count=1000)
-            assert uc.reg_read(UC_M68K_REG_PC)==(0x4003a624 if machine==5 and knob==0 else 0x4003a536)
+            uc.emu_start(symbols['mc_setup_edit6'],stop,count=1000)   # MACHINES's editor, ANALOG BD's slot flag
+            assert uc.reg_read(UC_M68K_REG_PC)==(0x4003a624 if machine==ab_row and knob==0 else 0x4003a536)
             assert uc.reg_read(UC_M68K_REG_A7)==stack
     uc.hook_del(hook)
     print('PASS hidden model editor: Analog BD encoder A ignored; other knobs/machines retain stock path')

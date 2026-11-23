@@ -256,6 +256,8 @@ moment it costs real work, and add its line here.
 - [A frame interrupt entering about 150 µs late stops the DSP's frame exchange](docs/contributing/TRAPS.md#trap-late-frame) — START and program changes; ColdFire time added to the frame interrupt moves it on or off the window; FRAME GUARD holds a late entry to 190 µs.
 - [Dropping a stock hold to keep a window open can drop the hold's release bookkeeping](docs/contributing/TRAPS.md#trap-hold-release-toggle) — LOCK EDIT's re-hold audition lost the step trig until `le_trighold` cleared stock's `0x460d1a9e` itself.
 
+- [A machine's own code compared the list's cursor with row 5](docs/contributing/TRAPS.md#trap-machine-row-constant) — a MACHINES client reads `<prefix>_mc_row`, never 5, even against stock's cursor `0x460e738e`.
+
 - [PLAYBACK slot A depends on the machine](docs/contributing/TRAPS.md#trap-pitch-destination): THRU has INAB where FLEX has PTCH; resolve the parameter before offering pitch controls.
 
 ## How docs are written here

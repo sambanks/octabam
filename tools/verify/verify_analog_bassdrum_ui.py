@@ -18,17 +18,23 @@ def main():
     image=OUT/'image.bin';shutil.copy2(os.environ.get('AB_IMAGE',ROOT/'out/mainos_bus.bin'),image)
     sym={l.split()[-1]:int(l.split()[0],16) for l in subprocess.check_output(['m68k-elf-nm',str(ROOT/'out/platform/runtime/runtime.elf')],text=True).splitlines() if len(l.split())==3}
     if os.environ.get('AB_SYMBOLS'): sym=json.loads(pathlib.Path(os.environ['AB_SYMBOLS']).read_text())
-    spans=f'0x40170f60,6322={OUT}/part.bin;{sym["desc"]:#x},916={OUT}/desc.bin;0x400d5f4c,4={OUT}/page.bin;0x460e70e0,4={OUT}/pool.bin;0x400bb7d0,4={OUT}/setup.bin;0x460e5e30,28={OUT}/list.bin;0x100a4ece,6322={OUT}/shadow.bin;0x80000830,1={OUT}/live.bin;0x460e738e,16={OUT}/navigation.bin'
+    # ANALOG BD's row on the machine list is the word MACHINES gives it (modules/machines)
+    rt=ROOT/'out/platform/runtime'
+    heads=subprocess.check_output(['m68k-elf-objdump','-h',str(rt/'runtime.elf')],text=True).splitlines()
+    rt_base=int(next(l.split()[3] for l in heads if len(l.split())>3 and l.split()[1]=='.text'),16)
+    at=sym['ab_mc_row']-rt_base
+    ab_row=int.from_bytes((rt/'runtime.bin').read_bytes()[at:at+4],'big')
+    spans=f'0x40170f60,6322={OUT}/part.bin;{sym["desc"]:#x},916={OUT}/desc.bin;{0x400d5f38+4*ab_row:#x},4={OUT}/page.bin;0x460e70e0,4={OUT}/pool.bin;0x400bb7d0,4={OUT}/setup.bin;0x460e5e30,28={OUT}/list.bin;0x100a4ece,6322={OUT}/shadow.bin;0x80000830,1={OUT}/live.bin;0x460e738e,16={OUT}/navigation.bin'
     cmd=[os.environ.get('AB_EMU',str(ROOT/'out/emu/ot_emu')),'--image',str(image),'--card',str(card),'--set','OCTABAM','--project','RIG','--load-ms','20000','--dsp','--mem-dump',spans]
     cmd += ["--lcd", str(OUT/"lcd.bin")]
     # T1 -> SRC SETUP -> bottom row -> YES; the former MODEL encoder is inert.
     script=key(0x10)+[(.6,'key 0x2d down'),(.3,'key 0x22 down'),(.3,'key 0x22 up'),(.3,'key 0x2d up')]
     for _ in range(6):script+=key(0x20,.25,.25)
-    # Beside OCTA303 (modules/hooks machine_rows) the list has a seventh row, OCTA-303's,
-    # below ours: the machine list's row count, poked at 0x40079248, says which image this is.
+    # Beside other machines (modules/machines) the list has more rows: the row count, poked at
+    # 0x40079248, and ANALOG BD's row say how many UPs from the bottom reach it.
     # A short press: a 0.25 s hold auto-repeats (the DOWNs above rely on it only to reach the end).
     rows=image.read_bytes()[0x40079248-0x40000400+3]
-    for _ in range(rows-6):script+=key(0x33,.25,.06)
+    for _ in range(rows-1-ab_row):script+=key(0x33,.25,.06)
     script+=key(0x31)
     script+=[(.8,'enc 0 16'),(.8,'enc 2 -4')]
     # Close setup, then double-tap T1 with a 210 ms down-to-down gap.
@@ -43,9 +49,9 @@ def main():
     script+=key(0x34)
     # Visit FLEX's real sample column, then return to Analog BD's engine column.
     # Short presses: one row each (a 0.25 s hold repeats, and below ANALOG BD can be OCTA-303).
-    for _ in range(4): script+=key(0x33,.25,.06)
+    for _ in range(ab_row-1): script+=key(0x33,.25,.06)
     script+=key(0x21)+key(0x34)
-    for _ in range(4): script+=key(0x20,.25,.06)
+    for _ in range(ab_row-1): script+=key(0x20,.25,.06)
     script+=key(0x21)
     # Select 909 through the pool, then return and select 808.
     script+=key(0x20)+key(0x31)
@@ -68,7 +74,7 @@ def main():
     assert int.from_bytes((OUT/'list.bin').read_bytes()[:4],'big')==0, 'LEFT left engine list open'
     nav=(OUT/'navigation.bin').read_bytes()
     assert (OUT/'part.bin').read_bytes()[0x1da+6]==1, 'hidden MODEL encoder changed engine'
-    assert int.from_bytes(nav[:4],'big')==5, 'LEFT did not highlight Analog BD'
+    assert int.from_bytes(nav[:4],'big')==ab_row, 'LEFT did not highlight Analog BD'
     assert int.from_bytes(nav[12:16],'big')==0, 'LEFT did not select machine column'
     shutil.copy2(OUT/'lcd.bin',OUT/'left-lcd.bin')
     elapsed=0; events=[]

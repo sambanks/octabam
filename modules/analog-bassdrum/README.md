@@ -68,14 +68,12 @@ available; SPRING REV is excluded from this standalone remix. Its shared
 checked on both cores. The optimized kick engines are also held to exact
 pre-optimization internal-state hashes. Both models' audio is checked against
 the original with exact fixed-point output scaling and limiting.
-MACHINEDRUM, SYNTH MACHINE and POLY still conflict with the registration
-seams and require a shared registry before composition. OCTA303 shares an
-image through [HOOKS](../hooks/README.md) (`machine_rows`, 28 Oct 2026),
-and so does CX OSC (31 Oct 2026): ANALOG BD keeps row 5 and every hook, and,
-built with `HK_MACHINE_ROWS`, hands each row not its own to the next
-machine's routine (`MC_NEXT_*`); OCTA-303 and CX OSC take rows 6 and 7 of a
-list that scrolls. Its renderer is the last of the FLEX kind entry's chain.
-Its own bytes alone are unchanged.
+The machine row is [MACHINES](../machines/README.md)'s: ANALOG BD is a client,
+with its page (`control.c` `ab_mc_page`) and its defaults (`engine.c`
+`ab_mc_defaults`), and keeps only its engine pool's seams (`machine.s`). It
+shares an image with DRUMMER, each on its own row of a list that scrolls.
+OCTA303, WAVE CF and CX OSC conflict with MACHINES until each is a client;
+SYNTH MACHINE and BLACKPYRAMIDS_303 conflict as ports.
 
 Current load evidence and remaining hardware qualification are in [CPU.md](CPU.md).
 Generic DSP pressure acceptance is explicitly blocked until the pricer supports

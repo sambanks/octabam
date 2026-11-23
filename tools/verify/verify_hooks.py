@@ -17,9 +17,9 @@
    run with LOAD METER, CF METER, BOOT TRACE and STORE built with
    HOOKS's flags: one prologue and one epilogue, every participant's work
    done, the registers and stack as the interrupt found them. The machine
-   rows (ANALOG BD + OCTA303): each track's row type, the machine list's
-   two drawer stubs over every top row and screen row, the name and commit
-   chains from ANALOG BD's hooks into OCTA303's.
+   rows (OCTA303 with CX OSC and WAVE CF): each track's row type, the machine
+   list's two drawer stubs over every top row and screen row, the name and
+   commit chains from OCTA303's hooks into the others'.
 3. Installed (stage image, when the built image is the remix's and carries
    HOOKS): stock's six [TRACK]-layer records at 0x400d1594 are the ones
    HOOKS copies; each bridged site holds HOOKS's write, and the
@@ -75,7 +75,8 @@ def selection():
     check(bridged({RTM, THR, FL}) == ("status_icon", "rec_gate"), "all three: status_icon and rec_gate")
     check(bridged({RL, FL}) == ("ui_tick",), "RELOAD_FROM_PROJECT + FREE LOOP: ui_tick only")
     check(bridged({RL}) == () and bridged({RL, RTM, THR}) == (), "RELOAD_FROM_PROJECT without FREE LOOP: no bridge")
-    check(bridged({"ANALOG BD", "OCTA303"}) == ("machine_rows",), "ANALOG BD + OCTA303: machine_rows only")
+    check(bridged({"OCTA303", "WAVE CF"}) == ("chrom_pitch", "machine_rows"), "OCTA303 + WAVE CF: chrom_pitch and machine_rows")
+    check(bridged({"ANALOG BD", "DRUMMER"}) == (), "ANALOG BD + DRUMMER: no bridge (MACHINES holds their rows)")
     check(bridged({"SCOPE"}) == (), "SCOPE alone keeps its own site handlers")
     check(bridged({"SCOPE", "TUNER"}) == ("scope_tuner",), "SCOPE + TUNER share TEMPO, frame and UI through HOOKS")
     check(DECL["select"](set()) == {"linked": (), "detours": (), "symbol_refs": (), "overrides": (), "pokes": ()},
@@ -90,7 +91,7 @@ def selection():
             continue
         check(has == want, f"remix {name}: HOOKS {'appended' if want else 'not appended'}")
     for sel in ((THR, FL, "STORE", "RLEN PLEN"), (RTM, FL, "STORE", "RLEN PLEN"), (RL, FL, "STORE", "RLEN PLEN"),
-                ("ANALOG BD", "OCTA303")):   # FREE LOOP requires STORE and RLEN PLEN
+                ("OCTA303", "WAVE CF")):   # FREE LOOP requires STORE and RLEN PLEN
         bad = ledger.check(m(*sel))
         check(any(p.startswith("hooks:") for p in bad), f"{' + '.join(sel)} without HOOKS is refused")
         check(ledger.check(m(*sel, "HOOKS")) == [], f"{' + '.join(sel)} with HOOKS is clean")
@@ -520,8 +521,8 @@ def chromatic():
                     f"BLACKPYRAMIDS's sanitize then SCALE QUANTIZER's, stack and continuations as the sites expect")
 
 
-SIGS = {"ANALOG BD": b"AB\x01", "OCTA303": b"TB\x01", "CX OSC": b"CX\x01", "WAVE CF": b"WV\x01"}
-TITLES = {"ANALOG BD": "ab_name", "OCTA303": "o3_title", "CX OSC": "fm_name", "WAVE CF": "wc_title"}
+SIGS = {"OCTA303": b"TB\x01", "CX OSC": b"CX\x01", "WAVE CF": b"WV\x01"}
+TITLES = {"OCTA303": "o3_title", "CX OSC": "fm_name", "WAVE CF": "wc_title"}
 
 
 def _machine_units(k):
@@ -531,7 +532,7 @@ def _machine_units(k):
     return m.linked
 
 
-def machines(on=("ANALOG BD", "OCTA303")):
+def machines(on=("OCTA303", "WAVE CF")):
     """machine_rows, under Unicorn: the machines `on` (row order) built with
     HK_MACHINE_ROWS and their place in the chain (flags_inc), and HOOKS's
     stubs, linked as the platform links them. Every entry is the head's."""
@@ -622,7 +623,7 @@ def machines(on=("ANALOG BD", "OCTA303")):
     check(out[1][0] == 0x400334DE and all(out[r] == want[r] for r in want),
           f"[{name}] {hd['NAME']}: rows 5.. each machine's name through the chain, stock rows to stock")
 
-    names = sym[{"ANALOG BD": "ab_src_names", "OCTA303": "o3_src_names"}[head]]
+    names = sym[{"OCTA303": "o3_src_names"}[head]]
     check([rd(names + 4 * r) for r in range(5, n_rows)] == [sym[TITLES[k]] for k in on],
           f"[{name}] the head's SRC SETUP name table: each machine's name on its row")
 
@@ -890,9 +891,8 @@ def main():
     print("verify_hooks: CHROMATIC bridges under Unicorn")
     chromatic()
     print("verify_hooks: machine rows under Unicorn")
-    for on in (("ANALOG BD", "OCTA303"), ("OCTA303", "CX OSC"), ("ANALOG BD", "CX OSC"),
-               ("ANALOG BD", "OCTA303", "CX OSC"), ("OCTA303", "WAVE CF"), ("ANALOG BD", "WAVE CF"),
-               ("ANALOG BD", "OCTA303", "WAVE CF")):
+    # ANALOG BD and DRUMMER are MACHINES clients (modules/machines/verify.py)
+    for on in (("OCTA303", "CX OSC"), ("OCTA303", "WAVE CF"), ("OCTA303", "WAVE CF", "CX OSC")):
         machines(on)
     print("verify_hooks: FREE LOOP beside REC_TRIG_MUTE under Unicorn")
     free_loop()
