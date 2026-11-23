@@ -52,7 +52,7 @@ MODULE = Module(
     ),
     params=(
         Param(b"DRV", 0, active=True, formatter=_P,
-              doc="drive on the dry path; output gain is compensated after the dirt stages; feedback is not driven"),
+              doc="dry-path drive; output gain compensated after the dirt chain; feedback stays undriven"),
         Param(b"FOLD", 0, active=True, **_W("wid_fold"),
               doc="wavefolder; 0 is off; higher settings fold more with partial output gain compensation"),
         Param(b"CLIP", 0, active=True, **_W("wid_clip"),
