@@ -3,8 +3,8 @@
 A per-track crush insert: drive into a wavefolder, hard or soft clip,
 combined bit-depth and sample-rate crush, then a feedback loop with a tone
 shelf. MODE CHAOS flips feedback polarity from a free-running ramp so the
-loop self-modulates into hash and dropouts. DRV and FOLD gain is compensated
-after the dirt chain. LIM is a stereo-linked peak limiter after MIX
+loop self-modulates into hash and dropouts. DRV gain is compensated after the
+dirt chain. FOLD gets partial output compensation. LIM is a stereo-linked peak limiter after MIX
 (current-block peak + one block-rate div). MIX 0 is bit-exact dry when LIM is 0.
 
 Sits beside CHARACTER (channel-strip dirt) and LOFI2 (modulator + SRR/BRR):
@@ -15,7 +15,7 @@ this one is self-modulating destruction.
 | page | slot | name | range | what it does |
 |---|---|---|---|---|
 | 1 | 0 | DRV | 0–127 | drive on dry only; output gain compensation follows the dirt stages |
-| 1 | 1 | FOLD | 0–127 | wavefolder; 0 = off; higher settings fold more with gain compensation |
+| 1 | 1 | FOLD | 0–127 | wavefolder; 0 = off; higher settings fold more with partial gain compensation |
 | 1 | 2 | CLIP | 0–127 | mid-chain clip amount (0 open, 127 brick) |
 | 1 | 3 | CRSH | 0–127 | bit + sample-rate crush |
 | 1 | 4 | FDBK | 0–127 | feedback around the crush path |
@@ -25,14 +25,14 @@ this one is self-modulating destruction.
 | 2 | 8 | RATE | 0–127 | CHAOS flip rate |
 | 2 | 9 | LIM | 0–127 | stereo peak limiter after MIX; 0 off, ceiling ~-2.5..-12 dB (count=128 overrides DARK GATE's 0/1) |
 
-**DRV** and **FOLD** add drive before the nonlinear stages. SHATTER compensates
-their measured small-signal gain after the dirt chain. On a 440 Hz sine below
-the fold threshold, the uncompensated FOLD gain measured +6.55 dB at 1,
-+20 dB at 64, and +25.04 dB at 127. With compensation, RMS stayed within 10%
-of dry at FOLD 1, 16, 64, and 127. A 0.3 FS sine stayed below -6 dBFS at
-those settings. DRV compensation also kept quiet RMS within 10% at 1, 16, 64,
-and 127. These are dsp_host measurements; CLIP, CRSH, and FDBK still change
-the output level and texture. FDBK's maximum loop coefficient is now 0.25.
+**DRV** and **FOLD** add drive before the nonlinear stages. DRV's small-signal
+gain is fully compensated after the dirt chain. FOLD uses partial compensation
+to keep ordinary signals louder as the wave folds. In `dsp_host`, a 440 Hz,
+0.3 FS sine measured 0.98x dry RMS at FOLD 64 and 0.71x at 127. The previous
+full inverse curve measured 0.31x and 0.17x at those settings. At 0.003 FS,
+the new curve measured 3.16x dry RMS at FOLD 64 and 4.23x at 127. Those figures
+are `dsp_host` measurements; other signals, CLIP, CRSH, and FDBK change the
+output level. FDBK's maximum loop coefficient is now 0.25.
 On a 0.15 FS, 220 Hz sine with TONE 127, FDBK 127 raised late RMS by 2.47 dB;
 the previous 0.5 maximum raised it by 5.9 dB. The gate checks this sweep with
 LIM off. Raise LIM when the processed signal is already hot.

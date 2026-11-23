@@ -20,11 +20,11 @@ MODE **CHAOS** flips **FDBK** polarity at **RATE**. Raise **LIM** to catch
 the post-MIX peaks when the crush path is hot.
 
 **DRV** and **FOLD** add drive before the dirt stages. SHATTER compensates
-their gain after the processed signal returns from the chain, so turning them
-up changes the distortion without the same jump in output level. **CLIP**,
-**CRSH** and **FDBK** still change the sound and its level. **FDBK** has a
-lower maximum loop gain. Raise **LIM** to catch peaks when the processed
-signal is hot.
+**DRV** after the chain. **FOLD** uses partial compensation, so the folded
+signal keeps more level as you raise it. Quiet signals can get louder at high
+**FOLD** settings. Use **MIX** to balance the effect. **CLIP**, **CRSH** and
+**FDBK** also change the sound and its level. **FDBK** has a lower maximum loop
+gain. Raise **LIM** to catch peaks when the processed signal is hot.
 MODE/**TONE**/**RATE** are easiest with **CLIP** open and **FDBK** up.
 
 ## Parameters
@@ -32,7 +32,7 @@ MODE/**TONE**/**RATE** are easiest with **CLIP** open and **FDBK** up.
 | Knob | Default | What it does |
 |---|---|---|
 | DRV | 0 | drive on the dry signal; output gain is compensated after the dirt stages |
-| FOLD | 0 | wavefolder; 0 skips; higher settings fold more with output gain compensation |
+| FOLD | 0 | wavefolder; 0 skips; higher settings fold more with partial output gain compensation |
 | CLIP | 0 | mid-chain clip threshold (0 open, 127 brick wall) |
 | CRSH | 0 | combined bit-depth and sample-rate crush |
 | FDBK | 0 | feedback around fold/clip/crush with a reduced maximum (needed for TONE/RATE/CHAOS) |

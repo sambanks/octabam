@@ -9,10 +9,10 @@
   LIM         -> transparent GR lowers hot peak; LIM 0 == off; LIM 1 quiet ~match
   every knob  -> renders without dsp_host dying
   max knobs   -> ~3 s no runaway; rail fraction bounded
-  DRV/FOLD    -> small-signal level preserved; hot peaks compensated
+  DRV/FOLD    -> level checked at low and ordinary input; hot peaks bounded
   two inst    -> both produce audio; rail fraction bounded
 """
-import pathlib, struct, subprocess, sys
+import math, pathlib, struct, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import toolpath  # noqa: E402,F401
@@ -165,30 +165,37 @@ Lcr, _ = render(tone, CRSH=100, MIX=127, DRV=0, FOLD=0, CLIP=0, FDBK=0)
 dcr = max(abs(a - b) for a, b in zip(Ldry, Lcr))
 check("CRSH changes tone", dcr > (1 << 14), f"max|d|={dcr}")
 
-# FOLD 0 skips the stage. At low input, compensation should keep RMS within
-# 10% of dry across the control range. A hot input must stay below -6 dBFS
-# after compensation, including where the triangle itself has folded.
+# FOLD 0 skips the stage. Below the fold threshold, partial compensation leaves
+# sqrt(measured drive gain). At ordinary input, folding should retain at least
+# half the dry RMS, and peaks must stay below -6 dBFS.
 L0, _ = render(tone, FOLD=0, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
 d01, _ = render(tone, FOLD=1, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
 e0 = sum(x * x for x in L0)
 check("FOLD 0 bit-near dry (MIX 127 passthrough path)", e0 > 0, f"e0={e0}")
 
-fold_quiet = [int(0.03 * RAIL * __import__("math").sin(
+fold_quiet = [int(0.003 * RAIL * math.sin(
     2 * 3.14159265 * 440 * i / 44100)) for i in range(N)]
 q_dry, _ = render(fold_quiet, FOLD=0, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
 q_rms = (sum(x * x for x in q_dry) / len(q_dry)) ** 0.5
 for fold in (1, 16, 64, 127):
     q_fold, _ = render(fold_quiet, FOLD=fold, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
     f_rms = (sum(x * x for x in q_fold) / len(q_fold)) ** 0.5
-    check(f"FOLD {fold} compensation keeps quiet RMS within 10%",
-          0.9 * q_rms <= f_rms <= 1.1 * q_rms,
-          f"dry={q_rms:.0f} fold={f_rms:.0f} ratio={f_rms/q_rms:.3f}")
+    expected = math.sqrt(2 + fold / 8)
+    check(f"FOLD {fold} partial small-signal compensation",
+          0.95 * expected <= f_rms / q_rms <= 1.05 * expected,
+          f"expected={expected:.3f} measured={f_rms/q_rms:.3f}")
 
 hot_fold = [int(0.3 * RAIL * __import__("math").sin(
     2 * 3.14159265 * 440 * i / 44100)) for i in range(N)]
+hot_dry, _ = render(hot_fold, FOLD=0, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
+hot_rms = (sum(x * x for x in hot_dry) / len(hot_dry)) ** 0.5
 for fold in (1, 16, 64, 127):
     h_fold, _ = render(hot_fold, FOLD=fold, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
     p_fold = max(abs(x) for x in h_fold)
+    f_rms = (sum(x * x for x in h_fold) / len(h_fold)) ** 0.5
+    check(f"FOLD {fold} retains at least half hot-input RMS",
+          f_rms >= 0.5 * hot_rms,
+          f"dry={hot_rms/RAIL:.4f} fold={f_rms/RAIL:.4f} ratio={f_rms/hot_rms:.3f}")
     check(f"FOLD {fold} hot peak below -6 dBFS", p_fold < (RAIL >> 1),
           f"peak={p_fold} limit={RAIL >> 1}")
 

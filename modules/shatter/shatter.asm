@@ -8,7 +8,7 @@
 ;
 ;   fb  = FDBK * tone_lp * polarity      (NOT driven — drive×fb self-oscillates)
 ;   d   = dry * (1 + 8*DRV) + fb         DRV 0 = unity; compensated after fold
-;   f   = fold(d*(1+8*FOLD))/(2+FOLD/8) FOLD 0 = unity skip; compensated
+;   f   = fold(d*(1+8*FOLD))*sqrt(1/(2+FOLD/8)) FOLD 0 = unity skip
 ;   c   = hard/soft clip(f)              MODE HARD / SOFT / CHAOS
 ;   w   = srr then brr(c)                CRSH (LOFI2-style $400000 phase)
 ;   fb  = tone_lp(w)                     TONE in the loop
@@ -67,19 +67,14 @@ proc:
         move    a,x:(r7+$11)
         tst     a
         beq     shfoldunity
-; Measured on a 440 Hz sine below the fold threshold: output gain is
-; 2 + FOLD/8 (FOLD in panel units), from 2.125x at 1 to 17.875x at 127.
-; Compute its reciprocal once per block: (1/32) / (1/16 + FOLD/2).
-        asr     #$1,a,a
-        move    #>$080000,b
-        add     b,a
-        move    a,x0
-        move    #>$040000,a
-        andi    #$fe,ccr
-        do      #$18,>shfoldquot
-        div     x0,a
-shfoldquot:
-        move    a0,x:(r7+$1f)
+; Partial compensation from the 128-entry table. sqrt(reciprocal small-signal
+; gain) leaves more level in the folded signal than full inverse compensation.
+        asr     #$10,a,a
+        move    a1,n1
+        move    #>$fab1e0,r1
+        move    (r1)+n1
+        move    p:(r1),a
+        move    a,x:(r7+$1f)
         bra     shfoldgainready
 shfoldunity:
         move    #>$7fffff,a

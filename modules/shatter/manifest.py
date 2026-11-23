@@ -7,6 +7,8 @@ peak limiter after MIX (current-block peak + one block-rate div). MIX 0 is
 bit-exact dry when LIM is 0.
 """
 
+import math
+
 from remix.peak_limiter import source as peak_limiter_source
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
                           Kind, Linked, MenuEntry, Module, Param, Evidence, Level, YBase)
@@ -16,6 +18,15 @@ _BLANK = Param(b"", 0)
 _UI = "shatter_ui"
 # Raw A=0 matches Formatter.PLAIN; B is the live icon (see ui.s).
 _W = lambda sym: dict(formatter_word=0, widget_word=(_UI, sym))
+
+# Partial makeup after the wavefolder: sqrt of its measured small-signal
+# reciprocal. Full inverse compensation made ordinary hot material much
+# quieter once the folder entered its nonlinear region.
+FOLD_GAIN = tuple(
+    ((1 << 23) - 1) if fold == 0 else
+    round(((1 << 23) - 1) / math.sqrt(2 + fold / 8))
+    for fold in range(128)
+)
 
 MODULE = Module(
     name="shatter",
@@ -43,7 +54,7 @@ MODULE = Module(
         Param(b"DRV", 0, active=True, formatter=_P,
               doc="drive on the dry path; output gain is compensated after the dirt stages; feedback is not driven"),
         Param(b"FOLD", 0, active=True, **_W("wid_fold"),
-              doc="wavefolder; 0 is off; higher settings fold more while compensating output gain"),
+              doc="wavefolder; 0 is off; higher settings fold more with partial output gain compensation"),
         Param(b"CLIP", 0, active=True, **_W("wid_clip"),
               doc="clip threshold: 0 is open, 127 is a brick wall"),
         Param(b"CRSH", 0, active=True, **_W("wid_crsh"),
@@ -71,6 +82,7 @@ MODULE = Module(
         asm="modules/shatter/shatter.asm",
         subst={pl: peak_limiter_source("shpk", 0x19, 0xd, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, knob=0xd) for pl in ("A", "B")},
         priority=18,
+        ptable=FOLD_GAIN,
         bus_role=BusRole.NONE,
         ybase=YBase.NEVER,
         r7_latch_slot=None,
