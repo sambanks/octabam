@@ -6,7 +6,7 @@ first.
 **PROJECT → CHANGE → highlight a project → FUNC+BANK → COPY** (under
 RENAME / DELETE) asks for a name, confirms, and copies the source folder
 byte-for-byte into a new folder — stock project files and module extras
-alike. Stock SAVE TO NEW writes a fresh project and drops those extras.
+alike.
 After a successful copy it asks whether to open the copy (stock LOAD
 PROJECT).
 
@@ -16,7 +16,7 @@ popup grows 2→3 instead (`docs/firmware/PANEL.md`).
 
 **Sidecars** = non-stock files modules leave in the project folder
 (`kits.work` / `kits.strd`, `scenes.work`, `brain.work`, `p2lkNN.work`,
-`BUFFERS/`, …). A folder copy keeps them; SAVE TO NEW does not. On a
+`BUFFERS/`, …). A folder copy keeps them; so does SAVE TO NEW (below). On a
 live card set they show up next to `project.work` / `bankNN.work` (e.g.
 `261018 IDLEYARD`, `!DEF_TMPL`).
 
@@ -58,7 +58,30 @@ commits.
 `BUFFERS/RECn.wav` only on **PROJECT → SAVE**, and reloads them on LOAD.
 COPY will carry `BUFFERS/` only if SAVE already wrote it. Takes that
 exist only in RAM are not in the folder and will not appear in the copy.
-SAVE TO NEW still drops these sidecars; COPY keeps them when present.
+Takes that exist only in RAM are saved by BUFFER SAVER's own SAVE SAMPLES? step.
+
+## SAVE TO NEW
+
+Stock SAVE TO NEW saves the open project to its own folder, then makes the
+new folder and writes the stock files into it. Two detours carry the rest:
+
+- `0x40085012`, the call that overwrites the project name (`0x40013f40`):
+  `cp_sa_capture` keeps the old folder's path. It keeps nothing when the
+  project is unsaved (`0x100f847c` set), when no project is open
+  (`0x400255ec` = 0) or when the old folder is not on the card.
+- `0x400850ee`, after the last stock write: `cp_sa_copy` copies every file
+  and folder of the old folder that the new one lacks. A file the new folder
+  has (every stock file) is not touched.
+
+The copy runs on the engine task inside the save-as job. Stock's result
+register (`d2`) is not consulted: stock reports `FILE NOT FOUND` for a
+project with no `.strd` files and still writes the new folder.
+
+`verify_copy_project` runs it under the port: `kits.work` and `scenes.work`
+in the new folder byte for byte, and two module `FCOPY` calls. Not
+exercised: a sidecar subfolder (`stage_card.py` stages top-level files
+only), the unit, a long copy on the engine task (`BUFFERS/` with large
+WAVs).
 
 Limits that refuse with `COPY FAILED` (no silent truncate / partial
 copy): more than 64 projects in the set, a directory with more than 256

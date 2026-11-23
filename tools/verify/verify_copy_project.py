@@ -7,7 +7,13 @@
 1. Success: stage SRC, PROJECT > CHANGE > FUNC+BANK > COPY, stock default
    name under a pinned RTC, confirm, OPEN IT? NO — destination matches
    source.
-2. Failure / cleanup: SRC with more than 256 entries in one directory
+2. SAVE TO NEW carries the sidecars: SRC holds kits.work and scenes.work
+   beside the stock files; PROJECT > SAVE TO NEW with the name stepped up
+   (SRC -> SRD). Wanted: both files in SRD byte for byte, and the module's
+   FCOPY calls (return address in DRAM) exactly two, so no stock file the
+   new folder already had was copied over. A subfolder is not staged:
+   stage_card.py carries a project's top-level files only.
+3. Failure / cleanup: SRC with more than 256 entries in one directory
    forces COPY FAILED; destination is removed; source untouched; a retry
    with the same name does not hit NAME ALREADY IN USE! (dest still gone
    after the name editor YES).
@@ -240,6 +246,76 @@ def run_fail_cleanup(image: pathlib.Path, pdir: pathlib.Path) -> None:
           "SRC intact")
 
 
+FCOPY = 0x40016388
+DRAM = (0x40A00000, 0x46000000)          # the module's own code
+NEW_NAME = "SRD"                         # SRC with the last letter stepped up
+SIDECARS = {"kits.work": b"KITSDATA" * 4, "scenes.work": bytes(range(100))}
+YES, DOWN, UP, LEFT, RIGHT, PROJ = 0x31, 0x20, 0x33, 0x34, 0x21, 0x1C
+
+
+def keys(ms, key):
+    return [f"{ms} key {key:#x} down", f"{ms + 60} key {key:#x} up"]
+
+
+def run_save_to_new(image: pathlib.Path, pdir: pathlib.Path) -> None:
+    import re  # noqa: PLC0415
+
+    fixture = OUT / "src_sa"
+    if fixture.exists():
+        shutil.rmtree(fixture)
+    shutil.copytree(pdir, fixture)
+    for name, data in SIDECARS.items():
+        (fixture / name).write_bytes(data)
+    card, tree = OUT / "card_sa.img", OUT / "tree_sa"
+    stage(fixture, card, tree)
+
+    # PROJECT, its list, SAVE TO NEW (fifth row), YES; on the name keyboard LEFT
+    # then UP step SRC to SRD, YES. Stock reports "FILE NOT FOUND" for a project
+    # with no .strd files; the module does not depend on that result.
+    script = (keys(4000, PROJ) + keys(5000, RIGHT)
+              + sum((keys(5500 + 300 * i, DOWN) for i in range(4)), [])
+              + keys(7500, YES) + keys(9500, LEFT) + keys(10000, UP) + keys(11000, YES)
+              + ["60000 quit"])
+    path = OUT / "save_to_new.script"
+    path.write_text("\n".join(script) + "\n")
+    out_card = OUT / "save_to_new.img"
+    r = subprocess.run(
+        [str(EMU), "--image", str(image.resolve()), "--card", str(card.resolve()),
+         "--card-out", str(out_card), "--set", "OCTABAM", "--project", "SRC",
+         "--load-ms", "90000", "--mkii", "--main-level", "64",
+         "--watch-pc", f"{FCOPY:#x}", "--live-script", str(path)],
+        cwd=ROOT, capture_output=True, text=True, timeout=3600)
+    out = r.stdout + r.stderr
+    (OUT / "save_to_new.log").write_text(out)
+    if r.returncode or "ended on quit" not in out:
+        sys.exit(f"verify_copy_project: SAVE TO NEW run did not finish cleanly (exit {r.returncode}) "
+                 f"-- {OUT / 'save_to_new.log'}")
+    files = card_files(out_card)
+    if not any(k.endswith(f"/{NEW_NAME}/project.work") for k in files):
+        sys.exit(f"verify_copy_project: SAVE TO NEW wrote no {NEW_NAME}/project.work "
+                 f"-- {OUT / 'save_to_new.log'}")
+    for name, data in SIDECARS.items():
+        key = next((k for k in files if k.endswith(f"/{NEW_NAME}/{name}")), None)
+        if key is None or files[key] != data:
+            sys.exit(f"verify_copy_project: SAVE TO NEW left {name} "
+                     f"{'out of' if key is None else 'changed in'} {NEW_NAME} "
+                     f"-- {OUT / 'save_to_new.log'}")
+    src_names = {k.rsplit("/", 1)[1] for k in files if "/SRC/" in k}
+    new_names = {k.rsplit("/", 1)[1] for k in files if f"/{NEW_NAME}/" in k}
+    if src_names - new_names:
+        sys.exit(f"verify_copy_project: {NEW_NAME} lacks {sorted(src_names - new_names)} "
+                 f"-- {OUT / 'save_to_new.log'}")
+    # The watch line's sp holds the return address first.
+    calls = [int(m, 16) for m in re.findall(
+        rf"at {FCOPY:#x} .*?\[sp 0x[0-9a-f]+: (0x[0-9a-f]+)", out)]
+    ours = [c for c in calls if DRAM[0] <= c < DRAM[1]]
+    if len(ours) != len(SIDECARS):
+        sys.exit(f"verify_copy_project: the module called FCOPY {len(ours)} times for "
+                 f"{len(SIDECARS)} sidecars ({len(calls)} calls in all) -- {OUT / 'save_to_new.log'}")
+    print(f"  [PASS] verify_copy_project: SAVE TO NEW carried {', '.join(SIDECARS)} into "
+          f"{NEW_NAME!r}; {len(ours)} module copies, none of a stock file")
+
+
 def main() -> int:
     remix = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX")
     if not remix:
@@ -258,6 +334,7 @@ def main() -> int:
 
     image = build_image(remix)
     run_success(image, pdir)
+    run_save_to_new(image, pdir)
     run_fail_cleanup(image, pdir)
     return 0
 

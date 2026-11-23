@@ -362,6 +362,9 @@ static char frame_dst[DEPTH + 1][PATH_N];
 static char frame_name[DEPTH + 1][EMAX][NLEN + 1];
 static u8 frame_dir[DEPTH + 1][EMAX];
 
+/* 1: copy only what the destination lacks (SAVE TO NEW's sidecars). */
+static u32 cp_missing;
+
 static int copy_tree(u32 depth)
 {
 	const char *src = frame_src[depth];
@@ -371,8 +374,11 @@ static int copy_tree(u32 depth)
 
 	if (depth > DEPTH)
 		return -1;
-	if (fs_mkdir(dst) < 0)
+	if (cp_missing && fs_exists(dst) == 2) {
+		/* the folder is there */
+	} else if (fs_mkdir(dst) < 0) {
 		return -1;
+	}
 	n = scan_entries(src);
 	if (n < 0)
 		return -1;
@@ -391,11 +397,54 @@ static int copy_tree(u32 depth)
 				return -1;
 			if (copy_tree(depth + 1) < 0)
 				return -1;
+		} else if (cp_missing && fs_exists(frame_dst[leaf])) {
+			/* stock wrote it into the new project */
 		} else if (FCOPY(frame_dst[leaf], frame_src[leaf], 0) < 0) {
 			return -1;
 		}
 	}
 	return 0;
+}
+
+/* ---- SAVE TO NEW carries the sidecars -------------------------------------
+ * Stock's save-as (0x40084f40) saves the open project to its own folder, then
+ * overwrites the project name at 0x100f8378, makes the new folder and writes
+ * the stock files into it. cp_sa_capture runs just before the name is
+ * overwritten (0x40085012) and keeps the old folder's path; cp_sa_copy runs
+ * after the last stock write (0x400850ee) and copies into the new folder every
+ * file and folder of the old one that the new one lacks. */
+
+#define PROJDIR   ((const char *(*)(u32, u32))0x40025230)
+#define PROJ_OPEN ((int (*)(void))0x400255ec)
+#define SA_UNSAVED ((u32 *)0x100f847c)
+
+static char sa_src[PATH_N];
+
+void cp_sa_capture(void)
+{
+	sa_src[0] = 0;
+	if (*SEL_NAME == 0 || *SA_UNSAVED || !PROJ_OPEN())
+		return;
+	cpy(sa_src, PROJDIR(0, 0), PATH_N);
+	if (fs_exists(sa_src) != 2)
+		sa_src[0] = 0;
+}
+
+void cp_sa_copy(void)
+{
+	const char *dst;
+
+	if (!sa_src[0] || *SEL_NAME == 0)
+		return;
+	dst = PROJDIR(0, 0);
+	if (eq(dst, sa_src) || fs_exists(dst) != 2)
+		return;
+	cpy(frame_src[0], sa_src, PATH_N);
+	cpy(frame_dst[0], dst, PATH_N);
+	sa_src[0] = 0;
+	cp_missing = 1;
+	copy_tree(0);
+	cp_missing = 0;
 }
 
 static void cp_open_answer(u32 answer)
