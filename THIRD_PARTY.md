@@ -85,6 +85,12 @@ in the tree. The recordings are not redistributed: the fits are numbers in the m
 | `modules/mute-modes` (MUTE_MODES) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount, pinned to `bb9bead`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
 | `modules/rec-trig-mute` (REC_TRIG_MUTE) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount, pinned to `91a58e9`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
 
+## Firmware modifications copied from their authors' repositories
+
+| module | upstream | licence |
+|---|---|---|
+| `modules/page-loop`, `modules/track-trig-mode`, `modules/trig-mute` (PAGE LOOP, TRACK TRIG MODE, TRIG MUTE) | https://github.com/Hteah/ot-mods | MIT, Copyright (c) 2026 Hteah (`LICENSE` in each module folder) |
+
 `modules/kits-reload`, `modules/scenes-kits`, `modules/cc-map`,
 `modules/tempo-sync`, `modules/mode-defaults` and `modules/recorder-loop-fix`
 have `sambanks` as author in their manifests; none of these module
