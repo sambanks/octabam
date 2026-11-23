@@ -70,7 +70,10 @@ MODULE = Module(
                "FUNC+RIGHT with PTN held: the pattern and its Kit copied to the next empty ones",
                pad_to=8),
     ),
-    requires=("STORE",),
+    # BATCH_BUGFIXES' empty-pattern fix detours stock's content test (0x4009a464), which fright's search for
+    # the next empty pattern calls: stock's test reads a pattern holding only parameter locks as empty, and the
+    # copy would overwrite it (repeat98/modwerk#2052).
+    requires=("STORE", "BATCH_BUGFIXES"),
     # CS1 (battery SRAM), unused by stock beyond its whole-CS1 init
     # (docs/firmware/STEP_LOCKS.md section 6): RESID with a magic and a sum,
     # and ASSIGN, over a power-off.

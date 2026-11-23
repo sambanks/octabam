@@ -18,7 +18,7 @@ REMIX = Remix(
              "SPECTRUM", "CHARACTER TXTR", "MODULATION",
              "TEMPO SYNC", "CC MAP", "CC FEEDBACK", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
              "USB",
-             "STORE", "KITS",
+             "STORE", "KITS", "BATCH_BUGFIXES",
              "SCENES P2", "EVENTS", "PLOCKS P2",
              "DELAY",
              "FX2 LOCK"),

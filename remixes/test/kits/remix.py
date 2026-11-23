@@ -11,7 +11,7 @@ REMIX = Remix(
     family="mods", evidence=(Evidence(Level.EMULATOR, ref="verify_kits",
         note="verify_kits under the port"),),
     doc="KITS (255 Kits per project) on the stock effects.",
-    modules=("STORE", "KITS",
+    modules=("STORE", "KITS", "BATCH_BUGFIXES",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),
