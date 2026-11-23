@@ -31,8 +31,7 @@ def render():
     m = manifest()
     vals = dict(m.CONSTQ)
     src = (HERE / "vca160.tmpl.asm").read_text()
-    # @ROFF@ stays: the build substitutes it per payload
-    keep = {"ROFF"}
+    keep = set()
 
     def sub(mt):
         k = mt.group(1)

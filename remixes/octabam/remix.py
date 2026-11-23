@@ -73,7 +73,7 @@ REMIX = Remix(
     # which only DARK REV on T4's FX2 reaches; its four hooks go to resident stubs.
     fx1=("SPECTRUM", "CHARACTER", "MODULATION") + STOCK_FX1,   # the chooser order on FX1; the stations also run live on FX2 (SLOTS pin below)
     # DLCOPY follows the five demand entries (x:$33da3 + 8 k, k = 0..4).
-    window=(("DLCOPY", 0x33DCB), ("KEYBUS", 0x33E5E), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
+    window=(("DLCOPY", 0x33DCB), ("KEYBUS", 0x33E55), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
             ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820),
             ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x3BE00)),
     # DLPUMP loads in this order, and the first free home wins: SIDECHAIN_COMPRESSOR has one home, the fourth
@@ -91,9 +91,9 @@ REMIX = Remix(
                   ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820),
                   ("SHATTER", 0x33820), ("SHATTER", 0x3F820)),
     window_guard=("PLATE REV", "DARK REV", "SPRING REV"),
-    # KEYBUS (17 words) fills DLCOPY's tail gap and the loader follows it; SC's bridged stubs then
+    # KEYBUS (27 words) follows DLCOPY with no gap and the loader follows it; SC's bridged stubs then
     # end at 0x33FFF, the block's last resident word.
-    window_loader=0x33E6F,
+    window_loader=0x33E70,
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,

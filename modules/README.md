@@ -157,7 +157,7 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**DLCOPY**](dlcopy/README.md) | [Sam Banks](https://github.com/sambanks) | Frame hook on payload B: copies a staged block into the shared window (demand loader). |
 | [**DLPUMP**](dlpump/README.md) | [Sam Banks](https://github.com/sambanks) | Host-writes a staged block to a DSP core, a chunk per frame interrupt (demand loader). |
 | [**DRUMMER PROBE**](drummer-probe/) | [djib](https://github.com/Djibdjib) | DRUMMER phase 2 probe: trigs added and moved after the step builder, the FLEX start's slice forced (measurement only). |
-| [**KEYBUS**](keybus/README.md) | [Sam Banks](https://github.com/sambanks) | Every track's key level (block peak of \|mono\|) each block, in eight shared words for DSP readers on either core. |
+| [**KEYBUS**](keybus/README.md) | [Sam Banks](https://github.com/sambanks) | Every track's key level (block peak of \|mono\| and block mean square) each block, in shared words for DSP readers on either core. |
 | [**LOAD METER**](load-meter/README.md) | [Sam Banks](https://github.com/sambanks) | The frame interrupt's share of the ColdFire, each DSP core's busy time per frame and each effect call's cost, for BRAIN's OTOP screen. |
 | [**REMOTE**](remote/README.md) | [Sam Banks](https://github.com/sambanks) | Project loads, saves, transport, pattern changes and screen redraws as timestamped records a host reads over USB. |
 | [**SC KEYBUS BRIDGE**](sc-keybus-bridge/README.md) | [Sam Banks](https://github.com/sambanks) | Shares the dispatcher's per-track site between SIDECHAIN_COMPRESSOR's sctap and KEYBUS's tap. |

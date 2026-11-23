@@ -137,7 +137,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`usb-out-tracks-main-cue`](usb-out-tracks-main-cue/README.md) | stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE); PLATE REV harvested for USB's words. |
 | [`usb-out-tracks-post`](usb-out-tracks-post/README.md) | stock + USB (TRACKS POST) (16 ch: the tracks after their own MAIN gain). |
 | [`varispeed`](varispeed/README.md) | stock effects with VARISPEED: TSTR VARI, QUAN on PTCH. |
-| [`vca160`](vca160/README.md) | VCA160 on FX1 and FX2 with its own id, beside the stock effects but PLATE REV, whose words it runs in. |
+| [`vca160`](vca160/README.md) | VCA160 on FX1 and FX2 with its own id, and KEYBUS for its KEY, beside the stock effects but PLATE REV, whose words it runs in. |
 | [`vca160-meter`](vca160-meter/README.md) | stock-meter-b with VCA160 (its own id) in PLATE REV's words: VCA160's slot cost on a unit. |
 | [`verberation`](verberation/README.md) | VERBERATION alone: the fixture of its render gate. |
 | [`vibrato`](vibrato/README.md) | VIBRATO on FX1 beside the stock effects (all but PLATE REV). |

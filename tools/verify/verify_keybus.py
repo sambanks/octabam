@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""KEYBUS's tap under dsp_host: each track's block peak of |(L + R) / 2| lands at X:$37F60 + track, on both payloads.
+"""KEYBUS's tap under dsp_host: each track's block peak of |(L + R) / 2| lands at X:$37F60 + track, and its block mean
+square at X:$37F68 + track, on both payloads.
 
     python3 tools/verify/verify_keybus.py [REMIX]       (default test/keybus)
 
@@ -7,9 +8,10 @@ The image is built and each payload's dump read. The hook at the dispatcher's pe
 payload B P:$29c) must be a `jsr` (a demand module's bridged stub where SC KEYBUS BRIDGE is in the remix, which
 jumps on to the tap); the tap's address is read from it, or from the stub's last branch. The tap is then run as an
 instance's proc with the input block at X:$00 (`-audio 0`, where the dispatcher leaves it) and x:$420 planted as
-each track 0..7 in turn, and the eight key words are read back (`-peekx`). Checked: the track's word holds the
-peak of the last block's |(L + R) / 2| (within dsp_host's input shaping, 1 %), every other word stays 0, and a
-silent block publishes 0.
+each track 0..7 in turn, and the sixteen words are read back (`-peekx`). Checked: the track's key word holds the
+peak of the last block's |(L + R) / 2| (within dsp_host's input shaping, 1 %), its mean-square word equals
+vca160_ref.tap() of that block bit for bit (VCA160's KEY reads it), every other word stays 0, and a silent block
+publishes 0.
 
 Not covered here: that the dispatcher reaches the site for every track (the site is stock's per-track path,
 read by SIDECHAIN_COMPRESSOR's sctap on the unit), that no stock code writes X:$37F60..$37F67 (Claims.dsp_ranges
@@ -25,8 +27,15 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 import dlbuild  # noqa: E402
 import send_probe  # noqa: E402
+import importlib.util  # noqa: E402
+
+_spec = importlib.util.spec_from_file_location(
+    "vca160_ref", pathlib.Path(__file__).resolve().parents[2] / "modules/vca160/vca160_ref.py")
+VREF = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(VREF)              # tap(): the mean-square word, as VCA160's model reads it
 
 KEY_WORDS = 0x37F60
+MS_WORDS = KEY_WORDS + 8                # modules/keybus/manifest.py MS_WORDS
 SITE = {"A": 0x4A7, "B": 0x29C}
 HOST = "vendor/dsp56300/build/source/dsp_host/dsp_host"
 FRAMES, BLOCKS = 16, 8
@@ -86,14 +95,15 @@ def run(memfile, init, proc, tag):
     cmd = [HOST, "-mem", str(memfile), "-init", f"{init:x}", "-proc", f"{proc:x}", "-inst", "1", "-r7", "1",
            "-alloc", "0", "-audio", "0", "-inmask", "1", "-frames", str(FRAMES), "-blocks", str(BLOCKS),
            "-in", str(TMP / "in.raw"), "-out", str(out),
-           "-peekx", ",".join(f"{a:x}" for a in list(range(0x20)) + [KEY_WORDS + i for i in range(8)])]
+           "-peekx", ",".join(f"{a:x}" for a in list(range(0x20)) + [KEY_WORDS + i for i in range(16)])]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"dsp_host failed ({tag}):\n{r.stdout[-600:]}\n{r.stderr[-600:]}")
     got = {int(a, 16): int(v, 16) for a, v in re.findall(r"X:0x([0-9a-f]+) = 0x([0-9a-f]+)", r.stdout)}
     block = [s24(got[i]) for i in range(0x20)]
     peak = max(abs((block[2 * f] + block[2 * f + 1]) >> 1) for f in range(FRAMES))   # the input dsp_host left at X:$00
-    return [got.get(KEY_WORDS + i) for i in range(8)], peak
+    ms = VREF.tap(block) & 0xFFFFFF
+    return [got.get(KEY_WORDS + i) for i in range(8)], peak, [got.get(MS_WORDS + i) for i in range(8)], ms
 
 
 def s24(v):
@@ -112,6 +122,12 @@ def judge(words, peak, t, what):
     check(what, ok, f"0x{mine or 0:06x} (the block's peak 0x{peak:06x}), others {sorted(set(rest))}")
 
 
+def judge_ms(words, ms, t, what):
+    mine, rest = words[t], [w for i, w in enumerate(words) if i != t]
+    ok = mine == ms and all(w == 0 for w in rest)
+    check(what, ok, f"0x{mine or 0:06x} (vca160_ref.tap() 0x{ms:06x}), others {sorted(set(rest))}")
+
+
 for amp, name in ((0.4, "tone"), (0.0, "silence")):
     samples = []
     for i in range(FRAMES * BLOCKS):
@@ -128,27 +144,32 @@ for amp, name in ((0.4, "tone"), (0.0, "silence")):
             continue
         init_n, _ = send_probe.entry_points(mem, 0x08)          # the stock null stub's init
         m = TMP / f"{tag}.own.mem"
-        write_records(m, recs + [(1, KEY_WORDS, [0] * 8)])
-        words, peak = run(m, init_n, tap, f"{name}{tag}own")
+        write_records(m, recs + [(1, KEY_WORDS, [0] * 16)])
+        words, peak, msw, ms = run(m, init_n, tap, f"{name}{tag}own")
         if amp:
             check(f"payload {tag}: a tone's block publishes a nonzero peak", peak > 0x100000, f"0x{peak:06x}")
         judge(words, peak, OWN[tag], f"payload {tag}, as built: x:$420 = {OWN[tag]}, its word holds the peak, the rest 0")
+        judge_ms(msw, ms, OWN[tag], f"payload {tag}, as built: its mean-square word is the block's, the rest 0")
+        if amp:
+            check(f"payload {tag}: a tone's block publishes a nonzero mean square", ms > 0x10000, f"0x{ms:06x}")
         hook = p_word(recs, SITE[tag] + 1)
         if hook != tap:
             # the hook's own target, a bridged stub, with the demand module not loaded (its BOUND word clear in
             # the boot dump): it skips the module's body and branches to the tap
-            words, peak = run(m, init_n, hook, f"{name}{tag}stub")
+            words, peak, msw, ms = run(m, init_n, hook, f"{name}{tag}stub")
             judge(words, peak, OWN[tag], f"payload {tag}: through the bridged stub P:0x{hook:05x}, demand module "
                                          f"not loaded: the same word")
+            judge_ms(msw, ms, OWN[tag], f"payload {tag}: through the bridged stub: the same mean-square word")
         # every track index: the tap's `move x:>$420,r1` (2nd word at tap + 11) reads CELL instead, in a copy
         if p_word(recs, tap + 11) != 0x000420:
             check(f"payload {tag}: the tap's track read is at tap + 10", False, f"{p_word(recs, tap + 11):06x}")
             continue
         for t in range(8):
             m = TMP / f"{tag}{t}.mem"
-            write_records(m, recs + [(0, tap + 11, [CELL]), (1, CELL, [t]), (1, KEY_WORDS, [0] * 8)])
-            words, peak = run(m, init_n, tap, f"{name}{tag}{t}")
+            write_records(m, recs + [(0, tap + 11, [CELL]), (1, CELL, [t]), (1, KEY_WORDS, [0] * 16)])
+            words, peak, msw, ms = run(m, init_n, tap, f"{name}{tag}{t}")
             judge(words, peak, t, f"payload {tag}, track {t}: its word holds the peak, the rest 0")
+            judge_ms(msw, ms, t, f"payload {tag}, track {t}: its mean-square word is the block's, the rest 0")
 
 print("PASS" if not fails else f"{fails} FAIL")
 sys.exit(1 if fails else 0)

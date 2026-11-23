@@ -5,8 +5,9 @@
    VCA. What the module is MEASURED against, and what the manual's numbers
    are checked on.
 2. `fixed()` -- vca160.asm, instruction for instruction, in integers (the
-   SUPER OD model's primitives: modules/distorx/distorx_ref.py), the bus tap
-   included. The gate requires the assembled code to match it bit for bit.
+   SUPER OD model's primitives: modules/distorx/distorx_ref.py). `tap()` is
+   KEYBUS's mean-square word, which KEY reads. The gates require the
+   assembled code to match both bit for bit.
 """
 import importlib.util
 import math
@@ -91,11 +92,11 @@ class VCA160:
 Q = M.CONSTQ
 C = {k: s24(v) for k, v in Q.items() if k != "EXP_AT"}
 PT = [s24(v) for v in M.PTABLE]
-REC_A, REC_B, LEVEL_AT = M.REC_A, M.REC_B, M.LEVEL_AT
+KEY_MS = M.KEY_MS
 
 
 def tap(frames_lr):
-    """dbt_tap: the block's 16 frames (32 words, L R interleaved) -> its word."""
+    """KEYBUS's mean-square word: the block's 16 frames (32 words, L R interleaved) -> its word."""
     A = 0
     for w in frames_lr:
         A += mpy(w, w)
@@ -103,10 +104,8 @@ def tap(frames_lr):
 
 
 def bus_address(track):
-    """Where track (0-based) publishes its level: payload B's half for T1..T4.
-    Each track has a record of four words (BEAT COUNT LAST LEVEL)."""
-    rec = REC_B + 4 * track if track < 4 else REC_A + 4 * (track - 4)
-    return rec + LEVEL_AT
+    """Where KEYBUS publishes track (0-based)'s block mean square: X, shared window."""
+    return KEY_MS + track
 
 
 def block_constants(kn, bus):
@@ -139,8 +138,7 @@ def block_constants(kn, bus):
     key = (kn[3] & 0x7F0000) >> 16
     st["keyon"] = 1 <= key <= 8
     t = (key - 1) & 7
-    addr = (0x037FE0 if t > 3 else 0x03FFF0) + 4 * t + LEVEL_AT   # the record's LEVEL word
-    st["keyword"] = bus.get(addr, 0)
+    st["keyword"] = bus.get(KEY_MS + t, 0)                    # KEYBUS's mean-square word
     return st
 
 

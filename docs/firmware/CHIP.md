@@ -125,6 +125,7 @@ ships, and the row names the test that settles it.
 | `move y1,x:(r1)+` (1w) | MODULATION, e.g. `move y1,x:(r1)+` |
 | `mpy x0,y1,a x:(r0+n0),b` (1w) | MODULATION, e.g. `mpy x0,y1,a x:(r0+n0),b` |
 | `move b,x:(r1+N)` (2w) | KEYBUS, `move b,x:(r1+$37f60)` |
+| `mac x0,x0,a x:(r0)+,x0` (1w) | KEYBUS's mean square, `mac x0,x0,a x:(r0)+,x0` in a `do #$20`. The same instruction was VCA160's own side-chain tap (as dB666), which ran on MaMarko's MKI in his ACIDF07B and ACIDF08 images with VCA160 on T5 keyed from T1: the bass ducked on the kicks by ear, no defect seen. What would falsify it: a key that ducks by the wrong amount or not at all while the planted-word render (`verify_vca160`) is right. By ear, not measured |
 | `add x0,a x:(r3)+,x0` (1w) | MODULATION, e.g. `add x0,a x:(r3)+,x0` |
 | `andi #N,ccr` (1w) | MODULATION, e.g. `andi #$fe,ccr` |
 | `clr a x:(r0),x0` (1w) | MODULATION, e.g. `clr a x:(r0),x0` |
