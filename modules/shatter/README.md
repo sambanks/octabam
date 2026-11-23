@@ -37,6 +37,9 @@ On a 0.15 FS, 220 Hz sine with TONE 127, FDBK 127 raised late RMS by 2.47 dB;
 the previous 0.5 maximum raised it by 5.9 dB. The gate checks this sweep with
 LIM off. Raise LIM when the processed signal is already hot.
 
+On 24 Nov 2026, Ilia tested the revised FOLD compensation on an MKII with
+`CX CW.RMX`.
+
 Page-2 MODE/TONE/RATE are easiest to hear with CLIP open and FDBK up
 (CLIP 100 bricks the path so HARD≈SOFT and CHAOS is easy to miss).
 

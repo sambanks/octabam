@@ -41,6 +41,9 @@ MODULE = Module(
         Evidence(Level.UNIT, unit="MKII", who="Ilia", image="SHTR LM4.RMX", date="2026-11-14",
                  commit="366e1bcd",
                  note="LIM confirmed working; verify_shatter passed."),
+        Evidence(Level.UNIT, unit="MKII", who="Ilia", image="CX CW.RMX", date="2026-11-24",
+                 commit="6bd70d47",
+                 note="Ilia tested the revised FOLD compensation on the unit."),
     ),
     doc="Crush insert: fold, clip, crush, chaotic FDBK, stereo peak limiter after MIX.",
     menu=MenuEntry(
