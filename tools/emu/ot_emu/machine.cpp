@@ -386,7 +386,7 @@ namespace ot
 		if(!m_watchPc.empty())
 			notePcWatch(p);
 		if(m_profileEvery && (m_instructions % m_profileEvery) == 0)
-			++m_profile[p];		// the RTOS phase steps through here, not run() (O9b's coverage)
+			profileSample(p);		// the RTOS phase steps through here, not run() (O9b's coverage)
 		const auto op = read16(p);
 		// The EMAC and mov3q are A-line: Musashi routes 0xAxxx to the A-line
 		// EXCEPTION, not to the illegal-instruction callback the V4e layer
@@ -418,7 +418,7 @@ namespace ot
 		if(!m_watchPc.empty())
 			notePcWatch(p);
 		if(m_profileEvery && (m_instructions % m_profileEvery) == 0)
-			++m_profile[p];
+			profileSample(p);
 		// The opcode: the inline read16 (O15c) -- the page's own bytes while
 		// the PC is inside a region page, the slow body anywhere else (the
 		// alias, a grown page, a peripheral: each behaves exactly as step()
@@ -854,7 +854,7 @@ namespace ot
 				return Stop::Handoff;
 			}
 			if(m_profileEvery && (m_instructions % m_profileEvery) == 0)
-				++m_profile[p];
+				profileSample(p);
 			if(p == m_pcCountAddr)
 				++m_pcCount;
 			if(!m_watchPc.empty())

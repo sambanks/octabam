@@ -1260,6 +1260,28 @@ static void dumpAllProfile(const std::vector<std::pair<uint32_t, uint64_t>>& _ho
 	std::fclose(f);
 }
 
+// OT_PROFILE_LEVELS=FILE: every sampled PC with the SR interrupt mask it ran under, one "addr mask count" line each
+// (mask 6 and above is interrupt context; the frame interrupt runs at level 6). Sampled with the profile or the
+// coverage, from the same instructions; without the variable nothing changes.
+static bool profileLevelsWanted()
+{
+	const char* path = std::getenv("OT_PROFILE_LEVELS");
+	return path && *path;
+}
+
+static void dumpProfileLevels(const ot::Machine& _m)
+{
+	if(!profileLevelsWanted())
+		return;
+	FILE* f = std::fopen(std::getenv("OT_PROFILE_LEVELS"), "w");
+	if(!f)
+		return;
+	for(const auto& h : _m.profileLevel())
+		std::fprintf(f, "%#x %u %llu\n", static_cast<unsigned>(h.first & 0xffffffffu), static_cast<unsigned>(h.first >> 32),
+					 static_cast<unsigned long long>(h.second));
+	std::fclose(f);
+}
+
 int main(int _argc, char** _argv)
 {
 	// ⚠️ LINE-BUFFERED, ALWAYS. Redirected to a file, printf is block-buffered,
@@ -1531,6 +1553,7 @@ int main(int _argc, char** _argv)
 	std::printf("image      : %s (%zu bytes) at %#x\n", image.c_str(), img.size(), ot::Machine::g_imageBase);
 
 	ot::Machine m(img);
+	m.setProfileLevels(profileLevelsWanted());		// OT_PROFILE_LEVELS: off unless set
 	// --preload: memory as a reset finds it. The port boots every image into
 	// zeroed RAM with NOR unmodelled (0x3ffc reads 0, so the entry takes the
 	// bootstrap-upgrade branch); a file here stands in for what the hardware
@@ -1769,6 +1792,7 @@ int main(int _argc, char** _argv)
 		std::vector<std::pair<uint32_t, uint64_t>> hot(m.profile().begin(), m.profile().end());
 		std::sort(hot.begin(), hot.end(), [](const auto& _a, const auto& _b){ return _a.second > _b.second; });
 		dumpAllProfile(hot);
+		dumpProfileLevels(m);
 		std::printf("hottest addresses (PC sampled every 64 instructions):\n");
 		for(size_t i = 0; i < hot.size() && i < 16; ++i)
 		{
@@ -3197,6 +3221,7 @@ int main(int _argc, char** _argv)
 		for(const auto& e : pcs)
 			t << std::hex << e.first << ' ' << std::dec << e.second << '\n';
 		std::printf("coverage   : %s (%zu distinct PCs from the transport start)\n", coverage.c_str(), pcs.size());
+		dumpProfileLevels(m);
 	}
 	if(dspPair)
 	{
@@ -3456,6 +3481,7 @@ int main(int _argc, char** _argv)
 		std::vector<std::pair<uint32_t, uint64_t>> hot(m.profile().begin(), m.profile().end());
 		std::sort(hot.begin(), hot.end(), [](const auto& _a, const auto& _b){ return _a.second > _b.second; });
 		dumpAllProfile(hot);
+		dumpProfileLevels(m);
 		std::printf("hottest addresses over the frames (PC sampled every 64 instructions; the boot table above is the boot alone):\n");
 		uint64_t total = 0;
 		for(const auto& h : hot) total += h.second;
