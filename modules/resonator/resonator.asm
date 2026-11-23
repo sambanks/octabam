@@ -12,10 +12,10 @@
 ;
 ; P table (build rewrites the one table-base literal below), 66 words:
 ;   +0  F   33  Chamberlin f = 2*sin(pi*fc/fs), fc 40..4000
-;   +33 DAMP 33  damp; index 0 = most resonant, 32 = widest
+;   +33 DAMP 33  damp; squared spacing, index 0 = most resonant, 32 = widest
 ;
-; Knobs: r6+0..3 = GN1..GN4, r6+4 = DECY, r6+5 = MIX
-;        page 2: r6+$c/$d = PIT1|PIT2, PIT3|PIT4; r6+$e = SCAL|LIM
+; Knobs: r6+0..3 = PIT1..PIT4, r6+4 = DECY, r6+5 = MIX
+;        page 2: r6+$c/$d = GN1|GN2, GN3|GN4; r6+$e = SCAL|LIM
 ; REPLACE: out = lim(dry + MIX*(wet-dry)); MIX 127 forces wet only.
 ; wet = sum(g*band)*4. g = (GN/128)*(SCALE/128)*32.
 ;   SCALE 8 → conservative; four GN 64 bands can still overload the sum.
@@ -23,11 +23,11 @@
 ; DECY high → low damp.
 ;
 ; LIM: shared current-block stereo peak limiter, one div outside sample DO.
-; Ceiling = 0.75 - LIM*0.5/128 (LIM 0 bypass), near -2.5..-12 dBFS.
+; Ceiling = 0.75 - LIM*0.65/128 (LIM 0 bypass), near -2.5..-20 dBFS.
 ; Unity below ceiling, no makeup gain; approximately 63 ms block release.
 ; The second pass controls the first transient without nested DO/div.
 ; SCAL can overload the 24-bit band sum before this output limiter; LIM cannot
-; undo distortion created earlier in the chain.
+; undo distortion created earlier in the chain. RESONATOR's LIM reaches 0.1 FS.
 ;
 ; r7: $00..$0f L 4*(low,band), $10..$1f R same,
 ;     $20 fx2-dry  $21 MIX  $22 damp  $23 exc
@@ -123,31 +123,33 @@ proc:
         move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         teq     a,b
         move    b,x:(r7+$23)
-; GN1..GN4 → $34..$37 as kn/128
-        move    x:(r6),a
-        and     #>$7f0000,a
-        move    a,x:(r7+$34)
-        move    x:(r6+$1),a
-        and     #>$7f0000,a
-        move    a,x:(r7+$35)
-        move    x:(r6+$2),a
-        and     #>$7f0000,a
-        move    a,x:(r7+$36)
-        move    x:(r6+$3),a
-        and     #>$7f0000,a
-        move    a,x:(r7+$37)
-; page-2 PIT1..4 → $40..$43 as <<16; SCALE → $38
+; page-2 GN1..4 → $34..$37 as kn/128
         move    x:(r6+$c),a
         and     #>$7f0000,a
-        move    a,x:(r7+$40)
+        move    a,x:(r7+$34)
         move    x:(r6+$c),a
         and     #>$00ff00,a
         asl     #$8,a,a
-        move    a,x:(r7+$41)
+        move    a,x:(r7+$35)
         move    x:(r6+$d),a
         and     #>$7f0000,a
-        move    a,x:(r7+$42)
+        move    a,x:(r7+$36)
         move    x:(r6+$d),a
+        and     #>$00ff00,a
+        asl     #$8,a,a
+        move    a,x:(r7+$37)
+; PIT1..4 → $40..$43 as <<16; SCALE → $38
+        move    x:(r6),a
+        and     #>$7f0000,a
+        move    a,x:(r7+$40)
+        move    x:(r6+$1),a
+        and     #>$00ff00,a
+        asl     #$8,a,a
+        move    a,x:(r7+$41)
+        move    x:(r6+$2),a
+        and     #>$7f0000,a
+        move    a,x:(r7+$42)
+        move    x:(r6+$3),a
         and     #>$00ff00,a
         asl     #$8,a,a
         move    a,x:(r7+$43)

@@ -2,14 +2,11 @@
 
 FX1 station: **4 pitched bandpasses** (Torso S-4 RING filterbank idea, not
 a modal / Rings body). Wet is the input through four constant-peak bandpass
-peaks. Per-band **GN** levels sit on page 1; pitches, **SCAL** (gain scale),
-and **LIM** (post-MIX peak limiter) live on FX SETUP. SCAL 1 is the
-low-gain default; raise it for more output. Four bands at GN 64 can still
-overload the sum at SCAL 8.
-SCAL 127 restores build-TN smash headroom. The filter-bank sum can distort
-before LIM; LIM only controls the post-MIX output peak. Lower SCAL or GN1–GN4
-to avoid pre-limiter distortion.
-DECY narrows the bands.
+peaks. **PIT1–PIT4** are on the main page for live tuning. Per-band **GN**
+levels, **SCAL** (gain scale), and **LIM** (post-MIX peak limiter) live on FX
+SETUP. The upper part of **DECY** spreads resonance over more knob travel;
+the strongest resonance and its overdrive remain available. The filter-bank sum can still
+distort before LIM. Lower SCAL or GN1–GN4 to avoid pre-limiter distortion.
 
 Buffer-free (state in r7). `Claims(fx1_only=True)`: FX2 instances dry-pass;
 the FX2 chooser hides the row. FX id **`0x1e`**.
@@ -20,18 +17,18 @@ The page descriptor is cloned from **DARK REV**.
 
 | page | slot | name | range | what it does |
 |---|---|---|---|---|
-| 1 | 0 | GN1 | 0–127 | band 1 level; 64=unity at SCAL 8 |
-| 1 | 1 | GN2 | 0–127 | band 2 |
-| 1 | 2 | GN3 | 0–127 | band 3 |
-| 1 | 3 | GN4 | 0–127 | band 4 |
+| 1 | 0 | PIT1 | 0–127 | band 1 centre ~40 Hz … ~4 kHz |
+| 1 | 1 | PIT2 | 0–127 | band 2 centre |
+| 1 | 2 | PIT3 | 0–127 | band 3 centre |
+| 1 | 3 | PIT4 | 0–127 | band 4 centre |
 | 1 | 4 | DECY | 0–127 | high = longer ring / less drive |
 | 1 | 5 | MIX | 0–127 | dry/wet; 127 = bands only |
-| 2 | 6 | PIT1 | 0–127 | band 1 centre ~40 Hz … ~4 kHz |
-| 2 | 7 | PIT2 | 0–127 | band 2 centre |
-| 2 | 8 | PIT3 | 0–127 | band 3 centre |
-| 2 | 9 | PIT4 | 0–127 | band 4 centre |
+| 2 | 6 | GN1 | 0–127 | band 1 level |
+| 2 | 7 | GN2 | 0–127 | band 2 |
+| 2 | 8 | GN3 | 0–127 | band 3 |
+| 2 | 9 | GN4 | 0–127 | band 4 |
 | 2 | 10 | SCAL | 0–127 | gain scale; 1=low-gain default, 127≈smash |
-| 2 | 11 | LIM | 0–127 | peak limiter after MIX; 0 off |
+| 2 | 11 | LIM | 0–127 | peak limiter after MIX; 0 off, max ≈ -20 dBFS |
 
 ## Stock 1.40C and a saved Part
 
@@ -40,16 +37,16 @@ and loaded on stock 1.40C shows **DARK REV** with:
 
 | slot | RESONATOR | stock DARK REV reads |
 |---|---|---|
-| 0 | GN1 | TIME |
-| 1 | GN2 | SHVG |
-| 2 | GN3 | SHVF |
-| 3 | GN4 | HP |
+| 0 | PIT1 | TIME |
+| 1 | PIT2 | SHVG |
+| 2 | PIT3 | SHVF |
+| 3 | PIT4 | HP |
 | 4 | DECY | LP |
 | 5 | MIX | MIX |
-| 6 | PIT1 | PRE |
-| 7 | PIT2 | BAL |
-| 8 | PIT3 | MONO |
-| 9 | PIT4 | (blank on stock) |
+| 6 | GN1 | PRE |
+| 7 | GN2 | BAL |
+| 8 | GN3 | MONO |
+| 9 | GN4 | (blank on stock) |
 | 10 | SCAL | (blank on stock) |
 | 11 | LIM | MIXF |
 
@@ -69,8 +66,12 @@ channels of the current mixed block, then applies one attenuation in a
 second pass. This catches the first transient, including at block boundaries.
 No makeup gain is applied. Below the ceiling, dry input stays bit-exact
 unless a preceding hot block is still releasing. LIM 0 bypasses attenuation
-and clears the release state. LIM 1..127 sets a ceiling from about -2.5 to -12 dBFS.
+and clears the release state. LIM 1..127 sets a ceiling from about -2.5 to -20 dBFS.
 The release is approximately 63 ms at 15 frames per block.
+
+The page move changes the meaning of saved RESONATOR slots 0–3 and 6–9.
+Recheck Parts saved with an earlier RESONATOR build and save the updated
+settings into a new Part.
 
 Regression renders cover signed transients at block boundaries, quiet unity
 gain, stereo balance, and bypass. The LM4 hardware check confirms the limiter

@@ -89,6 +89,15 @@ def check(label, ok):
         FAILS.append(label)
 
 
+check("PIT1-PIT4 main page, GN1-GN4 FX SETUP",
+      tuple(K[k] for k in ("PIT1", "PIT2", "PIT3", "PIT4")) == tuple(range(4))
+      and tuple(K[k] for k in ("GN1", "GN2", "GN3", "GN4"))
+      == tuple(range(6, 10)))
+damp = [word / RAIL for word in MOD.dsp.ptable[33:]]
+check(f"DECY top has fine steps ({damp[1] / damp[0]:.4f} damping ratio < 1.01)",
+      1.0 < damp[1] / damp[0] < 1.01)
+
+
 def tone(hz, n, amp=0.35):
     return [int(amp * (1 << 23) * math.sin(2 * math.pi * hz * i / FS))
             for i in range(n)]
@@ -210,8 +219,8 @@ check(f"max-knob no runaway (late/early={e1 / e0 if e0 else 0:.2f} < 4)",
 # Include the first block: its own peak controls its gain.
 p127 = max(max(abs(x) for x in Lmax), max(abs(x) for x in Rmax))
 frac127 = _rail_frac(Lmax, Rmax)
-check(f"SCAL127+LIM127 peak under ceiling ({p127} <= {int(0.76 * RAIL)})",
-      p127 <= int(0.76 * RAIL))
+check(f"SCAL127+LIM127 peak under ceiling ({p127} <= {int(0.11 * RAIL)})",
+      p127 <= int(0.11 * RAIL))
 check(f"SCAL127+LIM127 rail frac {frac127:.1%} < 5%", frac127 < 0.05)
 
 # Two FX1 instances, same knobs: both produce audio (rail fraction is the
@@ -226,7 +235,7 @@ for i, (Li, Ri) in enumerate(pair):
     check(f"two-instance[{i}] has energy ({e})", e > 10_000)
 
 from peak_limiter_gate import verify as verify_limiter
-verify_limiter(render, check, FRAMES, RAIL)
+verify_limiter(render, check, FRAMES, RAIL, min_ceiling=0.10)
 
 if FAILS:
     sys.exit(f"{len(FAILS)} FAIL: {FAILS}")

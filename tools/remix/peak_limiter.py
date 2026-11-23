@@ -2,12 +2,18 @@
 
 The effect writes its mixed block first. A second pass applies one linked
 attenuation, computed from that same block, so the first transient is covered.
-No makeup gain. LIM spans a useful 0.75 to 0.25 FS ceiling; quiet input
-below the active ceiling retains unity gain.
+No makeup gain. Its default ceiling range is 0.75 to 0.25 FS; callers may
+choose a lower floor. Quiet input below the active ceiling retains unity gain.
 """
 
 
-def source(prefix, threshold, level, gain, left, right, peak, start, knob):
+def source(prefix, threshold, level, gain, left, right, peak, start, knob,
+           min_ceiling=0.25):
+    span_word = round((0.75 - min_ceiling) * (1 << 23))
+    ceiling_note = ("ceiling range 0.75 to 0.25 FS" if min_ceiling == 0.25
+                    else f"ceiling span {0.75 - min_ceiling:.3f} FS")
+    drop_note = ("LIM*0.5/128, max ceiling 0.25 FS" if min_ceiling == 0.25
+                 else f"LIM*{0.75 - min_ceiling:.2f}/128, min ceiling {min_ceiling:.2f} FS")
     def cell(offset):
         return f"x:(r7+${offset:02x})"
     t, e, g, l, r, p, s = map(cell, (threshold, level, gain, left, right, peak, start))
@@ -16,10 +22,10 @@ def source(prefix, threshold, level, gain, left, right, peak, start, knob):
         beq     {prefix}off
         asl     #$8,a,a
         move    a,x0
-        move    #>$400000,y1            ; ceiling range 0.75 to 0.25 FS
+        move    #>${span_word:06x},y1            ; {ceiling_note}
         mpy     x0,y1,a
         move    #>$600000,b            ; 0.75 FS base ceiling
-        sub     a,b                     ; LIM*0.5/128, max ceiling 0.25 FS
+        sub     a,b                     ; {drop_note}
         move    b,{t}
         bra     {prefix}ready
 {prefix}off:

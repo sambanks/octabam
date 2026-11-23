@@ -1,12 +1,9 @@
 """RESONATOR -- 4 Chamberlin BPs with per-band gains.
 
-Page 1: GN1..GN4, DECY, MIX. Page 2 (FX SETUP): PIT1..PIT4, SCAL, LIM.
-GN = per-band level. SCAL multiplies the bank sum: 8 is the conservative
-starting point, 127 restores build-TN smash (~×16 at GN64). Four bands at
-GN64 can overload the output even at SCAL 8; use fewer/lower GN values.
-g = (GN/128)*(SCAL/128)*32. DECY raises Q; weak drive at 127. LIM is
-post-MIX peak reduction (0 = off); SCAL 127 can clip in the filter bank
-before LIM sees the signal.
+Page 1: PIT1..PIT4, DECY, MIX. FX SETUP: GN1..GN4, SCAL, LIM.
+SCAL multiplies the bank sum. DECY's upper range is expanded for finer
+control of resonance, with the maximum-Q overdrive retained. LIM follows
+MIX and reaches a 0.1 FS ceiling; it cannot undo distortion inside the bank.
 """
 import math as _m
 
@@ -33,7 +30,7 @@ def _fc(i: int) -> float:
 
 F_TAB = tuple(_q(2.0 * _m.sin(_m.pi * min(_fc(i), _NYQ * 0.45) / _FS))
               for i in range(33))
-DAMP_TAB = tuple(_q(_DAMP_MIN * (_DAMP_MAX / _DAMP_MIN) ** (i / 32))
+DAMP_TAB = tuple(_q(_DAMP_MIN * (_DAMP_MAX / _DAMP_MIN) ** ((i / 32) ** 2))
                  for i in range(33))
 
 MODULE = Module(
@@ -58,18 +55,6 @@ MODULE = Module(
         build_tag=False,
     ),
     params=(
-        Param(b"GN1", 64, 128, active=True, formatter=_PLAIN,
-              doc="band 1 level; 64 is unity at SCAL 8"),
-        Param(b"GN2", 64, 128, active=True, formatter=_PLAIN,
-              doc="band 2 level; 64 is unity at SCAL 8"),
-        Param(b"GN3", 64, 128, active=True, formatter=_PLAIN,
-              doc="band 3 level; 64 is unity at SCAL 8"),
-        Param(b"GN4", 64, 128, active=True, formatter=_PLAIN,
-              doc="band 4 level; 64 is unity at SCAL 8"),
-        Param(b"DECY", 127, 128, active=True, formatter=_PLAIN,
-              doc="high rings longer and drives less; low is wider and tracks the input"),
-        Param(b"MIX", 127, 128, active=True, formatter=_PLAIN,
-              doc="0 is dry, 127 is wet only; exact passthrough when LIM is 0"),
         Param(b"PIT1", 32, 128, active=True, formatter=_PLAIN,
               doc="band 1 centre pitch"),
         Param(b"PIT2", 48, 128, active=True, formatter=_PLAIN,
@@ -78,14 +63,26 @@ MODULE = Module(
               doc="band 3 centre pitch"),
         Param(b"PIT4", 80, 128, active=True, formatter=_PLAIN,
               doc="band 4 centre pitch"),
+        Param(b"DECY", 127, 128, active=True, formatter=_PLAIN,
+              doc="high rings longer and drives less; low is wider and tracks the input"),
+        Param(b"MIX", 127, 128, active=True, formatter=_PLAIN,
+              doc="0 is dry, 127 is wet only; exact passthrough when LIM is 0"),
+        Param(b"GN1", 64, 128, active=True, formatter=_PLAIN,
+              doc="band 1 level"),
+        Param(b"GN2", 64, 128, active=True, formatter=_PLAIN,
+              doc="band 2 level"),
+        Param(b"GN3", 64, 128, active=True, formatter=_PLAIN,
+              doc="band 3 level"),
+        Param(b"GN4", 64, 128, active=True, formatter=_PLAIN,
+              doc="band 4 level"),
         Param(b"SCAL", 1, 128, active=True, formatter=_PLAIN,
               doc="gain scale: 1 is the low-gain default, 127 is a smash"),
         Param(b"LIM", 0, 128, active=True, formatter=_PLAIN,
-              doc="peak limiter after MIX; 0 off, 1..127 ≈ -2.5..-12 dB ceiling"),
+              doc="peak limiter after MIX; 0 off, 1..127 ≈ -2.5..-20 dB ceiling"),
     ),
     dsp=DspSection(
         asm="modules/resonator/resonator.asm",
-        subst={pl: peak_limiter_source("rspk", 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, knob=0xe) for pl in ("A", "B")},
+        subst={pl: peak_limiter_source("rspk", 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, knob=0xe, min_ceiling=0.10) for pl in ("A", "B")},
         ptable=F_TAB + DAMP_TAB,
         priority=31,
         bus_role=BusRole.NONE,
