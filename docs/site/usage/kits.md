@@ -52,7 +52,6 @@ settings.
 ## Notes
 
 - Kits are per project, in the project directory. With COPY PROJECT in the
-  image, SAVE TO NEW copies the Kits file into the new project. Without it
-  the new project has no Kits.
+  image, SAVE TO NEW copies the Kits file into the new project.
 - With MIDI SCENES in the image, a Kit also carries the Part's MIDI scene
   locks.
