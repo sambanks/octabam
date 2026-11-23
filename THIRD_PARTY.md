@@ -32,6 +32,7 @@ time (`.incbin`, `make os`).
 | BOSS SD-1 Super OverDrive service notes, ET5212-510A (3 Mar 1981) | part values only, no text | © Roland (BOSS) | `modules/distorx` SD-1 (the circuit modelled from its part values) |
 | ElectroSmash, *Pro Co Rat Analysis*, https://www.electrosmash.com/proco-rat | part values, schematic, the clipping amplifier's response curve, the LM308's slew rate; laws only, no text | © ElectroSmash | `modules/distorx` RAT, TURB |
 | LTspice `LedRed` diode model, as quoted on the All About Circuits forum | two numbers (IS, N) | © Analog Devices (LTspice library); values only | `modules/distorx` TURB |
+| UREI 1176LN limiting amplifier instruction manual (block diagram, schematic, specifications) | part values and specifications only, no text | © Universal Audio (UREI) | `modules/fet76` (the circuit modelled from its part values and specifications; not affiliated with or endorsed by Universal Audio) |
 
 Retired transcriptions (in history only): jpcima `string-machine` (BSL-1.0,
 the Solina ensemble, removed 16 Sep 2026).

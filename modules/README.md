@@ -27,6 +27,7 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**DLPROBE**](dlprobe/README.md) | [Sam Banks](https://github.com/sambanks) | Measurement instrument: the demand loader's per-effect counters, in the track's audio. |
 | [**EUCLID**](euclid/README.md) | [repeat98](https://github.com/repeat98) | Euclidean LP/BP/HP/notch/amp sequencer: swing, envelope, gate, random and loop. |
 | [**EXTPROBE**](extprobe/README.md) | [Sam Banks](https://github.com/sambanks) | Measurement instrument: the highest window word a reverb on T8's FX2 writes, in the track's audio. |
+| [**FET76**](fet76/README.md) | [MaMarko](https://github.com/braikomarko-hub) | Modelled on the UREI 1176LN FET limiter: feedback FET gain cell, 4/8/12/20:1 and ALL BUTTONS, 20-800 us attack, program-dependent release, LN or BLUE. |
 | [**LOFI2**](lofi2/README.md) | [Bryan T](https://github.com/bryantysinger) | Ring mod or frequency shifter, then sample-rate and bit reduction. |
 | [**MINIVERB**](miniverb/README.md) | [repeat98](https://github.com/repeat98) | Modulated diffused FDN reverb; independent FX2 buffers, smoothed controls. |
 | [**MODULATION**](modulation/README.md) | [Sam Banks](https://github.com/sambanks) | Modulation pedal: Juno chorus, Dimension, flanger, phaser and comb. |
