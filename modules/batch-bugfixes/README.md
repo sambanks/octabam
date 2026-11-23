@@ -9,4 +9,5 @@ Built from [Zac-Kyoti/octatrack-kyoti-fw](https://github.com/Zac-Kyoti/octatrack
 ## Notes
 
 - A remix takes all three or none.
+- KITS requires it: PTN+FUNC+RIGHT finds the next empty pattern with the content test at `0x4009a464`, and stock's test reads a pattern holding only parameter locks as empty.
 - With OCTAKIT, the Part-change carryover fix stays idle: Octakit replaces the "select Part" handler from its entry (`0x400621a6`) and rejoins stock only at its end, so the fix's two hooks inside it never run. No effect and no crash; the other two fixes are unaffected. Whether the carryover bugs occur on an Octakit Kit change is untested.

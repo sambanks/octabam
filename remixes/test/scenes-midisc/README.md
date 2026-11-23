@@ -6,6 +6,7 @@ MIDI-driven scene locks, Kits, page-2 scene locks and page-2 parameter locks on 
 
 - **MIDI SCENES** (bkkbrls-del) — MIDI-driven scene locks.
 - **KITS** (sambanks) — 255 Kits per project through the stock Part slots.
+- **BATCH_BUGFIXES** (Zac Kyoti) — stock's content test reads a pattern holding only parameter locks as used, so KITS' PTN+FUNC+RIGHT does not copy over it. KITS requires it.
 - **SCENES P2** (sambanks) — scene locks and the crossfader on FX1/FX2 page 2.
 - **PLOCKS P2** (sambanks) — parameter locks on FX1/FX2 page 2: hold trigs and turn a knob on the SETUP page.
 
