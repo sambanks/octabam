@@ -66,7 +66,9 @@ channels of the current mixed block, then applies one attenuation in a
 second pass. This catches the first transient, including at block boundaries.
 No makeup gain is applied. Below the ceiling, dry input stays bit-exact
 unless a preceding hot block is still releasing. LIM 0 bypasses attenuation
-and clears the release state. LIM 1..127 sets a ceiling from about -2.5 to -20 dBFS.
+and ramps any held attenuation back to unity over about 63 ms. Starting at
+LIM 0 skips limiter attenuation. LIM 1..127 sets a ceiling from about -2.5
+to -20 dBFS.
 The release is approximately 63 ms at 15 frames per block.
 
 The page move changes the meaning of saved RESONATOR slots 0–3 and 6–9.

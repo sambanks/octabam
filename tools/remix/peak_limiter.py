@@ -8,7 +8,7 @@ choose a lower floor. Quiet input below the active ceiling retains unity gain.
 
 
 def source(prefix, threshold, level, gain, left, right, peak, start, knob,
-           min_ceiling=0.25):
+           min_ceiling=0.25, smooth_bypass=False):
     span_word = round((0.75 - min_ceiling) * (1 << 23))
     ceiling_note = ("ceiling range 0.75 to 0.25 FS" if min_ceiling == 0.25
                     else f"ceiling span {0.75 - min_ceiling:.3f} FS")
@@ -50,9 +50,41 @@ def source(prefix, threshold, level, gain, left, right, peak, start, knob,
         tlt     b,a
         move    a,{p}
 """
+    if smooth_bypass:
+        bypass = f"""{prefix}zzrelease:
+; LIM off: return a previous attenuation to unity over the limiter release.
+        move    {g},x0
+        move    #>$7f4f10,y1
+        mpy     x0,y1,a
+        add     #>$00b0ef,a
+        move    #>$7f0000,x0
+        cmp     x0,a
+        move    #>$7fffff,x0
+        tge     x0,a
+        move    a,{g}
+        cmp     x0,a
+        beq     {prefix}done
+        move    {s},r0
+        move    {g},y1
+        do      n7,>{prefix}zzscale
+        move    x:(r0),x0
+        mpy     x0,y1,a
+        move    a,x:(r0)+
+        move    x:(r0),x0
+        mpy     x0,y1,a
+        move    a,x:(r0)+
+{prefix}zzscale:
+        nop
+"""
+        bypass_branch = f"        beq     {prefix}zzrelease\n"
+    else:
+        bypass = ""
+        bypass_branch = f"        beq     {prefix}done\n"
+    active_bypass_skip = (f"        bra     {prefix}done\n"
+                          if smooth_bypass else "")
     finish = f"""        move    {t},a
         tst     a
-        beq     {prefix}done
+{bypass_branch.rstrip()}
 ; Block envelope: immediate attack, approximately 63 ms release at 15 frames.
         move    {e},x0
         move    #>$7f4f10,y1
@@ -84,6 +116,7 @@ def source(prefix, threshold, level, gain, left, right, peak, start, knob,
         move    a,x:(r0)+
 {prefix}scale:
         nop
+{active_bypass_skip}{bypass}
 {prefix}done:
 """
     return {"; LIMIT_THRESHOLD": threshold_code,

@@ -64,7 +64,9 @@ rs_iz:
         move    a,x:(r7+$28)
         move    a,x:(r7+$29)            ; lim thresh (0 = off)
         move    a,x:(r7+$2a)            ; lim level_s
-        move    a,x:(r7+$2b)            ; lim gain
+        move    #>$7fffff,a
+        move    a,x:(r7+$2b)            ; lim gain starts at unity
+        clr     a
         move    a,x:(r7+$2c)            ; mixed L
         move    a,x:(r7+$2d)            ; mixed R
         move    a,x:(r7+$38)

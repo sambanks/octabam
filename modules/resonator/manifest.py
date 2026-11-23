@@ -82,7 +82,7 @@ MODULE = Module(
     ),
     dsp=DspSection(
         asm="modules/resonator/resonator.asm",
-        subst={pl: peak_limiter_source("rspk", 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, knob=0xe, min_ceiling=0.10) for pl in ("A", "B")},
+        subst={pl: peak_limiter_source("rspk", 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, knob=0xe, min_ceiling=0.10, smooth_bypass=True) for pl in ("A", "B")},
         ptable=F_TAB + DAMP_TAB,
         priority=31,
         bus_role=BusRole.NONE,

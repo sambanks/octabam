@@ -3,7 +3,9 @@
 import pathlib, struct, subprocess, sys, math
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "remix"))
 import toolpath  # noqa: E402,F401
+import audition
 import send_probe
 from remix import registry
 
@@ -22,8 +24,7 @@ TMP.mkdir(parents=True, exist_ok=True)
 RAIL = 1 << 23
 
 pathlib.Path(MEM).unlink(missing_ok=True)
-subprocess.run([sys.executable, "tools/remix/audition.py", MOD.name,
-                "out/dry/drums_110.wav"], capture_output=True)
+audition._ensure_insert_mem(MOD)
 if not pathlib.Path(MEM).exists():
     sys.exit(f"no {MEM}")
 init, proc = send_probe.entry_points(MEM, FXID)
@@ -41,7 +42,7 @@ def params(**kw):
     return v
 
 
-def render(samples, fx2=False, inst=1, right_samples=None, **kw):
+def render(samples, fx2=False, inst=1, right_samples=None, schedules=(), **kw):
     n = len(samples) - len(samples) % FRAMES
     src, out = TMP / "in.raw", TMP / "out.raw"
     words = samples[:n] if right_samples is None else [
@@ -67,6 +68,8 @@ def render(samples, fx2=False, inst=1, right_samples=None, **kw):
         cmd += ["-stereo"]
     for _ in range(inst):
         cmd += ["-params", pcsv]
+    for event in schedules:
+        cmd += ["-sched", event]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"dsp_host failed:\n{r.stdout}\n{r.stderr}")
@@ -149,6 +152,20 @@ e_off = sum(abs(x) for x in Loff[512:])
 dry_e = sum(abs(x) for x in ton[512:])
 check(f"BP selects ({e_on} > {e_off})", e_on > e_off * 1.25)
 check(f"wet loud vs dry on pitch ({e_on} vs {dry_e})", e_on > dry_e * 0.25)
+
+# Turning the limiter off after it has reduced a sustained signal must release
+# smoothly. Startup at LIM 0 remains an exact dry bypass (peak_limiter_gate).
+move_frames = FRAMES * 256
+move_tone = tone(500, move_frames, amp=0.30)
+Lmove, _ = render(move_tone, MIX=0, LIM=127,
+                  schedules=("128:0:11=0",))
+move_at = 128 * FRAMES
+edge = abs(Lmove[move_at] - Lmove[move_at - 1])
+nearby = max(abs(Lmove[i] - Lmove[i - 1])
+             for i in range(move_at - 64, move_at - 1))
+check(f"LIM to 0 releases without a click ({edge} <= 2x {nearby})",
+      edge <= max(nearby * 2, 1000))
+check("LIM 0 remains audible after bypass", any(Lmove[move_at:move_at + 1024]))
 
 Lz, _ = render(hit, MIX=127, GN1=0, GN2=0, GN3=0, GN4=0, DECY=127)
 ez = sum(abs(x) for x in Lz[65:65 + 4000])

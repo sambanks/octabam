@@ -46,7 +46,8 @@ chooser does not list it.
 **LIM** leaves quiet passages at their original level. Higher settings lower
 the peak ceiling from about -2.5 to -20 dBFS. It adds no makeup gain. Hot
 signals see progressive gain reduction. At LIM max, block peaks cap at about
--20 dBFS.
+-20 dBFS. Turning **LIM** to 0 releases any active attenuation back to unity
+over about 63 ms. Starting at 0 skips limiter attenuation.
 
 After updating, check Parts saved with an earlier RESONATOR layout. The
 values in slots 0–3 and 6–9 now control different parameters.
