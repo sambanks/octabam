@@ -1093,6 +1093,8 @@ def main():
              "fet76": ("SPATIALIZER", "CHORUS", "PLATE REV", "SPRING REV"),   # FET76 on its own id; its code and table in one run of their words
              "shatter": ("PLATE REV",),   # SHATTER runs in its words; the other 13 stay
              "stuttr": ("PLATE REV",),   # STUTTR runs in its words; the other 13 stay
+             "vca160": ("PLATE REV",),   # VCA160 on its own id runs in its words; the other 13 stay
+             "vca160-meter": ("SPATIALIZER", "PLATE REV"),   # stock-meter-b + VCA160 in PLATE REV's words
              "devilish": ("PHASER",),   # dEVILish is on PHASER's id; its pass-through runs in PHASER's words
              "ids64": ("PLATE REV", "SPRING REV"),   # the bbd remix with id_space=64 and BBD pinned to 0x25
              "testgen": ("PLATE REV",),     # TESTGEN runs in its words; the other 13 stay

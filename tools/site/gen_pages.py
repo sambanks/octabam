@@ -103,6 +103,7 @@ def _label(m) -> str:
         "tuner": "TUNER",
         "stems": "Stem recording",
         "tempo-bus": "TEMPO window",
+        "vca160": "VCA160",
     }
     if m.name in names:
         return title_case(names[m.name])
