@@ -19,7 +19,7 @@ REMIX = Remix(
     name="vca160-meter",
     family="effects", evidence=(Evidence(Level.BUILD, note="not flashed; the image for reading VCA160's slot cost on a unit"),),
     doc="stock-meter-b with VCA160 (its own id) in PLATE REV's words: VCA160's slot cost on a unit.",
-    modules=CORE + ("LOFI AMF FIX", "VCA160") + tuple(e for e in STOCK if e not in DROPPED),
+    modules=CORE + ("LOFI AMF FIX", "VCA160", "KEYBUS") + tuple(e for e in STOCK if e not in DROPPED),
     fx1=("VCA160",) + tuple(e for e in STOCK[:10] if e not in DROPPED),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,

@@ -1,16 +1,15 @@
 ; ---------------------------------------------------------------------------
-; VCA160 -- the dbx 160 compressor/limiter (1976), a per-track insert, and
-; the side-chain bus tap.
+; VCA160 -- the dbx 160 compressor/limiter (1976), a per-track insert.
 ;
 ; GENERATED from vca160.tmpl.asm by generate_asm.py (constants from
 ; manifest.py). Edit the template, then: python3 modules/vca160/generate_asm.py
 ;
 ; Insert contract: frames in place at x:(r0)/x:(r0+n0), knobs from r6,
-; state in this instance's r7 block. In the shared window it reads one LEVEL
-; word and, with KEY on, writes its heartbeat to that track's BEAT word.
+; state in this instance's r7 block. In the shared window it reads one word,
+; KEYBUS's mean square of the track its KEY names (X:@KEYMS@ + track).
 ;
 ; ---- the 160 (schematic + manual; modules/vca160/README.md) -----------------
-;   ms   = (L^2 + R^2)/2, or KEY's block mean square from the bus
+;   ms   = (L^2 + R^2)/2, or KEY's block mean square from KEYBUS
 ;   S   += alpha (ms - S)            the RMS 208: tau = 34.7 ms (125 dB/s)
 ;   L    = log2 S / 32               clb + normf + LOG (transient's form)
 ;   over = L - T                     THRESHOLD, in mean-square bits / 32
@@ -23,8 +22,8 @@
 ;
 ; ---- r7 slots ---------------------------------------------------------------
 ; per block: $00 T/32  $01 k/2  $02 OUT bits/32  $03 OverEasy flag  $04 KEY flag
-;   $05 KEY's mean square (the bus word)  $06 MIX
-; persistent, zeroed at init: $07 S high  $08 S low (48 bits)  $0c KEY heartbeat
+;   $05 KEY's mean square (KEYBUS's word)  $06 MIX
+; persistent, zeroed at init: $07 S high  $08 S low (48 bits)
 ; per sample scratch: $09 the shift count  $0a wet L  $0b wet R
 ;
 ; Every mpy and mac is x0,y1 / -x0,y1 / x0,x0 (the signed encodings). Every
@@ -36,7 +35,6 @@ init:
         clr     a
         move    a,x:(r7+$07)            ; the detector, empty
         move    a,x:(r7+$08)
-        move    a,x:(r7+$0c)            ; the KEY heartbeat
         rts
 
 proc:
@@ -98,11 +96,10 @@ proc:
         move    #>$7fffff,x0
         teq     x0,a
         move    a,x:(r7+$06)
-; ---- KEY: OFF, or T1..T8 -> that track's record on the bus ------------------------
-; t = KEY - 1. Each track has a record of four words, BEAT COUNT LAST LEVEL,
-; at $3fff0 + 4t (T1..T4, payload B's half) or $37fe0 + 4t (T5..T8, payload
-; A's half). A KEY of 0 or above 8 is OFF (a Part saved with another effect
-; here can hold any byte).
+; ---- KEY: OFF, or T1..T8 -> that track's mean-square word on KEYBUS ------------
+; t = KEY - 1; KEYBUS rewrites X:@KEYMS@ + t every block with track t's block
+; mean square, on either core, and both cores read all eight. A KEY of 0 or
+; above 8 is OFF (a Part saved with another effect here can hold any byte).
         move    x:(r6+$3),a
         and     #>$7f0000,a
         asr     #$10,a,a                ; KEY 0..127
@@ -119,36 +116,14 @@ proc:
         move    b1,x:(r7+$04)
         move    x1,a
         sub     #$1,a
-        and     #$7,a                   ; t, 0..7 (when off, any record)
+        and     #$7,a                   ; t, 0..7 (when off, any word)
         move    a1,x1                   ; a1 straight out: the and left a2 stale
         move    x1,a
-        cmp     #$3,a                   ; t - 3 (the 6-bit immediate)
-        move    #>$03fff0,b
-        move    #>$037fe0,y1
-        tgt     y1,b                    ; t >= 4: payload A's half
-        asl     #2,a,a                  ; 4t
-        add     a,b                     ; b1 = the record: its BEAT word
-        move    b1,r1
-; ---- KEY on: this VCA160's heartbeat into the record's BEAT word ------------------
-; The tap sums a track only while its BEAT word keeps changing. BEAT has
-; one kind of writer, a VCA160 whose KEY names the track (OFF branches over
-; the store); COUNT and LAST have one writer, that track's tap. No word is
-; read, changed and written back by two parties, so the two cores cannot
-; undo each other.
-        move    x:(r7+$0c),a            ; this VCA160's heartbeat
-        add     #$1,a
-        move    a1,x:(r7+$0c)
-        move    a1,x0
-        move    x:(r7+$04),a            ; KEY on (1) or off (0)
-        tst     a
-        beq     dbk_off
-        move    x0,y:(r1)+              ; BEAT (stock's store form; r1 is set again below)
-dbk_off:
-        add     #$3,b                   ; b1 = the record's LEVEL word
-        move    b1,r1
+        add     #>@KEYMS@,a             ; KEYBUS's mean-square word for track t
+        move    a1,r1
         nop                             ; two moves between writing r1 and using it
         nop
-        move    y:(r1),x0               ; the level word
+        move    x:(r1),x0               ; the key's mean square
         move    x0,x:(r7+$05)
         move    #$1,n0                  ; (short immediate, stock's own form)
 ; ===========================================================================
@@ -313,59 +288,4 @@ dbk_off:
         move    a,x:(r0)+
 dbc_end:
         nop
-        rts
-
-; ---------------------------------------------------------------------------
-; dbt_tap -- the side-chain bus. Reached by a `jsr` at the dispatcher's FX1
-; entry (SIDECHAIN_COMPRESSOR's `sctap` site), every track, every block, the
-; track's audio at X:$00..$1f. Keeps the track's record at this core's half
-; (@ROFF@: the half's first record less four words for each track before
-; it): reads BEAT, writes COUNT, LAST and LEVEL (the block's mean square).
-; Uses only a, b, r0, r1, x0 -- inside the set stock reloads after this site
-; (a b r0 r1 n1 x0, as audited for sctap) -- and replays the displaced
-; instruction after the address arithmetic. It sums the block only while a
-; VCA160 keys the track (its BEAT word changed within the last WANT_BLOCKS
-; blocks); asleep it costs about 30 cycles and writes 0. It leaves r0 at
-; $21 awake or in the shared window asleep: no stock setup routine reads r0
-; before writing it (all 13 checked, 29 Oct 2026).
-; ---------------------------------------------------------------------------
-dbt_tap:
-        move    x:>$420,a               ; the track, 0..7
-        asl     #2,a,a                  ; one record of four words per track
-        add     #>@ROFF@,a              ; its record: BEAT COUNT LAST LEVEL
-        move    a1,r0
-        add     #$3,a
-        move    a1,r1                   ; its LEVEL word
-        move    x:>$208,r6              ; --- displaced --- (here: it fills the AGU gap)
-        move    y:(r0)+,b               ; BEAT: written by the VCA160s that key this track
-        move    y:(r0)+,a               ; COUNT: this tap's own
-        move    y:(r0),x0               ; LAST: the BEAT this tap saw last, its own
-        cmp     x0,b
-        beq     dbt_same
-        move    b,y:(r0)-               ; a new beat: LAST = BEAT, back to COUNT
-        move    #>@WANT@,a              ; awake for WANT_BLOCKS more blocks
-        move    a,y:(r0)+
-        bra     dbt_run
-dbt_same:
-        tst     a
-        beq     dbt_idle                ; nobody keys this track
-        sub     #$1,a                   ; count down one block
-        move    (r0)-                   ; back to COUNT
-        move    a,y:(r0)+
-dbt_run:
-        clr     a
-        move    #0,r0
-        nop                             ; two moves between writing r0 and using it
-        nop
-        move    x:(r0)+,x0
-        do      #<$20,>dbt_sum
-        mac     x0,x0,a x:(r0)+,x0      ; sum and load the next in one cycle
-dbt_sum:
-        asr     #$5,a,a                 ; / 32: the mean of (L^2 + R^2)/2
-        move    a,x0                    ; limited below 1.0
-        move    x0,y:(r1)+              ; LEVEL (stock's store form; stock reloads r1 after the site)
-        rts
-dbt_idle:
-        clr     a
-        move    a,y:(r1)+               ; LEVEL = 0: a KEY turned on never reads a stale level
         rts
