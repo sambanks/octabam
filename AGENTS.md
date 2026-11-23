@@ -139,8 +139,8 @@ in an isolated tree, never into `vendor/` — the CMake recipe is
 ## The trap register
 
 The traps that have already cost real work live in
-[`docs/contributing/TRAPS.md`](docs/contributing/TRAPS.md): symptom, what
-it cost, the fix, and what now gates each one. Add a new trap there the
+[`docs/contributing/TRAPS.md`](docs/contributing/TRAPS.md): the symptom,
+the cause, the fix, and the gate that now catches each one. Add a new trap there the
 moment it costs real work, and add its line here.
 
 **DSP side**
