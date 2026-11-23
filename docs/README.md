@@ -32,6 +32,7 @@ and [remixes/README.md](../remixes/README.md).
 | [contributing/CYCLE_SCAN.md](contributing/CYCLE_SCAN.md) | where each effect spends its DSP cycles |
 | [contributing/DSP_AUDIT.md](contributing/DSP_AUDIT.md) | techniques for shorter, cheaper DSP code, and findings per module |
 | [contributing/COLDFIRE_FORMS.md](contributing/COLDFIRE_FORMS.md) | the ColdFire instruction forms a module may use |
+| [contributing/CF_SCAN.md](contributing/CF_SCAN.md) | where the ColdFire's time goes, what a routine costs, and whether a change left the output alone |
 | [contributing/TOOLING.md](contributing/TOOLING.md) | every tool, by stage of the build |
 | [contributing/SCREENSHOTS.md](contributing/SCREENSHOTS.md) | capturing the manual's screenshots |
 | [../tools/site/README.md](../tools/site/README.md) | how the manual site and the web builder are generated |

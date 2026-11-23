@@ -1261,8 +1261,8 @@ static void dumpAllProfile(const std::vector<std::pair<uint32_t, uint64_t>>& _ho
 }
 
 // OT_PROFILE_LEVELS=FILE: every sampled PC with the SR interrupt mask it ran under, one "addr mask count" line each
-// (mask 6 and above is interrupt context; the frame interrupt runs at level 6). Sampled with the profile or the
-// coverage, from the same instructions; without the variable nothing changes.
+// (mask 0 is task code; the frame interrupt's handler and everything it calls run at mask 5). Sampled with the
+// profile or the coverage, from the same instructions; without the variable nothing changes.
 static bool profileLevelsWanted()
 {
 	const char* path = std::getenv("OT_PROFILE_LEVELS");

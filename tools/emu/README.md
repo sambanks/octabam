@@ -592,6 +592,11 @@ that third.
   time; unpaced on the OTLIVE fixture with both cores, 475-684 emulated ms per
   wall second.
 - `--profile` prints the hottest PCs over the boot and over the frames.
+  `OT_PROFILE_ALL=FILE` writes every sampled PC with its count, and
+  `OT_PROFILE_LEVELS=FILE` writes each with the SR interrupt mask it ran at
+  (with `--coverage`, every instruction from the transport start).
+  `tools/build/cf_scan.py profile` names the module that owns each one
+  ([`docs/contributing/CF_SCAN.md`](../../docs/contributing/CF_SCAN.md)).
 - Where stock ColdFire time goes per frame: [`docs/firmware/ARCHITECTURE.md`
   section 6](../../docs/firmware/ARCHITECTURE.md).
 
