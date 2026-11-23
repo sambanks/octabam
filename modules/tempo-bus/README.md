@@ -13,7 +13,32 @@ each engine's parameters with the values the host page would show.
 | LEVEL | BPM in whole steps; ×7 while LEVEL is pushed (stock) |
 | FUNC + LEVEL | BPM in 0.1 steps (the step stock gives UP / DOWN) |
 | C–F | held while the window is open |
+| SCENE A or B held + A or B | edits the held scene's lock on the selected parameter, not the Part; the rows show that scene's locks |
+| SCENE A or B held + push A or B, no turn | removes the held scene's lock on the selected parameter |
 | [TEMPO], [YES], [NO] | close (stock) |
+
+### Scene locks
+
+With a scene held, a turn writes the lock stock's scene-lock knob
+handlers write on a parameter page (`0x40053498` for A, `0x40052e98` for
+B). The window can be opened before or after the scene is pressed.
+
+- **Page 1** (FX2 slots 0–5: WET, FDBK, SIZE, SHMR and the rest) is
+  stock's lock byte: Part `+0x8f3e2 + scene·256 + track·32 + 24 + slot`
+  and its SRAM twin `0x100a5530 + part·6322 + …`, the Part's four
+  changed marks and the refresh `0x40027e00`, and, when the track plays
+  this bank and part, the morph's copy `0x80000ed4 + (track·32 + flat)·2`
+  for each side that shows the scene.
+- **Page 2** (slots 6–11: MODE, TIME, TONE and the rest) is a
+  [SCENES P2](../scenes-p2/README.md) cell, through its `p2s_op`. A scene
+  holds eight page-2 locks across all tracks; a turn that would add a
+  ninth does nothing. Without SCENES P2 in the remix a page-2 row edits
+  the Part, as a page-2 knob does on the stock pages.
+- A push removes a lock when it is released with no turn since it was
+  pressed, as stock's push handlers (`0x4005435c`, `0x40053a68`) do. A
+  push with a turn is the fast turn and keeps the lock.
+- The MIDI tracks' scene locks are MIDI SCENES': with the MIDI tracks on
+  screen the window edits the Part.
 
 ## Open
 
@@ -62,6 +87,17 @@ the window's top edge; the boxes are 41 px, five rows, 3 px under the rule.
 | `0x40059f2c` (detour) | the opener's tail: push this module's input layer over TEMPO's, draw |
 | `0x4004b528` (detour) | the TEMPO draw, for every caller (BPM edits included): the bus screen |
 | `0x40056930` (detour) | the TEMPO close: pop the layer, then the stock close |
+| the layer's records for SCENE A and B | run stock's press (found in the layers below), then put this layer back on top; the release runs stock's and redraws |
+| the layer's records for the encoder pushes | with a scene held, the lock removal above; with none, the layers below's handler |
+
+A scene key's record carries a sub-map, the scene's input layer
+(`0x400bb2a2` for A, `0x400bb2b6` for B). The key dispatcher
+(`0x40031734`) pushes it on top of every other layer before it calls the
+press handler, and that layer has every encoder and encoder push: with
+the window open, a turn wrote a lock on the knob of the page the window
+hides, and the window's row was untouched. This layer's scene-key press
+pops this layer and pushes it again, so it is on top for as long as the
+scene is held.
 
 Every draw call is one the stock CONTROL INPUT (`0x40065674`) and MIDI
 SYNC (`0x4006730c`) screens make:

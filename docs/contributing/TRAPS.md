@@ -1742,6 +1742,35 @@ drives the panel (`--live-script`), not the routine you think it reaches; and
 in FX SETUP the first encoder event only shows the readout, the next ones
 edit. **Gate:** `verify_scenes_p2`'s `panel` scenario.
 
+<a id="trap-scene-layer"></a>
+
+### A held scene's input layer goes over a window's: a turn locked a knob the window hid
+
+**SYMPTOM.** In `octabam-bus`, with the TEMPO window open, a turn of A
+with SCENE A held left the window's row (BusDelay's WET) unchanged and
+wrote scene A's lock on T1 flat 0, knob A of the page under the window.
+With the scene held before the window opened, the same turn edited the
+Part and no lock was made. Nothing on screen showed either.
+
+**CAUSE.** A scene key's record (in the main layer `0x400c090a`) carries a
+sub-map: the scene's input layer, `0x400bb2a2` for A and `0x400bb2b6` for
+B. The key dispatcher `0x40031734` appends it to the layer list, on top
+of every layer, before it calls the press handler. That layer defines
+encoders A–F and LEVEL (`0x40053498` for A, `0x40052e98` for B) and the
+encoder pushes (`0x4005435c`, `0x40053a68`), so a window's layer pushed
+earlier loses them all. A window pushed after the scene press is on top,
+and the scene has no say.
+
+**FIX.** TEMPO BUS's layer gives SCENE A and B records of its own: the
+press finds stock's handler in the layers below and calls it, then pops
+the window's layer and pushes it again. The encoders and pushes then
+reach the window, which writes the lock itself (`modules/tempo-bus`
+README, Scene locks). Any window over a page that should keep its knobs
+while a scene is held needs the same.
+
+**GATE.** `verify_tempo_bus`'s `scenes` boot (both orders, scene A and B,
+a push removing a lock, a page-2 cell, no lock on any other flat).
+
 <a id="trap-late-frame"></a>
 **A FRAME INTERRUPT THAT ENTERS ABOUT 150 µs LATE STOPS THE DSP'S FRAME
 EXCHANGE.** At START and at a program change one frame interrupt runs 475 to

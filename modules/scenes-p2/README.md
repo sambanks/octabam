@@ -27,6 +27,14 @@ one DRAM unit, seven detours, nothing on the DSP.
   is by reading the code; the port is lock-step and cannot interleave the
   ISR with the task.
 
+## For other modules
+
+`p2s_op` reads, sets or removes the held scene's FX2 page-2 lock of a
+given track, slot and part: d1 = 0, 1 or 2, d0 = the value, d2 = slot2,
+d4 = track, d5 = part; d0 returns the value or −1 (read), 0 or −1 when
+the scene's eight cells are full (set). Every other register is kept.
+TEMPO BUS's page-2 rows use it through a weak reference.
+
 ## What stock does
 
 The frame builder morphs one scene block a track per frame into the DSP
