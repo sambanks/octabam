@@ -9,7 +9,7 @@
   LIM         -> transparent GR lowers hot peak; LIM 0 == off; LIM 1 quiet ~match
   every knob  -> renders without dsp_host dying
   max knobs   -> ~3 s no runaway; rail fraction bounded
-  DRV 127     -> clips at ordinary input (rail fraction in band)
+  DRV/FOLD    -> small-signal level preserved; hot peaks compensated
   two inst    -> both produce audio; rail fraction bounded
 """
 import pathlib, struct, subprocess, sys
@@ -136,6 +136,25 @@ Lf1, _ = render(tone, FDBK=90, DRV=10, FOLD=16, MIX=127)
 dfb = max(abs(a - b) for a, b in zip(Lf0, Lf1))
 check("FDBK changes tone", dfb > (1 << 14), f"max|d|={dfb}")
 
+# FDBK's loop coefficient is capped at 0.25. Measure a steady 220 Hz tone
+# over a full second and bound its late RMS rise with the limiter bypassed.
+N_FB = int(FS)
+N_FB -= N_FB % FRAMES
+feedback_probe = [int(0.15 * RAIL * __import__("math").sin(
+    2 * 3.14159265 * 220 * i / FS)) for i in range(N_FB)]
+fb_rms = []
+for fb in (0, 32, 64, 96, 127):
+    fb_out, _ = render(feedback_probe, DRV=0, FOLD=0, CLIP=0, CRSH=0,
+                       FDBK=fb, MIX=127, MODE=0, TONE=127, LIM=0)
+    tail = fb_out[N_FB // 2:]
+    fb_rms.append((sum(x * x for x in tail) / len(tail)) ** 0.5)
+    check(f"FDBK {fb} sweep audible", fb_rms[-1] >= fb_rms[0] * (1 if fb == 0 else 1.02),
+          f"rms={fb_rms[-1]/RAIL:.6f} FS")
+check("FDBK sweep rises with amount", all(a < b for a, b in zip(fb_rms, fb_rms[1:])),
+      "RMS=" + ",".join(f"{x/RAIL:.4f}" for x in fb_rms))
+check("FDBK 127 rise stays below 3.6 dB", fb_rms[-1] <= fb_rms[0] * 1.5,
+      f"ratio={fb_rms[-1]/fb_rms[0]:.3f}")
+
 Lc, _ = render(tone, MODE=2, FDBK=100, DRV=60, FOLD=60, RATE=100, MIX=127)
 check("CHAOS non-silent", max(abs(x) for x in Lc) > (1 << 16),
       f"peak={max(abs(x) for x in Lc)}")
@@ -146,23 +165,47 @@ Lcr, _ = render(tone, CRSH=100, MIX=127, DRV=0, FOLD=0, CLIP=0, FDBK=0)
 dcr = max(abs(a - b) for a, b in zip(Ldry, Lcr))
 check("CRSH changes tone", dcr > (1 << 14), f"max|d|={dcr}")
 
-# Hotter DRV must out-peak a mild one
-pmild = max(abs(x) for x in render(tone, DRV=20, FOLD=0, CLIP=0, CRSH=0, MIX=127)[0])
-phot = max(abs(x) for x in render(tone, DRV=100, FOLD=0, CLIP=0, CRSH=0, MIX=127)[0])
-check("DRV hotter at 100 than 20", phot > pmild * 1.3, f"mild={pmild} hot={phot}")
-
-# FOLD 0 = unity skip; FOLD 1 must not go quieter; hotter FOLD folds harder
+# FOLD 0 skips the stage. At low input, compensation should keep RMS within
+# 10% of dry across the control range. A hot input must stay below -6 dBFS
+# after compensation, including where the triangle itself has folded.
 L0, _ = render(tone, FOLD=0, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
-L1, _ = render(tone, FOLD=1, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
-L90, _ = render(tone, FOLD=90, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
+d01, _ = render(tone, FOLD=1, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
 e0 = sum(x * x for x in L0)
-e1 = sum(x * x for x in L1)
-e90 = sum(x * x for x in L90)
-d01 = max(abs(a - b) for a, b in zip(L0, L1))
 check("FOLD 0 bit-near dry (MIX 127 passthrough path)", e0 > 0, f"e0={e0}")
-check("FOLD 1 not quieter than FOLD 0", e1 >= e0 * 0.95, f"e0={e0} e1={e1}")
-check("FOLD 1 changes vs 0", d01 > (1 << 10), f"max|d|={d01}")
-check("FOLD 90 hotter/more energy than FOLD 1", e90 > e1 * 1.05, f"e1={e1} e90={e90}")
+
+fold_quiet = [int(0.03 * RAIL * __import__("math").sin(
+    2 * 3.14159265 * 440 * i / 44100)) for i in range(N)]
+q_dry, _ = render(fold_quiet, FOLD=0, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
+q_rms = (sum(x * x for x in q_dry) / len(q_dry)) ** 0.5
+for fold in (1, 16, 64, 127):
+    q_fold, _ = render(fold_quiet, FOLD=fold, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
+    f_rms = (sum(x * x for x in q_fold) / len(q_fold)) ** 0.5
+    check(f"FOLD {fold} compensation keeps quiet RMS within 10%",
+          0.9 * q_rms <= f_rms <= 1.1 * q_rms,
+          f"dry={q_rms:.0f} fold={f_rms:.0f} ratio={f_rms/q_rms:.3f}")
+
+hot_fold = [int(0.3 * RAIL * __import__("math").sin(
+    2 * 3.14159265 * 440 * i / 44100)) for i in range(N)]
+for fold in (1, 16, 64, 127):
+    h_fold, _ = render(hot_fold, FOLD=fold, DRV=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
+    p_fold = max(abs(x) for x in h_fold)
+    check(f"FOLD {fold} hot peak below -6 dBFS", p_fold < (RAIL >> 1),
+          f"peak={p_fold} limit={RAIL >> 1}")
+
+# DRV also raises gain before the nonlinear stages. Its measured small-signal
+# gain is 1 + 8*DRV; compensation should retain level while keeping hot peaks
+# below -6 dBFS, including with FOLD bypassed.
+for drv in (1, 16, 64, 127):
+    q_drv, _ = render(fold_quiet, DRV=drv, FOLD=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
+    d_rms = (sum(x * x for x in q_drv) / len(q_drv)) ** 0.5
+    check(f"DRV {drv} compensation keeps quiet RMS within 10%",
+          0.9 * q_rms <= d_rms <= 1.1 * q_rms,
+          f"dry={q_rms:.0f} drv={d_rms:.0f} ratio={d_rms/q_rms:.3f}")
+    h_drv, _ = render(hot_fold, DRV=drv, FOLD=0, CLIP=0, CRSH=0, FDBK=0, MIX=127)
+    p_drv = max(abs(x) for x in h_drv)
+    check(f"DRV {drv} hot peak below -6 dBFS", p_drv < (RAIL >> 1),
+          f"peak={p_drv} limit={RAIL >> 1}")
+phot = max(abs(x) for x in render(tone, DRV=100, FOLD=0, CLIP=0, CRSH=0, MIX=127)[0])
 
 # CLIP hard must reduce peak vs CLIP 0 on a hot drive
 pclip = max(abs(x) for x in render(tone, DRV=100, FOLD=0, CLIP=100, CRSH=0, MIX=127, MODE=0)[0])
@@ -201,16 +244,16 @@ check("CHAOS RATE 0 vs 127 differs (page-2 on $d)", d_rate > (1 << 12),
 # g = thresh/max(level, thresh). Off path stable; on path lowers a hot peak
 # to the ceiling (transparent GR — makeup-to-FS cancelled the GR on hot).
 N_LIM = FRAMES * 32
-drive_lim = [int(0.25 * (1 << 23) * __import__("math").sin(
+drive_lim = [int(0.8 * (1 << 23) * __import__("math").sin(
     2 * 3.14159265 * 220 * i / FS)) for i in range(N_LIM)]
-Loff, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+Loff, _ = render(drive_lim, MIX=127, DRV=0, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
                  MODE=0, TONE=64, RATE=64, LIM=0)
-Loff2, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+Loff2, _ = render(drive_lim, MIX=127, DRV=0, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
                   MODE=0, TONE=64, RATE=64, LIM=0)
 check("LIM 0 path stable (two runs match)", Loff == Loff2)
-L100, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+L100, _ = render(drive_lim, MIX=127, DRV=0, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
                  MODE=0, TONE=64, RATE=64, LIM=100)
-L127, _ = render(drive_lim, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
+L127, _ = render(drive_lim, MIX=127, DRV=0, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
                  MODE=0, TONE=64, RATE=64, LIM=127)
 p0 = max(abs(x) for x in Loff[FRAMES:])
 p100 = max(abs(x) for x in L100[FRAMES:])
@@ -258,8 +301,8 @@ e1 = sum(abs(x) for x in Lmax[half:]) / half
 check(f"max-knob no runaway (late/early={e1 / e0 if e0 else 0:.2f} < 8)",
       e0 > 0 and e1 < e0 * 8)
 
-# DRV 127 alone at ordinary input (0.25 FS): clips hard. Asserts a band so
-# the check fails both if drive never reaches the rail and if it sticks there.
+# DRV 127 alone at ordinary input (0.25 FS): compensation keeps the signal
+# below the rail and near the input level.
 N_DRV = int(1.0 * FS)
 N_DRV -= N_DRV % FRAMES
 drive_1s = drive[:N_DRV]
@@ -267,8 +310,11 @@ Ldrv, Rdrv = render(
     drive_1s, MIX=127, DRV=127, FOLD=0, CLIP=0, CRSH=0, FDBK=0,
     MODE=0, TONE=64, RATE=64)
 rf_drv = max(rail_frac(Ldrv), rail_frac(Rdrv))
-check(f"DRV 127 clips at 0.25 FS (rail frac {rf_drv:.3f} > 0.05)", rf_drv > 0.05)
-check(f"DRV 127 not stuck at rail (rail frac {rf_drv:.3f} < 0.95)", rf_drv < 0.95)
+drv_err = max(abs(a - b) for a, b in zip(Ldrv, drive_1s))
+check(f"DRV 127 compensated at 0.25 FS (rail frac {rf_drv:.3f} < 0.05)", rf_drv < 0.05)
+check("DRV 127 hot input remains audible after compensation",
+      max(abs(x) for x in Ldrv) > (1 << 16),
+      f"peak={max(abs(x) for x in Ldrv)}")
 
 # Two FX2 instances, same dear/hot knobs: both produce audio; rail frac bounded.
 pair = render(

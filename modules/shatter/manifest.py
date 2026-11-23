@@ -41,15 +41,15 @@ MODULE = Module(
     ),
     params=(
         Param(b"DRV", 0, active=True, formatter=_P,
-              doc="pre-gain on the dry, about x9 at 127; 0 is unity; the feedback is not driven"),
+              doc="drive on the dry path; output gain is compensated after the dirt stages; feedback is not driven"),
         Param(b"FOLD", 0, active=True, **_W("wid_fold"),
-              doc="wavefolder; 0 is off, higher folds more (never quieter)"),
+              doc="wavefolder; 0 is off; higher settings fold more while compensating output gain"),
         Param(b"CLIP", 0, active=True, **_W("wid_clip"),
               doc="clip threshold: 0 is open, 127 is a brick wall"),
         Param(b"CRSH", 0, active=True, **_W("wid_crsh"),
               doc="bit-depth and sample-rate crush together"),
         Param(b"FDBK", 0, active=True, **_W("wid_fdbk"),
-              doc="feedback around the fold, clip and crush; CHAOS flips its polarity"),
+              doc="feedback around the fold, clip and crush with a reduced maximum; CHAOS flips its polarity"),
         Param(b"MIX", 127, active=True, formatter=_P,
               doc="dry/wet; 0 is exact passthrough when LIM is 0"),
         # MODE: DRAM label formatter + live icon (brick/blob/shards). Labels
