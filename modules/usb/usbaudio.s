@@ -1181,8 +1181,7 @@ producer_usb:
     movel   %d0,prod_end            | 16 frames on
     moveq   #SUM_SHIFT,%d1          | asr.l immediate is 1-8 only: shift via d1
     movel   %d7,%d4                 | d4 = frame bytes for the frame loop
-    mvzb    usb_trk,%d0
-    tstb    %d0
+    mvzb    usb_trk,%d0             | (mvz sets Z)
     beq.w   7f                      | OFF: no bounds/gain pointers
     cmpib   #TRK_POST,%d0
     beqs    6f
