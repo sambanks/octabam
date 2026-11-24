@@ -21,6 +21,10 @@ Page 2 (this port's): SIZE moves the tank's read taps in, LCUT high-passes the
 tank, MOD and RATE set the long delay's swing and both LFOs' speed (to about four
 times the original at 127), PRE a predelay that takes its room from the long delay.
 
+MODE is the algorithm: ROOM injects the input diffuser's output as early reflections,
+HALL swings delay 1 against the long delay, 80S keys the gate on transients; turning it
+also lands the other knobs on the mode's values (mode_views).
+
 The stop kill (STOP, STOP) reaches VERBERATION and its rows as it reaches the stock
 reverbs: kill.s marks MODE's field 127 in the frame's DSP record, and the DSP cuts
 to dry and clears its tank. kill.s detours the stock site BBD's kill.s detours, so
@@ -61,7 +65,7 @@ MODULE = Module(
               doc="0 off; holds the tail 52-784 ms after the input goes quiet, then a desk-gate release"),
         Param(b"MODE", 1, 4, active=True, formatter=Formatter.STEPPED,
               labels=("ROOM", "PLAT", "HALL", "80S"),
-              doc="a preset: turning it sets the other knobs (ROOM, PLATE, HALL, 80S: the desk-gated snare)"),
+              doc="ROOM adds early reflections, HALL a second modulated line, 80S a gate keyed on each hit; also sets the other knobs"),
         Param(b"LCUT", 20, count=128, active=True, formatter=Formatter.PLAIN,
               doc="low cut inside the tank: 0 off, up to about 1 kHz at 127 (250 Hz at 64)"),
         Param(b"MOD", 64, count=128, active=True, formatter=Formatter.PLAIN,

@@ -16,7 +16,7 @@ this remix does not.
 | VERB HALL | | ✓ | 0x16 (DARK REV's) | VERBERATION with MODE set to HALL |
 
 - **The stock reverbs are given up.** PLATE REV, SPRING REV and DARK REV are off both choosers; their DSP code is
-  harvested (VERBERATION's 644 words go over PLATE's and part of SPRING's) and their ids are the three rows,
+  harvested (VERBERATION's 822 words go over PLATE's and part of SPRING's) and their ids are the three rows,
   which run VERBERATION's one copy of code (`MenuEntry.dsp_of`: the build reports `VERB PLATE id 0x14 ->
   VERBERATION's code` on both payloads, and a dump reads one pair of entry points for 0x14, 0x15, 0x16, 0x1a).
 - **Old Parts.** A Part saved with a stock reverb opens on its row: [VERB PARTS](../../modules/verb-parts/README.md)
@@ -26,8 +26,9 @@ this remix does not.
   ends at slot offset `0x381d` (14,366 words), the other stock
   effects stop by `0xbff`, MODULATION's FX2 buffer is 2,048 words. So VERBERATION can sit on any track's FX2 beside
   any loaded effect, and the guard, its trampolines and the reverb toasts are not built.
-- **Cost.** VERBERATION counts 247 cycles a sample, about 8.8 % of a core a slot, under the 9.07 % that lets it
-  sit on all eight FX2 slots.
+- **Cost.** VERBERATION counts 255 cycles a sample in every mode, about 9.1 % of a core a slot. With it on all four
+  FX2 slots of a core and MODULATION (8.96 %) on the four FX1 slots, the core is at about 94.6 %, under the 95 %
+  limit.
 
 ## Three more effects, resident
 

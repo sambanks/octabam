@@ -9,10 +9,20 @@ An effect on a track: select the track, press FX2, and pick VERBERATION from
 the chooser. It is in [Octabam Verbs](../../remix-octabam-verbs.md), in place of the three stock
 reverbs.
 
-It is one reverb with four presets: ROOM, PLATE, HALL and 80S, picked with MODE on
-page 2. MODE only sets the other knobs; the reverb itself never reads it. 80S is the
-1980s desk-gated snare: a big, bright tank with GATE turned up and a short predelay so
-the hit stays ahead of the wash. Every preset can use GATE. The chooser also shows VERB PLATE, VERB ROOM and VERB HALL, on the rows the stock
+It is one reverb with four modes: ROOM, PLATE, HALL and 80S, picked with MODE on
+page 2. Each mode changes how the reverb works, and turning MODE also sets the other
+knobs to that mode's starting point:
+
+- **ROOM** adds early reflections: a dense, wide burst in the first 20 ms, ahead of
+  the tail, so it sounds like walls close by.
+- **PLATE** is the plain plate.
+- **HALL** modulates two of the reverb's delay lines against each other, so a long
+  tail drifts and spreads.
+- **80S** is the 1980s gated snare. Its gate opens on each hit, not on loudness: every
+  hit gets one burst of reverb that is then cut, and the gate shuts between hits even
+  over a loop or a held pad that never goes quiet.
+
+GATE works in every mode. In ROOM, PLATE and HALL it opens whenever the input is loud. The chooser also shows VERB PLATE, VERB ROOM and VERB HALL, on the rows the stock
 PLATE, SPRING and DARK REV had. They are not other reverbs: each is VERBERATION with MODE
 already set. They are there so a project saved with a stock reverb opens on a matching
 voicing (below).
@@ -51,7 +61,7 @@ then the reverb carries on from one hit to the next.
 | DIFF | 100 | how smeared the tail is |
 | TONE | 90 | damping: lower is darker, up is brighter |
 | GATE | 0 | 0 is off. Up: after the input falls quiet, hold the wet for 52–784 ms, then fade it out like a desk gate |
-| MODE | PLATE | page 2, first knob. A preset: ROOM, PLATE, HALL or 80S. Turning it sets the other knobs to that preset; adjust them from there |
+| MODE | PLATE | page 2, first knob. ROOM, PLATE, HALL or 80S (above). Turning it also sets the other knobs to that mode's starting point; adjust them from there |
 | LCUT | 20 | page 2. Low cut inside the reverb: up thins the tail's low end so it sits in a mix; 0 is off |
 | MOD | 64 | page 2. How much the tail is modulated: 0 is static, 64 a gentle movement that keeps the tail from ringing metallic, 127 about four times that, a clear detune in a long tail |
 | RATE | 64 | page 2. How fast the modulation moves: 0 frozen, 64 slow (under 1 Hz), 127 about four times that |

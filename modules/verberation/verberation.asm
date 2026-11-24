@@ -24,16 +24,17 @@
 ;   dap2b  base  8749 length 1449
 ;   del2   base 10199 length 4167
 ;
-; Scalars at x:(r7+n): $20 ring base, $21 write pointer, $22 clear calls left,
-; $23 clear pointer, $24 AMT, $25 GC (input gain/4), $26 KRT, $27 KAP, $28 KLP
-; (smoothed), $29 $2a LFO phases, $2c $2d the smear and delay fractions, $2e $2f
-; the smear and delay offsets, $30 $31 the damping states, $32 apout, $33 input envelope,
-; $34 hold counter, $35 gate gain, $36 hold length (0x7fffff = gate off), $37 $38 the loop gain
-; and allpass coefficient in use (KRT and KAP, or 0 under a shut gate), $39 LCUT's coefficient,
-; $3a $3b its states, $3c SIZE's f, $3d the long delay's swing, $3e $3f AMNT's wet gain and dry cut, $40..$44 the
-; tank's read offsets, $45 the long delay's centre, $46 MOD's smoothed offset, $47 $48 the
-; predelay's write and read offsets, $49 the predelay smoothed (1/256 samples), $4c the room past the
-; long delay's tap, $4d the predelay in samples, $4e $4f the LFO steps.
+; Scalars at x:(r7+n). The one-word slots ($20..$3f) hold what the sample loop reads: $20 ring base,
+; $21 write pointer, $22 1.0 and $23 2^-11 (the gate's constants), $24 $26 the damping states, $25 GC (input
+; gain/4), $27 $3b LCUT's states, $28 KLP, $29 $2a LFO phases, $2c $2d the smear and delay fractions, $2e $2f
+; the smear and delay offsets, $30 ROOM's early-reflection gain, $31 80S's transient key (1 in 80S), $32 apout,
+; $33 input envelope, $34 hold counter, $35 gate gain, $36 hold length (0x7fffff = gate off), $37 $38 the loop
+; gain and allpass coefficient in use (KRT and KAP, or 0 under a shut gate), $39 LCUT's coefficient, $3a delay
+; 1's fraction (HALL), $3c SIZE's f, $3d the long delay's swing, $3e $3f AMNT's wet gain and dry cut. Two-word
+; slots: $40..$44 the tank's read offsets, $45 the long delay's centre, $46 MOD's smoothed offset, $47 $48 the
+; predelay's write and read offsets, $49 the predelay smoothed (1/256 samples), $4c the room past the long
+; delay's tap, $4d the predelay in samples, $4e $4f the LFO steps, $5a delay 1's read offset, $5b the long
+; delay's LFO, $60 AMT, $61 KRT, $62 KAP (smoothed), $63 clear calls left, $64 clear pointer.
 ; The stop kill: MODE's field at 127 (kill.s) clears the state and the ring again (proc's head).
 ; Knobs: p0 AMNT amount, p1 GAIN input gain, p2 TIME reverb time, p3 DIFF
 ; diffusion, p4 TONE damping, p5 GATE hold (0 off); page 2: MODE, LCUT, MOD, RATE, SIZE, PRE
@@ -45,7 +46,7 @@ init:
         move    #>$20,n4
         move    (r4)+n4
         clr     a
-        do      #48,>gv_zero
+        do      #69,>gv_zero
         move    a,x:(r4)+
 gv_zero:
         nop
@@ -53,9 +54,13 @@ gv_zero:
         move    x:(r4),a
         move    a,x:(r7+$20)
         move    a,x:(r7+$21)
-        move    a,x:(r7+$23)
+        move    a,x:(r7+$64)
         move    #>22,a
+        move    a,x:(r7+$63)
+        move    #>$7fffff,a
         move    a,x:(r7+$22)
+        move    #>$001000,a
+        move    a,x:(r7+$23)
         rts
 
 proc:
@@ -67,7 +72,7 @@ proc:
         move    #>$7f0000,x0
         cmp     x0,a
         bne     gv_live
-        move    x:(r7+$22),a
+        move    x:(r7+$63),a
         tst     a
         bne     gv_live
         move    #>$ffffff,m4
@@ -75,30 +80,30 @@ proc:
         move    #>$24,n4
         move    (r4)+n4
         clr     a
-        do      #44,>gv_kzero
+        do      #65,>gv_kzero
         move    a,x:(r4)+
 gv_kzero:
         nop
         move    x:(r7+$20),a
         move    a,x:(r7+$21)
-        move    a,x:(r7+$23)
+        move    a,x:(r7+$64)
         move    #>22,a
-        move    a,x:(r7+$22)
+        move    a,x:(r7+$63)
 gv_live:
 ; Bounded clearing: 653 words a call, 22 calls (exactly the ring), the output dry until it is clean.
-        move    x:(r7+$22),a
+        move    x:(r7+$63),a
         tst     a
         beq     gv_ready
         sub     #$1,a                    ; (6-bit immediate)
-        move    a,x:(r7+$22)
-        move    x:(r7+$23),r4
+        move    a,x:(r7+$63)
+        move    x:(r7+$64),r4
         move    #>$ffffff,m4
         clr     a
         do      #>653,>gv_clear
         move    a,y:(r4)+
 gv_clear:
         nop
-        move    r4,x:(r7+$23)
+        move    r4,x:(r7+$64)
         rts
 gv_ready:
 ; Knob words carry a non-zero low byte under an LFO: masked before any use.
@@ -106,12 +111,12 @@ gv_ready:
         and     #>$7f0000,a
         move    a1,x0
         move    x0,a
-        move    x:(r7+$24),b
+        move    x:(r7+$60),b
         sub     b,a
         asr     #$4,a,a
         add     b,a
-        move    a,x:(r7+$24)
-        move    x:(r7+$24),a
+        move    a,x:(r7+$60)
+        move    x:(r7+$60),a
 ; AMNT's law: to 64 the wet rises to full over the whole dry (W = 2a, K = 0); from 64 to 127 the dry
 ; fades out (W = 1, K = (a - 1/2) 128/63, 1 at 127). a is AMNT/128, smoothed; 0 is exactly dry.
         move    a,b
@@ -144,21 +149,21 @@ gv_ready:
         mpy     x0,y1,a
         move    #>$2ccccd,x1
         add     x1,a
-        move    x:(r7+$26),b
+        move    x:(r7+$61),b
         sub     b,a
         asr     #$4,a,a
         add     b,a
-        move    a,x:(r7+$26)
+        move    a,x:(r7+$61)
         move    x:(r6+$3),a
         and     #>$7f0000,a
         move    a1,x0
         move    #>$666666,y1
         mpy     x0,y1,a
-        move    x:(r7+$27),b
+        move    x:(r7+$62),b
         sub     b,a
         asr     #$4,a,a
         add     b,a
-        move    a,x:(r7+$27)
+        move    a,x:(r7+$62)
         move    x:(r6+$4),a
         and     #>$7f0000,a
         move    a1,x0
@@ -278,6 +283,23 @@ gv_ready:
         add     x0,a
         asr     #$8,a,a
         move    a1,x:(r7+$4d)
+; MODE (slot 6, x:(r6+$c)'s knob field, 0 ROOM 1 PLATE 2 HALL 3 80S). ROOM: early reflections, the input
+; diffuser's output (apout, diffused input from the first milliseconds) straight into the wet, + left and - right,
+; twice x:(r7+$30) its gain. HALL: delay 1 swung too (at the LFOs, below). 80S: the gate keyed on transients (x:(r7+$31) 1).
+        move    x:(r6+$c),b
+        and     #>$7f0000,b
+        move    #0,x0
+        move    #>$500000,a
+        tst     b
+        tne     x0,a
+        move    a1,x:(r7+$30)
+        move    #>$030000,x0
+        sub     x0,b
+        move    #>$7fffff,a
+        move    #0,x0
+        tst     b
+        tne     x0,a
+        move    a1,x:(r7+$31)
         move    #>4167,x0
         mpy     x0,y1,a
         move    a1,x1
@@ -432,6 +454,7 @@ gv_p2a:
         mpy     x0,y1,a
         asl     #$2,a,a
         move    a,x0
+        move    x0,x:(r7+$5b)
 ; delay 2: offset centre + swing * lfo2 samples (4068 + 97 at the defaults).
         move    x:(r7+$3d),y1
         mpy     x0,y1,a
@@ -448,16 +471,51 @@ gv_p2a:
         move    #>$ffd829,a
         sub     x1,a
         move    a1,x:(r7+$2f)
+; HALL: delay 1's tap swung as delay 2's is, in antiphase: k = ln6 - 2 - s + t, t = -s lfo2, s the long delay's
+; swing (whole part s). In the other modes s and t are 0 and the tap sits at ln6 - 2. x:(r7+$3a) the fraction,
+; $5a the read offset.
+        move    x:(r7+$5b),x0
+        move    x:(r7+$3d),y1
+        mpy     -x0,y1,a
+        move    x:(r6+$c),b
+        and     #>$7f0000,b
+        move    #>$020000,x0
+        sub     x0,b
+        move    #0,x0
+        tst     b
+        tne     x0,a
+        move    a1,x1
+        move    x1,a
+        asr     #$c,a,b
+        and     #>$000fff,a
+        asl     #$b,a,a
+        move    a1,x:(r7+$3a)
+        move    b1,x1
+        move    x:(r7+$3d),a
+        asr     #$c,a,a
+        move    x:(r6+$c),b
+        and     #>$7f0000,b
+        move    #>$020000,x0
+        sub     x0,b
+        move    #0,x0
+        tst     b
+        tne     x0,a
+        move    x:(r7+$42),x0
+        add     x0,a
+        sub     x1,a
+        move    #>1,x0
+        add     x0,a
+        move    a1,x:(r7+$5a)
 ; the loop gain and the allpass coefficient this block: KRT and KAP, or 0 while the gate's gain
 ; is 0 (shut). With both 0 every line is a plain delay fed only by the (quiet) input, so the tank
 ; drains in one pass of its longest line and the next hit starts from silence.
-        move    x:(r7+$26),a
+        move    x:(r7+$61),a
         move    x:(r7+$35),b
         move    #0,x0
         tst     b
         teq     x0,a
         move    a1,x:(r7+$37)
-        move    x:(r7+$27),a
+        move    x:(r7+$62),a
         tst     b
         teq     x0,a
         move    a1,x:(r7+$38)
@@ -492,17 +550,18 @@ gv_p2a:
         move    x:(r7+$33),a
         asr     #$9,a,b
         sub     b,a
-        move    x1,b
-        sub     a,b
-        move    #0,x0
-        tst     b
-        tmi     x0,b
-        add     b,a
+        move    a1,x0
+        move    x1,a
+        cmp     x0,a
+        tlt     x0,a
         move    a1,x:(r7+$33)
+; 80S keys the hold on a transient: the envelope over twice what it had decayed to (env - 2 env2)
+        move    x:(r7+$31),y1
+        mac     -x0,y1,a
+        mac     -x0,y1,a
         move    x:(r7+$34),b
-        sub     #$1,b                    ; (6-bit immediate)
+        sub     #$1,b                    ; (6-bit immediate; it sets N, so no tst)
         move    #0,x0
-        tst     b
         tmi     x0,b
         sub     #>$010000,a
         move    x:(r7+$36),x1
@@ -513,21 +572,18 @@ gv_p2a:
 ; 1/2048 a sample, a straight line in dB (-60 in about 320 ms), and below 2^-11 it is 0 (a); the
 ; hold picks one. Straight-line, for the pricer. A shut gate empties the tank: x:(r7+$37), $38.
         move    x:(r7+$35),x1
-        move    #>$7fffff,a
+        move    x:(r7+$22),a
         sub     x1,a
         asr     #$5,a,a
         add     x1,a
         move    a1,y1
         move    x1,a
-        asr     #$b,a,a
-        move    a1,x0
-        move    x1,a
-        sub     x0,a
+        asr     #$b,a,b
+        sub     b,a
         move    a,b
-        move    #>$001000,x0
+        move    x:(r7+$23),x0
         sub     x0,b
         move    #0,x0
-        tst     b
         tmi     x0,a
         move    x:(r7+$34),b
         tst     b
@@ -592,20 +648,20 @@ gv_p2a:
         mpy     x0,y1,a
         move    x:(r7+$32),x0
         add     x0,a
-        move    x:(r7+$30),b
+        move    x:(r7+$24),b
         sub     b,a
         move    a,x0
         move    x:(r7+$28),y1
         mpy     x0,y1,a
         add     b,a
-        move    a,x:(r7+$30)
-        move    x:(r7+$3a),b
+        move    a,x:(r7+$24)
+        move    x:(r7+$27),b
         sub     b,a
         move    a,x0
         move    x:(r7+$39),y1
         mac     -x0,y1,a
         mac     x0,y1,b
-        move    b,x:(r7+$3a)
+        move    b,x:(r7+$27)
         move    x:(r7+$38),y1
         move    y:(r5+n5),x0
         move    #>$fffc87,n5
@@ -626,6 +682,10 @@ gv_p2a:
         move    b,a
         mac     -x0,y1,a
         move    a,y:(r5+n5)
+        move    x:(r7+$30),y1
+        move    x:(r7+$32),x0
+        mac     x0,y1,a
+        mac     x0,y1,a
         asl     #$1,a,a
         move    a,x0
         move    x:(r7+$35),y1
@@ -635,25 +695,32 @@ gv_p2a:
         mpy     x0,y1,b
         asl     #$3,b,b
         move    x:(r0),x0
-        move    x0,a
-        add     b,a
+        add     x0,b
         move    x:(r7+$3f),y1
-        mac     -x0,y1,a
-        move    a,x:(r0)+
+        mac     -x0,y1,b
+        move    b,x:(r0)+
 ; second half: delay 1 tail -> damping -> dap2a -> dap2b -> delay 2; right out
+        move    x:(r7+$5a),n5
+        lua     (r5+n5),r4
+        move    x:(r7+$3a),y0
+        move    y:(r4)-,b
+        move    y:(r4),a
+        sub     b,a
+        move    a,x0
+        mpy     y0,x0,a
+        add     b,a
+        move    a,x0
         move    x:(r7+$32),a
-        move    x:(r7+$42),n5
-        move    y:(r5+n5),x0
         move    x:(r7+$43),n5
         move    x:(r7+$37),y1
         mac     x0,y1,a
-        move    x:(r7+$31),b
+        move    x:(r7+$26),b
         sub     b,a
         move    a,x0
         move    x:(r7+$28),y1
         mpy     x0,y1,a
         add     b,a
-        move    a,x:(r7+$31)
+        move    a,x:(r7+$26)
         move    x:(r7+$3b),b
         sub     b,a
         move    a,x0
@@ -681,6 +748,10 @@ gv_p2a:
         move    b,a
         mac     x0,y1,a
         move    a,y:(r5+n5)
+        move    x:(r7+$30),y1
+        move    x:(r7+$32),x0
+        mac     -x0,y1,a
+        mac     -x0,y1,a
         asl     #$1,a,a
         move    a,x0
         move    x:(r7+$35),y1
@@ -690,11 +761,10 @@ gv_p2a:
         mpy     x0,y1,b
         asl     #$3,b,b
         move    x:(r0),x0
-        move    x0,a
-        add     b,a
+        add     x0,b
         move    x:(r7+$3f),y1
-        mac     -x0,y1,a
-        move    a,x:(r0)+
+        mac     -x0,y1,b
+        move    b,x:(r0)+
         move    (r5)+
 gv_end:
         nop

@@ -119,7 +119,10 @@ def model(samples, params, blocks_skip):
     lp1 = lp2 = 0.0
     sz_f = mod_s = lc = pdq = 0          # page 2's smoothed values: SIZE's f, MOD's offset, LCUT's c, PRE (1/256)
     hp1 = hp2 = 0.0
-    _mode, lcut, mod, rate, size, pre = list(params[6:12]) + pg2()[len(params[6:12]):]
+    mode, lcut, mod, rate, size, pre = list(params[6:12]) + pg2()[len(params[6:12]):]
+    g_er = 0x500000 if mode == 0 else 0          # ROOM: the input diffuser's output into the wet
+    k_t = 0x7FFFFF if mode == 3 else 0           # 80S: the gate keyed on transients
+    hall = mode == 2
     p = 0
     env = hold = gs = 0
     hmax = 0x7FFFFF if params[5] == 0 else 2048 + 256 * params[5]
@@ -151,8 +154,8 @@ def model(samples, params, blocks_skip):
         pdq = smooth(pdq, (24 * pre) << 8)
         pd = (pdq + 0x80) >> 8
         m9 = mulf(4167, sz_f)
-        if pd:
-            m9 = max(m9, pd + 2)
+        m9 = max(m9, pd + 2 if pd else 0)
+        active = pd != 0
         centre = 4165 - m9 - (d2 >> 12)
         pkw = 4168 - m9                  # the write cell, as an offset into line 9
         inc1, inc2 = mulf(760, wide(rate)), mulf(456, wide(rate))
@@ -164,6 +167,8 @@ def model(samples, params, blocks_skip):
         kint1, fr1 = t1 >> 12, (t1 & 0xFFF) << 11
         t2 = mulf(parab(ph2), d2)
         kint2, fr2 = centre + (t2 >> 12), (t2 & 0xFFF) << 11
+        t6 = mulf(-parab(ph2), d2) if hall else 0           # HALL: delay 1 swung in antiphase
+        kint6, fr6 = ln[6] - 2 - ((d2 >> 12) if hall else 0) + (t6 >> 12), (t6 & 0xFFF) << 11
         K, G, R, L = kap / Q, gc / Q, krt / Q, klp / Q
         if gs == 0:                      # the gate shut at the block's start: the tank empties
             R = K = 0.0
@@ -177,23 +182,23 @@ def model(samples, params, blocks_skip):
             m = min(abs(mean_i), Q - 1)
             env2 = env - (env >> 9)
             env = env2 + max(m - env2, 0)
+            trig = env * Q - 2 * env2 * k_t - 0x010000 * Q
             hold = max(hold - 1, 0)
             if hmax == 0x7FFFFF:
                 hold = hmax
-            if env - 0x010000 > 0:
+            if trig > 0:
                 hold = hmax
             if hold:                     # a desk gate: open, rise 1/32 a sample
                 gs = gs + (((Q - 1) - gs) >> 5)
             else:                        # shut: fall 1/2048 a sample; 0 below 2^-11
-                gs = gs - (gs >> 11)
-                if gs - 0x001000 < 0:
-                    gs = 0
+                ex = gs * 2047                     # gs - gs/2048, exactly, in 1/2048 LSB
+                gs = 0 if ex < 0x001000 * 2048 else ex >> 11
             G_ = gs / Q
             # smear
             a0 = rd(0, kint1); b0 = rd(0, kint1 + 1)
             wr_(0, 100, a0 + (b0 - a0) * fr1 / Q)
             x_in = (l_in + r_in) / 2
-            if pd:
+            if active:
                 wr_(9, pkw, x_in); x_in = rd(9, pkw + pd)
             acc = x_in * G
             for j in range(4):
@@ -208,15 +213,22 @@ def model(samples, params, blocks_skip):
             d = acc - hp1; acc = d - C * d; hp1 += C * d
             r = rd(4, ln[4] - 1); acc += -K * r; wr_i(4, acc); acc = r + K * max(-1, min(1, acc))
             r = rd(5, ln[5] - 1); acc += K * r; wr_i(5, acc); acc = r - K * max(-1, min(1, acc))
-            wr_i(6, acc); wet = max(-1, min(1, 2 * acc)) * G_
+            wr_i(6, acc)
+            if g_er:
+                acc += 2 * g_er / Q * apout
+            wet = max(-1, min(1, 2 * acc)) * G_
             out_l.append(max(-1, min(1, l_in + 8 * wet * W - l_in * Kd)) * Q)
             # second half
-            acc = apout + rd(6, ln[6] - 1) * R
+            a6 = rd(6, kint6); b6 = rd(6, kint6 + 1)
+            acc = apout + (a6 + (b6 - a6) * fr6 / Q) * R
             lp2 += L * (acc - lp2); acc = lp2
             d = acc - hp2; acc = d - C * d; hp2 += C * d
             r = rd(7, ln[7] - 1); acc += K * r; wr_i(7, acc); acc = r - K * max(-1, min(1, acc))
             r = rd(8, ln[8] - 1); acc += -K * r; wr_i(8, acc); acc = r + K * max(-1, min(1, acc))
-            wr_i(9, acc); wet = max(-1, min(1, 2 * acc)) * G_
+            wr_i(9, acc)
+            if g_er:
+                acc -= 2 * g_er / Q * apout
+            wet = max(-1, min(1, 2 * acc)) * G_
             out_r.append(max(-1, min(1, r_in + 8 * wet * W - r_in * Kd)) * Q)
             p = (p + 1) % N
     return out_l, out_r
@@ -405,6 +417,41 @@ def main():
     check("kill: after it, a hit rings exactly as it does from silence (the tank and the state are clear)",
           Lk[a0:] == Lq_[a0:] and Rk[a0:] == Rq_[a0:])
     check("kill: and the reverb is back after it", rms_db(Lk[k2 + 2000:k2 + 6000]) > -90)
+    # MODE: each mode is its own algorithm, against the model. ROOM adds early reflections (three taps a side
+    # off the input line), HALL swings delay 1 as well as delay 2, 80S keys the gate on transients.
+    for mode, name in ((0, "ROOM"), (2, "HALL"), (3, "80S")):
+        pgm = pg2(mode=mode, mod=127) if mode == 2 else pg2(mode=mode)
+        gk = [40] if mode == 3 else [0]
+        Lm, Rm, _ = host(imp, params[:5] + gk + pgm)
+        mmL, mmR = model(st, params[:5] + gk + pgm, CLEAR_CALLS)
+        s8 = min(snr_db(mmL[n0:n0 + 8000], Lm[n0:n0 + 8000]), snr_db(mmR[n0:n0 + 8000], Rm[n0:n0 + 8000]))
+        sw = min(snr_db(mmL[n0:], Lm[n0:]), snr_db(mmR[n0:], Rm[n0:]))
+        check(f"mode: {name} against the float model, {s8:.1f} dB over 8,000 samples, {sw:.1f} dB whole",
+              s8 > 50 and sw > 40)
+    early = lambda x: rms_db(x[pt0 + 100:pt0 + 900])           # 2 to 20 ms after the impulse
+    Lr_, _, _ = host(pim, wetp + pg2(mode=0, size=35))
+    Lp_, _, _ = host(pim, wetp + pg2(mode=1, size=35))
+    check(f"mode: ROOM's early reflections ({early(Lr_):.1f} dB against PLATE's {early(Lp_):.1f} dB, 2-20 ms in)",
+          early(Lr_) > early(Lp_) + 6)
+    _, _, logm = host(imp[:400 * FRAMES], params + pg2(mode=2, size=0, mod=127, rate=127), extra=["-guard", str(N), "-guard-shared"])
+    check("mode: HALL, SIZE 0, MOD 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logm)
+    # 80S's key: a hit, then steady noise that never goes quiet. Keyed on level (PLATE with GATE) the gate
+    # stays open on the noise; keyed on the hit (80S) it shuts after the hold and the release
+    busy = [0] * (blocks * FRAMES)
+    b0 = (CLEAR_CALLS + 100) * FRAMES
+    busy[b0] = int(0.6 * Q)
+    for i in range(b0 + 1, len(busy)):
+        busy[i] = int(0.1 * Q * (random.random() - 0.5))
+    bp = [127, 51, 100, 100, 90, 10]
+    Lb1, _, _ = host(busy, bp + pg2(mode=1))
+    Lb3, _, _ = host(busy, bp + pg2(mode=3))
+    win = lambda x: rms_db(x[b0 + 44100:b0 + 44100 + 8000])
+    check(f"mode: 80S shuts on steady noise after a hit ({win(Lb3):.1f} dB), the level key stays open ({win(Lb1):.1f} dB)",
+          win(Lb3) < win(Lb1) - 40)
+    bst = [v_ for s_ in busy for v_ in (s_, s_)]
+    mb3, _ = model(bst, bp + pg2(mode=3), CLEAR_CALLS)
+    sb = snr_db(mb3[n0:], Lb3[n0:])
+    check(f"mode: 80S on the busy input against the float model, {sb:.1f} dB", sb > 40)
     # bounds
     _, _, log = host(imp[:200 * FRAMES], params + TAIL, extra=["-guard", str(N), "-guard-shared"])
     check(f"bounds: -guard {N}, no write outside the ring", "0 stray write regions, 0 CLOBBERING" in log, log.strip().splitlines()[-1][:100] if log.strip() else "")
