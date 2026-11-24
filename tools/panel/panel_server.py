@@ -213,7 +213,7 @@ def load_param_map(path=PARAM_MAP_FILE):
 
 KEY_TABLE = 0x400d2954   # per-key jump table: 66 longword handlers
 KEY_COUNT = 66
-IDX_REC, IDX_PLAY, IDX_STOP = 27, 28, 29   # measured: 0x4000a274/0x4000a200/0x4000a1e0
+IDX_REC, IDX_PLAY, IDX_STOP = 27, 28, 29   # MIDI realtime Start/Continue/Stop 0x4000a274/0x4000a200/0x4000a1e0, not panel keys (STEM_REC.md 1.5)
 
 
 LCD_ON, LCD_OFF = bytes((0xf2, 0xf2, 0xf2)), bytes((0x06, 0x06, 0x07))   # lit / unlit pixel, RGB: the MKII display, white on black

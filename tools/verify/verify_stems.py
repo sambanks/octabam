@@ -76,8 +76,8 @@ FIXTURE = pathlib.Path("out/stems_fixture.json")   # written by tools/verify/ste
 # project that never enters the repository. A fresh tree has none (the
 # shards of `make check-remix-gates` wipe out/), so STEMS_TEMPLATE names it.
 TEMPLATE = pathlib.Path(os.environ.get("STEMS_TEMPLATE") or "out/projects/Ultimate FX 1.5.3")
-KEY_STOP = 0x4000a1e0
-STOP_GATE = 0x80000029     # the STOP handler returns early while this byte is 0 (STEM_REC.md 1.6)
+MIDI_STOP = 0x4000a1e0    # the MIDI Stop handler: writes 2, a pause (STEM_REC.md 1.5)
+STOP_GATE = 0x80000029     # it returns early while this byte (probably TRANSPORT RECEIVE) is 0 (STEM_REC.md 1.6)
 PRE_ROLL = 40              # frames before the transport start; the dump includes them
 TRACK_HALF, TRACK_DELAY = 1, 1             # the samples core 0 mixes (STEM_REC.md 18.5)
 # A take's first frame is one frame after the edge (the frame that latches
@@ -839,7 +839,7 @@ def _port_parts(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, call
     at = [f"{f}:0x{a:x}:0" for f, a in calls]
     pk = list(pokes)
     if stop_at is not None:
-        at.append(f"{stop_at}:0x{KEY_STOP:x}:0")
+        at.append(f"{stop_at}:0x{MIDI_STOP:x}:0")
         pk.append((STOP_GATE, 1))
     pre = [str(EMU), "--image", str(IMAGE), "--card", card_in or fx["card"], "--set", fx["set"],
            "--project", fx["project"], "--load-ms", str(load_ms), "--dsp"]

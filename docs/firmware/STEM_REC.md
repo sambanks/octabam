@@ -17,9 +17,10 @@ rule is **wrong**, and a hook built on it never sees the stop edge.
 |---|---|---|
 | `0` | stopped and rewound. Also the state at engine init. | seven `clrl` sites |
 | `1` | running | five sites |
-| `2` | stopped by the STOP key, position kept | one site, `0x4009f5c6` |
+| `2` | paused, position kept: PLAY while playing, or MIDI Stop | one site, `0x4009f5c6` |
 
-The STOP key's own path writes **2**, never 0. The rule that does hold is
+The panel's STOP key writes 0; PLAY pressed while playing and MIDI Stop
+write **2** (section 1.5). The rule that does hold is
 **running if and only if the word is 1**. Both edges the per-frame hook needs
 are therefore transitions in and out of the value 1, not in and out of zero.
 Section 1.7 gives the corrected interface. Task 14's hook must be revised
@@ -254,7 +255,7 @@ The store at `0x4009c3d4` is the one the port has already caught.
 is an independent confirmation of both the size (4 bytes) and the running
 value (1) at one of the five sites listed here. 
 
-**Write 2, the STOP key.** One site, at the head of `0x4009f5bc`:
+**Write 2, pause.** One site, at the head of `0x4009f5bc`, which the panel's PLAY key calls while playing and the MIDI Stop handler calls:
 
 ```
 4009f5bc:	4fef ffe0      	lea %sp@(-32),%sp
@@ -274,8 +275,7 @@ That routine transmits MIDI Stop before it returns:
 4009f6f0:	4eb9 4001 08b0 	jsr 0x400108b0
 ```
 
-`0xfc` is MIDI System Real Time Stop. Section 1.5 follows the key path into
-it.
+`0xfc` is MIDI System Real Time Stop. Section 1.5 lists what calls it.
 
 **Write 0, seven sites.** Three are abort paths inside `FW_TRANSPORT`
 (`0x4009baf0`, `0x4009bbca`, `0x4009c3f2`). All three share one idiom: clear
@@ -404,28 +404,32 @@ value 2 means "stopped, with the position kept, so the next start is a
 Continue". The per-track byte array at `0x80006500` carries the same 0, 1
 and 2 encoding for each of the 16 lanes.
 
-### 1.5 The stop edge , with the key's identity
+### 1.5 Which input writes which value
 
-The per-key jump table is at `0x400d2d54`, holding 4-byte handler pointers.
-The three transport keys are consecutive:
-
-| index | address | entry | key |
+| input | handler | routine | the word |
 |---|---|---|---|
-| 27 | `0x400d2dc0` | `0x4000a274` | REC |
-| 28 | `0x400d2dc4` | `0x4000a200` | PLAY |
-| 29 | `0x400d2dc8` | `0x4000a1e0` | STOP |
+| panel PLAY, stopped | `0x40061778` | `FW_TRANSPORT` `0x4009b964` | 1 (`0x4009c3d4` from 0, `0x4009c4d4` from 2) |
+| panel PLAY, playing (pause) | `0x40061778` | `0x4009f5bc`, called at `0x4006188a` | 2 |
+| panel STOP | `0x4004aca4` | stop and rewind `0x400a10c8` | 0 (`0x400a11a6`, `0x400a12ac`) |
+| MIDI Start `FA` | `0x4000a274` | stop and rewind `0x400a10c8` (at `0x4000a336`), then `FW_TRANSPORT` | 0, then 1 |
+| MIDI Continue `FB` | `0x4000a200` | `FW_TRANSPORT` | 1 |
+| MIDI Stop `FC` | `0x4000a1e0` | `0x4009f5bc`, or `0x4009f784` (the same plus `0x800066a0` := 2) | 2 |
 
-```
-400019d0:	4e75           	rts
-400019d2:	0000           	.short 0x0000
-```
+So 2 means paused: PLAY pressed while playing, or a MIDI Stop. The panel's
+STOP key writes 0 on its first press. While the word is 2 the sixteen
+per-track bytes at `0x80006500` read 2 as well, until a panel STOP or a
+MIDI Start or Continue.
 
-The addresses in `RTOS_FORK.md` section 9.3 are right; only the index arithmetic
-was wrong. `emu_rtos.py`'s constants `KEY_REC`, `KEY_PLAY` and `KEY_STOP`
-are unaffected, because they hold the addresses, not the indices. This
-document does not edit either file.
+The panel's PLAY handler `0x40061778` sits in the key layers at
+`0x400c0056` and `0x400c063a`. With the transport running and
+`0x460d172a` clear it calls `0x4009f5bc`; otherwise it calls
+`FW_TRANSPORT`.
 
-The STOP handler is short and has no state of its own:
+The table at `0x400d2d54` is the MIDI realtime dispatch, indexed through
+`0x400d2d98[status & 0xF]` (`MIDI.md` Appendix B, section 1). Its entries for `FA`,
+`FB` and `FC` are the three MIDI handlers above. They are not panel keys.
+
+The MIDI Stop handler returns at once while the byte `0x80000029` is 0:
 
 ```
 4000a1e0:	4a39 8000 0029 	tstb 0x80000029
@@ -437,6 +441,11 @@ The STOP handler is short and has no state of its own:
 4000a1f8:	4ef9 4009 f5bc 	jmp 0x4009f5bc
 4000a1fe:	4e75           	rts
 ```
+
+The Start and Continue handlers test the same byte first. It is probably
+the project's MIDI TRANSPORT RECEIVE setting: the clock handler beside them
+tests CLOCK RECEIVE in the byte before it (`0x80000028` bit 0), and a
+project made with transport receive off reads 0 here.
 
 `0x40033968` is a one-line getter that returns `0x460d1aec`:
 
@@ -454,118 +463,16 @@ The STOP handler is short and has no state of its own:
 4009f790:	4e75           	rts
 ```
 
-So **both** branches of the STOP handler reach `0x4009f5bc`, and
-`0x4009f5bc` writes **2** into `0x800065b8`. There is no store of 0 anywhere
-on this path, and the handler is stateless, so a second press behaves like
-the first. 
+The word also returns to 0 at `0x400a4066` (the sequencer's automatic stop)
+and `0x400a1050` (engine init).
 
-Unconfirmed: **That `0x4000a1e0` is the STOP key is inferred, not measured.** The
-evidence is strong but indirect: it is the third of three consecutive table
-entries whose other two are the measured REC and PLAY handlers, and it is
-the only one of the three that reaches a routine transmitting MIDI Stop
-(`0xfc` at `0x4009f6ec`). `RTOS_FORK.md` section 9.3 reached the same conclusion
-from the table shape alone and marked it inferred; this adds the MIDI
-evidence and keeps the marker.
-**Falsifier:** a run under the port that presses `0x4000a1e0` while the
-transport is running and shows the word going to anything other than 2, or
-that shows a real STOP key press reaching a different handler.
+### 1.6 Calling the MIDI Stop handler from a gate
 
-The word does return to 0, but only on the other three stop paths:
-`0x400a10c8` (stop and rewind, which REC's own handler calls at `0x4000a336`
-before it starts), `0x400a4066` (the sequencer's automatic stop) and
-`0x400a1050` (engine init). None of these is reached from the STOP key.
-
-### 1.6 Measured under the port -- the write of 2 needed the STOP gate forced
-
-Task 10 added four `ot_emu` flags (`--card-out`, `--call-before-play`, `--at`,
-`--card-fail-after`) and staged a project card (set `STEMS`, project `ULTFX`,
-from `out/projects/Ultimate FX 1.5.3`) to close this section. Command run
-:
-
-```bash
-out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card out/stems_card.img \
-  --set STEMS --project ULTFX --sequencer --frames 400 --load-ms 20000 \
-  --at 200:0x4000a1e0:0 --card-out out/task10/after.img \
-  --watch-mem 0x800065b8,4 --mem-dump 0x100f8480,64=out/task10/setpath.bin
-```
-
-`--at 200:0x4000a1e0:0` calls the STOP handler with `callAsMain`, the same
-call shape `press_key_live(KEY_STOP)` uses in `emu_rtos.py`, at frame 200
-after the transport start. **On its own, this command's STOP call did NOT
-write 2** -- it hit a precondition inside the STOP handler and returned
-without touching the transport word. The write of 2 was measured only in a
-second run, with that precondition forced open. Four separate claims, each
-measured, follow.
-
-** `0` at init and `1` at the transport start, measured.** `--watch-mem`
-on the command above shows exactly two writes over the whole run:
-
-```
-[    8707.8] [0x800065b8] <- 0 (4) at pc 0x400a1050 in main  i=44915230
-[  895721.0] [0x800065b8] <- 0x1 (4) at pc 0x4009c3d4 in main  i=443500349
-```
-
-The first is engine init (section 1.3's `0x400a1050`); the second is
-`FW_TRANSPORT`'s cold-start write of 1, at the transport start. This matches
-`RTOS_FORK.md` section 9.4 exactly (same pc, same value) against a different
-project, so the 0->1 transition is now measured twice, against two
-projects.
-
-** Unforced, on this project, the STOP handler takes its early `rts` and
-the word stays 1, measured.** The call above returns
-(`call : 0x4000a1e0(0x0) at frame 200 -> returned, d0 0x3fb6`), but
-`--watch-mem` shows no third write: the word stays at 1. `--watch-pc` on the
-handler's three exits (`0x4000a1fe`, `0x4000a1f8`, `0x4000a1f2`) shows the
-call landed at `0x4000a1fe`, the bare `rts` from section 1.5's disassembly:
-
-```
-tstb 0x80000029 / beqs 0x4000a1fe   -- taken
-```
-
-`--peek 80000029` (a 32-bit read starting at that address) reads
-`0x00010209`, so the single byte at `0x80000029` itself is `0x00`. A
-`--mem-dump 0x80000028,8` at the end of a full 400-frame run with no STOP
-call at all shows the same byte still `0x00`: nothing in this project's load
-or its first 400 frames ever sets it.
-
-** With `0x80000029` forced to 1, the STOP handler writes 2 at pc
-`0x4009f5c6`, measured.** A second run, `--poke 0x80000029=1` added before
-the same `--at 200:0x4000a1e0:0` call, reaches the code section 1.5 already
-disassembled:
-
-```
-[    8707.8] [0x800065b8] <- 0 (4) at pc 0x400a1050 in main  i=44915230
-[  895721.0] [0x800065b8] <- 0x1 (4) at pc 0x4009c3d4 in main  i=443500349
-[  898942.4] [0x800065b8] <- 0x2 (4) at pc 0x4009f5c6 in main  i=449759644
-```
-
-`0x4009f5c6` is exactly the "write 2" site section 1.2 classified from the
-static read. So the 0/1/2 state machine in sections 1.0, 1.4 and 1.7 is now
-measured end to end across the two runs above, and the falsifier below is
-not triggered: a running transport (word 1) that receives a real STOP call,
-with its own precondition satisfied, does write 2 and nothing else. Section
-1.7's rule -- running iff the word is exactly 1 -- stands on both runs.
-
-** What sets `0x80000029` on the unit is still open.** `RTOS_FORK.md`
-section 9.4 measured this same byte as already `0x01` right after
-`load_project_live` on `out/_testproj`, with no extra setup. On
-`Ultimate FX 1.5.3`, staged the same way, it reads `0x00` after the same
-kind of load and stays `0x00` through 400 frames of the sequencer running.
-`startTransportLive()` (what `--sequencer` uses to start the transport)
-calls `FW_TRANSPORT` directly and does not go through the real `KEY_PLAY`
-handler, so whatever sets `0x80000029` may be a side effect of the real
-PLAY key path, of a specific project setting, or of both; this pass did not
-chase it further. **Concern for Tasks 13 to 15:** a raw `callAsMain` on
-`0x4000a1e0` (or any project-dependent equivalent) is not on its own proof
-that STOP was pressed; check `0x80000029` first, or drive STOP through the
-real key path.
-**Falsifier:** a write to `0x80000029` found in the image, or a run on a
-third project where the byte is set after load without the poke.
-
-**Falsifier for this whole section (unchanged, and not triggered):** a
-transport stop from the STOP key that leaves the word at 0 rather than 2, or
-a running transport whose word is anything other than 1. Neither happened:
-every write measured matches sections 1.0, 1.4, 1.5 and 1.7.
+A gate that needs a pause calls `0x4000a1e0` directly (`--at
+FRAME:0x4000a1e0:0`). It must poke `0x80000029` to 1 first, or the handler
+returns without touching the word: a project made by the firmware has
+transport receive off. With the byte set, the call writes 2 at `0x4009f5c6`.
+`verify_stems.py` does this (`MIDI_STOP`, `STOP_GATE`).
 
 ### 1.7 Interface
 
@@ -574,15 +481,16 @@ every write measured matches sections 1.0, 1.4, 1.5 and 1.7.
 | at a time reports a flat 0, because the value lands in 0x800065bb.
 .equ	TRANSPORT,		0x800065b8
 
-| Stopped AND rewound. The state at engine init, after REC's stop and
-| rewind, and after the sequencer's own end of sequence stop.
+| Stopped AND rewound. The state at engine init, after the STOP key, after
+| MIDI Start's stop and rewind, and after the sequencer's own end of
+| sequence stop.
 .equ	TRANSPORT_REWOUND,	0
 
 | Running. The ONLY value that means the sequencer is playing.
 .equ	TRANSPORT_RUNNING,	1
 
-| Stopped by the STOP key, with the position kept. Non-zero, which is why
-| a tst.l cannot be used to detect a stop.
+| Paused, with the position kept: PLAY while playing, or MIDI Stop.
+| Non-zero, which is why a tst.l cannot be used to detect a stop.
 .equ	TRANSPORT_STOPPED,	2
 ```
 
@@ -594,9 +502,9 @@ The test the per-frame hook must use, in place of the plan's `tst.l`:
 ```
 
 The start edge is any value going to 1. The stop edge is 1 going to anything
-else, and the value it goes to says which stop it was: 2 for the STOP key, 0
-for the sequencer's own end of sequence stop, for REC's stop and rewind, and
-for engine init.
+else, and the value it goes to says which stop it was: 2 for a pause (PLAY
+while playing, MIDI Stop), 0 for the panel's STOP key, MIDI Start's stop and
+rewind, the sequencer's own end of sequence stop, and engine init.
 
 ## 2. The read-back half
 
@@ -5775,7 +5683,7 @@ out/emu/ot_emu $COMMON --at 100:0x4000a1e0:0,200:0x40a95602:0,300:0x4009b964:0,\
 ```
 
 `0x40a95602` is `stems_action`, `0x40a955e0` is `stems_state` and
-`0x4000a1e0` is the STOP key in this build. The first two move whenever the
+`0x4000a1e0` is the MIDI Stop handler (section 1.6). The first two move whenever the
 module or the remix's other modules change: re-read them with
 `m68k-elf-nm out/platform/runtime/runtime.elf` before reusing a command.
 
