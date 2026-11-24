@@ -78,6 +78,8 @@
         .set    S_POS,16                        | +16..+35: the voice's positions
         .set    S_INIT,36                       | the engine has been initialised
         .set    S_STARTF,40                     | a START this frame (wc_start): wcf_amp's start
+        .set    S_RUN,44                        | the transport word as wc_amp last saw it
+        .set    TRANSPORT,0x800065b8            | 1 = the sequencer is running
         .set    S_ENG,48
         .set    ST_SHIFT,9
         .set    ST_SIZE,512
@@ -133,7 +135,7 @@
 
 
         .global wc_pgdesc, wc_page, wc_retrig, wc_chrom, wc_render
-        .global eng_init, eng_adsr, eng_pos, eng_on, eng_off, eng_setup, eng_render, wcf_note, wcf_init, wcf_knobs, wcf_scale, wcf_setup, wcf_amp, wcf_clock
+        .global eng_init, eng_adsr, eng_pos, eng_on, eng_off, eng_setup, eng_render, wcf_note, wcf_init, wcf_knobs, wcf_scale, wcf_setup, wcf_amp, wcf_clock, wcf_kill
         .global wcf_table
 
         .align  4
@@ -574,7 +576,7 @@ wc_chrom:
         rts
 
 
-| ---- wc_amp: the track's AMP envelope, once a frame (the frame's last call).  The DSP's own envelope restarts from zero at every
+| ---- wc_amp: the track's AMP envelope, once a frame (the frame's last call); STOP ends the engine's voices (the transport edge).  The DSP's own envelope restarts from zero at every
 |      START, and with any attack but 0 that is a step down and a fade-in on a tone that is still sounding (measured under the port:
 |      the output fell to 0 within one sample at each START).  So, as SYNTH MACHINE does (modules/cxosc po_amp_snap), the DSP is
 |      left at ATK 0 / HOLD INF / REL INF, where its restart is invisible, and the engine applies the AMP page's ATK, HOLD and REL
@@ -608,6 +610,17 @@ wc_amp:
         pea     S_ENG(%a3)
         jsr     wcf_clock
         lea     8(%sp),%sp
+        move.l  TRANSPORT,%d0           | running -> stopped: the DSP is held at HOLD INF / REL INF, so nothing else ends the voices
+        move.l  S_RUN(%a3),%d1
+        move.l  %d0,S_RUN(%a3)
+        subq.l  #1,%d1
+        bne     .Lamp_run               | it was not running
+        subq.l  #1,%d0
+        beq     .Lamp_run               | it still is
+        pea     S_ENG(%a3)
+        jsr     wcf_kill
+        lea     4(%sp),%sp
+.Lamp_run:
         EMAC_ON
         move.l  S_STARTF(%a3),%d0       | wcf_amp(e, atk, hold, rel, start)
         move.l  %d0,-(%sp)
@@ -2665,6 +2678,27 @@ wcf_setup:
 	rts
 	.size	wcf_setup, .-wcf_setup
 	.align	2
+	.globl	wcf_kill
+	.type	wcf_kill, @function
+wcf_kill:
+	move.l 4(%sp),%a1
+	move.l %a1,%d0
+	add.l #164,%d0
+	lea (20,%a1),%a0
+.L149:
+	clr.l 8(%a0)
+	clr.l 12(%a0)
+	clr.l (%a0)
+	lea (36,%a0),%a0
+	cmp.l %a0,%d0
+	jne .L149
+	clr.l 216(%a1)
+	clr.l 212(%a1)
+	clr.l 220(%a1)
+	clr.l 224(%a1)
+	rts
+	.size	wcf_kill, .-wcf_kill
+	.align	2
 	.globl	wcf_clock
 	.type	wcf_clock, @function
 wcf_clock:
@@ -2675,18 +2709,18 @@ wcf_clock:
 	addq.l #1,%d0
 	move.l %d0,228(%a0)
 	cmp.l 12(%sp),%d1
-	jeq .L148
+	jeq .L153
 	move.l 232(%a0),%a1
 	move.l 12(%sp),236(%a0)
 	move.l %d0,232(%a0)
 	tst.l %d1
-	jlt .L148
+	jlt .L153
 	sub.l %a1,%d0
 	moveq #15,%d1
 	cmp.l %d0,%d1
-	jge .L148
+	jge .L153
 	move.l %d0,240(%a0)
-.L148:
+.L153:
 	move.l (%sp)+,%d2
 	rts
 	.size	wcf_clock, .-wcf_clock
@@ -2699,12 +2733,12 @@ wcf_amp:
 	move.l 12(%sp),%a0
 	move.l 212(%a0),%d0
 	tst.l 28(%sp)
-	jeq .L153
+	jeq .L158
 	moveq #1,%d1
 	moveq #126,%d2
 	move.l %d1,220(%a0)
 	cmp.l 20(%sp),%d2
-	jlt .L154
+	jlt .L159
 	move.l 20(%sp),%d2
 	lea wcf_amp_hold,%a1
 	lea (240,%a0),%a2
@@ -2717,39 +2751,39 @@ wcf_amp:
 	move.l %a1,224(%a0)
 	subq.l #1,%d1
 	tst.l %d1
-	jeq .L174
-.L156:
+	jeq .L179
+.L161:
 	cmp.l #1073741823,%d0
-	jgt .L161
+	jgt .L166
 	moveq #127,%d2
 	move.l 16(%sp),%d1
 	cmp.l %d1,%d2
-	jlt .L175
+	jlt .L180
 	lea wcf_amp_atk,%a1
 	moveq #15,%d2
 	move.l (%a1,%d1.l*4),%d1
 	lsl.l %d2,%d1
 	add.l %d1,%d0
 	cmp.l #1073741824,%d0
-	jgt .L176
-.L161:
+	jgt .L181
+.L166:
 	move.l (%sp)+,%d2
 	move.l %d0,216(%a0)
 	move.l (%sp)+,%a2
 	rts
-.L153:
+.L158:
 	tst.l 220(%a0)
-	jne .L177
+	jne .L182
 	move.l 24(%sp),%d1
 	moveq #127,%d2
 	cmp.l %d1,%d2
-	jlt .L178
-.L158:
+	jlt .L183
+.L163:
 	lea wcf_amp_rel,%a1
 	move.l (%a1,%d1.l*4),%d1
 	tst.l %d1
-	jeq .L161
-.L180:
+	jeq .L166
+.L185:
 	moveq #15,%d2
 	lsl.l %d2,%d1
 #APP
@@ -2759,40 +2793,40 @@ wcf_amp:
 | 0 "" 2
 #NO_APP
 	cmp.l #32768,%d1
-	jlt .L179
+	jlt .L184
 	sub.l %d1,%d0
 	cmp.l #2097152,%d0
-	jgt .L161
-.L165:
+	jgt .L166
+.L170:
 	move.l (%sp)+,%d2
 	clr.l %d0
 	move.l %d0,216(%a0)
 	move.l (%sp)+,%a2
 	rts
-.L178:
+.L183:
 	moveq #127,%d1
 	lea wcf_amp_rel,%a1
 	move.l (%a1,%d1.l*4),%d1
 	tst.l %d1
-	jeq .L161
-	jra .L180
-.L154:
+	jeq .L166
+	jra .L185
+.L159:
 	clr.l 224(%a0)
-	jra .L156
-.L179:
+	jra .L161
+.L184:
 	move.l #32768,%d1
 	sub.l %d1,%d0
 	cmp.l #2097152,%d0
-	jle .L165
-	jra .L161
-.L174:
+	jle .L170
+	jra .L166
+.L179:
 	move.l 24(%sp),%d1
 	moveq #127,%d2
 	clr.l 220(%a0)
 	cmp.l %d1,%d2
-	jge .L158
-	jra .L178
-.L175:
+	jge .L163
+	jra .L183
+.L180:
 	moveq #127,%d1
 	moveq #15,%d2
 	lea wcf_amp_atk,%a1
@@ -2800,24 +2834,24 @@ wcf_amp:
 	lsl.l %d2,%d1
 	add.l %d1,%d0
 	cmp.l #1073741824,%d0
-	jle .L161
-.L176:
+	jle .L166
+.L181:
 	move.l (%sp)+,%d2
 	move.l #1073741824,%d0
 	move.l %d0,216(%a0)
 	move.l (%sp)+,%a2
 	rts
-.L177:
+.L182:
 	move.l 224(%a0),%d1
 	tst.l %d1
-	jeq .L156
+	jeq .L161
 	move.l %d1,%a1
 	subq.l #1,%a1
 	move.l %a1,224(%a0)
 	subq.l #1,%d1
 	tst.l %d1
-	jne .L156
-	jra .L174
+	jne .L161
+	jra .L179
 	.size	wcf_amp, .-wcf_amp
 	.globl	wcf_amp_hold
 	.section	.rodata
