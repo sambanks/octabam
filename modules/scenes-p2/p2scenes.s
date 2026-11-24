@@ -73,13 +73,11 @@ frame_hook:
         lea     P2W,%a4                | a4 = this track's cache row
         moveq   #0,%d7                 | d7 = track
 tloop:  lea     TRK_BANK,%a0
-        moveq   #0,%d0
-        moveb   %a0@(0,%d7:l),%d0      | bank
+        movel   #BANK_STRIDE,%d2       | here, between the lea and the load: no address-use stall
+        mvzb    %a0@(0,%d7:l),%d0      | bank
         cmpil   #0xff,%d0
         beq     tnext
-        moveq   #0,%d1
-        moveb   %a0@(8,%d7:l),%d1      | part
-        movel   #BANK_STRIDE,%d2
+        mvzb    %a0@(8,%d7:l),%d1      | part
         mulu.l  %d0,%d2
         movel   #PART_STRIDE,%d3
         mulu.l  %d1,%d3
@@ -88,15 +86,13 @@ tloop:  lea     TRK_BANK,%a0
         moveal  %d2,%a3                | a3 = the track's part window
         lsll    #8,%d0
         orl     %d1,%d0
-        lsll    #8,%d0
         addil   #SEL_OFF,%d2
         moveal  %d2,%a0
-        moveq   #0,%d1
-        moveb   %a0@,%d1               | scene A
+        lsll    #8,%d0                 | here, between the moveal and the load
+        mvzb    %a0@,%d1               | scene A
         orl     %d1,%d0
         lsll    #8,%d0
-        moveq   #0,%d1
-        moveb   %a0@(1),%d1            | scene B
+        mvzb    %a0@(1),%d1            | scene B
         orl     %d1,%d0                | d0 = key
         cmpl    %a4@,%d0
         beq.s   cached
