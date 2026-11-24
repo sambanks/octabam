@@ -85,11 +85,17 @@ The copy runs on the engine task inside the save-as job. Stock's result
 register (`d2`) is not consulted: stock reports `FILE NOT FOUND` for a
 project with no `.strd` files and still writes the new folder.
 
-`verify_copy_project` runs it under the port: `kits.work` and `scenes.work`
-in the new folder byte for byte, and two module `FCOPY` calls. Not
-exercised: a sidecar subfolder (`stage_card.py` stages top-level files
-only), the unit, a long copy on the engine task (`BUFFERS/` with large
-WAVs).
+`verify_copy_project` runs it under the port, on the `copy-project` and
+`octabam` images: `kits.work` and `scenes.work` in the new folder byte for
+byte, no `.strd`, every other file of the old folder present. Other STORE
+clients (PLOCKS P2, BRAIN, ...) write their own `.work` files into the new
+folder at the bank writer, so the module copies only what is still missing;
+`FCOPY` calls from DRAM code were 3 for 2 sidecars on the `octabam` image and
+include those clients'. Not exercised under the port: a sidecar subfolder
+(`stage_card.py` stages top-level files only). Unit: the first version
+(which also copied `.strd`) carried `kits.work`, `scenes.*`, `p2lk01-16`,
+`brain.*` and a 10.6 MB `BUFFERS/` byte for byte, 24 Nov 2026; this
+version has not been on a unit.
 
 Limits that refuse with `COPY FAILED` (no silent truncate / partial
 copy): more than 64 projects in the set, a directory with more than 256
