@@ -1426,8 +1426,7 @@ producer_usb:
     movel   %d2,%a4@+               | T8 L, full speed
     movel   %d3,%a4@+               | T8 R, full speed
 .Lf_nomaster:
-    movel   prod_skip,%d0
-    addal   %d0,%a3                 | the next frame (the tracks' words advanced a3 already)
+    addal   prod_skip,%a3           | the next frame (the tracks' words advanced a3 already)
     lea     %a2@(8),%a2             | next frame
     addql   #8,prod_src
     cmpal   prod_end,%a3
