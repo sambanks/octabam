@@ -534,8 +534,24 @@ def main():
         return oks, arrivals
 
     f_dsp = {pc: pool.submit(interactive, pc) for pc in ("0:0x30000", "1:0x38000")}
+
+    # ---- quiesce: no reset while the DSP's frames have stopped -------------
+    # osw_quiesce masks the interrupts only once a frame has arrived; with the
+    # frames stopped (a stalled DSP, which takes no park and hangs the next
+    # image's upload) it returns Z set and osw_reset refuses the switch.
+    def quiesce():
+        q = f"call {rt['osw_quiesce']:#x}"
+        r = subprocess.run([str(EMU), "--image", str(home), "--preload", f"0x3ffc={norver}", "--interactive"],
+                           input="\n".join(["frame on", "run 300", q, "frame off", "run 20", q, "quit"]) + "\n",
+                           capture_output=True, text=True, cwd=ROOT)
+        (work / "quiesce.log").write_text(r.stdout + r.stderr)
+        return [l for l in r.stdout.splitlines() if l.startswith(("ok d0=", "err"))]
+    f_quiesce = pool.submit(quiesce)
     for run in after:
         run()
+    qs = f_quiesce.result()
+    check("quiesce: with frames arriving osw_quiesce masks and returns ready; with them stopped it refuses",
+          qs == ["ok d0=0x1", "ok d0=0"], "; ".join(qs))
     res = {pc: f.result() for pc, f in f_dsp.items()}
     oks = res["0:0x30000"][0]
     # osw_park's d0: bits 1..0 the cores that took the command, 3..2 / 5..4

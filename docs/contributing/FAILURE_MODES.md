@@ -822,6 +822,15 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
   - from N1 it froze at least 3 times (15 Nov, 18 Nov, 20 Nov) and returned several times;
   - from a counting `octabam` unit it froze once (20 Nov, switching to `OCTABAM D3`), after a power-cycle and a healthy reading;
   The ring fingerprint and the boot screen's version string do not show a fall-back; `ot_card.py image` does.
+- **Cause (inferred from the source):** the switcher masked the ColdFire's interrupts at any point in the frame and
+  reset whether or not each core took the park (`MB_PARK` was recorded, never tested). A stalled DSP takes no park, and
+  a mask in the middle of the frame's transfer chain can leave a core waiting for a block; an unparked core abandons
+  the next image's upload.
+- **Fix:** `osw_quiesce` (`modules/remix-switch/README.md`, "Between frames, or not at all"): no frame in 20 ms refuses
+  the switch with `DSP STOPPED: REBOOT` and does not reset; otherwise the mask lands after the chain's last
+  step. The load refuses a short card read (`IO ERROR`). **Gate:** `verify_remix_switch` (quiesce). **Check (open on
+  hardware):** COMMAND 3 and BRAIN > REMIXES from a stalled DSP refuse; `MB_PARK` (`0x41200038`, PEEK) reads 3 after
+  every switch.
 
 |  |
 
