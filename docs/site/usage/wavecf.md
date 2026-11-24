@@ -15,7 +15,7 @@ answering while the audio keeps playing.
 Double-tap the [TRACK] key to open the machine list, choose **WAVE** (below OCTA-303 when both are in the
 image, and the list scrolls to it), [YES]. [FUNC] + [SRC] opens the same list; on a track with a sample it shows
 the sample list first, and [LEFT] reaches the machines. A new WAVE track starts at TUNE C3, FRAM 0, CHRD MAJ,
-VOIC 3, SPRD 0, GLID 0, and its AMP page at ATK 0, HOLD 40, REL 56 (the stock AMP page holds a note forever).
+VOIC 3, SPRD 0, GLID 0, and its AMP page at ATK 0, HOLD 40, REL 56 (the stock AMP page holds a note forever). [STOP] ends every WAVE note at once, whatever the AMP page says.
 
 ## Controls
 

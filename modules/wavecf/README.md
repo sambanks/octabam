@@ -32,7 +32,7 @@ own choose-a-machine code is a submodule's and does not enforce it.
    runs the AMP page's values with the DSP's measured laws (Tim Hastie, `modules/cxosc/poly.s`): ATK a linear ramp to
    full in 3.85 ms x 2^(ATK / 8.53) with a floor of 16 frames (5.8 ms); HOLD a timer from the START in 1/128 steps
    (frames a step timed from the sequencer); REL exponential, tau 0.295 ms x 2^(REL / 8.53) floored at 1 ms, 127 =
-   INF. A START on a sounding track continues from its level. A finished note stops the engine's voices. A track newly
+   INF. A START on a sounding track continues from its level. A finished note stops the engine's voices, and so does STOP (the transport word `0x800065b8` going from 1 to anything else: `wcf_kill`; a live note played with the transport stopped is left alone). A track newly
    chosen as WAVE gets AMP ATK 0, HOLD 40, REL 56: the stock page (HOLD INF, REL INF) holds a note forever
    (measured on the unit, 7 Nov 2026: with REL left at full the tones never stopped).
 3. Notes follow SCALE QUANTIZER's scale when one is set: each chord note moves to the nearest degree, ties down
