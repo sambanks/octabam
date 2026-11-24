@@ -355,7 +355,7 @@ def main() -> int:
           and "ef_tone_mode" not in block(src, "ef_pitch_rank:", "ef_snap_note:"))
     check("tonal settings persist per audio and MIDI track with v11 PHRS migration",
           "EF_TONE_B, 16*EF_TONE_REC" in src
-          and "EF_VER,    11" in src and "ef_tone_addr:" in src
+          and "EF_VER,    12" in src and "ef_tone_addr:" in src
           and "addil   #8,%d0" in block(src, "ef_tone_addr:", "ef_tone_save:")
           and "el_v8:" in src and "TON_STYLE" in block(src, "el_v8:", "el_v7:")
           and "el_v9:" in src and "clrb    %a0@(TON_JUMP)" in block(src, "el_v9:", "el_v8:")

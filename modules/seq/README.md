@@ -86,11 +86,10 @@ Hold **`[TRACK]`** + **`[PAGE]`** opens SEQ on that track. Selecting another tra
 open retargets **`[YES]`** and loads that track's per-track params. DPTH and
 PLOCK PULS/ROT are remembered **per DEST** on that track. D/E stay live
 even when LANE is TRIG (no auto-focus switch). Slots + DEST tables live in
-DRAM and in `euclid.work` (audio recipes, per-DEST depth/plock + LANE,
-separate MIDI-track recipes and per-flat depths, and per-track tonal
-settings; STORE client, `EF_VER` 11) on SAVE PROJECT / bank write. Older files
-migrate their saved tonal settings; files predating tonal settings use the
-defaults. **Pattern length:** shown as `LEN n` at
+DRAM and in `seq.work` (audio and MIDI settings, per-destination depth and
+PLOCK rhythm, plus FX page-two settings; STORE client, `EF_VER` 12) on SAVE
+PROJECT / bank write. Older files migrate their saved settings. **Pattern
+length:** shown as `LEN n` at
 the bottom right. Defaults: TRIG PULS 5,
 DEST = SRC PTCH on audio and NOTE on MIDI, ROT/DPTH/PLOCK PULS 0,
 LANE = TRIG.
@@ -195,7 +194,7 @@ at VOIC 2. SEQ 82 had displayed -64 in those slots. The report does not
 provide separate measurements of audio pitch or MIDI timing.
 
 MIDI mode has separate TRIG/PLOCK rhythms, per-destination depth and
-settings stored in `euclid.work` version 11. The reader migrates earlier
+settings stored in `seq.work` version 12. The reader migrates earlier
 versions. The Part page-1 read window is registered with STORE;
 `store_part_midi_context` selects the playing MIDI Part independently of
 the audio engine and UI selection. All MIDI writes update the bank and

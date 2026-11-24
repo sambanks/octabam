@@ -14,10 +14,12 @@ release randomizes the focused lane's hit positions; PHRS RAND generates
 new in-scale pitches on each fill. [CUE]+[TRACK] keeps stock cue behavior.
 TRACK key shortcuts remain stock. [FUNC]+[BANK] opens the clear menu; [NO]
 closes SEQ or returns from the menu. Bare [PAGE] keeps its stock function.
-Settings are stored per track and destination in euclid.work through STORE.
+Audio and MIDI settings are stored per track in seq.work. Audio FX page-two
+destinations write their step locks to PLOCKS P2, which owns playback.
 """
 
 import runpy
+import idspace
 from pathlib import Path
 
 from remix.schema import (
@@ -40,9 +42,11 @@ MKII_TRIG_EDIT = 0x4007c0d0
 MKII_TRIG_EDIT_STOCK = H("60ee00004ab9460e")  # bra.b 0x4007c0c0; ...
 
 
-def _sources(modules, _remix):
+def _sources(modules, remix):
     ids = runpy.run_path(str(Path(__file__).parents[1] / "store/manifest.py"))["CLIENT_IDS"]
-    return f".set EF_CLIENT, {ids['SEQ']}\n"
+    return (f".set EF_CLIENT, {ids['SEQ']}\n"
+            f".set FX2_TBL, {idspace.fx2_ids(remix):#x}\n"
+            f".set FX2_ID_MAX, {remix.id_space - 1}\n")
 
 
 MODULE = Module(
@@ -84,7 +88,7 @@ MODULE = Module(
         SymbolRef(FUNC_BANK_PRESS_MKI, FUNC_BANK_STOCK_MKI, "ef", "ef_fb_mki",
                   "MKI FUNC+BANK: clear LISTPOP while SEQ open, else stock/KITS"),
     ),
-    requires=("STORE",),
+    requires=("STORE", "PLOCKS P2"),
     gates=(
         Gate("tools/verify/verify_seq.py", venv=True, stage="image"),
         Gate("tools/verify/verify_seq_tonal.py", venv=True, stage="image"),

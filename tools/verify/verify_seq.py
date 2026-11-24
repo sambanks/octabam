@@ -44,6 +44,14 @@ def pattern(n: int, k: int, rot: int = 0) -> list[int]:
     return out
 
 
+def _seq_p2_bridge_ok() -> bool:
+    p2 = (ROOT / "modules/plocks-p2/p2locks.s").read_text()
+    bridge = p2.split("plk_seq_store:", 1)[-1].split("| Refresh FX SETUP", 1)[0]
+    return (".globl  plk_seq_store" in p2 and "plk_init" in bridge
+            and "nv_touch" in bridge and "EDITED" in bridge
+            and "addl    %d1,%d0" in bridge and "jsr     DIRTY" in bridge)
+
+
 def depth_range(depth: int, base: int = 64) -> tuple[int, int]:
     """Generic DEST lock window: [Part-DEPTH .. Part+DEPTH] clamped 0..127."""
     lo = max(0, base - depth)
@@ -337,12 +345,16 @@ def check_ui(src: str) -> None:
           re.search(r"\.set\s+SLOT_B,\s*28\b", src) is not None)
     check("ef_bank has 8 slots",
           re.search(r"ef_bank:\s*\n\s*\.rept\s+8\b", src) is not None)
-    check("per-DEST depth + audio/MIDI PLOCK recipes and tonal state in euclid.work v11",
+    check("per-DEST depth + audio/MIDI PLOCK recipes and tonal state in seq.work v12",
           "ef_dep_mem:" in src and "ef_dep_load:" in src and "ef_dep_save:" in src
           and "ef_plk_mem:" in src and "ef_plk_load:" in src and "ef_plk_save:" in src
           and "ef_lane_mem:" in src and "ef_lane_load:" in src and "ef_lane_save:" in src
           and "ef_plk_expand_v3:" in src
-          and re.search(r"\.set\s+EF_VER,\s*11\b", src) is not None
+          and re.search(r"\.set\s+EF_VER,\s*12\b", src) is not None
+          and "EF_FILE_V11" in src and "el_v11:" in src
+          and "EF_P2_DEP_B" in src and "EF_P2_PLK_B" in src
+          and "ef_p2_dep_mem" in src and "ef_p2_plk_mem" in src
+          and "plk_seq_store" in src and "seq.work" in src
           and "EF_FILE_V4" in src and "el_v4:" in src
           and "EF_FILE_V5" in src and "el_v5:" in src
           and "ef_midi_bank" in src and "ef_midi_dep_mem" in src
@@ -627,12 +639,12 @@ def check_ui(src: str) -> None:
     check("ef_trkkey calls stock SEL_TRACK (sequencer view)",
           ("0x40083bf8" in _block(src, "ef_trkkey:", "ef_dest_label:")
            or "SEL_TRACK" in _block(src, "ef_trkkey:", "ef_dest_label:")))
-    check("ef_store_slot marks ef_dirty for euclid.work",
+    check("ef_store_slot marks ef_dirty for seq.work",
           "ef_dirty" in _block(src, "ef_store_slot:", "ef_load_slot:"))
     check("STORE handlers persist ef_bank",
           "ef_st_pstore_pre:" in src and "ef_write_due" in src
           and "ef_st_loadall_post:" in src and "ef_load_file" in src
-          and "euclid.work" in src)
+          and '"%s/seq.work"' in src)
     check("ef_follow_ui applies ef_pending then load_slot",
           "ef_pending" in _block(src, "ef_follow_ui:", "ef_sync_len:")
           and "ef_load_slot" in _block(src, "ef_follow_ui:", "ef_sync_len:"))
@@ -752,6 +764,8 @@ def check_ui(src: str) -> None:
           and "beq.s   wm_off" in _block(src, "wm0b:", "wm_on:")
           and "ef_pfree" not in _block(src, "wm0b:", "wm_on:"))
     man = (ROOT / "modules/seq/manifest.py").read_text()
+    check("SEQ requires PLOCKS P2 for FX page-two playback",
+          'requires=("STORE", "PLOCKS P2")' in man)
     check("FUNC+BANK clear LISTPOP (soft-close SEQ; restore on list close)",
           "ef_clear_menu:" in src
           and "M_OPEN" in src and "EF_CL_CBS" in src
@@ -856,14 +870,30 @@ def check_ui(src: str) -> None:
           "LFD_RESOLVER" in _block(src, "ef_dest_name:", "ef_is_synth:")
           and "FLEX_P" in _block(src, "ef_dest_name:", "ef_is_synth:")
           and "TITLE_OFF" in _block(src, "dn_got:", "dn_miss:"))
+    check("FX page-2 DESTs use PLOCKS P2 store and keep per-track settings",
+          "DEST_P2FIRST" in src and "DEST_P2LAST" in src
+          and "plk_seq_store" in _block(src, "ed_p2_store:", "ed_midi_store:")
+          and "ef_p2_dep_mem" in _block(src, "ef_dep_ptr:", "ef_dep_load:")
+          and "ef_p2_plk_mem" in _block(src, "ef_plk_ptr:", "ef_plk_load:")
+          and "ef_p2_clamp" in _block(src, "ed_p2_store:", "ed_midi_store:")
+          and "ef_fx_dest" in _block(src, "dn_p2:", "dn_fx1:")
+          and "DEST_P2LAST" in _block(src, "ef_clear_all_dest:", "cad_midi_rts:")
+          and _seq_p2_bridge_ok())
+    check("FX DEST navigation and labels share the descriptor resolver",
+          "ef_fx_dest" in _block(src, "ef_audio_dest_valid:", "ef_fx_dest:")
+          and "ef_fx_dest" in _block(src, "dn_p2:", "dn_amp:")
+          and "movel   ef_trk,%d0" in _block(src, "ef_fx_dest:", "ef_is_cx:"))
     check("CX DEST 30..34 SRC CAR..PWM via ef_cx_bank (stackable)",
           "ef_cxpriv_tab" in src and "DEST_CXLAST" in src and "ef_is_cx" in src
           and "ef_cx_bank" in src and "ef_cx_bits" in src
           and "ef_cx_store" in src and "ef_cx_clear" in src
           and "ef_part_setup" in src and "PLAY_SETUP" in src)
-    check("DEST clamp uses ef_dest_max (29 / 34 on CX)",
+    check("DEST clamp uses ef_dest_max (page 1, CX, and FX page 2)",
           "ef_dest_max" in _block(src, "ef_nudge:", "ef_nudge_rts:")
           and "ef_dest_max" in _block(src, "ef_load_slot:", "ef_follow_ui:"))
+    check("non-CX tracks skip CX's private destination range",
+          "ef_is_cx" in _block(src, "ef_audio_dest_valid:", "ef_fx_dest:")
+          and "ef_audio_dest_seek" in _block(src, "ef_load_slot:", "ef_follow_ui:"))
     check("load_slot snaps XVOL (17) to BAL (16)",
           "DEST_XVOL" in _block(src, "ef_load_slot:", "ef_follow_ui:"))
     check("DEPTH values use plain %d",
@@ -871,7 +901,7 @@ def check_ui(src: str) -> None:
 
     write = _block(src, "ef_write_mask:", "ef_write_dest:")
     check("write_mask calls ef_write_dest", "ef_write_dest" in write)
-    check("write_mask clears page-1 lock or CX bank slot only",
+    check("write_mask clears page-1 lock, CX bank slot, or PLOCKS P2 slot",
           "ef_cx_clear" in write
           and "addl    ef_dest,%d1" in write
           and "LOCK_VOL" not in write

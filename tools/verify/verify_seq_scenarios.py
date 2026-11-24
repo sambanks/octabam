@@ -27,10 +27,14 @@ DBPTR_ADDR = 0x46c82456
 UI_PTN = 0x100b14d0
 UI_TRACK = 0x100b14cc
 UI_PART = 0x100b14cf
+CUR_BANK = 0x80000002
 MIDI_BANK_TRACKS = 0x8000666e
 MIDI_PART_TRACKS = MIDI_BANK_TRACKS + 8
 PTN_STR = 0x8ed8
 PART_STR = 0x18B2
+FX1_OFF = 0x8ed80
+FX2_OFF = 0x8ed88
+SIG_OFF = 0x8edbc
 BANK_STR = 0x9B340
 PARTS_BASE = 0x400E21E0 + 0x8ED80
 TRK_STR = 0x91a
@@ -211,12 +215,15 @@ class SeqPort:
         poke32(self.p, b + 16, 0)
         self.p.poke(b + 20, bytes(8))
         poke8(self.p, self.lane_mem + trk, lane)
-        poke8(self.p, self.dep + trk * 36 + dest, depth & 0xFF)
-        off = (trk * 36 + dest) * 12
-        poke8(self.p, self.plk + off, pulses & 0xFF)
-        poke8(self.p, self.plk + off + 1, rot & 0xFF)
-        poke8(self.p, self.plk + off + 2, 0)
-        self.p.poke(self.plk + off + 4, bytes(8))
+        if dest >= 35:
+            slot = trk * 12 + dest - 35
+            poke8(self.p, local_sym("ef_p2_dep_mem") + slot, depth)
+            plk = local_sym("ef_p2_plk_mem") + slot * 12
+        else:
+            slot = trk * 36 + dest
+            poke8(self.p, self.dep + slot, depth)
+            plk = self.plk + slot * 12
+        self.p.poke(plk, bytes((pulses, rot)) + bytes(10))
         for a, v in (
             (self.lane, lane),
             (self.dest, dest),
@@ -1257,12 +1264,100 @@ def run_scenarios() -> int:
             check(f"MIDI CUE trigs reach battery mirror at DPTH {depth}",
                   port.peek(mirror, 8) == port.peek(midi_record, 8))
 
+    run_fx_destinations()
     print(f"SEQ scenarios: {FAILS} failed checks")
     return FAILS
 
 
+def run_fx_destinations() -> None:
+    # Stock FILTER has controls on both pages. An empty T2 sits between
+    # two tracks with effects, so a lookup stuck on T1 cannot pass.
+    with MenuPort(IMAGE, CARD, "OCTABAM", "A", mkii=True) as port:
+        port.settle()
+        for _ in range(3):
+            port.press("no", settle=80)
+        s = SeqPort(port)
+        part = port.long(DBPTR_ADDR) + u8(port, UI_PART) * PART_STR
+        port.poke(part + FX1_OFF, bytes((4, 0, 4)))
+        port.poke(part + FX2_OFF, bytes((4, 0, 4)))
+        port.poke(0x80000ec4, bytes((4, 0, 4)))
+        port.poke(0x80000ecc, bytes((4, 0, 4)))
+        port.poke(part + SIG_OFF, bytes(3 * 30))
+        poke32(port, s.bank + 28 + 8, 44)  # saved FX destination, now absent
+        s.open_seq("t2")
+        check("T2 drops a saved destination for a removed effect",
+              port.long(s.dest) == 16, str(port.long(s.dest)))
+        cursor = local_sym("ef_cursor")
+
+        def forward() -> int:
+            poke32(port, cursor, 3)
+            port.proc.command("knob 0x33 1", "ok")
+            port.run(180)
+            return port.long(s.dest)
+
+        for lane in (0, 1):
+            poke32(port, s.lane, lane)
+            poke32(port, s.dest, 16)
+            actual = [forward() for _ in range(3)]
+            check(f"no FX on T2, lane {lane}: DEST stays at BAL",
+                  actual == [16, 16, 16], str(actual))
+
+        port.press("t3", settle=300)
+        poke32(port, s.dest, 23)
+        actual = [forward() for _ in range(14)]
+        expected = list(range(35, 41)) + list(range(24, 30)) + [41, 42]
+        check("T3 groups both pages of FX1 before both pages of FX2",
+              port.long(sym("ef_focus")) == 2 and actual == expected, str(actual))
+        if actual != expected or port.long(sym("ef_focus")) != 2:
+            return
+        # Generate the FX2 lock through YES, then watch the running track's
+        # live parameter byte. No lock bytes are injected into PLOCKS P2.
+        actual = [forward() for _ in range(2)]
+        check("T3 moves forward through FX2 in order", actual == [43, 44], str(actual))
+        if actual != [43, 44]:
+            return
+        end = [forward() for _ in range(4)]
+        check("T3 stops at the last FX2 control", end == [45, 46, 46, 46], str(end))
+        trk, fx_slot = 2, 9
+        base = 0x80000810 + trk * 72 + 0x32
+        port.poke(part + 0x8f07e + trk * 30 + fx_slot, bytes((64,)))
+        s.prime(lane=0, dest=actual[-1], depth=63, pulses=1, trk=trk)
+        s.yes()
+        bank, pattern = u8(port, CUR_BANK), u8(port, UI_PTN)
+        store = sym("STORE") + ((bank * 16 + pattern) * 8 + trk) * 64 * 12
+        def check_playback(lane_name: str, step: int) -> None:
+            records = port.peek(store, 64 * 12)
+            writes = {i: v for i, v in enumerate(records) if v != 255}
+            offset = step * 12 + fx_slot
+            check(f"{lane_name} YES writes only the selected T3 step and slot",
+                  writes.keys() == {offset}, str(writes))
+            value = writes.get(offset)
+            s.close_seq()
+            port.press("play", settle=0)
+            seen = set()
+            for _ in range(50):
+                port.run(40)
+                seen.add(u8(port, base + fx_slot))
+            check(f"{lane_name} playback applies the generated FX2 lock",
+                  value is not None and value != 64 and value in seen,
+                  f"generated={value} live={seen}")
+            port.press("stop")
+
+        check_playback("TRIG", 0)
+        trigs = mask_of(port, trk)
+        s.open_seq("t3")
+        s.prime(lane=1, dest=44, depth=63, pulses=1, rot=1, trk=trk)
+        s.yes()
+        check("PLCK keeps the sample trig and creates a trigless step",
+              mask_of(port, trk) == trigs and mask_bit(tl_of(port, trk), 1))
+        check_playback("PLCK", 1)
+
+
 def main() -> int:
-    # Static gate still accepts remix arg; ignore it.
+    if "--fx-only" in sys.argv:
+        run_fx_destinations()
+        return int(FAILS != 0)
+    # The fixture uses stock effects on any supported remix.
     return 0 if run_scenarios() == 0 else 1
 
 

@@ -84,6 +84,7 @@
         .globl  plk_place, plk_clrlocks, plk_clrtrack, plk_tcopy, plk_tpaste
         .globl  plk_st_bankw_pre, plk_st_bankcopy, plk_st_loadall_pre, plk_st_loadmask_pre
         .globl  plk_st_newproj, plk_st_tocs1, plk_st_fromcs1, plk_st_answer
+        .globl  plk_seq_store
         .extern store_refuse
 
 
@@ -279,6 +280,46 @@ pe_done:
         moveq   #0,%d0
         movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
+        rts
+
+| SEQ page-2 bridge. Stack args: value, bank, pattern, track, step, FX slot.
+| FX slots 0..5 are FX1; 6..11 are FX2. 0xff clears the destination.
+| PLOCKS P2 already owns the pattern-scoped table and playback pipeline.
+plk_seq_store:
+        lea     %sp@(-28),%sp
+        movem.l %d2-%d7/%a2,%sp@
+        bsr.w   plk_init
+        movel   %sp@(32),%d6            | value
+        movel   %sp@(36),%d5            | bank
+        movel   %sp@(40),%d4            | pattern
+        movel   %sp@(44),%d3            | track
+        movel   %sp@(48),%d2            | step
+        movel   %sp@(52),%d1            | FX slot
+        movel   %d5,%d0
+        lsll    #4,%d0
+        addl    %d4,%d0                 | bank*16 + pattern
+        lsll    #3,%d0
+        addl    %d3,%d0                 | (bank*16 + pattern)*8 + track
+        lsll    #6,%d0
+        addl    %d2,%d0                 | track's 64 steps
+        moveq   #REC,%d2
+        mulu.l  %d2,%d0
+        addl    %d1,%d0                 | 12 page-2 slots per step
+        lea     STORE,%a0
+        moveb   %d6,%a0@(0,%d0:l)
+        moveq   #1,%d0
+        movel   %d0,EDITED
+        movel   %d5,%d0
+        bsr.w   nv_touch
+        movel   DBPTR,%d0
+        addil   #0x9b332,%d0
+        moveal  %d0,%a0
+        moveq   #1,%d0
+        movel   %d0,%a0@
+        movel   %d0,0x100f8598
+        jsr     DIRTY
+        movem.l %sp@,%d2-%d7/%a2
+        lea     %sp@(28),%sp
         rts
 
 | Refresh FX SETUP after stock's hold-event and release page redraws.
