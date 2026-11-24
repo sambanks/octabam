@@ -20,6 +20,8 @@ events on the panel link at emulated times, no wall-clock sleeps), dumps RAM at 
            own cursor, row 0; UP held there; row 4 SIZE, B to 0 then +7 ->
            flat 26 = 7; row 5 DLY, A to 0 then +11 -> page-2 slot 10 = 11;
            row 1 TIME, A to 0 then +5 -> page-2 slot 11 = 5
+  copy     FUNC+REC, FUNC+STOP and a second FUNC+STOP, one boot each
+           (copypaste(): the values, MODE first, the undo)
   tempo    LEVEL to the 30.0 floor and +5, then FUNC + LEVEL +3 -> 35.3 BPM
            (project tempo 0x80000020 = BPM x 24; skipped while the pattern
            tempo is on)
@@ -57,6 +59,7 @@ LIVEB = 0x80000810
 DUMP_BASE, DUMP_LEN = 0x460d0000, 0xbb0000
 ROM_BASE, ROM_LEN = 0x400b0000, 0x28000        # the stock layers and ours live here
 KEY_TEMPO, KEY_NO, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_FUNC = 0x18, 0x32, 0x21, 0x33, 0x20, 0x2d
+KEY_LEFT, KEY_STOP, KEY_REC = 0x34, 0x27, 0x29
 TEMPO = 0x80000020
 LIVE_IDS = 0x80000ec4          # the live FX1/FX2 id arrays (verify_set.LIVE_IDS)
 
@@ -160,6 +163,98 @@ def scenes(image, card, setname, name, work, dly, p2, check):
     chk(f"scenes: no other {t} lock in scene {sa} (the hidden page's knob A is flat 0)", not others, f"{others}")
     chk(f"scenes: B held before TEMPO: WET -9 locks scene {sb}'s flat 29 = {max(wet - 9, 0)}",
         lock(sb, 29) == max(wet - 9, 0), f"lock {lock(sb, 29)}")
+    return fails[0]
+
+
+def copypaste(image, card, setname, name, work, dly, vrb, undo, check):
+    """A boot a case: FUNC+REC copies the window's values, FUNC+STOP pastes them,
+    a second FUNC+STOP undoes the paste (`undo`).
+
+    Copied: delay MODE REVERSE (page-2 slot 0 = 2), TIME 50 (slot 5, after the
+    mode's view put 20 there), SLEN 1 (slot 3); reverb TIME 5, SIZE 7. Then
+    delay MODE back to CLEAN and TIME 99, reverb TIME 30 and SIZE 40. The
+    paste puts the copy back; MODE goes first, so MODE DEFAULTS' re-default
+    does not leave TIME at the view's 20. With `undo` the second paste
+    puts the 99 / 30 / 40 back. Returns the failures."""
+    lines, now = [], [1500.0]
+
+    def send(line, pause=GAP):
+        lines.append(f"{now[0]:.0f} {line}")
+        now[0] += pause
+
+    def key(code, pause=3 * GAP):
+        send(f"key {code:#x} down", DOWN)
+        send(f"key {code:#x} up", pause)
+
+    def knob(n, v):
+        send(f"enc {n} -64"); send(f"enc {n} -64"); send(f"enc {n} {v}", 3 * GAP)
+
+    def func(code):
+        send(f"key {KEY_FUNC:#x} down", GAP)
+        key(code, GAP)
+        send(f"key {KEY_FUNC:#x} up", 3 * GAP)
+
+    key(KEY_NO, 5 * GAP)
+    key(KEY_TEMPO, 5 * GAP)
+    send("enc 0 -5"); send("enc 0 2", 3 * GAP)       # row 0 MODE: REVERSE
+    key(KEY_DOWN); knob(0, 50)                       # row 1 TIME
+    for _ in range(4):
+        key(KEY_DOWN)                                # row 5: SLEN
+    knob(1, 1)
+    key(KEY_RIGHT)
+    for _ in range(4):
+        key(KEY_DOWN)                                # reverb row 4: SIZE
+    knob(1, 7)
+    for _ in range(3):
+        key(KEY_UP)                                  # row 1: TIME
+    knob(0, 5)
+    func(KEY_REC)
+    key(KEY_LEFT)
+    for _ in range(5):
+        key(KEY_UP)                                  # delay row 0: MODE
+    send("enc 0 -5", 3 * GAP)                        # CLEAN
+    key(KEY_DOWN); knob(0, 99)                       # row 1: TIME
+    key(KEY_RIGHT)                                   # reverb row 1: TIME
+    knob(0, 30)
+    for _ in range(3):
+        key(KEY_DOWN)
+    knob(1, 40)                                      # row 4: SIZE
+    func(KEY_STOP)
+    if undo:
+        func(KEY_STOP)
+    send("quit")
+    script = work / f"copypaste{int(undo)}.txt"
+    script.write_text("\n".join(lines) + "\n")
+    run_card = work / f"card_copypaste{int(undo)}.img"
+    run_card.write_bytes(card.read_bytes())
+    lanes = work / f"lanes_copypaste{int(undo)}.bin"
+    log = OUT / f"port_copypaste{int(undo)}.txt"
+    cmd = [str(EMU), "--image", str(image), "--card", str(run_card), "--set", setname,
+           "--project", name, "--load-ms", "90000", "--live-script", str(script),
+           "--mem-dump", f"{LIVEB:#x},0x240={lanes}"]
+    with open(log, "w") as lf:
+        lf.write(" ".join(cmd) + "\n"); lf.flush()
+        subprocess.run(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT, timeout=900)
+    fails = [0]
+
+    def chk(label, ok, detail=""):
+        fails[0] += 0 if ok else 1
+        check(label, ok, detail)
+
+    what = "undo" if undo else "paste"
+    chk(f"copy/{what}: the port ended on quit", "ended on quit" in log.read_text())
+    if not lanes.is_file():
+        return fails[0]
+    lane = lanes.read_bytes()
+    L = lambda t, o: lane[t * 72 + o]
+    got = {"mode": L(dly, 0x38), "time": L(dly, 0x3d), "vtime": L(vrb, 0x3d), "vsize": L(vrb, 26)}
+    if undo:
+        want = {"mode": 0, "time": 99, "vtime": 30, "vsize": 40}
+    else:
+        want = {"mode": 2, "time": 50, "vtime": 5, "vsize": 7}
+        got["slen"], want["slen"] = L(dly, 0x3b), 1
+    chk(f"copy/{what}: delay MODE, TIME, SLEN and reverb TIME, SIZE read back", got == want,
+        f"got {got}, want {want}")
     return fails[0]
 
 
@@ -309,6 +404,9 @@ def main():
           ", ".join(f"{n:#x}" for n in inside))
     if dly is not None:
         fails += scenes(image, card, setname, name, work, dly, "SCENES P2" in mods, check)
+    if dly is not None and vrb is not None:
+        for undo in (False, True):
+            fails += copypaste(image, card, setname, name, work, dly, vrb, undo, check)
     print(f"verify_tempo_bus: {fails} failure(s)")
     return 1 if fails else 0
 

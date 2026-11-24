@@ -15,9 +15,22 @@ page would show.
 | LEFT / RIGHT | focus DELAY / REVERB; each box keeps its own cursor |
 | LEVEL | BPM in whole steps (×7 while LEVEL is pushed) |
 | FUNC + LEVEL | BPM in 0.1 steps |
+| FUNC + REC | copies the values of both boxes |
+| FUNC + STOP | pastes the copy; FUNC + STOP again undoes the paste |
 | scene A or B held + A or B | sets the held scene's lock on the selected parameter |
 | scene A or B held + press A or B | removes the held scene's lock on the selected parameter |
 | [TEMPO], [YES], [NO] | close |
+
+## Copy and paste
+
+FUNC + REC copies every parameter in both boxes: the delay's and the
+reverb's, including MODE. FUNC + STOP writes them back to the delay and
+reverb host tracks of the current Part, so a copy made in one Part pastes
+into another. A second FUNC + STOP undoes the paste; turning a knob in the
+window ends the undo. A toast confirms each (BUS COPIED, BUS PASTED, UNDO).
+The copy is kept until power-off. A box whose engine
+is on no track of the Part is skipped. With scene A or B held, FUNC + REC and
+FUNC + STOP do nothing.
 
 ## Scene locks
 
