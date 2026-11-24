@@ -28,13 +28,14 @@
 | ASSIGN, FUNC+TRACK mute, TRACK+PLAY/STOP/BANK) then SEQ retarget;
 | CUE+TRACK = stock cue-a-track.
 |
-| DEST = LFO SETUP PMTR targets that Euclid can drive:
+| DEST = LFO SETUP PMTR targets plus FX1/FX2 page-2 parameters:
 |   0..29 page-1 lock flats (skip AMP XVOL=17). Labels PAGE+PARAM.
 |   30..34 on CX OSC: SRC CAR/MOD/SYMM/FDBK/PWM (same as LFO). These are
 |   PLAYBACK SETUP knobs - not stock p-lock flats. YES stores per-step
 |   values in ef_cx_bank / ef_cx_bits (DRAM); CX OSC applies them to SETUP
 |   each frame. Slots stack: a later FOLD/CAR fill does not erase PWM.
-|   DEC is not a dest (LFO skips it too).
+|   35..46: FX1 page 2 slots 1..6, then FX2 page 2 slots 1..6. PLOCKS P2
+|   stores and plays them. DEC is not a dest (LFO skips it too).
 | DEPTH (0..127): lock uniform in [Part-DEPTH .. Part+DEPTH] (clamped).
 | DEST=AMP VOL is unipolar below Part VOL (never louder than AMP). DEST=PTCH
 | in-scale. Editing PULSE leaves free mode. Write-only: open/track switch
@@ -48,7 +49,7 @@
 |
 | Params: TRIG PULSE/ROT/DEST/DEPTH/free mask per track (ef_bank). DEPTH
 | and PLOCK PULSE/ROT/free/mask per track × DEST (ef_dep_mem / ef_plk_mem);
-| LANE per track (ef_lane_mem). All persist in euclid.work. D/E always
+| LANE per track (ef_lane_mem). Settings persist in seq.work. D/E always
 | live; C switches which rhythm A/B + grid edit. Selecting a track while
 | open retargets YES and loads its slot. Multi-target YES writes each
 | target's own stored params.
@@ -178,7 +179,8 @@
         .set    LOCK_STEP, 32
         .set    LOCK_VOL,  15          | AMP VOL flat (DEST default)
         .set    LOCK_PTCH, 0           | PLAYBACK PTCH flat (in-scale special)
-        .set    UI_BANK,   0x100b14cf  | bank index
+        .set    UI_PART,   0x100b14cf  | selected Part index
+        .set    CUR_BANK,  0x80000002  | selected bank index
         .set    PART_STR,  6322        | Part stride in the bank blob
         .set    SIG_OFF,   0x8edbc     | NEIGHBOR col: "FM",1 when FM SYNTH chosen
         .set    MACH_OFF,  0x8eda2     | Part: machine byte per track
@@ -193,7 +195,6 @@
         .set    LFO_DESC,  0x400d37f6  | audio LFO page descriptor (P)
         .set    AMP_DESC,  0x400d3988  | AMP page descriptor (P)
         .set    FX1_TBL,   0x400d5f58  | FX1 id -> descriptor (P)
-        .set    FX2_TBL,   0x400d5fdc  | FX2 id -> descriptor (P)
         .set    NAME_OFF,  0x16        | P+0x16: page-1 param names, 6 B each
         .set    TITLE_OFF, 4           | P+4: page short name (SRC/AMP/FILTR…)
         | Same PLAYBACK name path as LFO SETUP PMTR (cxosc po_lfdname):
@@ -204,6 +205,10 @@
         .set    FLEX_P,    0x400d31ae  | stock FLEX PLAYBACK descriptor
         .set    DEST_LAST, 29          | last page-1 flat
         .set    DEST_CXLAST, 34        | CX SETUP CAR..PWM (LFO PMTR)
+        .set    DEST_P2FIRST, 35       | FX1/FX2 page-2 slots follow CX
+        .set    DEST_P2LAST, 46        | six FX1 + six FX2 page-2 slots
+        .set    DEST_P2NSLOT, 12
+        .set    P2_REC,    12          | PLOCKS P2 bytes per step
         .set    DEST_XVOL, 17          | AMP XVOL - skipped in DEST list
         .set    PLAY_SETUP, 0x8ef60    | Part + t·30: CAR MOD DEC SYMM FDBK PWM
         .set    CX_STEPS,  64          | per-track CX SETUP fill bank (OT max)
@@ -214,7 +219,7 @@
         .set    PIT_RAD,   24
         .set    PIT_SAMP,  12
         .set    EF_MAGIC,  0x4546494c   | 'EFIL'
-        .set    EF_VER,    11           | v11: RAND is PHRS default and value 0
+        .set    EF_VER,    12           | v12 appends page-2 depth and plock settings
         .set    EF_BANK_B, 224          | 8 tracks * 28
         .set    DEST_NSLOT, 36          | 0..34 + pad; track*36 = <<5+<<2
         .set    EF_DEP_B,  8*DEST_NSLOT | per-track × DEST depth bytes
@@ -235,7 +240,11 @@
         .set    EF_FILE_V8,EF_FILE_V7+EF_TONE_B
         .set    EF_FILE_V9,EF_FILE_V8
         .set    EF_FILE_V10,EF_FILE_V9
-        .set    EF_FILE_B, EF_FILE_V10
+        .set    EF_FILE_V11,EF_FILE_V10   | v11 kept the same payload size
+        .set    EF_P2_DEP_B, 8*DEST_P2NSLOT
+        .set    EF_P2_PLK_B, 8*DEST_P2NSLOT*EF_PLK_SLOT
+        .set    EF_P2_B, EF_P2_DEP_B+EF_P2_PLK_B
+        .set    EF_FILE_B, EF_FILE_V11+EF_P2_B
         .set    TON_SCALE, 0
         .set    TON_ROOT,  1
         .set    TON_MODE,  2
@@ -255,6 +264,7 @@
         .globl  ef_st_loadall_post, ef_st_loadmask_post, ef_st_newproj
         .globl  ef_st_bankw_post, ef_st_pstore_pre, ef_st_pstore_post
         .globl  ef_st_preload_post, ef_st_answer
+        .extern plk_seq_store, STORE
 
 | ---- 0x4004ffc4: PAGE press/release. Track held -> toggle Euclid. --------
 | Displaced prologue: lea -16(sp),sp ; movem.l d2-d4/a2,(sp).
@@ -563,7 +573,7 @@ st_m:   moveb   %a1@(0,%d0:l),%d1
         bpl.s   st_m
         bsr.w   ef_tone_save
         moveq   #1,%d0
-        movel   %d0,ef_dirty            | euclid.work on next project/bank save
+        movel   %d0,ef_dirty            | seq.work on next project/bank save
         rts
 
 | Load bank[d0] into working; set ef_focus = d0 & 7. Clobbers d0/d1/a0/a1.
@@ -626,7 +636,15 @@ ld_d1:  moveq   #DEST_XVOL,%d1
         cmpl    %d1,%d0
         bne.s   ld_d2
         moveq   #16,%d0                 | BAL
-ld_d2:  movel   %d0,ef_dest
+ld_d2:  tstl    MIDI_MODE
+        bne.s   ld_dest_ready
+        movel   %d2,-(%sp)
+        moveq   #-1,%d2
+        moveq   #0,%d1
+        bsr.w   ef_audio_dest_seek
+        movel   (%sp)+,%d2
+ld_dest_ready:
+        movel   %d0,ef_dest
         movel   ef_depth,%d0
         tstl    %d0
         bpl.s   ld_e0
@@ -648,9 +666,23 @@ ld_midi_slot:
 ld_slot_done:
         rts
 
-| ---- per-track × DEST depth memory (persisted in euclid.work v2) --------
+| ---- per-track × DEST depth memory (persisted in seq.work v2) -----------
 | Byte table: 0 = never set. DEST scroll loads; DEPTH edit / YES fill saves.
 ef_dep_ptr:
+        movel   ef_dest,%d1
+        cmpi.l  #DEST_P2FIRST,%d1
+        bcs.s   dp_legacy_start
+        cmpi.l  #DEST_P2LAST,%d1
+        bhi.s   dp_legacy_start
+        subi.l  #DEST_P2FIRST,%d1
+        movel   ef_focus,%d0
+        andil   #7,%d0
+        mulu.w  #DEST_P2NSLOT,%d0
+        addl    %d1,%d0
+        lea     ef_p2_dep_mem,%a0
+        addal   %d0,%a0
+        rts
+dp_legacy_start:
         moveq   #0,%d0
         movel   ef_focus,%d0
         andil   #7,%d0
@@ -663,7 +695,8 @@ ef_dep_ptr:
         tstl    %d1
         bpl.s   dp1
         clrl    %d1
-dp1:    cmpi.l  #DEST_CXLAST,%d1
+dp1:
+        cmpi.l  #DEST_CXLAST,%d1
         ble.s   dp2
         moveq   #DEST_CXLAST,%d1
 dp2:    addl    %d1,%d0
@@ -700,7 +733,7 @@ dps1:   moveb   %d0,%a0@
         movel   %d0,ef_dirty
         rts
 
-| ---- per-track × DEST plock rhythm (euclid.work v4) ---------------------
+| ---- per-track × DEST plock rhythm (seq.work v4) ------------------------
 | 12 B/slot: [0]PULSE [1]ROT [2]free [3]pad [4..11]mask. + ef_lane_mem[8].
 ef_plk_ptr:
         moveq   #0,%d0
@@ -723,7 +756,21 @@ pp_stride_done:
         tstl    %d1
         bpl.s   pp1
         clrl    %d1
-pp1:    tstl    MIDI_MODE
+pp1:    cmpi.l  #DEST_P2FIRST,%d1
+        bcs.s   pp_legacy
+        cmpi.l  #DEST_P2LAST,%d1
+        bhi.s   pp_legacy
+        subi.l  #DEST_P2FIRST,%d1
+        movel   ef_focus,%d0
+        andil   #7,%d0
+        mulu.w  #DEST_P2NSLOT,%d0
+        addl    %d1,%d0
+        mulu.w  #EF_PLK_SLOT,%d0
+        lea     ef_p2_plk_mem,%a0
+        addal   %d0,%a0
+        rts
+pp_legacy:
+        tstl    MIDI_MODE
         bne.s   pp_midi_max
         cmpi.l  #DEST_CXLAST,%d1
         ble.s   pp2
@@ -1432,12 +1479,16 @@ nd_dest:
         | DEST: save plock for old DEST, then change, load depth+plock
         tstl    MIDI_MODE
         bne.s   nds_midi_old
+        movel   %d2,-(%sp)
         bsr.w   ef_plk_save
+        movel   (%sp)+,%d2
         bra.s   nds_midi
 nds_midi_old:
         tstl    ef_lane
         beq.s   nds_midi
+        movel   %d2,-(%sp)
         bsr.w   ef_plk_save
+        movel   (%sp)+,%d2
 nds_midi:
         lea     ef_dest,%a0
         movel   %a0@,%d0
@@ -1466,22 +1517,26 @@ nds_midi_store:
         movel   %d0,%a0@
         bra.w   nds_midi_load
 nds_midi_audio:
+        tstl    MIDI_MODE
+        beq.s   nds_audio
         addl    %d2,%d0
-        tstl    %d0
         bpl.s   nds0
         clrl    %d0
-nds0:    movel   %a0,-(%sp)
-        movel   %d0,-(%sp)
-        movel   ef_focus,%d0
-        movel   %d0,ef_trk
+nds0:   movel   %d0,-(%sp)
         bsr.w   ef_dest_max
         movel   %d0,%d3
         movel   (%sp)+,%d0
-        movel   (%sp)+,%a0
         cmpl    %d3,%d0
-        ble.s   nds1
+        ble.s   nds_xvol
         movel   %d3,%d0
-nds1:
+        bra.s   nds_xvol
+nds_audio:
+        movel   ef_focus,%d1
+        movel   %d1,ef_trk
+        movel   %d2,%d1
+        bsr.w   ef_audio_dest_seek
+        bra.s   nds2
+nds_xvol:
         moveq   #DEST_XVOL,%d3
         cmpl    %d3,%d0
         bne.s   nds2
@@ -1490,7 +1545,7 @@ nds1:
         moveq   #18,%d0
         bra.s   nds2
 nds_m:   moveq   #16,%d0
-nds2:    movel   %d0,%a0@
+nds2:    movel   %d0,ef_dest
 nds_midi_load:
         bsr.w   ef_dep_load
         tstl    ef_tone_midi
@@ -2112,6 +2167,8 @@ ef_dest_static:
 ds0:    moveq   #DEST_LAST,%d1
         cmpl    %d1,%d0
         ble.s   ds1
+        cmpi.l  #DEST_P2FIRST,%d0
+        bcc.s   ds_p2miss
         moveq   #DEST_CXLAST,%d1
         cmpl    %d1,%d0
         ble.s   ds_cx
@@ -2140,6 +2197,16 @@ ds_cxc: moveb   (%a0)+,%d1
         bpl.s   ds_cxc
         clrb    (%a1)
 ds_rts: rts
+ds_p2miss:
+        lea     ef_buf,%a1
+        moveq   #0x2d,%d0
+        moveb   %d0,(%a1)+
+        moveb   %d0,(%a1)+
+        moveb   %d0,(%a1)+
+        moveb   %d0,(%a1)+
+        clrb    (%a1)+
+        clrb    (%a1)
+        rts
 ds1:    moveq   #0,%d2                  | page = flat / 6
         movel   %d0,%d3                 | slot = flat % 6
         moveq   #6,%d1
@@ -2766,6 +2833,8 @@ wm_done:
 | ef_cx_clear saves/restores d2.
 ef_clear_dest_step:
         movel   ef_dest,%d0
+        cmpi.l  #DEST_P2FIRST,%d0
+        bcc.s   ecd_p2
         moveq   #DEST_LAST,%d1
         cmpl    %d1,%d0
         bhi.w   ef_cx_clear
@@ -2776,6 +2845,9 @@ ef_clear_dest_step:
         moveq   #-1,%d0
         moveb   %d0,%a2@(0,%d1:l)
         rts
+ecd_p2:
+        moveq   #-1,%d0
+        bra.w   ed_store
 
 | Trigless-lock bit (+0x10). d2=step, a2=trac. Clobbers d0/d1/a0.
 ef_tl_bit_addr:
@@ -2811,7 +2883,7 @@ ef_tl_clr:
 | invisible). No locks left -> clear TL. Clobbers d0/d1/a0.
 ef_tl_reconcile:
         tstl    ef_thit
-        bne.s   tr_clr
+        bne.w   tr_clr
         movel   %d2,%d1
         lsll    #5,%d1
         addil   #LOCK0,%d1
@@ -2820,7 +2892,7 @@ ef_tl_reconcile:
         moveq   #-1,%d0
 tr_scan:
         cmp.b   %a0@,%d0
-        bne.s   tr_keep                 | another DEST still locked -> TL
+        bne.w   tr_keep                 | another DEST still locked -> TL
         addql   #1,%a0
         subql   #1,%d1
         bpl.s   tr_scan
@@ -2835,7 +2907,36 @@ tr_scan:
         addl    %d2,%d1
         lea     ef_cx_bits,%a0
         tst.b   %a0@(0,%d1:l)
-        bne.s   tr_keep
+        bne.w   tr_keep
+        | Any page-2 lock on this step also needs a trigless record.
+        moveq   #0,%d0
+        moveb   CUR_BANK,%d0
+        cmpi.l  #15,%d0
+        bhi.s   tr_clr
+        lsll    #4,%d0
+        moveq   #0,%d1
+        moveb   UI_PTN,%d1
+        cmpi.l  #15,%d1
+        bhi.s   tr_clr
+        addl    %d1,%d0
+        lsll    #3,%d0
+        movel   ef_trk,%d1
+        cmpi.l  #7,%d1
+        bhi.s   tr_clr
+        addl    %d1,%d0
+        lsll    #6,%d0
+        addl    %d2,%d0
+        moveq   #P2_REC,%d1
+        mulu.l  %d1,%d0
+        addil   #STORE,%d0
+        moveal  %d0,%a0
+        moveq   #P2_REC-1,%d1
+        moveq   #-1,%d0
+tr_p2scan:
+        cmp.b   %a0@+,%d0
+        bne.w   tr_keep
+        subql   #1,%d1
+        bpl.s   tr_p2scan
 tr_clr: bsr.w   ef_tl_clr
         rts
 tr_keep:
@@ -2899,8 +3000,10 @@ ed_midi_clear:
         bra.w   ed_store
 ed_store:
         tstl    MIDI_MODE
-        bne.s   ed_midi_store
+        bne.w   ed_midi_store
         movel   ef_dest,%d1
+        cmpi.l  #DEST_P2FIRST,%d1
+        bcc.w   ed_p2_store
         moveq   #DEST_LAST,%d3
         cmpl    %d3,%d1
         bhi.w   ef_cx_store             | CX SETUP: bank, not a p-lock
@@ -2909,6 +3012,65 @@ ed_store:
         addil   #LOCK0,%d1
         addl    ef_dest,%d1
         moveb   %d0,%a2@(0,%d1:l)
+        rts
+ed_p2_store:
+        bsr.w   ef_p2_clamp
+        movel   ef_dest,%d1
+        subi.l  #DEST_P2FIRST,%d1
+        movel   %d1,-(%sp)              | FX page-2 slot
+        movel   %d2,-(%sp)              | step
+        movel   ef_trk,-(%sp)           | track
+        moveq   #0,%d1
+        moveb   UI_PTN,%d1
+        movel   %d1,-(%sp)              | pattern
+        moveq   #0,%d1
+        moveb   CUR_BANK,%d1
+        movel   %d1,-(%sp)              | bank
+        movel   %d0,-(%sp)              | value
+        jsr     plk_seq_store
+        lea     24(%sp),%sp
+        rts
+
+| Clamp a generated page-2 lock to the selected descriptor's min/count.
+| Missing/empty FX descriptors keep the generated 0..127 value unchanged.
+| d0=value in; d0=value out. Preserves d2.
+ef_p2_clamp:
+        movel   %d0,-(%sp)
+        movel   %d2,-(%sp)
+        tstl    %d0                    | clear path passes -1 (stored as 0xff)
+        bmi.w   epc_done
+        movel   ef_dest,%d0
+        bsr.w   ef_fx_dest
+        tstl    %a0
+        beq.w   epc_done
+        moveal  %a0,%a1
+        subql   #6,%d3
+        addal   #0x6a,%a0
+        addal   %d3,%a0
+        moveq   #0,%d1
+        moveb   %a0@,%d1               | minimum
+        moveal  %a1,%a0
+        addal   #0x9a,%a0
+        addal   %d3,%a0
+        moveq   #0,%d0
+        moveb   %a0@,%d0               | count
+        beq.w   epc_done
+        addl    %d1,%d0
+        subql   #1,%d0                 | maximum
+        movel   4(%sp),%d3             | generated value
+        cmpl    %d1,%d3
+        bcc.s   epc_max
+        movel   %d1,%d3
+        bra.s   epc_set
+epc_max:
+        cmpl    %d0,%d3
+        bls.s   epc_set
+        movel   %d0,%d3
+epc_set:
+        movel   %d3,4(%sp)
+epc_done:
+        movel   (%sp)+,%d2
+        movel   (%sp)+,%d0
         rts
 ed_midi_store:
         bsr.w   ef_midi_lock_store
@@ -3698,12 +3860,14 @@ ep_store:
         rts
 
 | ef_part_flat: d0 := Part value for ef_dest on ef_trk.
-| 0..5 PLAYBACK p1; 6..29 LFO/AMP/FX1/FX2 p1; 30..34 PLAYBACK SETUP
-| (CAR MOD SYMM FDBK PWM - DEC skipped). Clobbers d0/d1/a0/a1.
+| 0..5 PLAYBACK p1; 6..29 LFO/AMP/FX1/FX2 p1; 30..34 CX SETUP;
+| 35..46 FX1/FX2 page 2. Clobbers d0/d1/a0/a1 (d2/d3 preserved on p2).
 ef_part_flat:
         tstl    MIDI_MODE
         bne.w   ef_midi_part_flat
         movel   ef_dest,%d0
+        cmpi.l  #DEST_P2FIRST,%d0
+        bcc.w   ef_part_p2
         moveq   #DEST_LAST,%d1
         cmpl    %d1,%d0
         bhi.w   ef_part_setup           | CX CAR..PWM
@@ -3714,7 +3878,7 @@ ef_part_flat:
         movel   %d0,-(%sp)
         moveal  DBPTR,%a0
         moveq   #0,%d0
-        moveb   UI_BANK,%d0
+        moveb   UI_PART,%d0
         move.l  #PART_STR,%d1
         muls.l  %d1,%d0
         addal   %d0,%a0                 | Part
@@ -3728,6 +3892,41 @@ ef_part_flat:
         movel   (%sp)+,%d1              | flat-6
         moveq   #0,%d0
         moveb   %a0@(0,%d1:l),%d0
+        rts
+
+| FX page-2 Part value. PLOCKS P2's lane is FX1 slots 0..5 then FX2 6..11.
+ef_part_p2:
+        lea     -8(%sp),%sp
+        movem.l %d2-%d3,(%sp)
+        subi.l  #DEST_P2FIRST,%d0
+        cmpi.l  #DEST_P2NSLOT-1,%d0
+        bhi.s   epp_invalid
+        movel   %d0,%d1
+        movel   ef_trk,%d0
+        cmpi.l  #7,%d0
+        bhi.s   epp_invalid
+        mulu.w  #30,%d0
+        moveal  DBPTR,%a0
+        tstl    %a0
+        beq.s   epp_invalid
+        moveq   #0,%d2
+        moveb   UI_PART,%d2
+        cmpi.l  #3,%d2
+        bhi.s   epp_invalid
+        movel   #PART_STR,%d3
+        muls.l  %d3,%d2
+        addal   %d2,%a0
+        addal   %d0,%a0
+        addal   #0x8f07e,%a0
+        addal   %d1,%a0
+        moveq   #0,%d0
+        moveb   %a0@,%d0
+        bra.s   epp_done
+epp_invalid:
+        moveq   #0,%d0
+epp_done:
+        movem.l (%sp),%d2-%d3
+        lea     8(%sp),%sp
         rts
 
 | MIDI Part page-1 value: Part + 0x8f162 + track*32 + flat.
@@ -3761,7 +3960,7 @@ ef_part_setup:
         movel   %d1,-(%sp)
         moveal  DBPTR,%a0
         moveq   #0,%d0
-        moveb   UI_BANK,%d0
+        moveb   UI_PART,%d0
         move.l  #PART_STR,%d1
         muls.l  %d1,%d0
         addal   %d0,%a0
@@ -3799,7 +3998,7 @@ ef_part_ptch:
 ef_part_ptch_base:
         moveal  DBPTR,%a0
         moveq   #0,%d0
-        moveb   UI_BANK,%d0
+        moveb   UI_PART,%d0
         move.l  #PART_STR,%d1
         muls.l  %d1,%d0
         addal   %d0,%a0                 | Part
@@ -3834,7 +4033,7 @@ ef_dest_name:
         tstl    %d0
         bpl.s   dn_dc
         clrl    %d0
-dn_dc:  moveq   #DEST_CXLAST,%d1
+dn_dc:  moveq   #DEST_P2LAST,%d1
         cmpl    %d1,%d0
         ble.s   dn_cxchk
         movel   %d1,%d0
@@ -3842,6 +4041,8 @@ dn_cxchk:
         moveq   #DEST_LAST,%d1
         cmpl    %d1,%d0
         ble.w   dn_page1
+        cmpi.l  #DEST_P2FIRST,%d0
+        bcc.w   dn_p2
         | 30..34: CX private LFO dests only
         movel   %d0,%d3                 | park dest (move to Dn sets CCR)
         bsr.w   ef_is_cx
@@ -3872,12 +4073,6 @@ dn_cxc: moveb   (%a0)+,%d1
         clrb    (%a1)
         rts
 dn_page1:
-        moveal  DBPTR,%a0
-        moveq   #0,%d1
-        moveb   UI_BANK,%d1
-        move.l  #PART_STR,%d2
-        muls.l  %d2,%d1
-        addal   %d1,%a0                 | Part
         moveq   #0,%d1
         move.l  %d0,%d3
         moveq   #6,%d2
@@ -3887,34 +4082,26 @@ dn_div: cmpl    %d2,%d3
         addql   #1,%d1
         bra.s   dn_div                  | d1=page 0..4, d3=slot 0..5
 dn_pg:  tstl    %d1
-        beq.s   dn_pb
+        beq.w   dn_pb
         moveq   #1,%d2
         cmpl    %d2,%d1
-        beq.s   dn_lfo
+        beq.w   dn_lfo
         moveq   #2,%d2
         cmpl    %d2,%d1
-        beq.s   dn_amp
+        beq.w   dn_amp
         moveq   #3,%d2
         cmpl    %d2,%d1
-        beq.s   dn_fx1
-        addal   #FX2_OFF,%a0
-        move.l  ef_trk,%d0
-        moveq   #0,%d2
-        moveb   %a0@(0,%d0:l),%d2
-        moveq   #63,%d0
-        cmpl    %d0,%d2
-        bhi.w   dn_miss
-        moveal  #FX2_TBL,%a1
-        bra.s   dn_idx
-dn_fx1: addal   #FX1_OFF,%a0
-        move.l  ef_trk,%d0
-        moveq   #0,%d2
-        moveb   %a0@(0,%d0:l),%d2
-        moveq   #63,%d0
-        cmpl    %d0,%d2
-        bhi.w   dn_miss
-        moveal  #FX1_TBL,%a1
-        bra.s   dn_idx
+        beq.w   dn_fx1
+        movel   ef_dest,%d0
+        bsr.w   ef_fx_dest
+        bra.w   dn_got
+dn_p2:
+        bsr.w   ef_fx_dest
+        bra.w   dn_got
+dn_fx1:
+        movel   ef_dest,%d0
+        bsr.w   ef_fx_dest
+        bra.w   dn_got
 dn_amp: moveal  #AMP_DESC,%a0
         bra.s   dn_got
 dn_lfo: moveal  #LFO_DESC,%a0
@@ -3938,9 +4125,6 @@ dn_pb_done:
         movem.l (%sp),%d2-%d7/%a2-%a6
         lea     44(%sp),%sp
         moveal  %d1,%a0
-        bra.s   dn_got
-dn_idx: lsll    #2,%d2
-        moveal  %a1@(0,%d2:l),%a0
 dn_got: tstl    %a0
         beq.w   dn_miss
         | PAGE\0PARAM\0 - title at +4, param at +0x16 + slot*6
@@ -4008,27 +4192,183 @@ dnm_desc:
         moveal  %a1@(0,%d1:l),%a0
         bra.w   dn_got
 
-| ef_dest_max: d0 := DEST_LAST (29) or DEST_CXLAST (34) when ef_trk is CX.
-| Clobbers d0/d1/a0/a1 - callers must park a0 (EUCL19/20).
+| Upper bound for stored destination indices, before availability checks.
 ef_dest_max:
         tstl    MIDI_MODE
         beq.s   edm_audio
         moveq   #DEST_LAST,%d0
         rts
 edm_audio:
-        bsr.w   ef_is_cx
-        tstl    %d0
-        beq.s   edm29
-        moveq   #DEST_CXLAST,%d0
+        moveq   #DEST_P2LAST,%d0
         rts
-edm29:  moveq   #DEST_LAST,%d0
+
+| Move through the display order while keeping the saved destination IDs.
+| d0 = current ID, d1 = detents (zero on load), d2 = search direction.
+ef_audio_dest_seek:
+        movel   %d2,-(%sp)
+        lea     ef_dest_order,%a0
+        moveq   #0,%d3
+ads_rank:
+        cmp.b   %a0@(0,%d3:l),%d0
+        beq.s   ads_advance
+        addql   #1,%d3
+        cmpi.l  #DEST_P2LAST,%d3
+        ble.s   ads_rank
+        moveq   #0,%d3
+ads_advance:
+        addl    %d1,%d3
+        bpl.s   ads_upper
+        moveq   #0,%d3
+ads_upper:
+        cmpi.l  #DEST_P2LAST,%d3
+        ble.s   ads_check
+        moveq   #DEST_P2LAST,%d3
+ads_check:
+        lea     ef_dest_order,%a0
+        moveq   #0,%d0
+        moveb   %a0@(0,%d3:l),%d0
+        movel   %d3,-(%sp)
+        movel   %d0,-(%sp)
+        bsr.w   ef_audio_dest_valid
+        movel   %d0,%d1
+        movel   (%sp)+,%d0
+        movel   (%sp)+,%d3
+        tstl    %d1
+        bne.s   ads_done
+        tstl    %d2
+        bmi.s   ads_prev
+        addql   #1,%d3
+        cmpi.l  #DEST_P2LAST,%d3
+        ble.s   ads_check
+        moveq   #-1,%d2                | stop on the last selectable control
+ads_prev:
+        subql   #1,%d3
+        bra.s   ads_check
+ads_done:
+        movel   (%sp)+,%d2
+        rts
+
+ef_dest_order:
+        .byte   0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+        .byte   30,31,32,33,34         | machine SETUP
+        .byte   18,19,20,21,22,23      | FX1 page 1
+        .byte   35,36,37,38,39,40      | FX1 page 2
+        .byte   24,25,26,27,28,29      | FX2 page 1
+        .byte   41,42,43,44,45,46      | FX2 page 2
+        .balign 2
+
+ef_audio_dest_valid:
+        cmpi.l  #18,%d0
+        bcc.s   adv_fx
+        cmpi.l  #DEST_XVOL,%d0
+        beq.s   adv_no
+        moveq   #1,%d0
+        rts
+adv_fx:
+        cmpi.l  #DEST_CXLAST,%d0
+        bhi.s   adv_descriptor
+        cmpi.l  #DEST_LAST,%d0
+        bhi.w   ef_is_cx
+adv_descriptor:
+        bsr.w   ef_fx_dest
+        tstl    %a0
+        beq.s   adv_no
+        moveq   #1,%d0
+        rts
+adv_no:
+        moveq   #0,%d0
+        rts
+
+| Resolve an FX destination for ef_trk in the selected Part.
+| Return the descriptor in a0 (zero for absent controls) and slot in d3.
+| Both pages use the stock enable bits and six-byte parameter labels.
+ef_fx_dest:
+        cmpi.l  #DEST_P2LAST,%d0
+        bhi.w   efd_no
+        cmpi.l  #18,%d0
+        bcs.w   efd_no
+        movel   %d0,%d3
+        cmpi.l  #DEST_P2FIRST,%d3
+        bcs.s   efd_page1
+        subi.l  #DEST_P2FIRST-6,%d3
+        cmpi.l  #12,%d3
+        bcs.s   efd_fx1
+        bra.s   efd_fx2
+efd_page1:
+        cmpi.l  #DEST_LAST,%d3
+        bhi.w   efd_no
+        subi.l  #18,%d3
+        cmpi.l  #6,%d3
+        bcs.s   efd_fx1
+efd_fx2:
+        subql   #6,%d3
+        moveal  #FX2_TBL,%a1
+        movel   #FX2_OFF,%d1
+        bra.s   efd_part
+efd_fx1:
+        moveal  #FX1_TBL,%a1
+        movel   #FX1_OFF,%d1
+efd_part:
+        moveal  DBPTR,%a0
+        tstl    %a0
+        beq.w   efd_no
+        addal   %d1,%a0
+        moveq   #0,%d0
+        moveb   UI_PART,%d0
+        cmpi.l  #3,%d0
+        bhi.w   efd_no
+        mulu.w  #PART_STR,%d0
+        addal   %d0,%a0
+        movel   ef_trk,%d0
+        cmpi.l  #7,%d0
+        bhi.s   efd_no
+        moveq   #0,%d1
+        moveb   %a0@(0,%d0:l),%d1
+        beq.s   efd_no
+        cmpi.l  #31,%d1
+        bls.s   efd_id_valid
+        cmpi.l  #FX2_ID_MAX,%d1
+        bhi.s   efd_no
+        cmpal   #FX2_TBL,%a1
+        bne.s   efd_no
+efd_id_valid:
+        lsll    #2,%d1
+        moveal  %a1@(0,%d1:l),%a0
+        tstl    %a0
+        beq.s   efd_no
+        moveq   #0,%d1
+        movel   %d3,%d0
+        cmpi.l  #8,%d0
+        bcc.s   efd_hi
+        cmpi.l  #4,%d0
+        bcc.s   efd_mid
+        movew   0x190(%a0),%d1
+        bra.s   efd_bit
+efd_mid:
+        subql   #4,%d0
+        movew   0x18e(%a0),%d1
+        bra.s   efd_bit
+efd_hi:
+        subql   #8,%d0
+        movew   0x18c(%a0),%d1
+efd_bit:
+        lsll    #2,%d0
+        btst    %d0,%d1
+        beq.s   efd_no
+        movel   %d3,%d0
+        mulu.w  #6,%d0
+        tstb    NAME_OFF(%a0,%d0:l)
+        beq.s   efd_no
+        rts
+efd_no:
+        subal   %a0,%a0
         rts
 
 | ef_is_cx: d0 := 1 when ef_trk's Part NEIGHBOR sig is "CX",1. Else 0.
 ef_is_cx:
         moveal  DBPTR,%a0
         moveq   #0,%d0
-        moveb   UI_BANK,%d0
+        moveb   UI_PART,%d0
         move.l  #PART_STR,%d1
         muls.l  %d1,%d0
         addal   %d0,%a0
@@ -4118,7 +4458,7 @@ ecc_done:
 ef_is_synth:
         moveal  DBPTR,%a0
         moveq   #0,%d0
-        moveb   UI_BANK,%d0
+        moveb   UI_PART,%d0
         move.l  #PART_STR,%d1
         muls.l  %d1,%d0
         addal   %d0,%a0                 | Part
@@ -4563,7 +4903,7 @@ ef_clear_all_dest:
         bsr.w   ef_trac_n
         movel   ef_dest,-(%sp)          | restore after
         moveq   #0,%d6                  | dest
-cad_d:  moveq   #DEST_CXLAST,%d0
+cad_d:  moveq   #DEST_P2LAST,%d0
         cmpl    %d0,%d6
         bhi.s   cad_fin
         moveq   #DEST_XVOL,%d0
@@ -4631,6 +4971,29 @@ rap_d:  clrb    %a0@(0,%d1:l)
 rap_p:  clrb    %a0@(0,%d0:l)
         subql   #1,%d0
         bpl.s   rap_p
+        moveq   #0,%d0
+        movel   ef_focus,%d0
+        andil   #7,%d0
+        movel   %d0,%d1
+        lsll    #3,%d0
+        lsll    #2,%d1
+        addl    %d1,%d0                 | track*12
+        lea     ef_p2_dep_mem,%a0
+        addal   %d0,%a0
+        moveq   #DEST_P2NSLOT-1,%d1
+rap_p2d: clrb    %a0@(0,%d1:l)
+        subql   #1,%d1
+        bpl.s   rap_p2d
+        movel   %d0,%d1
+        lsll    #3,%d0
+        lsll    #2,%d1
+        addl    %d1,%d0                 | track*12*12
+        lea     ef_p2_plk_mem,%a0
+        addal   %d0,%a0
+        movel   #DEST_P2NSLOT*EF_PLK_SLOT-1,%d1
+rap_p2p: clrb    %a0@(0,%d1:l)
+        subql   #1,%d1
+        bpl.s   rap_p2p
 rap_work:
         clrl    ef_depth
         clrl    ef_ppulses
@@ -5121,13 +5484,15 @@ ef_cx_slots:                            | DEST 30..34 -> PLAYBACK SETUP slot (sk
         .byte   0, 1, 3, 4, 5
         .balign 4
 
-| ---- euclid.work (STORE client): bank + depths + plock + LANE ----------
+| ---- seq.work (STORE client): bank + depths + plock + page-2 + LANE ----
 | Header 16 B: magic 'EFIL', version EF_VER, EF_FILE_B, CRC-32 of the
-| contiguous payload ef_bank through ef_tone_mem.
+| contiguous payload ef_bank through ef_p2_plk_mem.
 | Written on bank/project save when dirty; .strd = copy.
-FMT_EWORK: .asciz "%s/euclid.work"
-FMT_ESTRD: .asciz "%s/euclid.strd"
-FMT_EBAK:  .asciz "%s/euclid.bak"
+FMT_EWORK: .asciz "%s/seq.work"
+FMT_ESTRD: .asciz "%s/seq.strd"
+FMT_EBAK:  .asciz "%s/seq.bak"
+FMT_EOLD:  .asciz "%s/euclid.work"
+FMT_EOLDSTRD: .asciz "%s/euclid.strd"
 EF_MODE_R: .asciz "r"
 EF_MODE_W: .asciz "w"
         .balign 4
@@ -5157,6 +5522,16 @@ ed_1:   moveq   #5,%d1
 ed_z:   clrl    %a0@+
         subql   #1,%d0
         bpl.s   ed_z
+        lea     ef_p2_dep_mem,%a0
+        movel   #EF_P2_DEP_B/4-1,%d0
+ed_p2z: clrl    %a0@+
+        subql   #1,%d0
+        bpl.s   ed_p2z
+        lea     ef_p2_plk_mem,%a0
+        movel   #EF_P2_PLK_B/4-1,%d0
+ed_p2p: clrl    %a0@+
+        subql   #1,%d0
+        bpl.s   ed_p2p
         clrl    ef_lane
         clrl    ef_ppulses
         clrl    ef_prot
@@ -5221,7 +5596,7 @@ ef_copy_file:
         lea     12(%sp),%sp
         rts
 
-| Write ef_bank + ef_dep_mem to euclid.work when dirty. Clobbers everything.
+| Write all SEQ settings to seq.work.
 ef_write_due:
         tstl    ef_dirty
         beq.w   ew_rts
@@ -5259,18 +5634,30 @@ ew_1:   lea     ef_bank,%a0             | bank || dep contiguous
         jsr     store_fwrite
         movel   %d0,%d2
         lea     ef_bank,%a0
-        movel   #EF_FILE_B,%d0
+        movel   #EF_FILE_V11,%d0
         jsr     store_fwrite
         movel   %d0,%d3
+        lea     ef_p2_dep_mem,%a0
+        movel   #EF_P2_DEP_B,%d0
+        jsr     store_fwrite
+        movel   %d0,%d4
+        lea     ef_p2_plk_mem,%a0
+        movel   #EF_P2_PLK_B,%d0
+        jsr     store_fwrite
+        movel   %d0,%d5
         jsr     store_fclose
-        subql   #1,%d2
+        cmpil   #1,%d2
         bne.s   ew_rts
-        subql   #1,%d3
+        cmpil   #1,%d3
+        bne.s   ew_rts
+        cmpil   #1,%d4
+        bne.s   ew_rts
+        cmpil   #1,%d5
         bne.s   ew_rts
         clrl    ef_dirty
 ew_rts: rts
 
-| Load euclid.work. Missing -> defaults. Bad -> refuse + defaults.
+| Load seq.work, migrating the prior settings file when needed.
 | v1 bank; v2 bank+dep; v3 bank+dep+plk. Older payloads zero the rest.
 ef_load_file:
         bsr.w   ef_tone_defaults
@@ -5285,7 +5672,20 @@ ef_load_file:
         lea     ef_ctx,%a2
         jsr     store_fopen
         tstl    %d0
+        bpl.s   el_open
+        | New projects have no seq.work yet. Try the previous filename once
+        | so existing Euclid settings migrate without user intervention.
+        lea     FMT_EOLD,%a0
+        lea     ef_path,%a1
+        moveq   #0,%d0
+        jsr     store_path
+        lea     ef_path,%a0
+        lea     EF_MODE_R,%a1
+        lea     ef_ctx,%a2
+        jsr     store_fopen
+        tstl    %d0
         bmi.w   ef_defaults
+el_open:
         lea     ef_hdr,%a0
         moveq   #16,%d0
         jsr     store_fread
@@ -5327,6 +5727,9 @@ ef_load_file:
         moveq   #10,%d0
         cmpl    %d0,%d2
         beq.w   el_v10
+        moveq   #11,%d0
+        cmpl    %d0,%d2
+        beq.w   el_v11
         moveq   #EF_VER,%d0
         cmpl    %d0,%d2
         bne.w   el_bad
@@ -5334,7 +5737,17 @@ ef_load_file:
         cmpl    %d0,%d3
         bne.w   el_bad
         lea     ef_bank,%a0
-        movel   #EF_FILE_B,%d0
+        movel   #EF_FILE_V11,%d0
+        jsr     store_fread
+        subql   #1,%d0
+        bne.w   el_bad
+        lea     ef_p2_dep_mem,%a0
+        movel   #EF_P2_DEP_B,%d0
+        jsr     store_fread
+        subql   #1,%d0
+        bne.w   el_bad
+        lea     ef_p2_plk_mem,%a0
+        movel   #EF_P2_PLK_B,%d0
         jsr     store_fread
         subql   #1,%d0
         bne.w   el_bad
@@ -5346,6 +5759,36 @@ ef_load_file:
         cmpl    ef_hdr+12,%d0
         bne.w   el_crc
         clrl    ef_dirty
+        rts
+| v11 predates page-2 destination depths. Preserve its payload and zero the
+| appended table, then rewrite as v12 on the next STORE save.
+el_v11: movel   #EF_FILE_V11,%d0
+        cmpl    %d0,%d3
+        bne.w   el_bad
+        lea     ef_bank,%a0
+        movel   %d3,%d0
+        jsr     store_fread
+        subql   #1,%d0
+        bne.w   el_bad
+        jsr     store_fclose
+        lea     ef_bank,%a0
+        movel   #EF_FILE_V11,%d0
+        moveq   #0,%d1
+        jsr     store_crc32
+        cmpl    ef_hdr+12,%d0
+        bne.w   el_crc
+        lea     ef_p2_dep_mem,%a0
+        movel   #EF_P2_DEP_B/4-1,%d0
+el11_z: clrl    %a0@+
+        subql   #1,%d0
+        bpl.s   el11_z
+        lea     ef_p2_plk_mem,%a0
+        movel   #EF_P2_PLK_B/4-1,%d0
+el11_p: clrl    %a0@+
+        subql   #1,%d0
+        bpl.s   el11_p
+        moveq   #1,%d0
+        movel   %d0,ef_dirty
         rts
 | v9 stored RANG in the byte now used by JUMP. Keep the tonal settings,
 | reset that byte for all tracks so old ranges do not become wide jumps.
@@ -5671,7 +6114,12 @@ ef_st_preload_post:
         lea     FMT_EWORK,%a1
         bsr.w   ef_copy_file
         tstl    %d0
-        bmi.s   ep_rts
+        bmi.s   ep_old_strd
+        bra.w   ef_load_file
+ep_old_strd:
+        lea     FMT_EOLDSTRD,%a0
+        lea     FMT_EWORK,%a1
+        bsr.w   ef_copy_file
         bra.w   ef_load_file
 
 ef_st_answer:
@@ -5777,6 +6225,10 @@ ef_midi_lane_mem:
         .space  EF_MIDI_LANE_B         | MIDI track LANE (0=TRIG, 1=PLOCK)
 ef_tone_mem:
         .space  EF_TONE_B              | audio + MIDI tonal settings, appended v8
+ef_p2_dep_mem:
+        .space  EF_P2_DEP_B             | per-track depths for 12 FX page-2 slots, v12
+ef_p2_plk_mem:
+        .space  EF_P2_PLK_B             | per-track page-2 pulse recipes, v12
         .balign 4
 ef_dirty:   .long 0
 ef_ask:     .long 0                     | 1: ARE YOU SURE? dialog pending
@@ -5790,7 +6242,7 @@ ef_layer_on: .long 0                    | 1: EF_LAYER registered (LPOP even if e
 ef_cl_nolayer: .long 0                  | 1: EF_CL_NO_LAYER pushed over CLEAR
 ef_cl_sel:  .long 0                     | clear LISTPOP cursor
 ef_nowrite: .long 0                     | refused file: do not overwrite
-ef_backup:  .long 0                     | next write copies to euclid.bak first
+ef_backup:  .long 0                     | next write copies seq.work to seq.bak first
 ef_hdr:     .space 16                   | magic, ver, len, crc
 ef_ctx:     .space 4120                 | STORE_CTX
 ef_path:    .space 260

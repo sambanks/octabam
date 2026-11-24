@@ -1858,3 +1858,14 @@ the maximum, silently omitting the gain pass. Mark such modules with
 The original limiter also used the previous block's level, allowing the
 first transient through. The shared render gates now inject signed impulses
 at and around block boundaries and check the actual first-block peak.
+
+<a id="trap-seq-fx-context"></a>
+
+### A byte read from a long track index selects T1
+
+SEQ stores its zero-based track index in a big-endian long. Reading the
+first byte for an FX descriptor lookup always selected T1. The lookup
+now reads the long and uses the selected Part. PLOCKS P2 stores generated
+locks by bank and pattern, so SEQ passes the bank index separately.
+The SEQ scenario puts effects on T1 and T3, leaves T2 empty, and checks
+both destination selection and the live parameter during playback.

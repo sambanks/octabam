@@ -59,6 +59,11 @@ On each track SEQ keeps:
    (**AMP** / **VOL**, **SRC** / **PTCH**, or a MIDI parameter). That destination keeps its
    own **PULS**, **ROT**, **DPTH**, and random step selection on the track.
 
+On audio tracks, **D** includes the available controls on both pages of
+the track's assigned effects. Both pages of FX1 come before both pages
+of FX2. The knob skips empty FX slots and stops at the last available
+destination.
+
 **LANE** (**C**) chooses which lane **A** / **B** and the step grid edit.
 Scroll **D** on **PLCK** to load that destination's **PULS** / **ROT** into
 **A** / **B**.
@@ -90,7 +95,7 @@ The step grid and **LEN** stay visible on both pages.
 | **A** | **PULS** | Hit count of the focused lane |
 | **B** | **ROT** | Rotation of the focused lane |
 | **C** | **LANE** | **TRIG** or **PLCK** |
-| **D** | Page and parameter | Choose the lock destination. Audio choices include **AMP** / **VOL**, **SRC** / **PTCH**, and CX OSC controls. MIDI choices include **NOTE**, **VEL**, **LEN**, LFO and ARP parameters, pitch bend, channel pressure, and **CC1** through **CC10**. |
+| **D** | Page and parameter | Choose the lock destination. Audio choices include **AMP** / **VOL**, **SRC** / **PTCH**, CX OSC controls, and the page-two parameters for FX1 and FX2. MIDI choices include **NOTE**, **VEL**, **LEN**, LFO and ARP parameters, pitch bend, channel pressure, and **CC1** through **CC10**. |
 | **E** | **DPTH** | Set lock variation. At 0, the fill clears this destination's locks. **AMP** / **VOL** varies only below the Part value; audio **PTCH** and MIDI **NOTE** use DPTH for their pitch span. Other destinations vary above and below their Part values. |
 | **F** | | Empty |
 

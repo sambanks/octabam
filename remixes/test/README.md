@@ -97,7 +97,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`scope-alone`](scope-alone/README.md) | stock effects with standalone SCOPE and no TUNER module. |
 | [`screen`](screen/README.md) | stock effects with SCREEN. |
 | [`screen-usb`](screen-usb/README.md) | stock + USB MIDI + SCREEN. |
-| [`seq`](seq/README.md) | STORE + SEQ (euclid.work client) with the stock effects. |
+| [`seq`](seq/README.md) | STORE + PLOCKS P2 + SEQ (seq.work client) with the stock effects. |
 | [`shatter`](shatter/README.md) | SHATTER beside the stock effects (all but PLATE REV, whose words it takes). |
 | [`sidechain-compressor`](sidechain-compressor/README.md) | stock effects with SIDECHAIN_COMPRESSOR in COMPRESSOR's row: MON, KEY, KGN, KBAS and KWID on page 2. |
 | [`slow-lfo`](slow-lfo/README.md) | stock effects with SLOW LFO: LFO MULT gains 1/2X, 1/4X and 1/8X on audio and MIDI tracks. |
