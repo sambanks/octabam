@@ -596,15 +596,31 @@ sy_render:
         bcs     .Lsq1
         neg.l   %d6
 .Lsq1:
+        cmp.l   %d5,%d4                 | each edge's polyBLEP only within one increment of it,
+        bcs     .Lsqb1                  | as the saw: o3_blep's own test, so far from an edge
+        move.l  %d4,%d0                 | the call (which returns 0) is skipped
+        neg.l   %d0
+        cmp.l   %d5,%d0
+        bcc     .Lsqe1
+.Lsqb1:
         move.l  %d4,%d0
         bsr     o3_blep
         lsl.l   #5,%d0
         add.l   %d0,%d6
+.Lsqe1:
         move.l  %d4,%d0
         sub.l   S_SQTH(%a3),%d0         | the falling edge at phase = S_SQTH
+        cmp.l   %d5,%d0
+        bcs     .Lsqb2
+        neg.l   %d0
+        cmp.l   %d5,%d0
+        bcc     .Lsqe2
+        neg.l   %d0                     | the edge's distance back
+.Lsqb2:
         bsr     o3_blep
         lsl.l   #5,%d0
         sub.l   %d0,%d6
+.Lsqe2:
         FM78    %d6,K_SQ(%a5)
         move.l  %d6,%d0                 | v6.9: the 303's square has soft edges, a one-pole lowpass
         sub.l   S_SQL(%a3),%d0
