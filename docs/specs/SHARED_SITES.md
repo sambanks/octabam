@@ -26,10 +26,12 @@ tree let modules share a site. Choose by what the modules need:
 
 ## Machines
 
-The track's machine list, SRC SETUP, the Part validator, the FLEX renderer entry, the playback resolver and the LFO PMTR names are 23 sites shared by every
-machine module. HOOKS's `machine_rows` bridge chains them in row order (ANALOG BD, OCTA303, CX OSC). The first present is the head and keeps every shared site; the chain ceiling
-is three (PB_TABLE has one spare word, `0x400d5f54`) and the manifest refuses a fourth. The list's key handlers clamp the cursor to 5
-([TRAPS.md](../contributing/TRAPS.md#trap-machine-clamp)). No machine registry exists: the in-tree machines needed none.
+The track's machine list, SRC SETUP, the Part validator, the playback resolver and the LFO PMTR names are shared by every machine module.
+**MACHINES** owns them: a machine is a client (`requires=("MACHINES",)`, an entry in its `CLIENTS`) and claims none of them
+([MACHINES.md](MACHINES.md)). DRUMMER is a client. ANALOG BD, OCTA303, CX OSC and WAVE CF are still chained by HOOKS's `machine_rows`
+bridge, in that row order: the first present is the head and keeps every shared site, and MACHINES conflicts with them until each is a client.
+Both hold three machines at most (PB_TABLE has one spare word, `0x400d5f54`). The list's key handlers clamp the cursor to 5
+([TRAPS.md](../contributing/TRAPS.md#trap-machine-clamp)).
 
 ## Open
 

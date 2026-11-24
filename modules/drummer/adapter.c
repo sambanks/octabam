@@ -101,7 +101,7 @@ enum {
 };
 extern uint8_t  dr_desc[DESC_SIZE];
 extern uint32_t dr_desc_ok;
-extern const uint8_t dr_defaults[12];
+extern const uint8_t dr_mc_defaults[12];
 
 static unsigned bank_ok(void)
 {
@@ -118,18 +118,6 @@ static unsigned signed_track(const volatile uint8_t *part, unsigned t)
 {
     const volatile uint8_t *sig = part + SIG + 30u * t;
     return t < TRACKS && part[0x22 + t] == 1 && sig[0] == 'D' && sig[1] == 'R' && sig[2] == 1;
-}
-
-/* A stored machine type and its byte in the Part: row 5 for a DRUMMER track. */
-unsigned dr_type(unsigned type, const volatile uint8_t *ptr)
-{
-    const volatile uint8_t *part;
-    uintptr_t t;
-    if (!bank_ok())
-        return type;
-    part = part_base();
-    t = (uintptr_t)ptr - (uintptr_t)(part + 0x22);
-    return type == 1 && t < TRACKS && signed_track(part, (unsigned)t) ? 5 : type;
 }
 
 static void put32(uint8_t *p, uint32_t v)
@@ -220,7 +208,7 @@ uint32_t dr_page(void)
         text(d + 0x41, "SRC", 13);
         for (i = 0; i < 12; ++i) {
             text(d + 0x4e + 6 * i, names[i], 6);
-            d[0x96 + i] = dr_defaults[i];
+            d[0x96 + i] = dr_mc_defaults[i];
             put32(d + 0xa2 + 4 * i, 0);
             put32(d + 0xd2 + 4 * i, 128);
             put32(d + 0x102 + 4 * i, i == DR_K_STYL ? (uint32_t)(uintptr_t)dr_style_fmt
@@ -238,76 +226,45 @@ uint32_t dr_page(void)
     return (uint32_t)(uintptr_t)(dr_desc + 0x38);
 }
 
-uint32_t dr_track_page(const volatile uint8_t *type_ptr)
+/* ---- MACHINES client (modules/machines, docs/specs/MACHINES.md) ---------
+ * MACHINES puts DRUMMER on the machine list, signs a track that chooses it
+ * and answers the list's sites; these are what is DRUMMER's own. */
+
+/* The 12 knob bytes a track gets when it first becomes DRUMMER:
+ * live SEED DENS CPLX ORN BRK GHST, config STYL VEL ALT SWNG HUMN VAR. */
+const uint8_t dr_mc_defaults[12] = { 0, 64, 32, 16, 0, 48, 0, 64, 64, 64, 64, 64 };
+
+uint32_t dr_mc_page(const volatile uint8_t *type_ptr)
 {
     (void)type_ptr;
     return dr_page();
 }
 
-/* The SRC SETUP and LFO names read PB_TABLE[row]: row 5 is DRUMMER's page. */
-extern uint8_t dr_ml_pick;
-__attribute__((section(".data"))) uint32_t dr_pb_flex;                       /* PB_TABLE[1] (FLEX's page) while a pick has it */
-/* FLEX's slot list opened from DRUMMER's row (machine.s dr_setup_key) sets
- * the cursor to FLEX: the SETUP knobs beside the list stay DRUMMER's (PB_TABLE[1]
- * is DRUMMER's page until the pick ends). Called at the pick's RIGHT and each UI tick. */
-void dr_pick_page(void)
+void dr_mc_tick(void)
 {
-    uint32_t page = dr_page();
-    if (dr_ml_pick) {
-        if (U32(PB_TABLE + 4u) != page) {
-            dr_pb_flex = U32(PB_TABLE + 4u);
-            U32(PB_TABLE + 4u) = page;
-        }
-    } else if (dr_pb_flex) {
-        U32(PB_TABLE + 4u) = dr_pb_flex;
-        dr_pb_flex = 0;
-    }
-}
-
-void dr_ui_tick(void)
-{
-    U32(PB_TABLE + 5u * 4u) = dr_page();
-    dr_pick_page();
     dr_kit_tick();
 }
 
-/* The stock validator sees FLEX's defaults on a DRUMMER track's 12 knob
- * bytes (its ranges would clamp DRUMMER's values: RTRG holds BRK), then
- * they are put back. ANALOG BD's form. */
-extern int dr_stock_validate(void *part);
-int dr_validate_part(uint8_t *part)
+/* KIT BALANCE sits in STATIC's PLAYBACK bytes: the stock validator sees
+ * stock's FLEX defaults there meanwhile, then they are put back. */
+__attribute__((section(".data"))) uint8_t dr_mixs[TRACKS][7];
+void dr_mc_keep(uint8_t *part, unsigned t, int restore)
 {
-    uint8_t saved[TRACKS][12], mixs[TRACKS][7];
-    unsigned mask = 0, t, k;
     const volatile uint8_t *stock = (const volatile uint8_t *)ADDR(FLEX_DEFAULTS);
-    int result;
-    for (t = 0; t < TRACKS; ++t)
-        if (signed_track(part, t)) {
-            mask |= 1u << t;
-            for (k = 0; k < 12; ++k) {
-                unsigned at = (k < 6 ? 0x2au : 0x1dau) + 30u * t + 6u + k % 6u;
-                saved[t][k] = part[at];
-                part[at] = stock[k];
-            }
-            for (k = 0; k < 6; ++k) {            /* KIT BALANCE in STATIC's bytes: stock's FLEX defaults meanwhile */
-                mixs[t][k] = part[MIX_AT + 30u * t + k];
-                part[MIX_AT + 30u * t + k] = stock[k];
-            }
-            mixs[t][6] = part[MIX_MARK + 30u * t];
+    unsigned k;
+    if (t >= TRACKS)
+        return;
+    if (!restore) {
+        for (k = 0; k < 6; ++k) {
+            dr_mixs[t][k] = part[MIX_AT + 30u * t + k];
+            part[MIX_AT + 30u * t + k] = stock[k];
         }
-    result = dr_stock_validate(part);
-    for (t = 0; t < TRACKS; ++t)
-        if (mask & (1u << t))
-        {
-            for (k = 0; k < 12; ++k) {
-                unsigned at = (k < 6 ? 0x2au : 0x1dau) + 30u * t + 6u + k % 6u;
-                part[at] = saved[t][k];
-            }
-            for (k = 0; k < 6; ++k)
-                part[MIX_AT + 30u * t + k] = mixs[t][k];
-            part[MIX_MARK + 30u * t] = mixs[t][6];
-        }
-    return result;
+        dr_mixs[t][6] = part[MIX_MARK + 30u * t];
+    } else {
+        for (k = 0; k < 6; ++k)
+            part[MIX_AT + 30u * t + k] = dr_mixs[t][k];
+        part[MIX_MARK + 30u * t] = dr_mixs[t][6];
+    }
 }
 
 /* ---- NEXT (SRC after KIT BALANCE, kit.c): the orders ----------------------

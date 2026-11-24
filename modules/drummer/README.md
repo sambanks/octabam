@@ -1,6 +1,7 @@
 # `drummer` — DRUMMER
 
-Author: [djib](https://github.com/Djibdjib). Machine row seams from ANALOG BD
+Author: [djib](https://github.com/Djibdjib). The machine row is
+[MACHINES](../machines/README.md)'s, from ANALOG BD's seams
 ([repeat98](https://github.com/repeat98)); KIT window drawn as CHORDS' and
 SCALES' choosers; drummer.work through [STORE](../store/README.md).
 
@@ -854,8 +855,11 @@ keeps 8 slices at 6; a 32-sound kit chain's two nearest sounds are 6.7 apart.
   at every 4th frame).
 - The track's scale is learnt from a trig of its own (1X until one plays).
 - The trig LEDs do not show the zones yet.
-- Standalone on the machine list: conflicts with ANALOG BD, OCTA303 and
-  CX OSC (row 5, and CX OSC's FLEX start) until DRUMMER joins HOOKS'
-  machine_rows.
+- The machine row is [MACHINES](../machines/README.md)'s: DRUMMER is a
+  client (its page, its kit tick, and KIT BALANCE's bytes kept from the
+  validator, `adapter.c`). It cannot share an image with ANALOG BD,
+  OCTA303, WAVE CF, CX OSC, BLACKPYRAMIDS_303 or SYNTH MACHINE: MACHINES
+  conflicts with each until it is a client (`modules/machines/manifest.py`),
+  and CX OSC also replaces FLEX's start entry.
 - STORE client 8 (after CHORDS FACTORY 7): renumbered when merged beside other
   clients.
