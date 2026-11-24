@@ -19,6 +19,18 @@ store_part_activate:
     move.l (%sp)+,%d0
     jmp 0x4000f938
 store_part_native_copy:
+/* A copy whose destination is outside the 16 banks is never a Part write: .begin refuses it
+ * before anything else, and the path below then only calls the stock copy and returns what it
+ * returns. Such a copy goes straight to .copy_stock as our caller's call, before the register
+ * frame. Only a1 is used here, and .copy_stock's replayed `move.l 8(%sp),%a1` overwrites it,
+ * so the stock copy starts with the registers and arguments the path below would give it; the
+ * flags on return are the stock copy's, as after any stock call. The frame interrupt makes
+ * about 24 such copies a frame while voices play. */
+    move.l 4(%sp),%a1
+    cmpa.l #0x400e21e0,%a1
+    bcs.w .copy_stock
+    cmpa.l #0x400e21e0+16*0x9b340,%a1
+    bcc.w .copy_stock
     lea -24(%sp),%sp
     movem.l %d0-%d1/%a0-%a1,(%sp)
     move.l 28(%sp),%d0
