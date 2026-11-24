@@ -192,11 +192,11 @@ lm_otop:
 3:      mvz.b   %a1@(1),%d1
         cmp.l   #15,%d1
         bhi.s   2f
-        lea     %a1@(2),%a1
-        bsr.w   lm_u24
-        asl.l   #4,%d1
+        asl.l   #4,%d1                          | lm_ot[slot], before the call (lm_u24 keeps a0 and d1)
         lea     lm_ot,%a0
         add.l   %d1,%a0
+        lea     %a1@(2),%a1
+        bsr.w   lm_u24
         move.l  %d0,%a0@                        | last
         add.l   %d0,%a0@(4)                     | sum
         addq.l  #1,%a0@(8)                      | count
