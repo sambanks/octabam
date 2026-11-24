@@ -2008,9 +2008,9 @@ struct piece { u16 off, len, rstride; u8 stride, rep; };
 static const struct piece pc_fx[]   = { { 0x000, 1, 0, 1, 1 }, { 0x008, 1, 0, 1, 1 },	/* the FX1 and FX2 ids */
 					{ 0x126, 12, 0, 24, 1 }, { 0x2fe, 12, 0, 30, 1 } };	/* FX1+FX2 page 1 and 2 */
 static const struct piece pc_lfo[]  = { { 0x11a, 6, 0, 24, 1 }, { 0x2f2, 6, 0, 30, 1 }, { 0x30a, 6, 0, 30, 1 } };
-/* the SRC pages of the machines that read no sample: the THRU, NEIGHBOR and PICKUP pages (types 2-4 of
- * the five a track keeps, 6 bytes each) */
-static const struct piece pc_src[]  = { { 0x02a + 12, 18, 0, 30, 1 }, { 0x1da + 12, 18, 0, 30, 1 } };
+/* a track's SRC pages of all five machine types (STATIC, FLEX, THRU, NEIGHBOR, PICKUP; 6 bytes each, two pages) */
+static const struct piece pc_src[]  = { { 0x02a, 30, 0, 30, 1 }, { 0x1da, 30, 0, 30, 1 } };
+static const struct piece pc_amp[]  = { { 0x120, 6, 0, 24, 1 }, { 0x2f8, 6, 0, 30, 1 } };	/* the AMP pages 1 and 2 */
 static const struct piece pc_midi[] = { { 0x3e2, 32, 0, 32, 1 }, { 0x4e2, 36, 0, 36, 1 } };	/* a MIDI track's two pages */
 static const struct piece pc_scn[]  = { { 0x662, 32, 256, 32, 16 } };				/* a track's lock in each of 16 scenes */
 static const struct piece pc_mach[] = { { 0x022, 1, 0, 1, 1 } };
@@ -2020,13 +2020,12 @@ static const struct piece px_lfo[]  = { { 0x1702, 304, 0, 0, 1 } };				/* the LF
 
 struct sec { const struct piece *pc, *ex; u8 n, nex; };
 #define SECP(a, x, b) { a, x, sizeof a / sizeof *a, b }
-enum { SEC_FX, SEC_LFO, SEC_SRC, SEC_MIDI, SEC_SCN, SEC_MACH, SEC_N };
+enum { SEC_FX, SEC_LFO, SEC_SRC, SEC_AMP, SEC_MIDI, SEC_SCN, SEC_MACH, SEC_N };
 static const struct sec sec[SEC_N] = {
-	SECP(pc_fx, 0, 0), SECP(pc_lfo, px_lfo, 1), SECP(pc_src, 0, 0), SECP(pc_midi, 0, 0), SECP(pc_scn, px_scn, 1),
+	SECP(pc_fx, 0, 0), SECP(pc_lfo, px_lfo, 1), SECP(pc_src, 0, 0), SECP(pc_amp, 0, 0), SECP(pc_midi, 0, 0), SECP(pc_scn, px_scn, 1),
 	SECP(pc_mach, 0, 0),
 };
-/* what a PART template takes and applies is what means the same in any project: no sample slots,
- * no AMP page and no Flex or Static SRC page (they are shaped around a sample), no levels */
+/* what a PART template takes and applies: no sample slots, no levels */
 #define SEC_ALL     ((1u << SEC_N) - 1)
 #define SEC_DEFAULT SEC_ALL
 
@@ -2806,8 +2805,8 @@ static void ld_add(u32 kind, u32 t)
 /* APPLY TO... on a PART template: which section (WHOLE PART or one), then, for a section, which
  * track of the template (ALL TRACKS, or one) and, for one, onto which track of the current Part */
 #define AP_ROWS (SEC_N + 1)
-static const char *const ap_secl[AP_ROWS] = { "WHOLE PART", "FX", "LFO", "INPUT SRC", "MIDI TRACKS", "SCENES",
-					      "MACHINES" };
+static const char *const ap_secl[AP_ROWS] = { "WHOLE PART", "FX", "LFO", "SRC", "AMP", "MIDI TRACKS",
+					      "SCENES", "MACHINES" };
 static const char *ap_l[9];
 static char ap_lab[9][18];
 static void (*ap_f[9])(u32);
@@ -3368,18 +3367,17 @@ static void ted_sub_open(u32 sb)
 }
 
 /* A PART template's groups: what its sections hold, edited in the Part image ted_part */
-enum { PP_MACH, PP_FX, PP_LFO, PP_SRC, PP_MIDI, PP_SCN, PP_N };
-static const char *const pp_name[PP_N] = { "MACHINES", "FX", "LFO", "INPUT SRC", "MIDI TRACKS", "SCENES" };
+enum { PP_MACH, PP_FX, PP_LFO, PP_SRC, PP_AMP, PP_MIDI, PP_SCN, PP_N };
+static const char *const pp_name[PP_N] = { "MACHINES", "FX", "LFO", "SRC", "AMP", "MIDI TRACKS", "SCENES" };
 static const char *const mach_name[5] = { "STATIC", "FLEX", "THRU", "NEIGHBOR", "PICKUP" };
 static const char *const pg_t[8] = { "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8" };
 static const char *const pg_m[8] = { "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8" };
 static char scn_val[2][4];
 static char ted_tt[16];
 
-/* track ted_sub's page in the group open (LFO, INPUT SRC, MIDI TRACKS): its slots from the stock page
- * descriptors; a slot's value is the byte of ted_part at its offset. An INPUT SRC page is the one of the
- * machine the template has on the track (a THRU, NEIGHBOR or PICKUP page; a sample machine's is not
- * a template's). */
+/* track ted_sub's page in the group open (LFO, SRC, AMP, MIDI TRACKS): its slots from the stock page
+ * descriptors; a slot's value is the byte of ted_part at its offset. An SRC page is the one of the
+ * machine the template has on the track. */
 static struct view pv;
 static char pv_lab[NSLOT][8], pv_val[NSLOT][12];
 static void pv_build(void)
@@ -3387,12 +3385,14 @@ static void pv_build(void)
 	u32 t = ted_sub & 7;
 	if (ted_grp == PP_LFO) {
 		view_fill(&pv, V_LFO, t);
+	} else if (ted_grp == PP_AMP) {
+		view_fill(&pv, V_AMP, t);
 	} else if (ted_grp == PP_MIDI) {
 		view_fill(&pv, V_MIDI, t);
 	} else {
 		u32 m = ted_part[0x22 + t];
 		pv.n = 0;
-		for (u32 sl = 0; m >= 2 && m <= 4 && sl < 12; sl++)
+		for (u32 sl = 0; m <= 4 && sl < 12; sl++)
 			slot(&pv, 1 + sl, (sl < 6 ? 0x8edaa : 0x8ef5a - 6) + t * 30 + m * 6 + sl, NOFLAT,
 			     D_PLAYBACK + m * 0x192, sl);
 	}
@@ -3418,7 +3418,7 @@ static const char *ted_title(void)
 	ted_tt[k++] = ted_grp == PP_MIDI ? 'M' : 'T';
 	ted_tt[k++] = (char)('1' + t);
 	ted_tt[k++] = ' ';
-	k += put_s(ted_tt + k, ted_grp == PP_LFO ? "LFO" : ted_grp == PP_MIDI ? "MIDI" : mach_name[ted_part[0x22 + t] % 5]);
+	k += put_s(ted_tt + k, ted_grp == PP_LFO ? "LFO" : ted_grp == PP_AMP ? "AMP" : ted_grp == PP_MIDI ? "MIDI" : mach_name[ted_part[0x22 + t] % 5]);
 	ted_tt[k] = 0;
 	return ted_tt;
 }
@@ -4155,7 +4155,7 @@ static void ted_delete(u32 unused)
 }
 
 /* a PART template's group: MACHINES, the FX slots (and one slot's values), a track list and a track's
- * page for LFO, INPUT SRC and MIDI TRACKS, SCENES' two selections */
+ * page for LFO, SRC, AMP and MIDI TRACKS, SCENES' two selections */
 static void build_part_page(void)
 {
 	if (ted_grp == PP_MACH) {
@@ -4191,18 +4191,15 @@ static void build_part_page(void)
 			add(K_TEXT, "NO VALUES", 0, 0);
 		return;
 	}
-	if (ted_sub == G_TOP) {				/* the tracks: INPUT SRC lists the ones with a THRU, NEIGHBOR or PICKUP */
+	if (ted_sub == G_TOP) {				/* the tracks, SRC with each one's machine */
 		for (u32 t = 0; t < 8; t++) {
 			u32 m = ted_part[0x22 + t];
 			if (ted_grp == PP_SRC) {
-				if (m >= 2 && m <= 4)
-					add(K_VALUE, pg_t[t], ted_sub_open, t)->val = mach_name[m];
+				add(K_VALUE, pg_t[t], ted_sub_open, t)->val = mach_name[m % 5];
 			} else {
 				add(K_ITEM, ted_grp == PP_MIDI ? pg_m[t] : pg_t[t], ted_sub_open, t);
 			}
 		}
-		if (sn == 0)
-			add(K_TEXT, "NO INPUT TRACKS", 0, 0);
 		return;
 	}
 	pv_build();

@@ -966,8 +966,8 @@ def main():
         # ---- a PART template: APPLY TO..., WHOLE PART --------------------------------------------------
         # The template's Part image has valid FX ids (0 = NONE), valid machines and scene selections, and a
         # byte pattern everywhere else. WHOLE PART, then the live Part: every section's bytes equal the
-        # template's (FX, LFO, INPUT SRC, MIDI TRACKS, SCENES, MACHINES), the bytes no section carries
-        # (the AMP pages, the levels, the sample slots) still the project's own.
+        # template's (FX, LFO, SRC, AMP, MIDI TRACKS, SCENES, MACHINES), the bytes no section carries
+        # (the levels, the sample slots) still the project's own.
         def whole_fn(b):
             for k in range(16):
                 b[k] = 0
@@ -983,13 +983,13 @@ def main():
             roots=((wseed, "BRAIN/card.work"),), dumps=((part_at + 0x8ed80, 6322),))
         def span(b, off, n): return b[off:off + n]
         secs = {"FX ids": (0x00, 16), "FX pages 1": (0x126, 12), "LFO": (0x11a, 6), "LFO designer": (0x1702, 304),
-                "INPUT SRC T1 page": (0x02a + 12, 18), "MIDI T1 page 1": (0x3e2, 32), "scenes T1 lock": (0x662, 32),
+                "SRC T1 page 1": (0x02a, 30), "SRC T1 page 2": (0x1da, 30), "AMP T1 page 1": (0x120, 6), "AMP T1 page 2": (0x2f8, 6), "MIDI T1 page 1": (0x3e2, 32), "scenes T1 lock": (0x662, 32),
                 "scene A, B": (0x10, 2), "machines": (0x22, 8)}
         bad = [n for n, (o, c) in secs.items() if span(live1, o, c) != span(wblob, o, c)]
-        kept = [n for n, (o, c) in {"AMP T1 page 1": (0x120, 6), "levels": (0x12, 16), "sample slots": (0x2ca, 40)}.items()
+        kept = [n for n, (o, c) in {"levels": (0x12, 16), "sample slots": (0x2ca, 40)}.items()
                 if span(live1, o, c) != span(live0, o, c)]
         check(f"templates: PART template APPLY TO..., WHOLE PART: every section equals the template's "
-              f"(differing: {bad or 'none'}); the AMP page, the levels and the sample slots keep the project's "
+              f"(differing: {bad or 'none'}); the levels and the sample slots keep the project's "
               f"(changed: {kept or 'none'})", not bad and not kept)
     if in_group("panes"):
 

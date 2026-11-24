@@ -11,11 +11,11 @@ A template stores a reusable setup. Use **LEFT / RIGHT** to choose the **PART**,
 
 The template screen also provides **SAVE**, **RENAME**, and **DELETE**.
 
-- PART templates hold a whole Part, applied by section and track: FX, LFO, INPUT SRC, MIDI TRACKS, SCENES, MACHINES.
-- FX templates store an effect page; applying one to a different effect replaces that effect. MIDI templates store a MIDI track's pages.
+- PART templates hold a whole Part, applied by section and track: FX, LFO, SRC, AMP, MIDI TRACKS, SCENES, MACHINES.
+- FX templates store one effect: its id, page 1 and page 2 (the FX SETUP page); applying one to a different effect replaces that effect. MIDI templates store a MIDI track's pages.
 - PROJECT templates cover the stock PROJECT / CONTROL / MIDI screens. SET AS DEFAULT on one makes it the settings of every new project.
 
-PART templates leave the project's sample slots, AMP pages, FLEX and STATIC SRC pages, and levels unchanged. Applying a PART template lets you choose the whole Part, a section across tracks, or a source and destination track. A PART default supplies Part Clear and the Parts of a new project.
+PART templates leave the project's sample slots and levels unchanged. A PART template covers the SRC and AMP pages of every machine type. A Kit (KITS module) is a Part saved per pattern; a PART template is a Part saved to apply to any Part. Applying a PART template lets you choose the whole Part, a section across tracks, or a source and destination track. A PART default supplies Part Clear and the Parts of a new project.
 
 Use **LEFT / RIGHT** or the encoder to edit values. **NO** returns to the previous screen; unsaved edits prompt **SAVE CHANGES?**. A name already in use is refused.
 
