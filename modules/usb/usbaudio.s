@@ -1331,17 +1331,20 @@ producer_usb:
     | landed in the next slot's track 8 field and the stream's MASTER
     | channels carried whatever the slot held (read from the source, not
     | measured on a unit).
-    | MAIN (checked): d2/d3 = the pair, byte-reversed
+    | MAIN (checked): d2/d3 = the pair, byte-reversed. In MAIN, CUE and MASTER
+    | every address register is loaded at least two instructions before its
+    | first use, so no load or store takes an address-use stall: prod_src is
+    | read above the box's test (a0 is free there).
+    moveal  prod_src,%a0
     btst    #PF_MAIN,%d6
     beqs    .Lf_nomain
-    moveal  prod_src,%a0
     movel   %a0@(MAIN_CUE_MAIN_OFF),%d2
+    movel   %a0@(MAIN_CUE_MAIN_OFF+4),%d3
+    moveal  prod_pm,%a0
     clrb    %d2
     byterev %d2
-    movel   %a0@(MAIN_CUE_MAIN_OFF+4),%d3
     clrb    %d3
     byterev %d3
-    moveal  prod_pm,%a0
     movel   %d2,%a0@                | MAIN L
     movel   %d3,%a0@(4)             | MAIN R
     addl    %d4,prod_pm
@@ -1354,16 +1357,16 @@ producer_usb:
     movel   %d3,%a4@+               | MAIN R, full speed
 .Lf_nomain:
     | CUE (checked)
+    moveal  prod_src,%a0
     btst    #PF_CUE,%d6
     beqs    .Lf_nocue
-    moveal  prod_src,%a0
     movel   %a0@(MAIN_CUE_CUE_OFF),%d2
+    movel   %a0@(MAIN_CUE_CUE_OFF+4),%d3
+    moveal  prod_pc,%a0
     clrb    %d2
     byterev %d2
-    movel   %a0@(MAIN_CUE_CUE_OFF+4),%d3
     clrb    %d3
     byterev %d3
-    moveal  prod_pc,%a0
     movel   %d2,%a0@                | CUE L
     movel   %d3,%a0@(4)             | CUE R
     addl    %d4,prod_pc
@@ -1381,12 +1384,12 @@ producer_usb:
     btst    #PF_MASTER,%d6
     beqs    .Lf_nomaster
     movel   %a2@((RB_TRACKS-1)*128),%d2
+    movel   %a2@((RB_TRACKS-1)*128+4),%d3
+    moveal  prod_px,%a0
     clrb    %d2
     byterev %d2
-    movel   %a2@((RB_TRACKS-1)*128+4),%d3
     clrb    %d3
     byterev %d3
-    moveal  prod_px,%a0
     movel   %d2,%a0@                | T8 L
     movel   %d3,%a0@(4)             | T8 R
     addl    %d4,prod_px
