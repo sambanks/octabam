@@ -484,9 +484,9 @@ sy_cold_modphase:
         lea     sy_mixq(%pc),%a0
         move.l  %d1,(%a0,%d0.l)
         mvz.w   8(%a4),%d1               | RTRG -> FOLD
-        lsr.l   #8,%d1
-        lsl.l   #8,%d1
         lea     sy_foldq(%pc),%a0
+        move.l  %d1,(%a0,%d0.l)
+        lea     sy_foldtarget(%pc),%a0
         move.l  %d1,(%a0,%d0.l)
         move.l  %d2,%d1                  | PWM from SETUP F
         move.l  #CV_STRIDE,%d3
@@ -709,9 +709,11 @@ sy_mono_inc:
         muls.l  %d1,%d0
         move.l  %d0,S_INCM(%a3)          | modulator increment = ratio * pitch
         mvz.w   8(%a4),%d1               | RTRG -> FOLD
-        lsr.l   #8,%d1
         move.l  %d2,%d0                  | track (still in d2 here)
         lsl.l   #2,%d0
+        lea     sy_foldtarget(%pc),%a0
+        move.l  %d1,(%a0,%d0.l)          | retain FOLD's fractional low byte from LFO/scene words
+        lsr.l   #8,%d1
         lea     sy_cxparm(%pc),%a0
         move.b  %d1,(%a0,%d0.l)          | raw FOLD target; sy_loop slews it at sample rate
         move.l  %d2,%d1
@@ -1257,19 +1259,18 @@ sy_mix_done:
         | ---- FOLD (RTRG) + SYMM (SETUP D): half-wave skew into the folder ----
         | c_fold = c * gain/64; gain = SYMM (c>=0) or (128-SYMM) (c<0).
         | 64 = even. drive = 256 + (FOLD_Q8*24)>>8. out = c + (folded-c)*FOLD_Q8/32768.
-        | Advance FOLD_Q8 at 1/128 per sample. The total slew matches the old
-        | 1/8-per-frame rate, but a split-frame trig cannot add an extra step.
+        | Advance fractional FOLD_Q8 at 1/256 per sample. The slower ramp
+        | softens LFO/knob movement and a split-frame trig cannot add a step.
         move.l  %a6,-(%sp)
         move.l  %d1,-(%sp)               | park the carrier sample while d1 computes the slew
         move.l  84(%sp),%d2              | track (a6, carrier and six sample-loop stack words)
         lsl.l   #2,%d2
-        lea     sy_cxparm(%pc),%a6
-        mvz.b   (%a6,%d2.l),%d1          | target FOLD 0..127
-        lsl.l   #8,%d1                   | Q8
+        lea     sy_foldtarget(%pc),%a6
+        move.l  (%a6,%d2.l),%d1         | target FOLD Q8, including the LFO fraction
         lea     sy_foldq(%pc),%a6
         move.l  (%a6,%d2.l),%d4         | current FOLD_Q8
         sub.l   %d4,%d1
-        asr.l   #7,%d1                   | 1/128 per sample ~= 1/8 per 16-sample call
+        asr.l   #8,%d1                   | 1/256 per sample ~= 1/16 per 16-sample call
         add.l   %d1,%d4
         move.l  %d4,(%a6,%d2.l)
         move.l  %d4,12(%sp)             | update this sample's FOLD_Q8 stack slot
@@ -6448,6 +6449,8 @@ sy_pwmq:                                 | 8 tracks x Q8 current PWM (sy_knob_sl
 sy_mixq:                                 | 8 tracks x Q8 current MIX (sy_knob_slew)
         .fill   8, 4, 0
 sy_foldq:                                | 8 tracks x Q8 current FOLD
+        .fill   8, 4, 0
+sy_foldtarget:                            | 8 tracks x Q8 FOLD target, including the record's low-byte fraction
         .fill   8, 4, 0
 po_amp:                                  | (2.20) 8 tracks x 4 bytes: ATK, HOLD, REL as the frame builder wrote them,
         .fill   8 * 4, 1, 0              | 1 once kept (po_amp_snap)

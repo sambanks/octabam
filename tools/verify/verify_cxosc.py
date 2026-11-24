@@ -314,6 +314,10 @@ def render_dynamic_fold(uc, symbols, with_trigs):
         knobs["fold"] = min(127, frame * 8)
         plant_part(uc)
         plant_fp(uc, **knobs)
+        # Mirror the DSP record's low-byte interpolation fraction used by
+        # LFO/scene modulation; a hand knob alone leaves these bits at zero.
+        fold_fraction = (frame * 53) & 0xFF
+        uc.mem_write(FP_REC + 8, struct.pack(">H", (knobs["fold"] << 8) | fold_fraction))
         plant_voice(uc, 0, True, **amp)
         split = with_trigs and frame in trig_frames
         uc.mem_write(HEADER, bytes(0x1000 if split else 16 + 16 * 8))
@@ -782,8 +786,8 @@ def main():
             )
         peak_diff = max(trig_diffs)
         check("DEC=INF FOLD ramp is stable across split-frame trigs",
-              peak_diff <= 250_000,
-              f"peak same-phase waveform difference={peak_diff} (limit 250000)")
+              peak_diff <= 150_000,
+              f"peak same-phase waveform difference={peak_diff} (limit 150000)")
 
     # Cost: mean instructions of steady frames (skip cold start).
     steady = costs["base"][1:]
