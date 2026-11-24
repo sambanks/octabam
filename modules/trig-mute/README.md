@@ -1,7 +1,7 @@
 # TRIG MUTE
 
 Author: [Hteah](https://github.com/Hteah). PR preparation, test remix and gate by 8thmyth.
-Original module by [Hteah](https://github.com/Hteah), from [Hteah/ot-mods](https://github.com/Hteah/ot-mods). Copyright (c) 2026 Hteah. Licensed under MIT; the upstream copyright and permission notice apply to this module.
+Original module by [Hteah](https://github.com/Hteah), from [Hteah/ot-mods](https://github.com/Hteah/ot-mods). Copyright (c) 2026 Hteah. Licensed under MIT: the copyright and permission notice is in [LICENSE](LICENSE).
 
 Mute single trigs, as on the newer Elektron boxes. A muted trig stays on the
 grid with its locks and its condition, but does not play.
@@ -19,8 +19,13 @@ The mute is kept in the pattern itself, in the trig's condition value:
 stock uses 0..64, and a muted trig holds its condition + 65. So it is saved
 with the bank, copied and pasted with the trig or pattern, and kept over a
 power cycle (the battery copy of the bank), with nothing of its own on the
-card or in battery RAM. Stock firmware reads a value above 64 as "no
-condition": there, a muted trig plays and its condition shows ERR.
+card or in battery RAM.
+
+**Don't open a project with muted trigs in an image without TRIG MUTE.**
+Stock firmware, and any remix without this module (also through REMIX
+SWITCH), checks each pattern after a load and turns a condition above 64
+into 64. Every muted trig becomes an unmuted **8:8** trig that plays, and
+its own condition is gone. Saving the project there makes that permanent.
 
 Hooks (1.40C): the step handler's condition test (a muted trig fails it,
 as a failed condition does: no trig, no locks; recorder trigs still run),
@@ -28,6 +33,3 @@ the condition label and edit, the lock-flash pass (the blink), and the
 trig-held layer's key rows (stock's plus FUNC).
 
 Not done: MIDI tracks (FUNC there is stock's).
-
-Measured under the port (`tools/verify/verify_trig_mute.py`). Run on an
-Octatrack MKI since ACCLOOP16 (28 Oct 2026): mute/unmute, save and power cycle keep the mutes.
