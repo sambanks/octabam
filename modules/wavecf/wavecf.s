@@ -218,8 +218,8 @@ wc_render:
         move.w  %d0,(%a4)
         move.l  #NEUTRAL_RATE,%d0
         move.w  %d0,6(%a4)
+        lea     S_POS(%a3),%a1          | (before the call, which keeps a1: no address-use stall)
         bsr     wc_voice                | a0 = the voice's position fields
-        lea     S_POS(%a3),%a1
         move.l  (%a0)+,(%a1)+
         move.l  (%a0)+,(%a1)+
         move.l  (%a0)+,(%a1)+
@@ -232,10 +232,10 @@ wc_render:
         move.l  64(%sp),-(%sp)          | ping
         move.l  64(%sp),-(%sp)          | track
         jsr     STOCK_RENDER
-        lea     16(%sp),%sp
-        move.l  %d0,44(%sp)             | the stock return value, handed back
-        move.l  52(%sp),%d2
+        move.l  %d0,60(%sp)             | the stock return value, handed back (44(%sp) after the pop);
+        lea     16(%sp),%sp             | stored before the pop and the moveq between: no sp stall
         moveq   #NTRACKS-1,%d0
+        move.l  52(%sp),%d2
         cmp.l   %d0,%d2
         bhi     .Ldone
         tst.l   %d4
@@ -244,8 +244,8 @@ wc_render:
         move.w  %d0,(%a4)
         move.w  S_WRATE+2(%a3),%d0
         move.w  %d0,6(%a4)
+        lea     S_POS(%a3),%a1          | (before the call, which keeps a1: no address-use stall)
         bsr     wc_voice                | pin the carrier: the positions as they were before the call
-        lea     S_POS(%a3),%a1
         move.l  (%a1)+,(%a0)+
         move.l  (%a1)+,(%a0)+
         move.l  (%a1)+,(%a0)+
@@ -402,9 +402,8 @@ wc_knobs:
 wc_voice:
         move.l  #VOICE_STRIDE,%d0
         muls.l  %d2,%d0
-        lea     VOICE_BASE,%a0
+        lea     VOICE_BASE+V_POS,%a0    | (V_POS folded in: no lea through the a0 just written)
         add.l   %d0,%a0
-        lea     V_POS(%a0),%a0
         rts
 
 | ============================================================================
