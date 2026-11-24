@@ -785,8 +785,7 @@ sy_render:
         move.l  #OSAT_OUT,%d2
         muls.l  %d2,%d6
         asr.l   #8,%d6
-        asr.l   #1,%d6
-        asr.l   #SHIFT_OUT,%d6
+        asr.l   #1+SHIFT_OUT,%d6        | >> 1, then the output shift, in one (1-8: SHIFT_OUT at most 7)
         CLAMP   %d6,-32767,32767
         lsl.l   #8,%d6
         lsl.l   #8,%d6
