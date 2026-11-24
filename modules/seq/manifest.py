@@ -57,6 +57,8 @@ MODULE = Module(
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
     evidence=(
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTABAM 81.RMX", date="2026-11-25",
+                 note="Author confirmed on-unit audio RAND PTCH: the first note is chosen randomly from DPTH; JUMP 0 moves one scale degree and higher JUMP allows wider moves. No CX-specific check reported."),
         Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="CX 86.RMX", date="2026-11-24",
                  note="Owner confirmed CX 86 works perfectly on the unit."),
         Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTA S3.RMX", date="2026-11-16",

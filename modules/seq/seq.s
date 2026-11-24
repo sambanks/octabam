@@ -215,8 +215,9 @@
         .set    CX_NSLOT,  5           | CAR MOD SYMM FDBK PWM
 
         | DEST=PTCH: rad = max_rad*DEPTH/127 (min 1 if DEPTH>0).
-        | PIT_RAD 24 = ±2 oct FM/SY; PIT_SAMP 12 = sample PLAYBACK max |st|.
-        .set    PIT_RAD,   24
+        | PIT_RAD 64 spans the full raw PTCH range around 64 for FM/SY/CX.
+        | PIT_SAMP 12 = sample PLAYBACK max |st|.
+        .set    PIT_RAD,   64
         .set    PIT_SAMP,  12
         .set    EF_MAGIC,  0x4546494c   | 'EFIL'
         .set    EF_VER,    12           | v12 appends page-2 depth and plock settings
@@ -3222,7 +3223,7 @@ epr_triangle:
 3:      rts
 epr_random:
         cmpi.l  #1,%d3
-        bls.s   epr_rand_single
+        bls.w   epr_rand_single
         tstl    ef_rand_valid
         bne.s   epr_rand_next
         bsr.w   ef_rng
@@ -3234,18 +3235,20 @@ epr_random:
         movel   %d1,ef_rand_valid
         rts
 epr_rand_next:
-        | Pick a random direction; turn at DEPTH edges to keep the absolute
-        | scale-degree interval equal to JUMP.
-        bsr.w   ef_rng
-        movel   %d0,%d1
+        | JUMP=0 moves one scale degree. Higher JUMP widens the random step
+        | range up to the whole DEPTH span at JUMP=127.
         movel   %d3,%d5
-        subql   #1,%d5
-        lsrl    #2,%d5                 | leave room for random motion inside DEPTH
+        subql   #2,%d5                 | distance above the minimum step 1
         movel   ef_tone_jump,%d0
         mulu.w  %d5,%d0
         moveq   #127,%d5
         divu.l  %d5,%d0
-        addql   #1,%d0
+        addql   #1,%d0                 | max step from 1 to count-1
+        movel   %d0,%d5                | modulo divisor
+        bsr.w   ef_rng
+        movel   %d0,%d1                | retain random direction bit
+        remul   %d5,%d0,%d1
+        addql   #1,%d0                 | random distance 1..max step
         tstl    %d1
         bpl.s   epr_rand_dir
         negl    %d0
@@ -3253,12 +3256,17 @@ epr_rand_dir:
         movel   %d0,%d1                | keep the requested signed interval
         addl    ef_rand_rank,%d0
         tstl    %d0
-        bmi.s   epr_rand_turn
-        cmpl    %d3,%d0
-        bcs.s   epr_rand_store
-epr_rand_turn:
-        movel   ef_rand_rank,%d0
-        subl    %d1,%d0                | reverse direction instead of wrapping
+        bpl.s   epr_rand_high
+        negl    %d0                    | reflect at the low DEPTH edge
+        bra.s   epr_rand_store
+epr_rand_high:
+        movel   %d3,%d5
+        subql   #1,%d5                 | highest candidate rank
+        cmpl    %d5,%d0
+        bls.s   epr_rand_store
+        lsll    #1,%d5
+        subl    %d0,%d5                | reflect at the high DEPTH edge
+        movel   %d5,%d0
 epr_rand_store:
         movel   %d0,ef_rand_rank
         rts
