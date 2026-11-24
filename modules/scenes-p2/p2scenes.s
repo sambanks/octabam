@@ -243,8 +243,7 @@ ucells: cmpil   #15,%d1
         addil   #CELL0,%d1
         moveal  %d1,%a0                | a0 = the scene's cell 0
         moveq   #NCELL,%d3
-ucloop: moveq   #0,%d1
-        moveb   %a0@,%d1               | track<<4 | fx1<<3 | slot2
+ucloop: mvzb    %a0@,%d1               | track<<4 | fx1<<3 | slot2
         btst    #7,%d1
         bne.s   ucnext                 | empty
         movel   %d1,%d2
