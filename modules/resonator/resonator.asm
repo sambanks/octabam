@@ -10,31 +10,30 @@
 ;   band += f * high
 ;   y     = g_i * band
 ;
-; P table (build rewrites the one table-base literal below), 66 words:
+; P table (build rewrites the one table-base literal below), 99 words:
 ;   +0  F   33  Chamberlin f = 2*sin(pi*fc/fs), fc 40..4000
-;   +33 DAMP 33  damp; index 0 = most resonant, 32 = widest
+;   +33 DAMP 33  damp; squared spacing, index 0 = most resonant, 32 = widest
+;   +66 SCAL 33 Q23 gain factors, 0 = mute, 127 = former SCAL 70
 ;
-; Knobs: r6+0..3 = GN1..GN4, r6+4 = DECY, r6+5 = MIX
-;        page 2: r6+$c/$d = PIT1|PIT2, PIT3|PIT4; r6+$e = SCAL|LIM
+; Knobs: r6+0..3 = PIT1..PIT4, r6+4 = DECY, r6+5 = MIX
+;        page 2: r6+$c/$d = GN1|GN2, GN3|GN4; r6+$e = SCAL|LIM
 ; REPLACE: out = lim(dry + MIX*(wet-dry)); MIX 127 forces wet only.
-; wet = sum(g*band)*4. g = (GN/128)*(SCALE/128)*32.
-;   SCALE 8 → conservative; four GN 64 bands can still overload the sum.
-;   SCALE 127 → build-TN smash (~×16 at GN64).
+; wet = sum(g*band)*4. g = (GN/128)*SCAL_FACTOR*32.
 ; DECY high → low damp.
 ;
 ; LIM: shared current-block stereo peak limiter, one div outside sample DO.
-; Ceiling = 0.75 - LIM*0.5/128 (LIM 0 bypass), near -2.5..-12 dBFS.
+; Ceiling = 0.75 - LIM*0.65/128 (LIM 0 bypass), near -2.5..-20 dBFS.
 ; Unity below ceiling, no makeup gain; approximately 63 ms block release.
 ; The second pass controls the first transient without nested DO/div.
 ; SCAL can overload the 24-bit band sum before this output limiter; LIM cannot
-; undo distortion created earlier in the chain.
+; undo distortion created earlier in the chain. RESONATOR's LIM reaches 0.1 FS.
 ;
 ; r7: $00..$0f L 4*(low,band), $10..$1f R same,
 ;     $20 fx2-dry  $21 MIX  $22 damp  $23 exc
 ;     $25/$26 prev L/R  $27 drive  $28 edge scratch
 ;     $29 lim thresh (0 = off)  $2a lim level_s  $2b lim gain
 ;     $2c mixed L  $2d mixed R  $2e block peak  $2f block start
-;     $30..$33 f0..f3  $34..$37 g0..g3  $38 SCALE  $40..$43 pit<<16
+;     $30..$33 f0..f3  $34..$37 g0..g3  $38 SCAL Q23  $40..$43 pit<<16
 ;     $4b i  $58 wet-acc  $5a P-base
 ;
 ; CYCLES_FORWARD_BRANCHES -- LIM 0 skips the envelope/GR path after MIX
@@ -64,7 +63,9 @@ rs_iz:
         move    a,x:(r7+$28)
         move    a,x:(r7+$29)            ; lim thresh (0 = off)
         move    a,x:(r7+$2a)            ; lim level_s
-        move    a,x:(r7+$2b)            ; lim gain
+        move    #>$7fffff,a
+        move    a,x:(r7+$2b)            ; lim gain starts at unity
+        clr     a
         move    a,x:(r7+$2c)            ; mixed L
         move    a,x:(r7+$2d)            ; mixed R
         move    a,x:(r7+$38)
@@ -123,36 +124,59 @@ proc:
         move    #$00,a                  ; 0, one word (a move: the flags stay the cmp's)
         teq     a,b
         move    b,x:(r7+$23)
-; GN1..GN4 → $34..$37 as kn/128
-        move    x:(r6),a
+; page-2 GN1..4 → $34..$37 as kn/128
+        move    x:(r6+$c),a
         and     #>$7f0000,a
         move    a,x:(r7+$34)
-        move    x:(r6+$1),a
-        and     #>$7f0000,a
+        move    x:(r6+$c),a
+        and     #>$00ff00,a
+        asl     #$8,a,a
         move    a,x:(r7+$35)
-        move    x:(r6+$2),a
+        move    x:(r6+$d),a
         and     #>$7f0000,a
         move    a,x:(r7+$36)
-        move    x:(r6+$3),a
-        and     #>$7f0000,a
+        move    x:(r6+$d),a
+        and     #>$00ff00,a
+        asl     #$8,a,a
         move    a,x:(r7+$37)
-; page-2 PIT1..4 → $40..$43 as <<16; SCALE → $38
-        move    x:(r6+$c),a
+; PIT1..4 → $40..$43 as <<16
+        move    x:(r6),a
         and     #>$7f0000,a
         move    a,x:(r7+$40)
-        move    x:(r6+$c),a
-        and     #>$00ff00,a
-        asl     #$8,a,a
+        move    x:(r6+$1),a
+        and     #>$7f0000,a
         move    a,x:(r7+$41)
-        move    x:(r6+$d),a
+        move    x:(r6+$2),a
         and     #>$7f0000,a
         move    a,x:(r7+$42)
-        move    x:(r6+$d),a
-        and     #>$00ff00,a
-        asl     #$8,a,a
+        move    x:(r6+$3),a
+        and     #>$7f0000,a
         move    a,x:(r7+$43)
+; SCAL table lookup, same Q23 interpolation as F/DAMP.
         move    x:(r6+$e),a
         and     #>$7f0000,a
+        move    a,x1
+        asr     #$12,a,a
+        move    a1,n5
+        move    x:(r7+$5a),r5
+        move    #>$ffffff,m5
+        move    #$42,n5
+        move    (r5)+n5
+        move    x1,a
+        asr     #$12,a,a
+        move    a1,n5
+        move    (r5)+n5
+        move    x1,a
+        and     #>$3ffff,a
+        asl     #$5,a,a
+        move    a,x0
+        move    p:(r5)+,y0
+        move    p:(r5),b
+        move    y0,a
+        sub     a,b
+        move    b,y1
+        mpy     x0,y1,a
+        add     y0,a
         move    a,x:(r7+$38)
 ; LIMIT_THRESHOLD
 ; f0..f3 from parked pits
@@ -323,10 +347,10 @@ rs_one:
         move    x:(r2)+,y1              ; GN kn/128
         mpy     x0,y1,a                 ; band*(GN/128)
         move    a,x0
-        move    x:(r7+$38),y1           ; SCALE kn/128
-        mpy     x0,y1,a                 ; *(SCALE/128)
-        asl     #$5,a,a                 ; ×32 → g=(GN/128)*(SCALE/128)*32
-        move    x:(r7+$58),b            ; SCALE 8 → ×2 (tame); 127 → TN smash
+        move    x:(r7+$38),y1           ; SCAL factor Q23
+        mpy     x0,y1,a                 ; *(SCAL factor)
+        asl     #$5,a,a                 ; ×32 → g=(GN/128)*SCAL_FACTOR*32
+        move    x:(r7+$58),b
         add     a,b
         move    b,x:(r7+$58)
         rts

@@ -3,9 +3,10 @@
 out = dry + MIX*(wet-dry); MIX 127 → wet only.
 wet = clamp(sum(g_i * band_i) * MAKEUP)
 
-g = (GN/128)*(SCALE/128)*32.
-SCALE 8 → tame (GN 64 = 0dB); SCALE 127 → build-TN smash.
-DECY high → low damp + exc→0 at 127.
+g = (GN/128)*scale_gain(SCALE)*32.
+SCAL rises smoothly from zero to the former SCAL 70 gain.
+DECY high → low damp + exc→0 at 127. Squared table spacing gives more
+knob travel through the high-resonance range.
 """
 from __future__ import annotations
 
@@ -40,7 +41,7 @@ def f_table(n: int = 33) -> list[float]:
 def damp_table(n: int = 33) -> list[float]:
     out = []
     for i in range(n):
-        out.append(DAMP_MIN * (DAMP_MAX / DAMP_MIN) ** (i / (n - 1)))
+        out.append(DAMP_MIN * (DAMP_MAX / DAMP_MIN) ** ((i / (n - 1)) ** 2))
     return out
 
 
@@ -66,7 +67,9 @@ def exc_gain(decy: int) -> float:
 
 
 def band_gain(gn: int, scale: int) -> float:
-    return (gn / 128.0) * (scale / 128.0) * 32.0
+    scale = max(0, min(scale, 127))
+    scale_factor = (70 / 127) * (scale / 128.0)
+    return (gn / 128.0) * scale_factor * 32.0
 
 
 class Resonator:

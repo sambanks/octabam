@@ -824,18 +824,18 @@
   },
   "resonator": {
     "setup": {
-      "image": "resonator/setup.png",
-      "caption": "RESONATOR: effect selection and setup parameters.",
+      "image": "resonator/setup-controls.png",
+      "caption": "RESONATOR: FX SETUP with GN1-GN4, SCAL and LIM.",
       "remix": "resonator",
       "source": "emulator panel UART",
-      "firmware_sha256": "66234a20443fbb2a62b8c63becd46ec1adf2d2fab3192b852fb942dff4d59014"
+      "firmware_sha256": "0fa4758e040a2ca2bc403ea55abeed69666ebc015ba24a46bbf5d9446c730200"
     },
     "main": {
-      "image": "resonator/main.png",
-      "caption": "RESONATOR: main parameter page.",
+      "image": "resonator/main-pitches.png",
+      "caption": "RESONATOR: main page with PIT1-PIT4, DECY and MIX.",
       "remix": "resonator",
       "source": "emulator panel UART",
-      "firmware_sha256": "66234a20443fbb2a62b8c63becd46ec1adf2d2fab3192b852fb942dff4d59014"
+      "firmware_sha256": "0fa4758e040a2ca2bc403ea55abeed69666ebc015ba24a46bbf5d9446c730200"
     }
   },
   "distorx": {

@@ -3,7 +3,9 @@
 import pathlib, struct, subprocess, sys, math
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "remix"))
 import toolpath  # noqa: E402,F401
+import audition
 import send_probe
 from remix import registry
 
@@ -22,8 +24,7 @@ TMP.mkdir(parents=True, exist_ok=True)
 RAIL = 1 << 23
 
 pathlib.Path(MEM).unlink(missing_ok=True)
-subprocess.run([sys.executable, "tools/remix/audition.py", MOD.name,
-                "out/dry/drums_110.wav"], capture_output=True)
+audition._ensure_insert_mem(MOD)
 if not pathlib.Path(MEM).exists():
     sys.exit(f"no {MEM}")
 init, proc = send_probe.entry_points(MEM, FXID)
@@ -41,7 +42,8 @@ def params(**kw):
     return v
 
 
-def render(samples, fx2=False, inst=1, right_samples=None, **kw):
+def render(samples, fx2=False, inst=1, right_samples=None, schedules=(),
+           track_state=(), **kw):
     n = len(samples) - len(samples) % FRAMES
     src, out = TMP / "in.raw", TMP / "out.raw"
     words = samples[:n] if right_samples is None else [
@@ -67,6 +69,12 @@ def render(samples, fx2=False, inst=1, right_samples=None, **kw):
         cmd += ["-stereo"]
     for _ in range(inst):
         cmd += ["-params", pcsv]
+    for event in schedules:
+        cmd += ["-sched", event]
+    track = TMP / "track.txt"
+    if track_state:
+        cmd += ["-track", ",".join(f"{off:x}" for off in track_state),
+                "-trackout", str(track)]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"dsp_host failed:\n{r.stdout}\n{r.stderr}")
@@ -77,6 +85,10 @@ def render(samples, fx2=False, inst=1, right_samples=None, **kw):
         outs.append((list(w[0::2])[:n], list(w[1::2])[:n]))
         if k:
             p.unlink(missing_ok=True)
+    if track_state:
+        rows = [[int(value) for value in line.split()[1:]]
+                for line in track.read_text().splitlines()]
+        return (outs[0] if inst == 1 else outs), rows
     return outs[0] if inst == 1 else outs
 
 
@@ -87,6 +99,65 @@ def check(label, ok):
     print(f"  [{'PASS' if ok else 'FAIL'}] {label}")
     if not ok:
         FAILS.append(label)
+
+
+check("PIT1-PIT4 main page, GN1-GN4 FX SETUP",
+      tuple(K[k] for k in ("PIT1", "PIT2", "PIT3", "PIT4")) == tuple(range(4))
+      and tuple(K[k] for k in ("GN1", "GN2", "GN3", "GN4"))
+      == tuple(range(6, 10)))
+
+# Read the live DSP state after one block with distinct knob values. Main page
+# controls occupy separate high-byte words; FX SETUP pairs occupy high/middle
+# bytes. Checking the effect's copied state catches both wrong slot numbers and
+# wrong byte lanes (PIT2/PIT4 previously read the FX SETUP middle-byte lane).
+mapping_values = {
+    "PIT1": 17, "PIT2": 39, "PIT3": 71, "PIT4": 103,
+    "DECY": 29, "MIX": 53,
+    "GN1": 11, "GN2": 37, "GN3": 67, "GN4": 97,
+    "SCAL": 23, "LIM": 109,
+}
+track_offsets = (0x21, 0x22, 0x23, 0x34, 0x35, 0x36, 0x37, 0x38,
+                 0x40, 0x41, 0x42, 0x43, 0x29)
+_, mapped = render([0] * FRAMES, track_state=track_offsets, **mapping_values)
+got = mapped[-1]
+
+
+def q23(value):
+    value = value & 0xFFFFFF
+    return value if value < 0x800000 else value - 0x1000000
+
+state_expectations = {
+    "MIX": (0x21, q23(mapping_values["MIX"] << 16)),
+    "DECY excitation": (0x23, q23(0x7fffff - (mapping_values["DECY"] << 16))),
+    "GN1": (0x34, q23(mapping_values["GN1"] << 16)),
+    "GN2": (0x35, q23(mapping_values["GN2"] << 16)),
+    "GN3": (0x36, q23(mapping_values["GN3"] << 16)),
+    "GN4": (0x37, q23(mapping_values["GN4"] << 16)),
+    "SCAL": (0x38, round((70 / 127) * (mapping_values["SCAL"] / 128) * (1 << 23))),
+    "PIT1": (0x40, q23(mapping_values["PIT1"] << 16)),
+    "PIT2": (0x41, q23(mapping_values["PIT2"] << 16)),
+    "PIT3": (0x42, q23(mapping_values["PIT3"] << 16)),
+    "PIT4": (0x43, q23(mapping_values["PIT4"] << 16)),
+    "LIM ceiling threshold": (0x29,
+                              q23(0x600000 - (mapping_values["LIM"]
+                                             * round(0.65 * (1 << 23))
+                                             // 128))),
+}
+for label, (offset, expected) in state_expectations.items():
+    actual = got[track_offsets.index(offset)]
+    check(f"mapped {label} = 0x{expected:06x} (got 0x{actual:06x})",
+          abs(actual - expected) <= 1
+          if label in ("SCAL", "LIM ceiling threshold") else actual == expected)
+
+damp = [word / RAIL for word in MOD.dsp.ptable[33:66]]
+check(f"DECY top has fine steps ({damp[1] / damp[0]:.4f} damping ratio < 1.01)",
+      1.0 < damp[1] / damp[0] < 1.01)
+
+scale_curve = MOD.dsp.ptable[66:]
+check("SCAL smooth curve endpoints (0 mute, 127 = former 70)",
+      len(scale_curve) == 33 and scale_curve[0] == 0
+      and scale_curve[-1] == round((70 / 127) * (1 << 23))
+      and all(a < b for a, b in zip(scale_curve, scale_curve[1:])))
 
 
 def tone(hz, n, amp=0.35):
@@ -140,6 +211,20 @@ e_off = sum(abs(x) for x in Loff[512:])
 dry_e = sum(abs(x) for x in ton[512:])
 check(f"BP selects ({e_on} > {e_off})", e_on > e_off * 1.25)
 check(f"wet loud vs dry on pitch ({e_on} vs {dry_e})", e_on > dry_e * 0.25)
+
+# Turning the limiter off after it has reduced a sustained signal must release
+# smoothly. Startup at LIM 0 remains an exact dry bypass (peak_limiter_gate).
+move_frames = FRAMES * 256
+move_tone = tone(500, move_frames, amp=0.30)
+Lmove, _ = render(move_tone, MIX=0, LIM=127,
+                  schedules=("128:0:11=0",))
+move_at = 128 * FRAMES
+edge = abs(Lmove[move_at] - Lmove[move_at - 1])
+nearby = max(abs(Lmove[i] - Lmove[i - 1])
+             for i in range(move_at - 64, move_at - 1))
+check(f"LIM to 0 releases without a click ({edge} <= 2x {nearby})",
+      edge <= max(nearby * 2, 1000))
+check("LIM 0 remains audible after bypass", any(Lmove[move_at:move_at + 1024]))
 
 Lz, _ = render(hit, MIX=127, GN1=0, GN2=0, GN3=0, GN4=0, DECY=127)
 ez = sum(abs(x) for x in Lz[65:65 + 4000])
@@ -210,8 +295,8 @@ check(f"max-knob no runaway (late/early={e1 / e0 if e0 else 0:.2f} < 4)",
 # Include the first block: its own peak controls its gain.
 p127 = max(max(abs(x) for x in Lmax), max(abs(x) for x in Rmax))
 frac127 = _rail_frac(Lmax, Rmax)
-check(f"SCAL127+LIM127 peak under ceiling ({p127} <= {int(0.76 * RAIL)})",
-      p127 <= int(0.76 * RAIL))
+check(f"SCAL127+LIM127 peak under ceiling ({p127} <= {int(0.11 * RAIL)})",
+      p127 <= int(0.11 * RAIL))
 check(f"SCAL127+LIM127 rail frac {frac127:.1%} < 5%", frac127 < 0.05)
 
 # Two FX1 instances, same knobs: both produce audio (rail fraction is the
@@ -226,7 +311,7 @@ for i, (Li, Ri) in enumerate(pair):
     check(f"two-instance[{i}] has energy ({e})", e > 10_000)
 
 from peak_limiter_gate import verify as verify_limiter
-verify_limiter(render, check, FRAMES, RAIL)
+verify_limiter(render, check, FRAMES, RAIL, min_ceiling=0.10)
 
 if FAILS:
     sys.exit(f"{len(FAILS)} FAIL: {FAILS}")
