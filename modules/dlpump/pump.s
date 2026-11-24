@@ -41,8 +41,8 @@
         .text
         .globl  dl_pump
 dl_pump:
-        lea     dl_dg,%a1
-        addq.l  #1,%a1@                         | DL_DIAG[0]: calls
+        addq.l  #1,dl_dg                        | DL_DIAG[0]: calls (absolute: the lea below is not used
+        lea     dl_dg,%a1                       | straight after it, so no address-use stall)
         move.l  0x800000e0,%d1                  | the frame's ping word
         beq.w   dg_p0
         subq.l  #1,%d1
