@@ -10,16 +10,15 @@
 ;   band += f * high
 ;   y     = g_i * band
 ;
-; P table (build rewrites the one table-base literal below), 66 words:
+; P table (build rewrites the one table-base literal below), 99 words:
 ;   +0  F   33  Chamberlin f = 2*sin(pi*fc/fs), fc 40..4000
 ;   +33 DAMP 33  damp; squared spacing, index 0 = most resonant, 32 = widest
+;   +66 SCAL 33 Q23 gain factors, 0 = mute, 127 = former SCAL 70
 ;
 ; Knobs: r6+0..3 = PIT1..PIT4, r6+4 = DECY, r6+5 = MIX
 ;        page 2: r6+$c/$d = GN1|GN2, GN3|GN4; r6+$e = SCAL|LIM
 ; REPLACE: out = lim(dry + MIX*(wet-dry)); MIX 127 forces wet only.
-; wet = sum(g*band)*4. g = (GN/128)*(SCALE/128)*32.
-;   SCALE 8 → conservative; four GN 64 bands can still overload the sum.
-;   SCALE 127 → build-TN smash (~×16 at GN64).
+; wet = sum(g*band)*4. g = (GN/128)*SCAL_FACTOR*32.
 ; DECY high → low damp.
 ;
 ; LIM: shared current-block stereo peak limiter, one div outside sample DO.
@@ -34,7 +33,7 @@
 ;     $25/$26 prev L/R  $27 drive  $28 edge scratch
 ;     $29 lim thresh (0 = off)  $2a lim level_s  $2b lim gain
 ;     $2c mixed L  $2d mixed R  $2e block peak  $2f block start
-;     $30..$33 f0..f3  $34..$37 g0..g3  $38 SCALE  $40..$43 pit<<16
+;     $30..$33 f0..f3  $34..$37 g0..g3  $38 SCAL Q23  $40..$43 pit<<16
 ;     $4b i  $58 wet-acc  $5a P-base
 ;
 ; CYCLES_FORWARD_BRANCHES -- LIM 0 skips the envelope/GR path after MIX
@@ -140,7 +139,7 @@ proc:
         and     #>$00ff00,a
         asl     #$8,a,a
         move    a,x:(r7+$37)
-; PIT1..4 → $40..$43 as <<16; SCALE → $38
+; PIT1..4 → $40..$43 as <<16
         move    x:(r6),a
         and     #>$7f0000,a
         move    a,x:(r7+$40)
@@ -153,8 +152,31 @@ proc:
         move    x:(r6+$3),a
         and     #>$7f0000,a
         move    a,x:(r7+$43)
+; SCAL table lookup, same Q23 interpolation as F/DAMP.
         move    x:(r6+$e),a
         and     #>$7f0000,a
+        move    a,x1
+        asr     #$12,a,a
+        move    a1,n5
+        move    x:(r7+$5a),r5
+        move    #>$ffffff,m5
+        move    #$42,n5
+        move    (r5)+n5
+        move    x1,a
+        asr     #$12,a,a
+        move    a1,n5
+        move    (r5)+n5
+        move    x1,a
+        and     #>$3ffff,a
+        asl     #$5,a,a
+        move    a,x0
+        move    p:(r5)+,y0
+        move    p:(r5),b
+        move    y0,a
+        sub     a,b
+        move    b,y1
+        mpy     x0,y1,a
+        add     y0,a
         move    a,x:(r7+$38)
 ; LIMIT_THRESHOLD
 ; f0..f3 from parked pits
@@ -325,10 +347,10 @@ rs_one:
         move    x:(r2)+,y1              ; GN kn/128
         mpy     x0,y1,a                 ; band*(GN/128)
         move    a,x0
-        move    x:(r7+$38),y1           ; SCALE kn/128
-        mpy     x0,y1,a                 ; *(SCALE/128)
-        asl     #$5,a,a                 ; ×32 → g=(GN/128)*(SCALE/128)*32
-        move    x:(r7+$58),b            ; SCALE 8 → ×2 (tame); 127 → TN smash
+        move    x:(r7+$38),y1           ; SCAL factor Q23
+        mpy     x0,y1,a                 ; *(SCAL factor)
+        asl     #$5,a,a                 ; ×32 → g=(GN/128)*SCAL_FACTOR*32
+        move    x:(r7+$58),b
         add     a,b
         move    b,x:(r7+$58)
         rts

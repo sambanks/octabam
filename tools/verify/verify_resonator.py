@@ -133,7 +133,7 @@ state_expectations = {
     "GN2": (0x35, q23(mapping_values["GN2"] << 16)),
     "GN3": (0x36, q23(mapping_values["GN3"] << 16)),
     "GN4": (0x37, q23(mapping_values["GN4"] << 16)),
-    "SCAL": (0x38, q23(mapping_values["SCAL"] << 16)),
+    "SCAL": (0x38, round((70 / 127) * (mapping_values["SCAL"] / 128) * (1 << 23))),
     "PIT1": (0x40, q23(mapping_values["PIT1"] << 16)),
     "PIT2": (0x41, q23(mapping_values["PIT2"] << 16)),
     "PIT3": (0x42, q23(mapping_values["PIT3"] << 16)),
@@ -146,11 +146,18 @@ state_expectations = {
 for label, (offset, expected) in state_expectations.items():
     actual = got[track_offsets.index(offset)]
     check(f"mapped {label} = 0x{expected:06x} (got 0x{actual:06x})",
-          abs(actual - expected) <= 1 if label == "LIM ceiling threshold" else actual == expected)
+          abs(actual - expected) <= 1
+          if label in ("SCAL", "LIM ceiling threshold") else actual == expected)
 
-damp = [word / RAIL for word in MOD.dsp.ptable[33:]]
+damp = [word / RAIL for word in MOD.dsp.ptable[33:66]]
 check(f"DECY top has fine steps ({damp[1] / damp[0]:.4f} damping ratio < 1.01)",
       1.0 < damp[1] / damp[0] < 1.01)
+
+scale_curve = MOD.dsp.ptable[66:]
+check("SCAL smooth curve endpoints (0 mute, 127 = former 70)",
+      len(scale_curve) == 33 and scale_curve[0] == 0
+      and scale_curve[-1] == round((70 / 127) * (1 << 23))
+      and all(a < b for a, b in zip(scale_curve, scale_curve[1:])))
 
 
 def tone(hz, n, amp=0.35):

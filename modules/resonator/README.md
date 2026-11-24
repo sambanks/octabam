@@ -4,7 +4,8 @@ FX1 station: **4 pitched bandpasses** (Torso S-4 RING filterbank idea, not
 a modal / Rings body). Wet is the input through four constant-peak bandpass
 peaks. **PIT1–PIT4** are on the main page for live tuning. Per-band **GN**
 levels, **SCAL** (gain scale), and **LIM** (post-MIX peak limiter) live on FX
-SETUP. The upper part of **DECY** spreads resonance over more knob travel;
+SETUP. SCAL is zero at 0 and increases smoothly to the former SCAL 70 gain at
+127. The upper part of **DECY** spreads resonance over more knob travel;
 the strongest resonance and its overdrive remain available. The filter-bank sum can still
 distort before LIM. Lower SCAL or GN1–GN4 to avoid pre-limiter distortion.
 
@@ -27,7 +28,7 @@ The page descriptor is cloned from **DARK REV**.
 | 2 | 7 | GN2 | 0–127 | band 2 |
 | 2 | 8 | GN3 | 0–127 | band 3 |
 | 2 | 9 | GN4 | 0–127 | band 4 |
-| 2 | 10 | SCAL | 0–127 | gain scale; 1=low-gain default, 127≈smash |
+| 2 | 10 | SCAL | 0–127 | smooth gain scale; 0=mute, 127=former SCAL 70 maximum |
 | 2 | 11 | LIM | 0–127 | peak limiter after MIX; 0 off, max ≈ -20 dBFS |
 
 ## Stock 1.40C and a saved Part

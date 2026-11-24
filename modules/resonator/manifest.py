@@ -32,6 +32,7 @@ F_TAB = tuple(_q(2.0 * _m.sin(_m.pi * min(_fc(i), _NYQ * 0.45) / _FS))
               for i in range(33))
 DAMP_TAB = tuple(_q(_DAMP_MIN * (_DAMP_MAX / _DAMP_MIN) ** ((i / 32) ** 2))
                  for i in range(33))
+SCAL_TAB = tuple(_q((70 / 127) * (i / 32)) for i in range(33))
 
 MODULE = Module(
     name="resonator",
@@ -76,14 +77,14 @@ MODULE = Module(
         Param(b"GN4", 64, 128, active=True, formatter=_PLAIN,
               doc="band 4 level"),
         Param(b"SCAL", 1, 128, active=True, formatter=_PLAIN,
-              doc="gain scale: 1 is the low-gain default, 127 is a smash"),
+              doc="smooth gain scale: 0 is mute; 127 equals the former SCAL 70 maximum"),
         Param(b"LIM", 0, 128, active=True, formatter=_PLAIN,
               doc="peak limiter after MIX; 0 off, 1..127 ≈ -2.5..-20 dB ceiling"),
     ),
     dsp=DspSection(
         asm="modules/resonator/resonator.asm",
         subst={pl: peak_limiter_source("rspk", 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, knob=0xe, min_ceiling=0.10, smooth_bypass=True) for pl in ("A", "B")},
-        ptable=F_TAB + DAMP_TAB,
+        ptable=F_TAB + DAMP_TAB + SCAL_TAB,
         priority=31,
         bus_role=BusRole.NONE,
         ybase=YBase.NEVER,
