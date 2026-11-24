@@ -332,10 +332,12 @@ dl_used:
         moveq   #1,%d3
         lea     LIVE,%a0                        | FX1 ids of tracks 1-8, then FX2's
         moveq   #15,%d4
-1:      cmp.b   %a0@+,%d2
-        beq.w   2f
-        subq.l  #1,%d4
-        bpl.w   1b
+1:      cmp.b   %a0@+,%d2                       | two ids a pass, in the bytes the long branches took
+        beq.s   2f
+        cmp.b   %a0@+,%d2
+        beq.s   2f
+        subq.l  #2,%d4
+        bpl.s   1b
         moveq   #0,%d3
 2:      rts
 
