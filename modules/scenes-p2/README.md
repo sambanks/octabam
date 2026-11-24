@@ -1,7 +1,7 @@
 # `scenes-p2` — SCENES P2
 
 Scene locks and the crossfader for page 2 of FX1 and FX2. `Kind.CF_PATCH`:
-one DRAM unit, seven detours, nothing on the DSP.
+one DRAM unit, nine detours, nothing on the DSP.
 
 ## Open
 

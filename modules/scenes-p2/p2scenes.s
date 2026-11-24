@@ -447,8 +447,9 @@ ecommit:
         lea     REDRAW,%a0
         moveq   #20,%d0
         movel   %d0,%a0@(0,%d1:l)
-        moveq   #1,%d0
+        movel   SCENE_HELD,%d0         | the lock view: 1 A, 2 B (stock's own stores)
         movel   %d0,EDIT_A
+        moveq   #1,%d0
         movel   %d0,EDIT_B
 edone:  moveq   #0,%d0
         movem.l %sp@,%d2-%d7/%a2-%a6
@@ -468,26 +469,51 @@ edone:  moveq   #0,%d0
         .set    WINDOW,     0x460d175c
         .set    PAGEKIND,   0x460d1684
         .set    MIDIMODE,   0x80000012
-        .globl  scene_knob_hook
+        .globl  scene_knob_hook, scene_knob_hook_b
 scene_knob_hook:
-        tstl    WINDOW
-        beq.s   sk_stock
-        tstl    SCENE_HELD
-        beq.s   sk_stock
-        tstl    MIDIMODE
-        bne.s   sk_stock
-        movel   %sp@(4),%d1
-        cmpil   #5,%d1
-        bhi.s   sk_stock
-        movel   PAGEKIND,%d0
-        cmpil   #4,%d0
-        beq.w   fx2_edit_hook
-        cmpil   #3,%d0
-        beq.w   fx1_edit_hook
-sk_stock:
+        bsr.s   sk_mine
+        bne.s   sk_take
         lea     %sp@(-36),%sp          | the displaced prologue, then on
         movem.l %d2-%d7/%a2-%a4,%sp@
         jmp     0x400534a0
+| scene_knob_hook_b: 0x40052e98, SCENE B's twin of 0x40053498 (the scene
+| layer 0x400bb2b6 installs it; a 32-byte frame). Without it a page-2 turn
+| with SCENE B held reached stock's B handler, which locks page 1 only:
+| no cell was written.
+scene_knob_hook_b:
+        bsr.s   sk_mine
+        bne.s   sk_take
+        lea     %sp@(-32),%sp          | the displaced prologue, then on
+        movem.l %d2-%d7/%a2-%a3,%sp@
+        jmp     0x40052ea0
+| sk_take: the entry state as the editors see it (sp@(4) = slot, sp@(8) = ticks)
+sk_take:
+        movel   PAGEKIND,%d0
+        cmpil   #4,%d0
+        beq.w   fx2_edit_hook
+        bra.w   fx1_edit_hook
+| sk_mine: Z clear when the turn is a page-2 editor's: an FX1 or FX2 SETUP
+| window open, a scene held, audio mode, a knob 0..5 (sp@(8): the hook's
+| sp@(4), under this call's return). Clobbers d0, d1.
+sk_mine:
+        moveq   #0,%d0
+        tstl    WINDOW
+        beq.s   1f
+        tstl    SCENE_HELD
+        beq.s   1f
+        tstl    MIDIMODE
+        bne.s   1f
+        movel   %sp@(8),%d1
+        cmpil   #5,%d1
+        bhi.s   1f
+        movel   PAGEKIND,%d1
+        cmpil   #4,%d1
+        beq.s   2f
+        cmpil   #3,%d1
+        bne.s   1f
+2:      moveq   #1,%d0
+1:      tstl    %d0
+        rts
 
 | ----------------------------------------------------------- the cells ----
 | cfind: a4 = a scene's cell 0, d0 = the key byte -> a5 = its cell, or 0.

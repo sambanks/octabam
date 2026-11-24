@@ -1737,7 +1737,9 @@ open window installed. SCENES P2 hooked the FX SETUP page-2 editors
 (`0x4003a9dc`, `0x4003abe4`) and checked "scene held" inside them, and its gate
 called the editor directly, so it passed while no panel turn with a scene held
 ever reached it: zero calls with SCENE A held, three without (`--watch-pc`,). The user report was "trig locks on FX page 2 work but not scene
-lock". The fix detours `0x40053498` itself. Rule: a gate for a panel gesture
+lock". The fix detours `0x40053498` itself, and SCENE B's twin
+`0x40052e98`: scene B's layer installs its own handler, and with only A's
+detoured a page-2 turn with SCENE B held wrote no lock. Rule: a gate for a panel gesture
 drives the panel (`--live-script`), not the routine you think it reaches; and
 in FX SETUP the first encoder event only shows the readout, the next ones
 edit. **Gate:** `verify_scenes_p2`'s `panel` scenario.
