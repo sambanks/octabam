@@ -30,10 +30,10 @@
 ; the smear and delay offsets, $30 $31 the damping states, $32 apout, $33 input envelope,
 ; $34 hold counter, $35 gate gain, $36 hold length (0x7fffff = gate off), $37 $38 the loop gain
 ; and allpass coefficient in use (KRT and KAP, or 0 under a shut gate), $39 LCUT's coefficient,
-; $3a $3b its states, $3c SIZE's f, $3d the long delay's swing, $3e $3f the LFO steps, $40..$44 the
+; $3a $3b its states, $3c SIZE's f, $3d the long delay's swing, $3e $3f AMNT's wet gain and dry cut, $40..$44 the
 ; tank's read offsets, $45 the long delay's centre, $46 MOD's smoothed offset, $47 $48 the
-; predelay's write and read offsets, $49 the predelay smoothed (1/256 samples), $4a $4b AMNT's wet
-; gain and dry cut, $4c the room past the long delay's tap, $4d the predelay in samples.
+; predelay's write and read offsets, $49 the predelay smoothed (1/256 samples), $4c the room past the
+; long delay's tap, $4d the predelay in samples, $4e $4f the LFO steps.
 ; The stop kill: MODE's field at 127 (kill.s) clears the state and the ring again (proc's head).
 ; Knobs: p0 AMNT amount, p1 GAIN input gain, p2 TIME reverb time, p3 DIFF
 ; diffusion, p4 TONE damping, p5 GATE hold (0 off); page 2: MODE, LCUT, MOD, RATE, SIZE, PRE
@@ -45,7 +45,7 @@ init:
         move    #>$20,n4
         move    (r4)+n4
         clr     a
-        do      #46,>gv_zero
+        do      #48,>gv_zero
         move    a,x:(r4)+
 gv_zero:
         nop
@@ -75,7 +75,7 @@ proc:
         move    #>$24,n4
         move    (r4)+n4
         clr     a
-        do      #42,>gv_kzero
+        do      #44,>gv_kzero
         move    a,x:(r4)+
 gv_kzero:
         nop
@@ -116,7 +116,7 @@ gv_ready:
 ; fades out (W = 1, K = (a - 1/2) 128/63, 1 at 127). a is AMNT/128, smoothed; 0 is exactly dry.
         move    a,b
         asl     #$1,a,a
-        move    a,x:(r7+$4a)
+        move    a,x:(r7+$3e)
         move    #$40,x0                  ; (short immediate: bits 23-16)
         sub     x0,b
         move    #0,x0
@@ -126,7 +126,7 @@ gv_ready:
         move    #>$410410,y1
         mpy     x0,y1,b
         asl     #$2,b,b
-        move    b,x:(r7+$4b)
+        move    b,x:(r7+$3f)
         move    x:(r6+$1),a
         and     #>$7f0000,a
         move    a1,x0
@@ -224,22 +224,15 @@ gv_ready:
 ; MOD (slot 8): the long delay's swing, 4 dS h with dS its depth after SIZE and h = 1/4 + s, s smoothed
 ; from 0 toward t - 1/4, t = MOD/256 + max(0, MOD - 64)/128: 0 static, 64 the original (h = 1/4), 127 about
 ; four times it (h = 0.99).
-        move    #>$061000,x0
-        mpy     x0,y1,a
-        move    a1,x1
-        move    #>$061000,a
-        sub     x1,a
-        asl     #$2,a,a
-        move    a1,x0
         move    x:(r6+$d),a
         and     #>$7f0000,a
         move    a1,x1
         move    x1,b
-        move    #$40,y0                  ; (short immediate: bits 23-16)
-        sub     y0,b
-        move    #0,y0
+        move    #$40,x0                  ; (short immediate: bits 23-16)
+        sub     x0,b
+        move    #0,x0
         tst     b
-        tmi     y0,b
+        tmi     x0,b
         move    x1,a
         asr     #$1,a,a
         add     b,a
@@ -253,6 +246,13 @@ gv_ready:
         move    #$20,x1                  ; (short immediate: bits 23-16)
         add     x1,a
         move    a1,y0
+        move    #>$061000,x0
+        mpy     x0,y1,a
+        move    a1,x1
+        move    #>$061000,a
+        sub     x1,a
+        asl     #$2,a,a
+        move    a1,x0
         mpy     y0,x0,a
         move    a1,x:(r7+$3d)
 ; PRE (slot 11, x:(r6+$e)'s companion, beside SIZE): a predelay of 24 PRE samples (0 to 69 ms) on the mono
@@ -291,9 +291,9 @@ gv_ready:
         move    a1,x0
         move    x1,a
         move    x1,b
-        sub     x0,a
-        tlt     x0,b
-        move    b1,x:(r7+$4c)
+        sub     x0,b
+        tmi     x0,a
+        move    a1,x:(r7+$4c)
 ; the long delay's centre: its length after SIZE and PRE, less 2, less the swing, so the tap stays inside it
         move    x:(r7+$4c),x1
         move    #>4165,a
@@ -328,21 +328,21 @@ gv_ready:
         asl     #$8,a,a
         move    a1,x1
         move    x1,b
-        move    #$40,y0                  ; (short immediate: bits 23-16)
-        sub     y0,b
-        move    #0,y0
+        move    #$40,x0                  ; (short immediate: bits 23-16)
+        sub     x0,b
+        move    #0,x0
         tst     b
-        tmi     y0,b
+        tmi     x0,b
         move    x1,a
         asr     #$1,a,a
         add     b,a
         move    a1,y0
         move    #>760,x0
         mpy     y0,x0,a
-        move    a1,x:(r7+$3e)
+        move    a1,x:(r7+$4e)
         move    #>456,x0
         mpy     y0,x0,a
-        move    a1,x:(r7+$3f)
+        move    a1,x:(r7+$4f)
 ; LCUT (slot 7, x:(r6+$c)'s companion): a one-pole high-pass in each half of the tank, c = 0.1447 LCUT^2, smoothed (about
 ; 1 kHz at 127, 250 Hz at 64; 0 passes the tank untouched)
         move    x:(r6+$c),a
@@ -379,14 +379,14 @@ gv_gdone:
         move    a1,x:(r7+$36)
 ; LFO phases advance a block at a time; the parabola 4x(1-|x|) stands for the cosine.
         move    x:(r7+$29),a
-        move    x:(r7+$3e),x1
+        move    x:(r7+$4e),x1
         do      n7,>gv_p29
         add     x1,a
 gv_p29:
         nop
         move    a1,x:(r7+$29)
         move    x:(r7+$2a),a
-        move    x:(r7+$3f),x1
+        move    x:(r7+$4f),x1
         do      n7,>gv_p2a
         add     x1,a
 gv_p2a:
@@ -631,13 +631,13 @@ gv_p2a:
         move    x:(r7+$35),y1
         mpy     x0,y1,a
         move    a,x0
-        move    x:(r7+$4a),y1
+        move    x:(r7+$3e),y1
         mpy     x0,y1,b
         asl     #$3,b,b
         move    x:(r0),x0
         move    x0,a
         add     b,a
-        move    x:(r7+$4b),y1
+        move    x:(r7+$3f),y1
         mac     -x0,y1,a
         move    a,x:(r0)+
 ; second half: delay 1 tail -> damping -> dap2a -> dap2b -> delay 2; right out
@@ -686,13 +686,13 @@ gv_p2a:
         move    x:(r7+$35),y1
         mpy     x0,y1,a
         move    a,x0
-        move    x:(r7+$4a),y1
+        move    x:(r7+$3e),y1
         mpy     x0,y1,b
         asl     #$3,b,b
         move    x:(r0),x0
         move    x0,a
         add     b,a
-        move    x:(r7+$4b),y1
+        move    x:(r7+$3f),y1
         mac     -x0,y1,a
         move    a,x:(r0)+
         move    (r5)+
