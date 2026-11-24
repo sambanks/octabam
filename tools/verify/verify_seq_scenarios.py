@@ -427,22 +427,66 @@ def run_scenarios() -> int:
             notes = [int((value - 64) / 5) for value in raw if value != 0xFF]
             audio_rand_rolls[jump_value] = notes
             ranks = [sample_scale_offsets.index(note) for note in notes]
-            stride = 1 + jump_value * 3 // 127
-            check(f"sample audio RAND JUMP {jump_value} sets neighboring pitch spacing",
+            max_step = 1 + (jump_value * (len(sample_scale_offsets) - 2)
+                            // 127)
+            check(f"sample audio RAND JUMP {jump_value} bounds random step size",
                   len(ranks) == 16
-                  and all(abs(b - a) == stride
+                  and all(abs(b - a) <= max_step
                           for a, b in zip(ranks, ranks[1:]))
+                  and (jump_value != 0
+                       or all(abs(b - a) == 1
+                              for a, b in zip(ranks, ranks[1:])))
                   and all(-12 <= note <= 12 and on_scale(note, 0, 0x0AB5)
                           for note in notes),
-                  f"notes={notes} ranks={ranks} stride={stride}")
-        check("sample audio RAND retains random direction and JUMP changes spacing",
+                  f"notes={notes} ranks={ranks} max_step={max_step}")
+        check("sample audio RAND JUMP 0 stays adjacent and higher JUMP allows wider moves",
               len({tuple(roll) for roll in audio_rand_rolls.values()}) == 3
-              and all({b - a for a, b in zip(
-                  [sample_scale_offsets.index(n) for n in roll],
-                  [sample_scale_offsets.index(n) for n in roll][1:])}
-                      == {-(1 + jump * 3 // 127), 1 + jump * 3 // 127}
-                      for jump, roll in audio_rand_rolls.items()),
+              and len({roll[0] for roll in audio_rand_rolls.values()}) == 1
+              and max(abs(b - a) for a, b in zip(
+                  [sample_scale_offsets.index(n) for n in audio_rand_rolls[0]],
+                  [sample_scale_offsets.index(n) for n in audio_rand_rolls[0]][1:]))
+                  == 1
+              and max(abs(b - a) for a, b in zip(
+                  [sample_scale_offsets.index(n) for n in audio_rand_rolls[127]],
+                  [sample_scale_offsets.index(n) for n in audio_rand_rolls[127]][1:]))
+                  > 1,
               f"rolls={audio_rand_rolls}")
+        inv_lcg = pow(1664525, -1, 1 << 32)
+        start_rolls = {}
+        for bucket, rank in enumerate((0, 7, 14)):
+            target = (bucket * 0x9E3779B9 + 0x7F4A7C15) & 0xFFFFFFFF
+            first_rng = rank + ((target - rank) // len(sample_scale_offsets)) * len(sample_scale_offsets)
+            seed = ((first_rng - 1013904223) * inv_lcg) & 0xFFFFFFFF
+            poke32(port, local_sym("ef_tone_phrase"), 0)  # RAND
+            poke32(port, local_sym("ef_tone_jump"), 0)
+            poke32(port, local_sym("ef_rng_state"), seed)
+            s.prime(lane=0, dest=LOCK_PTCH, depth=127, pulses=16,
+                    trig_pulses=16)
+            s.yes()
+            start_rolls[rank] = [int((value - 64) / 5)
+                                 for value in locks_of(port, LOCK_PTCH)
+                                 if value != 0xFF]
+        check("sample audio RAND chooses its first note randomly across DEPTH",
+              all(len(roll) == 16 and roll[0] == sample_scale_offsets[rank]
+                  for rank, roll in start_rolls.items()),
+              f"starts={[(rank, roll[0] if roll else None)
+                         for rank, roll in start_rolls.items()]}")
+        edge_rolls = {}
+        for seed in (4, 9):
+            poke32(port, local_sym("ef_tone_phrase"), 0)  # RAND
+            poke32(port, local_sym("ef_tone_jump"), 127)
+            poke32(port, local_sym("ef_rng_state"), seed)
+            s.prime(lane=0, dest=LOCK_PTCH, depth=127, pulses=16,
+                    trig_pulses=16)
+            s.yes()
+            edge_rolls[seed] = [int((value - 64) / 5)
+                                for value in locks_of(port, LOCK_PTCH)
+                                if value != 0xFF]
+        check("sample audio RAND reflects at both DEPTH edges instead of wrapping",
+              len(edge_rolls[4]) == len(edge_rolls[9]) == 16
+              and edge_rolls[4][:2] == [-7, -8]
+              and edge_rolls[9][:2] == [11, 0],
+              f"low-edge={edge_rolls[4][:2]} high-edge={edge_rolls[9][:2]}")
         poke32(port, local_sym("ef_tone_phrase"), 1)  # restore UP for following tests
         poke32(port, local_sym("ef_tone_jump"), 127)
         s.prime(lane=0, dest=LOCK_PTCH, depth=127, pulses=16,
@@ -1083,21 +1127,28 @@ def run_scenarios() -> int:
             notes = [value for value in values if value != 0xFF]
             midi_rand_rolls[jump_value] = notes
             ranks = [c_major_range.index(note) for note in notes]
-            stride = 1 + jump_value * 3 // 127
-            check(f"MIDI RAND JUMP {jump_value} sets neighboring pitch spacing",
+            max_step = 1 + (jump_value * (len(c_major_range) - 2) // 127)
+            check(f"MIDI RAND JUMP {jump_value} bounds random step size",
                   len(ranks) == 16
-                  and all(abs(b - a) == stride
+                  and all(abs(b - a) <= max_step
                           for a, b in zip(ranks, ranks[1:]))
+                  and (jump_value != 0
+                       or all(abs(b - a) == 1
+                              for a, b in zip(ranks, ranks[1:])))
                   and all(48 <= note <= 72 and on_scale(note, 0, 0x0AB5)
                           for note in notes),
-                  f"notes={notes} ranks={ranks} stride={stride}")
-        check("MIDI RAND retains random direction and JUMP changes spacing",
+                  f"notes={notes} ranks={ranks} max_step={max_step}")
+        check("MIDI RAND JUMP 0 stays adjacent and higher JUMP allows wider moves",
               len({tuple(roll) for roll in midi_rand_rolls.values()}) == 3
-              and all({b - a for a, b in zip(
-                  [c_major_range.index(n) for n in roll],
-                  [c_major_range.index(n) for n in roll][1:])}
-                      == {-(1 + jump * 3 // 127), 1 + jump * 3 // 127}
-                      for jump, roll in midi_rand_rolls.items()),
+              and len({roll[0] for roll in midi_rand_rolls.values()}) == 1
+              and max(abs(b - a) for a, b in zip(
+                  [c_major_range.index(n) for n in midi_rand_rolls[0]],
+                  [c_major_range.index(n) for n in midi_rand_rolls[0]][1:]))
+                  == 1
+              and max(abs(b - a) for a, b in zip(
+                  [c_major_range.index(n) for n in midi_rand_rolls[127]],
+                  [c_major_range.index(n) for n in midi_rand_rolls[127]][1:]))
+                  > 1,
               f"rolls={midi_rand_rolls}")
         poke32(port, midi_bank, 3)
         poke32(port, s.pulses, 3)

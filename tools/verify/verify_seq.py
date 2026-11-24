@@ -954,7 +954,7 @@ def check_ui(src: str) -> None:
           and re.search(r"movel\s+%d2,-\(%sp\)", ptch) is not None
           and "ep_clear_rad:" in ptch)
     check("ef_write_ptch window ±PIT_RAD synth / ±PIT_SAMP sample",
-          re.search(r"\.set\s+PIT_RAD,\s*24", src) is not None
+          re.search(r"\.set\s+PIT_RAD,\s*64", src) is not None
           and re.search(r"\.set\s+PIT_SAMP,\s*12", src) is not None
           and "PIT_RAD" in ptch and "PIT_SAMP" in ptch)
     check("ef_write_ptch tests pitch class relative to SEQ ROOT",
@@ -1093,17 +1093,17 @@ def check_cue_behavior() -> None:
 def check_pitch_behavior() -> None:
     """DEST=PTCH range + encoding + ROOT-relative scale filter."""
     print("DEST=PTCH behavior:")
-    check("rad DEPTH 0 -> 0 (no locks)", pitch_rad(0, 24) == 0)
-    check("rad DEPTH 1 -> at least 1", pitch_rad(1, 24) == 1)
-    check("rad DEPTH 127 synth -> 24", pitch_rad(127, 24) == 24)
+    check("rad DEPTH 0 -> 0 (no locks)", pitch_rad(0, 64) == 0)
+    check("rad DEPTH 1 -> at least 1", pitch_rad(1, 64) == 1)
+    check("rad DEPTH 127 synth -> 64", pitch_rad(127, 64) == 64)
     check("rad DEPTH 127 sample -> 12", pitch_rad(127, 12) == 12)
-    check("rad DEPTH 63 synth -> 11", pitch_rad(63, 24) == 11)
+    check("rad DEPTH 63 synth -> 31", pitch_rad(63, 64) == 31)
 
     # Major on C: bits 0,2,4,5,7,9,11
     major_pcs = {0, 2, 4, 5, 7, 9, 11}
     major_c = sum(1 << p for p in major_pcs)
-    cands = pitch_candidates(24, root=0, mask=major_c)
-    check("major/C ±24: only scale PCs",
+    cands = pitch_candidates(64, root=0, mask=major_c)
+    check("major/C ±64: only scale PCs",
           all((st % 12) in major_pcs for st in cands)
           and len(cands) > 0)
     # ROOT = D (2): the same relative major mask is anchored on D.
@@ -1133,8 +1133,8 @@ def check_pitch_behavior() -> None:
           encode_ptch(7, synth=True) == 71)
 
     # Encoding: sample |st|>12 must not produce a byte that clamps to 0 (-64).
-    check("synth st=-24 -> raw 40", encode_ptch(-24, synth=True) == 40)
-    check("synth st=+24 -> raw 88", encode_ptch(24, synth=True) == 88)
+    check("synth st=-64 -> raw 0", encode_ptch(-64, synth=True) == 0)
+    check("synth st=+63 -> raw 127", encode_ptch(63, synth=True) == 127)
     check("sample st=-12 -> raw 4", encode_ptch(-12, synth=False) == 4)
     check("sample st=+12 -> raw 124", encode_ptch(12, synth=False) == 124)
     # The -64 bug: sample encode of st=-24 wraps to a byte Part clamps to 0.

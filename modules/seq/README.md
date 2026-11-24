@@ -113,7 +113,9 @@ only; writing the pattern is a separate YES.
 use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
 - **DEST = PTCH:** DPTH sets pitch variation around the Part PLAYBACK PTCH.
-  SEQ chooses pitches from SCAL and ROOT. Silent / PLCK misses fall back to Part.
+  SEQ chooses pitches from SCAL and ROOT. FM, SY and CX can span up to 64
+  semitones either side, limited by the raw PTCH range. Silent / PLCK misses
+  fall back to Part.
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
 - **Any other DEST:** uniform `[Part−DPTH .. Part+DPTH]` clamped 0..127.
 
@@ -170,13 +172,15 @@ Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md).
 The tonal page applies to audio and MIDI tracks. **SCAL** selects MAJ, MIN,
 PENT, DOR, PHR, MIX, WHOL or CHRO; **ROOT** selects C through B. **JUMP** is
 available on both audio and MIDI. It sets the spacing between successive
-phrase notes: 0 advances one scale position, and higher values skip farther
-(range 0..127). It changes pitch spacing, while **DPTH** sets the outer pitch
-span. UP starts at the Part pitch and ascends; DOWN starts there and descends.
+phrase notes (range 0..127). For UP, DOWN, ALT and TRI, 0 advances one
+scale position and higher values skip farther. For RAND, JUMP 0 moves one
+scale degree; higher values allow wider random moves. **DPTH** sets the outer
+pitch span. UP starts at the Part pitch and ascends; DOWN starts there and descends.
 Both wrap at the **DPTH** boundary. ALT moves up and down in alternation; TRI
 repeats a short up-and-down contour. RAND chooses a random direction for each
-step, with JUMP controlling the scale-degree distance; at a **DPTH** edge it
-turns around so the interval stays consistent. RAND is the first PHRS option
+step, with JUMP controlling the maximum scale-degree move. At JUMP 0, moves
+are one scale degree. Higher values allow wider moves, up to the full **DPTH**
+range at JUMP 127. At a **DPTH** edge the walk reflects into the range. RAND is the first PHRS option
 and the default for new settings. Older saved phrase values migrate without
 changing their selected mode. Filling again rerolls RAND without changing
 the controls. Audio C and F are empty and inactive.
@@ -193,6 +197,11 @@ Hardware report, 15 Nov 2026: the author tested SEQ 83 on the MKII and
 confirmed it works, including the fix that leaves unused NOTE3/4 slots empty
 at VOIC 2. SEQ 82 had displayed -64 in those slots. The report does not
 provide separate measurements of audio pitch or MIDI timing.
+
+Hardware report, 25 Nov 2026: the author confirmed OCTABAM 81.RMX on the MKII.
+Audio RAND PTCH starts at a random in-scale pitch from DPTH; JUMP 0 keeps
+neighboring notes one scale degree apart, and higher JUMP allows wider moves.
+No CX-specific check was reported.
 
 MIDI mode has separate TRIG/PLOCK rhythms, per-destination depth and
 settings stored in `seq.work` version 12. The reader migrates earlier
