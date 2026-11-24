@@ -57,6 +57,8 @@ MODULE = Module(
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
     evidence=(
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="CX 86.RMX", date="2026-11-24",
+                 note="Owner confirmed CX 86 works perfectly on the unit."),
         Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTA S3.RMX", date="2026-11-16",
                  commit="854ea9c055d9dea89a91763ed43f065e3a24de10",
                  note="Author confirmed the OCTA S3 handoff checklist: loads in BRAIN, PTCH opens Harmony, "
