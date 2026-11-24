@@ -1310,47 +1310,49 @@ def run_fx_destinations() -> None:
               port.long(sym("ef_focus")) == 2 and actual == expected, str(actual))
         if actual != expected or port.long(sym("ef_focus")) != 2:
             return
-        # Generate the FX2 lock through YES, then watch the running track's
-        # live parameter byte. No lock bytes are injected into PLOCKS P2.
         actual = [forward() for _ in range(2)]
         check("T3 moves forward through FX2 in order", actual == [43, 44], str(actual))
         if actual != [43, 44]:
             return
         end = [forward() for _ in range(4)]
         check("T3 stops at the last FX2 control", end == [45, 46, 46, 46], str(end))
-        trk, fx_slot = 2, 9
+        # Generate locks through YES and read the live parameter as the
+        # pattern plays. Keep the other FX slot's generated lock as a canary.
+        trk = 2
         base = 0x80000810 + trk * 72 + 0x32
-        port.poke(part + 0x8f07e + trk * 30 + fx_slot, bytes((64,)))
-        s.prime(lane=0, dest=actual[-1], depth=63, pulses=1, trk=trk)
-        s.yes()
         bank, pattern = u8(port, CUR_BANK), u8(port, UI_PTN)
         store = sym("STORE") + ((bank * 16 + pattern) * 8 + trk) * 64 * 12
-        def check_playback(lane_name: str, step: int) -> None:
-            records = port.peek(store, 64 * 12)
-            writes = {i: v for i, v in enumerate(records) if v != 255}
-            offset = step * 12 + fx_slot
-            check(f"{lane_name} YES writes only the selected T3 step and slot",
-                  writes.keys() == {offset}, str(writes))
-            value = writes.get(offset)
-            s.close_seq()
-            port.press("play", settle=0)
-            seen = set()
-            for _ in range(50):
-                port.run(40)
-                seen.add(u8(port, base + fx_slot))
-            check(f"{lane_name} playback applies the generated FX2 lock",
-                  value is not None and value != 64 and value in seen,
-                  f"generated={value} live={seen}")
-            port.press("stop")
-
-        check_playback("TRIG", 0)
-        trigs = mask_of(port, trk)
-        s.open_seq("t3")
-        s.prime(lane=1, dest=44, depth=63, pulses=1, rot=1, trk=trk)
-        s.yes()
-        check("PLCK keeps the sample trig and creates a trigless step",
-              mask_of(port, trk) == trigs and mask_bit(tl_of(port, trk), 1))
-        check_playback("PLCK", 1)
+        expected_locks = {}
+        for fx, dest in ((2, 44), (1, 38)):
+            fx_slot = dest - 35
+            port.poke(part + 0x8f07e + trk * 30 + fx_slot, bytes((64,)))
+            for lane, lane_name in enumerate(("TRIG", "PLCK")):
+                if fx != 2 or lane:
+                    s.open_seq("t3")
+                trigs = mask_of(port, trk)
+                s.prime(lane=lane, dest=dest, depth=63, pulses=1, rot=lane, trk=trk)
+                s.yes()
+                if lane:
+                    check(f"FX{fx} PLCK keeps the sample trig and creates a trigless step",
+                          mask_of(port, trk) == trigs and mask_bit(tl_of(port, trk), 1))
+                records = port.peek(store, 64 * 12)
+                writes = {i: v for i, v in enumerate(records) if v != 255}
+                offset = lane * 12 + fx_slot
+                value = writes.get(offset)
+                if value is not None:
+                    expected_locks[fx_slot] = (offset, value)
+                check(f"FX{fx} {lane_name} YES updates only the selected T3 step and slot",
+                      value is not None and writes == dict(expected_locks.values()), str(writes))
+                s.close_seq()
+                port.press("play", settle=0)
+                seen = set()
+                for _ in range(50):
+                    port.run(40)
+                    seen.add(u8(port, base + fx_slot))
+                check(f"FX{fx} {lane_name} playback applies the generated lock",
+                      value is not None and value != 64 and value in seen,
+                      f"generated={value} live={seen}")
+                port.press("stop")
 
 
 def main() -> int:
