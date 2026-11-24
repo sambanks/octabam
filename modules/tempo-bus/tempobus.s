@@ -44,6 +44,10 @@
         .set    TSTEP,    0x4004b824   | (whole, tenths): the stock tempo step, redraws
         .set    TLEVEL,   0x4004b918   | (index, delta): the stock LEVEL handler, whole BPM
         .set    P1WRITE,  0x40054cd8   | (track, flat, value): page-1 writer
+        .set    LAYERS,   0x460d165c   | long: the input layer list, bottom first
+        .set    SCENE_HELD, 0x460d169c | long: 1 = scene A held, 2 = B
+        .set    MIDIMODE, 0x80000012   | long: nonzero = the MIDI tracks
+        .set    KPUSHB,   0x39         | knob B's push (A's is 0x38)
         | DESC2 (the FX2 descriptor table [id] -> P) comes from remix.inc
         .set    DBPTR,    0x46c82456   | long: Part DB base
         .set    PARTB,    0x80000003   | byte: the current part
@@ -101,6 +105,7 @@ tb_enc:
         lea     SEL,%a2
         addal   %d1,%a2                | a2 = &SEL[box]
         moveq   #1,%d3
+        moveb   %d3,TURNED             | a push released after this clears nothing
         cmpl    %d3,%d0
         bhi.w   edone                  | C-F: held
 | A, B: the value, x7 while that knob is pushed (the stock fast turn)
@@ -148,6 +153,131 @@ tb_enc:
 edone:  movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
         bra.w   tb_draw
+
+| ---- the scene keys: (code, down). Stock's press pushes the scene's input
+| layer (the key record's sub-map, 0x400bb2a2 for A, 0x400bb2b6 for B) on
+| top of this one before the press handler runs (0x40031734), and that
+| layer takes every encoder and encoder push for the page underneath: with
+| the window open a turn wrote a lock on a knob the window hides. This
+| record's press runs stock's (the layers below) and then puts this layer
+| back on top, so the window's knobs edit the held scene's locks
+| (helpers.s, lockset). The release runs stock's and redraws the values.
+tb_scn: movel   %sp@(4),%d0
+        moveq   #2,%d1                 | press
+        tstl    %sp@(8)
+        bne.s   1f
+        moveq   #6,%d1                 | release
+1:      bsr.w   below
+        cmpal   #0,%a0
+        beq.s   2f
+        movel   %sp@(8),%sp@-
+        movel   %sp@(8),%sp@-
+        jsr     %a0@
+        addql   #8,%sp
+2:      tstl    WINH
+        beq.s   3f
+        tstl    %sp@(8)
+        beq.s   4f
+        bsr.w   lpop                   | the press: this layer on top again
+        pea     TB_LAYER
+        jsr     LPUSH
+        addql   #4,%sp
+4:      bra.w   tb_draw
+3:      rts
+
+| ---- encoder pushes: (code, down). With a scene held the scene's layer
+| has them (0x4005435c / 0x40053a68: a release with no turn since the press
+| clears the lock of the knob under it, on the page the window hides). Here
+| a release of A or B with no turn since the press clears the held scene's
+| lock on the selected row; C-F and LEVEL do nothing. With no scene held the
+| press goes on to the layers below, as before.
+tb_push:
+        movel   %sp@(4),%d0
+        tstl    SCENE_HELD
+        beq.s   pbelow
+        tstl    MIDIMODE
+        bne.s   pbelow
+        tstl    %sp@(8)
+        beq.s   1f
+        moveb   %d0,PUSHK              | the press: remember it, no turn yet
+        clrb    TURNED
+        rts
+1:      moveq   #0,%d1
+        moveb   PUSHK,%d1
+        cmpl    %d1,%d0
+        bne.s   2f
+        tstb    TURNED
+        bne.s   2f
+        moveq   #KPUSHB,%d1
+        cmpl    %d1,%d0
+        bhi.s   2f                     | C-F, LEVEL
+        lea     %sp@(-44),%sp
+        movem.l %d2-%d7/%a2-%a6,%sp@
+        moveq   #0,%d1
+        moveb   FOCUS,%d1
+        moveq   #0,%d0
+        lea     SEL,%a0
+        moveb   %a0@(0,%d1:l),%d0
+        bsr.w   slotof                 | d6 = the selected row's slot
+        tstl    %d6
+        bmi.s   3f
+        movel   %d1,%d0
+        jsr     engine                 | d4 = track, a4, d5
+        tstl    %d4
+        bmi.s   3f
+        jsr     lockclr
+3:      movem.l %sp@,%d2-%d7/%a2-%a6
+        lea     %sp@(44),%sp
+        bra.w   tb_draw
+2:      clrb    PUSHK
+        rts
+pbelow: moveq   #2,%d1
+        tstl    %sp@(8)
+        bne.s   1f
+        moveq   #6,%d1
+1:      bsr.s   below
+        cmpal   #0,%a0
+        beq.s   2f
+        movel   %sp@(8),%sp@-
+        movel   %sp@(8),%sp@-
+        jsr     %a0@
+        addql   #8,%sp
+2:      rts
+
+| below: d0 = key code, d1 = 2 (press) or 6 (release) -> a0 = the handler
+| the layers under this one give that key (the last record naming it whose
+| field is not -1), or 0. Walks the list head (bottom) to this layer.
+below:  lea     %sp@(-12),%sp
+        movem.l %d2/%a1-%a2,%sp@
+        suba.l  %a0,%a0
+        moveal  LAYERS,%a1
+bl1:    cmpal   #0,%a1
+        beq.s   blx
+        cmpal   #TB_LAYER,%a1
+        beq.s   blx
+        movel   %a1@(4),%d2
+        beq.s   bln
+        moveal  %d2,%a2
+bl2:    moveq   #0,%d2
+        moveb   %a2@,%d2
+        cmpil   #0xff,%d2
+        beq.s   bln
+        cmpl    %d0,%d2
+        bne.s   bl3
+        movel   %a2@(0,%d1:l),%d2
+        moveq   #-1,%d0
+        cmpl    %d0,%d2
+        beq.s   bl4
+        moveal  %d2,%a0
+bl4:    moveq   #0,%d0
+        moveb   %a2@,%d0               | d0 = the code again
+bl3:    lea     %a2@(26),%a2
+        bra.s   bl2
+bln:    moveal  %a1@,%a1
+        bra.s   bl1
+blx:    movem.l %sp@,%d2/%a1-%a2
+        lea     %sp@(12),%sp
+        rts
 
 | ---- LEFT / RIGHT: the focused box; each box keeps its own cursor ----
 tb_lr:  moveq   #0,%d0
@@ -477,6 +607,8 @@ TITLES: .long   T_DLY, T_VRB
 FOCUS:  .byte   0
 SEL:    .byte   0, 0
 SCR:    .byte   0, 0
+PUSHK:  .byte   0                      | the encoder push held with a scene, 0 = none
+TURNED: .byte   0                      | a knob turned since that push
         .include "remix.inc"           | ENGIDS, NAMED (rows reads NAMED)
         NAMETAB_1                      | the reverb's: NAMES_<its id>
 | The screen's labels, per box: its own tables, never the shared
@@ -501,6 +633,19 @@ TB_KEYS:
         .byte   0x20, 0
         .long   tb_ud, 0, tb_ud, 0, 0
         .word   15, 5
+| the scene keys: the press and release run stock's (repeat inherited, -1;
+| no sub-map of our own: the dispatcher chains the stock record's)
+        .irp    k, 0x19, 0x1a
+        .byte   \k, 0
+        .long   tb_scn, tb_scn, -1, 0, 0
+        .word   0, 0
+        .endr
+| the encoder pushes A-F and LEVEL
+        .irp    k, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e
+        .byte   \k, 0
+        .long   tb_push, tb_push, -1, 0, 0
+        .word   0, 0
+        .endr
         .byte   0xff, 0
         .long   0, 0, 0, 0, 0
         .word   0, 0
