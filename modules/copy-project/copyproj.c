@@ -362,8 +362,17 @@ static char frame_dst[DEPTH + 1][PATH_N];
 static char frame_name[DEPTH + 1][EMAX][NLEN + 1];
 static u8 frame_dir[DEPTH + 1][EMAX];
 
-/* 1: copy only what the destination lacks (SAVE TO NEW's sidecars). */
+/* 1: copy only what the destination lacks (SAVE TO NEW's sidecars), and no
+ * .strd: that is the old project's last SAVED state, and stock's save-as
+ * writes no .strd of its own. */
 static u32 cp_missing;
+
+static int is_strd(const char *name)
+{
+	u32 n = len(name);
+
+	return n >= 5 && eq(name + n - 5, ".strd");
+}
 
 static int copy_tree(u32 depth)
 {
@@ -397,8 +406,8 @@ static int copy_tree(u32 depth)
 				return -1;
 			if (copy_tree(depth + 1) < 0)
 				return -1;
-		} else if (cp_missing && fs_exists(frame_dst[leaf])) {
-			/* stock wrote it into the new project */
+		} else if (cp_missing && (is_strd(frame_name[depth][i]) || fs_exists(frame_dst[leaf]))) {
+			/* a saved twin, or stock wrote it into the new project */
 		} else if (FCOPY(frame_dst[leaf], frame_src[leaf], 0) < 0) {
 			return -1;
 		}

@@ -8,11 +8,15 @@
    name under a pinned RTC, confirm, OPEN IT? NO — destination matches
    source.
 2. SAVE TO NEW carries the sidecars: SRC holds kits.work and scenes.work
-   beside the stock files; PROJECT > SAVE TO NEW with the name stepped up
-   (SRC -> SRD). Wanted: both files in SRD byte for byte, and the module's
-   FCOPY calls (return address in DRAM) exactly two, so no stock file the
-   new folder already had was copied over. A subfolder is not staged:
-   stage_card.py carries a project's top-level files only.
+   (and stale .strd twins of them) beside the stock files and a .strd for
+   each .work; PROJECT > SAVE TO NEW with the name stepped up (SRC -> SRD).
+   Stock's save-as writes the .work files only (measured with the module's
+   copy off: 26 names from a 54-file project). Wanted: the sidecars in SRD
+   byte for byte; no .strd in SRD (the old project's SAVED state is not the
+   new project's); every other SRC file in SRD; and the module's FCOPY calls
+   (return address in DRAM) equal to the files it should add, so no stock
+   file was copied over. A subfolder is not staged: stage_card.py carries a
+   project's top-level files only.
 3. Failure / cleanup: SRC with more than 256 entries in one directory
    forces COPY FAILED; destination is removed; source untouched; a retry
    with the same name does not hit NAME ALREADY IN USE! (dest still gone
@@ -25,6 +29,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -250,6 +255,8 @@ FCOPY = 0x40016388
 DRAM = (0x40A00000, 0x46000000)          # the module's own code
 NEW_NAME = "SRD"                         # SRC with the last letter stepped up
 SIDECARS = {"kits.work": b"KITSDATA" * 4, "scenes.work": bytes(range(100))}
+STALE = {"kits.strd": b"KITSOLD!" * 4, "scenes.strd": bytes(range(100, 200))}
+STOCK_WORK = re.compile(r"(arr|bank)\d\d\.work|markers\.work|project\.work")
 YES, DOWN, UP, LEFT, RIGHT, PROJ = 0x31, 0x20, 0x33, 0x34, 0x21, 0x1C
 
 
@@ -258,14 +265,19 @@ def keys(ms, key):
 
 
 def run_save_to_new(image: pathlib.Path, pdir: pathlib.Path) -> None:
-    import re  # noqa: PLC0415
-
     fixture = OUT / "src_sa"
     if fixture.exists():
         shutil.rmtree(fixture)
     shutil.copytree(pdir, fixture)
-    for name, data in SIDECARS.items():
+    # Saved twins of a stock bank and the project: a .strd for every .work doubles the
+    # folder and the port's FAT scans outlast the run.
+    for stem in ("project", "bank01"):
+        (fixture / f"{stem}.strd").write_bytes((fixture / f"{stem}.work").read_bytes())
+    for name, data in {**SIDECARS, **STALE}.items():
         (fixture / name).write_bytes(data)
+    # what the module adds: the fixture's files that are neither .strd nor written by stock's save-as
+    expected = sorted(f.name for f in fixture.iterdir()
+                      if f.is_file() and not f.name.endswith(".strd") and not STOCK_WORK.fullmatch(f.name))
     card, tree = OUT / "card_sa.img", OUT / "tree_sa"
     stage(fixture, card, tree)
 
@@ -302,18 +314,23 @@ def run_save_to_new(image: pathlib.Path, pdir: pathlib.Path) -> None:
                      f"-- {OUT / 'save_to_new.log'}")
     src_names = {k.rsplit("/", 1)[1] for k in files if "/SRC/" in k}
     new_names = {k.rsplit("/", 1)[1] for k in files if f"/{NEW_NAME}/" in k}
-    if src_names - new_names:
-        sys.exit(f"verify_copy_project: {NEW_NAME} lacks {sorted(src_names - new_names)} "
+    strd = sorted(n for n in new_names if n.endswith(".strd"))
+    if strd:
+        sys.exit(f"verify_copy_project: {NEW_NAME} holds the old project's saved twins {strd[:6]} "
                  f"-- {OUT / 'save_to_new.log'}")
+    lacking = sorted(n for n in src_names - new_names if not n.endswith(".strd"))
+    if lacking:
+        sys.exit(f"verify_copy_project: {NEW_NAME} lacks {lacking} -- {OUT / 'save_to_new.log'}")
     # The watch line's sp holds the return address first.
     calls = [int(m, 16) for m in re.findall(
         rf"at {FCOPY:#x} .*?\[sp 0x[0-9a-f]+: (0x[0-9a-f]+)", out)]
     ours = [c for c in calls if DRAM[0] <= c < DRAM[1]]
-    if len(ours) != len(SIDECARS):
+    if len(ours) != len(expected):
         sys.exit(f"verify_copy_project: the module called FCOPY {len(ours)} times for "
-                 f"{len(SIDECARS)} sidecars ({len(calls)} calls in all) -- {OUT / 'save_to_new.log'}")
+                 f"{len(expected)} files ({expected[:6]}; {len(calls)} calls in all) "
+                 f"-- {OUT / 'save_to_new.log'}")
     print(f"  [PASS] verify_copy_project: SAVE TO NEW carried {', '.join(SIDECARS)} into "
-          f"{NEW_NAME!r}; {len(ours)} module copies, none of a stock file")
+          f"{NEW_NAME!r} ({len(ours)} module copies, no .strd, no stock file)")
 
 
 def main() -> int:

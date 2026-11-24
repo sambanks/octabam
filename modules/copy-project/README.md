@@ -70,8 +70,16 @@ new folder and writes the stock files into it. Two detours carry the rest:
   project is unsaved (`0x100f847c` set), when no project is open
   (`0x400255ec` = 0) or when the old folder is not on the card.
 - `0x400850ee`, after the last stock write: `cp_sa_copy` copies every file
-  and folder of the old folder that the new one lacks. A file the new folder
-  has (every stock file) is not touched.
+  and folder of the old folder that the new one lacks, except `.strd` files.
+  A file the new folder has (every stock `.work` file) is not touched.
+
+Stock's save-as writes `.work` files only: with the module's copy off, a
+54-file fixture (`.work` and `.strd` twins, `kits.work`) gave 26 names in
+the new folder (`arr01-08`, `bank01-16`, `markers`, `project`, all `.work`) and no
+`.strd`. A `.strd` is the old project's last saved state, so it is not the
+new project's; SAVE PROJECT writes the new project's. A first version
+copied them, and the unit's new folder then held the old project's
+`bank02.strd`, which predates the take that changed `bank02.work`.
 
 The copy runs on the engine task inside the save-as job. Stock's result
 register (`d2`) is not consulted: stock reports `FILE NOT FOUND` for a
