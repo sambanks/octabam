@@ -104,9 +104,9 @@ def poke8(p, a: int, v: int) -> None:
     p.poke(a, bytes([v & 0xFF]))
 
 
-def ensure_card() -> None:
+def ensure_card():
     # CI has no template_project: the image makes its own project (seq_port_fixture, main a6a4b3e).
-    stage_project(IMAGE, CARD, ROOT / "out/_seq_scenarios_tree")
+    return stage_project(IMAGE, CARD, ROOT / "out/_seq_scenarios_tree")
 
 
 def trac(p, trk: int = 0) -> int:
@@ -266,7 +266,7 @@ def run_scenarios() -> int:
         print("SEQ scenarios: skip (no out/emu/ot_emu)")
         return 0
 
-    ensure_card()
+    remix = ensure_card()
     print("SEQ port scenarios (usage/seq.md):")
 
     with MenuPort(IMAGE, CARD, "OCTABAM", "A", mkii=True) as port:
@@ -1265,6 +1265,8 @@ def run_scenarios() -> int:
                   port.peek(mirror, 8) == port.peek(midi_record, 8))
 
     run_fx_destinations()
+    run_fx_store_bounds()
+    run_fx_descriptor_matrix(remix.name)
     print(f"SEQ scenarios: {FAILS} failed checks")
     return FAILS
 
@@ -1355,7 +1357,125 @@ def run_fx_destinations() -> None:
                 port.press("stop")
 
 
+def run_fx_store_bounds() -> None:
+    """Check that invalid bridge indices leave the store unchanged."""
+    with MenuPort(IMAGE, CARD, "OCTABAM", "A", mkii=True) as port:
+        port.settle()
+        port.rt.frame = False
+        port.run(50)
+        writer = sym("plk_seq_store")
+        store = sym("STORE")
+        store_size = 16 * 16 * 8 * 64 * 12
+        before = port.peek(store - 16, 32), port.peek(store + store_size - 16, 32)
+        for index, (name, limit) in enumerate(
+                (("bank", 16), ("pattern", 16), ("track", 8), ("step", 64), ("slot", 12))):
+            for value in (limit, 0xffffffff):
+                args = [91, 0, 0, 0, 0, 0]
+                args[index + 1] = value
+                reply = port.proc.command(
+                    f"call {writer:#x} " + " ".join(map(str, args)), "ok")
+                check(f"PLOCKS P2 rejects {name} index {value:#x}",
+                      int(reply.split("d0=")[1], 16) == 0xffffffff, reply)
+        check("Rejected PLOCKS P2 writes preserve both ends of the store",
+              before == (port.peek(store - 16, 32), port.peek(store + store_size - 16, 32)))
+
+
+def run_fx_descriptor_matrix(remix_name: str) -> None:
+    """Walk each FX slot's actual descriptor IDs in all four Parts."""
+    import idspace
+    from remix import registry
+
+    remix = registry.remix(remix_name)
+    tables = ((0x400d5f58, 32), (idspace.fx2_ids(remix), remix.id_space))
+    page_starts = ((18, 35), (24, 41))
+    for part_index in range(4):
+        with MenuPort(IMAGE, CARD, "OCTABAM", "A", mkii=True) as port:
+            port.settle()
+            for _ in range(3):
+                port.press("no", settle=80)
+            s = SeqPort(port)
+            bank_base = port.long(DBPTR_ADDR)
+            track = part_index + 1
+            part = bank_base + part_index * PART_STR
+            s.open_seq(f"t{track + 1}")
+            port.rt.frame = False
+            port.run(50)
+            # Set the UI Part byte with the engine stopped. Playback uses
+            # the separate panel-driven fixture above.
+            poke8(port, UI_PART, part_index)
+            port.poke(part + SIG_OFF + track * 30, bytes(3))
+
+            def turn(delta: int) -> int:
+                port.proc.command(f"knob 0x33 {delta}", "ok")
+                port.run(40)
+                return port.long(s.dest)
+
+            destinations = [{}, {}]
+            slots = (FX1_OFF + track, FX2_OFF + track)
+            for fx, (table, n_ids) in enumerate(tables):
+                port.poke(part + slots[1 - fx], bytes(1))
+                for effect in range(n_ids):
+                    desc = port.long(table + 4 * effect)
+                    if effect and (not desc or port.cstr(desc + 4, 5) == "NONE"):
+                        continue
+                    expected = []
+                    if effect:
+                        masks = (port.long(desc + 0x18e), port.long(desc + 0x18a))
+                        for param in range(12):
+                            word, nibble = (0, param) if param < 8 else (1, param - 8)
+                            name = u8(port, desc + 0x16 + param * 6)
+                            if masks[word] & (1 << (4 * nibble)) and name:
+                                expected.append(page_starts[fx][param // 6] + param % 6)
+                    port.poke(part + slots[fx], bytes((effect,)))
+                    poke32(port, s.dest, 16)
+                    actual = []
+                    for _ in range(len(expected) + 1):
+                        actual.append(turn(1))
+                    wanted = expected + [expected[-1]] if expected else [16]
+                    if actual != wanted:
+                        check(f"Part {part_index + 1} FX{fx + 1} id {effect:#x}",
+                              False, f"expected={wanted} actual={actual}")
+                    # Reverse to BAL through the same list without wrapping.
+                    actual = []
+                    for _ in expected:
+                        actual.append(turn(-1))
+                    wanted = list(reversed(expected[:-1])) + [16] if expected else []
+                    if actual != wanted:
+                        check(f"Part {part_index + 1} FX{fx + 1} id {effect:#x} reverse",
+                              False, f"expected={wanted} actual={actual}")
+                    destinations[fx][effect] = expected
+                print(f"  Part {part_index + 1} FX{fx + 1}: walked {len(destinations[fx])} effect IDs")
+            pairs = 0
+            for fx1, first in destinations[0].items():
+                port.poke(part + slots[0], bytes((fx1,)))
+                for fx2, second in destinations[1].items():
+                    port.poke(part + slots[1], bytes((fx2,)))
+                    # Check the join between effects. The walks above check
+                    # every position within each effect independently.
+                    left = first[-1] if first else 16
+                    right = second[0] if second else left
+                    poke32(port, s.dest, left)
+                    actual = turn(1)
+                    if actual != right:
+                        check(f"Part {part_index + 1} FX pair {fx1:#x}/{fx2:#x} forward",
+                              False, f"expected={right} actual={actual}")
+                    if second:
+                        actual = turn(-1)
+                        if actual != left:
+                            check(f"Part {part_index + 1} FX pair {fx1:#x}/{fx2:#x} reverse",
+                                  False, f"expected={left} actual={actual}")
+                    pairs += 1
+            print(f"  Part {part_index + 1}: checked {pairs} FX pair boundaries")
+
+
 def main() -> int:
+    if "--fx-matrix" in sys.argv:
+        remix = ensure_card()
+        run_fx_descriptor_matrix(remix.name)
+        return int(FAILS != 0)
+    if "--fx-safety" in sys.argv:
+        run_fx_store_bounds()
+        return int(FAILS != 0)
     if "--fx-only" in sys.argv:
         run_fx_destinations()
         return int(FAILS != 0)

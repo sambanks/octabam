@@ -286,6 +286,26 @@ pe_done:
 | FX slots 0..5 are FX1; 6..11 are FX2. 0xff clears the destination.
 | PLOCKS P2 already owns the pattern-scoped table and playback pipeline.
 plk_seq_store:
+        | Reject bad indices before initializing or touching the store.
+        movel   8(%sp),%d0
+        cmpi.l  #15,%d0
+        bhi.s   pss_invalid
+        movel   12(%sp),%d0
+        cmpi.l  #15,%d0
+        bhi.s   pss_invalid
+        movel   16(%sp),%d0
+        cmpi.l  #7,%d0
+        bhi.s   pss_invalid
+        movel   20(%sp),%d0
+        cmpi.l  #63,%d0
+        bhi.s   pss_invalid
+        movel   24(%sp),%d0
+        cmpi.l  #REC-1,%d0
+        bls.s   pss_valid
+pss_invalid:
+        moveq   #-1,%d0
+        rts
+pss_valid:
         lea     %sp@(-28),%sp
         movem.l %d2-%d7/%a2,%sp@
         bsr.w   plk_init
@@ -318,6 +338,7 @@ plk_seq_store:
         movel   %d0,%a0@
         movel   %d0,0x100f8598
         jsr     DIRTY
+        moveq   #0,%d0
         movem.l %sp@,%d2-%d7/%a2
         lea     %sp@(28),%sp
         rts

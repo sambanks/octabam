@@ -672,6 +672,8 @@ ef_dep_ptr:
         movel   ef_dest,%d1
         cmpi.l  #DEST_P2FIRST,%d1
         bcs.s   dp_legacy_start
+        cmpi.l  #DEST_P2LAST,%d1
+        bhi.s   dp_legacy_start
         subi.l  #DEST_P2FIRST,%d1
         movel   ef_focus,%d0
         andil   #7,%d0
@@ -756,6 +758,8 @@ pp_stride_done:
         clrl    %d1
 pp1:    cmpi.l  #DEST_P2FIRST,%d1
         bcs.s   pp_legacy
+        cmpi.l  #DEST_P2LAST,%d1
+        bhi.s   pp_legacy
         subi.l  #DEST_P2FIRST,%d1
         movel   ef_focus,%d0
         andil   #7,%d0
@@ -2879,7 +2883,7 @@ ef_tl_clr:
 | invisible). No locks left -> clear TL. Clobbers d0/d1/a0.
 ef_tl_reconcile:
         tstl    ef_thit
-        bne.s   tr_clr
+        bne.w   tr_clr
         movel   %d2,%d1
         lsll    #5,%d1
         addil   #LOCK0,%d1
@@ -2888,7 +2892,7 @@ ef_tl_reconcile:
         moveq   #-1,%d0
 tr_scan:
         cmp.b   %a0@,%d0
-        bne.s   tr_keep                 | another DEST still locked -> TL
+        bne.w   tr_keep                 | another DEST still locked -> TL
         addql   #1,%a0
         subql   #1,%d1
         bpl.s   tr_scan
@@ -2903,16 +2907,23 @@ tr_scan:
         addl    %d2,%d1
         lea     ef_cx_bits,%a0
         tst.b   %a0@(0,%d1:l)
-        bne.s   tr_keep
+        bne.w   tr_keep
         | Any page-2 lock on this step also needs a trigless record.
         moveq   #0,%d0
         moveb   CUR_BANK,%d0
+        cmpi.l  #15,%d0
+        bhi.s   tr_clr
         lsll    #4,%d0
         moveq   #0,%d1
         moveb   UI_PTN,%d1
+        cmpi.l  #15,%d1
+        bhi.s   tr_clr
         addl    %d1,%d0
         lsll    #3,%d0
-        addl    ef_trk,%d0
+        movel   ef_trk,%d1
+        cmpi.l  #7,%d1
+        bhi.s   tr_clr
+        addl    %d1,%d0
         lsll    #6,%d0
         addl    %d2,%d0
         moveq   #P2_REC,%d1
@@ -2923,7 +2934,7 @@ tr_scan:
         moveq   #-1,%d0
 tr_p2scan:
         cmp.b   %a0@+,%d0
-        bne.s   tr_keep
+        bne.w   tr_keep
         subql   #1,%d1
         bpl.s   tr_p2scan
 tr_clr: bsr.w   ef_tl_clr
@@ -3888,12 +3899,20 @@ ef_part_p2:
         lea     -8(%sp),%sp
         movem.l %d2-%d3,(%sp)
         subi.l  #DEST_P2FIRST,%d0
+        cmpi.l  #DEST_P2NSLOT-1,%d0
+        bhi.s   epp_invalid
         movel   %d0,%d1
         movel   ef_trk,%d0
+        cmpi.l  #7,%d0
+        bhi.s   epp_invalid
         mulu.w  #30,%d0
         moveal  DBPTR,%a0
+        tstl    %a0
+        beq.s   epp_invalid
         moveq   #0,%d2
         moveb   UI_PART,%d2
+        cmpi.l  #3,%d2
+        bhi.s   epp_invalid
         movel   #PART_STR,%d3
         muls.l  %d3,%d2
         addal   %d2,%a0
@@ -3902,6 +3921,10 @@ ef_part_p2:
         addal   %d1,%a0
         moveq   #0,%d0
         moveb   %a0@,%d0
+        bra.s   epp_done
+epp_invalid:
+        moveq   #0,%d0
+epp_done:
         movem.l (%sp),%d2-%d3
         lea     8(%sp),%sp
         rts
@@ -4260,6 +4283,10 @@ adv_no:
 | Return the descriptor in a0 (zero for absent controls) and slot in d3.
 | Both pages use the stock enable bits and six-byte parameter labels.
 ef_fx_dest:
+        cmpi.l  #DEST_P2LAST,%d0
+        bhi.w   efd_no
+        cmpi.l  #18,%d0
+        bcs.w   efd_no
         movel   %d0,%d3
         cmpi.l  #DEST_P2FIRST,%d3
         bcs.s   efd_page1
@@ -4268,6 +4295,8 @@ ef_fx_dest:
         bcs.s   efd_fx1
         bra.s   efd_fx2
 efd_page1:
+        cmpi.l  #DEST_LAST,%d3
+        bhi.w   efd_no
         subi.l  #18,%d3
         cmpi.l  #6,%d3
         bcs.s   efd_fx1
@@ -4281,12 +4310,18 @@ efd_fx1:
         movel   #FX1_OFF,%d1
 efd_part:
         moveal  DBPTR,%a0
+        tstl    %a0
+        beq.w   efd_no
         addal   %d1,%a0
         moveq   #0,%d0
         moveb   UI_PART,%d0
+        cmpi.l  #3,%d0
+        bhi.w   efd_no
         mulu.w  #PART_STR,%d0
         addal   %d0,%a0
         movel   ef_trk,%d0
+        cmpi.l  #7,%d0
+        bhi.s   efd_no
         moveq   #0,%d1
         moveb   %a0@(0,%d0:l),%d1
         beq.s   efd_no
