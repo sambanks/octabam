@@ -382,7 +382,7 @@ def main():
 
     def card_file(files, tail):
         return next((v for k, v in files.items() if k.upper().endswith(tail.upper())), None)
-    to_pane = [(0x1c, 1200)] + [(0x20, 400)] * 4 + [(0x21, 800)] + [(0x31, 800)]     # BRAIN > TEMPLATES (the first row), the PART tab
+    to_pane = [(0x1c, 1200)] + [(0x20, 400)] * 4 + [(0x21, 800)] + [(0x31, 800)]     # BRAIN > TEMPLATES (the first row), the KIT tab
 
     # ---- a PART template: APPLY TO..., a section from a track onto another track ------------------
     # card.work seeded with a PART template whose Part image is the project's Part with T1's FX1 page 1
@@ -907,7 +907,7 @@ def main():
         #           UP sets the character there ('0', measured under the port), YES
         #   delete  DELETE: the record leaves card.work
         #   edit    RIGHT three times on the first value, SAVE: the record holds 8
-        #   new     no card.work: NEW PART TEMPLATE, YES on the name (PART 01): one stock.part2 record, the
+        #   new     no card.work: NEW KIT TEMPLATE, YES on the name (KIT 01): one stock.part2 record, the
         #           Part's 6,322 bytes and the project's name
         tseed = OUT / "tpl_pane_seed.work"
         tseed.write_bytes(brainfile.File(brainfile.CARD_WORK, [brainfile.Record(brainfile.TEMPLATE_REC, brain.fx_store_id(ch),
@@ -943,16 +943,16 @@ def main():
         w_ = card_file(files, "BRAIN/CARD.WORK")
         prec = [r for r in brainfile.parse(w_).records if r.kind == brainfile.TEMPLATE_REC] if w_ else []
         pv = prec[0].values() if len(prec) == 1 else []
-        check(f"templates: BRAIN > TEMPLATES, NEW PART TEMPLATE and YES on the name editor's PART 01 write one stock.part2 "
+        check(f"templates: BRAIN > TEMPLATES, NEW KIT TEMPLATE and YES on the name editor's KIT 01 write one stock.part2 "
               f"record: the Part's 6,322 bytes and the project's name  "
               f"{[(r.store_id, r.name()) for r in prec]}",
-              len(prec) == 1 and prec[0].store_id == "stock.part2" and prec[0].name().startswith("PART 01")
+              len(prec) == 1 and prec[0].store_id == "stock.part2" and prec[0].name().startswith("KIT 01")
               and len(pv) == 2 and len(pv[0].data) == 6322 and pv[1].data.rstrip(b"\0") == a.name.encode())
     if in_group("panes"):
         pseed2 = OUT / "tpl_part_seed.work"
         pseed2.write_bytes(brainfile.File(brainfile.CARD_WORK, [part_rec(brainfile.TEMPLATE_REC, pblob)]).encode())
         parea = [(0x31, 3000), (0x31, 800), (0x20, 600), (0x31, 800), (0x20, 600), (0x31, 800), (0x20, 600), (0x31, 2500)]
-        # the template (PART tab, its first row after NEW), YES; APPLY TO...; FX; FROM T1; ONTO T2; OK
+        # the template (KIT tab, its first row after NEW), YES; APPLY TO...; FX; FROM T1; ONTO T2; OK
         files, _, (db_, part_, w126, w120, t2fx, t2amp) = ui_run(
             "tpl_part_apply", [(0x32, 400)] + to_pane + [(0x20, 400)] + parea,
             roots=((pseed2, "BRAIN/card.work"),),
@@ -963,9 +963,9 @@ def main():
               t2fx[0] == 77 and t2amp[0] != 66)
     if in_group("panes"):
 
-        # ---- a PART template: APPLY TO..., WHOLE PART --------------------------------------------------
+        # ---- a KIT template: APPLY TO..., WHOLE KIT --------------------------------------------------
         # The template's Part image has valid FX ids (0 = NONE), valid machines and scene selections, and a
-        # byte pattern everywhere else. WHOLE PART, then the live Part: every section's bytes equal the
+        # byte pattern everywhere else. WHOLE KIT, then the live Part: every section's bytes equal the
         # template's (FX, LFO, SRC, AMP, MIDI TRACKS, SCENES, MACHINES), the bytes no section carries
         # (the levels, the sample slots) still the project's own.
         def whole_fn(b):
@@ -988,7 +988,7 @@ def main():
         bad = [n for n, (o, c) in secs.items() if span(live1, o, c) != span(wblob, o, c)]
         kept = [n for n, (o, c) in {"levels": (0x12, 16), "sample slots": (0x2ca, 40)}.items()
                 if span(live1, o, c) != span(live0, o, c)]
-        check(f"templates: PART template APPLY TO..., WHOLE PART: every section equals the template's "
+        check(f"templates: PART template APPLY TO..., WHOLE KIT: every section equals the template's "
               f"(differing: {bad or 'none'}); the levels and the sample slots keep the project's "
               f"(changed: {kept or 'none'})", not bad and not kept)
     if in_group("panes"):

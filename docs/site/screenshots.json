@@ -570,7 +570,7 @@
     },
     "templates": {
       "image": "brain/templates.png",
-      "caption": "BRAIN templates: PART tab.",
+      "caption": "BRAIN templates: KIT tab.",
       "remix": "manual-features",
       "source": "emulator panel UART",
       "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"

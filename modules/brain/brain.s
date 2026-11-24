@@ -12113,7 +12113,7 @@ build_part_page:
 .LC138:
 	.string	"TAKEN IN"
 .LC139:
-	.string	"APPLY TO PART"
+	.string	"APPLY TO KIT"
 .LC140:
 	.string	"APPLY TO PROJECT"
 .LC141:
@@ -22106,7 +22106,7 @@ CSWTCH.934:
 .LC169:
 	.string	"PROJ"
 .LC170:
-	.string	"PART"
+	.string	"KIT"
 	.section	.rodata
 	.align	2
 	.type	st_abbr.0, @object
@@ -22217,7 +22217,7 @@ st_txt.6:
 	.long	.LC190
 	.section	.rodata.str1.1
 .LC191:
-	.string	"<NEW PART TEMPLATE>"
+	.string	"<NEW KIT TEMPLATE>"
 .LC192:
 	.string	"<NEW FX TEMPLATE>"
 .LC193:
@@ -23307,7 +23307,7 @@ ted_grp:
 	.comm	ap_l,36,2
 	.section	.rodata.str1.1
 .LC280:
-	.string	"WHOLE PART"
+	.string	"WHOLE KIT"
 	.section	.rodata
 	.align	2
 	.type	ap_secl, @object

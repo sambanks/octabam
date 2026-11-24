@@ -2451,7 +2451,7 @@ static int str_lt(const char *a, const char *b);
 static u32 tpl_prefix(u32 e, char *o)
 {
 	static const char *const st_abbr[ST_N] = { "AMP", "LFO", "MIDI", "STAT", "FLEX", "THRU", "NBR", "PICK",
-						   "PROJ", "PART" };
+						   "PROJ", "KIT" };
 	const char *a = "TPL";
 	if (e >= ST_BASE)
 		a = st_abbr[e - ST_BASE];
@@ -2507,7 +2507,7 @@ static void tpl_named(u32 confirmed)
 		return;
 	brain_post_template(0x80000 | save_t | (save_kind << 8));
 	static const char *const kname[8] = { "FX1 TRACK ", "FX2 TRACK ", "AMP TRACK ", "LFO TRACK ",
-					      "MIDI TRACK ", "SRC TRACK ", "PART", "PROJECT" };
+					      "MIDI TRACK ", "SRC TRACK ", "KIT", "PROJECT" };
 	int k = 0;
 	for (const char *c = kname[save_kind]; *c; c++)
 		line1[k++] = *c;
@@ -2642,7 +2642,7 @@ void brain_tpl_save(u32 unused)
 static u32 trow_ref_sel;			/* e << 8 | i of the template the popup is about */
 
 static const char *const st_name[ST_N] = { "AMP", "LFO", "MIDI TRACK", "SRC STATIC", "SRC FLEX",
-					   "SRC THRU", "SRC NEIGHBOR", "SRC PICKUP", "PROJECT", "PART" };
+					   "SRC THRU", "SRC NEIGHBOR", "SRC PICKUP", "PROJECT", "KIT" };
 
 static const char *ent_name(u32 e)
 {
@@ -2805,7 +2805,7 @@ static void ld_add(u32 kind, u32 t)
 /* APPLY TO... on a PART template: which section (WHOLE PART or one), then, for a section, which
  * track of the template (ALL TRACKS, or one) and, for one, onto which track of the current Part */
 #define AP_ROWS (SEC_N + 1)
-static const char *const ap_secl[AP_ROWS] = { "WHOLE PART", "FX", "LFO", "SRC", "AMP", "MIDI TRACKS",
+static const char *const ap_secl[AP_ROWS] = { "WHOLE KIT", "FX", "LFO", "SRC", "AMP", "MIDI TRACKS",
 					      "SCENES", "MACHINES" };
 static const char *ap_l[9];
 static char ap_lab[9][18];
@@ -4241,7 +4241,7 @@ static void build_ted(void)
 	}
 	/* the actions, the same on every template's screen (SET AS DEFAULT where the target has a
 	 * moment to take it: an effect's selection, a new project), then the values */
-	add(K_ITEM, e == E_PROJECT ? "APPLY TO PROJECT" : e == E_PART ? "APPLY TO PART" : "APPLY TO...", trow_load, 0);
+	add(K_ITEM, e == E_PROJECT ? "APPLY TO PROJECT" : e == E_PART ? "APPLY TO KIT" : "APPLY TO...", trow_load, 0);
 	if (can_default(e)) {
 		if (tpl_is_default(e, rec))
 			add(K_ITEM, "CLEAR DEFAULT", trow_cleardef, 0);
@@ -4641,7 +4641,7 @@ static void build_set(void)
 /* TEMPLATES: a tab per type of target, LEFT and RIGHT between them; each opens on a row to save
  * one (the page in front when it is of that type) and lists that type's templates */
 #define TPL_TABS 4
-static const char *const tpl_tab_name[TPL_TABS] = { "PART", "FX", "MIDI", "PROJECT" };
+static const char *const tpl_tab_name[TPL_TABS] = { "KIT", "FX", "MIDI", "PROJECT" };
 static u32 tpl_tab DATA;
 
 /* the tab a target's templates are on: PART 0, an effect 1, MIDI TRACK 2, PROJECT 3; the page
@@ -4654,7 +4654,7 @@ static u32 tab_of_entry(u32 e)
 static void build_tpl(void)
 {
 	static void (*const newf[TPL_TABS])(u32) = { tpl_new_part, tpl_new_fx, tpl_new_midi, tpl_new_project };
-	static const char *const newl[TPL_TABS] = { "<NEW PART TEMPLATE>", "<NEW FX TEMPLATE>", "<NEW MIDI TEMPLATE>", "<NEW PROJECT TEMPLATE>" };
+	static const char *const newl[TPL_TABS] = { "<NEW KIT TEMPLATE>", "<NEW FX TEMPLATE>", "<NEW MIDI TEMPLATE>", "<NEW PROJECT TEMPLATE>" };
 	add(K_ITEM, newl[tpl_tab], newf[tpl_tab], 0);
 	if (del_e != 0xffff) {			/* the deleted template gone from the card: nothing left out */
 		u32 j = 0;
