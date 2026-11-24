@@ -38,6 +38,7 @@ CODE_BASE, TEXT_DATA, DATA_BASE, BSS_BASE = 0x50000000, 0x51000000, 0x52000000, 
 class CPU:
     def __init__(self, src, mem=None, hooks=None, defsyms=None):
         self.mem = mem or Mem(); self.hooks = hooks or {}
+        self.via_jmp = False        # a hook reached by jmp finds its return address at a7 and the arguments above it
         self.d = [0] * 8; self.a = [0] * 8; self.N = self.Z = self.V = self.C = 0
         self.consts = dict(defsyms or {}); self.labels = {}; self.prog = []; self.icount = 0; self.prof = None
         self.lines = self._expand(src.splitlines())
@@ -293,7 +294,7 @@ class CPU:
                 e = self.ea(ops[0])
                 tgt = e[1] if e[0] == 'abs' else self.addr(e)
                 if b == 'bsr': tgt = self.consts[ops[0]]
-                if tgt in self.hooks: self.hooks[tgt](self); continue
+                if tgt in self.hooks: self.via_jmp = False; self.hooks[tgt](self); continue
                 if CODE_BASE <= tgt < TEXT_DATA:
                     self.a[7] = (self.a[7] - 4) & M32; self.mem.w(self.a[7], 'l', CODE_BASE + 2 * pc)
                     pc = (tgt - CODE_BASE) // 2; continue
@@ -301,7 +302,7 @@ class CPU:
             if b == 'jmp':
                 e = self.ea(ops[0]); tgt = e[1] if e[0] == 'abs' else self.addr(e)
                 if tgt in self.hooks:
-                    self.hooks[tgt](self); b = 'rts'
+                    self.via_jmp = True; self.hooks[tgt](self); b = 'rts'
                 elif CODE_BASE <= tgt < TEXT_DATA: pc = (tgt - CODE_BASE) // 2; continue
                 else: raise RuntimeError('jmp to unmapped %#x' % tgt)
             if b == 'rts':
