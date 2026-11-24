@@ -41,6 +41,7 @@
         .set    KROWS,    0x46100b18   | bytes: the panel's held keys, code = row*8 + bit
         .set    KFUNC,    0x2d         | FUNCTION: row 5, bit 5
         .set    KUP,      0x33
+        .set    NOTIFY,   0x4005a2b8   | (str, ticks): the toast KITS' copy and paste use
         .set    KREC,     0x29         | STOP is 0x27 (docs/firmware/PANEL.md)
         .set    TSTEP,    0x4004b824   | (whole, tenths): the stock tempo step, redraws
         .set    TLEVEL,   0x4004b918   | (index, delta): the stock LEVEL handler, whole BPM
@@ -307,7 +308,8 @@ tb_fn:  tstl    %sp@(8)
         clrb    XDIR
         bsr.w   xfer
         clrb    UST
-        bra.s   fnend
+        lea     T_COPIED,%a0
+        bra.w   fntoast
 fnpaste:
         tstw    CLIP+24
         beq.s   fnend                  | nothing copied
@@ -327,12 +329,19 @@ fnnew:  lea     UNDO,%a5               | the values the paste replaces
         lea     CLIP,%a5
         moveb   %d0,XDIR
         bsr.w   xfer
-        bra.s   fnend
+        lea     T_PASTED,%a0
+        bra.w   fntoast
 fnundo: lea     UNDO,%a5
         moveq   #1,%d0
         moveb   %d0,XDIR
         bsr.w   xfer
         clrb    UST
+        lea     T_UNDONE,%a0
+fntoast:
+        pea     0x30
+        movel   %a0,%sp@-
+        jsr     NOTIFY
+        addql   #8,%sp
 fnend:  movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
 fnnop:  bra.w   tb_draw
@@ -717,6 +726,9 @@ bxdone: movel   %sp@+,%d7
 
 | ---- data -------------------------------------------------------------
 HDRFMT: .asciz  "%s %d.%d"
+T_COPIED: .asciz "BUS COPIED"
+T_PASTED: .asciz "BUS PASTED"
+T_UNDONE: .asciz "UNDO"
 T_PROJ: .asciz  "TEMPO"
 T_PTN:  .asciz  "PTN"
 T_MODE: .asciz  "MODE"

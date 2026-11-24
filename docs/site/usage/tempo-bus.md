@@ -27,7 +27,8 @@ FUNC + REC copies every parameter in both boxes: the delay's and the
 reverb's, including MODE. FUNC + STOP writes them back to the delay and
 reverb host tracks of the current Part, so a copy made in one Part pastes
 into another. A second FUNC + STOP undoes the paste; turning a knob in the
-window ends the undo. The copy is kept until power-off. A box whose engine
+window ends the undo. A toast confirms each (BUS COPIED, BUS PASTED, UNDO).
+The copy is kept until power-off. A box whose engine
 is on no track of the Part is skipped. With scene A or B held, FUNC + REC and
 FUNC + STOP do nothing.
 
