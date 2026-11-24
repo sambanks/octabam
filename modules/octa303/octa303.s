@@ -383,6 +383,32 @@ o3_render:
         .else
 sy_render:
         .endif
+| A call that cannot make this track OCTA303's goes straight to the stock renderer, before the register frame:
+| the track is not latched, and either this is not the frame's last call or no voice starts on it this frame
+| (the full path below then only calls the stock renderer and returns its value). The stock renderer finds the
+| same four arguments at the same offsets and returns to our caller; d1, a0, a1 and the flags are a call's
+| scratch, as after any stock call.
+        move.l  4(%sp),%d0              | track
+        moveq   #NTRACKS-1,%d1
+        cmp.l   %d1,%d0
+        bhi     .Lfast                  | (never: the packer renders tracks 0..7; the full path only calls stock)
+        move.l  %d0,%d1
+        lsl.l   #8,%d1                  | track * ST_SIZE (512: 8 + 1)
+        add.l   %d1,%d1
+        lea     o3_state,%a0
+        add.l   %d1,%a0
+        moveq   #16,%d1                 | here, between the add and the load: no address-use stall
+        tst.l   S_LATCHED(%a0)
+        bne     .Lfull                  | latched: the full path
+        cmp.l   16(%sp),%d1             | the frame's last call?
+        bne     .Lfast
+        lea     NIBBLE,%a0
+        add.l   %d0,%a0
+        btst    #4,(%a0)                | a voice starts this frame: the full path decides whose sample
+        bne     .Lfull
+.Lfast:
+        jmp     STOCK_RENDER
+.Lfull:
         lea     -48(%sp),%sp
         movem.l %d2-%d7/%a2-%a6,(%sp)
         move.l  CURSOR,%a2              | the header this call writes
