@@ -29,8 +29,8 @@ lm_in:
         move.l  %d0,lm_t0
         .weak   dl_pump                         | DLPUMP, when the remix carries it
         move.l  #dl_pump,%d0
-        beq.s   1f
-        move.l  %d0,%a0
+        move.l  %d0,%a0                         | (movea keeps the flags) here, two before the call:
+        beq.s   1f                              | no address-use stall
         jsr     %a0@
         .if     HK_FRAME_ENTRY
 1:      rts                                     | HOOKS goes on to the body
