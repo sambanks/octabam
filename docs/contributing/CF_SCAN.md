@@ -69,7 +69,9 @@ executed instruction:
 - **The address-use stall.** A register that one instruction writes and the
   next one uses as a base or an index costs 2 more cycles, or 3 for an index
   scaled by 2 or 4 (section 3.3.5.1). A post-increment's or pre-decrement's
-  own result does not stall.
+  own result does not stall. The stall happens only when the writer falls
+  through to the user, so a loop whose first instruction uses a register set
+  just before the loop stalls once on entry, not on every pass.
 - **The accumulator stall.** Storing an EMAC accumulator right after a MAC
   costs 3 more cycles, 2 with one instruction between, 1 with two (the note
   under Table 3-18).
@@ -160,6 +162,21 @@ So `c07` marks a Z1 site SAFE when the next instruction that touches the
 flags sets them itself, or reads only Z or C (`beq`, `bne`, `bhi`, `bls`,
 `bcc`, `bcs`). It marks the site REVIEW when a label, a call or a branch on N
 comes first: read the code that follows before changing it.
+
+A Z1 site can also hide a stall. In
+
+```
+        lea     table,%a1
+        moveq   #0,%d0
+        move.b  (%a1),%d0
+```
+
+the `moveq` keeps the `lea` away from the load that uses `a1`. With
+`mvz.b (%a1),%d0` the load follows the `lea` and takes the 2-cycle
+address-use stall, so the change saves an instruction and costs a cycle.
+`c07` marks such a site SPACER. Move an independent instruction into the
+gap, such as one that sets up a register the code uses later, or leave the
+site as it is. `price` on the changed routine shows which way it went.
 
 After the change, `python3 tools/verify/verify_cf_forms.py <remix>` reports
 any form that stock code never runs. Stock runs the common `mvz` and `mvs`

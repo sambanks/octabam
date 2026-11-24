@@ -15,13 +15,15 @@ build's runtime units (out/platform/runtime/runtime.map and layout.json) and, wi
 `price` prices one runtime routine's executed instructions (a `--coverage` file) in core cycles: each instruction's
 time from MCF54455RM Tables 3-13..3-20 (tools/build/cf_timing.py) for its mnemonic and addressing modes, times its
 count, plus two stalls between neighbours: a register written and used as the next instruction's base or index (2
-cycles, 3 for an index scaled 2 or 4; section 3.3.5.1), and an accumulator store k instructions after a MAC (3 - k;
-the note under Table 3-18). Memory is zero-wait and every branch is predicted. The address-use stall is charged for
+cycles, 3 for an index scaled 2 or 4; section 3.3.5.1), charged only as often as the writer falls through to the
+user, and an accumulator store k instructions after a MAC (3 - k; the note under Table 3-18). Memory is zero-wait
+and every branch is predicted. The address-use stall is charged for
 every register write, though the manual's address ALU forwards some heavily used opcodes with no stall (it does not
 say which), so that part can count high. docs/contributing/CF_SCAN.md says what the figures are good for.
 
 `c07` finds checklist row C07 (docs/contributing/CF_SCAN.md): a zero or sign extension written as two instructions
-where `mvz`/`mvs` is one, and says whether the swap keeps every flag the code reads.
+where `mvz`/`mvs` is one, says whether the swap keeps every flag the code reads, and marks a site whose zeroing
+instruction hides an address-use stall (SPACER).
 
 The platform must be the one built with the image the port ran (out/platform after `make bus`, or a saved copy):
 the symbols and ranges are that build's.
@@ -274,21 +276,28 @@ def address_uses(ops):
 
 
 def model(rows, counts):
-    """rows [(pc, mnemonic, operands)] in address order -> [(pc, mn, ops, count, cycles, stall, kind)]."""
+    """rows [(pc, mnemonic, operands)] in address order -> [(pc, mn, ops, count, cycles, stall, kind, stall_total)].
+
+    `stall` is one execution's stall; `stall_total` the row's stall cycles over its count. The address-use stall
+    happens only when the writer falls through to this row, never when a branch arrives, so it is charged
+    min(count, the writer's count) times: exact, since a writer is never a branch. A loop whose head follows the
+    writer stalls on entry, not on every pass. The accumulator stall is charged every time (address order)."""
     out, last_mac = [], None
     for i, (pc, mn, ops) in enumerate(rows):
         c, kind = price(mn, ops)
-        stall = 0
+        n = counts.get(pc, 0)
+        astall = mstall = 0
         if i:
             w = written(rows[i - 1][1], rows[i - 1][2])
             for r, sf in address_uses(ops):
                 if r == w:
-                    stall = max(stall, T.STALL_INDEX_SF24 if sf in (2, 4) else T.STALL_BASE_OR_INDEX_SF1)
+                    astall = max(astall, T.STALL_INDEX_SF24 if sf in (2, 4) else T.STALL_BASE_OR_INDEX_SF1)
         if kind == "acc" and last_mac is not None and i - last_mac - 1 < 3:
-            stall += 3 - (i - last_mac - 1)
+            mstall = 3 - (i - last_mac - 1)
         if kind == "mac":
             last_mac = i
-        out.append((pc, mn, ops, counts.get(pc, 0), c, stall, kind))
+        through = min(n, counts.get(rows[i - 1][0], 0)) if i else 0
+        out.append((pc, mn, ops, n, c, astall + mstall, kind, astall * through + mstall * n))
     return out
 
 
@@ -318,12 +327,14 @@ def cmd_price(a):
     res = model(disassemble(platform / "runtime/runtime.elf", a[1]), counts)
     frames = int(opt(a, "--frames", "0"))
     if "--detail" in a:
-        for pc, mn, ops, n, c, s, kind in res:
+        for pc, mn, ops, n, c, s, kind, st in res:
             if n:
-                print(f"{n:>11,} {c:>3}{'+' + str(s) if s else '  '}  {pc:08x}  {mn} {ops}{'  (unpriced)' if kind == 'unpriced' else ''}")
+                times = f"  (stalls {st // s:,} times)" if s and st != s * n else ""
+                print(f"{n:>11,} {c:>3}{'+' + str(s) if st else '  '}  {pc:08x}  {mn} {ops}"
+                      f"{'  (unpriced)' if kind == 'unpriced' else ''}{times}")
     n = sum(r[3] for r in res)
     base = sum(r[3] * r[4] for r in res)
-    stall = sum(r[3] * r[5] for r in res)
+    stall = sum(r[7] for r in res)
     per = (lambda x: f" ({x / frames:,.1f} a frame)") if frames else (lambda x: "")
     print(f"{a[1]}: {n:,} instructions{per(n)}, {base + stall:,} cycles{per(base + stall)}: "
           f"{base:,} from the tables, {stall:,} stalls; CPI {(base + stall) / n if n else 0:.2f}")
@@ -357,11 +368,46 @@ def parse_line(line):
     return lab, mn, (p[1].replace(" ", "") if len(p) > 1 else "")
 
 
+def mit(op):
+    """A Motorola-syntax memory operand in MIT form, as ea_kind() reads it: (%a0) -> %a0@, 4(%a0,%d1.l*4) ->
+    %a0@(4,%d1:l:4). MIT operands come back unchanged. A symbolic displacement becomes 0: address_uses() needs only
+    the registers and whether a displacement is there."""
+    m = re.fullmatch(r"-\((%(?:a[0-7]|sp|fp))\)", op)
+    if m:
+        return f"{m.group(1)}@-"
+    m = re.fullmatch(r"([^()]*)\((%(?:a[0-7]|sp|fp|pc))(?:,(%[ad][0-7])(?:[.:]([wl]))?(?:\*([124]))?)?\)(\+?)", op)
+    if not m:
+        return op
+    disp, base, idx, size, sf, post = m.groups()
+    if post:
+        return f"{base}@+"
+    d = disp if re.fullmatch(r"-?(?:0x)?[0-9a-fA-F]+", disp or "") else ("0" if disp else "")
+    if idx:
+        return f"{base}@({d or 0},{idx}:{size or 'l'}{':' + sf if sf else ''})"
+    return f"{base}@({d})" if d else f"{base}@"
+
+
+def spacer(rows, i):
+    """True when the Z1 site's first instruction (rows[i]) keeps the instruction before it from the load's base or
+    index register: the mvz would follow the writer and take the address-use stall the zeroing instruction hid. A
+    labelled site still falls through from that instruction (a loop's head stalls on entry, not on every pass), so
+    `price` decides whether the swap pays there; an unconditional branch before it writes nothing and never stalls."""
+    for lab, mn, ops in reversed(rows[:i]):
+        if mn is None:
+            continue
+        w = written(mn.replace(".", ""), ",".join(mit(x) for x in split_ops(ops)))
+        load = split_ops(rows[i + 1][2])[0]
+        return w is not None and any(r == w for r, _ in address_uses(mit(load)))
+    return False
+
+
 def c07_sites(text):
     """[(line, shape, verdict, first, second)]: Z1 moveq #0|clr.l Dn + move.b|w <ea>,Dn; Z2 move.b|w <ea>,Dn +
     and.l #0xff|#0xffff,Dn; S1 move.b + extb.l; S2 move.w + ext.l. Only Z1 changes a flag (move sets N from the byte
     or word, mvz clears it), so a Z1 site is SAFE when the next instruction that touches the flags sets them itself or
-    reads only Z and C; REVIEW when a label, a call or an N-reading branch comes first."""
+    reads only Z and C; REVIEW when a label, a call or an N-reading branch comes first. A Z1 site whose zeroing
+    instruction separates a register's write from the load's use of it as a base or index is SPACER: the swap saves
+    the instruction and takes a 2-cycle stall, unless an independent instruction moves into the gap."""
     rows = [parse_line(l) for l in text.splitlines()]
     sites = []
     for i in range(len(rows) - 1):
@@ -394,6 +440,8 @@ def c07_sites(text):
             if re.fullmatch(SETS_FLAGS, c) and not c.startswith("movea") or re.fullmatch(Z_ONLY, c):
                 verdict = "SAFE"
             break
+        if shape == "Z1" and verdict == "SAFE" and spacer(rows, i):
+            verdict = "SPACER"
         sites.append((i + 1, shape, verdict, f"{a} {ao}", f"{b} {bo}"))
     return sites
 
@@ -401,13 +449,14 @@ def c07_sites(text):
 def cmd_c07(a):
     paths = [pathlib.Path(p) for p in (a or ["modules"])]
     files = sorted(f for p in paths for f in ([p] if p.is_file() else list(p.rglob("*.s")) + list(p.rglob("*.inc"))))
-    total = safe = 0
+    total = safe = gap = 0
     for f in files:
         for ln, shape, verdict, first, second in c07_sites(f.read_text(errors="replace")):
             total += 1
             safe += verdict == "SAFE"
+            gap += verdict == "SPACER"
             print(f"{f}:{ln}: {shape} {verdict:6} {first} / {second}")
-    print(f"{total} site(s), {safe} SAFE")
+    print(f"{total} site(s), {safe} SAFE, {gap} SPACER")
     return 0
 
 

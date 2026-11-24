@@ -62,6 +62,18 @@ class Stalls(unittest.TestCase):
     def test_unrelated_register_does_not_stall(self):
         self.assertEqual(cycles([("lea", "%a0@(4),%a1"), ("movel", "%a2@,%d2")])[1], (1, 0))
 
+    def test_loop_head_stalls_on_entry_only(self):
+        # moveq #4,%d1 once, then a five-pass loop whose head uses d1 as its index: one stall, not five
+        rows = [(0, "moveq", "#4,%d1"), (2, "mvzb", "%a1@(0,%d1:l),%d0"), (6, "addl", "%d0,%d2"),
+                (8, "subql", "#1,%d1"), (10, "bpls", "0x2")]
+        res = S.model(rows, {0: 1, 2: 5, 6: 5, 8: 5, 10: 5})
+        self.assertEqual(res[1][5], 2)
+        self.assertEqual(sum(r[7] for r in res), 2)
+
+    def test_straight_line_stall_counts_every_time(self):
+        res = S.model([(0, "lea", "%a0@(4),%a1"), (4, "movel", "%a1@,%d2")], {0: 7, 4: 7})
+        self.assertEqual(res[1][7], 14)
+
     def test_accumulator_read_after_mac(self):
         mac = ("macl", "%d0,%d1,%acc0")
         self.assertEqual(cycles([mac, ("movclrl", "%acc0,%d3")])[1], (1, 3))
@@ -90,6 +102,34 @@ class C07(unittest.TestCase):
         self.assertEqual(self.sites("\tmove.b (%a0),%d0\n\tand.l #0xff,%d0\n\tbmi 1f\n"), [("Z2", "SAFE")])
         self.assertEqual(self.sites("\tmove.b (%a0),%d0\n\textb.l %d0\n"), [("S1", "SAFE")])
         self.assertEqual(self.sites("\tmove.w (%a0),%d0\n\text.l %d0\n"), [("S2", "SAFE")])
+
+    def test_spacer_hides_an_address_use_stall(self):
+        self.assertEqual(self.sites("\tlea lm_raw,%a1\n\tmoveq #0,%d0\n\tmove.b (%a1),%d0\n\tcmp.l #5,%d0\n"),
+                         [("Z1", "SPACER")])
+        self.assertEqual(self.sites("\tmoveq #4,%d1\n\tmoveq #0,%d0\n\tmove.b 0(%a1,%d1.l),%d0\n\ttst.l %d0\n"),
+                         [("Z1", "SPACER")])
+        self.assertEqual(self.sites("        moveal  %d2,%a0\n        moveq   #0,%d1\n        moveb   %a0@,%d1\n"
+                                    "        orl     %d1,%d0\n"), [("Z1", "SPACER")])
+        # a loop's head: the entry falls through from the writer (price decides whether the swap still pays)
+        self.assertEqual(self.sites("\tlea x,%a1\n2:\tmoveq #0,%d0\n\tmove.b (%a1),%d0\n\ttst.l %d0\n"),
+                         [("Z1", "SPACER")])
+        # the writer is another register, or a branch comes before: no stall to hide
+        self.assertEqual(self.sites("\tlea lm_raw,%a2\n\tmoveq #0,%d0\n\tmove.b (%a1),%d0\n\ttst.l %d0\n"),
+                         [("Z1", "SAFE")])
+        self.assertEqual(self.sites("\tbne.s 1f\n\tmoveq #0,%d0\n\tmove.b (%a1),%d0\n\ttst.l %d0\n"),
+                         [("Z1", "SAFE")])
+        self.assertEqual(self.sites("\tbra.s 3f\n2:\tmoveq #0,%d0\n\tmove.b (%a1),%d0\n\ttst.l %d0\n"),
+                         [("Z1", "SAFE")])
+
+    def test_motorola_operands_in_mit_form(self):
+        self.assertEqual(S.mit("(%a0)"), "%a0@")
+        self.assertEqual(S.mit("(%a0)+"), "%a0@+")
+        self.assertEqual(S.mit("-(%sp)"), "%sp@-")
+        self.assertEqual(S.mit("16(%a1)"), "%a1@(16)")
+        self.assertEqual(S.mit("4(%a0,%d1.l*4)"), "%a0@(4,%d1:l:4)")
+        self.assertEqual(S.mit("-4(%a0)"), "%a0@(-4)")
+        self.assertEqual(S.mit("S_LATCHED(%a0)"), "%a0@(0)")
+        self.assertEqual(S.mit("%a0@(0,%d7:l)"), "%a0@(0,%d7:l)")
 
     def test_not_a_site(self):
         self.assertEqual(self.sites("\tmoveq #0,%d0\n\tmove.b (%a0),%d1\n"), [])          # another register
