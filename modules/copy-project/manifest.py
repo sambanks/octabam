@@ -8,7 +8,7 @@ Re-homed from PROJECT menu TableGrow (issue #931): the RENAME/DELETE LISTPOP
 grows 2→3 instead of PROJECT 15→16.
 """
 
-from remix.schema import Category, Gate, Kind, Linked, Module, Poke, Evidence, Level, TableGrow
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Poke, Evidence, Level, TableGrow
 
 # CHANGE → FUNC+BANK LISTPOP (docs/firmware/PANEL.md)
 HANDLERS = 0x400CBAAC
@@ -16,6 +16,8 @@ LABELS = 0x400CBAB4
 OPEN_PEA_HANDLERS = 0x4006418A  # pea handlers[] absolute
 OPEN_PEA_LABELS = 0x40064190    # pea labels[] absolute
 OPEN_COUNT_IMM = 0x400641A2     # pea #2 immediate (count)
+
+H = bytes.fromhex
 
 MODULE = Module(
     name="copy-project",
@@ -29,6 +31,13 @@ MODULE = Module(
     doc="CHANGE project list > FUNC+BANK > COPY: duplicate the selected project folder on the card.",
     requires=("STORE",),  # STORE's encoder hook: LEVEL scrolls LISTPOP (name pick unused now; keep for confirm paths)
     linked=(Linked("cp", "modules/copy-project/copyproj.s", cpu="5475", dram=True),),
+    detours=(
+        Detour(0x40085012, H("4eb940013f40"), "cp", "cp_sa_cap_stub",
+               "SAVE TO NEW, the call that overwrites the project name: the old folder's path is kept",
+               kind="jsr"),
+        Detour(0x400850EE, H("2f02206efdee"), "cp", "cp_sa_copy_stub",
+               "SAVE TO NEW, after the last stock write: the old folder's other files go into the new one"),
+    ),
     tables=(
         TableGrow(
             "FUNC+BANK handlers + COPY",

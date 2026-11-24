@@ -1,7 +1,9 @@
 Duplicate a project folder on the CompactFlash card without loading it
 first. The copy has everything in the folder: the stock files and what the
 added features keep there (Kits, scenes, page 2 locks, BRAIN settings).
-Stock SAVE TO NEW leaves those extras behind.
+SAVE TO NEW copies them too: the files of the old folder that the new
+folder does not have, as they are on the card. The `.strd` saved copies
+are not carried over; SAVE PROJECT writes them for the new project.
 
 ## Access
 
