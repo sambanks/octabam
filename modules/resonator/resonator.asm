@@ -145,15 +145,13 @@ proc:
         and     #>$7f0000,a
         move    a,x:(r7+$40)
         move    x:(r6+$1),a
-        and     #>$00ff00,a
-        asl     #$8,a,a
+        and     #>$7f0000,a
         move    a,x:(r7+$41)
         move    x:(r6+$2),a
         and     #>$7f0000,a
         move    a,x:(r7+$42)
         move    x:(r6+$3),a
-        and     #>$00ff00,a
-        asl     #$8,a,a
+        and     #>$7f0000,a
         move    a,x:(r7+$43)
         move    x:(r6+$e),a
         and     #>$7f0000,a

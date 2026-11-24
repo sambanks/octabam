@@ -42,7 +42,8 @@ def params(**kw):
     return v
 
 
-def render(samples, fx2=False, inst=1, right_samples=None, schedules=(), **kw):
+def render(samples, fx2=False, inst=1, right_samples=None, schedules=(),
+           track_state=(), **kw):
     n = len(samples) - len(samples) % FRAMES
     src, out = TMP / "in.raw", TMP / "out.raw"
     words = samples[:n] if right_samples is None else [
@@ -70,6 +71,10 @@ def render(samples, fx2=False, inst=1, right_samples=None, schedules=(), **kw):
         cmd += ["-params", pcsv]
     for event in schedules:
         cmd += ["-sched", event]
+    track = TMP / "track.txt"
+    if track_state:
+        cmd += ["-track", ",".join(f"{off:x}" for off in track_state),
+                "-trackout", str(track)]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"dsp_host failed:\n{r.stdout}\n{r.stderr}")
@@ -80,6 +85,10 @@ def render(samples, fx2=False, inst=1, right_samples=None, schedules=(), **kw):
         outs.append((list(w[0::2])[:n], list(w[1::2])[:n]))
         if k:
             p.unlink(missing_ok=True)
+    if track_state:
+        rows = [[int(value) for value in line.split()[1:]]
+                for line in track.read_text().splitlines()]
+        return (outs[0] if inst == 1 else outs), rows
     return outs[0] if inst == 1 else outs
 
 
@@ -96,6 +105,49 @@ check("PIT1-PIT4 main page, GN1-GN4 FX SETUP",
       tuple(K[k] for k in ("PIT1", "PIT2", "PIT3", "PIT4")) == tuple(range(4))
       and tuple(K[k] for k in ("GN1", "GN2", "GN3", "GN4"))
       == tuple(range(6, 10)))
+
+# Read the live DSP state after one block with distinct knob values. Main page
+# controls occupy separate high-byte words; FX SETUP pairs occupy high/middle
+# bytes. Checking the effect's copied state catches both wrong slot numbers and
+# wrong byte lanes (PIT2/PIT4 previously read the FX SETUP middle-byte lane).
+mapping_values = {
+    "PIT1": 17, "PIT2": 39, "PIT3": 71, "PIT4": 103,
+    "DECY": 29, "MIX": 53,
+    "GN1": 11, "GN2": 37, "GN3": 67, "GN4": 97,
+    "SCAL": 23, "LIM": 109,
+}
+track_offsets = (0x21, 0x22, 0x23, 0x34, 0x35, 0x36, 0x37, 0x38,
+                 0x40, 0x41, 0x42, 0x43, 0x29)
+_, mapped = render([0] * FRAMES, track_state=track_offsets, **mapping_values)
+got = mapped[-1]
+
+
+def q23(value):
+    value = value & 0xFFFFFF
+    return value if value < 0x800000 else value - 0x1000000
+
+state_expectations = {
+    "MIX": (0x21, q23(mapping_values["MIX"] << 16)),
+    "DECY excitation": (0x23, q23(0x7fffff - (mapping_values["DECY"] << 16))),
+    "GN1": (0x34, q23(mapping_values["GN1"] << 16)),
+    "GN2": (0x35, q23(mapping_values["GN2"] << 16)),
+    "GN3": (0x36, q23(mapping_values["GN3"] << 16)),
+    "GN4": (0x37, q23(mapping_values["GN4"] << 16)),
+    "SCAL": (0x38, q23(mapping_values["SCAL"] << 16)),
+    "PIT1": (0x40, q23(mapping_values["PIT1"] << 16)),
+    "PIT2": (0x41, q23(mapping_values["PIT2"] << 16)),
+    "PIT3": (0x42, q23(mapping_values["PIT3"] << 16)),
+    "PIT4": (0x43, q23(mapping_values["PIT4"] << 16)),
+    "LIM ceiling threshold": (0x29,
+                              q23(0x600000 - (mapping_values["LIM"]
+                                             * round(0.65 * (1 << 23))
+                                             // 128))),
+}
+for label, (offset, expected) in state_expectations.items():
+    actual = got[track_offsets.index(offset)]
+    check(f"mapped {label} = 0x{expected:06x} (got 0x{actual:06x})",
+          abs(actual - expected) <= 1 if label == "LIM ceiling threshold" else actual == expected)
+
 damp = [word / RAIL for word in MOD.dsp.ptable[33:]]
 check(f"DECY top has fine steps ({damp[1] / damp[0]:.4f} damping ratio < 1.01)",
       1.0 < damp[1] / damp[0] < 1.01)
