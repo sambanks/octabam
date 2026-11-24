@@ -5,6 +5,7 @@
 ## What is in it
 
 - **KITS** (sambanks) — a library of 255 Parts per project; each pattern plays its Kit through the stock Part slots. PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI: FUNC+MIDI, then FUNC+BANK).
+- **BATCH_BUGFIXES** (Zac Kyoti) — stock's content test reads a pattern holding only parameter locks as used, so KITS' PTN+FUNC+RIGHT does not copy over it. KITS requires it.
 
 ## Build
 

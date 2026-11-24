@@ -90,6 +90,8 @@ which is not what an MD or MnM Kit holds.
 | save the Kit, copy it and the pattern to the next empty ones, play the copy | PTN+FUNC+RIGHT | PTN+FUNC+RIGHT |
 | copy / paste / clear an inactive pattern of the current bank (paste or clear again: undo) | hold PTN, FUNC and the pattern's TRIG; REC / STOP / PLAY | the same |
 
+- **PTN+FUNC+RIGHT** skips a pattern that holds only parameter locks:
+  BATCH_BUGFIXES' content test counts them, and KITS requires it.
 - **LOAD KIT** lists UNDO KIT (the Kit the current pattern had before
   the last load), the 255 Kits (`NNN name`, `*` on a Kit no pattern
   plays, `NNN ---` on an empty one). YES on a Kit: the current pattern
