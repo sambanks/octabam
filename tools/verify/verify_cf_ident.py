@@ -13,15 +13,17 @@ the internal clock from the transport start (default 2000), or a live script. Bo
 
 Verdicts:
   IDENTICAL                every file byte for byte (exit 0);
-  EQUAL UP TO TIME SHIFTS  every WAV channel equal once shifted, MIDI byte for byte (exit 0);
+  EQUAL UP TO TIME SHIFTS  every WAV channel equal once shifted, and the same MIDI messages (exit 0);
   CONTENT DIFFERS          a stretch of some channel that no shift within --max-shift explains, or different MIDI
-                           (exit 1);
+                           messages (exit 1);
   FAIL                     a run that did not load its project or wrote no audio (exit 2).
 
 Why shifts: the port runs the DSP in step with the ColdFire's instructions, so code that runs fewer instructions
 moves an external event (the transport start) by a few samples, and an event landing between two slots of the frame
 moves the slots by different amounts. Each channel is therefore walked on its own: where it stops matching, the
-shift that makes the next WINDOW samples match is found and kept, and every re-alignment is reported.
+shift that makes the next WINDOW samples match is found and kept, and every re-alignment is reported. The stock MIDI
+sender repeats a running status byte on a timer, so the same messages can come out with the status byte repeated at
+other places: MIDI that differs in its bytes is decoded (midi_messages) and compared message by message.
 
 What it cannot see: state that never reaches the audio or the MIDI within the run; a path the scenario does not
 take; the chip's timing (the port is not cycle-exact). `--self` is the control that the port is deterministic for
@@ -88,6 +90,43 @@ def digest(path):
     return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()[:16]
 
 
+_DATA = {0x80: 2, 0x90: 2, 0xA0: 2, 0xB0: 2, 0xC0: 1, 0xD0: 1, 0xE0: 2}     # data bytes a channel message takes
+_COMMON = {0xF1: 1, 0xF2: 2, 0xF3: 1, 0xF6: 0}                           # system common messages
+
+
+def midi_messages(data):
+    """The messages a device receives from a raw MIDI byte stream: running status applied, a real-time byte (0xF8 and
+    up) kept where it starts and never ending a message, a system exclusive whole. A data byte with no status is kept
+    as ("stray", byte)."""
+    out, status, need, cur, sysex = [], None, 0, [], None
+    for x in data:
+        if x >= 0xF8:
+            out.append((x,))
+        elif x == 0xF0:
+            sysex, status = [x], None
+        elif sysex is not None:
+            sysex.append(x)
+            if x == 0xF7:
+                out.append(tuple(sysex))
+                sysex = None
+        elif x & 0x80:
+            status, cur = x, []
+            need = _COMMON.get(x, _DATA.get(x & 0xF0, 0))
+            if need == 0:
+                out.append((x,))
+                status = None
+        elif status is None:
+            out.append(("stray", x))
+        else:
+            cur.append(x)
+            if len(cur) == need:
+                out.append((status, *cur))
+                cur = []
+                if status >= 0xF0:              # system common messages cancel running status
+                    status = None
+    return out
+
+
 def compare(da, db, max_shift=256, prefix=("base", "cand")):
     """(verdict, lines) for the outputs in da (prefix[0]_*) against db (prefix[1]_*)."""
     lines, verdict = [], "IDENTICAL"
@@ -102,8 +141,16 @@ def compare(da, db, max_shift=256, prefix=("base", "cand")):
             lines.append(f"  {fa.name}: identical ({digest(fa)})")
             continue
         if fa.suffix == ".bin":
-            lines.append(f"  {fa.name}: MIDI DIFFERS ({digest(fa)} against {digest(fb)})")
-            verdict = "CONTENT DIFFERS"
+            ma, mb = midi_messages(fa.read_bytes()), midi_messages(fb.read_bytes())
+            if ma == mb:                            # a sender repeats running status on a timer: it moves with time
+                lines.append(f"  {fa.name}: the same {len(ma)} messages, the status byte repeated at other places")
+                if verdict == "IDENTICAL":
+                    verdict = "EQUAL UP TO TIME SHIFTS"
+            else:
+                k = next((k for k, (x, y) in enumerate(zip(ma, mb)) if x != y), min(len(ma), len(mb)))
+                lines.append(f"  {fa.name}: MIDI DIFFERS ({digest(fa)} against {digest(fb)}; {len(ma)} and "
+                             f"{len(mb)} messages, the first difference at message {k})")
+                verdict = "CONTENT DIFFERS"
             continue
         moved = False
         for c, (x, y) in enumerate(zip(channels(fa), channels(fb))):

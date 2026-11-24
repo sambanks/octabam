@@ -90,6 +90,35 @@ class Compare(unittest.TestCase):
         self.assertEqual(self.pair(started(1000, self.x, 20000), started(1000, self.y, 20000), b"\x90\x3c\x65"),
                          "CONTENT DIFFERS")
 
+    def test_midi_status_repeated_elsewhere(self):
+        # the same messages, the sender's running-status repeat one message later (it repeats on a timer)
+        base = b"\xb0\x30\x3f\xb0\x1d\x20\x1e\x20"
+        cand = b"\xb0\x30\x3f\x1d\x20\xb0\x1e\x20"
+        (self.d / "base_midi.bin").write_bytes(base)
+        (self.d / "cand_midi.bin").write_bytes(cand)
+        write_wav(self.d / "base_core0.wav", [started(1000, self.x, 20000), started(1000, self.y, 20000)])
+        write_wav(self.d / "cand_core0.wav", [started(1000, self.x, 20000), started(1000, self.y, 20000)])
+        verdict, lines = V.compare(self.d, self.d)
+        self.assertEqual(verdict, "EQUAL UP TO TIME SHIFTS")
+        self.assertTrue(any("the same 3 messages" in l for l in lines), lines)
+
+
+class Midi(unittest.TestCase):
+    def test_running_status(self):
+        self.assertEqual(V.midi_messages(b"\x90\x3c\x64\x3e\x64"), [(0x90, 0x3c, 0x64), (0x90, 0x3e, 0x64)])
+
+    def test_realtime_inside_a_message(self):
+        # a clock byte between a note-on's data bytes neither ends it nor cancels running status
+        self.assertEqual(V.midi_messages(b"\x90\x3c\xf8\x64\x3e\x64"),
+                         [(0xF8,), (0x90, 0x3c, 0x64), (0x90, 0x3e, 0x64)])
+
+    def test_one_data_byte_and_sysex(self):
+        self.assertEqual(V.midi_messages(b"\xc1\x05\x06\xf0\x7d\x01\xf7\xc1\x07"),
+                         [(0xC1, 0x05), (0xC1, 0x06), (0xF0, 0x7D, 0x01, 0xF7), (0xC1, 0x07)])
+
+    def test_a_different_value_differs(self):
+        self.assertNotEqual(V.midi_messages(b"\xb0\x30\x3f"), V.midi_messages(b"\xb0\x30\x40"))
+
     def test_no_audio_is_a_fail(self):
         empty = pathlib.Path(tempfile.mkdtemp())
         self.assertEqual(V.compare(empty, empty)[0], "FAIL")

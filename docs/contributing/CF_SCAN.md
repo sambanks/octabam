@@ -111,8 +111,8 @@ MIDI output, and compares them.
 | Verdict | Meaning | Exit |
 |---|---|---|
 | IDENTICAL | every file is byte for byte the same | 0 |
-| EQUAL UP TO TIME SHIFTS | every audio channel is the same once shifted; the MIDI is byte for byte the same | 0 |
-| CONTENT DIFFERS | a stretch of some channel no shift explains, or different MIDI | 1 |
+| EQUAL UP TO TIME SHIFTS | every audio channel is the same once shifted; the MIDI is the same messages | 0 |
+| CONTENT DIFFERS | a stretch of some channel no shift explains, or different MIDI messages | 1 |
 | FAIL | a run did not load its project or wrote no audio | 2 |
 
 **Why shifts are allowed.** The port runs the DSP in step with the
@@ -121,6 +121,11 @@ event, such as the transport start, by a few samples. An event that lands
 between two slots of the frame moves the slots by different amounts, so the
 script aligns each channel on its own. It reports every re-alignment. A
 shift larger than `--max-shift` (256 samples) counts as a difference.
+
+The MIDI output can move the same way. The stock MIDI sender repeats a
+running status byte on a timer, so the same messages can come out with the
+status byte repeated in other places. When the MIDI bytes differ, the
+script decodes both streams and compares the messages.
 
 **The control.** `--self` runs one image against itself. It must be
 IDENTICAL; if it is not, the port is not deterministic for that scenario and
