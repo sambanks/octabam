@@ -711,16 +711,9 @@ sy_mono_inc:
         mvz.w   8(%a4),%d1               | RTRG -> FOLD
         lsr.l   #8,%d1
         move.l  %d2,%d0                  | track (still in d2 here)
-        lea     sy_foldq(%pc),%a0        | one-pole slew — knob jumps were zipper clicks
         lsl.l   #2,%d0
-        adda.l  %d0,%a0
-        move.l  %d1,%d0                  | target raw
-        bsr     sy_knob_slew             | d0 := slewed FOLD
-        move.l  %d2,%d1
         lea     sy_cxparm(%pc),%a0
-        lsl.l   #2,%d1                   | 4 B a track: FOLD SYMM CMOR MMOR
-        move.b  %d0,(%a0,%d1.l)          | FOLD (slewed)
-        move.l  %d1,%d0                  | parm index (track*4)
+        move.b  %d1,(%a0,%d0.l)          | raw FOLD target; sy_loop slews it at sample rate
         move.l  %d2,%d1
         move.l  #CV_STRIDE,%d3
         mulu.l  %d3,%d1
@@ -1264,6 +1257,24 @@ sy_mix_done:
         | ---- FOLD (RTRG) + SYMM (SETUP D): half-wave skew into the folder ----
         | c_fold = c * gain/64; gain = SYMM (c>=0) or (128-SYMM) (c<0).
         | 64 = even. drive = 256 + (FOLD_Q8*24)>>8. out = c + (folded-c)*FOLD_Q8/32768.
+        | Advance FOLD_Q8 at 1/128 per sample. The total slew matches the old
+        | 1/8-per-frame rate, but a split-frame trig cannot add an extra step.
+        move.l  %a6,-(%sp)
+        move.l  %d1,-(%sp)               | park the carrier sample while d1 computes the slew
+        move.l  84(%sp),%d2              | track (a6, carrier and six sample-loop stack words)
+        lsl.l   #2,%d2
+        lea     sy_cxparm(%pc),%a6
+        mvz.b   (%a6,%d2.l),%d1          | target FOLD 0..127
+        lsl.l   #8,%d1                   | Q8
+        lea     sy_foldq(%pc),%a6
+        move.l  (%a6,%d2.l),%d4         | current FOLD_Q8
+        sub.l   %d4,%d1
+        asr.l   #7,%d1                   | 1/128 per sample ~= 1/8 per 16-sample call
+        add.l   %d1,%d4
+        move.l  %d4,(%a6,%d2.l)
+        move.l  %d4,12(%sp)             | update this sample's FOLD_Q8 stack slot
+        move.l  (%sp)+,%d1               | restore the carrier sample
+        move.l  (%sp)+,%a6
         move.l  4(%sp),%d2               | FOLD Q8
         beq     sy_nofold
         move.l  %d1,-(%sp)               | park c (unbiased dry)

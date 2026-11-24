@@ -271,6 +271,65 @@ def render_frames(uc, symbols, knobs, frames=64, track=0, amp=None, state_probe=
     return samples, costs
 
 
+def render_one_call(uc, symbols, start, end, track=0, trig=False):
+    uc.mem_write(NIBBLE + track, bytes([0x10 if trig else 0]))
+    uc.reg_write(UC_M68K_REG_A7, STACK)
+    uc.mem_write(STACK, struct.pack(">IIIII", STOP, track, 0, start, end))
+    try:
+        uc.emu_start(symbols["sy_render"], STOP, count=500_000)
+    except Exception as e:
+        die(f"FOLD split-frame render fault: {e}")
+    if uc.reg_read(UC_M68K_REG_PC) != STOP:
+        die("FOLD split-frame render did not return")
+
+
+def read_frame_headers(uc):
+    """Read the one or two source headers emitted for a simulated frame."""
+    samples = []
+    pos = HEADER
+    limit = HEADER + 0x1000
+    while pos + 16 <= limit:
+        count = struct.unpack(">I", bytes(uc.mem_read(pos, 4)))[0]
+        if count == 0 or count > 16 or pos + 16 + count * 8 > limit:
+            break
+        raw = bytes(uc.mem_read(pos + 16, count * 8))
+        for i in range(count):
+            word = struct.unpack_from(">I", raw, i * 8)[0] >> 8
+            samples.append(word - 0x1000000 if word >= 0x800000 else word)
+        pos += 16 + count * 8
+    return samples
+
+
+def render_dynamic_fold(uc, symbols, with_trigs):
+    """Ramp FOLD at DEC=INF, optionally splitting frames at sequencer trigs."""
+    if "sy_state" in symbols:
+        uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+    knobs = dict(ptch=64, rato=32, indx=48, fine=64, fold=0, mix=0,
+                 dec=127, symm=64, fdbk=40)
+    amp = dict(atk=0, hold=127, rel=64)
+    render_frames(uc, symbols, knobs, frames=2, amp=amp)
+    output = []
+    trig_frames = {3, 7, 11, 15}
+    for frame in range(16):
+        knobs["fold"] = min(127, frame * 8)
+        plant_part(uc)
+        plant_fp(uc, **knobs)
+        plant_voice(uc, 0, True, **amp)
+        split = with_trigs and frame in trig_frames
+        uc.mem_write(HEADER, bytes(0x1000 if split else 16 + 16 * 8))
+        uc.mem_write(CURSOR_AT, struct.pack(">I", HEADER))
+        if split:
+            render_one_call(uc, symbols, 0, 5, trig=False)
+            render_one_call(uc, symbols, 5, 16, trig=True)
+        else:
+            render_one_call(uc, symbols, 0, 16, trig=False)
+        samples = read_frame_headers(uc)
+        if len(samples) != 16:
+            die(f"FOLD ramp frame {frame} produced {len(samples)} samples, wanted 16")
+        output.extend(samples)
+    return output
+
+
 def rms(xs):
     return math.sqrt(sum(x * x for x in xs) / max(len(xs), 1))
 
@@ -708,6 +767,23 @@ def main():
         check("sequencer retrigger restarts DEC at full INDX",
               after_env == 0x01000000 and after_ieff == full_index,
               f"env={before_env:#x}->{after_env:#x}, ieff={before_ieff}->{after_ieff}")
+
+        # Issue #1236: FOLD moves under automation while a warm sequencer trig
+        # splits the 16-sample frame. At DEC=INF, splitting must not advance
+        # the FOLD slew an extra time and create a trig-onset waveform step.
+        plain_fold = render_dynamic_fold(uc, symbols, with_trigs=False)
+        trig_fold = render_dynamic_fold(uc, symbols, with_trigs=True)
+        trig_diffs = []
+        for frame in (3, 7, 11, 15):
+            start = frame * 16
+            trig_diffs.extend(
+                abs(a - b)
+                for a, b in zip(plain_fold[start:start + 16], trig_fold[start:start + 16])
+            )
+        peak_diff = max(trig_diffs)
+        check("DEC=INF FOLD ramp is stable across split-frame trigs",
+              peak_diff <= 250_000,
+              f"peak same-phase waveform difference={peak_diff} (limit 250000)")
 
     # Cost: mean instructions of steady frames (skip cold start).
     steady = costs["base"][1:]
