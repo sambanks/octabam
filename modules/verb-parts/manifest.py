@@ -1,11 +1,12 @@
-"""VERB PARTS -- a Part saved with a stock reverb opens on its VERBERATION row at that row's defaults.
+"""VERB PARTS -- a Part saved with a stock reverb opens on VERBERATION, in the matching mode at its defaults.
 
-octabam-verbs puts VERB PLATE, VERB ROOM and VERB HALL on PLATE, SPRING and DARK REV's ids. A Part saved with a
-stock reverb then opens on the row but with the stock reverb's knob values, read as VERBERATION's. This module
-converts such a Part just before the firmware applies it: two detours inside the Part apply (0x40009094)
-and the pattern-change apply (0x40009e00), every route a Part reaches the engine by, after the arguments are
-in registers and before the Part is read. The sign of a
-stock reverb's Part is FX2 page-2 slots 9 and 10 both 0: the stock reverbs never draw them.
+octabam-verbs gives up PLATE, SPRING and DARK REV and offers one reverb row, VERBERATION. This module converts a
+Part that holds one of the stock reverbs' ids just before the firmware applies it: two detours inside the Part
+apply (0x40009094) and the pattern-change apply (0x40009e00), every route a Part reaches the engine by, after the
+arguments are in registers and before the Part is read. The track's FX2 id becomes VERBERATION's and its knobs
+that mode's defaults: PLATE REV -> PLATE, SPRING REV -> ROOM, DARK REV -> HALL. VERB PLATE, ROOM and HALL stay on
+the three ids as hidden rows (no chooser row): they hold each mode's defaults for the table, and an id that
+reached the engine some other way would still run VERBERATION's code.
 """
 from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
@@ -13,15 +14,14 @@ ROWS = ("VERB PLATE", "VERB ROOM", "VERB HALL")      # ids 0x14, 0x15, 0x16, in 
 
 
 def table_inc(modules, remix):
-    """vp_tab: per row, page 1's six default bytes, then page 2's (slots 6-11), from the rows' manifests."""
-    rows = ["        .data", "vp_tab:"]
+    """VB_ID (VERBERATION's id in this remix) and vp_tab: per stock id, page 1's six default bytes, then page 2's
+    (slots 6-11, MODE first), from the hidden rows' manifests (each is VERBERATION's knobs in one mode)."""
+    rows = [f"        .set    VB_ID, {modules['VERBERATION'].menu.fx2_id}", "        .data", "vp_tab:"]
     for i, key in enumerate(ROWS):
         m = modules[key]
         if m.menu.fx2_id != 0x14 + i:
             raise ValueError(f"VERB PARTS: {key} is on id 0x{m.menu.fx2_id:02x}, not 0x{0x14 + i:02x}")
         vals = [p.default or 0 for p in m.params]
-        if vals[9] == 0 and vals[10] == 0:
-            raise ValueError(f"VERB PARTS: {key}'s defaults hold 0 in slots 9 and 10, the stock-Part sign")
         rows.append(f"        .byte   {', '.join(str(v) for v in vals[:12])}    | {key}")
     return "\n".join(rows) + "\n"
 
@@ -29,10 +29,10 @@ def table_inc(modules, remix):
 MODULE = Module(
     name="verb-parts", key="VERB PARTS", kind=Kind.CF_PATCH,
     category=Category.PARTS, author="sambanks", author_url="https://github.com/sambanks",
-    doc="A Part saved with PLATE, SPRING or DARK REV opens on its VERBERATION row (VERB PLATE, ROOM, HALL) at that row's defaults.",
+    doc="A Part saved with PLATE, SPRING or DARK REV opens on VERBERATION, in PLATE, ROOM or HALL mode at its defaults.",
     evidence=(Evidence(Level.EMULATOR, ref="verify_verb_parts",
         note="verify_verb_parts (the port); not run on a unit"),),
-    requires=ROWS,
+    requires=ROWS + ("VERBERATION",),
     linked=(Linked("verbparts", "modules/verb-parts/verbparts.s", cpu="5475", include=table_inc, dram=True),),
     gates=(Gate("tools/verify/verify_verb_parts.py", venv=True, project=True),),
     detours=(

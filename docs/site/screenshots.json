@@ -262,14 +262,14 @@
       "caption": "VERBERATION: main parameter page.",
       "remix": "verberation",
       "source": "emulator panel UART",
-      "firmware_sha256": "1d9d8840f3db46b5bb35fb1dfed035131cc431385e394307f55fe51e16ad35ee"
+      "firmware_sha256": "d99117895e3b68a30826c0912a735afc667430ea3ba6f4bcc280e7051b1ab94d"
     },
     "setup": {
       "image": "verberation/setup.png",
       "caption": "VERBERATION: effect selection and setup parameters.",
       "remix": "verberation",
       "source": "emulator panel UART",
-      "firmware_sha256": "1d9d8840f3db46b5bb35fb1dfed035131cc431385e394307f55fe51e16ad35ee"
+      "firmware_sha256": "d99117895e3b68a30826c0912a735afc667430ea3ba6f4bcc280e7051b1ab94d"
     }
   },
   "delay": {

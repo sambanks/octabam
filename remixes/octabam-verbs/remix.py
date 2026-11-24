@@ -59,6 +59,9 @@ REMIX = Remix(
     # MODULATION's FX2 buffer is 2,048 words, and VERBERATION's ring is 14,366 words, to offset 0x381d,
     # just below the homes (modules/verberation/README.md). So every home is always free of a reverb, and
     # SIDECHAIN_COMPRESSOR's one home, the fourth block's top, is never under one either.
+    # The VERB rows hold the stock reverbs' ids with no chooser row: VERB PARTS turns a Part that names one into
+    # VERBERATION in the matching mode, and an id that reached the engine some other way still runs its code.
+    hidden=("VERB PLATE", "VERB ROOM", "VERB HALL"),
     fx1=("SPECTRUM", "CHARACTER", "MODULATION") + RESIDENT + STOCK_FX1,   # the chooser order on FX1; the stations also run live on FX2 (SLOTS pin below)
     # DLCOPY follows the five demand entries (x:$33da3 + 8 k, k = 0..4).
     window=(("DLCOPY", 0x33DCB), ("KEYBUS", 0x33E55), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),

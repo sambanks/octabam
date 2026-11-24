@@ -7,6 +7,8 @@ peak limiter after MIX (current-block peak + one block-rate div). MIX 0 is
 bit-exact dry when LIM is 0.
 """
 
+import math
+
 from remix.peak_limiter import source as peak_limiter_source
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
                           Kind, Linked, MenuEntry, Module, Param, Evidence, Level, YBase)
@@ -16,6 +18,15 @@ _BLANK = Param(b"", 0)
 _UI = "shatter_ui"
 # Raw A=0 matches Formatter.PLAIN; B is the live icon (see ui.s).
 _W = lambda sym: dict(formatter_word=0, widget_word=(_UI, sym))
+
+# Partial makeup after the wavefolder: sqrt of its measured small-signal
+# reciprocal. Full inverse compensation made ordinary hot material much
+# quieter once the folder entered its nonlinear region.
+FOLD_GAIN = tuple(
+    ((1 << 23) - 1) if fold == 0 else
+    round(((1 << 23) - 1) / math.sqrt(2 + fold / 8))
+    for fold in range(128)
+)
 
 MODULE = Module(
     name="shatter",
@@ -30,6 +41,9 @@ MODULE = Module(
         Evidence(Level.UNIT, unit="MKII", who="Ilia", image="SHTR LM4.RMX", date="2026-11-14",
                  commit="366e1bcd",
                  note="LIM confirmed working; verify_shatter passed."),
+        Evidence(Level.UNIT, unit="MKII", who="Ilia", image="CX CW.RMX", date="2026-11-24",
+                 commit="6bd70d47",
+                 note="Ilia tested the revised FOLD compensation on the unit."),
     ),
     doc="Crush insert: fold, clip, crush, chaotic FDBK, stereo peak limiter after MIX.",
     menu=MenuEntry(
@@ -41,15 +55,15 @@ MODULE = Module(
     ),
     params=(
         Param(b"DRV", 0, active=True, formatter=_P,
-              doc="pre-gain on the dry, about x9 at 127; 0 is unity; the feedback is not driven"),
+              doc="dry-path drive; output gain compensated after the dirt chain; feedback stays undriven"),
         Param(b"FOLD", 0, active=True, **_W("wid_fold"),
-              doc="wavefolder; 0 is off, higher folds more (never quieter)"),
+              doc="wavefolder; 0 is off; higher settings fold more with partial output gain compensation"),
         Param(b"CLIP", 0, active=True, **_W("wid_clip"),
               doc="clip threshold: 0 is open, 127 is a brick wall"),
         Param(b"CRSH", 0, active=True, **_W("wid_crsh"),
               doc="bit-depth and sample-rate crush together"),
         Param(b"FDBK", 0, active=True, **_W("wid_fdbk"),
-              doc="feedback around the fold, clip and crush; CHAOS flips its polarity"),
+              doc="feedback around the fold, clip and crush with a reduced maximum; CHAOS flips its polarity"),
         Param(b"MIX", 127, active=True, formatter=_P,
               doc="dry/wet; 0 is exact passthrough when LIM is 0"),
         # MODE: DRAM label formatter + live icon (brick/blob/shards). Labels
@@ -71,6 +85,7 @@ MODULE = Module(
         asm="modules/shatter/shatter.asm",
         subst={pl: peak_limiter_source("shpk", 0x19, 0xd, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, knob=0xd) for pl in ("A", "B")},
         priority=18,
+        ptable=FOLD_GAIN,
         bus_role=BusRole.NONE,
         ybase=YBase.NEVER,
         r7_latch_slot=None,

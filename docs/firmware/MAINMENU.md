@@ -330,6 +330,15 @@ These are copied without inheritance.
 underneath. TEMPO's layer (`0x400bb4ec`) has LEVEL only, which is why
 A–F turn the page behind the stock TEMPO window.
 
+**Sub-maps.** The rebuild chains the `+14` sub-maps of every layer's
+record for a key. On a press, the key dispatcher `0x40031734` appends
+that chain to the end of the list, on top of every other layer, rebuilds,
+and only then calls the press handler; the release removes the chain. The
+scene keys use this: SCENE A's record carries the scene layer `0x400bb2a2`
+and SCENE B's `0x400bb2b6`, which hold encoders A–F and LEVEL and the
+encoder pushes for as long as the scene is held, over any window open at
+the press (`docs/contributing/TRAPS.md#trap-scene-layer`).
+
 **What has the keys (measured under the port on both models, the list read after each window was opened from the panel's keys).** With nothing open the list holds
 only the base layer, `0x400c090a` on an MKI, `0x400c091e` on an MKII. MAIN MENU pushes `0x400cbf2c`, a YES/NO popup `0x400cdff8` over it, MIXER
 `0x400d0384`, TEMPO `0x400bb4ec`, the PART window `0x400b9b24`, its menu `0x400ce0c4` over that, the name keyboard `0x400d071c`, the progress window

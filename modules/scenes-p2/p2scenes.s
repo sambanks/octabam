@@ -447,8 +447,9 @@ ecommit:
         lea     REDRAW,%a0
         moveq   #20,%d0
         movel   %d0,%a0@(0,%d1:l)
-        moveq   #1,%d0
+        movel   SCENE_HELD,%d0         | the lock view: 1 A, 2 B (stock's own stores)
         movel   %d0,EDIT_A
+        moveq   #1,%d0
         movel   %d0,EDIT_B
 edone:  moveq   #0,%d0
         movem.l %sp@,%d2-%d7/%a2-%a6
@@ -468,26 +469,51 @@ edone:  moveq   #0,%d0
         .set    WINDOW,     0x460d175c
         .set    PAGEKIND,   0x460d1684
         .set    MIDIMODE,   0x80000012
-        .globl  scene_knob_hook
+        .globl  scene_knob_hook, scene_knob_hook_b
 scene_knob_hook:
-        tstl    WINDOW
-        beq.s   sk_stock
-        tstl    SCENE_HELD
-        beq.s   sk_stock
-        tstl    MIDIMODE
-        bne.s   sk_stock
-        movel   %sp@(4),%d1
-        cmpil   #5,%d1
-        bhi.s   sk_stock
-        movel   PAGEKIND,%d0
-        cmpil   #4,%d0
-        beq.w   fx2_edit_hook
-        cmpil   #3,%d0
-        beq.w   fx1_edit_hook
-sk_stock:
+        bsr.s   sk_mine
+        bne.s   sk_take
         lea     %sp@(-36),%sp          | the displaced prologue, then on
         movem.l %d2-%d7/%a2-%a4,%sp@
         jmp     0x400534a0
+| scene_knob_hook_b: 0x40052e98, SCENE B's twin of 0x40053498 (the scene
+| layer 0x400bb2b6 installs it; a 32-byte frame). Without it a page-2 turn
+| with SCENE B held reached stock's B handler, which locks page 1 only:
+| no cell was written.
+scene_knob_hook_b:
+        bsr.s   sk_mine
+        bne.s   sk_take
+        lea     %sp@(-32),%sp          | the displaced prologue, then on
+        movem.l %d2-%d7/%a2-%a3,%sp@
+        jmp     0x40052ea0
+| sk_take: the entry state as the editors see it (sp@(4) = slot, sp@(8) = ticks)
+sk_take:
+        movel   PAGEKIND,%d0
+        cmpil   #4,%d0
+        beq.w   fx2_edit_hook
+        bra.w   fx1_edit_hook
+| sk_mine: Z clear when the turn is a page-2 editor's: an FX1 or FX2 SETUP
+| window open, a scene held, audio mode, a knob 0..5 (sp@(8): the hook's
+| sp@(4), under this call's return). Clobbers d0, d1.
+sk_mine:
+        moveq   #0,%d0
+        tstl    WINDOW
+        beq.s   1f
+        tstl    SCENE_HELD
+        beq.s   1f
+        tstl    MIDIMODE
+        bne.s   1f
+        movel   %sp@(8),%d1
+        cmpil   #5,%d1
+        bhi.s   1f
+        movel   PAGEKIND,%d1
+        cmpil   #4,%d1
+        beq.s   2f
+        cmpil   #3,%d1
+        bne.s   1f
+2:      moveq   #1,%d0
+1:      tstl    %d0
+        rts
 
 | ----------------------------------------------------------- the cells ----
 | cfind: a4 = a scene's cell 0, d0 = the key byte -> a5 = its cell, or 0.
@@ -516,6 +542,77 @@ celoop: tstb    %a0@
         bne.s   celoop
         rts
 cehit:  moveal  %a0,%a5
+        rts
+
+| p2s_op: the held scene's FX2 page-2 lock of one track, for TEMPO BUS's
+| page-2 rows (tempobus helpers.s, a weak reference: the TEMPO window edits
+| the bus hosts' knobs, which the host pages do not draw).
+| In: d1 = op (0 read, 1 set, 2 clear), d0 = the value (set), d2 = slot2
+| (0..5), d4 = track, d5 = part; the held scene from SCENE_HELD.
+| Out: d0 = the lock's value or -1 (read); 0, or -1 when the scene's eight
+| cells are full (set); 0 (clear). Every other register is kept.
+        .globl  p2s_op
+p2s_op: lea     %sp@(-56),%sp
+        movem.l %d1-%d7/%a0-%a6,%sp@
+        movel   %d0,%d3                | d3 = the value
+        movel   %d1,%d6                | d6 = op
+        movel   DBPTR,%d0
+        movel   #PART_STRIDE,%d1
+        mulu.l  %d5,%d1
+        addl    %d1,%d0
+        moveal  %d0,%a3                | a3 = the part's window
+        addil   #SEL_OFF,%d0
+        moveal  %d0,%a0
+        movel   SCENE_HELD,%d1
+        cmpil   #1,%d1
+        beq.s   1f
+        addql   #1,%a0
+1:      moveq   #0,%d7
+        moveb   %a0@,%d7               | d7 = the held scene
+        movel   %d7,%d0
+        lsll    #8,%d0
+        addl    %a3,%d0
+        addil   #CELL0,%d0
+        moveal  %d0,%a4                | a4 = its cell 0
+        movel   %d4,%d0
+        lsll    #4,%d0
+        orl     %d2,%d0                | d0 = track<<4 | slot2 (FX2)
+        moveal  %d0,%a6
+        bsr.w   cfind                  | -> a5 = the cell or 0
+        moveq   #-1,%d0
+        tstl    %d6
+        bne.s   2f
+        movel   %a5,%d1                | read
+        beq.s   pdone
+        moveq   #0,%d0
+        moveb   %a5@(1),%d0
+        bra.s   pdone
+2:      moveq   #1,%d1
+        cmpl    %d1,%d6
+        bne.s   4f
+        movel   %a5,%d1                | set
+        bne.s   3f
+        bsr.w   cempty                 | -> a5 = a free cell or 0
+        moveq   #-1,%d0
+        movel   %a5,%d1
+        beq.s   pdone                  | eight locks: refused
+        moveb   %d3,%a5@(1)            | the value, then the key (the frame
+        movel   %a6,%d1                | ISR reads the key first)
+        moveb   %d1,%a5@
+        bra.s   5f
+3:      moveb   %d3,%a5@(1)
+5:      bsr.w   ccommit
+        moveq   #0,%d0
+        bra.s   pdone
+4:      moveq   #0,%d0                 | clear
+        movel   %a5,%d1
+        beq.s   pdone
+        moveq   #-1,%d1
+        moveb   %d1,%a5@
+        bsr.w   ccommit
+        moveq   #0,%d0
+pdone:  movem.l %sp@,%d1-%d7/%a0-%a6
+        lea     %sp@(56),%sp
         rts
 
 | ccommit: a3 = the part's working window, a5 = the cell, d5 = part.

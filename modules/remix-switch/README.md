@@ -177,9 +177,28 @@ except `bclr #7` on HPCR (the payload's own `bset #7` and `bclr #5`/`#6`
 there are); the HRDF waits are written with a numeric displacement because
 `dsp_asm` encodes a label there as an absolute address.
 
+**Between frames, or not at all.** The frame interrupt (`0x4000aad0`)
+starts a chain of DMA transfers, one step per completion interrupt, that
+sends the DSP its next frame. Masked in the middle of it, a core waits for
+a block that never comes and may not take the park, and the next image's
+upload is then abandoned on the boot screen. So `osw_quiesce` first waits
+up to 20 ms for a frame (the ping word `0x800000e0` changes). With none,
+the DSP has stopped, the park cannot be taken, and the switch is refused
+with `DSP STOPPED: REBOOT`, the mailbox cleared and nothing reset.
+Otherwise it masks only while the chain's step word (`0x46104d3e`) reads 7,
+which the chain's last step leaves, for up to 400 µs, and then waits 40 µs
+for that step's transfer to land. The port's chain never reaches 7, so
+under the port the 400 µs bound is the path taken.
+
+**The load checks each read.** The card's read (`0x40018e40`) returns the
+bytes it read, 0 past the file's end, a negative value on an error. The
+hash is taken over the stage after the reads, so it cannot see a short
+read; a short one is refused with `IO ERROR`. The card driver's own errors
+inside a read are not reported to it.
+
 **The reset.** Stock never resets the unit after OS UPGRADE: it shows
 `UPGRADE DONE` / `PLEASE REBOOT!` and waits for a power-cycle. So the
-switcher masks interrupts, drains the panel's UART queue (OS UPGRADE's
+switcher masks interrupts (between frames, above), drains the panel's UART queue (OS UPGRADE's
 first two steps), and requests a soft reset (RCR SOFTRST, `0xfc0a0000`
 bit 7, MCF54455 RM). ✅ Measured on an MKII (builds 1-14, 29 Sep 2026):
 the unit resets at once and the bootstrap runs again. On an MKII the

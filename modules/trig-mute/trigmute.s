@@ -7,7 +7,8 @@
 | trig holds condition + 65 (65..127), so 7:8 and 8:8 cannot be muted. The
 | pattern carries it: stock's save, load, battery copy, copy and paste need
 | nothing. Placing or removing a trig clears the condition, and the mute.
-| Stock firmware plays a muted trig (> 64 = no condition) and shows ERR.
+| Stock (or a remix without TRIG MUTE) clamps > 64 to 64 on load: a muted
+| trig becomes 8:8 and its own condition is lost.
 |
 | tmu_gate (step handler 0x4009d34e, the condition test): a muted trig
 |          skips as a failed condition does -- no trig, no locks; recorder

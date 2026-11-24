@@ -26,6 +26,13 @@ events on the panel link at emulated times, no wall-clock sleeps), dumps RAM at 
   close    after TEMPO again the window handle is 0 and no input layer in
            the list lies inside the module's code
   run      the port ends on `quit`, not on a fault
+  scenes   a second boot (scenes()): with scene A pressed over the open
+           window, WET -27 is scene A's lock on the host's flat 29 and no
+           other flat of the track is locked; a push with no turn removes
+           FDBK's lock; TIME -9 is a SCENES P2 cell; with scene B held before
+           the window opens, WET -9 is scene B's lock. The morph itself is
+           stock's and not run here (the panel script runs with the
+           transport stopped)
 
 Writes out/tempobus/screen.png (the window before it closes is not kept;
 the last frame drawn is rendered from the second, reopened window).
@@ -66,6 +73,94 @@ def png(path, w, h, px, scale=4):
     path.write_bytes(b"\x89PNG\r\n\x1a\n"
                      + chunk(b"IHDR", struct.pack(">IIBBBBB", w * scale, h * scale, 8, 2, 0, 0, 0))
                      + chunk(b"IDAT", zlib.compress(b"".join(rows))) + chunk(b"IEND", b""))
+
+
+def scenes(image, card, setname, name, work, dly, p2, check):
+    """A second boot: the window's knobs with a scene held (sambanks/octabam#1221).
+
+    Stock's scene press pushes the scene's input layer over the window's, and
+    that layer took every encoder: a turn wrote a lock on the hidden page's
+    knob (T1 flat 0) and the window's row was untouched. Checks, on the delay
+    host's (T`dly`+1) Part and its scene blocks:
+      A  TEMPO open, SCENE A pressed: WET -27 locks scene A's flat 29, FDBK
+         -9 then a push with no turn leaves no lock on flat 26; TIME -9 is a
+         SCENES P2 cell (without SCENES P2: the Part's TIME); no other T1 lock
+      B  TEMPO closed, SCENE B held, TEMPO opened: WET -9 locks scene B's flat 29
+    Each lock is checked against the Part's value at the end, so a turn the
+    Part took instead fails it. Returns the failures."""
+    BLOB, BANK_STRIDE, DBPTR = 0x400e21e0, 0x9b340, 0x46c82456
+    SC_A, SC_B, PUSH_A = 0x19, 0x1a, 0x38
+    lines, now = [], [1500.0]
+
+    def send(line, pause=GAP):
+        lines.append(f"{now[0]:.0f} {line}")
+        now[0] += pause
+
+    def key(code, pause=3 * GAP):
+        send(f"key {code:#x} down", DOWN)
+        send(f"key {code:#x} up", pause)
+
+    key(KEY_NO, 5 * GAP)
+    key(KEY_TEMPO, 5 * GAP)                         # rows: MODE TIME WET TONE FDBK ...
+    key(KEY_DOWN); key(KEY_DOWN)                    # row 2: WET
+    send(f"key {SC_A:#x} down", 6 * GAP)            # after the window: its layer goes over ours
+    for _ in range(3):
+        send("enc 0 -9", 6 * GAP)                   # WET -27: scene A's lock
+    key(KEY_DOWN); key(KEY_DOWN)                    # row 4: FDBK
+    send("enc 0 -9", 6 * GAP)                       # a lock ...
+    key(PUSH_A, 6 * GAP)                            # ... and a push with no turn clears it
+    for _ in range(3):
+        key(KEY_UP)                                 # row 1: TIME (page 2)
+    send("enc 0 -9", 6 * GAP)
+    send(f"key {SC_A:#x} up", 6 * GAP)
+    key(KEY_TEMPO, 5 * GAP)                         # close
+    send(f"key {SC_B:#x} down", 6 * GAP)            # B held first, then the window
+    key(KEY_TEMPO, 5 * GAP)
+    key(KEY_DOWN)                                   # row 2: WET
+    send("enc 0 -9", 6 * GAP)
+    send("quit")
+    script = work / "scenes.txt"
+    script.write_text("\n".join(lines) + "\n")
+    run_card = work / "card_scenes.img"
+    run_card.write_bytes(card.read_bytes())
+    ui, dbs = work / "s_ui.bin", [work / f"s_db{b}.bin" for b in range(16)]
+    log = OUT / "port_scenes.txt"
+    cmd = [str(EMU), "--image", str(image), "--card", str(run_card), "--set", setname,
+           "--project", name, "--load-ms", "90000", "--live-script", str(script),
+           "--mem-dump", f"{DBPTR:#x},4={ui};"
+                         + ";".join(f"{BLOB + b * BANK_STRIDE + 0x8ed80:#x},0x6300={f}" for b, f in enumerate(dbs))]
+    with open(log, "w") as lf:
+        lf.write(" ".join(cmd) + "\n"); lf.flush()
+        subprocess.run(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT, timeout=900)
+    fails = [0]
+
+    def chk(label, ok, detail=""):
+        fails[0] += 0 if ok else 1
+        check(label, ok, detail)
+
+    chk("scenes: the port ended on quit", "ended on quit" in log.read_text())
+    if not ui.is_file():
+        return fails[0]
+    db = struct.unpack(">I", ui.read_bytes())[0]
+    part = dbs[(db - BLOB) // BANK_STRIDE].read_bytes()       # part 0's window, from +0x8ed80
+    P = lambda off: part[off - 0x8ed80]
+    sa, sb = P(0x8ed90), P(0x8ed91)
+    lock = lambda sc, flat: P(0x8f3e2 + 0x100 * sc + 0x20 * dly + flat)
+    cells = lambda sc: [(P(0x8f400 + 0x100 * sc + 0x20 * c), P(0x8f401 + 0x100 * sc + 0x20 * c))
+                        for c in range(8) if not P(0x8f400 + 0x100 * sc + 0x20 * c) & 0x80]
+    wet, time_ = P(0x8ee9a + 24 * dly + 18 + 5), P(0x8f084 + 30 * dly + 5)
+    t = f"T{dly + 1}"
+    chk(f"scenes: A held after TEMPO: WET -27 locks scene {sa}'s flat 29 = {max(wet - 27, 0)}, the Part keeps {wet}",
+        lock(sa, 29) == max(wet - 27, 0), f"lock {lock(sa, 29)}")
+    chk(f"scenes: FDBK's lock (flat 26) removed by the push", lock(sa, 26) == 0xff, f"{lock(sa, 26)}")
+    if p2:
+        chk(f"scenes: TIME -9 is scene {sa}'s cell ({dly << 4 | 5:#04x}, {max(time_ - 9, 0)}), the Part keeps {time_}",
+            cells(sa) == [(dly << 4 | 5, max(time_ - 9, 0))], f"cells {cells(sa)}")
+    others = {f: lock(sa, f) for f in range(30) if f != 29 and lock(sa, f) != 0xff}
+    chk(f"scenes: no other {t} lock in scene {sa} (the hidden page's knob A is flat 0)", not others, f"{others}")
+    chk(f"scenes: B held before TEMPO: WET -9 locks scene {sb}'s flat 29 = {max(wet - 9, 0)}",
+        lock(sb, 29) == max(wet - 9, 0), f"lock {lock(sb, 29)}")
+    return fails[0]
 
 
 def main():
@@ -212,6 +307,8 @@ def main():
         walked += 1
     check("close: no input layer from the module is left registered", not inside,
           ", ".join(f"{n:#x}" for n in inside))
+    if dly is not None:
+        fails += scenes(image, card, setname, name, work, dly, "SCENES P2" in mods, check)
     print(f"verify_tempo_bus: {fails} failure(s)")
     return 1 if fails else 0
 

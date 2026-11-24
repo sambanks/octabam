@@ -19,19 +19,23 @@ grit. **FDBK** recirculates the crush path. **TONE** shelves that loop.
 MODE **CHAOS** flips **FDBK** polarity at **RATE**. Raise **LIM** to catch
 the post-MIX peaks when the crush path is hot.
 
-**DRV** 127 clips ordinary input levels. Keep it down, follow with
-**CLIP**, or raise **LIM**, when the source is already hot.
+**DRV** and **FOLD** add drive before the dirt stages. SHATTER compensates
+**DRV** after the chain. **FOLD** uses partial compensation, so the folded
+signal keeps more level as you raise it. Quiet signals can get louder at high
+**FOLD** settings. Use **MIX** to balance the effect. **CLIP**, **CRSH** and
+**FDBK** also change the sound and its level. **FDBK** has a lower maximum loop
+gain. Raise **LIM** to catch peaks when the processed signal is hot.
 MODE/**TONE**/**RATE** are easiest with **CLIP** open and **FDBK** up.
 
 ## Parameters
 
 | Knob | Default | What it does |
 |---|---|---|
-| DRV | 0 | pre-gain on dry only (~×9 at 127); 0 is unity |
-| FOLD | 0 | wavefolder; 0 skips; 1…127 only increases fold |
+| DRV | 0 | drive on the dry signal; output gain is compensated after the dirt stages |
+| FOLD | 0 | wavefolder; 0 skips; higher settings fold more with partial output gain compensation |
 | CLIP | 0 | mid-chain clip threshold (0 open, 127 brick wall) |
 | CRSH | 0 | combined bit-depth and sample-rate crush |
-| FDBK | 0 | feedback around fold/clip/crush (needed for TONE/RATE/CHAOS) |
+| FDBK | 0 | feedback around fold/clip/crush with a reduced maximum (needed for TONE/RATE/CHAOS) |
 | MIX | 127 | dry/wet; 0 is exact passthrough when LIM is 0 |
 | MODE | HARD | HARD / SOFT / CHAOS (CHAOS flips FDBK polarity) |
 | TONE | 64 | feedback shelf: 0 dark, 127 bright |
