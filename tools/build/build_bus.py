@@ -627,6 +627,7 @@ MPYSU_AUDITED = {
     "CHARACTER":     {"x1,y1,b": 1},
     "CHARACTER TXTR": {"x1,y1,b": 1},   # the same chtube site, in its copy of the source
     "SPECTRUM":      {"x1,y1,b": 1},
+    "SHATTER":       {"y0,y1,a": 2},  # both channels × nonnegative compensation gain
 }
 # These flags substitute or excise module source (probes, the shimmer
 # excision, the marker splice, a candidate engine), so the shipping counts

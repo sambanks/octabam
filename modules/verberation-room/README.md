@@ -1,10 +1,9 @@
 # `verberation-room` — VERB ROOM
 
-[VERBERATION](../verberation/README.md) on SPRING REV's id `0x15`, starting in **ROOM** mode: the chooser row
-"Verb Room" (`VBRM`), whose defaults are ROOM's voicing and whose MODE is 0. It has no DSP code of its own:
-`MenuEntry(dsp_of="VERBERATION")` points its id at VERBERATION's init and proc on both payloads, so it is
-VERBERATION in every way but its name and starting point, MODE included. It takes SPRING REV's place
-(`replaces="SPRING REV"`), so in a remix that carries it a Part saved with SPRING REV opens on this row.
+[VERBERATION](../verberation/README.md) on SPRING REV's id `0x15`, in **ROOM** mode. In
+[`octabam-verbs`](../../remixes/octabam-verbs/README.md) it is hidden (`Remix.hidden`): no chooser row and no knob
+names. It has no DSP code of its own: `MenuEntry(dsp_of="VERBERATION")` points its id at VERBERATION's init and proc
+on both payloads, so an id that reaches the engine runs VERBERATION. Its defaults are ROOM's knob values;
+[VERB PARTS](../verb-parts/README.md) writes them, with VERBERATION's id, over a Part saved with SPRING REV.
 
-Built in [`octabam-verbs`](../../remixes/octabam-verbs/README.md). Knobs, modes, measurements and costs are
-VERBERATION's. Not run on a unit.
+Knobs, modes, measurements and costs are VERBERATION's.

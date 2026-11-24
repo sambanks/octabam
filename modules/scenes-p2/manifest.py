@@ -15,8 +15,9 @@ whole, and stock scene copy, paste, undo and clear copy each track's 32
 bytes.
 
 Sites: the frame builder's join after the morph (0x4000cf40), the FX2
-page-2 editor (0x4003a9dc) and FX1's (0x4003abe4), all at instruction
-boundaries with the displaced instructions replayed.
+page-2 editor (0x4003a9dc) and FX1's (0x4003abe4), stock's scene-lock knob
+handlers for scene A (0x40053498) and scene B (0x40052e98), all at
+instruction boundaries with the displaced instructions replayed.
 """
 
 from remix.schema import Gate, Category, Evidence, Level, Claims, Detour, Kind, Linked, Module
@@ -62,6 +63,9 @@ MODULE = Module(
                "stock's scene-lock knob handler, which a held scene installs over "
                "every encoder: with an FX SETUP window open, a page-2 turn goes to the "
                "edit hooks", kind="jmp", pad_to=8),
+        Detour(0x40052E98, H("4fefffe048d70cfc"), "p2scenes", "scene_knob_hook_b",
+               "SCENE B's scene-lock knob handler (its layer 0x400bb2b6 installs it): "
+               "the same routing for scene B", kind="jmp", pad_to=8),
         Detour(0x40037840, H("d1fc0008f0841c10"), "p2scenes", "dial2_hook",
                "FX2 page-2 dial: with a scene held, draw that scene's lock", kind="jmp", pad_to=8),
         Detour(0x40037BDC, H("d1fc0008f07e1c10"), "p2scenes", "dial1_hook",

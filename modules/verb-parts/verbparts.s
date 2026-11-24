@@ -1,17 +1,17 @@
-| VERB PARTS: a Part saved with a stock reverb opens on its VERBERATION row at that row's defaults.
+| VERB PARTS: a Part saved with a stock reverb opens on VERBERATION, in the matching mode at its defaults.
 |
 | Both stock routines that apply a Part to the engine pass through here before they read it: 0x40009094(bank, p) (a Part
 | apply: project and bank loads, Part paste, save, reload, the current pattern's Part) and 0x40009e00(bank, p)
 | (the pattern-change apply, which KITS' staging also goes through). The working Part (bank, p) is converted in
-| place: for each track whose FX2 id is 0x14, 0x15 or 0x16 (VERB PLATE,
-| ROOM, HALL in this remix) and whose FX2 page-2 slots 9 and 10 are both 0, the six page-1 and six page-2 bytes
-| are set to that row's defaults (vp_tab, from the rows' manifests). The stock reverbs never draw slots 9 and
-| 10 (their descriptors leave them off), so a Part they saved holds 0 in both; a row's RATE and SIZE there are 0
-| together only when the operator set both to 0.
+| place: for each track whose FX2 id is 0x14, 0x15 or 0x16 (PLATE, SPRING or DARK REV's), the id becomes
+| VERBERATION's (VB_ID) and the six page-1 and six page-2 bytes are set to that mode's defaults (vp_tab: PLATE,
+| ROOM, HALL, from the hidden rows' manifests). No chooser offers those ids in this remix, so a Part that holds
+| one was saved with a stock reverb (or with an earlier image's VERB row).
 |
 | The Part (docs/firmware/PARTS.md 1, PARAM_PAGES.md 5a): working Part = 0x400e21e0 + bank*0x9b340 + 0x8ed80
 | + p*0x18b2; FX2 id +0x08+t; FX2 page 1 +0x12c+t*24; FX2 page 2 +0x304+t*30.
 
+        .include "remix.inc"                    | VB_ID and vp_tab
         .text
         .globl  vp_apply
         .globl  vp_patapply
@@ -62,15 +62,13 @@ vp_track:
         sub.l   #0x14,%d0
         cmp.l   #2,%d0
         bhi     vp_next                         | not one of the three
+        moveq   #VB_ID,%d1
+        move.b  %d1,8(%a0,%d3.l)                | the id: VERBERATION's
         move.l  %d3,%d1
         moveq   #30,%d2
         muls.l  %d2,%d1
         lea     0x304(%a0),%a1
         adda.l  %d1,%a1                         | its FX2 page 2
-        tst.b   3(%a1)                          | slot 9
-        bne     vp_next
-        tst.b   4(%a1)                          | slot 10
-        bne     vp_next
         lea     vp_tab,%a2
         moveq   #12,%d2
         muls.l  %d0,%d2
@@ -96,5 +94,3 @@ vp_next:
         blt     vp_track
 vp_done:
         rts
-
-        .include "remix.inc"

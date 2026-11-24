@@ -56,7 +56,7 @@ def peaks(x, sr, n=4):
     return out
 
 
-def run(name, play, fixture_src, amp=None, setup=None, locks=None, mask=0x1111):
+def run(name, play, fixture_src, amp=None, setup=None, locks=None, mask=0x1111, script=None):
     d = OUT / name
     d.mkdir(parents=True, exist_ok=True)
     fixture = prepare(fixture_src, d / "project")
@@ -86,6 +86,13 @@ def run(name, play, fixture_src, amp=None, setup=None, locks=None, mask=0x1111):
     cmd = [emu, "--image", str(image), "--card", str(card), "--set", "OCTABAM", "--project", "RIG", "--load-ms", "20000",
            "--sequencer", "--internal-clock", "--bank", "0", "--frames", str(FRAMES), "--dsp", "--main-level", "64",
            "--audio-out", str(wav)]
+    if script:      # panel keys at emulated ms (--live-script runs the transport from the PLAY key, not --sequencer)
+        for flag in ("--sequencer", "--internal-clock"):
+            cmd.remove(flag)
+        i = cmd.index("--frames")
+        del cmd[i:i + 2]
+        (d / "keys.script").write_text("\n".join(script) + "\n")
+        cmd += ["--live-script", str(d / "keys.script")]
     with (d / "port.log").open("w") as log:
         log.write(" ".join(cmd) + "\n")
         log.flush()
@@ -95,6 +102,31 @@ def run(name, play, fixture_src, amp=None, setup=None, locks=None, mask=0x1111):
     files = sorted(d.glob("audio*.wav"))
     assert files, (name, "no audio written", log[-1500:])
     return files[0]
+
+
+PLAY, STOP = 0x28, 0x27
+STOP_SCRIPT = [f"1500 key {PLAY:#x} down", f"1540 key {PLAY:#x} up", f"5000 key {STOP:#x} down", f"5040 key {STOP:#x} up",
+               f"8000 key {PLAY:#x} down", f"8040 key {PLAY:#x} up", "12000 quit"]
+
+
+def stop_check(src):
+    """STOP ends a WAVE track's voices (the DSP is held at HOLD INF / REL INF, so only the engine can) and PLAY restarts it.
+    Windows of the loudest channel, from the first sound: sounding before STOP, silent 1-2 s after it, sounding after PLAY."""
+    path = run("stop", (52, 0, 2, 0, 0, 0), src, amp=(0, 127, 127), script=STOP_SCRIPT)
+    with wave.open(str(path)) as w:
+        sr, ch, n = w.getframerate(), w.getnchannels(), w.getnframes()
+        a = np.frombuffer(w.readframes(n), dtype=np.uint8).reshape(-1, ch, 3).astype(np.int32)
+    v = a[:, :, 0] | (a[:, :, 1] << 8) | (a[:, :, 2] << 16)
+    v = np.where(v & 0x800000, v - (1 << 24), v) / float(1 << 23)
+    x = v[:, int(np.argmax(np.sqrt((v ** 2).mean(axis=0))))]
+    t0 = int(np.nonzero(np.abs(x) > 1e-4)[0][0])         # the first sound: 1.5 s of script time after the PLAY key, less the attack
+    def rms(a0, a1):
+        seg = x[t0 + int(a0 * sr):t0 + int(a1 * sr)]
+        return float(np.sqrt(np.mean(seg ** 2))) if len(seg) else 0.0
+    before, after_stop, after_play = rms(1.0, 3.0), rms(4.5, 5.5), rms(8.0, 9.0)
+    ok = before > 1e-2 and after_stop < 1e-4 and after_play > 1e-2
+    print(("PASS " if ok else "FAIL ") + f"stop: rms {before:.4f} playing, {after_stop:.5f} 1-2 s after STOP, {after_play:.4f} after PLAY again")
+    return 0 if ok else 1
 
 
 def main():
@@ -151,6 +183,8 @@ def main():
             ok3 = d2.max() < 25 * clean       # a step was 680-900x; the linear attack's corner at full is up to ~13x at this level
             print(("PASS " if ok3 else "FAIL ") + f"{name}: no step when the AMP reopens (largest second difference {d2.max() / clean:.1f}x a clean sine's)")
             fails += not ok3
+    if not only or "stop" in only:
+        fails += stop_check(src)
     return 1 if fails else 0
 
 

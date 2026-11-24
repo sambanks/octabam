@@ -66,6 +66,13 @@
         .set    HI08_ISR,  0x20000008   | the host-side status: bit 0 RXDF (the upload's own poll)
         .set    HI08_RXL,  0x2000001c   | RXM:RXL; reading it takes the word (0x40001ce0)
         .set    DSP_SELECT, 0xfc0a400c  | which core's host port the window shows (0, 1): the upload's own
+        .set    PING,      0x800000e0   | the frame's half index, written by the frame interrupt (0x4000ab02) from the DSP's word
+        .set    CHAIN_STEP, 0x46104d3e  | the transfer chain's step: the frame interrupt clears it (0x4000ac32), step 6 leaves 7
+        .set    CHAIN_DONE, 7
+        .set    DTCN3,     0xfc07c00c   | DMA timer 3's count, 132 MHz (stock's boot logo times on it)
+        .set    T_ALIVE,   2640000      | 20 ms: about 55 frames
+        .set    T_FRAME,   52800        | 400 us: a frame (362.8 us) and some
+        .set    T_LAST,    5280         | 40 us: step 6's transfer lands
         .set    PARK_HC,   0x008f       | HC | $0f: vector P:$1e, dsp_park.asm's osw_dsp
                                         | (was $12/P:$24 until the park moved
                                         | into the dead vector run, 29 Sep 2026)
@@ -116,6 +123,8 @@ str_size:
         .asciz  "LAST SWITCH: TOO BIG"
 str_bootver:
         .asciz  "OTHER BOOTSTRAP VERSION"
+str_dsp:
+        .asciz  "DSP STOPPED: REBOOT"
         .align  2
 
 | ---- the list, rebuilt each time MAIN MENU opens -----------------------------
@@ -698,8 +707,14 @@ load_file:
         jsr     (%a0)
         lea     (12,%sp),%sp
         sub.l   %d2,%d3
-        moveq   #9,%d0
-        lsl.l   %d0,%d2
+        moveq   #9,%d1
+        lsl.l   %d1,%d2
+        | the card's read returns the bytes it read: whole sectors, 0 past
+        | the file's end, negative on an error (0x40018e40). The hash below
+        | is taken over the stage, so a short read would boot whatever the
+        | stage held before; refuse it here.
+        cmp.l   %d2,%d0
+        bne.w   ioerr_close
         add.l   %d2,%a3
         bra.s   3b
 4:      move.l  %d5,-(%sp)
@@ -782,10 +797,16 @@ load_hash:
         move.l  %d0,(MB_MAGIC,%a1)
         .global osw_reset
 osw_reset:
-        | interrupts off, the panel's queue drained (OS UPGRADE's own
-        | first two steps, 0x4007fe6c..0x4007fe78)
-        move.w  #0x2700,%sr
-        jsr     (UART1_FLUSH).l
+        | interrupts off between two frames, or no switch at all when the
+        | DSP has stopped (osw_quiesce)
+        bsr.w   osw_quiesce
+        bne.s   1f
+        clr.l   (OSW_MBOX+MB_MAGIC).l   | nothing staged: the next boot is a plain one
+        pea     str_dsp
+        bra.w   msg
+        | the panel's queue drained (OS UPGRADE's own second step,
+        | 0x4007fe78; its first, the mask, is osw_quiesce's)
+1:      jsr     (UART1_FLUSH).l
         | both DSP cores into their parked loaders: the soft reset below
         | does not reset the DSP, and the next OS's upload needs a ROM
         bsr.w   osw_park
@@ -830,6 +851,73 @@ osw_softreset:
         move.b  #0x80,%d0
         move.b  %d0,(RCR).l
 8:      bra.s   8b
+
+| osw_quiesce: mask the interrupts at a point where the DSP's frame is
+| whole. The frame interrupt (0x4000aad0) starts a chain of DMA transfers,
+| one step per completion interrupt (0x40004840, level 6), that sends the
+| DSP its next frame; masked in the middle of it, a core waits for a block
+| that never comes, and a core in that wait may not take the park's host
+| command (the stalls in docs/contributing/FAILURE_MODES.md end with core B
+| taking none). With a core unparked the next image's upload is abandoned
+| and the unit stops on the boot screen.
+|  1. A frame must arrive: the ping word changes within T_ALIVE. If none
+|     does, the DSP has stopped, the park cannot be taken, and a reset
+|     would hang: Z set, interrupts as they were. A power-cycle resets
+|     the DSP, and the saved choice boots then.
+|  2. Mask, and keep the mask only when the chain's step is CHAIN_DONE
+|     (the frame interrupt clears it first, so a frame has run since 1);
+|     otherwise unmask and look again, for at most T_FRAME. Past that
+|     the mask stays, as before this check.
+|  3. T_LAST for step 6's transfer, which no interrupt follows, to land.
+| Every loop is also bounded by a count, should the timer not run.
+| Z clear: masked, at level 7.
+        .global osw_quiesce
+osw_quiesce:
+        lea     (-16,%sp),%sp
+        movem.l %d2-%d5,(%sp)
+        move.l  (PING).l,%d2
+        move.l  (DTCN3).l,%d3
+        move.l  #0x01000000,%d4
+1:      move.l  (PING).l,%d0
+        cmp.l   %d2,%d0
+        bne.s   2f
+        move.l  (DTCN3).l,%d0
+        sub.l   %d3,%d0
+        cmpi.l  #T_ALIVE,%d0
+        bcc.s   8f
+        subq.l  #1,%d4
+        bne.s   1b
+8:      moveq   #0,%d0                  | Z set: no frame
+        bra.s   9f
+2:      move.l  (DTCN3).l,%d3
+        move.l  #0x00100000,%d4
+        move.w  %sr,%d5
+3:      move.w  #0x2700,%sr
+        move.l  (CHAIN_STEP).l,%d0
+        moveq   #CHAIN_DONE,%d1
+        cmp.l   %d0,%d1
+        beq.s   4f
+        move.w  %d5,%sr
+        move.l  (DTCN3).l,%d0
+        sub.l   %d3,%d0
+        cmpi.l  #T_FRAME,%d0
+        bcc.s   5f
+        subq.l  #1,%d4
+        bne.s   3b
+5:      move.w  #0x2700,%sr
+4:      move.l  (DTCN3).l,%d3
+        move.l  #0x00010000,%d4
+6:      move.l  (DTCN3).l,%d0
+        sub.l   %d3,%d0
+        cmpi.l  #T_LAST,%d0
+        bcc.s   7f
+        subq.l  #1,%d4
+        bne.s   6b
+7:      moveq   #1,%d0                  | Z clear: masked
+9:      movem.l (%sp),%d2-%d5
+        lea     (16,%sp),%sp
+        tst.l   %d0
+        rts
 
 | osw_park: send both DSP cores host command $12 (dsp_park.asm) with the
 | ColdFire's interrupts masked, and drain each one's host-side receive
@@ -957,6 +1045,11 @@ bootver:
 saveerr:
         pea     str_saveerr
         bra.s   msg
+ioerr_close:
+        move.l  %d5,-(%sp)
+        move.l  (FS_CLOSE).l,%a0
+        jsr     (%a0)
+        addq.l  #4,%sp
 ioerr:
         pea     (STR_IOERR).l
 msg:    move.l  (%sp)+,%a0

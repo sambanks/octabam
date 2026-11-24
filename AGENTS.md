@@ -253,6 +253,7 @@ moment it costs real work, and add its line here.
 - [A MIDI-only fixture leaves audio frame checks with no playing Part](docs/contributing/TRAPS.md#trap-midi-only-frame-fixture) — activate an audio trig within the probe and use the selected module's actual parameters.
 - [A stock call returns with a0, a1, d0 and d1 changed](docs/contributing/TRAPS.md#trap-stock-scratch-regs) — MIDI SCENES kept `scn_snap` in a1 across the CC sender; reload scratch registers after every stock `jsr`.
 - [A held scene replaces every encoder's handler](docs/contributing/TRAPS.md#trap-scene-encoders) — `0x40053498` over the SETUP editors; a panel gesture's gate drives the panel.
+- [A held scene's input layer goes over a window's](docs/contributing/TRAPS.md#trap-scene-layer) — the scene key's sub-map is pushed on top before its press runs; TEMPO BUS re-pushes its layer from its own scene-key record.
 - [A frame interrupt entering about 150 µs late stops the DSP's frame exchange](docs/contributing/TRAPS.md#trap-late-frame) — START and program changes; ColdFire time added to the frame interrupt moves it on or off the window; FRAME GUARD holds a late entry to 190 µs.
 - [Dropping a stock hold to keep a window open can drop the hold's release bookkeeping](docs/contributing/TRAPS.md#trap-hold-release-toggle) — LOCK EDIT's re-hold audition lost the step trig until `le_trighold` cleared stock's `0x460d1a9e` itself.
 

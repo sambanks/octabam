@@ -111,6 +111,19 @@ void wcf_setup(Engine *e, int vibr, int vrat, int oct, int detn, int comp, int m
               (oct - 1) * 12 * 256);                            /* OCT: -1 / 0 / +1 octave */
 }
 
+/* STOP: every voice off, the AMP level and its timers zero, so the next START is cold */
+void wcf_kill(Engine *e)
+{
+    for (int i = 0; i < NV; i++) {
+        e->v[i].gate = 0;
+        e->v[i].gate_prev = 0;
+        e->v[i].env = 0;
+    }
+    e->amp_cur = e->amp_tgt = 0;
+    e->amp_on = 0;
+    e->amp_htim = 0;
+}
+
 void wcf_clock(Engine *e, int step)
 {
     e->frames++;
