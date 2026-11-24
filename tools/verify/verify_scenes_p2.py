@@ -44,9 +44,12 @@ The checks are:
   panel   the gesture from the panel (--live-script): T1, FX2 SETUP open,
           SCENE A held, knob E turned three times (the first turn in SETUP
           only shows the readout): scene 0 must hold one cell, T1 FX2 slot
-          4, and the Part byte must still be the knob's. A held scene
-          installs 0x40053498 over every encoder, so the `editor` call is
-          not what the panel does (TRAPS.md trap-scene-encoders).
+          4, and the Part byte must still be the knob's. Then SCENE B held,
+          knob D: scene B's block holds one cell, T1 FX2 slot 3, and the
+          Part's slot 3 is unchanged. A held scene installs its own knob
+          handler (0x40053498 for A, 0x40052e98 for B) over every encoder,
+          so the `editor` call is not what the panel does (TRAPS.md
+          trap-scene-encoders).
   paste   the stock scene copy `0x400274cc(0, 0)` and paste
           `0x40027578(0, 3)` on part 0 with cells in scene 0: scene 3's
           cells equal scene 0's.
@@ -293,10 +296,15 @@ def main():
         for _ in range(3):
             ev("enc 4 2", 300)                     # knob E: FX2 page-2 slot 4
         ev("key 0x19 up", 600)
+        ev("key 0x1a down", 300)                   # SCENE B: its own handler, 0x40052e98
+        for _ in range(3):
+            ev("enc 3 2", 300)                     # knob D: FX2 page-2 slot 3
+        ev("key 0x1a up", 600)
         script = d / "panel.script"
         script.write_text("\n".join(lines + [f"{t} quit"]) + "\n")
         dumps = ";".join([f"{DBPTR:#x},4={d / 'dbptr.bin'}"]
-                         + [f"{BLOB + b * BANK_STRIDE + CELL0 - 30:#x},256={d / f'scene_{b}.bin'}" for b in range(16)]
+                         + [f"{BLOB + b * BANK_STRIDE + CELL0 - 30:#x},4096={d / f'scene_{b}.bin'}" for b in range(16)]
+                         + [f"{BLOB + b * BANK_STRIDE + SEL_OFF:#x},2={d / f'sel_{b}.bin'}" for b in range(16)]
                          + [f"{BLOB + b * BANK_STRIDE + 0x8f084:#x},6={d / f'p2_{b}.bin'}" for b in range(16)])
         return d, OUT / "panel.txt", ["--live-script", str(script), "--mem-dump", dumps]
 
@@ -379,7 +387,10 @@ def main():
     # ---- the panel ------------------------------------------------------------
     db = int.from_bytes((ndir / "dbptr.bin").read_bytes(), "big") if (ndir / "dbptr.bin").is_file() else BLOB
     bank = (db - BLOB) // BANK_STRIDE
-    got = cells_of((ndir / f"scene_{bank}.bin").read_bytes()) if (ndir / f"scene_{bank}.bin").is_file() else []
+    blocks = (ndir / f"scene_{bank}.bin").read_bytes() if (ndir / f"scene_{bank}.bin").is_file() else bytes(4096)
+    sel = (ndir / f"sel_{bank}.bin").read_bytes() if (ndir / f"sel_{bank}.bin").is_file() else bytes(2)
+    got = cells_of(blocks[0x100 * sel[0]:0x100 * sel[0] + 0x100])
+    got_b = cells_of(blocks[0x100 * sel[1]:0x100 * sel[1] + 0x100])
     part = (ndir / f"p2_{bank}.bin").read_bytes() if (ndir / f"p2_{bank}.bin").is_file() else bytes(6)
     mine = [c for c in got if c[0] == 0x04]
     check(f"panel: SETUP + SCENE A + knob E wrote one T1 FX2 slot 4 cell in scene 0 ({got})",
@@ -387,6 +398,12 @@ def main():
     knob4 = recs["knob"][0][52]                    # FX2 page-2 slot 4 in the record, no cells
     check(f"panel: the Part's slot 4 byte ({part[4]}) is the knob's ({knob4}): the turn went to the lock",
           bool(mine) and part[4] == knob4)
+    mine_b = [c for c in got_b if c[0] == 0x03]
+    knob3 = recs["knob"][0][51]                    # FX2 page-2 slot 3 in the record, no cells
+    check(f"panel: SETUP + SCENE B + knob D wrote one T1 FX2 slot 3 cell in scene {sel[1]} ({got_b})",
+          len(mine_b) == 1 and sum(c != EMPTY for c in got_b) == 1)
+    check(f"panel: the Part's slot 3 byte ({part[3]}) is the knob's ({knob3}): scene B's turn went to the lock",
+          bool(mine_b) and part[3] == knob3)
     print(f"verify_scenes_p2: {'FAIL' if fails else 'ok'} ({fails} failure(s))")
     return 1 if fails else 0
 

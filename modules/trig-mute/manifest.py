@@ -6,8 +6,9 @@ The mute is stored in the trig word's condition (bits 6-0): stock uses
 0..64, a muted trig holds condition + 65. So the pattern carries it through
 save, load, the battery copy (power cycle), copy and paste with no file or
 battery RAM of its own. 7:8 and 8:8 (63, 64) leave no room and cannot be
-muted. Stock firmware plays a muted trig (it reads > 64 as no condition)
-and shows ERR for its condition.
+muted. Stock firmware, or a remix without TRIG MUTE, clamps a condition
+above 64 to 64 when it loads the pattern: a muted trig becomes an 8:8 trig
+and its own condition is lost.
 
 Five detours, one poke and one key table, sites read from the disassembly
 of 1.40C:
@@ -38,7 +39,8 @@ MODULE = Module(
                "fire, its condition survives edits, its LED blinks, save / reload / power cycle, "
                "under the port (MKI)",
     doc="GRID REC: hold a step + FUNC mutes or unmutes its trig (kept with the pattern; "
-        "the LED blinks).",
+        "the LED blinks). Opened in an image without TRIG MUTE, a muted trig becomes an "
+        "8:8 trig and its condition is lost.",
     linked=(Linked("tmu", "modules/trig-mute/trigmute.s", dram=True),),
     detours=(
         Detour(0x4009d34e, H("4eb9400a5164"), "tmu", "tmu_gate",

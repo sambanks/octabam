@@ -1,7 +1,7 @@
 # `scenes-p2` — SCENES P2
 
 Scene locks and the crossfader for page 2 of FX1 and FX2. `Kind.CF_PATCH`:
-one DRAM unit, seven detours, nothing on the DSP.
+one DRAM unit, nine detours, nothing on the DSP.
 
 ## Open
 
@@ -26,6 +26,14 @@ one DRAM unit, seven detours, nothing on the DSP.
   value. An ISR between two stores sees no lock or a whole one. The order
   is by reading the code; the port is lock-step and cannot interleave the
   ISR with the task.
+
+## For other modules
+
+`p2s_op` reads, sets or removes the held scene's FX2 page-2 lock of a
+given track, slot and part: d1 = 0, 1 or 2, d0 = the value, d2 = slot2,
+d4 = track, d5 = part; d0 returns the value or −1 (read), 0 or −1 when
+the scene's eight cells are full (set). Every other register is kept.
+TEMPO BUS's page-2 rows use it through a weak reference.
 
 ## What stock does
 
