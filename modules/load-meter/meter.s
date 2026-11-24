@@ -98,18 +98,21 @@ lm_scrub:
         addq.l  #1,lm_scrubs                    | every pass, for verify_load_meter
         lea     MAIN_LO,%a0
         lea     lm_raw,%a1
-        moveq   #22,%d1                         | bytes 0..22: the meter record, then OTOP's
+        moveq   #15,%d1                         | bytes 0..15: the meter record, summed
         moveq   #0,%d2                          | the sum of bytes 0..15
-1:      move.b  %a0@,%d0
-        move.b  %d0,%a1@+
+1:      mvz.b   %a0@,%d0
         clr.b   %a0@
         addq.l  #4,%a0
-        cmp.l   #6,%d1                          | d1 = 22 - the byte: bytes 16.. are not summed
-        ble.s   2f
-        and.l   #0xff,%d0
+        move.b  %d0,%a1@+
         add.l   %d0,%d2
-2:      subq.l  #1,%d1
+        subq.l  #1,%d1
         bpl.s   1b
+        moveq   #6,%d1                          | bytes 16..22: its sum byte, then OTOP's record
+2:      move.b  %a0@,%a1@+
+        clr.b   %a0@
+        addq.l  #4,%a0
+        subq.l  #1,%d1
+        bpl.s   2b
         lea     lm_raw,%a1
         moveq   #0,%d0
         move.b  %a1@,%d0
