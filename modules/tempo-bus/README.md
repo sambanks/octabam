@@ -15,6 +15,8 @@ each engine's parameters with the values the host page would show.
 | C–F | held while the window is open |
 | SCENE A or B held + A or B | edits the held scene's lock on the selected parameter, not the Part; the rows show that scene's locks |
 | SCENE A or B held + push A or B, no turn | removes the held scene's lock on the selected parameter |
+| FUNC + REC | copy both boxes' values (slots 2-11 each engine names; DEL and REV are the host page's) |
+| FUNC + STOP | paste the copy onto the Part's delay and reverb hosts, MODE first; again: undo |
 | [TEMPO], [YES], [NO] | close (stock) |
 
 ### Scene locks

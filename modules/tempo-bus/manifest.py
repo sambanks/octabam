@@ -13,6 +13,11 @@ steps whole BPM (the stock 0x4004b918) and 0.1 BPM with FUNC held (the
 stock step 0x4004b824(0, +-1) that UP/DOWN made). YES/NO/TEMPO (close) keep the
 stock window's handlers (layer 0x400bb4ec).
 
+FUNC + REC copies both boxes' values; FUNC + STOP pastes them (MODE first, so
+MODE DEFAULTS' re-default does not overwrite the rest) and a second FUNC + STOP
+undoes the paste. The clipboard is the module's own (CLIP / UNDO in
+tempobus.s), not stock's.
+
 With scene A or B held, A or B edits the held scene's lock on the selected
 row (page 1: stock's lock byte; page 2: a SCENES P2 cell through its
 p2s_op) and a push released with no turn removes it. The scene keys'
@@ -103,7 +108,8 @@ MODULE = Module(
         note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); `verify_set`; carried by image 88 on "
              "Sam's MKII"),),
     doc="The TEMPO window lists and edits BusDelay's and BusVerb's knobs "
-        "(UP/DOWN = row, A or B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM); "
+        "(UP/DOWN = row, A or B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM, "
+        "FUNC + REC / STOP = copy / paste, again to undo); "
         "with a scene held, A or B sets that scene's lock.",
     # DRAM units (8 Oct 2026; pinned in the ROM zero runs at 0x400d24d0 and
     # 0x400d64e0 until then). The helpers link first: the screen calls them.
