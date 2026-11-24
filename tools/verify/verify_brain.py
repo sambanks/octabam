@@ -404,6 +404,14 @@ def main():
             pay += brainfile.Value(2, brainfile.BLOB, a.name.encode() + b"\0").encode()
         return brainfile.Record(kind, "stock.part2", payload=pay)
 
+    # an FX template: ids all 0 (NONE), T1 FX1 slot 0 (key 17) = 77, T2 FX2 slot 3 (key 17 + 3 * 12 + 3) = 99
+    fx_want = {k: 77 if k == 17 else 99 if k == 56 else 0 for k in range(1, 209)}
+    fxs = brainfile.Record(brainfile.TEMPLATE_REC, "stock.fxset", payload=brainfile.prefix_bytes(
+        brainfile.TEMPLATE_REC, layout=0x46585331, name="FX 07")
+        + b"".join(brainfile.Value(k, brainfile.BYTE, bytes([v])).encode() for k, v in fx_want.items()))
+    fxseed = OUT / "tpl_fxset_seed.work"
+    fxseed.write_bytes(brainfile.File(brainfile.CARD_WORK, [fxs]).encode())
+
     logon = OUT / "logon.work"       # MIDI LOG is off by default; these runs read the log
     logon.write_bytes(brainfile.File(brainfile.CARD_WORK, [brainfile.Record(
         brainfile.SETTINGS, "octabam.brain",
@@ -812,26 +820,7 @@ def main():
             check(f"settings: USB's IN is refused while TRACKS, MAIN and CUE are OFF (record, key: value {got}; want TRACKS 0, MAIN 0, CUE 0, IN 0)",
                   got.get(7) == 0 and got.get(8) == 0 and got.get(9) == 0 and got.get(11) == 0)
     if in_group("templates"):
-        page, mw, part_at, _ = tpl_run("tpl_save", (0x20, 0x20, 0x31, 0x31))   # SAVE TEMPLATE, then OK
-        trecs = [r for r in brainfile.parse(mw).records if r.kind == brainfile.TEMPLATE_REC] if mw else []
-        got = {v.key: v.data[0] for v in trecs[0].values()} if len(trecs) == 1 else {}
-        check(f"templates: SAVE TEMPLATE from the shortcut writes one template record of the page "
-              f"({len(trecs)}, name {trecs[0].name() if trecs else None!r})  {got}",
-              len(trecs) == 1 and trecs[0].store_id == brain.fx_store_id(ch) and trecs[0].name().startswith("CHAR 01")
-              and got == {k: page[i] for i, k in enumerate(fx1_keys) if k})
-        P = struct.unpack(">I", rd(FX1_TABLE + 4 * ch.menu.fx2_id, 4))[0]
-        mins, cnts = struct.unpack(">12i", rd(P + 0x6a, 48)), struct.unpack(">12i", rd(P + 0x9a, 48))
-        seedv = [mins[i] + (page[i] - mins[i] + 1) % cnts[i] if cnts[i] > 1 else page[i] for i in range(12)]
-        vals = b"".join(brainfile.Value(k, brainfile.BYTE, bytes([seedv[i]])).encode() for i, k in enumerate(fx1_keys) if k)
-        seed = brainfile.File(brainfile.CARD_WORK, [brainfile.Record(brainfile.TEMPLATE_REC, brain.fx_store_id(ch),
-            payload=brainfile.prefix_bytes(brainfile.TEMPLATE_REC, layout=brain.fx_layout(ch), name="TPL 99") + vals)]).encode()
-        want = bytes(seedv)
-        moves = [i for i, k in enumerate(fx1_keys) if k and want[i] != page[i]]
-        _, _, _, lpage = tpl_run("tpl_load", (0x20, 0x20, 0x20, 0x31, 0x31), seed, part_at)  # LOAD TEMPLATE, TPL 99
-        check(f"templates: LOAD TEMPLATE of a seeded TPL 99 writes its values into T1's FX1 page in the current "
-              f"Part ({len(moves)} keyed slots differ from the page before)  {lpage.hex(' ')}  (expected "
-              f"{want.hex(' ')}, unkeyed slots not compared)",
-              len(moves) >= 1 and len(lpage) == 12 and all(lpage[i] == want[i] for i, k in enumerate(fx1_keys) if k))
+        _, _, part_at, _ = tpl_run("tpl_boot", (0x32,))
     if in_group("templates"):
 
         # ---- templates on the stock targets: T1's AMP and LFO pages, MIDI track 1 --
@@ -897,48 +886,32 @@ def main():
                       chan == 0 or prog >= 128 or pc in tx)
     if in_group("panes"):
 
-        # ---- BRAIN > TEMPLATES: APPLY TO..., RENAME, DELETE, edit, NEW ------------
-        # TEMPLATES has four tabs, PART first, then FX, MIDI, PROJECT; each template's screen is the
-        # actions (APPLY TO..., SET AS DEFAULT where the target has one, SAVE, RENAME, DELETE), a VALUES
-        # line, then its values. card.work seeded with one CHARACTER template TPL 07 (its first slot 5):
-        # the FX tab lists it under a heading.
-        #   load    APPLY TO..., the slot list (T1 FX1 first, CHARACTER there): T1's FX1 page slot 0 becomes 5
+        # ---- BRAIN > TEMPLATES: RENAME, DELETE, NEW -------------------------------
+        # TEMPLATES has four tabs: KIT, FX, MIDI, PROJECT; each template's screen is the actions (APPLY TO,
+        # SET AS DEFAULT where the target has one, SAVE, RENAME, DELETE), a VALUES line, then its values.
+        # card.work seeded with one FX template FX 07 (the FX tab lists it under a heading).
         #   rename  RENAME, the name editor (its cursor opens after the name):
         #           UP sets the character there ('0', measured under the port), YES
         #   delete  DELETE: the record leaves card.work
-        #   edit    RIGHT three times on the first value, SAVE: the record holds 8
         #   new     no card.work: NEW KIT TEMPLATE, YES on the name (KIT 01): one stock.part2 record, the
         #           Part's 6,322 bytes and the project's name
-        tseed = OUT / "tpl_pane_seed.work"
-        tseed.write_bytes(brainfile.File(brainfile.CARD_WORK, [brainfile.Record(brainfile.TEMPLATE_REC, brain.fx_store_id(ch),
-            payload=brainfile.prefix_bytes(brainfile.TEMPLATE_REC, layout=brain.fx_layout(ch), name="TPL 07")
-            + brainfile.Value(fx1_keys[0], brainfile.BYTE, b"\x05").encode())]).encode())
+        tseed = fxseed
         fx_tab = [(0x21, 400), (0x20, 400)]                                               # the FX tab, its first template
         def pane_recs(files):
             w = card_file(files, "BRAIN/CARD.WORK")
             return [(r.store_id, r.name(), {v.key: v.data[0] for v in r.values()})
                     for r in brainfile.parse(w).records if r.kind == brainfile.TEMPLATE_REC] if w else []
-        files, _, (drv0,) = ui_run("tpl_pane_load", [(0x32, 400)] + to_pane + fx_tab + [(0x31, 3000), (0x31, 800), (0x31, 800), (0x31, 2500)],
-                                   roots=((tseed, "BRAIN/card.work"),), dumps=((part_at + 0x8eea6, 1),))
-        check(f"templates: BRAIN > TEMPLATES, APPLY TO... on TPL 07, T1 FX1, sets T1's FX1 slot 0 to 5  {drv0.hex()}",
-              drv0[0] == 5)
-        fid = brain.fx_store_id(ch)
-        files, _, _ = ui_run("tpl_pane_rename", [(0x32, 400)] + to_pane + fx_tab + [(0x31, 3000), (0x20, 500), (0x20, 500), (0x20, 500),
+        files, _, _ = ui_run("tpl_pane_rename", [(0x32, 400)] + to_pane + fx_tab + [(0x31, 3000), (0x20, 500), (0x20, 500),
                                                                           (0x31, 1200), (0x33, 300), (0x31, 2500)],
-                             roots=((tseed, "BRAIN/card.work"),))     # APPLY TO..., SET AS DEFAULT, SAVE, RENAME: the editor
+                             roots=((tseed, "BRAIN/card.work"),))     # APPLY TO FX, SAVE, RENAME: the editor
         recs = pane_recs(files)
-        check(f"templates: BRAIN > TEMPLATES, RENAME on the template's screen renames TPL 07 through the name editor "
-              f"(UP, YES) to TPL 070, its value kept  {recs}", recs == [(fid, "TPL 070", {fx1_keys[0]: 5})])
-        files, _, _ = ui_run("tpl_pane_delete", [(0x32, 400)] + to_pane + fx_tab + [(0x31, 3000)] + [(0x20, 500)] * 4 + [(0x31, 2500)],
+        check(f"templates: BRAIN > TEMPLATES, RENAME on the template's screen renames FX 07 through the name editor "
+              f"(UP, YES) to FX 070, its values kept  {[(r[0], r[1], len(r[2]), r[2] == fx_want) for r in recs]}",
+              len(recs) == 1 and recs[0][:2] == ("stock.fxset", "FX 070") and recs[0][2] == fx_want)
+        files, _, _ = ui_run("tpl_pane_delete", [(0x32, 400)] + to_pane + fx_tab + [(0x31, 3000)] + [(0x20, 500)] * 3 + [(0x31, 2500)],
                              roots=((tseed, "BRAIN/card.work"),))     # ... DELETE
         recs = pane_recs(files)
-        check(f"templates: BRAIN > TEMPLATES, DELETE on the template's screen removes TPL 07  {recs}", recs == [])
-        files, _, _ = ui_run("tpl_pane_edit", [(0x32, 400)] + to_pane + fx_tab + [(0x31, 3000)] + [(0x20, 400)] * 5 + [(0x21, 400)] * 3
-                                                                          + [(0x33, 400)] * 3 + [(0x31, 2500), (0x31, 2500)],
-                             roots=((tseed, "BRAIN/card.work"),))     # DOWN x5 to the first value (past the VALUES line), RIGHT x3, UP x3 to SAVE
-        recs = pane_recs(files)
-        check(f"templates: BRAIN > TEMPLATES, the template's screen: RIGHT three times raises the first value 5 to 8 "
-              f"and SAVE writes it  {recs}", recs == [(fid, "TPL 07", {fx1_keys[0]: 8})])
+        check(f"templates: BRAIN > TEMPLATES, DELETE on the template's screen removes FX 07  {recs and len(recs)}", recs == [])
         files, _, _ = ui_run("tpl_pane_new", [(0x32, 400)] + to_pane + [(0x31, 1200), (0x31, 4000)])
         w_ = card_file(files, "BRAIN/CARD.WORK")
         prec = [r for r in brainfile.parse(w_).records if r.kind == brainfile.TEMPLATE_REC] if w_ else []
@@ -994,16 +967,9 @@ def main():
     if in_group("panes"):
 
         # ---- an FX template (the FX tab): the FX1 and FX2 ids and pages of the eight tracks -----------
-        # Seeded record: ids all 0 (NONE), T1 FX1 slot 0 (key 17) = 77, T2 FX2 slot 3 (key 17 + 3 * 12 + 3) = 99.
-        # APPLY TO FX: those two Part bytes take the values and every byte that changed is in an FX piece.
+        # APPLY TO FX: T1 FX1 slot 0 and T2 FX2 slot 3 of the seeded record take its values and every byte that changed is in an FX piece.
         # NEW FX TEMPLATE: one stock.fxset record with the 208 values, equal to the Part's.
-        fxs = brainfile.Record(brainfile.TEMPLATE_REC, "stock.fxset", payload=brainfile.prefix_bytes(
-            brainfile.TEMPLATE_REC, layout=0x46585331, name="FX 07")
-            + b"".join(brainfile.Value(k, brainfile.BYTE, bytes([77 if k == 17 else 99 if k == 56 else 0])).encode()
-                       for k in range(1, 209)))
-        fxseed = OUT / "tpl_fxset_seed.work"
-        fxseed.write_bytes(brainfile.File(brainfile.CARD_WORK, [fxs]).encode())
-        fx_set_tab = [(0x21, 400)] * 4
+        fx_set_tab = [(0x21, 400)]
         files, _, (fx0,) = ui_run("tpl_fxset_apply0", [(0x32, 400)], dumps=((part_at + 0x8ed80, 6322),))
         files, _, (fx1,) = ui_run("tpl_fxset_apply", [(0x32, 400)] + to_pane + fx_set_tab + [(0x20, 400), (0x31, 3000), (0x31, 2500)],
                                   roots=((fxseed, "BRAIN/card.work"),), dumps=((part_at + 0x8ed80, 6322),))
