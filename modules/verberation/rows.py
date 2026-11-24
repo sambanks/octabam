@@ -1,6 +1,6 @@
-"""The VERBERATION rows on the stock reverbs' ids (octabam-verbs): each one is VERBERATION's knobs, modes and code
-(MenuEntry.dsp_of) under its own name, starting on one MODE with that mode's knob values as its defaults. A Part saved
-with PLATE, SPRING or DARK REV opens on the row that took that reverb's id."""
+"""The VERBERATION rows on the stock reverbs' ids (octabam-verbs, hidden there: no chooser row): each one is
+VERBERATION's knobs, modes and code (MenuEntry.dsp_of) on one stock id, with one MODE's knob values as its defaults.
+VERB PARTS reads those defaults to move a Part saved with PLATE, SPRING or DARK REV onto VERBERATION in that mode."""
 import dataclasses
 import pathlib
 import runpy

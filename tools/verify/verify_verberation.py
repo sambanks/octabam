@@ -22,6 +22,11 @@ FX2 slot (`-r7 2 -alloc 1`, Y:0x4000). Gates:
   gate      GATE 40: open during the hold; then a desk gate's release (70-110 ms in, 4 to 25 dB
             under the ungated tail, not a cut); shut after it; the tank empty when it reopens
             (a second impulse, 190 ms after the gate shuts, rings as it does alone); against the float model
+  pre       PRE moves the wet onset by 24 PRE samples at every SIZE (SIZE 127 included: the long
+            delay gives up the room), against the model; no write outside the ring
+  amnt      to 64 the dry is at unity under the wet, at 127 it is gone; against the model
+  kill      MODE's field at 127 (the stop kill, kill.s) for 60 blocks: the output is the input
+            exactly, and from the kill on a run with a ringing tail is bit-identical to one from silence
   dirty     X and Y filled with garbage before the first call: the output
             from silence is silent
 What it cannot see: the real allocator's bases (dsp_host places the FX2 slot by
@@ -112,9 +117,12 @@ def model(samples, params, blocks_skip):
     ph1 = ph2 = 0
     amt = gc = krt = kap = klp = 0
     lp1 = lp2 = 0.0
-    sz_f = mod_s = lc = 0                # page 2's smoothed values: SIZE's f, MOD's offset, LCUT's c
+    sz_f = mod_s = lc = pdq = 0          # page 2's smoothed values: SIZE's f, MOD's offset, LCUT's c, PRE (1/256)
     hp1 = hp2 = 0.0
-    _mode, lcut, mod, rate, size, pre = list(params[6:12]) + pg2()[len(params[6:12]):]
+    mode, lcut, mod, rate, size, pre = list(params[6:12]) + pg2()[len(params[6:12]):]
+    g_er = 0x500000 if mode == 0 else 0          # ROOM: the input diffuser's output into the wet
+    k_t = 0x7FFFFF if mode == 3 else 0           # 80S: the gate keyed on transients
+    hall = mode == 2
     p = 0
     env = hold = gs = 0
     hmax = 0x7FFFFF if params[5] == 0 else 2048 + 256 * params[5]
@@ -128,6 +136,8 @@ def model(samples, params, blocks_skip):
                 out_l.append(samples[2 * (blk * FRAMES + s)]); out_r.append(samples[2 * (blk * FRAMES + s) + 1])
             continue
         amt = smooth(amt, k[0])
+        W = min(2 * amt, Q - 1) / Q      # AMNT's law: the wet to full by 64, then the dry fades out
+        Kd = min(mulf(max(amt - 0x400000, 0), 0x410410) * 4, Q - 1) / Q
         gc = smooth(gc, k[1] >> 3)
         krt = smooth(krt, mulf(k[2], 0x50A3D7) + 0x2CCCCD)
         kap = smooth(kap, mulf(k[3], 0x666666))
@@ -135,14 +145,20 @@ def model(samples, params, blocks_skip):
         # page 2, as verberation.asm computes it each block
         sz_f = smooth(sz_f, mulf((127 - size) << 16, 0x6734EE))
         ln = [LEN[j] - mulf(LEN[j], sz_f) for j in range(10)]      # read lengths (lines 4-9 used)
-        mod_s = smooth(mod_s, (mod << 16) - 0x400000)
-        d2 = mulf(2 * (0x061000 - mulf(0x061000, sz_f)), 0x400000 + mod_s)     # the swing, Q12 samples
-        centre = ln[9] - 2 - (d2 >> 12)
-        # PRE: in the long delay's far end, past its tap; m - 2 words of room, none at SIZE 127
+        def wide(v):                     # MOD's and RATE's law: v/256 + max(0, v - 64)/128, Q23
+            return ((v << 16) >> 1) + max(0, (v << 16) - 0x400000)
+        mod_s = smooth(mod_s, wide(mod) - 0x200000)
+        d2 = mulf(4 * (0x061000 - mulf(0x061000, sz_f)), 0x200000 + mod_s)     # the swing, Q12 samples
+        # PRE: 24 PRE samples, smoothed in 1/256 samples and rounded, in the long delay's far end past its
+        # tap; past what SIZE leaves (m - 2) it takes the room from the long delay (m' = pd + 2)
+        pdq = smooth(pdq, (24 * pre) << 8)
+        pd = (pdq + 0x80) >> 8
         m9 = mulf(4167, sz_f)
-        pd = min(32 * pre, max(0, m9 - 2))
+        m9 = max(m9, pd + 2 if pd else 0)
+        active = pd != 0
+        centre = 4165 - m9 - (d2 >> 12)
         pkw = 4168 - m9                  # the write cell, as an offset into line 9
-        inc1, inc2 = mulf(380, rate << 16), mulf(228, rate << 16)
+        inc1, inc2 = mulf(760, wide(rate)), mulf(456, wide(rate))
         u = lcut << 16
         lc = smooth(lc, mulf(mulf(u, u), 0x12866A))
         C = lc / Q
@@ -151,10 +167,11 @@ def model(samples, params, blocks_skip):
         kint1, fr1 = t1 >> 12, (t1 & 0xFFF) << 11
         t2 = mulf(parab(ph2), d2)
         kint2, fr2 = centre + (t2 >> 12), (t2 & 0xFFF) << 11
+        t6 = mulf(-parab(ph2), d2) if hall else 0           # HALL: delay 1 swung in antiphase
+        kint6, fr6 = ln[6] - 2 - ((d2 >> 12) if hall else 0) + (t6 >> 12), (t6 & 0xFFF) << 11
         K, G, R, L = kap / Q, gc / Q, krt / Q, klp / Q
         if gs == 0:                      # the gate shut at the block's start: the tank empties
             R = K = 0.0
-        A = amt / Q
         def cell(j, kk): return (p - BASE[j] - kk) % N
         def rd(j, kk): return ring[cell(j, kk)]
         def wr_(j, kk, v): ring[cell(j, kk)] = max(-1.0, min(1.0 - 1 / Q, v))
@@ -165,23 +182,23 @@ def model(samples, params, blocks_skip):
             m = min(abs(mean_i), Q - 1)
             env2 = env - (env >> 9)
             env = env2 + max(m - env2, 0)
+            trig = env * Q - 2 * env2 * k_t - 0x010000 * Q
             hold = max(hold - 1, 0)
             if hmax == 0x7FFFFF:
                 hold = hmax
-            if env - 0x010000 > 0:
+            if trig > 0:
                 hold = hmax
             if hold:                     # a desk gate: open, rise 1/32 a sample
                 gs = gs + (((Q - 1) - gs) >> 5)
             else:                        # shut: fall 1/2048 a sample; 0 below 2^-11
-                gs = gs - (gs >> 11)
-                if gs - 0x001000 < 0:
-                    gs = 0
+                ex = gs * 2047                     # gs - gs/2048, exactly, in 1/2048 LSB
+                gs = 0 if ex < 0x001000 * 2048 else ex >> 11
             G_ = gs / Q
             # smear
             a0 = rd(0, kint1); b0 = rd(0, kint1 + 1)
             wr_(0, 100, a0 + (b0 - a0) * fr1 / Q)
             x_in = (l_in + r_in) / 2
-            if pd:
+            if active:
                 wr_(9, pkw, x_in); x_in = rd(9, pkw + pd)
             acc = x_in * G
             for j in range(4):
@@ -196,16 +213,23 @@ def model(samples, params, blocks_skip):
             d = acc - hp1; acc = d - C * d; hp1 += C * d
             r = rd(4, ln[4] - 1); acc += -K * r; wr_i(4, acc); acc = r + K * max(-1, min(1, acc))
             r = rd(5, ln[5] - 1); acc += K * r; wr_i(5, acc); acc = r - K * max(-1, min(1, acc))
-            wr_i(6, acc); wet = max(-1, min(1, 2 * acc)) * G_
-            out_l.append(max(-1, min(1, l_in + (8 * wet - l_in) * A)) * Q)
+            wr_i(6, acc)
+            if g_er:
+                acc += 2 * g_er / Q * apout
+            wet = max(-1, min(1, 2 * acc)) * G_
+            out_l.append(max(-1, min(1, l_in + 8 * wet * W - l_in * Kd)) * Q)
             # second half
-            acc = apout + rd(6, ln[6] - 1) * R
+            a6 = rd(6, kint6); b6 = rd(6, kint6 + 1)
+            acc = apout + (a6 + (b6 - a6) * fr6 / Q) * R
             lp2 += L * (acc - lp2); acc = lp2
             d = acc - hp2; acc = d - C * d; hp2 += C * d
             r = rd(7, ln[7] - 1); acc += K * r; wr_i(7, acc); acc = r - K * max(-1, min(1, acc))
             r = rd(8, ln[8] - 1); acc += -K * r; wr_i(8, acc); acc = r + K * max(-1, min(1, acc))
-            wr_i(9, acc); wet = max(-1, min(1, 2 * acc)) * G_
-            out_r.append(max(-1, min(1, r_in + (8 * wet - r_in) * A)) * Q)
+            wr_i(9, acc)
+            if g_er:
+                acc -= 2 * g_er / Q * apout
+            wet = max(-1, min(1, 2 * acc)) * G_
+            out_r.append(max(-1, min(1, r_in + 8 * wet * W - r_in * Kd)) * Q)
             p = (p + 1) % N
     return out_l, out_r
 
@@ -329,35 +353,105 @@ def main():
           low_db(lv["LCUT 90"]) < low_db(L) - 6)
     _, _, logp = host(imp[:400 * FRAMES], params + pg2(size=0, mod=127, rate=127), extra=["-guard", str(N), "-guard-shared"])
     check("page 2: SIZE 0, MOD 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logp)
-    # PRE: a predelay in the long delay's unread far end (room = m - 2 words, m = 4167 f), so it
-    # clamps to what SIZE leaves and is nothing at SIZE 127
+    # PRE: a predelay of 24 PRE samples in the long delay's far end, past its tap. Where SIZE leaves less
+    # than pd + 2 words there, the long delay's tap moves in to make the room: PRE works at every SIZE
     pim = [0] * (blocks * FRAMES)
-    pt0 = (CLEAR_CALLS + 200) * FRAMES   # after the knobs (SIZE's f included) have settled
+    pt0 = (CLEAR_CALLS + 200) * FRAMES   # after the knobs (SIZE's f and PRE's glide) have settled
     pim[pt0] = int(0.5 * Q)
     pst = [v_ for s_ in pim for v_ in (s_, s_)]
     wetp = [127, 51, 80, 100, 90, 0]
     def onset(x):                        # the first wet sample after the impulse
         return next(i for i in range(pt0 + 1, len(x)) if abs(x[i]) > 64) - pt0
-    def room(size):                      # the model's arithmetic for the settled f
-        f = mulf((127 - size) << 16, 0x6734EE)
-        return max(0, mulf(4167, f) - 2)
     on = {}
-    for size, pre in ((60, 0), (60, 40), (90, 127), (127, 0), (127, 127)):
+    for size, pre in ((60, 0), (60, 40), (90, 0), (90, 127), (127, 0), (127, 127)):
         Lq, Rq, _ = host(pim, wetp + pg2(size=size, pre=pre))
         on[(size, pre)] = (onset(Lq), Lq, Rq)
-    mq, _ = model(pst, wetp + pg2(size=60, pre=40), CLEAR_CALLS)
-    sq = snr_db(mq[pt0:pt0 + 8000], on[(60, 40)][1][pt0:pt0 + 8000])
-    check(f"pre: SIZE 60, PRE 40 against the float model, {sq:.1f} dB over 8,000 samples", sq > 50)
-    sh = on[(60, 40)][0] - on[(60, 0)][0]
+    for size, pre in ((60, 40), (127, 127)):
+        mq, _ = model(pst, wetp + pg2(size=size, pre=pre), CLEAR_CALLS)
+        sq = snr_db(mq[pt0:pt0 + 8000], on[(size, pre)][1][pt0:pt0 + 8000])
+        check(f"pre: SIZE {size}, PRE {pre} against the float model, {sq:.1f} dB over 8,000 samples", sq > 50)
     # the onset is a threshold crossing on a smeared, modulated response: +-2 samples of slack
-    check(f"pre: PRE 40 at SIZE 60 moves the wet onset by {sh} samples (32 x 40 = 1,280)", abs(sh - 1280) <= 2)
-    sh90 = on[(90, 127)][0] - on[(127, 0)][0]
-    check(f"pre: PRE 127 at SIZE 90 is clamped to the room, {room(90)} samples (onset moved {sh90})",
-          abs(sh90 - room(90)) <= 2 and room(90) < 32 * 127)
-    check("pre: at SIZE 127 there is no room, and PRE 127 is bit-exact PRE 0",
-          on[(127, 127)][1] == on[(127, 0)][1] and on[(127, 127)][2] == on[(127, 0)][2])
+    for size, pre in ((60, 40), (90, 127), (127, 127)):
+        sh = on[(size, pre)][0] - on[(size, 0)][0]
+        check(f"pre: PRE {pre} at SIZE {size} moves the wet onset by {sh} samples (24 x {pre} = {24 * pre:,})",
+              abs(sh - 24 * pre) <= 2)
     _, _, logq = host(imp[:400 * FRAMES], params + pg2(size=0, pre=127), extra=["-guard", str(N), "-guard-shared"])
     check("pre: SIZE 0, PRE 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logq)
+    _, _, logq = host(imp[:400 * FRAMES], params + pg2(size=127, mod=127, pre=127), extra=["-guard", str(N), "-guard-shared"])
+    check("pre: SIZE 127, MOD 127, PRE 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logq)
+    # AMNT's law: to 64 the dry stays at unity, at 127 it is gone. GAIN 0 sends nothing into the tank, so
+    # the output is the dry alone. Against the model at 30 and 127.
+    for amnt in (30, 64):
+        La, Ra, _ = host(imp, [amnt, 0] + params[2:] + TAIL)
+        check(f"amnt: AMNT {amnt} keeps the dry at unity (GAIN 0: the output is the input exactly)",
+              La == imp and Ra == imp)
+    La, _, _ = host(pim, [127, 0] + params[2:] + TAIL)     # its impulse comes after AMNT's glide has settled
+    check(f"amnt: AMNT 127 takes the dry out (GAIN 0: {La[pt0]} where the input is {pim[pt0]}, under -96 dB)",
+          abs(La[pt0]) < pim[pt0] >> 16)
+    for amnt in (30, 127):
+        La, Ra, _ = host(imp, [amnt] + params[1:] + TAIL)
+        mL_, mR_ = model(st, [amnt] + params[1:], CLEAR_CALLS)
+        sa = min(snr_db(mL_[n0:], La[n0:]), snr_db(mR_[n0:], Ra[n0:]))
+        check(f"amnt: AMNT {amnt} against the float model, {sa:.1f} dB", sa > 50)
+    # the stop kill: MODE's field at 127 (kill.s writes it while the kill holds) cuts to dry and clears the
+    # state and the ring. A run with a ringing tail and a run with silence before the kill are bit-identical
+    # from the kill on, and the output is the input exactly while it holds.
+    kb, kn = CLEAR_CALLS + 400, 60       # the kill's first block, and its length in blocks
+    kf = TMP / "kill.txt"
+    live, dead = params + TAIL, params + [127] + TAIL[1:]
+    kf.write_text(f"0,{','.join(map(str, live))}\n{kb},{','.join(map(str, dead))}\n"
+                  f"{kb + kn},{','.join(map(str, live))}\n")
+    kin = list(imp)
+    for i in range(kb * FRAMES, (kb + 10) * FRAMES):
+        kin[i] = int(0.2 * Q * (random.random() - 0.5))
+    k2 = (kb + kn + 30) * FRAMES
+    kin[k2] = int(0.5 * Q)
+    quiet = [0] * (kb * FRAMES) + kin[kb * FRAMES:]
+    ext = ["-paramfile", str(kf)]
+    Lk, Rk, _ = host(kin, live, extra=ext)
+    Lq_, Rq_, _ = host(quiet, live, extra=ext)
+    a0 = kb * FRAMES
+    check("kill: the tail before the kill rings (it is there to be cut)", rms_db(Lk[a0 - 4000:a0]) > -100)
+    check("kill: the output is the input exactly while the kill holds",
+          Lk[a0:(kb + kn) * FRAMES] == kin[a0:(kb + kn) * FRAMES] and Rk[a0:(kb + kn) * FRAMES] == kin[a0:(kb + kn) * FRAMES])
+    check("kill: after it, a hit rings exactly as it does from silence (the tank and the state are clear)",
+          Lk[a0:] == Lq_[a0:] and Rk[a0:] == Rq_[a0:])
+    check("kill: and the reverb is back after it", rms_db(Lk[k2 + 2000:k2 + 6000]) > -90)
+    # MODE: each mode is its own algorithm, against the model. ROOM adds early reflections (three taps a side
+    # off the input line), HALL swings delay 1 as well as delay 2, 80S keys the gate on transients.
+    for mode, name in ((0, "ROOM"), (2, "HALL"), (3, "80S")):
+        pgm = pg2(mode=mode, mod=127) if mode == 2 else pg2(mode=mode)
+        gk = [40] if mode == 3 else [0]
+        Lm, Rm, _ = host(imp, params[:5] + gk + pgm)
+        mmL, mmR = model(st, params[:5] + gk + pgm, CLEAR_CALLS)
+        s8 = min(snr_db(mmL[n0:n0 + 8000], Lm[n0:n0 + 8000]), snr_db(mmR[n0:n0 + 8000], Rm[n0:n0 + 8000]))
+        sw = min(snr_db(mmL[n0:], Lm[n0:]), snr_db(mmR[n0:], Rm[n0:]))
+        check(f"mode: {name} against the float model, {s8:.1f} dB over 8,000 samples, {sw:.1f} dB whole",
+              s8 > 50 and sw > 40)
+    early = lambda x: rms_db(x[pt0 + 100:pt0 + 900])           # 2 to 20 ms after the impulse
+    Lr_, _, _ = host(pim, wetp + pg2(mode=0, size=35))
+    Lp_, _, _ = host(pim, wetp + pg2(mode=1, size=35))
+    check(f"mode: ROOM's early reflections ({early(Lr_):.1f} dB against PLATE's {early(Lp_):.1f} dB, 2-20 ms in)",
+          early(Lr_) > early(Lp_) + 6)
+    _, _, logm = host(imp[:400 * FRAMES], params + pg2(mode=2, size=0, mod=127, rate=127), extra=["-guard", str(N), "-guard-shared"])
+    check("mode: HALL, SIZE 0, MOD 127: no write outside the ring", "0 stray write regions, 0 CLOBBERING" in logm)
+    # 80S's key: a hit, then steady noise that never goes quiet. Keyed on level (PLATE with GATE) the gate
+    # stays open on the noise; keyed on the hit (80S) it shuts after the hold and the release
+    busy = [0] * (blocks * FRAMES)
+    b0 = (CLEAR_CALLS + 100) * FRAMES
+    busy[b0] = int(0.6 * Q)
+    for i in range(b0 + 1, len(busy)):
+        busy[i] = int(0.1 * Q * (random.random() - 0.5))
+    bp = [127, 51, 100, 100, 90, 10]
+    Lb1, _, _ = host(busy, bp + pg2(mode=1))
+    Lb3, _, _ = host(busy, bp + pg2(mode=3))
+    win = lambda x: rms_db(x[b0 + 44100:b0 + 44100 + 8000])
+    check(f"mode: 80S shuts on steady noise after a hit ({win(Lb3):.1f} dB), the level key stays open ({win(Lb1):.1f} dB)",
+          win(Lb3) < win(Lb1) - 40)
+    bst = [v_ for s_ in busy for v_ in (s_, s_)]
+    mb3, _ = model(bst, bp + pg2(mode=3), CLEAR_CALLS)
+    sb = snr_db(mb3[n0:], Lb3[n0:])
+    check(f"mode: 80S on the busy input against the float model, {sb:.1f} dB", sb > 40)
     # bounds
     _, _, log = host(imp[:200 * FRAMES], params + TAIL, extra=["-guard", str(N), "-guard-shared"])
     check(f"bounds: -guard {N}, no write outside the ring", "0 stray write regions, 0 CLOBBERING" in log, log.strip().splitlines()[-1][:100] if log.strip() else "")

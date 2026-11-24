@@ -187,6 +187,8 @@ class Book:
                 m = mods.get(k)
                 if m is None or m.is_stock:
                     continue
+                if k in r.hidden and m.menu is not None and m.menu.dsp_of:
+                    continue                      # an alias id with no chooser row (octabam-verbs' VERB rows)
                 self.has.setdefault(k, []).append(name)
 
     def documented(self):
