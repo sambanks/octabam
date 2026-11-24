@@ -7,8 +7,8 @@
 ; No bus, no buffers, no shared window.
 ;
 ;   fb  = FDBK * tone_lp * polarity      (NOT driven — drive×fb self-oscillates)
-;   d   = dry * (1 + 8*DRV) + fb         DRV 0 = unity; 127 ≈ ×9 on dry only
-;   f   = fold(d*(1+8*FOLD)) or d        FOLD 0 = unity skip; 1+ only louder/more fold
+;   d   = dry * (1 + 8*DRV) + fb         DRV 0 = unity; compensated after fold
+;   f   = fold(d*(1+8*FOLD))*sqrt(1/(2+FOLD/8)) FOLD 0 = unity skip
 ;   c   = hard/soft clip(f)              MODE HARD / SOFT / CHAOS
 ;   w   = srr then brr(c)                CRSH (LOFI2-style $400000 phase)
 ;   fb  = tone_lp(w)                     TONE in the loop
@@ -27,8 +27,9 @@
 ;     $09 srr wrap (1 this sample)  $0a brr n (0..12)  $0b srr inc
 ;     $0c clip thresh  $0d lim level_s  $19 lim thresh (0 = LIM off)
 ;     $1a lim gain  $1b mixed L  $1c mixed R  $1d block peak  $1e block start
+;     $1f DRV/FOLD gain compensation (computed once per block)
 ;     $10..$18 per-block: drv, fold, clip, crsh, fdbk, mix, mode, tone, rate
-; Every mpy is x0,y1 or y0,x0 (signed). No rep. init preserves r1.
+; Multipliers use audited signed/nonnegative operand pairs. No rep. init preserves r1.
 ; SRR phase is stored from a1 (never move a,x: -- that saturates and sticks).
 ; ---------------------------------------------------------------------------
 
@@ -51,6 +52,7 @@ init:
         move    a,x:(r7+$1a)            ; lim gain
         move    a,x:(r7+$1b)            ; mixed L stash
         move    a,x:(r7+$1c)            ; mixed R stash
+        move    a,x:(r7+$1f)            ; DRV/FOLD gain compensation
         move    #>$7fffff,x0            ; polarity +1
         move    x0,x:(r7+$07)
         rts
@@ -63,6 +65,43 @@ proc:
         move    x:(r6+$1),a             ; FOLD
         and     #>$7f0000,a             ; LFO low byte must not arm the stage
         move    a,x:(r7+$11)
+        tst     a
+        beq     shfoldunity
+; Partial compensation from the 128-entry table. sqrt(reciprocal small-signal
+; gain) leaves more level in the folded signal than full inverse compensation.
+        asr     #$10,a,a
+        move    a1,n1
+        move    #>$fab1e0,r1
+        move    (r1)+n1
+        move    p:(r1),a
+        move    a,x:(r7+$1f)
+        bra     shfoldgainready
+shfoldunity:
+        move    #>$7fffff,a
+        move    a,x:(r7+$1f)
+shfoldgainready:
+; DRV multiplies the dry path by 1 + 8*DRV. Its reciprocal is
+; (1/16) / (1/16 + DRV/2); combine with FOLD compensation.
+        move    x:(r7+$10),a
+        tst     a
+        beq     shdrvunity
+        asr     #$1,a,a
+        move    #>$080000,b
+        add     b,a
+        move    a,x0
+        move    #>$080000,a
+        andi    #$fe,ccr
+        do      #$18,>shdrvquot
+        div     x0,a
+shdrvquot:
+        move    a0,y1
+        bra     shdrvcombine
+shdrvunity:
+        move    #>$7fffff,y1
+shdrvcombine:
+        move    x:(r7+$1f),x0
+        mpy     x0,y1,a
+        move    a,x:(r7+$1f)
         move    x:(r6+$2),a             ; CLIP -> thresh = 1 - CLIP*0.875/128
         and     #>$7f0000,a
         move    a,x:(r7+$12)            ; raw CLIP (0 = skip stage)
@@ -123,9 +162,9 @@ shc0:
         cmp     x0,b
         tlt     x0,b
         move    b,x:(r7+$0b)
-        move    x:(r6+$4),a             ; FDBK / 2 (headroom)
+        move    x:(r6+$4),a             ; FDBK / 4 (loop gain capped at 0.25)
         and     #>$7f0000,a
-        asr     #$1,a,a
+        asr     #$2,a,a
         move    a,x:(r7+$14)
         move    x:(r6+$5),a             ; MIX; 127 -> full scale
         and     #>$7f0000,a
@@ -190,7 +229,7 @@ sh00:
         mpy     x0,y1,a
         add     b,a                     ; driven dry + undriven fb
         move    a,y0
-; ---- FOLD (skip at 0 = unity; else fold(v*(1+8*FOLD)) — never below unity)
+; ---- FOLD (skip at 0 = unity; otherwise compensate measured drive gain)
         move    x:(r7+$11),a
         tst     a
         beq     sh01
@@ -284,6 +323,11 @@ sh08:
         add     b,a
         move    a,x:(r7+$05)
         move    a,x:(r7+$00)
+; Compensate after the nonlinear chain so DRV still drives CLIP and FOLD.
+; The feedback state above remains pre-compensation.
+        move    x:(r7+$1f),y1
+        mpy     y0,y1,a
+        move    a,y0
         move    x:(r0),b                ; dry L
         move    y0,a
         sub     b,a                     ; wet - dry
@@ -385,6 +429,9 @@ sh15:
         add     b,a
         move    a,x:(r7+$06)
         move    a,x:(r7+$01)
+        move    x:(r7+$1f),y1
+        mpy     y0,y1,a
+        move    a,y0
         move    x:(r0+n0),b             ; dry R (r0 still on L)
         move    y0,a
         sub     b,a
