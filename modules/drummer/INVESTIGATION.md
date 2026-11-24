@@ -175,15 +175,18 @@ trig (6 = 1X until one is seen), CX OSC on `0x400d6458`.
 
 ## Phase 4b (5 Nov 2026): the machine and its two pages (port)
 
-`machine.s` (derived from ANALOG BD's registration, repeat98): DRUMMER is
-row 5 of the machine list; a DRUMMER track is FLEX signed "DR",1 at Part
-`+0x2a + 18 + 30t` (and the battery copy); a first signing seeds the twelve
-knob bytes. adapter.c: `dr_type`, the page descriptor (FLEX's, cloned from
+The machine row is MACHINES's now (`modules/machines`, derived from ANALOG
+BD's registration, repeat98; DRUMMER is a client): DRUMMER is a row of the
+machine list (5 alone); a DRUMMER track is FLEX signed "DR",1 at Part
+`+0x2a + 18 + 30t` (and the battery copy), its row from `mc_type`; a first
+signing seeds the twelve knob bytes (`dr_mc_defaults`). adapter.c: the page
+descriptor (`dr_mc_page`; FLEX's, cloned from
 `0x400d3176`, twelve names, STYL 3 values with BRKB/HHOP/FUNK, all twelve
 drawn: nibble words `P+0x18a` = 0x1111, `P+0x18e` = 0x11111111 — ANALOG BD's
 words hid p6 and p11, measured on the screen), the Part validator (FLEX
-defaults during stock's check, then DRUMMER's bytes back), PB_TABLE[5] each
-UI tick. The DRUMMER tracks are now the signed ones (checked at each build
+defaults during stock's check, then DRUMMER's bytes back: MACHINES's
+`mc_validate`, KIT BALANCE through `dr_mc_keep`), PB_TABLE[row] each UI tick
+(`mc_publish`). The DRUMMER tracks are now the signed ones (checked at each build
 and each frame; the start's rebuilds come before any frame decision).
 
 Pages: LIVE (SRC) STYL DENS CPLX HUMN BRK GHST — page record words, scenes
@@ -313,11 +316,13 @@ fixed since, under the port:
 list). Its key handler `0x4003d1c0(key)`: RIGHT (`0x21`) with focus 0 opens
 the slot list of the cursor's machine, cursor 0 STATIC, 1 FLEX, anything else
 nothing (DRUMMER's row 5 did nothing, measured); LEFT (`0x34`) with focus 1
-goes back. YES with focus 1 commits through `0x4005a850` (dr_src_commit2,
-measured with `--watch-pc`). `dr_setup_key` (detour at `0x4003d1c0`) sets the
-cursor to FLEX on RIGHT from row 5 and marks the pick (`dr_ml_pick`): stock's
-list, preview and commit run as FLEX's, the commit signs DRUMMER, LEFT puts
-row 5 back, PLAYBACK SETUP's opening ends a pick. PB_TABLE[1] is DRUMMER's
+goes back. YES with focus 1 commits through `0x4005a850` (MACHINES's
+`mc_src_commit2`, measured with `--watch-pc`), and focus stays 1.
+MACHINES's `mc_setup_key` (detour at `0x4003d1c0`) sets the cursor to FLEX
+on RIGHT from DRUMMER's row and marks the pick (`mc_pick`): stock's list,
+preview and commit run as FLEX's, the commit signs DRUMMER, LEFT puts the
+row back. PLAYBACK SETUP's opening ends a pick, and so does its closing from
+the slot list (NO, FUNC + SRC: the window word `0x460d175c` changes). PB_TABLE[1] is DRUMMER's
 page during the pick so the six SETUP knobs beside the list stay CONFIG's
 (without it they drew as LOOP/SLIC... and knob A wrote SEED through LOOP's
 range). Measured: T1 DRUMMER, RIGHT, UP, YES puts slot 135 in Part `+0x2ca +

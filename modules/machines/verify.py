@@ -36,17 +36,23 @@ FLEX = 1
 TEST_CLIENTS = (
     ("TA", "ta", b"TA\x01", "TESTA", FLEX, True, ("page", "tick", "keep")),
     ("TB", "tb", b"TB\x02", "TESTB", FLEX, False, ("page",)),
+    ("TC", "tc", b"TC\x03", "TESTC", FLEX, False, ("page",)),
 )
-PAGES = {"TA": 0x41A00000, "TB": 0x41B00000}
+PAGES = {"TA": 0x41A00000, "TB": 0x41B00000, "TC": 0x41B80000}
+DEFAULTS = {"TA": bytes(range(1, 13)), "TB": bytes(range(21, 33)), "TC": bytes(range(41, 53))}
 TICKS, KEEPS, SEEN = 0x41C00000, 0x41C00004, 0x41C00008
 TEST_UNIT = f"""
         .text
         .global ta_mc_page, ta_mc_tick, ta_mc_keep, ta_mc_defaults, tb_mc_page, tb_mc_defaults
+        .global tc_mc_page, tc_mc_defaults
 ta_mc_page:
         move.l  #0x{PAGES['TA']:08x},%d0
         rts
 tb_mc_page:
         move.l  #0x{PAGES['TB']:08x},%d0
+        rts
+tc_mc_page:
+        move.l  #0x{PAGES['TC']:08x},%d0
         rts
 ta_mc_tick:
         addq.l  #1,(0x{TICKS:08x}).l
@@ -58,6 +64,8 @@ ta_mc_defaults:
         .byte   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
 tb_mc_defaults:
         .byte   21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
+tc_mc_defaults:
+        .byte   41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52
 """
 # The stock validator's body (0x40002320, after the prologue mc_stock_validate replays):
 # record track 2's first knob byte as stock saw it, clamp it, return as stock returns.
@@ -75,6 +83,7 @@ BANK, PARTX, SRAM = 0x42000000, 0x42000000 + 0x8ED80, 0x100A4ECE
 STACK, DONE = 0x47008000, 0x4700FFF0
 PB_TABLE, FLEX_DEFAULTS = 0x400D5F38, 0x400D320C
 SRC_CURSOR, SRC_FOCUS, LIST, CUR_TRACK = 0x460D5C30, 0x460D1A48, 0x460E7386, 0x100B14CC
+SRC_WIN, SRC_WIN_OPEN = 0x460D175C, 0x46C7D34C       # SRC SETUP's window, as measured under the port
 STOPS = (0x400334DE, 0x4003D722, 0x4004C374, 0x4003C986, 0x400786A2, 0x400786D4, 0x400786FC, 0x400585E6,
          0x40078890, 0x4003A536, 0x4003A624, 0x4003CDA0, 0x40079822, 0x4005A61C, 0x4005A856, 0x40031ED6,
          0x40031ECE, 0x4003C058, 0x4003C054, 0x4003D1CC, 0x40052228, DONE)
@@ -138,7 +147,7 @@ def unicorn(clients):
         u.mem_write(CUR_TRACK, b"\x02")
         for i, p in enumerate(stock_pages):
             wr(PB_TABLE + 4 * i, p)
-        for a in (TICKS, KEEPS, SEEN, SRC_CURSOR, SRC_FOCUS):
+        for a in (TICKS, KEEPS, SEEN, SRC_CURSOR, SRC_FOCUS, SRC_WIN):
             wr(a, 0)
         u.mem_write(sym["mc_pick"], b"\x00")
         u.mem_write(sym["mc_pb_held"], b"\x00")
@@ -163,6 +172,18 @@ def unicorn(clients):
                 u.reg_read(mc.UC_M68K_REG_A7) - sp)
 
     kinds = {"static": 0, "flex": 1, **rows}
+    if n == 0:
+        # MACHINES alone: stock's five rows stand, nothing reads past the name table
+        reset()
+        track(3, "stray")                                    # a stray signature on a FLEX track
+        typ = run(sym["mc_row_type"], DONE, {0: 1, 8: PARTX + 0x22 + 3}, (DONE,))[1][0]
+        pc = run(sym["mc_machine_name"], 0x400334DE, stack=(DONE, 5))[0]
+        pc1, x, _ = run(sym["mc_main_commit"], 0x40079822, {0: 0, 1: 4, 4: 1, 8: PARTX + 0x22 + 4, 9: BANK})
+        run(sym["mc_tick"], 0x40052228)
+        check(typ == 1 and pc == 0x400334DE and pc1 == 0x40079822 and rb(PARTX + 0x22 + 4)[0] == 1
+              and rd(PB_TABLE + 20) == stock_pages[5] and DECL["pokes"](0) == (),
+              "[no client] no pokes; a signed FLEX track is FLEX, row 5 is stock's, the tick leaves PB_TABLE alone")
+        return
     # 1. the row of a track's machine
     reset()
     got = {}
@@ -237,8 +258,7 @@ def unicorn(clients):
             sig = client[2] if client else bytes(3)
             first = client is not None and start != client[0]
             knobs = rb(PARTX + 0x30 + 120, 6) + rb(PARTX + 0x1E0 + 120, 6)
-            want_knobs = bytes(range(1, 13)) if first and client[0] == "TA" else \
-                bytes(range(21, 33)) if first else b"\x55" + bytes(11)
+            want_knobs = DEFAULTS[client[0]] if first else b"\x55" + bytes(11)
             ok = (pc == 0x40079822 and rb(PARTX + 0x22 + 4)[0] == (FLEX if client else row)
                   and rb(PARTX + 0x3C + 120, 3) == sig and rb(SRAM + 0x3C + 120, 3) == sig
                   and knobs == want_knobs)
@@ -271,6 +291,18 @@ def unicorn(clients):
           and rd(PB_TABLE + 4) == stock_pages[1],
           f"[{name}] RIGHT on TA's row opens FLEX's slot list with TA's page, the commit signs TA, LEFT returns "
           f"to its row and FLEX's page comes back ({picked}, {signed}, {back})")
+    # a pick ends when SRC SETUP closes from the slot list (NO, FUNC + SRC: no LEFT is seen)
+    reset()
+    wr(SRC_WIN, SRC_WIN_OPEN)
+    wr(SRC_CURSOR, 5)
+    run(sym["mc_setup_key"], 0x4003D1CC, stack=(DONE, 0x21))
+    wr(SRC_FOCUS, 1)
+    run(sym["mc_tick"], 0x40052228)
+    held = (rb(sym["mc_pick"])[0], rd(PB_TABLE + 4))
+    wr(SRC_WIN, 0)
+    run(sym["mc_tick"], 0x40052228)
+    check(held == (5, PAGES["TA"]) and rb(sym["mc_pick"])[0] == 0 and rd(PB_TABLE + 4) == stock_pages[1],
+          f"[{name}] a pick holds while SRC SETUP's window is open and ends when it closes, FLEX's page back")
     if n > 1:
         reset()
         wr(SRC_CURSOR, 6)
@@ -363,15 +395,16 @@ def installed(remix):
            or rd(d.site + 2) != sym[d.symbol]]
     check(not bad, f"[{remix}] each of MACHINES's {len(MC.detours)} sites reaches its stub{f' {bad}' if bad else ''}")
     n = len(DECL["present"](set(r.modules)))
-    check(img[0x40079248 - BASE_IMG:0x40079248 - BASE_IMG + 4] == bytes.fromhex(f"487800{5 + n:02x}"),
-          f"[{remix}] the machine list has {5 + n} rows")
+    pokes = DECL["pokes"](n)
+    bad = [hex(pk.addr) for pk in pokes if img[pk.addr - BASE_IMG:pk.addr - BASE_IMG + len(pk.write)] != pk.write]
+    check(not bad, f"[{remix}] the machine list has {5 + n} rows: each of the {len(pokes)} pokes in the image"
+                   f"{f' {bad}' if bad else ''}")
 
 
 def main():
-    print("machines: MACHINES under Unicorn, one client")
-    unicorn(TEST_CLIENTS[:1])
-    print("machines: MACHINES under Unicorn, two clients")
-    unicorn(TEST_CLIENTS)
+    for n, what in ((0, "no client"), (1, "one client"), (2, "two clients"), (3, "three clients")):
+        print(f"machines: MACHINES under Unicorn, {what}")
+        unicorn(TEST_CLIENTS[:n])
     print("machines: the real clients")
     real_clients()
     print("machines: the installed image")

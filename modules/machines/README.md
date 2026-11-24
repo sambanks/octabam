@@ -15,7 +15,9 @@ appears after stock's five on the track's machine list and in SRC SETUP.
 Choosing one makes the track a FLEX track signed by that machine. Choosing
 FLEX or any stock machine again clears the signature. On a machine that plays
 FLEX's sample slot (DRUMMER), RIGHT on its row in SRC SETUP opens FLEX's slot
-list, and LEFT returns to the row.
+list, and LEFT returns to the row. While the list is open, FLEX's SETUP knobs
+show the machine's; closing SRC SETUP from the list (NO, FUNC + SRC) gives
+them back to FLEX.
 
 ## Writing a client
 
@@ -70,6 +72,7 @@ each site in a built image holds MACHINES's jump.
 
 - ANALOG BD, OCTA303, CX OSC and WAVE CF are still on HOOKS's `machine_rows`
   chain, and conflict with MACHINES until each is a client.
+- The base is FLEX: the validator masks a client's knobs with FLEX's defaults.
 - BLACKPYRAMIDS_303 and SYNTH MACHINE are ports. They stay outside until their
   authors' builds are clients.
 - Three clients at most: PB_TABLE has room for rows 5 to 7 until it is moved.

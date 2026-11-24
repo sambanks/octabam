@@ -857,8 +857,9 @@ keeps 8 slices at 6; a 32-sound kit chain's two nearest sounds are 6.7 apart.
 - The trig LEDs do not show the zones yet.
 - The machine row is [MACHINES](../machines/README.md)'s: DRUMMER is a
   client (its page, its kit tick, and KIT BALANCE's bytes kept from the
-  validator, `adapter.c`). ANALOG BD, OCTA303, WAVE CF and CX OSC
-  conflict with MACHINES until each is a client, and CX OSC also replaces
-  FLEX's start entry.
+  validator, `adapter.c`). It cannot share an image with ANALOG BD,
+  OCTA303, WAVE CF, CX OSC, BLACKPYRAMIDS_303 or SYNTH MACHINE: MACHINES
+  conflicts with each until it is a client (`modules/machines/manifest.py`),
+  and CX OSC also replaces FLEX's start entry.
 - STORE client 8 (after CHORDS FACTORY 7): renumbered when merged beside other
   clients.

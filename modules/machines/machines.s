@@ -20,6 +20,7 @@
         .equ    MC_SLOT_BIT, 8              | mc_flags: the client plays the base's slot
         .equ    SRC_CURSOR, 0x460d5c30
         .equ    SRC_FOCUS, 0x460d1a48       | 0 the machine list, 1 a slot list
+        .equ    SRC_WIN, 0x460d175c         | SRC SETUP's window while it is open, else 0
         .equ    KEY_RIGHT, 0x21
         .equ    KEY_LEFT, 0x34
         .equ    PART_OFF, 0x8ed80
@@ -276,6 +277,8 @@ mc_lfo_pb:
 | a client that plays its base's slot opens the base's slot list: the cursor
 | is the base's while the list is open (stock's list, preview and commit read
 | it), the commit signs the client (mc_src_common), and LEFT puts it back.
+| Closing SRC SETUP from the slot list (NO, FUNC + SRC) ends the pick at the
+| next tick (machines.c mc_ui_tick), with the base's page back.
 mc_setup_key:
         move.l  4(%sp),%d0
         tst.l   (SRC_FOCUS).l
@@ -289,6 +292,10 @@ mc_setup_key:
         btst    #MC_SLOT_BIT,%d0
         beq.s   .sk_go
         move.b  %d1,mc_pick
+        move.l  %d0,-(%sp)
+        move.l  (SRC_WIN).l,%d0             | the window the pick belongs to (mc_ui_tick ends it)
+        move.l  %d0,mc_pick_win
+        move.l  (%sp)+,%d0
         andi.l  #0xff,%d0
         move.l  %d0,(SRC_CURSOR).l
         jsr     mc_pick_page

@@ -57,6 +57,12 @@ A client exports:
 MACHINES exports to each client `<prefix>_mc_row`, a word holding its row.
 A client that needs its row reads that word, never a constant. Rows are
 given in `CLIENTS` order, from 5, to the clients present in the remix.
+With no client present, MACHINES pokes nothing and stock's five rows stand.
+
+`manifest.py` refuses an entry the tables cannot serve: a signature or a
+prefix another client has, a signature that is not two printable ASCII bytes
+and a version byte, a name over nine characters or holding a quote or a
+backslash, a base other than FLEX, or hooks without `page`.
 
 ## What MACHINES does
 
@@ -66,7 +72,9 @@ given in `CLIENTS` order, from 5, to the clients present in the remix.
   keeps the knobs. Choosing any other row clears a client's signature.
 - **The list and SRC SETUP.** Every site that shows or stores a track's
   machine reads the signature, so a signed track shows its client's row.
-  The list scrolls past six rows.
+  The list scrolls past six rows. RIGHT on the row of a client that plays its
+  base's slot opens the base's slot list; LEFT, or closing SRC SETUP, ends
+  that pick.
 - **The pages.** Each UI tick publishes each client's page as its row's in
   PB_TABLE. A client calls `mc_publish()` when its page changes between ticks.
 - **The validator.** Stock's Part validator sees the base's defaults on a
@@ -102,7 +110,12 @@ A client that needs another stock site claims it itself, as any module does.
 - **Three clients in one remix.** PB_TABLE (`0x400d5f38`) has room for rows
   5 to 7. Six stock instructions read the table, two of them at MACHINES's
   own sites, so a `TableGrow` can move it and lift the limit.
-- **ANALOG BD, OCTA303, CX OSC and WAVE CF** are still on HOOKS's
-  `machine_rows` chain. MACHINES conflicts with them until each is a client.
+- **Six machines are not clients:** ANALOG BD, OCTA303, CX OSC and WAVE CF
+  are still on HOOKS's `machine_rows` chain, and BLACKPYRAMIDS_303 and SYNTH
+  MACHINE are ports. MACHINES conflicts with each until it is a client
+  (`modules/machines/manifest.py`).
+- **The base is FLEX.** The validator masks a client's knobs with FLEX's
+  defaults, so `CLIENTS` refuses another base until it looks them up per
+  base.
 - **A machine's CPU cost** is the client's to bound: OCTA303's limit of two
   signed tracks a Part is its own, not MACHINES's.

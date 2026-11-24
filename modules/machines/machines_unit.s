@@ -23,6 +23,7 @@
         .equ    MC_SLOT_BIT, 8              | mc_flags: the client plays the base's slot
         .equ    SRC_CURSOR, 0x460d5c30
         .equ    SRC_FOCUS, 0x460d1a48       | 0 the machine list, 1 a slot list
+        .equ    SRC_WIN, 0x460d175c         | SRC SETUP's window while it is open, else 0
         .equ    KEY_RIGHT, 0x21
         .equ    KEY_LEFT, 0x34
         .equ    PART_OFF, 0x8ed80
@@ -279,6 +280,8 @@ mc_lfo_pb:
 | a client that plays its base's slot opens the base's slot list: the cursor
 | is the base's while the list is open (stock's list, preview and commit read
 | it), the commit signs the client (mc_src_common), and LEFT puts it back.
+| Closing SRC SETUP from the slot list (NO, FUNC + SRC) ends the pick at the
+| next tick (machines.c mc_ui_tick), with the base's page back.
 mc_setup_key:
         move.l  4(%sp),%d0
         tst.l   (SRC_FOCUS).l
@@ -292,6 +295,10 @@ mc_setup_key:
         btst    #MC_SLOT_BIT,%d0
         beq.s   .sk_go
         move.b  %d1,mc_pick
+        move.l  %d0,-(%sp)
+        move.l  (SRC_WIN).l,%d0             | the window the pick belongs to (mc_ui_tick ends it)
+        move.l  %d0,mc_pick_win
+        move.l  (%sp)+,%d0
         andi.l  #0xff,%d0
         move.l  %d0,(SRC_CURSOR).l
         jsr     mc_pick_page
@@ -758,6 +765,14 @@ mc_publish:
 mc_ui_tick:
 	lea (-12,%sp),%sp
 	movem.l #1036,(%sp)
+	tst.b mc_pick.l
+	jeq .L73
+	move.l mc_pick_win,%d0
+	cmp.l 1175263068.l,%d0
+	jeq .L73
+	clr.b %d0
+	move.b %d0,mc_pick
+.L73:
 	jsr mc_publish
 	jsr mc_pick_page
 	move.l mc_count,%d3
@@ -765,15 +780,15 @@ mc_ui_tick:
 	jeq .L72
 	lea mc_ticks,%a2
 	clr.l %d2
-.L75:
+.L76:
 	move.l (%a2)+,%a0
 	tst.l %a0
-	jeq .L74
+	jeq .L75
 	jsr (%a0)
-.L74:
+.L75:
 	addq.l #1,%d2
 	cmp.l %d2,%d3
-	jne .L75
+	jne .L76
 .L72:
 	movem.l (%sp),#1036
 	lea (12,%sp),%sp
@@ -792,7 +807,7 @@ mc_validate:
 	lea (80,%sp),%a5
 	move.l %a5,%a4
 	move.l %a2,44(%sp)
-.L90:
+.L91:
 	move.l %d3,-(%sp)
 	move.l %d2,-(%sp)
 	jsr mc_client
@@ -801,16 +816,16 @@ mc_validate:
 	addq.l #8,%sp
 	move.l %d0,(%a1)+
 	tst.l %d0
-	jlt .L86
+	jlt .L87
 	sub.l %a0,%a0
-.L89:
+.L90:
 	move.l %a0,%d1
 	add.l #1074606604,%d1
 	move.l %d1,%a1
 	mov3q.l #5,%d4
 	lea 48(%a0,%a6.l),%a3
 	cmp.l %a0,%d4
-	jcc .L87
+	jcc .L88
 	move.l %a0,%d7
 	mov3q.l #6,%d4
 	remu.l %d4,%d6:%d7
@@ -823,22 +838,22 @@ mc_validate:
 	addq.l #1,%a0
 	move.b (%a3),(%a1)
 	cmp.l %a0,%d1
-	jne .L89
+	jne .L90
 	lea mc_keeps,%a1
 	move.l (%a1,%d0.l*4),%a0
 	tst.l %a0
-	jeq .L86
+	jeq .L87
 	clr.l -(%sp)
 	move.l %d3,-(%sp)
 	move.l %d2,-(%sp)
 	jsr (%a0)
 	lea (12,%sp),%sp
-.L86:
+.L87:
 	addq.l #1,%d3
 	lea (30,%a6),%a6
 	lea (12,%a4),%a4
 	cmp.l #240,%a6
-	jne .L90
+	jne .L91
 	move.l %d2,-(%sp)
 	jsr mc_stock_validate
 	addq.l #4,%sp
@@ -846,17 +861,17 @@ mc_validate:
 	clr.l %d7
 	lea mc_keeps,%a4
 	move.l %d0,%d3
-.L96:
+.L97:
 	move.l (%a2)+,%d6
 	tst.l %d6
-	jlt .L91
+	jlt .L92
 	clr.l %d0
 	lea (%a3,%d2.l),%a1
-.L95:
+.L96:
 	mov3q.l #5,%d1
 	cmp.l %d0,%d1
-	jcs .L92
-.L109:
+	jcs .L93
+.L110:
 	lea (%a5,%d0.l),%a6
 	mov3q.l #5,%d1
 	move.l %d2,%a0
@@ -864,8 +879,8 @@ mc_validate:
 	move.b (%a6),48(%a3,%a0.l)
 	addq.l #1,%d0
 	cmp.l %d0,%d1
-	jcc .L109
-.L92:
+	jcc .L110
+.L93:
 	move.l %d0,%d5
 	mov3q.l #6,%d4
 	remu.l %d4,%d1:%d5
@@ -875,31 +890,31 @@ mc_validate:
 	moveq #12,%d1
 	move.b (%a6),480(%a0)
 	cmp.l %d0,%d1
-	jne .L95
+	jne .L96
 	move.l (%a4,%d6.l*4),%a0
 	tst.l %a0
-	jeq .L91
+	jeq .L92
 	mov3q.l #1,-(%sp)
 	move.l %d7,-(%sp)
 	move.l %d2,-(%sp)
 	jsr (%a0)
 	lea (12,%sp),%sp
-.L91:
+.L92:
 	addq.l #1,%d7
 	lea (30,%a3),%a3
 	lea (12,%a5),%a5
 	cmp.l #240,%a3
-	jne .L96
+	jne .L97
 	move.l %d3,%d0
 	movem.l (%sp),#31996
 	lea (176,%sp),%sp
 	rts
-.L87:
+.L88:
 	add.l %d2,%a3
 	move.b (%a3),(%a4,%a0.l)
 	addq.l #1,%a0
 	move.b (%a1),(%a3)
-	jra .L89
+	jra .L90
 	.size	mc_validate, .-mc_validate
 	.globl	mc_pb_saved
 	.section	.data,"aw"
@@ -913,6 +928,12 @@ mc_pb_saved:
 	.size	mc_pb_held, 1
 mc_pb_held:
 	.zero	1
+	.globl	mc_pick_win
+	.align	2
+	.type	mc_pick_win, @object
+	.size	mc_pick_win, 4
+mc_pick_win:
+	.zero	4
 	.globl	mc_pick
 	.type	mc_pick, @object
 	.size	mc_pick, 1

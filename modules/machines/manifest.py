@@ -28,6 +28,32 @@ MAX = 3
 STOCK_NAMES = (0x400B3EAC, 0x400B3E98, 0x400B7C67, 0x400B5413, 0x400B7A63)
 
 
+# The longest machine name the list draws today (BLKPYRAMD, ANALOG BD): a longer one is not measured.
+NAME_MAX = 9
+
+
+def check_clients(clients):
+    """CLIENTS is the contract every machine author edits: refuse an entry the tables cannot serve."""
+    seen_sig, seen_prefix = {}, {}
+    for key, prefix, sig, name, base, slot, hooks in clients:
+        where = f"MACHINES CLIENTS {key!r}"
+        if base != FLEX:
+            raise ValueError(f"{where}: base {base} -- the validator masks a client's knobs with FLEX's "
+                             f"defaults (machines.c mc_validate), so FLEX is the only base for now")
+        if len(sig) != 3 or not all(0x20 < b < 0x7F for b in sig[:2]) or sig[2] == 0:
+            raise ValueError(f"{where}: signature {sig!r} -- two printable ASCII bytes and a version byte, not 0")
+        if sig in seen_sig:
+            raise ValueError(f"{where}: signature {sig!r} is {seen_sig[sig]!r}'s -- the second row would be unreachable")
+        if prefix in seen_prefix or not prefix.isidentifier():
+            raise ValueError(f"{where}: prefix {prefix!r} -- an identifier no other client uses")
+        if not 0 < len(name) <= NAME_MAX or any(c in name for c in '"\\') or not name.isascii() or not name.isprintable():
+            raise ValueError(f"{where}: name {name!r} -- 1 to {NAME_MAX} printable ASCII characters, no quote "
+                             f"or backslash (it is written into an .asciz)")
+        if "page" not in hooks or not set(hooks) <= set(HOOKS):
+            raise ValueError(f"{where}: hooks {hooks!r} -- 'page' and any of {HOOKS}")
+        seen_sig[sig], seen_prefix[prefix] = key, key
+
+
 def present(modules):
     """The clients in a selection, in row order."""
     on = tuple(c for c in CLIENTS if c[0] in modules)
@@ -105,7 +131,9 @@ CLAMPS = (0x40078C22, 0x40078CB0, 0x40078D2E, 0x40078DEE, 0x40078E7C)
 
 
 def pokes(n):
-    """The lists' counts and bounds for 5 + n rows."""
+    """The lists' counts and bounds for 5 + n rows; none without a client, so stock's five rows stand."""
+    if n == 0:
+        return ()
     rows, last = 5 + n, 4 + n
     out = (
         Poke(0x40079248, H("48780005"), H(f"487800{rows:02x}"), f"the machine list has {rows} rows"),
@@ -119,12 +147,13 @@ def pokes(n):
     return out
 
 
+check_clients(CLIENTS)
 UNIT = Linked("machines", "modules/machines/machines_unit.s", cpu="5475", dram=True, include=machines_inc)
 
 
 def select(modules):
     """The rows this selection's clients need."""
-    return {"pokes": pokes(max(1, len(present(modules))))}
+    return {"pokes": pokes(len(present(modules)))}
 
 
 MODULE = Module(
@@ -137,7 +166,7 @@ MODULE = Module(
     doc="Platform: the machine list and SRC SETUP, held once for every added machine.",
     linked=(UNIT,),
     detours=DETOURS,
-    pokes=pokes(1),
+    pokes=pokes(len(CLIENTS)),
     select=select,
     # The machines still on HOOKS' machine_rows chain, and the ports outside it, until each is a client.
     conflicts=(

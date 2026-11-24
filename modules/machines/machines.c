@@ -21,6 +21,7 @@ enum {
     PART_STRIDE = 6322u,
     SRAM_PART = 0x100a4eceu,    /* the battery copy of the working Parts */
     CUR_TRACK = 0x100b14ccu,    /* the UI track */
+    SRC_WIN = 0x460d175cu,      /* SRC SETUP's window while it is open, else 0 (measured under the port) */
     PB_TABLE = 0x400d5f38u,     /* the PLAYBACK page of each machine row */
     FLEX_DEFAULTS = 0x400d320cu,
     MACHINE = 0x22u,            /* a track's stored machine byte: Part + 0x22 + track */
@@ -49,6 +50,7 @@ extern const mc_keep_fn mc_keeps[];         /* 0: none */
 /* The row a pick of the base's slot list came from (0: no pick), and the
  * base's page it displaced from PB_TABLE meanwhile. DRAM .bss is not zeroed. */
 __attribute__((section(".data"))) uint8_t mc_pick;
+__attribute__((section(".data"))) uint32_t mc_pick_win;   /* SRC_WIN when the pick began (machines.s) */
 __attribute__((section(".data"))) uint8_t mc_pb_held;      /* base + 1 while its page is displaced */
 __attribute__((section(".data"))) uint32_t mc_pb_saved;
 
@@ -183,10 +185,14 @@ void mc_publish(void)
         U32(PB_TABLE + 4u * (ROW0 + i)) = mc_pages[i](ptr);
 }
 
-/* The UI tick: the pages, a pick's page, then each client's own tick. */
+/* The UI tick: the pages, a pick's page, then each client's own tick. A pick
+ * ends when SRC SETUP's window is no longer the one it began in: NO or
+ * FUNC + SRC close SRC SETUP with the slot list open, and LEFT is never seen. */
 void mc_ui_tick(void)
 {
     unsigned i;
+    if (mc_pick && U32(SRC_WIN) != mc_pick_win)
+        mc_pick = 0;
     mc_publish();
     mc_pick_page();
     for (i = 0; i < mc_count; ++i)
