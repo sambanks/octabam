@@ -41,6 +41,8 @@
         .set    KROWS,    0x46100b18   | bytes: the panel's held keys, code = row*8 + bit
         .set    KFUNC,    0x2d         | FUNCTION: row 5, bit 5
         .set    KUP,      0x33
+        .set    NOTIFY,   0x4005a2b8   | (str, ticks): the toast KITS' copy and paste use
+        .set    KREC,     0x29         | STOP is 0x27 (docs/firmware/PANEL.md)
         .set    TSTEP,    0x4004b824   | (whole, tenths): the stock tempo step, redraws
         .set    TLEVEL,   0x4004b918   | (index, delta): the stock LEVEL handler, whole BPM
         .set    P1WRITE,  0x40054cd8   | (track, flat, value): page-1 writer
@@ -149,6 +151,7 @@ tb_enc:
 3:      cmpl    %d2,%d0
         beq.s   edone
         movel   %d0,%d2                | d2 = new value
+        clrb    UST                    | an edit ends the paste's undo
         jsr     setval
 edone:  movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
@@ -278,6 +281,136 @@ bln:    moveal  %a1@,%a1
 blx:    movem.l %sp@,%d2/%a1-%a2
         lea     %sp@(12),%sp
         rts
+
+| ---- FUNC+REC copies the window's values, FUNC+STOP pastes them, and a
+| paste again undoes it (the stock copy, paste and undo keys). (code, down).
+| The record is in TB_FLAYER, which exists while FUNC is held; with a scene
+| held the key does nothing.
+| The clipboard is this module's: CLIP, 10 slots a box (2..11, the ones the
+| engine names; DEL and REV are the host page's). Copy and paste cover both
+| boxes; a box whose engine is on no track of the Part is skipped. The release
+| of a key this record took is dropped.
+tb_fn:  tstl    %sp@(8)
+        beq.w   fnrel
+        moveq   #0,%d0
+        moveb   KROWS+(KFUNC>>3),%d0
+        btst    #(KFUNC&7),%d0
+        beq.w   pbelow
+        movel   %sp@(4),%d0
+        moveb   %d0,FNK
+        tstl    SCENE_HELD
+        bne.w   fnnop                  | a held scene: nothing to copy
+        lea     %sp@(-44),%sp
+        movem.l %d2-%d7/%a2-%a6,%sp@
+        cmpil   #KREC,%d0
+        bne.s   fnpaste
+        lea     CLIP,%a5
+        clrb    XDIR
+        bsr.w   xfer
+        clrb    UST
+        lea     T_COPIED,%a0
+        bra.w   fntoast
+fnpaste:
+        tstw    CLIP+24
+        beq.s   fnend                  | nothing copied
+        tstb    UST
+        beq.s   fnnew
+        moveb   PARTB,%d0
+        cmpb    UPART,%d0
+        beq.s   fnundo
+        clrb    UST                    | the undo is another Part's
+fnnew:  lea     UNDO,%a5               | the values the paste replaces
+        clrb    XDIR
+        bsr.w   xfer
+        moveb   PARTB,%d0
+        moveb   %d0,UPART
+        moveq   #1,%d0
+        moveb   %d0,UST
+        lea     CLIP,%a5
+        moveb   %d0,XDIR
+        bsr.w   xfer
+        lea     T_PASTED,%a0
+        bra.w   fntoast
+fnundo: lea     UNDO,%a5
+        moveq   #1,%d0
+        moveb   %d0,XDIR
+        bsr.w   xfer
+        clrb    UST
+        lea     T_UNDONE,%a0
+fntoast:
+        pea     0x30
+        movel   %a0,%sp@-
+        jsr     NOTIFY
+        addql   #8,%sp
+fnend:  movem.l %sp@,%d2-%d7/%a2-%a6
+        lea     %sp@(44),%sp
+fnnop:  bra.w   tb_draw
+fnrel:  movel   %sp@(4),%d0
+        cmpb    FNK,%d0
+        bne.w   pbelow
+        clrb    FNK
+        rts
+
+| xfer: a5 = a 26-byte buffer (12 bytes a box by slot, then a valid byte a
+| box). XDIR 0 reads the live values into it, 1 writes it back. MODE (slot 6)
+| goes first: MODE DEFAULTS' re-default rewrites the knobs around it.
+| setval's page-2 path clobbers a2/d3, so the loop keeps d7 (box), d6 (slot),
+| a5 (buffer), a6 (the box's named slots).
+xfer:   moveq   #0,%d7
+xbox:   tstb    XDIR
+        bne.s   1f
+        lea     %a5@(24),%a0
+        clrb    %a0@(0,%d7:l)          | read: valid once the engine is found
+1:      movel   %d7,%d0
+        jsr     engine                 | d4 = track or -1, d5 = part, a4
+        tstl    %d4
+        bmi.s   xnext
+        lea     NAMED,%a0
+        moveq   #0,%d0
+        movew   %a0@(0,%d7:l:2),%d0
+        moveal  %d0,%a6
+        lea     %a5@(24),%a0
+        tstb    XDIR
+        bne.s   2f
+        moveq   #1,%d0
+        moveb   %d0,%a0@(0,%d7:l)
+        bra.s   3f
+2:      tstb    %a0@(0,%d7:l)
+        beq.s   xnext                  | nothing was copied for this box
+3:      moveq   #6,%d6
+        bsr.s   xslot
+        moveq   #2,%d6
+xl:     cmpil   #6,%d6
+        beq.s   xs
+        bsr.s   xslot
+xs:     addql   #1,%d6
+        cmpil   #12,%d6
+        blt.s   xl
+xnext:  addql   #1,%d7
+        cmpil   #2,%d7
+        blt.s   xbox
+        rts
+
+| xslot: d6 = slot, d7 = box, a5 = buffer, a6 = the box's named slots;
+| d4, d5, a4 from engine.
+xslot:  movel   %a6,%d0
+        btst    %d6,%d0
+        beq.s   xsx
+        movel   %d7,%d0
+        mulu.w  #12,%d0
+        addl    %d6,%d0
+        movel   %d0,%sp@-
+        tstb    XDIR
+        bne.s   xsw
+        jsr     getval                 | d2
+        movel   %sp@+,%d0
+        moveb   %d2,%a5@(0,%d0:l)
+        rts
+xsw:    movel   %sp@+,%d0
+        moveq   #0,%d2
+        moveb   %a5@(0,%d0:l),%d2
+        jsr     setval
+xsx:    rts
 
 | ---- LEFT / RIGHT: the focused box; each box keeps its own cursor ----
 tb_lr:  moveq   #0,%d0
@@ -593,6 +726,9 @@ bxdone: movel   %sp@+,%d7
 
 | ---- data -------------------------------------------------------------
 HDRFMT: .asciz  "%s %d.%d"
+T_COPIED: .asciz "BUS COPIED"
+T_PASTED: .asciz "BUS PASTED"
+T_UNDONE: .asciz "UNDO"
 T_PROJ: .asciz  "TEMPO"
 T_PTN:  .asciz  "PTN"
 T_MODE: .asciz  "MODE"
@@ -609,6 +745,13 @@ SEL:    .byte   0, 0
 SCR:    .byte   0, 0
 PUSHK:  .byte   0                      | the encoder push held with a scene, 0 = none
 TURNED: .byte   0                      | a knob turned since that push
+FNK:    .byte   0                      | the REC / STOP press tb_fn took, 0 = none
+XDIR:   .byte   0                      | xfer: 0 read the live values, 1 write them
+UST:    .byte   0                      | 1 = a paste is on UNDO and can be undone
+UPART:  .byte   0                      | the Part that paste was in
+        .even
+CLIP:   .space  26                     | the copy: 12 bytes a box by slot, a valid byte a box
+UNDO:   .space  26                     | the values the last paste replaced
         .include "remix.inc"           | ENGIDS, NAMED (rows reads NAMED)
         NAMETAB_1                      | the reverb's: NAMES_<its id>
 | The screen's labels, per box: its own tables, never the shared
@@ -640,10 +783,30 @@ TB_KEYS:
         .long   tb_scn, tb_scn, -1, 0, 0
         .word   0, 0
         .endr
+| FUNC: stock's press and release stay (-1), and the record's sub-map is this
+| module's layer TB_FLAYER. The dispatcher chains every layer's sub-map for
+| the key, this one's last, so while FUNC is held TB_FLAYER is above stock's
+| FUNC maps (a FUNC press cannot be caught by a record in TB_LAYER: the FUNC
+| map's own FUNC record is found first).
+        .byte   0x2d, 0
+        .long   -1, -1, -1, TB_FLAYER, 0
+        .word   0, 0
 | the encoder pushes A-F and LEVEL
         .irp    k, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e
         .byte   \k, 0
         .long   tb_push, tb_push, -1, 0, 0
+        .word   0, 0
+        .endr
+        .byte   0xff, 0
+        .long   0, 0, 0, 0, 0
+        .word   0, 0
+| The layer FUNC's record chains: FUNC+STOP and FUNC+REC, paste and copy.
+TB_FLAYER:
+        .long   0, TB_FKEYS, 0, 0, 0, -1, -1
+TB_FKEYS:
+        .irp    k, 0x27, 0x29
+        .byte   \k, 0
+        .long   tb_fn, tb_fn, -1, 0, 0
         .word   0, 0
         .endr
         .byte   0xff, 0
