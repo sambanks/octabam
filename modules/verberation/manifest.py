@@ -10,18 +10,34 @@ lines by a further 0.9, so the ring is 14,366 words and ends below slot offset
 slots; the module declares that extent (Claims.buffer_words) and never writes
 past it, which is what lets octabam-verbs carry it beside the loader.
 
-The five knobs are Clouds' own setters: AMNT (amount), GAIN (input gain), TIME
+The five knobs follow Clouds' setters: AMNT (the mix), GAIN (input gain), TIME
 (reverb time), DIFF (the allpass coefficient), TONE (the damping lowpass).
-Defaults are the Clouds module's values. A sixth knob, GATE, holds the wet
+AMNT holds the dry at unity while the wet rises to full (0 to 64), then fades the
+dry out (64 to 127); Clouds crossfades. A sixth knob, GATE, holds the wet
 output for 2048 + 256 k samples after the input falls quiet, then releases it as
 a desk gate does (the gain falls 1/2048 a sample, -60 dB in about 320 ms) and,
 once shut, empties the tank so the next hit starts from silence (0 is off).
 Page 2 (this port's): SIZE moves the tank's read taps in, LCUT high-passes the
-tank, MOD and RATE set the long delay's swing and both LFOs' speed. At their
-defaults (127, 0, 64, 64) the module is exactly as it was without them.
+tank, MOD and RATE set the long delay's swing and both LFOs' speed (to about four
+times the original at 127), PRE a predelay that takes its room from the long delay.
+
+The stop kill (STOP, STOP) reaches VERBERATION and its rows as it reaches the stock
+reverbs: kill.s marks MODE's field 127 in the frame's DSP record, and the DSP cuts
+to dry and clears its tank. kill.s detours the stock site BBD's kill.s detours, so
+the two cannot share a remix until the site is bridged in HOOKS.
 """
-from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness, ModeView,
-                          Kind, MenuEntry, Module, Param, Evidence, Level, YBase)
+from remix.schema import (BusRole, Category, Claims, Detour, DspSection, Formatter, Gate, Harness, ModeView,
+                          Kind, Linked, MenuEntry, Module, Param, Evidence, Level, YBase)
+
+_KEYS = ("VERBERATION", "VERB PLATE", "VERB ROOM", "VERB HALL")
+
+
+def id_inc(modules, remix):
+    """VB_IDS for kill.s: a `beq.s 2f` on each id this remix gave VERBERATION and its rows."""
+    ids = sorted({modules[k].menu.fx2_id for k in _KEYS if k in modules})
+    body = "".join(f"        moveq   #{i},%d1\n        cmp.l   %d1,%d0\n        beq.s   2f\n" for i in ids)
+    return f"        .macro  VB_IDS\n{body}        .endm\n"
+
 
 MODULE = Module(
     name="verberation", key="VERBERATION", kind=Kind.DSP_EFFECT,
@@ -35,7 +51,8 @@ MODULE = Module(
     # Page 1 and the defaults are PLATE's view (MODE 1). Page 2 in slots 6-11: MODE (slot 6, as on every
     # effect), LCUT, MOD on the top row; RATE, SIZE, PRE below.
     params=(
-        Param(b"AMNT", 45, active=True, formatter=Formatter.PLAIN, doc="dry/wet; 0 is exactly dry"),
+        Param(b"AMNT", 35, active=True, formatter=Formatter.PLAIN,
+              doc="mix: to 64 the wet rises to full over the dry; past 64 the dry fades out; 0 is exactly dry"),
         Param(b"GAIN", 51, active=True, formatter=Formatter.PLAIN, doc="input gain; 51 matches the original Clouds reverb"),
         Param(b"TIME", 82, active=True, formatter=Formatter.PLAIN, doc="decay: loop gain 0.35 to 0.98"),
         Param(b"DIFF", 100, active=True, formatter=Formatter.PLAIN, doc="diffusion; 100 matches Clouds"),
@@ -43,37 +60,41 @@ MODULE = Module(
         Param(b"GATE", 0, active=True, formatter=Formatter.PLAIN,
               doc="0 off; holds the tail 52-784 ms after the input goes quiet, then a desk-gate release"),
         Param(b"MODE", 1, 4, active=True, formatter=Formatter.STEPPED,
-              labels=("ROOM", "PLAT", "HALL", "GATE"),
-              doc="a voicing: turning it sets the other knobs (ROOM, PLATE, HALL, GATED)"),
+              labels=("ROOM", "PLAT", "HALL", "80S"),
+              doc="a preset: turning it sets the other knobs (ROOM, PLATE, HALL, 80S: the desk-gated snare)"),
         Param(b"LCUT", 20, count=128, active=True, formatter=Formatter.PLAIN,
               doc="low cut inside the tank: 0 off, up to about 1 kHz at 127 (250 Hz at 64)"),
         Param(b"MOD", 64, count=128, active=True, formatter=Formatter.PLAIN,
-              doc="depth of the long delay's modulation: 0 static, 64 the original, 127 twice it"),
+              doc="depth of the long delay's modulation: 0 static, 64 the original, 127 about four times it"),
         Param(b"RATE", 64, count=128, active=True, formatter=Formatter.PLAIN,
-              doc="speed of both modulation LFOs: 0 frozen, 64 the original, 127 twice it"),
+              doc="speed of both modulation LFOs: 0 frozen, 64 the original (0.3 and 0.5 Hz), 127 about four times it"),
         Param(b"SIZE", 127, count=128, active=True, formatter=Formatter.PLAIN,
               doc="room size: the tank's delays from 20 % (0) to full (127); 127 is the original"),
         Param(b"PRE", 0, count=128, active=True, formatter=Formatter.PLAIN,
-              doc="predelay, 0 to 92 ms, in the room SIZE leaves: none at 127, about 22 ms at 90, 40 ms at 60"),
+              doc="predelay, 0 to 69 ms; past the room SIZE leaves it shortens the long delay a little"),
     ),
     # ---- the voicings MODE lands on (MODE DEFAULTS writes them on the panel) --------------------------
     # Chosen from renders of the module (6 Nov 2026, Sam: "those sound pretty good"): slots 0 AMNT, 1 GAIN,
-    # 2 TIME, 3 DIFF, 4 TONE, 5 GATE, 7 LCUT, 8 MOD, 9 RATE, 10 SIZE, 11 PRE.
+    # 2 TIME, 3 DIFF, 4 TONE, 5 GATE, 7 LCUT, 8 MOD, 9 RATE, 10 SIZE, 11 PRE. AMNT keeps each mode's
+    # wet-to-dry balance under the fixed-dry law (45 -> 35, 50 -> 41, 64 -> 64), PRE its time at 24 a step.
     mode_slot=6,
     mode_views=(
         ModeView(mode=0,                        # ROOM: small, bright, short
-                 defaults={0: 45, 1: 60, 2: 70, 3: 90, 4: 105, 5: 0, 7: 30, 8: 30, 9: 64, 10: 35, 11: 0}),
+                 defaults={0: 35, 1: 60, 2: 70, 3: 90, 4: 105, 5: 0, 7: 30, 8: 30, 9: 64, 10: 35, 11: 0}),
         ModeView(mode=1,                        # PLATE: the full tank
-                 defaults={0: 45, 1: 51, 2: 82, 3: 100, 4: 90, 5: 0, 7: 20, 8: 64, 9: 64, 10: 127, 11: 0}),
+                 defaults={0: 35, 1: 51, 2: 82, 3: 100, 4: 90, 5: 0, 7: 20, 8: 64, 9: 64, 10: 127, 11: 0}),
         ModeView(mode=2,                        # HALL: long, dark, more and slower modulation
-                 defaults={0: 50, 1: 51, 2: 108, 3: 110, 4: 60, 5: 0, 7: 25, 8: 100, 9: 40, 10: 127, 11: 0}),
-        ModeView(mode=3,                        # GATED: the desk-gated burst, the hit 15 ms ahead of it
-                 defaults={0: 64, 1: 80, 2: 118, 3: 110, 4: 80, 5: 26, 7: 40, 8: 64, 9: 64, 10: 90, 11: 20}),   # Sam, 6 Nov 2026: AMNT 90 PRE 0 buried the hit
+                 defaults={0: 41, 1: 51, 2: 108, 3: 110, 4: 60, 5: 0, 7: 25, 8: 100, 9: 40, 10: 127, 11: 0}),
+        ModeView(mode=3,                        # 80S: the desk-gated burst, the hit 15 ms ahead of it
+                 defaults={0: 64, 1: 80, 2: 118, 3: 110, 4: 80, 5: 26, 7: 40, 8: 64, 9: 64, 10: 90, 11: 27}),   # Sam, 6 Nov 2026: AMNT 90 PRE 0 buried the hit
     ),
     dsp=DspSection(asm="modules/verberation/verberation.asm", priority=11,
                    bus_role=BusRole.NONE, ybase=YBase.NEVER,
                    r7_latch_slot=None, gate_label=None),
     claims=Claims(stock_instance_buffer=True, buffer_words=14366),
+    linked=(Linked("vb_kill", "modules/verberation/kill.s", include=id_inc),),
+    detours=(Detour(0x40004d0c, bytes.fromhex("302a00380680ffffffec"), "vb_kill", "vb_kill",
+                    "the stop kill's reverb test: VERBERATION's ids mark MODE 127", pad_to=10),),
     harness=Harness(layout_char="H", is_server=False),
     dear={'AMNT': 127, 'GAIN': 127, 'TIME': 127, 'DIFF': 127, 'TONE': 127, 'GATE': 127},   # every knob at its maximum: the hardware matrix's dearest layout
     gates=(Gate('tools/verify/verify_verberation.py', remix_arg=False, venv=True),),

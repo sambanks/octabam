@@ -32,7 +32,9 @@
 ; and allpass coefficient in use (KRT and KAP, or 0 under a shut gate), $39 LCUT's coefficient,
 ; $3a $3b its states, $3c SIZE's f, $3d the long delay's swing, $3e $3f the LFO steps, $40..$44 the
 ; tank's read offsets, $45 the long delay's centre, $46 MOD's smoothed offset, $47 $48 the
-; predelay's write and read offsets.
+; predelay's write and read offsets, $49 the predelay smoothed (1/256 samples), $4a $4b AMNT's wet
+; gain and dry cut, $4c the room past the long delay's tap, $4d the predelay in samples.
+; The stop kill: MODE's field at 127 (kill.s) clears the state and the ring again (proc's head).
 ; Knobs: p0 AMNT amount, p1 GAIN input gain, p2 TIME reverb time, p3 DIFF
 ; diffusion, p4 TONE damping, p5 GATE hold (0 off); page 2: MODE, LCUT, MOD, RATE, SIZE, PRE
 ; (slots 6-11).
@@ -43,7 +45,7 @@ init:
         move    #>$20,n4
         move    (r4)+n4
         clr     a
-        do      #41,>gv_zero
+        do      #46,>gv_zero
         move    a,x:(r4)+
 gv_zero:
         nop
@@ -57,6 +59,32 @@ gv_zero:
         rts
 
 proc:
+; The stop kill (kill.s): STOP, STOP sets MODE's knob field (slot 6, x:(r6+$c) bits 16-23) to 127, which
+; the panel never sends (MODE has four values). While it holds: start init's clear again (the state
+; zeroed, the ring cleared 653 words a call, the output dry), so nothing rings on when the track plays.
+        move    x:(r6+$c),a
+        and     #>$7f0000,a
+        move    #>$7f0000,x0
+        cmp     x0,a
+        bne     gv_live
+        move    x:(r7+$22),a
+        tst     a
+        bne     gv_live
+        move    #>$ffffff,m4
+        move    r7,r4
+        move    #>$24,n4
+        move    (r4)+n4
+        clr     a
+        do      #42,>gv_kzero
+        move    a,x:(r4)+
+gv_kzero:
+        nop
+        move    x:(r7+$20),a
+        move    a,x:(r7+$21)
+        move    a,x:(r7+$23)
+        move    #>22,a
+        move    a,x:(r7+$22)
+gv_live:
 ; Bounded clearing: 653 words a call, 22 calls (exactly the ring), the output dry until it is clean.
         move    x:(r7+$22),a
         tst     a
@@ -83,6 +111,22 @@ gv_ready:
         asr     #$4,a,a
         add     b,a
         move    a,x:(r7+$24)
+        move    x:(r7+$24),a
+; AMNT's law: to 64 the wet rises to full over the whole dry (W = 2a, K = 0); from 64 to 127 the dry
+; fades out (W = 1, K = (a - 1/2) 128/63, 1 at 127). a is AMNT/128, smoothed; 0 is exactly dry.
+        move    a,b
+        asl     #$1,a,a
+        move    a,x:(r7+$4a)
+        move    #$40,x0                  ; (short immediate: bits 23-16)
+        sub     x0,b
+        move    #0,x0
+        tst     b
+        tmi     x0,b
+        move    b1,x0
+        move    #>$410410,y1
+        mpy     x0,y1,b
+        asl     #$2,b,b
+        move    b,x:(r7+$4b)
         move    x:(r6+$1),a
         and     #>$7f0000,a
         move    a1,x0
@@ -177,35 +221,81 @@ gv_ready:
         move    #>$ffd82b,x1
         add     x1,a
         move    a1,x:(r7+$44)
-; MOD (slot 8): the long delay's swing, 2 dS m with dS its depth after SIZE and m = 1/2 + s, s smoothed
-; from 0 toward MOD - 1/2.
+; MOD (slot 8): the long delay's swing, 4 dS h with dS its depth after SIZE and h = 1/4 + s, s smoothed
+; from 0 toward t - 1/4, t = MOD/256 + max(0, MOD - 64)/128: 0 static, 64 the original (h = 1/4), 127 about
+; four times it (h = 0.99).
         move    #>$061000,x0
         mpy     x0,y1,a
         move    a1,x1
         move    #>$061000,a
         sub     x1,a
-        asl     #$1,a,a
+        asl     #$2,a,a
         move    a1,x0
         move    x:(r6+$d),a
         and     #>$7f0000,a
         move    a1,x1
+        move    x1,b
+        move    #$40,y0                  ; (short immediate: bits 23-16)
+        sub     y0,b
+        move    #0,y0
+        tst     b
+        tmi     y0,b
         move    x1,a
-        move    #$40,x1                  ; (short immediate: bits 23-16)
+        asr     #$1,a,a
+        add     b,a
+        move    #$20,x1                  ; (short immediate: bits 23-16)
         sub     x1,a
         move    x:(r7+$46),b
         sub     b,a
         asr     #$4,a,a
         add     b,a
         move    a,x:(r7+$46)
-        move    #$40,x1                  ; (short immediate: bits 23-16)
+        move    #$20,x1                  ; (short immediate: bits 23-16)
         add     x1,a
         move    a1,y0
         mpy     y0,x0,a
         move    a1,x:(r7+$3d)
-; the long delay's centre: its length after SIZE, less 2, less the swing, so the tap stays inside it
+; PRE (slot 11, x:(r6+$e)'s companion, beside SIZE): a predelay of 24 PRE samples (0 to 69 ms) on the mono
+; input, smoothed (in 1/256 samples, rounded), held in the far end of the long delay past its tap. Its room is
+; m = 4167 f words, what SIZE leaves unread; a predelay longer than m - 2 takes the rest from the long delay,
+; whose tap moves in to leave pd + 2 (at SIZE 127 and PRE 127 its tap reads 1,115 words in, not 4,165).
+; m' (x:(r7+$4c)) is that room; pd (x:(r7+$4d)) the predelay in samples. With PRE 0, m' = m.
+        move    x:(r6+$e),a
+        and     #>$007f00,a
+        asr     #$3,a,a
+        move    a1,x1
+        asr     #$2,a,a
+        move    a1,x0
+        move    x1,a
+        sub     x0,a
+        asl     #$8,a,a
+        move    x:(r7+$49),b
+        sub     b,a
+        asr     #$4,a,a
+        add     b,a
+        move    a1,x:(r7+$49)
+        move    #>$80,x0
+        add     x0,a
+        asr     #$8,a,a
+        move    a1,x:(r7+$4d)
         move    #>4167,x0
         mpy     x0,y1,a
         move    a1,x1
+        move    x:(r7+$4d),a
+        move    #>2,x0
+        add     x0,a
+        move    x:(r7+$4d),b
+        move    #0,x0
+        tst     b
+        teq     x0,a
+        move    a1,x0
+        move    x1,a
+        move    x1,b
+        sub     x0,a
+        tlt     x0,b
+        move    b1,x:(r7+$4c)
+; the long delay's centre: its length after SIZE and PRE, less 2, less the swing, so the tap stays inside it
+        move    x:(r7+$4c),x1
         move    #>4165,a
         sub     x1,a
         move    x:(r7+$3d),b
@@ -213,34 +303,16 @@ gv_ready:
         move    b1,x1
         sub     x1,a
         move    a1,x:(r7+$45)
-; PRE (slot 11, x:(r6+$e)'s companion, beside SIZE): a predelay of 32 PRE samples (0 to 92 ms) on the mono input,
-; held in the far end of the long delay that SIZE leaves unread: m = 4167 f words past its tap, of
-; which m - 2 are usable, written from the cell just past the tap. Clamped to that room, so none at
-; SIZE 127. With no predelay both offsets are 0: ap1's write cell, which ap1 overwrites later in the
-; sample, so the input passes untouched and the ring is not disturbed.
-        move    #>4167,x0
-        mpy     x0,y1,a
-        move    a1,x1
+; the predelay's write cell, just past the tap (4168 - m' into the line), and its read cell pd further.
+; With no predelay both offsets are 0: ap1's write cell, which ap1 overwrites later in the sample, so the
+; input passes untouched and the ring is not disturbed.
+        move    x:(r7+$4c),x1
         move    #>$ffc7e1,a
         add     x1,a
         move    a1,x:(r7+$47)
-        move    x1,b
-        move    #>2,x0
-        sub     x0,b
-        move    #0,x0
-        tst     b
-        tmi     x0,b
-        move    x:(r6+$e),a
-        and     #>$007f00,a
-        asr     #$3,a,a
-        move    a1,x0
-        move    b1,x1
-        move    x0,b
+        move    x:(r7+$4d),x1
         sub     x1,a
-        tgt     x1,b
-        move    b1,x1
-        move    x:(r7+$47),a
-        sub     x1,a
+        move    x:(r7+$4d),b
         move    #0,x0
         tst     b
         teq     x0,a
@@ -249,15 +321,26 @@ gv_ready:
         tst     b
         teq     x0,a
         move    a1,x:(r7+$47)
-; RATE (slot 9, x:(r6+$d)'s companion): both LFOs' steps, 2 RATE times today's
+; RATE (slot 9, x:(r6+$d)'s companion): both LFOs' steps, h = RATE/256 + max(0, RATE - 64)/128 times
+; four times the original: 0 frozen, 64 the original (0.5 and 0.3 Hz), 127 about four times it (2 and 1.2 Hz)
         move    x:(r6+$d),a
         and     #>$007f00,a
         asl     #$8,a,a
+        move    a1,x1
+        move    x1,b
+        move    #$40,y0                  ; (short immediate: bits 23-16)
+        sub     y0,b
+        move    #0,y0
+        tst     b
+        tmi     y0,b
+        move    x1,a
+        asr     #$1,a,a
+        add     b,a
         move    a1,y0
-        move    #>380,x0
+        move    #>760,x0
         mpy     y0,x0,a
         move    a1,x:(r7+$3e)
-        move    #>228,x0
+        move    #>456,x0
         mpy     y0,x0,a
         move    a1,x:(r7+$3f)
 ; LCUT (slot 7, x:(r6+$c)'s companion): a one-pole high-pass in each half of the tank, c = 0.1447 LCUT^2, smoothed (about
@@ -548,12 +631,13 @@ gv_p2a:
         move    x:(r7+$35),y1
         mpy     x0,y1,a
         move    a,x0
-        move    x:(r7+$24),y1
+        move    x:(r7+$4a),y1
         mpy     x0,y1,b
         asl     #$3,b,b
         move    x:(r0),x0
         move    x0,a
         add     b,a
+        move    x:(r7+$4b),y1
         mac     -x0,y1,a
         move    a,x:(r0)+
 ; second half: delay 1 tail -> damping -> dap2a -> dap2b -> delay 2; right out
@@ -602,12 +686,13 @@ gv_p2a:
         move    x:(r7+$35),y1
         mpy     x0,y1,a
         move    a,x0
-        move    x:(r7+$24),y1
+        move    x:(r7+$4a),y1
         mpy     x0,y1,b
         asl     #$3,b,b
         move    x:(r0),x0
         move    x0,a
         add     b,a
+        move    x:(r7+$4b),y1
         mac     -x0,y1,a
         move    a,x:(r0)+
         move    (r5)+

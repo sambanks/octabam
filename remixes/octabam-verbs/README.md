@@ -10,7 +10,7 @@ this remix does not.
 
 | row | FX1 | FX2 | id | |
 |---|---|---|---|---|
-| VERBERATION | | ✓ | 0x1a | rooms to halls with a desk-style gate; MODE (ROOM, PLATE, HALL, GATED), LCUT, MOD, RATE, SIZE, PRE on page 2 |
+| VERBERATION | | ✓ | 0x1a | rooms to halls with a desk-style gate; MODE (ROOM, PLATE, HALL, 80S), LCUT, MOD, RATE, SIZE, PRE on page 2 |
 | VERB PLATE | | ✓ | 0x14 (PLATE REV's) | VERBERATION with MODE set to PLATE: a second row, not a second reverb |
 | VERB ROOM | | ✓ | 0x15 (SPRING REV's) | VERBERATION with MODE set to ROOM |
 | VERB HALL | | ✓ | 0x16 (DARK REV's) | VERBERATION with MODE set to HALL |

@@ -9,7 +9,7 @@ is different here.
 
 PLATE REV, SPRING REV and DARK REV are off both effect menus. In their place FX2 has
 [VERBERATION](reference/manual/effects/verberation.md): one reverb, rooms to halls, with a
-desk-style gate. MODE on its page 2 picks the voicing: ROOM, PLATE, HALL or GATED. LCUT,
+desk-style gate. MODE on its page 2 picks the voicing: ROOM, PLATE, HALL or 80S. LCUT,
 MOD, RATE, SIZE and PRE are beside it.
 
 The chooser also shows VERB PLATE, VERB ROOM and VERB HALL, on the old reverbs' rows. They
