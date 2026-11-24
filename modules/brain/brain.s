@@ -19351,15 +19351,14 @@ brain_post_template:
 	.type	brain_page_func, @function
 brain_page_func:
 	clr.l pop_sel
+	tst.l -2147483630
+	jne .L3845
 	mov3q.l #2,%d0
 	cmp.l 1175262852.l,%d0
-	jcs .L3845
-	tst.l -2147483630
-	jeq .L3846
+	jcc .L3846
 	pea page_fn
 	pea page_lbl
 	pea pop_sel
-	mov3q.l #6,%d0
 	clr.l -(%sp)
 	move.l %d0,-(%sp)
 	jsr 1074190668
@@ -19369,7 +19368,7 @@ brain_page_func:
 	pea page_fn
 	pea page_lbl
 	pea pop_sel
-	mov3q.l #2,%d0
+	mov3q.l #6,%d0
 	clr.l -(%sp)
 	move.l %d0,-(%sp)
 	jsr 1074190668

@@ -2359,8 +2359,8 @@ static void (*const page_fn[6])(u32) = { brain_menu_save, brain_menu_clear, brai
 void brain_page_func(void)
 {
 	pop_sel = 0;
-	/* an FX page has the default rows only: effects have no templates */
-	LISTPOP(PAGE_KIND >= 3 ? 2 : MIDI_MODE ? 6 : 5, 0, &pop_sel, page_lbl, (void *)page_fn);
+	/* an audio track's FX page has the default rows only: effects have no templates */
+	LISTPOP(MIDI_MODE ? 6 : PAGE_KIND >= 3 ? 2 : 5, 0, &pop_sel, page_lbl, (void *)page_fn);
 }
 
 static char tpl_lbl[TPL_MAX][TPL_NAME + 1];
