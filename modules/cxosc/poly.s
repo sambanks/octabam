@@ -1259,8 +1259,10 @@ sy_mix_done:
         | ---- FOLD (RTRG) + SYMM (SETUP D): half-wave skew into the folder ----
         | c_fold = c * gain/64; gain = SYMM (c>=0) or (128-SYMM) (c<0).
         | 64 = even. drive = 256 + (FOLD_Q8*24)>>8. out = c + (folded-c)*FOLD_Q8/32768.
-        | Advance fractional FOLD_Q8 at 1/256 per sample. The slower ramp
-        | softens LFO/knob movement and a split-frame trig cannot add a step.
+        | Advance fractional FOLD_Q8 at 1/1024 per sample. At DEC=INF the
+        | index stays full, so fast knob/LFO FOLD changes remain audible. This
+        | slower movement smooths those changes; a frame-aligned trig cannot
+        | add an extra step.
         move.l  %a6,-(%sp)
         move.l  %d1,-(%sp)               | park the carrier sample while d1 computes the slew
         move.l  84(%sp),%d2              | track (a6, carrier and six sample-loop stack words)
@@ -1270,7 +1272,8 @@ sy_mix_done:
         lea     sy_foldq(%pc),%a6
         move.l  (%a6,%d2.l),%d4         | current FOLD_Q8
         sub.l   %d4,%d1
-        asr.l   #8,%d1                   | 1/256 per sample ~= 1/16 per 16-sample call
+        asr.l   #8,%d1                   | first part of 1/1024 per sample
+        asr.l   #2,%d1                   | ~= 1/64 per 16-sample call
         add.l   %d1,%d4
         move.l  %d4,(%a6,%d2.l)
         move.l  %d4,12(%sp)             | update this sample's FOLD_Q8 stack slot

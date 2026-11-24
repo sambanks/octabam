@@ -301,14 +301,19 @@ def read_frame_headers(uc):
 
 
 def render_dynamic_fold(uc, symbols, with_trigs):
-    """Ramp FOLD at DEC=INF, optionally splitting frames at sequencer trigs."""
+    """Ramp FOLD at DEC=INF, optionally using frame-aligned sequencer trigs."""
     if "sy_state" in symbols:
         uc.mem_write(symbols["sy_state"], bytes(128 * 8))
     knobs = dict(ptch=64, rato=32, indx=48, fine=64, fold=0, mix=0,
                  dec=127, symm=64, fdbk=40)
     amp = dict(atk=0, hold=127, rel=64)
-    render_frames(uc, symbols, knobs, frames=2, amp=amp)
+    render_frames(uc, symbols, knobs, frames=64, amp=amp)
+    if "sy_state" in symbols:
+        gain = struct.unpack(">I", bytes(uc.mem_read(symbols["sy_state"] + 24, 4)))[0]
+        if gain != 32768:
+            die(f"FOLD ramp probe did not reach AMP sustain: gain={gain}")
     output = []
+    states = []
     trig_frames = {3, 7, 11, 15}
     for frame in range(16):
         knobs["fold"] = min(127, frame * 8)
@@ -319,19 +324,26 @@ def render_dynamic_fold(uc, symbols, with_trigs):
         fold_fraction = (frame * 53) & 0xFF
         uc.mem_write(FP_REC + 8, struct.pack(">H", (knobs["fold"] << 8) | fold_fraction))
         plant_voice(uc, 0, True, **amp)
-        split = with_trigs and frame in trig_frames
-        uc.mem_write(HEADER, bytes(0x1000 if split else 16 + 16 * 8))
+        trig = with_trigs and frame in trig_frames
+        uc.mem_write(HEADER, bytes(16 + 16 * 8))
         uc.mem_write(CURSOR_AT, struct.pack(">I", HEADER))
-        if split:
-            render_one_call(uc, symbols, 0, 5, trig=False)
-            render_one_call(uc, symbols, 5, 16, trig=True)
-        else:
-            render_one_call(uc, symbols, 0, 16, trig=False)
+        render_one_call(uc, symbols, 0, 16, trig=trig)
         samples = read_frame_headers(uc)
         if len(samples) != 16:
             die(f"FOLD ramp frame {frame} produced {len(samples)} samples, wanted 16")
         output.extend(samples)
-    return output
+        state = symbols["sy_state"]
+        states.append((
+            struct.unpack(">I", bytes(uc.mem_read(state + 0, 4)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(state + 4, 4)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(state + 8, 4)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(state + 20, 4)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(state + 24, 4)))[0],
+            struct.unpack(">H", bytes(uc.mem_read(state + 38, 2)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(state + 32, 4)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(symbols["sy_foldq"], 4)))[0],
+        ))
+    return output, states
 
 
 def rms(xs):
@@ -772,22 +784,34 @@ def main():
               after_env == 0x01000000 and after_ieff == full_index,
               f"env={before_env:#x}->{after_env:#x}, ieff={before_ieff}->{after_ieff}")
 
-        # Issue #1236: FOLD moves under automation while a warm sequencer trig
-        # splits the 16-sample frame. At DEC=INF, splitting must not advance
-        # the FOLD slew an extra time and create a trig-onset waveform step.
-        plain_fold = render_dynamic_fold(uc, symbols, with_trigs=False)
-        trig_fold = render_dynamic_fold(uc, symbols, with_trigs=True)
+        # Issue #1236: FOLD moves under automation while warm sequencer trigs
+        # are active. The retrig hook aligns an ongoing synth START to sample 0;
+        # exercise that real frame-aligned path, not a synthetic split call.
+        plain_fold, plain_states = render_dynamic_fold(uc, symbols, with_trigs=False)
+        trig_fold, trig_states = render_dynamic_fold(uc, symbols, with_trigs=True)
         trig_diffs = []
+        frame_peaks = []
         for frame in (3, 7, 11, 15):
             start = frame * 16
-            trig_diffs.extend(
+            diffs = [
                 abs(a - b)
                 for a, b in zip(plain_fold[start:start + 16], trig_fold[start:start + 16])
-            )
+            ]
+            trig_diffs.extend(diffs)
+            frame_peaks.append((frame, max(diffs), diffs.index(max(diffs))))
         peak_diff = max(trig_diffs)
-        check("DEC=INF FOLD ramp is stable across split-frame trigs",
+        state_diffs = []
+        for frame in (3, 7, 11, 15):
+            state_diffs.append((frame, [i for i, (a, b) in enumerate(
+                zip(plain_states[frame], trig_states[frame])) if a != b]))
+        foldq_steps = [abs(b[7] - a[7]) for a, b in zip(plain_states, plain_states[1:])]
+        max_foldq_step = max(foldq_steps)
+        check("DEC=INF FOLD automation advances gradually",
+              max_foldq_step <= 512,
+              f"largest frame-to-frame slew={max_foldq_step} Q8 (limit 512)")
+        check("DEC=INF FOLD ramp is stable across frame-aligned trigs",
               peak_diff <= 150_000,
-              f"peak same-phase waveform difference={peak_diff} (limit 150000)")
+              f"peak same-phase difference={peak_diff}; peaks={frame_peaks}; state fields differ={state_diffs}")
 
     # Cost: mean instructions of steady frames (skip cold start).
     steady = costs["base"][1:]
