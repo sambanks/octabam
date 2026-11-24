@@ -45,7 +45,10 @@ MODULE = Module(
         note="remix resonator BUILD RR as RESON RR.RMX, 19 Oct 2026: page-1 GN1–4/DECY/MIX, page-2 PIT1–4/SCAL 8 "
              "and 127, DECY low and high, FX2 dry-pass, two FX1 instances"),
               Evidence(Level.UNIT, unit="MKII", who="Ilia", image="RESO LM4.RMX", date="2026-11-14", commit="0808651e",
-        note="low SCAL settings remained clean and the current-block LIM reduced hot output; verify_resonator passed"),),
+        note="low SCAL settings remained clean and the current-block LIM reduced hot output; verify_resonator passed"),
+              Evidence(Level.UNIT, unit="MKII", who="Ilia", image="CXRESO 99.RMX", date="2026-11-24",
+        commit="8d740dd2",
+        note="SCAL sweep was smooth from 0 to 127; limiter worked as expected"),),
     doc="Four pitched resonant band-pass filters in the style of the Torso S-4's RING, with decay and a limiter. FX1 only.",
     menu=MenuEntry(
         # Custom id 0x1e (BBD 0x1b). Selftest fixtures use DELAY 0x08.
