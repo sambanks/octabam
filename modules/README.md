@@ -12,7 +12,7 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**MODE DEFAULTS**](mode-defaults/README.md) | [Sam Banks](https://github.com/sambanks) | Turning a MODE knob resets the knobs around it to that mode's defaults, on FX1 and FX2. |
 | [**RIG HOSTS**](rig-hosts/README.md) | [Sam Banks](https://github.com/sambanks) | A new Part starts wired for the bus: the bus delay on T1's FX2, the bus reverb on T5's, the stock DELAY on T8's and SEND on the rest. |
 | [**SEND**](send/README.md) | [Sam Banks](https://github.com/sambanks) | Bus client: DEL into the delay, REV into the reverb, from any track. The default effect. |
-| [**TEMPO BUS**](tempo-bus/README.md) | [Sam Banks](https://github.com/sambanks) | The TEMPO window lists and edits BusDelay's and BusVerb's knobs (UP/DOWN = row, A or B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM); with a scene held, A or B sets that scene's lock. |
+| [**TEMPO BUS**](tempo-bus/README.md) | [Sam Banks](https://github.com/sambanks) | The TEMPO window lists and edits BusDelay's and BusVerb's knobs (UP/DOWN = row, A or B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM, FUNC + REC / STOP = copy / paste, again to undo); with a scene held, A or B sets that scene's lock. |
 | [**TEMPO SYNC**](tempo-sync/README.md) | [Sam Banks](https://github.com/sambanks) | Syncs the bus delay to the tempo: TIME shows as a tempo division, and the held MIDI note reaches the delay. |
 
 ## Effects: on a track
