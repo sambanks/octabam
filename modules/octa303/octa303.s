@@ -335,8 +335,7 @@
         sub.l   %d1,\reg
         .endm
         .macro  KB off, areg            | d0 = the knob byte at off(areg), clamped 0..127
-        moveq   #0,%d0
-        move.b  \off(\areg),%d0
+        mvz.b   \off(\areg),%d0
         cmp.l   #127,%d0
         bls     .Lkb\@
         moveq   #127,%d0
@@ -354,10 +353,8 @@
         move.l  (%a1,%d0.l*4),%d1
         move.l  %d1,\dst(%a3)
         .endm
-        .macro  RAWW off, dst
-        moveq   #0,%d0
-        move.w  \off(%a4),%d0
-        lsr.l   #8,%d0
+        .macro  RAWW off, dst           | dst = the word at off(a4) >> 8, clamped 0..127: its high byte
+        mvz.b   \off(%a4),%d0
         cmp.l   #127,%d0
         bls     .Lrw\@
         moveq   #127,%d0
