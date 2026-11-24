@@ -99,7 +99,8 @@ A client that needs another stock site claims it itself, as any module does.
   does, as it refuses any two claims on one site.
 - A client's code is its own: no test for other machines, no chain, and no
   row constant, even where it compares stock's list cursor (`0x460e738e`)
-  with its row: read `<prefix>_mc_row`.
+  with its row: read `<prefix>_mc_row`
+  ([TRAPS.md](../contributing/TRAPS.md#trap-machine-row-constant)).
 - A client writes its knob defaults through `<prefix>_mc_defaults`, never
   into the Part itself.
 - A machine ported from another firmware keeps its proven bytes: it stays
@@ -110,9 +111,9 @@ A client that needs another stock site claims it itself, as any module does.
 - **Three clients in one remix.** PB_TABLE (`0x400d5f38`) has room for rows
   5 to 7. Six stock instructions read the table, two of them at MACHINES's
   own sites, so a `TableGrow` can move it and lift the limit.
-- **Six machines are not clients:** ANALOG BD, OCTA303, CX OSC and WAVE CF
-  are still on HOOKS's `machine_rows` chain, and BLACKPYRAMIDS_303 and SYNTH
-  MACHINE are ports. MACHINES conflicts with each until it is a client
+- **Five machines are not clients:** OCTA303, CX OSC and WAVE CF are still
+  on HOOKS's `machine_rows` chain, and BLACKPYRAMIDS_303 and SYNTH MACHINE
+  are ports. MACHINES conflicts with each until it is a client
   (`modules/machines/manifest.py`).
 - **The base is FLEX.** The validator masks a client's knobs with FLEX's
   defaults, so `CLIENTS` refuses another base until it looks them up per

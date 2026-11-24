@@ -12,11 +12,11 @@ ab_lpf_frequency:
 	move.l (%a0,%d0.l*4),%d0
 	rts
 	.size	ab_lpf_frequency, .-ab_lpf_frequency
-	.globl	ab_defaults
+	.globl	ab_mc_defaults
 	.section	.rodata
-	.type	ab_defaults, @object
-	.size	ab_defaults, 12
-ab_defaults:
+	.type	ab_mc_defaults, @object
+	.size	ab_mc_defaults, 12
+ab_mc_defaults:
 	.string	"@PP@@"
 	.base64	"AEB/QEAA"
 	.align	2

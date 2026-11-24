@@ -47,8 +47,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`hooks-chrom-bp`](hooks-chrom-bp/README.md) | BLACKPYRAMIDS_303 beside SCALE QUANTIZER: HOOKS gives a BLACKPYRAMIDS track's CHROMATIC octave keys, key index and keyboard picture to it and every other track's to SCALE QUANTIZER; SPRING REV given up. |
 | [`hooks-core`](hooks-core/README.md) | CORE + MORPH, REC THRESHOLD, CF METER, CF METER IDLE and BOOT TRACE: HOOKS owns the sites they share with CORE. |
 | [`hooks-free-loop`](hooks-free-loop/README.md) | FREE LOOP beside REC_TRIG_MUTE and REC THRESHOLD: HOOKS chains the status icons (REC THRESHOLD, FREE LOOP) and the step handler's recorder-trig test (FREE LOOP, REC_TRIG_MUTE). |
-| [`hooks-machines`](hooks-machines/README.md) | ANALOG BD and OCTA303 in one image: HOOKS gives the track's machine list seven rows, ANALOG BD on row 5 and OCTA-303 on row 6, and the list scrolls. |
-| [`hooks-machines-all`](hooks-machines-all/README.md) | ANALOG BD, OCTA303 and CX OSC in one image: HOOKS gives the track's machine list eight rows, ANALOG BD on row 5, OCTA-303 on row 6 and CX OSC on row 7, and the list scrolls. |
+| [`hooks-machines-all`](hooks-machines-all/README.md) | OCTA303, WAVE CF and CX OSC in one image: HOOKS gives the track's machine list eight rows, OCTA-303 on row 5, WAVE on row 6 and CX OSC on row 7, and the list scrolls. |
 | [`hooks-machines-cx`](hooks-machines-cx/README.md) | OCTA303 and CX OSC in one image: HOOKS gives the track's machine list seven rows, OCTA-303 on row 5 and CX OSC on row 6, and the list scrolls. |
 | [`hooks-reload`](hooks-reload/README.md) | FREE LOOP beside RELOAD_FROM_PROJECT: HOOKS chains the UI task's tick 0x40056c28 (FREE LOOP, then RELOAD_FROM_PROJECT). |
 | [`ids64`](ids64/README.md) | BBD on FX2 id 0x25 in a 64-id image (DSP dispatch and ColdFire tables grown). |
@@ -61,6 +60,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`lock-edit`](lock-edit/README.md) | stock effects with LOCK EDIT ([TRIG]+[BANK] in grid recording opens the audio editor on the step's sample and slice). |
 | [`lofi-amf-fix`](lofi-amf-fix/README.md) | Reference minimal build: the LO-FI AMF mpysu->mpyuu fix, alone. |
 | [`lofi2`](lofi2/README.md) | LOFI2 beside the stock effects (all but PLATE REV and SPRING REV, whose words it takes). |
+| [`machines`](machines/README.md) | DRUMMER and ANALOG BD in one image: MACHINES gives the track's machine list seven rows, DRUMMER on row 5 and ANALOG BD on row 6, and the list scrolls. |
 | [`midi-follow`](midi-follow/README.md) | Per-track RFOL source selection on MIDI NOTE SETUP; Part-owned bass following. |
 | [`midi-follow-events`](midi-follow-events/README.md) | MIDI Follow with EUCLID and PLOCKS P2 sharing EVENTS notifications. |
 | [`midi-loopback`](midi-loopback/README.md) | Stock effects plus the Part-scoped per-track MIDI loopback routing. |

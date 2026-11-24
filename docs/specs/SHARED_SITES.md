@@ -28,7 +28,7 @@ tree let modules share a site. Choose by what the modules need:
 
 The track's machine list, SRC SETUP, the Part validator, the playback resolver and the LFO PMTR names are shared by every machine module.
 **MACHINES** owns them: a machine is a client (`requires=("MACHINES",)`, an entry in its `CLIENTS`) and claims none of them
-([MACHINES.md](MACHINES.md)). DRUMMER is a client. ANALOG BD, OCTA303, CX OSC and WAVE CF are still chained by HOOKS's `machine_rows`
+([MACHINES.md](MACHINES.md)). DRUMMER and ANALOG BD are clients. OCTA303, WAVE CF and CX OSC are still chained by HOOKS's `machine_rows`
 bridge, in that row order: the first present is the head and keeps every shared site, and MACHINES conflicts with them until each is a client.
 Both hold three machines at most (PB_TABLE has one spare word, `0x400d5f54`). The list's key handlers clamp the cursor to 5
 ([TRAPS.md](../contributing/TRAPS.md#trap-machine-clamp)).

@@ -408,7 +408,7 @@ def main():
     print("machines: the real clients")
     real_clients()
     print("machines: the installed image")
-    installed(sys.argv[1] if len(sys.argv) > 1 else "drummer")
+    installed(sys.argv[1] if len(sys.argv) > 1 else "machines")
     print(f"machines: {'FAIL' if fails else 'PASS'}")
     sys.exit(1 if fails else 0)
 

@@ -91,19 +91,16 @@ docs/specs/SHARED_SITES.md says how HOOKS relates to STORE, EVENTS and Override.
     detour spans SCALE QUANTIZER's 8 bytes, so stock's `bne` at 0x40044970,
     which SCALE QUANTIZER's handler returns to, stays in place.
   * machine_rows -- the track's machine list, SRC SETUP and the machine
-    hooks behind them: ANALOG BD and OCTA303 are each a sixth row (row 5)
-    of a five-row list that never scrolls, each signing a FLEX track in the
-    same three Part bytes ('A' 'B' 1 / 'T' 'B' 1) and each taking the FLEX
-    kind entry's renderer. Bridged, ANALOG BD keeps row 5 and every one of
-    its hooks; built with HK_MACHINE_ROWS, each of its not-ours paths hands
-    the hook to OCTA303's routine for it (name, commit, SRC SETUP commit,
-    validator, row type), and OCTA303, built with its row as 6, publishes
-    its record as UI type 6's from ANALOG BD's tick and chains its renderer
-    into ab_render. OCTA303's own copies of those hooks are overridden; its
-    page, retrig, CHROMATIC, LFO-name and trig hooks are its alone and
-    stay. The lists have seven rows: HOOKS pokes the counts and bounds and
-    takes the chooser drawer's two row tests (0x40078678, 0x400786c8) so it
-    scrolls, drawing row top + d2 where stock draws row d2.
+    hooks behind them, for OCTA303, WAVE CF and CX OSC (in that row order):
+    each is a sixth row (row 5) alone, signing a FLEX track in the same three
+    Part bytes. Bridged, the first present (the head) keeps every shared
+    site; built with HK_MACHINE_ROWS, each machine's not-ours paths hand the
+    hook to the next machine's routine (MC_NEXT_*), and the last replays
+    stock. HOOKS pokes the lists' counts and bounds and takes the drawer's
+    row tests, so the list scrolls. ANALOG BD and DRUMMER are MACHINES
+    clients (modules/machines), which owns these sites once for any number
+    of machines; MACHINES conflicts with this chain until each of its
+    machines is a client.
 """
 
 import os
@@ -221,10 +218,9 @@ CHROMATIC = (
 # same hook, entered as at the site (MC_NEXT_*, flags_inc), and the last one's
 # replays stock. (module key, its row-type routine.)
 MACHINE_ROWS = (
-    ("ANALOG BD", "ab_row_type"),
     ("OCTA303", "o3_type"),
-    ("CX OSC", "fm_type"),
     ("WAVE CF", "wc_type"),
+    ("CX OSC", "fm_type"),          # last: its routines hand on only the render chain
 )
 # PB_TABLE (0x400d5f38) has slots 0..6 and a spare zero word at 0x400d5f54 that
 # no code reads; the FX1 table starts at 0x400d5f58: three rows at most.
@@ -236,16 +232,12 @@ MC_MAX = 3
 MC_LIMIT = 2
 # What each machine signs a FLEX track with: Part' + 0x3c + 30 * track, three bytes
 # (OCTA303 'T' 'B' 1; ANALOG BD 'A' 'B' 1; CX OSC 'C' 'X' 1, page.s SIG_OFF 0x8edbc = PART_OFF + 0x3c).
-MACHINE_SIGS = {"ANALOG BD": b"AB\x01", "OCTA303": b"TB\x01", "CX OSC": b"CX\x01", "WAVE CF": b"WV\x01"}
+MACHINE_SIGS = {"OCTA303": b"TB\x01", "CX OSC": b"CX\x01", "WAVE CF": b"WV\x01"}
 # Each machine's routine for each chained hook. A routine is entered as at its
 # hook's site; None: the machine has no such hook. `publish` (its PLAYBACK
 # record into PB_TABLE[its row], called from the head's tick) and `title` (its
 # name, a word of the head's SRC SETUP name table) are needed of a non-head only.
 MACHINES = {
-    "ANALOG BD": dict(TYPE="ab_row_type", NAME="ab_machine_name", MAIN_COMMIT="ab_main_commit",
-                      SRC_COMMIT="ab_src_commit", SRC_COMMIT2="ab_src_commit2",
-                      VALIDATE="ab_validate", RENDER="ab_render", PAGE=None, RETRIG=None,
-                      LFO_NAME=None, publish=None, title=None),
     "OCTA303": dict(TYPE="o3_type", NAME="o3_machine_name", MAIN_COMMIT="o3_main_commit",
                     SRC_COMMIT="o3_src_commit", SRC_COMMIT2="o3_src_commit2",
                     VALIDATE="o3_validate", RENDER="o3_render", PAGE="o3_page", RETRIG="o3_retrig",
@@ -270,14 +262,14 @@ MACHINES = {
 # TB303* sample's settings record (o3_marker), and stock renders the rest.
 # LFO_NAME: OCTA303 then CX OSC at 0x4003bff0 — each names its own track's
 # PMTRs and hands every other track on (Sam #1068).
-MC_ORDER = {"RENDER": ("CX OSC", "OCTA303", "WAVE CF", "ANALOG BD"),
+MC_ORDER = {"RENDER": ("CX OSC", "OCTA303", "WAVE CF"),
             "PAGE": ("OCTA303", "WAVE CF", "CX OSC"), "RETRIG": ("OCTA303", "WAVE CF", "CX OSC"),
             "LFO_NAME": ("OCTA303", "CX OSC")}
 MC_CHAINED = ("TYPE", "NAME", "MAIN_COMMIT", "SRC_COMMIT", "SRC_COMMIT2", "VALIDATE",
               "RENDER", "PAGE", "RETRIG", "LFO_NAME")
 # The row chain's head-owned sites, and the machines that claim each (CX OSC
 # has no second name lookup and commits at 0x40079816).
-_ALL3, _AO = ("ANALOG BD", "OCTA303", "CX OSC", "WAVE CF"), ("ANALOG BD", "OCTA303", "WAVE CF")
+_ALL3, _AO = ("OCTA303", "CX OSC", "WAVE CF"), ("OCTA303", "WAVE CF")
 MC_HEAD_SITES = {
     0x400334D8: _ALL3, 0x4003C928: _ALL3, 0x4003D718: _ALL3, 0x4004C36A: _AO,
     0x4003C980: _ALL3, 0x400585DC: _ALL3, 0x4005221E: _ALL3, 0x40078886: _ALL3,

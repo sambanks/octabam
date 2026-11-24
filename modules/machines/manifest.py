@@ -20,6 +20,7 @@ FLEX = 1
 # descriptor), `tick` and `keep` are optional.
 CLIENTS = (
     ("DRUMMER", "dr", b"DR\x01", "DRUMMER", FLEX, True, ("page", "tick", "keep")),
+    ("ANALOG BD", "ab", b"AB\x01", "ANALOG BD", FLEX, False, ("page",)),
 )
 HOOKS = ("page", "tick", "keep")
 # PB_TABLE (0x400d5f38) has slots 0..6 and a spare zero word at 0x400d5f54; the FX1 table
@@ -170,7 +171,6 @@ MODULE = Module(
     select=select,
     # The machines still on HOOKS' machine_rows chain, and the ports outside it, until each is a client.
     conflicts=(
-        ("ANALOG BD", "both own the machine list's sites (HOOKS machine_rows) until ANALOG BD is a MACHINES client"),
         ("OCTA303", "both own the machine list's sites (HOOKS machine_rows) until OCTA303 is a MACHINES client"),
         ("CX OSC", "both own the machine list's sites (HOOKS machine_rows) until CX OSC is a MACHINES client"),
         ("WAVE CF", "both own the machine list's sites (HOOKS machine_rows) until WAVE CF is a MACHINES client"),

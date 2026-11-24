@@ -9,9 +9,8 @@ style list with 808 and 909 rows). UP/DOWN or LEVEL browses, YES selects,
 NO cancels. LEFT returns to the machine chooser; RIGHT on ANALOG BD opens
 the engine pool again. Selecting a model keeps the existing knob values
 rather than loading a preset. Not in an official remix; build the test
-remix `analog-bassdrum`, or `hooks-machines` to have it beside
-[OCTA-303](octa303.md) (the machine list then has seven rows and scrolls),
-or `hooks-machines-all` with [CX OSC](cxosc.md) as well (eight rows).
+remix `analog-bassdrum`, or `machines` to have it beside
+[DRUMMER](drummer.md) (the machine list then has seven rows and scrolls).
 
 ## Operation
 

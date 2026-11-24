@@ -19,10 +19,6 @@ static unsigned signed_track(const volatile uint8_t *part, unsigned t) {
     return t<8 && part[0x22+t]==1 && s[0]=='A' && s[1]=='B' && s[2]==1;
 }
 /* Each core owns four independent voice slots, addressed by track. */
-unsigned ab_admit_track(const volatile uint8_t *part, unsigned track) {
-    (void)part;
-    return track<8;
-}
 static volatile uint8_t *part_base(void) {
     return (volatile uint8_t *)(uintptr_t)(U32(BANK)+PART_OFF+(U8(PART_IDX)&3)*PART_STRIDE);
 }
@@ -30,11 +26,6 @@ static volatile uint8_t *part_base(void) {
 unsigned ab_selected_source(void) {
     unsigned track=U8(0x100b14ccu);
     return !U8(0x80000015u) && track<8 && signed_track(part_base(),track);
-}
-unsigned ab_type(unsigned type, const volatile uint8_t *ptr) {
-    volatile uint8_t *part=part_base();
-    uintptr_t t=(uintptr_t)ptr-(uintptr_t)(part+0x22);
-    return type==1 && t<8 && signed_track(part,(unsigned)t) ? 5 : type;
 }
 static void put32(uint8_t *p,uint32_t v) {
     p[0]=(uint8_t)(v>>24); p[1]=(uint8_t)(v>>16); p[2]=(uint8_t)(v>>8); p[3]=(uint8_t)v;
@@ -64,7 +55,7 @@ static uint32_t page_for(unsigned model) {
             text(d+0x3c,"SYN",5); text(d+0x41,"ANALOG BD",13);
             for(unsigned i=0;i<12;++i) {
                 text(d+0x4e + 6*i,names[m][i],6);
-                d[0x96+i]=ab_defaults[i];
+                d[0x96+i]=ab_mc_defaults[i];
                 put32(d+0xa2+4*i,0);
                 put32(d+0xd2+4*i,i==6?0:128);
                 put32(d+0x102+4*i,i==8 ? (uint32_t)(uintptr_t)ab_lpf_fmt:0);
@@ -77,39 +68,11 @@ static uint32_t page_for(unsigned model) {
     }
     return (uint32_t)(uintptr_t)(desc[model!=0]+0x38);
 }
-uint32_t ab_track_page(const volatile uint8_t *type_ptr) {
+/* MACHINES client (modules/machines): ANALOG BD's PLAYBACK page for a track. */
+uint32_t ab_mc_page(const volatile uint8_t *type_ptr) {
     volatile uint8_t *part=part_base();
     uintptr_t track=(uintptr_t)type_ptr-(uintptr_t)(part+0x22);
     return page_for(track<8 ? part[0x1da+6+30*track] : 0);
-}
-void ab_ui_tick(void) {
-    if(U32(BANK)<0x40000000u || U32(BANK)>=0x48000000u) {
-        U32(0x400d5f38u+5*4)=page_for(0); return;
-    }
-    volatile uint8_t *part=part_base();
-    U32(0x400d5f38u+5*4)=ab_track_page(part+0x22+(U8(0x100b14ccu)&7));
-}
-/* Validator temporarily sees stock FLEX defaults for every AB track. All
- * twelve original bytes are restored. Every other Part byte is checked by
- * stock's real validator. The assembly trampoline skips our own detour. */
-extern int ab_stock_validate(void *part);
-int ab_validate_part(uint8_t *part) {
-    uint8_t saved[8][12]; unsigned mask=0;
-    const volatile uint8_t *stock=(const volatile uint8_t *)0x400d320cu;
-    for(unsigned t=0;t<8;++t) if(signed_track(part,t)) {
-        mask|=1u<<t;
-        for(unsigned k=0;k<12;++k) {
-            unsigned at=(k<6?0x2a:0x1da)+30*t+6+k%6;
-            saved[t][k]=part[at]; part[at]=stock[k];
-        }
-    }
-    int result=ab_stock_validate(part);
-    for(unsigned t=0;t<8;++t) if(mask&(1u<<t))
-        for(unsigned k=0;k<12;++k) {
-            unsigned at=(k<6?0x2a:0x1da)+30*t+6+k%6;
-            part[at]=saved[t][k];
-        }
-    return result;
 }
 /* ABI measured at 4000d430/4000d518. Every track is rendered twice per
  * frame around its event's sample offset; the second call has end=16.
@@ -172,7 +135,7 @@ void ab_engine_select(unsigned model) {
     U32(engine_bank+0x9b332u)=1;
     U32(0x100f8598u)=1;
     ((void (*)(void))0x40027e00u)();
-    ab_ui_tick();
+    mc_publish();
     ((void (*)(void))0x4004d948u)();
 }
 static void engine_808(void) { ab_engine_select(0); }
@@ -232,9 +195,10 @@ void ab_engine_left(void) {
     ab_stock_pool_open();
     ((void (*)(void))0x4007893cu)();
 }
+extern const uint32_t ab_mc_row;           /* our row on the machine list (MACHINES) */
 void ab_engine_right(unsigned key,unsigned value) {
     if(U32(0x460e70e0u) && !U32(0x460e739au) &&
-       U32(0x460e738eu)==5 && ab_selected_source()) {
+       U32(0x460e738eu)==ab_mc_row && ab_selected_source()) {
         ((void (*)(void))0x400789e4u)();
         ab_engine_open();
         return;

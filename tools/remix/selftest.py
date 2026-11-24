@@ -1042,8 +1042,8 @@ def main():
              "hooks-core": ("PHASER", "DARK REV"),   # LOAD METER's DSP half in PHASER's (as stock-meter-a), CF METER's readout in DARK's (as cfmeter)
              "hooks-free-loop": (),   # FREE LOOP + REC_TRIG_MUTE + REC THRESHOLD: ColdFire, no DSP words
              "hooks-reload": (),   # FREE LOOP + RELOAD_FROM_PROJECT: ColdFire, no DSP words
-             "hooks-machines": ("SPRING REV",),   # ANALOG BD's voices in SPRING's words, as analog-bassdrum
-             "hooks-machines-all": ("SPRING REV",),   # the same, with CX OSC
+             "machines": ("SPRING REV",),   # DRUMMER + ANALOG BD on MACHINES: ANALOG BD's voices in SPRING's words
+             "hooks-machines-all": (),   # OCTA303 + CX OSC + WAVE CF: ColdFire, no DSP words
              "hooks-machines-cx": (),   # OCTA303 + CX OSC: ColdFire, no DSP words
              "wavecf": (), "wavecf-octa303": (),   # WAVE CF (+ OCTA303): ColdFire, no DSP words
              "analog-bassdrum": ("SPRING REV",),

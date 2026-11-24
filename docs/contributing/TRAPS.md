@@ -1514,7 +1514,21 @@ list grows, find every constant near its old size in the code that touches
 the list (a byte search for the clamp found all five), and in a port script
 hold a key only as long as you mean it to repeat. Gate: `verify_hooks`
 (installed: the ten pokes) and `verify_analog_bassdrum_ui` on
-`hooks-machines` (row 5 reached from the bottom of seven).
+`analog-bassdrum`; MACHINES (`modules/machines/verify.py`) runs its list over every top row for one and two clients.
+
+<a id="trap-machine-row-constant"></a>
+
+### A machine's own code compared the list's cursor with row 5
+
+**ONE MACHINE ON ROW 6 PLAYED ONE MODEL AND SHOWED ANOTHER.** With DRUMMER on
+row 5 and ANALOG BD on row 6 (MACHINES), ANALOG BD's engine pool chose 808
+in the Part while its live byte (`0x80000830 + 72 × track`) kept 909.
+`ab_engine_right` opened the pool only when the list's cursor
+(`0x460e738e`) was 5. Every earlier image had ANALOG BD on row 5, so the
+test never failed. The fix: a client reads its row from `<prefix>_mc_row`,
+never a constant, including where it reads stock's cursor. The gate:
+`verify_analog_bassdrum_ui` and `verify_analog_bassdrum_cf` take ANALOG BD's row from
+`ab_mc_row`, and run on `machines`, where it is row 6.
 
 <a id="trap-resident-import-exports"></a>
 ### Resident relinking must not publish imported staging symbols

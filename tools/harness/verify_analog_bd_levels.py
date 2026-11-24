@@ -10,7 +10,7 @@ from analog_bassdrum import DEFAULTS
 
 def main():
     source=(bd909.ROOT/'modules/analog-bassdrum/engine.c').read_text()
-    defaults=[int(x) for x in re.search(r'ab_defaults\[AB_PARAMS\] = \{([^}]+)',source)[1].split(',')]
+    defaults=[int(x) for x in re.search(r'ab_mc_defaults\[AB_PARAMS\] = \{([^}]+)',source)[1].split(',')]
     assert defaults==DEFAULTS, 'level gate defaults drifted from firmware'
     levels=[]
     out=bd909.ROOT/'out/analog-bassdrum/levels';out.mkdir(parents=True,exist_ok=True)

@@ -3,8 +3,9 @@
 Platform module: the track's machine list, SRC SETUP and the Part validator,
 held once for every added machine. A machine is a client of MACHINES: it
 says what it is (its signature, its name, its base machine, its defaults and
-its page), and MACHINES puts it on the list: the first client on row 5, the
-next on row 6, and the list scrolls past six rows.
+its page), and MACHINES puts it on the list. A remix with DRUMMER and ANALOG
+BD shows seven rows, DRUMMER on row 5 and ANALOG BD on row 6, and the list
+scrolls.
 
 The contract: [docs/specs/MACHINES.md](../../docs/specs/MACHINES.md).
 
@@ -29,7 +30,8 @@ them back to FLEX.
    `<prefix>_mc_tick` and `<prefix>_mc_keep` when named.
 4. Where the client needs its row, read `<prefix>_mc_row`.
 
-DRUMMER (`modules/drummer/adapter.c`) is the reference client.
+DRUMMER (`modules/drummer/adapter.c`) and ANALOG BD
+(`modules/analog-bassdrum/control.c`) are the reference clients.
 
 ## How it works
 
@@ -70,8 +72,8 @@ each site in a built image holds MACHINES's jump.
 
 ## Open
 
-- ANALOG BD, OCTA303, CX OSC and WAVE CF are still on HOOKS's `machine_rows`
-  chain, and conflict with MACHINES until each is a client.
+- OCTA303, CX OSC and WAVE CF are still on HOOKS's `machine_rows` chain, and
+  conflict with MACHINES until each is a client.
 - The base is FLEX: the validator masks a client's knobs with FLEX's defaults.
 - BLACKPYRAMIDS_303 and SYNTH MACHINE are ports. They stay outside until their
   authors' builds are clients.
