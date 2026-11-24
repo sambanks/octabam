@@ -782,6 +782,7 @@ static u32 part_def_sig DATA;
 #define ST_BASE  0x40				/* the stock targets' entries follow the effects' */
 #define E_PROJECT (ST_BASE + 8)
 #define E_PART    (ST_BASE + 9)
+#define E_FXSET   (ST_BASE + 10)	/* the FX1 and FX2 ids and pages of the eight tracks, as key/value pairs */
 #define PART_STORE "stock.part2"
 #define PART_LAYOUT 0x50525432u
 
@@ -1449,7 +1450,7 @@ void brain_job(void)
 	else if (job_args & 0x100000)
 		brain_save_counts[S_SAVE_ERR] = (u32)write_template(T_DELETE, 0, 0, (job_args >> 8) & 0xff, job_args & 0xff);
 	else if (job_args & 0x80000)
-		brain_save_counts[S_SAVE_ERR] = (u32)write_template(T_SAVE, job_args & 7, (job_args >> 8) & 7, 0, 0);
+		brain_save_counts[S_SAVE_ERR] = (u32)write_template(T_SAVE, job_args & 7, (job_args >> 8) & 15, 0, 0);
 	else if (job_args & 0x40000)
 		brain_save_counts[S_SAVE_ERR] = (u32)write_settings();
 	else if (job_args & 0x20000)
@@ -1702,7 +1703,7 @@ void brain_open_templates(u32 unused) { (void)unused; sc_open(SC_TPL); }
  * brain_fx[], entry e < MAX_FX), its AMP or LFO page, a whole MIDI track
  * (the stock targets, entry ST_BASE + kind - V_AMP), or its SRC page, one
  * target per machine type (entry ST_BASE + 3 + machine). */
-enum { V_FX1, V_FX2, V_AMP, V_LFO, V_MIDI, V_SRC, V_PART, V_PROJECT };
+enum { V_FX1, V_FX2, V_AMP, V_LFO, V_MIDI, V_SRC, V_PART, V_PROJECT, V_FXSET };
 #define NSLOT    208
 #define SKIP     0xfe		/* flat[]: a slot with no parameter */
 #define NOFLAT   0xff		/* flat[]: a slot the page-1 writer does not reach */
@@ -1723,7 +1724,7 @@ struct st_ent {
 	const char *id;
 	u32 id_len, layout;
 };
-#define ST_N     10
+#define ST_N     11
 static const struct st_ent st_ent[ST_N] = {
 	{ "stock.amp", 9, 0x414d5031 },		/* "AMP1" */
 	{ "stock.lfo", 9, 0x4c464f31 },		/* "LFO1" */
@@ -1736,6 +1737,7 @@ static const struct st_ent st_ent[ST_N] = {
 	{ "stock.pickup", 12, 0x50434b31 },	/* "PCK1" */
 	{ "stock.project", 13, 0x50524a31 },	/* "PRJ1": the stock PROJECT menu's bytes (PS_LAYOUT) */
 	{ "stock.part2", 11, 0x50525432 },	/* "PRT2": the whole Part, one blob (PART templates, below) */
+	{ "stock.fxset", 11, 0x46585331 },	/* "FXS1": the eight tracks' FX1 and FX2 (view V_FXSET) */
 };
 #define D_PLAYBACK 0x400d2fe4			/* PLAYBACK entry 0; entry m at + m * 0x192 */
 
@@ -1821,8 +1823,8 @@ static int view_fill(struct view *v, u32 kind, u32 t)
 			}
 		return 1;
 	}
-	if (kind == V_PART) {		/* the ids (keys 1..8 FX1, 9..16 FX2), then each track's FX1 and FX2 page values */
-		v->e = E_PART;
+	if (kind == V_PART || kind == V_FXSET) {	/* the ids (keys 1..8 FX1, 9..16 FX2), then each track's FX1 and FX2 page values */
+		v->e = kind == V_PART ? E_PART : E_FXSET;
 		for (u32 i = 0; i < 16; i++) {
 			u32 j = v->n++;
 			v->key[j] = (u16)(1 + i);
@@ -2171,7 +2173,7 @@ static int write_template(int del, u32 t, u32 kind, u32 e, u32 i)
 		return 2;
 	struct view *v = &job_view;
 	if (del == T_SAVE) {
-		if (kind > V_PROJECT || t > 7 || !view_fill(v, kind, t))
+		if (kind > V_FXSET || t > 7 || !view_fill(v, kind, t))
 			return 1;
 		e = v->e;
 	}
@@ -2451,7 +2453,7 @@ static int str_lt(const char *a, const char *b);
 static u32 tpl_prefix(u32 e, char *o)
 {
 	static const char *const st_abbr[ST_N] = { "AMP", "LFO", "MIDI", "STAT", "FLEX", "THRU", "NBR", "PICK",
-						   "PROJ", "KIT" };
+						   "PROJ", "KIT", "FX" };
 	const char *a = "TPL";
 	if (e >= ST_BASE)
 		a = st_abbr[e - ST_BASE];
@@ -2577,6 +2579,7 @@ static void new_ask(u32 e, u32 job)
 static void new_template(u32 kind, u32 t, u32 e) { new_ask(e, 0x80000 | t | (kind << 8)); }
 static void tpl_new_project(u32 unused) { (void)unused; new_template(V_PROJECT, 0, E_PROJECT); }
 static void tpl_new_part(u32 unused) { (void)unused; new_template(V_PART, 0, E_PART); }
+static void tpl_new_fxset(u32 unused) { (void)unused; new_template(V_FXSET, 0, E_FXSET); }
 
 /* a template of target e with the page descriptor's default values (no page need be open) */
 static void new_default(u32 e) { new_ask(e, 0x10000000 | (e << 8)); }
@@ -2642,7 +2645,7 @@ void brain_tpl_save(u32 unused)
 static u32 trow_ref_sel;			/* e << 8 | i of the template the popup is about */
 
 static const char *const st_name[ST_N] = { "AMP", "LFO", "MIDI TRACK", "SRC STATIC", "SRC FLEX",
-					   "SRC THRU", "SRC NEIGHBOR", "SRC PICKUP", "PROJECT", "KIT" };
+					   "SRC THRU", "SRC NEIGHBOR", "SRC PICKUP", "PROJECT", "KIT", "FX" };
 
 static const char *ent_name(u32 e)
 {
@@ -2907,6 +2910,32 @@ static void part_apply_ask(u32 ref)
 	LISTPOP(AP_ROWS, 0, &ap_sel, rows, (void *)fn);
 }
 
+/* APPLY of an FX template: the working Part with the eight tracks' FX1 and FX2 ids and pages the
+ * template holds, through the stock Part paste */
+static void fxset_apply(const u8 *p)
+{
+	u8 vals[NSLOT];
+	view_fill(&tpl_view, V_FXSET, 0);
+	tpl_values(p, &tpl_view, vals);
+	trow_name(tname, p);
+	msg[0] = tname;
+	for (u32 i = 0; i < 16; i++)
+		if (vals[i] && !find((const u8 *const *)(i < 8 ? FX1_IDS : FX2_IDS), vals[i])) {
+			msg[1] = "EFFECT NOT IN IMAGE";
+			POPUP("APPLY TEMPLATE", 2, msg, 0, 0);
+			return;
+		}
+	u32 part = CUR_PART & 3;
+	const u8 *src = DBPTR + WORKING + part * PART_LEN;
+	for (u32 i = 0; i < PART_LEN; i++)
+		part_buf[i] = src[i];
+	for (u32 i = 0; i < tpl_view.n; i++)
+		part_buf[tpl_view.at[i] - WORKING] = vals[i];
+	PART_PASTE(part_buf, part);
+	msg[1] = "APPLIED";
+	POPUP("APPLY TEMPLATE", 2, msg, 0, 0);
+}
+
 static void trow_load(u32 unused)
 {
 	(void)unused;
@@ -2914,6 +2943,10 @@ static void trow_load(u32 unused)
 	const u8 *p = card_nth(e, trow_ref_sel & 0xff);
 	if (!p)
 		return;
+	if (e == E_FXSET) {
+		fxset_apply(p);
+		return;
+	}
 	if (e == E_PART) {
 		part_apply_ask(trow_ref_sel);
 		return;
@@ -3024,8 +3057,8 @@ static int view_meta(struct view *v, u32 e)
 			slot(v, 1 + s, 0, NOFLAT, D_PLAYBACK + m * 0x192, s);
 		return 1;
 	}
-	if (e == E_PROJECT || e == E_PART)
-		return view_fill(v, e == E_PROJECT ? V_PROJECT : V_PART, 0);
+	if (e == E_PROJECT || e == E_PART || e == E_FXSET)
+		return view_fill(v, e == E_PROJECT ? V_PROJECT : e == E_PART ? V_PART : V_FXSET, 0);
 	return e <= ST_BASE + 2 && view_fill(v, e == ST_BASE ? V_AMP : e == ST_BASE + 1 ? V_LFO : V_MIDI, 0);
 }
 
@@ -3479,7 +3512,7 @@ static int ted_prepare(u32 ref)
 	if (e == E_PROJECT)
 		for (u32 i = 0; i < ted_view.n; i++)
 			pslot[ted_view.at[i]] = (u8)i;
-	if (e == E_PART)
+	if (e == E_PART || e == E_FXSET)
 		for (u32 g = 0; g < 16; g++) {
 			pg_lab[g][0] = 'T';
 			pg_lab[g][1] = (char)('1' + (g >> 1));
@@ -4112,7 +4145,7 @@ static void back_cb(void)
 		return;
 	}
 	if (back_mode == 2) {			/* back one level, the cursor on the row left */
-		if (ted_is(E_PART) && ted_sub != G_TOP) {
+		if ((ted_is(E_PART) || ted_is(E_FXSET)) && ted_sub != G_TOP) {
 			sub_back = ted_sub;
 			ted_sub = G_TOP;
 		} else {
@@ -4235,13 +4268,13 @@ static void build_ted(void)
 			}
 		return;
 	}
-	if (ted_grp != G_TOP && e == E_PART) {		/* a group of the Part: what its section holds */
+	if (ted_grp != G_TOP && (e == E_PART || e == E_FXSET)) {	/* a group of the Part: what its section holds */
 		build_part_page();
 		return;
 	}
 	/* the actions, the same on every template's screen (SET AS DEFAULT where the target has a
 	 * moment to take it: an effect's selection, a new project), then the values */
-	add(K_ITEM, e == E_PROJECT ? "APPLY TO PROJECT" : e == E_PART ? "APPLY TO KIT" : "APPLY TO...", trow_load, 0);
+	add(K_ITEM, e == E_PROJECT ? "APPLY TO PROJECT" : e == E_PART ? "APPLY TO KIT" : e == E_FXSET ? "APPLY TO FX" : "APPLY TO...", trow_load, 0);
 	if (can_default(e)) {
 		if (tpl_is_default(e, rec))
 			add(K_ITEM, "CLEAR DEFAULT", trow_cleardef, 0);
@@ -4265,6 +4298,8 @@ static void build_ted(void)
 	if (e == E_PART)
 		for (u32 g = 0; g < PP_N; g++)
 			add(K_ITEM, pp_name[g], ted_open, g);
+	if (e == E_FXSET)
+		add(K_ITEM, pp_name[PP_FX], ted_open, PP_FX);
 	for (u32 i = 0; i < ted_view.n && sn + 6 < SR_MAX && e < E_PROJECT; i++) {
 		if (!ted_has[i] || !ted_view.key[i])
 			continue;
@@ -4285,7 +4320,7 @@ static void ted_adjust(int delta)
 		sc_rebuild();
 		return;
 	}
-	if (sr[scur].act == ted_sub_open && ted_is(E_PART) && ted_grp == PP_FX) {
+	if (sr[scur].act == ted_sub_open && (ted_is(E_PART) || ted_is(E_FXSET)) && ted_grp == PP_FX) {
 		part_fx_step(sr[scur].arg, delta);
 		sc_rebuild();
 		return;
@@ -4640,21 +4675,21 @@ static void build_set(void)
 
 /* TEMPLATES: a tab per type of target, LEFT and RIGHT between them; each opens on a row to save
  * one (the page in front when it is of that type) and lists that type's templates */
-#define TPL_TABS 4
-static const char *const tpl_tab_name[TPL_TABS] = { "KIT", "FX", "MIDI", "PROJECT" };
+#define TPL_TABS 5
+static const char *const tpl_tab_name[TPL_TABS] = { "KIT", "PRESET", "MIDI", "PROJECT", "FX" };
 static u32 tpl_tab DATA;
 
-/* the tab a target's templates are on: PART 0, an effect 1, MIDI TRACK 2, PROJECT 3; the page
+/* the tab a target's templates are on: KIT 0, an effect (PRESET) 1, MIDI TRACK 2, PROJECT 3, FX 4; the page
  * templates (AMP, LFO, SRC) the page shortcut saves are on none */
 static u32 tab_of_entry(u32 e)
 {
-	return e < ST_BASE ? 1 : e == ST_BASE + 2 ? 2 : e == E_PART ? 0 : e == E_PROJECT ? 3 : 9;	/* 9: page templates, by the shortcut */
+	return e < ST_BASE ? 1 : e == ST_BASE + 2 ? 2 : e == E_PART ? 0 : e == E_PROJECT ? 3 : e == E_FXSET ? 4 : 9;	/* 9: page templates, by the shortcut */
 }
 
 static void build_tpl(void)
 {
-	static void (*const newf[TPL_TABS])(u32) = { tpl_new_part, tpl_new_fx, tpl_new_midi, tpl_new_project };
-	static const char *const newl[TPL_TABS] = { "<NEW KIT TEMPLATE>", "<NEW FX TEMPLATE>", "<NEW MIDI TEMPLATE>", "<NEW PROJECT TEMPLATE>" };
+	static void (*const newf[TPL_TABS])(u32) = { tpl_new_part, tpl_new_fx, tpl_new_midi, tpl_new_project, tpl_new_fxset };
+	static const char *const newl[TPL_TABS] = { "<NEW KIT TEMPLATE>", "<NEW PRESET>", "<NEW MIDI TEMPLATE>", "<NEW PROJECT TEMPLATE>", "<NEW FX TEMPLATE>" };
 	add(K_ITEM, newl[tpl_tab], newf[tpl_tab], 0);
 	if (del_e != 0xffff) {			/* the deleted template gone from the card: nothing left out */
 		u32 j = 0;

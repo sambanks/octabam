@@ -993,6 +993,36 @@ def main():
               f"(changed: {kept or 'none'})", not bad and not kept)
     if in_group("panes"):
 
+        # ---- an FX template (the FX tab): the FX1 and FX2 ids and pages of the eight tracks -----------
+        # Seeded record: ids all 0 (NONE), T1 FX1 slot 0 (key 17) = 77, T2 FX2 slot 3 (key 17 + 3 * 12 + 3) = 99.
+        # APPLY TO FX: those two Part bytes take the values and every byte that changed is in an FX piece.
+        # NEW FX TEMPLATE: one stock.fxset record with the 208 values, equal to the Part's.
+        fxs = brainfile.Record(brainfile.TEMPLATE_REC, "stock.fxset", payload=brainfile.prefix_bytes(
+            brainfile.TEMPLATE_REC, layout=0x46585331, name="FX 07")
+            + b"".join(brainfile.Value(k, brainfile.BYTE, bytes([77 if k == 17 else 99 if k == 56 else 0])).encode()
+                       for k in range(1, 209)))
+        fxseed = OUT / "tpl_fxset_seed.work"
+        fxseed.write_bytes(brainfile.File(brainfile.CARD_WORK, [fxs]).encode())
+        fx_set_tab = [(0x21, 400)] * 4
+        files, _, (fx0,) = ui_run("tpl_fxset_apply0", [(0x32, 400)], dumps=((part_at + 0x8ed80, 6322),))
+        files, _, (fx1,) = ui_run("tpl_fxset_apply", [(0x32, 400)] + to_pane + fx_set_tab + [(0x20, 400), (0x31, 3000), (0x31, 2500)],
+                                  roots=((fxseed, "BRAIN/card.work"),), dumps=((part_at + 0x8ed80, 6322),))
+        fx_ok = [(0x00, 16)] + [(0x11a + t * 24 + o, 6) for t in range(8) for o in (12, 18)] \
+            + [(0x2fe + t * 30, 12) for t in range(8)]
+        inside = lambda i: any(o <= i < o + n for o, n in fx_ok)
+        outside = [i for i in range(6322) if fx0[i] != fx1[i] and not inside(i)]
+        check(f"templates: FX template APPLY TO FX: T1 FX1 slot 0 is 77 and T2 FX2 slot 3 is 99 "
+              f"({fx1[0x126]}, {fx1[0x147]}); no byte outside the FX pieces changed ({outside[:6] or 'none'})",
+              fx1[0x126] == 77 and fx1[0x147] == 99 and not outside)
+        files, _, _ = ui_run("tpl_fxset_new", [(0x32, 400)] + to_pane + fx_set_tab + [(0x31, 1200), (0x31, 4000)])
+        w_ = card_file(files, "BRAIN/CARD.WORK")
+        frecs = [r for r in brainfile.parse(w_).records if r.kind == brainfile.TEMPLATE_REC] if w_ else []
+        got = {v.key: v.data[0] for v in frecs[0].values()} if len(frecs) == 1 else {}
+        check(f"templates: NEW FX TEMPLATE writes one stock.fxset record of 208 values  "
+              f"{[(r.store_id, r.name()) for r in frecs]} {len(got)} values",
+              len(frecs) == 1 and frecs[0].store_id == "stock.fxset" and frecs[0].name().startswith("FX 01") and len(got) == 208)
+    if in_group("panes"):
+
         # ---- the PART default: CREATE EMPTY PROJECT and every Part of every bank, the sample slots apart ----
         dblob = blob_with(lambda b: (b.__setitem__(slice(0, 16), bytes(16)), b.__setitem__(slice(0x22, 0x2a), bytes([1] * 8)),
                                      b.__setitem__(slice(0x2ca, 0x2f2), bytes([0x33] * 40))))

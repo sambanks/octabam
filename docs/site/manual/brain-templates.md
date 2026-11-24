@@ -2,7 +2,7 @@
 
 *BRAIN: Templates*
 
-A template stores a reusable setup. Use **LEFT / RIGHT** to choose the **KIT**, **FX**, **MIDI**, or **PROJECT** tab.
+A template stores a reusable setup. Use **LEFT / RIGHT** to choose the **KIT**, **PRESET**, **MIDI**, **PROJECT**, or **FX** tab.
 
 1. Select **NEW** and press **YES** to create a template.
 2. Enter a name and confirm with **YES**.
@@ -12,7 +12,8 @@ A template stores a reusable setup. Use **LEFT / RIGHT** to choose the **KIT**, 
 The template screen also provides **SAVE**, **RENAME**, and **DELETE**.
 
 - KIT templates hold a whole Part, applied by section and track: FX, LFO, SRC, AMP, MIDI TRACKS, SCENES, MACHINES.
-- FX templates store one effect: its id, page 1 and page 2 (the FX SETUP page); applying one to a different effect replaces that effect. MIDI templates store a MIDI track's pages.
+- FX templates store the effects of all eight tracks: FX1 and FX2 ids, page 1 and page 2 (the FX SETUP page) of each. APPLY TO FX sets all eight tracks.
+- PRESET templates store one effect: its id, page 1 and page 2; applying one to a different effect replaces that effect. MIDI templates store a MIDI track's pages.
 - PROJECT templates cover the stock PROJECT / CONTROL / MIDI screens. SET AS DEFAULT on one makes it the settings of every new project.
 
 KIT templates leave the project's sample slots and levels unchanged. A KIT template covers the SRC and AMP pages of every machine type. A KIT template is a Kit's Part (the KITS module saves a Part per Kit); it applies to the current Part. Applying a KIT template lets you choose the whole Part, a section across tracks, or a source and destination track. A KIT default supplies Part Clear and the Parts of a new project.
