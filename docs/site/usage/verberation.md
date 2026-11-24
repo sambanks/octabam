@@ -22,10 +22,11 @@ knobs to that mode's starting point:
   hit gets one burst of reverb that is then cut, and the gate shuts between hits even
   over a loop or a held pad that never goes quiet.
 
-GATE works in every mode. In ROOM, PLATE and HALL it opens whenever the input is loud. The chooser also shows VERB PLATE, VERB ROOM and VERB HALL, on the rows the stock
-PLATE, SPRING and DARK REV had. They are not other reverbs: each is VERBERATION with MODE
-already set. They are there so a project saved with a stock reverb opens on a matching
-voicing (below).
+GATE works in every mode. In ROOM, PLATE and HALL it opens whenever the input is loud.
+
+A project saved with a stock reverb opens on VERBERATION: PLATE REV becomes PLATE mode,
+SPRING REV ROOM and DARK REV HALL, each at that mode's starting knobs. A Part converts
+when it is loaded or played, and the project keeps it once you save.
 
 ![FX2 SETUP with Verberation selected: MODE (here PLAT), LCUT, MOD, RATE, SIZE and PRE on its page 2.](../../img/verberation/setup.png)
 

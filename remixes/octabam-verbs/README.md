@@ -11,16 +11,19 @@ this remix does not.
 | row | FX1 | FX2 | id | |
 |---|---|---|---|---|
 | VERBERATION | | ✓ | 0x1a | rooms to halls with a desk-style gate; MODE (ROOM, PLATE, HALL, 80S), LCUT, MOD, RATE, SIZE, PRE on page 2 |
-| VERB PLATE | | ✓ | 0x14 (PLATE REV's) | VERBERATION with MODE set to PLATE: a second row, not a second reverb |
-| VERB ROOM | | ✓ | 0x15 (SPRING REV's) | VERBERATION with MODE set to ROOM |
-| VERB HALL | | ✓ | 0x16 (DARK REV's) | VERBERATION with MODE set to HALL |
+| VERB PLATE | | hidden | 0x14 (PLATE REV's) | no chooser row: VERB PARTS turns the id into VERBERATION in PLATE mode |
+| VERB ROOM | | hidden | 0x15 (SPRING REV's) | the same, ROOM mode |
+| VERB HALL | | hidden | 0x16 (DARK REV's) | the same, HALL mode |
 
 - **The stock reverbs are given up.** PLATE REV, SPRING REV and DARK REV are off both choosers; their DSP code is
-  harvested (VERBERATION's 822 words go over PLATE's and part of SPRING's) and their ids are the three rows,
-  which run VERBERATION's one copy of code (`MenuEntry.dsp_of`: the build reports `VERB PLATE id 0x14 ->
-  VERBERATION's code` on both payloads, and a dump reads one pair of entry points for 0x14, 0x15, 0x16, 0x1a).
-- **Old Parts.** A Part saved with a stock reverb opens on its row: [VERB PARTS](../../modules/verb-parts/README.md)
-  rewrites its FX2 pages to the row's defaults as the firmware applies it (`verify_verb_parts` under the port).
+  harvested (VERBERATION's 822 words go over PLATE's and part of SPRING's). Their ids are three hidden rows
+  (`Remix.hidden`: no chooser row, no knob names) that run VERBERATION's one copy of code (`MenuEntry.dsp_of`: the
+  build reports `VERB PLATE id 0x14 -> VERBERATION's code` on both payloads), so an id that reached the engine some
+  way other than a Part apply still runs VERBERATION, not harvested words.
+- **Old Parts.** A Part saved with a stock reverb opens on VERBERATION: [VERB PARTS](../../modules/verb-parts/README.md)
+  rewrites the track's FX2 id to VERBERATION's and its FX2 pages to the matching mode's defaults (PLATE REV in
+  PLATE, SPRING REV in ROOM, DARK REV in HALL) as the firmware applies the Part (`verify_verb_parts` under the
+  port). The card holds the new id once the project is saved.
 - **No reverb guard.** In octabam the stock reverbs run behind a guard (`window_guard`, `modules/dlcopy/dlwrap.asm`)
   and the choosers refuse a reverb over loaded code, with a toast. Here nothing reaches the homes: VERBERATION's ring
   ends at slot offset `0x381d` (14,366 words), the other stock

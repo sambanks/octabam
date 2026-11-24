@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""VERB PARTS under the ColdFire port: a Part saved with a stock reverb opens on its VERBERATION row at the row's
-defaults, and nothing else in it moves.
+"""VERB PARTS under the ColdFire port: a Part saved with a stock reverb opens on VERBERATION, in the matching mode at
+its defaults, and nothing else in it moves.
 
     OT_PROJECT=<dir> .venv/bin/python3 tools/verify/verify_verb_parts.py [REMIX]      (default octabam-verbs)
 
 Every Part of every bank of a copy of the project gets, on FX2:
-  T2  0x16 (DARK REV's id, VERB HALL here)   DARK's own values, page-2 slots 9 and 10 at 0     -> HALL's defaults
-  T4  0x15 (SPRING REV's id, VERB ROOM)       a stock-looking page, slots 9 and 10 at 0          -> ROOM's defaults
-  T3  0x14 (PLATE REV's id, VERB PLATE)       slot 9 at 4: a Part saved with the row             -> untouched
-  T5  0x1a (VERBERATION)                      slots 9 and 10 at 0, but not a row's id            -> untouched
+  T2  0x16 (DARK REV's id)     DARK's own values                         -> VERBERATION's id, HALL's defaults
+  T4  0x15 (SPRING REV's id)   a stock-looking page                      -> VERBERATION's id, ROOM's defaults
+  T3  0x14 (PLATE REV's id)    slot 9 at 4 (an earlier image's VERB row) -> VERBERATION's id, PLATE's defaults
+  T5  VERBERATION's own id     slots 9 and 10 at 0                       -> untouched
 The port boots the image and loads the project; the load applies one Part (0x40009094). Each bank's Part 1 is
-dumped: the applied one must carry the conversion, and T3 and T5 must be as written in every bank.
+dumped: the applied one must carry the conversion, T5 must be as written in every bank, and the Parts not applied
+keep their stock ids and values.
 What it cannot see: the unit's own load timing; a Part applied later (another bank, a pattern change through
 0x40009e00) converts when it is applied, which this run does not reach.
 """
@@ -24,6 +25,7 @@ PY = ROOT / ".venv/bin/python3"
 OUT = ROOT / "out/verb_parts"
 BANK0, BANK_STRIDE, PART_STRIDE = 0x40170F60, 0x9B340, 0x18B2     # bank 1's working Part 1 (0x400e21e0 + 0x8ed80)
 P1, P2 = 0x12C, 0x304                                              # FX2 page 1 + t*24, page 2 + t*30 (PARAM_PAGES 5a)
+FX2_ID = 0x08                                                      # + t: a track's FX2 id (PARTS.md 1)
 FAILS = []
 
 DARK_P1, DARK_P2 = [24, 0, 127, 0, 127, 0], [0, 64, 0, 0, 0, 0]           # DARK REV's own defaults
@@ -42,6 +44,10 @@ def fx2(blob, t):
     return list(blob[P1 + 24 * t:P1 + 24 * t + 6]), list(blob[P2 + 30 * t:P2 + 30 * t + 6])
 
 
+def fx2id(blob, t):
+    return blob[FX2_ID + t]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("remix", nargs="?", default="octabam-verbs")
@@ -58,6 +64,7 @@ def main():
     sys.path.insert(0, str(ROOT / "tools/hw")); import ot_project as otp
     mods = registry.modules()
     want = {k: [p.default or 0 for p in mods[k].params] for k in ("VERB PLATE", "VERB ROOM", "VERB HALL")}
+    vb = registry.bound(registry.remix(a.remix))["VERBERATION"].menu.fx2_id
     OUT.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, REMIX=a.remix, XBUS="1", SPEC="1", BUILD=os.environ.get("BUILD", "0"))
     r = subprocess.run([sys.executable, str(ROOT / "tools/build/build_bus.py")], env=env, capture_output=True, text=True, cwd=ROOT)
@@ -76,7 +83,7 @@ def main():
     otp.set_fx(copy, "fx2", 2, 0x16, page=DARK_P1, page2=DARK_P2, guard=False)
     otp.set_fx(copy, "fx2", 4, 0x15, page=SPRING_P1, page2=SPRING_P2, guard=False)
     otp.set_fx(copy, "fx2", 3, 0x14, page=PLATE_ROW_P1, page2=PLATE_ROW_P2, guard=False)
-    otp.set_fx(copy, "fx2", 5, 0x1A, page=VERB_P1, page2=VERB_P2, guard=False)
+    otp.set_fx(copy, "fx2", 5, vb, page=VERB_P1, page2=VERB_P2, guard=False)
     card = OUT / "card.img"
     r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), "BRAINSET", "BRAINPRJ",
                         "--tree", str(OUT / "tree"), "--out", str(card)], cwd=ROOT, capture_output=True, text=True)
@@ -93,23 +100,22 @@ def main():
     if rc or "ended on quit" not in text:
         sys.exit(f"verify_verb_parts: the port run did not finish -- {OUT / 'run.txt'}")
     blobs = {b + 1: f.read_bytes() for b, (_, f) in enumerate(dumps)}
-    hall = (want["VERB HALL"][:6], want["VERB HALL"][6:])
-    room = (want["VERB ROOM"][:6], want["VERB ROOM"][6:])
-    applied = [b for b, blob in blobs.items() if fx2(blob, 1) == hall]
+    rows = {k: (want[k][:6], want[k][6:]) for k in want}
+    applied = [b for b, blob in blobs.items() if fx2id(blob, 1) == vb]
     print("the applied Part:")
-    check("one bank's Part 1 carries VERB HALL's defaults on T2 (DARK REV's values, slots 9 and 10 at 0)",
-          len(applied) >= 1, f"banks {applied}")
+    check(f"one bank's Part 1 has T2 (DARK REV's id) on VERBERATION's id 0x{vb:02x}", len(applied) >= 1, f"banks {applied}")
     for b in applied:
-        check(f"bank {b}: T4 (SPRING REV's id, slots 9 and 10 at 0) carries VERB ROOM's defaults",
-              fx2(blobs[b], 3) == room, f"{fx2(blobs[b], 3)}")
+        for t, key, was in ((1, "VERB HALL", "DARK REV"), (3, "VERB ROOM", "SPRING REV"), (2, "VERB PLATE", "PLATE REV")):
+            check(f"bank {b}: T{t + 1} ({was}'s id) is VERBERATION in {key.split()[1]} mode at its defaults",
+                  fx2id(blobs[b], t) == vb and fx2(blobs[b], t) == rows[key],
+                  f"id 0x{fx2id(blobs[b], t):02x} {fx2(blobs[b], t)}")
     print("left alone:")
-    check("T3 (PLATE REV's id, slot 9 at 4: a row's own Part) is as written in every bank",
-          all(fx2(blob, 2) == (PLATE_ROW_P1, PLATE_ROW_P2) for blob in blobs.values()))
     check("T5 (VERBERATION's own id, slots 9 and 10 at 0) is as written in every bank",
-          all(fx2(blob, 4) == (VERB_P1, VERB_P2) for blob in blobs.values()))
+          all(fx2id(blob, 4) == vb and fx2(blob, 4) == (VERB_P1, VERB_P2) for blob in blobs.values()))
     others = [b for b in blobs if b not in applied]
-    check("a Part not yet applied keeps its stock values (it converts when it is applied)",
-          all(fx2(blobs[b], 1) == (DARK_P1, DARK_P2) for b in others), f"{len(others)} banks")
+    check("a Part not yet applied keeps its stock ids and values (it converts when it is applied)",
+          all(fx2id(blobs[b], 1) == 0x16 and fx2(blobs[b], 1) == (DARK_P1, DARK_P2)
+              and fx2id(blobs[b], 3) == 0x15 and fx2id(blobs[b], 2) == 0x14 for b in others), f"{len(others)} banks")
     print("PASS" if not FAILS else "FAIL")
     return 1 if FAILS else 0
 

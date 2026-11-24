@@ -86,19 +86,15 @@ That record `+48` is what the DSP reads at `x:(r6+$c)` bits 16-23 is inferred fr
 `+24`, slot F at `+34`, slot 11 at `+53`, BBD's kill), not traced end to end. `kill.s` and BBD's detour the same stock
 site, so the build refuses a remix with both until the site is bridged in HOOKS.
 
-## The rows on the stock reverbs' ids
+## The stock reverbs' ids
 
-[`octabam-verbs`](../../remixes/octabam-verbs/README.md) gives up PLATE REV, SPRING REV and DARK REV and puts three
-rows of this module on their ids: [VERB PLATE](../verberation-plate/README.md) (`0x14`, PLATE mode),
-[VERB ROOM](../verberation-room/README.md) (`0x15`, ROOM) and [VERB HALL](../verberation-hall/README.md) (`0x16`,
-HALL). Each is a chooser row with its own name and its mode's defaults and no code of its own: `MenuEntry.dsp_of`
-points the id at this module's init and proc (the build reports `id 0x14 -> VERBERATION's code`, and a dump of
-both payloads reads the same two entry points for 0x14, 0x15, 0x16 and 0x1a). One copy of the code, 822 words a
-payload, serves all four rows.
-
-A Part saved with a stock reverb opens on its row at the row's defaults: [VERB PARTS](../verb-parts/README.md)
-rewrites its FX2 pages as the firmware applies it (the sign of such a Part: page-2 slots 9 and 10 both 0, which
-the stock reverbs never draw).
+[`octabam-verbs`](../../remixes/octabam-verbs/README.md) gives up PLATE REV, SPRING REV and DARK REV. A Part saved
+with one opens on this module: [VERB PARTS](../verb-parts/README.md) rewrites the track's FX2 id to VERBERATION's and
+its knobs to the matching mode's defaults (PLATE REV in PLATE, SPRING REV in ROOM, DARK REV in HALL) as the firmware
+applies the Part. The three ids stay in the image as hidden rows, [VERB PLATE](../verberation-plate/README.md),
+[VERB ROOM](../verberation-room/README.md) and [VERB HALL](../verberation-hall/README.md): no chooser row, no code of
+their own (`MenuEntry.dsp_of` points each id at this module's init and proc), and each mode's defaults for VERB
+PARTS' table. One copy of the code, 822 words a payload, serves all four ids.
 
 ## What differs from Clouds
 
