@@ -1801,7 +1801,7 @@ every frame interrupt and no capture. Cost: the 0.5 hardware suite parked, a
 day of first-START trials, and stalls earlier put down to the modules that
 happened to move the timing (the CX OSC and STEM REC entries in
 `FAILURE_MODES.md` have the same signature; not re-run). The mechanism on the
-DSP side is inferred, not measured. Fix: FRAME GUARD holds an entry 110 to
+DSP side is inferred, not measured. Fix: FRAME GUARD holds an entry 140 to
 190 µs late until it is 190 µs late (`modules/frame-guard/README.md`); with
 it, 32 first STARTs and 192 program changes without a stall. Rule: ColdFire
 time added to the frame interrupt can cause or cure a DSP stall by a few

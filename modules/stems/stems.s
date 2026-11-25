@@ -1553,7 +1553,7 @@ stems_frame_hook:
 .Lh_rec:                            | RECORDING
         tst.l   %d2
         beq.s   .Lh_play
-        moveq   #ST_FINISHING,%d0   | the sequencer stopped: 0 (end, rewind) or 2 (STOP key)
+        moveq   #ST_FINISHING,%d0   | the sequencer stopped: 0 (STOP, end, rewind) or 2 (pause)
         move.l  %d0,stems_state
         bra.w   .Lh_out
 .Lh_play:

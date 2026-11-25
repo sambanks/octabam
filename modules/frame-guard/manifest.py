@@ -1,4 +1,4 @@
-"""FRAME GUARD -- a frame interrupt that enters 110-190 us late waits until
+"""FRAME GUARD -- a frame interrupt that enters 140-190 us late waits until
 it is 190 us late, so the DSP skips one frame instead of stalling.
 
 One detour on the frame interrupt's entry 0x4000aad0 (LOAD METER's and BOOT
