@@ -53,6 +53,7 @@ STOCK_TAIL = 0x4001e60c     # where the shim's closing jmp goes
 ENCODER = 0x4001d204        # usb_midi_encoder(len, buf)
 RX_ENQUEUE = 0x40092bbc     # midi_rx_enqueue(byte as a long)
 FIFO_COUNT = 0x46100b7c
+FRAMER = 0x40092bf4         # the MIDI framer (stubbed: on_framer)
 RX_BUF = 0x4ecc9000
 EP2_RX_TD = 0x4ec953e4      # token: remaining << 16, status in 7:0
 EPCOMPLETE = 0xfc0b01bc
@@ -110,7 +111,14 @@ def main():
         if addr == EPCOMPLETE:
             writes.append(value & 0xffffffff)
 
+    def on_framer(u, addr, size, user):           # the framer pops one FIFO byte and ends in rte, which
+        sp = u.reg_read(UC_M68K_REG_A7)            # unicorn does not run: pop the byte, return as rte would
+        wr(FIFO_COUNT, max(0, rd(FIFO_COUNT) - 1))  # (usbmidi_rx_run_framer's frame: SR long, then the PC)
+        u.reg_write(UC_M68K_REG_A7, sp + 8)
+        u.reg_write(UC_M68K_REG_PC, int.from_bytes(u.mem_read(sp + 4, 4), "big"))
+
     uc.hook_add(UC_HOOK_CODE, on_enqueue, begin=RX_ENQUEUE, end=RX_ENQUEUE)
+    uc.hook_add(UC_HOOK_CODE, on_framer, begin=FRAMER, end=FRAMER)
     uc.hook_add(UC_HOOK_CODE, on_tail, begin=STOCK_TAIL, end=STOCK_TAIL)
     uc.hook_add(UC_HOOK_CODE, on_encoder, begin=ENCODER, end=ENCODER)
     uc.hook_add(UC_HOOK_MEM_READ, on_read, begin=EPCOMPLETE, end=EPCOMPLETE + 3)

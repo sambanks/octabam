@@ -260,6 +260,7 @@ moment it costs real work, and add its line here.
 - [A held scene's input layer goes over a window's](docs/contributing/TRAPS.md#trap-scene-layer) — the scene key's sub-map is pushed on top before its press runs; TEMPO BUS re-pushes its layer from its own scene-key record.
 
 - [A key record in a window's layer is not reached while FUNC is held](docs/contributing/TRAPS.md#trap-func-layer) — FUNC's sub-maps go above the window and a FUNC record there is never chosen; give FUNC's record a sub-map layer of your own (TEMPO BUS `TB_FLAYER`).
+- [Two MIDI inputs feed one framer: a USB message replaced DIN's running status](docs/contributing/TRAPS.md#trap-shared-framer) — bytes injected into `0x40092bbc` share the framer's running status with DIN; save and restore it around them (`usbmidi_rx_rs_save`), or post whole messages to `0x46c7e974`.
 - [A frame interrupt entering about 150 µs late stops the DSP's frame exchange](docs/contributing/TRAPS.md#trap-late-frame) — START and program changes; ColdFire time added to the frame interrupt moves it on or off the window; FRAME GUARD holds a late entry to 190 µs.
 - [Dropping a stock hold to keep a window open can drop the hold's release bookkeeping](docs/contributing/TRAPS.md#trap-hold-release-toggle) — LOCK EDIT's re-hold audition lost the step trig until `le_trighold` cleared stock's `0x460d1a9e` itself.
 

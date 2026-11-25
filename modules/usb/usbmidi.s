@@ -382,6 +382,10 @@ usbmidi_tx_ring: .space RING_CAP
 
 .set FRAMER,        0x40092bf4      | MIDI framer, INTC source 36 handler, ends in rte
 .set FIFO_COUNT,    0x46100b7c
+.set RS_STATUS,     0x46100b70      | the framer's running status
+.set RS_PENDING,    0x46100b74      | -1: a three-byte message waits for its second data byte
+.set MSG_WIDX,      0x46100b5c      | the message buffer's write index
+.set MSG_BUF,       0x46100b84      | the framer's completed messages (8 KB)
 .set DTCN0,         0xfc07000c      | DMA timer 0 count (DTIN0 pin)
 .set CLK_T,         0x46c8345a      | DTCN0 at the last 0xF8
 .set CLK_DT,        0x46c83466      | DTCN0 delta between the last two 0xF8: the MIDI clock handler's tempo input
@@ -647,7 +651,29 @@ usbmidi_rx_decode:
     moveq   #15,%d1
     andl    %d1,%d0
     mvzb    %a3@(0,%d0:l),%d4       | MIDI bytes in this event
-    beqs    5f
+    beqw    5f
+    | A channel message (CIN 8..E) or a two- or three-byte system common one
+    | (CIN 2, 3) sets or clears the one framer's running status, which DIN's
+    | bytes share: it is parsed with DIN's framer state saved and put back
+    | (usbmidi_rx_rs_save / _restore). The FIFO's DIN bytes are framed first,
+    | unmasked, so the masked part below has little or nothing to drain.
+    moveq   #0,%d1
+    cmpil   #8,%d0
+    bcss    20f
+    cmpil   #14,%d0
+    bhis    21f
+    moveq   #1,%d1
+    bras    21f
+20: subql   #2,%d0
+    cmpil   #1,%d0
+    bhis    21f
+    moveq   #1,%d1
+21: moveb   %d1,usbmidi_rx_wrap
+    beqs    4f
+22: tstl    FIFO_COUNT
+    beqs    4f
+    bsr     usbmidi_rx_run_framer
+    bras    22b
 4:  movew   #0x2700,%sr
     movel   FIFO_COUNT,%d0
     addl    %d4,%d0
@@ -661,7 +687,10 @@ usbmidi_rx_decode:
     beqs    10f
     addql   #1,usbmidi_rx_dropped   | DIN is clocking: the event is not enqueued
     bras    11f
-10: moveq   #0,%d2
+10: tstb    usbmidi_rx_wrap
+    beqs    13f
+    bsr     usbmidi_rx_rs_save
+13: moveq   #0,%d2
 7:  mvzb    %a2@(1,%d2:l),%d0
     cmpil   #0xf8,%d0
     bnes    9f
@@ -682,6 +711,9 @@ usbmidi_rx_decode:
     addql   #1,%d2
     cmpl    %d4,%d2
     blts    7b
+    tstb    usbmidi_rx_wrap
+    beqs    11f
+    bsr     usbmidi_rx_rs_restore
 11: movew   %d5,%sr
 5:  addql   #4,%a2
     subql   #1,%d3
@@ -717,6 +749,60 @@ usbmidi_rx_din_owns:
 5:  moveq   #1,%d0
     rts
 
+| The framer's state between two bytes (0x40092d60..0x40092e28): the running
+| status, the "second data byte pending" flag, and a three-byte message's
+| status and first data byte, already stored at the message buffer's write
+| index. DIN and USB share it, so a USB message parsed between DIN's bytes
+| replaced DIN's running status: a USB program change turned every later
+| running-status byte from DIN (the OT's own MIDI out over a cable, a synth,
+| a sequencer) into a program change, each one a pattern change (#1248).
+| At SR 0x2700, so no DIN byte can arrive between the save and the restore.
+
+| usbmidi_rx_rs_drain: the framer run until the FIFO is empty. Trashes d0/a0.
+usbmidi_rx_rs_drain:
+1:  tstl    FIFO_COUNT
+    beqs    2f
+    bsr     usbmidi_rx_run_framer
+    bras    1b
+2:  rts
+
+| usbmidi_rx_rs_save: DIN's bytes so far framed, then the framer's state kept.
+| Trashes d0-d1/a0.
+usbmidi_rx_rs_save:
+    bsr     usbmidi_rx_rs_drain
+    movel   RS_STATUS,%d0
+    movel   %d0,usbmidi_rx_rs
+    movel   RS_PENDING,%d0
+    movel   %d0,usbmidi_rx_pend
+    movel   MSG_WIDX,%d0
+    lea     MSG_BUF,%a0
+    moveb   %a0@(0,%d0:l),%d1
+    moveb   %d1,usbmidi_rx_part
+    moveb   %a0@(1,%d0:l),%d1
+    moveb   %d1,usbmidi_rx_part+1
+    rts
+
+| usbmidi_rx_rs_restore: the USB message framed, then DIN's state put back,
+| its half-received message at the new write index. A DIN SysEx in progress
+| (running status 0xF0) is left as stock leaves it: ended by the status byte.
+| Trashes d0-d1/a0.
+usbmidi_rx_rs_restore:
+    bsr     usbmidi_rx_rs_drain
+    movel   usbmidi_rx_rs,%d0
+    cmpil   #0xf0,%d0
+    beqs    9f
+    movel   %d0,RS_STATUS
+    movel   usbmidi_rx_pend,%d0
+    movel   %d0,RS_PENDING
+    beqs    9f
+    movel   MSG_WIDX,%d0
+    lea     MSG_BUF,%a0
+    moveb   usbmidi_rx_part,%d1
+    moveb   %d1,%a0@(0,%d0:l)
+    moveb   usbmidi_rx_part+1,%d1
+    moveb   %d1,%a0@(1,%d0:l)
+9:  rts
+
 | usbmidi_rx_run_framer: one pass of the framer, entered as its interrupt
 | would: the long exception frame (format 4, vector 0x64, the current SR)
 | over a return address, so its rte lands on the rts. Pops one FIFO byte.
@@ -740,6 +826,11 @@ usbmidi_rx_errs:  .long 0
 usbmidi_rx_snap:  .long 0           | ENDPTCOMPLETE's EP2 bits as read by the current usb_isr entry
 usbmidi_rx_clk_t: .long 0           | DTCN0 at the last 0xF8 this decoder stamped
 usbmidi_rx_dropped: .long 0         | USB clock and transport events dropped while DIN clocked
+usbmidi_rx_rs:    .long 0           | DIN's framer state across a USB message (usbmidi_rx_rs_save)
+usbmidi_rx_pend:  .long 0
+usbmidi_rx_part:  .byte 0,0         | a half-received three-byte message: status, first data byte
+usbmidi_rx_wrap:  .byte 0           | 1: this event changes the running status
+    .balign 4
 
 
 | ======================================================================

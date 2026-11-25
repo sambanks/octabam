@@ -147,6 +147,37 @@ port only.
 `usbmidi_rx_sysex` (usbmidi.s) is set to 1 whenever the decoder enqueues an `F0`. SCREEN reads and
 clears it at every SysEx to answer on the transport the request came on (`modules/screen/README.md`).
 
+### USB and DIN input together (#1248)
+
+USB MIDI and DIN MIDI can arrive at the same time without corrupting each
+other. A DIN sender that uses running status (the Octatrack's own MIDI out
+over a cable, most Elektron boxes, most hardware sequencers) keeps its notes
+and CCs when USB messages arrive between its bytes.
+
+Both inputs reach one FIFO and one stock framer, which keeps one running
+status (`0x46100b70`), one "second data byte pending" flag (`0x46100b74`) and
+a half-received three-byte message at its buffer's write index
+(`0x46100b5c`). Without help, a USB channel message replaced DIN's running
+status: after a USB program change, every DIN data byte that followed parsed
+as a program change, each one a pattern change.
+
+So for a USB channel message (CIN `8`..`E`) or a two- or three-byte system
+common one (CIN `2`, `3`), the decoder:
+
+1. runs the framer until the FIFO is empty, at the SR the USB ISR entered with;
+2. at SR `0x2700`, runs it again for anything that arrived, and saves the
+   framer's state (`usbmidi_rx_rs_save`);
+3. enqueues the USB message and runs the framer until it is parsed;
+4. puts DIN's state back, its half-received message at the new write index
+   (`usbmidi_rx_rs_restore`).
+
+No DIN byte can arrive between steps 2 and 4: the UART holds it. Realtime
+bytes (clock, transport) never touch the running status and are enqueued as
+before. A USB SysEx is left as it was, since it spans several packets and
+needs the framer's state carried between them. A DIN SysEx in progress is
+ended by the USB message's status byte, as in stock. Gate:
+`verify_usb_midi_din_mix`.
+
 ### Clock (6 Oct 2026)
 
 Reported by Kazeko (MKI, Discord, 6 Oct 2026): with USB MIDI clock the
