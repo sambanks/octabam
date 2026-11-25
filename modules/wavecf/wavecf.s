@@ -147,6 +147,31 @@
 | neutral and the positions pinned, and the engine's samples over what it shipped.
 | ============================================================================
 wc_render:
+| A call that cannot make this track WAVE's goes straight to the next renderer, before the register frame:
+| the track is not latched, and either this is not the frame's last call or no voice starts on it this frame
+| (the full path below then only calls STOCK_RENDER and returns its value). It finds the same four arguments
+| at the same offsets and returns to our caller; d1, a0, a1 and the flags are a call's scratch.
+        move.l  4(%sp),%d0              | track
+        moveq   #NTRACKS-1,%d1
+        cmp.l   %d1,%d0
+        bhi     .Lfast                  | (never: the packer renders tracks 0..7; the full path only calls stock)
+        move.l  %d0,%d1
+        lsl.l   #8,%d1                  | track * ST_SIZE (512: 8 + 1)
+        add.l   %d1,%d1
+        lea     wc_state,%a0
+        add.l   %d1,%a0
+        moveq   #16,%d1                 | here, between the add and the load: no address-use stall
+        tst.l   S_LATCHED(%a0)
+        bne     .Lfull                  | latched: the full path
+        cmp.l   16(%sp),%d1             | the frame's last call?
+        bne     .Lfast
+        lea     NIBBLE,%a0
+        add.l   %d0,%a0
+        btst    #4,(%a0)                | a voice starts this frame: the full path decides whose sample
+        bne     .Lfull
+.Lfast:
+        jmp     STOCK_RENDER
+.Lfull:
         lea     -48(%sp),%sp
         movem.l %d2-%d7/%a2-%a6,(%sp)
         move.l  CURSOR,%a2              | the header this call writes
@@ -193,8 +218,8 @@ wc_render:
         move.w  %d0,(%a4)
         move.l  #NEUTRAL_RATE,%d0
         move.w  %d0,6(%a4)
+        lea     S_POS(%a3),%a1          | (before the call, which keeps a1: no address-use stall)
         bsr     wc_voice                | a0 = the voice's position fields
-        lea     S_POS(%a3),%a1
         move.l  (%a0)+,(%a1)+
         move.l  (%a0)+,(%a1)+
         move.l  (%a0)+,(%a1)+
@@ -207,10 +232,10 @@ wc_render:
         move.l  64(%sp),-(%sp)          | ping
         move.l  64(%sp),-(%sp)          | track
         jsr     STOCK_RENDER
-        lea     16(%sp),%sp
-        move.l  %d0,44(%sp)             | the stock return value, handed back
-        move.l  52(%sp),%d2
+        move.l  %d0,60(%sp)             | the stock return value, handed back (44(%sp) after the pop);
+        lea     16(%sp),%sp             | stored before the pop and the moveq between: no sp stall
         moveq   #NTRACKS-1,%d0
+        move.l  52(%sp),%d2
         cmp.l   %d0,%d2
         bhi     .Ldone
         tst.l   %d4
@@ -219,8 +244,8 @@ wc_render:
         move.w  %d0,(%a4)
         move.w  S_WRATE+2(%a3),%d0
         move.w  %d0,6(%a4)
+        lea     S_POS(%a3),%a1          | (before the call, which keeps a1: no address-use stall)
         bsr     wc_voice                | pin the carrier: the positions as they were before the call
-        lea     S_POS(%a3),%a1
         move.l  (%a1)+,(%a0)+
         move.l  (%a1)+,(%a0)+
         move.l  (%a1)+,(%a0)+
@@ -377,9 +402,8 @@ wc_knobs:
 wc_voice:
         move.l  #VOICE_STRIDE,%d0
         muls.l  %d2,%d0
-        lea     VOICE_BASE,%a0
+        lea     VOICE_BASE+V_POS,%a0    | (V_POS folded in: no lea through the a0 just written)
         add.l   %d0,%a0
-        lea     V_POS(%a0),%a0
         rts
 
 | ============================================================================
