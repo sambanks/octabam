@@ -123,7 +123,7 @@ LINKED = (
 
 
 # ---- the detour sets --------------------------------------------------------
-# USB MIDI's ten sites; the ISR, bus-reset and session-end shims of the old
+# USB MIDI's eleven sites; the ISR, bus-reset and session-end shims of the old
 # USB AUDIO OUT module replace these three (they chain to usbmidi_rx_bus_end
 # by symbol, as they did as separate modules).
 
@@ -142,6 +142,9 @@ MIDI_DETOURS = (
            "OTGSC.BSVIS session end (cable pulled): the same, before USBCMD.RS is cleared"),
     Detour(0x4001daec, H("303946c8ce0c"), "usbmidi", "usbmidi_clrfeat_shim",
            "CLEAR_FEATURE(ENDPOINT_HALT): answer for EP2 instead of stalling"),
+    Detour(0x4001eb44, H("202f000423c0460bb422"), "usbmidi", "usbmidi_medium_shim",
+           "the MSC medium setter (DISK MODE on and off): pause USB MIDI while the host has the card (#1256)",
+           pad_to=10),
     # GET_DESCRIPTOR(CONFIG / OTHER_SPEED): the responder's two hardcoded
     # clamps (moveq #32,d0 / cmpl d2,d0 / bcs +4) become min(wLength, cfg_len)
     Detour(0x4001d858, H("7020b0826504"), "usbmidi_clamp", "usbmidi_clamp1_shim",
@@ -236,7 +239,8 @@ MIDI_GATES = (Gate("tools/verify/verify_usbmidi_rx.py", stage="image"),
               Gate("tools/verify/verify_usb_midi_clock.py", stage="image"),
               Gate("tools/verify/verify_usb_midi_replug.py", stage="image"),
               Gate("tools/verify/verify_usbmidi_tx_ring.py", stage="image"),
-              Gate("tools/verify/verify_usbmidi_isr.py", venv=True, stage="image"))
+              Gate("tools/verify/verify_usbmidi_isr.py", venv=True, stage="image"),
+              Gate("tools/verify/verify_usb_midi_disk.py", stage="image"))
 # MAIN/CUE aligned with the tracks (skips without a source project)
 GATE_ALIGN = Gate("tools/verify/verify_usb_align.py", remix_arg=False, venv=True, stage="image")
 # the stems against core 0's own MAIN, sample by sample, under the port (skips without a source project)
