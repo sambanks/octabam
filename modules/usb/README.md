@@ -273,7 +273,33 @@ replugs, host sleep and wake, a hub.
 - Not measured: clock jitter over USB against DIN (bulk transfers have no schedule; the
   gate sends one `0xF8` per transfer, a host can bunch several into one
   packet, and each then gets a near-zero interval); how late a clock byte
-  goes out behind a ring backlog; the ring on a unit; DISK MODE entered with a MIDI session open; Windows.
+  goes out behind a ring backlog; the ring on a unit; Windows.
+
+### Paused in DISK MODE (#1256)
+
+While USB DISK MODE gives the host the card, USB MIDI is paused: nothing is
+queued or encoded, EP2 completions are not handled and EP2 OUT is not primed.
+DIN is unaffected. Messages not queued are counted in `usbmidi_tx_disk`.
+
+Why: stock's dormant USB-MIDI buffers sit inside the mass-storage read
+buffer. The SCSI worker (`0x4001ee30`) serves a READ through one linear
+buffer from `0x4ecb8000`, so a READ of more than 128 sectors stages card bytes
+at `0x4ecc8000` (the encoder's packet buffer, 64 KB in) and `0x4ecc9000`
+(`RX_BUF`, 68 KB in). A packet encoded before the DMA sent those bytes
+replaced them. With CLOCK SEND on, a clock tick tore the first word of about
+2 % of the 64 KB blocks a host read; the word read `0f f8 00 00`, or `xx f8
+00 00` when the DMA read it mid-write. Host writes go through two 64 KB banks
+at `0x4ec98000` and `0x4eca8000` (`0x460bb3c0 & 1`), below both buffers, and
+are not affected.
+
+How: the gate is stock's medium word `0x460bb422`, which the medium setter
+`0x4001eb44` writes (1 on DISK MODE entry, 0 on exit). `usbmidi_tx_queue`,
+`usbmidi_tx_kick` and the ISR shim test it. The detour on the setter drops
+the queue and flushes both EP2 directions on entry, and re-primes EP2 OUT on
+exit. SET_CONFIGURATION inside DISK MODE flushes what `EP2_INIT` primed.
+Gate: `verify_usb_midi_disk` (the encoder's buffer, ENDPTSTAT and the
+counter around stock's own entry and exit; the port has no DMA timing, so it
+cannot show the tear itself).
 
 ### A completion between the two ENDPTCOMPLETE reads (#1017, 4 Nov 2026)
 

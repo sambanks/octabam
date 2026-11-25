@@ -1,5 +1,5 @@
 Connect the Octatrack to a computer for USB MIDI and audio. USB storage mode
-(DISK MODE) works as in stock OS.
+(DISK MODE) works as in stock OS. USB MIDI pauses while DISK MODE is on.
 
 The computer sees one device with MIDI in and out, an audio input (the
 Octatrack's output) and, with IN set, an audio output (the computer's
@@ -60,6 +60,13 @@ The Octatrack follows one clock at a time, and DIN comes first. While MIDI
 clock is arriving on DIN, USB clock, START, STOP, CONTINUE and song position
 are ignored. USB takes over about a sixth of a second after the last DIN clock.
 Before this, both clocks together doubled the tempo.
+
+USB MIDI is silent while USB DISK MODE is on, clock included, and MIDI sent
+to the Octatrack over USB is not received then. DIN MIDI is unaffected. Before
+this, with CLOCK SEND on, files copied off the card in DISK MODE could come
+back with 4 bytes replaced at 64 KB boundaries. A file copied that way and
+written back carries those bytes: re-copy anything you copied with CLOCK SEND
+on, and compare it with the card.
 
 ## Audio in
 
