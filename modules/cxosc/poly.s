@@ -343,6 +343,110 @@
         .set    KN_RATO_SNAPS, 16         | classic table entries with ratio <= 4.01
         .set    KN_RATO_HALF, 480         | SPAN/2, for rounding snap -> raw
 
+| ---- CX mono sample-loop pieces (sy_loop) -------------------------------------
+| sy_pc: the call's knob-derived constants, set by sy_mono before the loop.
+        .set    SYP_K, 0                 | PWM sine lean k = PWM byte − 64 (0 = none)
+        .set    SYP_KQ, 4                | |PWM_Q8 − 64<<8|: saw phase-skew blend (0 = none)
+        .set    SYP_D, 8                 | skew breakpoint d = 2621 + PWM_Q8*27525/32768
+        .set    SYP_R1, 12               | 2^30 / d
+        .set    SYP_R2, 16               | 2^30 / (32768 − d)
+        .set    SYP_DUTY, 20             | pulse duty phase = eff_q8 << 17
+        .set    SYP_MAMT, 24             | MMOR 0..127
+        .set    SYP_MW, 28               | MMOR blend weight t/127, Q15
+        .set    SYP_CAMT, 32             | CMOR 0..127
+        .set    SYP_CW, 36               | CMOR blend weight, Q15
+        .set    SYP_FTGT, 40             | FOLD target Q18 (sy_foldtarget[track])
+
+| DPW saw: d1 = φ → \out Q14, z1 at \zoff(a3). Clobbers d1, \tmp.
+| out = 16384 − diff*16384/dt clamped: diff <= 0 → +16384, diff >= 2dt → −16384.
+        .macro  DPWSAW zoff, out, tmp
+        swap    %d1
+        mulu.w  %d1,%d1
+        clr.w   %d1
+        swap    %d1                      | p² Q16
+        move.l  \zoff(%a3),\tmp
+        move.l  %d1,\zoff(%a3)
+        sub.l   \tmp,%d1                 | diff
+        ble     .Ldpwp\@
+        cmp.l   sy_dpwrc+8(%pc),%d1      | 2 dt
+        bcc     .Ldpwn\@
+        move.l  sy_dpwrc+4(%pc),\tmp     | 2^30 / dt
+        mulu.l  \tmp,%d1
+        clr.w   %d1
+        swap    %d1
+        move.l  #16384,\out
+        sub.l   %d1,\out
+        bra     .Ldpwd\@
+.Ldpwn\@:
+        move.l  #-16384,\out
+        bra     .Ldpwd\@
+.Ldpwp\@:
+        move.l  #16384,\out
+.Ldpwd\@:
+        .endm
+
+| PWM phase-skew of a saw: \s Q14 in/out, φ in \phi. Warp φ so the ramp is
+| steep then shallow (one discontinuity per cycle), d = 8%..92%; blend the
+| warped naive saw in by |k| so MMOR keeps DPW bandlimiting near 64.
+| Clobbers \p, \t. Both halves of the blend are in range: no clamp.
+        .macro  WRAMP phi, s, p, t
+        move.l  \phi,\p
+        moveq   #17,\t
+        lsr.l   \t,\p                    | p = φ>>17
+        move.l  sy_pc+SYP_D(%pc),\t
+        cmp.l   \t,\p
+        bcc     .Lwrh\@
+        move.l  sy_pc+SYP_R1(%pc),\t     | p' = p*16384/d
+        mulu.l  \t,\p
+        clr.w   \p
+        swap    \p
+        bra     .Lwrs\@
+.Lwrh\@:
+        sub.l   \t,\p                    | p' = 16384 + (p−d)*16384/(32768−d)
+        move.l  sy_pc+SYP_R2(%pc),\t
+        mulu.l  \t,\p
+        clr.w   \p
+        swap    \p
+        addi.l  #16384,\p
+.Lwrs\@:
+        neg.l   \p
+        addi.l  #16384,\p                | warped naive saw
+        sub.l   \s,\p
+        move.l  sy_pc+SYP_KQ(%pc),\t
+        muls.l  \t,\p
+        asr.l   #8,\p
+        asr.l   #6,\p                    | (warped − saw) * |k| / (64<<8)
+        add.l   \p,\s
+        .endm
+
+| PWM sine lean: \x Q14 in/out, \k = lean k (clobbered), \t clobbered.
+| x + (x*k/32) * (16384 − |x|)/16384, clamped: soft half-cycle lean, odd harmonics.
+        .macro  LEAN x, k, t
+        move.l  \x,\t
+        bpl     .Llna\@
+        neg.l   \t
+.Llna\@:
+        neg.l   \t
+        addi.l  #16384,\t                | 16384 − |x|
+        bpl     .Llnt\@
+        moveq   #0,\t
+.Llnt\@:
+        muls.l  \x,\k
+        asr.l   #5,\k                    | x * k / 32
+        muls.l  \t,\k
+        asr.l   #8,\k
+        asr.l   #6,\k
+        add.l   \k,\x
+        cmpi.l  #16384,\x
+        ble     .Llnh\@
+        move.l  #16384,\x
+.Llnh\@:
+        cmpi.l  #-16384,\x
+        bge     .Llnl\@
+        move.l  #-16384,\x
+.Llnl\@:
+        .endm
+
 | ---- the page clone's accessor, published one long BEFORE sy_render -----------
 | The kind table's FLEX entry 0x400d6438 holds sy_render's address (the
 | manifest's SymbolRef), the one address of this unit the ROM knows. page.s,
@@ -1127,12 +1231,62 @@ sy_mono:
         lea     sy_foldq(%pc),%a6        | Q8 FOLD/MIX — fractional through the loop (sustained knob turns)
         move.l  (%a6,%d1.l),-(%sp)
         lea     sy_mixq(%pc),%a6
-        move.l  (%a6,%d1.l),-(%sp)       | 0=MIX_Q8, 4=FOLD_Q8, 8=PWM_Q8, 12=SYMM, 16=morph, 20=header
+        move.l  (%a6,%d1.l),-(%sp)       | 0=MIX_Q8, 4=FOLD Q18, 8=PWM_Q8, 12=SYMM, 16=morph, 20=header
+        | sy_pc: everything the loop derives from knobs that hold for the call
+        lea     sy_pc(%pc),%a0
+        lea     sy_foldtarget(%pc),%a6
+        move.l  (%a6,%d1.l),%d2
+        move.l  %d2,SYP_FTGT(%a0)
+        move.l  8(%sp),%d1               | PWM_Q8
+        move.l  %d1,%d2
+        lsr.l   #8,%d2
+        andi.l  #127,%d2
+        subi.l  #64,%d2
+        move.l  %d2,SYP_K(%a0)           | lean k ∈ [-64, +63]
+        move.l  %d1,%d2
+        subi.l  #(64<<8),%d2
+        bpl     sy_pc_kq
+        neg.l   %d2
+sy_pc_kq:
+        move.l  %d2,SYP_KQ(%a0)
+        beq     sy_pc_duty
+        move.l  #27525,%d2               | d = 2621 + PWM_Q8 * 27525 / 32768 → ~8% .. ~92%
+        mulu.l  %d1,%d2
+        lsr.l   #8,%d2
+        lsr.l   #7,%d2
+        addi.l  #2621,%d2
+        cmp.l   SYP_D(%a0),%d2
+        beq     sy_pc_duty               | reciprocals still current
+        move.l  %d2,SYP_D(%a0)
+        move.l  #0x40000000,%d3
+        divu.l  %d2,%d3
+        move.l  %d3,SYP_R1(%a0)
+        move.l  #32768,%d4
+        sub.l   %d2,%d4
+        move.l  #0x40000000,%d3
+        divu.l  %d4,%d3
+        move.l  %d3,SYP_R2(%a0)
+sy_pc_duty:
+        moveq   #95,%d2                  | eff = (16<<8) + PWM_Q8*95/128 (16<<8 .. ~110<<8)
+        mulu.l  %d1,%d2
+        lsr.l   #7,%d2
+        addi.l  #(16<<8),%d2
+        moveq   #17,%d3
+        lsl.l   %d3,%d2
+        move.l  %d2,SYP_DUTY(%a0)
+        mvz.b   19(%sp),%d2              | MMOR
+        move.l  %d2,SYP_MAMT(%a0)
+        bsr     sy_pcw
+        move.l  %d2,SYP_MW(%a0)
+        mvz.b   18(%sp),%d2              | CMOR
+        move.l  %d2,SYP_CAMT(%a0)
+        bsr     sy_pcw
+        move.l  %d2,SYP_CW(%a0)
         move.l  S_PHC(%a3),%d0
         move.l  S_PHM(%a3),%d6
         move.l  S_INC(%a3),%d5
         move.l  S_INCM(%a3),%a2
-        move.l  %a2,%d1                  | sy_dpw's dt = Δφm >> 16 and 2^30/dt, fixed for the call
+        move.l  %a2,%d1                  | DPWSAW's dt = Δφm >> 16, 2^30/dt and 2 dt, fixed for the call
         lsr.l   #8,%d1
         lsr.l   #8,%d1
         bne     sy_m_dt
@@ -1145,6 +1299,8 @@ sy_m_dt:
         move.l  #0x40000000,%d2
         divu.l  %d1,%d2
         move.l  %d2,4(%a0)
+        add.l   %d1,%d1
+        move.l  %d1,8(%a0)
 sy_m_rcok:
         move.l  S_LASTM(%a3),%a4
         move.l  S_GAIN(%a3),%d1          | the frame's target gain ...
@@ -1181,49 +1337,117 @@ sy_loop:
         asr.l   #8,%d2
         asr.l   #8,%d2
         add.l   %d2,%d4                  | m sine, Q14
-        | Stack: 0=MIX_Q8, 4=FOLD_Q8, 8=PWM, 12=SYMM, 16=morph 00 00 CMOR MMOR, 20=header.
-        | PWM: sine lean (sy_wlean); saw phase-skew (sy_wramp); square = duty.
+        | Stack: 0=MIX_Q8, 4=FOLD Q18 (slewed here), 8=PWM, 12=SYMM, 16=morph 00 00 CMOR MMOR, 20=header.
+        | PWM: sine lean (LEAN); saw phase-skew (WRAMP); square = duty.
         | Feedback = CLEAN mod sine (PWM must not cook FDBK — that drifted alone).
         | MMOR: DPW saw → DPW pulse; CMOR: naive saw → hard pulse.
+        | Knob-derived constants for the call are in sy_pc (sy_mono).
         move.l  %d4,S_LASTM(%a3)         | fb = clean sine
-        move.l  %d4,%d1                  | heard morph sine gets PWM lean
-        move.l  8(%sp),%d2
-        bsr     sy_wlean
-        move.l  %d1,%d4
-        mvz.b   19(%sp),%d2              | MMOR
+        move.l  sy_pc+SYP_MAMT(%pc),%d2
+        bne     sy_mmor
+        move.l  sy_pc+SYP_K(%pc),%d2     | MMOR 0: the heard mod is the PWM-leaned sine
         beq     sy_mod_ok
-        | d0 = carrier phase for the whole loop — pulse helpers write d0, so park it.
-        move.l  %d0,-(%sp)               | park φc
-        move.l  %d6,%d1                  | raw φm
-        move.l  %a4,%d6                  | DPW phase = φm_eff
-        move.l  %d2,-(%sp)               | amt
-        move.l  %d1,-(%sp)               | raw φm
-        move.l  %a2,%d1                  | Δφ (sy_dpw / sy_dpw_pulse keep it)
-        lea     S_DPWM(%a3),%a4
-        bsr     sy_dpw                   | d2 = continuous saw
-        move.l  S_LASTM(%a3),%d4         | sine
-        | Always build DPW pulse (even MMOR < 64). Old path set square=saw
-        | below 64 then swapped in a real pulse at 64 — unit: steppy 60..70.
-        move.l  %d2,-(%sp)               | park saw (d7 = sample count — do not touch)
-        | MMOR <= 64 gives the pulse zero weight in sy_wshape: keep only its z1
-        | and duty current (a reprime from φ is wrong under FDBK: a click past 64).
-        move.l  8(%sp),%d2               | amt
-        cmpi.l  #64,%d2
-        bgt     sy_mod_pulse
-        move.l  8+16(%sp),%d2            | PWM
-        bsr     sy_dpw_track
-        bra     sy_mod_sawonly
-sy_mod_pulse:
-        move.l  8+16(%sp),%d2            | PWM (under amt+φm+φc+saw; was at 8)
-        bsr     sy_dpw_pulse             | d0 = pulse; needs saw at 0(sp)
-sy_mod_sawonly:
-        move.l  (%sp)+,%d1               | saw
-        move.l  20(%sp),%d2              | PWM (under amt+φm+φc; base slot 8)
-        bsr     sy_wramp                 | phase-skew saw (d6=φm_eff)
-        move.l  (%sp)+,%d6               | raw φm
-        move.l  (%sp)+,%d2               | amt
-        bsr     sy_wshape                | d4 → FM (sine→saw→square)
-        move.l  (%sp)+,%d0               | restore φc
+        move.l  %d4,%d1
+        LEAN    %d1, %d2, %d4
+        move.l  %d1,%d4
+        bra     sy_mod_ok
+sy_mmor:
+        | The morph starts from the CLEAN sine: MMOR > 0 takes no lean.
+        lea     -8(%sp),%sp
+        movem.l %d6-%d7,(%sp)            | raw φm, sample count
+        move.l  %a4,%d1                  | φm_eff
+        DPWSAW  S_DPWM, %d7, %d2         | d7 = saw(φ)
+        move.l  sy_pc+SYP_MAMT(%pc),%d1
+        cmpi.l  #64,%d1
+        bgt     sy_mm_pulse
+        | MMOR <= 64 gives the pulse zero weight: keep only its z1 and duty
+        | current (a reprime from φ is wrong under FDBK: a click past 64).
+        move.l  sy_pc+SYP_DUTY(%pc),%d1
+        move.l  %d1,S_DUTY(%a3)
+        add.l   %a4,%d1
+        swap    %d1
+        mulu.w  %d1,%d1
+        clr.w   %d1
+        swap    %d1
+        move.l  %d1,S_DPWC(%a3)
+        bra     sy_mm_ramp
+sy_mm_pulse:
+        | DPW pulse = ½ (saw(φ) − saw(φ+duty)). Reprime S_DPWC only on a LARGE
+        | duty jump (|Δ| ≥ 1<<24); per-sample Q8 steps take the continuous
+        | path — CX 59 reprimed every step and zippered on MMOR.
+        move.l  sy_pc+SYP_DUTY(%pc),%d1
+        move.l  S_DUTY(%a3),%d2
+        beq     sy_mm_prime              | first pulse sample: seed the shifted saw
+        sub.l   %d1,%d2
+        bpl     sy_mm_ad
+        neg.l   %d2
+sy_mm_ad:
+        cmpi.l  #(1<<24),%d2
+        bcc     sy_mm_jump
+        move.l  %d1,S_DUTY(%a3)
+        add.l   %a4,%d1                  | φ + duty
+sy_mm_saw2:
+        DPWSAW  S_DPWC, %d2, %d4         | d2 = saw(φ+duty)
+        neg.l   %d2
+        add.l   %d7,%d2
+        asr.l   #1,%d2                   | pulse
+        move.l  %d2,S_LASTP(%a3)
+        bra     sy_mm_ramp
+sy_mm_jump:
+        move.l  %d1,S_DUTY(%a3)
+        add.l   %a4,%d1
+        swap    %d1
+        mulu.w  %d1,%d1
+        clr.w   %d1
+        swap    %d1
+        move.l  %d1,S_DPWC(%a3)          | z1 = p² at the new phase
+        move.l  S_LASTP(%a3),%d2         | hold one sample across the jump
+        bra     sy_mm_ramp
+sy_mm_prime:
+        move.l  %d1,S_DUTY(%a3)
+        add.l   %a4,%d1                  | shifted phase
+        move.l  %d1,%d2
+        sub.l   %a2,%d2                  | previous sample's shifted phase
+        swap    %d2
+        mulu.w  %d2,%d2
+        clr.w   %d2
+        swap    %d2
+        move.l  %d2,S_DPWC(%a3)          | seed z1 = p² at the previous sample
+        bra     sy_mm_saw2
+sy_mm_ramp:
+        move.l  sy_pc+SYP_MAMT(%pc),%d1
+        cmpi.l  #127,%d1
+        beq     sy_mm_sq                 | pure pulse: the saw is not heard
+        move.l  sy_pc+SYP_KQ(%pc),%d1
+        beq     sy_mm_shape
+        WRAMP   %a4, %d7, %d1, %d6       | phase-skew saw (φm_eff)
+sy_mm_shape:
+        move.l  sy_pc+SYP_MAMT(%pc),%d1
+        cmpi.l  #64,%d1
+        bcs     sy_mm_lo
+        beq     sy_mm_saw
+        sub.l   %d7,%d2                  | saw→square: pulse − saw
+        move.l  sy_pc+SYP_MW(%pc),%d1
+        muls.l  %d1,%d2
+        asr.l   #8,%d2
+        asr.l   #7,%d2
+        add.l   %d7,%d2
+sy_mm_sq:
+        move.l  %d2,%d4
+        bra     sy_mm_done
+sy_mm_saw:
+        move.l  %d7,%d4
+        bra     sy_mm_done
+sy_mm_lo:
+        sub.l   %d4,%d7                  | sine→saw: saw − sine
+        move.l  sy_pc+SYP_MW(%pc),%d1
+        muls.l  %d1,%d7
+        asr.l   #8,%d7
+        asr.l   #7,%d7
+        add.l   %d7,%d4
+sy_mm_done:
+        movem.l (%sp),%d6-%d7
+        lea     8(%sp),%sp
 sy_mod_ok:
         | Park heard mod (MMOR morph / PWM-leaned sine) for MIX. FDBK still
         | uses clean sine in a4/S_LASTM — MIX used to tap that and soloing the
@@ -1250,29 +1474,60 @@ sy_mod_ok:
         asr.l   #8,%d2
         asr.l   #8,%d2
         add.l   %d2,%d1                  | c sine, Q14
-        move.l  16(%sp),%d2              | PWM (under φm+heard)
-        bsr     sy_wlean                 | PWM lean on carrier sine (audible at CMOR 0)
-        mvz.b   26(%sp),%d2              | CMOR (morph under φm+heard)
+        move.l  sy_pc+SYP_K(%pc),%d2     | PWM lean on carrier sine (audible at CMOR 0)
+        beq     sy_c_lean
+        move.l  sy_pc+SYP_CAMT(%pc),%d4  | CMOR >= 64 never hears the sine: no lean
+        cmpi.l  #64,%d4
+        bcc     sy_c_lean
+        LEAN    %d1, %d2, %d4
+sy_c_lean:
+        move.l  sy_pc+SYP_CAMT(%pc),%d2
         beq     sy_car_ok
-        | d0 = running carrier phase — park it (sy_sq_phi writes d0).
-        move.l  %d0,-(%sp)               | park φc
-        move.l  %d1,%d4                  | sine (already PWM-leaned)
-        move.l  %d6,%d1                  | saw phase follows the FM-modulated carrier too
-        lsr.l   #8,%d1
-        lsr.l   #8,%d1
-        lsr.l   #1,%d1                   | φc_mod>>17
-        neg.l   %d1
-        addi.l  #16384,%d1              | aligned naive saw (morph only)
-        move.l  %d1,-(%sp)               | park saw
-        move.l  24(%sp),%d2              | PWM (under saw+φc+φm+heard)
-        bsr     sy_sq_phi                | d0 = pulse from φ (stable; not stepped saw)
-        move.l  (%sp)+,%d1               | saw
-        move.l  20(%sp),%d2              | PWM (under φc+φm+heard)
-        bsr     sy_wramp                 | phase-skew saw (d6=φc_mod)
-        mvz.b   26+4(%sp),%d2            | CMOR (morph under φc+φm+heard)
-        bsr     sy_wshape                | 127 → pure d0 square; linear saw→sq
+        move.l  %d7,-(%sp)               | sample count
+        move.l  %d6,%d4                  | saw phase follows the FM-modulated carrier too
+        moveq   #17,%d7
+        lsr.l   %d7,%d4
+        neg.l   %d4
+        addi.l  #16384,%d4               | aligned naive saw (morph only)
+        cmpi.l  #127,%d2
+        beq     sy_cm_pulse              | pure pulse: the saw is not heard
+        move.l  sy_pc+SYP_KQ(%pc),%d2
+        beq     sy_cm_pulse
+        WRAMP   %d6, %d4, %d2, %d7       | phase-skew saw (φc_mod)
+sy_cm_pulse:
+        | hard pulse from φ (stable; not stepped saw): φ < duty → high
+        move.l  #16384,%d2
+        cmp.l   sy_pc+SYP_DUTY(%pc),%d6
+        bcs     sy_cm_shape
+        neg.l   %d2
+sy_cm_shape:
+        move.l  sy_pc+SYP_CAMT(%pc),%d7
+        cmpi.l  #64,%d7
+        bcs     sy_cm_lo
+        beq     sy_cm_saw
+        cmpi.l  #127,%d7
+        beq     sy_cm_sq
+        sub.l   %d4,%d2                  | saw→square
+        move.l  sy_pc+SYP_CW(%pc),%d7
+        muls.l  %d7,%d2
+        asr.l   #8,%d2
+        asr.l   #7,%d2
+        add.l   %d4,%d2
+sy_cm_sq:
+        move.l  %d2,%d1
+        bra     sy_cm_done
+sy_cm_saw:
         move.l  %d4,%d1
-        move.l  (%sp)+,%d0               | restore φc
+        bra     sy_cm_done
+sy_cm_lo:
+        sub.l   %d1,%d4                  | sine→saw
+        move.l  sy_pc+SYP_CW(%pc),%d7
+        muls.l  %d7,%d4
+        asr.l   #8,%d4
+        asr.l   #7,%d4
+        add.l   %d4,%d1
+sy_cm_done:
+        move.l  (%sp)+,%d7
 sy_car_ok:
         move.l  (%sp)+,%d6               | restore mod phase
         move.l  (%sp)+,%d4               | heard mod (MMOR shape)
@@ -1292,25 +1547,17 @@ sy_mix_done:
         | Q18 accumulator -> Q8 folder control. The /4096 one-pole keeps ten
         | guard bits so small FOLD changes continue moving instead of freezing
         | in the Q8 quantization dead zone. A frame-aligned trig cannot add a step.
-        move.l  %a6,-(%sp)
-        move.l  %d1,-(%sp)               | park the carrier sample while d1 computes the slew
-        move.l  84(%sp),%d2              | track (a6, carrier and six sample-loop stack words)
-        lsl.l   #2,%d2
-        lea     sy_foldtarget(%pc),%a6
-        move.l  (%a6,%d2.l),%d1         | target FOLD Q8, including the LFO fraction
-        lea     sy_foldq(%pc),%a6
-        move.l  (%a6,%d2.l),%d4         | current FOLD_Q8
-        sub.l   %d4,%d1
-        asr.l   #8,%d1                   | /4096 per sample, with Q18 residual retained
-        asr.l   #4,%d1
-        add.l   %d1,%d4
-        move.l  %d4,(%a6,%d2.l)
+        | The Q18 value rides in stack slot 4; sy_foldq[track] gets it after the loop.
+        move.l  4(%sp),%d4               | current FOLD Q18
+        move.l  sy_pc+SYP_FTGT(%pc),%d2  | target, including the LFO fraction
+        sub.l   %d4,%d2
+        asr.l   #8,%d2                   | /4096 per sample, with Q18 residual retained
+        asr.l   #4,%d2
+        add.l   %d2,%d4
+        move.l  %d4,4(%sp)
         lsr.l   #8,%d4
-        lsr.l   #2,%d4                   | convert Q18 to Q8 for this sample
-        move.l  %d4,12(%sp)             | update this sample's FOLD_Q8 stack slot
-        move.l  (%sp)+,%d1               | restore the carrier sample
-        move.l  (%sp)+,%a6
-        move.l  4(%sp),%d2               | FOLD Q8
+        lsr.l   #2,%d4                   | Q8 for this sample
+        move.l  %d4,%d2                  | FOLD Q8
         beq     sy_nofold
         move.l  %d1,-(%sp)               | park c (unbiased dry)
         move.l  %d2,-(%sp)               | park FOLD Q8
@@ -1365,6 +1612,11 @@ sy_nofold:
         add.l   %d5,%d0
         subq.l  #1,%d7
         bne     sy_loop
+        move.l  76(%sp),%d1              | track (52 + the six loop stack words)
+        lsl.l   #2,%d1
+        lea     sy_foldq(%pc),%a0
+        move.l  4(%sp),%d2
+        move.l  %d2,(%a0,%d1.l)          | the FOLD Q18 the slew reached
         move.l  %d0,S_PHC(%a3)
         move.l  %d6,S_PHM(%a3)
         move.l  %a4,S_LASTM(%a3)
@@ -1388,348 +1640,23 @@ sy_done:
         lea     48(%sp),%sp
         rts
 
-| ---- PWM lean (sine): d1=sample Q14, d2=PWM_Q8 → d1. 64<<8 = id. ----
-| Soft half-cycle lean → odd harmonics. Keeps d2. Parks d0/d3.
-sy_wlean:
-        move.l  %d2,-(%sp)
-        lsr.l   #8,%d2                   | panel 0..127
-        andi.l  #127,%d2
-        subi.l  #64,%d2                  | k ∈ [-64, +63]
-        beq     sy_wl_done
-        move.l  %d0,-(%sp)
-        move.l  %d3,-(%sp)
-        move.l  %d1,%d0
-        bpl     sy_wl_abs
-        neg.l   %d0
-sy_wl_abs:
-        move.l  #16384,%d3
-        sub.l   %d0,%d3                  | 16384 − |x|
-        bpl     sy_wl_t
-        moveq   #0,%d3
-sy_wl_t:
-        move.l  %d1,%d0
-        muls.l  %d2,%d0                  | x * k
-        asr.l   #5,%d0                   | stronger than CX 49 (/32 vs /64)
-        muls.l  %d3,%d0
-        asr.l   #8,%d0
-        asr.l   #6,%d0
-        add.l   %d0,%d1
-        cmpi.l  #16384,%d1
-        ble     sy_wl_hi
-        move.l  #16384,%d1
-sy_wl_hi:
-        cmpi.l  #-16384,%d1
-        bge     sy_wl_lo
-        move.l  #-16384,%d1
-sy_wl_lo:
-        move.l  (%sp)+,%d3
-        move.l  (%sp)+,%d0
-sy_wl_done:
-        move.l  (%sp)+,%d2               | restore PWM_Q8
-        rts
-
-| ---- PWM phase-skew (saw): d1=saw Q14, d2=PWM_Q8, d6=φ → d1. --------
-| Warp φ so the ramp is steep then shallow (or vice versa) — still ONE
-| discontinuity per cycle (asymmetric saw). CX 62 used 25%..75% and a
-| full 0→127 sweep only moved H2/H1 0.50→0.62 (unit). Now d = 8%..92%:
-|   d = 2621 + (PWM_Q8 * 27525) / (128<<8)
-| 64 → ~50%. Always take the warped saw (at 50% it matches naive φ→saw);
-| DPW at centre is restored by blending with |k| so MMOR keeps bandlimiting
-| near 64. Keeps d0/d2/d6; parks d3/d7.
-sy_wramp:
-        move.l  %d0,-(%sp)
-        move.l  %d3,-(%sp)
-        move.l  %d2,-(%sp)               | PWM_Q8
-        move.l  %d2,%d0
-        subi.l  #(64<<8),%d0             | k_q8
-        beq     sy_wr_done
-        move.l  %d0,-(%sp)               | k_q8
-        move.l  %d7,-(%sp)
-        move.l  %d1,%d7                  | original saw (DPW or naive)
-        move.l  %d6,%d1
-        lsr.l   #8,%d1
-        lsr.l   #8,%d1
-        lsr.l   #1,%d1                   | p = φ>>17 ∈ 0..32767
-        | d = 2621 + PWM_Q8 * 27525 / 32768  → ~8% .. ~92%, 64→~50%
-        move.l  8(%sp),%d2               | PWM_Q8
-        move.l  #27525,%d0
-        mulu.l  %d2,%d0
-        lsr.l   #8,%d0
-        lsr.l   #7,%d0                   | /32768
-        addi.l  #2621,%d0
-        move.l  %d0,%d2                  | d
-        | 2^30/d and 2^30/(32768−d), recomputed only when d changes (per call)
-        cmp.l   sy_wrrc(%pc),%d2
-        beq     sy_wr_rcok
-        move.l  %a0,-(%sp)
-        lea     sy_wrrc(%pc),%a0
-        move.l  %d2,(%a0)
-        move.l  #0x40000000,%d0
-        divu.l  %d2,%d0
-        move.l  %d0,4(%a0)
-        move.l  #32768,%d3
-        sub.l   %d2,%d3
-        move.l  #0x40000000,%d0
-        divu.l  %d3,%d0
-        move.l  %d0,8(%a0)
-        move.l  (%sp)+,%a0
-sy_wr_rcok:
-        cmp.l   %d2,%d1
-        bge     sy_wr_hihalf
-        | p' = p * 16384 / d  (p < d: the product stays under 2^30)
-        move.l  sy_wrrc+4(%pc),%d0
-        mulu.l  %d0,%d1
-        lsr.l   #8,%d1
-        lsr.l   #8,%d1
-        bra     sy_wr_saw
-sy_wr_hihalf:
-        | p' = 16384 + (p−d) * 16384 / (32768−d)
-        sub.l   %d2,%d1                  | p − d
-        move.l  sy_wrrc+8(%pc),%d0
-        mulu.l  %d0,%d1
-        lsr.l   #8,%d1
-        lsr.l   #8,%d1
-        addi.l  #16384,%d1
-sy_wr_saw:
-        move.l  #16384,%d0
-        sub.l   %d1,%d0                  | warped naive saw
-        move.l  %d0,%d1
-        | Near 64 keep original (DPW); toward 0/127 commit to the skew.
-        move.l  4(%sp),%d0               | k_q8
-        bpl     sy_wr_abs
-        neg.l   %d0
-sy_wr_abs:
-        move.l  %d1,%d3
-        sub.l   %d7,%d3                  | warped − original
-        muls.l  %d0,%d3
-        asr.l   #8,%d3
-        asr.l   #6,%d3                   | * |k| / (64<<8)
-        move.l  %d7,%d1
-        add.l   %d3,%d1
-        cmpi.l  #16384,%d1
-        ble     sy_wr_cliph
-        move.l  #16384,%d1
-sy_wr_cliph:
-        cmpi.l  #-16384,%d1
-        bge     sy_wr_clipl
-        move.l  #-16384,%d1
-sy_wr_clipl:
-        move.l  (%sp)+,%d7
-        addq.l  #4,%sp                   | drop k_q8
-sy_wr_done:
-        move.l  (%sp)+,%d2
-        move.l  (%sp)+,%d3
-        move.l  (%sp)+,%d0
-        rts
-
-| ---- DPW saw (MMOR): d6=φ, a4=&z1, sy_dpwrc = dt → d2 Q14. Parks d3/d7. --
-| Continuous — required for FM. 2× + invert = sine-aligned fundamental.
-sy_dpw:
-        move.l  %d3,-(%sp)
-        move.l  %d7,-(%sp)
-        move.l  %d6,%d2
-        lsr.l   #8,%d2
-        lsr.l   #8,%d2                   | p Q16
-        move.l  %d2,%d7
-        mulu.l  %d2,%d7
-        lsr.l   #8,%d7
-        lsr.l   #8,%d7                   | p² Q16
-        move.l  (%a4),%d3
-        move.l  %d7,(%a4)
-        sub.l   %d3,%d7                  | diff
-        | out = 16384 − diff * 16384 / dt, clamped to ±16384:
-        | diff <= 0 → +16384, diff >= 2 dt → −16384
-        move.l  #16384,%d2
-        tst.l   %d7
-        ble     sy_dpw_lo
-        move.l  sy_dpwrc(%pc),%d3        | dt (sy_mono sets it from Δφm)
-        add.l   %d3,%d3                  | 2 dt
-        cmp.l   %d3,%d7
-        bcs     sy_dpw_mul
-        neg.l   %d2
-        bra     sy_dpw_lo
-sy_dpw_mul:
-        move.l  sy_dpwrc+4(%pc),%d3
-        mulu.l  %d3,%d7                  | diff < 2 dt: under 2^31
-        lsr.l   #8,%d7
-        lsr.l   #8,%d7
-        sub.l   %d7,%d2
-sy_dpw_lo:
-        move.l  (%sp)+,%d7
-        move.l  (%sp)+,%d3
-        rts
-
-| ---- PWM_Q8 → eff_q8 (16<<8 .. ~110<<8), full travel, no end plateau. ----
-| eff = (16<<8) + (w_q8*95)>>7; 64<<8 → ~63.5<<8. Clobbers d0; needs d3 free.
-sy_wduty:
-        move.l  %d2,%d0
-        move.l  #95,%d3
-        mulu.l  %d0,%d3                  | w_q8 * 95
-        lsr.l   #7,%d3                   | /128
-        addi.l  #(16<<8),%d3             | 4096..~28200
-        move.l  %d3,%d2
-        rts
-
-| ---- hard square from carrier phase: d6=φ, d2=PWM_Q8 → d0 ±16384. -----
-| thresh = eff_q8<<17 (64<<8 → 2^31). Keeps d1/d6. Parks d2/d3.
-sy_sq_phi:
-        move.l  %d3,-(%sp)
-        move.l  %d2,-(%sp)
-        bsr     sy_wduty                 | d2 = eff_q8
-        lsl.l   #8,%d2
-        lsl.l   #8,%d2
-        lsl.l   #1,%d2                   | eff_q8<<17
-        move.l  %d6,%d0
-        sub.l   %d2,%d0                  | φ − thresh (unsigned via C)
-        bcc     sy_sq_lo                 | φ >= thresh → low
-        move.l  #16384,%d0
-        bra     sy_sq_out
-sy_sq_lo:
-        move.l  #-16384,%d0
-sy_sq_out:
-        move.l  (%sp)+,%d2
-        move.l  (%sp)+,%d3
-        rts
-
-| ---- DPW pulse (MMOR): d6=φ, d1=Δφ, d2=PWM_Q8, a3; saw(φ)@0(sp) → d0. -
-| pulse = ½ (saw(φ) − saw(φ+duty)). Duty = eff_q8<<17 (Q8-smooth).
-| Reprime S_DPWC only on a LARGE duty jump (|Δ| ≥ 1<<24); per-sample Q8
-| steps must take the continuous path — CX 59 reprimes every step and
-| froze S_LASTP for the whole slew (unit zipper on MMOR). Parks d2/d3/d6/a4.
-sy_dpw_pulse:
-        move.l  %d3,-(%sp)
-        move.l  %d6,-(%sp)
-        move.l  %a4,-(%sp)               | after parks: 0 a4, 4 φ, 8 d3, 12 ret, 16 saw
-        bsr     sy_wduty                 | d2 = eff_q8
-        lsl.l   #8,%d2
-        lsl.l   #8,%d2
-        lsl.l   #1,%d2                   | duty phase
-        tst.l   S_DUTY(%a3)
-        beq     sy_dpp_prime             | first square sample: seed the shifted saw and emit it immediately
-        move.l  %d2,%d0
-        sub.l   S_DUTY(%a3),%d0
-        bpl     sy_dpp_ad
-        neg.l   %d0
-sy_dpp_ad:
-        cmpi.l  #(1<<24),%d0             | ~0.4% of a cycle
-        bcs     sy_dpp_go                | small / Q8 step — stay continuous
-        move.l  %d2,S_DUTY(%a3)
-        add.l   %d2,%d6                  | φ + duty
-        move.l  %d6,%d0                  | prime z1 = p² at new phase
-        lsr.l   #8,%d0
-        lsr.l   #8,%d0
-        move.l  %d0,%d3
-        mulu.l  %d0,%d3
-        lsr.l   #8,%d3
-        lsr.l   #8,%d3
-        move.l  %d3,S_DPWC(%a3)
-        move.l  S_LASTP(%a3),%d0         | hold one sample across the jump
-        bra     sy_dpp_out
-sy_dpp_go:
-        move.l  %d2,S_DUTY(%a3)          | track (even when continuous)
-        add.l   %d2,%d6                  | φ + duty
-        lea     S_DPWC(%a3),%a4
-        bsr     sy_dpw                   | d2 = saw(φ+duty)
-        bra.s   sy_dpp_calc
-sy_dpp_prime:
-        move.l  %d2,S_DUTY(%a3)
-        add.l   %d2,%d6                  | shifted square phase
-        move.l  %d6,%d0
-        sub.l   %d1,%d0                  | previous sample's shifted phase
-        lsr.l   #8,%d0
-        lsr.l   #8,%d0                   | p Q16
-        move.l  %d0,%d3
-        mulu.l  %d0,%d3
-        lsr.l   #8,%d3
-        lsr.l   #8,%d3
-        move.l  %d3,S_DPWC(%a3)          | seed z1 = p² at the previous sample
-        lea     S_DPWC(%a3),%a4
-        bsr     sy_dpw
-sy_dpp_calc:
-        move.l  16(%sp),%d0              | saw(φ)
-        sub.l   %d2,%d0
-        asr.l   #1,%d0
-        cmpi.l  #16384,%d0
-        ble     sy_dpp_hi
-        move.l  #16384,%d0
-sy_dpp_hi:
-        cmpi.l  #-16384,%d0
-        bge     sy_dpp_lo
-        move.l  #-16384,%d0
-sy_dpp_lo:
-        move.l  %d0,S_LASTP(%a3)
-sy_dpp_out:
-        move.l  (%sp)+,%a4
-        move.l  (%sp)+,%d6
-        move.l  (%sp)+,%d3
-        rts
-
-| ---- DPW pulse state only: d6=φ, d2=PWM_Q8, a3. The z1 and S_DUTY that ----
-| sy_dpw_pulse leaves, without the shifted saw. Clobbers d0/d2.
-sy_dpw_track:
-        move.l  %d3,-(%sp)
-        bsr     sy_wduty                 | d2 = eff_q8
-        lsl.l   #8,%d2
-        lsl.l   #8,%d2
-        lsl.l   #1,%d2                   | duty phase
-        move.l  %d2,S_DUTY(%a3)
-        add.l   %d6,%d2                  | φ + duty
-        lsr.l   #8,%d2
-        lsr.l   #8,%d2                   | p Q16
-        move.l  %d2,%d3
-        mulu.l  %d2,%d3
-        lsr.l   #8,%d3
-        lsr.l   #8,%d3                   | p² Q16
-        move.l  %d3,S_DPWC(%a3)
-        move.l  (%sp)+,%d3
-        rts
-
-| ---- sine→saw→square: d4=sine, d1=saw, d0=square, d2=amt 0..127 → d4. ----
-| 0 = sine, 64 = saw, 127 = square. Both halves LINEAR in /63 so the
-| mid landmark is not a plateau (t² sine→saw stalled ~60 then pulse
-| hard-switched at 64 — unit steppy 60..70 on MMOR). Parks d3; clobbers d1/d2.
-sy_wshape:
-        tstl    %d2
-        beq     sy_ws_done
-        cmpi.l  #127,%d2
-        beq     sy_ws_sq
+| ---- sy_pcw: morph amount d2 → its blend weight t/127 in Q15 (sy_pc). ------
+| t = x*127/63 for x = amt (sine→saw) or amt−64 (saw→square): both halves
+| LINEAR in /63 so the mid landmark is not a plateau (t² stalled ~60 and the
+| pulse hard-switched at 64 — unit steppy 60..70 on MMOR). t exactly as
+| (x * 1057021) >> 19 for x < 64; the weight within 1 LSB of t/127. Clobbers d3.
+sy_pcw:
         cmpi.l  #64,%d2
-        beq     sy_ws_saw
-        move.l  %d3,-(%sp)
-        cmpi.l  #64,%d2
-        bge     sy_ws_hi
-        | ---- sine→saw: t = amt*127/63 ----
-        move.l  %d1,%d3
-        sub.l   %d4,%d3                  | saw − sine
-        bra     sy_ws_mix
-sy_ws_hi:
-        | ---- saw→square: t = (amt-64)*127/63  (linear → full at 127) ----
-        subi.l  #64,%d2                  | 1..62 for amt 65..126
-        move.l  %d1,%d4                  | start at saw
-        move.l  %d0,%d3
-        sub.l   %d1,%d3                  | square − saw
-sy_ws_mix:
-        | t = x*127/63 exactly as (x * 1057021) >> 19 for x < 64; weight
-        | t/127 in Q15 = (t * 33026) >> 7. Within 1 LSB of the two divides.
-        move.l  #1057021,%d1
-        mulu.l  %d1,%d2
-        moveq   #19,%d1
-        lsr.l   %d1,%d2                  | t
-        move.l  #33026,%d1
-        mulu.l  %d1,%d2
+        bcs     sy_pcw_lo
+        subi.l  #64,%d2
+sy_pcw_lo:
+        move.l  #1057021,%d3
+        mulu.l  %d3,%d2
+        moveq   #19,%d3
+        lsr.l   %d3,%d2                  | t
+        move.l  #33026,%d3
+        mulu.l  %d3,%d2
         lsr.l   #7,%d2                   | t/127, Q15
-        muls.l  %d2,%d3
-        moveq   #15,%d1
-        asr.l   %d1,%d3
-        add.l   %d3,%d4
-        move.l  (%sp)+,%d3
-        rts
-sy_ws_saw:
-        move.l  %d1,%d4
-        rts
-sy_ws_sq:
-        move.l  %d0,%d4                  | pure pulse
-sy_ws_done:
         rts
 
 | ---- po_tick: the sequencer clock, once an audio frame -------------------------
@@ -6188,6 +6115,21 @@ po_f_d:
 | prints 0.98 for 1, 2.99 for 3). sy_rato_snap_raw mirrors sy_rato_snap.
 | sy_rato_q8: d1 := Q8 from raw d1 (0..127). Clobbers d0, a0.
 sy_rato_q8:
+        cmpi.l  #128,%d1                 | raw 0..127: memoised in sy_ratoq (0 = not yet)
+        bcc     sy_rq_find
+        lea     sy_ratoq(%pc),%a0
+        mvz.w   (%a0,%d1.l*2),%d0
+        beq     sy_rq_fill
+        move.l  %d0,%d1
+        rts
+sy_rq_fill:
+        move.l  %d1,-(%sp)
+        bsr     sy_rq_find
+        move.l  (%sp)+,%d0
+        lea     sy_ratoq(%pc),%a0
+        move.w  %d1,(%a0,%d0.l*2)
+        rts
+sy_rq_find:
         lea     sy_rato_snap_raw(%pc),%a0
         moveq   #0,%d0
 sy_rq_hit:
@@ -6507,10 +6449,12 @@ sy_foldq:                                | 8 tracks x Q18 current FOLD (Q8 plus 
         .fill   8, 4, 0
 sy_foldtarget:                            | 8 tracks x Q18 FOLD target, including the record's low-byte fraction
         .fill   8, 4, 0
-sy_dpwrc:                                 | sy_dpw: dt (0 = empty), 2^30/dt
-        .fill   2, 4, 0
-sy_wrrc:                                  | sy_wramp: d (0 = empty), 2^30/d, 2^30/(32768-d)
+sy_dpwrc:                                 | DPWSAW: dt (0 = empty), 2^30/dt, 2 dt
         .fill   3, 4, 0
+sy_pc:                                    | the mono call's knob constants (SYP_*)
+        .fill   11, 4, 0
+sy_ratoq:                                 | sy_rato_q8's results by raw RATO (0 = not computed)
+        .fill   128, 2, 0
 po_amp:                                  | (2.20) 8 tracks x 4 bytes: ATK, HOLD, REL as the frame builder wrote them,
         .fill   8 * 4, 1, 0              | 1 once kept (po_amp_snap)
 po_voices:                               | 8 tracks x 4 voices x 64 bytes
