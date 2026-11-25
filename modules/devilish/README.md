@@ -1,7 +1,7 @@
 # `devilish` — dEVILish
 
 Robin Whittle's **Devil Fish** modifications to the TB-303, as an FX for [`octa303`](../octa303/README.md)
-tracks. Put dEVILish on FX1 or FX2 of an OCTA-303 track (or a FLEX track playing a `TB303*` sample):
+tracks. Put dEVILish on FX1 or FX2 of an OCTA-303 track:
 the 303 voice reads this slot's twelve knobs and applies them **inside** the voice — the oscillator's
 level into the filter, the filter's frequency and feedback, the envelopes, the slide — where the
 mods live and where an effect after the voice cannot reach. Take dEVILish off and the voice is the
@@ -20,14 +20,14 @@ locked, morphed by scenes and the crossfader and modulated by the track's LFOs, 
 | page | name | range | default | what it does |
 |---|---|---|---|---|
 | 1 | OVDR | 0..127 | 25 | overdrive: the VCO into the filter; 0 none, 25 the 303, 127 = 66.6× (resonance swamped) |
-| 1 | FM | 0..127 | 0 | filter FM from the VCA output (after the Muffler); high = towards chaos |
+| 1 | FM | 0..127 | 0 | filter FM from the VCA output (after the Muffler), through a one-pole of 1/4 a sample (high FM stays wild, no static); high = towards chaos |
 | 1 | TRCK | 0..127 | 0 | filter tracking, linear in Hz up to ~2.7 kHz/oct; low notes can shut the filter |
 | 1 | VDEC | 0..127 | 64 | volume: 0..64 decay 16 ms .. the 303's; 64..127 the sustain level, 127 = endless notes |
 | 1 | SLID | 0..127 | 0 | slide time, 60 ms (0, the 303) .. 360 ms |
-| 1 | ADEC | 0..127 | 50 | accented notes' filter decay, 30 ms .. 3 s; 50 = the 303's fixed ~200 ms |
+| 1 | ADEC | 0..127 | 50 | accented notes' filter decay, 30 ms .. 3 s to 10 %; 50 = the 303's own (OCTA303's MEG circuit, 200 ms). v7.9: every value is the same circuit with another resistance in place of R138 (the Devil Fish's Accent Decay pot), so the knob is continuous: 49 / 50 / 51 = 192 / 200 / 207 ms to 10 %, no jump, and the tail (1 %, 0.1 %) lengthens with it too; below ~1 % it is extrapolated 🟡 |
 | 2 | SATK | 0..127 | 0 | soft attack on non-accented notes: 0 none, 1..127 = 0.3 .. 30 ms |
 | 2 | SWP | ACID, WHST, SELF | ACID | ACID the 303; WHST resonance doubled; SELF doubled and no accent sweep (the filter can self-oscillate) |
-| 2 | SPD | FAST, NORM, SLOW | NORM | accent sweep speed: FAST first accent strongest, NORM the 303, SLOW up to twice |
+| 2 | SPD | FAST, NORM, SLOW | NORM | accent sweep speed: FAST first accent strongest, NORM the 303, SLOW up to twice (v7.8: C13 of OCTA303's accent circuit / 4, as is, x 4 read doubled; 🟡 an interpretation) |
 | 2 | MUFF | OFF, SOFT, HARD | OFF | the Muffler after the VCA: loud peaks clipped, the bass kept |
 | 2 | CUTX | OFF, ON | OFF | the wide cutoff pot: lower, and up to ~5 kHz |
 | 2 | ENVX | OFF, ON | OFF | env mod tripled, from none |

@@ -1,7 +1,8 @@
 A circuit-modelled Roland TB-303 voice, one per track, as a
 machine of its own: **OCTA-303**. It needs no sample, gives up no stock
-effect, and its model is fitted to recordings of a real TB-303 (Din Sync's
-x0xb0x reference set).
+effect, and its model follows the TB-303's circuit (Roland's service notes)
+fitted to recordings of two real TB-303s (Din Sync's x0xb0x reference set,
+tinyloops' accents, rolandclan's one-shots).
 
 ## Limit
 
@@ -29,18 +30,19 @@ OCTA-303 track starts at TUNE C3, CUT RES ENV DEC 64, ACC 0.
 | SRC | CUT | cutoff, the 303's CUTOFF FREQ law |
 | SRC | RES | resonance |
 | SRC | ENV | env mod |
-| SRC | DEC | decay, ~0.13–2.4 s |
+| SRC | DEC | decay, ~0.16–2.5 s |
 | SRC | ACC | the ACCENT knob, applied on the steps with an ACC lock |
-| SETUP | WAVE | SAW, SQR, SAW+D, SQR+D (+D: a distortion pedal after the VCA) |
+| SETUP | WAVE | SAW, SQR, SAW+D, SQR+D, RSAW, RSQR, RSAWD, RSQRD (+D: a distortion pedal after the VCA; R: the filter as Roland's factory trims it, +0.575 octave; without R, Din Sync's 303) |
 | SETUP | GATE | OFF: the AMP page shapes the note; 303: the 303's own gate, 3.5 of 6 clocks, tied into a slide |
 | SETUP | FINE | fine tune, ±½ semitone |
 | SETUP | SLID | slide time (0 = the 303's) |
-| SETUP | DRIV | drive into the output's soft ceiling, up to +18 dB |
-| SETUP | ACCV | accent loudness (64 = the calibrated 303) |
+| SETUP | DRIV | the 303's VOLUME turned past the recording's level: up to +10 dB into the output mixer's soft saturation (0 = as recorded) |
+| SETUP | ACCV | accent loudness (64 = the 303's own, from its circuit) |
 
 ## Playing it
 
-- **Accent:** p-lock ACC on the steps to accent; the ACC knob sets how much.
+- **Accent:** p-lock ACC on the steps to accent; the ACC knob sets how much. Since v7.8 the accent and the
+  filter envelope follow the TB-303's circuit: accents in a row build up as on the 303 (C13 keeps some charge).
 - **Slide:** a trigless trig or a trigless lock ([FUNC] + [TRIG]) on the
   next step. The moment it is placed it takes the note it slides from as its
   TUNE lock (the previous step with a trig or a slide), so it ties into that

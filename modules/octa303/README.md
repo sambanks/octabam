@@ -15,7 +15,7 @@ comes from the measurements and gates named beside it.
 [BLACKPYRAMIDS_303](https://github.com/Zac-Kyoti/octatrack-kyoti-fw) (BLKPYRAMD) adapts Robin
 Schmidt's Open303 to the **DSP**: one voice per DSP core (one on T1–T4, one on T5–T8), in SPRING
 REV's space, voiced by ear. OCTA303 takes the other road: the voice runs on the **ColdFire**, one
-per track (the author plays three at once), gives up no stock effect, and its model is fitted to
+per track (up to two in a Part), gives up no stock effect, and its model is fitted to
 measurements of a real TB-303 (Din Sync's set, below) rather than tuned by ear. Both register
 their machine row with repeat98's ANALOG BD seams, so they cannot share an image.
 
@@ -30,8 +30,8 @@ afterwards no longer has those signatures); the render path counts the same way.
 25.3 % of the ColdFire frame interrupt, 2 machines playing 65.5 %, 4 machines 83.2 %; the model fitted to those
 (about 21 points once any machine plays, 9.3 per machine) gives about 102 % for six. Near 98 % the frame
 interrupt leaves the panel's task almost no time: the audio keeps playing and the interface stops answering
-(`docs/contributing/FAILURE_MODES.md`). A track that starts on a sample named `TB303*` is a second way into the
-voice and is not counted.
+(`docs/contributing/FAILURE_MODES.md`). Until v7.9 a track that started on a sample named `TB303*` was a second
+way into the voice, not counted; v7.9 took it away, so two is the limit.
 
 ## Using it
 
@@ -51,8 +51,10 @@ voice and is not counted.
 5. LFO SETUP names an OCTA-303 track's PLAYBACK destinations TUNE CUT RES ENV DEC ACC (v7.1; before,
    FLEX's PTCH STRT LEN RATE RTRG RTIM: the modulation was right, the names were not).
 
-The older form still works and is unchanged: a FLEX track whose sample is named `TB303*.wav`
-(`TB303`, `TB303SQ`, `TB303D`, `TB303SQD`, any case) plays the same engine with neutral SETUP values.
+Until v7.8 a FLEX track whose sample was named `TB303*.wav` (`TB303`, `TB303SQ`, `TB303D`, `TB303SQD`, any
+case) played the same engine with neutral SETUP values. v7.9 took that way out: such a track plays its sample.
+A project that used it gets the same sound from an OCTA-303 track with WAVE set to the file's carrier (SAW, SQR,
+SAW+D, SQR+D) and the other SETUP values at their defaults.
 
 ### PLAYBACK page (the FLEX playback slots)
 
@@ -60,9 +62,9 @@ The older form still works and is unchanged: a FLEX track whose sample is named 
 |---|---|---|---|
 | 0 | TUNE | C1..C5 (raw 40..88) | semitones, shown as note names; C3 = 0 |
 | 1 | CUT | 0..127 | cutoff, the 303's CUTOFF FREQ law |
-| 2 | RES | 0..127 | resonance (never self-oscillates without Devil Fish SWP) |
+| 2 | RES | 0..127 | resonance (never self-oscillates without Devil Fish SWP; v7.3, ACID: no fs/4 whistle at the top, #1011) |
 | 3 | ENV | 0..127 | ENV MOD (audio taper, as the Roland service notes) |
-| 4 | DEC | 0..127 | DECAY, ~0.13..2.4 s (✅ recovered from the Din Sync set) |
+| 4 | DEC | 0..127 | DECAY, 0.157..2.46 s to 10 % (v7.5: the service notes' parts; ✅ the Din Sync fit agrees) |
 | 5 | ACC | 0..127 | the ACCENT knob, applied on the notes that carry an ACC lock |
 
 A new OCTA-303 track starts at TUNE C3, CUT RES ENV DEC 64, ACC 0.
@@ -71,24 +73,33 @@ A new OCTA-303 track starts at TUNE C3, CUT RES ENV DEC 64, ACC 0.
 
 | slot | name | values | default | what it does |
 |---|---|---|---|---|
-| 6 | WAVE | SAW, SQR, SAW+D, SQR+D | SAW | waveform; `+D` adds a distortion pedal stage after the VCA |
+| 6 | WAVE | SAW, SQR, SAW+D, SQR+D, RSAW, RSQR, RSAWD, RSQRD | SAW | waveform; `+D` adds a distortion pedal stage after the VCA; v7.9: `R` = the 303 as Roland's factory trims its filter (TM3: the cutoff +0.575 octave at every CUT; without `R`, Din Sync's 303) |
 | 7 | GATE | OFF, 303 | OFF | OFF: the AMP page shapes the note. 303: the 303's own gate, 3.5 of the step's 6 clocks (Whittle), tied into a slide |
 | 8 | FINE | −64..+63 | 0 | fine tune, ±½ semitone |
 | 9 | SLID | 0..127 | 0 | slide time (0 = the 303's RC; `devilish`'s SLID wins when it is on the track) |
-| 10 | DRIV | 0..127 | 0 | drive into the output stage's soft ceiling, up to +18 dB |
-| 11 | ACCV | 0..127 | 64 | accent loudness (64 = the calibrated 303) |
+| 10 | DRIV | 0..127 | 0 | v7.7: the 303's VOLUME (VR8) past Din Sync's position. 0 = the recording's level (pin 6's ceiling only); above 0 up to +10 dB into the output mixer's soft, asymmetric saturation (Q33/Q34). Projects saved with DRIV > 0 sound different |
+| 11 | ACCV | 0..127 | 64 | accent loudness: v7.8 scales the accent's current into the VCA (I27, from the circuit); 64 = the 303 |
 
 ## How it works
 
 - **Audio.** The FLEX entry of the renderer kind table (`0x400d6438`) points at `sy_render`. On an
-  OCTA303 track it lets the stock renderer write the header (PTCH/RATE neutralised, the carrier's
-  positions pinned) and then writes the 303's samples into it; every other track is stock. AMP, FX1
-  and FX2 stay stock, after the voice.
-- **The engine** (per sample, Q-format integer): PolyBLEP saw / square (duty by pitch), coupling
-  high-pass, 4-pole diode ladder with the 303's unequal first stage, feedback through a loop
-  high-pass, resonance law `k = K(f) × law(RES) − decay(RES) × KD(f)` solved from a linear
-  model of the ladder, MEG / accent-sweep capacitor / VCA envelopes at control rate, RC slide,
-  output coupling and a soft output ceiling.
+  OCTA303 track it writes the header the stock renderer would (the count, the start, rate 1.0, the
+  ring word) and the 303's samples into it, without calling the stock renderer (v8.6, CX OSC's way:
+  a sample left in the track's slot is not rendered under the 303). Two calls still run the stock
+  renderer: one before the track is latched, and (v8.7, vFable's hybrid) the last call of a frame
+  with a START, neutralised as before -- without it a track set back to FLEX stayed silent on the unit.
+  Every other track is stock. AMP, FX1 and FX2 stay stock, after the voice. A call that cannot be an OCTA303
+  track's goes to the stock renderer before the register frame (Yves Rosius's fast path, sambanks/octabam#1244).
+- **The hybrid** (with [OCTA303 SEAM](../octa303-seam/README.md) in the remix): the ColdFire keeps the knobs, the
+  sequencer, the envelopes, the accent, the slide and the VCO, and ships the rest of each frame's work as a record
+  in the track's source slot; the DSP renders FM, the loop, the ladder, the VCA, pin 6, MUFF, DIST, the output
+  coupling and DRIV at the per-track source seam. The same samples as the ColdFire voice, bit for bit.
+- **The engine** (per sample, Q-format integer): PolyBLEP saw, the square from Q8's circuit (v7.6), 4-pole
+  diode ladder with the 303's unequal first stage, one high-pass after it shared by the feedback and
+  the output (v7.5, the circuit's), resonance law `k = K(f) × law(RES) − decay(RES) × KD(f)` solved
+  from a linear model of the ladder, the VCA's input pair (v7.5) and its OTA (v7.6), MEG / accent-sweep capacitor / VCA
+  envelopes at control rate, RC slide, output coupling and a soft output ceiling. dEVILish's FM reads the VCA's
+  last word through a one-pole of 1/4 a sample (~2 kHz): high FM stays wild instead of turning into static.
 - **The machine row** (v7.0) uses the seams that repeat98 measured for `analog-bassdrum`: the same
   fifteen detours and six pokes, without its engine pool. A track is stored as FLEX and signed
   `'T','B',1` in its NEIGHBOR PLAYBACK bytes (`Part + 0x3c + 30·track`, unused by NEIGHBOR). Its
@@ -100,7 +111,8 @@ A new OCTA-303 track starts at TUNE C3, CUT RES ENV DEC 64, ACC 0.
 
 ## Open
 
-- The ColdFire load on the unit (CF METER).
+- The ColdFire load on the unit (CF METER); with OCTA303 SEAM, the DSP's per core (`make cycles` does not count a
+  hook section: one hybrid voice on T1–T4 and one on T5–T8).
 - `SYNTH MACHINE` and `octa303` cannot share an image (the FLEX renderer and the page resolver).
   `analog-bassdrum` can since 28 Oct 2026, through HOOKS (`machine_rows`: OCTA-303 on row 6 of a
   scrolling list, its renderer after ANALOG BD's): both UI gates pass on the one image under the
@@ -128,4 +140,6 @@ A new OCTA-303 track starts at TUNE C3, CUT RES ENV DEC 64, ACC 0.
   positions, the clean retrig byte, the PLAYBACK page clone) and the semitone tuning system.
 - **repeat98** (https://github.com/repeat98), `analog-bassdrum` (this repository) — the measured machine-list seams the OCTA-303
   row uses.
+- **Yves Rosius** — `interlock_scan`, DSP_AUDIT, `cf_scan` and `verify_cf_ident` (this repository), the tools that
+  priced and checked v10.0, and the ColdFire savings of sambanks/octabam#1244, ported here.
 - **Sam Banks**, octabam — the build, the port, the remixer.

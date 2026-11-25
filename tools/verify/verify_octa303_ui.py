@@ -102,7 +102,7 @@ def main():
     SELECT = SELECT[:-2] + [e for _ in range(rows - 1 - o3_row) for e in key(0x33, 0.25, 0.06)] + SELECT[-2:]
     PB_TABLE5 = 0x400D5F38 + 4 * o3_row
     sym = symbols()
-    rec = sym["o3_desc"] + 0x194          # the machine's record (o3_desc's second, O3_DLEN apart)
+    rec = sym["o3_desc"]                  # the machine's record (v7.9: o3_desc holds that one record only)
 
     # 1. select OCTA-303, edit SETUP
     script = SELECT + [(0.8, "enc 2 10"), (0.5, "enc 5 -20")]
