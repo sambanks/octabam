@@ -65,24 +65,23 @@ rmt_in:
         move.l  %sp@(256),%d0
         .endif
         lea     RMT_TRACE,%a0
-        move.l  %a0@,%d1
+        lea     rmt_wtab,%a3                    | here, between each address register's write and its
+        move.l  %a0@,%d1                        | first use: no address-use stall
         move.l  %d1,%d2
         and.l   #NTRACE-1,%d2
         lsl.l   #3,%d2
         lea     %a0@(8,%d2:l),%a1
+        addq.l  #1,%d1
         move.l  %d0,%a1@
         move.l  DTCN3,%d0
         move.l  %d0,%a1@(4)
-        addq.l  #1,%d1
         move.l  %d1,%a0@
-        lea     rmt_wtab,%a3
         lea     rmt_shadow,%a2
         moveq   #K_WATCH,%d4
-1:      move.l  %a3@+,%d0
-        beq.s   3f
-        move.l  %d0,%a0
-        mvz.b   %a0@,%d1
+        bra.s   0f                              | the test at the bottom: one branch a row
+1:      move.l  %d0,%a0
         mvz.b   %a2@,%d0
+        mvz.b   %a0@,%d1
         cmp.l   %d0,%d1
         beq.s   2f
         move.b  %d1,%a2@
@@ -90,8 +89,9 @@ rmt_in:
         bsr.s   rmt_put
 2:      addq.l  #1,%a2
         addq.l  #1,%d4
-        bra.s   1b
-3:      move.l  LCDFRONT,%d0
+0:      move.l  %a3@+,%d0
+        bne.s   1b
+        move.l  LCDFRONT,%d0
         cmp.l   rmt_lcd,%d0
         beq.s   4f
         move.l  %d0,rmt_lcd
