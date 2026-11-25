@@ -404,13 +404,8 @@ def main():
             pay += brainfile.Value(2, brainfile.BLOB, a.name.encode() + b"\0").encode()
         return brainfile.Record(kind, "stock.part2", payload=pay)
 
-    # an FX template: ids all 0 (NONE), T1 FX1 slot 0 (key 17) = 77, T2 FX2 slot 3 (key 17 + 3 * 12 + 3) = 99
-    fx_want = {k: 77 if k == 17 else 99 if k == 56 else 0 for k in range(1, 209)}
-    fxs = brainfile.Record(brainfile.TEMPLATE_REC, "stock.fxset", payload=brainfile.prefix_bytes(
-        brainfile.TEMPLATE_REC, layout=0x46585331, name="FX 07")
-        + b"".join(brainfile.Value(k, brainfile.BYTE, bytes([v])).encode() for k, v in fx_want.items()))
-    fxseed = OUT / "tpl_fxset_seed.work"
-    fxseed.write_bytes(brainfile.File(brainfile.CARD_WORK, [fxs]).encode())
+    kitseed = OUT / "tpl_kit_seed.work"
+    kitseed.write_bytes(brainfile.File(brainfile.CARD_WORK, [part_rec(brainfile.TEMPLATE_REC, pblob, name="KIT 07")]).encode())
 
     logon = OUT / "logon.work"       # MIDI LOG is off by default; these runs read the log
     logon.write_bytes(brainfile.File(brainfile.CARD_WORK, [brainfile.Record(
@@ -887,31 +882,29 @@ def main():
     if in_group("panes"):
 
         # ---- BRAIN > TEMPLATES: RENAME, DELETE, NEW -------------------------------
-        # TEMPLATES has four tabs: KIT, FX, MIDI, PROJECT; each template's screen is the actions (APPLY TO,
+        # TEMPLATES has three tabs: KIT, MIDI, PROJECT; each template's screen is the actions (APPLY TO,
         # SET AS DEFAULT where the target has one, SAVE, RENAME, DELETE), a VALUES line, then its values.
-        # card.work seeded with one FX template FX 07 (the FX tab lists it under a heading).
+        # card.work seeded with one KIT template KIT 07 (the KIT tab lists it under a heading).
         #   rename  RENAME, the name editor (its cursor opens after the name):
         #           UP sets the character there ('0', measured under the port), YES
         #   delete  DELETE: the record leaves card.work
         #   new     no card.work: NEW KIT TEMPLATE, YES on the name (KIT 01): one stock.part2 record, the
         #           Part's 6,322 bytes and the project's name
-        tseed = fxseed
-        fx_tab = [(0x21, 400), (0x20, 400)]                                               # the FX tab, its first template
+        tseed = kitseed
+        kit_row = [(0x20, 400)]                                                           # the KIT tab, its first template
         def pane_recs(files):
             w = card_file(files, "BRAIN/CARD.WORK")
-            return [(r.store_id, r.name(), {v.key: v.data[0] for v in r.values()})
-                    for r in brainfile.parse(w).records if r.kind == brainfile.TEMPLATE_REC] if w else []
-        files, _, _ = ui_run("tpl_pane_rename", [(0x32, 400)] + to_pane + fx_tab + [(0x31, 3000), (0x20, 500), (0x20, 500),
-                                                                          (0x31, 1200), (0x33, 300), (0x31, 2500)],
-                             roots=((tseed, "BRAIN/card.work"),))     # APPLY TO FX, SAVE, RENAME: the editor
+            return [(r.store_id, r.name()) for r in brainfile.parse(w).records if r.kind == brainfile.TEMPLATE_REC] if w else []
+        files, _, _ = ui_run("tpl_pane_rename", [(0x32, 400)] + to_pane + kit_row + [(0x31, 3000)] + [(0x20, 500)] * 3
+                                                                          + [(0x31, 1200), (0x33, 300), (0x31, 2500)],
+                             roots=((tseed, "BRAIN/card.work"),))     # APPLY TO KIT, SET AS DEFAULT, SAVE, RENAME: the editor
         recs = pane_recs(files)
-        check(f"templates: BRAIN > TEMPLATES, RENAME on the template's screen renames FX 07 through the name editor "
-              f"(UP, YES) to FX 070, its values kept  {[(r[0], r[1], len(r[2]), r[2] == fx_want) for r in recs]}",
-              len(recs) == 1 and recs[0][:2] == ("stock.fxset", "FX 070") and recs[0][2] == fx_want)
-        files, _, _ = ui_run("tpl_pane_delete", [(0x32, 400)] + to_pane + fx_tab + [(0x31, 3000)] + [(0x20, 500)] * 3 + [(0x31, 2500)],
+        check(f"templates: BRAIN > TEMPLATES, RENAME on the template's screen renames KIT 07 through the name editor "
+              f"(UP, YES) to KIT 070  {recs}", recs == [("stock.part2", "KIT 070")])
+        files, _, _ = ui_run("tpl_pane_delete", [(0x32, 400)] + to_pane + kit_row + [(0x31, 3000)] + [(0x20, 500)] * 4 + [(0x31, 2500)],
                              roots=((tseed, "BRAIN/card.work"),))     # ... DELETE
         recs = pane_recs(files)
-        check(f"templates: BRAIN > TEMPLATES, DELETE on the template's screen removes FX 07  {recs and len(recs)}", recs == [])
+        check(f"templates: BRAIN > TEMPLATES, DELETE on the template's screen removes KIT 07  {recs}", recs == [])
         files, _, _ = ui_run("tpl_pane_new", [(0x32, 400)] + to_pane + [(0x31, 1200), (0x31, 4000)])
         w_ = card_file(files, "BRAIN/CARD.WORK")
         prec = [r for r in brainfile.parse(w_).records if r.kind == brainfile.TEMPLATE_REC] if w_ else []
@@ -964,29 +957,6 @@ def main():
         check(f"templates: PART template APPLY TO..., WHOLE KIT: every section equals the template's "
               f"(differing: {bad or 'none'}); the levels and the sample slots keep the project's "
               f"(changed: {kept or 'none'})", not bad and not kept)
-    if in_group("panes"):
-
-        # ---- an FX template (the FX tab): the FX1 and FX2 ids and pages of the eight tracks -----------
-        # APPLY TO FX: T1 FX1 slot 0 and T2 FX2 slot 3 of the seeded record take its values and every byte that changed is in an FX piece.
-        # NEW FX TEMPLATE: one stock.fxset record with the 208 values, equal to the Part's.
-        fx_set_tab = [(0x21, 400)]
-        files, _, (fx0,) = ui_run("tpl_fxset_apply0", [(0x32, 400)], dumps=((part_at + 0x8ed80, 6322),))
-        files, _, (fx1,) = ui_run("tpl_fxset_apply", [(0x32, 400)] + to_pane + fx_set_tab + [(0x20, 400), (0x31, 3000), (0x31, 2500)],
-                                  roots=((fxseed, "BRAIN/card.work"),), dumps=((part_at + 0x8ed80, 6322),))
-        fx_ok = [(0x00, 16)] + [(0x11a + t * 24 + o, 6) for t in range(8) for o in (12, 18)] \
-            + [(0x2fe + t * 30, 12) for t in range(8)]
-        inside = lambda i: any(o <= i < o + n for o, n in fx_ok)
-        outside = [i for i in range(6322) if fx0[i] != fx1[i] and not inside(i)]
-        check(f"templates: FX template APPLY TO FX: T1 FX1 slot 0 is 77 and T2 FX2 slot 3 is 99 "
-              f"({fx1[0x126]}, {fx1[0x147]}); no byte outside the FX pieces changed ({outside[:6] or 'none'})",
-              fx1[0x126] == 77 and fx1[0x147] == 99 and not outside)
-        files, _, _ = ui_run("tpl_fxset_new", [(0x32, 400)] + to_pane + fx_set_tab + [(0x31, 1200), (0x31, 4000)])
-        w_ = card_file(files, "BRAIN/CARD.WORK")
-        frecs = [r for r in brainfile.parse(w_).records if r.kind == brainfile.TEMPLATE_REC] if w_ else []
-        got = {v.key: v.data[0] for v in frecs[0].values()} if len(frecs) == 1 else {}
-        check(f"templates: NEW FX TEMPLATE writes one stock.fxset record of 208 values  "
-              f"{[(r.store_id, r.name()) for r in frecs]} {len(got)} values",
-              len(frecs) == 1 and frecs[0].store_id == "stock.fxset" and frecs[0].name().startswith("FX 01") and len(got) == 208)
     if in_group("panes"):
 
         # ---- the PART default: CREATE EMPTY PROJECT and every Part of every bank, the sample slots apart ----

@@ -2,7 +2,7 @@
 
 *BRAIN: Templates*
 
-A template stores a reusable setup. Use **LEFT / RIGHT** to choose the **KIT**, **FX**, **MIDI**, or **PROJECT** tab.
+A template stores a reusable setup. Use **LEFT / RIGHT** to choose the **KIT**, **MIDI**, or **PROJECT** tab.
 
 1. Select **NEW** and press **YES** to create a template.
 2. Enter a name and confirm with **YES**.
@@ -12,7 +12,6 @@ A template stores a reusable setup. Use **LEFT / RIGHT** to choose the **KIT**, 
 The template screen also provides **SAVE**, **RENAME**, and **DELETE**.
 
 - KIT templates hold a whole Part, applied by section and track: FX, LFO, SRC, AMP, MIDI TRACKS, SCENES, MACHINES.
-- FX templates store the effects of all eight tracks: FX1 and FX2 ids, page 1 and page 2 (the FX SETUP page) of each. APPLY TO FX sets all eight tracks.
 - MIDI templates store a MIDI track's pages.
 - PROJECT templates cover the stock PROJECT / CONTROL / MIDI screens. SET AS DEFAULT on one makes it the settings of every new project.
 
