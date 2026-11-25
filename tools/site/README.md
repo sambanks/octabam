@@ -114,6 +114,15 @@ the release. `tools/web/stale.py --check` verifies the committed patches in CI;
 a manifest that names a release is locked to it, and later changes are listed,
 not warned about.
 
+## The GitHub release
+
+`.github/workflows/release.yml` publishes a tag's GitHub release from
+`.github/releases/<tag>.md` on main. Pushing a `v*` tag runs it; a tag cut
+before its notes were written fails the run, and dispatching the workflow
+for that tag once the file is on main publishes it. A dispatch for a tag that
+has a release edits it, so marking an older release superseded is an edit
+to its notes file and a dispatch.
+
 ## Rules the doclinks gate forces on these files
 
 `tools/verify/doclinks.py` scans every tracked text file, these pages

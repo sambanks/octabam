@@ -1,0 +1,54 @@
+# Publish the GitHub release for a version tag. A pushed tag `v*` publishes
+# its release; workflow_dispatch republishes any tag's (an existing release
+# is edited, not duplicated). The notes are `.github/releases/<tag>.md` on
+# main, not at the tag: the web builder's patches and their hashes land on
+# main after the tag is cut. A tag with no notes file fails the run; add the
+# file on main and dispatch the run for that tag.
+name: 🏷️ Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag to publish, e.g. v0.5'
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+jobs:
+  release:
+    name: publish the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: publish
+        run: |
+          set -euo pipefail
+          case "$TAG" in v[0-9]*) ;; *) echo "::error::not a version tag: $TAG"; exit 1;; esac
+          notes=".github/releases/$TAG.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::no $notes on the default branch; add it and dispatch this workflow for $TAG"
+            exit 1
+          fi
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null \
+            || { echo "::error::tag $TAG is not on the remote"; exit 1; }
+          title="Octabam ${TAG}"
+          # the newest version tag is the latest release; an older one is republished as it stands
+          newest=$(git ls-remote --tags --refs origin 'v*' | sed 's|.*refs/tags/||' | sort -V | tail -1)
+          latest=false; [ "$TAG" = "$newest" ] && latest=true
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "$title" --notes-file "$notes" --latest="$latest"
+          else
+            gh release create "$TAG" --verify-tag --title "$title" --notes-file "$notes" --latest="$latest"
+          fi
+          gh release view "$TAG" --json url --jq .url
