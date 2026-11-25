@@ -568,10 +568,13 @@ def routing_port_gate(source, remix):
     assert result.returncode == 0 and "run ended REACHED" in text
     assert "load run ended: LOAD PROJECT handled" in text
     midi = transport_midi(out / "wire.midi", text)
+    # MIDI SCENES' CC loop runs before the note-on (scn_ccnote); stock's after it.
+    has_scenes = b"scn_ccnote" in subprocess.check_output(
+        ["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")])
     for track, route in enumerate(routes):
         events = [msg for msg in midi if msg[0] & 15 == track]
         note_on, cc, note_off = [0x90 | track, 84, 100], [0xb0 | track, 46, 70], [0x90 | track, 84, 0]
-        expected = [note_on, cc, note_off]
+        expected = [cc, note_on, note_off] if has_scenes else [note_on, cc, note_off]
         assert events == ([] if route == 1 else expected), (track, route, events)
         assert dumps["level"].read_bytes()[track * 2] == (70 if route else 127), (track, route)
     assert dumps["note"].read_bytes() == bytes([255] * 8)

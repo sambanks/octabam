@@ -195,6 +195,15 @@ def check(selected) -> list[str]:
                 problems.append(f"declared conflict: {m.name} cannot share an image with "
                                 f"{by_key[other].name} -- {why}")
 
+    # ---- joined pairs (Module.joins) ----------------------------------------
+    # Two modules whose claims never overlap but whose behaviours do share an
+    # image only with the bridge that joins them.
+    for br in registry.modules().values():
+        if br.joins and br.key not in keys and set(br.joins) <= keys:
+            names = " and ".join(by_key[k].name for k in br.joins)
+            problems.append(f"joined pair: {names} share an image only with {br.name} "
+                            f"(registry.remix appends it)")
+
     # ---- Part-window bytes (Claims.part_window) -----------------------------
     regions: list[tuple[int, int, str, str]] = []
     for m in selected:

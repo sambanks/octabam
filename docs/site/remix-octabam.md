@@ -48,6 +48,8 @@ a message.
   [CC feedback](reference/manual/midi-usb/cc-feedback.md) out, so a controller's encoders
   follow the unit.
 - [MIDI scenes](reference/manual/parts/midi-scenes.md): scene locks for the eight MIDI tracks.
+- [MIDI loopback](reference/manual/midi-usb/midi-loopback.md): a MIDI track plays the
+  Octatrack's own audio tracks, its external gear, or both, without a cable.
 - [USB](reference/manual/midi-usb/usb.md): MIDI both ways, plus audio to a computer: the 16
   track channels, MAIN and CUE by default.
 - [SCOPE](reference/manual/utilities/scope.md) (**[DOWN]** + **[TEMPO]**) and

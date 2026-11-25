@@ -317,6 +317,12 @@ def remix(name: str | None):
     # id and no region word.
     if schema.BRAIN_KEY in r.modules and REMIX_SWITCH not in r.modules and REMIX_SWITCH in known:
         r = dataclasses.replace(r, modules=r.modules + (REMIX_SWITCH,))
+    # A JOINED PAIR'S BRIDGE (schema.Module.joins): MIDI LOOPBACK with MIDI
+    # SCENES takes MIDI LOOPBACK SCENES. Its own requires are the remix's to
+    # carry, so a selection without them is refused by the ledger by name.
+    for jb in known.values():
+        if jb.joins and jb.key not in r.modules and set(jb.joins) <= set(r.modules):
+            r = dataclasses.replace(r, modules=r.modules + (jb.key,))
     # HOOKS WITH EVERY BRIDGED PAIR: when two selected modules claim one stock
     # site that a bridge in modules/hooks joins, HOOKS owns the site and calls
     # both (schema.Override). Appended before MEMORY: its bridge is a DRAM unit.

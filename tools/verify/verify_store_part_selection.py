@@ -30,7 +30,9 @@ def registrations():
         chosen=registry.bound(registry.remix(remix))['STORE']
         assert chosen.linked==base.linked and chosen.detours==base.detours
         assert chosen.pokes==base.pokes and chosen.claims==base.claims
-    for remix,setup in (('midi-loopback',False),('midi-follow',True),('midi-follow-events',True)):
+    # octabam and octabam-verbs carry MIDI LOOPBACK (with SCALES): Loopback's DEST writes the flags byte.
+    for remix,setup in (('midi-loopback',False),('midi-loopback-scenes',False),('octabam',False),
+                        ('octabam-verbs',False),('midi-follow',True),('midi-follow-events',True)):
         r=registry.remix(remix);m=registry.bound(r)['STORE']
         assert len(m.detours)==len(base.detours)+3+int(setup)
         assert len({d.site for d in m.detours})==len(m.detours)
@@ -38,7 +40,7 @@ def registrations():
         assert len(m.pokes)==1 and len(m.claims.part_window)==8
         assert all('MIDI PART STATE' not in x.requires for x in registry.selected(r))
     # SCALES only reads the Part window: the copy/init wrappers, no setup walk, no poke, no window claim.
-    for remix in ('octabam','octabam-bus','octabam-verbs','scales'):
+    for remix in ('octabam-bus','scales'):
         r=registry.remix(remix);m=registry.bound(r)['STORE']
         assert len(m.detours)==len(base.detours)+3
         assert len({d.site for d in m.detours})==len(m.detours)

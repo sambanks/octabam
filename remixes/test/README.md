@@ -65,6 +65,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`midi-follow`](midi-follow/README.md) | Per-track RFOL source selection on MIDI NOTE SETUP; Part-owned bass following. |
 | [`midi-follow-events`](midi-follow-events/README.md) | MIDI Follow with EUCLID and PLOCKS P2 sharing EVENTS notifications. |
 | [`midi-loopback`](midi-loopback/README.md) | Stock effects plus the Part-scoped per-track MIDI loopback routing. |
+| [`midi-loopback-scenes`](midi-loopback-scenes/README.md) | Stock effects plus MIDI Loopback, MIDI Scenes and their bridge: scene CCs follow each track's DEST. |
 | [`midi-scales`](midi-scales/README.md) | All twelve keys and seven modes in the native ARP SETUP KEY control. |
 | [`midi-scenes`](midi-scenes/README.md) | Reference minimal build: the MIDI SCENES ColdFire patch, plus direct-jump so `swd` runs. |
 | [`miniverb`](miniverb/README.md) | Minimal allocator-owned FDN reverb. |

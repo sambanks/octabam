@@ -106,7 +106,7 @@ BY_CATEGORY = {
 FOLD = {
     "RIG HOSTS": "SEND", "FX2 LOCK": "SEND", "TEMPO SYNC": "DELAY SERVER",
     "VERB PLATE": "VERBERATION", "VERB ROOM": "VERBERATION", "VERB HALL": "VERBERATION",
-    "VERB PARTS": "VERBERATION",
+    "VERB PARTS": "VERBERATION", "MIDI LOOPBACK SCENES": "MIDI LOOPBACK",
 }
 # A page title in the manual where the Feature Directory's label tells two modules apart.
 MANUAL_LABEL = {"direct-jump-kyoti": "Direct Jump"}
