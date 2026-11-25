@@ -9,9 +9,9 @@ The seam is ANALOG BD's (modules/analog-bassdrum/ab_glue.asm): the stock `move a
 any other record returns into the stock source untouched.  octa303.s writes the record when its remix.inc has
 O3_SEAM = 1 (modules/octa303/manifest.py): v9.1 (25 Nov 2026), every voice (v9.0: none with FM, MUFF, DIST or DRIV).
 FM reads the VCA's word through a one-pole of 1/4 a sample (the cure for its "TV static", chosen by ear).  The
-record's format: tools/octa303/ibrido3/hyb.py.
+record's format: tools/octa303/seam/hyb.py.
 
-o3h.asm is generated (tools/octa303/ibrido3/gen_o3h.py; the build does not regenerate it): integer-exact against
+o3h.asm is generated (tools/octa303/seam/gen_o3h.py; the build does not regenerate it): integer-exact against
 ref303, instruction forms with a stock site or a CHIP.md register row only.  Its tables (pin 6, FM's ladder index
 table, the clip's, DRIV's) are its ptable, one block (gen_o3h.ptable).
 """
@@ -24,7 +24,7 @@ _HERE = os.path.relpath(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "tools", "octa303"))
 import o3tables as _T  # noqa: E402
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "tools", "octa303", "ibrido3"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "tools", "octa303", "seam"))
 import gen_o3h as _G  # noqa: E402  (generates nothing on import but its lines in memory)
 
 PTABLE = tuple(int(v) & 0xFFFFFF for v in _G.ptable)
@@ -40,11 +40,10 @@ MODULE = Module(
     doc=("The hybrid OCTA-303: the voice's filter, FM, VCA, MUFF, DIST and output stage (DRIV) run on the DSP at "
          "the track's source, the rest on the ColdFire."),
     evidence=(Evidence(Level.UNIT, unit="MKI", who="MaMarko", image="ACIDV100", date="2026-11-25",
-                       commit="a4db4ebaf",
                        note="v10.0 in the author's remix aCiDhYb (OCTA303 on T5 and T6, dEVILish FM, MUFF, DIST, "
                             "DRIV 127, a full project): 'it works'; v9.1 (ACIDV99, the same day): no static with "
                             "high FM, CFIRE 72 %, a long run without a fault; v9.0 (ACIDV97, 19 Nov): no clicks."),
-              Evidence(Level.EMULATOR, date="2026-11-25", ref="tools/octa303/ibrido3/o3hhost.cpp",
+              Evidence(Level.EMULATOR, date="2026-11-25", ref="tools/octa303/seam/o3hhost.cpp",
                        note="the DSP half on the dsp56300 emulator from the seam's jsr: 122,624 frames a payload "
                             "(the judge's 208 notes, 160 random runs, 100 with dEVILish), 0 samples differing from "
                             "ref303; damaged records refused; the ColdFire half in cfsim record for record "

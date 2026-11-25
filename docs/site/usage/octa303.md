@@ -41,7 +41,7 @@ OCTA-303 track starts at TUNE C3, CUT RES ENV DEC 64, ACC 0.
 
 ## Playing it
 
-- **Accent:** p-lock ACC on the steps to accent; the ACC knob sets how much. Since v7.8 the accent and the
+- **Accent:** p-lock ACC on the steps to accent; the ACC knob sets how much. The accent and the
   filter envelope follow the TB-303's circuit: accents in a row build up as on the 303 (C13 keeps some charge).
 - **Slide:** a trigless trig or a trigless lock ([FUNC] + [TRIG]) on the
   next step. The moment it is placed it takes the note it slides from as its

@@ -1,5 +1,0 @@
-GATE 303 saw, one note               bit-exact YES                    P11 skips  73.7%  cycles/frame all  5459 ->  4043   last 200:  5458 ->  3690
-GATE 303 sq, dEVILish, one note      bit-exact YES                    P11 skips  67.4%  cycles/frame all  8441 ->  6944   last 200:  8332 ->  6280
-GATE 303 sq RES127 CUT20 ACC127, 2 notes bit-exact YES                    P11 skips  53.0%  cycles/frame all  6988 ->  5935   last 200:  6958 ->  5190
-no gate, saw high, trig every 16 frames bit-exact YES                    P11 skips   0.0%  cycles/frame all  6455 ->  6329   last 200:  6460 ->  6334
-ALL BIT-EXACT

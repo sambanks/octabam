@@ -7,7 +7,7 @@ from remix.schema import Evidence, Level, Remix
 REMIX = Remix(
     name="octa303-seam",
     family="mods", evidence=(Evidence(Level.EMULATOR, date="2026-11-25", ref="tools/octa303/v82/play_gate.py",
-        note="built; OCTA303 SEAM's own checks (tools/octa303/ibrido3) on the author's remix aCiDhYb, which runs on "
+        note="built; OCTA303 SEAM's own checks (tools/octa303/seam) on the author's remix aCiDhYb, which runs on "
              "the author's MKI (ACIDV100); this remix is the module's gate carrier"),),
     doc="the hybrid OCTA-303 (OCTA303 SEAM: FM, filter, VCA, MUFF, DIST and output on the DSP) with dEVILish and the "
         "stock effects but DJ EQ, COMPRESSOR, LO-FI and PHASER.",

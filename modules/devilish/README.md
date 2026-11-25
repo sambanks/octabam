@@ -24,10 +24,10 @@ locked, morphed by scenes and the crossfader and modulated by the track's LFOs, 
 | 1 | TRCK | 0..127 | 0 | filter tracking, linear in Hz up to ~2.7 kHz/oct; low notes can shut the filter |
 | 1 | VDEC | 0..127 | 64 | volume: 0..64 decay 16 ms .. the 303's; 64..127 the sustain level, 127 = endless notes |
 | 1 | SLID | 0..127 | 0 | slide time, 60 ms (0, the 303) .. 360 ms |
-| 1 | ADEC | 0..127 | 50 | accented notes' filter decay, 30 ms .. 3 s to 10 %; 50 = the 303's own (OCTA303's MEG circuit, 200 ms). v7.9: every value is the same circuit with another resistance in place of R138 (the Devil Fish's Accent Decay pot), so the knob is continuous: 49 / 50 / 51 = 192 / 200 / 207 ms to 10 %, no jump, and the tail (1 %, 0.1 %) lengthens with it too; below ~1 % it is extrapolated 🟡 |
+| 1 | ADEC | 0..127 | 50 | accented notes' filter decay, 30 ms .. 3 s to 10 %; 50 = the 303's own (OCTA303's MEG circuit, 200 ms). Every value is the same circuit with another resistance in place of R138 (the Devil Fish's Accent Decay pot), so the knob is continuous: 49 / 50 / 51 = 192 / 200 / 207 ms to 10 % |
 | 2 | SATK | 0..127 | 0 | soft attack on non-accented notes: 0 none, 1..127 = 0.3 .. 30 ms |
 | 2 | SWP | ACID, WHST, SELF | ACID | ACID the 303; WHST resonance doubled; SELF doubled and no accent sweep (the filter can self-oscillate) |
-| 2 | SPD | FAST, NORM, SLOW | NORM | accent sweep speed: FAST first accent strongest, NORM the 303, SLOW up to twice (v7.8: C13 of OCTA303's accent circuit / 4, as is, x 4 read doubled; 🟡 an interpretation) |
+| 2 | SPD | FAST, NORM, SLOW | NORM | accent sweep speed: FAST first accent strongest, NORM the 303, SLOW up to twice (C13 of OCTA303's accent circuit / 4, as is, × 4 read doubled) |
 | 2 | MUFF | OFF, SOFT, HARD | OFF | the Muffler after the VCA: loud peaks clipped, the bass kept |
 | 2 | CUTX | OFF, ON | OFF | the wide cutoff pot: lower, and up to ~5 kHz |
 | 2 | ENVX | OFF, ON | OFF | env mod tripled, from none |

@@ -6,7 +6,7 @@ What it cannot see: the port runs a frame when its work is done (no cycle limit)
 equal audio here says the record, the seam and the chain are right, not that the chip has the cycles."""
 import os, pathlib, subprocess, sys, wave
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / 'tools/octa303/v82'))
+sys.path.insert(0, str(ROOT / 'tools/octa303'))
 import play_gate as PG
 a, b, proj = sys.argv[1:4]; frames = sys.argv[4] if len(sys.argv) > 4 else '3000'
 out = ROOT / 'out/octa303/port-ab'; out.mkdir(parents=True, exist_ok=True)

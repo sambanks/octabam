@@ -1398,7 +1398,7 @@ sy_render:
         bne     .LFloop
         .if     O3_SEAM
 | ---------------------------------------------------------------- v9.0 the hybrid: the ColdFire half
-| (coordination, 19 Nov 2026; tools/octa303/ibrido3/hyb.py is its model, the record's format in its docstring).
+| (coordination, 19 Nov 2026; tools/octa303/seam/hyb.py is its model, the record's format in its docstring).
 | Each sample up to u (VCO, the input highpass, OVDR's gain, the noise) into the track's hybrid block; the control
 | words in pieces (a piece opens at the call and after each control step); at the frame's last call the record
 | goes into the track's source slot for o3h.asm.  amp is kept here as max(0, amp + n * step) per piece.
@@ -1792,8 +1792,8 @@ o3_retrig:
 | ============================================================================
 o3_page:
         .if     HK_MACHINE_ROWS
-        .if     MC_HAS_PAGE             | the entry state, for the next machine's resolver (a1: the bank blob, which
-        lea     -16(%sp),%sp            | o3_basename below clobbers)
+        .if     MC_HAS_PAGE             | the entry state, for the next machine's resolver (a1 included: the bank
+        lea     -16(%sp),%sp            | blob it reads)
         movem.l %d0-%d1/%a0-%a1,(%sp)
         .endif
         .endif

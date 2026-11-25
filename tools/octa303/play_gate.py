@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""OCTA303 v8.2: the 'plays many steps' gate (10 Nov 2026, after the v8.1 images froze the sequencer on Marko's MK1).
+"""OCTA303: the 'plays many steps' gate (an image that froze the sequencer with two voices playing passed every other gate).
 
-    python3 tools/octa303/v82/play_gate.py IMAGE [--project DIR] [--frames N]
+    python3 tools/octa303/play_gate.py IMAGE [--project DIR] [--frames N]
 
 A copy of a project (OT_PROJECT, or ~/.octabam_project; the source is not modified) where, in every bank and every part,
 T5 and T6 are OCTA-303 (FLEX signed T B 1) and, in every pattern, T1 plays steps 1 5 9 13 and T5/T6 play all 16 steps
@@ -19,7 +19,7 @@ Written by Claude (Anthropic).
 """
 import argparse, json, os, pathlib, re, shutil, subprocess, sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[3]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools/harness")); sys.path.insert(0, str(ROOT / "tools/hw"))
 from ab_fixture import prepare  # noqa: E402
 import ot_project as otp  # noqa: E402

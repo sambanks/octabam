@@ -2,7 +2,7 @@
 against hyb.py's model, and the samples the DSP half makes of it (hyb.dsp_model) against ref303 (coordination,
 19 Nov 2026; code written by Claude).  v9.1 (25 Nov 2026): every voice is the seam's (FM, MUFF, DIST and DRIV too), so the sound of every frame
 is compared with ref303; fm_toggle switches FM, MUFF and DRIV within notes (FM's KEEP pieces).
-usage (worktree root): python3 tools/octa303/ibrido3/test_seam_cf.py [frames]"""
+usage (worktree root): python3 tools/octa303/seam/test_seam_cf.py [frames]"""
 import os, random, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', 'sim'))

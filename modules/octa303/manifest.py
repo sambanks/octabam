@@ -74,9 +74,8 @@ MODULE = Module(
     author="MaMarko",
     author_url="https://github.com/braikomarko-hub",
     doc=("A TB-303 voice: the OCTA-303 machine. Accent is an ACC lock, slide a trigless PTCH lock; dEVILish on FX1 or FX2 adds the Devil Fish mods. With OCTA303 SEAM in the remix, the voice after the VCO runs on the DSP."),
-    evidence=(Evidence(Level.UNIT, unit="MKI", who="MaMarko", date="2026-11-25",
-        note="v10.0 with OCTA303 SEAM on the author's MKI, image ACIDV100 (BUILD C0, remix aCiDhYb, the author's "
-             "own), 25 Nov 2026: a full project with OCTA303 on T5 and T6, dEVILish FM, MUFF, DIST and DRIV 127, "
+    evidence=(Evidence(Level.UNIT, unit="MKI", who="MaMarko", image="ACIDV100", date="2026-11-25",
+        note="v10.0 with OCTA303 SEAM in the author's own remix aCiDhYb (BUILD C0): a full project with OCTA303 on T5 and T6, dEVILish FM, MUFF, DIST and DRIV 127, "
              "'it works'; v9.1 (ACIDV99, the same day): no static with high FM, CFIRE 72 %, a long run without a "
              "fault. v7.3-v8.8 ran as ACIDV77-ACIDV97 in the author's live use."),
               Evidence(Level.UNIT, unit="MKI", who="MaMarko", date="2026-10-23",
