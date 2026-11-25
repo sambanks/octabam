@@ -1264,7 +1264,7 @@ sy_mix_done:
         | ---- FOLD (RTRG) + SYMM (SETUP D): half-wave skew into the folder ----
         | c_fold = c * gain/64; gain = SYMM (c>=0) or (128-SYMM) (c<0).
         | 64 = even. drive = 256 + (FOLD_Q8*24)>>8. out = c + (folded-c)*FOLD_Q8/32768.
-        | Q18 accumulator -> Q8 folder control. The /1024 one-pole keeps ten
+        | Q18 accumulator -> Q8 folder control. The /4096 one-pole keeps ten
         | guard bits so small FOLD changes continue moving instead of freezing
         | in the Q8 quantization dead zone. A frame-aligned trig cannot add a step.
         move.l  %a6,-(%sp)
@@ -1276,8 +1276,8 @@ sy_mix_done:
         lea     sy_foldq(%pc),%a6
         move.l  (%a6,%d2.l),%d4         | current FOLD_Q8
         sub.l   %d4,%d1
-        asr.l   #8,%d1                   | /1024 per sample, with Q18 residual retained
-        asr.l   #2,%d1
+        asr.l   #8,%d1                   | /4096 per sample, with Q18 residual retained
+        asr.l   #4,%d1
         add.l   %d1,%d4
         move.l  %d4,(%a6,%d2.l)
         lsr.l   #8,%d4

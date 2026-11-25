@@ -827,8 +827,8 @@ def main():
         foldq_steps = [abs(b[7] - a[7]) for a, b in zip(plain_states, plain_states[1:])]
         max_foldq_step = max(foldq_steps)
         check("DEC=INF FOLD automation advances gradually",
-              max_foldq_step <= 512 * 1024,
-              f"largest frame-to-frame slew={max_foldq_step} Q18 (limit {512 * 1024})")
+              max_foldq_step <= 128 * 1024,
+              f"largest frame-to-frame slew={max_foldq_step} Q18 (limit {128 * 1024})")
         fold_start, fold_target, fold_after = fold_subraw_converges(uc, symbols)
         check("DEC=INF FOLD slew crosses sub-raw changes",
               fold_start < fold_after < fold_target,
