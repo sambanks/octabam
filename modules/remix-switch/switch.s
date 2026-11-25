@@ -29,11 +29,14 @@
 | power-on. The panel controller is not reset with the ColdFire, and the
 | bootstrap's first exchange (0x128: send `60 00`, then block with no
 | timeout until the panel reports key rows 0x25..0x27) never completes.
-| So on an MKII the panel is first sent `60 02`, the command the OS's own
+| So the panel is first sent `60 02`, the command the OS's own MKII
 | loader handshake (0x4001f4dc) opens with at every boot, which puts it in
 | its start-up state; the bootstrap's `60 00` then finds it as a power-on
-| does (INFERRED from the bootstrap and the OS's handshake; build 3 tests
-| it). An MKI's panel gets no handshake from the OS and is left alone.
+| does. (INFERRED: that build-1 hang was later found to be the DSP, so
+| whether `60 02` is needed is not measured.) Sent on both models, so an
+| MKI takes the path the MKII hardware runs: the bootstrap is one for both
+| and opens every power-on with `60 00`, so an MKI's panel probably takes
+| the same pair; an unknown command would leave it as sending nothing does.
 
         .include "remix.inc"
 
@@ -61,7 +64,6 @@
         .set    RCR,       0xfc0a0000
         .set    UART1_USR, 0xfc064004   | the panel link: bit 3 = TXEMP (the bootstrap's putc, 0x20)
         .set    UART1_UTB, 0xfc06400c
-        .set    MKII_FLAG, 0x46c8d18c   | 1 on an MKII (docs/firmware/PANEL.md 4c)
         .set    HI08_CVR,  0x20000004   | the host command register: bit 7 HC, bits 6..0 the vector / 2
         .set    HI08_ISR,  0x20000008   | the host-side status: bit 0 RXDF (the upload's own poll)
         .set    HI08_RXL,  0x2000001c   | RXM:RXL; reading it takes the word (0x40001ce0)
@@ -830,10 +832,8 @@ osw_reset:
         bne.s   3b
 4:
         .endif
-        | MKII: the panel back to its start-up state, `60 02`, so the
+        | Both models: the panel back to its start-up state, `60 02`, so the
         | bootstrap's `60 00` after the reset gets its key report
-        tst.l   (MKII_FLAG).l
-        beq.s   9f
         moveq   #0x60,%d1
         bsr.w   putpanel
         moveq   #0x02,%d1
@@ -842,7 +842,6 @@ osw_reset:
         move.l  #0x00400000,%d0         | ~20 ms for the panel to act on it (cycle count INFERRED)
 7:      subq.l  #1,%d0
         bne.s   7b
-9:
         .global osw_softreset
 osw_softreset:
         lea     (OSW_MBOX).l,%a1

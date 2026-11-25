@@ -11,7 +11,7 @@ Builds the remix (the HOME image: what NOR would hold), then:
            no module's DRAM region overlaps the image stage, and the
            reserve reaches past it (a region may sit above the stage:
            STEM REC's 8 MiB ring has no room below it)
-  ui       an MKII (`--mkii`: the reset sends the panel `60 02` first) with a
+  ui       an MKII (`--mkii`; the reset sends the panel `60 02` first, on either model) with a
            card holding ABCDEFGHIJKLMNO.RMX (19 characters, the longest name `make image`
            writes: 15 + .RMX; the user's own stock MAIN OS, copied
            at run time); PROJ opens MAIN MENU > BRAIN (the list in /BRAIN/REMIXES/, scanned),
@@ -243,7 +243,7 @@ def main():
         send(f"key {code:#x} up", pause)
 
     key(KEY_NO, 250)                                   # the boot's date prompt
-    key(KEY_PROJ, 400)                                 # an MKII: the reset sends the panel `60 02`
+    key(KEY_PROJ, 400)                                 # the reset sends the panel `60 02` (both models)
     for _ in range(4):
         key(KEY_DOWN)                                  # root: PROJECT SYSTEM CONTROL MIDI [BRAIN]
     key(KEY_YES, 300)                                  # into BRAIN's pane: the cursor on TEMPLATES
@@ -272,7 +272,7 @@ def main():
           struct.unpack(">I", d.get("rmxn", b"\0\0\0\0"))[0] == 3, d.get("rmxn", b"").hex())
     check("ui: the pane's switch syncs the project first (SYNC TO CARD posted), as OS UPGRADE does",
           hits.get(0x40022CD4, 0) >= 1, f"{hits.get(0x40022CD4, 0)}x")
-    check("ui: an MKII sends the panel its two start-up bytes (`60 02`) before the reset",
+    check("ui: the reset sends the panel its two start-up bytes (`60 02`) first",
           hits.get(rt["putpanel"]) == 2, f"{hits.get(rt['putpanel'], 0)} byte(s)")
     mb, stage = d.get("mbox", b""), d.get("stage", b"")
     check("ui: the stage reads back equal to ABCDEFGHIJKLMNO.RMX", stage == stock,
