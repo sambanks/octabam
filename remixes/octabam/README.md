@@ -52,6 +52,7 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 | demand loader | [DLPUMP](../../modules/dlpump/README.md), [DLCOPY](../../modules/dlcopy/README.md) | the ColdFire half that watches the tracks and sends the code; the DSP half that copies it into the window |
 | sequencing | [KITS](../../modules/kits/README.md) | 255 Kits per project; each pattern plays its Kit |
 | | [MIDI SCENES](../../modules/midi-scenes/README.md) | scene locks for MIDI tracks |
+| | [MIDI LOOPBACK](../../modules/midi-loopback/README.md), [MIDI LOOPBACK SCENES](../../modules/midi-loopback-scenes/README.md) | a MIDI track's output to the internal receiver, DIN/USB or both, set per Part on CHAN; scene CCs follow it |
 | | [SCENES P2](../../modules/scenes-p2/README.md), [PLOCKS P2](../../modules/plocks-p2/README.md) | scene locks and parameter locks on FX page 2 |
 | | [CC MAP](../../modules/cc-map/README.md), [CC FEEDBACK](../../modules/cc-feedback/README.md) | CC onto page 2; knob changes out as CC |
 | | [DIRECT_JUMP_KYOTI](../../modules/direct-jump-kyoti/README.md), [RELOAD_FROM_PROJECT](../../modules/reload-from-project/README.md) | clock-locked direct jump; reload one track from the card |

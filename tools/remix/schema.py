@@ -1683,6 +1683,13 @@ class Module:
     # refuses the pair by name with the reason; the registry refuses a key
     # no module has.
     conflicts: tuple[tuple[str, str], ...] = ()
+    # Module KEYS that must not share an image WITHOUT this one: a bridge for
+    # two modules whose claims never overlap but whose behaviours do (MIDI
+    # SCENES' replacement CC loop bypasses MIDI LOOPBACK's routing). The
+    # ledger refuses a selection holding every key here and not this module;
+    # registry.remix appends it to such a selection. Each key is also in
+    # `requires`.
+    joins: tuple[str, ...] = ()
     # Which slot carries the MODE select, and what each of its positions
     # renames and re-defaults. Empty for a single-engine module.
     mode_slot: int | None = None
@@ -1802,6 +1809,8 @@ class Module:
         for other, _why in self.conflicts:
             if other == self.key:
                 raise ValueError(f"{self.name}: declares a conflict with itself")
+        if self.joins and (len(self.joins) < 2 or set(self.joins) - set(self.requires)):
+            raise ValueError(f"{self.name}: joins names at least two modules, each also in requires")
         for k in self.keeps:
             for kind, start, length, label in self.write_spans():
                 if start < k.addr + len(k.expect) and k.addr < start + length:

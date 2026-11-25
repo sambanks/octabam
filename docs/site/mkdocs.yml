@@ -78,6 +78,7 @@ nav:
           - CC Feedback: reference/manual/midi-usb/cc-feedback.md
           - CC Map: reference/manual/midi-usb/cc-map.md
           - Chords Factory: reference/manual/midi-usb/chords.md
+          - MIDI Loopback: reference/manual/midi-usb/midi-loopback.md
           - Scales: reference/manual/midi-usb/scales.md
           - Screen: reference/manual/midi-usb/screen.md
           - USB: reference/manual/midi-usb/usb.md

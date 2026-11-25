@@ -63,8 +63,10 @@ copy/paste and project save/load carry it; fresh Parts use EXT. Playback uses
 each MIDI track's applied Part, independently of retained audio voices and
 the Part selected for editing.
 
-Requires **STORE**. Combining MIDI Loopback with MIDI Scenes is not supported;
-the build rejects that selection. KITS is not required.
+Requires **STORE**. KITS is not required. With **MIDI Scenes**, scene CCs
+follow each track's DEST through
+[MIDI LOOPBACK SCENES](../midi-loopback-scenes/README.md), which the build adds
+to any selection carrying both; it needs **USB**.
 
 ### Returning to stock 1.40C
 
