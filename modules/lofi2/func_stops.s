@@ -22,15 +22,38 @@
         .set    FUNC_ENC_OFF, 0x800000a0        | PERSONALIZE: DISABLE FUNCTION + ENCODER
         .set    KEY_HELD, 0x46c7d8de+0x10       | + code * 0x18: nonzero while held (PANEL.md)
         .set    PUSH_CODE, 0x38                 | encoder pushes: key codes 0x38..0x3d = A..F
+        .set    CUR_TRACK, 0x80000000           | byte: the current track (MIDI.md)
+        .set    CUR_PAGE, 0x460d1684            | long: the page, 3 FX1, 4 FX2 (STEP_LOCKS.md)
+        .set    LIVE_LANE, 0x80000810           | + 72 * track (PARAM_PAGES.md 5a', 5c)
+        .set    LANE_FX1P2, 0x32                | FX1 page 2's six bytes in the lane
+        .set    LANE_FX2P2, 0x38                | FX2 page 2's
 
         .text
         .globl  lf_knob_freq, lf_knob_mix, lf_knob_fdbk
         .globl  lf_knob_srr, lf_knob_brr, lf_knob_lpf, lf_knob_amph
 
 | ---- entries: a0 = the stop table, d1 = the encoder (0..5 = A..F) ----------
-lf_knob_freq:                                   | slot 0, A (octaves for now; RING HIGH's
-        lea     lf_st_oct(%pc),%a0              | C table waits on reading MODE/RANGE)
-        moveq   #0,%d1
+lf_knob_freq:                                   | slot 0, A: C2..C7 in RING HIGH, else octaves
+        mvz.b   CUR_TRACK,%d0                   | the track, 0..7
+        move.l  %d0,%d1
+        lsl.l   #3,%d0
+        add.l   %d1,%d0                         | * 9 ...
+        lsl.l   #3,%d0                          | * 8 = t * 72
+        lea     LIVE_LANE,%a1
+        adda.l  %d0,%a1                         | the track's live lane
+        lea     LANE_FX2P2(%a1),%a1             | FX2 page 2 ...
+        moveq   #3,%d1
+        cmp.l   CUR_PAGE,%d1
+        bne.s   1f
+        lea     LANE_FX1P2-LANE_FX2P2(%a1),%a1  | ... or FX1's
+1:      lea     lf_st_oct(%pc),%a0
+        tst.b   2(%a1)                          | MODE (slot 8): 0 = RING
+        bne.s   2f
+        mvz.b   (%a1),%d1                       | RANGE (slot 6): 1 = HIGH
+        subq.l  #1,%d1
+        bne.s   2f
+        lea     lf_st_c(%pc),%a0
+2:      moveq   #0,%d1
         bra.s   lf_kn_common
 lf_knob_mix:                                    | slot 1, B
         lea     lf_st_q5(%pc),%a0
@@ -136,6 +159,6 @@ lf_st_lpf:                                      | 100 250 500 1k 2k 4k 8k Hz, of
         .byte   8, 0, 23, 40, 57, 74, 92, 109, 127
 lf_st_oct:                                      | FREQ octaves (RING LOW, SHIFT)
         .byte   7, 0, 21, 43, 64, 85, 107, 127
-lf_st_c:                                        | FREQ RING HIGH: floor, C2..C7, top (not yet used)
+lf_st_c:                                        | FREQ RING HIGH: floor, C2..C7, top
         .byte   8, 0, 3, 24, 45, 67, 88, 109, 127
         .align  2

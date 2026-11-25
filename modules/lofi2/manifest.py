@@ -144,16 +144,20 @@ MODULE = Module(
     # word (r6+$c / $d / $e) with nothing to unpack from a companion field.
     params=(
         # ---- page 1, top row ----------------------------------------------
-        Param(b"FREQ", 0, active=True, formatter=_PLAIN,
+        # FUNC stops: RING HIGH floor, C2..C7, top; else octaves
+        Param(b"FREQ", 0, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_freq"),
               doc="modulator frequency, scaled by RANGE; used by whichever MODE is selected"),
-        Param(b"MIX", 0, active=True, formatter=_PLAIN,
+        # FUNC stops: 0 32 64 96 127
+        Param(b"MIX", 0, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_mix"),
               doc="modulator depth; SRR, BRR and LPF still act at 0"),
         # One knob, read per MODE: FDBK in SHIFT, GAIN in RING (ModeView
         # renames it below). GAIN 0 is unity, 64 +6 dB, 127 +11.9 dB.
-        Param(b"FDBK", 0, active=True, formatter=_PLAIN,
+        # FUNC stops: 0 32 64 96 127 (GAIN 0 +3 +6 +9 +11.9 dB)
+        Param(b"FDBK", 0, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_fdbk"),
               doc="shift modes: feedback (an f, f+d, f+2d ladder); RING: gain, 0 to +12 dB"),
         # ---- page 1, bottom row -------------------------------------------
-        Param(b"SRR", 0, active=True, formatter=_PLAIN,
+        # FUNC stops: off 22.05k 16k 11.025k 8k 5.5125k 4k min
+        Param(b"SRR", 0, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_srr"),
               doc="sample-rate reduction, continuous; 0 is off"),
         # FUNC + turn walks stops (func_stops.s): 24 16 12 10 8 6 4 bits, max.
         # A raw handler word takes no `formatter`; A and B zero are PLAIN's.
@@ -165,7 +169,8 @@ MODULE = Module(
         # (0) to 16 kHz (126), and out of circuit bit for bit at 127, which is
         # why the default is 127 and not 0 -- the ONLY control here whose
         # passthrough is at the top of its travel.
-        Param(b"LPF", 127, active=True, formatter=_PLAIN,
+        # FUNC stops: 100 250 500 1k 2k 4k 8k Hz, off
+        Param(b"LPF", 127, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_lpf"),
               doc="high-shelf cut; 127 has no effect, turn down to darken"),
         # ---- page 2 --------------------------------------------------------
         Param(b"RANGE", 1, 2, active=True, formatter=_STEP,
