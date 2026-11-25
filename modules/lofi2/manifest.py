@@ -117,7 +117,11 @@ MODULE = Module(
     category=Category.TRACK, author="Bryan T", author_url="https://github.com/bryantysinger",
     evidence=(Evidence(Level.UNIT, unit="MKII", who="Bryan T", date="2026-10-12",
         note="images 96-99 (Oct 2026, this tree): tracks 1 and 5, five instances at once; `_bt_oct` build 11 (12 "
-             "Oct 2026, the 414-cycle loop): eight in SHIFT at once, four per core, UP/DOWN switched while playing"),),
+             "Oct 2026, the 414-cycle loop): eight in SHIFT at once, four per core, UP/DOWN switched while playing"),
+              Evidence(Level.UNIT, unit="MKII", who="Bryan T", date="2026-11-25",
+        note="FUNC stops, builds 88-89 (`_bt_fs_test`): every knob walks its stops on FX1 and FX2, "
+             "page 2 (AMPH) included; plain and pushed turns as stock; FREQ's table follows MODE/RANGE "
+             "per instance (FX1 and FX2 on one track, and on T5)")),
     doc="Ring mod or frequency shifter, then sample-rate and bit reduction.",
 
     menu=MenuEntry(

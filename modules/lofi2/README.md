@@ -20,6 +20,25 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
 | 2 | 8 | MODE | RING / DOWN / UP | ring mod, or the shifter moving every partial down or up; mutually exclusive |
 | 2 | 10 | AMPH | -64..+63 | ring carrier's L/R phase offset, -90 to +88.6 degrees (1.4 a step), 0 at the centre; + puts R ahead, - puts L ahead; RING only |
 
+## FUNC stops
+
+Holding FUNCTION while turning a knob walks it through musically useful stops, one stop a detent, instead of stock's jump to the ends (or to 0/64/127, which LPF inherited from DARK REV's slot 5). Without FUNCTION a knob turns as stock: one unit a detent, x7 pushed.
+
+| knob | stops (raw) | what they are |
+|---|---|---|
+| FREQ, RING HIGH | 0 3 24 45 67 88 109 127 | the 60 Hz floor, C2..C7 (+-19 cents at integer raw; C3 and C6 within 1 cent), the top (3,717 Hz) |
+| FREQ, RING LOW, DOWN, UP | 0 21 43 64 85 107 127 | octaves above RANGE's base (64 exact; the others +-19 cents) |
+| MIX | 0 32 64 96 127 | |
+| FDBK / GAIN | 0 32 64 96 127 | GAIN 0, +3, +6, +9, +11.9 dB; FDBK up to its 0.40 cap |
+| SRR | 0 22 32 47 64 89 116 127 | off, 22.05k, 16k, 11.025k, 8k, 5.5125k, 4k, 3,564 Hz (each within 0.6 %) |
+| BRR | 0 36 56 67 80 96 116 127 | 24, 16, 12, 10, 8, 6, 4 bits below full scale (within 0.05 bit), max (3.16) |
+| LPF | 0 23 40 57 74 92 109 127 | corner 100, 250, 500 Hz, 1, 2, 4, 8 kHz, off |
+| AMPH | 0 32 64 96 127 | -90, -45, 0, +45, +88.6 degrees |
+
+How: each slot's knob handler is the descriptor word at `P+0x12a + 4*slot`. The stock knob path `0x40055008` (and the FX page-2 editors) call it as `f(slot, detents, value)` and clamp what it returns; the stock handlers test FUNCTION (`0x46c7dd26`) and PERSONALIZE's FUNCTION + ENCODER (`0x800000a0`). `func_stops.s` (a ColdFire unit, `Linked`) gives every continuous knob its own entry and table, so nothing depends on how the caller numbers page-2 slots; the manifest plants the entries through `Param(word_12a=)`. FREQ picks its table on each turn from the current track (`0x80000000`), the open page (`0x460d1684`: 3 FX1, 4 FX2) and that page's page-2 bytes in the track's live lane (`0x80000810 + 72 t`, `+0x32` / `+0x38`: RANGE at +0, MODE at +2). The walk is cxosc's `po_knob` form: the next stop strictly above or below the value, so a value between stops lands on the nearest one in the turn's direction, and past the last stop it stays.
+
+Note for `docs/firmware/PARAM_PAGES.md`: the "page class handler" at `E+0x176` (section 4) is `P+0x13e` = slot 5's knob handler, not a per-page field; `0x400328e4` is DARK REV's (and the other class-B effects') slot-5 handler, which is where LPF's FUNC stop at 64 came from.
+
 ## Design
 
 - **Ring mod** is not stock's: WarpFold's parabolic carrier `4p(1-|p|)` under an exponential six-octave taper (the MF-102's ranges, 2-130 Hz and 60-4,000 Hz, are each exactly six octaves). An exponential taper has no zero: FREQ 0 is the base frequency, not silence. One knob step is 6/128 octave (56 cents), so the knob word's LFO fraction (bits 15-8) is kept, and the carrier step glides to the block's value (about 1.5 ms, see the glides below), for the ring mod and the shifter alike.

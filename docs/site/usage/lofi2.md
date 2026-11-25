@@ -19,6 +19,13 @@ AMPH. It is not in an official remix; build the test remix `lofi2`.
 - MODE on page 2 picks RING, SHIFT DOWN or SHIFT UP. Changing MODE ducks the
   wet briefly so the switch does not click.
 - LPF 127 takes the shelf out of circuit.
+- Hold FUNCTION and turn a knob to jump between useful settings, one per
+  click, instead of to the ends: BRR steps 24, 16, 12, 10, 8, 6 and 4 bits;
+  SRR steps 22.05k, 16k, 11.025k, 8k, 5.5k and 4k; LPF steps its corner
+  through 100, 250 and 500 Hz and 1, 2, 4 and 8 kHz; MIX, FDBK/GAIN and AMPH
+  step in quarters (GAIN in 3 dB steps, AMPH in 45 degrees). FREQ steps
+  through the Cs from C2 to C7 in RING with RANGE HIGH, and through octaves
+  otherwise. Each list also includes both ends of the knob.
 - How many fit: SHIFT costs more than RING. Up to four SHIFT instances per
   core (the eight tracks run on two cores); all eight tracks in RING, and
   all eight in SHIFT, have run cleanly. An FX1 effect on the same track
