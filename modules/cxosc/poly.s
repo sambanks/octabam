@@ -143,7 +143,7 @@
         .set    STOCK_RENDER, MC_NEXT_RENDER | the next renderer in the FLEX kind entry's chain
         .endif
         .endif
-        .set    FMSRC_RET, 0x4000d51e    | after po_fmsource's displaced 8 B
+        .set    FMSRC_RET, 0x4000d51c    | reload the current nibble before taking the second call's start offset
         .set    FLEX_START, 0x4000f450   | stock FLEX START callback
         .set    MACH_OFF, 0x8eda2
         .set    SIG_OFF, 0x8edbc         | NEIGHBOR PLAYBACK: "CX", 1

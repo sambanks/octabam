@@ -24,8 +24,13 @@ from unicorn import Uc, UC_ARCH_M68K, UC_MODE_BIG_ENDIAN, UC_HOOK_CODE, UC_HOOK_
 from unicorn.m68k_const import (
     UC_CPU_M68K_CFV4E,
     UC_M68K_REG_A0,
+    UC_M68K_REG_A2,
+    UC_M68K_REG_A3,
+    UC_M68K_REG_A4,
     UC_M68K_REG_A7,
     UC_M68K_REG_D0,
+    UC_M68K_REG_D2,
+    UC_M68K_REG_D3,
     UC_M68K_REG_PC,
     UC_M68K_REG_SR,
 )
@@ -375,6 +380,27 @@ def main():
     if loaded is None:
         return 0
     uc, symbols, _base = loaded
+
+    # The first source call already used the rewritten START nibble. The
+    # supplier detour must reload that byte for the second call too.
+    stock_resume = 0x4000D51C
+    stop = 0x4000D522
+    rom_base = 0x40000400
+    uc.mem_write(stock_resume, OS_BIN.read_bytes()[stock_resume - rom_base:stop - rom_base])
+    plant_part(uc)
+    uc.mem_write(NIBBLE, b"\x30")
+    uc.mem_write(RS_REC, struct.pack(">I", STOCK_RENDER))
+    uc.reg_write(UC_M68K_REG_A2, NIBBLE)
+    uc.reg_write(UC_M68K_REG_A3, HEADER)
+    uc.reg_write(UC_M68K_REG_A4, RS_REC)
+    uc.reg_write(UC_M68K_REG_A7, STACK)
+    uc.reg_write(UC_M68K_REG_D0, 10)  # stale subframe offset before the detour
+    uc.reg_write(UC_M68K_REG_D3, 0)
+    uc.emu_start(symbols["po_fmsource"], stop, count=500)
+    offset = uc.reg_read(UC_M68K_REG_D2)
+    check("CX source supplier reloads the adjusted START offset",
+          uc.reg_read(UC_M68K_REG_PC) == stop and offset == 0,
+          f"second render starts at sample {offset}, expected 0")
 
     # PLAYBACK: E=FOLD icon, F=plain MIX; names FINE/FOLD/MIX.
     for sym in ("pg_wids_b", "pg_wid_plain", "pg_wid_fold", "pg_names"):
