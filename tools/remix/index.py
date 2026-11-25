@@ -59,7 +59,7 @@ def matrix(mods):
                     out[need] = by_key[need]
                     todo.append(by_key[need])
         return list(out.values())
-    bridges = [m for m in cf if parties[m.key]]
+    bridges = [m for m in cf if parties[m.key] or m.joins]
     print("COMPATIBILITY  (the ledger, pairwise: which ColdFire-side modules "
           "can share an image)\n")
     short = [m.name[:9] for m in cf]
@@ -85,7 +85,7 @@ def matrix(mods):
             key = tuple(sorted((a.name, b.name)))
             if probs:
                 fix = next((br for br in bridges if br not in (a, b)
-                            and not ledger.check(list({**sel, br.key: br}.values()))),
+                            and not ledger.check(closure(list({**sel, br.key: br}.values())))),
                            None)
                 if fix is not None:
                     row.append(" ✓*")

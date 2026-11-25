@@ -15,9 +15,10 @@ DEST is saved per MIDI track in each native Part. Fresh Parts use EXT.
 
 ## Notes
 
-Select STORE alongside MIDI LOOPBACK. This contribution supplies a
-standalone test remix; official remix selections are unchanged. MIDI Scenes
-needs a later bridge and is currently refused with Loopback.
+MIDI Loopback needs STORE. With MIDI Scenes, scene CCs follow the same DEST:
+each MIDI track's scene CCs, and the crossfader's, go where that track's
+notes go, using the Part the scenes are mixing. The bridge that does this,
+MIDI LOOPBACK SCENES, is added with them and has no controls.
 
 Held notes are released at their original destination when routes change.
 Avoid overlapping internal and external held notes on the same channel/pitch:
@@ -36,9 +37,6 @@ whereas STORE allows 0–15; INT/BOTH occupy bits 2–3.
 Saving that bank on stock loses its INT/BOTH settings. Other bank files stay
 unchanged until saved; keep a separate backup before returning to stock.
 
-The standalone Loopback selection reserves three 6,144-byte sample-arena
-pages (18,432 bytes) for runtime code, state and loading. Combined remixes
-compute their own reservation from all selected modules.
 
 Sequenced routing follows each MIDI track's applied Part, independently of
 an audio voice retaining another Part or a Part selected for editing. Matching

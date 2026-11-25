@@ -64,6 +64,9 @@
 
         .set    HELD,      0x460fab40   | held track keys, bit t
         .set    MIDI_MODE, 0x80000012   | nonzero selects MIDI sequencer records
+        .set    MIDI_PRESS,0x400c015a   | MKI [MIDI] press slot (SRC3 KEY may own it)
+        .set    STOCK_MIDI,0x40055678   | stock MIDI handler (both models)
+        .set    MKII_FLAG, 0x46c8d18c   | MKII keeps its key table stock
         .set    CUR_TRACK, 0x80000000   | UI-selected track 0..7
         .set    UI_TRACK,  0x100b14cc   | setup mirror of CUR_TRACK
         .set    SEL_TRACK, 0x40083bf8   | (track 0..7) CUR/UI + sequencer view
@@ -215,8 +218,9 @@
         .set    CX_NSLOT,  5           | CAR MOD SYMM FDBK PWM
 
         | DEST=PTCH: rad = max_rad*DEPTH/127 (min 1 if DEPTH>0).
-        | PIT_RAD 24 = ±2 oct FM/SY; PIT_SAMP 12 = sample PLAYBACK max |st|.
-        .set    PIT_RAD,   24
+        | PIT_RAD 64 spans the full raw PTCH range around 64 for FM/SY/CX.
+        | PIT_SAMP 12 = sample PLAYBACK max |st|.
+        .set    PIT_RAD,   64
         .set    PIT_SAMP,  12
         .set    EF_MAGIC,  0x4546494c   | 'EFIL'
         .set    EF_VER,    12           | v12 appends page-2 depth and plock settings
@@ -283,6 +287,26 @@ ef_page:
 9:      lea     -16(%sp),%sp            | displaced prologue
         movem.l %d2-%d4/%a2,(%sp)
         jmp     PAGE_GO
+
+| The SEQ layer owns keys while open, so forward MIDI to its existing route.
+| MKI's slot may point at SRC3 KEY; MKII always uses stock MIDI directly.
+| Redraw after either edge so ef_follow_ui sees the final mode flag.
+ef_midikey:
+        tstl    MKII_FLAG
+        bne.s   mk_stock
+        moveal  MIDI_PRESS,%a0
+        bra.s   mk_call
+mk_stock:
+        moveal  #STOCK_MIDI,%a0
+mk_call:
+        movel   8(%sp),-(%sp)           | event
+        movel   8(%sp),-(%sp)           | keycode (original at 8 after first push)
+        jsr     (%a0)
+        addql   #8,%sp
+        tstl    ef_win
+        beq.s   mk_rts
+        bra.w   ef_draw
+mk_rts: rts
 
 | ---- open / close -------------------------------------------------------
 | Open: YES targets = HELD bitmask (else UI_TRACK). Focus/bank = first
@@ -535,7 +559,7 @@ etp_store:
 | ColdFire has no memory-to-memory move.l - stage each long through d1
 | (open called load_slot first; mem-to-mem illegal-insn hung TRACK+PAGE).
 ef_store_slot:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   st_slot_recipe
         tstl    ef_lane
         beq.s   st_slot_recipe
@@ -545,7 +569,7 @@ st_slot_recipe:
         movel   ef_focus,%d0
         andil   #7,%d0
         lea     ef_bank,%a0
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   st_bank_ready
         lea     ef_midi_bank,%a0
 st_bank_ready:
@@ -581,7 +605,7 @@ ef_load_slot:
         andil   #7,%d0
         movel   %d0,ef_focus
         lea     ef_bank,%a0
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   ld_bank_ready
         lea     ef_midi_bank,%a0
 ld_bank_ready:
@@ -631,12 +655,12 @@ ld_d0:  movel   %d0,-(%sp)
         ble.s   ld_d1
         movel   %d1,%d0
 ld_d1:  moveq   #DEST_XVOL,%d1
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.s   ld_d2
         cmpl    %d1,%d0
         bne.s   ld_d2
         moveq   #16,%d0                 | BAL
-ld_d2:  tstl    MIDI_MODE
+ld_d2:  tstl    ef_tone_midi
         bne.s   ld_dest_ready
         movel   %d2,-(%sp)
         moveq   #-1,%d2
@@ -655,7 +679,7 @@ ld_e0:  moveq   #127,%d1
         movel   %d1,%d0
 ld_e1:  movel   %d0,ef_depth
         bsr.w   ef_dep_load             | depth := mem[focus][dest] (0 if none)
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.s   ld_midi_slot
         bsr.w   ef_plk_load             | plock rhythm for DEST
         bsr.w   ef_lane_load            | LANE for this track
@@ -701,7 +725,7 @@ dp1:
         moveq   #DEST_CXLAST,%d1
 dp2:    addl    %d1,%d0
         lea     ef_dep_mem,%a0
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   dp3
         lea     ef_midi_dep_mem,%a0
 dp3:
@@ -740,7 +764,7 @@ ef_plk_ptr:
         movel   ef_focus,%d0
         andil   #7,%d0
         movel   %d0,%d1
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   pp_audio_stride
         lsll    #5,%d0                  | t*32 - t*2 = t*30
         lsll    #1,%d1
@@ -770,7 +794,7 @@ pp1:    cmpi.l  #DEST_P2FIRST,%d1
         addal   %d0,%a0
         rts
 pp_legacy:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.s   pp_midi_max
         cmpi.l  #DEST_CXLAST,%d1
         ble.s   pp2
@@ -786,7 +810,7 @@ pp2:    addl    %d1,%d0                 | slot index
         lsll    #2,%d1                  | *4
         addl    %d1,%d0                 | *12
         lea     ef_plk_mem,%a0
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   pp_base_ready
         lea     ef_midi_plk_mem,%a0
 pp_base_ready:
@@ -858,7 +882,7 @@ ef_lane_load:
         movel   ef_focus,%d0
         andil   #7,%d0
         lea     ef_lane_mem,%a0
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   ll_base_ready
         lea     ef_midi_lane_mem,%a0
 ll_base_ready:
@@ -876,7 +900,7 @@ ef_lane_save:
         movel   ef_focus,%d0
         andil   #7,%d0
         lea     ef_lane_mem,%a0
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   ls_base_ready
         lea     ef_midi_lane_mem,%a0
 ls_base_ready:
@@ -890,10 +914,11 @@ ls1:    moveb   %d1,%a0@(0,%d0:l)
         rts
 
 | While open: apply ef_pending (from T1..T8) or fall back to UI_TRACK.
-| No CUR_TRACK read/write here - that path bricked hardware.
+| A live MIDI-mode change switches the same track's settings too. Save with
+| the old kind before changing the latch. No CUR_TRACK read/write here.
 ef_follow_ui:
         tstl    ef_win
-        beq.s   fu_rts
+        beq.w   fu_rts
         movel   ef_pending,%d0
         moveq   #-1,%d1
         cmpl    %d1,%d0
@@ -904,14 +929,37 @@ fu_ui:  moveq   #0,%d0
         moveb   UI_TRACK,%d0
         andil   #7,%d0
 fu_do:  cmpl    ef_seen_trk,%d0
-        beq.s   fu_rts
-        movel   %d0,ef_seen_trk
+        beq.s   fu_check_mode
         movel   %d0,-(%sp)
         bsr.w   ef_store_slot
         movel   (%sp),%d0
+        movel   %d0,ef_seen_trk
         moveq   #1,%d1
         lsll    %d0,%d1
         movel   %d1,ef_targets
+        bra.s   fu_set_kind
+fu_check_mode:
+        tstl    MIDI_MODE
+        beq.s   fu_want_audio
+        tstl    ef_tone_midi
+        beq.s   fu_mode_change
+        bra.s   fu_rts
+fu_want_audio:
+        tstl    ef_tone_midi
+        beq.s   fu_rts
+fu_mode_change:
+        movel   ef_focus,%d0
+        movel   %d0,-(%sp)
+        bsr.w   ef_store_slot
+fu_set_kind:
+        tstl    MIDI_MODE
+        beq.s   fu_set_audio
+        moveq   #1,%d0
+        movel   %d0,ef_tone_midi
+        bra.s   fu_reload
+fu_set_audio:
+        clrl    ef_tone_midi
+fu_reload:
         movel   (%sp)+,%d0
         bsr.w   ef_load_slot
         bsr.w   ef_sync_len
@@ -927,7 +975,7 @@ ef_sync_len:
         movel   #PTN_STR,%d1
         mulu.l  %d1,%d0
         addal   %d0,%a0                 | a0 = pattern base
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.w   sl_midi                 | MIDI tracks always use their own LEN
         movel   %a0,%d1
         addil   #PAT_PER,%d1
@@ -1101,13 +1149,14 @@ cue_down:
 
 | SEQ random k-subset (former bare-CUE press body). Clobbers many regs.
 ef_cue_random:
+        bsr.w   ef_follow_ui            | MIDI may have changed since last draw
         bsr.w   ef_sync_len
         tstl    ef_lane
         bne.s   cue_go                  | PLOCK cue: no trig-clear prompt
         bsr.w   ef_rhythm_gate
         tstl    %d0
         beq.s   cue_go
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.w   ef_cue_rts
         moveq   #2,%d0
         movel   %d0,ef_pending_edit
@@ -1329,6 +1378,7 @@ ef_page_right:
 9:      rts
 
 ef_enc:
+        bsr.w   ef_follow_ui            | MIDI may have changed since last draw
         bsr.w   ef_cl_poll              | LISTPOP may have closed on NO already
         tstl    ef_ask                  | CLEAR PATTERN? dialog: all knobs dead
         bne.s   9f
@@ -1391,7 +1441,7 @@ nud_mode_ready:
         movel   (%sp)+,%d2
         tstl    %d0
         beq.s   nudge_go
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.w   ef_nudge_rts
         moveq   #1,%d0
         movel   %d0,ef_pending_edit
@@ -1477,7 +1527,7 @@ nd_dest:
         cmpl    %d0,%d1
         bne.w   nd_depth
         | DEST: save plock for old DEST, then change, load depth+plock
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.s   nds_midi_old
         movel   %d2,-(%sp)
         bsr.w   ef_plk_save
@@ -1517,7 +1567,7 @@ nds_midi_store:
         movel   %d0,%a0@
         bra.w   nds_midi_load
 nds_midi_audio:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   nds_audio
         addl    %d2,%d0
         bpl.s   nds0
@@ -1798,12 +1848,12 @@ ef_draw_tonal:
         lea     ef_root_names,%a1
         moveal  (%a1,%d2.l*4),%a0
         bsr.w   ef_tonal_cell
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   edt_phrase
         lea     L_MODE,%a0
         moveq   #2,%d0
         movel   ef_tone_mode,%d2
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   1f
         lea     L_VOIC,%a0
         movel   ef_tone_harm,%d2
@@ -1822,7 +1872,7 @@ edt_phrase:
         lea     ef_phrase_names,%a1
         moveal  (%a1,%d2.l*4),%a0
         bsr.w   ef_tonal_cell
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   edt_jump
         lea     L_CHORD,%a0
         movel   ef_tone_style,%d2
@@ -1864,7 +1914,7 @@ ef_tonal_draw_cell:
         moveal  (%a1,%d3.l*4),%a0
         cmpi.l  #2,%d3
         bne.s   5f
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   5f
         lea     L_VOIC,%a0
 5:
@@ -1900,7 +1950,7 @@ ef_tonal_draw_cell:
         rts
 
 ef_tonal_nudge:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.s   9f
         movel   ef_cursor,%d1
         cmpi.l  #2,%d1
@@ -1929,7 +1979,7 @@ etn_mode:
         bne.s   etn_phrase
         lea     ef_tone_mode,%a0
         moveq   #1,%d3
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   etn_clamp
         lea     ef_tone_harm,%a0
         moveq   #4,%d3
@@ -2120,7 +2170,7 @@ tk_done:
 ef_pitch_selected:
         tstl    ef_dest
         bne.s   eps_no
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.s   eps_yes
         bsr.w   ef_dest_label
         lea     ef_buf,%a0
@@ -2392,6 +2442,7 @@ pnext:  movel   (%sp)+,%d2
 | ---- fill: Euclidean trigs + optional DEST locks on ef_targets ----------
 | Each target uses its own bank slot (PULSE/ROT/DEST/DEPTH/free mask).
 ef_fill:
+        bsr.w   ef_follow_ui            | MIDI may have changed since last draw
         bsr.w   ef_store_slot           | commit focused edits first
         movel   ef_focus,%d0            | restore UI after per-track loads
         movel   %d0,ef_fill_focus
@@ -2950,7 +3001,7 @@ ef_write_dest:
         movel   ef_depth,%d3
         tstl    %d3
         beq.w   ed_clear
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.w   ed_generic
         movel   ef_dest,%d0
         tstl    %d0
@@ -2961,7 +3012,7 @@ ef_write_dest:
         | generic: uniform in [Part-DEPTH .. Part+DEPTH] clamped 0..127
         | (remul - not muls/divs (r-64)*D/64, which collapsed to 2 values).
 ed_generic:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   ed_generic_base
         tstl    ef_dest
         beq.w   ef_write_midi_pitch
@@ -2992,14 +3043,14 @@ ed_hi:  movel   (%sp),%d1               | lo
         addl    %d1,%d0                 | lock
         bra.w   ed_store
 ed_clear:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.s   ed_midi_clear
         bra.w   ef_clear_dest_step      | same clear as PULSE 0 / miss
 ed_midi_clear:
         moveq   #-1,%d0
         bra.w   ed_store
 ed_store:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.w   ed_midi_store
         movel   ef_dest,%d1
         cmpi.l  #DEST_P2FIRST,%d1
@@ -3222,7 +3273,7 @@ epr_triangle:
 3:      rts
 epr_random:
         cmpi.l  #1,%d3
-        bls.s   epr_rand_single
+        bls.w   epr_rand_single
         tstl    ef_rand_valid
         bne.s   epr_rand_next
         bsr.w   ef_rng
@@ -3234,33 +3285,53 @@ epr_random:
         movel   %d1,ef_rand_valid
         rts
 epr_rand_next:
-        | Pick a random direction; turn at DEPTH edges to keep the absolute
-        | scale-degree interval equal to JUMP.
-        bsr.w   ef_rng
-        movel   %d0,%d1
+        | JUMP=0 moves one scale degree. Higher JUMP widens the random step
+        | range up to the whole DEPTH span at JUMP=127.
         movel   %d3,%d5
-        subql   #1,%d5
-        lsrl    #2,%d5                 | leave room for random motion inside DEPTH
+        subql   #2,%d5                 | distance above the minimum step 1
         movel   ef_tone_jump,%d0
         mulu.w  %d5,%d0
         moveq   #127,%d5
         divu.l  %d5,%d0
-        addql   #1,%d0
+        addql   #1,%d0                 | max step from 1 to count-1
+        movel   %d0,%d5                | modulo divisor
+        bsr.w   ef_rng
+        movel   %d0,%d1                | retain random direction bit
+        remul   %d5,%d0,%d1
+        addql   #1,%d0                 | random distance 1..max step
         tstl    %d1
         bpl.s   epr_rand_dir
         negl    %d0
 epr_rand_dir:
         movel   %d0,%d1                | keep the requested signed interval
-        addl    ef_rand_rank,%d0
+        movel   ef_rand_rank,-(%sp)
+        addl    (%sp),%d0
         tstl    %d0
-        bmi.s   epr_rand_turn
-        cmpl    %d3,%d0
-        bcs.s   epr_rand_store
-epr_rand_turn:
-        movel   ef_rand_rank,%d0
-        subl    %d1,%d0                | reverse direction instead of wrapping
+        bpl.s   epr_rand_high
+        negl    %d0                    | reflect at the low DEPTH edge
+        bra.s   epr_rand_store
+epr_rand_high:
+        movel   %d3,%d5
+        subql   #1,%d5                 | highest candidate rank
+        cmpl    %d5,%d0
+        bls.s   epr_rand_store
+        lsll    #1,%d5
+        subl    %d0,%d5                | reflect at the high DEPTH edge
+        movel   %d5,%d0
 epr_rand_store:
+        cmpl    (%sp),%d0
+        bne.s   epr_rand_save
+        | A reflected step can land on its starting rank. Keep the walk
+        | moving toward the edge by one scale degree instead.
+        tstl    %d1
+        bmi.s   epr_rand_repeat_down
+        addql   #1,%d0
+        bra.s   epr_rand_save
+epr_rand_repeat_down:
+        subql   #1,%d0
+epr_rand_save:
         movel   %d0,ef_rand_rank
+        addql   #4,%sp
         rts
 epr_rand_single:
         clrl    %d0
@@ -3863,7 +3934,7 @@ ep_store:
 | 0..5 PLAYBACK p1; 6..29 LFO/AMP/FX1/FX2 p1; 30..34 CX SETUP;
 | 35..46 FX1/FX2 page 2. Clobbers d0/d1/a0/a1 (d2/d3 preserved on p2).
 ef_part_flat:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.w   ef_midi_part_flat
         movel   ef_dest,%d0
         cmpi.l  #DEST_P2FIRST,%d0
@@ -4027,7 +4098,7 @@ ef_part_ptch_base:
 | 30..34 on CX: SRC\0CAR/MOD/… (same tokens as cx_lf_pmtr_fmt).
 | "----\0" on miss. Clobbers d0-d3/a0/a1.
 ef_dest_name:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.w   dn_midi
         movel   ef_dest,%d0
         tstl    %d0
@@ -4194,7 +4265,7 @@ dnm_desc:
 
 | Upper bound for stored destination indices, before availability checks.
 ef_dest_max:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         beq.s   edm_audio
         moveq   #DEST_LAST,%d0
         rts
@@ -4584,7 +4655,7 @@ eda_rts: rts
 | steps 0..STEPS-1, else 0. Caller must ef_sync_len first. Clobbers
 | d1-d3/a0-a2.
 ef_trk_baked:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.w   bkd_midi
         bsr.w   ef_trac_focus           | a2 = TRAC, d3 = n
         moveq   #0,%d2
@@ -4851,7 +4922,7 @@ ef_trac_n:
 
 | Clear focused DEST over 0..n-1 + reset that DEST's depth/plock recipe.
 ef_clear_cur_dest:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.w   ef_midi_clear_dest
         lea     -28(%sp),%sp
         movem.l %d2-%d7/%a2,(%sp)
@@ -4896,7 +4967,7 @@ rcp_z:  clrb    %a0@(0,%d0:l)
 
 | Clear every DEST SEQ knows on the focused track; leave sample trigs.
 ef_clear_all_dest:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.w   ef_midi_clear_all
         lea     -32(%sp),%sp
         movem.l %d2-%d7/%a2-%a3,(%sp)
@@ -4937,7 +5008,7 @@ cad_midi_rts:
 
 | Zero all depth + plock slots for focused track; working DEST params 0.
 ef_reset_all_plk:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.w   ef_reset_midi_plk
         moveq   #0,%d0
         movel   ef_focus,%d0
@@ -5113,7 +5184,7 @@ mct_mask:
 
 | Wipe sample trigs 0..n-1 + reset TRIG recipe defaults (PULSE 5).
 ef_clear_trigs:
-        tstl    MIDI_MODE
+        tstl    ef_tone_midi
         bne.w   ef_midi_clear_trigs
         lea     -28(%sp),%sp
         movem.l %d2-%d7/%a2,(%sp)
@@ -5206,6 +5277,9 @@ EF_KEYS:
         | and has been seen to break DOWN after Euclid → PROJECT.
         .byte   0x2a, 0                 | CUE: press+release (0 swallows release)
         .long   ef_cue, ef_cue, 0, 0, 0
+        .word   0, 0
+        .byte   0x35, 0                 | MIDI: forward through stock / SRC3 KEY
+        .long   ef_midikey, ef_midikey, 0, 0, 0
         .word   0, 0
         | BANK (0x2f): omit - FUNC+BANK is Detour / MKI SymbolRef only.
 | T1..T8: press+release both ef_trkkey (stock needs release to clear

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Execute shared Part access machine code with distinct UI/engine contexts."""
 import re
+import runpy
 import json
 import subprocess
 
@@ -204,7 +205,10 @@ def main():
     # still reads native data. The fast adapters must keep this distinction.
     put(m.sym['store_part_snapshot_bank'],BANK+15*STRIDE,4)
     put(m.sym['store_part_snapshot_parts'],1<<3,4)
-    u.mem_write(m.sym['store_part_snapshot'],b'\x5a'*(4*288))
+    # One snapshot Part is every registered window, merged (modules/store/parts.py):
+    # SEQ's page-1 window sits right below MIDI SETUP's and joins it.
+    _, windows, _ = runpy.run_path(str(ROOT/'modules/store/parts.py'))['layout'](keys)
+    u.mem_write(m.sym['store_part_snapshot'],b'\x5a'*(4*sum(n for _, n in windows)))
     for context in (62,63):
         base = BANK+15*STRIDE+WORK+(context%4)*PART
         for track in (0,7):

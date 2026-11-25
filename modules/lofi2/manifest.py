@@ -55,7 +55,7 @@ SHIFT follows the Bode 1630 (2 Hz / 31.25 Hz, six octaves to 2 kHz).
 import math
 
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, ModeView, Module, Param, Evidence, Level, YBase)
+                          Kind, Linked, MenuEntry, ModeView, Module, Param, Evidence, Level, YBase)
 
 
 def _srr_inc(k):
@@ -108,6 +108,7 @@ LPF_C = tuple(_lpf_c(k) for k in range(129))
 _PLAIN = Formatter.PLAIN
 _BIP = Formatter.BIPOLAR
 _STEP = Formatter.STEPPED
+_KN = "lofi2_knob"                 # func_stops.s: the knob handlers (P+0x12a)
 
 MODULE = Module(
     name="lofi2",
@@ -116,7 +117,11 @@ MODULE = Module(
     category=Category.TRACK, author="Bryan T", author_url="https://github.com/bryantysinger",
     evidence=(Evidence(Level.UNIT, unit="MKII", who="Bryan T", date="2026-10-12",
         note="images 96-99 (Oct 2026, this tree): tracks 1 and 5, five instances at once; `_bt_oct` build 11 (12 "
-             "Oct 2026, the 414-cycle loop): eight in SHIFT at once, four per core, UP/DOWN switched while playing"),),
+             "Oct 2026, the 414-cycle loop): eight in SHIFT at once, four per core, UP/DOWN switched while playing"),
+              Evidence(Level.UNIT, unit="MKII", who="Bryan T", date="2026-11-25",
+        note="FUNC stops, builds 88-89 (`_bt_fs_test`): every knob walks its stops on FX1 and FX2, "
+             "page 2 (AMPH) included; plain and pushed turns as stock; FREQ's table follows MODE/RANGE "
+             "per instance (FX1 and FX2 on one track, and on T5)")),
     doc="Ring mod or frequency shifter, then sample-rate and bit reduction.",
 
     menu=MenuEntry(
@@ -143,25 +148,33 @@ MODULE = Module(
     # word (r6+$c / $d / $e) with nothing to unpack from a companion field.
     params=(
         # ---- page 1, top row ----------------------------------------------
-        Param(b"FREQ", 0, active=True, formatter=_PLAIN,
+        # FUNC stops: RING HIGH floor, C2..C7, top; else octaves
+        Param(b"FREQ", 0, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_freq"),
               doc="modulator frequency, scaled by RANGE; used by whichever MODE is selected"),
-        Param(b"MIX", 0, active=True, formatter=_PLAIN,
+        # FUNC stops: 0 32 64 96 127
+        Param(b"MIX", 0, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_mix"),
               doc="modulator depth; SRR, BRR and LPF still act at 0"),
         # One knob, read per MODE: FDBK in SHIFT, GAIN in RING (ModeView
         # renames it below). GAIN 0 is unity, 64 +6 dB, 127 +11.9 dB.
-        Param(b"FDBK", 0, active=True, formatter=_PLAIN,
+        # FUNC stops: 0 32 64 96 127 (GAIN 0 +3 +6 +9 +11.9 dB)
+        Param(b"FDBK", 0, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_fdbk"),
               doc="shift modes: feedback (an f, f+d, f+2d ladder); RING: gain, 0 to +12 dB"),
         # ---- page 1, bottom row -------------------------------------------
-        Param(b"SRR", 0, active=True, formatter=_PLAIN,
+        # FUNC stops: off 22.05k 16k 11.025k 8k 5.5125k 4k min
+        Param(b"SRR", 0, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_srr"),
               doc="sample-rate reduction, continuous; 0 is off"),
-        Param(b"BRR", 0, active=True, formatter=_PLAIN,
+        # FUNC + turn walks stops (func_stops.s): 24 16 12 10 8 6 4 bits, max.
+        # A raw handler word takes no `formatter`; A and B zero are PLAIN's.
+        Param(b"BRR", 0, active=True,
+              formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_brr"),
               doc="bit-depth reduction; 0 is full depth"),
         # Our own first-order high shelf, LAST in the chain so it tames
         # everything the module does: -12 dB above a corner swept from 100 Hz
         # (0) to 16 kHz (126), and out of circuit bit for bit at 127, which is
         # why the default is 127 and not 0 -- the ONLY control here whose
         # passthrough is at the top of its travel.
-        Param(b"LPF", 127, active=True, formatter=_PLAIN,
+        # FUNC stops: 100 250 500 1k 2k 4k 8k Hz, off
+        Param(b"LPF", 127, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_lpf"),
               doc="high-shelf cut; 127 has no effect, turn down to darken"),
         # ---- page 2 --------------------------------------------------------
         Param(b"RANGE", 1, 2, active=True, formatter=_STEP,
@@ -177,7 +190,10 @@ MODULE = Module(
               doc="RING modulator, or frequency shift DOWN or UP; ring and shift are exclusive"),
         Param(),
         # Bipolar: the knob's centre (64) is 0 degrees.
-        Param(b"AMPH", 64, 128, active=True, formatter=_BIP,
+        # BIPOLAR's A and B (SPRING BAL's dial), our handler in place of
+        # 0x400328e4: FUNC + turn walks -90 -45 0 +45 +88.6 deg.
+        Param(b"AMPH", 64, 128, active=True,
+              formatter_word=0x4003c7a0, widget_word=0, word_12a=(_KN, "lf_knob_amph"),
               doc="RING only: L/R carrier phase, -90 to +88.6 deg; 0 none, positive puts R ahead"),
         Param(),
     ),
@@ -213,6 +229,8 @@ MODULE = Module(
     # now, and "L" is stock LO-FI's (tools/remix/stock.py).
     harness=Harness(layout_char="F", is_server=False),
     gates=(Gate("tools/verify/verify_lofi2.py", remix_arg=False),),
+    # ColdFire: FUNC + turn walks per-knob stops (P+0x12a handlers).
+    linked=(Linked(_KN, "modules/lofi2/func_stops.s"),),
     # Dearest: a SHIFT mode (the two Hilbert pairs, the dear loop), every
     # continuous knob at the end that does the most work, the shelf in band.
     dear={"FREQ": 127, "MIX": 127, "FDBK": 127, "SRR": 127, "BRR": 127,

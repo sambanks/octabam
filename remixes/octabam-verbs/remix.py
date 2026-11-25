@@ -26,7 +26,7 @@ VERB_PARTS = ("VERB PARTS",)
 # renderer and resolver), CX OSC (with a host reading the USB audio, a continuous MIDI clock and a program change
 # before START it stopped the DSP frame loop in every image that had it, 1 Nov 2026),
 # CF METER IDLE and WAVE LOAD (CF METER's FX2 id is MODULATION's),
-# MIDI LOOPBACK (MIDI SCENES), DIRECT JUMP and PERSISTENT BUFFERS (DIRECT_JUMP_KYOTI and BUFFER
+# DIRECT JUMP and PERSISTENT BUFFERS (DIRECT_JUMP_KYOTI and BUFFER
 # SAVER do their jobs), and the bus and diagnostic modules (TEMPO SYNC, TEMPO BUS, RIG HOSTS, BOOT TRACE).
 # STEM REC, SCOPE, MIDI SCALES and RND NAME are not here either: images with them left program changes
 # unapplied in a loader soak (2 to 5 of 32 transitions; none in the images without them) on Sam's MKII, 1 Nov 2026.
@@ -35,7 +35,8 @@ VERB_PARTS = ("VERB PARTS",)
 # key it cycles; SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP.
 COLDFIRE = ("SCALES", "OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "SEQ",
             "TRACK PATTERNS", "VARISPEED",
-            "CHORDS FACTORY", "PAGES", "SCREEN", "SLOW LFO", "BAR LED", "REC CS1 SKIP")
+            "CHORDS FACTORY", "PAGES", "SCREEN", "SLOW LFO", "BAR LED", "REC CS1 SKIP",
+            "MIDI LOOPBACK", "MIDI LOOPBACK SCENES")
 STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
              "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI")
 
