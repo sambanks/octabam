@@ -120,8 +120,8 @@ not warned about.
 `.github/releases/<tag>.md` on main. Pushing a `v*` tag runs it; a tag cut
 before its notes were written fails the run, and dispatching the workflow
 for that tag once the file is on main publishes it. A dispatch for a tag that
-has a release edits it, so marking an older release superseded is an edit
-to its notes file and a dispatch.
+has a release edits it. The newest tag is marked latest; older releases are
+left as they are.
 
 ## Rules the doclinks gate forces on these files
 
