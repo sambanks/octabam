@@ -257,6 +257,8 @@ moment it costs real work, and add its line here.
 - [A held scene replaces every encoder's handler](docs/contributing/TRAPS.md#trap-scene-encoders) — `0x40053498` over the SETUP editors; a panel gesture's gate drives the panel.
 - [A byte read from a long track index selects T1](docs/contributing/TRAPS.md#trap-seq-fx-context) — SEQ reads the full track index and passes the bank and Part separately.
 - [A held scene's input layer goes over a window's](docs/contributing/TRAPS.md#trap-scene-layer) — the scene key's sub-map is pushed on top before its press runs; TEMPO BUS re-pushes its layer from its own scene-key record.
+
+- [A key record in a window's layer is not reached while FUNC is held](docs/contributing/TRAPS.md#trap-func-layer) — FUNC's sub-maps go above the window and a FUNC record there is never chosen; give FUNC's record a sub-map layer of your own (TEMPO BUS `TB_FLAYER`).
 - [A frame interrupt entering about 150 µs late stops the DSP's frame exchange](docs/contributing/TRAPS.md#trap-late-frame) — START and program changes; ColdFire time added to the frame interrupt moves it on or off the window; FRAME GUARD holds a late entry to 190 µs.
 - [Dropping a stock hold to keep a window open can drop the hold's release bookkeeping](docs/contributing/TRAPS.md#trap-hold-release-toggle) — LOCK EDIT's re-hold audition lost the step trig until `le_trighold` cleared stock's `0x460d1a9e` itself.
 

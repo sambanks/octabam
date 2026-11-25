@@ -1787,6 +1787,37 @@ while a scene is held needs the same.
 **GATE.** `verify_tempo_bus`'s `scenes` boot (both orders, scene A and B,
 a push removing a lock, a page-2 cell, no lock on any other flat).
 
+<a id="trap-func-layer"></a>
+
+### A key record in a window's layer is not reached while FUNC is held: FUNC+REC and FUNC+STOP ran stock's
+
+**SYMPTOM.** TEMPO BUS's copy and paste, first built as REC and STOP records
+in the window's layer (`TB_LAYER`) that tested FUNC: under the port FUNC+REC
+copied nothing, and FUNC+STOP pasted nothing. The module's data (`CLIP`,
+`UST`) read all zero after the keys.
+
+**CAUSE.** FUNC's record in the main layer carries a sub-map, and the TEMPO
+layer `0x400bb4ec` carries one of its own (`0x400c52aa`). The dispatcher
+`0x40031734` appends every layer's sub-map for the key to the list before
+the press, so with FUNC held the list ends `… TB_LAYER, 0x400bfa1e,
+0x400c52aa` (list and cache read from the port with FUNC held). Handlers are
+looked up after that rebuild and the last layer naming a key wins (inferred
+from those dumps, not read from the dispatcher's code): REC and STOP resolved to stock's FUNC-map handlers
+(cache `0x46c7d8ee + code*24`: STOP `0x40060eb4`, REC `0x4005e038`). A
+record for FUNC itself in `TB_LAYER` (the scene keys' re-push) is never
+chosen either: the FUNC map has a FUNC record of its own.
+
+**FIX.** FUNC's record in `TB_KEYS` has press and release `-1` (stock's stay)
+and a sub-map of its own, `TB_FLAYER`, holding the REC and STOP records. The
+dispatcher chains every layer's sub-map, this module's last, so `TB_FLAYER`
+is above stock's FUNC maps while FUNC is held and gone at its release.
+FUNC+UP, DOWN and the rest still reach stock's FUNC map.
+
+**GATE.** `verify_tempo_bus`'s `copy/paste` and `copy/undo` boots: the
+values copied, changed and pasted read back from the live lanes. To find a
+layer order like this: dump `0x460d165c` (the list head), walk the `next`
+words, and read the handler cache with the key held.
+
 <a id="trap-late-frame"></a>
 **A FRAME INTERRUPT THAT ENTERS ABOUT 150 µs LATE STOPS THE DSP'S FRAME
 EXCHANGE.** At START and at a program change one frame interrupt runs 475 to
