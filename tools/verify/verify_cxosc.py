@@ -381,6 +381,12 @@ def main():
         return 0
     uc, symbols, _base = loaded
 
+    limit = uc.mem_read(symbols["ml_limits"], 1)[0]
+    limit_msg = bytes(uc.mem_read(symbols["ml_msg_fm"], 13)).split(b"\0", 1)[0]
+    check("CX OSC selection limit is six",
+          limit == 6 and limit_msg == b"CX OSC: 6 MAX",
+          f"limit={limit}, message={limit_msg!r}")
+
     # The first source call already used the rewritten START nibble. The
     # supplier detour must reload that byte for the second call too.
     stock_resume = 0x4000D51C
