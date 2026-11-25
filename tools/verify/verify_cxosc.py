@@ -346,6 +346,26 @@ def render_dynamic_fold(uc, symbols, with_trigs):
     return output, states
 
 
+def fold_subraw_converges(uc, symbols):
+    """Prove the Q18 FOLD smoother moves through the old Q8 dead zone."""
+    knobs = dict(ptch=64, rato=32, indx=48, fine=64, fold=100, mix=0,
+                 dec=127, symm=64, fdbk=40)
+    amp = dict(atk=0, hold=127, rel=64)
+    render_frames(uc, symbols, knobs, frames=64, amp=amp)
+    target = 100 << 18
+    start = target - (3 << 18)  # three panel units: old Q8 /1024 slew froze here
+    uc.mem_write(symbols["sy_foldq"], struct.pack(">I", start))
+    plant_part(uc)
+    plant_fp(uc, **knobs)
+    plant_voice(uc, 0, True, **amp)
+    uc.mem_write(FP_REC + 8, struct.pack(">H", 100 << 8))
+    uc.mem_write(HEADER, bytes(16 + 16 * 8))
+    uc.mem_write(CURSOR_AT, struct.pack(">I", HEADER))
+    render_one_call(uc, symbols, 0, 16, trig=False)
+    after = struct.unpack(">I", bytes(uc.mem_read(symbols["sy_foldq"], 4)))[0]
+    return start, target, after
+
+
 def rms(xs):
     return math.sqrt(sum(x * x for x in xs) / max(len(xs), 1))
 
@@ -807,8 +827,12 @@ def main():
         foldq_steps = [abs(b[7] - a[7]) for a, b in zip(plain_states, plain_states[1:])]
         max_foldq_step = max(foldq_steps)
         check("DEC=INF FOLD automation advances gradually",
-              max_foldq_step <= 512,
-              f"largest frame-to-frame slew={max_foldq_step} Q8 (limit 512)")
+              max_foldq_step <= 512 * 1024,
+              f"largest frame-to-frame slew={max_foldq_step} Q18 (limit {512 * 1024})")
+        fold_start, fold_target, fold_after = fold_subraw_converges(uc, symbols)
+        check("DEC=INF FOLD slew crosses sub-raw changes",
+              fold_start < fold_after < fold_target,
+              f"three-unit residual moved by {fold_after - fold_start} Q18")
         check("DEC=INF FOLD ramp is stable across frame-aligned trigs",
               peak_diff <= 150_000,
               f"peak same-phase difference={peak_diff}; peaks={frame_peaks}; state fields differ={state_diffs}")
