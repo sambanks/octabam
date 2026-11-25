@@ -3,13 +3,20 @@
 |
 | The browser keeps three 260-byte path buffers at 0x460e48f0, 0x460e49f8
 | and 0x460e4afc, then its current folder at 0x460e4c00. It fills them with
-| an unbounded strcat (0x40013f94, twice, at 0x4006a59e / 0x4006a5b2) and an
-| unbounded sprintf "%s/%s" (0x40013a08, at 0x4006a822 and 0x4006a89e). A
-| file whose full path passes 259 characters wrote over the next buffer: at
-| 0x4006a822 over the current folder, which then reads empty or garbage, and
-| the browser stops opening until a power cycle.
-| Each site loads the routine's address as a 4-byte operand; the manifest
-| points those operands here. These keep at most 259 characters and the NUL.
+| an unbounded strcat and sprintf "%s/%s":
+|
+|   buffer      routine        loaded at (operand)       called at
+|   0x460e48f0  strcat 13f94   lea 0x4006a598 (a59a)     jsr %a2@ 0x4006a59e, 0x4006a5b2
+|   0x460e4afc  sprintf 13a08  lea 0x4006a7de (a7e0)     jsr %a4@ 0x4006a822
+|   0x460e49f8  sprintf 13a08  jsr 0x4006a89e (a8a0)     the same jsr
+|
+| a2 and a4 are loaded once in their functions (0x4006a554..0x4006a5c6,
+| 0x4006a79c..0x4006a8d8) and called only at the sites listed, so every
+| call through the three operands writes one of the three buffers. A file
+| whose full path passes 259 characters wrote over the next variable: the
+| LOADING... flag 0x460e49f4 after the first buffer, the current folder after
+| the third, and the browser stopped opening until a power cycle.
+| The manifest points the three operands (the addresses in brackets) here. These keep at most 259 characters and the NUL.
 | A path cut short names no file, so the row reads ERR, as stock shows for a
 | path the filesystem refuses (259 characters is also its limit).
 | SPDX-License-Identifier: MIT

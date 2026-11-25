@@ -8,7 +8,8 @@ the folder line garbled, and the browser refusing to open on any slot, in
 any project, until a power cycle.
 
 With this module the browser shows such a file as ERR, as it already shows
-files the card cannot open, and keeps working. Nothing else changes.
+files the card cannot open, and keeps working. ERR is the expected result for
+any file past the limit: it cannot be loaded either way. Nothing else changes.
 
 ## The 259-character limit
 
