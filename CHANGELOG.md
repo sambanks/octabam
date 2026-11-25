@@ -16,6 +16,14 @@ including Image 90 (`usb-lean`). Other documents cite 94, 96 and 99 for
 
 The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
+## OCTABAM 83, 25 Nov 2026, octabam remix
+
+- Ilia confirmed on his MKII that the bundled SEQ changes work, including
+  live audio/MIDI switching and the RAND/JUMP pitch changes.
+- Built from `8a71eeda2a73e7721d6b306e23fc16c259e20608`.
+- Artifact SHA-256:
+  `a1a17cdef5e836c8ed02c90795ded2afe3fbf2333bcf4515764b5c586662d8b1`.
+
 ## OCTABAM 82, 25 Nov 2026, octabam remix
 
 - SEQ switches the open window between audio and MIDI on the first **[MIDI]**

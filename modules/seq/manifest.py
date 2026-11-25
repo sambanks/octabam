@@ -57,6 +57,9 @@ MODULE = Module(
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
     evidence=(
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTABAM 83.RMX", date="2026-11-25",
+                 commit="8a71eeda2a73e7721d6b306e23fc16c259e20608",
+                 note="Owner confirmed the bundled SEQ changes work on the MKII. This image includes live audio/MIDI switching and the RAND/JUMP pitch changes. No audio or timing measurements reported."),
         Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="JV M5.RMX", date="2026-11-25",
                  note="Owner confirmed MIDI switching works on the unit: the first [MIDI] press switches the open SEQ from audio T1 to MIDI T1, the next returns to audio T1, and repeated presses stay in sync."),
         Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTABAM 81.RMX", date="2026-11-25",
