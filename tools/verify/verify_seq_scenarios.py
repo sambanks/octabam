@@ -839,24 +839,46 @@ def run_scenarios() -> int:
               u8(port, UI_TRACK) == 1, f"UI_TRACK={u8(port, UI_TRACK)}")
 
         # --- MIDI-mode note trigs use the MIDI mask and keep audio data ---
-        s.close_seq()
-        port.press("midi", settle=300)
         port.press("t1", settle=300)
+        check("TRACK tap returns the open SEQ to audio T1",
+              u8(port, UI_TRACK) == 0 and port.long(local_sym("ef_tone_midi")) == 0)
         midi_bank = sym("ef_midi_bank")
         midi_dep = sym("ef_midi_dep_mem")
         midi_plk = sym("ef_midi_plk_mem")
         midi_lane = sym("ef_midi_lane_mem")
+        poke32(port, sym("ef_dest"), 16)
+        poke32(port, sym("ef_depth"), 11)
         poke32(port, midi_bank, 3)
         poke32(port, midi_bank + 4, 0)
         poke32(port, midi_bank + 8, 20)  # CTRL1 CC1 flat
         poke32(port, midi_bank + 0xC, 4)
         poke8(port, midi_dep + 20, 4)
-        s.open_seq("t1")
-        check("MIDI mode opens SEQ on the MIDI track",
-              port.long(0x80000012) != 0 and port.long(s.ef) != 0)
-        poke32(port, local_sym("ef_tone_midi"), 1)
-        poke32(port, sym("ef_dest"), 20)
-        poke32(port, sym("ef_depth"), 4)
+        port.press("midi", settle=500)
+        check("MIDI switches the open SEQ to MIDI T1",
+              port.long(0x80000012) != 0
+              and port.long(local_sym("ef_tone_midi")) == 1
+              and port.long(sym("ef_dest")) == 20
+              and port.long(sym("ef_depth")) == 4,
+              f"mode={port.long(0x80000012)} latch={port.long(local_sym('ef_tone_midi'))} "
+              f"focus={port.long(sym('ef_focus'))} dest={port.long(sym('ef_dest'))} "
+              f"depth={port.long(sym('ef_depth'))}")
+        port.press("midi", settle=500)
+        check("MIDI switches the open SEQ back to audio T1 settings",
+              port.long(0x80000012) == 0
+              and port.long(local_sym("ef_tone_midi")) == 0
+              and port.long(sym("ef_dest")) == 16
+              and port.long(sym("ef_depth")) == 11,
+              f"mode={port.long(0x80000012)} latch={port.long(local_sym('ef_tone_midi'))} "
+              f"focus={port.long(sym('ef_focus'))} dest={port.long(sym('ef_dest'))} "
+              f"depth={port.long(sym('ef_depth'))}")
+        port.press("midi", settle=500)
+        check("MIDI can switch the open SEQ to MIDI T1 again",
+              port.long(local_sym("ef_tone_midi")) == 1
+              and port.long(sym("ef_dest")) == 20
+              and port.long(sym("ef_depth")) == 4,
+              f"mode={port.long(0x80000012)} latch={port.long(local_sym('ef_tone_midi'))} "
+              f"focus={port.long(sym('ef_focus'))} dest={port.long(sym('ef_dest'))} "
+              f"depth={port.long(sym('ef_depth'))}")
         poke32(port, s.lane, 0)
         poke32(port, s.from_cue, 0)
         poke32(port, s.free, 0)

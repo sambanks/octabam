@@ -40,6 +40,7 @@ pattern.
 | Gesture | Result |
 |---|---|
 | **`[TRACK]`** + **`[PAGE]`** | Open SEQ on that track |
+| **`[MIDI]`** | Switch the open SEQ between the audio and MIDI track with the same number |
 | **`[NO]`** | Close the window |
 | Bare **`[PAGE]`** | Stock pattern pages / step banks; SEQ stays open |
 | Another **`[TRACK]`** while open | Switch SEQ to that track |

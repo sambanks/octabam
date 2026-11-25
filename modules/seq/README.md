@@ -63,6 +63,7 @@ shows the active length (it is not a knob).
 |---|---|
 | **`[TRACK]`** + **`[PAGE]`** | open SEQ on that track |
 | **`[TRACK]`** (while open) | switch SEQ to that track |
+| **`[MIDI]`** (while open) | switch SEQ to the matching audio or MIDI track |
 | A | PULS of the focused lane |
 | B | ROT of the focused lane |
 | C | LANE — TRIG ↔ PLCK |
