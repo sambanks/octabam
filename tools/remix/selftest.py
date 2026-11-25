@@ -224,6 +224,11 @@ CASES = [
     ("two designs of one behaviour",
      [_cf("alpha", pokes=(_poke(0x40100000),), conflicts=(("BETA", "both retime a cued pattern"),)),
       _cf("beta", pokes=(_poke(0x40100010),))], "declared conflict"),
+    # ---- joined pairs (Module.joins) -------------------------------------
+    # No byte overlaps: MIDI SCENES' own CC sender bypasses MIDI LOOPBACK's
+    # routing, so the pair shares an image only with MIDI LOOPBACK SCENES.
+    ("MIDI LOOPBACK and MIDI SCENES without their bridge",
+     [registry.by_key(k) for k in ("MIDI LOOPBACK", "MIDI SCENES", "STORE", "USB")], "joined pair"),
     # ---- DSP data ranges -------------------------------------------------
     ("two modules on one shared-window range from different payloads",
      [_ranged("alpha", DspRange("y", 0x3a000, 0x100, "buf")),
@@ -381,7 +386,10 @@ def main():
                         ("adjacent pokes, agreeing keepers, ranges on different payloads",
                          CLEAN_CLAIMS),
                         ("a bridge's symbol ref, poke and table ref overriding another's",
-                         CLEAN_OVERRIDES)):
+                         CLEAN_OVERRIDES),
+                        ("MIDI LOOPBACK and MIDI SCENES with their bridge",
+                         [registry.by_key(k) for k in ("MIDI LOOPBACK", "MIDI SCENES", "MIDI LOOPBACK SCENES",
+                                                       "STORE", "USB", "MEMORY")])):
         found = ledger.check(mods)
         if found:
             bad += 1
