@@ -1076,6 +1076,7 @@ def main():
              "track-trig-mode": (), "page-loop": (), "trig-mute": (),   # TRACK TRIG MODE, PAGE LOOP and TRIG MUTE (Hteah): ColdFire, no DSP words, on the 14 stock effects
              # octabam-lazy-chop: octabam-verbs + LAZY CHOP, so the three stock reverbs (CONSUMED), as octabam-verbs
              "rec-cs1-skip": (),   # REC CS1 SKIP: ColdFire, no DSP words, on the 14 stock effects
+             "arr-row-cap": (),   # ARR ROW CAP: ColdFire, no DSP words, on the 14 stock effects
              "slow-lfo": (),   # SLOW LFO: ColdFire, no DSP words, on the 14 stock effects
              "bar-led": (),   # BAR LED: ColdFire, no DSP words, on the 14 stock effects
              "xfcurve": (), "xfcurve-scurve": (),   # XF CURVE: ColdFire, no DSP words, on the 14 stock effects
