@@ -520,6 +520,8 @@ def display_walk(image, card, set_name, project, store, out, check):
             check(f"display {slot}: knob push locks the held step to Part 21",
                   p.peek(block + offset, 1) == bytes([21])
                   and crop(pushed, dial) != crop(refs[21], dial))
+            check(f"display {slot}: knob push leaves the page-one slot behind the window",
+                  p.peek(db + 0x59, 32) == b"\xff" * 32)
             held("trig1", False)
             held("trig1", True)
             push_a(True)
