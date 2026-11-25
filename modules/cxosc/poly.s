@@ -143,7 +143,7 @@
         .set    STOCK_RENDER, MC_NEXT_RENDER | the next renderer in the FLEX kind entry's chain
         .endif
         .endif
-        .set    FMSRC_RET, 0x4000d51e    | after po_fmsource's displaced 8 B
+        .set    FMSRC_RET, 0x4000d51c    | reload the current nibble before taking the second call's start offset
         .set    FLEX_START, 0x4000f450   | stock FLEX START callback
         .set    MACH_OFF, 0x8eda2
         .set    SIG_OFF, 0x8edbc         | NEIGHBOR PLAYBACK: "CX", 1
@@ -484,9 +484,11 @@ sy_cold_modphase:
         lea     sy_mixq(%pc),%a0
         move.l  %d1,(%a0,%d0.l)
         mvz.w   8(%a4),%d1               | RTRG -> FOLD
-        lsr.l   #8,%d1
         lsl.l   #8,%d1
+        lsl.l   #2,%d1                   | Q18 internal accumulator (was Q8)
         lea     sy_foldq(%pc),%a0
+        move.l  %d1,(%a0,%d0.l)
+        lea     sy_foldtarget(%pc),%a0
         move.l  %d1,(%a0,%d0.l)
         move.l  %d2,%d1                  | PWM from SETUP F
         move.l  #CV_STRIDE,%d3
@@ -709,18 +711,16 @@ sy_mono_inc:
         muls.l  %d1,%d0
         move.l  %d0,S_INCM(%a3)          | modulator increment = ratio * pitch
         mvz.w   8(%a4),%d1               | RTRG -> FOLD
-        lsr.l   #8,%d1
         move.l  %d2,%d0                  | track (still in d2 here)
-        lea     sy_foldq(%pc),%a0        | one-pole slew — knob jumps were zipper clicks
         lsl.l   #2,%d0
-        adda.l  %d0,%a0
-        move.l  %d1,%d0                  | target raw
-        bsr     sy_knob_slew             | d0 := slewed FOLD
-        move.l  %d2,%d1
+        move.l  %d1,%d3
+        lsl.l   #8,%d3
+        lsl.l   #2,%d3                   | target in the same Q18 domain as the accumulator
+        lea     sy_foldtarget(%pc),%a0
+        move.l  %d3,(%a0,%d0.l)          | retain FOLD's fractional low byte from LFO/scene words
+        lsr.l   #8,%d1
         lea     sy_cxparm(%pc),%a0
-        lsl.l   #2,%d1                   | 4 B a track: FOLD SYMM CMOR MMOR
-        move.b  %d0,(%a0,%d1.l)          | FOLD (slewed)
-        move.l  %d1,%d0                  | parm index (track*4)
+        move.b  %d1,(%a0,%d0.l)          | raw FOLD target; sy_loop slews it at sample rate
         move.l  %d2,%d1
         move.l  #CV_STRIDE,%d3
         mulu.l  %d3,%d1
@@ -1263,17 +1263,38 @@ sy_car_ok:
 sy_mix_done:
         | ---- FOLD (RTRG) + SYMM (SETUP D): half-wave skew into the folder ----
         | c_fold = c * gain/64; gain = SYMM (c>=0) or (128-SYMM) (c<0).
-        | 64 = even. drive = 256 + (FOLD_Q8*24)>>8. out = c + (folded-c)*FOLD_Q8/32768.
+        | 64 = even. drive in Q16 = 65536 + FOLD_Q8*24.
+        | out = c + (folded-c)*FOLD_Q8/32768.
+        | Q18 accumulator -> Q8 folder control. The /4096 one-pole keeps ten
+        | guard bits so small FOLD changes continue moving instead of freezing
+        | in the Q8 quantization dead zone. A frame-aligned trig cannot add a step.
+        move.l  %a6,-(%sp)
+        move.l  %d1,-(%sp)               | park the carrier sample while d1 computes the slew
+        move.l  84(%sp),%d2              | track (a6, carrier and six sample-loop stack words)
+        lsl.l   #2,%d2
+        lea     sy_foldtarget(%pc),%a6
+        move.l  (%a6,%d2.l),%d1         | target FOLD Q8, including the LFO fraction
+        lea     sy_foldq(%pc),%a6
+        move.l  (%a6,%d2.l),%d4         | current FOLD_Q8
+        sub.l   %d4,%d1
+        asr.l   #8,%d1                   | /4096 per sample, with Q18 residual retained
+        asr.l   #4,%d1
+        add.l   %d1,%d4
+        move.l  %d4,(%a6,%d2.l)
+        lsr.l   #8,%d4
+        lsr.l   #2,%d4                   | convert Q18 to Q8 for this sample
+        move.l  %d4,12(%sp)             | update this sample's FOLD_Q8 stack slot
+        move.l  (%sp)+,%d1               | restore the carrier sample
+        move.l  (%sp)+,%a6
         move.l  4(%sp),%d2               | FOLD Q8
         beq     sy_nofold
         move.l  %d1,-(%sp)               | park c (unbiased dry)
         move.l  %d2,-(%sp)               | park FOLD Q8
-        move.l  %d2,%d4                  | (fold_q8*24)>>8 = fold*24
+        move.l  %d2,%d4                  | retain fractional drive through the phase multiply
         lsl.l   #4,%d4
         lsl.l   #3,%d2
         add.l   %d2,%d4
-        asr.l   #8,%d4
-        addi.l  #256,%d4                 | drive_q8
+        addi.l  #65536,%d4               | drive Q16
         move.l  4(%sp),%d1               | c
         move.l  20(%sp),%d2              | SYMM (under the two parks; was at 12)
         mvz.b   %d2,%d2                  | SYMM 0..127
@@ -1287,8 +1308,7 @@ sy_skew_lo:
         muls.l  %d2,%d1                  | −half: c * (128−SYMM)
 sy_skew_div:
         asr.l   #6,%d1                   | / 64 -> c_fold
-        muls.l  %d4,%d1                  | c_fold * drive_q8
-        asl.l   #8,%d1
+        muls.l  %d4,%d1                  | c_fold * drive Q16, modulo one turn
         move.l  %d1,%d2
         lsr.l   %d3,%d2
         add.l   %d2,%d2
@@ -6436,7 +6456,9 @@ sy_pwmq:                                 | 8 tracks x Q8 current PWM (sy_knob_sl
         .fill   8, 4, 0
 sy_mixq:                                 | 8 tracks x Q8 current MIX (sy_knob_slew)
         .fill   8, 4, 0
-sy_foldq:                                | 8 tracks x Q8 current FOLD
+sy_foldq:                                | 8 tracks x Q18 current FOLD (Q8 plus 10 guard bits)
+        .fill   8, 4, 0
+sy_foldtarget:                            | 8 tracks x Q18 FOLD target, including the record's low-byte fraction
         .fill   8, 4, 0
 po_amp:                                  | (2.20) 8 tracks x 4 bytes: ATK, HOLD, REL as the frame builder wrote them,
         .fill   8 * 4, 1, 0              | 1 once kept (po_amp_snap)

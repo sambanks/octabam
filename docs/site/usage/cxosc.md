@@ -3,7 +3,8 @@ operators in FM, a sine wavefolder after them, modulator feedback, and
 **sine → saw → square** morphs on each operator (**SRC SETUP** **PWM**:
 sine lean / saw phase-skew / square duty). The **PWM** knob leaves the
 **CAR**/**MOD** icons alone. Timbre from folding and index. Up to **six**
-CX OSC tracks per Part.
+CX OSC tracks per Part when every track's **MOD** morph is at **0**. With
+nonzero **MOD** morph, use fewer CX OSC tracks; six-track headroom is not safe.
 
 Built on Tim Hastie's FM SYNTH engine (local fork). Remixes that ship
 CX OSC omit SYNTH MACHINE (same seat).

@@ -24,8 +24,13 @@ from unicorn import Uc, UC_ARCH_M68K, UC_MODE_BIG_ENDIAN, UC_HOOK_CODE, UC_HOOK_
 from unicorn.m68k_const import (
     UC_CPU_M68K_CFV4E,
     UC_M68K_REG_A0,
+    UC_M68K_REG_A2,
+    UC_M68K_REG_A3,
+    UC_M68K_REG_A4,
     UC_M68K_REG_A7,
     UC_M68K_REG_D0,
+    UC_M68K_REG_D2,
+    UC_M68K_REG_D3,
     UC_M68K_REG_PC,
     UC_M68K_REG_SR,
 )
@@ -271,6 +276,101 @@ def render_frames(uc, symbols, knobs, frames=64, track=0, amp=None, state_probe=
     return samples, costs
 
 
+def render_one_call(uc, symbols, start, end, track=0, trig=False):
+    uc.mem_write(NIBBLE + track, bytes([0x10 if trig else 0]))
+    uc.reg_write(UC_M68K_REG_A7, STACK)
+    uc.mem_write(STACK, struct.pack(">IIIII", STOP, track, 0, start, end))
+    try:
+        uc.emu_start(symbols["sy_render"], STOP, count=500_000)
+    except Exception as e:
+        die(f"FOLD split-frame render fault: {e}")
+    if uc.reg_read(UC_M68K_REG_PC) != STOP:
+        die("FOLD split-frame render did not return")
+
+
+def read_frame_headers(uc):
+    """Read the one or two source headers emitted for a simulated frame."""
+    samples = []
+    pos = HEADER
+    limit = HEADER + 0x1000
+    while pos + 16 <= limit:
+        count = struct.unpack(">I", bytes(uc.mem_read(pos, 4)))[0]
+        if count == 0 or count > 16 or pos + 16 + count * 8 > limit:
+            break
+        raw = bytes(uc.mem_read(pos + 16, count * 8))
+        for i in range(count):
+            word = struct.unpack_from(">I", raw, i * 8)[0] >> 8
+            samples.append(word - 0x1000000 if word >= 0x800000 else word)
+        pos += 16 + count * 8
+    return samples
+
+
+def render_dynamic_fold(uc, symbols, with_trigs):
+    """Ramp FOLD at DEC=INF, optionally using frame-aligned sequencer trigs."""
+    if "sy_state" in symbols:
+        uc.mem_write(symbols["sy_state"], bytes(128 * 8))
+    knobs = dict(ptch=64, rato=32, indx=48, fine=64, fold=0, mix=0,
+                 dec=127, symm=64, fdbk=40)
+    amp = dict(atk=0, hold=127, rel=64)
+    render_frames(uc, symbols, knobs, frames=64, amp=amp)
+    if "sy_state" in symbols:
+        gain = struct.unpack(">I", bytes(uc.mem_read(symbols["sy_state"] + 24, 4)))[0]
+        if gain != 32768:
+            die(f"FOLD ramp probe did not reach AMP sustain: gain={gain}")
+    output = []
+    states = []
+    trig_frames = {3, 7, 11, 15}
+    for frame in range(16):
+        knobs["fold"] = min(127, frame * 8)
+        plant_part(uc)
+        plant_fp(uc, **knobs)
+        # Mirror the DSP record's low-byte interpolation fraction used by
+        # LFO/scene modulation; a hand knob alone leaves these bits at zero.
+        fold_fraction = (frame * 53) & 0xFF
+        uc.mem_write(FP_REC + 8, struct.pack(">H", (knobs["fold"] << 8) | fold_fraction))
+        plant_voice(uc, 0, True, **amp)
+        trig = with_trigs and frame in trig_frames
+        uc.mem_write(HEADER, bytes(16 + 16 * 8))
+        uc.mem_write(CURSOR_AT, struct.pack(">I", HEADER))
+        render_one_call(uc, symbols, 0, 16, trig=trig)
+        samples = read_frame_headers(uc)
+        if len(samples) != 16:
+            die(f"FOLD ramp frame {frame} produced {len(samples)} samples, wanted 16")
+        output.extend(samples)
+        state = symbols["sy_state"]
+        states.append((
+            struct.unpack(">I", bytes(uc.mem_read(state + 0, 4)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(state + 4, 4)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(state + 8, 4)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(state + 20, 4)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(state + 24, 4)))[0],
+            struct.unpack(">H", bytes(uc.mem_read(state + 38, 2)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(state + 32, 4)))[0],
+            struct.unpack(">I", bytes(uc.mem_read(symbols["sy_foldq"], 4)))[0],
+        ))
+    return output, states
+
+
+def fold_subraw_converges(uc, symbols):
+    """Prove the Q18 FOLD smoother moves through the old Q8 dead zone."""
+    knobs = dict(ptch=64, rato=32, indx=48, fine=64, fold=100, mix=0,
+                 dec=127, symm=64, fdbk=40)
+    amp = dict(atk=0, hold=127, rel=64)
+    render_frames(uc, symbols, knobs, frames=64, amp=amp)
+    target = 100 << 18
+    start = target - (3 << 18)  # three panel units: old Q8 /1024 slew froze here
+    uc.mem_write(symbols["sy_foldq"], struct.pack(">I", start))
+    plant_part(uc)
+    plant_fp(uc, **knobs)
+    plant_voice(uc, 0, True, **amp)
+    uc.mem_write(FP_REC + 8, struct.pack(">H", 100 << 8))
+    uc.mem_write(HEADER, bytes(16 + 16 * 8))
+    uc.mem_write(CURSOR_AT, struct.pack(">I", HEADER))
+    render_one_call(uc, symbols, 0, 16, trig=False)
+    after = struct.unpack(">I", bytes(uc.mem_read(symbols["sy_foldq"], 4)))[0]
+    return start, target, after
+
+
 def rms(xs):
     return math.sqrt(sum(x * x for x in xs) / max(len(xs), 1))
 
@@ -280,6 +380,33 @@ def main():
     if loaded is None:
         return 0
     uc, symbols, _base = loaded
+
+    limit = uc.mem_read(symbols["ml_limits"], 1)[0]
+    limit_msg = bytes(uc.mem_read(symbols["ml_msg_fm"], 13)).split(b"\0", 1)[0]
+    check("CX OSC selection limit is six",
+          limit == 6 and limit_msg == b"CX OSC: 6 MAX",
+          f"limit={limit}, message={limit_msg!r}")
+
+    # The first source call already used the rewritten START nibble. The
+    # supplier detour must reload that byte for the second call too.
+    stock_resume = 0x4000D51C
+    stop = 0x4000D522
+    rom_base = 0x40000400
+    uc.mem_write(stock_resume, OS_BIN.read_bytes()[stock_resume - rom_base:stop - rom_base])
+    plant_part(uc)
+    uc.mem_write(NIBBLE, b"\x30")
+    uc.mem_write(RS_REC, struct.pack(">I", STOCK_RENDER))
+    uc.reg_write(UC_M68K_REG_A2, NIBBLE)
+    uc.reg_write(UC_M68K_REG_A3, HEADER)
+    uc.reg_write(UC_M68K_REG_A4, RS_REC)
+    uc.reg_write(UC_M68K_REG_A7, STACK)
+    uc.reg_write(UC_M68K_REG_D0, 10)  # stale subframe offset before the detour
+    uc.reg_write(UC_M68K_REG_D3, 0)
+    uc.emu_start(symbols["po_fmsource"], stop, count=500)
+    offset = uc.reg_read(UC_M68K_REG_D2)
+    check("CX source supplier reloads the adjusted START offset",
+          uc.reg_read(UC_M68K_REG_PC) == stop and offset == 0,
+          f"second render starts at sample {offset}, expected 0")
 
     # PLAYBACK: E=FOLD icon, F=plain MIX; names FINE/FOLD/MIX.
     for sym in ("pg_wids_b", "pg_wid_plain", "pg_wid_fold", "pg_names"):
@@ -708,6 +835,39 @@ def main():
         check("sequencer retrigger restarts DEC at full INDX",
               after_env == 0x01000000 and after_ieff == full_index,
               f"env={before_env:#x}->{after_env:#x}, ieff={before_ieff}->{after_ieff}")
+
+        # Issue #1236: FOLD moves under automation while warm sequencer trigs
+        # are active. The retrig hook aligns an ongoing synth START to sample 0;
+        # exercise that real frame-aligned path, not a synthetic split call.
+        plain_fold, plain_states = render_dynamic_fold(uc, symbols, with_trigs=False)
+        trig_fold, trig_states = render_dynamic_fold(uc, symbols, with_trigs=True)
+        trig_diffs = []
+        frame_peaks = []
+        for frame in (3, 7, 11, 15):
+            start = frame * 16
+            diffs = [
+                abs(a - b)
+                for a, b in zip(plain_fold[start:start + 16], trig_fold[start:start + 16])
+            ]
+            trig_diffs.extend(diffs)
+            frame_peaks.append((frame, max(diffs), diffs.index(max(diffs))))
+        peak_diff = max(trig_diffs)
+        state_diffs = []
+        for frame in (3, 7, 11, 15):
+            state_diffs.append((frame, [i for i, (a, b) in enumerate(
+                zip(plain_states[frame], trig_states[frame])) if a != b]))
+        foldq_steps = [abs(b[7] - a[7]) for a, b in zip(plain_states, plain_states[1:])]
+        max_foldq_step = max(foldq_steps)
+        check("DEC=INF FOLD automation advances gradually",
+              max_foldq_step <= 128 * 1024,
+              f"largest frame-to-frame slew={max_foldq_step} Q18 (limit {128 * 1024})")
+        fold_start, fold_target, fold_after = fold_subraw_converges(uc, symbols)
+        check("DEC=INF FOLD slew crosses sub-raw changes",
+              fold_start < fold_after < fold_target,
+              f"three-unit residual moved by {fold_after - fold_start} Q18")
+        check("DEC=INF FOLD ramp is stable across frame-aligned trigs",
+              peak_diff <= 150_000,
+              f"peak same-phase difference={peak_diff}; peaks={frame_peaks}; state fields differ={state_diffs}")
 
     # Cost: mean instructions of steady frames (skip cold start).
     steady = costs["base"][1:]

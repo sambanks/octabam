@@ -121,6 +121,7 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**ARR ROW CAP**](arr-row-cap/README.md) | [Sam Banks](https://github.com/sambanks) | The arranger stops at 256 rows when you add a row at END OF ARR., instead of writing a 257th row over the next arrangement. |
 | [**ATA WRITE GUARD**](ata-write-guard/README.md) | [Sam Banks](https://github.com/sambanks) | Keeps the first PIO card sector and its pointer/count update atomic against interrupts; restores the caller's interrupt mask before returning. |
 | [**BATCH_BUGFIXES**](batch-bugfixes/README.md) | [Zac Kyoti](https://github.com/Zac-Kyoti) | Three stock 1.40C bug fixes in one module: MIDI Plays-Free trig, empty-pattern LED, and Part-change carryover. |
+| [**BROWSE PATH GUARD**](browse-path-guard/README.md) | [Sam Banks](https://github.com/sambanks) | The sample browser no longer breaks on a file whose path is longer than the card allows: the file shows ERR and the browser keeps working. |
 | [**FRAME GUARD**](frame-guard/README.md) | [Sam Banks](https://github.com/sambanks) | A late frame interrupt waits out the window in which the DSP's frame exchange stalls at START and at a program change. |
 | [**LOFI AMF FIX**](lofi-amf-fix/README.md) | [Bryan T](https://github.com/bryantysinger) | Fixes stock LO-FI's AMF knob. Ported from bryantysinger/octa-bt-pt. |
 | [**REC CS1 SKIP**](rec-cs1-skip/README.md) | [Bryan T](https://github.com/bryantysinger) | The recorder's per-frame control-record update without its redundant CS1 writes: less ColdFire time per recording track. |

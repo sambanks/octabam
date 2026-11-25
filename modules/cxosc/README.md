@@ -104,8 +104,9 @@ ROM hooks, e.g. MIDI note-on). Not an FX2 id — machine signature `"CX", 1`.
 
 ## Cost / how many CX tracks
 
-One mono voice under Unicorn: about **2035** instructions/frame (peak ~2074;
-`verify_cxosc`).
+One mono voice under Unicorn: mean **2303** instructions/frame (peak **2342**;
+`verify_cxosc`, current per-sample FOLD slew). Before that slew, the same gate
+measured mean 2035 and peak 2074.
 
 `verify_cxosc` also compares INDX 0 and 96 at CAR sine, saw, and square. The
 rendered samples differ for all three shapes. This is emulator evidence, not
@@ -113,8 +114,12 @@ a hardware measurement. On `CXSEQ CV.RMX` (BUILD 79, 20 Nov 2026), Ilia
 confirmed on a unit that INDX changes the saw and triangle carrier waveforms.
 That report covers those two shapes only.
 
-Selection guard **`ML_FM_MAX = 6`** (Part popup `CX OSC: 6 MAX`). Measured on
-author MKII with remix `cx-cf` + CF METER (USB decode, 9 Nov 2026, tip
+Selection guard **`ML_FM_MAX = 6`** (Part popup `CX OSC: 6 MAX`). Six tracks are
+safe only when **MOD morph is 0 on every CX OSC track**. Nonzero MOD morph costs
+more ColdFire time; reduce the number of sounding CX OSC tracks. The safe count
+with MOD above 0 has not been measured.
+
+Earlier MKII measurements used `cx-cf` + CF METER (USB decode, 9 Nov 2026,
 `CX-CF 69`):
 
 | CX tracks sounding | idle % | ISR mean | ISR max | notes |
@@ -124,7 +129,10 @@ author MKII with remix `cx-cf` + CF METER (USB decode, 9 Nov 2026, tip
 | 6 | ~12 | 309 µs | 376 µs | max past the 363 µs frame |
 | 7 | 0 | 355 µs | 446 µs | wall — MAIN clipped; do not ship as a cap |
 
-Eight tracks were not safe. Author confirmed **6 MAX** toast on unit (CX 70). [#852](https://github.com/sambanks/octabam/issues/852).
+On CX A2 with six tracks and MOD morph at 0 (LOAD METER over USB, 25 Nov
+2026), CF share averaged **71.4%** and reached **73.6%**; the longest ISR was
+**376.5 µs** against the 362.8 µs frame. This is the current six-track,
+MOD-zero test. Eight tracks were not safe. [#852](https://github.com/sambanks/octabam/issues/852).
 
 ## Build
 
