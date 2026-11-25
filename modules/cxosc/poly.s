@@ -1132,6 +1132,20 @@ sy_mono:
         move.l  S_PHM(%a3),%d6
         move.l  S_INC(%a3),%d5
         move.l  S_INCM(%a3),%a2
+        move.l  %a2,%d1                  | sy_dpw's dt = Δφm >> 16 and 2^30/dt, fixed for the call
+        lsr.l   #8,%d1
+        lsr.l   #8,%d1
+        bne     sy_m_dt
+        moveq   #1,%d1
+sy_m_dt:
+        cmp.l   sy_dpwrc(%pc),%d1
+        beq     sy_m_rcok
+        lea     sy_dpwrc(%pc),%a0
+        move.l  %d1,(%a0)
+        move.l  #0x40000000,%d2
+        divu.l  %d1,%d2
+        move.l  %d2,4(%a0)
+sy_m_rcok:
         move.l  S_LASTM(%a3),%a4
         move.l  S_GAIN(%a3),%d1          | the frame's target gain ...
         mvz.w   S_GPREV(%a3),%d2         | ... from the gain the last call ended at (a first call [0,n) has
@@ -1191,8 +1205,18 @@ sy_loop:
         | Always build DPW pulse (even MMOR < 64). Old path set square=saw
         | below 64 then swapped in a real pulse at 64 — unit: steppy 60..70.
         move.l  %d2,-(%sp)               | park saw (d7 = sample count — do not touch)
+        | MMOR <= 64 gives the pulse zero weight in sy_wshape: keep only its z1
+        | and duty current (a reprime from φ is wrong under FDBK: a click past 64).
+        move.l  8(%sp),%d2               | amt
+        cmpi.l  #64,%d2
+        bgt     sy_mod_pulse
+        move.l  8+16(%sp),%d2            | PWM
+        bsr     sy_dpw_track
+        bra     sy_mod_sawonly
+sy_mod_pulse:
         move.l  8+16(%sp),%d2            | PWM (under amt+φm+φc+saw; was at 8)
         bsr     sy_dpw_pulse             | d0 = pulse; needs saw at 0(sp)
+sy_mod_sawonly:
         move.l  (%sp)+,%d1               | saw
         move.l  20(%sp),%d2              | PWM (under amt+φm+φc; base slot 8)
         bsr     sy_wramp                 | phase-skew saw (d6=φm_eff)
@@ -1434,23 +1458,37 @@ sy_wramp:
         lsr.l   #7,%d0                   | /32768
         addi.l  #2621,%d0
         move.l  %d0,%d2                  | d
+        | 2^30/d and 2^30/(32768−d), recomputed only when d changes (per call)
+        cmp.l   sy_wrrc(%pc),%d2
+        beq     sy_wr_rcok
+        move.l  %a0,-(%sp)
+        lea     sy_wrrc(%pc),%a0
+        move.l  %d2,(%a0)
+        move.l  #0x40000000,%d0
+        divu.l  %d2,%d0
+        move.l  %d0,4(%a0)
+        move.l  #32768,%d3
+        sub.l   %d2,%d3
+        move.l  #0x40000000,%d0
+        divu.l  %d3,%d0
+        move.l  %d0,8(%a0)
+        move.l  (%sp)+,%a0
+sy_wr_rcok:
         cmp.l   %d2,%d1
         bge     sy_wr_hihalf
-        | p' = p * 16384 / d
-        move.l  %d1,%d0
-        lsl.l   #8,%d0
-        lsl.l   #6,%d0                   | p * 16384
-        divs.l  %d2,%d0
-        move.l  %d0,%d1
+        | p' = p * 16384 / d  (p < d: the product stays under 2^30)
+        move.l  sy_wrrc+4(%pc),%d0
+        mulu.l  %d0,%d1
+        lsr.l   #8,%d1
+        lsr.l   #8,%d1
         bra     sy_wr_saw
 sy_wr_hihalf:
         | p' = 16384 + (p−d) * 16384 / (32768−d)
-        move.l  #32768,%d3
-        sub.l   %d2,%d3                  | denom
         sub.l   %d2,%d1                  | p − d
-        lsl.l   #8,%d1
-        lsl.l   #6,%d1
-        divs.l  %d3,%d1
+        move.l  sy_wrrc+8(%pc),%d0
+        mulu.l  %d0,%d1
+        lsr.l   #8,%d1
+        lsr.l   #8,%d1
         addi.l  #16384,%d1
 sy_wr_saw:
         move.l  #16384,%d0
@@ -1484,7 +1522,7 @@ sy_wr_done:
         move.l  (%sp)+,%d0
         rts
 
-| ---- DPW saw (MMOR): d6=φ, d1=Δφ, a4=&z1 → d2 Q14. Parks d3/d7. ----------
+| ---- DPW saw (MMOR): d6=φ, a4=&z1, sy_dpwrc = dt → d2 Q14. Parks d3/d7. --
 | Continuous — required for FM. 2× + invert = sine-aligned fundamental.
 sy_dpw:
         move.l  %d3,-(%sp)
@@ -1499,25 +1537,23 @@ sy_dpw:
         move.l  (%a4),%d3
         move.l  %d7,(%a4)
         sub.l   %d3,%d7                  | diff
-        move.l  %d1,%d3
-        lsr.l   #8,%d3
-        lsr.l   #8,%d3                   | dt Q16
-        bne     sy_dpw_dt
-        moveq   #1,%d3
-sy_dpw_dt:
-        move.l  %d7,%d2
-        asl.l   #8,%d2
-        asl.l   #6,%d2                   | * 16384
-        divs.l  %d3,%d2
-        neg.l   %d2
-        addi.l  #16384,%d2
-        cmpi.l  #16384,%d2
-        ble     sy_dpw_hi
+        | out = 16384 − diff * 16384 / dt, clamped to ±16384:
+        | diff <= 0 → +16384, diff >= 2 dt → −16384
         move.l  #16384,%d2
-sy_dpw_hi:
-        cmpi.l  #-16384,%d2
-        bge     sy_dpw_lo
-        move.l  #-16384,%d2
+        tst.l   %d7
+        ble     sy_dpw_lo
+        move.l  sy_dpwrc(%pc),%d3        | dt (sy_mono sets it from Δφm)
+        add.l   %d3,%d3                  | 2 dt
+        cmp.l   %d3,%d7
+        bcs     sy_dpw_mul
+        neg.l   %d2
+        bra     sy_dpw_lo
+sy_dpw_mul:
+        move.l  sy_dpwrc+4(%pc),%d3
+        mulu.l  %d3,%d7                  | diff < 2 dt: under 2^31
+        lsr.l   #8,%d7
+        lsr.l   #8,%d7
+        sub.l   %d7,%d2
 sy_dpw_lo:
         move.l  (%sp)+,%d7
         move.l  (%sp)+,%d3
@@ -1628,10 +1664,30 @@ sy_dpp_out:
         move.l  (%sp)+,%d3
         rts
 
+| ---- DPW pulse state only: d6=φ, d2=PWM_Q8, a3. The z1 and S_DUTY that ----
+| sy_dpw_pulse leaves, without the shifted saw. Clobbers d0/d2.
+sy_dpw_track:
+        move.l  %d3,-(%sp)
+        bsr     sy_wduty                 | d2 = eff_q8
+        lsl.l   #8,%d2
+        lsl.l   #8,%d2
+        lsl.l   #1,%d2                   | duty phase
+        move.l  %d2,S_DUTY(%a3)
+        add.l   %d6,%d2                  | φ + duty
+        lsr.l   #8,%d2
+        lsr.l   #8,%d2                   | p Q16
+        move.l  %d2,%d3
+        mulu.l  %d2,%d3
+        lsr.l   #8,%d3
+        lsr.l   #8,%d3                   | p² Q16
+        move.l  %d3,S_DPWC(%a3)
+        move.l  (%sp)+,%d3
+        rts
+
 | ---- sine→saw→square: d4=sine, d1=saw, d0=square, d2=amt 0..127 → d4. ----
 | 0 = sine, 64 = saw, 127 = square. Both halves LINEAR in /63 so the
 | mid landmark is not a plateau (t² sine→saw stalled ~60 then pulse
-| hard-switched at 64 — unit steppy 60..70 on MMOR). Parks d3/d6/d7.
+| hard-switched at 64 — unit steppy 60..70 on MMOR). Parks d3; clobbers d1/d2.
 sy_wshape:
         tstl    %d2
         beq     sy_ws_done
@@ -1640,41 +1696,32 @@ sy_wshape:
         cmpi.l  #64,%d2
         beq     sy_ws_saw
         move.l  %d3,-(%sp)
-        move.l  %d6,-(%sp)
-        move.l  %d7,-(%sp)
         cmpi.l  #64,%d2
         bge     sy_ws_hi
         | ---- sine→saw: t = amt*127/63 ----
-        move.l  %d2,%d3
-        moveq   #127,%d6
-        muls.l  %d6,%d3
-        moveq   #63,%d6
-        divs.l  %d6,%d3                  | t
-        move.l  %d1,%d2
-        sub.l   %d4,%d2                  | saw − sine
-        muls.l  %d3,%d2
-        moveq   #127,%d6
-        divs.l  %d6,%d2
-        add.l   %d2,%d4
-        bra     sy_ws_out
+        move.l  %d1,%d3
+        sub.l   %d4,%d3                  | saw − sine
+        bra     sy_ws_mix
 sy_ws_hi:
         | ---- saw→square: t = (amt-64)*127/63  (linear → full at 127) ----
         subi.l  #64,%d2                  | 1..62 for amt 65..126
-        move.l  %d2,%d3
-        moveq   #127,%d6
-        muls.l  %d6,%d3
-        moveq   #63,%d6
-        divs.l  %d6,%d3                  | t
         move.l  %d1,%d4                  | start at saw
-        move.l  %d0,%d2
-        sub.l   %d1,%d2                  | square − saw
-        muls.l  %d3,%d2
-        moveq   #127,%d6
-        divs.l  %d6,%d2
-        add.l   %d2,%d4
-sy_ws_out:
-        move.l  (%sp)+,%d7
-        move.l  (%sp)+,%d6
+        move.l  %d0,%d3
+        sub.l   %d1,%d3                  | square − saw
+sy_ws_mix:
+        | t = x*127/63 exactly as (x * 1057021) >> 19 for x < 64; weight
+        | t/127 in Q15 = (t * 33026) >> 7. Within 1 LSB of the two divides.
+        move.l  #1057021,%d1
+        mulu.l  %d1,%d2
+        moveq   #19,%d1
+        lsr.l   %d1,%d2                  | t
+        move.l  #33026,%d1
+        mulu.l  %d1,%d2
+        lsr.l   #7,%d2                   | t/127, Q15
+        muls.l  %d2,%d3
+        moveq   #15,%d1
+        asr.l   %d1,%d3
+        add.l   %d3,%d4
         move.l  (%sp)+,%d3
         rts
 sy_ws_saw:
@@ -6460,6 +6507,10 @@ sy_foldq:                                | 8 tracks x Q18 current FOLD (Q8 plus 
         .fill   8, 4, 0
 sy_foldtarget:                            | 8 tracks x Q18 FOLD target, including the record's low-byte fraction
         .fill   8, 4, 0
+sy_dpwrc:                                 | sy_dpw: dt (0 = empty), 2^30/dt
+        .fill   2, 4, 0
+sy_wrrc:                                  | sy_wramp: d (0 = empty), 2^30/d, 2^30/(32768-d)
+        .fill   3, 4, 0
 po_amp:                                  | (2.20) 8 tracks x 4 bytes: ATK, HOLD, REL as the frame builder wrote them,
         .fill   8 * 4, 1, 0              | 1 once kept (po_amp_snap)
 po_voices:                               | 8 tracks x 4 voices x 64 bytes
