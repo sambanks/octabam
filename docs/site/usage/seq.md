@@ -146,7 +146,7 @@ chord shape and inversion. **JUMP** is not used for MIDI ARP destinations.
 
 | **PHRS** | Pitch order |
 |---|---|
-| **RAND** | Choose a random direction for each move through the in-scale pitches. **JUMP** controls the maximum scale-degree move between hits. At **JUMP** 0, each move is one scale degree; higher values allow wider moves, up to the full **DPTH** range at **JUMP** 127. At a **DPTH** edge, the walk reflects into the range. This is the default. Filling again rerolls the sequence without changing the controls. |
+| **RAND** | Choose a random direction for each move through the in-scale pitches. **JUMP** controls the maximum scale-degree move between hits. At **JUMP** 0, each move is one scale degree; higher values allow wider moves, up to the full **DPTH** range at **JUMP** 127. At a **DPTH** edge, the walk reflects into the range. If that would repeat the previous pitch, RAND moves one scale degree toward the edge. This is the default. Filling again rerolls the sequence without changing the controls. |
 | **UP** | Start at the Part pitch and move upward through the in-scale pitches. Wrap to the bottom of the **DPTH** span. |
 | **DOWN** | Start at the Part pitch and move downward through the in-scale pitches. Wrap to the top of the **DPTH** span. |
 | **ALT** | Rise from the lowest pitch to the highest, then descend without repeating the peak. |
@@ -171,8 +171,9 @@ RAND chooses a starting in-scale pitch at random from the **DPTH** range, then
 makes random moves within a maximum scale-degree distance set by **JUMP**.
 At **JUMP** 0, each move is one scale degree. Higher **JUMP** values allow
 wider moves, up to the full **DPTH** range at **JUMP** 127. At either edge,
-the walk reflects into the range instead of wrapping. Refilling chooses a
-new starting pitch and move sequence.
+the walk reflects into the range instead of wrapping. If a reflected move
+would repeat the previous pitch, RAND moves one scale degree toward that edge.
+Refilling chooses a new starting pitch and move sequence.
 
 ![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.png)
 

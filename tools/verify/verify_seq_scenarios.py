@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SEQ port scenarios from docs/site/usage/seq.md (MenuPort, MKII).
+"""SEQ port scenarios from docs/site/usage/seq.md (MenuPort, MKI and MKII).
 
 Primes track bank/plock state, presses YES / FUNC+BANK / CUE, checks pattern
 bytes. Requires out/mainos_bus.bin + ot_emu (REMIX with SEQ, e.g. cx).
@@ -431,6 +431,7 @@ def run_scenarios() -> int:
                             // 127)
             check(f"sample audio RAND JUMP {jump_value} bounds random step size",
                   len(ranks) == 16
+                  and all(a != b for a, b in zip(ranks, ranks[1:]))
                   and all(abs(b - a) <= max_step
                           for a, b in zip(ranks, ranks[1:]))
                   and (jump_value != 0
@@ -1131,6 +1132,7 @@ def run_scenarios() -> int:
             max_step = 1 + (jump_value * (len(c_major_range) - 2) // 127)
             check(f"MIDI RAND JUMP {jump_value} bounds random step size",
                   len(ranks) == 16
+                  and all(a != b for a, b in zip(ranks, ranks[1:]))
                   and all(abs(b - a) <= max_step
                           for a, b in zip(ranks, ranks[1:]))
                   and (jump_value != 0
@@ -1338,11 +1340,48 @@ def run_scenarios() -> int:
             check(f"MIDI CUE trigs reach battery mirror at DPTH {depth}",
                   port.peek(mirror, 8) == port.peek(midi_record, 8))
 
+    run_mki_midikey()
     run_fx_destinations()
     run_fx_store_bounds()
     run_fx_descriptor_matrix(remix.name)
     print(f"SEQ scenarios: {FAILS} failed checks")
     return FAILS
+
+
+def run_mki_midikey() -> None:
+    """Exercise ef_midikey's MKI key-table route while SEQ is open."""
+    with MenuPort(IMAGE, CARD, "OCTABAM", "A", mkii=False) as port:
+        port.settle()
+        for _ in range(3):
+            port.press("no", settle=80)
+        check("MKI panel reports the MKI key table",
+              port.long(0x46C8D18C) == 0,
+              f"MKII_FLAG={port.long(0x46C8D18C)}")
+        s = SeqPort(port)
+        s.open_seq("t1")
+        check("SEQ opens on T1 on MKI", port.long(s.ef) != 0)
+        poke32(port, s.dest, 16)
+        poke32(port, s.depth, 11)
+        poke8(port, s.dep + 16, 11)
+        midi_bank = sym("ef_midi_bank")
+        midi_dep = sym("ef_midi_dep_mem")
+        poke32(port, midi_bank + 8, 20)
+        poke32(port, midi_bank + 0xC, 4)
+        poke8(port, midi_dep + 20, 4)
+        port.press("midi", settle=500)
+        check("MKI [MIDI] press switches open SEQ to MIDI settings",
+              port.long(0x80000012) != 0
+              and port.long(local_sym("ef_tone_midi")) == 1
+              and port.long(s.dest) == 20 and port.long(s.depth) == 4,
+              f"mode={port.long(0x80000012)} latch={port.long(local_sym('ef_tone_midi'))} "
+              f"dest={port.long(s.dest)} depth={port.long(s.depth)}")
+        port.press("midi", settle=500)
+        check("MKI [MIDI] press switches open SEQ back to audio settings",
+              port.long(0x80000012) == 0
+              and port.long(local_sym("ef_tone_midi")) == 0
+              and port.long(s.dest) == 16 and port.long(s.depth) == 11,
+              f"mode={port.long(0x80000012)} latch={port.long(local_sym('ef_tone_midi'))} "
+              f"dest={port.long(s.dest)} depth={port.long(s.depth)}")
 
 
 def run_fx_destinations() -> None:

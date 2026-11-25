@@ -180,8 +180,10 @@ Both wrap at the **DPTH** boundary. ALT moves up and down in alternation; TRI
 repeats a short up-and-down contour. RAND chooses a random direction for each
 step, with JUMP controlling the maximum scale-degree move. At JUMP 0, moves
 are one scale degree. Higher values allow wider moves, up to the full **DPTH**
-range at JUMP 127. At a **DPTH** edge the walk reflects into the range. RAND is the first PHRS option
-and the default for new settings. Older saved phrase values migrate without
+range at JUMP 127. At a **DPTH** edge the walk reflects into the range. If a
+reflected move would repeat the previous pitch, RAND moves one scale degree
+toward that edge. RAND is the first PHRS option and the default for new
+settings. Older saved phrase values migrate without
 changing their selected mode. Filling again rerolls RAND without changing
 the controls. Audio C and F are empty and inactive.
 On MIDI, **VOIC** selects one to four notes and

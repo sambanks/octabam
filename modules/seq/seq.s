@@ -3304,7 +3304,8 @@ epr_rand_next:
         negl    %d0
 epr_rand_dir:
         movel   %d0,%d1                | keep the requested signed interval
-        addl    ef_rand_rank,%d0
+        movel   ef_rand_rank,%d3
+        addl    %d3,%d0
         tstl    %d0
         bpl.s   epr_rand_high
         negl    %d0                    | reflect at the low DEPTH edge
@@ -3318,6 +3319,17 @@ epr_rand_high:
         subl    %d0,%d5                | reflect at the high DEPTH edge
         movel   %d5,%d0
 epr_rand_store:
+        cmpl    %d3,%d0
+        bne.s   epr_rand_save
+        | A reflected step can land on its starting rank. Keep the walk
+        | moving toward the edge by one scale degree instead.
+        tstl    %d1
+        bmi.s   epr_rand_repeat_down
+        addql   #1,%d0
+        bra.s   epr_rand_save
+epr_rand_repeat_down:
+        subql   #1,%d0
+epr_rand_save:
         movel   %d0,ef_rand_rank
         rts
 epr_rand_single:
