@@ -17,6 +17,7 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 
 | remix | contains |
 |---|---|
+| [`midi`](midi/README.md) | OCTABAM with Harmony, Follow and Loopback; SCALES and Chords Factory remain available. |
 | [`octabam`](octabam/README.md) | The core ColdFire modules, SCOPE and TUNER, every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain. |
 | [`octabam-verbs`](octabam-verbs/README.md) | octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand, with VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words. |
 

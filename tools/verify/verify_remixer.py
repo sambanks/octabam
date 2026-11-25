@@ -28,6 +28,7 @@ except ImportError:
 from remix import app as A, registry  # noqa: E402
 
 A.RemixerScreen.ensure_sync = lambda self, probs=None: None     # no image builds
+A.RemixerScreen.measure_all = lambda self: None  # library cost worker also builds into out/
 
 
 async def run():
@@ -49,6 +50,19 @@ async def run():
                     await pilot.pause()
             except Exception as e:                      # noqa: BLE001
                 fails.append(f"{name}: drawing raised {type(e).__name__}: {e}")
+        # The full remix uses SCALES. Selecting a second KEY provider must
+        # report the same refusal in the candidate preview and the loaded set.
+        app.state.load("midi")
+        refusal = "only one selected adapter"
+        if refusal not in scr._mod_verdicts(app.state).get("MIDI SCALES", ""):
+            fails.append("MIDI SCALES candidate did not report the duplicate provider")
+        app.state.toggle("MIDI SCALES")
+        if not any(refusal in p for p in app.state.problems()):
+            fails.append("selected MIDI SCALES did not report the duplicate provider")
+        for pane in (A.AVAILABLE, A.LOADED, A.UNIT):
+            scr.pane, scr.cur = pane, [0, 0, 0]
+            scr.rerender()
+            await pilot.pause()
         app.state.load("mods")
         scr.pane, scr.cur = A.AVAILABLE, [3, 0, 0]
         await pilot.press("k")

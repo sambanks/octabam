@@ -317,7 +317,12 @@ class State:
         not a reimplementation. The rest are the two rules a remix has to
         satisfy that the ledger does not speak to.
         """
-        out = list(ledger.check(self.selected))
+        try:
+            out = list(ledger.check(self.selected))
+        except ValueError as exc:
+            # A selection callback can reject an unsupported composition
+            # before it has claims for the ledger. Keep that refusal visible.
+            out = [str(exc)]
         if not self.menu_modules:
             out.append("no module with a menu entry: nothing would be "
                        "selectable on the panel")

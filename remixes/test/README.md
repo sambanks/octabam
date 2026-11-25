@@ -43,6 +43,9 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`fet76`](fet76/README.md) | FET76 (modelled on the UREI 1176LN FET limiter) on FX1 and FX2, beside the stock effects but CHORUS, SPATIALIZER, PLATE REV and SPRING REV. |
 | [`frame-guard`](frame-guard/README.md) | Stock effects with a late frame interrupt held out of the DSP's stall window. |
 | [`free-loop`](free-loop/README.md) | stock effects with FREE LOOP: a loop pedal per track, the first free loop sets the tempo. |
+| [`harmony-follow-native-review`](harmony-follow-native-review/README.md) | Harmony native-KEY control composition for the EVENTS/STORE migration. |
+| [`harmony-scales-catalogue`](harmony-scales-catalogue/README.md) | Harmony and Factory with all SCALES choices and no Follow. |
+| [`harmony-scales-provider`](harmony-scales-provider/README.md) | Harmony native-KEY control composition for the EVENTS/STORE migration. |
 | [`hooks`](hooks/README.md) | REC THRESHOLD and FREE LOOP together (HOOKS bridges the status icons) with STORE and the stock effects. |
 | [`hooks-boot`](hooks-boot/README.md) | BOOT TRACE beside STORE and MIDI LOOPBACK: HOOKS runs both at the boot's post-loader call. |
 | [`hooks-chrom-303`](hooks-chrom-303/README.md) | OCTA303 (the OCTA-303 machine) beside SCALE QUANTIZER: HOOKS gives a 303 track's CHROMATIC keys to OCTA303 and every other track's to SCALE QUANTIZER. |
@@ -63,8 +66,12 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`lofi-amf-fix`](lofi-amf-fix/README.md) | Reference minimal build: the LO-FI AMF mpysu->mpyuu fix, alone. |
 | [`lofi2`](lofi2/README.md) | LOFI2 beside the stock effects (all but PLATE REV and SPRING REV, whose words it takes). |
 | [`machines`](machines/README.md) | DRUMMER and ANALOG BD in one image: MACHINES gives the track's machine list seven rows, DRUMMER on row 5 and ANALOG BD on row 6, and the list scrolls. |
+| [`midi-chords`](midi-chords/README.md) | Harmony, Follow, Scales and Loopback together with all stock effects. |
+| [`midi-chords-scales`](midi-chords-scales/README.md) | Factory, Harmony and Follow with the SCALES catalogue. |
 | [`midi-follow`](midi-follow/README.md) | Per-track RFOL source selection on MIDI NOTE SETUP; Part-owned bass following. |
 | [`midi-follow-events`](midi-follow-events/README.md) | MIDI Follow with EUCLID and PLOCKS P2 sharing EVENTS notifications. |
+| [`midi-harmony`](midi-harmony/README.md) | Scale-degree notes, chords and accumulator with native KEY; no Follow. |
+| [`midi-harmony-follow`](midi-harmony-follow/README.md) | MIDI Harmony, Scales and Follow control composition without Loopback. |
 | [`midi-loopback`](midi-loopback/README.md) | Stock effects plus the Part-scoped per-track MIDI loopback routing. |
 | [`midi-loopback-scenes`](midi-loopback-scenes/README.md) | Stock effects plus MIDI Loopback, MIDI Scenes and their bridge: scene CCs follow each track's DEST. |
 | [`midi-scales`](midi-scales/README.md) | All twelve keys and seven modes in the native ARP SETUP KEY control. |

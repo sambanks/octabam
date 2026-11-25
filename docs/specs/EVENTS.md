@@ -20,7 +20,7 @@ Selection determines which sites are installed. The address-load sites
 | Held knob push | Entry `0x4005040c` (the trig-held layer's keys `0x38..0x3d`, press and release); unclaimed pushes replay its prologue and continue at `0x40050414` |
 | Held scene | Stock's scene knob handlers, installed over every encoder while a scene key is held (`0x46c7dede + 20 * encoder`): SCENE A's entry `0x40053498`, SCENE B's `0x40052e98`; unclaimed turns replay the prologue and continue at `0x400534a0` / `0x40052ea0` |
 | Steps | Stock's routines that move or clear a step's page-1 locks (`docs/firmware/STEP_LOCKS.md` section 4): a trig taken off `0x4006036e` (after its `d3 = a5 + d6·16`), clear the held steps' locks `0x40040e14`, clear a track `0x40039df4`, trig copy `0x4002bf38`, trig paste `0x4002cb52` (before the step's lock copy); each replays what it displaced and goes on (`0x40060374`, `0x40040e1c`, `0x40039dfc`, `0x4002bf40`, `0x4002cb58`) |
-| Copy | The 22 call/address-load sites listed in `manifest.py` target native memcpy `0x40020898`; callbacks finish before entering it with the original frame |
+| Copy | The 22 call/address-load sites listed in `manifest.py` target native memcpy `0x40020898`; pre callbacks run before the native copy; optional post callbacks run after it |
 
 These addresses and instructions are observed; the event names describe their
 roles, not firmware symbols. Native-code tests check transport writes, MIDI
@@ -45,9 +45,12 @@ save/return guarantee for client data; no such round trip is claimed here.
 ```python
 CLIENTS = {
     'transport': (('EUCLID', 'eu_seq', ('start', 'resume')),
-                  ('MIDI FOLLOW', 'bf_seq', ('start', 'resume'))),
-    'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),),
-    'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre')),
+                  ('MIDI FOLLOW', 'bf_seq', ('start', 'resume')),
+                  ('MIDI HARMONY', 'mh_seq', ('start', 'resume'))),
+    'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),
+             ('MIDI HARMONY', 'mh_seq', ('note_accepted',))),
+    'edit': (('MIDI HARMONY', 'mh_ed', ('held', 'copy_pre', 'copy_post')),
+             ('PLOCKS P2', 'plk_ed', ('held', 'copy_pre', 'held_press')),
              (LOCKS_KEY, 'pg', ('held', 'scene_held', 'copy_pre', 'steps'))),
 }
 ```
@@ -71,6 +74,7 @@ Missing callback implementations fail linking.
 | `edit.scene_held` | First owner: `<prefix>_scene_claim(d0=encoder, d1=delta)` returns zero to pass or nonzero to select `<prefix>_scene_handle` with the original native entry frame; SCENES P2 detours SCENE A's entry privately, so the two cannot share a remix until it registers here |
 | `edit.steps` | Notify all: d0 = op, d1-d5 its arguments; 0 TRIG_CLEAR (step, the UI's bank, pattern and track), 1 LOCKS_CLEAR (pattern, track, page, mask), 2 TRACK_CLEAR (pattern, track, flags), 3 TRIG_COPY (clip, pattern, track, page, mask), 4 TRIG_PASTE (clip, pattern, track, source record, destination step); before the stock routine goes on. PLOCKS P2 detours the same five sites privately, so the two cannot share a remix until it registers here |
 | `edit.copy_pre` | Notify all: d0 = destination, d1 = source, d2 = length; before exactly one native copy with its original arguments |
+| `edit.copy_post` | Same arguments, after native memcpy; native return registers and CCR survive the callbacks |
 
 Notification symbols are `<prefix>_<event>` (for example `eu_seq_start` or
 `observer_note_accepted`). Family names describe contracts; there is no runtime
@@ -97,5 +101,8 @@ handler receives the untouched native function frame. No match falls through
 to the native editor exactly once. New editors must define their context and
 test overlap with existing owners. Neither predicates nor handlers may re-enter
 held dispatch. Copy observers own their side data and filter addresses/lengths
-themselves; native memcpy runs once after all observers. Trig clear/paste hooks
+themselves; native memcpy runs once between pre and post observers. With no
+post subscriber, the original native tail call remains. With post subscribers,
+the wrapper copies the three stack arguments for the native call, then restores
+its output registers and CCR after dispatch. Trig clear/paste hooks
 remain feature-owned. Persistence remains STORE's responsibility.

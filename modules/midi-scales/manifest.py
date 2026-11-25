@@ -14,7 +14,7 @@ MODULE = dataclasses.replace(
     MODULE, author_url='https://github.com/radiohagen/octatrack-modules',
     linked=tuple(dataclasses.replace(
         unit, reference=(lambda modules: None if
-                         {'MIDI FOLLOW', 'MIDI HARMONY'} & set(modules)
+                         {'MIDI FOLLOW', 'MIDI HARMONY', 'CHORDS FACTORY'} & set(modules)
                          else _REFERENCE),
         include=unit.include,
     ) for unit in MODULE.linked),

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pinned MIDI Scenes producers obey Loopback without changing Scenes or USB."""
+"""Explicit MIDI Scenes producers obey Loopback while ordinary USB traffic bypasses it."""
 import hashlib
 import json
 import subprocess
@@ -11,8 +11,6 @@ from unicorn.m68k_const import UC_M68K_REG_D7
 def main():
     raw=subprocess.check_output(['m68k-elf-nm',str(ROOT/'out/platform/runtime/runtime.elf')],text=True)
     syms={f[2]:int(f[0],16) for line in raw.splitlines() if len(f:=line.split())==3}
-    assert syms['scn_pbi']-syms['scn_state']==288
-    assert syms['scn_pp']-syms['scn_state']==292
     m=prepare(0,0)
     def caller(first,last,target):
         lo,hi=syms[first],syms[last]
@@ -20,8 +18,9 @@ def main():
         sites=[lo+i+6 for i in range(len(code)-5) if code[i:i+6]==pattern]
         assert len(sites)==1,(first,sites)
         return sites[0]
-    cc_pc=caller('scn_ccnote','scn_clear',0x40010bc8)
+    cc_pc=caller('scn_ccnote','scn_clear',syms['lb_scenes_send'])
     mix_pc=caller('scn_morph','scn_invalidate',0x4009eec8)
+    assert mix_pc == syms['scn_control_sent']
     for track in range(8):
         for route in range(3):
             for kind in ('sequence','mix-cached','mix-tail'):
@@ -34,7 +33,7 @@ def main():
                     msg=(0xb0,34,70);m.u.mem_write(MSG,bytes(msg))
                     before={reg:0x10203040+i for i,reg in enumerate(REGS)}
                     before[UC_M68K_REG_D7]=track
-                    m.call(0x40010bc8,(3,MSG),regs=before,stop=cc_pc,return_pc=cc_pc)
+                    m.call(syms['lb_scenes_send'],(3,MSG),regs=before,stop=cc_pc,return_pc=cc_pc)
                     assert all(m.u.reg_read(reg)==value for reg,value in before.items())
                 else:
                     msg=(0xb0,34,80)
@@ -51,7 +50,7 @@ def main():
     for parent,bank,part in ((0x40012340,1,2),(cc_pc,255,0),(cc_pc,0,4)):
         m=prepare(0,1);m.put(syms['scn_pbi'],bank);m.put(syms['scn_pp'],part)
         m.u.mem_write(MSG,bytes((0xb0,34,70)))
-        m.call(0x40010bc8,(3,MSG),regs={UC_M68K_REG_D7:0},stop=parent,return_pc=parent)
+        m.call(0x40010bc8 if parent==0x40012340 else syms['lb_scenes_send'],(3,MSG),regs={UC_M68K_REG_D7:0},stop=parent,return_pc=parent)
         outputs(m,[(0xb0,34,70)],0)
     out=ROOT/'out/midi-loopback-scenes';out.mkdir(exist_ok=True)
     (out/'result.json').write_text(json.dumps(dict(

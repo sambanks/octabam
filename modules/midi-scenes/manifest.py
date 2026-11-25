@@ -102,7 +102,9 @@ MODULE = Module(
              "only); MIDISC 2.0 ran on the author's unit as `ok-ms` (14 Sep 2026)"),),
     doc="Scene locks for the MIDI tracks (hold-to-lock, readout, unlock, lock LEDs, XF morph, "
         "scene clear / copy / paste), kept per Part in scenes.work and CS1. Port of bkkbrls-del's midisc project.",
-    linked=(Linked("scenes", "modules/midi-scenes/scenes.s", dram=True),),
+    linked=(Linked("scenes", "modules/midi-scenes/scenes.s", dram=True,
+                          include=lambda modules, remix=None: '.set SCN_MIDI_TX,' +
+                          ('lb_scenes_send' if 'MIDI LOOPBACK' in modules else '0x40010bc8') + '\n'),),
     detours=DETOURS,
     pokes=POKES,
     requires=("STORE",),

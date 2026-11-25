@@ -99,3 +99,12 @@ prevents selecting both at once and shows a warning message.
 ??? note "Full list of features and authors"
 
     --8<-- "reference/_remix-octabam.md"
+
+## Collected MIDI package
+
+The **midi** remix inherits the full OCTABAM configuration and adds Harmony and
+Follow. Factory's absolute CHORDS and Harmony's degree-based CHORD
+PLAY share the trig-mode menu. Use Factory on HARM OFF tracks; use Harmony for
+progressions that follow KEY. SCALES keeps all 52 choices on other tracks, while
+Harmony requires one of its seven diatonic modes. MIDI Scenes follows Loopback's
+EXT/INT/BOTH routes. This combined package is not yet hardware-qualified.
