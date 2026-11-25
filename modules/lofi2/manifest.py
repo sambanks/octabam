@@ -55,7 +55,7 @@ SHIFT follows the Bode 1630 (2 Hz / 31.25 Hz, six octaves to 2 kHz).
 import math
 
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, ModeView, Module, Param, Evidence, Level, YBase)
+                          Kind, Linked, MenuEntry, ModeView, Module, Param, Evidence, Level, YBase)
 
 
 def _srr_inc(k):
@@ -108,6 +108,7 @@ LPF_C = tuple(_lpf_c(k) for k in range(129))
 _PLAIN = Formatter.PLAIN
 _BIP = Formatter.BIPOLAR
 _STEP = Formatter.STEPPED
+_KN = "lofi2_knob"                 # func_stops.s: the knob handlers (P+0x12a)
 
 MODULE = Module(
     name="lofi2",
@@ -154,7 +155,10 @@ MODULE = Module(
         # ---- page 1, bottom row -------------------------------------------
         Param(b"SRR", 0, active=True, formatter=_PLAIN,
               doc="sample-rate reduction, continuous; 0 is off"),
-        Param(b"BRR", 0, active=True, formatter=_PLAIN,
+        # FUNC + turn walks stops (func_stops.s): 24 16 12 10 8 6 4 bits, max.
+        # A raw handler word takes no `formatter`; A and B zero are PLAIN's.
+        Param(b"BRR", 0, active=True,
+              formatter_word=0, widget_word=0, word_12a=(_KN, "lf_knob_brr"),
               doc="bit-depth reduction; 0 is full depth"),
         # Our own first-order high shelf, LAST in the chain so it tames
         # everything the module does: -12 dB above a corner swept from 100 Hz
@@ -177,7 +181,10 @@ MODULE = Module(
               doc="RING modulator, or frequency shift DOWN or UP; ring and shift are exclusive"),
         Param(),
         # Bipolar: the knob's centre (64) is 0 degrees.
-        Param(b"AMPH", 64, 128, active=True, formatter=_BIP,
+        # BIPOLAR's A and B (SPRING BAL's dial), our handler in place of
+        # 0x400328e4: FUNC + turn walks -90 -45 0 +45 +88.6 deg.
+        Param(b"AMPH", 64, 128, active=True,
+              formatter_word=0x4003c7a0, widget_word=0, word_12a=(_KN, "lf_knob_amph"),
               doc="RING only: L/R carrier phase, -90 to +88.6 deg; 0 none, positive puts R ahead"),
         Param(),
     ),
@@ -213,6 +220,8 @@ MODULE = Module(
     # now, and "L" is stock LO-FI's (tools/remix/stock.py).
     harness=Harness(layout_char="F", is_server=False),
     gates=(Gate("tools/verify/verify_lofi2.py", remix_arg=False),),
+    # ColdFire: FUNC + turn walks per-knob stops (P+0x12a handlers).
+    linked=(Linked(_KN, "modules/lofi2/func_stops.s"),),
     # Dearest: a SHIFT mode (the two Hilbert pairs, the dear loop), every
     # continuous knob at the end that does the most work, the shelf in band.
     dear={"FREQ": 127, "MIX": 127, "FDBK": 127, "SRR": 127, "BRR": 127,
