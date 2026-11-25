@@ -1263,7 +1263,8 @@ sy_car_ok:
 sy_mix_done:
         | ---- FOLD (RTRG) + SYMM (SETUP D): half-wave skew into the folder ----
         | c_fold = c * gain/64; gain = SYMM (c>=0) or (128-SYMM) (c<0).
-        | 64 = even. drive = 256 + (FOLD_Q8*24)>>8. out = c + (folded-c)*FOLD_Q8/32768.
+        | 64 = even. drive in Q16 = 65536 + FOLD_Q8*24.
+        | out = c + (folded-c)*FOLD_Q8/32768.
         | Q18 accumulator -> Q8 folder control. The /4096 one-pole keeps ten
         | guard bits so small FOLD changes continue moving instead of freezing
         | in the Q8 quantization dead zone. A frame-aligned trig cannot add a step.
@@ -1289,12 +1290,11 @@ sy_mix_done:
         beq     sy_nofold
         move.l  %d1,-(%sp)               | park c (unbiased dry)
         move.l  %d2,-(%sp)               | park FOLD Q8
-        move.l  %d2,%d4                  | (fold_q8*24)>>8 = fold*24
+        move.l  %d2,%d4                  | retain fractional drive through the phase multiply
         lsl.l   #4,%d4
         lsl.l   #3,%d2
         add.l   %d2,%d4
-        asr.l   #8,%d4
-        addi.l  #256,%d4                 | drive_q8
+        addi.l  #65536,%d4               | drive Q16
         move.l  4(%sp),%d1               | c
         move.l  20(%sp),%d2              | SYMM (under the two parks; was at 12)
         mvz.b   %d2,%d2                  | SYMM 0..127
@@ -1308,8 +1308,7 @@ sy_skew_lo:
         muls.l  %d2,%d1                  | −half: c * (128−SYMM)
 sy_skew_div:
         asr.l   #6,%d1                   | / 64 -> c_fold
-        muls.l  %d4,%d1                  | c_fold * drive_q8
-        asl.l   #8,%d1
+        muls.l  %d4,%d1                  | c_fold * drive Q16, modulo one turn
         move.l  %d1,%d2
         lsr.l   %d3,%d2
         add.l   %d2,%d2
