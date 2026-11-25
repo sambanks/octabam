@@ -892,6 +892,7 @@ def run_scenarios() -> int:
         midi_lane = sym("ef_midi_lane_mem")
         poke32(port, sym("ef_dest"), 16)
         poke32(port, sym("ef_depth"), 11)
+        poke8(port, s.dep + 16, 11)  # audio T1 DEST 16 saved depth
         poke32(port, midi_bank, 3)
         poke32(port, midi_bank + 4, 0)
         poke32(port, midi_bank + 8, 20)  # CTRL1 CC1 flat
