@@ -422,7 +422,12 @@ namespace ot
 
 		void setProfile(uint32_t _every) { m_profileEvery = _every; }
 		const std::unordered_map<uint32_t, uint64_t>& profile() const { return m_profile; }
-		void clearProfile() { m_profile.clear(); }
+		void clearProfile() { m_profile.clear(); m_profileLevel.clear(); }
+		// OT_PROFILE_LEVELS: each profile sample also counted under its SR interrupt
+		// mask (SR[10:8]), keyed (mask << 32) | pc. Off unless set; the plain
+		// profile is the same either way.
+		void setProfileLevels(bool _on) { m_profileLevels = _on; }
+		const std::unordered_map<uint64_t, uint64_t>& profileLevel() const { return m_profileLevel; }
 		// Registers a borrowed call needs: main's stack pointer to push the
 		// frame onto, and D0 for the return value.
 		uint32_t getA7() const;
@@ -631,6 +636,14 @@ namespace ot
 		std::vector<PcHit> m_pcHits;
 		uint32_t m_profileEvery = 0;
 		std::unordered_map<uint32_t, uint64_t> m_profile;
+		bool m_profileLevels = false;
+		std::unordered_map<uint64_t, uint64_t> m_profileLevel;
+		void profileSample(uint32_t _pc)
+		{
+			++m_profile[_pc];
+			if(m_profileLevels)
+				++m_profileLevel[(static_cast<uint64_t>((sr() >> 8) & 7) << 32) | _pc];
+		}
 		std::string m_why;
 		bool m_illegal = false;
 
