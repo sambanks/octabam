@@ -1308,6 +1308,19 @@ hollow line at **h=10** (not h=11, not a fill). Documented in
 `modules/cxosc/page.s` (header + `pg_ic_fdbk` / `pg_ic_decay`) and
 `modules/cxosc/README.md`.
 
+<a id="trap-displaced-instruction-resume"></a>
+### A detour must resume before every displaced instruction it still needs
+
+CX OSC's frame-builder detour at `0x4000d514` replaced the stock `movea.l
+(%a4),%a0` and resumed at `0x4000d51e`. That skipped the following stock
+`mvz.b (%a2),%d0`, which reloads the current START nibble before the second
+FLEX render call. The first render used the normalized START, while the second
+used stale `d0` from the original subframe offset; the packed frame then ended
+with that many silent samples. The audible result was a short dropout/click
+while turning FOLD with decay at infinity. Resume at `0x4000d51c` so the stock
+reload and subsequent offset calculation both run. `verify_cxosc` invokes the
+linked detour with stale `d0` and checks the stock continuation computes zero.
+
 <a name="trap-movem-sp"></a>
 
 ### `moveml %sp@` is the mode-2 form: it stores at sp and leaves sp unchanged
