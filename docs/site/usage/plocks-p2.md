@@ -6,8 +6,10 @@ A step can carry locks for both FX pages.
 ## Create and remove a lock
 
 Open the FX1 or FX2 SETUP page, hold one or more trigs and turn a knob:
-each held step gets that slot's page-2 lock. Hold FUNC while turning to
-remove it. The trig plays the lock, and the next trig puts the Part's
+each held step gets that slot's page-2 lock. To remove it, hold the trig
+and press the knob, or hold FUNC while turning. Pressing the knob of an
+unlocked slot locks it to the Part's value. The page-1 locks behind the
+window are not touched. The trig plays the lock, and the next trig puts the Part's
 value back — the same as page 1.
 
 After the same short hold delay as page 1, the lock's value stays on the
