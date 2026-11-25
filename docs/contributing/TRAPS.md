@@ -1888,3 +1888,19 @@ machine, and sample locks point elsewhere again. Check voice +4 before reading
 anything downstream of a voice, and put a sample behind every slot the track can
 reach. `--watch-mem`'s PC found this in one run after reading had not.
 **Gate:** `verify_usbmidi_tracks` with OT_PROJECT requires repeats on the wire.
+
+<a id="trap-dormant-buffer"></a>
+
+### A dormant stock buffer can sit inside a live one
+
+**STOCK CODE THAT NOTHING CALLS CAN OWN MEMORY THAT LIVE STOCK CODE ALSO
+USES.** USB MIDI brought up 1.40C's dormant USB-MIDI encoder, whose packet
+buffer `0x4ecc8000` and EP2 OUT buffer `0x4ecc9000` sit 64 and 68 KB into the
+mass-storage read buffer (`0x4ecb8000`, linear through a whole READ). Stock
+never ran both at once. With CLOCK SEND on, a clock packet tore the first word
+of about 2 % of the 64 KB blocks a host read in DISK MODE, the file on the card
+intact, a different block on each read (#1256). Before bringing a dormant
+routine into use, list every stock reference into its buffers' neighbourhood
+(the 4 KB pages and the bases near them) and find what else uses that
+memory, and when. Fix: USB MIDI is paused while the medium is the host's.
+**Gate:** `verify_usb_midi_disk`.
