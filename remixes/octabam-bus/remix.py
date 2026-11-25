@@ -19,7 +19,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVEN
         "RECORDER LOOP FIX", "BATCH_BUGFIXES", "ERASE_EMPTY_TRIGLESS_LOCKS",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES", "PATTERN MUTE",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
-        "ATA WRITE GUARD",
+        "ATA WRITE GUARD", "ARR ROW CAP",
         "LOAD METER", "FRAME GUARD", "REMOTE")
 # The ColdFire modules octabam carries beyond CORE (FX2 LOCK is in MODULES below).
 # Added 7 Nov 2026 (each builds beside the rest; not yet soaked here): SCALES and VARISPEED, as in octabam; CHORDS FACTORY with PAGES, the page

@@ -16,6 +16,7 @@
 |   0x4001e606  usb_isr UI path          -> rx_isr_shim (EP2 completions, both directions)
 |   0x40010bc8  midi_send entry          -> send_shim (mirror to encoder)
 |   0x400108b0  priority byte sender     -> prio_shim (realtime to encoder)
+|   0x4001eb44  set the MSC medium       -> medium_shim (pause in DISK MODE)
 |
 | ColdFire ISA notes: moveml has no -(sp)/(sp)+ forms (manual lea adjust,
 | the firmware's own idiom), no ORI to SR (save SR, movew #0x2700, restore),
@@ -32,6 +33,7 @@
 .set QH_EP2OUT_W0,  0x4ec94900      | dQH word 0 (mult/zlt/maxpkt)
 .set QH_EP2IN_W0,   0x4ec94940
 .set PORTSC1,       0xfc0b0184      | port status/control (speed in bits 27:26)
+.set MSC_MEDIUM,    0x460bb422      | nonzero while DISK MODE gives the host the card
 
     .text
     .global usbmidi_setcfg_shim
@@ -60,7 +62,10 @@ usbmidi_setcfg_shim:
     movel   #0x22000000,%d0        | mult 1, max packet 512
     movel   %d0,QH_EP2OUT_W0
     movel   %d0,QH_EP2IN_W0
-1:  bsr     usbmidi_tx_reset        | nothing queued for an old session goes out in this one
+1:  tstl    MSC_MEDIUM
+    beqs    2f
+    bsr     usbmidi_disk_flush      | DISK MODE: take back the RX dTD EP2_INIT primed
+2:  bsr     usbmidi_tx_reset        | nothing queued for an old session goes out in this one
     moveq   #1,%d0
     moveb   %d0,usbmidi_up
     clrb    usbmidi_tx_busy
@@ -129,6 +134,8 @@ usbmidi_tx_append:
 usbmidi_tx_queue:
     tstl    %d0
     jle     9f                      | nothing to queue
+    tstl    MSC_MEDIUM
+    jne     8f                      | DISK MODE: USB MIDI is paused (medium_shim)
     movew   %sr,%d2
     movew   #0x2700,%sr
     cmpil   #255,%d0
@@ -176,6 +183,8 @@ usbmidi_tx_queue:
 6:  addql   #1,usbmidi_tx_drops
     movew   %d2,%sr
 9:  rts
+8:  addql   #1,usbmidi_tx_disk
+    rts
 
 | usbmidi_tx_refill: move whole ring messages into acc while the next one
 | fits. Caller has interrupts masked. Preserves %d1/%d3/%d4; trashes
@@ -231,6 +240,8 @@ usbmidi_tx_reset:
 usbmidi_tx_kick:
     movew   %sr,%d1
     movew   #0x2700,%sr
+    tstl    MSC_MEDIUM
+    bnes    9f                      | DISK MODE: nothing is encoded
     tstb    usbmidi_tx_busy
     bnes    9f
     bsr     usbmidi_tx_refill
@@ -293,7 +304,7 @@ usbmidi_prio_shim:
 
 | ---- data -----------------------------------------------------------------
     .balign 2
-    .global usbmidi_up, usbmidi_tx_busy, usbmidi_tx_drops, usbmidi_tx_reset
+    .global usbmidi_up, usbmidi_tx_busy, usbmidi_tx_drops, usbmidi_tx_disk, usbmidi_tx_reset
     .global usbmidi_tx_append, usbmidi_tx_queue, usbmidi_tx_kick
 usbmidi_up:      .byte 0
 usbmidi_tx_busy: .byte 0
@@ -304,6 +315,7 @@ usbmidi_tx_snd_len: .word 0
 usbmidi_tx_rhead:   .word 0
 usbmidi_tx_rtail:   .word 0
 usbmidi_tx_drops:   .long 0
+usbmidi_tx_disk:    .long 0         | messages not queued while DISK MODE paused USB MIDI
 usbmidi_tx_acc:  .space TX_CAP
 usbmidi_tx_snd:  .space TX_CAP
 usbmidi_tx_ring: .space RING_CAP
@@ -436,6 +448,8 @@ usbmidi_rx_isr_shim:
 1:  movel   %d4,usbmidi_rx_snap     | the decoder trashes d4
     tstb    usbmidi_up
     beqw    9f
+    tstl    MSC_MEDIUM
+    bnew    9f                      | DISK MODE: cleared, not handled, not re-primed
     btst    #2,%d4
     bnes    2f
     | no OUT completion: re-size the dormant init's still-pending 64-byte dTD
@@ -726,3 +740,60 @@ usbmidi_rx_errs:  .long 0
 usbmidi_rx_snap:  .long 0           | ENDPTCOMPLETE's EP2 bits as read by the current usb_isr entry
 usbmidi_rx_clk_t: .long 0           | DTCN0 at the last 0xF8 this decoder stamped
 usbmidi_rx_dropped: .long 0         | USB clock and transport events dropped while DIN clocked
+
+
+| ======================================================================
+| DISK MODE pause (#1256)
+| ======================================================================
+| Stock's dormant USB-MIDI buffers sit inside the mass-storage read buffer:
+| the SCSI worker (0x4001ee30) serves a READ through one linear buffer from
+| 0x4ecb8000, and the encoder's packets (0x4ecc8000) and RX_BUF (0x4ecc9000)
+| are 64 and 68 KB into it. A READ longer than 128 sectors stages card bytes
+| there, and a packet encoded before the DMA sends them replaces them: a
+| clock tick tore the first word of 64 KB blocks read in DISK MODE.
+| So while the medium is the host's (MSC_MEDIUM, set by 0x4001eb44) nothing
+| is queued (usbmidi_tx_disk counts it), nothing is encoded, EP2 completions
+| are not handled and RX is not primed. Entry drops the queue and flushes EP2;
+| exit re-primes RX. Host writes use two 64 KB banks at 0x4ec98000, below both.
+|
+| Displaced: movel %sp@(4),%d0 ; movel %d0,0x460bb422 (the flags of the
+| store are re-made with tstl before the rejoin at 0x4001eb4e, a beqs).
+    .global usbmidi_medium_shim
+usbmidi_medium_shim:
+    movel   %sp@(4),%d0
+    movel   %d0,MSC_MEDIUM          | displaced: the gates read this from here on
+    lea     %sp@(-24),%sp
+    moveml  %d0-%d3/%a0-%a1,%sp@
+    tstb    usbmidi_up
+    beqs    9f                      | no session: nothing to pause or resume
+    movew   %sr,%d3
+    movew   #0x2700,%sr
+    clrb    usbmidi_tx_busy
+    tstl    %d0
+    beqs    5f
+    jsr     usbmidi_tx_reset        | entry: what was queued is dropped
+    movew   %d3,%sr
+    bsr     usbmidi_rx_ep2_flush    | ... and both EP2 directions flushed
+    bras    9f
+5:  mvzb    usbmidi_rx_state,%d0    | exit: RX primed as SET_CONFIGURATION left it
+    beqs    6f
+    bsr     usbmidi_rx_prime        | high speed: 512-byte dTD
+    bras    7f
+6:  pea     RX_BUF                  | full speed: the firmware's own 64-byte prime
+    jsr     EP2_RX_PRIME
+    addql   #4,%sp
+7:  movew   %d3,%sr
+9:  moveml  %sp@,%d0-%d3/%a0-%a1
+    lea     %sp@(24),%sp
+    tstl    %d0                     | the displaced store's flags
+    jmp     0x4001eb4e
+
+| usbmidi_disk_flush: usbmidi_rx_ep2_flush with d0-d3 saved, for callers that
+| keep values there.
+usbmidi_disk_flush:
+    lea     %sp@(-16),%sp
+    moveml  %d0-%d3,%sp@
+    bsr     usbmidi_rx_ep2_flush
+    moveml  %sp@,%d0-%d3
+    lea     %sp@(16),%sp
+    rts
