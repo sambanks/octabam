@@ -18,9 +18,12 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## OCTABAM 82, 25 Nov 2026, octabam remix
 
-- Ilia confirmed on his MKII that SEQ switches between audio and MIDI on the
-  first **[MIDI]** press and stays in sync across repeated presses. He also
-  confirmed the bundled RAND and JUMP changes work.
+- SEQ switches the open window between audio and MIDI on the first **[MIDI]**
+  press and stays in sync across repeated presses. RAND starts at a random
+  in-scale pitch within **DPTH**; **JUMP** controls the maximum scale-degree
+  move. FM, SY and CX PTCH fills now use up to 64 semitones around the Part
+  pitch at **DPTH** 127, so saved non-zero settings sound wider.
+- Ilia confirmed the switching and RAND/JUMP changes work on his MKII.
 - Built as BUILD 82 from `fa3f3e01305fd972004eb6a30366050e4b961fcc`.
 - Artifact SHA-256:
   `a3fb8da5b6bc50787989d1dfa65fc510ff0d20bb662e4181ae5439a89b6f288b`.
