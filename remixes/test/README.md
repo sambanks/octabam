@@ -5,6 +5,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | remix | contains |
 |---|---|
 | [`analog-bassdrum`](analog-bassdrum/README.md) | Analog BD source machine, switchable 808/909, stock AMP and FX. |
+| [`arr-row-cap`](arr-row-cap/README.md) | stock effects with ARR ROW CAP: the arranger's append stops at 256 rows. |
 | [`ata-write-guard`](ata-write-guard/README.md) | Stock effects with the first PIO card write guarded through bookkeeping. |
 | [`bar-led`](bar-led/README.md) | stock effects with BAR LED: the tempo LED flashes green on the pattern's 1 while playing. |
 | [`batch-bugfixes`](batch-bugfixes/README.md) | stock effects with BATCH_BUGFIXES: the MIDI Plays-Free trig, empty-pattern LED and Part-change carryover fixes. |
