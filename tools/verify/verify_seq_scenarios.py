@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SEQ port scenarios from docs/site/usage/seq.md (MenuPort, MKII).
+"""SEQ port scenarios from docs/site/usage/seq.md (MenuPort, MKI and MKII).
 
 Primes track bank/plock state, presses YES / FUNC+BANK / CUE, checks pattern
 bytes. Requires out/mainos_bus.bin + ot_emu (REMIX with SEQ, e.g. cx).
@@ -427,22 +427,67 @@ def run_scenarios() -> int:
             notes = [int((value - 64) / 5) for value in raw if value != 0xFF]
             audio_rand_rolls[jump_value] = notes
             ranks = [sample_scale_offsets.index(note) for note in notes]
-            stride = 1 + jump_value * 3 // 127
-            check(f"sample audio RAND JUMP {jump_value} sets neighboring pitch spacing",
+            max_step = 1 + (jump_value * (len(sample_scale_offsets) - 2)
+                            // 127)
+            check(f"sample audio RAND JUMP {jump_value} bounds random step size",
                   len(ranks) == 16
-                  and all(abs(b - a) == stride
+                  and all(a != b for a, b in zip(ranks, ranks[1:]))
+                  and all(abs(b - a) <= max_step
                           for a, b in zip(ranks, ranks[1:]))
+                  and (jump_value != 0
+                       or all(abs(b - a) == 1
+                              for a, b in zip(ranks, ranks[1:])))
                   and all(-12 <= note <= 12 and on_scale(note, 0, 0x0AB5)
                           for note in notes),
-                  f"notes={notes} ranks={ranks} stride={stride}")
-        check("sample audio RAND retains random direction and JUMP changes spacing",
+                  f"notes={notes} ranks={ranks} max_step={max_step}")
+        check("sample audio RAND JUMP 0 stays adjacent and higher JUMP allows wider moves",
               len({tuple(roll) for roll in audio_rand_rolls.values()}) == 3
-              and all({b - a for a, b in zip(
-                  [sample_scale_offsets.index(n) for n in roll],
-                  [sample_scale_offsets.index(n) for n in roll][1:])}
-                      == {-(1 + jump * 3 // 127), 1 + jump * 3 // 127}
-                      for jump, roll in audio_rand_rolls.items()),
+              and len({roll[0] for roll in audio_rand_rolls.values()}) == 1
+              and max(abs(b - a) for a, b in zip(
+                  [sample_scale_offsets.index(n) for n in audio_rand_rolls[0]],
+                  [sample_scale_offsets.index(n) for n in audio_rand_rolls[0]][1:]))
+                  == 1
+              and max(abs(b - a) for a, b in zip(
+                  [sample_scale_offsets.index(n) for n in audio_rand_rolls[127]],
+                  [sample_scale_offsets.index(n) for n in audio_rand_rolls[127]][1:]))
+                  > 1,
               f"rolls={audio_rand_rolls}")
+        inv_lcg = pow(1664525, -1, 1 << 32)
+        start_rolls = {}
+        for bucket, rank in enumerate((0, 7, 14)):
+            target = (bucket * 0x9E3779B9 + 0x7F4A7C15) & 0xFFFFFFFF
+            first_rng = rank + ((target - rank) // len(sample_scale_offsets)) * len(sample_scale_offsets)
+            seed = ((first_rng - 1013904223) * inv_lcg) & 0xFFFFFFFF
+            poke32(port, local_sym("ef_tone_phrase"), 0)  # RAND
+            poke32(port, local_sym("ef_tone_jump"), 0)
+            poke32(port, local_sym("ef_rng_state"), seed)
+            s.prime(lane=0, dest=LOCK_PTCH, depth=127, pulses=16,
+                    trig_pulses=16)
+            s.yes()
+            start_rolls[rank] = [int((value - 64) / 5)
+                                 for value in locks_of(port, LOCK_PTCH)
+                                 if value != 0xFF]
+        check("sample audio RAND chooses its first note randomly across DEPTH",
+              all(len(roll) == 16 and roll[0] == sample_scale_offsets[rank]
+                  for rank, roll in start_rolls.items()),
+              f"starts={[(rank, roll[0] if roll else None)
+                         for rank, roll in start_rolls.items()]}")
+        edge_rolls = {}
+        for seed in (4, 9):
+            poke32(port, local_sym("ef_tone_phrase"), 0)  # RAND
+            poke32(port, local_sym("ef_tone_jump"), 127)
+            poke32(port, local_sym("ef_rng_state"), seed)
+            s.prime(lane=0, dest=LOCK_PTCH, depth=127, pulses=16,
+                    trig_pulses=16)
+            s.yes()
+            edge_rolls[seed] = [int((value - 64) / 5)
+                                for value in locks_of(port, LOCK_PTCH)
+                                if value != 0xFF]
+        check("sample audio RAND reflects at both DEPTH edges instead of wrapping",
+              len(edge_rolls[4]) == len(edge_rolls[9]) == 16
+              and edge_rolls[4][:2] == [-7, -8]
+              and edge_rolls[9][:2] == [11, 0],
+              f"low-edge={edge_rolls[4][:2]} high-edge={edge_rolls[9][:2]}")
         poke32(port, local_sym("ef_tone_phrase"), 1)  # restore UP for following tests
         poke32(port, local_sym("ef_tone_jump"), 127)
         s.prime(lane=0, dest=LOCK_PTCH, depth=127, pulses=16,
@@ -839,24 +884,47 @@ def run_scenarios() -> int:
               u8(port, UI_TRACK) == 1, f"UI_TRACK={u8(port, UI_TRACK)}")
 
         # --- MIDI-mode note trigs use the MIDI mask and keep audio data ---
-        s.close_seq()
-        port.press("midi", settle=300)
         port.press("t1", settle=300)
+        check("TRACK tap returns the open SEQ to audio T1",
+              u8(port, UI_TRACK) == 0 and port.long(local_sym("ef_tone_midi")) == 0)
         midi_bank = sym("ef_midi_bank")
         midi_dep = sym("ef_midi_dep_mem")
         midi_plk = sym("ef_midi_plk_mem")
         midi_lane = sym("ef_midi_lane_mem")
+        poke32(port, sym("ef_dest"), 16)
+        poke32(port, sym("ef_depth"), 11)
+        poke8(port, s.dep + 16, 11)  # audio T1 DEST 16 saved depth
         poke32(port, midi_bank, 3)
         poke32(port, midi_bank + 4, 0)
         poke32(port, midi_bank + 8, 20)  # CTRL1 CC1 flat
         poke32(port, midi_bank + 0xC, 4)
         poke8(port, midi_dep + 20, 4)
-        s.open_seq("t1")
-        check("MIDI mode opens SEQ on the MIDI track",
-              port.long(0x80000012) != 0 and port.long(s.ef) != 0)
-        poke32(port, local_sym("ef_tone_midi"), 1)
-        poke32(port, sym("ef_dest"), 20)
-        poke32(port, sym("ef_depth"), 4)
+        port.press("midi", settle=500)
+        check("MIDI switches the open SEQ to MIDI T1",
+              port.long(0x80000012) != 0
+              and port.long(local_sym("ef_tone_midi")) == 1
+              and port.long(sym("ef_dest")) == 20
+              and port.long(sym("ef_depth")) == 4,
+              f"mode={port.long(0x80000012)} latch={port.long(local_sym('ef_tone_midi'))} "
+              f"focus={port.long(sym('ef_focus'))} dest={port.long(sym('ef_dest'))} "
+              f"depth={port.long(sym('ef_depth'))}")
+        port.press("midi", settle=500)
+        check("MIDI switches the open SEQ back to audio T1 settings",
+              port.long(0x80000012) == 0
+              and port.long(local_sym("ef_tone_midi")) == 0
+              and port.long(sym("ef_dest")) == 16
+              and port.long(sym("ef_depth")) == 11,
+              f"mode={port.long(0x80000012)} latch={port.long(local_sym('ef_tone_midi'))} "
+              f"focus={port.long(sym('ef_focus'))} dest={port.long(sym('ef_dest'))} "
+              f"depth={port.long(sym('ef_depth'))}")
+        port.press("midi", settle=500)
+        check("MIDI can switch the open SEQ to MIDI T1 again",
+              port.long(local_sym("ef_tone_midi")) == 1
+              and port.long(sym("ef_dest")) == 20
+              and port.long(sym("ef_depth")) == 4,
+              f"mode={port.long(0x80000012)} latch={port.long(local_sym('ef_tone_midi'))} "
+              f"focus={port.long(sym('ef_focus'))} dest={port.long(sym('ef_dest'))} "
+              f"depth={port.long(sym('ef_depth'))}")
         poke32(port, s.lane, 0)
         poke32(port, s.from_cue, 0)
         poke32(port, s.free, 0)
@@ -1061,21 +1129,29 @@ def run_scenarios() -> int:
             notes = [value for value in values if value != 0xFF]
             midi_rand_rolls[jump_value] = notes
             ranks = [c_major_range.index(note) for note in notes]
-            stride = 1 + jump_value * 3 // 127
-            check(f"MIDI RAND JUMP {jump_value} sets neighboring pitch spacing",
+            max_step = 1 + (jump_value * (len(c_major_range) - 2) // 127)
+            check(f"MIDI RAND JUMP {jump_value} bounds random step size",
                   len(ranks) == 16
-                  and all(abs(b - a) == stride
+                  and all(a != b for a, b in zip(ranks, ranks[1:]))
+                  and all(abs(b - a) <= max_step
                           for a, b in zip(ranks, ranks[1:]))
+                  and (jump_value != 0
+                       or all(abs(b - a) == 1
+                              for a, b in zip(ranks, ranks[1:])))
                   and all(48 <= note <= 72 and on_scale(note, 0, 0x0AB5)
                           for note in notes),
-                  f"notes={notes} ranks={ranks} stride={stride}")
-        check("MIDI RAND retains random direction and JUMP changes spacing",
+                  f"notes={notes} ranks={ranks} max_step={max_step}")
+        check("MIDI RAND JUMP 0 stays adjacent and higher JUMP allows wider moves",
               len({tuple(roll) for roll in midi_rand_rolls.values()}) == 3
-              and all({b - a for a, b in zip(
-                  [c_major_range.index(n) for n in roll],
-                  [c_major_range.index(n) for n in roll][1:])}
-                      == {-(1 + jump * 3 // 127), 1 + jump * 3 // 127}
-                      for jump, roll in midi_rand_rolls.items()),
+              and len({roll[0] for roll in midi_rand_rolls.values()}) == 1
+              and max(abs(b - a) for a, b in zip(
+                  [c_major_range.index(n) for n in midi_rand_rolls[0]],
+                  [c_major_range.index(n) for n in midi_rand_rolls[0]][1:]))
+                  == 1
+              and max(abs(b - a) for a, b in zip(
+                  [c_major_range.index(n) for n in midi_rand_rolls[127]],
+                  [c_major_range.index(n) for n in midi_rand_rolls[127]][1:]))
+                  > 1,
               f"rolls={midi_rand_rolls}")
         poke32(port, midi_bank, 3)
         poke32(port, s.pulses, 3)
@@ -1264,11 +1340,48 @@ def run_scenarios() -> int:
             check(f"MIDI CUE trigs reach battery mirror at DPTH {depth}",
                   port.peek(mirror, 8) == port.peek(midi_record, 8))
 
+    run_mki_midikey()
     run_fx_destinations()
     run_fx_store_bounds()
     run_fx_descriptor_matrix(remix.name)
     print(f"SEQ scenarios: {FAILS} failed checks")
     return FAILS
+
+
+def run_mki_midikey() -> None:
+    """Exercise ef_midikey's MKI key-table route while SEQ is open."""
+    with MenuPort(IMAGE, CARD, "OCTABAM", "A", mkii=False) as port:
+        port.settle()
+        for _ in range(3):
+            port.press("no", settle=80)
+        check("MKI panel reports the MKI key table",
+              port.long(0x46C8D18C) == 0,
+              f"MKII_FLAG={port.long(0x46C8D18C)}")
+        s = SeqPort(port)
+        s.open_seq("t1")
+        check("SEQ opens on T1 on MKI", port.long(s.ef) != 0)
+        poke32(port, s.dest, 16)
+        poke32(port, s.depth, 11)
+        poke8(port, s.dep + 16, 11)
+        midi_bank = sym("ef_midi_bank")
+        midi_dep = sym("ef_midi_dep_mem")
+        poke32(port, midi_bank + 8, 20)
+        poke32(port, midi_bank + 0xC, 4)
+        poke8(port, midi_dep + 20, 4)
+        port.press("midi", settle=500)
+        check("MKI [MIDI] press switches open SEQ to MIDI settings",
+              port.long(0x80000012) != 0
+              and port.long(local_sym("ef_tone_midi")) == 1
+              and port.long(s.dest) == 20 and port.long(s.depth) == 4,
+              f"mode={port.long(0x80000012)} latch={port.long(local_sym('ef_tone_midi'))} "
+              f"dest={port.long(s.dest)} depth={port.long(s.depth)}")
+        port.press("midi", settle=500)
+        check("MKI [MIDI] press switches open SEQ back to audio settings",
+              port.long(0x80000012) == 0
+              and port.long(local_sym("ef_tone_midi")) == 0
+              and port.long(s.dest) == 16 and port.long(s.depth) == 11,
+              f"mode={port.long(0x80000012)} latch={port.long(local_sym('ef_tone_midi'))} "
+              f"dest={port.long(s.dest)} depth={port.long(s.depth)}")
 
 
 def run_fx_destinations() -> None:
