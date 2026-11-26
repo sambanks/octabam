@@ -11,11 +11,20 @@ PS = 0x18b2
 
 def symbols():
     raw = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
-    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBb] ((?:hd|mh|bf|mhc|store_part|ms|seq|eu)_\w+)$',raw,re.M)}
+    return {n:int(a,16) for a,n in re.findall(r'^([0-9a-f]+) [TtBb] ((?:hd|mh|bf|mhc|store_part|ms|seq|eu|scn)_\w+)$',raw,re.M)}
+
+
+def part_fixture():
+    machine = Machine(symbols)
+    if 'mh_set' in machine.sym and 'scn_slot_ptr' in machine.sym:
+        # Project load initializes the 256 KiB Scenes library before Part edits.
+        # fill_ff executes three instructions per longword plus call overhead.
+        machine.call('scn_slot_ptr', 0, 0, instruction_budget=3 * (256 * 1024 // 4) + 256)
+    return machine
 
 
 def main():
-    m=Machine(symbols); u=m.uc
+    m=part_fixture(); u=m.uc
     def byte(a,v):u.mem_write(a,bytes((v,)))
     def ui(bank,part):
         u.mem_write(0x46c82456,(B+bank*BS).to_bytes(4,'big'));byte(0x100b14cf,part)
@@ -103,7 +112,7 @@ def main():
 
 
     if 'mh_voice' in m.sym:
-        fresh=Machine(symbols);u=fresh.uc
+        fresh=part_fixture();u=fresh.uc
         fresh.call('mh_set',0,2);fresh.call('mh_voic_set',0,1);fresh.set_key(0,1)
         def chord(root):
             u.mem_write(fresh.scratch,bytes((root,0,0,0)))
