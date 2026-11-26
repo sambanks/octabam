@@ -323,6 +323,53 @@ def run_scenarios() -> int:
               f"cue={key_held_u32(port, CUE_CODE):#x}")
         s.open_seq()
 
+        # --- TRACK+PAGE toggle and stale-layer close (unlink + LREBUILD) ---
+        s.close_seq()
+        port.chord("t1", "page", settle=500)
+        check("TRACK+PAGE release opens SEQ when closed",
+              port.long(s.ef) != 0, f"ef_win={port.long(s.ef):#x}")
+        port.chord("t1", "page", settle=500)
+        check("TRACK+PAGE release closes SEQ when open",
+              port.long(s.ef) == 0, f"ef_win={port.long(s.ef):#x}")
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        port.press("cue", settle=700)
+        check("bare CUE after TRACK+PAGE close does not reopen SEQ",
+              port.long(s.ef) == 0, f"ef_win={port.long(s.ef):#x}")
+        check("CUE held clear after TRACK+PAGE toggle path",
+              key_held_u32(port, CUE_CODE) == 0,
+              f"cue={key_held_u32(port, CUE_CODE):#x}")
+
+        s.open_seq()
+        port.key("t1", True)
+        port.run(120)
+        # Stock TRACK-held sub-map owns [NO]; close via TRACK+PAGE release instead.
+        port.chord("t1", "page", settle=500)
+        check("SEQ closes with TRACK key held (TRACK+PAGE release)",
+              port.long(s.ef) == 0, f"ef_win={port.long(s.ef):#x}")
+        port.key("t1", False)
+        port.run(120)
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        port.press("cue", settle=700)
+        check("bare CUE after TRACK-held NO does not reopen SEQ",
+              port.long(s.ef) == 0, f"ef_win={port.long(s.ef):#x}")
+        check("CUE held clear after TRACK-held close",
+              key_held_u32(port, CUE_CODE) == 0)
+
+        s.open_seq()
+        port.chord("cue", "t1", settle=500)
+        s.close_seq()
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        port.press("cue", settle=700)
+        check("bare CUE after CUE+TRACK and NO does not reopen SEQ",
+              port.long(s.ef) == 0, f"ef_win={port.long(s.ef):#x}")
+        check("CUE held clear after CUE+TRACK close",
+              key_held_u32(port, CUE_CODE) == 0)
+
+        s.open_seq()
+
         # --- Place sample trigs (TRIG, PTCH, DPTH 0) ---
         poke8(port, NV_SCALE, 0)
         s.prime(lane=0, dest=0, depth=0, pulses=5, trig_pulses=5)

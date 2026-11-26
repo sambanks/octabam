@@ -184,7 +184,10 @@ the list does not toggle open/closed on a single chord.
 `verify_seq.py` requires the layer tables to call `*_k` kthunk wrappers (not
 bare handlers) and checks `54_ef.lst` lists every wrapper. `verify_seq_scenarios.py`
 pokes the stock key-held cache at `0x46c7d8ee` after CUE release so a clobbered
-`d2` cannot mark the wrong key held or leave SEQ owning CUE after **`[NO]`**.
+`d2` cannot mark the wrong key held or leave SEQ owning CUE after **`[NO]`**;
+it also runs **`[TRACK]`**+**`[PAGE]`** toggle open/close (including close while
+**`[TRACK]`** stays held), and **`[CUE]`**+**`[TRACK]`** then **`[NO]`**, then
+bare **`[CUE]`**.
 
 Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md).
 

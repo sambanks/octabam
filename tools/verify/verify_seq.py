@@ -612,6 +612,14 @@ def check_ui(src: str) -> None:
     close = _block(src, "close_orphan:", "ef_no:")
     check("close_orphan unlinks stale layer next links then LREBUILD",
           "ef_unlink_stale" in close and "jsr     LREBUILD" in close)
+    check("ef_unlink_stale has re-entrancy guard and BFS queue",
+          "ef_unlink_busy" in close and "ef_unlink_queue" in close
+          and "ef_unlink_busy:" in src and "ef_unlink_queue:" in src
+          and "UE_MAX, 64" in src)
+    check("ef_page release opens when closed and closes when open",
+          re.search(r"tstl\s+ef_win\s*\n\s*beq\.w\s+ef_open", page, re.S)
+          and re.search(r"bsr\.w\s+ef_close", page) is not None
+          and "PAGE_GO" in page)
 
     for code, handler in (
         ("0x31", "ef_yes"),
