@@ -32,3 +32,17 @@ emu = [
 # Virtual project: do not try to build/install octabam itself, just manage the
 # environment its scripts run in.
 package = false
+
+# `make lint` (CI's docs job): the errors a run would hit, checked against the
+# FLOOR above, never the interpreter that happens to run it. target-version
+# makes ruff refuse 3.12-only syntax (a backslash or a line break inside an
+# f-string's braces), which CI's own 3.12 accepts and a 3.10 user's first
+# `make` dies on. E9/F63/F7: syntax and misplaced statements; F82: undefined
+# names; F601: a dict literal that repeats a key (the later value silently
+# wins). Authors' trees (modules/*/upstream) and vendor/ are theirs.
+[tool.ruff]
+target-version = "py310"
+extend-exclude = ["vendor", "out", "modules/*/upstream", ".claude"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82", "F601"]

@@ -480,6 +480,13 @@ jobs:
       - name: 🔗 Verify Docs
         run: make verify-docs
 
+      # syntax and undefined names under the declared floor, Python 3.10
+      # (pyproject.toml [tool.ruff]): this job's own 3.12 accepts syntax a
+      # 3.10 user's first make refuses
+      - name: 🧹 Lint
+        if: ${{ !cancelled() }}
+        run: pip install ruff==0.17.6 && make lint
+
       - name: 🧩 Check Patch Manifest
         run: |
           if [ -f docs/site/builder/manifest.json ]; then

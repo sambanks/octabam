@@ -470,8 +470,8 @@ def run_scenarios() -> int:
         check("sample audio RAND chooses its first note randomly across DEPTH",
               all(len(roll) == 16 and roll[0] == sample_scale_offsets[rank]
                   for rank, roll in start_rolls.items()),
-              f"starts={[(rank, roll[0] if roll else None)
-                         for rank, roll in start_rolls.items()]}")
+              "starts=" + str([(rank, roll[0] if roll else None)
+                               for rank, roll in start_rolls.items()]))
         edge_rolls = {}
         for seed in (4, 9):
             poke32(port, local_sym("ef_tone_phrase"), 0)  # RAND

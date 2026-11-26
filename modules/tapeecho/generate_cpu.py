@@ -8,6 +8,7 @@ import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+AUTHOR_GCC = "the author's gcc"   # a name, not an f-string literal: Python 3.10 refuses a backslash in {}
 FLAGS = ['-mcpu=54454', '-msoft-float', '-O3', '-ffreestanding', '-fno-builtin',
          '-fno-common', '-fno-jump-tables', '-fno-asynchronous-unwind-tables',
          '-fno-ident', '-fomit-frame-pointer']
@@ -77,7 +78,7 @@ if __name__ == '__main__':
             print(f'  [SKIP] Tape Echo cpu.s was written by m68k-elf-gcc '
                   f'{recorded or "an unrecorded version"}; this machine has {local}, whose output '
                   f'differs -- the committed cpu.s is what the build assembles; regenerate under '
-                  f'{recorded or "the author\'s gcc"} to compare')
+                  f'{recorded or AUTHOR_GCC} to compare')
             sys.exit(0)
         with tempfile.TemporaryDirectory() as td:
             if text_bytes(source, td) != text_bytes(committed, td):

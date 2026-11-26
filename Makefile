@@ -447,6 +447,10 @@ accept: ## Strict local acceptance + JSON report: REMIX=<one>, or REMIXES="a b c
 verify-docs: ## The rendered tables are current and every link between tracked files resolves (no firmware; CI runs it)
 	python3 tools/verify/verify_docs.py
 
+.PHONY: lint
+lint: ## Syntax and undefined names under the Python floor (pyproject.toml [tool.ruff]; needs ruff: uvx ruff, pip install ruff)
+	$(if $(shell command -v ruff),ruff,uvx ruff) check .
+
 .PHONY: test-acceptance
 test-acceptance: ## Firmware-free tests of the acceptance runner and the reach classifier
 	python3 -m unittest discover -s tools/verify/tests -p 'test_*.py' -v
@@ -530,7 +534,7 @@ ci-emu-tree:
 	ctest --test-dir out/emu-ci --output-on-failure -E '^(rtos|dsp|repitch-stock|repitch-patch)$$'
 
 .PHONY: ci
-ci: test-acceptance verify-docs ci-dsp ci-emu ## Everything CI runs, locally
+ci: lint test-acceptance verify-docs ci-dsp ci-emu ## Everything CI runs, locally
 	@# The gate list only, as the CI job prints it: `make reach RUN=1` runs
 	@# `make ci` when the Makefile or the workflow changes, and an inherited
 	@# RUN=1 made this reach run the whole list again, recursively.
