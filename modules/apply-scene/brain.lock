@@ -1,0 +1,21 @@
+{
+ "params": {},
+ "retired": {
+  "params": [],
+  "settings": []
+ },
+ "settings": {
+  "1": {
+   "labels": [
+    "ACTIVE",
+    "ALL"
+   ],
+   "name": "TRACKS",
+   "type": "option"
+  }
+ },
+ "store": {
+  "id": "octabam.apply-scene",
+  "major": 1
+ }
+}

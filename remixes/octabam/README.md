@@ -54,6 +54,7 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 | | [MIDI SCENES](../../modules/midi-scenes/README.md) | scene locks for MIDI tracks |
 | | [MIDI LOOPBACK](../../modules/midi-loopback/README.md), [MIDI LOOPBACK SCENES](../../modules/midi-loopback-scenes/README.md) | a MIDI track's output to the internal receiver, DIN/USB or both, set per Part on CHAN; scene CCs follow it |
 | | [SCENES P2](../../modules/scenes-p2/README.md), [PLOCKS P2](../../modules/plocks-p2/README.md) | scene locks and parameter locks on FX page 2 |
+| | [APPLY SCENE](../../modules/apply-scene/README.md) | SCENE + YES: a scene, or the crossfader's blend, into the Part; step locks with trigs held or in live recording; A + B + trig saves the blend as a scene |
 | | [CC MAP](../../modules/cc-map/README.md), [CC FEEDBACK](../../modules/cc-feedback/README.md) | CC onto page 2; knob changes out as CC |
 | | [DIRECT_JUMP_KYOTI](../../modules/direct-jump-kyoti/README.md), [RELOAD_FROM_PROJECT](../../modules/reload-from-project/README.md) | clock-locked direct jump; reload one track from the card |
 | | [SCALE QUANTIZER](../../modules/quantizer/README.md), [TUNER](../../modules/tuner/README.md), [SCOPE](../../modules/scope/README.md) | scale quantizing on PTCH; a tuner window (**[UP]** + **[TEMPO]**); full-screen track audio (**[DOWN]** + **[TEMPO]**) |
